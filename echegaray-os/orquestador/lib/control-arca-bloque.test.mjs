@@ -8,6 +8,7 @@ import {
   FILA_BLOQUE, MONTOS_BLOQUE,
 } from './control-arca-bloque.mjs'
 import { enBloqueIndivisible } from './celda-de-estructura.mjs'
+import { esProsa, TOPE_PROSA } from './diseno-unificado.mjs'
 
 const armar = (rubros = ['Materiales Civil']) => bloqueControlArca({ titulo: '9 · RESPALDO FISCAL', rubros, fila0: 50 })
 
@@ -42,7 +43,7 @@ test('LOS TRES NÚMEROS SON PARTICIONES DEL MISMO CONJUNTO: respaldado + sin res
   const filas = armar()
   const lista = filas.find((f) => String(f[0]).startsWith('Lo que esta pestaña lista'))
   const con = filas.find((f) => String(f[0]).includes('con su comprobante'))
-  const sin = filas.find((f) => String(f[0]).includes('sin comprobante en el libro —'))
+  const sin = filas.find((f) => String(f[0]).includes('sin comprobante'))
   assert.ok(lista && con && sin)
   // "con" se despeja de los otros dos: la identidad es exacta por construcción y no puede dejar un
   // residuo al que haya que inventarle una causa.
@@ -69,10 +70,12 @@ test('LA COBERTURA SE MUESTRA COMO PROPORCIÓN, no sólo como monto', () => {
 test('EL NÚMERO GLOBAL VA REFERENCIADO POR NOMBRE, NO RECALCULADO', () => {
   // Recalcularlo acá daba $13.090.051 contra los $13,8M de ARCA_SIN_CARGAR_MONTO que publica Proveedores:
   // dos cifras parecidas, con nombres parecidos, respondiendo preguntas distintas.
-  const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras NO lo tiene'))
+  const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras no lo tiene'))
   assert.ok(g, 'la línea global existe')
   assert.match(String(g[1]), /ARCA_SIN_CARGAR_MONTO/, 'la cifra sale del nombre, no de un recálculo local')
-  assert.match(String(g[0]), /Compras ENTERA, no de esta pestaña/, 'y dice de qué universo es')
+  // DE QUÉ UNIVERSO ES YA NO SE ESCRIBE EN LA PESTAÑA (06/09): el rótulo decía «— de Compras ENTERA,
+  // no de esta pestaña» y eso es una explicación, que bajo minimalismo extremo vive en el comentario
+  // de `bloqueControlArca`, no en la celda.
 })
 
 // ═══ EL DEFECTO · UN LECTOR QUE CONFÍA A CIEGAS PUBLICA LO QUE HAYA (15/08/2026) ═══
@@ -83,7 +86,7 @@ test('EL NÚMERO GLOBAL VA REFERENCIADO POR NOMBRE, NO RECALCULADO', () => {
 // llevaba la guarda desde el 14/08 y por eso mostraba "—". Mismo nombre roto, dos lectores, uno solo
 // defendido: el indefenso dibuja un comprobante como si fuera plata, y eso no se ve.
 test('EL DEFECTO · la cifra global no se publica sin comprobar que es un número', () => {
-  const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras NO lo tiene'))
+  const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras no lo tiene'))
   assert.match(String(g[1]), /ISNUMBER\(ARCA_SIN_CARGAR_MONTO\)/,
     'cita el rango con nombre sin verificar su especie: si el nombre quedó sobre un CUIT o un comprobante, esta celda lo publica como plata')
   assert.match(String(g[1]), /IFERROR\(/,
@@ -93,14 +96,13 @@ test('EL DEFECTO · la cifra global no se publica sin comprobar que es un númer
 })
 
 test('LO SIN RESPALDO NO SE PRESENTA COMO ERROR mientras la cifra esté inflada', () => {
-  const sin = armar().find((f) => String(f[0]).includes('sin comprobante en el libro —'))
-  assert.match(String(sin[0]), /NO es error sin más/)
+  const sin = armar().find((f) => String(f[0]).includes('sin comprobante'))
+  assert.ok(sin, 'la línea sin respaldo existe')
   const veredicto = String(armar().at(-1)[0])
   // El ✗ está reservado para lo inequívoco. Marcar en rojo una cifra que se sabe inflada entrena a
   // ignorar el control — que es justo lo que pasó con los −$212M.
   assert.doesNotMatch(veredicto, /"✗/, 'sin respaldo no lleva ✗')
-  assert.match(veredicto, /ⓘ /)
-  assert.match(veredicto, /inflada/, 'y el límite se declara en la propia pestaña')
+  assert.match(veredicto, /ⓘ /, 'el estado del medio es informativo, no una falla')
 })
 
 test('LA VENTANA ES DEVENGADA: compara por fecha de FACTURA (col C), nunca por fecha de caja (col AD)', () => {
@@ -117,7 +119,7 @@ test('la ventana sale de _ARCA_RAW y no está escrita a mano — se estira sola 
 
 test('EL VEREDICTO NO SE PONE VERDE SIN FUENTE', () => {
   const v = String(armar().at(-1)[0])
-  assert.match(v, /NO PUEDO VERIFICAR/)
+  assert.match(v, /ARCA no replicó comprobantes/)
   assert.match(v, /IF\(NOT\(COUNTIFS/, 'lo primero que evalúa es si la fuente llegó')
 })
 
@@ -142,8 +144,34 @@ test('el detalle accionable se remite a la pestaña que lo tiene', () => {
   assert.match(String(armar().at(-1)[0]), /_CRUCE_ARCA/)
 })
 
-test('la bajada avisa que NO compara totales — es lo que confundió al lector', () => {
-  assert.match(String(armar()[1][0]), /No compara totales/)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// MINIMALISMO EXTREMO — EL BLOQUE NO EXPLICA NADA (06/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO, medido con `auditar-diseno-unificado` sobre el archivo vivo: este bloque aportaba
+// CUATRO desvíos a CADA UNA de las tres pestañas que lo insertan —doce en total—, y la mitad de los
+// diez de Estructura. La bajada de 230 caracteres ("Mide SÓLO lo que esta pestaña lista…"), el
+// "NO es error sin más" del rótulo sin respaldo, el "de Compras ENTERA" del global y los 190
+// caracteres escondidos adentro del `IF` del veredicto, que ningún auditor de valores veía.
+//
+// Este test es la vara, no la lista: mide con el MISMO núcleo que audita el archivo real
+// (`esProsa`), así que cualquier prosa nueva que alguien agregue al bloque —en el rótulo o adentro
+// de una fórmula— cae acá antes de llegar al Sheet.
+test('EL DEFECTO · ninguna celda del bloque es prosa ni explica — se mide con el mismo núcleo que el archivo vivo', () => {
+  const malas = []
+  for (const fila of armar()) {
+    for (const celda of fila) {
+      const p = esProsa(celda, { tope: TOPE_PROSA })
+      if (p) malas.push(`${p.clase} (${p.largo} car.): "${p.texto.slice(0, 80)}"`)
+    }
+  }
+  assert.deepEqual(malas, [], `el bloque de ARCA volvió a explicar:\n  ${malas.join('\n  ')}`)
+})
+
+test('la fila de respiro queda vacía y el alto NO se achica — mover el bloque es lo que dejó tres controles mudos', () => {
+  const filas = armar()
+  assert.equal(filas[FILA_BLOQUE.respiro].length, 0, 'la fila que ocupaba la bajada queda, vacía')
+  assert.equal(filas.length, ALTO_BLOQUE, 'sacarla correría todo lo que las tres pestañas ponen abajo')
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -162,7 +190,7 @@ test('FILA_BLOQUE apunta a la fila que dice: la cobertura, los montos y el vered
   assert.match(filas[FILA_BLOQUE.universo][0], /^Lo que esta pestaña lista/)
   assert.match(filas[FILA_BLOQUE.conRespaldo][0], /con su comprobante/)
   assert.match(filas[FILA_BLOQUE.sinRespaldo][0], /sin comprobante/)
-  assert.match(filas[FILA_BLOQUE.global][0], /ARCA facturó y Compras NO lo tiene/)
+  assert.match(filas[FILA_BLOQUE.global][0], /ARCA facturó y Compras no lo tiene/)
   assert.equal(filas[FILA_BLOQUE.veredicto].length, 1, 'el veredicto es una sola celda de texto')
   assert.equal(Object.keys(FILA_BLOQUE).length, ALTO_BLOQUE, 'hay una fila del bloque sin nombre')
 })

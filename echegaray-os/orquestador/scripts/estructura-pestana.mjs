@@ -27,6 +27,7 @@ import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-a
 import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
+import { ANCLA_AUXILIAR } from '../lib/libro-extractores-estructura.mjs'
 import { bloqueControlArca, bloqueIndivisible, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -87,7 +88,10 @@ export function grilla() {
   // trabajo del dueño seis veces.
   const vacia = () => Array(ANCHO).fill(VACIO)
 
-  const t = vacia(); t[0] = 'Gastos de estructura'; push(t)
+  // A1 ES EL NOMBRE DE LA PESTAÑA, SIN SINÓNIMO. Decía "Gastos de estructura" sobre una pestaña
+  // llamada "Estructura": dos nombres para lo mismo, y el lector no sabe si son dos cosas. El
+  // contrato de `lib/diseno-unificado.mjs` lo mide como `titulo-distinto`.
+  const t = vacia(); t[0] = PESTAÑA; push(t)
   const s = vacia()
   // UNA LÍNEA. El párrafo anterior se envolvía sobre la columna de enero y quedaba cortado; lo que
   // explicaba —qué es proyección— lo dice ahora la itálica del propio cuadro.
@@ -108,11 +112,17 @@ export function grilla() {
   cab[C_PROY] = 'Proyectado'
   cab[C_TOTAL] = `Total ${AÑO}`
   cab[C_PCT] = '% del total'
-  cab[C_AUX0] = 'AUXILIAR — el real de cada mes. De acá sale la proyección. No borrar ni mostrar.'
+  // EL RÓTULO ES EXACTAMENTE `ANCLA_AUXILIAR`: el extractor del libro ubica esta columna con
+  // `startsWith`, así que el rótulo es contrato y no adorno. Lo que decía después ("de acá sale la
+  // proyección, no borrar ni mostrar") es una instrucción al lector, o sea prosa: vive en el
+  // comentario de arriba, donde está el porqué de la columna auxiliar.
+  cab[C_AUX0] = ANCLA_AUXILIAR
   // Las dos auxiliares que forman el promedio llevan nombre aunque estén ocultas: un divisor sin
   // rótulo es exactamente cómo alguien vuelve a leerlo como "meses del año" dentro de seis meses.
-  cab[C_NMESES] = 'AUXILIAR — meses CERRADOS con gasto (el divisor del promedio)'
-  cab[C_REALCERRADO] = 'AUXILIAR — lo real de esos meses cerrados (el numerador)'
+  // El rótulo dice QUÉ contiene la columna; cuál de las dos es el divisor y cuál el numerador se lee
+  // en la fórmula de `C_MES0`, tres líneas más abajo, y no en un paréntesis de la fila 6.
+  cab[C_NMESES] = 'AUXILIAR — meses CERRADOS con gasto'
+  cab[C_REALCERRADO] = 'AUXILIAR — lo real de esos meses cerrados'
   push(cab)
 
   const f0 = filas.length + 1
@@ -162,7 +172,10 @@ export function grilla() {
 
   push(vacia())
   const c1 = vacia()
-  c1[0] = '2 · CONTROL — QUE ESTE CUADRO SEA EXACTAMENTE EL RUBRO ESTRUCTURA DE COMPRAS'
+  // EL TÍTULO NOMBRA SU BLOQUE Y NO ARGUMENTA SOBRE ÉL. La glosa anterior —"QUE ESTE CUADRO SEA
+  // EXACTAMENTE EL RUBRO ESTRUCTURA DE COMPRAS"— decía qué tiene que pasar, que es justo lo que las
+  // dos filas de abajo miden. Ver `partesDeTitulo` en lib/diseno-unificado.mjs.
+  c1[0] = '2 · CONTROL CONTRA COMPRAS'
   push(c1)
   // ═══ NI UNA COLUMNA DE PROSA (04/08) ═══
   //
@@ -171,15 +184,20 @@ export function grilla() {
   // dueño las borra a mano y volvían en cada corrida — con el worker cada 2 horas, todos los días.
   // Si un número necesita un párrafo al lado, el número está mal elegido: lo que decía la oración
   // pasa al RÓTULO, que es una celda que ya existía y que nadie borra.
-  const c2 = vacia(); c2[0] = 'Estructura según Compras (la misma línea del Cash Flow Mensual)'
+  // "(la misma línea del Cash Flow Mensual)" era una referencia cruzada, no un rótulo: la línea del
+  // Cash Flow Mensual sale de esta misma columna de Compras (lib/cash-flow-mapa.mjs, fila 29), y eso
+  // se verifica en el código, no leyendo un paréntesis.
+  const c2 = vacia(); c2[0] = 'Estructura según Compras'
   c2[1] = '=SUMIF(Compras!$AC$4:$AC;"Estructura";Compras!$O$4:$O)'
   const fc = push(c2)
-  const c3 = vacia(); c3[0] = '⇒ Diferencia — gastos de estructura que el cuadro no mira (debe ser $0)'
+  const c3 = vacia(); c3[0] = '⇒ Diferencia contra Compras'
   // ROUND A PESO: sin esto, una diferencia de fracciones de centavo se dibuja "-$0" y enciende el
   // rojo del control con los datos perfectos. Un control que grita por nada se deja de mirar.
   c3[1] = `=ROUND($B${fc}-$${letra(C_TOTREAL)}${fTot};0)`
   push(c3)
-  const c4 = vacia(); c4[0] = `Rubros no proyectados — pasaron menos de ${MIN_MESES} meses cerrados, no son tendencia`
+  // EL RÓTULO SIGUE DICIENDO "CERRADOS" —es lo que el número mide y sin eso el cuadro miente— pero
+  // deja de argumentar: "no son tendencia" era la conclusión, y la conclusión es del que lee.
+  const c4 = vacia(); c4[0] = `Rubros no proyectados — menos de ${MIN_MESES} meses cerrados`
   c4[1] = `=COUNTIFS($${letra(C_NMESES)}${f0}:$${letra(C_NMESES)}${f1};"<${MIN_MESES}";$${letra(C_TOTREAL)}${f0}:$${letra(C_TOTREAL)}${f1};">0")`
   push(c4)
 

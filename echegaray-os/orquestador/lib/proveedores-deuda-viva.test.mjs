@@ -23,6 +23,7 @@ import {
   filasLibreta, verificarMigracionNotas, esNombreSeguro,
 } from './proveedores-deuda-viva.mjs'
 import { expresionSaldo, formulaParcial1Sospechoso } from './deuda-por-tramos.mjs'
+import { esProsa } from './diseno-unificado.mjs'
 
 /** Las columnas reales de Compras, tal como las resuelve el generador por encabezado. */
 const COLS = {
@@ -242,7 +243,13 @@ test('el control distingue el truncado de la deuda SIN proveedor: manda a arregl
   // por proveedor la puede mostrar. Es un defecto de carga en Compras, no un bloque chico.
   assert.ok(f.includes(`${R.prov};""`), 'mide la deuda pendiente comercial con proveedor vacío')
   assert.ok(/huerfana/.test(f), 'y la nombra aparte del truncado')
-  assert.ok(/SIN nombre de proveedor/.test(f), 'el mensaje dice qué hay que arreglar y dónde')
+  // EL MENSAJE NOMBRA LAS DOS CAUSAS Y YA NO EXPLICA NINGUNA (06/09/2026). Decía «ningún bloque
+  // organizado por proveedor la puede mostrar, y hay que completarla allá … pedime que lo agrande»:
+  // 151 caracteres de instrucción al lector adentro de una celda, que es lo que el minimalismo
+  // extremo saca. Lo que no se puede deducir mirando —cuánto falta, y cuánto de eso es deuda sin
+  // proveedor cargado— sigue publicándose.
+  assert.ok(/sin proveedor en Compras/.test(f), 'el mensaje separa la deuda sin proveedor del truncado')
+  assert.ok(!/pedime que lo agrande|hay que completarla/.test(f), 'y no le da instrucciones al lector')
 })
 
 // ── 5 · LA LIBRETA DEL DUEÑO ────────────────────────────────────────────────────────────────────
@@ -362,4 +369,19 @@ test('el bloque POR PROVEEDOR no necesita ARRAYFORMULA y no se la agrega de más
   // hay ninguna medición que respalde hacerlo. Se deja como está, que es lo que funciona.
   const f = formulaPorProveedor({ rangos: R, libreta: LIBRETA, reserva: 40 })
   assert.doesNotMatch(f, /ARRAYFORMULA/, 'este bloque funciona sin envoltura: no se toca lo que anda')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// MINIMALISMO EXTREMO — LO QUE LA CELDA PUBLICA NO EXPLICA (06/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO, medido con `auditar-diseno-unificado.mjs` sobre «Proveedores» en el archivo vivo:
+// A16 publicaba 151 caracteres de prosa que ningún auditor de VALORES podía ver, porque el
+// texto vive adentro de un `IF` y el valor de una fórmula, en frío, es la fórmula.
+//
+// Se mide con `esProsa`, el mismo núcleo puro que audita el Sheet: cualquier párrafo nuevo que
+// alguien meta adentro de esta fórmula da rojo acá y no dos horas después en la pantalla del dueño.
+test('EL DEFECTO · el control del titular nombra las dos causas sin explicar ninguna', () => {
+  const p = esProsa(formulaControl({ rangos: R, rangoSaldo: '$D$21:$D$60', que: 'el detalle' }))
+  assert.equal(p, null, `la fórmula publica prosa: ${JSON.stringify(p)}`)
 })

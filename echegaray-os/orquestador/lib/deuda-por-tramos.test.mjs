@@ -8,8 +8,9 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   COL, PENDIENTE, clasificar, esComercial, estadoTipeadoQueContradice,
-  formulaSaldoPendiente, pagadoDe, posicionComercial, saldoDeLaFila,
+  formulaSaldoPendiente, formulaParcial1Sospechoso, pagadoDe, posicionComercial, saldoDeLaFila,
 } from './deuda-por-tramos.mjs'
+import { esProsa } from './diseno-unificado.mjs'
 
 /** Arma una fila de Compras con sólo las columnas que esta aritmética mira. */
 function fila({ proveedor = 'X', comprobante = '', total = 0, pagado = 0, u = 0, w = 0,
@@ -192,4 +193,19 @@ describe('la fórmula de la columna AL', () => {
     assert.ok(f.includes(`$X$4:$X="${PENDIENTE}"`), 'se debe lo que el dueño declaró Pendiente')
     assert.ok(f.includes('$AJ$4:$AJ=1'), 'la deuda con ARCA/nómina no es de esta pestaña')
   })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// MINIMALISMO EXTREMO — LO QUE LA CELDA PUBLICA NO EXPLICA (06/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO, medido con `auditar-diseno-unificado.mjs` sobre «Proveedores» en el archivo vivo:
+// F13 publicaba 74 caracteres de prosa que ningún auditor de VALORES podía ver, porque el
+// texto vive adentro de un `IF` y el valor de una fórmula, en frío, es la fórmula.
+//
+// Se mide con `esProsa`, el mismo núcleo puro que audita el Sheet: cualquier párrafo nuevo que
+// alguien meta adentro de esta fórmula da rojo acá y no dos horas después en la pantalla del dueño.
+it('EL DEFECTO · el veredicto de «Monto Parcial 1» no le da al lector las dos respuestas posibles', () => {
+  const p = esProsa(formulaParcial1Sospechoso())
+  assert.equal(p, null, `la fórmula publica prosa: ${JSON.stringify(p)}`)
 })

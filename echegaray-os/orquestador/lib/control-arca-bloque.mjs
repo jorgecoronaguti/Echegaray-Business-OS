@@ -84,8 +84,20 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   const f = (n) => fila0 + n
   const filas = []
   filas.push([titulo])
-  filas.push(['Mide SÓLO lo que esta pestaña lista, comprobante por comprobante contra el libro de ARCA. No compara totales: ARCA no trae rubro, así que su total es el de TODAS las compras y no el de esta vista. Por fecha de FACTURA, no de caja.'])
   filas.push([`="Ventana comparable · "&IF(${HAY_FUENTE};TEXT(${DESDE};"mmm yyyy")&" a "&TEXT(${HASTA};"mmm yyyy");"ARCA no replicó ningún comprobante")`])
+  // ═══ LA FILA VACÍA ES DELIBERADA, Y NO SE PUEDE SACAR (06/09/2026) ═══
+  //
+  // Acá vivía la bajada de 230 caracteres que explicaba que el control NO compara totales. Bajo
+  // «minimalismo extremo» esa prosa no va en la pestaña, y lo que decía está escrito arriba, en el
+  // encabezado de este módulo: el universo de esta comparación es lo que la vista lista, no el libro
+  // entero, y la ventana la declara la fila de arriba.
+  //
+  // La fila SE QUEDA vacía en vez de desaparecer porque `ALTO_BLOQUE` es contrato: las tres pestañas
+  // que insertan el bloque calculan con él la fila de todo lo que va abajo, y `bloqueIndivisible`
+  // ampara exactamente nueve filas. Achicarlo movería el bloque entero, y un bloque que se mueve es
+  // lo que el 13/08 la huella leyó como «el dueño vació estas celdas»: 15 celdas de Estructura y 19
+  // de Recurrentes marcadas como borradas, y tres coberturas mudas durante tres semanas.
+  filas.push([])
 
   // ═══ LOS TRES NÚMEROS SON PARTICIONES DEL MISMO CONJUNTO ═══
   //
@@ -98,8 +110,11 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // aparecer en una vista parcial.
   filas.push(['Lo que esta pestaña lista, dentro de la ventana', `=${comprasDevengado(rubros)}`])
   filas.push(['· con su comprobante en el libro de ARCA', `=B${f(3)}-B${f(5)}`])
-  filas.push(['· sin comprobante en el libro — incluye proveedores que no facturan, NO es error sin más',
-    `=${sinRespaldo(rubros)}`])
+  // El rótulo dice QUÉ es y no qué significa: esta cifra incluye proveedores que no emiten factura,
+  // así que está inflada y no es una lista de errores. Eso es una advertencia sobre el dato, y una
+  // advertencia es una explicación: por eso el veredicto de abajo no la pinta con ✗ y por eso acá no
+  // se escribe. El que la tenga que interpretar llega a este comentario.
+  filas.push(['· sin comprobante en el libro de ARCA', `=${sinRespaldo(rubros)}`])
   filas.push(['⇒ Cobertura fiscal de esta pestaña', `=IF(B${f(3)}=0;"";B${f(4)}/B${f(3)})`])
 
   // ═══ EL ÚNICO NÚMERO GLOBAL, Y VA REFERENCIADO — NO RECALCULADO ═══
@@ -122,7 +137,12 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // lectores, y sólo uno defendido. Un dato de otra especie dibujado como plata no se ve; un "—" sí.
   //
   // `IFERROR` cubre el nombre retirado (#NAME?) e `ISNUMBER`, el nombre vivo apuntando a basura.
-  filas.push([`${ALERTA} ARCA facturó y Compras NO lo tiene — de Compras ENTERA, no de esta pestaña`,
+  //
+  // El rótulo NO aclara que la cifra es de Compras ENTERA y no de esta pestaña: es la única línea
+  // global del bloque y la aclaración era prosa. Queda dicho acá, que es donde se busca el día que
+  // alguien quiera repartirla por rubro — y no se puede, porque un comprobante que Compras no cargó
+  // todavía no tiene rubro.
+  filas.push([`${ALERTA} ARCA facturó y Compras no lo tiene`,
     '=IFERROR(IF(ISNUMBER(ARCA_SIN_CARGAR_MONTO);ARCA_SIN_CARGAR_MONTO;"—");"—")'])
 
   // ═══ EL VEREDICTO ═══
@@ -133,7 +153,7 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // que se sabe inflada entrena al que la mira a ignorar el control, y ya pasó con los −$212M.
   //
   // Sin fuente NO hay ✓: afirmar que está todo bien justo cuando no se puede saber es el peor estado.
-  filas.push([`=IF(NOT(${HAY_FUENTE});"${ALERTA} NO PUEDO VERIFICAR — ARCA no replicó comprobantes: este control no afirma nada";IF(ROUND(B${f(5)};0)=0;"✓ todo lo que esta pestaña lista en la ventana tiene su comprobante en el libro de ARCA";"ⓘ "&TEXT(B${f(5)};"$#,##0")&" en "&${sinRespaldoN(rubros)}&" fila(s) sin comprobante en el libro ("&TEXT(1-B${f(6)};"0,0%")&" de esta pestaña) — cada una con su fila y su monto en ${C}. Falta distinguir en Compras qué proveedor no factura: hasta entonces esta cifra está inflada y no es una lista de errores."))`])
+  filas.push([`=IF(NOT(${HAY_FUENTE});"${ALERTA} ARCA no replicó comprobantes";IF(ROUND(B${f(5)};0)=0;"✓ todo con comprobante en ARCA";"ⓘ "&TEXT(B${f(5)};"$#,##0")&" en "&${sinRespaldoN(rubros)}&" fila(s) sin comprobante · ${C}"))`])
   return filas
 }
 
@@ -182,7 +202,7 @@ export function bloqueIndivisible(fila0) {
  * corrige es cómo se dibuja, igual que con las fechas-serial del Calendario.
  */
 export const FILA_BLOQUE = Object.freeze({
-  titulo: 0, nota: 1, ventana: 2, universo: 3, conRespaldo: 4, sinRespaldo: 5,
+  titulo: 0, ventana: 1, respiro: 2, universo: 3, conRespaldo: 4, sinRespaldo: 5,
   cobertura: 6, global: 7, veredicto: 8,
 })
 

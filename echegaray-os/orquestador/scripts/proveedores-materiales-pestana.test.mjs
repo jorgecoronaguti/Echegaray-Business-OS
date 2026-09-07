@@ -487,14 +487,21 @@ test('las facturas emitidas ya no se escriben en la pestaña de proveedores', ()
   assert.match(src, /VENTAS \(no es de esta pestaña\)/)
 })
 
-test('la conciliación con ARCA se declara UNA vez al pie, no en la columna I de cada fila', () => {
+// LA DECLARACIÓN DE ORIGEN SE MUDÓ AL REPOSITORIO (06/09/2026). Este test pedía que la conciliación
+// con ARCA se declarara UNA vez al pie de la sección en vez de en la columna I de cada fila; el pie
+// medía 249 caracteres y `auditar-diseno-unificado` lo marcaba como prosa en `A247`. Bajo minimalismo
+// extremo la pestaña no aloja NINGUNA de las dos: la declaración vive en `PESTANAS.origenPorBloque`
+// (scripts/formato-pestanas.mjs), versionada y atada al RÓTULO del bloque. Ver lib/origen-declarado.mjs.
+//
+// Se verificó ANTES de borrar, que es el orden que ese módulo exige: blanqueando sólo `A247` en el
+// archivo vivo, los números pegados de "Proveedores" siguen siendo uno (`B258`). No amparaba nada.
+test('la conciliación con ARCA no se declara en la pestaña: ni por fila ni al pie', () => {
   const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
-  // El defecto: dos párrafos sueltos derramados en la columna I, a la derecha de la tabla, que en el
-  // PDF se leen como basura. Cada fila llevaba su propia declaración de "esto no es una fórmula".
-  assert.ok(!/Conciliación del OS al \$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\} — no es una fórmula/.test(src))
-  assert.ok(!/'Conciliación del OS: se encontraron por proveedor \+ importe/.test(src))
-  assert.match(src, /push\(\[`Del libro de IVA de ARCA/,
-    'la declaración vive al pie de la sección, una sola vez')
+  const sinComentarios = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n')
+  assert.ok(!/Conciliación del OS al \$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\} — no es una fórmula/.test(sinComentarios))
+  assert.ok(!/'Conciliación del OS: se encontraron por proveedor \+ importe/.test(sinComentarios))
+  assert.ok(!/push\(\[`Del libro de IVA de ARCA/.test(sinComentarios),
+    'la bajada del pie era prosa: la declaración vive en PESTANAS.origenPorBloque')
 })
 
 // ═══ NINGÚN PÁRRAFO SE ESCRIBE MÁS LARGO DE LO QUE ENTRA (05/08) ═══

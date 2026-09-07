@@ -860,10 +860,19 @@ export function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompr
   filas[fArcaFaltan - 1][1] = `=COUNTIF($A$${afip0}:$A$${afip1};"<>")`
   filas[fArcaFaltan - 1][2] = `=SUM($F$${afip0}:$F$${afip1})`
   push([])
-  // 306 CARACTERES NO ENTRAN EN NINGÚN ANCHO. El auditor lo reportaba como A261 cortado: la frase
-  // terminaba en "…que el OS replica en" y el resto no se leía. Ensanchar no es una opción —la fila
-  // ya derrama sobre la pestaña entera— así que se escribe menos. Tope: ver `caracteresQueEntran`.
-  push([`Del libro de IVA de ARCA, que el OS replica en ${R}. "Cargados por proveedor + importe" y "sin cargar" son conciliación del OS al ${new Date().toISOString().slice(0, 10)}, no fórmula: normaliza seis formas de escribir un N° de comprobante. Sheets no sabe.`])
+  // ═══ LA BAJADA SE VA ENTERA (06/09/2026) ═══
+  //
+  // Medía 249 caracteres y `auditar-diseno-unificado` la marcaba como `prosa` en A247 del archivo
+  // vivo. La versión anterior de este comentario decía "así que se escribe menos"; bajo minimalismo
+  // extremo la respuesta no es escribir menos, es no escribir.
+  //
+  // ANTES DE SACARLA SE VERIFICÓ QUÉ AMPARABA, que es el orden que `lib/origen-declarado.mjs` exige:
+  // el texto contiene «conciliación del OS» y por eso `censo-numeros-pegados` lo lee como declaración
+  // de origen para TODO su bloque. Medido contra el archivo vivo, blanqueando SÓLO esta celda: los
+  // números pegados de "Proveedores" siguen siendo uno (`B258`), el mismo de antes. No ampara nada,
+  // porque la bajada vive sola entre dos filas en blanco y un bloque es un run de filas no vacías.
+  // Los dos números que sí dependían de una leyenda —`B182`/`B183`, la conciliación de ARCA— ya
+  // están declarados en `PESTANAS` (`origenPorBloque`), no acá.
   push([])
 
   // ── 5 · LO QUE HAY QUE CORREGIR EN COMPRAS ──────────────────────────────────────────────────────

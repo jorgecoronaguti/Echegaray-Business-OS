@@ -324,9 +324,13 @@ export function formulaPorFactura({ rangos, reserva }) {
 export function formulaControl({ rangos, rangoSaldo, que }) {
   const total = deudaComercialTotal(rangos)
   const sinProv = `SUMIFS(${rangos.total}${SEP}${rangos.estado}${SEP}"${PENDIENTE}"${SEP}${rangos.comercial}${SEP}1${SEP}${rangos.prov}${SEP}"")`
-  const msg = `"${ALERTA} ${lit(que)} no cierra con el titular: falta "&TEXT(dif${SEP}"$#,##0")&". "`
-    + `&IF(ROUND(huerfana${SEP}0)<>0${SEP}"De eso, "&TEXT(huerfana${SEP}"$#,##0")&" es deuda comercial pendiente SIN nombre de proveedor en Compras: ningún bloque organizado por proveedor la puede mostrar, y hay que completarla allá. "${SEP}"")`
-    + `&"El resto es deuda que no entra en las filas reservadas del bloque — pedime que lo agrande."`
+  // LAS DOS CAUSAS SE SIGUEN NOMBRANDO, PERO NO SE EXPLICAN (06/09/2026). El mensaje anterior medía
+  // 151 caracteres —«ningún bloque organizado por proveedor la puede mostrar, y hay que completarla
+  // allá… pedime que lo agrande»— o sea que le daba instrucciones al lector desde una celda. Lo que
+  // no se puede deducir mirando es CUÁNTO falta y cuánto de eso es deuda sin proveedor cargado: eso
+  // queda. El qué hacer con cada una está en el `POR QUÉ` de arriba.
+  const msg = `"${ALERTA} ${lit(que)} no cierra con el titular: falta "&TEXT(dif${SEP}"$#,##0")`
+    + `&IF(ROUND(huerfana${SEP}0)<>0${SEP}" · sin proveedor en Compras: "&TEXT(huerfana${SEP}"$#,##0")${SEP}"")`
   return `=LET(dif${SEP}ROUND((${total})-SUM(${rangoSaldo})${SEP}0)${SEP}huerfana${SEP}${sinProv}${SEP}`
     + `IF(dif=0${SEP}"✓ el detalle cierra con el titular al peso"${SEP}${msg}))`
 }
