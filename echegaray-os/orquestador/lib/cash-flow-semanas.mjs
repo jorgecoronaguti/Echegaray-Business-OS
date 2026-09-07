@@ -136,7 +136,7 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
   }
 
   // ── 1 y 2. El título, de dónde sale todo, y el atajo a la semana corriente ───────────────────────
-  poner(FILA.titulo, 0, `${TITULO} ${ejercicio}`)
+  poner(FILA.titulo, 0, TITULO)  // el año lo dice el subtítulo y cada encabezado de columna: en A1 era glosa
   poner(FILA.subtitulo, 0,
     '="Qué se cobra, qué se paga y con cuánto cierra cada semana · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")')
   // EL BOTÓN VA EN A3, NO EN LA COLUMNA TOTAL (06/08, pedido del dueño): en la columna 55 el atajo

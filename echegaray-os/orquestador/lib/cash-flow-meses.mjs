@@ -161,7 +161,7 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date
     plegar: columnasDelPasado(meses, hoy, { col0: COL.tiempo0 }),
   }
 
-  poner(FILA.titulo, 0, `Cash Flow Mensual ${anio}`)
+  poner(FILA.titulo, 0, PESTANA_MENSUAL)  // el año lo dice el subtítulo y cada encabezado de mes
   poner(FILA.subtitulo, 0, formulaSubtitulo(refFecha, celda(COL.tiempo0, FILA.cabecera)))
   // EL MENSUAL TAMBIÉN MARCA DÓNDE ESTAMOS (13/08/2026). Tenía el atajo el semanal y no éste, y el
   // control del pipeline lo reclamaba igual en las dos pestañas — reclamaba un atajo que en el Mensual
