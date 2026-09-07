@@ -11,6 +11,7 @@ import {
 import { COL, geometriaDeLaSeccion } from './proveedores-pivot-seccion1.mjs'
 import { COLCHON_FINAL } from './proveedores-colchon.mjs'
 import { COL as COL_TRAMOS } from './deuda-por-tramos.mjs'
+import { esProsa } from './diseno-unificado.mjs'
 
 /** El número de serie de una fecha en Sheets. La época es el 30/12/1899. */
 const D = (iso) => Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.parse('1899-12-30T00:00:00Z')) / 86400000)
@@ -334,4 +335,19 @@ test('la sección 1 se limita con la sección que SIGUE, sea cual sea su número
     '3 · CUENTA CORRIENTE POR PROVEEDOR',
   ])
   assert.equal(geometriaDeLaSeccion(conTres).filaLimite, 19)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// MINIMALISMO EXTREMO — LO QUE LA CELDA PUBLICA NO EXPLICA (06/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO, medido con `auditar-diseno-unificado.mjs` sobre «Proveedores» en el archivo vivo:
+// A88 publicaba 72 caracteres de prosa que ningún auditor de VALORES podía ver, porque el
+// texto vive adentro de un `IF` y el valor de una fórmula, en frío, es la fórmula.
+//
+// Se mide con `esProsa`, el mismo núcleo puro que audita el Sheet: cualquier párrafo nuevo que
+// alguien meta adentro de esta fórmula da rojo acá y no dos horas después en la pantalla del dueño.
+test('EL DEFECTO · el control del cuadro por día dice cuánto falta, no por qué puede faltar', () => {
+  const p = esProsa(formulaControlPorDia({ filaTotal: 87, primeraFila: 81, ultimaFila: 86 }))
+  assert.equal(p, null, `la fórmula publica prosa: ${JSON.stringify(p)}`)
 })

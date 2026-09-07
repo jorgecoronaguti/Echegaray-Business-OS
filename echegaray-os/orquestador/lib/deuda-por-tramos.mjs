@@ -327,8 +327,12 @@ export function formulaParcial1Sospechoso() {
   return `=LET(n;SUMPRODUCT(${u});m;SUMPRODUCT(${u}*${n});`
     + `IF(n=0;"✓ ningún importe suelto en «Monto Parcial 1»";`
     + `n&" factura(s) pendientes con "&TEXT(m;"$#,##0")&" cargado en «Monto Parcial 1» ("`
+    // LAS DOS RESPUESTAS POSIBLES —o ya está pagada y le falta el estado, o el importe va en «Monto
+    // Pagado»— NO SE ESCRIBEN EN LA CELDA (06/09/2026). Están tres párrafos más arriba, en el `POR
+    // QUÉ` de esta función, que es donde las va a buscar el que tenga que arreglarlo en Compras. La
+    // celda nombra la contradicción con proveedor y monto, que es lo único que no se puede deducir.
     + `&IFERROR(TEXTJOIN(" · ";TRUE;UNIQUE(FILTER(Compras!$E$4:$E;${u})));"sin nombre")`
-    + `&"): o ya están pagadas y falta el estado, o el importe va en «Monto Pagado»"))`
+    + '&")"))'
 }
 
 /** El rótulo de la columna en Compras. Una sola constante: el que escribe y el que busca leen ésta. */

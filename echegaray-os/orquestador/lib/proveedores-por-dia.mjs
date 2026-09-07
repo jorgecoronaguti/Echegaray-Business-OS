@@ -326,11 +326,15 @@ export function formulaControlPorDia({ filaTotal, primeraFila, ultimaFila }) {
   // `COUNT` no sirve: cuenta sólo números y dejaría afuera los días que en Compras son texto. Y
   // `COUNTA` cuenta de más: una fórmula que devuelve "" no es una celda vacía para COUNTA.
   const dias = `SUMPRODUCT(($A$${primeraFila}:$A$${ultimaFila}<>"")*1)`
+  // LAS CAUSAS NO VAN EN LA CELDA (06/09/2026). Decía «: hay facturas sin fecha de pago, o más días
+  // que filas» y «abierta por los cuatro medios»: las dos son la interpretación del número, y las dos
+  // están dichas arriba, en el `POR QUÉ` de esta función. Lo que la celda tiene que decir es CUÁNTO
+  // falta y por dónde se está yendo; el diagnóstico lo hace quien lo lee.
   return `=IF(ROUND(${total}-${deuda};0)<>0;"${ALERTA} el cuadro no muestra "`
-    + `&TEXT(${deuda}-${total};"$#,##0")&" de deuda: hay facturas sin fecha de pago, o más días que filas"`
+    + `&TEXT(${deuda}-${total};"$#,##0")&" de deuda"`
     + `;IF(ROUND(${total}-${medios};0)<>0;"${ALERTA} "&TEXT(${total}-${medios};"$#,##0")`
     + `&" salen por un medio de pago que no tiene columna"`
-    + `;"✓ "&${dias}&" días que suman la deuda comercial entera, abierta por los cuatro medios"))`
+    + `;"✓ "&${dias}&" días que suman la deuda comercial entera"))`
 }
 
 /**
