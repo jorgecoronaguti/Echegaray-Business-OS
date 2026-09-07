@@ -6,7 +6,7 @@ import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/auth
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 import { Aviso, Eyebrow } from '@/shared/components/ds'
 import { leerDatosCampo } from './datos'
-import { IconoHerramienta, IconoMaterial, IconoMovimiento, IconoParte, IconoProblema } from './iconos'
+import { IconoAsistencia, IconoHerramienta, IconoMaterial, IconoMovimiento, IconoParte, IconoProblema } from './iconos'
 import { puedeCargarParte } from './permisos'
 import { senalHerramientas, senalImpedimentos, senalPedidos, senalParte, type Senal } from './senales'
 
@@ -96,6 +96,21 @@ export default async function CampoPage() {
   ]
 
   const consultas: Acceso[] = [
+    {
+      // ASISTENCIA VA ACÁ Y NO ARRIBA, y no porque valga menos: los tres bloques de arriba son una
+      // grilla de TRES en posición fija, y un cuarto los rompe en 3 + 1 huérfano. Mover una decisión
+      // de layout ya tomada no es parte de este trabajo — si el dueño quiere la asistencia entre las
+      // tres de arriba, se decide qué sale.
+      href: '/campo/asistencia',
+      titulo: 'Asistencia',
+      detalle: 'Las horas de cada uno, hoy',
+      // SIN SEÑAL A PROPÓSITO: decir «falta cargar la asistencia» exige saber quién está asignado a
+      // cada obra y qué días son laborables. Con una cuenta a medias, la señal diría que falta algo
+      // los domingos. Aparece el día que la regla esté probada, no antes.
+      senal: null,
+      icono: <IconoAsistencia className="h-[22px] w-[22px]" />,
+      testid: 'ir-asistencia',
+    },
     {
       href: '/integraciones/herramientas',
       titulo: 'Herramientas',
