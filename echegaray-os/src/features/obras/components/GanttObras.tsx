@@ -52,7 +52,7 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { Ayuda } from '@/shared/components/ds'
 import { construirEscala, diasDeVentana, escalaQueEntra, type Escala } from '../services/escala'
-import { PALABRA_SEMAFORO, UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
+import { fmtCorto, PALABRA_SEMAFORO, plazoCorto, UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
 import { ETAPA_LABEL } from '../types'
 
 /** 48px por renglón: la celda de la izquierda apila nombre de obra y cliente, y las dos líneas
@@ -80,17 +80,6 @@ const completa = (b: Barra) => b.avancePct != null && b.avancePct >= 100
 const fillDe = (b: Barra) => (completa(b) ? 'fill-pos' : ESTADO[b.desvio.semaforo].fill)
 
 const hrefDe = (obraId: string) => `/obras/${obraId}?vista=cronograma`
-
-/**
- * `dd/mm` A PARTIR DEL TEXTO ISO, SIN `Intl` Y SIN `new Date`.
- *
- * `toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })` devuelve **`22/6`**, no
- * `22/06`: el patrón de es-AR es `d/M/yy` y el ICU del navegador ignora el `2-digit` del mes. Con
- * fechas apiladas en una columna, un ancho que cambia de fila en fila se lee peor y no se puede
- * comparar de un vistazo. Y `new Date(iso)` sobre una fecha sin hora abre la puerta al corrimiento
- * de un día por huso horario, que en un cronograma no es un detalle cosmético.
- */
-const fmtCorto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 /** El resumen de una obra en texto, para el `title` del renglón y para los lectores de pantalla. */
 const etapaDe = (f: FilaObra) => (f.etapa ? ETAPA_LABEL[f.etapa] : 'etapa sin declarar')
@@ -177,14 +166,15 @@ function Renglon({ f }: { f: FilaObra }) {
         className={`hidden w-[104px] shrink-0 truncate text-[12px] sm:inline ${f.etapa ? 'text-muted' : 'text-faint'}`}
         data-testid="etapa-gantt"
       >{etapaDe(f)}</span>
-      {/* EL PLAZO, CON EL PUNTO DEL SEMÁFORO AL LADO. El punto ordena la atención; el número dice
-          cuánto. Con «fin 27/08 / −39 pts» se ve de un vistazo que la obra debería ir por 86, sin
-          pasar el mouse por encima ni abrir la ficha. */}
+      {/* EL PLAZO SON LAS DOS FECHAS, CON EL PUNTO DEL SEMÁFORO AL LADO. El punto ordena la
+          atención; las fechas dicen cuándo. Con «20/07 → 31/12 / −39 pts» se ve de un vistazo
+          cuándo arranca, cuándo termina y que debería ir por 86, sin pasar el mouse por encima ni
+          abrir la ficha. Escribía sólo el fin: ver `plazoCorto` en el servicio. */}
       <span className="hidden w-[150px] shrink-0 items-center gap-2 sm:flex" data-testid="plazo-gantt">
         <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${ESTADO[sem].punto}`} aria-hidden />
         {f.barra ? (
           <span className="min-w-0 leading-tight">
-            <span className="block font-mono text-[12px] tabular-nums text-muted">fin {fmtCorto(f.barra.fin)}</span>
+            <span className="block font-mono text-[12px] tabular-nums text-muted">{plazoCorto(f.barra)}</span>
             <span className={`block truncate text-[11px] ${ESTADO[sem].texto}`}>
               {f.barra.desvio.brechaPuntos != null && f.barra.desvio.brechaPuntos > 0
                 ? `−${f.barra.desvio.brechaPuntos} pts estimados`

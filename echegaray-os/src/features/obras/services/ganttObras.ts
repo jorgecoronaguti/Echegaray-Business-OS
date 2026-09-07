@@ -211,6 +211,34 @@ export interface Barra {
   desvio: Desvio
 }
 
+/**
+ * `dd/mm` A PARTIR DEL TEXTO ISO, SIN `Intl` Y SIN `new Date`.
+ *
+ * `toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })` devuelve **`22/6`**, no
+ * `22/06`: el patrón de es-AR es `d/M/yy` y el ICU del navegador ignora el `2-digit` del mes. Con
+ * fechas apiladas en una columna, un ancho que cambia de fila en fila se lee peor y no se puede
+ * comparar de un vistazo. Y `new Date(iso)` sobre una fecha sin hora abre la puerta al corrimiento
+ * de un día por huso horario, que en un cronograma no es un detalle cosmético.
+ *
+ * Vive en el servicio y no en el componente porque `plazoCorto` la usa y `plazoCorto` se prueba.
+ */
+export const fmtCorto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
+/**
+ * EL PLAZO DE UNA OBRA SON DOS FECHAS, NO UNA (07/09/2026).
+ *
+ * El dueño, textual: *"las obras tienen inicio y fin, quiero que el Gantt refleje esto"*. La columna
+ * se llama PLAZO y escribía `fin 31/12`: la mitad del dato. En escala «mes» —4 px por día, que es la
+ * que la cartera elige sola cuando llega a diciembre— el arranque de una barra no se puede leer del
+ * lienzo, así que el inicio no estaba en NINGUNA parte de la pantalla salvo el `title` del renglón,
+ * que hay que ir a buscar con el mouse. Una obra que empieza el 20/07 y otra que empieza el 07/09
+ * se veían idénticas en la columna si las dos terminan el 31/12.
+ *
+ * LA FLECHA Y NO UN GUIÓN: es la misma que usa el `title` del renglón y el Gantt de la obra
+ * (`plan 20/07 → 31/12`). Un guión entre dos fechas se lee como resta.
+ */
+export const plazoCorto = (b: { inicio: string, fin: string }) => `${fmtCorto(b.inicio)} → ${fmtCorto(b.fin)}`
+
 export interface FilaObra {
   obraId: string
   nombre: string

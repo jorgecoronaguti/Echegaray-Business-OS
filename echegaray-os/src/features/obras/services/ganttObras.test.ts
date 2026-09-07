@@ -17,7 +17,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { filasDeObras, ventana, COLUMNAS_PLAZO, UMBRAL_ATRASO, type PlazoObra } from './ganttObras.ts'
+import { filasDeObras, fmtCorto, plazoCorto, ventana, COLUMNAS_PLAZO, UMBRAL_ATRASO, type PlazoObra } from './ganttObras.ts'
 
 const HOY = '2026-08-18'
 
@@ -238,4 +238,41 @@ test('la lectura no pide una sola columna de plata', () => {
     'cobrado', 'por_cobrar_proyectado']) {
     assert.ok(!COLUMNAS_PLAZO.split(',').includes(prohibida), `${prohibida} no puede viajar al Gantt`)
   }
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PLAZO SON DOS FECHAS (07/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El dueño, textual: *"las obras tienen inicio y fin, quiero que el Gantt refleje esto"*. La columna
+// PLAZO escribía `fin 31/12` y el arranque no aparecía en NINGUNA parte de la pantalla: en escala
+// «mes» —la que la cartera elige sola cuando llega a diciembre— cuatro píxeles por día no dejan
+// leer del lienzo dónde nace una barra. Medido el 07/09 sobre las nueve obras activas: las cuatro
+// que terminan el 31/12 mostraban la MISMA celda de plazo aunque arranquen el 20/07, el 02/09 y el
+// 03/09.
+//
+// EL DEFECTO QUE ATRAPA: que alguien vuelva a escribir una sola de las dos fechas. Si `plazoCorto`
+// deja de nombrar el inicio, esto se pone rojo — y es lo único que puede ponerse rojo, porque una
+// columna que dice la mitad del dato no rompe nada más: la pantalla abre igual.
+
+test('el plazo de la obra nombra el inicio Y el fin, no sólo el fin', () => {
+  const texto = plazoCorto({ inicio: '2026-07-20', fin: '2026-12-31' })
+  assert.ok(texto.includes('20/07'), `el plazo tiene que decir cuándo arranca la obra: "${texto}"`)
+  assert.ok(texto.includes('31/12'), `el plazo tiene que decir cuándo termina la obra: "${texto}"`)
+  assert.equal(texto, '20/07 → 31/12')
+})
+
+test('dos obras que terminan el mismo día y arrancan distinto NO comparten celda de plazo', () => {
+  // Es el caso real de la cartera del 07/09: PISOS 120 M² Y RAMPA (20/07) y ADICIONAL TERCER MURO
+  // (02/09) terminan las dos el 31/12. Con «fin 31/12» eran indistinguibles.
+  const rampa = plazoCorto({ inicio: '2026-07-20', fin: '2026-12-31' })
+  const muro = plazoCorto({ inicio: '2026-09-02', fin: '2026-12-31' })
+  assert.notEqual(rampa, muro)
+})
+
+test('el día y el mes van con dos cifras, siempre', () => {
+  // `toLocaleDateString('es-AR')` devuelve `2/9` y la columna se desalinea fila por fila. Sin esto,
+  // el arreglo de arriba se puede "simplificar" con Intl y nadie se entera hasta mirar la pantalla.
+  assert.equal(fmtCorto('2026-09-02'), '02/09')
+  assert.equal(plazoCorto({ inicio: '2026-09-02', fin: '2026-10-09' }), '02/09 → 09/10')
 })
