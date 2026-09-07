@@ -45,6 +45,7 @@
 //   node orquestador/scripts/caja-pestana.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { writeFileSync } from 'node:fs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { MONEDA_TOTAL, MONEDA_CUERPO } from '../lib/formato-statement.mjs'
@@ -181,6 +182,13 @@ async function main() {
   console.log(`${tab}: ${g.filas.length} filas (tope ${FILAS_MAXIMAS}) · ${cargado.size} celda(s) con dato ya cargado`)
   if (g.filas.length > FILAS_MAXIMAS) {
     throw new Error(`CAJA quedó en ${g.filas.length} filas y el objetivo es ${FILAS_MAXIMAS}: no entra en una pantalla. Antes de escribir hay que decidir QUÉ SALE al anexo.`)
+  }
+  // La grilla ENTERA a un JSON cuando se la pide. `--dry` sólo dice cuántas filas hay, y para
+  // diagnosticar «esta fila sale vacía en la pestaña» hace falta ver qué trae la fila ANTES de
+  // escribir. Mismo mecanismo que en `jornales-pestana.mjs`, y por el mismo motivo.
+  if (process.env.ORQ_VOLCAR_GRILLA) {
+    writeFileSync(process.env.ORQ_VOLCAR_GRILLA, JSON.stringify(g.filas, null, 1))
+    console.log(`grilla volcada entera → ${process.env.ORQ_VOLCAR_GRILLA} (${g.filas.length} filas)`)
   }
   if (DRY) return console.log('--dry: no escribí nada.')
 
