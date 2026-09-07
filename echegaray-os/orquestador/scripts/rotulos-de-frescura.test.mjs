@@ -47,9 +47,15 @@ const FUENTES_MIXTAS = [
  * OS", el cruce de conciliación de Proveedores). Una fórmula ahí no daría frescura: daría frescura
  * FALSA sobre un dato que no se mueve, que es peor que el texto honesto.
  */
+// `proveedores-materiales-pestana.mjs` SALIÓ DE LA LISTA EL 06/09/2026. Su único estampado honesto
+// era la bajada de `A247` —«…son conciliación del OS al 2026-09-06, no fórmula»—, y esa bajada se
+// borró entera por minimalismo extremo: 249 caracteres de prosa que `auditar-diseno-unificado`
+// marcaba en el archivo vivo. La declaración de origen que la fecha acompañaba vive ahora en
+// `PESTANAS.origenPorBloque`, versionada en el repositorio. Sin celda estampada, no hay excepción
+// que declarar — y el test de abajo («ningún generador nuevo se cuela») pasa a vigilarlo como a
+// cualquier otro.
 const ESTAMPADO_HONESTO = [
   'orquestador/scripts/cheques-cobertura-sheet.mjs',
-  'orquestador/scripts/proveedores-materiales-pestana.mjs',
 ]
 
 const leer = (f) => readFile(f, 'utf8')
