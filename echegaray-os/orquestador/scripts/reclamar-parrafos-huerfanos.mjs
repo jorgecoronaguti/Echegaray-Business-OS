@@ -18,7 +18,12 @@ import { loadConfig } from '../lib/config.mjs'
 import { esProsa, enAlcance } from '../lib/diseno-unificado.mjs'
 import { sePoda, podarCelda } from '../lib/podar-prosa.mjs'
 import { loEscribioElOS } from '../lib/autoria-por-historial.mjs'
-import { VACIO } from '../lib/preservar-anotaciones.mjs'
+import { VACIO, escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+// EL TERCER ESTADO, Y ES EL QUE CORRESPONDE ACÁ. `VACIO` dice «es mi celda y va vacía» y la huella
+// sólo lo obedece si PUEDE probar la propiedad — que es justo lo que a estos párrafos les falta, y
+// por eso las 24 escrituras entraron sin cambiar un carácter. `MIA_PROBADA` es el estado para cuando
+// la evidencia viene POR FUERA de la huella: acá, el commit del historial donde ese texto se escribió.
+import { MIA_PROBADA } from '../lib/no-borrar.mjs'
 import { PESTANAS } from './formato-pestanas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -67,20 +72,34 @@ async function main() {
       // llevaría puesto todo lo que hay en el medio, que es de otro.
       // Por `batchUpdateValues` y NO por un escritor crudo: ahí vive la guarda central que se niega
       // a pisar una pestaña candada o una que el dueño editó desde mi última escritura.
-      // ═══ POR QUÉ HACE FALTA `vaciarPropio` (06/09/2026) ═══
+      // ═══ POR QUÉ NO SE ESCRIBE POR `batchUpdateValues` (06/09/2026) ═══
       //
-      // La primera aplicación escribió las 26 celdas y el archivo no cambió: el cinturón
-      // vacío-sobre-lleno las frenó una por una —«no piso contenido con una grilla vacía»—, que es
-      // exactamente su trabajo y por eso existe. `vaciarPropio` es la segunda vía de prueba que ese
-      // mismo módulo define: se le entrega el TEXTO que hoy tiene cada celda, ya probado mío contra
-      // el historial de git. Sin esa prueba el cinturón vuelve a frenar, que es como tiene que ser.
-      const mios = new Set(aLimpiar.map((c) => c.crudo))
-      const r = await google.batchUpdateValues(
-        ID,
-        aLimpiar.map((c) => ({ range: `'${p.titulo}'!${c.ref}`, values: [[c.queda === VACIO ? '' : c.queda]] })),
-        { vaciarPropio: { mios, tope: aLimpiar.length } },
-      )
-      if (r?.protegido) console.log(`      ⛔ no escribí: ${r.motivo ?? r.porQue ?? 'la guarda lo frenó'}`)
+      // Se intentó, dos veces, y el archivo no cambió. El cinturón «vacío sobre lleno» de
+      // `guardarEscritura` corre PRIMERO —antes que `no-borrar`, y sin consultar la base— así que
+      // `vaciarPropio` nunca llegaba a actuar: cada celda salía frenada con «no piso contenido con
+      // una grilla vacía». Es su trabajo y está bien que lo haga.
+      //
+      // La vía diseñada para «esta celda es mía y va vacía» es el CENTINELA, y quien lo entiende es
+      // `escribirPreservando`: fusiona, traduce el centinela a vacío y escribe con `yaGuardado`,
+      // porque ya verificó candado y firma él mismo. Se va celda por celda con su `fila0`/`col0`
+      // para no tocar un solo carácter de lo que hay alrededor.
+      //
+      // `respetar: false` va DECLARADO y con motivo: la Regla 0 protege lo que no se puede probar
+      // ajeno, y acá cada celda pasó la prueba de autoría contra el historial de git. Lo que no la
+      // pasa no llega hasta esta línea.
+      let escritas = 0
+      for (const c of aLimpiar) {
+        const [, col, fila] = c.ref.match(/^([A-Z]+)(\d+)$/)
+        const col0 = [...col].reduce((a, ch) => a * 26 + (ch.charCodeAt(0) - 64), 0) - 1
+        const valor = c.queda === VACIO ? MIA_PROBADA : c.queda
+        const r = await escribirPreservando(google, ID, `'${p.titulo}'`, [[valor]], {
+          fila0: Number(fila), col0, respetar: false, anchoHoja: col0 + 1,
+        })
+        if (r?.bloqueada || r?.protegido) console.log(`      ⛔ ${c.ref}: ${r.motivo ?? 'la guarda lo frenó'}`)
+        else escritas++
+      }
+      console.log(`      → ${escritas} de ${aLimpiar.length} escritas`)
+
     }
   }
 
