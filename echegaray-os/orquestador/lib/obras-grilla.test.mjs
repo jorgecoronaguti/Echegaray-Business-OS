@@ -18,7 +18,7 @@ import {
   grillaObras, serialISO, criterioCliente, variantesDe, anchoColumnaA, pxDeTexto, clientesDeCobranzas,
   celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos, ANO, trabajosFueraDeObra,
   ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, ALTO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
-  rotuloDeObra, SIN_CONTRATO, SECCION_OBRAS, SECCION_COSTO, SECCION_MATERIALES,
+  rotuloDeObra, SIN_CONTRATO, SIN_COSTO, SECCION_OBRAS, SECCION_COSTO, SECCION_MATERIALES,
 } from './obras-grilla.mjs'
 import { ESPECIES_DE_PLATA } from './obras-especies.mjs'
 import { formulaCostoProyectado } from './obras-replica.mjs'
@@ -434,8 +434,15 @@ test('la máquina propia NO entra al costo proyectado: es equipo propio, no plat
   // 05/09: la celda dejó de ser el número y pasó a ser la SUMA de la réplica. La prueba se mueve con
   // ella: ningún monto de máquina propia puede aparecer en la fórmula, y la fórmula tiene que ser
   // exactamente la del contrato — no una variante escrita a mano en este archivo.
+  // UNA OBRA QUE DECLARA `sinCosto` PUBLICA EL GUION Y NO LA FÓRMULA (07/09/2026). No es una
+  // excepción cómoda: `formulaCostoProyectado` devuelve `NA()` cuando la réplica no tiene filas, y el
+  // escritor de esta pestaña ABORTA si queda una celda en error — las tres obras nuevas de MESSINA la
+  // dejaron rota en el archivo. El guion dice lo mismo («no se sabe», nunca «vale cero») y es el
+  // idioma que esta pestaña ya usa para `SIN_CONTRATO`.
   const proyectados = g.filasCosto.map((f) => cel(g, `C${f}`))
-  assert.deepEqual(proyectados, OBRAS_FUTURAS.map((o) => formulaCostoProyectado(o.obra)))
+  assert.deepEqual(proyectados,
+    OBRAS_FUTURAS.map((o) => (o.sinCosto ? SIN_COSTO : formulaCostoProyectado(o.obra))))
+  assert.ok(proyectados.some((c) => c !== SIN_COSTO), 'si TODAS publicaran el guion, este test no mide nada')
   for (const [i, o] of OBRAS_FUTURAS.entries()) {
     if (!o.noCaja?.maquinaPropia) continue
     assert.ok(!String(proyectados[i]).includes(String(o.noCaja.maquinaPropia)),
@@ -470,8 +477,9 @@ test('el monto declarado de un egreso NO entra a la celda de comprado: ahí sól
     const comprado = String(cel(g, `D${g.filasCosto[i]}`))
     for (const m of montos) assert.ok(!comprado.includes(m), `${o.clave}: se coló el monto proyectado ${m}`)
     // Pero SÍ está en el costo proyectado: es plata que va a salir, sólo que todavía no se compró.
-    // Desde el 05/09 la celda lo SUMA de la réplica en vez de traerlo estampado.
-    assert.equal(cel(g, `C${g.filasCosto[i]}`), formulaCostoProyectado(o.obra))
+    // Desde el 05/09 la celda lo SUMA de la réplica en vez de traerlo estampado; y desde el 07/09 una
+    // obra sin explosión cargada publica el guion (ver `SIN_COSTO`).
+    assert.equal(cel(g, `C${g.filasCosto[i]}`), o.sinCosto ? SIN_COSTO : formulaCostoProyectado(o.obra))
   }
 })
 
@@ -563,7 +571,12 @@ test('el % COBRADO divide magnitudes del MISMO criterio: con la venta daría má
     assert.ok(!v.includes('IFERROR'), `B${f}: la fila sin cartera devuelve 0, no vacío`)
   }
   // Y el cuadro de costo tiene su propio porcentaje, con otro significado declarado en su encabezado.
-  for (const f of g.filasCosto) assert.equal(cel(g, `B${f}`), `=IF(C${f}=0;0;D${f}/C${f})`, `B${f}: % pagado`)
+  // Una obra sin explosión de costo publica el guion también acá: sin denominador no hay porcentaje,
+  // y un 0% afirmaría que no se compró nada cuando lo que falta es el costo contra el que medir.
+  for (const [i, f] of g.filasCosto.entries()) {
+    const esperado = OBRAS_FUTURAS[i].sinCosto ? SIN_COSTO : `=IF(C${f}=0;0;D${f}/C${f})`
+    assert.equal(cel(g, `B${f}`), esperado, `B${f}: % pagado`)
+  }
 })
 
 test('el semáforo ✓/⚠ ya NO está: daba lo mismo en las 7 obras y la columna F dice cuánto', () => {
@@ -602,15 +615,24 @@ test('los cierres suman las filas UNA POR UNA, no un rango que se lleve puesto l
   for (const c of ['C', 'D', 'E', 'F']) {
     assert.equal(cel(g, `${c}${g.fTotObras}`), filas(g.bloques.map((b) => `${c}${b.fProt}`)), `${c}${g.fTotObras}`)
   }
+  // EL CIERRE DEL CUADRO DE COSTO CITA SÓLO LAS FILAS CON NÚMERO, por la misma razón que el del
+  // contrato: las que publican el guion son TEXTO, y una suma que lo incluye depende de que Sheets lo
+  // ignore — puede que lo ignore, pero no se puede VERIFICAR desde acá sin escribir en el archivo.
+  // SE DERIVA DE LA GRILLA, no de la lista de obras: lo que decide si una fila entra al cierre es lo
+  // que esa fila PUBLICA. Leerlo de `OBRAS_FUTURAS` en paralelo sería una segunda definición del
+  // mismo criterio, y este test dejaría de medir el cuadro para medir mi copia del criterio.
+  const conCosto = g.filasCosto.filter((f) => cel(g, `C${f}`) !== SIN_COSTO)
+  // `D` sí cita a todas: lo COMPRADO se calcula igual, no depende de la explosión de costo.
+  for (const c of ['C', 'E', 'F', 'G']) {
+    assert.equal(cel(g, `${c}${g.fTotCosto}`), filas(conCosto.map((f) => `${c}${f}`)), `${c}${g.fTotCosto}`)
+  }
+  assert.equal(cel(g, `D${g.fTotCosto}`), filas(g.filasCosto.map((f) => `D${f}`)), 'lo comprado suma TODAS')
   // El contrato cierra sólo sobre las obras que LO DECLARAN: las otras publican el guion, y una suma
   // que incluye texto depende de que Sheets lo ignore — una conducta que este worktree no puede probar.
   const conContrato = g.bloques.filter((b) => b.contrato).map((b) => b.fProt)
   for (const c of ['G', 'H']) {
     const v = cel(g, `${c}${g.fTotObras}`)
     assert.equal(v, conContrato.length ? filas(conContrato.map((f) => `${c}${f}`)) : SIN_CONTRATO, `${c}${g.fTotObras}`)
-  }
-  for (const c of ['C', 'D', 'E']) {
-    assert.equal(cel(g, `${c}${g.fTotCosto}`), filas(g.filasCosto.map((f) => `${c}${f}`)), `${c}${g.fTotCosto}`)
   }
 })
 

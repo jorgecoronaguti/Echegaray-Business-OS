@@ -732,6 +732,23 @@ export const GUION = '—'
 export const SIN_CONTRATO = GUION
 
 /**
+ * LO QUE SE PUBLICA CUANDO LA OBRA NO TIENE EXPLOSIÓN DE COSTO CARGADA (07/09/2026).
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA, Y ERA MÍO ═══
+ *
+ * Las tres obras de MESSINA que entraron hoy no tienen archivo de costo en Drive. Se las dejó
+ * publicando `#N/A` a propósito —«un dato que falta se ve; uno inventado, no»— y la idea era
+ * correcta pero el vehículo estaba mal: el escritor de esta pestaña VERIFICA que no queden celdas en
+ * error, así que las veinte `#N/A` lo hicieron abortar y declarar la pestaña ROTA. El dueño la vio
+ * rota en el archivo.
+ *
+ * El guion hace exactamente el mismo trabajo sin romper nada, y ya es el idioma de esta pestaña para
+ * lo mismo: `SIN_CONTRATO` publica un guion cuando una obra no declara contrato. Un 0 diría que la
+ * obra no cuesta nada; el guion dice que no se sabe.
+ */
+export const SIN_COSTO = GUION
+
+/**
  * `% CONTRATO` — el `% FACTURADO` del modelo del dueño, contra el contrato y no contra la cartera.
  *
  * El dueño lo pidió así: *"el % como avance de contrato, no de cartera"*. Numerador y denominador
@@ -1263,8 +1280,18 @@ function bloqueCosto(h, refs, o, idx) {
   const proyectado = totalEgresos(o)
   const patron = comprasObraDe(o)
   const rotuloObra = o.obra ?? o.clave
-  h.push([rot.celda, `=IF(C${f}=0;0;D${f}/C${f})`, formulaCostoProyectado(rotuloObra), compradoDeObra(cmp, o), `=C${f}-D${f}`,
-    formulaCostoPorTipo(rotuloObra, TIPO.mo), formulaCostoPorTipo(rotuloObra, TIPO.material), '',
+  // UNA OBRA SIN COSTO CARGADO NO PUBLICA FÓRMULAS QUE NO PUEDEN RESOLVER. `formulaCostoProyectado`
+  // devuelve `NA()` cuando la réplica no tiene filas para la obra —a propósito, para que el hueco se
+  // vea—, pero el escritor de esta pestaña aborta si queda una celda en error. El guion dice lo mismo
+  // y deja la pestaña publicable. Lo COMPRADO sí se calcula igual: eso no depende de la explosión.
+  const sinCosto = Boolean(o.sinCosto)
+  h.push([rot.celda,
+    sinCosto ? SIN_COSTO : `=IF(C${f}=0;0;D${f}/C${f})`,
+    sinCosto ? SIN_COSTO : formulaCostoProyectado(rotuloObra),
+    compradoDeObra(cmp, o),
+    sinCosto ? SIN_COSTO : `=C${f}-D${f}`,
+    sinCosto ? SIN_COSTO : formulaCostoPorTipo(rotuloObra, TIPO.mo),
+    sinCosto ? SIN_COSTO : formulaCostoPorTipo(rotuloObra, TIPO.material), '',
     patronEstaDeclarado(o) ? `Compras: "${patron}"` : escribiEnCompras(patron)],
   // LA `F` DE ESTE CUADRO NO ES LA ALARMA SINO EL TEXTO QUE DECLARA POR DÓNDE EMPAREJÓ CADA OBRA, y
   // por eso DERRAMA: mide 138px, `Compras: "Salones Comerciales"` mide 189, y con CLIP el texto no se
@@ -1278,7 +1305,7 @@ function bloqueCosto(h, refs, o, idx) {
   // La C DEJÓ DE SER TIPEADA: ya no se anota como tal. `tipeadas` alimenta el conteo que la corrida
   // publica en el log, y dejarla adentro haría que el log siguiera diciendo que hay siete números
   // del dueño estampados donde ya no hay ninguno.
-  return { clave: o.clave, fila: f, proyectado, patron }
+  return { clave: o.clave, fila: f, proyectado, patron, sinCosto }
 }
 
 /** El texto que va en la celda D cuando un egreso de `obras-datos.mjs` no declara fecha. */
@@ -1456,12 +1483,18 @@ export function grillaObras(ctx = {}) {
     'Mano de obra', 'Materiales', '', 'Imputado por'], ENCABEZADO)
   const costos = obras.map((o, i) => bloqueCosto(h, refs, o, i + 1))
   const filasCosto = costos.map((c) => c.fila)
+  const conCosto = costos.filter((c) => !c.sinCosto).map((c) => c.fila)
   const fTot3 = costos.length ? h.n + 1 : null
   let fSinImputar = null
   if (fTot3) {
     h.push([`⇒ TOTAL — ${costos.length} OBRAS`, `=IF(C${fTot3}=0;0;D${fTot3}/C${fTot3})`,
-      suma('C', filasCosto), suma('D', filasCosto), suma('E', filasCosto),
-      suma('F', filasCosto), suma('G', filasCosto)],
+      // EL TOTAL CITA SÓLO LAS FILAS CON NÚMERO. Las que publican el guion son texto, y una fila que
+      // suma texto depende de que Sheets lo ignore — puede que lo ignore, pero no se puede VERIFICAR
+      // desde acá sin escribir en el archivo. Citando sólo las que tienen número, el resultado es el
+      // mismo en Sheets y en el evaluador en frío, y el test puede afirmarlo. Mismo criterio que el
+      // cierre del cuadro 3 con `conContrato`.
+      suma('C', conCosto), suma('D', filasCosto), suma('E', conCosto),
+      suma('F', conCosto), suma('G', conCosto)],
     ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'monedaTotal'])
 
     // ═══ LA FILA QUE HACE QUE NADA SE PIERDA NI SE REPARTA (14/08) ═══

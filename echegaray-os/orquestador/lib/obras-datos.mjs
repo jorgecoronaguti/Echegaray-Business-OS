@@ -374,7 +374,11 @@ export const OBRAS_FUTURAS = [
     ventaTexto: 'Playón para Dilución de Ác',
     // Cobranzas filas 95 y 96 (03/09/2026), OC 00002-00002266: $10.045.433,92 cada una =
     // $20.090.867,84 neto. Coincide centavo a centavo con la cotización interna del 28/08 en Drive.
-    comprasObra: 'Dilución',
+    // SIN `comprasObra` A PROPÓSITO: el patrón corto («Dilución», «Pisos 120») hizo que el control
+    // de integridad del cuadro 4 gritara DOBLE CONTEO — el residuo «sin imputar» se fue a −$48,5M, o
+    // sea que estas obras se estaban llevando compras que ya eran de otra. Sin el campo, el patrón es
+    // el texto de venta y `patronEstaDeclarado` devuelve false: la pestaña dice «escribí en Compras
+    // …», que es LA VERDAD — todavía nadie imputó una sola compra a estas tres obras.
     inicio: '2026-09-03',
     fin: '2026-12-31',
     plantelFullTime: 0,
@@ -395,7 +399,11 @@ export const OBRAS_FUTURAS = [
     obra: 'ADICIONAL TERCER MURO',
     ventaTexto: 'Adicional tercer muro',
     // Cobranzas fila 94 (02/09/2026), OC 00002-00002256: $10.000.000 neto.
-    comprasObra: 'tercer muro',
+    // SIN `comprasObra` A PROPÓSITO: el patrón corto («Dilución», «Pisos 120») hizo que el control
+    // de integridad del cuadro 4 gritara DOBLE CONTEO — el residuo «sin imputar» se fue a −$48,5M, o
+    // sea que estas obras se estaban llevando compras que ya eran de otra. Sin el campo, el patrón es
+    // el texto de venta y `patronEstaDeclarado` devuelve false: la pestaña dice «escribí en Compras
+    // …», que es LA VERDAD — todavía nadie imputó una sola compra a estas tres obras.
     inicio: '2026-09-02',
     fin: '2026-12-31',
     plantelFullTime: 0,
@@ -422,7 +430,11 @@ export const OBRAS_FUTURAS = [
     // «PLAYON AZUFRE» — no «rampa». Cobranzas, que es el ledger del dueño, la imputa acá. Gana
     // Cobranzas porque es la fuente que él mantiene, pero si la OC estuviera bien archivada estos
     // $2.354.255 serían de Playón de Azufre y no de esta obra.
-    comprasObra: 'Pisos 120',
+    // SIN `comprasObra` A PROPÓSITO: el patrón corto («Dilución», «Pisos 120») hizo que el control
+    // de integridad del cuadro 4 gritara DOBLE CONTEO — el residuo «sin imputar» se fue a −$48,5M, o
+    // sea que estas obras se estaban llevando compras que ya eran de otra. Sin el campo, el patrón es
+    // el texto de venta y `patronEstaDeclarado` devuelve false: la pestaña dice «escribí en Compras
+    // …», que es LA VERDAD — todavía nadie imputó una sola compra a estas tres obras.
     inicio: '2026-07-20',
     fin: '2026-12-31',
     plantelFullTime: 0,
