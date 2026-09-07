@@ -289,7 +289,7 @@ export const MARCAS = {
   // marcas no lo dibuja el exportador a PDF: en el papel decían "FALTA cargar la factura…" sin la
   // señal que hace que alguien mire. Quién las reconoce ya publicadas —el cash flow, la piel, la
   // huella— tolera los dos glifos mientras la columna M no se regenere; ver `comparaMarca`.
-  falta: `${ALERTA} FALTA cargar la factura en Compras — este pago no lo ve el cash flow`,
+  falta: `${ALERTA} FALTA la factura en Compras`,
   sinNumero: `${ALERTA} sin N° de comprobante — no se puede cruzar`,
 }
 

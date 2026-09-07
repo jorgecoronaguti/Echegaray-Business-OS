@@ -33,6 +33,29 @@ export function normalizarParaBuscar(texto) {
 }
 
 /**
+ * ¿Este texto YA NO está en el código de hoy? La prueba de que una celda es RESIDUO y no dato vivo.
+ *
+ * Hace falta para las celdas con fórmula. Una fórmula que el generador sigue escribiendo es la que
+ * publica el número: borrarla se lleva puesto el cálculo. Una que ya no está en ninguna línea del
+ * repositorio no la escribe nadie — es la versión vieja que sobrevivió a un cambio de forma, como el
+ * aviso de 190 caracteres del bloque de ARCA que se acortó y quedó publicado igual.
+ *
+ * @returns {Promise<boolean>} true si el texto NO aparece en el árbol actual
+ */
+export async function yaNoEstaEnElCodigo(texto, { ruta = 'orquestador/', cwd = process.cwd(), correr = ejecutar } = {}) {
+  const t = normalizarParaBuscar(texto)
+  if (t.length < 60) return false
+  try {
+    await correr('git', ['grep', '-qF', '--', t, '--', ruta], { cwd, maxBuffer: 4 << 20 })
+    return false                              // salida 0 = lo encontró: sigue vivo
+  } catch (e) {
+    // `git grep` sale 1 cuando no hay coincidencias. Cualquier otro código es un problema de la
+    // herramienta, y ahí no se puede afirmar nada: se responde que NO es residuo (fail-closed).
+    return e?.code === 1
+  }
+}
+
+/**
  * ¿Este texto salió alguna vez de un generador de este repositorio?
  *
  * @param {string} texto el contenido de la celda

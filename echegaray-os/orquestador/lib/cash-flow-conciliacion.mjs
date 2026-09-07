@@ -32,7 +32,7 @@ export const COL = {
  * confirma el error en vez de encontrarlo. Lo que sí se comparte es el GLIFO, que no es criterio sino
  * tipografía — y que las dos copias siguen diciendo lo mismo lo prueba un test, no la buena memoria.
  */
-export const SIN_FACTURA = `${ALERTA} FALTA cargar la factura en Compras — este pago no lo ve el cash flow`
+export const SIN_FACTURA = `${ALERTA} FALTA la factura en Compras`
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 const esNum = (v) => typeof v === 'number' && Number.isFinite(v)

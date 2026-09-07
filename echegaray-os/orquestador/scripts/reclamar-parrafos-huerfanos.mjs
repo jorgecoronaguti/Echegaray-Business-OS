@@ -17,7 +17,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { esProsa, enAlcance } from '../lib/diseno-unificado.mjs'
 import { sePoda, podarCelda } from '../lib/podar-prosa.mjs'
-import { loEscribioElOS } from '../lib/autoria-por-historial.mjs'
+import { loEscribioElOS, yaNoEstaEnElCodigo } from '../lib/autoria-por-historial.mjs'
 import { VACIO, escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 // EL TERCER ESTADO, Y ES EL QUE CORRESPONDE ACÁ. `VACIO` dice «es mi celda y va vacía» y la huella
 // sólo lo obedece si PUEDE probar la propiedad — que es justo lo que a estos párrafos les falta, y
@@ -47,12 +47,18 @@ async function main() {
     for (let i = 3; i < filas.length; i++) {
       for (let j = 0; j < (filas[i] || []).length; j++) {
         const celda = filas[i][j]
-        // La fórmula se deja quieta SIEMPRE: su texto es un resultado, no un párrafo pegado, y
-        // borrarla se lleva puesto el cálculo.
-        if (String(celda ?? '').startsWith('=')) continue
         if (!esProsa(celda)) continue
         const a = await loEscribioElOS(celda)
         if (!a.mio) { protegidas++; continue }
+        // ═══ UNA FÓRMULA PIDE UNA PRUEBA MÁS (06/09/2026) ═══
+        //
+        // Antes se salteaban todas, y por eso sobrevivían los avisos viejos de «Estructura» y
+        // «Jornales»: los dos son fórmulas, los dos se acortaron en el código, y los dos siguieron
+        // publicados. Pero una fórmula que el generador SIGUE escribiendo es la que publica el
+        // número: borrarla se lleva puesto el cálculo. Lo que separa una cosa de la otra es si su
+        // texto todavía existe en el repositorio. Si ya no está en ninguna línea, no la escribe
+        // nadie: es la versión vieja que sobrevivió a un cambio de forma.
+        if (String(celda ?? '').startsWith('=') && !(await yaNoEstaEnElCodigo(celda))) { protegidas++; continue }
         // NO SE VACÍA: SE PODA. Un título de sección que argumenta —«7 · FACTURAS EMITIDAS — control
         // cruzado contra Cobranzas»— también cae en `esProsa`, y borrarlo entero se lleva puesto el
         // nombre del bloque. `podarCelda` es la misma decisión que ya toma el podador: la glosa se
