@@ -58,7 +58,12 @@ export function construirEscala(desde: Date, hasta: Date, escala: Escala, pxMini
   cur.setUTCDate(1)
   while (cur < hasta) {
     const x0 = ((cur.getTime() - desde.getTime()) / DIA) * px
-    if (x0 > -px) {
+    // EL PRIMER MES SIEMPRE TIENE NOMBRE (07/09/2026). El lienzo casi nunca arranca un día 1 —la
+    // ventana se abre una semana antes de la obra más temprana—, así que el 1° del mes en curso cae
+    // en negativo y se descartaba: la franja de la izquierda quedaba sin rótulo y había que deducir
+    // de qué mes era contando hacia atrás desde el siguiente. Es el único mes que se dibuja en el
+    // borde y no en su línea, porque su línea quedó fuera del lienzo.
+    if (x0 > -px || meses.length === 0) {
       meses.push({ label: cur.toLocaleDateString('es-AR', { month: 'short', year: '2-digit', timeZone: 'UTC' }), x0: Math.max(0, x0) })
     }
     cur.setUTCMonth(cur.getUTCMonth() + 1)
@@ -88,3 +93,30 @@ export function construirEscala(desde: Date, hasta: Date, escala: Escala, pxMini
   }
   return { px, ancho, x, meses, ticks, porDia: paso === 1 }
 }
+
+/**
+ * ═══ LA ESCALA CON LA QUE SE ABRE NO ES UNA CONSTANTE: ES LA QUE HACE ENTRAR LA CARTERA ═══
+ *
+ * El dueño (07/09/2026): *"necesito la vista gantt de todas las obras"*. La vista estaba y dibujaba
+ * las diez, pero abría SIEMPRE en «semana» —16 px por día, el piso— y con la cartera llegando al
+ * 31/12 el lienzo medía **3.364 px dentro de 1.392 visibles**: el 59% del Gantt nacía fuera de la
+ * pantalla, incluido el fin de las cuatro obras más largas. Un Gantt del que hay que arrastrar dos
+ * pantallas para ver la mitad de las barras no es «la vista de todas las obras».
+ *
+ * NO SE TOCA EL PISO DE «SEMANA», y ahí está la diferencia con bajar `PX_POR_DIA`: 16 px por día es
+ * lo que hace legible el número del día, y quien elige «semana» a mano lo sigue teniendo entero, con
+ * su desplazamiento. Lo único que decide esta función es CON CUÁL DE LAS DOS se abre.
+ *
+ * `anchoLibre` en 0 significa «todavía no se midió el lugar» —el primer render del servidor, donde
+ * no hay DOM—: ahí no hay nada que juzgar y se abre como siempre, en semana. Cuando el
+ * `ResizeObserver` mide, el componente vuelve a preguntar.
+ */
+export function escalaQueEntra(dias: number, anchoLibre: number): Escala {
+  if (anchoLibre <= 0) return 'semana'
+  return dias * PX_POR_DIA.semana + COLA_PX > anchoLibre ? 'mes' : 'semana'
+}
+
+/** Los días que abarca una ventana, con el mismo redondeo que `construirEscala`: las dos tienen que
+ *  contar igual o la escala se elegiría sobre un ancho que después no es el que se dibuja. */
+export const diasDeVentana = (desde: Date, hasta: Date) =>
+  Math.max(1, Math.ceil((hasta.getTime() - desde.getTime()) / DIA))

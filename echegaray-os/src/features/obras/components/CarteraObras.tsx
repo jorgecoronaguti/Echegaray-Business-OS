@@ -13,7 +13,7 @@
 // dibuja ni ETAPA ni CONTRATADO ni COSTO REAL como columnas. Contratado sobrevive donde el zip lo
 // pone: en el pie, que es donde se lee una vez y no trece.
 //
-// Buscar, filtrar y conmutar tabla/tiempo son estado del CLIENTE, como en el mockup: son trece
+// Buscar y filtrar son estado del CLIENTE, como en el mockup: son trece
 // filas ya cargadas y una vuelta al servidor por tecla haría pegajosa la primera pantalla del día.
 // La URL deja de gobernar la vista y por eso esta pantalla ya no ordena por columna: el zip no
 // tiene encabezados que ordenen, y sostener el orden por URL con el filtro en el cliente eran dos
@@ -118,7 +118,6 @@ export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
   const router = useRouter()
   const [q, setQ] = useState('')
   const [filtro, setFiltro] = useState<FiltroCartera>('todo')
-  const [tiempo, setTiempo] = useState(false)
 
   const limpiar = () => { setQ(''); setFiltro('todo') }
 
@@ -163,15 +162,22 @@ export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
           ))}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button type="button" onClick={() => setTiempo((v) => !v)} data-testid="conmutar-vista"
-            title={tiempo ? 'Ver como tabla' : 'Ver línea de tiempo'}
+          {/* ═══ EL GANTT SE VE Y SE LLAMA GANTT (07/09/2026) ═══
+              El dueño: *"necesito la vista gantt de todas las obras, esto ha sido quitado por vos"*.
+              Acá había un cuadradito de 28px sin una palabra, cuyo `title` sólo aparece si el mouse
+              se queda quieto encima —y en un teléfono no aparece nunca—: el único camino visible al
+              Gantt era ninguno. Y no llevaba al Gantt: conmutaba a una SEGUNDA línea de tiempo
+              dibujada dentro de esta pantalla, con otras fechas y sin semáforo ni marca de hoy.
+              Ahora es un enlace con su nombre a `/obras/gantt`, que es la vista de la cartera sobre
+              el calendario: una sola definición del plazo, y un camino que se ve. */}
+          <Link prefetch={false} href="/obras/gantt" data-testid="conmutar-vista" title="Ver la cartera sobre el calendario"
             style={{
-              width: '28px', height: '28px', borderRadius: '6px', border: `1px solid ${C.borde}`,
+              height: '28px', padding: '0 10px', borderRadius: '6px', border: `1px solid ${C.borde}`,
               background: C.superficie, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: C.tintaSuave, cursor: 'pointer',
+              gap: '6px', fontSize: '12.5px', color: C.tintaMedia, textDecoration: 'none',
             }}>
-            <Ico d={tiempo ? P.tabla : P.tiempo} s={15} />
-          </button>
+            <Ico d={P.tiempo} s={15} />Gantt
+          </Link>
           {/* SÓLO ADMINISTRACIÓN CREA OBRAS: la RLS lo rechaza igual, y un botón que falla es peor
               que un botón que no está. */}
           {esAdmin && (
@@ -183,7 +189,7 @@ export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
       </div>
 
       <div style={{ padding: '0 20px 20px' }}>
-        {!tiempo ? (
+        {(
           <Tarjeta testid="portafolio-tabla">
             <Ancha>
               <div style={{
@@ -242,8 +248,6 @@ export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
               )}
             </div>
           </Tarjeta>
-        ) : (
-          <LineaDeTiempo obras={lista} ir={(id) => router.push(`/obras/${id}`)} />
         )}
 
         {/* LO QUE NO SE PUDO MIRAR SE DICE. Sin esta línea una lectura caída se ve exactamente igual
@@ -375,122 +379,12 @@ function Fila({ o, ir }: { o: FilaCartera; ir: () => void }) {
 // rango REAL de las obras visibles: una cartera que arranca en marzo y termina en diciembre no
 // entra en seis meses, y recortarla escondería obras enteras.
 
-function mesesDelRango(obras: FilaCartera[], hoy: Date): { clave: number; t: string; hoy: boolean }[] {
-  let min = Infinity, max = -Infinity
-  for (const o of obras) {
-    for (const f of [o.fecha_inicio_plan, o.fecha_fin_plan, o.forecast_fin]) {
-      if (!f) continue
-      const ms = Date.parse(`${f.slice(0, 10)}T00:00:00Z`)
-      min = Math.min(min, ms); max = Math.max(max, ms)
-    }
-  }
-  if (!Number.isFinite(min)) return []
-  const desde = new Date(Date.UTC(new Date(min).getUTCFullYear(), new Date(min).getUTCMonth(), 1))
-  const hasta = new Date(Date.UTC(new Date(max).getUTCFullYear(), new Date(max).getUTCMonth(), 1))
-  const mesHoy = hoy.getUTCFullYear() * 12 + hoy.getUTCMonth()
-  const out: { clave: number; t: string; hoy: boolean }[] = []
-  const d = new Date(desde)
-  while (d <= hasta && out.length < 36) {
-    const clave = d.getUTCFullYear() * 12 + d.getUTCMonth()
-    const t = d.toLocaleDateString('es-AR', { month: 'short', timeZone: 'UTC' }).replace('.', '')
-    out.push({ clave, t: t.charAt(0).toUpperCase() + t.slice(1), hoy: clave === mesHoy })
-    d.setUTCMonth(d.getUTCMonth() + 1)
-  }
-  return out
-}
-
-function LineaDeTiempo({ obras, ir }: { obras: FilaCartera[]; ir: (id: string) => void }) {
-  const hoy = useMemo(() => new Date(), [])
-  const meses = useMemo(() => mesesDelRango(obras, hoy), [obras, hoy])
-  if (meses.length === 0) {
-    return (
-      <Tarjeta>
-        <div style={{ padding: '26px 14px', fontSize: '12.5px', color: C.tintaSuave }}>
-          Ninguna de estas obras tiene fechas de plan cargadas: no hay línea de tiempo que dibujar.
-        </div>
-      </Tarjeta>
-    )
-  }
-  const inicioRango = meses[0].clave
-  const total = meses.length
-  const pos = (iso: string | null): number | null => {
-    if (!iso) return null
-    const d = new Date(Date.parse(`${iso.slice(0, 10)}T00:00:00Z`))
-    const mes = d.getUTCFullYear() * 12 + d.getUTCMonth()
-    const diasDelMes = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()
-    return ((mes - inicioRango) + (d.getUTCDate() - 1) / diasDelMes) / total * 100
-  }
-  return (
-    <Tarjeta testid="cartera-linea-tiempo">
-      {/* MISMO MÍNIMO QUE LA TABLA: acá la columna del nombre no colapsa (mide 250px fijos), pero la
-          pista de meses se comía todo el ancho que quedaba y a 390px quedaban ~100px para medio año
-          de plan. Una barra de Gantt de 8px no dice nada. */}
-      <Ancha>
-        <div style={{ display: 'flex', height: '38px', borderBottom: `1px solid ${C.borde}`, background: C.tenueFondo }}>
-          <div style={{
-            width: '250px', flexShrink: 0, display: 'flex', alignItems: 'flex-end',
-            padding: '0 14px 8px', fontSize: '10px', color: C.tenue, letterSpacing: '.05em',
-          }}>OBRA</div>
-          <div style={{ flex: 1, display: 'flex' }}>
-            {meses.map((m) => (
-              <div key={m.clave} style={{
-                flex: 1, borderLeft: `1px solid ${C.bordeTarjeta}`, display: 'flex',
-                alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '8px',
-                fontSize: '10.5px', color: m.hoy ? C.tinta : C.tintaSuave, fontWeight: m.hoy ? 600 : 400,
-              }}>{m.t}</div>
-            ))}
-          </div>
-        </div>
-        {obras.map((o) => {
-          const x = pos(o.fecha_inicio_plan)
-          const x2 = pos(o.forecast_fin ?? o.fecha_fin_plan)
-          const hayBarra = x != null && x2 != null && x2 > x
-          return (
-            <Hover key={o.obra_id} onClick={() => ir(o.obra_id)} data-testid={`tiempo-${o.obra_id}`}
-              base={{
-                display: 'flex', alignItems: 'center', height: '44px',
-                borderBottom: `1px solid ${C.bordeFila}`, cursor: 'pointer',
-              }} hover={{ background: C.tenueFondo }}>
-              <div style={{ width: '250px', flexShrink: 0, padding: '0 14px', minWidth: 0 }}>
-                <div style={{
-                  fontSize: '12.5px', fontWeight: 500, color: C.tinta, overflow: 'hidden',
-                  textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{o.nombre}</div>
-                <div style={{
-                  fontSize: '11px', color: C.tenue, overflow: 'hidden', textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>{o.cliente_nombre ?? o.cliente_texto ?? 'sin cliente declarado'}</div>
-              </div>
-              <div style={{ flex: 1, position: 'relative', height: '100%' }}>
-                <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
-                  {meses.map((m) => (
-                    <div key={m.clave} style={{
-                      flex: 1, borderLeft: `1px solid ${C.bordeLista}`,
-                      background: m.hoy ? '#FEFCF2' : 'transparent',
-                    }} />
-                  ))}
-                </div>
-                {/* SIN FECHAS NO SE DIBUJA UNA BARRA INVENTADA: el hueco ES el dato —esa obra no
-                    está planificada— y una barra desde hoy lo taparía. */}
-                {hayBarra ? (
-                  <div style={{
-                    position: 'absolute', top: '16px', left: `${x}%`, width: `${x2 - x}%`, height: '12px',
-                    borderRadius: '3px', overflow: 'hidden',
-                    background: (o.avance_pct ?? 0) >= 100 ? '#E6F3EB' : (o.avance_pct ?? 0) > 0 ? '#E4EEFC' : C.pistaPlan,
-                    border: `1px solid ${(o.avance_pct ?? 0) >= 100 ? '#CDE7D7' : (o.avance_pct ?? 0) > 0 ? '#CFE0FA' : C.borde}`,
-                  }}>
-                    <div style={{ height: '100%', width: `${Math.min(100, o.avance_pct ?? 0)}%`, background: colorDeBarra(o) }} />
-                  </div>
-                ) : (
-                  <span style={{
-                    position: 'absolute', top: '15px', left: '8px', fontSize: '11px', color: C.tenue,
-                  }} data-nulo="">sin fechas de plan</span>
-                )}
-              </div>
-            </Hover>
-          )
-        })}
-      </Ancha>
-    </Tarjeta>
-  )
-}
+// ═══ LA SEGUNDA LÍNEA DE TIEMPO SE RETIRA (07/09/2026) ═══
+//
+// Acá vivían `mesesDelRango` y `LineaDeTiempo`: un Gantt propio de esta pantalla, con su propio
+// rango de meses y su propia regla de fin (`forecast_fin ?? fecha_fin_plan`). El Gantt de la cartera
+// ya existe en `/obras/gantt` y lee `obra_plan_vs_real`, que es de donde salen los plazos de la
+// tabla de arriba. Dos dibujos del mismo plazo con dos reglas distintas es la forma en que dos
+// pantallas empiezan a contestar distinto sobre la misma obra — y ninguna de las dos tenía cómo
+// enterarse. Lo que se conserva es el CAMINO: el control de la barra de herramientas, ahora con su
+// nombre, lleva a la vista que sí tiene eje, escalas, marca de hoy y semáforo.

@@ -51,7 +51,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { Ayuda } from '@/shared/components/ds'
-import { construirEscala, type Escala } from '../services/escala'
+import { construirEscala, diasDeVentana, escalaQueEntra, type Escala } from '../services/escala'
 import { PALABRA_SEMAFORO, UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
 import { ETAPA_LABEL } from '../types'
 
@@ -247,7 +247,11 @@ function BarraObra({ b, y, x, ancho }: { b: Barra; y: number; x: (iso: string) =
  */
 export function GanttObras({ filas, hoyIso }: { filas: FilaObra[]; hoyIso: string }) {
   const router = useRouter()
-  const [escala, setEscala] = useState<Escala>('semana')
+  // LA ESCALA ELEGIDA A MANO PISA A LA CALCULADA, Y SÓLO SI SE ELIGE UNA. `null` = «todavía nadie
+  // dijo nada», y entonces manda la que hace entrar la cartera (`escalaQueEntra`): un Gantt de la
+  // cartera se abre mostrando la cartera. Guardar 'semana' de arranque era lo que dejaba el 59% de
+  // las barras fuera de la pantalla cuando las obras llegan a fin de año.
+  const [escalaElegida, setEscalaElegida] = useState<Escala | null>(null)
   // SE MIDE EL LUGAR REAL, no se supone. El lienzo tiene que llenar lo que le queda al lado de la
   // columna fija; cuánto es eso depende de la ventana del navegador y cambia al rotar el teléfono o
   // arrastrar el borde, así que se observa en vez de calcularse una vez. Mientras no se midió vale 0
@@ -267,6 +271,8 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[]; hoyIso: strin
     return () => obs.disconnect()
   }, [])
   const rango = useMemo(() => ventana(filas, hoyIso), [filas, hoyIso])
+  const escala: Escala = escalaElegida
+    ?? (rango ? escalaQueEntra(diasDeVentana(rango.desde, rango.hasta), anchoLibre) : 'semana')
   const hayBase = filas.some((f) => f.barra?.base)
   const estados = useMemo(
     () => new Set(filas.filter((f) => f.barra).map((f) => f.barra!.desvio.semaforo)),
@@ -285,7 +291,7 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[]; hoyIso: strin
           <button
             key={e}
             type="button"
-            onClick={() => setEscala(e)}
+            onClick={() => setEscalaElegida(e)}
             aria-pressed={escala === e}
             data-testid={`escala-${e}`}
             className={`pb-[2px] text-[12.5px] capitalize transition-colors ${
