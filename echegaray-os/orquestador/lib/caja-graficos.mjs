@@ -62,6 +62,43 @@ import { COL_NECESIDAD, SALIDAS } from './caja-necesidad-baldes.mjs'
  */
 export const FILA_ANCLA = 22
 export const COL_ANCLA = 0
+
+/**
+ * CUÁNTAS FILAS DE AIRE ENTRE EL FIN DE LA PORTADA Y EL PRIMER GRÁFICO.
+ *
+ * Seis es lo que hay hoy en el archivo con los bloques 3 y 4 vacíos, y se conserva para que el
+ * rediseño no mueva nada cuando no hay alertas.
+ */
+export const AIRE_TRAS_PORTADA = 6
+
+/**
+ * DÓNDE ANCLA EL PRIMER GRÁFICO, DERIVADO DEL ALTO REAL DE LA PORTADA. PURA.
+ *
+ * ═══ EL DEFECTO, REPORTADO POR EL DUEÑO EL 06/09/2026 ═══
+ *
+ * «hacé que el corredor de la pestaña CAJA deje de romperte la ubicación de los gráficos».
+ *
+ * `FILA_ANCLA = 22` era una constante fija, pero la portada NO mide siempre lo mismo: los bloques
+ * «3 · ALERTAS CRÍTICAS» y «4 · ACCIONES RECOMENDADAS» crecen con
+ * `Math.max(alertas.length, acciones.length)`. Hoy están vacíos y la portada termina en la fila 16,
+ * así que quedan seis filas de aire y todo se ve bien. **Con siete alertas la portada llega a la 23
+ * y el primer gráfico se dibuja ENCIMA de la última alerta** — y una alerta crítica tapada por un
+ * gráfico es exactamente el aviso que no se lee.
+ *
+ * La grilla ya sabía dónde termina: devuelve `fAviso1`. Lo que faltaba era que los gráficos lo
+ * usaran en vez de una constante escrita a mano.
+ *
+ * Devuelve un `rowIndex` (base 0). `finPortada` viene en base 1, que es como cuenta la grilla.
+ *
+ * NUNCA SUBE POR ENCIMA DE `FILA_ANCLA`: si la portada se achicara, los gráficos se quedan donde
+ * están. Subirlos dejaría un hueco arriba y movería de lugar algo que el dueño ya sabe dónde
+ * encontrar, sin ganar nada.
+ */
+export function anclaDeGraficos(finPortada, aire = AIRE_TRAS_PORTADA) {
+  const n = Number(finPortada)
+  if (!Number.isFinite(n) || n <= 0) return FILA_ANCLA
+  return Math.max(FILA_ANCLA, n + aire)
+}
 /** El alto y el ancho de cada uno. Dos por fila: los cuatro entran en 1.120px, el ancho de la grilla. */
 const ANCHO_PX = 552
 // 284 y no 300: las filas de CAJA miden 20px, así que un bloque de 15 filas mide 300px justos y un
@@ -92,6 +129,17 @@ export const FILA_ANCLA_MAX = FILA_ANCLA + 2 * FILAS_POR_BLOQUE
  * hasta el final del último bloque, no hasta su ancla.
  */
 export const FILA_FINAL_DE_GRAFICOS = FILA_ANCLA_MAX + FILAS_POR_BLOQUE
+
+/**
+ * HASTA DÓNDE TIENE QUE LLEGAR LA HOJA, con el ancla ya derivada. PURA.
+ *
+ * El ancla correcta no alcanza: si la hoja no tiene filas POR DEBAJO del último gráfico, el editor
+ * vivo lo colapsa contra el borde. Por eso la hoja se extiende hasta el final del último bloque y no
+ * hasta su ancla.
+ */
+export function filaFinalDeGraficos(finPortada = null) {
+  return FILA_FINAL_DE_GRAFICOS + (anclaDeGraficos(finPortada) - FILA_ANCLA)
+}
 
 /** El prefijo que marca un gráfico como PROPIO. Se conserva para poder reconocerlos en el archivo. */
 export const MARCA = '⟡ '
@@ -336,7 +384,9 @@ function ranking({ titulo, subtitulo, sheetId, anexo, rango: r, posicion, color 
  * @param {object} series lo que devolvió `ubicarSeries` — cada clave puede venir en null
  * @returns {{requests:Array, faltan:string[]}}
  */
-export function graficos(sheetId, anexo, series = {}) {
+export function graficos(sheetId, anexo, series = {}, finPortada = null) {
+  // El ancla se DERIVA del alto real de la portada; sin dato, cae en la constante de siempre.
+  const base = anclaDeGraficos(finPortada)
   const cuadros = [
     ['necesidad', (r, posicion) => necesidadDiaria({
       titulo: TITULO_NECESIDAD,
@@ -390,12 +440,12 @@ export function graficos(sheetId, anexo, series = {}) {
     // La FILA-ANCLA es una celda real distinta por bloque vertical (ver `base`): el editor vivo de
     // Google no apila full-width por offsetY, así que cada bloque cuelga de su propia fila.
     if (esFull(clave)) {
-      requests.push(hacer(r, { x: 0, filaAncla: FILA_ANCLA + fila * FILAS_POR_BLOQUE, ancho: ANCHO_PX * 2 + 16 }))
+      requests.push(hacer(r, { x: 0, filaAncla: base + fila * FILAS_POR_BLOQUE, ancho: ANCHO_PX * 2 + 16 }))
       fila++
       return
     }
     const k = vivos.slice(0, i).filter(([c]) => !esFull(c)).length
-    requests.push(hacer(r, { x: (k % 2) * (ANCHO_PX + 16), filaAncla: FILA_ANCLA + (fila + Math.floor(k / 2)) * FILAS_POR_BLOQUE }))
+    requests.push(hacer(r, { x: (k % 2) * (ANCHO_PX + 16), filaAncla: base + (fila + Math.floor(k / 2)) * FILAS_POR_BLOQUE }))
   })
   return { requests, faltan }
 }
@@ -413,7 +463,7 @@ export function graficos(sheetId, anexo, series = {}) {
  * se dibujó nada sin que el log dijera una palabra. "No apareció y no sé por qué" no se puede ni
  * arreglar ni descartar.
  */
-export async function requestsDeGraficos(google, fileId, sheetId, anexoSheetId, series) {
+export async function requestsDeGraficos(google, fileId, sheetId, anexoSheetId, series, finPortada = null) {
   if (!Number.isFinite(anexoSheetId)) {
     console.warn('  ⚠ NO dibujo los gráficos: no encontré el sheetId de _CAJA_ANEXO, que es donde viven las series')
     return []
@@ -425,7 +475,7 @@ export async function requestsDeGraficos(google, fileId, sheetId, anexoSheetId, 
     return []
   }
   const viejos = hojas.find((h) => h.sheetId === sheetId)?.charts ?? []
-  const { requests, faltan } = graficos(sheetId, anexoSheetId, series)
+  const { requests, faltan } = graficos(sheetId, anexoSheetId, series, finPortada)
   if (faltan.length) {
     console.warn(`  ⚠ ${faltan.length} gráfico(s) sin datos en _CAJA_ANEXO (${faltan.join(', ')}): corré primero caja-anexo-pestana.mjs`)
   }
