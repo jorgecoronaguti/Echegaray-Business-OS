@@ -14,11 +14,26 @@
 // TIPO VUELVE COMO COLUMNA. El porte de agosto la había retirado y había bajado «subcontratista» a
 // un chip al lado del nombre. El v4 la vuelve a dibujar, y con razón: el chip competía por el ancho
 // del nombre y en angosto desaparecía, o sea que el único dato que separa a quien pone material de
-// quien pone gente se perdía justo cuando la pantalla se achica. Lo que la columna PUEDE probar es
-// UNA sola cosa —«Subcontratista», de tener al menos un paquete en `subcontrato`—; el rubro que el
-// mockup dibuja como «Materiales» o «Fletes» NO TIENE FUENTE: medido el 05/09/2026, `proveedores`
-// tiene doce columnas y ninguna es el rubro. Por eso el resto de las filas dice «sin rubro» apagado
-// —la palabra del mockup— y no un rubro adivinado del nombre.
+// quien pone gente se perdía justo cuando la pantalla se achica.
+//
+// ═══ EL RUBRO YA TIENE FUENTE, Y SE DIBUJA DISTINTO SEGÚN DE DÓNDE VENGA (06/09/2026) ═══
+//
+// Hasta ayer esta columna decía «sin rubro» en las 36 filas porque `proveedores` no tenía la
+// columna. El dueño decidió cargarla deduciéndola de lo que cada uno vendió (`20260906T1800` y
+// `orquestador/lib/rubro-proveedor.mjs`), y ahora la celda tiene TRES estados que NO se pueden
+// dibujar iguales:
+//
+//   DECLARADO  lo puso una persona en la ficha. Va en tinta: es un hecho.
+//   DEDUCIDO   lo calculó el OS de las compras. Va APAGADO y con su cuenta en el `title`, porque
+//              es una inferencia y presentarla como decidida es la regla de oro 2.
+//   SIN RUBRO  no se pudo deducir. Se dice, no se rellena, y el `title` explica por qué faltó.
+//
+// El subcontrato sigue mandando sobre los tres: tener un paquete en `subcontrato` es un HECHO
+// contractual, más fuerte que cualquier deducción de compras — y es el único valor de esta columna
+// que dispara trabajo (ART con nómina y cargas sociales, mes a mes).
+//
+// Lo que sigue sin dibujarse es un rubro adivinado del nombre. «Corralón» ⇒ Materiales acierta lo
+// suficiente como para que nadie revise las veces que falla.
 //
 // «COMPROB.» SALE Y ENTRA «ÚLTIMA COMPRA», CON LA FECHA REAL. El porte del 05/09 la había dejado
 // diciendo «sin leer» en el 100% de las filas porque la vista `proveedor_nombre_resuelto` publicaba
@@ -48,7 +63,7 @@ import { formatearCuit } from '../services/identidad'
 import { fechaCortaConAnio, pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import type { CompradoProveedor } from '../services/proveedoresService'
-import type { Proveedor } from '../types'
+import { rubroDe, type Proveedor } from '../types'
 
 /**
  * LA GRILLA DEL HANDOFF v4, carácter por carácter. Literal porque Tailwind no compila un valor
@@ -104,6 +119,7 @@ export function TablaProveedores({
       {proveedores.map((p) => {
         const c = comprado?.get(p.id)
         const esSub = subcontratistas?.has(p.id) ?? false
+        const rubro = rubroDe(p)
         const elegido = p.id === seleccionado
         return (
           <div
@@ -176,16 +192,18 @@ export function TablaProveedores({
                   </Link>
                 )}
 
-            {/* TIPO — lo único que la base puede probar es el subcontrato. El rubro NO tiene columna
-                en `proveedores` (medido el 05/09/2026): «sin rubro» va apagado porque no bloquea
-                nada, y jamás se deduce del nombre. Una lectura fallida dice «sin leer», no «sin
-                rubro»: un control que no pudo mirar no dice «no está». */}
+            {/* TIPO. UNA LECTURA FALLIDA DICE «SIN LEER», NO «SIN RUBRO»: un control que no pudo
+                mirar no puede decir «no está», y las dos frases mandan a trabajos distintos. */}
             <span
               className={`truncate ${SOLO_ANCHO}`}
-              style={{ fontSize: '12px', color: esSub ? V.tintaSuave : V.tenue }}
+              style={{ fontSize: '12px', color: esSub || rubro.declarado ? V.tintaSuave : V.tenue }}
               data-testid="tipo-proveedor"
+              data-rubro-declarado={esSub || rubro.declarado ? '' : undefined}
+              title={esSub
+                ? 'Tiene al menos un paquete de subcontrato: es un hecho contractual, no una deducción'
+                : rubro.evidencia ?? undefined}
             >
-              {esSub ? 'Subcontratista' : subcontratistas ? 'sin rubro' : 'sin leer'}
+              {esSub ? 'Subcontratista' : subcontratistas ? rubro.texto : 'sin leer'}
             </span>
 
             <span

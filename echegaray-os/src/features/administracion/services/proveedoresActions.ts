@@ -21,6 +21,10 @@ import {
 // automática del cargador de comprobantes. Escrita dos veces serían dos respuestas posibles, que es
 // exactamente el duplicado que las dos quieren evitar. Ver `orquestador/lib/alta-proveedor.mjs`.
 import { identidadOcupadaPor } from '../../../../orquestador/lib/alta-proveedor.mjs'
+// EL VOCABULARIO DE RUBROS VIVE EN UN SOLO LADO. La base lo impone con un CHECK y el deductor lo
+// usa para decidir; si la pantalla tuviera su propia lista, un valor nuevo pasaría el formulario y
+// moriría en el `update` con un error de constraint que no le dice nada a quien está cargando.
+import { RUBROS } from '../../../../orquestador/lib/rubro-proveedor.mjs'
 
 export type Resultado = { ok: true; id?: string } | { ok: false; error: string }
 
@@ -35,6 +39,10 @@ const proveedorSchema = z.object({
   razon_social: z.string().trim().optional(),
   cuit: cuitSchema.optional(),
   notas: z.string().trim().optional(),
+  // VACÍO = «no lo declaro», y es distinto de un rubro. Deja la columna en null y con eso vuelve a
+  // mandar la deducción: corregir a mano no es una puerta de una sola dirección.
+  rubro: z.string().trim().refine((v) => v === '' || (RUBROS as string[]).includes(v),
+    'Ese rubro no existe').optional(),
 })
 
 const texto = (v: string | undefined) => (v && v.trim() ? v.trim() : null)
@@ -88,9 +96,29 @@ export async function editarProveedor(proveedorId: string, form: FormData): Prom
   const ocupada = await identidadOcupada(supabase, d.nombre, cuit, proveedorId)
   if (ocupada) return { ok: false, error: ocupada }
 
+  // ═══ UN RUBRO DECLARADO SIN AUTOR ES UN RUBRO DEDUCIDO CON OTRO NOMBRE ═══
+  //
+  // La base lo exige con un CHECK, así que sin esto el `update` falla; se resuelve acá para que el
+  // error no llegue nunca. Y el autor sale de la SESIÓN, no de un campo del formulario: si viajara
+  // en el form, cualquiera podría firmar la decisión con el nombre de otro.
+  const { data: sesion } = await supabase.auth.getUser()
+  const rubro = d.rubro ? d.rubro : null
+  const quien = sesion?.user?.email ?? null
+  if (rubro && !quien) {
+    return { ok: false, error: 'No pude identificar quién declara el rubro: volvé a entrar.' }
+  }
+
   const { error } = await supabase
     .from('proveedores')
-    .update({ nombre: d.nombre, razon_social: texto(d.razon_social), cuit, notas: texto(d.notas) })
+    .update({
+      nombre: d.nombre, razon_social: texto(d.razon_social), cuit, notas: texto(d.notas),
+      // `rubro_deducido` NO se toca desde acá, ni para limpiarlo: la deducción sigue debajo, viva,
+      // y vuelve a mandar sola en cuanto alguien borra la declaración. Además la web no tiene
+      // permiso de escribirla (`20260906T1800`), así que esto no es sólo una convención.
+      rubro,
+      rubro_declarado_por: rubro ? quien : null,
+      rubro_declarado_en: rubro ? new Date().toISOString() : null,
+    })
     .eq('id', proveedorId)
   if (error) return { ok: false, error: error.message }
   revalidatePath('/administracion/proveedores')

@@ -11,7 +11,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import type { NombrePendiente, NombreResuelto, Proveedor, ServiceResult } from '../types'
 
-const COLUMNAS = 'id, nombre, razon_social, cuit, notas, activo'
+// `rubro_deducido_evidencia` VIAJA CON EL RUBRO, no se pide aparte cuando alguien la quiere ver: un
+// rubro deducido sin su cuenta se lee como decidido, que es exactamente lo que las dos columnas
+// existen para impedir.
+const COLUMNAS = 'id, nombre, razon_social, cuit, notas, activo, rubro, rubro_deducido, rubro_deducido_evidencia'
 
 export type FiltroActivo = 'activos' | 'archivados' | 'todos'
 

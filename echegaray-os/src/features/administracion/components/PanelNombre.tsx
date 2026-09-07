@@ -226,7 +226,12 @@ function FormCrear({ nombre, accion }: { nombre: NombrePendiente; accion: Accion
       onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); startTransition(() => ejecutar(d)) }}
       data-testid="form-crear-vincular"
     >
-      <CamposProveedor proveedor={{ id: '', nombre: nombre.nombre_origen, razon_social: null, cuit: null, notas: null, activo: true }} />
+      <CamposProveedor proveedor={{
+          id: '', nombre: nombre.nombre_origen, razon_social: null, cuit: null, notas: null, activo: true,
+          // UN ALTA NACE SIN RUBRO Y ESTÁ BIEN: no hay ninguna compra todavía de la que deducirlo, y
+          // ponerle uno acá lo declararía en nombre de alguien que no lo decidió.
+          rubro: null, rubro_deducido: null, rubro_deducido_evidencia: null,
+        }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
         <button
           type="submit" disabled={pendiente} data-testid="form-crear-vincular-enviar"

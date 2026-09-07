@@ -64,6 +64,7 @@ test('un total que llega como cadena se suma, no se concatena', () => {
 
 const cartera = (id: string, cuit: string | null): Proveedor => ({
   id, nombre: id, razon_social: null, cuit, notas: null, activo: true,
+  rubro: null, rubro_deducido: null, rubro_deducido_evidencia: null,
 })
 
 const resuelto = (

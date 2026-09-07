@@ -296,19 +296,65 @@ test('el maestro tiene las CINCO columnas del handoff v4, con su grilla literal'
   for (const c of celdas) assert.ok(cuerpo.includes(c), `la fila perdió la celda ${c}`)
 })
 
-test('TIPO no inventa un rubro: sólo dice lo que la base puede probar', () => {
+test('TIPO no inventa un rubro: sale de la deducción o de una persona, nunca del nombre', () => {
   // ═══ EL DEFECTO QUE ATRAPA ═══
   //
-  // Que alguien llene la columna deduciendo el rubro del nombre —«Corralón» ⇒ Materiales,
-  // «Transporte» ⇒ Fletes—. `proveedores` no tiene columna de rubro (medido el 05/09/2026: doce
-  // columnas y ninguna es el rubro), así que cualquier valor ahí sería fabricado, y encima
-  // fabricado sobre el texto que el propio módulo declara que NO identifica a un proveedor.
+  // Que alguien llene la columna deduciendo el rubro del NOMBRE —«Corralón» ⇒ Materiales,
+  // «Transporte» ⇒ Fletes—. Esa inferencia acierta lo suficiente como para que nadie revise las
+  // veces que falla, y se apoya justo en el texto que este mismo módulo declara que NO identifica a
+  // un proveedor. Desde el 06/09/2026 el rubro SÍ tiene fuente (`20260906T1800`), pero la fuente
+  // son sus COMPRAS: la tabla no puede volver a mirar el nombre.
   const tabla = codigo('TablaProveedores.tsx')
-  assert.match(tabla, /esSub \? 'Subcontratista' : subcontratistas \? 'sin rubro' : 'sin leer'/)
-  assert.equal(/Materiales|Fletes|Servicios/.test(tabla), false, 'la columna TIPO inventó un rubro')
+  assert.match(tabla, /const rubro = rubroDe\(p\)/,
+    'la tabla dejó de pedir el rubro a la única función que resuelve la precedencia')
+  assert.match(tabla, /subcontratistas \? rubro\.texto : 'sin leer'/)
+  // Ningún rubro escrito a mano en esta tabla: el vocabulario vive en `rubro-proveedor.mjs` y el
+  // valor de cada fila viene de la base. Un literal acá es un rubro fabricado en la pantalla.
+  assert.equal(/'(Materiales|Fletes|Combustible|Equipos|Servicios de obra|Seguridad e higiene)'/.test(tabla),
+    false, 'la columna TIPO volvió a escribir un rubro a mano')
   // Y una lectura que falló no dice «sin rubro»: dice «sin leer». Un control que no pudo mirar no
   // afirma que no está.
-  assert.match(tabla, /subcontratistas \? 'sin rubro' : 'sin leer'/)
+  assert.match(tabla, /: 'sin leer'/)
+})
+
+test('lo DEDUCIDO no se dibuja como lo DECIDIDO, y muestra su cuenta', () => {
+  // Regla de oro 2: nunca presentar una estimación como un hecho. Un rubro deducido de 3 compras y
+  // uno que una persona declaró no pueden verse iguales, y el que mira tiene que poder ver la
+  // cuenta sin salir de la fila.
+  const tabla = codigo('TablaProveedores.tsx')
+  assert.match(tabla, /color: esSub \|\| rubro\.declarado \? V\.tintaSuave : V\.tenue/,
+    'el rubro deducido se dibuja igual de firme que el declarado')
+  assert.match(tabla, /title=\{esSub[\s\S]{0,220}rubro\.evidencia/,
+    'la deducción dejó de mostrar la cuenta que la produjo')
+
+  // Y LA PRECEDENCIA SE DECIDE EN UN SOLO LUGAR: lo declarado gana, lo deducido va después, y la
+  // ausencia se dice. Dos pantallas resolviéndolo por su cuenta muestran cosas distintas del mismo
+  // proveedor — que es lo que «realidad única» existe para impedir.
+  const tipos = codigo('../types/index.ts')
+  assert.match(tipos, /if \(p\.rubro\) return \{ texto: p\.rubro, declarado: true/)
+  assert.match(tipos, /texto: 'sin rubro', declarado: false, evidencia: null/)
+})
+
+test('el rubro se puede CORREGIR desde la ficha, y la corrección se puede deshacer', () => {
+  // Sin esta puerta la deducción sería una afirmación que nadie puede contradecir. Y sin la opción
+  // vacía, la primera corrección equivocada quedaría clavada para siempre: el vacío devuelve el
+  // mando a la deducción, que sigue viva debajo.
+  const campos = codigo('proveedores/CamposProveedor.tsx')
+  assert.match(campos, /name="rubro"/, 'la ficha no deja corregir el rubro')
+  assert.match(campos, /<option value="">Dejar que lo deduzca el OS<\/option>/,
+    'la corrección quedó sin vuelta atrás')
+  assert.match(campos, /\(RUBROS as string\[\]\)\.map/,
+    'la ficha escribió su propia lista de rubros en vez de usar la que la base impone')
+
+  // EL AUTOR SALE DE LA SESIÓN, NO DEL FORMULARIO. Si viajara en el form, cualquiera podría firmar
+  // la decisión con el nombre de otro — y un rubro declarado sin autor es uno deducido con otro
+  // nombre. La base además lo exige con un CHECK.
+  const acciones = codigo('../services/proveedoresActions.ts')
+  assert.match(acciones, /rubro_declarado_por: rubro \? quien : null/)
+  assert.match(acciones, /sesion\?\.user\?\.email/)
+  // Y LA ACCIÓN NO TOCA `rubro_deducido` NI PARA LIMPIARLO: la deducción tiene que seguir debajo.
+  assert.equal(acciones.includes('rubro_deducido'), false,
+    'la pantalla escribe la deducción: la distinción entre lo probado y lo supuesto se pierde')
 })
 
 test('ÚLTIMA COMPRA muestra la fecha real, y nunca la de otra cosa', () => {
