@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-04 · Flujo de Caja + capa ML enchufada a Compras × Cheques_
+_actualizado: 2026-09-07 · minimalismo del Sheet aplicado en el camino de escritura_
 
 ## 1. OBJETIVO GENERAL
 
@@ -24,141 +24,133 @@ probar y evolucionar el OS y XSAS. Prueba definitiva: Jorge puede cerrar Claude 
 - Deterministic first · skills/capabilities/tools first · Reasoner/LLM sólo cuando aporte valor real
 - Reutilizar motores/datos/capacidades existentes antes de crear otros
 - Minimizar llamadas, tokens, costo y complejidad — el límite semanal de Claude Code es recurso escaso
-- UX simple, compacta, operativa · less is more · cada pestaña del Sheet minimalista y de clase mundial
+- UX simple, compacta, operativa · less is more · **minimalismo extremo en el Sheet: sin aclaraciones
+  ni explicaciones de nada** (deroga «la nota al lado»)
 - Conocimiento y experiencia real ECSAS priman sobre generalizaciones externas
 - Nadie cierra su propio trabajo · evidencia del EFECTO, no del intento
-- **Un control que impide corregir un defecto lo vuelve eterno** (lección cara de esta jornada)
+- **Un control que impide corregir un defecto lo vuelve eterno**
+- **Ningún hallazgo se reporta sin mirar la celda real** — cuatro falsos ya costaron caro
 
 ## 3. ARQUITECTURA CONCEPTUAL
 
 Usuario → OS/XSAS → intención/contexto → capabilities/skills/workflows → engines/tools/integraciones
 → datos y conocimiento ECSAS → ejecución → verificación → respuesta/acción. El Reasoner interviene
-sólo cuando lo determinístico no alcanza (medido: ~94% de pedidos sin modelo).
+sólo cuando lo determinístico no alcanza.
 
 Piezas: gateway XSAS (`servidor-entrante.mjs`, unit `echegaray-xsas-gateway`, sirve
 app.ecsas.com.ar/xsas) · orquestador (`orquestador/lib|scripts|comunicacion`) · Sheet «Flujo de
 Caja - Cash Flow» regenerado por pipeline (`flujo-caja-rehacer-todo.mjs`, timer cada 2 h) ·
-Supabase como fuente única · web por Vercel · bot @os en Mattermost. Deploy backend = push a origin
-main + `git pull --ff-only` en `~/echegaray-os/produccion/echegaray-os`.
+Supabase como fuente única · web por Vercel desde `main` · bot @os en Mattermost.
+
+**Deploy backend = push a origin main + `git merge --ff-only origin/main` en
+`~/echegaray-os/produccion/echegaray-os` + `systemctl --user restart` de los 3 units.** Producción
+es OTRO checkout: pushear actualiza Vercel pero NO ese árbol, y el timer corre desde ahí.
 **Antes de buscar nada: `.claude/MAPA.md`.**
 
 ## 4. ESTADO ACTUAL
 
-- **main == `9aace250`, pusheado.** Working tree limpio. Producción: no verificada en este cierre.
-- **El rediseño de «Impuestos y Financieros» ya es CÓDIGO** (merge `e865772b`). Ésa era la causa de
-  que el dueño lo viera romperse una y otra vez: vivía en una rama y en el Sheet, y cada corrida del
-  timer lo deshacía. 7 bloques, 68 filas, numerados 1..7.
-- **Guarda de escritura del Sheet — familia de defectos ya corregida** (fórmula truncada a 300
-  chars · el ancla leyendo su propia proyección · huella de formato por coordenada · el generador
-  envenenando su «primera pasada» · la estructura dada por borrada · la cola fósil). Queda el patrón:
-  cuando cambia el layout, las huellas de formato viejas bloquean el formato PARA SIEMPRE. El remedio
-  (`lib/huella-formato-layout.mjs`) está cableado sólo en **Impuestos y CAJA**; las otras 12 pestañas
-  no lo tienen.
-- Cuentas de CAJA: Santander ARS y la cartera salen del extracto (al día). **Santander USD, Balanz
-  ARS y Balanz USD son constantes en `lib/banco-santander.mjs`**: se actualizan editando código.
-  El dueño decidió el 04/09 **dejar Balanz como está — no volver a pedirle la posición.**
+- **El contrato de minimalismo del Sheet se aplica en el CAMINO DE ESCRITURA, no a mano.**
+  `lib/podar-prosa.mjs` poda la grilla GENERADA (nunca la fusionada) en los dos cuellos que comparten
+  los generadores: `escribirPreservando` y `conEdicionesRespetadas`. Un canario
+  (`podar-prosa-cobertura.test.mjs`) impide que un generador nuevo escriba una pestaña del contrato
+  por un camino sin podar. Tres reglas que los tests fijan: se poda lo generado · se poda al
+  CENTINELA (`''` significa «no es mi celda», dejaría la prosa intacta) · el encabezado sólo se toca
+  cuando la grilla es la pestaña entera.
+- **Para lo escrito ANTES de que existiera la huella**: `scripts/reclamar-parrafos-huerfanos.mjs` usa
+  `lib/autoria-por-historial.mjs` (`git log -S`) como prueba de autoría, y escribe con `MIA_PROBADA`
+  —no con `VACIO`, que la huella sólo obedece si puede probar la propiedad—. Lo que no se puede
+  probar queda intacto.
+- **Contrato de diseño medido contra el archivo: 104 → 17 desvíos · 7 de 15 pestañas conformes**
+  (Tarjeta, Cargas Sociales, Impuestos y Financieros, Recurrentes, Cash Flow Semanal, Calendario de
+  Cobros, SUBCONTRATISTAS, Plantel). `node orquestador/scripts/auditar-diseno-unificado.mjs`.
+- **Pestañas INTOCABLES por decisión del dueño**: Compras · Cobranzas · CAJA · Cheques Emitidos ·
+  Cheques Recibidos. Declaradas en `EXCLUIDAS` de `lib/diseno-unificado.mjs` con su motivo textual.
+  Excepción vigente: los GRÁFICOS de CAJA sí se tocan (pedido explícito del 06/09).
+- **CAJA y Proveedores quedaron reparadas hoy y verificadas leyendo la hoja viva.** Gráficos en las
+  filas 23/38/53 (`caja-graficos-verificar.mjs` da ✓) y `Proveedores ✓ en estándar`.
+- **Trampa nueva y cara: las huellas de FORMATO de un layout que ya no existe frenan la piel para
+  siempre.** `scripts/olvidar-huella-de-formato.mjs <pestaña> [--todas] --aplicar` las borra. **El
+  orden importa**: olvidar → `formato-pestanas.mjs` (ve la pestaña virgen, aplica y siembra) → el
+  generador de la pestaña. Al revés el generador siembra primero y el formateador ya no la ve virgen.
+- **HF en producción, no en shadow**: Qwen3-4B es el proveedor #1 por volumen (28/28 ok en 4 días,
+  contra 21 de Haiku) en `rutear` y `completar-argumentos`. La decisión del dueño sobre visión
+  —dejar de mandar `detalle` e `indeterminado` a Opus— está aplicada, reversible entera con
+  `XSAS_MIRAR_TODAS_LAS_REGIONES=1`.
+- CRM admin: 155 tests canónicos contra `crmadmin.zip` en verde. Papeles del proveedor en el panel.
 - Firma por pestaña (ORQ_AUTOCANDADO) sigue APAGADA a propósito. Timer activo — verificarlo, no asumirlo.
 
-## 5. TRABAJO DE ESTA SESIÓN (04/09)
+## 5. TRABAJO DE ESTA SESIÓN (06–07/09)
 
-Cinco reportes del dueño sobre el Flujo de Caja, todos resueltos y verificados por PDF/relectura:
+Tres frentes: minimalismo del Sheet, CRM y HF. Lo que cambió de fondo:
 
-1. **Extracto Santander al 04/09 importado** (10 nuevos, 553 en `_BANCO_RAW`, cadena cerrada).
-2. **Gráficos de CAJA**: la hoja tenía 55 filas y el layout necesita 68 → regenerada, los 4 en su ancla.
-3. **Tarjetas de CAJA cortadas** («CAJA INVERTI… $45.138.»): la guarda de formato bloqueaba el ancho
-   de las columnas E–J y era permanente. Se invalidaron sus 18 huellas y se cableó
-   `elLayoutCambio`/`invalidarHuellasDeFormato` en `caja-pestana.mjs` (+ test).
-4. **Saldo en dólares con 29 días**: U$S 981,39 → **507,53 al 03/09**. Verificado por dos fuentes
-   independientes (captura del homebanking + las bases del 25.413 del extracto en pesos). Nace
-   `lib/banco-cuenta-usd.mjs` (+6 tests): la cuenta USD se puede DERIVAR del extracto en pesos.
-5. **IVA/IIBB — el defecto de fondo**: la pestaña usaba DOS definiciones de «ventas del mes». El
-   crédito de nov/dic se proyectaba y el débito no, fabricando un saldo a favor de $1.312.377; y el
-   IIBB gravaba COBRANZAS (base de sep $183,7M contra $71,1M facturados). Ahora hay una sola
-   definición (`planDeVentas`) con la frontera calculada; los meses sin factura quedan VACÍOS y
-   declarados (`▲ SIN VENTAS CARGADAS`), no en cero. 198 tests del área en verde.
+1. **`lib/podar-prosa.mjs` + `lib/pestanas-del-contrato.mjs`** — el contrato se aplica una vez, con
+   la MISMA definición que lo mide. La lista de pestañas salió del script a un lib puro: importar
+   `formato-pestanas.mjs` (que arrastra `google.mjs`) desde el camino de escritura rompía 7 tests
+   herméticos por ORDEN DE CARGA.
+2. **`lib/autoria-por-historial.mjs` + `scripts/reclamar-parrafos-huerfanos.mjs`** — 63 párrafos
+   reclamados con su commit. El glifo entra por interpolación (`${ALERTA} …`), así que la búsqueda
+   ignora el prefijo no alfanumérico.
+3. **Dos falsos positivos del auditor corregidos**: `bloquesDe` exigía el título solo en su fila
+   (Recurrentes lo comparte con los encabezados de mes) → segunda puerta «el título grita».
+4. **`glifos.mjs`: `TEXTOS_RETIRADOS`** — acortar un aviso NO borra las celdas ya publicadas; un
+   SUMPRODUCT que no coincide da $0, no error.
+5. **CAJA**: el aire entre portada y gráficos salía de la PANTALLA (fila 16) y la grilla emite hasta
+   la 20 → `AIRE_TRAS_PORTADA` 6 → 2, y el ancla se deriva de `finDeContenido(g.filas)`. Además el
+   verificador clavaba el ancla mientras el generador la derivaba: dos definiciones, ahora una.
+6. **`scripts/olvidar-huella-de-formato.mjs`** (+ tests) — ver la trampa en §4.
+7. **`estructura-pestana.mjs` ahora tiene cola** con prueba de propiedad: su excusa de «alto fijo»
+   era falsa y el archivo la desmintió (aviso de ARCA de 190 chars sobreviviendo en A30).
 
-Operativo, además: los 4 pagos pendientes a **PEDRO TELLO** ($9,9M) movidos una semana en Compras
-(sólo columna Q; R es `=Q<fila>` y AD es ARRAYFORMULA — nunca se escribe).
-
-Commits: `e865772b` (rediseño) · `cae191a8` (CAJA) · `9aace250` (IVA base única).
-
-### 5.b · LA CAPA ML DEJÓ DE SER UNA BIBLIOTECA (fases 1-3 integradas)
-
-Estaba construida, probada y sin llamadores: `orq.ml_traza` tenía **cero filas**. Dos defectos
-reales encontrados y cerrados:
-
-- `registrarTraza()` dispara sin esperar y los scripts del OS salen enseguida → el INSERT nunca
-  llegaba. Ahora existe `drenarTrazas()` y los scripts la llaman antes de `process.exit`.
-- `valor_original` guardaba el texto NORMALIZADO. Un «original» normalizado no es el original, y la
-  pantalla que busca «Robles Pinturerías S.R.L.» no lo encontraba. Ahora se guarda crudo y el
-  cálculo se memoiza por forma normalizada.
-
-Enchufada en dos lugares reales: el cruce de cheques (`cheques-cobertura-sheet.mjs` resuelve los dos
-lados y `mismaEntidad` gana el peldaño de identidad canónica, DEBAJO del CUIT) y la pantalla de
-Compras (el panel dice «→ Nombre canónico» o «Proveedor sin identificar»; los sugeridos traen
-Confirmar / Elegir otro / Dejar sin resolver, y confirmar crea el alias verificado).
-
-**LO MEDIDO, QUE CONTRADICE LA EXPECTATIVA:** de 143 identidades reales, 45 se vinculan (25 por
-CUIT, 20 por nombre exacto) y las 98 que pasaron por fuzzy/embeddings aportaron **CERO
-vinculaciones**. Y el efecto sobre el cruce fue **nulo**: mismos contemplados, mismos inferidos,
-mismos huecos. El ML acá informa y encola trabajo humano; lo que vincula es el identificador fuerte.
-El trabajo que más rinde es cargar los CUIT que faltan, no afinar umbrales.
-
-Commits: `9cf52a81` (integración) · `5bf44c4e` (la normalización sale de embeddings).
+Commits: `03d24dd9` · `21deb156` · `93897e35` · `96851743` · `12a64700` · `4289f873` · `5b252866` ·
+`55b8c421` · `f2f774a3` · `22848149`. Suite completa en verde antes de cada push.
 
 ## 6. PENDIENTES REALES
 
 **P0 — decisión del dueño, no arranca solo**
-- **¿La base del IVA va por «Fecha de Factura» (col P) o «Fecha de Venta» (col C)?** Medido: la base
-  declarada de las DDJJ de **marzo ($78.349.586,76) y mayo ($20.000.000) coincide AL CENTAVO con la
-  columna C**, no con la P. Hoy se usa P (decisión del 03/09 + el Libro IVA Ventas va por emisión).
-  Si la respuesta es C, cambia una sola constante (`VENTA.fecha` en `impuestos-base-libro.mjs`).
-- **DDJJ de IVA de agosto SIN PRESENTAR**, vencía el 20/08. Verificado dos veces contra Drive.
+- **¿La base del IVA va por «Fecha de Factura» (col P) o «Fecha de Venta» (col C)?** La base
+  declarada de las DDJJ de marzo ($78.349.586,76) y mayo ($20.000.000) coincide AL CENTAVO con la
+  columna C, no con la P. Hoy se usa P. Si la respuesta es C, cambia una sola constante
+  (`VENTA.fecha` en `lib/impuestos-base-libro.mjs`).
+- **DDJJ de IVA de agosto SIN PRESENTAR**, vencía el 20/08.
+- Los 31 párrafos que el bisturí dejó intactos (no se pudo probar autoría): si alguno es residuo mío
+  y no del dueño, hay que señalarlo para sacarlo.
 
 **P1 — técnicos**
-- La cadena de saldos del banco **no cierra por $455.082,14** (72 cortes, ninguno lo explica solo);
-  el tramo sospechoso es anterior al 06/07. `scripts/auditar-saldo-banco.mjs` lo reporta.
-- Cablear `huella-formato-layout` en las 12 pestañas restantes, o resolverlo en la guarda misma.
-- **5 CUIT del Sheet no están en `proveedores`**: SOSTEN SA, Alvarado Mariel Edith, AGENCIA CALIDAD
-  SAN JUAN SEM, Machuca Hector (falta el alta) y **NEUMAGOM SAS, que existe y NO tiene el CUIT
-  cargado**. Ese último es el único auto-resuelto con riesgo residual: se vinculó por nombre exacto
-  y nada confirma el CUIT. Cargarlo lo pasa a identificador fuerte.
-- Conviven **dos almacenes de alias**: `proveedor_alias` (el viejo, con `clasificarNombre`) está
-  **vacío y sin llamadores en producción**, y `ml_entidad_alias` es el que usa el resolver. No
-  divergen hoy porque uno no se usa; el día que alguien lo use, divergen.
-- El `next-server` que corre en :3287 sale de un **worktree viejo** (`.claude/worktrees/desvio`), no
-  de producción. La app no está bajo systemd.
-- Dos filas «Retenciones sufridas» con números distintos y sin nota al lado: bloque 2 lee `_IIBB_RAW`
-  ($3.645.362), bloque 3 lee `Cobranzas!Z` ($888.550). Decisión de dominio, no de diseño.
-- Deuda anterior aún abierta: `huellaDeRango(PESTANA)` hashea sólo filas/columnas congeladas ·
-  `clasificar-request.mjs:58` no reconoce `gridProperties.*`.
+- **Push pendiente: 2 commits (`f2f774a3`, `22848149`) sin subir.** La suite quedó corriendo al
+  cerrar. Correr `npm run orq:test` y, si da 0 rojos, pushear + actualizar producción + reiniciar
+  units. NO pushear en rojo.
+- 17 desvíos del contrato: Proveedores 9 (arriba de la fila 157, territorio de las dinámicas, que ese
+  generador no escribe) · Jornales 2 · Nómina 2 · Estructura 1 · Materiales 1 · OBRAS 1 · CF Mensual 1.
+- El pipeline `echegaray-flujo-caja` termina en FAILED desde el 3/09 por `▲ $171.314 salen por un
+  medio de pago que no tiene columna` (21 filas de Compras sin fecha de caja — se arregla llenando
+  celdas, decisión del dueño).
+- 13 filas con comprobante repetido ($6.502.878): pago en tramos vs carga duplicada — criterio del dueño.
+- La cadena de saldos del banco no cierra por $455.082,14 (`scripts/auditar-saldo-banco.mjs`).
+- `E45:E61` de OBRAS (17 celdas) bloqueado: el guard que lo destraba, fallando cerrado, borraría un
+  plan de $145M. Necesita firma del dueño.
+- HF: el volante junta 0 ejemplos (820 filas esperando, 0 correcciones humanas en toda su historia);
+  `elegir-herramienta` habilitada pero sin tráfico — el bucle de especialistas corre sobre
+  `engines/anthropic-api.mjs`, fuera del gateway.
 
 **P2**
-- Cotizador: cotizar un plano NUEVO desde el navegador (único circuito sin probar); ¿se borra el
-  presupuesto sonda `7abc7061`? · `concurrencia: 4` sin medir contra el límite real.
+- Cotizador: cotizar un plano NUEVO desde el navegador (único circuito sin probar).
 - La Estrella: que Rodrigo confirme si los pagos en efectivo de `CONTROL DE GASTOS` ya están
   facturados — traba decidir si esos $25.141.687 suman o duplican.
 
 ## 7. ESTADO GIT
 
-- Rama: `main` · HEAD: `5bf44c4e` · working tree **limpio** · sincronizado con `origin/main`.
-- Producción (`~/echegaray-os/produccion/echegaray-os`) al día en `5bf44c4e`, y el cruce corrido
-  desde ahí escribió trazas reales en `orq.ml_traza`.
-- `npm run orq:test`: **13.713 tests, 0 fallos** (dos corridas). `typecheck` y `build` en verde.
-- Ramas ya integradas hoy (se pueden borrar): `feat/impuestos-clase-mundial`,
-  `fix/iva-base-unica-de-ventas`. Worktrees `.claude/worktrees/impuestos-wc` e `iva-base` sin limpiar
-  (`node scripts/higiene-worktrees.mjs`).
+- Rama: `main` · HEAD: `22848149` · working tree **limpio** · **ahead 2 de `origin/main`**.
+- Producción (`~/echegaray-os/produccion/echegaray-os`): al día en `55b8c421` al momento del último
+  deploy verificado; los 2 commits de arriba NO están desplegados.
+- Suite: la última corrida completa verificada dio **0 rojos** en `55b8c421`. La corrida sobre
+  `22848149` quedó en curso al cerrar — **verificarla antes de pushear**.
 
 ## 8. PRÓXIMO PASO
 
-Dos, en este orden:
-
-1. Preguntarle al dueño si la base del IVA va por columna P o C (evidencia de marzo y mayo arriba) y
-   aplicar la respuesta en `orquestador/lib/impuestos-base-libro.mjs`.
-2. Cargar los 5 CUIT que faltan en `proveedores` y volver a correr
-   `node orquestador/scripts/identidad-backfill.mjs` (en seco primero). Rinde más que cualquier
-   ajuste de umbrales: cada CUIT cargado convierte un cruce por nombre en uno por identificador
-   fuerte. La fase 4 (Document Intelligence) sigue **sin arrancar** por indicación del dueño.
+Correr `npm run orq:test`; si da 0 rojos, pushear los 2 commits, actualizar
+`~/echegaray-os/produccion/echegaray-os` con `git merge --ff-only origin/main` y reiniciar
+`echegaray-comunicacion-ws`, `echegaray-xsas-gateway`, `echegaray-asistencia-http`. Si hay rojos,
+cerrarlos antes: no se pushea con validaciones en rojo.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
