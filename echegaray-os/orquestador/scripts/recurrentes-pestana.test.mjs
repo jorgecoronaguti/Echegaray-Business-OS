@@ -11,11 +11,13 @@
 //    en cada corrida del worker.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grilla, formatosPropios, declaradosSinFila, RANGO_COMPRAS } from './recurrentes-pestana.mjs'
+import { grilla, formatosPropios, declaradosSinFila, RANGO_COMPRAS, FILA_CAB } from './recurrentes-pestana.mjs'
+import { auditarDiseno, TOPE_SUBTITULO } from '../lib/diseno-unificado.mjs'
+import { PESTANAS } from './formato-pestanas.mjs'
 import { mesCerrado, MES_EN_CURSO, MIN_MESES } from '../lib/cash-flow-lineas.mjs'
 import { evaluarFormula, hojaDeGrilla } from '../lib/evaluar-formula-sheet.mjs'
 import { enBloqueIndivisible } from '../lib/celda-de-estructura.mjs'
-import { fusionar, tiene, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { fusionar, tiene, VACIO, limpiarCentinela } from '../lib/preservar-anotaciones.mjs'
 import { CONTADOR, MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL } from '../lib/formato-statement.mjs'
 
 const g = grilla(['Movistar', 'RSV', 'Robles Jose Maria'])
@@ -30,7 +32,7 @@ test('EL FANTASMA: la fusión borra el encabezado que dejó el layout anterior e
   const fusion = fusionar(g.filas, enLaPestana)
   for (let c = 1; c <= 15; c++) {
     assert.equal(fusion[1][c], '', `B2:P2 tiene que quedar vacía; en la columna ${c} sobrevivió "${fusion[1][c]}"`)
-    assert.equal(fusion[2][c], '', `la fila del título de sección no lleva números; en la columna ${c} sobrevivió "${fusion[2][c]}"`)
+    assert.equal(fusion[3][c], '', `la fila del título de sección no lleva números; en la columna ${c} sobrevivió "${fusion[3][c]}"`)
   }
   assert.equal(fusion[1][0], g.filas[1][0], 'el subtítulo del generador sí se escribe')
 })
@@ -67,7 +69,11 @@ test('NI UNA COLUMNA DE PROSA: ninguna fila lleva un párrafo al lado del númer
 })
 
 test('el subtítulo entra en una línea: el muro de texto se cortaba contra enero', () => {
-  assert.ok(String(g.filas[1][0]).length <= 130, `el subtítulo mide ${String(g.filas[1][0]).length} caracteres`)
+  // EL TOPE ES EL DEL CONTRATO, NO UN 130 ELEGIDO ACÁ (06/09/2026). Con 130 este test daba verde
+  // mientras `auditar-diseno-unificado` marcaba `procedencia-larga` sobre el archivo vivo: 125
+  // caracteres contra un tope de 120. Dos umbrales para la misma idea es cómo se pierde el criterio.
+  assert.ok(String(g.filas[1][0]).length <= TOPE_SUBTITULO,
+    `el subtítulo mide ${String(g.filas[1][0]).length} caracteres (tope ${TOPE_SUBTITULO})`)
 })
 
 test('EL CONTADOR NO ES PLATA: "Meses cerrados con gasto" declara su propio formato', () => {
@@ -91,10 +97,14 @@ test('el "$" es del total: el cuerpo va sin símbolo y el cero se dibuja raya', 
   assert.ok(MONEDA_CONTROL.pattern.includes('[Red]'))
 })
 
-test('la fila del encabezado no se mueve: el Cash Flow Mensual la lee por posición absoluta', () => {
-  assert.equal(g.filas[3][0], 'Proveedor', 'FILA_CAB = 4, y las fórmulas de cada mes la referencian en absoluto')
-  assert.ok(g.filas[3][1] instanceof Date)
+test('la fila del encabezado está donde FILA_CAB dice: las fórmulas de cada mes la citan en absoluto', () => {
+  assert.equal(g.filas[FILA_CAB - 1][0], 'Proveedor')
+  assert.ok(g.filas[FILA_CAB - 1][1] instanceof Date)
   assert.equal(g.filas[g.fTot - 1][0], 'TOTAL', 'el rótulo es el ancla que usa cash-flow-lineas')
+  // LAS DOS DECLARACIONES DEL CONGELADO TIENEN QUE COINCIDIR. El generador congela `FILA_CAB` filas
+  // y `formato-pestanas.mjs` declara las suyas: si divergen, la barra congelada corta el cuadro al
+  // medio y no lo grita nadie.
+  assert.equal(PESTANAS.find((p) => p.titulo === 'Recurrentes').congeladas, FILA_CAB)
 })
 
 test('cada celda que el generador deja vacía lleva el centinela, no cadena vacía', () => {
@@ -117,7 +127,7 @@ const MES = 'EOMONTH(TODAY();-1)+1'
 const celdaEnero = String(g.filas[g.f0 - 1][1])
 
 test('EL MES EN CURSO deja de mostrarse vacío: es el MAYOR entre lo real y lo esperado', () => {
-  assert.ok(celdaEnero.startsWith(`=IF(B$4<${MES};R${g.f0};IF(B$4=${MES};MAX(R${g.f0};`),
+  assert.ok(celdaEnero.startsWith(`=IF(B$${FILA_CAB}<${MES};R${g.f0};IF(B$${FILA_CAB}=${MES};MAX(R${g.f0};`),
     `la celda no compara el mes con el mes en curso: ${celdaEnero}`)
 })
 
@@ -307,8 +317,8 @@ test('LA VENTANA DE MESES CERRADOS ES LA MISMA QUE LA DEL CASH FLOW: una sola de
   assert.ok(prom.includes(`<${MES_EN_CURSO}`), `el promedio no acota a meses cerrados: ${prom}`)
   assert.ok(!prom.includes('COUNTIF'), 'el divisor dejó de ser el contador del año entero')
   // El rótulo dice qué mide: si el número cambia de significado y el rótulo no, el cuadro miente.
-  assert.match(String(g.filas[3][14]), /cerrado/i)
-  assert.match(String(g.filas[3][15]), /cerrado/i)
+  assert.match(String(g.filas[FILA_CAB - 1][14]), /cerrado/i)
+  assert.match(String(g.filas[FILA_CAB - 1][15]), /cerrado/i)
 })
 
 test('TODA fórmula de la grilla cierra paréntesis y está en es-AR', () => {
@@ -397,4 +407,22 @@ test('LA DECLARACIÓN NO SE COME EL CUADRO DE DATOS: ahí el dueño anota y la h
   for (let f = 1; f <= g.fTot; f++) {
     assert.equal(enBloqueIndivisible(f, g.indivisibles), false, `la fila ${f} es cuadro de datos y no puede estar declarada`)
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CONTRATO DE DISEÑO SE MIDE SOBRE LA GRILLA, NO SOBRE LA PANTALLA (06/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO, medido con `auditar-diseno-unificado.mjs` contra el archivo vivo: once desvíos. `A1`
+// decía "Servicios recurrentes 2026" sobre una pestaña llamada "Recurrentes" y con un año que
+// envejece solo; `A2` medía 125 caracteres contra un tope de 120; la fila 3 se comía el respiro del
+// encabezado con el título del bloque 1; `R4` llevaba 135 caracteres de instrucción al lector; y
+// `A14`, `A15` y `A16` interpretaban al lado del número en vez de decir qué mide.
+//
+// El auditor lee el Sheet REAL y no puede correr acá. Esto mide lo MISMO —`auditarDiseno`, el mismo
+// núcleo puro— sobre lo que el generador está por escribir.
+test('EL DEFECTO · la grilla que se escribe no tiene un solo desvío del contrato de diseño', () => {
+  const h = auditarDiseno(limpiarCentinela(g.filas), { pestana: 'Recurrentes' })
+  const detalle = h.map((x) => `${(x.col ?? 'A')}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n  ')
+  assert.deepEqual(h, [], `Recurrentes vuelve a desviarse del contrato:\n  ${detalle}`)
 })

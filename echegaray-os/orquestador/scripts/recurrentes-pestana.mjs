@@ -76,9 +76,17 @@ const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26
 const C_MES0 = 1, C_TOTREAL = 13, C_NMESES = 14, C_PROM = 15, ANCHO_VIS = 16
 const C_AUX0 = 17
 const ANCHO = C_AUX0 + 12
-// La fila del encabezado con los doce primeros-de-mes. NO SE MUEVE: las fórmulas de cada mes la
-// referencian en absoluto, y el Cash Flow Mensual la recibe para leer esta tabla.
-const FILA_CAB = 4
+// La fila del encabezado con los doce primeros-de-mes. Las fórmulas de cada mes la referencian en
+// absoluto y el Cash Flow Mensual la recibe para leer esta tabla, así que ES una constante y no un
+// número suelto: se exporta para que el test mida contra ella y no contra un 4 tipeado.
+//
+// BAJÓ DE 4 A 5 EL 06/09/2026. El encabezado del contrato son TRES filas (nombre · procedencia ·
+// respiro) y esta pestaña metía el título del bloque 1 en la fila 3: `auditar-diseno-unificado` lo
+// marcaba como `sin-respiro`. La fila que se agrega corre todo el cuadro un lugar; se puede hacer
+// hoy porque la huella de esta pestaña no tiene una sola celda de una persona (medido con
+// `medir-huella-pestana.mjs`: 171 selladas, 0 borradas, 0 abandonadas) y `aplicarHuella` sabe seguir
+// un corrimiento — Proveedores corre hoy con +3 y alinea.
+export const FILA_CAB = 5
 // LA VENTANA DE MESES CERRADOS, COMO MÁSCARA DE DOCE CELDAS. Vale 1 en cada mes que ya terminó y 0
 // en el que corre y en los que faltan; multiplicada por la fila de importes reales, deja adentro
 // del promedio sólo las observaciones completas. Se escribe una vez y la usan el contador de meses,
@@ -92,7 +100,10 @@ export function grilla(proveedores) {
   const vacia = () => Array(ANCHO).fill(VACIO)
   const push = (f) => { filas.push(f); return filas.length }
 
-  const t = vacia(); t[0] = `Servicios recurrentes ${AÑO}`
+  // A1 ES EL NOMBRE DE LA PESTAÑA. Decía "Servicios recurrentes 2026" sobre una pestaña llamada
+  // "Recurrentes": dos nombres para lo mismo, y encima con un año que envejece solo. El rubro y el
+  // año los declara la fila 2, que es la única línea de prosa que el contrato admite.
+  const t = vacia(); t[0] = PESTAÑA
   push(t)
   // EL SUBTÍTULO ES UNA LÍNEA. La versión anterior tenía acá un párrafo de 600 caracteres que se
   // envolvía en diez renglones y se cortaba contra la columna de enero: el "muro de texto" que el
@@ -105,11 +116,15 @@ export function grilla(proveedores) {
   // fecha de la factura: el dueño leyó agosto vacío porque pagó Movistar el 07/08 con facturas
   // fechadas en julio. Mezclar las dos ventanas es la regla de oro 3, y el rótulo es el único lugar
   // donde se puede declarar cuál se está usando.
-  n[0] = `Rubro "${RUBRO}" por FECHA DE CAJA, no de factura. Cerrados: lo real. En curso y futuros: lo esperado (itálica).`
+  // 120 CARACTERES ES EL TOPE (`TOPE_SUBTITULO`). Medía 125 y decía lo mismo con más palabras.
+  n[0] = `Rubro "${RUBRO}" por FECHA DE CAJA, no de factura. Cerrados: real; en curso y futuros: esperado (itálica).`
   push(n)
-  // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO, y ocupa la fila en blanco que ya había:
-  // así no corre ninguna fila. Las fórmulas de abajo referencian filas absolutas y un desplazamiento
-  // las dejaría apuntando a otra cosa, en silencio.
+  // LA FILA 3 VA VACÍA: es la respiración entre el encabezado y el primer bloque, y es parte del
+  // encabezado. Ver `encabezadoRoto` en lib/diseno-unificado.mjs.
+  push(vacia())
+  // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO. Ahora en la fila 4, porque la 3 es el
+  // respiro del encabezado: las fórmulas de cada mes referencian `FILA_CAB` en absoluto, así que
+  // mover esto sin mover esa constante las dejaría apuntando a otra cosa, en silencio.
   const s1 = vacia(); s1[0] = '1 · EL GASTO RECURRENTE, MES A MES'; push(s1)
 
   const cab = vacia()
@@ -122,7 +137,10 @@ export function grilla(proveedores) {
   // ya se cargó del mes en curso— porque es el hecho que el control de abajo compara contra Compras.
   cab[C_NMESES] = 'Meses cerrados con gasto'
   cab[C_PROM] = 'Promedio de meses cerrados'
-  cab[C_AUX0] = 'AUXILIAR — el real de cada mes. De acá sale la proyección: sin separarlo, la fórmula de un mes se leería a sí misma (#REF!). No borrar.'
+  // El rótulo dice QUÉ hay en la columna. Por qué el real vive separado de lo que se ve —sin eso la
+  // fórmula de un mes se leería a sí misma y daría #REF!— está en el comentario de `C_AUX0`, no en
+  // una celda de la fila 5.
+  cab[C_AUX0] = 'AUXILIAR — el real de cada mes'
   push(cab)
 
   const f0 = filas.length + 1
@@ -196,18 +214,20 @@ export function grilla(proveedores) {
   // EL RÓTULO DICE LO QUE DECÍA LA PROSA DE AL LADO. La columna C llevaba "Distinto de cero = hay un
   // proveedor recurrente que este cuadro no está listando." — una oración por fila, en cada corrida,
   // que el dueño borraba a mano y volvía. Cabe en el rótulo.
-  c4[0] = '⇒ Diferencia — un proveedor del rubro que el cuadro no lista (tiene que ser $0)'
+  c4[0] = '⇒ Diferencia contra Compras'
   // ROUND A PESO. El SUMIFS de Compras y la suma del cuadro difieren en fracciones de centavo, y el
   // formato dibujaba "-$0" EN ROJO con los datos perfectos. Un control que grita por medio centavo se
   // deja de mirar, que es peor que no tenerlo. El rojo queda sólo para una diferencia de un peso o más.
   c4[1] = `=ROUND(B${ctrl + 1}-B${ctrl + 2};0)`
   const fDif = push(c4)
   const cSF = vacia()
-  cSF[0] = `${ALERTA} Del rubro, sin fecha de caja — clasificado pero sin saber cuándo sale`
+  cSF[0] = `${ALERTA} Del rubro, sin fecha de caja`
   cSF[1] = `=ROUND(SUMIF(${COL_RUBRO};"${RUBRO}";${COL_TOTAL})-B${ctrl + 1};0)`
   push(cSF)
   const c6 = vacia()
-  c6[0] = `${ALERTA} Meses cerrados en $0 — o dejó de facturar, o falta cargar la factura`
+  // Las dos causas posibles —dejó de facturar, o falta cargar la factura— son la interpretación, y
+  // la interpretación es del que mira. El número dice cuántos meses cerrados quedaron en cero.
+  c6[0] = `${ALERTA} Meses cerrados en $0`
   // SUMPRODUCT y no COUNTIFS: la condición cruza DOS dimensiones (la celda del mes vale cero Y ese
   // mes ya cerró), y el rango de meses es una fila mientras el de importes es un rectángulo. COUNTIFS
   // no sabe hacer eso. Es la excepción declarada a "SUMIFS antes que SUMPRODUCT".

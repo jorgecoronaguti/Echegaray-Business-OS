@@ -125,7 +125,10 @@ export const PESTANAS = [
     { bloque: '1 · IVA — LA DDJJ OFICIAL (F.2051): QUÉ SE DEBE O SE TIENE A FAVOR', cols: 'B:M', incluyeTotales: true,
       que: 'cada columna es un mes YA PRESENTADO ante ARCA: los cuatro renglones son la transcripción del F.2051 de ese mes, y la fila «DDJJ presentada» publica su fecha y su número de acuse. La DDJJ manda sobre cualquier cálculo propio (cascada DDJJ > AJENO > ARCA > proyección); el mes sin presentar es fórmula sobre _ARCA_RAW' },
   ] },
-  { titulo: 'Recurrentes', congeladas: 4, hastaFila: 90, cols: 20 },
+  // congeladas 5 y no 4 desde el 06/09: la fila 3 pasó a ser el respiro del encabezado y el cuadro
+  // bajó un lugar. El generador la declara igual (`FILA_CAB` en recurrentes-pestana.mjs) y su test
+  // compara las dos: dos definiciones del mismo congelado es cómo la barra se corta al medio.
+  { titulo: 'Recurrentes', congeladas: 5, hastaFila: 90, cols: 20 },
   { titulo: 'Estructura', congeladas: 6, hastaFila: 90, cols: 20 },
   // La vieja "Proveedores y Materiales" se partió el 21/07: eran ocho tablas sobre las mismas
   // columnas y ningún ancho podía servirles a todas. Ver lib/partir-pestana.mjs.
