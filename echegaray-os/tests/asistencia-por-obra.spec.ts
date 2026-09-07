@@ -49,7 +49,21 @@ test('02 · la semana por obra abre en Administración → Personal', async ({ p
   await expect(page.getByTestId('vistas-personal')).toBeVisible()
 })
 
+// ═══ ESTE TEST ESCRIBE HORAS REALES EN LA BASE REAL, Y POR ESO NO CORRE SOLO ═══
+//
+// Corrido el 07/09/2026 dejó NUEVE registros de PISOS INDUSTRIALES —77,4 HH que nadie declaró
+// haber trabajado— en `registros_hh`. Se borraron a mano y quedó verificado que el día volvió a
+// cero. Un test que fabrica horas de obra cada vez que alguien corre la suite es exactamente lo
+// que la Regla de Oro 1 prohíbe: esas horas viajan al costo de mano de obra de una obra viva.
+//
+// Se habilita a propósito, con testigo y sabiendo qué se va a limpiar después:
+//   E2E_ESCRIBE_ASISTENCIA=1 npx playwright test tests/asistencia-por-obra.spec.ts
+//
+// La evidencia que produjo esa corrida —el 7 escrito en el teléfono y leído de vuelta en la grilla
+// de Administración— está en `qa-shots/asistencia-03-guardado-390.png` y `-04-leido-1440.png`.
 test('LO QUE SE GUARDA EN CAMPO SE LEE EN ADMINISTRACIÓN', async ({ page }) => {
+  test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
+    'Escribe HH reales en la base real. Se habilita con E2E_ESCRIBE_ASISTENCIA=1 y se limpia después.')
   // El único cierre que vale: la escritura probada en su DESTINO, y en la otra pantalla. Que el
   // formulario responda que sí no prueba nada.
   await page.setViewportSize({ width: 390, height: 844 })
