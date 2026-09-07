@@ -44,7 +44,7 @@ import { ultimaQuincenaCerrada, personasDelBloque } from '../lib/motor-salarial.
 import { bloqueDelPlantel } from '../lib/jornales-piso-uocra.mjs'
 import { asegurarParametros, ultimoDiaCargado, PESTAÑA as PESTAÑA_JORNALES } from './jornales-pestana.mjs'
 import { baseDeJornales } from '../lib/proyeccion-convenio.mjs'
-import { ANCHO, COL_ORIGEN, cm, crearGrilla } from '../lib/cargas-grilla.mjs'
+import { ANCHO, COL_ORIGEN, SIN_DDJJ, cm, crearGrilla } from '../lib/cargas-grilla.mjs'
 import {
   bloqueDeclarado, bloquePagado, bloqueDiferencia, bloqueProyeccion, bloqueCaja, bloqueSac, bloquePlanes,
 } from '../lib/cargas-bloques.mjs'
@@ -162,6 +162,31 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJorn
   })
   const sac = bloqueSac(G, { anio: AÑO, C, fRem: decl.fRem, fRemProy: proy.fRemProy, bloqueBase })
   const planes = bloquePlanes(G, { ps, C })
+
+  // ── EL AÑO NO TERMINA EN AGOSTO (07/09/2026) ────────────────────────────────────────────────────
+  //
+  // El dueño, dos veces: *«no me podés dejar en cero si siempre tengo empleados»* y, después de la
+  // primera corrección, *«sigue mal, tengo empleados desde siempre, no podés poner un cero en ningún
+  // mes»*. La primera vez el SUM sobre celdas vacías daba literalmente 0 y se leía «declaró cero»;
+  // se cambió por el texto «sin DDJJ», que ya no miente pero DEJA EL RENGLÓN MUDO cuatro meses y la
+  // pestaña sigue pareciendo terminar en agosto.
+  //
+  // Lo que falta no es un dato declarado —una DDJJ que todavía no venció no existe y no se inventa—:
+  // es que el renglón diga lo que la empresa YA SABE que va a generar. Ese número existe, calculado
+  // en la sección 4 desde los jornales del plantel, y acá se REFERENCIA en vez de recalcularse.
+  //
+  // Va marcado «≈ … proy.» y no como un importe pelado: la fila se llama «Total declarado», y un
+  // proyectado que se dibuja igual que un declarado es exactamente mezclar dos ventanas de tiempo.
+  // Con el prefijo, nadie puede confundirlos ni sumarlos por accidente — SUM ignora el texto, así que
+  // el total de la derecha sigue siendo sólo lo realmente declarado.
+  //
+  // Si la proyección tampoco existe (un mes sin plantel proyectado), vuelve a decir «sin DDJJ». Un
+  // cero sigue sin ser una respuesta posible.
+  for (let m = 1; m <= 12; m++) {
+    if (periodos.includes(`${AÑO}-${String(m).padStart(2, '0')}`)) continue
+    G.filas[decl.fDeclTot - 1][m] =
+      `=IF(N(${cm(m)}${proy.fProyTot})=0;"${SIN_DDJJ}";"≈ "&TEXT(${cm(m)}${proy.fProyTot};"$#,##0")&" proy.")`
+  }
 
   // ── SECCIÓN 5, RECIÉN AHORA: la fila de "cuotas que vencen" referencia el total de la sección 7 ──
   // Antes escribía el mismo número por dos caminos (JS acá, fórmula allá); ahora hay UNA fuente y el
