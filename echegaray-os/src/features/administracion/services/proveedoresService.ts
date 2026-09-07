@@ -13,6 +13,8 @@ import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import type {
   NombrePendiente, NombreResuelto, PapelesLeidos, PapelProveedor, Proveedor, ServiceResult,
 } from '../types'
+// `rubroDe` resuelve la precedencia declarado > deducido UNA sola vez. Se importa, no se repite.
+import { rubroDe } from '../types/index.ts'
 
 // `rubro_deducido_evidencia` VIAJA CON EL RUBRO, no se pide aparte cuando alguien la quiere ver: un
 // rubro deducido sin su cuenta se lee como decidido, que es exactamente lo que las dos columnas
@@ -33,6 +35,50 @@ export interface FiltroProveedores {
    * cruza con ARCA ni con el banco igual que uno que no está.
    */
   sinCuit?: boolean
+}
+
+/**
+ * LOS DOS CRITERIOS QUE PIDIÓ EL DUEÑO PARA LA CARTERA (07/09/2026): «rubro y deuda».
+ *
+ * Van en memoria y no en la consulta, igual que `coincideProveedor`: la cartera son decenas de
+ * filas, la deuda vive en OTRA vista (`proveedor_deuda`) y filtrarla en Postgres exigiría un join
+ * que PostgREST no puede expresar desde acá. Con 43 proveedores, un `filter` es más barato que la
+ * complejidad de traerlo embebido — y queda probable sin base.
+ *
+ * EL RUBRO SE COMPARA CON `rubroDe`, no con la columna cruda: si se filtrara por `p.rubro` a secas,
+ * los 18 proveedores cuyo rubro está DEDUCIDO y no declarado no aparecerían nunca — y hoy, medido,
+ * NINGUNO tiene rubro declarado, así que el filtro entero devolvería vacío siempre.
+ */
+export type FiltroDeuda = 'con' | 'sin'
+
+export function coincideRubro(p: Proveedor, rubro: string | undefined): boolean {
+  if (!rubro) return true
+  return rubroDe(p).texto.trim().toLowerCase() === rubro.trim().toLowerCase()
+}
+
+/**
+ * ¿Este proveedor entra en el corte de deuda? `undefined` = no se filtró por deuda.
+ *
+ * «Sin deuda» incluye al que NO TIENE FILA en la vista, que es la forma en que `proveedor_deuda`
+ * dice «no debe nada»: buscar la ausencia en un Map es la única lectura correcta de ese contrato.
+ */
+export function coincideDeuda(
+  p: Proveedor, deudas: Map<string, { deuda: number }>, filtro: FiltroDeuda | undefined,
+): boolean {
+  if (!filtro) return true
+  const tiene = (deudas.get(p.id)?.deuda ?? 0) > 0
+  return filtro === 'con' ? tiene : !tiene
+}
+
+/** Los rubros que la cartera REALMENTE tiene, para poblar el desplegable sin inventar opciones. */
+export function rubrosDe(proveedores: Proveedor[]): string[] {
+  const s = new Set<string>()
+  for (const p of proveedores) {
+    const r = rubroDe(p).texto.trim()
+    // «sin rubro» no es un rubro: es la ausencia, y ya tiene su propia forma de buscarse.
+    if (r && r !== 'sin rubro') s.add(r)
+  }
+  return [...s].sort((a, b) => a.localeCompare(b, 'es'))
 }
 
 /**
@@ -95,6 +141,45 @@ export async function getProveedores(
   const { data, error } = await consulta.order('nombre', { ascending: true })
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as Proveedor[], error: null }
+}
+
+/**
+ * LO QUE SE LE DEBE A CADA PROVEEDOR. La suma NO se hace acá: la publica `public.proveedor_deuda`.
+ *
+ * Pedido del dueño (07/09/2026): filtrar la cartera por «rubro y deuda». El rubro ya estaba en la
+ * tabla; la deuda no existía como concepto en ningún lado —sólo fila por fila en
+ * `compra_sheet.saldo_pendiente`— y sumarla en TypeScript habría creado la segunda definición de
+ * «cuánto le debemos a X» el día que el chat o el Director hagan la misma pregunta.
+ *
+ * UN PROVEEDOR SIN FILA NO DEBE NADA, y eso NO es lo mismo que deber $0: la vista no publica ceros.
+ * Por eso el resultado es un Map y no un número por proveedor — la ausencia significa algo.
+ *
+ * Si la lectura falla, el Map queda VACÍO y la cartera se dibuja sin deuda. Nunca al revés: inventar
+ * una deuda porque no se pudo leer mandaría a pagar algo que quizá ya está pagado.
+ */
+export interface DeudaProveedor {
+  deuda: number
+  comprobantes_impagos: number
+  impaga_mas_vieja: string | null
+}
+
+export async function getDeudaProveedores(
+  supabase: SupabaseClient,
+): Promise<Map<string, DeudaProveedor>> {
+  const { data, error } = await supabase
+    .from('proveedor_deuda')
+    .select('proveedor_id, deuda, comprobantes_impagos, impaga_mas_vieja')
+  if (error || !data) return new Map()
+  const mapa = new Map<string, DeudaProveedor>()
+  for (const f of data as unknown as ({ proveedor_id: string } & DeudaProveedor)[]) {
+    if (!f.proveedor_id) continue
+    mapa.set(f.proveedor_id, {
+      deuda: Number(f.deuda ?? 0),
+      comprobantes_impagos: Number(f.comprobantes_impagos ?? 0),
+      impaga_mas_vieja: f.impaga_mas_vieja ?? null,
+    })
+  }
+  return mapa
 }
 
 export async function getProveedor(supabase: SupabaseClient, id: string): Promise<ServiceResult<Proveedor | null>> {

@@ -40,11 +40,13 @@ import { PanelProveedor } from '@/features/administracion/components/PanelProvee
 import { TablaProveedores } from '@/features/administracion/components/TablaProveedores'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
+import { BarraFiltros, SelectFiltro } from '@/features/administracion/components/BarraFiltros'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { pesos } from '@/shared/components/canon/formato'
 import { contiene } from '@/shared/utils/busqueda'
 import {
   agruparComprado, coincideProveedor, contarProveedores, getNombresPendientes, getNombresResueltos,
+  coincideDeuda, coincideRubro, getDeudaProveedores, rubrosDe, type FiltroDeuda,
   getPapelesDelProveedor, getProveedor, getProveedores, getResolucionCartera, getSubcontratistas,
   resumirCompras, type FiltroActivo,
 } from '@/features/administracion/services/proveedoresService'
@@ -63,6 +65,9 @@ type Busqueda = {
   tipo?: string
   /** El id del proveedor cuyo formulario de CUIT llega abierto, desde el verbo de su fila. */
   editcuit?: string
+  /** Los dos criterios del 07/09: el rubro EFECTIVO (declarado o deducido) y si debe algo. */
+  rubro?: string
+  deuda?: string
 }
 
 const ACTIVOS: FiltroActivo[] = ['activos', 'archivados', 'todos']
@@ -71,7 +76,7 @@ const RUTA = '/administracion/proveedores'
 function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
   const v = { ...base, ...cambios }
   const params = new URLSearchParams()
-  for (const k of ['q', 'activo', 'vista', 'p', 'n', 'cuit', 'tipo', 'editcuit'] as const) {
+  for (const k of ['q', 'activo', 'vista', 'p', 'n', 'cuit', 'tipo', 'editcuit', 'rubro', 'deuda'] as const) {
     if (v[k]) params.set(k, v[k] as string)
   }
   const qs = params.toString()
@@ -92,7 +97,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
 
   const [
     listado, sinCuit, pendientes, resolucion, subcontratistas, resueltos, nActivos, nArchivados,
-    nTodos, papelesLeidos,
+    nTodos, papelesLeidos, deudas,
   ] = await Promise.all([
     getProveedores(supabase, { activo: activoLeido }),
     // LA SEÑAL NO DEPENDE DE LO QUE ESTOY MIRANDO. Cuenta siempre sobre los ACTIVOS, con el mismo
@@ -124,6 +129,9 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     // Es UNA consulta por panel abierto, nunca una por fila: la lista de la cartera no muestra
     // papeles, y dibujar una columna «papeles» costaría 36 lecturas por carga.
     sp.p ? getPapelesDelProveedor(supabase, sp.p) : null,
+    // La deuda por proveedor, en el mismo viaje. Si falla, el Map queda vacío y la cartera se dibuja
+    // sin deuda — nunca al revés: inventar una deuda por no poder leer manda a pagar de más.
+    maestro ? getDeudaProveedores(supabase) : null,
   ])
 
   if (listado.error) {
@@ -148,6 +156,8 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const porFiltro = todos.filter((p) => {
     if (soloSinCuit && p.cuit) return false
     if (soloSub && subs && !subs.has(p.id)) return false
+    if (!coincideRubro(p, sp.rubro)) return false
+    if (!coincideDeuda(p, deudas ?? new Map(), sp.deuda as FiltroDeuda | undefined)) return false
     return true
   })
   const lista = porFiltro.filter((p) => coincideProveedor(p, sp.q))
@@ -252,6 +262,24 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
             {maestro
               ? (
                   <>
+                    <BarraFiltros
+                      accion={RUTA}
+                      q={sp.q}
+                      placeholder="Nombre, razón social o CUIT"
+                      testid="filtros-proveedores"
+                      extra={{ activo: activo === 'activos' ? undefined : activo, cuit: sp.cuit, tipo: sp.tipo }}
+                    >
+                      <SelectFiltro
+                        label="Rubro" name="rubro" valor={sp.rubro} testid="fp-rubro"
+                        opciones={[{ valor: '', etiqueta: 'Todos' },
+                          ...rubrosDe(todos).map((r) => ({ valor: r, etiqueta: r }))]}
+                      />
+                      <SelectFiltro
+                        label="Deuda" name="deuda" valor={sp.deuda} testid="fp-deuda"
+                        opciones={[{ valor: '', etiqueta: 'Todos' },
+                          { valor: 'con', etiqueta: 'Con deuda' }, { valor: 'sin', etiqueta: 'Sin deuda' }]}
+                      />
+                    </BarraFiltros>
                     <FiltrosSuaves
                       testid="filtro-activo"
                       conteo={{ n: lista.length, total: porFiltro.length }}

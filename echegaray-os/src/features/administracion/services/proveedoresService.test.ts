@@ -11,7 +11,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { agruparComprado, coincideProveedor, condicionesDe, resumirCompras } from './proveedoresService.ts'
+import { agruparComprado, coincideProveedor, condicionesDe, resumirCompras, coincideDeuda, coincideRubro, rubrosDe,
+} from './proveedoresService.ts'
 import type { NombreResuelto, Proveedor } from '../types/index.ts'
 
 const n = (nombre_norm: string, comprobantes: number, total: number, via: NombreResuelto['via']): NombreResuelto => ({
@@ -199,4 +200,41 @@ test('el aviso y la lista salen del MISMO predicado, condición por condición',
     { op: 'eq', columna: 'activo', valor: true },
     { op: 'or', filtro: 'cuit.is.null,cuit.eq.' },
   ])
+})
+
+// ═══ LOS DOS FILTROS DE LA CARTERA (07/09/2026) ═══
+// El defecto que atrapan: filtrar por `p.rubro` crudo. Medido ese día, NINGUNO de los 36 proveedores
+// tiene rubro declarado y 18 lo tienen DEDUCIDO — un filtro contra la columna cruda devolvería vacío
+// siempre y parecería que la cartera no tiene rubros.
+const prov = (o: Partial<Proveedor> = {}): Proveedor => ({
+  id: 'p1', nombre: 'DUPEC', razon_social: null, cuit: null, notas: null, activo: true,
+  rubro: null, rubro_deducido: null, rubro_deducido_evidencia: null, ...o,
+})
+
+test('el rubro se filtra por el EFECTIVO: el deducido también cuenta', () => {
+  assert.equal(coincideRubro(prov({ rubro_deducido: 'Materiales' }), 'Materiales'), true)
+  assert.equal(coincideRubro(prov({ rubro: 'Equipos', rubro_deducido: 'Materiales' }), 'Equipos'), true)
+  assert.equal(coincideRubro(prov({ rubro: 'Equipos', rubro_deducido: 'Materiales' }), 'Materiales'), false,
+    'el declarado le gana al deducido, y el filtro respeta esa precedencia')
+  assert.equal(coincideRubro(prov(), undefined), true, 'sin filtro pasa todo')
+  assert.equal(coincideRubro(prov(), 'Materiales'), false, 'sin rubro no entra en un rubro')
+})
+
+test('«sin deuda» incluye al que NO tiene fila en la vista', () => {
+  const deudas = new Map([['p1', { deuda: 250000 }]])
+  assert.equal(coincideDeuda(prov({ id: 'p1' }), deudas, 'con'), true)
+  assert.equal(coincideDeuda(prov({ id: 'p1' }), deudas, 'sin'), false)
+  assert.equal(coincideDeuda(prov({ id: 'p9' }), deudas, 'sin'), true, 'la AUSENCIA es «no debe nada»')
+  assert.equal(coincideDeuda(prov({ id: 'p9' }), deudas, 'con'), false)
+  assert.equal(coincideDeuda(prov({ id: 'p9' }), deudas, undefined), true)
+})
+
+test('el desplegable de rubros no ofrece «sin rubro» ni repite', () => {
+  const l = rubrosDe([
+    prov({ id: 'a', rubro_deducido: 'Materiales' }),
+    prov({ id: 'b', rubro: 'Materiales' }),
+    prov({ id: 'c' }),
+    prov({ id: 'd', rubro_deducido: 'Combustible' }),
+  ])
+  assert.deepEqual(l, ['Combustible', 'Materiales'])
 })

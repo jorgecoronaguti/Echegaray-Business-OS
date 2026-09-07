@@ -74,6 +74,43 @@ export function BarraFiltros({
   )
 }
 
+/**
+ * UN CAMPO DE FILTRO — fecha o número. Se envía con la barra, igual que el desplegable.
+ *
+ * Existe porque «desde/hasta» y «importe entre» no son opciones de una lista: son valores que la
+ * persona tipea. `type="date"` le da el calendario nativo del sistema —en el teléfono, el único que
+ * se puede usar con una mano— y manda `YYYY-MM-DD`, que es el formato con el que `pasaCriterios`
+ * compara sin arrastrar zona horaria.
+ *
+ * `inputMode="decimal"` y no `type="number"`: el importe se tipea «1.500.000,50» como en el Sheet, y
+ * un `number` rechaza la coma en un teclado en español. `numeroDe` ya sabe leer ese formato.
+ */
+export function CampoFiltro({
+  label, name, valor, tipo = 'text', placeholder, testid,
+}: {
+  label: string
+  name: string
+  valor?: string
+  tipo?: 'text' | 'date'
+  placeholder?: string
+  testid?: string
+}) {
+  return (
+    <label className="flex min-w-0 basis-32 flex-col text-[11px] text-faint">
+      {label}
+      <input
+        type={tipo}
+        name={name}
+        defaultValue={valor ?? ''}
+        placeholder={placeholder}
+        inputMode={tipo === 'text' ? 'decimal' : undefined}
+        className={CTRL}
+        data-testid={testid}
+      />
+    </label>
+  )
+}
+
 /** Un desplegable de filtro. Se envía con la barra; no hace nada solo. */
 export function SelectFiltro({
   label,

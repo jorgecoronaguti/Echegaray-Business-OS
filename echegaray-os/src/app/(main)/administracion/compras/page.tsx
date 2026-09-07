@@ -77,6 +77,10 @@ import { PieCompras, TablaComprasSheet } from '@/features/administracion/compone
 import { PanelCompraSheet } from '@/features/administracion/components/PanelCompraSheet'
 import { AdjuntosSueltos } from '@/features/administracion/components/AdjuntosSueltos'
 import { FiltrosSheet } from '@/features/administracion/components/FiltrosSheet'
+import { FiltrosComprasSheet } from '@/features/administracion/components/FiltrosComprasSheet'
+import {
+  aParams, criteriosDeURL, hayCriterios, opcionesDe, pasaCriterios,
+} from '@/features/administracion/services/comprasFiltros'
 import {
   conteosDe, filtroDe as filtroSheetDe, pasa, recorteDeLista, ROTULO as ROTULO_SHEET,
   type FiltroSheet,
@@ -121,9 +125,10 @@ function url({ f, q, c, o }: { f?: FiltroCompras; q?: string; c?: string; o?: st
 export default async function ComprasPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    q?: string; f?: string; fa?: string; c?: string; o?: string; s?: string; todo?: string
-  }>
+  // Las llaves de los criterios combinables (`pr`, `ob`, `ct`, `es`, `vn`, `pe`, `d`, `h`, `min`,
+  // `max`) viajan sueltas y las lee `criteriosDeURL`: enumerarlas acá una por una las duplicaría, y
+  // la definición de cuáles son vive en `comprasFiltros.LLAVE`.
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   const sp = await searchParams
   if (sp.f === 'arca') return <ControlArca searchParams={searchParams} />
@@ -131,8 +136,9 @@ export default async function ComprasPage({
 }
 
 /** LA PESTAÑA COMPRAS, entera. La lista que pidió el dueño. */
-async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string; s?: string; todo?: string } }) {
+async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }) {
   const filtro = filtroSheetDe(sp.f)
+  const criterios = criteriosDeURL(sp)
   const q = sp.q?.trim().toLowerCase() || undefined
   /** `todo=1`: el pedido explícito de levantar el tope de la lista. Ver `recorteDeLista`. */
   const verTodo = sp.todo === '1'
@@ -174,8 +180,13 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
   // LOS CONTEOS SALEN DE LA POBLACIÓN ENTERA, no de lo que se está mirando: si contaran lo filtrado,
   // el número de arriba dejaría de ser el de la empresa.
   const conteos = conteosDe(todas)
+  // LOS DESPLEGABLES SE ARMAN CON LA POBLACIÓN ENTERA, no con lo ya filtrado: si se poblaran con lo
+  // visible, elegir un proveedor vaciaría la lista de obras y no habría forma de volver.
+  const opciones = opcionesDe(todas)
   const visibles = todas.filter((f) => {
     if (!pasa(f, filtro)) return false
+    // El chip decide la población y los criterios la recortan: son dos controles, no uno.
+    if (!pasaCriterios(f, criterios)) return false
     if (!q) return true
     return [f.proveedor, f.comprobante, f.concepto, f.detalle_obra, f.obra_texto, f.cuit]
       .some((v) => v?.toLowerCase().includes(q))
@@ -194,6 +205,9 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
     const p = new URLSearchParams()
     if (f !== 'todo') p.set('f', f)
     if (sp.q) p.set('q', sp.q)
+    // LOS CRITERIOS SOBREVIVEN A CUALQUIER OTRO CLIC. Sin esto, abrir una fila del panel o cambiar de
+    // chip borraría el filtro que la persona acababa de poner y la lista saltaría a otra población.
+    for (const [k, v] of Object.entries(aParams(criterios))) p.set(k, v)
     if (filaSel != null) p.set('s', String(filaSel))
     // `todo=1` LEVANTA EL TOPE DE LA LISTA y por eso viaja en la URL como el resto del estado: sin
     // él, «Ver las 747 restantes» tendría que ser un componente de cliente con estado propio y la
@@ -203,6 +217,20 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
     return t ? `${RUTA}?${t}` : RUTA
   }
   const href = (f: FiltroSheet) => urlSheet({ f, s: null, todo: false })
+  /**
+   * LA MISMA VISTA SIN NINGÚN CRITERIO — a donde lleva «Limpiar filtros».
+   *
+   * No puede salir de `urlSheet`: ésa PRESERVA los criterios a propósito (para que abrir una fila no
+   * borre el filtro), así que usarla para limpiar devolvería exactamente la misma URL y el enlace no
+   * haría nada. Conserva el chip y la búsqueda, que son otros dos controles y no se estaban limpiando.
+   */
+  const hrefSinCriterios = () => {
+    const p = new URLSearchParams()
+    if (filtro !== 'todo') p.set('f', filtro)
+    if (sp.q) p.set('q', sp.q)
+    const t = p.toString()
+    return t ? `${RUTA}?${t}` : RUTA
+  }
 
   // La fila abierta sale de lo que YA se leyó: abrir el panel no cuesta una consulta más.
   const filaAbierta = sp.s ? (todas.find((f) => f.fila === Number(sp.s)) ?? null) : null
@@ -267,6 +295,17 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
                 <FiltrosSheet
                   conteos={conteos} activo={filtro} hrefDe={href} sueltos={sueltos.data?.length ?? 0}
                   conteo={{ n: recorte.enPantalla.length, total: todas.length }}
+                />
+                {/* LOS CRITERIOS VAN DEBAJO DE LOS CHIPS Y SOBRE LA LISTA, en la misma columna que
+                    recortan. El chip elige la población («los que faltan pagar») y esto la recorta
+                    («de DUPEC, en agosto, arriba de $500.000»): el orden visual dice el orden lógico. */}
+                <FiltrosComprasSheet
+                  accion={RUTA}
+                  q={sp.q}
+                  criterios={criterios}
+                  opciones={opciones}
+                  extra={{ f: filtro === 'todo' ? undefined : filtro, s: sp.s, todo: verTodo ? '1' : undefined }}
+                  limpiarHref={hayCriterios(criterios) ? hrefSinCriterios() : undefined}
                 />
                 <TablaComprasSheet
                   filas={recorte.enPantalla}

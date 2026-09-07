@@ -44,6 +44,12 @@ export interface CompraSheet {
   tipo_pago: string | null
   modalidad: string | null
   fecha_prevista: string | null
+  /**
+   * EL TRAMO DE VENCIMIENTO YA CALCULADO POR EL SHEET («1 · Vencido», «2 · Vence esta semana»…).
+   * Se trae y no se deriva de `fecha_prevista` contra hoy: dos definiciones de «esto está vencido»
+   * se contradicen el día que el criterio del Sheet cambie. El filtro de vencimiento lo usa.
+   */
+  tramo_vencimiento: string | null
   monto_pagado: number | null
   saldo_pendiente: number | null
   cuit: string | null
@@ -73,7 +79,7 @@ export interface FilaConPapel extends CompraSheet {
 const COLUMNAS = [
   'fila', 'sheet_id', 'clave', 'fecha', 'proveedor', 'tipo', 'comprobante', 'concepto',
   'detalle_obra', 'obra_texto', 'unidad_negocio', 'categoria', 'importe', 'iva', 'total',
-  'estado', 'estado_pago', 'tipo_pago', 'modalidad', 'fecha_prevista', 'monto_pagado',
+  'estado', 'estado_pago', 'tipo_pago', 'modalidad', 'fecha_prevista', 'tramo_vencimiento', 'monto_pagado',
   'saldo_pendiente', 'cuit', 'anulada',
 ].join(', ')
 
