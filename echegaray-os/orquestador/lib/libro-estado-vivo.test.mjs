@@ -302,12 +302,13 @@ test('SIN NETEO, EL LIBRO NO SE PUBLICA: el aborto NOMBRA la columna que no enco
 
 test('EL SCRIPT EXIGE EL NETEO: no queda ningún camino que degrade a importes pegados', () => {
   const fuente = fs.readFileSync(path.join(AQUI, '../scripts/libro-movimientos-pestana.mjs'), 'utf8')
-  // 24/08: los egresos de obra dejaron de salir de las constantes y salen del cuadro 5 de la pestaña
-  // OBRAS (el dueño editó ahí las fechas). La guarda es la misma y sigue siendo obligatoria — sólo
-  // cambió QUÉ se cuenta para saber si hay algo que netear.
-  assert.match(fuente, /cuadro5\.movimientos\.length \? exigirColumnasNeteo\(compras\)/,
+  // La fuente de los egresos de obra cambió dos veces —constantes → cuadro 5 de OBRAS (24/08) →
+  // `public.obra_egreso_proyectado` (07/09, cuando el dueño sacó ese cuadro de la pestaña)—. La
+  // guarda es la MISMA en los tres casos y sigue siendo obligatoria: sólo cambió QUÉ se cuenta para
+  // saber si hay algo que netear.
+  assert.match(fuente, /plan\.movimientos\.length \? exigirColumnasNeteo\(compras\)/,
     'la guarda del neteo dejó de exigir las columnas: revisá libro-movimientos-pestana.mjs')
-  // Y la segunda puerta: el cuadro 5 no publica el cliente ni el inicio de la obra, así que un grupo
+  // Y la segunda puerta: el registro no publica el cliente ni el inicio de la obra, así que un grupo
   // sin ficha tampoco puede netear. Ahí también se aborta, con la obra y el proveedor adentro.
   assert.match(fuente, /exigirNeteoDeMateriales\(obrasFuturas\)/,
     'el camino sin ficha de obra volvió a degradar a importes pegados')

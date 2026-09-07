@@ -22,6 +22,8 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { MIN_MESES, MES_EN_CURSO } from '../lib/cash-flow-lineas.mjs'
+// LA DEFINICION COMPARTIDA de una fila de gasto propio. Ver el encabezado de ese archivo.
+import { CRITERIO, celdasDelAnio, seccionRecurrentes, RUBRO_RECURRENTE } from '../lib/estructura-filas.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
@@ -65,15 +67,20 @@ const FILA_CAB = 6
 // El encabezado de cada columna ES el primero de su mes, así que la comparación con MES_EN_CURSO es
 // exacta y no necesita EOMONTH.
 const CERRADOS = `(${letra(C_MES0)}$${FILA_CAB}:${letra(C_MES0 + 11)}$${FILA_CAB}<${MES_EN_CURSO})`
-// El sub-rubro vive en COMPRAS (columna AF), no acá. SUMIFS devuelve #VALUE! cuando el rango a
-// sumar está en una pestaña y los criterios en otra — ya me pasó dos veces en esta planilla. Con
-// todos los rangos en Compras funciona, y encima es la misma disciplina que el rubro y la familia:
-// una sola columna que define el dato, en el lugar donde vive el dato.
-const rangoSub = 'Compras!$AF$4:$AF'
-const rangoFecha = 'Compras!$AD$4:$AD'
+
+/** EL LAYOUT, EN UN SOLO OBJETO: es lo que el constructor compartido necesita para escribir las
+ *  celdas de un año. Una segunda copia de estos índices es la forma exacta en que las dos pestañas
+ *  se desincronizaron. */
+const COL_LAYOUT = Object.freeze({
+  mes0: C_MES0, aux0: C_AUX0, nmeses: C_NMESES, prom: C_REALCERRADO, filaCab: FILA_CAB,
+  total: C_TOTREAL, proy: C_PROY, totalAnio: C_TOTAL, cerrados: CERRADOS,
+})
+// LOS RANGOS DE COMPRAS VIVEN EN `lib/estructura-filas.mjs` desde el 07/09/2026, con el resto de la
+// definición compartida: el sub-rubro está en COMPRAS (columna AF) y no acá, porque SUMIFS devuelve
+// #VALUE! cuando el rango a sumar está en una pestaña y los criterios en otra.
 const COL_SUB_COMPRAS = 31   // AF
 
-export function grilla() {
+export function grilla(recurrentes = []) {
   const rubros = [...SUBRUBROS.map(([n]) => n), OTROS]
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
@@ -104,7 +111,11 @@ export function grilla() {
   // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO. Aprovecha una de las filas en blanco que
   // ya había, así que no corre ninguna fila: las fórmulas de abajo referencian filas absolutas y un
   // desplazamiento las dejaría apuntando a otra cosa, en silencio.
-  const s1 = vacia(); s1[0] = '1 · EL GASTO DE ESTRUCTURA, MES A MES'; push(s1)
+  // LA NUMERACIÓN DE LOS BLOQUES SE CUENTA, NO SE TIPEA: la sección de recurrentes existe sólo si
+  // Compras trae proveedores en ese rubro, y con los números clavados el ensayo en seco publicaba
+  // «1, 3, 4». El contrato de diseño lo mide como `numeracion-con-hueco`.
+  let nBloque = 0
+  const s1 = vacia(); s1[0] = `${++nBloque} · EL GASTO DE ESTRUCTURA, MES A MES`; push(s1)
 
   const cab = vacia()
   cab[0] = 'Rubro'
@@ -123,7 +134,7 @@ export function grilla() {
   // El rótulo dice QUÉ contiene la columna; cuál de las dos es el divisor y cuál el numerador se lee
   // en la fórmula de `C_MES0`, tres líneas más abajo, y no en un paréntesis de la fila 6.
   cab[C_NMESES] = 'AUXILIAR — meses CERRADOS con gasto'
-  cab[C_REALCERRADO] = 'AUXILIAR — lo real de esos meses cerrados'
+  cab[C_REALCERRADO] = 'AUXILIAR — promedio de los meses cerrados'
   push(cab)
 
   const f0 = filas.length + 1
@@ -131,29 +142,28 @@ export function grilla() {
     const f = filas.length + 1
     const fila = vacia()
     fila[0] = r
+    // ═══ LAS CELDAS DEL AÑO SALEN DEL CONSTRUCTOR COMPARTIDO (07/09/2026) ═══
+    //
+    // Acá vivía la segunda definición de la misma proyección. La regla del MES EN CURSO había
+    // DIVERGIDO: Recurrentes lo trataba como «MAX(real; proyección)» desde el 13/08 y esta pestaña
+    // seguía mostrando el real aunque fuera cero — el combustible se carga tarde, así que el mes en
+    // curso arrancaba en «—» como si no fuera a gastarse nada. Gana la regla nueva, para las dos.
+    const { aux, visible } = celdasDelAnio({ fila: f, criterio: CRITERIO.subrubro, col: COL_LAYOUT, letra })
     for (let m = 0; m < 12; m++) {
-      const cm = letra(C_MES0 + m), ca = letra(C_AUX0 + m)
-      // El real del mes, contra Compras.
-      fila[C_AUX0 + m] = `=SUMIFS(Compras!$O$4:$O;${rangoSub};$A${f};${rangoFecha};">="&${cm}$${FILA_CAB};${rangoFecha};"<"&EOMONTH(${cm}$${FILA_CAB};0)+1)`
-      // Lo que se ve: el real si lo hay; si no, la proyección (o nada si el rubro no es recurrente).
-      fila[C_MES0 + m] = `=IF(${ca}${f}<>0;${ca}${f};IF($${letra(C_NMESES)}${f}<${MIN_MESES};0;$${letra(C_REALCERRADO)}${f}/$${letra(C_NMESES)}${f}*IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${cm}$${FILA_CAB};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)))`
+      fila[C_AUX0 + m] = aux[m]
+      fila[C_MES0 + m] = visible[m]
     }
     const real = `$${letra(C_AUX0)}${f}:$${letra(C_AUX0 + 11)}${f}`
-    // ═══ EL PROMEDIO SE SACA SOBRE MESES CERRADOS, NO SOBRE EL AÑO (13/08/2026) ═══
-    //
-    // Antes era `Total real / COUNTIF(real;"<>0")`, y los dos lados contaban el mes EN CURSO — un mes
-    // a medio transcurrir. Consecuencia: cargar una factura de este mes BAJABA la proyección de los
-    // meses futuros. El cuadro empeoraba su pronóstico justo cuando llegaba más información, que es
-    // exactamente al revés de lo que tiene que hacer. Es el mismo defecto que `cash-flow-lineas.mjs`
-    // ya había corregido para su ventana de tres meses y que Recurrentes corrigió para su promedio
-    // del año; ahora los tres cortan en la MISMA constante, `MES_EN_CURSO`.
-    //
-    // SUMPRODUCT Y NO COUNTIF/SUMIFS: la condición cruza el importe de cada mes con la FECHA de su
-    // encabezado, que vive en otra fila. Ni COUNTIF ni SUMIFS saben cruzar dos rangos de forma.
+    // EL PROMEDIO SE SACA SOBRE MESES CERRADOS, NO SOBRE EL AÑO (13/08/2026): contando el mes en
+    // curso, cargar una factura de este mes BAJABA la proyección de los futuros — el cuadro empeoraba
+    // su pronóstico justo cuando llegaba más información. SUMPRODUCT y no COUNTIF/SUMIFS porque la
+    // condición cruza el importe de cada mes con la FECHA de su encabezado, que vive en otra fila.
     fila[C_NMESES] = `=SUMPRODUCT((${real}<>0)*${CERRADOS})`
-    // El numerador es lo real DE ESOS MESES: si sumara el año entero incluiría lo poco que va del mes
-    // en curso repartido entre meses que no lo contienen, que es el defecto por la otra punta.
-    fila[C_REALCERRADO] = `=SUMPRODUCT(${real}*${CERRADOS})`
+    // LA AUXILIAR PASÓ DE NUMERADOR A PROMEDIO (07/09/2026): el constructor compartido cita UN
+    // promedio ya declarado en vez de recalcular la división adentro de cada uno de los doce meses.
+    // El numerador sigue siendo lo real DE LOS MESES CERRADOS — si sumara el año entero incluiría lo
+    // poco que va del mes en curso repartido entre meses que no lo contienen.
+    fila[C_REALCERRADO] = `=IF($${letra(C_NMESES)}${f}=0;0;SUMPRODUCT(${real}*${CERRADOS})/$${letra(C_NMESES)}${f})`
     // "Total real" NO cambia: es el año entero, incluido lo que ya se cargó del mes en curso, porque
     // es el hecho que el bloque de control de abajo compara contra Compras. Recortarlo haría fallar
     // ese control por algo que no es un error de carga.
@@ -171,12 +181,24 @@ export function grilla() {
   }
   const fTot = push(tot)
 
+  // ═══ LOS SERVICIOS RECURRENTES, QUE HASTA HOY TENÍAN PESTAÑA PROPIA (07/09/2026) ═══
+  //
+  // Pedido del dueño: «unificá las pestañas Recurrentes y Estructura». Contestaban la misma pregunta
+  // con dos generadores y DOS reglas de proyección. El porqué, qué gana y por qué el Cash Flow no se
+  // entera: el encabezado y `filasRecurrentes` de lib/estructura-filas.mjs.
+  const rec = seccionRecurrentes({
+    proveedores: recurrentes, fila0: filas.length + 1, col: COL_LAYOUT, letra, vacia, anio: AÑO,
+    numerar: () => ++nBloque,
+  })
+  for (const fila of rec.filas) push(fila)
+  const fTotRec = rec.fTot ? rec.fTot : null
+
   push(vacia())
   const c1 = vacia()
   // EL TÍTULO NOMBRA SU BLOQUE Y NO ARGUMENTA SOBRE ÉL. La glosa anterior —"QUE ESTE CUADRO SEA
   // EXACTAMENTE EL RUBRO ESTRUCTURA DE COMPRAS"— decía qué tiene que pasar, que es justo lo que las
   // dos filas de abajo miden. Ver `partesDeTitulo` en lib/diseno-unificado.mjs.
-  c1[0] = '2 · CONTROL CONTRA COMPRAS'
+  c1[0] = `${++nBloque} · CONTROL CONTRA COMPRAS`
   push(c1)
   // ═══ NI UNA COLUMNA DE PROSA (04/08) ═══
   //
@@ -208,7 +230,7 @@ export function grilla() {
   // de ARCA, que el OS no escribe.
   push(vacia())
   const arca0 = filas.length + 1
-  for (const b of bloqueControlArca({ titulo: '3 · RESPALDO FISCAL — contra el libro de IVA de ARCA', rubros: ['Estructura'], fila0: arca0 })) {
+  for (const b of bloqueControlArca({ titulo: `${++nBloque} · RESPALDO FISCAL — contra el libro de IVA de ARCA`, rubros: ['Estructura'], fila0: arca0 })) {
     const fila = vacia()
     b.forEach((c, i) => { fila[i] = c })
     push(fila)
@@ -221,7 +243,7 @@ export function grilla() {
   // Diferencia … debe ser $0») restando contra una `B18` vacía, o sea gritando en rojo el total
   // entero del cuadro. Ver lib/celda-de-estructura.mjs.
   const indivisibles = [{ desde: fc - 1, hasta: fc + 2 }, bloqueIndivisible(arca0)]
-  return { filas: resuelto, f0, f1, fTot, fCtrl: fc, rubros, arca0, indivisibles }
+  return { filas: resuelto, f0, f1, fTot, fTotRec, fCtrl: fc, rubros, arca0, indivisibles }
 }
 
 /** El rótulo de la fila de totales. Es el ancla del rango con nombre: si cambia, cambian los dos. */
@@ -277,8 +299,21 @@ async function publicarRangos(google, sheetId, g) {
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const g = grilla()
-  console.log(`${PESTAÑA}: ${g.filas.length} filas x ${ANCHO} columnas · rubros ${g.f0}-${g.f1} · total ${g.fTot}`)
+  // LOS PROVEEDORES RECURRENTES SALEN DE LA PLANILLA, no de una lista tipeada acá: si mañana entra un
+  // servicio nuevo, aparece solo. Rango ABIERTO — con techo, el día que Compras pase esa fila un
+  // proveedor deja de aparecer y nada lo dice. El `--dry` no los lee: es un ensayo sin red.
+  const recurrentes = DRY ? [] : await google.readSheetValues(ID, 'Compras!A4:AC')
+    .then((c) => [...new Set(c.filter((f) => String(f?.[28] ?? '').trim() === RUBRO_RECURRENTE)
+      .map((f) => String(f?.[4] ?? '').trim()).filter(Boolean))].sort())
+    .catch((e) => {
+      // FALLA CERRADO Y GRITA: sin la lectura no se inventa la lista. Publicar la pestaña SIN la
+      // sección borraría los recurrentes del archivo del dueño en silencio, que es peor que no correr.
+      throw new Error(`no pude leer Compras para armar la sección de recurrentes (${e.message}). NO escribo: `
+        + 'publicar sin esa sección le borraría el cuadro entero.')
+    })
+  const g = grilla(recurrentes)
+  console.log(`${PESTAÑA}: ${g.filas.length} filas x ${ANCHO} columnas · rubros ${g.f0}-${g.f1} · total ${g.fTot}`
+    + `${g.fTotRec ? ` · ${recurrentes.length} recurrentes, total ${g.fTotRec}` : ''}`)
   if (DRY) {
     console.log('Ejemplo de celda visible (enero, primer rubro):')
     console.log('  ', g.filas[g.f0 - 1][C_MES0])

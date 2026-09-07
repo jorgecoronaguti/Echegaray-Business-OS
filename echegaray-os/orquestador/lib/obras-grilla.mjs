@@ -548,7 +548,13 @@ export const SECCION_OBRAS = 2
  * EL RÓTULO DEL CIERRE DEL CUADRO DE OBRAS — exportado por lo mismo que `ROTULO_TOTAL_ANO`: lo busca
  * quien LEE la pestaña publicada, y dos textos tipeados de los dos lados divergen sin dar error.
  */
-export const ROTULO_TOTAL_OBRAS = '⇒ TOTAL —'
+// ═══ EL CIERRE DICE «⇒ TOTAL» Y NADA MÁS (07/09/2026) ═══
+//
+// Decía «⇒ TOTAL — 10 OBRAS», y eso AFIRMABA una población que sólo tienen tres de sus seis columnas:
+// «Contratado» suma las 5 obras que declaran contrato en Cobranzas y «Costo proyectado» las 6 que
+// tienen explosión de gastos cargada. Un cierre que promete diez y suma cinco es un número que miente
+// despacio. Cuántas obras hay se lee sin ayuda: las filas están numeradas 2.1 … 2.10.
+export const ROTULO_TOTAL_OBRAS = '⇒ TOTAL'
 
 // ACÁ VIVÍAN `SECCION_COSTO = 4` Y `SECCION_MATERIALES = 5`. Los dos cuadros salieron el 07/09/2026
 // por decisión del dueño («Dos cuadros: el año y las obras»): el costo pasó a ser una COLUMNA del
@@ -924,8 +930,19 @@ function seccionElAno(h, refs) {
   const { cob } = refs
   // EL TÍTULO LLEVA LA FECHA VIVA: sin el día al lado, el lector no sabe si mira la foto de hoy o la
   // de la última corrida del generador. `TODAY()` la mantiene sola.
-  const fTitulo = h.push([`=${quote(`1 · EL AÑO ${ANO} · AL `)}&TEXT(TODAY();"dd/mm/yyyy")`], ['rotulo'])
-  h.rotulos.push({ fila: fTitulo, texto: `1 · EL AÑO ${ANO} · AL 00/00/0000` })
+  // ═══ EL TIPO DE CAMBIO VIAJA EN EL TÍTULO DEL BLOQUE, NO EN UNA LÍNEA DE PROSA (07/09/2026) ═══
+  //
+  // Vivía en el subtítulo de la fila 2, y el dueño VACIÓ esa celda: su regla de oro es «minimalismo
+  // extremo, sin aclaraciones ni explicaciones de nada», y un subtítulo es una explicación. La guarda
+  // respeta ese borrado y no lo vuelve a escribir — pero el TC no es una explicación, es el DATO con
+  // el que están valuadas las columnas. Un importe en pesos que contiene dólares convertidos sin
+  // declarar a qué cambio es un número sin criterio, que es la regla de oro 2.
+  //
+  // Va como FÓRMULA sobre el rango con nombre de CAJA: escrito como texto queda viejo al día
+  // siguiente y nadie se entera.
+  const fTitulo = h.push([`=${quote(`1 · EL AÑO ${ANO} · AL `)}&TEXT(TODAY();"dd/mm/yyyy")`
+    + `&IFERROR(${quote('  ·  USD ')}&TEXT(${RANGO_TC};"#.##0,00");"")`], ['rotulo'])
+  h.rotulos.push({ fila: fTitulo, texto: `1 · EL AÑO ${ANO} · AL 00/00/0000  ·  USD 0.000,00` })
   // LOS CUATRO NÚMEROS SE ALINEAN CON LAS COLUMNAS DEL CUADRO DE ABAJO: la D es el compromiso, la E
   // lo que ya entró, la F lo que falta y la G la alarma. La misma gramática arriba y abajo es la
   // mitad de por qué esto se lee de un vistazo y los cinco cuadros no se leían.
@@ -1094,7 +1111,22 @@ export function grillaObras(ctx = {}) {
     `${ALERTA} Vencido`, 'Costo proyectado', 'Próx. cobro'], ENCABEZADO))
   // Cuántas obras declaradas tiene cada cliente: es lo que habilita la regla del dueño de `tramos`.
   const porCliente = obras.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
-  const bloques = obras.map((o, i) => bloqueObra(h, refs, o, i + 1, porCliente.get(o.cliente) === 1))
+  // ═══ LAS OBRAS SE ORDENAN POR FECHA DE INICIO, NO POR CLIENTE (07/09/2026) ═══
+  //
+  // Un cuadro se ordena por la magnitud que decide (ISO 24896 «Notation for business reporting», la
+  // versión ISO de IBCS publicada el 11/06/2026). Acá la magnitud es el TIEMPO: la pestaña contesta
+  // qué obras hay de acá a fin de año, y agrupadas por cliente el ojo tiene que reconstruir el
+  // calendario a mano. En orden de inicio la columna Fin queda casi monótona y se ve de un vistazo
+  // qué está por cerrar y qué recién arranca.
+  //
+  // ES ADEMÁS LA MISMA LECTURA QUE LA APP: el módulo Obras de app.ecsas.com.ar lista estas mismas
+  // diez obras por fecha de inicio. Dos órdenes distintos para la misma cartera hacen dudar de si son
+  // la misma lista — que es justo lo que la REALIDAD ÚNICA existe para evitar.
+  //
+  // SIN FECHA VA AL FINAL, no al principio: una obra sin inicio no es la más vieja, es la que le falta
+  // un dato, y ordenarla primero la disfrazaría de la más urgente.
+  const enElTiempo = [...obras].sort((a, b) => (a.inicio ?? '9999').localeCompare(b.inicio ?? '9999'))
+  const bloques = enElTiempo.map((o, i) => bloqueObra(h, refs, o, i + 1, porCliente.get(o.cliente) === 1))
   const suma = (col, filas) => `=${filas.map((f) => `${col}${f}`).join('+')}`
   const filasObra = bloques.map((b) => b.fProt)
   const fTotObras = bloques.length ? h.n + 1 : null
@@ -1105,7 +1137,7 @@ export function grillaObras(ctx = {}) {
     // en el evaluador en frío, y el test puede afirmarlo.
     const conContrato = bloques.filter((b) => b.contrato).map((b) => b.fProt)
     const conCosto = bloques.filter((b) => !b.sinCosto).map((b) => b.fProt)
-    h.push([`${ROTULO_TOTAL_OBRAS} ${bloques.length} OBRAS`, '', '',
+    h.push([ROTULO_TOTAL_OBRAS, '', '',
       conContrato.length ? suma('D', conContrato) : SIN_CONTRATO,
       suma('E', filasObra), suma('F', filasObra), suma('G', filasObra),
       conCosto.length ? suma('H', conCosto) : SIN_COSTO, ''],

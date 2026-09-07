@@ -67,8 +67,8 @@ export const PASOS = [
   // una columna vieja; y ANTES de sus tres lectoras —Recurrentes, Materiales y Estructura—, que la
   // suman con SUMIFS en la misma corrida.
   ['cruce-arca-pestana.mjs', '_CRUCE_ARCA — una fila por discrepancia entre Compras y el libro de IVA de ARCA', ['_CRUCE_ARCA']],
-  // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
-  ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados', ['Recurrentes']],
+  // ['recurrentes-pestana.mjs', …] — RETIRADO el 07/09/2026: su cuadro vive dentro de «Estructura».
+  //   Ver PASOS_RETIRADOS al pie.
   // ═══ LAS DOS VISTAS DE CASH FLOW SON UNA MATRIZ: CONCEPTO × TIEMPO (06/08) ═══
   //
   // `cash-flow-rehacer.mjs` escribía las mismas dos pestañas como una matriz de 51 columnas. Pasaron
@@ -501,6 +501,33 @@ export const PASOS = [
  * `vuelve` no es una intención: es un criterio verificable por alguien que no lo escribió.
  */
 export const PASOS_RETIRADOS = Object.freeze([
+  Object.freeze({
+    script: 'recurrentes-pestana.mjs',
+    desde: '2026-09-07',
+    motivo: 'el dueño mandó unificar: «unificá las pestañas Recurrentes y Estructura, vas a tener que '
+      + 'eliminar una y rehacerla respetando mi regla de oro de diseño». Las dos contestaban la misma '
+      + 'pregunta —qué se va por mes en gasto propio y cuánto va a seguir yéndose— sobre dos recortes '
+      + 'del mismo rubro de Compras, con DOS generadores y DOS reglas de proyección que ya habían '
+      + 'divergido en el trato del mes en curso. El cuadro es ahora la sección 2 de «Estructura», y su '
+      + 'única definición vive en lib/estructura-filas.mjs.',
+    // ═══ POR QUÉ ESTO NO LE SACA UN PESO AL CASH FLOW, MEDIDO ANTES DE MOVER NADA ═══
+    //
+    // La pestaña «Recurrentes» era una VISTA, no una fuente: la provisión de cada proveedor la calcula
+    // `lib/libro-extractores-recurrentes.mjs` leyendo COMPRAS (mediana de sus meses cerrados menos lo
+    // ya materializado), y no lee la pestaña ni una vez. Quien SÍ lee una pestaña es `deEstructura`, y
+    // su `ubicarCuadro` corta en el primer rótulo que no reconoce —«TOTAL ESTRUCTURA»—, así que las
+    // filas de recurrentes quedan fuera de esa lectura por construcción.
+    //
+    vuelve: 'este paso NO vuelve: su cuadro ya no existe como pestaña. El script queda en el árbol '
+      + 'porque sus tests documentan el criterio del mes en curso que la unificación adoptó; se borra '
+      + 'cuando la pestaña «Recurrentes» esté eliminada del archivo y una corrida del pipeline haya '
+      + 'publicado la sección 2 de «Estructura» con sus proveedores leídos de Compras.',
+    cuesta: [
+      'la pestaña «Recurrentes» queda congelada con su último contenido hasta que se la borre a mano '
+      + '(borrar una pestaña es irreversible desde la API: lo firma el dueño)',
+    ],
+    // ESTO NO LE SACA UN PESO AL CASH FLOW, y se midió antes de mover nada — ver el bloque de arriba.
+  }),
   Object.freeze({
     script: 'proveedores-materiales-pestana.mjs',
     desde: '2026-08-14',

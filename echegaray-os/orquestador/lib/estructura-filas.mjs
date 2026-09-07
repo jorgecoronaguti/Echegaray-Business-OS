@@ -84,3 +84,99 @@ export function celdasDelAnio({ fila, criterio, col, letra }) {
   }
   return { aux, visible }
 }
+
+/**
+ * LAS FILAS DE LA SECCIÓN «SERVICIOS RECURRENTES» DENTRO DE LA PESTAÑA `Estructura`.
+ *
+ * ═══ POR QUÉ ESTÁN ACÁ Y NO EN SU PROPIA PESTAÑA (07/09/2026) ═══
+ *
+ * El dueño mandó unificar. Las dos familias contestan la misma pregunta —qué se va por mes en gasto
+ * propio y cuánto va a seguir yéndose— y hasta hoy la contestaban con DOS proyecciones distintas
+ * (ver el encabezado de este archivo). Una pestaña, una definición.
+ *
+ * ═══ LO QUE ESTA MUDANZA NO TOCA, Y HAY QUE DECIRLO ═══
+ *
+ * EL CASH FLOW NO SE ENTERA. Verificado antes de mover nada: `lib/libro-extractores-recurrentes.mjs`
+ * calcula la provisión de cada proveedor leyendo COMPRAS, no la pestaña — la pestaña `Recurrentes`
+ * era una vista, no una fuente. `deEstructura` sí lee la pestaña `Estructura`, y su `ubicarCuadro`
+ * corta en el primer rótulo que no reconoce («TOTAL ESTRUCTURA»), así que estas filas quedan fuera
+ * de su lectura por construcción: los sub-rubros de Estructura y el rubro «Servicios recurrentes»
+ * son universos disjuntos de Compras y no pueden contarse dos veces.
+ *
+ * @param {object} o
+ * @param {string[]} o.proveedores  los que facturaron en el rubro, derivados de Compras
+ * @param {number} o.fila0          la fila (base 1) donde arranca la primera
+ * @param {object} o.col            {mes0, aux0, nmeses, prom, filaCab, total, ancho}
+ * @param {(i:number)=>string} o.letra
+ * @param {()=>any[]} o.vacia       una fila nueva, ya llena del centinela VACIO
+ * @returns {{filas:any[][], f0:number, f1:number}}
+ */
+export function filasRecurrentes({ proveedores = [], fila0, col, letra, vacia }) {
+  const filas = []
+  for (const [i, prov] of proveedores.entries()) {
+    const f = fila0 + i
+    const fila = vacia()
+    fila[0] = prov
+    const { aux, visible } = celdasDelAnio({ fila: f, criterio: CRITERIO.proveedor, col, letra })
+    for (let m = 0; m < 12; m++) {
+      fila[col.aux0 + m] = aux[m]
+      fila[col.mes0 + m] = visible[m]
+    }
+    const real = `$${letra(col.aux0)}${f}:$${letra(col.aux0 + 11)}${f}`
+    fila[col.total] = `=SUM(${real})`
+    // LAS DOS AUXILIARES DEL PROMEDIO, con la MISMA definición que las filas de sub-rubro: meses
+    // CERRADOS con gasto, y lo real de esos meses. Dos definiciones del mismo promedio en la misma
+    // pestaña se desincronizan sin dar error — es exactamente lo que pasaba con las dos pestañas.
+    fila[col.nmeses] = `=SUMPRODUCT((${real}<>0)*${col.cerrados})`
+    // EL PROMEDIO DECLARADO, no recalculado en cada mes: doce recálculos del mismo número son doce
+    // lugares donde se puede desincronizar. Guarda de cero porque un proveedor que todavía no
+    // facturó en ningún mes cerrado divide por cero y publica #DIV/0! en doce celdas.
+    fila[col.prom] = `=IF($${letra(col.nmeses)}${f}=0;0;SUMPRODUCT(${real}*${col.cerrados})/$${letra(col.nmeses)}${f})`
+    filas.push(fila)
+  }
+  return { filas, f0: fila0, f1: fila0 + filas.length - 1 }
+}
+
+/**
+ * LA SECCIÓN ENTERA DE SERVICIOS RECURRENTES: su título, su encabezado, sus filas y su cierre.
+ *
+ * Devuelve filas listas para empujar a la grilla, y la fila (base 1) de su TOTAL — o `null` si no
+ * hay ningún proveedor, que es el caso del ensayo en seco y el de una Compras sin ese rubro. UNA
+ * SECCIÓN VACÍA NO SE DIBUJA: un título con un encabezado y nada debajo se lee como un cuadro roto.
+ *
+ * @param {object} o  `proveedores`, `fila0`, `col`, `letra`, `vacia`, `anio`, y `numerar()` que
+ *   devuelve el número de bloque —se cuenta, no se tipea: sin la sección, los de abajo se corren—.
+ */
+export function seccionRecurrentes({ proveedores = [], fila0, col, letra, vacia, anio, numerar }) {
+  if (!proveedores.length) return { filas: [], fTot: null }
+  const salida = []
+  salida.push(vacia())
+  const titulo = vacia(); titulo[0] = `${numerar()} · LOS SERVICIOS RECURRENTES, MES A MES`
+  salida.push(titulo)
+  const cab = vacia()
+  cab[0] = 'Proveedor'
+  for (let m = 0; m < 12; m++) cab[col.mes0 + m] = `1/${m + 1}/${anio}`
+  cab[col.total] = 'Total real'
+  cab[col.proy] = 'Proyectado'
+  cab[col.totalAnio] = `Total ${anio}`
+  salida.push(cab)
+  const f0 = fila0 + salida.length
+  const r = filasRecurrentes({ proveedores, fila0: f0, col, letra, vacia })
+  for (const [i, fila] of r.filas.entries()) {
+    const f = f0 + i
+    fila[col.totalAnio] = `=SUM($${letra(col.mes0)}${f}:$${letra(col.mes0 + 11)}${f})`
+    fila[col.proy] = `=$${letra(col.totalAnio)}${f}-$${letra(col.total)}${f}`
+    salida.push(fila)
+  }
+  const tot = vacia()
+  tot[0] = ROTULO_TOTAL_RECURRENTES
+  for (const c of [...Array(12).keys()].map((m) => col.mes0 + m).concat([col.total, col.proy, col.totalAnio])) {
+    tot[c] = `=SUM(${letra(c)}${r.f0}:${letra(c)}${r.f1})`
+  }
+  salida.push(tot)
+  return { filas: salida, fTot: fila0 + salida.length - 1 }
+}
+
+/** El cierre de la sección de recurrentes. Va APARTE del de Estructura a propósito: son dos universos
+ *  disjuntos de Compras y sumarlos en una sola línea haría imposible controlarlos contra su rubro. */
+export const ROTULO_TOTAL_RECURRENTES = 'TOTAL SERVICIOS RECURRENTES'

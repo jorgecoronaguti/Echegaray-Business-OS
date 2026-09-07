@@ -261,8 +261,27 @@ test('el cierre del contratado y el del costo citan SÓLO las filas que publican
   assert.ok(conCosto.length < filasObra.length, 'hay obras sin costo cargado: si no, este test no prueba nada')
 })
 
-test('el rótulo del cierre dice cuántas obras suma: si entra una y el rótulo no cambia, se ve', () => {
-  assert.equal(cel(g, `A${g.fTotObras}`), `${ROTULO_TOTAL_OBRAS} ${OBRAS_FUTURAS.length} OBRAS`)
+test('el cierre NO afirma una población que sólo tienen algunas de sus columnas', () => {
+  // Decía «⇒ TOTAL — 10 OBRAS» y tres de sus seis columnas suman menos: «Contratado» cita sólo las
+  // obras que declaran contrato en Cobranzas y «Costo proyectado» sólo las que tienen explosión de
+  // gastos. Un cierre que promete diez y suma cinco miente despacio. Cuántas hay lo dicen las filas,
+  // numeradas 2.1 … 2.10.
+  assert.equal(cel(g, `A${g.fTotObras}`), ROTULO_TOTAL_OBRAS)
+  assert.ok(!/\d/.test(ROTULO_TOTAL_OBRAS), 'el rótulo del cierre no lleva un conteo')
+  const conContrato = g.bloques.filter((b) => b.contrato).length
+  assert.ok(conContrato < OBRAS_FUTURAS.length, 'si todas declararan contrato este test no probaría nada')
+})
+
+test('LAS OBRAS SE LEEN COMO UNA LÍNEA DE TIEMPO: ordenadas por inicio, igual que la app', () => {
+  // ISO 24896 («Notation for business reporting», 11/06/2026): un cuadro se ordena por la magnitud
+  // que decide. Acá es el TIEMPO. Y es la MISMA lectura que el módulo Obras de app.ecsas.com.ar —
+  // dos órdenes distintos para la misma cartera hacen dudar de si son la misma lista.
+  const inicios = g.bloques.map((b) => OBRAS_FUTURAS.find((o) => o.clave === b.clave).inicio ?? '9999')
+  assert.deepEqual(inicios, [...inicios].sort((a, b) => a.localeCompare(b)), 'las obras salen desordenadas')
+  // Y el rótulo de cada fila sigue al orden publicado, no al del módulo de datos.
+  for (const [i, b] of g.bloques.entries()) {
+    assert.match(g.rotulos.find((r) => r.fila === b.fProt).texto, new RegExp(`^${SECCION_OBRAS}\\.${i + 1} · `))
+  }
 })
 
 test('sin obras no se arma media pestaña: no se publica un cierre que no existe', () => {

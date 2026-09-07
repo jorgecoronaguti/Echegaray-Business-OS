@@ -156,7 +156,7 @@ function cuadroDe(realPorMes, { rubro = 'Combustible', hoy = HOY } = {}) {
   return {
     totalReal: leer(`N${f}`),        // el año entero — lo que el control compara contra Compras
     mesesCerrados: leer(`AE${f}`),   // el divisor
-    realCerrado: leer(`AF${f}`),     // el numerador
+    promedioCerrado: leer(`AF${f}`), // el PROMEDIO de los meses cerrados (07/09/2026: era el numerador)
     proyectado: leer(`O${f}`),
     mes: (m) => leer(`${COL_MES[m]}${f}`),
   }
@@ -165,12 +165,12 @@ function cuadroDe(realPorMes, { rubro = 'Combustible', hoy = HOY } = {}) {
 test('EL PROMEDIO IGNORA EL MES EN CURSO: es una observación incompleta, no un mes flojo', () => {
   const hoy = cuadroDe(COMBUSTIBLE)
   assert.equal(hoy.mesesCerrados, 7, 'enero a julio: agosto no cuenta hasta que termine')
-  assert.equal(hoy.realCerrado, 5913229)
+  assert.equal(Math.round(hoy.promedioCerrado), Math.round(5913229 / 7))
   assert.equal(hoy.mes(SEP), RITMO)
   // Y ahora entra la primera factura de agosto, parcial. Ni el divisor ni el numerador se mueven.
   const conParcial = cuadroDe(COMBUSTIBLE.map((v, m) => (m === AGO ? AGOSTO_PARCIAL : v)))
   assert.equal(conParcial.mesesCerrados, 7, 'agosto entró al divisor: el mes en curso no terminó')
-  assert.equal(conParcial.realCerrado, 5913229, 'agosto entró al numerador del promedio')
+  assert.equal(Math.round(conParcial.promedioCerrado), Math.round(5913229 / 7), 'agosto entró al promedio')
   // "Total real" SÍ lo incluye: es un hecho del año y es lo que el bloque de control compara contra
   // Compras. Recortarlo haría fallar ese control por algo que no es un error de carga.
   assert.equal(conParcial.totalReal, 6078230)
@@ -196,21 +196,25 @@ test('EL DEFECTO QUE MOTIVA TODO: una factura del mes en curso NO baja la proyec
   assert.equal(Math.round(RITMO_ROTO * 4 - RITMO * 4), -339873, 'la pérdida que el defecto producía')
 })
 
-test('AGOSTO SIGUE MOSTRANDO SU REAL PARCIAL — es otro defecto, y NO se toca acá', () => {
-  // LO QUE ESTE FRENTE NO ARREGLA, ESCRITO PARA QUE NO SE PIERDA. La celda del mes EN CURSO es
-  // `IF(real<>0;real;proyección)`: en cuanto entra la primera factura muestra el parcial ($165.001)
-  // en vez de lo esperado ($844.747), así que agosto BAJA a medida que llegan comprobantes. Es el
-  // mismo defecto por la otra punta y en pesos es mayor que el que se arregló ($679.746 contra
-  // $339.873, sólo en Combustible). Recurrentes ya lo resuelve con MAX(real; proyección).
+test('EL MES EN CURSO MUESTRA LO ESPERADO, NO EL PARCIAL: se unificó con Recurrentes (07/09/2026)', () => {
+  // ═══ EL DEFECTO QUE ESTE ARCHIVO DECLARABA COMO «NO SE TOCA ACÁ», ARREGLADO ═══
   //
-  // NO SE ARREGLA EN ESTE FRENTE, y la razón es que la decisión no es mía: mostrar $844.747 donde
-  // Compras dice $165.001 es poner un estimado arriba de un hecho, y eso lo firma el dueño.
-  // MEDIDO, ADEMÁS: no afecta al Cash Flow Mensual. Para el mes en curso `mesCerrado()` da TRUE y la
-  // línea toma el real de Compras, no esta celda; de esta pestaña sólo lee los meses futuros.
+  // La celda del mes EN CURSO era `IF(real<>0;real;proyección)`: en cuanto entraba la primera
+  // factura mostraba el parcial ($165.001) en vez de lo esperado ($844.747), así que agosto BAJABA a
+  // medida que llegaban comprobantes. En pesos era MAYOR que el defecto que ya se había arreglado
+  // ($679.746 contra $339.873, sólo en Combustible).
+  //
+  // NO SE ARREGLÓ ACÁ PORQUE LA DECISIÓN NO ERA MÍA — mostrar un estimado arriba de un hecho lo
+  // firma el dueño— y la firmó al mandar unificar las dos pestañas: Recurrentes ya usaba
+  // `MAX(real; proyección)` desde el 13/08 y él lo pidió por el caso Movistar, que factura el 25 y
+  // dejaba el mes en «—» veinticinco días. Al unificar, gana esa regla para las dos familias.
+  //
+  // NO AFECTA AL CASH FLOW MENSUAL, medido: para el mes en curso `mesCerrado()` da TRUE y la línea
+  // toma el real de Compras, no esta celda; de esta pestaña sólo lee los meses futuros.
   const c = cuadroDe(COMBUSTIBLE.map((v, m) => (m === AGO ? AGOSTO_PARCIAL : v)))
-  assert.equal(c.mes(AGO), AGOSTO_PARCIAL,
-    'si esto cambió a MAX(real;proyección), el defecto declarado se arregló: actualizar la nota')
-  assert.equal(Math.round(RITMO - AGOSTO_PARCIAL), 679746, 'lo que agosto deja de mostrar')
+  assert.equal(Math.round(c.mes(AGO)), Math.round(RITMO), 'el mes en curso muestra el MAYOR de los dos')
+  assert.ok(c.mes(AGO) > AGOSTO_PARCIAL, 'y no baja al llegar una factura parcial')
+  assert.equal(Math.round(RITMO - AGOSTO_PARCIAL), 679746, 'lo que agosto dejaba de mostrar')
 })
 
 test('UN MES CERRADO EN $0 SIGUE CONTANDO COMO CERRADO: la ventana es de calendario, no de datos', () => {
@@ -219,14 +223,14 @@ test('UN MES CERRADO EN $0 SIGUE CONTANDO COMO CERRADO: la ventana es de calenda
   const conMayoEnCero = COMBUSTIBLE.map((v, m) => (m === MAY ? 0 : v))
   const sinMayo = cuadroDe(conMayoEnCero)
   assert.equal(sinMayo.mesesCerrados, 6, 'mayo cerró sin facturar: no divide el promedio')
-  assert.equal(sinMayo.realCerrado, 5913229 - 1063986)
+  assert.equal(Math.round(sinMayo.promedioCerrado), Math.round((5913229 - 1063986) / 6))
   // La MISMA plata, movida de agosto (en curso) a mayo (cerrado), sí entra: la diferencia es la fecha.
   const enMayo = cuadroDe(conMayoEnCero.map((v, m) => (m === MAY ? AGOSTO_PARCIAL : v)))
   const enAgosto = cuadroDe(conMayoEnCero.map((v, m) => (m === AGO ? AGOSTO_PARCIAL : v)))
   assert.equal(enMayo.mesesCerrados, 7, 'un mes cerrado que factura entra al divisor')
   assert.equal(enAgosto.mesesCerrados, 6, 'el mes en curso no entra al divisor por facturar')
-  assert.equal(enMayo.realCerrado, sinMayo.realCerrado + AGOSTO_PARCIAL)
-  assert.equal(enAgosto.realCerrado, sinMayo.realCerrado)
+  assert.equal(Math.round(enMayo.promedioCerrado), Math.round(((5913229 - 1063986) + AGOSTO_PARCIAL) / 7))
+  assert.equal(Math.round(enAgosto.promedioCerrado), Math.round(sinMayo.promedioCerrado))
 })
 
 test('EL MÍNIMO DE MESES SE MIDE SOBRE CERRADOS: 3 cerrados + una factura de este mes proyecta $0', () => {
