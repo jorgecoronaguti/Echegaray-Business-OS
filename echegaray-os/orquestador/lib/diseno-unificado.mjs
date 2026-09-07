@@ -245,7 +245,13 @@ export function bloquesDe(filas = []) {
   const out = []
   filas.forEach((f, i) => {
     if (!soloEnA(f)) return
-    const m = String(f?.[0] ?? '').trim().match(ES_SECCION_NUM)
+    // EL TÍTULO SE LEE COMO LO VE EL LECTOR, NO COMO ESTÁ ESCRITO. Medido el 06/09 en «OBRAS»: el
+    // bloque 1 es `="1 · COBRANZAS PENDIENTES AL "&TEXT(TODAY();"dd/mm/yyyy")` —el corte va adentro
+    // del título y por eso es fórmula—, y esta función lo leía crudo. Con el `=` adelante no matchea
+    // `ES_SECCION_NUM`, así que el bloque 1 no existía para el control y los otros cuatro quedaban
+    // corridos un lugar: cuatro `numeracion-con-hueco` sobre una pestaña numerada 1,2,3,4,5 sin un
+    // solo hueco. El resto del módulo ya leía con `textoVisible`; esta función se había quedado atrás.
+    const m = textoVisible(f?.[0]).trim().match(ES_SECCION_NUM)
     if (m && m[2] === undefined) out.push({ fila: i + 1, n: Number(m[1]), titulo: m[3] })
   })
   return out
@@ -276,7 +282,9 @@ export function numeracionRota(filas = []) {
  */
 export function encabezadoRoto(filas = [], { pestana = '' } = {}) {
   const mal = []
-  const a1 = String(filas?.[0]?.[0] ?? '').trim()
+  // Por lo mismo que en `bloquesDe`: el nombre de la pestaña se compara con lo que se VE. Una A1
+  // armada con fórmula —para que el título lleve su fecha de corte— no es un título distinto.
+  const a1 = textoVisible(filas?.[0]?.[0]).trim()
   const restoF1 = (filas?.[0] ?? []).slice(1).some((c) => String(c ?? '').trim())
   const a2 = textoVisible(filas?.[1]?.[0])
   const f3 = (filas?.[2] ?? []).some((c) => String(c ?? '').trim())

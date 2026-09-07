@@ -48,6 +48,10 @@ async function main() {
   const seco = process.argv.includes('--dry')
   const d = construir()
   const { filas } = d
+  // LOS HALLAZGOS SE DICEN AL CORRER, NO SE DIBUJAN EN LA PESTAÑA. Los alias probables —dos nombres
+  // que parecen la misma persona sin CUIT que lo confirme— estaban escritos al pie del cuadro, donde
+  // nadie los acciona y donde el contrato no admite una nota. Acá los ve quien corre el pipeline.
+  for (const a of d.avisos ?? []) console.warn(`  ⚠ ${a}`)
   if (seco) {
     console.log(`${PESTANA}: ${filas.length} filas`)
     for (const [i, f] of filas.entries()) {

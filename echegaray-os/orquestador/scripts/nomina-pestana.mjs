@@ -39,7 +39,7 @@ import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
 import { bancoDeLaPersona, reparto50DeLiquidacionFinal, tieneLiquidacionFinal, esSubcontratista, comoSeEscribe, CUIL_POR_PERSONA_DE_PLANILLA, COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA, SUELDO_NETO_OFICINA } from '../lib/nomina-banco-recibo.mjs'
 import {
   claveDeCategoria, convenioDe, esInferida, lineaEquivalenciasInferidas,
-  jornalConAumento, PORCENTAJE_DE_AUMENTO,
+  jornalConAumento,
 } from '../lib/uocra-paritaria.mjs'
 import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
 import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
@@ -415,8 +415,12 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   const fila = (...c) => { destino.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
 
   fila(PESTANA)
-  fila('El plantel de hoy: cuánto hay que pagarle a cada uno esta quincena, y cuánto costaría desvincularlo.')
-  fila(`Sale del espejo de la planilla de jornales. Al ${fecha(hoy)}.`)
+  // EL ENCABEZADO SON TRES FILAS Y LA TERCERA VA VACÍA (contrato: lib/diseno-unificado.mjs).
+  // Eran dos renglones de texto y la fila 3 ocupada, así que el encabezado se comía el respiro que
+  // separa el título del primer bloque. Y el primero ARGUMENTABA («cuánto hay que pagarle…»): la
+  // línea de procedencia declara qué contesta, de dónde sale y a qué fecha — no explica para qué
+  // sirve la pestaña.
+  fila(`Qué se le paga a cada uno esta quincena · espejo de la planilla de jornales · al ${fecha(hoy)}`)
   fila()
 
   // ═══ 1 · LO QUE HAY QUE PAGAR, EN LOS DOS ESCENARIOS ═══
@@ -489,19 +493,18 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // UNA SOLA FÓRMULA, no texto con un «=» adentro: una celda es fórmula o es texto, no las dos.
   // El patrón de TEXT va en formato US («#,##0») aunque el archivo sea es-AR — la API lo interpreta
   // en US y lo MUESTRA con el punto de miles local; escribirlo con el separador local lo rompe.
-  // ═══ LA GLOSA DICE LA VERDAD SOBRE LA ÚNICA TARJETA QUE NO ES UNA SUMA ═══
+  // ═══ LA GLOSA DEL TITULAR SE FUE, Y NO SE PIERDE NINGÚN NÚMERO ═══
   //
-  // «EN EFECTIVO» y «TOTAL A PAGAR» SÍ son la suma de su columna. «POR TRANSFERENCIA» no puede
-  // serlo: la columna POR BANCO de las liquidaciones muestra el ACUERDO —la mitad blanca entera— y
-  // de ahí ya salieron los $600.000 del lote del 28/08. Sumarla pediría transferir dos veces.
+  // Debajo de las tres tarjetas iba un renglón de 101 caracteres que decía cómo se suman las
+  // columnas y cuánto se había entregado ya. Las dos cosas están publicadas sin él: la suma la hace
+  // la propia tarjeta, y lo entregado son las columnas ADELANTO y YA TRANSFERIDO, que tienen su
+  // total en la fila «⇒» de cada cuadro. Un renglón que repite en palabras lo que el cuadro muestra
+  // en cifras es exactamente la aclaración que el dueño mandó sacar el 05/09/2026.
   //
-  // Antes la glosa afirmaba «cada cifra es la suma de su columna», que era falso justo donde
-  // importaba. Ahora dice los dos números y la resta: el que lee puede verificarla mirando.
-  // LA DIFERENCIA SE CALCULA, NO SE SUPONE. No es Σ«YA TRANSFERIDO» ($1.200.000): de esos, los
-  // $600.000 de los obreros ya están descontados dentro de su EFECTIVO. Lo que falta explicar es
-  // sólo lo que sigue vivo en la columna POR BANCO, y eso es exactamente Σbanco − (Σtotal − Σefectivo).
-  fila(`="${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} · paga 01/09 · cada cifra es la suma de su columna, y las dos primeras dan la tercera. " `
-    + `& "Lo ya entregado (" & TEXT(${deTodos('C')}+${deTodos('D')};"$ #,##0") & " entre adelantos y el lote del 28/08) ya está descontado."`)
+  // LO QUE SÍ ERA CONOCIMIENTO Y NO SE PIERDE PORQUE VIVE ACÁ: «POR TRANSFERENCIA» no es la suma
+  // simple de la columna POR BANCO. En las liquidaciones finales esa columna muestra el ACUERDO
+  // —la mitad blanca entera— y de ahí ya salieron los $600.000 del lote del 28/08; sumarla cruda
+  // pediría transferir dos veces. Por eso la tarjeta suma sólo las filas de total («⇒»).
   fila('')
 
   fila(seccion(1, `qué se le paga a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
@@ -521,8 +524,11 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // El método sigue escrito donde se ejecuta: el 50/50 en `ACUERDO_BANCO`, la brecha en
   // `PORCENTAJE_DE_AUMENTO` y su comentario, y la jornada (9 h L–J, 8 h viernes) en el cálculo de
   // `diasPendientes`.
+  // EL DATO SÍ, EL DETALLE NO. Acá se listaba día por día («07/09 9 h · 08/09 9 h · …»): 110
+  // caracteres para publicar un número —las horas que se completan— que la columna HORAS ya suma
+  // por persona. El día por día vive en «_J_OBREROS», que es la planilla de la que sale.
   if (quincena.diasPendientes.length) {
-    fila(`Jornadas completadas: ${quincena.diasPendientes.map((d) => `${d.etiqueta} ${d.horas} h`).join(' · ')} = ${quincena.horasPendientes} h`)
+    fila(`Jornadas completadas: ${quincena.diasPendientes.length} · ${quincena.horasPendientes} h`)
   }
   // ═══ LAS TRES TARIFAS, UNA AL LADO DE LA OTRA (29/08) ═══
   //
@@ -871,32 +877,36 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // B es la categoría (texto, no se suma); de C a J la plata; K las horas. L y M son tarifas —
     // promediar $/h es inventar un número que nadie cobra, así que quedan vacías.
     '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), '', '')
-  fila(sub(`Cerrar el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la brecha hasta el piso de cada categoría cuesta `
-    + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. Después del aumento el plantel SIGUE por `
-    + `debajo de la escala: es la decisión del dueño, y la mitad de la brecha que queda es exposición laboral abierta.`))
-  // ═══ QUIÉNES COBRAN Y NO ESTÁN EN ESTE CUADRO ═══
+  // ═══ LAS CUATRO NOTAS AL PIE DE ESTE CUADRO SE FUERON A LA CONSOLA (06/09/2026) ═══
   //
-  // Tienen recibo —o sea, se les paga— y no tienen horas cargadas en la planilla de jornales, así
-  // que su TOTAL no se puede calcular. Se muestran igual, con el banco que dice el recibo y el
-  // efectivo en blanco: un cero ahí les pagaría sólo la parte registrada y se leería como correcto.
+  // Eran 1.400 caracteres de párrafo debajo del total —la brecha de convenio, quiénes cobran sin
+  // estar en la planilla, quiénes ya cobraron su liquidación final, quiénes no tienen recibo— y
+  // ninguna se podía quedar: el dueño pidió el 05/09 «minimalismo extremo, sin aclaraciones ni
+  // explicaciones de nada», y el contrato (lib/diseno-unificado.mjs, regla 10) prohíbe la nota al pie.
+  //
+  // PERO BORRARLAS A SECAS APAGA UN AVISO, y ésa es la forma exacta en que nace un control que no
+  // puede dar rojo. Cada una se resolvió por lo que era:
+  //
+  //   · LA BRECHA DE CONVENIO no es un hallazgo: es una decisión ya tomada, y sus dos números están
+  //     publicados en el cuadro («$/h hoy» y «$/h c/aumento», columna por columna). El párrafo los
+  //     repetía en palabras. Se borra.
+  //   · LOS LIQUIDADOS no faltan: están en el cuadro 3 con su plata. El párrafo avisaba de algo que
+  //     el lector encuentra dos bloques más abajo. Se borra.
+  //   · QUIÉNES COBRAN SIN ESTAR EN LA PLANILLA y QUIÉNES NO TIENEN RECIBO **sí** son hallazgos
+  //     vivos: hay que cargarles las horas o conseguir el recibo. Van por `console.warn` del
+  //     generador, que es donde el que corre el pipeline los ve — no en la pestaña que se mira el
+  //     día de pago. Un hallazgo se resuelve; no se anota al pie de un cuadro.
+  //
+  // Y el de «sin recibo» además no informaba nada que el cuadro no muestre: a quien no tiene recibo
+  // le sale POR BANCO desde la planilla, y su columna se ve.
   const fueraDePlanilla = COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA
     .map((x) => ({ ...x, r: [...recibosPorCuil.values()].find((v) => String(v.legajo) === String(x.legajo)) }))
     .filter((x) => x.r)
-  if (fueraDePlanilla.length) {
-    fila(sub(`${fueraDePlanilla.length} persona(s) cobran esta quincena y NO están en la planilla de jornales: `
-      + `${fueraDePlanilla.map((x) => `${x.nombre} (leg. ${x.legajo}, banco ${Math.round(x.r.neto).toLocaleString('es-AR')})`).join(' · ')}. `
-      + `Sin horas cargadas no hay TOTAL, así que su efectivo no se puede calcular — hay que cargarles las horas.`))
+  for (const x of fueraDePlanilla) {
+    console.warn(`  ⚠ ${x.nombre} (leg. ${x.legajo}) cobra esta quincena y no tiene horas en la planilla: `
+      + `su efectivo no se puede calcular hasta que se le carguen`)
   }
-  if (liquidados.length) {
-    fila(sub(`${liquidados.length} persona(s) salieron de este cuadro porque ya cobraron su liquidación final: `
-      + `${liquidados.join(' · ')}. Tienen horas cargadas hasta el día de la baja, pero NO cobran la quincena. `
-      + `Su plata está en el cuadro 3.`))
-  }
-  if (sinRecibo.length) {
-    fila(sub(`${sinRecibo.length} sin recibo confirmado para esta quincena: `
-      + `${sinRecibo.map((x) => `${x.nombre} (${x.porQue})`).join(' · ')}. `
-      + `A ésos el banco les sale de la planilla, no del recibo.`))
-  }
+  for (const x of sinRecibo) console.warn(`  ⚠ ${x.nombre}: sin recibo de esta quincena (${x.porQue}) — el banco sale de la planilla`)
 
   // ═══ 2 · OFICINA — MENSUAL, NO QUINCENAL ═══
   //
@@ -933,8 +943,11 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // El neto ACORDADO sí es mensual ($1.800.000), así que la quincena vale la mitad y el efectivo
     // completa hasta ahí. Las dos cosas conviven sin contradecirse: el acuerdo se pacta por mes, la
     // plata se paga por quincena.
-    fila(`Neto acordado de ${(Object.values(SUELDO_NETO_OFICINA)[0] ?? 0).toLocaleString('es-AR')} para CADA UNO. `
-      + 'Por banco va lo que dice su recibo y el efectivo COMPLETA hasta ese neto: si el recibo sube, baja el efectivo.')
+    // EL CRITERIO NO SE ESCRIBE EN LA PESTAÑA. Acá iba «por banco va lo que dice su recibo y el
+    // efectivo COMPLETA hasta ese neto: si el recibo sube, baja el efectivo» — es cómo se calcula,
+    // y vive donde se calcula (`SUELDO_NETO_OFICINA` y el reparto de abajo). Queda el DATO: el neto
+    // acordado, que es un número que no sale de ninguna otra celda de la pestaña.
+    fila(`Neto acordado por mes: ${(Object.values(SUELDO_NETO_OFICINA)[0] ?? 0).toLocaleString('es-AR')} c/u`)
     // MISMA LETRA, MISMO SIGNIFICADO EN LOS TRES CUADROS. La columna B es la categoría también acá,
     // aunque venga vacía: la planilla de oficina NO trae categoría —`COL_OFICINA` la declara `null`—
     // y el «—» dice eso. Correr la plata una columna para ahorrarse dos guiones obliga a releer el
@@ -1015,18 +1028,16 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // La salida no es pelearse con la guarda —hace bien su trabajo— sino no dejar nunca un hueco:
     // la fila SIEMPRE lleva texto, y el texto nuevo pisa al viejo. De paso el cuadro dice de cuánto
     // mes está hablando sin que haya que contar recibos.
-    fila(sub(incompletos.length
-      ? `INCOMPLETO: el mes son DOS quincenas y falta cargar la primera de ${incompletos.join(' · ')}. `
-        + 'Lo que publica esta tabla es lo que hay, no el mes entero: cuando entre el recibo que falta, el banco y el efectivo suben solos.'
-      : `Mes completo: las dos quincenas de ${mes} están cargadas para las ${deOficina.length} persona(s) de oficina.`))
-    if (sinRecibOfi.length) {
-      fila(sub(`Sin recibo del mes: ${sinRecibOfi.join(' · ')}. Sin la parte blanca no se puede calcular el efectivo: `
-        + 'a ésos la pestaña no les afirma ningún importe.'))
-    }
-    if (sinAcuerdoNeto.length) {
-      fila(sub(`Sin neto acordado declarado: ${sinAcuerdoNeto.join(' · ')}. El neto de oficina no se calcula —es un `
-        + 'acuerdo— así que se declara en SUELDO_NETO_OFICINA o la fila queda sin total.'))
-    }
+    // EL CONTROL SE QUEDA; SU EXPLICACIÓN, NO. Las dos ramas medían 137 y 93 caracteres explicando
+    // qué implica cada estado. El estado se dice en cuatro palabras, y QUIÉN está incompleto se lee
+    // en la columna «Quincenas del mes» de su propia fila — que es donde el lector ya está mirando.
+    fila(sub(incompletos.length ? `▲ INCOMPLETO · 1ª quincena sin cargar` : `Mes completo · ${mes}`))
+    // LOS DOS HALLAZGOS VAN A LA CONSOLA. Un recibo que falta y un neto sin declarar son cosas que
+    // hay que ir a buscar, no información que se lee el día de pago: el que corre el pipeline los
+    // ve, y la pestaña no publica el pendiente de nadie. La fila del afectado ya lo muestra sin
+    // texto — sin recibo, su POR BANCO queda en cero; sin neto acordado, su fila no tiene total.
+    for (const n of sinRecibOfi) console.warn(`  ⚠ ${n}: sin recibo de ${mes} — no se puede calcular su efectivo`)
+    for (const n of sinAcuerdoNeto) console.warn(`  ⚠ ${n}: sin neto acordado en SUELDO_NETO_OFICINA — su fila queda sin total`)
   }
 
   // ═══ 3 · LAS LIQUIDACIONES FINALES, 50 EN BLANCO Y 50 EN EFECTIVO ═══
@@ -1041,8 +1052,10 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   if (finales.size) {
     fila('')
     fila(seccion(3, 'lo que terminó · liquidaciones finales'))
-    fila('Lo liquidado por el estudio es la mitad BLANCA del acuerdo; el efectivo es un monto igual. '
-      + 'Lo que sale de la caja es la suma de las dos columnas, o sea el doble del recibo.')
+    // CÓMO SE COMPONE LA LIQUIDACIÓN FINAL VIVE EN `reparto50DeLiquidacionFinal`, NO EN LA PESTAÑA:
+    // lo liquidado por el estudio es la mitad blanca del acuerdo y el efectivo es un monto igual, así
+    // que lo que sale de la caja es el doble del recibo. El cuadro lo muestra con sus tres columnas
+    // —recibo, efectivo y total— una al lado de la otra: el renglón sólo repetía la suma en palabras.
     // ═══ LA MISMA COLUMNA SIGNIFICA LO MISMO EN TODA LA PESTAÑA ═══
     //
     // Este cuadro tenía la fecha en B y la plata corrida a partir de C, mientras el de arriba tenía
@@ -1158,23 +1171,31 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // G ES «QUEDA POR PAGAR» EN ESTE CUADRO Y «TOTAL A PAGAR» EN LOS OTROS DOS, y las dos cosas son
     // lo mismo: lo que todavía sale de la caja por esa fila. Por eso el titular puede sumar la
     // columna G de los tres sin mezclar nada.
-    // ARCA LO CONFIRMA, ASÍ QUE LA NOTA LO AFIRMA. Hasta el 31/08 esta línea decía «su vínculo
-    // terminó» apoyada sólo en que el estudio les liquidó el final. Ahora está la constancia de
-    // baja de ARCA de los dos, con fecha de cese 25/08/2026 y causal, guardada en su legajo.
-    fila(sub('Estas personas NO cobran la quincena: ARCA registra su baja el 25/08/2026 (despido Art. 5° Ley 25.371) '
-      + 'y la constancia está en su legajo. El costo de desvincular al resto del plantel está en la pestaña Plantel.'))
-
+    // ACÁ IBA LA NOTA QUE DECÍA QUE ESTAS PERSONAS NO COBRAN LA QUINCENA. El título del bloque ya lo
+    // dice —«lo que terminó · liquidaciones finales»— y no están en el cuadro 1: el renglón repetía
+    // el rótulo. Lo que sí era conocimiento y por eso queda escrito acá: la baja de los dos la
+    // confirma ARCA, con fecha de cese 25/08/2026 (despido Art. 5° Ley 25.371) y la constancia
+    // guardada en su legajo. Hasta el 31/08 esto se apoyaba sólo en que el estudio les liquidó el
+    // final, que es bastante menos.
   }
 
 
-  const bajas = activos.filter((p) => quincena.porClave.get(p.clave)?.dejoDeCargar)
-  if (bajas.length) {
-    // «SI ES UNA BAJA» YA NO ES UNA PREGUNTA para quien tiene liquidación final: el cuadro 3 la
-    // publica y ARCA la registró. La duda se conserva SÓLO para quien dejó de cargar horas y no
-    // tiene ni liquidación ni constancia — que es el caso que hay que mirar.
-    fila(sub(`${bajas.length} sin horas desde antes del cierre —${bajas.map((p) => `${p.nombre} (${quincena.porClave.get(p.clave).ultimoDiaSuyo})`).join(' · ')}—: `
-      + `se les paga lo cargado y NO se les completan los días que faltan. `
-      + `${bajas.every((p) => tieneLiquidacionFinal(p.nombre)) ? 'Los dos tienen su liquidación final en el cuadro 3 y su baja registrada en ARCA.' : 'Al que no tenga liquidación final ni baja en ARCA hay que mirarlo: dejó de cargar horas y sigue en el plantel.'}`))
+  // ═══ LA LISTA DE «SIN HORAS DESDE ANTES DEL CIERRE» YA ESTABA EN CADA FILA ═══
+  //
+  // El párrafo nombraba uno por uno a los que dejaron de cargar horas, y la columna A de cada uno
+  // de ellos ya lo dice en su propio renglón: «GONZALEZ EMILIANO ▲ sin cargar desde el 03/09». Era
+  // la misma información dos veces, y la segunda vez en 240 caracteres.
+  //
+  // Peor: se publicó DUPLICADA. Medido el 06/09 en el archivo vivo, las filas 48 y 49 tenían las dos
+  // versiones —«1 sin horas» y «13 sin horas»—, la vieja sobreviviendo a la corrida que la reemplazó.
+  // Una nota que cambia de largo es una fila que se corre, y `sinNotasRepetidas` no la reconoce
+  // porque el texto no es idéntico. Sin la nota, el defecto no puede volver.
+  //
+  // El caso que hay que MIRAR —el que dejó de cargar horas y no tiene ni liquidación final ni baja
+  // en ARCA— es un hallazgo, y va por consola.
+  for (const pp of activos.filter((x) => quincena.porClave.get(x.clave)?.dejoDeCargar && !tieneLiquidacionFinal(x.nombre))) {
+    console.warn(`  ⚠ ${pp.nombre}: sin horas desde el ${quincena.porClave.get(pp.clave).ultimoDiaSuyo}, `
+      + 'sin liquidación final y sin baja en ARCA — sigue en el plantel')
   }
   // ═══ POR QUÉ ESTE TOTAL NO ES EL DE «JORNALES POR QUINCENA» ═══
   //
@@ -1185,15 +1206,21 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // 7.540.500 y acá se completan las horas que faltan», y desde que «TOTAL A PAGAR» de este cuadro
   // pasó a ser lo que SALE de la caja (banco + efectivo, neto de adelantos), su total es $6.331.859:
   // el lector veía dos cifras distintas presentadas como la misma. Se dice qué es cada una.
-  fila(sub(`El devengado de la quincena es ${Math.round(T.totalCargado).toLocaleString('es-AR')} `
-    + `(${Math.round(T.cargadas)} h cargadas${T.horas > T.cargadas ? ` + ${Math.round(T.horas - T.cargadas)} h completadas` : ''}), `
-    + `que es lo que publica «Jornales por Quincena». El TOTAL A PAGAR de arriba es menor porque ya `
-    + `tiene descontado lo que se entregó en adelantos y transferencias.`))
-  if (sinConvenio.length) fila(sub(`${sinConvenio.length} sin equivalencia de convenio declarada: ${sinConvenio.join(' · ')}. No se les mide el piso.`))
-  // Y LA OTRA MITAD DE LA MISMA PREGUNTA: los que SÍ tienen equivalencia, pero la puso el OS. La línea
-  // desaparece sola el día que el dueño las confirme — no hay nada que apagar a mano.
+  // EL PUENTE CON «Jornales por Quincena» NO SE DIBUJA ACÁ. Este renglón explicaba por qué las dos
+  // pestañas publican cifras distintas: aquélla el DEVENGADO de la quincena (horas cargadas) y ésta
+  // lo que SALE de la caja (neto de adelantos y transferencias). Las dos son ciertas y cada una vive
+  // en su pestaña; el que quiera el devengado lo lee donde se publica. Acá era una nota al pie.
+  for (const n of sinConvenio) console.warn(`  ⚠ ${n}: sin equivalencia de convenio declarada — no se le mide el piso`)
+  // Y LA OTRA MITAD DE LA MISMA PREGUNTA: los que SÍ tienen equivalencia, pero la puso el OS. Deja de
+  // avisarse solo el día que el dueño las confirme — no hay nada que apagar a mano.
+  //
+  // EN LA PESTAÑA QUEDA LA MARCA, NO EL PÁRRAFO. La celda de categoría de esa persona ya lleva «▲»
+  // («Medio Oficial ▲», lo pone `esInferida` unas líneas más arriba): quien mira la fila ve que esa
+  // categoría no la declaró nadie. El renglón de 243 caracteres agregaba el mapeo crudo y dónde se
+  // corrige, que es exactamente lo que el dueño mandó sacar del Sheet y sí tiene que estar acá:
+  // se corrige en `CONVENIO_POR_CODIGO` (lib/uocra-paritaria.mjs).
   const inferidas = lineaEquivalenciasInferidas(conInferencia)
-  if (inferidas) fila(sub(inferidas))
+  if (inferidas) console.warn(`  ⚠ ${inferidas}`)
   fila()
 
   // ═══ 2 · QUIÉNES SON ═══
