@@ -24,10 +24,17 @@ import { LIBRO } from '../lib/libro-sumas.mjs'
 import { columnasDeCompras } from '../lib/libro-extractores-compras.mjs'
 import { columnasObligatorias } from '../lib/compras-columnas.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
+import { ref as refPestana } from '../lib/partir-pestana.mjs'
+import { letra } from '../lib/cash-flow-matriz.mjs'
+import { totalesDeVista } from '../lib/cash-flow-cuadre.mjs'
+import { grillaSemanal } from '../lib/cash-flow-semanas.mjs'
+import { grillaMeses } from '../lib/cash-flow-meses.mjs'
+import { RUBROS_EGRESO } from '../lib/cash-flow-rubros.mjs'
 import {
   CENSADAS, EXCLUSIONES_COBRANZAS, EXCLUSIONES_COMPRAS, SIN_CENSO_DE_FILA,
-  censoDeCobranzas, censoDeCompras, coberturaDeFuente, filasCubiertas, fueraDeLaVentana,
-  marcarEndosos, origenesSinDeclarar, resumenDeCobertura, ventanaDelEjercicio,
+  censoDeCobranzas, censoDeCompras, coberturaDeFuente, cuadreContraElLibro, filasCubiertas,
+  fueraDeLaVentana, marcarEndosos, medidasDesdeElLibro, origenesSinDeclarar, resumenDeCobertura,
+  ventanaDelEjercicio,
 } from '../lib/cobertura-archivo.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -97,8 +104,10 @@ async function main() {
     throw new Error(`el censo arma "${armadas}" y CENSADAS declara "${[...CENSADAS].join('|')}": `
       + 'el inventario de fuentes y lo que se mide dejaron de ser lo mismo')
   }
-  const fuera = fueraDeLaVentana(movs, ventanaDelEjercicio(AÑO))
-  const r = resumenDeCobertura({ fuentes, fuera, sinCenso: SIN_CENSO_DE_FILA })
+  const ventana = ventanaDelEjercicio(AÑO)
+  const fuera = fueraDeLaVentana(movs, ventana)
+  const desvios = await eslabon3({ google, movs, ventana })
+  const r = resumenDeCobertura({ fuentes, fuera, sinCenso: SIN_CENSO_DE_FILA, desvios })
 
   informe(r, movs)
   const sinDeclarar = origenesSinDeclarar(movs)
@@ -107,6 +116,31 @@ async function main() {
       + 'la regla 8 dejó de estar medida para esa fuente')
   }
   if (!r.ok || sinDeclarar.length) process.exitCode = 1
+}
+
+/**
+ * ESLABÓN 3 · lo que las dos vistas PUBLICAN contra el Libro sumado por otro camino.
+ *
+ * Se leen las celdas reales del TOTAL de cada medida —no se confía en la fórmula— y se comparan contra
+ * `medidasDesdeElLibro`, que recorre los movimientos en JavaScript. Dos caminos hacia el mismo número:
+ * si difieren, la vista dejó de decir lo que el Libro dice.
+ */
+async function eslabon3({ google, movs, ventana }) {
+  const propios = medidasDesdeElLibro(movs, ventana, RUBROS_EGRESO)
+  const metas = [
+    grillaSemanal({ hoy: new Date(), anio: AÑO, refs: {} }).meta,
+    grillaMeses({ anio: AÑO, refs: {}, hoy: new Date() }).meta,
+  ]
+  const fuera = []
+  for (const meta of metas) {
+    const fp = meta.footprint
+    const v = await google.readSheetValues(ID, `${refPestana(meta.pestana)}!A1:${letra(fp.cols - 1)}${fp.filas}`,
+      { render: 'UNFORMATTED_VALUE' })
+    const t = totalesDeVista(v ?? [], meta)
+    for (const p of t.problemas) fuera.push({ pestana: meta.pestana, medida: '(no se pudo leer)', publicado: 0, libro: 0, delta: 0, nota: p })
+    fuera.push(...cuadreContraElLibro(meta.pestana, t.totales, propios))
+  }
+  return fuera.filter((f) => f.nota || Math.abs(f.delta) > 1)
 }
 
 function informe(r, movs) {
@@ -129,6 +163,13 @@ function informe(r, movs) {
     console.log(`  ▲ ${g.clave} — ${g.n} movimiento(s), ${peso(g.monto)}`)
   }
   if (DETALLE) for (const d of r.fuera.detalle) console.log(`      ${d.origen} ${d.fila} ${fecha(d.fecha)} ${peso(d.importe)} ${d.rubro}`)
+
+  console.log('\nESLABÓN 3 · lo que las vistas publican ¿es lo que el libro dice?')
+  if (!r.desvios.length) console.log('  ✓ las cuatro medidas de las dos vistas coinciden al peso con el libro sumado aparte')
+  for (const d of r.desvios) {
+    console.log(d.nota ? `  ⛔ ${d.pestana}: ${d.nota}`
+      : `  ✗ ${d.pestana} · ${d.medida}: publica ${peso(d.publicado)} y el libro dice ${peso(d.libro)} (${peso(d.delta)})`)
+  }
 
   console.log(`\nTOTAL · plata censada del archivo ${peso(r.censado)}`)
   console.log(`        NO llega a ninguna celda de ningún Cash Flow: ${peso(r.noLlegaALaVista)}`)

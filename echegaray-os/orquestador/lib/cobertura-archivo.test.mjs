@@ -16,8 +16,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CENSADAS, EXCLUSIONES_COBRANZAS, EXCLUSIONES_COMPRAS, SIN_CENSO_DE_FILA,
-  censoDeCobranzas, censoDeCompras, coberturaDeFuente, filasCubiertas, fueraDeLaVentana,
-  marcarEndosos, origenesSinDeclarar, resumenDeCobertura, serialDe, ventanaDelEjercicio,
+  censoDeCobranzas, censoDeCompras, coberturaDeFuente, cuadreContraElLibro, filasCubiertas,
+  fueraDeLaVentana, marcarEndosos, medidasDesdeElLibro, origenesSinDeclarar, resumenDeCobertura,
+  serialDe, ventanaDelEjercicio,
 } from './cobertura-archivo.mjs'
 
 const V = ventanaDelEjercicio(2026)
@@ -195,4 +196,50 @@ test('el inventario de fuentes no se contradice a sí mismo', () => {
   for (const e of [...EXCLUSIONES_COMPRAS, ...EXCLUSIONES_COBRANZAS]) {
     assert.ok(e.porque.length > 40, `la exclusión "${e.motivo}" no dice por qué esa plata no va al cuadro`)
   }
+})
+
+test('ESLABÓN 3 · la devolución netea su rubro y no infla lo que entra ni lo que sale', () => {
+  // Una nota de crédito de un proveedor entra con signo +1 y rubro de EGRESO. Contarla como ingreso
+  // deja las dos cifras que se leen para decidir —cuánto entra y cuánto sale— infladas por lo mismo.
+  const movs = [
+    mov({ signo: -1, importe: 1_000_000, rubro: 'Materiales Civil', estado: 'REAL' }),
+    mov({ signo: 1, importe: 300_000, rubro: 'Materiales Civil', estado: 'REAL' }),
+    mov({ signo: 1, importe: 5_000_000, rubro: 'Cobranzas', estado: 'REAL' }),
+  ]
+  const r = medidasDesdeElLibro(movs, V, ['Materiales Civil'])
+  assert.equal(r.ingresoReal, 5_000_000, 'la nota de crédito NO es un cobro')
+  assert.equal(r.egresoReal, 700_000, 'el egreso del rubro queda neto de lo devuelto')
+})
+
+test('ESLABÓN 3 · un estado que el cuadro no mira no entra en ninguna medida', () => {
+  const r = medidasDesdeElLibro([mov({ signo: -1, importe: 999, estado: 'ANULADO' })], V, [])
+  assert.deepEqual(r, { ingresoReal: 0, ingresoProyectado: 0, egresoReal: 0, egresoProyectado: 0 })
+})
+
+test('ESLABÓN 3 · si la vista publica otro número que el libro, el control lo dice con su delta', () => {
+  const propios = medidasDesdeElLibro([mov({ signo: -1, importe: 1_000_000, estado: 'REAL' })], V, [])
+  const iguales = new Map([['egresoReal', 1_000_000], ['ingresoReal', 0], ['ingresoProyectado', 0], ['egresoProyectado', 0]])
+  assert.deepEqual(cuadreContraElLibro('Cash Flow Semanal', iguales, propios), [])
+
+  const perdida = new Map([...iguales, ['egresoReal', 940_000]])
+  const fuera = cuadreContraElLibro('Cash Flow Semanal', perdida, propios)
+  assert.equal(fuera.length, 1)
+  assert.equal(fuera[0].medida, 'egresoReal')
+  assert.equal(fuera[0].delta, -60_000)
+})
+
+test('ESLABÓN 3 · una diferencia de centavos no enciende una alerta que después nadie mira', () => {
+  const propios = medidasDesdeElLibro([mov({ signo: -1, importe: 1_000_000.4, estado: 'REAL' })], V, [])
+  assert.deepEqual(cuadreContraElLibro('x', new Map([['egresoReal', 1_000_000]]), propios), [])
+})
+
+test('un desvío del eslabón 3 solo ya deja el resumen en rojo', () => {
+  const r = resumenDeCobertura({
+    fuentes: [coberturaDeFuente({ pestana: 'Compras', renglones: [{ fila: 5, monto: 1000 }], cubiertas: new Set([5]) })],
+    fuera: fueraDeLaVentana([], V),
+    desvios: [{ pestana: 'Cash Flow Mensual', medida: 'egresoReal', publicado: 1, libro: 2, delta: -1 }],
+  })
+  assert.equal(r.hueco, 0)
+  assert.equal(r.fueraDeVista, 0)
+  assert.equal(r.ok, false, 'la plata puede llegar al libro entera y la vista publicar otra cosa')
 })

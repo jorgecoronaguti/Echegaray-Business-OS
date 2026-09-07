@@ -87,6 +87,74 @@ export function fueraDeLaVentana(movs = [], { desde, hasta } = {}) {
   return { n: detalle.length, monto: detalle.reduce((s, d) => s + d.importe, 0), porOrigen, detalle }
 }
 
+/**
+ * ESLABÓN 3 · LO QUE LAS VISTAS PUBLICAN, RECALCULADO DESDE EL LIBRO POR OTRO CAMINO.
+ *
+ * ═══ POR QUÉ ACÁ SÍ SE REESCRIBE LA SEMÁNTICA DE LA MEDIDA (06/09/2026) ═══
+ *
+ * `cash-flow-medidas.mjs` construye la FÓRMULA que la hoja evalúa (`terminosDeMedida`). Esto suma los
+ * movimientos EN JAVASCRIPT con la misma definición de negocio. Son dos caminos distintos hacia el
+ * mismo número —uno pasa por SUMPRODUCT sobre rangos abiertos, el otro por un bucle— y ésa es
+ * exactamente la condición para que la comparación signifique algo: un control que reusara la fórmula
+ * de la celda estaría preguntándole a la celda si la celda tiene razón.
+ *
+ * La definición NO se inventa, se copia del contrato declarado en `cash-flow-medidas.mjs`:
+ *
+ *   ingresos = todo lo que ENTRA                − lo que entra con rubro de EGRESO (devoluciones)
+ *   egresos  = la magnitud de todo lo que SALE  − lo que entra con rubro de EGRESO
+ *
+ * Si mañana esa definición cambia de un solo lado, este control se pone rojo. Eso es lo que se quiere:
+ * es el aviso de que la vista y su significado se separaron.
+ *
+ * @param {Array} movs los movimientos publicados
+ * @param {{desde:number, hasta:number}} ventana
+ * @param {string[]} rubrosDeEgreso la lista del cuadro (se pasa para no duplicarla acá)
+ * @returns {{ingresoReal:number, ingresoProyectado:number, egresoReal:number, egresoProyectado:number}}
+ */
+export function medidasDesdeElLibro(movs = [], { desde, hasta } = {}, rubrosDeEgreso = []) {
+  const REALES = new Set(['REAL'])
+  const PENDIENTES = new Set(['PROYECTADO', 'VENCIDO', 'COMPROMETIDO'])
+  const egreso = new Set(rubrosDeEgreso)
+  const acc = { ingresoReal: 0, ingresoProyectado: 0, egresoReal: 0, egresoProyectado: 0 }
+  for (const m of movs ?? []) {
+    const fecha = num(m?.fecha)
+    if (fecha === null || fecha < desde || fecha >= hasta) continue
+    const estado = txt(m?.estado)
+    const real = REALES.has(estado)
+    if (!real && !PENDIENTES.has(estado)) continue
+    const importe = num(m?.importe) ?? 0
+    const entra = Number(m?.signo) === 1
+    // Una devolución (entra con rubro de egreso) NO es un ingreso del negocio: netea su propio rubro
+    // del lado del egreso. El mismo término se resta de las dos medidas, y por eso el resultado no se
+    // mueve ni un peso — pero "cuánto entra" y "cuánto sale" dejan de estar las dos infladas.
+    const devolucion = entra && egreso.has(txt(m?.rubro))
+    if (entra) acc[real ? 'ingresoReal' : 'ingresoProyectado'] += devolucion ? 0 : importe
+    else acc[real ? 'egresoReal' : 'egresoProyectado'] += importe
+    if (devolucion) acc[real ? 'egresoReal' : 'egresoProyectado'] -= importe
+  }
+  return acc
+}
+
+/**
+ * ¿Lo que la vista PUBLICA es lo que el Libro dice? Una entrada por medida que difiera. PURA.
+ *
+ * Tolerancia $1: la hoja redondea al peso y una diferencia de centavos no es un hallazgo.
+ *
+ * @param {string} pestana
+ * @param {Map<string,number>} publicados los totales leídos de la vista (`totalesDeVista`)
+ * @param {object} propios el resultado de `medidasDesdeElLibro`
+ * @returns {Array<{pestana:string, medida:string, publicado:number, libro:number, delta:number}>}
+ */
+export function cuadreContraElLibro(pestana, publicados = new Map(), propios = {}) {
+  const fuera = []
+  for (const [medida, libro] of Object.entries(propios)) {
+    const publicado = num(publicados.get?.(medida)) ?? 0
+    const delta = publicado - libro
+    if (Math.abs(delta) > 1) fuera.push({ pestana, medida, publicado, libro, delta })
+  }
+  return fuera
+}
+
 /** Agrupa renglones por una clave y suma su importe. PURA. */
 function agrupar(renglones, clave) {
   const m = new Map()
@@ -200,7 +268,7 @@ export function coberturaDeFuente({ pestana, renglones = [], cubiertas = new Set
  * entero" sin haber mirado doce pestañas sería el peor resultado posible, porque se leería como una
  * garantía que nadie dio.
  */
-export function resumenDeCobertura({ fuentes = [], fuera = null, sinCenso = [] } = {}) {
+export function resumenDeCobertura({ fuentes = [], fuera = null, sinCenso = [], desvios = [] } = {}) {
   const censado = fuentes.reduce((s, f) => s + f.censado, 0)
   const hueco = fuentes.reduce((s, f) => s + f.hueco, 0)
   const declarado = fuentes.reduce((s, f) => s + f.declarado, 0)
@@ -215,7 +283,8 @@ export function resumenDeCobertura({ fuentes = [], fuera = null, sinCenso = [] }
     fuentes,
     fuera,
     sinCenso,
-    ok: hueco === 0 && fueraDeVista === 0,
+    desvios,
+    ok: hueco === 0 && fueraDeVista === 0 && desvios.length === 0,
   }
 }
 
@@ -250,7 +319,13 @@ export function censoDeCompras(filas = [], c, { fila0 = 4 } = {}) {
       tipoPago: txt(f[c.tipoPago]),
       motivoHueco: fechaCaja === null
         ? 'la celda "Fecha de caja" está vacía: sin fecha no hay movimiento y la plata no entra a ninguna columna'
-        : 'la clave (CUIT · comprobante · signo) choca con otra fila y la deduplicación se queda con una sola',
+        // MEDIDO EL 06/09: la misma factura cargada en VARIAS filas (un tramo por instrumento —
+        // Industrias Castelar 00003-00012792, $2.000.000 en efectivo + $3.240.300 en echeq) choca con
+        // la misma clave que una factura cargada DOS VECES (Diesel Rodríguez, $679.999 y $680.000).
+        // La deduplicación no las puede distinguir y se queda con una sola: en el primer caso pierde
+        // plata real, en el segundo hace bien. Cuál es cuál lo decide el dueño, no este control.
+        : 'la misma factura está cargada en más de una fila (un tramo por instrumento, o dos veces): '
+          + 'la clave (CUIT · comprobante · signo) choca y la deduplicación se queda con una sola',
     })
   }
   return out
