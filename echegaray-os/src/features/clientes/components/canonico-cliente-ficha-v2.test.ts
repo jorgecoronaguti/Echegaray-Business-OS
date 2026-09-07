@@ -279,3 +279,39 @@ test('la columna de accesos declara el ancho que la tabla del handoff necesita',
   // lado y estrangulaba la tabla a ~620px contra los 958 que pide: las columnas se pisaban.
   assert.match(sinComentarios(fuente('accesos/AccesosPortal.tsx')), /minWidth: 'min\(958px, 100%\)'/)
 })
+
+// ═══ LA COLUMNA DEL IMPORTE NO CAMBIA DE PREGUNTA SEGÚN QUIÉN MIRE (06/09/2026) ═══
+//
+// Defecto que atrapa: la ficha contestaba con la ETAPA de la obra en el lugar del CONTRATADO cuando
+// `veEconomia` era false, y mutaba el rótulo a «Etapa». Dos tablas distintas con el mismo nombre.
+// El handoff decide que el rótulo es fijo (`dc.html:112`) y la celda dice `sin permiso`.
+test('la columna del importe se llama siempre CONTRATADO: el rótulo no muta con el permiso', () => {
+  const src = codigoListas()
+  assert.match(src, /<RotuloCol derecha>Contratado<\/RotuloCol>/,
+    'el rótulo del importe dejó de ser el del handoff')
+  assert.doesNotMatch(src, /veEconomia \? 'Contratado'/,
+    'el rótulo volvió a mutar: la misma columna se llama distinto según quién mire')
+  assert.doesNotMatch(src, /ETAPA_LABEL/,
+    'volvió la etapa de la obra a la columna del importe')
+})
+
+test('sin permiso económico la celda del importe dice el literal del zip, y NADA más', () => {
+  const src = readFileSync(join(DIR, 'ListasClienteV2.tsx'), 'utf8')
+  // La rama ENTERA del ternario, no una línea suelta: lo que hay que vigilar es qué se dibuja
+  // adentro. Recortarla en el literal dejaría el control incapaz de ver un monto filtrado al lado.
+  const desde = src.indexOf('{veEconomia')
+  const cierre = src.indexOf('data-testid="contratado-sin-permiso"', desde)
+  const ramaSinPermiso = src.slice(cierre, src.indexOf('</span>', cierre))
+  assert.ok(desde > 0 && cierre > desde && ramaSinPermiso.length > 0 && ramaSinPermiso.length < 400,
+    'no se pudo aislar la rama sin permiso de la celda del importe')
+  assert.match(ramaSinPermiso, /sin permiso/,
+    'la celda cerrada dejó de usar el literal del handoff')
+  // ESTO CAMBIA LA PALABRA, NO EL PERMISO. Quien no ve economía no puede ver el número por ningún
+  // camino: ni el monto, ni un derivado, ni la etapa que lo reemplazaba. El corte de verdad es el
+  // GRANT por columna sobre `obra_canonica.monto_contratado`, que mide
+  // `orquestador/lib/columnas-comerciales-cerradas.test.mjs` contra el catálogo de Postgres.
+  for (const filtrado of ['monto_contratado', 'plata(', 'o.etapa']) {
+    assert.ok(!ramaSinPermiso.includes(filtrado),
+      `la rama sin permiso dibuja \`${filtrado}\`: se rebajó el filtro, no se cambió la palabra`)
+  }
+})
