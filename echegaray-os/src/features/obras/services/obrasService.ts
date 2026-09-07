@@ -16,7 +16,56 @@ import type {
   ServiceResult, ServiceResultOpcional,
 } from '../types'
 
-/** El portafolio: una fila por obra, ordenado por el orden declarado y después por nombre. */
+/** Lo que la CARTERA dibuja de cada obra. `Pick` y no interfaz nueva, igual que
+ *  `PlazoYHHDeCartera`: la forma la sigue mandando `ObraPanel`. */
+export type FilaDeCartera = Pick<
+  ObraPanel,
+  'obra_id' | 'nombre' | 'cliente_slug' | 'cliente_nombre' | 'cliente_texto' | 'estado' | 'etapa'
+  | 'avance_pct' | 'fecha_inicio_plan' | 'fecha_fin_plan' | 'forecast_fin' | 'monto_contratado'
+>
+
+/** Las columnas pedidas, en el orden del tipo. Una definición para la consulta y para el test. */
+export const COLUMNAS_CARTERA =
+  'obra_id,nombre,cliente_slug,cliente_nombre,cliente_texto,estado,etapa,avance_pct,'
+  + 'fecha_inicio_plan,fecha_fin_plan,forecast_fin,monto_contratado'
+
+/**
+ * LA CARTERA DE OBRAS — la consulta de `/obras`, con las doce columnas que la tabla dibuja.
+ *
+ * ═══ POR QUÉ NO USA `getPortafolio` (07/09/2026) ═══
+ *
+ * El dueño: *"esta muy lento y no se puede usar"*. `obra_panel` tiene 36 columnas y la cartera
+ * dibuja doce. Medido sobre la base real con `json_agg` (bytes que salen de Postgres, sin el
+ * envoltorio de PostgREST), como `authenticated` con sesión de Dirección y RLS puesta:
+ *
+ *    select=*      → 24.989 bytes · exec mediana 35,9 ms sobre 5 corridas
+ *    estas doce    →  7,656 bytes · exec mediana 34,3 ms
+ *
+ * **69% menos payload por carga de pantalla.** El tiempo de la base no es lo que se gana —no es ahí
+ * donde está el problema, y se midió para poder decirlo—: lo que se gana son 17 KB que no viajan de
+ * São Paulo a iad1 en cada apertura de la cartera.
+ *
+ * `getPortafolio` NO se toca: la comparte `/administracion/personas/cuadrillas`, que necesita otras
+ * columnas. Es el mismo criterio que ya tomó `getObrasParaImputar` en imputacionService.
+ *
+ * NO SE DEVUELVE UN `ObraPanel` INCOMPLETO. Un objeto con 24 campos ausentes se lee `undefined` —no
+ * `null`— y la primera columna que alguien agregue a la tabla se dibujaría vacía sin un solo error.
+ * El tipo dice exactamente lo que la consulta trae.
+ */
+export async function getCartera(supabase: SupabaseClient): Promise<ServiceResult<FilaDeCartera[]>> {
+  const { data, error } = await supabase
+    .from('obra_panel')
+    .select(COLUMNAS_CARTERA)
+    // El orden se pide sobre `orden`, que NO se trae: PostgREST ordena por columnas de la vista
+    // aunque no estén en el `select`, y traerla sólo para ordenar sería pagar el dato dos veces.
+    .order('orden', { ascending: true })
+    .order('nombre', { ascending: true })
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as unknown as FilaDeCartera[], error: null }
+}
+
+/** El portafolio COMPLETO: una fila por obra con todas las columnas de `obra_panel`. Lo usa
+ *  `/administracion/personas/cuadrillas`. La cartera de `/obras` NO: usa `getCartera`. */
 export async function getPortafolio(supabase: SupabaseClient): Promise<ServiceResult<ObraPanel[]>> {
   const { data, error } = await supabase
     .from('obra_panel')
