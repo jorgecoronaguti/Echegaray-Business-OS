@@ -1,6 +1,42 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-07 (tarde-2) · ARCA descongelado, Jornales reparada, Nómina fuera del pipeline_
+_actualizado: 2026-09-07 (noche) · commit `d70430d3` en main y en producción_
+
+## 0. LO QUE PASÓ HOY (07/09) Y QUEDÓ CERRADO
+
+- **OBRAS (Sheet)**: dos cuadros, 11 columnas. Columna D = **Contratado** (precio de la obra: OC de
+  Cobranzas, «precio N» > «s/ total N», U$S×TC para Quattropani, suma viva si no se declara). La obra
+  cobrada entera (por ESTADO) sale. Dilución y Tercer Muro con costo desde su planilla de cotización
+  (CÁLCULO). Pisos 120 + Rampa: FALTA_DATO — la planilla fue sobreescrita el 18/08 y la revisión del
+  12/06 da 403 por API con jorge@ y rodrigo@; el dueño puede bajarla desde Drive → Administrar versiones.
+- **Cash Flow**: (1) agosto tenía $0 de jornales por una fecha imposible que el testigo del banco dejaba
+  pasar — arreglado; (2) oct–dic proyectaban nómina a jornada plena ($20M/mes vs $7–9M reales) —
+  ahora horas MEDIDAS en las dos ramas; (3) por orden del dueño (dos veces) la celda «Obreros» vuelve a
+  MAX(plantel; demanda de OBRAS) con UNA frontera y gate en JS. Cierre publicado: **$122.275.139**.
+  Mensual y Semanal cuadran al peso. El control de asimetría sigue en ⛔: nov–dic sin materiales de obra
+  y cobro de dic cubre 57% de la nómina — es dato del dueño, no bug.
+- **Recurrentes** oculta (contenido vive en Estructura · bloque 2). **Categoría** en vez de «Puesto».
+- **Performance web**: 29 `<Link prefetch={false}>` (abrir /documentos costaba 25 renders). Falta la
+  causa secundaria: viaje serial a `perfiles` en el middleware (~120 ms por request).
+- **Gantt**: columna PLAZO con inicio → fin; migración aplicada que alineó Pisos Industriales y
+  Entrepiso con la pestaña OBRAS; control `obras-cartera-canonica.mjs` (Mampostería cerrada es
+  esperado).
+- **Portal**: San Francisco al peso; 6 cobros ocultos publicados; neto/IVA de las filas 94/95.
+
+## 0.1 ABIERTO / DECISIONES DEL DUEÑO PENDIENTES
+
+- **Dupec** (Compras 912/913, $412.600, 26–27/08): no hay cheque a DUBOS/DUPEC posterior al 372 en
+  Cheques Emitidos ni débito en el banco al 07/09. El dueño insiste en que se pagó con un eCheq a
+  Dubos: falta que lo cargue o diga nro/importe (o aplicar contra el 302 de $3,5M).
+- **Tensión OBRAS vs plantel**: OBRAS pide ~$32M/mes de MO, el plantel paga $7–9M/mes.
+- Portal: duplicados de Quattropani / La Estrella / Messina (15 líneas congeladas) — decisión del dueño.
+- Pasos del pipeline en rojo desde antes de hoy: `proveedores-que-sale-cada-dia.mjs` ($171.314 sin
+  columna de medio), `cheques-cobertura-sheet.mjs`, `formato-pestanas.mjs` (9 pestañas fuera de estándar).
+- Agentes lanzados al cierre de la sesión: incidente **Disk IO Budget de Supabase** (rama `fix/disk-io`),
+  **asistencia** celular+PC (`feat/asistencia-por-obra`), **huecos del CF** (cargas julio $0, impuestos
+  dic $0, deuda previsional nov–dic $0, 4 filas sin fecha de caja).
+- **Trampa que mordió dos veces hoy**: el checkout de producción atrasado PISA el Sheet. Después de
+  cada cambio de generador: `git merge --ff-only origin/main` en `~/echegaray-os/produccion/echegaray-os`.
 
 ## 1. OBJETIVO GENERAL
 
