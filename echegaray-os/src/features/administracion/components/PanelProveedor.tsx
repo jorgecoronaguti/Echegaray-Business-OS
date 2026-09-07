@@ -21,13 +21,16 @@
 //
 // ═══ LO QUE EL MOCKUP DIBUJA Y LA BASE NO PUEDE PROBAR ═══
 //
-// «ÚLTIMAS COMPRAS» con fecha, obra e importe por comprobante. Ninguna vista publica el
-// comprobante de un proveedor: `proveedor_nombre_resuelto` agrega por nombre —comprobantes y total,
-// sin fecha ni obra— y `costos_obra` guarda el proveedor como TEXTO LIBRE, así que llegar a sus
-// filas exige normalizar dentro de Postgres, que PostgREST no puede hacer desde acá. Emparejar por
-// el texto crudo encontraría sólo las grafías exactas y publicaría un «últimas compras» incompleto
-// sin avisar, que es peor que no tenerlo. Se dibuja lo que sí está —los nombres vinculados con su
-// peso— y el motivo queda escrito EN LA PANTALLA, no sólo acá.
+// «ÚLTIMAS COMPRAS» con fecha, obra e importe por CADA comprobante. Ninguna vista publica eso por
+// proveedor: `proveedor_nombre_resuelto` agrega por nombre —comprobantes y total— y `costos_obra`
+// guarda el proveedor como TEXTO LIBRE, así que llegar a sus filas exige normalizar dentro de
+// Postgres, que PostgREST no puede hacer desde acá. Se dibuja lo que sí está —los nombres
+// vinculados con su peso— y el motivo queda escrito EN LA PANTALLA, no sólo acá.
+//
+// LO QUE SÍ SE DIBUJA DESDE EL 06/09/2026 SON LOS PAPELES, y por el mismo camino que faltaba: la
+// vista `proveedor_papel` hace la normalización DENTRO de Postgres reusando la resolución de
+// nombres. Ahí cada papel viene con su compra —fecha, comprobante e importe—, así que el bloqueo de
+// arriba vale para las compras SIN archivo, no para las que tienen uno.
 
 import Link from 'next/link'
 import { BotonAccion, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
@@ -36,6 +39,8 @@ import { IconoCerrar, IconoEditar, IconoProblema } from '@/shared/components/ico
 import { pesos } from '@/shared/components/canon/formato'
 import { formatearCuit } from '../services/identidad'
 import { PanelFilo, RotuloPanel, V } from '@/shared/components/v2/patron'
+import { PapelesDelProveedor } from './proveedores/PapelesDelProveedor'
+import type { EstadoPapeles } from '../services/papelesProveedor'
 import type { ComprasDelProveedor } from '../services/proveedoresService'
 import type { Proveedor } from '../types'
 
@@ -96,12 +101,14 @@ function CargarCuit({ proveedor, editar, abierto }: {
 }
 
 export function PanelProveedor({
-  proveedor, compras, crear, editar, archivar, cerrarHref, abrirCuit = false,
+  proveedor, compras, papeles, crear, editar, archivar, cerrarHref, abrirCuit = false,
 }: {
   /** `null` = alta. */
   proveedor: Proveedor | null
   /** Lo que llega de Compras. `null` en el alta, o cuando la lectura de la cartera falló. */
   compras: ComprasDelProveedor | null
+  /** Sus comprobantes guardados, ya resueltos a una de las cuatro cosas que el bloque puede decir. */
+  papeles: EstadoPapeles
   crear: AccionFormulario
   editar: AccionFormulario
   archivar: (proveedorId: string, activo: boolean) => Promise<ResultadoAccion>
@@ -155,6 +162,11 @@ export function PanelProveedor({
         <Prop k="Notas" apagado={!proveedor.notas}>{proveedor.notas ?? 'sin cargar'}</Prop>
       </div>
 
+      {/* EL PAPEL VA ANTES QUE LOS NOMBRES VINCULADOS. Los nombres son diagnóstico de la
+          canonicalización —sirven para auditar que tres grafías son un proveedor—; el papel es lo
+          que alguien vino a buscar cuando abre la ficha de un proveedor. */}
+      <PapelesDelProveedor estado={papeles} />
+
       <div style={{ marginTop: 20 }}>
         <RotuloPanel cuenta={compras && compras.nombres.length ? compras.nombres.length : undefined}>
           Nombres de Compras vinculados
@@ -185,9 +197,9 @@ export function PanelProveedor({
               </div>
             )}
         <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 10, textWrap: 'pretty' }} data-testid="sin-detalle-comprobantes">
-          El detalle comprobante por comprobante —fecha y obra— no se puede mostrar: Compras guarda
-          el proveedor como texto libre y ninguna vista publica esas filas por proveedor. Se ve por
-          nombre vinculado, que es lo que el OS sí puede probar.
+          Las compras SIN papel no se listan una por una acá: Compras guarda el proveedor como
+          texto libre y ninguna vista publica esas filas por proveedor. Se ven por nombre vinculado,
+          que es lo que el OS sí puede probar; comprobante por comprobante, en la ficha.
         </p>
       </div>
 

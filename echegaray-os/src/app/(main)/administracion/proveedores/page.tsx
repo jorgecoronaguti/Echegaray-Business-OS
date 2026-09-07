@@ -45,9 +45,10 @@ import { pesos } from '@/shared/components/canon/formato'
 import { contiene } from '@/shared/utils/busqueda'
 import {
   agruparComprado, coincideProveedor, contarProveedores, getNombresPendientes, getNombresResueltos,
-  getProveedor, getProveedores, getResolucionCartera, getSubcontratistas, resumirCompras,
-  type FiltroActivo,
+  getPapelesDelProveedor, getProveedor, getProveedores, getResolucionCartera, getSubcontratistas,
+  resumirCompras, type FiltroActivo,
 } from '@/features/administracion/services/proveedoresService'
+import { estadoDePapeles } from '@/features/administracion/services/papelesProveedor'
 import {
   archivarProveedor, crearProveedor, crearYVincular, deshacerResolucion,
   editarProveedor, marcarNoEsProveedor, vincularNombre,
@@ -90,7 +91,8 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const supabase = await createClient()
 
   const [
-    listado, sinCuit, pendientes, resolucion, subcontratistas, resueltos, nActivos, nArchivados, nTodos,
+    listado, sinCuit, pendientes, resolucion, subcontratistas, resueltos, nActivos, nArchivados,
+    nTodos, papelesLeidos,
   ] = await Promise.all([
     getProveedores(supabase, { activo: activoLeido }),
     // LA SEÑAL NO DEPENDE DE LO QUE ESTOY MIRANDO. Cuenta siempre sobre los ACTIVOS, con el mismo
@@ -114,6 +116,14 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     maestro ? contarProveedores(supabase, { activo: 'activos' }) : null,
     maestro ? contarProveedores(supabase, { activo: 'archivados' }) : null,
     maestro ? contarProveedores(supabase, { activo: 'todos' }) : null,
+    // LOS PAPELES DEL PROVEEDOR ABIERTO — en esta misma tanda, no en serie después de resolver cuál
+    // es. `sp.p` ya se conoce antes de leer nada, y esperar a tener la ficha para recién ahí pedir
+    // sus comprobantes agregaría un viaje encadenado a cada clic de la lista. El servicio valida la
+    // forma del id, así que `?p=nuevo` no llega a Postgres.
+    //
+    // Es UNA consulta por panel abierto, nunca una por fila: la lista de la cartera no muestra
+    // papeles, y dibujar una columna «papeles» costaría 36 lecturas por carga.
+    sp.p ? getPapelesDelProveedor(supabase, sp.p) : null,
   ])
 
   if (listado.error) {
@@ -165,6 +175,9 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const compras = seleccionado && resolucion?.data
     ? resumirCompras(resolucion.data.filter((f) => f.proveedor_id === seleccionado?.id))
     : null
+  // La regla de qué dice el bloque de papeles vive en el servicio y se prueba sin base: acá sólo se
+  // le entregan las dos lecturas. `estadoDePapeles` es lo que distingue «no tiene» de «no pude».
+  const papeles = estadoDePapeles(papelesLeidos, compras)
 
   const nombreAbierto = sp.n ? cola.find((n) => n.nombre_norm === sp.n) : undefined
   const panelAbierto = maestro ? (abrirAlta || seleccionado !== null) : nombreAbierto !== undefined
@@ -340,6 +353,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
             <PanelProveedor
               proveedor={seleccionado}
               compras={compras}
+              papeles={papeles}
               crear={crearProveedor}
               editar={seleccionado ? editarProveedor.bind(null, seleccionado.id) : crearProveedor}
               archivar={archivarProveedor}
