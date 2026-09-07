@@ -90,3 +90,15 @@ export function IconoMovimiento(p: Props) {
     </Trazo>
   )
 }
+
+/** Asistencia: las dos personas de la cuadrilla y el tilde del día cerrado. */
+export function IconoAsistencia(p: Props) {
+  return (
+    <Trazo {...p}>
+      <circle cx="9" cy="7.5" r="3" />
+      <path d="M3.5 20.2v-1.1a4.4 4.4 0 0 1 4.4-4.4h2.2a4.4 4.4 0 0 1 3.3 1.5" />
+      <path d="M15.2 6.2a3 3 0 0 1 0 5.8" />
+      <path d="M14.6 18.6l2 2 3.9-4.4" />
+    </Trazo>
+  )
+}

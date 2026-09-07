@@ -43,6 +43,7 @@ import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
+import { BloqueAsistenciaSemana } from '@/features/administracion/components/BloqueAsistenciaSemana'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/components/TablaPersonas'
@@ -62,7 +63,7 @@ export const dynamic = 'force-dynamic'
 
 const RUTA = '/administracion/personas'
 
-type Busqueda = { q?: string; f?: string; nueva?: string }
+type Busqueda = { q?: string; f?: string; nueva?: string; vista?: string; semana?: string }
 
 function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): string {
   const params = new URLSearchParams()
@@ -73,6 +74,11 @@ function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): st
   const qs = params.toString()
   return `${RUTA}${qs ? `?${qs}` : ''}`
 }
+
+/** La solapa Asistencia y su semana. Va aparte de `armarHref` porque no lleva ni filtro ni alta:
+ *  arrastrar `f=sin_asignar` a una grilla que no filtra por eso prometería un recorte que no ocurre. */
+const hrefAsistencia = (semana?: string): string =>
+  `${RUTA}?vista=asistencia${semana ? `&semana=${semana}` : ''}`
 
 /** Qué decir cuando no hay ninguna fila: una línea, y que diga qué hacer. */
 function vacioDe(filtro: FiltroPersonal, q?: string) {
@@ -139,6 +145,39 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   const filtro = (FILTROS.find((f) => f.valor === sp.f)?.valor ?? 'plantel') as FiltroPersonal
   const supabase = await createClient()
   const hoy = hoyEnObra()
+  const enAsistencia = sp.vista === 'asistencia'
+
+  // LA SOLAPA QUE NO SE MIRA NO SE LEE. El pulso del plantel son cuatro consultas —presencia,
+  // horas del mes, papeles y los conteos de los recortes— que la grilla de asistencia no usa para
+  // nada: pedirlas igual sería pagar cinco viajes a la base para tirarlos.
+  if (enAsistencia) {
+    return (
+      <Marco>
+        <NavAdministracion />
+        <div style={{ lineHeight: 'normal' }}>
+          <CabeceraSeccion
+            testid="vistas-personal"
+            espacioPanel={false}
+            vistas={[
+              { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: false, href: armarHref({}) },
+              { clave: 'asistencia', titulo: 'Asistencia', cuenta: null, activa: true, href: hrefAsistencia(sp.semana) },
+            ]}
+            buscador={{
+              accion: RUTA,
+              q: sp.q,
+              placeholder: 'Buscar persona',
+              oculto: { vista: 'asistencia', semana: sp.semana },
+              testid: 'buscar-persona',
+            }}
+          />
+          <div style={{ padding: '10px 20px 24px' }}>
+            <BloqueAsistenciaSemana semanaPedida={sp.semana} hoy={hoy} q={sp.q} hrefDe={hrefAsistencia} />
+          </div>
+        </div>
+      </Marco>
+    )
+  }
+
   const { listado, marcas, hh, papeles, conteos } = await leerTodo(supabase, filtro, sp.q, hoy)
 
   // EL ERROR DE LA BASE SE MUESTRA, NO SE PINTA COMO LISTA VACÍA. Una tabla en blanco porque la RLS
@@ -184,7 +223,13 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
         <CabeceraSeccion
           testid="vistas-personal"
           espacioPanel={abierta}
-          vistas={[{ clave: 'personal', titulo: 'Personal', cuenta: conteos.plantel, activa: true, href: armarHref({}) }]}
+          vistas={[
+            { clave: 'personal', titulo: 'Plantel', cuenta: conteos.plantel, activa: true, href: armarHref({}) },
+            // SIN CUENTA: el número de una solapa promete cuántas filas hay del otro lado del clic, y
+            // del otro lado hay una fila por par (persona, obra) de UNA semana — no una población
+            // estable. Un número acá diría algo distinto cada lunes.
+            { clave: 'asistencia', titulo: 'Asistencia', cuenta: null, activa: false, href: hrefAsistencia() },
+          ]}
           buscador={{
             accion: RUTA,
             q: sp.q,
