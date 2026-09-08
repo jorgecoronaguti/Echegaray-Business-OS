@@ -196,7 +196,18 @@ function porLaFechaSola(fecha, { corte, desdeExtracto, holgura }) {
  * "pagado" de más es el error que rompe una tesorería.
  */
 function emparejarAgregado(grupo, debitos, ctx, salida) {
+  // ═══ PRIMERO LA ARITMÉTICA: EL DÉBITO QUE COINCIDE AL CENTAVO (08/09/2026) ═══
+  //
+  // Un F931 DECLARADO es una obligación exacta, no una proyección: la DDJJ de agosto dice
+  // $8.331.697,69 y `_BANCO_RAW` f560 debitó $8.331.697,69 el 07/09 — TRES DÍAS ANTES del
+  // vencimiento (10/09). El agregado de abajo no lo veía (sólo mira débitos posteriores al
+  // vencimiento) y, aun viéndolo, no retira sin la palabra del dueño — que es lo correcto para una
+  // proyección, cuya magnitud no prueba composición. Pero una coincidencia al centavo, única en la
+  // ventana, es la misma prueba que ya vale para transferencias y débitos automáticos: `MODO.exacto`,
+  // con su `combinacionUnica`. Se aplica antes, y lo que consume no vuelve a servir al agregado.
+  emparejarExacto(grupo, debitos, ctx, salida)
   for (const d of debitos) {
+    if (ctx.usados.has(d.fila)) continue
     const alcanza = grupo.filter((c) => !salida.veredictos.has(c.i)
       && c.m.fecha <= d.fecha && c.m.fecha >= d.fecha - ctx.holgura)
     if (!alcanza.length) continue

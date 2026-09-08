@@ -186,7 +186,7 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
                   data-testid="motivo"
                   value={casillas[id]?.motivo ?? ''}
                   onChange={(e) => cambiar(id, { motivo: e.target.value || null })}
-                  className="mt-2 h-[40px] w-full rounded-[6px] border border-line px-2 text-[13px] text-ink"
+                  className="mt-2 h-[44px] w-full rounded-[6px] border border-line px-2 text-[13px] text-ink"
                 >
                   <option value="">¿Por qué no vino? (se puede cargar después)</option>
                   {motivos.map((m) => (

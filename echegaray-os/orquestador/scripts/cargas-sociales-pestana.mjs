@@ -255,7 +255,7 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJorn
     prosaFormula: [{ fila: proy.fPlantel, col: 2 }, { fila: hReal, col: 2 }, { fila: hDeuda, col: 2 }],
     // La geometría que se publica como rangos con nombre. Sale de la grilla recién armada: si la
     // pestaña se reordena, los nombres se mueven con ella.
-    rangos: { fF931: proy.fSubF931, fGremiales: proy.fSubGremiales, fFechas: proy.fFechaSalida },
+    rangos: { fF931: proy.fSubF931, fGremiales: proy.fSubGremiales, fFechas: proy.fFechaSalida, fDeclarado: decl.fDeclTot },
   }
 }
 

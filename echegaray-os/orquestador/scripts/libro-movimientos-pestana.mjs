@@ -64,7 +64,7 @@ import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosP
 import { cruzarLibroContraBanco, aplicarCruce, VEREDICTO_CRUCE, GRITAN_CRUCE } from '../lib/libro-cruce-banco.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { coberturaPorRubro, huecosDeCobertura, problemasDeRol, verificarCobertura } from '../lib/cash-flow-cobertura.mjs'
-import { fechaDeSerial } from '../lib/libro-extractores-fechas.mjs'
+import { fechaDeSerial, isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
 import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, exigirColumnasNeteo, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
 import { total } from '../lib/patron-pestana.mjs'
 import { leerTipoCambio, RANGO_TC } from '../lib/tipo-cambio.mjs'
@@ -157,8 +157,9 @@ async function extraerDeLasFuentes(google, corte) {
       return null
     }
   }
-  const [fechasCargas, f931Cargas, gremialesCargas] = await Promise.all([
+  const [fechasCargas, f931Cargas, gremialesCargas, declaradoCargas] = await Promise.all([
     opcional(NOMBRES_CARGAS.fechas), opcional(NOMBRES_CARGAS.f931), opcional(NOMBRES_CARGAS.gremiales),
+    opcional(NOMBRES_CARGAS.declarado),
   ])
 
   // El registro de cheques se ubica por el DATO (FISICO/ECHEQ), no por una fila fija.
@@ -219,11 +220,18 @@ async function extraerDeLasFuentes(google, corte) {
   // toma dentro de un extractor —serían dos criterios que se desincronizan— sino en un solo lugar. El
   // hecho le gana a la proyección (el mes pagado en Compras la cadena no lo emite) y la cadena le gana
   // a la fila plana (los meses que publica, Compras no los aporta). Ver libro-extractores-cargas.mjs.
+  // Y EL DECLARADO LE GANA A LA PROYECCIÓN (08/09): el F931 ya presentado entra por su importe de DDJJ,
+  // COMPROMETIDO, salvo que Compras lo tenga pagado o un plan lo financie. Ver `obligacionF931`.
   const enCompras = cargasEnCompras(compras)
   const cargas = deCargasSociales(
-    { fechas: fechasCargas, f931: f931Cargas, gremiales: gremialesCargas },
-    corte, { mesesPagados: enCompras.mesesPagados, aviso: (m) => console.warn(`  · ${m}`) },
+    { fechas: fechasCargas, f931: f931Cargas, gremiales: gremialesCargas, declarado: declaradoCargas },
+    corte, { mesesPagados: enCompras.mesesPagados, mesesFinanciados: enCompras.financiados, aviso: (m) => console.warn(`  · ${m}`) },
   )
+  const declarados = cargas.filter((m) => String(m.origen?.fila ?? '').startsWith('F931 · declarado'))
+  if (declarados.length) {
+    console.log(`  cargas sociales: ${declarados.length} F931 DECLARADO(s) sin pagar en Compras → `
+      + declarados.map((m) => `${m.concepto} ${pesos(m.importe)} el ${isoDeSerial(m.fecha)}`).join(' · '))
+  }
   const cargasCubiertas = mesesCubiertos(cargas)
   const swap = reemplazadasPorLaCadena(enCompras, cargasCubiertas)
   console.log(`  cargas sociales: la cadena publica ${cargas.length} movimiento(s) en ${cargasCubiertas.size} mes(es) `

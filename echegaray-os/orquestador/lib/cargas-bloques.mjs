@@ -276,15 +276,15 @@ export function bloqueProyeccion(G, {
   // Canónico no podía leer la cadena: un movimiento sin fecha no entra en ningún tramo del calendario.
   // El día vive en Parámetros (medido sobre los pagos reales, declarado "a verificar"), no adentro de
   // esta fórmula, y DICIEMBRE SE RESUELVE SOLO: DATE(2026;13;10) es el 10/01/2027, que es exactamente
-  // la plata que hasta hoy no levantaba nadie.
+  // la plata que hasta hoy no levantaba nadie. DESDE EL 08/09 CUBRE LOS DOCE MESES: el Libro lee también
+  // el «Total declarado» (CARGAS_MES_F931_DECLARADO) y un F931 declarado sin fecha no entra al calendario.
   //
-  // Y DICIEMBRE SE ESCRIBE CON SU AÑO, NO COMO "MES 13". `DATE(2026;13;10)` da el mismo día, pero la
-  // celda que uno abre para entender de dónde sale la plata tiene que decir 2027 — es la misma regla
-  // que Jornales ya tiene escrita para el retiro de diciembre (defecto B7 de esa pestaña).
+  // Y DICIEMBRE SE ESCRIBE CON SU AÑO, NO COMO "MES 13": la celda que uno abre para entender de dónde
+  // sale la plata tiene que decir 2027 — la misma regla del retiro de diciembre en Jornales (defecto B7).
   const fFechaSalida = G.mensual(ROTULOS_CARGAS.fechas,
     (m) => `=DATE(${m === 12 ? anio + 1 : anio};${m === 12 ? 1 : m + 1};MAX(1;N(${RANGO_DIA_PAGO_F931})))`,
     `El devengado de ESTE mes sale al siguiente, el día que dice ${RANGO_DIA_PAGO_F931} en Parámetros. El de diciembre cae en enero del año que viene: por eso la última celda dice ${anio + 1}.`,
-    { meses: proyMeses, totaliza: false })
+    { totaliza: false })
   if (sinBase.length) {
     G.push([`${ALERTA} ${sinBase.length} concepto(s) sin base para proyectar`, ...Array(13).fill(VACIO),
       `${sinBase.join(', ')} — no aparecen en las secciones 1 ni 2, así que no se proyectan. El total de arriba está incompleto en esa medida.`])
