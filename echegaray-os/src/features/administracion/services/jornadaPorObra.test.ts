@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   armarJornada, ausenciasSinJornada, avisoDeFaltantes, casillasIniciales, estadoDeCasilla, hs,
-  leerHoras, loQueViaja, ponerLaJornada, resumenJornada, sobreLaJornada,
+  leerHoras, loQueViaja, ponerLaJornada, resumenJornada, sobreLaJornada, sumarPersonasNuevas,
 } from './jornadaPorObra.ts'
 import type { PersonaDeLaObra, RegistroDelDia } from './jornadaPorObra.ts'
 
@@ -250,4 +250,36 @@ test('EL MOTIVO DEL AUSENTE VIAJA, y sin motivo también se puede guardar', () =
   assert.deepEqual(loQueViaja(sinMotivo, JORNADA), [
     { persona_id: 'a', estado: 'ausente', horas: 8.8, motivo: null },
   ])
+})
+
+// ═══ TRAER A ALGUIEN A LA OBRA SIN RECARGAR LA PANTALLA (08/09/2026) ═══
+//
+// EL DEFECTO QUE ATRAPA: el recién llegado se dibuja —`estadoDeCasilla(id, undefined)` lo muestra
+// vacío, que es lo correcto— y «poner la jornada a los que faltan» lo SALTEA, porque ese botón
+// recorre `Object.entries(casillas)` y no las filas. Sin este puente, el único al que hay que
+// tipearle las horas a mano es justamente el que se acaba de traer, y nada da rojo.
+
+test('EL QUE LLEGA DESPUÉS TIENE CASILLA, y le alcanza «poner la jornada»', () => {
+  const antes = armarJornada({ personas: [p('a', 'González')], registros: [], jornada: JORNADA })
+  const conTipeado = { ...casillasIniciales(antes), a: { texto: '5', ausente: false } }
+
+  const despues = armarJornada({
+    personas: [p('a', 'González'), p('d', 'Nuevo')], registros: [], jornada: JORNADA,
+  })
+  const casillas = sumarPersonasNuevas(conTipeado, despues)
+
+  assert.deepEqual(Object.keys(casillas).sort(), ['a', 'd'])
+  assert.equal(casillas.a.texto, '5', 'lo ya tipeado no se pisa al traer a un compañero')
+  assert.equal(casillas.d.texto, '', 'el recién llegado nace VACÍO, como todos')
+  // Y AHORA SÍ LO ALCANZA EL BOTÓN GENERAL, que es lo que sin la casilla no pasaba.
+  assert.equal(ponerLaJornada(casillas, JORNADA).d.texto, hs(JORNADA))
+})
+
+test('EL QUE SE FUE DE LA CUADRILLA PIERDE SU CASILLA: no puede viajar en el guardado', () => {
+  const antes = armarJornada({
+    personas: [p('a', 'González'), p('b', 'Molina')], registros: [], jornada: JORNADA,
+  })
+  const conTipeado = { ...casillasIniciales(antes), b: { texto: '8', ausente: false } }
+  const despues = armarJornada({ personas: [p('a', 'González')], registros: [], jornada: JORNADA })
+  assert.deepEqual(Object.keys(sumarPersonasNuevas(conTipeado, despues)), ['a'])
 })

@@ -16,6 +16,9 @@ import { armarJornada } from './jornadaPorObra.ts'
 import type {
   AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena,
 } from './quincenaPorObra.ts'
+import {
+  candidatosParaTraer, type AsignacionParaTraer, type CandidatoParaTraer,
+} from './traerALaObra.ts'
 
 export interface ObraDeLaJornada {
   id: string
@@ -338,4 +341,44 @@ export async function getObrasParaJornada(
     asignados: asignaciones.error ? null : (vigentes.get(o.id) ?? 0),
   }))
   return { data, error: null }
+}
+
+// ═══ A QUIÉN SE PUEDE TRAER A ESTA OBRA (08/09/2026, tarde) ═══
+//
+// La decisión —quién entra en la lista y cómo se rotula— vive en `traerALaObra.ts` con sus pruebas.
+// Acá sólo están las dos lecturas. `persona_plantel` recorta por RLS igual que el resto del archivo.
+
+/**
+ * El plantel que hoy NO está en `obraId`, con el nombre de la obra donde está cada uno.
+ *
+ * UNA LECTURA QUE FALLA NO ES UNA LISTA VACÍA. Con `error` la pantalla muestra el texto: una lista
+ * vacía diría «no hay a quién traer», que es una afirmación sobre el plantel que nadie hizo.
+ */
+export async function getCandidatosParaTraer(
+  supabase: SupabaseClient, obraId: string, fecha: string,
+): Promise<{ data: CandidatoParaTraer[]; error: string | null }> {
+  const [plantel, asignaciones, obras] = await Promise.all([
+    supabase.from('persona_plantel').select('id, nombre_completo').order('nombre_completo'),
+    supabase.from('obra_asignacion').select('persona_id, obra_id, desde, hasta'),
+    supabase.from('obra_canonica').select('id, nombre'),
+  ])
+  if (plantel.error) return { data: [], error: `No pude leer el plantel: ${plantel.error.message}` }
+  if (asignaciones.error) {
+    // SIN LAS ASIGNACIONES NO SE PUEDE ARMAR LA LISTA. Seguir con cero ofrecería a los que ya están
+    // en la obra y diría «sin obra» de todo el plantel: cada renglón sería falso.
+    return { data: [], error: `No pude leer las asignaciones: ${asignaciones.error.message}` }
+  }
+  const nombresDeObra = Object.fromEntries(
+    ((obras.data ?? []) as { id: string; nombre: string }[]).map((o) => [o.id, o.nombre]),
+  )
+  return {
+    data: candidatosParaTraer({
+      plantel: (plantel.data ?? []) as { id: string; nombre_completo: string | null }[],
+      asignaciones: (asignaciones.data ?? []) as AsignacionParaTraer[],
+      nombresDeObra,
+      obraId,
+      fecha,
+    }),
+    error: null,
+  }
 }

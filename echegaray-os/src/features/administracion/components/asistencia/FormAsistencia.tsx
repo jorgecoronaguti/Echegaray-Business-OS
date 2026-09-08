@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from 'react'
 import { Aviso, Boton, ErrorCampo, Nulo } from '@/shared/components/ds'
 import {
   ausenciasSinJornada, avisoDeFaltantes, casillasIniciales, estadoDeCasilla, hs, loQueViaja,
-  ponerLaJornada, resumenJornada,
+  ponerLaJornada, resumenJornada, sumarPersonasNuevas,
 } from '@/features/administracion/services/jornadaPorObra'
 import type { CasillaJornada, FilaJornada } from '@/features/administracion/services/jornadaPorObra'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
@@ -54,6 +54,22 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
 }) {
   const [casillas, setCasillas] = useState<Record<string, CasillaJornada>>(() => casillasIniciales(filas))
   const [resultado, setResultado] = useState<{ ok: boolean; texto: string } | null>(null)
+
+  // ═══ CUANDO LA CUADRILLA CAMBIA SIN RECARGAR LA PANTALLA (08/09/2026) ═══
+  //
+  // «Traer a alguien a esta obra» hace `router.refresh()`: el servidor manda una fila más y este
+  // componente no se vuelve a montar, así que el inicializador de `useState` NO corre y el recién
+  // llegado se quedaba sin casilla. Se dibujaba bien —vacío, que es lo correcto— y «poner la
+  // jornada a los que faltan» lo salteaba, porque ese botón recorre las casillas y no las filas.
+  // Es el ajuste de estado por cambio de props que documenta React; la regla y su prueba están en
+  // `sumarPersonasNuevas`, y la clave es la lista de personas, no un contador.
+  const clave = filas.map((f) => f.persona.persona_id).join('|')
+  const [claveVista, setClaveVista] = useState(clave)
+  if (clave !== claveVista) {
+    setClaveVista(clave)
+    setCasillas((prev) => sumarPersonasNuevas(prev, filas))
+  }
+
   const [pendiente, arrancar] = useTransition()
   // El catálogo es el mismo que usa el bot de Mattermost desde julio. No es una lista de esta
   // pantalla: si fuera, discreparía con la del bot el día que alguien agregue un motivo.
