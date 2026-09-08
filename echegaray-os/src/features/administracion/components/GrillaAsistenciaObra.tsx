@@ -281,7 +281,7 @@ export function GrillaAsistenciaObra({
                 )
               })}
 
-              <td style={{
+              <td data-testid="total-persona" style={{
                 padding: '7px 0 7px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
                 color: fila.reclama.length > 0 ? ROJO : fila.horas === null ? V.inerte : V.tinta,
               }}>
