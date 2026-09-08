@@ -7,7 +7,7 @@ import {
 import { ZONA_OBRA, contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getHHDelDia } from '@/features/jefe/services/jefeService'
 import {
-  SIN_CUADRILLA, iniciales, motivoSinMarca, porCuadrilla, resumenDelDia,
+  iniciales, motivoSinMarca, porCuadrilla, resumenDelDia,
 } from '@/features/jefe/services/personas'
 import { conObra } from '@/features/jefe/services/navegacion'
 import {
@@ -68,11 +68,6 @@ export default async function JefePersonasPage({
   const cuadrillas = porCuadrilla(grupos.enObra, esperados.data ?? [])
   const hhPorPersona = new Map<string, number>()
   for (const x of hh.data ?? []) hhPorPersona.set(x.persona_id, (hhPorPersona.get(x.persona_id) ?? 0) + x.horas)
-  const esperadosPorCuadrilla = new Map<string, number>()
-  for (const e of esperados.data ?? []) {
-    const c = e.cuadrilla?.trim() || SIN_CUADRILLA
-    esperadosPorCuadrilla.set(c, (esperadosPorCuadrilla.get(c) ?? 0) + 1)
-  }
   const primerError = error ?? presencia.error ?? esperados.error ?? hh.error ?? null
 
   const cuenta = conteoPersonas(r.enObra, r.sinRegistrar)
@@ -82,7 +77,11 @@ export default async function JefePersonasPage({
     <>
       <TopBarDetalle
         titulo="Quién está hoy"
-        sub={`${r.asignados === 0 ? `${r.enObra} ${r.enObra === 1 ? 'marca' : 'marcas'}` : `${r.enObra} de ${r.asignados} fichados`}`
+        // NUNCA «N de M fichados» CONTRA EL PLANTEL (dueño, 08/09/2026: «una cosa es asistir y otra la
+        // carga de horas»). El fichaje desde el celular no está en uso: medir las marcas contra los
+        // asignados publica «0 de 17» sobre gente que trabajó el día entero. Sin marcas, una línea
+        // neutra; con marcas, sólo las marcas. Misma regla que /administracion/personas/en-obra.
+        sub={`${r.enObra === 0 ? 'Sin marcas de entrada/salida hoy' : `${r.enObra} ${r.enObra === 1 ? 'marca de entrada' : 'marcas de entrada'}`}`
           + `${cuadrillas.length > 0 ? ` · ${cuadrillas.length} ${cuadrillas.length === 1 ? 'cuadrilla' : 'cuadrillas'}` : ''}`}
       />
 
@@ -133,17 +132,16 @@ export default async function JefePersonasPage({
             Nadie marcó hoy. La marca la hace cada persona desde su teléfono, en Asistencia.
           </Vacio>
         ) : cuadrillas.map((c) => {
-          const previstos = esperadosPorCuadrilla.get(c.nombre) ?? null
-          const faltan = previstos == null ? null : previstos - c.presentes.length
+          // Sólo las marcas. «3 de 8» con el resto en ámbar acusaba a cinco personas de no haber venido
+          // cuando lo único cierto es que no marcaron desde un celular que todavía no marca.
+          const marcas = c.presentes.length
           return (
             <div key={c.clave} style={{ marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 9 }}>
                 <span style={{ display: 'flex', color: C.muted }}><Icono nombre="cuadrilla" tamano={16} /></span>
                 <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{c.nombre}</div>
-                <span style={{ ...mono, marginLeft: 'auto', fontSize: 12.5, color: faltan ? C.warn : C.muted }}>
-                  {previstos == null
-                    ? `${c.presentes.length} ${c.presentes.length === 1 ? 'persona' : 'personas'}`
-                    : `${c.presentes.length} de ${previstos}`}
+                <span style={{ ...mono, marginLeft: 'auto', fontSize: 12.5, color: C.muted }}>
+                  {`${marcas} ${marcas === 1 ? 'marca' : 'marcas'}`}
                 </span>
               </div>
               <TarjetaLista testid="cuadrilla">
@@ -207,17 +205,8 @@ export default async function JefePersonasPage({
                   )
                 })}
               </TarjetaLista>
-              {faltan != null && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 7, marginTop: 7, fontSize: 11.5,
-                  color: faltan > 0 ? C.warn : C.pos,
-                }}>
-                  <Icono nombre={faltan > 0 ? 'alerta' : 'ok'} tamano={14} />
-                  {faltan > 0
-                    ? `Faltan ${faltan} de esta cuadrilla sin marca`
-                    : 'Toda la cuadrilla marcó'}
-                </div>
-              )}
+              {/* SIN «Faltan N de esta cuadrilla sin marca»: medía las marcas contra el plantel, que
+                  es exactamente lo que el dueño pidió sacar (08/09/2026). */}
             </div>
           )
         }))}

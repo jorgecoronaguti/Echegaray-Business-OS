@@ -22,7 +22,6 @@
 
 import Link from 'next/link'
 import { ALTO_V2, CAJA_CONTENIDO, V } from '@/shared/components/v2/patron'
-import { BarraDeCostado } from '@/shared/components/v2/segundoNivel'
 import { IconoCuadrilla } from '@/shared/components/iconos'
 import type { Cuadrilla, Integrante } from '../types'
 import type { Fichaje } from '../services/hhPorPeriodo'
@@ -53,8 +52,9 @@ export function TablaCuadrillas({
   hrefDe: (id: string) => string
   /** HH trabajadas del período por cuadrilla. `undefined` = no se leyeron. */
   hh?: Map<string, number>
-  /** Cuántos de los vigentes marcaron hoy. `undefined` = no se pudo leer la presencia. */
-  fichaje?: Map<string, Fichaje>
+  /** Cuántos de los vigentes marcaron hoy. `undefined` = no se pudo leer la presencia · `null` = se
+   *  leyó y hoy no hay ninguna marca (el fichaje desde el celular no está en uso). */
+  fichaje?: Map<string, Fichaje> | null
   despliegue?: DespliegueDeCuadrilla
   vacio: string
 }) {
@@ -108,30 +108,19 @@ export function TablaCuadrillas({
                 {c.obras_actuales ?? 'sin obra asignada'}
               </span>
 
-              {/* FICHADOS, no «presentes». Sin lectura de presencia la columna dice «sin leer»: un
-                  «0/6» ahí afirmaría que no fue nadie. */}
+              {/* SÓLO LAS MARCAS, NUNCA «N/M» CONTRA LOS INTEGRANTES (dueño, 08/09/2026): la barra y
+                  el ámbar decían que faltaba gente cuando lo único que falta es que el fichaje esté
+                  en uso. Sin lectura de presencia dice «sin leer»; sin marcas, una línea neutra. */}
               <span className="hidden min-w-0 items-center gap-2 min-[1250px]:flex" data-testid="fichados-cuadrilla">
-                {f
-                  ? (
-                      <>
-                        <span style={{ display: 'flex', flex: 1, minWidth: 40 }}>
-                          <BarraDeCostado
-                            fraccion={f.integrantes === 0 ? 0 : f.fichados / f.integrantes}
-                            color={f.fichados === f.integrantes ? '#067647' : V.warn}
-                          />
+                {fichaje === undefined
+                  ? <span style={{ fontSize: '11.5px', color: V.tenue }}>sin leer</span>
+                  : fichaje === null || !f || f.fichados === 0
+                    ? <span style={{ fontSize: '11.5px', color: V.tenue }}>sin marcas hoy</span>
+                    : (
+                        <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.tintaSuave }}>
+                          {f.fichados} {f.fichados === 1 ? 'marca' : 'marcas'}
                         </span>
-                        <span
-                          className="font-mono tabular-nums"
-                          style={{
-                            fontSize: '11.5px', flexShrink: 0,
-                            color: f.integrantes > 0 && f.fichados === f.integrantes ? '#067647' : V.warn,
-                          }}
-                        >
-                          {f.fichados}/{f.integrantes} fichados
-                        </span>
-                      </>
-                    )
-                  : <span style={{ fontSize: '11.5px', color: V.tenue }}>sin leer</span>}
+                      )}
               </span>
 
               <span

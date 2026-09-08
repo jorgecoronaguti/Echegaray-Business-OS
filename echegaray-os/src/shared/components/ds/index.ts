@@ -30,3 +30,8 @@ export { Timeline, type Evento } from './Timeline'
 export { ThOrden } from './ThOrden'
 export { InlineEdit, type OpcionInline, type ResultadoInline } from './InlineEdit'
 export { BarraContextual, ChipsValor, type OperacionBarra } from './BarraContextual'
+export { CeldaDia } from './CeldaDia'
+export {
+  decidirCeldaDia, formatearHoras,
+  type EntradaCeldaDia, type PresenciaDia, type CalendarioDia, type CapasCeldaDia,
+} from './celdaDia'
