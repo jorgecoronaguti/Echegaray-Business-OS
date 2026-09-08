@@ -92,6 +92,41 @@
      texto claro encima. Existe como token para que nadie tenga que volver a decidirlo. */
   --os-on-marca: #1f1f1e;
 
+  /* ═══ LOS MISMOS COLORES, EN CANALES SUELTOS ═══
+     No son colores nuevos: son EXACTAMENTE los de arriba escritos como «R G B» para que Tailwind
+     pueda componerlos con una opacidad. `text-ink/60` o `from-ink/15` sobre un color declarado
+     `var(--os-ink)` no falla ruidosamente: Tailwind no puede meter el alfa adentro de una variable
+     que ya trae la función de color, así que emite la regla sin el modificador —el color sale
+     PLENO— o directamente no la emite. Eso ya pasó en `CAMPO` (ds/Controles.tsx): un borde de foco
+     que debía ser un 30% se pintaba al 100%.
+     Con `rgb(var(--os-…-rgb) / <alpha-value>)` en tailwind.config.ts, el alfa entra donde va.
+     El par hex ↔ rgb no puede separarse: `tests/tailwind-tokens.test.mjs` compara los dos y se
+     pone rojo si alguien cambia uno solo. */
+  --os-canvas-rgb: 247 247 245;
+  --os-surface-rgb: 255 255 255;
+  --os-surface-quiet-rgb: 250 250 248;
+  --os-surface-sunken-rgb: 239 238 234;
+  --os-line-rgb: 231 230 226;
+  --os-line-strong-rgb: 215 213 207;
+  --os-hairline-soft-rgb: 241 240 236;
+  --os-ink-rgb: 31 31 30;
+  --os-ink-soft-rgb: 58 58 56;
+  --os-muted-rgb: 107 107 103;
+  --os-faint-rgb: 145 145 139;
+  --os-accent-rgb: 48 48 47;
+  --os-accent-hover-rgb: 69 69 67;
+  --os-marca-rgb: 253 201 0;
+  --os-marca-soft-rgb: 254 244 207;
+  --os-marca-track-rgb: 246 228 168;
+  --os-pos-rgb: 6 118 71;
+  --os-pos-soft-rgb: 231 246 238;
+  --os-neg-rgb: 180 35 24;
+  --os-neg-soft-rgb: 251 234 232;
+  --os-warn-rgb: 181 71 8;
+  --os-warn-soft-rgb: 253 240 228;
+  --os-info-rgb: 23 92 211;
+  --os-info-soft-rgb: 233 240 253;
+
   /* ═══ LAS ALTURAS DEL SISTEMA (design/system/tokens.css) ═══
      Las medidas que hacen que la tabla, el Gantt y el panel se alineen entre sí. Viven acá y se
      consumen por Tailwind (`h-fila`, `h-thead`…); un `h-[46px]` suelto en un componente es la
