@@ -174,38 +174,80 @@ test('escritura económica, drive_index y bitácora — contra la base real', { 
         // parecía una fuga masiva. No lo era: `documentacion_legajo` TAMBIÉN está bajo RLS, así que
         // bajo el rol de campo la subconsulta no ve nada y el `not exists` es verdadero siempre.
         // Un control que se evalúa adentro de la jaula que está midiendo no mide la jaula.
-        const suyos = new Set((await c.query(
+        //
+        // ═══ «SUYO» NO ES SÓLO SU LEGAJO: TAMBIÉN LOS PAPELES DE SU OBRA (08/09/2026) ═══
+        //
+        // La versión anterior armaba el conjunto esperado SÓLO con `documentacion_legajo`, y la
+        // policy nunca prometió eso: `drive_file_ids_vinculados()` une el legajo propio, los
+        // documentos de las obras que la persona ve (`ve_obra`) y los de clientes si administra.
+        // Mientras la persona de prueba no tuvo obra asignada las dos cosas coincidieron por
+        // casualidad, y el test pasó a afirmar un estado del mundo en vez de la regla.
+        //
+        // El 08/09 el mundo cambió sin que se rompiera nada: la reconstrucción del historial desde
+        // JORNALES le abrió a QUIROGA SEBASTIAN ADOLFO una asignación vigente en `quattropani`, que
+        // tiene 32 `obra_documento`. El test se puso rojo con la policy funcionando exactamente
+        // como se diseñó — y de paso arrastró al subtest siguiente.
+        //
+        // Ahora el conjunto esperado se arma DESDE LAS TABLAS DE ORIGEN, como dueño y fuera de la
+        // RLS: su legajo + los documentos de las obras donde su persona tiene asignación. No se usa
+        // `drive_file_ids_vinculados()` para construirlo: eso sería validar el control con lo que el
+        // control produce. Es un techo, no una igualdad: la vigencia de la asignación no se
+        // re-deriva acá —duplicarla la haría moverse junto con la regla que mide—, así que el test
+        // no puede detectar que se abrió una obra ya terminada, y sí detecta lo que existe para
+        // detectar: que el catálogo entero (4.211 filas, `administracion/`, `archivo-fiscal/`,
+        // `libro-sueldos/`) vuelva a quedar abierto.
+        const legajo = (await c.query(
           `select drive_file_id from documentacion_legajo where persona_id=$1 and drive_file_id is not null`,
-          [campo.persona_id])).rows.map((r) => r.drive_file_id))
-        assert.ok(suyos.size > 0, 'la persona de prueba no tiene documentos de legajo')
+          [campo.persona_id])).rows.map((r) => r.drive_file_id)
+        assert.ok(legajo.length > 0, 'la persona de prueba no tiene documentos de legajo')
+        const deSusObras = (await c.query(
+          `select od.drive_file_id from obra_documento od
+            where od.drive_file_id is not null
+              and od.obra_id in (select a.obra_id from obra_asignacion a where a.persona_id = $1)`,
+          [campo.persona_id])).rows.map((r) => r.drive_file_id)
+        const vinculados = new Set([...legajo, ...deSusObras])
 
         await c.query('savepoint como_campo2')
-        await como(campo.id)
-        const vistos = (await c.query('select drive_file_id from drive_index')).rows.map((r) => r.drive_file_id)
-        // Sin esto, una policy que niegue TODO pasaría el test: «ninguna fila ajena» es
-        // trivialmente cierto sobre cero filas.
-        assert.ok(vistos.length > 0, 'campo no vio ni una fila del catálogo: la policy lo dejó ciego')
-        const ajenas = vistos.filter((id) => !suyos.has(id))
-        assert.deepEqual(ajenas, [],
-          `campo vio ${ajenas.length} fila(s) del catálogo que no son de su legajo`)
-        const fiscal = await uno(`select count(*)::int n from drive_index where path like 'archivo-fiscal/%'`)
-        assert.equal(fiscal.n, 0, 'campo listó archivo-fiscal/')
-        const sueldos = await uno(`select count(*)::int n from drive_index where path like 'libro-sueldos/%'`)
-        assert.equal(sueldos.n, 0, 'campo listó libro-sueldos/')
-        // La puerta de atrás: la vista definer salteaba la policy.
-        await rechaza(`select count(*) from v_drive_busqueda_documentos`, [],
-          /permission denied|permiso/i, 'la vista definer sigue abierta para authenticated')
-        await c.query('rollback to savepoint como_campo2')
+        // El `rollback` va en `finally`: si un assert salta antes, el rol `campo` quedaba puesto y
+        // el subtest siguiente medía «el catálogo entero» con la jaula todavía cerrada. Así fue
+        // como una sola falla acá dio DOS rojos, y el segundo no tenía defecto atrás.
+        try {
+          await como(campo.id)
+          const vistos = (await c.query('select drive_file_id from drive_index')).rows.map((r) => r.drive_file_id)
+          // Sin esto, una policy que niegue TODO pasaría el test: «ninguna fila ajena» es
+          // trivialmente cierto sobre cero filas.
+          assert.ok(vistos.length > 0, 'campo no vio ni una fila del catálogo: la policy lo dejó ciego')
+          const ajenas = vistos.filter((id) => !vinculados.has(id))
+          assert.deepEqual(ajenas, [],
+            `campo vio ${ajenas.length} fila(s) del catálogo que no están vinculadas ni a su legajo ni a sus obras`)
+          const fiscal = await uno(`select count(*)::int n from drive_index where path like 'archivo-fiscal/%'`)
+          assert.equal(fiscal.n, 0, 'campo listó archivo-fiscal/')
+          const sueldos = await uno(`select count(*)::int n from drive_index where path like 'libro-sueldos/%'`)
+          assert.equal(sueldos.n, 0, 'campo listó libro-sueldos/')
+          // La puerta de atrás: la vista definer salteaba la policy.
+          await rechaza(`select count(*) from v_drive_busqueda_documentos`, [],
+            /permission denied|permiso/i, 'la vista definer sigue abierta para authenticated')
+        } finally {
+          await c.query('rollback to savepoint como_campo2')
+        }
       })
 
     await t.test('drive_index: dirección ve el catálogo entero',
       { skip: !dir && 'sin perfil direccion' }, async () => {
+        // El total se mide con el rol del DUEÑO de la conexión, no con el que dejó puesto el
+        // subtest anterior. Se afirma explícitamente en vez de confiar en el orden: el 08/09 este
+        // test dio rojo con 4.211 vs 86 sin que la policy de dirección tuviera nada — el «86» era
+        // el conteo del rol `campo`, heredado de una falla que saltó antes de su `rollback`.
+        await volver()
         const todo = Number((await uno(`select count(*)::int n from drive_index`)).n)
         await c.query('savepoint como_dir2')
-        await como(dir.id)
-        const visto = Number((await uno(`select count(*)::int n from drive_index`)).n)
-        await c.query('rollback to savepoint como_dir2')
-        assert.equal(visto, todo, 'dirección perdió filas del catálogo')
+        try {
+          await como(dir.id)
+          const visto = Number((await uno(`select count(*)::int n from drive_index`)).n)
+          assert.equal(visto, todo, 'dirección perdió filas del catálogo')
+        } finally {
+          await c.query('rollback to savepoint como_dir2')
+        }
       })
 
     // El `service_role` NO pasa por esta policy: `drive_index_srv` es `for all to service_role

@@ -4,12 +4,13 @@
 //
 // La anatomía entera. Antes: título, franja de cinco tarjetas, buscador, pastillas y una tabla
 // adentro de una caja con su pie de totales. El v2 borra las tarjetas y la caja —criterio 3 del
-// patrón— y pone PRIMERO lo que hay que hacer: dos señales con su obstáculo y su verbo (criterio 1).
-// Recién debajo va la lista, que es donde vive lo que no reclama nada.
+// patrón— y deja la lista, que es donde vive lo que no reclama nada.
 //
-// Es la ÚNICA pantalla de segundo nivel cuyo mockup pide el bloque de trabajo, y por eso reusa el
-// mismo `TrabajoDeSeccion` que abren las ocho secciones del área: dos dibujos del mismo renglón
-// terminan escribiendo uno «—» y el otro «0».
+// El v2 abría además con dos señales («cuadrillas sin obra», «plantel sin encuadrar»). El dueño
+// retiró ese bloque de toda la plataforma el 08/09/2026 («no es útil y confunde»). El pool sigue
+// teniendo su entrada propia en el costado; `?sin=obra` se sigue APLICANDO pero se quedó sin enlace
+// que lo produzca —era el verbo de la señal—, así que hoy sólo se llega escribiendo la URL. Queda
+// declarado: si ese recorte hace falta, va como filtro de la lista, no como aviso de arriba.
 //
 // ═══ EL PERÍODO ES UNA SOLA LECTURA, NO TRES ═══
 //
@@ -28,8 +29,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Campo, CTRL } from '@/shared/components/ui'
 import { Aviso } from '@/shared/components/ds'
-import { IconoCrear, IconoCuadrilla, IconoPersona } from '@/shared/components/iconos'
-import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
+import { IconoCrear } from '@/shared/components/iconos'
 import {
   AccionPrimaria, AccionTerciaria, CostadoDeFicha, CuerpoDeFicha, Migas, SolapasDeFicha, TituloDeFicha, PantallaV2,
 } from '@/shared/components/v2/segundoNivel'
@@ -48,7 +48,6 @@ import {
   agruparPorPeriodo, esPeriodoHH, fichajePorCuadrilla, PERIODOS_HH, pieDeLaBanda, rotuloDePeriodo,
   VENTANAS, ventanaQueContiene, type PeriodoHH,
 } from '@/features/administracion/services/hhPorPeriodo'
-import { armarSenalesCuadrillas } from '@/features/administracion/services/senalesCuadrillas'
 import { getPresencia } from '@/features/administracion/services/presenciaService'
 import {
   agregarIntegrante, archivarCuadrilla, asignarACuadrilla, crearCuadrilla, editarCuadrilla,
@@ -133,12 +132,6 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
   const editando = cuadrillas.find((c) => c.id === sp.editar) ?? null
   const integrantes = abierta ? (await getIntegrantes(supabase, abierta.id)).data ?? [] : []
 
-  const senales = armarSenalesCuadrillas(
-    { data: cuadrillas.filter((c) => c.activa && !c.obras_actuales).length, error: null },
-    { data: (sinCuadrilla.data ?? []).length, error: sinCuadrilla.error },
-    { sinObra: href(sp, { sin: 'obra', c: undefined }), pool: href(sp, { pool: '1' }) },
-  )
-
   return (
     <PantallaV2>
       <Migas volverA="/administracion/personas" padre="Personal" actual="Cuadrillas y HH" />
@@ -160,13 +153,6 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
             </AccionPrimaria>
           </>
         }
-      />
-
-      <TrabajoDeSeccion
-        senales={senales}
-        icono={IconoCuadrilla}
-        iconos={{ cuadrilla: IconoCuadrilla, persona: IconoPersona }}
-        vacio="Todas las cuadrillas tienen obra y todo el plantel está encuadrado."
       />
 
       {/* LA BANDA DE PERÍODO. Subrayado GRAFITO y no amarillo: el amarillo marca la sección abierta

@@ -11,12 +11,22 @@
 // El día que sean 10.000 esto se parte en un `count` por chip. Hasta entonces, partirlo sería pagar
 // cuatro viajes para ahorrar 200 KB.
 //
+// ═══ LO QUE SE TRAE NO ES TODO LO QUE SE MUESTRA (08/09/2026) ═══
+//
+// Se leen las 955 filas y se devuelven las 803 que son COMPRAS DE OBRA. El corte lo decide
+// `comprasDeObra.ts` y su motivo está escrito ahí: la pestaña es el ledger de todo lo que sale de
+// la empresa —impuestos, cuota del prendario, quincena— y esta pantalla responde otra pregunta.
+// Las 152 que salen se cuentan y viajan en `fuera` para que el pie las declare.
+//
 // ═══ EL TOPE SE DICE ═══
 //
 // Si alguna vez recorta, la pantalla lo declara. Un control que no pudo mirar todo no puede afirmar
 // que no hay nada más: seis faltantes falsos ya costaron una investigación entera en este repo.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  separarComprasDeObra, type Corte, type MotivoFuera,
+} from './comprasDeObra.ts'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -95,10 +105,17 @@ const COLUMNAS_ADJUNTO = [
  * estable; la fila es una posición que se mueve al insertar un renglón arriba. Usar la fila primero
  * colgaría el papel de la factura equivocada el día que el dueño inserte una línea.
  */
-export async function getComprasSheet(supabase: SupabaseClient): Promise<ServiceResult<{
+export interface ListadoCompras {
+  /** SÓLO las compras de obra: civil, mantenimiento y estructura. */
   filas: FilaConPapel[]
   truncado: boolean
-}>> {
+  /** Cuántas filas de la pestaña NO son compras de obra, por motivo. La pantalla lo declara. */
+  fuera: Record<MotivoFuera, number>
+  /** Las que entraron con un rubro no clasificado. Se muestran y se nombran. */
+  dudosas: FilaConPapel[]
+}
+
+export async function getComprasSheet(supabase: SupabaseClient): Promise<ServiceResult<ListadoCompras>> {
   const [compras, adjuntos] = await Promise.all([
     supabase.from('compra_sheet').select(COLUMNAS).order('fecha', { ascending: false, nullsFirst: false })
       .order('fila', { ascending: false }).limit(TOPE),
@@ -118,11 +135,31 @@ export async function getComprasSheet(supabase: SupabaseClient): Promise<Service
       const l = porFila.get(a.fila_compras) ?? []; l.push(a); porFila.set(a.fila_compras, l)
     }
   }
-  const filas = ((compras.data ?? []) as unknown as CompraSheet[]).map((c) => {
+  const leidas = ((compras.data ?? []) as unknown as CompraSheet[]).map((c) => {
     const suyos = (c.clave ? porClave.get(c.clave) : null) ?? porFila.get(c.fila) ?? []
     return { ...c, adjuntos: suyos, tiene_adjunto: suyos.length > 0 }
   })
-  return { data: { filas, truncado: filas.length >= TOPE }, error: null }
+  // EL CORTE SE HACE ACÁ, EN EL SERVIDOR, Y NO EN LA CONSULTA.
+  //
+  // Podría escribirse como un `.not('unidad_negocio', 'in', ...)` y ahorrar el viaje de 152 filas,
+  // pero entonces «qué es una compra de obra» estaría definido en dos lugares —el SQL de este
+  // archivo y `comprasDeObra.ts`— y el día que el dueño agregue un rubro habría que acordarse de
+  // los dos. Una definición, un archivo. Lo que NO se hace es mandarlas al navegador para que las
+  // esconda el front: los conteos de los chips y el total del pie salen de esta población ya
+  // recortada, y nunca viaja al cliente una fila que la pantalla no va a mostrar.
+  const corte: Corte<FilaConPapel> = separarComprasDeObra(leidas)
+  return {
+    data: {
+      filas: corte.deObra,
+      // EL TOPE SE MIDE SOBRE LO LEÍDO, no sobre lo que quedó. Si la base devolvió 3.000 filas y el
+      // corte dejó 2.400, la lectura se truncó igual y hay que decirlo: medir el tope después del
+      // filtro apagaría el aviso justo cuando más falta hace.
+      truncado: leidas.length >= TOPE,
+      fuera: corte.fuera,
+      dudosas: corte.dudosas,
+    },
+    error: null,
+  }
 }
 
 /**

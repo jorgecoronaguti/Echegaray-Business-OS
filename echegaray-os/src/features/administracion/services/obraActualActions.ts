@@ -41,7 +41,18 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { cambiarObraActualCon, type ResultadoObraActual, type SupabaseLike } from './obraActualNucleo'
 
-export type { ResultadoObraActual }
+// ═══ UN `export type` ACÁ ROMPE LA PANTALLA ENTERA EN PRODUCCIÓN ═══
+//
+// Este archivo es `'use server'`: el compilador convierte CADA export en una referencia de runtime,
+// también la de un tipo, que en el bundle no existe. El build pasa; en `next start` la página muere
+// al evaluar el módulo con `ReferenceError: ResultadoObraActual is not defined` y `/administracion/
+// personas` contesta «No se pudo cargar el legajo de personas». No se ve con `next dev`.
+//
+// Es lo que el dueño vio el 08/09/2026 al usar el desplegable —*"se rompe"*—: el `router.refresh()`
+// que sigue al cambio vuelve a evaluar el módulo y la pantalla se cae entera.
+//
+// El tipo se importa de `obraActualNucleo`, que es donde vive. Reexportarlo desde una acción no
+// ahorra nada y cuesta la pantalla.
 
 export async function cambiarObraActual(entrada: unknown): Promise<ResultadoObraActual> {
   const supabase = await createClient()

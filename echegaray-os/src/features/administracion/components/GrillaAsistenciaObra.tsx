@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
-import { SIN_OBRA } from '../services/quincenaPorObra'
+import { SIN_OBRA, totalDeLaQuincena } from '../services/quincenaPorObra'
+import { agruparPorRolOrganizacional } from '../services/vocabularioPersona'
 import { guardarJornada } from '../services/jornadaPorObraActions'
 import { cambiarObraActual } from '../services/obraActualActions'
 import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJornada'
@@ -38,6 +39,16 @@ import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJorn
 // de mano de obra de una obra a otra sin que nadie lo decida—. Esas celdas muestran el total con un
 // punto al lado y se corrigen desde el panel, que enseña el desglose antes de tocar nada.
 
+// ═══ JEFES DE OBRA ARRIBA, EL RESTO ABAJO (dueño, 08/09/2026) ═══
+//
+// *«dividir en la pestaña asistencia y plantel a los jefes de obra del resto de los obreros»*. Los
+// dos grupos salen del MISMO criterio que el plantel —`esJefeDeObra(personas.puesto)`, ya resuelto
+// en el servidor y publicado en `fila.esJefe`—, así que una persona no puede ser jefe en una
+// pantalla y obrero en la otra.
+//
+// EL «TOTAL DE LA QUINCENA» SIGUE SIENDO GLOBAL. La fila del pie suma a todos, jefes incluidos: es
+// la HH de la empresa en el período y partirla cambiaría lo que ese número significa. El subtotal
+// del grupo va en su propio rótulo, apagado y en 11,5px, para que no compita con el total de abajo.
 const ROJO = '#B42318'
 
 function textoDe(c: CeldaObra): string {
@@ -104,8 +115,15 @@ export function GrillaAsistenciaObra({
   const [cambiando, setCambiando] = useState<string | null>(null)
   const [, arrancar] = useTransition()
 
+  // LO QUE EL DESPLEGABLE MUESTRA SELECCIONADO. La obra a la que se le imputa lo que se escriba si
+  // se le puede imputar; si su asignación vigente está en una obra que ya no admite horas, ESA obra
+  // —en una opción deshabilitada—, porque es la verdad de la base. Nunca la primera activa de la
+  // lista: eso es lo que le ponía «SF - PISOS INDUSTRIALES» a quien estaba en MAMPOSTERÍA.
+  const seleccionada = (fila: FilaQuincena) =>
+    fila.obraPorDefecto?.id ?? fila.obraVigenteNoElegible?.id ?? ''
+
   const cambiarObra = (fila: FilaQuincena, valor: string) => {
-    if ((fila.obraPorDefecto?.id ?? '') === valor) return
+    if (seleccionada(fila) === valor) return
     setCambiando(fila.clave)
     setAcuses((a) => { const n = { ...a }; delete n[fila.clave]; return n })
     arrancar(async () => {
@@ -156,7 +174,7 @@ export function GrillaAsistenciaObra({
         fallar(k, 'Esa obra no tiene jornada pactada: la ausencia no se puede medir.')
         return
       }
-      enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'ausente', horas: jornada }, k)
+      enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'ausente', horas: jornada }, k, fila.clave)
       return
     }
     const { horas, error } = leerHoras(bruto)
@@ -164,7 +182,7 @@ export function GrillaAsistenciaObra({
     // En blanco NO borra: dejar de escribir no es una decisión de nadie. Borrar una jornada
     // cargada es un acto y necesita su propia puerta, que esta pantalla todavía no tiene.
     if (horas === null) { setBorradores((b) => ({ ...b, [k]: original })); return }
-    enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas }, k)
+    enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas }, k, fila.clave)
   }
 
   /** Lo tipeado se descarta: no se guardó. El valor lo vuelve a poner `textoDe(celda)`. */
@@ -176,11 +194,18 @@ export function GrillaAsistenciaObra({
     fecha: string,
     marca: { persona_id: string; estado: 'presente' | 'ausente'; horas: number },
     k: string,
+    /** La fila, para colgarle el aviso del acuse. Es la misma clave que usa `cambiarObra`. */
+    claveFila: string,
   ) => {
     setErrores((e) => { const n = { ...e }; delete n[k]; return n })
     arrancar(async () => {
       const r = await guardarJornada({ obra_id: obraId, fecha, marcas: [marca] })
-      if (!r.ok) { volverAlValorAnterior(k); fallar(k, r.error) }
+      if (!r.ok) { volverAlValorAnterior(k); fallar(k, r.error); return }
+      // SÓLO LA EXCEPCIÓN SE DIBUJA. El acuse normal («1 marca nueva») ya se ve en la celda, que
+      // muestra el número guardado; repetirlo en cada tecleo sería ruido. Lo que no se ve en ningún
+      // lado es que esa persona no estaba asignada a la obra ese día, y eso se dice.
+      const aviso = r.aviso
+      if (aviso) setAcuses((a) => ({ ...a, [claveFila]: { texto: aviso, error: false } }))
     })
   }
 
@@ -221,7 +246,18 @@ export function GrillaAsistenciaObra({
           </tr>
         </thead>
         <tbody>
-          {filas.map((fila) => {
+          {agruparPorRolOrganizacional(filas, (f) => f.esJefe).map((grupo, iGrupo, grupos) => (
+          <Fragment key={grupo.clave}>
+          {grupos.length > 1 && (
+            <FilaDeGrupo
+              rotulo={grupo.rotulo}
+              horas={totalDeLaQuincena(grupo.integrantes)}
+              dias={dias.length}
+              conCorreccion={puedeCorregir}
+              primero={iGrupo === 0}
+            />
+          )}
+          {grupo.integrantes.map((fila) => {
             // EL PRIMER ERROR DE LA FILA, con su día adelante: la línea está abajo y sin la fecha no
             // se sabe a qué celda se refiere. Uno solo — dos avisos apilados vuelven a romper la fila.
             const fallo = fila.celdas
@@ -253,7 +289,7 @@ export function GrillaAsistenciaObra({
                   <select
                     data-testid="select-obra-actual"
                     aria-label={`Obra actual de ${fila.persona.nombre}`}
-                    value={fila.obraPorDefecto?.id ?? ''}
+                    value={seleccionada(fila)}
                     disabled={cambiando === fila.clave}
                     onChange={(e) => cambiarObra(fila, e.target.value)}
                     style={{
@@ -263,6 +299,14 @@ export function GrillaAsistenciaObra({
                     }}
                   >
                     <option value="">Sin obra</option>
+                    {/* SU OBRA VIGENTE, QUE YA NO ADMITE HORAS. Deshabilitada: no se puede dejar a
+                        alguien ahí, pero mostrar otra sería decir que está donde no está. El texto
+                        pide explícitamente la decisión que falta. */}
+                    {fila.obraVigenteNoElegible && (
+                      <option value={fila.obraVigenteNoElegible.id} disabled>
+                        {fila.rotuloObra} — elegí la obra actual
+                      </option>
+                    )}
                     {obras.map((o) => (
                       <option key={o.id} value={o.id}>{o.nombre}</option>
                     ))}
@@ -273,7 +317,8 @@ export function GrillaAsistenciaObra({
                 {/* SIN ASIGNACIÓN PERO CON HORAS. El desplegable dice «Sin obra» —que es la verdad
                     de la asignación—, y esta línea dice dónde están sus horas, que es el otro dato
                     real y el que explica por qué la persona aparece en la grilla. */}
-                {puedeCambiarObra && !fila.obraPorDefecto && fila.rotuloObra !== SIN_OBRA && (
+                {puedeCambiarObra && !fila.obraPorDefecto && !fila.obraVigenteNoElegible
+                  && fila.rotuloObra !== SIN_OBRA && (
                   <span style={{ display: 'block', fontSize: '11px', color: V.tenue, marginTop: 2 }}>
                     horas en {fila.rotuloObra}
                   </span>
@@ -398,6 +443,8 @@ export function GrillaAsistenciaObra({
             </Fragment>
             )
           })}
+          </Fragment>
+          ))}
 
           <tr style={{ borderTop: `1px solid ${V.lineaFuerte}` }} data-testid="total-quincena">
             <td colSpan={2} style={{ padding: '8px 8px 8px 0', color: V.apagado }}>Total de la quincena</td>
@@ -441,6 +488,47 @@ export function GrillaAsistenciaObra({
 
 /** `2026-09-04` → `04/09`. La línea de error tiene que decir de qué día habla. */
 const fechaCorta = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
+/**
+ * EL RÓTULO DE UNA SECCIÓN DE LA GRILLA — un filo y una palabra.
+ *
+ * Misma tipografía que los rótulos de columna (11px, versalita, tenue): dentro de una tabla no
+ * puede aparecer un tercer nivel tipográfico, y un fondo de color por grupo convertiría la
+ * quincena en dos tableros. El filo va ARRIBA y sólo en los grupos que siguen al primero — el
+ * encabezado de columnas ya trae el suyo y dos líneas seguidas se leen como un borde grueso.
+ *
+ * El subtotal cae en la columna HORAS, la misma en la que cada fila publica su total: leído de
+ * arriba abajo, el número siempre significa lo mismo.
+ */
+function FilaDeGrupo({ rotulo, horas, dias, conCorreccion, primero }: {
+  rotulo: string; horas: number | null; dias: number; conCorreccion: boolean; primero: boolean
+}) {
+  const filo = { borderBottom: `1px solid ${V.linea}`, borderTop: primero ? undefined : `1px solid ${V.linea}` }
+  // Más aire arriba cuando el grupo NO es el primero: ahí el espacio es lo que separa una sección
+  // de la anterior. Múltiplos de 2 sobre la grilla de 8, como el resto de la tabla.
+  const arriba = primero ? 10 : 16
+  return (
+    <tr data-testid="fila-grupo" data-grupo={rotulo}>
+      <td colSpan={2} style={{
+        ...filo, padding: `${arriba}px 8px 6px 0`,
+        fontSize: '11px', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase',
+        color: V.tenue,
+      }}>
+        {rotulo}
+      </td>
+      <td colSpan={dias} style={filo} />
+      {/* `—` Y NO `0`: nadie declaró una hora de este grupo no es lo mismo que trabajó cero. */}
+      <td data-testid="subtotal-grupo" style={{
+        ...filo, padding: `${arriba}px 0 6px 8px`,
+        textAlign: 'right', fontSize: '11.5px', fontVariantNumeric: 'tabular-nums',
+        color: horas === null ? V.inerte : V.apagado,
+      }}>
+        {horas === null ? '—' : hs(horas)}
+      </td>
+      {conCorreccion && <td style={filo} />}
+    </tr>
+  )
+}
 
 function Rotulo({ children, ancho, centro, derecha, tenue, titulo }: {
   children?: React.ReactNode; ancho?: string; centro?: boolean; derecha?: boolean

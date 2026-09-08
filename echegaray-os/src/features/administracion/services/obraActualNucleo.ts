@@ -18,7 +18,7 @@
 // `obraActualActions.ts` y en `planDeObraActual.ts`; no se repite acá.
 
 import { z } from 'zod'
-import { planDeCambioDeObra, puedeCambiarObraActual, type AsignacionVigente } from './planDeObraActual.ts'
+import { planDeCambioDeObra, puedeCambiarObraActual, type AsignacionAbierta } from './planDeObraActual.ts'
 
 export type ResultadoObraActual = { ok: true; mensaje: string } | { ok: false; error: string }
 
@@ -40,7 +40,8 @@ interface TablaLike {
 interface LecturaLike {
   eq(columna: string, valor: string): LecturaLike
   in(columna: string, valores: string[]): PromiseLike<Respuesta<Fila[]>>
-  or(filtro: string): PromiseLike<Respuesta<Fila[]>>
+  /** `hasta is null` — abierta. Es un filtro distinto de `eq`: PostgREST no compara con null. */
+  is(columna: string, valor: null): PromiseLike<Respuesta<Fila[]>>
   maybeSingle(): PromiseLike<Respuesta<Fila>>
 }
 
@@ -100,10 +101,10 @@ export async function cambiarObraActualCon(
   const obra = await destinoValido(supabase, obraId)
   if (obra.error) return { ok: false, error: obra.error }
 
-  const vigentes = await leerVigentes(supabase, personaId, hoy)
-  if (vigentes.error) return { ok: false, error: vigentes.error }
+  const abiertas = await leerAbiertas(supabase, personaId)
+  if (abiertas.error) return { ok: false, error: abiertas.error }
 
-  const plan = planDeCambioDeObra({ vigentes: vigentes.data, destino: obra.destino, hoy })
+  const plan = planDeCambioDeObra({ abiertas: abiertas.data, destino: obra.destino, hoy })
   if (plan.sinCambio) return { ok: true, mensaje: plan.acuse }
 
   for (const c of plan.cerrar) {
@@ -133,12 +134,17 @@ export async function cambiarObraActualCon(
       desde: plan.abrir.desde,
     }).select('id')
     if (error) {
+      // EL MENSAJE DE LA BASE VA ENTERO, TAMBIÉN EL DEL ÍNDICE ÚNICO. Un 23505 acá ya no es «ya
+      // estaba en esa obra» —el plan cierra todas las abiertas antes de abrir—: es una fila que la
+      // lectura no vio (otra actividad, o una que la RLS esconde). Cambiarlo por una frase amable
+      // borraba justo el dato con el que se encuentra cuál.
       return {
         ok: false,
-        error: error.code === '23505'
-          ? 'Esa persona ya tiene una asignación vigente a esa obra.'
-          : `Cerré la asignación anterior pero NO pude abrir la nueva: ${error.message}. `
-            + 'La persona quedó sin obra — elegila de nuevo.',
+        error: `Cerré la asignación anterior pero NO pude abrir la nueva: ${error.message}`
+          + (error.code === '23505'
+            ? ' (choca con otra asignación vigente a esa obra que la lectura no vio).'
+            : '.')
+          + ' La persona quedó sin obra — elegila de nuevo.',
       }
     }
     if ((data ?? []).length === 0) {
@@ -174,13 +180,26 @@ async function destinoValido(
   return { destino: { id: o.id, nombre: o.nombre }, error: null }
 }
 
-/** Las asignaciones que hoy están abiertas, con el nombre de su obra resuelto. */
-async function leerVigentes(
-  supabase: SupabaseLike, personaId: string, hoy: string,
-): Promise<{ data: AsignacionVigente[]; error: string | null }> {
+/**
+ * TODAS las asignaciones ABIERTAS de la persona, con el nombre de su obra resuelto.
+ *
+ * ═══ ABIERTA ES `hasta is null`, Y NADA MÁS ═══
+ *
+ * Antes esta lectura traía también las cerradas con `hasta >= hoy`, y eso rompía el cambio de obra
+ * dos veces el mismo día: la primera cierra la de hoy con `hasta = hoy` (su `desde` es hoy), la
+ * segunda la vuelve a ver «vigente», cree que la persona YA está ahí, no abre nada — y la persona
+ * queda con cero asignaciones abiertas. Es el índice único el que define qué es estar asignado:
+ * `obra_asignacion_una_vigente ... WHERE hasta IS NULL`. Se lee lo mismo que la base restringe.
+ *
+ * Sin filtro de obra y sin filtro de `desde`: las filas sin `desde` son las que dejó la web y son
+ * exactamente las que hay que cerrar.
+ */
+async function leerAbiertas(
+  supabase: SupabaseLike, personaId: string,
+): Promise<{ data: AsignacionAbierta[]; error: string | null }> {
   const { data, error } = await supabase.from('obra_asignacion')
     .select('id, obra_id, desde, hasta').eq('persona_id', personaId)
-    .or(`hasta.is.null,hasta.gte.${hoy}`)
+    .is('hasta', null)
   // UNA LECTURA QUE FALLA NO ES «NO TIENE NINGUNA». Seguir con la lista vacía abriría la obra nueva
   // sin cerrar la vieja y dejaría a la persona en dos obras a la vez.
   if (error) return { data: [], error: `No pude leer sus asignaciones: ${error.message}` }
