@@ -11,6 +11,7 @@ import type {
 } from '@/features/administracion/services/presenciaDelDia'
 import { guardarPresencia } from '@/features/administracion/services/presenciaDelDiaActions'
 import { motivosDeDiaNoTrabajado } from '@/features/administracion/services/motivoDeAusencia'
+import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPorDefecto'
 import type { FilaConOtraObra } from './FormAsistencia'
 
 // PRESENCIA — «¿está o no está?». Acá NO hay una sola casilla de horas, y no es un olvido.
@@ -34,11 +35,14 @@ import type { FilaConOtraObra } from './FormAsistencia'
 // Ver `presenciaDelDia.ts`: es la misma lección que costó 77,4 HH escritas en una obra viva. El día
 // normal cuesta UN toque —«Marcar a todos como presentes»— y ese toque no pisa a nadie ya marcado.
 //
-// ═══ NADA DE ACÁ ESCRIBE EN `registros_hh` ═══
+// ═══ LA PANTALLA NO PREGUNTA HORAS, PERO MARCAR «Está» LAS CARGA ═══
 //
-// Las horas siguen existiendo, en su propia pantalla, y se llega por el enlace de abajo. Lo único
-// que viaja de una a la otra es la presencia declarada: al ausente no se le piden horas. Al revés
-// está prohibido — escribir un 8 no declara a nadie presente.
+// Dueño, 08/09/2026 a la tarde: *«que por defecto cuando se ponga la asistencia se le cargue 9 hs
+// los L, M, M, J y 8 hs los V»*. La pregunta sigue siendo una sola —¿está o no está?— y sigue sin
+// haber un campo de número; lo que cambió es que la respuesta escribe la jornada del día en
+// `registros_hh`, que es costo imputado a esta obra. Por eso el pie lo DICE ANTES de guardar: quien
+// toca el botón tiene que saber qué firma. La corrección se hace en Asistencia, donde están todas
+// las horas juntas. Al revés sigue prohibido: escribir un 8 no declara a nadie presente.
 //
 // Diseño: tokens únicamente, grid de 8, objetivos ≥ 44 px, grafito para la acción, `neg` sólo para
 // el problema (la falta declarada) y `pos` sólo para el estado positivo.
@@ -78,6 +82,9 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
   }
 
   const motivos = useMemo(() => motivosDeDiaNoTrabajado(), [])
+  // LA MISMA REGLA QUE ESCRIBE LA ACCIÓN, NO UN NÚMERO COPIADO. Si el aviso dijera «9 h» a mano,
+  // el día que cambie la jornada por defecto la pantalla mentiría sin que ningún test se ponga rojo.
+  const jornada = jornadaPorDefecto(fecha)
   const marcas = loQueViajaPresencia(casillas)
   const resumen = resumenPresencia(marcas, aMarcar.length)
   const falta = avisoSinMarcar(resumen.sinMarcar)
@@ -239,6 +246,16 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
         <p className="text-center text-[11px] text-faint">
           <Nulo>Se guarda sólo lo marcado. A quien quede sin marcar no se le toca nada.</Nulo>
         </p>
+        {/* LO QUE SE ESCRIBE, DICHO ANTES DE ESCRIBIRLO. El fin de semana no tiene jornada por
+            defecto y entonces esta línea no aparece: un aviso que promete horas que no se van a
+            cargar es peor que ninguno. */}
+        {jornada !== null && (
+          <p className="text-center text-[11px] text-faint" data-testid="aviso-horas-por-defecto">
+            <Nulo>
+              A quien marques «Está» se le cargan {jornada} h del día. Se editan en Asistencia.
+            </Nulo>
+          </p>
+        )}
       </div>
 
       {/* EL PASO SIGUIENTE, DISCRETO. Las horas son otra pregunta y otra pantalla; el enlace existe

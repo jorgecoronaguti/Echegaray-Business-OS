@@ -22,10 +22,15 @@
 // El día normal cuesta UN toque —«Marcar a todos como presentes»—, que además NO pisa a quien ya
 // se marcó como ausente: se ofrece, no se impone. Misma forma que `ponerLaJornada`.
 //
-// ═══ NADA DE ACÁ TOCA `registros_hh` ═══
+// ═══ LO QUE ESTE ARCHIVO ESCRIBE EN `registros_hh`: LA JORNADA POR DEFECTO, Y NADA MÁS ═══
 //
-// Ni una hora. Lo único que sale de este archivo es qué escribir en `asistencia_dia`.
+// Hasta la tarde del 08/09/2026 acá no salía ni una hora. Ese día el dueño pidió que declarar el
+// presente cargue la jornada sola («9 hs los L, M, M, J y 8 hs los V»), y por eso al final del
+// archivo vive `planDeHorasPorDefecto`. Lo que NO cambió: la pantalla nunca pregunta un número, y
+// el defecto no pisa ni borra una hora que cargó una persona. El porqué completo está abajo, al
+// lado de la función.
 
+import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { esMotivo, tipoDeMotivo } from './motivoDeAusencia.ts'
 
@@ -284,4 +289,150 @@ export function presenciaPorPersona(
  */
 export function personasSinHoras(guardadas: readonly PresenciaGuardada[]): Set<string> {
   return new Set(guardadas.filter((g) => g.estado !== 'presente').map((g) => g.persona_id))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LAS HORAS POR DEFECTO — la decisión del dueño del 08/09/2026, a la tarde
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Textual: *«que por defecto cuando se ponga la asistencia se le cargue 9 hs los L, M, M, J y 8 hs
+// los V, permitiendo luego edición de esto mismo en la planilla de asistencia»*.
+//
+// Esto DEROGA, sólo para este caso y con esta forma, la regla de más arriba de que nada de este
+// archivo toca `registros_hh`. La separación de los dos hechos sigue en pie —la pantalla pregunta
+// «¿está?» y nunca un número—: lo que cambia es que declarar a alguien presente ahora ESCRIBE la
+// jornada que ese día tiene por defecto, en vez de dejarla sugerida en otra pantalla a la que casi
+// nadie llegaba. La consecuencia hay que decirla entera: **una presencia declarada imputa costo de
+// mano de obra a la obra donde se marcó**. Por eso la escritura es la más conservadora posible:
+//
+//  · NO PISA NADA. Si la persona ya tiene cualquier fila de horas ese día —cargada a mano, en otra
+//    obra, o una ausencia— no se inserta nada. El defecto sólo llena el vacío.
+//  · SE BORRA SOLO CUANDO ES SUYO. Corregir a «no vino» borra la fila por defecto (que nadie miró)
+//    y NUNCA una hora que alguien cargó a mano: eso queda como conflicto, para que lo resuelva
+//    quien tiene el dato. Lo mismo que hace `combinarCeldaDia` con la celda de la grilla.
+//  · EL FIN DE SEMANA NO TIENE DEFECTO. `jornadaPorDefecto` devuelve `null` el sábado y el domingo:
+//    marcar presente ahí no escribe horas. Un sábado trabajado se carga a mano, como hasta hoy.
+//
+// Editar después en la planilla de Asistencia pisa esta fila como cualquier otra —la celda, el
+// panel «corregir» y el formulario de horas hacen `update` sobre el `id`— y el `fuente_legacy` pasa
+// a ser el del camino que editó. Por eso la marca de origen sirve para exactamente una cosa: saber,
+// mientras nadie la tocó, que esa fila la escribió un defecto y no una persona.
+
+/** La marca de origen de una fila escrita por este camino. Es lo único que distingue una jornada
+ *  que nadie miró de una que alguien cargó — y por eso es lo único que este código puede borrar. */
+export const FUENTE_HORAS_POR_DEFECTO = 'web:presencia-defecto'
+
+/** Una fila de `registros_hh` de ese día, mirada sólo por lo que decide el plan. */
+export interface HoraDelDia {
+  id: string
+  persona_id: string
+  tipo_hora: string
+  fuente_legacy: string | null
+}
+
+/** Lo que se inserta. `notas` va nula a propósito: el motivo es de la ausencia, no de la jornada. */
+export interface HoraPorDefecto {
+  persona_id: string
+  obra_canonica_id: string
+  fecha: string
+  horas: number
+  tipo_hora: 'normal'
+  fuente_legacy: typeof FUENTE_HORAS_POR_DEFECTO
+  notas: null
+}
+
+export interface PlanDeHorasPorDefecto {
+  insertar: HoraPorDefecto[]
+  /** `id`s de filas por defecto que quedaron sin presencia que las respalde. */
+  borrar: string[]
+  /** Personas declaradas ausentes que tienen horas TRABAJADAS cargadas a mano ese día. No se toca
+   *  ninguna de las dos afirmaciones: se nombra el conflicto. */
+  conflictos: string[]
+  /** La jornada que rige ese día, o `null` el fin de semana. Viaja para que el acuse no la
+   *  recalcule con otra regla. */
+  jornada: number | null
+}
+
+/**
+ * QUÉ HORAS ESCRIBE (O BORRA) UNA TANDA DE PRESENCIAS. Función pura: decide, no escribe.
+ *
+ * `horasExistentes` son las filas de ESE DÍA de esas personas, **de cualquier obra**. Filtrarlas por
+ * la obra de la pantalla sería el defecto grave de acá: quien ya tiene 9 h cargadas en otra obra
+ * recibiría 9 h más en ésta, y el día pasaría a costar el doble sin que nada lo diga.
+ */
+export function planDeHorasPorDefecto({ presencias, horasExistentes, fecha, obra }: {
+  presencias: readonly MarcaPresencia[]
+  horasExistentes: readonly HoraDelDia[]
+  fecha: string
+  obra: string
+}): PlanDeHorasPorDefecto {
+  const jornada = jornadaPorDefecto(fecha)
+  const porPersona = new Map<string, HoraDelDia[]>()
+  for (const h of horasExistentes) {
+    const suyas = porPersona.get(h.persona_id)
+    if (suyas) suyas.push(h)
+    else porPersona.set(h.persona_id, [h])
+  }
+
+  const insertar: HoraPorDefecto[] = []
+  const borrar: string[] = []
+  const conflictos: string[] = []
+
+  for (const m of presencias) {
+    const suyas = porPersona.get(m.persona_id) ?? []
+    if (m.estado === 'presente') {
+      // CUALQUIER FILA FRENA EL DEFECTO, no sólo una trabajada. Una ausencia ya cargada para ese
+      // día es una afirmación de alguien: agregarle 9 h normales al lado dejaría el mismo día
+      // declarado como trabajado y como no trabajado a la vez.
+      if (jornada !== null && suyas.length === 0) {
+        insertar.push({
+          persona_id: m.persona_id,
+          obra_canonica_id: obra,
+          fecha,
+          horas: jornada,
+          tipo_hora: 'normal',
+          fuente_legacy: FUENTE_HORAS_POR_DEFECTO,
+          notas: null,
+        })
+      }
+      continue
+    }
+    // AUSENTE O LICENCIA. La ausencia en sí la escribe el camino que ya existe (`corregirJornada` /
+    // la carga de horas): acá sólo se retira la jornada que este mismo defecto había puesto.
+    const manuales = suyas.filter((h) => h.fuente_legacy !== FUENTE_HORAS_POR_DEFECTO && esTrabajada(h.tipo_hora))
+    if (manuales.length > 0) {
+      // NO SE BORRA NADA CUANDO HAY TRABAJO CARGADO A MANO — ni siquiera la fila por defecto que
+      // pueda convivir con él. Alguien afirmó que esa persona trabajó y otro que no vino: borrar
+      // por nuestra cuenta es elegir cuál de los dos tenía razón sin tener el dato.
+      conflictos.push(m.persona_id)
+      continue
+    }
+    for (const h of suyas) if (h.fuente_legacy === FUENTE_HORAS_POR_DEFECTO) borrar.push(h.id)
+  }
+
+  return { insertar, borrar, conflictos, jornada }
+}
+
+/**
+ * Lo que el acuse agrega cuando el defecto escribió algo. `null` cuando no escribió nada — y ése es
+ * el punto: decir «se cargaron 9 h» un sábado, o cuando todos ya tenían horas, sería exactamente el
+ * tipo de verde inventado que el resto de esta pantalla evita. La frase nombra las dos jornadas
+ * porque explica la REGLA, no el número de hoy, y termina diciendo dónde se corrige.
+ */
+export function acuseDeHorasPorDefecto(
+  { insertadas, borradas, conflictos }: { insertadas: number; borradas: number; conflictos: number },
+): string | null {
+  const partes: string[] = []
+  if (insertadas > 0) {
+    partes.push('horas cargadas por defecto: 9 h (lun–jue) / 8 h (vie); editables en Asistencia')
+  }
+  if (borradas > 0) {
+    partes.push(`se quitaron las horas por defecto de ${plural(borradas, 'persona', 'personas')}`)
+  }
+  if (conflictos > 0) {
+    partes.push(
+      `${plural(conflictos, 'persona', 'personas')} con horas cargadas a mano que quedaron como estaban: revisalo en Asistencia`,
+    )
+  }
+  return partes.length > 0 ? partes.join(' · ') : null
 }
