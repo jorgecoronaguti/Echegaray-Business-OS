@@ -399,3 +399,138 @@ test('07 · LA CASILLA NACE VACÍA Y GUARDAR NO ESCRIBE NADA — sobre una obra 
     await limpiarObraDePrueba()
   }
 })
+
+// ═══ 08 · EL DESPLEGABLE DE OBRA ACTUAL (pedido del dueño, 08/09/2026) ═══
+//
+// LAS DOS OBRAS SON DE PRUEBA, A PROPÓSITO. Cambiar la obra actual CIERRA la asignación vigente, y
+// hacerlo sobre una persona que hoy está en una obra real le pondría `hasta = ayer` a la asignación
+// que respalda su costo de mano de obra — el mismo tipo de daño que el 07/09 metió 77,4 HH
+// inventadas en PISOS INDUSTRIALES. Así que la prueba elige a alguien SIN ninguna asignación
+// vigente, se la fabrica a una obra ZZ-E2E, la muda a otra obra ZZ-E2E y borra las dos. Ninguna
+// obra real y ninguna asignación real se tocan, y el camino que se prueba es el completo:
+// cerrar con `hasta` + abrir con `desde = hoy`.
+// OBRAS PROPIAS Y NO LAS DEL RESTO DEL ARCHIVO: `prepararObraDePrueba` BORRA las asignaciones de
+// `zz-e2e-asistencia` para armar su escenario, y con la suite en paralelo se llevó puesta la
+// asignación de esta prueba —el desplegable apareció vacío y el test 04 se quedó sin su obra—.
+// Dos pruebas que escriben no pueden compartir la fila que cada una necesita intacta.
+const OBRA_ORIGEN = 'zz-e2e-asignacion-origen'
+const OBRA_DESTINO = 'zz-e2e-asignacion-destino'
+const NOMBRE_ORIGEN = `${MARCA_PRUEBA} asignación origen`
+const NOMBRE_DESTINO = `${MARCA_PRUEBA} asignación destino`
+
+async function prepararMudanza(): Promise<{ id: string; nombre: string } | null> {
+  const sb = servicio()
+  const hoy = new Date().toISOString().slice(0, 10)
+  const ocupadas = await sb.from('obra_asignacion').select('persona_id, hasta')
+  if (ocupadas.error) throw new Error(`No pude leer las asignaciones: ${ocupadas.error.message}`)
+  const conObra = new Set(((ocupadas.data ?? []) as { persona_id: string; hasta: string | null }[])
+    .filter((a) => !a.hasta || a.hasta >= hoy).map((a) => a.persona_id))
+
+  const plantel = await sb.from('persona_plantel')
+    .select('id, nombre_completo').not('nombre_completo', 'is', null).limit(300)
+  if (plantel.error) throw new Error(`No pude leer el plantel: ${plantel.error.message}`)
+  const libre = ((plantel.data ?? []) as { id: string; nombre_completo: string }[])
+    .find((p) => !conObra.has(p.id))
+  if (!libre) return null
+
+  for (const [id, nombre] of [[OBRA_ORIGEN, NOMBRE_ORIGEN], [OBRA_DESTINO, NOMBRE_DESTINO]]) {
+    const o = await sb.from('obra_canonica')
+      .upsert({ id, nombre, estado: 'activa', jornada_horas: 8.8 }).select('id')
+    if (o.error) throw new Error(`No pude crear ${id}: ${o.error.message}`)
+  }
+  await sb.from('obra_asignacion').delete().in('obra_id', [OBRA_ORIGEN, OBRA_DESTINO])
+  const asig = await sb.from('obra_asignacion').insert({
+    obra_id: OBRA_ORIGEN, persona_id: libre.id, rol: 'integrante', desde: '2026-01-01',
+  }).select('id')
+  if (asig.error) throw new Error(`No pude asignar a la obra de origen: ${asig.error.message}`)
+  return { id: libre.id, nombre: libre.nombre_completo }
+}
+
+async function limpiarMudanza(): Promise<void> {
+  const sb = servicio()
+  await sb.from('obra_asignacion').delete().in('obra_id', [OBRA_ORIGEN, OBRA_DESTINO])
+  await sb.from('usuario_obra').delete().in('obra_canonica_id', [OBRA_ORIGEN, OBRA_DESTINO])
+  await sb.from('obra_canonica').delete().in('id', [OBRA_ORIGEN, OBRA_DESTINO])
+}
+
+test('08 · EL DESPLEGABLE MUDA LA ASIGNACIÓN, y la base y la ficha lo muestran', async ({ page }) => {
+  test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
+    'Escribe `obra_asignacion` sobre dos obras ZZ-E2E propias. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
+  const persona = await prepararMudanza()
+  test.skip(persona === null, 'Todo el plantel tiene obra vigente: no hay a quién mudar sin tocar una obra real.')
+  const p = persona as { id: string; nombre: string }
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await entrarComo(page, ADMIN.email, ADMIN.password)
+    await page.goto(`/administracion/personas?vista=asistencia&q=${encodeURIComponent(p.nombre)}`)
+
+    const select = page.getByTestId('select-obra-actual').first()
+    await expect(select).toBeVisible()
+    await expect(select).toHaveValue(OBRA_ORIGEN)
+    await page.screenshot({ path: 'qa-shots/asignacion-dropdown-1440.png', fullPage: true })
+
+    await select.selectOption(OBRA_DESTINO)
+    const acuse = page.getByTestId('acuse-obra-actual')
+    await expect(acuse).toBeVisible()
+    // EL ACUSE NOMBRA LAS DOS OBRAS. «Guardado» no diría nada: lo que hay que poder leer es de
+    // dónde a dónde se movió, porque es lo que decide a qué obra se le imputa el costo.
+    await expect(acuse).toContainText('Desde hoy en')
+    await expect(acuse).toContainText('antes')
+    await page.screenshot({ path: 'qa-shots/asignacion-dropdown-acuse-1440.png', fullPage: true })
+    // LA FILA SE REFRESCÓ: el desplegable muestra la obra nueva sin recargar a mano.
+    await expect(page.getByTestId('select-obra-actual').first()).toHaveValue(OBRA_DESTINO)
+
+    // ═══ LA EVIDENCIA ES DEL EFECTO: SE LEE LA BASE, NO LA PANTALLA ═══
+    const sb = servicio()
+    const hoy = new Date().toISOString().slice(0, 10)
+    const ayer = new Date(Date.parse(`${hoy}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
+    const filas = await sb.from('obra_asignacion')
+      .select('obra_id, desde, hasta').eq('persona_id', p.id)
+      .in('obra_id', [OBRA_ORIGEN, OBRA_DESTINO])
+    expect(filas.error).toBeNull()
+    const puestas = (filas.data ?? []) as { obra_id: string; desde: string | null; hasta: string | null }[]
+    const origen = puestas.find((a) => a.obra_id === OBRA_ORIGEN)
+    const destino = puestas.find((a) => a.obra_id === OBRA_DESTINO)
+    // LA HISTORIA NO SE BORRA: la asignación anterior sigue existiendo, cerrada ayer.
+    expect(origen, 'la asignación anterior tiene que seguir en la base').toBeTruthy()
+    expect(origen?.hasta).toBe(ayer)
+    expect(destino, 'la asignación nueva tiene que estar escrita').toBeTruthy()
+    expect(destino?.desde).toBe(hoy)
+    expect(destino?.hasta).toBeNull()
+
+    // ═══ Y SE VE EN LA CRONOLOGÍA DE LA PERSONA ═══
+    await page.goto(`/administracion/personas/${p.id}?v=asignaciones`)
+    const asignaciones = page.getByTestId('fila-asignacion')
+    await expect(asignaciones.first()).toBeVisible()
+    // LAS DOS FILAS, LA CERRADA Y LA ABIERTA. Que la ficha muestre sólo la nueva sería el defecto
+    // que el dueño no puede ver: el cambio existiría y el período anterior habría desaparecido.
+    await expect(asignaciones.filter({ hasText: NOMBRE_ORIGEN })).toHaveCount(1)
+    await expect(asignaciones.filter({ hasText: NOMBRE_DESTINO })).toHaveCount(1)
+  } finally {
+    await limpiarMudanza()
+  }
+})
+
+test('08b · el desplegable en el teléfono', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=asistencia&quincena=2026-08-16')
+  // En 390px la vista de asistencia puede caer al modo día: la captura documenta lo que el dueño ve.
+  await page.screenshot({ path: 'qa-shots/asignacion-390.png', fullPage: true })
+})
+
+test('08c · el JEFE DE OBRA ve la grilla y NO el desplegable de obra actual', async ({ page }) => {
+  // *"sólo usuarios admin puedan hacer eso, y que jefe de obra pueda seguir con las funciones
+  // normales de registrar asistencia"* (dueño, 08/09/2026). El jefe llega a esta pantalla —el área
+  // se lo permite— y tiene que seguir viendo y editando la quincena; lo único que no aparece es el
+  // control que mueve gente de obra. Sin esta aserción, un `puedeCorregir` reusado por comodidad le
+  // devolvería el desplegable y nadie lo notaría.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await entrarComo(page, JEFE.email, JEFE.password)
+  await page.goto('/administracion/personas?vista=asistencia&modo=quincena')
+  await expect(page.getByTestId('celda-obra').first()).toBeVisible()
+  await expect(page.getByTestId('select-obra-actual')).toHaveCount(0)
+  // Y LA ASISTENCIA LE SIGUE FUNCIONANDO: las celdas de hora se editan como siempre.
+  await expect(page.getByTestId('celda-hora').first()).toBeVisible()
+  await page.screenshot({ path: 'qa-shots/asignacion-jefe-sin-dropdown-1440.png', fullPage: true })
+})

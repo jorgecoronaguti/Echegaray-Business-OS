@@ -56,7 +56,7 @@ function vacioDe(estado: CeldaObra['estado']): { texto: string; color: string; p
 
 export function GrillaAsistenciaObra({
   filas, dias, etiquetas, titulos, columnasTenues, totalesDia, total, jornadaPorObra, obras,
-  puedeCorregir,
+  puedeCorregir, puedeCambiarObra,
 }: {
   filas: FilaQuincena[]
   dias: string[]
@@ -75,6 +75,10 @@ export function GrillaAsistenciaObra({
   /** Sólo Administración corrige la obra de un día. La puerta de verdad es la policy; esto evita
    *  ofrecer un botón que va a rebotar contra un `permission denied`. */
   puedeCorregir: boolean
+  /** SEPARADO DE `puedeCorregir` A PROPÓSITO (dueño, 08/09/2026): el jefe de obra corrige la
+   *  jornada —es su trabajo— pero NO mueve gente de obra. Son dos permisos distintos sobre la misma
+   *  grilla, y unirlos en uno le daría al jefe el desplegable. La puerta es la acción. */
+  puedeCambiarObra: boolean
 }) {
   const [borradores, setBorradores] = useState<Record<string, string>>({})
   const [errores, setErrores] = useState<Record<string, string>>({})
@@ -206,7 +210,7 @@ export function GrillaAsistenciaObra({
                     abre la nueva. No pide rol, ni cuadrilla, ni actividad, ni fechas — eso es lo
                     que hacía la asignación imposible de entender. Lo que no se pregunta tiene un
                     valor honesto: rol «integrante» y desde hoy. */}
-                {puedeCorregir ? (
+                {puedeCambiarObra ? (
                   <select
                     data-testid="select-obra-actual"
                     aria-label={`Obra actual de ${fila.persona.nombre}`}
@@ -230,7 +234,7 @@ export function GrillaAsistenciaObra({
                 {/* SIN ASIGNACIÓN PERO CON HORAS. El desplegable dice «Sin obra» —que es la verdad
                     de la asignación—, y esta línea dice dónde están sus horas, que es el otro dato
                     real y el que explica por qué la persona aparece en la grilla. */}
-                {puedeCorregir && !fila.obraPorDefecto && fila.rotuloObra !== SIN_OBRA && (
+                {puedeCambiarObra && !fila.obraPorDefecto && fila.rotuloObra !== SIN_OBRA && (
                   <span style={{ display: 'block', fontSize: '11px', color: V.tenue, marginTop: 2 }}>
                     horas en {fila.rotuloObra}
                   </span>

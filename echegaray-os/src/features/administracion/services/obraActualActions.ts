@@ -31,7 +31,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { planDeCambioDeObra, type AsignacionVigente } from './planDeObraActual'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { planDeCambioDeObra, puedeCambiarObraActual, type AsignacionVigente } from './planDeObraActual'
 
 export type ResultadoObraActual = { ok: true; mensaje: string } | { ok: false; error: string }
 
@@ -50,6 +51,21 @@ export async function cambiarObraActual(entrada: unknown): Promise<ResultadoObra
   const hoy = new Date().toISOString().slice(0, 10)
 
   const supabase = await createClient()
+
+  // ═══ SÓLO DIRECCIÓN Y ADMINISTRACIÓN (dueño, 08/09/2026) ═══
+  //
+  // La pantalla no muestra el desplegable al jefe de obra, pero la pantalla es la cerradura y ésta
+  // es la puerta: la llamada puede venir de cualquier lado, y la RLS de `obra_asignacion` NO alcanza
+  // —deja escribir al jefe dentro de `ve_obra`, que es justo lo que el dueño excluyó—.
+  const perfil = await getPerfilActual(supabase)
+  if (perfil.error) return { ok: false, error: perfil.error }
+  if (!puedeCambiarObraActual(perfil.data?.rol)) {
+    return {
+      ok: false,
+      error: 'Cambiar la obra de una persona es de Administración. La asistencia se sigue cargando '
+        + 'y corrigiendo normalmente.',
+    }
+  }
 
   // LA PERSONA TIENE QUE EXISTIR EN EL PLANTEL. `persona_plantel` publica sólo a quien está en la
   // empresa: asignar a alguien dado de baja le imputaría horas a un legajo cerrado.

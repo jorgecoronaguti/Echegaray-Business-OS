@@ -24,6 +24,24 @@
 // que afirma que la persona trabajó menos que ningún día. Ahí `hasta = desde`, que es lo único
 // cierto — estuvo asignada ese día. No se borra: alguien la creó y eso es historia.
 
+// ═══ QUIÉN PUEDE MOVER A ALGUIEN DE OBRA (dueño, 08/09/2026) ═══
+//
+// *"sólo usuarios admin puedan hacer eso, y que jefe de obra pueda seguir con las funciones
+// normales de registrar asistencia"*. El jefe de obra CARGA y CORRIGE la jornada; no decide en qué
+// obra está una persona, porque esa decisión mueve el costo de mano de obra entre obras y es de
+// Administración.
+//
+// NO alcanza `es_administracion()` de la base: desde la migración 20260819T4900 esa función
+// INCLUYE al jefe de obra —por eso ve el área— y la RLS de `obra_asignacion` lo deja escribir
+// dentro de `ve_obra`. Acá manda el ROL DEL PERFIL, que es más angosto. La regla vive una vez y la
+// aplican las dos puntas: la pantalla para no ofrecer un control que va a rebotar, y la acción
+// —que es la puerta de verdad— para rechazar la llamada venga de donde venga.
+export const ROLES_QUE_MUEVEN_DE_OBRA = ['direccion', 'administracion'] as const
+
+export function puedeCambiarObraActual(rol: string | null | undefined): boolean {
+  return typeof rol === 'string' && (ROLES_QUE_MUEVEN_DE_OBRA as readonly string[]).includes(rol)
+}
+
 /** Una asignación que hoy está vigente. El nombre viene resuelto: el acuse nunca escribe un id. */
 export interface AsignacionVigente {
   id: string

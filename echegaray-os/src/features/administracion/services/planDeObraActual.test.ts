@@ -18,7 +18,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { diaAnterior, planDeCambioDeObra } from './planDeObraActual.ts'
+import { diaAnterior, planDeCambioDeObra, puedeCambiarObraActual } from './planDeObraActual.ts'
 
 const HOY = '2026-09-08'
 const AYER = '2026-09-07'
@@ -88,4 +88,22 @@ test('con dos obras vigentes, elegir una cierra la otra y no reabre la elegida',
   assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: AYER }])
   assert.equal(plan.abrir, null, 'la asignación al destino ya existía: reabrirla partiría el período')
   assert.equal(plan.acuse, 'Desde hoy en SALÓN COMERCIAL · antes PISOS INDUSTRIALES.')
+})
+
+// ═══ EL JEFE DE OBRA NO MUEVE GENTE ENTRE OBRAS (dueño, 08/09/2026) ═══
+//
+// EL DEFECTO QUE ATRAPA: `es_administracion()` incluye al jefe de obra desde la migración
+// 20260819T4900 y la RLS de `obra_asignacion` lo deja escribir dentro de `ve_obra`. Con esa puerta
+// como única defensa, un jefe podía llevarse gente de otra obra a la suya —y con ella el costo de
+// mano de obra— desde la misma grilla en la que carga la asistencia. La regla del dueño es más
+// angosta que la de la base, y por eso vive acá y la aplican la pantalla y la acción.
+test('sólo dirección y administración cambian la obra de una persona', () => {
+  assert.equal(puedeCambiarObraActual('direccion'), true)
+  assert.equal(puedeCambiarObraActual('administracion'), true)
+  assert.equal(puedeCambiarObraActual('jefe_obra'), false, 'el jefe de obra registra asistencia, no reasigna')
+  assert.equal(puedeCambiarObraActual('campo'), false)
+  assert.equal(puedeCambiarObraActual('cliente'), false)
+  assert.equal(puedeCambiarObraActual(null), false)
+  assert.equal(puedeCambiarObraActual(undefined), false)
+  assert.equal(puedeCambiarObraActual('administración'), false, 'el rol es la clave de la base, sin tilde')
 })
