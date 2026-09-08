@@ -163,7 +163,12 @@ test('ningún consumidor de v2/patron fija su alto de fila a mano', () => {
   assert.deepEqual(fugas, [], `altos de fila fuera de ALTO_V2:\n${fugas.join('\n')}`)
   // Si nadie usa la marca, la excepción dejó de existir y este test se volvió más flojo de lo que
   // dice ser: hay que revisarla, no borrarla en silencio.
-  assert.ok(marcadas >= 3, `sólo ${marcadas} altos marcados como «${MARCA_DE_PANEL}»`)
+  //
+  // EL PISO BAJÓ DE 3 A 2 EL 08/09/2026, y se declara acá en vez de corregirse en silencio: el
+  // tercer consumidor era el bloque «Estuvo antes en» del Resumen de la ficha de una persona, que
+  // se retiró porque «Obras en las que trabajó» contesta lo mismo con más datos. La excepción sigue
+  // viva en dos archivos; si desaparece el último, este test tiene que volver a ponerse rojo.
+  assert.ok(marcadas >= 2, `sólo ${marcadas} altos marcados como «${MARCA_DE_PANEL}»`)
 })
 
 test('ninguna cabecera de tabla copia el rótulo en vez de pedirlo', () => {
