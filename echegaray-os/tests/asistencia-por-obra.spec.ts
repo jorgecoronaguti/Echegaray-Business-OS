@@ -381,6 +381,78 @@ test('05c · GUARDAR DEJA EL PANEL ABIERTO CON EL ACUSE, y la celda de atrás ca
   }
 })
 
+test('05e · UN DÍA ANTERIOR A LA ASIGNACIÓN SE CARGA IGUAL — el defecto del dueño', async ({ page }) => {
+  test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
+    'Escribe HH en su propia obra ZZ-E2E. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
+  // EL DEFECTO, EN EL NAVEGADOR (08/09, captura de producción): *«no permite cargar horas desde esta
+  // pantalla»*. El dueño asignó a NIEVAS VILLEGAS a «SF - PISOS INDUSTRIALES» HOY y al cargarle las
+  // horas del 01/09 salía «Una persona del envío no está asignada a esta obra ese día». Como una
+  // asignación empieza el día en que se decide, TODO día anterior rebotaba: la única salida era
+  // inventar un `desde` retroactivo, es decir, mentir sobre cuándo se la mandó a esa obra.
+  //
+  // Decisión del dueño: «una cosa es la asistencia y otra la cantidad de horas por día». Las horas
+  // entran; la falta de asignación se AVISA en el acuse.
+  const persona = await prepararObraDePrueba()
+  if (!persona) test.skip(true, 'La base no tiene a nadie en el plantel.')
+  const sb = servicio()
+  const hoy = new Date().toISOString().slice(0, 10)
+  // LA ASIGNACIÓN EMPIEZA HOY, como la que puso el dueño. `prepararObraDePrueba` la deja abierta
+  // desde enero, que es justamente el caso que NO reproduce el defecto.
+  const desde = await sb.from('obra_asignacion').update({ desde: hoy })
+    .eq('obra_id', OBRA_DE_PRUEBA).eq('persona_id', persona).select('desde')
+  if (desde.error || (desde.data?.[0] as { desde: string } | undefined)?.desde !== hoy) {
+    throw new Error(`La asignación no quedó desde hoy: ${desde.error?.message ?? 'no se releyó'}`)
+  }
+
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await entrarComo(page, ADMIN.email, ADMIN.password)
+    await page.goto('/administracion/personas?vista=asistencia')
+    await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+    const fila = page.locator(`[data-testid="fila-quincena"]:has(a[href*="${persona}"])`).first()
+    if (await fila.count() === 0) test.skip(true, 'La persona de prueba no está en esta quincena.')
+    await fila.getByTestId('abrir-correccion').click()
+    await expect(page.getByTestId('panel-correccion')).toBeVisible()
+
+    // UN DÍA ANTERIOR A HOY, EL QUE HAYA. No se clava una fecha: la quincena que se está mirando
+    // depende del día en que corra la suite, y un `2026-09-01` fijo pondría el test en rojo en
+    // octubre sin que ninguna regla se haya roto.
+    const anterior = (await page.getByTestId('correccion-dia').locator('option')
+      .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value)))
+      .find((v) => v < hoy) ?? null
+    if (!anterior) test.skip(true, 'La quincena arranca hoy: no hay día anterior que corregir.')
+
+    await page.getByTestId('correccion-dia').selectOption(anterior as string)
+    await page.getByTestId('correccion-obra').selectOption(OBRA_DE_PRUEBA)
+    await page.getByTestId('correccion-horas').fill('6')
+    // LA CASILLA NO SE MARCA: la asignación es otra decisión y no se toma para poder cargar horas.
+    await expect(page.getByTestId('correccion-asignar')).not.toBeChecked()
+    await page.getByTestId('guardar-correccion').click()
+
+    // (a) EL ACUSE ES DE UNA ESCRITURA HECHA, y NOMBRA que no estaba asignada. Sin el arreglo, acá
+    // había un error rojo y ninguna hora.
+    const acuse = page.getByTestId('acuse-correccion')
+    await expect(acuse).toBeVisible({ timeout: 20000 })
+    await expect(acuse).toContainText('las horas se guardaron igual')
+    await page.screenshot({ path: 'qa-shots/horas-sin-asignacion-1440.png' })
+
+    // (b) LA EVIDENCIA ES EL DATO EN SU DESTINO, no el acuse. Se relee de la base.
+    await expect.poll(async () => {
+      const { data } = await sb.from('registros_hh').select('horas')
+        .eq('obra_canonica_id', OBRA_DE_PRUEBA).eq('persona_id', persona).eq('fecha', anterior as string)
+      return Number((data?.[0] as { horas: number } | undefined)?.horas ?? 0)
+    }, { timeout: 20000 }).toBe(6)
+
+    // (c) Y LA ASIGNACIÓN SIGUE EMPEZANDO HOY: cargar horas no la movió hacia atrás ni creó otra.
+    const { data: asigs } = await sb.from('obra_asignacion').select('desde')
+      .eq('obra_id', OBRA_DE_PRUEBA).eq('persona_id', persona)
+    assertUna(asigs as { desde: string }[] | null, hoy)
+  } finally {
+    await limpiarObraDePrueba()
+  }
+})
+
 test('05d · UNA OBRA CERRADA: el día YA CARGADO se corrige en la celda, y el error va bajo la fila', async ({ page }) => {
   test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
     'Escribe HH en su propia obra ZZ-E2E. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
@@ -454,6 +526,12 @@ test('05d · UNA OBRA CERRADA: el día YA CARGADO se corrige en la celda, y el e
     await limpiarObraDePrueba()
   }
 })
+
+/** Una sola asignación y con el `desde` que se puso: cargar horas no puede crear ni mover ninguna. */
+function assertUna(asigs: { desde: string }[] | null, desde: string): void {
+  expect(asigs ?? []).toHaveLength(1)
+  expect((asigs ?? [])[0]?.desde).toBe(desde)
+}
 
 test('06 · la CARPETA de la persona: su cronología, con lo importado de JORNALES', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -615,8 +693,23 @@ async function prepararMudanza(): Promise<{ id: string; nombre: string } | null>
   const plantel = await sb.from('persona_plantel')
     .select('id, nombre_completo').not('nombre_completo', 'is', null).limit(300)
   if (plantel.error) throw new Error(`No pude leer el plantel: ${plantel.error.message}`)
-  const libre = ((plantel.data ?? []) as { id: string; nombre_completo: string }[])
-    .find((p) => !conObra.has(p.id))
+  let libre = ((plantel.data ?? []) as { id: string; nombre_completo: string }[])
+    .find((p) => !conObra.has(p.id)) ?? null
+
+  // ═══ SI TODO EL PLANTEL TIENE OBRA, SE FABRICA UNA PERSONA DE PRUEBA ═══
+  //
+  // La versión anterior hacía `test.skip` acá, y el 08/09/2026 —con la empresa entera asignada— la
+  // prueba del desplegable quedó saltada para siempre: un test que nunca corre no es evidencia de
+  // nada, y este es el único que cubre el camino completo de mover a alguien de obra. Se crea un
+  // legajo ZZ-E2E marcado, que `limpiarMudanza` borra en el `finally`. Tocar la asignación de una
+  // persona real para poder probar sería exactamente el daño que esta prueba evita.
+  if (!libre) {
+    const nueva = await sb.from('personas').insert({
+      nombre_completo: `${MARCA_PRUEBA} persona mudanza`, en_la_empresa: true,
+    }).select('id, nombre_completo')
+    if (nueva.error) throw new Error(`No pude crear la persona de prueba: ${nueva.error.message}`)
+    libre = (nueva.data?.[0] ?? null) as { id: string; nombre_completo: string } | null
+  }
   if (!libre) return null
 
   for (const [id, nombre] of [[OBRA_ORIGEN, NOMBRE_ORIGEN], [OBRA_DESTINO, NOMBRE_DESTINO]]) {
@@ -643,12 +736,35 @@ async function prepararMudanza(): Promise<{ id: string; nombre: string } | null>
   return { id: libre.id, nombre: libre.nombre_completo }
 }
 
+/** Los registros de horas de una persona, tal como están en la BASE. La evidencia de que cambiar
+ *  la obra actual no toca la asistencia no puede salir de la misma pantalla que se está probando. */
+async function registrosDe(personaId: string): Promise<{
+  filas: number; horas: number; huella: string[]
+}> {
+  const sb = servicio()
+  const { data, error } = await sb.from('registros_hh')
+    .select('id, fecha, horas, obra_canonica_id').eq('persona_id', personaId)
+  if (error) throw new Error(`No pude leer los registros de la persona: ${error.message}`)
+  const filas = (data ?? []) as {
+    id: string; fecha: string; horas: number; obra_canonica_id: string
+  }[]
+  return {
+    filas: filas.length,
+    horas: filas.reduce((s, r) => s + Number(r.horas), 0),
+    // Fecha y obra de cada registro: una reimputación silenciosa mueve la obra sin mover la suma.
+    huella: filas.map((r) => `${r.id}|${r.fecha}|${r.horas}|${r.obra_canonica_id}`).sort(),
+  }
+}
+
 async function limpiarMudanza(): Promise<void> {
   const sb = servicio()
   await sb.from('registros_hh').delete().in('obra_canonica_id', [OBRA_ORIGEN, OBRA_DESTINO])
   await sb.from('obra_asignacion').delete().in('obra_id', [OBRA_ORIGEN, OBRA_DESTINO])
   await sb.from('usuario_obra').delete().in('obra_canonica_id', [OBRA_ORIGEN, OBRA_DESTINO])
   await sb.from('obra_canonica').delete().in('id', [OBRA_ORIGEN, OBRA_DESTINO])
+  // El legajo de prueba, si esta corrida lo tuvo que fabricar. Por nombre y con la marca: nunca
+  // puede alcanzar a una persona real.
+  await sb.from('personas').delete().eq('nombre_completo', `${MARCA_PRUEBA} persona mudanza`)
 }
 
 test('08 · EL DESPLEGABLE MUDA LA ASIGNACIÓN, y la base y la ficha lo muestran', async ({ page }) => {
@@ -660,7 +776,7 @@ test('08 · EL DESPLEGABLE MUDA LA ASIGNACIÓN, y la base y la ficha lo muestran
   // ignorar el rojo.
   test.setTimeout(120_000)
   const persona = await prepararMudanza()
-  test.skip(persona === null, 'Todo el plantel tiene obra vigente: no hay a quién mudar sin tocar una obra real.')
+  test.skip(persona === null, 'La base no tiene plantel ni dejó crear el legajo de prueba.')
   const p = persona as { id: string; nombre: string }
   try {
     await page.setViewportSize({ width: 1440, height: 900 })
@@ -671,6 +787,17 @@ test('08 · EL DESPLEGABLE MUDA LA ASIGNACIÓN, y la base y la ficha lo muestran
     await expect(select).toBeVisible()
     await expect(select).toHaveValue(OBRA_ORIGEN)
     await page.screenshot({ path: 'qa-shots/asignacion-dropdown-1440.png', fullPage: true })
+
+    // ═══ LA ASISTENCIA ES OTRA COSA QUE LA OBRA ACTUAL (dueño, 08/09/2026) ═══
+    //
+    // *"una cosa es la asistencia y otra la cantidad de hs por día, no quiero que se rompa eso si se
+    // va modificando sobre la marcha"*. Se fotografían las celdas de la fila, su total y los
+    // registros de la persona en la BASE antes de mover la obra: si mudar de obra reimputara o
+    // borrara horas ya cargadas, la comparación de después da rojo.
+    const fila = page.locator('[data-testid="fila-quincena"]').first()
+    const celdasAntes = await fila.locator('td').allInnerTexts()
+    const totalAntes = await fila.getByTestId('total-persona').innerText()
+    const hhAntes = await registrosDe(p.id)
 
     await select.selectOption(OBRA_DESTINO)
     const acuse = page.getByTestId('acuse-obra-actual')
@@ -689,6 +816,21 @@ test('08 · EL DESPLEGABLE MUDA LA ASIGNACIÓN, y la base y la ficha lo muestran
     // sus horas en OBRA_ORIGEN: si la heurística vieja vuelve, este `toHaveValue` da rojo.
     await expect(page.getByTestId('select-obra-actual').first()).toHaveValue(OBRA_DESTINO)
     await page.screenshot({ path: 'qa-shots/obra-actual-vigente-1440.png', fullPage: true })
+
+    // ═══ Y LAS HORAS NO SE MOVIERON ═══
+    //
+    // En la pantalla: las mismas celdas y el mismo total —salvo la celda de OBRA, que es justo lo
+    // que se acaba de cambiar—. En la base: los mismos registros, con la misma suma de horas.
+    const filaDespues = page.locator('[data-testid="fila-quincena"]').first()
+    const celdasDespues = await filaDespues.locator('td').allInnerTexts()
+    expect(celdasDespues.length).toBe(celdasAntes.length)
+    const sinLaColumnaObra = (c: string[]) => c.filter((_, i) => i !== 1)
+    expect(sinLaColumnaObra(celdasDespues)).toEqual(sinLaColumnaObra(celdasAntes))
+    await expect(filaDespues.getByTestId('total-persona')).toHaveText(totalAntes)
+    const hhDespues = await registrosDe(p.id)
+    expect(hhDespues.filas, 'cambiar de obra no crea ni borra un registro de horas').toBe(hhAntes.filas)
+    expect(hhDespues.horas, 'ni cambia las horas cargadas').toBe(hhAntes.horas)
+    expect(hhDespues.huella, 'ni la fecha ni la obra de un registro ya cargado').toEqual(hhAntes.huella)
 
     // ═══ LA EVIDENCIA ES DEL EFECTO: SE LEE LA BASE, NO LA PANTALLA ═══
     const sb = servicio()
