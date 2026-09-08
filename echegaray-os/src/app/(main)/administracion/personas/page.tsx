@@ -60,6 +60,7 @@ import {
 import {
   getHHDelMes, getMarcasDeHoy, getPapelesDelPlantel,
 } from '@/features/administracion/services/pulsoDelPlantelService'
+import { getPresenciaDelDia } from '@/features/administracion/services/presenciaDelDiaService'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
 import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
 import { modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
@@ -119,16 +120,20 @@ async function leerTodo(
 ) {
   const { desde, hasta } = mesCorriente(hoy)
   const conPulso = filtro !== 'inactivos'
-  const [listado, marcas, hh, papeles, conteos] = await Promise.all([
+  const [listado, marcas, hh, papeles, presencia, conteos] = await Promise.all([
     getDirectorio(supabase, filtro, q),
     conPulso ? getMarcasDeHoy(supabase, hoy) : null,
     conPulso ? getHHDelMes(supabase, desde, hasta) : null,
     conPulso ? getPapelesDelPlantel(supabase) : null,
+    // LA PRESENCIA DECLARADA DE HOY (`asistencia_dia`, 08/09/2026). Sin esta lectura la columna HOY
+    // sólo conocía horas, y a quien el jefe marcó presente a las 7:30 lo escribía «sin cargar».
+    // De TODAS las obras: la columna es del plantel entero, no de una obra.
+    conPulso ? getPresenciaDelDia(supabase, hoy) : null,
     // Los contadores de los recortes: cuatro `count` sin filas, y del CORTE entero — no de lo que
     // sobrevive a la búsqueda de este momento (ver `getConteosDeFiltro`).
     getConteosDeFiltro(supabase),
   ])
-  return { listado, marcas, hh, papeles, conteos }
+  return { listado, marcas, hh, papeles, presencia, conteos }
 }
 
 /** Las tres lecturas agrupadas por persona. Cada fuente que falló apaga SU columna y deja el resto
@@ -137,19 +142,23 @@ function armarPulso(
   marcas: Awaited<ReturnType<typeof getMarcasDeHoy>> | null,
   hh: Awaited<ReturnType<typeof getHHDelMes>> | null,
   papeles: Awaited<ReturnType<typeof getPapelesDelPlantel>> | null,
+  presencia: Awaited<ReturnType<typeof getPresenciaDelDia>> | null,
   hoy: string,
 ): PulsoDelPlantel | undefined {
-  if (!marcas || !hh || !papeles) return undefined
+  if (!marcas || !hh || !papeles || !presencia) return undefined
   const { desde, hasta } = mesCorriente(hoy)
   return {
     marcas: marcasPorPersona(marcas.data),
     // LA MISMA LECTURA CONTESTA LAS DOS PREGUNTAS: la ventana del mes cierra en hoy, así que las
     // filas de hoy ya vinieron. Una consulta aparte por la columna HOY sería un sexto viaje para
     // traer un subconjunto de lo que está en memoria.
-    asistencia: asistenciaHoyPorPersona(hh.data, hoy),
+    asistencia: asistenciaHoyPorPersona(hh.data, hoy, presencia.data ?? []),
     hh: hhPorPersona(hh.data, desde, hasta),
     papeles: papelesPorPersona(papeles.data, hoy),
-    hoyDisponible: marcas.error == null,
+    // LA COLUMNA HOY NECESITA LAS DOS FUENTES. Si `asistencia_dia` no se pudo leer, la columna no
+    // puede afirmar «sin cargar» de nadie: estaría contando como silencio lo que quizá está
+    // declarado. Se apaga entera, que es lo que ya hacía cuando fallaba `presencia_del_dia`.
+    hoyDisponible: marcas.error == null && presencia.error == null,
     hhDisponible: hh.error == null,
     // SE PUDO LEER LA TABLA. Sin esto, un error de lectura escribiría «sin cargar» en 62 filas —una
     // afirmación sobre 847 papeles que sí están— en vez de «sin lectura».
@@ -247,7 +256,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
     )
   }
 
-  const { listado, marcas, hh, papeles, conteos } = await leerTodo(supabase, filtro, sp.q, hoy)
+  const { listado, marcas, hh, papeles, presencia, conteos } = await leerTodo(supabase, filtro, sp.q, hoy)
 
   // EL ERROR DE LA BASE SE MUESTRA, NO SE PINTA COMO LISTA VACÍA. Una tabla en blanco porque la RLS
   // rechazó la consulta es indistinguible de una tabla en blanco porque no hay personas, y la
@@ -265,7 +274,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   }
 
   const personas = listado.data ?? []
-  const pulso = armarPulso(marcas, hh, papeles, hoy)
+  const pulso = armarPulso(marcas, hh, papeles, presencia, hoy)
   const abierta = sp.nueva === '1'
 
   return (
@@ -279,6 +288,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             publicar «sin fichar» diecisiete veces. Un control que no pudo mirar no dice «no está». */}
         {[
           { clave: 'presencia', que: 'la presencia de hoy', error: marcas?.error },
+          // LA DECLARACIÓN DEL JEFE FALLA POR SU CUENTA Y SE DICE POR SU CUENTA: es otra tabla y
+          // otra RLS que la del fichaje, y confundir las dos mandaría a mirar el problema equivocado.
+          { clave: 'declarada', que: 'la presencia declarada de hoy', error: presencia?.error },
           { clave: 'hh', que: 'las horas del mes', error: hh?.error },
           { clave: 'papeles', que: 'los papeles del legajo', error: papeles?.error },
         ].filter((f) => f.error).map((f) => (

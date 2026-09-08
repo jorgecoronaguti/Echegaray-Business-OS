@@ -19,6 +19,7 @@ import type {
 import {
   candidatosParaTraer, type AsignacionParaTraer, type CandidatoParaTraer,
 } from './traerALaObra.ts'
+import { esJefeDeObra } from './vocabularioPersona.ts'
 
 export interface ObraDeLaJornada {
   id: string
@@ -86,7 +87,7 @@ export async function getObraDeLaJornada(
 export async function getJornadaDelDia(
   supabase: SupabaseClient, obraId: string, fecha: string,
 ): Promise<{ data: JornadaDelDia | null; error: string | null }> {
-  const [obra, asignaciones, registros, enOtras] = await Promise.all([
+  const [obra, asignaciones, registros, enOtras, puestos] = await Promise.all([
     getObraDeLaJornada(supabase, obraId),
     getAsignaciones(supabase, obraId),
     supabase.from('registros_hh')
@@ -99,6 +100,12 @@ export async function getJornadaDelDia(
     supabase.from('registros_hh')
       .select('persona_id, horas, tipo_hora, obra_canonica_id, obra_canonica(nombre)')
       .eq('fecha', fecha).neq('obra_canonica_id', obraId).not('persona_id', 'is', null),
+    // ═══ QUIÉN ES JEFE DE OBRA (dueño, 08/09/2026) ═══
+    // «Los jefes de obra no tienen que marcar si han asistido o no, ellos marcan a los demás». Quién
+    // es jefe lo decide `esJefeDeObra(persona_directorio.puesto)`, el mismo criterio de la grilla y
+    // del Plantel. Si la lectura falla nadie es jefe y la lista queda como antes: prefiero que el
+    // jefe se vea a sí mismo en la lista a que la pantalla del día no cargue.
+    puestosDe(supabase),
   ])
   if (obra.error) return { data: null, error: obra.error }
   if (!obra.data) return { data: null, error: null }
@@ -112,7 +119,12 @@ export async function getJornadaDelDia(
 
   const personas = (asignaciones.data ?? [])
     .filter((a) => a.persona_nombre && (vigenteEn(a, fecha) || conHoras.has(a.persona_id)))
-    .map((a) => ({ persona_id: a.persona_id, nombre: a.persona_nombre as string, nota: notaDe(a) }))
+    .map((a) => ({
+      persona_id: a.persona_id,
+      nombre: a.persona_nombre as string,
+      nota: notaDe(a),
+      esJefe: esJefeDeObra(puestos[a.persona_id] ?? null),
+    }))
   // Una sola fila por persona: dos asignaciones vigentes en la misma obra (dos frentes) no son dos
   // personas. Sin esto, el mismo nombre aparecería dos veces y el pie contaría de más.
   const unicas = [...new Map(personas.map((p) => [p.persona_id, p])).values()]
@@ -312,10 +324,14 @@ async function plantelDe(
  * quién es jefe— cambiaría un agrupamiento cosmético por una pantalla sin horas.
  */
 async function puestosDe(
-  supabase: SupabaseClient, ids: string[],
+  supabase: SupabaseClient, ids?: string[],
 ): Promise<Record<string, string | null>> {
-  if (ids.length === 0) return {}
-  const { data } = await supabase.from('persona_directorio').select('id, puesto').in('id', ids)
+  if (ids && ids.length === 0) return {}
+  // SIN `ids` SE PIDE EL DIRECTORIO ENTERO. Es lo que necesita la carga del día: los ids salen de
+  // las asignaciones, y esperar esa lectura para recién ahí preguntar los puestos convertiría una
+  // tanda en dos viajes en serie contra una tabla de sesenta y dos filas.
+  const consulta = supabase.from('persona_directorio').select('id, puesto')
+  const { data } = ids ? await consulta.in('id', ids) : await consulta
   const filas = (data ?? []) as { id: string; puesto: string | null }[]
   return Object.fromEntries(filas.map((p) => [p.id, p.puesto]))
 }

@@ -2,8 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   acusePresencia, avisoSinMarcar, casillasDePresencia, estadoSegunMotivo, horasSegunPresencia,
-  loQueViajaPresencia, marcarTodosPresentes, personasSinHoras, planDePresencia, resumenPresencia,
-  sumarPersonasNuevasPresencia,
+  loQueViajaPresencia, marcarTodosPresentes, personasAMarcar, personasSinHoras, planDePresencia,
+  resumenPresencia, sumarPersonasNuevasPresencia,
 } from './presenciaDelDia.ts'
 import type { CasillaPresencia, PresenciaGuardada } from './presenciaDelDia.ts'
 
@@ -165,4 +165,39 @@ test('a quien fue declarado ausente o de licencia no se le pone la jornada', () 
   assert.equal(sinHoras.has('a'), false, 'al presente sí se le cargan horas')
   assert.equal(sinHoras.has('b'), true)
   assert.equal(sinHoras.has('c'), true)
+})
+
+// ── 8 · EL JEFE NO SE MARCA A SÍ MISMO ───────────────────────────────────────────────────────────
+//
+// Dueño, 08/09/2026: «los jefes de obra no tienen que marcar si han asistido o no, ellos marcan a
+// los demás». Si `personasAMarcar` vuelve a devolver la lista entera, estos tres se ponen rojos:
+// el jefe reaparece en la lista, «marcar a todos» lo incluye y el conteo del pie lo cuenta.
+
+const fila = (persona_id: string, esJefe?: boolean) => ({ persona: { persona_id, esJefe } })
+
+test('la lista de presencia EXCLUYE a los jefes de obra', () => {
+  const filas = [fila('nievas', true), fila('acosta', false), fila('molina')]
+  assert.deepEqual(
+    personasAMarcar(filas).map((f) => f.persona.persona_id),
+    ['acosta', 'molina'],
+    'un jefe de obra volvió a la lista de quienes se marcan',
+  )
+})
+
+test('«marcar a todos» tampoco incluye al jefe: no tiene casilla', () => {
+  const filas = [fila('nievas', true), fila('acosta')]
+  const ids = personasAMarcar(filas).map((f) => f.persona.persona_id)
+  const todos = marcarTodosPresentes(casillasDePresencia(ids))
+  assert.deepEqual(Object.keys(todos), ['acosta'])
+  assert.equal(
+    loQueViajaPresencia(todos).some((m) => m.persona_id === 'nievas'), false,
+    'el atajo declaró presente a un jefe de obra: nadie lo marcó',
+  )
+})
+
+test('la obra donde el único asignado es el jefe se queda sin nadie a quien marcar', () => {
+  // La pantalla NO queda vacía por error: es el caso que muestra «Vos no te marcás».
+  assert.deepEqual(personasAMarcar([fila('nievas', true)]), [])
+  // Y el pie no puede reclamar una marca que nadie tiene que hacer.
+  assert.equal(avisoSinMarcar(resumenPresencia([], 0).sinMarcar), null)
 })

@@ -120,6 +120,36 @@ test('lo declarado gana: una ausencia de hoy no se lee como jornada por una impu
   assert.deepEqual(m.get('a'), { estado: 'ausente', horas: null, motivo: 'Falta con aviso' })
 })
 
+// ── LA COLUMNA HOY LEE `asistencia_dia` (08/09/2026) ────────────────────────────────────────────
+//
+// Sin la fuente enchufada la columna decía «sin cargar» de todo el que no tuviera horas, incluido
+// el que el jefe acababa de marcar presente. Estos tres tests caen si la presencia declarada deja
+// de llegar a `clasificar` o si el declarado sin horas vuelve a quedarse fuera del Map.
+
+test('declarado presente y sin horas: la columna dice «presente · sin horas», no «sin cargar»', () => {
+  const m = asistenciaHoyPorPersona([], HOY, [{ persona_id: 'a', estado: 'presente', motivo: null }])
+  assert.deepEqual(m.get('a'), { estado: 'presente', horas: null, motivo: null })
+  assert.equal(rotuloHoy(m.get('a')!).texto, 'presente · sin horas')
+  assert.notDeepEqual(m.get('a'), SIN_CARGAR, 'la declaración del jefe se perdió en silencio')
+})
+
+test('la ausencia declarada por el jefe gana sobre las horas cargadas, y el conflicto se ve', () => {
+  const m = asistenciaHoyPorPersona(
+    [{ persona_id: 'a', fecha: HOY, horas: 8, tipo_hora: 'normal' }],
+    HOY, [{ persona_id: 'a', estado: 'ausente', motivo: 'falta' }],
+  )
+  const c = m.get('a')!
+  assert.equal(c.estado, 'ausente')
+  // CON CONFLICTO LAS HORAS SE SIGUEN VIENDO: esconderlas elegiría una de las dos afirmaciones.
+  assert.equal(c.horas, 8)
+  assert.equal(c.conflicto, true)
+})
+
+test('sin presencia declarada la columna se comporta exactamente como antes', () => {
+  const filas = [{ persona_id: 'a', fecha: HOY, horas: 8, tipo_hora: 'normal' }]
+  assert.deepEqual(asistenciaHoyPorPersona(filas, HOY, []), asistenciaHoyPorPersona(filas, HOY))
+})
+
 test('el ● de presencia sólo lo prende una marca REAL', () => {
   assert.equal(hayMarcaDeHoy(undefined), false)
   assert.equal(hayMarcaDeHoy({ persona_id: 'a', estado: 'sin_registrar' }), false)

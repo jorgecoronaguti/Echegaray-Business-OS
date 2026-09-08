@@ -33,6 +33,15 @@ export interface PersonaDeLaObra {
   nombre: string
   /** El rol de la asignación, o la categoría si no hay rol. Nunca se inventa. */
   nota: string | null
+  /**
+   * ¿Es jefe de obra? Lo decide `esJefeDeObra(persona_directorio.puesto)` en el servidor — el MISMO
+   * criterio que agrupa la grilla de quincena y el Plantel, no una segunda regla.
+   *
+   * OPCIONAL: quien arma filas a mano (los tests, o una lectura donde el puesto no viajó) no afirma
+   * nada sobre el puesto de nadie. `undefined` se lee como «no es jefe» a los efectos de la lista
+   * de horas, que incluye a todos igual; lo que decide la de presencia es `personasAMarcar`.
+   */
+  esJefe?: boolean
 }
 
 /** Una fila de `registros_hh` de esa obra y ese día, tal como vuelve de la base. */

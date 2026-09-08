@@ -27,6 +27,7 @@ import { estadoDe } from '../../mi-cuenta/services/documentos.ts'
 // LA RUTA RELATIVA CON EXTENSIÓN NO ES UN DESCUIDO: `node --test` no conoce el alias `@/`, y un
 // import de VALOR por alias mata la prueba con ERR_MODULE_NOT_FOUND antes de la primera aserción.
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
+import type { PresenciaGuardada } from './presenciaDelDia.ts'
 
 // ── HOY ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ export const SIN_CARGAR: ClasificacionDelDia = clasificar([])
  * dice `SIN_CARGAR` en la fila — un estado en el Map para las 62 personas sería inventar filas.
  */
 export function asistenciaHoyPorPersona(
-  filas: FilaHHDelMes[], hoy: string,
+  filas: FilaHHDelMes[], hoy: string, presencia: readonly PresenciaGuardada[] = [],
 ): Map<string, ClasificacionDelDia> {
   const porPersona = new Map<string, { horas: number; tipo_hora: string; notas: string | null }[]>()
   for (const f of filas) {
@@ -119,8 +120,21 @@ export function asistenciaHoyPorPersona(
     if (previas) previas.push(fila)
     else porPersona.set(f.persona_id, [fila])
   }
+  // LO DECLARADO EN `asistencia_dia` ENTRA EN LA MISMA CLASIFICACIÓN, no en un `if` aparte. Es la
+  // fuente que faltaba: hasta hoy la columna leía sólo horas, así que a quien el jefe marcó a las
+  // 7:30 y todavía no le cargaron el día lo escribía «sin cargar» — que es exactamente lo que la
+  // presencia declarada existe para desmentir.
+  const declaradaDe = new Map(presencia.map((p) => [p.persona_id, p.estado]))
   const m = new Map<string, ClasificacionDelDia>()
-  for (const [personaId, suyas] of porPersona) m.set(personaId, clasificar(suyas))
+  for (const [personaId, suyas] of porPersona) {
+    m.set(personaId, clasificar(suyas, declaradaDe.get(personaId) ?? null))
+  }
+  // QUIEN FUE DECLARADO Y NO TIENE UNA SOLA FILA DE HORAS TAMBIÉN ENTRA. Sin esto no estaría en el
+  // Map, la fila caería en `SIN_CARGAR` y la declaración del jefe se perdería en silencio: es el
+  // caso normal de la mañana, y el único que esta lectura vino a resolver.
+  for (const [personaId, estado] of declaradaDe) {
+    if (!porPersona.has(personaId)) m.set(personaId, clasificar([], estado))
+  }
   return m
 }
 

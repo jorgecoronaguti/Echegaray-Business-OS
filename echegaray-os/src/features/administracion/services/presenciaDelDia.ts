@@ -63,6 +63,27 @@ export interface ResumenPresencia {
 const VACIA: CasillaPresencia = { estado: null, motivo: null }
 
 /**
+ * A QUIÉN SE MARCA: la cuadrilla, sin los jefes de obra.
+ *
+ * El dueño, 08/09/2026, textual: *«los jefes de obra no tienen que marcar si han asistido o no,
+ * ellos marcan a los demás»*. Quien está parado en la obra con el teléfono en la mano es el jefe:
+ * pedirle que se declare presente a sí mismo es pedirle que atestigüe su propia asistencia, y una
+ * declaración así no prueba nada — la de su jornada la hace Administración, con las horas.
+ *
+ * SÓLO SACA DE ESTA LISTA. Las horas del jefe se siguen cargando en la pantalla de horas, con todas
+ * las filas: son costo de la obra igual que las demás, y esa lista no se toca.
+ *
+ * Quién es jefe lo decidió `esJefeDeObra(puesto)` en el servidor y viaja en `persona.esJefe`. Acá no
+ * se vuelve a mirar el puesto: una segunda regla sobre la misma pregunta terminaría dejando fuera
+ * de la lista a alguien distinto del que la grilla agrupa como jefe.
+ */
+export function personasAMarcar<T extends { persona: { esJefe?: boolean } }>(
+  filas: readonly T[],
+): T[] {
+  return filas.filter((f) => f.persona.esJefe !== true)
+}
+
+/**
  * El estado inicial de la pantalla: lo que YA está guardado, y nada inventado para el resto.
  *
  * Reabrir el día y ver lo que uno marcó a la mañana es el caso normal —el jefe carga a las 7:30 y

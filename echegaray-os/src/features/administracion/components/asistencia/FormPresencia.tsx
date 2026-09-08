@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from 'react'
 import { Aviso, Boton, Nulo } from '@/shared/components/ds'
 import {
   acusePresencia, avisoSinMarcar, casillasDePresencia, estadoSegunMotivo, loQueViajaPresencia,
-  marcarTodosPresentes, resumenPresencia, sumarPersonasNuevasPresencia,
+  marcarTodosPresentes, personasAMarcar, resumenPresencia, sumarPersonasNuevasPresencia,
 } from '@/features/administracion/services/presenciaDelDia'
 import type {
   CasillaPresencia, EstadoPresencia, PresenciaGuardada,
@@ -56,7 +56,10 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
   /** El paso siguiente, opcional y secundario. Sin esto la pantalla de presencia se basta sola. */
   alCargarHoras?: () => void
 }) {
-  const ids = useMemo(() => filas.map((f) => f.persona.persona_id), [filas])
+  // LA CUADRILLA, SIN LOS JEFES. La regla y su porqué están en `personasAMarcar`; acá sólo se
+  // aplica. `filas` sigue entero hacia las horas: lo que cambia es a quién se le pregunta si vino.
+  const aMarcar = useMemo(() => personasAMarcar(filas), [filas])
+  const ids = useMemo(() => aMarcar.map((f) => f.persona.persona_id), [aMarcar])
   const [casillas, setCasillas] = useState<Record<string, CasillaPresencia>>(
     () => casillasDePresencia(ids, guardadas),
   )
@@ -76,7 +79,7 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
 
   const motivos = useMemo(() => motivosDeDiaNoTrabajado(), [])
   const marcas = loQueViajaPresencia(casillas)
-  const resumen = resumenPresencia(marcas, filas.length)
+  const resumen = resumenPresencia(marcas, aMarcar.length)
   const falta = avisoSinMarcar(resumen.sinMarcar)
 
   const tocar = (id: string, boton: EstadoPresencia) => {
@@ -110,12 +113,39 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
     })
   }
 
+  // EL ENLACE A LAS HORAS EXISTE EN LOS DOS CAMINOS. Incluso cuando no hay a quién marcar —el jefe
+  // solo en su obra—, la carga de horas sigue siendo su paso siguiente y las horas SÍ lo incluyen.
+  const enlaceHoras = alCargarHoras && (
+    <p className="mt-5 border-t border-line pt-3 text-center">
+      <button
+        type="button" onClick={alCargarHoras} data-testid="ir-a-horas"
+        className="inline-flex min-h-[44px] items-center px-2 text-[12.5px] text-muted underline hover:text-ink"
+      >
+        Cargar horas del día →
+      </button>
+    </p>
+  )
+
   if (filas.length === 0) {
     return (
       <Aviso tono="warn" titulo={`Nadie está asignado a ${obraNombre}.`}>
         La presencia se marca sobre el personal asignado a la obra. Las asignaciones las hace
         Administración, desde Personal de la obra.
       </Aviso>
+    )
+  }
+
+  // HAY GENTE ASIGNADA Y NADIE A QUIEN MARCAR: los únicos asignados son jefes de obra —el caso
+  // normal es que sea quien está mirando la pantalla—. Una lista vacía sin explicación se lee como
+  // un error de la pantalla o como «no hay nadie en la obra», y las dos lecturas son falsas.
+  if (aMarcar.length === 0) {
+    return (
+      <div data-testid="form-presencia">
+        <p className="border-y border-line py-4 text-[13px] text-muted" data-testid="sin-cuadrilla-que-marcar">
+          Vos no te marcás: marcás a tu cuadrilla.
+        </p>
+        {enlaceHoras}
+      </div>
     )
   }
 
@@ -131,12 +161,12 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
           Marcar a todos como presentes
         </button>
         <span className="shrink-0 text-[11px] uppercase tracking-[0.06em] text-faint">
-          {filas.length} {filas.length === 1 ? 'persona' : 'personas'}
+          {aMarcar.length} {aMarcar.length === 1 ? 'persona' : 'personas'}
         </span>
       </div>
 
       <ul className="border-t border-line" data-testid="lista-presencia">
-        {filas.map((fila) => {
+        {aMarcar.map((fila) => {
           const id = fila.persona.persona_id
           const c = casillas[id] ?? { estado: null, motivo: null }
           const noVino = c.estado === 'ausente' || c.estado === 'licencia'
@@ -212,17 +242,9 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
       </div>
 
       {/* EL PASO SIGUIENTE, DISCRETO. Las horas son otra pregunta y otra pantalla; el enlace existe
-          porque el jefe suele hacer las dos cosas seguidas, no porque una dependa de la otra. */}
-      {alCargarHoras && (
-        <p className="mt-5 border-t border-line pt-3 text-center">
-          <button
-            type="button" onClick={alCargarHoras} data-testid="ir-a-horas"
-            className="inline-flex min-h-[44px] items-center px-2 text-[12.5px] text-muted underline hover:text-ink"
-          >
-            Cargar horas del día →
-          </button>
-        </p>
-      )}
+          porque el jefe suele hacer las dos cosas seguidas, no porque una dependa de la otra. Y
+          las horas SÍ incluyen al jefe: las carga Administración, y eso no cambió. */}
+      {enlaceHoras}
     </div>
   )
 }
