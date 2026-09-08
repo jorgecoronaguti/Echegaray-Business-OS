@@ -64,6 +64,15 @@ export const NOMBRES_CARGAS = Object.freeze({
   fechas: 'CARGAS_MES_FECHAS',
   f931: 'CARGAS_MES_F931',
   gremiales: 'CARGAS_MES_GREMIALES',
+  // ═══ EL CUARTO NOMBRE: LO DECLARADO EN LA DDJJ (08/09/2026) ═══
+  //
+  // El dueño, sobre «¿Alcanza la caja?»: *"están mal las cargas sociales presentes en este gráfico,
+  // tenemos el dato real de lo que se presenta en el 931"*. La barra del 10/09 decía $7.300.000:
+  // $6.500.000 TIPEADOS en Compras f483 más $800.000 de FCL, mientras la sección 1 de la pestaña
+  // tenía la DDJJ de agosto declarada por $8.331.697,69. La cadena sólo publicaba la PROYECCIÓN de
+  // los meses sin DDJJ; entre la presentación y el pago —los diez días que más importan— el libro
+  // caía a la fila plana. Éste es el rango que cierra ese hueco: el «Total declarado», mes por mes.
+  declarado: 'CARGAS_MES_F931_DECLARADO',
 })
 
 /**
@@ -78,7 +87,29 @@ export const ROTULOS_CARGAS = Object.freeze({
   f931: rotuloTotal('Subtotal F931 — lo que declara la DDJJ'),
   gremiales: rotuloTotal('Subtotal gremiales — FCL, UOCRA, IERIC y FODECO'),
   fechas: sub('sale de la caja el mes siguiente'),
+  declarado: rotuloTotal('Total declarado'),
 })
+
+/**
+ * LOS PLANES DE PAGO DE DEUDA PREVISIONAL, DEFINIDOS UNA VEZ: qué período del F931 financia cada uno.
+ *
+ * Un F931 DECLARADO cuyo período está financiado NO es una obligación viva del libro: su plata entra
+ * por las cuotas del plan, que Compras ya tiene con fecha y monto exactos (rubro `RUBRO_PLANES`).
+ * Emitirlo además como declarado sin pagar lo contaría dos veces — junio-26 son $11.950.854 que el
+ * libro publicaría como VENCIDO el 10/07 mientras sus cuotas W303094 salen el 16 de cada mes.
+ *
+ * El patrón se aplica al texto de la fila de Compras (comprobante + detalle), que es el único lugar
+ * donde la planilla dice a qué período pertenece la cuota. `cargas-planes.mjs` deriva de acá el
+ * nombre de cada plan para la pestaña: una sola definición.
+ */
+export const PLANES_F931 = Object.freeze([
+  Object.freeze({ patron: /w303094/i, periodo: '2026-06', nombre: 'Plan F931 W303094 — financiación de junio 2026' }),
+  Object.freeze({ patron: /dic\s*25/i, periodo: '2025-12', nombre: 'Deuda previsional F931 — Diciembre 2025' }),
+  Object.freeze({ patron: /enero\s*26/i, periodo: '2026-01', nombre: 'Deuda previsional F931 — Enero 2026' }),
+])
+
+/** NÚCLEO PURO: el plan al que pertenece una fila, por lo que dice su texto; `null` si ninguno. */
+export const planDeLaFila = (texto) => PLANES_F931.find((p) => p.patron.test(String(texto ?? ''))) ?? null
 
 /**
  * NÚCLEO PURO: las tres declaraciones de rango, ancladas a su rótulo.
@@ -86,11 +117,18 @@ export const ROTULOS_CARGAS = Object.freeze({
  * @param {{fF931:number, fGremiales:number, fFechas:number}} g las filas (1-based) de la grilla armada
  * @param {{c0?:number, c1?:number}} cols las columnas de los doce meses (B..M por defecto, 0-based)
  */
-export function rangosDeCargas({ fF931, fGremiales, fFechas }, { c0 = 1, c1 = 12 } = {}) {
+export function rangosDeCargas({ fF931, fGremiales, fFechas, fDeclarado }, { c0 = 1, c1 = 12 } = {}) {
+  // LAS CUATRO FILAS SON OBLIGATORIAS. Una fila `undefined` pasa `verificarRangos` sin ruido (ninguna
+  // comparación numérica falla) y publicaría un nombre ciego: el libro no leería el declarado y
+  // volvería, en silencio, al $6.500.000 tipeado. Se rompe acá, con el nombre de lo que falta.
+  const filas = { fFechas, fF931, fGremiales, fDeclarado }
+  const faltan = Object.entries(filas).filter(([, f]) => !(Number.isInteger(f) && f > 0)).map(([k]) => k)
+  if (faltan.length) throw new Error(`rangosDeCargas: falta la fila de ${faltan.join(', ')} (fDeclarado es el «Total declarado»)`)
   return [
     rangoFila(NOMBRES_CARGAS.fechas, { fila: fFechas, c0, c1, rotulo: ROTULOS_CARGAS.fechas }),
     rangoFila(NOMBRES_CARGAS.f931, { fila: fF931, c0, c1, rotulo: ROTULOS_CARGAS.f931 }),
     rangoFila(NOMBRES_CARGAS.gremiales, { fila: fGremiales, c0, c1, rotulo: ROTULOS_CARGAS.gremiales }),
+    rangoFila(NOMBRES_CARGAS.declarado, { fila: fDeclarado, c0, c1, rotulo: ROTULOS_CARGAS.declarado }),
   ]
 }
 
@@ -108,19 +146,55 @@ export const serie = (v) => {
 export const mesDeSerial = (serial) => isoDeSerial(serial).slice(0, 7)
 
 /**
+ * NÚCLEO PURO: qué obligación de F931 le toca a un mes devengado — la declarada o la proyectada.
+ *
+ * ═══ LA PRECEDENCIA DENTRO DE LA CADENA (08/09/2026) ═══
+ *
+ *   1. Si Compras ya tiene el pago del mes, nada (lo decide el llamador, antes de llegar acá).
+ *   2. Si la DDJJ está presentada, el DECLARADO manda: es la obligación cierta, al centavo, y viaja
+ *      como `COMPROMETIDO`. Una proyección para un mes declarado no existe (la pestaña no la publica),
+ *      y si existiera sería un número peor que el dato.
+ *   3. Un declarado cuyo período está FINANCIADO no se emite: sus cuotas entran por Compras.
+ *   4. Sin DDJJ, la PROYECCIÓN de la cadena, como `PROYECTADO`.
+ *
+ * @returns {{importe:number, estado:string, fila:string}|null} `null` = este mes no emite F931
+ */
+function obligacionF931({ declarado, proyectado, devengado, mesesFinanciados, aviso }) {
+  const decl = num(declarado)
+  if (decl) {
+    if (mesesFinanciados.has(devengado)) {
+      aviso(`libro-extractores-cargas: el F931 de ${devengado} está declarado (${decl}) y FINANCIADO en un plan — sus cuotas entran por Compras, no se emite.`)
+      return null
+    }
+    // A dos decimales: el SUM de la DDJJ llega como 8331697.6899999995 y el libro publica pesos con centavos.
+    return { importe: Math.round(decl * 100) / 100, estado: 'COMPROMETIDO', fila: `F931 · declarado ${Number(devengado.slice(5, 7))}` }
+  }
+  const proy = num(proyectado)
+  return proy ? { importe: proy, estado: 'PROYECTADO', fila: `F931 · devengado ${Number(devengado.slice(5, 7))}` } : null
+}
+
+/**
  * CARGAS SOCIALES → los egresos de la nómina que todavía no salieron.
  *
  * Una fila por mes devengado, con la fecha en que sale de la caja (la que publica la propia pestaña).
  * El F931 y los gremiales viajan SEPARADOS porque son dos líneas del cash flow y dos rubros de la
  * taxonomía única — juntarlos acá obligaría a repartirlos después, que es donde se inventa.
  *
- * @param {{fechas:Array, f931:Array, gremiales:Array}} rangos lo leído de los tres rangos con nombre
+ * El F931 tiene DOS fuentes en la pestaña y una precedencia (ver `obligacionF931`): lo DECLARADO en
+ * la DDJJ para los meses ya presentados, la PROYECCIÓN de la cadena para los que no. Los gremiales
+ * no tienen DDJJ: sólo proyección.
+ *
+ * @param {{fechas:Array, f931:Array, gremiales:Array, declarado?:Array}} rangos lo leído de los rangos con nombre
  * @param {number|null} corte serial del corte: un vencimiento ya pasado y sin pagar es VENCIDO
- * @param {{mesesPagados?:Set<string>, aviso?:(m:string)=>void}} opciones
+ * @param {{mesesPagados?:Set<string>, mesesFinanciados?:Set<string>, aviso?:(m:string)=>void}} opciones
+ *        `mesesPagados` son claves `YYYY-MM·rubro` del mes de CAJA; `mesesFinanciados`, los períodos
+ *        DEVENGADOS (`YYYY-MM`) que un plan de pago financia — ver `PLANES_F931`.
  * @returns {Array} movimientos
  */
-export function deCargasSociales({ fechas, f931, gremiales } = {}, corte = null, { mesesPagados = new Set(), aviso = () => {} } = {}) {
+export function deCargasSociales({ fechas, f931, gremiales, declarado } = {}, corte = null,
+  { mesesPagados = new Set(), mesesFinanciados = new Set(), aviso = () => {} } = {}) {
   const F = serie(fechas)
+  const D = serie(declarado)
   const bloques = [
     { importes: serie(f931), rubro: RUBRO_CARGAS, que: 'F931' },
     { importes: serie(gremiales), rubro: RUBRO_GREMIALES, que: 'gremiales' },
@@ -130,6 +204,10 @@ export function deCargasSociales({ fechas, f931, gremiales } = {}, corte = null,
     const fecha = num(F[i])
     if (fecha === null) continue
     const mes = mesDeSerial(fecha)
+    // El mes que se nombra es el DEVENGADO (la nómina que la generó), no el de la salida: es lo que
+    // permite atarla contra la sección 1/4 de la pestaña sin contar meses con los dedos. EL AÑO
+    // TAMBIÉN ES DEL DEVENGADO: la nómina de diciembre-26 sale el 10/01/2027 y se llama dic-26.
+    const devengado = `${anioDevengado(fecha, i + 1)}-${String(i + 1).padStart(2, '0')}`
     for (const b of bloques) {
       // ═══ EL HECHO LE GANA A LA PROYECCIÓN — POR (MES · RUBRO), NO POR MES ═══
       // El auditor de cierre (06/08) lo rompió con una fila: con la precedencia por mes entero,
@@ -141,27 +219,23 @@ export function deCargasSociales({ fechas, f931, gremiales } = {}, corte = null,
         aviso(`libro-extractores-cargas: ${mes} · ${b.que} ya tiene el pago cargado en Compras — la cadena no lo emite.`)
         continue
       }
-      const importe = num(b.importes[i])
-      if (!importe) continue
+      const o = b.que === 'F931'
+        ? obligacionF931({ declarado: D[i], proyectado: b.importes[i], devengado, mesesFinanciados, aviso })
+        : (num(b.importes[i]) ? { importe: num(b.importes[i]), estado: 'PROYECTADO', fila: `gremiales · devengado ${i + 1}` } : null)
+      if (!o) continue
       out.push(movimiento({
         fecha,
         signo: SALE,
-        importe,
-        // El mes que se nombra es el DEVENGADO (la nómina que la generó), no el de la salida: es lo
-        // que permite atarla contra la sección 4 de la pestaña sin contar meses con los dedos.
-        // EL AÑO TAMBIÉN ES DEL DEVENGADO. Con `anioDe(fecha)` la nómina de diciembre-26, que sale
-        // de caja el 10/01/2027, se rotulaba "dic-27" — un año que no existe en esta serie (auditor
-        // de cierre, 06/08, leído en el Sheet vivo). Si el mes de salida es menor que el devengado,
-        // la salida cruzó el año y el devengado pertenece al año anterior.
-        concepto: `${b.que === 'F931' ? 'F931' : 'Gremiales'} · nómina de ${MES[i + 1] ?? i + 1}-${String(anioDevengado(fecha, i + 1)).slice(2)}`,
+        importe: o.importe,
+        concepto: `${b.que === 'F931' ? 'F931' : 'Gremiales'} · nómina de ${MES[i + 1] ?? i + 1}-${devengado.slice(2, 4)}`,
         contraparte: b.que === 'F931' ? 'ARCA' : 'FCL · UOCRA · IERIC · FODECO',
         rubro: b.rubro,
-        estado: estadoContraCorte('PROYECTADO', fecha, corte),
+        estado: estadoContraCorte(o.estado, fecha, corte),
         // LA IDENTIDAD ES EL MES DEVENGADO, NO LA FILA. Los doce meses viven en la MISMA fila de la
         // pestaña: con el número de fila, la clave de dedup —que cae en `origen:pestaña:fila` cuando
-        // no hay comprobante— colapsaría los seis movimientos en uno y quedaría un mes de cargas en
-        // todo el año. Y con el mes adentro, el nombre sobrevive a que la pestaña se reordene.
-        origen: { pestana: PESTANA_CARGAS, fila: `${b.que} · devengado ${i + 1}` },
+        // no hay comprobante— colapsaría los movimientos en uno y quedaría un mes de cargas en todo
+        // el año. Y con el mes adentro, el nombre sobrevive a que la pestaña se reordene.
+        origen: { pestana: PESTANA_CARGAS, fila: o.fila },
       }))
     }
   }
@@ -212,6 +286,9 @@ export function cubiertaPorLaCadena({ rubro, fecha, pagada }, cubiertos = new Se
  *   · `previstas`     — las filas planas que la cadena reemplaza cuando publica. Es lo que el portón
  *                       declara como tramo swappeado, con su monto: una exclusión sin monto es una
  *                       exclusión que nadie puede auditar.
+ *   · `financiados`   — los períodos DEVENGADOS (`YYYY-MM`) cuyo F931 está en un plan de pago (rubro
+ *                       `RUBRO_PLANES`, reconocido por `PLANES_F931`). Un declarado financiado no se
+ *                       emite: sus cuotas ya entran por Compras.
  *
  * @param {Array<Array>} filas Compras entera, UNFORMATTED_VALUE
  */
@@ -219,9 +296,15 @@ export function cargasEnCompras(filas = []) {
   const c = columnasDeCompras(filas)
   const mesesPagados = new Set()
   const previstas = []
+  const financiados = new Set()
   for (let i = 3; i < filas.length; i++) {
     const f = filas[i] ?? []
     const rubro = String(f[c.rubro] ?? '').trim()
+    if (rubro === RUBRO_PLANES) {
+      const plan = planDeLaFila(`${f[c.comprobante] ?? ''} ${f[c.obra] ?? ''}`)
+      if (plan) financiados.add(plan.periodo)
+      continue
+    }
     if (rubro !== RUBRO_CARGAS && rubro !== RUBRO_GREMIALES) continue
     // La fecha se lee tal cual: `fechaDeCajaDeCompra` sólo corrige las cuotas de plan de ARCA que
     // caen fin de semana, y ése es otro rubro. Si algún día corrigiera también éstos, hay que pasar
@@ -233,7 +316,7 @@ export function cargasEnCompras(filas = []) {
     if (pagada) { mesesPagados.add(`${mesDeSerial(fecha)}·${rubro}`); continue }
     previstas.push({ fila: i + 1, rubro, fecha, mes: mesDeSerial(fecha), total })
   }
-  return { mesesPagados, previstas }
+  return { mesesPagados, previstas, financiados }
 }
 
 /** Las filas previstas de Compras que la cadena efectivamente reemplaza, con su monto. */

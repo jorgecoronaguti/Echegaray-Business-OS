@@ -4,6 +4,7 @@
 // saber cuánta deuda previsional financiada hay viva no tiene que correr un generador de Sheets.
 
 import { query } from './db.mjs'
+import { planDeLaFila } from './libro-extractores-cargas.mjs'
 
 const HOY = new Date().toISOString().slice(0, 10)
 
@@ -20,10 +21,9 @@ export async function planesDePago(anio) {
   const m = new Map()
   for (const x of r.rows) {
     const c = String(x.concepto ?? '')
-    const nombre = /w303094/i.test(c) ? 'Plan F931 W303094 — financiación de junio 2026'
-      : /dic\s*25/i.test(c) ? 'Deuda previsional F931 — Diciembre 2025'
-        : /enero\s*26/i.test(c) ? 'Deuda previsional F931 — Enero 2026'
-          : `Otro — ${c.slice(0, 40)}`
+    // El nombre y el período de cada plan se definen UNA vez, en PLANES_F931 (el Libro los usa para
+    // no emitir como deuda viva un F931 declarado que ya está financiado).
+    const nombre = planDeLaFila(c)?.nombre ?? `Otro — ${c.slice(0, 40)}`
     const p = m.get(nombre) ?? { nombre, cuotas: [], total: 0 }
     p.cuotas.push({ monto: Number(x.total) || 0, fecha: x.fecha_pago ? new Date(x.fecha_pago).toISOString().slice(0, 10) : null })
     p.total += Number(x.total) || 0
