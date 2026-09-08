@@ -328,13 +328,18 @@ export function GrillaAsistenciaObra({
                   }}>
                   {fila.persona.nombre}
                 </Link>
-                <span title={fila.persona.nota ?? undefined} style={{
-                  display: 'block', fontSize: '11.5px', color: V.apagado,
-                  maxWidth: ANCHO_PERSONA - 8,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {fila.persona.nota ?? ''}
-                </span>
+                {/* SIN NOTA NO HAY SEGUNDO RENGLÓN. El `<span>` vacío igual ocupaba su línea, y con
+                    la celda centrada eso subía el nombre 7,5 px por encima de sus propias horas:
+                    la fila se seguía leyendo torcida aunque el número ya estuviera en el eje. */}
+                {fila.persona.nota && (
+                  <span data-testid="nota-persona" title={fila.persona.nota} style={{
+                    display: 'block', fontSize: '11.5px', color: V.apagado,
+                    maxWidth: ANCHO_PERSONA - 8,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {fila.persona.nota}
+                  </span>
+                )}
               </td>
               <td data-testid="celda-obra" style={{
                 padding: '7px 8px', color: V.apagado, verticalAlign: 'middle',
