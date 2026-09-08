@@ -51,14 +51,11 @@ const ROL_GENERICO = ['integrante', 'operario']
 export function notaDe(a: {
   rol: string | null; persona_categoria: string | null; persona_especialidad: string | null
 }): string | null {
-  const rol = (a.rol ?? '').trim()
-  if (rol && !ROL_GENERICO.includes(rol.toLowerCase())) return rol
-  // LA CATEGORÍA PRIMERO (08/09/2026): es lo que liquida el recibo de sueldo y lo que el dueño pidió ver
-  // reflejado; el oficio (albañil, montador…) va detrás como complemento.
-  const categoria = (a.persona_categoria ?? '').trim().replace('_', ' ')
-  const oficio = (a.persona_especialidad ?? '').trim().toLowerCase()
-  if (categoria && oficio) return `${categoria} · ${oficio}`
-  return categoria || oficio || null
+  // SÓLO LA CATEGORÍA (dueño, 08/09/2026: «quitá rol, dejá como marca Plantel, que sólo marca
+  // categoría»). Ni el rol de la asignación ni el oficio: la misma palabra que la columna
+  // CATEGORÍA de Plantel, para que las dos pantallas digan lo mismo de la misma persona.
+  void a.rol; void a.persona_especialidad
+  return (a.persona_categoria ?? '').trim().replace('_', ' ') || null
 }
 
 /** ¿Estaba asignado ese día? `desde`/`hasta` en null significan «sin límite», no «nunca». */
