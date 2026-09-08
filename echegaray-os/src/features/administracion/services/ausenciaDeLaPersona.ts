@@ -14,6 +14,7 @@
 // esa obligación, y este archivo es lo que queda de la regla del lado del código: puro, sin base y
 // sin sesión, para que se pruebe entero sin Supabase arriba.
 
+import { jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { tipoDeMotivo } from './motivoDeAusencia.ts'
 import { correrDias, esDomingo, nombreDia } from './quincena.ts'
 
@@ -78,6 +79,47 @@ export function jornadaDeReferenciaVisible(
     if (Number.isFinite(n) && n > 0) return n
   }
   return JORNADA_ESTANDAR_HS
+}
+
+/** Lo mínimo que esta regla necesita saber del día que se está corrigiendo. Estructural a propósito:
+ *  atarla a `CeldaObra` traería la grilla entera adentro de una regla que se prueba sin pantalla. */
+export interface DiaMirado {
+  estado: string
+  horas: number | null
+}
+
+/**
+ * Las horas que el campo «Horas que corresponden» muestra PARA ESE DÍA: las que ya están
+ * registradas si el día es una ausencia, y si no la jornada de referencia.
+ *
+ * ═══ POR QUÉ VIVE ACÁ Y NO EN EL PANEL ═══
+ *
+ * Estaba adentro de `PanelCorreccionJornada` y sólo corría al montar: elegir otro día cambiaba la
+ * fecha, el estado y las horas trabajadas, pero el campo seguía mostrando las horas del PRIMER día
+ * (lunes = 9) aunque se hubiera elegido un viernes, que vale 8. Verificado en producción el
+ * 08/09/2026 con dos personas. Como regla pura se prueba sin navegador: la misma celda, dos fechas,
+ * dos resultados.
+ */
+export function horasDeLaAusenciaVisibles(
+  fecha: string,
+  celda: DiaMirado | null,
+  tramos: readonly { obra_id: string }[],
+  /** Su obra vigente: la última candidata antes de la jornada estándar, igual que en el servidor. */
+  obraVigente: string | undefined,
+  jornadaPorObra: Record<string, number>,
+): number {
+  if ((celda?.estado === 'ausente' || celda?.estado === 'licencia') && celda.horas !== null) {
+    return celda.horas
+  }
+  // LA JORNADA POR DEFECTO ES DEL DÍA DE LA SEMANA (dueño, 08/09/2026): 9 hs de lunes a jueves, 8
+  // los viernes. Va PRIMERA, antes que `jornada_horas` de la obra: aquélla es la jornada de un
+  // contrato de obra y ésta es la de la persona, que es de quien es la ausencia. El sábado no tiene
+  // default y ahí siguen valiendo las candidatas de siempre.
+  return jornadaDeReferenciaVisible([
+    jornadaPorDefecto(fecha),
+    ...tramos.map((t) => jornadaPorObra[t.obra_id]),
+    obraVigente ? jornadaPorObra[obraVigente] : null,
+  ])
 }
 
 /** Lo que la base hizo con la ausencia. Nunca la intención: el acuse cuenta el efecto. */
@@ -386,9 +428,16 @@ export function restoDeLaSemana(desde: string): string {
 const diasEntre = (desde: string, hasta: string): number =>
   Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86400000)
 
-/** `mié 09/09`. El día de la semana va porque un tramo se revisa contra el parte médico, que habla
- *  de días, y `09/09` solo no deja ver que el sábado entró y el domingo no. */
-const dia = (fecha: string): string =>
+/**
+ * `mié 09/09`. El día de la semana va porque un tramo se revisa contra el parte médico, que habla
+ * de días, y `09/09` solo no deja ver que el sábado entró y el domingo no.
+ *
+ * SE EXPORTA porque la pantalla necesita decir la MISMA fecha que el acuse: el `<input type="date">`
+ * la dibuja con el formato de la máquina —`12/09/2026` o `09/12/2026` según cuál sea— y el panel
+ * escribe esta línea al lado para sacar la ambigüedad. Dos formatos distintos para la misma fecha
+ * en la misma pantalla es exactamente lo que confundía.
+ */
+export const fechaLegibleCorta = (fecha: string): string =>
   `${nombreDia(fecha).slice(0, 3)} ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`
 
 /** Lo que la base hizo con el tramo. Nunca lo que se le pidió. */
@@ -419,11 +468,11 @@ export function acuseDeTramo(e: EscrituraDelTramo): string {
   const causa = e.motivo ? ` · ${e.motivo}` : ''
   const partes: string[] = []
   if (e.asentados > 0) {
-    partes.push(`${que} asentada del ${dia(e.desde)} al ${dia(e.hasta)}: ${e.asentados} `
+    partes.push(`${que} asentada del ${fechaLegibleCorta(e.desde)} al ${fechaLegibleCorta(e.hasta)}: ${e.asentados} `
       + `${e.asentados === 1 ? 'día hábil' : 'días hábiles'}${causa}.`)
     partes.push('La ausencia es de la persona; no se cargó a ninguna obra.')
   } else {
-    partes.push(`No se asentó ningún día del ${dia(e.desde)} al ${dia(e.hasta)}.`)
+    partes.push(`No se asentó ningún día del ${fechaLegibleCorta(e.desde)} al ${fechaLegibleCorta(e.hasta)}.`)
   }
   if (e.horasSacadas > 0) {
     const donde = e.obrasSacadas.length > 0 ? ` en ${e.obrasSacadas.join(' y ')}` : ''

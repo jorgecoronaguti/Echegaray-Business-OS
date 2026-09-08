@@ -92,3 +92,66 @@ for (const [ancho, alto] of [[1440, 900], [2000, 1250]] as const) {
     await page.screenshot({ path: `tests/qa-shots/asistencia-grilla-${ancho}.png`, fullPage: false })
   })
 }
+
+// ═══ LA PANTALLA ANGOSTA (dueño, 08/09/2026: la tabla se corría de costado sin ningún indicio) ═══
+//
+// Dieciséis columnas no entran en 390 px y nunca van a entrar: la tabla se desplaza. Lo que estaba
+// roto no era el desplazamiento sino que fuera INVISIBLE —la quincena parecía terminar donde
+// terminaba la pantalla— y que al llegar a los días del final ya no se supiera de quién eran esas
+// horas. Se mide lo único que importa: el nombre sigue a la vista después de correr la tabla, hay
+// un indicio mientras quede contenido, y la página entera no se corre de costado.
+for (const [ancho, alto] of [[390, 844], [768, 1024]] as const) {
+  test(`la grilla en ${ancho}: la persona no se va con el scroll y el desplazamiento se anuncia`, async ({ page }) => {
+    await abrir(page, ancho, alto)
+    const cinta = page.getByTestId('cinta-grilla')
+
+    // ── 1 · LA PÁGINA NO SE CORRE DE COSTADO ─────────────────────────────────
+    // El que scrollea es el contenedor de la tabla, no el documento: un `body` más ancho que la
+    // pantalla se lleva el menú y el encabezado con él.
+    const desborde = await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(desborde, 'el documento no puede desplazarse de costado').toBeLessThanOrEqual(1)
+
+    // ── 2 · HAY MÁS TABLA Y SE DICE ──────────────────────────────────────────
+    const hayMas = await cinta.evaluate((el) => el.scrollWidth > el.clientWidth + 1)
+    expect(hayMas, `en ${ancho} px la tabla tiene que seguir a la derecha`).toBe(true)
+    await expect(page.getByTestId('hay-mas-grilla')).toBeVisible()
+
+    // ── 3 · LA COLUMNA PERSONA SE QUEDA ──────────────────────────────────────
+    const nombre = page.getByTestId('link-ficha-persona').first()
+    const antes = await nombre.boundingBox()
+    await cinta.evaluate((el) => { el.scrollLeft = el.scrollWidth })
+    await page.waitForTimeout(150)
+    const despues = await nombre.boundingBox()
+    expect(despues, 'el nombre sigue dibujado después de correr la tabla').not.toBeNull()
+    expect(Math.abs(despues!.x - antes!.x), 'la columna Persona no se corre con el scroll').toBeLessThan(2)
+    expect(despues!.x, 'la columna Persona sigue dentro de la pantalla').toBeGreaterThanOrEqual(0)
+    expect(despues!.x + despues!.width, 'y no la tapa el borde derecho').toBeLessThanOrEqual(ancho)
+
+    // ── 4 · EL INDICIO SE APAGA EN EL FINAL ──────────────────────────────────
+    // Una sombra que queda encendida siempre deja de significar «hay más».
+    await expect(page.getByTestId('hay-mas-grilla')).toHaveCount(0)
+
+    // ── 5 · Y EL CONTROL PUEDE DAR ROJO ──────────────────────────────────────
+    // Una medición que pasa igual con y sin la corrección no mide nada: se le saca el `sticky` a la
+    // columna en vivo y se exige que el nombre SÍ se corra. Si esta parte deja de fallar es que la
+    // de arriba dejó de significar algo.
+    await page.evaluate(() => {
+      document.querySelectorAll<HTMLElement>('td, th').forEach((c) => {
+        if (getComputedStyle(c).position === 'sticky') c.style.position = 'static'
+      })
+    })
+    await page.waitForTimeout(100)
+    const sinPegar = await nombre.boundingBox()
+    expect(Math.abs(sinPegar!.x - antes!.x), 'sin `sticky` el nombre TIENE que irse con el scroll')
+      .toBeGreaterThan(2)
+    await page.reload()
+    await expect(page.getByTestId('grilla-asistencia')).toBeVisible({ timeout: 30000 })
+
+    if (ancho === 390) {
+      await cinta.evaluate((el) => { el.scrollLeft = el.scrollWidth / 2 })
+      await page.waitForTimeout(150)
+      await page.screenshot({ path: 'tests/qa-shots/grilla-angosta-390.png' })
+    }
+  })
+}

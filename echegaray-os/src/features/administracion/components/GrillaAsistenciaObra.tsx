@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useTransition } from 'react'
+import { Fragment, useCallback, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
@@ -62,6 +62,14 @@ const ROJO = '#B42318'
 // vez del borde. La tabla vuelve al 100% con sus columnas de siempre; lo único que queda del
 // intento es el techo del NOMBRE, que era el defecto real: un nombre largo corría la quincena.
 const ANCHO_PERSONA = 320
+
+// ═══ LA COLUMNA PERSONA NO SE VA CON EL SCROLL (390 px, verificado en producción 08/09/2026) ═══
+//
+// En el teléfono la tabla se corre de costado —dieciséis columnas no entran en 390 px— y al llegar
+// a los días del final ya no se sabe de quién son las horas que se están mirando. Se queda pegada
+// a la izquierda. El fondo es OBLIGATORIO y no cosmético: sin él las celdas de los días pasan por
+// debajo y se leen los dos textos encimados.
+const PEGADA: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 2 }
 
 /** `2026-09-10` → `jue 10/09`. El día de la semana es con lo que se planifica; una fecha sola
  *  obliga a ir a buscar el calendario. Se arma en UTC para no correr el día por la zona. */
@@ -280,6 +288,27 @@ export function GrillaAsistenciaObra({
   // —el panel ve el dato recién releído—; la copia sólo entra cuando la fila desapareció, y ahí lo
   // que muestra es su último estado conocido, que es todo lo que queda de ella. Un efecto que
   // sincronizara la copia en cada render encadenaría renders por nada.
+  // ═══ EL INDICIO DE QUE LA TABLA SIGUE ═══
+  //
+  // Una tabla que se desplaza de costado sin decirlo se lee como una tabla que termina donde
+  // termina la pantalla: en el teléfono la quincena parecía tener cinco días. La sombra del borde
+  // derecho aparece sólo cuando queda contenido y se apaga al llegar al final, que es la única
+  // forma de que signifique algo.
+  const cinta = useRef<HTMLDivElement | null>(null)
+  const [quedaALaDerecha, setQuedaALaDerecha] = useState(false)
+  const medir = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return
+    // Un píxel de tolerancia: con zoom o pantallas fraccionarias `scrollLeft` es decimal y la
+    // igualdad exacta dejaría la sombra encendida para siempre en el final del recorrido.
+    setQuedaALaDerecha(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+  }, [])
+  // El `ref` mide al montar: un estado que arranca en `false` y sólo se actualiza al scrollear
+  // nunca mostraría la sombra a quien todavía no scrolleó, que es justo a quien hay que avisarle.
+  const montarCinta = useCallback((el: HTMLDivElement | null) => {
+    cinta.current = el
+    medir(el)
+  }, [medir])
+
   const viva = puedeCorregir ? (filas.find((f) => f.clave === corrigiendo) ?? null) : null
   const abierta = corrigiendo === null
     ? null
@@ -291,11 +320,13 @@ export function GrillaAsistenciaObra({
         derecha desde 1024px: las quince columnas y el total siguen a la vista mientras se corrige,
         que es justo lo que hay que mirar. Abajo de 1024 el panel va entero encima — no hay ancho
         para dos zonas y reservar 400px dejaría la tabla en 0. */}
-    <div className={abierta ? 'lg:pr-[400px]' : undefined} style={{ overflowX: 'auto' }}>
+    <div className={abierta ? 'lg:pr-[400px]' : undefined} style={{ position: 'relative' }}>
+    <div ref={montarCinta} onScroll={(e) => medir(e.currentTarget)} style={{ overflowX: 'auto' }}
+      data-testid="cinta-grilla">
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }} data-testid="grilla-asistencia">
         <thead>
           <tr style={{ borderBottom: `1px solid ${V.lineaFuerte}` }}>
-            <Rotulo ancho="34%">Persona</Rotulo>
+            <Rotulo ancho="34%" pegada>Persona</Rotulo>
             {/* «ACTUAL» porque la obra de una persona cambia con el tiempo: acá se ve la de hoy; la de
                 cada día queda guardada en su marca y se lee en la cronología de la persona (ficha → Horas). */}
             <Rotulo ancho="18%">Obra actual</Rotulo>
@@ -327,7 +358,7 @@ export function GrillaAsistenciaObra({
             return (
             <Fragment key={fila.clave}>
             <tr style={{ borderBottom: fallo ? undefined : `1px solid ${V.lineaFila}` }} data-testid="fila-quincena">
-              <td style={{ padding: '7px 8px 7px 0', verticalAlign: 'middle' }}>
+              <td className="bg-canvas" style={{ ...PEGADA, padding: '7px 8px 7px 0', verticalAlign: 'middle' }}>
                 {/* EL NOMBRE ES LA PUERTA A SU CARPETA. El dueño: *"cada persona debe tener su
                     cronología de trabajo en su propia carpeta, no que se tiene que mostrar todo de
                     todos en la pantalla asistencia"*. Esta grilla es SÓLO la quincena elegida; el
@@ -624,6 +655,16 @@ export function GrillaAsistenciaObra({
         </tbody>
       </table>
     </div>
+    {/* FUERA DEL ELEMENTO QUE SCROLLEA: adentro se arrastraría con el contenido y la sombra
+        terminaría en el medio de la tabla. `pointer-events-none` para que no coma clics. */}
+    {quedaALaDerecha && (
+      <div aria-hidden data-testid="hay-mas-grilla"
+        // `from-line-strong` Y NO `from-ink/15`: en este Tailwind los colores son `var(--os-…)` planos
+        // y el modificador de opacidad se DESCARTA — la clase no genera ninguna regla y la sombra no
+        // existiría. Verificado sobre el CSS compilado.
+        className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-line-strong to-transparent" />
+    )}
+    </div>
 
     {/* FUERA DEL CONTENEDOR CON `overflow-x`. Un `position: fixed` adentro de un elemento que
         scrollea de costado se arrastra con el scroll en cuanto aparece un ancestro con
@@ -696,12 +737,15 @@ function FilaDeGrupo({ rotulo, horas, dias, conCorreccion, primero }: {
   )
 }
 
-function Rotulo({ children, ancho, centro, derecha, tenue, titulo }: {
+function Rotulo({ children, ancho, centro, derecha, tenue, titulo, pegada }: {
   children?: React.ReactNode; ancho?: string; centro?: boolean; derecha?: boolean
   tenue?: boolean; titulo?: string
+  /** Se queda a la izquierda cuando la tabla se corre: ver `PEGADA`. */
+  pegada?: boolean
 }) {
   return (
-    <th title={titulo} style={{
+    <th title={titulo} className={pegada ? 'bg-canvas' : undefined} style={{
+      ...(pegada ? PEGADA : null),
       width: ancho,
       padding: '0 2px 8px',
       textAlign: derecha ? 'right' : centro ? 'center' : 'left',
