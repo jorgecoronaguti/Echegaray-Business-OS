@@ -126,16 +126,17 @@ import { CeldaComprobante } from './CeldaComprobante'
 // PÁGINA queda quieta y la columna PROVEEDOR se queda pegada a la izquierda para no perder de quién
 // es la fila que se está mirando.
 //
-// ═══ LÍMITE MEDIDO Y NO ARREGLADO ACÁ: LOS CORTES POR ANCHO NO EXISTEN EN EL BUILD ═══
+// ═══ LOS CORTES POR ANCHO ESTUVIERON APAGADOS EN TODO EL REPO HASTA EL 08/09/2026 ═══
 //
-// Los `max-[1459px]:` y `max-[767px]:` de abajo NO llegan al CSS compilado. Verificado sobre el
-// build propio del 08/09/2026: el CSS emitido en `.next/static/chunks` no contiene `767px` ni
-// `1459px` en ninguna forma —ni `max-width:767px` ni sintaxis de rango—, mientras que el `grid-cols` SIN
-// variante sí está. No es de este archivo: NINGÚN `max-[Npx]:` del repositorio aparece en ese CSS
-// (`max-[1249px]` se usa 19 veces, `max-[559px]` 7). Corriendo Tailwind a mano sobre este mismo
-// archivo las tres reglas se generan, así que el que las pierde es el pipeline del build, no el
-// código. Por eso a 390px se dibujan las nueve columnas y no dos: LA CINTA ES LO QUE SOSTIENE LA
-// PANTALLA HOY. Arreglar la extracción es otro trabajo y cambia seis pantallas a la vez.
+// Medido en producción y en build propio: ninguna variante de ancho del repositorio llegaba al CSS
+// —ni la de 1459px ni la de 767px de acá, ni las 19 de 1249px del resto—, así que a 390px se
+// dibujaban las nueve columnas y no dos. La causa era un cache de unidades de Tailwind envenenado
+// por dos clases escritas dentro de COMENTARIOS con la N o los puntos suspensivos sin resolver: el
+// extractor lee el archivo crudo. El porqué completo y el control que lo impide vuelvan a apagarse
+// están en `src/shared/components/v2/cortes-por-ancho-llegan-al-css.test.ts`.
+//
+// LA CINTA SIGUE SIENDO NECESARIA: con los cortes vivos, a 390px quedan dos columnas y la página no
+// desborda, pero entre 768px y 1459px la fila reducida todavía puede no entrar.
 const COLS
   = 'grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_88px_104px_112px_26px]'
   + ' max-[1459px]:grid-cols-[minmax(150px,1.2fr)_minmax(110px,1fr)_92px_88px_112px_26px]'

@@ -124,9 +124,10 @@ export function cortesDe(src: string): { corte: string; pistas: number }[] {
  *
  * ═══ POR QUÉ LA CUENTA ES POR DELTA Y NO CONTRA LA GRILLA ANCHA (corregido el 08/09/2026) ═══
  *
- * `max-[...]:hidden` es ACUMULATIVO: lo que se esconde por debajo de 1249px sigue escondido a
- * 390px. Así que cada corte sólo tiene que retirar las columnas que suelta RESPECTO DEL CORTE
- * INMEDIATAMENTE MÁS ANCHO; exigirle todas las de la grilla de escritorio le pide celdas que ya
+ * Un corte que esconde una celda es ACUMULATIVO —la variante de ancho con `hidden`, escrita acá sin
+ * sus corchetes a propósito: ver `cortes-por-ancho-llegan-al-css.test.ts`—: lo que se esconde por
+ * debajo de 1249px sigue escondido a 390px. Así que cada corte sólo tiene que retirar las columnas
+ * que suelta RESPECTO DEL CORTE INMEDIATAMENTE MÁS ANCHO; exigirle todas las de la grilla de escritorio le pide celdas que ya
  * escondió el corte anterior y que no existen dos veces en el fuente.
  *
  * Esa era la cuenta vieja, y estuvo verde por casualidad mientras la cartera tuvo cuatro columnas.
