@@ -26,6 +26,7 @@
 //
 // Ni una hora. Lo único que sale de este archivo es qué escribir en `asistencia_dia`.
 
+import { jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { esMotivo, tipoDeMotivo } from './motivoDeAusencia.ts'
 
 /** Los tres estados que la pantalla puede afirmar. `null` en una casilla NO es un cuarto estado:
@@ -249,16 +250,19 @@ export interface CasillaHorasSegunPresencia {
  * revés está prohibido: escribir 8 horas no marca a nadie como presente — quien no fue declarado
  * queda editable y sin sugerencia, que es lo que la pantalla de horas hace hoy.
  *
- * La sugerencia se ofrece SÓLO a los presentes y sólo si la obra tiene jornada pactada. Una jornada
- * inventada sería una afirmación sobre el contrato de la obra que nadie hizo.
+ * LA SUGERENCIA SALE DE LA FECHA, NO DE LA OBRA. Hasta el 08/09/2026 era
+ * `obra_canonica.jornada_horas`, que dice 9 para todas las obras y todos los días; el dueño fijó la
+ * regla por día de la semana («9 de L a J y 8 los V»), y el fin de semana sin defecto. Por eso el
+ * segundo parámetro es la fecha del día que se está cargando y no un número: pasar la jornada de la
+ * obra sería volver a la definición vieja sin que nada lo diga.
  */
 export function horasSegunPresencia(
-  estado: EstadoPresencia | null, jornada: number,
+  estado: EstadoPresencia | null, fecha: string,
 ): CasillaHorasSegunPresencia {
   if (estado === 'ausente') return { editable: false, sugerencia: null, letra: 'A' }
   if (estado === 'licencia') return { editable: false, sugerencia: null, letra: 'L' }
   if (estado === 'presente') {
-    return { editable: true, sugerencia: jornada > 0 ? jornada : null, letra: null }
+    return { editable: true, sugerencia: jornadaPorDefecto(fecha), letra: null }
   }
   return { editable: true, sugerencia: null, letra: null }
 }
