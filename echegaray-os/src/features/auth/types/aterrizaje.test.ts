@@ -11,8 +11,9 @@ import { esRutaCampoPermitida } from './index.ts'
 //
 // 1. `loginAction` hacía `redirect(rol === 'campo' ? '/hoy' : '/obras')`. Dirección y Administración
 //    entraban por `/obras`, pero su inicio —el que abre el isotipo del header, vía `/` y
-//    `destinoDeLaHome`— es `/administracion`. Volver a escribir ese ternario pone en rojo
-//    «el inicio del ingreso es EL MISMO que el de la home».
+//    `destinoDeLaHome`— es `/administracion`. Y al jefe de obra le pasaba lo mismo. Volver a
+//    escribir ese ternario —o inventar acá una segunda tabla de inicios— pone en rojo
+//    «HAY UNA SOLA DEFINICIÓN DE INICIO».
 //
 // 2. El `?volver=` que el middleware guarda al rebotar a `/login` no lo leía nadie: medido contra el
 //    servidor el 08/09/2026, `/login?volver=/mi-cuenta` aterrizaba en `/obras` con el jefe y en
@@ -24,28 +25,33 @@ import { esRutaCampoPermitida } from './index.ts'
 
 // ── 1 · EL INICIO DE CADA ROL ES EL DE LA HOME, NO OTRO
 
-test('el inicio del ingreso es EL MISMO que el de la home — salvo la divergencia declarada', () => {
-  // Éste es el test del defecto #1: Dirección y Administración entraban por `/obras` y su isotipo
-  // los llevaba a `/administracion`. Volver a escribir `redirect(rol === 'campo' ? '/hoy' : '/obras')`
-  // lo pone en rojo para los dos.
-  for (const rol of ['direccion', 'administracion', 'campo'] as const) {
-    assert.equal(inicioDeRol(rol), destinoDeLaHome(rol), `el rol ${rol} tiene dos inicios distintos`)
+test('HAY UNA SOLA DEFINICIÓN DE INICIO: el ingreso y la home coinciden en LOS CUATRO roles', () => {
+  // ═══ LA DECISIÓN DEL DUEÑO, 08/09/2026 ═══
+  //
+  // La primera versión de `aterrizaje.ts` traía su propia tabla y divergía en un rol —mandaba al
+  // jefe de obra a `/obras` mientras la home lo mandaba a `/administracion`—. El dueño lo cerró:
+  // UNA definición, y la fuente es `destinoDeLaHome`, que sostiene la decisión del 19/08 «jefe de
+  // obra ES Administración».
+  //
+  // ÉSTE ES EL TEST DEL DEFECTO ORIGINAL Y TAMBIÉN DE SU REINCIDENCIA. Se pone en rojo tanto si
+  // alguien vuelve a escribir `redirect(rol === 'campo' ? '/hoy' : '/obras')` como si alguien
+  // reintroduce un mapa propio acá: cualquier tabla paralela va a diferir en algún rol.
+  for (const rol of ['direccion', 'administracion', 'jefe_obra', 'campo'] as const) {
+    assert.equal(
+      inicioDeRol(rol), destinoDeLaHome(rol),
+      `el rol ${rol} tiene DOS inicios: ${inicioDeRol(rol)} al entrar, ${destinoDeLaHome(rol)} en la home`,
+    )
     assert.equal(aterrizajeDeIngreso(rol, null), destinoDeLaHome(rol))
   }
 })
 
-test('LA DIVERGENCIA DEL JEFE DE OBRA — declarada, no arreglada en silencio', () => {
-  // Las dos funciones NO coinciden para `jefe_obra` y hace falta que se vea:
-  //
-  //   `destinoDeLaHome`   → /administracion   «su área es Administración, no Obras» (27/08/2026)
-  //   `inicioDeRol`       → /obras            la instrucción de la unificación del login (08/09/2026)
-  //
-  // Cuál de las dos es el inicio del jefe de obra es una decisión de producto del dueño. Este test
-  // no la toma: la FIJA para que el día que alguien la resuelva tenga que borrar esta línea, y no
-  // pueda unificarlas por accidente creyendo que no había nada decidido del otro lado.
-  assert.equal(destinoDeLaHome('jefe_obra'), '/administracion')
-  assert.equal(inicioDeRol('jefe_obra'), '/obras')
-  assert.notEqual(inicioDeRol('jefe_obra'), destinoDeLaHome('jefe_obra'))
+test('el jefe de obra entra por Administración, que es su área desde el 19/08', () => {
+  // No es una preferencia de esta pantalla: `areasDe('jefe_obra')` devuelve ['administracion',
+  // 'obras'] porque `es_administracion()` lo incluye desde la migración 20260819T4900, y su primera
+  // solapa —la que la barra pinta activa— es Administración. Entrar por `/obras` lo dejaba parado en
+  // una solapa que la navegación NO pintaba como activa.
+  assert.equal(inicioDeRol('jefe_obra'), '/administracion')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', null), '/administracion')
 })
 
 test('el cliente no aterriza adentro del OS ni cuando entra por la puerta de adentro', () => {
@@ -57,9 +63,9 @@ test('el cliente no aterriza adentro del OS ni cuando entra por la puerta de ade
 
 test('cada rol aterriza donde el dueño lo pidió', () => {
   assert.equal(aterrizajeDeIngreso('campo', null), '/hoy')
-  assert.equal(aterrizajeDeIngreso('jefe_obra', null), '/obras')
-  // La pantalla que la navegación trata como inicio para estos dos: `solapasDeNav()[0]`, la solapa
+  // La pantalla que la navegación trata como inicio para los tres: `solapasDeNav()[0]`, la solapa
   // que la barra pinta como activa al entrar. NO es `/obras`, que es donde caían hasta hoy.
+  assert.equal(aterrizajeDeIngreso('jefe_obra', null), '/administracion')
   assert.equal(aterrizajeDeIngreso('administracion', null), '/administracion')
   assert.equal(aterrizajeDeIngreso('direccion', null), '/administracion')
 })
@@ -87,9 +93,9 @@ test('NO se respeta el volver cuando el rol NO puede ver esa ruta: se aterriza e
   // termina de recorrer: el redirect de una Server Action viaja por RSC y la barra se queda en la
   // ruta que no se puede abrir.
   assert.equal(puedeVerRuta('jefe_obra', '/reportes'), false)
-  assert.equal(aterrizajeDeIngreso('jefe_obra', '/reportes'), '/obras')
-  assert.equal(aterrizajeDeIngreso('jefe_obra', '/administracion/usuarios'), '/obras')
-  assert.equal(aterrizajeDeIngreso('jefe_obra', '/presupuestos'), '/obras')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/reportes'), '/administracion')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/administracion/usuarios'), '/administracion')
+  assert.equal(aterrizajeDeIngreso('jefe_obra', '/presupuestos'), '/administracion')
 })
 
 test('el nivel campo tiene su propia lista y también manda acá', () => {

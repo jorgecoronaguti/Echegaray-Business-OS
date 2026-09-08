@@ -14,6 +14,11 @@
 //     los tres pueden abrir `/mi-cuenta`. El deep link se perdía siempre — la mitad del guard de
 //     sesión estaba escrita y sin consumidor.
 //
+// ═══ UNA SOLA DEFINICIÓN DE «INICIO», Y NO ES DE ESTE ARCHIVO ═══
+//
+// `inicioDeRol()` delega en `destinoDeLaHome()`, la que ya usaban `/` y el isotipo del header. Acá
+// no hay una segunda tabla: tenerla es el mismo defecto que este archivo vino a arreglar.
+//
 // ═══ POR QUÉ ES UNA FUNCIÓN PURA Y NO DOS `if` EN LA SERVER ACTION ═══
 //
 // Es la regla de aterrizaje del sistema entero y tiene que poder probarse sin levantar Next, igual
@@ -48,42 +53,35 @@ const RUTAS_DE_PUERTA = ['/login', '/recuperar', '/contrasena-nueva', '/callback
  * EL INICIO DE CADA ROL — la pantalla donde empieza su día.
  *
  *   campo          `/hoy`            dónde trabajo · qué hago · qué tengo pendiente
- *   jefe_obra      `/obras`          su cartera: es lo que administra
+ *   jefe_obra      `/administracion` su área es Administración desde la decisión del 19/08
  *   administracion `/administracion` la primera solapa de su área, la que la barra pinta activa
  *   direccion      `/administracion` ídem
- *   cliente        `/portal`         nunca entra por acá, pero el mapa no puede tener un hueco
+ *   cliente        `/portal`         es EXTERNO: no tiene solapas y no entra por esta puerta
  *
- * ═══ HAY UNA DIVERGENCIA CONOCIDA CON `destinoDeLaHome`, Y ES DEL DUEÑO ═══
+ * ═══ NO HAY UN MAPA PROPIO ACÁ, Y ÉSA ES LA DECISIÓN (08/09/2026) ═══
  *
- * `destinoDeLaHome('jefe_obra')` devuelve **`/administracion`**, con un test que lo fija desde el
- * 27/08/2026 y el argumento escrito al lado: *«su área es Administración, no Obras»* — el jefe de
- * obra pertenece al nivel Administración desde la decisión del 19/08 y su primera solapa es ésa.
+ * La primera versión de este archivo traía su propia tabla de inicios, y divergía de
+ * `destinoDeLaHome()` en un rol: mandaba al jefe de obra a `/obras` mientras la home lo mandaba a
+ * `/administracion`. Se declaró como decisión abierta y el dueño la cerró en el acto: **UNA
+ * definición de inicio por rol**, y la fuente es `destinoDeLaHome` — la misma que ya usaban `/` y el
+ * isotipo del header, y la que sostiene la decisión del 19/08 («jefe de obra ES Administración»).
  *
- * El ingreso lo manda a **`/obras`**, que es la instrucción de este trabajo y lo que hacía el login
- * desde el 17/08. Para los otros tres roles las dos funciones coinciden y se comprueba abajo, en
- * `aterrizaje.test.ts`, rol por rol.
- *
- * NO SE RESUELVE ACÁ. Cuál es el inicio del jefe de obra —su cartera o los maestros— es una decisión
- * de producto con un test aprobado del otro lado; cambiarla desde una unificación de login sería
- * revertir en silencio algo que alguien decidió. Queda declarada, con un test que la NOMBRA para que
- * nadie la "arregle" sin verla, y va al informe para que la firme el dueño.
+ * Dos tablas para la misma pregunta es exactamente lo que el dueño llamó «está mezclando todos los
+ * inicios». Arreglar el login inventando una segunda habría reproducido el defecto un nivel más
+ * abajo y con mejor letra. Acá no se decide nada: se delega.
  */
-const INICIO: Record<Rol, string> = {
-  campo: '/hoy',
-  jefe_obra: '/obras',
-  administracion: '/administracion',
-  direccion: '/administracion',
-  // El cliente no tiene contraseña —entra al portal con su mail— pero SÍ puede tener un
-  // `auth.users` (lo crea `/callback` al atarlo) y un `perfiles.rol = 'cliente'`. Sin esta entrada
-  // caía en `/obras` y el middleware lo rebotaba a `/portal`: un salto de más para llegar al mismo
-  // lugar. No cambia `destinoPorRol`, que sigue siendo la cerradura del confinamiento.
-  cliente: RUTA_PORTAL,
-}
-
 export function inicioDeRol(rol: Rol | null | undefined): string {
-  // Sin rol se cae al nivel MENOS privilegiado, igual que la navegación: el modo de fallar de un
-  // default permisivo es aterrizar a alguien en la pantalla del dinero con la sesión ya abierta.
-  return (rol && INICIO[rol]) || destinoDeLaHome(null)
+  // EL CLIENTE NO ES UN EMPLEADO CON MENOS PERMISOS: es alguien de otra empresa, no tiene solapas, y
+  // `destinoDeLaHome` —que resuelve por `solapasDeNav()[0]`— le daría una pantalla del OS. No tiene
+  // contraseña (entra al portal con su mail) pero SÍ puede tener un `auth.users`, que crea
+  // `/callback` al atarlo, y un `perfiles.rol = 'cliente'`. Sin esta línea caía en `/obras` y el
+  // middleware lo rebotaba: un salto de más para llegar al mismo lugar. No cambia `destinoPorRol`,
+  // que sigue siendo la cerradura del confinamiento.
+  if (rol === 'cliente') return RUTA_PORTAL
+  // Todo lo demás lo decide la ÚNICA definición de inicio del sistema. Sin rol, `destinoDeLaHome`
+  // ya cae al nivel menos privilegiado: el modo de fallar de un default permisivo es aterrizar a
+  // alguien en la pantalla del dinero con la sesión ya abierta.
+  return destinoDeLaHome(rol)
 }
 
 /**
