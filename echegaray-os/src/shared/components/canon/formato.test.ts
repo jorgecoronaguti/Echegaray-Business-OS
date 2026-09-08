@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { diaMes, entero, fechaCortaConAnio, millones, pesos, pesosConCentavos, porcentajeCanon } from './formato.ts'
+import {
+  diaMes, entero, fechaCompleta, fechaCortaConAnio, millones, pesos, pesosConCentavos, porcentajeCanon,
+} from './formato.ts'
 
 // EL DEFECTO QUE ATRAPA ESTE ARCHIVO: que una ausencia se escriba como cero.
 //
@@ -117,4 +119,31 @@ test('lo ilegible no se convierte en una fecha inventada', () => {
   assert.equal(fechaCortaConAnio(undefined, 2026), null)
   assert.equal(fechaCortaConAnio('vaya a saber', 2026), null)
   assert.equal(fechaCortaConAnio('', 2026), null)
+})
+
+// ── LA FECHA A PAGAR ────────────────────────────────────────────────────────────────────────────
+
+test('la fecha a pagar lleva el año entero: es la que decide cuándo sale la plata', () => {
+  // Los ceros de relleno no son cosmética: sin ellos la columna deja de alinear y `4/9/2026` y
+  // `04/09/2026` no ocupan lo mismo en una tabla de números tabulares.
+  assert.equal(fechaCompleta('2026-09-04'), '04/09/2026')
+  assert.equal(fechaCompleta('2026-11-15'), '15/11/2026')
+  // EL DEFECTO QUE ATRAPA: una obligación vieja abreviada a `15/11` (o a `15/11/25`) se lee como la
+  // semana que viene. La fecha de pago se escribe entera o miente sobre el año.
+  assert.equal(fechaCompleta('2025-11-15'), '15/11/2025')
+  assert.notEqual(fechaCompleta('2025-11-15'), diaMes('2025-11-15'))
+  assert.notEqual(fechaCompleta('2025-11-15'), fechaCortaConAnio('2025-11-15', 2026))
+})
+
+test('no hay fecha inventada ni «Invalid Date» cuando el Sheet no cargó la prevista', () => {
+  // 6 de las 927 filas de Compras no tienen fecha prevista al 08/09/2026. Un `null` acá es lo que
+  // deja la celda VACÍA en la tabla; cualquier texto de relleno se leería como un dato del Sheet.
+  assert.equal(fechaCompleta(null), null)
+  assert.equal(fechaCompleta(undefined), null)
+  assert.equal(fechaCompleta(''), null)
+  assert.equal(fechaCompleta('sin fecha'), null)
+})
+
+test('un timestamp completo también se escribe como día', () => {
+  assert.equal(fechaCompleta('2026-09-04T13:45:00Z'), '04/09/2026')
 })

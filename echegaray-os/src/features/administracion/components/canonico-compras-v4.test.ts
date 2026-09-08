@@ -72,7 +72,7 @@ test('el ritmo lo pone `ALTO_V2`, no un número escrito en esta tabla', () => {
   assert.match(t, /className=\{CAJA_CONTENIDO\}|\$\{CAJA_CONTENIDO\}/, 'el borde deja de sumarse por afuera')
 })
 
-// ── LAS OCHO COLUMNAS ───────────────────────────────────────────────────────────────────────────
+// ── LAS NUEVE COLUMNAS ───────────────────────────────────────────────────────────────────────────
 
 test('la grilla es la del canvas, carácter por carácter', () => {
   // `Administración v4 · Pantallas.dc.html:222`. Literal y no armada en runtime: Tailwind escanea el
@@ -80,22 +80,70 @@ test('la grilla es la del canvas, carácter por carácter', () => {
   // grilla — un defecto que no se ve en ningún test de unidad, sólo mirando la pantalla.
   const t = codigoTabla()
   assert.ok(
-    t.includes('grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_104px_112px_26px]'),
-    'la grilla ancha dejó de ser la del canvas',
+    t.includes('grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_88px_104px_112px_26px]'),
+    'la grilla ancha dejó de ser la del canvas más los 88px de «A pagar»',
   )
   assert.match(t, /const GAP = 'gap-\[14px\]'/, 'el `gap:14` del canvas se perdió')
 })
 
-test('los ocho rótulos, en el orden del canvas y pedidos al patrón', () => {
+test('los nueve rótulos, en el orden del canvas y pedidos al patrón', () => {
   // `v4A:223`. El orden ES la decisión: COMPROBANTE y FORMA DE PAGO subieron a columna propia y la
   // FECHA bajó al panel. Escribir los rótulos a mano en vez de pedirle `RotuloCol` al patrón es la
   // fuga que `ritmo-vertical.test.ts` ya cazó una vez en `TablaUsuarios`.
   const t = codigoTabla()
   const rotulos = [...t.matchAll(/<RotuloCol[^>]*>([^<]+)<\/RotuloCol>/g)].map((m) => m[1])
   assert.deepEqual(rotulos, [
-    'Proveedor', 'Concepto', 'Comprobante', 'Cliente / asignación', 'Estado', 'Forma de pago', 'Importe',
+    'Proveedor', 'Concepto', 'Comprobante', 'Cliente / asignación', 'Estado', 'A pagar', 'Forma de pago',
+    'Importe',
   ])
   assert.match(t, /<RotuloCol derecha>Importe<\/RotuloCol>/, 'IMPORTE dejó de alinearse a la derecha')
+})
+
+test('«A pagar» es la fecha PREVISTA de la columna Q, no la fecha de caja', () => {
+  // ═══ EL DEFECTO QUE ESTE TEST ATRAPA ═══
+  //
+  // La pestaña tiene DOS fechas candidatas y hoy coinciden en 925 de 927 filas: `fecha_prevista`
+  // (Q · «Fecha prevista de pago (día)», cuándo HAY que pagar) y `fecha_caja` (AD · «Fecha de caja»,
+  // cuándo la plata SALIÓ). Elegir la equivocada se vería idéntico en pantalla —es el mismo defecto
+  // por accidente que `orquestador/lib/compras-fila.mjs` ya cazó una vez leyendo por posición— y
+  // pondría en la columna que decide pagos una fecha que sólo existe DESPUÉS de pagar.
+  //
+  // Además es la fuente del filtro «Vencimiento»: `Compras!AN` es un ARRAYFORMULA sobre `$Q$4:$Q`
+  // (`orquestador/lib/proveedores-aging.mjs`), así que columna y filtro son el mismo concepto.
+  const t = codigoTabla()
+  assert.match(t, /fechaCompleta\(f\.fecha_prevista\)/, 'la columna «A pagar» dejó de leer la fecha prevista (Q)')
+  assert.equal(t.includes('f.fecha_caja'), false, 'la columna pasó a la fecha de caja: eso es cuándo se pagó, no cuándo hay que pagar')
+  // EL AÑO ENTERO. `diaMes` y `fechaCortaConAnio` abrevian, y una obligación de 2025 escrita «15/11»
+  // se lee como la semana que viene: dos ventanas de tiempo en la misma columna.
+  assert.equal(t.includes('diaMes(f.fecha_prevista)'), false, 'la fecha a pagar volvió a perder el año')
+  assert.equal(t.includes('fechaCortaConAnio(f.fecha_prevista)'), false, 'la fecha a pagar volvió a perder el año')
+  // Y UN VACÍO ES UN VACÍO. En la fuente hay una celda vacía en 6 de las 927 filas; un «—» o un
+  // «sin fecha» se leería como algo que el Sheet dice.
+  assert.equal(/fechaCompleta\(f\.fecha_prevista\)\s*[?|]{1,2}/.test(t), false,
+    'se le puso texto de relleno a la fecha ausente: en el Sheet esa celda está vacía')
+})
+
+test('el corte intermedio retira exactamente las celdas que le sacó a la grilla', () => {
+  // UNA CELDA DE MÁS CORRE LA FILA ENTERA: cae en una segunda fila implícita y la tabla se dibuja al
+  // doble de alto y desalineada. `grilla-v2-en-telefono.test.ts` hace esta cuenta para TODAS las
+  // tablas del v2, pero sólo en los cortes `1249` y `767`; el de Compras es propio (`1459`, la cuenta
+  // del panel) y quedaba sin nadie que lo mirara — justo el corte que se movió al entrar «A pagar».
+  const t = codigoTabla()
+  const pistas = (v: string) => {
+    const m = new RegExp(`${v}grid-cols-\\[([^\\]]+)\\]`).exec(t)
+    assert.ok(m, `la tabla dejó de declarar su grilla \`${v || 'ancha'}\``)
+    return m[1].split('_').length
+  }
+  const anchas = pistas('')
+  const medias = pistas('max-\\[1459px\\]:')
+  assert.equal(anchas, 9, 'la grilla ancha dejó de tener nueve columnas')
+  // Menos la declaración de la constante: quedan sus usos reales en celdas.
+  const usos = (t.match(/\bSUELTA_ANCHO\b/g) ?? []).length - 1
+  assert.equal(
+    usos, (anchas - medias) * 2,
+    `el corte suelta ${anchas - medias} columnas y SUELTA_ANCHO se usa en ${usos} celdas `
+    + '(cabecera + fila: dos por columna). La celda que sobra desalinea la tabla entera',
+  )
 })
 
 test('la última columna de 26px es EL PAPEL, no un `···` decorativo', () => {
@@ -262,11 +310,12 @@ test('el panel mide los 344 del canvas y la cabecera le reserva 392', () => {
   assert.match(
     sinComentarios(readFileSync(join(DIR, '../../../shared/components/v2/CabeceraSeccion.tsx'), 'utf8')),
     /lg:w-\[392px\]/, 'el hueco de la cabecera se desfasó del panel (344 + 24 + 24)')
-  // Y EL CORTE DE COLUMNAS SIGUE AL PANEL. 924 (las ocho columnas + gap) + 393 (panel + margen +
-  // filo + sangría) + 40 (padding de página) = 1357: por debajo se sueltan tres columnas. Con el
-  // corte viejo de 1384 quedaba una franja de 28px donde las ocho no entran y se dibujan igual —y
+  // Y EL CORTE DE COLUMNAS SIGUE AL PANEL. 1026 (las nueve columnas + gap, con los 88 de «A pagar»)
+  // + 393 (panel + margen + filo + sangría) + 40 (padding de página) = 1459: por debajo se sueltan
+  // tres columnas. Con el corte viejo de 1356 quedaba una franja de 103px donde las nueve no entran
+  // y se dibujan igual —y
   // `body` lleva `overflow-x: clip`, así que el dato se corta sin una barra que lo delate.
-  assert.match(codigoTabla(), /max-\[1356px\]:/, 'el corte de columnas quedó calculado sobre el panel viejo')
+  assert.match(codigoTabla(), /max-\[1459px\]:/, 'el corte de columnas quedó calculado sobre el panel viejo')
 })
 
 test('la cabecera y los recortes son los del patrón v2, no la franja del canon', () => {

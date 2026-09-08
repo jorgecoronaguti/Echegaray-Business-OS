@@ -67,7 +67,7 @@
 
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { pesos } from '@/shared/components/canon/formato'
+import { fechaCompleta, pesos } from '@/shared/components/canon/formato'
 import { IconoProblema } from '@/shared/components/iconos'
 import {
   ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, V,
@@ -83,28 +83,42 @@ import { CeldaComprobante } from './CeldaComprobante'
  *
  * ═══ POR QUÉ HAY VARIANTES SI EL CANVAS DIBUJA UNA SOLA ═══
  *
- * Porque las ocho columnas del canvas son TODAS inelásticas —los `minmax(150px,…)` declaran piso— y
- * suman 826px más 98 de `gap`: 924px que no ceden un píxel. El canon resolvía eso metiendo la tabla
- * en una caja con scroll propio; el v2 no tiene caja, así que suelta columnas por media query
- * (`25v2:154` — «nunca la identidad»).
+ * Porque las columnas son TODAS inelásticas —los `minmax(150px,…)` declaran piso— y no ceden un
+ * píxel. El canon resolvía eso metiendo la tabla en una caja con scroll propio; el v2 no tiene caja,
+ * así que suelta columnas por media query (`25v2:154` — «nunca la identidad»).
  *
  * ═══ DE DÓNDE SALEN LOS DOS CORTES ═══
  *
- * `1356` no es un número redondo: es la cuenta. Con el panel abierto la lista sólo tiene
+ * `1459` no es un número redondo: es la cuenta. Con el panel abierto la lista sólo tiene
  * `ancho − 40 (padding de página) − 393 (panel: 344 + 24 de margen + 1 de filo + 24 de sangría)`, así
- * que las ocho columnas recién entran desde 924 + 393 + 40 = 1357. Por debajo se sueltan CONCEPTO,
- * COMPROBANTE y FORMA DE PAGO y quedan cinco, que necesitan 546 y entran con el panel abierto ya a
- * 979px. El costo es real y se declara: entre 1250 y 1356 con el panel CERRADO las ocho entrarían y
- * igual se ven cinco — CSS no puede saber si el panel está abierto, y equivocarse hacia el lado del
- * recorte muestra menos columnas, mientras que equivocarse hacia el otro CORTA el dato (`body` lleva
- * `overflow-x: clip`, así que no aparece ni una barra que lo delate).
+ * que las nueve columnas (914 + 112 de `gap` = 1026) recién entran desde 1026 + 393 + 40 = 1459. Por
+ * debajo se sueltan CONCEPTO, COMPROBANTE y FORMA DE PAGO y quedan seis, que necesitan 648 y entran
+ * con el panel abierto ya a 1081px. El costo es real y se declara: entre 1081 y 1459 con el panel
+ * CERRADO las nueve entrarían y igual se ven seis — CSS no puede saber si el panel está abierto, y
+ * equivocarse hacia el lado del recorte muestra menos columnas, mientras que equivocarse hacia el
+ * otro CORTA el dato (`body` lleva `overflow-x: clip`, así que no aparece ni una barra que lo
+ * delate).
  *
  * `767` es el teléfono: quedan de QUIÉN es el gasto y CUÁNTO es. Se va también el papel — 26px no son
  * un blanco para un dedo y el comprobante se abre desde el panel, que en el teléfono queda debajo.
+ *
+ * ═══ POR QUÉ EL CORTE PASÓ DE 1356 A 1459 (08/09/2026) ═══
+ *
+ * Entró «A pagar», 88px de fecha completa en mono tabular (`04/09/2026` mide 72px a 12px; 88 deja el
+ * aire y es múltiplo de 8). Las columnas inelásticas pasan de 826 a 914 y los `gap` de 98 a 112:
+ * 1026 que no ceden un píxel, así que el corte se recorre a 1026 + 393 + 40 = 1459. Dejarlo en 1356
+ * abriría una franja de 103px donde las nueve columnas no entran y se dibujan igual — y `body` lleva
+ * `overflow-x: clip`, así que el dato se corta sin una barra que lo delate.
+ *
+ * Y «A PAGAR» NO SE SUELTA EN EL PRIMER CORTE, a diferencia de las otras tres. Es el dato que el
+ * dueño pidió ver (08/09) y con el panel abierto —que es como se usa la pantalla— el primer corte se
+ * come casi todas las pantallas reales: soltarla ahí sería agregarla y esconderla. Las seis columnas
+ * de la variante angosta suman 578 + 70 de `gap` = 648, y con el panel entran desde 1081, muy por
+ * debajo de 1459.
  */
 const COLS
-  = 'grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_104px_112px_26px]'
-  + ' max-[1356px]:grid-cols-[minmax(150px,1.2fr)_minmax(110px,1fr)_92px_112px_26px]'
+  = 'grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_88px_104px_112px_26px]'
+  + ' max-[1459px]:grid-cols-[minmax(150px,1.2fr)_minmax(110px,1fr)_92px_88px_112px_26px]'
   + ' max-[767px]:grid-cols-[minmax(0,1fr)_112px]'
 
 /**
@@ -112,7 +126,7 @@ const COLS
  * NUNCA INLINE: un `style={{ display: 'flex' }}` le gana a cualquier media query y la celda sigue
  * ocupando su ancho aunque la grilla ya no tenga su columna — la fila entera se corre.
  */
-const SUELTA_ANCHO = 'max-[1356px]:hidden'
+const SUELTA_ANCHO = 'max-[1459px]:hidden'
 const SUELTA_TELEFONO = 'max-[767px]:hidden'
 
 /** El `gap:14px` del canvas (`v4A:222`), en la cabecera y en la fila. */
@@ -120,6 +134,34 @@ const GAP = 'gap-[14px]'
 
 /** El cuerpo de la celda. `v4A:223`. Una sola constante: ocho celdas con ocho literales se desfasan. */
 const CUERPO = '13.5px'
+
+/**
+ * EL NOMBRE QUE ESA FECHA TIENE EN LA FUENTE, medido sobre la pestaña viva el 08/09/2026: es la
+ * columna **Q** de «Compras», rótulo exacto `Fecha prevista de pago (día)`, y llega a
+ * `compra_sheet.fecha_prevista` por `scripts/sync-compras.mjs`.
+ *
+ * Va en el `title` del rótulo y no en el rótulo mismo por dos razones. La primera es de ancho: trece
+ * caracteres no entran en 88px. La segunda importa más — el dueño la pidió como «fecha a pagar»
+ * (08/09, textual) y así se llama en la pantalla; pero quien compare contra el Sheet necesita saber
+ * QUÉ columna está mirando, y un segundo nombre sin puente es el camino corto a dos verdades.
+ *
+ * NO ES «Fecha de caja» (AD), que es la otra candidata y la que NO se muestra: ésa es cuándo la
+ * plata SALIÓ, no cuándo hay que pagar. Al 08/09 las dos coinciden en 925 de 927 filas, así que
+ * elegir mal se vería igual de bien —y sería el mismo defecto por accidente que ya cazó
+ * `compras-fila.mjs`. El filtro «Vencimiento» de esta misma pantalla lee `tramo_vencimiento` (AN),
+ * cuya fórmula es `ARRAYFORMULA` sobre `$Q$4:$Q` (`lib/proveedores-aging.mjs`): el filtro y esta
+ * columna son el MISMO concepto, y por eso no se inventa uno nuevo.
+ *
+ * ═══ LÍMITE CONOCIDO: «A PAGAR» YA SIGNIFICA OTRAS DOS COSAS EN ESTA PANTALLA ═══
+ *
+ * El chip de arriba («A pagar 35») filtra por ESTADO, y el pie («A pagar $…») suma PLATA. Con esta
+ * columna el mismo rótulo dice además una FECHA. Se deja así porque es como lo pidió el dueño y
+ * porque el contexto desambigua —una fecha bajo un encabezado de columna no se confunde con un
+ * conteo ni con un importe—, pero queda escrito: si en la pantalla empieza a costar leerlo, el que
+ * se renombra es ESTE rótulo («Fecha prevista», que es como se llama en el Sheet), no el chip ni el
+ * pie, que son los que ya estaban.
+ */
+const ROTULO_SHEET = 'Compras · Q «Fecha prevista de pago (día)»'
 
 /**
  * EL IMPORTE. Una fila anulada se dibuja apagada y tachada: existe en la pestaña, no es un gasto.
@@ -153,6 +195,7 @@ export function TablaComprasSheet({
         <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Comprobante</RotuloCol></span>
         <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Cliente / asignación</RotuloCol></span>
         <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Estado</RotuloCol></span>
+        <span className={`grid ${SUELTA_TELEFONO}`} title={ROTULO_SHEET}><RotuloCol>A pagar</RotuloCol></span>
         <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Forma de pago</RotuloCol></span>
         <RotuloCol derecha>Importe</RotuloCol>
         <span className={SUELTA_TELEFONO} />
@@ -230,6 +273,20 @@ export function TablaComprasSheet({
                 data-testid="estado-compra"
               >
                 {estado.texto}
+              </span>
+
+              {/* CUÁNDO HAY QUE PAGARLA. Mono tabular para que las nueve fechas de la pantalla
+                  alineen por el día, y VACÍA cuando el Sheet no la trae: un «—» en una columna de
+                  fechas se lee como un dato de la fuente, y en la fuente hay una celda vacía. El
+                  `title` la fecha en la que la fila cae dentro del filtro «Vencimiento». */}
+              <span
+                className={`font-mono tabular-nums ${SUELTA_TELEFONO}`}
+                style={{ fontSize: '12px', color: f.anulada ? V.tenue : V.tintaSuave }}
+                data-testid="compra-a-pagar"
+                data-fecha-prevista={f.fecha_prevista ?? undefined}
+                title={f.tramo_vencimiento ?? undefined}
+              >
+                {fechaCompleta(f.fecha_prevista)}
               </span>
 
               {/* NO BLOQUEA NADA y por eso es apagado, no ámbar: sin forma de pago la compra existe

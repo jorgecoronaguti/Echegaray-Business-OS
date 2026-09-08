@@ -130,3 +130,24 @@ export function fechaCortaConAnio(
   const anio = Number(iso.slice(0, 4))
   return anio === anioActual ? dm : `${dm}/${String(anio).slice(2)}`
 }
+
+/**
+ * `2026-09-04` → `04/09/2026`. LA FECHA CON SU AÑO ENTERO, y es una excepción deliberada a `diaMes`.
+ *
+ * Las otras dos abrevian porque el año «se deduce del contexto». Una FECHA DE PAGO no tiene ese
+ * contexto: la columna «A pagar» de Compras mezcla en la misma pantalla facturas de este año con
+ * saldos viejos que nunca se pagaron, y ahí «15/11» de 2025 se lee como la semana que viene — es
+ * literalmente mezclar dos ventanas de tiempo en la misma columna. `fechaCortaConAnio` lo resuelve
+ * a medias (`15/11/25`), y a medias no alcanza cuando el número decide cuándo sale la plata.
+ *
+ * Devuelve `null`, nunca «—» ni «Invalid Date»: quien dibuja decide cómo se ve una ausencia, y en
+ * una columna de fechas un guión se confunde con un dato.
+ */
+export function fechaCompleta(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso)
+  if (Number.isNaN(d.getTime())) return null
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  return `${dd}/${mm}/${d.getFullYear()}`
+}
