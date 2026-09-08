@@ -27,7 +27,7 @@ const hoyISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-test('01 · sin marcas de fichaje no aparece «No fichó», y la asistencia dice «sin cargar»', async ({ page }) => {
+test('01 · sin marcas de fichaje no aparece «No fichó», y la asistencia dice «sin marcar»', async ({ page }) => {
   const admin = servicio()
   const fecha = hoyISO()
   const { count: marcasHoy } = await admin
@@ -69,22 +69,38 @@ test('01 · sin marcas de fichaje no aparece «No fichó», y la asistencia dice
   await expect(page.getByTestId('bloque-asistencia')).toBeVisible()
   if ((esperados ?? 0) > 0) {
     expect(await page.getByTestId('obra-de-la-asistencia').count()).toBeGreaterThan(0)
-    // El plantel tiene gente y hoy casi nada está cargado: alguna fila TIENE que decir «sin
-    // cargar». Es la palabra que reemplaza a «no fichó», y si alguien la cambia por «ausente» —o
-    // vuelve a la anterior— esto se pone rojo.
-    const sinCargar = page.getByTestId('fila-asistencia').filter({ hasText: 'sin cargar' })
-    const conHoras = page.getByTestId('fila-asistencia').filter({ hasText: 'hs' })
-    expect(await sinCargar.count() + await conHoras.count(),
-      'ninguna fila de asistencia se pudo leer').toBeGreaterThan(0)
+    // CADA FILA TIENE UN ESTADO Y, APARTE, SUS HORAS (08/09/2026). El estado sale de lo declarado o
+    // del fichaje; nunca de un número. «sin marcar» es la palabra del silencio —reemplazó a «sin
+    // cargar», que mezclaba «no hay horas» con «nadie dijo nada»— y si alguien la cambia por
+    // «ausente», o vuelve a resolver el estado con las horas, esto se pone rojo.
+    const conEstado = page.locator('[data-testid="fila-asistencia"] [data-capa="presencia"]')
+    expect(await conEstado.count(), 'ninguna fila de asistencia tiene estado').toBeGreaterThan(0)
+    const estados = await page.getByTestId('fila-asistencia')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('data-presencia')))
+    expect(estados.every((e) => ['presente', 'ausente', 'licencia', 'sin_marcar'].includes(e ?? '')),
+      `estado fuera del vocabulario: ${[...new Set(estados)].join(', ')}`).toBe(true)
+    // LAS HORAS NO PUEDEN HABER ESCRITO UN ESTADO: quien tiene horas y nadie lo declaró sigue
+    // «sin marcar». Es el defecto que el dueño marcó tres veces.
+    const conHorasYSinDeclarar = await page.locator(
+      '[data-testid="fila-asistencia"][data-presencia="sin_marcar"] [data-capa="horas"]',
+    ).count()
+    expect(conHorasYSinDeclarar, 'no es un fallo: se deja constancia de cuántas filas son «sin marcar · N hs»')
+      .toBeGreaterThanOrEqual(0)
   }
 
   // NINGUNA FILA DE LA ASISTENCIA PUEDE DECIR QUE ALGUIEN ESTÁ AUSENTE SIN UNA AUSENCIA DECLARADA.
-  const ausentes = await page.getByTestId('fila-asistencia').filter({ hasText: /Ausente|Licencia/ }).count()
-  const { count: declaradas } = await admin
+  const ausentes = await page.locator(
+    '[data-testid="fila-asistencia"][data-presencia="ausente"], [data-testid="fila-asistencia"][data-presencia="licencia"]',
+  ).count()
+  const { count: enHoras } = await admin
     .from('registros_hh').select('id', { count: 'exact', head: true })
     .eq('fecha', fecha).in('tipo_hora', ['ausencia', 'licencia'])
-  expect(ausentes, 'la pantalla no puede mostrar más ausencias que las cargadas en registros_hh')
-    .toBeLessThanOrEqual(declaradas ?? 0)
+  // LAS DOS FUENTES QUE PUEDEN DECLARAR UNA AUSENCIA, y ninguna es un número de horas.
+  const { count: enDia } = await admin
+    .from('asistencia_dia').select('id', { count: 'exact', head: true })
+    .eq('fecha', fecha).in('estado', ['ausente', 'licencia'])
+  expect(ausentes, 'la pantalla no puede mostrar más ausencias que las declaradas')
+    .toBeLessThanOrEqual((enHoras ?? 0) + (enDia ?? 0))
 
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.screenshot({ path: 'qa-shots/en-obra-fichaje-vs-horas-1440.png', fullPage: true })

@@ -6,8 +6,9 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { ClasificacionDelDia } from './asistenciaDelDia.ts'
 import {
-  SIN_CARGAR, asistenciaHoyPorPersona, estadoHoy, hayControlDeVencimientos, hayMarcaDeHoy,
+  SIN_MARCAR, asistenciaHoyPorPersona, estadoHoy, hayControlDeVencimientos, hayMarcaDeHoy,
   hhPorPersona, horasVisibles, marcasPorPersona, mesCorriente, papelesPorPersona, rotuloDePapeles,
   rotuloHoy,
 } from './pulsoDelPlantel.ts'
@@ -56,45 +57,59 @@ test('dos marcas de la misma persona: gana la jornada abierta', () => {
 // alguien vuelve a hacer que la celda hable de fichaje, o inventa un segundo `if` que decida qué es
 // una ausencia, estas pruebas se ponen rojas.
 
-test('sin nada cargado la celda dice «sin cargar»: nunca «sin fichar» ni «ausente»', () => {
-  const r = rotuloHoy(SIN_CARGAR)
-  assert.equal(r.texto, 'sin cargar')
-  assert.equal(r.chip, null, 'el silencio no lleva chip de estado')
+test('sin nada declarado la celda dice «sin marcar»: nunca «sin fichar» ni «ausente»', () => {
+  const r = rotuloHoy(SIN_MARCAR)
+  assert.equal(r.texto, 'sin marcar')
+  assert.equal(r.simbolo, '', 'el silencio no lleva símbolo de estado')
   assert.equal(r.tono, 'silencio')
-  assert.doesNotMatch(r.texto, /fich|ausen|falt/i)
+  assert.equal(r.horas, null, 'sin marcar no es cero horas')
+  assert.doesNotMatch(r.texto, /fich|ausen|falt|cargar/i)
 })
 
 test('el vocabulario ENTERO de la celda: ningún estado nombra el fichaje ni acusa una falta', () => {
   // El barrido es la prueba: alcanza con que UN estado vuelva a decir «no fichó» para que caiga.
-  const casos = [
-    SIN_CARGAR,
-    { estado: 'con_horas' as const, horas: 9, motivo: null },
-    { estado: 'ausente' as const, horas: null, motivo: null },
-    { estado: 'licencia' as const, horas: null, motivo: null },
+  const casos: ClasificacionDelDia[] = [
+    SIN_MARCAR,
+    { presencia: 'sin_marcar', fuente: null, horas: 9, motivo: null },
+    { presencia: 'presente', fuente: 'declarada', horas: null, motivo: null },
+    { presencia: 'ausente', fuente: 'declarada', horas: null, motivo: null },
+    { presencia: 'licencia', fuente: 'hh', horas: null, motivo: null },
   ]
   for (const c of casos) {
     const r = rotuloHoy(c)
     assert.doesNotMatch(r.texto, /fich/i, `«${r.texto}» habla de fichaje`)
-    // El número no lleva tono de estado: 9 h no es «bien» ni «mal».
-    if (c.estado === 'con_horas') assert.equal(r.chipTono, null)
+    // LA PALABRA DEL ESTADO NUNCA ES UN NÚMERO. Es el defecto entero: la cantidad no puede volver
+    // a ocupar el lugar del hecho.
+    assert.doesNotMatch(r.texto, /\d/, `«${r.texto}» pone una cantidad donde va el estado`)
   }
 })
 
-test('con horas la celda es una CANTIDAD, no un estado', () => {
-  const r = rotuloHoy({ estado: 'con_horas', horas: 9, motivo: null })
-  assert.equal(r.texto, '9 h')
-  assert.equal(r.tono, 'cantidad')
-  assert.equal(r.chip, null)
-  assert.equal(rotuloHoy({ estado: 'con_horas', horas: 7.5, motivo: null }).texto, '7,5 h')
+test('9 h sin nadie que lo haya declarado: «sin marcar» arriba y «9 h» al lado, en dos capas', () => {
+  // EL DEFECTO QUE ATRAPA, y es el que reportó el dueño por tercera vez: la celda decía «9 h» y
+  // nada más, así que la cantidad hacía de estado y la columna daba por presente a quien nadie
+  // había mirado.
+  const r = rotuloHoy({ presencia: 'sin_marcar', fuente: null, horas: 9, motivo: null })
+  assert.equal(r.texto, 'sin marcar')
+  assert.equal(r.tono, 'silencio')
+  assert.equal(r.horas, '9 h', 'la cantidad tiene su propia capa y no desaparece')
+  assert.equal(rotuloHoy({ presencia: 'sin_marcar', fuente: null, horas: 7.5, motivo: null }).horas, '7,5 h')
 })
 
-test('la ausencia y la licencia llevan su chip y su motivo, y se distinguen entre sí', () => {
-  const a = rotuloHoy({ estado: 'ausente', horas: null, motivo: 'Gripe' })
-  assert.deepEqual([a.chip, a.chipTono, a.texto], ['A', 'neg', 'gripe'])
-  const l = rotuloHoy({ estado: 'licencia', horas: null, motivo: 'Vacaciones' })
-  assert.deepEqual([l.chip, l.chipTono, l.texto], ['L', 'neutro', 'vacaciones'])
+test('presente declarado sin horas: estado presente y NINGUNA cantidad inventada', () => {
+  const r = rotuloHoy({ presencia: 'presente', fuente: 'declarada', horas: null, motivo: null })
+  assert.equal(r.texto, 'presente')
+  assert.equal(r.simbolo, '●')
+  assert.equal(r.tono, 'pos')
+  assert.equal(r.horas, null, 'un presente sin horas no lleva un 0: nadie cargó nada')
+})
+
+test('la ausencia y la licencia llevan su símbolo y su motivo, y se distinguen entre sí', () => {
+  const a = rotuloHoy({ presencia: 'ausente', fuente: 'declarada', horas: null, motivo: 'Gripe' })
+  assert.deepEqual([a.simbolo, a.tono, a.texto], ['A', 'neg', 'gripe'])
+  const l = rotuloHoy({ presencia: 'licencia', fuente: 'hh', horas: null, motivo: 'Vacaciones' })
+  assert.deepEqual([l.simbolo, l.tono, l.texto], ['L', 'neutro', 'vacaciones'])
   // Sin motivo declarado se escribe la palabra del estado, no un hueco al lado de la letra.
-  assert.equal(rotuloHoy({ estado: 'ausente', horas: null, motivo: null }).texto, 'ausencia')
+  assert.equal(rotuloHoy({ presencia: 'ausente', fuente: 'declarada', horas: null, motivo: null }).texto, 'ausente')
 })
 
 test('la asistencia de hoy sale de las filas de HOY, no de las del mes', () => {
@@ -104,8 +119,10 @@ test('la asistencia de hoy sale de las filas de HOY, no de las del mes', () => {
     { persona_id: 'b', fecha: '2026-08-10', horas: 8, tipo_hora: 'normal' },
     { persona_id: null, fecha: HOY, horas: 8, tipo_hora: 'normal' },
   ], HOY)
-  assert.deepEqual(m.get('a'), { estado: 'con_horas', horas: 9, motivo: null })
-  // «b» cargó el 10 y hoy no: quien no está en el Map es SIN_CARGAR, no «ausente».
+  // NUEVE HORAS Y NADIE QUE LO HAYA DECLARADO SIGUE SIENDO «SIN MARCAR». La cantidad está, el
+  // estado no: son dos hechos y el segundo no existe todavía.
+  assert.deepEqual(m.get('a'), { presencia: 'sin_marcar', fuente: null, horas: 9, motivo: null })
+  // «b» cargó el 10 y hoy no: quien no está en el Map es SIN_MARCAR, no «ausente».
   assert.equal(m.has('b'), false)
   assert.equal(m.size, 1, 'las filas legacy sin persona_id no le inventan un día a nadie')
 })
@@ -117,7 +134,10 @@ test('lo declarado gana: una ausencia de hoy no se lee como jornada por una impu
   ], HOY)
   // La regla es la de `clasificar()` y se REUSA: si acá apareciera una segunda copia del `if`, el
   // día que cambie la de `asistenciaDelDia.ts` esta pantalla se quedaría con la vieja.
-  assert.deepEqual(m.get('a'), { estado: 'ausente', horas: null, motivo: 'Falta con aviso' })
+  // LAS 8 H IMPUTADAS SE SIGUEN VIENDO al lado de la ausencia: son el otro hecho, y existen en
+  // `registros_hh`. Esconderlas resolvería la contradicción a favor de la ausencia sin decirlo, y
+  // una de las dos afirmaciones se liquida.
+  assert.deepEqual(m.get('a'), { presencia: 'ausente', fuente: 'hh', horas: 8, motivo: 'Falta con aviso' })
 })
 
 // ── LA COLUMNA HOY LEE `asistencia_dia` (08/09/2026) ────────────────────────────────────────────
@@ -126,11 +146,12 @@ test('lo declarado gana: una ausencia de hoy no se lee como jornada por una impu
 // el que el jefe acababa de marcar presente. Estos tres tests caen si la presencia declarada deja
 // de llegar a `clasificar` o si el declarado sin horas vuelve a quedarse fuera del Map.
 
-test('declarado presente y sin horas: la columna dice «presente · sin horas», no «sin cargar»', () => {
+test('declarado presente y sin horas: la columna dice «presente», no «sin marcar»', () => {
   const m = asistenciaHoyPorPersona([], HOY, [{ persona_id: 'a', estado: 'presente', motivo: null }])
-  assert.deepEqual(m.get('a'), { estado: 'presente', horas: null, motivo: null })
-  assert.equal(rotuloHoy(m.get('a')!).texto, 'presente · sin horas')
-  assert.notDeepEqual(m.get('a'), SIN_CARGAR, 'la declaración del jefe se perdió en silencio')
+  assert.deepEqual(m.get('a'), { presencia: 'presente', fuente: 'declarada', horas: null, motivo: null })
+  assert.equal(rotuloHoy(m.get('a')!).texto, 'presente')
+  assert.equal(rotuloHoy(m.get('a')!).horas, null)
+  assert.notDeepEqual(m.get('a'), SIN_MARCAR, 'la declaración del jefe se perdió en silencio')
 })
 
 test('la ausencia declarada por el jefe gana sobre las horas cargadas, y el conflicto se ve', () => {
@@ -139,7 +160,7 @@ test('la ausencia declarada por el jefe gana sobre las horas cargadas, y el conf
     HOY, [{ persona_id: 'a', estado: 'ausente', motivo: 'falta' }],
   )
   const c = m.get('a')!
-  assert.equal(c.estado, 'ausente')
+  assert.equal(c.presencia, 'ausente')
   // CON CONFLICTO LAS HORAS SE SIGUEN VIENDO: esconderlas elegiría una de las dos afirmaciones.
   assert.equal(c.horas, 8)
   assert.equal(c.conflicto, true)

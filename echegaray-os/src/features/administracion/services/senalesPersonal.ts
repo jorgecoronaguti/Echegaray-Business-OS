@@ -29,15 +29,32 @@
 // fabricaría una novedad de liquidación sobre una batería descargada. Quién faltó lo declara el
 // jefe de obra, y hasta que exista ese hecho la señal no tiene fuente.
 //
-// ═══ DOS DE LAS TRES NO TIENEN DÓNDE ATERRIZAR, Y SE DICE ═══
+// ═══ LA SEÑAL «SIN FICHAR HOY» SE RETIRÓ (08/09/2026, tercera marca del dueño) ═══
 //
-// «Sin fichar hoy» y «papeles vencidos» no tienen recorte propio en esta lista —no hay filtro por
-// fichada del día ni por vencimiento de legajo—. El mockup las dibuja igual, sin verbo y sin
-// cursor: son informativas. Un verbo que no lleva a ninguna parte enseña a no hacerle clic a la
-// fila de al lado, que sí lleva.
+// *«todas las pantallas en donde aparezca el concepto de fichado no tiene que resolverse con las
+// hs; está mal: una cosa es asistencia o activo en el día y otra cosa son las cantidades de hs»*.
+//
+// La señal contaba, sobre `presencia_del_dia`, a todo el que no tuviera una marca de hoy y lo
+// publicaba como «N sin fichar hoy». Dos problemas, y cada uno alcanza:
+//
+//  1. «Sin fichar» NO ES VOCABULARIO DE ESTADO. El estado de una persona en el día es presente,
+//     ausente, licencia o sin marcar; «no fichó» es la falta de una capacidad que todavía no está
+//     en uso —cuatro marcas en toda la historia— y como cifra en una banda de alerta se lee como
+//     faltas del plantel entero.
+//  2. NO TENÍA CONSUMIDOR desde el handoff v4, así que ni siquiera se dibujaba.
+//
+// El día que exista un tablero que necesite decir cuánta gente no tiene NADA declarado hoy, la
+// cifra sale de `asistencia_dia`/`asistencia_marca` con la palabra «sin marcar» y con `clasificar`
+// —no de contar los que no fichan—. Sin esa fuente enchufada acá no había nada honesto que decir.
+//
+// ═══ LO QUE QUEDA, Y POR QUÉ UNA SOLA TRAE VERBO ═══
+//
+// «Papeles vencidos» no tiene recorte propio en esta lista —no hay filtro por vencimiento de
+// legajo—. El mockup la dibuja igual, sin verbo y sin cursor: es informativa. Un verbo que no lleva
+// a ninguna parte enseña a no hacerle clic a la fila de al lado, que sí lleva.
 
 import type { SenalDeTrabajo } from '../../../shared/components/v2/trabajo.ts'
-import { estadoHoy, type EstadoDePapeles, type MarcaDeHoy } from './pulsoDelPlantel.ts'
+import type { EstadoDePapeles, MarcaDeHoy } from './pulsoDelPlantel.ts'
 
 /** Lo mínimo de una persona para decidir si reclama algo. */
 export interface FilaDeSenal {
@@ -47,12 +64,18 @@ export interface FilaDeSenal {
 }
 
 export function senalesDePersonal({
-  personas, marcas, papeles, hoyDisponible, papelesDisponible, hrefSinObra,
+  // `marcas` y `hoyDisponible` siguen en el contrato pero YA NO SE MIRAN: la señal que los usaba
+  // contaba fichajes y se retiró (ver arriba). Se dejan porque quien llama los tiene a mano y
+  // sacarlos obligaría a tocar la página para no cambiar nada de lo que se dibuja.
+  personas, papeles, papelesDisponible, hrefSinObra,
 }: {
   personas: FilaDeSenal[]
+  /** Las marcas de fichaje de hoy. YA NO SE USAN para ninguna señal —ver el bloque de arriba— y se
+   *  siguen recibiendo porque quien llama las tiene: sacarlas del contrato obligaría a tocar la
+   *  página para no cambiar nada de lo que se dibuja. */
   marcas: Map<string, MarcaDeHoy>
   papeles: Map<string, EstadoDePapeles>
-  /** `false` = no se pudo leer la presencia de hoy. La señal se calla: no se puede afirmar nada. */
+  /** `false` = no se pudo leer la presencia de hoy. Ninguna señal la mira desde el 08/09/2026. */
   hoyDisponible: boolean
   /** `false` = no hay ni un vencimiento cargado. Ver `hayControlDeVencimientos`. */
   papelesDisponible: boolean
@@ -69,20 +92,6 @@ export function senalesDePersonal({
         clave: 'papeles', numero: n, tono: 'neg',
         texto: n === 1 ? 'persona con papeles vencidos' : 'personas con papeles vencidos',
         bloquea: 'Con la libreta o el apto médico vencido no puede estar en obra',
-        accion: '',
-      })
-    }
-  }
-
-  if (hoyDisponible) {
-    const n = activas.filter((p) => estadoHoy(marcas.get(p.id)) === 'sin_fichar').length
-    if (n > 0) {
-      s.push({
-        clave: 'sin-fichar', numero: n,
-        texto: n === 1 ? 'sin fichar hoy' : 'sin fichar hoy',
-        // NO ES UNA AUSENCIA, y la frase lo dice: es lo único que impide que alguien lea la cifra
-        // como faltas y la lleve a la liquidación.
-        bloquea: 'No es una falta: se marca desde el celular o lo carga el jefe de obra',
         accion: '',
       })
     }

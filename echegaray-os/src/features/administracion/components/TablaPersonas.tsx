@@ -64,17 +64,18 @@ import { oracion } from '@/shared/utils/texto'
 import type { PersonaEnDirectorio } from '../types'
 import { agruparPorRolOrganizacional, categoriaVisible, esJefeDeObra } from '../services/vocabularioPersona'
 import {
-  SIN_CARGAR, hayMarcaDeHoy, horasVisibles, rotuloHoy,
+  SIN_MARCAR, hayMarcaDeHoy, horasVisibles, rotuloHoy,
   type EstadoDePapeles, type MarcaDeHoy,
 } from '../services/pulsoDelPlantel'
 import type { ClasificacionDelDia } from '../services/asistenciaDelDia'
+import type { RotuloHoy } from '../services/pulsoDelPlantel'
 
 /** Las tres lecturas del día, ya agrupadas por persona. Cada `disponible` en false apaga SU columna:
  *  una lectura que falló no se dibuja como «no hay nada». */
 export interface PulsoDelPlantel {
   marcas: Map<string, MarcaDeHoy>
   /** La asistencia de HOY por persona, ya clasificada por `clasificar()`. Quien no está en el Map
-   *  no tiene nada cargado, y eso es `SIN_CARGAR` — no una ausencia. */
+   *  no tiene nada declarado ni cargado, y eso es `SIN_MARCAR` — no una ausencia. */
   asistencia: Map<string, ClasificacionDelDia>
   hh: Map<string, number>
   papeles: Map<string, EstadoDePapeles>
@@ -110,17 +111,6 @@ const COLS_BAJA
 const SOLO_ANCHO = 'max-[1249px]:hidden'
 /** `gap:16` del bloque «1 · PERSONAL». El patrón v2 declara 14 y esta pantalla lo corre a 16. */
 const GAP = 16
-
-/** La tinta de cada tono de la celda HOY. Ver `rotuloHoy`: el número va en tinta plena y sin color
- *  de estado; el motivo, legible pero secundario; la falta de dato, en el gris de «sin HH». */
-const TINTA_HOY = {
-  cantidad: V.tinta,
-  motivo: V.apagado,
-  silencio: V.lupa,
-} as const
-/** El chip declarado. Rojo SÓLO para la ausencia, que es lo único que reclama una decisión de quien
- *  liquida; la licencia ya está resuelta y va en neutro. */
-const TINTA_CHIP = { neg: V.neg, neutro: V.apagado } as const
 
 export function TablaPersonas({
   personas, conBaja = false, pulso, vacio = 'Nada coincide.',
@@ -180,7 +170,7 @@ export function TablaPersonas({
         // `registros_hh` (la lectura de HH); el ● de presencia, de una marca real. Que una falle no
         // apaga la otra, y ninguna se deriva de la otra.
         const asistencia = conPulso && pulso?.hhDisponible
-          ? (pulso.asistencia.get(p.id) ?? SIN_CARGAR)
+          ? (pulso.asistencia.get(p.id) ?? SIN_MARCAR)
           : null
         const ficho = Boolean(conPulso && pulso?.hoyDisponible && hayMarcaDeHoy(pulso.marcas.get(p.id)))
         const categoria = categoriaVisible(p.categoria, p.puesto)
@@ -252,7 +242,8 @@ export function TablaPersonas({
                       className={`flex items-center gap-1 ${SOLO_ANCHO}`}
                       style={{ minWidth: 0 }}
                       data-testid="hoy-persona"
-                      data-estado={asistencia?.estado}
+                      data-estado={asistencia?.presencia}
+                      data-horas={asistencia?.horas ?? ''}
                       data-ficho={ficho ? 'si' : undefined}
                     >
                       {asistencia
@@ -301,51 +292,70 @@ export function TablaPersonas({
 }
 
 /**
- * LA CELDA «HOY» — DOS CAPAS QUE NO HABLAN UNA POR LA OTRA (08/09/2026).
+ * LA CELDA «HOY» — DOS CAPAS EN HORIZONTAL QUE NO HABLAN UNA POR LA OTRA.
  *
- * Antes decía «● sin fichar» en las diecisiete filas, con punto ámbar. El fichaje desde el celular
- * no está en uso —cuatro marcas de prueba en toda la historia—, así que la columna publicaba todos
- * los días la ausencia de una capacidad como si fuera una novedad sobre la gente. La decisión
- * completa está en `docs/engineering/UX_ASISTENCIA_VS_HORAS.md` y la regla, en `rotuloHoy`.
+ * El dueño, 08/09/2026, por tercera vez: *«todas las pantallas en donde aparezca el concepto de
+ * fichado no tiene que resolverse con las hs; está mal: una cosa es asistencia o activo en el día y
+ * otra cosa son las cantidades de hs»*. La celda escribía «9 h» y nada más: la CANTIDAD ocupaba el
+ * lugar del ESTADO, y la columna quedaba afirmando que vino todo el que tenía un número.
  *
- *   ●  PRESENCIA · sólo si hay una marca REAL de hoy. Sin marca no se escribe nada: no hay palabra
- *      que decir sobre un dato que no existe, y «no fichó» acusaría a todo el plantel.
- *   A/L + palabra · lo DECLARADO en `registros_hh`, con su motivo.
- *   9 h · la CANTIDAD, monoespaciada y sin color de estado.
- *   sin cargar · el silencio, en gris neutro. No es una falta de la persona.
+ *   ESTADO  ● presente (verde) · A ausente (rojo) · L licencia (neutro) · «sin marcar» (el gris más
+ *           tenue). Sale de `asistencia_dia`, de una marca real o de una ausencia declarada en
+ *           `registros_hh`. NUNCA de un número de horas.
+ *   HORAS   la cantidad, monoespaciada y en tinta. Sin color de estado. Cuando no hay, no se
+ *           escribe nada.
+ *
+ * «Sin marcar · 9 h» es una fila NORMAL, no una contradicción: mientras el fichaje no esté en uso y
+ * el jefe no declare, es lo que va a decir casi toda la columna. La contradicción de verdad —una
+ * ausencia declarada con horas cargadas— sí se marca, y en rojo.
  *
  * Es la misma anatomía de `CeldaDia`, en horizontal: la celda apilada de 44 px se diseñó para una
  * grilla de quince columnas y acá rompería el alto de fila del handoff v4.
  */
+/** La tinta del ESTADO. Rojo SÓLO para la ausencia, que es lo único que reclama una decisión de
+ *  quien liquida; la licencia ya está resuelta y va en neutro; el silencio, en el gris de «sin HH».
+ *  Las horas NO entran acá: van siempre en tinta plena, sin color de estado. */
+const TINTA_ESTADO: Record<RotuloHoy['tono'], string> = {
+  pos: 'var(--os-pos)', neg: V.neg, neutro: V.apagado, silencio: V.lupa,
+}
+
 function CeldaHoy({ clasificacion, ficho }: { clasificacion: ClasificacionDelDia; ficho: boolean }) {
   const r = rotuloHoy(clasificacion)
   return (
     <>
+      {/* EL FICHAJE TIENE SU PROPIA MARCA, y sólo si hay una marca REAL de hoy. Sin ella no se
+          escribe nada: el silencio de una capacidad sin estrenar no es una novedad sobre la gente. */}
       {ficho && (
         <span
           className="text-pos"
           title="Fichó hoy"
-          data-capa="presencia"
+          data-capa="fichaje"
           style={{ fontSize: '9px', lineHeight: 1, flexShrink: 0 }}
         >
           ●
         </span>
       )}
-      {r.chip && (
-        <span
-          data-capa="declarado"
-          style={{ fontSize: '11px', fontWeight: 600, color: TINTA_CHIP[r.chipTono ?? 'neutro'], flexShrink: 0 }}
-        >
-          {r.chip}
-        </span>
-      )}
       <span
-        className={`truncate ${r.tono === 'cantidad' ? 'font-mono tabular-nums' : ''}`}
-        data-capa={r.tono === 'cantidad' ? 'horas' : 'palabra'}
-        style={{ fontSize: '12px', color: TINTA_HOY[r.tono] }}
+        className="truncate"
+        data-capa="presencia"
+        data-presencia={r.estado}
+        title={r.conflicto ? 'Ausencia declarada y horas cargadas el mismo día' : undefined}
+        style={{ fontSize: '12px', color: r.conflicto ? 'var(--os-neg)' : TINTA_ESTADO[r.tono], flexShrink: 0 }}
       >
+        {r.simbolo && <span style={{ fontWeight: 600 }}>{r.simbolo} </span>}
         {r.texto}
       </span>
+      {/* LA CANTIDAD, al lado y en su propia tinta. Un separador entre las dos capas para que no se
+          lean como una sola frase. */}
+      {r.horas && (
+        <span
+          className="font-mono tabular-nums text-ink truncate"
+          data-capa="horas"
+          style={{ fontSize: '12px' }}
+        >
+          · {r.horas}
+        </span>
+      )}
     </>
   )
 }
