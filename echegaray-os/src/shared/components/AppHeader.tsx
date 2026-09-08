@@ -43,6 +43,7 @@ export function AppHeader({
   email,
   rolLabel,
   verUsuarios,
+  cargaAsistencia,
   salir,
 }: {
   /** Las solapas de nivel 1 que este rol ve. Tres para Administración, una para Obras. */
@@ -53,6 +54,8 @@ export function AppHeader({
   rolLabel: string | null
   /** ¿Se le ofrece «Usuarios» en el menú de la cuenta? Es la puerta a cambiar roles. */
   verUsuarios: boolean
+  /** Si este rol puede abrir Personal. El atajo a la carga de asistencia cuelga de eso. */
+  cargaAsistencia: boolean
   salir: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -179,7 +182,7 @@ export function AppHeader({
             </>
           )}
           {email ? (
-            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} verUsuarios={verUsuarios} salir={salir} />
+            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} verUsuarios={verUsuarios} cargaAsistencia={cargaAsistencia} salir={salir} />
           ) : (
             <Link href="/login" className="rounded-md px-2.5 py-1.5 text-[13px] text-muted hover:bg-surface-quiet">
               Ingresar
@@ -220,12 +223,14 @@ function MenuUsuario({
   email,
   rolLabel,
   verUsuarios,
+  cargaAsistencia,
   salir,
 }: {
   nombre?: string | null
   email: string
   rolLabel: string | null
   verUsuarios: boolean
+  cargaAsistencia: boolean
   salir: React.ReactNode
 }) {
   const [abierto, setAbierto] = useState(false)
@@ -277,6 +282,25 @@ function MenuUsuario({
             <div className="truncate text-[12px] text-ink">{email}</div>
             {rolLabel && <div className="text-[11.5px] text-faint">{rolLabel}</div>}
           </div>
+          {/* ═══ EL ATAJO DEL TELÉFONO (08/09/2026) ═══
+              Los roles de adentro no tienen barra inferior —ésa es del rol `campo`—, así que para
+              cargar la asistencia desde la obra había que entrar a Administración, tocar Personal y
+              después la solapa Asistencia: tres toques y una barra de áreas que en 390px scrollea
+              de costado. Este menú es lo más parecido a una hamburguesa que el header tiene, y acá
+              el atajo es UN toque. `md:hidden` porque en escritorio esos tres toques no son un
+              problema y el menú es para configuración, no para trabajo diario. */}
+          {cargaAsistencia && (
+            <Link
+              prefetch={false}
+              href="/administracion/personas?vista=asistencia&modo=dia"
+              role="menuitem"
+              data-testid="ir-cargar-asistencia"
+              onClick={() => setAbierto(false)}
+              className="flex min-h-[44px] items-center px-3 py-1.5 text-[13px] font-medium text-ink hover:bg-surface-quiet md:hidden"
+            >
+              Cargar asistencia
+            </Link>
+          )}
           <Link
             prefetch={false}
             href="/mi-cuenta"

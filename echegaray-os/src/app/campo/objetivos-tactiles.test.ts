@@ -31,9 +31,15 @@ const RAIZ = new URL('../../..', import.meta.url).pathname
 // altos se cumplían por costumbre: el topbar de detalle, la flecha de volver de 48×48 y los tabs de
 // 58px se escriben a mano, y un `h-[36px]` en cualquiera de los tres se ve bien en el navegador de
 // escritorio y se falla con el pulgar en obra.
+// 08/09/2026 · SE SUMA LA CARGA DE ASISTENCIA DE ADMINISTRACIÓN. `FormAsistencia` VIVÍA en
+// `src/app/campo/asistencia/` —o sea, dentro de esta barrida— y se mudó a
+// `features/administracion/components/asistencia/` para que la use también el teléfono de los roles
+// de adentro. Sin esta línea, mudar el archivo lo habría sacado en silencio de la única regla que
+// vigila sus objetivos táctiles: la carpeta cambia y la vigilancia se apaga sin que nada dé rojo.
 const PRODUCTOS = [
   'src/app/campo', 'src/app/(jefe)', 'src/features/jefe',
   'src/app/(empleado)', 'src/features/empleado',
+  'src/features/administracion/components/asistencia',
 ]
 
 /** Lo que se toca. `Boton`/`BotonEnlace` traen su alto del sistema y se miran en la regla 2. */
