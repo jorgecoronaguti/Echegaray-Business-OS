@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
@@ -113,7 +114,12 @@ export function GrillaAsistenciaObra({
   // texto ya armado con los nombres de las dos obras.
   const [acuses, setAcuses] = useState<Record<string, { texto: string; error: boolean }>>({})
   const [cambiando, setCambiando] = useState<string | null>(null)
+  // LO QUE EL DUEÑO ACABA DE ELEGIR, hasta que el servidor lo confirme. Sin esto el <select>,
+  // controlado por el dato del servidor, volvía a mostrar la obra vieja apenas se soltaba el clic y
+  // el dueño creía que no había guardado, elegía de nuevo y recibía «Ya estaba en…» (08/09/2026).
+  const [elegidas, setElegidas] = useState<Record<string, string>>({})
   const [, arrancar] = useTransition()
+  const router = useRouter()
 
   // LO QUE EL DESPLEGABLE MUESTRA SELECCIONADO. La obra a la que se le imputa lo que se escriba si
   // se le puede imputar; si su asignación vigente está en una obra que ya no admite horas, ESA obra
@@ -122,17 +128,24 @@ export function GrillaAsistenciaObra({
   const seleccionada = (fila: FilaQuincena) =>
     fila.obraPorDefecto?.id ?? fila.obraVigenteNoElegible?.id ?? ''
 
+  const mostrada = (fila: FilaQuincena) => elegidas[fila.clave] ?? seleccionada(fila)
+
   const cambiarObra = (fila: FilaQuincena, valor: string) => {
-    if (seleccionada(fila) === valor) return
+    if (mostrada(fila) === valor) return
     setCambiando(fila.clave)
+    setElegidas((e) => ({ ...e, [fila.clave]: valor }))
     setAcuses((a) => { const n = { ...a }; delete n[fila.clave]; return n })
     arrancar(async () => {
       const r = await cambiarObraActual({ persona_id: fila.persona.id, obra_id: valor || null })
       setCambiando(null)
+      if (!r.ok) setElegidas((e) => { const n = { ...e }; delete n[fila.clave]; return n })
       setAcuses((a) => ({
         ...a,
         [fila.clave]: r.ok ? { texto: r.mensaje, error: false } : { texto: r.error, error: true },
       }))
+      // EL DATO VUELVE DEL SERVIDOR: la fila, los chips del encabezado y la obra de cada celda se
+      // releen; la elección local queda hasta entonces para que el <select> no dé un salto atrás.
+      if (r.ok) router.refresh()
     })
   }
 
@@ -289,7 +302,7 @@ export function GrillaAsistenciaObra({
                   <select
                     data-testid="select-obra-actual"
                     aria-label={`Obra actual de ${fila.persona.nombre}`}
-                    value={seleccionada(fila)}
+                    value={mostrada(fila)}
                     disabled={cambiando === fila.clave}
                     onChange={(e) => cambiarObra(fila, e.target.value)}
                     style={{
