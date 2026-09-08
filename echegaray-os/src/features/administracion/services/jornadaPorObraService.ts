@@ -153,6 +153,8 @@ export interface DatosQuincenaPorObra {
   obras: Record<string, ObraRotulo>
   /** Las obras en estado `activa`. Sólo esas se pueden marcar y sólo esas se reclaman. */
   obrasActivas: string[]
+  /** `personas.puesto` por id. Vacío cuando la lectura no se pudo hacer — ver `puestosDe`. */
+  puestos: Record<string, string | null>
 }
 
 /** Los feriados de la ventana. La misma tabla que lee la grilla de presencia — no una lista aparte.
@@ -248,6 +250,9 @@ export async function getQuincenaPorObra(
         notas: r.notas,
       })),
       personas: await plantelDe(supabase, sinAsignacion),
+      puestos: await puestosDe(supabase, [
+        ...new Set([...vigentes.map((a) => a.persona_id), ...filasHH.map((r) => r.persona_id)]),
+      ]),
       noLaborables,
       obras: rotulos,
       // Las obras que se pueden marcar. Lo que quedó fuera sigue mostrando sus horas —existen— pero
@@ -281,6 +286,28 @@ async function plantelDe(
         rol: null, persona_especialidad: p.especialidad, persona_categoria: p.categoria,
       }),
     }]))
+}
+
+/**
+ * EL PUESTO DE CADA UNO — lo que separa a los jefes de obra del resto (dueño, 08/09/2026).
+ *
+ * SALE DE `persona_directorio` Y NO DE `persona_plantel` porque `persona_plantel` no publica
+ * `puesto`: sus cuatro columnas son nombre, categoría, especialidad y egreso. Agregarlo ahí es
+ * cambiar una vista que leen otras cuatro pantallas, y esa migración la aplica el dueño; hasta
+ * entonces esta lectura usa la vista que YA publica el campo y que YA alimenta el plantel de
+ * `/administracion/personas` — la misma columna de la misma tabla, no una segunda fuente.
+ *
+ * UNA LECTURA QUE FALLA DEVUELVE `{}` Y NO ROMPE LA GRILLA: sin puesto nadie es jefe y la pantalla
+ * queda como antes de este cambio. Lo contrario —tirar la quincena entera porque no se pudo saber
+ * quién es jefe— cambiaría un agrupamiento cosmético por una pantalla sin horas.
+ */
+async function puestosDe(
+  supabase: SupabaseClient, ids: string[],
+): Promise<Record<string, string | null>> {
+  if (ids.length === 0) return {}
+  const { data } = await supabase.from('persona_directorio').select('id, puesto').in('id', ids)
+  const filas = (data ?? []) as { id: string; puesto: string | null }[]
+  return Object.fromEntries(filas.map((p) => [p.id, p.puesto]))
 }
 
 // ═══ LA LISTA DE OBRAS DEL PASO 1 DEL TELÉFONO (08/09/2026) ═══

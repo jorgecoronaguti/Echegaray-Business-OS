@@ -406,3 +406,38 @@ test('SIN NOMBRE NO HAY FILA: un registro de alguien que no está en el plantel 
   })
   assert.equal(filas.length, 0)
 })
+
+// ═══ EL ROL ORGANIZACIONAL VIAJA A LA FILA (08/09/2026) ═══
+//
+// Orden del dueño: *«dividir en la pestaña asistencia y plantel a los jefes de obra del resto de
+// los obreros»*. La grilla no puede decidirlo sola —el puesto no está en la asignación ni en el
+// registro—, así que entra por `puestos` y sale en `fila.esJefe`. Clavar `esJefe: false` o
+// cambiar la fuente por la categoría pone este test en rojo.
+test('esJefe sale de `puestos` y sólo de ahí', () => {
+  const filas = armarQuincenaPorObra({
+    asignaciones: [
+      asig('nievas', 'NIEVAS VILLEGAS JUAN PABLO', PISOS),
+      asig('acosta', 'ACOSTA RAMON', PISOS),
+    ],
+    registros: [reg('nievas', PISOS, L, 8), reg('acosta', PISOS, L, 8)],
+    obras: OBRAS,
+    dias: DIAS,
+    hoy: HOY,
+    puestos: { nievas: 'JEFE DE OBRA', acosta: null },
+  })
+  assert.deepEqual(
+    filas.map((f) => [f.persona.id, f.esJefe]),
+    [['acosta', false], ['nievas', true]],
+  )
+})
+
+// SIN LA LECTURA DEL PUESTO NADIE ES JEFE — y la grilla queda como estaba. Es lo que sostiene que
+// una lectura fallida degrade a «una sola sección» en vez de tirar la quincena entera.
+test('sin `puestos` la grilla no inventa jefes', () => {
+  const filas = armarQuincenaPorObra({
+    asignaciones: [asig('nievas', 'NIEVAS VILLEGAS JUAN PABLO', PISOS)],
+    registros: [reg('nievas', PISOS, L, 8)],
+    obras: OBRAS, dias: DIAS, hoy: HOY,
+  })
+  assert.equal(filas[0].esJefe, false)
+})
