@@ -2,7 +2,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   JORNADA_ESTANDAR_HS, acuseDeAusencia, acuseDeAusenciasDelDia, acuseDeTramo, ausenciaSinObraDe,
-  horasDeLaAusencia, jornadaDeReferenciaVisible, planDeAusenciasSinObra, planDeTramoDeAusencia,
+  fechaLegibleCorta, horasDeLaAusencia, horasDeLaAusenciaVisibles, jornadaDeReferenciaVisible,
+  planDeAusenciasSinObra,
+  planDeTramoDeAusencia,
   restoDeLaSemana, sumarHoras, topeDelTramo,
 } from './ausenciaDeLaPersona.ts'
 import type { FilaDelDia, FilaDelTramo, MarcaDelDia } from './ausenciaDeLaPersona.ts'
@@ -410,4 +412,47 @@ test('UN DÍA QUE YA TENÍA LA JORNADA DEL VIERNES NO SE REESCRIBE', () => {
   assert.ok(plan.ok)
   assert.equal(plan.dias[0].horas, 8)
   assert.equal(plan.dias[0].sinCambio, true)
+})
+
+// ── EL DEFECTO VISTO EN PRODUCCIÓN EL 08/09/2026 ────────────────────────────────────────────────
+//
+// «Horas que corresponden» se quedaba con el valor del PRIMER día montado. Con el panel abierto en
+// un lunes (9) y el día cambiado a un viernes, el campo seguía diciendo 9 y eso era lo que se
+// guardaba. La regla del prellenado vivía adentro del componente y sólo corría al montar. Acá se
+// prueba lo que el componente ya no puede decidir solo: MISMA celda, MISMA persona, distinto día.
+test('EL PRELLENADO DE LA AUSENCIA ES DEL DÍA ELEGIDO: 9 EL LUNES, 8 EL VIERNES', () => {
+  const sinCargar = { estado: 'vacio', horas: null }
+  // 2026-09-07 es lunes y 2026-09-11 es viernes.
+  assert.equal(horasDeLaAusenciaVisibles('2026-09-07', sinCargar, [], undefined, {}), 9)
+  assert.equal(horasDeLaAusenciaVisibles('2026-09-11', sinCargar, [], undefined, {}), 8)
+})
+
+test('LA JORNADA DEL DÍA LE GANA A LA JORNADA DE LA OBRA: LA AUSENCIA ES DE LA PERSONA', () => {
+  // La obra declara 10 hs y el viernes igual vale 8: el contrato de obra no define lo que le
+  // corresponde por ley a la persona.
+  const v = horasDeLaAusenciaVisibles('2026-09-11', null, [{ obra_id: 'o1' }], 'o1', { o1: 10 })
+  assert.equal(v, 8)
+})
+
+test('EL SÁBADO NO TIENE JORNADA POR DEFECTO Y CAE EN LAS CANDIDATAS DE SIEMPRE', () => {
+  // 2026-09-12 es sábado: sin default, manda la jornada de la obra donde ya está cargado el día.
+  assert.equal(horasDeLaAusenciaVisibles('2026-09-12', null, [{ obra_id: 'o1' }], undefined, { o1: 6 }), 6)
+  // Y sin ninguna candidata, la estándar declarada.
+  assert.equal(horasDeLaAusenciaVisibles('2026-09-12', null, [], undefined, {}), JORNADA_ESTANDAR_HS)
+})
+
+test('LO QUE YA ESTÁ REGISTRADO COMO AUSENCIA MANDA SOBRE CUALQUIER DEFAULT', () => {
+  // Un accidente con 4 hs reconocidas se sigue viendo con 4 aunque el lunes valga 9.
+  assert.equal(horasDeLaAusenciaVisibles('2026-09-07', { estado: 'licencia', horas: 4 }, [], undefined, {}), 4)
+})
+
+// La fecha que la pantalla escribe al lado del `<input type="date">`: el navegador la dibuja con el
+// formato de SU configuración y `2026-09-11` se ve `11/09/2026` o `09/11/2026` según la máquina.
+// Es la MISMA función que arma el acuse del tramo — dos formatos para la misma fecha en la misma
+// pantalla es lo que confundía.
+test('LA FECHA LEGIBLE DICE EL DÍA DE LA SEMANA Y VA EN DD/MM', () => {
+  assert.equal(fechaLegibleCorta('2026-09-11'), 'vie 11/09')
+  assert.equal(fechaLegibleCorta('2026-09-07'), 'lun 07/09')
+  // El 1 de enero de 2027 es viernes: el cambio de año no corre el día de la semana.
+  assert.equal(fechaLegibleCorta('2027-01-01'), 'vie 01/01')
 })

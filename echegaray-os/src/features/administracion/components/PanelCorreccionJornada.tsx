@@ -2,14 +2,16 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Aviso, Boton, CAMPO, Campo, ChipsValor, Drawer, ErrorCampo } from '@/shared/components/ds'
+import { Aviso, Boton, CAMPO, Campo, Drawer, ErrorCampo } from '@/shared/components/ds'
+import { SegmentedControl } from '@/shared/components/ui'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import { corregirJornada } from '../services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '../services/motivoDeAusencia'
 import { obraDestinoInicial } from '../services/destinoInicial'
-import { jornadaDeReferenciaVisible, restoDeLaSemana, topeDelTramo } from '../services/ausenciaDeLaPersona'
-import { jornadaPorDefecto } from '../services/jornadaPorDefecto'
+import {
+  fechaLegibleCorta, horasDeLaAusenciaVisibles, restoDeLaSemana, topeDelTramo,
+} from '../services/ausenciaDeLaPersona'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 
 // EL ADMINISTRADOR CORRIGE TODO — el día de una persona: su obra, sus horas, si no vino, o sacarlo.
@@ -47,10 +49,14 @@ type Estado = 'presente' | 'ausente' | 'borrar'
  *  el 08/09/2026: un día, una fila. */
 type ModoTramo = 'dia' | 'semana' | 'fecha'
 
-const TRAMOS: { valor: string; etiqueta: string }[] = [
-  { valor: 'dia', etiqueta: 'Sólo este día' },
-  { valor: 'semana', etiqueta: 'Resto de la semana' },
-  { valor: 'fecha', etiqueta: 'Elegir fecha' },
+// EL CONMUTADOR ES UN CONTROL DEL FORMULARIO, NO UNA DECORACIÓN. Los chips anteriores pintaban de
+// negro los INACTIVOS y de amarillo el elegido: pesaban más los tres que no se eligieron que el que
+// sí, y medían 23 px contra los 34 de todos los demás campos del panel. El grafito es la acción y
+// el amarillo es marca — no va en un control (`design/system`, verificado en producción 08/09/2026).
+const TRAMOS: readonly { value: ModoTramo; label: string }[] = [
+  { value: 'dia', label: 'Sólo este día' },
+  { value: 'semana', label: 'Resto de la semana' },
+  { value: 'fecha', label: 'Elegir fecha' },
 ]
 
 export interface ObraElegible {
@@ -92,6 +98,13 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
   // servidor vuelve a la jornada de referencia (`horasDeLaAusencia`).
   const [textoAusencia, setTextoAusencia] = useState(
     hs(horasDeLaAusenciaVisibles(fecha, celda, tramos, fila.obraPorDefecto?.id, jornadaPorObra)))
+  // ═══ LO QUE SE TIPEÓ A MANO NO SE PISA, LO PRELLENADO SÍ SE RECALCULA ═══
+  //
+  // El campo nace con la jornada del día elegido y tiene que seguirla cuando se cambia de día: el
+  // lunes vale 9 y el viernes 8. Pero si quien corrige ya escribió un número —un accidente al que
+  // se le reconocen 4 hs— recalcular sería borrarle lo que puso. El flag distingue las dos cosas y
+  // se apaga al cambiar de día, porque ahí lo tipeado era de OTRO día.
+  const [horasTocadas, setHorasTocadas] = useState(false)
   const [asignar, setAsignar] = useState(false)
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null)
   const [motivo, setMotivo] = useState<string | null>(null)
@@ -120,6 +133,12 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
     setObraDestino(obraDestinoInicial(t?.obra_id, fila.obraPorDefecto?.id, obras))
     setEstado(t?.ausente ? 'ausente' : 'presente')
     setTexto(t?.horas != null ? hs(t.horas) : '')
+    // LAS HORAS DE LA AUSENCIA SON DEL DÍA ELEGIDO. Sin esto el campo se quedaba con el valor del
+    // primer día montado —lunes 9— aunque se eligiera un viernes, que vale 8, y eso es lo que se
+    // guardaba. Se recalcula con la celda y los tramos del día NUEVO, no con los del que se deja.
+    setTextoAusencia(hs(horasDeLaAusenciaVisibles(
+      f, c, c?.tramos ?? [], fila.obraPorDefecto?.id, jornadaPorObra)))
+    setHorasTocadas(false)
     setAviso(null)
     setAsignar(false)
     // EL TRAMO NO SOBREVIVE AL CAMBIO DE DÍA. Sin esto, elegir el jueves después de haber puesto
@@ -142,7 +161,18 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
     setEstado(t?.ausente ? 'ausente' : 'presente')
     setTexto(t?.horas != null ? hs(t.horas) : '')
     setTextoAusencia(hs(horasDeLaAusenciaVisibles(fecha, celda, tramos, fila.obraPorDefecto?.id, jornadaPorObra)))
+    setHorasTocadas(false)
     setAviso(null)
+  }
+
+  /** Pasar a «No vino» vuelve a prellenar las horas con las del día elegido: el campo aparece recién
+   *  ahí, y si el estado inicial era «Trabajó» nunca se había recalculado para este día. */
+  const cambiarEstado = (e: Estado) => {
+    setEstado(e)
+    if (e === 'ausente' && !horasTocadas) {
+      setTextoAusencia(hs(horasDeLaAusenciaVisibles(
+        fecha, celda, tramos, fila.obraPorDefecto?.id, jornadaPorObra)))
+    }
   }
 
   const { horas, error } = leerHoras(texto)
@@ -250,7 +280,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
         )}
 
         <Campo rotulo="Qué pasó ese día">
-          <select value={estado} onChange={(e) => setEstado(e.target.value as Estado)}
+          <select value={estado} onChange={(e) => cambiarEstado(e.target.value as Estado)}
             className={CAMPO} data-testid="correccion-estado">
             <option value="presente">Trabajó</option>
             <option value="ausente">No vino</option>
@@ -282,25 +312,34 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
             accidente se sabe cuánto dura; «sin declarar todavía» no dura nada todavía. */}
         {estado === 'ausente' && motivo !== null && (
           <Campo rotulo="Hasta (opcional)" ayuda="Se asienta cada día hábil del tramo, sin domingos.">
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-              <ChipsValor valores={TRAMOS} activo={modoTramo} testid="tramo"
-                alElegir={(v) => elegirTramo(v as ModoTramo)} />
+            <div style={{ marginBottom: 8 }}>
+              <SegmentedControl options={TRAMOS} value={modoTramo} onChange={elegirTramo}
+                size="control" testid="tramo" ariaLabel="Hasta cuándo dura" />
             </div>
             {/* EL `max` ES EL MISMO TOPE QUE VALIDA EL SERVIDOR (`TOPE_DE_TRAMO_DIAS`): la pantalla
                 no ofrece lo que la acción va a rechazar, y un 2027 tecleado por error no se
                 convierte en 365 filas de licencia. */}
-            <input type="date" value={hasta ?? ''} min={fecha} max={topeDelTramo(fecha)}
+            <input type="date" lang="es-AR" value={hasta ?? ''} min={fecha} max={topeDelTramo(fecha)}
               onChange={(e) => {
                 setHasta(e.target.value || null)
                 setModoTramo(e.target.value ? 'fecha' : 'dia')
               }}
               className={CAMPO} data-testid="correccion-hasta" />
+            {/* EL FORMATO DEL `input type="date"` LO ELIGE EL NAVEGADOR y no se puede fijar: la
+                misma fecha se ve dd/mm en una máquina y mm/dd en otra. Esta línea la dice una vez,
+                en castellano, y es la que hay que leer antes de guardar diez días de licencia. */}
+            {hasta && (
+              <p style={{ marginTop: 6, fontSize: '11.5px', color: V.tenue }} data-testid="hasta-legible">
+                hasta {fechaLegibleCorta(hasta)}
+              </p>
+            )}
           </Campo>
         )}
         {estado === 'ausente' && (
           <Campo rotulo="Horas que corresponden"
             ayuda="Las que se le reconocen por ley. Vacío deja la jornada de referencia.">
-            <input value={textoAusencia} onChange={(e) => setTextoAusencia(e.target.value)}
+            <input value={textoAusencia}
+              onChange={(e) => { setTextoAusencia(e.target.value); setHorasTocadas(true) }}
               inputMode="decimal" className={`${CAMPO} font-mono tabular-nums`}
               data-testid="correccion-horas-ausencia" />
           </Campo>
@@ -348,31 +387,4 @@ function marcaDe(c: CeldaObra | undefined): string {
   // tienen los sábados, que no son feriados de nadie. El domingo ya no llega hasta acá.
   if (c.estado === 'no_laborable') return ' · no laborable'
   return ' · sin cargar'
-}
-
-/**
- * Las horas que el campo de la ausencia muestra al abrir: las que YA están registradas si el día es
- * una ausencia, y si no la jornada de referencia. El orden de las candidatas es el mismo que usa el
- * servidor (`jornadaDeReferencia`): la obra donde el día ya está cargado primero.
- */
-function horasDeLaAusenciaVisibles(
-  fecha: string,
-  celda: CeldaObra | null,
-  tramos: { obra_id: string }[],
-  /** Su obra vigente: la última candidata antes de la jornada estándar, igual que en el servidor. */
-  obraVigente: string | undefined,
-  jornadaPorObra: Record<string, number>,
-): number {
-  if ((celda?.estado === 'ausente' || celda?.estado === 'licencia') && celda.horas !== null) {
-    return celda.horas
-  }
-  // LA JORNADA POR DEFECTO ES DEL DÍA DE LA SEMANA (dueño, 08/09/2026): 9 hs de lunes a jueves, 8
-  // los viernes. Va PRIMERA, antes que `jornada_horas` de la obra: aquélla es la jornada de un
-  // contrato de obra y ésta es la de la persona, que es de quien es la ausencia. El sábado no tiene
-  // default y ahí siguen valiendo las candidatas de siempre.
-  return jornadaDeReferenciaVisible([
-    jornadaPorDefecto(fecha),
-    ...tramos.map((t) => jornadaPorObra[t.obra_id]),
-    obraVigente ? jornadaPorObra[obraVigente] : null,
-  ])
 }

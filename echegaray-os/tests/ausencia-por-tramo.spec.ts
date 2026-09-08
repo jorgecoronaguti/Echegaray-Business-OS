@@ -176,3 +176,60 @@ test('UN TRAMO DE LICENCIA SE ASIENTA DÍA POR DÍA, SIN DOMINGO Y EN DÍAS QUE 
     await limpiar()
   }
 })
+
+// ═══ EL DEFECTO VISTO EN PRODUCCIÓN EL 08/09/2026, CON DOS PERSONAS ═══
+//
+// «Horas que corresponden» nacía con la jornada del PRIMER día montado y no se movía nunca más:
+// elegido un viernes seguía diciendo 9 —el lunes— cuando el viernes vale 8, y ese 9 era lo que se
+// guardaba. La regla pura ya está probada en `ausenciaDeLaPersona.test.ts`; lo que sólo puede
+// probar la pantalla es que el campo se RECALCULA al cambiar de día y al pasar a «No vino».
+//
+// NO ESCRIBE NADA: abre el panel, cambia el día y lee el campo. Por eso corre siempre, sin
+// `E2E_ESCRIBE_ASISTENCIA`, y nunca toca `registros_hh`.
+test('LAS HORAS QUE CORRESPONDEN SON LAS DEL DÍA ELEGIDO: 8 EL VIERNES, 9 EL LUNES', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=asistencia')
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+  const abrir = page.getByTestId('abrir-correccion').first()
+  await abrir.click()
+  await expect(page.getByTestId('panel-correccion')).toBeVisible()
+
+  // DÍAS SIN NADA CARGADO: si el día ya tuviera una ausencia registrada, el campo mostraría ESAS
+  // horas —que es lo correcto— y el test estaría midiendo otra regla.
+  const dia = page.getByTestId('correccion-dia')
+  const opciones = await dia.locator('option').evaluateAll(
+    (os) => os.map((o) => ({ valor: (o as HTMLOptionElement).value, texto: o.textContent ?? '' })))
+  const libre = (dow: number) => opciones.find((o) =>
+    o.texto.includes('sin cargar') && new Date(`${o.valor}T00:00:00Z`).getUTCDay() === dow)?.valor
+  const viernes = libre(5)
+  const lunes = libre(1)
+  test.skip(!viernes || !lunes, 'la quincena a la vista no tiene un viernes y un lunes sin cargar')
+
+  const campo = page.getByTestId('correccion-horas-ausencia')
+  // EL ORDEN IMPORTA: primero el viernes. Al montar, el panel se para en el primer día con algo
+  // cargado —casi siempre un lunes—, así que un campo que no se recalcula muestra 9 acá.
+  await dia.selectOption(viernes!)
+  await page.getByTestId('correccion-estado').selectOption('ausente')
+  await expect(campo).toHaveValue('8')
+
+  await dia.selectOption(lunes!)
+  await page.getByTestId('correccion-estado').selectOption('ausente')
+  await expect(campo).toHaveValue('9')
+
+  // ═══ Y DE PASO, LOS CHIPS DEL «HASTA» A LA MEDIDA DE UN CONTROL ═══
+  await page.getByTestId('correccion-motivo').selectOption('accidente')
+  const chip = page.getByTestId('tramo-semana')
+  await expect(chip).toBeVisible()
+  const alto = (await chip.boundingBox())?.height ?? 0
+  expect(alto, 'el chip mide como un control del panel, no 23 px').toBeGreaterThanOrEqual(34)
+  // EL INACTIVO NO PUEDE PESAR MÁS QUE EL ELEGIDO: antes era negro con letra blanca.
+  const fondoInactivo = await chip.evaluate((el) => getComputedStyle(el).backgroundColor)
+  expect(fondoInactivo, 'un chip no elegido no lleva fondo pintado').toMatch(/rgba\(0, 0, 0, 0\)|transparent/)
+  await page.getByTestId('tramo-semana').click()
+  await expect(page.getByTestId('hasta-legible')).toContainText(/hasta (lun|mar|mié|jue|vie|sáb) \d\d\/\d\d/)
+  await page.screenshot({ path: 'tests/qa-shots/panel-hasta-chips-1440.png', fullPage: false })
+})
