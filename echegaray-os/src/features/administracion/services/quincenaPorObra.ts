@@ -37,6 +37,7 @@
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { redondear } from './jornadaPorObra.ts'
 import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
+import { esJefeDeObra } from './vocabularioPersona.ts'
 
 export type EstadoCeldaObra =
   | 'horas'
@@ -138,6 +139,8 @@ export interface FilaQuincena {
   horas: number | null
   /** Las fechas que hay que reclamar. Vacío = nada que reclamar. */
   reclama: string[]
+  /** Jefe de obra según `personas.puesto`. Es lo que parte la grilla en dos secciones. */
+  esJefe: boolean
 }
 
 const numero = (v: unknown): number => {
@@ -157,6 +160,16 @@ export interface EntradaQuincenaObra {
   noLaborables?: string[]
   /** El plantel por id, para nombrar a quien dejó registros sin tener ninguna asignación. */
   personas?: Record<string, PersonaRotulo>
+  /**
+   * `personas.puesto` por id — el ROL ORGANIZACIONAL, y lo único que separa a los jefes de obra del
+   * resto del plantel (dueño, 08/09/2026). Quién es jefe lo decide `esJefeDeObra`, acá y en el
+   * plantel: una sola definición, en `vocabularioPersona.ts`.
+   *
+   * AUSENTE NO ES «NO HAY JEFES», ES «NO SE PUDO MIRAR»: quien lee decide qué hacer con eso. Lo que
+   * esta capa no hace es inventar un rol — sin el dato, la fila cae con los obreros, que es donde
+   * estaba antes de este cambio.
+   */
+  puestos?: Record<string, string | null>
   /** Hoy, para no reclamar un día que todavía no terminó. */
   hoy: string
 }
@@ -206,6 +219,7 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
         ? redondear(celdas.reduce((s, c) => s + (c.horas ?? 0), 0))
         : null,
       reclama: celdas.filter((c) => c.estado === 'sin_marcar').map((c) => c.fecha),
+      esJefe: esJefeDeObra(e.puestos?.[p.persona_id] ?? null),
     }
   })
 }

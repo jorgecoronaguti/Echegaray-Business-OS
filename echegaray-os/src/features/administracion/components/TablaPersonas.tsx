@@ -62,7 +62,7 @@ import { IconoPersona } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { oracion } from '@/shared/utils/texto'
 import type { PersonaEnDirectorio } from '../types'
-import { categoriaVisible } from '../services/vocabularioPersona'
+import { agruparPorRolOrganizacional, categoriaVisible, esJefeDeObra } from '../services/vocabularioPersona'
 import {
   HOY_LABEL, estadoHoy, horasVisibles,
   type EstadoDePapeles, type EstadoHoy, type MarcaDeHoy,
@@ -132,6 +132,16 @@ export function TablaPersonas({
 }) {
   const conPulso = Boolean(pulso) && !conBaja
   const cols = conBaja ? COLS_BAJA : COLS
+  // ═══ JEFES DE OBRA ARRIBA, EL RESTO ABAJO (dueño, 08/09/2026) ═══
+  //
+  // *«dividir en la pestaña asistencia y plantel a los jefes de obra del resto de los obreros»*.
+  // Quién es jefe lo decide `esJefeDeObra(puesto)` —una sola definición para las dos pantallas, con
+  // su fuente y su prueba en `services/vocabularioPersona.ts`—; acá sólo se dibuja.
+  //
+  // El orden DENTRO de cada grupo es el que llegó: la página ya ordenó, y reordenar acá sería una
+  // segunda regla de orden que nadie pidió. Cuando no hay jefes queda un solo grupo y la lista se
+  // ve exactamente como antes — sin rótulo, sin hairline y sin un «· 0» que no dice nada.
+  const grupos = agruparPorRolOrganizacional(personas, (p) => esJefeDeObra(p.puesto))
 
   return (
     <div data-testid="tabla-personas">
@@ -159,7 +169,10 @@ export function TablaPersonas({
             )}
       </div>
 
-      {personas.map((p) => {
+      {grupos.map((g, iGrupo) => (
+        <div key={g.clave} data-testid={`grupo-${g.clave}`}>
+          {grupos.length > 1 && <RotuloDeGrupo texto={g.rotulo} primero={iGrupo === 0} />}
+          {g.integrantes.map((p) => {
         const hoy = conPulso && pulso?.hoyDisponible ? estadoHoy(pulso.marcas.get(p.id)) : null
         const categoria = categoriaVisible(p.categoria, p.puesto)
         return (
@@ -264,13 +277,39 @@ export function TablaPersonas({
                 )}
           </Link>
         )
-      })}
+          })}
+        </div>
+      ))}
 
       {personas.length === 0 && (
         <div style={{ padding: '24px 2px', fontSize: '12.5px', color: V.apagado }} data-testid="personas-vacio">
           {vacio}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * EL RÓTULO DE SECCIÓN — un filo y una palabra, no una tarjeta.
+ *
+ * Es el mismo rótulo de 11px versalita tenue que ya usan las columnas (`RotuloCol`): dentro de la
+ * lista no puede aparecer un tercer nivel tipográfico. Va SIN card, sin fondo y sin icono — un
+ * bloque con caja por grupo convertiría una lista de trabajo en dos tableros.
+ *
+ * El primero no lleva filo arriba: el encabezado de columnas ya trae el suyo y dos líneas seguidas
+ * a 8px se leen como un borde grueso. Los que siguen sí, con 8px de aire, que es lo que separa un
+ * grupo del anterior sin abrir un hueco.
+ */
+function RotuloDeGrupo({ texto, primero }: { texto: string; primero: boolean }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', height: 32,
+      marginTop: primero ? 0 : 8,
+      paddingTop: primero ? 0 : 8,
+      borderTop: primero ? undefined : `1px solid ${V.linea}`,
+    }}>
+      <RotuloCol>{texto}</RotuloCol>
     </div>
   )
 }

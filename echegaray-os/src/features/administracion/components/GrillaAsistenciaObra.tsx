@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
-import { SIN_OBRA } from '../services/quincenaPorObra'
+import { SIN_OBRA, totalDeLaQuincena } from '../services/quincenaPorObra'
+import { agruparPorRolOrganizacional } from '../services/vocabularioPersona'
 import { guardarJornada } from '../services/jornadaPorObraActions'
 import { cambiarObraActual } from '../services/obraActualActions'
 import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJornada'
@@ -38,6 +39,16 @@ import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJorn
 // de mano de obra de una obra a otra sin que nadie lo decida—. Esas celdas muestran el total con un
 // punto al lado y se corrigen desde el panel, que enseña el desglose antes de tocar nada.
 
+// ═══ JEFES DE OBRA ARRIBA, EL RESTO ABAJO (dueño, 08/09/2026) ═══
+//
+// *«dividir en la pestaña asistencia y plantel a los jefes de obra del resto de los obreros»*. Los
+// dos grupos salen del MISMO criterio que el plantel —`esJefeDeObra(personas.puesto)`, ya resuelto
+// en el servidor y publicado en `fila.esJefe`—, así que una persona no puede ser jefe en una
+// pantalla y obrero en la otra.
+//
+// EL «TOTAL DE LA QUINCENA» SIGUE SIENDO GLOBAL. La fila del pie suma a todos, jefes incluidos: es
+// la HH de la empresa en el período y partirla cambiaría lo que ese número significa. El subtotal
+// del grupo va en su propio rótulo, apagado y en 11,5px, para que no compita con el total de abajo.
 const ROJO = '#B42318'
 
 function textoDe(c: CeldaObra): string {
@@ -235,7 +246,18 @@ export function GrillaAsistenciaObra({
           </tr>
         </thead>
         <tbody>
-          {filas.map((fila) => {
+          {agruparPorRolOrganizacional(filas, (f) => f.esJefe).map((grupo, iGrupo, grupos) => (
+          <Fragment key={grupo.clave}>
+          {grupos.length > 1 && (
+            <FilaDeGrupo
+              rotulo={grupo.rotulo}
+              horas={totalDeLaQuincena(grupo.integrantes)}
+              dias={dias.length}
+              conCorreccion={puedeCorregir}
+              primero={iGrupo === 0}
+            />
+          )}
+          {grupo.integrantes.map((fila) => {
             // EL PRIMER ERROR DE LA FILA, con su día adelante: la línea está abajo y sin la fecha no
             // se sabe a qué celda se refiere. Uno solo — dos avisos apilados vuelven a romper la fila.
             const fallo = fila.celdas
@@ -421,6 +443,8 @@ export function GrillaAsistenciaObra({
             </Fragment>
             )
           })}
+          </Fragment>
+          ))}
 
           <tr style={{ borderTop: `1px solid ${V.lineaFuerte}` }} data-testid="total-quincena">
             <td colSpan={2} style={{ padding: '8px 8px 8px 0', color: V.apagado }}>Total de la quincena</td>
@@ -464,6 +488,47 @@ export function GrillaAsistenciaObra({
 
 /** `2026-09-04` → `04/09`. La línea de error tiene que decir de qué día habla. */
 const fechaCorta = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
+/**
+ * EL RÓTULO DE UNA SECCIÓN DE LA GRILLA — un filo y una palabra.
+ *
+ * Misma tipografía que los rótulos de columna (11px, versalita, tenue): dentro de una tabla no
+ * puede aparecer un tercer nivel tipográfico, y un fondo de color por grupo convertiría la
+ * quincena en dos tableros. El filo va ARRIBA y sólo en los grupos que siguen al primero — el
+ * encabezado de columnas ya trae el suyo y dos líneas seguidas se leen como un borde grueso.
+ *
+ * El subtotal cae en la columna HORAS, la misma en la que cada fila publica su total: leído de
+ * arriba abajo, el número siempre significa lo mismo.
+ */
+function FilaDeGrupo({ rotulo, horas, dias, conCorreccion, primero }: {
+  rotulo: string; horas: number | null; dias: number; conCorreccion: boolean; primero: boolean
+}) {
+  const filo = { borderBottom: `1px solid ${V.linea}`, borderTop: primero ? undefined : `1px solid ${V.linea}` }
+  // Más aire arriba cuando el grupo NO es el primero: ahí el espacio es lo que separa una sección
+  // de la anterior. Múltiplos de 2 sobre la grilla de 8, como el resto de la tabla.
+  const arriba = primero ? 10 : 16
+  return (
+    <tr data-testid="fila-grupo" data-grupo={rotulo}>
+      <td colSpan={2} style={{
+        ...filo, padding: `${arriba}px 8px 6px 0`,
+        fontSize: '11px', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase',
+        color: V.tenue,
+      }}>
+        {rotulo}
+      </td>
+      <td colSpan={dias} style={filo} />
+      {/* `—` Y NO `0`: nadie declaró una hora de este grupo no es lo mismo que trabajó cero. */}
+      <td data-testid="subtotal-grupo" style={{
+        ...filo, padding: `${arriba}px 0 6px 8px`,
+        textAlign: 'right', fontSize: '11.5px', fontVariantNumeric: 'tabular-nums',
+        color: horas === null ? V.inerte : V.apagado,
+      }}>
+        {horas === null ? '—' : hs(horas)}
+      </td>
+      {conCorreccion && <td style={filo} />}
+    </tr>
+  )
+}
 
 function Rotulo({ children, ancho, centro, derecha, tenue, titulo }: {
   children?: React.ReactNode; ancho?: string; centro?: boolean; derecha?: boolean

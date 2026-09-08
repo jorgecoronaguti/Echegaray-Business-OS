@@ -94,3 +94,101 @@ export function categoriaVisible(
   const p = puesto?.trim()
   return p && pareceCategoria(p) ? etiquetaCategoria(clave(p)) : null
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL ROL ORGANIZACIONAL — QUIÉN ES JEFE DE OBRA (08/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Orden del dueño, textual: *«dividir en la pestaña asistencia y plantel a los jefes de obra del
+// resto de los obreros»*.
+//
+// ═══ LA FUENTE, Y POR QUÉ ESA ═══
+//
+// `personas.puesto`. Es el ROL ORGANIZACIONAL de la tabla de arriba —lo que la persona DECIDE
+// dentro de la empresa—, y es un hecho de la PERSONA, que es lo que las dos pantallas necesitan:
+// el plantel es una lista global, no una lista por obra.
+//
+// Medido en la base el 08/09/2026: `personas.puesto` tiene UN SOLO valor no nulo en toda la tabla
+// —«JEFE DE OBRA»— y lo llevan exactamente dos personas activas: MALDONADO BATISTA EMILIANO MIGUEL
+// y NIEVAS VILLEGAS JUAN PABLO. Las otras 15 del plantel activo lo tienen en NULL.
+//
+// SEGUNDA FUENTE QUE CONFIRMA, sin usarse: `perfiles.rol = 'jefe_obra'` devuelve esas mismas dos
+// personas, ni una más ni una menos. Dos fuentes independientes que coinciden 2/2 — por eso el
+// criterio se escribe sobre `puesto` y no se sale a buscar un tercero.
+//
+// ═══ LAS QUE SE DESCARTARON, Y POR QUÉ ═══
+//
+//   `obra_asignacion.rol = 'responsable'`   Es de la ASIGNACIÓN, no de la persona, y su propia
+//                                           migración dice «el jefe de obra O CAPATAZ»: no
+//                                           distingue los dos hechos. Medido: 1 sola fila
+//                                           ('PASTRAN MARCELO IVAN', con `puesto` NULL) contra 135
+//                                           integrantes. Usarla pondría a un capataz en el grupo de
+//                                           los jefes y dejaría afuera a los dos que sí lo son.
+//   `perfiles.rol = 'jefe_obra'`            Es quién ENTRA AL OS, no quién dirige una obra. Un jefe
+//                                           sin usuario existiría en la empresa y no en el grupo;
+//                                           un login no es un cargo.
+//   `categoria`                             Los dos jefes son `oficial_especializado`, pero también
+//                                           lo son dos personas que NO son jefes. La categoría es
+//                                           lo que COBRA (CCT), no lo que decide.
+//
+// ═══ LO QUE ESTE CRITERIO NO PUEDE ═══
+//
+// A quien sea jefe de obra y tenga `puesto` en NULL lo va a poner con los obreros, en silencio. No
+// hay forma de detectarlo desde acá: la ausencia de dato no se distingue de la negativa. Si
+// aparece un jefe nuevo, el dato que hay que cargar es `personas.puesto`, y la migración aditiva
+// `20260908T2000_el_rol_organizacional_es_un_campo_propio.sql` deja escrita la alternativa —una
+// columna booleana— para el día que el dueño decida que el texto libre no alcanza.
+
+/** La grafía de la nómina (`JEFE DE OBRA`) y la del OS (`jefe_obra`), normalizadas por `clave()`.
+ *  Las dos nombran el mismo rol; no se acepta ninguna otra, porque adivinar a partir de un texto
+ *  parecido pondría a alguien a decidir sobre una obra sin que nadie lo haya declarado. */
+const PUESTOS_DE_JEFE = new Set(['jefe_de_obra', 'jefe_obra'])
+
+/**
+ * ¿ESTA PERSONA ES JEFE DE OBRA? La única definición del OS; todo lo que agrupe por rol la usa.
+ *
+ * Recibe `puesto` y no la persona entera a propósito: la función no puede mirar la categoría ni la
+ * especialidad aunque las tenga a mano, y así no hay una segunda regla escondida.
+ */
+export function esJefeDeObra(puesto: string | null | undefined): boolean {
+  return puesto ? PUESTOS_DE_JEFE.has(clave(puesto)) : false
+}
+
+/** Un grupo del plantel con su rótulo ya resuelto. `clave` es para las pruebas y los `data-*`; el
+ *  `rotulo` es lo que se lee en pantalla. */
+export interface GrupoDeRol<T> {
+  clave: 'jefes' | 'obreros'
+  rotulo: string
+  integrantes: T[]
+}
+
+/** «Jefe de obra · 1», no «Jefes de obra · 1». El conteo va al lado del rótulo porque es la misma
+ *  pregunta —cuántos hay de éstos— y una fila aparte para un número sería una tarjeta por dato. */
+function rotuloDe(clave: 'jefes' | 'obreros', n: number): string {
+  const palabra = clave === 'jefes'
+    ? (n === 1 ? 'Jefe de obra' : 'Jefes de obra')
+    : (n === 1 ? 'Obrero' : 'Obreros')
+  return `${palabra} · ${n}`
+}
+
+/**
+ * LOS DOS GRUPOS, JEFES PRIMERO — y SÓLO los que tienen gente.
+ *
+ * Un grupo vacío no se devuelve: un rótulo «Jefes de obra · 0» encima de una lista sin jefes es
+ * ruido que además desmiente lo que la lista muestra. Cuando queda un solo grupo, quien dibuja
+ * puede omitir el rótulo y la pantalla se ve exactamente como antes de este cambio — que es lo
+ * correcto para los filtros e «Inactivos», donde partir en dos no responde ninguna pregunta.
+ *
+ * EL ORDEN INTERNO NO SE TOCA. Llega ordenado por quien lo leyó de la base (por nombre, en las dos
+ * pantallas) y sale igual: reordenar acá agregaría una segunda regla de orden que nadie declaró.
+ */
+export function agruparPorRolOrganizacional<T>(
+  items: readonly T[], esJefe: (item: T) => boolean,
+): GrupoDeRol<T>[] {
+  const jefes = items.filter(esJefe)
+  const obreros = items.filter((x) => !esJefe(x))
+  const grupos: GrupoDeRol<T>[] = []
+  if (jefes.length > 0) grupos.push({ clave: 'jefes', rotulo: rotuloDe('jefes', jefes.length), integrantes: jefes })
+  if (obreros.length > 0) grupos.push({ clave: 'obreros', rotulo: rotuloDe('obreros', obreros.length), integrantes: obreros })
+  return grupos
+}
