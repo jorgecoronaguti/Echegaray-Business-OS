@@ -307,17 +307,6 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                   conteos={conteos} activo={filtro} hrefDe={href} sueltos={sueltos.data?.length ?? 0}
                   conteo={{ n: recorte.enPantalla.length, total: todas.length }}
                 />
-                {/* LOS CRITERIOS VAN DEBAJO DE LOS CHIPS Y SOBRE LA LISTA, en la misma columna que
-                    recortan. El chip elige la población («los que faltan pagar») y esto la recorta
-                    («de DUPEC, en agosto, arriba de $500.000»): el orden visual dice el orden lógico. */}
-                <FiltrosComprasSheet
-                  accion={RUTA}
-                  q={sp.q}
-                  criterios={criterios}
-                  opciones={opciones}
-                  extra={{ f: filtro === 'todo' ? undefined : filtro, s: sp.s, todo: verTodo ? '1' : undefined }}
-                  limpiarHref={hayCriterios(criterios) ? hrefSinCriterios() : undefined}
-                />
                 {/* LO QUE ENTRÓ POR EL CHAT TIENE QUE PODER ENCONTRARSE SIN SABER NADA MÁS. El
                     dueño manda la foto al bot y entra a la pantalla a ver si llegó: el chip lo
                     contesta, y este renglón dice cuánto hay que esperar para no volver a mirar. */}
@@ -346,6 +335,17 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                     </Link>
                   </p>
                 )}
+                {/* LOS CRITERIOS VAN DEBAJO DE LOS CHIPS Y SOBRE LA LISTA, en la misma columna que
+                    recortan. El chip elige la población («los que faltan pagar») y esto la recorta
+                    («de DUPEC, en agosto, arriba de $500.000»): el orden visual dice el orden lógico. */}
+                <FiltrosComprasSheet
+                  accion={RUTA}
+                  q={sp.q}
+                  criterios={criterios}
+                  opciones={opciones}
+                  extra={{ f: filtro === 'todo' ? undefined : filtro, s: sp.s, todo: verTodo ? '1' : undefined }}
+                  limpiarHref={hayCriterios(criterios) ? hrefSinCriterios() : undefined}
+                />
                 <TablaComprasSheet
                   filas={recorte.enPantalla}
                   seleccionada={filaAbierta?.fila}
