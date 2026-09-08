@@ -587,3 +587,17 @@ test('COMPRAS: una cuota de plan en día HÁBIL se respeta aunque no coincida co
   ]), 46100, { aviso: () => {} })
   assert.equal(ms.find((m) => m.rubro === 'Deuda previsional (planes de pago)').fecha, jueves)
 })
+
+test('COMPRAS: una fila "Cancelado" con Total NO es un movimiento — el dueño la sacó (orden del 08/09/2026)', () => {
+  // Hasta hoy una fila anulada sólo quedaba afuera si su Total era 0. El 08/09 el dueño ordenó marcar
+  // "Cancelado" las filas de impuestos, sueldos y banco que ya salen por otra pestaña, conservando su
+  // importe: si el libro las siguiera emitiendo, la misma salida contaría dos veces.
+  const conCancelada = compras([
+    ['Sueldos', '', '', 3000000, 'Cancelado', 'Transferencia', 'Estructura', 46280, 'sale por Jornales por Quincena'],
+    ['ARCA', '', '', 6500000, 'ELIMINADO', 'Transferencia', 'Estructura', 46281, ''],
+  ])
+  const ms = deCompras(conCancelada, 46000)
+  assert.ok(!ms.some((m) => m.concepto === 'Sueldos'), 'la fila Cancelado no se emite aunque tenga Total')
+  assert.ok(!ms.some((m) => m.concepto === 'ARCA'), 'ELIMINADO tampoco, con o sin Total')
+  assert.ok(ms.some((m) => m.concepto === 'Prov SRL'), 'las demás filas siguen saliendo')
+})

@@ -69,6 +69,14 @@ export const estaPagada = (celda) => /^pagado$/i.test(txt(celda).replace(/[^a-z�
 export const estaPendiente = (celda) => /^pendiente$/i.test(txt(celda).replace(/[^a-záéíóúüñ]/gi, ''))
 
 /**
+ * ¿La fila está ANULADA? "ELIMINADO" es el estado histórico del dueño; "Cancelado" es el que ordenó el
+ * 08/09/2026 para las filas de impuestos, sueldos y banco que ya salen por otra pestaña (Cargas
+ * Sociales, Jornales por Quincena, _BANCO_RAW). Una fila anulada no es un gasto: no se emite aunque
+ * conserve su Total —hasta hoy sólo quedaba afuera si el Total era 0, y eso era un accidente, no una regla.
+ */
+export const estaAnulada = (celda) => /^(eliminado|cancelado)$/i.test(txt(celda).replace(/[^a-záéíóúüñ]/gi, ''))
+
+/**
  * NÚCLEO PURO: ¿esta fila de Compras es una FACTURA CARGADA o una ESTIMACIÓN?
  *
  * ═══ POR QUÉ HACE FALTA DISTINGUIRLAS Y POR QUÉ SALE DEL DATO (17/08/2026) ═══
