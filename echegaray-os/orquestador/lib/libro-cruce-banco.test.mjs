@@ -248,3 +248,48 @@ test('el pago agregado SÍ retira la obligación que el dueño confirmó', async
   const r = cruzarLibroContraBanco(mov, debitos, { corte: 46260, desdeExtracto: 46200 })
   assert.equal(r.veredictos.get(0)?.veredicto, 'BANCO', 'con la palabra del dueño deja de ser deuda')
 })
+
+// ═══ EL F931 DECLARADO QUE EL BANCO PAGÓ ANTES DE VENCER, AL CENTAVO (08/09/2026) ═══
+//
+// `_BANCO_RAW` f560: 07/09, «Pago de servicios - Imp.afip», $8.331.697,69. La DDJJ de agosto declara
+// exactamente $8.331.697,69 y vence el 10/09. El agregado sólo miraba débitos POSTERIORES al
+// vencimiento y, aun mirándolo, no retira sin la palabra del dueño — correcto para una PROYECCIÓN,
+// que no puede acertar al centavo. Pero un débito que coincide al centavo con una obligación
+// DECLARADA es aritmética, la misma que ya prueba transferencias y débitos automáticos.
+test('el F931 DECLARADO que el banco pagó al centavo tres días ANTES del vencimiento es REAL', () => {
+  const mov = [movimiento({
+    fecha: 46275, signo: SALE, importe: 8331697.69, estado: 'COMPROMETIDO',
+    concepto: 'F931 · nómina de ago-26', contraparte: 'ARCA', rubro: 'Nómina · Cargas sociales',
+    origen: { pestana: 'Cargas Sociales', fila: 'F931 · declarado 8' },
+  })]
+  const debitos = [deb(46272, 8331697.69, NAT.afip, 560, 'Pago de servicios - Imp.afip')]
+  const r = cruzarLibroContraBanco(mov, debitos, { corte: 46272, desdeExtracto: 46000 })
+  const v = r.veredictos.get(0)
+  assert.equal(v?.veredicto, VEREDICTO_CRUCE.banco, 'coincide al centavo y es el único: ya salió de la cuenta')
+  assert.equal(v.fecha, 46272, 'la fecha pasa a ser la del débito: sale en «Ya salió» el 07/09, no en «falta pagar» el 10/09')
+  assert.deepEqual(v.filas, [560])
+  assert.equal(r.sobrantes.length, 0, 'no queda excedente que reportar')
+})
+
+test('la PROYECCIÓN tipeada ($6.500.000) NO se retira por ese mismo débito: no coincide y no vencía', () => {
+  const mov = [movimiento({
+    fecha: 46275, signo: SALE, importe: 6500000, estado: 'PROYECTADO',
+    concepto: 'ARCA', contraparte: 'ARCA', rubro: 'Nómina · Cargas sociales', origen: { pestana: 'Compras', fila: 483 },
+  })]
+  const debitos = [deb(46272, 8331697.69, NAT.afip, 560, 'Pago de servicios - Imp.afip')]
+  const r = cruzarLibroContraBanco(mov, debitos, { corte: 46272, desdeExtracto: 46000 })
+  assert.notEqual(r.veredictos.get(0)?.veredicto, VEREDICTO_CRUCE.banco, 'la magnitud no prueba composición')
+})
+
+test('el exacto consume el débito: el agregado no lo vuelve a usar para otra obligación de AFIP', () => {
+  const mov = [
+    movimiento({ fecha: 46275, signo: SALE, importe: 8331697.69, estado: 'COMPROMETIDO', concepto: 'F931 · nómina de ago-26',
+      contraparte: 'ARCA', rubro: 'Nómina · Cargas sociales', origen: { pestana: 'Cargas Sociales', fila: 'F931 · declarado 8' } }),
+    movimiento({ fecha: 46270, signo: SALE, importe: 1000000, estado: 'VENCIDO', concepto: 'IVA a pagar · período 07/2026',
+      contraparte: 'ARCA', rubro: 'Impuestos', origen: { pestana: 'Impuestos y Financieros', fila: 'I20' } }),
+  ]
+  const debitos = [deb(46272, 8331697.69, NAT.afip, 560, 'Pago de servicios - Imp.afip')]
+  const r = cruzarLibroContraBanco(mov, debitos, { corte: 46272, desdeExtracto: 46000 })
+  assert.equal(r.veredictos.get(0)?.veredicto, VEREDICTO_CRUCE.banco)
+  assert.notEqual(r.veredictos.get(1)?.veredicto, VEREDICTO_CRUCE.banco, 'el mismo débito no puede pagar dos obligaciones')
+})
