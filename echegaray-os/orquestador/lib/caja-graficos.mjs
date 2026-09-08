@@ -585,9 +585,13 @@ export function verificarLayoutGraficos({ rows, charts, finPortada = null, esper
  *
  * NUNCA ACHICA: toma el máximo contra el alto actual, porque un `rowCount` MENOR al de la hoja es un
  * `deleteDimension` con otro nombre y la guarda lo trataría —con razón— como destructivo.
+ *
+ * EL MÍNIMO SE DERIVA DE LA PORTADA (08/09/2026), igual que el resize del arranque y el veredicto:
+ * con la constante a secas, una portada más larga bajaba las anclas y este request seguía pidiendo el
+ * alto de la portada corta — dos definiciones del mismo alto, una de ellas equivocada.
  */
-export function requestDeAltoMinimo(sheetId, filasActuales = 0) {
-  const rowCount = Math.max(FILA_FINAL_DE_GRAFICOS + 1, Number.isFinite(filasActuales) ? filasActuales : 0)
+export function requestDeAltoMinimo(sheetId, filasActuales = 0, finPortada = null) {
+  const rowCount = Math.max(filaFinalDeGraficos(finPortada) + 1, Number.isFinite(filasActuales) ? filasActuales : 0)
   return { updateSheetProperties: { properties: { sheetId, gridProperties: { rowCount } }, fields: 'gridProperties.rowCount' } }
 }
 

@@ -297,3 +297,36 @@ test('si no se pueden leer los gráficos existentes, NO se dibuja: dibujar sin b
   const r = await requestsDeGraficosMatriz(google, 'F', 7, semanal(), 'X')
   assert.deepEqual(r, { borrar: [], dibujar: [] })
 })
+
+// ── EL ATAJO AL PERÍODO EN CURSO ES UN ENLACE INTERNO, ESCRITO COMO FORMATO DE CELDA (08/09/2026) ──
+//
+// El 07/09 se retiró el enlace por una medición equivocada (se releía `textFormatRuns`, que Sheets
+// devuelve vacío cuando el run cubre la celda entera). Medido hoy en el archivo vivo: el `link` en
+// `userEnteredFormat.textFormat` se guarda y vuelve como `hyperlink`. Este test fija la FORMA del
+// request; que Sheets lo guarde ya está medido.
+
+function requestDelAtajo(meta, sheetId) {
+  return pielMatriz({ sheetId, meta }).find((r) => r.updateCells
+    && r.updateCells.range.startRowIndex === meta.botonHoy.fila - 1
+    && r.updateCells.range.startColumnIndex === meta.botonHoy.col)
+}
+
+test('el atajo escribe VALOR y ENLACE juntos, y el enlace es el fragmento interno de la columna en curso', () => {
+  for (const meta of [grillaSemanal({ hoy: HOY, anio: 2026, refs: REFS, gid: 77 }).meta, grillaMeses({ anio: 2026, refs: REFS, gid: 78, hoy: HOY }).meta]) {
+    assert.ok(meta.botonHoy?.uri, 'el 05/08/2026 cae dentro del ejercicio: hay atajo')
+    const r = requestDelAtajo(meta, 77)
+    assert.ok(r, 'hay un updateCells sobre la celda del atajo')
+    assert.equal(r.updateCells.fields, 'userEnteredValue,userEnteredFormat.textFormat')
+    const celda = r.updateCells.rows[0].values[0]
+    assert.equal(celda.userEnteredValue.stringValue, meta.botonHoy.texto, 'el texto es el mismo que pone la grilla')
+    assert.equal(celda.userEnteredFormat.textFormat.link.uri, meta.botonHoy.uri)
+    assert.match(celda.userEnteredFormat.textFormat.link.uri, /^#gid=\d+&range=[A-Z]{1,3}\d+$/, 'fragmento interno: navega dentro del documento')
+    assert.equal(celda.userEnteredFormat.textFormat.underline, true)
+  }
+})
+
+test('sin atajo (hoy fuera del ejercicio) no se escribe ningún enlace: uno que lleva a cualquier lado es peor que ninguno', () => {
+  const meta = grillaSemanal({ hoy: new Date(Date.UTC(2031, 0, 15)), anio: 2026, refs: REFS, gid: 77 }).meta
+  assert.ok(!meta.botonHoy, 'fuera del ejercicio no hay atajo')
+  assert.ok(!pielMatriz({ sheetId: 77, meta }).some((r) => r.updateCells?.rows?.[0]?.values?.[0]?.userEnteredFormat?.textFormat?.link))
+})

@@ -315,6 +315,10 @@ export const PASOS = [
   ['caja-centinela-conteo.mjs', 'centinela del conteo de efectivo: cuándo apareció el monto tipeado y qué se cargó tarde sobre filas viejas', []],
   ['caja-anexo-pestana.mjs', '_CAJA_ANEXO — el detalle y las conciliaciones que sostienen los veredictos de CAJA', ['_CAJA_ANEXO']],
   ['caja-pestana.mjs', 'CAJA — la portada ejecutiva de tesorería: cinco tarjetas y una pantalla', ['CAJA']],
+  // LEE, NO ESCRIBE. El 08/09 la hoja apareció en 59 filas (necesita 68) con el generador en verde:
+  // algo la achicó DESPUÉS de la corrida y nadie lo vio hasta que el dueño abrió la pestaña. Con el
+  // control adentro del pipeline, una hoja corta o un gráfico corrido salen en FALLARON a las 2 h.
+  ['caja-graficos-verificar.mjs', 'CAJA — verifica leyendo la hoja que los cuatro gráficos anclan donde deben y que el alto alcanza', []],
   // ═══ LAS DOS VISTAS VAN DESPUÉS DEL LIBRO Y DESPUÉS DE CAJA (13/08/2026) ═══
   //
   // Estaban en el noveno lugar, antes de Impuestos, Cargas Sociales, Cheques, Tarjeta, OBRAS y CAJA.

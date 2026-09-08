@@ -431,6 +431,16 @@ test('NO ACHICA NUNCA: si la hoja ya es más alta, el request pide el alto que y
   assert.equal(clasificarRequest(ingenuo, dims).clase, CLASE.DESTRUCTIVO)
 })
 
+test('EL ALTO MÍNIMO SIGUE A LA PORTADA: con más filas de contenido, el lote pide más hoja', () => {
+  // La mutación que este test prohíbe: `FILA_FINAL_DE_GRAFICOS + 1` a secas, ignorando `finPortada`.
+  // Con eso el resize del arranque y el del lote pedían alturas distintas para la misma pestaña.
+  const hoy = requestDeAltoMinimo(7, 0, 20).updateSheetProperties.properties.gridProperties.rowCount
+  const larga = requestDeAltoMinimo(7, 0, 23).updateSheetProperties.properties.gridProperties.rowCount
+  assert.equal(hoy, 68, 'con la portada de hoy el mínimo es el de siempre')
+  assert.equal(larga, 71, 'tres filas más de portada, tres más de hoja')
+  assert.equal(requestDeAltoMinimo(7, 200, 23).updateSheetProperties.properties.gridProperties.rowCount, 200, 'y sigue sin achicar')
+})
+
 // ── EL ANCLA DEJA DE ESTAR CLAVADA (reclamo del dueño, 06/09/2026) ──────────────────────────────
 
 import { anclaDeGraficos, filaFinalDeGraficos, AIRE_TRAS_PORTADA, finDeContenido } from './caja-graficos.mjs'
