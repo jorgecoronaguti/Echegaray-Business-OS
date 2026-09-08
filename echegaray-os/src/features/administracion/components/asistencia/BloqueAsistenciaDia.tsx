@@ -1,3 +1,4 @@
+import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPorDefecto'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Aviso, Vacio } from '@/shared/components/ds'
@@ -102,11 +103,12 @@ export async function BloqueAsistenciaDia({ obraPedida, dia, hrefDe, hrefQuincen
           {obra.nombre}
         </h2>
         <p className="mt-0.5 text-[12.5px] text-muted">
-          {obra.jornada > 0
-            ? `${hs(obra.jornada)} hs de jornada`
-            // NO SE INVENTA UNA JORNADA. Un 8 escrito acá sería una afirmación sobre el contrato de
-            // esa obra que nadie hizo.
-            : 'esta obra no tiene jornada pactada cargada'}
+          {/* LA JORNADA QUE SE ANUNCIA ES LA DEL DÍA, no la pactada de la obra: es la que el defecto
+              escribe al dar presente (dueño, 08/09/2026: 9 h L–J, 8 h V). Dos definiciones en la misma
+              pantalla —«8,8 hs de jornada» arriba y 9 h cargadas abajo— era una contradicción visible. */}
+          {jornadaPorDefecto(dia) !== null
+            ? `${hs(jornadaPorDefecto(dia) ?? 0)} hs de jornada por defecto`
+            : 'sin jornada por defecto: fin de semana, las horas se cargan a mano'}
         </p>
       </div>
 

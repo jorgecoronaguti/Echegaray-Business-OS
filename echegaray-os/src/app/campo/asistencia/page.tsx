@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/authService'
 import { Aviso } from '@/shared/components/ds'
 import { hs } from '@/features/administracion/services/jornadaPorObra'
+import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPorDefecto'
 import { getJornadaDelDia } from '@/features/administracion/services/jornadaPorObraService'
 import { hoyISO, leerDatosCampo } from '../datos'
 // EL RÓTULO Y EL DÍA VIVEN UNA SOLA VEZ. Estaban acá como funciones privadas; cuando la misma
@@ -98,11 +99,12 @@ export default async function AsistenciaCampoPage({ searchParams }: {
   return (
     <MarcoCampo
       titulo={obra.nombre}
-      subtitulo={obra.jornada > 0
-        ? `${rotuloDelDia(fecha)} · ${hs(obra.jornada)} hs de jornada`
-        // NO SE INVENTA UNA JORNADA. Sin `jornada_horas` la casilla nace vacía y se tipea: un 8
-        // escrito acá sería una afirmación sobre el contrato de esa obra que nadie hizo.
-        : `${rotuloDelDia(fecha)} · esta obra no tiene jornada pactada cargada`}
+      // LA JORNADA QUE SE ANUNCIA ES LA DEL DÍA (dueño, 08/09/2026: 9 h L–J, 8 h V), la misma que el
+      // defecto escribe al dar presente. La pactada de la obra («8,8») convivía acá con el 9 que se
+      // cargaba abajo: dos definiciones de «jornada» en la misma pantalla.
+      subtitulo={jornadaPorDefecto(fecha) !== null
+        ? `${rotuloDelDia(fecha)} · ${hs(jornadaPorDefecto(fecha) ?? 0)} hs de jornada por defecto`
+        : `${rotuloDelDia(fecha)} · fin de semana: sin jornada por defecto`}
       volver={
         <Link
           href="/campo"
