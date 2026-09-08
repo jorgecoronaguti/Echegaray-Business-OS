@@ -78,6 +78,34 @@ test('un día con la columna presente pero sin horas no cuenta como trabajado', 
   assert.deepEqual(ultimoDiaConHoras(grid, { inicio: 2, fin: 3, filaFecha: 1 }), new Date(2026, 6, 16))
 })
 
+// ═══ EL CASO DEL 08/09/2026: una persona con horas cargadas cuatro días por delante del resto ═══
+// Catorce personas hasta el 07/09 y una hasta el 11/09. Con "al menos una persona" el resto de la
+// quincena arrancaba el 12/09 y los días 08–11/09 de las otras catorce no se proyectaban: la quincena
+// que se paga el 16/09 salía en CAJA a la mitad de cualquier quincena cerrada.
+test('una sola persona adelantada NO cierra la quincena: manda el último día de la cuadrilla', () => {
+  const grid = [[]]
+  ;['1/9', '2/9', '3/9', '4/9', '5/9', '7/9', '8/9', '9/9', '10/9', '11/9'].forEach((f, i) => { grid[0][5 + i] = f })
+  // quince personas: filas 2..16
+  for (let p = 1; p <= 15; p++) {
+    grid[p] = []
+    for (let i = 0; i < 6; i++) grid[p][5 + i] = i === 4 ? 0 : 9 // 1/9→7/9, el sábado 5/9 sin horas
+  }
+  // sólo la persona 5 tiene horas del 8/9 al 11/9
+  for (let i = 6; i < 10; i++) grid[5][5 + i] = 9
+  const bloque = { inicio: 2, fin: 16, filaFecha: 1 }
+  assert.deepEqual(ultimoDiaConHoras(grid, bloque), new Date(2026, 8, 7))
+})
+
+test('la cuadrilla son las personas con horas: una fila abierta sin una hora no se espera', () => {
+  const grid = [[]]
+  grid[0][5] = '16/7'; grid[0][6] = '17/7'
+  grid[1] = []; grid[1][5] = 8; grid[1][6] = 8 // trabaja los dos días
+  grid[2] = []; grid[2][5] = 8 // sólo el primero
+  grid[3] = [] // alta sin una sola hora
+  // dos personas con horas → mínimo 1 el 17/7 lo cumple la primera
+  assert.deepEqual(ultimoDiaConHoras(grid, { inicio: 2, fin: 4, filaFecha: 1 }), new Date(2026, 6, 17))
+})
+
 test('un bloque sin ninguna hora cargada no inventa un día', () => {
   const grid = [[], []]
   grid[0][5] = '16/7'

@@ -340,25 +340,49 @@ export function ultimoDiaCargado(filaFechas = [], anio = AÑO) {
  * (16, 17, 18, 20 y 21 de julio). Los otros nueve están vacíos. Eso es lo que distingue una quincena
  * en curso de una cerrada, y no se puede saber mirando las fechas: hay que mirar las horas.
  *
+ * ═══ UNA PERSONA ADELANTADA NO CIERRA LA QUINCENA (08/09/2026) ═══
+ *
+ * Esto devolvía el último día con horas DE AL MENOS UNA persona. Medido en el bloque del 01/09 (hoy
+ * 08/09): catorce personas tienen horas hasta el 07/09 y UNA (Gonzalez J.) las tiene cargadas hasta el
+ * 11/09. El «resto de la quincena» arrancaba entonces el 12/09 —dos días hábiles, $557.086— y los
+ * cuatro días del 08 al 11/09 de las otras catorce personas no estaban en ningún lado: ni en el real
+ * (no cargados) ni en la proyección (ya "cubiertos"). El dueño lo vio en el gráfico de CAJA: la
+ * quincena que se paga el 16/09 salía a la mitad de cualquier quincena cerrada.
+ *
+ * El día que cuenta es el último en que trabajó LA CUADRILLA: al menos la mitad de las personas del
+ * bloque con horas ese día. Un sábado con cinco de quince no cuenta —y no importa, porque la fórmula
+ * del calendario tampoco cuenta sábados—; un día con una sola persona, tampoco.
+ *
  * @param {any[][]} grid   el espejo completo
  * @param {{inicio:number, fin:number, filaFecha:number}} bloque
  * @param {number} anio
- * @returns {Date|null} el último día con horas de al menos una persona
+ * @returns {Date|null} el último día en que trabajó al menos la mitad de la cuadrilla
  */
 export function ultimoDiaConHoras(grid = [], bloque, anio = AÑO) {
   if (!bloque) return null
   const fechas = grid[bloque.filaFecha - 1] ?? []
+  const horas = (r, col) => {
+    const v = Number(String((grid[r - 1] ?? [])[col] ?? '').replace(',', '.'))
+    return Number.isFinite(v) && v > 0
+  }
+  // La cuadrilla del bloque son las personas con alguna hora cargada en él, no las filas: una fila
+  // abierta sin una sola hora (alta reciente, licencia entera) no puede exigir que se la espere.
+  let cuadrilla = 0
+  for (let r = bloque.inicio; r <= bloque.fin; r++) {
+    let trabajó = false
+    for (let col = 5; col <= 20 && !trabajó; col++) trabajó = horas(r, col)
+    if (trabajó) cuadrilla++
+  }
+  if (!cuadrilla) return null
+  const minimo = Math.ceil(cuadrilla / 2)
   let mejor = null
   // F..U son las columnas de días del bloque. El mismo rango que usa el cuadro para contarlos.
   for (let col = 5; col <= 20; col++) {
     const m = /^(\d{1,2})\/(\d{1,2})$/.exec(String(fechas[col] ?? '').trim())
     if (!m) continue
-    let alguienTrabajó = false
-    for (let r = bloque.inicio; r <= bloque.fin && !alguienTrabajó; r++) {
-      const v = Number(String((grid[r - 1] ?? [])[col] ?? '').replace(',', '.'))
-      if (Number.isFinite(v) && v > 0) alguienTrabajó = true
-    }
-    if (!alguienTrabajó) continue
+    let trabajaron = 0
+    for (let r = bloque.inicio; r <= bloque.fin; r++) if (horas(r, col)) trabajaron++
+    if (trabajaron < minimo) continue
     const d = new Date(anio, Number(m[2]) - 1, Number(m[1]))
     if (!mejor || d > mejor) mejor = d
   }
@@ -1537,7 +1561,10 @@ export function grilla({
   filas[fCanal.banco - 1][1] = porCol(colDe('Banco'))
   filas[fCanal.adelanto - 1][1] = porCol(colDe('Adelanto'))
   filas[fCanal.recibo - 1][1] = porCol(colDe('Total recibo'))
-  filas[fCanal.recibo - 1][2] = `=IF(ROUND(B${fCanal.banco}+B${fCanal.adelanto}+B${fCanal.recibo}-SUMPRODUCT(${pagada}*${K});0)=0;"✓ los tres canales suman lo pagado";"${ALERTA} faltan $"&TEXT(SUMPRODUCT(${pagada}*${K})-B${fCanal.banco}-B${fCanal.adelanto}-B${fCanal.recibo};"#,##0")&" sin canal de pago registrado")`
+  // TOLERANCIA DE $100, NO DE $0 (08/09): la planilla redondea «TOTAL EFECTIVO» a pesos enteros persona
+  // por persona (AA = AB − X − Y − Z, sin centavos), así que los tres canales le erran al total por
+  // menos de un peso por persona y quincena. Un control que grita por $6 de redondeo no se lee.
+  filas[fCanal.recibo - 1][2] = `=IF(ABS(B${fCanal.banco}+B${fCanal.adelanto}+B${fCanal.recibo}-SUMPRODUCT(${pagada}*${K}))<100;"✓ los tres canales suman lo pagado";"${ALERTA} faltan $"&TEXT(SUMPRODUCT(${pagada}*${K})-B${fCanal.banco}-B${fCanal.adelanto}-B${fCanal.recibo};"#,##0")&" sin canal de pago registrado")`
   // ── LOS DOS BLOQUES MENSUALES: EL AJUSTE Y EL PROYECTADO ──
   //
   // Se escriben acá y no arriba porque los dos citan el cuadro del escalón (4.2), que desde el 13/08
