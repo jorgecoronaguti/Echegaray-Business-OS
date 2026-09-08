@@ -133,6 +133,12 @@ Aplicada el 08/09/2026 en `/administracion/personas/en-obra` (bloques separados)
 (subtítulo y conteo por cuadrilla), `/obra/frente` (línea de la gente del frente) y
 `/administracion/personas/cuadrillas` (columna de fichaje; se retiró la barra ámbar «N/M fichados»).
 
+**Y la columna HOY del Plantel** (`/administracion/personas`, `TablaPersonas.tsx`), el mismo día por
+una captura del dueño: decía «● sin fichar» en las diecisiete filas, en ámbar. Ahora dice la
+asistencia del día con el vocabulario de la §3 —`9 h` · `A · motivo` · `L · motivo` · `sin cargar`—
+reusando `clasificar()` de `asistenciaDelDia.ts`, y el ● de presencia sólo aparece con una marca
+real (`hayMarcaDeHoy`). `HOY_LABEL`/`HOY_TONO` se retiraron de `pulsoDelPlantel.ts`.
+
 ## 9 · Qué quedó fuera (hito 2)
 
 - Leer `asistencia_marca` en la grilla de quincena y en la ficha para prender el ● — hoy la capa de

@@ -51,7 +51,7 @@ test('`avance_pct` NULL NO es 0 %, y `monto_contratado` NULL no es $ 0', () => {
   assert.equal(c.enCurso[0].avance, null)
   assert.equal(c.enCurso[0].contratado, null)
   assert.equal(c.enCurso[0].jefe, null, 'un jefe en blanco no es un nombre')
-  assert.equal(c.avisoCorto, 'obra sin contrato')
+  assert.equal(c.avisoCorto, 'obra sin precio en OBRAS')
 })
 
 test('el aviso del CUIT le gana al del contrato: sin CUIT no se factura', () => {
@@ -133,4 +133,27 @@ test('«hoy» es el día de San Juan, no el del proceso', () => {
   // las 00:30 UTC y se anunciaría como de «hoy» a alguien que todavía está en martes.
   assert.equal(hoyEnLaEmpresa(new Date('2026-08-26T01:00:00Z')), '2026-08-25')
   assert.equal(hoyEnLaEmpresa(new Date('2026-08-25T12:00:00Z')), '2026-08-25')
+})
+
+test('la economía de OBRAS manda: contratado, MO, materiales y margen por obra, y el cliente suma sus obras en curso', () => {
+  const clientes = [{ cliente_id: 'c1', slug: 'x', nombre_comercial: 'X', n_obras: 2, contratado: 999_999_999, cuit: '1', telefono: '1' }] as never
+  const obras = [
+    { obra_id: 'o1', nombre: 'A', cliente_id: 'c1', avance_pct: null, jefe_obra: null, monto_contratado: null },
+    { obra_id: 'o2', nombre: 'B', cliente_id: 'c1', avance_pct: null, jefe_obra: null, monto_contratado: 5 },
+  ]
+  const economia = new Map([
+    ['o1', { obra_canonica_id: 'o1', contratado: 100, costo_mo: 60, costo_materiales: 10, margen: 30 }],
+  ])
+  const [c] = armarCartera({ clientes, obras, partes: new Map(), certificados: [], economia })
+  assert.equal(c.enCurso[0].contratado, 100)
+  assert.equal(c.enCurso[0].margen, 30)
+  assert.equal(c.enCurso[0].margenPct, 30)
+  // Sin fila en OBRAS cae al formulario, y sin costos no hay margen.
+  assert.equal(c.enCurso[1].contratado, 5)
+  assert.equal(c.enCurso[1].margen, null)
+  // El total del cliente NO es `cliente_panel.contratado` (sumaba las cerradas): es la suma de sus obras en curso.
+  assert.equal(c.contratado, 105)
+  assert.equal(c.costoMo, 60)
+  assert.equal(c.margen, 30)
+  assert.equal(c.economiaParcial, true)
 })

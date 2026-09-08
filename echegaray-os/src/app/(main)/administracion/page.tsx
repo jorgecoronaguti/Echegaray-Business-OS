@@ -38,6 +38,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
 import { getClientes } from '@/features/clientes/services/clientesService'
 import { separarArchivados } from '@/features/clientes/services/cartera'
+import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { Aviso } from '@/shared/components/ds'
 import { C } from '@/shared/components/canon'
@@ -52,13 +53,15 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdministracionPage() {
   const supabase = await createClient()
-  const [leidos, cartera, perfil, obras, partes, certificados] = await Promise.all([
+  const [leidos, cartera, perfil, obras, partes, certificados, economia] = await Promise.all([
     getConteosHome(supabase),
     getClientes(supabase),
     getPerfilActual(supabase),
     getObrasDeLaCartera(supabase),
     getUltimoParte(supabase),
     getCertificadosDeLaCartera(supabase),
+    // Lo que OBRAS publica por obra (contratado, MO, materiales, margen), desde Postgres.
+    getEconomiaDeObras(supabase),
   ])
 
   const rol = perfil.data?.rol ?? null
@@ -85,7 +88,7 @@ export default async function AdministracionPage() {
         </div>
       ) : (
         <CarteraHome
-          clientes={armarCartera({ clientes: activos, obras, partes, certificados })}
+          clientes={armarCartera({ clientes: activos, obras, partes, certificados, economia })}
           hoy={hoyEnLaEmpresa()}
           veEconomia={vePrecio}
           obrasNoLeidas={obras === null}

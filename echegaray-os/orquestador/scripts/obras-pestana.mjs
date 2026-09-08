@@ -345,7 +345,7 @@ export async function verificarMoneda(google, { monedasRaras, hayUSD }) {
 }
 
 /** Las referencias REALES del archivo, resueltas por rótulo contra los encabezados vivos. */
-async function refsReales(google) {
+export async function refsReales(google) {
   const [cob, cmp, matColA] = await Promise.all([
     google.readSheetValues(ID, `${REFS_OBRAS.cob.hoja}!A1:AB8`),
     google.readSheetValues(ID, `${REFS_OBRAS.cmp.hoja}!A1:AJ8`),

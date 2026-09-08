@@ -64,14 +64,18 @@ import { oracion } from '@/shared/utils/texto'
 import type { PersonaEnDirectorio } from '../types'
 import { agruparPorRolOrganizacional, categoriaVisible, esJefeDeObra } from '../services/vocabularioPersona'
 import {
-  HOY_LABEL, estadoHoy, horasVisibles,
-  type EstadoDePapeles, type EstadoHoy, type MarcaDeHoy,
+  SIN_CARGAR, hayMarcaDeHoy, horasVisibles, rotuloHoy,
+  type EstadoDePapeles, type MarcaDeHoy,
 } from '../services/pulsoDelPlantel'
+import type { ClasificacionDelDia } from '../services/asistenciaDelDia'
 
 /** Las tres lecturas del día, ya agrupadas por persona. Cada `disponible` en false apaga SU columna:
  *  una lectura que falló no se dibuja como «no hay nada». */
 export interface PulsoDelPlantel {
   marcas: Map<string, MarcaDeHoy>
+  /** La asistencia de HOY por persona, ya clasificada por `clasificar()`. Quien no está en el Map
+   *  no tiene nada cargado, y eso es `SIN_CARGAR` — no una ausencia. */
+  asistencia: Map<string, ClasificacionDelDia>
   hh: Map<string, number>
   papeles: Map<string, EstadoDePapeles>
   hoyDisponible: boolean
@@ -107,17 +111,16 @@ const SOLO_ANCHO = 'max-[1249px]:hidden'
 /** `gap:16` del bloque «1 · PERSONAL». El patrón v2 declara 14 y esta pantalla lo corre a 16. */
 const GAP = 16
 
-/** `19v2:37`. El punto de HOY. La palabra viaja al lado: nunca sólo el color. */
-const PUNTO: Record<EstadoHoy, string> = {
-  en_obra: '#067647',
-  ya_cerro: V.lupa,
-  sin_fichar: V.warn,
-}
-const TINTA: Record<EstadoHoy, string> = {
-  en_obra: V.tintaSuave,
-  ya_cerro: V.apagado,
-  sin_fichar: V.warn,
-}
+/** La tinta de cada tono de la celda HOY. Ver `rotuloHoy`: el número va en tinta plena y sin color
+ *  de estado; el motivo, legible pero secundario; la falta de dato, en el gris de «sin HH». */
+const TINTA_HOY = {
+  cantidad: V.tinta,
+  motivo: V.apagado,
+  silencio: V.lupa,
+} as const
+/** El chip declarado. Rojo SÓLO para la ausencia, que es lo único que reclama una decisión de quien
+ *  liquida; la licencia ya está resuelta y va en neutro. */
+const TINTA_CHIP = { neg: V.neg, neutro: V.apagado } as const
 
 export function TablaPersonas({
   personas, conBaja = false, pulso, vacio = 'Nada coincide.',
@@ -173,7 +176,13 @@ export function TablaPersonas({
         <div key={g.clave} data-testid={`grupo-${g.clave}`}>
           {grupos.length > 1 && <RotuloDeGrupo texto={g.rotulo} primero={iGrupo === 0} />}
           {g.integrantes.map((p) => {
-        const hoy = conPulso && pulso?.hoyDisponible ? estadoHoy(pulso.marcas.get(p.id)) : null
+        // LAS DOS CAPAS DEL DÍA, CADA UNA CON SU FUENTE Y SU DISPONIBILIDAD. La asistencia sale de
+        // `registros_hh` (la lectura de HH); el ● de presencia, de una marca real. Que una falle no
+        // apaga la otra, y ninguna se deriva de la otra.
+        const asistencia = conPulso && pulso?.hhDisponible
+          ? (pulso.asistencia.get(p.id) ?? SIN_CARGAR)
+          : null
+        const ficho = Boolean(conPulso && pulso?.hoyDisponible && hayMarcaDeHoy(pulso.marcas.get(p.id)))
         const categoria = categoriaVisible(p.categoria, p.puesto)
         return (
           <Link
@@ -239,14 +248,15 @@ export function TablaPersonas({
                 )
               : (
                   <>
-                    <span className={`flex items-center gap-[7px] ${SOLO_ANCHO}`} style={{ minWidth: 0 }} data-testid="hoy-persona">
-                      {hoy
-                        ? (
-                            <>
-                              <span aria-hidden style={{ width: 6, height: 6, borderRadius: 3, background: PUNTO[hoy], flexShrink: 0 }} />
-                              <span className="truncate" style={{ fontSize: '12px', color: TINTA[hoy] }}>{HOY_LABEL[hoy]}</span>
-                            </>
-                          )
+                    <span
+                      className={`flex items-center gap-1 ${SOLO_ANCHO}`}
+                      style={{ minWidth: 0 }}
+                      data-testid="hoy-persona"
+                      data-estado={asistencia?.estado}
+                      data-ficho={ficho ? 'si' : undefined}
+                    >
+                      {asistencia
+                        ? <CeldaHoy clasificacion={asistencia} ficho={ficho} />
                         : <span style={{ fontSize: '12px', color: V.lupa }}>sin lectura</span>}
                     </span>
 
@@ -287,6 +297,56 @@ export function TablaPersonas({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * LA CELDA «HOY» — DOS CAPAS QUE NO HABLAN UNA POR LA OTRA (08/09/2026).
+ *
+ * Antes decía «● sin fichar» en las diecisiete filas, con punto ámbar. El fichaje desde el celular
+ * no está en uso —cuatro marcas de prueba en toda la historia—, así que la columna publicaba todos
+ * los días la ausencia de una capacidad como si fuera una novedad sobre la gente. La decisión
+ * completa está en `docs/engineering/UX_ASISTENCIA_VS_HORAS.md` y la regla, en `rotuloHoy`.
+ *
+ *   ●  PRESENCIA · sólo si hay una marca REAL de hoy. Sin marca no se escribe nada: no hay palabra
+ *      que decir sobre un dato que no existe, y «no fichó» acusaría a todo el plantel.
+ *   A/L + palabra · lo DECLARADO en `registros_hh`, con su motivo.
+ *   9 h · la CANTIDAD, monoespaciada y sin color de estado.
+ *   sin cargar · el silencio, en gris neutro. No es una falta de la persona.
+ *
+ * Es la misma anatomía de `CeldaDia`, en horizontal: la celda apilada de 44 px se diseñó para una
+ * grilla de quince columnas y acá rompería el alto de fila del handoff v4.
+ */
+function CeldaHoy({ clasificacion, ficho }: { clasificacion: ClasificacionDelDia; ficho: boolean }) {
+  const r = rotuloHoy(clasificacion)
+  return (
+    <>
+      {ficho && (
+        <span
+          className="text-pos"
+          title="Fichó hoy"
+          data-capa="presencia"
+          style={{ fontSize: '9px', lineHeight: 1, flexShrink: 0 }}
+        >
+          ●
+        </span>
+      )}
+      {r.chip && (
+        <span
+          data-capa="declarado"
+          style={{ fontSize: '11px', fontWeight: 600, color: TINTA_CHIP[r.chipTono ?? 'neutro'], flexShrink: 0 }}
+        >
+          {r.chip}
+        </span>
+      )}
+      <span
+        className={`truncate ${r.tono === 'cantidad' ? 'font-mono tabular-nums' : ''}`}
+        data-capa={r.tono === 'cantidad' ? 'horas' : 'palabra'}
+        style={{ fontSize: '12px', color: TINTA_HOY[r.tono] }}
+      >
+        {r.texto}
+      </span>
+    </>
   )
 }
 

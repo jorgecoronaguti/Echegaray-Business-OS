@@ -35,6 +35,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ClientePanel } from '@/features/clientes/types'
 import { avisoDeDatos, faltaUnDatoQueFrena } from '../../clientes/services/cartera.ts'
+import { margenPct, sumaConHuecos, type EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
 
 /** Una obra `activa`, tal como la lee la cartera. Es un subconjunto de `obra_panel`. */
 export interface ObraDeCartera {
@@ -58,7 +59,12 @@ export interface ObraEnCurso {
   nombre: string
   avance: number | null
   jefe: string | null
+  /** Lo que OBRAS publica: contratado de la OC de Cobranzas. `null` = «sin precio en OBRAS». */
   contratado: number | null
+  costoMo: number | null
+  costoMateriales: number | null
+  margen: number | null
+  margenPct: number | null
   certificacion: EstadoCertificacion
   /** El último parte de la obra, `YYYY-MM-DD`. `null` = ninguno registrado. */
   ultimoParte: string | null
@@ -82,7 +88,14 @@ export interface ClienteEnCartera {
    */
   faltaUnDato: boolean
   obras: number
+  /** Suma de lo que OBRAS publica para sus obras en ejecución. `null` = ninguna con precio. */
   contratado: number | null
+  costoMo: number | null
+  costoMateriales: number | null
+  margen: number | null
+  margenPct: number | null
+  /** `true` cuando alguna obra en curso no tiene precio en OBRAS: el total suma sólo las que sí. */
+  economiaParcial: boolean
   /** El hecho más reciente que el OS conoce de este cliente. `null` = ninguno. */
   ultimoMovimiento: string | null
   enCurso: ObraEnCurso[]
@@ -223,12 +236,14 @@ const masReciente = (a: string | null, b: string | null) =>
  * decir de qué está hablando.
  */
 export function armarCartera({
-  clientes, obras, partes, certificados,
+  clientes, obras, partes, certificados, economia = null,
 }: {
   clientes: ClientePanel[]
   obras: ObraDeCartera[] | null
   partes: Map<string, string> | null
   certificados: FilaCertificado[] | null
+  /** Lo que OBRAS publica por obra (`obra_economia_cartera`). `null` = no se pudo leer. */
+  economia?: Map<string, EconomiaDeObra> | null
 }): ClienteEnCartera[] {
   const porCliente = new Map<string, ObraDeCartera[]>()
   for (const o of obras ?? []) {
@@ -237,15 +252,32 @@ export function armarCartera({
   }
 
   return clientes.map((c) => {
-    const enCurso: ObraEnCurso[] = (porCliente.get(c.cliente_id) ?? []).map((o) => ({
-      obra_id: o.obra_id,
-      nombre: o.nombre,
-      avance: o.avance_pct,
-      jefe: o.jefe_obra?.trim() || null,
-      contratado: o.monto_contratado,
-      certificacion: certificacionDe(certificados, o.obra_id),
-      ultimoParte: partes?.get(o.obra_id) ?? null,
-    }))
+    const enCurso: ObraEnCurso[] = (porCliente.get(c.cliente_id) ?? []).map((o) => {
+      // EL PRECIO ES EL DE OBRAS (la OC de Cobranzas), no el campo del formulario que nadie carga.
+      // Si OBRAS no lo tiene, cae al del formulario; si tampoco, «sin precio en OBRAS».
+      const e = economia?.get(o.obra_id) ?? null
+      const contratado = e?.contratado ?? o.monto_contratado
+      const margen = e?.margen ?? null
+      return {
+        obra_id: o.obra_id,
+        nombre: o.nombre,
+        avance: o.avance_pct,
+        jefe: o.jefe_obra?.trim() || null,
+        contratado,
+        costoMo: e?.costo_mo ?? null,
+        costoMateriales: e?.costo_materiales ?? null,
+        margen,
+        margenPct: margenPct(margen, contratado),
+        certificacion: certificacionDe(certificados, o.obra_id),
+        ultimoParte: partes?.get(o.obra_id) ?? null,
+      }
+    })
+    // LOS TOTALES DEL CLIENTE SON LA SUMA DE SUS OBRAS EN EJECUCIÓN, no `cliente_panel.contratado`
+    // (que sumaba las cerradas y publicaba $204M en San Francisco al lado de obras «sin contrato»).
+    const tContratado = sumaConHuecos(enCurso.map((o) => o.contratado))
+    const tMo = sumaConHuecos(enCurso.map((o) => o.costoMo))
+    const tMat = sumaConHuecos(enCurso.map((o) => o.costoMateriales))
+    const tMargen = sumaConHuecos(enCurso.map((o) => o.margen))
 
     const fechasCert = (certificados ?? [])
       .filter((x) => enCurso.some((o) => o.obra_id === x.obra_canonica_id))
@@ -261,10 +293,15 @@ export function armarCartera({
       aviso: avisoDeDatos(c),
       // La etiqueta corta de la fila; la frase entera va en el `title`. El mockup escribe «sin CUIT»
       // y «obra sin contrato» — las dos son ciertas y las dos frenan el cobro.
-      avisoCorto: avisoDeDatos(c) ? 'sin CUIT' : sinContrato ? 'obra sin contrato' : null,
+      avisoCorto: avisoDeDatos(c) ? 'sin CUIT' : sinContrato ? 'obra sin precio en OBRAS' : null,
       faltaUnDato: faltaUnDatoQueFrena(c),
       obras: c.n_obras,
-      contratado: c.contratado,
+      contratado: tContratado.total,
+      costoMo: tMo.total,
+      costoMateriales: tMat.total,
+      margen: tMargen.total,
+      margenPct: margenPct(tMargen.total, tContratado.total),
+      economiaParcial: tContratado.parcial || tMargen.parcial,
       ultimoMovimiento,
       enCurso,
     }
