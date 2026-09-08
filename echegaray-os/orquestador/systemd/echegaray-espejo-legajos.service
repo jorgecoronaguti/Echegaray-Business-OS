@@ -1,0 +1,25 @@
+[Unit]
+Description=Echegaray OS — espeja el data room de Personal (1. ACTIVOS / 2. INACTIVOS) en documentacion_legajo
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/orquestador/scripts/legajos-sincronizar.mjs
+After=network-online.target
+Wants=network-online.target
+# ═══ POR QUÉ ESTA CONDICIÓN (08/09/2026) ═══
+# El script que había en main el 08/09 recorría TODO bucket de la raíz salvo `9.` y, con la forma
+# actual del data room, proponía 27 ALTAS falsas (subcontratistas y meses como empleados). La
+# corrección vive en la rama fix/espejo-documentos-legajo. Hasta que producción tenga ese código,
+# esta unidad NO debe correr: si este archivo no existe en el checkout de producción, el código
+# corregido tampoco, y systemd saltea la corrida (condición no cumplida ≠ fallo).
+ConditionPathExists=/home/jorge/echegaray-os/produccion/echegaray-os/orquestador/systemd/echegaray-espejo-legajos.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+# Credenciales fuera del repo: DATABASE_URL, GOOGLE_SA_KEY_PATH, ORQ_GOOGLE_IMPERSONATE viven acá.
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+# El checkout de producción se pone al día antes de escribir (mismo patrón que echegaray-flujo-caja).
+ExecStartPre=-/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/produccion-al-dia.mjs
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/legajos-sincronizar.mjs --aplicar
+StandardOutput=journal
+StandardError=journal
+# Medido el 08/09/2026: 74 carpetas + subcarpetas, ~2 min. 15 min es 7× la corrida.
+TimeoutStartSec=15min
