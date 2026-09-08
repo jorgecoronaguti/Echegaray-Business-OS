@@ -390,3 +390,24 @@ test('CADA SEMANA LLEVA SU CLAVE DE ORIGEN y la obra que todavía no empezó arr
   assert.equal(futura.tramos[0].desde.getDate(), 5)
   assert.deepEqual(tramosSemanales(new Date(2026, 8, 12), new Date(2026, 8, 13)), [], 'un fin de semana no tiene días hábiles')
 })
+
+test('LA RAMPA DE PISOS 120 M²: la fecha de su cotización vale — una salida el 10/09, no 24 semanas hasta el 31/12', () => {
+  // Fila REAL cargada el 08/09: origen «Cotizacion piso 120m2.xlsm», fecha 10/09. La obra hereda de
+  // Cobranzas el plazo 20/07→31/12: repartirla ahí la desarmaría en $19.000 por semana.
+  const filas = [
+    ...REGISTRO_REAL_PLAZO,
+    { obra_rotulo: 'PISOS 120 M² Y RAMPA', obra_clave: 'messina-pisos-120-rampa', obra_canonica_id: 'messina-pisos-120-rampa', concepto: 'Materiales de la rampa (suelo cemento, combustibles)', proveedor: 'A DEFINIR', monto: 452239.2, fecha_estimada: '2026-09-10', origen_pestana: 'Cotizacion piso 120m2.xlsm' },
+  ]
+  const ctx = new Map([...CONTEXTO_PLAZO, ['PISOS 120 M² Y RAMPA', { clave: 'messina-pisos-120-rampa', cliente: 'MESSINA', inicioSerial: S(2026, 7, 20), inicio: '2026-07-20', fin: '2026-12-31', patrones: ['Piso'] }]])
+  const r = movimientosDeMaterialesPorPlazo(materialesPorObra(filas), { contexto: ctx, colsCompras: COLS_NETEO, corte: S(2026, 9, 8), hoy: HOY_PLAZO })
+  const rampa = r.movimientos.filter((m) => m.obra === 'PISOS 120 M² Y RAMPA')
+  assert.equal(rampa.length, 1, 'UNA salida, no un reparto en el plazo de la obra')
+  assert.equal(rampa[0].fecha, S(2026, 9, 10)); assert.equal(rampa[0].importe, 452239.2)
+  assert.match(rampa[0].concepto, /rampa .* fecha de la fuente 10\/09/)
+  assert.equal(rampa[0].importeVivo, `=MAX(0;452239,2-${formulaRealDeComprasPorObra(COLS_NETEO, 'MESSINA', S(2026, 7, 20), ['PISOS 120 M² Y RAMPA', 'Piso'])})`, 'y se netea POR OBRA igual que las demás')
+  // Las 17 estacionadas (origen OBRAS, 01/10) siguen yendo al plazo: Playón conserva sus 5 semanas.
+  assert.equal(r.movimientos.filter((m) => m.obra === 'PLAYÓN DE AZUFRE').length, 5)
+  // Fecha de la fuente YA PASADA ⇒ mañana (corte+1), no un vencido ni el pasado.
+  const pasada = movimientosDeMaterialesPorPlazo(materialesPorObra([{ ...filas.at(-1), fecha_estimada: '2026-09-01' }]), { contexto: ctx, colsCompras: COLS_NETEO, corte: S(2026, 9, 8), hoy: HOY_PLAZO })
+  assert.equal(pasada.movimientos[0].fecha, S(2026, 9, 9))
+})

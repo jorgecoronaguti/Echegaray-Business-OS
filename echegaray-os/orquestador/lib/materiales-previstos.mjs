@@ -519,6 +519,11 @@ export function exigirNeteoDeMateriales(r) {
 // «Detalles / Obra» ∋ alguno de los patrones de la obra) — los patrones salen de `obra_alias` y de la
 // ficha (`comprasObraDe`), no de igualdad de texto: «MAMPOSTERÍA» y «Mamposteria» son la misma obra.
 
+/** El estacionamiento del 24/08 vive en las filas que vinieron de la pestaña OBRAS; cualquier otra
+ *  procedencia (cotización, OC, planilla del adicional) trae la fecha que declaró la fuente. */
+export const ORIGEN_ESTACIONADO = 'OBRAS'
+export const esFechaDeFuente = (f) => Boolean(f?.fecha_estimada) && txt(f?.origen_pestana) !== '' && txt(f?.origen_pestana) !== ORIGEN_ESTACIONADO
+
 /** El `origen.fila` de un tramo, para que `deduplicar` no colapse dos semanas de la misma obra. */
 const filaDeTramo = (clave, k, n) => `plazo:${clave}·sem ${k}/${n}`
 
@@ -594,9 +599,20 @@ export function materialesPorObra(filas = []) {
     const monto = Number(f?.monto)
     const obra = txt(f?.obra_rotulo)
     if (!obra || !Number.isFinite(monto) || monto <= 0) continue
-    if (!m.has(obra)) m.set(obra, { obra, clave: txt(f.obra_clave) || obra, canonica: txt(f.obra_canonica_id) || txt(f.obra_clave) || obra, total: 0, items: 0, proveedores: [] })
+    if (!m.has(obra)) m.set(obra, { obra, clave: txt(f.obra_clave) || obra, canonica: txt(f.obra_canonica_id) || txt(f.obra_clave) || obra, total: 0, items: 0, proveedores: [], fechados: [] })
     const o = m.get(obra)
-    o.total = r2(o.total + monto); o.items++
+    o.items++
+    // ═══ UN ÍTEM CON FECHA DE SU FUENTE NO SE ESPARCE EN EL PLAZO DE LA OBRA (08/09/2026, coordinador) ═══
+    // La rampa de PISOS 120 M² ($452.239, OC 2226 del 24/08, 5 días hábiles) tiene `fecha_estimada`
+    // 10/09 de su cotización; repartirla 20/07→31/12 —el plazo heredado de Cobranzas— la desarmaría en
+    // 24 semanas de $19.000. Regla: la fecha vale cuando la puso la FUENTE del ítem (cotización, OC,
+    // planilla del adicional). La fecha de las filas con `origen_pestana = 'OBRAS'` es el
+    // ESTACIONAMIENTO del 24/08 (01/10 para las 17) y NO se lee: esas van al plazo. Nota del dueño sobre
+    // la OC 2226 «PLAYON AZUFRE»: es la rampa del Piso 120 —el concepto está al lado en Cobranzas, fila
+    // 92—; no es un conflicto entre obras y ningún control del libro lo listó como tal (revisado 08/09).
+    const fechaFuente = esFechaDeFuente(f) ? String(f.fecha_estimada).slice(0, 10) : null
+    if (fechaFuente) o.fechados.push({ concepto: txt(f.concepto) || 'Materiales', monto: r2(monto), fecha: fechaFuente, proveedor: txt(f.proveedor) })
+    else o.total = r2(o.total + monto)
     const p = txt(f.proveedor); if (p && !o.proveedores.includes(p)) o.proveedores.push(p)
   }
   return m
@@ -640,6 +656,8 @@ export function movimientosDeMaterialesPorPlazo(porObra, { contexto = new Map(),
   for (const o of obras.sort((a, b) => a.obra.localeCompare(b.obra, 'es'))) {
     const ctx = contexto.get(o.obra) ?? null
     const r = repartoPorPlazo({ total: o.total, inicio: aLocal(ctx?.inicio), fin: aLocal(ctx?.fin), hoy })
+    // Una obra cuyo costo viene ENTERO en ítems fechados no tiene nada que repartir: sus tramos serían $0.
+    if (r.estado === 'proyecta' && !o.total) r.tramos = []
     if (r.estado === 'terminada') {
       terminadas.push({ obra: o.obra, previsto: o.total, fin: ctx.fin })
       aviso(`materiales previstos: «${o.obra}» terminó el ${ctx.fin} — sus ${o.total} previstos NO se proyectan (lo comprado ya está en Compras).`)
@@ -657,21 +675,35 @@ export function movimientosDeMaterialesPorPlazo(porObra, { contexto = new Map(),
       sinNeteo += r.tramos.length
       sinNeteoDe.push({ obra: o.obra, proveedor: '(por obra)', causa: ctx ? 'faltan las columnas de neteo de Compras (cliente, fecha, total, Detalles / Obra)' : 'la obra no figura en la ficha de obras', salidas: r.tramos.length })
     }
-    const celdas = celdasNeteoSecuencial(r.tramos.map((t) => t.importe), real)
+    const dd = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
     const n = r.tramos.length
-    r.tramos.forEach((t, k) => {
-      const dd = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
-      const fecha = serialDe(t.desde.getFullYear(), t.desde.getMonth() + 1, t.desde.getDate())
+    // Los puntos de la obra: las semanas del plazo + los ítems fechados por su fuente (una salida en la
+    // fecha declarada; si ya pasó, mañana). Todos comparten el MISMO real, así que van en UNA secuencia
+    // ordenada por fecha — el real absorbe en orden, nunca dos veces.
+    const puntos = r.tramos.map((t, k) => ({
+      fecha: serialDe(t.desde.getFullYear(), t.desde.getMonth() + 1, t.desde.getDate()), importe: t.importe,
+      concepto: `${o.obra} · Materiales · semana ${dd(t.desde)}–${dd(t.hasta)} (${k + 1}/${n} · ${t.habiles} día${t.habiles === 1 ? '' : 's'} háb.)`,
+      contraparte: o.proveedores.length === 1 ? o.proveedores[0] : 'Proveedores de la obra', fila: filaDeTramo(o.clave, k + 1, n),
+    }))
+    for (const [j, fch] of (o.fechados ?? []).entries()) {
+      const d = aLocal(fch.fecha)
+      puntos.push({
+        fecha: serialDe(d.getFullYear(), d.getMonth() + 1, d.getDate()), importe: fch.monto,
+        concepto: `${o.obra} · ${fch.concepto} · fecha de la fuente ${dd(d)}`,
+        contraparte: fch.proveedor || 'Proveedores de la obra', fila: `fuente:${o.clave}·item ${j + 1}`,
+      })
+    }
+    for (const p of puntos) if (p.fecha <= corte) p.fecha = corte + 1
+    puntos.sort((a, b) => a.fecha - b.fecha)
+    const celdas = celdasNeteoSecuencial(puntos.map((p) => p.importe), real)
+    puntos.forEach((p, k) => {
       const base = movimiento({
-        fecha: fecha <= corte ? corte + 1 : fecha,
-        importe: t.importe, signo: SALE,
-        concepto: `${o.obra} · Materiales · semana ${dd(t.desde)}–${dd(t.hasta)} (${k + 1}/${n} · ${t.habiles} día${t.habiles === 1 ? '' : 's'} háb.)`,
-        contraparte: o.proveedores.length === 1 ? o.proveedores[0] : 'Proveedores de la obra',
+        fecha: p.fecha, importe: p.importe, signo: SALE, concepto: p.concepto, contraparte: p.contraparte,
         rubro: RUBRO_OBRAS, estado: 'PROYECTADO', instrumento: '', obra: o.obra, cliente: ctx?.cliente ?? '',
-        origen: { pestana: ORIGEN_REGISTRO, fila: filaDeTramo(o.clave, k + 1, n) },
+        origen: { pestana: ORIGEN_REGISTRO, fila: p.fila },
       })
       movimientos.push(celdas[k] ? { ...base, importeVivo: celdas[k] } : base)
-      total = r2(total + t.importe)
+      total = r2(total + p.importe)
     })
     nObras++
   }
