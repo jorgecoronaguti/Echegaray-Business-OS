@@ -10,3 +10,7 @@
 # Sin esta linea `git add -A` lo agrega como repositorio embebido.
 echegaray-os-daily/
 echegaray-os-daily
+
+# nunca: los worktrees enlazan node_modules y .env.local a mano
+/node_modules
+/.env.local
