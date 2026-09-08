@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-08 17:25 · main `1c51a7f3` = checkout de producción; Vercel al día_
+_actualizado: 2026-09-08 18:40 · main `df1b3c55` = checkout de producción; Vercel al día_
 
 ## 00. TARDE-NOCHE 08/09 — PUBLICADO (main 1c51a7f3) y LO QUE SIGUE ABIERTO
 
@@ -23,6 +23,27 @@ _actualizado: 2026-09-08 17:25 · main `1c51a7f3` = checkout de producción; Ver
   transacción real (`withTx`). Accesos: rodrigo/hys/ingenieria con clave `test123` (pedido del dueño, por bot).
 - Persona de prueba REAL: `e2e00000-0000-4000-8000-000000000001` («[PRUEBA E2E] QA Campo»), obra `prueba-e2e`,
   `obra_asignacion.obra_id`. Los ids `…e2e1/e2e2` NO existen.
+
+**Publicado después de las 17:25 (main hasta df1b3c55)**
+- Licencia/ausencia por TRAMO («Hasta»: sólo este día / resto de la semana / fecha; sin domingos; futuro incluido; cada día
+  con `jornadaPorDefecto`). Panel recalcula «Horas que corresponden» al cambiar de día; chips = `SegmentedControl`.
+- `jornadaPorDefecto(fecha)`: 9 h L–J, 8 h V, null S/D (única definición). Presente desde el celular CARGA la jornada
+  (`fuente_legacy='web:presencia-defecto'`; «No vino» la retira; una carga a mano no se pisa). Cabecera del día la anuncia.
+- Grilla angosta: Persona sticky + sombra de scroll. Compras: orden por CARGA (`fila` desc), chip «Recién cargados 30»,
+  aviso «mostrando 200 de N · ver todas» arriba.
+- Datos: obra por persona/día asentada según pestaña `ASISTENCIA` (gid 1770179062) → 152 filas `registros_hh` corregidas
+  (sólo obra), asignaciones recalculadas; importador `asistencia-obra-por-dia.mjs` + timer `echegaray-asistencia-obra`
+  cada 6 h + invariante `invariantes-asignaciones.mjs` (1 rojo: GONZALEZ TOBARES vigente en la-estrella → decisión dueño).
+  Ex empleados Aguirre/Ahumada/Bronia Jofre cerrados al egreso. JORNALES rotula la QUINCENA, ASISTENCIA el DÍA.
+- Comprobantes: espejo inmediato instalado (timer 10 min); fajo Movistar descartado; ilegibles se preguntan una vez.
+  Los 14 de 07–08/09 están en la app (verificado); el «faltan» era el orden por fecha.
+- Messina OP 5146/5156: PDFs en Drive, 8 eCHEQ en `public.cheques` → `_CHEQUES_RAW` regenerada, Cobranzas!N68/O68/Q68/Y68.
+  Pendiente dueño: aceptar 6 eCHEQ en Santander; certificado ret. OP 5146 ($248.878,26); $38.462,45 «a cuenta».
+- Accesos: rodrigo/hys/ingenieria → `test123` (pedido del dueño).
+
+**Agentes en curso al cortar**: `feat/horas-declaran-presencia` (cargar horas desde la app declara presencia; migración
+`20260908T2300_asistencia_dia_origen.sql` a aplicar con GRANT de columna) · `fix/ejes-fila-y-opacidad` (2 rojos de
+`_ux-grilla-asistencia` 1440/2000 + `<alpha-value>` en tailwind).
 
 **Agentes en curso al cortar (ramas sin mergear → mergear desde el checkout principal, typecheck, tests, push, ff prod)**
 - `feat/ausencia-por-tramo` (licencia/ausencia varios días con «Hasta», sin domingos, futuro incluido).
