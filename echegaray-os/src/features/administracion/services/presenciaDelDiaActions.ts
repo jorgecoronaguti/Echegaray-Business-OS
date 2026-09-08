@@ -2,11 +2,26 @@
 
 // GUARDAR LA PRESENCIA DEL DÍA — la única escritura de `asistencia_dia`.
 //
-// ═══ ESTA ACCIÓN NO TOCA `registros_hh`. NUNCA ═══
+// ═══ ESTA ACCIÓN ESCRIBE TAMBIÉN LA JORNADA POR DEFECTO ═══
 //
-// Es la línea entera del trabajo. El dueño, 08/09/2026: *«una cosa es asistir y otra la carga de
-// horas»*. Si algún día alguien agrega acá un insert de horas «para no hacer dos toques», vuelve el
-// defecto: declarar que Juan está pasaría a imputarle costo a una obra.
+// A la mañana del 08/09/2026 la regla era la contraria y estaba escrita acá: «no toca
+// `registros_hh`, nunca». A la tarde el dueño pidió lo otro, textual: *«que por defecto cuando se
+// ponga la asistencia se le cargue 9 hs los L, M, M, J y 8 hs los V, permitiendo luego edición de
+// esto mismo en la planilla de asistencia»*. Se registra el cambio en vez de borrar la regla vieja
+// porque la consecuencia que aquella advertía es real y ahora está aceptada a propósito: **declarar
+// que Juan está le imputa costo de mano de obra a la obra donde se lo marcó**.
+//
+// Lo que la protege es la forma de la escritura, no un comentario: `planDeHorasPorDefecto` sólo
+// llena el vacío (cualquier fila de horas de esa persona ese día, de cualquier obra, la frena) y
+// sólo borra filas con su propia marca de origen. La regla y su porqué viven en `presenciaDelDia.ts`;
+// acá se aplica y se acusa lo que la base devolvió.
+//
+// ═══ SI LAS HORAS FALLAN, LA PRESENCIA IGUAL QUEDÓ ═══
+//
+// Son dos escrituras y no hay transacción. La presencia va primero porque es el hecho que el jefe
+// fue a declarar; si el paso de horas falla, la acción responde OK —porque la presencia SE GUARDÓ—
+// y el mensaje dice, con todas las letras, que las horas hay que cargarlas en Asistencia. Devolver
+// error haría que el jefe vuelva a tocar Guardar sobre algo que ya estaba bien.
 //
 // ═══ UN UPSERT, NO TRES VIAJES ═══
 //
@@ -31,8 +46,9 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { esMotivo } from './motivoDeAusencia'
 import {
-  acusePresencia, planDePresencia, resumenPresencia,
-  type MarcaPresencia, type PresenciaGuardada,
+  acuseDeHorasPorDefecto, acusePresencia, FUENTE_HORAS_POR_DEFECTO, planDeHorasPorDefecto,
+  planDePresencia, resumenPresencia,
+  type HoraDelDia, type MarcaPresencia, type PresenciaGuardada,
 } from './presenciaDelDia'
 import { getPresenciaDelDia } from './presenciaDelDiaService'
 
@@ -82,9 +98,20 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
 
   const plan = planDePresencia(marcas as MarcaPresencia[], guardadas)
   if (plan.cambios.length === 0) {
+    // NADA QUE ESCRIBIR EN LA PRESENCIA NO ES NADA QUE HACER. Las horas por defecto se agregaron
+    // después de que ya había días declarados, y hay gente marcada presente sin ninguna hora: si
+    // este camino saliera antes de mirarlas, volver a tocar Guardar no las cargaría nunca. El plan
+    // de horas es idempotente —quien ya tiene horas no recibe nada—, así que pasar por acá es
+    // seguro.
+    const soloHoras = await aplicarHorasPorDefecto(supabase, obraId, fecha, marcas as MarcaPresencia[])
+    const yaEstaba = `Ya estaba guardado: ${acusePresencia(resumenPresencia(marcas as MarcaPresencia[], marcas.length))}.`
+    if (soloHoras.escribio) {
+      revalidatePath('/campo/asistencia')
+      revalidatePath('/administracion/personas')
+    }
     return {
       ok: true,
-      mensaje: `Ya estaba guardado: ${acusePresencia(resumenPresencia(marcas as MarcaPresencia[], marcas.length))}.`,
+      mensaje: [yaEstaba, soloHoras.mensaje].filter(Boolean).join(' '),
       guardadas: mezclar(guardadas, marcas as MarcaPresencia[]),
     }
   }
@@ -120,13 +147,83 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
     return { ok: false, error: 'La base no guardó ninguna marca. Puede ser un permiso: probá recargar.' }
   }
 
+  // LAS HORAS DESPUÉS DE LA PRESENCIA, Y SOBRE TODAS LAS MARCAS —no sólo sobre las que cambiaron—:
+  // una persona ya declarada presente que todavía no tiene horas las tiene que recibir igual.
+  const horas = await aplicarHorasPorDefecto(supabase, obraId, fecha, marcas as MarcaPresencia[])
+
   revalidatePath('/campo/asistencia')
   revalidatePath('/administracion/personas')
   revalidatePath('/administracion/personas/en-obra')
+  if (horas.escribio) revalidatePath('/administracion/asistencia')
 
   const resumen = resumenPresencia(marcas as MarcaPresencia[], marcas.length)
-  return { ok: true, mensaje: acusePresencia(resumen), guardadas: mezclar(guardadas, marcas as MarcaPresencia[]) }
+  const mensaje = [acusePresencia(resumen), horas.mensaje].filter(Boolean).join(' · ')
+  return { ok: true, mensaje, guardadas: mezclar(guardadas, marcas as MarcaPresencia[]) }
 }
+
+/**
+ * LA JORNADA POR DEFECTO CONTRA LA BASE. Devuelve qué decir, nunca un throw: la presencia ya está
+ * guardada cuando esto corre.
+ *
+ * ═══ LA LECTURA ES POR PERSONA Y DÍA, SIN OBRA ═══
+ *
+ * `hh_select_por_obra` deja ver a Administración —y el jefe de obra lo es desde el 19/08— todas las
+ * filas, así que la consulta ve de verdad las horas cargadas en OTRA obra. Si algún día esa policy
+ * se acota por obra, este guardián se vuelve ciego y el mismo día se cargaría dos veces: el día que
+ * se toque `hh_select_por_obra`, hay que volver acá.
+ */
+async function aplicarHorasPorDefecto(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  obraId: string, fecha: string, marcas: readonly MarcaPresencia[],
+): Promise<{ mensaje: string | null; escribio: boolean }> {
+  const personaIds = marcas.map((m) => m.persona_id)
+  const existentes = await supabase
+    .from('registros_hh').select('id, persona_id, tipo_hora, fuente_legacy')
+    .eq('fecha', fecha).in('persona_id', personaIds)
+  if (existentes.error) return { mensaje: noSePudo(existentes.error.message), escribio: false }
+
+  const plan = planDeHorasPorDefecto({
+    presencias: marcas,
+    horasExistentes: (existentes.data ?? []) as HoraDelDia[],
+    fecha,
+    obra: obraId,
+  })
+
+  let insertadas = 0
+  if (plan.insertar.length > 0) {
+    const { data, error } = await supabase.from('registros_hh').insert(plan.insertar.map((h) => ({
+      ...h,
+      // La semana la deriva el trigger `registros_hh_normalizar`; se manda igual porque la columna
+      // es `not null`. Mismo motivo y misma forma que en `jornadaPorObraActions`.
+      fecha_inicio_semana: fecha,
+      // SIN ACTIVIDAD: esta fila no imputa al plan de obra. Es lo que deja que `esDeLaJornada` la
+      // distinga de una hora cargada contra una tarea.
+      actividad_id: null,
+    }))).select('id')
+    if (error) return { mensaje: noSePudo(error.message), escribio: false }
+    insertadas = (data ?? []).length
+  }
+
+  let borradas = 0
+  if (plan.borrar.length > 0) {
+    // EL `eq('fuente_legacy', …)` ES LA SEGUNDA CERRADURA. Entre la lectura y este borrado alguien
+    // pudo editar esa fila en la planilla —y editarla le cambia el origen—: sin este filtro, este
+    // camino borraría una corrección hecha por una persona diez segundos antes.
+    const { data, error } = await supabase.from('registros_hh').delete()
+      .in('id', plan.borrar).eq('fuente_legacy', FUENTE_HORAS_POR_DEFECTO).select('id')
+    if (error) return { mensaje: noSePudo(error.message), escribio: insertadas > 0 }
+    borradas = (data ?? []).length
+  }
+
+  return {
+    mensaje: acuseDeHorasPorDefecto({ insertadas, borradas, conflictos: plan.conflictos.length }),
+    escribio: insertadas > 0 || borradas > 0,
+  }
+}
+
+/** El fallo de las horas se dice entero y sin disfrazar de éxito: la presencia quedó, las horas no. */
+const noSePudo = (error: string): string =>
+  `La presencia quedó guardada, pero las horas por defecto no se pudieron cargar (${error}). Cargalas en Asistencia.`
 
 /** Lo guardado después de este toque: lo que había, con lo recién escrito encima. Vuelve a la
  *  pantalla para que la carga de horas sepa a quién ofrecerle la jornada SIN otra consulta. */
