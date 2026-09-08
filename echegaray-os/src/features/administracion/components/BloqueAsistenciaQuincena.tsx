@@ -9,7 +9,7 @@ import {
 } from '../services/quincena'
 import { getQuincenaPorObra } from '../services/jornadaPorObraService'
 import {
-  armarQuincenaPorObra, diasSinMarcar, personasPorObra, totalDeLaQuincenaPorObra, totalesPorDia,
+  armarQuincenaPorObra, diasSinMarcar, personasPorObra, totalDeLaQuincena, totalesPorDia,
 } from '../services/quincenaPorObra'
 import { GrillaAsistenciaObra } from './GrillaAsistenciaObra'
 
@@ -64,10 +64,15 @@ export async function BloqueAsistenciaQuincena({ quincenaPedida, hoy, q, hrefDe,
   // falsos por período. Un sábado TRABAJADO se sigue viendo: lo declarado manda sobre el almanaque.
   const noLaborables = noLaborablesDe(dias, datos.data.noLaborables)
   const todas = armarQuincenaPorObra({ ...datos.data, noLaborables, dias, hoy })
+  // UNA FILA POR PERSONA: si dos filas comparten `clave`, la grilla está duplicando gente. Es la
+  // afirmación que el dueño rechazó en producción, y acá cuesta una línea comprobarla.
+  if (new Set(todas.map((f) => f.clave)).size !== todas.length) {
+    throw new Error('La grilla armó dos filas para la misma persona.')
+  }
   // EL TEXTO FILTRA DESPUÉS DE ARMAR LA GRILLA, nunca antes. Filtrar los registros crudos sacaría a
   // una persona de las celdas de sus propios compañeros y un día marcado pasaría a «sin marcar».
   const filas = q?.trim()
-    ? todas.filter((f) => contieneEnAlguno([f.persona.nombre, f.obra.nombre, f.persona.nota], q))
+    ? todas.filter((f) => contieneEnAlguno([f.persona.nombre, f.rotuloObra, f.persona.nota], q))
     : todas
   // LOS CHIPS, LOS TOTALES Y EL RECLAMO SON DE LA QUINCENA ENTERA, no de lo que sobrevive al
   // buscador: un total que cambia al escribir deja de ser el total de la quincena.
@@ -89,11 +94,11 @@ export async function BloqueAsistenciaQuincena({ quincenaPedida, hoy, q, hrefDe,
           {rotuloQuincena(quincena)}
         </span>
         {chips.map((c) => (
-          <span key={c.obra_id} data-testid="chip-obra" style={{
+          <span key={c.rotulo} data-testid="chip-obra" style={{
             fontSize: '12px', color: V.apagado, border: `1px solid ${V.linea}`,
             borderRadius: 999, padding: '2px 9px',
           }}>
-            {c.nombre} <span style={{ color: V.tenue }}>{c.personas}</span>
+            {c.rotulo} <span style={{ color: V.tenue }}>{c.personas}</span>
           </span>
         ))}
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'baseline' }}>
@@ -122,7 +127,7 @@ export async function BloqueAsistenciaQuincena({ quincenaPedida, hoy, q, hrefDe,
           titulos={dias.map(nombreDia)}
           columnasTenues={dias.map((d) => tenues.has(d))}
           totalesDia={totales}
-          total={totalDeLaQuincenaPorObra(todas)}
+          total={totalDeLaQuincena(todas)}
           jornadaPorObra={jornadaPorObra}
           obras={obras.map((o) => ({ id: o.id, nombre: o.nombre }))}
           puedeCorregir={puedeCorregir}

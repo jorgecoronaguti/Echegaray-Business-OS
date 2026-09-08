@@ -7,7 +7,7 @@ import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import { corregirJornada } from '../services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '../services/motivoDeAusencia'
-import type { CeldaObra, FilaQuincenaObra } from '../services/quincenaPorObra'
+import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 
 // EL ADMINISTRADOR CORRIGE TODO — el día de una persona: su obra, sus horas, si no vino, o sacarlo.
 //
@@ -42,23 +42,30 @@ export interface ObraElegible {
   nombre: string
 }
 
-export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, alCerrar }: {
-  fila: FilaQuincenaObra
+export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPorObra, alCerrar }: {
+  fila: FilaQuincena
   dias: string[]
   etiquetas: string[]
   obras: ObraElegible[]
-  /** La jornada pactada de la obra elegida. Es lo que vale una ausencia. */
-  jornada: number
+  /** `obra_canonica.jornada_horas` por obra. Es lo que vale una ausencia en la obra elegida. */
+  jornadaPorObra: Record<string, number>
   alCerrar: () => void
 }) {
   const primero = fila.celdas.find((c) => c.estado === 'horas' || c.estado === 'ausente') ?? fila.celdas[0]
   const [fecha, setFecha] = useState(primero?.fecha ?? dias[0])
   const celda = fila.celdas.find((c) => c.fecha === fecha) ?? null
-  const cargado = celda?.estado === 'horas' || celda?.estado === 'ausente'
+  const tramos = celda?.tramos ?? []
+  // DE QUÉ OBRA SON LAS HORAS QUE SE ESTÁN CORRIGIENDO. Con la fila por persona, un día puede tener
+  // dos tramos: sin elegir cuál, «Sacar lo cargado» borraría el que el código eligió primero.
+  const [origen, setOrigen] = useState<string | null>(tramos[0]?.obra_id ?? null)
+  const tramo = tramos.find((t) => t.obra_id === origen) ?? tramos[0] ?? null
+  const cargado = tramo !== null
 
-  const [obraDestino, setObraDestino] = useState(fila.obra.id)
-  const [estado, setEstado] = useState<Estado>(celda?.estado === 'ausente' ? 'ausente' : 'presente')
-  const [texto, setTexto] = useState(celda?.horas !== null && celda?.horas !== undefined ? hs(celda.horas) : '')
+  const [obraDestino, setObraDestino] = useState(
+    tramos[0]?.obra_id ?? fila.obraPorDefecto?.id ?? obras[0]?.id ?? '')
+  const jornada = jornadaPorObra[obraDestino] ?? 0
+  const [estado, setEstado] = useState<Estado>(tramos[0]?.ausente ? 'ausente' : 'presente')
+  const [texto, setTexto] = useState(tramos[0]?.horas != null ? hs(tramos[0].horas) : '')
   const [asignar, setAsignar] = useState(false)
   const [pedirAsignacion, setPedirAsignacion] = useState(false)
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null)
@@ -71,12 +78,25 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
   // guardar escribiría en el jueves las horas que se estaban viendo del lunes.
   const elegirDia = (f: string) => {
     const c = fila.celdas.find((x) => x.fecha === f) ?? null
+    const t = c?.tramos[0] ?? null
     setFecha(f)
-    setEstado(c?.estado === 'ausente' ? 'ausente' : 'presente')
-    setTexto(c?.horas !== null && c?.horas !== undefined ? hs(c.horas) : '')
+    setOrigen(t?.obra_id ?? null)
+    setObraDestino(t?.obra_id ?? fila.obraPorDefecto?.id ?? obras[0]?.id ?? '')
+    setEstado(t?.ausente ? 'ausente' : 'presente')
+    setTexto(t?.horas != null ? hs(t.horas) : '')
     setAviso(null)
     setPedirAsignacion(false)
     setAsignar(false)
+  }
+
+  /** Cambiar de tramo rellena el formulario con lo de ESE tramo, igual que cambiar de día. */
+  const elegirOrigen = (obraId: string) => {
+    const t = tramos.find((x) => x.obra_id === obraId) ?? null
+    setOrigen(obraId)
+    setObraDestino(obraId)
+    setEstado(t?.ausente ? 'ausente' : 'presente')
+    setTexto(t?.horas != null ? hs(t.horas) : '')
+    setAviso(null)
   }
 
   const { horas, error } = leerHoras(texto)
@@ -90,7 +110,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
         fecha,
         // ORIGEN: de dónde salen HOY las horas. `null` cuando el día no tiene nada cargado — sin
         // origen no hay movimiento, y un borrado sin origen barrería filas de otras obras.
-        obra_origen: cargado ? fila.obra.id : null,
+        obra_origen: tramo?.obra_id ?? null,
         obra_destino: obraDestino,
         estado,
         horas: estado === 'ausente' ? (jornada > 0 ? jornada : 1) : horas,
@@ -117,7 +137,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
     <Drawer
       testid="panel-correccion"
       titulo={fila.persona.nombre}
-      subtitulo={`Corregir un día · hoy figura en ${fila.obra.nombre}`}
+      subtitulo={`Corregir un día · ${fila.rotuloObra}`}
       onCerrar={alCerrar}
       pie={
         <Boton type="button" variante="primaria" onClick={guardar}
@@ -136,7 +156,20 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
           </select>
         </Campo>
 
-        <Campo rotulo="Obra" ayuda="Cambiarla mueve el día entero a la obra elegida.">
+        {tramos.length > 0 && (
+          <Campo rotulo="Qué hora de ese día" ayuda="El día está repartido en más de una obra: se corrige de a una.">
+            <select value={origen ?? ''} onChange={(e) => elegirOrigen(e.target.value)}
+              className={CAMPO} data-testid="correccion-origen">
+              {tramos.map((t) => (
+                <option key={t.obra_id} value={t.obra_id}>
+                  {t.nombre} · {t.ausente ? 'no vino' : `${hs(t.horas ?? 0)} hs`}
+                </option>
+              ))}
+            </select>
+          </Campo>
+        )}
+
+        <Campo rotulo="Obra" ayuda="Cambiarla mueve esas horas a la obra elegida.">
           <select value={obraDestino} onChange={(e) => { setObraDestino(e.target.value); setPedirAsignacion(false) }}
             className={CAMPO} data-testid="correccion-obra">
             {obras.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
@@ -201,11 +234,11 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
  *  sobre qué se está por escribir. */
 function marcaDe(c: CeldaObra | undefined): string {
   if (!c) return ''
+  if (c.tramos.length > 1) return ` · ${c.tramos.length} obras · ${hs(c.horas ?? 0)} hs`
   if (c.estado === 'horas') return ` · ${hs(c.horas ?? 0)} hs`
   if (c.estado === 'ausente') return ' · no vino'
   // «no laborable» y no «feriado»: desde que la grilla es por quincena, este estado también lo
   // tienen los sábados y los domingos, que no son feriados de nadie.
   if (c.estado === 'no_laborable') return ' · no laborable'
-  if (c.estado === 'otra_obra') return ' · está en otra obra'
   return ' · sin cargar'
 }

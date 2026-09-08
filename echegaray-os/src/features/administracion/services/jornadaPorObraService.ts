@@ -13,7 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAsignaciones } from '../../obras/services/personalService.ts'
 import type { FilaJornada } from './jornadaPorObra.ts'
 import { armarJornada } from './jornadaPorObra.ts'
-import type { AsignacionQuincena, RegistroQuincena } from './quincenaPorObra.ts'
+import type { AsignacionQuincena, ObraRotulo, RegistroQuincena } from './quincenaPorObra.ts'
 
 export interface ObraDeLaJornada {
   id: string
@@ -144,6 +144,8 @@ export interface DatosQuincenaPorObra {
   asignaciones: AsignacionQuincena[]
   registros: RegistroQuincena[]
   noLaborables: string[]
+  /** El catálogo por id: nombre real y cliente. Es lo que evita que la pantalla escriba un slug. */
+  obras: Record<string, ObraRotulo>
   /** Las obras en estado `activa`. Sólo esas se pueden marcar y sólo esas se reclaman. */
   obrasActivas: string[]
 }
@@ -167,15 +169,23 @@ export async function getQuincenaPorObra(
       .select('persona_id, obra_canonica_id, fecha, horas, tipo_hora')
       .gte('fecha', desde).lte('fecha', hasta)
       .not('persona_id', 'is', null).not('obra_canonica_id', 'is', null),
-    supabase.from('obra_canonica').select('id, nombre, estado'),
+    supabase.from('obra_canonica').select('id, nombre, estado, cliente_texto'),
     getNoLaborables(supabase, desde, hasta),
   ])
   if (asignaciones.error) return { data: null, error: asignaciones.error }
   if (registros.error) return { data: null, error: registros.error.message }
   if (obras.error) return { data: null, error: obras.error.message }
 
-  const catalogo = (obras.data ?? []) as { id: string; nombre: string; estado: string | null }[]
-  const nombreDeObra = new Map(catalogo.map((o) => [o.id, o.nombre]))
+  const catalogo = (obras.data ?? []) as {
+    id: string; nombre: string; estado: string | null; cliente_texto: string | null
+  }[]
+  // EL RÓTULO SALE DE LA BASE, NO DEL ID. `cliente_texto` es el nombre del cliente tal como está
+  // cargado en `obra_canonica`; es lo que la columna OBRA muestra cuando la persona no tiene
+  // ninguna obra activa. Sin este viaje la pantalla no tendría con qué escribir «San Francisco» y
+  // caería en `sf-mamposteria`, que es lo que el dueño rechazó.
+  const rotulos: Record<string, ObraRotulo> = Object.fromEntries(catalogo.map((o) => [o.id, {
+    id: o.id, nombre: o.nombre, cliente: (o.cliente_texto ?? '').trim() || null,
+  }]))
   // SÓLO LAS ACTIVAS SE PUEDEN MARCAR. Una obra cerrada aparecía en la grilla con sus celdas
   // editables y sus días sin marcar sumando al «1 día sin marcar»: la pantalla reclamaba cargar
   // horas de una obra que ya nadie mira, y aceptaba escribirlas.
@@ -194,7 +204,6 @@ export async function getQuincenaPorObra(
           nombre: a.persona_nombre as string,
           nota: notaDe(a),
           obra_id: a.obra_id,
-          obra: nombreDeObra.get(a.obra_id) ?? a.obra_id,
         })),
       registros: ((registros.data ?? []) as {
         persona_id: string; obra_canonica_id: string; fecha: string; horas: number | string; tipo_hora: string
@@ -206,6 +215,7 @@ export async function getQuincenaPorObra(
         tipo_hora: r.tipo_hora,
       })),
       noLaborables,
+      obras: rotulos,
       // Las obras que se pueden marcar. Lo que quedó fuera sigue mostrando sus horas —existen— pero
       // no se reclama ni se ofrece editar.
       obrasActivas: [...activas],

@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
-import type { CeldaObra, FilaQuincenaObra } from '../services/quincenaPorObra'
+import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 import { guardarJornada } from '../services/jornadaPorObraActions'
 import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJornada'
 
@@ -27,6 +27,13 @@ import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJorn
 //
 // Una celda vacía se deja vacía: salir de ella sin escribir nada no guarda nada. Sólo un número
 // escribe, y sólo esa celda.
+//
+// ═══ UN DÍA REPARTIDO EN DOS OBRAS NO SE EDITA EN LA CELDA ═══
+//
+// La fila es la persona y la celda es la SUMA del día. Cuando ese día tiene dos obras, escribir un
+// número obligaría a elegir a cuál de las dos se le imputa —y elegirla en silencio mueve el costo
+// de mano de obra de una obra a otra sin que nadie lo decida—. Esas celdas muestran el total con un
+// punto al lado y se corrigen desde el panel, que enseña el desglose antes de tocar nada.
 
 const ROJO = '#B42318'
 
@@ -40,7 +47,6 @@ function textoDe(c: CeldaObra): string {
 function vacioDe(estado: CeldaObra['estado']): { texto: string; color: string; punteada: boolean } {
   if (estado === 'no_laborable') return { texto: '—', color: V.inerte, punteada: false }
   if (estado === 'sin_dato') return { texto: '—', color: V.inerte, punteada: false }
-  if (estado === 'otra_obra') return { texto: '·', color: V.inerte, punteada: false }
   if (estado === 'futuro') return { texto: '', color: V.inerte, punteada: false }
   return { texto: '', color: ROJO, punteada: true }
 }
@@ -49,7 +55,7 @@ export function GrillaAsistenciaObra({
   filas, dias, etiquetas, titulos, columnasTenues, totalesDia, total, jornadaPorObra, obras,
   puedeCorregir,
 }: {
-  filas: FilaQuincenaObra[]
+  filas: FilaQuincena[]
   dias: string[]
   /** `L 1`, `M 2`… Una por día de la quincena. */
   etiquetas: string[]
@@ -58,7 +64,8 @@ export function GrillaAsistenciaObra({
   /** Fin de semana o feriado. Es del día, no de la persona: la columna entera se apaga. */
   columnasTenues: boolean[]
   totalesDia: (number | null)[]
-  total: number
+  /** `null` cuando nadie declaró una hora. Un `0` afirmaría que la empresa trabajó cero. */
+  total: number | null
   jornadaPorObra: Record<string, number>
   /** Las obras a las que se puede mover un día. Vienen del servidor con el RLS ya aplicado. */
   obras: ObraElegible[]
@@ -69,22 +76,33 @@ export function GrillaAsistenciaObra({
   const [borradores, setBorradores] = useState<Record<string, string>>({})
   const [errores, setErrores] = useState<Record<string, string>>({})
   const [corrigiendo, setCorrigiendo] = useState<string | null>(null)
+  const [copia, setCopia] = useState<FilaQuincena | null>(null)
   const [, arrancar] = useTransition()
 
-  const claveDe = (fila: FilaQuincenaObra, fecha: string) => `${fila.clave}·${fecha}`
+  const claveDe = (fila: FilaQuincena, fecha: string) => `${fila.clave}·${fecha}`
 
-  const guardar = (fila: FilaQuincenaObra, celda: CeldaObra, bruto: string) => {
+  const guardar = (fila: FilaQuincena, celda: CeldaObra, bruto: string) => {
     const k = claveDe(fila, celda.fecha)
     const original = textoDe(celda)
     if (bruto.trim() === original.trim()) return
+    // A QUÉ OBRA SE IMPUTA. La del tramo que ya existe ese día si hay uno solo —corregir no cambia
+    // de obra—, y si no la obra activa de la persona. Sin ninguna de las dos no hay destino y no se
+    // escribe: elegir una sería mover el costo de mano de obra sin que nadie lo decida.
+    const destino = celda.tramos.length === 1
+      ? { id: celda.tramos[0].obra_id, nombre: celda.tramos[0].nombre }
+      : fila.obraPorDefecto
+    if (!destino) {
+      setErrores((e) => ({ ...e, [k]: 'Esa persona no tiene obra activa: la corrección se hace desde el panel' }))
+      return
+    }
     const letra = bruto.trim().toUpperCase()
     if (letra === 'A') {
-      const jornada = jornadaPorObra[fila.obra.id] ?? 0
+      const jornada = jornadaPorObra[destino.id] ?? 0
       if (jornada <= 0) {
         setErrores((e) => ({ ...e, [k]: 'Esa obra no tiene jornada pactada: la ausencia no se puede medir' }))
         return
       }
-      enviar(fila, celda.fecha, { persona_id: fila.persona.id, estado: 'ausente', horas: jornada }, k)
+      enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'ausente', horas: jornada }, k)
       return
     }
     const { horas, error } = leerHoras(bruto)
@@ -92,27 +110,44 @@ export function GrillaAsistenciaObra({
     // En blanco NO borra: dejar de escribir no es una decisión de nadie. Borrar una jornada
     // cargada es un acto y necesita su propia puerta, que esta pantalla todavía no tiene.
     if (horas === null) { setBorradores((b) => ({ ...b, [k]: original })); return }
-    enviar(fila, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas }, k)
+    enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas }, k)
   }
 
   const enviar = (
-    fila: FilaQuincenaObra,
+    obraId: string,
     fecha: string,
     marca: { persona_id: string; estado: 'presente' | 'ausente'; horas: number },
     k: string,
   ) => {
     setErrores((e) => { const n = { ...e }; delete n[k]; return n })
     arrancar(async () => {
-      const r = await guardarJornada({ obra_id: fila.obra.id, fecha, marcas: [marca] })
+      const r = await guardarJornada({ obra_id: obraId, fecha, marcas: [marca] })
       if (!r.ok) setErrores((e) => ({ ...e, [k]: r.error }))
     })
   }
 
-  const abierta = puedeCorregir ? (filas.find((f) => f.clave === corrigiendo) ?? null) : null
+  // ═══ EL PANEL NO SE DESMONTA CUANDO LA FILA DESAPARECE ═══
+  //
+  // «Sacar lo cargado» sobre alguien sin asignación vigente lo saca de `filas`: la persona ya no
+  // tiene ni asignación ni registros, así que la grilla deja de dibujarla. Con el panel atado sólo
+  // a `filas`, `abierta` pasaba a `null`, React lo desmontaba y se llevaba el acuse de la escritura
+  // que acababa de ocurrir. El usuario ve desaparecer el panel y no sabe si guardó.
+  // La copia se toma AL ABRIR, en el propio clic. Mientras la fila siga existiendo manda la viva
+  // —el panel ve el dato recién releído—; la copia sólo entra cuando la fila desapareció, y ahí lo
+  // que muestra es su último estado conocido, que es todo lo que queda de ella. Un efecto que
+  // sincronizara la copia en cada render encadenaría renders por nada.
+  const viva = puedeCorregir ? (filas.find((f) => f.clave === corrigiendo) ?? null) : null
+  const abierta = corrigiendo === null
+    ? null
+    : (viva ?? (copia?.clave === corrigiendo ? copia : null))
 
   return (
     <>
-    <div style={{ overflowX: 'auto' }}>
+    {/* EL PANEL NO TAPA LA COLUMNA HORAS. Con el drawer abierto la grilla se reserva su ancho a la
+        derecha desde 1024px: las quince columnas y el total siguen a la vista mientras se corrige,
+        que es justo lo que hay que mirar. Abajo de 1024 el panel va entero encima — no hay ancho
+        para dos zonas y reservar 400px dejaría la tabla en 0. */}
+    <div className={abierta ? 'lg:pr-[400px]' : undefined} style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }} data-testid="grilla-asistencia">
         <thead>
           <tr style={{ borderBottom: `1px solid ${V.lineaFuerte}` }}>
@@ -129,18 +164,22 @@ export function GrillaAsistenciaObra({
           {filas.map((fila) => (
             <tr key={fila.clave} style={{ borderBottom: `1px solid ${V.lineaFila}` }} data-testid="fila-quincena">
               <td style={{ padding: '7px 8px 7px 0', verticalAlign: 'top' }}>
-                <span style={{ color: fila.repetida ? V.apagado : V.tinta }}>{fila.persona.nombre}</span>
-                <span style={{ display: 'block', fontSize: '11.5px', color: fila.repetida ? V.tenue : V.apagado }}>
-                  {fila.repetida ? 'la misma persona, la otra obra' : (fila.persona.nota ?? '')}
+                <span style={{ color: V.tinta }}>{fila.persona.nombre}</span>
+                <span style={{ display: 'block', fontSize: '11.5px', color: V.apagado }}>
+                  {fila.persona.nota ?? ''}
                 </span>
               </td>
-              <td style={{ padding: '7px 8px', color: V.apagado, verticalAlign: 'top' }}>{fila.obra.nombre}</td>
+              <td data-testid="celda-obra" style={{ padding: '7px 8px', color: V.apagado, verticalAlign: 'top' }}>
+                {fila.rotuloObra}
+              </td>
 
               {fila.celdas.map((celda, i) => {
                 const k = claveDe(fila, celda.fecha)
                 const valor = borradores[k] ?? textoDe(celda)
                 const hueco = vacioDe(celda.estado)
+                const repartido = celda.tramos.length > 1
                 const editable = celda.estado !== 'no_laborable' && celda.estado !== 'futuro'
+                  && !repartido && (fila.obraPorDefecto !== null || celda.tramos.length === 1)
                 return (
                   <td key={celda.fecha} style={{
                     padding: '4px 2px', textAlign: 'center', verticalAlign: 'top',
@@ -148,7 +187,7 @@ export function GrillaAsistenciaObra({
                   }}>
                     {editable ? (
                       <input
-                        aria-label={`${fila.persona.nombre} · ${fila.obra.nombre} · ${celda.fecha}`}
+                        aria-label={`${fila.persona.nombre} · ${fila.rotuloObra} · ${celda.fecha}`}
                         data-testid="celda-hora"
                         data-estado={celda.estado}
                         value={valor}
@@ -166,7 +205,20 @@ export function GrillaAsistenciaObra({
                         }}
                       />
                     ) : (
-                      <span style={{ color: hueco.color }}>{hueco.texto}</span>
+                      <span
+                        data-testid="celda-fija"
+                        data-estado={celda.estado}
+                        title={repartido ? celda.tramos.map((t) => `${t.nombre}: ${t.horas === null ? 'no vino' : `${hs(t.horas)} hs`}`).join(' · ') : undefined}
+                        style={{ color: celda.estado === 'horas' ? V.tinta : hueco.color }}
+                      >
+                        {celda.estado === 'horas' ? hs(celda.horas ?? 0) : hueco.texto}
+                      </span>
+                    )}
+                    {repartido && (
+                      <span data-testid="celda-repartida" title={`${celda.tramos.length} obras ese día`}
+                        style={{ display: 'block', fontSize: '9px', color: V.tenue, lineHeight: 1 }}>
+                        ●
+                      </span>
                     )}
                     {errores[k] && (
                       <span style={{ display: 'block', fontSize: '10.5px', color: ROJO, maxWidth: 90 }}>
@@ -190,7 +242,10 @@ export function GrillaAsistenciaObra({
                   <button
                     type="button"
                     data-testid="abrir-correccion"
-                    onClick={() => setCorrigiendo(corrigiendo === fila.clave ? null : fila.clave)}
+                    onClick={() => {
+                      setCopia(fila)
+                      setCorrigiendo(corrigiendo === fila.clave ? null : fila.clave)
+                    }}
                     style={{ fontSize: '11.5px', color: corrigiendo === fila.clave ? V.tinta : V.apagado }}
                   >
                     corregir
@@ -211,8 +266,11 @@ export function GrillaAsistenciaObra({
                 {t === null ? '—' : hs(t)}
               </td>
             ))}
-            <td style={{ padding: '8px 0 8px 8px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-              {hs(total)}
+            <td data-testid="total-quincena-valor" style={{
+              padding: '8px 0 8px 8px', textAlign: 'right', fontWeight: 600,
+              fontVariantNumeric: 'tabular-nums', color: total === null ? V.inerte : V.tinta,
+            }}>
+              {total === null ? '—' : hs(total)}
             </td>
             {puedeCorregir && <td />}
           </tr>
@@ -229,7 +287,7 @@ export function GrillaAsistenciaObra({
         dias={dias}
         etiquetas={etiquetas}
         obras={obras}
-        jornada={jornadaPorObra[abierta.obra.id] ?? 0}
+        jornadaPorObra={jornadaPorObra}
         alCerrar={() => setCorrigiendo(null)}
       />
     )}
