@@ -104,8 +104,15 @@ export function GrillaAsistenciaObra({
   const [cambiando, setCambiando] = useState<string | null>(null)
   const [, arrancar] = useTransition()
 
+  // LO QUE EL DESPLEGABLE MUESTRA SELECCIONADO. La obra a la que se le imputa lo que se escriba si
+  // se le puede imputar; si su asignación vigente está en una obra que ya no admite horas, ESA obra
+  // —en una opción deshabilitada—, porque es la verdad de la base. Nunca la primera activa de la
+  // lista: eso es lo que le ponía «SF - PISOS INDUSTRIALES» a quien estaba en MAMPOSTERÍA.
+  const seleccionada = (fila: FilaQuincena) =>
+    fila.obraPorDefecto?.id ?? fila.obraVigenteNoElegible?.id ?? ''
+
   const cambiarObra = (fila: FilaQuincena, valor: string) => {
-    if ((fila.obraPorDefecto?.id ?? '') === valor) return
+    if (seleccionada(fila) === valor) return
     setCambiando(fila.clave)
     setAcuses((a) => { const n = { ...a }; delete n[fila.clave]; return n })
     arrancar(async () => {
@@ -253,7 +260,7 @@ export function GrillaAsistenciaObra({
                   <select
                     data-testid="select-obra-actual"
                     aria-label={`Obra actual de ${fila.persona.nombre}`}
-                    value={fila.obraPorDefecto?.id ?? ''}
+                    value={seleccionada(fila)}
                     disabled={cambiando === fila.clave}
                     onChange={(e) => cambiarObra(fila, e.target.value)}
                     style={{
@@ -263,6 +270,14 @@ export function GrillaAsistenciaObra({
                     }}
                   >
                     <option value="">Sin obra</option>
+                    {/* SU OBRA VIGENTE, QUE YA NO ADMITE HORAS. Deshabilitada: no se puede dejar a
+                        alguien ahí, pero mostrar otra sería decir que está donde no está. El texto
+                        pide explícitamente la decisión que falta. */}
+                    {fila.obraVigenteNoElegible && (
+                      <option value={fila.obraVigenteNoElegible.id} disabled>
+                        {fila.rotuloObra} — elegí la obra actual
+                      </option>
+                    )}
                     {obras.map((o) => (
                       <option key={o.id} value={o.id}>{o.nombre}</option>
                     ))}
@@ -273,7 +288,8 @@ export function GrillaAsistenciaObra({
                 {/* SIN ASIGNACIÓN PERO CON HORAS. El desplegable dice «Sin obra» —que es la verdad
                     de la asignación—, y esta línea dice dónde están sus horas, que es el otro dato
                     real y el que explica por qué la persona aparece en la grilla. */}
-                {puedeCambiarObra && !fila.obraPorDefecto && fila.rotuloObra !== SIN_OBRA && (
+                {puedeCambiarObra && !fila.obraPorDefecto && !fila.obraVigenteNoElegible
+                  && fila.rotuloObra !== SIN_OBRA && (
                   <span style={{ display: 'block', fontSize: '11px', color: V.tenue, marginTop: 2 }}>
                     horas en {fila.rotuloObra}
                   </span>
