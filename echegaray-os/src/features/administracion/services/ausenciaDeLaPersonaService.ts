@@ -11,9 +11,11 @@
 // registra SIN obra; lo único que se sigue buscando de una obra es cuánto vale la jornada.
 
 import type { createClient } from '@/lib/supabase/server'
-import { tipoDeMotivo } from './motivoDeAusencia'
-import { traducirEscritura } from './planDeJornada'
-import type { FilaDelDia, PlanSinObra } from './ausenciaDeLaPersona'
+import { etiquetaDeMotivo, tipoDeMotivo } from './motivoDeAusencia'
+import { jornadaPorDefecto } from './jornadaPorDefecto'
+import { planDeBorrado, traducirEscritura, type FilaExistente } from './planDeJornada'
+import { acuseDeTramo, planDeTramoDeAusencia, sumarHoras } from './ausenciaDeLaPersona'
+import type { FilaDelDia, FilaDelTramo, PlanSinObra } from './ausenciaDeLaPersona'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
@@ -149,13 +151,18 @@ export async function escribirAusenciaSinObra(
   supabase: Supabase,
   c: { persona_id: string; fecha: string; motivo: string | null },
   horas: number, idExistente: string | null,
-): Promise<{ fila: 'insertada' | 'actualizada' | null; error: string | null }> {
+  /** El `fuente_legacy` de la fila. Por defecto el de esta puerta; el tramo escribe el suyo. */
+  fuente = 'web:ausencia-de-la-persona',
+  // EL CÓDIGO CRUDO VIAJA AL LADO DEL MENSAJE. Un tramo de diez días necesita distinguir «la policy
+  // rechazó ESTE día» —que se nombra y se sigue— de un error que obliga a frenar; con el mensaje ya
+  // traducido esa distinción se haría con una expresión regular sobre texto en castellano.
+): Promise<{ fila: 'insertada' | 'actualizada' | null; error: string | null; codigo?: string }> {
   const tipo = tipoDeMotivo(c.motivo)
   if (idExistente) {
     const { data, error } = await supabase.from('registros_hh')
       .update({ horas, tipo_hora: tipo, notas: c.motivo })
       .eq('id', idExistente).is('obra_canonica_id', null).select('id')
-    if (error) return { fila: null, error: traducirSinObra(error) }
+    if (error) return { fila: null, error: traducirSinObra(error), codigo: error.code }
     return { fila: (data ?? []).length > 0 ? 'actualizada' : null, error: null }
   }
   const { data, error } = await supabase.from('registros_hh').insert({
@@ -169,9 +176,9 @@ export async function escribirAusenciaSinObra(
     horas,
     tipo_hora: tipo,
     notas: c.motivo,
-    fuente_legacy: 'web:ausencia-de-la-persona',
+    fuente_legacy: fuente,
   }).select('id')
-  if (error) return { fila: null, error: traducirSinObra(error) }
+  if (error) return { fila: null, error: traducirSinObra(error), codigo: error.code }
   return { fila: (data ?? []).length > 0 ? 'insertada' : null, error: null }
 }
 
@@ -184,4 +191,128 @@ export async function sacarAusenciasSinObra(
     .delete().is('obra_canonica_id', null).in('id', [...ids]).select('id')
   if (error) return { sacadas: 0, error: traducirSinObra(error) }
   return { sacadas: (data ?? []).length, error: null }
+}
+
+
+// ── EL TRAMO: DE UN DÍA HASTA UNA FECHA ────────────────────────────────────────────────────────
+//
+// La regla —qué días entran, cuál se corrige y qué se saca— es pura y vive en
+// `planDeTramoDeAusencia`. Acá está lo que sólo se puede hacer con la base: leer el rango, escribir
+// día por día y contar LO QUE LA BASE HIZO.
+//
+// ═══ POR QUÉ NO SE FRENA EN EL PRIMER RECHAZO DE LA POLICY ═══
+//
+// `42501` sobre una fila sin obra significa una sola cosa (`marca_ausencia_de`): el jefe sólo puede
+// declarar la ausencia de quien esté asignado A ESA FECHA a una obra que él ve. Un tramo que se
+// pasa del fin de la asignación choca en los últimos días y no en los primeros; frenar ahí dejaría
+// los días ya escritos sin nombrar y el acuse diría «no se pudo» sobre cinco días que sí entraron.
+// Se siguen, se nombran uno por uno en el acuse, y si NINGUNO entró la acción falla.
+
+/** Todo lo que esa persona tiene cargado en el rango. Una lectura que falla NO es «no tenía nada»:
+ *  escribiría una segunda ausencia encima de la que ya estaba, día por día. */
+async function filasDelRango(
+  supabase: Supabase, personaId: string, desde: string, hasta: string,
+): Promise<{ data: FilaDelRango[]; error: string | null }> {
+  const { data, error } = await supabase.from('registros_hh')
+    .select('id, persona_id, fecha, horas, tipo_hora, obra_canonica_id, actividad_id, improductiva, notas')
+    .eq('persona_id', personaId).gte('fecha', desde).lte('fecha', hasta)
+    .order('fecha', { ascending: true }).order('id', { ascending: true })
+  if (error) return { data: [], error: error.message }
+  return { data: (data ?? []) as FilaDelRango[], error: null }
+}
+
+type FilaDelRango = FilaExistente & FilaDelTramo & { obra_canonica_id: string | null }
+
+/**
+ * Asienta la ausencia o la licencia de CADA día hábil del tramo. Días futuros incluidos: de eso se
+ * trata —«si ya sé que no va a haber por X cantidad de días, ya puedo dejarlo asentado»—.
+ */
+export async function asentarTramoDeAusencia(
+  supabase: Supabase,
+  c: {
+    persona_id: string; fecha: string; hasta: string; motivo: string | null
+    /** El piso: lo que la pantalla mandó o la jornada de referencia. Sólo se usa donde la jornada
+     *  por defecto no dice nada —el sábado—, porque un día del tramo sin horas no se puede escribir
+     *  (`registros_hh` exige `horas > 0`). */
+    horas: number
+    /** Las horas TIPEADAS a mano, si difieren de la jornada por defecto de ese día. Un número que
+     *  alguien escribió gana sobre la regla general y vale para todo el tramo: es lo que distingue
+     *  una licencia de media jornada de una completa. `null` = el campo quedó como nació. */
+    horasATodoElTramo: number | null
+  },
+): Promise<{ ok: true; mensaje: string } | { ok: false; error: string }> {
+  const leidas = await filasDelRango(supabase, c.persona_id, c.fecha, c.hasta)
+  if (leidas.error) return { ok: false, error: leidas.error }
+
+  const tipo = tipoDeMotivo(c.motivo)
+  const plan = planDeTramoDeAusencia<FilaDelRango>({
+    desde: c.fecha, hasta: c.hasta, motivo: c.motivo, tipo,
+    horasDelDia: (f) => c.horasATodoElTramo ?? jornadaPorDefecto(f) ?? c.horas,
+    existentes: leidas.data,
+    sacarDeLaObra: (filas) => planDeBorrado(filas, { administraLicencias: true }),
+  })
+  if (!plan.ok) return { ok: false, error: plan.error }
+
+  let asentados = 0
+  const rechazados: string[] = []
+  const sacados: string[] = []
+  for (const d of plan.dias) {
+    if (d.sinCambio) {
+      asentados += 1
+      continue
+    }
+    const r = await escribirAusenciaSinObra(
+      supabase, { persona_id: c.persona_id, fecha: d.fecha, motivo: c.motivo }, d.horas, d.id,
+      'web:asistencia-obra',
+    )
+    // LA POLICY DE ESE DÍA: se nombra y se sigue. Cualquier otro error frena — un período cerrado o
+    // una restricción rota no se arreglan escribiendo el día siguiente.
+    if (r.error && r.codigo === '42501') {
+      rechazados.push(d.fecha)
+      continue
+    }
+    if (r.error) {
+      return {
+        ok: false,
+        error: `${r.error} Quedaron asentados ${asentados} días antes de frenar en el ${d.fecha}.`,
+      }
+    }
+    if (r.fila !== null) asentados += 1
+    // SACAR VA DESPUÉS DE ESCRIBIR, día por día. La misma regla de siempre: sin transacción, un
+    // duplicado visible le gana a una pérdida silenciosa.
+    if (d.sacar.length > 0) {
+      const { data, error } = await supabase.from('registros_hh')
+        .delete().in('id', d.sacar).select('id')
+      if (error) {
+        return {
+          ok: false,
+          error: `El ${d.fecha} quedó asentado pero NO pude sacar las horas que tenía cargadas en `
+            + `obra: ${error.message}. Ese día está contado dos veces — miralo antes de seguir.`,
+        }
+      }
+      sacados.push(...((data ?? []) as { id: string }[]).map((f) => f.id))
+    }
+  }
+  if (asentados === 0) {
+    return {
+      ok: false,
+      error: rechazados.length > 0
+        ? acuseDeTramo({ tipo, desde: c.fecha, hasta: c.hasta, asentados: 0, motivo: null,
+          horasSacadas: 0, obrasSacadas: [], rechazados })
+        : 'No se asentó ningún día: la base no devolvió ninguna fila escrita.',
+    }
+  }
+
+  return {
+    ok: true,
+    mensaje: acuseDeTramo({
+      tipo, desde: c.fecha, hasta: c.hasta, asentados,
+      motivo: etiquetaDeMotivo(c.motivo),
+      horasSacadas: sumarHoras(leidas.data, sacados),
+      obrasSacadas: await nombresDeObras(supabase, leidas.data
+        .filter((f) => sacados.includes(f.id) && f.obra_canonica_id !== null)
+        .map((f) => f.obra_canonica_id as string)),
+      rechazados,
+    }),
+  }
 }

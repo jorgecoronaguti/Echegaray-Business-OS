@@ -27,6 +27,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { jornadaPorDefecto } from './jornadaPorDefecto'
 import { tipoDeMotivo } from './motivoDeAusencia'
 import {
   acuseDe, acuseDeBorrado, avisoSinAsignacion, cambiaDeObra, correccionSchema, envioSchema, motivoDe,
@@ -40,8 +41,8 @@ import {
   planDeAusenciasSinObra, sumarHoras, type FilaDelDia, type MarcaDelDia,
 } from './ausenciaDeLaPersona'
 import {
-  escribirAusenciaSinObra, escribirAusenciasSinObra, filasSinObraDelDia, jornadaDeReferencia,
-  nombresDeObras, sacarAusenciasSinObra,
+  asentarTramoDeAusencia, escribirAusenciaSinObra, escribirAusenciasSinObra, filasSinObraDelDia,
+  jornadaDeReferencia, nombresDeObras, sacarAusenciasSinObra,
 } from './ausenciaDeLaPersonaService'
 
 export type ResultadoJornada =
@@ -378,7 +379,29 @@ async function corregirAusencia(
 ): Promise<ResultadoCorreccion> {
   const conObra = filas.filter((f) => f.obra_canonica_id !== null)
   const aSacar = planDeBorrado(conObra, { administraLicencias: true })
-  const horas = horasDeLaAusencia(c.horas, await jornadaDeReferencia(supabase, c, conObra))
+  // LA JORNADA POR DEFECTO ES DEL DÍA DE LA SEMANA (dueño, 08/09/2026): «9 hs de L a J y 8 hs los
+  // V». Le gana a `jornada_horas` de la obra, que es la jornada de un CONTRATO y no la de la
+  // persona. El sábado no tiene default y ahí sí se cae a la de referencia.
+  const porDefecto = jornadaPorDefecto(c.fecha)
+  const horas = horasDeLaAusencia(
+    c.horas, porDefecto ?? await jornadaDeReferencia(supabase, c, conObra))
+
+  // ═══ EL TRAMO: LO QUE YA SE SABE QUE VA A DURAR (dueño, 08/09/2026 16:51) ═══
+  //
+  // «Si ya sé que no va a haber por X cantidad de días, ya puedo dejarlo asentado». Las horas se
+  // resuelven UNA vez —la jornada de referencia del primer día— y valen para todo el tramo: dos
+  // resoluciones distintas darían días de la misma licencia con horas distintas.
+  if (c.hasta !== null && c.hasta !== c.fecha) {
+    const r = await asentarTramoDeAusencia(supabase, {
+      ...c, hasta: c.hasta, horas,
+      // UN NÚMERO TIPEADO A MANO VALE PARA TODO EL TRAMO; el campo sin tocar deja que cada día tome
+      // el suyo. Sin esta distinción, una licencia de media jornada se asentaría de 9 hs todos los
+      // días — o cada viernes recibiría la hora de más que la regla del dueño saca.
+      horasATodoElTramo: c.horas !== null && c.horas !== porDefecto ? c.horas : null,
+    })
+    if (r.ok) revalidar()
+    return r
+  }
   const yaSinObra = ausenciaSinObraDe(filas as unknown as FilaDelDia[])
 
   const escrita = await escribirAusenciaSinObra(
