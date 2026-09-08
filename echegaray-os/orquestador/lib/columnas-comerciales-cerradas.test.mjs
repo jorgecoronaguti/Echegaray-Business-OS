@@ -65,10 +65,20 @@ const CERRADAS = {
 const PERSONAS_ABIERTAS = [
   'id', 'nombre_completo', 'categoria', 'especialidad', 'puesto', 'fecha_ingreso', 'fecha_egreso',
   // `en_la_empresa` la necesita `persona_directorio`, que es `security_invoker`. Es operativa: si la
-  // persona sigue trabajando acá. `legajo` NO está y no tiene que estar — es el número con el que
-  // liquida JORNALES, la obra no lo usa, y la ficha lo lee por `persona_legajo`, que corre como su
-  // dueño y no depende de este grant.
+  // persona sigue trabajando acá.
   'en_la_empresa',
+  // ═══ `legajo` SE ABRIÓ POR ORDEN DEL DUEÑO (08/09/2026, migración 20260908T1530) ═══
+  //
+  // Hasta ayer esta lista decía que `legajo` «no tiene que estar»: la obra no lo usaba y la ficha lo
+  // leía por `persona_legajo`. El dueño decidió lo contrario — la lista Plantel MUESTRA el legajo—,
+  // y `20260908T1500` lo sumó a `persona_directorio`, que es `security_invoker`: sin el GRANT la
+  // vista entera contestaba «permission denied for table personas» y Plantel quedaba en blanco.
+  //
+  // ABRIRLO NO PUBLICA UN DATO SENSIBLE: es el número de orden con el que la persona figura en
+  // JORNALES, no el DNI, ni el CUIL, ni la retribución, ni el teléfono, ni la carpeta de Drive — que
+  // es lo que esta lista blanca sigue cerrando. La decisión es del dueño y está escrita en la
+  // migración, que declara su marcha atrás: `revoke select (legajo) on personas from authenticated`.
+  'legajo',
   // `es_prueba` está por la MISMA razón que `en_la_empresa` y con el mismo cuidado: la necesita
   // `persona_directorio` —que es `security_invoker`— para no publicar los registros que existen sólo
   // para probar. Sin este grant la vista entera devuelve «permission denied for table personas» y la
