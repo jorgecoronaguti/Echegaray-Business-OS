@@ -44,6 +44,10 @@ import {
   asentarTramoDeAusencia, escribirAusenciaSinObra, escribirAusenciasSinObra, filasSinObraDelDia,
   jornadaDeReferencia, nombresDeObras, sacarAusenciasSinObra,
 } from './ausenciaDeLaPersonaService'
+import { declararPresencia, retirarPresenciaPorHoras } from './presenciaDelDiaService'
+import {
+  declaracionDeCorreccion, declaracionesDeJornada, type MarcaConHoras,
+} from './presenciaPorHoras'
 
 export type ResultadoJornada =
   /** `aviso` va aparte del acuse para que la grilla lo muestre SIN mostrar «1 marca nueva» en cada
@@ -116,6 +120,13 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   const sacadas = await sacarAusenciasSinObra(supabase, fuera.borrar)
   if (sacadas.error) return { ok: false, error: sacadas.error }
 
+  // CARGAR LAS HORAS DE ALGUIEN ES DECIR QUE ESTUVO (`presenciaPorHoras.ts`). Antes de esto, el
+  // Plantel decía «sin marcar» de personas con 9 hs cargadas a mano: `asistencia_dia` sólo la
+  // escribía la pantalla móvil. Va DESPUÉS de las horas y su error no vuelve como error de la
+  // carga: las horas ya entraron y son el hecho principal.
+  const declarada = await declararPresencia(
+    supabase, declaracionesDeJornada(marcas as MarcaConHoras[], fecha, obraId))
+
   revalidar()
   const aviso = avisoSinAsignacion(await nombresDe(supabase, sinAsignar), sinAsignar.length)
   const afuera = acuseDeAusenciasDelDia({ ...escritas, ...sacadas, sinCambio: fuera.sinCambio, intactas: fuera.intactas })
@@ -125,7 +136,7 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
     ? acuseDe(r.escrito) : null
   // EL AVISO VIAJA TAMBIÉN DENTRO DEL ACUSE: `/campo/asistencia` muestra `mensaje` y nada más, y un
   // aviso que sólo lee una de las dos pantallas es un aviso que no existe en la otra.
-  const mensaje = [enLaObra, afuera, aviso].filter(Boolean).join(' ')
+  const mensaje = [enLaObra, afuera, aviso, avisoDePresencia(declarada.error)].filter(Boolean).join(' ')
   return { ok: true, mensaje, ...(aviso ? { aviso } : {}) }
 }
 
@@ -273,6 +284,13 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
     const { data, error } = await supabase.from('registros_hh').delete()
       .in('id', plan.borrar).select('id')
     if (error) return { ok: false, error: traducirEscritura(error) }
+    // SI EL DÍA QUEDÓ VACÍO, SE RETIRA LA PRESENCIA QUE PRODUJERON ESAS HORAS — y sólo ésa. Lo que
+    // el jefe declaró a mano sobrevive: sacar lo cargado no es afirmar que la persona no estuvo.
+    // Se pregunta por lo que quedó EN LA BASE, no por lo que este plan borró: la persona puede
+    // tener horas en otra obra ese mismo día.
+    const borrados = ((data ?? []) as { id: string }[]).map((f) => f.id)
+    await retirarPresenciaPorHoras(supabase, c.persona_id, c.fecha,
+      filas.some((f) => !borrados.includes(f.id)))
     revalidar()
     // EL ACUSE CUENTA LO QUE LA BASE DEVOLVIÓ. `plan.borrar.length` es la intención; `data` es el
     // efecto, y pueden diferir (otro la borró entremedio, la policy la rechazó sin error).
@@ -349,6 +367,13 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
     }
   }
 
+  // «TRABAJÓ» ES UNA DECLARACIÓN DE PRESENCIA, aunque las horas no hayan cambiado. Es el estado que
+  // Administración eligió en «Qué pasó ese día»; por eso entra como `'declarada'` y puede corregir
+  // lo que dijo la pantalla móvil.
+  const declarada = await declararPresencia(supabase, [declaracionDeCorreccion({
+    persona_id: c.persona_id, fecha: c.fecha, obra: obraDestino, estado: 'presente', motivo: null,
+  })])
+
   revalidar()
   const hecho = mueve ? 'Día movido a la obra nueva.' : `Día corregido: ${c.horas} hs.`
   // EL AVISO SÓLO SI NO SE ASIGNÓ EN EL MISMO GESTO: decir «no estaba asignada» después de haberla
@@ -357,7 +382,7 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
     ? `Esa persona no estaba asignada a ${faltaEn} el ${c.fecha}: las horas se guardaron igual. `
       + 'Para que quede asignada, marcá la casilla.'
     : null
-  return { ok: true, mensaje: aviso ? `${hecho} ${aviso}` : hecho }
+  return { ok: true, mensaje: [hecho, aviso, avisoDePresencia(declarada.error)].filter(Boolean).join(' ') }
 }
 
 /**
@@ -409,6 +434,14 @@ async function corregirAusencia(
     yaSinObra?.id ?? null)
   if (escrita.error) return { ok: false, error: escrita.error }
 
+  // LA AUSENCIA TAMBIÉN SE DECLARA EN `asistencia_dia`: hasta hoy sólo escribía `registros_hh`, así
+  // que el Plantel de un ausente seguía diciendo «sin marcar». La obra es aquella en la que se lo
+  // declaró —dato operativo—; las HORAS de la ausencia siguen sin obra, que es lo que el dueño pidió.
+  const declarada = await declararPresencia(supabase, [declaracionDeCorreccion({
+    persona_id: c.persona_id, fecha: c.fecha, obra: c.obra_origen ?? null,
+    estado: 'ausente', motivo: c.motivo,
+  })])
+
   let sacadas: string[] = []
   if (aSacar.borrar.length > 0) {
     const { data, error } = await supabase.from('registros_hh')
@@ -424,17 +457,22 @@ async function corregirAusencia(
   }
 
   revalidar()
-  return {
-    ok: true,
-    mensaje: acuseDeAusencia({
-      fila: escrita.fila,
-      horasSacadas: sumarHoras(filas as unknown as FilaDelDia[], sacadas),
-      obrasSacadas: await nombresDeObras(supabase, conObra
-        .filter((f) => sacadas.includes(f.id)).map((f) => f.obra_canonica_id as string)),
-      intactas: aSacar.intactas,
-    }),
-  }
+  const acuse = acuseDeAusencia({
+    fila: escrita.fila,
+    horasSacadas: sumarHoras(filas as unknown as FilaDelDia[], sacadas),
+    obrasSacadas: await nombresDeObras(supabase, conObra
+      .filter((f) => sacadas.includes(f.id)).map((f) => f.obra_canonica_id as string)),
+    intactas: aSacar.intactas,
+  })
+  return { ok: true, mensaje: [acuse, avisoDePresencia(declarada.error)].filter(Boolean).join(' ') }
 }
+
+/** Lo que se dice cuando las horas entraron pero la presencia no se pudo declarar. NO se convierte
+ *  en un error de la carga —las horas están escritas— pero tampoco se calla: el Plantel va a seguir
+ *  diciendo «sin marcar» y quien cargó tiene que saber por qué. */
+const avisoDePresencia = (error: string | null): string | null =>
+  error === null ? null
+    : `Ojo: las horas quedaron guardadas pero la presencia del día no se pudo declarar (${error}).`
 
 /** El nombre de la obra si la persona NO tiene asignación vigente ese día; `null` si sí la tiene. */
 async function faltaAsignacion(
