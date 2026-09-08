@@ -88,6 +88,8 @@ export interface PersonaEnDirectorio {
   categoria: string | null
   especialidad: string | null
   puesto: string | null
+  /** El número de legajo del recibo de sueldo. */
+  legajo: string | null
   fecha_ingreso: string | null
   fecha_egreso: string | null
   cuadrilla_id: string | null

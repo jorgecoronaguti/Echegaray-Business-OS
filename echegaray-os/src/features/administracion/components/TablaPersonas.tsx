@@ -17,6 +17,15 @@
 // valor más (`Ledesma, Marcos`)— pero sí para que la ausencia vaya APAGADA y no en ámbar: no saber
 // el oficio de alguien no bloquea ninguna decisión de la pantalla, a diferencia de no saber su obra.
 //
+// ═══ 08/09/2026 · PAPELES SE RETIRA; ENTRAN LEGAJO Y ALTA ═══
+//
+// Orden del dueño, textual: «quitar la columna Papeles de la sección Plantel» y «el módulo
+// asistencia en lo que respecta a plantel tiene que reflejar esas categorías, las fechas de alta y
+// el número de legajo que sale en el recibo de sueldo». Las dos columnas nuevas publican
+// `personas.legajo` y `personas.fecha_ingreso`, cargados desde el recibo de sueldo (2ª quincena
+// 08/2026) con su rastro en `notas`. La celda de papeles y su tinta se fueron con la columna; la
+// regla `rotuloDePapeles` sigue viva en `pulsoDelPlantel` para la ficha.
+//
 // ═══ DE SIETE COLUMNAS A CUATRO ═══
 //
 // PERSONA · OBRA ASIGNADA · HOY · HH DEL MES. El porte de agosto dibujaba siete —persona, oficio/
@@ -55,8 +64,8 @@ import { oracion } from '@/shared/utils/texto'
 import type { PersonaEnDirectorio } from '../types'
 import { categoriaVisible } from '../services/vocabularioPersona'
 import {
-  HOY_LABEL, estadoHoy, horasVisibles, rotuloDePapeles,
-  type EstadoDePapeles, type EstadoHoy, type MarcaDeHoy, type RotuloDePapeles,
+  HOY_LABEL, estadoHoy, horasVisibles,
+  type EstadoDePapeles, type EstadoHoy, type MarcaDeHoy,
 } from '../services/pulsoDelPlantel'
 
 /** Las tres lecturas del día, ya agrupadas por persona. Cada `disponible` en false apaga SU columna:
@@ -88,7 +97,7 @@ export interface PulsoDelPlantel {
  * pregunta que la lista contesta. El oficio se sigue leyendo en el legajo.
  */
 const COLS
-  = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_110px_90px_130px]'
+  = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_110px_90px_70px_90px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.5fr)_minmax(0,1fr)]'
 /** En «Inactivos» no hay HOY ni HH que preguntarle a quien ya no está: la baja ocupa su lugar. */
 const COLS_BAJA
@@ -144,7 +153,8 @@ export function TablaPersonas({
               <>
                 <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Hoy</RotuloCol></span>
                 <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>HH mes</RotuloCol></span>
-                <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Papeles</RotuloCol></span>
+                <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Legajo</RotuloCol></span>
+                <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Alta</RotuloCol></span>
               </>
             )}
       </div>
@@ -242,7 +252,14 @@ export function TablaPersonas({
                         : pulso.hh.has(p.id) ? horasVisibles(pulso.hh.get(p.id) ?? 0) : 'sin HH'}
                     </span>
 
-                    <CeldaPapeles pulso={pulso} personaId={p.id} />
+                    {/* LEGAJO Y ALTA SON LOS DEL RECIBO DE SUELDO. Sin legajo se dice «sin legajo»,
+                        no un guión: un guión se lee como «no aplica», y a todo UOCRA le aplica. */}
+                    <span className={`font-mono tabular-nums truncate ${SOLO_ANCHO}`} style={{ fontSize: '12px', color: p.legajo ? V.tinta : V.tenue }} data-testid="legajo-persona">
+                      {p.legajo ?? 'sin legajo'}
+                    </span>
+                    <span className={`font-mono tabular-nums truncate ${SOLO_ANCHO}`} style={{ fontSize: '11.5px', color: p.fecha_ingreso ? V.apagado : V.tenue }} data-testid="alta-persona">
+                      {fechaCorta(p.fecha_ingreso) ?? 'sin fecha de alta'}
+                    </span>
                   </>
                 )}
           </Link>
@@ -255,31 +272,6 @@ export function TablaPersonas({
         </div>
       )}
     </div>
-  )
-}
-
-/** El color de cada tono. La REGLA —qué dice la celda— vive en `rotuloDePapeles`, que se prueba
- *  sin React; acá sólo se elige la tinta, que es lo único que no se puede afirmar en un `.ts`. */
-const TINTA_PAPELES: Record<RotuloDePapeles['tono'], string> = {
-  bloquea: V.neg,
-  falta: V.tenue,
-  dato: V.apagado,
-  sin_lectura: V.lupa,
-}
-
-function CeldaPapeles({ pulso, personaId }: { pulso?: PulsoDelPlantel; personaId: string }) {
-  const r = rotuloDePapeles(pulso?.papeles.get(personaId), {
-    leidos: pulso?.papelesLeidos ?? false,
-    controlDeVencimientos: pulso?.papelesDisponible ?? false,
-  })
-  return (
-    <span
-      className={`truncate ${SOLO_ANCHO}`}
-      style={{ fontSize: '12px', color: TINTA_PAPELES[r.tono] }}
-      data-testid="papeles-persona"
-    >
-      {r.texto}
-    </span>
   )
 }
 
