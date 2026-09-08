@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { SIN_PRECIO_EN_OBRAS } from '../services/economiaObras.ts'
 
 // ═══ EL CANÓNICO «26 · CLIENTE FICHA v2», VERIFICADO CONTRA EL FUENTE ═══
 //
@@ -63,7 +64,18 @@ test('el alta de obra es la única acción amarilla y ya no vive escondida arrib
 })
 
 test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
-  assert.match(codigoPagina(), /falta: enCurso\.length \? 'sin monto cargado' : 'sin obra en curso'/)
+  // 08/09/2026: el contratado pasó a leerse de la pestaña OBRAS (`obra_economia_cartera`), así que
+  // la ausencia dejó de ser «sin monto cargado» y pasó a decir DÓNDE falta el dato. El literal se
+  // afirma por la constante y no copiado: mientras vivió escrito dos veces —acá y en el servicio—
+  // cambiarlo en un lado dejaba la otra copia sin corregir, que es como este test se puso rojo.
+  assert.match(codigoPagina(), /falta: enCurso\.length \? SIN_PRECIO_EN_OBRAS : 'sin obra en curso'/)
+  assert.ok(SIN_PRECIO_EN_OBRAS.length > 0, 'el servicio dejó de exportar la frase de la ausencia')
+  // Y NADIE LA VUELVE A ESCRIBIR A MANO: dos copias del mismo literal es cómo nace una que no
+  // recibe la corrección de la otra.
+  assert.doesNotMatch(codigoPagina(), new RegExp(`'${SIN_PRECIO_EN_OBRAS}'`))
+  assert.doesNotMatch(codigoListas(), new RegExp(`'${SIN_PRECIO_EN_OBRAS}'`))
+  // LO QUE NO PUEDE VOLVER: publicar un cero por una ausencia. La cifra sólo se dibuja con total.
+  assert.match(codigoPagina(), /valor: contratadoEnCurso\.total !== null \? money\(contratadoEnCurso\.total\) : null/)
 })
 
 test('una obra sin cronograma no tiene 0 % de avance: lo dice con palabras que ENTRAN', () => {
@@ -193,11 +205,87 @@ test('«Quitar el vínculo» aclara que el archivo sigue en Drive, al lado de la
 // Son tests estructurales a propósito: no reemplazan a una captura —no pueden—, pero impiden que la
 // separación se revierta sin que nadie se entere, que es donde este defecto se vuelve a colar.
 
-test('Obras dibuja las cinco pistas del handoff, con AVANCE en su propia columna de 90px', () => {
+// 08/09/2026 — LA GRILLA DE OBRAS DEJA DE SER UNA SOLA. Decisión del dueño: «en la pestaña OBRAS
+// del Sheet están los montos contratados y el costeo de mano de obra y materiales; agregarlos en
+// Clientes». Entran Costo MO · Costo mat. · Margen, y con ocho columnas la plantilla única del
+// handoff v4 ya no existe: se dibujan tres anchos.
+//
+//   <560px    OBRA · ESTADO · CONTRATADO — la pregunta de un teléfono, y el nombre nunca se suelta.
+//   ≥560px    entra AVANCE en su pista propia (el defecto del 05/09: vivía dentro de ESTADO y a
+//             390px se superponía con el importe).
+//   ≥1200px   entra la economía de OBRAS. Es DETALLE: se suelta antes que la identidad y antes que
+//             el contratado, nunca al revés.
+//
+// LO QUE ESTE TEST VIGILA DE VERDAD no son las cadenas: es que cada ancho tenga TANTAS CELDAS COMO
+// PISTAS. Una celda de más cae en una fila implícita y desalinea la tabla entera —el mismo defecto
+// que `grilla-v2-en-telefono` persigue en la cartera—, y agregar una columna sin su celda escondida
+// es exactamente cómo se cuela.
+
+/** Las plantillas declaradas en `COLS_OBRAS`, por corte (`''` = la base, sin prefijo). */
+function plantillasDeObras(): Map<string, string[]> {
+  const bloque = codigoListas().slice(codigoListas().indexOf('const COLS_OBRAS'))
+  const m = new Map<string, string[]>()
+  for (const [, prefijo, cuerpo] of bloque.slice(0, bloque.indexOf('\n\n')).matchAll(
+    /(min-\[(?:\d+)px\]:)?grid-cols-\[([^\]]+)\]/g,
+  )) {
+    m.set(prefijo ?? '', cuerpo.split('_'))
+  }
+  return m
+}
+
+/** Los hijos DIRECTOS del encabezado de Obras: una celda por columna, en el orden en que se dibujan. */
+function celdasDelEncabezado(): string[] {
   const src = codigoListas()
-  assert.match(src, /minmax\(240px,1\.8fr\)_150px_90px_170px_28px/,
-    'la grilla de Obras dejó de ser la del handoff v4')
+  const desde = src.indexOf('<RotuloCol>Obra</RotuloCol>')
+  assert.ok(desde > 0, 'no se pudo encontrar el encabezado de Obras')
+  const hasta = src.indexOf('</div>', desde)
+  return src.slice(desde, hasta).split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('<RotuloCol') || l.startsWith('<span'))
+}
+
+test('Obras dibuja sus tres anchos, y cada ancho tiene tantas celdas como pistas', () => {
+  const plantillas = plantillasDeObras()
+  assert.deepEqual(
+    [...plantillas.keys()].sort(),
+    ['', 'min-[1200px]:', 'min-[560px]:'],
+    'la grilla de Obras dejó de declarar sus tres anchos',
+  )
+  const pistas = (corte: string) => (plantillas.get(corte) ?? []).length
+
+  const celdas = celdasDelEncabezado()
+  const escondidas = (clase: string) => celdas.filter((c) => c.includes(clase)).length
+
+  assert.equal(celdas.length, pistas('min-[1200px]:'),
+    'el encabezado de Obras no dibuja una celda por cada pista del ancho entero')
+  assert.equal(celdas.length - escondidas('SOLO_ANCHO_ECO'), pistas('min-[560px]:'),
+    'las celdas que sobreviven a 1199px no son las pistas declaradas para ese ancho')
+  assert.equal(
+    celdas.length - escondidas('SOLO_ANCHO_ECO') - escondidas('SOLO_ANCHO}') - escondidas('SOLO_ANCHO`'),
+    pistas(''),
+    'las celdas que sobreviven en el teléfono no son las pistas declaradas para el teléfono',
+  )
+})
+
+test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el detalle', () => {
+  const src = codigoListas()
+  // AVANCE tiene pista propia desde 560 — nunca vuelve adentro de ESTADO — y la economía de OBRAS
+  // sólo aparece con ancho de escritorio.
   assert.match(src, /<RotuloCol derecha>Avance<\/RotuloCol>/)
+  for (const rotulo of ['Costo MO', 'Costo mat.']) {
+    assert.match(
+      src,
+      new RegExp(`SOLO_ANCHO_ECO[^\n]*<RotuloCol derecha>${rotulo.replace('.', '\\.')}</RotuloCol>`),
+      `«${rotulo}» tiene que soltarse por debajo de 1200px: es detalle, no identidad`,
+    )
+  }
+  // Ni Obra ni Contratado llevan clase de escondido: son las dos que no se negocian.
+  const celdas = celdasDelEncabezado()
+  for (const fija of ['Obra', 'Contratado']) {
+    const celda = celdas.find((c) => c.includes(`>${fija}<`))
+    assert.ok(celda, `el encabezado dejó de tener la columna ${fija}`)
+    assert.doesNotMatch(celda, /SOLO_ANCHO/, `${fija} se soltó en el teléfono: la fila deja de decir qué y por cuánto`)
+  }
   // El jefe de obra ocupaba el lugar de AVANCE. El handoff no lo trae: se lee en la obra.
   assert.doesNotMatch(src, /jefe_obra/, 'volvió la columna de jefe de obra donde va el avance')
 })
