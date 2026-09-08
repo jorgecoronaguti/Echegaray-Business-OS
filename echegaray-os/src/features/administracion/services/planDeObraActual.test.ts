@@ -23,7 +23,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { diaAnterior, planDeCambioDeObra, puedeCambiarObraActual } from './planDeObraActual.ts'
+import {
+  diaAnterior, diaSiguiente, planDeCambioDeObra, planDeCancelacion, puedeCambiarObraActual,
+  tramosProgramados, validarProgramacion,
+} from './planDeObraActual.ts'
 
 const HOY = '2026-09-08'
 const AYER = '2026-09-07'
@@ -208,4 +211,204 @@ test('dirección, administración y jefe de obra cambian la obra de una persona;
   assert.equal(puedeCambiarObraActual(null), false)
   assert.equal(puedeCambiarObraActual(undefined), false)
   assert.equal(puedeCambiarObraActual('administración'), false, 'el rol es la clave de la base, sin tilde')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// PROGRAMAR UN PASE A FUTURO (dueño, 08/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// *«necesito que me permitas designar una obra actual, pero ya quiero poder definir lo de los días
+// siguientes… una cosa es hoy y cuando planifico quiero poner lo de mañana y siguientes»*.
+//
+// ═══ QUÉ DEFECTOS ATRAPAN ESTOS TESTS ═══
+//
+// 6. Que programar rompa el cambio de hoy. Es el riesgo real: `desde` es un parámetro nuevo con
+//    default, y cualquier cambio de forma en `abrir` —agregarle `hasta: null`, por ejemplo— o de
+//    fecha de cierre se lleva puesto el gesto que el dueño usa todos los días. El test de la
+//    mutación compara los dos planes objeto contra objeto.
+// 7. Cerrar la anterior AYER al programar un pase para el jueves. La persona quedaría sin obra
+//    desde hoy hasta el jueves, y las horas que cargue en el medio no tendrían asignación detrás.
+// 8. Un tramo con fin que no devuelve a la persona a su obra: el 13 se termina el pase y queda sin
+//    obra para siempre, en silencio, semanas después de que alguien lo programó.
+// 9. Programar hacia atrás, o a dos años, o con el fin antes del inicio.
+
+const MANANA = '2026-09-09'
+const PASADO = '2026-09-10'
+
+test('MUTACIÓN: programar «desde hoy» produce el MISMO plan que no pasar desde', () => {
+  const sinDesde = planDeCambioDeObra({ abiertas: abiertaEnPisos, destino: salon, hoy: HOY })
+  const conHoy = planDeCambioDeObra({ abiertas: abiertaEnPisos, destino: salon, hoy: HOY, desde: HOY })
+  assert.deepEqual(conHoy, sinDesde,
+    'el desplegable de la grilla no pasa `desde`: si el default se corre, el gesto diario cambia')
+  assert.deepEqual(sinDesde.abrir, { obra_id: 'salon-comercial', desde: HOY },
+    '`abrir` no puede llevar `hasta` cuando el tramo es abierto: la forma del objeto es el contrato')
+  assert.equal(sinDesde.reabrir, null, 'sin fin no hay regreso que programar')
+})
+
+test('programar para mañana cierra la vigente HOY, no ayer, y abre recién mañana', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: abiertaEnPisos, destino: salon, hoy: HOY, desde: MANANA,
+  })
+  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: HOY }],
+    'cerrarla ayer deja a la persona sin obra el día de hoy, que todavía trabaja en PISOS')
+  assert.deepEqual(plan.abrir, { obra_id: 'salon-comercial', desde: MANANA })
+  assert.equal(plan.reabrir, null)
+  assert.equal(plan.acuse, 'Desde el 09/09 en SALÓN COMERCIAL · antes PISOS INDUSTRIALES.')
+})
+
+test('el acuse de un pase programado NO dice «desde hoy»', () => {
+  const plan = planDeCambioDeObra({ abiertas: [], destino: salon, hoy: HOY, desde: PASADO })
+  assert.equal(plan.acuse, 'Desde el 10/09 en SALÓN COMERCIAL.',
+    'decir «desde hoy» manda a buscar a la persona a una obra donde todavía no está')
+})
+
+// ═══ EL TRAMO SANDWICH: «TRES DÍAS EN QUATTROPANI Y VUELVE A SAN FRANCISCO» ═══
+test('un tramo con fin abre el pase, lo cierra, y devuelve a la persona a su obra al día siguiente', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: abiertaEnPisos, destino: salon, hoy: HOY, desde: MANANA, hasta: '2026-09-11',
+  })
+  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: HOY }])
+  assert.deepEqual(plan.abrir, { obra_id: 'salon-comercial', desde: MANANA, hasta: '2026-09-11' })
+  assert.deepEqual(plan.reabrir, { obra_id: 'pisos-industriales', desde: '2026-09-12' },
+    'sin el regreso la persona queda sin obra desde el 12/09 y nadie se entera hasta que pasa')
+  assert.equal(plan.acuse, 'Del 09/09 al 11/09 en SALÓN COMERCIAL · vuelve a PISOS INDUSTRIALES.')
+})
+
+test('quien no tenía ninguna obra no «vuelve» a ninguna parte', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: [], destino: salon, hoy: HOY, desde: MANANA, hasta: '2026-09-11',
+  })
+  assert.equal(plan.reabrir, null, 'inventar un regreso es inventar dónde estaba antes')
+  assert.equal(plan.acuse, 'Del 09/09 al 11/09 en SALÓN COMERCIAL.')
+})
+
+test('un tramo YA programado no es «la obra vigente»: el regreso mira dónde está HOY', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: [
+      { id: 'a1', ...pisos },
+      // Alguien ya había programado GALPÓN 9 para el 20. Todavía no rige.
+      { id: 'a2', obra_id: galpon.id, nombre: galpon.nombre, desde: '2026-09-20' },
+    ],
+    destino: salon, hoy: HOY, desde: MANANA, hasta: '2026-09-11',
+  })
+  assert.deepEqual(plan.reabrir, { obra_id: 'pisos-industriales', desde: '2026-09-12' },
+    'volver a GALPÓN 9 la mandaría a una obra donde nunca estuvo')
+})
+
+test('programar un pase a la obra donde YA está no escribe nada', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: abiertaEnPisos, destino: { id: pisos.obra_id, nombre: pisos.nombre },
+    hoy: HOY, desde: MANANA, hasta: '2026-09-11',
+  })
+  assert.equal(plan.sinCambio, true, 'un sandwich de una obra a sí misma parte el período por nada')
+  assert.equal(plan.reabrir, null)
+})
+
+test('«Sin obra» programado cierra en la víspera del pase, no ayer', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: abiertaEnPisos, destino: null, hoy: HOY, desde: PASADO,
+  })
+  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: MANANA }])
+  assert.equal(plan.abrir, null)
+  assert.equal(plan.acuse, 'Desde el 10/09 sin obra · antes PISOS INDUSTRIALES.')
+})
+
+test('diaSiguiente no se corre de día ni de mes ni de año', () => {
+  assert.equal(diaSiguiente('2026-09-08'), '2026-09-09')
+  assert.equal(diaSiguiente('2026-12-31'), '2027-01-01')
+  assert.equal(diaSiguiente('2026-02-28'), '2026-03-01')
+})
+
+// ═══ LAS TRES REGLAS DE FECHA ═══
+test('no se programa hacia atrás, ni a más de 60 días, ni con el fin antes del inicio', () => {
+  assert.equal(validarProgramacion({ hoy: HOY, desde: HOY }), null, 'hoy es válido: es el default')
+  assert.equal(validarProgramacion({ hoy: HOY, desde: MANANA, hasta: MANANA }), null,
+    'un pase de un solo día es un pase')
+  assert.match(
+    validarProgramacion({ hoy: HOY, desde: AYER }) ?? '',
+    /hacia atrás/,
+    'programar el pasado reimputa costo de mano de obra de días ya cargados',
+  )
+  assert.equal(validarProgramacion({ hoy: HOY, desde: '2026-11-07' }), null, 'el día 60 entra')
+  assert.match(validarProgramacion({ hoy: HOY, desde: '2026-11-08' }) ?? '', /60 días/, 'el 61 no')
+  assert.match(
+    validarProgramacion({ hoy: HOY, desde: PASADO, hasta: MANANA }) ?? '',
+    /anterior al primero/,
+  )
+  assert.match(validarProgramacion({ hoy: HOY, desde: 'mañana' }) ?? '', /no es una fecha/)
+})
+
+// ═══ CANCELAR ═══
+//
+// El defecto que atrapa: cancelar borrando SÓLO la fila futura. El tramo anterior quedó cerrado en
+// la víspera, así que la persona termina sin ninguna asignación abierta y la grilla la muestra
+// «Sin obra» — exactamente el estado que el cambio de obra evita a propósito.
+
+const tramoVigente = {
+  id: 't1', obra_id: pisos.obra_id, nombre: pisos.nombre, desde: '2026-08-01', hasta: HOY,
+}
+const tramoProgramado = {
+  id: 't2', obra_id: salon.id, nombre: salon.nombre, desde: MANANA, hasta: null,
+}
+
+test('cancelar borra el tramo futuro Y reabre el que le había cedido el lugar', () => {
+  const plan = planDeCancelacion({ tramos: [tramoVigente, tramoProgramado], id: 't2', hoy: HOY })
+  assert.equal(plan.error, null)
+  assert.deepEqual(plan.borrar, ['t2'])
+  assert.equal(plan.reabrirId, 't1',
+    'sin reabrir, cancelar deja a la persona sin ninguna asignación abierta')
+  assert.equal(plan.acuse, 'Se canceló el pase a SALÓN COMERCIAL · sigue en PISOS INDUSTRIALES.')
+})
+
+test('cancelar un sandwich borra TAMBIÉN el regreso: si no, queda un hueco sin obra en el medio', () => {
+  const plan = planDeCancelacion({
+    tramos: [
+      { ...tramoVigente },
+      { ...tramoProgramado, hasta: '2026-09-11' },
+      { id: 't3', obra_id: pisos.obra_id, nombre: pisos.nombre, desde: '2026-09-12', hasta: null },
+    ],
+    id: 't2', hoy: HOY,
+  })
+  assert.deepEqual(plan.borrar, ['t2', 't3'])
+  assert.equal(plan.reabrirId, 't1')
+})
+
+test('el tramo que ya rige NO se cancela: se cambia', () => {
+  const plan = planDeCancelacion({
+    tramos: [{ ...tramoProgramado, desde: HOY }], id: 't2', hoy: HOY,
+  })
+  assert.match(plan.error ?? '', /ya rige/,
+    'borrarlo dejaría sin asignación las horas ya cargadas contra él')
+  assert.deepEqual(plan.borrar, [], 'un plan con error no puede llevar escrituras adentro')
+  assert.equal(plan.reabrirId, null)
+})
+
+test('cancelar algo que ya no está no rompe ni borra otra cosa', () => {
+  const plan = planDeCancelacion({ tramos: [tramoVigente], id: 't2', hoy: HOY })
+  assert.match(plan.error ?? '', /ya no existe/)
+  assert.deepEqual(plan.borrar, [])
+})
+
+test('no se reabre un cierre viejo que terminó de verdad', () => {
+  const plan = planDeCancelacion({
+    tramos: [
+      { id: 'viejo', obra_id: galpon.id, nombre: galpon.nombre, desde: '2026-05-01', hasta: '2026-06-30' },
+      tramoProgramado,
+    ],
+    id: 't2', hoy: HOY,
+  })
+  assert.equal(plan.reabrirId, null,
+    'reabrir «el último cerrado» resucitaría un período cerrado hace tres meses')
+  assert.equal(plan.acuse, 'Se canceló el pase a SALÓN COMERCIAL.')
+})
+
+test('programado es lo que empieza DESPUÉS de hoy, y el primero es el próximo', () => {
+  const lista = tramosProgramados([
+    { id: 't3', obra_id: galpon.id, nombre: galpon.nombre, desde: '2026-09-20', hasta: null },
+    tramoVigente,
+    tramoProgramado,
+    { id: 't0', obra_id: salon.id, nombre: salon.nombre, desde: null, hasta: null },
+  ], HOY)
+  assert.deepEqual(lista.map((t) => t.id), ['t2', 't3'],
+    'el vigente no es un plan, y una fila sin `desde` no empieza en el futuro')
 })

@@ -137,6 +137,22 @@ export interface FilaQuincena {
    * Tres de diecisiete filas afirmaban una obra que la base no dice (producción, 08/09/2026).
    */
   obraVigenteNoElegible: { id: string; nombre: string } | null
+  /**
+   * SU PRÓXIMO PASE PROGRAMADO, si tiene uno. `null` cuando no hay ninguno.
+   *
+   * El dueño (08/09/2026): *«una cosa es hoy y cuando planifico quiero poner lo de mañana y
+   * siguientes»*. La grilla contesta HOY; esto es la línea de una sola frase que dice a dónde va,
+   * para que planificar no sea un dato invisible que hay que ir a buscar abriendo un panel persona
+   * por persona.
+   *
+   * Sale de las MISMAS asignaciones que ya se leen para decidir la obra vigente: es el tramo con
+   * `desde > hoy` más próximo. No hay una consulta más ni una tabla más — el plan y el presente son
+   * la misma fila de `obra_asignacion` mirada con otra fecha.
+   *
+   * SÓLO EL PRIMERO. Con tres pases programados, la celda de la grilla mide 210px: listarlos todos
+   * ahí rompe la fila. El resto está en el panel, que es donde se decide.
+   */
+  proximoTramo: { obra_id: string; nombre: string; desde: string } | null
   celdas: CeldaObra[]
   /** Horas trabajadas de la quincena. `null` = ninguna declarada, que no es lo mismo que cero. */
   horas: number | null
@@ -216,6 +232,7 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
         ?? clienteDe(suyos, e.obras) ?? SIN_OBRA,
       obraPorDefecto: activa ? { id: activa.id, nombre: activa.nombre } : null,
       obraVigenteNoElegible: noElegible ? { id: noElegible.id, nombre: noElegible.nombre } : null,
+      proximoTramo: proximoTramoDe(p.asignaciones, e.obras, e.hoy),
       celdas,
       // `null` Y NO CERO CUANDO NO HAY NINGUNA HORA. Un «0» afirma que esa persona trabajó cero
       // horas esa quincena; lo que pasa es que no hay con qué contestar.
@@ -226,6 +243,31 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
       esJefe: esJefeDeObra(e.puestos?.[p.persona_id] ?? null),
     }
   })
+}
+
+/**
+ * El pase programado más próximo: el `desde` futuro más chico, con la obra ya rotulada.
+ *
+ * ═══ SIN CATÁLOGO NO SE PUBLICA EL TRAMO ═══
+ *
+ * Un pase que no se puede nombrar se convertiría en «→ sf-mamposteria desde jue 10/09»: un slug en
+ * la pantalla que el dueño pidió explícitamente no ver nunca. Se cae en silencio y el panel —que
+ * lee la tabla entera— lo sigue mostrando con el nombre que la base tenga.
+ *
+ * Se miran TAMBIÉN los tramos a obras no elegibles: programar un pase a una obra que se cerró
+ * mientras tanto es exactamente lo que hay que ver, no lo que hay que esconder.
+ */
+function proximoTramoDe(
+  asignaciones: TramoAsignado[],
+  catalogo: Record<string, ObraRotulo>,
+  hoy: string,
+): { obra_id: string; nombre: string; desde: string } | null {
+  const futuros = asignaciones
+    .filter((a): a is TramoAsignado & { desde: string } => a.desde != null && a.desde > hoy)
+    .filter((a) => catalogo[a.obra_id])
+    .sort((a, b) => a.desde.localeCompare(b.desde) || a.obra_id.localeCompare(b.obra_id))
+  const p = futuros[0]
+  return p ? { obra_id: p.obra_id, nombre: catalogo[p.obra_id].nombre, desde: p.desde } : null
 }
 
 /** Un tramo de asignación de la persona, tal como llegó. `null` en las puntas = sin límite. */
