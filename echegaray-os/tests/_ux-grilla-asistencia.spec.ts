@@ -68,9 +68,26 @@ for (const [ancho, alto] of [[1440, 900], [2000, 1250]] as const) {
       await expect(celda, 'hoy no lleva el marco punteado de «sin cargar»').not.toHaveAttribute('data-sin-cargar', 'si')
     }
 
-    // ── 4 · LOS DÍAS EMPIEZAN CERCA DEL NOMBRE ───────────────────────────────
-    const primerDia = await fila.getByTestId('celda-hora').first().boundingBox()
-    expect(primerDia!.x, 'la quincena no puede arrancar a mitad de pantalla').toBeLessThan(640)
+    // ── 4 · LA TABLA OCUPA EL ANCHO ENTERO ───────────────────────────────────
+    // El dueño rechazó la versión al ancho del contenido: *«no sé por qué achicaste el margen»*.
+    // Con 550 px muertos a la derecha, el total de cada fila caía por la mitad de la pantalla.
+    const tabla = await page.getByTestId('grilla-asistencia').boundingBox()
+    const disponible = await page.getByTestId('grilla-asistencia')
+      .evaluate((el) => (el.parentElement as HTMLElement).clientWidth)
+    expect(tabla!.width / disponible, 'la tabla ocupa el ancho que tiene').toBeGreaterThan(0.98)
+
+    // ── 5 · LA «A» Y LA «L» SOLAS VAN EN EL EJE DE LOS NÚMEROS ───────────────
+    // Arriba en el borde de su celda se leían corridas contra los números de las filas vecinas.
+    const centrada = page.locator('[data-capa="presencia"][data-centrado="si"]').first()
+    if (await centrada.count()) {
+      const suFila = centrada.locator('xpath=ancestor::tr[1]')
+      const vecino = suFila.getByTestId('celda-hora').first()
+      const eje = await vecino.count()
+        ? centro(await vecino.boundingBox())
+        : centro(await suFila.getByTestId('total-persona').boundingBox())
+      expect(Math.abs(centro(await centrada.boundingBox()) - eje),
+        'el símbolo solo se lee a la altura de los números de su fila').toBeLessThan(3)
+    }
 
     await page.screenshot({ path: `tests/qa-shots/asistencia-grilla-${ancho}.png`, fullPage: false })
   })

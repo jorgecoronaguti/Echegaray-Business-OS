@@ -50,6 +50,10 @@ export interface CapaPresencia {
   simbolo: '●' | 'A' | 'L' | ''
   tono: TonoPresencia
   titulo: string
+  /** SIN NÚMERO, EL SÍMBOLO ES EL DATO Y VA EN EL CENTRO (dueño, 08/09/2026: «se ve mal la L»).
+   *  Una insignia arriba tiene sentido cuando acompaña a un número; sola, en el borde superior, se
+   *  lee corrida respecto de los números de sus vecinos. Con número al lado vuelve arriba. */
+  centrado: boolean
 }
 
 export interface CapaHoras {
@@ -74,7 +78,7 @@ export function formatearHoras(n: number): string {
   return n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 }
 
-function presenciaDe(e: EntradaCeldaDia): CapaPresencia {
+function presenciaDe(e: EntradaCeldaDia): Omit<CapaPresencia, 'centrado'> {
   const con = (base: string) => (e.motivo ? `${base}: ${e.motivo.toLowerCase()}` : base)
   switch (e.presencia) {
     case 'ficho': return { simbolo: '●', tono: 'pos', titulo: 'Fichó' }
@@ -117,7 +121,13 @@ function horasDe(e: EntradaCeldaDia): CapaHoras {
 export function decidirCeldaDia(e: EntradaCeldaDia): CapasCeldaDia {
   const arriba = presenciaDe(e)
   const abajo = horasDe(e)
-  return { arriba, abajo, titulo: [arriba.titulo, abajo.titulo].filter(Boolean).join(' · ') }
+  // La celda que no muestra ningún número no tiene de qué ser insignia: el símbolo ES la celda.
+  const centrado = arriba.simbolo !== '' && abajo.texto === ''
+  return {
+    arriba: { ...arriba, centrado },
+    abajo,
+    titulo: [arriba.titulo, abajo.titulo].filter(Boolean).join(' · '),
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

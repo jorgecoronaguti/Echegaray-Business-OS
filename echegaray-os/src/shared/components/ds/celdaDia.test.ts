@@ -115,6 +115,22 @@ test('el color semántico vive SÓLO en la capa de presencia: la de horas nunca 
   }
 })
 
+test('SIN NÚMERO, EL SÍMBOLO VA CENTRADO; con número, arriba', () => {
+  // EL DEFECTO QUE ATRAPA (dueño, 08/09/2026, sobre la grilla desplegada): *«se ve mal la L»*. Las
+  // cinco «L» de una licencia quedaban pegadas al borde de arriba de su celda mientras la fila de
+  // al lado tenía los números en el medio, y la letra se leía corrida. Cuando el símbolo es lo
+  // único que la celda muestra, ocupa el lugar del número.
+  assert.equal(decidirCeldaDia(habil({ presencia: 'licencia' })).arriba.centrado, true)
+  assert.equal(decidirCeldaDia(habil({ presencia: 'ausente' })).arriba.centrado, true)
+  assert.equal(decidirCeldaDia(habil({ presencia: 'ficho' })).arriba.centrado, true,
+    'presente sin horas: el ● también es lo único que hay')
+  assert.equal(decidirCeldaDia(habil({ presencia: 'ficho', horas: 8 })).arriba.centrado, false,
+    'con número al lado, la presencia vuelve a ser una insignia arriba')
+  assert.equal(decidirCeldaDia(habil({ presencia: 'licencia', dia: 'no_laborable' })).arriba.centrado, false,
+    'el «—» es un número a los efectos del lugar: la L no se le monta encima')
+  assert.equal(decidirCeldaDia(habil({})).arriba.centrado, false, 'sin símbolo no hay nada que centrar')
+})
+
 test('formatearHoras: una sola forma de escribir horas', () => {
   assert.equal(formatearHoras(8), '8,0')
   assert.equal(formatearHoras(7.25), '7,3')
