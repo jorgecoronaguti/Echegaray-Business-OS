@@ -165,3 +165,49 @@ test('sin nadie esperado ni nada cargado, el resumen lo dice sin inventar un cer
   assert.equal(dia.plantel, 0)
   assert.match(resumenAsistencia(dia), /Nadie con asignación vigente/)
 })
+
+// ── LA PRESENCIA DECLARADA (`asistencia_dia`, 08/09/2026) ────────────────────────────────────────
+//
+// El defecto que atrapan: que la pantalla siga diciendo «sin cargar» de alguien a quien el jefe
+// declaró presente esta mañana, o que tape una ausencia declarada que tiene horas cargadas encima.
+
+test('declarado presente y sin horas NO es «sin cargar»: alguien lo miró y dijo que estaba', () => {
+  const c = clasificar([], 'presente')
+  assert.equal(c.estado, 'presente')
+  assert.equal(c.horas, null)
+  assert.equal(c.conflicto, false)
+})
+
+test('declarado presente y con horas es «con horas»: las dos cosas son ciertas', () => {
+  const c = clasificar([reg({ persona_id: 'a', horas: 8 })], 'presente')
+  assert.equal(c.estado, 'con_horas')
+  assert.equal(c.horas, 8)
+})
+
+test('declarado ausente con horas cargadas: conflicto, y las horas SE SIGUEN VIENDO', () => {
+  const c = clasificar([reg({ persona_id: 'a', horas: 8 })], 'ausente')
+  assert.equal(c.estado, 'ausente')
+  assert.equal(c.conflicto, true, 'la contradicción quedó tapada')
+  assert.equal(c.horas, 8, 'se escondieron las horas que contradicen la ausencia declarada')
+})
+
+test('la ausencia declarada en asistencia_dia le gana a las horas cargadas como normales', () => {
+  assert.equal(clasificar([reg({ persona_id: 'a', horas: 8 })], 'licencia').estado, 'licencia')
+})
+
+test('sin presencia declarada la pantalla se comporta igual que antes', () => {
+  assert.equal(clasificar([]).estado, 'sin_cargar')
+  assert.equal(clasificar([]).conflicto, false)
+  assert.equal(clasificar([reg({ persona_id: 'a', tipo_hora: 'ausencia', notas: 'faltó' })]).estado, 'ausente')
+})
+
+test('el presente declarado sin horas cuenta como día por cargar, no como día cargado', () => {
+  const d = asistenciaDelDia({
+    esperados: [esp('p1', 'Uno'), esp('p2', 'Dos')],
+    registros: [reg({ persona_id: 'p2', horas: 8 })],
+    presencia: [{ persona_id: 'p1', estado: 'presente', motivo: null }],
+  })
+  assert.equal(d.conHoras, 1)
+  assert.equal(d.sinCargar, 1, 'un presente sin horas infló el conteo de la carga')
+  assert.equal(d.obras[0].gente.find((g) => g.personaId === 'p1')?.estado, 'presente')
+})

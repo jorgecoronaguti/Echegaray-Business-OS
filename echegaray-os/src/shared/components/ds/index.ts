@@ -32,6 +32,7 @@ export { InlineEdit, type OpcionInline, type ResultadoInline } from './InlineEdi
 export { BarraContextual, ChipsValor, type OperacionBarra } from './BarraContextual'
 export { CeldaDia } from './CeldaDia'
 export {
-  decidirCeldaDia, formatearHoras,
-  type EntradaCeldaDia, type PresenciaDia, type CalendarioDia, type CapasCeldaDia,
+  combinarCeldaDia, decidirCeldaDia, formatearHoras, tituloDeConflicto,
+  type CeldaCombinada, type EntradaCeldaDia, type FuentesDelDia, type PresenciaDeclarada,
+  type PresenciaDia, type CalendarioDia, type CapasCeldaDia,
 } from './celdaDia'

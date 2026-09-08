@@ -35,9 +35,32 @@ function Estado({ p }: { p: PersonaDelDia }) {
       <span className="shrink-0" style={{ fontSize: '11.5px', color: V.tenue }}>sin cargar</span>
     )
   }
+  // PRESENCIA DECLARADA SIN HORAS. El jefe marcó la cuadrilla y todavía no cargó el día: es una
+  // verdad válida y NO es «sin cargar», que era lo que esta pantalla decía de todo el que no tenía
+  // un número. El ● es el mismo símbolo de presencia de `CeldaDia`, y la palabra va al lado porque
+  // ningún estado se dice sólo con color.
+  if (p.estado === 'presente') {
+    return (
+      <span className="shrink-0" style={{ fontSize: '11.5px', color: V.tenue }} data-estado-presencia="presente">
+        <span style={{ color: 'var(--os-pos)', fontWeight: 600 }}>●</span> presente · sin horas
+      </span>
+    )
+  }
   return (
     <span className="shrink-0 truncate" style={{ fontSize: '11.5px', color: V.apagado }}>
       {p.estado === 'licencia' ? 'Licencia' : 'Ausente'}
+      {/* EL CONFLICTO SE VE, NO SE RESUELVE. El jefe declaró que no vino y el día tiene horas
+          cargadas: las dos afirmaciones no pueden ser ciertas y una de ellas se liquida. La
+          pantalla no elige — lo dice y lo deja resolver a quien sabe cuál está mal. */}
+      {p.conflicto && (
+        <span
+          data-testid="conflicto-dia"
+          title="Ausencia declarada y horas cargadas el mismo día"
+          style={{ color: 'var(--os-neg)', fontWeight: 600 }}
+        >
+          {' '}· con {hs(p.horas ?? 0)} hs cargadas
+        </span>
+      )}
       {/* EL MOTIVO SÓLO SI SE DECLARÓ. Sin él no se escribe «sin motivo»: la fila ya dice lo que
           se sabe, y agregarle una carencia la haría sonar a error de alguien. */}
       {p.motivo && <span style={{ color: V.tenue }}> · {p.motivo}</span>}
