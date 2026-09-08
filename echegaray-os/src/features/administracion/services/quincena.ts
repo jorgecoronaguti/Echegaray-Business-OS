@@ -102,7 +102,18 @@ export const nombreDia = (fecha: string): string => NOMBRES[diaDeLaSemana(fecha)
  * no se puede verificar contra la liquidación, que es contra lo que se verifica.
  */
 export function rotuloQuincena(q: Quincena): string {
+  return `${cabeceraQuincena(q)} · ${Number(q.desde.slice(8, 10))} al ${Number(q.hasta.slice(8, 10))}`
+}
+
+/**
+ * `1ª quincena de septiembre` — el período SIN sus dos números.
+ *
+ * Existe porque hay un caso donde los números del período mienten: cuando lo que se está mirando es
+ * más angosto que la quincena (la ventana «Hoy» o «Semana»), escribir «1 al 15» al lado de un
+ * subtotal de tres días afirma que la quincena entera sumó eso. La cabecera se reusa y los números
+ * los pone quien sabe qué se está viendo.
+ */
+export function cabeceraQuincena(q: Quincena): string {
   const mes = MESES[Number(q.desde.slice(5, 7)) - 1]
-  const primera = Number(q.desde.slice(8, 10)) === 1
-  return `${primera ? '1ª' : '2ª'} quincena de ${mes} · ${Number(q.desde.slice(8, 10))} al ${Number(q.hasta.slice(8, 10))}`
+  return `${Number(q.desde.slice(8, 10)) === 1 ? '1ª' : '2ª'} quincena de ${mes}`
 }

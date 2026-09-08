@@ -24,7 +24,8 @@
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
 import { obraDominante } from './quincenaDePersona.ts'
-import { quincenaDe, rotuloQuincena } from './quincena.ts'
+import { cabeceraQuincena, quincenaDe, rotuloQuincena } from './quincena.ts'
+import type { Ventana } from './periodoHH.ts'
 import type { ImputacionHH } from '../types/index.ts'
 
 export interface TramoCronologico {
@@ -105,21 +106,44 @@ function ordenar(rs: ImputacionHH[]): ImputacionHH[] {
 export const porSemana = (registros: ImputacionHH[]): TramoCronologico[] =>
   agrupar(registros, (r) => r.fecha_inicio_semana, rotuloDeSemana)
 
+/** `2026-09-03` → `3`. */
+const numeroDeDia = (iso: string): number => Number(iso.slice(8, 10))
+
+/**
+ * Cómo se rotula un tramo sabiendo QUÉ VENTANA se está mirando.
+ *
+ * Sin ventana —o con una que cubre la quincena entera— el rótulo lleva los dos números del período:
+ * `1ª quincena de septiembre · 1 al 15`. Con la ventana «Hoy» o «Semana», que son más angostas, esos
+ * números MIENTEN: el subtotal de al lado es de tres días y el rótulo afirmaba que la quincena
+ * completa sumó eso. Entonces el rótulo dice qué se está viendo de verdad.
+ */
+function rotuloDeTramo(clave: string, ventana?: Ventana): string {
+  const q = quincenaDe(clave)
+  if (!ventana) return rotuloQuincena(q)
+  const desde = ventana.desde > q.desde ? ventana.desde : q.desde
+  const hasta = ventana.hasta < q.hasta ? ventana.hasta : q.hasta
+  if (desde <= q.desde && hasta >= q.hasta) return rotuloQuincena(q)
+  return `${cabeceraQuincena(q)} · se ven del ${numeroDeDia(desde)} al ${numeroDeDia(hasta)}`
+}
+
 /**
  * Los tramos por QUINCENA — el corte de la cronología de la ficha.
+ *
+ * `ventana` es lo que se está mirando (`ventanaDe(periodo)`): sólo cambia el RÓTULO, nunca el corte
+ * ni los totales. Los registros ya vienen filtrados por quien llama.
  *
  * Las filas SIN día no se descartan: van a un tramo propio al final. Su grano es la semana, y una
  * semana puede cruzar el 15: meterlas en la quincena de su lunes correría horas de una quincena a
  * otra sin que nadie lo decidiera, que es exactamente lo que un registro de liquidación no puede
  * hacer en silencio.
  */
-export function porQuincena(registros: ImputacionHH[]): TramoCronologico[] {
+export function porQuincena(registros: ImputacionHH[], ventana?: Ventana): TramoCronologico[] {
   const conDia = registros.filter((r) => r.fecha)
   const sinDia = registros.filter((r) => !r.fecha)
   const tramos = agrupar(
     conDia,
     (r) => quincenaDe(r.fecha as string).desde,
-    (clave) => rotuloQuincena(quincenaDe(clave)),
+    (clave) => rotuloDeTramo(clave, ventana),
   )
   if (sinDia.length === 0) return tramos
   return [...tramos, tramo('sin-dia', 'filas de grano semanal, sin día', ordenar(sinDia))]

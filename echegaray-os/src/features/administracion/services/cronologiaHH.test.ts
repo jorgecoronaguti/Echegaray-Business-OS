@@ -188,3 +188,33 @@ test('UNA FILA SIN DÍA NO DESAPARECE DE LA CRONOLOGÍA — va a su propio tramo
   assert.equal(tramos[1].horas, 40)
   assert.equal(tramos[1].dias, 0, 'sin día no se puede afirmar cuántos días fueron')
 })
+
+test('CON UNA VENTANA MÁS ANGOSTA QUE LA QUINCENA, EL RÓTULO DICE QUÉ SE ESTÁ VIENDO', () => {
+  // El defecto que atrapa: «1ª quincena de septiembre · 1 al 15 · 3 días · 27» cuando lo que se
+  // está mirando es la ventana «Semana» y sólo se ven tres días. Los dos números del período al
+  // lado de un subtotal de tres días afirman que la quincena entera sumó eso — y contra eso se
+  // verifica una liquidación.
+  const filas = [
+    r({ fecha: '2026-09-01', horas: 9 }),
+    r({ fecha: '2026-09-02', horas: 9 }),
+    r({ fecha: '2026-09-03', horas: 9 }),
+  ]
+  const angosta = porQuincena(filas, { desde: '2026-08-31', hasta: '2026-09-03' })
+  assert.equal(angosta[0].rotulo, '1ª quincena de septiembre · se ven del 1 al 3')
+  assert.equal(angosta[0].horas, 27, 'el total NO cambia: la ventana sólo rotula')
+  // EL RÓTULO DECLARA LA VENTANA PEDIDA, NO HASTA DÓNDE LLEGAN LOS DATOS. La semana del 31/08 al
+  // 6/09 con horas sólo hasta el 3 se rotula «del 1 al 6»: es lo que se miró, y los días vacíos de
+  // adentro son parte de la respuesta. Recortar el rótulo al último día con datos convertiría un
+  // «no hay nada cargado el 4» en un «no se miró el 4», que es otra afirmación.
+  assert.equal(porQuincena(filas, { desde: '2026-08-31', hasta: '2026-09-06' })[0].rotulo,
+    '1ª quincena de septiembre · se ven del 1 al 6')
+  // Con la quincena entera —o con el mes, que la contiene— el rótulo es el de siempre.
+  assert.equal(porQuincena(filas, { desde: '2026-09-01', hasta: '2026-09-15' })[0].rotulo,
+    '1ª quincena de septiembre · 1 al 15')
+  assert.equal(porQuincena(filas, { desde: '2026-09-01', hasta: '2026-09-30' })[0].rotulo,
+    '1ª quincena de septiembre · 1 al 15')
+  assert.equal(porQuincena(filas)[0].rotulo, '1ª quincena de septiembre · 1 al 15')
+  // «Hoy»: un solo día.
+  assert.equal(porQuincena([filas[0]], { desde: '2026-09-01', hasta: '2026-09-01' })[0].rotulo,
+    '1ª quincena de septiembre · se ven del 1 al 1')
+})

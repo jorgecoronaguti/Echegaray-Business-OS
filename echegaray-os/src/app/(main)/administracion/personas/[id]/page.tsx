@@ -470,6 +470,7 @@ export default async function FichaPersonaPage({
             <div data-testid="bloque-horas">
               <BloqueHoras
                 periodo={rotulo(ventana)}
+                ventana={ventana}
                 horasPeriodo={resumen.trabajadas}
                 porTipo={resumen.porTipo}
                 porObra={resumen.obras}

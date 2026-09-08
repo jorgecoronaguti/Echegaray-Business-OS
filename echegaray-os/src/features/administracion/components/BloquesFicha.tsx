@@ -18,7 +18,7 @@ import { porMes, porQuincena, tipoYMotivo, trazaDe } from '../services/cronologi
 import { DOCUMENTO_ESTADO, estadoDocumento, solicitadosDelLegajo } from '../services/fichaPersona'
 import type { AsignacionDePersona, DocumentoLegajo, ImputacionHH } from '../types'
 import { TIPO_HORA_LABEL, type TipoHora } from '@/features/obras/services/tipoHora'
-import { PERIODOS, PERIODO_LABEL, type Periodo } from '../services/periodoHH'
+import { PERIODOS, PERIODO_LABEL, type Periodo, type Ventana } from '../services/periodoHH'
 
 const hh = (n: number) => n.toLocaleString('es-AR', { maximumFractionDigits: 1 })
 
@@ -120,9 +120,13 @@ function CifraHH({ k, v, apagada }: { k: string; v: ReactNode; apagada?: boolean
  * prohíbe—, y abajo está el registro día por día, abierto, que es lo que se mira de verdad.
  */
 export function BloqueHoras({
-  periodo, horasPeriodo, porTipo, porObra, porActividad, registros, historial, periodoActivo, hrefPeriodo,
+  periodo, ventana, horasPeriodo, porTipo, porObra, porActividad, registros, historial,
+  periodoActivo, hrefPeriodo,
 }: {
   periodo: string
+  /** LA VENTANA REAL, no sólo su rótulo. Con «Hoy» o «Semana» los registros llegan filtrados a
+   *  menos que una quincena, y el subtotal del tramo no puede rotularse «1 al 15». */
+  ventana: Ventana
   horasPeriodo: number
   porTipo: Record<TipoHora, number>
   porObra: TotalHH[]
@@ -199,7 +203,7 @@ export function BloqueHoras({
               </td>
             </tr>
           )}
-          {porQuincena(registros).map((tramo) => (
+          {porQuincena(registros, ventana).map((tramo) => (
             <Fragment key={tramo.clave}>
               {tramo.registros.map((r) => (
                 <Tr key={r.id} compacta data-testid="fila-registro">
