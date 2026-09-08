@@ -145,9 +145,13 @@ export interface FilaQuincena {
    * para que planificar no sea un dato invisible que hay que ir a buscar abriendo un panel persona
    * por persona.
    *
-   * Sale de las MISMAS asignaciones que ya se leen para decidir la obra vigente: es el tramo con
-   * `desde > hoy` más próximo. No hay una consulta más ni una tabla más — el plan y el presente son
-   * la misma fila de `obra_asignacion` mirada con otra fecha.
+   * Sale de las MISMAS filas de `obra_asignacion` que ya se leen para decidir la obra vigente: es
+   * el tramo con `desde > hoy` más próximo. No hay una consulta más ni una tabla más — el plan y el
+   * presente son la misma fila mirada con otra fecha.
+   *
+   * NO SE CORTA EN EL ÚLTIMO DÍA DE LA QUINCENA. Un pase a veinte días existe —se programa hasta a
+   * sesenta— y la quincena es una ventana de LECTURA, no el horizonte de la planificación. Los que
+   * caen fuera entran por `tramosFuera`; ver ahí por qué no vienen mezclados con `asignaciones`.
    *
    * SÓLO EL PRIMERO. Con tres pases programados, la celda de la grilla mide 210px: listarlos todos
    * ahí rompe la fila. El resto está en el panel, que es donde se decide.
@@ -169,8 +173,31 @@ const numero = (v: unknown): number => {
 
 export const SIN_OBRA = 'Sin obra activa'
 
+/**
+ * UN TRAMO QUE EMPIEZA DESPUÉS DEL ÚLTIMO DÍA DE LA VENTANA. Alimenta `proximoTramo` y NADA MÁS.
+ *
+ * ═══ POR QUÉ ENTRA POR UNA PUERTA PROPIA Y NO ENSANCHANDO `asignaciones` ═══
+ *
+ * `asignaciones` es lo que decide QUIÉN aparece en la grilla (`personasDe`): una asignación a obra
+ * activa crea la fila. Meter ahí los tramos futuros haría que alguien a quien recién se programó
+ * para dentro de veinte días apareciera HOY con quince celdas vacías y un «1 día sin marcar» que
+ * nadie puede marcar — la grilla dejaría de contestar «quién está en obra esta quincena».
+ *
+ * Con una lista aparte, la fila no puede nacer de acá: no es una regla que haya que recordar, es
+ * que este dato nunca llega a `personasDe`.
+ */
+export interface TramoFuturoFuera {
+  persona_id: string
+  obra_id: string
+  /** `YYYY-MM-DD`. Sin `desde` no hay pase programado: lo que no tiene inicio no empieza mañana. */
+  desde: string
+}
+
 export interface EntradaQuincenaObra {
   asignaciones: AsignacionQuincena[]
+  /** Los pases programados MÁS ALLÁ de la ventana. Ausente = no se leyeron; la línea de la grilla
+   *  entonces sólo ve los que caen adentro, que es como se comportaba antes de existir esto. */
+  tramosFuera?: TramoFuturoFuera[]
   registros: RegistroQuincena[]
   /** Catálogo por id. Lo que no esté acá no se puede rotular y cae a `SIN_OBRA`. */
   obras: Record<string, ObraRotulo>
@@ -207,6 +234,12 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
     if (previos) previos.push(r)
     else porPersona.set(r.persona_id, [r])
   }
+  const fueraPorPersona = new Map<string, TramoFuturoFuera[]>()
+  for (const t of e.tramosFuera ?? []) {
+    const previos = fueraPorPersona.get(t.persona_id)
+    if (previos) previos.push(t)
+    else fueraPorPersona.set(t.persona_id, [t])
+  }
 
   return personasDe(e.asignaciones, e.registros, e.personas ?? {}).map((p) => {
     const suyos = porPersona.get(p.persona_id) ?? []
@@ -232,7 +265,9 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
         ?? clienteDe(suyos, e.obras) ?? SIN_OBRA,
       obraPorDefecto: activa ? { id: activa.id, nombre: activa.nombre } : null,
       obraVigenteNoElegible: noElegible ? { id: noElegible.id, nombre: noElegible.nombre } : null,
-      proximoTramo: proximoTramoDe(p.asignaciones, e.obras, e.hoy),
+      proximoTramo: proximoTramoDe(
+        p.asignaciones, fueraPorPersona.get(p.persona_id) ?? [], e.obras, e.hoy,
+      ),
       celdas,
       // `null` Y NO CERO CUANDO NO HAY NINGUNA HORA. Un «0» afirma que esa persona trabajó cero
       // horas esa quincena; lo que pasa es que no hay con qué contestar.
@@ -256,14 +291,26 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
  *
  * Se miran TAMBIÉN los tramos a obras no elegibles: programar un pase a una obra que se cerró
  * mientras tanto es exactamente lo que hay que ver, no lo que hay que esconder.
+ *
+ * ═══ LOS DE ADENTRO Y LOS DE AFUERA SE MIDEN JUNTOS ═══
+ *
+ * `asignaciones` trae los pases que caen dentro de la ventana y `fuera` los posteriores. El próximo
+ * es el `desde` más chico de LOS DOS: quedarse con el de la ventana escondería que hay uno anterior
+ * —imposible— y quedarse con el de afuera escondería el que viene primero. Se concatenan y se
+ * ordena una sola vez, que es la única forma de que la respuesta no dependa de en qué lista cayó.
  */
 function proximoTramoDe(
   asignaciones: TramoAsignado[],
+  fuera: TramoFuturoFuera[],
   catalogo: Record<string, ObraRotulo>,
   hoy: string,
 ): { obra_id: string; nombre: string; desde: string } | null {
-  const futuros = asignaciones
-    .filter((a): a is TramoAsignado & { desde: string } => a.desde != null && a.desde > hoy)
+  const conDesde: { obra_id: string; desde: string }[] = [
+    ...asignaciones.filter((a): a is TramoAsignado & { desde: string } => a.desde != null),
+    ...fuera,
+  ]
+  const futuros = conDesde
+    .filter((a) => a.desde > hoy)
     .filter((a) => catalogo[a.obra_id])
     .sort((a, b) => a.desde.localeCompare(b.desde) || a.obra_id.localeCompare(b.obra_id))
   const p = futuros[0]

@@ -4,7 +4,7 @@ import {
   armarQuincenaPorObra, diasSinMarcar, personasPorObra, SIN_OBRA, totalDeLaQuincena, totalesPorDia,
 } from './quincenaPorObra.ts'
 import type {
-  AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena,
+  AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena, TramoFuturoFuera,
 } from './quincenaPorObra.ts'
 
 // Seis días de la 2ª quincena de septiembre de 2026, del lunes 7 al sábado 12. HOY es el viernes 11:
@@ -49,10 +49,11 @@ const armar = (e: {
   asignaciones: AsignacionQuincena[]; registros: RegistroQuincena[]
   dias?: string[]; noLaborables?: string[]; hoy?: string
   personas?: Record<string, PersonaRotulo>
+  tramosFuera?: TramoFuturoFuera[]
 }) => armarQuincenaPorObra({
   asignaciones: e.asignaciones, registros: e.registros, obras: OBRAS,
   dias: e.dias ?? DIAS, noLaborables: e.noLaborables, hoy: e.hoy ?? HOY,
-  personas: e.personas,
+  personas: e.personas, tramosFuera: e.tramosFuera,
 })
 
 test('QUIEN TIENE DOS OBRAS TIENE UNA SOLA FILA, y sus horas del día se suman', () => {
@@ -510,4 +511,69 @@ test('sin `puestos` la grilla no inventa jefes', () => {
     obras: OBRAS, dias: DIAS, hoy: HOY,
   })
   assert.equal(filas[0].esJefe, false)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PRÓXIMO PASE, SIN EL TECHO DE LA QUINCENA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('UN PASE A +20 DÍAS ES EL PRÓXIMO TRAMO — la quincena no es el horizonte del plan', () => {
+  // EL DEFECTO QUE ATRAPA: `getQuincenaPorObra` se queda con las asignaciones vivas EN la ventana
+  // (`desde <= hasta`), así que un pase al 01/10 —programado el 11/09, dentro de los 60 días que la
+  // regla permite— no llegaba a la fila y la línea bajo el desplegable decía «programar cambio»
+  // como si no hubiera nada. El panel de la misma persona SÍ lo mostraba: dos pantallas leyendo la
+  // misma fila de `obra_asignacion` contestaban distinto.
+  const filas = armar({
+    asignaciones: [asig('acosta', 'ACOSTA RAMON', PISOS)],
+    registros: [reg('acosta', PISOS, L, 8)],
+    tramosFuera: [{ persona_id: 'acosta', obra_id: MAMPO, desde: '2026-10-01' }],
+  })
+  assert.deepEqual(filas[0].proximoTramo, {
+    obra_id: MAMPO, nombre: 'MAMPOSTERÍA', desde: '2026-10-01',
+  })
+})
+
+test('EL PRÓXIMO ES EL MÁS CERCANO DE LAS DOS LISTAS, no el de la que se mire primero', () => {
+  // Con un pase dentro de la quincena (sábado 12) y otro a veinte días, el que se anuncia es el del
+  // sábado. Quedarse con el de afuera —o concatenar sin ordenar— publicaría un pase que todavía no
+  // es el que viene, y quien lo lea va a buscar a la persona a la obra equivocada el lunes.
+  const filas = armar({
+    asignaciones: [
+      asig('acosta', 'ACOSTA RAMON', PISOS),
+      asig('acosta', 'ACOSTA RAMON', MAMPO, null, S, null),
+    ],
+    registros: [reg('acosta', PISOS, L, 8)],
+    tramosFuera: [{ persona_id: 'acosta', obra_id: 'la-estrella', desde: '2026-10-01' }],
+  })
+  assert.equal(filas[0].proximoTramo?.desde, S)
+  assert.equal(filas[0].proximoTramo?.nombre, 'MAMPOSTERÍA')
+})
+
+test('UNA PERSONA CON SÓLO UN TRAMO FUTURO NO CREA UNA FILA VACÍA EN LA GRILLA', () => {
+  // EL DEFECTO QUE ATRAPA, y la razón de que `tramosFuera` sea una entrada aparte y no un
+  // ensanchamiento de `asignaciones`: `personasDe` crea una fila por cada asignación a obra activa.
+  // Si los pases futuros entraran por ahí, programar a alguien para dentro de veinte días lo
+  // metería HOY en la quincena con todas las celdas vacías y días «sin marcar» que nadie puede
+  // marcar. Las filas siguen saliendo del plantel y de las horas.
+  const filas = armar({
+    asignaciones: [asig('acosta', 'ACOSTA RAMON', PISOS)],
+    registros: [reg('acosta', PISOS, L, 8)],
+    tramosFuera: [
+      { persona_id: 'acosta', obra_id: MAMPO, desde: '2026-10-01' },
+      { persona_id: 'fantasma', obra_id: PISOS, desde: '2026-10-05' },
+    ],
+  })
+  assert.deepEqual(filas.map((f) => f.persona.id), ['acosta'])
+})
+
+test('sin `tramosFuera` la línea se comporta como antes: sólo ve lo de la ventana', () => {
+  // El parámetro es opcional a propósito — una lectura que no lo trajo no puede inventar un pase.
+  const filas = armar({
+    asignaciones: [
+      asig('acosta', 'ACOSTA RAMON', PISOS),
+      asig('acosta', 'ACOSTA RAMON', MAMPO, null, S, null),
+    ],
+    registros: [reg('acosta', PISOS, L, 8)],
+  })
+  assert.equal(filas[0].proximoTramo?.desde, S)
 })
