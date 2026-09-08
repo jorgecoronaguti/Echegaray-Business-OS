@@ -200,6 +200,18 @@ function unaCorrida(spawnImpl, args, { cwd, env }) {
 const recorte = (s) => String(s ?? '').trim().split('\n').slice(-3).join(' ').slice(0, 300)
 
 /**
+ * El `motivo` del cargador dicho en castellano. Es lo único que emite cuando no hay `error` ni
+ * `detalle`, y sin traducirlo el dueño leía «el cargador falló» — una frase que no dice qué hacer.
+ */
+export function porQueNoCargo(motivo) {
+  return ({
+    ya_cargados: 'ya estaban todos cargados en Compras',
+    nada_cargable: 'ninguno tenía lo mínimo para cargarse',
+    sin_fila_modelo: 'no encontré una fila de Compras con las fórmulas completas para copiar',
+  })[String(motivo ?? '')] ?? 'el cargador falló'
+}
+
+/**
  * Escribe un fajo YA CONFIRMADO. El fajo tiene que venir en estado `confirmado`
  * (`repo.tomarParaConfirmar` lo garantiza con un compare-and-set), no `abierto`.
  *
@@ -317,6 +329,39 @@ export async function escribirFajo(d, fajo) {
     // que no escribió nada. Ante la duda se dejan puestas: una reserva de más se ve y se limpia; un
     // gasto duplicado en el Flujo de Fondos, no.
     const seguroQueNo = r.datos?.escritas === 0
+
+    // ═══ «YA ESTABAN TODOS CARGADOS» NO ES UN FALLO (08/09/2026) ═══
+    //
+    // El cargador emite `{ok:false, motivo:'ya_cargados'}` cuando TODO lo que iba a escribir ya
+    // estaba en la pestaña viva (`duplicados.length && !rechazos.length`). Eso no es un error: es la
+    // idempotencia funcionando. Pero acá abajo `ok:false` era un solo camino, el texto se arma con
+    // `r.error ?? r.datos?.detalle` —y `motivo` no es ninguno de los dos—, así que el 07/09 a las
+    // 10:11 el dueño leyó «⚠ No pude cargarlos: el cargador falló. No se escribió nada.» por un
+    // comprobante que estaba cargado en la fila 952. Un «falló» sobre algo que está bien es peor que
+    // el silencio: mandó a buscar en Compras una fila que ya estaba ahí.
+    //
+    // Y además REABRÍA el fajo: el comprobante quedaba pendiente, se mudaba al fajo siguiente y
+    // disparaba el aviso de «fajo mudo» a los 19 minutos. Un duplicado no se reintenta nunca —el que
+    // lo declara es la pestaña VIVA, que es más fuerte que la tabla de reservas—, así que el fajo se
+    // cierra CARGADO y se sueltan las reservas: la fila que vale es la que ya está en Compras.
+    if (seguroQueNo && r.datos?.motivo === 'ya_cargados') {
+      await repo.soltarReservas(port, reservadas)
+      await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.CARGADO, filas: [] })
+      const yaEnCompras = await repo.yaCargados(port, yaEstaban.map((f) => f.clave))
+      const donde = [
+        ...[...yaEnCompras.values()].map((x) => x?.fila),
+        ...(r.datos?.duplicados ?? []).map((d) => d?.fila),
+      ].filter((f) => f != null)
+      log?.info?.('comprobantes: el fajo ya estaba cargado', { fajo: fajo.id, filas: donde })
+      const cuantos = yaEstaban.length + entran.length
+      return {
+        estado: ESTADO.CARGADO,
+        yaEstaban: cuantos,
+        texto: donde.length
+          ? `Estos comprobantes ya estaban cargados (fila${donde.length > 1 ? 's' : ''} ${donde.join(', ')} de Compras). No los dupliqué.`
+          : 'Estos comprobantes ya estaban cargados. No los dupliqué.',
+      }
+    }
     if (seguroQueNo) await repo.soltarReservas(port, reservadas)
     await repo.reabrirFajo(port, { id: fajo.id, error: recorte(r.error ?? r.datos?.detalle) })
     log?.error?.('comprobantes: la carga falló', { fajo: fajo.id, detalle: recorte(r.error ?? r.datos?.motivo) })
@@ -325,18 +370,24 @@ export async function escribirFajo(d, fajo) {
       estado: ESTADO.ERROR,
       avisos: [congeladoAhora
         ? '🧊 La escritura de Sheets está congelada: no cargué nada.'
-        : `No pude cargarlos: ${r.error ?? r.datos?.detalle ?? 'el cargador falló'}.${seguroQueNo ? ' No se escribió nada.' : ' **Revisá Compras antes de reintentar.**'}`],
+        : `No pude cargarlos: ${r.error ?? r.datos?.detalle ?? porQueNoCargo(r.datos?.motivo)}.${seguroQueNo ? ' No se escribió nada.' : ' **Revisá Compras antes de reintentar.**'}`],
       texto: congeladoAhora
         ? '🧊 La escritura de Sheets está congelada. No cargué nada; los comprobantes quedan guardados.'
-        : `No pude cargarlos: ${r.error ?? r.datos?.detalle ?? 'el cargador falló'}.${seguroQueNo ? ' No se escribió nada.' : ' **Revisá Compras antes de reintentar.**'}`,
+        : `No pude cargarlos: ${r.error ?? r.datos?.detalle ?? porQueNoCargo(r.datos?.motivo)}.${seguroQueNo ? ' No se escribió nada.' : ' **Revisá Compras antes de reintentar.**'}`,
     }
   }
 
   // 4) Anotar en qué fila quedó cada uno. `i` es el índice dentro del fajo que se le pasó.
   const porIndice = new Map((r.datos?.filas ?? []).map((f) => [f.i, f.fila]))
+  // EL QUE NO SE ESCRIBIÓ PORQUE YA ESTABA TAMBIÉN TIENE FILA, Y ES LA SUYA (08/09/2026). El cargador
+  // saltea los duplicados y no devuelve fila para ellos, así que quedaban anotados en
+  // `comprobantes_cargados` con `fila: null` — el registro afirmaba «cargado» y no decía dónde, que
+  // es justo lo que el auditor y el vigía necesitan para poder desmentirlo. El 07/09 pasó con el
+  // 0001-00000067 ($250.000). `duplicados` trae `i` y `fila`: es la misma fila, la escribió otro.
+  const porDuplicado = new Map((r.datos?.duplicados ?? []).map((d) => [d.i, d.fila]))
   const filas = entran.map((it, k) => ({
     ...filaDeRegistro(it, fajo),
-    fila: porIndice.get(k) ?? null,
+    fila: porIndice.get(k) ?? porDuplicado.get(k) ?? null,
   }))
   await repo.anotarFilas(port, filas)
   await repo.cerrarFajo(port, {
