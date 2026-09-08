@@ -38,9 +38,13 @@ const HORAS = {
 } as const
 
 export function CeldaDia({
-  entrada, children, testid, estado, className, conflicto, tituloConflicto,
+  entrada, children, testid, estado, className, conflicto, tituloConflicto, horasVacias,
 }: {
   entrada: EntradaCeldaDia
+  /** LA CAPA DE HORAS QUEDÓ VACÍA. Con `children` —el `<input>` de la grilla— el componente no
+   *  puede verlo: lo que hay adentro del campo lo sabe el consumidor. Sin dato manda lo que decidió
+   *  `decidirCeldaDia`. Es lo que decide si el símbolo va centrado o arriba. */
+  horasVacias?: boolean
   /** La presencia declarada y las horas del día se contradicen (ver `combinarCeldaDia`). Se pinta
    *  un marco `neg` —rojo sólo para problemas, y esto SÍ es un problema: una de las dos
    *  afirmaciones se liquida—. Silenciarlo sería elegir una sin decirlo. */
@@ -57,6 +61,11 @@ export function CeldaDia({
   className?: string
 }) {
   const capas = decidirCeldaDia(entrada)
+  // ═══ SIN NÚMERO, LA LETRA VA AL CENTRO (dueño, 08/09/2026: «se ve mal la L») ═══
+  // Cinco «L» seguidas en el borde superior de sus celdas se leen corridas contra los números de
+  // las filas vecinas. Cuando el símbolo es lo único que la celda muestra, ocupa el lugar del
+  // número y su mismo tamaño; el `<input>` sigue existiendo detrás y se puede escribir encima.
+  const centrado = capas.arriba.centrado && horasVacias !== false
   return (
     <span
       data-testid={testid ?? 'celda-dia'}
@@ -72,11 +81,15 @@ export function CeldaDia({
       } ${className ?? ''}`}
     >
       {/* Superpuesta y fuera del flujo: exista o no el símbolo, la capa de horas no se mueve ni un
-          píxel. Los 10 px la dejan arriba del número sin taparlo. */}
+          píxel. Los 10 px la dejan arriba del número sin taparlo; centrada, toma los 12,5 px del
+          número al que reemplaza para caer en la misma línea que sus vecinos. */}
       <span
         data-capa="presencia"
+        data-centrado={centrado ? 'si' : undefined}
         aria-label={capas.arriba.titulo || undefined}
-        className={`pointer-events-none absolute inset-x-0 top-[3px] flex h-2.5 items-center justify-center text-[10px] font-semibold leading-none ${PRESENCIA[capas.arriba.tono]}`}
+        className={`pointer-events-none absolute flex items-center justify-center font-semibold leading-none ${
+          centrado ? 'inset-0 text-[12.5px]' : 'inset-x-0 top-[3px] h-2.5 text-[10px]'
+        } ${PRESENCIA[capas.arriba.tono]}`}
       >
         {capas.arriba.simbolo}
       </span>
