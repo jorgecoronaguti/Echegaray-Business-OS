@@ -25,14 +25,21 @@ const OBRAS: Record<string, ObraRotulo> = {
   'sf-mamposteria': { id: 'sf-mamposteria', nombre: 'MAMPOSTERÍA', cliente: 'San Francisco' },
   'la-estrella': { id: 'la-estrella', nombre: 'La Estrella', cliente: 'La Estrella' },
   'sin-cliente': { id: 'sin-cliente', nombre: 'GALPÓN 4', cliente: null },
+  // Una obra CERRADA del historial de JORNALES. Está en el catálogo —se puede rotular— pero no
+  // admite horas, así que ninguna asignación suya llega marcada como elegible.
+  'mamposteria-vieja': {
+    id: 'mamposteria-vieja', nombre: 'MAMPOSTERÍA VIEJA', cliente: 'San Francisco', estado: 'cerrada',
+  },
 }
 const PISOS = 'pisos-industriales'
 const MAMPO = 'sf-mamposteria'
 
+const CERRADA = 'mamposteria-vieja'
+
 const asig = (
   persona_id: string, nombre: string, obra_id: string, nota: string | null = null,
-  desde: string | null = null, hasta: string | null = null,
-): AsignacionQuincena => ({ persona_id, nombre, nota, obra_id, desde, hasta })
+  desde: string | null = null, hasta: string | null = null, elegible = true,
+): AsignacionQuincena => ({ persona_id, nombre, nota, obra_id, desde, hasta, elegible })
 const reg = (
   persona_id: string, obra_id: string, fecha: string, horas: number,
   tipo_hora = 'normal', notas: string | null = null,
@@ -405,4 +412,53 @@ test('SIN NOMBRE NO HAY FILA: un registro de alguien que no está en el plantel 
     registros: [reg('fantasma', MAMPO, L, 9, 'licencia', 'enfermedad')],
   })
   assert.equal(filas.length, 0)
+})
+
+// ═══ LA VIGENTE ESTÁ EN UNA OBRA CERRADA (producción, 08/09/2026) ═══
+//
+// AGUERO, OCHOA y GONZALEZ TOBARES tienen su asignación vigente en una obra CERRADA del historial
+// de JORNALES. El desplegable sólo lista obras activas, así que la fila terminaba mostrando
+// «SF - PISOS INDUSTRIALES» —la primera activa— y el chip del encabezado contaba tres personas de
+// más en una obra donde no están. Tres de diecisiete filas afirmaban una obra que la base no dice.
+
+test('LA VIGENTE EN UNA OBRA CERRADA SE MUESTRA COMO ES, y NUNCA como una obra activa', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Aguero Luis', PISOS, null, L, J),
+      asig('p1', 'Aguero Luis', CERRADA, null, V, null, false),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8)],
+  })
+  assert.equal(filas.length, 1, 'la obra cerrada no crea una fila, pero tampoco la borra')
+  assert.deepEqual(filas[0].obraVigenteNoElegible,
+    { id: CERRADA, nombre: 'MAMPOSTERÍA VIEJA' },
+    'el desplegable tiene que poder mostrar la obra real, deshabilitada')
+  assert.equal(filas[0].obraPorDefecto, null,
+    'y a una obra cerrada no se le imputa una hora: sin destino no se escribe')
+  assert.equal(filas[0].rotuloObra, 'MAMPOSTERÍA VIEJA (cerrada)',
+    'el rótulo lleva el estado REAL de la base, no una palabra inventada')
+})
+
+test('EL CHIP NO CUENTA A LA VIGENTE-EN-CERRADA DENTRO DE UNA OBRA ACTIVA', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Aguero Luis', PISOS, null, L, J),
+      asig('p1', 'Aguero Luis', CERRADA, null, V, null, false),
+      asig('p2', 'Gomez Ana', PISOS, null, L, null),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8)],
+  })
+  assert.deepEqual(personasPorObra(filas), [
+    { rotulo: 'MAMPOSTERÍA VIEJA (cerrada)', personas: 1 },
+    { rotulo: 'PISOS INDUSTRIALES', personas: 1 },
+  ], 'PISOS tiene UNA persona, no dos: la otra está en una obra cerrada y hay que decidirla')
+})
+
+test('UNA ASIGNACIÓN A UNA OBRA CERRADA NO METE A NADIE EN LA GRILLA', () => {
+  const filas = armar({
+    asignaciones: [asig('p7', 'Fantasma Juan', CERRADA, null, L, null, false)],
+    registros: [],
+  })
+  assert.equal(filas.length, 0,
+    'la grilla se llenaría de gente que sólo figura en obras cerradas del historial de JORNALES')
 })

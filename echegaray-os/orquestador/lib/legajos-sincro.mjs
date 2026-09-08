@@ -24,6 +24,20 @@ export const BUCKET_INACTIVOS = '2. INACTIVOS (fuera de la nomina vigente)'
 export const PREFIJO_REVISAR = '3.'
 export const PREFIJO_ADMIN = '9.'
 
+/**
+ * QUÉ CARPETA DE LA RAÍZ CONTIENE LEGAJOS. Exacto, no por exclusión.
+ *
+ * El 19/08 la raíz tenía `1. ACTIVOS`, `2. INACTIVOS`, `3. A REVISAR` y `9. ADMINISTRACIÓN`, y
+ * alcanzaba con saltear la `9.`. El 08/09 ya tiene además `3. RECIBOS DE SUELDO`, `4. SUBCONTRATISTAS`
+ * y `ASISTENCIAS RUBRICADAS`: recorridas como si fueran buckets de personas, el script proponía
+ * 27 ALTAS —subcontratistas y meses convertidos en empleados—. Una carpeta que no es de estas dos
+ * no contiene a nadie del plantel, y se declara como ignorada, no se adivina.
+ */
+export function esBucketDeLegajos(nombreCarpeta) {
+  const n = String(nombreCarpeta ?? '').trim()
+  return n === BUCKET_ACTIVOS || n === BUCKET_INACTIVOS || n.startsWith('2. INACTIVOS')
+}
+
 /** El vocabulario del legajo. Es el mismo CHECK que tiene la base y el mismo selector que ofrece la
  *  pantalla: si estas tres listas se separan, vincular un documento vuelve a fallar con 23514. */
 export const CATEGORIAS = [
@@ -256,6 +270,12 @@ export function planDeSincronizacion({ carpetas, archivos, personas }) {
         nombre: a.name,
         tipo_documento: categoriaDeArchivo(a.name),
         fecha_documento: fechaDelArchivo(a.name),
+        // LO QUE DRIVE SABE DEL ARCHIVO, tal cual. La subcarpeta es la ruta DENTRO de la carpeta de
+        // la persona («RECIBOS DE SUELDO», «Embargo cuota alimentaria»); vacía si está en la raíz.
+        subcarpeta: a.subcarpeta ?? '',
+        mime: a.mimeType ?? null,
+        bytes: a.size == null ? null : Number(a.size),
+        modificado_drive: a.modifiedTime ?? null,
       })
     }
   }
@@ -269,4 +289,24 @@ export function planDeSincronizacion({ carpetas, archivos, personas }) {
 export function faltantes(categorias) {
   const tiene = new Set(categorias)
   return REQUERIDOS_ACTIVO.filter((r) => !tiene.has(r))
+}
+
+/**
+ * QUÉ PAPELES YA NO ESTÁN EN DRIVE. Puro.
+ *
+ * `previos`: [{ id, persona_id, drive_file_id }] lo que la base tiene con archivo. `actuales`: los
+ * drive_file_id que la corrida VIO. `carpetasLeidas`: persona_id de las carpetas que se pudieron
+ * listar enteras.
+ *
+ * UN CONTROL QUE NO PUDO MIRAR NO DICE «NO ESTÁ». Sólo se declara ausente un papel de una persona
+ * cuya carpeta se leyó completa en esta corrida: si Drive no contestó, si la carpeta está en la
+ * papelera (se lee vacía y sin error) o si la persona no tiene carpeta vinculada, sus papeles quedan
+ * como estaban. Y nunca se borra: `ausente_en_drive` es una marca, el vínculo sigue.
+ */
+export function documentosAusentes({ previos, actuales, carpetasLeidas }) {
+  const vistos = new Set(actuales)
+  const leidas = new Set(carpetasLeidas)
+  return previos
+    .filter((d) => d.drive_file_id && leidas.has(d.persona_id) && !vistos.has(d.drive_file_id))
+    .map((d) => d.id)
 }
