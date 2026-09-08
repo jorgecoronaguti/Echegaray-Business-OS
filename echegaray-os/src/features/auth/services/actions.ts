@@ -6,8 +6,9 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { siteUrl } from '@/lib/site-url'
 import {
-  contrasenaNuevaInputSchema, loginInputSchema, recuperarInputSchema,
+  contrasenaNuevaInputSchema, loginInputSchema, recuperarInputSchema, type Rol,
 } from '../types'
+import { aterrizajeDeIngreso, inicioDeRol } from '../types/aterrizaje'
 import { urlDeRecuperacion } from './recuperacion'
 
 export type ActionState = { error: string | null }
@@ -16,10 +17,10 @@ export type ActionState = { error: string | null }
  *  devuelve `null` y el aterrizaje es el general, que es el que el middleware sabe corregir. */
 async function rolDe(
   supabase: Awaited<ReturnType<typeof createClient>>, userId: string | undefined,
-): Promise<string | null> {
+): Promise<Rol | null> {
   if (!userId) return null
   const { data } = await supabase.from('perfiles').select('rol').eq('id', userId).maybeSingle()
-  return ((data as { rol: string } | null)?.rol) ?? null
+  return ((data as { rol: Rol } | null)?.rol) ?? null
 }
 
 export async function loginAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -35,18 +36,18 @@ export async function loginAction(_prev: ActionState, formData: FormData): Promi
 
   revalidatePath('/', 'layout')
 
-  // ═══ EL ATERRIZAJE DEPENDE DE QUIÉN ENTRÓ (20/08/2026) ═══
+  // ═══ EL ATERRIZAJE ES UNA REGLA, Y VIVE EN UN SOLO LUGAR (08/09/2026) ═══
   //
-  // El aterrizaje general es el PORTAFOLIO DE OBRAS: es el primer módulo definitivo del OS y la obra
-  // es el eje del negocio. Antes iba a `/dashboard`, que se borró con el frontend legacy — quien
-  // entraba sin un `?volver=` caía en un 404 como primera pantalla del sistema.
+  // Acá había `redirect(rol === 'campo' ? '/hoy' : '/obras')`: Dirección y Administración entraban
+  // por `/obras` mientras su inicio —el que abre el isotipo del header— era `/administracion`. Y el
+  // `?volver=` que el middleware guarda al rebotar a esta pantalla no lo leía nadie: el deep link se
+  // perdía en las tres identidades, medido.
   //
-  // Pero el nivel `campo` NO PUEDE ABRIR `/obras`. El middleware lo rebota a `/hoy`… en la próxima
-  // navegación con documento: el redirect de esta acción viaja por RSC y el router del cliente se
-  // queda en `/obras`. Medido: el empleado entraba y veía la cartera de obras vacía hasta que tocaba
-  // algo. Mandarlo directo a su pantalla no es una preferencia — es la única que puede abrir.
+  // Las dos cosas las decide ahora `aterrizajeDeIngreso`, que es pura y está probada: el inicio sale
+  // del MISMO `destinoDeLaHome` que la home, y el `volver` se respeta sólo si ese rol puede ver esa
+  // ruta —si no, se aterriza directo en su inicio y no hay cadena de redirecciones.
   const rol = await rolDe(supabase, data.user?.id)
-  redirect(rol === 'campo' ? '/hoy' : '/obras')
+  redirect(aterrizajeDeIngreso(rol, formData.get('volver')?.toString() ?? null))
 }
 
 // ═══ EL ALTA LIBRE SE FUE (27/08/2026), Y LA PUERTA DE VERDAD SIGUE ABIERTA ═══
@@ -126,15 +127,25 @@ export async function contrasenaNuevaAction(_prev: ActionState, formData: FormDa
   if (error) return { error: mensajeDeAuth(error.message) }
 
   revalidatePath('/', 'layout')
-  // Mismo aterrizaje que el login: quien acaba de recuperar la contraseña ya está adentro, y el
-  // nivel campo no puede abrir `/obras`.
+  // Mismo inicio que el login, por la misma función: quien acaba de recuperar la contraseña ya está
+  // adentro. Sin `volver` — el camino acá empezó en un enlace del correo, no en una pantalla que se
+  // quiso abrir.
   const rol = await rolDe(supabase, user.id)
-  redirect(rol === 'campo' ? '/hoy' : '/obras')
+  redirect(inicioDeRol(rol))
 }
 
+/**
+ * CERRAR SESIÓN — y DECIRLO.
+ *
+ * Volvía a `/login` pelado, que es la misma pantalla que se ve al llegar: cerrar la sesión parecía
+ * no haber hecho nada. El cliente del portal ya tenía su despedida (`/portal/chau`, «Cerraste la
+ * sesión») y la gente de adentro no tenía ninguna. `?cerraste=1` lo dice en la propia puerta, que es
+ * donde además está el botón para volver a entrar: una pantalla de despedida propia sería una ruta
+ * más para la misma frase.
+ */
 export async function logoutAction(): Promise<void> {
   const supabase = await createClient()
   await supabase.auth.signOut()
   revalidatePath('/', 'layout')
-  redirect('/login')
+  redirect('/login?cerraste=1')
 }

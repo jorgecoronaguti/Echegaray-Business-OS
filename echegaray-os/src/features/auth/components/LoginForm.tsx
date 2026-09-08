@@ -35,7 +35,7 @@ const initialState: ActionState = { error: null }
 // el único remedio a un error de tipeo invisible es borrar todo y empezar. Arranca OCULTA: el
 // estado por defecto es el seguro.
 
-export function LoginForm() {
+export function LoginForm({ volver }: { volver?: string }) {
   const [state, formAction, pending] = useActionState(loginAction, initialState)
   const [ver, setVer] = useState(false)
   const [email, setEmail] = useState('')
@@ -45,6 +45,12 @@ export function LoginForm() {
 
   return (
     <form action={formAction} data-testid="login-form">
+      {/* LA RUTA QUE SE QUISO ABRIR, de vuelta a la acción. El middleware la guarda en `?volver=`
+          cuando rebota a esta pantalla, y hasta el 08/09/2026 nadie la leía: el deep link se perdía
+          siempre. Viaja oculta y NO se confía —`aterrizajeDeIngreso` la valida contra el rol antes
+          de usarla—: es entrada de usuario, la elige quien arma la URL. */}
+      {volver ? <input type="hidden" name="volver" value={volver} /> : null}
+
       <Rotulo>Usuario</Rotulo>
       <Caja llena={email.trim() !== ''}>
         <span style={{ display: 'flex', color: C.faint, flexShrink: 0 }}><Icono nombre="id" tamano={20} /></span>
@@ -130,6 +136,31 @@ export function LoginForm() {
       >
         Olvidé mi contraseña
       </Link>
+
+      {/* ═══ LA OTRA PUERTA, DICHA UNA VEZ Y EN VOZ BAJA (08/09/2026) ═══
+
+          Un cliente que llega acá pone su mail, recibe «Usuario o contraseña incorrectos» y no tiene
+          de dónde agarrarse: el OS no puede reconocerlo antes de que se autentique —y no debería
+          intentarlo, porque preguntar «¿este mail es de un cliente?» ANTES del login convierte esta
+          pantalla en un padrón consultable, que es justo lo que `recuperarAction` evita al contestar
+          siempre lo mismo exista o no la cuenta. Lo único honesto es dejar el camino a la vista.
+
+          Es texto y no un botón: es la salida de quien se equivocó de puerta, no la acción de quien
+          llega. Sin amarillo — el amarillo es marca, nunca acción (contraste 1,6:1). */}
+      <p
+        style={{
+          marginTop: 4, textAlign: 'center', fontSize: 12.5, color: C.faint, lineHeight: 1.5,
+        }}
+      >
+        ¿Sos cliente de Echegaray?{' '}
+        <Link
+          href="/portal/login"
+          data-testid="ir-al-portal"
+          style={{ color: C.muted, textDecoration: 'underline', textUnderlineOffset: 2 }}
+        >
+          Mirá tu obra acá
+        </Link>
+      </p>
 
       {/* EL ALTA LIBRE SE FUE (27/08/2026). Acá había un enlace a `/signup` que se conservaba con
           este argumento: la ruta existía igual, así que sacar el cartel dejaba «una puerta abierta y
