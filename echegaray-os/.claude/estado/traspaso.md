@@ -32,8 +32,21 @@ _actualizado: 2026-09-07 (noche) · commit `d70430d3` en main y en producción_
   Castillo Benítez sin recibo). Diagnóstico de asignación: `docs/engineering/UX_ASIGNACION_DE_PERSONAL.md`.
   Límites firmados: E2E 09 se saltea si Quiroga deja de tener licencias; `asignacion-390.png` es esqueleto (08b sin
   aserción); `getHHDePersona` sin paginar (techo 1.000); `page.tsx` personas 557 líneas.
-- **EN CURSO al cerrar**: legajo + fecha de alta desde recibos → Plantel y quitar columna «Papeles» (agente
-  categorías, worktree propio); test de la puerta de `cambiarObraActual`; corrección inline en obra cerrada (rama `fix/correccion-obra-cerrada`); materiales de
+- **Tarde 08/09, publicado (main ≥ 0ade7fe0)**: Plantel con Legajo y Alta (sin «Papeles»; GRANT legajo);
+  categorías/altas según planilla del dueño (8 UPDATE; regla: planilla > recibo); historial de obras desde JORNALES
+  (106 asignaciones; Oficina 26 imputa jefes a «JAVIER SANCHEZ» → FALTA_DATO del dueño: Maldonado/Nievas/Galván;
+  rótulos ambiguos al nivel cliente); jefe_obra puede mover gente (`puedeCambiarObraActual`); horas de un día NO
+  exigen asignación ese día; cambiar de obra cierra TODAS las abiertas y lee sólo `hasta is null` (causa del «0
+  vigentes»); obra cerrada en desplegable como opción deshabilitada; jefes separados de obreros (criterio
+  `personas.puesto='JEFE DE OBRA'`, migración `es_jefe_de_obra` escrita NO aplicada); «Lo que pide trabajo»
+  retirado (queda campanita); Compras app sólo obra/taller (`esCompraDeObra`, 927→803); espejo de documentos de
+  legajo recursivo + timer `echegaray-espejo-legajos` cada 6 h (963 archivos/74 carpetas); Sheet Compras: 28 filas
+  retiradas a `_COMPRAS_RETIRADAS` (libro/CF idénticos); Pisos 120+Rampa con costo desde Análisis del xlsm.
+  E2E de ESCRITURA no se corren mientras el dueño trabaja; fixtures con persona `es_prueba` (`e2e0000…e2e1/e2e2`).
+- **EN CURSO al cerrar**: «Traer a alguien a esta obra» en móvil (rama `feat/jefe-mueve-gente`); «En obra ahora»
+  fichaje ≠ horas (rama `fix/en-obra-fichaje-vs-horas`). Decisiones del dueño pendientes: FCL julio $800k pagado?;
+  índice «una persona una abierta» (Pastrán 2 vigentes); obras de jefes y rótulos JORNALES; Colegio de Ingenieros
+  rubro; 3 conflictos app vs planilla. (rama `fix/correccion-obra-cerrada`); materiales de
   OBRAS repartidos en el plazo y netos de compras, SIN emitir MO (ya en jornales); costos MA/MO faltantes
   desde Drive (`obras-datos.mjs`). Los 17 ítems de `obra_egreso_proyectado` con fecha 01/10 NO van como bulto.
 
