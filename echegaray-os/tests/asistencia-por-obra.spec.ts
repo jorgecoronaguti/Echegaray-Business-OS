@@ -3,6 +3,8 @@ import { test, expect } from '@playwright/test'
 import { entrarComo } from './util/login'
 import { ADMIN, JEFE, servicio } from './util/identidades'
 import { MARCA_PRUEBA } from './util/rastro'
+import { jornadaPorDefecto } from '../src/features/administracion/services/jornadaPorDefecto'
+import { hs } from '../src/features/administracion/services/jornadaPorObra'
 
 // LA EVIDENCIA DEL EFECTO, EN EL NAVEGADOR Y CON DATOS REALES.
 //
@@ -698,8 +700,16 @@ test('07 · LA CASILLA NACE VACÍA Y GUARDAR NO ESCRIBE NADA — sobre una obra 
     await expect(page.getByTestId('pie-jornada')).toContainText('0 presentes')
     await page.screenshot({ path: 'qa-shots/asistencia-07-casilla-vacia-390.png', fullPage: true })
 
-    await page.getByTestId('poner-jornada').click()
-    await expect(page.getByTestId('horas').first()).toHaveValue('8,8')
+    // LO QUE PONE EL ATAJO ES LA JORNADA DEL DÍA, NO LA DE LA OBRA (dueño, 08/09/2026): 9 de L a
+    // J, 8 los V. Clavar «8,8» acá volvía a afirmar la definición vieja. El fin de semana no tiene
+    // defecto: el botón queda apagado y no hay nada que poner.
+    const porDefecto = jornadaPorDefecto(new Date().toISOString().slice(0, 10))
+    if (porDefecto === null) {
+      await expect(page.getByTestId('poner-jornada')).toBeDisabled()
+    } else {
+      await page.getByTestId('poner-jornada').click()
+      await expect(page.getByTestId('horas').first()).toHaveValue(hs(porDefecto))
+    }
     await page.screenshot({ path: 'qa-shots/asistencia-08-jornada-puesta-390.png', fullPage: true })
   } finally {
     await limpiarObraDePrueba()

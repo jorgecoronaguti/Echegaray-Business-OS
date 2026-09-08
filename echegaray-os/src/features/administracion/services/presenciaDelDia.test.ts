@@ -143,19 +143,28 @@ test('lo que falta por marcar se dice sin acusar a nadie', () => {
 
 // ── 6 · LA ÚNICA DIRECCIÓN: PRESENCIA → HORAS ────────────────────────────────────────────────────
 
+const LUNES = '2026-09-07'
+const VIERNES = '2026-09-11'
+const SABADO = '2026-09-12'
+
 test('el declarado ausente o de licencia no tiene casilla de horas que llenar', () => {
-  assert.deepEqual(horasSegunPresencia('ausente', 8.8), { editable: false, sugerencia: null, letra: 'A' })
-  assert.deepEqual(horasSegunPresencia('licencia', 8.8), { editable: false, sugerencia: null, letra: 'L' })
+  assert.deepEqual(horasSegunPresencia('ausente', LUNES), { editable: false, sugerencia: null, letra: 'A' })
+  assert.deepEqual(horasSegunPresencia('licencia', LUNES), { editable: false, sugerencia: null, letra: 'L' })
 })
 
-test('la jornada se sugiere SÓLO al presente, y sólo si la obra la tiene pactada', () => {
-  assert.deepEqual(horasSegunPresencia('presente', 8.8), { editable: true, sugerencia: 8.8, letra: null })
-  assert.deepEqual(horasSegunPresencia('presente', 0), { editable: true, sugerencia: null, letra: null },
-    'se inventó una jornada que el contrato de la obra no dice')
+// LA SUGERENCIA ES DEL DÍA, NO DE LA OBRA (dueño, 08/09/2026). Antes salía de
+// `obra_canonica.jornada_horas` —9 para todas las obras y todos los días—: un viernes sugería 9 y
+// eso es una hora de más por persona y por semana.
+test('al presente se le sugiere la jornada por defecto de ESA fecha', () => {
+  assert.deepEqual(horasSegunPresencia('presente', LUNES), { editable: true, sugerencia: 9, letra: null })
+  assert.deepEqual(horasSegunPresencia('presente', VIERNES), { editable: true, sugerencia: 8, letra: null },
+    'el viernes son 8: la jornada de la obra volvió a ganarle a la regla del día')
+  assert.deepEqual(horasSegunPresencia('presente', SABADO), { editable: true, sugerencia: null, letra: null },
+    'se inventó una jornada de sábado que nadie pactó')
 })
 
 test('sin presencia declarada la carga de horas queda como estaba: editable y sin sugerencia', () => {
-  assert.deepEqual(horasSegunPresencia(null, 8.8), { editable: true, sugerencia: null, letra: null })
+  assert.deepEqual(horasSegunPresencia(null, LUNES), { editable: true, sugerencia: null, letra: null })
 })
 
 test('a quien fue declarado ausente o de licencia no se le pone la jornada', () => {
