@@ -112,6 +112,8 @@ const FECHAS = Object.freeze(['fecha', 'fecha_prevista', 'fecha_prevista_2', 'fe
 
 /** El estado que el dueño usa para anular una fila sin borrarla. No es un gasto. */
 export const ANULADA = 'ELIMINADO'
+/** Los dos textos que anulan una fila: el histórico y el ordenado el 08/09/2026 («Cancelado»). */
+export const esAnulada = (estado) => /^(eliminado|cancelado)$/i.test(String(estado ?? '').trim())
 
 /**
  * Resuelve el contrato de columnas contra el encabezado REAL, fallando cerrado.
@@ -181,7 +183,7 @@ export function filaACompra(fila, idx, numeroDeFila) {
     if (FECHAS.includes(clave)) { r[clave] = diaDe(crudo(clave)); continue }
     r[clave] = texto(crudo(clave))
   }
-  r.anulada = r.estado === ANULADA
+  r.anulada = esAnulada(r.estado)
   return r
 }
 

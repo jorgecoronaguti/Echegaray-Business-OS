@@ -173,3 +173,11 @@ test('dos proveedores con el MISMO número dan claves distintas', () => {
   const b = claveDeCompra({ cuit: '33-70833259-9', comprobante: '0001-00000100' })
   assert.notEqual(a, b)
 })
+
+test('una fila "Cancelado" también es anulada — es el texto que el dueño ordenó el 08/09/2026', () => {
+  const fila = [...FILA_RSV]
+  fila[23] = 'Cancelado'
+  const c = filaACompra(fila, contratoDeColumnas(ENCABEZADO), 4)
+  assert.equal(c.estado, 'Cancelado')
+  assert.equal(c.anulada, true)
+})

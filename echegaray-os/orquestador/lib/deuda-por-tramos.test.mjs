@@ -149,6 +149,8 @@ describe('el estado tipeado que contradice a su propia fórmula', () => {
     assert.equal(estadoTipeadoQueContradice(fila({ estado: 'Pendiente' }), ALUMETAL), null)
     assert.equal(estadoTipeadoQueContradice(fila({ estado: 'ELIMINADO' }), ALUMETAL), null,
       'una fila dada de baja no contradice nada')
+    assert.equal(estadoTipeadoQueContradice(fila({ estado: 'Cancelado' }), ALUMETAL), null,
+      'una fila cancelada por el dueño (08/09/2026) tampoco')
   })
 })
 

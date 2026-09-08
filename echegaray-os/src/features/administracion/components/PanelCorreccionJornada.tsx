@@ -7,6 +7,7 @@ import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import { corregirJornada } from '../services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '../services/motivoDeAusencia'
+import { obraDestinoInicial } from '../services/destinoInicial'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 
 // EL ADMINISTRADOR CORRIGE TODO — el día de una persona: su obra, sus horas, si no vino, o sacarlo.
@@ -61,8 +62,9 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
   const tramo = tramos.find((t) => t.obra_id === origen) ?? tramos[0] ?? null
   const cargado = tramo !== null
 
+  // Sólo una obra ELEGIBLE puede ser el valor inicial: ver `obraDestinoInicial`.
   const [obraDestino, setObraDestino] = useState(
-    tramos[0]?.obra_id ?? fila.obraPorDefecto?.id ?? obras[0]?.id ?? '')
+    obraDestinoInicial(tramos[0]?.obra_id, fila.obraPorDefecto?.id, obras))
   const jornada = jornadaPorObra[obraDestino] ?? 0
   const [estado, setEstado] = useState<Estado>(tramos[0]?.ausente ? 'ausente' : 'presente')
   const [texto, setTexto] = useState(tramos[0]?.horas != null ? hs(tramos[0].horas) : '')
@@ -172,6 +174,11 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
         <Campo rotulo="Obra" ayuda="Cambiarla mueve esas horas a la obra elegida.">
           <select value={obraDestino} onChange={(e) => { setObraDestino(e.target.value); setPedirAsignacion(false) }}
             className={CAMPO} data-testid="correccion-obra">
+            {obraDestino === '' && (
+              <option value="" disabled>
+                {tramo ? `Elegí la obra — las horas están en ${tramo.nombre}, que no está activa` : 'Elegí la obra'}
+              </option>
+            )}
             {obras.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
           </select>
         </Campo>
