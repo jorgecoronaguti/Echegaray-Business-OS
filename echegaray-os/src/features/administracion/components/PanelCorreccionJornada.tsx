@@ -29,12 +29,15 @@ import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 // y el panel QUEDA ABIERTO con el acuse. Corregir es una tarea de varios días seguidos de la misma
 // persona: cerrar el panel en el primero obligaría a volver a buscar la fila para el segundo.
 //
-// ═══ LA ASIGNACIÓN NO SE CREA SOLA ═══
+// ═══ LA ASIGNACIÓN NO FRENA LA CORRECCIÓN, Y TAMPOCO SE CREA SOLA ═══
 //
-// Si la persona no está asignada a la obra destino, la acción vuelve SIN escribir y con
-// `necesitaAsignacion`. Recién entonces aparece la casilla para asignarla, y hay que marcarla. Esa
-// asignación es la que después decide a qué obra se le imputa el costo de esa persona: crearla en
-// silencio haría que un dedo mal puesto la cambiara de obra sin que nadie lo decidiera.
+// Corregir las horas de un día entra SIEMPRE, esté o no la persona asignada a esa obra ese día
+// (decisión del dueño, 08/09: «una cosa es la asistencia y otra la cantidad de horas por día»). Si
+// no lo estaba, el acuse lo dice.
+//
+// La casilla está siempre a la vista y siempre vacía: es la única forma de CREAR la asignación, y
+// esa asignación es la que después decide a qué obra se le imputa el costo de esa persona. Antes
+// aparecía sólo cuando la acción rechazaba; sin rechazo, atarla a él la habría hecho inalcanzable.
 
 type Estado = 'presente' | 'ausente' | 'borrar'
 
@@ -69,7 +72,6 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
   const [estado, setEstado] = useState<Estado>(tramos[0]?.ausente ? 'ausente' : 'presente')
   const [texto, setTexto] = useState(tramos[0]?.horas != null ? hs(tramos[0].horas) : '')
   const [asignar, setAsignar] = useState(false)
-  const [pedirAsignacion, setPedirAsignacion] = useState(false)
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null)
   const [motivo, setMotivo] = useState<string | null>(null)
   const [pendiente, arrancar] = useTransition()
@@ -87,7 +89,6 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
     setEstado(t?.ausente ? 'ausente' : 'presente')
     setTexto(t?.horas != null ? hs(t.horas) : '')
     setAviso(null)
-    setPedirAsignacion(false)
     setAsignar(false)
   }
 
@@ -123,7 +124,6 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
       })
       if (r.ok) {
         setAviso({ ok: true, texto: r.mensaje })
-        setPedirAsignacion(false)
         // LA GRILLA SE VUELVE A LEER DE LA BASE. Sin esto el panel dice «guardado» y la celda de
         // atrás sigue mostrando el número viejo: la pantalla afirmaría dos cosas distintas del
         // mismo día. No se pinta un optimista — se relee el destino, que es la única evidencia.
@@ -131,7 +131,6 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
         return
       }
       setAviso({ ok: false, texto: r.error })
-      if (r.necesitaAsignacion) setPedirAsignacion(true)
     })
   }
 
@@ -143,7 +142,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
       onCerrar={alCerrar}
       pie={
         <Boton type="button" variante="primaria" onClick={guardar}
-          disabled={pendiente || invalido || (pedirAsignacion && !asignar)}
+          disabled={pendiente || invalido}
           data-testid="guardar-correccion">
           {pendiente ? 'Guardando…' : 'Guardar la corrección'}
         </Boton>
@@ -172,7 +171,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
         )}
 
         <Campo rotulo="Obra" ayuda="Cambiarla mueve esas horas a la obra elegida.">
-          <select value={obraDestino} onChange={(e) => { setObraDestino(e.target.value); setPedirAsignacion(false) }}
+          <select value={obraDestino} onChange={(e) => setObraDestino(e.target.value)}
             className={CAMPO} data-testid="correccion-obra">
             {obraDestino === '' && (
               <option value="" disabled>
@@ -221,13 +220,11 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
           </p>
         )}
 
-        {pedirAsignacion && (
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '12.5px', color: V.tinta }}>
-            <input type="checkbox" checked={asignar} onChange={(e) => setAsignar(e.target.checked)}
-              data-testid="correccion-asignar" style={{ marginTop: 3 }} />
-            <span>Asignarla también a esa obra, desde ese día.</span>
-          </label>
-        )}
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '12.5px', color: V.tinta }}>
+          <input type="checkbox" checked={asignar} onChange={(e) => setAsignar(e.target.checked)}
+            data-testid="correccion-asignar" style={{ marginTop: 3 }} />
+          <span>Asignarla también a esa obra, desde ese día.</span>
+        </label>
 
         {aviso && (
           <Aviso tono={aviso.ok ? 'info' : 'neg'} testid="acuse-correccion">{aviso.texto}</Aviso>

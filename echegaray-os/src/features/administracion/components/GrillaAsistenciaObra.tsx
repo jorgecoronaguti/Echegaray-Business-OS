@@ -156,7 +156,7 @@ export function GrillaAsistenciaObra({
         fallar(k, 'Esa obra no tiene jornada pactada: la ausencia no se puede medir.')
         return
       }
-      enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'ausente', horas: jornada }, k)
+      enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'ausente', horas: jornada }, k, fila.clave)
       return
     }
     const { horas, error } = leerHoras(bruto)
@@ -164,7 +164,7 @@ export function GrillaAsistenciaObra({
     // En blanco NO borra: dejar de escribir no es una decisión de nadie. Borrar una jornada
     // cargada es un acto y necesita su propia puerta, que esta pantalla todavía no tiene.
     if (horas === null) { setBorradores((b) => ({ ...b, [k]: original })); return }
-    enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas }, k)
+    enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas }, k, fila.clave)
   }
 
   /** Lo tipeado se descarta: no se guardó. El valor lo vuelve a poner `textoDe(celda)`. */
@@ -176,11 +176,18 @@ export function GrillaAsistenciaObra({
     fecha: string,
     marca: { persona_id: string; estado: 'presente' | 'ausente'; horas: number },
     k: string,
+    /** La fila, para colgarle el aviso del acuse. Es la misma clave que usa `cambiarObra`. */
+    claveFila: string,
   ) => {
     setErrores((e) => { const n = { ...e }; delete n[k]; return n })
     arrancar(async () => {
       const r = await guardarJornada({ obra_id: obraId, fecha, marcas: [marca] })
-      if (!r.ok) { volverAlValorAnterior(k); fallar(k, r.error) }
+      if (!r.ok) { volverAlValorAnterior(k); fallar(k, r.error); return }
+      // SÓLO LA EXCEPCIÓN SE DIBUJA. El acuse normal («1 marca nueva») ya se ve en la celda, que
+      // muestra el número guardado; repetirlo en cada tecleo sería ruido. Lo que no se ve en ningún
+      // lado es que esa persona no estaba asignada a la obra ese día, y eso se dice.
+      const aviso = r.aviso
+      if (aviso) setAcuses((a) => ({ ...a, [claveFila]: { texto: aviso, error: false } }))
     })
   }
 

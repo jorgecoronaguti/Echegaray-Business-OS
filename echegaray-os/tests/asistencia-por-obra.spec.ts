@@ -339,6 +339,78 @@ test('05c · GUARDAR DEJA EL PANEL ABIERTO CON EL ACUSE, y la celda de atrás ca
   }
 })
 
+test('05e · UN DÍA ANTERIOR A LA ASIGNACIÓN SE CARGA IGUAL — el defecto del dueño', async ({ page }) => {
+  test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
+    'Escribe HH en su propia obra ZZ-E2E. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
+  // EL DEFECTO, EN EL NAVEGADOR (08/09, captura de producción): *«no permite cargar horas desde esta
+  // pantalla»*. El dueño asignó a NIEVAS VILLEGAS a «SF - PISOS INDUSTRIALES» HOY y al cargarle las
+  // horas del 01/09 salía «Una persona del envío no está asignada a esta obra ese día». Como una
+  // asignación empieza el día en que se decide, TODO día anterior rebotaba: la única salida era
+  // inventar un `desde` retroactivo, es decir, mentir sobre cuándo se la mandó a esa obra.
+  //
+  // Decisión del dueño: «una cosa es la asistencia y otra la cantidad de horas por día». Las horas
+  // entran; la falta de asignación se AVISA en el acuse.
+  const persona = await prepararObraDePrueba()
+  if (!persona) test.skip(true, 'La base no tiene a nadie en el plantel.')
+  const sb = servicio()
+  const hoy = new Date().toISOString().slice(0, 10)
+  // LA ASIGNACIÓN EMPIEZA HOY, como la que puso el dueño. `prepararObraDePrueba` la deja abierta
+  // desde enero, que es justamente el caso que NO reproduce el defecto.
+  const desde = await sb.from('obra_asignacion').update({ desde: hoy })
+    .eq('obra_id', OBRA_DE_PRUEBA).eq('persona_id', persona).select('desde')
+  if (desde.error || (desde.data?.[0] as { desde: string } | undefined)?.desde !== hoy) {
+    throw new Error(`La asignación no quedó desde hoy: ${desde.error?.message ?? 'no se releyó'}`)
+  }
+
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await entrarComo(page, ADMIN.email, ADMIN.password)
+    await page.goto('/administracion/personas?vista=asistencia')
+    await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+    const fila = page.locator(`[data-testid="fila-quincena"]:has(a[href*="${persona}"])`).first()
+    if (await fila.count() === 0) test.skip(true, 'La persona de prueba no está en esta quincena.')
+    await fila.getByTestId('abrir-correccion').click()
+    await expect(page.getByTestId('panel-correccion')).toBeVisible()
+
+    // UN DÍA ANTERIOR A HOY, EL QUE HAYA. No se clava una fecha: la quincena que se está mirando
+    // depende del día en que corra la suite, y un `2026-09-01` fijo pondría el test en rojo en
+    // octubre sin que ninguna regla se haya roto.
+    const anterior = (await page.getByTestId('correccion-dia').locator('option')
+      .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value)))
+      .find((v) => v < hoy) ?? null
+    if (!anterior) test.skip(true, 'La quincena arranca hoy: no hay día anterior que corregir.')
+
+    await page.getByTestId('correccion-dia').selectOption(anterior as string)
+    await page.getByTestId('correccion-obra').selectOption(OBRA_DE_PRUEBA)
+    await page.getByTestId('correccion-horas').fill('6')
+    // LA CASILLA NO SE MARCA: la asignación es otra decisión y no se toma para poder cargar horas.
+    await expect(page.getByTestId('correccion-asignar')).not.toBeChecked()
+    await page.getByTestId('guardar-correccion').click()
+
+    // (a) EL ACUSE ES DE UNA ESCRITURA HECHA, y NOMBRA que no estaba asignada. Sin el arreglo, acá
+    // había un error rojo y ninguna hora.
+    const acuse = page.getByTestId('acuse-correccion')
+    await expect(acuse).toBeVisible({ timeout: 20000 })
+    await expect(acuse).toContainText('las horas se guardaron igual')
+    await page.screenshot({ path: 'qa-shots/horas-sin-asignacion-1440.png' })
+
+    // (b) LA EVIDENCIA ES EL DATO EN SU DESTINO, no el acuse. Se relee de la base.
+    await expect.poll(async () => {
+      const { data } = await sb.from('registros_hh').select('horas')
+        .eq('obra_canonica_id', OBRA_DE_PRUEBA).eq('persona_id', persona).eq('fecha', anterior as string)
+      return Number((data?.[0] as { horas: number } | undefined)?.horas ?? 0)
+    }, { timeout: 20000 }).toBe(6)
+
+    // (c) Y LA ASIGNACIÓN SIGUE EMPEZANDO HOY: cargar horas no la movió hacia atrás ni creó otra.
+    const { data: asigs } = await sb.from('obra_asignacion').select('desde')
+      .eq('obra_id', OBRA_DE_PRUEBA).eq('persona_id', persona)
+    assertUna(asigs as { desde: string }[] | null, hoy)
+  } finally {
+    await limpiarObraDePrueba()
+  }
+})
+
 test('05d · UNA OBRA CERRADA: el día YA CARGADO se corrige en la celda, y el error va bajo la fila', async ({ page }) => {
   test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
     'Escribe HH en su propia obra ZZ-E2E. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
@@ -412,6 +484,12 @@ test('05d · UNA OBRA CERRADA: el día YA CARGADO se corrige en la celda, y el e
     await limpiarObraDePrueba()
   }
 })
+
+/** Una sola asignación y con el `desde` que se puso: cargar horas no puede crear ni mover ninguna. */
+function assertUna(asigs: { desde: string }[] | null, desde: string): void {
+  expect(asigs ?? []).toHaveLength(1)
+  expect((asigs ?? [])[0]?.desde).toBe(desde)
+}
 
 test('06 · la CARPETA de la persona: su cronología, con lo importado de JORNALES', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
