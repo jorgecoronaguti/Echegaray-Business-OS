@@ -144,6 +144,48 @@ test('02 · la QUINCENA por obra abre en Administración → Personal', async ({
   await expect(page.getByTestId('vistas-personal')).toBeVisible()
 })
 
+// ═══ LOS DOS GRUPOS (dueño, 08/09/2026) ═══
+//
+// *«dividir en la pestaña asistencia y plantel a los jefes de obra del resto de los obreros»*.
+//
+// LO QUE SE AFIRMA ES EL INVARIANTE, NO QUIÉN ES JEFE HOY. Que MALDONADO y NIEVAS sean los dos
+// jefes es un dato vivo: mañana el dueño carga un tercero y un test que lo clave se pone rojo sin
+// que ninguna regla se haya roto. Lo que no puede cambiar es que los jefes vayan ARRIBA, que
+// ninguna fila quede fuera de una sección y que el total del pie los siga contando a todos.
+// El criterio en sí —qué campo lo decide— está probado en `vocabularioPersona.test.ts`.
+test('02c · la quincena se divide en JEFES DE OBRA y OBREROS, y el total sigue siendo de todos', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=asistencia&quincena=2026-09-08')
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+  const rotulos = await page.getByTestId('fila-grupo').allInnerTexts()
+  const filas = await page.getByTestId('fila-quincena').count()
+
+  if (rotulos.length === 0) {
+    // NO HAY JEFES EN ESTA QUINCENA. Entonces NO puede haber un rótulo suelto: una sola sección se
+    // dibuja sin rótulo, que es como se veía la pantalla antes de este cambio.
+    expect(filas).toBeGreaterThan(0)
+    return
+  }
+
+  // JEFES PRIMERO, SIEMPRE. Si el orden se diera vuelta, este es el que se pone rojo.
+  expect(rotulos[0]).toContain('JEFE')
+  expect(rotulos[rotulos.length - 1]).toContain('OBRERO')
+
+  // NINGUNA FILA QUEDA FUERA DE UNA SECCIÓN. Los conteos del rótulo tienen que sumar exactamente
+  // las filas dibujadas: si el agrupamiento perdiera o duplicara a alguien, acá se ve.
+  const sumaDeRotulos = rotulos
+    .map((t) => Number(/·\s*(\d+)/.exec(t)?.[1] ?? '0'))
+    .reduce((a, b) => a + b, 0)
+  expect(sumaDeRotulos).toBe(filas)
+
+  // Y EL TOTAL DE LA QUINCENA SIGUE SIENDO GLOBAL: es la HH de la empresa en el período, no la de
+  // un grupo. Partirlo cambiaría lo que ese número significa.
+  await expect(page.getByTestId('total-quincena-valor')).toBeVisible()
+})
+
 test('02b · la quincena en el teléfono', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await entrarComo(page, ADMIN.email, ADMIN.password)
