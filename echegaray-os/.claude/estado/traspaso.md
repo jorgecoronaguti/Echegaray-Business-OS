@@ -32,9 +32,18 @@ _actualizado: 2026-09-07 (noche) · commit `d70430d3` en main y en producción_
 - Portal: duplicados de Quattropani / La Estrella / Messina (15 líneas congeladas) — decisión del dueño.
 - Pasos del pipeline en rojo desde antes de hoy: `proveedores-que-sale-cada-dia.mjs` ($171.314 sin
   columna de medio), `cheques-cobertura-sheet.mjs`, `formato-pestanas.mjs` (9 pestañas fuera de estándar).
-- Agentes lanzados al cierre de la sesión: incidente **Disk IO Budget de Supabase** (rama `fix/disk-io`),
-  **asistencia** celular+PC (`feat/asistencia-por-obra`), **huecos del CF** (cargas julio $0, impuestos
-  dic $0, deuda previsional nov–dic $0, 4 filas sin fecha de caja).
+- **Asistencia por obra — PUBLICADA 08/09** (`adddadde` en main y origin; Vercel desplegó). v1 revertida
+  (e067fcbd) por 8 hallazgos; v2 firmada por auditor-de-cierre tras 2 vueltas. 7/7 E2E con escritura sobre
+  obra propia `zz-e2e-asistencia` (la causa del fallo previo era el escenario: elegía una persona ficticia
+  `e2e00000-…` sin legajo); smoke en producción 4/4 lectura. Motivos en `registros_hh.notas` (16 de
+  `asistencia-motivos.mjs`). Declarado y NO bloqueante: escritura no atómica (sin RPC), RLS `registros_hh`
+  using(true) preexistente, aviso «otra obra» suma ausencias. Falta E2E de «Sacar lo cargado» con filas
+  protegidas contra Postgres (evidencia de regla sí, de efecto no). Capturas en `qa-shots/asistencia-*`.
+  Dato residual en la base: persona ficticia `e2e00000-0000-4000-8000-000000000001` con asignación abierta
+  — resto de otro E2E, no borrado (verificar de quién es antes de tocar).
+- Cobranzas: calendario SF movido a viernes alternos con Quattropani (18/09, 02/10, 16/10, 30/10, 13/11);
+  portal SF sincronizado. Quattropani ve 9 líneas USD congeladas (cobranza_fila NULL); las de pesos
+  78–86 siguen OCULTAS — decisión del dueño.
 - **Trampa que mordió dos veces hoy**: el checkout de producción atrasado PISA el Sheet. Después de
   cada cambio de generador: `git merge --ff-only origin/main` en `~/echegaray-os/produccion/echegaray-os`.
 
