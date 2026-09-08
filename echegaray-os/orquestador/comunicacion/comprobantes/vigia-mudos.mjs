@@ -28,12 +28,28 @@ import * as repoReal from './repositorio.mjs'
 export const VIGIA_INTERVALO_MS_DEFAULT = 5 * 60_000
 
 /**
+ * Lo que se escribe en `aviso_post_id` cuando NO había nada que avisar. No es un post: es la marca
+ * de «ya lo miré y no había nada que decir», y es lo que saca al fajo del barrido para siempre. La
+ * columna es `text` y nadie la usa para pedirle un post a Mattermost sin haberlo publicado antes.
+ */
+export const SELLO_CALLADO = 'sin-aviso:silenciado'
+
+/**
  * El texto con el que se rompe el silencio. Si el fajo tiene algo que preguntar, se pregunta; si no,
  * se dice que quedó trabado y qué hay adentro — nunca se calla y nunca se inventa un motivo.
  */
 export function avisoDeFajo(fajo, mudo) {
   const p = textoPregunta(fajo)
   if (p?.texto) return `${p.texto}\n\n_(Se me había quedado sin contestar hace ${mudo.minutos} minutos.)_`
+  // ═══ NO HAY NADA QUE PREGUNTAR: NO SE AVISA (08/09/2026) ═══
+  //
+  // Si todo lo que queda pendiente ya se preguntó una vez y está callado (`silenciado`), el genérico
+  // de abajo —«tengo N comprobantes sin terminar»— sería la MISMA molestia con otras palabras, y
+  // encima sin decir qué contestar. `aviso_post_id` impedía repetir el aviso del mismo fajo, pero
+  // cada foto nueva abre un fajo nuevo: la repetición entraba por ahí. Se devuelve null y el barrido
+  // marca el fajo igual, así que tampoco se lo vuelve a mirar.
+  const vivos = (fajo.items ?? []).filter((it) => it && !it.yaCargado && !it.silenciado)
+  if (!vivos.length) return null
   const n = mudo.comprobantes
   return `⚠ Tengo **${n} ${n === 1 ? 'comprobante' : 'comprobantes'}** de tu carga sin terminar de registrar `
     + `hace ${mudo.minutos} minutos y no supe qué hacer con ${n === 1 ? 'él' : 'ellos'}. `
@@ -48,7 +64,7 @@ export function avisoDeFajo(fajo, mudo) {
  */
 export async function barrerFajosMudos(d = {}) {
   const { port, publicar, repo = repoReal, log = null, minutos = MINUTOS_MUDO } = d
-  const salida = { encontrados: 0, avisados: 0, sinAvisar: 0 }
+  const salida = { encontrados: 0, avisados: 0, sinAvisar: 0, callados: 0 }
   if (typeof port?.query !== 'function' || typeof publicar !== 'function') return salida
   let filas
   try {
@@ -67,8 +83,16 @@ export async function barrerFajosMudos(d = {}) {
   for (const m of mudos) {
     const fajo = porId.get(m.id)
     if (!fajo?.channel_id) { salida.sinAvisar++; continue }
+    const texto = avisoDeFajo(fajo, m)
+    if (!texto) {
+      // Nada que decir. Se sella igual para que el próximo barrido no lo vuelva a traer: un fajo que
+      // se mira cada cinco minutos y nunca produce nada es trabajo que se repite solo.
+      salida.callados++
+      await repo.guardarAvisoPost(port, { id: fajo.id, avisoPostId: SELLO_CALLADO }).catch(() => {})
+      continue
+    }
     try {
-      const post = await publicar({ channelId: fajo.channel_id, rootPostId: fajo.root_post_id ?? null, texto: avisoDeFajo(fajo, m) })
+      const post = await publicar({ channelId: fajo.channel_id, rootPostId: fajo.root_post_id ?? null, texto })
       if (!post?.id) { salida.sinAvisar++; continue }
       // EL AVISO SE GUARDA ANTES DE CANTAR VICTORIA: es lo único que impide repetirlo cada barrido.
       await repo.guardarAvisoPost(port, { id: fajo.id, avisoPostId: post.id })

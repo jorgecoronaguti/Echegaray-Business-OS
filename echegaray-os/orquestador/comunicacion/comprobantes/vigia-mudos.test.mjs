@@ -66,7 +66,7 @@ test('si NO se pudo publicar, no se marca como avisado: el próximo barrido lo r
 
 test('si la base no contesta, NO se afirma que no hay fajos mudos', async () => {
   const r = await barrerFajosMudos({ port, repo: repoFalso({ explota: true }), publicar: async () => ({ id: 'x' }) })
-  assert.deepEqual(r, { encontrados: 0, avisados: 0, sinAvisar: 0 })
+  assert.deepEqual(r, { encontrados: 0, avisados: 0, sinAvisar: 0, callados: 0 })
 })
 
 test('un fajo abierto que YA publicó su aviso no se toca: eso no es mudo', async () => {
@@ -97,4 +97,65 @@ test('sin nada que preguntar el aviso igual dice qué quedó adentro, nunca se c
     { minutos: 30, comprobantes: 1 })
   assert.match(texto, /30 minutos/)
   assert.match(texto, /descartalo/)
+})
+
+// ═══ EL AVISO NO SE REPITE: UNA VEZ POR FAJO, Y NINGUNA SI NO HAY NADA QUE PREGUNTAR ═══
+import { SELLO_CALLADO } from './vigia-mudos.mjs'
+
+const CALLADO = {
+  comprobante: { proveedor: 'Movistar', numero: null, total: 15000, fecha: '2026-09-03' },
+  preguntadoEn: '2026-09-03T13:00:00.000Z',
+  silenciado: true,
+}
+
+test('un fajo cuyo único pendiente ya se preguntó NO se vuelve a avisar', async () => {
+  const publicados = []
+  const sellados = []
+  const fila = {
+    id: 'fa779ea0', channel_id: 'c1', root_post_id: 'p1', estado: 'abierto',
+    items: [CALLADO], ultimo_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+  }
+  const r = await barrerFajosMudos({
+    port: { query: async () => ({ rows: [] }) },
+    publicar: async (x) => { publicados.push(x); return { id: 'nuevo' } },
+    repo: {
+      fajosSinAviso: async () => [fila],
+      guardarAvisoPost: async (_p, x) => { sellados.push(x); return {} },
+    },
+  })
+  assert.equal(publicados.length, 0, 'esto es lo que el dueño llamó «desesperante»')
+  assert.equal(r.avisados, 0)
+  assert.equal(r.callados, 1)
+  assert.deepEqual(sellados, [{ id: 'fa779ea0', avisoPostId: SELLO_CALLADO }],
+    'se sella igual: un fajo que se mira cada 5 minutos y nunca produce nada es trabajo repetido')
+})
+
+test('el sello saca al fajo del barrido: la consulta ya filtra por aviso_post_id', async () => {
+  // `fajosSinAviso` pide `aviso_post_id is null`. El sello lo llena, así que el barrido siguiente ni
+  // lo trae. Se prueba lo que la consulta pide, no lo que uno se acuerda que pedía.
+  const { fajosSinAviso } = await import('./repositorio.mjs')
+  let sql = ''
+  await fajosSinAviso({ query: async (q) => { sql = q; return { rows: [] } } }, {})
+  assert.match(sql, /aviso_post_id is null/)
+})
+
+test('un fajo con algo REAL que preguntar sí se avisa, y una sola vez', async () => {
+  const publicados = []
+  const sellados = []
+  const fila = {
+    id: 'otro', channel_id: 'c1', root_post_id: 'p1', estado: 'abierto',
+    items: [{ comprobante: { proveedor: 'Movistar', numero: null, total: 15000, fecha: '2026-09-03' } }],
+    ultimo_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+  }
+  const r = await barrerFajosMudos({
+    port: { query: async () => ({ rows: [] }) },
+    publicar: async (x) => { publicados.push(x); return { id: 'post-9' } },
+    repo: {
+      fajosSinAviso: async () => [fila],
+      guardarAvisoPost: async (_p, x) => { sellados.push(x); return {} },
+    },
+  })
+  assert.equal(publicados.length, 1)
+  assert.equal(r.avisados, 1)
+  assert.deepEqual(sellados, [{ id: 'otro', avisoPostId: 'post-9' }])
 })

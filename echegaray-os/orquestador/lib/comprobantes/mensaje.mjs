@@ -520,7 +520,10 @@ export function mensajeFajo(fajo, { url } = {}) {
  * @returns {{texto:string}|null}
  */
 export function textoPregunta(fajo = {}) {
-  const trabados = (fajo.items ?? []).filter((it) => it && !estaCompleto(it) && !it.yaCargado)
+  // `silenciado` = ya se preguntó UNA vez por un ítem que nadie puede resolver sin escribir el dato
+  // a mano (ver `arrastre.mjs`). Sigue viajando para que la respuesta tenga dónde caer, pero no se
+  // vuelve a preguntar: eso es lo que el dueño llamó «eso viejo que quedó pegado, es desesperante».
+  const trabados = (fajo.items ?? []).filter((it) => it && !estaCompleto(it) && !it.yaCargado && !it.silenciado)
   if (!trabados.length) return null
 
   const l = [trabados.length === 1

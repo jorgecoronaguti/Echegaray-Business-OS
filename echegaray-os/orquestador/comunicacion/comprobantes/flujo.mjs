@@ -42,6 +42,7 @@ import * as repoReal from './repositorio.mjs'
 // obligar a tocar a todos los que ya lo importaban.
 export { armarItem, opcionesParaImputar } from '../../lib/comprobantes/item.mjs'
 import { armarItem } from '../../lib/comprobantes/item.mjs'
+import { repartirPendientes, avisoDeVencidos } from '../../lib/comprobantes/arrastre.mjs'
 
 /** Techo de adjuntos por post. Un álbum de 40 fotos no es un fajo: es un accidente. */
 export const MAX_ADJUNTOS = Number(process.env.ORQ_COMPROBANTES_MAX_ADJUNTOS || 12)
@@ -414,6 +415,8 @@ export async function procesarPost(d, m = {}) {
   })
 
   let fajo
+  // El aviso ÚNICO de lo que se descartó solo por las 72 h. Se cuelga del mensaje de este post.
+  let avisosVencidos = null
   if (seSuma) {
     // Al ampliar se vuelve a colapsar contra lo que YA estaba en el fajo: mandar dos veces la misma
     // foto en dos posts distintos tiene que dar una línea, no dos.
@@ -442,7 +445,14 @@ export async function procesarPost(d, m = {}) {
     // comprobante se duplique al mudarse. Los viejos van PRIMERO porque son los que llevan más
     // tiempo esperando.
     if (abierto) {
-      const mudados = (abierto.items ?? []).filter((it) => it && !it.yaCargado)
+      // ═══ LO YA PREGUNTADO VIAJA CALLADO, Y A LAS 72 H SE VA (08/09/2026) ═══
+      //
+      // Antes se mudaban TODOS los pendientes, siempre. Dos recibos de Movistar del 03/09 sin número
+      // seguían preguntándose el 08/09 en cada fajo nuevo. `repartirPendientes` los sella la primera
+      // vez, los muda callados mientras esperan, y los descarta solos a las 72 h con un aviso único.
+      // El gasto sigue sin tirarse: lo que se muda es todo menos lo vencido.
+      const { mudan: mudados, vencidos } = repartirPendientes(abierto.items ?? [], { ahora: m.ahora ?? new Date() })
+      if (vencidos.length) avisosVencidos = avisoDeVencidos(vencidos)
       if (mudados.length) unicos = colapsarRepetidos([...mudados, ...unicos]).items
       await repo.cerrarFajo(port, {
         id: abierto.id,
@@ -478,7 +488,7 @@ export async function procesarPost(d, m = {}) {
 
   const msg = mensajeFajo(fajo, { url })
   return {
-    texto: msg.texto + ['', textoRendicion(rendicion)].join('\n'),
+    texto: msg.texto + ['', textoRendicion(rendicion), avisosVencidos].filter((x) => x !== null && x !== undefined).join('\n'),
     attachments: msg.attachments,
     estado: 'confirmar',
     fajoId: fajo.id,
