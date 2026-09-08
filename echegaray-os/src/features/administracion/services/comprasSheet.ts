@@ -75,6 +75,10 @@ export function esEstructura(obra: string | null | undefined): boolean {
 }
 
 export interface Filtrable {
+  /** EL RENGLÓN DE LA PESTAÑA — y el orden en que el gasto entró. Ver `porOrdenDeCarga`. */
+  fila: number
+  /** La fecha del COMPROBANTE. No ordena la lista: sólo desempata renglones iguales. */
+  fecha?: string | null
   estado: string | null
   obra_texto: string | null
   anulada: boolean
@@ -82,11 +86,12 @@ export interface Filtrable {
   tiene_adjunto?: boolean
 }
 
-export const FILTROS = ['todo', 'aPagar', 'sinObra', 'sinComprobante', 'sueltos'] as const
+export const FILTROS = ['todo', 'recienCargadas', 'aPagar', 'sinObra', 'sinComprobante', 'sueltos'] as const
 export type FiltroSheet = (typeof FILTROS)[number]
 
 export const ROTULO: Record<FiltroSheet, string> = {
   todo: 'Todo',
+  recienCargadas: 'Recién cargados',
   aPagar: 'A pagar',
   sinObra: 'Sin obra',
   sinComprobante: 'Sin comprobante',
@@ -105,13 +110,17 @@ export function filtroDe(v: string | null | undefined): FiltroSheet {
  * arriba cierre contra la pestaña. Que el dueño las vea en su Sheet y la pantalla las esconda del
  * conteo total sería mentir por omisión; que aparezcan en «A pagar» sería peor.
  */
-export function pasa(f: Filtrable, filtro: FiltroSheet): boolean {
+export function pasa(f: Filtrable, filtro: FiltroSheet, recien?: ReadonlySet<number>): boolean {
   if (filtro === 'todo') return true
   if (f.anulada) return false
   switch (filtro) {
     case 'aPagar': return f.estado === ESTADO.PENDIENTE
     case 'sinObra': return !f.obra_texto?.trim()
     case 'sinComprobante': return f.tiene_adjunto !== true
+    // SIN EL CONJUNTO NO HAY CORTE, Y NO PASA NADIE. «Recién cargadas» es una propiedad de la
+    // POBLACIÓN —las últimas 30 de la pestaña—, no de la fila: una fila sola no puede saber si está
+    // entre las últimas. Devolver `true` cuando falta el conjunto convertiría el chip en «Todo».
+    case 'recienCargadas': return recien != null && recien.has(f.fila)
     default: return true
   }
 }
@@ -153,11 +162,66 @@ export function totalesDe(filas: Filtrable[]): Totales {
 export function conteosDe(filas: Filtrable[]): Record<FiltroSheet, number> {
   return {
     todo: filas.length,
+    recienCargadas: clavesRecienCargadas(filas).size,
     aPagar: filas.filter((f) => pasa(f, 'aPagar')).length,
     sinObra: filas.filter((f) => pasa(f, 'sinObra')).length,
     sinComprobante: filas.filter((f) => pasa(f, 'sinComprobante')).length,
     sueltos: 0,
   }
+}
+
+/**
+ * EL ORDEN POR DEFECTO DE LA LISTA: LO ÚLTIMO QUE ENTRÓ, ARRIBA.
+ *
+ * ═══ EL DEFECTO MEDIDO (08/09/2026, producción) ═══
+ *
+ * La lista ordenaba por FECHA DEL COMPROBANTE y dibujaba 200 de 809. El dueño carga comprobantes por
+ * el chat, el bot los agrega al final de la pestaña, y una factura de mayo cargada hoy caía en la
+ * fila 930 pero en el puesto ~600 de la lista: quedaba debajo del corte y el aviso de «609 más sin
+ * dibujar» estaba al pie. La conclusión desde la pantalla era «no se cargó» — que es exactamente lo
+ * que el orden estaba escondiendo.
+ *
+ * `fila` ES el orden de carga: la pestaña sólo crece por abajo, así que un número de renglón más
+ * alto es un gasto que entró después. No hace falta una columna `creado_at` que la pestaña no tiene.
+ *
+ * La fecha queda de DESEMPATE y no de criterio principal. Hoy no desempata nunca —la fila es única—
+ * y está escrita igual porque es el contrato: si mañana dos filas comparten renglón, la más nueva va
+ * primero. Lo que la columna «Fecha» muestra sigue siendo la fecha del comprobante: se cambió el
+ * orden, no el dato.
+ */
+export function porOrdenDeCarga(
+  a: { fila: number; fecha?: string | null },
+  b: { fila: number; fecha?: string | null },
+): number {
+  if (b.fila !== a.fila) return b.fila - a.fila
+  return String(b.fecha ?? '').localeCompare(String(a.fecha ?? ''))
+}
+
+/** La lista ordenada por carga. Copia: ordenar en el lugar mutaría la población de los conteos. */
+export function ordenarPorCarga<T extends { fila: number; fecha?: string | null }>(filas: T[]): T[] {
+  return [...filas].sort(porOrdenDeCarga)
+}
+
+/**
+ * CUÁNTAS FILAS SON «RECIÉN CARGADAS».
+ *
+ * 30 y no 10: el bot descarga un fajo entero de una vez —14 comprobantes en la jornada del 07-08/09—
+ * y un corte de 10 dejaría la mitad de un fajo afuera del chip que existe para verlo. Tampoco 100:
+ * eso ya es la lista.
+ */
+export const RECIEN_CARGADAS = 30
+
+/**
+ * LAS ÚLTIMAS `n` QUE ENTRARON, por número de renglón.
+ *
+ * Las anuladas no entran, igual que en el resto de los cortes: el chip es una cola de trabajo —«esto
+ * acaba de llegar, revisalo»— y una fila muerta no se revisa. Por eso el conteo del chip es
+ * exactamente `n` mientras haya `n` filas vivas.
+ */
+export function clavesRecienCargadas(filas: Filtrable[], n: number = RECIEN_CARGADAS): Set<number> {
+  return new Set(
+    filas.filter((f) => !f.anulada).sort(porOrdenDeCarga).slice(0, n).map((f) => f.fila),
+  )
 }
 
 /**

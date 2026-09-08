@@ -27,6 +27,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   separarComprasDeObra, type Corte, type MotivoFuera,
 } from './comprasDeObra.ts'
+import { ordenarPorCarga } from './comprasSheet.ts'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -117,8 +118,13 @@ export interface ListadoCompras {
 
 export async function getComprasSheet(supabase: SupabaseClient): Promise<ServiceResult<ListadoCompras>> {
   const [compras, adjuntos] = await Promise.all([
-    supabase.from('compra_sheet').select(COLUMNAS).order('fecha', { ascending: false, nullsFirst: false })
-      .order('fila', { ascending: false }).limit(TOPE),
+    // ORDEN DE CARGA, NO FECHA DE FACTURA — y acá importa por el TOPE, no por lo que se ve.
+    // Si la lectura alguna vez recorta, tiene que quedarse con lo ÚLTIMO QUE ENTRÓ: ordenando por
+    // fecha, un comprobante cargado hoy con fecha vieja sería justo lo que el tope descarta. El
+    // orden final lo impone `ordenarPorCarga` más abajo; acá se pide el mismo para que el recorte
+    // de la base y el de la pantalla no puedan discrepar.
+    supabase.from('compra_sheet').select(COLUMNAS).order('fila', { ascending: false })
+      .order('fecha', { ascending: false, nullsFirst: false }).limit(TOPE),
     supabase.from('compra_adjunto').select(COLUMNAS_ADJUNTO),
   ])
   if (compras.error) return { data: null, error: compras.error.message }
@@ -147,7 +153,10 @@ export async function getComprasSheet(supabase: SupabaseClient): Promise<Service
   // los dos. Una definición, un archivo. Lo que NO se hace es mandarlas al navegador para que las
   // esconda el front: los conteos de los chips y el total del pie salen de esta población ya
   // recortada, y nunca viaja al cliente una fila que la pantalla no va a mostrar.
-  const corte: Corte<FilaConPapel> = separarComprasDeObra(leidas)
+  // EL ORDEN LO DECIDE UNA FUNCIÓN PURA Y NO LA CONSULTA. La regla —última cargada arriba— vive en
+  // `comprasSheet.ts`, se prueba sin base y no cambia si mañana esta lectura pasa por una vista, un
+  // caché o un `count`. La consulta pide el mismo orden por el tope, no para definirlo.
+  const corte: Corte<FilaConPapel> = separarComprasDeObra(ordenarPorCarga(leidas))
   return {
     data: {
       filas: corte.deObra,

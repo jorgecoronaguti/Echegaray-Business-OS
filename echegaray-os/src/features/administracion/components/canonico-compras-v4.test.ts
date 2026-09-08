@@ -264,6 +264,23 @@ test('el recorte de la lista no puede volverse una pared', () => {
   assert.match(p, /recorteDeLista\(visibles, \{ abierta: filaAbierta\?\.fila \?\? null, todo: verTodo \}\)/)
   assert.match(p, /data-testid="compras-recortada"/, 'el recorte dejó de decir cuántas quedaron fuera')
   assert.match(p, /data-testid="ver-todas-las-compras"/, 'el recorte se quedó sin salida')
+  // Y SE DECLARA ARRIBA DE LA TABLA (08/09/2026). Al pie estaba a 200 filas de scroll de distancia:
+  // quien entraba a buscar un comprobante que no veía leía una lista completa, no una recortada.
+  assert.ok(p.indexOf('data-testid="compras-recortada"') < p.indexOf('<TablaComprasSheet'),
+    'el aviso del recorte volvió abajo de la lista que recorta')
+})
+
+test('la lista ordena por CARGA y el chip de lo recién cargado está enchufado', () => {
+  // El defecto del 08/09: ordenaba por fecha del comprobante, y lo cargado hoy con fecha vieja caía
+  // fuera de las 200 dibujadas. La regla es pura y se prueba en `comprasSheet.test.ts`; acá se clava
+  // que la pantalla la USA — una regla perfecta que nadie llama deja la lista igual que antes.
+  const p = codigoPagina()
+  assert.match(p, /clavesRecienCargadas\(todas\)/, 'el corte de lo recién cargado dejó de calcularse')
+  assert.match(p, /pasa\(f, filtro, recien\)/, 'el filtro dejó de recibir el conjunto: el chip mostraría todo')
+  const servicio = sinComentarios(readFileSync(join(DIR, '../services/comprasSheetService.ts'), 'utf8'))
+  assert.match(servicio, /ordenarPorCarga\(leidas\)/, 'la lista volvió a salir en el orden de la consulta')
+  assert.ok(servicio.indexOf(".order('fila'") < servicio.indexOf(".order('fecha'"),
+    'la fecha del comprobante volvió a mandar sobre el orden de carga')
 })
 
 // ── LAS CINCO QUE QUEDABAN EN EL CANON DE AGOSTO (06/09/2026) ────────────────────────────────────
