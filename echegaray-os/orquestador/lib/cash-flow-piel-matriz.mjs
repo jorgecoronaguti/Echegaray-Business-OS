@@ -144,7 +144,7 @@ export function pielMatriz({ sheetId, meta, filasHoja = 0, colsHoja = 0 }) {
     }
   }
 
-  formatoEncabezado({ celdas, meta })
+  formatoEncabezado({ celdas, req, rango, meta })
   formatoHero({ celdas, reglaFina, req, rango, meta })
   formatoCuerpo({ push, celdas, reglaFina, rango, meta, col0, colUltima })
 
@@ -206,7 +206,7 @@ export function tandasDeGrupos(sheetId, { filas = 0, cols = 0 } = {}, niveles = 
 }
 
 /** Título, subtítulo y el atajo de la esquina. */
-function formatoEncabezado({ celdas, meta }) {
+function formatoEncabezado({ celdas, req, rango, meta }) {
   celdas(FILA.titulo, 0, 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
     { textFormat: txt(INK, { bold: true, size: 16 }), horizontalAlignment: 'LEFT' })
   celdas(FILA.subtitulo, 0, 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
@@ -228,29 +228,39 @@ function formatoEncabezado({ celdas, meta }) {
         backgroundColor: BLANCO,
         horizontalAlignment: 'LEFT',
       })
-    // ── Y EL ENLACE, QUE ES LO ÚNICO QUE HACE QUE EL CLIC LLEVE A ALGÚN LADO (07/09/2026) ──
+    // ── Y EL ENLACE INTERNO, COMO FORMATO DE LA CELDA ENTERA (08/09/2026) ──
     //
-    // El dueño, tercera vez: *«me tiene que llevar a la columna, no abrir un flujo nuevo»*. `HYPERLINK`
-    // no puede: con el fragmento no navega y con la URL entera abre el archivo DE NUEVO. Un enlace de
-    // TEXTO ENRIQUECIDO con el fragmento relativo sí scrollea dentro del documento abierto — es lo que
-    // hace «Insertar → Enlace → Hojas y rangos con nombre», y va como formato, no como fórmula.
+    // El 07/09 se afirmó que «la API no guarda el enlace de texto enriquecido». Era una medición
+    // equivocada: se escribió UN `textFormatRuns` desde el índice 0 y se releyó `textFormatRuns`.
+    // Sheets pliega un run que cubre la celda entera en `userEnteredFormat.textFormat.link` y devuelve
+    // `textFormatRuns` VACÍO — el enlace estaba, la lectura miraba el campo equivocado.
     //
-    // ═══ POR QUÉ ACÁ NO HAY NINGÚN ENLACE, Y NO ES UN OLVIDO (07/09/2026) ═══
+    // MEDIDO HOY contra el archivo vivo: `updateCells` con `fields:
+    // 'userEnteredValue,userEnteredFormat.textFormat'` y `textFormat.link.uri = '#gid=…&range=AL7'`
+    // devuelve 200 y al releer la celda trae `hyperlink: "#gid=825424599&range=AL7"` y
+    // `textFormat.link.uri` con el mismo valor. Es la misma forma en que la interfaz guarda
+    // «Insertar → Enlace → Hojas y rangos con nombre»: navega DENTRO del documento, sin abrirlo de nuevo.
     //
-    // Se intentó poner el destino como ENLACE DE TEXTO ENRIQUECIDO (`textFormatRuns[].format.link`),
-    // que es lo único que scrollea DENTRO del documento sin abrirlo de nuevo. Medido contra el
-    // archivo vivo: la API ACEPTA el `updateCells` —devuelve 200— y NO GUARDA el enlace. Ni con el
-    // fragmento relativo `#gid=…&range=…` ni con la URL absoluta; al releer, `textFormatRuns` vuelve
-    // vacío. Ese enlace sólo lo crea la interfaz («Insertar → Enlace»); por API no existe.
-    //
-    // Y `HYPERLINK`, que sí se puede escribir, no sirve para lo que el dueño pide: con el fragmento
-    // suelto no navega (medido el 13/08) y con la URL entera ABRE el archivo de nuevo — *«me tiene
-    // que llevar a la columna, no abrir un flujo nuevo»*.
-    //
-    // Lo que sí lleva a la columna, en un gesto y sin abrir nada, es un RANGO CON NOMBRE elegido en
-    // el cuadro de nombres. Lo publican `destinosNombrados` de las dos vistas: SEMANA_ACTUAL y
-    // MES_ACTUAL, reapuntados en cada corrida. La celda A3 se queda con lo que sí puede dar —DECIR
-    // en qué columna está el período en curso— y no promete un clic que Sheets no puede cumplir.
+    // VALOR Y ENLACE VAN JUNTOS en el mismo request: con valor, la guarda lo trata como CONTENIDO
+    // (esta celda es del OS) y no como una pasada de formato que frenaría por «formato que yo no puse».
+    // El texto es el mismo que ya está en la grilla, así que no cambia lo que se lee: sólo agrega el
+    // destino. El rango con nombre (SEMANA_ACTUAL / MES_ACTUAL) sigue publicándose: son dos caminos
+    // al mismo lugar.
+    const r = rango(meta.botonHoy.fila - 1, meta.botonHoy.fila, meta.botonHoy.col, meta.botonHoy.col + 1)
+    if (r && meta.botonHoy.uri && meta.botonHoy.texto) {
+      req.push({
+        updateCells: {
+          range: r,
+          fields: 'userEnteredValue,userEnteredFormat.textFormat',
+          rows: [{
+            values: [{
+              userEnteredValue: { stringValue: meta.botonHoy.texto },
+              userEnteredFormat: { textFormat: { ...txt(ACENTO, { size: 9 }), underline: true, link: { uri: meta.botonHoy.uri } } },
+            }],
+          }],
+        },
+      })
+    }
   }
 }
 
