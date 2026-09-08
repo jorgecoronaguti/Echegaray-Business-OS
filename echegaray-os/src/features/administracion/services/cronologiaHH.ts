@@ -5,11 +5,16 @@
 // listado de sesenta filas se pueda usar. Guardar un total por semana al lado de sus filas sería la
 // segunda versión del mismo número, y el día que se corrija una imputación dejarían de coincidir.
 //
-// ═══ EL CORTE ES POR SEMANA ISO, LA MISMA QUE YA DERIVA POSTGRES ═══
+// ═══ EL CORTE ES LA QUINCENA, PORQUE ES CON LO QUE SE PAGA ═══
 //
-// `registros_hh.fecha_inicio_semana` la calcula el trigger `registros_hh_normalizar` desde la fecha.
-// Se usa ÉSA y no una semana calculada acá: dos definiciones de «lunes» discrepan un día cada
-// domingo y nadie lo ve hasta que los totales no cierran.
+// La cronología de la ficha cortaba por SEMANA dentro de un período que ya era la quincena: tres
+// subtotales semanales que no cerraban contra ninguna liquidación y obligaban a sumarlos a mano.
+// El corte sale de `quincenaDe`, la misma definición que usa la pantalla Asistencia y el Sheet de
+// JORNALES — no hay una segunda idea de «quincena» en el OS.
+//
+// `porSemana` SIGUE EXISTIENDO y usa `registros_hh.fecha_inicio_semana`, la que deriva el trigger
+// `registros_hh_normalizar`: dos definiciones de «lunes» discrepan un día cada domingo y nadie lo
+// ve hasta que los totales no cierran.
 //
 // ═══ UNA AUSENCIA TIENE HORAS Y NO ES TRABAJO ═══
 //
@@ -18,6 +23,8 @@
 
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
+import { obraDominante } from './quincenaDePersona.ts'
+import { quincenaDe, rotuloQuincena } from './quincena.ts'
 import type { ImputacionHH } from '../types/index.ts'
 
 export interface TramoCronologico {
@@ -32,6 +39,8 @@ export interface TramoCronologico {
   /** Cuántos días distintos tienen trabajo declarado. No es la cantidad de filas: alguien con
    *  normales y extras el mismo día trabajó UN día, no dos. */
   dias: number
+  /** La obra donde puso más horas del tramo, con su nombre real. `null` si no trabajó en ninguna. */
+  obra: string | null
 }
 
 const redondear = (n: number): number => Math.round(n * 100) / 100
@@ -60,6 +69,7 @@ function tramo(clave: string, rotulo: string, registros: ImputacionHH[]): TramoC
     horas: redondear(trabajadas.reduce((s, r) => s + Number(r.horas), 0)),
     ausencias: new Set(registros.filter((r) => !esTrabajada(r.tipo_hora)).map(dia).filter(Boolean)).size,
     dias: new Set(trabajadas.map(dia).filter(Boolean)).size,
+    obra: obraDominante(registros),
   }
 }
 
@@ -94,6 +104,26 @@ function ordenar(rs: ImputacionHH[]): ImputacionHH[] {
 /** Los tramos por semana. La clave sale de `fecha_inicio_semana`, que la deriva Postgres. */
 export const porSemana = (registros: ImputacionHH[]): TramoCronologico[] =>
   agrupar(registros, (r) => r.fecha_inicio_semana, rotuloDeSemana)
+
+/**
+ * Los tramos por QUINCENA — el corte de la cronología de la ficha.
+ *
+ * Las filas SIN día no se descartan: van a un tramo propio al final. Su grano es la semana, y una
+ * semana puede cruzar el 15: meterlas en la quincena de su lunes correría horas de una quincena a
+ * otra sin que nadie lo decidiera, que es exactamente lo que un registro de liquidación no puede
+ * hacer en silencio.
+ */
+export function porQuincena(registros: ImputacionHH[]): TramoCronologico[] {
+  const conDia = registros.filter((r) => r.fecha)
+  const sinDia = registros.filter((r) => !r.fecha)
+  const tramos = agrupar(
+    conDia,
+    (r) => quincenaDe(r.fecha as string).desde,
+    (clave) => rotuloQuincena(quincenaDe(clave)),
+  )
+  if (sinDia.length === 0) return tramos
+  return [...tramos, tramo('sin-dia', 'filas de grano semanal, sin día', ordenar(sinDia))]
+}
 
 /** Los tramos por mes. Del DÍA, no de la semana: una semana a caballo de dos meses pertenece a los
  *  dos, y ubicarla entera en el mes de su lunes correría horas de mes sin que nadie lo pidiera. */

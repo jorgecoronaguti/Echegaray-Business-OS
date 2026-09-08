@@ -150,8 +150,10 @@ export interface DatosQuincenaPorObra {
   obrasActivas: string[]
 }
 
-/** Los feriados de la ventana. La misma tabla que lee la grilla de presencia — no una lista aparte. */
-async function getNoLaborables(
+/** Los feriados de la ventana. La misma tabla que lee la grilla de presencia — no una lista aparte.
+ *  Se EXPORTA porque la ficha de la persona necesita exactamente esto: dos lecturas del mismo
+ *  calendario discreparían el día que alguien agregue un alcance y sólo se corrija una. */
+export async function getNoLaborables(
   supabase: SupabaseClient, desde: string, hasta: string,
 ): Promise<string[]> {
   const { data } = await supabase

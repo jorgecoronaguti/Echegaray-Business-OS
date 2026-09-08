@@ -19,6 +19,10 @@ const config: Config = {
         line: {
           DEFAULT: 'var(--os-line)',
           strong: 'var(--os-line-strong)',
+          // El hairline MÁS suave: separador ENTRE bloques de un mismo panel. Estaba declarado en
+          // `globals.css` desde el handoff y NO estaba expuesto acá, así que los componentes lo
+          // escribían a mano. Un token que hay que copiar a mano no es un token.
+          hairline: 'var(--os-hairline-soft)',
         },
         ink: {
           DEFAULT: 'var(--os-ink)',

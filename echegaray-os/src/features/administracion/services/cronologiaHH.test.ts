@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  abarca, porMes, porSemana, rotuloDeMes, rotuloDeSemana, tipoYMotivo, trazaDe,
+  abarca, porMes, porQuincena, porSemana, rotuloDeMes, rotuloDeSemana, tipoYMotivo, trazaDe,
 } from './cronologiaHH.ts'
 import { seCorrigio } from './hhPersonaService.ts'
 import type { ImputacionHH } from '../types/index.ts'
@@ -151,4 +151,40 @@ test('SIN MOTIVO SE DICE EL TIPO SOLO, y una clave muerta no se muestra cruda', 
   // El defecto que atrapa: mostrar `falta_con_aviso` o una clave que ya no está en el catálogo.
   assert.equal(tipoYMotivo({ tipo_hora: 'ausencia', notas: null }), 'Ausencia')
   assert.equal(tipoYMotivo({ tipo_hora: 'ausencia', notas: 'motivo_borrado_en_2027' }), 'Ausencia')
+})
+
+test('EL CORTE DE LA CRONOLOGÍA ES LA QUINCENA, y la semana que cruza el 15 se parte donde se paga', () => {
+  // El defecto que atrapa: agrupar por `fecha_inicio_semana` dentro de un período que ya es la
+  // quincena. La semana del lunes 14 de septiembre tiene días de las DOS quincenas: si el tramo se
+  // arma por su lunes, las horas del 16 al 18 aparecen sumadas en la 1ª quincena y el subtotal de
+  // la ficha deja de cerrar contra la liquidación que se paga.
+  const filas = [
+    r({ fecha: '2026-09-14', fecha_inicio_semana: '2026-09-14', horas: 8 }),
+    r({ fecha: '2026-09-15', fecha_inicio_semana: '2026-09-14', horas: 8 }),
+    r({ fecha: '2026-09-16', fecha_inicio_semana: '2026-09-14', horas: 8 }),
+    r({ fecha: '2026-09-17', fecha_inicio_semana: '2026-09-14', horas: 4, tipo_hora: 'ausencia' }),
+  ]
+  const tramos = porQuincena(filas)
+  assert.deepEqual(tramos.map((t) => t.clave), ['2026-09-16', '2026-09-01'], 'lo último primero')
+  assert.equal(tramos[0].rotulo, '2ª quincena de septiembre · 16 al 30')
+  assert.equal(tramos[0].horas, 8, 'sólo el 16: la ausencia del 17 no es trabajo')
+  assert.equal(tramos[0].ausencias, 1)
+  assert.equal(tramos[1].horas, 16, 'el 14 y el 15 quedan en la 1ª quincena')
+  // LA OBRA DEL TRAMO, con su nombre real y nunca un slug ni un uuid.
+  assert.equal(tramos[0].obra, 'La Estrella')
+  assert.equal(porQuincena([]).length, 0, 'sin registros no hay tramos inventados')
+})
+
+test('UNA FILA SIN DÍA NO DESAPARECE DE LA CRONOLOGÍA — va a su propio tramo, al final', () => {
+  // El defecto que atrapa: filtrar por `fecha` para poder calcular la quincena y perder en silencio
+  // las filas legacy de grano semanal. Tampoco se las mete en la quincena de su lunes: esa semana
+  // puede cruzar el 15 y correría horas de una liquidación a la otra sin que nadie lo decidiera.
+  const tramos = porQuincena([
+    r({ fecha: '2026-09-16', horas: 8 }),
+    r({ id: 'legacy', fecha: null, fecha_inicio_semana: '2026-09-14', horas: 40 }),
+  ])
+  assert.equal(tramos.length, 2)
+  assert.equal(tramos[1].clave, 'sin-dia')
+  assert.equal(tramos[1].horas, 40)
+  assert.equal(tramos[1].dias, 0, 'sin día no se puede afirmar cuántos días fueron')
 })

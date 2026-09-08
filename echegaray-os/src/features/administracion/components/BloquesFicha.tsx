@@ -14,7 +14,7 @@ import { Estado, Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/s
 import { urlDeDrive } from '@/features/obras/services/driveUrl'
 import { fecha } from '@/features/obras/components/formato'
 import type { TotalHH } from '../services/hhPersonaService'
-import { porMes, porSemana, tipoYMotivo, trazaDe } from '../services/cronologiaHH'
+import { porMes, porQuincena, tipoYMotivo, trazaDe } from '../services/cronologiaHH'
 import { DOCUMENTO_ESTADO, estadoDocumento, solicitadosDelLegajo } from '../services/fichaPersona'
 import type { AsignacionDePersona, DocumentoLegajo, ImputacionHH } from '../types'
 import { TIPO_HORA_LABEL, type TipoHora } from '@/features/obras/services/tipoHora'
@@ -174,11 +174,12 @@ export function BloqueHoras({
         <ListaTotales titulo="Por actividad" totales={porActividad} testid="hh-por-actividad" />
       </div>
 
-      {/* EL REGISTRO CRONOLÓGICO, ABIERTO Y CORTADO POR SEMANA.
+      {/* EL REGISTRO CRONOLÓGICO, ABIERTO Y CORTADO POR QUINCENA.
           El dueño: «que cada persona vaya quedando registro cronológico propio». Sin el corte, un
-          año de asistencia son 250 renglones iguales y la pregunta «cuánto hizo esa semana» se
-          contesta sumando a mano. El subtotal va en la MISMA tabla y no en un panel aparte: separar
-          el total de sus filas es la forma de que dejen de coincidir. */}
+          año de asistencia son 250 renglones iguales y la pregunta «cuánto hizo» se contesta sumando
+          a mano. El corte era SEMANAL dentro de un período que ya era la quincena: partía en tres
+          subtotales lo que se paga junto. El subtotal va en la MISMA tabla y no en un panel aparte:
+          separar el total de sus filas es la forma de que dejen de coincidir. */}
       <Tabla testid="hh-registro" minWidth={720}>
         <THead>
           <Th>Día</Th>
@@ -198,7 +199,7 @@ export function BloqueHoras({
               </td>
             </tr>
           )}
-          {porSemana(registros).map((tramo) => (
+          {porQuincena(registros).map((tramo) => (
             <Fragment key={tramo.clave}>
               {tramo.registros.map((r) => (
                 <Tr key={r.id} compacta data-testid="fila-registro">
@@ -214,7 +215,11 @@ export function BloqueHoras({
               ))}
               <tr className="border-b border-[#EFEEEA]" data-testid="total-tramo">
                 <td colSpan={5} className="py-1.5 text-[11.5px] text-faint">
+                  {/* LA OBRA DEL TRAMO CON SU NOMBRE REAL: es la segunda pregunta de la
+                      liquidación —cuántas horas y a qué obra se imputan—, y hasta acá había que
+                      leer las quince filas para contestarla. */}
                   {tramo.rotulo} · {tramo.dias} {tramo.dias === 1 ? 'día' : 'días'}
+                  {tramo.obra && ` · ${tramo.obra}`}
                   {tramo.ausencias > 0 && ` · ${tramo.ausencias} sin venir`}
                 </td>
                 <td className="py-1.5 text-right text-[12px] font-medium tabular-nums text-muted">

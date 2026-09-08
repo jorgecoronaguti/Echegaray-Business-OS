@@ -59,8 +59,12 @@ import {
 import { CostadoLegajo, type DatoDeLegajo } from '@/features/administracion/components/CostadoLegajo'
 import { hhPorMes } from '@/features/administracion/services/hhPorMes'
 import { IconoEditar, IconoObra } from '@/shared/components/iconos'
-import { SemanaDeAsistencia } from '@/features/administracion/components/SemanaDeAsistencia'
-import { semanaDePersona, totalDeLaSemana } from '@/features/administracion/services/semanaDePersona'
+import { QuincenaDeAsistencia } from '@/features/administracion/components/QuincenaDeAsistencia'
+import {
+  cifrasDeQuincena, diasDeLaQuincena, ultimasQuincenas,
+} from '@/features/administracion/services/quincenaDePersona'
+import { quincenaDe, rotuloQuincena } from '@/features/administracion/services/quincena'
+import { getNoLaborables, getObraDeLaJornada } from '@/features/administracion/services/jornadaPorObraService'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { BloqueAsignacion, BloqueDocumentos, BloqueHoras } from '@/features/administracion/components/BloquesFicha'
 import { BloqueAuditoria } from '@/features/administracion/components/BloqueAuditoria'
@@ -181,8 +185,17 @@ export default async function FichaPersonaPage({
   const hoy = new Date().toISOString().slice(0, 10)
   const mes = resumenDelPeriodo(filasHH, ventanaDe('mes', hoy).desde, ventanaDe('mes', hoy).hasta)
   const anio = resumenDelPeriodo(filasHH, `${hoy.slice(0, 4)}-01-01`, `${hoy.slice(0, 4)}-12-31`)
-  const semanaVentana = ventanaDe('semana', hoy)
-  const dias = semanaDePersona(filasHH, semanaVentana.desde)
+  // LA QUINCENA DEL RESUMEN. Dos lecturas más y sólo en esta vista: los feriados de la ventana y la
+  // jornada pactada de la obra donde está. Sin ellas el bloque tendría que INVENTAR el denominador
+  // —que es lo que hacía el «/ 44,0 h»— y reclamaría los sábados como días sin cargar.
+  const quincena = quincenaDe(hoy)
+  const [feriados, obraVigente] = vista === 'resumen'
+    ? await Promise.all([
+        getNoLaborables(supabase, quincena.desde, quincena.hasta),
+        vigente?.obra_id ? getObraDeLaJornada(supabase, vigente.obra_id) : Promise.resolve(null),
+      ])
+    : [[], null]
+  const dias = diasDeLaQuincena(filasHH, quincena, { feriados, hoy })
   // HH POR OBRA DEL AÑO: es lo que el canónico pone a la derecha de «Obras donde trabajó». Un mapa,
   // porque la lista se arma con las ASIGNACIONES —que son el hecho de haber estado— y las horas sólo
   // completan el renglón cuando existen.
@@ -380,7 +393,20 @@ export default async function FichaPersonaPage({
 
           {vista === 'resumen' && (
             <>
-              <SemanaDeAsistencia dias={dias} total={totalDeLaSemana(dias)} jornadaSemanal={44} />
+              <QuincenaDeAsistencia
+                dias={dias}
+                cifras={cifrasDeQuincena(dias, obraVigente?.data?.jornada ?? null)}
+                barras={ultimasQuincenas(filasHH, hoy)}
+                obra={vigente
+                  ? {
+                      nombre: obraVigente?.data?.nombre ?? vigente.obra_nombre ?? vigente.obra_id,
+                      desde: vigente.desde ? fecha(vigente.desde) : null,
+                      jornada: obraVigente?.data?.jornada ?? null,
+                    }
+                  : null}
+                rotuloVentana={rotuloQuincena(quincena)}
+                hrefHoras={href('horas')}
+              />
 
               {/* LA SEGUNDA PREGUNTA QUE SE LE HACE A UN LEGAJO, después de «dónde está hoy», es
                   «dónde estuvo». Ya está leído para calcular la asignación vigente, así que no
