@@ -44,8 +44,22 @@ function textoDe(c: CeldaObra): string {
   return ''
 }
 
-/** Qué se ve cuando la celda no tiene horas ni ausencia. Cada silencio con su cara. */
+/** El tooltip de una celda que no se edita. La licencia dice de qué es; el día repartido, en qué
+ *  obras estuvo. `undefined` cuando no hay nada que agregar: un `title` vacío es ruido. */
+function tituloDe(c: CeldaObra): string | undefined {
+  if (c.estado === 'licencia') return `Licencia${c.motivo ? `: ${c.motivo.toLowerCase()}` : ''}`
+  if (c.tramos.length > 1) {
+    return c.tramos.map((t) => `${t.nombre}: ${t.horas === null ? 'no vino' : `${hs(t.horas)} hs`}`).join(' · ')
+  }
+  return undefined
+}
+
+/** Qué se ve cuando la celda no tiene horas, ausencia ni licencia. Cada silencio con su cara. */
 function vacioDe(estado: CeldaObra['estado']): { texto: string; color: string; punteada: boolean } {
+  // «L» Y NO «A»: una licencia está autorizada y documentada —enfermedad, ART, vacaciones—, una
+  // ausencia es la falta lisa. La misma letra para las dos borra la diferencia que decide si el
+  // día se paga. El motivo va en el `title`, porque en 44 px no entra.
+  if (estado === 'licencia') return { texto: 'L', color: V.apagado, punteada: false }
   if (estado === 'no_laborable') return { texto: '—', color: V.inerte, punteada: false }
   if (estado === 'sin_dato') return { texto: '—', color: V.inerte, punteada: false }
   if (estado === 'futuro') return { texto: '', color: V.inerte, punteada: false }
@@ -214,7 +228,11 @@ export function GrillaAsistenciaObra({
                 const valor = borradores[k] ?? textoDe(celda)
                 const hueco = vacioDe(celda.estado)
                 const repartido = celda.tramos.length > 1
+                // LA LICENCIA NO SE PISA DESDE LA GRILLA. Escribir un número encima convertiría en
+                // horas trabajadas un día que alguien autorizó con respaldo documental, sin
+                // preguntar y sin dejar rastro. Se corrige desde el panel, que muestra el motivo.
                 const editable = celda.estado !== 'no_laborable' && celda.estado !== 'futuro'
+                  && celda.estado !== 'licencia'
                   && !repartido && (fila.obraPorDefecto !== null || celda.tramos.length === 1)
                 return (
                   <td key={celda.fecha} style={{
@@ -247,7 +265,7 @@ export function GrillaAsistenciaObra({
                       <span
                         data-testid="celda-fija"
                         data-estado={celda.estado}
-                        title={repartido ? celda.tramos.map((t) => `${t.nombre}: ${t.horas === null ? 'no vino' : `${hs(t.horas)} hs`}`).join(' · ') : undefined}
+                        title={tituloDe(celda)}
                         style={{ color: celda.estado === 'horas' ? V.tinta : hueco.color }}
                       >
                         {celda.estado === 'horas' ? hs(celda.horas ?? 0) : hueco.texto}

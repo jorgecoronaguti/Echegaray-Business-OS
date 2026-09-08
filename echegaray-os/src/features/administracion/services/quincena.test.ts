@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  correrQuincena, diasDeQuincena, esFechaISO, esFinDeSemana, etiquetaDiaCorta, noLaborablesDe,
-  nombreDia, quincenaDe, rotuloQuincena,
+  correrQuincena, diasDeLaQuincenaSinDomingos, diasDeQuincena, esDomingo, esFechaISO, esFinDeSemana,
+  etiquetaDiaCorta, noLaborablesDe, nombreDia, quincenaDe, rotuloQuincena,
 } from './quincena.ts'
 
 // LOS BORDES SON EL MÓDULO. El 1 al 15 no se equivoca nunca; lo que se equivoca es el 15→16, el
@@ -100,4 +100,40 @@ test('lo que llega por la URL se valida antes de usarlo como fecha', () => {
   assert.equal(esFechaISO(''), false)
   assert.equal(esFechaISO(undefined), false)
   assert.equal(esFechaISO(20260916), false)
+})
+
+// ═══ LOS DOMINGOS SALEN DE LA CONSIDERACIÓN (orden del dueño, 08/09/2026) ═══
+
+test('esDomingo distingue el domingo del sábado y del lunes', () => {
+  assert.equal(esDomingo('2026-09-06'), true, 'domingo 6')
+  assert.equal(esDomingo('2026-09-05'), false, 'sábado 5: se trabaja')
+  assert.equal(esDomingo('2026-09-07'), false, 'lunes 7')
+})
+
+test('UNA QUINCENA CON DOS DOMINGOS DIBUJA 13 COLUMNAS', () => {
+  // EL DEFECTO QUE ATRAPA: quince columnas de las que dos eran guiones fijos. El sábado NO se toca
+  // —es laborable— y por eso el conteo baja de 15 a 13 y no a 11.
+  const dias = diasDeLaQuincenaSinDomingos(quincenaDe('2026-09-10'))
+  assert.equal(dias.length, 13, '15 días menos los domingos 6 y 13')
+  assert.equal(dias.filter(esDomingo).length, 0)
+  assert.ok(dias.includes('2026-09-05'), 'el sábado 5 sigue estando')
+  assert.ok(dias.includes('2026-09-12'), 'y el sábado 12 también')
+})
+
+test('UNA QUINCENA CON TRES DOMINGOS PIERDE TRES COLUMNAS', () => {
+  // 16 al 31 de agosto de 2026: domingos el 16, el 23 y el 30. La cantidad no es una constante.
+  const dias = diasDeLaQuincenaSinDomingos(quincenaDe('2026-08-20'))
+  assert.equal(dias.length, 13, '16 días menos tres domingos')
+  assert.equal(dias[0], '2026-08-17', 'el 16 es domingo: empieza el lunes 17')
+  assert.equal(dias[12], '2026-08-31')
+  assert.equal(dias.filter(esDomingo).length, 0)
+})
+
+test('LA VENTANA QUE SE LE PIDE A LA BASE SIGUE SIENDO LA QUINCENA ENTERA', () => {
+  // Esconder la columna NO es borrar el dato: `diasDeQuincena` conserva el rango completo porque
+  // es el que define la consulta. Si la lectura salteara los domingos, un registro cargado ahí
+  // dejaría de existir para el sistema en vez de quedar visible en la cronología.
+  const q = quincenaDe('2026-09-10')
+  assert.equal(diasDeQuincena(q).length, 15)
+  assert.ok(diasDeQuincena(q).includes('2026-09-06'))
 })

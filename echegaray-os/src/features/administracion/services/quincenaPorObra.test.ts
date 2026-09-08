@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import {
   armarQuincenaPorObra, diasSinMarcar, personasPorObra, SIN_OBRA, totalDeLaQuincena, totalesPorDia,
 } from './quincenaPorObra.ts'
-import type { AsignacionQuincena, ObraRotulo, RegistroQuincena } from './quincenaPorObra.ts'
+import type {
+  AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena,
+} from './quincenaPorObra.ts'
 
 // Seis días de la 2ª quincena de septiembre de 2026, del lunes 7 al sábado 12. HOY es el viernes 11:
 // en la misma grilla conviven días cerrados, el día en curso y el sábado 12, que todavía no pasó.
@@ -29,15 +31,19 @@ const MAMPO = 'sf-mamposteria'
 
 const asig = (persona_id: string, nombre: string, obra_id: string, nota: string | null = null): AsignacionQuincena =>
   ({ persona_id, nombre, nota, obra_id })
-const reg = (persona_id: string, obra_id: string, fecha: string, horas: number, tipo_hora = 'normal'): RegistroQuincena =>
-  ({ persona_id, obra_id, fecha, horas, tipo_hora })
+const reg = (
+  persona_id: string, obra_id: string, fecha: string, horas: number,
+  tipo_hora = 'normal', notas: string | null = null,
+): RegistroQuincena => ({ persona_id, obra_id, fecha, horas, tipo_hora, notas })
 
 const armar = (e: {
   asignaciones: AsignacionQuincena[]; registros: RegistroQuincena[]
   dias?: string[]; noLaborables?: string[]; hoy?: string
+  personas?: Record<string, PersonaRotulo>
 }) => armarQuincenaPorObra({
   asignaciones: e.asignaciones, registros: e.registros, obras: OBRAS,
   dias: e.dias ?? DIAS, noLaborables: e.noLaborables, hoy: e.hoy ?? HOY,
+  personas: e.personas,
 })
 
 test('QUIEN TIENE DOS OBRAS TIENE UNA SOLA FILA, y sus horas del día se suman', () => {
@@ -225,4 +231,86 @@ test('los chips cuentan personas por rótulo, no por obra técnica', () => {
     { rotulo: 'PISOS INDUSTRIALES', personas: 2 },
     { rotulo: 'MAMPOSTERÍA', personas: 1 },
   ])
+})
+
+// ═══ EL DEFECTO DEL 08/09/2026: QUIROGA NO ESTABA EN LA GRILLA ═══
+//
+// QUIROGA ALEXANDER SEBASTIAN, activo, sin ninguna asignación en la plataforma, con 45 marcas de
+// licencia por enfermedad importadas de JORNALES entre el 01/07 y el 07/09. La grilla lo
+// descartaba en dos lugares a la vez: no tenía asignación con la que nombrarlo, y sus registros no
+// eran horas trabajadas. «No está en la grilla» se lee como «no pasa nada con esa persona», y lo
+// que pasaba era una licencia larga.
+
+const QUIROGA: Record<string, PersonaRotulo> = {
+  q1: { nombre: 'QUIROGA ALEXANDER SEBASTIAN', nota: 'oficial' },
+}
+
+test('UNA PERSONA CON SÓLO LICENCIAS EN LA QUINCENA TIENE SU FILA, con celdas L y total —', () => {
+  const filas = armar({
+    asignaciones: [],
+    personas: QUIROGA,
+    registros: [L, M, X].map((f) => reg('q1', MAMPO, f, 9, 'licencia', 'enfermedad')),
+  })
+  assert.equal(filas.length, 1, 'la fila existe aunque no haya una sola hora trabajada')
+  assert.equal(filas[0].persona.nombre, 'QUIROGA ALEXANDER SEBASTIAN')
+  assert.equal(filas[0].celdas[0].estado, 'licencia', 'licencia, NO ausencia')
+  assert.equal(filas[0].celdas[0].motivo, 'Enfermedad', 'el motivo del catálogo, para el tooltip')
+  assert.equal(filas[0].celdas[0].horas, null, 'una licencia NO suma horas trabajadas')
+  assert.equal(filas[0].horas, null, 'el total es «—», nunca un 0 que afirme que trabajó cero')
+  assert.deepEqual(filas[0].reclama, [], 'un día de licencia no es un día sin marcar')
+  // LA OBRA ES LA DE SUS REGISTROS, por el cliente: sin asignación activa no hay obra que mostrar,
+  // y el id es una clave técnica que el dueño ya rechazó en pantalla.
+  assert.equal(filas[0].rotuloObra, 'San Francisco')
+  assert.equal(filas[0].obraPorDefecto, null, 'sin obra activa no se puede escribir en sus celdas')
+})
+
+test('LA LICENCIA NO SE DIBUJA COMO AUSENCIA, y una ausencia sigue siendo ausencia', () => {
+  // EL DEFECTO QUE ATRAPA: las dos caían en el mismo estado `ausente` y en la misma «A». La
+  // diferencia decide si el día se paga: la licencia está autorizada y tiene respaldo documental.
+  const filas = armar({
+    asignaciones: [asig('p1', 'Perez Juan', PISOS)],
+    registros: [
+      reg('p1', PISOS, L, 9, 'ausencia', 'falta'),
+      reg('p1', PISOS, M, 9, 'licencia', 'vacaciones'),
+    ],
+  })
+  assert.equal(filas[0].celdas[0].estado, 'ausente')
+  assert.equal(filas[0].celdas[1].estado, 'licencia')
+  assert.equal(filas[0].celdas[1].motivo, 'Vacaciones')
+})
+
+test('LICENCIA GANA SOBRE AUSENCIA cuando el mismo día trae las dos', () => {
+  // La misma regla que la ficha de la persona: degradar a falta un día autorizado le saca un
+  // derecho al legajo. Si las dos definiciones discreparan, la grilla y la ficha dirían cosas
+  // distintas del mismo día.
+  const filas = armar({
+    asignaciones: [asig('p1', 'Perez Juan', PISOS)],
+    registros: [
+      reg('p1', PISOS, L, 9, 'ausencia', 'falta'),
+      reg('p1', MAMPO, L, 9, 'licencia', 'enfermedad'),
+    ],
+  })
+  assert.equal(filas[0].celdas[0].estado, 'licencia')
+})
+
+test('LO TRABAJADO SIGUE GANANDO A LA LICENCIA en el mismo día', () => {
+  // Una licencia cargada en una obra no puede borrar horas declaradas en otra: son 8 horas y un
+  // dato contradictorio, y el que decide es el trabajo declarado.
+  const filas = armar({
+    asignaciones: [asig('p1', 'Perez Juan', PISOS)],
+    registros: [reg('p1', PISOS, L, 8), reg('p1', MAMPO, L, 9, 'licencia', 'enfermedad')],
+  })
+  assert.equal(filas[0].celdas[0].estado, 'horas')
+  assert.equal(filas[0].celdas[0].horas, 8)
+})
+
+test('SIN NOMBRE NO HAY FILA: un registro de alguien que no está en el plantel no se inventa', () => {
+  // El límite de la regla anterior. Rotular una fila con el uuid sería mostrarle la plomería al
+  // dueño, y ponerle un nombre parecido sería fabricar un dato del legajo.
+  const filas = armar({
+    asignaciones: [],
+    personas: {},
+    registros: [reg('fantasma', MAMPO, L, 9, 'licencia', 'enfermedad')],
+  })
+  assert.equal(filas.length, 0)
 })

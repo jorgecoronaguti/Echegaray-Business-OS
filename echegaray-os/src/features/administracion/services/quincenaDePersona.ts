@@ -27,8 +27,8 @@ import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { porObra } from './hhPersonaService.ts'
 import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
 import {
-  correrQuincena, diasDeQuincena, esFinDeSemana, etiquetaDiaCorta, nombreDia, quincenaDe,
-  type Quincena,
+  correrQuincena, diasDeLaQuincenaSinDomingos, esFinDeSemana, etiquetaDiaCorta, nombreDia,
+  quincenaDe, type Quincena,
 } from './quincena.ts'
 import type { ImputacionHH } from '../types/index.ts'
 
@@ -72,14 +72,19 @@ function estadoSinRegistro(fecha: string, feriados: Set<string>, hoy: string): E
   return fecha > hoy ? 'futuro' : 'sin_registrar'
 }
 
-/** Los quince o dieciséis días de la quincena, con lo que cada uno tiene declarado. */
+/**
+ * Los días de la quincena, con lo que cada uno tiene declarado. SIN DOMINGOS: la franja dibuja lo
+ * mismo que la grilla de Administración, y dos definiciones de «los días de la quincena» dejarían
+ * a la ficha contando un hábil que la grilla no muestra. Un registro cargado en domingo no se
+ * pierde —sigue en la base y la cronología lo lista—: lo que no hace es ocupar una casilla acá.
+ */
 export function diasDeLaQuincena(
   filas: ImputacionHH[],
   q: Quincena,
   opciones: { feriados?: string[]; hoy: string },
 ): DiaDeQuincena[] {
   const feriados = new Set(opciones.feriados ?? [])
-  return diasDeQuincena(q).map((fecha) => {
+  return diasDeLaQuincenaSinDomingos(q).map((fecha) => {
     const delDia = filas.filter((f) => f.fecha === fecha)
     const trabajadas = delDia.filter((f) => esTrabajada(f.tipo_hora))
     const base = {

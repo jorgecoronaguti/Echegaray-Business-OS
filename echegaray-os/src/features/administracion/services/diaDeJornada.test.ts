@@ -14,16 +14,30 @@ test('rotuloDelDia dice el día de la semana, no sólo el número', () => {
 test('correrDia no se come ni repite un día al cruzar un cambio de horario', () => {
   // EL DEFECTO: con `new Date(fecha)` en hora local y +24h, el 01/11 (cambio de hora en el
   // hemisferio norte) devuelve el mismo día. Se calcula en UTC porque la fecha del parte es un día
-  // calendario, no un instante.
-  assert.equal(correrDia('2026-10-31', 1), '2026-11-01')
-  assert.equal(correrDia('2026-11-01', -1), '2026-10-31')
-  assert.equal(correrDia('2026-03-08', 1), '2026-03-09')
-  assert.equal(correrDia('2026-03-08', -1), '2026-03-07')
+  // calendario, no un instante. El 01/11/2026 es domingo, así que el salto se prueba llegando a él
+  // desde el sábado —tiene que pasar de largo— y volviendo desde el lunes.
+  assert.equal(correrDia('2026-10-31', 1), '2026-11-02', 'sábado 31/10 → lunes 2/11, sin frenar')
+  assert.equal(correrDia('2026-11-02', -1), '2026-10-31')
+  assert.equal(correrDia('2026-03-09', 1), '2026-03-10')
+  assert.equal(correrDia('2026-03-09', -1), '2026-03-07', 'lunes 9/3 → sábado 7/3')
+})
+
+test('EL DOMINGO NO SE PISA: sábado + 1 es lunes y lunes − 1 es sábado', () => {
+  // Orden del dueño 08/09/2026: «los domingos no se trabaja, borralos de la consideración de todos
+  // lados». EL DEFECTO QUE ATRAPA: «‹ ayer» y «mañana ›» de la carga del teléfono aterrizaban en un
+  // domingo que la grilla ya no dibuja, y el jefe tenía que tocar dos veces para salir.
+  assert.equal(correrDia('2026-09-05', 1), '2026-09-07', 'sábado 5 → lunes 7')
+  assert.equal(correrDia('2026-09-07', -1), '2026-09-05', 'lunes 7 → sábado 5')
+  assert.equal(correrDia('2026-09-04', 1), '2026-09-05', 'viernes → sábado: el sábado SÍ se trabaja')
+  assert.equal(correrDia('2026-09-04', 3), '2026-09-08', 'tres pasos saltan el domingo una vez')
+  assert.equal(correrDia('2026-09-08', -3), '2026-09-04')
+  // Correr CERO días no corrige nada: un domingo que llega por la URL se sigue pudiendo leer.
+  assert.equal(correrDia('2026-09-06', 0), '2026-09-06')
 })
 
 test('correrDia cruza fin de mes y fin de año', () => {
-  assert.equal(correrDia('2026-01-31', 1), '2026-02-01')
-  assert.equal(correrDia('2026-03-01', -1), '2026-02-28')
+  assert.equal(correrDia('2026-01-31', 1), '2026-02-02', 'el 01/02/2026 es domingo')
+  assert.equal(correrDia('2026-03-02', -1), '2026-02-28', 'el 01/03/2026 es domingo')
   assert.equal(correrDia('2026-12-31', 1), '2027-01-01')
 })
 

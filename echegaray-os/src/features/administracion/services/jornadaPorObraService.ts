@@ -13,7 +13,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAsignaciones } from '../../obras/services/personalService.ts'
 import type { FilaJornada } from './jornadaPorObra.ts'
 import { armarJornada } from './jornadaPorObra.ts'
-import type { AsignacionQuincena, ObraRotulo, RegistroQuincena } from './quincenaPorObra.ts'
+import type {
+  AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena,
+} from './quincenaPorObra.ts'
 
 export interface ObraDeLaJornada {
   id: string
@@ -143,6 +145,9 @@ export async function getJornadaDelDia(
 export interface DatosQuincenaPorObra {
   asignaciones: AsignacionQuincena[]
   registros: RegistroQuincena[]
+  /** El plantel de quien dejó registros SIN tener ninguna asignación. Sin esto no hay con qué
+   *  nombrar su fila y la persona desaparece de la grilla — ver `personasDe`. */
+  personas: Record<string, PersonaRotulo>
   noLaborables: string[]
   /** El catálogo por id: nombre real y cliente. Es lo que evita que la pantalla escriba un slug. */
   obras: Record<string, ObraRotulo>
@@ -167,8 +172,10 @@ export async function getQuincenaPorObra(
 ): Promise<{ data: DatosQuincenaPorObra | null; error: string | null }> {
   const [asignaciones, registros, obras, noLaborables] = await Promise.all([
     getAsignaciones(supabase),
+    // `notas` viaja porque ahí está la CLAVE DEL MOTIVO (`enfermedad`, `falta`…): es lo que
+    // convierte una casilla «L» muda en una que dice de qué licencia se trata.
     supabase.from('registros_hh')
-      .select('persona_id, obra_canonica_id, fecha, horas, tipo_hora')
+      .select('persona_id, obra_canonica_id, fecha, horas, tipo_hora, notas')
       .gte('fecha', desde).lte('fecha', hasta)
       .not('persona_id', 'is', null).not('obra_canonica_id', 'is', null),
     supabase.from('obra_canonica').select('id, nombre, estado, cliente_texto'),
@@ -192,30 +199,50 @@ export async function getQuincenaPorObra(
   // editables y sus días sin marcar sumando al «1 día sin marcar»: la pantalla reclamaba cargar
   // horas de una obra que ya nadie mira, y aceptaba escribirlas.
   const activas = new Set(catalogo.filter((o) => o.estado === 'activa').map((o) => o.id))
+
+  const filasHH = (registros.data ?? []) as {
+    persona_id: string; obra_canonica_id: string; fecha: string
+    horas: number | string; tipo_hora: string; notas: string | null
+  }[]
+  // Vigente en algún punto de la ventana, no sólo el último día: quien empezó el jueves entra, y
+  // quien terminó el martes también — sus horas del lunes y el martes son reales y son de esa
+  // obra. Sin nombre no se dibuja: una fila que no se puede nombrar no sirve para marcar.
+  const vigentes: AsignacionQuincena[] = (asignaciones.data ?? [])
+    .filter((a) => Boolean(a.persona_nombre)
+      && activas.has(a.obra_id)
+      && (!a.desde || a.desde <= hasta) && (!a.hasta || a.hasta >= desde))
+    .map((a) => ({
+      persona_id: a.persona_id,
+      nombre: a.persona_nombre as string,
+      nota: notaDe(a),
+      obra_id: a.obra_id,
+    }))
+
+  // ═══ QUIÉN TIENE REGISTROS Y NO SE PUEDE NOMBRAR CON UNA ASIGNACIÓN ═══
+  //
+  // Se lo busca en el plantel. Antes se lo descartaba en silencio: alguien con 45 licencias por
+  // enfermedad cargadas y sin asignación vigente a obra activa simplemente no estaba en la
+  // pantalla, y «no está en la grilla» se lee como «no pasa nada con esa persona».
+  //
+  // El descarte se mide contra `vigentes` —lo que la grilla va a recibir— y no contra las
+  // asignaciones crudas: quien sólo tiene asignaciones a obras cerradas tampoco tiene nombre.
+  const nombrables = new Set(vigentes.map((a) => a.persona_id))
+  const sinAsignacion = [...new Set(
+    filasHH.map((r) => r.persona_id).filter((id) => id && !nombrables.has(id)),
+  )]
+
   return {
     data: {
-      asignaciones: (asignaciones.data ?? [])
-        // Vigente en algún punto de la ventana, no sólo el último día: quien empezó el jueves entra,
-        // y quien terminó el martes también — sus horas del lunes y el martes son reales y son de
-        // esa obra. Sin nombre no se dibuja: una fila que no se puede nombrar no sirve para marcar.
-        .filter((a) => Boolean(a.persona_nombre)
-          && activas.has(a.obra_id)
-          && (!a.desde || a.desde <= hasta) && (!a.hasta || a.hasta >= desde))
-        .map((a) => ({
-          persona_id: a.persona_id,
-          nombre: a.persona_nombre as string,
-          nota: notaDe(a),
-          obra_id: a.obra_id,
-        })),
-      registros: ((registros.data ?? []) as {
-        persona_id: string; obra_canonica_id: string; fecha: string; horas: number | string; tipo_hora: string
-      }[]).map((r) => ({
+      asignaciones: vigentes,
+      registros: filasHH.map((r) => ({
         persona_id: r.persona_id,
         obra_id: r.obra_canonica_id,
         fecha: r.fecha.slice(0, 10),
         horas: Number(r.horas),
         tipo_hora: r.tipo_hora,
+        notas: r.notas,
       })),
+      personas: await plantelDe(supabase, sinAsignacion),
       noLaborables,
       obras: rotulos,
       // Las obras que se pueden marcar. Lo que quedó fuera sigue mostrando sus horas —existen— pero
@@ -224,6 +251,31 @@ export async function getQuincenaPorObra(
     },
     error: null,
   }
+}
+
+/**
+ * Nombre y nota de un puñado de personas. `persona_plantel` es la MISMA vista de la que salen
+ * todos los nombres de esta pantalla —publica sólo a quien está en la empresa—, no una segunda
+ * fuente: quien no está ahí no se puede nombrar y su fila no se dibuja, porque inventarle un
+ * rótulo sería peor que no mostrarla.
+ */
+async function plantelDe(
+  supabase: SupabaseClient, ids: string[],
+): Promise<Record<string, PersonaRotulo>> {
+  if (ids.length === 0) return {}
+  const { data } = await supabase
+    .from('persona_plantel').select('id, nombre_completo, especialidad, categoria').in('id', ids)
+  const filas = (data ?? []) as {
+    id: string; nombre_completo: string | null; especialidad: string | null; categoria: string | null
+  }[]
+  return Object.fromEntries(filas
+    .filter((p) => (p.nombre_completo ?? '').trim())
+    .map((p) => [p.id, {
+      nombre: (p.nombre_completo as string).trim(),
+      nota: notaDe({
+        rol: null, persona_especialidad: p.especialidad, persona_categoria: p.categoria,
+      }),
+    }]))
 }
 
 // ═══ LA LISTA DE OBRAS DEL PASO 1 DEL TELÉFONO (08/09/2026) ═══

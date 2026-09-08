@@ -244,8 +244,10 @@ function marcaDe(c: CeldaObra | undefined): string {
   if (c.tramos.length > 1) return ` · ${c.tramos.length} obras · ${hs(c.horas ?? 0)} hs`
   if (c.estado === 'horas') return ` · ${hs(c.horas ?? 0)} hs`
   if (c.estado === 'ausente') return ' · no vino'
+  // La licencia se NOMBRA con su motivo: «no vino» a secas borra que estuvo autorizada.
+  if (c.estado === 'licencia') return ` · licencia${c.motivo ? `: ${c.motivo.toLowerCase()}` : ''}`
   // «no laborable» y no «feriado»: desde que la grilla es por quincena, este estado también lo
-  // tienen los sábados y los domingos, que no son feriados de nadie.
+  // tienen los sábados, que no son feriados de nadie. El domingo ya no llega hasta acá.
   if (c.estado === 'no_laborable') return ' · no laborable'
   return ' · sin cargar'
 }
