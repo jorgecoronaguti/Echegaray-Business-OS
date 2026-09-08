@@ -11,7 +11,8 @@ import { hoyISO, leerDatosCampo } from '../datos'
 import { diaDeCarga, rotuloDelDia } from '@/features/administracion/services/diaDeJornada'
 import { puedeCargarParte } from '../permisos'
 import { ElegirObra, MarcoCampo } from '../marco'
-import { FormAsistencia } from '@/features/administracion/components/asistencia/FormAsistencia'
+import { CargaDelDia } from '@/features/administracion/components/asistencia/CargaDelDia'
+import { getPresenciaDelDia } from '@/features/administracion/services/presenciaDelDiaService'
 import { TraerALaObra } from '@/features/administracion/components/asistencia/TraerALaObra'
 import { getCandidatosParaTraer } from '@/features/administracion/services/jornadaPorObraService'
 import { puedeCambiarObraActual } from '@/features/administracion/services/planDeObraActual'
@@ -92,6 +93,8 @@ export default async function AsistenciaCampoPage({ searchParams }: {
   const candidatos = puedeTraer
     ? await getCandidatosParaTraer(supabase, obra.id, fecha)
     : { data: [], error: null }
+  // Sin filtro de obra: el único de `asistencia_dia` es (persona, fecha) — ver `BloqueAsistenciaDia`.
+  const presencia = await getPresenciaDelDia(supabase, fecha, null)
   return (
     <MarcoCampo
       titulo={obra.nombre}
@@ -110,12 +113,15 @@ export default async function AsistenciaCampoPage({ searchParams }: {
         </Link>
       }
     >
-      <FormAsistencia
+      {/* PRESENCIA PRIMERO: es lo que el jefe sabe a las 7:30 y lo que el dueño pidió que no
+          costara resolver una cuenta. Las horas siguen enteras, un toque más allá. */}
+      <CargaDelDia
         obraId={obra.id}
         obraNombre={obra.nombre}
         fecha={fecha}
         jornada={obra.jornada}
         filas={filas}
+        presencia={presencia.data ?? []}
       />
 
       {puedeTraer && (

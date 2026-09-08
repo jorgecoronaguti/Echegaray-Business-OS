@@ -48,6 +48,7 @@ import {
   getEsperados, getObrasConGente, getPresencia,
 } from '@/features/administracion/services/presenciaService'
 import { getRegistrosDelDia } from '@/features/administracion/services/asistenciaDelDiaService'
+import { getPresenciaDelDia } from '@/features/administracion/services/presenciaDelDiaService'
 import {
   asistenciaDelDia, filtrarAsistencia, resumenAsistencia, resumenFichaje, textoFichaje,
 } from '@/features/administracion/services/asistenciaDelDia'
@@ -84,11 +85,18 @@ export default async function EnObraPage({
   const { obra, q } = await searchParams
   const fecha = hoyISO()
 
-  const [presencia, esperados, obras, registros] = await Promise.all([
+  // OJO CON EL NOMBRE: `presencia` en esta página es el FICHAJE (`asistencia_marca`) desde antes
+  // que existiera `asistencia_dia`. Lo declarado por el jefe se llama `declarada` a propósito: dos
+  // cosas distintas no pueden compartir nombre en la pantalla que existe para distinguirlas.
+  const [presencia, esperados, obras, registros, declarada] = await Promise.all([
     getPresencia(supabase, fecha, obra),
     getEsperados(supabase, obra),
     getObrasConGente(supabase),
     getRegistrosDelDia(supabase, fecha, obra),
+    // LA PRESENCIA DECLARADA POR EL JEFE (`asistencia_dia`, 08/09/2026). Sin filtro de obra: el
+    // único de la tabla es (persona, fecha) y quien fue declarado en otra obra sigue estando
+    // declarado. Qué se hace con las tres fuentes lo decide `combinarCeldaDia`, no esta página.
+    getPresenciaDelDia(supabase, fecha, null),
   ])
 
   const fallo = presencia.error ?? registros.error
@@ -109,7 +117,11 @@ export default async function EnObraPage({
   // denominador «0 de 17» era justamente lo que convertía una capacidad sin usar en un reproche.
   const porObraFichaje = jornadaPorObra(marcas, [])
 
-  const dia = asistenciaDelDia({ esperados: esperados.data ?? [], registros: registros.data ?? [] })
+  const dia = asistenciaDelDia({
+    esperados: esperados.data ?? [],
+    registros: registros.data ?? [],
+    presencia: declarada.data ?? [],
+  })
   const visible = filtrarAsistencia(dia, q ?? '')
   const hayAlgo = dia.plantel > 0
   const hayResultado = visible.plantel > 0

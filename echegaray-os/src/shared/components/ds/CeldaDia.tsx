@@ -32,9 +32,15 @@ const HORAS = {
 } as const
 
 export function CeldaDia({
-  entrada, children, testid, estado, className,
+  entrada, children, testid, estado, className, conflicto, tituloConflicto,
 }: {
   entrada: EntradaCeldaDia
+  /** La presencia declarada y las horas del día se contradicen (ver `combinarCeldaDia`). Se pinta
+   *  un marco `neg` —rojo sólo para problemas, y esto SÍ es un problema: una de las dos
+   *  afirmaciones se liquida—. Silenciarlo sería elegir una sin decirlo. */
+  conflicto?: boolean
+  /** La frase que dice las dos afirmaciones sin elegir. Va al `title` en lugar del normal. */
+  tituloConflicto?: string | null
   /** Reemplaza la capa de horas —la grilla editable mete acá su `<input>`—. La capa de presencia
    *  y el marco los sigue decidiendo la función: el editor no puede cambiar lo que el día dice. */
   children?: ReactNode
@@ -51,9 +57,12 @@ export function CeldaDia({
       data-presencia={entrada.presencia}
       data-estado={estado}
       data-sin-cargar={capas.abajo.sinCargar ? 'si' : undefined}
-      title={capas.titulo || undefined}
+      data-conflicto={conflicto ? 'si' : undefined}
+      title={(conflicto && tituloConflicto) || capas.titulo || undefined}
       className={`inline-flex h-11 w-11 flex-col items-center justify-start rounded-control border ${
-        capas.abajo.sinCargar ? 'border-dashed border-line' : 'border-transparent'
+        conflicto
+          ? 'border-neg bg-neg-soft'
+          : capas.abajo.sinCargar ? 'border-dashed border-line' : 'border-transparent'
       } ${className ?? ''}`}
     >
       {/* Alto fijo aunque no haya símbolo: la capa de horas queda a la misma altura en todas las

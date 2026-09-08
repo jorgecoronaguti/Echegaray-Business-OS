@@ -9,6 +9,8 @@ import {
 import type { CasillaJornada, FilaJornada } from '@/features/administracion/services/jornadaPorObra'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '@/features/administracion/services/motivoDeAusencia'
+import { horasSegunPresencia, personasSinHoras } from '@/features/administracion/services/presenciaDelDia'
+import type { PresenciaGuardada } from '@/features/administracion/services/presenciaDelDia'
 
 // CARGAR ASISTENCIA — una obra, un día, las horas de cada uno.
 //
@@ -45,12 +47,16 @@ import { motivosDeDiaNoTrabajado } from '@/features/administracion/services/moti
  *  de la misma persona el mismo día y quedan 17,6 hs repartidas entre dos obras. */
 export type FilaConOtraObra = FilaJornada & { enOtraObra?: { obra: string; horas: number } | null }
 
-export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
+export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, presencia = [] }: {
   obraId: string
   obraNombre: string
   fecha: string
   jornada: number
   filas: FilaConOtraObra[]
+  /** LA PRESENCIA DECLARADA (`asistencia_dia`), si la hay. Es la ÚNICA dirección permitida entre
+   *  las dos pantallas: a quien el jefe declaró ausente no se le piden horas, porque son horas que
+   *  no pueden existir. Al revés está prohibido — escribir un 8 acá no declara a nadie presente. */
+  presencia?: PresenciaGuardada[]
 }) {
   const [casillas, setCasillas] = useState<Record<string, CasillaJornada>>(() => casillasIniciales(filas))
   const [resultado, setResultado] = useState<{ ok: boolean; texto: string } | null>(null)
@@ -71,6 +77,12 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
   }
 
   const [pendiente, arrancar] = useTransition()
+  // A QUIÉN NO SE LE PIDEN HORAS. La regla vive en `presenciaDelDia.ts` con sus pruebas; acá sólo
+  // se consulta. Vacío cuando nadie declaró presencia todavía: la pantalla se comporta como siempre.
+  const sinHoras = useMemo(() => personasSinHoras(presencia), [presencia])
+  const hayPresencia = presencia.length > 0
+  const estadoDeclarado = useMemo(
+    () => new Map(presencia.map((p) => [p.persona_id, p.estado])), [presencia])
   // El catálogo es el mismo que usa el bot de Mattermost desde julio. No es una lista de esta
   // pantalla: si fuera, discreparía con la del bot el día que alguien agregue un motivo.
   const motivos = useMemo(() => motivosDeDiaNoTrabajado(), [])
@@ -99,7 +111,10 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
   }
 
   const guardar = () => {
-    const marcas = loQueViaja(vista, jornada)
+    // LO DECLARADO GANA: quien fue marcado ausente en `asistencia_dia` no manda horas, aunque la
+    // casilla trajera un número de antes. La contradicción se muestra (ver `conflicto`), no se
+    // guarda por duplicado.
+    const marcas = loQueViaja(vista.filter((x) => !sinHoras.has(x.persona_id)), jornada)
     if (marcas.length === 0) {
       setResultado({
         ok: false,
@@ -131,7 +146,19 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
             siendo un gesto solo, pero es un gesto — no el estado inicial de la pantalla. */}
         <button
           type="button"
-          onClick={() => { setResultado(null); setCasillas((c) => ponerLaJornada(c, jornada)) }}
+          // EL ATAJO NO PUEDE CONTRADECIR LA PRESENCIA. Sin el segundo paso, «poner la jornada a
+          // los que faltan» le escribía 8,8 hs a alguien que el propio jefe declaró ausente hace
+          // diez minutos, y las dos verdades quedaban guardadas a la vez.
+          onClick={() => {
+            setResultado(null)
+            setCasillas((c) => {
+              const puestas = ponerLaJornada(c, jornada)
+              if (sinHoras.size === 0) return puestas
+              const out = { ...puestas }
+              for (const id of sinHoras) if (out[id]) out[id] = { ...out[id], texto: '' }
+              return out
+            })
+          }}
           disabled={jornada <= 0}
           data-testid="poner-jornada"
           className="min-h-[36px] rounded-[6px] border border-line px-3 text-[12.5px] text-ink disabled:text-faint"
@@ -148,6 +175,16 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
         {filas.map((fila) => {
           const id = fila.persona.persona_id
           const v = porPersona.get(id)
+          const declarado = estadoDeclarado.get(id) ?? null
+          const segunPresencia = horasSegunPresencia(declarado, jornada)
+          // SIN NINGUNA PRESENCIA DECLARADA la pantalla no cambia: la jornada se sigue sugiriendo a
+          // todos. La sugerencia se acota a los presentes SÓLO cuando existe algo declarado ese día
+          // —si no, la presencia sin estrenar apagaría un gris que hoy sirve—.
+          const sugerencia = hayPresencia ? segunPresencia.sugerencia : (jornada > 0 ? jornada : null)
+          // CONFLICTO VISIBLE, NO SILENCIOSO: el jefe declaró que no vino y sin embargo hay horas
+          // cargadas ese día en esta obra. Las dos afirmaciones no pueden ser ciertas a la vez, y
+          // la pantalla no elige por nadie: lo dice y lo deja resolver a quien sabe.
+          const conflicto = !segunPresencia.editable && (fila.horas ?? 0) > 0
           const ausente = v?.estado === 'ausente'
           const marcada = v?.estado === 'presente'
           return (
@@ -170,40 +207,66 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
                   )}
                 </div>
 
-                <input
-                  aria-label={`Horas de ${fila.persona.nombre}`}
-                  data-testid="horas"
-                  inputMode="decimal"
-                  disabled={ausente}
-                  // EL PLACEHOLDER NO ES UN VALOR: se ve en gris, se puede guardar sin tocarlo y no
-                  // viaja. Es la sugerencia que el diseño pedía, sin la afirmación que fabricaba.
-                  placeholder={jornada > 0 ? hs(jornada) : ''}
-                  value={ausente ? '' : (casillas[id]?.texto ?? '')}
-                  onChange={(e) => cambiar(id, { texto: e.target.value, ausente: false })}
-                  className="h-[44px] w-[64px] rounded-[6px] border text-center text-[16px] font-medium text-ink placeholder:font-normal placeholder:text-[#C4C2BB]"
-                  style={{
-                    background: ausente ? '#F1F0EC' : marcada ? '#FDC900' : '#FFFFFF',
-                    borderColor: ausente ? '#E7E6E2' : marcada ? '#FDC900' : '#F0D98A',
-                  }}
-                />
+                {/* YA ESTÁ DECLARADO QUE NO VINO: no hay horas que pedirle. En su lugar va la
+                    letra que la presencia declaró —A o L—, y la casilla no se puede tocar. Pedir
+                    un número acá sería pedir un dato que no puede existir. */}
+                {!segunPresencia.editable ? (
+                  <span
+                    data-testid="sin-horas-por-presencia"
+                    data-letra={segunPresencia.letra}
+                    title={segunPresencia.letra === 'L' ? 'Licencia declarada' : 'Ausencia declarada'}
+                    className="flex h-11 w-[112px] items-center justify-center rounded-control border border-line bg-surface-sunken text-[13px] font-semibold text-muted"
+                  >
+                    {segunPresencia.letra === 'L' ? 'Licencia' : 'No vino'}
+                  </span>
+                ) : (
+                  <>
+                    <input
+                      aria-label={`Horas de ${fila.persona.nombre}`}
+                      data-testid="horas"
+                      inputMode="decimal"
+                      disabled={ausente}
+                      // EL PLACEHOLDER NO ES UN VALOR: se ve en gris, se puede guardar sin tocarlo y no
+                      // viaja. Es la sugerencia que el diseño pedía, sin la afirmación que fabricaba.
+                      //
+                      // CON PRESENCIA DECLARADA, la sugerencia es SÓLO para los marcados presentes
+                      // (`horasSegunPresencia`). Sin presencia declarada, la pantalla se comporta
+                      // como siempre: la jornada de la obra como gris para todos.
+                      placeholder={sugerencia !== null ? hs(sugerencia) : ''}
+                      value={ausente ? '' : (casillas[id]?.texto ?? '')}
+                      onChange={(e) => cambiar(id, { texto: e.target.value, ausente: false })}
+                      className="h-[44px] w-[64px] rounded-[6px] border text-center text-[16px] font-medium text-ink placeholder:font-normal placeholder:text-[#C4C2BB]"
+                      style={{
+                        background: ausente ? '#F1F0EC' : marcada ? '#FDC900' : '#FFFFFF',
+                        borderColor: ausente ? '#E7E6E2' : marcada ? '#FDC900' : '#F0D98A',
+                      }}
+                    />
 
-                <button
-                  type="button"
-                  aria-label={`${fila.persona.nombre} no vino`}
-                  aria-pressed={ausente}
-                  data-testid="ausente"
-                  onClick={() => cambiar(id, { ausente: !ausente, texto: '' })}
-                  className="h-[44px] w-[44px] rounded-[6px] border text-[15px] font-semibold"
-                  style={{
-                    background: ausente ? '#1F1F1E' : 'transparent',
-                    color: ausente ? '#FFFFFF' : '#91918B',
-                    borderColor: ausente ? '#1F1F1E' : '#E7E6E2',
-                  }}
-                >
-                  A
-                </button>
+                    <button
+                      type="button"
+                      aria-label={`${fila.persona.nombre} no vino`}
+                      aria-pressed={ausente}
+                      data-testid="ausente"
+                      onClick={() => cambiar(id, { ausente: !ausente, texto: '' })}
+                      className="h-[44px] w-[44px] rounded-[6px] border text-[15px] font-semibold"
+                      style={{
+                        background: ausente ? '#1F1F1E' : 'transparent',
+                        color: ausente ? '#FFFFFF' : '#91918B',
+                        borderColor: ausente ? '#1F1F1E' : '#E7E6E2',
+                      }}
+                    >
+                      A
+                    </button>
+                  </>
+                )}
               </div>
               {v?.error && <ErrorCampo>{v.error}</ErrorCampo>}
+              {conflicto && (
+                <p className="mt-1 text-[12px] font-medium text-neg" data-testid="conflicto-presencia-horas">
+                  Está declarado {segunPresencia.letra === 'L' ? 'de licencia' : 'ausente'} y tiene{' '}
+                  {hs(fila.horas ?? 0)} hs cargadas este día. Una de las dos está mal.
+                </p>
+              )}
               {/* EL SEGUNDO TOQUE: por qué no vino. Aparece SÓLO cuando ya se marcó la ausencia y
                   no es obligatorio — marcar que alguien faltó sin saber todavía por qué es
                   honesto; exigir la causa para poder guardar hace que se elija cualquiera. */}

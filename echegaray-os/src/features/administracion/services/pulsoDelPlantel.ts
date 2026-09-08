@@ -155,6 +155,12 @@ export function rotuloHoy(c: ClasificacionDelDia): RotuloHoy {
       return { chip: 'A', chipTono: 'neg', texto: c.motivo?.toLowerCase() ?? 'ausencia', tono: 'motivo' }
     case 'licencia':
       return { chip: 'L', chipTono: 'neutro', texto: c.motivo?.toLowerCase() ?? 'licencia', tono: 'motivo' }
+    case 'presente':
+      // DECLARADO PRESENTE POR EL JEFE (`asistencia_dia`, 08/09/2026) y sin horas todavía. NO es
+      // «sin cargar»: alguien lo miró y dijo que estaba, y eso es más de lo que la columna sabía
+      // hasta hoy. Sin chip de estado —el chip es para A y L, que son las novedades— y en gris,
+      // porque lo que falta sigue siendo la carga de horas.
+      return { chip: null, chipTono: null, texto: 'presente · sin horas', tono: 'silencio' }
     case 'sin_cargar':
       // NUNCA «sin fichar» ni «ausente»: es que Administración todavía no cargó el día, y eso no
       // es una falta de la persona. Por eso va en gris neutro y sin punto de alerta.

@@ -25,13 +25,20 @@
 // gobierna `jornadaPorObra.ts`, y qué hora es trabajo lo sigue decidiendo `tipoHora.ts` —acá no se
 // redefine nada de eso, se reusa—.
 
+import { combinarCeldaDia } from '../../../shared/components/ds/celdaDia.ts'
+import type { PresenciaDeclarada } from '../../../shared/components/ds/celdaDia.ts'
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { redondear } from './jornadaPorObra.ts'
 import type { Esperado } from './presencia.ts'
+import type { PresenciaGuardada } from './presenciaDelDia.ts'
 
-/** Lo que la pantalla puede afirmar de una persona en el día. Ninguno se llama «no fichó». */
-export type EstadoDelDia = 'con_horas' | 'ausente' | 'licencia' | 'sin_cargar'
+/** Lo que la pantalla puede afirmar de una persona en el día. Ninguno se llama «no fichó».
+ *
+ *  `presente` entró el 08/09/2026 con `asistencia_dia`: el jefe declaró que la persona está y
+ *  todavía no le cargaron las horas. ES UNA VERDAD VÁLIDA y no se puede seguir mostrando como
+ *  «sin cargar», que es lo que la pantalla decía hasta hoy de todo el que no tenía un número. */
+export type EstadoDelDia = 'con_horas' | 'presente' | 'ausente' | 'licencia' | 'sin_cargar'
 
 /** Lo que la clasificación afirma de una persona en un día. `horas` en `null` NO es cero: es que
  *  nadie cargó nada, y las dos cosas se dibujan distinto. */
@@ -39,6 +46,11 @@ export interface ClasificacionDelDia {
   estado: EstadoDelDia
   horas: number | null
   motivo: string | null
+  /** El jefe declaró que no vino y sin embargo el día tiene horas cargadas. Se muestra, no se
+   *  resuelve: una de las dos afirmaciones se liquida y la pantalla no puede elegir cuál.
+   *  OPCIONAL porque `clasificar` siempre lo escribe pero las pantallas que arman una
+   *  clasificación a mano —los tests, y el `SIN_CARGAR` del Plantel— no tienen conflicto posible. */
+  conflicto?: boolean
 }
 
 /**
@@ -76,6 +88,11 @@ export interface PersonaDelDia {
   horas: number | null
   /** El porqué de la ausencia o la licencia, tal como se cargó. `null` = no se declaró. */
   motivo: string | null
+  /** El jefe declaró que no vino y sin embargo el día tiene horas cargadas. Se muestra, no se
+   *  resuelve: una de las dos afirmaciones se liquida y la pantalla no puede elegir cuál.
+   *  OPCIONAL porque `clasificar` siempre lo escribe pero las pantallas que arman una
+   *  clasificación a mano —los tests, y el `SIN_CARGAR` del Plantel— no tienen conflicto posible. */
+  conflicto?: boolean
 }
 
 export interface ObraDelDia {
@@ -112,21 +129,41 @@ const rotulo = (id: string | null, nombre: string | null): string =>
  * «ausente». Una licencia por enfermedad y una falta son dos novedades distintas para quien
  * liquida, y esta pantalla las tiene que poder distinguir de un vistazo.
  */
-export function clasificar(registros: RegistroClasificable[]): ClasificacionDelDia {
-  const declarado = registros.find((r) => !esTrabajada(r.tipo_hora))
-  if (declarado) {
+export function clasificar(
+  registros: RegistroClasificable[], declarada: PresenciaDeclarada = null,
+): ClasificacionDelDia {
+  const enHoras = registros.find((r) => !esTrabajada(r.tipo_hora))
+  const trabajadas = registros.filter((r) => esTrabajada(r.tipo_hora))
+  const horas = trabajadas.length > 0 ? redondear(trabajadas.reduce((s, r) => s + r.horas, 0)) : null
+
+  // LA COMBINACIÓN DE LAS TRES FUENTES VIVE UNA SOLA VEZ, en `combinarCeldaDia`. Acá no se
+  // re-decide la precedencia: se traduce su respuesta al vocabulario de esta pantalla. Dos
+  // criterios distintos para la misma pregunta terminan en dos respuestas distintas, y la que se
+  // cree es la última que alguien miró.
+  const c = combinarCeldaDia({
+    declarada,
+    horas,
+    enHoras: enHoras ? (enHoras.tipo_hora === 'licencia' ? 'licencia' : 'ausente') : null,
+    dia: 'habil',
+  })
+  const motivo = declarada && declarada !== 'presente' ? null : (enHoras?.notas?.trim() || null)
+
+  if (c.entrada.presencia === 'ausente' || c.entrada.presencia === 'licencia') {
     return {
-      estado: declarado.tipo_hora === 'licencia' ? 'licencia' : 'ausente',
-      horas: null,
-      motivo: declarado.notas?.trim() || null,
+      estado: c.entrada.presencia,
+      // CON CONFLICTO LAS HORAS SE SIGUEN VIENDO. Esconderlas sería elegir la ausencia sin decirlo.
+      horas: c.conflicto ? horas : null,
+      motivo,
+      // `conflicto` SE ESCRIBE SÓLO CUANDO LO HAY. Es una excepción, no un campo del día: un
+      // `false` en cada clasificación obligaría a toda pantalla que arma una a mano a repetirlo,
+      // y la ausencia de la marca ya significa «no hay contradicción».
+      ...(c.conflicto ? { conflicto: true as const } : {}),
     }
   }
-  if (registros.length === 0) return { estado: 'sin_cargar', horas: null, motivo: null }
-  return {
-    estado: 'con_horas',
-    horas: redondear(registros.reduce((s, r) => s + r.horas, 0)),
-    motivo: null,
-  }
+  if (horas !== null) return { estado: 'con_horas', horas, motivo: null }
+  // DECLARADO PRESENTE Y SIN HORAS: no es «sin cargar». Alguien lo miró y dijo que estaba.
+  if (declarada === 'presente') return { estado: 'presente', horas: null, motivo: null }
+  return { estado: 'sin_cargar', horas: null, motivo: null }
 }
 
 /**
@@ -138,8 +175,15 @@ export function clasificar(registros: RegistroClasificable[]): ClasificacionDelD
  * aparece igual: sus horas existen y alguien las tiene que poder ver.
  */
 export function asistenciaDelDia(
-  { esperados, registros }: { esperados: Esperado[]; registros: RegistroDelDia[] },
+  { esperados, registros, presencia = [] }: {
+    esperados: Esperado[]
+    registros: RegistroDelDia[]
+    /** `asistencia_dia` del mismo día. Vacío = todavía nadie declaró nada, y la pantalla se
+     *  comporta exactamente como antes del 08/09/2026. */
+    presencia?: PresenciaGuardada[]
+  },
 ): AsistenciaDelDia {
+  const declaradaDe = new Map(presencia.map((p) => [p.persona_id, p.estado]))
   const porPersona = new Map<string, RegistroDelDia[]>()
   for (const r of registros) {
     const previos = porPersona.get(r.persona_id)
@@ -160,7 +204,7 @@ export function asistenciaDelDia(
       categoria: e.categoria,
       obraId: donde?.obra_id ?? e.obra_actual_id,
       obra: donde?.obra ?? e.obra_actual,
-      ...clasificar(suyos),
+      ...clasificar(suyos, declaradaDe.get(e.id) ?? null),
     })
   }
 
@@ -174,7 +218,7 @@ export function asistenciaDelDia(
       categoria: suyos[0].categoria,
       obraId: suyos[0].obra_id,
       obra: suyos[0].obra,
-      ...clasificar(suyos),
+      ...clasificar(suyos, declaradaDe.get(personaId) ?? null),
     })
   }
 
@@ -187,10 +231,12 @@ export function asistenciaDelDia(
     }
     obra.gente.push({
       personaId: f.personaId, nombre: f.nombre, categoria: f.categoria,
-      estado: f.estado, horas: f.horas, motivo: f.motivo,
+      estado: f.estado, horas: f.horas, motivo: f.motivo, conflicto: f.conflicto,
     })
     if (f.estado === 'con_horas') { obra.conHoras += 1; obra.horas = redondear(obra.horas + (f.horas ?? 0)) }
-    else if (f.estado === 'sin_cargar') obra.sinCargar += 1
+    // PRESENTE DECLARADO SIN HORAS sigue contando como día por cargar: es exactamente eso, y
+    // meterlo en `conHoras` inflaría el conteo de la carga con gente sin un solo número.
+    else if (f.estado === 'sin_cargar' || f.estado === 'presente') obra.sinCargar += 1
     else obra.declarados += 1
     porObra.set(clave, obra)
   }
@@ -203,7 +249,8 @@ export function asistenciaDelDia(
     obras,
     conHoras: filas.filter((f) => f.estado === 'con_horas').length,
     declarados: filas.filter((f) => f.estado === 'ausente' || f.estado === 'licencia').length,
-    sinCargar: filas.filter((f) => f.estado === 'sin_cargar').length,
+    // Mismo criterio que el conteo por obra: un presente declarado sin horas es un día POR CARGAR.
+    sinCargar: filas.filter((f) => f.estado === 'sin_cargar' || f.estado === 'presente').length,
     plantel: filas.length,
     horas: redondear(filas.reduce((s, f) => s + (f.estado === 'con_horas' ? (f.horas ?? 0) : 0), 0)),
   }
