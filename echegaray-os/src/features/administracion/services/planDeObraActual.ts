@@ -261,7 +261,7 @@ export function planDeCambioDeObra({ abiertas, destino, hoy, desde = hoy, hasta 
  *  Cuando la persona YA estaba en el destino y lo único que se hace es cerrar las otras abiertas,
  *  el acuse no puede decir «desde hoy»: no empezó hoy, y lo que hay para contar es la limpieza. */
 function acuseDe({ destino, seConserva, cerradas, hoy, desde, hasta, vuelve }: {
-  destino: { nombre: string } | null
+  destino: { id: string; nombre: string } | null
   seConserva: AsignacionAbierta | null
   cerradas: AsignacionAbierta[]
   hoy: string

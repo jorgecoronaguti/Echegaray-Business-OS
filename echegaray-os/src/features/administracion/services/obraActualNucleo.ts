@@ -18,7 +18,9 @@
 // `obraActualActions.ts` y en `planDeObraActual.ts`; no se repite acá.
 
 import { z } from 'zod'
-import { planDeCambioDeObra, puedeCambiarObraActual, type AsignacionAbierta } from './planDeObraActual.ts'
+import {
+  planDeCambioDeObra, puedeCambiarObraActual, validarProgramacion, type AsignacionAbierta,
+} from './planDeObraActual.ts'
 
 export type ResultadoObraActual = { ok: true; mensaje: string } | { ok: false; error: string }
 
@@ -63,9 +65,20 @@ export interface DepsObraActual {
 
 // `obra_id` es TEXT (`obra_canonica.id` es un slug, no un uuid): pedir `.uuid()` acá rechazaría
 // todas las obras reales. `null` es «Sin obra», que es una opción y no un error.
+//
+// `desde`/`hasta` SON OPCIONALES Y VACÍO ES AUSENTE: la grilla manda el gesto de siempre sin
+// nombrarlos, y el panel manda `hasta: ''` cuando eligieron «hasta nuevo aviso» —un `<input
+// type=date>` en blanco produce `''`, no `undefined`—. Zod valida la FORMA; que la fecha sea
+// programable (ni hacia atrás, ni a dos años, ni el fin antes del inicio) lo decide
+// `validarProgramacion`, que depende de hoy y por eso no puede vivir en un esquema.
+const fechaOpcional = z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'), z.literal('')])
+  .optional().nullable()
+
 const cambioSchema = z.object({
   persona_id: z.string().uuid('Elegí una persona del plantel'),
   obra_id: z.union([z.string().trim().min(1), z.literal(''), z.null()]).optional(),
+  desde: fechaOpcional,
+  hasta: fechaOpcional,
 })
 
 export async function cambiarObraActualCon(
@@ -76,6 +89,8 @@ export async function cambiarObraActualCon(
   const personaId = parsed.data.persona_id
   const obraId = parsed.data.obra_id ? parsed.data.obra_id : null
   const { supabase, hoy } = deps
+  const desde = parsed.data.desde || hoy
+  const hasta = parsed.data.hasta || null
 
   // ═══ DIRECCIÓN, ADMINISTRACIÓN Y JEFE DE OBRA (dueño, 08/09/2026, tarde) ═══
   //
@@ -91,6 +106,12 @@ export async function cambiarObraActualCon(
     }
   }
 
+  // LAS FECHAS SE VALIDAN ANTES DE TOCAR NADA, igual que el rol y por lo mismo. Un `desde` en el
+  // pasado que llegara hasta el `update` ya habría cerrado la asignación vigente cuando el `insert`
+  // rebota: la persona queda sin obra por una fecha mal escrita.
+  const fechas = validarProgramacion({ hoy, desde, hasta })
+  if (fechas) return { ok: false, error: fechas }
+
   // LA PERSONA TIENE QUE EXISTIR EN EL PLANTEL. `persona_plantel` publica sólo a quien está en la
   // empresa: asignar a alguien dado de baja le imputaría horas a un legajo cerrado.
   const persona = await supabase.from('persona_plantel')
@@ -104,7 +125,7 @@ export async function cambiarObraActualCon(
   const abiertas = await leerAbiertas(supabase, personaId)
   if (abiertas.error) return { ok: false, error: abiertas.error }
 
-  const plan = planDeCambioDeObra({ abiertas: abiertas.data, destino: obra.destino, hoy })
+  const plan = planDeCambioDeObra({ abiertas: abiertas.data, destino: obra.destino, hoy, desde, hasta })
   if (plan.sinCambio) return { ok: true, mensaje: plan.acuse }
 
   for (const c of plan.cerrar) {
@@ -132,6 +153,10 @@ export async function cambiarObraActualCon(
       // se sigue pudiendo editar desde la solapa Personal de la obra.
       rol: 'integrante',
       desde: plan.abrir.desde,
+      // `hasta` SÓLO CUANDO EL TRAMO TIENE FIN. Mandarlo como `null` sería idéntico para la base
+      // —la columna ya es nullable— pero no para el test que mira QUÉ se escribió: el cambio de hoy
+      // tiene que seguir insertando exactamente las cuatro claves de siempre.
+      ...(plan.abrir.hasta ? { hasta: plan.abrir.hasta } : {}),
     }).select('id')
     if (error) {
       // EL MENSAJE DE LA BASE VA ENTERO, TAMBIÉN EL DEL ÍNDICE ÚNICO. Un 23505 acá ya no es «ya
@@ -152,6 +177,32 @@ export async function cambiarObraActualCon(
         ok: false,
         error: 'Cerré la asignación anterior y la nueva no quedó escrita (cero filas). '
           + 'La persona quedó sin obra — elegila de nuevo.',
+      }
+    }
+  }
+
+  // ═══ EL REGRESO VA ÚLTIMO, Y SU FALLA NO SE TRAGA ═══
+  //
+  // Va después del tramo programado porque si el pase no se pudo abrir, el regreso no tiene de
+  // dónde volver: sería una asignación futura a la obra donde la persona YA está, que dentro de
+  // tres semanas aparece sola y sin explicación.
+  //
+  // Si el pase entró y el regreso no, la persona queda con fecha de fin y sin obra después. Eso se
+  // dice con todas las letras: es exactamente el estado que la planificación tenía que evitar, y
+  // callarlo lo convierte en una sorpresa el día que el tramo termine.
+  if (plan.reabrir) {
+    const { data, error } = await supabase.from('obra_asignacion').insert({
+      obra_id: plan.reabrir.obra_id,
+      persona_id: personaId,
+      rol: 'integrante',
+      desde: plan.reabrir.desde,
+    }).select('id')
+    if (error || (data ?? []).length === 0) {
+      deps.revalidar?.(personaId)
+      return {
+        ok: false,
+        error: `Programé el pase pero NO pude programar el regreso${error ? `: ${error.message}` : ' (cero filas)'}. `
+          + 'La persona queda SIN OBRA cuando el tramo termine — cancelá el pase y volvé a programarlo.',
       }
     }
   }

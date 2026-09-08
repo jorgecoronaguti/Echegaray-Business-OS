@@ -36,10 +36,16 @@
 // mismo desplegable arregla. Abriendo primero, un cierre fallido dejaría DOS obras vigentes y la
 // grilla elegiría una por horas: el error quedaría escondido detrás de un rótulo plausible.
 
+import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { cambiarObraActualCon, type ResultadoObraActual, type SupabaseLike } from './obraActualNucleo'
+import {
+  cancelarTramoProgramadoCon, leerTramosCon,
+  type ResultadoCancelacion, type SupabasePlanLike,
+} from './planDeObraNucleo'
+import type { TramoDeAsignacion } from './planDeObraActual'
 
 // ═══ UN `export type` ACÁ ROMPE LA PANTALLA ENTERA EN PRODUCCIÓN ═══
 //
@@ -73,6 +79,50 @@ export async function cambiarObraActual(entrada: unknown): Promise<ResultadoObra
     revalidar: (personaId) => {
       revalidatePath('/administracion/personas')
       revalidatePath(`/administracion/personas/${personaId}`)
+      revalidatePath('/campo/asistencia')
+    },
+  }, entrada)
+}
+
+// ═══ PROGRAMAR UN PASE NO TIENE ACCIÓN PROPIA ═══
+//
+// `cambiarObraActual` ya lo hace: su esquema acepta `desde` y `hasta`, y sin ellos se comporta
+// exactamente como el desplegable de la grilla. Una `programarPaseDeObra` al lado sería la segunda
+// puerta a la misma tabla, con su propio control de rol que hay que acordarse de mantener igual.
+// El panel llama a la misma acción con dos campos más.
+
+/**
+ * Los tramos de `obra_asignacion` de una persona, para el panel «Plan de obra».
+ *
+ * LECTURA, NO ESCRITURA: el control de rol es la RLS de la tabla, que ya acota qué asignaciones ve
+ * cada perfil. Poner acá la lista de roles que ESCRIBEN escondería el plan a quien puede mirarlo
+ * pero no tocarlo — y el jefe que no puede mover a nadie igual necesita saber dónde va a estar su
+ * gente. Los botones que escriben sí piden el rol, cada uno en su acción.
+ */
+export async function leerPlanDeObra(personaId: unknown): Promise<
+  { ok: true; tramos: TramoDeAsignacion[] } | { ok: false; error: string }
+> {
+  const id = z.string().uuid().safeParse(personaId)
+  if (!id.success) return { ok: false, error: 'Persona inválida.' }
+  const supabase = await createClient()
+  const r = await leerTramosCon(supabase as unknown as SupabasePlanLike, id.data)
+  if (r.error) return { ok: false, error: r.error }
+  return { ok: true, tramos: r.data }
+}
+
+/** Deshacer un pase programado. Mismo permiso que moverlo de obra hoy: mueve el mismo costo. */
+export async function cancelarPaseProgramado(entrada: unknown): Promise<ResultadoCancelacion> {
+  const supabase = await createClient()
+  const perfil = await getPerfilActual(supabase)
+  if (perfil.error) return { ok: false, error: perfil.error }
+
+  return cancelarTramoProgramadoCon({
+    supabase: supabase as unknown as SupabasePlanLike,
+    perfil: perfil.data ? { rol: perfil.data.rol } : null,
+    hoy: new Date().toISOString().slice(0, 10),
+    revalidar: (id) => {
+      revalidatePath('/administracion/personas')
+      revalidatePath(`/administracion/personas/${id}`)
       revalidatePath('/campo/asistencia')
     },
   }, entrada)
