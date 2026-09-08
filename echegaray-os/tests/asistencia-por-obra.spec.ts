@@ -100,7 +100,27 @@ async function limpiarObraDePrueba(): Promise<void> {
   await sb.from('personas').delete().eq('id', PERSONA_DE_PRUEBA)
 }
 
-test('01 · el jefe carga la asistencia en el teléfono', async ({ page }) => {
+// ═══ 08/09/2026: LO QUE ABRE EN EL TELÉFONO ES PRESENCIA, NO HORAS ═══
+//
+// Decisión del dueño: *«una cosa es asistir y otra la carga de horas»*. `/campo/asistencia` abre
+// `FormPresencia` —tres objetivos por persona: Está · No vino · Licencia— y la carga de horas
+// entera queda un toque más allá, detrás de «Cargar horas del día →» (`CargaDelDia`).
+//
+// Este test buscaba `form-asistencia` al entrar y se puso rojo sin que se rompiera ninguna regla:
+// medía la pantalla anterior. Lo que ahora afirma es la realidad nueva Y su frontera:
+//
+//  · en el paso de presencia NO existe ninguna casilla de horas (`horas`) ni el pie que las cuenta;
+//  · los tres objetivos miden 44px de alto — se tocan con guante, parado en la obra;
+//  · no aparece vocabulario de FICHAJE. «No fichó» / «sin fichar» hablan de la falta de un registro
+//    del celular; acá el jefe DECLARA, y mezclar los dos vocabularios es cómo una ausencia de dato
+//    se leyó como una ausencia de persona (`celdaDia.ts`);
+//  · el enlace lleva al formulario de horas de verdad, con sus casillas.
+//
+// SÓLO LECTURA. No se toca «Guardar» ni se escribe una marca: la obra es VIVA. Tocar un botón de
+// presencia cambia estado del cliente y nada más —lo que llega a `asistencia_dia` lo escribe la
+// acción del botón Guardar—, así que la aserción del objetivo se hace sin dejar rastro. Lo que
+// escribe vive en los tests con `E2E_ESCRIBE_ASISTENCIA=1` y obra ZZ-E2E propia.
+test('01 · el jefe marca PRESENCIA en el teléfono, y las horas son el paso siguiente', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await entrarComo(page, JEFE.email, JEFE.password)
 
@@ -111,18 +131,42 @@ test('01 · el jefe carga la asistencia en el teléfono', async ({ page }) => {
   await page.screenshot({ path: 'qa-shots/asistencia-01-campo-390.png', fullPage: true })
 
   await page.goto(`/campo/asistencia?obra=${OBRA_CON_GENTE}`)
+  await expect(page.getByTestId('paso-presencia')).toBeVisible()
+  await expect(page.getByTestId('form-presencia')).toBeVisible()
+
+  // LA FRONTERA, MEDIDA: ni una casilla de horas ni el pie que las suma.
+  await expect(page.getByTestId('horas')).toHaveCount(0)
+  await expect(page.getByTestId('pie-jornada')).toHaveCount(0)
+
+  const texto = await page.getByTestId('paso-presencia').innerText()
+  expect(texto).not.toMatch(/no fich[óo]|sin fichar/i)
+
+  // TRES OBJETIVOS POR PERSONA Y NINGUNO POR DEBAJO DE 44px. La obra es viva: lo que se afirma es
+  // la GEOMETRÍA de la fila, no quién está ni cuántos son — eso cambia todos los días.
+  const fila = page.getByTestId('fila-presencia').first()
+  await expect(fila).toBeVisible()
+  for (const objetivo of ['esta', 'no-vino', 'licencia']) {
+    const boton = fila.getByTestId(objetivo)
+    await expect(boton).toBeVisible()
+    const caja = await boton.boundingBox()
+    expect(caja, `«${objetivo}» no se pudo medir`).not.toBeNull()
+    expect(caja!.height, `«${objetivo}» mide ${caja!.height}px de alto y el mínimo táctil es 44`)
+      .toBeGreaterThanOrEqual(44)
+  }
+  await expect(page.getByTestId('pie-presencia')).toBeVisible()
+  await page.screenshot({ path: 'qa-shots/asistencia-01b-presencia-390.png', fullPage: true })
+
+  // Y EL PASO SIGUIENTE EXISTE DE VERDAD: el enlace abre el formulario de horas ENTERO, con sus
+  // casillas y su pie. Sin esto, «acá no hay horas» sería indistinguible de haberlas perdido.
+  await page.getByTestId('ir-a-horas').click()
   await expect(page.getByTestId('form-asistencia')).toBeVisible()
-  await expect(page.getByTestId('fila-asistencia').first()).toBeVisible()
-
-  // LA PANTALLA ABRE Y DIBUJA SU GENTE. Nada más se afirma acá: esta obra es VIVA y su día de hoy
-  // cambia solo. Afirmar «la casilla está vacía» o «0 presentes» contra ella pondría el test en
-  // rojo el día que un jefe cargue de verdad, sin que ninguna regla se haya roto. El control del
-  // defecto que costó el revert vive donde el escenario es propio — ver el test 07.
+  await expect(page.getByTestId('horas').first()).toBeVisible()
   await expect(page.getByTestId('pie-jornada')).toBeVisible()
-  await page.screenshot({ path: 'qa-shots/asistencia-01b-obra-390.png', fullPage: true })
+  await page.screenshot({ path: 'qa-shots/asistencia-01c-horas-390.png', fullPage: true })
 
-  // EL PIE CUENTA LO QUE LA PANTALLA MUESTRA, no lo que la base tiene guardado.
-  await expect(page.getByTestId('pie-jornada')).toBeVisible()
+  // Y SE VUELVE. Un paso sin retorno deja al jefe con la presencia a medias y sin camino de vuelta.
+  await page.getByTestId('volver-a-presencia').click()
+  await expect(page.getByTestId('form-presencia')).toBeVisible()
 })
 
 test('02 · la QUINCENA por obra abre en Administración → Personal', async ({ page }) => {
