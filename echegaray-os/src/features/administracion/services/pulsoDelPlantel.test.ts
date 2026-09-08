@@ -7,8 +7,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  estadoHoy, hayControlDeVencimientos, hhPorPersona, horasVisibles,
-  marcasPorPersona, mesCorriente, papelesPorPersona, rotuloDePapeles,
+  SIN_CARGAR, asistenciaHoyPorPersona, estadoHoy, hayControlDeVencimientos, hayMarcaDeHoy,
+  hhPorPersona, horasVisibles, marcasPorPersona, mesCorriente, papelesPorPersona, rotuloDePapeles,
+  rotuloHoy,
 } from './pulsoDelPlantel.ts'
 
 const HOY = '2026-08-24'
@@ -44,6 +45,86 @@ test('dos marcas de la misma persona: gana la jornada abierta', () => {
     { persona_id: 'a', estado: 'cerrada' },
   ])
   assert.equal(estadoHoy(alReves.get('a')), 'en_obra')
+})
+
+// ── HOY · LA ASISTENCIA DEL DÍA ─────────────────────────────────────────────────────────────────
+//
+// ═══ EL DEFECTO QUE ATRAPAN ═══
+//
+// La columna HOY del Plantel decía «● sin fichar» en las diecisiete filas, en ámbar, porque leía
+// SÓLO `asistencia_marca` —una capacidad con cuatro marcas de prueba en toda su historia—. Si
+// alguien vuelve a hacer que la celda hable de fichaje, o inventa un segundo `if` que decida qué es
+// una ausencia, estas pruebas se ponen rojas.
+
+test('sin nada cargado la celda dice «sin cargar»: nunca «sin fichar» ni «ausente»', () => {
+  const r = rotuloHoy(SIN_CARGAR)
+  assert.equal(r.texto, 'sin cargar')
+  assert.equal(r.chip, null, 'el silencio no lleva chip de estado')
+  assert.equal(r.tono, 'silencio')
+  assert.doesNotMatch(r.texto, /fich|ausen|falt/i)
+})
+
+test('el vocabulario ENTERO de la celda: ningún estado nombra el fichaje ni acusa una falta', () => {
+  // El barrido es la prueba: alcanza con que UN estado vuelva a decir «no fichó» para que caiga.
+  const casos = [
+    SIN_CARGAR,
+    { estado: 'con_horas' as const, horas: 9, motivo: null },
+    { estado: 'ausente' as const, horas: null, motivo: null },
+    { estado: 'licencia' as const, horas: null, motivo: null },
+  ]
+  for (const c of casos) {
+    const r = rotuloHoy(c)
+    assert.doesNotMatch(r.texto, /fich/i, `«${r.texto}» habla de fichaje`)
+    // El número no lleva tono de estado: 9 h no es «bien» ni «mal».
+    if (c.estado === 'con_horas') assert.equal(r.chipTono, null)
+  }
+})
+
+test('con horas la celda es una CANTIDAD, no un estado', () => {
+  const r = rotuloHoy({ estado: 'con_horas', horas: 9, motivo: null })
+  assert.equal(r.texto, '9 h')
+  assert.equal(r.tono, 'cantidad')
+  assert.equal(r.chip, null)
+  assert.equal(rotuloHoy({ estado: 'con_horas', horas: 7.5, motivo: null }).texto, '7,5 h')
+})
+
+test('la ausencia y la licencia llevan su chip y su motivo, y se distinguen entre sí', () => {
+  const a = rotuloHoy({ estado: 'ausente', horas: null, motivo: 'Gripe' })
+  assert.deepEqual([a.chip, a.chipTono, a.texto], ['A', 'neg', 'gripe'])
+  const l = rotuloHoy({ estado: 'licencia', horas: null, motivo: 'Vacaciones' })
+  assert.deepEqual([l.chip, l.chipTono, l.texto], ['L', 'neutro', 'vacaciones'])
+  // Sin motivo declarado se escribe la palabra del estado, no un hueco al lado de la letra.
+  assert.equal(rotuloHoy({ estado: 'ausente', horas: null, motivo: null }).texto, 'ausencia')
+})
+
+test('la asistencia de hoy sale de las filas de HOY, no de las del mes', () => {
+  const m = asistenciaHoyPorPersona([
+    { persona_id: 'a', fecha: HOY, horas: 8, tipo_hora: 'normal' },
+    { persona_id: 'a', fecha: HOY, horas: 1, tipo_hora: 'extra_50' },
+    { persona_id: 'b', fecha: '2026-08-10', horas: 8, tipo_hora: 'normal' },
+    { persona_id: null, fecha: HOY, horas: 8, tipo_hora: 'normal' },
+  ], HOY)
+  assert.deepEqual(m.get('a'), { estado: 'con_horas', horas: 9, motivo: null })
+  // «b» cargó el 10 y hoy no: quien no está en el Map es SIN_CARGAR, no «ausente».
+  assert.equal(m.has('b'), false)
+  assert.equal(m.size, 1, 'las filas legacy sin persona_id no le inventan un día a nadie')
+})
+
+test('lo declarado gana: una ausencia de hoy no se lee como jornada por una imputación suelta', () => {
+  const m = asistenciaHoyPorPersona([
+    { persona_id: 'a', fecha: HOY, horas: 8, tipo_hora: 'normal' },
+    { persona_id: 'a', fecha: HOY, horas: 8, tipo_hora: 'ausencia', notas: 'Falta con aviso' },
+  ], HOY)
+  // La regla es la de `clasificar()` y se REUSA: si acá apareciera una segunda copia del `if`, el
+  // día que cambie la de `asistenciaDelDia.ts` esta pantalla se quedaría con la vieja.
+  assert.deepEqual(m.get('a'), { estado: 'ausente', horas: null, motivo: 'Falta con aviso' })
+})
+
+test('el ● de presencia sólo lo prende una marca REAL', () => {
+  assert.equal(hayMarcaDeHoy(undefined), false)
+  assert.equal(hayMarcaDeHoy({ persona_id: 'a', estado: 'sin_registrar' }), false)
+  assert.equal(hayMarcaDeHoy({ persona_id: 'a', estado: 'activo' }), true)
+  assert.equal(hayMarcaDeHoy({ persona_id: 'a', estado: 'cerrada' }), true)
 })
 
 // ── HH DEL MES ──────────────────────────────────────────────────────────────────────────────────

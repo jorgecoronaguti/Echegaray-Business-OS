@@ -33,16 +33,37 @@ import type { Esperado } from './presencia.ts'
 /** Lo que la pantalla puede afirmar de una persona en el día. Ninguno se llama «no fichó». */
 export type EstadoDelDia = 'con_horas' | 'ausente' | 'licencia' | 'sin_cargar'
 
+/** Lo que la clasificación afirma de una persona en un día. `horas` en `null` NO es cero: es que
+ *  nadie cargó nada, y las dos cosas se dibujan distinto. */
+export interface ClasificacionDelDia {
+  estado: EstadoDelDia
+  horas: number | null
+  motivo: string | null
+}
+
+/**
+ * LO ÚNICO QUE `clasificar` MIRA de una fila de `registros_hh`.
+ *
+ * Existe separado de `RegistroDelDia` porque la clasificación del día es la MISMA regla en dos
+ * pantallas que traen columnas distintas: «En obra ahora» agrupa por obra y necesita el rótulo de
+ * la obra y de la persona; la columna HOY del Plantel ya tiene el nombre en la fila y sólo pide
+ * horas, tipo y motivo. Exigirle a la segunda que fabrique un `nombre` y una `obra` que no consulta
+ * la habría empujado a escribir su propia copia del `if` — que es exactamente el error que este
+ * archivo existe para impedir.
+ */
+export interface RegistroClasificable {
+  horas: number
+  tipo_hora: string
+  notas: string | null
+}
+
 /** Una fila de `registros_hh` del día, con el rótulo de su obra y de su persona ya resueltos. */
-export interface RegistroDelDia {
+export interface RegistroDelDia extends RegistroClasificable {
   persona_id: string
   nombre: string | null
   categoria: string | null
   obra_id: string | null
   obra: string | null
-  horas: number
-  tipo_hora: string
-  notas: string | null
 }
 
 export interface PersonaDelDia {
@@ -91,9 +112,7 @@ const rotulo = (id: string | null, nombre: string | null): string =>
  * «ausente». Una licencia por enfermedad y una falta son dos novedades distintas para quien
  * liquida, y esta pantalla las tiene que poder distinguir de un vistazo.
  */
-export function clasificar(registros: RegistroDelDia[]): {
-  estado: EstadoDelDia; horas: number | null; motivo: string | null
-} {
+export function clasificar(registros: RegistroClasificable[]): ClasificacionDelDia {
   const declarado = registros.find((r) => !esTrabajada(r.tipo_hora))
   if (declarado) {
     return {
