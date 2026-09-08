@@ -617,7 +617,8 @@ export async function formatear(google, sheetId, g, anexo, titulo = PESTAÑA) {
   // Si no se pudo leer el alto actual NO se manda el resize: pedir un `rowCount` menor al real borra
   // las filas de abajo con todo lo que tengan. El resize del principio ya pasó y la relectura de más
   // abajo dirá si alcanzó — una defensa que no se puede afirmar segura no se ejecuta.
-  const lote = Number.isFinite(hojaHoy?.rows) ? [requestDeAltoMinimo(sheetId, hojaHoy.rows), ...charts] : charts
+  const finPortada = finDeContenido(g.filas)
+  const lote = Number.isFinite(hojaHoy?.rows) ? [requestDeAltoMinimo(sheetId, hojaHoy.rows, finPortada), ...charts] : charts
   if (lote === charts) console.warn('  ⚠ no pude leer el alto actual de la hoja: mando los gráficos sin re-garantizarlo en el mismo lote')
 
   try {
@@ -665,7 +666,7 @@ export async function formatear(google, sheetId, g, anexo, titulo = PESTAÑA) {
       .catch((e) => console.warn(`  ⚠ NO pude reafirmar los ejes de los gráficos (${e.message}): las curvas de saldo pueden quedar en el eje izquierdo.`))
   }
 
-  const veredicto = verificarLayoutGraficos(leido)
+  const veredicto = verificarLayoutGraficos({ ...leido, finPortada })
   if (veredicto.ok) return console.log(`  ✓ layout verificado sobre la hoja: ${leido.rows} filas y ${leido.charts.length} gráfico(s) en su ancla`)
   console.warn(`  ✗ el layout de gráficos NO quedó bien — leído de la hoja: ${leido.rows} filas, ${leido.charts.length} gráfico(s)`)
   for (const p of veredicto.problemas) console.warn(`  ✗ ${p}`)
