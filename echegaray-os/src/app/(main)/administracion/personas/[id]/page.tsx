@@ -46,12 +46,11 @@
 // renglón en «sin cargar» diría que nadie la cargó, cuando lo que pasa es que la vista no la deja
 // pasar. Se declara en el informe de este bloque.
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { BotonAccion } from '@/shared/components/ui'
 import { Aviso } from '@/shared/components/ds'
-import { RotuloPanel, V } from '@/shared/components/v2/patron'
+import { V } from '@/shared/components/v2/patron'
 import {
   AccionPrimaria, AccionSecundaria, AvisoDeFicha, CifrasDeFicha, CostadoDeFicha, CuerpoDeFicha,
   Migas, PastillaFilo, SolapasDeFicha, TituloDeFicha, type CifraDeFicha, PantallaV2,
@@ -60,6 +59,9 @@ import { CostadoLegajo, type DatoDeLegajo } from '@/features/administracion/comp
 import { hhPorMes } from '@/features/administracion/services/hhPorMes'
 import { IconoEditar, IconoObra } from '@/shared/components/iconos'
 import { QuincenaDeAsistencia } from '@/features/administracion/components/QuincenaDeAsistencia'
+import { ObrasDeLaPersona } from '@/features/administracion/components/ObrasDeLaPersona'
+import { obrasTrabajadas } from '@/features/administracion/services/obrasDePersona'
+import { getObrasDeLosRegistros } from '@/features/administracion/services/obrasDePersonaService'
 import {
   cifrasDeQuincena, diasDeLaQuincena, ultimasQuincenas,
 } from '@/features/administracion/services/quincenaDePersona'
@@ -164,7 +166,6 @@ export default async function FichaPersonaPage({
   const bitacora = vista === 'auditoria' ? await getBitacora(supabase, 'personas', id, cuantos) : null
 
   const vigente = (asignaciones?.data ?? []).find((a) => !a.hasta) ?? null
-  const cerradas = (asignaciones?.data ?? []).filter((a) => a.hasta)
   const papeles = documentos?.data ?? []
   const egresada = !persona.en_la_empresa
   // El slab publica los años de antigüedad. El día se fija en el SERVIDOR, igual que la ventana de
@@ -196,12 +197,16 @@ export default async function FichaPersonaPage({
   const obraDeLasHoras = resumenDelPeriodo(filasHH, quincena.desde, quincena.hasta)
     .obras.find((o) => o.clave !== '—') ?? null
   const obraDeLaJornada = obraDeLasHoras?.clave ?? vigente?.obra_id ?? null
-  const [feriados, obraVigente] = vista === 'resumen'
+  const [feriados, obraVigente, catalogoObras] = vista === 'resumen'
     ? await Promise.all([
         getNoLaborables(supabase, quincena.desde, quincena.hasta),
         obraDeLaJornada ? getObraDeLaJornada(supabase, obraDeLaJornada) : Promise.resolve(null),
+        // EL CATÁLOGO DE LAS OBRAS DONDE TIENE HORAS. Se pide por los ids que ya trajeron los
+        // registros, no la tabla entera, y SIN filtrar por estado: la mitad de las obras del
+        // historial de una persona están cerradas y son las que el dueño pidió ver.
+        getObrasDeLosRegistros(supabase, filasHH.map((f) => f.obra_canonica_id)),
       ])
-    : [[], null]
+    : [[], null, {}]
   const dias = diasDeLaQuincena(filasHH, quincena, { feriados, hoy })
   // HH POR OBRA DEL AÑO: es lo que el canónico pone a la derecha de «Obras donde trabajó». Un mapa,
   // porque la lista se arma con las ASIGNACIONES —que son el hecho de haber estado— y las horas sólo
@@ -419,35 +424,17 @@ export default async function FichaPersonaPage({
                 hrefHoras={href('horas')}
               />
 
-              {/* LA SEGUNDA PREGUNTA QUE SE LE HACE A UN LEGAJO, después de «dónde está hoy», es
-                  «dónde estuvo». Ya está leído para calcular la asignación vigente, así que no
-                  cuesta una consulta más. El historial completo vive en su cara. */}
-              {cerradas.length > 0 && (
-                <div data-testid="bloque-historial">
-                  <RotuloPanel cuenta={cerradas.length}>Estuvo antes en</RotuloPanel>
-                  {cerradas.slice(0, 4).map((a) => (
-                    <Link
-                      key={a.id} href={`/obras/${a.obra_id}`} prefetch={false}
-                      className="flex items-baseline gap-4 hover:bg-[#F2F1ED]"
-                      // Ritmo de panel: son cuatro atajos del costado, no una tabla de datos.
-                      style={{ height: 38, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`, alignItems: 'center' }}
-                    >
-                      <span className="min-w-0 flex-1 truncate" style={{ fontSize: '12.5px', color: V.tinta }}>
-                        {a.obra_nombre ?? a.obra_id}
-                      </span>
-                      <span className="font-mono tabular-nums shrink-0" style={{ fontSize: '11.5px', color: V.tenue }}>
-                        {a.desde ? fecha(a.desde) : 'sin fecha'} → {a.hasta ? fecha(a.hasta) : 'sin fecha'}
-                      </span>
-                    </Link>
-                  ))}
-                  <Link
-                    href={href('asignaciones')} prefetch={false}
-                    style={{ display: 'inline-block', fontSize: '12.5px', fontWeight: 500, color: V.tinta, marginTop: 10 }}
-                  >
-                    Ver el historial completo →
-                  </Link>
-                </div>
-              )}
+              {/* DÓNDE TRABAJÓ — TODAS sus obras, cerradas incluidas. Va debajo de la quincena
+                  porque contesta la pregunta siguiente: la quincena dice cómo viene ahora, ésta
+                  dice de dónde viene. Las dos leen `registros_hh`, que ya está en memoria. */}
+              <ObrasDeLaPersona
+                obras={obrasTrabajadas(filasHH, {
+                  obras: catalogoObras,
+                  obraVigente: vigente?.obra_id ?? null,
+                })}
+                hrefAsignaciones={href('asignaciones')}
+              />
+
             </>
           )}
 
@@ -566,3 +553,4 @@ export default async function FichaPersonaPage({
     </PantallaV2>
   )
 }
+
