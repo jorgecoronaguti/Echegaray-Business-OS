@@ -48,7 +48,7 @@ const numero = (v: unknown): number => {
  */
 const ROL_GENERICO = ['integrante', 'operario']
 
-function notaDe(a: {
+export function notaDe(a: {
   rol: string | null; persona_categoria: string | null; persona_especialidad: string | null
 }): string | null {
   const rol = (a.rol ?? '').trim()
