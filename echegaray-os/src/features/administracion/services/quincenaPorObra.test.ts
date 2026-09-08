@@ -29,8 +29,10 @@ const OBRAS: Record<string, ObraRotulo> = {
 const PISOS = 'pisos-industriales'
 const MAMPO = 'sf-mamposteria'
 
-const asig = (persona_id: string, nombre: string, obra_id: string, nota: string | null = null): AsignacionQuincena =>
-  ({ persona_id, nombre, nota, obra_id })
+const asig = (
+  persona_id: string, nombre: string, obra_id: string, nota: string | null = null,
+  desde: string | null = null, hasta: string | null = null,
+): AsignacionQuincena => ({ persona_id, nombre, nota, obra_id, desde, hasta })
 const reg = (
   persona_id: string, obra_id: string, fecha: string, horas: number,
   tipo_hora = 'normal', notas: string | null = null,
@@ -74,13 +76,103 @@ test('el día repartido declara sus dos obras con nombre, para que el panel lo p
   assert.equal(filas[0].celdas[1].tramos.length, 0, 'un día sin nada no tiene tramos')
 })
 
-test('con dos obras activas manda la de MÁS HORAS, y el rótulo no baila entre recargas', () => {
+test('con dos vigentes DEL MISMO DÍA manda la de más horas — es el ÚLTIMO desempate, no el primero', () => {
   const filas = armar({
     asignaciones: [asig('p1', 'Perez Juan', PISOS), asig('p1', 'Perez Juan', MAMPO)],
     registros: [reg('p1', PISOS, L, 2), reg('p1', MAMPO, L, 8)],
   })
   assert.equal(filas[0].rotuloObra, 'MAMPOSTERÍA')
   assert.equal(filas[0].obraPorDefecto?.id, MAMPO, 'y es la que recibe lo que se escriba')
+})
+
+// ═══ EL DEFECTO DEL 08/09/2026: «EMPIEZO A PONER BIEN LA OBRA QUE ESTÁN Y SE ROMPE» ═══
+//
+// El dueño movió a ALANIZ EMANUEL de PISOS INDUSTRIALES a Quattropani – SALÓN COMERCIAL. La base le
+// hizo caso —el acuse decía «Ya estaba en Quattropani»— y el desplegable «Obra actual» seguía
+// mostrando PISOS INDUSTRIALES después del refresh. La obra actual se elegía por la obra con MÁS
+// HORAS de la quincena, y las horas de la quincena estaban en PISOS: la pantalla desmentía el gesto
+// que el dueño acababa de hacer, y volver a intentarlo no cambiaba nada.
+
+test('LA OBRA ACTUAL ES LA ASIGNACIÓN VIGENTE HOY, aunque TODAS las horas estén en la obra anterior', () => {
+  const filas = armar({
+    asignaciones: [
+      // El tramo de PISOS se cerró ayer; sigue en la quincena porque sus horas del lunes al jueves
+      // son reales y tienen que verse.
+      asig('p1', 'Alaniz Emanuel', PISOS, null, L, J),
+      asig('p1', 'Alaniz Emanuel', MAMPO, null, V, null),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8), reg('p1', PISOS, M, 8.8), reg('p1', PISOS, X, 8.8)],
+  })
+  assert.equal(filas.length, 1)
+  assert.equal(filas[0].obraPorDefecto?.id, MAMPO,
+    'el desplegable muestra la obra a la que se lo acaba de mover, no la de sus horas')
+  assert.equal(filas[0].rotuloObra, 'MAMPOSTERÍA')
+  assert.equal(filas[0].celdas[0].horas, 8.8, 'y las horas del tramo cerrado se siguen viendo')
+})
+
+test('CON DOS VIGENTES GANA LA DE `desde` MÁS RECIENTE, aunque la vieja tenga más horas', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Perez Juan', PISOS, null, L, null),
+      asig('p1', 'Perez Juan', MAMPO, null, J, null),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8), reg('p1', PISOS, M, 8.8), reg('p1', MAMPO, J, 2)],
+  })
+  assert.equal(filas[0].obraPorDefecto?.id, MAMPO, 'la última decisión es la que rige')
+  assert.equal(filas[0].rotuloObra, 'MAMPOSTERÍA')
+})
+
+test('UNA ASIGNACIÓN QUE EMPIEZA DESPUÉS DE HOY TODAVÍA NO ES LA OBRA ACTUAL', () => {
+  // Adelantarla afirmaría un traslado que no ocurrió, y le mandaría a esa obra el costo de las
+  // horas que se carguen hoy.
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Perez Juan', PISOS, null, L, null),
+      asig('p1', 'Perez Juan', MAMPO, null, S, null),
+    ],
+    registros: [],
+  })
+  assert.equal(filas[0].obraPorDefecto?.id, PISOS)
+})
+
+test('SIN NINGUNA ASIGNACIÓN VIGENTE HOY NO HAY OBRA ACTUAL: «Sin obra» y el rótulo del cliente', () => {
+  const filas = armar({
+    // Toda su asignación se cerró el miércoles; sus horas siguen en la quincena.
+    asignaciones: [asig('p1', 'Gonzalez Carlos', MAMPO, null, L, X)],
+    registros: [reg('p1', MAMPO, L, 8.8), reg('p1', MAMPO, M, 8.8)],
+  })
+  assert.equal(filas[0].obraPorDefecto, null,
+    'el desplegable muestra «Sin obra»: no hay a quién imputarle lo que se escriba')
+  assert.equal(filas[0].rotuloObra, 'San Francisco', 'y el rótulo cae al CLIENTE de sus horas')
+})
+
+test('LOS CHIPS CUENTAN POR ASIGNACIÓN VIGENTE, no por dónde están las horas', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Alaniz Emanuel', PISOS, null, L, J), asig('p1', 'Alaniz Emanuel', MAMPO, null, V, null),
+      asig('p2', 'Gomez Ana', PISOS, null, L, J), asig('p2', 'Gomez Ana', MAMPO, null, V, null),
+      asig('p3', 'Tello Juan', PISOS, null, L, null),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8), reg('p2', PISOS, L, 8.8)],
+  })
+  assert.deepEqual(personasPorObra(filas), [
+    { rotulo: 'MAMPOSTERÍA', personas: 2 },
+    { rotulo: 'PISOS INDUSTRIALES', personas: 1 },
+  ])
+})
+
+test('EL ORDEN DE LA GRILLA NO CAMBIA: sigue siendo por nombre, no por obra ni por vigencia', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p3', 'Zogbe Walter', MAMPO, null, V, null),
+      asig('p1', 'Alaniz Emanuel', PISOS, null, L, J),
+      asig('p1', 'Alaniz Emanuel', MAMPO, null, V, null),
+      asig('p2', 'Gomez Ana', PISOS, null, L, null),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8)],
+  })
+  assert.deepEqual(filas.map((f) => f.persona.nombre),
+    ['Alaniz Emanuel', 'Gomez Ana', 'Zogbe Walter'])
 })
 
 test('SIN OBRA ACTIVA, LA COLUMNA OBRA MUESTRA EL CLIENTE', () => {

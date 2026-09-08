@@ -15,7 +15,7 @@
 // ═══ LA COLUMNA OBRA NUNCA MUESTRA UN SLUG ═══
 //
 // *"jamás el slug tipo sf-mamposteria / la-estrella… si no tiene obra activa, ponele cliente"*. El
-// orden es: la obra ACTIVA de su asignación vigente (`obra_canonica.nombre`) · si no tiene ninguna,
+// orden es: la obra ACTIVA de su asignación vigente HOY (`obra_canonica.nombre`) · si no tiene ninguna,
 // el CLIENTE de la obra donde están sus horas (`obra_canonica.cliente_texto`) · si esa obra no
 // tiene cliente cargado, el nombre de la obra · y si no hay nada, «Sin obra activa». El id no es un
 // rótulo: es una clave técnica, y escribirla en la pantalla es mostrarle al dueño la plomería.
@@ -69,12 +69,17 @@ export interface CeldaObra {
   motivo: string | null
 }
 
-/** Una asignación VIGENTE en la quincena, a una obra ACTIVA. El servicio ya filtró las dos cosas. */
+/** Una asignación viva EN ALGÚN PUNTO de la quincena, a una obra ACTIVA. El servicio ya filtró las
+ *  dos cosas. `desde`/`hasta` viajan porque «vigente en la quincena» y «vigente HOY» no son lo
+ *  mismo: la primera decide quién aparece en la grilla, la segunda cuál es su obra actual. */
 export interface AsignacionQuincena {
   persona_id: string
   nombre: string
   nota: string | null
   obra_id: string
+  /** `null` = sin límite, no «nunca». Ausente se trata como `null` por compatibilidad. */
+  desde?: string | null
+  hasta?: string | null
 }
 
 export interface RegistroQuincena {
@@ -165,7 +170,7 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
       hayDatoEseDia: diasConDato.has(fecha),
       futuro: fecha > e.hoy,
     }))
-    const activa = obraActivaDe(p.obras, suyos, e.obras)
+    const activa = obraActivaDe(p.asignaciones, suyos, e.obras, e.hoy)
     return {
       clave: p.persona_id,
       persona: { id: p.persona_id, nombre: p.nombre, nota: p.nota },
@@ -182,12 +187,20 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
   })
 }
 
+/** Un tramo de asignación de la persona, tal como llegó. `null` en las puntas = sin límite. */
+interface TramoAsignado {
+  obra_id: string
+  desde: string | null
+  hasta: string | null
+}
+
 interface PersonaDeLaGrilla {
   persona_id: string
   nombre: string
   nota: string | null
-  /** Sus obras ACTIVAS por asignación vigente. Puede tener más de una. */
-  obras: string[]
+  /** Sus asignaciones a obras ACTIVAS vivas en la quincena. Puede tener más de una, y puede tener
+   *  tramos ya cerrados: cuál rige HOY lo decide `obraActivaDe`, no esta lista. */
+  asignaciones: TramoAsignado[]
 }
 
 /** Las personas de la quincena, ordenadas por nombre. Una entrada por `persona_id`, sin excepción. */
@@ -198,10 +211,14 @@ function personasDe(
 ): PersonaDeLaGrilla[] {
   const mapa = new Map<string, PersonaDeLaGrilla>()
   for (const a of asignaciones) {
+    // NO SE DEDUPLICA POR OBRA. Dos tramos a la misma obra con `desde` distinto son dos hechos
+    // —volvió a la obra después de un paso por otra— y el `desde` del último es justamente lo que
+    // desempata cuál rige hoy. Colapsarlos al primero perdía ese dato.
+    const tramo: TramoAsignado = { obra_id: a.obra_id, desde: a.desde ?? null, hasta: a.hasta ?? null }
     const previa = mapa.get(a.persona_id)
-    if (previa) { if (!previa.obras.includes(a.obra_id)) previa.obras.push(a.obra_id); continue }
+    if (previa) { previa.asignaciones.push(tramo); continue }
     mapa.set(a.persona_id, {
-      persona_id: a.persona_id, nombre: a.nombre, nota: a.nota, obras: [a.obra_id],
+      persona_id: a.persona_id, nombre: a.nombre, nota: a.nota, asignaciones: [tramo],
     })
   }
   for (const r of registros) {
@@ -224,28 +241,50 @@ function personasDe(
       persona_id: r.persona_id,
       nombre: conNombre?.nombre ?? delPlantel.nombre,
       nota: conNombre?.nota ?? delPlantel?.nota ?? null,
-      obras: [],
+      asignaciones: [],
     })
   }
   return [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
 
 /**
- * Cuál de sus obras activas se muestra y recibe lo que se escriba. Con una sola, ésa. Con varias,
- * la de MÁS HORAS en la quincena —es donde de verdad está trabajando—, y el desempate por nombre
- * para que la pantalla no cambie de rótulo entre dos recargas.
+ * LA OBRA ACTUAL ES LA ASIGNACIÓN VIGENTE HOY. NO LA DE MÁS HORAS.
+ *
+ * El defecto que esto arregla lo vio el dueño en producción (08/09/2026): *"empiezo a poner bien en
+ * la obra que están y se rompe"*. Movía a ALANIZ de PISOS INDUSTRIALES a SALÓN COMERCIAL, el acuse
+ * decía «Ya estaba en Quattropani – SALÓN COMERCIAL» —porque la asignación vigente SÍ era ésa— y el
+ * desplegable volvía a mostrar PISOS INDUSTRIALES. La razón: el tramo cerrado de PISOS sigue vivo
+ * dentro de la quincena (sus horas de esos días existen y tienen que verse), y esta función elegía
+ * entre las dos por HORAS. Las horas de la quincena ya estaban en PISOS, así que la pantalla
+ * contradecía a la base y desmentía el gesto que el dueño acababa de hacer.
+ *
+ * Las horas de la quincena NO deciden dónde está hoy una persona: dicen dónde estuvo. El orden es
+ * `hasta` vigente hoy · el `desde` MÁS RECIENTE · y sólo con el mismo `desde` —dos frentes abiertos
+ * el mismo día, donde la base no tiene con qué elegir— desempatan las horas, y después el nombre
+ * para que el rótulo no baile entre dos recargas.
  */
 function obraActivaDe(
-  obras: string[], registros: RegistroQuincena[], catalogo: Record<string, ObraRotulo>,
+  asignaciones: TramoAsignado[],
+  registros: RegistroQuincena[],
+  catalogo: Record<string, ObraRotulo>,
+  hoy: string,
 ): ObraRotulo | null {
-  const rotulables = obras.map((id) => catalogo[id]).filter((o): o is ObraRotulo => Boolean(o))
-  if (rotulables.length <= 1) return rotulables[0] ?? null
+  // Vigente HOY: empezó (o siempre estuvo) y no se cerró antes de hoy. Un `desde` futuro todavía no
+  // rige — decir que ya está ahí sería adelantar un traslado que no ocurrió.
+  const vigentes = asignaciones.filter((a) =>
+    (!a.desde || a.desde <= hoy) && (!a.hasta || a.hasta >= hoy))
+  const rotulables = vigentes
+    .map((a) => ({ tramo: a, obra: catalogo[a.obra_id] }))
+    .filter((x): x is { tramo: TramoAsignado; obra: ObraRotulo } => Boolean(x.obra))
+  if (rotulables.length <= 1) return rotulables[0]?.obra ?? null
   const horas = new Map<string, number>()
   for (const r of registros) {
     if (esTrabajada(r.tipo_hora)) horas.set(r.obra_id, (horas.get(r.obra_id) ?? 0) + numero(r.horas))
   }
   return [...rotulables].sort((a, b) =>
-    (horas.get(b.id) ?? 0) - (horas.get(a.id) ?? 0) || a.nombre.localeCompare(b.nombre, 'es'))[0]
+    (b.tramo.desde ?? '').localeCompare(a.tramo.desde ?? '')
+    || (horas.get(b.obra.id) ?? 0) - (horas.get(a.obra.id) ?? 0)
+    || a.obra.nombre.localeCompare(b.obra.nombre, 'es'))[0].obra
 }
 
 /**
