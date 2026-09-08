@@ -123,14 +123,17 @@ test('02 · la QUINCENA por obra abre en Administración → Personal', async ({
   await page.waitForLoadState('networkidle')
   await expect(page.getByTestId('bloque-asistencia')).toBeVisible()
   await expect(page.getByTestId('rotulo-quincena'))
-    .toHaveText('2ª quincena de septiembre · 16 al 30')
+    .toHaveText('2ª quincena de septiembre · 16 al 30', { timeout: 30000 })
 
   // EL DEFECTO QUE ATRAPA: que «anterior» reste quince días. Desde el 16 de un mes de 31 eso cae el
   // 1 —la misma quincena— y el link deja de mover la pantalla sin dar ningún error.
+  // CONTRA PRODUCCIÓN LA GRILLA TARDA HASTA 6 s: se espera la URL nueva, no un reloj de 5 s.
   await page.getByTestId('quincena-anterior').click()
+  await page.waitForURL(/quincena=2026-09-01/, { timeout: 30000 })
   await page.waitForLoadState('networkidle')
   await expect(page.getByTestId('rotulo-quincena')).toHaveText('1ª quincena de septiembre · 1 al 15')
   await page.getByTestId('quincena-siguiente').click()
+  await page.waitForURL(/quincena=2026-09-16/, { timeout: 30000 })
   await page.waitForLoadState('networkidle')
   await expect(page.getByTestId('rotulo-quincena')).toHaveText('2ª quincena de septiembre · 16 al 30')
   await page.screenshot({ path: 'qa-shots/asistencia-quincena-1440.png', fullPage: true })
