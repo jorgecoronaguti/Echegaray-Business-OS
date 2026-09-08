@@ -1,12 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  claseDeAdjunto, conteosDe, ESTADO, esEstructura, filtroDe, pasa, pastillaDe, recorteDeLista,
+  claseDeAdjunto, clavesRecienCargadas, conteosDe, ESTADO, esEstructura, filtroDe, ordenarPorCarga,
+  pasa, pastillaDe, porOrdenDeCarga, RECIEN_CARGADAS, recorteDeLista,
   TOPE_EN_PANTALLA, totalesDe,
   type Filtrable,
 } from './comprasSheet.ts'
 
+let siguiente = 1
 const fila = (p: Partial<Filtrable> = {}): Filtrable => ({
+  // El renglón se autoincrementa: los casos que no hablan del orden no tienen por qué escribirlo, y
+  // repetir `fila: 1` en todos haría que «las últimas 30» no pudiera distinguir ninguna.
+  fila: siguiente++,
   estado: ESTADO.PAGADO, obra_texto: 'Quattropani', anulada: false, total: 1000,
   tiene_adjunto: true, ...p,
 })
@@ -217,4 +222,72 @@ test('el tope por defecto es el declarado, no uno que se elige en cada llamada',
   // depende de por dónde entraste.
   assert.equal(recorteDeLista(listaDe(TOPE_EN_PANTALLA + 1)).enPantalla.length, TOPE_EN_PANTALLA)
   assert.equal(recorteDeLista(listaDe(TOPE_EN_PANTALLA + 1)).ocultas, 1)
+})
+
+// ── EL ORDEN DE CARGA Y EL CORTE «RECIÉN CARGADAS» ─────────────────────────────────────────────
+//
+// EL DEFECTO, medido en producción el 08/09/2026: el dueño mandó 14 comprobantes por el chat y en la
+// pantalla no los encontraba. Estaban — pero la lista ordenaba por FECHA DEL COMPROBANTE y dibujaba
+// 200 de 809: la fila 930, cargada ese día con fecha 12/05/2026, quedaba en el puesto ~600 y el
+// aviso de las que no se dibujan estaba al pie de la lista.
+
+test('lo último CARGADO va arriba aunque su factura sea la más vieja de todas', () => {
+  const viejaReciénCargada = { fila: 930, fecha: '2026-05-12' }
+  const nuevaCargadaAntes = { fila: 100, fecha: '2026-09-08' }
+  // Con el orden por fecha, la de septiembre ganaba y la 930 se hundía. Ésta es la inversión.
+  assert.ok(porOrdenDeCarga(viejaReciénCargada, nuevaCargadaAntes) < 0)
+  const lista = ordenarPorCarga([nuevaCargadaAntes, viejaReciénCargada, { fila: 500, fecha: null }])
+  assert.deepEqual(lista.map((f) => f.fila), [930, 500, 100])
+})
+
+test('la fecha desempata, pero NUNCA le gana a la fila', () => {
+  // Mismo renglón: recién ahí manda la fecha, y la más nueva primero.
+  assert.ok(porOrdenDeCarga({ fila: 7, fecha: '2026-09-08' }, { fila: 7, fecha: '2026-01-01' }) < 0)
+  // Renglón distinto: la fecha no tiene nada que decir, ni siquiera cuando falta.
+  assert.ok(porOrdenDeCarga({ fila: 8, fecha: null }, { fila: 7, fecha: '2026-09-08' }) < 0)
+})
+
+test('ordenar no mueve la lista original: los conteos miran la misma población', () => {
+  const original = [{ fila: 1, fecha: '2026-01-01' }, { fila: 9, fecha: '2026-02-01' }]
+  ordenarPorCarga(original)
+  assert.deepEqual(original.map((f) => f.fila), [1, 9])
+})
+
+test('«recién cargadas» son las últimas 30 POR RENGLÓN, no por fecha', () => {
+  const filas = Array.from({ length: 50 }, (_, i) => fila({
+    // La fecha va al revés del renglón a propósito: si el corte mirara la fecha, se quedaría con
+    // las 30 PRIMERAS cargadas — exactamente el defecto, y este test se pondría rojo.
+    fila: i + 1, fecha: `2026-01-${String(50 - i).padStart(2, '0')}`,
+  }))
+  const claves = clavesRecienCargadas(filas)
+  assert.equal(claves.size, RECIEN_CARGADAS)
+  assert.ok(claves.has(50), 'la última cargada quedó fuera del chip que existe para verla')
+  assert.ok(claves.has(21))
+  assert.equal(claves.has(20), false, 'el corte de 30 dejó pasar una fila 31.ª')
+})
+
+test('una anulada no ocupa un lugar en «recién cargadas»', () => {
+  const claves = clavesRecienCargadas(
+    [fila({ fila: 900, anulada: true }), fila({ fila: 10 }), fila({ fila: 9 })], 2,
+  )
+  assert.deepEqual([...claves], [10, 9])
+})
+
+test('el chip filtra por el conjunto, y SIN conjunto no deja pasar a nadie', () => {
+  const f = fila({ fila: 930 })
+  assert.equal(pasa(f, 'recienCargadas', new Set([930])), true)
+  assert.equal(pasa(f, 'recienCargadas', new Set([929])), false)
+  // Un `pasa` sin el conjunto no puede saberlo: devolver `true` haría que el chip mostrara TODO.
+  assert.equal(pasa(f, 'recienCargadas'), false)
+})
+
+test('el chip cuenta lo suyo y no rompe la cuenta de los otros', () => {
+  const filas = Array.from({ length: 40 }, (_, i) => fila({ fila: i + 1 }))
+  const c = conteosDe(filas)
+  assert.equal(c.recienCargadas, RECIEN_CARGADAS)
+  assert.equal(c.todo, 40)
+})
+
+test('«recién cargados» es una llave válida de la URL', () => {
+  assert.equal(filtroDe('recienCargadas'), 'recienCargadas')
 })

@@ -83,7 +83,8 @@ import {
 } from '@/features/administracion/services/comprasFiltros'
 import { totalFuera } from '@/features/administracion/services/comprasDeObra'
 import {
-  conteosDe, filtroDe as filtroSheetDe, pasa, recorteDeLista, ROTULO as ROTULO_SHEET,
+  clavesRecienCargadas, conteosDe, filtroDe as filtroSheetDe, pasa, RECIEN_CARGADAS,
+  recorteDeLista, ROTULO as ROTULO_SHEET,
   type FiltroSheet,
 } from '@/features/administracion/services/comprasSheet'
 import {
@@ -189,8 +190,12 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
   // LOS DESPLEGABLES SE ARMAN CON LA POBLACIÓN ENTERA, no con lo ya filtrado: si se poblaran con lo
   // visible, elegir un proveedor vaciaría la lista de obras y no habría forma de volver.
   const opciones = opcionesDe(todas)
+  // «RECIÉN CARGADAS» ES UNA PROPIEDAD DE LA POBLACIÓN, no de la fila: se calcula una vez sobre las
+  // 809 y se le pasa al filtro. Calcularlo dentro del `filter` sería ordenar la lista entera 809
+  // veces, y calcularlo sobre lo ya filtrado diría «las últimas 30 de lo que estoy mirando».
+  const recien = clavesRecienCargadas(todas)
   const visibles = todas.filter((f) => {
-    if (!pasa(f, filtro)) return false
+    if (!pasa(f, filtro, recien)) return false
     // El chip decide la población y los criterios la recortan: son dos controles, no uno.
     if (!pasaCriterios(f, criterios)) return false
     if (!q) return true
@@ -302,6 +307,34 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                   conteos={conteos} activo={filtro} hrefDe={href} sueltos={sueltos.data?.length ?? 0}
                   conteo={{ n: recorte.enPantalla.length, total: todas.length }}
                 />
+                {/* LO QUE ENTRÓ POR EL CHAT TIENE QUE PODER ENCONTRARSE SIN SABER NADA MÁS. El
+                    dueño manda la foto al bot y entra a la pantalla a ver si llegó: el chip lo
+                    contesta, y este renglón dice cuánto hay que esperar para no volver a mirar. */}
+                {filtro === 'recienCargadas' && (
+                  <p className="text-[11.5px] text-faint" style={{ marginTop: -2, marginBottom: 8 }} data-testid="recien-cargados-ayuda">
+                    Las últimas {RECIEN_CARGADAS} filas que entraron a la pestaña. Lo que mandás por
+                    el chat aparece acá en cuanto el bot lo carga (menos de un minuto).
+                  </p>
+                )}
+                {/* EL RECORTE SE DECLARA ARRIBA, DONDE SE ENTRA — 08/09/2026.
+                    Este aviso vivía SÓLO al pie, a 200 filas de scroll de distancia: quien entraba a
+                    buscar un comprobante que no veía leía una lista completa, no una recortada, y
+                    concluía que el gasto no se había cargado. Al pie sigue estando el resto de las
+                    declaraciones; ésta sube porque es la que cambia lo que se está mirando. */}
+                {recorte.ocultas > 0 && (
+                  <p className="text-[11.5px] text-faint" style={{ marginTop: -2, marginBottom: 8 }} data-testid="compras-recortada">
+                    mostrando <Num>{recorte.enPantalla.length}</Num> de <Num>{visibles.length}</Num>
+                    {' · '}
+                    <Link
+                      prefetch={false}
+                      href={urlSheet({ todo: true })}
+                      data-testid="ver-todas-las-compras"
+                      className="underline underline-offset-2"
+                    >
+                      ver todas
+                    </Link>
+                  </p>
+                )}
                 {/* LOS CRITERIOS VAN DEBAJO DE LOS CHIPS Y SOBRE LA LISTA, en la misma columna que
                     recortan. El chip elige la población («los que faltan pagar») y esto la recorta
                     («de DUPEC, en agosto, arriba de $500.000»): el orden visual dice el orden lógico. */}
@@ -325,21 +358,6 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                       {q && <>{filtro !== 'todo' && ' · '}«{sp.q}»</>}
                       {' · '}
                       <Link href={RUTA} data-testid="quitar-filtros" className="underline underline-offset-2">Ver todo</Link>
-                    </span>
-                  )}
-                  {/* EL TOPE NO PUEDE SER SILENCIOSO: una lista recortada que no lo dice se lee como
-                      la lista entera. El verbo lleva a verlas todas, así que ninguna fila queda
-                      fuera de alcance — sólo fuera de la primera carga. */}
-                  {recorte.ocultas > 0 && (
-                    <span style={{ fontSize: '11.5px' }} data-testid="compras-recortada">
-                      <Num className="text-faint">{recorte.ocultas}</Num> más sin dibujar{' · '}
-                      <Link
-                        href={urlSheet({ todo: true })}
-                        data-testid="ver-todas-las-compras"
-                        className="underline underline-offset-2"
-                      >
-                        Ver todas
-                      </Link>
                     </span>
                   )}
                   {/* LO QUE SE SACÓ SE DICE. La pestaña tiene más filas que ésta y el dueño la
@@ -366,7 +384,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                       cosa que el recorte de arriba: acá la LECTURA se cortó en la base. */}
                   {listado.data.truncado && (
                     <span className="text-warn" style={{ fontSize: '11.5px' }} data-testid="compras-truncado">
-                      Se leyeron las {TOPE_SHEET} más recientes. Lo que falta no está vacío: está
+                      Se leyeron las últimas {TOPE_SHEET} cargadas. Lo que falta no está vacío: está
                       fuera del tope de esta pantalla.
                     </span>
                   )}
