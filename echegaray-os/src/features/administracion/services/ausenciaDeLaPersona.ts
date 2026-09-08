@@ -291,6 +291,9 @@ export const TOPE_DE_TRAMO_DIAS = 60
 
 export interface DiaDelTramo {
   fecha: string
+  /** Las horas de ESE día. No son las mismas todos los días: el viernes son 8 y de lunes a jueves
+   *  9 (`jornadaPorDefecto`, regla del dueño del 08/09/2026). */
+  horas: number
   /** `null` es un insert; con id se corrige la fila SIN obra que ese día ya tenía. */
   id: string | null
   /** Filas EN OBRA de ese día que se reemplazan: no trabajó. */
@@ -318,8 +321,10 @@ export type PlanDeTramo =
 export function planDeTramoDeAusencia<F extends FilaDelTramo>(e: {
   desde: string
   hasta: string
-  /** Las que corresponden por ley, ya resueltas. Valen para CADA día del tramo. */
-  horas: number
+  /** Las horas que corresponden por ley, resueltas POR DÍA por quien llama. Se pasa como función y
+   *  no como número porque la jornada por defecto es del día de la semana —9 de lunes a jueves, 8
+   *  los viernes—: un solo número para todo el tramo le regalaría una hora a cada viernes. */
+  horasDelDia: (fecha: string) => number
   motivo: string | null
   tipo: 'ausencia' | 'licencia'
   /** Todo lo que esa persona tiene cargado entre `desde` y `hasta`, ambos incluidos. */
@@ -342,8 +347,10 @@ export function planDeTramoDeAusencia<F extends FilaDelTramo>(e: {
     const delDia = e.existentes.filter((x) => x.fecha === f)
     const ya = ausenciaSinObraDe(delDia)
     const { borrar, intactas } = e.sacarDeLaObra(delDia.filter((x) => x.obra_canonica_id !== null))
+    const horas = e.horasDelDia(f)
     dias.push({
       fecha: f,
+      horas,
       id: ya?.id ?? null,
       sacar: borrar,
       intactas,
@@ -351,7 +358,7 @@ export function planDeTramoDeAusencia<F extends FilaDelTramo>(e: {
       // horas cargadas en una obra sigue estando mal: hay que sacar esas horas, y saltearlo dejaría
       // el día contado dos veces.
       sinCambio: ya !== null && borrar.length === 0 && ya.tipo_hora === e.tipo
-        && Number(ya.horas) === e.horas && (ya.notas ?? null) === e.motivo,
+        && Number(ya.horas) === horas && (ya.notas ?? null) === e.motivo,
     })
   }
   if (dias.length === 0) {

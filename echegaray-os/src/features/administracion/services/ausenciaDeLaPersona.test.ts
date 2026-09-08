@@ -7,6 +7,7 @@ import {
 } from './ausenciaDeLaPersona.ts'
 import type { FilaDelDia, FilaDelTramo, MarcaDelDia } from './ausenciaDeLaPersona.ts'
 import { planDeBorrado, type FilaExistente } from './planDeJornada.ts'
+import { jornadaPorDefecto } from './jornadaPorDefecto.ts'
 
 const fila = (
   id: string, tipo_hora: string, horas: number | string, obra_canonica_id: string | null,
@@ -237,7 +238,7 @@ const sacar = (filas: FilaDelTramo[]) =>
 
 const tramo = (e: Partial<Parameters<typeof planDeTramoDeAusencia<FilaDelTramo>>[0]> = {}) =>
   planDeTramoDeAusencia<FilaDelTramo>({
-    desde: '2026-09-09', hasta: '2026-09-19', horas: 8.8, motivo: 'accidente_trabajo',
+    desde: '2026-09-09', hasta: '2026-09-19', horasDelDia: () => 8.8, motivo: 'accidente_trabajo',
     tipo: 'licencia', existentes: [], sacarDeLaObra: sacar, ...e,
   })
 
@@ -381,4 +382,32 @@ test('EL TOPE QUE OFRECE LA PANTALLA ES EL MISMO QUE VALIDA EL SERVIDOR', () => 
   const max = topeDelTramo('2026-09-09')
   assert.equal(tramo({ hasta: max }).ok, true)
   assert.equal(tramo({ hasta: '2026-11-09' }).ok, false)
+})
+
+test('CADA DÍA DEL TRAMO LLEVA SU JORNADA: 9 DE LUNES A JUEVES, 8 LOS VIERNES', () => {
+  // EL DEFECTO QUE ATRAPA: un tramo escrito con un solo número le regala una hora a cada viernes.
+  // La regla es del dueño (08/09/2026): «por defecto siempre poner 9 hs de L a J y 8 hs los V». El
+  // sábado no tiene default y cae al piso que mandó la pantalla.
+  const plan = tramo({
+    desde: '2026-09-07', hasta: '2026-09-12',
+    horasDelDia: (f) => jornadaPorDefecto(f) ?? 8.8,
+  })
+  assert.ok(plan.ok)
+  assert.deepEqual(
+    plan.dias.map((d) => [d.fecha.slice(8), d.horas]),
+    [['07', 9], ['08', 9], ['09', 9], ['10', 9], ['11', 8], ['12', 8.8]],
+  )
+})
+
+test('UN DÍA QUE YA TENÍA LA JORNADA DEL VIERNES NO SE REESCRIBE', () => {
+  // La idempotencia se mide contra las horas DE ESE DÍA. Comparando contra un número único, cada
+  // viernes de un tramo ya asentado saldría como «cambió» y se reescribiría en cada corrida.
+  const plan = tramo({
+    desde: '2026-09-11', hasta: '2026-09-11',
+    horasDelDia: (f) => jornadaPorDefecto(f) ?? 9,
+    existentes: [conFecha('v', '2026-09-11', 'licencia', '8', null, 'accidente_trabajo')],
+  })
+  assert.ok(plan.ok)
+  assert.equal(plan.dias[0].horas, 8)
+  assert.equal(plan.dias[0].sinCambio, true)
 })

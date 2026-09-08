@@ -12,6 +12,7 @@
 
 import type { createClient } from '@/lib/supabase/server'
 import { etiquetaDeMotivo, tipoDeMotivo } from './motivoDeAusencia'
+import { jornadaPorDefecto } from './jornadaPorDefecto'
 import { planDeBorrado, traducirEscritura, type FilaExistente } from './planDeJornada'
 import { acuseDeTramo, planDeTramoDeAusencia, sumarHoras } from './ausenciaDeLaPersona'
 import type { FilaDelDia, FilaDelTramo, PlanSinObra } from './ausenciaDeLaPersona'
@@ -228,14 +229,25 @@ type FilaDelRango = FilaExistente & FilaDelTramo & { obra_canonica_id: string | 
  */
 export async function asentarTramoDeAusencia(
   supabase: Supabase,
-  c: { persona_id: string; fecha: string; hasta: string; motivo: string | null; horas: number },
+  c: {
+    persona_id: string; fecha: string; hasta: string; motivo: string | null
+    /** El piso: lo que la pantalla mandó o la jornada de referencia. Sólo se usa donde la jornada
+     *  por defecto no dice nada —el sábado—, porque un día del tramo sin horas no se puede escribir
+     *  (`registros_hh` exige `horas > 0`). */
+    horas: number
+    /** Las horas TIPEADAS a mano, si difieren de la jornada por defecto de ese día. Un número que
+     *  alguien escribió gana sobre la regla general y vale para todo el tramo: es lo que distingue
+     *  una licencia de media jornada de una completa. `null` = el campo quedó como nació. */
+    horasATodoElTramo: number | null
+  },
 ): Promise<{ ok: true; mensaje: string } | { ok: false; error: string }> {
   const leidas = await filasDelRango(supabase, c.persona_id, c.fecha, c.hasta)
   if (leidas.error) return { ok: false, error: leidas.error }
 
   const tipo = tipoDeMotivo(c.motivo)
   const plan = planDeTramoDeAusencia<FilaDelRango>({
-    desde: c.fecha, hasta: c.hasta, horas: c.horas, motivo: c.motivo, tipo,
+    desde: c.fecha, hasta: c.hasta, motivo: c.motivo, tipo,
+    horasDelDia: (f) => c.horasATodoElTramo ?? jornadaPorDefecto(f) ?? c.horas,
     existentes: leidas.data,
     sacarDeLaObra: (filas) => planDeBorrado(filas, { administraLicencias: true }),
   })
@@ -250,7 +262,7 @@ export async function asentarTramoDeAusencia(
       continue
     }
     const r = await escribirAusenciaSinObra(
-      supabase, { persona_id: c.persona_id, fecha: d.fecha, motivo: c.motivo }, c.horas, d.id,
+      supabase, { persona_id: c.persona_id, fecha: d.fecha, motivo: c.motivo }, d.horas, d.id,
       'web:asistencia-obra',
     )
     // LA POLICY DE ESE DÍA: se nombra y se sigue. Cualquier otro error frena — un período cerrado o

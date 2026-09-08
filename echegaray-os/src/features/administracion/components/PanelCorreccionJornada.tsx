@@ -9,6 +9,7 @@ import { corregirJornada } from '../services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '../services/motivoDeAusencia'
 import { obraDestinoInicial } from '../services/destinoInicial'
 import { jornadaDeReferenciaVisible, restoDeLaSemana, topeDelTramo } from '../services/ausenciaDeLaPersona'
+import { jornadaPorDefecto } from '../services/jornadaPorDefecto'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 
 // EL ADMINISTRADOR CORRIGE TODO — el día de una persona: su obra, sus horas, si no vino, o sacarlo.
@@ -90,7 +91,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
   // guarda vacío— y se puede editar. Vaciarlo NO registra cero: `registros_hh` exige horas > 0 y el
   // servidor vuelve a la jornada de referencia (`horasDeLaAusencia`).
   const [textoAusencia, setTextoAusencia] = useState(
-    hs(horasDeLaAusenciaVisibles(celda, tramos, fila.obraPorDefecto?.id, jornadaPorObra)))
+    hs(horasDeLaAusenciaVisibles(fecha, celda, tramos, fila.obraPorDefecto?.id, jornadaPorObra)))
   const [asignar, setAsignar] = useState(false)
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null)
   const [motivo, setMotivo] = useState<string | null>(null)
@@ -140,7 +141,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
     setObraDestino(obraDestinoInicial(obraId, fila.obraPorDefecto?.id, obras))
     setEstado(t?.ausente ? 'ausente' : 'presente')
     setTexto(t?.horas != null ? hs(t.horas) : '')
-    setTextoAusencia(hs(horasDeLaAusenciaVisibles(celda, tramos, fila.obraPorDefecto?.id, jornadaPorObra)))
+    setTextoAusencia(hs(horasDeLaAusenciaVisibles(fecha, celda, tramos, fila.obraPorDefecto?.id, jornadaPorObra)))
     setAviso(null)
   }
 
@@ -355,6 +356,7 @@ function marcaDe(c: CeldaObra | undefined): string {
  * servidor (`jornadaDeReferencia`): la obra donde el día ya está cargado primero.
  */
 function horasDeLaAusenciaVisibles(
+  fecha: string,
   celda: CeldaObra | null,
   tramos: { obra_id: string }[],
   /** Su obra vigente: la última candidata antes de la jornada estándar, igual que en el servidor. */
@@ -364,7 +366,12 @@ function horasDeLaAusenciaVisibles(
   if ((celda?.estado === 'ausente' || celda?.estado === 'licencia') && celda.horas !== null) {
     return celda.horas
   }
+  // LA JORNADA POR DEFECTO ES DEL DÍA DE LA SEMANA (dueño, 08/09/2026): 9 hs de lunes a jueves, 8
+  // los viernes. Va PRIMERA, antes que `jornada_horas` de la obra: aquélla es la jornada de un
+  // contrato de obra y ésta es la de la persona, que es de quien es la ausencia. El sábado no tiene
+  // default y ahí siguen valiendo las candidatas de siempre.
   return jornadaDeReferenciaVisible([
+    jornadaPorDefecto(fecha),
     ...tramos.map((t) => jornadaPorObra[t.obra_id]),
     obraVigente ? jornadaPorObra[obraVigente] : null,
   ])
