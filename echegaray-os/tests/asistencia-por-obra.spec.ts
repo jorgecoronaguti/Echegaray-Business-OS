@@ -258,6 +258,32 @@ test('05 · el panel de corrección SE ABRE AL COSTADO y la grilla queda detrás
   // SE CIERRA CON ESCAPE. Sin esto, la única salida es acertarle a la ✕.
   await page.keyboard.press('Escape')
   await expect(panel).toBeHidden()
+
+  // Y CLICKEANDO FUERA. El fondo es transparente en escritorio a propósito —tapar la grilla la
+  // convertiría en un modal—, así que sin este control nadie se enteraría de que dejó de capturar
+  // el clic: la pantalla se vería idéntica y el panel no se cerraría más.
+  await abrir.click()
+  await expect(panel).toBeVisible()
+  await page.getByTestId('panel-correccion-fondo').click({ position: { x: 40, y: 400 } })
+  await expect(panel).toBeHidden()
+})
+
+test('05b · en el teléfono el panel ocupa el ancho entero', async ({ page }) => {
+  const ANCHO = 390
+  await page.setViewportSize({ width: ANCHO, height: 844 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=asistencia')
+  await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+  const abrir = page.getByTestId('abrir-correccion').first()
+  if (await abrir.count() === 0) test.skip(true, 'La quincena no tiene ninguna fila que corregir.')
+  await abrir.click()
+  const caja = await page.getByTestId('panel-correccion').boundingBox()
+  if (!caja) throw new Error('El panel no tiene caja: no está renderizado.')
+  // 400px de drawer sobre una pantalla de 390 es un modal mal hecho: abajo de 768 va entero.
+  expect(Math.round(caja.width)).toBe(ANCHO)
+  expect(Math.round(caja.x)).toBe(0)
+  await page.screenshot({ path: 'qa-shots/asistencia-quincena-panel-390.png' })
 })
 
 test('06 · el registro cronológico de la persona, con quién lo cargó', async ({ page }) => {
