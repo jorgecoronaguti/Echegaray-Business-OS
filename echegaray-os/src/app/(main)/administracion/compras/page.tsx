@@ -65,7 +65,7 @@ import { C, FranjaCartera, PAGINA } from '@/shared/components/canon'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { NotaBloque } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { AtencionCompras, FiltrosCompras } from '@/features/administracion/components/EstadosDeControl'
+import { FiltrosCompras } from '@/features/administracion/components/EstadosDeControl'
 import { CargarComprobante } from '@/features/administracion/components/CargarComprobante'
 import { EntradasSubidas } from '@/features/administracion/components/EntradasSubidas'
 import { TablaCompras } from '@/features/administracion/components/TablaCompras'
@@ -509,7 +509,7 @@ async function ControlArca({
       </div>
 
       <div style={PAGINA.atencion}>
-        <AtencionCompras conteos={conteos.data} hrefDe={(f) => url({ f, q, c: sp.c })} />
+        {/* Los chips «lo que pide trabajo» salieron por orden del dueño (08/09/2026): confundían. */}
       </div>
 
       {/* EL SUBTÍTULO EXPLICATIVO SE FUE ACÁ ADENTRO (Design 23/08). Lo que la pantalla muestra no
