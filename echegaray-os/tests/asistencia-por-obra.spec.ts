@@ -542,6 +542,8 @@ test('09 · UNA PERSONA CON SÓLO LICENCIAS ESTÁ EN LA GRILLA, con «L» y sin 
     expect(new Date(`${fecha}T00:00:00Z`).getUTCDay(), `${fecha} es domingo`).not.toBe(0)
   }
   await page.screenshot({ path: 'qa-shots/ficha-sin-domingos-1440.png', fullPage: true })
+})
+
 // ═══ 08 · EL DESPLEGABLE DE OBRA ACTUAL (pedido del dueño, 08/09/2026) ═══
 //
 // LAS DOS OBRAS SON DE PRUEBA, A PROPÓSITO. Cambiar la obra actual CIERRA la asignación vigente, y
