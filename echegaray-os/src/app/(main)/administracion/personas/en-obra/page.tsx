@@ -50,7 +50,7 @@ import {
 import { getRegistrosDelDia } from '@/features/administracion/services/asistenciaDelDiaService'
 import { getPresenciaDelDia } from '@/features/administracion/services/presenciaDelDiaService'
 import {
-  asistenciaDelDia, filtrarAsistencia, resumenAsistencia, resumenFichaje, textoFichaje,
+  asistenciaDelDia, filtrarAsistencia, resumenAsistencia, resumenHoras, resumenFichaje, textoFichaje,
 } from '@/features/administracion/services/asistenciaDelDia'
 import { jornadaPorObra } from '@/features/administracion/services/presenciaPorObra'
 
@@ -130,15 +130,26 @@ export default async function EnObraPage({
     <PantallaV2>
       <Migas volverA="/administracion/personas" padre="Personal" actual="En obra ahora" />
 
-      {/* EL NÚMERO ES LA ASISTENCIA CARGADA, no el fichaje: es el proceso que hoy existe de verdad
-          y el que decide las HH de cada obra. El fichaje tiene su propia línea, más abajo. */}
+      {/* EL NÚMERO ES LA PRESENCIA, y sale de lo que alguien declaró o fichó — nunca de las horas
+          cargadas. El dueño, 08/09/2026: «una cosa es asistencia o activo en el día y otra cosa son
+          las cantidades de hs». La carga de horas va en su propia frase, debajo. */}
       <TitularDeCola
         testid="titular-jornada"
-        numero={visible.conHoras}
-        titulo={`de ${visible.plantel} con horas cargadas hoy`}
+        numero={visible.presentes}
+        titulo={`de ${visible.plantel} presentes hoy`}
         resumen={resumenAsistencia(visible)}
         derecha={`${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`}
       />
+
+      {/* LA SEGUNDA FRASE, SEPARADA. Pegada a la de arriba volvería a leerse como si la falta de
+          horas dijera algo sobre quién vino. */}
+      <p
+        className="font-mono tabular-nums"
+        style={{ margin: '-10px 0 14px', padding: '0 20px', fontSize: '12.5px', color: V.tenue }}
+        data-testid="resumen-horas"
+      >
+        {resumenHoras(visible)}
+      </p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 20px 12px', flexWrap: 'wrap', rowGap: 8 }}>
         <BuscadorFilo
@@ -150,7 +161,7 @@ export default async function EnObraPage({
         />
         <FiltrosSuaves
           testid="filtro-obra"
-          conteo={{ n: visible.conHoras, total: visible.plantel }}
+          conteo={{ n: visible.presentes, total: visible.plantel }}
           opciones={[
             { clave: 'todas', etiqueta: 'Todas las obras', href: hrefObra(undefined, q), activo: !obra },
             ...(obras.data ?? []).map((o) => ({
@@ -202,8 +213,8 @@ export default async function EnObraPage({
 
         {/* ── ASISTENCIA DEL DÍA ─────────────────────────────────────────────────────────────── */}
         <section data-testid="bloque-asistencia">
-          <RotuloPanel cuenta={hayAlgo ? `${visible.conHoras}/${visible.plantel}` : undefined}>
-            Asistencia de hoy · horas cargadas
+          <RotuloPanel cuenta={hayAlgo ? `${visible.presentes}/${visible.plantel}` : undefined}>
+            Asistencia de hoy
           </RotuloPanel>
 
           {!hayAlgo && (
