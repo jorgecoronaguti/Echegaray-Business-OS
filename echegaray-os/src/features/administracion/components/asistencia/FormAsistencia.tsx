@@ -171,7 +171,7 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
           }}
           disabled={sugerida === null}
           data-testid="poner-jornada"
-          className="min-h-[36px] rounded-[6px] border border-line px-3 text-[12.5px] text-ink disabled:text-faint"
+          className="min-h-[44px] rounded-control border border-line px-3 text-[12.5px] text-ink disabled:text-faint"
         >
           {sugerida !== null ? `Poner ${hs(sugerida)} a los que faltan` : 'Fin de semana: a mano'}
         </button>
