@@ -10,6 +10,7 @@ import { SIN_OBRA, totalDeLaQuincena } from '../services/quincenaPorObra'
 import { agruparPorRolOrganizacional } from '../services/vocabularioPersona'
 import { guardarJornada } from '../services/jornadaPorObraActions'
 import { cambiarObraActual } from '../services/obraActualActions'
+import { PlanDeObraPanel } from './PlanDeObraPanel'
 import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJornada'
 import { CeldaDia, type EntradaCeldaDia } from '@/shared/components/ds'
 
@@ -61,6 +62,15 @@ const ROJO = '#B42318'
 // vez del borde. La tabla vuelve al 100% con sus columnas de siempre; lo único que queda del
 // intento es el techo del NOMBRE, que era el defecto real: un nombre largo corría la quincena.
 const ANCHO_PERSONA = 320
+
+/** `2026-09-10` → `jue 10/09`. El día de la semana es con lo que se planifica; una fecha sola
+ *  obliga a ir a buscar el calendario. Se arma en UTC para no correr el día por la zona. */
+function diaCorto(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  if (Number.isNaN(d.getTime())) return iso
+  const dia = d.toLocaleDateString('es-AR', { weekday: 'short', timeZone: 'UTC' }).replace('.', '')
+  return `${dia} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+}
 
 function textoDe(c: CeldaObra): string {
   if (c.estado === 'horas') return c.horas === null ? '' : hs(c.horas)
@@ -140,6 +150,9 @@ export function GrillaAsistenciaObra({
   // texto ya armado con los nombres de las dos obras.
   const [acuses, setAcuses] = useState<Record<string, { texto: string; error: boolean }>>({})
   const [cambiando, setCambiando] = useState<string | null>(null)
+  // QUÉ PERSONA TIENE EL PANEL DE PLAN ABIERTO. Uno solo a la vez: dos panales abiertos sobre la
+  // misma grilla dejarían de saber a quién se le está programando el pase.
+  const [planDe, setPlanDe] = useState<FilaQuincena | null>(null)
   // LO QUE EL DUEÑO ACABA DE ELEGIR, hasta que el servidor lo confirme. Sin esto el <select>,
   // controlado por el dato del servidor, volvía a mostrar la obra vieja apenas se soltaba el clic y
   // el dueño creía que no había guardado, elegía de nuevo y recibía «Ya estaba en…» (08/09/2026).
@@ -370,6 +383,33 @@ export function GrillaAsistenciaObra({
                 ) : (
                   fila.rotuloObra
                 )}
+                {/* ═══ PLANIFICAR ES UNA LÍNEA DE TEXTO, NO UN BOTÓN ═══
+                    El dueño (08/09/2026): «una cosa es hoy y cuando planifico quiero poner lo de
+                    mañana y siguientes». El desplegable de arriba sigue siendo HOY y no cambió.
+                    Esto es texto y no un botón a propósito: en una grilla de diecisiete filas,
+                    diecisiete botones compiten con el gesto que se usa todos los días —marcar
+                    asistencia— y lo empujan hacia abajo. Cuando hay un pase programado la línea lo
+                    DICE, porque un plan invisible es un plan que nadie mira. */}
+                {puedeCambiarObra && (
+                  <span style={{ display: 'block', fontSize: '11px', marginTop: 2 }}>
+                    {fila.proximoTramo && (
+                      <span data-testid="proximo-tramo" style={{ color: V.tenue, marginRight: 6 }}>
+                        → {fila.proximoTramo.nombre} desde {diaCorto(fila.proximoTramo.desde)}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setPlanDe(fila)}
+                      data-testid="abrir-plan-obra"
+                      style={{
+                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                        font: 'inherit', color: V.tenue, textDecoration: 'underline',
+                      }}
+                    >
+                      {fila.proximoTramo ? 'cambiar' : 'programar cambio'}
+                    </button>
+                  </span>
+                )}
                 {/* SIN ASIGNACIÓN PERO CON HORAS. El desplegable dice «Sin obra» —que es la verdad
                     de la asignación—, y esta línea dice dónde están sus horas, que es el otro dato
                     real y el que explica por qué la persona aparece en la grilla. */}
@@ -577,6 +617,15 @@ export function GrillaAsistenciaObra({
         obras={obras}
         jornadaPorObra={jornadaPorObra}
         alCerrar={() => setCorrigiendo(null)}
+      />
+    )}
+
+    {/* MISMA RAZÓN QUE ARRIBA: fuera del contenedor que scrollea de costado. */}
+    {planDe && (
+      <PlanDeObraPanel
+        persona={planDe.persona}
+        obras={obras}
+        onCerrar={() => setPlanDe(null)}
       />
     )}
     </>
