@@ -22,7 +22,18 @@ _actualizado: 2026-09-07 (noche) · commit `d70430d3` en main y en producción_
   Doble conteo jornales: NO (verificado 4 quincenas); A7 «efectivo sin explicar» corregido (−22,6M doble) →
   −$123M = FALTA_DATO del dueño (efectivo sin fuente). Botones mes/semana actual con hyperlink; CAJA 68 filas
   + verificador en pipeline.
-- **EN CURSO al cerrar**: corrección inline en obra cerrada (rama `fix/correccion-obra-cerrada`); materiales de
+- **Asistencia — tarde 08/09, TODO PUBLICADO** (main ≥ b5022fac; smoke prod 15/15 lecturas): sin domingos (13
+  columnas; `diasDeLaQuincenaSinDomingos`; la ventana a la base sigue siendo la quincena entera), personas con sólo
+  licencia visibles («L», no editable inline), «Obra actual» con `<select>` sólo direccion/administracion
+  (`planDeObraActual.ts` + `obraActualActions.ts`: cierra hasta=ayer, abre desde=hoy; jefe_obra NO aunque la RLS lo
+  permita — la puerta es la acción; test del núcleo en curso rama `test/puerta-obra-actual`), corrección inline en
+  obra cerrada permitida para registros existentes, «categoría · oficio» bajo el nombre (`notaDe` + test), 7
+  categorías actualizadas desde recibos 2ª Q 08/2026 (rastro en `personas.notas`; 4 bajan vs planilla del dueño;
+  Castillo Benítez sin recibo). Diagnóstico de asignación: `docs/engineering/UX_ASIGNACION_DE_PERSONAL.md`.
+  Límites firmados: E2E 09 se saltea si Quiroga deja de tener licencias; `asignacion-390.png` es esqueleto (08b sin
+  aserción); `getHHDePersona` sin paginar (techo 1.000); `page.tsx` personas 557 líneas.
+- **EN CURSO al cerrar**: legajo + fecha de alta desde recibos → Plantel y quitar columna «Papeles» (agente
+  categorías, worktree propio); test de la puerta de `cambiarObraActual`; corrección inline en obra cerrada (rama `fix/correccion-obra-cerrada`); materiales de
   OBRAS repartidos en el plazo y netos de compras, SIN emitir MO (ya en jornales); costos MA/MO faltantes
   desde Drive (`obras-datos.mjs`). Los 17 ítems de `obra_egreso_proyectado` con fecha 01/10 NO van como bulto.
 
