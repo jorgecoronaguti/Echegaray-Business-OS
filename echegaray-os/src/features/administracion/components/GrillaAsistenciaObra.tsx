@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { Fragment, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
+import { SIN_OBRA } from '../services/quincenaPorObra'
 import { guardarJornada } from '../services/jornadaPorObraActions'
+import { cambiarObraActual } from '../services/obraActualActions'
 import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJornada'
 
 // 02 · LA QUINCENA, POR OBRA. La misma jornada que el jefe carga en el teléfono, a la distancia de
@@ -78,7 +80,25 @@ export function GrillaAsistenciaObra({
   const [errores, setErrores] = useState<Record<string, string>>({})
   const [corrigiendo, setCorrigiendo] = useState<string | null>(null)
   const [copia, setCopia] = useState<FilaQuincena | null>(null)
+  // EL ACUSE ES POR PERSONA Y ES LO QUE DIJO LA BASE, no lo que se pidió: la acción devuelve el
+  // texto ya armado con los nombres de las dos obras.
+  const [acuses, setAcuses] = useState<Record<string, { texto: string; error: boolean }>>({})
+  const [cambiando, setCambiando] = useState<string | null>(null)
   const [, arrancar] = useTransition()
+
+  const cambiarObra = (fila: FilaQuincena, valor: string) => {
+    if ((fila.obraPorDefecto?.id ?? '') === valor) return
+    setCambiando(fila.clave)
+    setAcuses((a) => { const n = { ...a }; delete n[fila.clave]; return n })
+    arrancar(async () => {
+      const r = await cambiarObraActual({ persona_id: fila.persona.id, obra_id: valor || null })
+      setCambiando(null)
+      setAcuses((a) => ({
+        ...a,
+        [fila.clave]: r.ok ? { texto: r.mensaje, error: false } : { texto: r.error, error: true },
+      }))
+    })
+  }
 
   const claveDe = (fila: FilaQuincena, fecha: string) => `${fila.clave}·${fecha}`
 
@@ -165,7 +185,8 @@ export function GrillaAsistenciaObra({
         </thead>
         <tbody>
           {filas.map((fila) => (
-            <tr key={fila.clave} style={{ borderBottom: `1px solid ${V.lineaFila}` }} data-testid="fila-quincena">
+            <Fragment key={fila.clave}>
+            <tr style={{ borderBottom: `1px solid ${V.lineaFila}` }} data-testid="fila-quincena">
               <td style={{ padding: '7px 8px 7px 0', verticalAlign: 'top' }}>
                 {/* EL NOMBRE ES LA PUERTA A SU CARPETA. El dueño: *"cada persona debe tener su
                     cronología de trabajo en su propia carpeta, no que se tiene que mostrar todo de
@@ -180,7 +201,40 @@ export function GrillaAsistenciaObra({
                 </span>
               </td>
               <td data-testid="celda-obra" style={{ padding: '7px 8px', color: V.apagado, verticalAlign: 'top' }}>
-                {fila.rotuloObra}
+                {/* ═══ UN DESPLEGABLE, NO UN FORMULARIO (pedido del dueño, 08/09/2026) ═══
+                    Elegir otra obra cambia la asignación vigente DESDE HOY: cierra la anterior y
+                    abre la nueva. No pide rol, ni cuadrilla, ni actividad, ni fechas — eso es lo
+                    que hacía la asignación imposible de entender. Lo que no se pregunta tiene un
+                    valor honesto: rol «integrante» y desde hoy. */}
+                {puedeCorregir ? (
+                  <select
+                    data-testid="select-obra-actual"
+                    aria-label={`Obra actual de ${fila.persona.nombre}`}
+                    value={fila.obraPorDefecto?.id ?? ''}
+                    disabled={cambiando === fila.clave}
+                    onChange={(e) => cambiarObra(fila, e.target.value)}
+                    style={{
+                      width: '100%', maxWidth: 210, fontSize: '12.5px', color: V.tinta,
+                      background: 'transparent', border: `1px solid ${V.linea}`, borderRadius: 5,
+                      padding: '3px 4px', opacity: cambiando === fila.clave ? 0.5 : 1,
+                    }}
+                  >
+                    <option value="">Sin obra</option>
+                    {obras.map((o) => (
+                      <option key={o.id} value={o.id}>{o.nombre}</option>
+                    ))}
+                  </select>
+                ) : (
+                  fila.rotuloObra
+                )}
+                {/* SIN ASIGNACIÓN PERO CON HORAS. El desplegable dice «Sin obra» —que es la verdad
+                    de la asignación—, y esta línea dice dónde están sus horas, que es el otro dato
+                    real y el que explica por qué la persona aparece en la grilla. */}
+                {puedeCorregir && !fila.obraPorDefecto && fila.rotuloObra !== SIN_OBRA && (
+                  <span style={{ display: 'block', fontSize: '11px', color: V.tenue, marginTop: 2 }}>
+                    horas en {fila.rotuloObra}
+                  </span>
+                )}
               </td>
 
               {fila.celdas.map((celda, i) => {
@@ -263,6 +317,21 @@ export function GrillaAsistenciaObra({
                 </td>
               )}
             </tr>
+            {/* EL ACUSE VA DEBAJO DE LA FILA Y NO EN LA CELDA: «Desde hoy en SALÓN COMERCIAL · antes
+                PISOS INDUSTRIALES» no entra en una columna del 18% sin partirse en cinco renglones.
+                Queda hasta el próximo cambio: quien lo hizo tiene que poder leerlo después de que
+                la fila se refrescó. */}
+            {acuses[fila.clave] && (
+              <tr data-testid="acuse-obra-actual">
+                <td colSpan={dias.length + (puedeCorregir ? 4 : 3)} style={{
+                  padding: '0 0 7px', fontSize: '11.5px',
+                  color: acuses[fila.clave].error ? ROJO : V.apagado,
+                }}>
+                  {acuses[fila.clave].texto}
+                </td>
+              </tr>
+            )}
+            </Fragment>
           ))}
 
           <tr style={{ borderTop: `1px solid ${V.lineaFuerte}` }} data-testid="total-quincena">
