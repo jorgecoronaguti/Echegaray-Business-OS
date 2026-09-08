@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-08 18:40 · main `df1b3c55` = checkout de producción; Vercel al día_
+_actualizado: 2026-09-08 19:20 · main `93e78aa4` = checkout de producción; Vercel al día_
 
 ## 00. TARDE-NOCHE 08/09 — PUBLICADO (main 1c51a7f3) y LO QUE SIGUE ABIERTO
 
@@ -41,7 +41,14 @@ _actualizado: 2026-09-08 18:40 · main `df1b3c55` = checkout de producción; Ver
   Pendiente dueño: aceptar 6 eCHEQ en Santander; certificado ret. OP 5146 ($248.878,26); $38.462,45 «a cuenta».
 - Accesos: rodrigo/hys/ingenieria → `test123` (pedido del dueño).
 
-**Agentes en curso al cortar**: `feat/horas-declaran-presencia` (cargar horas desde la app declara presencia; migración
+- 19:20 · Cargar horas desde la app DECLARA presencia (`asistencia_dia.origen` horas/declarada, migración T2300
+  aplicada; backfill de hoy hecho). Liquidación: ausencia sin motivo = 0 h, con motivo que paga = jornada, un día
+  nunca suma dos veces (`liquidacionDeAusencias.ts`; migración T2400 aplicada). Ejes de fila 1440/2000 verdes;
+  `<alpha-value>` en tailwind (18 componentes cambian de aspecto: pendiente barrido visual). Un deploy de Vercel
+  falló por un symlink `node_modules` commiteado en la raíz → retirado e ignorado (c1e86005). Memoria:
+  `liquidacion-ausencias-y-jornada-por-defecto`.
+
+**Agentes en curso al cortar**: `fix/compras-390-scroll-propio` (tabla de Compras con scroll propio en el celular) · barrido visual qa tras opacidad (cargar horas desde la app declara presencia; migración
 `20260908T2300_asistencia_dia_origen.sql` a aplicar con GRANT de columna) · `fix/ejes-fila-y-opacidad` (2 rojos de
 `_ux-grilla-asistencia` 1440/2000 + `<alpha-value>` en tailwind).
 
