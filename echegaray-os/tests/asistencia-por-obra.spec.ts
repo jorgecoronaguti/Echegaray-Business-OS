@@ -587,11 +587,23 @@ async function prepararMudanza(): Promise<{ id: string; nombre: string } | null>
     obra_id: OBRA_ORIGEN, persona_id: libre.id, rol: 'integrante', desde: '2026-01-01',
   }).select('id')
   if (asig.error) throw new Error(`No pude asignar a la obra de origen: ${asig.error.message}`)
+  // ═══ LAS HORAS DE LA QUINCENA QUEDAN EN LA OBRA DE ORIGEN, A PROPÓSITO ═══
+  //
+  // Es el escenario exacto del defecto del 08/09/2026: el dueño mueve a alguien de la obra donde
+  // tiene TODAS sus horas y el desplegable vuelve a la obra vieja. Sin estas horas la prueba pasaba
+  // igual con la heurística rota —el desempate caía al nombre y «destino» gana por alfabeto—, así
+  // que no probaba nada. Se escriben sobre una obra ZZ-E2E propia que este mismo test crea y borra.
+  const horas = await sb.from('registros_hh').insert({
+    obra_canonica_id: OBRA_ORIGEN, persona_id: libre.id, fecha: hoy, fecha_inicio_semana: hoy,
+    horas: 8.8, tipo_hora: 'normal', actividad_id: null, fuente_legacy: 'e2e:mudanza-de-obra',
+  }).select('id')
+  if (horas.error) throw new Error(`No pude dejar horas en la obra de origen: ${horas.error.message}`)
   return { id: libre.id, nombre: libre.nombre_completo }
 }
 
 async function limpiarMudanza(): Promise<void> {
   const sb = servicio()
+  await sb.from('registros_hh').delete().in('obra_canonica_id', [OBRA_ORIGEN, OBRA_DESTINO])
   await sb.from('obra_asignacion').delete().in('obra_id', [OBRA_ORIGEN, OBRA_DESTINO])
   await sb.from('usuario_obra').delete().in('obra_canonica_id', [OBRA_ORIGEN, OBRA_DESTINO])
   await sb.from('obra_canonica').delete().in('id', [OBRA_ORIGEN, OBRA_DESTINO])
@@ -626,8 +638,15 @@ test('08 · EL DESPLEGABLE MUDA LA ASIGNACIÓN, y la base y la ficha lo muestran
     await expect(acuse).toContainText('Desde hoy en')
     await expect(acuse).toContainText('antes')
     await page.screenshot({ path: 'qa-shots/asignacion-dropdown-acuse-1440.png', fullPage: true })
-    // LA FILA SE REFRESCÓ: el desplegable muestra la obra nueva sin recargar a mano.
+    // ═══ EL ACUSE Y EL DESPLEGABLE TIENEN QUE DECIR LO MISMO ═══
+    //
+    // Acá se rompía en producción: el acuse anunciaba la obra nueva —la base le había hecho caso— y
+    // el desplegable volvía a la vieja después del refresh, porque la obra actual se elegía por la
+    // obra con MÁS HORAS de la quincena y las horas seguían en el origen. El dueño lo leyó como
+    // *"empiezo a poner bien la obra que están y se rompe"*. La persona de esta prueba tiene todas
+    // sus horas en OBRA_ORIGEN: si la heurística vieja vuelve, este `toHaveValue` da rojo.
     await expect(page.getByTestId('select-obra-actual').first()).toHaveValue(OBRA_DESTINO)
+    await page.screenshot({ path: 'qa-shots/obra-actual-vigente-1440.png', fullPage: true })
 
     // ═══ LA EVIDENCIA ES DEL EFECTO: SE LEE LA BASE, NO LA PANTALLA ═══
     const sb = servicio()

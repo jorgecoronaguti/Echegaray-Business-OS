@@ -214,11 +214,16 @@ export async function getQuincenaPorObra(
     .filter((a) => Boolean(a.persona_nombre)
       && activas.has(a.obra_id)
       && (!a.desde || a.desde <= hasta) && (!a.hasta || a.hasta >= desde))
+    // `desde`/`hasta` VIAJAN. Estar en la ventana es lo que pone la fila en la grilla; cuál es su
+    // OBRA ACTUAL lo decide la vigencia de HOY, y sin estas dos fechas la grilla no puede
+    // distinguir el tramo que se cerró ayer del que se abrió hoy.
     .map((a) => ({
       persona_id: a.persona_id,
       nombre: a.persona_nombre as string,
       nota: notaDe(a),
       obra_id: a.obra_id,
+      desde: a.desde ?? null,
+      hasta: a.hasta ?? null,
     }))
 
   // ═══ QUIÉN TIENE REGISTROS Y NO SE PUEDE NOMBRAR CON UNA ASIGNACIÓN ═══
