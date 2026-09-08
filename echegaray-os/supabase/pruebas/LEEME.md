@@ -77,3 +77,48 @@ defecto que sólo tendría el andamio.
 **Se verificó que estas pruebas PUEDEN dar rojo**: con `persona_nota_select` abierta a `using
 (true)` —una mutación de un carácter sobre la migración— el caso 3 aborta con «FALLÓ: el rol campo
 NO puede ver ninguna anotación».
+
+## `registros_hh` — la ausencia sin obra
+
+```bash
+docker run -d --name pg-hh-ausencia -e POSTGRES_PASSWORD=x -p 55493:5432 postgres:16-alpine
+sleep 7
+
+docker cp supabase/pruebas/registros_hh_ausencia_00_andamio.sql pg-hh-ausencia:/tmp/00.sql
+docker cp supabase/migrations/20260908T2000_ausencia_sin_obra.sql pg-hh-ausencia:/tmp/01.sql
+docker cp supabase/pruebas/registros_hh_ausencia_02_rls.sql pg-hh-ausencia:/tmp/02.sql
+
+docker exec pg-hh-ausencia psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/00.sql   # andamio
+docker exec pg-hh-ausencia psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/01.sql   # la migración
+docker exec pg-hh-ausencia psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/02.sql   # las pruebas
+
+docker rm -f pg-hh-ausencia
+```
+
+Diez casos, y cada uno corta el script si falla:
+
+1. **Dirección declara una ausencia SIN obra** de cualquiera del plantel. Antes de la migración esa
+   fila no entraba: `hh_insert_por_obra` exigía obra, y por eso el panel deducía una.
+2. El **jefe de obra marca ausente a su gente**, también sin obra en la fila.
+3. El jefe **no alcanza a quien no está asignado** a ninguna obra suya ese día. Es el caso que hace
+   que la regla no sea una constante: `es_administracion()` incluye a `jefe_obra` y `ve_obra()` le
+   da todas las obras, así que escribir la policy con cualquiera de las dos habría dejado al jefe
+   marcando ausente a toda la empresa **con este script igual de verde**.
+4. La cota mira la **fecha del registro**, no `current_date`: una ausencia se corrige días después.
+5. Una fila `normal` **sin obra no entra por ninguna de las dos puertas** — la policy la rechaza
+   como permiso y el `CHECK` la rechaza aunque la policy se afloje (ese caso corre sin RLS).
+6. El rol **`campo` no escribe su propia ausencia, pero la lee**: sin obra la fila no queda
+   invisible para su dueño, que es el agujero que describía `20260819T2900`.
+7. Un `update` **no puede convertir la ausencia sin obra en trabajo** ni mudarla a una obra: el
+   `with check` mira la fila nueva.
+8. La fila **legacy sin obra y `normal` sigue existiendo**: el CHECK nace `not valid` porque en la
+   base real hay 19 así (medido el 08/09/2026), y borrarlas sería perder historia.
+9. **Quien declara la ausencia puede sacarla**: marcar ausente a alguien que sí vino tiene que ser
+   corregible por quien lo marcó.
+10. Los **grants no cambiaron**: `authenticated` conserva select/insert/update/delete de tabla y
+    ninguno por columna.
+
+**Se verificó que estas pruebas PUEDEN dar rojo**: reemplazando en `marca_ausencia_de()` el
+`current_rol() in ('direccion','administracion')` por `es_administracion()` —un cambio que parece
+inocente y que es el que estaba escrito en el pedido— el caso 3 aborta con «FALLÓ: el jefe pudo
+marcar ausente a alguien sin asignación vigente».
