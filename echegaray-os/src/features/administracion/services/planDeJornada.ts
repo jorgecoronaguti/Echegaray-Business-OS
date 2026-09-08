@@ -220,6 +220,59 @@ export function puertaDeObraNoActiva(o: {
     : `«${o.nombre}» ${como}: sólo se corrigen días ya cargados, no se cargan horas nuevas.`
 }
 
+// ── LA ASIGNACIÓN NO ES LA PUERTA DE LAS HORAS ──────────────────────────────────────────────────
+//
+// Decisión del dueño (08/09/2026): *«una cosa es la asistencia y otra la cantidad de horas por
+// día»*. Las horas son un HECHO con fecha y obra; la asignación es OTRA cosa —dice a quién se
+// espera en esa obra de acá en adelante— y se fija hoy, no retroactivamente.
+//
+// El defecto que corrige (captura de producción): el dueño asignó a NIEVAS VILLEGAS a «SF - PISOS
+// INDUSTRIALES» hoy y después fue a cargarle las horas del 01/09. Cada día anterior a la asignación
+// rebotaba con «no está asignada a esta obra ese día», así que la pantalla no permitía cargar
+// horas de ningún día pasado: para arreglarlo había que fabricar una asignación con `desde`
+// retroactivo, es decir, mentir sobre cuándo se decidió mandarla a esa obra.
+//
+// Lo que sigue siendo puerta: que la persona y la obra existan, que la obra esté ACTIVA para
+// estrenar un día (`puertaDeObraNoActiva`) y que la fecha no sea futura. La falta de asignación
+// pasó a ser un AVISO en el acuse — se dice, no se rechaza.
+
+/** ¿Esta asignación cubre esa fecha? Abierta de un lado o de los dos también cubre. */
+const vigenteEn = (a: { desde: string | null; hasta: string | null }, fecha: string): boolean =>
+  (!a.desde || a.desde <= fecha) && (!a.hasta || a.hasta >= fecha)
+
+/**
+ * Quiénes del envío NO tenían asignación vigente en esa obra ese día. NO bloquea nada: es lo que se
+ * NOMBRA en el acuse. Pura para que la regla de vigencia —el `desde` de hoy no cubre el lunes
+ * pasado— se pruebe sin base, que es donde se rompió.
+ */
+export function personasSinAsignacionVigente(
+  asignaciones: { persona_id: string; desde: string | null; hasta: string | null }[],
+  personaIds: string[],
+  fecha: string,
+): string[] {
+  const vigentes = new Set(asignaciones.filter((a) => vigenteEn(a, fecha)).map((a) => a.persona_id))
+  return personaIds.filter((id) => !vigentes.has(id))
+}
+
+/**
+ * El aviso de que las horas se guardaron sobre gente sin asignación vigente ese día, o `null` si
+ * todos la tenían. NUNCA es un error: devuelve texto para el acuse de una escritura que YA ocurrió.
+ *
+ * `nombres` puede venir vacío o corto —leer los nombres es una consulta más y puede fallar por
+ * RLS—: en ese caso el aviso cuenta cuántos son. Un aviso sin nombres sigue sirviendo; no poder
+ * nombrarlos no puede convertirse en no avisar.
+ */
+export function avisoSinAsignacion(nombres: string[], cuantos = nombres.length): string | null {
+  if (cuantos <= 0) return null
+  const nombrados = nombres.slice(0, 3)
+  const resto = cuantos - nombrados.length
+  const quien = nombrados.length === 0
+    ? `${cuantos} ${cuantos === 1 ? 'persona' : 'personas'}`
+    : nombrados.join(', ') + (resto > 0 ? ` y ${resto} más` : '')
+  return `${quien} ${cuantos === 1 ? 'no estaba asignado' : 'no estaban asignados'} a esta obra ese `
+    + 'día: las horas se guardaron igual. La asignación se cambia desde Obra actual.'
+}
+
 /** Lo que la base efectivamente devolvió por cada operación. */
 export interface EscritoEnLaBase {
   insertadas: number
