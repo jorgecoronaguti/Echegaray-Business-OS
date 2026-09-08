@@ -54,7 +54,8 @@ import {
 } from '@/features/administracion/services/personasService'
 import { crearPersona } from '@/features/administracion/services/personasActions'
 import {
-  hayControlDeVencimientos, hhPorPersona, marcasPorPersona, mesCorriente, papelesPorPersona,
+  asistenciaHoyPorPersona, hayControlDeVencimientos, hhPorPersona, marcasPorPersona, mesCorriente,
+  papelesPorPersona,
 } from '@/features/administracion/services/pulsoDelPlantel'
 import {
   getHHDelMes, getMarcasDeHoy, getPapelesDelPlantel,
@@ -142,6 +143,10 @@ function armarPulso(
   const { desde, hasta } = mesCorriente(hoy)
   return {
     marcas: marcasPorPersona(marcas.data),
+    // LA MISMA LECTURA CONTESTA LAS DOS PREGUNTAS: la ventana del mes cierra en hoy, así que las
+    // filas de hoy ya vinieron. Una consulta aparte por la columna HOY sería un sexto viaje para
+    // traer un subconjunto de lo que está en memoria.
+    asistencia: asistenciaHoyPorPersona(hh.data, hoy),
     hh: hhPorPersona(hh.data, desde, hasta),
     papeles: papelesPorPersona(papeles.data, hoy),
     hoyDisponible: marcas.error == null,

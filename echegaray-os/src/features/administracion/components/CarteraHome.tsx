@@ -21,6 +21,7 @@ import { C, IcoBuscar, pesos, porcentajeCanon } from '@/shared/components/canon'
 import { IconoCrear, IconoObra } from '@/shared/components/iconos'
 import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import { diaRelativo, type ClienteEnCartera } from '../services/homeCartera'
+import { SIN_PRECIO_EN_OBRAS, pctTexto } from '@/features/clientes/services/economiaObras'
 
 // ═══ EL NOMBRE DEL CLIENTE NUNCA SE ESTRANGULA (26/08/2026) ═══
 //
@@ -38,8 +39,12 @@ import { diaRelativo, type ClienteEnCartera } from '../services/homeCartera'
 //
 // Va como clase y NUNCA inline: un `gridTemplateColumns` en el atributo `style` le gana a cualquier
 // media query, que es la trampa que ya documenta `canonico-proveedores-v2.test.ts`.
+//
+// 08/09/2026: entran TRES columnas de OBRAS —Costo MO · Costo mat. · Margen— entre Contratado y
+// «Últ. mov.». Se sueltan junto con «Últ. mov.» por debajo de 1250px: son el detalle económico, y
+// la identidad y el contratado siguen sobreviviendo solos.
 const COLS
-  = 'grid-cols-[minmax(0,1.9fr)_140px_150px_96px]'
+  = 'grid-cols-[minmax(0,1.9fr)_140px_150px_130px_130px_150px_96px]'
   + ' max-[1249px]:grid-cols-[minmax(0,1.9fr)_140px_150px]'
   + ' max-[767px]:grid-cols-[minmax(0,1.9fr)_150px]'
 
@@ -96,7 +101,7 @@ export function CarteraHome({
           {obrasNoLeidas
             ? ' · no pude leer las obras'
             : ` · ${enCurso} ${enCurso === 1 ? 'obra' : 'obras'} en ejecución`}
-          {veEconomia && ` · ${contratado === null ? 'sin contratos cargados' : `${pesos(contratado)} contratado`}`}
+          {veEconomia && ` · ${contratado === null ? 'sin precios en OBRAS' : `${pesos(contratado)} contratado`}`}
         </span>
 
         <label
@@ -137,6 +142,9 @@ export function CarteraHome({
         <span style={rotulo}>Cliente</span>
         <span className={SUELTA_TELEFONO} style={{ ...rotulo, textAlign: 'right' }}>Obras</span>
         <span style={{ ...rotulo, textAlign: 'right' }}>{veEconomia ? 'Contratado' : ''}</span>
+        <span className={SUELTA_ANCHO} style={{ ...rotulo, textAlign: 'right' }} title="Mano de obra con cargas proyectada, según la pestaña OBRAS">Costo MO</span>
+        <span className={SUELTA_ANCHO} style={{ ...rotulo, textAlign: 'right' }} title="Materiales proyectados, según la pestaña OBRAS">Costo mat.</span>
+        <span className={SUELTA_ANCHO} style={{ ...rotulo, textAlign: 'right' }} title="Contratado − costo MO − costo materiales">{veEconomia ? 'Margen' : ''}</span>
         <span
           className={SUELTA_ANCHO}
           style={{ ...rotulo, textAlign: 'right' }}
@@ -196,8 +204,9 @@ function FilaCliente({ c, hoy, veEconomia }: { c: ClienteEnCartera; hoy: string;
         className="font-mono tabular-nums"
         style={{ fontSize: '12px', textAlign: 'right', color: c.contratado === null ? C.warn : C.tinta }}
       >
-        {veEconomia ? (c.contratado === null ? 'sin contrato' : pesos(c.contratado)) : ''}
+        {veEconomia ? (c.contratado === null ? SIN_PRECIO_EN_OBRAS : pesos(c.contratado)) : ''}
       </span>
+      <Economia mo={c.costoMo} mat={c.costoMateriales} margen={c.margen} pct={c.margenPct} veEconomia={veEconomia} parcial={c.economiaParcial} tam="12px" />
       <span className={`font-mono ${SUELTA_ANCHO}`} style={{ fontSize: '11.5px', color: C.tenue, textAlign: 'right' }}>
         {diaRelativo(c.ultimoMovimiento, hoy) ?? 'sin movimientos'}
       </span>
@@ -265,12 +274,43 @@ function FilaObra({
         className="font-mono tabular-nums"
         style={{ fontSize: '11.5px', textAlign: 'right', color: o.contratado === null ? C.warn : C.apagado }}
       >
-        {veEconomia ? (o.contratado === null ? 'sin contrato' : pesos(o.contratado)) : ''}
+        {veEconomia ? (o.contratado === null ? SIN_PRECIO_EN_OBRAS : pesos(o.contratado)) : ''}
       </span>
+      <Economia mo={o.costoMo} mat={o.costoMateriales} margen={o.margen} pct={o.margenPct} veEconomia={veEconomia} parcial={false} tam="11.5px" />
       <span className={`font-mono ${SUELTA_ANCHO}`} style={{ fontSize: '11.5px', color: TONO.contexto, textAlign: 'right' }}>
         {diaRelativo(o.ultimoParte, hoy) ?? 'sin partes'}
       </span>
     </Link>
+  )
+}
+
+/**
+ * LAS TRES CELDAS DE OBRAS: Costo MO · Costo mat. · Margen ($ y %). Los costos los ve todo rol
+ * interno; el margen es plata de venta y se dibuja sólo con `veEconomia` (la vista ya lo devuelve
+ * NULL para el jefe: acá se deja de ofrecer la celda). «—» es «OBRAS no tiene el dato», no cero.
+ */
+function Economia({ mo, mat, margen, pct, veEconomia, parcial, tam }: {
+  mo: number | null; mat: number | null; margen: number | null; pct: number | null
+  veEconomia: boolean; parcial: boolean; tam: string
+}) {
+  const celda = (v: number | null, testid: string) => (
+    <span className={`font-mono tabular-nums ${SUELTA_ANCHO}`} data-testid={testid}
+      style={{ fontSize: tam, textAlign: 'right', color: v === null ? TONO.contexto : C.apagado }}>
+      {v === null ? '—' : pesos(v)}
+    </span>
+  )
+  return (
+    <>
+      {celda(mo, 'costo-mo')}
+      {celda(mat, 'costo-materiales')}
+      <span className={`font-mono tabular-nums ${SUELTA_ANCHO}`} data-testid="margen"
+        title={parcial ? 'Suma sólo las obras con precio en OBRAS' : undefined}
+        style={{ fontSize: tam, textAlign: 'right', color: margen === null ? TONO.contexto : margen < 0 ? C.warn : C.tinta }}>
+        {veEconomia
+          ? (margen === null ? '—' : <>{pesos(margen)}<span style={{ color: C.tenue, marginLeft: 6, fontSize: '10.5px' }}>{pctTexto(pct)}{parcial ? ' ·' : ''}</span></>)
+          : ''}
+      </span>
+    </>
   )
 }
 

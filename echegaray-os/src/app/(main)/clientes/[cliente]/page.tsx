@@ -55,6 +55,7 @@ import { AccesosPortal } from '@/features/clientes/components/accesos/AccesosPor
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorrienteService'
 import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
+import { getEconomiaDeObras, sumaConHuecos } from '@/features/clientes/services/economiaObras'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
 import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
 import { editarPagoDelEsquema, publicarEsquema } from '@/features/clientes/services/esquemaActions'
@@ -123,13 +124,15 @@ export default async function ClientePage({ params, searchParams }: {
   // dibujar la métrica, para no mostrarle un rótulo económico vacío y que parezca un error.
   const veEconomia = puedeVerEconomia(rol)
 
-  const [responsables, contactos, obras, linea, documentos, cartera] = await Promise.all([
+  const [responsables, contactos, obras, linea, documentos, cartera, economia] = await Promise.all([
     puedeEditar ? getResponsables(supabase) : Promise.resolve({ data: [], error: null }),
     getContactos(supabase, id),
     getObrasDelCliente(supabase, id),
     getActividadCliente(supabase, id),
     getDocumentosCliente(supabase, id),
     veEconomia ? getCartera(supabase) : Promise.resolve({ data: [], error: null }),
+    // Lo que OBRAS publica por obra (contratado, MO, materiales, margen), desde Postgres.
+    getEconomiaDeObras(supabase),
   ])
   // Estas lecturas se leían con `?? []`: si la de obras fallaba, la ficha decía que el cliente no
   // tiene obras. Sobre un cliente eso es una afirmación comercial sacada de un fallo de la base.
@@ -161,7 +164,10 @@ export default async function ClientePage({ params, searchParams }: {
   const todas = lector.leer(obras, [])
   const cerradas = todas.filter((o) => o.estado === 'cerrada')
   const enCurso = todas.filter((o) => o.estado === 'activa')
-  const conMontoEnCurso = enCurso.filter((o) => o.monto_contratado != null)
+  // EL PRECIO ES EL DE OBRAS (la OC de Cobranzas); el del formulario, de respaldo.
+  const contratadoEnCurso = sumaConHuecos(
+    enCurso.map((o) => economia?.get(o.obra_id)?.contratado ?? o.monto_contratado ?? null),
+  )
 
   /** La misma dirección con un parámetro cambiado. Los demás se preservan. */
   const url = (cambio: Partial<Record<keyof Query, string | null>>) => {
@@ -182,10 +188,8 @@ export default async function ClientePage({ params, searchParams }: {
           rotulo: 'Contratado en curso',
           // NADIE CARGÓ EL MONTO ≠ CONTRATADO $ 0. Con obras en curso sin monto, la cifra lo dice
           // en vez de publicar un cero que se leería como «trabajamos gratis».
-          valor: conMontoEnCurso.length
-            ? money(conMontoEnCurso.reduce((s, o) => s + (o.monto_contratado ?? 0), 0))
-            : null,
-          falta: enCurso.length ? 'sin monto cargado' : 'sin obra en curso',
+          valor: contratadoEnCurso.total !== null ? money(contratadoEnCurso.total) : null,
+          falta: enCurso.length ? 'sin precio en OBRAS' : 'sin obra en curso',
         } as CifraDeFicha]
       : []),
     { rotulo: 'Contactos', valor: lector.leer(contactos, []).length || null, falta: 'ninguno' },
@@ -346,6 +350,7 @@ export default async function ClientePage({ params, searchParams }: {
                 <ObrasDelCliente
                   obras={conArchivadas ? todas : todas.filter((o) => o.estado !== 'cerrada')}
                   veEconomia={veEconomia}
+                  economia={economia}
                   vacio={cerradas.length === 0
                     ? 'Este cliente no tiene ninguna obra. Se crea desde arriba, colgada de este cliente.'
                     : 'Todas las obras de este cliente están archivadas.'}

@@ -82,7 +82,8 @@ test('las tres señales retiradas siguen teniendo dónde leerse, una por una', (
   assert.match(tabla, /FILO_BLOQUEA/)
   const servicio = sinComentarios(fuente('../services/personasService.ts'))
   assert.match(servicio, /sin_asignar/)
-  // SIN FICHAR HOY: es la columna HOY, persona por persona.
+  // EL DÍA DE HOY: es la columna HOY, persona por persona — la asistencia cargada, no el fichaje
+  // (ver el test de abajo y `docs/engineering/UX_ASISTENCIA_VS_HORAS.md`).
   assert.match(tabla, /data-testid="hoy-persona"/)
   // PAPELES VENCIDOS: desde el 08/09/2026 la lista NO tiene celda de papeles (orden del dueño:
   // «quitar la columna Papeles de la sección Plantel»); la señal se lee en la ficha de la persona.
@@ -90,6 +91,25 @@ test('las tres señales retiradas siguen teniendo dónde leerse, una por una', (
   assert.doesNotMatch(tabla, /data-testid="papeles-persona"/)
   assert.match(tabla, /data-testid="legajo-persona"/)
   assert.match(tabla, /data-testid="alta-persona"/)
+})
+
+// ── LA COLUMNA HOY DICE LA ASISTENCIA, NO EL FICHAJE ────────────────────────────────────────────
+
+test('la columna HOY no vuelve a decir «sin fichar» sobre todo el plantel', () => {
+  // ═══ EL DEFECTO QUE ATRAPA (08/09/2026, captura del dueño) ═══
+  //
+  // La celda escribía «● sin fichar», con punto ámbar, en las diecisiete filas: leía `estadoHoy()`
+  // sobre `asistencia_marca`, una capacidad con cuatro marcas de prueba en toda su historia. El
+  // silencio de una capacidad sin estrenar se publicaba como una novedad diaria sobre la gente.
+  //
+  // Revertir el arreglo devuelve `HOY_LABEL`/`estadoHoy` a este archivo y pone las tres en rojo.
+  const tabla = codigoTabla()
+  assert.doesNotMatch(tabla, /sin fichar|no fich|Fichados/i, 'la columna volvió a hablar de fichaje')
+  assert.doesNotMatch(tabla, /HOY_LABEL|estadoHoy\(/, 'volvió el vocabulario del fichaje a la celda')
+  // Y lo que dibuja sale de la MISMA regla que `/administracion/personas/en-obra`: `clasificar()`
+  // vía `rotuloHoy`. Una segunda copia del `if` sería una segunda definición de «ausencia».
+  assert.match(tabla, /rotuloHoy\(/)
+  assert.match(tabla, /hayMarcaDeHoy\(/, 'el ● de presencia dejó de derivarse de la falta de horas')
 })
 
 // ── LA COLUMNA PAPELES VOLVIÓ CONTANDO, NO CERTIFICANDO ─────────────────────────────────────────

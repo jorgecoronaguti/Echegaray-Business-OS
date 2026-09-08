@@ -60,6 +60,7 @@ import { hhPorMes } from '@/features/administracion/services/hhPorMes'
 import { IconoEditar, IconoObra } from '@/shared/components/iconos'
 import { QuincenaDeAsistencia } from '@/features/administracion/components/QuincenaDeAsistencia'
 import { ObrasDeLaPersona } from '@/features/administracion/components/ObrasDeLaPersona'
+import { AnotacionesDeLaPersona } from '@/features/administracion/components/AnotacionesDeLaPersona'
 import { obrasTrabajadas } from '@/features/administracion/services/obrasDePersona'
 import { getObrasDeLosRegistros } from '@/features/administracion/services/obrasDePersonaService'
 import {
@@ -78,6 +79,9 @@ import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { getAsignacionesDe, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
 import { antiguedadEnAnios, papelesPendientes } from '@/features/administracion/services/fichaPersona'
 import { veLaCuentaDeOtro } from '@/features/administracion/services/accesoPersona'
+import { puedeAnotar, veAnotaciones } from '@/features/administracion/services/anotacionesPersona'
+import { getAnotaciones } from '@/features/administracion/services/anotacionesService'
+import { crearAnotacion } from '@/features/administracion/services/anotacionesActions'
 import { getCuentaDePersona } from '@/features/administracion/services/accesoService'
 import { getBitacora, TRAMO } from '@/features/administracion/services/auditoriaService'
 import { getHHDePersona, resumenDelPeriodo } from '@/features/administracion/services/hhPersonaService'
@@ -162,6 +166,13 @@ export default async function FichaPersonaPage({
   // LA CUENTA NO SE LEE SI EL QUE MIRA NO PUEDE VERLA. Esconder la solapa y leer igual dejaría los
   // datos en el HTML de la página para el que sepa mirar la respuesta del servidor.
   const cuenta = vista === 'usuario' && veLaCuenta ? await getCuentaDePersona(supabase, id) : null
+  // LAS ANOTACIONES SÓLO EN EL RESUMEN, que es donde se dibuja el bloque. Y sólo si el que mira
+  // puede verlas: esconder el bloque y leer igual dejaría el texto en el HTML de la página para el
+  // que sepa mirar la respuesta del servidor —el mismo criterio que la cuenta, arriba—. La RLS
+  // devolvería cero filas de todos modos; esto evita hasta el viaje.
+  const anotaciones = vista === 'resumen' && veAnotaciones(rolActor)
+    ? await getAnotaciones(supabase, id)
+    : null
   const cuantos = cuantosCambios(sp.n)
   const bitacora = vista === 'auditoria' ? await getBitacora(supabase, 'personas', id, cuantos) : null
 
@@ -178,7 +189,10 @@ export default async function FichaPersonaPage({
   // de la medianoche según desde dónde se mire.
   const ventana = ventanaDe(periodo, new Date().toISOString().slice(0, 10))
   const resumen = resumenDelPeriodo(filasHH, ventana.desde, ventana.hasta)
-  const fallo = asignaciones?.error ?? horas?.error ?? documentos?.error
+  // El error de las anotaciones entra al mismo aviso: un bloque que no se pudo leer no puede
+  // dibujarse vacío como si la persona no tuviera ninguna. (La tabla ausente NO es un error: viaja
+  // por `pendiente` y lo dice el propio bloque.)
+  const fallo = asignaciones?.error ?? horas?.error ?? documentos?.error ?? anotaciones?.error
 
   // LO QUE PUBLICA LA TIRA DE MÉTRICAS. Las tres ventanas se fijan en el SERVIDOR por la misma razón
   // que la de la liquidación: el mes y el año dependen del día, y el navegador de quien mira puede
@@ -435,6 +449,18 @@ export default async function FichaPersonaPage({
                 hrefAsignaciones={href('asignaciones')}
               />
 
+              {/* ANOTACIONES — debajo de «Obras en las que trabajó» porque es la pregunta que sigue:
+                  dónde estuvo, y qué pasó con él. Sólo para quien la ficha del empleador es suya
+                  (dirección, administración, jefe de obra); el rol `campo` no llega ni al bloque ni
+                  a las filas —la RLS le devuelve cero—, y en «Mi cuenta» no existe. */}
+              {anotaciones && (
+                <AnotacionesDeLaPersona
+                  anotaciones={anotaciones.data ?? []}
+                  pendiente={anotaciones.pendiente}
+                  puedeEscribir={puedeAnotar(rolActor)}
+                  anotar={crearAnotacion.bind(null, id)}
+                />
+              )}
             </>
           )}
 

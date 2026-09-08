@@ -175,7 +175,7 @@ test('declarado presente y sin horas NO es «sin cargar»: alguien lo miró y di
   const c = clasificar([], 'presente')
   assert.equal(c.estado, 'presente')
   assert.equal(c.horas, null)
-  assert.equal(c.conflicto, false)
+  assert.equal(c.conflicto ?? false, false)
 })
 
 test('declarado presente y con horas es «con horas»: las dos cosas son ciertas', () => {
@@ -197,7 +197,7 @@ test('la ausencia declarada en asistencia_dia le gana a las horas cargadas como 
 
 test('sin presencia declarada la pantalla se comporta igual que antes', () => {
   assert.equal(clasificar([]).estado, 'sin_cargar')
-  assert.equal(clasificar([]).conflicto, false)
+  assert.equal(clasificar([]).conflicto ?? false, false)
   assert.equal(clasificar([reg({ persona_id: 'a', tipo_hora: 'ausencia', notas: 'faltó' })]).estado, 'ausente')
 })
 

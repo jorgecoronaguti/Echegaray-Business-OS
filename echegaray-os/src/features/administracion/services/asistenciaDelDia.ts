@@ -40,16 +40,42 @@ import type { PresenciaGuardada } from './presenciaDelDia.ts'
  *  «sin cargar», que es lo que la pantalla decía hasta hoy de todo el que no tenía un número. */
 export type EstadoDelDia = 'con_horas' | 'presente' | 'ausente' | 'licencia' | 'sin_cargar'
 
+/** Lo que la clasificación afirma de una persona en un día. `horas` en `null` NO es cero: es que
+ *  nadie cargó nada, y las dos cosas se dibujan distinto. */
+export interface ClasificacionDelDia {
+  estado: EstadoDelDia
+  horas: number | null
+  motivo: string | null
+  /** El jefe declaró que no vino y sin embargo el día tiene horas cargadas. Se muestra, no se
+   *  resuelve: una de las dos afirmaciones se liquida y la pantalla no puede elegir cuál.
+   *  OPCIONAL porque `clasificar` siempre lo escribe pero las pantallas que arman una
+   *  clasificación a mano —los tests, y el `SIN_CARGAR` del Plantel— no tienen conflicto posible. */
+  conflicto?: boolean
+}
+
+/**
+ * LO ÚNICO QUE `clasificar` MIRA de una fila de `registros_hh`.
+ *
+ * Existe separado de `RegistroDelDia` porque la clasificación del día es la MISMA regla en dos
+ * pantallas que traen columnas distintas: «En obra ahora» agrupa por obra y necesita el rótulo de
+ * la obra y de la persona; la columna HOY del Plantel ya tiene el nombre en la fila y sólo pide
+ * horas, tipo y motivo. Exigirle a la segunda que fabrique un `nombre` y una `obra` que no consulta
+ * la habría empujado a escribir su propia copia del `if` — que es exactamente el error que este
+ * archivo existe para impedir.
+ */
+export interface RegistroClasificable {
+  horas: number
+  tipo_hora: string
+  notas: string | null
+}
+
 /** Una fila de `registros_hh` del día, con el rótulo de su obra y de su persona ya resueltos. */
-export interface RegistroDelDia {
+export interface RegistroDelDia extends RegistroClasificable {
   persona_id: string
   nombre: string | null
   categoria: string | null
   obra_id: string | null
   obra: string | null
-  horas: number
-  tipo_hora: string
-  notas: string | null
 }
 
 export interface PersonaDelDia {
@@ -63,8 +89,10 @@ export interface PersonaDelDia {
   /** El porqué de la ausencia o la licencia, tal como se cargó. `null` = no se declaró. */
   motivo: string | null
   /** El jefe declaró que no vino y sin embargo el día tiene horas cargadas. Se muestra, no se
-   *  resuelve: una de las dos afirmaciones se liquida y la pantalla no puede elegir cuál. */
-  conflicto: boolean
+   *  resuelve: una de las dos afirmaciones se liquida y la pantalla no puede elegir cuál.
+   *  OPCIONAL porque `clasificar` siempre lo escribe pero las pantallas que arman una
+   *  clasificación a mano —los tests, y el `SIN_CARGAR` del Plantel— no tienen conflicto posible. */
+  conflicto?: boolean
 }
 
 export interface ObraDelDia {
@@ -101,9 +129,9 @@ const rotulo = (id: string | null, nombre: string | null): string =>
  * «ausente». Una licencia por enfermedad y una falta son dos novedades distintas para quien
  * liquida, y esta pantalla las tiene que poder distinguir de un vistazo.
  */
-export function clasificar(registros: RegistroDelDia[], declarada: PresenciaDeclarada = null): {
-  estado: EstadoDelDia; horas: number | null; motivo: string | null; conflicto: boolean
-} {
+export function clasificar(
+  registros: RegistroClasificable[], declarada: PresenciaDeclarada = null,
+): ClasificacionDelDia {
   const enHoras = registros.find((r) => !esTrabajada(r.tipo_hora))
   const trabajadas = registros.filter((r) => esTrabajada(r.tipo_hora))
   const horas = trabajadas.length > 0 ? redondear(trabajadas.reduce((s, r) => s + r.horas, 0)) : null
@@ -118,9 +146,7 @@ export function clasificar(registros: RegistroDelDia[], declarada: PresenciaDecl
     enHoras: enHoras ? (enHoras.tipo_hora === 'licencia' ? 'licencia' : 'ausente') : null,
     dia: 'habil',
   })
-  const motivo = declarada && declarada !== 'presente'
-    ? null
-    : (enHoras?.notas?.trim() || null)
+  const motivo = declarada && declarada !== 'presente' ? null : (enHoras?.notas?.trim() || null)
 
   if (c.entrada.presencia === 'ausente' || c.entrada.presencia === 'licencia') {
     return {
@@ -128,13 +154,16 @@ export function clasificar(registros: RegistroDelDia[], declarada: PresenciaDecl
       // CON CONFLICTO LAS HORAS SE SIGUEN VIENDO. Esconderlas sería elegir la ausencia sin decirlo.
       horas: c.conflicto ? horas : null,
       motivo,
-      conflicto: c.conflicto,
+      // `conflicto` SE ESCRIBE SÓLO CUANDO LO HAY. Es una excepción, no un campo del día: un
+      // `false` en cada clasificación obligaría a toda pantalla que arma una a mano a repetirlo,
+      // y la ausencia de la marca ya significa «no hay contradicción».
+      ...(c.conflicto ? { conflicto: true as const } : {}),
     }
   }
-  if (horas !== null) return { estado: 'con_horas', horas, motivo: null, conflicto: false }
+  if (horas !== null) return { estado: 'con_horas', horas, motivo: null }
   // DECLARADO PRESENTE Y SIN HORAS: no es «sin cargar». Alguien lo miró y dijo que estaba.
-  if (declarada === 'presente') return { estado: 'presente', horas: null, motivo: null, conflicto: false }
-  return { estado: 'sin_cargar', horas: null, motivo: null, conflicto: false }
+  if (declarada === 'presente') return { estado: 'presente', horas: null, motivo: null }
+  return { estado: 'sin_cargar', horas: null, motivo: null }
 }
 
 /**

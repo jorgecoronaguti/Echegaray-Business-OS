@@ -64,7 +64,9 @@ export async function getHHDelMes(
   supabase: SupabaseClient, desde: string, hasta: string,
 ): Promise<Lectura<FilaHHDelMes>> {
   const { data, error } = await supabase
-    .from('registros_hh').select('persona_id, fecha, horas, tipo_hora')
+    // `notas` viaja porque la columna HOY dice POR QUÉ alguien no está («A · carpeta médica»).
+    // Es el mismo motivo que ya lee la ficha del día; sin él la celda tendría una «A» muda.
+    .from('registros_hh').select('persona_id, fecha, horas, tipo_hora, notas')
     .gte('fecha', desde).lte('fecha', hasta)
   if (error) return vacia(error.message)
   // `horas` es numeric: PostgREST lo manda como TEXTO. Sin este Number, la suma concatenaría.
