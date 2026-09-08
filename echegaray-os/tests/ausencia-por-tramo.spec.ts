@@ -230,6 +230,13 @@ test('LAS HORAS QUE CORRESPONDEN SON LAS DEL DÍA ELEGIDO: 8 EL VIERNES, 9 EL LU
   const fondoInactivo = await chip.evaluate((el) => getComputedStyle(el).backgroundColor)
   expect(fondoInactivo, 'un chip no elegido no lleva fondo pintado').toMatch(/rgba\(0, 0, 0, 0\)|transparent/)
   await page.getByTestId('tramo-semana').click()
+  // EL ELEGIDO ES EL QUE SE VE ELEGIDO: `aria-pressed` es lo que decide el fondo grafito, así que
+  // esto mide a la vez el estado y lo que la pantalla muestra.
+  await expect(page.getByTestId('tramo-semana')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('tramo-dia')).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByTestId('hasta-legible')).toContainText(/hasta (lun|mar|mié|jue|vie|sáb) \d\d\/\d\d/)
+  // LA CAPTURA, CON LA TRANSICIÓN TERMINADA: sacada al instante del clic muestra los dos chips a
+  // medio pintar y no se puede juzgar si el elegido es el que pesa.
+  await page.waitForTimeout(400)
   await page.screenshot({ path: 'tests/qa-shots/panel-hasta-chips-1440.png', fullPage: false })
 })
