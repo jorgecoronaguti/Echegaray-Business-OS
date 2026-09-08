@@ -25,12 +25,21 @@ const OBRAS: Record<string, ObraRotulo> = {
   'sf-mamposteria': { id: 'sf-mamposteria', nombre: 'MAMPOSTERÍA', cliente: 'San Francisco' },
   'la-estrella': { id: 'la-estrella', nombre: 'La Estrella', cliente: 'La Estrella' },
   'sin-cliente': { id: 'sin-cliente', nombre: 'GALPÓN 4', cliente: null },
+  // Una obra CERRADA del historial de JORNALES. Está en el catálogo —se puede rotular— pero no
+  // admite horas, así que ninguna asignación suya llega marcada como elegible.
+  'mamposteria-vieja': {
+    id: 'mamposteria-vieja', nombre: 'MAMPOSTERÍA VIEJA', cliente: 'San Francisco', estado: 'cerrada',
+  },
 }
 const PISOS = 'pisos-industriales'
 const MAMPO = 'sf-mamposteria'
 
-const asig = (persona_id: string, nombre: string, obra_id: string, nota: string | null = null): AsignacionQuincena =>
-  ({ persona_id, nombre, nota, obra_id })
+const CERRADA = 'mamposteria-vieja'
+
+const asig = (
+  persona_id: string, nombre: string, obra_id: string, nota: string | null = null,
+  desde: string | null = null, hasta: string | null = null, elegible = true,
+): AsignacionQuincena => ({ persona_id, nombre, nota, obra_id, desde, hasta, elegible })
 const reg = (
   persona_id: string, obra_id: string, fecha: string, horas: number,
   tipo_hora = 'normal', notas: string | null = null,
@@ -74,13 +83,103 @@ test('el día repartido declara sus dos obras con nombre, para que el panel lo p
   assert.equal(filas[0].celdas[1].tramos.length, 0, 'un día sin nada no tiene tramos')
 })
 
-test('con dos obras activas manda la de MÁS HORAS, y el rótulo no baila entre recargas', () => {
+test('con dos vigentes DEL MISMO DÍA manda la de más horas — es el ÚLTIMO desempate, no el primero', () => {
   const filas = armar({
     asignaciones: [asig('p1', 'Perez Juan', PISOS), asig('p1', 'Perez Juan', MAMPO)],
     registros: [reg('p1', PISOS, L, 2), reg('p1', MAMPO, L, 8)],
   })
   assert.equal(filas[0].rotuloObra, 'MAMPOSTERÍA')
   assert.equal(filas[0].obraPorDefecto?.id, MAMPO, 'y es la que recibe lo que se escriba')
+})
+
+// ═══ EL DEFECTO DEL 08/09/2026: «EMPIEZO A PONER BIEN LA OBRA QUE ESTÁN Y SE ROMPE» ═══
+//
+// El dueño movió a ALANIZ EMANUEL de PISOS INDUSTRIALES a Quattropani – SALÓN COMERCIAL. La base le
+// hizo caso —el acuse decía «Ya estaba en Quattropani»— y el desplegable «Obra actual» seguía
+// mostrando PISOS INDUSTRIALES después del refresh. La obra actual se elegía por la obra con MÁS
+// HORAS de la quincena, y las horas de la quincena estaban en PISOS: la pantalla desmentía el gesto
+// que el dueño acababa de hacer, y volver a intentarlo no cambiaba nada.
+
+test('LA OBRA ACTUAL ES LA ASIGNACIÓN VIGENTE HOY, aunque TODAS las horas estén en la obra anterior', () => {
+  const filas = armar({
+    asignaciones: [
+      // El tramo de PISOS se cerró ayer; sigue en la quincena porque sus horas del lunes al jueves
+      // son reales y tienen que verse.
+      asig('p1', 'Alaniz Emanuel', PISOS, null, L, J),
+      asig('p1', 'Alaniz Emanuel', MAMPO, null, V, null),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8), reg('p1', PISOS, M, 8.8), reg('p1', PISOS, X, 8.8)],
+  })
+  assert.equal(filas.length, 1)
+  assert.equal(filas[0].obraPorDefecto?.id, MAMPO,
+    'el desplegable muestra la obra a la que se lo acaba de mover, no la de sus horas')
+  assert.equal(filas[0].rotuloObra, 'MAMPOSTERÍA')
+  assert.equal(filas[0].celdas[0].horas, 8.8, 'y las horas del tramo cerrado se siguen viendo')
+})
+
+test('CON DOS VIGENTES GANA LA DE `desde` MÁS RECIENTE, aunque la vieja tenga más horas', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Perez Juan', PISOS, null, L, null),
+      asig('p1', 'Perez Juan', MAMPO, null, J, null),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8), reg('p1', PISOS, M, 8.8), reg('p1', MAMPO, J, 2)],
+  })
+  assert.equal(filas[0].obraPorDefecto?.id, MAMPO, 'la última decisión es la que rige')
+  assert.equal(filas[0].rotuloObra, 'MAMPOSTERÍA')
+})
+
+test('UNA ASIGNACIÓN QUE EMPIEZA DESPUÉS DE HOY TODAVÍA NO ES LA OBRA ACTUAL', () => {
+  // Adelantarla afirmaría un traslado que no ocurrió, y le mandaría a esa obra el costo de las
+  // horas que se carguen hoy.
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Perez Juan', PISOS, null, L, null),
+      asig('p1', 'Perez Juan', MAMPO, null, S, null),
+    ],
+    registros: [],
+  })
+  assert.equal(filas[0].obraPorDefecto?.id, PISOS)
+})
+
+test('SIN NINGUNA ASIGNACIÓN VIGENTE HOY NO HAY OBRA ACTUAL: «Sin obra» y el rótulo del cliente', () => {
+  const filas = armar({
+    // Toda su asignación se cerró el miércoles; sus horas siguen en la quincena.
+    asignaciones: [asig('p1', 'Gonzalez Carlos', MAMPO, null, L, X)],
+    registros: [reg('p1', MAMPO, L, 8.8), reg('p1', MAMPO, M, 8.8)],
+  })
+  assert.equal(filas[0].obraPorDefecto, null,
+    'el desplegable muestra «Sin obra»: no hay a quién imputarle lo que se escriba')
+  assert.equal(filas[0].rotuloObra, 'San Francisco', 'y el rótulo cae al CLIENTE de sus horas')
+})
+
+test('LOS CHIPS CUENTAN POR ASIGNACIÓN VIGENTE, no por dónde están las horas', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Alaniz Emanuel', PISOS, null, L, J), asig('p1', 'Alaniz Emanuel', MAMPO, null, V, null),
+      asig('p2', 'Gomez Ana', PISOS, null, L, J), asig('p2', 'Gomez Ana', MAMPO, null, V, null),
+      asig('p3', 'Tello Juan', PISOS, null, L, null),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8), reg('p2', PISOS, L, 8.8)],
+  })
+  assert.deepEqual(personasPorObra(filas), [
+    { rotulo: 'MAMPOSTERÍA', personas: 2 },
+    { rotulo: 'PISOS INDUSTRIALES', personas: 1 },
+  ])
+})
+
+test('EL ORDEN DE LA GRILLA NO CAMBIA: sigue siendo por nombre, no por obra ni por vigencia', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p3', 'Zogbe Walter', MAMPO, null, V, null),
+      asig('p1', 'Alaniz Emanuel', PISOS, null, L, J),
+      asig('p1', 'Alaniz Emanuel', MAMPO, null, V, null),
+      asig('p2', 'Gomez Ana', PISOS, null, L, null),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8)],
+  })
+  assert.deepEqual(filas.map((f) => f.persona.nombre),
+    ['Alaniz Emanuel', 'Gomez Ana', 'Zogbe Walter'])
 })
 
 test('SIN OBRA ACTIVA, LA COLUMNA OBRA MUESTRA EL CLIENTE', () => {
@@ -313,4 +412,88 @@ test('SIN NOMBRE NO HAY FILA: un registro de alguien que no está en el plantel 
     registros: [reg('fantasma', MAMPO, L, 9, 'licencia', 'enfermedad')],
   })
   assert.equal(filas.length, 0)
+})
+
+// ═══ LA VIGENTE ESTÁ EN UNA OBRA CERRADA (producción, 08/09/2026) ═══
+//
+// AGUERO, OCHOA y GONZALEZ TOBARES tienen su asignación vigente en una obra CERRADA del historial
+// de JORNALES. El desplegable sólo lista obras activas, así que la fila terminaba mostrando
+// «SF - PISOS INDUSTRIALES» —la primera activa— y el chip del encabezado contaba tres personas de
+// más en una obra donde no están. Tres de diecisiete filas afirmaban una obra que la base no dice.
+
+test('LA VIGENTE EN UNA OBRA CERRADA SE MUESTRA COMO ES, y NUNCA como una obra activa', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Aguero Luis', PISOS, null, L, J),
+      asig('p1', 'Aguero Luis', CERRADA, null, V, null, false),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8)],
+  })
+  assert.equal(filas.length, 1, 'la obra cerrada no crea una fila, pero tampoco la borra')
+  assert.deepEqual(filas[0].obraVigenteNoElegible,
+    { id: CERRADA, nombre: 'MAMPOSTERÍA VIEJA' },
+    'el desplegable tiene que poder mostrar la obra real, deshabilitada')
+  assert.equal(filas[0].obraPorDefecto, null,
+    'y a una obra cerrada no se le imputa una hora: sin destino no se escribe')
+  assert.equal(filas[0].rotuloObra, 'MAMPOSTERÍA VIEJA (cerrada)',
+    'el rótulo lleva el estado REAL de la base, no una palabra inventada')
+})
+
+test('EL CHIP NO CUENTA A LA VIGENTE-EN-CERRADA DENTRO DE UNA OBRA ACTIVA', () => {
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Aguero Luis', PISOS, null, L, J),
+      asig('p1', 'Aguero Luis', CERRADA, null, V, null, false),
+      asig('p2', 'Gomez Ana', PISOS, null, L, null),
+    ],
+    registros: [reg('p1', PISOS, L, 8.8)],
+  })
+  assert.deepEqual(personasPorObra(filas), [
+    { rotulo: 'MAMPOSTERÍA VIEJA (cerrada)', personas: 1 },
+    { rotulo: 'PISOS INDUSTRIALES', personas: 1 },
+  ], 'PISOS tiene UNA persona, no dos: la otra está en una obra cerrada y hay que decidirla')
+})
+
+test('UNA ASIGNACIÓN A UNA OBRA CERRADA NO METE A NADIE EN LA GRILLA', () => {
+  const filas = armar({
+    asignaciones: [asig('p7', 'Fantasma Juan', CERRADA, null, L, null, false)],
+    registros: [],
+  })
+  assert.equal(filas.length, 0,
+    'la grilla se llenaría de gente que sólo figura en obras cerradas del historial de JORNALES')
+})
+
+// ═══ EL ROL ORGANIZACIONAL VIAJA A LA FILA (08/09/2026) ═══
+//
+// Orden del dueño: *«dividir en la pestaña asistencia y plantel a los jefes de obra del resto de
+// los obreros»*. La grilla no puede decidirlo sola —el puesto no está en la asignación ni en el
+// registro—, así que entra por `puestos` y sale en `fila.esJefe`. Clavar `esJefe: false` o
+// cambiar la fuente por la categoría pone este test en rojo.
+test('esJefe sale de `puestos` y sólo de ahí', () => {
+  const filas = armarQuincenaPorObra({
+    asignaciones: [
+      asig('nievas', 'NIEVAS VILLEGAS JUAN PABLO', PISOS),
+      asig('acosta', 'ACOSTA RAMON', PISOS),
+    ],
+    registros: [reg('nievas', PISOS, L, 8), reg('acosta', PISOS, L, 8)],
+    obras: OBRAS,
+    dias: DIAS,
+    hoy: HOY,
+    puestos: { nievas: 'JEFE DE OBRA', acosta: null },
+  })
+  assert.deepEqual(
+    filas.map((f) => [f.persona.id, f.esJefe]),
+    [['acosta', false], ['nievas', true]],
+  )
+})
+
+// SIN LA LECTURA DEL PUESTO NADIE ES JEFE — y la grilla queda como estaba. Es lo que sostiene que
+// una lectura fallida degrade a «una sola sección» en vez de tirar la quincena entera.
+test('sin `puestos` la grilla no inventa jefes', () => {
+  const filas = armarQuincenaPorObra({
+    asignaciones: [asig('nievas', 'NIEVAS VILLEGAS JUAN PABLO', PISOS)],
+    registros: [reg('nievas', PISOS, L, 8)],
+    obras: OBRAS, dias: DIAS, hoy: HOY,
+  })
+  assert.equal(filas[0].esJefe, false)
 })

@@ -37,6 +37,20 @@ _actualizado: 2026-09-07 (noche) · commit `d70430d3` en main y en producción_
   OBRAS repartidos en el plazo y netos de compras, SIN emitir MO (ya en jornales); costos MA/MO faltantes
   desde Drive (`obras-datos.mjs`). Los 17 ítems de `obra_egreso_proyectado` con fecha 01/10 NO van como bulto.
 
+- **Compras — retiro de las 28 Canceladas (08/09 tarde, orden del dueño)**: archivadas en `_COMPRAS_RETIRADAS`
+  (oculta; fila completa + Fila original · Motivo · Cubierta por · Retirada el; 28 filas, $87.300.000 nominales) y
+  BORRADAS de Compras (955 → 927; IDs corridos, `ID = ROW()-4`). Script `scripts/compras-retirar-canceladas.mjs`
+  (dry por defecto, `--aplicar`; salta la guarda con `yaGuardado` sólo ahí). Verificado: libro 1.232 / $30.345.779
+  idéntico fila por fila; Mensual/Semanal/CAJA idénticos celda a celda; 0 pares fecha+importe en dos orígenes desde
+  01/08; `compra_sheet` 927 filas y `compra_adjunto.fila_compras` realineado por clave (110). Quedan en Compras y
+  POR QUÉ: préstamo camioneta cuotas 24–26 (ningún generador proyecta el préstamo → FALTA_DATO/rediseño), SAC dic
+  (hueco declarado del libro: sólo entra por Compras), plan W303094 c2/c3 (el extractor de Cargas lee el plan DESDE
+  Compras), FCL jul/ago + SINDICATOS ago (la cadena de Cargas arranca en el mes de caja 10/2026), todo lo Pagado
+  histórico de Cargas/Gremiales/Impuestos/Financiero/SAC/Planes (única fuente de la historia en el libro), y las
+  ~45 filas Pagado de Jornales/Sueldos admin (el libro ya no las cuenta, pero `direccion-retiros` lee 807–809 por
+  nombre y el efectivo de CAJA lee Pagado+Efectivo sin `factorSinPlanilla`): segunda tanda sólo después de mover esas
+  dos fuentes. FCL Julio f468→440: vencido 10/08 y sigue «Vigente» — el dueño confirma si se pagó.
+
 ## 0.1 ABIERTO / DECISIONES DEL DUEÑO PENDIENTES
 
 - **Dupec** (Compras 912/913, $412.600, 26–27/08): no hay cheque a DUBOS/DUPEC posterior al 372 en

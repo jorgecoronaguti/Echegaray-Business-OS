@@ -15,7 +15,7 @@
 // ═══ LA COLUMNA OBRA NUNCA MUESTRA UN SLUG ═══
 //
 // *"jamás el slug tipo sf-mamposteria / la-estrella… si no tiene obra activa, ponele cliente"*. El
-// orden es: la obra ACTIVA de su asignación vigente (`obra_canonica.nombre`) · si no tiene ninguna,
+// orden es: la obra ACTIVA de su asignación vigente HOY (`obra_canonica.nombre`) · si no tiene ninguna,
 // el CLIENTE de la obra donde están sus horas (`obra_canonica.cliente_texto`) · si esa obra no
 // tiene cliente cargado, el nombre de la obra · y si no hay nada, «Sin obra activa». El id no es un
 // rótulo: es una clave técnica, y escribirla en la pantalla es mostrarle al dueño la plomería.
@@ -37,6 +37,7 @@
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { redondear } from './jornadaPorObra.ts'
 import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
+import { esJefeDeObra } from './vocabularioPersona.ts'
 
 export type EstadoCeldaObra =
   | 'horas'
@@ -69,12 +70,20 @@ export interface CeldaObra {
   motivo: string | null
 }
 
-/** Una asignación VIGENTE en la quincena, a una obra ACTIVA. El servicio ya filtró las dos cosas. */
+/** Una asignación viva EN ALGÚN PUNTO de la quincena, a una obra ACTIVA. El servicio ya filtró las
+ *  dos cosas. `desde`/`hasta` viajan porque «vigente en la quincena» y «vigente HOY» no son lo
+ *  mismo: la primera decide quién aparece en la grilla, la segunda cuál es su obra actual. */
 export interface AsignacionQuincena {
   persona_id: string
   nombre: string
   nota: string | null
   obra_id: string
+  /** `null` = sin límite, no «nunca». Ausente se trata como `null` por compatibilidad. */
+  desde?: string | null
+  hasta?: string | null
+  /** ¿Se le pueden imputar horas a esa obra? `false` = la obra NO está activa. Ausente = sí. Una
+   *  asignación no elegible NO pone a nadie en la grilla, pero SÍ puede ser su obra vigente. */
+  elegible?: boolean
 }
 
 export interface RegistroQuincena {
@@ -99,6 +108,9 @@ export interface ObraRotulo {
   nombre: string
   /** `obra_canonica.cliente_texto`. `null` cuando la obra no tiene cliente cargado. */
   cliente: string | null
+  /** `obra_canonica.estado`. La pantalla escribe «(cerrada)» con la palabra REAL de la base: una
+   *  obra pausada no es una obra cerrada, e inventar el estado es afirmar lo que nadie dijo. */
+  estado?: string | null
 }
 
 export interface FilaQuincena {
@@ -112,11 +124,23 @@ export interface FilaQuincena {
    * activa: sin destino no se puede escribir, y elegir una por la persona sería inventar el costo.
    */
   obraPorDefecto: { id: string; nombre: string } | null
+  /**
+   * Su asignación vigente HOY cuando la obra NO admite horas (cerrada, pausada). El desplegable la
+   * muestra seleccionada y deshabilitada; `obraPorDefecto` queda en `null` porque a esa obra no se
+   * le puede imputar nada.
+   *
+   * Sin esto la pantalla mentía: el desplegable sólo lista obras activas, así que a AGUERO
+   * —vigente en MAMPOSTERÍA, cerrada— le mostraba «SF - PISOS INDUSTRIALES», que no es su obra.
+   * Tres de diecisiete filas afirmaban una obra que la base no dice (producción, 08/09/2026).
+   */
+  obraVigenteNoElegible: { id: string; nombre: string } | null
   celdas: CeldaObra[]
   /** Horas trabajadas de la quincena. `null` = ninguna declarada, que no es lo mismo que cero. */
   horas: number | null
   /** Las fechas que hay que reclamar. Vacío = nada que reclamar. */
   reclama: string[]
+  /** Jefe de obra según `personas.puesto`. Es lo que parte la grilla en dos secciones. */
+  esJefe: boolean
 }
 
 const numero = (v: unknown): number => {
@@ -136,6 +160,16 @@ export interface EntradaQuincenaObra {
   noLaborables?: string[]
   /** El plantel por id, para nombrar a quien dejó registros sin tener ninguna asignación. */
   personas?: Record<string, PersonaRotulo>
+  /**
+   * `personas.puesto` por id — el ROL ORGANIZACIONAL, y lo único que separa a los jefes de obra del
+   * resto del plantel (dueño, 08/09/2026). Quién es jefe lo decide `esJefeDeObra`, acá y en el
+   * plantel: una sola definición, en `vocabularioPersona.ts`.
+   *
+   * AUSENTE NO ES «NO HAY JEFES», ES «NO SE PUDO MIRAR»: quien lee decide qué hacer con eso. Lo que
+   * esta capa no hace es inventar un rol — sin el dato, la fila cae con los obreros, que es donde
+   * estaba antes de este cambio.
+   */
+  puestos?: Record<string, string | null>
   /** Hoy, para no reclamar un día que todavía no terminó. */
   hoy: string
 }
@@ -165,12 +199,19 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
       hayDatoEseDia: diasConDato.has(fecha),
       futuro: fecha > e.hoy,
     }))
-    const activa = obraActivaDe(p.obras, suyos, e.obras)
+    const vigente = obraActivaDe(p.asignaciones, suyos, e.obras, e.hoy)
+    const activa = vigente?.elegible ? vigente.obra : null
+    const noElegible = vigente && !vigente.elegible ? vigente.obra : null
     return {
       clave: p.persona_id,
       persona: { id: p.persona_id, nombre: p.nombre, nota: p.nota },
-      rotuloObra: activa?.nombre ?? clienteDe(suyos, e.obras) ?? SIN_OBRA,
+      // EL CHIP NO PUEDE CONTARLA EN UNA OBRA ACTIVA. Por eso el rótulo de la obra no elegible
+      // lleva su estado pegado: «MAMPOSTERÍA (cerrada)» es un chip propio y no engorda PISOS.
+      rotuloObra: activa?.nombre
+        ?? (noElegible ? rotuloDeObraNoElegible(noElegible) : null)
+        ?? clienteDe(suyos, e.obras) ?? SIN_OBRA,
       obraPorDefecto: activa ? { id: activa.id, nombre: activa.nombre } : null,
+      obraVigenteNoElegible: noElegible ? { id: noElegible.id, nombre: noElegible.nombre } : null,
       celdas,
       // `null` Y NO CERO CUANDO NO HAY NINGUNA HORA. Un «0» afirma que esa persona trabajó cero
       // horas esa quincena; lo que pasa es que no hay con qué contestar.
@@ -178,16 +219,37 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
         ? redondear(celdas.reduce((s, c) => s + (c.horas ?? 0), 0))
         : null,
       reclama: celdas.filter((c) => c.estado === 'sin_marcar').map((c) => c.fecha),
+      esJefe: esJefeDeObra(e.puestos?.[p.persona_id] ?? null),
     }
   })
+}
+
+/** Un tramo de asignación de la persona, tal como llegó. `null` en las puntas = sin límite. */
+interface TramoAsignado {
+  obra_id: string
+  desde: string | null
+  hasta: string | null
+  /** `false` cuando la obra no admite horas. Sigue siendo su obra vigente: no se descarta. */
+  elegible: boolean
+}
+
+const tramoDe = (a: AsignacionQuincena): TramoAsignado => ({
+  obra_id: a.obra_id, desde: a.desde ?? null, hasta: a.hasta ?? null, elegible: a.elegible !== false,
+})
+
+/** «MAMPOSTERÍA (cerrada)» — el nombre real con el estado real. */
+function rotuloDeObraNoElegible(o: ObraRotulo): string {
+  const estado = (o.estado ?? '').trim()
+  return estado ? `${o.nombre} (${estado})` : o.nombre
 }
 
 interface PersonaDeLaGrilla {
   persona_id: string
   nombre: string
   nota: string | null
-  /** Sus obras ACTIVAS por asignación vigente. Puede tener más de una. */
-  obras: string[]
+  /** Sus asignaciones a obras ACTIVAS vivas en la quincena. Puede tener más de una, y puede tener
+   *  tramos ya cerrados: cuál rige HOY lo decide `obraActivaDe`, no esta lista. */
+  asignaciones: TramoAsignado[]
 }
 
 /** Las personas de la quincena, ordenadas por nombre. Una entrada por `persona_id`, sin excepción. */
@@ -198,10 +260,18 @@ function personasDe(
 ): PersonaDeLaGrilla[] {
   const mapa = new Map<string, PersonaDeLaGrilla>()
   for (const a of asignaciones) {
+    // NO SE DEDUPLICA POR OBRA. Dos tramos a la misma obra con `desde` distinto son dos hechos
+    // —volvió a la obra después de un paso por otra— y el `desde` del último es justamente lo que
+    // desempata cuál rige hoy. Colapsarlos al primero perdía ese dato.
+    // UNA ASIGNACIÓN A UNA OBRA QUE NO ADMITE HORAS NO CREA LA FILA: la grilla se llenaría de gente
+    // que sólo figura en obras cerradas del historial de JORNALES. Se engancha al final, sobre
+    // quien ya está en la grilla por otra razón.
+    if (a.elegible === false) continue
+    const tramo = tramoDe(a)
     const previa = mapa.get(a.persona_id)
-    if (previa) { if (!previa.obras.includes(a.obra_id)) previa.obras.push(a.obra_id); continue }
+    if (previa) { previa.asignaciones.push(tramo); continue }
     mapa.set(a.persona_id, {
-      persona_id: a.persona_id, nombre: a.nombre, nota: a.nota, obras: [a.obra_id],
+      persona_id: a.persona_id, nombre: a.nombre, nota: a.nota, asignaciones: [tramo],
     })
   }
   for (const r of registros) {
@@ -224,28 +294,55 @@ function personasDe(
       persona_id: r.persona_id,
       nombre: conNombre?.nombre ?? delPlantel.nombre,
       nota: conNombre?.nota ?? delPlantel?.nota ?? null,
-      obras: [],
+      asignaciones: [],
     })
+  }
+  for (const a of asignaciones) {
+    if (a.elegible !== false) continue
+    mapa.get(a.persona_id)?.asignaciones.push(tramoDe(a))
   }
   return [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
 
 /**
- * Cuál de sus obras activas se muestra y recibe lo que se escriba. Con una sola, ésa. Con varias,
- * la de MÁS HORAS en la quincena —es donde de verdad está trabajando—, y el desempate por nombre
- * para que la pantalla no cambie de rótulo entre dos recargas.
+ * LA OBRA ACTUAL ES LA ASIGNACIÓN VIGENTE HOY. NO LA DE MÁS HORAS.
+ *
+ * El defecto que esto arregla lo vio el dueño en producción (08/09/2026): *"empiezo a poner bien en
+ * la obra que están y se rompe"*. Movía a ALANIZ de PISOS INDUSTRIALES a SALÓN COMERCIAL, el acuse
+ * decía «Ya estaba en Quattropani – SALÓN COMERCIAL» —porque la asignación vigente SÍ era ésa— y el
+ * desplegable volvía a mostrar PISOS INDUSTRIALES. La razón: el tramo cerrado de PISOS sigue vivo
+ * dentro de la quincena (sus horas de esos días existen y tienen que verse), y esta función elegía
+ * entre las dos por HORAS. Las horas de la quincena ya estaban en PISOS, así que la pantalla
+ * contradecía a la base y desmentía el gesto que el dueño acababa de hacer.
+ *
+ * Las horas de la quincena NO deciden dónde está hoy una persona: dicen dónde estuvo. El orden es
+ * `hasta` vigente hoy · el `desde` MÁS RECIENTE · y sólo con el mismo `desde` —dos frentes abiertos
+ * el mismo día, donde la base no tiene con qué elegir— desempatan las horas, y después el nombre
+ * para que el rótulo no baile entre dos recargas.
  */
 function obraActivaDe(
-  obras: string[], registros: RegistroQuincena[], catalogo: Record<string, ObraRotulo>,
-): ObraRotulo | null {
-  const rotulables = obras.map((id) => catalogo[id]).filter((o): o is ObraRotulo => Boolean(o))
-  if (rotulables.length <= 1) return rotulables[0] ?? null
+  asignaciones: TramoAsignado[],
+  registros: RegistroQuincena[],
+  catalogo: Record<string, ObraRotulo>,
+  hoy: string,
+): { obra: ObraRotulo; elegible: boolean } | null {
+  // Vigente HOY: empezó (o siempre estuvo) y no se cerró antes de hoy. Un `desde` futuro todavía no
+  // rige — decir que ya está ahí sería adelantar un traslado que no ocurrió.
+  const vigentes = asignaciones.filter((a) =>
+    (!a.desde || a.desde <= hoy) && (!a.hasta || a.hasta >= hoy))
+  const rotulables = vigentes
+    .map((a) => ({ tramo: a, obra: catalogo[a.obra_id] }))
+    .filter((x): x is { tramo: TramoAsignado; obra: ObraRotulo } => Boolean(x.obra))
+  if (rotulables.length === 0) return null
   const horas = new Map<string, number>()
   for (const r of registros) {
     if (esTrabajada(r.tipo_hora)) horas.set(r.obra_id, (horas.get(r.obra_id) ?? 0) + numero(r.horas))
   }
-  return [...rotulables].sort((a, b) =>
-    (horas.get(b.id) ?? 0) - (horas.get(a.id) ?? 0) || a.nombre.localeCompare(b.nombre, 'es'))[0]
+  const ganador = [...rotulables].sort((a, b) =>
+    (b.tramo.desde ?? '').localeCompare(a.tramo.desde ?? '')
+    || (horas.get(b.obra.id) ?? 0) - (horas.get(a.obra.id) ?? 0)
+    || a.obra.nombre.localeCompare(b.obra.nombre, 'es'))[0]
+  return { obra: ganador.obra, elegible: ganador.tramo.elegible }
 }
 
 /**

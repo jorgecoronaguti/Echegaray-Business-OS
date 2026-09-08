@@ -37,23 +37,16 @@ import {
   getFichaRecurso, getManoDeObra, getPlantillas, getRecursos, getVersionesDePrecio,
 } from '@/features/base-maestra/services/recursosService'
 import { contadores, getCuentasBaseMaestra } from '@/features/base-maestra/services/cuentas'
-import { IconoCompra, IconoPresupuesto } from '@/shared/components/iconos'
-import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
-import { senalesDeBaseMaestra } from '@/features/base-maestra/services/senalesBaseMaestra'
 
 import { actualizarPrecioRecurso, crearRecurso, editarRecurso } from '@/features/base-maestra/services/recursosActions'
 import { fechaLarga, porcentaje } from '@/features/base-maestra/services/reglas'
 
 export const dynamic = 'force-dynamic'
 
-/** Los dos iconos que esta sección mezcla: una tarea tipo y un recurso comprado. */
-const ICONOS_BM = { presupuesto: IconoPresupuesto, compra: IconoCompra }
-
-/** Los dos destinos de la primera línea: el recorte que produjo cada número. */
-const HREFS_BM = {
-  sinAnalisis: '/administracion/base-maestra/tareas?c=sinAnalisis',
-  sinPrecio: '/administracion/base-maestra/recursos?tipo=sin_precio',
-}
+// LA BANDA «LO QUE PIDE TRABAJO» —«sin análisis» y «sin precio»— la retiró el dueño el 08/09/2026
+// de toda la plataforma («no es útil y confunde»). Los dos recortes que producían esos números
+// siguen existiendo como filtros de la sección (`?c=sinAnalisis`, `?tipo=sin_precio`): lo que se
+// fue es el aviso de arriba, no la forma de encontrar lo que falta.
 
 
 type Busqueda = { v?: string; q?: string; r?: string; tipo?: string; nuevo?: string; editar?: string; precio?: string }
@@ -84,27 +77,10 @@ export default async function BaseMaestraRecursosPage({ searchParams }: { search
   const hoy = new Date().toISOString().slice(0, 10)
   const cuentas = await getCuentasBaseMaestra(supabase)
   const banda: Partial<Record<SolapaBM, number | null>> = contadores(cuentas)
-  // LAS SEÑALES SON DE LA SECCIÓN, NO DE LA SUB-VISTA: las mismas dos en Tareas y en Recursos, con
-  // los mismos números. Salen de la MISMA lectura (`getCuentasBaseMaestra`) para que no puedan
-  // discrepar entre una solapa y la de al lado.
-  const senales = senalesDeBaseMaestra({
-    tareas: cuentas.analisis, recursos: cuentas.precios, economia, hrefs: HREFS_BM,
-  })
-  const trabajo = (
-    <TrabajoDeSeccion
-      senales={senales}
-      icono={IconoPresupuesto}
-      iconos={ICONOS_BM}
-      vacio={economia
-        ? 'Todas las tareas tipo tienen análisis y todos los recursos tienen precio.'
-        : 'Todas las tareas tipo tienen análisis.'}
-    />
-  )
-
   if (vista === 'recursos') {
-    return <Cartera sp={sp} economia={economia} hoy={hoy} cuentas={banda} supabase={supabase} trabajo={trabajo} />
+    return <Cartera sp={sp} economia={economia} hoy={hoy} cuentas={banda} supabase={supabase} />
   }
-  return <Otras sp={sp} vista={vista} economia={economia} hoy={hoy} cuentas={banda} supabase={supabase} trabajo={trabajo} />
+  return <Otras sp={sp} vista={vista} economia={economia} hoy={hoy} cuentas={banda} supabase={supabase} />
 }
 
 type Cliente = Awaited<ReturnType<typeof createClient>>
@@ -124,22 +100,19 @@ function AvisoPermiso() {
 // ═══ LA CARTERA — el canónico 18 ═══════════════════════════════════════════════════════════════
 
 async function Cartera({
-  sp, economia, hoy, cuentas, supabase, trabajo,
+  sp, economia, hoy, cuentas, supabase,
 }: {
   sp: Busqueda
   economia: boolean
   hoy: string
   cuentas: Partial<Record<SolapaBM, number | null>>
   supabase: Cliente
-  /** La primera línea de la sección, ya renderizada en el servidor. */
-  trabajo: React.ReactNode
 }) {
   const listado = await getRecursos(supabase, hoy)
   if (listado.error) {
     return (
       <Marco>
         <NavAdministracion />
-        {trabajo}
         <BandaBaseMaestra activa="recursos" cuentas={cuentas} />
         <div style={{ padding: '14px 20px' }} data-testid="recursos-error">
           <Aviso tono="neg" titulo="No pude leer la base maestra">{listado.error}</Aviso>
@@ -167,7 +140,6 @@ async function Cartera({
   return (
     <Marco>
       <NavAdministracion />
-      {trabajo}
       {!economia && <AvisoPermiso />}
       {ficha?.error && (
         <div style={{ padding: '12px 20px 0' }} data-testid="ficha-recurso-error">
@@ -251,7 +223,7 @@ async function Cartera({
 // ═══ LAS TRES VISTAS QUE EL ZIP NO DIBUJA ══════════════════════════════════════════════════════
 
 async function Otras({
-  sp, vista, economia, hoy, cuentas, supabase, trabajo,
+  sp, vista, economia, hoy, cuentas, supabase,
 }: {
   sp: Busqueda
   vista: Exclude<VistaRecursos, 'recursos'>
@@ -259,13 +231,11 @@ async function Otras({
   hoy: string
   cuentas: Partial<Record<SolapaBM, number | null>>
   supabase: Cliente
-  trabajo: React.ReactNode
 }) {
   const armado = await armar(supabase, vista, hoy, economia, sp.q ?? '')
   return (
     <Marco>
       <NavAdministracion />
-      {trabajo}
       <BandaBaseMaestra activa={vista} cuentas={cuentas} />
       {!economia && vista !== 'plantillas' && <AvisoPermiso />}
       <div style={{ padding: '14px 20px 20px' }}>

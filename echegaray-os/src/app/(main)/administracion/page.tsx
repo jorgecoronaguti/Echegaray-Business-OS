@@ -5,10 +5,15 @@
 //   · La barra pasa de DIEZ tablas en fila a SIETE destinos en tres grupos separados por un filo.
 //     Presupuestos sube a nivel 1 (es comercial) y Usuarios baja al menú de la cuenta; Pendientes y
 //     Asistencia se absorben en «Trabajo», que es esta pantalla. Ninguna ruta se rompió.
-//   · La banda de chips se convierte en un LIBRO MAYOR de siete señales: cada fila dice qué falta,
-//     qué bloquea y trae su verbo. Un chip que sólo cuenta no hace que nadie deje lo que está
-//     haciendo.
-//   · La cartera dibuja las obras en ejecución COLGANDO de su cliente y compartiendo sus columnas.
+//   · La cartera dibuja las obras en ejecución colgando de su cliente.
+//
+// ═══ LA BANDA «LO QUE PIDE TRABAJO» SE RETIRÓ (08/09/2026, orden del dueño) ═══
+//
+// El libro mayor de siete señales abría esta pantalla desde el 25/08. El dueño lo sacó de toda la
+// plataforma: «no es útil y confunde». Las señales NO se apagaron —siguen contándose en
+// `homeAdministracion.senalesDeTrabajo`, que alimenta el contador de «Trabajo» en la barra y la
+// campanita del encabezado—; lo que se retiró es la banda que las repetía arriba de la cartera.
+// Por eso esta pantalla abre directamente con Clientes y obras en ejecución.
 //
 // ═══ LAS SEIS LECTURAS VAN EN UNA SOLA TANDA, Y SON SEIS PORQUE ANTES ERAN DIECINUEVE ═══
 //
@@ -37,11 +42,8 @@ import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { Aviso } from '@/shared/components/ds'
 import { C } from '@/shared/components/canon'
 import { BarraAreas } from '@/features/administracion/components/BarraAreas'
-import { LibroDeTrabajo } from '@/features/administracion/components/LibroDeTrabajo'
 import { CarteraHome } from '@/features/administracion/components/CarteraHome'
-import {
-  areasDeAdministracion, atencionNoLeida, getConteosHome, senalesDeTrabajo,
-} from '@/features/administracion/services/homeAdministracion'
+import { areasDeAdministracion, getConteosHome } from '@/features/administracion/services/homeAdministracion'
 import {
   armarCartera, getCertificadosDeLaCartera, getObrasDeLaCartera, getUltimoParte, hoyEnLaEmpresa,
 } from '@/features/administracion/services/homeCartera'
@@ -65,7 +67,6 @@ export default async function AdministracionPage() {
   // EL CONTADOR DE CLIENTES SALE DE LA CARTERA QUE YA SE TRAJO. Un `count` aparte sería una consulta
   // más para decir lo mismo, y el día que una de las dos cambie de criterio dirían números distintos.
   const conteos = { ...leidos, clientes: cartera.error ? null : activos.length }
-  const senales = senalesDeTrabajo(conteos, rol)
   const areas = areasDeAdministracion(conteos, rol)
 
   return (
@@ -76,7 +77,6 @@ export default async function AdministracionPage() {
     <div style={{ minHeight: '100vh', background: C.fondo, display: 'flex', flexDirection: 'column' }}>
       <SelloDatoBueno />
       <BarraAreas areas={areas} />
-      <LibroDeTrabajo senales={senales} noLeida={atencionNoLeida(conteos)} />
 
       {/* UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS» (INTERACTION.md §Error). */}
       {cartera.error ? (

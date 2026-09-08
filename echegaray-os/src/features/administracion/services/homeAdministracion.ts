@@ -357,26 +357,10 @@ export function senalesDeTrabajo(c: ConteosAtencion, rol: Rol | null | undefined
     }))
 }
 
-/**
- * EL RESUMEN DE LA CABECERA. Cuenta lo que hay, y dice aparte lo que no se pudo contar.
- *
- * Nunca escribe «0 urgentes»: un cero no es una noticia. Y si alguna señal no se pudo leer, el
- * total de registros va con «al menos», porque los que faltan podrían ser muchos o ninguno.
- */
-export function resumenDeTrabajo(senales: SenalTrabajo[]): string {
-  const medidas = senales.filter((s) => s.numero !== null)
-  const sinLeer = senales.length - medidas.length
-  const registros = medidas.reduce((a, s) => a + (s.numero ?? 0), 0)
-  const urgentes = medidas.filter((s) => s.tono === 'neg').length
-  const partes = [
-    `${senales.length} ${senales.length === 1 ? 'señal' : 'señales'}`,
-    `${sinLeer ? 'al menos ' : ''}${registros} ${registros === 1 ? 'registro' : 'registros'}`,
-  ]
-  if (urgentes) partes.push(`${urgentes} urgente${urgentes === 1 ? '' : 's'}`)
-  if (sinLeer) partes.push(`${sinLeer} sin leer`)
-  return partes.join(' · ')
-}
-
+// EL RESUMEN DE LA CABECERA («5 señales · 860 registros · 1 urgente») lo escribía
+// `resumenDeTrabajo`, y su único lector era el bloque «Lo que pide trabajo» que el dueño retiró de
+// toda la plataforma el 08/09/2026. Se fue con él. Las SEÑALES no: siguen contándose acá abajo para
+// el contador de «Trabajo» en la barra de áreas y para la campanita del encabezado.
 
 /** Lo accionable de HOY para la campanita. Es el libro mayor sin lo que no se pudo leer. */
 export function chipsDeAtencion(c: ConteosAtencion, rol: Rol | null | undefined): ChipAtencion[] {

@@ -24,12 +24,17 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { tipoDeMotivo } from './motivoDeAusencia'
 import {
-  acuseDe, acuseDeBorrado, cambiaDeObra, correccionSchema, envioSchema, motivoDe, personasQueEstrenanDia,
-  planDeBorrado, planDeGuardado, puertaDeObraNoActiva, traducirEscritura,
+  acuseDe, acuseDeBorrado, avisoSinAsignacion, cambiaDeObra, correccionSchema, envioSchema, motivoDe,
+  personasQueEstrenanDia, personasSinAsignacionVigente, planDeBorrado, planDeGuardado,
+  puertaDeObraNoActiva, traducirEscritura,
   type EscritoEnLaBase, type FilaExistente, type MarcaDeJornada, type PlanDeJornada,
 } from './planDeJornada'
 
-export type ResultadoJornada = { ok: true; mensaje: string } | { ok: false; error: string }
+export type ResultadoJornada =
+  /** `aviso` va aparte del acuse para que la grilla lo muestre SIN mostrar «1 marca nueva» en cada
+   *  celda que se corrige: lo que hay que leer es la excepción, no el trámite. */
+  | { ok: true; mensaje: string; aviso?: string }
+  | { ok: false; error: string }
 
 export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada> {
   const parsed = envioSchema.safeParse(entrada)
@@ -65,31 +70,20 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   const cerrada = puertaDeObraNoActiva({ nombre, estado, crea: estrenan.length > 0 })
   if (cerrada) return { ok: false, error: cerrada }
 
-  // Y SÓLO A QUIEN ESTÁ ASIGNADO ESE DÍA. Cargarle horas a alguien que no está en la obra imputa su
-  // costo a una obra en la que no trabajó. Administración puede hacerlo desde `corregirJornada`,
-  // que además le pide asignarla — y ahí es una decisión, no un efecto colateral.
-  //
-  // SÓLO SOBRE QUIEN ESTRENA EL DÍA, por lo mismo que la puerta de arriba: si la persona ya tiene
-  // horas cargadas en esta obra ese día, el costo ya está imputado ahí y corregirlo no lo mueve a
-  // ningún lado. Exigir una asignación VIGENTE para arreglar un número de hace dos meses dejaría el
-  // dato mal —la asignación de entonces suele estar cerrada con `hasta`—, que es exactamente el
-  // caso que reportó el dueño.
+  // LA FALTA DE ASIGNACIÓN AVISA, NO RECHAZA (ver el bloque «LA ASIGNACIÓN NO ES LA PUERTA DE LAS
+  // HORAS» en `planDeJornada.ts`). Se mide ANTES de escribir porque después de guardar la lectura
+  // sigue diciendo lo mismo, pero el orden deja claro que el aviso describe lo que había.
   const sinAsignar = await personasSinAsignacion(supabase, obraId, estrenan, fecha)
-  if (sinAsignar.length > 0) {
-    return {
-      ok: false,
-      error: `${sinAsignar.length === 1 ? 'Una persona del envío no está asignada' : `${sinAsignar.length} personas del envío no están asignadas`}`
-        + ' a esta obra ese día. Se asigna desde Personal de la obra, o desde Administración → '
-        + 'Personal → Asistencia, que lo hace en el mismo gesto.',
-    }
-  }
 
   const plan = planDeGuardado(marcas, existentes)
   const r = await escribirPlan(supabase, obraId, fecha, plan)
   if (r.error || !r.escrito) return { ok: false, error: r.error ?? 'No se pudo escribir.' }
 
   revalidar()
-  return { ok: true, mensaje: acuseDe(r.escrito) }
+  const aviso = avisoSinAsignacion(await nombresDe(supabase, sinAsignar), sinAsignar.length)
+  // EL AVISO VIAJA TAMBIÉN DENTRO DEL ACUSE: `/campo/asistencia` muestra `mensaje` y nada más, y un
+  // aviso que sólo lee una de las dos pantallas es un aviso que no existe en la otra.
+  return { ok: true, mensaje: aviso ? `${acuseDe(r.escrito)} ${aviso}` : acuseDe(r.escrito), ...(aviso ? { aviso } : {}) }
 }
 
 /**
@@ -170,13 +164,12 @@ async function escribirPlan(
  * CORREGIR UN DÍA — lo que sólo puede hacer Administración: cambiarle la obra, las horas, declararlo
  * ausencia o borrarlo.
  *
- * ═══ LA ASIGNACIÓN NO SE CREA EN SILENCIO ═══
+ * ═══ LA ASIGNACIÓN NO FRENA LAS HORAS, Y TAMPOCO SE CREA EN SILENCIO ═══
  *
- * Si la persona no está asignada a la obra destino, la acción NO carga las horas: vuelve con
- * `necesitaAsignacion` y el nombre de la obra. La pantalla lo dice y ofrece asignarla; recién con
- * `asignar: true` —un acto de alguien— se crea la fila en `obra_asignacion`. Crearla sola haría que
- * un dedo mal puesto cambiara de obra a una persona sin que nadie lo decidiera, y esa asignación es
- * la que después decide a qué obra se le imputa el costo.
+ * Las horas entran aunque la persona no esté asignada a la obra destino ese día —son un hecho con
+ * fecha y obra— y el acuse lo NOMBRA. La asignación sigue sin crearse sola: se crea únicamente con
+ * `asignar: true`, la casilla del panel, porque es la que después decide a qué obra se le imputa el
+ * costo de esa persona de acá en adelante.
  *
  * ═══ QUIÉN CORRIGIÓ NO SE ESCRIBE ACÁ ═══
  *
@@ -186,7 +179,7 @@ async function escribirPlan(
  */
 export type ResultadoCorreccion =
   | { ok: true; mensaje: string }
-  | { ok: false; error: string; necesitaAsignacion?: boolean }
+  | { ok: false; error: string }
 
 export async function corregirJornada(entrada: unknown): Promise<ResultadoCorreccion> {
   const parsed = correccionSchema.safeParse(entrada)
@@ -248,26 +241,15 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   })
   if (cerrada) return { ok: false, error: cerrada }
 
-  // LA ASIGNACIÓN SE EXIGE PARA LO NUEVO, NO PARA LA CORRECCIÓN. Si la persona ya tiene ese día
-  // cargado en esta obra, el costo ya está imputado ahí: corregir el número no lo mueve. Pedirle
-  // una asignación vigente —que en un día viejo casi siempre está cerrada con `hasta`— sería
-  // ofrecer asignar a alguien a una obra terminada para arreglar un tipeo.
-  if (crea) {
-    const falta = await faltaAsignacion(supabase, c.persona_id, c.obra_destino, c.fecha)
-    if (falta) {
-      if (!c.asignar) {
-        return {
-          ok: false,
-          necesitaAsignacion: true,
-          error: `Esa persona no está asignada a ${falta} el ${c.fecha}. Se puede asignar acá mismo, `
-            + 'pero es una decisión: la asignación es la que después decide a qué obra se le imputa el costo.',
-        }
-      }
-      const alta = await supabase.from('obra_asignacion').insert({
-        obra_id: c.obra_destino, persona_id: c.persona_id, rol: 'integrante', desde: c.fecha,
-      })
-      if (alta.error) return { ok: false, error: `No pude asignarla: ${alta.error.message}` }
-    }
+  // LA ASIGNACIÓN NO ES LA PUERTA DE LAS HORAS. Falte o no, la corrección entra: lo único que
+  // cambia es que el acuse lo diga. La casilla del panel —`asignar`— sigue siendo la única forma de
+  // CREAR la asignación, y se respeta aunque el día ya estuviera cargado: es un acto explícito.
+  const faltaEn = await faltaAsignacion(supabase, c.persona_id, c.obra_destino, c.fecha)
+  if (faltaEn && c.asignar) {
+    const alta = await supabase.from('obra_asignacion').insert({
+      obra_id: c.obra_destino, persona_id: c.persona_id, rol: 'integrante', desde: c.fecha,
+    })
+    if (alta.error) return { ok: false, error: `No pude asignarla: ${alta.error.message}` }
   }
 
   // INSERTAR PRIMERO, BORRAR DESPUÉS (ver `ORDEN_DEL_MOVIMIENTO`): un duplicado visible le gana a
@@ -300,12 +282,16 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   }
 
   revalidar()
-  return {
-    ok: true,
-    mensaje: cambiaDeObra(c)
-      ? `Día movido a la obra nueva${c.estado === 'ausente' ? ' como ausencia' : ''}.`
-      : `Día corregido${c.estado === 'ausente' ? ': no vino' : `: ${c.horas} hs`}.`,
-  }
+  const hecho = cambiaDeObra(c)
+    ? `Día movido a la obra nueva${c.estado === 'ausente' ? ' como ausencia' : ''}.`
+    : `Día corregido${c.estado === 'ausente' ? ': no vino' : `: ${c.horas} hs`}.`
+  // EL AVISO SÓLO SI NO SE ASIGNÓ EN EL MISMO GESTO: decir «no estaba asignada» después de haberla
+  // asignado sería falso desde el instante en que se muestra.
+  const aviso = faltaEn && !c.asignar
+    ? `Esa persona no estaba asignada a ${faltaEn} el ${c.fecha}: las horas se guardaron igual. `
+      + 'Para que quede asignada, marcá la casilla.'
+    : null
+  return { ok: true, mensaje: aviso ? `${hecho} ${aviso}` : hecho }
 }
 
 /** El nombre de la obra si la persona NO tiene asignación vigente ese día; `null` si sí la tiene. */
@@ -331,7 +317,8 @@ function revalidar() {
   revalidatePath('/administracion/personas')
 }
 
-/** Quiénes del envío NO tienen asignación vigente en esa obra ese día. Vacío = todos pueden. */
+/** Quiénes del envío NO tienen asignación vigente en esa obra ese día. Sólo alimenta el AVISO del
+ *  acuse: ya no decide si se escribe. La regla de vigencia vive en `personasSinAsignacionVigente`. */
 async function personasSinAsignacion(
   supabase: Awaited<ReturnType<typeof createClient>>,
   obraId: string, personaIds: string[], fecha: string,
@@ -339,13 +326,26 @@ async function personasSinAsignacion(
   if (personaIds.length === 0) return []
   const { data, error } = await supabase.from('obra_asignacion')
     .select('persona_id, desde, hasta').eq('obra_id', obraId).in('persona_id', personaIds)
-  // UNA LECTURA QUE FALLA NO ES «NO ESTÁ ASIGNADO». Frenar la carga del día por un error de RLS
-  // pondría al jefe a pelear con un aviso falso; la policy del insert es la que decide de verdad.
+  // UNA LECTURA QUE FALLA NO ES «NO ESTÁ ASIGNADO». Avisar por un error de RLS pondría al jefe a
+  // pelear con un aviso falso sobre una escritura que salió bien.
   if (error) return []
-  const vigentes = new Set(((data ?? []) as { persona_id: string; desde: string | null; hasta: string | null }[])
-    .filter((a) => (!a.desde || a.desde <= fecha) && (!a.hasta || a.hasta >= fecha))
-    .map((a) => a.persona_id))
-  return personaIds.filter((id) => !vigentes.has(id))
+  return personasSinAsignacionVigente(
+    (data ?? []) as { persona_id: string; desde: string | null; hasta: string | null }[],
+    personaIds, fecha,
+  )
+}
+
+/** Los nombres, para que el aviso diga QUIÉN. Devuelve `[]` si no se pueden leer: el aviso sabe
+ *  contar sin nombres, y no poder nombrarlos no puede convertirse en no avisar. */
+async function nombresDe(
+  supabase: Awaited<ReturnType<typeof createClient>>, personaIds: string[],
+): Promise<string[]> {
+  if (personaIds.length === 0) return []
+  const { data, error } = await supabase.from('persona_directorio')
+    .select('nombre_completo').in('id', personaIds)
+  if (error) return []
+  return ((data ?? []) as { nombre_completo: string | null }[])
+    .map((p) => p.nombre_completo).filter((n): n is string => Boolean(n))
 }
 
 /** El `tipo_hora` que le toca a una marca. Duplicado mínimo de `tipoQuePide` porque aquélla es
