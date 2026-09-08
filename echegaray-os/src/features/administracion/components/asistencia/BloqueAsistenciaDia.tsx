@@ -4,7 +4,8 @@ import { Aviso, Vacio } from '@/shared/components/ds'
 import { hs } from '../../services/jornadaPorObra'
 import { correrDia, rotuloDelDia } from '../../services/diaDeJornada'
 import { getJornadaDelDia, getObrasParaJornada } from '../../services/jornadaPorObraService'
-import { ElegirDia, TOKEN_DIA } from './ElegirDia'
+import { ElegirDia } from './ElegirDia'
+import { TOKEN_DIA } from './tokenDia'
 import { FormAsistencia } from './FormAsistencia'
 
 // LA CARGA DE ASISTENCIA EN EL TELÉFONO, DENTRO DE ADMINISTRACIÓN — 08/09/2026.

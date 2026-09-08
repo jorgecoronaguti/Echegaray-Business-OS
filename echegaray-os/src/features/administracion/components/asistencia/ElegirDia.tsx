@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { TOKEN_DIA } from './tokenDia'
 
 // ELEGIR EL DÍA — «‹ ayer · lunes 7 de septiembre · mañana ›» con el calendario adentro del rótulo.
 //
@@ -18,8 +19,6 @@ import { useRouter } from 'next/navigation'
 // manda como un texto con `__DIA__` adentro. Una función `hrefDe` no cruza el borde servidor →
 // cliente, y duplicar acá el armado de la URL sería una segunda definición de la misma ruta: es
 // exactamente el bug del `?dia=…?obra=…` que dejó `/campo/asistencia` girando sobre sí mismo.
-
-const TOKEN = '__DIA__'
 
 export function ElegirDia({ dia, rotulo, hrefAyer, hrefManana, plantilla }: {
   dia: string
@@ -54,7 +53,7 @@ export function ElegirDia({ dia, rotulo, hrefAyer, hrefManana, plantilla }: {
           aria-label="Elegir el día"
           data-testid="dia-input"
           onChange={(e) => {
-            if (e.target.value) router.push(plantilla.replace(TOKEN, e.target.value))
+            if (e.target.value) router.push(plantilla.replace(TOKEN_DIA, e.target.value))
           }}
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
@@ -73,4 +72,3 @@ export function ElegirDia({ dia, rotulo, hrefAyer, hrefManana, plantilla }: {
   )
 }
 
-export const TOKEN_DIA = TOKEN
