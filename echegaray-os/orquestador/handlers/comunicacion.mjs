@@ -87,6 +87,13 @@ export async function comunicacionResponderHandler(task, ctx) {
       // handler por defecto: sin esa distinción, el especialista no puede saber si el
       // cliente que recibió es el que le corresponde.
       googleInyectado: ctx.google ?? null,
+      // EL LOGGER VIAJA. Sin esto el especialista corre CIEGO (08/09/2026): `atender` ya declaraba
+      // `log` y nadie se lo pasaba, así que todos los `log?.error?.()` del circuito de comprobantes
+      // —incluido «comprobantes: la carga falló»— eran no-ops. El 07/09 una carga falló, el chat lo
+      // dijo y el journal no tuvo una sola línea: reconstruir qué había pasado costó una hora de
+      // arqueología sobre la base y el Sheet. Un fallo que sólo existe en un mensaje de chat no es
+      // observable, y lo que no se observa se descubre cuando el dueño lo reclama.
+      log: ctx.logger ?? null,
     })
     salida = r
     texto = r.texto
