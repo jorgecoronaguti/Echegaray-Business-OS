@@ -21,6 +21,7 @@
 // `forecast_fin` no hay proyección punteada ni desvío, y se dice «—» en vez de «en fecha». Ver
 // `cronogramaPlan.ts`.
 
+import Link from 'next/link'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Franja } from '@/shared/components/ds'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
@@ -250,9 +251,9 @@ function SinFechas({ obraId, n }: { obraId: string; n: number }) {
       {n === 0
         ? 'Esta obra todavía no tiene actividades cargadas.'
         : `Ninguna de las ${n} actividades tiene fechas de plan, línea base ni proyección: no hay barras que dibujar.`}{' '}
-      <a href={`/obras/${obraId}?vista=tareas&sub=arbol`} style={{ color: C.tinta, fontWeight: 500, textDecoration: 'underline' }}>
+      <Link prefetch={false} href={`/obras/${obraId}?vista=tareas&sub=arbol`} style={{ color: C.tinta, fontWeight: 500, textDecoration: 'underline' }}>
         Cargar las fechas en Tareas
-      </a>
+      </Link>
     </div>
   )
 }

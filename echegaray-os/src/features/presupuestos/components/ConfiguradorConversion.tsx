@@ -27,6 +27,7 @@
 // stepper—. Los nombres y las cantidades se editan después, y el control de cierre se recalcula en
 // cada tecla.
 
+import Link from 'next/link'
 import { useActionState, useState, startTransition } from 'react'
 import { Aviso } from '@/shared/components/ds'
 import type { MetodoMedicion, PartidaValorizada, Plantilla } from '../types'
@@ -309,10 +310,10 @@ export function ConfiguradorConversion({
                 revisarlo, no a sellarlo. */}
             <span className="mt-2 block">
               Las fechas son del PLAN, todavía no línea base.{' '}
-              <a href={`/obras/${obraId}/cronograma`} data-testid="ir-al-cronograma"
+              <Link prefetch={false} href={`/obras/${obraId}/cronograma`} data-testid="ir-al-cronograma"
                 className="font-medium text-ink underline underline-offset-2">
                 Revisar el cronograma y sellar la línea base
-              </a>
+              </Link>
               {' '}— sellar antes de mirarlo congela un plan que nadie revisó, y el desvío se mide
               contra él.
             </span>

@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useActionState, useRef, useState } from 'react'
 import { Boton, CAMPO, Campo, ErrorCampo, Estado, Eyebrow, Nulo, Timeline } from '@/shared/components/ds'
 import {
@@ -81,9 +82,9 @@ export function FichaHerramienta({
           }))}
           total={movimientos.length}
           verTodo={
-            <a href="/integraciones/movimientos" className="text-muted hover:text-ink">
+            <Link prefetch={false} href="/integraciones/movimientos" className="text-muted hover:text-ink">
               Ver todo ({movimientos.length}) →
-            </a>
+            </Link>
           }
           vacio="Esta herramienta no tiene traslados registrados: el primero se anota con «Registrar movimiento»."
         />
