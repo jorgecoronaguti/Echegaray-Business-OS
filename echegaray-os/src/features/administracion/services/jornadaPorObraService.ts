@@ -1,7 +1,7 @@
 // LAS LECTURAS DE LA ASISTENCIA POR OBRA. Una sola fuente: `registros_hh`.
 //
 // Ni una regla de negocio acá: lo que significa cada silencio lo deciden `jornadaPorObra.ts` y
-// `semanaPorObra.ts`, que se prueban sin base. Este archivo trae filas y nada más.
+// `quincenaPorObra.ts`, que se prueban sin base. Este archivo trae filas y nada más.
 //
 // ═══ QUIÉN VE QUÉ NO SE DECIDE ACÁ ═══
 //
@@ -13,7 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAsignaciones } from '../../obras/services/personalService.ts'
 import type { FilaJornada } from './jornadaPorObra.ts'
 import { armarJornada } from './jornadaPorObra.ts'
-import type { AsignacionSemana, RegistroSemana } from './semanaPorObra.ts'
+import type { AsignacionQuincena, RegistroQuincena } from './quincenaPorObra.ts'
 
 export interface ObraDeLaJornada {
   id: string
@@ -140,9 +140,9 @@ export async function getJornadaDelDia(
   }
 }
 
-export interface DatosSemanaPorObra {
-  asignaciones: AsignacionSemana[]
-  registros: RegistroSemana[]
+export interface DatosQuincenaPorObra {
+  asignaciones: AsignacionQuincena[]
+  registros: RegistroQuincena[]
   noLaborables: string[]
   /** Las obras en estado `activa`. Sólo esas se pueden marcar y sólo esas se reclaman. */
   obrasActivas: string[]
@@ -157,10 +157,10 @@ async function getNoLaborables(
   return ((data ?? []) as { fecha: string }[]).map((f) => f.fecha)
 }
 
-/** La semana entera, de todas las obras que la sesión puede ver. */
-export async function getSemanaPorObra(
+/** La ventana entera —la quincena que mira la pantalla—, de todas las obras que la sesión ve. */
+export async function getQuincenaPorObra(
   supabase: SupabaseClient, desde: string, hasta: string,
-): Promise<{ data: DatosSemanaPorObra | null; error: string | null }> {
+): Promise<{ data: DatosQuincenaPorObra | null; error: string | null }> {
   const [asignaciones, registros, obras, noLaborables] = await Promise.all([
     getAsignaciones(supabase),
     supabase.from('registros_hh')

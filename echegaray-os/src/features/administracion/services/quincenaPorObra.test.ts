@@ -1,12 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarSemanaPorObra, diasSinMarcar, personasPorObra, totalDeLaSemanaPorObra, totalesPorDia,
-} from './semanaPorObra.ts'
-import type { AsignacionSemana, RegistroSemana } from './semanaPorObra.ts'
+  armarQuincenaPorObra, diasSinMarcar, personasPorObra, totalDeLaQuincenaPorObra, totalesPorDia,
+} from './quincenaPorObra.ts'
+import type { AsignacionQuincena, RegistroQuincena } from './quincenaPorObra.ts'
 
-// La semana del 7 al 12 de septiembre de 2026. HOY es el viernes 11: en la misma grilla conviven
-// días cerrados, el día en curso y el sábado 12, que todavía no pasó.
+// Seis días de la 2ª quincena de septiembre de 2026, del lunes 7 al sábado 12. HOY es el viernes 11:
+// en la misma grilla conviven días cerrados, el día en curso y el sábado 12, que todavía no pasó.
 const L = '2026-09-07'
 const M = '2026-09-08'
 const X = '2026-09-09'
@@ -16,9 +16,9 @@ const S = '2026-09-12'
 const DIAS = [L, M, X, J, V, S]
 const HOY = V
 
-const asig = (persona_id: string, nombre: string, obra_id: string, obra: string, nota: string | null = null): AsignacionSemana =>
+const asig = (persona_id: string, nombre: string, obra_id: string, obra: string, nota: string | null = null): AsignacionQuincena =>
   ({ persona_id, nombre, nota, obra_id, obra })
-const reg = (persona_id: string, obra_id: string, fecha: string, horas: number, tipo_hora = 'normal'): RegistroSemana =>
+const reg = (persona_id: string, obra_id: string, fecha: string, horas: number, tipo_hora = 'normal'): RegistroQuincena =>
   ({ persona_id, obra_id, fecha, horas, tipo_hora })
 
 const ESTRELLA = ['estrella', 'La Estrella'] as const
@@ -27,7 +27,7 @@ const MESSINA = ['messina', 'Messina'] as const
 test('QUIEN CAMBIÓ DE OBRA TIENE DOS FILAS, y la segunda queda marcada como repetida', () => {
   // El defecto que atrapa: sumar las dos obras en una sola fila. La pregunta de esta pantalla es
   // cuánta mano de obra consumió CADA obra; un solo número por persona la deja sin respuesta.
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [asig('a', 'Paz', ...ESTRELLA), asig('a', 'Paz', ...MESSINA)],
     registros: [reg('a', 'estrella', L, 8), reg('a', 'estrella', M, 8), reg('a', 'messina', J, 8)],
     dias: DIAS, hoy: HOY,
@@ -43,7 +43,7 @@ test('EL JUEVES DE LA OBRA VIEJA NO SE RECLAMA: esa persona está marcada en la 
   // El defecto que atrapa: pintar de rojo el jueves de La Estrella porque ahí no hay registro,
   // cuando la persona sí trabajó ese día — en Messina. El pie terminaría reclamando una carga que
   // ya existe, y el jefe la cargaría dos veces.
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [asig('a', 'Paz', ...ESTRELLA), asig('a', 'Paz', ...MESSINA), asig('b', 'Ríos', ...ESTRELLA)],
     registros: [
       reg('a', 'estrella', L, 8), reg('a', 'messina', J, 8),
@@ -60,7 +60,7 @@ test('SIN MARCAR SE RECLAMA SÓLO SI ESE DÍA ALGUIEN MÁS MARCÓ', () => {
   // Dos silencios distintos: el miércoles otros marcaron y a Molina no (reclamo rojo); el sábado no
   // marcó nadie en ninguna obra, y ahí la grilla NO puede elegir entre «no se trabajó» y «nadie lo
   // cargó». Afirmar cualquiera de las dos sería inventar.
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [asig('a', 'Molina', ...ESTRELLA), asig('b', 'Ríos', ...ESTRELLA)],
     registros: [reg('b', 'estrella', X, 8)],
     dias: [X, S], hoy: '2026-09-13',
@@ -73,9 +73,9 @@ test('SIN MARCAR SE RECLAMA SÓLO SI ESE DÍA ALGUIEN MÁS MARCÓ', () => {
 })
 
 test('UN DÍA QUE TODAVÍA NO PASÓ NO SE RECLAMA', () => {
-  // El defecto que atrapa: entrar el lunes a la semana en curso y encontrarse cuatro días en rojo
+  // El defecto que atrapa: entrar el lunes a la quincena en curso y encontrarse cuatro días en rojo
   // por no haber cargado horas que todavía no se trabajaron.
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [asig('a', 'Molina', ...ESTRELLA), asig('b', 'Ríos', ...ESTRELLA)],
     registros: [reg('b', 'estrella', L, 8)],
     dias: [L, M, X], hoy: L,
@@ -88,7 +88,7 @@ test('UN DÍA QUE TODAVÍA NO PASÓ NO SE RECLAMA', () => {
 })
 
 test('UN FERIADO NO SE RECLAMA aunque otros hayan cargado ese día', () => {
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [asig('a', 'Molina', ...ESTRELLA), asig('b', 'Ríos', ...ESTRELLA)],
     registros: [reg('b', 'estrella', X, 8)],
     dias: [X], noLaborables: [X], hoy: HOY,
@@ -98,7 +98,7 @@ test('UN FERIADO NO SE RECLAMA aunque otros hayan cargado ese día', () => {
 })
 
 test('LA AUSENCIA SE VE «A» Y NO SUMA HORAS NI A LA FILA NI A LA COLUMNA', () => {
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [asig('a', 'Molina', ...ESTRELLA), asig('b', 'Ríos', ...ESTRELLA)],
     registros: [reg('a', 'estrella', V, 8.8, 'ausencia'), reg('b', 'estrella', V, 8.8)],
     dias: [V], hoy: HOY,
@@ -108,13 +108,13 @@ test('LA AUSENCIA SE VE «A» Y NO SUMA HORAS NI A LA FILA NI A LA COLUMNA', () 
   assert.equal(molina.celdas[0].horas, null)
   assert.equal(molina.horas, null, 'de un ausente no se puede decir que trabajó cero: se sabe que no vino')
   assert.deepEqual(totalesPorDia(filas, [V]), [8.8])
-  assert.equal(totalDeLaSemanaPorObra(filas), 8.8)
+  assert.equal(totalDeLaQuincenaPorObra(filas), 8.8)
 })
 
 test('UN DÍA SIN NINGUNA HORA NO TOTALIZA CERO: totaliza null', () => {
   // El defecto que atrapa: una fila de totales que dice «0» el sábado. Cero horas es una afirmación
   // sobre el trabajo de ese día; lo que hay es la falta de cualquier registro.
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [asig('a', 'Molina', ...ESTRELLA)],
     registros: [reg('a', 'estrella', L, 8)],
     dias: [L, S], hoy: '2026-09-13',
@@ -123,7 +123,7 @@ test('UN DÍA SIN NINGUNA HORA NO TOTALIZA CERO: totaliza null', () => {
 })
 
 test('LOS CHIPS CUENTAN PERSONAS DISTINTAS POR OBRA, no filas', () => {
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [
       asig('a', 'Paz', ...ESTRELLA), asig('b', 'Ríos', ...ESTRELLA), asig('a', 'Paz', ...MESSINA),
     ],
@@ -139,7 +139,7 @@ test('LOS CHIPS CUENTAN PERSONAS DISTINTAS POR OBRA, no filas', () => {
 test('HORAS CARGADAS EN UNA OBRA SIN ASIGNACIÓN VIGENTE SIGUEN APARECIENDO', () => {
   // Las horas existen y son de esa obra. Si la fila desapareciera al cerrar la asignación, el costo
   // de mano de obra de esa obra se caería de la pantalla sin que nadie borrara nada.
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [asig('a', 'Paz', ...ESTRELLA)],
     registros: [reg('a', 'messina', L, 8)],
     dias: [L], hoy: HOY,
@@ -150,20 +150,20 @@ test('HORAS CARGADAS EN UNA OBRA SIN ASIGNACIÓN VIGENTE SIGUEN APARECIENDO', ()
 
 test('UNA FILA SIN NINGUNA HORA TOTALIZA null, no cero', () => {
   // El defecto que atrapa: escribir «0» en la columna HORAS de quien no fue marcado. Cero es una
-  // afirmación sobre su semana; lo que hay es la falta de cualquier registro. Y de un ausente
+  // afirmación sobre su quincena; lo que hay es la falta de cualquier registro. Y de un ausente
   // tampoco se puede decir que trabajó cero: se sabe que no vino, que es otra cosa.
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [asig('a', 'Molina', ...ESTRELLA), asig('b', 'Ríos', ...ESTRELLA)],
     registros: [reg('b', 'estrella', L, 8)],
     dias: [L], hoy: HOY,
   })
   assert.equal(filas.find((f) => f.persona.id === 'a')!.horas, null)
   assert.equal(filas.find((f) => f.persona.id === 'b')!.horas, 8)
-  assert.equal(totalDeLaSemanaPorObra(filas), 8, 'el total de la semana no se rompe con un null')
+  assert.equal(totalDeLaQuincenaPorObra(filas), 8, 'el total de la quincena no se rompe con un null')
 })
 
 test('UNA FILA SÓLO CON AUSENCIAS TOTALIZA null: no vino no es trabajó cero', () => {
-  const filas = armarSemanaPorObra({
+  const filas = armarQuincenaPorObra({
     asignaciones: [asig('a', 'Molina', ...ESTRELLA)],
     registros: [reg('a', 'estrella', L, 8.8, 'ausencia')],
     dias: [L], hoy: HOY,

@@ -20,6 +20,7 @@ export { useSplit, Divisor, ZonaSplit } from './Split'
 // `anchoSplit` NO se re-exporta acá A PROPÓSITO: usa `next/headers` y este barril lo importan
 // componentes de cliente. Se importa por su ruta: '@/shared/components/ds/split-servidor'.
 export { PanelDetalle, PlanVsReal, BarraAvance } from './Panel'
+export { Drawer } from './Drawer'
 export { Aviso, ErrorCampo } from './Aviso'
 export { Ayuda } from './Ayuda'
 export { CAMPO, Campo, Buscador, IconoBuscar, Filtros } from './Controles'

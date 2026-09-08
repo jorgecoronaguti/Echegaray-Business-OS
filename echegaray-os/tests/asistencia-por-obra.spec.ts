@@ -10,7 +10,7 @@ import { MARCA_PRUEBA } from './util/rastro'
 // vuelta en la OTRA pantalla, que es la única prueba de que la escritura ocurrió.
 //
 // Las capturas van a `qa-shots/asistencia-*`: móvil de 390px para la carga en obra, escritorio para
-// la semana de Administración.
+// la quincena de Administración.
 
 // ═══ LO QUE SE LEE Y LO QUE SE ESCRIBE NO VAN A LA MISMA OBRA ═══
 //
@@ -112,19 +112,42 @@ test('01 · el jefe carga la asistencia en el teléfono', async ({ page }) => {
   await expect(page.getByTestId('pie-jornada')).toBeVisible()
 })
 
-test('02 · la semana por obra abre en Administración → Personal', async ({ page }) => {
+test('02 · la QUINCENA por obra abre en Administración → Personal', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await entrarComo(page, ADMIN.email, ADMIN.password)
 
-  await page.goto('/administracion/personas?vista=asistencia')
+  // UNA QUINCENA FIJA, NO LA DE HOY. Contra «hoy» no se puede afirmar cuántas columnas hay: la
+  // segunda de febrero tiene 13 y la de enero 16. Con la fecha en la URL la aserción es defendible
+  // todo el año — y de paso prueba que el parámetro se respeta.
+  await page.goto('/administracion/personas?vista=asistencia&quincena=2026-09-20')
   await page.waitForLoadState('networkidle')
   await expect(page.getByTestId('bloque-asistencia')).toBeVisible()
-  await page.screenshot({ path: 'qa-shots/asistencia-02-semana-1440.png', fullPage: true })
+  await expect(page.getByTestId('rotulo-quincena'))
+    .toHaveText('2ª quincena de septiembre · 16 al 30')
+
+  // EL DEFECTO QUE ATRAPA: que «anterior» reste quince días. Desde el 16 de un mes de 31 eso cae el
+  // 1 —la misma quincena— y el link deja de mover la pantalla sin dar ningún error.
+  await page.getByTestId('quincena-anterior').click()
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('rotulo-quincena')).toHaveText('1ª quincena de septiembre · 1 al 15')
+  await page.getByTestId('quincena-siguiente').click()
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('rotulo-quincena')).toHaveText('2ª quincena de septiembre · 16 al 30')
+  await page.screenshot({ path: 'qa-shots/asistencia-quincena-1440.png', fullPage: true })
 
   // LA SOLAPA VUELVE AL PLANTEL. Sin esto, «Asistencia» sería una pantalla sin salida.
   await page.getByRole('link', { name: 'Plantel' }).click()
   await page.waitForLoadState('networkidle')
   await expect(page.getByTestId('vistas-personal')).toBeVisible()
+})
+
+test('02b · la quincena en el teléfono', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=asistencia&quincena=2026-09-20')
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('bloque-asistencia')).toBeVisible()
+  await page.screenshot({ path: 'qa-shots/asistencia-quincena-390.png', fullPage: true })
 })
 
 // ═══ ESTE TEST ESCRIBE HORAS REALES EN LA BASE REAL, Y POR ESO NO CORRE SOLO ═══
@@ -202,21 +225,39 @@ test('04 · REABRIR EL DÍA MUESTRA LO YA CARGADO, no la jornada de nuevo', asyn
   }
 })
 
-test('05 · el panel de corrección de Administración', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
+test('05 · el panel de corrección SE ABRE AL COSTADO y la grilla queda detrás', async ({ page }) => {
+  const ANCHO = 1440
+  await page.setViewportSize({ width: ANCHO, height: 900 })
   await entrarComo(page, ADMIN.email, ADMIN.password)
   await page.goto('/administracion/personas?vista=asistencia')
   await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
 
   const abrir = page.getByTestId('abrir-correccion').first()
-  if (await abrir.count() === 0) test.skip(true, 'La semana no tiene ninguna fila que corregir.')
+  if (await abrir.count() === 0) test.skip(true, 'La quincena no tiene ninguna fila que corregir.')
   await abrir.click()
-  await expect(page.getByTestId('panel-correccion')).toBeVisible()
+  const panel = page.getByTestId('panel-correccion')
+  await expect(panel).toBeVisible()
   // LAS TRES PALANCAS QUE PIDIÓ EL DUEÑO, A LA VISTA: el día, la obra y qué pasó.
   await expect(page.getByTestId('correccion-dia')).toBeVisible()
   await expect(page.getByTestId('correccion-obra')).toBeVisible()
   await expect(page.getByTestId('correccion-estado')).toBeVisible()
-  await page.screenshot({ path: 'qa-shots/asistencia-06-correccion-1440.png', fullPage: true })
+
+  // EL DEFECTO QUE ATRAPA: que el panel vuelva a quedar DEBAJO de la grilla. Con veinte filas eso
+  // lo deja fuera de la pantalla y hay que scrollear para corregir. Se mide la caja, no el CSS:
+  // pegado al borde derecho, alto completo, y angosto respecto de la ventana.
+  const caja = await panel.boundingBox()
+  if (!caja) throw new Error('El panel no tiene caja: no está renderizado.')
+  expect(Math.round(caja.x + caja.width)).toBe(ANCHO)
+  expect(caja.x).toBeGreaterThan(ANCHO / 2)
+  expect(caja.width).toBeLessThan(ANCHO / 2)
+  expect(caja.height).toBeGreaterThan(800)
+  // Y LA GRILLA SIGUE VISIBLE DETRÁS: un panel que la tapa es un modal con otra forma.
+  await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+  await page.screenshot({ path: 'qa-shots/asistencia-quincena-panel-1440.png' })
+
+  // SE CIERRA CON ESCAPE. Sin esto, la única salida es acertarle a la ✕.
+  await page.keyboard.press('Escape')
+  await expect(panel).toBeHidden()
 })
 
 test('06 · el registro cronológico de la persona, con quién lo cargó', async ({ page }) => {

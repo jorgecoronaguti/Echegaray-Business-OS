@@ -1,4 +1,4 @@
-// LA SEMANA, POR OBRA — la grilla persona × día de `/administracion/personas?vista=asistencia`.
+// LA QUINCENA, POR OBRA — la grilla persona × día de `/administracion/personas?vista=asistencia`.
 //
 // Es la MISMA fuente que carga el jefe en `/campo/asistencia`: `registros_hh`. No hay una lectura
 // «de administración» y otra «de campo» — dos consultas distintas sobre la misma jornada darían dos
@@ -38,8 +38,8 @@ export interface CeldaObra {
   horas: number | null
 }
 
-/** Un par persona↔obra vigente en la semana, o que dejó registros en ella. */
-export interface AsignacionSemana {
+/** Un par persona↔obra vigente en la quincena, o que dejó registros en ella. */
+export interface AsignacionQuincena {
   persona_id: string
   nombre: string
   nota: string | null
@@ -47,7 +47,7 @@ export interface AsignacionSemana {
   obra: string
 }
 
-export interface RegistroSemana {
+export interface RegistroQuincena {
   persona_id: string
   obra_id: string
   fecha: string
@@ -55,14 +55,15 @@ export interface RegistroSemana {
   tipo_hora: string
 }
 
-export interface FilaSemanaObra {
+export interface FilaQuincenaObra {
   clave: string
   persona: { id: string; nombre: string; nota: string | null }
   obra: { id: string; nombre: string }
   /** La misma persona ya apareció más arriba con otra obra. */
   repetida: boolean
   celdas: CeldaObra[]
-  /** Horas trabajadas de la fila. `null` = ninguna hora declarada, que no es lo mismo que cero. */
+  /** Horas trabajadas de la fila en la quincena. `null` = ninguna hora declarada, que no es lo
+   *  mismo que cero. */
   horas: number | null
   /** Las fechas que hay que reclamar. Vacío = nada que reclamar. */
   reclama: string[]
@@ -75,11 +76,13 @@ const numero = (v: unknown): number => {
 
 const clave = (persona: string, obra: string) => `${persona}·${obra}`
 
-export interface EntradaSemanaObra {
-  asignaciones: AsignacionSemana[]
-  registros: RegistroSemana[]
+export interface EntradaQuincenaObra {
+  asignaciones: AsignacionQuincena[]
+  registros: RegistroQuincena[]
   dias: string[]
-  /** Feriados y no laborables de `calendario_no_laborable`. La grilla no los reclama. */
+  /** Los días que la grilla NO reclama: `calendario_no_laborable` MÁS sábados y domingos, que el
+   *  llamador une con `noLaborablesDe`. Sin los fines de semana, la quincena reclamaría cuatro
+   *  días falsos en cada fila. */
   noLaborables?: string[]
   /** Hoy, para no reclamar un día que todavía no terminó. */
   hoy: string
@@ -87,13 +90,13 @@ export interface EntradaSemanaObra {
 
 /**
  * Las filas de la grilla. Los pares salen de la UNIÓN de las asignaciones vigentes y de los
- * registros de la semana: alguien que cargó horas en una obra a la que ya no está asignado tiene
+ * registros de la quincena: alguien que cargó horas en una obra a la que ya no está asignado tiene
  * que verse igual — sus horas existen y son de esa obra.
  */
-export function armarSemanaPorObra(e: EntradaSemanaObra): FilaSemanaObra[] {
+export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincenaObra[] {
   const noLaborables = new Set(e.noLaborables ?? [])
   const diasConDato = new Set(e.registros.map((r) => r.fecha))
-  const porPar = new Map<string, RegistroSemana[]>()
+  const porPar = new Map<string, RegistroQuincena[]>()
   const diasDeLaPersona = new Map<string, Set<string>>()
   for (const r of e.registros) {
     const k = clave(r.persona_id, r.obra_id)
@@ -126,7 +129,7 @@ export function armarSemanaPorObra(e: EntradaSemanaObra): FilaSemanaObra[] {
       repetida,
       celdas,
       // `null` Y NO CERO CUANDO NO HAY NINGUNA HORA. Un «0» en la columna HORAS afirma que esa
-      // persona trabajó cero horas esa semana en esa obra; lo que pasa es que no hay con qué
+      // persona trabajó cero horas esa quincena en esa obra; lo que pasa es que no hay con qué
       // contestar —nadie marcó, o sólo hay ausencias—. Es la misma regla que `totalesPorDia`.
       horas: celdas.some((c) => c.estado === 'horas')
         ? redondear(celdas.reduce((s, c) => s + (c.horas ?? 0), 0))
@@ -136,11 +139,11 @@ export function armarSemanaPorObra(e: EntradaSemanaObra): FilaSemanaObra[] {
   })
 }
 
-/** Los pares (persona, obra) de la semana, ordenados por persona y con la obra como desempate. */
+/** Los pares (persona, obra) de la quincena, ordenados por persona y con la obra como desempate. */
 function unirPares(
-  asignaciones: AsignacionSemana[], registros: RegistroSemana[],
-): AsignacionSemana[] {
-  const mapa = new Map<string, AsignacionSemana>()
+  asignaciones: AsignacionQuincena[], registros: RegistroQuincena[],
+): AsignacionQuincena[] {
+  const mapa = new Map<string, AsignacionQuincena>()
   for (const a of asignaciones) mapa.set(clave(a.persona_id, a.obra_id), a)
   for (const r of registros) {
     const k = clave(r.persona_id, r.obra_id)
@@ -158,7 +161,7 @@ function unirPares(
 
 function celdaDe({ fecha, registros, esNoLaborable, hayDatoEseDia, marcadoEnOtraObra, futuro }: {
   fecha: string
-  registros: RegistroSemana[]
+  registros: RegistroQuincena[]
   esNoLaborable: boolean
   hayDatoEseDia: boolean
   marcadoEnOtraObra: boolean
@@ -177,9 +180,9 @@ function celdaDe({ fecha, registros, esNoLaborable, hayDatoEseDia, marcadoEnOtra
   return { fecha, estado: 'sin_marcar', horas: null }
 }
 
-/** El total por columna y el de la semana. `null` en un día sin ningún dato: un 0 diría que se
+/** El total por columna y el de la quincena. `null` en un día sin ningún dato: un 0 diría que se
  *  trabajaron cero horas, y lo que pasa es que no hay con qué contestar. */
-export function totalesPorDia(filas: FilaSemanaObra[], dias: string[]): (number | null)[] {
+export function totalesPorDia(filas: FilaQuincenaObra[], dias: string[]): (number | null)[] {
   return dias.map((fecha, i) => {
     const celdas = filas.map((f) => f.celdas[i]).filter((c) => c?.fecha === fecha)
     if (celdas.every((c) => c.estado !== 'horas')) return null
@@ -187,11 +190,11 @@ export function totalesPorDia(filas: FilaSemanaObra[], dias: string[]): (number 
   })
 }
 
-export const totalDeLaSemanaPorObra = (filas: FilaSemanaObra[]): number =>
+export const totalDeLaQuincenaPorObra = (filas: FilaQuincenaObra[]): number =>
   redondear(filas.reduce((s, f) => s + (f.horas ?? 0), 0))
 
-/** Cuántas personas tiene cada obra en la semana. Los chips del encabezado. */
-export function personasPorObra(filas: FilaSemanaObra[]): { obra_id: string; nombre: string; personas: number }[] {
+/** Cuántas personas tiene cada obra en la quincena. Los chips del encabezado. */
+export function personasPorObra(filas: FilaQuincenaObra[]): { obra_id: string; nombre: string; personas: number }[] {
   const mapa = new Map<string, { obra_id: string; nombre: string; personas: Set<string> }>()
   for (const f of filas) {
     const e = mapa.get(f.obra.id) ?? { obra_id: f.obra.id, nombre: f.obra.nombre, personas: new Set<string>() }
@@ -205,6 +208,6 @@ export function personasPorObra(filas: FilaSemanaObra[]): { obra_id: string; nom
 
 /** «1 día sin marcar» — el ámbar del encabezado. Cuenta DÍAS distintos, no celdas: tres personas sin
  *  marcar el mismo miércoles son un día reclamado, no tres. */
-export function diasSinMarcar(filas: FilaSemanaObra[]): number {
+export function diasSinMarcar(filas: FilaQuincenaObra[]): number {
   return new Set(filas.flatMap((f) => f.reclama)).size
 }

@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Aviso, Boton, CAMPO, Campo, ErrorCampo } from '@/shared/components/ds'
+import { useRouter } from 'next/navigation'
+import { Aviso, Boton, CAMPO, Campo, Drawer, ErrorCampo } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import { corregirJornada } from '../services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '../services/motivoDeAusencia'
-import type { CeldaObra, FilaSemanaObra } from '../services/semanaPorObra'
+import type { CeldaObra, FilaQuincenaObra } from '../services/quincenaPorObra'
 
 // EL ADMINISTRADOR CORRIGE TODO — el día de una persona: su obra, sus horas, si no vino, o sacarlo.
 //
@@ -16,6 +17,16 @@ import type { CeldaObra, FilaSemanaObra } from '../services/semanaPorObra'
 // selector de obra, un botón de ausencia y uno de borrar serían CUATRO controles por celda y
 // treinta por fila: la grilla dejaría de leerse, que es para lo que existe. Lo que se hace poco y
 // pesa mucho —mover un día de obra, borrarlo— va a un lugar donde se ve entero antes de tocarlo.
+//
+// ═══ AL COSTADO, Y NO SE CIERRA AL GUARDAR ═══
+//
+// El dueño: *"la forma de editar tiene q ser q se abra esa pantalla pero al costado"*. Abajo de la
+// grilla el panel empujaba la tabla y quedaba fuera de pantalla en cuanto había más de diez filas:
+// había que scrollear para corregir y volver a scrollear para ver si el número cambió.
+//
+// Al guardar se refresca la grilla —`router.refresh()`, que vuelve a correr el server component—
+// y el panel QUEDA ABIERTO con el acuse. Corregir es una tarea de varios días seguidos de la misma
+// persona: cerrar el panel en el primero obligaría a volver a buscar la fila para el segundo.
 //
 // ═══ LA ASIGNACIÓN NO SE CREA SOLA ═══
 //
@@ -32,7 +43,7 @@ export interface ObraElegible {
 }
 
 export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, alCerrar }: {
-  fila: FilaSemanaObra
+  fila: FilaQuincenaObra
   dias: string[]
   etiquetas: string[]
   obras: ObraElegible[]
@@ -54,6 +65,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
   const [motivo, setMotivo] = useState<string | null>(null)
   const [pendiente, arrancar] = useTransition()
   const motivos = motivosDeDiaNoTrabajado()
+  const router = useRouter()
 
   // AL CAMBIAR DE DÍA, EL FORMULARIO SE RELLENA CON LO DE ESE DÍA. Sin esto, elegir el jueves y
   // guardar escribiría en el jueves las horas que se estaban viendo del lunes.
@@ -90,6 +102,10 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
       if (r.ok) {
         setAviso({ ok: true, texto: r.mensaje })
         setPedirAsignacion(false)
+        // LA GRILLA SE VUELVE A LEER DE LA BASE. Sin esto el panel dice «guardado» y la celda de
+        // atrás sigue mostrando el número viejo: la pantalla afirmaría dos cosas distintas del
+        // mismo día. No se pinta un optimista — se relee el destino, que es la única evidencia.
+        router.refresh()
         return
       }
       setAviso({ ok: false, texto: r.error })
@@ -98,27 +114,20 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
   }
 
   return (
-    <aside
-      data-testid="panel-correccion"
-      style={{
-        border: `1px solid ${V.linea}`, borderRadius: 8, padding: '14px 16px',
-        background: '#FFFFFF', marginTop: 12, maxWidth: 460,
-      }}
+    <Drawer
+      testid="panel-correccion"
+      titulo={fila.persona.nombre}
+      subtitulo={`Corregir un día · hoy figura en ${fila.obra.nombre}`}
+      onCerrar={alCerrar}
+      pie={
+        <Boton type="button" variante="primaria" onClick={guardar}
+          disabled={pendiente || invalido || (pedirAsignacion && !asignar)}
+          data-testid="guardar-correccion">
+          {pendiente ? 'Guardando…' : 'Guardar la corrección'}
+        </Boton>
+      }
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <div>
-          <p style={{ fontSize: '14px', fontWeight: 600, color: V.tinta }}>{fila.persona.nombre}</p>
-          <p style={{ fontSize: '11.5px', color: V.tenue }}>
-            Corregir un día · hoy figura en {fila.obra.nombre}
-          </p>
-        </div>
-        <button type="button" onClick={alCerrar} data-testid="cerrar-correccion"
-          style={{ fontSize: '12px', color: V.apagado }}>
-          Cerrar
-        </button>
-      </div>
-
-      <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gap: 10 }}>
         <Campo rotulo="Día">
           <select value={fecha} onChange={(e) => elegirDia(e.target.value)} className={CAMPO} data-testid="correccion-dia">
             {dias.map((d, i) => (
@@ -183,16 +192,8 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
         {aviso && (
           <Aviso tono={aviso.ok ? 'info' : 'neg'} testid="acuse-correccion">{aviso.texto}</Aviso>
         )}
-
-        <div>
-          <Boton type="button" variante="primaria" onClick={guardar}
-            disabled={pendiente || invalido || (pedirAsignacion && !asignar)}
-            data-testid="guardar-correccion">
-            {pendiente ? 'Guardando…' : 'Guardar la corrección'}
-          </Boton>
-        </div>
       </div>
-    </aside>
+    </Drawer>
   )
 }
 
@@ -202,7 +203,9 @@ function marcaDe(c: CeldaObra | undefined): string {
   if (!c) return ''
   if (c.estado === 'horas') return ` · ${hs(c.horas ?? 0)} hs`
   if (c.estado === 'ausente') return ' · no vino'
-  if (c.estado === 'no_laborable') return ' · feriado'
+  // «no laborable» y no «feriado»: desde que la grilla es por quincena, este estado también lo
+  // tienen los sábados y los domingos, que no son feriados de nadie.
+  if (c.estado === 'no_laborable') return ' · no laborable'
   if (c.estado === 'otra_obra') return ' · está en otra obra'
   return ' · sin cargar'
 }

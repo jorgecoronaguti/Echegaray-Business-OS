@@ -3,60 +3,74 @@ import { Aviso, Vacio } from '@/shared/components/ds'
 import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
-import { diasDe, etiquetaDia, rotuloSemana, semanaDe } from '../services/asistenciaSemana'
-import { getSemanaPorObra } from '../services/jornadaPorObraService'
 import {
-  armarSemanaPorObra, diasSinMarcar, personasPorObra, totalDeLaSemanaPorObra, totalesPorDia,
-} from '../services/semanaPorObra'
+  correrQuincena, diasDeQuincena, esFechaISO, etiquetaDiaCorta, noLaborablesDe, nombreDia,
+  quincenaDe, rotuloQuincena,
+} from '../services/quincena'
+import { getQuincenaPorObra } from '../services/jornadaPorObraService'
+import {
+  armarQuincenaPorObra, diasSinMarcar, personasPorObra, totalDeLaQuincenaPorObra, totalesPorDia,
+} from '../services/quincenaPorObra'
 import { GrillaAsistenciaObra } from './GrillaAsistenciaObra'
 
-// LA SOLAPA «ASISTENCIA» DE PERSONAL — la semana, por obra.
+// LA SOLAPA «ASISTENCIA» DE PERSONAL — la QUINCENA, por obra.
 //
 // ═══ POR QUÉ ACÁ Y NO EN UNA PANTALLA PROPIA ═══
 //
 // Es la MISMA población que la solapa Personal —el plantel— mirada por otra pregunta: no «quién
-// trabaja acá» sino «cuántas horas puso cada uno en cada obra esta semana». Una pantalla nueva
+// trabaja acá» sino «cuántas horas puso cada uno en cada obra en esta quincena». Una pantalla nueva
 // obligaría a elegir desde el menú entre dos listas de las mismas personas.
 //
-// La semana viaja en la URL (`?semana=2026-09-07`): así se puede pasar «mirá la semana pasada» por
-// mensaje, y recargar no devuelve a hoy.
+// ═══ POR QUÉ QUINCENA Y NO SEMANA ═══
+//
+// El dueño: *"la vista tiene q ser por quincena"*. Los jornales se pagan del 1 al 15 y del 16 a fin
+// de mes; una grilla lunes→domingo obliga a sumar dos semanas y media a mano para cerrar contra la
+// liquidación, y a decidir qué hacer con la semana que cruza el 15. El corte no se define acá: sale
+// de `services/quincena.ts`, que a su vez reusa `ventanaDe('quincena')`.
+//
+// La quincena viaja en la URL (`?quincena=2026-09-16`): así se puede pasar «mirá la quincena
+// pasada» por mensaje, y recargar no devuelve a hoy.
 
-export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe, puedeCorregir }: {
-  semanaPedida?: string
+export async function BloqueAsistenciaQuincena({ quincenaPedida, hoy, q, hrefDe, puedeCorregir }: {
+  /** Cualquier día de la quincena que se quiere ver. Lo que no sea una fecha vuelve a la de hoy. */
+  quincenaPedida?: string
   hoy: string
   /** El texto del buscador. Filtra DESPUÉS de armar la grilla — ver abajo. */
   q?: string
-  hrefDe: (semana: string) => string
+  hrefDe: (quincena: string) => string
   /** Corregir la OBRA de un día es de Administración. La policy decide de verdad; esto evita
    *  ofrecer un botón que va a rebotar contra un `permission denied`. */
   puedeCorregir: boolean
 }) {
-  const esFecha = /^\d{4}-\d{2}-\d{2}$/.test(semanaPedida ?? '')
-  const semana = semanaDe(esFecha ? (semanaPedida as string) : hoy)
+  const quincena = quincenaDe(esFechaISO(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const datos = await getSemanaPorObra(supabase, semana.desde, semana.hasta)
+  const datos = await getQuincenaPorObra(supabase, quincena.desde, quincena.hasta)
 
   if (datos.error || !datos.data) {
-    // UNA GRILLA VACÍA PORQUE LA CONSULTA FALLÓ se leería como «no trabajó nadie en toda la semana»,
-    // que es una afirmación distinta y falsa.
+    // UNA GRILLA VACÍA PORQUE LA CONSULTA FALLÓ se leería como «no trabajó nadie en toda la
+    // quincena», que es una afirmación distinta y falsa.
     return (
       <div style={{ padding: '12px 0' }}>
-        <Aviso tono="neg" titulo="No pude leer la asistencia de la semana" testid="asistencia-error">
+        <Aviso tono="neg" titulo="No pude leer la asistencia de la quincena" testid="asistencia-error">
           {datos.error ?? 'Sin datos.'}
         </Aviso>
       </div>
     )
   }
 
-  const dias = diasDe(semana, datos.data.registros.map((r) => r.fecha))
-  const todas = armarSemanaPorObra({ ...datos.data, dias, hoy })
+  const dias = diasDeQuincena(quincena)
+  // LOS FINES DE SEMANA ENTRAN A LOS NO LABORABLES. Sin esto, cada sábado y cada domingo de la
+  // quincena se dibujaría «sin marcar» —el rojo que reclama— en todas las filas: cuatro días
+  // falsos por período. Un sábado TRABAJADO se sigue viendo: lo declarado manda sobre el almanaque.
+  const noLaborables = noLaborablesDe(dias, datos.data.noLaborables)
+  const todas = armarQuincenaPorObra({ ...datos.data, noLaborables, dias, hoy })
   // EL TEXTO FILTRA DESPUÉS DE ARMAR LA GRILLA, nunca antes. Filtrar los registros crudos sacaría a
   // una persona de las celdas de sus propios compañeros y un día marcado pasaría a «sin marcar».
   const filas = q?.trim()
     ? todas.filter((f) => contieneEnAlguno([f.persona.nombre, f.obra.nombre, f.persona.nota], q))
     : todas
-  // LOS CHIPS, LOS TOTALES Y EL RECLAMO SON DE LA SEMANA ENTERA, no de lo que sobrevive al
-  // buscador: un total que cambia al escribir deja de ser el total de la semana.
+  // LOS CHIPS, LOS TOTALES Y EL RECLAMO SON DE LA QUINCENA ENTERA, no de lo que sobrevive al
+  // buscador: un total que cambia al escribir deja de ser el total de la quincena.
   const totales = totalesPorDia(todas, dias)
   const chips = personasPorObra(todas)
   const sinMarcar = diasSinMarcar(todas)
@@ -64,13 +78,16 @@ export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe, pue
   // viaja junta —es lo que vale una ausencia— y sale del mismo viaje, no de dos.
   const obras = await obrasElegibles(supabase)
   const jornadaPorObra = Object.fromEntries(obras.map((o) => [o.id, o.jornada]))
+  const tenues = new Set(noLaborables)
 
   return (
     <div data-testid="bloque-asistencia">
       <div style={{
         display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 10, padding: '4px 0 12px',
       }}>
-        <span style={{ fontSize: '13px', color: V.tinta }}>{rotuloSemana(dias)}</span>
+        <span style={{ fontSize: '13px', color: V.tinta }} data-testid="rotulo-quincena">
+          {rotuloQuincena(quincena)}
+        </span>
         {chips.map((c) => (
           <span key={c.obra_id} data-testid="chip-obra" style={{
             fontSize: '12px', color: V.apagado, border: `1px solid ${V.linea}`,
@@ -85,15 +102,15 @@ export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe, pue
               {sinMarcar} {sinMarcar === 1 ? 'día sin marcar' : 'días sin marcar'}
             </span>
           )}
-          <Semanas semana={semana.desde} hrefDe={hrefDe} />
+          <Quincenas quincena={quincena} hrefDe={hrefDe} />
         </span>
       </div>
 
       {filas.length === 0 ? (
         <Vacio>
           {q?.trim()
-            ? `Ninguna persona de esta semana coincide con «${q.trim()}».`
-            : 'Nadie tiene asignación vigente ni horas cargadas en esta semana.'}
+            ? `Ninguna persona de esta quincena coincide con «${q.trim()}».`
+            : 'Nadie tiene asignación vigente ni horas cargadas en esta quincena.'}
           {' '}La asistencia se carga por obra, desde{' '}
           <Link href="/campo/asistencia" className="underline">Campo · Asistencia</Link>.
         </Vacio>
@@ -101,9 +118,11 @@ export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe, pue
         <GrillaAsistenciaObra
           filas={filas}
           dias={dias}
-          etiquetas={dias.map(etiquetaDia)}
+          etiquetas={dias.map(etiquetaDiaCorta)}
+          titulos={dias.map(nombreDia)}
+          columnasTenues={dias.map((d) => tenues.has(d))}
           totalesDia={totales}
-          total={totalDeLaSemanaPorObra(todas)}
+          total={totalDeLaQuincenaPorObra(todas)}
           jornadaPorObra={jornadaPorObra}
           obras={obras.map((o) => ({ id: o.id, nombre: o.nombre }))}
           puedeCorregir={puedeCorregir}
@@ -113,8 +132,8 @@ export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe, pue
       <p style={{ marginTop: 10, fontSize: '11.5px', color: V.tenue, lineHeight: 1.5 }} data-testid="pie-asistencia">
         Cada celda se edita; guarda al salir del campo. Escribí «A» para marcar que no vino.
         {' '}Una celda punteada en rojo es un día que otros marcaron y éste no — «sin marcar» no es
-        ausente. Un «—» es un feriado o un día sin ningún registro en ninguna obra: de eso no se
-        puede afirmar ni que no se trabajó ni que nadie lo cargó.
+        ausente. Un «—» es un día no laborable o un día sin ningún registro en ninguna obra: de eso
+        no se puede afirmar ni que no se trabajó ni que nadie lo cargó.
       </p>
     </div>
   )
@@ -145,18 +164,18 @@ async function obrasElegibles(
     })
 }
 
-function Semanas({ semana, hrefDe }: { semana: string; hrefDe: (s: string) => string }) {
-  const correr = (n: number) => {
-    const d = new Date(`${semana}T00:00:00Z`)
-    d.setUTCDate(d.getUTCDate() + n)
-    return d.toISOString().slice(0, 10)
-  }
+/** «‹ anterior · siguiente ›» salta de QUINCENA, no de quince días — ver `correrQuincena`. */
+function Quincenas({ quincena, hrefDe }: {
+  quincena: { desde: string; hasta: string }; hrefDe: (q: string) => string
+}) {
   return (
     <span style={{ display: 'flex', gap: 10, fontSize: '12px' }}>
-      <Link href={hrefDe(correr(-7))} prefetch={false} data-testid="semana-anterior" style={{ color: V.apagado }}>
+      <Link href={hrefDe(correrQuincena(quincena, -1).desde)} prefetch={false}
+        data-testid="quincena-anterior" style={{ color: V.apagado }}>
         ‹ anterior
       </Link>
-      <Link href={hrefDe(correr(7))} prefetch={false} data-testid="semana-siguiente" style={{ color: V.apagado }}>
+      <Link href={hrefDe(correrQuincena(quincena, 1).desde)} prefetch={false}
+        data-testid="quincena-siguiente" style={{ color: V.apagado }}>
         siguiente ›
       </Link>
     </span>

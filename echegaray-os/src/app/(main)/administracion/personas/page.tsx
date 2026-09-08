@@ -43,7 +43,7 @@ import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { BloqueAsistenciaSemana } from '@/features/administracion/components/BloqueAsistenciaSemana'
+import { BloqueAsistenciaQuincena } from '@/features/administracion/components/BloqueAsistenciaQuincena'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/components/TablaPersonas'
@@ -63,7 +63,7 @@ export const dynamic = 'force-dynamic'
 
 const RUTA = '/administracion/personas'
 
-type Busqueda = { q?: string; f?: string; nueva?: string; vista?: string; semana?: string }
+type Busqueda = { q?: string; f?: string; nueva?: string; vista?: string; quincena?: string }
 
 function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): string {
   const params = new URLSearchParams()
@@ -75,10 +75,11 @@ function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): st
   return `${RUTA}${qs ? `?${qs}` : ''}`
 }
 
-/** La solapa Asistencia y su semana. Va aparte de `armarHref` porque no lleva ni filtro ni alta:
- *  arrastrar `f=sin_asignar` a una grilla que no filtra por eso prometería un recorte que no ocurre. */
-const hrefAsistencia = (semana?: string): string =>
-  `${RUTA}?vista=asistencia${semana ? `&semana=${semana}` : ''}`
+/** La solapa Asistencia y su quincena. Va aparte de `armarHref` porque no lleva ni filtro ni alta:
+ *  arrastrar `f=sin_asignar` a una grilla que no filtra por eso prometería un recorte que no ocurre.
+ *  El valor es CUALQUIER día de la quincena; el bloque la resuelve. */
+const hrefAsistencia = (quincena?: string): string =>
+  `${RUTA}?vista=asistencia${quincena ? `&quincena=${quincena}` : ''}`
 
 /** Qué decir cuando no hay ninguna fila: una línea, y que diga qué hacer. */
 function vacioDe(filtro: FiltroPersonal, q?: string) {
@@ -160,19 +161,19 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             espacioPanel={false}
             vistas={[
               { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: false, href: armarHref({}) },
-              { clave: 'asistencia', titulo: 'Asistencia', cuenta: null, activa: true, href: hrefAsistencia(sp.semana) },
+              { clave: 'asistencia', titulo: 'Asistencia', cuenta: null, activa: true, href: hrefAsistencia(sp.quincena) },
             ]}
             buscador={{
               accion: RUTA,
               q: sp.q,
               placeholder: 'Buscar persona',
-              oculto: { vista: 'asistencia', semana: sp.semana },
+              oculto: { vista: 'asistencia', quincena: sp.quincena },
               testid: 'buscar-persona',
             }}
           />
           <div style={{ padding: '10px 20px 24px' }}>
-            <BloqueAsistenciaSemana
-              semanaPedida={sp.semana} hoy={hoy} q={sp.q} hrefDe={hrefAsistencia}
+            <BloqueAsistenciaQuincena
+              quincenaPedida={sp.quincena} hoy={hoy} q={sp.q} hrefDe={hrefAsistencia}
               // ESTA PANTALLA YA ES DE ADMINISTRACIÓN: quien llega acá pasó el portero del área.
               // El `true` no es un permiso, es la afirmación de dónde vive el botón; la policy de
               // `registros_hh` y la de `obra_asignacion` son las que rechazan de verdad.
@@ -232,8 +233,8 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           vistas={[
             { clave: 'personal', titulo: 'Plantel', cuenta: conteos.plantel, activa: true, href: armarHref({}) },
             // SIN CUENTA: el número de una solapa promete cuántas filas hay del otro lado del clic, y
-            // del otro lado hay una fila por par (persona, obra) de UNA semana — no una población
-            // estable. Un número acá diría algo distinto cada lunes.
+            // del otro lado hay una fila por par (persona, obra) de UNA quincena — no una
+            // población estable. Un número acá diría algo distinto cada quince días.
             { clave: 'asistencia', titulo: 'Asistencia', cuenta: null, activa: false, href: hrefAsistencia() },
           ]}
           buscador={{
