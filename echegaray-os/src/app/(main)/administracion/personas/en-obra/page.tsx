@@ -214,10 +214,10 @@ export default async function EnObraPage({
 
         <NotaBloque testid="nota-jornada">
           Son dos hechos distintos: el FICHAJE lo marca la persona desde su teléfono (entrada y
-          salida) y la ASISTENCIA son las horas que el jefe imputa a la obra — que alguien no tenga
-          horas cargadas no significa que no haya venido, y por eso acá dice «sin cargar» y nunca
-          «no fichó» ni «ausente». La ausencia y la licencia se declaran con su motivo al cargar el
-          día.
+          salida) y la ASISTENCIA son las horas que el jefe imputa a la obra — que a alguien no le
+          hayan cargado las horas no significa que no haya venido ni que no haya marcado, y por eso
+          acá dice «sin cargar» y nunca lo cuenta como falta. La ausencia y la licencia se declaran
+          con su motivo al cargar el día.
           {' '}
           <Link href="/administracion/personas" style={{ color: V.tinta, fontWeight: 500 }}>
             Ir a Personal →

@@ -92,8 +92,11 @@ export function AsistenciaDeLaObra({ obra, testid }: { obra: ObraDelDia; testid?
                 {p.nombre}
               </Link>
             </span>
+            {/* LA MISMA PALABRA QUE LA COLUMNA CATEGORÍA DE PLANTEL, guión bajo incluido: la base
+                guarda `oficial_especializado` y las dos pantallas tienen que decir lo mismo de la
+                misma persona (decisión del dueño del 08/09, ver `notaDe`). */}
             <span className="truncate shrink-0" style={{ fontSize: '11px', color: V.tenue, maxWidth: 160 }}>
-              {p.categoria ?? ''}
+              {p.categoria?.replace('_', ' ') ?? ''}
             </span>
             <Estado p={p} />
           </li>
