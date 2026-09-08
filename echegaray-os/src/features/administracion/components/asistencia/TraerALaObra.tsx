@@ -143,13 +143,20 @@ export function TraerALaObra({ obraId, obraNombre, candidatos, error }: {
                       onClick={() => traer(c)}
                       data-testid="candidato-traer"
                       data-persona={c.id}
-                      className="flex min-h-[56px] w-full items-center justify-between gap-3 py-2 text-left disabled:opacity-50"
+                      className="flex min-h-[56px] w-full flex-col justify-center gap-0.5 py-2 text-left disabled:opacity-50"
                     >
-                      <span className="min-w-0 flex-1 truncate text-[15px] text-ink">{c.nombre}</span>
-                      {/* DE DÓNDE VIENE. Traerlo le CIERRA la asignación de hoy: sin este rótulo,
-                          sacarle un oficial a otra obra activa se ve igual que tomar a alguien que
-                          no está en ninguna. `null` dice «sin obra», no queda en blanco. */}
-                      <span className="shrink-0 text-[12px] text-faint" data-testid="obra-del-candidato">
+                      <span className="truncate text-[15px] text-ink">{c.nombre}</span>
+                      {/* DE DÓNDE VIENE, EN SU PROPIO RENGLÓN. Traerlo le CIERRA la asignación de
+                          hoy: sin este rótulo, sacarle un oficial a otra obra activa se ve igual que
+                          tomar a alguien que no está en ninguna. `null` dice «sin obra».
+
+                          MEDIDO EN LA CAPTURA DE 390px DEL 08/09: al costado del nombre no entra.
+                          Quien tiene DOS obras vigentes trae un rótulo de 60 caracteres —«(Quattropani
+                          - SALÓN COMERCIAL y SF - ENTREPISO Y ESCALERA)»— y con los dos en la misma
+                          línea el rótulo se quedaba con todo el ancho: DOS filas de la lista se
+                          dibujaron sin nombre, sólo el paréntesis. Una fila sin nombre no se puede
+                          elegir. */}
+                      <span className="truncate text-[12px] text-faint" data-testid="obra-del-candidato">
                         {trayendo === c.id ? 'trayendo…' : `(${c.obraActual ?? 'sin obra'})`}
                       </span>
                     </button>
