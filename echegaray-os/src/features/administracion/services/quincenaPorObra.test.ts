@@ -650,3 +650,29 @@ test('LAS HORAS DE UNA AUSENCIA NO SUMAN A NINGUNA OBRA; SÍ AL TOTAL DE LA PERS
   assert.deepEqual(filas[0].celdas[0].tramos, [])
   assert.deepEqual(filas[0].celdas[1].tramos.map((t) => [t.nombre, t.horas]), [['PISOS INDUSTRIALES', 8]])
 })
+
+// ═══ LA DECLARACIÓN GANA SOBRE EL FUTURO ═══════════════════════════════════════════════════════
+//
+// EL DEFECTO QUE ATRAPA: un tramo de licencia asentado hoy hasta el 19 escribe filas en días que
+// todavía no llegaron. Si `celdaDe` preguntara por el futuro ANTES que por lo declarado, esos días
+// saldrían vacíos y la pantalla diría que no hay nada asentado sobre las filas que acaba de
+// escribir — el dueño volvería a cargarlas. El orden correcto: trabajado, declarado, y recién ahí
+// el almanaque. Invertirlo pone este test en rojo.
+test('UN DÍA FUTURO CON LICENCIA DECLARADA MUESTRA LA LICENCIA, no el vacío del futuro', () => {
+  const filas = armar({
+    asignaciones: [asig('p1', 'Perez Juan', PISOS)],
+    // HOY es el viernes 11: el sábado 12 no llegó. La licencia va SIN obra, como se asienta.
+    registros: [reg('p1', null, S, 8.8, 'licencia', 'accidente_trabajo')],
+  })
+  assert.equal(filas[0].celdas[5].estado, 'licencia', 'el sábado 12 es futuro y está declarado')
+  assert.equal(filas[0].celdas[5].horas, 8.8, 'las horas que corresponden por ley se ven')
+  assert.deepEqual(filas[0].celdas[5].tramos, [], 'una licencia sin obra no es un tramo de obra')
+})
+
+test('UN DÍA FUTURO CON AUSENCIA DECLARADA MUESTRA LA AUSENCIA', () => {
+  const filas = armar({
+    asignaciones: [asig('p1', 'Perez Juan', PISOS)],
+    registros: [reg('p1', null, S, 8, 'ausencia', 'enfermedad')],
+  })
+  assert.equal(filas[0].celdas[5].estado, 'ausente')
+})

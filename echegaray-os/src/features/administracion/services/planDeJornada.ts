@@ -342,6 +342,12 @@ export const correccionSchema = z.object({
   /** A qué obra va el día. OPCIONAL cuando no vino: ver «LA AUSENCIA ES DE LA PERSONA». */
   obra_destino: obraOpcional,
   estado: z.enum(['presente', 'ausente', 'borrar']),
+  /** HASTA QUÉ DÍA DURA. `null` = sólo el día elegido, que es como funcionó hasta el 08/09/2026.
+   *  Con fecha se asienta cada día HÁBIL del tramo (ver `planDeTramoDeAusencia`): un parte médico
+   *  de diez días se sabe el primero, y volver cada mañana a marcar el mismo día es lo que hacía
+   *  que no se marcara. El tope y el orden de las fechas los valida la regla pura, no el schema:
+   *  una segunda definición de «hasta dónde llega un tramo» discreparía el día que se toque una. */
+  hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Esa fecha no es un día').nullable().default(null),
   horas: z.number().positive().max(24).nullable().default(null),
   /** Por qué no vino. Decide si el día queda como `ausencia` o como `licencia`. */
   motivo: z.string().trim().refine(esMotivo, 'Ese motivo no está en el catálogo').nullable().default(null),
@@ -354,6 +360,12 @@ export const correccionSchema = z.object({
   // ése es todo el sentido de cargarlas. Sólo la AUSENCIA puede venir sin obra.
   message: 'Elegí la obra',
   path: ['obra_destino'],
+}).refine((d) => d.hasta === null || d.estado === 'ausente', {
+  // UN TRAMO SÓLO EXISTE PARA UN DÍA QUE NO SE TRABAJÓ. Unas horas trabajadas no se repiten por
+  // decreto diez días —cada día tiene las suyas— y «sacar lo cargado» en masa sería un borrado
+  // masivo detrás de un campo opcional.
+  message: 'Un tramo se asienta sólo cuando no vino',
+  path: ['hasta'],
 })
 
 export type Correccion = z.infer<typeof correccionSchema>

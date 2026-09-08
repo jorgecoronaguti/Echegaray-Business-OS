@@ -2,13 +2,13 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Aviso, Boton, CAMPO, Campo, Drawer, ErrorCampo } from '@/shared/components/ds'
+import { Aviso, Boton, CAMPO, Campo, ChipsValor, Drawer, ErrorCampo } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import { corregirJornada } from '../services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '../services/motivoDeAusencia'
 import { obraDestinoInicial } from '../services/destinoInicial'
-import { jornadaDeReferenciaVisible } from '../services/ausenciaDeLaPersona'
+import { jornadaDeReferenciaVisible, restoDeLaSemana, topeDelTramo } from '../services/ausenciaDeLaPersona'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 
 // EL ADMINISTRADOR CORRIGE TODO — el día de una persona: su obra, sus horas, si no vino, o sacarlo.
@@ -41,6 +41,16 @@ import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 // aparecía sólo cuando la acción rechazaba; sin rechazo, atarla a él la habría hecho inalcanzable.
 
 type Estado = 'presente' | 'ausente' | 'borrar'
+
+/** Hasta cuándo dura lo que se está asentando. `dia` es el default y es lo que el panel hizo hasta
+ *  el 08/09/2026: un día, una fila. */
+type ModoTramo = 'dia' | 'semana' | 'fecha'
+
+const TRAMOS: { valor: string; etiqueta: string }[] = [
+  { valor: 'dia', etiqueta: 'Sólo este día' },
+  { valor: 'semana', etiqueta: 'Resto de la semana' },
+  { valor: 'fecha', etiqueta: 'Elegir fecha' },
+]
 
 export interface ObraElegible {
   id: string
@@ -84,6 +94,14 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
   const [asignar, setAsignar] = useState(false)
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null)
   const [motivo, setMotivo] = useState<string | null>(null)
+  // ═══ HASTA CUÁNDO (dueño, 08/09/2026 16:51) ═══
+  //
+  // Textual: *«si ya sé que no va a haber por X cantidad de días, ya puedo dejarlo asentado»*. El
+  // panel corregía UN día: un parte médico de diez obligaba a abrirlo diez veces, y los días que
+  // todavía no llegaron ni siquiera se podían elegir. `null` es «sólo este día» — el default, para
+  // que el tramo no se asiente por descuido.
+  const [hasta, setHasta] = useState<string | null>(null)
+  const [modoTramo, setModoTramo] = useState<ModoTramo>('dia')
   const [pendiente, arrancar] = useTransition()
   const motivos = motivosDeDiaNoTrabajado()
   const router = useRouter()
@@ -103,6 +121,16 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
     setTexto(t?.horas != null ? hs(t.horas) : '')
     setAviso(null)
     setAsignar(false)
+    // EL TRAMO NO SOBREVIVE AL CAMBIO DE DÍA. Sin esto, elegir el jueves después de haber puesto
+    // «hasta el 19» asentaría un tramo que arranca donde nadie lo pidió.
+    setHasta(null)
+    setModoTramo('dia')
+  }
+
+  /** El chip elegido decide el «hasta»; escribir una fecha a mano cae siempre en «Elegir fecha». */
+  const elegirTramo = (m: ModoTramo) => {
+    setModoTramo(m)
+    setHasta(m === 'dia' ? null : m === 'semana' ? restoDeLaSemana(fecha) : hasta ?? fecha)
   }
 
   /** Cambiar de tramo rellena el formulario con lo de ESE tramo, igual que cambiar de día. */
@@ -150,6 +178,10 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
         // EL MOTIVO DECIDE SI ES AUSENCIA O LICENCIA. Vacaciones y parte médico son licencia;
         // faltar sin avisar, ausencia. Ninguna suma horas trabajadas.
         motivo: estado === 'ausente' ? motivo : null,
+        // EL TRAMO VIAJA SÓLO CUANDO SE PUEDE VER. El campo aparece con «No vino» y un motivo
+        // elegido; mandarlo desde un estado donde la pantalla no lo muestra sería asentar días que
+        // nadie vio.
+        hasta: estado === 'ausente' && motivo !== null ? hasta : null,
         asignar,
       })
       if (r.ok) {
@@ -243,6 +275,25 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
                 </option>
               ))}
             </select>
+          </Campo>
+        )}
+        {/* HASTA CUÁNDO, DEBAJO DEL MOTIVO. Sólo con motivo declarado: una enfermedad o un
+            accidente se sabe cuánto dura; «sin declarar todavía» no dura nada todavía. */}
+        {estado === 'ausente' && motivo !== null && (
+          <Campo rotulo="Hasta (opcional)" ayuda="Se asienta cada día hábil del tramo, sin domingos.">
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+              <ChipsValor valores={TRAMOS} activo={modoTramo} testid="tramo"
+                alElegir={(v) => elegirTramo(v as ModoTramo)} />
+            </div>
+            {/* EL `max` ES EL MISMO TOPE QUE VALIDA EL SERVIDOR (`TOPE_DE_TRAMO_DIAS`): la pantalla
+                no ofrece lo que la acción va a rechazar, y un 2027 tecleado por error no se
+                convierte en 365 filas de licencia. */}
+            <input type="date" value={hasta ?? ''} min={fecha} max={topeDelTramo(fecha)}
+              onChange={(e) => {
+                setHasta(e.target.value || null)
+                setModoTramo(e.target.value ? 'fecha' : 'dia')
+              }}
+              className={CAMPO} data-testid="correccion-hasta" />
           </Campo>
         )}
         {estado === 'ausente' && (

@@ -15,6 +15,7 @@
 // sin sesión, para que se pruebe entero sin Supabase arriba.
 
 import { tipoDeMotivo } from './motivoDeAusencia.ts'
+import { correrDias, esDomingo, nombreDia } from './quincena.ts'
 
 /** Una fila del día de esa persona, mirada por esta regla. Es `FilaExistente` + su obra. */
 export interface FilaDelDia {
@@ -250,4 +251,190 @@ export function acuseDeAusenciasDelDia(e: EscritoSinObra): string | null {
       : `Quedaron ${e.intactas.length} filas sin tocar (una ${primera.motivo}).`)
   }
   return partes.length > 0 ? partes.join(' ') : null
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// UN TRAMO: LA AUSENCIA QUE YA SE SABE CUÁNTO VA A DURAR
+//
+// El dueño, 08/09/2026 16:51, textual: *«no está arreglado lo de la ausencia por motivo de
+// enfermedad o accidente de trabajo: si ya sé que no va a haber por X cantidad de días, ya puedo
+// dejarlo asentado»*. Un parte médico de diez días o un accidente con alta prevista se sabe el
+// primer día: obligar a volver cada mañana a marcar el mismo día es lo que hacía que no se marcara.
+//
+// ═══ POR QUÉ UNA FILA POR DÍA Y NO UNA FILA CON DOS FECHAS ═══
+//
+// Porque `registros_hh` es el libro de las horas de cada día y TODO lo que lee la empresa —la
+// grilla, la quincena, la liquidación, el ausentismo por causa— pregunta por día. Una fila «del 9
+// al 19» obligaría a cada uno de esos lectores a saber expandir un rango, y el primero que se
+// olvide publica un mes con nueve días de menos. El tramo es de la PANTALLA; la base sigue siendo
+// un día, una fila.
+//
+// ═══ EL DOMINGO NO SE ASIENTA ═══
+//
+// Misma regla que la grilla (`diasDeLaQuincenaSinDomingos`): el domingo no se trabaja, así que no
+// se le puede reconocer una ausencia. Asentarlo sumaría horas de un día que no existe para nadie.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Una fila del rango, con SU día: el tramo mira varios y sin la fecha no se sabe cuál es cuál. */
+export interface FilaDelTramo extends FilaDelDia {
+  fecha: string
+}
+
+/**
+ * El tope del tramo, en días de calendario.
+ *
+ * No es una restricción técnica: es la puerta contra el error de tipeo. Un `2027` en vez de `2026`
+ * en el campo de fecha escribiría 365 filas de licencia sin que nadie lo pida, y el acuse las
+ * contaría como un éxito. Sesenta días cubre el parte médico más largo que la empresa maneja hoy.
+ */
+export const TOPE_DE_TRAMO_DIAS = 60
+
+export interface DiaDelTramo {
+  fecha: string
+  /** `null` es un insert; con id se corrige la fila SIN obra que ese día ya tenía. */
+  id: string | null
+  /** Filas EN OBRA de ese día que se reemplazan: no trabajó. */
+  sacar: string[]
+  /** Lo de ese día que NO se toca, y por qué. */
+  intactas: { motivo: string }[]
+  /** Ese día ya decía exactamente esto. No se reescribe — y el acuse puede decir que no cambió. */
+  sinCambio: boolean
+}
+
+export type PlanDeTramo =
+  | { ok: true; dias: DiaDelTramo[] }
+  | { ok: false; error: string }
+
+/**
+ * Qué se escribe, qué se saca y qué ya estaba, día hábil por día hábil del tramo.
+ *
+ * ═══ EL CRITERIO DE QUÉ SE SACA VIENE DE AFUERA ═══
+ *
+ * `sacarDeLaObra` es `planDeBorrado` —el criterio de la OBRA: una hora improductiva con su causa,
+ * unas extras o una imputación a una actividad del plan no se las lleva puestas nadie—. Se inyecta
+ * en vez de importarse para que este archivo siga sin depender del plan de la obra: acá vive lo que
+ * pasa FUERA de toda obra, y son dos listas de ids que se aplican a consultas distintas.
+ */
+export function planDeTramoDeAusencia<F extends FilaDelTramo>(e: {
+  desde: string
+  hasta: string
+  /** Las que corresponden por ley, ya resueltas. Valen para CADA día del tramo. */
+  horas: number
+  motivo: string | null
+  tipo: 'ausencia' | 'licencia'
+  /** Todo lo que esa persona tiene cargado entre `desde` y `hasta`, ambos incluidos. */
+  existentes: readonly F[]
+  sacarDeLaObra: (filas: F[]) => { borrar: string[]; intactas: { motivo: string }[] },
+}): PlanDeTramo {
+  if (e.hasta < e.desde) {
+    return { ok: false, error: 'El «hasta» es anterior al día elegido: un tramo no va para atrás.' }
+  }
+  if (diasEntre(e.desde, e.hasta) > TOPE_DE_TRAMO_DIAS) {
+    return {
+      ok: false,
+      error: `Un tramo no puede pasar de ${TOPE_DE_TRAMO_DIAS} días. Si de verdad son más, se `
+        + 'asienta por partes: así un año escrito de más en la fecha no se convierte en 365 filas.',
+    }
+  }
+  const dias: DiaDelTramo[] = []
+  for (let f = e.desde; f <= e.hasta; f = correrDias(f, 1)) {
+    if (esDomingo(f)) continue
+    const delDia = e.existentes.filter((x) => x.fecha === f)
+    const ya = ausenciaSinObraDe(delDia)
+    const { borrar, intactas } = e.sacarDeLaObra(delDia.filter((x) => x.obra_canonica_id !== null))
+    dias.push({
+      fecha: f,
+      id: ya?.id ?? null,
+      sacar: borrar,
+      intactas,
+      // SIN CAMBIO ES TAMBIÉN «Y NO HAY NADA QUE SACAR». Un día con la licencia ya puesta pero con
+      // horas cargadas en una obra sigue estando mal: hay que sacar esas horas, y saltearlo dejaría
+      // el día contado dos veces.
+      sinCambio: ya !== null && borrar.length === 0 && ya.tipo_hora === e.tipo
+        && Number(ya.horas) === e.horas && (ya.notas ?? null) === e.motivo,
+    })
+  }
+  if (dias.length === 0) {
+    return { ok: false, error: 'Ese tramo no tiene ningún día hábil: los domingos no se asientan.' }
+  }
+  return { ok: true, dias }
+}
+
+/** Hasta dónde puede llegar el campo «Hasta»: es el `max` del `<input type=date>`, o sea la misma
+ *  puerta del tope pero un paso antes — la pantalla no ofrece lo que el servidor va a rechazar. */
+export const topeDelTramo = (desde: string): string => correrDias(desde, TOPE_DE_TRAMO_DIAS)
+
+/**
+ * El sábado de esa semana: hasta dónde llega el chip «Resto de la semana».
+ *
+ * Sábado y no viernes porque el sábado es LABORABLE (la grilla lo dibuja y se marca si se trabajó);
+ * el domingo no entra ni acá ni en el plan. Un `desde` que ya es sábado devuelve ese mismo día:
+ * «el resto de la semana» de un sábado es el sábado.
+ */
+export function restoDeLaSemana(desde: string): string {
+  const dow = new Date(`${desde}T00:00:00Z`).getUTCDay()
+  return dow === 0 ? desde : correrDias(desde, 6 - dow)
+}
+
+const diasEntre = (desde: string, hasta: string): number =>
+  Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86400000)
+
+/** `mié 09/09`. El día de la semana va porque un tramo se revisa contra el parte médico, que habla
+ *  de días, y `09/09` solo no deja ver que el sábado entró y el domingo no. */
+const dia = (fecha: string): string =>
+  `${nombreDia(fecha).slice(0, 3)} ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`
+
+/** Lo que la base hizo con el tramo. Nunca lo que se le pidió. */
+export interface EscrituraDelTramo {
+  tipo: 'ausencia' | 'licencia'
+  desde: string
+  hasta: string
+  /** Días hábiles que QUEDARON asentados: escritos ahora o ya iguales de antes. */
+  asentados: number
+  /** La etiqueta del motivo, como se lee en la pantalla. */
+  motivo: string | null
+  horasSacadas: number
+  obrasSacadas: string[]
+  /** Los días que la policy rechazó: la persona no tenía asignación vigente ese día. */
+  rechazados: string[]
+}
+
+/**
+ * El acuse del tramo.
+ *
+ * Dice el período, cuántos días hábiles quedaron y por qué causa, y repite la frase que impide que
+ * alguien vaya a buscar esos días en una obra. LOS DÍAS QUE NO ENTRARON SE NOMBRAN UNO POR UNO: un
+ * tramo que entró a medias y se acusa como completo es peor que uno rechazado entero, porque nadie
+ * vuelve a mirarlo.
+ */
+export function acuseDeTramo(e: EscrituraDelTramo): string {
+  const que = e.tipo === 'licencia' ? 'Licencia' : 'Ausencia'
+  const causa = e.motivo ? ` · ${e.motivo}` : ''
+  const partes: string[] = []
+  if (e.asentados > 0) {
+    partes.push(`${que} asentada del ${dia(e.desde)} al ${dia(e.hasta)}: ${e.asentados} `
+      + `${e.asentados === 1 ? 'día hábil' : 'días hábiles'}${causa}.`)
+    partes.push('La ausencia es de la persona; no se cargó a ninguna obra.')
+  } else {
+    partes.push(`No se asentó ningún día del ${dia(e.desde)} al ${dia(e.hasta)}.`)
+  }
+  if (e.horasSacadas > 0) {
+    const donde = e.obrasSacadas.length > 0 ? ` en ${e.obrasSacadas.join(' y ')}` : ''
+    partes.push(`Se sacaron las ${e.horasSacadas} hs que tenía cargadas${donde}: no trabajó esos días.`)
+  }
+  if (e.rechazados.length > 0) partes.push(sinAsignacionVigente(e.rechazados))
+  return partes.join(' ')
+}
+
+/** LA POLICY RECHAZÓ ESOS DÍAS, Y SE DICE POR QUÉ. `42501` sobre una fila sin obra es siempre lo
+ *  mismo: el jefe sólo puede declarar la ausencia de quien esté asignado A ESA FECHA a una obra que
+ *  él ve, y un tramo que se va más allá del fin de la asignación choca justo ahí. */
+function sinAsignacionVigente(fechas: readonly string[]): string {
+  const cortas = fechas.map((f) => `${f.slice(8, 10)}/${f.slice(5, 7)}`)
+  if (cortas.length === 1) {
+    return `No podés asentar el ${cortas[0]}: la persona no tiene asignación vigente ese día.`
+  }
+  const visibles = cortas.slice(0, 4).join(', ')
+  const resto = cortas.length > 4 ? ` y ${cortas.length - 4} más` : ''
+  return `No podés asentar el ${visibles}${resto}: la persona no tiene asignación vigente esos días.`
 }

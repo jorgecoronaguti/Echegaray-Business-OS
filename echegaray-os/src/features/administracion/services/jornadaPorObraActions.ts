@@ -40,8 +40,8 @@ import {
   planDeAusenciasSinObra, sumarHoras, type FilaDelDia, type MarcaDelDia,
 } from './ausenciaDeLaPersona'
 import {
-  escribirAusenciaSinObra, escribirAusenciasSinObra, filasSinObraDelDia, jornadaDeReferencia,
-  nombresDeObras, sacarAusenciasSinObra,
+  asentarTramoDeAusencia, escribirAusenciaSinObra, escribirAusenciasSinObra, filasSinObraDelDia,
+  jornadaDeReferencia, nombresDeObras, sacarAusenciasSinObra,
 } from './ausenciaDeLaPersonaService'
 
 export type ResultadoJornada =
@@ -379,6 +379,17 @@ async function corregirAusencia(
   const conObra = filas.filter((f) => f.obra_canonica_id !== null)
   const aSacar = planDeBorrado(conObra, { administraLicencias: true })
   const horas = horasDeLaAusencia(c.horas, await jornadaDeReferencia(supabase, c, conObra))
+
+  // ═══ EL TRAMO: LO QUE YA SE SABE QUE VA A DURAR (dueño, 08/09/2026 16:51) ═══
+  //
+  // «Si ya sé que no va a haber por X cantidad de días, ya puedo dejarlo asentado». Las horas se
+  // resuelven UNA vez —la jornada de referencia del primer día— y valen para todo el tramo: dos
+  // resoluciones distintas darían días de la misma licencia con horas distintas.
+  if (c.hasta !== null && c.hasta !== c.fecha) {
+    const r = await asentarTramoDeAusencia(supabase, { ...c, hasta: c.hasta, horas })
+    if (r.ok) revalidar()
+    return r
+  }
   const yaSinObra = ausenciaSinObraDe(filas as unknown as FilaDelDia[])
 
   const escrita = await escribirAusenciaSinObra(

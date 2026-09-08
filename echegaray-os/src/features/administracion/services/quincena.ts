@@ -27,7 +27,14 @@ export type Quincena = Ventana
 
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 
-const correrDias = (fecha: string, n: number): string => {
+/**
+ * El día vecino, `n` días después (o antes con `n` negativo).
+ *
+ * Se exporta porque el tramo de una ausencia (`ausenciaDeLaPersona.ts`) recorre días igual que la
+ * quincena, y una segunda aritmética de fechas en otro archivo discrepa el día que alguien toque
+ * una sola: sumar sobre `Date` local cruza el cambio de hora, sobre UTC no.
+ */
+export const correrDias = (fecha: string, n: number): string => {
   const d = new Date(`${fecha}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() + n)
   return iso(d)
