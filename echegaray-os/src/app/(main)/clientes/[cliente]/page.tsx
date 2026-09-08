@@ -55,7 +55,9 @@ import { AccesosPortal } from '@/features/clientes/components/accesos/AccesosPor
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorrienteService'
 import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
-import { getEconomiaDeObras, sumaConHuecos } from '@/features/clientes/services/economiaObras'
+import {
+  getEconomiaDeObras, SIN_PRECIO_EN_OBRAS, sumaConHuecos,
+} from '@/features/clientes/services/economiaObras'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
 import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
 import { editarPagoDelEsquema, publicarEsquema } from '@/features/clientes/services/esquemaActions'
@@ -189,7 +191,7 @@ export default async function ClientePage({ params, searchParams }: {
           // NADIE CARGÓ EL MONTO ≠ CONTRATADO $ 0. Con obras en curso sin monto, la cifra lo dice
           // en vez de publicar un cero que se leería como «trabajamos gratis».
           valor: contratadoEnCurso.total !== null ? money(contratadoEnCurso.total) : null,
-          falta: enCurso.length ? 'sin precio en OBRAS' : 'sin obra en curso',
+          falta: enCurso.length ? SIN_PRECIO_EN_OBRAS : 'sin obra en curso',
         } as CifraDeFicha]
       : []),
     { rotulo: 'Contactos', valor: lector.leer(contactos, []).length || null, falta: 'ninguno' },

@@ -105,6 +105,64 @@ test('la variante ancha de esas grillas NO entra en un teléfono: el defecto exi
   }
 })
 
+/**
+ * Los cortes declarados en un fuente, del MÁS ANCHO al más angosto, con cuántas pistas tiene cada
+ * uno. El primero es la grilla sin prefijo (la de escritorio).
+ */
+export function cortesDe(src: string): { corte: string; pistas: number }[] {
+  const declaradas = [...plantillas(src)]
+  const px = (corte: string) => Number(/max-\[(\d+)px\]:/.exec(corte)?.[1] ?? Infinity)
+  return declaradas
+    .sort((a, b) => px(b[0]) - px(a[0]))
+    .map(([corte, cols]) => ({ corte, pistas: pistasDe(cols).length }))
+}
+
+/**
+ * Las variantes que sueltan columnas SIN retirar sus celdas. Devuelve un renglón por defecto
+ * encontrado, y nada cuando la grilla está bien: la regla vive en una función pura para poder
+ * probar con un fuente inventado que PUEDE dar rojo — un control que no puede es una constante.
+ *
+ * ═══ POR QUÉ LA CUENTA ES POR DELTA Y NO CONTRA LA GRILLA ANCHA (corregido el 08/09/2026) ═══
+ *
+ * `max-[...]:hidden` es ACUMULATIVO: lo que se esconde por debajo de 1249px sigue escondido a
+ * 390px. Así que cada corte sólo tiene que retirar las columnas que suelta RESPECTO DEL CORTE
+ * INMEDIATAMENTE MÁS ANCHO; exigirle todas las de la grilla de escritorio le pide celdas que ya
+ * escondió el corte anterior y que no existen dos veces en el fuente.
+ *
+ * Esa era la cuenta vieja, y estuvo verde por casualidad mientras la cartera tuvo cuatro columnas.
+ * El 08/09 entraron Costo MO · Costo mat. · Margen: la variante de teléfono pasó a soltar 5 de 7
+ * contra 4 usos de su constante y la regla se puso roja sobre una grilla CORRECTA —las tres nuevas
+ * ya las retira `max-[1249px]:hidden`—. Un control que da rojo sin defecto se termina silenciando,
+ * que es peor que no tenerlo.
+ */
+export function celdasQueFaltan(src: string, etiqueta = 'el fuente'): string[] {
+  const fallas: string[] = []
+  const cortes = cortesDe(src)
+  for (let i = 1; i < cortes.length; i += 1) {
+    const { corte, pistas } = cortes[i]
+    const sueltas = cortes[i - 1].pistas - pistas
+    if (sueltas <= 0) continue
+    const constante = new RegExp(`const (\\w+) = '${corte.replace(/[[\]]/g, '\\$&')}hidden'`).exec(src)
+    if (!constante) {
+      fallas.push(
+        `${etiqueta} declara una grilla ${corte} con ${pistas} columnas contra `
+        + `${cortes[i - 1].pistas}, pero no declara la constante \`${corte}hidden\` con la que se `
+        + 'retiran las celdas sobrantes',
+      )
+      continue
+    }
+    const usos = (src.match(new RegExp(`\\b${constante[1]}\\b`, 'g')) ?? []).length - 1
+    if (usos < sueltas) {
+      fallas.push(
+        `${etiqueta}: ${corte} suelta ${sueltas} columna(s) respecto del ancho anterior y `
+        + `${constante[1]} se usa en ${usos} celda(s). La celda que sobra cae en una fila implícita `
+        + 'y desalinea la tabla entera',
+      )
+    }
+  }
+  return fallas
+}
+
 test('toda variante con menos columnas retira las celdas sobrantes por clase', () => {
   // UNA CELDA DE MÁS CORRE LA FILA ENTERA y es el defecto más caro de soltar una columna: la celda
   // sobrante cae en una segunda fila implícita y la tabla se dibuja al doble de alto, desalineada.
@@ -112,28 +170,41 @@ test('toda variante con menos columnas retira las celdas sobrantes por clase', (
   // entra en esta cuenta; la que declara MENOS pistas, sí.
   for (const ruta of GRILLAS) {
     const src = codigo(ruta)
-    const declaradas = plantillas(src)
-    const pistas = (v: string) => pistasDe(declaradas.get(v) ?? '').length
-    const anchas = pistas('')
+    const anchas = cortesDe(src)[0]?.pistas ?? 0
     assert.ok(anchas >= 3, `${ruta}: la grilla ancha quedó con ${anchas} columnas`)
-
-    for (const corte of ['max-[1249px]:', 'max-[767px]:']) {
-      const nPistas = pistas(corte)
-      if (nPistas === 0 || nPistas === anchas) continue
-      const constante = new RegExp(`const (\\w+) = '${corte.replace(/[[\]]/g, '\\$&')}hidden'`).exec(src)
-      assert.ok(
-        constante,
-        `${ruta} declara una grilla ${corte} con ${nPistas} columnas contra ${anchas}, pero no `
-        + `declara la constante \`${corte}hidden\` con la que se retiran las celdas sobrantes`,
-      )
-      const usos = (src.match(new RegExp(`\\b${constante[1]}\\b`, 'g')) ?? []).length - 1
-      assert.ok(
-        usos >= anchas - nPistas,
-        `${ruta}: ${corte} suelta ${anchas - nPistas} columna(s) y ${constante[1]} se usa en ${usos} `
-        + 'celda(s). La celda que sobra cae en una fila implícita y desalinea la tabla entera',
-      )
-    }
+    assert.deepEqual(celdasQueFaltan(src, ruta), [])
   }
+})
+
+test('la regla PUEDE dar rojo: una columna soltada sin su celda se detecta', () => {
+  // Sin esto la cuenta por delta podría quedar verde por vacía —un `continue` de más y nunca vuelve
+  // a acusar a nadie—. El fuente es inventado a propósito: no depende de ninguna pantalla viva.
+  const bueno = `
+const SUELTA_ANCHO = 'max-[1249px]:hidden'
+const SUELTA_TELEFONO = 'max-[767px]:hidden'
+const COLS = 'grid-cols-[minmax(0,1fr)_100px_100px_100px]'
+  + ' max-[1249px]:grid-cols-[minmax(0,1fr)_100px_100px]'
+  + ' max-[767px]:grid-cols-[minmax(0,1fr)_100px]'
+<span className={SUELTA_ANCHO} /><span className={SUELTA_TELEFONO} />`
+  assert.deepEqual(celdasQueFaltan(bueno), [], 'una grilla correcta no puede acusar nada')
+
+  const sinCelda = bueno.replace('<span className={SUELTA_TELEFONO} />', '')
+  assert.equal(celdasQueFaltan(sinCelda).length, 1, 'soltar una columna sin retirar su celda tiene que dar rojo')
+
+  const sinConstante = bueno.replace("const SUELTA_TELEFONO = 'max-[767px]:hidden'", '')
+  assert.equal(celdasQueFaltan(sinConstante).length, 1, 'sin la constante del corte tiene que dar rojo')
+
+  // Y EL CASO QUE PUSO ROJA LA REGLA VIEJA: tres columnas que ya retira el corte ancho no vuelven a
+  // exigirse en el angosto.
+  const acumulativo = `
+const SUELTA_ANCHO = 'max-[1249px]:hidden'
+const SUELTA_TELEFONO = 'max-[767px]:hidden'
+const COLS = 'grid-cols-[minmax(0,1fr)_100px_100px_100px_100px_100px_100px]'
+  + ' max-[1249px]:grid-cols-[minmax(0,1fr)_100px_100px]'
+  + ' max-[767px]:grid-cols-[minmax(0,1fr)_100px]'
+<span className={SUELTA_ANCHO} /><span className={SUELTA_ANCHO} /><span className={SUELTA_ANCHO} />
+<span className={SUELTA_ANCHO} /><span className={SUELTA_TELEFONO} />`
+  assert.deepEqual(celdasQueFaltan(acumulativo), [], 'lo que ya escondió el corte ancho no se pide de nuevo')
 })
 
 test('ningún adorno de la celda del nombre le gana al nombre en el teléfono', () => {
