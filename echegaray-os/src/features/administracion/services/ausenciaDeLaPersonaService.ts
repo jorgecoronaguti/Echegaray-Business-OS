@@ -15,6 +15,8 @@ import { etiquetaDeMotivo, tipoDeMotivo } from './motivoDeAusencia'
 import { jornadaPorDefecto } from './jornadaPorDefecto'
 import { planDeBorrado, traducirEscritura, type FilaExistente } from './planDeJornada'
 import { acuseDeTramo, planDeTramoDeAusencia, sumarHoras } from './ausenciaDeLaPersona'
+import { declararPresencia } from './presenciaDelDiaService'
+import { declaracionDeCorreccion } from './presenciaPorHoras'
 import type { FilaDelDia, FilaDelTramo, PlanSinObra } from './ausenciaDeLaPersona'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
@@ -239,6 +241,9 @@ export async function asentarTramoDeAusencia(
      *  alguien escribió gana sobre la regla general y vale para todo el tramo: es lo que distingue
      *  una licencia de media jornada de una completa. `null` = el campo quedó como nació. */
     horasATodoElTramo: number | null
+    /** La obra desde la que se declaró el tramo. Sólo se anota en `asistencia_dia`: las HORAS de
+     *  una ausencia siguen escribiéndose sin obra. */
+    obra_origen?: string | null
   },
 ): Promise<{ ok: true; mensaje: string } | { ok: false; error: string }> {
   const leidas = await filasDelRango(supabase, c.persona_id, c.fecha, c.hasta)
@@ -302,6 +307,15 @@ export async function asentarTramoDeAusencia(
         : 'No se asentó ningún día: la base no devolvió ninguna fila escrita.',
     }
   }
+
+  // UNA FILA DE `asistencia_dia` POR DÍA DEL TRAMO. Los días que la base rechazó NO se declaran:
+  // afirmar una ausencia que no se pudo asentar sería inventar el hecho que el rechazo impidió.
+  await declararPresencia(supabase, plan.dias
+    .filter((d) => !rechazados.includes(d.fecha))
+    .map((d) => declaracionDeCorreccion({
+      persona_id: c.persona_id, fecha: d.fecha, obra: c.obra_origen ?? null,
+      estado: 'ausente', motivo: c.motivo,
+    })))
 
   return {
     ok: true,
