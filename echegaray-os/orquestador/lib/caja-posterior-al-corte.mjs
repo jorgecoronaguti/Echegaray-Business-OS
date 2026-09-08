@@ -53,7 +53,7 @@
 // La columna "Fecha de caja" NO se tipea acá: se importa de rubro-caja.mjs, que es quien la ESCRIBE
 // en Compras. Escritor y lector comparten una sola definición, así el efecto Compras→CAJA no se
 // rompe en silencio si la columna se mueve (lo verifica caja-posterior-al-corte.test.mjs).
-import { COL_FECHA_CAJA } from './rubro-caja.mjs'
+import { COL_FECHA_CAJA, COL_RUBRO_CAJA, factorSinPlanilla } from './rubro-caja.mjs'
 import { formulaUltimaFecha, formulaFrescuraDe, fechaNumerica } from './fecha-de-frescura.mjs'
 // EL CRITERIO DE LA VENTANA VIVE EN UN SOLO LADO. Estaba escrito tres veces con `>` y una con `>=`,
 // y esa cuarta era la única correcta: dos filas equivalentes daban números distintos según el estado.
@@ -91,7 +91,7 @@ export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', deb
  * Efectivo no toca el banco (sale de la caja física). Sólo Transferencia y Débito faltan.
  * Rango ABIERTO.
  */
-export const CMP = { hoja: 'Compras', total: 'O', montoPagado: 'T', fechaCarga: 'C', tipoPago: 'P', estado: 'X', fecha: COL_FECHA_CAJA, desde: 4, tiposBanco: ['Transferencia', 'Débito'] }
+export const CMP = { hoja: 'Compras', total: 'O', montoPagado: 'T', fechaCarga: 'C', tipoPago: 'P', estado: 'X', fecha: COL_FECHA_CAJA, rubro: COL_RUBRO_CAJA, desde: 4, tiposBanco: ['Transferencia', 'Débito'] }
 
 /**
  * Un rango de columna ABIERTO: de la primera fila de datos hasta el final de la pestaña.
@@ -297,7 +297,13 @@ export function formulaComprasEfectivoPosteriores(arqueo, c = CMP) {
   }
   const pagadoCoerc = `N(${rango(c.hoja, c.montoPagado, c.desde)})`
   const sale = (fecha) => ventanaDelConteo(fecha, arqueo, false)
+  // SIN LA NÓMINA QUE PAGA LA PLANILLA (08/09/2026). Los jornales y los sueldos de administración de
+  // Compras son una estimación tipeada de la MISMA plata que `formulaJornalesEfectivoPosteriores` y
+  // `formulaOficinaEfectivoPosteriores` ya restan desde "Jornales por Quincena": sumarlos acá también
+  // descarga el cajón dos veces. La regla es la del libro (libro-extractores-nomina.mjs) y la lista de
+  // rubros es la de rubro-caja.mjs, para que las tres vistas no puedan discrepar.
   return `SUMPRODUCT((${rango(c.hoja, c.tipoPago, c.desde)}="Efectivo")`
+    + `*${factorSinPlanilla(rango(c.hoja, c.rubro, c.desde))}`
     + `*${pagadoCoerc}`
     + `*(((${rango(c.hoja, c.estado, c.desde)}="Pagado")*${sale(fechaCajaCoerc(c))})`
     + `+((${rango(c.hoja, c.estado, c.desde)}="Pendiente")*${sale(fechaCargaCoerc())}))`

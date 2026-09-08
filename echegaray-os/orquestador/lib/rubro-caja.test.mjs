@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { rubroDeCaja, repartir, formulaRubro, formulaFechaCaja, REGLAS, RUBROS, SIN_CLASIFICAR } from './rubro-caja.mjs'
+import { rubroDeCaja, repartir, formulaRubro, formulaFechaCaja, REGLAS, RUBROS, SIN_CLASIFICAR, RUBROS_DE_PLANILLA, factorSinPlanilla, COL_RUBRO_CAJA } from './rubro-caja.mjs'
 
 // Los casos que ya se equivocaron una vez en esta planilla. Cada uno es plata que cambió de línea.
 test('el orden de las reglas decide, y ese orden está medido', () => {
@@ -138,4 +138,33 @@ test('la fórmula de fecha de caja es es-AR y cierra paréntesis', () => {
   const f = formulaFechaCaja()
   assert.equal([...f].reduce((n, c) => n + (c === '(' ? 1 : c === ')' ? -1 : 0), 0), 0)
   assert.ok(!f.replace(/"[^"]*"/g, '""').includes(','), `separador con coma: ${f}`)
+})
+
+test('los rubros que paga la planilla son exactamente los dos que el libro no toma de Compras', () => {
+  // La lista la usan A7 (`_CAJA_ANEXO`) y el cajón vivo de CAJA para no contar dos veces la nómina que
+  // Compras tiene tipeada como estimación. Si alguien la toca acá, las tres vistas se mueven juntas.
+  assert.deepEqual([...RUBROS_DE_PLANILLA].sort(), ['Nómina · Jornales de obra', 'Nómina · Sueldos administración'])
+})
+
+test('el factor sin planilla deja en 0 la nómina de Compras y en 1 todo lo demás — con los números del 08/09', () => {
+  // MEDIDO EN EL SHEET VIVO (08/09/2026): Compras "Efectivo" con monto pagado, por rubro. A7 sumaba los
+  // $22.627.750 de nómina además de la planilla entera: era la misma plata dos veces.
+  const compras = [
+    ['Materiales Civil', 100753497], ['Estructura', 16415714], ['Nómina · Jornales de obra', 15441950],
+    ['Nómina · Sueldos administración', 7185800], ['Nómina · SAC', 6216302], ['Materiales Mantenimiento', 5547939],
+    ['Servicios recurrentes', 3381450],
+  ]
+  const f = factorSinPlanilla()
+  // Un factor `<>` por rubro de planilla, sobre la columna de rubro de Compras — nunca una letra tipeada.
+  for (const r of RUBROS_DE_PLANILLA) assert.ok(f.includes(`('Compras'!$${COL_RUBRO_CAJA}$4:$${COL_RUBRO_CAJA}<>"${r}")`), f)
+  assert.equal(f.split('*').length, RUBROS_DE_PLANILLA.length, 'un factor por rubro, unidos por *')
+  assert.ok(!f.includes(','), `separador con coma en es-AR: ${f}`)
+  // El mismo criterio que la fórmula, evaluado en frío: lo que queda afuera es exactamente la nómina de
+  // planilla. El SAC se queda adentro: no vive en "Jornales por Quincena".
+  const factor = (rubro) => RUBROS_DE_PLANILLA.every((r) => rubro !== r) ? 1 : 0
+  const conFactor = compras.reduce((s, [r, t]) => s + factor(r) * t, 0)
+  const sinFactor = compras.reduce((s, [, t]) => s + t, 0)
+  assert.equal(sinFactor, 154942652)
+  assert.equal(sinFactor - conFactor, 22627750)
+  assert.equal(factor('Nómina · SAC'), 1)
 })

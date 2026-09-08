@@ -101,10 +101,29 @@ async function main() {
 
   const cruces = []
 
+  // ═══ LAS COLUMNAS DE NÓMINA SE RESUELVEN POR ENCABEZADO, NO POR ÍNDICE (08/09/2026) ═══
+  //
+  // Esto leía Nómina con índices del layout viejo (… ADELANTO · POR BANCO · EN EFECTIVO · TOTAL A
+  // PAGAR). La pestaña intercaló «YA TRANSFERIDO» entre ADELANTO y POR BANCO, y el índice 4 pasó a
+  // leer los adelantos por banco ($94.796) donde el cruce esperaba lo que se transfiere; el 6, «EN
+  // EFECTIVO» donde esperaba el total. Publicó «obreros · lo que se les TRANSFIERE ✗ $94.796 vs
+  // $3.640.000» —un rojo fabricado por el lector—. Se busca la fila «Persona» y el rótulo exacto.
+  const colNomina = (rotulo) => {
+    const enc = (nomina ?? []).find((x) => String((x ?? [])[0] ?? '').trim() === 'Persona')
+    const i = enc ? enc.findIndex((c) => String(c ?? '').trim().toUpperCase() === rotulo) : -1
+    return i >= 0 ? i : null
+  }
+  const deNomina = (re, rotulo) => { const i = colNomina(rotulo); return i == null ? null : num(porRotulo(nomina, re, i)) }
+  // «POR BANCO» sale de los recibos de la quincena (`_RECIBOS_RAW`). Hasta que se cargan vale 0, y
+  // Jornales publica entonces el lote de la quincena anterior como estimación: comparar cero contra
+  // esa estimación es un ✗ por construcción. Sin recibos, el cruce es NO VERIFICABLE y se dice.
+  const porBanco = (re) => { const v = deNomina(re, 'POR BANCO'); return v != null && v > 0 ? v : null }
+  const SIN_RECIBOS = 'Nómina publica POR BANCO = 0: los recibos de la quincena no están cargados y Jornales muestra la estimación (lote anterior)'
+
   // A · La oficina de la quincena, dicha por las dos pestañas que la pagan.
   cruces.push(cruzar({
     que: 'oficina · lo que se le paga a los 2', izquierda: 'Nómina', derecha: 'Jornales por Quincena',
-    a: num(porRotulo(nomina, /^⇒\s*2 persona/, 6)),
+    a: deNomina(/^⇒\s*2 persona/, 'TOTAL A PAGAR'),
     b: num(porRotulo(jornales, /^Oficina/, 3)),
   }))
 
@@ -112,13 +131,15 @@ async function main() {
   // cerraban en $3.600.000 y diferían en $473.716,88 entre banco y efectivo, porque Jornales
   // publicaba la mitad calculada en vez de lo que dicen los recibos. Un total que cierra con un
   // reparto que no cierra es plata mal transferida con cara de estar bien.
+  const bancoOficina = porBanco(/^⇒.*de oficina/)
   cruces.push(cruzar({
     que: 'oficina · lo que se le TRANSFIERE', izquierda: 'Nómina', derecha: 'Jornales por Quincena',
-    a: num(porRotulo(nomina, /^⇒.*de oficina/, 4)), b: num(porRotulo(jornales, /^Oficina/, 6)),
+    a: bancoOficina, b: num(porRotulo(jornales, /^Oficina/, 6)), nota: bancoOficina == null ? SIN_RECIBOS : null,
   }))
+  const bancoObreros = porBanco(/^⇒\s*\d+ persona\(s\)$/)
   cruces.push(cruzar({
     que: 'obreros · lo que se les TRANSFIERE', izquierda: 'Nómina', derecha: 'Jornales por Quincena',
-    a: num(porRotulo(nomina, /^⇒\s*\d+ persona\(s\)$/, 4)), b: num(porRotulo(jornales, /^Obreros/, 6)),
+    a: bancoObreros, b: num(porRotulo(jornales, /^Obreros/, 6)), nota: bancoObreros == null ? SIN_RECIBOS : null,
   }))
 
   // B · CUÁNTA GENTE COBRA ESTA QUINCENA — y no «cuánta gente hay», que es otra pregunta.
@@ -140,7 +161,7 @@ async function main() {
   }))
   cruces.push(cruzar({
     que: 'lo que se le paga a los obreros', izquierda: 'Nómina', derecha: 'Jornales por Quincena',
-    a: num(porRotulo(nomina, /^⇒\s*\d+ persona\(s\)$/, 6)), b: num(porRotulo(jornales, /^Obreros/, 3)),
+    a: deNomina(/^⇒\s*\d+ persona\(s\)$/, 'TOTAL A PAGAR'), b: num(porRotulo(jornales, /^Obreros/, 3)),
   }))
   // El plantel del año se INFORMA, no se cruza: su universo es otro a propósito.
   const personasPlantel = num(String(porRotulo(plantel, /^⇒\s*\d+ persona/, 0) ?? '').replace(/\D/g, ''))
