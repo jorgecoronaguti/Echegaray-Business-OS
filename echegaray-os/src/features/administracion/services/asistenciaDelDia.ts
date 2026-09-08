@@ -1,55 +1,81 @@
-// ASISTIR Y CARGAR HORAS SON DOS HECHOS DISTINTOS — y esta pantalla los mezclaba.
+// PRESENCIA Y HORAS SON DOS HECHOS DISTINTOS — y esta pantalla los mezclaba.
 //
 // ═══ EL ERROR QUE ESTE ARCHIVO EXISTE PARA IMPEDIR ═══
 //
-// El dueño, 08/09/2026: *«una cosa es asistir y otra la carga de horas […] se ve "no fichado"
-// cuando sí están todos, pero que no tengan horas cargadas aún no implica que no hayan fichado»*.
+// El dueño, 08/09/2026, por TERCERA vez: *«todas las pantallas en donde aparezca el concepto de
+// fichado no tiene que resolverse con las hs; está mal: una cosa es asistencia o activo en el día
+// y otra cosa son las cantidades de hs»*.
 //
-// «En obra ahora» leía SÓLO `asistencia_marca` (vía `presencia_del_dia`) y publicaba «0 de 17
-// fichados · 17 sin fichar todavía» con diecisiete tarjetas debajo. Medido en la base el
-// 08/09/2026: `asistencia_marca` tiene CUATRO filas en toda su historia —dos entradas y dos
-// salidas, del 20 y del 25 de agosto, origen `empleado_web`—, mientras `registros_hh` tiene 339
-// del último mes. O sea: el fichaje desde el celular todavía no se usa, y la pantalla convertía
-// esa capacidad sin estrenar en una afirmación diaria sobre diecisiete personas.
+// Este archivo ya separaba el fichaje de la carga de horas, pero seguía publicando UN SOLO campo
+// `estado` donde `con_horas` era una CANTIDAD disfrazada de ESTADO: nueve horas cargadas escribían
+// «con horas» en la fila y la pantalla —y quien la lee— tomaba eso por «vino», sin que nadie
+// hubiera mirado a esa persona. Y `sin_cargar` fundía dos silencios distintos: «todavía no le
+// cargaron las horas» y «nadie declaró si estaba».
 //
-// La ausencia de una capacidad no es un dato sobre la gente. Por eso el fichaje y la asistencia
-// viajan por caminos separados y NUNCA se suman: son dos preguntas con dos fuentes.
+// Ahora la clasificación devuelve DOS campos que no se derivan uno del otro:
 //
-//   FICHAJE      → `asistencia_marca` / `presencia_del_dia`. Lo marca la persona (entrada/salida).
-//   ASISTENCIA   → `registros_hh` del día. La carga el jefe o Administración: horas por obra.
+//   PRESENCIA  presente · ausente · licencia · sin_marcar. Sale SÓLO de `asistencia_dia` (lo
+//              declaró el jefe), de `asistencia_marca` (fichaje real) o de una fila de
+//              `registros_hh` con `tipo_hora` de ausencia/licencia —que es una declaración, no un
+//              número—. Nunca de una cantidad de horas.
+//   HORAS      una CANTIDAD. `null` = nadie cargó nada, que no es cero. Se muestra al lado del
+//              estado, en monoespaciada y sin color de estado: 9 h no es «bien» ni «mal».
+//
+// UNA PERSONA PUEDE TENER 9 H Y ESTAR «SIN MARCAR» —es lo normal hoy: el fichaje no está en uso y
+// la declaración del jefe recién arrancó— Y PUEDE ESTAR «PRESENTE» CON 0 H CARGADAS. Las dos cosas
+// se ven, ninguna se deduce de la otra.
 //
 // ═══ QUÉ SIGNIFICA CADA SILENCIO ═══
 //
-// Sin registro NO es ausente: es «sin cargar todavía». La ausencia es una decisión de alguien y
-// deja su propia fila con `tipo_hora='ausencia'` (o `'licencia'`). Es la misma regla que ya
-// gobierna `jornadaPorObra.ts`, y qué hora es trabajo lo sigue decidiendo `tipoHora.ts` —acá no se
-// redefine nada de eso, se reusa—.
+// Sin registro NO es ausente: es «sin marcar», neutro. La ausencia es una decisión de alguien y
+// deja su propia fila. Es la misma regla que ya gobierna `jornadaPorObra.ts`, y qué hora es trabajo
+// lo sigue decidiendo `tipoHora.ts` —acá no se redefine nada de eso, se reusa—.
+//
+// Medido el 08/09/2026: `asistencia_marca` tiene CUATRO filas en toda su historia contra 339
+// registros de horas del último mes. La ausencia de una capacidad no es un dato sobre la gente.
 
 import { combinarCeldaDia } from '../../../shared/components/ds/celdaDia.ts'
 import type { PresenciaDeclarada } from '../../../shared/components/ds/celdaDia.ts'
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
-import { redondear } from './jornadaPorObra.ts'
+import { hs, redondear } from './jornadaPorObra.ts'
 import type { Esperado } from './presencia.ts'
 import type { PresenciaGuardada } from './presenciaDelDia.ts'
 
-/** Lo que la pantalla puede afirmar de una persona en el día. Ninguno se llama «no fichó».
+/** EL ESTADO DEL DÍA DE UNA PERSONA, y nada más que eso. No hay «con horas»: una cantidad no es
+ *  un estado, y quien la puso ahí hacía que 9 h significaran «vino» sin que nadie lo hubiera
+ *  mirado. Tampoco hay «sin cargar», que mezclaba dos silencios distintos —«no hay horas» y «nadie
+ *  declaró nada»— en una sola palabra que terminaba leyéndose como falta.
  *
- *  `presente` entró el 08/09/2026 con `asistencia_dia`: el jefe declaró que la persona está y
- *  todavía no le cargaron las horas. ES UNA VERDAD VÁLIDA y no se puede seguir mostrando como
- *  «sin cargar», que es lo que la pantalla decía hasta hoy de todo el que no tenía un número. */
-export type EstadoDelDia = 'con_horas' | 'presente' | 'ausente' | 'licencia' | 'sin_cargar'
+ *  El dueño, 08/09/2026 (tercera vez): *«todas las pantallas en donde aparezca el concepto de
+ *  fichado no tiene que resolverse con las hs; está mal: una cosa es asistencia o activo en el día
+ *  y otra cosa son las cantidades de hs»*. */
+export type Presencia = 'presente' | 'ausente' | 'licencia' | 'sin_marcar'
 
-/** Lo que la clasificación afirma de una persona en un día. `horas` en `null` NO es cero: es que
- *  nadie cargó nada, y las dos cosas se dibujan distinto. */
+/** De dónde salió la presencia. `null` con `sin_marcar`: no hay fuente porque no hay hecho.
+ *
+ *  `hh` es la ausencia o la licencia declarada con `tipo_hora` en `registros_hh` — el camino viejo,
+ *  y lo único que tienen los días anteriores al 08/09/2026. Es una DECLARACIÓN, no una cantidad:
+ *  ninguna cantidad de horas produce jamás una `fuente`. */
+export type FuentePresencia = 'declarada' | 'fichaje' | 'hh'
+
+/** Las DOS capas del día de una persona, cada una con su fuente y ninguna derivada de la otra.
+ *
+ *  Se puede tener 9 h y estar `sin_marcar` (lo normal hoy: el fichaje no está en uso y la
+ *  declaración del jefe recién arrancó), y se puede estar `presente` con `horas` en `null` (el jefe
+ *  marcó la cuadrilla a las 7:30 y todavía nadie cargó el día). Las dos son verdades válidas.
+ *
+ *  `horas` en `null` NO es cero: es que nadie cargó nada, y las dos cosas se dibujan distinto. */
 export interface ClasificacionDelDia {
-  estado: EstadoDelDia
+  presencia: Presencia
+  fuente: FuentePresencia | null
   horas: number | null
   motivo: string | null
   /** El jefe declaró que no vino y sin embargo el día tiene horas cargadas. Se muestra, no se
    *  resuelve: una de las dos afirmaciones se liquida y la pantalla no puede elegir cuál.
-   *  OPCIONAL porque `clasificar` siempre lo escribe pero las pantallas que arman una
-   *  clasificación a mano —los tests, y el `SIN_CARGAR` del Plantel— no tienen conflicto posible. */
+   *  OPCIONAL porque `clasificar` sólo lo escribe cuando lo hay: un `false` en cada clasificación
+   *  obligaría a repetirlo a toda pantalla que arme una a mano, y su ausencia ya significa
+   *  «no hay contradicción». */
   conflicto?: boolean
 }
 
@@ -78,92 +104,119 @@ export interface RegistroDelDia extends RegistroClasificable {
   obra: string | null
 }
 
-export interface PersonaDelDia {
+export interface PersonaDelDia extends ClasificacionDelDia {
   personaId: string
   nombre: string
   /** La categoría de convenio, igual que la columna CATEGORÍA de Plantel. Nunca se inventa. */
   categoria: string | null
-  estado: EstadoDelDia
-  /** Horas TRABAJADAS cargadas. `null` cuando no hay nada cargado — no es cero. */
-  horas: number | null
-  /** El porqué de la ausencia o la licencia, tal como se cargó. `null` = no se declaró. */
-  motivo: string | null
-  /** El jefe declaró que no vino y sin embargo el día tiene horas cargadas. Se muestra, no se
-   *  resuelve: una de las dos afirmaciones se liquida y la pantalla no puede elegir cuál.
-   *  OPCIONAL porque `clasificar` siempre lo escribe pero las pantallas que arman una
-   *  clasificación a mano —los tests, y el `SIN_CARGAR` del Plantel— no tienen conflicto posible. */
-  conflicto?: boolean
 }
 
-export interface ObraDelDia {
+/** LOS DOS CONTEOS DEL DÍA, EN DOS RENGLONES QUE NO SE MEZCLAN. Arriba, cuánta gente está en cada
+ *  estado; abajo, cuántas horas hay cargadas y a cuántos les falta el número. Un solo renglón
+ *  —«N de M con horas»— era el titular que convertía la carga administrativa en asistencia. */
+export interface ConteoDelDia {
+  presentes: number
+  ausentes: number
+  licencias: number
+  /** Nadie declaró nada ni hay marca. NO es una falta, y por eso tiene su propia cifra. */
+  sinMarcar: number
+  /** Personas con al menos una hora trabajada cargada. Es una cuenta de CARGA, no de asistencia. */
+  conHoras: number
+  /** Las que no tienen ni una hora cargada, cualquiera sea su presencia. */
+  sinHoras: number
+  /** Horas trabajadas del día. Las de una ausencia declarada por `tipo_hora` no entran. */
+  horas: number
+}
+
+export interface ObraDelDia extends ConteoDelDia {
   obraId: string | null
   nombre: string
   gente: PersonaDelDia[]
-  conHoras: number
-  /** Ausencias + licencias declaradas. Se cuentan juntas: las dos son una decisión tomada. */
-  declarados: number
-  sinCargar: number
-  /** Horas trabajadas del día en esa obra. Las de una ausencia no entran. */
-  horas: number
 }
 
-export interface AsistenciaDelDia {
+export interface AsistenciaDelDia extends ConteoDelDia {
   obras: ObraDelDia[]
-  conHoras: number
-  declarados: number
-  sinCargar: number
   /** Cuánta gente entra en la cuenta: asignados vigentes más quien cargó sin asignación. */
   plantel: number
-  horas: number
 }
 
 const rotulo = (id: string | null, nombre: string | null): string =>
   nombre?.trim() || id || 'Sin obra imputada'
 
+/** La presencia de `combinarCeldaDia` traducida al vocabulario de estas pantallas. `ficho` y
+ *  `presente` son la misma respuesta a «¿está?» —lo que cambia es quién lo afirmó, y eso lo dice
+ *  `fuente`—; `sin_marca` se llama acá `sin_marcar`, que es lo que la pantalla escribe. */
+const PRESENCIA: Record<string, Presencia> = {
+  ficho: 'presente', presente: 'presente', ausente: 'ausente', licencia: 'licencia',
+  sin_marca: 'sin_marcar',
+}
+
+const FUENTE: Record<string, FuentePresencia | null> = {
+  declarada: 'declarada', fichaje: 'fichaje', horas: 'hh', ninguno: null,
+}
+
 /**
- * La clasificación de una persona a partir de sus registros del día.
+ * Las DOS capas del día de una persona: qué se afirmó de ella, y cuántas horas le cargaron.
  *
- * LO DECLARADO GANA SOBRE LO IMPUTADO: si alguien declaró que no vino, la pantalla no puede decir
- * que trabajó porque además exista una imputación vieja del mismo día. Es la regla de
- * `armarJornada`, con una diferencia deliberada: acá la licencia NO se colapsa dentro de
- * «ausente». Una licencia por enfermedad y una falta son dos novedades distintas para quien
- * liquida, y esta pantalla las tiene que poder distinguir de un vistazo.
+ * LAS HORAS NO ENTRAN EN LA PRESENCIA. Es la regla entera de esta función: `horas` se calcula y se
+ * devuelve como CANTIDAD, y la presencia sale sólo de lo declarado (`asistencia_dia`), del fichaje
+ * (`asistencia_marca`) o de una fila de `registros_hh` con `tipo_hora` de ausencia o licencia —que
+ * es una declaración, no un número—. Cuando no hay ninguna de las tres, `sin_marcar`, en neutro.
+ *
+ * LO DECLARADO GANA SOBRE LO IMPUTADO: si alguien declaró que no vino, la pantalla no dice que
+ * trabajó porque además exista una imputación del mismo día — lo dice como CONFLICTO y muestra las
+ * dos mitades. La precedencia vive una sola vez, en `combinarCeldaDia`; acá se traduce, no se
+ * re-decide. Dos criterios para la misma pregunta terminan en dos respuestas, y la que se cree es
+ * la última que alguien miró.
+ *
+ * A diferencia de `armarJornada`, la licencia NO se colapsa dentro de «ausente»: una licencia por
+ * enfermedad y una falta son dos novedades distintas para quien liquida.
  */
 export function clasificar(
-  registros: RegistroClasificable[], declarada: PresenciaDeclarada = null,
+  registros: RegistroClasificable[], declarada: PresenciaDeclarada = null, ficho = false,
 ): ClasificacionDelDia {
   const enHoras = registros.find((r) => !esTrabajada(r.tipo_hora))
   const trabajadas = registros.filter((r) => esTrabajada(r.tipo_hora))
   const horas = trabajadas.length > 0 ? redondear(trabajadas.reduce((s, r) => s + r.horas, 0)) : null
 
-  // LA COMBINACIÓN DE LAS TRES FUENTES VIVE UNA SOLA VEZ, en `combinarCeldaDia`. Acá no se
-  // re-decide la precedencia: se traduce su respuesta al vocabulario de esta pantalla. Dos
-  // criterios distintos para la misma pregunta terminan en dos respuestas distintas, y la que se
-  // cree es la última que alguien miró.
   const c = combinarCeldaDia({
     declarada,
+    ficho,
     horas,
     enHoras: enHoras ? (enHoras.tipo_hora === 'licencia' ? 'licencia' : 'ausente') : null,
     dia: 'habil',
   })
   const motivo = declarada && declarada !== 'presente' ? null : (enHoras?.notas?.trim() || null)
+  const presencia = PRESENCIA[c.entrada.presencia]
 
-  if (c.entrada.presencia === 'ausente' || c.entrada.presencia === 'licencia') {
-    return {
-      estado: c.entrada.presencia,
-      // CON CONFLICTO LAS HORAS SE SIGUEN VIENDO. Esconderlas sería elegir la ausencia sin decirlo.
-      horas: c.conflicto ? horas : null,
-      motivo,
-      // `conflicto` SE ESCRIBE SÓLO CUANDO LO HAY. Es una excepción, no un campo del día: un
-      // `false` en cada clasificación obligaría a toda pantalla que arma una a mano a repetirlo,
-      // y la ausencia de la marca ya significa «no hay contradicción».
-      ...(c.conflicto ? { conflicto: true as const } : {}),
-    }
+  return {
+    presencia,
+    fuente: FUENTE[c.origen],
+    // LAS HORAS SE DEVUELVEN SIEMPRE, incluso bajo una ausencia declarada: son el otro hecho.
+    // Esconderlas ahí sería resolver el conflicto a favor de la ausencia sin decirlo, y una de las
+    // dos afirmaciones se liquida.
+    horas,
+    motivo: presencia === 'ausente' || presencia === 'licencia' ? motivo : null,
+    ...(c.conflicto ? { conflicto: true as const } : {}),
   }
-  if (horas !== null) return { estado: 'con_horas', horas, motivo: null }
-  // DECLARADO PRESENTE Y SIN HORAS: no es «sin cargar». Alguien lo miró y dijo que estaba.
-  if (declarada === 'presente') return { estado: 'presente', horas: null, motivo: null }
-  return { estado: 'sin_cargar', horas: null, motivo: null }
+}
+
+/** Los dos conteos sobre la gente que se está mostrando. Vive una sola vez porque `filtrarAsistencia`
+ *  los tiene que rehacer sobre lo visible: dos copias del mismo `filter` es como el titular termina
+ *  diciendo una cosa y la lista otra. */
+export function contar(gente: readonly PersonaDelDia[]): ConteoDelDia {
+  const cuantos = (p: Presencia) => gente.filter((g) => g.presencia === p).length
+  return {
+    presentes: cuantos('presente'),
+    ausentes: cuantos('ausente'),
+    licencias: cuantos('licencia'),
+    sinMarcar: cuantos('sin_marcar'),
+    conHoras: gente.filter((g) => g.horas !== null).length,
+    sinHoras: gente.filter((g) => g.horas === null).length,
+    // LAS HORAS DE UN DÍA EN CONFLICTO SUMAN: están cargadas y le pesan a la obra. Restarlas sería
+    // resolver el conflicto en el total y dejar el titular diciendo menos horas de las que existen.
+    horas: redondear(gente.reduce((s, g) => s + (g.horas ?? 0), 0)),
+  }
 }
 
 /**
@@ -222,38 +275,28 @@ export function asistenciaDelDia(
     })
   }
 
-  const porObra = new Map<string, ObraDelDia>()
+  const porObra = new Map<string, PersonaDelDia[]>()
+  const nombreObra = new Map<string, { obraId: string | null; nombre: string }>()
   for (const f of filas) {
     const clave = f.obraId ?? '·sin-obra'
-    const obra = porObra.get(clave) ?? {
-      obraId: f.obraId, nombre: rotulo(f.obraId, f.obra), gente: [],
-      conHoras: 0, declarados: 0, sinCargar: 0, horas: 0,
-    }
-    obra.gente.push({
+    nombreObra.set(clave, { obraId: f.obraId, nombre: rotulo(f.obraId, f.obra) })
+    const gente = porObra.get(clave) ?? []
+    gente.push({
       personaId: f.personaId, nombre: f.nombre, categoria: f.categoria,
-      estado: f.estado, horas: f.horas, motivo: f.motivo, conflicto: f.conflicto,
+      presencia: f.presencia, fuente: f.fuente, horas: f.horas, motivo: f.motivo,
+      ...(f.conflicto ? { conflicto: true as const } : {}),
     })
-    if (f.estado === 'con_horas') { obra.conHoras += 1; obra.horas = redondear(obra.horas + (f.horas ?? 0)) }
-    // PRESENTE DECLARADO SIN HORAS sigue contando como día por cargar: es exactamente eso, y
-    // meterlo en `conHoras` inflaría el conteo de la carga con gente sin un solo número.
-    else if (f.estado === 'sin_cargar' || f.estado === 'presente') obra.sinCargar += 1
-    else obra.declarados += 1
-    porObra.set(clave, obra)
+    porObra.set(clave, gente)
   }
 
-  const obras = [...porObra.values()]
-    .map((o) => ({ ...o, gente: [...o.gente].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')) }))
+  const obras = [...porObra.entries()]
+    .map(([clave, gente]) => {
+      const ordenada = [...gente].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+      return { ...nombreObra.get(clave)!, gente: ordenada, ...contar(ordenada) }
+    })
     .sort((a, b) => b.gente.length - a.gente.length || a.nombre.localeCompare(b.nombre, 'es'))
 
-  return {
-    obras,
-    conHoras: filas.filter((f) => f.estado === 'con_horas').length,
-    declarados: filas.filter((f) => f.estado === 'ausente' || f.estado === 'licencia').length,
-    // Mismo criterio que el conteo por obra: un presente declarado sin horas es un día POR CARGAR.
-    sinCargar: filas.filter((f) => f.estado === 'sin_cargar' || f.estado === 'presente').length,
-    plantel: filas.length,
-    horas: redondear(filas.reduce((s, f) => s + (f.estado === 'con_horas' ? (f.horas ?? 0) : 0), 0)),
-  }
+  return { obras, plantel: filas.length, ...contar(filas) }
 }
 
 /**
@@ -268,34 +311,33 @@ export function filtrarAsistencia(a: AsistenciaDelDia, q: string): AsistenciaDel
   const t = q.trim()
   if (t === '') return a
   const obras = a.obras
-    .map((o) => ({
-      ...o,
-      gente: o.gente.filter((g) => contieneEnAlguno([g.nombre, g.categoria, o.nombre], t)),
-    }))
+    .map((o) => {
+      const gente = o.gente.filter((g) => contieneEnAlguno([g.nombre, g.categoria, o.nombre], t))
+      return { obraId: o.obraId, nombre: o.nombre, gente, ...contar(gente) }
+    })
     .filter((o) => o.gente.length > 0)
-    .map((o) => ({
-      ...o,
-      conHoras: o.gente.filter((g) => g.estado === 'con_horas').length,
-      declarados: o.gente.filter((g) => g.estado === 'ausente' || g.estado === 'licencia').length,
-      sinCargar: o.gente.filter((g) => g.estado === 'sin_cargar').length,
-      horas: redondear(o.gente.reduce((s, g) => s + (g.estado === 'con_horas' ? (g.horas ?? 0) : 0), 0)),
-    }))
   const gente = obras.flatMap((o) => o.gente)
-  return {
-    obras,
-    conHoras: gente.filter((g) => g.estado === 'con_horas').length,
-    declarados: gente.filter((g) => g.estado === 'ausente' || g.estado === 'licencia').length,
-    sinCargar: gente.filter((g) => g.estado === 'sin_cargar').length,
-    plantel: gente.length,
-    horas: redondear(gente.reduce((s, g) => s + (g.estado === 'con_horas' ? (g.horas ?? 0) : 0), 0)),
-  }
+  return { obras, plantel: gente.length, ...contar(gente) }
 }
 
-/** El resumen del titular. Los tres números salen siempre, incluso en cero: un cero explícito es
- *  una respuesta, y una cifra ausente obliga a quien lee a preguntarse si hubo o no. */
+/**
+ * EL TITULAR DE LA PRESENCIA. Una frase, cuatro cifras, y ninguna sale de un número de horas.
+ *
+ * Los cuatro números salen siempre, incluso en cero: un cero explícito es una respuesta, y una
+ * cifra ausente obliga a quien lee a preguntarse si hubo o no. «Sin marcar» va último y sin tono:
+ * es la falta de un dato, no una falta de la persona.
+ */
 export function resumenAsistencia(a: AsistenciaDelDia): string {
   if (a.plantel === 0) return 'Nadie con asignación vigente ni horas cargadas hoy'
-  return `${a.conHoras} con horas · ${a.declarados} ausentes/licencia · ${a.sinCargar} sin cargar`
+  return `${a.presentes} presentes · ${a.ausentes} ausentes · ${a.licencias} licencia · ${a.sinMarcar} sin marcar`
+}
+
+/** LA SEGUNDA FRASE: la CARGA, que es otra cosa. Va aparte a propósito — pegada a la de arriba
+ *  volvería a leerse como si la falta de horas dijera algo sobre quién vino. */
+export function resumenHoras(a: AsistenciaDelDia): string {
+  if (a.plantel === 0) return 'Sin horas cargadas'
+  const personas = a.sinHoras === 1 ? '1 persona sin horas' : `${a.sinHoras} personas sin horas`
+  return `${hs(a.horas)} h cargadas · ${personas}`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
