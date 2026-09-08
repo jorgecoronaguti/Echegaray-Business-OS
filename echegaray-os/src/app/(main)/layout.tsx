@@ -65,6 +65,9 @@ async function HeaderConUsuario() {
       rolLabel={rolLabel}
       // El mismo portero que el middleware: si la ruta le está cerrada, el ítem del menú no existe.
       verUsuarios={puedeVerRuta(rol, '/administracion/usuarios')}
+      // MISMA PUERTA QUE LA PANTALLA. Si el rol no puede abrir Personal, el menú no le ofrece un
+      // atajo que el middleware va a rebotar: un ítem que no puede funcionar enseña que la app miente.
+      cargaAsistencia={puedeVerRuta(rol, '/administracion/personas')}
       salir={<LogoutButton />}
     />
   )

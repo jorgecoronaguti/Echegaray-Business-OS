@@ -6,9 +6,12 @@ import { Aviso } from '@/shared/components/ds'
 import { hs } from '@/features/administracion/services/jornadaPorObra'
 import { getJornadaDelDia } from '@/features/administracion/services/jornadaPorObraService'
 import { hoyISO, leerDatosCampo } from '../datos'
+// EL RÓTULO Y EL DÍA VIVEN UNA SOLA VEZ. Estaban acá como funciones privadas; cuando la misma
+// carga apareció en Administración, copiarlas habría dejado dos definiciones de «qué día es hoy».
+import { diaDeCarga, rotuloDelDia } from '@/features/administracion/services/diaDeJornada'
 import { puedeCargarParte } from '../permisos'
 import { ElegirObra, MarcoCampo } from '../marco'
-import { FormAsistencia } from './FormAsistencia'
+import { FormAsistencia } from '@/features/administracion/components/asistencia/FormAsistencia'
 
 // 01 · EL JEFE, EN LA OBRA. Una obra, un día, las horas de cada uno.
 //
@@ -23,18 +26,6 @@ import { FormAsistencia } from './FormAsistencia'
 // la base rechaza lo que no le corresponde.
 
 export const dynamic = 'force-dynamic'
-
-const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
-const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
-  'septiembre', 'octubre', 'noviembre', 'diciembre']
-
-/** `lunes 7 de septiembre`. Sin el día de la semana, «7 de septiembre» no ubica a nadie en la obra. */
-function rotuloDelDia(fecha: string): string {
-  const d = new Date(`${fecha}T00:00:00Z`)
-  return `${DIAS[d.getUTCDay()]} ${d.getUTCDate()} de ${MESES[d.getUTCMonth()]}`
-}
-
-const esFecha = (v: string | undefined): v is string => /^\d{4}-\d{2}-\d{2}$/.test(v ?? '')
 
 export default async function AsistenciaCampoPage({ searchParams }: {
   searchParams: Promise<{ obra?: string; dia?: string }>
@@ -56,7 +47,7 @@ export default async function AsistenciaCampoPage({ searchParams }: {
   }
 
   const sp = await searchParams
-  const fecha = esFecha(sp.dia) ? sp.dia : hoyISO()
+  const fecha = diaDeCarga(sp.dia, hoyISO())
   const { obras, error } = await leerDatosCampo(supabase)
   const obraId = sp.obra && obras.some((o) => o.id === sp.obra)
     ? sp.obra

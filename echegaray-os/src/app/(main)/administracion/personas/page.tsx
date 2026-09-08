@@ -34,6 +34,7 @@
 //   360, que muestra todo eso y más. Un panel con las últimas jornadas es una lectura por persona
 //   tocada, y esa pantalla ya existe. DECLARADO COMO PENDIENTE, no como hecho.
 
+import { headers } from 'next/headers'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Aviso } from '@/shared/components/ds'
@@ -44,6 +45,7 @@ import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { BloqueAsistenciaQuincena } from '@/features/administracion/components/BloqueAsistenciaQuincena'
+import { BloqueAsistenciaDia } from '@/features/administracion/components/asistencia/BloqueAsistenciaDia'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/components/TablaPersonas'
@@ -58,12 +60,14 @@ import {
   getHHDelMes, getMarcasDeHoy, getPapelesDelPlantel,
 } from '@/features/administracion/services/pulsoDelPlantelService'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
+import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
+import { modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
 
 export const dynamic = 'force-dynamic'
 
 const RUTA = '/administracion/personas'
 
-type Busqueda = { q?: string; f?: string; nueva?: string; vista?: string; quincena?: string }
+type Busqueda = { q?: string; f?: string; nueva?: string; vista?: string; quincena?: string; modo?: string; obra?: string; dia?: string }
 
 function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): string {
   const params = new URLSearchParams()
@@ -80,6 +84,15 @@ function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): st
  *  El valor es CUALQUIER día de la quincena; el bloque la resuelve. */
 const hrefAsistencia = (quincena?: string): string =>
   `${RUTA}?vista=asistencia${quincena ? `&quincena=${quincena}` : ''}`
+
+/** La carga del día en el teléfono. `modo=dia` viaja SIEMPRE: sin él, tocar «‹ ayer» desde un
+ *  navegador que no manda las pistas devolvería la grilla de quincena y el paso se perdería. */
+const hrefDia = (p: { obra?: string | null; dia?: string | null }): string => {
+  const params = new URLSearchParams({ vista: 'asistencia', modo: 'dia' })
+  if (p.obra) params.set('obra', p.obra)
+  if (p.dia) params.set('dia', p.dia)
+  return `${RUTA}?${params.toString()}`
+}
 
 /** Qué decir cuando no hay ninguna fila: una línea, y que diga qué hacer. */
 function vacioDe(filtro: FiltroPersonal, q?: string) {
@@ -148,6 +161,17 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   const hoy = hoyEnObra()
   const enAsistencia = sp.vista === 'asistencia'
 
+  // ═══ EL TELÉFONO NO CARGA LA GRILLA DE QUINCENA (08/09/2026) ═══
+  //
+  // Se decide en el servidor y no con `md:hidden` porque la vista que se tapa CUESTA: la quincena
+  // son hasta 15 personas × 15 días más las obras elegibles. Dibujar las dos para tirar una sería
+  // pagar seis consultas y mandar el doble de HTML por la red de la obra. El porqué completo y la
+  // salida cuando la adivinanza falla, en `services/vistaDeAsistencia.ts`.
+  const cabeceras = enAsistencia ? await headers() : null
+  const modo = enAsistencia
+    ? modoDeAsistencia(sp.modo, cabeceras?.get('sec-ch-ua-mobile'), cabeceras?.get('user-agent'))
+    : 'quincena'
+
   // LA SOLAPA QUE NO SE MIRA NO SE LEE. El pulso del plantel son cuatro consultas —presencia,
   // horas del mes, papeles y los conteos de los recortes— que la grilla de asistencia no usa para
   // nada: pedirlas igual sería pagar cinco viajes a la base para tirarlos.
@@ -171,15 +195,39 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               testid: 'buscar-persona',
             }}
           />
-          <div style={{ padding: '10px 20px 24px' }}>
-            <BloqueAsistenciaQuincena
-              quincenaPedida={sp.quincena} hoy={hoy} q={sp.q} hrefDe={hrefAsistencia}
-              // ESTA PANTALLA YA ES DE ADMINISTRACIÓN: quien llega acá pasó el portero del área.
-              // El `true` no es un permiso, es la afirmación de dónde vive el botón; la policy de
-              // `registros_hh` y la de `obra_asignacion` son las que rechazan de verdad.
-              puedeCorregir
+          {modo === 'dia' ? (
+            <BloqueAsistenciaDia
+              obraPedida={sp.obra}
+              dia={diaDeCarga(sp.dia, hoy)}
+              hrefDe={hrefDia}
+              // FORZAR LA GRILLA, NO SÓLO MOSTRARLA. Sin `modo=quincena` este enlace volvería a
+              // caer en la adivinanza y en el teléfono devolvería la misma pantalla de la que se
+              // quiso salir — el mismo lazo que ya dejó `/campo/asistencia` girando sobre sí.
+              hrefQuincena={`${hrefAsistencia(sp.quincena)}&modo=quincena`}
             />
-          </div>
+          ) : (
+            <div style={{ padding: '10px 20px 24px' }}>
+              <BloqueAsistenciaQuincena
+                quincenaPedida={sp.quincena} hoy={hoy} q={sp.q} hrefDe={hrefAsistencia}
+                // ESTA PANTALLA YA ES DE ADMINISTRACIÓN: quien llega acá pasó el portero del área.
+                // El `true` no es un permiso, es la afirmación de dónde vive el botón; la policy de
+                // `registros_hh` y la de `obra_asignacion` son las que rechazan de verdad.
+                puedeCorregir
+              />
+              {/* LA VUELTA. Quien forzó la grilla desde el teléfono necesita cómo volver, y quien
+                  está en escritorio no ve este enlace: `md:hidden` lo apaga a partir de 768px. */}
+              <p className="mt-4 text-center md:hidden">
+                <Link
+                  prefetch={false}
+                  href={hrefDia({ dia: sp.dia })}
+                  data-testid="ver-carga-del-dia"
+                  className="inline-flex min-h-[44px] items-center px-2 text-[12.5px] text-muted underline hover:text-ink"
+                >
+                  Cargar la asistencia de un día
+                </Link>
+              </p>
+            </div>
+          )}
         </div>
       </Marco>
     )
