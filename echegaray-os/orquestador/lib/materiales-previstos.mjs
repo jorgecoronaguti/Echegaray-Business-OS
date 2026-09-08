@@ -487,3 +487,193 @@ export function exigirNeteoDeMateriales(r) {
     + `importe PEGADO — ${sin.map((x) => `"${x.obra} · ${x.proveedor}" (${x.causa})`).join(' · ')}. Sin el neteo `
     + 'vivo esa plata se cuenta dos veces cuando la factura real entra: no escribo el libro.')
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LOS MATERIALES SE REPARTEN EN EL PLAZO DE LA OBRA — DECISIÓN DEL DUEÑO (08/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Sobre los $18.880.836 que el gráfico de CAJA mostraba el 01/10 —las 17 filas con `fecha_estimada =
+// 2026-10-01`, la fecha de ESTACIONAMIENTO que él puso el 24/08 para sacarlas del calendario—, el
+// dueño dijo, textual: *«ya no están más en pestaña OBRAS, las quité y no se debe considerar de esa
+// manera; incluso los costos de las obras están ahí mismo»*. Es decir:
+//
+//   1. NO va un bulto en una fecha arbitraria. `fecha_estimada` y `fecha_texto` del registro DEJAN DE
+//      LEERSE COMO VENCIMIENTO: son la huella de dónde estaba parado cada ítem, no cuándo se paga.
+//   2. La fuente del costo de materiales de una obra es la pestaña OBRAS (columna «· materiales», que
+//      SUMA `_OBRAS_RAW` = este mismo registro) y su PLAZO (Inicio → Fin).
+//   3. El costo se REPARTE por días hábiles lun–vie en la parte del plazo que queda por delante
+//      (mañana → fin), NETO de lo ya comprado para esa obra en Compras. Es EXACTAMENTE el criterio con
+//      que la mano de obra de esas mismas obras ya entra al Cash Flow (`jornales-demanda-obras.mjs`,
+//      `demandaPorQuincena`): mismo calendario, misma semana de obra, mismo tratamiento de la obra sin
+//      fechas.
+//
+// LO QUE NO SE PROYECTA, Y SE DICE:
+//   · obra TERMINADA (fin < hoy) ⇒ nada; se reporta con lo previsto y lo comprado, para que la
+//     diferencia sea un aprendizaje de cotización y no un egreso fantasma en octubre.
+//   · obra SIN PLAZO en la ficha ⇒ FALTA_DATO: nada, con el nombre de la obra. Inventarle un
+//     calendario es fabricar un dato.
+//
+// EL NETEO ES POR OBRA Y NO POR PROVEEDOR. Antes se neteaba (proveedor, cliente, fecha ≥ inicio):
+// una compra a un proveedor que el plan no nombraba no descontaba nada, y la obra quedaba proyectada
+// entera con la factura ya adentro de Compras. Ahora el SUMPRODUCT filtra (cliente, fecha ≥ inicio,
+// «Detalles / Obra» ∋ alguno de los patrones de la obra) — los patrones salen de `obra_alias` y de la
+// ficha (`comprasObraDe`), no de igualdad de texto: «MAMPOSTERÍA» y «Mamposteria» son la misma obra.
+
+/** El `origen.fila` de un tramo, para que `deduplicar` no colapse dos semanas de la misma obra. */
+const filaDeTramo = (clave, k, n) => `plazo:${clave}·sem ${k}/${n}`
+
+/** Sin acentos y en minúsculas — la MISMA idea que `norm_obra` de Postgres, para armar el patrón. */
+const sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+const escaparRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * NÚCLEO PURO: los tramos SEMANALES (lun–vie) de un plazo, con sus días hábiles. `desde` y `hasta` son
+ * fechas locales inclusive. Un tramo arranca en `desde` o en un lunes, y termina en el viernes o en
+ * `hasta`. Sin un solo día hábil ⇒ `[]`.
+ * @returns {Array<{desde:Date, hasta:Date, habiles:number}>}
+ */
+export function tramosSemanales(desde, hasta) {
+  if (!(desde instanceof Date) || !(hasta instanceof Date) || hasta < desde) return []
+  const tramos = []
+  let d = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate())
+  const fin = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())
+  while (d <= fin) {
+    // Un tramo ARRANCA en día hábil: si `d` cayó en sábado o domingo se corre al lunes. Sin esto la
+    // salida de la semana se fechaba un sábado (defecto visto en el test de Playón: 12/09 en vez de 14/09).
+    while (d <= fin && (d.getDay() === 0 || d.getDay() === 6)) d.setDate(d.getDate() + 1)
+    if (d > fin) break
+    // El viernes de esta semana (o `fin`, lo que venga primero).
+    const dow = d.getDay() // 1 lun … 5 vie
+    const hastaViernes = 5 - dow
+    let v = new Date(d); v.setDate(v.getDate() + hastaViernes)
+    if (v > fin) v = fin
+    let habiles = 0
+    for (let x = new Date(d); x <= v; x.setDate(x.getDate() + 1)) if (x.getDay() !== 0 && x.getDay() !== 6) habiles++
+    if (habiles) tramos.push({ desde: new Date(d), hasta: v, habiles })
+    d = new Date(v); d.setDate(d.getDate() + 1)
+  }
+  return tramos
+}
+
+/**
+ * NÚCLEO PURO: el reparto del costo de materiales de UNA obra en lo que le queda de plazo.
+ *
+ * @param {{total:number, inicio:Date|null, fin:Date|null, hoy:Date}} p `total` es lo previsto (bruto:
+ *   el neto contra Compras lo hace la fórmula viva, una sola vez, aguas abajo)
+ * @returns {{estado:'proyecta'|'terminada'|'sin_plazo'|'sin_habiles', tramos:Array<{desde:Date,
+ *   hasta:Date, habiles:number, importe:number}>, habiles:number, desde:Date|null}}
+ */
+export function repartoPorPlazo({ total, inicio, fin, hoy }) {
+  if (!(inicio instanceof Date) || !(fin instanceof Date)) return { estado: 'sin_plazo', tramos: [], habiles: 0, desde: null }
+  const h = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+  if (fin < h) return { estado: 'terminada', tramos: [], habiles: 0, desde: null }
+  // Mañana, o el inicio si la obra todavía no empezó: lo de hoy ya está en Compras o no va a salir hoy.
+  const manana = new Date(h); manana.setDate(manana.getDate() + 1)
+  const desde = inicio > manana ? inicio : manana
+  const tramos = tramosSemanales(desde, fin)
+  const habiles = tramos.reduce((s, t) => s + t.habiles, 0)
+  if (!habiles) return { estado: 'sin_habiles', tramos: [], habiles: 0, desde }
+  // Proporcional a los días hábiles; el ÚLTIMO tramo absorbe el redondeo para que la suma sea el total.
+  let acum = 0
+  const conImporte = tramos.map((t, i) => {
+    const importe = i === tramos.length - 1 ? r2(total - acum) : r2(total * t.habiles / habiles)
+    acum = r2(acum + importe)
+    return { ...t, importe }
+  })
+  return { estado: 'proyecta', tramos: conImporte, habiles, desde }
+}
+
+/**
+ * LAS FILAS DEL REGISTRO → EL COSTO DE MATERIALES POR OBRA. Suma `monto`; ignora `fecha_estimada` y
+ * `fecha_texto` a propósito (ver el encabezado de esta sección).
+ * @returns {Map<string, {obra:string, clave:string, canonica:string, total:number, items:number, proveedores:string[]}>}
+ */
+export function materialesPorObra(filas = []) {
+  const m = new Map()
+  for (const f of filas ?? []) {
+    const monto = Number(f?.monto)
+    const obra = txt(f?.obra_rotulo)
+    if (!obra || !Number.isFinite(monto) || monto <= 0) continue
+    if (!m.has(obra)) m.set(obra, { obra, clave: txt(f.obra_clave) || obra, canonica: txt(f.obra_canonica_id) || txt(f.obra_clave) || obra, total: 0, items: 0, proveedores: [] })
+    const o = m.get(obra)
+    o.total = r2(o.total + monto); o.items++
+    const p = txt(f.proveedor); if (p && !o.proveedores.includes(p)) o.proveedores.push(p)
+  }
+  return m
+}
+
+/**
+ * NÚCLEO PURO: lo ya facturado en Compras PARA LA OBRA — (cliente, fecha ≥ inicio, «Detalles / Obra»
+ * contiene alguno de los patrones). Los patrones se comparan sin acentos ni mayúsculas de los dos
+ * lados: al texto de Compras se le aplica LOWER y al patrón se le agregan sus variantes con y sin
+ * acento — Sheets no tiene `unaccent`, y «Mampostería» vs «Mamposteria» es exactamente el caso real.
+ */
+export function formulaRealDeComprasPorObra(cols, cliente, inicioSerial, patrones = []) {
+  const col = (l) => `Compras!$${l}$4:$${l}`
+  const lit = (s) => `"${String(s).replace(/"/g, '""')}"`
+  const variantes = new Set()
+  for (const p of patrones) {
+    const b = String(p ?? '').trim().toLocaleLowerCase('es-AR')
+    if (!b) continue
+    variantes.add(escaparRegex(b)); variantes.add(escaparRegex(sinAcentos(b)))
+  }
+  if (!variantes.size || !cols?.obra) return null
+  const fecha = `IFERROR(DATEVALUE(${col(cols.fecha)}&"");N(${col(cols.fecha)}))`
+  return `SUMPRODUCT((${col(cols.cliente)}=${lit(cliente)})*(${fecha}>=${inicioSerial})`
+    + `*REGEXMATCH(LOWER(${col(cols.obra)}&"");${lit([...variantes].join('|'))})*N(${col(cols.total)}))`
+}
+
+/**
+ * EL COSTO DE MATERIALES DE CADA OBRA → MOVIMIENTOS DEL LIBRO, uno por semana de lo que resta del
+ * plazo, con el importe VIVO neteado POR OBRA contra Compras.
+ *
+ * @param {Map|Array} porObra lo que devolvió `materialesPorObra`
+ * @param {{contexto:Map<string,{clave?:string, cliente?:string, inicioSerial?:number, inicio?:string,
+ *   fin?:string, patrones?:string[]}>, colsCompras?:object|null, corte:number, hoy:Date,
+ *   aviso?:(m:string)=>void}} opts
+ */
+export function movimientosDeMaterialesPorPlazo(porObra, { contexto = new Map(), colsCompras = null, corte = 0, hoy, aviso = () => {} } = {}) {
+  const obras = porObra instanceof Map ? [...porObra.values()] : [...(porObra ?? [])]
+  const movimientos = []; const sinNeteoDe = []; const terminadas = []; const sinPlazo = []
+  let total = 0; let sinNeteo = 0; let nObras = 0
+  const aLocal = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null }
+  for (const o of obras.sort((a, b) => a.obra.localeCompare(b.obra, 'es'))) {
+    const ctx = contexto.get(o.obra) ?? null
+    const r = repartoPorPlazo({ total: o.total, inicio: aLocal(ctx?.inicio), fin: aLocal(ctx?.fin), hoy })
+    if (r.estado === 'terminada') {
+      terminadas.push({ obra: o.obra, previsto: o.total, fin: ctx.fin })
+      aviso(`materiales previstos: «${o.obra}» terminó el ${ctx.fin} — sus ${o.total} previstos NO se proyectan (lo comprado ya está en Compras).`)
+      continue
+    }
+    if (r.estado !== 'proyecta') {
+      sinPlazo.push({ obra: o.obra, previsto: o.total, motivo: r.estado === 'sin_plazo' ? (ctx ? 'sin Inicio/Fin en la ficha de OBRAS' : 'la obra no figura en la ficha de obras') : 'sin un día hábil por delante' })
+      aviso(`materiales previstos: «${o.obra}» ${sinPlazo.at(-1).motivo} — FALTA_DATO: sus ${o.total} previstos NO se proyectan.`)
+      continue
+    }
+    const patrones = [...new Set([o.obra, ...(ctx?.patrones ?? [])].filter(Boolean))]
+    const real = colsCompras && ctx?.cliente && Number.isFinite(ctx?.inicioSerial)
+      ? formulaRealDeComprasPorObra(colsCompras, ctx.cliente, ctx.inicioSerial, patrones) : null
+    if (!real) {
+      sinNeteo += r.tramos.length
+      sinNeteoDe.push({ obra: o.obra, proveedor: '(por obra)', causa: ctx ? 'faltan las columnas de neteo de Compras (cliente, fecha, total, Detalles / Obra)' : 'la obra no figura en la ficha de obras', salidas: r.tramos.length })
+    }
+    const celdas = celdasNeteoSecuencial(r.tramos.map((t) => t.importe), real)
+    const n = r.tramos.length
+    r.tramos.forEach((t, k) => {
+      const dd = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+      const fecha = serialDe(t.desde.getFullYear(), t.desde.getMonth() + 1, t.desde.getDate())
+      const base = movimiento({
+        fecha: fecha <= corte ? corte + 1 : fecha,
+        importe: t.importe, signo: SALE,
+        concepto: `${o.obra} · Materiales · semana ${dd(t.desde)}–${dd(t.hasta)} (${k + 1}/${n} · ${t.habiles} día${t.habiles === 1 ? '' : 's'} háb.)`,
+        contraparte: o.proveedores.length === 1 ? o.proveedores[0] : 'Proveedores de la obra',
+        rubro: RUBRO_OBRAS, estado: 'PROYECTADO', instrumento: '', obra: o.obra, cliente: ctx?.cliente ?? '',
+        origen: { pestana: ORIGEN_REGISTRO, fila: filaDeTramo(o.clave, k + 1, n) },
+      })
+      movimientos.push(celdas[k] ? { ...base, importeVivo: celdas[k] } : base)
+      total = r2(total + t.importe)
+    })
+    nObras++
+  }
+  return { movimientos, sinNeteoDe, terminadas, sinPlazo, resumen: { obras: nObras, movimientos: movimientos.length, total, sinNeteo } }
+}

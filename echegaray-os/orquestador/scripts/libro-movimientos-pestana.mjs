@@ -45,7 +45,7 @@ import { deEstructura, diaTipicoDeEstructura, PESTANA_ESTRUCTURA } from '../lib/
 // comunes a los dos caminos.
 import { serialDeFecha } from '../lib/libro-extractores-obras.mjs'
 import {
-  materialesDesdeRegistro, movimientosDeMateriales, exigirNeteoDeMateriales,
+  materialesPorObra, movimientosDeMaterialesPorPlazo, exigirNeteoDeMateriales,
 } from '../lib/materiales-previstos.mjs'
 // El nombre REAL de la pestaña lo publica su propio generador: escribirlo acá a mano es la segunda
 // definición que se desincroniza el día que la pestaña se renombre.
@@ -267,17 +267,24 @@ async function extraerDeLasFuentes(google, corte) {
   // La FICHA de cada obra (cliente y fecha de inicio) sigue viniendo de obras-datos: el registro no
   // publica ninguno de los dos y el SUMPRODUCT del neteo los necesita. Import dinámico con guarda,
   // como estaba: sin el módulo la ficha sale vacía y el aviso de cada obra lo dice.
-  const OBRAS_FUTURAS = await import('../lib/obras-datos.mjs').then((m) => m.OBRAS_FUTURAS ?? []).catch(() => [])
-  const contextoObras = new Map(OBRAS_FUTURAS.map((o) => [String(o?.obra ?? '').trim(), {
-    clave: o?.clave, cliente: o?.cliente, inicioSerial: serialDeFecha(o?.inicio),
-  }]))
+  // ═══ LOS MATERIALES SE REPARTEN EN EL PLAZO DE LA OBRA, NETOS POR OBRA (08/09/2026) ═══
+  //
+  // Decisión del dueño sobre los $18,9M que el gráfico ponía el 01/10: «no se debe considerar de esa
+  // manera; los costos de las obras están en OBRAS». `fecha_estimada` deja de leerse como vencimiento;
+  // el costo de materiales de cada obra se reparte por días hábiles en lo que resta del plazo (mismo
+  // criterio que la MO en `jornales-demanda-obras.mjs`) y se netea POR OBRA contra Compras (cliente +
+  // «Detalles / Obra» ∋ alias). El porqué entero está en `lib/materiales-previstos.mjs`.
+  //
+  // La FICHA de cada obra (cliente, inicio, fin, patrón de Compras) sigue viniendo de obras-datos, que
+  // es la transcripción de la pestaña OBRAS. Import dinámico con guarda: sin el módulo la ficha sale
+  // vacía y cada obra se reporta como FALTA_DATO.
+  const fichaObras = await import('../lib/obras-datos.mjs').then((m) => ({ obras: m.OBRAS_FUTURAS ?? [], patron: m.comprasObraDe ?? (() => null) })).catch(() => ({ obras: [], patron: () => null }))
+  const OBRAS_FUTURAS = fichaObras.obras
   // SÓLO LOS MATERIALES: la mano de obra del registro se paga por Jornales y entra al libro por su
-  // propia puerta. `to_char` y no el Date crudo — la VM corre en -03 y una medianoche UTC leída con
-  // los getters locales devuelve el DÍA ANTERIOR.
-  const previstos = sinObras ? [] : await query(`select obra_rotulo, concepto, familia, proveedor,
-      to_char(fecha_estimada, 'YYYY-MM-DD') as fecha_estimada, fecha_texto, monto, nota
+  // propia puerta (MAX(plantel; demanda de OBRAS)). Sumarla acá la contaría dos veces.
+  const previstos = sinObras ? [] : await query(`select obra_rotulo, obra_clave, obra_canonica_id, concepto, familia, proveedor, monto
     from public.obra_egreso_proyectado where tipo = 'material'
-    order by fecha_estimada nulls last, obra_rotulo, concepto`)
+    order by obra_rotulo, concepto`)
     .then((r) => r.rows)
     .catch((e) => {
       console.error(`  ⚠⚠ NO PUDE LEER public.obra_egreso_proyectado (${e.message}). Los materiales `
@@ -285,9 +292,20 @@ async function extraerDeLasFuentes(google, corte) {
         + 'viejas que el dueño ya corrigió a mano, y saldrían sin que nadie se entere.')
       return []
     })
-  const plan = sinObras
-    ? { movimientos: [], omitidas: [], resumen: { items: 0, movimientos: 0, total: 0, omitidas: 0 } }
-    : materialesDesdeRegistro(previstos, { aviso: (m) => console.warn(`  ⚠ ${m}`) })
+  // Los alias de cada obra canónica: «Salones Comerciales» es SALÓN COMERCIAL. Es la MISMA tabla que usa
+  // la web para imputar una compra a una obra — una fuente, no una segunda lista acá.
+  const aliasPorObra = await query('select alias, obra_id from public.obra_alias where obra_id is not null')
+    .then((r) => r.rows.reduce((m, x) => (m.set(x.obra_id, [...(m.get(x.obra_id) ?? []), x.alias]), m), new Map()))
+    .catch(() => new Map())
+  const porObra = materialesPorObra(previstos)
+  const contextoObras = new Map(OBRAS_FUTURAS.map((o) => {
+    const obra = String(o?.obra ?? '').trim()
+    const canonica = porObra.get(obra)?.canonica ?? o?.clave
+    return [obra, {
+      clave: o?.clave, cliente: o?.cliente, inicioSerial: serialDeFecha(o?.inicio), inicio: o?.inicio, fin: o?.fin,
+      patrones: [fichaObras.patron(o), o?.ventaTexto, ...(aliasPorObra.get(canonica) ?? [])].filter(Boolean),
+    }]
+  }))
   if (sinObras) {
     console.warn('  ⚠ materiales previstos: EXCLUIDOS por ORQ_LIBRO_SIN_OBRAS=1 (llave del dueño, 24/08) — el libro sale sin «Materiales de obra proyectados».')
   } else if (!previstos.length) {
@@ -298,36 +316,24 @@ async function extraerDeLasFuentes(google, corte) {
   //
   // `exigirColumnasNeteo` tira con el rótulo adentro ("Fecha factura") en lugar de degradar a importes
   // pegados. El criterio, y por qué un dato muerto en silencio es peor que una corrida caída, viven
-  // con la función en lib/libro-estado-vivo.mjs. Sin materiales previstos no hay nada que netear y no
-  // hay nada que exigir: la corrida no depende de un encabezado que no va a usar.
-  const colsNeteo = plan.movimientos.length ? exigirColumnasNeteo(compras) : null
-  const obrasFuturas = movimientosDeMateriales(plan.movimientos, {
-    contexto: contextoObras, colsCompras: colsNeteo, corte, aviso: (m) => console.warn(`  ⚠ ${m}`),
+  // con la función en lib/libro-estado-vivo.mjs. Sin materiales previstos no hay nada que netear.
+  const colsNeteo = porObra.size ? exigirColumnasNeteo(compras) : null
+  const obrasFuturas = movimientosDeMaterialesPorPlazo(porObra, {
+    contexto: contextoObras, colsCompras: colsNeteo, corte, hoy: fechaLocalDeSerial(corte), aviso: (m) => console.warn(`  ⚠ ${m}`),
   })
-  // Y ACÁ TAMPOCO SE DEGRADA: si algún grupo no pudo netear, aborta con la obra y el proveedor
-  // adentro. Es la misma puerta que `exigirColumnasNeteo`, una fila más abajo. Ver la función.
+  // Y ACÁ TAMPOCO SE DEGRADA: si alguna obra no pudo netear, aborta con la obra adentro.
   exigirNeteoDeMateriales(obrasFuturas)
+  const plan = { resumen: { items: previstos.length } }
   if (obrasFuturas.resumen.movimientos) {
     console.log(`  materiales previstos (public.obra_egreso_proyectado): ${obrasFuturas.resumen.obras} obra(s) · `
-      + `${plan.resumen.items} ítem(s) · ${obrasFuturas.resumen.movimientos} egreso(s) proyectado(s) · `
-      + `${pesos(obrasFuturas.resumen.total)} planificado (con neteo vivo contra Compras)`)
+      + `${plan.resumen.items} ítem(s) · ${obrasFuturas.resumen.movimientos} egreso(s) semanal(es) repartidos en el plazo · `
+      + `${pesos(obrasFuturas.resumen.total)} planificado (neteo vivo POR OBRA contra Compras)`)
   }
-  // ═══ EL CONTROL CONTRA EL TOTAL DECLARADO SE RETIRA, Y HAY QUE DECIR POR QUÉ (07/09/2026) ═══
-  //
-  // Comparaba lo que este parser leía contra el `SUM()` que publicaba la propia pestaña: dos caminos
-  // distintos sobre las mismas celdas, y por eso servía — el riesgo era la INTERPRETACIÓN de un texto
-  // («46.296» leído como importe, un «10/09» auto-parseado a serial). Leyendo del registro, el importe
-  // llega tipado como `numeric` y la fecha como `date`: no hay nada que interpretar mal, y el control
-  // pasaría a comparar la suma de las filas contra la suma de las mismas filas — un control validado
-  // contra la información que produce, que es peor que no tener control porque da verde siempre.
-  //
-  // LO QUE SÍ SE CONSERVA es la única lectura que puede fallar: una fila cuya fecha o importe no se
-  // entienden se OMITE y se grita, con su rótulo. Esa plata no está en ningún cash flow.
-  if (!sinObras && plan.resumen.omitidas) {
-    const fuera = plan.omitidas.reduce((s, o) => s + (Number(o.previsto) || 0), 0)
-    console.warn(`  ⚠ ${plan.resumen.omitidas} fila(s) de public.obra_egreso_proyectado quedaron FUERA `
-      + `del calendario (ver los avisos de arriba)${fuera ? `: ${pesos(fuera)}` : ''} — esa plata no está en ningún cash flow.`)
-  }
+  for (const t of obrasFuturas.terminadas) console.log(`  · «${t.obra}» terminó el ${t.fin}: ${pesos(t.previsto)} previstos NO se proyectan`)
+  for (const f of obrasFuturas.sinPlazo) console.warn(`  ⚠ FALTA_DATO «${f.obra}»: ${f.motivo} — ${pesos(f.previsto)} previstos NO se proyectan`)
+  // El control contra el total declarado por la pestaña se retiró el 07/09 (el registro llega tipado
+  // desde Postgres: no hay nada que interpretar mal) y las filas omitidas por fecha ilegible dejaron de
+  // existir el 08/09: la fecha ya no se lee. Lo que puede faltar ahora es el PLAZO, y se grita arriba.
   {
     // ═══ "$X DE MO VA POR JORNALES" ERA UNA AFIRMACIÓN, NO UNA MEDICIÓN (14/08/2026) ═══
     //

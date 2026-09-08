@@ -253,7 +253,8 @@ test('EL NETEO DE OBRAS RESUELVE SUS LETRAS SOBRE EL ENCABEZADO REAL DE COMPRAS'
     + 'egresos de obra se publican pegados y se cuentan dos veces cuando la factura entra')
   // C es "Fecha factura" —la fecha del comprobante—, la MISMA que usa obras-pestana.mjs para su real
   // acumulado. E proveedor, J cliente, O total, T monto pagado.
-  assert.deepEqual(cols, { proveedor: 'E', cliente: 'J', fecha: 'C', total: 'O', pagado: 'T' })
+  // K «Detalles / Obra»: desde el 08/09 el neteo de materiales es POR OBRA y filtra por esa columna.
+  assert.deepEqual(cols, { proveedor: 'E', cliente: 'J', fecha: 'C', total: 'O', pagado: 'T', obra: 'K' })
 })
 
 test('el neteo NO se cuelga de "Fecha de caja": lo que descuenta es que la factura ENTRÓ', () => {
@@ -297,7 +298,7 @@ test('SIN NETEO, EL LIBRO NO SE PUBLICA: el aborto NOMBRA la columna que no enco
   assert.throws(() => exigirColumnasNeteo([[], [], pelado]), /"Fecha factura".*"Monto Pagado"/s)
   // Y con el encabezado real devuelve las letras sin chistar.
   assert.deepEqual(exigirColumnasNeteo([[], [], CAB_COMPRAS_REAL]),
-    { proveedor: 'E', cliente: 'J', fecha: 'C', total: 'O', pagado: 'T' })
+    { proveedor: 'E', cliente: 'J', fecha: 'C', total: 'O', pagado: 'T', obra: 'K' })
 })
 
 test('EL SCRIPT EXIGE EL NETEO: no queda ningún camino que degrade a importes pegados', () => {
@@ -306,7 +307,7 @@ test('EL SCRIPT EXIGE EL NETEO: no queda ningún camino que degrade a importes p
   // `public.obra_egreso_proyectado` (07/09, cuando el dueño sacó ese cuadro de la pestaña)—. La
   // guarda es la MISMA en los tres casos y sigue siendo obligatoria: sólo cambió QUÉ se cuenta para
   // saber si hay algo que netear.
-  assert.match(fuente, /plan\.movimientos\.length \? exigirColumnasNeteo\(compras\)/,
+  assert.match(fuente, /porObra\.size \? exigirColumnasNeteo\(compras\)/,
     'la guarda del neteo dejó de exigir las columnas: revisá libro-movimientos-pestana.mjs')
   // Y la segunda puerta: el registro no publica el cliente ni el inicio de la obra, así que un grupo
   // sin ficha tampoco puede netear. Ahí también se aborta, con la obra y el proveedor adentro.

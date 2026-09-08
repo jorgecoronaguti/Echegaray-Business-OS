@@ -140,6 +140,9 @@ export const ROTULOS_NETEO = Object.freeze({
   fecha: ROTULO_FECHA_COMPRAS,
   total: NOMBRES_COMPRAS.importe,
   pagado: NOMBRES_COMPRAS.montoPagado,
+  // 08/09/2026: el neteo de materiales previstos pasó a ser POR OBRA (decisión del dueño), y la obra de
+  // una compra vive en «Detalles / Obra» — la misma K que ya alimenta la columna `obra` del libro.
+  obra: NOMBRES_COMPRAS.obra,
 })
 
 /**

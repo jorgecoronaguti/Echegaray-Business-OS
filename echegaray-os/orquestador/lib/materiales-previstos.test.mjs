@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs'
 import {
   materialesDesdeCuadro5, materialesDesdeRegistro, movimientosDeMateriales, exigirNeteoDeMateriales, serialesDeCelda,
   repartirEnCuotas, anioDeMesSuelto, totalDeclarado, ubicarCuadro5,
+  materialesPorObra, repartoPorPlazo, tramosSemanales, movimientosDeMaterialesPorPlazo, formulaRealDeComprasPorObra,
 } from './materiales-previstos.mjs'
 import { serialDe } from './libro-extractores-fechas.mjs'
 import { RUBRO_OBRAS } from './libro-extractores-obras.mjs'
@@ -293,7 +294,9 @@ test('EL LIBRO YA NO ARMA SUS MATERIALES CON LAS CONSTANTES — el cableado tamb
   // probar sin red. Por eso se mira el archivo: es feo, y es lo único que se pone rojo si vuelve.
   const src = readFileSync(new URL('../scripts/libro-movimientos-pestana.mjs', import.meta.url), 'utf8')
   // 07/09/2026: la fuente pasó del cuadro 5 —que el dueño sacó de la pestaña— al registro de Postgres.
-  assert.ok(src.includes('materialesDesdeRegistro('), 'el libro lee el registro obra_egreso_proyectado')
+  // 08/09/2026: el registro se lee POR OBRA y se reparte en el plazo; la fecha estacionada ya no se lee.
+  assert.ok(src.includes('materialesPorObra(') && src.includes('movimientosDeMaterialesPorPlazo('), 'el libro reparte el registro obra_egreso_proyectado en el plazo de cada obra')
+  assert.ok(!src.includes('materialesDesdeRegistro('), 'y NO vuelve a leer fecha_estimada como vencimiento')
   assert.ok(!src.includes('materialesDesdeCuadro5('), 'y NO vuelve a leer un cuadro que ya no existe')
   assert.ok(!/\bdeObras\(/.test(src), 'y NO vuelve a construir los egresos desde las constantes')
   assert.ok(src.includes("process.env.ORQ_LIBRO_SIN_OBRAS === '1'"), 'la llave del dueño sigue en pie')
@@ -301,4 +304,89 @@ test('EL LIBRO YA NO ARMA SUS MATERIALES CON LAS CONSTANTES — el cableado tamb
   // republicaría en silencio las fechas viejas, que es el defecto entero otra vez.
   assert.match(src, /NO PUDE LEER public\.obra_egreso_proyectado/, 'la lectura fallida tiene que gritar')
   assert.ok(!/materialesDesdeRegistro\([^)]*\)\s*\?\?/.test(src), 'apareció un fallback sobre la lectura del registro')
+})
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL REPARTO EN EL PLAZO — DECISIÓN DEL DUEÑO DEL 08/09/2026 (ver el encabezado de la sección en la lib)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Las filas REALES del registro para PLAYÓN DE AZUFRE (10 ítems, $10.515.900) y MAMPOSTERÍA
+ *  ($2.847.439), tal como estaban el 08/09/2026, con la fecha estacionada 2026-10-01. */
+const REGISTRO_REAL_PLAZO = [
+  ...[['Aditivos', 'Sika', 482040], ['Alambrón', 'Mercado Libre', 129523], ['Ferretería', 'Ferretec', 95550],
+    ['Gasoil', 'ACA', 565493], ['Materiales', 'Alumetal', 113025], ['Materiales', 'Bedini', 1524200],
+    ['Materiales', 'FEMENIA', 7372050], ['Nafta', 'VILLA DEL PINO', 186244], ['Pintura', 'Pintureria Cordoba', 47775]]
+    .map(([concepto, proveedor, monto]) => ({ obra_rotulo: 'PLAYÓN DE AZUFRE', obra_clave: 'messina-playon-azufre', obra_canonica_id: 'messina-playon-azufre', concepto, proveedor, monto, fecha_estimada: '2026-10-01' })),
+  { obra_rotulo: 'MAMPOSTERÍA', obra_clave: 'sf-mamposteria', obra_canonica_id: 'sf-mamposteria', concepto: 'Materiales sin itemizar', proveedor: 'sin proveedor', monto: 2847439, fecha_estimada: '2026-10-01' },
+]
+const HOY_PLAZO = new Date(2026, 8, 8) // 08/09/2026
+const COLS_NETEO = { proveedor: 'E', cliente: 'J', fecha: 'C', total: 'O', pagado: 'T', obra: 'K' }
+const CONTEXTO_PLAZO = new Map([
+  ['PLAYÓN DE AZUFRE', { clave: 'messina-playon-azufre', cliente: 'MESSINA', inicioSerial: S(2026, 9, 7), inicio: '2026-09-07', fin: '2026-10-09', patrones: ['Playon Azufre'] }],
+  ['MAMPOSTERÍA', { clave: 'sf-mamposteria', cliente: 'San Francisco', inicioSerial: S(2026, 8, 7), inicio: '2026-08-07', fin: '2026-08-19', patrones: ['Mamposteria'] }],
+])
+
+test('PLAYÓN DE AZUFRE: $10.515.900 se reparten en los 23 días hábiles que quedan (09/09 → 09/10), una salida por semana', () => {
+  const por = materialesPorObra(REGISTRO_REAL_PLAZO)
+  assert.equal(por.get('PLAYÓN DE AZUFRE').total, 10515900)
+  const r = movimientosDeMaterialesPorPlazo(por, { contexto: CONTEXTO_PLAZO, colsCompras: COLS_NETEO, corte: S(2026, 9, 8), hoy: HOY_PLAZO })
+  const azufre = r.movimientos.filter((m) => m.obra === 'PLAYÓN DE AZUFRE')
+  assert.equal(azufre.length, 5, 'mié 09 → vie 11 (3 d) + cuatro semanas enteras (5 d cada una)')
+  assert.deepEqual(azufre.map((m) => m.fecha), [S(2026, 9, 9), S(2026, 9, 14), S(2026, 9, 21), S(2026, 9, 28), S(2026, 10, 5)])
+  assert.equal(Math.round(azufre.reduce((s, m) => s + m.importe, 0) * 100) / 100, 10515900, 'la suma reconstruye el total EXACTO')
+  assert.equal(azufre[0].importe, 1371639.13, '3/23 del total')
+  assert.equal(azufre[1].importe, 2286065.22, '5/23 del total')
+  // NADA cae el 01/10: la fecha estacionada del registro no se lee como vencimiento.
+  assert.ok(!azufre.some((m) => m.fecha === S(2026, 10, 1)), 'no hay bulto el 01/10')
+  for (const m of azufre) { assert.equal(m.estado, 'PROYECTADO'); assert.equal(m.signo, -1); assert.equal(m.rubro, RUBRO_OBRAS) }
+})
+
+test('MAMPOSTERÍA terminó el 19/08: sus $2.847.439 previstos NO se proyectan y la obra se reporta', () => {
+  const r = movimientosDeMaterialesPorPlazo(materialesPorObra(REGISTRO_REAL_PLAZO), { contexto: CONTEXTO_PLAZO, colsCompras: COLS_NETEO, corte: S(2026, 9, 8), hoy: HOY_PLAZO })
+  assert.equal(r.movimientos.filter((m) => m.obra === 'MAMPOSTERÍA').length, 0)
+  assert.deepEqual(r.terminadas, [{ obra: 'MAMPOSTERÍA', previsto: 2847439, fin: '2026-08-19' }])
+  assert.equal(r.resumen.total, 10515900, 'el total planificado es sólo lo de la obra viva')
+})
+
+test('SIN PLAZO NO SE PROYECTA: FALTA_DATO con el nombre de la obra, nunca un calendario inventado', () => {
+  const avisos = []
+  const r = movimientosDeMaterialesPorPlazo(materialesPorObra(REGISTRO_REAL_PLAZO), {
+    contexto: new Map([['PLAYÓN DE AZUFRE', { clave: 'x', cliente: 'MESSINA', inicioSerial: S(2026, 9, 7), inicio: '2026-09-07', fin: null }]]),
+    colsCompras: COLS_NETEO, corte: S(2026, 9, 8), hoy: HOY_PLAZO, aviso: (m) => avisos.push(m),
+  })
+  assert.equal(r.movimientos.length, 0)
+  assert.equal(r.sinPlazo.length, 2)
+  assert.equal(r.sinPlazo.find((x) => x.obra === 'PLAYÓN DE AZUFRE').motivo, 'sin Inicio/Fin en la ficha de OBRAS')
+  assert.equal(r.sinPlazo.find((x) => x.obra === 'MAMPOSTERÍA').motivo, 'la obra no figura en la ficha de obras')
+  assert.ok(avisos.some((a) => a.includes('FALTA_DATO') && a.includes('PLAYÓN DE AZUFRE')))
+})
+
+test('EL NETEO ES POR OBRA: cliente + fecha ≥ inicio + «Detalles / Obra» ∋ alias, con y sin acento, y secuencial entre semanas', () => {
+  const r = movimientosDeMaterialesPorPlazo(materialesPorObra(REGISTRO_REAL_PLAZO), { contexto: CONTEXTO_PLAZO, colsCompras: COLS_NETEO, corte: S(2026, 9, 8), hoy: HOY_PLAZO })
+  const [m1, m2] = r.movimientos
+  const real = formulaRealDeComprasPorObra(COLS_NETEO, 'MESSINA', S(2026, 9, 7), ['PLAYÓN DE AZUFRE', 'Playon Azufre'])
+  assert.match(real, /Compras!\$J\$4:\$J="MESSINA"/)
+  assert.match(real, /REGEXMATCH\(LOWER\(Compras!\$K\$4:\$K&""\);"playón de azufre\|playon de azufre\|playon azufre"\)/)
+  assert.ok(!/\$E\$4/.test(real), 'ya NO filtra por proveedor')
+  assert.equal(m1.importeVivo, `=MAX(0;1371639,13-MAX(0;${real}))`)
+  assert.equal(m2.importeVivo, `=MAX(0;3657704,35-MAX(1371639,13;${real}))`, 'el real absorbe las semanas EN ORDEN')
+  assert.equal(r.sinNeteoDe.length, 0)
+})
+
+test('SIN LAS COLUMNAS DE COMPRAS NO SE PUBLICA: quien escribe aborta con la obra adentro', () => {
+  const r = movimientosDeMaterialesPorPlazo(materialesPorObra(REGISTRO_REAL_PLAZO), { contexto: CONTEXTO_PLAZO, colsCompras: null, corte: S(2026, 9, 8), hoy: HOY_PLAZO })
+  assert.equal(r.sinNeteoDe.length, 1)
+  assert.throws(() => exigirNeteoDeMateriales(r), /PLAYÓN DE AZUFRE/)
+  assert.ok(r.movimientos.every((m) => !m.importeVivo), 'sin fórmula el importe queda pegado, y por eso se aborta')
+})
+
+test('CADA SEMANA LLEVA SU CLAVE DE ORIGEN y la obra que todavía no empezó arranca en su inicio, no mañana', () => {
+  const r = movimientosDeMaterialesPorPlazo(materialesPorObra(REGISTRO_REAL_PLAZO), { contexto: CONTEXTO_PLAZO, colsCompras: COLS_NETEO, corte: S(2026, 9, 8), hoy: HOY_PLAZO })
+  assert.equal(new Set(r.movimientos.map((m) => m.origen.fila)).size, r.movimientos.length)
+  assert.equal(r.movimientos[0].origen.pestana, 'obra_egreso_proyectado')
+  const futura = repartoPorPlazo({ total: 100, inicio: new Date(2026, 9, 5), fin: new Date(2026, 9, 9), hoy: HOY_PLAZO })
+  assert.equal(futura.estado, 'proyecta'); assert.equal(futura.tramos.length, 1); assert.equal(futura.habiles, 5)
+  assert.equal(futura.tramos[0].desde.getDate(), 5)
+  assert.deepEqual(tramosSemanales(new Date(2026, 8, 12), new Date(2026, 8, 13)), [], 'un fin de semana no tiene días hábiles')
 })
