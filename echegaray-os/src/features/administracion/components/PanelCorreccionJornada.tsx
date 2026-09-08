@@ -117,13 +117,15 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
         // ORIGEN: de dónde salen HOY las horas. `null` cuando el día no tiene nada cargado — sin
         // origen no hay movimiento, y un borrado sin origen barrería filas de otras obras.
         obra_origen: tramo?.obra_id ?? null,
-        // SIN OBRA CUANDO NO VINO Y NO HAY NINGUNA ELEGIDA: la acción la deduce (del día, de la
-        // asignación vigente, de sus últimos registros) y lo dice en el acuse. Mandar una obra
-        // cualquiera para que el schema no proteste sería imputarle la ausencia a quien tocara.
+        // LA OBRA NO SE USA CUANDO NO VINO. Una ausencia es de la PERSONA (dueño, 08/09/2026) y la
+        // acción la escribe SIN obra: lo que viaje acá sólo sirve para saber cuánto vale la jornada
+        // de ese día. Antes la acción DEDUCÍA una obra para poder escribir, y el acuse decía «la
+        // ausencia quedó imputada a La Estrella» — que es lo que el dueño rechazó.
         obra_destino: obraDestino === '' ? null : obraDestino,
         estado,
-        // `null` deja que la acción use la jornada de la obra que resolvió. Un 1 fijo registraría
-        // una ausencia de una hora sobre una jornada de nueve.
+        // `null` deja que la acción use la jornada de referencia (ver `ausenciaDeLaPersona.ts`: la
+        // jornada legal por categoría es un dato pendiente). Un 1 fijo registraría una ausencia de
+        // una hora sobre una jornada de nueve.
         horas: estado === 'ausente' ? (jornada > 0 ? jornada : null) : horas,
         // EL MOTIVO DECIDE SI ES AUSENCIA O LICENCIA. Vacaciones y parte médico son licencia;
         // faltar sin avisar, ausencia. Ninguna suma horas trabajadas.
