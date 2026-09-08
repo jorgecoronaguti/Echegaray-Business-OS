@@ -223,3 +223,56 @@ export async function getQuincenaPorObra(
     error: null,
   }
 }
+
+// ═══ LA LISTA DE OBRAS DEL PASO 1 DEL TELÉFONO (08/09/2026) ═══
+//
+// `leerDatosCampo` ya trae las obras activas, pero trae además pedidos, herramientas e
+// impedimentos: cinco viajes para dibujar una lista de nombres. Y no dice lo único que decide cuál
+// tocar — cuánta gente hay que cargar ahí.
+
+export interface ObraParaJornada {
+  id: string
+  nombre: string
+  jornada: number
+  /** Asignados VIGENTES ese día. `null` si la lectura de asignaciones falló: cero afirmaría que la
+   *  obra está sin gente, y una obra sin gente es una razón para no tocarla. */
+  asignados: number | null
+}
+
+/**
+ * Las obras activas que quien mira puede ver, con cuánta gente hay que cargar ese día.
+ *
+ * El recorte lo hace la RLS de `obra_canonica` (`ve_obra`), igual que en el resto del archivo: un
+ * jefe ve las suyas y Administración las ve todas. No se repite el criterio en TypeScript.
+ */
+export async function getObrasParaJornada(
+  supabase: SupabaseClient, fecha: string,
+): Promise<{ data: ObraParaJornada[]; error: string | null }> {
+  const [obras, asignaciones] = await Promise.all([
+    supabase.from('obra_canonica')
+      .select('id, nombre, jornada_horas').eq('estado', 'activa').order('nombre'),
+    supabase.from('obra_asignacion').select('obra_canonica_id, desde, hasta'),
+  ])
+  if (obras.error) return { data: [], error: obras.error.message }
+
+  const vigentes = new Map<string, number>()
+  if (!asignaciones.error) {
+    for (const a of (asignaciones.data ?? []) as {
+      obra_canonica_id: string | null; desde: string | null; hasta: string | null
+    }[]) {
+      if (a.obra_canonica_id && vigenteEn(a, fecha)) {
+        vigentes.set(a.obra_canonica_id, (vigentes.get(a.obra_canonica_id) ?? 0) + 1)
+      }
+    }
+  }
+
+  const data = ((obras.data ?? []) as {
+    id: string; nombre: string; jornada_horas: number | string | null
+  }[]).map((o) => ({
+    id: o.id,
+    nombre: o.nombre,
+    jornada: numero(o.jornada_horas),
+    asignados: asignaciones.error ? null : (vigentes.get(o.id) ?? 0),
+  }))
+  return { data, error: null }
+}

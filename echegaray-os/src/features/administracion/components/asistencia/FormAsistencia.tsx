@@ -12,6 +12,17 @@ import { motivosDeDiaNoTrabajado } from '@/features/administracion/services/moti
 
 // CARGAR ASISTENCIA — una obra, un día, las horas de cada uno.
 //
+// ═══ VIVE ACÁ Y NO EN `/campo` PORQUE LO USAN DOS PRODUCTOS (08/09/2026) ═══
+//
+// Nació dentro de `src/app/campo/asistencia/`, que es la pantalla del jefe en la obra. El dueño
+// probó la carga desde el teléfono con su usuario de Administración y encontró la grilla de
+// quincena de escritorio: la experiencia de teléfono existía y ningún rol de adentro llegaba a
+// ella. La alternativa era copiar el formulario a Administración; se descartó porque la casilla que
+// nace vacía, el catálogo de motivos y `loQueViaja` son UNA regla, y dos copias de una regla se
+// desincronizan el día que alguien arregla sólo una — que es exactamente el defecto que costó el
+// revert de las 77,4 HH. Sus servicios ya vivían en `features/administracion/services/`; ahora el
+// componente vive al lado, y `/campo/asistencia` lo importa desde acá.
+//
 // ═══ LA CASILLA NACE VACÍA. ESTO NO ES UN DETALLE: ES EL DEFECTO QUE COSTÓ UN REVERT ═══
 //
 // La primera versión la hacía nacer con la jornada puesta como VALOR, para cumplir «se abre y se
