@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { obrasTrabajadas, pareceSlug, rotuloDeObra } from './obrasDePersona.ts'
+import {
+  obrasTrabajadas, pareceSlug, rotuloDeObra, tramosProgramadosDe,
+} from './obrasDePersona.ts'
 import type { ImputacionHH } from '../types/index.ts'
 
 const r = (p: Partial<ImputacionHH>): ImputacionHH => ({
@@ -98,4 +100,55 @@ test('UNA PERSONA SIN REGISTROS NO TIENE OBRAS INVENTADAS', () => {
   // trabajó, y de una sin día no se puede decir cuándo.
   assert.deepEqual(obrasTrabajadas([r({ obra_canonica_id: null })]), [])
   assert.deepEqual(obrasTrabajadas([r({ fecha: null })]), [])
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO PROGRAMADO SE SEPARA DE LO TRABAJADO
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const HOY = '2026-09-11'
+
+const a = (p: Partial<Parameters<typeof tramosProgramadosDe>[0][number]>) => ({
+  id: p.id ?? 't1', obra_id: p.obra_id ?? 'pisos', obra_nombre: p.obra_nombre ?? null,
+  desde: p.desde ?? null, hasta: p.hasta ?? null,
+})
+
+test('UN TRAMO PROGRAMADO NO ENTRA A «DÓNDE TRABAJÓ»: no tiene horas y no se le inventa un 0 HH', () => {
+  // EL DEFECTO QUE ATRAPA: la lista de obras se arma desde `registros_hh`, así que un pase que
+  // todavía no ocurrió no aparece en ningún lado de la ficha. La tentación es meterlo en esa misma
+  // lista, y ahí habría que darle un número de horas que no existe. Son dos listas.
+  const trabajadas = obrasTrabajadas(TRES, { obras: CATALOGO, obraVigente: 'pisos' })
+  assert.deepEqual(trabajadas.map((o) => o.id), ['pisos', 'sf', 'estrella'])
+  const programados = tramosProgramadosDe(
+    [a({ id: 'futuro', obra_id: 'estrella', desde: '2026-10-01' })], HOY, CATALOGO,
+  )
+  assert.equal(programados.length, 1, 'el pase existe…')
+  assert.equal(trabajadas.length, 3, '…y NO se coló en la lista de horas')
+  assert.equal('horas' in programados[0], false, 'un tramo programado no publica horas')
+})
+
+test('SÓLO LO QUE EMPIEZA DESPUÉS DE HOY, y ordenado del más próximo al más lejano', () => {
+  const t = tramosProgramadosDe([
+    a({ id: 'viejo', obra_id: 'estrella', desde: '2026-06-01', hasta: '2026-06-30' }),
+    a({ id: 'vigente', obra_id: 'pisos', desde: '2026-09-01' }),
+    a({ id: 'hoy', obra_id: 'sf', desde: HOY }),
+    a({ id: 'lejos', obra_id: 'estrella', desde: '2026-10-20' }),
+    a({ id: 'cerca', obra_id: 'sf', desde: '2026-09-14', hasta: '2026-09-16' }),
+  ], HOY, CATALOGO)
+  // El que arranca HOY no es un plan: ya rige, y el bloque de arriba lo publica como su obra.
+  assert.deepEqual(t.map((x) => x.id), ['cerca', 'lejos'])
+  assert.deepEqual(t.map((x) => x.hasta), ['2026-09-16', null])
+})
+
+test('EL NOMBRE NUNCA ES UN SLUG — misma regla que la lista de obras trabajadas', () => {
+  // `sf-mamposteria` es el `obra_canonica.nombre` real de la base. El dueño: «jamás el slug».
+  const t = tramosProgramadosDe(
+    [a({ id: 'x', obra_id: 'sf', obra_nombre: 'sf-mamposteria', desde: '2026-10-01' })],
+    HOY, CATALOGO,
+  )
+  assert.equal(t[0].nombre, 'San Francisco')
+})
+
+test('sin tramos futuros la lista es vacía — y el bloque entonces no se dibuja', () => {
+  assert.deepEqual(tramosProgramadosDe([a({ desde: '2026-09-01' })], HOY, CATALOGO), [])
 })

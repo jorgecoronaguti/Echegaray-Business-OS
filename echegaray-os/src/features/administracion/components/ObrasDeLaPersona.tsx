@@ -19,7 +19,7 @@
 import Link from 'next/link'
 import { TarjetaFicha } from './FichaCanonica'
 import { fecha } from '@/features/obras/components/formato'
-import type { ObraTrabajada } from '../services/obrasDePersona'
+import type { ObraTrabajada, TramoProgramado } from '../services/obrasDePersona'
 
 const ICONO = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -44,8 +44,51 @@ function Estado({ activa }: { activa: boolean | null }) {
   )
 }
 
-export function ObrasDeLaPersona({ obras, hrefAsignaciones }: {
+/**
+ * LO QUE TODAVÍA NO PASÓ — abajo, chico, y sólo si hay algo.
+ *
+ * ═══ POR QUÉ NO ES UNA FILA MÁS DE LA LISTA DE ARRIBA ═══
+ *
+ * Esa lista publica horas por obra. Un pase programado no tiene ninguna, y meterlo ahí obligaría a
+ * escribirle «0,0 HH» al lado — un número que se lee como «fue y no trabajó». La lista de arriba ya
+ * descarta por la misma razón las obras donde sólo hubo ausencias.
+ *
+ * ═══ Y POR QUÉ NO SE DIBUJA VACÍO ═══
+ *
+ * Casi nadie tiene un pase programado. Un rótulo «Programado —» permanente en todas las fichas es
+ * ruido en el bloque que contesta la pregunta principal, que es dónde trabajó.
+ */
+function Programados({ tramos }: { tramos: TramoProgramado[] }) {
+  return (
+    <div className="border-t border-line-hairline px-3.5 py-2.5" data-testid="programados-persona">
+      <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-faint">
+        Programado
+      </h4>
+      <ul>
+        {tramos.map((t) => (
+          <li
+            key={t.id} data-testid="fila-programado"
+            className="flex items-baseline gap-2 py-0.5 text-[12px]"
+          >
+            <span className="min-w-0 flex-1 truncate text-ink">{t.nombre}</span>
+            <span className="shrink-0 text-[11px] text-faint">
+              {fecha(t.desde)}
+              {' → '}
+              {/* SIN `hasta` NO SE INVENTA UN FIN. «hasta nuevo aviso» es lo que dice la base: el
+                  tramo sigue abierto hasta que alguien decida otra cosa. */}
+              {t.hasta ? fecha(t.hasta) : 'hasta nuevo aviso'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+export function ObrasDeLaPersona({ obras, programados = [], hrefAsignaciones }: {
   obras: ObraTrabajada[]
+  /** Sus pases futuros. Vacío = no tiene ninguno, y entonces la sección no existe. */
+  programados?: TramoProgramado[]
   /** El historial de ASIGNACIONES —dónde se lo puso, con o sin horas— vive en su solapa. */
   hrefAsignaciones: string
 }) {
@@ -97,6 +140,8 @@ export function ObrasDeLaPersona({ obras, hrefAsignaciones }: {
               <span className="shrink-0 text-[13px] text-line-strong" aria-hidden>›</span>
             </Link>
           ))}
+
+      {programados.length > 0 && <Programados tramos={programados} />}
 
       {/* ESTE BLOQUE REEMPLAZÓ A «ESTUVO ANTES EN», que listaba las asignaciones CERRADAS.
           Decían casi lo mismo y el nuevo dice más: incluye las obras donde hay horas aunque nadie

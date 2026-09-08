@@ -142,6 +142,7 @@ export async function BloqueAsistenciaQuincena({
           obras={obras.map((o) => ({ id: o.id, nombre: o.nombre }))}
           puedeCorregir={puedeCorregir}
           puedeCambiarObra={puedeCambiarObra}
+          hoy={hoy}
         />
       )}
 
