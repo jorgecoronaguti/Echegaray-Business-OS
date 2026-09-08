@@ -19,6 +19,7 @@
 // Las opciones NO son constantes: salen de las filas reales (`opcionesDe`). Un desplegable escrito a
 // mano ofrece proveedores que ya no están y esconde los que el dueño agregó ayer.
 
+import Link from 'next/link'
 import { BarraFiltros, CampoFiltro, SelectFiltro } from './BarraFiltros'
 import { LLAVE, type Criterios, type Opciones } from '../services/comprasFiltros'
 
@@ -89,9 +90,9 @@ export function FiltrosComprasSheet({
         />
       </BarraFiltros>
       {limpiarHref && (
-        <a href={limpiarHref} className="self-start text-[11px] text-faint underline" data-testid="f-limpiar">
+        <Link prefetch={false} href={limpiarHref} className="self-start text-[11px] text-faint underline" data-testid="f-limpiar">
           Limpiar filtros
-        </a>
+        </Link>
       )}
     </div>
   )

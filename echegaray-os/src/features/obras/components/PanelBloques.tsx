@@ -6,6 +6,7 @@
 // la razón por la que alguien toca una barra del Gantt. Lo que se abre para HACER algo —tareas,
 // papeles, notas, impedimentos, precedencias— vive en `PanelGestion`.
 
+import Link from 'next/link'
 import { Campo, CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import type { Actividad, ParteEjecucion, Persona } from '../types'
 import { METODO_LABEL, UNIDADES } from '../types'
@@ -126,9 +127,9 @@ export function ListaPersonal({ a, personas, reales, obraId }: {
       {/* EL DETALLE NO SE REIMPLEMENTA ACÁ: lleva a la solapa donde ese dato se edita. Un segundo
           lugar para asignar personal sería un segundo lugar donde se escriben horas. */}
       {obraId && (
-        <a href={`/obras/${obraId}?vista=personal`} className="mt-2 inline-block text-[12px] text-muted hover:text-ink" data-testid="ver-mas-bloque">
+        <Link href={`/obras/${obraId}?vista=personal`} prefetch={false} className="mt-2 inline-block text-[12px] text-muted hover:text-ink" data-testid="ver-mas-bloque">
           Ver el personal de la obra →
-        </a>
+        </Link>
       )}
     </div>
   )
@@ -156,9 +157,9 @@ export function ListaEquipos({ equipos, obraId }: { equipos: EquipoEnActividad[]
         </ul>
       )}
       {obraId && (
-        <a href={`/obras/${obraId}?vista=operacion&sub=herramientas`} className="mt-2 inline-block text-[12px] text-muted hover:text-ink" data-testid="ver-mas-bloque">
+        <Link href={`/obras/${obraId}?vista=operacion&sub=herramientas`} prefetch={false} className="mt-2 inline-block text-[12px] text-muted hover:text-ink" data-testid="ver-mas-bloque">
           Ver los equipos de la obra →
-        </a>
+        </Link>
       )}
     </div>
   )
@@ -219,9 +220,9 @@ export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo }: {
       </div>
       {verTodo ? (
         <p className="mt-2 text-[12px]">
-          <a href={verTodo} className="text-muted hover:text-ink" data-testid="ver-historial">
+          <Link href={verTodo} prefetch={false} className="text-muted hover:text-ink" data-testid="ver-historial">
             Ver historial ({partes.length}) →
-          </a>
+          </Link>
         </p>
       ) : partes.length > 5 ? (
         <p className="mt-1 text-[11.5px] text-faint">y {partes.length - 5} parte(s) más, en la solapa Ejecución.</p>

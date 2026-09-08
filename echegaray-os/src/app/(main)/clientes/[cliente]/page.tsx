@@ -27,6 +27,7 @@
 // FRONTERA: el cliente CONSOLIDA, no administra. El contratado y el avance salen de `obra_panel` —o
 // sea, de Compras y de Cotización—. Acá no se calcula ni se guarda un número propio.
 
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
@@ -364,13 +365,13 @@ export default async function ClientePage({ params, searchParams }: {
                     ? (
                         <>
                           Se muestran también {cerradas.length} obra{cerradas.length === 1 ? '' : 's'} archivada{cerradas.length === 1 ? '' : 's'}.{' '}
-                          <a href={url({ archivadas: null })} style={{ color: V.tinta, fontWeight: 500 }}>Ocultarlas</a>.{' '}
+                          <Link prefetch={false} href={url({ archivadas: null })} style={{ color: V.tinta, fontWeight: 500 }}>Ocultarlas</Link>.{' '}
                         </>
                       )
                     : (
                         <>
                           {cerradas.length} obra{cerradas.length === 1 ? '' : 's'} archivada{cerradas.length === 1 ? '' : 's'} fuera de esta lista.{' '}
-                          <a href={url({ archivadas: '1' })} style={{ color: V.tinta, fontWeight: 500 }} data-testid="ver-archivadas-cliente">Verlas</a>.{' '}
+                          <Link prefetch={false} href={url({ archivadas: '1' })} style={{ color: V.tinta, fontWeight: 500 }} data-testid="ver-archivadas-cliente">Verlas</Link>.{' '}
                         </>
                       ))}
                   El contratado y el avance salen de la obra: acá no se calcula nada propio. El costo

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { C, R } from '@/shared/components/movil/tokens'
 import { Icono, type NombreIcono } from '@/shared/components/movil/Iconos'
@@ -139,6 +140,6 @@ export function FilaGrupo({
     color: C.ink,
   }
   return href
-    ? <a href={href} data-testid={testid} style={estilo}>{cuerpo}</a>
+    ? <Link prefetch={false} href={href} data-testid={testid} style={estilo}>{cuerpo}</Link>
     : <div data-testid={testid} style={estilo}>{cuerpo}</div>
 }

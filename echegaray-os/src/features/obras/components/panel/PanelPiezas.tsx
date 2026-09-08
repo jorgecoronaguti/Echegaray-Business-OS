@@ -6,6 +6,7 @@
 // el archivo pasaba el tope de 500 líneas del repo. Lo que se repite en las seis vive junto, y así
 // una medida se corrige en un lugar en vez de en seis.
 
+import Link from 'next/link'
 import type { CSSProperties, ReactNode } from 'react'
 import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Ico'
@@ -125,7 +126,7 @@ export function Impedimento({ titulo, detalle, href, testid }: {
     padding: '9px 10px', display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer',
   }
   return href
-    ? <a href={href} data-testid={testid} style={estilo}>{cuerpo}</a>
+    ? <Link prefetch={false} href={href} data-testid={testid} style={estilo}>{cuerpo}</Link>
     : <div data-testid={testid} style={estilo}>{cuerpo}</div>
 }
 

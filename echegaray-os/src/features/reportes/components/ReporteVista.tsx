@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { ReporteGenerado, ReporteDefinicion } from '../types'
 
 // Vista de un reporte generado: mismo orden que define la skill (resumen →
@@ -58,9 +59,9 @@ export function ReporteVista({ reporte, definicion }: { reporte: ReporteGenerado
               <div className="text-[10px] text-gray-500 uppercase">{n.label}</div>
               <div className="text-sm font-bold text-gray-900 tabular-nums">
                 {n.link ? (
-                  <a href={n.link} className="hover:underline">
+                  <Link prefetch={false} href={n.link} className="hover:underline">
                     {n.valor}
-                  </a>
+                  </Link>
                 ) : (
                   n.valor
                 )}
@@ -100,9 +101,9 @@ export function ReporteVista({ reporte, definicion }: { reporte: ReporteGenerado
           {c.links_os.map((l, i) => (
             <span key={l.href}>
               {i > 0 && ' · '}
-              <a href={l.href} className="underline hover:text-gray-700">
+              <Link prefetch={false} href={l.href} className="underline hover:text-gray-700">
                 {l.label}
-              </a>
+              </Link>
             </span>
           ))}
         </p>
