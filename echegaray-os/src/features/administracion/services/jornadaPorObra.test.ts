@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   armarJornada, asignadosPorObra, ausenciasSinJornada, avisoDeFaltantes, casillasIniciales,
+  otrasCargasDelDia,
   estadoDeCasilla, hs,
   leerHoras, loQueViaja, ponerLaJornada, resumenJornada, sobreLaJornada, sumarPersonasNuevas,
 } from './jornadaPorObra.ts'
@@ -320,4 +321,37 @@ test('la asignación que no está vigente ese día no cuenta, y la obra sin gent
   ], '2026-09-08', nadieEsJefe)
   assert.equal(cuenta.has('sf'), false, 'una asignación cerrada ayer no pone a nadie en la obra de hoy')
   assert.equal(cuenta.size, 0)
+})
+
+// ── EL AVISO DE LO QUE YA TIENE ESE DÍA FUERA DE ESTA OBRA ─────────────────────────────────────
+
+test('UNA AUSENCIA SIN OBRA SE AVISA — la fila que `.neq` dejaba invisible', () => {
+  // EL DEFECTO QUE ATRAPA: la lectura pedía `.neq('obra_canonica_id', obraId)` y en Postgres `<>`
+  // contra NULL no es verdadero nunca. Desde que la ausencia se registra sin obra (08/09/2026), la
+  // persona declarada ausente aparecía con la casilla limpia y el jefe le cargaba la jornada
+  // encima. Acá se fija la mitad pura: con una fila sin obra, el aviso EXISTE y dice «ausente».
+  const otras = otrasCargasDelDia([
+    { persona_id: 'p1', horas: 8.8, obra_canonica_id: null, obra: null },
+  ])
+  assert.equal(otras.get('p1')?.ausente, true)
+  assert.equal(otras.get('p1')?.obra, '', 'una ausencia no tiene obra que nombrar')
+})
+
+test('LA AUSENCIA LE GANA AL REPARTO ENTRE DOS OBRAS', () => {
+  // Con horas en otra obra Y una ausencia declarada, lo que hay que ver primero es la
+  // contradicción: nadie trabaja en una obra el día que faltó.
+  const otras = otrasCargasDelDia([
+    { persona_id: 'p1', horas: 4, obra_canonica_id: 'quattropani', obra: 'QUATTROPANI' },
+    { persona_id: 'p1', horas: 8.8, obra_canonica_id: null, obra: null },
+  ])
+  assert.equal(otras.get('p1')?.ausente, true)
+  assert.equal(otras.get('p1')?.obra, 'QUATTROPANI', 'el nombre de la obra no se pierde')
+  assert.equal(otras.get('p1')?.horas, 12.8)
+})
+
+test('SIN NINGUNA FILA SIN OBRA EL AVISO SIGUE SIENDO EL DE SIEMPRE', () => {
+  const otras = otrasCargasDelDia([
+    { persona_id: 'p1', horas: 8.8, obra_canonica_id: 'quattropani', obra: 'QUATTROPANI' },
+  ])
+  assert.deepEqual(otras.get('p1'), { obra: 'QUATTROPANI', horas: 8.8, ausente: false })
 })

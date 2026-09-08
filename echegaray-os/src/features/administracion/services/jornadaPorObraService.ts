@@ -11,8 +11,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAsignaciones } from '../../obras/services/personalService.ts'
-import type { AsignacionVigente, FilaJornada } from './jornadaPorObra.ts'
-import { armarJornada, asignadosPorObra, vigenteEn } from './jornadaPorObra.ts'
+import type { AsignacionVigente, FilaJornada, OtraCargaDelDia } from './jornadaPorObra.ts'
+import { armarJornada, asignadosPorObra, otrasCargasDelDia, vigenteEn } from './jornadaPorObra.ts'
 import type {
   AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena, TramoFuturoFuera,
 } from './quincenaPorObra.ts'
@@ -30,7 +30,7 @@ export interface ObraDeLaJornada {
 
 export interface JornadaDelDia {
   obra: ObraDeLaJornada
-  filas: (FilaJornada & { enOtraObra: { obra: string; horas: number } | null })[]
+  filas: (FilaJornada & { enOtraObra: OtraCargaDelDia | null })[]
 }
 
 /** Sin jornada pactada la pantalla NO inventa una: la casilla nace vacía y se tipea. */
@@ -93,9 +93,14 @@ export async function getJornadaDelDia(
     // Dos personas del plantel tienen asignación vigente en DOS obras a la vez. Sin esta lectura,
     // el jefe de cada obra abría la pantalla, veía la jornada sugerida y cargaba: 17,6 hs el mismo
     // día para la misma persona, repartidas entre dos obras, sin un solo aviso.
+    //
+    // `.or(...)` Y NO `.neq(...)`: en Postgres `obra_canonica_id <> X` es NULL —o sea, falso— para
+    // una fila sin obra, así que la ausencia sin obra (08/09/2026) quedaba fuera del aviso. Es la
+    // fila que más importa: la casilla se veía limpia sobre alguien ya declarado ausente.
     supabase.from('registros_hh')
       .select('persona_id, horas, tipo_hora, obra_canonica_id, obra_canonica(nombre)')
-      .eq('fecha', fecha).neq('obra_canonica_id', obraId).not('persona_id', 'is', null),
+      .eq('fecha', fecha).not('persona_id', 'is', null)
+      .or(`obra_canonica_id.neq.${obraId},obra_canonica_id.is.null`),
     // ═══ QUIÉN ES JEFE DE OBRA (dueño, 08/09/2026) ═══
     // «Los jefes de obra no tienen que marcar si han asistido o no, ellos marcan a los demás». Quién
     // es jefe lo decide `esJefeDeObra(persona_directorio.puesto)`, el mismo criterio de la grilla y
@@ -126,19 +131,14 @@ export async function getJornadaDelDia(
   const unicas = [...new Map(personas.map((p) => [p.persona_id, p])).values()]
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 
-  const otras = new Map<string, { obra: string; horas: number }>()
-  if (!enOtras.error) {
-    for (const f of (enOtras.data ?? []) as unknown as {
+  // LA REGLA DEL AVISO ES PURA Y SE PRUEBA SIN BASE: `otrasCargasDelDia`. Acá sólo se traduce la
+  // forma que devuelve PostgREST.
+  const otras = enOtras.error ? new Map<string, OtraCargaDelDia>() : otrasCargasDelDia(
+    ((enOtras.data ?? []) as unknown as {
       persona_id: string; horas: number | string; obra_canonica: { nombre: string } | null
-      obra_canonica_id: string
-    }[]) {
-      const previo = otras.get(f.persona_id)
-      otras.set(f.persona_id, {
-        obra: previo?.obra ?? f.obra_canonica?.nombre ?? f.obra_canonica_id,
-        horas: (previo?.horas ?? 0) + Number(f.horas),
-      })
-    }
-  }
+      obra_canonica_id: string | null
+    }[]).map((f) => ({ ...f, obra: f.obra_canonica?.nombre ?? f.obra_canonica_id })),
+  )
 
   return {
     data: {
