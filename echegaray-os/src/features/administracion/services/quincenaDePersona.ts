@@ -23,6 +23,8 @@
 // LO DECLARADO MANDA SOBRE EL ALMANAQUE: un sábado con horas cargadas es «trabajado», no «no
 // laborable». El calendario sólo explica los días de los que no hay ningún registro.
 
+import { combinarCeldaDia } from '../../../shared/components/ds/celdaDia.ts'
+import type { PresenciaDeclarada, PresenciaDia } from '../../../shared/components/ds/celdaDia.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { porObra } from './hhPersonaService.ts'
 import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
@@ -33,7 +35,7 @@ import {
 import type { ImputacionHH } from '../types/index.ts'
 
 export type EstadoDia =
-  | 'trabajado' | 'ausencia' | 'licencia' | 'no_laborable' | 'sin_registrar' | 'futuro'
+  | 'trabajado' | 'presente' | 'ausencia' | 'licencia' | 'no_laborable' | 'sin_registrar' | 'futuro'
 
 export interface DiaDeQuincena {
   fecha: string
@@ -52,6 +54,12 @@ export interface DiaDeQuincena {
   obras: string[]
   /** Horas extra del día (50% y 100%), ya incluidas en `horas`. */
   extras: number
+  /** La capa de arriba de la celda, ya decidida por `combinarCeldaDia`. La ficha no la vuelve a
+   *  derivar del estado: eso sería una segunda definición de la precedencia entre las fuentes. */
+  presencia: PresenciaDia
+  /** El jefe declaró que no vino y el día tiene horas cargadas. Se MUESTRA: la ficha no elige cuál
+   *  de las dos afirmaciones es la buena, porque una de las dos se liquida. */
+  conflicto: boolean
 }
 
 const redondear = (n: number): number => Math.round(n * 100) / 100
@@ -81,13 +89,42 @@ function estadoSinRegistro(fecha: string, feriados: Set<string>, hoy: string): E
 export function diasDeLaQuincena(
   filas: ImputacionHH[],
   q: Quincena,
-  opciones: { feriados?: string[]; hoy: string },
+  opciones: {
+    feriados?: string[]
+    hoy: string
+    /** Lo declarado en `asistencia_dia` para esa persona en la ventana. Vacío = nadie declaró nada
+     *  y la franja se comporta exactamente como antes del 08/09/2026. */
+    presencia?: readonly { fecha: string; estado: PresenciaDeclarada; motivo: string | null }[]
+  },
 ): DiaDeQuincena[] {
   const feriados = new Set(opciones.feriados ?? [])
+  const declaradaDe = new Map((opciones.presencia ?? []).map((p) => [p.fecha, p]))
   return diasDeLaQuincenaSinDomingos(q).map((fecha) => {
     const delDia = filas.filter((f) => f.fecha === fecha)
     const trabajadas = delDia.filter((f) => esTrabajada(f.tipo_hora))
-    const base = {
+    const horas = trabajadas.length > 0
+      ? redondear(trabajadas.reduce((s, f) => s + f.horas, 0))
+      : null
+    const declarada = declaradaDe.get(fecha) ?? null
+    const calendario = estadoSinRegistro(fecha, feriados, opciones.hoy)
+    // LICENCIA GANA SOBRE AUSENCIA cuando la CARGA DE HORAS trae las dos: la licencia tiene respaldo
+    // documental y alguien la autorizó — degradarla a falta le saca un derecho al legajo.
+    const enHoras: Exclude<PresenciaDeclarada, 'presente'> | undefined = trabajadas.length === 0
+      && delDia.length > 0
+      ? (delDia.some((f) => f.tipo_hora === 'licencia') ? 'licencia' : 'ausente')
+      : undefined
+    const motivo = etiquetaDeMotivo(declarada?.motivo ?? null) ?? motivoDelDia(delDia)
+    // LAS TRES FUENTES SE COMBINAN UNA SOLA VEZ, en `combinarCeldaDia`. La ficha no puede tener su
+    // propia precedencia: la grilla y esta franja dibujan a la misma persona el mismo día, y dos
+    // criterios dan dos respuestas de las que se cree la última que alguien miró.
+    const c = combinarCeldaDia({
+      declarada: declarada?.estado ?? null,
+      horas,
+      enHoras,
+      dia: calendario === 'no_laborable' ? 'no_laborable' : calendario === 'futuro' ? 'futuro' : 'habil',
+      motivo,
+    })
+    return {
       fecha,
       etiqueta: etiquetaDiaCorta(fecha),
       nombre: nombreDia(fecha),
@@ -97,28 +134,33 @@ export function diasDeLaQuincena(
       // repartido entre dos obras, y eso la ficha lo tiene que decir.
       obras: [...new Set(trabajadas.map((f) => f.obra_nombre).filter(Boolean))] as string[],
       extras: redondear(delDia.filter((f) => esExtra(f.tipo_hora)).reduce((s, f) => s + f.horas, 0)),
-    }
-    if (trabajadas.length > 0) {
-      return {
-        ...base,
-        horas: redondear(trabajadas.reduce((s, f) => s + f.horas, 0)),
-        estado: 'trabajado' as const,
-        motivo: null,
-      }
-    }
-    if (delDia.length > 0) {
-      // LICENCIA GANA SOBRE AUSENCIA cuando el día trae las dos: la licencia tiene respaldo
-      // documental y alguien la autorizó — degradarla a falta le saca un derecho al legajo.
-      const estado = delDia.some((f) => f.tipo_hora === 'licencia') ? 'licencia' : 'ausencia'
-      return { ...base, horas: null, estado: estado as EstadoDia, motivo: motivoDelDia(delDia) }
-    }
-    return {
-      ...base,
-      horas: null,
-      estado: estadoSinRegistro(fecha, feriados, opciones.hoy),
-      motivo: null,
+      horas,
+      estado: estadoDelDia(c.entrada.presencia, horas, calendario),
+      // El motivo se escribe SÓLO cuando el día no se trabajó: el de una jornada normal no existe.
+      motivo: c.entrada.presencia === 'ausente' || c.entrada.presencia === 'licencia' ? motivo : null,
+      presencia: c.entrada.presencia,
+      conflicto: c.conflicto,
     }
   })
+}
+
+/**
+ * El estado del día, con la presencia YA combinada. No vuelve a mirar `tipo_hora` ni la declaración:
+ * eso ya lo decidió `combinarCeldaDia`, y acá sólo se traduce a las palabras de esta franja.
+ *
+ * UNA AUSENCIA DECLARADA CON HORAS SIGUE SIENDO AUSENCIA acá, y las horas se siguen viendo en la
+ * celda: es el conflicto, y esconder una de las dos mitades lo resolvería por su cuenta.
+ */
+function estadoDelDia(
+  presencia: PresenciaDia, horas: number | null, calendario: EstadoDia,
+): EstadoDia {
+  if (presencia === 'ausente') return 'ausencia'
+  if (presencia === 'licencia') return 'licencia'
+  if (horas !== null) return 'trabajado'
+  // DECLARADO PRESENTE Y SIN HORAS: alguien lo miró y dijo que estaba. No es «sin registrar», que
+  // es el gris de «nadie cargó nada» — y era lo único que esta franja sabía decir hasta hoy.
+  if (presencia === 'presente' || presencia === 'ficho') return 'presente'
+  return calendario
 }
 
 export interface CifrasQuincena {

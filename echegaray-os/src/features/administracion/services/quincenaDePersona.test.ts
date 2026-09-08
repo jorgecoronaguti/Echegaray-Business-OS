@@ -169,3 +169,62 @@ test('EL RÓTULO CORTO DISTINGUE LAS DOS QUINCENAS DEL MISMO MES', () => {
   assert.equal(rotuloCorto(quincenaDe('2026-02-28')), '2ª feb')
   assert.equal(rotuloCorto(quincenaDe('2026-02-01')), '1ª feb')
 })
+
+// ── LA FRANJA LEE `asistencia_dia` (08/09/2026) ──────────────────────────────────────────────────
+//
+// Hasta hoy la ficha dibujaba SÓLO `registros_hh`. Lo que estos cuatro tests atrapan si la fuente
+// deja de llegar a `combinarCeldaDia`: una ausencia declarada por el jefe se vuelve a ver como «sin
+// registrar» (el gris de «nadie cargó»), un presente declarado desaparece, y —lo peor— la
+// contradicción entre una ausencia declarada y las horas del mismo día se esconde.
+
+const decl = (fecha: string, estado: 'presente' | 'ausente' | 'licencia', motivo: string | null = null) =>
+  ({ fecha, estado, motivo })
+
+test('la ausencia declarada por el jefe pinta el día aunque no haya una sola fila de horas', () => {
+  const dias = diasDeLaQuincena([], Q1, {
+    hoy: '2026-09-08', presencia: [decl('2026-09-07', 'ausente', 'falta')],
+  })
+  const d = dia(dias, '2026-09-07')
+  assert.equal(d.estado, 'ausencia', 'sin la fuente enchufada esto vuelve a decir «sin_registrar»')
+  assert.equal(d.presencia, 'ausente')
+  assert.equal(d.conflicto, false)
+  // Y cuenta como ausencia en las cifras: es lo que la ficha resume arriba.
+  assert.equal(cifrasDeQuincena(dias, 8.8).ausencias, 1)
+})
+
+test('declarado presente y sin horas: no es «sin registrar»', () => {
+  const dias = diasDeLaQuincena([], Q1, {
+    hoy: '2026-09-08', presencia: [decl('2026-09-07', 'presente')],
+  })
+  const d = dia(dias, '2026-09-07')
+  assert.equal(d.estado, 'presente')
+  assert.equal(d.presencia, 'presente')
+  // NO es una ausencia ni un día trabajado: nadie cargó horas todavía.
+  assert.equal(d.horas, null)
+  assert.equal(cifrasDeQuincena(dias, 8.8).ausencias, 0)
+})
+
+test('AUSENCIA DECLARADA CON HORAS EL MISMO DÍA = CONFLICTO VISIBLE, no un día escondido', () => {
+  const dias = diasDeLaQuincena([r({ fecha: '2026-09-07', horas: 8 })], Q1, {
+    hoy: '2026-09-08', presencia: [decl('2026-09-07', 'ausente', 'falta')],
+  })
+  const d = dia(dias, '2026-09-07')
+  assert.equal(d.conflicto, true, 'la contradicción se silenció: una de las dos se liquida')
+  assert.equal(d.estado, 'ausencia', 'lo declarado gana sobre lo imputado')
+  // LAS HORAS SE SIGUEN VIENDO: esconderlas elegiría la ausencia sin decirlo.
+  assert.equal(d.horas, 8)
+})
+
+test('sin declaraciones la franja se comporta EXACTAMENTE como antes de leer `asistencia_dia`', () => {
+  const filas = [
+    r({ fecha: '2026-09-07', horas: 8 }),
+    r({ fecha: '2026-09-08', horas: 8, tipo_hora: 'ausencia', notas: 'falta' }),
+  ]
+  const dias = diasDeLaQuincena(filas, Q1, { hoy: '2026-09-09' })
+  assert.equal(dia(dias, '2026-09-07').estado, 'trabajado')
+  // La ausencia declarada por la CARGA DE HORAS —el camino viejo, y lo único que tienen los días
+  // anteriores al 08/09/2026— sigue valiendo y no se convierte en un conflicto contra sí misma.
+  assert.equal(dia(dias, '2026-09-08').estado, 'ausencia')
+  assert.equal(dia(dias, '2026-09-08').conflicto, false)
+  assert.deepEqual(dias, diasDeLaQuincena(filas, Q1, { hoy: '2026-09-09', presencia: [] }))
+})

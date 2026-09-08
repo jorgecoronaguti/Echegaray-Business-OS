@@ -68,6 +68,7 @@ import {
 } from '@/features/administracion/services/quincenaDePersona'
 import { quincenaDe, rotuloQuincena } from '@/features/administracion/services/quincena'
 import { getNoLaborables, getObraDeLaJornada } from '@/features/administracion/services/jornadaPorObraService'
+import { getPresenciaDePersona } from '@/features/administracion/services/presenciaDelDiaService'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { BloqueAsignacion, BloqueDocumentos, BloqueHoras } from '@/features/administracion/components/BloquesFicha'
 import { BloqueAuditoria } from '@/features/administracion/components/BloqueAuditoria'
@@ -211,7 +212,7 @@ export default async function FichaPersonaPage({
   const obraDeLasHoras = resumenDelPeriodo(filasHH, quincena.desde, quincena.hasta)
     .obras.find((o) => o.clave !== '—') ?? null
   const obraDeLaJornada = obraDeLasHoras?.clave ?? vigente?.obra_id ?? null
-  const [feriados, obraVigente, catalogoObras] = vista === 'resumen'
+  const [feriados, obraVigente, catalogoObras, presencia] = vista === 'resumen'
     ? await Promise.all([
         getNoLaborables(supabase, quincena.desde, quincena.hasta),
         obraDeLaJornada ? getObraDeLaJornada(supabase, obraDeLaJornada) : Promise.resolve(null),
@@ -219,9 +220,17 @@ export default async function FichaPersonaPage({
         // registros, no la tabla entera, y SIN filtrar por estado: la mitad de las obras del
         // historial de una persona están cerradas y son las que el dueño pidió ver.
         getObrasDeLosRegistros(supabase, filasHH.map((f) => f.obra_canonica_id)),
+        // LO QUE EL JEFE DECLARÓ EN LA VENTANA (`asistencia_dia`). Sin esta lectura la franja
+        // dibujaba sólo `registros_hh`: el día marcado ausente y todavía sin horas cargadas se veía
+        // «sin registrar», que es el gris de «nadie cargó» y dice otra cosa completamente distinta.
+        getPresenciaDePersona(supabase, id, quincena.desde, quincena.hasta),
       ])
-    : [[], null, {}]
-  const dias = diasDeLaQuincena(filasHH, quincena, { feriados, hoy })
+    : [[], null, {}, null]
+  // UNA LECTURA QUE FALLÓ NO ES UNA QUINCENA SIN DECLARACIONES: `data` en `null` deja la franja
+  // como estaba antes de esta lectura, y el error viaja al aviso de arriba con el resto.
+  const dias = diasDeLaQuincena(filasHH, quincena, {
+    feriados, hoy, presencia: presencia?.data ?? [],
+  })
   // HH POR OBRA DEL AÑO: es lo que el canónico pone a la derecha de «Obras donde trabajó». Un mapa,
   // porque la lista se arma con las ASIGNACIONES —que son el hecho de haber estado— y las horas sólo
   // completan el renglón cuando existen.
@@ -416,6 +425,13 @@ export default async function FichaPersonaPage({
       <CuerpoDeFicha>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {fallo && <Aviso tono="neg">{fallo}</Aviso>}
+          {/* LA PRESENCIA DECLARADA FALLA POR SU CUENTA Y NO TIRA LA FICHA: la franja queda con lo
+              que sí se pudo leer —las horas— y se dice qué falta, en vez de dibujar un silencio. */}
+          {presencia?.error && (
+            <Aviso tono="info" testid="sin-presencia-declarada" titulo="No pude leer la presencia declarada">
+              {presencia.error}
+            </Aviso>
+          )}
 
           {vista === 'resumen' && (
             <>

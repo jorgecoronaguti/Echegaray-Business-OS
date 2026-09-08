@@ -53,3 +53,39 @@ export async function getPresenciaDelDia(
     error: null,
   }
 }
+
+/** Un día declarado de una persona, tal como lo necesita la franja de la quincena de su ficha. */
+export interface PresenciaDeUnDia {
+  fecha: string
+  estado: EstadoPresencia
+  motivo: string | null
+}
+
+/**
+ * LO DECLARADO DE UNA PERSONA EN UNA VENTANA — la fuente que le faltaba a la franja de la ficha.
+ *
+ * La franja dibujaba sólo `registros_hh`: un día declarado ausente por el jefe y todavía sin horas
+ * cargadas se veía «sin registrar», que es el gris de «nadie cargó» y NO de «no vino». Son dos
+ * hechos distintos y la celda los distingue desde el 08/09/2026; lo que faltaba era traerle el dato.
+ *
+ * Se pide por persona y por ventana —no la tabla entera— porque es lo que dibuja el bloque, y la
+ * RLS de `asistencia_dia` recorta igual: Administración ve todo, la persona ve lo suyo.
+ */
+export async function getPresenciaDePersona(
+  supabase: SupabaseClient, personaId: string, desde: string, hasta: string,
+): Promise<ServiceResult<PresenciaDeUnDia[]>> {
+  const { data, error } = await supabase
+    .from('asistencia_dia').select('fecha, estado, motivo')
+    .eq('persona_id', personaId).gte('fecha', desde).lte('fecha', hasta)
+  if (error) return sinTabla(error) ? { data: [], error: null } : { data: null, error: error.message }
+  return {
+    data: ((data ?? []) as { fecha: string; estado: string; motivo: string | null }[])
+      .filter((f) => ESTADOS.includes(f.estado))
+      .map((f) => ({
+        fecha: f.fecha.slice(0, 10),
+        estado: f.estado as EstadoPresencia,
+        motivo: f.motivo,
+      })),
+    error: null,
+  }
+}

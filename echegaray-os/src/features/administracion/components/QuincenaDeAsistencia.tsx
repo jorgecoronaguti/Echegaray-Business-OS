@@ -27,6 +27,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { TarjetaFicha } from './FichaCanonica'
 import { CeldaDia, type EntradaCeldaDia } from '@/shared/components/ds'
+import { tituloDeConflicto } from '@/shared/components/ds/celdaDia'
 import type { BarraQuincena, CifrasQuincena, DiaDeQuincena } from '../services/quincenaDePersona'
 
 const ICONO = (
@@ -47,11 +48,15 @@ const hs = (n: number): string =>
 // `decidirCeldaDia` (shared/components/ds/celdaDia.ts), el mismo criterio de la grilla: una persona
 // no puede tener dos caras según la pantalla.
 //
-// La ficha todavía no lee `asistencia_marca` (el fichaje desde el celular no está en uso): la capa
-// de presencia sólo conoce lo declarado en `registros_hh`.
+// LA PRESENCIA YA VIENE DECIDIDA (08/09/2026). `diasDeLaQuincena` combina `asistencia_dia` con lo
+// que declara la carga de horas en `combinarCeldaDia`, la misma función que usa la grilla; acá no se
+// vuelve a derivar del estado. La versión anterior leía SÓLO `d.estado`, así que un día declarado
+// ausente por el jefe y todavía sin horas se dibujaba «sin registrar» — el gris de «nadie cargó».
+//
+// La ficha todavía no lee `asistencia_marca` (el fichaje desde el celular no está en uso).
 function entradaDe(d: DiaDeQuincena): EntradaCeldaDia {
   return {
-    presencia: d.estado === 'ausencia' ? 'ausente' : d.estado === 'licencia' ? 'licencia' : 'sin_marca',
+    presencia: d.presencia,
     horas: d.horas,
     dia: d.estado === 'no_laborable' ? 'no_laborable' : d.estado === 'futuro' ? 'futuro' : 'habil',
     motivo: d.motivo,
@@ -73,7 +78,16 @@ function Casilla({ d }: { d: DiaDeQuincena }) {
         {d.etiqueta}
       </span>
       <span className="relative">
-        <CeldaDia entrada={entradaDe(d)} />
+        {/* EL CONFLICTO NO SE ESCONDE: ausencia declarada y horas cargadas el mismo día no pueden
+            ser las dos ciertas, y una de las dos se liquida. La celda lo marca y no elige. */}
+        <CeldaDia
+          entrada={entradaDe(d)} conflicto={d.conflicto}
+          tituloConflicto={tituloDeConflicto({
+            declarada: d.estado === 'ausencia' ? 'ausente' : d.estado === 'licencia' ? 'licencia' : null,
+            horas: d.horas,
+            dia: 'habil',
+          })}
+        />
         {/* EL FILO AMARILLO ES LA ÚNICA MARCA DE LA PANTALLA: dice «acá estás», no un estado. */}
         {d.esHoy && (
           <span className="absolute inset-x-1 -bottom-[3px] h-[2px] rounded-full bg-marca" aria-hidden />
