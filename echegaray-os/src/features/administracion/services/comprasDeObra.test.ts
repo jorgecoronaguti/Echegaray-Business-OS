@@ -45,6 +45,31 @@ test('una fila anulada de un proveedor de obra sigue siendo una compra: anular n
   })), true)
 })
 
+test('EL TALLER ENTRA — pedido textual del dueño: «dejar solo lo que va a obra o TALLER»', () => {
+  // Destino Taller: 73 filas + TALLER 5 + Almacen 24. Son herramientas, vehículos, máquinas y su
+  // mantenimiento; vienen con rubro Estructura o Mantenimiento y entran por ahí.
+  for (const destino of ['Taller', 'TALLER', 'Almacen']) {
+    assert.equal(esCompraDeObra(fila({
+      proveedor: 'Neumagom', concepto: `Neumaticos · ${destino}`, unidad_negocio: 'Estructura',
+    })), true, destino)
+  }
+  assert.equal(esCompraDeObra(fila({
+    proveedor: 'Perera Walter Daniel', concepto: 'Arreglo camion', unidad_negocio: 'Mantenimiento',
+  })), true)
+})
+
+test('el destino Taller NO rescata una fila que no es una compra', () => {
+  // «Banco · Crédito Prendario» imputado al taller sigue siendo una cuota. Y la fila 884 —proveedor
+  // «Sueldos», «Arreglo de camion 608 y orden en fondo del taller»— es mano de obra: sale.
+  assert.equal(esCompraDeObra(fila({
+    proveedor: 'Banco', concepto: 'Credito Prendario', unidad_negocio: 'Financiero',
+  })), false)
+  assert.equal(motivoFuera(fila({
+    proveedor: 'Sueldos', concepto: 'Arreglo de camion 608 y orden en fondo del taller',
+    unidad_negocio: 'Estructura',
+  })), 'proveedor')
+})
+
 // ── LO QUE SALE ─────────────────────────────────────────────────────────────────────────────────
 
 test('el rubro Impuestos sale entero — ARCA, F931, planes, FCL, SINDICATOS', () => {
@@ -98,6 +123,19 @@ test('«sale por …» es la marca del propio dueño: esa plata no se paga acá'
 
 test('Cancelado sale aunque el proveedor y el rubro sean de obra', () => {
   assert.equal(motivoFuera(fila({ estado: 'Cancelado' })), 'cancelada')
+})
+
+test('SAC y ARCA salen también en PROYECTADO: no hace falta que estén canceladas', () => {
+  // Precisión del dueño (08/09): «sacar todo eso» — no sólo lo que él ya marcó Cancelado. Las dos
+  // filas de SAC de julio ($7.000.000 y $1.500.000) están Proyectado y son las que la captura
+  // mostraba como «SAC · Segunda - 15 Empleados».
+  assert.equal(motivoFuera(fila({
+    proveedor: 'SAC', concepto: 'Segunda - 15 Empleados', unidad_negocio: 'Estructura',
+    estado: 'Proyectado',
+  })), 'proveedor')
+  assert.equal(motivoFuera(fila({
+    proveedor: 'ARCA', concepto: 'F931 Agosto', unidad_negocio: 'Impuestos', estado: 'Proyectado',
+  })), 'rubro')
 })
 
 // ── LO DESCONOCIDO NO SE ESCONDE ────────────────────────────────────────────────────────────────

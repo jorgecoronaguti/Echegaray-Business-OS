@@ -380,7 +380,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                     número de la otra pantalla y lo dice ella. */}
                 <NotaBloque testid="nota-compras">
                   Esta lista son las COMPRAS DE OBRA de la pestaña Compras del Sheet Flujo de Caja
-                  —{todas.length} filas de obra civil, mantenimiento y estructura—, no el libro que
+                  —{todas.length} filas de obra civil, mantenimiento, estructura y taller—, no el libro que
                   ARCA le reconoce a la empresa, que vive en «Control ARCA»: son dos preguntas
                   distintas. Los impuestos, lo financiero, los sueldos y las cargas sociales salen
                   por Jornales por Quincena, Cargas Sociales y el Flujo de Caja, y por eso no están

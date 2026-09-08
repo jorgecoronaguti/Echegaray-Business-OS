@@ -26,6 +26,23 @@
 // las DOS listas: el rubro y el proveedor. Sacar sólo por rubro dejaría los sueldos adentro; sacar
 // sólo por proveedor dejaría adentro los 35 de ARCA y los 12 del Banco.
 //
+// ═══ EL TALLER ENTRA (precisión del dueño, 08/09) ═══
+//
+// «dejar solo lo que va a obra o TALLER. Lo demás se maneja por Sheet Flujo de Fondos en las
+// pestañas correspondientes». El taller —herramientas, vehículos, máquinas, su mantenimiento— no es
+// un rubro: es un DESTINO de la columna Cliente/Asignación, y sus filas ya vienen con rubro
+// Estructura o Mantenimiento, así que entran por la puerta de siempre. Medido el 08/09 por destino:
+// Taller 73 + TALLER 5 + Almacen 24 + «Vehiculos / Maquinas» 1 entran; la única de Taller que sale
+// es la fila 884, proveedor «Sueldos» — mano de obra, y el dueño dijo «nada de sueldos».
+//
+// Lo que el destino NO hace es rescatar una fila: «Banco · Crédito Prendario» imputado al taller
+// sigue siendo una cuota, no una compra. Por eso el destino no es una excepción escrita en el
+// código, y sí hay un test que fija las dos mitades de esa frase.
+//
+// Del otro lado, los destinos que se van enteros —medidos, 0 filas adentro— son F931 15, Plan de
+// pago 20, Crédito Prendario 12, FCL 12, UOCRA 12, IERIC 6, FODECO 6, Obras 17 y Sueldos 2: todos
+// salen por su rubro o por su proveedor, sin necesitar una lista de destinos.
+//
 // ═══ LO DESCONOCIDO ENTRA Y SE DECLARA ═══
 //
 // Un rubro que no esté en ninguna de las dos listas ENTRA, y `esDudosa` lo marca para que la
