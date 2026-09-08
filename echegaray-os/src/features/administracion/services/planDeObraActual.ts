@@ -385,3 +385,53 @@ export function tramosProgramados(tramos: TramoDeAsignacion[], hoy: string): Tra
     .filter((t) => t.desde != null && t.desde > hoy)
     .sort((a, b) => (a.desde ?? '').localeCompare(b.desde ?? '') || a.id.localeCompare(b.id))
 }
+
+/** El papel de un tramo en la línea de tiempo del panel. Lo decide la fecha, nunca el orden. */
+export type PapelDeTramo = 'pasado' | 'cierra_hoy' | 'vigente' | 'programado'
+
+/**
+ * QUÉ ES CADA TRAMO EN LA LÍNEA DE TIEMPO — y por qué «está acá» es UNO SOLO.
+ *
+ * ═══ EL DEFECTO (producción, 08/09/2026) ═══
+ *
+ * El panel rotulaba «está acá» a dos tramos a la vez. Pasa siempre que se corrige la obra el MISMO
+ * día: el cambio cierra la anterior con `hasta = hoy` —cuando esa asignación había empezado hoy, el
+ * cierre no puede ser ayer— y abre la nueva con `hasta = null`. La regla vieja («ni empieza después
+ * de hoy ni terminó antes de hoy → vigente») daba verdadera para las dos, y el panel afirmaba que
+ * la persona está en dos obras. Es la pregunta que ese panel existe para contestar.
+ *
+ * ═══ LA REGLA ═══
+ *
+ * «Está acá» va al tramo ABIERTO vigente y a uno solo: entre los que rigen hoy gana el `desde` más
+ * reciente, y el `id` desempata para que dos lecturas de la misma base no den pantallas distintas.
+ * El que cierra HOY se rotula «cierra hoy» — no es pasado (sus horas de hoy son suyas) ni es donde
+ * está (ya se decidió que se va), y decirlo es más honesto que elegir cualquiera de los dos.
+ *
+ * Es la MISMA regla de desempate que `vigenteHoy` y que `obraActivaDe` en `quincenaPorObra.ts`: el
+ * panel no puede decir que la persona está en una obra distinta de la que muestra la grilla.
+ */
+export function papelesDeTramos(
+  tramos: TramoDeAsignacion[], hoy: string,
+): { tramo: TramoDeAsignacion; papel: PapelDeTramo }[] {
+  const rigeHoy = (t: TramoDeAsignacion) => (!t.desde || t.desde <= hoy) && (!t.hasta || t.hasta >= hoy)
+  // ABIERTO gana sobre el que cierra hoy, SIEMPRE — aunque el que cierra tenga el `desde` más
+  // reciente. Un tramo con `hasta` puesto es una decisión ya tomada de que la persona se va de ahí;
+  // el abierto es donde queda. Ordenar sólo por `desde` habría elegido al que se está cerrando.
+  const aca = [...tramos]
+    .filter((t) => rigeHoy(t) && t.hasta == null)
+    .sort((a, b) => (b.desde ?? '').localeCompare(a.desde ?? '') || a.id.localeCompare(b.id))[0]
+    // SIN NINGUNO ABIERTO, «está acá» es el que rige hoy aunque cierre hoy: la persona SÍ está ahí
+    // hoy, y dejar el panel sin ningún «está acá» diría que no está en ninguna obra.
+    ?? [...tramos].filter(rigeHoy)
+      .sort((a, b) => (b.desde ?? '').localeCompare(a.desde ?? '') || a.id.localeCompare(b.id))[0]
+
+  const papelDe = (t: TramoDeAsignacion): PapelDeTramo => {
+    if (t.desde && t.desde > hoy) return 'programado'
+    if (aca && t.id === aca.id) return 'vigente'
+    if (t.hasta === hoy) return 'cierra_hoy'
+    // Lo que queda es pasado, incluidas las filas abiertas DUPLICADAS que hay en la base y que
+    // rigen hoy sin ser la elegida: el panel afirma UNA obra actual, no dos.
+    return 'pasado'
+  }
+  return tramos.map((t) => ({ tramo: t, papel: papelDe(t) }))
+}

@@ -24,8 +24,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  diaAnterior, diaSiguiente, planDeCambioDeObra, planDeCancelacion, puedeCambiarObraActual,
-  tramosProgramados, validarProgramacion,
+  diaAnterior, diaSiguiente, papelesDeTramos, planDeCambioDeObra, planDeCancelacion,
+  puedeCambiarObraActual, tramosProgramados, validarProgramacion,
+  type TramoDeAsignacion,
 } from './planDeObraActual.ts'
 
 const HOY = '2026-09-08'
@@ -411,4 +412,60 @@ test('programado es lo que empieza DESPUÉS de hoy, y el primero es el próximo'
   ], HOY)
   assert.deepEqual(lista.map((t) => t.id), ['t2', 't3'],
     'el vigente no es un plan, y una fila sin `desde` no empieza en el futuro')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// «ESTÁ ACÁ» ES UNO SOLO
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const tr = (p: Partial<TramoDeAsignacion> & { id: string }): TramoDeAsignacion => ({
+  obra_id: p.obra_id ?? 'pisos-industriales', nombre: p.nombre ?? 'PISOS INDUSTRIALES',
+  desde: p.desde ?? null, hasta: p.hasta ?? null, id: p.id,
+})
+
+const papeles = (tramos: TramoDeAsignacion[], hoy = HOY) =>
+  papelesDeTramos(tramos, hoy).map((x) => [x.tramo.id, x.papel])
+
+test('EL QUE CIERRA HOY NO DICE «está acá»: eso lo dice el tramo abierto, y uno solo', () => {
+  // EL DEFECTO QUE ATRAPA, visto en producción (08/09/2026): corregir la obra el MISMO día que se
+  // creó la asignación cierra la anterior con `hasta = hoy` —no puede ser ayer, quedaría antes de
+  // su `desde`— y abre la nueva con `hasta = null`. La regla vieja («ni futuro ni terminado antes
+  // de hoy → vigente») daba verdadera para las dos y el panel afirmaba que la persona está en dos
+  // obras a la vez. Es exactamente la pregunta que este panel existe para contestar.
+  assert.deepEqual(papeles([
+    tr({ id: 'vieja', desde: HOY, hasta: HOY }),
+    tr({ id: 'nueva', obra_id: 'salon-comercial', nombre: 'SALÓN COMERCIAL', desde: HOY }),
+  ]), [['vieja', 'cierra_hoy'], ['nueva', 'vigente']])
+})
+
+test('el orden de la lectura no decide: el abierto gana aunque venga segundo o primero', () => {
+  const alReves = papeles([
+    tr({ id: 'nueva', obra_id: 'salon-comercial', nombre: 'SALÓN COMERCIAL', desde: HOY }),
+    tr({ id: 'vieja', desde: AYER, hasta: HOY }),
+  ])
+  assert.deepEqual(alReves, [['nueva', 'vigente'], ['vieja', 'cierra_hoy']])
+})
+
+test('SIN NINGÚN TRAMO ABIERTO, el que cierra hoy SÍ es «está acá» — hoy está ahí', () => {
+  // Dejar el panel sin ningún «está acá» diría que la persona no está en ninguna obra, y el día que
+  // su único tramo termina eso es falso: trabaja ahí hasta el final del día.
+  assert.deepEqual(papeles([tr({ id: 'unica', desde: AYER, hasta: HOY })]), [['unica', 'vigente']])
+})
+
+test('con DOS abiertas vigentes gana el `desde` más reciente y la otra dice «estuvo»', () => {
+  // En la base hay gente con dos filas abiertas (una la creó la web sin `desde`, la otra la
+  // reconstruyó JORNALES). Mismo desempate que `vigenteHoy` y que la grilla: el panel no puede
+  // decir que está en una obra distinta de la que muestra la grilla.
+  assert.deepEqual(papeles([
+    tr({ id: 'vieja', desde: '2026-08-01' }),
+    tr({ id: 'reciente', obra_id: 'salon-comercial', nombre: 'SALÓN COMERCIAL', desde: '2026-09-01' }),
+  ]), [['vieja', 'pasado'], ['reciente', 'vigente']])
+})
+
+test('lo que empieza después de hoy es «programado», y lo que cerró antes «estuvo»', () => {
+  assert.deepEqual(papeles([
+    tr({ id: 'ayer', desde: '2026-08-01', hasta: AYER }),
+    tr({ id: 'hoy', desde: HOY }),
+    tr({ id: 'futuro', obra_id: 'salon-comercial', nombre: 'SALÓN COMERCIAL', desde: '2026-09-20' }),
+  ]), [['ayer', 'pasado'], ['hoy', 'vigente'], ['futuro', 'programado']])
 })

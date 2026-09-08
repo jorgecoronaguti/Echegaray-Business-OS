@@ -14,7 +14,7 @@ import { getAsignaciones } from '../../obras/services/personalService.ts'
 import type { AsignacionVigente, FilaJornada } from './jornadaPorObra.ts'
 import { armarJornada, asignadosPorObra, vigenteEn } from './jornadaPorObra.ts'
 import type {
-  AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena,
+  AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena, TramoFuturoFuera,
 } from './quincenaPorObra.ts'
 import {
   candidatosParaTraer, type AsignacionParaTraer, type CandidatoParaTraer,
@@ -155,6 +155,9 @@ export async function getJornadaDelDia(
 
 export interface DatosQuincenaPorObra {
   asignaciones: AsignacionQuincena[]
+  /** Los pases programados que arrancan DESPUÉS de la ventana. Sólo rotulan la línea «→ obra desde
+   *  el …» de la grilla; no ponen a nadie en ella — ver `TramoFuturoFuera`. */
+  tramosFuera: TramoFuturoFuera[]
   registros: RegistroQuincena[]
   /** El plantel de quien dejó registros SIN tener ninguna asignación. Sin esto no hay con qué
    *  nombrar su fila y la persona desaparece de la grilla — ver `personasDe`. */
@@ -240,6 +243,19 @@ export async function getQuincenaPorObra(
       elegible: activas.has(a.obra_id),
     }))
 
+  // ═══ EL PLAN NO TERMINA DONDE TERMINA LA QUINCENA ═══
+  //
+  // El filtro de arriba se queda con lo vigente EN la ventana, que es lo correcto para dibujar la
+  // grilla. Pero un pase se programa hasta a sesenta días (`MAX_DIAS_PROGRAMACION`), y el que cae
+  // pasado el último día quedaba invisible en la línea «→ obra desde el …»: el panel lo mostraba y
+  // la grilla no, y dos pantallas que leen la misma fila decían cosas distintas.
+  //
+  // Salen de la MISMA lectura —no hay una consulta más—, y van por su propia puerta justamente para
+  // que no puedan crear una fila vacía en la grilla.
+  const tramosFuera: TramoFuturoFuera[] = (asignaciones.data ?? [])
+    .filter((a): a is typeof a & { desde: string } => Boolean(a.desde) && (a.desde as string) > hasta)
+    .map((a) => ({ persona_id: a.persona_id, obra_id: a.obra_id, desde: a.desde }))
+
   // ═══ QUIÉN TIENE REGISTROS Y NO SE PUEDE NOMBRAR CON UNA ASIGNACIÓN ═══
   //
   // Se lo busca en el plantel. Antes se lo descartaba en silencio: alguien con 45 licencias por
@@ -259,6 +275,7 @@ export async function getQuincenaPorObra(
   return {
     data: {
       asignaciones: vigentes,
+      tramosFuera,
       registros: filasHH.map((r) => ({
         persona_id: r.persona_id,
         obra_id: r.obra_canonica_id,

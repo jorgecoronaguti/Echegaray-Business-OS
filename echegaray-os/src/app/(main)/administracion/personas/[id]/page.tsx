@@ -61,7 +61,9 @@ import { IconoEditar, IconoObra } from '@/shared/components/iconos'
 import { QuincenaDeAsistencia } from '@/features/administracion/components/QuincenaDeAsistencia'
 import { ObrasDeLaPersona } from '@/features/administracion/components/ObrasDeLaPersona'
 import { AnotacionesDeLaPersona } from '@/features/administracion/components/AnotacionesDeLaPersona'
-import { obrasTrabajadas } from '@/features/administracion/services/obrasDePersona'
+import {
+  obrasTrabajadas, tramosProgramadosDe,
+} from '@/features/administracion/services/obrasDePersona'
 import { getObrasDeLosRegistros } from '@/features/administracion/services/obrasDePersonaService'
 import {
   cifrasDeQuincena, diasDeLaQuincena, ultimasQuincenas,
@@ -462,6 +464,11 @@ export default async function FichaPersonaPage({
                   obras: catalogoObras,
                   obraVigente: vigente?.obra_id ?? null,
                 })}
+                // A DÓNDE VA. Sale de las asignaciones que ya están leídas arriba —ni una consulta
+                // más— y `hoy` es el del SERVIDOR, como todas las ventanas de esta ficha: con la
+                // fecha del navegador, un pase que arranca mañana se vería como vigente del otro
+                // lado de la medianoche.
+                programados={tramosProgramadosDe(asignaciones?.data ?? [], hoy, catalogoObras)}
                 hrefAsignaciones={href('asignaciones')}
               />
 

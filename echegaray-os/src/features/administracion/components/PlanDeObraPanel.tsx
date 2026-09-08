@@ -33,7 +33,8 @@ import {
   cambiarObraActual, cancelarPaseProgramado, leerPlanDeObra,
 } from '../services/obraActualActions'
 import {
-  diaSiguiente, MAX_DIAS_PROGRAMACION, validarProgramacion, type TramoDeAsignacion,
+  diaSiguiente, MAX_DIAS_PROGRAMACION, papelesDeTramos, validarProgramacion,
+  type PapelDeTramo, type TramoDeAsignacion,
 } from '../services/planDeObraActual'
 
 export interface ObraDelPanel { id: string; nombre: string }
@@ -60,30 +61,34 @@ function lunesProximo(hoy: string): string {
 
 type Chip = 'manana' | 'lunes' | 'elegir'
 
-/** Un tramo con su papel en la línea de tiempo. Lo decide la fecha, nunca el orden de la lectura. */
-type Papel = 'pasado' | 'vigente' | 'programado'
+// QUÉ ES CADA TRAMO LO DECIDE `papelesDeTramos`, en el módulo puro. Acá vivía un `papelDe` propio
+// que llamaba «está acá» a todo lo que no fuera pasado ni futuro, y por eso el panel afirmaba dos
+// obras a la vez el día que alguien corregía la obra sobre la marcha. La regla se prueba sin React.
 
-function papelDe(t: TramoDeAsignacion, hoy: string): Papel {
-  if (t.desde && t.desde > hoy) return 'programado'
-  if (t.hasta && t.hasta < hoy) return 'pasado'
-  return 'vigente'
+const ROTULO: Record<PapelDeTramo, string> = {
+  pasado: 'estuvo', cierra_hoy: 'cierra hoy', vigente: 'está acá', programado: 'programado',
 }
 
-const ROTULO: Record<Papel, string> = {
-  pasado: 'estuvo', vigente: 'está acá', programado: 'programado',
-}
+/** EL BLANCO TÁCTIL DEL SISTEMA: 48px en el teléfono, 34px en escritorio. Son los dos tokens que ya
+ *  usan input, select y botón (`--os-control-h-mobile` / `--os-control-h`), no un alto inventado
+ *  acá. Los chips medían 25px: en obra, con guantes, eso es apuntar. */
+const ALTO_TACTIL = 'min-h-control-movil sm:min-h-control'
 
-export function PlanDeObraPanel({ persona, obras, hoy = new Date().toISOString().slice(0, 10), onCerrar }: {
+export function PlanDeObraPanel({ persona, obras, hoy, onCerrar }: {
   persona: { id: string; nombre: string }
   /** Las mismas opciones que el desplegable de la grilla: obras activas, con la RLS ya aplicada. */
   obras: ObraDelPanel[]
   /**
-   * HOY SEGÚN EL SERVIDOR cuando quien abre el panel lo sabe. El default es la fecha local del
-   * navegador, que a las 23:55 de un teléfono con otra zona puede ser el día siguiente: la acción
-   * revalida contra su propio hoy y devolvería «no se puede programar hacia atrás». Es un error
-   * visible y recuperable, no una escritura equivocada — pero se evita pasando la fecha.
+   * HOY SEGÚN EL SERVIDOR, y OBLIGATORIO.
+   *
+   * Tenía un default con la fecha local del navegador, que a las 23:55 de un teléfono con otra zona
+   * es el día siguiente: «Mañana» y «Lunes próximo» resolvían a un día distinto del que la acción
+   * —que usa su propio hoy— iba a validar, y el pase rebotaba con «no se puede programar hacia
+   * atrás». Era un error visible y no una escritura equivocada, pero el default lo hacía invisible
+   * en el código: quien montara el panel en otra pantalla heredaba el bug sin enterarse. Sin
+   * default, el compilador exige la fecha del servidor y no hay dónde equivocarse.
    */
-  hoy?: string
+  hoy: string
   onCerrar: () => void
 }) {
   const router = useRouter()
@@ -129,8 +134,8 @@ export function PlanDeObraPanel({ persona, obras, hoy = new Date().toISOString()
     return r
   }
 
-  const ordenados = (tramos ?? [])
-    .map((t) => ({ t, papel: papelDe(t, hoy) }))
+  const ordenados = papelesDeTramos(tramos ?? [], hoy)
+    .map(({ tramo, papel }) => ({ t: tramo, papel }))
     // Los pasados se recortan a los tres últimos: el panel es para decidir el pase que viene, y una
     // cronología entera acá compite con el historial de asignaciones, que es su propia pantalla.
     .filter((x, _i, todos) => x.papel !== 'pasado'
@@ -195,7 +200,7 @@ export function PlanDeObraPanel({ persona, obras, hoy = new Date().toISOString()
           Programar un cambio
         </h3>
         <FormAccion
-          accion={programar} enviar="Programar" testid="form-programar-pase"
+          accion={programar} enviar="Programar" testid="form-programar-pase" tactil
           bloqueado={Boolean(problema)} motivoBloqueo={problema}
           mensajeOk="Programado."
         >
@@ -205,7 +210,7 @@ export function PlanDeObraPanel({ persona, obras, hoy = new Date().toISOString()
                   plantel de obra sin entrar a otra. Ocultarla obligaría a inventar un destino. */}
               <select
                 value={obraId} onChange={(e) => setObraId(e.target.value)}
-                className={CTRL} data-testid="plan-obra-select-obra"
+                className={`${CTRL} ${ALTO_TACTIL}`} data-testid="plan-obra-select-obra"
                 aria-label="Obra del pase programado"
               >
                 <option value="">Sin obra</option>
@@ -221,7 +226,7 @@ export function PlanDeObraPanel({ persona, obras, hoy = new Date().toISOString()
                     <button
                       key={clave} type="button" onClick={() => setChip(clave)}
                       data-testid={`chip-${clave}`} aria-pressed={chip === clave}
-                      className={`rounded-control border px-2.5 py-1 text-[12px] transition-colors ${
+                      className={`${ALTO_TACTIL} rounded-control border px-3 py-1 text-[12px] transition-colors ${
                         chip === clave
                           ? 'border-ink bg-ink text-[color:var(--os-on-ink,#fff)]'
                           : 'border-line text-muted hover:bg-surface-quiet hover:text-ink'
@@ -235,7 +240,7 @@ export function PlanDeObraPanel({ persona, obras, hoy = new Date().toISOString()
                     type="date" value={fechaElegida} onChange={(e) => setFechaElegida(e.target.value)}
                     min={diaSiguiente(hoy)} data-testid="plan-obra-desde"
                     aria-label="Primer día del pase"
-                    className="rounded-control border border-line bg-white px-2 py-1 text-[12.5px] text-ink"
+                    className={`${ALTO_TACTIL} rounded-control border border-line bg-white px-2 py-1 text-[12.5px] text-ink`}
                   />
                 )}
               </div>
@@ -254,7 +259,8 @@ export function PlanDeObraPanel({ persona, obras, hoy = new Date().toISOString()
             >
               <input
                 type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
-                min={desde || diaSiguiente(hoy)} className={CTRL} data-testid="plan-obra-hasta"
+                min={desde || diaSiguiente(hoy)} className={`${CTRL} ${ALTO_TACTIL}`}
+                data-testid="plan-obra-hasta"
                 aria-label="Último día del pase"
               />
             </Campo>

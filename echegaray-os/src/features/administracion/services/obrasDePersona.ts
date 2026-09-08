@@ -25,6 +25,7 @@
 // hay cliente se muestra el nombre igual: inventar un rótulo sería peor que mostrar el que existe.
 
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
+import { tramosProgramados } from './planDeObraActual.ts'
 import type { ImputacionHH } from '../types/index.ts'
 
 export interface ObraTrabajada {
@@ -120,4 +121,59 @@ export function obrasTrabajadas(
     if (a.vigente !== b.vigente) return a.vigente ? -1 : 1
     return b.ultimo.localeCompare(a.ultimo)
   })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE TODAVÍA NO PASÓ
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `obrasTrabajadas` no puede contestar esto y no debe intentarlo: su fuente son las horas, y un
+// tramo programado para el 01/10 no tiene ninguna. Meterlo en esa lista obligaría a inventarle un
+// «0 HH», que es exactamente la afirmación que el bloque evita cuando descarta las obras donde
+// sólo hubo ausencias: decir «trabajó en X, 0 HH» afirma un trabajo que no ocurrió.
+//
+// Por eso es una lista aparte, con su propio rótulo y sin columna de horas. Son dos preguntas
+// distintas —dónde trabajó y a dónde va— y cada una se contesta con su fuente.
+
+/** Un pase programado de esta persona, listo para dibujar. Sin horas: todavía no hay ninguna. */
+export interface TramoProgramado {
+  /** `obra_asignacion.id`. Es la clave de la lista. */
+  id: string
+  obra_id: string
+  /** El rótulo real, nunca un slug — misma regla que la lista de arriba. */
+  nombre: string
+  desde: string
+  /** `null` = hasta nuevo aviso. No es «sin fecha»: es que no tiene fin decidido. */
+  hasta: string | null
+}
+
+/**
+ * Sus pases PROGRAMADOS, del más próximo al más lejano.
+ *
+ * QUÉ ES «PROGRAMADO» LO DECIDE `tramosProgramados` Y NADIE MÁS. La misma función que usan el panel
+ * y la acción de cancelar: si la ficha tuviera su propio `desde > hoy`, el día que la regla cambie
+ * —el pase que arranca hoy, por ejemplo— habría dos definiciones y sólo se corregiría una.
+ *
+ * Las asignaciones ya están en memoria en la ficha: esto no lee nada.
+ */
+export function tramosProgramadosDe(
+  asignaciones: {
+    id: string; obra_id: string; obra_nombre: string | null
+    desde: string | null; hasta: string | null
+  }[],
+  hoy: string,
+  obras: Record<string, DatosDeObra> = {},
+): TramoProgramado[] {
+  const conNombre = asignaciones.map((a) => ({
+    id: a.id,
+    obra_id: a.obra_id,
+    nombre: rotuloDeObra(a.obra_id, obras[a.obra_id], a.obra_nombre),
+    desde: a.desde,
+    hasta: a.hasta,
+  }))
+  return tramosProgramados(conNombre, hoy)
+    // `tramosProgramados` YA descartó los que no tienen `desde`; el guard es lo que deja que el tipo
+    // de salida lo diga sin un `as`, que sería afirmarlo sin que nada lo sostenga.
+    .filter((t): t is typeof t & { desde: string } => t.desde != null)
+    .map((t) => ({ id: t.id, obra_id: t.obra_id, nombre: t.nombre, desde: t.desde, hasta: t.hasta }))
 }

@@ -118,7 +118,7 @@ function vacioDe(estado: CeldaObra['estado']): { texto: string; color: string } 
 
 export function GrillaAsistenciaObra({
   filas, dias, etiquetas, titulos, columnasTenues, totalesDia, total, jornadaPorObra, obras,
-  puedeCorregir, puedeCambiarObra,
+  puedeCorregir, puedeCambiarObra, hoy,
 }: {
   filas: FilaQuincena[]
   dias: string[]
@@ -141,6 +141,11 @@ export function GrillaAsistenciaObra({
    *  jornada —es su trabajo— pero NO mueve gente de obra. Son dos permisos distintos sobre la misma
    *  grilla, y unirlos en uno le daría al jefe el desplegable. La puerta es la acción. */
   puedeCambiarObra: boolean
+  /** EL DÍA SEGÚN EL SERVIDOR. Lo baja al panel de plan, que hasta ahora resolvía «Mañana» y «Lunes
+   *  próximo» con la fecha local del navegador: a las 23:55 de un teléfono con otra zona esos
+   *  atajos apuntaban a un día distinto del que la acción iba a validar. La grilla ya lo recibe
+   *  para decidir qué día está en curso — no es un dato nuevo, es el mismo que baja una capa más. */
+  hoy: string
 }) {
   const [borradores, setBorradores] = useState<Record<string, string>>({})
   const [errores, setErrores] = useState<Record<string, string>>({})
@@ -625,6 +630,7 @@ export function GrillaAsistenciaObra({
       <PlanDeObraPanel
         persona={planDe.persona}
         obras={obras}
+        hoy={hoy}
         onCerrar={() => setPlanDe(null)}
       />
     )}
