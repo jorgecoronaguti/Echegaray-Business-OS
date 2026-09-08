@@ -530,6 +530,11 @@ async function limpiarMudanza(): Promise<void> {
 test('08 · EL DESPLEGABLE MUDA LA ASIGNACIÓN, y la base y la ficha lo muestran', async ({ page }) => {
   test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
     'Escribe `obra_asignacion` sobre dos obras ZZ-E2E propias. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
+  // 30 s NO ALCANZAN: son un login, cuatro navegaciones y dos lecturas a la base. La corrida del
+  // 08/09 pasó en 8,4 s con la máquina libre y se cayó por timeout con el build corriendo al lado —
+  // sin que ninguna aserción fallara. Un test que da rojo por la carga de la máquina enseña a
+  // ignorar el rojo.
+  test.setTimeout(120_000)
   const persona = await prepararMudanza()
   test.skip(persona === null, 'Todo el plantel tiene obra vigente: no hay a quién mudar sin tocar una obra real.')
   const p = persona as { id: string; nombre: string }
