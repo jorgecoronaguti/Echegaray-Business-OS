@@ -91,7 +91,10 @@ export interface AsignacionQuincena {
 
 export interface RegistroQuincena {
   persona_id: string
-  obra_id: string
+  /** `null` = una AUSENCIA o LICENCIA, que desde el 08/09/2026 se registra sin obra: es de la
+   *  persona y sus horas no son costo de ninguna obra. Cuenta en la fila y NO en ninguna columna
+   *  de obra: ni en el rótulo, ni en el desglose, ni en «horas en …». */
+  obra_id: string | null
   fecha: string
   horas: number
   tipo_hora: string
@@ -429,7 +432,9 @@ function obraActivaDe(
   if (rotulables.length === 0) return null
   const horas = new Map<string, number>()
   for (const r of registros) {
-    if (esTrabajada(r.tipo_hora)) horas.set(r.obra_id, (horas.get(r.obra_id) ?? 0) + numero(r.horas))
+    if (esTrabajada(r.tipo_hora) && r.obra_id) {
+      horas.set(r.obra_id, (horas.get(r.obra_id) ?? 0) + numero(r.horas))
+    }
   }
   const ganador = [...rotulables].sort((a, b) =>
     (b.tramo.desde ?? '').localeCompare(a.tramo.desde ?? '')
@@ -447,7 +452,12 @@ function clienteDe(
   registros: RegistroQuincena[], catalogo: Record<string, ObraRotulo>,
 ): string | null {
   const horas = new Map<string, number>()
-  for (const r of registros) horas.set(r.obra_id, (horas.get(r.obra_id) ?? 0) + numero(r.horas))
+  // SÓLO LAS FILAS CON OBRA. Éste es el rótulo que la grilla muestra como «horas en …»: una
+  // ausencia sin obra no puede fabricar «horas en La Estrella» — que es exactamente lo que el dueño
+  // rechazó el 08/09/2026.
+  for (const r of registros) {
+    if (r.obra_id) horas.set(r.obra_id, (horas.get(r.obra_id) ?? 0) + numero(r.horas))
+  }
   const mejor = [...horas.entries()]
     .map(([id, h]) => ({ obra: catalogo[id], h }))
     .filter((x): x is { obra: ObraRotulo; h: number } => Boolean(x.obra))
@@ -512,6 +522,10 @@ function tramosDe(
 ): TramoDeObra[] {
   const mapa = new Map<string, TramoDeObra>()
   for (const r of registros) {
+    // UNA AUSENCIA SIN OBRA NO ES UN TRAMO DE OBRA. El desglose del panel dice dónde estuvo el día;
+    // una ausencia no estuvo en ninguna parte. Si entrara acá, el panel la mostraría como un tramo
+    // «Sin obra activa» y `tramos.length > 1` diría que el día se repartió entre dos obras.
+    if (r.obra_id === null) continue
     const previo = mapa.get(r.obra_id) ?? {
       obra_id: r.obra_id,
       // SIN CATÁLOGO NO SE ESCRIBE EL ID. Una obra que la sesión no puede leer por RLS igual dejó

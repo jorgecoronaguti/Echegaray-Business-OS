@@ -193,7 +193,11 @@ export async function getQuincenaPorObra(
     supabase.from('registros_hh')
       .select('persona_id, obra_canonica_id, fecha, horas, tipo_hora, notas')
       .gte('fecha', desde).lte('fecha', hasta)
-      .not('persona_id', 'is', null).not('obra_canonica_id', 'is', null),
+      // LAS FILAS SIN OBRA VIAJAN. Antes se excluían porque sin obra sólo había historia de
+      // JORNALES; desde el 08/09/2026 una ausencia se registra SIN obra, y filtrarla acá dejaría a
+      // la persona con el día en blanco: la grilla diría «sin marcar» sobre alguien que ya está
+      // declarado ausente. No cuentan en ninguna obra — de eso se ocupa `quincenaPorObra`.
+      .not('persona_id', 'is', null),
     supabase.from('obra_canonica').select('id, nombre, estado, cliente_texto'),
     getNoLaborables(supabase, desde, hasta),
   ])
@@ -217,7 +221,7 @@ export async function getQuincenaPorObra(
   const activas = new Set(catalogo.filter((o) => o.estado === 'activa').map((o) => o.id))
 
   const filasHH = (registros.data ?? []) as {
-    persona_id: string; obra_canonica_id: string; fecha: string
+    persona_id: string; obra_canonica_id: string | null; fecha: string
     horas: number | string; tipo_hora: string; notas: string | null
   }[]
   // Vigente en algún punto de la ventana, no sólo el último día: quien empezó el jueves entra, y

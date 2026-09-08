@@ -41,7 +41,7 @@ const asig = (
   desde: string | null = null, hasta: string | null = null, elegible = true,
 ): AsignacionQuincena => ({ persona_id, nombre, nota, obra_id, desde, hasta, elegible })
 const reg = (
-  persona_id: string, obra_id: string, fecha: string, horas: number,
+  persona_id: string, obra_id: string | null, fecha: string, horas: number,
   tipo_hora = 'normal', notas: string | null = null,
 ): RegistroQuincena => ({ persona_id, obra_id, fecha, horas, tipo_hora, notas })
 
@@ -576,4 +576,59 @@ test('sin `tramosFuera` la línea se comporta como antes: sólo ve lo de la vent
     registros: [reg('acosta', PISOS, L, 8)],
   })
   assert.equal(filas[0].proximoTramo?.desde, S)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA AUSENCIA ES DE LA PERSONA, NO DE UNA OBRA (dueño, 08/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('UNA AUSENCIA SIN OBRA PONE LA «A» EN LA CELDA: LA PERSONA NO QUEDA SIN MARCAR', () => {
+  // El defecto que atrapa: si la fila sin obra se filtrara —como hacía la lectura hasta el
+  // 08/09/2026— la grilla diría «sin marcar» sobre alguien que ya está declarado ausente, y la
+  // pantalla reclamaría un día que ya se contestó.
+  const filas = armar({
+    asignaciones: [asig('p1', 'GONZALEZ TOBARES', PISOS)],
+    registros: [reg('p1', null, L, 9, 'ausencia', 'enfermedad')],
+  })
+  assert.equal(filas[0].celdas[0].estado, 'ausente')
+  assert.equal(filas[0].celdas[0].horas, null)
+})
+
+test('UNA AUSENCIA SIN OBRA NO SE MUESTRA COMO UN TRAMO DE OBRA', () => {
+  // Sin esto el panel mostraría un tramo «Sin obra activa» y, con horas en otra obra el mismo día,
+  // `tramos.length > 1` diría que el día se repartió entre dos obras.
+  const filas = armar({
+    asignaciones: [asig('p1', 'GONZALEZ TOBARES', PISOS)],
+    registros: [reg('p1', null, L, 9, 'ausencia'), reg('p1', PISOS, M, 8, 'normal')],
+  })
+  assert.deepEqual(filas[0].celdas[0].tramos, [], 'la ausencia sin obra no es un tramo')
+  assert.equal(filas[0].celdas[1].tramos.length, 1)
+})
+
+test('UNA AUSENCIA SIN OBRA PONE A SU PERSONA EN LA GRILLA Y NO FABRICA «horas en La Estrella»', () => {
+  // EL DEFECTO EXACTO QUE RECHAZÓ EL DUEÑO, y su contraste. Sin asignación vigente, el rótulo de la
+  // columna OBRA sale del CLIENTE de la obra donde están sus horas — y la grilla lo muestra abajo
+  // del desplegable como «horas en …». La ausencia CON obra (el legado de JORNALES) rotulaba a la
+  // persona en La Estrella; sin obra no rotula nada, y la fila igual existe: excluirla la dejaría
+  // fuera de la grilla, que es peor que rotularla mal.
+  const persona = { p1: { nombre: 'GONZALEZ TOBARES', nota: null } }
+  const sinObra = armar({ asignaciones: [], registros: [reg('p1', null, L, 9, 'ausencia')], personas: persona })
+  assert.equal(sinObra.length, 1, 'la persona con una ausencia sin obra tiene que estar en la grilla')
+  assert.equal(sinObra[0].rotuloObra, SIN_OBRA)
+  assert.equal(sinObra[0].obraPorDefecto, null)
+
+  const comoAntes = armar({
+    asignaciones: [], registros: [reg('p1', 'la-estrella', L, 9, 'ausencia')], personas: persona,
+  })
+  assert.equal(comoAntes[0].rotuloObra, 'La Estrella',
+    'con obra sí rotula: es lo que hacía la deducción que el dueño rechazó')
+})
+
+test('LAS HORAS DE UNA AUSENCIA NO SUMAN A NINGUNA OBRA NI AL TOTAL TRABAJADO', () => {
+  const filas = armar({
+    asignaciones: [asig('p1', 'GONZALEZ TOBARES', PISOS)],
+    registros: [reg('p1', null, L, 9, 'ausencia'), reg('p1', PISOS, M, 8, 'normal')],
+  })
+  assert.equal(filas[0].horas, 8, 'las 9 hs de la ausencia no son horas trabajadas de ninguna obra')
+  assert.equal(totalDeLaQuincena(filas), 8)
 })

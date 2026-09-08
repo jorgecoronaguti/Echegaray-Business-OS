@@ -249,7 +249,12 @@ export function asistenciaDelDia(
 
   for (const e of esperados) {
     const suyos = porPersona.get(e.id) ?? []
-    const donde = suyos[0]
+    // LA OBRA SALE DE UN REGISTRO QUE TENGA OBRA. Desde el 08/09/2026 una ausencia se registra SIN
+    // obra —es de la persona—, y `suyos[0]` puede ser esa fila: sin este `find`, alguien que cargó
+    // 8 hs en PISOS y además tiene una ausencia del mismo día aparecería agrupado en la obra de su
+    // asignación en vez de donde están sus horas. Sin ningún registro con obra se cae a la
+    // asignación, que es dónde se la espera — nunca a una obra inventada.
+    const donde = suyos.find((r) => r.obra_id) ?? suyos[0]
     vistas.add(e.id)
     filas.push({
       personaId: e.id,
@@ -265,12 +270,13 @@ export function asistenciaDelDia(
   // del registro; esconderlo dejaría horas imputadas que ninguna pantalla muestra.
   for (const [personaId, suyos] of porPersona) {
     if (vistas.has(personaId)) continue
+    const conObra = suyos.find((r) => r.obra_id) ?? suyos[0]
     filas.push({
       personaId,
-      nombre: suyos[0].nombre ?? personaId,
-      categoria: suyos[0].categoria,
-      obraId: suyos[0].obra_id,
-      obra: suyos[0].obra,
+      nombre: conObra.nombre ?? personaId,
+      categoria: conObra.categoria,
+      obraId: conObra.obra_id,
+      obra: conObra.obra,
       ...clasificar(suyos, declaradaDe.get(personaId) ?? null),
     })
   }
