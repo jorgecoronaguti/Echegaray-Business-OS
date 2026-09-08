@@ -351,6 +351,19 @@ export function resumir(filas) {
   return { filas: filas.length, personas: personas.size, por_mes: cerrar(porMes), por_obra: cerrar(porObra) }
 }
 
+/**
+ * LO ANTICIPADO NO ES UN HECHO. La planilla trae la quincena entera abierta y a veces ya tiene horas
+ * puestas en días que todavía no pasaron; el 08/09 entraron el 09, 10 y 11/09 y sumaron en hh_real.
+ * Sólo se importa hasta `hasta` (hoy en San Juan, por defecto); el resto se devuelve aparte para
+ * decirlo, y entrará en la corrida siguiente cuando el día haya pasado.
+ */
+export function separarAnticipadas(filas, hasta) {
+  const h = isoDe(hasta)
+  const importar = []; const anticipadas = []
+  for (const f of filas) (f.fecha > h ? anticipadas : importar).push(f)
+  return { importar, anticipadas }
+}
+
 /** Cada rótulo CLIENTE · OBRA de la planilla → a qué obra canónica fue, por qué, y cuántas horas. */
 export function mapaDeRotulos(filas) {
   const m = new Map()

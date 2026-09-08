@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  FUENTE, FALTA, marcasDeGrid, mapaDeRotulos, partesDeCelda, emparejarPersona, indicePersonas, resolutorDeObra,
+  FUENTE, FALTA, marcasDeGrid, mapaDeRotulos, separarAnticipadas, partesDeCelda, emparejarPersona, indicePersonas, resolutorDeObra,
   asignacionVigente, planDeRegistros, separarConflictos, resumir, columnasParaUpsert, SQL_UPSERT,
 } from './jornales-a-registros-hh.mjs'
 import { isoASerial } from './jornales-fixture.mjs'
@@ -183,4 +183,12 @@ test('resumir y columnasParaUpsert: las horas trabajadas no incluyen ausencias; 
   assert.equal(cols.length, 6); assert.deepEqual(cols[3], [9, 8.8, 2]); assert.deepEqual(cols[5], ['n', null, 'e'])
   assert.match(SQL_UPSERT, /on conflict/); assert.match(SQL_UPSERT, /fuente_legacy = 'sheet:jornales'/)
   assert.doesNotMatch(SQL_UPSERT, /delete/i)
+})
+
+test('separarAnticipadas: una fecha posterior a hoy no se importa; hoy sí', () => {
+  const filas = [{ fecha: '2026-09-07' }, { fecha: '2026-09-08' }, { fecha: '2026-09-09' }, { fecha: '2026-09-11' }]
+  const r = separarAnticipadas(filas, '2026-09-08')
+  assert.deepEqual(r.importar.map((f) => f.fecha), ['2026-09-07', '2026-09-08'])
+  assert.deepEqual(r.anticipadas.map((f) => f.fecha), ['2026-09-09', '2026-09-11'])
+  assert.equal(separarAnticipadas(filas, new Date(2026, 8, 10)).anticipadas.length, 1, 'acepta un Date local')
 })

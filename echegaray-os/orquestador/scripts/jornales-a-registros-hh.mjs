@@ -17,14 +17,16 @@
 //   node orquestador/scripts/jornales-a-registros-hh.mjs --anio 2025         # JORNALES 25 + SERENOS
 //   node orquestador/scripts/jornales-a-registros-hh.mjs --aplicar           # escribe y verifica
 //   node orquestador/scripts/jornales-a-registros-hh.mjs --pestanas "Obreros 26" --detalle
+//   node orquestador/scripts/jornales-a-registros-hh.mjs --hasta 2026-08-31   # sólo hasta esa fecha (default: hoy en San Juan)
 import { makeGoogleClient, READONLY_SCOPES } from '../lib/google.mjs'
 import { operadorPara, getTokenFor } from '../lib/google-oauth.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, withTx, closePool } from '../lib/db.mjs'
 import { JORNALES_SPREADSHEET_ID } from '../lib/tools/jornales-asistencia.mjs'
+import { fechaOperativaSanJuan } from '../comunicacion/asistencia-ui.mjs'
 import {
   FUENTE, marcasDeGrid, planDeRegistros, resolutorDeObra, separarConflictos, resumir, columnasParaUpsert,
-  SQL_UPSERT, SQL_MOVER, mapaDeRotulos, normAlias,
+  SQL_UPSERT, SQL_MOVER, mapaDeRotulos, normAlias, separarAnticipadas,
 } from '../lib/jornales-a-registros-hh.mjs'
 
 const arg = (n, d = null) => { const i = process.argv.indexOf(`--${n}`); return i > 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : d }
@@ -32,6 +34,8 @@ const flag = (n) => process.argv.includes(`--${n}`)
 const APLICAR = flag('aplicar')
 const DETALLE = flag('detalle')
 const ANIO = Number(arg('anio', '2026'))
+const HASTA = arg('hasta', fechaOperativaSanJuan())
+if (!/^\d{4}-\d{2}-\d{2}$/.test(HASTA)) throw new Error(`--hasta tiene que ser YYYY-MM-DD, no «${HASTA}»`)
 const PESTANAS_POR_ANIO = { 2026: ['Obreros 26', 'Oficina 26'], 2025: ['JORNALES 25', 'SERENOS'] }
 const PESTANAS = arg('pestanas') ? arg('pestanas').split(',').map((s) => s.trim()) : (PESTANAS_POR_ANIO[ANIO] ?? [])
 const RANGO = process.env.GOOGLE_JORNALES_RANGO_COMPLETO || 'A1:BB2600'
@@ -144,7 +148,10 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: READONLY_SCOPES, getToken: getTokenFor(op) })
   const [{ marcas, hallazgos, leidas, tabs }, cat] = await Promise.all([leerPestanas(google), catalogos()])
   console.log(`pestañas del archivo: ${tabs.join(' · ')}`)
-  const { filas, falta } = planDeRegistros(marcas, cat)
+  const plan = planDeRegistros(marcas, cat)
+  const { importar: filas, anticipadas } = separarAnticipadas(plan.filas, HASTA)
+  const falta = plan.falta
+  console.log(`  hasta ${HASTA} (hoy en San Juan salvo --hasta): ${anticipadas.length} filas ANTICIPADAS en la planilla quedan afuera (${h(anticipadas.reduce((a, f) => a + f.horas, 0))} h)`)
   const fechas = filas.map((f) => f.fecha).sort()
   const existentes = fechas.length ? await existentesEntre(fechas[0], fechas[fechas.length - 1]) : []
   const { escribir, conflictos, obsoletas, mover } = separarConflictos(filas, existentes)
