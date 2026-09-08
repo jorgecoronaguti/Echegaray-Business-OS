@@ -62,6 +62,8 @@ import {
 import { hoyEnObra } from '@/features/jefe/services/contexto'
 import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
 import { modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
+import { puedeCambiarObraActual } from '@/features/administracion/services/planDeObraActual'
+import { getPerfilActual } from '@/features/auth/services/authService'
 
 export const dynamic = 'force-dynamic'
 
@@ -216,6 +218,10 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 // El `true` no es un permiso, es la afirmación de dónde vive el botón; la policy de
                 // `registros_hh` y la de `obra_asignacion` son las que rechazan de verdad.
                 puedeCorregir
+                // MOVER A ALGUIEN DE OBRA NO ES CORREGIR UN DÍA. El jefe de obra llega a esta
+                // pantalla —`es_administracion()` lo incluye— y sigue cargando y corrigiendo la
+                // jornada; el desplegable de obra actual es de Dirección y Administración.
+                puedeCambiarObra={puedeCambiarObraActual((await getPerfilActual(supabase)).data?.rol)}
               />
               {/* LA VUELTA. Quien forzó la grilla desde el teléfono necesita cómo volver, y quien
                   está en escritorio no ve este enlace: `md:hidden` lo apaga a partir de 768px. */}

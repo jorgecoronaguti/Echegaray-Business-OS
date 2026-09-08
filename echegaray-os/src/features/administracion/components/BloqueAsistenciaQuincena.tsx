@@ -31,7 +31,9 @@ import { GrillaAsistenciaObra } from './GrillaAsistenciaObra'
 // La quincena viaja en la URL (`?quincena=2026-09-16`): así se puede pasar «mirá la quincena
 // pasada» por mensaje, y recargar no devuelve a hoy.
 
-export async function BloqueAsistenciaQuincena({ quincenaPedida, hoy, q, hrefDe, puedeCorregir }: {
+export async function BloqueAsistenciaQuincena({
+  quincenaPedida, hoy, q, hrefDe, puedeCorregir, puedeCambiarObra,
+}: {
   /** Cualquier día de la quincena que se quiere ver. Lo que no sea una fecha vuelve a la de hoy. */
   quincenaPedida?: string
   hoy: string
@@ -41,6 +43,8 @@ export async function BloqueAsistenciaQuincena({ quincenaPedida, hoy, q, hrefDe,
   /** Corregir la OBRA de un día es de Administración. La policy decide de verdad; esto evita
    *  ofrecer un botón que va a rebotar contra un `permission denied`. */
   puedeCorregir: boolean
+  /** Quién puede mover a una persona de obra: dirección y administración, no el jefe de obra. */
+  puedeCambiarObra: boolean
 }) {
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
@@ -134,6 +138,7 @@ export async function BloqueAsistenciaQuincena({ quincenaPedida, hoy, q, hrefDe,
           jornadaPorObra={jornadaPorObra}
           obras={obras.map((o) => ({ id: o.id, nombre: o.nombre }))}
           puedeCorregir={puedeCorregir}
+          puedeCambiarObra={puedeCambiarObra}
         />
       )}
 
