@@ -60,10 +60,17 @@ function Casilla({ d }: { d: DiaDeQuincena }) {
   return (
     <div
       data-testid="casilla-dia" data-estado={d.estado} data-fecha={d.fecha} title={detalle}
-      className={`flex flex-col items-center justify-center gap-px rounded-control border py-1 ${p.clase} ${
-        // EL FILO AMARILLO ES LA ÚNICA MARCA DE LA PANTALLA: dice «acá estás», no un estado.
-        d.esHoy ? 'border-b-[2px] border-b-marca' : ''}`}
+      // ALTO FIJO PARA LAS QUINCE. Con el alto librado al contenido, los días futuros —que no
+      // escriben nada— encogían y la franja quedaba dentada: las etiquetas de los días dejaban de
+      // estar en una línea y el bloque se leía como si faltaran casillas.
+      className={`relative flex h-[38px] flex-col items-center justify-center gap-px rounded-control border ${p.clase}`}
     >
+      {/* EL FILO AMARILLO ES LA ÚNICA MARCA DE LA PANTALLA: dice «acá estás», no un estado. Va
+          como elemento y no como `border-b`: sobre la casilla punteada de «sin registrar» el borde
+          teñía las cuatro aristas y el día de hoy se leía como un estado distinto. */}
+      {d.esHoy && (
+        <span className="absolute inset-x-1 -bottom-[3px] h-[2px] rounded-full bg-marca" aria-hidden />
+      )}
       <span className={`text-[10.5px] leading-none ${d.finDeSemana ? 'text-faint' : 'text-muted'}`}>
         {d.etiqueta}
       </span>
@@ -128,8 +135,11 @@ export function QuincenaDeAsistencia({
   dias: DiaDeQuincena[]
   cifras: CifrasQuincena
   barras: BarraQuincena[]
-  /** La obra de la asignación vigente, con la jornada que fija la referencia. `null` sin asignación. */
-  obra: { nombre: string; desde: string | null; jornada: number | null } | null
+  /** Dónde está y dónde fueron sus horas. `jornada` es la de la obra a la que se imputaron —es la
+   *  que fija la referencia—, e `imputadaA` sólo viene cuando NO es la de la asignación vigente. */
+  obra: {
+    nombre: string; desde: string | null; jornada: number | null; imputadaA?: string | null
+  } | null
   rotuloVentana: string
   hrefHoras: string
 }) {
@@ -142,7 +152,7 @@ export function QuincenaDeAsistencia({
       titulo="Asistencia de la quincena" icono={ICONO} testid="bloque-quincena-asistencia"
       indicador={<span className="font-sans text-[11.5px] text-muted" data-testid="ventana-quincena">{rotuloVentana}</span>}
     >
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(38px,1fr))] gap-1 px-3.5 pb-3 pt-3.5"
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(38px,1fr))] gap-x-1 gap-y-2 px-3.5 pb-3.5 pt-3.5"
         data-testid="franja-quincena">
         {dias.map((d) => <Casilla key={d.fecha} d={d} />)}
       </div>
@@ -190,7 +200,17 @@ export function QuincenaDeAsistencia({
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line-hairline px-3.5 py-3">
         <span className="text-[11.5px] text-muted" data-testid="obra-de-la-quincena">
           {obra
-            ? <>En <span className="text-ink">{obra.nombre}</span>{obra.desde ? ` desde ${obra.desde}` : ''}</>
+            ? (
+                <>
+                  En <span className="text-ink">{obra.nombre}</span>
+                  {obra.desde ? ` desde ${obra.desde}` : ''}
+                  {/* ASIGNADO ACÁ, IMPUTANDO ALLÁ. No es un detalle: la jornada de referencia y el
+                      costo de la obra salen de dónde se cargaron las horas, no de la asignación. */}
+                  {obra.imputadaA && (
+                    <span className="text-warn"> · esta quincena imputó a {obra.imputadaA}</span>
+                  )}
+                </>
+              )
             : 'Sin asignación vigente a una obra'}
         </span>
         <Link href={hrefHoras} prefetch={false}

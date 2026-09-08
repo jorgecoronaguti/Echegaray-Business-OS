@@ -189,10 +189,17 @@ export default async function FichaPersonaPage({
   // jornada pactada de la obra donde está. Sin ellas el bloque tendría que INVENTAR el denominador
   // —que es lo que hacía el «/ 44,0 h»— y reclamaría los sábados como días sin cargar.
   const quincena = quincenaDe(hoy)
+  // LA JORNADA SALE DE LA OBRA DONDE ESTÁN LAS HORAS, no de la asignación vigente. En la base al
+  // 08/09/2026 hay gente asignada a una obra que imputa a otra: tomar la jornada de la asignación
+  // daría un denominador de una obra en la que esa persona no trabajó esta quincena. La asignación
+  // se sigue nombrando —es el hecho contractual— y cuando las dos no coinciden, se dicen las dos.
+  const obraDeLasHoras = resumenDelPeriodo(filasHH, quincena.desde, quincena.hasta)
+    .obras.find((o) => o.clave !== '—') ?? null
+  const obraDeLaJornada = obraDeLasHoras?.clave ?? vigente?.obra_id ?? null
   const [feriados, obraVigente] = vista === 'resumen'
     ? await Promise.all([
         getNoLaborables(supabase, quincena.desde, quincena.hasta),
-        vigente?.obra_id ? getObraDeLaJornada(supabase, vigente.obra_id) : Promise.resolve(null),
+        obraDeLaJornada ? getObraDeLaJornada(supabase, obraDeLaJornada) : Promise.resolve(null),
       ])
     : [[], null]
   const dias = diasDeLaQuincena(filasHH, quincena, { feriados, hoy })
@@ -397,11 +404,15 @@ export default async function FichaPersonaPage({
                 dias={dias}
                 cifras={cifrasDeQuincena(dias, obraVigente?.data?.jornada ?? null)}
                 barras={ultimasQuincenas(filasHH, hoy)}
-                obra={vigente
+                obra={vigente || obraDeLasHoras
                   ? {
-                      nombre: obraVigente?.data?.nombre ?? vigente.obra_nombre ?? vigente.obra_id,
-                      desde: vigente.desde ? fecha(vigente.desde) : null,
+                      nombre: vigente?.obra_nombre ?? obraDeLasHoras?.etiqueta ?? 'sin obra',
+                      desde: vigente?.desde ? fecha(vigente.desde) : null,
                       jornada: obraVigente?.data?.jornada ?? null,
+                      // Sólo cuando NO coinciden: repetir el mismo nombre dos veces es ruido.
+                      imputadaA: obraDeLasHoras && obraDeLasHoras.clave !== vigente?.obra_id
+                        ? obraDeLasHoras.etiqueta
+                        : null,
                     }
                   : null}
                 rotuloVentana={rotuloQuincena(quincena)}
