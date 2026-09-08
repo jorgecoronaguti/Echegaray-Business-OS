@@ -11,6 +11,7 @@ import type {
 } from '@/features/administracion/services/jornadaPorObra'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '@/features/administracion/services/motivoDeAusencia'
+import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPorDefecto'
 import { horasSegunPresencia, personasSinHoras } from '@/features/administracion/services/presenciaDelDia'
 import type { PresenciaGuardada } from '@/features/administracion/services/presenciaDelDia'
 
@@ -53,6 +54,9 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
   obraId: string
   obraNombre: string
   fecha: string
+  /** LA JORNADA PACTADA DE LA OBRA (`obra_canonica.jornada_horas`). Desde el 08/09/2026 ya NO es la
+   *  que se sugiere al presente —eso lo decide `jornadaPorDefecto(fecha)`—: queda sólo para medir
+   *  en horas una ausencia, que es lo que `registros_hh` necesita para poder guardarla. */
   jornada: number
   filas: FilaConOtraObra[]
   /** LA PRESENCIA DECLARADA (`asistencia_dia`), si la hay. Es la ÚNICA dirección permitida entre
@@ -103,6 +107,10 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
       horas: v?.estado === 'presente' ? v.horas : v?.estado === 'ausente' ? 0 : null,
     }
   }))
+  // LO QUE SE SUGIERE ES EL DÍA, NO LA OBRA. Dueño, 08/09/2026: «9 hs de L a J y 8 hs los V». El
+  // fin de semana devuelve `null` y la pantalla no sugiere nada: un sábado no tiene jornada normal
+  // y ofrecerla de un toque sería fabricar horas que nadie trabajó.
+  const sugerida = jornadaPorDefecto(fecha)
   const falta = avisoDeFaltantes(resumen.faltan)
   const conError = vista.find((v) => v.error)
   const sinJornada = ausenciasSinJornada(vista, jornada)
@@ -154,18 +162,18 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
           onClick={() => {
             setResultado(null)
             setCasillas((c) => {
-              const puestas = ponerLaJornada(c, jornada)
+              const puestas = ponerLaJornada(c, sugerida ?? 0)
               if (sinHoras.size === 0) return puestas
               const out = { ...puestas }
               for (const id of sinHoras) if (out[id]) out[id] = { ...out[id], texto: '' }
               return out
             })
           }}
-          disabled={jornada <= 0}
+          disabled={sugerida === null}
           data-testid="poner-jornada"
           className="min-h-[36px] rounded-[6px] border border-line px-3 text-[12.5px] text-ink disabled:text-faint"
         >
-          {jornada > 0 ? `Poner ${hs(jornada)} a los que faltan` : 'Sin jornada pactada'}
+          {sugerida !== null ? `Poner ${hs(sugerida)} a los que faltan` : 'Fin de semana: a mano'}
         </button>
         <span className="flex gap-3 text-[11px] uppercase tracking-[0.06em] text-faint">
           <span className="w-[64px] text-center">Horas</span>
@@ -178,11 +186,11 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
           const id = fila.persona.persona_id
           const v = porPersona.get(id)
           const declarado = estadoDeclarado.get(id) ?? null
-          const segunPresencia = horasSegunPresencia(declarado, jornada)
+          const segunPresencia = horasSegunPresencia(declarado, fecha)
           // SIN NINGUNA PRESENCIA DECLARADA la pantalla no cambia: la jornada se sigue sugiriendo a
           // todos. La sugerencia se acota a los presentes SÓLO cuando existe algo declarado ese día
           // —si no, la presencia sin estrenar apagaría un gris que hoy sirve—.
-          const sugerencia = hayPresencia ? segunPresencia.sugerencia : (jornada > 0 ? jornada : null)
+          const sugerencia = hayPresencia ? segunPresencia.sugerencia : sugerida
           // CONFLICTO VISIBLE, NO SILENCIOSO: el jefe declaró que no vino y sin embargo hay horas
           // cargadas ese día en esta obra. Las dos afirmaciones no pueden ser ciertas a la vez, y
           // la pantalla no elige por nadie: lo dice y lo deja resolver a quien sabe.
@@ -238,7 +246,7 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
                       //
                       // CON PRESENCIA DECLARADA, la sugerencia es SÓLO para los marcados presentes
                       // (`horasSegunPresencia`). Sin presencia declarada, la pantalla se comporta
-                      // como siempre: la jornada de la obra como gris para todos.
+                      // como siempre: la jornada por defecto del día como gris para todos.
                       placeholder={sugerencia !== null ? hs(sugerencia) : ''}
                       value={ausente ? '' : (casillas[id]?.texto ?? '')}
                       onChange={(e) => cambiar(id, { texto: e.target.value, ausente: false })}
