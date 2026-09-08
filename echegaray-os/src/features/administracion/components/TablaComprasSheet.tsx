@@ -151,6 +151,15 @@ const CUERPO = '13.5px'
  * `compras-fila.mjs`. El filtro «Vencimiento» de esta misma pantalla lee `tramo_vencimiento` (AN),
  * cuya fórmula es `ARRAYFORMULA` sobre `$Q$4:$Q` (`lib/proveedores-aging.mjs`): el filtro y esta
  * columna son el MISMO concepto, y por eso no se inventa uno nuevo.
+ *
+ * ═══ LÍMITE CONOCIDO: «A PAGAR» YA SIGNIFICA OTRAS DOS COSAS EN ESTA PANTALLA ═══
+ *
+ * El chip de arriba («A pagar 35») filtra por ESTADO, y el pie («A pagar $…») suma PLATA. Con esta
+ * columna el mismo rótulo dice además una FECHA. Se deja así porque es como lo pidió el dueño y
+ * porque el contexto desambigua —una fecha bajo un encabezado de columna no se confunde con un
+ * conteo ni con un importe—, pero queda escrito: si en la pantalla empieza a costar leerlo, el que
+ * se renombra es ESTE rótulo («Fecha prevista», que es como se llama en el Sheet), no el chip ni el
+ * pie, que son los que ya estaban.
  */
 const ROTULO_SHEET = 'Compras · Q «Fecha prevista de pago (día)»'
 
