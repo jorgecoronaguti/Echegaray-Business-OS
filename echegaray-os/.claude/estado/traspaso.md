@@ -1,6 +1,40 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-07 (noche) · commit `d70430d3` en main y en producción_
+_actualizado: 2026-09-08 17:25 · main `1c51a7f3` = checkout de producción; Vercel al día_
+
+## 00. TARDE-NOCHE 08/09 — PUBLICADO (main 1c51a7f3) y LO QUE SIGUE ABIERTO
+
+**Publicado y verificado en producción con navegador (capturas `qa-shots/verif-*`)**
+- Presencia móvil = Está / No vino / Licencia (tabla `asistencia_dia`, migración T1900 aplicada; los jefes marcan a los
+  demás, no a sí mismos; contador por obra deduplicado). «Cargar horas del día →» aparte.
+- Regla E: PRESENCIA NUNCA se deduce de horas (`clasificar()` → `presencia` + `horas` separados). Plantel HOY dice sólo
+  presencia; Asistencia grilla: número al eje, ancho 100 %, A/L centradas, hoy sin punteado, totales sin rojo.
+- Ausencia/licencia SIN OBRA (migraciones T2000 + T2100 aplicadas: CHECK + policies con `marca_ausencia_de`; el jefe sólo
+  a quien tenga asignación vigente a la fecha). Panel «corregir»: «Horas que corresponden» (se reconocen a la persona,
+  suman a su total, a ninguna obra); celda A/L con horas debajo, fija. `guardarJornada` también escribe sin obra.
+- Plan de obra a futuro: «programar cambio» bajo el desplegable → panel lateral (tramos, Mañana/Lunes/fecha, Hasta,
+  cancelar); `obra_asignacion` con `desde` futuro; ficha «Programado»; un solo «está acá», «cierra hoy».
+- Anotaciones en ficha (`persona_nota`, T1700 aplicada). Clientes: Contratado · Costo MO · Costo mat. · Margen desde OBRAS
+  (`obra_economia_sheet` T1800 + `obras-economia-sync.mjs` en el pipeline). Compras app: columna «A pagar» (= col. Q Sheet).
+- Navegación sin recarga (9 anclas crudas → Link; invariante). Compras NO tarda 120 s (instrumento; prod 2,1 s doc).
+- Comprobantes: 83 archivos/14 días conciliados; vínculo perdido (`do nothing`) corregido + 10 revinculados; claves c:/p:
+  conciliadas por número; espejo `compra_sheet` INMEDIATO tras cada carga (worker → `systemctl start compras-sync`), timer
+  10 min, sync 100 s → 3 s con lock; «ya_cargados» no reabre fajo; ilegibles se preguntan una vez. sync-compras en
+  transacción real (`withTx`). Accesos: rodrigo/hys/ingenieria con clave `test123` (pedido del dueño, por bot).
+- Persona de prueba REAL: `e2e00000-0000-4000-8000-000000000001` («[PRUEBA E2E] QA Campo»), obra `prueba-e2e`,
+  `obra_asignacion.obra_id`. Los ids `…e2e1/e2e2` NO existen.
+
+**Agentes en curso al cortar (ramas sin mergear → mergear desde el checkout principal, typecheck, tests, push, ff prod)**
+- `feat/ausencia-por-tramo` (licencia/ausencia varios días con «Hasta», sin domingos, futuro incluido).
+- `feat/jornada-por-defecto` (9 h L–J, 8 h V al dar presente; `jornadaPorDefecto.ts` idéntico en ambas ramas).
+- Datos: asentar obra por persona según planilla del dueño (Sheet asistencia gid 1770179062): los días 01–07/09 de 7
+  personas están en `la-estrella` por rótulo JORNALES ambiguo; corrige `registros_hh.obra_canonica_id` (no horas),
+  asignaciones y alias.
+
+**Decisiones del dueño pendientes**: Quiroga Alexander licencias 2026 sin horas (¿9 h?); jornada legal por categoría
+(hoy 9/8 por día); canal Oficina (¿carga comprobantes o avisa?); filas 863/924 nombre distinto (Egger / MASS);
+2 filas Movistar 03/09 descartadas; Pastrán 2 vigentes; Maldonado 37 días sin registro. UX menor: grilla en 390 px
+sin columna Persona fija ni indicio de scroll.
 
 ## 0. LO QUE PASÓ HOY (08/09) — PUBLICADO (main = 9ce5c721 o posterior)
 
