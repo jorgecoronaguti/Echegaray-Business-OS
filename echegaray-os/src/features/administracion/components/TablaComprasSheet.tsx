@@ -65,13 +65,14 @@
 // En el mockup ese `⋯` no tenía handler: era decorativo. Es el comprobante, en tinta cuando el
 // vínculo es un hecho y apagado cuando es deducido. Ver `CeldaComprobante`.
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
 import { fechaCompleta, pesos } from '@/shared/components/canon/formato'
 import { IconoProblema } from '@/shared/components/iconos'
 import {
   ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, V,
 } from '@/shared/components/v2/patron'
+import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
 import { esEstructura, pastillaDe, totalesDe } from '../services/comprasSheet'
 import type { FilaConPapel } from '../services/comprasSheetService'
 import { CeldaComprobante } from './CeldaComprobante'
@@ -116,6 +117,25 @@ import { CeldaComprobante } from './CeldaComprobante'
  * de la variante angosta suman 578 + 70 de `gap` = 648, y con el panel entran desde 1081, muy por
  * debajo de 1459.
  */
+// ═══ LA CINTA: LA TABLA SE DESPLAZA ADENTRO SUYO, NUNCA LA PÁGINA (08/09/2026) ═══
+//
+// Medido en producción a 390px ANTES del arreglo: `document.body.scrollWidth` = 1046 contra 390 de
+// pantalla, y `1046 = 20 (padding de página) + 1026` — exactamente los nueve tracks de `COLS`
+// (914) más sus ocho `gap` (112). Al deslizar para ver el importe se iban de pantalla el header, la
+// navegación y los chips. Ahora la fila vive dentro de `CintaHorizontal` (`overflow-x: auto`), la
+// PÁGINA queda quieta y la columna PROVEEDOR se queda pegada a la izquierda para no perder de quién
+// es la fila que se está mirando.
+//
+// ═══ LÍMITE MEDIDO Y NO ARREGLADO ACÁ: LOS CORTES POR ANCHO NO EXISTEN EN EL BUILD ═══
+//
+// Los `max-[1459px]:` y `max-[767px]:` de abajo NO llegan al CSS compilado. Verificado sobre el
+// build propio del 08/09/2026: el CSS emitido en `.next/static/chunks` no contiene `767px` ni
+// `1459px` en ninguna forma —ni `max-width:767px` ni sintaxis de rango—, mientras que el `grid-cols` SIN
+// variante sí está. No es de este archivo: NINGÚN `max-[Npx]:` del repositorio aparece en ese CSS
+// (`max-[1249px]` se usa 19 veces, `max-[559px]` 7). Corriendo Tailwind a mano sobre este mismo
+// archivo las tres reglas se generan, así que el que las pierde es el pipeline del build, no el
+// código. Por eso a 390px se dibujan las nueve columnas y no dos: LA CINTA ES LO QUE SOSTIENE LA
+// PANTALLA HOY. Arreglar la extracción es otro trabajo y cambia seis pantallas a la vez.
 const COLS
   = 'grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_88px_104px_112px_26px]'
   + ' max-[1459px]:grid-cols-[minmax(150px,1.2fr)_minmax(110px,1fr)_92px_88px_112px_26px]'
@@ -128,6 +148,33 @@ const COLS
  */
 const SUELTA_ANCHO = 'max-[1459px]:hidden'
 const SUELTA_TELEFONO = 'max-[767px]:hidden'
+
+/**
+ * LA FILA MIDE LO QUE MIDEN SUS COLUMNAS, Y POR ESO LA COLUMNA PEGADA FUNCIONA.
+ *
+ * Sin esto la fila es un bloque del ancho del contenedor (350px a 390) y sus nueve tracks se salen
+ * de la caja: la cinta scrollea igual —el desbordamiento sí cuenta—, pero `position: sticky` se
+ * limita al BLOQUE CONTENEDOR, o sea a esos 350px, y medido en el navegador la celda pegada se
+ * soltaba a los 220px de recorrido y terminaba en x = −456. Con `min-content` la caja de la fila
+ * pasa a valer la suma de los mínimos de sus tracks (914) más los `gap` (112) = 1026, que es el
+ * recorrido entero.
+ *
+ * `min-w-min` (min-width) Y NO `w-min`: `width: min-content` clavaría la fila en 1026 también en
+ * escritorio y las columnas `fr` dejarían de estirarse. Como mínimo no cambia nada donde ya entraba.
+ *
+ * Va por CLASE y no por `style`: la cabecera tiene que seguir escribiendo `style={ENCABEZADO}`
+ * literal —`canonico-compras-v4.test.ts` lo exige para que nadie redeclare el ritmo del patrón— y
+ * un `style` con spread lo rompía.
+ */
+const ANCHO_DE_LA_FILA = 'min-w-min'
+
+/**
+ * LA COLUMNA PROVEEDOR NO SE VA CON EL SCROLL. Dentro de la cinta, `left: 0` la deja pegada al
+ * borde izquierdo mientras el resto se desplaza; el `z-index` la pone POR ENCIMA de las celdas que
+ * pasan por debajo (el fondo lo pone cada celda, ver más abajo). En escritorio no cambia nada: sin
+ * desplazamiento, una celda pegada está donde estaría igual.
+ */
+const PEGADA: CSSProperties = { position: 'sticky', left: 0, zIndex: 2 }
 
 /** El `gap:14px` del canvas (`v4A:222`), en la cabecera y en la fila. */
 const GAP = 'gap-[14px]'
@@ -189,8 +236,9 @@ export function TablaComprasSheet({
 }) {
   return (
     <div data-testid="tabla-compras-sheet">
-      <div className={`grid ${GAP} ${COLS}`} style={ENCABEZADO}>
-        <RotuloCol>Proveedor</RotuloCol>
+      <CintaHorizontal testid="cinta-compras">
+      <div className={`grid ${ANCHO_DE_LA_FILA} ${GAP} ${COLS}`} style={ENCABEZADO}>
+        <span className="grid bg-canvas" style={PEGADA}><RotuloCol>Proveedor</RotuloCol></span>
         <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Concepto</RotuloCol></span>
         <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Comprobante</RotuloCol></span>
         <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Cliente / asignación</RotuloCol></span>
@@ -211,7 +259,7 @@ export function TablaComprasSheet({
             role="row"
             data-testid={`compra-${f.fila}`}
             data-seleccionada={elegida ? '' : undefined}
-            className={`grid items-center ${GAP} ${CAJA_CONTENIDO} ${COLS} ${elegida ? '' : 'hover:bg-[#F2F1ED]'}`}
+            className={`group grid items-center ${ANCHO_DE_LA_FILA} ${GAP} ${CAJA_CONTENIDO} ${COLS} ${elegida ? '' : 'hover:bg-[#F2F1ED]'}`}
             style={{
               height: ALTO_V2.fila,
               borderBottom: `1px solid ${V.lineaFila}`,
@@ -225,7 +273,21 @@ export function TablaComprasSheet({
             {/* `display: contents` — la fila entera abre el panel, salvo el papel, que es un botón
                 y no puede vivir dentro de un enlace (HTML inválido y rompe el tabulador). */}
             <Link href={hrefDe(f.fila)} prefetch={false} style={{ display: 'contents' }}>
-              <span className="truncate" style={{ fontSize: CUERPO, fontWeight: 500, color: f.proveedor ? V.tinta : V.tenue }}>
+              {/* EL FONDO Y EL FILO NO SON COSMÉTICA. Sin fondo, las celdas que pasan por debajo
+                  al desplazarse se leen encimadas con el nombre; y sin repetir `FILO_ELEGIDA` acá,
+                  el filo amarillo de la fila abierta —que se pinta en el fondo de la FILA— queda
+                  tapado por este fondo opaco en TODOS los anchos. */}
+              <span
+                className="truncate bg-canvas group-hover:bg-[#F2F1ED]"
+                data-testid="compra-proveedor"
+                style={{
+                  ...PEGADA,
+                  fontSize: CUERPO,
+                  fontWeight: 500,
+                  color: f.proveedor ? V.tinta : V.tenue,
+                  boxShadow: elegida ? FILO_ELEGIDA : undefined,
+                }}
+              >
                 {f.proveedor ?? 'sin proveedor'}
               </span>
 
@@ -316,6 +378,7 @@ export function TablaComprasSheet({
           </div>
         )
       })}
+      </CintaHorizontal>
 
       {!filas.length && (
         <div data-testid="compras-vacio" style={{ padding: '24px 2px', fontSize: '12.5px', color: V.apagado }}>
