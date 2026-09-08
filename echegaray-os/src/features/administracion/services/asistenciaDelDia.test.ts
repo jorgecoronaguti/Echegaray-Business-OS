@@ -259,3 +259,30 @@ test('declarado presente sin horas y sin marcar con horas son DOS filas distinta
   assert.equal(conHoras.presencia, 'sin_marcar')
   assert.equal(conHoras.horas, 8)
 })
+
+// ── UNA AUSENCIA SIN OBRA (dueño, 08/09/2026) ───────────────────────────────────────────────────
+
+test('EL DÍA SE AGRUPA DONDE ESTÁN LAS HORAS, aunque la ausencia sin obra venga primera', () => {
+  // EL DEFECTO QUE ATRAPA: la obra de la fila salía de `suyos[0]`, y desde que una ausencia se
+  // registra SIN obra esa primera fila puede no tener ninguna. Sin el `find`, alguien con horas en
+  // PISOS y una ausencia del mismo día se agrupaba en la obra de su ASIGNACIÓN — una obra donde ese
+  // día no hay nada cargado.
+  const d = asistenciaDelDia({
+    esperados: [esp('p1', 'GONZALEZ TOBARES', 'obra-asignada')],
+    registros: [
+      reg({ persona_id: 'p1', obra_id: null, obra: null, horas: 9, tipo_hora: 'ausencia' }),
+      reg({ persona_id: 'p1', obra_id: 'pisos', obra: 'PISOS INDUSTRIALES', horas: 8 }),
+    ],
+  })
+  assert.equal(d.obras.length, 1)
+  assert.equal(d.obras[0].obraId, 'pisos')
+})
+
+test('QUIEN SÓLO TIENE UNA AUSENCIA SIN OBRA SE AGRUPA DONDE SE LO ESPERA, NO EN UNA OBRA INVENTADA', () => {
+  const d = asistenciaDelDia({
+    esperados: [esp('p1', 'GONZALEZ TOBARES', 'obra-asignada')],
+    registros: [reg({ persona_id: 'p1', obra_id: null, obra: null, horas: 9, tipo_hora: 'ausencia' })],
+  })
+  assert.equal(d.obras[0].obraId, 'obra-asignada', 'se lo espera ahí: no es una imputación de costo')
+  assert.equal(d.obras[0].gente[0].horas, null, 'una ausencia no aporta horas trabajadas a la obra')
+})
