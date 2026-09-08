@@ -90,18 +90,22 @@ test('con dos obras vigentes, elegir una cierra la otra y no reabre la elegida',
   assert.equal(plan.acuse, 'Desde hoy en SALÓN COMERCIAL · antes PISOS INDUSTRIALES.')
 })
 
-// ═══ EL JEFE DE OBRA NO MUEVE GENTE ENTRE OBRAS (dueño, 08/09/2026) ═══
+// ═══ EL JEFE DE OBRA SÍ MUEVE GENTE; `campo` NO (dueño, 08/09/2026, tarde) ═══
 //
-// EL DEFECTO QUE ATRAPA: `es_administracion()` incluye al jefe de obra desde la migración
-// 20260819T4900 y la RLS de `obra_asignacion` lo deja escribir dentro de `ve_obra`. Con esa puerta
-// como única defensa, un jefe podía llevarse gente de otra obra a la suya —y con ella el costo de
-// mano de obra— desde la misma grilla en la que carga la asistencia. La regla del dueño es más
-// angosta que la de la base, y por eso vive acá y la aplican la pantalla y la acción.
-test('sólo dirección y administración cambian la obra de una persona', () => {
+// *"Tenés que habilitar a los jefes de obra a poder modificar las obras asignadas del personal"* —
+// reemplaza la restricción de la mañana. El jefe abre la carga del día y la cuadrilla que ve tiene
+// que ser la que tiene enfrente; si para eso hay que llamar a Administración, la asistencia se
+// carga en la obra equivocada.
+//
+// EL DEFECTO QUE ATRAPA: que la lista se amplíe de más. `campo` es el único rol que la RLS acota
+// por obra y quien no tiene perfil no tiene nada; si alguno de esos dos empieza a devolver `true`,
+// cualquiera con una sesión mueve costo de mano de obra entre obras. Y el rol se compara contra la
+// CLAVE de la base: «administración» con tilde no es un rol, es un rótulo de pantalla.
+test('dirección, administración y jefe de obra cambian la obra de una persona; nadie más', () => {
   assert.equal(puedeCambiarObraActual('direccion'), true)
   assert.equal(puedeCambiarObraActual('administracion'), true)
-  assert.equal(puedeCambiarObraActual('jefe_obra'), false, 'el jefe de obra registra asistencia, no reasigna')
-  assert.equal(puedeCambiarObraActual('campo'), false)
+  assert.equal(puedeCambiarObraActual('jefe_obra'), true, 'el jefe arma su cuadrilla antes de marcarla')
+  assert.equal(puedeCambiarObraActual('campo'), false, 'el operario carga lo suyo, no decide plantel')
   assert.equal(puedeCambiarObraActual('cliente'), false)
   assert.equal(puedeCambiarObraActual(null), false)
   assert.equal(puedeCambiarObraActual(undefined), false)

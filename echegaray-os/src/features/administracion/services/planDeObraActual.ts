@@ -24,19 +24,27 @@
 // que afirma que la persona trabajó menos que ningún día. Ahí `hasta = desde`, que es lo único
 // cierto — estuvo asignada ese día. No se borra: alguien la creó y eso es historia.
 
-// ═══ QUIÉN PUEDE MOVER A ALGUIEN DE OBRA (dueño, 08/09/2026) ═══
+// ═══ QUIÉN PUEDE MOVER A ALGUIEN DE OBRA (dueño, 08/09/2026 — segunda decisión del día) ═══
 //
-// *"sólo usuarios admin puedan hacer eso, y que jefe de obra pueda seguir con las funciones
-// normales de registrar asistencia"*. El jefe de obra CARGA y CORRIGE la jornada; no decide en qué
-// obra está una persona, porque esa decisión mueve el costo de mano de obra entre obras y es de
-// Administración.
+// A la mañana el dueño había dicho *"sólo usuarios admin puedan hacer eso"*. A la tarde, probando
+// la carga desde el teléfono, lo cambió: *"al comenzar el día tengo que marcar la asistencia de las
+// personas, pero ¿qué pasa si no modifiqué el lugar de trabajo? Tenés que habilitar a los jefes de
+// obra a poder modificar las obras asignadas del personal"*. Manda esta.
 //
-// NO alcanza `es_administracion()` de la base: desde la migración 20260819T4900 esa función
-// INCLUYE al jefe de obra —por eso ve el área— y la RLS de `obra_asignacion` lo deja escribir
-// dentro de `ve_obra`. Acá manda el ROL DEL PERFIL, que es más angosto. La regla vive una vez y la
-// aplican las dos puntas: la pantalla para no ofrecer un control que va a rebotar, y la acción
-// —que es la puerta de verdad— para rechazar la llamada venga de donde venga.
-export const ROLES_QUE_MUEVEN_DE_OBRA = ['direccion', 'administracion'] as const
+// El motivo es el proceso real, no la comodidad: quien mueve gente entre obras a las 7 de la mañana
+// es el jefe, y si tiene que pedirle a Administración que reasigne antes de poder marcar la
+// asistencia, la asistencia se carga en la obra equivocada o no se carga. Un plantel mal asignado
+// imputa el costo de mano de obra a otra obra igual —sólo que en silencio y sin nadie que lo firme.
+//
+// SIGUE AFUERA `campo`. Es el único rol que la RLS acota por obra: el operario carga lo suyo y no
+// decide plantel. Y sigue afuera «sin rol»: sin perfil no se mueve a nadie.
+//
+// NO alcanza `es_administracion()` de la base —incluye al jefe desde 20260819T4900 y ahora eso
+// coincide, pero por casualidad, no por diseño—: acá manda el ROL DEL PERFIL, que es la lista que
+// el dueño decidió. La regla vive una vez y la aplican las dos puntas: la pantalla para no ofrecer
+// un control que va a rebotar, y la acción —que es la puerta de verdad— para rechazar la llamada
+// venga de donde venga.
+export const ROLES_QUE_MUEVEN_DE_OBRA = ['direccion', 'administracion', 'jefe_obra'] as const
 
 export function puedeCambiarObraActual(rol: string | null | undefined): boolean {
   return typeof rol === 'string' && (ROLES_QUE_MUEVEN_DE_OBRA as readonly string[]).includes(rol)

@@ -2,17 +2,19 @@
 //
 // `obraActualActions.ts` es una server action: importa `next/cache` y `@/lib/supabase/server`
 // —que lee `headers()`—, así que no se la puede llamar desde `node --test`. Por eso lo único que
-// quedaba probado era `planDeObraActual` (la decisión pura) y la pantalla (que ni siquiera dibuja
-// el desplegable para el jefe de obra). El control que de verdad frena la escritura —el rol— vivía
-// en el único tramo sin test: borrarlo dejaba todo verde, y la RLS de `obra_asignacion` SÍ deja
-// escribir al jefe de obra dentro de sus obras (20260822T7000, líneas 340-341). Nadie avisaba.
+// quedaba probado era `planDeObraActual` (la decisión pura) y la pantalla, que es una cerradura y
+// no una puerta: se dibuja o no se dibuja, y la llamada puede venir de cualquier lado. El control
+// que de verdad frena la escritura —el rol— vivía
+// en el único tramo sin test: borrarlo dejaba todo verde y nadie avisaba. Desde el 08/09 a la
+// tarde el jefe de obra SÍ puede mover gente, así que el rol que este control tiene que poder
+// frenar es `campo` —el único que la RLS acota por obra— y el que no tiene perfil.
 //
 // Acá vive esa secuencia entera: validar, rechazar por rol, verificar persona y obra, leer las
 // vigentes, cerrar y abrir. Las dependencias entran por parámetro para que un test pueda mirar
 // —además del resultado— QUÉ TABLAS SE TOCARON: que un rechazo devuelva `{ ok: false }` no prueba
 // que no haya escrito antes.
 //
-// El porqué de cada regla (cerrar antes de abrir, `hasta = ayer`, sólo Administración) está en
+// El porqué de cada regla (cerrar antes de abrir, `hasta = ayer`, quién puede) está en
 // `obraActualActions.ts` y en `planDeObraActual.ts`; no se repite acá.
 
 import { z } from 'zod'
@@ -74,15 +76,17 @@ export async function cambiarObraActualCon(
   const obraId = parsed.data.obra_id ? parsed.data.obra_id : null
   const { supabase, hoy } = deps
 
-  // ═══ SÓLO DIRECCIÓN Y ADMINISTRACIÓN (dueño, 08/09/2026) ═══
+  // ═══ DIRECCIÓN, ADMINISTRACIÓN Y JEFE DE OBRA (dueño, 08/09/2026, tarde) ═══
   //
-  // Antes de tocar NADA: el rechazo por rol no puede quedar después de una lectura de
-  // `obra_asignacion`, porque entonces el orden de las líneas sería el único control.
+  // La lista vive en `planDeObraActual.ts` con su porqué. Acá lo que importa es DÓNDE está el `if`:
+  // antes de tocar NADA. Un rechazo puesto después de la lectura de `obra_asignacion` devuelve el
+  // mismo objeto y ya dejó rastro; el orden de las líneas sería el único control.
   if (!puedeCambiarObraActual(deps.perfil?.rol)) {
     return {
       ok: false,
-      error: 'Cambiar la obra de una persona es de Administración. La asistencia se sigue cargando '
-        + 'y corrigiendo normalmente.',
+      error: 'Tu usuario no puede cambiar la obra de una persona: lo hacen Dirección, '
+        + 'Administración y los jefes de obra. La asistencia se sigue cargando y corrigiendo '
+        + 'normalmente.',
     }
   }
 

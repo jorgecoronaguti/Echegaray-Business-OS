@@ -687,18 +687,30 @@ test('08b · el desplegable en el teléfono', async ({ page }) => {
   await page.screenshot({ path: 'qa-shots/asignacion-390.png', fullPage: true })
 })
 
-test('08c · el JEFE DE OBRA ve la grilla y NO el desplegable de obra actual', async ({ page }) => {
-  // *"sólo usuarios admin puedan hacer eso, y que jefe de obra pueda seguir con las funciones
-  // normales de registrar asistencia"* (dueño, 08/09/2026). El jefe llega a esta pantalla —el área
-  // se lo permite— y tiene que seguir viendo y editando la quincena; lo único que no aparece es el
-  // control que mueve gente de obra. Sin esta aserción, un `puedeCorregir` reusado por comodidad le
-  // devolvería el desplegable y nadie lo notaría.
+test('08c · el JEFE DE OBRA ve la grilla Y el desplegable de obra actual, habilitado', async ({ page }) => {
+  // *"Tenés que habilitar a los jefes de obra a poder modificar las obras asignadas del personal"*
+  // (dueño, 08/09/2026, tarde). Reemplaza la restricción de la mañana, que esta misma prueba
+  // afirmaba al revés: el jefe llegaba a la pantalla y el control no se le dibujaba.
+  //
+  // EL DEFECTO QUE ATRAPA: que la habilitación quede sólo en el módulo puro. `puedeCambiarObra` se
+  // calcula en el servidor con el rol del perfil; si esa punta no se actualiza, el test del permiso
+  // queda verde y el jefe sigue sin el control en la mano.
+  //
+  // NO SE ELIGE NINGUNA OPCIÓN ACÁ: esta grilla es de personas reales en obras reales y seleccionar
+  // movería una asignación de verdad. Que el jefe además ESCRIBA se prueba en
+  // `asistencia-admin-movil.spec.ts`, sobre una obra `zz-e2e-*` propia que el test crea y borra.
   await page.setViewportSize({ width: 1440, height: 900 })
   await entrarComo(page, JEFE.email, JEFE.password)
   await page.goto('/administracion/personas?vista=asistencia&modo=quincena')
   await expect(page.getByTestId('celda-obra').first()).toBeVisible()
-  await expect(page.getByTestId('select-obra-actual')).toHaveCount(0)
+  const select = page.getByTestId('select-obra-actual').first()
+  await expect(select).toBeVisible()
+  // VISIBLE NO ES USABLE: un `disabled` se ve igual y no mueve a nadie.
+  await expect(select).toBeEnabled()
+  // Y TIENE OBRAS ADENTRO. Un desplegable con una sola opción —«Sin obra»— se dibuja, se habilita y
+  // no sirve para nada: el jefe no podría traer a nadie.
+  expect(await select.locator('option').count()).toBeGreaterThan(1)
   // Y LA ASISTENCIA LE SIGUE FUNCIONANDO: las celdas de hora se editan como siempre.
   await expect(page.getByTestId('celda-hora').first()).toBeVisible()
-  await page.screenshot({ path: 'qa-shots/asignacion-jefe-sin-dropdown-1440.png', fullPage: true })
+  await page.screenshot({ path: 'qa-shots/asignacion-jefe-con-dropdown-1440.png', fullPage: true })
 })

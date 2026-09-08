@@ -11,7 +11,7 @@
 // ═══ ACÁ SÓLO QUEDA LO QUE NECESITA NEXT ═══
 //
 // Cliente, perfil, fecha y `revalidatePath`. La secuencia entera —incluido el rechazo por rol, que
-// es el control que impide que un jefe de obra mueva costo de mano de obra entre obras— vive en
+// es el control que impide que alguien sin permiso mueva costo de mano de obra entre obras— vive en
 // `obraActualNucleo.ts`, que no importa `next/cache` ni `@/lib/supabase/server` y por eso SE PUEDE
 // PROBAR. Mientras estuvo acá adentro, borrar ese `if` no ponía ni un test en rojo.
 //
@@ -20,7 +20,7 @@
 // La pantalla ofrece obras activas; esta llamada puede venir de cualquier lado. Se vuelve a
 // verificar que la obra exista y esté ACTIVA —igual que `guardarJornada`—: asignar gente a una obra
 // cerrada le imputa costo de mano de obra a algo que ya nadie mira. Y la RLS de `obra_asignacion`
-// NO alcanza: deja escribir al jefe dentro de `ve_obra`, que es justo lo que el dueño excluyó.
+// NO alcanza como control de rol: es más ancha que la lista que decidió el dueño.
 //
 // ═══ LAS HORAS YA CARGADAS NO SE TOCAN ═══
 //

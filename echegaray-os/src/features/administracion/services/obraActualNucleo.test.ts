@@ -1,13 +1,16 @@
-// LA PUERTA QUE FRENA AL JEFE DE OBRA TIENE QUE PODER DAR ROJO.
+// LA PUERTA QUE FRENA AL QUE NO PUEDE MOVER GENTE TIENE QUE PODER DAR ROJO.
 //
 // ═══ QUÉ DEFECTO ATRAPA ═══
 //
-// Que alguien borre —o corra de lugar— el rechazo por rol de `cambiarObraActualCon`. Hasta acá ese
-// `if` era el ÚNICO control real y no lo miraba nadie: los tests de `planDeObraActual` son puros y
-// siguen verdes sin él, el E2E 08c sólo comprueba que la pantalla no dibuje el desplegable —y la
-// pantalla es la cerradura, no la puerta—, y la RLS de `obra_asignacion`
-// (20260822T7000_porteros_por_consulta_no_por_fila.sql:340-341) SÍ deja escribir al `jefe_obra`
-// dentro de sus obras. Borrar el `if` movía costo de mano de obra entre obras sin una sola alerta.
+// Que alguien borre —o corra de lugar— el rechazo por rol de `cambiarObraActualCon`. Ese `if` es el
+// ÚNICO control real: los tests de `planDeObraActual` son puros y siguen verdes sin él, el E2E sólo
+// mira si la pantalla dibuja el desplegable —y la pantalla es la cerradura, no la puerta—, y la RLS
+// de `obra_asignacion` (20260822T7000_porteros_por_consulta_no_por_fila.sql:340-341) es más ancha
+// que la regla del dueño. Borrarlo movería costo de mano de obra entre obras sin una sola alerta.
+//
+// 08/09/2026 (tarde) · EL JEFE DE OBRA PASÓ A PODER. El dueño lo habilitó para que pueda armar la
+// cuadrilla antes de marcarla. El rol que este control tiene que seguir frenando es `campo` —el
+// único que la RLS acota por obra— y el que no tiene perfil.
 //
 // ═══ POR QUÉ NO ALCANZA CON MIRAR EL RESULTADO ═══
 //
@@ -85,8 +88,8 @@ function baseFalsa(contenido: Contenido) {
   return { supabase, toques }
 }
 
-const MENSAJE_PERMISO = 'Cambiar la obra de una persona es de Administración. La asistencia se '
-  + 'sigue cargando y corrigiendo normalmente.'
+const MENSAJE_PERMISO = 'Tu usuario no puede cambiar la obra de una persona: lo hacen Dirección, '
+  + 'Administración y los jefes de obra. La asistencia se sigue cargando y corrigiendo normalmente.'
 
 /** Una base con todo en orden: si la acción llega hasta el final, escribe. */
 function baseCompleta(vigentes: Fila[] = []) {
@@ -97,7 +100,25 @@ function baseCompleta(vigentes: Fila[] = []) {
   })
 }
 
-test('el jefe de obra rebota y NO toca obra_asignacion — ni para leer', async () => {
+test('el rol campo rebota y NO toca obra_asignacion — ni para leer', async () => {
+  const { supabase, toques } = baseCompleta([
+    { id: 'a1', obra_id: 'pisos-industriales', desde: '2026-08-01', hasta: null },
+  ])
+  const r = await cambiarObraActualCon(
+    { supabase, perfil: { rol: 'campo' }, hoy: HOY },
+    { persona_id: PERSONA, obra_id: 'salon-comercial' },
+  )
+  assert.equal(r.ok, false)
+  assert.equal(r.ok === false && r.error, MENSAJE_PERMISO)
+  assert.deepEqual(toques.filter((t) => t.tabla === 'obra_asignacion'), [],
+    'el rol campo llegó a tocar obra_asignacion: el rechazo está DESPUÉS de la escritura')
+  assert.deepEqual(toques, [], 'ni siquiera tendría que haber leído el plantel')
+})
+
+test('el JEFE DE OBRA escribe: cierra ayer y abre hoy, igual que Administración', async () => {
+  // EL DEFECTO QUE ATRAPA: que la habilitación del 08/09 quede sólo en la pantalla. Si alguien
+  // dibuja el control para el jefe pero la acción lo sigue rechazando, el botón existe, el acuse
+  // dice que no y la cuadrilla nunca se arma — que es peor que no ofrecerlo.
   const { supabase, toques } = baseCompleta([
     { id: 'a1', obra_id: 'pisos-industriales', desde: '2026-08-01', hasta: null },
   ])
@@ -105,11 +126,10 @@ test('el jefe de obra rebota y NO toca obra_asignacion — ni para leer', async 
     { supabase, perfil: { rol: 'jefe_obra' }, hoy: HOY },
     { persona_id: PERSONA, obra_id: 'salon-comercial' },
   )
-  assert.equal(r.ok, false)
-  assert.equal(r.ok === false && r.error, MENSAJE_PERMISO)
-  assert.deepEqual(toques.filter((t) => t.tabla === 'obra_asignacion'), [],
-    'el jefe de obra llegó a tocar obra_asignacion: el rechazo está DESPUÉS de la escritura')
-  assert.deepEqual(toques, [], 'ni siquiera tendría que haber leído el plantel')
+  assert.equal(r.ok, true, r.ok === false ? r.error : '')
+  const escrituras = toques.filter((t) => t.tabla === 'obra_asignacion' && t.verbo !== 'select')
+  assert.deepEqual(escrituras.map((t) => t.verbo), ['update', 'insert'])
+  assert.deepEqual(escrituras[0].valores, { hasta: AYER })
 })
 
 test('sin perfil (rol null) tampoco se mueve a nadie de obra', async () => {
