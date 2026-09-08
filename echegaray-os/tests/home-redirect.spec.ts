@@ -7,5 +7,8 @@ import { test, expect } from '@playwright/test'
 test('la raíz redirige a /login sin sesión autenticada', async ({ page }) => {
   await page.goto('/')
   await page.waitForURL(/\/login/)
-  await expect(page.getByRole('heading', { name: 'Ingresar' })).toBeVisible()
+  // El título era «Ingresar» y esta línea llevaba tiempo desactualizada: la pantalla decía «Entrá a
+  // tu obra» desde el porte de M01. Desde el 08/09/2026 dice «Entrá al OS de Echegaray» — neutro,
+  // porque por esta puerta entran las cuatro identidades de adentro y «tu obra» le hablaba a una.
+  await expect(page.getByRole('heading', { name: 'Entrá al OS de Echegaray' })).toBeVisible()
 })

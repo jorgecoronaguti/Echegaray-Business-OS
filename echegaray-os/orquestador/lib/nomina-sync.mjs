@@ -134,10 +134,36 @@ export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
       // esta fórmula la escribe el generador, así que el desfase NO daría error, daría un número.
       { f: `=D${r}*E${r}*'Parámetros'!$B$43` },
       { f: `=SUM(${H}!V${b.inicio}:V${b.fin})` },
+      // ═══ EL TOTAL DE LA QUINCENA ES «TOTAL SEMANA» (AB), NO «TOTAL EFECTIVO» (AA) — 08/09/2026 ═══
+      //
+      // La fila 1 del espejo dice qué es cada columna de la planilla JORNALES, textual:
+      //   V DIAS/HORAS · W $ HORA · X BANCO · Y ADELANTO BANCO/EMBARGOS · Z ADELANTO EFECTIVO ·
+      //   AA TOTAL EFECTIVO · AB TOTAL SEMANA · AC CLIENTE
+      // y la planilla los relaciona así, persona por persona: AB = V×W y AA = AB − X − Y − Z.
+      //
+      // Hasta hoy la columna «TOTAL» del registro sumaba AA —lo que se entrega en billetes DESPUÉS de
+      // descontar el lote del banco y los adelantos—, y el libro `_MOVIMIENTOS`, el Cash Flow, CAJA y
+      // Cargas Sociales tomaban ese número como el costo de la quincena. MEDIDO en el bloque cerrado
+      // del 17/08→31/08: AA suma $4.377.155; AB suma $8.709.885 (la propia planilla lo publica como
+      // TOTAL SEMANA y TOTAL MO). El banco muestra los $2.934.498 del lote de haberes que faltaban, y
+      // los adelantos ($1.398.235) también salieron. El año entero: $90,4M publicados contra $133,5M
+      // que se pagaron. El F931 de agosto ($8,33M) es el 113% del "total" viejo del mes y el 52% del
+      // verdadero: sólo el segundo es una alícuota posible.
+      //
+      // El dueño, 08/09: «por los gráficos de CAJA puedo ver que no están siendo consideradas y
+      // además pueden estar mal proyectadas en todo el cash flow». Era esto, y también arrastraba la
+      // proyección: «horas medidas» = Σ TOTAL ÷ Σ(Σ$/h × días) daba 3,15 h/día porque el numerador
+      // era la mitad de la plata; con el total verdadero mide lo que se trabaja de verdad.
+      //
+      // LOS CANALES SE ACOMODAN PARA QUE SIGAN SUMANDO EL TOTAL (el control «los tres canales suman lo
+      // pagado» lo exige): Banco = X (el lote de haberes, que es lo que el testigo bancario busca) ·
+      // Adelanto = Y+Z (todos los adelantos, por banco y en efectivo) · Total recibo = AA (lo entregado
+      // contra recibo, en efectivo) · TOTAL = AB. Los encabezados no cambian: el ancho del registro y
+      // la columna «Pagado el» del dueño quedan donde están.
       { f: `=SUM(${H}!X${b.inicio}:X${b.fin})`, estilo: 'moneda' },
-      { f: `=SUM(${H}!Y${b.inicio}:Y${b.fin})`, estilo: 'moneda' },
-      { f: `=SUM(${H}!Z${b.inicio}:Z${b.fin})`, estilo: 'moneda' },
-      { f: `=SUM(${H}!AA${b.inicio}:AA${b.fin})`, estilo: 'moneda_negrita' },
+      { f: `=SUM(${H}!Y${b.inicio}:Y${b.fin})+SUM(${H}!Z${b.inicio}:Z${b.fin})`, estilo: 'moneda' },
+      { f: `=SUM(${H}!AA${b.inicio}:AA${b.fin})`, estilo: 'moneda' },
+      { f: `=SUM(${H}!AB${b.inicio}:AB${b.fin})`, estilo: 'moneda_negrita' },
       // Σ DEL JORNAL POR HORA DE TODO EL PLANTEL de esa quincena (columna W de JORNALES, el valor
       // hora REAL de cada persona según su categoría UOCRA). Es la base correcta para proyectar:
       // antes se usaba "total ÷ horas", que es un promedio inventado y cambia con el ausentismo.

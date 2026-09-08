@@ -54,8 +54,15 @@ check('cada Hasta indexa la fila de fechas de SU bloque', filas.every((r, i) => 
   return propias.length === 3 && propias.every((m) => m === `F${ff}:U${ff}`)
 }))
 check('Σ del jornal por hora del plantel sale de la columna W', filas[0][10].f === "=SUM('_J_OBREROS'!W4:W6)")
-check('el total usa el rango del bloque', filas[0][9].f === "=SUM('_J_OBREROS'!AA4:AA6)")
-check('el segundo bloque usa SU rango', filas[1][9].f === "=SUM('_J_OBREROS'!AA9:AA10)")
+// ═══ EL TOTAL ES «TOTAL SEMANA» (AB), NO «TOTAL EFECTIVO» (AA) — 08/09/2026 ═══
+// La planilla relaciona sus columnas así: AB = horas × $/h y AA = AB − banco − adelantos. Sumando AA
+// el registro publicaba la mitad del costo de cada quincena ($4,38M contra $8,71M en la del 17/08→31/08)
+// y el libro, CAJA, los dos Cash Flow y Cargas Sociales lo tomaban como el costo entero.
+check('el TOTAL es TOTAL SEMANA (AB), no el efectivo (AA)', filas[0][9].f === "=SUM('_J_OBREROS'!AB4:AB6)")
+check('el segundo bloque usa SU rango', filas[1][9].f === "=SUM('_J_OBREROS'!AB9:AB10)")
+check('Banco sigue siendo el lote (X): es lo que el testigo bancario busca', filas[0][6].f === "=SUM('_J_OBREROS'!X4:X6)")
+check('Adelanto suma los dos adelantos, por banco (Y) y en efectivo (Z)', filas[0][7].f === "=SUM('_J_OBREROS'!Y4:Y6)+SUM('_J_OBREROS'!Z4:Z6)")
+check('Total recibo es lo entregado contra recibo en efectivo (AA)', filas[0][8].f === "=SUM('_J_OBREROS'!AA4:AA6)")
 // Las hs correspondientes se autorreferencian: dependen de la fila donde va a quedar la quincena.
 // Entró "Se paga el" en la columna C (31/07) y todo el registro corrió una a la derecha: días hábiles
 // pasó a D y personas a E. Si alguien inserta otra columna, esto falla acá y no en el Sheet.

@@ -19,7 +19,13 @@ import type { Page } from '@playwright/test'
  * que es la pantalla que contesta sus tres preguntas. Sin esto, entrar como empleado espera para
  * siempre una URL a la que ese rol no llega nunca.
  */
-export const ATERRIZAJE = /\/(obras|clientes|flujo-caja|hoy)/
+/**
+ * `administracion` entró el 08/09/2026 con la unificación del ingreso: Dirección y Administración
+ * entraban por `/obras` mientras su INICIO —el que abre el isotipo del header— era `/administracion`.
+ * Ahora las dos puertas dan al mismo lugar, y el lugar lo decide `aterrizajeDeIngreso`, que es puro
+ * y está probado en `src/features/auth/types/aterrizaje.test.ts`. Éste es el contrato del navegador.
+ */
+export const ATERRIZAJE = /\/(administracion|obras|clientes|flujo-caja|hoy)/
 
 export async function entrarComo(page: Page, email: string, password: string) {
   await page.goto('/login')

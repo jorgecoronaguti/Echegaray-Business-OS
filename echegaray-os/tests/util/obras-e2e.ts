@@ -111,7 +111,9 @@ export async function entrar(page: Page) {
   // dos siguientes 1,8 y 1,5 s. Con 20 s el humo contra producción daba rojo por estar del lado
   // equivocado de esa frontera, y el rojo no señalaba ningún defecto: señalaba que el despliegue
   // era reciente. Un test que falla por el reloj enseña a ignorar los rojos.
-  await page.waitForURL(/\/(dashboard|flujo-caja|obras)/, { timeout: 60000 })
+  // `administracion` entró el 08/09/2026: es el inicio de Dirección y Administración desde que el
+  // ingreso usa la misma regla que la home. Ver tests/util/login.ts.
+  await page.waitForURL(/\/(dashboard|flujo-caja|obras|administracion)/, { timeout: 60000 })
 }
 
 export async function conBase(): Promise<SupabaseClient> {
