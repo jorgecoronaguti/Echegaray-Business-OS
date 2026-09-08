@@ -339,6 +339,80 @@ test('05c · GUARDAR DEJA EL PANEL ABIERTO CON EL ACUSE, y la celda de atrás ca
   }
 })
 
+test('05d · UNA OBRA CERRADA: el día YA CARGADO se corrige en la celda, y el error va bajo la fila', async ({ page }) => {
+  test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
+    'Escribe HH en su propia obra ZZ-E2E. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
+  // EL DEFECTO DEL DUEÑO, EN EL NAVEGADOR (08/09, captura de producción): «modifiqué directamente el
+  // número y salta error». Sus horas del 04/09 estaban en MAMPOSTERÍA, cerrada; la acción rebotaba
+  // y el texto se dibujaba DENTRO de la celda, en diez renglones, rompiendo la fila.
+  //
+  // Acá la obra de prueba se CIERRA a propósito después de dejarle un día cargado. Es el único
+  // escenario cerrado que se puede tocar: escribir sobre una obra cerrada de verdad imputaría horas
+  // a una obra que ya se cerró con su margen.
+  const persona = await prepararObraDePrueba()
+  if (!persona) test.skip(true, 'La base no tiene a nadie en el plantel.')
+  const sb = servicio()
+  const hoy = new Date().toISOString().slice(0, 10)
+  const previo = await sb.from('registros_hh').insert({
+    obra_canonica_id: OBRA_DE_PRUEBA, persona_id: persona, fecha: hoy, fecha_inicio_semana: hoy,
+    horas: 8, tipo_hora: 'normal', actividad_id: null, fuente_legacy: 'e2e:correccion-cerrada',
+  }).select('id')
+  if (previo.error) throw new Error(`No pude dejar el día cargado: ${previo.error.message}`)
+  const cierre = await sb.from('obra_canonica').update({ estado: 'cerrada' }).eq('id', OBRA_DE_PRUEBA).select('estado')
+  if (cierre.error || (cierre.data?.[0] as { estado: string } | undefined)?.estado !== 'cerrada') {
+    throw new Error(`La obra de prueba no quedó cerrada: ${cierre.error?.message ?? 'no se releyó'}`)
+  }
+
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await entrarComo(page, ADMIN.email, ADMIN.password)
+    await page.goto('/administracion/personas?vista=asistencia')
+    await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+    const fila = page.locator(`[data-testid="fila-quincena"]:has(a[href*="${persona}"])`).first()
+    if (await fila.count() === 0) test.skip(true, 'La persona de prueba no está en esta quincena.')
+    // LA CELDA DE ESE DÍA. Si ese día la persona tiene horas en OTRA obra además de la de prueba,
+    // la celda no es editable —se corrige desde el panel— y este control no aplica: se saltea, no
+    // se fuerza. Escribir ahí mandaría las horas a la obra viva de la persona.
+    const celda = fila.locator(`[data-testid="celda-hora"][aria-label*="${hoy}"]`)
+    if (await celda.count() === 0) test.skip(true, 'Ese día está repartido en dos obras: se corrige desde el panel.')
+    await expect(celda).toHaveValue('8')
+
+    // (a) LA CORRECCIÓN ENTRA AUNQUE LA OBRA ESTÉ CERRADA — y la evidencia es el dato leído en la
+    // base, no la pantalla que no protestó.
+    await celda.fill('9')
+    await page.keyboard.press('Tab')
+    await expect(fila.getByTestId('fila-error')).toHaveCount(0)
+    await expect.poll(async () => {
+      const { data } = await sb.from('registros_hh').select('horas')
+        .eq('obra_canonica_id', OBRA_DE_PRUEBA).eq('persona_id', persona).eq('fecha', hoy)
+      return Number((data?.[0] as { horas: number } | undefined)?.horas ?? 0)
+    }, { timeout: 20000 }).toBe(9)
+    await page.screenshot({ path: 'qa-shots/asistencia-correccion-cerrada-ok-1440.png' })
+
+    // (b) EL ERROR NO ROMPE LA FILA. Un valor que no es un número ni «A» lo rechaza la pantalla sin
+    // llamar a la base: alcanza para probar la forma del aviso, que es el segundo defecto.
+    const altoAntes = (await fila.boundingBox())?.height ?? 0
+    await celda.fill('nueve')
+    await page.keyboard.press('Tab')
+    const aviso = fila.locator('xpath=following-sibling::tr[1]').getByText(/·/).first()
+    await expect(page.getByTestId('fila-error').first()).toBeVisible()
+    const cajaAviso = await page.getByTestId('fila-error').first().boundingBox()
+    if (!cajaAviso) throw new Error('El aviso no tiene caja.')
+    // UNA LÍNEA: 11,5px de texto en una fila de tabla no pasa de 24px. El defecto que atrapa es el
+    // mensaje de diez renglones que estiraba la fila a cinco veces su alto.
+    expect(cajaAviso.height).toBeLessThanOrEqual(24)
+    // Y LA FILA SIGUE MIDIENDO LO MISMO: el aviso está afuera, no adentro de la celda.
+    expect((await fila.boundingBox())?.height ?? 0).toBeLessThanOrEqual(altoAntes + 1)
+    // LA CELDA VUELVE AL VALOR ANTERIOR: lo tipeado no se guardó, dejarlo escrito diría lo contrario.
+    await expect(celda).toHaveValue('9')
+    await expect(aviso).toBeVisible()
+    await page.screenshot({ path: 'qa-shots/asistencia-correccion-cerrada-1440.png' })
+  } finally {
+    await limpiarObraDePrueba()
+  }
+})
+
 test('06 · la CARPETA de la persona: su cronología, con lo importado de JORNALES', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await entrarComo(page, ADMIN.email, ADMIN.password)

@@ -189,13 +189,16 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: false, href: armarHref({}) },
               { clave: 'asistencia', titulo: 'Asistencia', cuenta: null, activa: true, href: hrefAsistencia(sp.quincena) },
             ]}
-            buscador={{
+            // EL BUSCADOR ES DE LA GRILLA. En la carga del día el bloque muestra UNA obra y su
+            // gente —seis o siete nombres en una pantalla de 390px—: buscar ahí no filtra nada y
+            // le come una línea entera a la única vista que se usa parado en la obra.
+            buscador={modo === 'quincena' ? {
               accion: RUTA,
               q: sp.q,
               placeholder: 'Buscar persona',
               oculto: { vista: 'asistencia', quincena: sp.quincena },
               testid: 'buscar-persona',
-            }}
+            } : undefined}
           />
           {modo === 'dia' ? (
             <BloqueAsistenciaDia

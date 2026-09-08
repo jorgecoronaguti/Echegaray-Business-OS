@@ -291,7 +291,19 @@ test('el cierre cita TODAS las obras en el contratado y SÓLO las que tienen cos
   assert.equal(cel(g, `D${g.fTotObras}`), `=${filasObra.map((n) => `D${n}`).join('+')}`)
   assert.equal(cel(g, `H${g.fTotObras}`),
     conCosto.length ? `=${conCosto.map((n) => `H${n}`).join('+')}` : SIN_COSTO)
-  assert.ok(conCosto.length < filasObra.length, 'hay obras sin costo cargado: si no, este test no prueba nada')
+  // EL CASO SIN COSTO SE FABRICA, NO SE ESPERA DEL DATO VIVO (08/09/2026). Hasta hoy el test exigía
+  // que alguna obra real siguiera sin costo cargado: el día que Pisos 120 + Rampa lo tuvo, el test
+  // se puso rojo sin que ninguna regla se rompiera. Una obra sintética sin costo prueba lo mismo.
+  const sinCosto = {
+    ...OBRAS_FUTURAS[0], clave: 'zz-sin-costo', obra: 'ZZ SIN COSTO', ventaTexto: 'ZZ Sin Costo',
+    inicio: '2026-12-01', fin: '2026-12-31', moCargasPesos: 0, egresos: [], sinCosto: 'sin archivo de costo (fixture)',
+  }
+  const g2 = grillaObras({ obras: [...OBRAS_FUTURAS, sinCosto] })
+  const filas2 = g2.bloques.map((b) => b.fProt)
+  const conCosto2 = g2.bloques.filter((b) => !b.sinCosto).map((b) => b.fProt)
+  assert.equal(conCosto2.length, filas2.length - 1, 'la sintética es la única sin costo')
+  assert.equal(cel(g2, `D${g2.fTotObras}`), `=${filas2.map((n) => `D${n}`).join('+')}`)
+  assert.equal(cel(g2, `H${g2.fTotObras}`), `=${conCosto2.map((n) => `H${n}`).join('+')}`)
 })
 
 test('el cierre NO afirma una población que sólo tienen algunas de sus columnas', () => {

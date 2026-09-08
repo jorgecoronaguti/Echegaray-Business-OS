@@ -106,6 +106,19 @@ export function GrillaAsistenciaObra({
 
   const claveDe = (fila: FilaQuincena, fecha: string) => `${fila.clave}·${fecha}`
 
+  // ═══ EL ERROR DE UNA CELDA NO SE DIBUJA ADENTRO DE LA CELDA ═══
+  //
+  // El defecto (dueño, 08/09, captura de producción): el mensaje de la acción —tres renglones de
+  // texto— se pintaba DENTRO del `<td>` de 44px de ancho. Se partía en diez líneas, estiraba la
+  // fila a cinco veces su alto y empujaba la quincena entera. Corregir un número dejaba la pantalla
+  // inservible, que es peor que el error que estaba avisando.
+  //
+  // Ahora: una línea bajo la fila, con la fecha adelante para saber QUÉ celda falló, truncada con
+  // el texto completo en `title`. La celda vuelve a su valor anterior con borde de error —lo que se
+  // tipeó no se guardó, así que dejarlo escrito afirmaría lo contrario— y el borde se apaga solo en
+  // cuanto se vuelve a escribir.
+  const fallar = (k: string, texto: string) => setErrores((e) => ({ ...e, [k]: texto }))
+
   const guardar = (fila: FilaQuincena, celda: CeldaObra, bruto: string) => {
     const k = claveDe(fila, celda.fecha)
     const original = textoDe(celda)
@@ -117,26 +130,32 @@ export function GrillaAsistenciaObra({
       ? { id: celda.tramos[0].obra_id, nombre: celda.tramos[0].nombre }
       : fila.obraPorDefecto
     if (!destino) {
-      setErrores((e) => ({ ...e, [k]: 'Esa persona no tiene obra activa: la corrección se hace desde el panel' }))
+      volverAlValorAnterior(k)
+      fallar(k, 'Esa persona no tiene obra activa: la corrección se hace desde el panel.')
       return
     }
     const letra = bruto.trim().toUpperCase()
     if (letra === 'A') {
       const jornada = jornadaPorObra[destino.id] ?? 0
       if (jornada <= 0) {
-        setErrores((e) => ({ ...e, [k]: 'Esa obra no tiene jornada pactada: la ausencia no se puede medir' }))
+        volverAlValorAnterior(k)
+        fallar(k, 'Esa obra no tiene jornada pactada: la ausencia no se puede medir.')
         return
       }
       enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'ausente', horas: jornada }, k)
       return
     }
     const { horas, error } = leerHoras(bruto)
-    if (error) { setErrores((e) => ({ ...e, [k]: error })); return }
+    if (error) { volverAlValorAnterior(k); fallar(k, error); return }
     // En blanco NO borra: dejar de escribir no es una decisión de nadie. Borrar una jornada
     // cargada es un acto y necesita su propia puerta, que esta pantalla todavía no tiene.
     if (horas === null) { setBorradores((b) => ({ ...b, [k]: original })); return }
     enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas }, k)
   }
+
+  /** Lo tipeado se descarta: no se guardó. El valor lo vuelve a poner `textoDe(celda)`. */
+  const volverAlValorAnterior = (k: string) =>
+    setBorradores((b) => { const n = { ...b }; delete n[k]; return n })
 
   const enviar = (
     obraId: string,
@@ -147,7 +166,7 @@ export function GrillaAsistenciaObra({
     setErrores((e) => { const n = { ...e }; delete n[k]; return n })
     arrancar(async () => {
       const r = await guardarJornada({ obra_id: obraId, fecha, marcas: [marca] })
-      if (!r.ok) setErrores((e) => ({ ...e, [k]: r.error }))
+      if (!r.ok) { volverAlValorAnterior(k); fallar(k, r.error) }
     })
   }
 
@@ -188,9 +207,15 @@ export function GrillaAsistenciaObra({
           </tr>
         </thead>
         <tbody>
-          {filas.map((fila) => (
+          {filas.map((fila) => {
+            // EL PRIMER ERROR DE LA FILA, con su día adelante: la línea está abajo y sin la fecha no
+            // se sabe a qué celda se refiere. Uno solo — dos avisos apilados vuelven a romper la fila.
+            const fallo = fila.celdas
+              .map((c) => ({ fecha: c.fecha, texto: errores[claveDe(fila, c.fecha)] }))
+              .find((x) => x.texto)
+            return (
             <Fragment key={fila.clave}>
-            <tr style={{ borderBottom: `1px solid ${V.lineaFila}` }} data-testid="fila-quincena">
+            <tr style={{ borderBottom: fallo ? undefined : `1px solid ${V.lineaFila}` }} data-testid="fila-quincena">
               <td style={{ padding: '7px 8px 7px 0', verticalAlign: 'top' }}>
                 {/* EL NOMBRE ES LA PUERTA A SU CARPETA. El dueño: *"cada persona debe tener su
                     cronología de trabajo en su propia carpeta, no que se tiene que mostrar todo de
@@ -260,7 +285,10 @@ export function GrillaAsistenciaObra({
                         data-estado={celda.estado}
                         value={valor}
                         placeholder={hueco.texto}
-                        onChange={(e) => setBorradores((b) => ({ ...b, [k]: e.target.value }))}
+                        onChange={(e) => {
+                          setBorradores((b) => ({ ...b, [k]: e.target.value }))
+                          if (errores[k]) setErrores((x) => { const n = { ...x }; delete n[k]; return n })
+                        }}
                         onBlur={(e) => guardar(fila, celda, e.target.value)}
                         style={{
                           width: 44, height: 28, textAlign: 'center', fontSize: '13px',
@@ -286,11 +314,6 @@ export function GrillaAsistenciaObra({
                       <span data-testid="celda-repartida" title={`${celda.tramos.length} obras ese día`}
                         style={{ display: 'block', fontSize: '9px', color: V.tenue, lineHeight: 1 }}>
                         ●
-                      </span>
-                    )}
-                    {errores[k] && (
-                      <span style={{ display: 'block', fontSize: '10.5px', color: ROJO, maxWidth: 90 }}>
-                        {errores[k]}
                       </span>
                     )}
                   </td>
@@ -321,13 +344,32 @@ export function GrillaAsistenciaObra({
                 </td>
               )}
             </tr>
+            {fallo && (
+              <tr style={{ borderBottom: `1px solid ${V.lineaFila}` }} data-testid="fila-error">
+                <td colSpan={3 + dias.length + (puedeCorregir ? 1 : 0)}
+                  style={{ padding: '0 0 6px', color: ROJO, fontSize: '11.5px' }}>
+                  {/* UNA SOLA LÍNEA, PASE LO QUE PASE. `nowrap` + `ellipsis` sobre un ancho de 0 con
+                      `max-width: 100%`: sin el 0 la celda crece con el texto y la tabla se ensancha
+                      hasta sacar la quincena de la pantalla — el mismo defecto, movido de lugar.
+                      El texto entero queda en `title`. */}
+                  <div title={fallo.texto} style={{
+                    width: 0, minWidth: '100%', overflow: 'hidden',
+                    whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                  }}>
+                    {fechaCorta(fallo.fecha)} · {fallo.texto}
+                  </div>
+                </td>
+              </tr>
+            )}
             {/* EL ACUSE VA DEBAJO DE LA FILA Y NO EN LA CELDA: «Desde hoy en SALÓN COMERCIAL · antes
                 PISOS INDUSTRIALES» no entra en una columna del 18% sin partirse en cinco renglones.
                 Queda hasta el próximo cambio: quien lo hizo tiene que poder leerlo después de que
-                la fila se refrescó. */}
+                la fila se refrescó. Es una fila aparte de la del error de carga: son dos hechos
+                distintos —dónde trabaja y qué pasó con una hora— y apilarlos en la misma línea
+                haría que uno tapara al otro. */}
             {acuses[fila.clave] && (
               <tr data-testid="acuse-obra-actual">
-                <td colSpan={dias.length + (puedeCorregir ? 4 : 3)} style={{
+                <td colSpan={3 + dias.length + (puedeCorregir ? 1 : 0)} style={{
                   padding: '0 0 7px', fontSize: '11.5px',
                   color: acuses[fila.clave].error ? ROJO : V.apagado,
                 }}>
@@ -336,7 +378,8 @@ export function GrillaAsistenciaObra({
               </tr>
             )}
             </Fragment>
-          ))}
+            )
+          })}
 
           <tr style={{ borderTop: `1px solid ${V.lineaFuerte}` }} data-testid="total-quincena">
             <td colSpan={2} style={{ padding: '8px 8px 8px 0', color: V.apagado }}>Total de la quincena</td>
@@ -377,6 +420,9 @@ export function GrillaAsistenciaObra({
     </>
   )
 }
+
+/** `2026-09-04` → `04/09`. La línea de error tiene que decir de qué día habla. */
+const fechaCorta = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 function Rotulo({ children, ancho, centro, derecha, tenue, titulo }: {
   children?: React.ReactNode; ancho?: string; centro?: boolean; derecha?: boolean

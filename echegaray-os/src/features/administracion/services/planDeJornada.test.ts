@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ORDEN_DEL_MOVIMIENTO, acuseDe, acuseDeBorrado, cambiaDeObra, correccionSchema, envioSchema,
-  motivoDe, planDeBorrado, planDeGuardado, traducirEscritura,
+  motivoDe, personasQueEstrenanDia, planDeBorrado, planDeGuardado, puertaDeObraNoActiva,
+  traducirEscritura,
 } from './planDeJornada.ts'
 import type { Correccion, FilaExistente, MarcaDeJornada } from './planDeJornada.ts'
 
@@ -410,4 +411,88 @@ test('EL ACUSE DEL BORRADO CUENTA LO QUE LA BASE DEVOLVIÓ, y nombra lo que qued
 test('EL ORDEN DE LAS FILAS NO CAMBIA QUÉ SE BORRA', () => {
   const filas = [fila('r3', A, 2, 'extra_50'), fila('r1', A, 8.8)]
   assert.deepEqual(planDeBorrado(filas).borrar, planDeBorrado([...filas].reverse()).borrar)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// CORREGIR UN DÍA VIEJO EN UNA OBRA CERRADA
+//
+// El defecto (dueño, 08/09, captura de producción): tipear 9 sobre la celda de un día ya cargado en
+// MAMPOSTERÍA —cerrada— devolvía «no se le pueden cargar horas ... se reabre la obra». El registro
+// existía: corregirlo es corregir historia, no cargar horas nuevas en una obra terminada.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('CORREGIR LAS HORAS DE UN DÍA QUE YA EXISTE EN UNA OBRA CERRADA: PERMITIDO', () => {
+  const yaCargado = [fila('r1', A, 8.8)]
+  const estrenan = personasQueEstrenanDia([presente(A, 9)], yaCargado)
+  assert.deepEqual(estrenan, [], 'el día ya existe: no se estrena nada')
+  assert.equal(
+    puertaDeObraNoActiva({ nombre: 'MAMPOSTERÍA', estado: 'cerrada', crea: estrenan.length > 0 }),
+    null,
+  )
+  // Y el plan que se va a escribir es un UPDATE, no un alta.
+  const plan = planDeGuardado([presente(A, 9)], yaCargado)
+  assert.equal(plan.insertar.length, 0)
+  assert.equal(plan.actualizar.length, 1)
+})
+
+test('MARCAR AUSENCIA SOBRE UN DÍA QUE YA EXISTE EN UNA OBRA CERRADA: PERMITIDO', () => {
+  // Aunque el plan INSERTE —cambiar `normal` por `ausencia` es fila nueva más borrado—, el día ya
+  // estaba cargado en esa obra. Por eso la puerta pregunta por la fila existente y no por
+  // `plan.insertar`: con ese criterio el dueño no habría podido marcar una ausencia vieja.
+  const yaCargado = [fila('r1', A, 8.8)]
+  assert.deepEqual(personasQueEstrenanDia([ausente(A)], yaCargado), [])
+  assert.ok(planDeGuardado([ausente(A)], yaCargado).insertar.length === 1)
+  assert.equal(puertaDeObraNoActiva({ nombre: 'MAMPOSTERÍA', estado: 'cerrada', crea: false }), null)
+})
+
+test('ESTRENAR UN DÍA EN UNA OBRA CERRADA: RECHAZADO, Y EL MENSAJE ENTRA EN UNA LÍNEA', () => {
+  const estrenan = personasQueEstrenanDia([presente(A, 9)], [])
+  assert.deepEqual(estrenan, [A])
+  const error = puertaDeObraNoActiva({ nombre: 'MAMPOSTERÍA', estado: 'cerrada', crea: estrenan.length > 0 })
+  assert.equal(error, '«MAMPOSTERÍA» está cerrada: sólo se corrigen días ya cargados, no se cargan horas nuevas.')
+  // UNA LÍNEA, NO DIEZ RENGLONES. El mensaje viejo medía 137 caracteres y se dibujaba dentro de una
+  // celda de 44px: rompía la fila. Éste va bajo la fila y truncado, pero si crece vuelve el problema.
+  assert.ok((error as string).length <= 120, `el mensaje mide ${(error as string).length}`)
+  assert.ok(!(error as string).includes('\n'))
+})
+
+test('OTRA PERSONA DEL MISMO ENVÍO NO TAPA A LA QUE ESTRENA EL DÍA', () => {
+  // El defecto que atrapa: mirar «¿hay alguna fila ese día?» en vez de mirar POR PERSONA dejaría
+  // colar horas nuevas de B en una obra cerrada porque A ya tenía las suyas.
+  assert.deepEqual(personasQueEstrenanDia([presente(A, 9), presente(B, 8)], [fila('r1', A, 8.8)]), [B])
+})
+
+test('UNA EXTRA O UNA IMPUTACIÓN AL PLAN NO CUENTAN COMO DÍA CARGADO', () => {
+  // Esas filas no las administra esta pantalla: escribirle la jornada encima ES un registro nuevo.
+  assert.deepEqual(personasQueEstrenanDia([presente(A, 9)], [fila('r1', A, 2, 'extra_50')]), [A])
+  assert.deepEqual(
+    personasQueEstrenanDia([presente(A, 9)], [fila('r1', A, 8, 'normal', { actividad_id: 'act-1' })]),
+    [A],
+  )
+})
+
+test('LA LICENCIA CUENTA COMO DÍA CARGADO SÓLO PARA ADMINISTRACIÓN', () => {
+  const licencia = [fila('r1', A, 8.8, 'licencia')]
+  assert.deepEqual(personasQueEstrenanDia([presente(A, 9)], licencia), [A], 'desde campo, es alta')
+  assert.deepEqual(
+    personasQueEstrenanDia([presente(A, 9)], licencia, { administraLicencias: true }), [],
+    'Administración la autorizó y la corrige',
+  )
+})
+
+test('MOVER HORAS HACIA UNA OBRA CERRADA: RECHAZADO', () => {
+  const c = correccion({ obra_origen: 'obra-viva', obra_destino: 'obra-vieja' })
+  assert.equal(cambiaDeObra(c), true)
+  const error = puertaDeObraNoActiva({
+    nombre: 'MAMPOSTERÍA', estado: 'cerrada', crea: cambiaDeObra(c), motivo: 'mover',
+  })
+  assert.equal(error, '«MAMPOSTERÍA» está cerrada: no se le pueden mover horas.')
+})
+
+test('UNA OBRA QUE NO ESTÁ NI ACTIVA NI CERRADA DICE EN QUÉ ESTADO ESTÁ', () => {
+  assert.equal(
+    puertaDeObraNoActiva({ nombre: 'GALPÓN 9', estado: 'pausada', crea: true }),
+    '«GALPÓN 9» no está activa (pausada): sólo se corrigen días ya cargados, no se cargan horas nuevas.',
+  )
+  assert.equal(puertaDeObraNoActiva({ nombre: 'X', estado: 'activa', crea: true }), null)
 })

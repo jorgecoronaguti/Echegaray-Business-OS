@@ -46,3 +46,8 @@ export function hoyISO(d = new Date()): string {
 export function diaDeCarga(pedido: string | undefined | null, hoy: string): string {
   return esFechaISO(pedido) ? pedido : hoy
 }
+
+/** Marcador que `ElegirDia` reemplaza por la fecha elegida en la plantilla de URL. Vive acá (módulo
+ *  sin 'use client') porque lo leen un Server Component y un Client Component: un valor exportado
+ *  desde un módulo cliente no puede importarse del lado servidor. */
+export const TOKEN_DIA = '__DIA__'

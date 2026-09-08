@@ -282,7 +282,8 @@ async function extraerDeLasFuentes(google, corte) {
   const OBRAS_FUTURAS = fichaObras.obras
   // SÓLO LOS MATERIALES: la mano de obra del registro se paga por Jornales y entra al libro por su
   // propia puerta (MAX(plantel; demanda de OBRAS)). Sumarla acá la contaría dos veces.
-  const previstos = sinObras ? [] : await query(`select obra_rotulo, obra_clave, obra_canonica_id, concepto, familia, proveedor, monto
+  const previstos = sinObras ? [] : await query(`select obra_rotulo, obra_clave, obra_canonica_id, concepto, familia, proveedor, monto,
+      origen_pestana, to_char(fecha_estimada, 'YYYY-MM-DD') as fecha_estimada
     from public.obra_egreso_proyectado where tipo = 'material'
     order by obra_rotulo, concepto`)
     .then((r) => r.rows)
