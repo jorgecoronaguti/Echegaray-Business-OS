@@ -211,3 +211,38 @@ test('el presente declarado sin horas cuenta como día por cargar, no como día 
   assert.equal(d.sinCargar, 1, 'un presente sin horas infló el conteo de la carga')
   assert.equal(d.obras[0].gente.find((g) => g.personaId === 'p1')?.estado, 'presente')
 })
+
+// ── PRESENCIA Y HORAS SON DOS CAMPOS, NUNCA UNO (08/09/2026, tercera marca del dueño) ────────────
+//
+// *«todas las pantallas en donde aparezca el concepto de fichado no tiene que resolverse con las
+// hs; está mal: una cosa es asistencia o activo en el día y otra cosa son las cantidades de hs»*.
+//
+// EL DEFECTO QUE ATRAPAN: que un número de horas vuelva a fabricar una presencia. `clasificar`
+// devolvía un solo `estado` donde `con_horas` era una CANTIDAD disfrazada de ESTADO — nadie había
+// mirado a esa persona, sólo le habían cargado el día— y `sin_cargar` mezclaba «no hay horas» con
+// «nadie declaró nada». Con un solo campo la pantalla no puede decir las dos verdades a la vez.
+
+test('9 h cargadas y nadie que lo haya declarado: SIN MARCAR, con sus 9 h al lado', () => {
+  const c = clasificar([reg({ persona_id: 'a', horas: 9 })])
+  assert.equal(c.presencia, 'sin_marcar', 'las horas fabricaron una presencia que nadie afirmó')
+  assert.equal(c.horas, 9, 'la cantidad se sigue viendo: es el otro hecho, no el mismo')
+  assert.equal(c.fuente, null, 'sin declaración ni fichaje no hay fuente de presencia')
+})
+
+test('ausencia declarada y ni una fila de horas: AUSENTE y horas en null, que no es cero', () => {
+  const c = clasificar([], 'ausente')
+  assert.equal(c.presencia, 'ausente')
+  assert.equal(c.horas, null)
+  assert.equal(c.fuente, 'declarada')
+  assert.equal(c.conflicto ?? false, false)
+})
+
+test('declarado presente sin horas y sin marcar con horas son DOS filas distintas y las dos válidas', () => {
+  const declarado = clasificar([], 'presente')
+  assert.equal(declarado.presencia, 'presente')
+  assert.equal(declarado.horas, null)
+
+  const conHoras = clasificar([reg({ persona_id: 'b', horas: 8 })])
+  assert.equal(conHoras.presencia, 'sin_marcar')
+  assert.equal(conHoras.horas, 8)
+})
