@@ -9,7 +9,8 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { TraerALaObra } from './TraerALaObra'
 import { ElegirDia } from './ElegirDia'
 import { TOKEN_DIA } from '../../services/diaDeJornada'
-import { FormAsistencia } from './FormAsistencia'
+import { CargaDelDia } from './CargaDelDia'
+import { getPresenciaDelDia } from '../../services/presenciaDelDiaService'
 
 // LA CARGA DE ASISTENCIA EN EL TELÉFONO, DENTRO DE ADMINISTRACIÓN — 08/09/2026.
 //
@@ -89,6 +90,10 @@ export async function BloqueAsistenciaDia({ obraPedida, dia, hrefDe, hrefQuincen
   const candidatos = puedeTraer
     ? await getCandidatosParaTraer(supabase, obra.id, dia)
     : { data: [], error: null }
+  // LA PRESENCIA YA DECLARADA. Sin obra en el filtro a propósito: el único de `asistencia_dia` es
+  // (persona, fecha), así que alguien declarado a la mañana en otra obra tiene que aparecer acá
+  // como declarado — si no, el jefe lo marcaría de nuevo y el upsert pisaría la primera obra.
+  const presencia = await getPresenciaDelDia(supabase, dia, null)
   return (
     <Envoltorio hrefQuincena={hrefQuincena}>
       <div className="mb-3">
@@ -115,14 +120,16 @@ export async function BloqueAsistenciaDia({ obraPedida, dia, hrefDe, hrefQuincen
         />
       </div>
 
-      {/* La MISMA definición que usa el jefe en `/campo/asistencia`. Si acá hubiera una copia, el
-          día que se corrija una de las dos la otra seguiría escribiendo mal. */}
-      <FormAsistencia
+      {/* LA MISMA definición que usa el jefe en `/campo/asistencia`. Si acá hubiera una copia, el
+          día que se corrija una de las dos la otra seguiría escribiendo mal.
+          Lo primero que se abre es PRESENCIA; las horas son el paso siguiente (`CargaDelDia`). */}
+      <CargaDelDia
         obraId={obra.id}
         obraNombre={obra.nombre}
         fecha={dia}
         jornada={obra.jornada}
         filas={filas}
+        presencia={presencia.data ?? []}
       />
 
       {/* DEBAJO DE LA CUADRILLA, NO ARRIBA. Lo primero es marcar a los que están; traer a alguien es
