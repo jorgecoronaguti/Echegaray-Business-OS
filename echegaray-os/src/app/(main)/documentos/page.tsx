@@ -50,20 +50,16 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import {
-  ENTIDADES, getCarpetasRaiz, getDocumento, getDocumentos,
-  getResumenVencimientos, PAGINAS_MAX, TOPE,
+  ENTIDADES, getCarpetasRaiz, getDocumento, getDocumentos, PAGINAS_MAX, TOPE,
 } from '@/features/documentos/services/documentosService'
 import { CATEGORIAS } from '@/features/documentos/services/categorias'
 import { TablaDocumentos } from '@/features/documentos/components/TablaDocumentos'
 import { PanelDocumento } from '@/features/documentos/components/PanelDocumento'
-import { senalesDeDocumentos, silencioDeVencimientos } from '@/features/documentos/services/senalesDocumentos'
 import { Aviso } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
-import { IconoFecha } from '@/shared/components/iconos'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
-import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 
 export const dynamic = 'force-dynamic'
@@ -119,13 +115,12 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
   // mano es una consulta de 3.599 filas con todos sus vínculos que cualquiera puede pedir.
   const paginas = Math.min(Math.max(1, Number.parseInt(sp.n ?? '1', 10) || 1), PAGINAS_MAX)
 
-  const [catalogo, carpetas, vencimientos] = await Promise.all([
+  const [catalogo, carpetas] = await Promise.all([
     getDocumentos(supabase, {
       q: sp.q, carpeta: sp.carpeta, tipo: sp.tipo, categoria: sp.cat, vence: sp.vence,
       entidad: sp.ent, hoy, paginas,
     }),
     getCarpetasRaiz(supabase),
-    getResumenVencimientos(supabase, hoy),
   ])
   if (catalogo.error) return <EstadoError mensaje={catalogo.error} que="el archivo de documentos" />
 
@@ -135,11 +130,6 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
   // NO SE PUDO ABRIR ≠ NO EXISTE, otra vez: el panel dice su propio error y la tabla sigue viva.
   const abierto = sp.d ? await getDocumento(supabase, sp.d) : null
   const filtrando = Boolean(sp.q || sp.carpeta || sp.tipo || sp.cat || sp.vence || sp.ent)
-
-  const senales = senalesDeDocumentos(vencimientos.data, {
-    vencidos: filtrar(sp, { vence: 'vencido' }),
-    esteMes: filtrar(sp, { vence: 'mes' }),
-  })
 
   return (
     // SIN `PageShell` ni `FranjaCartera` (porte 27 v2): el shell dibuja un `h1` de 22px y padding
@@ -151,19 +141,11 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
 
       {/* EL INTERLINEADO DEL MOCKUP, DECLARADO UNA VEZ. Ver `patron.tsx · CAJA_CONTENIDO`. */}
       <div style={{ lineHeight: 'normal' }}>
-      {/* ═══ CRITERIO 1: LA PRIMERA LÍNEA ES TRABAJO ═══
-
-          Reemplaza a `BandaVencimientos`, que decía lo mismo con tres formas distintas según el
-          estado. Lo que se conservó entero es su argumento: con CERO fechas cargadas no se escribe
-          «0 vencidos» —eso se lee «está todo en orden» y sería falso—, se dice que el control no
-          está cargado y dónde se carga. Y un error de lectura dibuja las señales SIN cifra. */}
-      <TrabajoDeSeccion
-        senales={senales}
-        icono={IconoFecha}
-        vacio={silencioDeVencimientos(vencimientos.data)}
-        testid="banda-vencimientos"
-      />
-
+      {/* ACÁ ABRÍA LA BANDA «LO QUE PIDE TRABAJO» con los vencimientos del archivo. La retiró el
+          dueño el 08/09/2026 de toda la plataforma («no es útil y confunde»), junto con la lectura
+          de `getResumenVencimientos` que sólo existía para llenarla. El recorte por vencimiento
+          sigue vivo en la URL (`?vence=`) y en los filtros de la lista: lo que se fue es el aviso
+          de arriba, no la capacidad de ver qué venció. */}
       <CabeceraSeccion
         testid="vistas-documentos"
         espacioPanel={Boolean(sp.d)}

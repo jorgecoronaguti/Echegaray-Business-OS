@@ -81,9 +81,14 @@ export function CarteraHome({
   return (
     <div style={{ padding: '30px 20px 24px' }} data-testid="cartera-home">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 600, color: C.tinta, letterSpacing: '-.01em' }}>
+        {/* `h1` Y NO `h2` DESDE EL 08/09/2026. El único `h1` de la entrada de Administración lo
+            escribía el bloque «Lo que pide trabajo», que el dueño retiró; sin reemplazo la pantalla
+            quedaba sin punto de entrada para un lector de pantalla y con un `h2` colgando de nada.
+            Ahora la cartera ES la primera línea de contenido, así que le corresponde el `h1`. El
+            tamaño no cambia: el nivel es semántico, no visual. */}
+        <h1 style={{ fontSize: '16px', fontWeight: 600, color: C.tinta, letterSpacing: '-.01em', margin: 0 }}>
           Clientes y obras en ejecución
-        </h2>
+        </h1>
         {/* EL RESUMEN CUENTA LO QUE SE VE. Un total de la cartera entera junto a tres filas
             filtradas es un número que no cuadra con nada de lo que hay en pantalla. */}
         <span style={{ fontSize: '12px', color: C.tenue }} data-testid="resumen-cartera">

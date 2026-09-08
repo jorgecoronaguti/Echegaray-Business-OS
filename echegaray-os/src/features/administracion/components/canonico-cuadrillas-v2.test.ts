@@ -47,23 +47,19 @@ const sinComentarios = (texto: string) => texto
 const codigo = (a: string) => sinComentarios(fuente(a))
 const codigoPagina = () => sinComentarios(pagina())
 
-// ── CRITERIO 1 · LA PRIMERA LÍNEA DE CONTENIDO ES TRABAJO ────────────────────────────────────────
+// ── EL BLOQUE «LO QUE PIDE TRABAJO» NO VUELVE (orden del dueño, 08/09/2026) ─────────────────────
+//
+// El criterio 1 del v2 pedía que la primera línea de contenido fuera trabajo, y esta pantalla era
+// la única de segundo nivel cuyo mockup lo dibujaba. El dueño lo retiró de TODA la plataforma —«no
+// es útil y confunde»—, así que la regla se da vuelta: lo que este test atrapa ahora es que el
+// bloque vuelva a montarse acá. Revertir el retiro pone rojo este test.
 
-test('el bloque de trabajo se dibuja ANTES que la banda de período y que la lista', () => {
-  const src = pagina()
-  const trabajo = src.indexOf('<TrabajoDeSeccion')
-  const banda = src.indexOf('<SolapasDeFicha')
-  const lista = src.indexOf('<TablaCuadrillas')
-
-  assert.ok(trabajo > 0, 'la 21 v2 es la única de segundo nivel con bloque de trabajo: tiene que estar')
-  assert.ok(trabajo < banda, 'la banda de período no puede abrir la pantalla: lo que abre es el trabajo')
-  assert.ok(trabajo < lista, 'la lista de cuadrillas es el maestro, y el maestro va debajo')
-})
-
-test('reusa el bloque de trabajo compartido en vez de dibujar el suyo', () => {
+test('la pantalla no vuelve a montar el bloque «Lo que pide trabajo»', () => {
   const src = codigoPagina()
-  assert.match(src, /from '@\/shared\/components\/v2\/TrabajoDeSeccion'/)
-  assert.doesNotMatch(src, /Lo que pide trabajo/, 'el rótulo lo escribe el componente compartido, no la página')
+  assert.doesNotMatch(src, /<TrabajoDeSeccion/, 'volvió la banda de señales que el dueño retiró')
+  assert.doesNotMatch(src, /TrabajoDeSeccion'/, 'volvió el import del bloque retirado')
+  assert.doesNotMatch(src, /Lo que pide trabajo/)
+  assert.ok(src.indexOf('<SolapasDeFicha') > 0, 'lo que abre la pantalla es la banda de período')
 })
 
 // ── CRITERIO 3 · SIN CAJAS ───────────────────────────────────────────────────────────────────────
@@ -110,13 +106,18 @@ test('una cuadrilla o una persona sin registros escribe «—» y nunca 0 HH', (
   assert.match(src, /=== undefined \? '—'/, 'ausente del mapa no es haber trabajado cero')
 })
 
-// ── EL VERBO ATERRIZA EN EL FILTRO QUE PRODUJO EL NÚMERO ─────────────────────────────────────────
+// ── LO QUE EL RETIRO DE LA BANDA NO PODÍA LLEVARSE ──────────────────────────────────────────────
+//
+// El verbo «cuadrillas sin obra → Asignar» vivía en la señal y se fue con ella. El RECORTE no: la
+// página lo sigue aplicando, y borrarlo dejaría `?sin=obra` devolviendo la lista entera sin decir
+// que ignoró el filtro. El pool conserva además su enlace propio.
 
-test('«cuadrillas sin obra → Asignar» cae en esas cuadrillas y no en la lista entera', () => {
-  const senales = readFileSync(join(DIR, '../services/senalesCuadrillas.ts'), 'utf8')
-  assert.match(senales, /hrefs\.sinObra/)
-  assert.match(codigoPagina(), /sinObra: href\(sp, \{ sin: 'obra'/)
-  assert.match(codigoPagina(), /sp\.sin === 'obra'/, 'la página tiene que APLICAR el recorte que promete')
+test('el recorte «sin obra» sigue aplicándose aunque su verbo se haya ido', () => {
+  assert.match(codigoPagina(), /sp\.sin === 'obra'/, 'un filtro que se acepta y no se aplica miente')
+})
+
+test('el pool sin cuadrilla conserva su entrada, que no dependía de la banda', () => {
+  assert.match(codigoPagina(), /hrefPool=/)
 })
 
 // ── LO QUE NO PUEDE DESAPARECER AL PORTAR ────────────────────────────────────────────────────────
