@@ -56,7 +56,14 @@ export function correrQuincena(q: Quincena, n: number): Quincena {
   return actual
 }
 
-/** Un día por columna, todos los de la quincena. 15 los primeros; 13 a 16 los segundos. */
+/**
+ * Los días CALENDARIO de la quincena, domingos incluidos. 15 los primeros; 13 a 16 los segundos.
+ *
+ * NO ES LO QUE DIBUJA LA PANTALLA — para eso está `diasDeLaQuincenaSinDomingos`. Sigue existiendo
+ * porque el rango completo es lo que define la ventana que se le pide a la base: si la consulta
+ * salteara los domingos, un registro cargado en domingo dejaría de leerse y la cronología —que sí
+ * lo muestra— no lo tendría.
+ */
 export function diasDeQuincena(q: Quincena): string[] {
   const dias: string[] = []
   for (let f = q.desde; f <= q.hasta; f = correrDias(f, 1)) dias.push(f)
@@ -64,6 +71,29 @@ export function diasDeQuincena(q: Quincena): string[] {
 }
 
 const diaDeLaSemana = (fecha: string): number => new Date(`${fecha}T00:00:00Z`).getUTCDay()
+
+/**
+ * ═══ EL DOMINGO NO EXISTE EN LA GRILLA ═══
+ *
+ * El dueño, 08/09/2026: *«los domingos no se trabaja, borralos de la consideración de todos
+ * lados»*. Dibujarlo como «no laborable» ya no alcanza: dos columnas de guiones por quincena
+ * ocupan el ancho que necesitan los días que sí se cargan, y obligan a leer catorce casillas para
+ * contar doce jornadas.
+ *
+ * Es UNA función y no un `filter` repetido en cada pantalla: el día que aparezca una excepción
+ * —un domingo trabajado que haya que declarar— se decide en un solo lugar. El SÁBADO SIGUE: es
+ * laborable, se dibuja atenuado y se marca si se trabajó.
+ *
+ * ESCONDER LA COLUMNA NO BORRA EL DATO. Al 08/09/2026 `registros_hh` no tiene ni una fila en
+ * domingo (0 de 5.000), pero si alguna vez la tiene, la fila queda en la base y la cronología de
+ * la ficha la muestra: la grilla deja de reclamar un día, no de leerlo.
+ */
+export const esDomingo = (fecha: string): boolean => diaDeLaSemana(fecha) === 0
+
+/** Las columnas de la grilla: la quincena sin sus domingos. 13 en una de 15 días con dos. */
+export function diasDeLaQuincenaSinDomingos(q: Quincena): string[] {
+  return diasDeQuincena(q).filter((f) => !esDomingo(f))
+}
 
 export const esFinDeSemana = (fecha: string): boolean =>
   diaDeLaSemana(fecha) === 0 || diaDeLaSemana(fecha) === 6

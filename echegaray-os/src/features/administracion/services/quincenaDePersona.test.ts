@@ -21,12 +21,16 @@ const Q1 = quincenaDe('2026-09-08')
 const dia = (dias: ReturnType<typeof diasDeLaQuincena>, fecha: string) =>
   dias.find((d) => d.fecha === fecha)!
 
-test('LA VENTANA ES LA QUINCENA ENTERA, incluidos sábados y domingos', () => {
+test('LA VENTANA ES LA QUINCENA ENTERA MENOS LOS DOMINGOS — el sábado sigue', () => {
+  // Orden del dueño 08/09/2026: los domingos salen de la consideración. La franja de la ficha
+  // dibuja las MISMAS columnas que la grilla de Administración: si contara quince y la grilla
+  // trece, los dos «días hábiles» de la empresa serían distintos según qué pantalla se mire.
   const dias = diasDeLaQuincena([], Q1, { hoy: '2026-09-15' })
-  assert.equal(dias.length, 15, 'del 1 al 15')
+  assert.equal(dias.length, 13, 'del 1 al 15 son 15 días menos los domingos 6 y 13')
   assert.equal(dias[0].fecha, '2026-09-01')
-  assert.equal(dias[14].fecha, '2026-09-15')
-  assert.equal(dia(dias, '2026-09-05').finDeSemana, true, 'el sábado 5')
+  assert.equal(dias[12].fecha, '2026-09-15')
+  assert.equal(dias.filter((d) => d.nombre === 'domingo').length, 0, 'ni un domingo')
+  assert.equal(dia(dias, '2026-09-05').finDeSemana, true, 'el sábado 5 SIGUE, atenuado')
 })
 
 test('UN DÍA HÁBIL TRANSCURRIDO SIN REGISTRO NO ES UNA AUSENCIA — y el futuro tampoco es un cero', () => {
@@ -36,7 +40,26 @@ test('UN DÍA HÁBIL TRANSCURRIDO SIN REGISTRO NO ES UNA AUSENCIA — y el futur
   assert.equal(dia(dias, '2026-09-07').estado, 'sin_registrar', 'lunes 7, ya pasó y nadie cargó')
   assert.equal(dia(dias, '2026-09-07').horas, null, 'sin registro NO es cero')
   assert.equal(dia(dias, '2026-09-10').estado, 'futuro', 'jueves 10, todavía no pasó')
-  assert.equal(dia(dias, '2026-09-06').estado, 'no_laborable', 'domingo 6')
+  assert.equal(dia(dias, '2026-09-05').estado, 'no_laborable', 'sábado 5 sin cargar no se reclama')
+})
+
+test('LOS DÍAS HÁBILES DE LA QUINCENA NO CUENTAN DOMINGOS', () => {
+  // EL DEFECTO QUE ATRAPA: con los domingos en la ventana, `diasHabiles` los sumaba como
+  // «no_laborable» y no molestaba; pero cualquier conteo que los recorra (la referencia de horas,
+  // el «sin marcar») los tenía delante. Ahora no existen, y el número de referencia lo demuestra.
+  const cifras = cifrasDeQuincena(diasDeLaQuincena([], Q1, { hoy: '2026-09-15' }), 9)
+  assert.equal(cifras.diasHabiles, 11, '13 columnas menos los dos sábados no laborables')
+  assert.equal(cifras.referencia, 99, '11 × 9 hs')
+})
+
+test('UNA QUINCENA CON TRES DOMINGOS PIERDE TRES COLUMNAS', () => {
+  // La segunda quincena de agosto de 2026 (16 al 31) tiene domingos el 16, el 23 y el 30: el largo
+  // de la quincena cambia con el mes y la cantidad de domingos también. Clavar «13» sería una
+  // segunda definición del período, escondida en una constante.
+  const dias = diasDeLaQuincena([], { desde: '2026-08-16', hasta: '2026-08-31' }, { hoy: '2026-08-31' })
+  assert.equal(dias.length, 13, '16 días menos tres domingos')
+  assert.equal(dias[0].fecha, '2026-08-17', 'el 16 era domingo: la franja arranca el lunes 17')
+  assert.equal(dias.filter((d) => d.nombre === 'domingo').length, 0)
 })
 
 test('UN FERIADO NO ES UN DÍA SIN CARGAR', () => {

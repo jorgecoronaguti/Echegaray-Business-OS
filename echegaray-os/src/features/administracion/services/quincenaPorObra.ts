@@ -26,14 +26,22 @@
 //   sin_dato     NADIE marcó ese día en ninguna obra. NO se puede afirmar «no se trabajó» ni
 //                «nadie lo cargó»: son dos cosas distintas y la grilla no tiene con qué elegir.
 //                Se dibuja «—» y el pie dice literalmente que no hay registro, sin interpretarlo.
-//   no_laborable feriado, sábado o domingo. No se reclama.
+//   no_laborable feriado o sábado. No se reclama. El domingo ya no es una columna.
+//
+// ═══ LA LICENCIA NO ES UNA AUSENCIA ═══
+//
+// Se dibujan distinto porque son cosas distintas: la licencia tiene respaldo documental y alguien
+// la autorizó (enfermedad, ART, vacaciones, suspensión); la ausencia es la falta lisa. Guardarlas
+// como el mismo silencio le saca un derecho al legajo, y es lo que hacía esta grilla.
 
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { redondear } from './jornadaPorObra.ts'
+import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
 
 export type EstadoCeldaObra =
   | 'horas'
   | 'ausente'
+  | 'licencia'
   | 'no_laborable'
   | 'sin_marcar'
   | 'sin_dato'
@@ -56,6 +64,9 @@ export interface CeldaObra {
   horas: number | null
   /** Una entrada por obra con algo cargado ese día. Vacío cuando no hay nada. */
   tramos: TramoDeObra[]
+  /** La etiqueta del motivo del catálogo, para `ausente` y `licencia`. Nunca `notas` en crudo, y
+   *  `null` cuando nadie escribió un motivo reconocible: inventarlo sería afirmar una causa. */
+  motivo: string | null
 }
 
 /** Una asignación VIGENTE en la quincena, a una obra ACTIVA. El servicio ya filtró las dos cosas. */
@@ -72,6 +83,14 @@ export interface RegistroQuincena {
   fecha: string
   horas: number
   tipo_hora: string
+  /** La clave del motivo (`enfermedad`, `falta`…). Opcional: sin ella la celda no lleva tooltip. */
+  notas?: string | null
+}
+
+/** Cómo se nombra a alguien que NO tiene ninguna asignación. Sale de `persona_plantel`. */
+export interface PersonaRotulo {
+  nombre: string
+  nota: string | null
 }
 
 /** El catálogo de obras, para rotular sin inventar y sin mostrar el id. */
@@ -113,8 +132,10 @@ export interface EntradaQuincenaObra {
   /** Catálogo por id. Lo que no esté acá no se puede rotular y cae a `SIN_OBRA`. */
   obras: Record<string, ObraRotulo>
   dias: string[]
-  /** Feriados, sábados y domingos. La grilla no los reclama. */
+  /** Feriados y sábados. La grilla no los reclama. */
   noLaborables?: string[]
+  /** El plantel por id, para nombrar a quien dejó registros sin tener ninguna asignación. */
+  personas?: Record<string, PersonaRotulo>
   /** Hoy, para no reclamar un día que todavía no terminó. */
   hoy: string
 }
@@ -134,7 +155,7 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
     else porPersona.set(r.persona_id, [r])
   }
 
-  return personasDe(e.asignaciones, e.registros).map((p) => {
+  return personasDe(e.asignaciones, e.registros, e.personas ?? {}).map((p) => {
     const suyos = porPersona.get(p.persona_id) ?? []
     const celdas = e.dias.map((fecha) => celdaDe({
       fecha,
@@ -171,7 +192,9 @@ interface PersonaDeLaGrilla {
 
 /** Las personas de la quincena, ordenadas por nombre. Una entrada por `persona_id`, sin excepción. */
 function personasDe(
-  asignaciones: AsignacionQuincena[], registros: RegistroQuincena[],
+  asignaciones: AsignacionQuincena[],
+  registros: RegistroQuincena[],
+  plantel: Record<string, PersonaRotulo>,
 ): PersonaDeLaGrilla[] {
   const mapa = new Map<string, PersonaDeLaGrilla>()
   for (const a of asignaciones) {
@@ -183,13 +206,25 @@ function personasDe(
   }
   for (const r of registros) {
     if (mapa.has(r.persona_id)) continue
-    // Un registro sin asignación vigente: la persona TRABAJÓ. El nombre se toma de cualquier
-    // asignación suya; si no tiene ninguna, la fila no se puede nombrar y no se dibuja — inventarle
-    // un nombre sería peor que no mostrarla, y la lectura de la pantalla lo declara.
+    // ═══ CUALQUIER REGISTRO PONE A SU PERSONA EN LA GRILLA ═══
+    //
+    // No sólo las horas trabajadas: una ausencia, una licencia o una improductiva también son un
+    // hecho declarado de esta quincena. QUIROGA ALEXANDER SEBASTIAN tenía 45 licencias por
+    // enfermedad importadas de JORNALES —del 01/07 al 07/09— y ninguna asignación, y la pantalla
+    // lo mostraba como si no existiera: alguien de licencia larga es exactamente lo que
+    // Administración necesita ver.
+    //
+    // El nombre sale de su asignación si la tiene, y si no del PLANTEL. Antes, sin asignación no
+    // había con qué nombrarlo y la fila se descartaba; `persona_plantel` es la misma tabla de la
+    // que salen todos los nombres de esta pantalla, no una segunda fuente.
     const conNombre = asignaciones.find((a) => a.persona_id === r.persona_id)
-    if (!conNombre) continue
+    const delPlantel = plantel[r.persona_id]
+    if (!conNombre && !delPlantel) continue
     mapa.set(r.persona_id, {
-      persona_id: r.persona_id, nombre: conNombre.nombre, nota: conNombre.nota, obras: [],
+      persona_id: r.persona_id,
+      nombre: conNombre?.nombre ?? delPlantel.nombre,
+      nota: conNombre?.nota ?? delPlantel?.nota ?? null,
+      obras: [],
     })
   }
   return [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
@@ -247,15 +282,33 @@ function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro
   // dato contradictorio, que el desglose del panel deja ver.
   if (trabajadas.length > 0) {
     return {
-      fecha, estado: 'horas', tramos,
+      fecha, estado: 'horas', tramos, motivo: null,
       horas: redondear(trabajadas.reduce((s, r) => s + numero(r.horas), 0)),
     }
   }
-  if (registros.length > 0) return { fecha, estado: 'ausente', horas: null, tramos }
-  if (esNoLaborable) return { fecha, estado: 'no_laborable', horas: null, tramos }
-  if (futuro) return { fecha, estado: 'futuro', horas: null, tramos }
-  if (!hayDatoEseDia) return { fecha, estado: 'sin_dato', horas: null, tramos }
-  return { fecha, estado: 'sin_marcar', horas: null, tramos }
+  if (registros.length > 0) {
+    // LICENCIA GANA SOBRE AUSENCIA cuando el día trae las dos — la misma regla que la ficha de la
+    // persona (`quincenaDePersona.ts`): la licencia está autorizada y documentada, degradarla a
+    // falta le saca un derecho al legajo. Ninguna de las dos suma horas trabajadas.
+    const licencia = registros.some((r) => r.tipo_hora === 'licencia')
+    return {
+      fecha, estado: licencia ? 'licencia' : 'ausente', horas: null, tramos,
+      motivo: motivoDelDia(registros),
+    }
+  }
+  if (esNoLaborable) return { fecha, estado: 'no_laborable', horas: null, tramos, motivo: null }
+  if (futuro) return { fecha, estado: 'futuro', horas: null, tramos, motivo: null }
+  if (!hayDatoEseDia) return { fecha, estado: 'sin_dato', horas: null, tramos, motivo: null }
+  return { fecha, estado: 'sin_marcar', horas: null, tramos, motivo: null }
+}
+
+/** El primer motivo del catálogo que traiga el día. `null` si nadie escribió uno reconocible. */
+function motivoDelDia(registros: RegistroQuincena[]): string | null {
+  for (const r of registros) {
+    const m = etiquetaDeMotivo(r.notas)
+    if (m) return m
+  }
+  return null
 }
 
 /** El desglose por obra del día, ordenado por nombre. Es lo que el panel muestra y corrige. */

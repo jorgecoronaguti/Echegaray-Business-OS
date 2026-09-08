@@ -4,8 +4,8 @@ import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import {
-  correrQuincena, diasDeQuincena, esFechaISO, etiquetaDiaCorta, noLaborablesDe, nombreDia,
-  quincenaDe, rotuloQuincena,
+  correrQuincena, diasDeLaQuincenaSinDomingos, esFechaISO, etiquetaDiaCorta, noLaborablesDe,
+  nombreDia, quincenaDe, rotuloQuincena,
 } from '../services/quincena'
 import { getQuincenaPorObra } from '../services/jornadaPorObraService'
 import {
@@ -58,10 +58,13 @@ export async function BloqueAsistenciaQuincena({ quincenaPedida, hoy, q, hrefDe,
     )
   }
 
-  const dias = diasDeQuincena(quincena)
-  // LOS FINES DE SEMANA ENTRAN A LOS NO LABORABLES. Sin esto, cada sábado y cada domingo de la
-  // quincena se dibujaría «sin marcar» —el rojo que reclama— en todas las filas: cuatro días
-  // falsos por período. Un sábado TRABAJADO se sigue viendo: lo declarado manda sobre el almanaque.
+  // LOS DOMINGOS NO SON COLUMNA. Orden del dueño del 08/09/2026: no se trabaja, sale de la
+  // consideración. La ventana que se le pide a la base sigue siendo la quincena ENTERA —abajo
+  // `quincena.desde`/`quincena.hasta`—, así que un registro en domingo se lee igual; lo que no
+  // hace es ocupar dos casillas de guiones por período.
+  const dias = diasDeLaQuincenaSinDomingos(quincena)
+  // EL SÁBADO ENTRA A LOS NO LABORABLES. Sin esto se dibujaría «sin marcar» —el rojo que reclama—
+  // en todas las filas. Un sábado TRABAJADO se sigue viendo: lo declarado manda sobre el almanaque.
   const noLaborables = noLaborablesDe(dias, datos.data.noLaborables)
   const todas = armarQuincenaPorObra({ ...datos.data, noLaborables, dias, hoy })
   // UNA FILA POR PERSONA: si dos filas comparten `clave`, la grilla está duplicando gente. Es la

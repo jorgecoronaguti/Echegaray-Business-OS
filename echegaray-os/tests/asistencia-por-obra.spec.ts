@@ -473,3 +473,73 @@ test('07 · LA CASILLA NACE VACÍA Y GUARDAR NO ESCRIBE NADA — sobre una obra 
     await limpiarObraDePrueba()
   }
 })
+
+// ═══ LAS DOS ÓRDENES DEL 08/09/2026 ═══
+
+test('08 · EL DOMINGO NO ES UNA COLUMNA — 13 días en una quincena de 15', async ({ page }) => {
+  // «Los domingos no se trabaja, borralos de la consideración de todos lados». Los módulos puros ya
+  // prueban el conteo; lo que sólo se ve acá es que la PANTALLA dibuja esas columnas y no otras.
+  // La quincena va en la URL: contra «hoy» no se puede afirmar cuántas columnas hay.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=asistencia&quincena=2026-09-01')
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('rotulo-quincena'))
+    .toHaveText('1ª quincena de septiembre · 1 al 15', { timeout: 30000 })
+
+  // El `title` de cada columna es el nombre del día — está para desambiguar martes de miércoles, y
+  // acá sirve de sonda: si aparece un solo «domingo», la orden no se cumplió.
+  await expect(page.locator('th[title="domingo"]')).toHaveCount(0)
+  await expect(page.locator('th[title="sábado"]')).toHaveCount(2, { timeout: 10000 })
+  // 13 columnas de día: 15 menos los domingos 6 y 13. El sábado SIGUE siendo laborable.
+  const dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+  const columnas = await page.locator(dias.map((d) => `th[title="${d}"]`).join(', ')).count()
+  expect(columnas).toBe(13)
+  await page.screenshot({ path: 'qa-shots/asistencia-sin-domingos-1440.png', fullPage: true })
+})
+
+test('09 · UNA PERSONA CON SÓLO LICENCIAS ESTÁ EN LA GRILLA, con «L» y sin sumar horas', async ({ page }) => {
+  // EL DEFECTO DEL 08/09: QUIROGA ALEXANDER SEBASTIAN, activo, 45 licencias por enfermedad
+  // importadas de JORNALES entre el 01/07 y el 07/09, SIN asignación en la plataforma — y no
+  // aparecía. La grilla lo descartaba dos veces: no había con qué nombrarlo y una licencia no es
+  // una hora trabajada.
+  //
+  // Se busca por texto y no por id: si mañana la persona deja de tener licencias, el test se
+  // saltea en vez de dar un rojo que no es un defecto del código.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=asistencia&quincena=2026-09-01&q=quiroga')
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('rotulo-quincena')).toBeVisible({ timeout: 30000 })
+
+  const fila = page.locator('tr', { hasText: 'QUIROGA' }).first()
+  if (await fila.count() === 0) test.skip(true, 'La base ya no tiene licencias de esa persona.')
+  await expect(fila).toBeVisible()
+  // La celda de licencia es FIJA —no se puede pisar escribiendo un número— y dice «L», no «A».
+  const licencias = fila.locator('[data-testid="celda-fija"][data-estado="licencia"]')
+  expect(await licencias.count()).toBeGreaterThan(0)
+  await expect(licencias.first()).toHaveText('L')
+  await expect(licencias.first()).toHaveAttribute('title', /Licencia/)
+  // NO SUMA HORAS: el total de la fila es «—», que no es lo mismo que un cero.
+  await expect(fila.getByTestId('total-persona')).toHaveText('—')
+  await page.screenshot({ path: 'qa-shots/asistencia-licencia-1440.png', fullPage: true })
+
+  // ═══ Y LA FICHA DIBUJA LAS MISMAS COLUMNAS QUE LA GRILLA ═══
+  //
+  // Si la franja de la ficha mostrara los domingos y la grilla no, los «días hábiles» de la
+  // empresa dependerían de qué pantalla se mire. La casilla lleva su fecha en `data-fecha`: el
+  // domingo 6 y el domingo 13 de septiembre no pueden existir.
+  const href = await fila.locator('a[href^="/administracion/personas/"]').first()
+    .getAttribute('href')
+  expect(href, 'la fila tiene que llevar a su carpeta').toBeTruthy()
+  await page.goto((href as string).split('?')[0])
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('franja-quincena')).toBeVisible({ timeout: 30000 })
+  const franja = page.getByTestId('franja-quincena')
+  expect(await franja.getByTestId('casilla-dia').count()).toBeGreaterThan(0)
+  for (const f of await franja.getByTestId('casilla-dia').all()) {
+    const fecha = await f.getAttribute('data-fecha')
+    expect(new Date(`${fecha}T00:00:00Z`).getUTCDay(), `${fecha} es domingo`).not.toBe(0)
+  }
+  await page.screenshot({ path: 'qa-shots/ficha-sin-domingos-1440.png', fullPage: true })
+})
