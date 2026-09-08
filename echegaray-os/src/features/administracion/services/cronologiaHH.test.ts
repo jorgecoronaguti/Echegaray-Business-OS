@@ -105,6 +105,22 @@ test('LA TRAZA DICE QUIÉN Y CUÁNDO, y calla cuando no lo sabe', () => {
   )
   // Las filas legacy vinieron sin autor: «cargó el sistema» sería inventarlo.
   assert.equal(trazaDe(r({ creado_en: null, cargo: null })), null)
+
+  // LO IMPORTADO DE JORNALES DICE DE DÓNDE SALIÓ. El defecto que atrapa: mostrar sólo «07/09» en
+  // la columna «quién lo cargó» para las HH de 2026 que vinieron del Sheet, que deja pensando que
+  // se perdió el autor cuando lo que pasa es que no hubo ninguno.
+  assert.equal(
+    trazaDe(r({ creado_en: '2026-09-07T10:00:00Z', cargo: null, fuente_legacy: 'sheet:jornales' })),
+    'JORNALES (planilla) · 07/09')
+  assert.equal(
+    trazaDe(r({ creado_en: null, cargo: null, fuente_legacy: 'sheet:jornales' })),
+    'JORNALES (planilla)', 'sin fecha de creación igual se dice de dónde salió')
+  assert.equal(
+    trazaDe(r({ creado_en: '2026-09-07T10:00:00Z', cargo: 'Rodrigo', fuente_legacy: 'sheet:jornales' })),
+    'Rodrigo · 07/09', 'si hay una persona detrás, manda la persona')
+  assert.equal(
+    trazaDe(r({ creado_en: '2026-09-07T10:00:00Z', cargo: null, fuente_legacy: 'web:obra' })),
+    '07/09', 'lo cargado por la web sin autor no se disfraza de planilla')
 })
 
 test('LOS RÓTULOS SE LEEN EN CASTELLANO', () => {

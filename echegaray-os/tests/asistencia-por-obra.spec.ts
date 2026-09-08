@@ -255,6 +255,13 @@ test('05 · el panel de corrección SE ABRE AL COSTADO y la grilla queda detrás
   await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
   await page.screenshot({ path: 'qa-shots/asistencia-quincena-panel-1440.png' })
 
+  // LA COLUMNA HORAS NO QUEDA TAPADA. El panel flota encima; sin reservarle el ancho a la grilla,
+  // el total de la persona —lo que se está por corregir— queda debajo del drawer.
+  const horas = page.getByTestId('total-quincena-valor')
+  const cajaHoras = await horas.boundingBox()
+  if (!cajaHoras) throw new Error('El total de la quincena no está renderizado.')
+  expect(cajaHoras.x + cajaHoras.width).toBeLessThanOrEqual(caja.x + 1)
+
   // SE CIERRA CON ESCAPE. Sin esto, la única salida es acertarle a la ✕.
   await page.keyboard.press('Escape')
   await expect(panel).toBeHidden()
@@ -286,7 +293,50 @@ test('05b · en el teléfono el panel ocupa el ancho entero', async ({ page }) =
   await page.screenshot({ path: 'qa-shots/asistencia-quincena-panel-390.png' })
 })
 
-test('06 · el registro cronológico de la persona, con quién lo cargó', async ({ page }) => {
+test('05c · GUARDAR DEJA EL PANEL ABIERTO CON EL ACUSE, y la celda de atrás cambia', async ({ page }) => {
+  test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
+    'Escribe HH en su propia obra ZZ-E2E. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
+  // EL HUECO QUE ENCONTRÓ EL AUDITOR. Si al guardar la fila desaparece de `filas`, el panel se
+  // desmonta y se lleva el acuse: el usuario ve desaparecer la pantalla y no sabe si escribió. Y la
+  // otra mitad: que la grilla de atrás se relea de verdad, no que el panel diga «guardado» mientras
+  // la celda sigue mostrando el número viejo.
+  const persona = await prepararObraDePrueba()
+  if (!persona) test.skip(true, 'La base no tiene a nadie en el plantel.')
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await entrarComo(page, ADMIN.email, ADMIN.password)
+    await page.goto('/administracion/personas?vista=asistencia')
+    await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+    // LA FILA SE UBICA POR EL id DE LA PERSONA, no por el rótulo de obra: la persona de prueba es
+    // real y su columna OBRA muestra la obra donde tiene MÁS horas, que casi nunca es la ZZ-E2E.
+    const fila = page.locator(`[data-testid="fila-quincena"]:has(a[href*="${persona}"])`).first()
+    if (await fila.count() === 0) test.skip(true, 'La persona de prueba no está en esta quincena.')
+    await fila.getByTestId('abrir-correccion').click()
+    await expect(page.getByTestId('panel-correccion')).toBeVisible()
+
+    // LA ESCRITURA VA A LA OBRA DE PRUEBA Y A NINGUNA OTRA. Sin fijar el destino, la corrección
+    // caería en la obra viva donde esa persona tiene sus horas de verdad.
+    await page.getByTestId('correccion-dia').selectOption({ index: 0 })
+    await page.getByTestId('correccion-obra').selectOption(OBRA_DE_PRUEBA)
+    await page.getByTestId('correccion-horas').fill('6')
+    await page.getByTestId('guardar-correccion').click()
+
+    // (a) EL ACUSE, CON EL PANEL TODAVÍA ABIERTO.
+    await expect(page.getByTestId('acuse-correccion')).toBeVisible({ timeout: 20000 })
+    await expect(page.getByTestId('panel-correccion')).toBeVisible()
+    // (b) LA GRILLA DE ATRÁS RELEÍDA. El selector de día del panel se dibuja con los datos que el
+    // servidor acaba de devolver: que ese día diga «6 hs» es el destino leído, no la promesa del
+    // formulario. Sin el `router.refresh()` seguiría diciendo lo de antes.
+    await expect(page.getByTestId('correccion-dia')).toContainText('6 hs', { timeout: 20000 })
+    await expect(fila.getByTestId('celda-hora').first()).toBeVisible()
+    await page.screenshot({ path: 'qa-shots/asistencia-quincena-guardado-1440.png' })
+  } finally {
+    await limpiarObraDePrueba()
+  }
+})
+
+test('06 · la CARPETA de la persona: su cronología, con lo importado de JORNALES', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await entrarComo(page, ADMIN.email, ADMIN.password)
   await page.goto('/administracion/personas')
@@ -301,7 +351,23 @@ test('06 · el registro cronológico de la persona, con quién lo cargó', async
   if (!href) test.skip(true, 'El plantel no tiene ninguna persona con ficha.')
   await page.goto(`${href}?v=horas`)
   await expect(page.getByTestId('bloque-horas')).toBeVisible()
-  await page.screenshot({ path: 'qa-shots/asistencia-07-cronologia-1440.png', fullPage: true })
+  await page.screenshot({ path: 'qa-shots/asistencia-quincena-ficha-horas-1440.png', fullPage: true })
+})
+
+test('06b · DESDE LA GRILLA SE LLEGA A LA CARPETA DE LA PERSONA', async ({ page }) => {
+  // El pedido del dueño: la pantalla Asistencia muestra SÓLO la quincena; el año entero vive en la
+  // ficha. Sin el link, esa separación deja la cronología sin puerta desde donde se la necesita.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=asistencia')
+  await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+  const link = page.getByTestId('link-ficha-persona').first()
+  if (await link.count() === 0) test.skip(true, 'La quincena no tiene ninguna persona.')
+  await link.click()
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('bloque-horas')).toBeVisible()
+  await expect(page).toHaveURL(/\/administracion\/personas\/[0-9a-f-]{36}\?v=horas/)
 })
 
 test('07 · LA CASILLA NACE VACÍA Y GUARDAR NO ESCRIBE NADA — sobre una obra propia', async ({ page }) => {

@@ -118,6 +118,15 @@ export function trazaDe(r: ImputacionHH): string | null {
   if (r.corregido_en) {
     return `corrigió ${r.corrigio ?? 'alguien'} el ${cuando(r.corregido_en)}`
   }
+  // ═══ LO IMPORTADO NO LO CARGÓ NADIE, Y ESO SE DICE ═══
+  //
+  // Las HH de 2026 vinieron del Sheet de JORNALES: `creado_por` es null porque no hubo una persona
+  // apretando un botón. La columna mostraba sólo una fecha, y una fecha sola no contesta «quién lo
+  // cargó»: deja pensando que se perdió el autor. `fuente_legacy` sí lo sabe.
+  if (!r.cargo && r.fuente_legacy?.startsWith('sheet:')) {
+    const planilla = r.fuente_legacy.slice('sheet:'.length).toUpperCase()
+    return r.creado_en ? `${planilla} (planilla) · ${cuando(r.creado_en)}` : `${planilla} (planilla)`
+  }
   if (!r.creado_en) return null
   return r.cargo ? `${r.cargo} · ${cuando(r.creado_en)}` : (cuando(r.creado_en) as string)
 }

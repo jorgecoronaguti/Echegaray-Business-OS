@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
@@ -164,7 +165,14 @@ export function GrillaAsistenciaObra({
           {filas.map((fila) => (
             <tr key={fila.clave} style={{ borderBottom: `1px solid ${V.lineaFila}` }} data-testid="fila-quincena">
               <td style={{ padding: '7px 8px 7px 0', verticalAlign: 'top' }}>
-                <span style={{ color: V.tinta }}>{fila.persona.nombre}</span>
+                {/* EL NOMBRE ES LA PUERTA A SU CARPETA. El dueño: *"cada persona debe tener su
+                    cronología de trabajo en su propia carpeta, no que se tiene que mostrar todo de
+                    todos en la pantalla asistencia"*. Esta grilla es SÓLO la quincena elegida; el
+                    año entero —lo importado de JORNALES incluido— vive en la ficha. */}
+                <Link href={`/administracion/personas/${fila.persona.id}?v=horas`} prefetch={false}
+                  data-testid="link-ficha-persona" style={{ color: V.tinta }}>
+                  {fila.persona.nombre}
+                </Link>
                 <span style={{ display: 'block', fontSize: '11.5px', color: V.apagado }}>
                   {fila.persona.nota ?? ''}
                 </span>
