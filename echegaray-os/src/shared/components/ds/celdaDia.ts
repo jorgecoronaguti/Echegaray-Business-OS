@@ -27,8 +27,13 @@
  *  declaración en `registros_hh`; `sin_marca` es la ausencia de dato, no la ausencia de la persona. */
 export type PresenciaDia = 'ficho' | 'ausente' | 'licencia' | 'sin_marca'
 
-/** Propiedad del DÍA, no de la persona: gobierna qué silencios son esperables. */
-export type CalendarioDia = 'habil' | 'no_laborable' | 'futuro'
+/** Propiedad del DÍA, no de la persona: gobierna qué silencios son esperables.
+ *
+ *  `hoy` es su propio caso y no un `habil` más: el marco punteado dice «esto está pendiente», y a
+ *  las 14:52 del mismo día nadie llegó tarde con nada — la jornada ni siquiera terminó. Con `habil`
+ *  la columna del día en curso salía entera en cajitas punteadas (captura del dueño, 08/09/2026).
+ *  Sigue siendo editable: cargar las horas de hoy es lo más común que hace esta pantalla. */
+export type CalendarioDia = 'habil' | 'hoy' | 'no_laborable' | 'futuro'
 
 export interface EntradaCeldaDia {
   presencia: PresenciaDia
@@ -78,7 +83,10 @@ function presenciaDe(e: EntradaCeldaDia): CapaPresencia {
     case 'sin_marca':
       // NUNCA «no fichó». Sin marca es que no hay dato de fichaje; el fichaje desde el celular no
       // está en uso y la frase acusaría a todo el plantel.
-      return { simbolo: '', tono: 'ninguno', titulo: e.dia === 'habil' ? 'Sin marca de entrada/salida' : '' }
+      return {
+        simbolo: '', tono: 'ninguno',
+        titulo: e.dia === 'habil' || e.dia === 'hoy' ? 'Sin marca de entrada/salida' : '',
+      }
   }
 }
 
@@ -87,6 +95,11 @@ function horasDe(e: EntradaCeldaDia): CapaHoras {
     return { texto: formatearHoras(e.horas), tono: 'tinta', sinCargar: false, titulo: `${formatearHoras(e.horas)} h cargadas` }
   }
   if (e.dia === 'futuro') return { texto: '', tono: 'vacio', sinCargar: false, titulo: '' }
+  // HOY NO SE RECLAMA. La jornada está corriendo: `sinCargar` es «se pasó el día y nadie cargó»,
+  // y decirlo a las dos de la tarde acusa de un silencio que todavía es normal.
+  if (e.dia === 'hoy') {
+    return { texto: '', tono: 'vacio', sinCargar: false, titulo: 'Hoy: sin horas cargadas todavía' }
+  }
   if (e.dia === 'no_laborable') return { texto: '—', tono: 'inerte', sinCargar: false, titulo: 'No laborable' }
   // El día está explicado por la capa de arriba: una ausencia o una licencia no tienen horas que
   // cargar, y pedirlas sería pedir un dato que no existe.

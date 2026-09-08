@@ -276,11 +276,25 @@ test('EL DÍA QUE NO PASÓ NO SE RECLAMA, y el que nadie cargó tampoco', () => 
   })
   const juan = filas.find((f) => f.persona.nombre === 'Perez Juan')!
   assert.equal(juan.celdas[5].estado, 'futuro', 'el sábado 12 todavía no pasó')
+  assert.equal(juan.celdas[4].estado, 'hoy', 'el viernes 11 es hoy: ni reclamo ni futuro')
+  assert.deepEqual(juan.reclama, [], 'hoy no se reclama: la jornada todavía está corriendo')
   assert.equal(juan.celdas[1].estado, 'sin_dato', 'el martes no lo cargó nadie, en ninguna obra')
   const ana = filas.find((f) => f.persona.nombre === 'Gomez Ana')!
   assert.equal(ana.celdas[0].estado, 'sin_marcar', 'el lunes SÍ se cargó y a ella no: eso se reclama')
   assert.deepEqual(ana.reclama, [L])
   assert.equal(diasSinMarcar(filas), 1, 'un día reclamado, no dos')
+})
+
+test('EL SÁBADO QUE TODAVÍA NO LLEGÓ ES FUTURO, no un «—» de no laborable', () => {
+  // EL DEFECTO QUE ATRAPA (captura del dueño, 08/09/2026): en la grilla, el S 12 —que no pasó—
+  // salía con un guión mientras los demás días futuros salían vacíos. El calendario se preguntaba
+  // antes que el almanaque: un día que no ocurrió no tiene nada para decir, laborable o no.
+  const filas = armar({
+    asignaciones: [asig('p1', 'Perez Juan', PISOS)],
+    registros: [reg('p1', PISOS, L, 8.8)],
+    noLaborables: [S],
+  })
+  assert.equal(filas[0].celdas[5].estado, 'futuro', 'el sábado 12 es futuro, no «no laborable»')
 })
 
 test('un no laborable no se reclama ni se suma', () => {

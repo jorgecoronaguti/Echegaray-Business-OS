@@ -53,6 +53,14 @@ import { CeldaDia, type EntradaCeldaDia } from '@/shared/components/ds'
 // del grupo va en su propio rótulo, apagado y en 11,5px, para que no compita con el total de abajo.
 const ROJO = '#B42318'
 
+// ═══ LAS DOS COLUMNAS DE TEXTO TIENEN TECHO ═══
+//
+// Eran porcentajes (34% y 18%) sobre una tabla al 100%: cuanto más ancha la pantalla, más lejos
+// quedaban las horas del nombre al que pertenecen. En píxeles, la grilla empieza donde termina el
+// nombre y no donde termina la pantalla.
+const ANCHO_PERSONA = 320
+const ANCHO_OBRA = 240
+
 function textoDe(c: CeldaObra): string {
   if (c.estado === 'horas') return c.horas === null ? '' : hs(c.horas)
   // La ausencia NO se escribe en el campo: la dice la capa de presencia de `CeldaDia` («A» en
@@ -71,7 +79,10 @@ function entradaDe(c: CeldaObra): EntradaCeldaDia {
   return {
     presencia: c.estado === 'ausente' ? 'ausente' : c.estado === 'licencia' ? 'licencia' : 'sin_marca',
     horas: c.estado === 'horas' ? c.horas : null,
-    dia: c.estado === 'no_laborable' ? 'no_laborable' : c.estado === 'futuro' ? 'futuro' : 'habil',
+    dia: c.estado === 'no_laborable' ? 'no_laborable'
+      : c.estado === 'futuro' ? 'futuro'
+      : c.estado === 'hoy' ? 'hoy'
+      : 'habil',
     motivo: c.motivo,
   }
 }
@@ -258,13 +269,19 @@ export function GrillaAsistenciaObra({
         que es justo lo que hay que mirar. Abajo de 1024 el panel va entero encima — no hay ancho
         para dos zonas y reservar 400px dejaría la tabla en 0. */}
     <div className={abierta ? 'lg:pr-[400px]' : undefined} style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }} data-testid="grilla-asistencia">
+      {/* ═══ LA TABLA MIDE LO QUE MUESTRA (dueño, 08/09/2026: «está roto el diseño») ═══
+          Con `width: 100%` y una columna Persona del 34%, en 2000 px los días arrancaban en x=1058:
+          setecientos píxeles en blanco entre el nombre y sus horas, que es exactamente el recorrido
+          que hay que hacer para leer una fila. Ancho de contenido y pegada a la izquierda: las
+          columnas miden lo que necesitan y el sobrante queda del lado de afuera, donde no estorba.
+          El `overflow-x` del contenedor sigue cubriendo las pantallas angostas. */}
+      <table style={{ width: 'auto', borderCollapse: 'collapse', fontSize: '13px' }} data-testid="grilla-asistencia">
         <thead>
           <tr style={{ borderBottom: `1px solid ${V.lineaFuerte}` }}>
-            <Rotulo ancho="34%">Persona</Rotulo>
+            <Rotulo ancho={`${ANCHO_PERSONA}px`}>Persona</Rotulo>
             {/* «ACTUAL» porque la obra de una persona cambia con el tiempo: acá se ve la de hoy; la de
                 cada día queda guardada en su marca y se lee en la cronología de la persona (ficha → Horas). */}
-            <Rotulo ancho="18%">Obra actual</Rotulo>
+            <Rotulo ancho={`${ANCHO_OBRA}px`}>Obra actual</Rotulo>
             {etiquetas.map((e, i) => (
               <Rotulo key={dias[i]} centro tenue={columnasTenues[i]} titulo={titulos[i]}>{e}</Rotulo>
             ))}
@@ -293,20 +310,36 @@ export function GrillaAsistenciaObra({
             return (
             <Fragment key={fila.clave}>
             <tr style={{ borderBottom: fallo ? undefined : `1px solid ${V.lineaFila}` }} data-testid="fila-quincena">
-              <td style={{ padding: '7px 8px 7px 0', verticalAlign: 'top' }}>
+              <td style={{
+                padding: '7px 8px 7px 0', verticalAlign: 'middle',
+                maxWidth: ANCHO_PERSONA, width: ANCHO_PERSONA,
+              }}>
                 {/* EL NOMBRE ES LA PUERTA A SU CARPETA. El dueño: *"cada persona debe tener su
                     cronología de trabajo en su propia carpeta, no que se tiene que mostrar todo de
                     todos en la pantalla asistencia"*. Esta grilla es SÓLO la quincena elegida; el
                     año entero —lo importado de JORNALES incluido— vive en la ficha. */}
+                {/* UNA LÍNEA, SIEMPRE. Un nombre largo no puede correr la quincena a la derecha:
+                    se recorta con puntos suspensivos y el nombre entero queda en el `title`. */}
                 <Link href={`/administracion/personas/${fila.persona.id}?v=horas`} prefetch={false}
-                  data-testid="link-ficha-persona" style={{ color: V.tinta }}>
+                  data-testid="link-ficha-persona" title={fila.persona.nombre}
+                  style={{
+                    color: V.tinta, display: 'block', maxWidth: ANCHO_PERSONA - 8,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
                   {fila.persona.nombre}
                 </Link>
-                <span style={{ display: 'block', fontSize: '11.5px', color: V.apagado }}>
+                <span title={fila.persona.nota ?? undefined} style={{
+                  display: 'block', fontSize: '11.5px', color: V.apagado,
+                  maxWidth: ANCHO_PERSONA - 8,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
                   {fila.persona.nota ?? ''}
                 </span>
               </td>
-              <td data-testid="celda-obra" style={{ padding: '7px 8px', color: V.apagado, verticalAlign: 'top' }}>
+              <td data-testid="celda-obra" style={{
+                padding: '7px 8px', color: V.apagado, verticalAlign: 'middle',
+                maxWidth: ANCHO_OBRA, width: ANCHO_OBRA,
+              }}>
                 {/* ═══ UN DESPLEGABLE, NO UN FORMULARIO (pedido del dueño, 08/09/2026) ═══
                     Elegir otra obra cambia la asignación vigente DESDE HOY: cierra la anterior y
                     abre la nueva. No pide rol, ni cuadrilla, ni actividad, ni fechas — eso es lo
@@ -331,7 +364,7 @@ export function GrillaAsistenciaObra({
                         pide explícitamente la decisión que falta. */}
                     {fila.obraVigenteNoElegible && (
                       <option value={fila.obraVigenteNoElegible.id} disabled>
-                        {fila.rotuloObra} — elegí la obra actual
+                        {fila.rotuloObra}
                       </option>
                     )}
                     {obras.map((o) => (
@@ -350,6 +383,17 @@ export function GrillaAsistenciaObra({
                     horas en {fila.rotuloObra}
                   </span>
                 )}
+                {/* LA INDICACIÓN NO ENTRA EN LA OPCIÓN. «MAMPOSTERÍA (cerrada) — elegí la obra
+                    actual» se cortaba en «— elegí la ob» dentro de los ~230 px del desplegable, y
+                    lo único que se leía era basura. La opción dice la verdad de la base —dónde está
+                    hoy, cerrada y todo— y la decisión que falta se pide acá abajo, con el mismo
+                    tratamiento que «horas en …». */}
+                {puedeCambiarObra && fila.obraVigenteNoElegible && (
+                  <span data-testid="pide-obra-actual"
+                    style={{ display: 'block', fontSize: '11px', color: V.tenue, marginTop: 2 }}>
+                    elegí la obra actual
+                  </span>
+                )}
               </td>
 
               {fila.celdas.map((celda, i) => {
@@ -365,9 +409,13 @@ export function GrillaAsistenciaObra({
                   && !repartido && (fila.obraPorDefecto !== null || celda.tramos.length === 1)
                 return (
                   <td key={celda.fecha} style={{
-                    padding: '4px 2px', textAlign: 'center', verticalAlign: 'top',
+                    padding: '4px 2px', textAlign: 'center', verticalAlign: 'middle',
                     background: columnasTenues[i] ? V.fondo : undefined,
                   }}>
+                    {/* EL PUNTO DEL DÍA REPARTIDO NO PUEDE ALARGAR LA CELDA: colgado abajo en el
+                        flujo, esa fila crecía 9 px y su número quedaba más alto que el de la fila
+                        de al lado. Va superpuesto, dentro de los mismos 44 px. */}
+                    <span style={{ position: 'relative', display: 'inline-block' }}>
                     <CeldaDia
                       entrada={entradaDe(celda)}
                       testid={editable ? 'celda-dia' : 'celda-fija'}
@@ -409,24 +457,34 @@ export function GrillaAsistenciaObra({
                     </CeldaDia>
                     {repartido && (
                       <span data-testid="celda-repartida" title={`${celda.tramos.length} obras ese día`}
-                        style={{ display: 'block', fontSize: '9px', color: V.tenue, lineHeight: 1 }}>
+                        style={{
+                          position: 'absolute', left: 0, right: 0, bottom: 1,
+                          fontSize: '9px', color: V.tenue, lineHeight: 1, pointerEvents: 'none',
+                        }}>
                         ●
                       </span>
                     )}
+                    </span>
                   </td>
                 )
               })}
 
+              {/* EL TOTAL NO SE PINTA DE ROJO (regla: horas = cantidad, sin color de estado).
+                  Pintaba en ROJO cuando la persona tenía días sin cargar, y eso decía dos mentiras
+                  a la vez: que sus 96 horas son un problema, y que el problema es de ella cuando lo
+                  que falta es que Administración cargue. Los días pendientes ya los dice el marco
+                  punteado de cada celda y el rótulo del encabezado. */}
               <td data-testid="total-persona" style={{
-                padding: '7px 0 7px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
-                color: fila.reclama.length > 0 ? ROJO : fila.horas === null ? V.inerte : V.tinta,
+                padding: '7px 0 7px 8px', textAlign: 'right', verticalAlign: 'middle',
+                fontVariantNumeric: 'tabular-nums',
+                color: fila.horas === null ? V.inerte : V.tinta,
               }}>
                 {/* `—` Y NO `0`: cero afirma que trabajó cero horas esa quincena; lo que hay es que
                     nadie declaró ninguna. */}
                 {fila.horas === null ? '—' : hs(fila.horas)}
               </td>
               {puedeCorregir && (
-                <td style={{ padding: '7px 0 7px 10px', textAlign: 'right' }}>
+                <td style={{ padding: '7px 0 7px 10px', textAlign: 'right', verticalAlign: 'middle' }}>
                   <button
                     type="button"
                     data-testid="abrir-correccion"

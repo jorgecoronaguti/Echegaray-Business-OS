@@ -47,6 +47,9 @@ export type EstadoCeldaObra =
   | 'sin_marcar'
   | 'sin_dato'
   | 'futuro'
+  /** EL DÍA EN CURSO. No es `sin_marcar` —nadie se atrasó todavía— ni `futuro` —se puede cargar—:
+   *  es editable y no reclama. Sin este estado la columna de hoy salía entera punteada. */
+  | 'hoy'
 
 /** Lo que esa persona tiene cargado ese día en UNA obra. El desglose que muestra el panel. */
 export interface TramoDeObra {
@@ -198,6 +201,7 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
       esNoLaborable: noLaborables.has(fecha),
       hayDatoEseDia: diasConDato.has(fecha),
       futuro: fecha > e.hoy,
+      esHoy: fecha === e.hoy,
     }))
     const vigente = obraActivaDe(p.asignaciones, suyos, e.obras, e.hoy)
     const activa = vigente?.elegible ? vigente.obra : null
@@ -363,13 +367,14 @@ function clienteDe(
   return mejor.obra.cliente?.trim() || mejor.obra.nombre.trim() || null
 }
 
-function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro }: {
+function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro, esHoy }: {
   fecha: string
   registros: RegistroQuincena[]
   obras: Record<string, ObraRotulo>
   esNoLaborable: boolean
   hayDatoEseDia: boolean
   futuro: boolean
+  esHoy: boolean
 }): CeldaObra {
   const tramos = tramosDe(registros, obras)
   const trabajadas = registros.filter((r) => esTrabajada(r.tipo_hora))
@@ -393,8 +398,12 @@ function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro
       motivo: motivoDelDia(registros),
     }
   }
-  if (esNoLaborable) return { fecha, estado: 'no_laborable', horas: null, tramos, motivo: null }
+  // EL FUTURO SE PREGUNTA PRIMERO. Al revés, el sábado 12 —que todavía no llegó— salía con el «—»
+  // de no laborable mientras el resto de los días futuros salían vacíos: la misma quincena decía
+  // dos cosas distintas del mismo mañana. Lo que un día NO pasado tiene para decir es nada.
   if (futuro) return { fecha, estado: 'futuro', horas: null, tramos, motivo: null }
+  if (esNoLaborable) return { fecha, estado: 'no_laborable', horas: null, tramos, motivo: null }
+  if (esHoy) return { fecha, estado: 'hoy', horas: null, tramos, motivo: null }
   if (!hayDatoEseDia) return { fecha, estado: 'sin_dato', horas: null, tramos, motivo: null }
   return { fecha, estado: 'sin_marcar', horas: null, tramos, motivo: null }
 }

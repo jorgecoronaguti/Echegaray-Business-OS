@@ -5,9 +5,15 @@ import { decidirCeldaDia, type EntradaCeldaDia, type TonoPresencia } from './cel
 // `decidirCeldaDia` (celdaDia.ts, con sus tests); acá sólo se pinta.
 //
 //   ┌──────┐
-//   │  ●   │  ← PRESENCIA: estado, color semántico (verde fichó · rojo ausencia · neutro licencia)
+//   │  ●   │  ← PRESENCIA: estado, color semántico (verde fichó · rojo ausencia · neutro licencia).
 //   │ 8,0  │  ← HORAS: cantidad, monoespaciada, tinta. Sin color de estado.
 //   └──────┘
+//
+// LA PRESENCIA ES UNA INSIGNIA SUPERPUESTA, NO UNA FILA MÁS. Apiladas, los 14 px del símbolo
+// empujaban el número 7 px por debajo del eje de su propia fila: en la captura de producción del
+// dueño (08/09/2026) el nombre estaba en y=448, el total en y=456 y el número en y=463, y la fila
+// se leía torcida. Ahora la capa de arriba va en `position: absolute` y la de horas queda centrada
+// en los 44 px — el número, el nombre, el desplegable, el total y «corregir» en la misma línea.
 //
 // 44 px porque es el objetivo táctil mínimo en el teléfono y porque la grilla de quincena ya mide
 // sus columnas así: la celda no cambia el ancho de la tabla.
@@ -52,16 +58,16 @@ export function CeldaDia({
       data-estado={estado}
       data-sin-cargar={capas.abajo.sinCargar ? 'si' : undefined}
       title={capas.titulo || undefined}
-      className={`inline-flex h-11 w-11 flex-col items-center justify-start rounded-control border ${
+      className={`relative inline-flex h-11 w-11 flex-col items-center justify-center rounded-control border ${
         capas.abajo.sinCargar ? 'border-dashed border-line' : 'border-transparent'
       } ${className ?? ''}`}
     >
-      {/* Alto fijo aunque no haya símbolo: la capa de horas queda a la misma altura en todas las
-          celdas de la fila, con o sin presencia. */}
+      {/* Superpuesta y fuera del flujo: exista o no el símbolo, la capa de horas no se mueve ni un
+          píxel. Los 10 px la dejan arriba del número sin taparlo. */}
       <span
         data-capa="presencia"
         aria-label={capas.arriba.titulo || undefined}
-        className={`flex h-3.5 shrink-0 items-center text-[10px] font-semibold leading-none ${PRESENCIA[capas.arriba.tono]}`}
+        className={`pointer-events-none absolute inset-x-0 top-[3px] flex h-2.5 items-center justify-center text-[10px] font-semibold leading-none ${PRESENCIA[capas.arriba.tono]}`}
       >
         {capas.arriba.simbolo}
       </span>

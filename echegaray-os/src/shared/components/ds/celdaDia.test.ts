@@ -77,6 +77,23 @@ test('futuro: no se pinta nada y no se reclama nada', () => {
   assert.equal(c.titulo, '')
 })
 
+test('HOY sin horas: ni marco punteado ni «—» — la jornada todavía está corriendo', () => {
+  // EL DEFECTO QUE ATRAPA (captura del dueño, 08/09/2026 14:52): la columna del día en curso salía
+  // entera en cajitas punteadas. «Sin cargar» es un día hábil YA PASADO; hoy no llegó tarde nadie.
+  const c = decidirCeldaDia(habil({ dia: 'hoy' }))
+  assert.equal(c.abajo.sinCargar, false, 'hoy no lleva marco punteado')
+  assert.equal(c.abajo.texto, '', 'ni un «—»: hoy se puede cargar')
+  assert.match(c.titulo, /todav/i)
+  assert.doesNotMatch(c.titulo, /no es una falta/, 'no hace falta desmentir una falta que nadie afirmó')
+})
+
+test('HOY con horas cargadas: el número, igual que cualquier otro día', () => {
+  const c = decidirCeldaDia(habil({ dia: 'hoy', horas: 8.8 }))
+  assert.equal(c.abajo.texto, '8,8')
+  assert.equal(c.abajo.tono, 'tinta')
+  assert.equal(c.abajo.sinCargar, false)
+})
+
 test('cero horas NO es «sin cargar»: 0 es una afirmación y se escribe', () => {
   const c = decidirCeldaDia(habil({ horas: 0 }))
   assert.equal(c.abajo.texto, '0,0')
@@ -87,6 +104,7 @@ test('el color semántico vive SÓLO en la capa de presencia: la de horas nunca 
   const casos: EntradaCeldaDia[] = [
     habil({ presencia: 'ficho', horas: 8 }), habil({ presencia: 'ausente' }), habil({ horas: 12 }),
     habil({ presencia: 'licencia' }), habil({ dia: 'no_laborable' }), habil({ dia: 'futuro' }),
+    habil({ dia: 'hoy' }), habil({ dia: 'hoy', horas: 8 }),
   ]
   for (const e of casos) {
     const c = decidirCeldaDia(e)
