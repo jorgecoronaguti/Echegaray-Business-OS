@@ -163,3 +163,38 @@ test('un update que no cambió ninguna fila NO acusa el cambio ni abre la nueva'
   assert.deepEqual(toques.filter((t) => t.verbo === 'insert'), [],
     'cerró sin efecto y abrió igual: la persona quedaría en dos obras')
 })
+
+// ═══ CAMBIAR DE OBRA NO TOCA LAS HORAS YA CARGADAS ═══
+//
+// El dueño (08/09/2026): *"una cosa es la asistencia y otra la cantidad de hs por día, no quiero que
+// se rompa eso si se va modificando sobre la marcha"*. Cada `registros_hh` lleva su propia
+// `obra_canonica_id` y es un hecho del día en que ocurrió: mover a alguien de obra cambia de HOY EN
+// ADELANTE, nunca hacia atrás. Un `update` de `registros_hh` acá reimputaría costo de mano de obra
+// de días ya cerrados sin que nadie lo decida, y la grilla mostraría otras horas después de un
+// gesto que sólo decía «está en esta obra».
+//
+// El resultado no lo prueba: `{ ok: true }` sale igual con o sin esa escritura. Lo que lo prueba es
+// la lista de toques, que es lo único que ve qué tablas se escribieron.
+
+test('CAMBIAR DE OBRA NO ESCRIBE FUERA DE obra_asignacion — las horas ya cargadas no se tocan', async () => {
+  const { supabase, toques } = baseCompleta([
+    { id: 'a1', obra_id: 'pisos-industriales', desde: '2026-08-01', hasta: null },
+  ])
+  const r = await cambiarObraActualCon(
+    { supabase, perfil: { rol: 'administracion' }, hoy: HOY },
+    { persona_id: PERSONA, obra_id: 'salon-comercial' },
+  )
+  assert.equal(r.ok, true, 'el escenario tiene que llegar a escribir: si rebota, el test no prueba nada')
+
+  const escrituras = toques.filter((t) => t.verbo !== 'select')
+  assert.ok(escrituras.length >= 2, 'cerró la vigente y abrió la nueva')
+  assert.deepEqual([...new Set(escrituras.map((t) => t.tabla))], ['obra_asignacion'],
+    'ninguna escritura fuera de obra_asignacion')
+  assert.equal(toques.some((t) => t.tabla === 'registros_hh'), false,
+    'ni siquiera se leen los registros: la asistencia y la obra actual son dos cosas distintas')
+  assert.equal(
+    escrituras.some((t) => ['horas', 'fecha', 'tipo_hora', 'obra_canonica_id'].some((c) => c in (t.valores ?? {}))),
+    false,
+    'y ningún valor escrito toca horas, fecha ni la obra de un registro',
+  )
+})

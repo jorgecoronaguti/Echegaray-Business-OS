@@ -48,6 +48,7 @@ scripts · 14 timers en producción.
 | saldo bancario | `_BANCO_RAW` (réplica del extracto) | pegar un número a mano |
 | lo que se debe / se cobra | el libro `_MOVIMIENTOS` | recalcular en cada vista |
 | compras | pestaña `Compras` → espejo `public.compra_sheet` (timer 1 h) | escribir Postgres y esperar que suba |
+| los papeles de cada persona (activa o inactiva) | Drive `1. ACTIVOS` / `2. INACTIVOS` → espejo `public.documentacion_legajo` con `scripts/legajos-sincronizar.mjs --aplicar` (timer `echegaray-espejo-legajos` cada 6 h; unidades en `orquestador/systemd/`, se instalan copiándolas a `~/.config/systemd/user/` + `daemon-reload` + `enable --now`; constancia en `documento_espejo_corrida` ámbito `legajos`) | recorrer otro bucket de la raíz como si fuera de personas; borrar una fila porque el archivo no está: se marca `ausente_en_drive` |
 | proveedores | `public.proveedores`, identidad por **CUIT** | crear por nombre parecido |
 | efectivo | el arqueo sellado + movimientos posteriores | inferir del Sheet |
 | costo proyectado de una obra | `public.obra_egreso_proyectado` (materiales + mano de obra, una fila cada uno) | volver a estampar el número en la celda: la C de OBRAS lo SUMA de `_OBRAS_RAW` |

@@ -193,7 +193,7 @@ export async function getQuincenaPorObra(
   // ninguna obra activa. Sin este viaje la pantalla no tendría con qué escribir «San Francisco» y
   // caería en `sf-mamposteria`, que es lo que el dueño rechazó.
   const rotulos: Record<string, ObraRotulo> = Object.fromEntries(catalogo.map((o) => [o.id, {
-    id: o.id, nombre: o.nombre, cliente: (o.cliente_texto ?? '').trim() || null,
+    id: o.id, nombre: o.nombre, cliente: (o.cliente_texto ?? '').trim() || null, estado: o.estado,
   }]))
   // SÓLO LAS ACTIVAS SE PUEDEN MARCAR. Una obra cerrada aparecía en la grilla con sus celdas
   // editables y sus días sin marcar sumando al «1 día sin marcar»: la pantalla reclamaba cargar
@@ -207,9 +207,12 @@ export async function getQuincenaPorObra(
   // Vigente en algún punto de la ventana, no sólo el último día: quien empezó el jueves entra, y
   // quien terminó el martes también — sus horas del lunes y el martes son reales y son de esa
   // obra. Sin nombre no se dibuja: una fila que no se puede nombrar no sirve para marcar.
+  // LAS ASIGNACIONES A OBRAS NO ACTIVAS TAMBIÉN VIAJAN, MARCADAS. Filtrarlas acá era lo que hacía
+  // que la pantalla mostrara una obra activa cualquiera para alguien cuya asignación vigente está
+  // en una obra cerrada: la grilla no tenía con qué saber que existía. No crean filas —de eso se
+  // ocupa `elegible` en `quincenaPorObra`—, pero sí pueden ser la obra vigente de alguien.
   const vigentes: AsignacionQuincena[] = (asignaciones.data ?? [])
     .filter((a) => Boolean(a.persona_nombre)
-      && activas.has(a.obra_id)
       && (!a.desde || a.desde <= hasta) && (!a.hasta || a.hasta >= desde))
     // `desde`/`hasta` VIAJAN. Estar en la ventana es lo que pone la fila en la grilla; cuál es su
     // OBRA ACTUAL lo decide la vigencia de HOY, y sin estas dos fechas la grilla no puede
@@ -221,6 +224,7 @@ export async function getQuincenaPorObra(
       obra_id: a.obra_id,
       desde: a.desde ?? null,
       hasta: a.hasta ?? null,
+      elegible: activas.has(a.obra_id),
     }))
 
   // ═══ QUIÉN TIENE REGISTROS Y NO SE PUEDE NOMBRAR CON UNA ASIGNACIÓN ═══
@@ -231,7 +235,10 @@ export async function getQuincenaPorObra(
   //
   // El descarte se mide contra `vigentes` —lo que la grilla va a recibir— y no contra las
   // asignaciones crudas: quien sólo tiene asignaciones a obras cerradas tampoco tiene nombre.
-  const nombrables = new Set(vigentes.map((a) => a.persona_id))
+  // SÓLO LAS ELEGIBLES NOMBRAN. Una asignación a una obra cerrada no pone a nadie en la grilla, así
+  // que tampoco puede evitar que se lo busque en el plantel: si no, quien sólo tiene obras cerradas
+  // y horas cargadas volvería a quedarse sin nombre y fuera de la pantalla.
+  const nombrables = new Set(vigentes.filter((a) => a.elegible).map((a) => a.persona_id))
   const sinAsignacion = [...new Set(
     filasHH.map((r) => r.persona_id).filter((id) => id && !nombrables.has(id)),
   )]

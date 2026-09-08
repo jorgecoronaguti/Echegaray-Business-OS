@@ -1,0 +1,11 @@
+[Unit]
+Description=Echegaray OS — espejo del data room de Personal cada 6 h
+
+[Timer]
+# Cada 6 h, a los :20 para no pisar los syncs de la hora en punto (:00, :08, :11) ni al Flujo de Caja (:50).
+OnCalendar=*-*-* 00,06,12,18:20:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
