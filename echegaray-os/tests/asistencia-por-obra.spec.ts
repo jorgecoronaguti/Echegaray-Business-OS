@@ -277,6 +277,10 @@ test('LO QUE SE GUARDA EN CAMPO SE LEE EN ADMINISTRACIÓN', async ({ page }) => 
   await entrarComo(page, ADMIN.email, ADMIN.password)
 
   await page.goto(`/campo/asistencia?obra=${OBRA_DE_PRUEBA}`)
+  // LA PANTALLA ABRE EN PRESENCIA (08/09/2026): las horas son el paso siguiente y no tienen URL
+  // propia. Sin este toque estos tests medían la pantalla anterior y estaban en rojo desde esa
+  // mañana — un rojo que no era un defecto del código sino del test.
+  await page.getByTestId('ir-a-horas').click()
   await expect(page.getByTestId('form-asistencia')).toBeVisible()
 
   const casilla = page.getByTestId('horas').first()
@@ -308,6 +312,8 @@ test('04 · REABRIR EL DÍA MUESTRA LO YA CARGADO, no la jornada de nuevo', asyn
     await page.setViewportSize({ width: 390, height: 844 })
     await entrarComo(page, ADMIN.email, ADMIN.password)
     await page.goto(`/campo/asistencia?obra=${OBRA_DE_PRUEBA}`)
+    // Ver arriba: la pantalla abre en presencia y las horas son el paso siguiente.
+    await page.getByTestId('ir-a-horas').click()
     await expect(page.getByTestId('form-asistencia')).toBeVisible()
 
     await page.getByTestId('horas').first().fill('5')
@@ -315,6 +321,8 @@ test('04 · REABRIR EL DÍA MUESTRA LO YA CARGADO, no la jornada de nuevo', asyn
     await expect(page.getByTestId('acuse-jornada')).toContainText('1 marca nueva', { timeout: 20000 })
 
     await page.reload()
+    // RECARGAR VUELVE AL PASO DE PRESENCIA: el paso es estado del cliente, no de la URL.
+    await page.getByTestId('ir-a-horas').click()
     await expect(page.getByTestId('form-asistencia')).toBeVisible()
     await expect(page.getByTestId('horas').first()).toHaveValue('5')
     await expect(page.getByTestId('fila-asistencia').first()).toHaveAttribute('data-estado', 'presente')
@@ -681,6 +689,8 @@ test('07 · LA CASILLA NACE VACÍA Y GUARDAR NO ESCRIBE NADA — sobre una obra 
     await page.setViewportSize({ width: 390, height: 844 })
     await entrarComo(page, ADMIN.email, ADMIN.password)
     await page.goto(`/campo/asistencia?obra=${OBRA_DE_PRUEBA}`)
+    // Ver arriba: la pantalla abre en presencia y las horas son el paso siguiente.
+    await page.getByTestId('ir-a-horas').click()
     await expect(page.getByTestId('form-asistencia')).toBeVisible()
 
     await expect(page.getByTestId('horas').first()).toHaveValue('')
@@ -740,10 +750,16 @@ test('09 · UNA PERSONA CON SÓLO LICENCIAS ESTÁ EN LA GRILLA, con «L» y sin 
   // La celda de licencia es FIJA —no se puede pisar escribiendo un número— y dice «L», no «A».
   const licencias = fila.locator('[data-testid="celda-fija"][data-estado="licencia"]')
   expect(await licencias.count()).toBeGreaterThan(0)
-  await expect(licencias.first()).toHaveText('L')
+  // «L» ARRIBA Y LAS HORAS ABAJO (dueño, 08/09/2026 16:16): «las ausencias que tienen motivo
+  // registrado dan la posibilidad de que se le registre hs, como pasa con los accidentes
+  // laborales». Antes la celda decía «L» y nada más, y una licencia con 9 hs reconocidas se veía
+  // igual que una sin ninguna hora — que es la diferencia entre lo que se paga y lo que no.
+  await expect(licencias.first()).toHaveText(/^L\s*\d/)
   await expect(licencias.first()).toHaveAttribute('title', /Licencia/)
-  // NO SUMA HORAS: el total de la fila es «—», que no es lo mismo que un cero.
-  await expect(fila.getByTestId('total-persona')).toHaveText('—')
+  // LAS HORAS SE LE RECONOCEN A LA PERSONA: el total de la fila ya no es «—». Lo que sigue siendo
+  // cierto —y se mide en `quincenaPorObra.test.ts`— es que no suman a ninguna obra.
+  await expect(fila.getByTestId('total-persona')).not.toHaveText('—')
+  await expect(fila.getByTestId('total-persona')).toHaveText(/\d/)
   await page.screenshot({ path: 'qa-shots/asistencia-licencia-1440.png', fullPage: true })
 
   // ═══ Y LA FICHA DIBUJA LAS MISMAS COLUMNAS QUE LA GRILLA ═══
@@ -1037,6 +1053,9 @@ test('06 · LA «A» DE LA GRILLA ESCRIBE LA AUSENCIA SIN OBRA', async ({ page }
       if (!filaHH) await page.waitForTimeout(500)
     }
     if (!filaHH) throw new Error('La ausencia no llegó a registros_hh: la escritura no ocurrió.')
+    // LA FILA LEÍDA SE IMPRIME: es la evidencia que se pega en el informe de cierre. Este test se
+    // corre a mano y con testigo, así que una línea de salida no es ruido — es el dato.
+    console.log('registros_hh leído del destino →', JSON.stringify(filaHH))
     // LAS TRES AFIRMACIONES DE LA REGLA, EN EL DATO:
     assert(filaHH.obra_canonica_id === null, `la ausencia quedó imputada a «${filaHH.obra_canonica_id}»`)
     assert(filaHH.tipo_hora === 'ausencia', `tipo_hora = ${filaHH.tipo_hora}`)
@@ -1045,7 +1064,12 @@ test('06 · LA «A» DE LA GRILLA ESCRIBE LA AUSENCIA SIN OBRA', async ({ page }
     // Y LA PANTALLA LO DICE IGUAL QUE LA BASE: «A» arriba, las horas abajo.
     await page.reload()
     await page.waitForLoadState('networkidle')
-    const celdaFija = page.locator('tr', { hasText: NOMBRE_PERSONA }).getByTestId('celda-fija').first()
+    // POR EL ESTADO, NO POR LA POSICIÓN: la fila arranca con el sábado y el domingo, que también
+    // son celdas fijas («no laborable»). `.first()` medía uno de ésos y decía «sin_marca» sobre una
+    // ausencia que sí estaba escrita.
+    const celdaFija = page.locator('tr', { hasText: NOMBRE_PERSONA })
+      .locator('[data-testid="celda-fija"][data-estado="ausente"]')
+    await expect(celdaFija).toHaveCount(1)
     await expect(celdaFija).toHaveAttribute('data-presencia', 'ausente')
     await page.screenshot({ path: 'qa-shots/asistencia-06-ausencia-sin-obra-1440.png', fullPage: true })
   } finally {
