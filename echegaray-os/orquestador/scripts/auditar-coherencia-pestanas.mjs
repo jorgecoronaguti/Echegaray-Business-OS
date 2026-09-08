@@ -188,7 +188,8 @@ async function main() {
   console.log('\n═══ 2 · ¿CONDICEN ENTRE SÍ? ═══\n')
   for (const c of cruces) {
     const marca = c.estado === COHERENCIA.CONDICE ? '✓' : c.estado === COHERENCIA.DISCREPA ? '✗' : '?'
-    const detalle = c.estado === COHERENCIA.NO_VERIFICABLE ? 'no se pudo leer una de las dos'
+    // La causa, cuando el cruce la sabe: «no se pudo leer» esconde que la celda SÍ se leyó y vale 0.
+    const detalle = c.estado === COHERENCIA.NO_VERIFICABLE ? (c.nota ?? 'no se pudo leer una de las dos')
       : `${c.izquierda} ${c.a} · ${c.derecha} ${c.b}${c.delta ? ` · difieren en ${c.delta.toLocaleString('es-AR')}` : ''}`
     console.log(`${marca} ${c.que.padEnd(46)} ${detalle}`)
   }
