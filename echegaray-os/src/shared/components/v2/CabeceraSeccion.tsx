@@ -34,7 +34,12 @@ export interface SubVista {
 export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espacioPanel, testid = 'vistas-seccion' }: {
   /** Una sola = el título de la sección, sin subrayado de solapa. Dos o más = el nivel 3. */
   vistas: SubVista[]
-  buscador: {
+  /**
+   * `undefined` = ESTA VISTA NO SE BUSCA. No es un olvido: la carga del día en el teléfono muestra
+   * una obra y su gente —seis o siete nombres—, y un campo de búsqueda ahí no filtra nada mientras
+   * le come una línea a la única pantalla que se usa parado en la obra.
+   */
+  buscador?: {
     accion: string; q?: string; placeholder: string
     oculto?: Record<string, string | undefined>
     testid?: string
@@ -105,13 +110,15 @@ export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espac
         ))}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <BuscadorFilo
-            accion={buscador.accion}
-            q={buscador.q}
-            placeholder={buscador.placeholder}
-            oculto={buscador.oculto}
-            testid={buscador.testid ?? 'buscar'}
-          />
+          {buscador && (
+            <BuscadorFilo
+              accion={buscador.accion}
+              q={buscador.q}
+              placeholder={buscador.placeholder}
+              oculto={buscador.oculto}
+              testid={buscador.testid ?? 'buscar'}
+            />
+          )}
           {filtros}
           {!alta && accion}
           {alta && (

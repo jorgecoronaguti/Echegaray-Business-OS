@@ -24,8 +24,8 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { tipoDeMotivo } from './motivoDeAusencia'
 import {
-  acuseDe, acuseDeBorrado, cambiaDeObra, correccionSchema, envioSchema, motivoDe, planDeBorrado,
-  planDeGuardado, traducirEscritura,
+  acuseDe, acuseDeBorrado, cambiaDeObra, correccionSchema, envioSchema, motivoDe, personasQueEstrenanDia,
+  planDeBorrado, planDeGuardado, puertaDeObraNoActiva, traducirEscritura,
   type EscritoEnLaBase, type FilaExistente, type MarcaDeJornada, type PlanDeJornada,
 } from './planDeJornada'
 
@@ -39,34 +39,16 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   const supabase = await createClient()
 
   // LA ACCIÓN ES LA PUERTA, NO LA PANTALLA. La pantalla ofrece obras activas; esta llamada puede
-  // venir de cualquier lado. Sin esto se podían cargar horas contra una obra cerrada o inexistente
-  // —la grilla mostraba Galpón 9, cerrada, como editable— y el costo se imputaba a una obra que ya
-  // nadie mira.
+  // venir de cualquier lado. Sin esto se podían cargar horas contra una obra inexistente y el costo
+  // se imputaba a una obra que ya nadie mira.
   const obra = await supabase.from('obra_canonica').select('nombre, estado').eq('id', obraId).maybeSingle()
   if (obra.error) return { ok: false, error: obra.error.message }
   if (!obra.data) return { ok: false, error: 'Esa obra no existe o no la ves.' }
-  const estado = (obra.data as { nombre: string; estado: string | null }).estado
-  if (estado !== 'activa') {
-    return {
-      ok: false,
-      error: `«${(obra.data as { nombre: string }).nombre}» no está activa (${estado ?? 'sin estado'}): `
-        + 'no se le pueden cargar horas. Si hay que corregir un día viejo, se reabre la obra.',
-    }
-  }
+  const { nombre, estado } = obra.data as { nombre: string; estado: string | null }
 
-  // Y SÓLO A QUIEN ESTÁ ASIGNADO ESE DÍA. Cargarle horas a alguien que no está en la obra imputa su
-  // costo a una obra en la que no trabajó. Administración puede hacerlo desde `corregirJornada`,
-  // que además le pide asignarla — y ahí es una decisión, no un efecto colateral.
-  const sinAsignar = await personasSinAsignacion(supabase, obraId, marcas.map((m) => m.persona_id), fecha)
-  if (sinAsignar.length > 0) {
-    return {
-      ok: false,
-      error: `${sinAsignar.length === 1 ? 'Una persona del envío no está asignada' : `${sinAsignar.length} personas del envío no están asignadas`}`
-        + ' a esta obra ese día. Se asigna desde Personal de la obra, o desde Administración → '
-        + 'Personal → Asistencia, que lo hace en el mismo gesto.',
-    }
-  }
-
+  // LO QUE YA ESTÁ GUARDADO SE LEE ANTES DE DECIDIR SI SE PUEDE ESCRIBIR. El orden importa: es lo
+  // único que distingue corregir un día que existe —permitido siempre— de estrenar uno.
+  //
   // `.order('id')` Y LOS CAMPOS QUE EL PLAN NECESITA PARA DECIDIR. Sin `actividad_id` e
   // `improductiva`, el plan no puede distinguir la jornada del día de una imputación al plan de
   // obra y las trata como intercambiables. Sin `.order()`, el orden lo elige PostgREST.
@@ -76,8 +58,33 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
     .in('persona_id', marcas.map((m) => m.persona_id))
     .order('id', { ascending: true })
   if (previos.error) return { ok: false, error: previos.error.message }
+  const existentes = (previos.data ?? []) as FilaExistente[]
 
-  const plan = planDeGuardado(marcas, (previos.data ?? []) as FilaExistente[])
+  // CORREGIR HISTORIA NO ES CARGAR HORAS EN UNA OBRA CERRADA (ver `puertaDeObraNoActiva`).
+  const estrenan = personasQueEstrenanDia(marcas, existentes)
+  const cerrada = puertaDeObraNoActiva({ nombre, estado, crea: estrenan.length > 0 })
+  if (cerrada) return { ok: false, error: cerrada }
+
+  // Y SÓLO A QUIEN ESTÁ ASIGNADO ESE DÍA. Cargarle horas a alguien que no está en la obra imputa su
+  // costo a una obra en la que no trabajó. Administración puede hacerlo desde `corregirJornada`,
+  // que además le pide asignarla — y ahí es una decisión, no un efecto colateral.
+  //
+  // SÓLO SOBRE QUIEN ESTRENA EL DÍA, por lo mismo que la puerta de arriba: si la persona ya tiene
+  // horas cargadas en esta obra ese día, el costo ya está imputado ahí y corregirlo no lo mueve a
+  // ningún lado. Exigir una asignación VIGENTE para arreglar un número de hace dos meses dejaría el
+  // dato mal —la asignación de entonces suele estar cerrada con `hasta`—, que es exactamente el
+  // caso que reportó el dueño.
+  const sinAsignar = await personasSinAsignacion(supabase, obraId, estrenan, fecha)
+  if (sinAsignar.length > 0) {
+    return {
+      ok: false,
+      error: `${sinAsignar.length === 1 ? 'Una persona del envío no está asignada' : `${sinAsignar.length} personas del envío no están asignadas`}`
+        + ' a esta obra ese día. Se asigna desde Personal de la obra, o desde Administración → '
+        + 'Personal → Asistencia, que lo hace en el mismo gesto.',
+    }
+  }
+
+  const plan = planDeGuardado(marcas, existentes)
   const r = await escribirPlan(supabase, obraId, fecha, plan)
   if (r.error || !r.escrito) return { ok: false, error: r.error ?? 'No se pudo escribir.' }
 
@@ -187,40 +194,8 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   const c = parsed.data
   const supabase = await createClient()
 
-  if (c.estado !== 'borrar') {
-    // LA OBRA DESTINO TIENE QUE ESTAR ACTIVA. Mover un día a una obra cerrada le imputa costo de
-    // mano de obra a algo que ya nadie mira, y el número aparece en el plan contra real de una obra
-    // terminada. Si alguna vez hace falta corregir un día viejo, se reabre la obra: eso es una
-    // decisión de alguien y queda registrada, que es justo lo que no pasa si la acción lo permite.
-    const destino = await supabase.from('obra_canonica')
-      .select('nombre, estado').eq('id', c.obra_destino).maybeSingle()
-    if (destino.error) return { ok: false, error: destino.error.message }
-    if (!destino.data) return { ok: false, error: 'Esa obra no existe o no la ves.' }
-    const o = destino.data as { nombre: string; estado: string | null }
-    if (o.estado !== 'activa') {
-      return {
-        ok: false,
-        error: `«${o.nombre}» no está activa (${o.estado ?? 'sin estado'}): no se le pueden mover `
-          + 'horas. Si hay que corregir un día viejo, se reabre la obra.',
-      }
-    }
-    const falta = await faltaAsignacion(supabase, c.persona_id, c.obra_destino, c.fecha)
-    if (falta) {
-      if (!c.asignar) {
-        return {
-          ok: false,
-          necesitaAsignacion: true,
-          error: `Esa persona no está asignada a ${falta} el ${c.fecha}. Se puede asignar acá mismo, `
-            + 'pero es una decisión: la asignación es la que después decide a qué obra se le imputa el costo.',
-        }
-      }
-      const alta = await supabase.from('obra_asignacion').insert({
-        obra_id: c.obra_destino, persona_id: c.persona_id, rol: 'integrante', desde: c.fecha,
-      })
-      if (alta.error) return { ok: false, error: `No pude asignarla: ${alta.error.message}` }
-    }
-  }
-
+  // LO QUE YA ESTÁ CARGADO SE LEE PRIMERO. Es lo único que distingue corregir un día que existe
+  // —permitido aunque la obra esté cerrada— de estrenar uno o moverlo, que no.
   const previos = await supabase.from('registros_hh')
     .select('id, persona_id, horas, tipo_hora, obra_canonica_id, actividad_id, improductiva, notas')
     .eq('persona_id', c.persona_id).eq('fecha', c.fecha)
@@ -255,9 +230,48 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
     ? { persona_id: c.persona_id, estado: 'ausente', horas: c.horas ?? 1, motivo: c.motivo }
     : { persona_id: c.persona_id, estado: 'presente', horas: c.horas as number }
 
+  const enDestino = filas.filter((f) => f.obra_canonica_id === c.obra_destino)
+  const destino = await supabase.from('obra_canonica')
+    .select('nombre, estado').eq('id', c.obra_destino).maybeSingle()
+  if (destino.error) return { ok: false, error: destino.error.message }
+  if (!destino.data) return { ok: false, error: 'Esa obra no existe o no la ves.' }
+  const o = destino.data as { nombre: string; estado: string | null }
+
+  // MOVER HORAS A UNA OBRA CERRADA SIGUE PROHIBIDO, y estrenar un día en ella también: las dos le
+  // imputan costo de mano de obra nuevo a algo que ya se cerró con su margen. Corregir el día que
+  // YA ESTÁ ahí, no: es historia de esa obra y dejarla mal no la protege de nada.
+  const mueve = cambiaDeObra(c)
+  const crea = mueve
+    || personasQueEstrenanDia([marca], enDestino, { administraLicencias: true }).length > 0
+  const cerrada = puertaDeObraNoActiva({
+    nombre: o.nombre, estado: o.estado, crea, motivo: mueve ? 'mover' : 'cargar',
+  })
+  if (cerrada) return { ok: false, error: cerrada }
+
+  // LA ASIGNACIÓN SE EXIGE PARA LO NUEVO, NO PARA LA CORRECCIÓN. Si la persona ya tiene ese día
+  // cargado en esta obra, el costo ya está imputado ahí: corregir el número no lo mueve. Pedirle
+  // una asignación vigente —que en un día viejo casi siempre está cerrada con `hasta`— sería
+  // ofrecer asignar a alguien a una obra terminada para arreglar un tipeo.
+  if (crea) {
+    const falta = await faltaAsignacion(supabase, c.persona_id, c.obra_destino, c.fecha)
+    if (falta) {
+      if (!c.asignar) {
+        return {
+          ok: false,
+          necesitaAsignacion: true,
+          error: `Esa persona no está asignada a ${falta} el ${c.fecha}. Se puede asignar acá mismo, `
+            + 'pero es una decisión: la asignación es la que después decide a qué obra se le imputa el costo.',
+        }
+      }
+      const alta = await supabase.from('obra_asignacion').insert({
+        obra_id: c.obra_destino, persona_id: c.persona_id, rol: 'integrante', desde: c.fecha,
+      })
+      if (alta.error) return { ok: false, error: `No pude asignarla: ${alta.error.message}` }
+    }
+  }
+
   // INSERTAR PRIMERO, BORRAR DESPUÉS (ver `ORDEN_DEL_MOVIMIENTO`): un duplicado visible le gana a
   // una pérdida silenciosa, y PostgREST no ofrece la transacción que haría innecesaria la elección.
-  const enDestino = filas.filter((f) => f.obra_canonica_id === c.obra_destino)
   // ADMINISTRACIÓN SÍ CORRIGE UNA LICENCIA: es quien la autorizó. Desde `/campo` no.
   const escrito = await escribirPlan(supabase, c.obra_destino, c.fecha,
     planDeGuardado([marca], enDestino, { administraLicencias: true }))
