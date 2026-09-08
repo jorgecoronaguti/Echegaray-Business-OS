@@ -214,8 +214,20 @@ test('LAS HORAS QUE CORRESPONDEN SON LAS DEL DÍA ELEGIDO: 8 EL VIERNES, 9 EL LU
   // cargado —casi siempre un lunes—, así que un campo que no se recalcula muestra 9 acá.
   await dia.selectOption(viernes!)
   await page.getByTestId('correccion-estado').selectOption('ausente')
+  // ═══ SIN MOTIVO NO HAY HORAS QUE MOSTRAR (dueño, 08/09/2026 18:50) ═══
+  //
+  // «Ausencia sin motivo es cero hs». El campo aparece recién cuando el motivo elegido se paga; con
+  // «faltó sin avisar» tampoco, y en su lugar la pantalla dice cuánto vale el día. Antes de esta
+  // regla el campo nacía con 9 adentro sobre una falta sin declarar.
+  await expect(campo).toBeHidden()
+  await expect(page.getByTestId('correccion-ausencia-cero')).toBeVisible()
+  await page.getByTestId('correccion-motivo').selectOption('falta')
+  await expect(campo).toBeHidden()
+
+  await page.getByTestId('correccion-motivo').selectOption('accidente')
   await expect(campo).toHaveValue('8')
 
+  // EL MOTIVO SOBREVIVE AL CAMBIO DE DÍA; las horas prellenadas NO: el lunes vale 9.
   await dia.selectOption(lunes!)
   await page.getByTestId('correccion-estado').selectOption('ausente')
   await expect(campo).toHaveValue('9')
