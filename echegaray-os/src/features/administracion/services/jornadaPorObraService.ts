@@ -251,17 +251,21 @@ export async function getObrasParaJornada(
   const [obras, asignaciones] = await Promise.all([
     supabase.from('obra_canonica')
       .select('id, nombre, jornada_horas').eq('estado', 'activa').order('nombre'),
-    supabase.from('obra_asignacion').select('obra_canonica_id, desde, hasta'),
+    // `obra_id`, NO `obra_canonica_id`. La columna de esta tabla se llama `obra_id` —lo confirma
+    // `getAsignaciones`—; pedir la que no existe devuelve un error de PostgREST, el conteo cae a
+    // `null` y la lista publica «sin conteo» en TODAS las obras. Se vio en la captura de 390px del
+    // 08/09: nueve obras, nueve «sin conteo». El fallback fue honesto (no dijo 0) y el dato no estaba.
+    supabase.from('obra_asignacion').select('obra_id, desde, hasta'),
   ])
   if (obras.error) return { data: [], error: obras.error.message }
 
   const vigentes = new Map<string, number>()
   if (!asignaciones.error) {
     for (const a of (asignaciones.data ?? []) as {
-      obra_canonica_id: string | null; desde: string | null; hasta: string | null
+      obra_id: string | null; desde: string | null; hasta: string | null
     }[]) {
-      if (a.obra_canonica_id && vigenteEn(a, fecha)) {
-        vigentes.set(a.obra_canonica_id, (vigentes.get(a.obra_canonica_id) ?? 0) + 1)
+      if (a.obra_id && vigenteEn(a, fecha)) {
+        vigentes.set(a.obra_id, (vigentes.get(a.obra_id) ?? 0) + 1)
       }
     }
   }
