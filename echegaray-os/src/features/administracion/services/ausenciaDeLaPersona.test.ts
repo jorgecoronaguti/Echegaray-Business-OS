@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   JORNADA_ESTANDAR_HS, acuseDeAusencia, acuseDeAusenciasDelDia, ausenciaSinObraDe,
-  horasDeLaAusencia, planDeAusenciasSinObra, sumarHoras,
+  horasDeLaAusencia, jornadaDeReferenciaVisible, planDeAusenciasSinObra, sumarHoras,
 } from './ausenciaDeLaPersona.ts'
 import type { FilaDelDia, MarcaDelDia } from './ausenciaDeLaPersona.ts'
 
@@ -193,4 +193,27 @@ test('EL ACUSE DE LA CARGA DEL DÍA DICE QUE NO SE CARGÓ A NINGUNA OBRA', () =>
   assert.match(
     acuseDeAusenciasDelDia({ insertadas: 0, actualizadas: 0, sacadas: 0, sinCambio: 1, intactas: [] }) ?? '',
     /ya estaba registrada/)
+})
+
+// ── LAS HORAS QUE LLEVA UNA AUSENCIA (dueño, 08/09/2026 16:16) ─────────────────────────────────
+//
+// «las ausencias que tienen motivo registrado dan la posibilidad de que se le registre hs, como
+// pasa con los accidentes laborales». El campo del panel nace prellenado con esto.
+
+test('LA JORNADA DE REFERENCIA VISIBLE SIGUE EL MISMO ORDEN QUE EL SERVIDOR', () => {
+  assert.equal(jornadaDeReferenciaVisible([9, 8.8]), 9, 'la primera candidata útil manda')
+  assert.equal(jornadaDeReferenciaVisible([null, undefined, 8.8]), 8.8, 'las vacías no cuentan')
+  // El defecto que atrapa: un campo que nace vacío se guarda vacío, y la ausencia terminaría sin
+  // las horas que sí corresponden por ley. Sin ninguna candidata vale la jornada estándar.
+  assert.equal(jornadaDeReferenciaVisible([]), JORNADA_ESTANDAR_HS)
+  assert.equal(jornadaDeReferenciaVisible([0, null]), JORNADA_ESTANDAR_HS, 'un cero no es una jornada')
+})
+
+test('LAS HORAS DEL FORMULARIO LE GANAN A LA JORNADA DE REFERENCIA, Y EL VACÍO NO ES CERO', () => {
+  // Un accidente de trabajo con 4 hs reconocidas se guarda con 4, no con la jornada de la obra.
+  assert.equal(horasDeLaAusencia(4, 8.8), 4)
+  // Vaciar el campo NO registra cero —`registros_hh` exige horas > 0 y el dueño lo dijo al revés:
+  // «se le suma hs porque corresponde por ley»—: vuelve a la jornada de referencia.
+  assert.equal(horasDeLaAusencia(null, 8.8), 8.8)
+  assert.equal(horasDeLaAusencia(0, 9), 9)
 })

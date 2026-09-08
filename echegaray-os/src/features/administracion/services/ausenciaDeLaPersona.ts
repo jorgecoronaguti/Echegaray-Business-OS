@@ -61,6 +61,24 @@ export function horasDeLaAusencia(
   return Number.isFinite(jornada) && jornada > 0 ? jornada : JORNADA_ESTANDAR_HS
 }
 
+/**
+ * La jornada de referencia que la PANTALLA muestra, con las candidatas que tenga a mano y en el
+ * mismo orden que el servidor (`jornadaDeReferencia`): la obra donde el día ya está cargado, la
+ * elegida en el formulario, y recién ahí la estándar.
+ *
+ * Existe porque el campo «Horas que corresponden» nace prellenado y un campo que nace vacío es un
+ * campo que se guarda vacío: la ausencia terminaría sin las horas que sí corresponden por ley.
+ */
+export function jornadaDeReferenciaVisible(
+  candidatas: readonly (number | null | undefined)[],
+): number {
+  for (const c of candidatas) {
+    const n = Number(c)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return JORNADA_ESTANDAR_HS
+}
+
 /** Lo que la base hizo con la ausencia. Nunca la intención: el acuse cuenta el efecto. */
 export interface EscrituraDeLaAusencia {
   /** `null` cuando la fila ya estaba igual y no hubo nada que escribir. */

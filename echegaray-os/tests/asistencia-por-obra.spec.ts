@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { test, expect } from '@playwright/test'
 import { entrarComo } from './util/login'
 import { ADMIN, JEFE, servicio } from './util/identidades'
@@ -990,4 +991,67 @@ test('08c · el JEFE DE OBRA ve la grilla Y el desplegable de obra actual, habil
   // Y LA ASISTENCIA LE SIGUE FUNCIONANDO: las celdas de hora se editan como siempre.
   await expect(page.getByTestId('celda-hora').first()).toBeVisible()
   await page.screenshot({ path: 'qa-shots/asignacion-jefe-con-dropdown-1440.png', fullPage: true })
+})
+
+// ═══ LA AUSENCIA SE ESCRIBE SIN OBRA — LA EVIDENCIA ES LA FILA EN LA BASE ═══
+//
+// Dueño, 08/09/2026: *«si la persona está ausente, se le suma hs pero porque corresponde por ley,
+// no necesariamente sumarle a ninguna obra»*. El panel de corrección ya lo hacía; la «A» de la
+// grilla —esta puerta— seguía escribiendo la ausencia CON la obra del formulario.
+//
+// LO QUE PRUEBA ESTE TEST Y NINGÚN OTRO PUEDE: que la fila llegó a `registros_hh` con
+// `obra_canonica_id` NULL. Que la celda muestre la «A» no prueba nada de la escritura —el CHECK de
+// la base, las policies y el `.or()` de la lectura sólo se pueden ver acá—. Escribe con la PERSONA
+// DE PRUEBA y su obra ZZ-E2E, y borra todo al terminar.
+test('06 · LA «A» DE LA GRILLA ESCRIBE LA AUSENCIA SIN OBRA', async ({ page }) => {
+  test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
+    'Escribe en registros_hh con la persona de prueba. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
+  const persona = await prepararObraDePrueba()
+  if (!persona) test.skip(true, 'La base no tiene a nadie en el plantel.')
+  const sb = servicio()
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await entrarComo(page, ADMIN.email, ADMIN.password)
+    // UNA QUINCENA FIJA Y PASADA: contra «hoy» la primera columna puede ser futura y la celda no se
+    // edita. El 1 al 15 de agosto ya pasó entero.
+    await page.goto('/administracion/personas?vista=asistencia&quincena=2026-08-03')
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+    const fila = page.locator('tr', { hasText: NOMBRE_PERSONA })
+    await expect(fila).toHaveCount(1)
+    // Lunes 3 de agosto: día hábil, pasado y sin nada cargado — la celda nace editable.
+    const celda = fila.getByTestId('celda-hora').first()
+    await celda.fill('A')
+    await celda.blur()
+
+    // LA EVIDENCIA, LEÍDA DEL DESTINO. Se espera a que la fila EXISTA: la acción es un server
+    // action y el `blur` vuelve antes de que la base conteste.
+    interface FilaHH { obra_canonica_id: string | null; tipo_hora: string; horas: number | string }
+    let filaHH: FilaHH | null = null
+    for (let i = 0; i < 20 && filaHH === null; i += 1) {
+      const { data } = await sb.from('registros_hh')
+        .select('obra_canonica_id, tipo_hora, horas, fecha')
+        .eq('persona_id', PERSONA_DE_PRUEBA).eq('fecha', '2026-08-03')
+      filaHH = (((data ?? []) as unknown as FilaHH[])[0]) ?? null
+      if (!filaHH) await page.waitForTimeout(500)
+    }
+    if (!filaHH) throw new Error('La ausencia no llegó a registros_hh: la escritura no ocurrió.')
+    // LAS TRES AFIRMACIONES DE LA REGLA, EN EL DATO:
+    assert(filaHH.obra_canonica_id === null, `la ausencia quedó imputada a «${filaHH.obra_canonica_id}»`)
+    assert(filaHH.tipo_hora === 'ausencia', `tipo_hora = ${filaHH.tipo_hora}`)
+    assert(Number(filaHH.horas) > 0, 'la ausencia se registró sin horas: se le suman porque corresponden por ley')
+
+    // Y LA PANTALLA LO DICE IGUAL QUE LA BASE: «A» arriba, las horas abajo.
+    await page.reload()
+    await page.waitForLoadState('networkidle')
+    const celdaFija = page.locator('tr', { hasText: NOMBRE_PERSONA }).getByTestId('celda-fija').first()
+    await expect(celdaFija).toHaveAttribute('data-presencia', 'ausente')
+    await page.screenshot({ path: 'qa-shots/asistencia-06-ausencia-sin-obra-1440.png', fullPage: true })
+  } finally {
+    // SE BORRA LO ESCRITO, SIEMPRE. `limpiarObraDePrueba` barre todo lo de la persona de prueba,
+    // incluida la fila SIN obra —que no está atada a la obra ZZ-E2E y no saldría por ahí—.
+    await sb.from('registros_hh').delete().eq('persona_id', PERSONA_DE_PRUEBA)
+    await limpiarObraDePrueba()
+  }
 })

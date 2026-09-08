@@ -8,6 +8,7 @@ import { hs, leerHoras } from '../services/jornadaPorObra'
 import { corregirJornada } from '../services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '../services/motivoDeAusencia'
 import { obraDestinoInicial } from '../services/destinoInicial'
+import { jornadaDeReferenciaVisible } from '../services/ausenciaDeLaPersona'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 
 // EL ADMINISTRADOR CORRIGE TODO — el día de una persona: su obra, sus horas, si no vino, o sacarlo.
@@ -68,9 +69,18 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
   // Sólo una obra ELEGIBLE puede ser el valor inicial: ver `obraDestinoInicial`.
   const [obraDestino, setObraDestino] = useState(
     obraDestinoInicial(tramos[0]?.obra_id, fila.obraPorDefecto?.id, obras))
-  const jornada = jornadaPorObra[obraDestino] ?? 0
   const [estado, setEstado] = useState<Estado>(tramos[0]?.ausente ? 'ausente' : 'presente')
   const [texto, setTexto] = useState(tramos[0]?.horas != null ? hs(tramos[0].horas) : '')
+  // ═══ UNA AUSENCIA LLEVA HORAS, Y SE VEN (dueño, 08/09/2026 16:16) ═══
+  //
+  // Textual: *«las ausencias que tienen motivo registrado dan la posibilidad de que se le registre
+  // hs, como pasa con los accidentes laborales»*. Antes el panel mandaba la jornada de la obra sin
+  // mostrarla: quien corregía un accidente de trabajo no tenía forma de ver ni de cambiar las horas
+  // que se le iban a reconocer. Nace PRELLENADO con la jornada de referencia —un campo vacío se
+  // guarda vacío— y se puede editar. Vaciarlo NO registra cero: `registros_hh` exige horas > 0 y el
+  // servidor vuelve a la jornada de referencia (`horasDeLaAusencia`).
+  const [textoAusencia, setTextoAusencia] = useState(
+    hs(horasDeLaAusenciaVisibles(celda, tramos, fila.obraPorDefecto?.id, jornadaPorObra)))
   const [asignar, setAsignar] = useState(false)
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null)
   const [motivo, setMotivo] = useState<string | null>(null)
@@ -102,11 +112,17 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
     setObraDestino(obraDestinoInicial(obraId, fila.obraPorDefecto?.id, obras))
     setEstado(t?.ausente ? 'ausente' : 'presente')
     setTexto(t?.horas != null ? hs(t.horas) : '')
+    setTextoAusencia(hs(horasDeLaAusenciaVisibles(celda, tramos, fila.obraPorDefecto?.id, jornadaPorObra)))
     setAviso(null)
   }
 
   const { horas, error } = leerHoras(texto)
-  const invalido = estado === 'presente' && (error !== null || horas === null)
+  // LAS HORAS DE LA AUSENCIA SE LEEN CON EL MISMO PARSER que las trabajadas: la coma decimal, el
+  // tope de 24 y el «no es un número» son la misma regla, y dos lecturas distintas del mismo campo
+  // discrepan el día que se toca una.
+  const ausencia = leerHoras(textoAusencia)
+  const invalido = (estado === 'presente' && (error !== null || horas === null))
+    || (estado === 'ausente' && ausencia.error !== null)
 
   const guardar = () => {
     setAviso(null)
@@ -126,7 +142,11 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
         // `null` deja que la acción use la jornada de referencia (ver `ausenciaDeLaPersona.ts`: la
         // jornada legal por categoría es un dato pendiente). Un 1 fijo registraría una ausencia de
         // una hora sobre una jornada de nueve.
-        horas: estado === 'ausente' ? (jornada > 0 ? jornada : null) : horas,
+        // LAS HORAS QUE CORRESPONDEN, TAL COMO SE VEN EN EL CAMPO. `null` cuando quedó vacío: el
+        // servidor usa la jornada de referencia (`horasDeLaAusencia`), que es la misma que este
+        // panel prellenó. Nunca un cero — la base lo prohíbe y el dueño lo dijo al revés: «se le
+        // suma hs porque corresponde por ley».
+        horas: estado === 'ausente' ? ausencia.horas : horas,
         // EL MOTIVO DECIDE SI ES AUSENCIA O LICENCIA. Vacaciones y parte médico son licencia;
         // faltar sin avisar, ausencia. Ninguna suma horas trabajadas.
         motivo: estado === 'ausente' ? motivo : null,
@@ -226,11 +246,21 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
           </Campo>
         )}
         {estado === 'ausente' && (
+          <Campo rotulo="Horas que corresponden"
+            ayuda="Las que se le reconocen por ley. Vacío deja la jornada de referencia.">
+            <input value={textoAusencia} onChange={(e) => setTextoAusencia(e.target.value)}
+              inputMode="decimal" className={`${CAMPO} font-mono tabular-nums`}
+              data-testid="correccion-horas-ausencia" />
+          </Campo>
+        )}
+        {estado === 'ausente' && ausencia.error && <ErrorCampo>{ausencia.error}</ErrorCampo>}
+        {estado === 'ausente' && (
           <p style={{ fontSize: '11.5px', color: V.tenue }} data-testid="correccion-ausencia-sin-obra">
-            {/* SE GUARDA CON HORAS Y NO CON CERO: `registros_hh` exige horas > 0, y
-                `tipo_hora = 'ausencia'` es lo que hace que no cuenten como trabajo. */}
-            La ausencia es de la persona, no de una obra. Se registra como ausencia de{' '}
-            {jornada > 0 ? `${hs(jornada)} hs` : 'la jornada'} y no suma horas trabajadas.
+            {/* LA FRASE ES DEL DUEÑO (08/09/2026): las horas se reconocen a la PERSONA y no se
+                cargan a ninguna obra. `tipo_hora = 'ausencia' | 'licencia'` es lo que hace que no
+                cuenten como trabajo de nadie. */}
+            La ausencia es de la persona, no de una obra. Las horas que correspondan por ley se le
+            reconocen a la persona y no se cargan a ninguna obra.
           </p>
         )}
 
@@ -266,4 +296,25 @@ function marcaDe(c: CeldaObra | undefined): string {
   // tienen los sábados, que no son feriados de nadie. El domingo ya no llega hasta acá.
   if (c.estado === 'no_laborable') return ' · no laborable'
   return ' · sin cargar'
+}
+
+/**
+ * Las horas que el campo de la ausencia muestra al abrir: las que YA están registradas si el día es
+ * una ausencia, y si no la jornada de referencia. El orden de las candidatas es el mismo que usa el
+ * servidor (`jornadaDeReferencia`): la obra donde el día ya está cargado primero.
+ */
+function horasDeLaAusenciaVisibles(
+  celda: CeldaObra | null,
+  tramos: { obra_id: string }[],
+  /** Su obra vigente: la última candidata antes de la jornada estándar, igual que en el servidor. */
+  obraVigente: string | undefined,
+  jornadaPorObra: Record<string, number>,
+): number {
+  if ((celda?.estado === 'ausente' || celda?.estado === 'licencia') && celda.horas !== null) {
+    return celda.horas
+  }
+  return jornadaDeReferenciaVisible([
+    ...tramos.map((t) => jornadaPorObra[t.obra_id]),
+    obraVigente ? jornadaPorObra[obraVigente] : null,
+  ])
 }
