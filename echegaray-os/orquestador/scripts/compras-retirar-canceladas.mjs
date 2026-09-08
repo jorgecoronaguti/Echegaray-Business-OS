@@ -14,6 +14,17 @@
 //      se salta con `yaGuardado`, a propósito y sólo acá. El congelador NO se salta: si está puesto, aborta.
 //   4. Relee Compras: conteo −N, ninguna Cancelada con motivo, y las ARRAYFORMULA (AB..AN) siguen vivas.
 //
+// QUÉ HACE CON LAS EDICIONES DEL DUEÑO (Regla 0), declarado y no heredado:
+//   · `_COMPRAS_RETIRADAS` — la crea este script, está oculta y sólo se le APENDAN filas. No hay
+//     rótulo de una persona que preservar, así que no pasa por `escribirPreservando`. La exención
+//     está declarada en `lib/regla-cero-obligatoria.test.mjs` y ese test COMPRUEBA que todas las
+//     escrituras de valores de este archivo apunten acá: si una apuntara a otra pestaña, da rojo.
+//   · Compras — no se le escribe un solo valor: se le BORRAN filas (`deleteDimension`), que es la
+//     edición de datos que el dueño ordenó. La guarda por celda se saltea con `yaGuardado`, a
+//     propósito y sólo acá; el congelador NO se saltea.
+//   · `_COMPRAS_RETIRADAS` NO es un paso del pipeline: es un archivo de una sola vez y envejecer es
+//     su trabajo. Por eso está en `SIN_GENERADOR`, no en `PASOS`.
+//
 // Lo que NO hace: no toca AC/AD/AE/AF/AJ, no regenera nada (libro, vistas y CAJA se corren después,
 // por separado, y se comparan contra la foto previa), no decide qué está «cubierto» —eso lo decidió el
 // dueño al marcar la fila.
