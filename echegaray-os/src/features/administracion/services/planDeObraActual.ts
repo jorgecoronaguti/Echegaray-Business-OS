@@ -68,8 +68,25 @@ export interface CierreDeAsignacion {
 
 export interface PlanDeObraActual {
   cerrar: CierreDeAsignacion[]
-  /** La obra que se abre `desde = hoy`. `null` cuando el destino es «Sin obra» o ya estaba abierta. */
-  abrir: { obra_id: string; desde: string } | null
+  /**
+   * La obra que se abre. `null` cuando el destino es «Sin obra» o ya estaba abierta.
+   *
+   * `hasta` NO VIAJA CUANDO ES ABIERTO, no viaja como `null`: el cambio de hoy —que es el 99% de
+   * los gestos— tiene que producir literalmente el mismo objeto que producía antes de existir la
+   * programación. Con `hasta: null` adentro, cada `deepEqual` de los tests de «desde hoy» habría
+   * que retocarlo, y retocar el test que protege el comportamiento viejo es justamente la forma de
+   * dejar de protegerlo.
+   */
+  abrir: { obra_id: string; desde: string; hasta?: string } | null
+  /**
+   * EL REGRESO DEL TRAMO SANDWICH. «Tres días en Quattropani y vuelve a San Francisco»: cuando el
+   * tramo programado tiene `hasta`, la obra donde la persona está hoy se reabre al día siguiente.
+   *
+   * Es un `insert` más, no un `update` sobre la fila que se cerró: esa fila ya tiene su `hasta` y
+   * representa el período real que la persona estuvo ahí. Reabrirla borraría el corte y dejaría un
+   * único tramo que afirma que nunca se fue.
+   */
+  reabrir: { obra_id: string; desde: string } | null
   /** No hay nada que escribir: ya estaba exactamente así. */
   sinCambio: boolean
   /** La línea que lee quien tocó el desplegable. Siempre con nombres, nunca con ids. */
@@ -84,11 +101,84 @@ export function diaAnterior(iso: string): string {
   return new Date(t - 86_400_000).toISOString().slice(0, 10)
 }
 
-/** `hasta` de una asignación que se cierra hoy: ayer, salvo que haya empezado hoy o después. Una
- *  fila sin `desde` cierra ayer: no hay ningún comienzo que el cierre pueda quedar por delante. */
-function cierreDe(a: AsignacionAbierta, hoy: string): string {
-  const ayer = diaAnterior(hoy)
-  return a.desde && a.desde > ayer ? a.desde : ayer
+/** El día siguiente en ISO. Mismo criterio UTC que `diaAnterior`, y por la misma razón. */
+export function diaSiguiente(iso: string): string {
+  const t = Date.parse(`${iso}T00:00:00Z`)
+  if (!Number.isFinite(t)) throw new Error(`Fecha inválida: ${iso}`)
+  return new Date(t + 86_400_000).toISOString().slice(0, 10)
+}
+
+/** `hasta` de una asignación que se cierra porque el destino arranca el día `corte`: la víspera del
+ *  corte, salvo que la asignación haya empezado ese mismo día o después. Una fila sin `desde` cierra
+ *  en la víspera: no hay ningún comienzo que el cierre pueda quedar por delante.
+ *
+ *  Cuando el cambio es DESDE HOY, `corte` es hoy y la víspera es ayer — el comportamiento de
+ *  siempre. Cuando es programado, `corte` es el `desde` futuro y la anterior sigue vigente hasta el
+ *  día anterior al pase: cerrarla ayer le sacaría a la persona los días que todavía va a trabajar
+ *  donde está, y esas horas ya no tendrían asignación que las respalde. */
+function cierreDe(a: AsignacionAbierta, corte: string): string {
+  const vispera = diaAnterior(corte)
+  return a.desde && a.desde > vispera ? a.desde : vispera
+}
+
+/**
+ * Hasta cuándo se puede programar un pase. Sesenta días.
+ *
+ * No es un número técnico: es hasta dónde llega la planificación real de esta empresa. Más allá, lo
+ * que se está escribiendo no es un plan sino una intención, y una intención guardada como
+ * asignación se convierte sola en el dato con el que después se imputa costo de mano de obra.
+ */
+export const MAX_DIAS_PROGRAMACION = 60
+
+/** `2026-09-10` → `10/09`. El acuse habla de días, no de timestamps; y el formateo vive acá para
+ *  que la decisión pura no dependa de `Intl` ni de la zona horaria del navegador. */
+const fechaCorta = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
+/**
+ * ¿Se puede programar un pase con estas fechas? `null` = sí.
+ *
+ * ═══ POR QUÉ ES UNA FUNCIÓN Y NO UN `refine` DE ZOD ═══
+ *
+ * Las tres reglas dependen de HOY, y hoy entra por parámetro en todo este módulo justamente para
+ * que ningún test se rompa a medianoche. Un esquema de Zod que leyera el reloj adentro sería el
+ * único tramo de la cadena que no se puede probar. Zod valida la FORMA (que sea una fecha); esto
+ * valida la DECISIÓN.
+ *
+ * Las usan las dos puntas: el panel para no ofrecer un botón que va a rebotar, y la acción —que es
+ * la puerta— para rechazar la llamada venga de donde venga.
+ */
+export function validarProgramacion(
+  { hoy, desde, hasta }: { hoy: string; desde: string; hasta?: string | null },
+): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) return 'La fecha de inicio no es una fecha.'
+  if (hasta && !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) return 'La fecha de fin no es una fecha.'
+  // HACIA ATRÁS NO SE PROGRAMA. Mover a alguien a una obra la semana pasada reimputaría el costo de
+  // mano de obra de días que ya se cargaron y ya se miraron. Corregir el pasado es la corrección de
+  // jornada, que además dice a qué obra va cada día.
+  if (desde < hoy) return 'No se puede programar hacia atrás: para corregir un día ya cargado está la corrección de jornada.'
+  const tope = new Date(Date.parse(`${hoy}T00:00:00Z`) + MAX_DIAS_PROGRAMACION * 86_400_000)
+    .toISOString().slice(0, 10)
+  if (desde > tope) return `No se puede programar a más de ${MAX_DIAS_PROGRAMACION} días (hasta el ${fechaCorta(tope)}).`
+  if (hasta && hasta < desde) return 'El último día no puede ser anterior al primero.'
+  return null
+}
+
+/**
+ * Su asignación vigente HOY, que es la obra a la que vuelve cuando termina un tramo con `hasta`.
+ *
+ * Misma regla que usa la grilla para decidir qué muestra el desplegable (`obraActivaDe` en
+ * `quincenaPorObra.ts`): empezó o siempre estuvo, y gana el `desde` más reciente. Un tramo con
+ * `desde` futuro NO es la vigente — todavía no rige, y hacer volver a la persona a una obra donde
+ * nunca estuvo sería inventar el regreso.
+ *
+ * Con dos abiertas vigentes el mismo día —que en la base las hay— se elige una sola y de forma
+ * determinística: el `id` desempata para que el mismo gesto escriba siempre lo mismo.
+ */
+function vigenteHoy(abiertas: AsignacionAbierta[], hoy: string): AsignacionAbierta | null {
+  const candidatas = abiertas.filter((a) => !a.desde || a.desde <= hoy)
+  if (candidatas.length === 0) return null
+  return [...candidatas].sort((a, b) =>
+    (b.desde ?? '').localeCompare(a.desde ?? '') || a.id.localeCompare(b.id))[0]
 }
 
 /** Entre varias filas abiertas de la MISMA obra se conserva la de historia más larga: la del `desde`
@@ -119,26 +209,50 @@ function masVieja(a: AsignacionAbierta, b: AsignacionAbierta): AsignacionAbierta
  * cierran TODAS las demás —incluidas las duplicadas de la misma obra—; si no la hay se cierran
  * todas y se abre una sola. `destino = null` es «Sin obra»: sólo cierra.
  */
-export function planDeCambioDeObra({ abiertas, destino, hoy }: {
+export function planDeCambioDeObra({ abiertas, destino, hoy, desde = hoy, hasta = null }: {
   abiertas: AsignacionAbierta[]
   destino: { id: string; nombre: string } | null
   hoy: string
+  /**
+   * Desde qué día rige el pase. Ausente = hoy, que es el desplegable de la grilla y no cambió.
+   *
+   * El dueño (08/09/2026): *«una cosa es hoy y cuando planifico quiero poner lo de mañana y
+   * siguientes»*. Un pase futuro NO es otra tabla: es la MISMA `obra_asignacion` con la fecha que
+   * corresponde. Una tabla de «planes» al lado sería la segunda definición de dónde trabaja
+   * alguien, y el día que el plan se cumpliera habría que copiarlo a mano de una a la otra.
+   */
+  desde?: string
+  /** Último día del tramo. `null` = hasta nuevo aviso. Con fecha, la persona vuelve a la obra donde
+   *  está hoy al día siguiente — es el pase de tres días a otra obra. */
+  hasta?: string | null
 }): PlanDeObraActual {
   let seConserva: AsignacionAbierta | null = null
   for (const a of destino ? abiertas.filter((x) => x.obra_id === destino.id) : []) {
     seConserva = seConserva ? masVieja(seConserva, a) : a
   }
   const sobran = abiertas.filter((a) => a.id !== seConserva?.id)
-  const cerrar = sobran.map((a) => ({ id: a.id, hasta: cierreDe(a, hoy) }))
-  const abrir = destino && !seConserva ? { obra_id: destino.id, desde: hoy } : null
+  const cerrar = sobran.map((a) => ({ id: a.id, hasta: cierreDe(a, desde) }))
+  const abrir = destino && !seConserva
+    ? { obra_id: destino.id, desde, ...(hasta ? { hasta } : {}) }
+    : null
+
+  // EL REGRESO SÓLO EXISTE SI HAY TRAMO NUEVO Y TIENE FIN. Sin `abrir` no hay de dónde volver: o no
+  // se movió a nadie, o la persona ya estaba en el destino y el tramo no se creó.
+  const vuelve = hasta && abrir ? vigenteHoy(abiertas, hoy) : null
+  const reabrir = vuelve && vuelve.obra_id !== destino?.id
+    ? { obra_id: vuelve.obra_id, desde: diaSiguiente(hasta as string) }
+    : null
 
   if (cerrar.length === 0 && !abrir) {
     return {
-      cerrar, abrir, sinCambio: true,
+      cerrar, abrir, reabrir: null, sinCambio: true,
       acuse: destino ? `Ya estaba en ${destino.nombre}.` : 'Ya estaba sin obra.',
     }
   }
-  return { cerrar, abrir, sinCambio: false, acuse: acuseDe(destino, seConserva, sobran) }
+  return {
+    cerrar, abrir, reabrir, sinCambio: false,
+    acuse: acuseDe({ destino, seConserva, cerradas: sobran, hoy, desde, hasta, vuelve }),
+  }
 }
 
 /** «Desde hoy en SALÓN COMERCIAL · antes PISOS INDUSTRIALES, GALPÓN 9». El «antes» nombra todo lo
@@ -146,16 +260,128 @@ export function planDeCambioDeObra({ abiertas, destino, hoy }: {
  *
  *  Cuando la persona YA estaba en el destino y lo único que se hace es cerrar las otras abiertas,
  *  el acuse no puede decir «desde hoy»: no empezó hoy, y lo que hay para contar es la limpieza. */
-function acuseDe(
-  destino: { nombre: string } | null,
-  seConserva: AsignacionAbierta | null,
-  cerradas: AsignacionAbierta[],
-): string {
+function acuseDe({ destino, seConserva, cerradas, hoy, desde, hasta, vuelve }: {
+  destino: { nombre: string } | null
+  seConserva: AsignacionAbierta | null
+  cerradas: AsignacionAbierta[]
+  hoy: string
+  desde: string
+  hasta: string | null
+  vuelve: AsignacionAbierta | null
+}): string {
   const nombres = cerradas.map((a) => a.nombre).join(', ')
   if (destino && seConserva) {
     return `Ya estaba en ${destino.nombre} · se ${cerradas.length === 1 ? 'cerró' : 'cerraron'} ${nombres}.`
   }
-  const cabeza = destino ? `Desde hoy en ${destino.nombre}` : 'Desde hoy sin obra'
-  if (cerradas.length === 0) return `${cabeza}.`
+  // EL ACUSE DICE LA FECHA REAL, NO «desde hoy» SIEMPRE. Un pase programado que acusa «desde hoy»
+  // le hace creer a quien lo programó que la persona ya se movió, y el gesto siguiente es ir a
+  // buscarla a la obra equivocada.
+  const cuando = desde === hoy
+    ? 'Desde hoy'
+    : hasta
+      ? `Del ${fechaCorta(desde)} al ${fechaCorta(hasta)}`
+      : `Desde el ${fechaCorta(desde)}`
+  const cabeza = destino ? `${cuando} en ${destino.nombre}` : `${cuando} sin obra`
+  const regreso = vuelve && vuelve.obra_id !== destino?.id ? ` · vuelve a ${vuelve.nombre}` : ''
+  if (cerradas.length === 0) return `${cabeza}${regreso}.`
+  // CON REGRESO NO SE ESCRIBE EL «antes»: son la misma obra dicha dos veces, y «antes San Francisco
+  // · vuelve a San Francisco» hace dudar de si son dos obras distintas.
+  if (regreso) return `${cabeza}${regreso}.`
   return `${cabeza} · antes ${nombres}.`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// CANCELAR UN PASE PROGRAMADO
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Programar es reversible: el pase todavía no ocurrió, no hay ni una hora imputada contra él, y la
+// planificación de la semana cambia. Por eso acá SÍ se borra —al revés que en el cambio de hoy,
+// donde cerrar es la regla y borrar destruiría el período que respalda las horas cargadas.
+//
+// LO QUE YA RIGE NO SE CANCELA, SE CAMBIA. Un tramo con `desde <= hoy` puede tener horas cargadas
+// contra él; borrarlo las dejaría sin asignación que las respalde. Para eso está el desplegable.
+
+/** Un tramo de `obra_asignacion` de la persona, tal como está en la base. */
+export interface TramoDeAsignacion {
+  id: string
+  obra_id: string
+  /** El nombre real de la obra. Nunca el id. */
+  nombre: string
+  desde: string | null
+  hasta: string | null
+}
+
+export interface PlanDeCancelacion {
+  /** Los ids que se borran: el tramo programado y —si era un sandwich— su regreso. */
+  borrar: string[]
+  /** El tramo que se había cerrado para dejarle lugar, que vuelve a quedar abierto. */
+  reabrirId: string | null
+  /** El texto que lee quien canceló. Con nombres, nunca con ids. */
+  acuse: string
+  /** Por qué no se pudo. `null` cuando el plan es válido. */
+  error: string | null
+}
+
+/**
+ * Deshacer un pase programado y dejar a la persona como estaba.
+ *
+ * ═══ TRES ESCRITURAS, Y LAS TRES HACEN FALTA ═══
+ *
+ * 1. Se borra el tramo programado.
+ * 2. Si tenía `hasta`, se borra también el REGRESO —la fila que abría al día siguiente en la obra
+ *    de origen—. Dejarlo vivo pondría a la persona sin obra desde mañana hasta esa fecha: un hueco
+ *    en el medio, que es peor que el pase que se está cancelando.
+ * 3. Se reabre (`hasta = null`) el tramo que se había cerrado en la víspera. Sin esto la persona
+ *    queda sin ninguna asignación abierta y la grilla la muestra «Sin obra» — el mismo estado que
+ *    el cambio de obra evita a propósito.
+ *
+ * El paso 3 se hace por FECHA y no por «el último cerrado»: el tramo que cede el lugar es
+ * exactamente el que cierra en `desde − 1`. Buscar «el más reciente» tomaría cualquier cierre viejo
+ * y reabriría un período que terminó de verdad hace meses.
+ */
+export function planDeCancelacion(
+  { tramos, id, hoy }: { tramos: TramoDeAsignacion[]; id: string; hoy: string },
+): PlanDeCancelacion {
+  const vacio = { borrar: [], reabrirId: null, acuse: '' }
+  const tramo = tramos.find((t) => t.id === id)
+  if (!tramo) return { ...vacio, error: 'Ese tramo ya no existe: puede que alguien lo haya cancelado antes.' }
+  if (!tramo.desde || tramo.desde <= hoy) {
+    return {
+      ...vacio,
+      error: 'Ese tramo ya rige: no se cancela, se cambia con el desplegable de obra actual. '
+        + 'Borrarlo dejaría sin asignación las horas que ya se cargaron contra él.',
+    }
+  }
+
+  const borrar = [tramo.id]
+  if (tramo.hasta) {
+    const diaDelRegreso = diaSiguiente(tramo.hasta)
+    const regreso = tramos.find((t) =>
+      t.id !== tramo.id && t.desde === diaDelRegreso && t.hasta === null)
+    if (regreso) borrar.push(regreso.id)
+  }
+
+  const vispera = diaAnterior(tramo.desde)
+  const cedio = tramos.find((t) => t.id !== tramo.id && t.hasta === vispera)
+  return {
+    borrar,
+    reabrirId: cedio?.id ?? null,
+    acuse: cedio
+      ? `Se canceló el pase a ${tramo.nombre} · sigue en ${cedio.nombre}.`
+      : `Se canceló el pase a ${tramo.nombre}.`,
+    error: null,
+  }
+}
+
+/**
+ * Los tramos PROGRAMADOS de la persona: los que empiezan después de hoy.
+ *
+ * Es la misma lectura que alimenta la línea de la grilla, el panel y la ficha: una definición de
+ * «programado», no tres. Ordenados por `desde` para que el primero sea el próximo — la grilla
+ * muestra uno solo y tiene que ser el que viene, no el que quedó primero en la lectura.
+ */
+export function tramosProgramados(tramos: TramoDeAsignacion[], hoy: string): TramoDeAsignacion[] {
+  return tramos
+    .filter((t) => t.desde != null && t.desde > hoy)
+    .sort((a, b) => (a.desde ?? '').localeCompare(b.desde ?? '') || a.id.localeCompare(b.id))
 }
