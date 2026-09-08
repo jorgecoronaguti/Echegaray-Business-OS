@@ -119,7 +119,7 @@ export default async function AsistenciaCampoPage({ searchParams }: {
       {obras.length > 1 && (
         <p className="mt-5 text-[12px] text-faint">
           Se carga por obra: quien cambió de obra se carga en la obra donde trabajó.{' '}
-          <Link href={`/campo/asistencia?dia=${fecha}`} className="underline" data-testid="cambiar-obra">
+          <Link href={`/campo/asistencia?dia=${fecha}`} className="inline-flex min-h-[44px] items-center underline" data-testid="cambiar-obra">
             Cambiar de obra
           </Link>
         </p>
