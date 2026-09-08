@@ -124,8 +124,12 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
   const porPeriodo = lectura ? agruparPorPeriodo(lectura, hoy) : null
   const hh = porPeriodo?.[periodo] ?? null
   const fichados = presencia.data ? new Set(presencia.data.map((f) => f.persona_id)) : null
+  // SIN UNA SOLA MARCA HOY NO HAY «N/M fichados» (dueño, 08/09/2026: «una cosa es asistir y otra la
+  // carga de horas»). El fichaje desde el celular no está en uso; contar marcas contra integrantes
+  // publicaba «0/6 fichados» en ámbar sobre cuadrillas que trabajaron el día entero. `null` = se
+  // leyó y no hay marcas (línea neutra); `undefined` = no se pudo leer.
   const fichaje = lectura && fichados
-    ? fichajePorCuadrilla(lectura.vinculos, fichados)
+    ? (fichados.size === 0 ? null : fichajePorCuadrilla(lectura.vinculos, fichados))
     : undefined
 
   const abierta = cuadrillas.find((c) => c.id === sp.c) ?? null

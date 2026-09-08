@@ -241,12 +241,15 @@ export default async function JefeFrentePage({
           <div style={{ marginTop: 9, display: 'flex', alignItems: 'center', gap: 0 }} data-testid="frente-gente">
             {[...horasPorPersona.keys()].slice(0, 6).map((personaId, i) => {
               const nombre = nombreDe.get(personaId) ?? marcaDe.get(personaId)?.nombre_completo ?? 'Sin nombre'
+              // El verde es SÓLO para una marca real. Sin marca el círculo es neutro: no es «no
+              // fichó», es que el fichaje desde el celular todavía no está en uso.
               const fichado = !!marcaDe.get(personaId)?.entrada
               return (
                 <span
                   key={personaId}
-                  title={nombre}
+                  title={fichado ? `${nombre} · fichó` : nombre}
                   data-testid="persona-del-frente"
+                  data-presencia={fichado ? 'ficho' : 'sin_marca'}
                   style={{
                     width: 38, height: 38, borderRadius: 19, marginLeft: i === 0 ? 0 : -9,
                     background: fichado ? C.posFondo : C.inerte, color: fichado ? C.pos : C.inkSuave,
@@ -258,10 +261,14 @@ export default async function JefeFrentePage({
                 </span>
               )
             })}
-            <span style={{ marginLeft: 12, fontSize: 12.5, color: C.muted }}>
-              {[...horasPorPersona.keys()].every((id) => marcaDe.get(id)?.entrada)
-                ? 'todos fichados'
-                : 'alguno sin marca de asistencia'}
+            {/* NUNCA «N de M fichados» ni «alguno sin marca» contra la gente con horas (dueño, 08/09):
+                las horas y el fichaje son dos hechos. Sin marcas, una línea neutra; con marcas, sólo
+                cuántas hay. */}
+            <span style={{ marginLeft: 12, fontSize: 12.5, color: C.muted }} data-testid="frente-fichaje">
+              {(() => {
+                const conMarca = [...horasPorPersona.keys()].filter((id) => marcaDe.get(id)?.entrada).length
+                return conMarca === 0 ? 'sin marcas de entrada/salida' : `${conMarca} con marca de entrada`
+              })()}
             </span>
           </div>
         )}

@@ -26,7 +26,8 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { TarjetaFicha } from './FichaCanonica'
-import type { BarraQuincena, CifrasQuincena, DiaDeQuincena, EstadoDia } from '../services/quincenaDePersona'
+import { CeldaDia, type EntradaCeldaDia } from '@/shared/components/ds'
+import type { BarraQuincena, CifrasQuincena, DiaDeQuincena } from '../services/quincenaDePersona'
 
 const ICONO = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -37,47 +38,51 @@ const ICONO = (
 const hs = (n: number): string =>
   n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 
-/** Qué se escribe y con qué aire. El texto SIEMPRE dice algo: una casilla muda obliga a adivinar
- *  si el sistema no sabe o si no pasó nada. */
-const PINTA: Record<EstadoDia, { clase: string; vacio: string; titulo: string }> = {
-  trabajado: { clase: 'border-transparent bg-pos-soft text-ink', vacio: '', titulo: 'Trabajó' },
-  ausencia: { clase: 'border-transparent bg-neg-soft text-neg', vacio: 'aus.', titulo: 'Ausencia declarada' },
-  licencia: { clase: 'border-transparent bg-surface-quiet text-muted', vacio: 'lic.', titulo: 'Licencia declarada' },
-  no_laborable: { clase: 'border-transparent bg-surface-sunken text-faint', vacio: '·', titulo: 'No laborable' },
-  sin_registrar: { clase: 'border-dashed border-line bg-transparent text-faint', vacio: '—', titulo: 'Sin registro: no es una falta, es que nadie cargó nada' },
-  futuro: { clase: 'border-transparent bg-transparent text-faint', vacio: '', titulo: 'Todavía no pasó' },
+// ═══ LA CASILLA ES LA MISMA CELDA DE DOS CAPAS QUE LA GRILLA DE QUINCENA (dueño, 08/09/2026) ═══
+//
+// Arriba la PRESENCIA como estado —«A» ausencia en rojo, «L» licencia neutra, ● cuando exista una
+// marca de fichaje—; abajo las HORAS como cantidad, monoespaciadas y en tinta, sin fondo de color.
+// La versión anterior pintaba la casilla de verde cuando había horas: eso convertía una cantidad en
+// un juicio, y dejaba «sin horas» a un paso de leerse como «no vino». Qué se dibuja lo decide
+// `decidirCeldaDia` (shared/components/ds/celdaDia.ts), el mismo criterio de la grilla: una persona
+// no puede tener dos caras según la pantalla.
+//
+// La ficha todavía no lee `asistencia_marca` (el fichaje desde el celular no está en uso): la capa
+// de presencia sólo conoce lo declarado en `registros_hh`.
+function entradaDe(d: DiaDeQuincena): EntradaCeldaDia {
+  return {
+    presencia: d.estado === 'ausencia' ? 'ausente' : d.estado === 'licencia' ? 'licencia' : 'sin_marca',
+    horas: d.horas,
+    dia: d.estado === 'no_laborable' ? 'no_laborable' : d.estado === 'futuro' ? 'futuro' : 'habil',
+    motivo: d.motivo,
+  }
 }
 
 function Casilla({ d }: { d: DiaDeQuincena }) {
-  const p = PINTA[d.estado]
   const detalle = [
     `${d.nombre} ${Number(d.fecha.slice(8, 10))}`,
-    p.titulo,
-    d.motivo,
     d.extras > 0 ? `incluye ${hs(d.extras)} h extra` : null,
     d.obras.length > 1 ? `repartido: ${d.obras.join(' + ')}` : d.obras[0] ?? null,
   ].filter(Boolean).join(' · ')
   return (
     <div
       data-testid="casilla-dia" data-estado={d.estado} data-fecha={d.fecha} title={detalle}
-      // ALTO FIJO PARA LAS QUINCE. Con el alto librado al contenido, los días futuros —que no
-      // escriben nada— encogían y la franja quedaba dentada: las etiquetas de los días dejaban de
-      // estar en una línea y el bloque se leía como si faltaran casillas.
-      className={`relative flex h-[38px] flex-col items-center justify-center gap-px rounded-control border ${p.clase}`}
+      className="relative flex flex-col items-center gap-0.5"
     >
-      {/* EL FILO AMARILLO ES LA ÚNICA MARCA DE LA PANTALLA: dice «acá estás», no un estado. Va
-          como elemento y no como `border-b`: sobre la casilla punteada de «sin registrar» el borde
-          teñía las cuatro aristas y el día de hoy se leía como un estado distinto. */}
-      {d.esHoy && (
-        <span className="absolute inset-x-1 -bottom-[3px] h-[2px] rounded-full bg-marca" aria-hidden />
-      )}
       <span className={`text-[10.5px] leading-none ${d.finDeSemana ? 'text-faint' : 'text-muted'}`}>
         {d.etiqueta}
       </span>
-      <span className="flex items-baseline font-mono text-[12px] leading-tight tabular-nums">
-        {d.horas == null ? p.vacio : hs(d.horas)}
-        {d.obras.length > 1 && <sup className="ml-px text-[9px] text-muted" aria-hidden>2</sup>}
-        {d.extras > 0 && <sup className="ml-px text-[9px] text-muted" aria-hidden>+</sup>}
+      <span className="relative">
+        <CeldaDia entrada={entradaDe(d)} />
+        {/* EL FILO AMARILLO ES LA ÚNICA MARCA DE LA PANTALLA: dice «acá estás», no un estado. */}
+        {d.esHoy && (
+          <span className="absolute inset-x-1 -bottom-[3px] h-[2px] rounded-full bg-marca" aria-hidden />
+        )}
+        {(d.obras.length > 1 || d.extras > 0) && (
+          <span className="absolute -right-0.5 top-0 text-[9px] leading-none text-muted" aria-hidden>
+            {d.obras.length > 1 ? '2' : '+'}
+          </span>
+        )}
       </span>
     </div>
   )
@@ -157,14 +162,14 @@ export function QuincenaDeAsistencia({
         {dias.map((d) => <Casilla key={d.fecha} d={d} />)}
       </div>
 
-      {/* LA REFERENCIA, UNA LÍNEA. Sin ella «—» y «aus.» se leen como sinónimos, que es exactamente
-          la confusión que este módulo no puede permitirse. */}
+      {/* LA REFERENCIA, UNA LÍNEA. Sin ella el marco punteado y la «A» se leen como sinónimos, que
+          es exactamente la confusión que este módulo no puede permitirse. */}
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 px-3.5 pb-3 text-[10.5px] text-faint">
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-[2px] bg-pos-soft align-middle" />trabajó</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-[2px] bg-neg-soft align-middle" />ausencia</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-[2px] bg-surface-quiet align-middle" />licencia</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-[2px] border border-dashed border-line align-middle" />sin registrar (no es una falta)</span>
-        <span><i className="mr-1 inline-block h-2 w-2 rounded-[2px] bg-surface-sunken align-middle" />no laborable</span>
+        <span><b className="mr-1 font-semibold text-pos">●</b>fichó</span>
+        <span><b className="mr-1 font-semibold text-neg">A</b>ausencia</span>
+        <span><b className="mr-1 font-semibold text-muted">L</b>licencia</span>
+        <span><i className="mr-1 inline-block h-2 w-2 rounded-[2px] border border-dashed border-line align-middle" />sin horas cargadas (no es una falta)</span>
+        <span><span className="mr-1 font-mono text-ink">8,0</span>horas cargadas</span>
       </div>
 
       <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line-hairline px-3.5 py-3 sm:grid-cols-4"

@@ -11,6 +11,7 @@ import { agruparPorRolOrganizacional } from '../services/vocabularioPersona'
 import { guardarJornada } from '../services/jornadaPorObraActions'
 import { cambiarObraActual } from '../services/obraActualActions'
 import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJornada'
+import { CeldaDia, type EntradaCeldaDia } from '@/shared/components/ds'
 
 // 02 · LA QUINCENA, POR OBRA. La misma jornada que el jefe carga en el teléfono, a la distancia de
 // Administración: una fila por par (persona, obra) y una columna por día del período que se paga.
@@ -54,8 +55,25 @@ const ROJO = '#B42318'
 
 function textoDe(c: CeldaObra): string {
   if (c.estado === 'horas') return c.horas === null ? '' : hs(c.horas)
-  if (c.estado === 'ausente') return 'A'
+  // La ausencia NO se escribe en el campo: la dice la capa de presencia de `CeldaDia` («A» en
+  // rojo). El campo queda vacío y escribir un número encima sigue convirtiendo el día en presente.
   return ''
+}
+
+// ═══ LA CELDA TIENE DOS CAPAS (dueño, 08/09/2026: «una cosa es asistir y otra la carga de horas») ═══
+//
+// Arriba la PRESENCIA como estado —«A» ausencia, «L» licencia, ● cuando haya marca de fichaje—; abajo
+// las HORAS como cantidad, sin color de estado. Qué se dibuja en cada capa lo decide
+// `decidirCeldaDia` (shared/components/ds/celdaDia.ts). Esta grilla todavía no lee
+// `asistencia_marca` —el fichaje desde el celular no está en uso—, así que la capa de arriba sólo
+// conoce lo declarado en `registros_hh`; el ● se prende solo cuando la fuente exista.
+function entradaDe(c: CeldaObra): EntradaCeldaDia {
+  return {
+    presencia: c.estado === 'ausente' ? 'ausente' : c.estado === 'licencia' ? 'licencia' : 'sin_marca',
+    horas: c.estado === 'horas' ? c.horas : null,
+    dia: c.estado === 'no_laborable' ? 'no_laborable' : c.estado === 'futuro' ? 'futuro' : 'habil',
+    motivo: c.motivo,
+  }
 }
 
 /** El tooltip de una celda que no se edita. La licencia dice de qué es; el día repartido, en qué
@@ -68,16 +86,12 @@ function tituloDe(c: CeldaObra): string | undefined {
   return undefined
 }
 
-/** Qué se ve cuando la celda no tiene horas, ausencia ni licencia. Cada silencio con su cara. */
-function vacioDe(estado: CeldaObra['estado']): { texto: string; color: string; punteada: boolean } {
-  // «L» Y NO «A»: una licencia está autorizada y documentada —enfermedad, ART, vacaciones—, una
-  // ausencia es la falta lisa. La misma letra para las dos borra la diferencia que decide si el
-  // día se paga. El motivo va en el `title`, porque en 44 px no entra.
-  if (estado === 'licencia') return { texto: 'L', color: V.apagado, punteada: false }
-  if (estado === 'no_laborable') return { texto: '—', color: V.inerte, punteada: false }
-  if (estado === 'sin_dato') return { texto: '—', color: V.inerte, punteada: false }
-  if (estado === 'futuro') return { texto: '', color: V.inerte, punteada: false }
-  return { texto: '', color: ROJO, punteada: true }
+/** El placeholder del campo cuando no hay horas. La letra del estado («A», «L») ya no va acá:
+ *  vive en la capa de presencia de `CeldaDia`. El marco punteado de «sin cargar» también es de la
+ *  celda, y es NEUTRO: que nadie haya cargado no es una falta de la persona. */
+function vacioDe(estado: CeldaObra['estado']): { texto: string; color: string } {
+  if (estado === 'no_laborable' || estado === 'sin_dato') return { texto: '—', color: V.inerte }
+  return { texto: '', color: V.inerte }
 }
 
 export function GrillaAsistenciaObra({
@@ -354,6 +368,11 @@ export function GrillaAsistenciaObra({
                     padding: '4px 2px', textAlign: 'center', verticalAlign: 'top',
                     background: columnasTenues[i] ? V.fondo : undefined,
                   }}>
+                    <CeldaDia
+                      entrada={entradaDe(celda)}
+                      testid={editable ? 'celda-dia' : 'celda-fija'}
+                      estado={editable ? undefined : celda.estado}
+                    >
                     {editable ? (
                       <input
                         aria-label={`${fila.persona.nombre} · ${fila.rotuloObra} · ${celda.fecha}`}
@@ -366,26 +385,28 @@ export function GrillaAsistenciaObra({
                           if (errores[k]) setErrores((x) => { const n = { ...x }; delete n[k]; return n })
                         }}
                         onBlur={(e) => guardar(fila, celda, e.target.value)}
+                        className="font-mono tabular-nums"
                         style={{
-                          width: 44, height: 28, textAlign: 'center', fontSize: '13px',
-                          color: celda.estado === 'ausente' ? V.tinta : V.tintaSuave,
-                          background: celda.estado === 'ausente' ? V.lineaFila : 'transparent',
-                          border: errores[k]
-                            ? `1px solid ${ROJO}`
-                            : celda.estado === 'sin_marcar' ? `1px dashed ${ROJO}` : '1px solid transparent',
+                          width: 42, height: 28, textAlign: 'center', fontSize: '12.5px',
+                          color: V.tinta, background: 'transparent',
+                          border: errores[k] ? `1px solid ${ROJO}` : '1px solid transparent',
                           borderRadius: 5,
                         }}
                       />
                     ) : (
                       <span
-                        data-testid="celda-fija"
-                        data-estado={celda.estado}
+                        data-capa="horas"
                         title={tituloDe(celda)}
-                        style={{ color: celda.estado === 'horas' ? V.tinta : hueco.color }}
+                        className="font-mono tabular-nums"
+                        style={{
+                          display: 'flex', height: 28, alignItems: 'center', fontSize: '12.5px',
+                          color: celda.estado === 'horas' ? V.tinta : hueco.color,
+                        }}
                       >
-                        {celda.estado === 'horas' ? hs(celda.horas ?? 0) : hueco.texto}
+                        {celda.estado === 'horas' ? hs(celda.horas ?? 0) : celda.estado === 'licencia' || celda.estado === 'ausente' || celda.estado === 'futuro' ? '' : hueco.texto}
                       </span>
                     )}
+                    </CeldaDia>
                     {repartido && (
                       <span data-testid="celda-repartida" title={`${celda.tramos.length} obras ese día`}
                         style={{ display: 'block', fontSize: '9px', color: V.tenue, lineHeight: 1 }}>
