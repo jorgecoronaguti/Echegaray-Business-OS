@@ -1,0 +1,24 @@
+# LA RED DE SEGURIDAD, NO EL CAMINO PRINCIPAL.
+#
+# Hasta el 08/09/2026 esto corría CADA HORA y era el único refresco del espejo: el bot escribía la
+# fila en Compras a las 16:33 y la app no la mostraba hasta las 17:12. El dueño lo dijo así: «siguen
+# faltando comprobantes… esto tiene que hacerse en tiempo real».
+#
+# Ahora el camino principal es el disparo inmediato desde el worker de comprobantes. Este timer
+# queda para lo que ese disparo no puede cubrir: las ediciones que el dueño hace A MANO en la
+# pestaña (cambiar una obra, marcar un pago, anular una fila) — nadie las anuncia.
+#
+# 10 minutos es el plazo que promete el acuse del bot cuando el disparo inmediato no se pudo
+# confirmar. Si se cambia acá, hay que cambiar `CADA_MINUTOS` en
+# `orquestador/comunicacion/comprobantes/espejo.mjs`: prometer menos de lo que el timer garantiza
+# sería inventar. El sync tarda 2,8 s medidos, así que cada 10 minutos no es carga para nada.
+[Unit]
+Description=Echegaray OS - Sync Compras cada 10 min (red de seguridad del espejo)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
