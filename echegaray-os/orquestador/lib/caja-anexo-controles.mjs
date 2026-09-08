@@ -26,6 +26,7 @@ import { ALERTA, comparaMarca } from './glifos.mjs'
 // Los rangos de "Cheques Emitidos" se armaban acá a mano —`'…'!$K$2:$K$400`— y arrancaban en la 2,
 // o sea adentro de la banda de rótulos. La fila de arranque vive en un solo archivo.
 import { rangoEn } from './cheques-emitidos-geometria.mjs'
+import { factorSinPlanilla } from './rubro-caja.mjs'
 import {
   ESTADOS, ESPERADOS, formulaTotalEstado, formulaCantidadEstado,
   formulaEstadoDesconocido, formulaUltimoCobroRegistrado,
@@ -246,8 +247,16 @@ export function bloqueTrazabilidad(h) {
   // plata gastada y registrada. Compras por su MONTO PAGADO (los parciales también son billetes que
   // salieron), más jornales y oficina pagados por caja. Con arqueo 0, las fórmulas de "posteriores"
   // cubren la historia entera: todo > 0 es todo.
+  //
+  // ═══ COMPRAS SIN LA NÓMINA QUE PAGA LA PLANILLA (08/09/2026) ═══
+  //
+  // Compras tiene los jornales y los sueldos de administración tipeados como estimación, y el libro no
+  // los toma de ahí porque la planilla es la fuente (libro-extractores-nomina.mjs). Esta fila los
+  // sumaba DOS veces: $15.441.950 de jornales y $7.185.800 de oficina "en efectivo" desde Compras, y
+  // la planilla entera en los dos términos siguientes. $22.627.750 de "sin explicar" que era la misma
+  // plata. El factor sale de rubro-caja.mjs, la misma lista que usa el cajón vivo de CAJA.
   const fGasto = push(['Pagado en efectivo — Compras (monto pagado) + jornales + oficina', '', '', '',
-    `=SUMPRODUCT(('Compras'!$P$4:$P="Efectivo")*N('Compras'!$T$4:$T))`
+    `=SUMPRODUCT(('Compras'!$P$4:$P="Efectivo")*${factorSinPlanilla()}*N('Compras'!$T$4:$T))`
     + `+${formulaJornalesEfectivoPosteriores('0')}+${formulaOficinaEfectivoPosteriores('0')}`, '', ''])
   // EL CAJÓN VIVO, NO EL ARQUEO CRUDO: con la identidad a historia completa, lo que cierra la resta
   // es lo que HAY en la caja hoy (arqueo ± movimientos posteriores) — el mismo número de CAJA!B7.

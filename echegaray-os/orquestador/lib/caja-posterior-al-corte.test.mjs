@@ -161,6 +161,11 @@ test('pagos en efectivo posteriores: el MONTO PAGADO (parcial o total), con la v
   // La plata es el MONTO PAGADO (T), no el total (O): una compra saldada en dos veces se contaba doble
   assert.match(f, /N\('Compras'!\$T\$4:\$T\)/)
   assert.doesNotMatch(f, /N\('Compras'!\$O\$4:\$O\)/)
+  // SIN LA NÓMINA DE COMPRAS (08/09): los jornales y la oficina ya descargan el cajón desde la planilla
+  // (`formulaJornalesEfectivoPosteriores` / `formulaOficinaEfectivoPosteriores`); las filas de Compras
+  // con esos rubros son la misma plata tipeada como estimación. $22.627.750 contados dos veces en A7.
+  assert.match(f, /\('Compras'!\$AC\$4:\$AC<>"Nómina · Jornales de obra"\)/)
+  assert.match(f, /\('Compras'!\$AC\$4:\$AC<>"Nómina · Sueldos administración"\)/)
   // CAMBIO DE CONTRATO (15/08): LAS DOS RAMAS USAN EL MISMO CRITERIO. La rama "Pagado" comparaba
   // estrictamente ("lo del día del arqueo ya está contado") y la rama "Pendiente" desde el día
   // inclusive. Dos filas equivalentes daban números distintos según el estado, y por el lado que

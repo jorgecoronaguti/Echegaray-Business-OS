@@ -514,6 +514,12 @@ test('la trazabilidad es la IDENTIDAD COMPLETA: cobrado = depositado + gastado +
   // El gasto: Compras por MONTO PAGADO (los parciales también salieron) + jornales + oficina por caja.
   assert.match(gasto, /'Compras'!\$P\$4:\$P="Efectivo"/)
   assert.match(gasto, /N\('Compras'!\$T\$4:\$T\)/)
+  // Y SIN LA NÓMINA QUE COMPRAS TIENE TIPEADA (08/09): los dos términos siguientes ya traen jornales y
+  // oficina desde la planilla. Medido: $15.441.950 + $7.185.800 sumados dos veces → −$145,6M "sin explicar".
+  assert.match(gasto, /\('Compras'!\$AC\$4:\$AC<>"Nómina · Jornales de obra"\)/)
+  assert.match(gasto, /\('Compras'!\$AC\$4:\$AC<>"Nómina · Sueldos administración"\)/)
+  // Los factores van ANTES del monto, adentro del mismo SUMPRODUCT: afuera no filtrarían nada.
+  assert.match(gasto, /^=SUMPRODUCT\(\('Compras'!\$P\$4:\$P="Efectivo"\)\*\('Compras'!\$AC\$4:\$AC<>"[^"]+"\)\*\('Compras'!\$AC\$4:\$AC<>"[^"]+"\)\*N\('Compras'!\$T\$4:\$T\)\)\+/)
   // El cajón VIVO (arqueo ± posteriores), el mismo número de CAJA!B7 — no el arqueo crudo.
   assert.match(cajon, /N\(CAJA_ARQUEO_ARS\)\+N\(ANEXO_EFECTIVO_NETO\)/)
   // Y la identidad usa los SEIS términos: cobrado − duplicado + extraído − depositado − gastado − cajón.

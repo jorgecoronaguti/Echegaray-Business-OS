@@ -210,6 +210,27 @@ export const RUBROS = REGLAS.map((r) => r.rubro)
 export const RUBROS_DE_COMPRAS = REGLAS.filter((r) => r.paga === 'compras').map((r) => r.rubro)
 
 /**
+ * LOS RUBROS QUE PAGA LA PLANILLA DE NÓMINA. Compras los tiene tipeados como estimación ($144,8M de
+ * jornales en el año contra $131,1M reales) y el libro `_MOVIMIENTOS` no los toma de ahí —ver
+ * libro-extractores-nomina.mjs—. Toda fórmula que sume Compras "en efectivo" tiene que saltearlos por
+ * la misma razón: medido el 08/09/2026, A7 de `_CAJA_ANEXO` sumaba $15.441.950 de jornales y
+ * $7.185.800 de sueldos de administración pagados en efectivo desde Compras Y la planilla entera:
+ * $22.627.750 de "efectivo sin explicar" que era la misma plata contada dos veces. PURA.
+ */
+export const RUBROS_DE_PLANILLA = REGLAS.filter((r) => r.paga === 'Jornales por Quincena').map((r) => r.rubro)
+
+/**
+ * NÚCLEO PURO: el factor de un SUMPRODUCT sobre Compras que deja afuera la nómina que paga la planilla.
+ * Un factor por rubro, `<>` a cada uno: multiplicado contra el resto de las condiciones, vale 0 en las
+ * filas de nómina y 1 en las demás. Se cita el rango de la columna de rubro, no una letra tipeada.
+ * @param {string} rango el rango abierto de la columna "Rubro de caja" (por defecto el de Compras)
+ * @returns {string} p. ej. `('Compras'!$AC$4:$AC<>"Nómina · Jornales de obra")*(...)`
+ */
+export function factorSinPlanilla(rango = `'Compras'!$${COL_RUBRO_CAJA}$4:$${COL_RUBRO_CAJA}`) {
+  return RUBROS_DE_PLANILLA.map((r) => `(${rango}<>"${r}")`).join('*')
+}
+
+/**
  * NÚCLEO PURO: a qué rubro de caja pertenece una fila de Compras.
  * @param {{proveedor?:string, unidad?:string, cliente?:string, concepto?:string}} fila columnas E, I, J, K+L de Compras
  * @returns {string} el rubro, o SIN_CLASIFICAR
