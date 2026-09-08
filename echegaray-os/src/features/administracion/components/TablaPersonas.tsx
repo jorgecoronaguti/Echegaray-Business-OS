@@ -345,17 +345,9 @@ function CeldaHoy({ clasificacion, ficho }: { clasificacion: ClasificacionDelDia
         {r.simbolo && <span style={{ fontWeight: 600 }}>{r.simbolo} </span>}
         {r.texto}
       </span>
-      {/* LA CANTIDAD, al lado y en su propia tinta. Un separador entre las dos capas para que no se
-          lean como una sola frase. */}
-      {r.horas && (
-        <span
-          className="font-mono tabular-nums text-ink truncate"
-          data-capa="horas"
-          style={{ fontSize: '12px' }}
-        >
-          · {r.horas}
-        </span>
-      )}
+      {/* LAS HORAS NO VAN ACÁ. Dueño, 08/09/2026: «no mezclemos eso de presente con las hs al lado, no
+          sirve». La columna HOY dice sólo la presencia; la cantidad ya tiene su columna (HH MES) y su
+          pantalla (Asistencia). */}
     </>
   )
 }

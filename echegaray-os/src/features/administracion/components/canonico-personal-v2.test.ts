@@ -106,6 +106,9 @@ test('la columna HOY no vuelve a decir «sin fichar» sobre todo el plantel', ()
   const tabla = codigoTabla()
   assert.doesNotMatch(tabla, /sin fichar|no fich|Fichados/i, 'la columna volvió a hablar de fichaje')
   assert.doesNotMatch(tabla, /HOY_LABEL|estadoHoy\(/, 'volvió el vocabulario del fichaje a la celda')
+  // Dueño, 08/09/2026 (tarde): «no mezclemos eso de presente con las hs al lado, no sirve». La celda
+  // HOY dice SÓLO la presencia; la cantidad tiene su columna (HH MES). Revertir devuelve la capa.
+  assert.doesNotMatch(tabla, /data-capa="horas"/, 'la columna HOY volvió a pegar las horas al lado de la presencia')
   // Y lo que dibuja sale de la MISMA regla que `/administracion/personas/en-obra`: `clasificar()`
   // vía `rotuloHoy`. Una segunda copia del `if` sería una segunda definición de «ausencia».
   assert.match(tabla, /rotuloHoy\(/)
