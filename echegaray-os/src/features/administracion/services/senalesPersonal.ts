@@ -64,7 +64,10 @@ export interface FilaDeSenal {
 }
 
 export function senalesDePersonal({
-  personas, marcas, papeles, hoyDisponible, papelesDisponible, hrefSinObra,
+  // `marcas` y `hoyDisponible` siguen en el contrato pero YA NO SE MIRAN: la señal que los usaba
+  // contaba fichajes y se retiró (ver arriba). Se dejan porque quien llama los tiene a mano y
+  // sacarlos obligaría a tocar la página para no cambiar nada de lo que se dibuja.
+  personas, papeles, papelesDisponible, hrefSinObra,
 }: {
   personas: FilaDeSenal[]
   /** Las marcas de fichaje de hoy. YA NO SE USAN para ninguna señal —ver el bloque de arriba— y se
