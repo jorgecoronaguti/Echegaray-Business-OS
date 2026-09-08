@@ -30,7 +30,7 @@ import type {
 // el asterisco se la lleva al navegador sin que nadie lo decida. La lista explícita convierte esa
 // garantía en algo que este archivo sostiene solo.
 const COLUMNAS_DIRECTORIO =
-  'id, nombre_completo, categoria, especialidad, puesto, fecha_ingreso, fecha_egreso, ' +
+  'id, nombre_completo, categoria, especialidad, puesto, legajo, fecha_ingreso, fecha_egreso, ' +
   'cuadrilla_id, cuadrilla, obra_actual_id, obra_actual, rol_en_obra, asignada_desde, en_la_empresa'
 
 const COLUMNAS_FICHA =

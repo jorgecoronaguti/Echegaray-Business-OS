@@ -84,24 +84,32 @@ test('las tres señales retiradas siguen teniendo dónde leerse, una por una', (
   assert.match(servicio, /sin_asignar/)
   // SIN FICHAR HOY: es la columna HOY, persona por persona.
   assert.match(tabla, /data-testid="hoy-persona"/)
-  // PAPELES VENCIDOS: baja a la celda PAPELES, que es lo único que puede decir DE QUIÉN.
-  assert.match(tabla, /data-testid="papeles-persona"/)
+  // PAPELES VENCIDOS: desde el 08/09/2026 la lista NO tiene celda de papeles (orden del dueño:
+  // «quitar la columna Papeles de la sección Plantel»); la señal se lee en la ficha de la persona.
+  // En su lugar la fila publica LEGAJO y ALTA, los del recibo de sueldo.
+  assert.doesNotMatch(tabla, /data-testid="papeles-persona"/)
+  assert.match(tabla, /data-testid="legajo-persona"/)
+  assert.match(tabla, /data-testid="alta-persona"/)
 })
 
 // ── LA COLUMNA PAPELES VOLVIÓ CONTANDO, NO CERTIFICANDO ─────────────────────────────────────────
 
-test('la celda PAPELES no decide nada por su cuenta: la regla vive donde se puede probar', () => {
+test('la columna PAPELES se retiró de Plantel (08/09/2026, orden del dueño) y no volvió', () => {
+  const tabla = codigoTabla()
+  assert.doesNotMatch(tabla, /papeles-persona|CeldaPapeles|TINTA_PAPELES|rotuloDePapeles\(/)
+  assert.ok(!tabla.includes('>Papeles<'), 'volvió el rótulo Papeles')
+})
+
+test('la celda PAPELES (retirada) no decidía nada por su cuenta: la regla sigue donde se puede probar', () => {
   // ═══ EL DEFECTO QUE ATRAPA ═══
   //
   // Escribir el `if` del rótulo dentro del JSX. Ahí la regla sólo se puede verificar montando React
   // o leyendo el archivo con una expresión regular —las dos formas de no probarla—, y es la regla
   // que decide si el OS afirma que un legajo está vacío. Vive en `rotuloDePapeles`, que se prueba
   // con `node --test` y sin base.
-  const tabla = codigoTabla()
-  assert.match(tabla, /rotuloDePapeles\(/)
-  assert.doesNotMatch(tabla, /al día|vigente/i, 'la celda volvió a certificar vigencia')
-  // El color es lo único que queda del lado del componente: un `.ts` no puede afirmar un hex.
-  assert.match(tabla, /TINTA_PAPELES/)
+  // La regla vive en `pulsoDelPlantel.rotuloDePapeles` y se prueba en su propio test; la tabla ya
+  // no la consume. Lo que se sostiene acá es que la lista no volvió a certificar vigencia.
+  assert.doesNotMatch(codigoTabla(), /al día|vigente/i, 'la lista volvió a certificar vigencia')
 })
 
 test('una lectura que falló apaga SU columna y no publica una ausencia', () => {
@@ -111,7 +119,6 @@ test('una lectura que falló apaga SU columna y no publica una ausencia', () => 
   // del mapa —«no está ⇒ no tiene»—, un error de RLS escribe «sin cargar» en 62 filas de un plantel
   // con 847 papeles cargados. Es la misma trampa que ya costó los seis falsos faltantes de Drive.
   assert.match(codigoPagina(), /papelesLeidos: papeles\.error == null/)
-  assert.match(codigoTabla(), /leidos: pulso\?\.papelesLeidos \?\? false/)
   // Y el error se sigue mostrando arriba con su texto: una columna apagada sin decir por qué es una
   // pantalla que se rompió en silencio.
   assert.match(codigoPagina(), /sin-lectura-\$\{f\.clave\}/)
@@ -127,7 +134,10 @@ test('a quien ya no está no se le pregunta por sus papeles ni por su día', () 
 
 // ── LA GEOMETRÍA Y LAS COLUMNAS DEL HANDOFF v4 ───────────────────────────────────────────────────
 
-test('la lista tiene las SEIS columnas del handoff v4, con su grilla literal', () => {
+test('la lista tiene las SIETE columnas (handoff v4 sin Papeles, más Legajo y Alta), con su grilla literal', () => {
+  // ═══ 08/09/2026 ═══ Papeles se retiró por orden del dueño; entran LEGAJO (70px) y ALTA (90px),
+  // los dos del recibo de sueldo. La grilla sigue siendo literal por la misma razón de siempre.
+
   // ═══ EL CONTRATO CAMBIÓ (05/09/2026) ═══
   //
   // `Administración v4 · Pantallas.dc.html`, bloque «1 · PERSONAL», dibuja seis columnas:
@@ -143,20 +153,20 @@ test('la lista tiene las SEIS columnas del handoff v4, con su grilla literal', (
   // dato bajo el rótulo equivocado — que es peor que no dibujarse.
   const src = codigoTabla()
   assert.ok(
-    src.includes('grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_110px_90px_130px]'),
+    src.includes('grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_110px_90px_70px_90px]'),
     'la grilla ancha dejó de ser la del handoff v4',
   )
   // «Obra» viaja por un ternario —«Última obra» en el corte de Inactivos—, así que se acepta el
   // rótulo escrito como hijo directo o como literal del ternario. Lo que se exige es que ESTÉ.
   // «Categoría» y no «Puesto» desde el 07/09/2026: el campo guarda la categoría de convenio, que
   // es la que decide la tarifa. Es el rótulo que pidió el dueño.
-  for (const c of ['Persona', 'Categoría', 'Obra', 'Hoy', 'HH mes', 'Papeles']) {
+  for (const c of ['Persona', 'Categoría', 'Obra', 'Hoy', 'HH mes', 'Legajo', 'Alta']) {
     assert.ok(src.includes(`>${c}<`) || src.includes(`'${c}'`), `falta el rótulo ${c}`)
   }
   // Seis rótulos y seis celdas. Se cuentan sobre el cuerpo de la fila para que el encabezado no
   // infle el número.
   const cuerpo = src.slice(src.indexOf('{personas.map('))
-  for (const celda of ['abrir-persona', 'categoria-persona', 'sin asignar', 'hoy-persona', 'hh-mes', 'papeles-persona']) {
+  for (const celda of ['abrir-persona', 'categoria-persona', 'sin asignar', 'hoy-persona', 'hh-mes', 'legajo-persona', 'alta-persona']) {
     assert.ok(cuerpo.includes(celda), `la fila perdió la celda ${celda}`)
   }
 })
