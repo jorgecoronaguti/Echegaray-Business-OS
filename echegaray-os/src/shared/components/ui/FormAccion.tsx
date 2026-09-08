@@ -42,6 +42,7 @@ export function FormAccion({
   mensajeOk = 'Guardado.',
   bloqueado = false,
   motivoBloqueo,
+  tactil = false,
 }: {
   accion: AccionFormulario
   children: ReactNode
@@ -60,6 +61,13 @@ export function FormAccion({
    *  con un CHECK. */
   bloqueado?: boolean
   motivoBloqueo?: ReactNode
+  /** EL BOTÓN CON ALTURA DE DEDO. Los catorce formularios del OS se cargan sentado, con mouse, y
+   *  por eso el botón mide `py-[7px]`. Los que se usan PARADO —anotar en la ficha de una persona
+   *  mientras se la está mirando— necesitan el mismo blanco táctil que el resto de los controles
+   *  del sistema en el teléfono: 48px (`--os-control-h-mobile`), 34px en escritorio. No es un alto
+   *  inventado acá: son los dos tokens que ya usan input, select y botón. Default `false`, así que
+   *  ningún formulario existente cambia un píxel. */
+  tactil?: boolean
 }) {
   const ref = useRef<HTMLFormElement>(null)
   const [estado, ejecutar, pendiente] = useActionState<ResultadoAccion | null, FormData>(
@@ -99,7 +107,7 @@ export function FormAccion({
           // color que no está en la paleta del handoff — y lo comparten los catorce formularios
           // del OS, así que era el botón más repetido del sistema y ninguno era de la marca.
           // Amarillo con texto grafito: #FDC900 da 1,6:1 sobre blanco y no admite texto claro.
-          className="rounded-control bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] transition-colors hover:brightness-[0.97] disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint disabled:hover:brightness-100"
+          className={`${tactil ? 'min-h-control-movil sm:min-h-control ' : ''}rounded-control bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] transition-colors hover:brightness-[0.97] disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint disabled:hover:brightness-100`}
         >
           {pendiente ? 'Guardando…' : enviar}
         </button>
