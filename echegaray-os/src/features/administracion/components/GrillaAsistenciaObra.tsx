@@ -386,9 +386,22 @@ export function GrillaAsistenciaObra({
                   </span>
                 )}
               </td>
+              {/* EL DESPLEGABLE ESTÁ EN EL EJE DE LA FILA, NO EL BLOQUE. Debajo del select cuelgan
+                  una o dos líneas de texto («programar cambio», «→ Obra desde …», «horas en …») y,
+                  con la celda centrada como cualquier otra, lo que quedaba en el eje era el bloque
+                  entero: el control subía 7,5 px y la fila dejaba de leerse en una línea.
+                  El grid `1fr auto 1fr` pone ARRIBA del select el mismo espacio que ocupa el pie
+                  —las dos pistas `1fr` se resuelven al mismo alto, sea el pie de una línea o de
+                  dos—, así que el select cae en el centro del conjunto: el ojo alinea el control.
+                  El padding vertical del `td` pasa a 0 porque ese aire ahora lo da la pista de
+                  arriba; con los 7 px de antes la fila crecía sin necesidad. */}
               <td data-testid="celda-obra" style={{
-                padding: '7px 8px', color: V.apagado, verticalAlign: 'middle',
+                padding: '0 8px', color: V.apagado, verticalAlign: 'middle',
               }}>
+               <div data-testid="bloque-obra" style={{
+                 display: 'grid', gridTemplateRows: '1fr auto 1fr', alignItems: 'center',
+               }}>
+                <div aria-hidden="true" />
                 {/* ═══ UN DESPLEGABLE, NO UN FORMULARIO (pedido del dueño, 08/09/2026) ═══
                     Elegir otra obra cambia la asignación vigente DESDE HOY: cierra la anterior y
                     abre la nueva. No pide rol, ni cuadrilla, ni actividad, ni fechas — eso es lo
@@ -421,8 +434,12 @@ export function GrillaAsistenciaObra({
                     ))}
                   </select>
                 ) : (
-                  fila.rotuloObra
+                  <span>{fila.rotuloObra}</span>
                 )}
+                {/* EL PIE ES LA TERCERA PISTA DEL GRID Y VA ENTERO EN UN SOLO HIJO: si cada línea
+                    fuera hija del grid se abrirían pistas implícitas y el select dejaría de estar
+                    en el medio. Lo que crece acá abajo crece también arriba, y el eje no se mueve. */}
+                <div>
                 {/* ═══ PLANIFICAR ES UNA LÍNEA DE TEXTO, NO UN BOTÓN ═══
                     El dueño (08/09/2026): «una cosa es hoy y cuando planifico quiero poner lo de
                     mañana y siguientes». El desplegable de arriba sigue siendo HOY y no cambió.
@@ -470,6 +487,8 @@ export function GrillaAsistenciaObra({
                     elegí la obra actual
                   </span>
                 )}
+                </div>
+               </div>
               </td>
 
               {fila.celdas.map((celda, i) => {

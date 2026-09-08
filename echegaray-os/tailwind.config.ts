@@ -5,42 +5,66 @@ import type { Config } from 'tailwindcss'
 // exponen como utilidades semánticas reutilizables por TODO el OS: bg-surface, text-ink,
 // border-line, text-pos/neg/warn, shadow-card, rounded-card, etc. Es aditivo: no altera
 // las utilidades estándar de Tailwind que ya usan otros módulos (slate-*, white…).
+// TODO COLOR DEL TEMA SE DECLARA CON `<alpha-value>`, SIN EXCEPCIÓN.
+// Un color escrito `var(--os-x)` no admite el modificador de opacidad de Tailwind: `border-ink/30`
+// salía al 100% y `from-ink/15` no generaba regla, porque el alfa no puede entrar adentro de una
+// variable que ya trae la función de color. Con `rgb(var(--os-x-rgb) / <alpha-value>)` Tailwind
+// reemplaza el marcador por 1 —la clase sin modificador queda igual— o por el modificador pedido.
+// Los canales sueltos los publica `src/app/globals.css` y van escritos enteros —sin una función
+// que los arme— para que `src/app/tokens-tema.test.ts` pueda leerlos del archivo y exigir que cada
+// color del tema use `<alpha-value>` y que el par hex ↔ rgb diga lo mismo.
 const config: Config = {
   content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
       colors: {
-        canvas: 'var(--os-canvas)',
+        canvas: 'rgb(var(--os-canvas-rgb) / <alpha-value>)',
         surface: {
-          DEFAULT: 'var(--os-surface)',
-          quiet: 'var(--os-surface-quiet)',
-          sunken: 'var(--os-surface-sunken)',
+          DEFAULT: 'rgb(var(--os-surface-rgb) / <alpha-value>)',
+          quiet: 'rgb(var(--os-surface-quiet-rgb) / <alpha-value>)',
+          sunken: 'rgb(var(--os-surface-sunken-rgb) / <alpha-value>)',
         },
         line: {
-          DEFAULT: 'var(--os-line)',
-          strong: 'var(--os-line-strong)',
+          DEFAULT: 'rgb(var(--os-line-rgb) / <alpha-value>)',
+          strong: 'rgb(var(--os-line-strong-rgb) / <alpha-value>)',
           // El hairline MÁS suave: separador ENTRE bloques de un mismo panel. Estaba declarado en
           // `globals.css` desde el handoff y NO estaba expuesto acá, así que los componentes lo
           // escribían a mano. Un token que hay que copiar a mano no es un token.
-          hairline: 'var(--os-hairline-soft)',
+          hairline: 'rgb(var(--os-hairline-soft-rgb) / <alpha-value>)',
         },
         ink: {
-          DEFAULT: 'var(--os-ink)',
-          soft: 'var(--os-ink-soft)',
+          DEFAULT: 'rgb(var(--os-ink-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--os-ink-soft-rgb) / <alpha-value>)',
         },
-        muted: 'var(--os-muted)',
-        faint: 'var(--os-faint)',
+        muted: 'rgb(var(--os-muted-rgb) / <alpha-value>)',
+        faint: 'rgb(var(--os-faint-rgb) / <alpha-value>)',
         accent: {
-          DEFAULT: 'var(--os-accent)',
-          hover: 'var(--os-accent-hover)',
+          DEFAULT: 'rgb(var(--os-accent-rgb) / <alpha-value>)',
+          hover: 'rgb(var(--os-accent-hover-rgb) / <alpha-value>)',
         },
         // LA MARCA. Es identidad, nunca estado ni acción: el amarillo #FDC900 da 1,6:1 sobre
         // blanco y no puede llevar texto encima. Ver el porqué completo en globals.css.
-        marca: { DEFAULT: 'var(--os-marca)', soft: 'var(--os-marca-soft)', track: 'var(--os-marca-track)' },
-        pos: { DEFAULT: 'var(--os-pos)', soft: 'var(--os-pos-soft)' },
-        neg: { DEFAULT: 'var(--os-neg)', soft: 'var(--os-neg-soft)' },
-        warn: { DEFAULT: 'var(--os-warn)', soft: 'var(--os-warn-soft)' },
-        info: { DEFAULT: 'var(--os-info)', soft: 'var(--os-info-soft)' },
+        marca: {
+          DEFAULT: 'rgb(var(--os-marca-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--os-marca-soft-rgb) / <alpha-value>)',
+          track: 'rgb(var(--os-marca-track-rgb) / <alpha-value>)',
+        },
+        pos: {
+          DEFAULT: 'rgb(var(--os-pos-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--os-pos-soft-rgb) / <alpha-value>)',
+        },
+        neg: {
+          DEFAULT: 'rgb(var(--os-neg-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--os-neg-soft-rgb) / <alpha-value>)',
+        },
+        warn: {
+          DEFAULT: 'rgb(var(--os-warn-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--os-warn-soft-rgb) / <alpha-value>)',
+        },
+        info: {
+          DEFAULT: 'rgb(var(--os-info-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--os-info-soft-rgb) / <alpha-value>)',
+        },
       },
       // EL ÚNICO MOVIMIENTO DEL SISTEMA VISUAL: la barra que dice que el servidor está trabajando.
       // Va acá y no en un `style` suelto porque un color o una animación que aparece en un
