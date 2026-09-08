@@ -165,7 +165,13 @@ test('la lista tiene las SIETE columnas (handoff v4 sin Papeles, más Legajo y A
   }
   // Seis rótulos y seis celdas. Se cuentan sobre el cuerpo de la fila para que el encabezado no
   // infle el número.
-  const cuerpo = src.slice(src.indexOf('{personas.map('))
+  //
+  // EL ANCLA ES LA FILA, NO EL `map` (08/09/2026). Antes cortaba en `{personas.map(` y el día que
+  // la lista se partió en secciones —jefes de obra arriba, obreros abajo— ese texto dejó de
+  // existir: `indexOf` devolvió -1, `slice(-1)` dejó UN carácter y las siete aserciones se
+  // volvieron falsas de golpe, sin que la fila hubiera perdido ninguna celda. `fila-persona` es lo
+  // que el test dice medir y no cambia con la forma de iterar.
+  const cuerpo = src.slice(src.indexOf('data-testid="fila-persona"'))
   for (const celda of ['abrir-persona', 'categoria-persona', 'sin asignar', 'hoy-persona', 'hh-mes', 'legajo-persona', 'alta-persona']) {
     assert.ok(cuerpo.includes(celda), `la fila perdió la celda ${celda}`)
   }

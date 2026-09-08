@@ -30,22 +30,14 @@ import { CamposTareaTipo } from '@/features/base-maestra/components/CamposTareaT
 import { getFichaTarea, getTareasTipo } from '@/features/base-maestra/services/tareasService'
 import { corteDe } from '@/features/base-maestra/services/vistas'
 import { contadores, getCuentasBaseMaestra } from '@/features/base-maestra/services/cuentas'
-import { IconoCompra, IconoPresupuesto } from '@/shared/components/iconos'
-import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
-import { senalesDeBaseMaestra } from '@/features/base-maestra/services/senalesBaseMaestra'
 
 import { archivarTareaTipo, crearTareaTipo, editarTareaTipo } from '@/features/base-maestra/services/tareasActions'
 
 export const dynamic = 'force-dynamic'
 
-/** Los dos iconos que esta sección mezcla: una tarea tipo y un recurso comprado. */
-const ICONOS_BM = { presupuesto: IconoPresupuesto, compra: IconoCompra }
-
-/** Los dos destinos de la primera línea: el recorte que produjo cada número. */
-const HREFS_BM = {
-  sinAnalisis: '/administracion/base-maestra/tareas?c=sinAnalisis',
-  sinPrecio: '/administracion/base-maestra/recursos?tipo=sin_precio',
-}
+// LA BANDA «LO QUE PIDE TRABAJO» —«sin análisis» y «sin precio»— la retiró el dueño el 08/09/2026
+// de toda la plataforma («no es útil y confunde»). Los recortes que producían esos números siguen
+// siendo filtros de la sección: lo que se fue es el aviso de arriba, no cómo encontrar lo que falta.
 
 
 type Busqueda = { q?: string; t?: string; s?: string; nueva?: string; editar?: string; c?: string }
@@ -103,32 +95,12 @@ export default async function BaseMaestraTareasPage({ searchParams }: { searchPa
     (a, b) => a.localeCompare(b, 'es'),
   )
 
-  const senales = senalesDeBaseMaestra({
-    tareas: cuentas.analisis, recursos: cuentas.precios, economia, hrefs: HREFS_BM,
-  })
   const ficha = sp.t ? await getFichaTarea(supabase, sp.t, economia) : null
   const solapa: Solapa = solapaDe(sp.s, economia)
 
   return (
     <Marco>
       <NavAdministracion />
-
-      {/* ═══ CRITERIO 1: LA PRIMERA LÍNEA DE CONTENIDO ES TRABAJO (`17v2:40-56`) ═══
-
-          Lo primero que se ve no es la biblioteca: es lo que impide cotizar con ella. Las dos
-          señales son las del mockup y las dos tienen fuente — «sin análisis» es `analisis_id` en
-          null y «sin precio» es `costo_base` en null—, y cada verbo aterriza en el recorte que
-          produjo su número. La de precio NO se le dibuja a quien no ve economía: `recurso_precio`
-          le devuelve cero filas sin error, así que su cifra diría que hay 409 precios por cargar
-          que están cargados. */}
-      <TrabajoDeSeccion
-        senales={senales}
-        icono={IconoPresupuesto}
-        iconos={ICONOS_BM}
-        vacio={economia
-          ? 'Todas las tareas tipo tienen análisis y todos los recursos tienen precio.'
-          : 'Todas las tareas tipo tienen análisis.'}
-      />
 
       {/* EL PERMISO SE DICE UNA VEZ Y EN UNA LÍNEA. Lo que el jefe de obra necesita saber es que la
           columna de costo no está vacía sino cerrada — el resto de la pantalla ya le muestra que las

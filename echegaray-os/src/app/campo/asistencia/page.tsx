@@ -12,6 +12,9 @@ import { diaDeCarga, rotuloDelDia } from '@/features/administracion/services/dia
 import { puedeCargarParte } from '../permisos'
 import { ElegirObra, MarcoCampo } from '../marco'
 import { FormAsistencia } from '@/features/administracion/components/asistencia/FormAsistencia'
+import { TraerALaObra } from '@/features/administracion/components/asistencia/TraerALaObra'
+import { getCandidatosParaTraer } from '@/features/administracion/services/jornadaPorObraService'
+import { puedeCambiarObraActual } from '@/features/administracion/services/planDeObraActual'
 
 // 01 · EL JEFE, EN LA OBRA. Una obra, un día, las horas de cada uno.
 //
@@ -81,6 +84,14 @@ export default async function AsistenciaCampoPage({ searchParams }: {
   }
 
   const { obra, filas } = jornada.data
+  // MISMO GESTO QUE EN EL TELÉFONO DE ADMINISTRACIÓN, MISMO COMPONENTE. Acá es donde el jefe de obra
+  // está de verdad a las 7 de la mañana: si «traer a alguien» viviera sólo en la otra ruta, la
+  // decisión del dueño quedaría a medias. El rol lo decide `puedeCambiarObraActual` — el jefe sí,
+  // `campo` no, y quien no puede no ve el botón.
+  const puedeTraer = puedeCambiarObraActual(perfil.data?.rol)
+  const candidatos = puedeTraer
+    ? await getCandidatosParaTraer(supabase, obra.id, fecha)
+    : { data: [], error: null }
   return (
     <MarcoCampo
       titulo={obra.nombre}
@@ -106,6 +117,15 @@ export default async function AsistenciaCampoPage({ searchParams }: {
         jornada={obra.jornada}
         filas={filas}
       />
+
+      {puedeTraer && (
+        <TraerALaObra
+          obraId={obra.id}
+          obraNombre={obra.nombre}
+          candidatos={candidatos.data}
+          error={candidatos.error}
+        />
+      )}
 
       {obras.length > 1 && (
         <p className="mt-5 text-[12px] text-faint">

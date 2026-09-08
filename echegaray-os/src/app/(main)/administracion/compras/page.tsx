@@ -81,6 +81,7 @@ import { FiltrosComprasSheet } from '@/features/administracion/components/Filtro
 import {
   aParams, criteriosDeURL, hayCriterios, opcionesDe, pasaCriterios,
 } from '@/features/administracion/services/comprasFiltros'
+import { totalFuera } from '@/features/administracion/services/comprasDeObra'
 import {
   conteosDe, filtroDe as filtroSheetDe, pasa, recorteDeLista, ROTULO as ROTULO_SHEET,
   type FiltroSheet,
@@ -176,7 +177,12 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
     )
   }
 
+  // `filas` YA VIENE RECORTADA A LAS COMPRAS DE OBRA (`comprasDeObra.ts`, orden del dueño del
+  // 08/09): fuera los rubros Impuestos y Financiero, fuera Sueldos/SAC/ARCA/FCL/SINDICATOS/Banco.
+  // La cuenta de lo que salió viaja al lado para declararla al pie — un filtro que descuenta 152
+  // filas sin decirlo es indistinguible de un bug.
   const todas = listado.data.filas
+  const fueraDeObra = totalFuera(listado.data.fuera)
   // LOS CONTEOS SALEN DE LA POBLACIÓN ENTERA, no de lo que se está mirando: si contaran lo filtrado,
   // el número de arriba dejaría de ser el de la empresa.
   const conteos = conteosDe(todas)
@@ -336,6 +342,26 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                       </Link>
                     </span>
                   )}
+                  {/* LO QUE SE SACÓ SE DICE. La pestaña tiene más filas que ésta y el dueño la
+                      mira todos los días: si la pantalla mostrara 803 sin explicar las otras 152,
+                      el primer reflejo sería «se perdieron compras». No se perdieron: no son
+                      compras. */}
+                  {fueraDeObra > 0 && (
+                    <span style={{ fontSize: '11.5px' }} data-testid="compras-fuera-de-obra">
+                      <Num className="text-faint">{fueraDeObra}</Num> filas de la pestaña no son
+                      compras de obra (impuestos, financiero, sueldos y cargas sociales) y no se
+                      listan acá
+                    </span>
+                  )}
+                  {/* UN RUBRO QUE NO ESTÁ CLASIFICADO NO SE ESCONDE: entra en la lista y se nombra
+                      para que el dueño decida de qué lado va. */}
+                  {listado.data.dudosas.length > 0 && (
+                    <span style={{ fontSize: '11.5px' }} data-testid="compras-dudosas">
+                      <Num className="text-faint">{listado.data.dudosas.length}</Num> con un rubro
+                      sin clasificar ({[...new Set(listado.data.dudosas.map((f) => f.unidad_negocio ?? 'sin rubro'))].join(', ')}):
+                      se muestran hasta que se decida
+                    </span>
+                  )}
                   {/* UN CONTROL QUE NO PUDO MIRAR TODO NO PUEDE DECIR «NO HAY MÁS». Esto es otra
                       cosa que el recorte de arriba: acá la LECTURA se cortó en la base. */}
                   {listado.data.truncado && (
@@ -353,9 +379,12 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                     una advertencia. Los 632 comprobantes de ARCA no se escriben acá a mano: es el
                     número de la otra pantalla y lo dice ella. */}
                 <NotaBloque testid="nota-compras">
-                  Esta lista es la pestaña Compras del Sheet Flujo de Caja fila por fila —{todas.length} filas
-                  de gasto—, no el libro que ARCA le reconoce a la empresa, que vive en «Control ARCA»:
-                  son dos preguntas distintas. La FUENTE sigue siendo el Sheet; esto es su espejo y se
+                  Esta lista son las COMPRAS DE OBRA de la pestaña Compras del Sheet Flujo de Caja
+                  —{todas.length} filas de obra civil, mantenimiento, estructura y taller—, no el libro que
+                  ARCA le reconoce a la empresa, que vive en «Control ARCA»: son dos preguntas
+                  distintas. Los impuestos, lo financiero, los sueldos y las cargas sociales salen
+                  por Jornales por Quincena, Cargas Sociales y el Flujo de Caja, y por eso no están
+                  acá aunque estén en la pestaña. La FUENTE sigue siendo el Sheet; esto es su espejo y se
                   refresca solo. «Proyectado» no es un gasto hecho y no suma en «A pagar». F931, Taller
                   y Almacén no son obras: encarecen la empresa. «Cargar comprobante» no carga: encola
                   por el mismo circuito del bot.

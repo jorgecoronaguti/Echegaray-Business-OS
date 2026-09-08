@@ -68,6 +68,22 @@ export const SIN_GENERADOR = {
   // `MANTENIDAS_POR_DINAMICA` y `auditar-duenos-pestanas.mjs` VERIFICA ese aire en cada corrida en vez
   // de creerle a este párrafo.
   'Deuda viva (OS)': 'dos tablas dinámicas nativas sobre Compras: las recalcula Sheets, no un script. Su rango de origen lo verifica el censo (MANTENIDAS_POR_DINAMICA).',
+  // ═══ NO ES UNA RÉPLICA: ES UN ARCHIVO MUERTO, Y ENVEJECER ES SU TRABAJO (08/09/2026) ═══
+  //
+  // `compras-retirar-canceladas.mjs` no es un paso del pipeline: corre UNA VEZ, cuando el dueño
+  // ordena sacar de Compras filas que ya salen por otra pestaña. Antes de borrarlas copia la fila
+  // entera acá con la fila original, el motivo y la fecha. Un "refresco" de este contenido sería un
+  // defecto: lo que guarda es cómo estaba esa fila el día que se retiró, no cómo está hoy.
+  //
+  // POR QUÉ UNA FOTO VIEJA ACÁ NO MIENTE, que es lo único que la excepción tiene que sostener:
+  // nadie calcula sobre ella. Medido el 08/09 sobre el repo: `_COMPRAS_RETIRADAS` aparece SÓLO en su
+  // propio script y en el traspaso — cero módulos, cero vistas, cero pestañas del OS la leen. Queda
+  // oculta (`hidden: true`) y se abre a mano para responder "¿dónde fue a parar esta compra?".
+  //
+  // LO QUE NO SE PUDO VERIFICAR SIN ABRIR EL SHEET: que ninguna FÓRMULA del archivo vivo la
+  // referencie. La pestaña nació el 08/09 escrita por este script, así que no puede haber una
+  // fórmula anterior apuntándole; si alguien le agrega una, esta excepción deja de valer.
+  _COMPRAS_RETIRADAS: 'ARCHIVO de una sola vez: guarda las filas que el dueño ordenó retirar de Compras tal como estaban ese día. Refrescarlo sería el defecto. Nadie la lee: aparece sólo en su propio script (medido 08/09).',
 }
 
 /**

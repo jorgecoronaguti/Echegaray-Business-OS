@@ -110,9 +110,12 @@ test('Administración tiene sus SIETE destinos, y ni uno de otro nivel', async (
   await entrarComo(page, EMAIL, PASSWORD)
   await page.goto('/administracion')
 
-  // EL `h1` ES «Lo que pide trabajo» (25/08, canónico 00 v2): la primera línea de contenido de la
-  // pantalla es el TRABAJO, no el maestro. Antes era «Clientes», el título de la cartera.
-  await expect(page.getByRole('heading', { name: 'Lo que pide trabajo', level: 1 })).toBeVisible()
+  // EL `h1` VOLVIÓ A SER LA CARTERA (08/09/2026). Entre el 25/08 y esa fecha lo era «Lo que pide
+  // trabajo»; el dueño retiró ese bloque de toda la plataforma —«no es útil y confunde»— y la
+  // primera línea de contenido pasó a ser el maestro. Lo que este test protege es que la pantalla
+  // TENGA un `h1`: sin él, un lector de pantalla entra al área sin punto de partida.
+  await expect(page.getByRole('heading', { name: 'Clientes y obras en ejecución', level: 1 })).toBeVisible()
+  await expect(page.getByText('Lo que pide trabajo')).toHaveCount(0)
 
   // ═══ EL CONTRATO NUEVO (00 · Home Navegación v2, zip del 25/08/2026) ═══
   //

@@ -226,6 +226,27 @@ export function casillasIniciales(filas: FilaJornada[]): Record<string, CasillaJ
   return m
 }
 
+/**
+ * Las casillas después de que la cuadrilla CAMBIÓ sin recargar la pantalla.
+ *
+ * 08/09/2026 · Traer a alguien a la obra hace `router.refresh()`: el servidor devuelve una fila
+ * más, pero `useState` no vuelve a correr su inicializador y esa persona quedaba sin casilla. Se
+ * veía bien —`estadoDeCasilla(id, undefined)` la dibuja vacía, que es lo correcto— y «poner la
+ * jornada a los que faltan» la SALTEABA, porque ese botón recorre las casillas que existen y no las
+ * filas. El recién llegado era el único al que había que tipearle las horas a mano.
+ *
+ * LO YA TIPEADO NO SE PISA: quien vino escribiendo horas y trae a un compañero no puede perderlas.
+ * Y quien dejó de estar en la cuadrilla se va: su casilla no puede seguir viajando en el guardado.
+ */
+export function sumarPersonasNuevas(
+  casillas: Record<string, CasillaJornada>, filas: FilaJornada[],
+): Record<string, CasillaJornada> {
+  const base = casillasIniciales(filas)
+  const m: Record<string, CasillaJornada> = {}
+  for (const id of Object.keys(base)) m[id] = casillas[id] ?? base[id]
+  return m
+}
+
 /** El estado de una casilla, leído de lo que hay escrito en ella. */
 export function estadoDeCasilla(persona_id: string, c: CasillaJornada | undefined): VistaCasilla {
   if (c?.ausente) {

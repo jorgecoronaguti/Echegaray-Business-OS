@@ -17,7 +17,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/administracion/types'
-import type { CarpetaRaiz, Documento, ResumenVencimientos } from '../types'
+import type { CarpetaRaiz, Documento } from '../types'
 import {
   conVinculos, partirIds, unirPartes, ventanaVencimientos,
   type ArchivoIndexado, type VinculoCliente, type VinculoLegajo, type VinculoObra,
@@ -265,38 +265,11 @@ async function leerVinculos(
 // `cliente_documento` no tiene la columna (cliente_id, drive_file_id, rol, origen, creado_en y nada
 // más). Así que la banda mide sobre 847 filas posibles, no sobre los 3.123 archivos, y lo dice.
 
-/**
- * CUÁNTOS VENCIERON Y CUÁNTOS VENCEN ESTE MES — sobre la base entera, no sobre la página.
- *
- * Tres `count` con `head: true`: no bajan una sola fila, sólo el número. Un aviso de vencimientos
- * que se calculara sobre las 200 filas dibujadas diría «0 vencidos» cuando el vencido está en la
- * fila 340, que es exactamente el caso en el que hace falta el aviso.
- *
- * `conFecha` en 0 NO se dibuja como «está todo en orden»: son dos hechos opuestos y la pantalla los
- * separa. Hoy `conFecha` es 0 en las 847 filas — nadie cargó ninguna fecha todavía.
- */
-export async function getResumenVencimientos(
-  supabase: SupabaseClient,
-  hoy: string,
-): Promise<ServiceResult<ResumenVencimientos>> {
-  const { desde, hasta } = ventanaVencimientos(hoy)
-  const base = () => supabase
-    .from('documentacion_legajo')
-    .select('id', { count: 'exact', head: true })
-    .not('fecha_vencimiento', 'is', null)
-
-  const [conFecha, vencidos, mes] = await Promise.all([
-    base(),
-    base().lt('fecha_vencimiento', desde),
-    base().gte('fecha_vencimiento', desde).lte('fecha_vencimiento', hasta),
-  ])
-  const fallo = conFecha.error ?? vencidos.error ?? mes.error
-  if (fallo) return { data: null, error: fallo.message }
-  return {
-    data: { conFecha: conFecha.count ?? 0, vencidos: vencidos.count ?? 0, venceEsteMes: mes.count ?? 0 },
-    error: null,
-  }
-}
+// CUÁNTOS VENCIERON Y CUÁNTOS VENCEN ESTE MES lo contaba `getResumenVencimientos`, y su único
+// consumidor era la banda «Lo que pide trabajo» de `/documentos`, retirada el 08/09/2026 por orden
+// del dueño. Se fue con ella: tres `count` contra `documentacion_legajo` en cada carga de la
+// pantalla que ya nadie leía. El recorte por vencimiento de la LISTA no dependía de esto —lo
+// resuelve `idsPorVencer` acá abajo—, así que `?vence=vencido` sigue funcionando igual.
 
 /** Los archivos de Drive que caen en la ventana pedida. Es lo que convierte la banda en un filtro. */
 async function idsPorVencer(

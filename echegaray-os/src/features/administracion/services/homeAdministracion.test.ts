@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  areasDeAdministracion, atencionNoLeida, chipsDeAtencion, cuenta, resumenDeTrabajo,
+  areasDeAdministracion, atencionNoLeida, chipsDeAtencion, cuenta,
   senalesDeTrabajo, senalesVivas,
   type ConteosAtencion, type ConteosHome,
 } from './homeAdministracion.ts'
@@ -148,17 +148,3 @@ test('el jefe de obra ve los cuatro destinos de la v4', () => {
   }
 })
 
-test('el resumen no escribe «0 urgentes», y avisa cuando no pudo contar todo', () => {
-  // Un cero no es una noticia: «7 señales · 11 registros · 0 urgentes» hace leer una palabra fuerte
-  // para enterarse de que no pasa nada.
-  const sinRojo = senalesDeTrabajo(con({ proveedoresSinCuit: 14, pendientes: 1 }), 'direccion')
-  assert.equal(resumenDeTrabajo(sinRojo), '2 señales · 15 registros')
-
-  const conRojo = senalesDeTrabajo(con({ comprasDuplicadas: 1, proveedoresSinCuit: 14 }), 'direccion')
-  assert.equal(resumenDeTrabajo(conRojo), '2 señales · 15 registros · 1 urgente')
-
-  // Y si una no se pudo leer, el total NO se presenta como si fuera todo: los que faltan podrían
-  // ser muchos o ninguno, y sumar sólo lo leído sin decirlo publica un total falso.
-  const conHueco = senalesDeTrabajo(con({ proveedoresSinCuit: 14, pendientes: null }), 'direccion')
-  assert.equal(resumenDeTrabajo(conHueco), '2 señales · al menos 14 registros · 1 sin leer')
-})

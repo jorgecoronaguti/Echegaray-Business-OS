@@ -32,10 +32,37 @@ _actualizado: 2026-09-07 (noche) · commit `d70430d3` en main y en producción_
   Castillo Benítez sin recibo). Diagnóstico de asignación: `docs/engineering/UX_ASIGNACION_DE_PERSONAL.md`.
   Límites firmados: E2E 09 se saltea si Quiroga deja de tener licencias; `asignacion-390.png` es esqueleto (08b sin
   aserción); `getHHDePersona` sin paginar (techo 1.000); `page.tsx` personas 557 líneas.
-- **EN CURSO al cerrar**: legajo + fecha de alta desde recibos → Plantel y quitar columna «Papeles» (agente
-  categorías, worktree propio); test de la puerta de `cambiarObraActual`; corrección inline en obra cerrada (rama `fix/correccion-obra-cerrada`); materiales de
+- **Tarde 08/09, publicado (main ≥ 0ade7fe0)**: Plantel con Legajo y Alta (sin «Papeles»; GRANT legajo);
+  categorías/altas según planilla del dueño (8 UPDATE; regla: planilla > recibo); historial de obras desde JORNALES
+  (106 asignaciones; Oficina 26 imputa jefes a «JAVIER SANCHEZ» → FALTA_DATO del dueño: Maldonado/Nievas/Galván;
+  rótulos ambiguos al nivel cliente); jefe_obra puede mover gente (`puedeCambiarObraActual`); horas de un día NO
+  exigen asignación ese día; cambiar de obra cierra TODAS las abiertas y lee sólo `hasta is null` (causa del «0
+  vigentes»); obra cerrada en desplegable como opción deshabilitada; jefes separados de obreros (criterio
+  `personas.puesto='JEFE DE OBRA'`, migración `es_jefe_de_obra` escrita NO aplicada); «Lo que pide trabajo»
+  retirado (queda campanita); Compras app sólo obra/taller (`esCompraDeObra`, 927→803); espejo de documentos de
+  legajo recursivo + timer `echegaray-espejo-legajos` cada 6 h (963 archivos/74 carpetas); Sheet Compras: 28 filas
+  retiradas a `_COMPRAS_RETIRADAS` (libro/CF idénticos); Pisos 120+Rampa con costo desde Análisis del xlsm.
+  E2E de ESCRITURA no se corren mientras el dueño trabaja; fixtures con persona `es_prueba` (`e2e0000…e2e1/e2e2`).
+- **EN CURSO al cerrar**: «Traer a alguien a esta obra» en móvil (rama `feat/jefe-mueve-gente`); «En obra ahora»
+  fichaje ≠ horas (rama `fix/en-obra-fichaje-vs-horas`). Decisiones del dueño pendientes: FCL julio $800k pagado?;
+  índice «una persona una abierta» (Pastrán 2 vigentes); obras de jefes y rótulos JORNALES; Colegio de Ingenieros
+  rubro; 3 conflictos app vs planilla. (rama `fix/correccion-obra-cerrada`); materiales de
   OBRAS repartidos en el plazo y netos de compras, SIN emitir MO (ya en jornales); costos MA/MO faltantes
   desde Drive (`obras-datos.mjs`). Los 17 ítems de `obra_egreso_proyectado` con fecha 01/10 NO van como bulto.
+
+- **Compras — retiro de las 28 Canceladas (08/09 tarde, orden del dueño)**: archivadas en `_COMPRAS_RETIRADAS`
+  (oculta; fila completa + Fila original · Motivo · Cubierta por · Retirada el; 28 filas, $87.300.000 nominales) y
+  BORRADAS de Compras (955 → 927; IDs corridos, `ID = ROW()-4`). Script `scripts/compras-retirar-canceladas.mjs`
+  (dry por defecto, `--aplicar`; salta la guarda con `yaGuardado` sólo ahí). Verificado: libro 1.232 / $30.345.779
+  idéntico fila por fila; Mensual/Semanal/CAJA idénticos celda a celda; 0 pares fecha+importe en dos orígenes desde
+  01/08; `compra_sheet` 927 filas y `compra_adjunto.fila_compras` realineado por clave (110). Quedan en Compras y
+  POR QUÉ: préstamo camioneta cuotas 24–26 (ningún generador proyecta el préstamo → FALTA_DATO/rediseño), SAC dic
+  (hueco declarado del libro: sólo entra por Compras), plan W303094 c2/c3 (el extractor de Cargas lee el plan DESDE
+  Compras), FCL jul/ago + SINDICATOS ago (la cadena de Cargas arranca en el mes de caja 10/2026), todo lo Pagado
+  histórico de Cargas/Gremiales/Impuestos/Financiero/SAC/Planes (única fuente de la historia en el libro), y las
+  ~45 filas Pagado de Jornales/Sueldos admin (el libro ya no las cuenta, pero `direccion-retiros` lee 807–809 por
+  nombre y el efectivo de CAJA lee Pagado+Efectivo sin `factorSinPlanilla`): segunda tanda sólo después de mover esas
+  dos fuentes. FCL Julio f468→440: vencido 10/08 y sigue «Vigente» — el dueño confirma si se pagó.
 
 ## 0.1 ABIERTO / DECISIONES DEL DUEÑO PENDIENTES
 

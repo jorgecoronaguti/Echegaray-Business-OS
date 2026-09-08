@@ -1,9 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ORDEN_DEL_MOVIMIENTO, acuseDe, acuseDeBorrado, cambiaDeObra, correccionSchema, envioSchema,
-  motivoDe, personasQueEstrenanDia, planDeBorrado, planDeGuardado, puertaDeObraNoActiva,
-  traducirEscritura,
+  ORDEN_DEL_MOVIMIENTO, acuseDe, acuseDeBorrado, avisoSinAsignacion, cambiaDeObra, correccionSchema,
+  envioSchema, motivoDe, personasQueEstrenanDia, personasSinAsignacionVigente, planDeBorrado,
+  planDeGuardado, puertaDeObraNoActiva, traducirEscritura,
 } from './planDeJornada.ts'
 import type { Correccion, FilaExistente, MarcaDeJornada } from './planDeJornada.ts'
 
@@ -239,6 +239,52 @@ test('ASIGNAR NUNCA VIENE PUESTO: crear una asignación es un acto de alguien', 
   // de esa persona; crearla sola haría que un dedo mal puesto la cambiara de obra sin decisión.
   assert.equal(correccion().asignar, false)
   assert.equal(correccion({ asignar: true }).asignar, true)
+})
+
+// ── LAS HORAS DE UN DÍA NO DEPENDEN DE LA ASIGNACIÓN DE ESE DÍA ─────────────────────────────────
+//
+// El defecto del dueño (08/09, captura de producción): asignó a NIEVAS VILLEGAS a «SF - PISOS
+// INDUSTRIALES» HOY y al tipear las horas del 01/09 la pantalla rebotaba con «no está asignada a
+// esta obra ese día». Toda corrección del pasado quedaba prohibida, porque una asignación siempre
+// empieza el día en que se decide.
+
+test('UNA ASIGNACIÓN QUE EMPIEZA HOY NO CUBRE EL LUNES PASADO — y eso NO puede frenar las horas', () => {
+  const asignadaDesdeHoy = [{ persona_id: A, desde: '2026-09-08', hasta: null }]
+  // La regla de vigencia sigue siendo la misma: el 01/09 esa persona no estaba asignada.
+  assert.deepEqual(personasSinAsignacionVigente(asignadaDesdeHoy, [A], '2026-09-01'), [A])
+  assert.deepEqual(personasSinAsignacionVigente(asignadaDesdeHoy, [A], '2026-09-08'), [])
+  // Lo que cambió: eso produce un AVISO, no un rechazo. Que exista un texto de aviso es lo que
+  // prueba que el camino de la falta de asignación termina en una escritura hecha y contada.
+  const aviso = avisoSinAsignacion(['NIEVAS VILLEGAS JUAN PABLO'])
+  assert.match(aviso ?? '', /las horas se guardaron igual/)
+  // Y no dice ni «no se pudo», ni «no se cargaron»: el defecto que atrapa es que alguien vuelva a
+  // convertir este camino en un rechazo reusando el mismo texto.
+  assert.doesNotMatch(aviso ?? '', /no se (pudo|pueden|cargaron)/i)
+})
+
+test('UNA ASIGNACIÓN CERRADA CON `hasta` TAMPOCO CUBRE EL DÍA DE DESPUÉS, y las abiertas cubren todo', () => {
+  const cerrada = [{ persona_id: A, desde: '2026-01-01', hasta: '2026-08-31' }]
+  assert.deepEqual(personasSinAsignacionVigente(cerrada, [A], '2026-09-01'), [A])
+  assert.deepEqual(personasSinAsignacionVigente(cerrada, [A], '2026-08-31'), [])
+  // Sin `desde` ni `hasta` la asignación cubre cualquier día: `null` es «siempre», no «nunca».
+  assert.deepEqual(personasSinAsignacionVigente([{ persona_id: A, desde: null, hasta: null }], [A], '2020-01-01'), [])
+  // A quien no tiene NINGUNA fila también se lo nombra, y sólo se responde por lo que se preguntó.
+  assert.deepEqual(personasSinAsignacionVigente(cerrada, [A, B], '2026-09-01'), [A, B])
+  assert.deepEqual(personasSinAsignacionVigente(cerrada, [], '2026-09-01'), [])
+})
+
+test('EL AVISO SABE CONTAR CUANDO NO PUEDE NOMBRAR — no poder leer los nombres no es no avisar', () => {
+  // `nombresDe` devuelve `[]` si la lectura falla por RLS. El aviso tiene que seguir existiendo:
+  // el defecto que atrapa es un aviso que desaparece justo cuando la base contesta menos.
+  assert.match(avisoSinAsignacion([], 2) ?? '', /2 personas/)
+  assert.match(avisoSinAsignacion([], 1) ?? '', /1 persona\b/)
+  // Sin nadie sin asignar no hay aviso: `null`, no una frase vacía que ocupe el acuse.
+  assert.equal(avisoSinAsignacion([]), null)
+  assert.equal(avisoSinAsignacion([], 0), null)
+  // Con muchos, tres nombres y el resto contado: el acuse se dibuja en una línea bajo la fila.
+  const muchos = avisoSinAsignacion(['UNO', 'DOS', 'TRES', 'CUATRO'], 4) ?? ''
+  assert.match(muchos, /UNO, DOS, TRES y 1 más/)
+  assert.doesNotMatch(muchos, /CUATRO/)
 })
 
 test('UNA OBRA DESTINO VACÍA NO ENTRA', () => {

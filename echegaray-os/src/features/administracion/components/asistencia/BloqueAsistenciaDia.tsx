@@ -3,7 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 import { Aviso, Vacio } from '@/shared/components/ds'
 import { hs } from '../../services/jornadaPorObra'
 import { correrDia, rotuloDelDia } from '../../services/diaDeJornada'
-import { getJornadaDelDia, getObrasParaJornada } from '../../services/jornadaPorObraService'
+import { getCandidatosParaTraer, getJornadaDelDia, getObrasParaJornada } from '../../services/jornadaPorObraService'
+import { puedeCambiarObraActual } from '../../services/planDeObraActual'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { TraerALaObra } from './TraerALaObra'
 import { ElegirDia } from './ElegirDia'
 import { TOKEN_DIA } from '../../services/diaDeJornada'
 import { FormAsistencia } from './FormAsistencia'
@@ -75,6 +78,17 @@ export async function BloqueAsistenciaDia({ obraPedida, dia, hrefDe, hrefQuincen
   }
 
   const { obra, filas } = jornada.data
+  // ═══ QUIÉN PUEDE TRAER GENTE (dueño, 08/09/2026, tarde) ═══
+  //
+  // Dirección, Administración y JEFE DE OBRA. El rol sale del perfil y no de `es_administracion()`:
+  // la lista la decidió el dueño y vive una sola vez, en `planDeObraActual.ts`. Esto es la
+  // cerradura —no dibujar un control que va a rebotar—; la puerta es la acción.
+  const puedeTraer = puedeCambiarObraActual((await getPerfilActual(supabase)).data?.rol)
+  // LA LECTURA SÓLO SE PAGA SI EL BOTÓN SE VA A DIBUJAR. Son tres consultas más por carga de
+  // pantalla, en un teléfono y con datos móviles.
+  const candidatos = puedeTraer
+    ? await getCandidatosParaTraer(supabase, obra.id, dia)
+    : { data: [], error: null }
   return (
     <Envoltorio hrefQuincena={hrefQuincena}>
       <div className="mb-3">
@@ -110,6 +124,18 @@ export async function BloqueAsistenciaDia({ obraPedida, dia, hrefDe, hrefQuincen
         jornada={obra.jornada}
         filas={filas}
       />
+
+      {/* DEBAJO DE LA CUADRILLA, NO ARRIBA. Lo primero es marcar a los que están; traer a alguien es
+          la corrección de un caso, no el paso 1 — ponerlo arriba invitaría a revisar el plantel
+          entero todas las mañanas. */}
+      {puedeTraer && (
+        <TraerALaObra
+          obraId={obra.id}
+          obraNombre={obra.nombre}
+          candidatos={candidatos.data}
+          error={candidatos.error}
+        />
+      )}
     </Envoltorio>
   )
 }

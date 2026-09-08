@@ -2,21 +2,23 @@
 //
 // `obraActualActions.ts` es una server action: importa `next/cache` y `@/lib/supabase/server`
 // —que lee `headers()`—, así que no se la puede llamar desde `node --test`. Por eso lo único que
-// quedaba probado era `planDeObraActual` (la decisión pura) y la pantalla (que ni siquiera dibuja
-// el desplegable para el jefe de obra). El control que de verdad frena la escritura —el rol— vivía
-// en el único tramo sin test: borrarlo dejaba todo verde, y la RLS de `obra_asignacion` SÍ deja
-// escribir al jefe de obra dentro de sus obras (20260822T7000, líneas 340-341). Nadie avisaba.
+// quedaba probado era `planDeObraActual` (la decisión pura) y la pantalla, que es una cerradura y
+// no una puerta: se dibuja o no se dibuja, y la llamada puede venir de cualquier lado. El control
+// que de verdad frena la escritura —el rol— vivía
+// en el único tramo sin test: borrarlo dejaba todo verde y nadie avisaba. Desde el 08/09 a la
+// tarde el jefe de obra SÍ puede mover gente, así que el rol que este control tiene que poder
+// frenar es `campo` —el único que la RLS acota por obra— y el que no tiene perfil.
 //
 // Acá vive esa secuencia entera: validar, rechazar por rol, verificar persona y obra, leer las
 // vigentes, cerrar y abrir. Las dependencias entran por parámetro para que un test pueda mirar
 // —además del resultado— QUÉ TABLAS SE TOCARON: que un rechazo devuelva `{ ok: false }` no prueba
 // que no haya escrito antes.
 //
-// El porqué de cada regla (cerrar antes de abrir, `hasta = ayer`, sólo Administración) está en
+// El porqué de cada regla (cerrar antes de abrir, `hasta = ayer`, quién puede) está en
 // `obraActualActions.ts` y en `planDeObraActual.ts`; no se repite acá.
 
 import { z } from 'zod'
-import { planDeCambioDeObra, puedeCambiarObraActual, type AsignacionVigente } from './planDeObraActual.ts'
+import { planDeCambioDeObra, puedeCambiarObraActual, type AsignacionAbierta } from './planDeObraActual.ts'
 
 export type ResultadoObraActual = { ok: true; mensaje: string } | { ok: false; error: string }
 
@@ -38,7 +40,8 @@ interface TablaLike {
 interface LecturaLike {
   eq(columna: string, valor: string): LecturaLike
   in(columna: string, valores: string[]): PromiseLike<Respuesta<Fila[]>>
-  or(filtro: string): PromiseLike<Respuesta<Fila[]>>
+  /** `hasta is null` — abierta. Es un filtro distinto de `eq`: PostgREST no compara con null. */
+  is(columna: string, valor: null): PromiseLike<Respuesta<Fila[]>>
   maybeSingle(): PromiseLike<Respuesta<Fila>>
 }
 
@@ -74,15 +77,17 @@ export async function cambiarObraActualCon(
   const obraId = parsed.data.obra_id ? parsed.data.obra_id : null
   const { supabase, hoy } = deps
 
-  // ═══ SÓLO DIRECCIÓN Y ADMINISTRACIÓN (dueño, 08/09/2026) ═══
+  // ═══ DIRECCIÓN, ADMINISTRACIÓN Y JEFE DE OBRA (dueño, 08/09/2026, tarde) ═══
   //
-  // Antes de tocar NADA: el rechazo por rol no puede quedar después de una lectura de
-  // `obra_asignacion`, porque entonces el orden de las líneas sería el único control.
+  // La lista vive en `planDeObraActual.ts` con su porqué. Acá lo que importa es DÓNDE está el `if`:
+  // antes de tocar NADA. Un rechazo puesto después de la lectura de `obra_asignacion` devuelve el
+  // mismo objeto y ya dejó rastro; el orden de las líneas sería el único control.
   if (!puedeCambiarObraActual(deps.perfil?.rol)) {
     return {
       ok: false,
-      error: 'Cambiar la obra de una persona es de Administración. La asistencia se sigue cargando '
-        + 'y corrigiendo normalmente.',
+      error: 'Tu usuario no puede cambiar la obra de una persona: lo hacen Dirección, '
+        + 'Administración y los jefes de obra. La asistencia se sigue cargando y corrigiendo '
+        + 'normalmente.',
     }
   }
 
@@ -96,10 +101,10 @@ export async function cambiarObraActualCon(
   const obra = await destinoValido(supabase, obraId)
   if (obra.error) return { ok: false, error: obra.error }
 
-  const vigentes = await leerVigentes(supabase, personaId, hoy)
-  if (vigentes.error) return { ok: false, error: vigentes.error }
+  const abiertas = await leerAbiertas(supabase, personaId)
+  if (abiertas.error) return { ok: false, error: abiertas.error }
 
-  const plan = planDeCambioDeObra({ vigentes: vigentes.data, destino: obra.destino, hoy })
+  const plan = planDeCambioDeObra({ abiertas: abiertas.data, destino: obra.destino, hoy })
   if (plan.sinCambio) return { ok: true, mensaje: plan.acuse }
 
   for (const c of plan.cerrar) {
@@ -129,12 +134,17 @@ export async function cambiarObraActualCon(
       desde: plan.abrir.desde,
     }).select('id')
     if (error) {
+      // EL MENSAJE DE LA BASE VA ENTERO, TAMBIÉN EL DEL ÍNDICE ÚNICO. Un 23505 acá ya no es «ya
+      // estaba en esa obra» —el plan cierra todas las abiertas antes de abrir—: es una fila que la
+      // lectura no vio (otra actividad, o una que la RLS esconde). Cambiarlo por una frase amable
+      // borraba justo el dato con el que se encuentra cuál.
       return {
         ok: false,
-        error: error.code === '23505'
-          ? 'Esa persona ya tiene una asignación vigente a esa obra.'
-          : `Cerré la asignación anterior pero NO pude abrir la nueva: ${error.message}. `
-            + 'La persona quedó sin obra — elegila de nuevo.',
+        error: `Cerré la asignación anterior pero NO pude abrir la nueva: ${error.message}`
+          + (error.code === '23505'
+            ? ' (choca con otra asignación vigente a esa obra que la lectura no vio).'
+            : '.')
+          + ' La persona quedó sin obra — elegila de nuevo.',
       }
     }
     if ((data ?? []).length === 0) {
@@ -170,13 +180,26 @@ async function destinoValido(
   return { destino: { id: o.id, nombre: o.nombre }, error: null }
 }
 
-/** Las asignaciones que hoy están abiertas, con el nombre de su obra resuelto. */
-async function leerVigentes(
-  supabase: SupabaseLike, personaId: string, hoy: string,
-): Promise<{ data: AsignacionVigente[]; error: string | null }> {
+/**
+ * TODAS las asignaciones ABIERTAS de la persona, con el nombre de su obra resuelto.
+ *
+ * ═══ ABIERTA ES `hasta is null`, Y NADA MÁS ═══
+ *
+ * Antes esta lectura traía también las cerradas con `hasta >= hoy`, y eso rompía el cambio de obra
+ * dos veces el mismo día: la primera cierra la de hoy con `hasta = hoy` (su `desde` es hoy), la
+ * segunda la vuelve a ver «vigente», cree que la persona YA está ahí, no abre nada — y la persona
+ * queda con cero asignaciones abiertas. Es el índice único el que define qué es estar asignado:
+ * `obra_asignacion_una_vigente ... WHERE hasta IS NULL`. Se lee lo mismo que la base restringe.
+ *
+ * Sin filtro de obra y sin filtro de `desde`: las filas sin `desde` son las que dejó la web y son
+ * exactamente las que hay que cerrar.
+ */
+async function leerAbiertas(
+  supabase: SupabaseLike, personaId: string,
+): Promise<{ data: AsignacionAbierta[]; error: string | null }> {
   const { data, error } = await supabase.from('obra_asignacion')
     .select('id, obra_id, desde, hasta').eq('persona_id', personaId)
-    .or(`hasta.is.null,hasta.gte.${hoy}`)
+    .is('hasta', null)
   // UNA LECTURA QUE FALLA NO ES «NO TIENE NINGUNA». Seguir con la lista vacía abriría la obra nueva
   // sin cerrar la vieja y dejaría a la persona en dos obras a la vez.
   if (error) return { data: [], error: `No pude leer sus asignaciones: ${error.message}` }

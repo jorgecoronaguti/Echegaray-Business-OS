@@ -37,6 +37,7 @@
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { redondear } from './jornadaPorObra.ts'
 import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
+import { esJefeDeObra } from './vocabularioPersona.ts'
 
 export type EstadoCeldaObra =
   | 'horas'
@@ -80,6 +81,9 @@ export interface AsignacionQuincena {
   /** `null` = sin límite, no «nunca». Ausente se trata como `null` por compatibilidad. */
   desde?: string | null
   hasta?: string | null
+  /** ¿Se le pueden imputar horas a esa obra? `false` = la obra NO está activa. Ausente = sí. Una
+   *  asignación no elegible NO pone a nadie en la grilla, pero SÍ puede ser su obra vigente. */
+  elegible?: boolean
 }
 
 export interface RegistroQuincena {
@@ -104,6 +108,9 @@ export interface ObraRotulo {
   nombre: string
   /** `obra_canonica.cliente_texto`. `null` cuando la obra no tiene cliente cargado. */
   cliente: string | null
+  /** `obra_canonica.estado`. La pantalla escribe «(cerrada)» con la palabra REAL de la base: una
+   *  obra pausada no es una obra cerrada, e inventar el estado es afirmar lo que nadie dijo. */
+  estado?: string | null
 }
 
 export interface FilaQuincena {
@@ -117,11 +124,23 @@ export interface FilaQuincena {
    * activa: sin destino no se puede escribir, y elegir una por la persona sería inventar el costo.
    */
   obraPorDefecto: { id: string; nombre: string } | null
+  /**
+   * Su asignación vigente HOY cuando la obra NO admite horas (cerrada, pausada). El desplegable la
+   * muestra seleccionada y deshabilitada; `obraPorDefecto` queda en `null` porque a esa obra no se
+   * le puede imputar nada.
+   *
+   * Sin esto la pantalla mentía: el desplegable sólo lista obras activas, así que a AGUERO
+   * —vigente en MAMPOSTERÍA, cerrada— le mostraba «SF - PISOS INDUSTRIALES», que no es su obra.
+   * Tres de diecisiete filas afirmaban una obra que la base no dice (producción, 08/09/2026).
+   */
+  obraVigenteNoElegible: { id: string; nombre: string } | null
   celdas: CeldaObra[]
   /** Horas trabajadas de la quincena. `null` = ninguna declarada, que no es lo mismo que cero. */
   horas: number | null
   /** Las fechas que hay que reclamar. Vacío = nada que reclamar. */
   reclama: string[]
+  /** Jefe de obra según `personas.puesto`. Es lo que parte la grilla en dos secciones. */
+  esJefe: boolean
 }
 
 const numero = (v: unknown): number => {
@@ -141,6 +160,16 @@ export interface EntradaQuincenaObra {
   noLaborables?: string[]
   /** El plantel por id, para nombrar a quien dejó registros sin tener ninguna asignación. */
   personas?: Record<string, PersonaRotulo>
+  /**
+   * `personas.puesto` por id — el ROL ORGANIZACIONAL, y lo único que separa a los jefes de obra del
+   * resto del plantel (dueño, 08/09/2026). Quién es jefe lo decide `esJefeDeObra`, acá y en el
+   * plantel: una sola definición, en `vocabularioPersona.ts`.
+   *
+   * AUSENTE NO ES «NO HAY JEFES», ES «NO SE PUDO MIRAR»: quien lee decide qué hacer con eso. Lo que
+   * esta capa no hace es inventar un rol — sin el dato, la fila cae con los obreros, que es donde
+   * estaba antes de este cambio.
+   */
+  puestos?: Record<string, string | null>
   /** Hoy, para no reclamar un día que todavía no terminó. */
   hoy: string
 }
@@ -170,12 +199,19 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
       hayDatoEseDia: diasConDato.has(fecha),
       futuro: fecha > e.hoy,
     }))
-    const activa = obraActivaDe(p.asignaciones, suyos, e.obras, e.hoy)
+    const vigente = obraActivaDe(p.asignaciones, suyos, e.obras, e.hoy)
+    const activa = vigente?.elegible ? vigente.obra : null
+    const noElegible = vigente && !vigente.elegible ? vigente.obra : null
     return {
       clave: p.persona_id,
       persona: { id: p.persona_id, nombre: p.nombre, nota: p.nota },
-      rotuloObra: activa?.nombre ?? clienteDe(suyos, e.obras) ?? SIN_OBRA,
+      // EL CHIP NO PUEDE CONTARLA EN UNA OBRA ACTIVA. Por eso el rótulo de la obra no elegible
+      // lleva su estado pegado: «MAMPOSTERÍA (cerrada)» es un chip propio y no engorda PISOS.
+      rotuloObra: activa?.nombre
+        ?? (noElegible ? rotuloDeObraNoElegible(noElegible) : null)
+        ?? clienteDe(suyos, e.obras) ?? SIN_OBRA,
       obraPorDefecto: activa ? { id: activa.id, nombre: activa.nombre } : null,
+      obraVigenteNoElegible: noElegible ? { id: noElegible.id, nombre: noElegible.nombre } : null,
       celdas,
       // `null` Y NO CERO CUANDO NO HAY NINGUNA HORA. Un «0» afirma que esa persona trabajó cero
       // horas esa quincena; lo que pasa es que no hay con qué contestar.
@@ -183,6 +219,7 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
         ? redondear(celdas.reduce((s, c) => s + (c.horas ?? 0), 0))
         : null,
       reclama: celdas.filter((c) => c.estado === 'sin_marcar').map((c) => c.fecha),
+      esJefe: esJefeDeObra(e.puestos?.[p.persona_id] ?? null),
     }
   })
 }
@@ -192,6 +229,18 @@ interface TramoAsignado {
   obra_id: string
   desde: string | null
   hasta: string | null
+  /** `false` cuando la obra no admite horas. Sigue siendo su obra vigente: no se descarta. */
+  elegible: boolean
+}
+
+const tramoDe = (a: AsignacionQuincena): TramoAsignado => ({
+  obra_id: a.obra_id, desde: a.desde ?? null, hasta: a.hasta ?? null, elegible: a.elegible !== false,
+})
+
+/** «MAMPOSTERÍA (cerrada)» — el nombre real con el estado real. */
+function rotuloDeObraNoElegible(o: ObraRotulo): string {
+  const estado = (o.estado ?? '').trim()
+  return estado ? `${o.nombre} (${estado})` : o.nombre
 }
 
 interface PersonaDeLaGrilla {
@@ -214,7 +263,11 @@ function personasDe(
     // NO SE DEDUPLICA POR OBRA. Dos tramos a la misma obra con `desde` distinto son dos hechos
     // —volvió a la obra después de un paso por otra— y el `desde` del último es justamente lo que
     // desempata cuál rige hoy. Colapsarlos al primero perdía ese dato.
-    const tramo: TramoAsignado = { obra_id: a.obra_id, desde: a.desde ?? null, hasta: a.hasta ?? null }
+    // UNA ASIGNACIÓN A UNA OBRA QUE NO ADMITE HORAS NO CREA LA FILA: la grilla se llenaría de gente
+    // que sólo figura en obras cerradas del historial de JORNALES. Se engancha al final, sobre
+    // quien ya está en la grilla por otra razón.
+    if (a.elegible === false) continue
+    const tramo = tramoDe(a)
     const previa = mapa.get(a.persona_id)
     if (previa) { previa.asignaciones.push(tramo); continue }
     mapa.set(a.persona_id, {
@@ -244,6 +297,10 @@ function personasDe(
       asignaciones: [],
     })
   }
+  for (const a of asignaciones) {
+    if (a.elegible !== false) continue
+    mapa.get(a.persona_id)?.asignaciones.push(tramoDe(a))
+  }
   return [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
 
@@ -268,7 +325,7 @@ function obraActivaDe(
   registros: RegistroQuincena[],
   catalogo: Record<string, ObraRotulo>,
   hoy: string,
-): ObraRotulo | null {
+): { obra: ObraRotulo; elegible: boolean } | null {
   // Vigente HOY: empezó (o siempre estuvo) y no se cerró antes de hoy. Un `desde` futuro todavía no
   // rige — decir que ya está ahí sería adelantar un traslado que no ocurrió.
   const vigentes = asignaciones.filter((a) =>
@@ -276,15 +333,16 @@ function obraActivaDe(
   const rotulables = vigentes
     .map((a) => ({ tramo: a, obra: catalogo[a.obra_id] }))
     .filter((x): x is { tramo: TramoAsignado; obra: ObraRotulo } => Boolean(x.obra))
-  if (rotulables.length <= 1) return rotulables[0]?.obra ?? null
+  if (rotulables.length === 0) return null
   const horas = new Map<string, number>()
   for (const r of registros) {
     if (esTrabajada(r.tipo_hora)) horas.set(r.obra_id, (horas.get(r.obra_id) ?? 0) + numero(r.horas))
   }
-  return [...rotulables].sort((a, b) =>
+  const ganador = [...rotulables].sort((a, b) =>
     (b.tramo.desde ?? '').localeCompare(a.tramo.desde ?? '')
     || (horas.get(b.obra.id) ?? 0) - (horas.get(a.obra.id) ?? 0)
-    || a.obra.nombre.localeCompare(b.obra.nombre, 'es'))[0].obra
+    || a.obra.nombre.localeCompare(b.obra.nombre, 'es'))[0]
+  return { obra: ganador.obra, elegible: ganador.tramo.elegible }
 }
 
 /**

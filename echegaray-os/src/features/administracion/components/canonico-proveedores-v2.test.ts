@@ -59,9 +59,11 @@ const codigoPagina = () => pagina()
 /** Dónde vive el vocabulario compartido del v2, relativo a esta carpeta. */
 const V2 = '../../../shared/components/v2/'
 
+// `TrabajoDeSeccion.tsx` salió de esta lista el 08/09/2026: el dueño retiró el bloque «Lo que pide
+// trabajo» de toda la plataforma y el archivo se borró. Las reglas del v2 que lo nombraban siguen
+// vigentes para las pantallas que sí se dibujan.
 const PANTALLAS = ['TablaProveedores.tsx', 'TablaNombres.tsx', 'PanelProveedor.tsx', 'PanelNombre.tsx',
-  V2 + 'patron.tsx', V2 + 'CabeceraSeccion.tsx', V2 + 'FiltrosSuaves.tsx',
-  V2 + 'TrabajoDeSeccion.tsx']
+  V2 + 'patron.tsx', V2 + 'CabeceraSeccion.tsx', V2 + 'FiltrosSuaves.tsx']
 
 // ── CRITERIO 1 · LA PRIMERA LÍNEA DE CONTENIDO ES TRABAJO ────────────────────────────────────────
 
@@ -210,7 +212,6 @@ test('los números de las tablas son tabulares: dos filas se comparan de un vist
     const src = fuente(a)
     assert.match(src, /tabular-nums/, `${a} perdió los números tabulares`)
   }
-  assert.match(fuente(V2 + 'TrabajoDeSeccion.tsx'), /font-mono tabular-nums/)
 })
 
 test('el color sólo va en la cifra: el filo ámbar marca el problema y la selección va en el fondo', () => {
@@ -487,8 +488,7 @@ test('sólo el pedazo que necesita interactividad es de cliente', () => {
   // panel del proveedor y la cabecera se renderizan en el servidor; el buscador y el panel de la
   // cola —que sí tienen estado— son los únicos de cliente.
   for (const a of ['TablaProveedores.tsx', 'TablaNombres.tsx', 'PanelProveedor.tsx',
-    V2 + 'CabeceraSeccion.tsx', V2 + 'FiltrosSuaves.tsx',
-    V2 + 'TrabajoDeSeccion.tsx', V2 + 'patron.tsx']) {
+    V2 + 'CabeceraSeccion.tsx', V2 + 'FiltrosSuaves.tsx', V2 + 'patron.tsx']) {
     assert.equal(fuente(a).startsWith("'use client'"), false, `${a} se volvió de cliente sin necesitarlo`)
   }
   assert.equal(codigoPagina().includes("'use client'"), false)
@@ -534,7 +534,7 @@ test('el alto y el ancho se miden como el mockup: el borde va POR AFUERA', () =>
   assert.match(codigo(V2 + 'CabeceraSeccion.tsx'), /lg:w-\[392px\]/,
     'el hueco de la cabecera se desfasó del panel: 344 + 24 + 24 = 392')
   assert.match(patron, /boxSizing: 'content-box'/, 'el encabezado de columnas perdió su filo por afuera')
-  for (const a of ['TablaProveedores.tsx', 'TablaNombres.tsx', V2 + 'TrabajoDeSeccion.tsx']) {
+  for (const a of ['TablaProveedores.tsx', 'TablaNombres.tsx']) {
     assert.match(codigo(a), /CAJA_CONTENIDO/, `${a}: sus filas volvieron a comerse el filo desde adentro`)
   }
 })

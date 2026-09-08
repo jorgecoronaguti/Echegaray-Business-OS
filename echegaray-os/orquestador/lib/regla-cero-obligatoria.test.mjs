@@ -40,7 +40,39 @@ const SCRIPTS = new URL('../scripts/', import.meta.url).pathname
 const NO_SON_GENERADORES = new Set([
   // Reescribe la grilla de FORMATO (colores, anchos, bordes), no valores: no hay rótulo que pisar.
   'formato-pestanas.mjs',
+  // ═══ ESCRIBE EN SU PROPIO ARCHIVO, NO EN UNA PESTAÑA DEL DUEÑO (08/09/2026) ═══
+  //
+  // `compras-retirar-canceladas.mjs` corre UNA VEZ, por orden del dueño, y sus únicas escrituras de
+  // VALORES van a `_COMPRAS_RETIRADAS`: una pestaña oculta que crea él mismo y donde APENDA filas
+  // que copió de Compras. No reescribe una grilla, no pisa una celda existente y no hay un rótulo
+  // de una persona ahí adentro — la pestaña nació de esta corrida.
+  //
+  // LA EXCEPCIÓN NO ES UNA PROMESA: el test de abajo la comprueba leyendo el archivo. Si alguna de
+  // sus escrituras de valores apuntara a otra pestaña, se pone rojo igual.
+  //
+  // Lo que hace sobre Compras —borrar las filas retiradas— NO es una escritura de valores: es
+  // `deleteDimension`, va por `spreadsheetBatchUpdate` y esta Regla 0 nunca lo cubrió. El script se
+  // guarda solo: archiva primero, RELEE el archivo y compara conteo y suma, y recién ahí borra.
+  'compras-retirar-canceladas.mjs',
 ])
+
+/**
+ * LA EXCEPCIÓN DE `compras-retirar-canceladas.mjs`, VERIFICADA.
+ *
+ * Una exención de la Regla 0 escrita en prosa es una promesa, y este repositorio ya pagó lo que
+ * cuesta creerle a un comentario. Lo que la sostiene es comprobable sin red: TODAS sus escrituras
+ * de valores nombran su propio archivo. El día que alguien le agregue un `updateSheetValues` sobre
+ * `Compras`, la exención cae y el script vuelve a ser culpable.
+ */
+test('la exención del retiro de Compras se verifica: sólo escribe valores en su propio archivo', () => {
+  const src = readFileSync(join(SCRIPTS, 'compras-retirar-canceladas.mjs'), 'utf8')
+  const llamadas = [...src.matchAll(/\b(updateSheetValues|appendSheetValues|batchUpdateValues)\s*\(([^\n]*)/g)]
+  assert.ok(llamadas.length > 0, 'el script dejó de escribir valores: sacalo de NO_SON_GENERADORES')
+  const fuera = llamadas.map((m) => m[2]).filter((args) => !/ARCHIVO|_COMPRAS_RETIRADAS/.test(args))
+  assert.deepEqual(fuera, [],
+    'este script está exento de la Regla 0 porque sólo escribe en `_COMPRAS_RETIRADAS`. '
+    + `Estas escrituras van a otra parte: ${fuera.join(' | ')}`)
+})
 
 test('todo generador que escribe una pestaña decide explícitamente qué hace con las ediciones del dueño', () => {
   const culpables = []
