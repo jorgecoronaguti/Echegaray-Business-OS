@@ -46,19 +46,6 @@ export interface Documento {
   vence: string | null
 }
 
-/**
- * EL ESTADO DE VENCIMIENTOS DE TODO EL ARCHIVO, no el de la página.
- *
- * Se cuenta contra la base entera y no contra las 200 filas dibujadas: una banda que dijera
- * «0 vencidos» porque los vencidos quedaron fuera del tope sería el peor aviso posible.
- */
-export interface ResumenVencimientos {
-  vencidos: number
-  venceEsteMes: number
-  /** Cuántos vínculos tienen fecha cargada. `0` significa «nadie cargó ninguna», no «está todo bien». */
-  conFecha: number
-}
-
 /** Una carpeta raíz de Drive, tal como la indexó el catálogo. No es una taxonomía inventada. */
 export interface CarpetaRaiz {
   path: string

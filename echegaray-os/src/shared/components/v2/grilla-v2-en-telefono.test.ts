@@ -18,9 +18,10 @@ import { anchoMinimoDeGrilla, PISO_NOMBRE, pistasDe } from '../canon/ancho-minim
 //                      quién era. Y los 78px que sobraban ensanchaban el documento a 448px: el
 //                      desborde lateral de la pantalla.
 //   `/administracion`  el libro de trabajo dejaba «QUÉ FAL/TA» encima de «QUÉ BLOQUEA» y el verbo
-//                      cortado contra el borde.
-//   `/clientes`, `/administracion/personas`, `/proveedores`, `/documentos`, `/administracion/compras`
-//                      el bloque «Lo que pide trabajo» decía «5 · c. · Sin … · Completar».
+//                      cortado contra el borde. (Ese bloque —y el «Lo que pide trabajo» de las
+//                      secciones— los retiró el dueño el 08/09/2026 de toda la plataforma, así que
+//                      sus dos fuentes salieron de la lista: la regla vigila las grillas que
+//                      todavía se dibujan.)
 //
 // ═══ POR QUÉ UNA REGLA SOBRE EL FUENTE ═══
 //
@@ -43,8 +44,6 @@ const GEOMETRIA = { gap: 14, padding: 0 }
 /** Las grillas que dibujan una fila con nombre y no llevan la caja de scroll del canon. */
 const GRILLAS = [
   'src/features/administracion/components/CarteraHome.tsx',
-  'src/features/administracion/components/LibroDeTrabajo.tsx',
-  'src/shared/components/v2/TrabajoDeSeccion.tsx',
   // COMPRAS entra el 06/09/2026, cuando deja el canon de agosto. Es la grilla más ancha del OS:
   // las OCHO columnas del canvas son todas inelásticas —los `minmax(150px,…)` declaran piso— y
   // suman 826px más 98 de `gap`. Mientras vivió dentro de `TarjetaTabla` eso lo tapaba la caja de
