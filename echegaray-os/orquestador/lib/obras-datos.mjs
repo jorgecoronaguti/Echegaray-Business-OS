@@ -511,15 +511,60 @@ export const OBRAS_FUTURAS = [
     fin: '2026-12-31',
     plantelFullTime: 0,
     plantelTemporales: 0,
-    pctEjecutado: 0,
-    horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
-    moCargasPesos: 0,
-    egresos: [],
-    // LA AUSENCIA DE COSTO SE DECLARA, NO SE CUELA COMO UN CERO. Con este campo el test de shape
-    // deja de exigir `moCargasPesos > 0` para ESTA obra y sigue exigiéndolo para todas las demás: una
-    // obra nueva no puede entrar en silencio con costo cero, tiene que decir por qué no lo tiene.
-    sinCosto: 'sin archivo de costo en Drive',
-    notas: 'FALTA_DATO: sin archivo de costo. Venta de Cobranzas 51, 52 y 92. La OC 2226 dice "PLAYON AZUFRE" en su detalle: conflicto declarado, manda Cobranzas.',
+    // El piso ($7.108.886 de $9.463.142 contratados) está ejecutado y cobrado: queda la rampa.
+    pctEjecutado: 0.75,
+    // ═══ EL COSTO SALE DE LA PLANILLA DE COTIZACIÓN + LOS DOS PDF VENDIDOS (08/09/2026) ═══
+    //
+    // El dueño, 08/09: *«si hay obras que no tienen cargado su costo de MA y MO es porque no has buscado
+    // bien en la carpeta de Drive con la plantilla de cotización»*. Tenía razón. La carpeta
+    // `MESSINA/PISOS INDUSTRIALES 120m2` (Drive 1gxeo1TYmabNAZR1ZEDmXT5p1zJ7EhgCj) tiene TRES fuentes:
+    //   · `COTIZACION PISOS 120m2 - 11:6.pdf` (1d-u515rso_v01m8csfy8-Df2g1-fR5Pz): el piso vendido,
+    //     6 tareas, $7.108.886,54 neto = Cobranzas 51+52 al centavo. «Contempla solo mano de obra»:
+    //     mallas, H17, cuarzo y cemento los pone el cliente.
+    //   · `Adicional - Rampa/Rampa 19:2.pdf` (1QioaEfc-FDbareikGjc2W0TzJ8wPclWr): la rampa, 4 tareas,
+    //     $2.354.255,39 neto = Cobranzas 92 (OC 2226) al centavo. También «solo mano de obra».
+    //   · `Cotizacion Interna/Cotizacion piso 120m2.xlsm` (1cBQuKoPSYEtrnRDI8q72qy38PVQkdAV6): la
+    //     planilla. Su pestaña Presupuesto fue reescrita el 18/08 (T1107.1 ya dice 41,8 m², la cantidad
+    //     de la rampa) y la revisión del 12/06 da 403 por API. PERO la pestaña «Análisis» conserva el
+    //     costo unitario de cada tarea (col. G total · H MO · I MA · J CS, fechas 04–05/2026), y la
+    //     prueba de que no cambió desde junio es que los precios unitarios de los dos PDF son EXACTAMENTE
+    //     costo × 2,2056 en las seis tareas (4.997,83 · 70.791,03 · 88.160,81 · 41.541,79 · 38.709,83 ·
+    //     21.962,24). La rampa repite ese costo con coeficiente 0,7 en T1101 y T1107.1.
+    //
+    // CÁLCULO = costo unitario de «Análisis» × cantidad del PDF vendido:
+    //   PISO  (11/06): MO $1.114.965,72 · cargas $1.095.848,04 · materiales $775.366,40 · máq. propia $236.964
+    //   RAMPA (19/08): MO   $429.264,78 · cargas   $422.641,80 · materiales $452.239,20 · máq. propia $122.010
+    //   Análisis!J mezcla cargas con la máquina propia en T1100 (vibro NIWA $7.570,5/hr) y Análisis!I
+    //   mete el helicóptero y la cortadora en materiales de T1107.1 ($1.470/m²): acá se separan, porque
+    //   la máquina propia NUNCA entra al flujo.
+    //
+    // QUÉ SE PROYECTA Y QUÉ NO — PARA NO DUPLICAR LO QUE YA ESTÁ EN EL FLUJO (orden del dueño, 08/09):
+    //   · El PISO está EJECUTADO Y COBRADO (Cobranzas 51 y 52 «Cobrado»): su MO real ya salió por Jornales
+    //     de julio y por Compras 727 (PEDRO TELLO, «Pisos - OC 02-00002097», Mano de Obra, $540.000) y sus
+    //     materiales por Compras 790 (FEMENIA, ripio base, $1.520.000). NO se proyecta ni un peso del piso:
+    //     `horas` y `egresos` son SÓLO la rampa (lo no ejecutado), como manda la convención del archivo.
+    //   · `moCargasPesos` es el costo de MO+cargas de la OBRA ENTERA (piso + rampa): es lo que la pestaña
+    //     OBRAS compara contra el Contratado, que también es entero. Ningún consumidor del flujo lo lee —la
+    //     demanda de Jornales sale de `horas`—, así que no duplica nada.
+    //   · Los materiales del piso ($775.366) NO se cargan como previstos: ya son gasto REAL en Compras.
+    // La rampa se toma como pendiente (SUPUESTO: OC del 24/08, factura proyectada al 14/09 en Cobranzas);
+    // si ya se ejecutó, su previsto se netea solo cuando la factura entre a Compras.
+    horas: { oficialEspecializado: 0, oficial: 42.42, ayudante: 46.54 },
+    // Piso $2.210.813,76 + rampa $851.906,58 (Análisis!H+J × cantidades, sin máquina propia).
+    moCargasPesos: 3_062_720,
+    egresos: [
+      {
+        concepto: 'Materiales de la rampa (suelo cemento, combustibles)', proveedor: 'A DEFINIR', familia: 'Materiales',
+        // T1101 14,4 m³ × $30.324 + T1100 8 hr × $630 + T1107.1 41,8 m² × $252 (Análisis!I, sin máquina propia).
+        monto: 452_239,
+        // La OC es del 24/08 y el PDF dice 5 días hábiles; la factura está proyectada al 14/09. Convención
+        // declarada: el 10 del mes de ejecución.
+        fechaEstimada: '2026-09-10',
+        nota: 'Cotizacion piso 120m2.xlsm · Análisis · col. I (T1101, T1100, T1107.1) × cantidades de Rampa 19:2.pdf',
+      },
+    ],
+    noCaja: { maquinaPropia: 358_974 },
+    notas: 'CÁLCULO: costo unitario de la planilla (Cotizacion piso 120m2.xlsm, Análisis) × cantidades de los PDF vendidos. Piso $3.223.144 (MO+cargas $2.210.814 · mat. $775.366 · máq. $236.964) ejecutado y cobrado: real en Jornales y Compras 727/790, no se proyecta. Rampa $1.426.156 (MO+cargas $851.907 · mat. $452.239 · máq. $122.010) pendiente. Venta: Cobranzas 51, 52 y 92; la OC 2226 dice "PLAYON AZUFRE" en su detalle: conflicto declarado, manda Cobranzas.',
   },
 ]
 
