@@ -51,9 +51,12 @@ function notaDe(a: {
 }): string | null {
   const rol = (a.rol ?? '').trim()
   if (rol && !ROL_GENERICO.includes(rol.toLowerCase())) return rol
-  return (a.persona_especialidad ?? '').trim().toLowerCase()
-    || (a.persona_categoria ?? '').trim().replace('_', ' ')
-    || null
+  // LA CATEGORÍA PRIMERO (08/09/2026): es lo que liquida el recibo de sueldo y lo que el dueño pidió ver
+  // reflejado; el oficio (albañil, montador…) va detrás como complemento.
+  const categoria = (a.persona_categoria ?? '').trim().replace('_', ' ')
+  const oficio = (a.persona_especialidad ?? '').trim().toLowerCase()
+  if (categoria && oficio) return `${categoria} · ${oficio}`
+  return categoria || oficio || null
 }
 
 /** ¿Estaba asignado ese día? `desde`/`hasta` en null significan «sin límite», no «nunca». */
