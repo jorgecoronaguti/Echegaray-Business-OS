@@ -31,7 +31,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { query, closePool } from '../lib/db.mjs'
+import { query, closePool, withTx } from '../lib/db.mjs'
 import { CASHFLOW_ID } from '../lib/cash-briefing.mjs'
 import { PRIMERA_FILA, claveDeCompra, contratoDeColumnas, filaACompra } from '../lib/compras-fila.mjs'
 
@@ -73,12 +73,12 @@ async function leerPestana() {
 }
 
 /** Reescribe el espejo entero dentro de una transacción. */
-async function escribirEspejo(compras) {
+async function escribirEspejo(db, compras) {
   const cols = CAMPOS.join(', ')
   const marcas = CAMPOS.map((_, i) => `$${i + 1}`).join(',')
-  await query('delete from public.compra_sheet')
+  await db.query('delete from public.compra_sheet')
   for (const c of compras) {
-    await query(`insert into public.compra_sheet (${cols}) values (${marcas})`, CAMPOS.map((k) => c[k] ?? null))
+    await db.query(`insert into public.compra_sheet (${cols}) values (${marcas})`, CAMPOS.map((k) => c[k] ?? null))
   }
 }
 
@@ -93,11 +93,11 @@ async function escribirEspejo(compras) {
  * del 25/08: coincide con lo que la tabla tiene hoy en las 882 — el cambio saca el fósil sin mover
  * ningún valor.
  */
-async function escribirCostosObra(compras) {
+async function escribirCostosObra(db, compras) {
   const conObra = compras.filter((c) => c.obra_texto && (c.total || c.importe))
-  await query("delete from public.costos_obra where origen='compras_sheet'")
+  await db.query("delete from public.costos_obra where origen='compras_sheet'")
   for (const c of conObra) {
-    await query(
+    await db.query(
       `insert into public.costos_obra
         (obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto,
          importe, iva, total, fecha, fecha_pago, mes, origen, referencia_externa, sincronizado_en)
@@ -129,14 +129,17 @@ async function main() {
     await closePool(); return
   }
 
-  await query('begin')
+  // UNA SOLA CONEXIÓN. `query('begin')` sobre el pool abría la transacción en una conexión y el
+  // delete + insert caían en otras: no había transacción y el «ROLLBACK» del log era mentira
+  // (08/09/2026, 15:13: `duplicate key value violates unique constraint "compra_sheet_pkey"` con el
+  // espejo íntegro). `withTx` entrega el cliente y las dos escrituras viajan con él.
   let enCostos = 0
   try {
-    await escribirEspejo(compras)
-    enCostos = await escribirCostosObra(compras)
-    await query('commit')
+    enCostos = await withTx(async (db) => {
+      await escribirEspejo(db, compras)
+      return escribirCostosObra(db, compras)
+    })
   } catch (e) {
-    await query('rollback')
     console.error('sync falló, ROLLBACK:', e.message)
     await closePool(); process.exit(1)
   }
