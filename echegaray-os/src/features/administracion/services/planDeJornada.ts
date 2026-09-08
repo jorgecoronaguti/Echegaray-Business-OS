@@ -314,12 +314,17 @@ export function acuseDe(e: EscritoEnLaBase): string {
 // que cambiar un número: es poder mover un día de una obra a otra, declararlo ausencia o borrarlo.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
+/** Un id de obra que puede no venir: `''`, `null` y `undefined` son lo mismo — no se eligió. */
+const obraOpcional = z.union([z.string(), z.null(), z.undefined()])
+  .transform((v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null))
+
 export const correccionSchema = z.object({
   persona_id: z.string().uuid('Elegí a quién le corregís el día'),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
   /** De dónde salen las horas hoy. `null` = el día no tiene nada cargado todavía. */
-  obra_origen: z.union([z.string().trim().min(1), z.null()]).default(null),
-  obra_destino: z.string().trim().min(1, 'Elegí la obra'),
+  obra_origen: obraOpcional,
+  /** A qué obra va el día. OPCIONAL cuando no vino: ver «LA AUSENCIA ES DE LA PERSONA». */
+  obra_destino: obraOpcional,
   estado: z.enum(['presente', 'ausente', 'borrar']),
   horas: z.number().positive().max(24).nullable().default(null),
   /** Por qué no vino. Decide si el día queda como `ausencia` o como `licencia`. */
@@ -328,6 +333,11 @@ export const correccionSchema = z.object({
   asignar: z.boolean().default(false),
 }).refine((d) => d.estado !== 'presente' || d.horas !== null, {
   message: 'Poné cuántas horas hizo, o marcá que no vino',
+}).refine((d) => d.estado !== 'presente' || d.obra_destino !== null, {
+  // TRABAJAR ES TRABAJAR EN UNA OBRA. Unas horas sin obra no tienen a quién imputarle el costo, y
+  // ése es todo el sentido de cargarlas. Sólo la AUSENCIA puede venir sin obra.
+  message: 'Elegí la obra',
+  path: ['obra_destino'],
 })
 
 export type Correccion = z.infer<typeof correccionSchema>
@@ -338,8 +348,8 @@ export type Correccion = z.infer<typeof correccionSchema>
  * Es la única pregunta que decide si la corrección es un update o un movimiento. Sin origen no hay
  * movimiento: el día no tenía nada y se está cargando por primera vez.
  */
-export const cambiaDeObra = (c: Correccion): boolean =>
-  c.obra_origen !== null && c.obra_origen !== c.obra_destino
+export const cambiaDeObra = (c: { obra_origen: string | null; obra_destino: string | null }): boolean =>
+  c.obra_origen !== null && c.obra_destino !== null && c.obra_origen !== c.obra_destino
 
 /**
  * El ORDEN en que se toca la base cuando el día se mueve de obra.

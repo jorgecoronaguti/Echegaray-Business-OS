@@ -287,10 +287,36 @@ test('EL AVISO SABE CONTAR CUANDO NO PUEDE NOMBRAR — no poder leer los nombres
   assert.doesNotMatch(muchos, /CUATRO/)
 })
 
-test('UNA OBRA DESTINO VACÍA NO ENTRA', () => {
+test('UNA OBRA DESTINO VACÍA NO ENTRA CUANDO TRABAJÓ', () => {
   assert.equal(correccionSchema.safeParse({
     persona_id: A, fecha: '2026-09-07', obra_destino: '   ', estado: 'presente', horas: 8,
   }).success, false)
+})
+
+test('LA AUSENCIA NO EXIGE OBRA; «TRABAJÓ» SÍ — y el rechazo dice «Elegí la obra»', () => {
+  // EL DEFECTO DEL DUEÑO (08/09): «si la persona está ausente o de licencia no me puede pedir que
+  // le asigne obra». El panel de GONZALEZ TOBARES devolvía «Elegí la obra» al guardar un accidente
+  // de trabajo, y ninguna de las obras ofrecidas era la del día.
+  const sinObra = { persona_id: A, fecha: '2026-09-07', horas: null }
+  for (const obra of [undefined, null, '', '   ']) {
+    const r = correccionSchema.safeParse({ ...sinObra, obra_destino: obra, estado: 'ausente' })
+    assert.equal(r.success, true, `la ausencia con obra ${JSON.stringify(obra)} tiene que entrar`)
+    if (r.success) assert.equal(r.data.obra_destino, null, 'una obra en blanco es null, no una cadena')
+  }
+  // Sacar lo cargado tampoco la necesita: el origen dice qué se saca.
+  assert.equal(correccionSchema.safeParse({ ...sinObra, estado: 'borrar' }).success, true)
+  // Y LA REGLA DE «TRABAJÓ» NO SE TOCA: unas horas sin obra no tienen a quién imputarle el costo.
+  const trabajo = correccionSchema.safeParse({
+    persona_id: A, fecha: '2026-09-07', obra_destino: null, estado: 'presente', horas: 8,
+  })
+  assert.equal(trabajo.success, false)
+  if (!trabajo.success) assert.equal(trabajo.error.issues[0].message, 'Elegí la obra')
+})
+
+test('SIN OBRA DESTINO NO HAY MOVIMIENTO DE OBRA: no se borra nada de la obra vieja', () => {
+  // El defecto que atrapa: que una ausencia sin obra elegida entre a `cambiaDeObra` como «cambia»
+  // —`'estrella' !== null`— y dispare el borrado de la fila de origen sin haber escrito la nueva.
+  assert.equal(cambiaDeObra({ obra_origen: 'estrella', obra_destino: null }), false)
 })
 
 test('EL ERROR DE POSTGRES NO LLEGA CRUDO AL TELÉFONO DEL JEFE', () => {

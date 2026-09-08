@@ -333,6 +333,50 @@ test('05 · el panel de corrección SE ABRE AL COSTADO y la grilla queda detrás
   await expect(panel).toBeHidden()
 })
 
+test('05d · CON «NO VINO» EL PANEL NO PIDE OBRA — la ausencia es de la persona', async ({ page }) => {
+  // EL DEFECTO QUE ATRAPA (dueño, 08/09): «si la persona está ausente o de licencia no me puede
+  // pedir que le asigne obra». En la captura, GONZALEZ TOBARES —horas del día en LA ESTRELLA, que
+  // está cerrada y por eso no aparece en el selector— no tenía ninguna obra que elegir sin mentir,
+  // y guardar el accidente de trabajo devolvía «Elegí la obra».
+  //
+  // SÓLO LECTURA: no se guarda nada. Lo que se mide es que el formulario deje de exigir la obra.
+  const ANCHO = 1440
+  await page.setViewportSize({ width: ANCHO, height: 900 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=asistencia')
+  await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+  // CUALQUIER FILA SIRVE, A PROPÓSITO. El caso que lo destapó fue GONZALEZ TOBARES —sin obra
+  // vigente, horas en una obra cerrada—, pero atar el test a esa persona lo haría depender de un
+  // dato vivo que cambia con la quincena. Lo que se mide es del FORMULARIO: con «No vino» deja de
+  // pedir obra, y eso vale para todos.
+  const abrir = page.getByTestId('abrir-correccion').first()
+  if (await abrir.count() === 0) test.skip(true, 'La quincena no tiene ninguna fila que corregir.')
+  await abrir.click()
+  const panel = page.getByTestId('panel-correccion')
+  await expect(panel).toBeVisible()
+  // Con «Trabajó» la obra SIGUE pidiéndose: esa regla no se tocó.
+  await expect(page.getByTestId('correccion-obra')).toBeVisible()
+
+  await page.getByTestId('correccion-estado').selectOption('ausente')
+  // NI SELECTOR DE OBRA NI CASILLA DE ASIGNACIÓN: asignar a una obra es decidir dónde trabaja de
+  // acá en adelante, y no tiene nada que ver con que un día no haya venido.
+  await expect(page.getByTestId('correccion-obra')).toHaveCount(0)
+  await expect(page.getByTestId('correccion-asignar')).toHaveCount(0)
+  await expect(page.getByTestId('correccion-ausencia-sin-obra'))
+    .toContainText('La ausencia es de la persona, no de una obra')
+  // Y EL «Elegí la obra» NO SE VE POR NINGÚN LADO — ni como opción del select ni como error.
+  await expect(panel.getByText('Elegí la obra')).toHaveCount(0)
+  // El motivo sí se pide, que es el dato que hacía falta declarar.
+  await expect(page.getByTestId('correccion-motivo')).toBeVisible()
+  await page.getByTestId('correccion-motivo').selectOption('accidente')
+  await page.screenshot({ path: 'qa-shots/panel-ausencia-sin-obra-1440.png' })
+
+  // Y VOLVER A «Trabajó» LA VUELVE A PEDIR: el selector no se pierde para siempre.
+  await page.getByTestId('correccion-estado').selectOption('presente')
+  await expect(page.getByTestId('correccion-obra')).toBeVisible()
+})
+
 test('05b · en el teléfono el panel ocupa el ancho entero', async ({ page }) => {
   const ANCHO = 390
   await page.setViewportSize({ width: ANCHO, height: 844 })

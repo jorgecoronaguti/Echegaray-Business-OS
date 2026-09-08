@@ -85,7 +85,10 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
     const t = c?.tramos[0] ?? null
     setFecha(f)
     setOrigen(t?.obra_id ?? null)
-    setObraDestino(t?.obra_id ?? fila.obraPorDefecto?.id ?? obras[0]?.id ?? '')
+    // LA MISMA REGLA QUE AL ABRIR (`obraDestinoInicial`): sólo una obra ELEGIBLE puede quedar como
+    // destino. El `?? obras[0]?.id` de antes proponía una obra cualquiera cuando el día estaba
+    // vacío — y con «No vino» eso le habría imputado la ausencia a la primera de la lista.
+    setObraDestino(obraDestinoInicial(t?.obra_id, fila.obraPorDefecto?.id, obras))
     setEstado(t?.ausente ? 'ausente' : 'presente')
     setTexto(t?.horas != null ? hs(t.horas) : '')
     setAviso(null)
@@ -96,7 +99,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
   const elegirOrigen = (obraId: string) => {
     const t = tramos.find((x) => x.obra_id === obraId) ?? null
     setOrigen(obraId)
-    setObraDestino(obraId)
+    setObraDestino(obraDestinoInicial(obraId, fila.obraPorDefecto?.id, obras))
     setEstado(t?.ausente ? 'ausente' : 'presente')
     setTexto(t?.horas != null ? hs(t.horas) : '')
     setAviso(null)
@@ -114,9 +117,14 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
         // ORIGEN: de dónde salen HOY las horas. `null` cuando el día no tiene nada cargado — sin
         // origen no hay movimiento, y un borrado sin origen barrería filas de otras obras.
         obra_origen: tramo?.obra_id ?? null,
-        obra_destino: obraDestino,
+        // SIN OBRA CUANDO NO VINO Y NO HAY NINGUNA ELEGIDA: la acción la deduce (del día, de la
+        // asignación vigente, de sus últimos registros) y lo dice en el acuse. Mandar una obra
+        // cualquiera para que el schema no proteste sería imputarle la ausencia a quien tocara.
+        obra_destino: obraDestino === '' ? null : obraDestino,
         estado,
-        horas: estado === 'ausente' ? (jornada > 0 ? jornada : 1) : horas,
+        // `null` deja que la acción use la jornada de la obra que resolvió. Un 1 fijo registraría
+        // una ausencia de una hora sobre una jornada de nueve.
+        horas: estado === 'ausente' ? (jornada > 0 ? jornada : null) : horas,
         // EL MOTIVO DECIDE SI ES AUSENCIA O LICENCIA. Vacaciones y parte médico son licencia;
         // faltar sin avisar, ausencia. Ninguna suma horas trabajadas.
         motivo: estado === 'ausente' ? motivo : null,
@@ -170,17 +178,21 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
           </Campo>
         )}
 
-        <Campo rotulo="Obra" ayuda="Cambiarla mueve esas horas a la obra elegida.">
-          <select value={obraDestino} onChange={(e) => setObraDestino(e.target.value)}
-            className={CAMPO} data-testid="correccion-obra">
-            {obraDestino === '' && (
-              <option value="" disabled>
-                {tramo ? `Elegí la obra — las horas están en ${tramo.nombre}, que no está activa` : 'Elegí la obra'}
-              </option>
-            )}
-            {obras.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-          </select>
-        </Campo>
+        {/* LA OBRA SÓLO SE PIDE PARA UN DÍA TRABAJADO. Ver el bloque «LA AUSENCIA ES DE LA
+            PERSONA» arriba: con «No vino» el selector desaparece y la obra la deduce la acción. */}
+        {estado !== 'ausente' && (
+          <Campo rotulo="Obra" ayuda="Cambiarla mueve esas horas a la obra elegida.">
+            <select value={obraDestino} onChange={(e) => setObraDestino(e.target.value)}
+              className={CAMPO} data-testid="correccion-obra">
+              {obraDestino === '' && (
+                <option value="" disabled>
+                  {tramo ? `Elegí la obra — las horas están en ${tramo.nombre}, que no está activa` : 'Elegí la obra'}
+                </option>
+              )}
+              {obras.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+            </select>
+          </Campo>
+        )}
 
         <Campo rotulo="Qué pasó ese día">
           <select value={estado} onChange={(e) => setEstado(e.target.value as Estado)}
@@ -212,19 +224,24 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
           </Campo>
         )}
         {estado === 'ausente' && (
-          <p style={{ fontSize: '11.5px', color: V.tenue }}>
+          <p style={{ fontSize: '11.5px', color: V.tenue }} data-testid="correccion-ausencia-sin-obra">
             {/* SE GUARDA CON HORAS Y NO CON CERO: `registros_hh` exige horas > 0, y
                 `tipo_hora = 'ausencia'` es lo que hace que no cuenten como trabajo. */}
-            Se registra como ausencia de {jornada > 0 ? `${hs(jornada)} hs` : 'la jornada'}. No suma
-            horas trabajadas a la obra.
+            La ausencia es de la persona, no de una obra. Se registra como ausencia de{' '}
+            {jornada > 0 ? `${hs(jornada)} hs` : 'la jornada'} y no suma horas trabajadas.
           </p>
         )}
 
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '12.5px', color: V.tinta }}>
-          <input type="checkbox" checked={asignar} onChange={(e) => setAsignar(e.target.checked)}
-            data-testid="correccion-asignar" style={{ marginTop: 3 }} />
-          <span>Asignarla también a esa obra, desde ese día.</span>
-        </label>
+        {/* ASIGNAR A UNA OBRA ES DECIDIR DÓNDE TRABAJA DE ACÁ EN ADELANTE: no tiene nada que ver
+            con que un día no haya venido, y ofrecerlo ahí invita a mover a alguien de obra por
+            haberse enfermado. */}
+        {estado !== 'ausente' && (
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '12.5px', color: V.tinta }}>
+            <input type="checkbox" checked={asignar} onChange={(e) => setAsignar(e.target.checked)}
+              data-testid="correccion-asignar" style={{ marginTop: 3 }} />
+            <span>Asignarla también a esa obra, desde ese día.</span>
+          </label>
+        )}
 
         {aviso && (
           <Aviso tono={aviso.ok ? 'info' : 'neg'} testid="acuse-correccion">{aviso.texto}</Aviso>
