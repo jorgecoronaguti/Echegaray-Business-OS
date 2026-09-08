@@ -28,7 +28,9 @@ export function MarcoAuth({
   titulo: string
   /** Una línea que dice qué es esta pantalla. No es un eslogan: es lo que hay que hacer acá. */
   bajada: string
-  /** La salida del pie: a quién pedirle cuando el acceso no funciona. */
+  /** La salida del pie: a quién pedirle cuando el acceso no funciona. Casi siempre se omite — el
+   *  texto por defecto es EL texto, y tres puertas contiguas con tres frases distintas para lo mismo
+   *  es exactamente la mezcla que se vino a sacar. */
   ayuda?: ReactNode
   children: ReactNode
 }) {
@@ -64,7 +66,11 @@ export function MarcoAuth({
         }}>
           <span style={{ display: 'flex', color: C.faint, flexShrink: 0 }}><Icono nombre="info" tamano={18} /></span>
           <div style={{ fontSize: 12.5, color: C.muted, minWidth: 0 }}>
-            {ayuda ?? 'Si no podés entrar, pedile a la oficina que revise tu acceso.'}
+            {/* UNA SOLA FRASE PARA LAS TRES PANTALLAS (08/09/2026). `/login` traía la suya
+                —«Si no tenés acceso o cambiaste de correo…»— y las otras dos la de acá: dos maneras
+                de decir lo mismo a un metro de distancia. Ésta dice los dos hechos que importan (no
+                podés entrar · te cambiaron el correo) y quién lo arregla. */}
+            {ayuda ?? 'Si no podés entrar o cambiaste de correo, pedile a la oficina que revise tu acceso.'}
           </div>
         </div>
       </div>
