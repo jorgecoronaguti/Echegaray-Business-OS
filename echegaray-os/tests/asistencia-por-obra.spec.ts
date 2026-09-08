@@ -523,4 +523,23 @@ test('09 · UNA PERSONA CON SÓLO LICENCIAS ESTÁ EN LA GRILLA, con «L» y sin 
   // NO SUMA HORAS: el total de la fila es «—», que no es lo mismo que un cero.
   await expect(fila.getByTestId('total-persona')).toHaveText('—')
   await page.screenshot({ path: 'qa-shots/asistencia-licencia-1440.png', fullPage: true })
+
+  // ═══ Y LA FICHA DIBUJA LAS MISMAS COLUMNAS QUE LA GRILLA ═══
+  //
+  // Si la franja de la ficha mostrara los domingos y la grilla no, los «días hábiles» de la
+  // empresa dependerían de qué pantalla se mire. La casilla lleva su fecha en `data-fecha`: el
+  // domingo 6 y el domingo 13 de septiembre no pueden existir.
+  const href = await fila.locator('a[href^="/administracion/personas/"]').first()
+    .getAttribute('href')
+  expect(href, 'la fila tiene que llevar a su carpeta').toBeTruthy()
+  await page.goto((href as string).split('?')[0])
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('franja-quincena')).toBeVisible({ timeout: 30000 })
+  const franja = page.getByTestId('franja-quincena')
+  expect(await franja.getByTestId('casilla-dia').count()).toBeGreaterThan(0)
+  for (const f of await franja.getByTestId('casilla-dia').all()) {
+    const fecha = await f.getAttribute('data-fecha')
+    expect(new Date(`${fecha}T00:00:00Z`).getUTCDay(), `${fecha} es domingo`).not.toBe(0)
+  }
+  await page.screenshot({ path: 'qa-shots/ficha-sin-domingos-1440.png', fullPage: true })
 })
