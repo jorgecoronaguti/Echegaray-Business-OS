@@ -165,6 +165,61 @@ export function planDeGuardado(
   return plan
 }
 
+// ── LA PUERTA DE LA OBRA CERRADA ────────────────────────────────────────────────────────────────
+//
+// CORREGIR UN REGISTRO QUE YA EXISTE NO ES «CARGAR HORAS EN UNA OBRA CERRADA».
+//
+// El defecto (dueño, 08/09, captura de producción): tipear 9 sobre la celda de un día viejo devolvía
+// «"MAMPOSTERÍA" no está activa (cerrada): no se le pueden cargar horas». Ese día YA ESTABA cargado
+// en esa obra —es historia, la persona trabajó ahí— y el número estaba mal. Cerrar la obra no puede
+// significar que el dato quede mal para siempre: la única salida ofrecida era reabrir una obra
+// terminada para arreglar un tipeo, que es peor que el tipeo.
+//
+// Lo que SÍ sigue bloqueado, y por lo mismo de siempre: ESTRENAR un día en una obra cerrada o MOVER
+// horas hacia ella. Las dos le imputan costo de mano de obra nuevo a una obra que ya nadie mira, y
+// el número aparece en su plan contra real cuando la obra ya se cerró con su margen.
+
+/**
+ * Las personas del envío para las que este plan ESTRENA el día en esta obra: no tienen ninguna fila
+ * de la jornada ahí ese día, así que lo que se va a escribir es un registro nuevo, no una corrección.
+ *
+ * Se pregunta por la fila existente y no por `plan.insertar`, porque corregir un día trabajado a
+ * «no vino» también inserta —cambia el `tipo_hora`, y eso es una fila nueva más un borrado—, y el
+ * dueño lo nombró explícitamente como corrección: «cambiar horas, marcar ausencia, borrar».
+ */
+export function personasQueEstrenanDia(
+  marcas: MarcaDeJornada[],
+  existentes: FilaExistente[],
+  opciones: { administraLicencias?: boolean } = {},
+): string[] {
+  const administra = opciones.administraLicencias === true
+  return marcas
+    .filter((m) => !existentes.some((e) => e.persona_id === m.persona_id && esDeLaJornada(e, administra)))
+    .map((m) => m.persona_id)
+}
+
+/**
+ * El error de escribir en una obra que no está activa, o `null` si la escritura pasa.
+ *
+ * Pura y en este archivo por la misma razón mecánica que el resto: se prueba sin base y sin sesión,
+ * y un `'use server'` no puede exportar una función que no sea async.
+ */
+export function puertaDeObraNoActiva(o: {
+  nombre: string
+  estado: string | null
+  /** `true` si la escritura estrena un día en esa obra o mueve horas hacia ella. */
+  crea: boolean
+  motivo?: 'cargar' | 'mover'
+}): string | null {
+  if (o.estado === 'activa' || !o.crea) return null
+  const como = o.estado === 'cerrada' ? 'está cerrada' : `no está activa (${o.estado ?? 'sin estado'})`
+  // CORTO Y EN UNA LÍNEA: este texto se dibuja bajo la fila de la grilla. El mensaje largo de antes
+  // ocupaba diez renglones DENTRO de la celda y rompía la fila entera.
+  return o.motivo === 'mover'
+    ? `«${o.nombre}» ${como}: no se le pueden mover horas.`
+    : `«${o.nombre}» ${como}: sólo se corrigen días ya cargados, no se cargan horas nuevas.`
+}
+
 /** Lo que la base efectivamente devolvió por cada operación. */
 export interface EscritoEnLaBase {
   insertadas: number
