@@ -153,7 +153,9 @@ export function GrillaAsistenciaObra({
         <thead>
           <tr style={{ borderBottom: `1px solid ${V.lineaFuerte}` }}>
             <Rotulo ancho="34%">Persona</Rotulo>
-            <Rotulo ancho="18%">Obra</Rotulo>
+            {/* «ACTUAL» porque la obra de una persona cambia con el tiempo: acá se ve la de hoy; la de
+                cada día queda guardada en su marca y se lee en la cronología de la persona (ficha → Horas). */}
+            <Rotulo ancho="18%">Obra actual</Rotulo>
             {etiquetas.map((e, i) => (
               <Rotulo key={dias[i]} centro tenue={columnasTenues[i]} titulo={titulos[i]}>{e}</Rotulo>
             ))}
