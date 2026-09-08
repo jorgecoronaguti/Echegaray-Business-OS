@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import {
   BUCKET_ACTIVOS, BUCKET_INACTIVOS, CATEGORIAS, REQUERIDOS_ACTIVO,
   categoriaDeArchivo, faltantes, fechaDelArchivo, nombreCanonico, personaDeCarpeta,
-  planDeSincronizacion,
+  planDeSincronizacion, documentosAusentes, esBucketDeLegajos,
 } from './legajos-sincro.mjs'
 
 test('cada categoría del legajo es una de las declaradas', () => {
@@ -145,4 +145,47 @@ test('los documentos cuelgan de la carpeta, así el alta nueva los puede reclama
 test('qué le falta a un legajo activo', () => {
   assert.deepEqual(faltantes(['dni', 'examen_medico']), ['alta_temprana', 'epp'])
   assert.deepEqual(faltantes(REQUERIDOS_ACTIVO), [])
+})
+
+test('el plan lleva lo que Drive sabe del archivo y la subcarpeta donde vive', () => {
+  const carpetas = [{ id: 'c1', name: 'AGUERO CRISTIAN', ruta: BUCKET_ACTIVOS }]
+  const archivos = [
+    { id: 'f1', name: 'DNI - Aguero.pdf', ruta: `${BUCKET_ACTIVOS}/AGUERO CRISTIAN`, mimeType: 'application/pdf', size: '1234', modifiedTime: '2026-08-30T10:00:00.000Z' },
+    { id: 'f2', name: 'Recibo 1Q agosto.pdf', ruta: `${BUCKET_ACTIVOS}/AGUERO CRISTIAN`, subcarpeta: 'RECIBOS DE SUELDO', mimeType: 'application/pdf', size: '99' },
+  ]
+  const personas = [{ id: 'p1', nombre_completo: 'AGUERO CRISTIAN DOMINGO', drive_folder_id: 'c1', en_la_empresa: true, en_nomina: true }]
+  const plan = planDeSincronizacion({ carpetas, archivos, personas })
+  assert.equal(plan.documentos.length, 2)
+  const [dni, recibo] = plan.documentos
+  assert.deepEqual(
+    { ...dni },
+    { carpeta_id: 'c1', persona_id: 'p1', drive_file_id: 'f1', nombre: 'DNI - Aguero.pdf', tipo_documento: 'dni',
+      fecha_documento: null, subcarpeta: '', mime: 'application/pdf', bytes: 1234, modificado_drive: '2026-08-30T10:00:00.000Z' })
+  assert.equal(recibo.subcarpeta, 'RECIBOS DE SUELDO')
+  assert.equal(recibo.tipo_documento, 'recibo_sueldo')
+  assert.equal(recibo.modificado_drive, null, 'sin modifiedTime no se inventa una fecha')
+})
+
+test('ausente en Drive: sólo lo que faltó en una carpeta que SÍ se leyó', () => {
+  const previos = [
+    { id: 'd1', persona_id: 'p1', drive_file_id: 'f1' },   // sigue en Drive
+    { id: 'd2', persona_id: 'p1', drive_file_id: 'f9' },   // desapareció de una carpeta leída → ausente
+    { id: 'd3', persona_id: 'p2', drive_file_id: 'f7' },   // su carpeta no se pudo leer → no se afirma nada
+    { id: 'd4', persona_id: 'p1', drive_file_id: null },   // solicitado sin archivo: nunca fue de Drive
+  ]
+  const ausentes = documentosAusentes({ previos, actuales: ['f1', 'f2'], carpetasLeidas: ['p1'] })
+  assert.deepEqual(ausentes, ['d2'])
+  // Idempotencia: correr dos veces con la misma foto da el mismo resultado; con la carpeta sin leer, nada.
+  assert.deepEqual(documentosAusentes({ previos, actuales: ['f1', 'f2'], carpetasLeidas: ['p1'] }), ['d2'])
+  assert.deepEqual(documentosAusentes({ previos, actuales: [], carpetasLeidas: [] }), [])
+})
+
+test('sólo ACTIVOS e INACTIVOS contienen legajos: lo demás de la raíz no es una persona', () => {
+  assert.equal(esBucketDeLegajos('1. ACTIVOS'), true)
+  assert.equal(esBucketDeLegajos('2. INACTIVOS (fuera de la nomina vigente)'), true)
+  assert.equal(esBucketDeLegajos('2. INACTIVOS'), true)
+  for (const n of ['3. RECIBOS DE SUELDO', '4. SUBCONTRATISTAS', 'ASISTENCIAS RUBRICADAS',
+    '9. ADMINISTRACION (no es legajo)', '3. A REVISAR', '']) {
+    assert.equal(esBucketDeLegajos(n), false, n)
+  }
 })
