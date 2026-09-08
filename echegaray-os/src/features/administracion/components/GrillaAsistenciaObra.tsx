@@ -74,8 +74,10 @@ function diaCorto(iso: string): string {
 
 function textoDe(c: CeldaObra): string {
   if (c.estado === 'horas') return c.horas === null ? '' : hs(c.horas)
-  // La ausencia NO se escribe en el campo: la dice la capa de presencia de `CeldaDia` («A» en
-  // rojo). El campo queda vacío y escribir un número encima sigue convirtiendo el día en presente.
+  // La ausencia NO se escribe en el CAMPO EDITABLE: la dice la capa de presencia de `CeldaDia` («A»
+  // en rojo) y sus horas se dibujan aparte, fijas (ver `editable`). Un número editable ahí adentro
+  // sería el mismo control para dos cosas distintas — corregir las horas de una ausencia y
+  // convertir el día en trabajado— y la segunda le imputa costo a una obra.
   return ''
 }
 
@@ -89,7 +91,9 @@ function textoDe(c: CeldaObra): string {
 function entradaDe(c: CeldaObra): EntradaCeldaDia {
   return {
     presencia: c.estado === 'ausente' ? 'ausente' : c.estado === 'licencia' ? 'licencia' : 'sin_marca',
-    horas: c.estado === 'horas' ? c.horas : null,
+    // TAMBIÉN LAS DE UNA AUSENCIA O UNA LICENCIA: la capa de abajo dice CUÁNTAS horas tiene el día,
+    // y la de arriba QUÉ es ese día. Filtrar por estado acá volvía a fundir las dos preguntas.
+    horas: c.horas,
     dia: c.estado === 'no_laborable' ? 'no_laborable'
       : c.estado === 'futuro' ? 'futuro'
       : c.estado === 'hoy' ? 'hoy'
@@ -445,14 +449,24 @@ export function GrillaAsistenciaObra({
                 // LA LICENCIA NO SE PISA DESDE LA GRILLA. Escribir un número encima convertiría en
                 // horas trabajadas un día que alguien autorizó con respaldo documental, sin
                 // preguntar y sin dejar rastro. Se corrige desde el panel, que muestra el motivo.
+                // LA AUSENCIA TAMPOCO SE EDITA DESDE LA CELDA (08/09/2026). Desde que lleva horas
+                // —las que corresponden por ley—, un campo editable encima significaría dos cosas a
+                // la vez: «corregile las horas reconocidas» y «en realidad trabajó», y la segunda
+                // mueve costo a una obra. Las dos se hacen en el panel, que muestra el motivo y las
+                // horas juntos. Marcar «A» sobre una celda vacía sigue funcionando igual.
                 const editable = celda.estado !== 'no_laborable' && celda.estado !== 'futuro'
-                  && celda.estado !== 'licencia'
+                  && celda.estado !== 'licencia' && celda.estado !== 'ausente'
                   && !repartido && (fila.obraPorDefecto !== null || celda.tramos.length === 1)
                 // Lo que escribe una celda que NO se edita. Vacío en licencia, ausencia y futuro:
                 // el día ya está dicho arriba, y un «—» ahí afirmaría que no era laborable.
+                // LAS HORAS DE LA AUSENCIA SE VEN DEBAJO DE LA «A» (dueño, 08/09/2026): «las
+                // ausencias que tienen motivo registrado dan la posibilidad de que se le registre
+                // hs». Sin número, la celda no distingue una ausencia con horas reconocidas de una
+                // sin nada, que es la diferencia entre lo que se paga y lo que no.
                 const textoFijo = celda.estado === 'horas' ? hs(celda.horas ?? 0)
-                  : celda.estado === 'licencia' || celda.estado === 'ausente' || celda.estado === 'futuro'
-                    ? '' : hueco.texto
+                  : celda.estado === 'licencia' || celda.estado === 'ausente'
+                    ? (celda.horas !== null ? hs(celda.horas) : '')
+                    : celda.estado === 'futuro' ? '' : hueco.texto
                 return (
                   <td key={celda.fecha} style={{
                     padding: '4px 2px', textAlign: 'center', verticalAlign: 'middle',

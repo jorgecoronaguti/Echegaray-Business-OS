@@ -9,11 +9,16 @@
 // la corrección afuera y diría que salió bien. El plan de qué insertar, corregir y reemplazar lo
 // decide `planDeJornada.ts`, que se prueba sin base.
 //
-// ═══ EL AUSENTE NO SE GUARDA COMO CERO ═══
+// ═══ EL AUSENTE NO SE GUARDA COMO CERO, Y NO SE GUARDA EN LA OBRA ═══
 //
 // `registros_hh` exige `horas > 0`. La ausencia se guarda con las horas de la jornada y
 // `tipo_hora='ausencia'`, que es lo que `tipoHora.ts` ya declara: «una ausencia tiene horas y no es
 // trabajo». Nadie la suma como trabajo.
+//
+// Y desde el 08/09/2026 se guarda SIN OBRA (dueño, textual: *«si la persona está ausente, se le
+// suma hs pero porque corresponde por ley, no necesariamente sumarle a ninguna obra»*). Esta acción
+// es la puerta del teléfono y de la «A» de la grilla; el panel de corrección ya lo hacía así. Las
+// dos comparten `planDeAusenciasSinObra` y `escribirAusenciasSinObra`: una sola regla, dos puertas.
 //
 // ═══ NO SE TOCAN LAS HORAS DE OTRA OBRA ═══
 //
@@ -31,9 +36,13 @@ import {
   type PlanDeJornada,
 } from './planDeJornada'
 import {
-  acuseDeAusencia, ausenciaSinObraDe, horasDeLaAusencia, sumarHoras, type FilaDelDia,
+  acuseDeAusencia, acuseDeAusenciasDelDia, ausenciaSinObraDe, horasDeLaAusencia,
+  planDeAusenciasSinObra, sumarHoras, type FilaDelDia, type MarcaDelDia,
 } from './ausenciaDeLaPersona'
-import { jornadaDeReferencia, nombresDeObras } from './ausenciaDeLaPersonaService'
+import {
+  escribirAusenciaSinObra, escribirAusenciasSinObra, filasSinObraDelDia, jornadaDeReferencia,
+  nombresDeObras, sacarAusenciasSinObra,
+} from './ausenciaDeLaPersonaService'
 
 export type ResultadoJornada =
   /** `aviso` va aparte del acuse para que la grilla lo muestre SIN mostrar «1 marca nueva» en cada
@@ -51,10 +60,12 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   // LA ACCIÓN ES LA PUERTA, NO LA PANTALLA. La pantalla ofrece obras activas; esta llamada puede
   // venir de cualquier lado. Sin esto se podían cargar horas contra una obra inexistente y el costo
   // se imputaba a una obra que ya nadie mira.
-  const obra = await supabase.from('obra_canonica').select('nombre, estado').eq('id', obraId).maybeSingle()
+  const obra = await supabase.from('obra_canonica')
+    .select('nombre, estado, jornada_horas').eq('id', obraId).maybeSingle()
   if (obra.error) return { ok: false, error: obra.error.message }
   if (!obra.data) return { ok: false, error: 'Esa obra no existe o no la ves.' }
-  const { nombre, estado } = obra.data as { nombre: string; estado: string | null }
+  const { nombre, estado, jornada_horas: jornada } =
+    obra.data as { nombre: string; estado: string | null; jornada_horas: number | string | null }
 
   // LO QUE YA ESTÁ GUARDADO SE LEE ANTES DE DECIDIR SI SE PUEDE ESCRIBIR. El orden importa: es lo
   // único que distingue corregir un día que existe —permitido siempre— de estrenar uno.
@@ -70,8 +81,18 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   if (previos.error) return { ok: false, error: previos.error.message }
   const existentes = (previos.data ?? []) as FilaExistente[]
 
+  // LAS FILAS SIN OBRA DE ESAS PERSONAS ESE DÍA. Sin esta lectura no se puede saber si la ausencia
+  // ya estaba registrada, y marcar «A» dos veces escribiría dos filas: la clave única de
+  // `registros_hh` no protege acá porque en Postgres dos `obra_canonica_id` NULL no colisionan.
+  const sinObra = await filasSinObraDelDia(supabase, marcas.map((m) => m.persona_id), fecha)
+  if (sinObra.error) return { ok: false, error: sinObra.error }
+
   // CORREGIR HISTORIA NO ES CARGAR HORAS EN UNA OBRA CERRADA (ver `puertaDeObraNoActiva`).
-  const estrenan = personasQueEstrenanDia(marcas, existentes)
+  // SÓLO LOS PRESENTES CUENTAN PARA ESA PUERTA: una ausencia ya no le imputa nada a la obra —se
+  // escribe sin obra—, así que rechazarla porque la obra está cerrada sería un no por un costo que
+  // no existe. Lo que sí sigue bloqueado es estrenar HORAS TRABAJADAS ahí.
+  const presentes = marcas.filter((m) => m.estado === 'presente')
+  const estrenan = personasQueEstrenanDia(presentes, existentes)
   const cerrada = puertaDeObraNoActiva({ nombre, estado, crea: estrenan.length > 0 })
   if (cerrada) return { ok: false, error: cerrada }
 
@@ -80,16 +101,45 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   // sigue diciendo lo mismo, pero el orden deja claro que el aviso describe lo que había.
   const sinAsignar = await personasSinAsignacion(supabase, obraId, estrenan, fecha)
 
+  // EL ORDEN: ESCRIBIR LO DE AFUERA · ESCRIBIR Y BORRAR LO DE LA OBRA · SACAR LO DE AFUERA.
+  // Cada borrado ocurre DESPUÉS de que lo que lo reemplaza ya esté escrito. Es la misma regla que
+  // gobierna `escribirPlan`: sin transacción, un duplicado visible le gana a una pérdida silenciosa.
+  const fuera = planDeAusenciasSinObra(marcasConHoras(marcas, jornada), sinObra.data)
+  const escritas = await escribirAusenciasSinObra(supabase, fecha, fuera.escribir)
+  if (escritas.error) return { ok: false, error: escritas.error }
+
   const plan = planDeGuardado(marcas, existentes)
   const r = await escribirPlan(supabase, obraId, fecha, plan)
   if (r.error || !r.escrito) return { ok: false, error: r.error ?? 'No se pudo escribir.' }
 
+  const sacadas = await sacarAusenciasSinObra(supabase, fuera.borrar)
+  if (sacadas.error) return { ok: false, error: sacadas.error }
+
   revalidar()
   const aviso = avisoSinAsignacion(await nombresDe(supabase, sinAsignar), sinAsignar.length)
+  const afuera = acuseDeAusenciasDelDia({ ...escritas, ...sacadas, sinCambio: fuera.sinCambio, intactas: fuera.intactas })
+  // EL ACUSE DE LA OBRA SÓLO SI LA OBRA SE TOCÓ. Con una marca de ausencia y nada más, `acuseDe`
+  // diría «No cambió nada en la base» sobre una ausencia que sí se acaba de registrar afuera.
+  const enLaObra = presentes.length > 0 || r.escrito.borradas > 0 || r.escrito.intactas.length > 0
+    ? acuseDe(r.escrito) : null
   // EL AVISO VIAJA TAMBIÉN DENTRO DEL ACUSE: `/campo/asistencia` muestra `mensaje` y nada más, y un
   // aviso que sólo lee una de las dos pantallas es un aviso que no existe en la otra.
-  return { ok: true, mensaje: aviso ? `${acuseDe(r.escrito)} ${aviso}` : acuseDe(r.escrito), ...(aviso ? { aviso } : {}) }
+  const mensaje = [enLaObra, afuera, aviso].filter(Boolean).join(' ')
+  return { ok: true, mensaje, ...(aviso ? { aviso } : {}) }
 }
+
+/** Las marcas con las horas YA RESUELTAS para la ausencia: la misma resolución del panel
+ *  (`horasDeLaAusencia`) — la jornada de la obra de referencia, y `JORNADA_ESTANDAR_HS` si no hay.
+ *  No se inventa ninguna otra: dos formas de valorizar un día ausente discrepan el día que se toca
+ *  una sola. */
+const marcasConHoras = (
+  marcas: MarcaDeJornada[], jornada: number | string | null,
+): MarcaDelDia[] => marcas.map((m) => ({
+  persona_id: m.persona_id,
+  estado: m.estado,
+  horas: m.estado === 'ausente' ? horasDeLaAusencia(m.horas, Number(jornada)) : m.horas,
+  motivo: motivoDe(m),
+}))
 
 /**
  * Aplica el plan contra la base y devuelve LO QUE LA BASE HIZO, no lo que se le pidió.
@@ -331,7 +381,9 @@ async function corregirAusencia(
   const horas = horasDeLaAusencia(c.horas, await jornadaDeReferencia(supabase, c, conObra))
   const yaSinObra = ausenciaSinObraDe(filas as unknown as FilaDelDia[])
 
-  const escrita = await escribirAusenciaSinObra(supabase, c, horas, yaSinObra?.id ?? null)
+  const escrita = await escribirAusenciaSinObra(
+    supabase, { persona_id: c.persona_id, fecha: c.fecha, motivo: c.motivo }, horas,
+    yaSinObra?.id ?? null)
   if (escrita.error) return { ok: false, error: escrita.error }
 
   let sacadas: string[] = []
@@ -359,39 +411,6 @@ async function corregirAusencia(
       intactas: aSacar.intactas,
     }),
   }
-}
-
-/**
- * Escribe la ausencia SIN obra. Devuelve lo que la base hizo, no lo que se le pidió: `fila` es
- * `null` cuando el `update` no afectó ninguna —la policy la rechazó sin error, otro la borró—.
- */
-async function escribirAusenciaSinObra(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  c: Correccion, horas: number, idExistente: string | null,
-): Promise<{ fila: 'insertada' | 'actualizada' | null; error: string | null }> {
-  const tipo = tipoDeMotivo(c.motivo)
-  if (idExistente) {
-    const { data, error } = await supabase.from('registros_hh')
-      .update({ horas, tipo_hora: tipo, notas: c.motivo })
-      .eq('id', idExistente).is('obra_canonica_id', null).select('id')
-    if (error) return { fila: null, error: traducirEscritura(error) }
-    return { fila: (data ?? []).length > 0 ? 'actualizada' : null, error: null }
-  }
-  const { data, error } = await supabase.from('registros_hh').insert({
-    // LA COLUMNA VA EXPLÍCITA EN `null`. Omitirla daría el mismo resultado hoy, pero lo que este
-    // insert AFIRMA es que la ausencia no es de ninguna obra — no que se olvidó de decirlo.
-    obra_canonica_id: null,
-    persona_id: c.persona_id,
-    actividad_id: null,
-    fecha: c.fecha,
-    fecha_inicio_semana: c.fecha,
-    horas,
-    tipo_hora: tipo,
-    notas: c.motivo,
-    fuente_legacy: 'web:correccion-ausencia',
-  }).select('id')
-  if (error) return { fila: null, error: traducirEscritura(error) }
-  return { fila: (data ?? []).length > 0 ? 'insertada' : null, error: null }
 }
 
 /** El nombre de la obra si la persona NO tiene asignación vigente ese día; `null` si sí la tiene. */

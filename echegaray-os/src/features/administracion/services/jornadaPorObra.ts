@@ -365,3 +365,50 @@ export function loQueViaja(
 export function ausenciasSinJornada(vista: VistaCasilla[], jornada: number): string[] {
   return jornada > 0 ? [] : vista.filter((v) => v.estado === 'ausente').map((v) => v.persona_id)
 }
+
+// ── LO QUE ESA PERSONA YA TIENE ESE DÍA FUERA DE ESTA OBRA ─────────────────────────────────────
+//
+// Dos personas del plantel tienen asignación vigente en DOS obras a la vez: sin este aviso, el jefe
+// de cada obra abría la pantalla, veía la jornada sugerida y cargaba — 17,6 hs el mismo día para la
+// misma persona, repartidas, sin una sola advertencia.
+//
+// EL DEFECTO QUE ARREGLA (08/09/2026): la lectura era `.neq('obra_canonica_id', obraId)` y en
+// Postgres `<>` NUNCA es verdadero contra NULL. Desde que la ausencia se registra SIN obra, la fila
+// que más importa avisar —«ya está marcado ausente ese día»— era justo la única invisible: el jefe
+// veía la casilla limpia y le cargaba la jornada encima a alguien declarado ausente.
+
+/** Lo que se dice en la fila: otra obra con horas, o una ausencia que no es de ninguna obra. */
+export interface OtraCargaDelDia {
+  /** El nombre de la obra. Vacío cuando la fila no tiene obra: no hay ninguna que nombrar. */
+  obra: string
+  horas: number
+  /** `true` cuando lo que ya tiene ese día es una ausencia o una licencia SIN obra. */
+  ausente: boolean
+}
+
+/**
+ * El aviso por persona, armado con TODAS sus filas de ese día que no son de esta obra.
+ *
+ * LA AUSENCIA GANA. Si alguien tiene horas en otra obra y además está declarado ausente, lo que hay
+ * que ver primero es la contradicción, no el reparto: nadie trabaja en una obra el día que faltó.
+ */
+export function otrasCargasDelDia(
+  filas: readonly {
+    persona_id: string; horas: number | string; obra_canonica_id: string | null; obra?: string | null
+  }[],
+): Map<string, OtraCargaDelDia> {
+  const out = new Map<string, OtraCargaDelDia>()
+  for (const f of filas) {
+    const previo = out.get(f.persona_id)
+    const sinObra = f.obra_canonica_id === null
+    const horas = (previo?.horas ?? 0) + (Number(f.horas) || 0)
+    out.set(f.persona_id, {
+      // El nombre se conserva del primero que lo tenía: una fila sin obra no puede borrar el rótulo
+      // de la obra donde SÍ hay horas cargadas.
+      obra: previo?.obra || (sinObra ? '' : (f.obra ?? f.obra_canonica_id ?? '')),
+      horas,
+      ausente: (previo?.ausente ?? false) || sinObra,
+    })
+  }
+  return out
+}

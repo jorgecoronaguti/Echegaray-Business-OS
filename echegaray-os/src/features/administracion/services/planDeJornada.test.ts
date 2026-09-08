@@ -46,13 +46,19 @@ test('CORREGIR 8,8 A 5 ACTUALIZA LA FILA, NO AGREGA UNA SEGUNDA', () => {
   assert.deepEqual(plan.borrar, [])
 })
 
-test('MARCAR AUSENTE A QUIEN TENÍA HORAS BORRA LAS HORAS', () => {
+test('MARCAR AUSENTE A QUIEN TENÍA HORAS BORRA LAS HORAS, Y NO ESCRIBE NADA EN LA OBRA', () => {
   // El defecto que atrapa: dejar las dos filas. El día contaría 8,8 horas trabajadas Y una ausencia
   // de la misma persona, y ese doble conteo viaja al costo de mano de obra de la obra.
+  //
+  // Y DESDE EL 08/09/2026 TAMPOCO INSERTA LA AUSENCIA (dueño): *«si la persona está ausente, se le
+  // suma hs pero porque corresponde por ley, no necesariamente sumarle a ninguna obra»*. Antes acá
+  // entraba una fila `tipo_hora='ausencia'` CON la obra del formulario: el costo de mano de obra de
+  // esa obra crecía por un día que nadie trabajó en ella. La fila de la ausencia la decide
+  // `planDeAusenciasSinObra` y va sin obra.
   const plan = planDeGuardado([ausente(A)], [fila('r1', A, 8.8)])
   assert.deepEqual(plan.borrar, ['r1'])
-  assert.equal(plan.insertar.length, 1)
-  assert.equal(plan.insertar[0].estado, 'ausente')
+  assert.deepEqual(plan.insertar, [])
+  assert.deepEqual(plan.actualizar, [])
 })
 
 test('VOLVER DE AUSENTE A PRESENTE BORRA LA AUSENCIA', () => {
@@ -109,7 +115,9 @@ test('EL JEFE DE OBRA NO PISA UNA LICENCIA QUE AUTORIZÓ ADMINISTRACIÓN', () =>
 
   const falta = planDeGuardado([ausente(A, 8.8)], conLicencia)
   assert.deepEqual(falta.borrar, [])
-  assert.equal(falta.insertar.length, 1, 'la ausencia se registra aparte, no se confunde con la licencia')
+  // La ausencia ya no entra en la obra por ningún camino: se registra sin obra. Lo que este plan
+  // tiene que garantizar es que la licencia NO se toque y que se nombre.
+  assert.deepEqual(falta.insertar, [], 'la ausencia no se escribe en la obra')
   assert.deepEqual(falta.intactas.map((i) => i.id), ['r1'])
   assert.match(falta.intactas[0].motivo, /Administración/)
 })
@@ -137,11 +145,12 @@ test('EL TIPO VIAJA EN LA CORRECCIÓN: de trabajado a ausente y al revés', () =
   // El defecto que atrapa: el `update` sólo mandaba `horas`. Corregir una jornada a «no vino»
   // dejaba la fila en `normal` con las horas de la ausencia — el día seguía contando como trabajado.
   const aAusente = planDeGuardado([ausente(A, 8.8)], [fila('r1', A, 8.8)])
-  // Con las MISMAS horas y distinto tipo, la fila normal se borra y entra la ausencia: no alcanza
-  // con actualizar, porque «no había nada que cambiar» sería falso.
+  // Con las MISMAS horas, la fila normal se BORRA igual: el día no se trabajó. No se actualiza a
+  // `ausencia` en la obra —eso dejaría el día como costo de la obra— sino que la ausencia se
+  // escribe sin obra. «No había nada que cambiar» sería falso en las dos versiones de la regla.
   assert.deepEqual(aAusente.borrar, ['r1'])
-  assert.equal(aAusente.insertar.length, 1)
-  assert.equal(aAusente.insertar[0].estado, 'ausente')
+  assert.deepEqual(aAusente.insertar, [])
+  assert.deepEqual(aAusente.actualizar, [])
 })
 
 test('EL ACUSE CUENTA LO QUE LA BASE DEVOLVIÓ, no lo que el plan pidió', () => {
@@ -194,8 +203,11 @@ test('EL ENVÍO SE VALIDA: cero horas, 25 horas y un id que no es uuid no entran
 })
 
 test('EL ACUSE DICE LO QUE PASÓ, no «guardado»', () => {
+  // La ausencia de B ya no aparece en el acuse DE LA OBRA: no se escribe ahí. Lo que se guardó en
+  // la obra es la corrección de A, y eso es lo único que este acuse puede afirmar — lo de afuera lo
+  // dice `acuseDeAusenciasDelDia`.
   const plan = planDeGuardado([presente(A, 5), ausente(B)], [fila('r1', A, 8.8)])
-  assert.equal(acuseDe(comoSiTodoEntro(plan)), 'Día guardado: 1 marca nueva · 1 corregida.')
+  assert.equal(acuseDe(comoSiTodoEntro(plan)), 'Día guardado: 1 corregida.')
 })
 
 // ── LA CORRECCIÓN DE ADMINISTRACIÓN ───────────────────────────────────────────────────────────
@@ -339,53 +351,26 @@ test('EL ERROR DE POSTGRES NO LLEGA CRUDO AL TELÉFONO DEL JEFE', () => {
 
 // ── EL MOTIVO: «ausencias, parte médico, etc» (pedido del dueño, 07/09/2026) ───────────────────
 
-test('EL MOTIVO DECIDE SI EL DÍA ES AUSENCIA O LICENCIA', () => {
-  // Sin esto, vacaciones y «faltó sin avisar» se guardan como el mismo cero: la diferencia entre un
-  // derecho reconocido y una falta desaparece, y es justo la que usa quien liquida.
-  const conParteMedico = planDeGuardado([ausente(A, 8.8, 'enfermedad')], [])
-  assert.equal(conParteMedico.insertar.length, 1)
-
-  // Sobre una fila ya cargada se ve el tipo que le va a tocar. Va con `administraLicencias`
-  // porque corregir una licencia es de Administración: el jefe de obra no la toca.
-  const corrige = planDeGuardado(
-    [ausente(A, 8.8, 'vacaciones')], [fila('r1', A, 8.8, 'licencia')],
-    { administraLicencias: true })
-  assert.deepEqual(corrige.actualizar.map((x) => x.tipo), ['licencia'])
-  assert.deepEqual(corrige.borrar, [])
-
-  const falta = planDeGuardado([ausente(A, 8.8, 'falta')], [fila('r1', A, 8.8, 'ausencia')])
-  assert.deepEqual(falta.actualizar.map((x) => x.tipo), ['ausencia'])
-})
-
-test('CAMBIAR DE FALTA A PARTE MÉDICO CAMBIA LA FILA aunque las horas sean las mismas', () => {
-  // El defecto que atrapa: comparar sólo las horas. Corregir «faltó sin avisar» por «enfermedad» no
-  // mueve ningún número, así que el plan decía «no había nada que cambiar» y dejaba la falta — con
-  // el parte médico en la mano.
-  const plan = planDeGuardado(
-    [ausente(A, 8.8, 'enfermedad')],
-    [fila('r1', A, 8.8, 'ausencia', { notas: 'falta' })],
-  )
-  // La fila pasa de `ausencia` a `licencia`: no es un update, es reemplazo — son tipos distintos.
-  assert.deepEqual(plan.borrar, ['r1'])
-  assert.equal(plan.insertar.length, 1)
-})
-
-test('CORREGIR EL MOTIVO DENTRO DEL MISMO TIPO SÍ ES UN UPDATE', () => {
-  const plan = planDeGuardado(
-    [ausente(A, 8.8, 'falta_con_aviso')],
-    [fila('r1', A, 8.8, 'ausencia', { notas: 'falta' })],
-  )
-  assert.deepEqual(plan.actualizar.map((x) => x.id), ['r1'])
-  assert.deepEqual(plan.borrar, [])
-})
-
-test('EL MISMO MOTIVO Y LAS MISMAS HORAS NO ESCRIBEN DE NUEVO', () => {
-  const plan = planDeGuardado(
-    [ausente(A, 8.8, 'vacaciones')],
-    [fila('r1', A, 8.8, 'licencia', { notas: 'vacaciones' })],
-    { administraLicencias: true },
-  )
-  assert.deepEqual(plan, { insertar: [], actualizar: [], borrar: [], intactas: [] })
+test('EL PLAN DE LA OBRA NUNCA ESCRIBE UNA AUSENCIA, CON MOTIVO O SIN ÉL', () => {
+  // LA INVARIANTE, NO UN CASO. Lo que decide si un día ausente es `ausencia` o `licencia`, y si es
+  // insert o update, vive ahora en `planDeAusenciasSinObra` (`ausenciaDeLaPersona.test.ts`), porque
+  // esa fila va SIN obra. Acá se fija lo único que este plan tiene que garantizar para siempre:
+  // ninguna marca de ausencia —con motivo, sin motivo, con licencia previa o sobre un día cargado—
+  // puede terminar escrita contra `obra_canonica_id`.
+  const casos: { marca: MarcaDeJornada; previas: FilaExistente[] }[] = [
+    { marca: ausente(A, 8.8, 'enfermedad'), previas: [] },
+    { marca: ausente(A, 8.8, 'vacaciones'), previas: [fila('r1', A, 8.8, 'licencia')] },
+    { marca: ausente(A, 8.8, 'falta'), previas: [fila('r1', A, 8.8, 'ausencia', { notas: 'falta' })] },
+    { marca: ausente(A, 8.8, 'falta_con_aviso'), previas: [fila('r1', A, 8.8, 'ausencia', { notas: 'falta' })] },
+    { marca: ausente(A, 8.8), previas: [fila('r1', A, 8.8)] },
+  ]
+  for (const c of casos) {
+    for (const administra of [false, true]) {
+      const plan = planDeGuardado([c.marca], c.previas, { administraLicencias: administra })
+      assert.deepEqual(plan.insertar, [], `insertó una ausencia en la obra (${motivoDe(c.marca)})`)
+      assert.deepEqual(plan.actualizar, [], `actualizó una fila a ausencia (${motivoDe(c.marca)})`)
+    }
+  }
 })
 
 test('UN MOTIVO QUE NO ESTÁ EN EL CATÁLOGO NO ENTRA', () => {
@@ -507,13 +492,17 @@ test('CORREGIR LAS HORAS DE UN DÍA QUE YA EXISTE EN UNA OBRA CERRADA: PERMITIDO
   assert.equal(plan.actualizar.length, 1)
 })
 
-test('MARCAR AUSENCIA SOBRE UN DÍA QUE YA EXISTE EN UNA OBRA CERRADA: PERMITIDO', () => {
-  // Aunque el plan INSERTE —cambiar `normal` por `ausencia` es fila nueva más borrado—, el día ya
-  // estaba cargado en esa obra. Por eso la puerta pregunta por la fila existente y no por
-  // `plan.insertar`: con ese criterio el dueño no habría podido marcar una ausencia vieja.
+test('MARCAR AUSENCIA EN UNA OBRA CERRADA: PERMITIDO — no le imputa nada a esa obra', () => {
+  // Antes esto se sostenía porque el día YA estaba cargado ahí (la puerta pregunta por la fila
+  // existente, no por `plan.insertar`). Desde el 08/09/2026 se sostiene por algo más fuerte: la
+  // ausencia no escribe NADA en la obra, así que no hay costo nuevo que una obra cerrada deba
+  // rechazar. Por eso `guardarJornada` mide la puerta sólo con los PRESENTES.
   const yaCargado = [fila('r1', A, 8.8)]
   assert.deepEqual(personasQueEstrenanDia([ausente(A)], yaCargado), [])
-  assert.ok(planDeGuardado([ausente(A)], yaCargado).insertar.length === 1)
+  assert.deepEqual(planDeGuardado([ausente(A)], yaCargado).insertar, [])
+  // Y aunque el día NO estuviera cargado: sin presentes no hay nada que estrene la obra.
+  const presentesDelEnvio = [ausente(A)].filter((m) => m.estado === 'presente')
+  assert.deepEqual(personasQueEstrenanDia(presentesDelEnvio, []), [])
   assert.equal(puertaDeObraNoActiva({ nombre: 'MAMPOSTERÍA', estado: 'cerrada', crea: false }), null)
 })
 

@@ -264,8 +264,11 @@ test('una ausencia sola sigue siendo una ausencia', () => {
     registros: [reg('p1', PISOS, L, 8.8, 'ausencia')],
   })
   assert.equal(filas[0].celdas[0].estado, 'ausente')
-  assert.equal(filas[0].celdas[0].horas, null)
-  assert.equal(filas[0].horas, null, 'y no suma nada a la quincena')
+  // LAS HORAS DE LA AUSENCIA SE VEN Y SE PAGAN (dueño, 08/09/2026 16:16): «las ausencias que tienen
+  // motivo registrado dan la posibilidad de que se le registre hs, como pasa con los accidentes
+  // laborales». Lo que NO cambia es de quién son: de la persona, de ninguna obra.
+  assert.equal(filas[0].celdas[0].horas, 8.8)
+  assert.equal(filas[0].horas, 8.8, 'suman al total de la PERSONA, porque se le pagan')
 })
 
 test('EL DÍA QUE NO PASÓ NO SE RECLAMA, y el que nadie cargó tampoco', () => {
@@ -330,7 +333,12 @@ test('una ausencia sola no convierte el total en cero', () => {
     asignaciones: [asig('p1', 'Perez Juan', PISOS)],
     registros: [reg('p1', PISOS, L, 8.8, 'ausencia')],
   })
-  assert.equal(totalDeLaQuincena(filas), null, 'una ausencia no es «trabajó cero»')
+  // Ni en cero ni en «—»: son las horas que le corresponden por ley. El `null` sigue siendo para
+  // quien no tiene NINGUNA hora declarada — ver el test de abajo.
+  assert.equal(totalDeLaQuincena(filas), 8.8)
+  assert.equal(totalDeLaQuincena(armar({
+    asignaciones: [asig('p1', 'Perez Juan', PISOS)], registros: [],
+  })), null, 'sin ninguna hora declarada el total sigue siendo «—», nunca un 0')
 })
 
 test('los chips cuentan personas por rótulo, no por obra técnica', () => {
@@ -369,8 +377,10 @@ test('UNA PERSONA CON SÓLO LICENCIAS EN LA QUINCENA TIENE SU FILA, con celdas L
   assert.equal(filas[0].persona.nombre, 'QUIROGA ALEXANDER SEBASTIAN')
   assert.equal(filas[0].celdas[0].estado, 'licencia', 'licencia, NO ausencia')
   assert.equal(filas[0].celdas[0].motivo, 'Enfermedad', 'el motivo del catálogo, para el tooltip')
-  assert.equal(filas[0].celdas[0].horas, null, 'una licencia NO suma horas trabajadas')
-  assert.equal(filas[0].horas, null, 'el total es «—», nunca un 0 que afirme que trabajó cero')
+  // 9 hs por día de licencia: se le reconocen a la persona y no son costo de ninguna obra —el
+  // rótulo de obra sale del cliente de sus registros, no de estas horas.
+  assert.equal(filas[0].celdas[0].horas, 9)
+  assert.equal(filas[0].horas, 27, 'tres días de licencia de 9 hs que se le pagan')
   assert.deepEqual(filas[0].reclama, [], 'un día de licencia no es un día sin marcar')
   // LA OBRA ES LA DE SUS REGISTROS, por el cliente: sin asignación activa no hay obra que mostrar,
   // y el id es una clave técnica que el dueño ya rechazó en pantalla.
@@ -591,7 +601,7 @@ test('UNA AUSENCIA SIN OBRA PONE LA «A» EN LA CELDA: LA PERSONA NO QUEDA SIN M
     registros: [reg('p1', null, L, 9, 'ausencia', 'enfermedad')],
   })
   assert.equal(filas[0].celdas[0].estado, 'ausente')
-  assert.equal(filas[0].celdas[0].horas, null)
+  assert.equal(filas[0].celdas[0].horas, 9, 'la «A» arriba y las horas reconocidas abajo')
 })
 
 test('UNA AUSENCIA SIN OBRA NO SE MUESTRA COMO UN TRAMO DE OBRA', () => {
@@ -624,11 +634,19 @@ test('UNA AUSENCIA SIN OBRA PONE A SU PERSONA EN LA GRILLA Y NO FABRICA «horas 
     'con obra sí rotula: es lo que hacía la deducción que el dueño rechazó')
 })
 
-test('LAS HORAS DE UNA AUSENCIA NO SUMAN A NINGUNA OBRA NI AL TOTAL TRABAJADO', () => {
+test('LAS HORAS DE UNA AUSENCIA NO SUMAN A NINGUNA OBRA; SÍ AL TOTAL DE LA PERSONA', () => {
+  // LA REGLA COMPLETA, EN UN SOLO CASO (dueño, 08/09/2026 16:16). Este test entró esa mañana
+  // afirmando que la ausencia no sumaba a NADA; la ampliación de la tarde lo corrigió: se le
+  // reconocen a la persona porque se le pagan. Lo que sigue prohibido —y es lo que el dueño
+  // rechazó— es que aparezcan como horas de una obra.
   const filas = armar({
     asignaciones: [asig('p1', 'GONZALEZ TOBARES', PISOS)],
     registros: [reg('p1', null, L, 9, 'ausencia'), reg('p1', PISOS, M, 8, 'normal')],
   })
-  assert.equal(filas[0].horas, 8, 'las 9 hs de la ausencia no son horas trabajadas de ninguna obra')
-  assert.equal(totalDeLaQuincena(filas), 8)
+  assert.equal(filas[0].horas, 17, '8 trabajadas + 9 reconocidas por la ausencia')
+  assert.equal(totalDeLaQuincena(filas), 17)
+  // NINGUNA OBRA LAS RECIBE: el día de la ausencia no tiene tramos, así que no hay «horas en …»
+  // que pueda nombrarlas. Es la mitad de la regla que el dueño rechazó ver rota.
+  assert.deepEqual(filas[0].celdas[0].tramos, [])
+  assert.deepEqual(filas[0].celdas[1].tramos.map((t) => [t.nombre, t.horas]), [['PISOS INDUSTRIALES', 8]])
 })

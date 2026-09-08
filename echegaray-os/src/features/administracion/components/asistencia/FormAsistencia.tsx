@@ -6,7 +6,9 @@ import {
   ausenciasSinJornada, avisoDeFaltantes, casillasIniciales, estadoDeCasilla, hs, loQueViaja,
   ponerLaJornada, resumenJornada, sumarPersonasNuevas,
 } from '@/features/administracion/services/jornadaPorObra'
-import type { CasillaJornada, FilaJornada } from '@/features/administracion/services/jornadaPorObra'
+import type {
+  CasillaJornada, FilaJornada, OtraCargaDelDia,
+} from '@/features/administracion/services/jornadaPorObra'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '@/features/administracion/services/motivoDeAusencia'
 import { horasSegunPresencia, personasSinHoras } from '@/features/administracion/services/presenciaDelDia'
@@ -45,7 +47,7 @@ import type { PresenciaGuardada } from '@/features/administracion/services/prese
 
 /** Lo que ya tiene esa persona cargado ESE día en otra obra. Sin esto, dos jefes cargan la jornada
  *  de la misma persona el mismo día y quedan 17,6 hs repartidas entre dos obras. */
-export type FilaConOtraObra = FilaJornada & { enOtraObra?: { obra: string; horas: number } | null }
+export type FilaConOtraObra = FilaJornada & { enOtraObra?: OtraCargaDelDia | null }
 
 export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, presencia = [] }: {
   obraId: string
@@ -202,7 +204,12 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
                       persona terminaba con 17,6 hs el mismo día, repartidas, sin un solo aviso. */}
                   {fila.enOtraObra && (
                     <p className="truncate text-[12px] text-[#B54708]" data-testid="ya-en-otra-obra">
-                      ya tiene {hs(fila.enOtraObra.horas)} hs ese día en {fila.enOtraObra.obra}
+                      {/* LA AUSENCIA NO TIENE OBRA QUE NOMBRAR (08/09/2026). Decir «en …» sobre una
+                          fila sin obra escribiría un slug o un vacío justo donde hay que entender
+                          que esa persona ya está declarada ausente ese día. */}
+                      {fila.enOtraObra.ausente
+                        ? 'ya está marcado ausente ese día'
+                        : `ya tiene ${hs(fila.enOtraObra.horas)} hs ese día en ${fila.enOtraObra.obra}`}
                     </p>
                   )}
                 </div>

@@ -148,6 +148,22 @@ export function planDeGuardado(
       plan.intactas.push({ id: e.id, motivo: motivoDeNoTocar(e) })
     }
     const deLaJornada = suyas.filter((x) => esDeLaJornada(x, administra))
+
+    // ═══ LA AUSENCIA NO ES DE ESTA OBRA (dueño, 08/09/2026) ═══
+    //
+    // *«si la persona está ausente, se le suma hs pero porque corresponde por ley, no
+    // necesariamente sumarle a ninguna obra»*. Así que el plan DE LA OBRA no la inserta ni la
+    // corrige: lo único que hace con ella es SACAR lo que tuviera cargado ahí ese día, porque no
+    // trabajó. La fila de la ausencia se escribe sin obra y la decide `planDeAusenciasSinObra`
+    // (`ausenciaDeLaPersona.ts`), que es la misma regla que usa el panel de corrección.
+    //
+    // Antes acá se insertaba `tipo_hora='ausencia'` CON la obra del formulario: el costo de mano de
+    // obra de esa obra crecía por un día que nadie trabajó en ella.
+    if (m.estado === 'ausente') {
+      for (const e of deLaJornada) plan.borrar.push(e.id)
+      continue
+    }
+
     const misma = deLaJornada.find((e) => e.tipo_hora === quiero) ?? null
     // La OTRA fila de la jornada (la contraria: ausencia cuando se declara trabajo, y al revés) sí
     // se borra: un día no puede ser trabajado y faltado a la vez, y las dos las escribe esta misma

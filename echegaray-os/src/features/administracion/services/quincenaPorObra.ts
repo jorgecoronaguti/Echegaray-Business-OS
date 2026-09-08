@@ -64,7 +64,11 @@ export interface TramoDeObra {
 export interface CeldaObra {
   fecha: string
   estado: EstadoCeldaObra
-  /** Horas trabajadas del día, sumando todas sus obras. `null` en todo lo que no sea `horas`. */
+  /** Las horas del día. En un día trabajado, las de todas sus obras. En una ausencia o una
+   *  licencia, LAS QUE CORRESPONDEN POR LEY (dueño, 08/09/2026 16:16: «las ausencias que tienen
+   *  motivo registrado dan la posibilidad de que se le registre hs, como pasa con los accidentes
+   *  laborales»): se le pagan a la persona y no son costo de ninguna obra. `null` sólo cuando no
+   *  hay ninguna hora declarada. */
   horas: number | null
   /** Una entrada por obra con algo cargado ese día. Vacío cuando no hay nada. */
   tramos: TramoDeObra[]
@@ -274,7 +278,10 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
       celdas,
       // `null` Y NO CERO CUANDO NO HAY NINGUNA HORA. Un «0» afirma que esa persona trabajó cero
       // horas esa quincena; lo que pasa es que no hay con qué contestar.
-      horas: celdas.some((c) => c.estado === 'horas')
+      // SE PREGUNTA POR LAS HORAS, NO POR EL ESTADO. Con `c.estado === 'horas'`, una quincena
+      // entera de licencia daba `null` —«no hay con qué contestar»— sobre alguien que tiene todas
+      // sus horas reconocidas. El `null` sigue existiendo para quien no tiene NINGUNA hora.
+      horas: celdas.some((c) => c.horas !== null)
         ? redondear(celdas.reduce((s, c) => s + (c.horas ?? 0), 0))
         : null,
       reclama: celdas.filter((c) => c.estado === 'sin_marcar').map((c) => c.fecha),
@@ -493,7 +500,12 @@ function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro
     // falta le saca un derecho al legajo. Ninguna de las dos suma horas trabajadas.
     const licencia = registros.some((r) => r.tipo_hora === 'licencia')
     return {
-      fecha, estado: licencia ? 'licencia' : 'ausente', horas: null, tramos,
+      fecha, estado: licencia ? 'licencia' : 'ausente', tramos,
+      // LAS HORAS DE LA AUSENCIA SE VEN Y SE SUMAN A LA PERSONA. Eran `null` —«una ausencia no tiene
+      // horas»— y el dueño lo corrigió el 08/09/2026: un accidente de trabajo o una licencia llevan
+      // las horas que corresponden por ley, y se pagan. Lo que NO cambia es a quién se le imputan:
+      // la fila vive sin obra, no entra en ningún tramo y no aparece en «horas en …».
+      horas: redondear(registros.reduce((s, r) => s + numero(r.horas), 0)),
       motivo: motivoDelDia(registros),
     }
   }
@@ -545,7 +557,7 @@ function tramosDe(
 export function totalesPorDia(filas: FilaQuincena[], dias: string[]): (number | null)[] {
   return dias.map((fecha, i) => {
     const celdas = filas.map((f) => f.celdas[i]).filter((c) => c?.fecha === fecha)
-    if (celdas.every((c) => c.estado !== 'horas')) return null
+    if (celdas.every((c) => c.horas === null)) return null
     return redondear(celdas.reduce((s, c) => s + (c.horas ?? 0), 0))
   })
 }
