@@ -199,7 +199,7 @@ export function clasificar(fila = []) {
  */
 export function estadoTipeadoQueContradice(filaFormula = [], filaValor = []) {
   const tipeado = txt(filaFormula[COL.estado])
-  if (!tipeado || tipeado.startsWith('=') || tipeado === 'ELIMINADO') return null
+  if (!tipeado || tipeado.startsWith('=') || /^(ELIMINADO|Cancelado)$/i.test(tipeado)) return null
   if (!txt(filaValor[COL.proveedor])) return null
   const t = num(filaValor[COL.pagado]) + num(filaValor[COL.parcial2])
   const o = num(filaValor[COL.total])
