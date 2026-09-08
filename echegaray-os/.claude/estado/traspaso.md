@@ -2,26 +2,29 @@
 
 _actualizado: 2026-09-07 (noche) · commit `d70430d3` en main y en producción_
 
-## 0. LO QUE PASÓ HOY (07/09) Y QUEDÓ CERRADO
+## 0. LO QUE PASÓ HOY (08/09) — PUBLICADO (main = 9ce5c721 o posterior)
 
-- **OBRAS (Sheet)**: dos cuadros, 11 columnas. Columna D = **Contratado** (precio de la obra: OC de
-  Cobranzas, «precio N» > «s/ total N», U$S×TC para Quattropani, suma viva si no se declara). La obra
-  cobrada entera (por ESTADO) sale. Dilución y Tercer Muro con costo desde su planilla de cotización
-  (CÁLCULO). Pisos 120 + Rampa: FALTA_DATO — la planilla fue sobreescrita el 18/08 y la revisión del
-  12/06 da 403 por API con jorge@ y rodrigo@; el dueño puede bajarla desde Drive → Administrar versiones.
-- **Cash Flow**: (1) agosto tenía $0 de jornales por una fecha imposible que el testigo del banco dejaba
-  pasar — arreglado; (2) oct–dic proyectaban nómina a jornada plena ($20M/mes vs $7–9M reales) —
-  ahora horas MEDIDAS en las dos ramas; (3) por orden del dueño (dos veces) la celda «Obreros» vuelve a
-  MAX(plantel; demanda de OBRAS) con UNA frontera y gate en JS. Cierre publicado: **$122.275.139**.
-  Mensual y Semanal cuadran al peso. El control de asimetría sigue en ⛔: nov–dic sin materiales de obra
-  y cobro de dic cubre 57% de la nómina — es dato del dueño, no bug.
-- **Recurrentes** oculta (contenido vive en Estructura · bloque 2). **Categoría** en vez de «Puesto».
-- **Performance web**: 29 `<Link prefetch={false}>` (abrir /documentos costaba 25 renders). Falta la
-  causa secundaria: viaje serial a `perfiles` en el middleware (~120 ms por request).
-- **Gantt**: columna PLAZO con inicio → fin; migración aplicada que alineó Pisos Industriales y
-  Entrepiso con la pestaña OBRAS; control `obras-cartera-canonica.mjs` (Mampostería cerrada es
-  esperado).
-- **Portal**: San Francisco al peso; 6 cobros ocultos publicados; neto/IVA de las filas 94/95.
+- **Asistencia (app)**: grilla por QUINCENA, una fila por persona, «Obra actual» (obra activa o cliente, nunca
+  slug), panel lateral (Drawer) que queda abierto tras guardar; carga MÓVIL desde Administración (decisión
+  servidor por `sec-ch-ua-mobile`/UA, `?modo=dia|quincena`; `FormAsistencia` MOVIDO a
+  `features/administracion/components/asistencia/`); atajo «Cargar asistencia» en menú del avatar. Ficha de la
+  persona: Resumen por quincena (franja de días + 4 cifras + últimas 6 quincenas), bloque «Obras en las que
+  trabajó» (cerradas incluidas, fuente `registros_hh`), Horas por quincena. Todo auditado (firmas con límites:
+  sin iPhone real; `getHHDePersona` sin paginar → techo 1.000 filas; `page.tsx` personas 557 líneas).
+- **JORNALES 2026 → `registros_hh`** (`fuente_legacy='sheet:jornales'`, 3.440 filas, 36 personas; importador
+  en main; sólo fechas ≤ hoy; alias con cliente). FALTA_DATO: Pablo Ramos, Alex Videla, J.L. Balmaceda, Hugo
+  Barrera (sin legajo ni carpeta en Drive); 3 conflictos app vs planilla (Aguero 19/08, 21/08; Alaniz 20/08).
+- **Login unificado**: `inicioDeRol` = `destinoDeLaHome` (jefe → /administracion); `volver` blindado; cliente intacto.
+- **Sheet**: F931 ago REAL 07/09 $8.331.697,69 (era $6,5M tipeado); Compras: 28 filas Cancelado (salen por
+  Jornales/Cargas), f483 Pagado; extracto 08/09 y 18 echeq cargados (Machuca/Femenia/Dupec 366 cruzados);
+  banco cierra de punta a punta ($4.362.486 al 08/09). JORNALES K = SUM(AB) (costo real, no efectivo): nómina
+  obrera real $15–17M/mes, quincena proyectada ~$7,5M (era $3,3M) → cierre CF Mensual $104,1M (era $122,3M).
+  Doble conteo jornales: NO (verificado 4 quincenas); A7 «efectivo sin explicar» corregido (−22,6M doble) →
+  −$123M = FALTA_DATO del dueño (efectivo sin fuente). Botones mes/semana actual con hyperlink; CAJA 68 filas
+  + verificador en pipeline.
+- **EN CURSO al cerrar**: corrección inline en obra cerrada (rama `fix/correccion-obra-cerrada`); materiales de
+  OBRAS repartidos en el plazo y netos de compras, SIN emitir MO (ya en jornales); costos MA/MO faltantes
+  desde Drive (`obras-datos.mjs`). Los 17 ítems de `obra_egreso_proyectado` con fecha 01/10 NO van como bulto.
 
 ## 0.1 ABIERTO / DECISIONES DEL DUEÑO PENDIENTES
 
