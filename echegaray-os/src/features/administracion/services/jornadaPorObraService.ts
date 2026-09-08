@@ -11,8 +11,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAsignaciones } from '../../obras/services/personalService.ts'
-import type { FilaJornada } from './jornadaPorObra.ts'
-import { armarJornada } from './jornadaPorObra.ts'
+import type { AsignacionVigente, FilaJornada } from './jornadaPorObra.ts'
+import { armarJornada, asignadosPorObra, vigenteEn } from './jornadaPorObra.ts'
 import type {
   AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena,
 } from './quincenaPorObra.ts'
@@ -61,10 +61,6 @@ export function notaDe(a: {
   void a.rol; void a.persona_especialidad
   return (a.persona_categoria ?? '').trim().replace('_', ' ') || null
 }
-
-/** ¿Estaba asignado ese día? `desde`/`hasta` en null significan «sin límite», no «nunca». */
-const vigenteEn = (a: { desde: string | null; hasta: string | null }, fecha: string): boolean =>
-  (!a.desde || a.desde <= fecha) && (!a.hasta || a.hasta >= fecha)
 
 export async function getObraDeLaJornada(
   supabase: SupabaseClient, obraId: string,
@@ -346,8 +342,11 @@ export interface ObraParaJornada {
   id: string
   nombre: string
   jornada: number
-  /** Asignados VIGENTES ese día. `null` si la lectura de asignaciones falló: cero afirmaría que la
-   *  obra está sin gente, y una obra sin gente es una razón para no tocarla. */
+  /** PERSONAS DISTINTAS a marcar ese día — sin los jefes de obra y sin contar dos veces a quien
+   *  tiene dos asignaciones vigentes (ver `asignadosPorObra`). Es el número que la lista pone al
+   *  lado del nombre y tiene que coincidir con las filas que se abren al tocar.
+   *  `null` si la lectura de asignaciones falló: cero afirmaría que la obra está sin gente, y una
+   *  obra sin gente es una razón para no tocarla. */
   asignados: number | null
 }
 
@@ -360,27 +359,30 @@ export interface ObraParaJornada {
 export async function getObrasParaJornada(
   supabase: SupabaseClient, fecha: string,
 ): Promise<{ data: ObraParaJornada[]; error: string | null }> {
-  const [obras, asignaciones] = await Promise.all([
+  const [obras, asignaciones, puestos] = await Promise.all([
     supabase.from('obra_canonica')
       .select('id, nombre, jornada_horas').eq('estado', 'activa').order('nombre'),
     // `obra_id`, NO `obra_canonica_id`. La columna de esta tabla se llama `obra_id` —lo confirma
     // `getAsignaciones`—; pedir la que no existe devuelve un error de PostgREST, el conteo cae a
     // `null` y la lista publica «sin conteo» en TODAS las obras. Se vio en la captura de 390px del
     // 08/09: nueve obras, nueve «sin conteo». El fallback fue honesto (no dijo 0) y el dato no estaba.
-    supabase.from('obra_asignacion').select('obra_id, desde, hasta'),
+    // `persona_id` VIAJA, y no es decorativo: sin él el conteo suma FILAS y la misma persona con
+    // dos asignaciones vigentes el mismo día cuenta dos veces. Ver `asignadosPorObra`.
+    supabase.from('obra_asignacion').select('obra_id, persona_id, desde, hasta'),
+    puestosDe(supabase),
   ])
   if (obras.error) return { data: [], error: obras.error.message }
 
-  const vigentes = new Map<string, number>()
-  if (!asignaciones.error) {
-    for (const a of (asignaciones.data ?? []) as {
-      obra_id: string | null; desde: string | null; hasta: string | null
-    }[]) {
-      if (a.obra_id && vigenteEn(a, fecha)) {
-        vigentes.set(a.obra_id, (vigentes.get(a.obra_id) ?? 0) + 1)
-      }
-    }
-  }
+  const vigentes = asignaciones.error
+    ? new Map<string, number>()
+    : asignadosPorObra(
+      (asignaciones.data ?? []) as AsignacionVigente[],
+      fecha,
+      // El conteo cuenta A QUIENES HAY QUE MARCAR, y el jefe no se marca a sí mismo. Si la lectura
+      // de puestos falla nadie es jefe: el número vuelve a ser el de antes, que es un número de más
+      // pero no una lista rota.
+      (personaId) => esJefeDeObra(puestos[personaId] ?? null),
+    )
 
   const data = ((obras.data ?? []) as {
     id: string; nombre: string; jornada_horas: number | string | null

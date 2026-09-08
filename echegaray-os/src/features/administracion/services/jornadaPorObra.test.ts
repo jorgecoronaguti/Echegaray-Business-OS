@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarJornada, ausenciasSinJornada, avisoDeFaltantes, casillasIniciales, estadoDeCasilla, hs,
+  armarJornada, asignadosPorObra, ausenciasSinJornada, avisoDeFaltantes, casillasIniciales,
+  estadoDeCasilla, hs,
   leerHoras, loQueViaja, ponerLaJornada, resumenJornada, sobreLaJornada, sumarPersonasNuevas,
 } from './jornadaPorObra.ts'
 import type { PersonaDeLaObra, RegistroDelDia } from './jornadaPorObra.ts'
@@ -282,4 +283,41 @@ test('EL QUE SE FUE DE LA CUADRILLA PIERDE SU CASILLA: no puede viajar en el gua
   const conTipeado = { ...casillasIniciales(antes), b: { texto: '8', ausente: false } }
   const despues = armarJornada({ personas: [p('a', 'González')], registros: [], jornada: JORNADA })
   assert.deepEqual(Object.keys(sumarPersonasNuevas(conTipeado, despues)), ['a'])
+})
+
+// ── EL CONTEO DE LA LISTA DE OBRAS ───────────────────────────────────────────────────────────────
+//
+// Defecto visto en producción el 08/09/2026: «SF - PISOS INDUSTRIALES · 8 personas» y seis filas al
+// abrir. El conteo sumaba FILAS de `obra_asignacion`; el roster de la pantalla deduplica por
+// persona. Un número que promete dos personas que no existen manda a buscar gente que no falta.
+
+const asg = (persona_id: string, obra_id: string, desde: string | null = null, hasta: string | null = null) =>
+  ({ persona_id, obra_id, desde, hasta })
+
+const nadieEsJefe = () => false
+
+test('la misma persona con DOS asignaciones vigentes cuenta UNA vez', () => {
+  // El traspaso normal de un frente a otro: una asignación cierra el 07 y otra abre el 08.
+  const cuenta = asignadosPorObra([
+    asg('ochoa', 'sf', '2026-08-01', '2026-09-08'),
+    asg('ochoa', 'sf', '2026-09-08', null),
+    asg('quiroga', 'sf', null, null),
+  ], '2026-09-08', nadieEsJefe)
+  assert.equal(cuenta.get('sf'), 2, 'el conteo volvió a sumar filas en vez de personas')
+})
+
+test('el conteo NO incluye a los jefes: son los que no se marcan a sí mismos', () => {
+  const cuenta = asignadosPorObra(
+    [asg('nievas', 'sf'), asg('acosta', 'sf')], '2026-09-08', (id) => id === 'nievas',
+  )
+  assert.equal(cuenta.get('sf'), 1)
+})
+
+test('la asignación que no está vigente ese día no cuenta, y la obra sin gente no aparece', () => {
+  const cuenta = asignadosPorObra([
+    asg('ochoa', 'sf', null, '2026-09-07'),
+    asg('sinObra', null as unknown as string, null, null),
+  ], '2026-09-08', nadieEsJefe)
+  assert.equal(cuenta.has('sf'), false, 'una asignación cerrada ayer no pone a nadie en la obra de hoy')
+  assert.equal(cuenta.size, 0)
 })

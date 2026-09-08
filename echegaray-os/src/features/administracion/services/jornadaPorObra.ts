@@ -140,6 +140,53 @@ export function armarJornada({ personas, registros, jornada }: {
   })
 }
 
+/** ¿Estaba asignado ese día? `desde`/`hasta` en null significan «sin límite», no «nunca». */
+export const vigenteEn = (
+  a: { desde: string | null; hasta: string | null }, fecha: string,
+): boolean => (!a.desde || a.desde <= fecha) && (!a.hasta || a.hasta >= fecha)
+
+/** Una asignación de `obra_asignacion`, acotada a lo que decide el conteo de la lista de obras. */
+export interface AsignacionVigente {
+  obra_id: string | null
+  persona_id: string | null
+  desde: string | null
+  hasta: string | null
+}
+
+/**
+ * CUÁNTA GENTE HAY QUE MARCAR EN CADA OBRA — el número que la lista del teléfono pone al lado del
+ * nombre, y que tiene que coincidir con las filas que después se abren.
+ *
+ * DOS DEFECTOS QUE ESTA FUNCIÓN EXISTE PARA IMPEDIR, los dos vistos en producción el 08/09/2026 en
+ * «SF - PISOS INDUSTRIALES · 8 personas» con seis filas debajo:
+ *
+ *  1. CONTAR ASIGNACIONES EN VEZ DE PERSONAS. Ochoa y Quiroga S.A. tenían DOS asignaciones vigentes
+ *     el mismo día —una que cerraba el 07/09 y otra que abría el 08/09, el traspaso normal de un
+ *     frente a otro—: dos filas, una sola persona. El roster de la pantalla ya deduplicaba; el
+ *     conteo no, y el número prometía dos personas que no existen.
+ *  2. CONTAR A LOS JEFES. El jefe no se marca a sí mismo (`personasAMarcar`), así que si entra en
+ *     el conteo el número vuelve a prometer una fila más de las que la pantalla ofrece.
+ *
+ * `esJefe` se recibe: quién es jefe lo decide `esJefeDeObra(puesto)` en el servidor, y esta función
+ * no puede tener su propia idea de eso.
+ */
+export function asignadosPorObra(
+  asignaciones: readonly AsignacionVigente[],
+  fecha: string,
+  esJefe: (persona_id: string) => boolean,
+): Map<string, number> {
+  const porObra = new Map<string, Set<string>>()
+  for (const a of asignaciones) {
+    if (!a.obra_id || !a.persona_id) continue
+    if (!vigenteEn(a, fecha)) continue
+    if (esJefe(a.persona_id)) continue
+    const previas = porObra.get(a.obra_id)
+    if (previas) previas.add(a.persona_id)
+    else porObra.set(a.obra_id, new Set([a.persona_id]))
+  }
+  return new Map([...porObra].map(([obra, personas]) => [obra, personas.size]))
+}
+
 /** El pie: «7 presentes · 1 no vino · 59 hs» y a quién falta marcar. */
 export function resumenJornada(filas: FilaJornada[]): ResumenJornada {
   return {
