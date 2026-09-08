@@ -38,6 +38,9 @@ export function norm(s) {
     .replace(/[^a-z0-9ñ]+/g, ' ').trim()
 }
 const tokens = (s) => norm(s).split(' ').filter((t) => t && !/^\d+$/.test(t))
+/** La MISMA clave que `public.norm_obra` (la que indexa `obra_alias`): sin artículos ni «de/del».
+ *  Si acá se normaliza distinto que en la base, un alias cargado no se encuentra y parece que falta. */
+export const normAlias = (s) => norm(s).replace(/\b(la|el|los|las|de|del)\b/g, ' ').replace(/\s+/g, ' ').trim()
 
 /**
  * Lee TODAS las celdas diarias de una pestaña: una marca por (trabajador, fecha) escrita.
@@ -140,10 +143,10 @@ export function emparejarPersona(nombre, indice) {
 
 /** ¿El cliente de la obra canónica es el mismo que el rótulo de cliente de la planilla? */
 function clienteCompatible(canonica, clienteSheet, clienteAlias) {
-  const ct = norm(canonica.cliente_texto)
+  const ct = normAlias(canonica.cliente_texto)
   if (!ct) return false
-  const cs = norm(clienteSheet)
-  const canon = norm(clienteAlias.get(cs) ?? '')
+  const cs = normAlias(clienteSheet)
+  const canon = normAlias(clienteAlias.get(cs) ?? '')
   return [cs, canon].filter(Boolean).some((x) => ct === x || ct.startsWith(x))
 }
 
@@ -162,12 +165,12 @@ function clienteCompatible(canonica, clienteSheet, clienteAlias) {
 export function resolutorDeObra({ alias = new Map(), canonicas = [], clienteAlias = new Map() } = {}) {
   const porNombre = new Map()
   for (const c of canonicas) {
-    const k = norm(c.nombre)
+    const k = normAlias(c.nombre)
     if (!porNombre.has(k)) porNombre.set(k, [])
     porNombre.get(k).push(c)
   }
   return function resolver({ cliente, obra }, { asignacion = null, ultima = null } = {}) {
-    const c = norm(cliente); const o = norm(obra)
+    const c = normAlias(cliente); const o = normAlias(obra)
     if (o && alias.has(`${c} ${o}`)) return { obra_id: alias.get(`${c} ${o}`), origen: 'obra_por_alias' }
     if (o && o !== c && alias.has(o)) return { obra_id: alias.get(o), origen: 'obra_por_alias' }
     if (o) {

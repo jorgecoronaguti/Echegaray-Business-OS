@@ -24,7 +24,7 @@ import { query, withTx, closePool } from '../lib/db.mjs'
 import { JORNALES_SPREADSHEET_ID } from '../lib/tools/jornales-asistencia.mjs'
 import {
   FUENTE, marcasDeGrid, planDeRegistros, resolutorDeObra, separarConflictos, resumir, columnasParaUpsert,
-  SQL_UPSERT, SQL_MOVER, mapaDeRotulos,
+  SQL_UPSERT, SQL_MOVER, mapaDeRotulos, normAlias,
 } from '../lib/jornales-a-registros-hh.mjs'
 
 const arg = (n, d = null) => { const i = process.argv.indexOf(`--${n}`); return i > 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : d }
@@ -45,13 +45,12 @@ async function catalogos() {
     query("select rotulo_clave, cliente_canonico from public.cliente_alias where fuente = 'JORNALES'"),
     query("select persona_id, obra_id, to_char(desde, 'YYYY-MM-DD') desde, to_char(hasta, 'YYYY-MM-DD') hasta from public.obra_asignacion"),
   ])
-  const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9ñ]+/g, ' ').trim()
   return {
     personas: personas.rows,
     resolver: resolutorDeObra({
-      alias: new Map(alias.rows.map((r) => [norm(r.alias), r.obra_id])),
+      alias: new Map(alias.rows.map((r) => [normAlias(r.alias), r.obra_id])),
       canonicas: canonicas.rows,
-      clienteAlias: new Map(clienteAlias.rows.map((r) => [norm(r.rotulo_clave), r.cliente_canonico])),
+      clienteAlias: new Map(clienteAlias.rows.map((r) => [normAlias(r.rotulo_clave), r.cliente_canonico])),
     }),
     asignaciones: asignaciones.rows,
     jornadaPorObra: new Map(canonicas.rows.map((r) => [r.id, Number(r.jornada_horas)])),

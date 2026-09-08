@@ -53,7 +53,7 @@ const CANONICAS = [
   { id: 'le-galpon-9', nombre: 'Galpón 9', cliente_texto: 'La Estrella' },
   { id: 'quattropani', nombre: 'SALÓN COMERCIAL', cliente_texto: 'Quattropani - Melisa García SAS' },
 ]
-const ALIAS = new Map([['javier sanchez', 'san-francisco'], ['estrella', 'la-estrella'], ['la estrella', 'la-estrella'], ['quattropani', 'quattropani']])
+const ALIAS = new Map([['javier sanchez', 'san-francisco'], ['estrella', 'la-estrella'], ['quattropani', 'quattropani'], ['estrella oficinas y fabrica', 'le-comedor'], ['javier sanchez entre', 'entrepiso-y-escalera']])
 const CLIENTE_ALIAS = new Map([['javier sanchez', 'SAN FRANCISCO']])
 const resolver = resolutorDeObra({ alias: ALIAS, canonicas: CANONICAS, clienteAlias: CLIENTE_ALIAS })
 
@@ -110,7 +110,9 @@ test('resolutorDeObra: alias > nombre canónico del MISMO cliente > alias del cl
   assert.deepEqual(resolver({ cliente: 'LA ESTRELLA', obra: 'MAMPOSTERIA' }), { obra_id: 'la-estrella', origen: 'obra_por_alias_cliente' }, 'la MAMPOSTERÍA canónica es de San Francisco: no se cruza de cliente')
   assert.deepEqual(resolver({ cliente: 'LA ESTRELLA', obra: 'GALPON 9' }), { obra_id: 'le-galpon-9', origen: 'obra_por_nombre' })
   assert.deepEqual(resolver({ cliente: 'QUATTROPANI', obra: 'SALON COMERCIAL' }), { obra_id: 'quattropani', origen: 'obra_por_nombre' })
-  assert.deepEqual(resolver({ cliente: 'LA ESTRELLA', obra: 'OFICINAS Y FABRICA' }, { asignacion: 'pisos-industriales' }), { obra_id: 'la-estrella', origen: 'obra_por_alias_cliente' }, 'el cliente por nombre canónico gana a la asignación')
+  assert.deepEqual(resolver({ cliente: 'LA ESTRELLA', obra: 'GALPON 8' }, { asignacion: 'pisos-industriales' }), { obra_id: 'la-estrella', origen: 'obra_por_alias_cliente' }, 'el cliente por alias (clave norm_obra: «estrella») gana a la asignación')
+  assert.deepEqual(resolver({ cliente: 'LA ESTRELLA', obra: 'OFICINAS Y FABRICA' }), { obra_id: 'le-comedor', origen: 'obra_por_alias' }, 'el alias «cliente obra» se busca con la clave de norm_obra (sin el artículo)')
+  assert.deepEqual(resolver({ cliente: 'JAVIER SANCHEZ', obra: 'Entre' }), { obra_id: 'entrepiso-y-escalera', origen: 'obra_por_alias' })
   assert.deepEqual(resolver({ cliente: 'GAMA', obra: 'GAMA' }, { asignacion: 'arcor', ultima: 'la-estrella' }), { obra_id: null, origen: null }, 'un rótulo que no se reconoce NO se reemplaza por la asignación')
   assert.deepEqual(resolver({ cliente: '', obra: '' }, { asignacion: 'arcor', ultima: 'la-estrella' }), { obra_id: 'arcor', origen: 'obra_por_asignacion' })
   assert.deepEqual(resolver({ cliente: '', obra: '' }, { ultima: 'la-estrella' }), { obra_id: 'la-estrella', origen: 'obra_por_ultimo_bloque' })
