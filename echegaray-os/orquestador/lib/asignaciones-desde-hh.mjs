@@ -133,7 +133,7 @@ const seSolapan = (a, b) =>
  *   - la persona tiene una asignación WEB vigente (hasta null) en OTRA obra → el tramo abierto se
  *     cierra en su último día (`cerrados`). La obra de hoy la dice la web, no el histórico.
  */
-export function conciliar(tramos, existentes) {
+export function conciliar(tramos, existentes, { conjunto = false } = {}) {
   const previas = existentes.filter((a) => !esDePrueba(a)).map((a) => ({
     ...a, desde: a.desde ? fechaIso(a.desde) : null, hasta: a.hasta ? fechaIso(a.hasta) : null,
   }))
@@ -145,7 +145,7 @@ export function conciliar(tramos, existentes) {
     const t = { ...t0, hasta_original: t0.hasta }
     const rango = { desde: t.desde, hasta: t.abierto ? null : t.hasta }
 
-    if (jornales.some((a) => a.persona_id === t.persona_id && a.obra_id === t.obra_id && a.desde === t.desde)) {
+    if (!conjunto && jornales.some((a) => a.persona_id === t.persona_id && a.obra_id === t.obra_id && a.desde === t.desde)) {
       omitidos.push({ tramo: t, motivo: 'ya_importado' })
       continue
     }
@@ -182,4 +182,38 @@ export function conciliar(tramos, existentes) {
     })
   }
   return { insertar, omitidos, recortados, cerrados }
+}
+
+// ═══ RECALCULAR COMO CONJUNTO, NO COMO INSERTS SUELTOS (08/09/2026) ═══
+//
+// `conciliar` sólo sabe INSERTAR: si un tramo cambia de fecha porque se corrigió la obra de un día,
+// la fila vieja queda y la nueva se agrega al lado — la persona termina con dos historiales que se
+// contradicen. El 08/09 hubo que borrar 105 filas y reinsertar 212 a mano por esto.
+//
+// Acá el historial de JORNALES se trata como lo que es: un DERIVADO de `registros_hh`. Se calcula
+// entero, se compara con lo que hay, y la diferencia se aplica. Lo que NO es de JORNALES no se mira
+// siquiera, y lo que empieza de hoy en adelante (lo que el dueño acaba de fijar) queda intocable
+// aunque el histórico no lo produzca.
+const claveTramo = (a) => `${a.persona_id}|${a.obra_id}|${a.desde}|${a.hasta ?? ''}`
+
+/**
+ * @param tramos      salida de `armarTramos`
+ * @param existentes  TODAS las filas de `obra_asignacion` tal como están en la base
+ * @param opts        { hoy: 'YYYY-MM-DD' } — nada con `desde >= hoy` se borra ni se duplica
+ * @returns { insertar, borrar, conservar, protegidas, omitidos, recortados, cerrados }
+ */
+export function planDeConjunto(tramos, existentes, { hoy }) {
+  const { insertar: deseadas, omitidos, recortados, cerrados } = conciliar(tramos, existentes, { conjunto: true })
+  const previas = existentes
+    .filter((a) => !esDePrueba(a) && esDeJornales(a))
+    .map((a) => ({ ...a, desde: a.desde ? fechaIso(a.desde) : null, hasta: a.hasta ? fechaIso(a.hasta) : null }))
+  const quiere = new Set(deseadas.map(claveTramo))
+  const vivas = new Set(); const borrar = []; const conservar = []; const protegidas = []
+  for (const a of previas) {
+    const k = claveTramo(a)
+    if (a.desde && hoy && a.desde >= hoy) { protegidas.push(a); vivas.add(k); continue }
+    if (quiere.has(k) && !vivas.has(k)) { vivas.add(k); conservar.push(a) } else borrar.push(a)
+  }
+  const insertar = deseadas.filter((d) => !vivas.has(claveTramo(d)))
+  return { insertar, borrar, conservar, protegidas, omitidos, recortados, cerrados }
 }

@@ -162,3 +162,61 @@ test('las asignaciones de prueba (ZZ-E2E / PRUEBA) se ignoran', () => {
   assert.equal(r.insertar[0].hasta, null)
   assert.equal(r.cerrados.length, 0)
 })
+
+// ═══ planDeConjunto: el historial de JORNALES es un DERIVADO, se recalcula entero ═══
+import { planDeConjunto } from './asignaciones-desde-hh.mjs'
+
+const asig = (o) => ({ id: o.id, persona_id: o.persona_id ?? P, obra_id: o.obra_id, desde: o.desde, hasta: o.hasta ?? null, notas: o.notas ?? NOTAS_JORNALES })
+const tramo = (o) => ({ persona_id: o.persona_id ?? P, obra_id: o.obra_id, desde: o.desde, hasta: o.hasta, dias: 1, horas: 8, abierto: !!o.abierto })
+
+test('conjunto: sin filas previas, todo se inserta y nada se borra', () => {
+  const r = planDeConjunto([tramo({ obra_id: 'obra-a', desde: '2026-08-03', hasta: '2026-08-07' })], [], { hoy: HOY })
+  assert.equal(r.insertar.length, 1)
+  assert.deepEqual(r.borrar, [])
+})
+
+test('conjunto: la fila que ya está idéntica se conserva — segunda corrida = 0 cambios', () => {
+  const t = [tramo({ obra_id: 'obra-a', desde: '2026-08-03', hasta: '2026-08-07' })]
+  const previas = [asig({ id: 'a1', obra_id: 'obra-a', desde: '2026-08-03', hasta: '2026-08-07' })]
+  const r = planDeConjunto(t, previas, { hoy: HOY })
+  assert.deepEqual([r.insertar.length, r.borrar.length, r.conservar.length], [0, 0, 1])
+})
+
+test('EL DEFECTO: el tramo cambió de fecha y la fila vieja quedaba viva al lado de la nueva', () => {
+  const t = [tramo({ obra_id: 'obra-a', desde: '2026-08-03', hasta: '2026-08-05' })]
+  const previas = [asig({ id: 'a1', obra_id: 'obra-a', desde: '2026-08-03', hasta: '2026-08-07' })]
+  const r = planDeConjunto(t, previas, { hoy: HOY })
+  assert.equal(r.insertar.length, 1)
+  assert.deepEqual(r.borrar.map((x) => x.id), ['a1'])
+})
+
+test('conjunto: la asignación de la web ni se inserta ni se borra — no es de JORNALES', () => {
+  const previas = [asig({ id: 'w1', obra_id: 'obra-web', desde: '2026-08-01', notas: 'la puso el jefe de obra' })]
+  const r = planDeConjunto([], previas, { hoy: HOY })
+  assert.deepEqual(r.borrar, [])
+  assert.deepEqual(r.conservar, [])
+})
+
+test('conjunto: lo que empieza de hoy en adelante queda protegido aunque el histórico no lo produzca', () => {
+  const previas = [asig({ id: 'f1', obra_id: 'obra-a', desde: HOY })]
+  const r = planDeConjunto([], previas, { hoy: HOY })
+  assert.deepEqual(r.borrar, [])
+  assert.deepEqual(r.protegidas.map((x) => x.id), ['f1'])
+})
+
+test('conjunto: una protegida idéntica al tramo deseado no se duplica', () => {
+  const t = [tramo({ obra_id: 'obra-a', desde: HOY, hasta: HOY, abierto: false })]
+  const previas = [asig({ id: 'f1', obra_id: 'obra-a', desde: HOY, hasta: HOY })]
+  const r = planDeConjunto(t, previas, { hoy: HOY })
+  assert.deepEqual([r.insertar.length, r.borrar.length], [0, 0])
+})
+
+test('conjunto: dos filas de JORNALES iguales (duplicado histórico) dejan una y borran la otra', () => {
+  const t = [tramo({ obra_id: 'obra-a', desde: '2026-08-03', hasta: '2026-08-07' })]
+  const previas = [
+    asig({ id: 'a1', obra_id: 'obra-a', desde: '2026-08-03', hasta: '2026-08-07' }),
+    asig({ id: 'a2', obra_id: 'obra-a', desde: '2026-08-03', hasta: '2026-08-07' }),
+  ]
+  const r = planDeConjunto(t, previas, { hoy: HOY })
+  assert.deepEqual([r.insertar.length, r.borrar.map((x) => x.id), r.conservar.map((x) => x.id)], [0, ['a2'], ['a1']])
+})

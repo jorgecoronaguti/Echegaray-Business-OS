@@ -1,0 +1,12 @@
+[Unit]
+Description=Echegaray OS — la obra de cada día desde ASISTENCIA, cada 6 h
+
+[Timer]
+# A los :35 para no pisar al espejo de legajos (:20), a los syncs de la hora en punto ni al Flujo de
+# Caja (:50). Persistent: si la VM estuvo apagada, la primera corrida al volver pone la base al día.
+OnCalendar=*-*-* 01,07,13,19:35:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
