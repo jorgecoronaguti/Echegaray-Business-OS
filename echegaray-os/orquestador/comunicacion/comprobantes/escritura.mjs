@@ -38,6 +38,9 @@ import { numeroCanonico, claveComprobante, conceptoConAnotacion, conceptoConProv
 import * as repoReal from './repositorio.mjs'
 import { avisosDeVerificacion, cierre, COL as VCOL, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
 import { vigilar } from '../../lib/comprobantes/vigilancia.mjs'
+import { respaldarFajoCargado, avisoDeRespaldo } from '../../lib/comprobantes/respaldo-adjunto.mjs'
+import { mattermostDelOs } from '../../lib/mattermost-os.mjs'
+import { bajarAdjunto } from './flujo.mjs'
 // El auditor entra por importación ESTÁTICA y no cuesta nada: ese script sólo importa el núcleo puro
 // de `lib/comprobantes/auditoria.mjs` arriba — su cliente de Google es un import dinámico dentro de
 // `main()`. Importarlo acá no abre una conexión ni pide una credencial.
@@ -342,6 +345,19 @@ export async function escribirFajo(d, fajo) {
     filas: filas.map((f) => ({ clave: f.clave, fila: f.fila, proveedor: f.proveedor, numero: f.numero })),
   })
 
+  // ═══ EL ARCHIVO QUEDA EN LA APP EN EL MISMO ACTO (08/09) ═══
+  //
+  // Orden del dueño: la carga por chat produce la fila en Compras, la fila en la app Y su archivo en el
+  // formato en que fue enviado. La fila en la app la trae el espejo `compra_sheet`; el archivo lo
+  // colgaba sólo un backfill manual, y desde el 05/09 nadie lo corrió: ocho comprobantes en la
+  // pestaña sin papel en la pantalla. Corre DESPUÉS de anotar el registro y NUNCA lanza: un bucket
+  // caído se declara en el aviso, no reabre el fajo. En ensayo no hay fila, así que no hay papel.
+  // `d.respaldar` es inyectable para que los tests de la escritura no bajen nada de Mattermost.
+  const respaldo = r.datos?.dry === true ? null : await (d.respaldar ?? respaldarPorDefecto)({ port, log }, { fajo, items: entran, filas })
+  if (respaldo?.fallidos?.length || respaldo?.omitido) {
+    log?.warn?.('comprobantes: respaldo de archivos incompleto', { fajo: fajo.id, omitido: respaldo.omitido ?? null, fallidos: respaldo.fallidos })
+  }
+
   // ═══ LO QUE ENTRÓ CON LA IMPUTACIÓN EN BLANCO, FILA POR FILA Y COLUMNA POR COLUMNA (13/08) ═══
   //
   // Desde que la imputación no bloquea (ver `PREGUNTAR_IMPUTACION` en `flujo.mjs`) este renglón es la
@@ -422,7 +438,7 @@ export async function escribirFajo(d, fajo) {
     : { aviso: null, resumen: {} }
   if (control.motivo) log?.warn?.('comprobantes: vigilancia degradada', { detalle: control.motivo })
 
-  const texto = [textoCargado(filas, yaEstaban, r.datos, { pendientes, suma, varios }), prueba, control.aviso]
+  const texto = [textoCargado(filas, yaEstaban, r.datos, { pendientes, suma, varios }), prueba, control.aviso, avisoDeRespaldo(respaldo)]
     .filter(Boolean).join('\n')
   // EL RECUENTO VIAJA APARTE DEL TEXTO. Desde que la tanda publica UN mensaje para varios posts, el
   // texto de acá ya no se publica tal cual: hay que poder SUMAR lo de tres posts antes de escribir un
@@ -643,4 +659,14 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
   }
   l.push('_Completá vos la Unidad de Negocio y el Tipo de Costo: ahí clasifica el rubro de caja._')
   return l.join('\n')
+}
+
+/**
+ * El respaldo real: baja de Mattermost SIN convertir (el HEIC se guarda como HEIC) y anota en
+ * `compra_adjunto`. Sin `MM_BASE_URL`/`MM_BOT_TOKEN` en el entorno se omite y se dice.
+ */
+async function respaldarPorDefecto({ port, log }, o) {
+  const mm = mattermostDelOs({ log })
+  const bajar = mm ? (fileId) => bajarAdjunto(mm, fileId, { preparar: async (x) => ({ ok: true, ...x }) }) : null
+  return respaldarFajoCargado({ bajar, query: port?.query ? (...a) => port.query(...a) : null, log }, o)
 }

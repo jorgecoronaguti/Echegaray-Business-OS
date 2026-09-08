@@ -29,24 +29,18 @@ import { bajarAdjunto } from '../comunicacion/comprobantes/flujo.mjs'
 import { normalizar_lectura } from '../lib/comprobantes/lectura.mjs'
 import { leerAdjunto } from '../lib/comprobantes/vision.mjs'
 import { registroPorArchivo, vincularLectura, vincularPorRegistro } from '../lib/comprobantes/vinculo.mjs'
+import { BUCKET, MAX_BYTES, MEDIA_OK, rutaDe, admisible } from '../lib/comprobantes/respaldo-adjunto.mjs'
 
 const DRY = process.argv.includes('--dry')
 const CON_VISION = process.argv.includes('--con-vision')
 const TOPE = Number(process.argv[process.argv.indexOf('--tope') + 1]) || Infinity
+/** Sólo la pasada de re-vínculo (abajo): no baja ni sube nada. */
+const SOLO_REVINCULAR = process.argv.includes('--solo-revincular')
 
-export const BUCKET = 'comprobantes'
-/** El techo del bucket (`20260825T1000`). Un archivo más grande no entra: se declara, no se trunca. */
-export const MAX_BYTES = 5 * 1024 * 1024
-/** Los tipos que el bucket acepta. Lo que no está acá no es un comprobante mirable. */
-export const MEDIA_OK = Object.freeze([
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'image/heic', 'image/heif',
-])
-
-/** La ruta del histórico. El post agrupa: cinco fotos de un fajo quedan juntas y se ve por qué. */
-export const rutaDe = (postId, fileId, nombre) => {
-  const ext = String(nombre ?? '').split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin'
-  return `historico/${postId}/${fileId}.${ext}`
-}
+// Los puros (`BUCKET`, `MAX_BYTES`, `MEDIA_OK`, `rutaDe`, `admisible`) viven desde el 08/09 en
+// `lib/comprobantes/respaldo-adjunto.mjs`, que también usa el bot al cerrar cada carga. Se re-exportan
+// para que el test de este script siga midiendo lo mismo.
+export { BUCKET, MAX_BYTES, MEDIA_OK, rutaDe, admisible }
 
 /** El canal de comprobantes, leído de la tabla — no cableado en el código. */
 async function canalDeComprobantes() {
@@ -122,14 +116,6 @@ async function comprasDelEspejo() {
   return rows
 }
 
-/** Qué pasa con este archivo antes de tocar nada: ¿entra al bucket? Puro y exportado para el test. */
-export function admisible(a) {
-  if (!MEDIA_OK.includes(a.media_type)) return { ok: false, motivo: `tipo ${a.media_type || 'desconocido'}` }
-  if (a.bytes > MAX_BYTES) return { ok: false, motivo: `pesa ${(a.bytes / 1048576).toFixed(1)} MB` }
-  if (!a.bytes) return { ok: false, motivo: 'tamaño cero' }
-  return { ok: true }
-}
-
 /** El conteo que se reporta ANTES de gastar un peso. */
 function informe(archivos, yaEstan, reg) {
   const nuevos = archivos.filter((a) => !yaEstan.has(a.file_id))
@@ -184,7 +170,44 @@ async function anotar(a, path, bajado, vinculo, lectura) {
   )
 }
 
+/**
+ * ═══ LOS SUELTOS QUE EL REGISTRO YA SABE DÓNDE VAN (08/09) ═══
+ *
+ * Medido: 58 archivos «sin_vincular» aunque su fajo estaba CARGADO con clave y fila. Pasó porque el
+ * backfill corrió ANTES de que el espejo `compra_sheet` tuviera esas filas, y el `on conflict do
+ * nothing` los dejó sueltos para siempre. Acá se vuelve a mirar SÓLO lo suelto, con el mismo criterio
+ * (`vincularPorRegistro`: la fila tiene que seguir siendo ese comprobante) y sin bajar ni leer nada.
+ * Es idempotente: lo que ya está vinculado no se toca.
+ */
+export async function revincularSueltos({ dry = DRY } = {}) {
+  const reg = await registro()
+  const compras = await comprasDelEspejo()
+  const { rows } = await query(
+    `select id, origen_file_id, nombre from public.compra_adjunto
+      where origen = 'mattermost' and compra_clave is null and origen_file_id is not null`)
+  let vinculados = 0
+  const detalle = []
+  for (const r of rows) {
+    const del = reg.get(r.origen_file_id)
+    if (!del) continue
+    const v = vincularPorRegistro(del, compras)
+    if (v.vinculado_por !== 'registro' || !v.clave) continue
+    detalle.push({ nombre: r.nombre, clave: v.clave, fila: v.fila })
+    if (!dry) {
+      await query(
+        `update public.compra_adjunto
+            set compra_clave = $2, fila_compras = $3, vinculado_por = 'registro', confianza = 1, vinculado_at = now()
+          where id = $1 and compra_clave is null`, [r.id, v.clave, v.fila])
+    }
+    vinculados++
+  }
+  console.log(`\nre-vínculo por registro: ${rows.length} sueltos · ${vinculados} ${dry ? 'vincularían' : 'vinculados'}`)
+  for (const d of detalle) console.log(`      ${d.nombre} → ${d.clave} (fila ${d.fila})`)
+  return { sueltos: rows.length, vinculados, detalle }
+}
+
 async function main() {
+  if (SOLO_REVINCULAR) { await revincularSueltos(); await closePool(); return }
   const canal = await canalDeComprobantes()
   const mm = mattermostDelOs()
   if (!mm) throw new Error('sin MM_BASE_URL/MM_BOT_TOKEN — no puedo leer el canal')
@@ -232,6 +255,8 @@ async function main() {
 
   console.log(`\nguardados ${cuenta.guardados} · por registro ${cuenta.registro} · deducidos `
     + `${cuenta.deducidos} · sin vincular ${cuenta.sueltos} · no se pudieron bajar ${cuenta.fallados}`)
+  // Y lo que quedó suelto en corridas anteriores, si el registro ya sabe dónde va, se cuelga ahora.
+  await revincularSueltos({ dry: false })
   await closePool()
 }
 // SÓLO CORRE CUANDO SE LO INVOCA, no cuando alguien lo importa. Sin esta guarda, el test que mira
