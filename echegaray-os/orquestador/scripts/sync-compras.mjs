@@ -72,13 +72,49 @@ async function leerPestana() {
   return compras
 }
 
+/**
+ * FILAS POR LOTE, NO DE A UNA (08/09/2026).
+ *
+ * Con un `insert` por fila, el sync tardaba **1 minuto 41 segundos** medido contra producción (932
+ * filas de `compra_sheet` + 923 de `costos_obra` = 1.855 viajes de ida y vuelta a Supabase, con
+ * 1,7 s de CPU: el 98% del tiempo era latencia de red). Ese minuto y medio es lo que separaba «el
+ * bot cargó» de «la app lo muestra», y no hay forma de llamar tiempo real a eso.
+ *
+ * Agrupadas de a `LOTE`, son 3 sentencias en vez de 1.855. El tope duro de Postgres son 65.535
+ * parámetros por sentencia: con 36 columnas entran 1.820 filas, así que 400 deja margen de sobra
+ * aunque la pestaña triplique su tamaño.
+ */
+const LOTE = 400
+
+/** Parte un array en grupos de `n`. */
+function lotes(arr, n) {
+  const out = []
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
+  return out
+}
+
+/**
+ * Un `insert ... values (...),(...),(...)` con los parámetros numerados corridos.
+ * `extra` son las columnas literales que van iguales en todas las filas (`origen`, `now()`).
+ */
+function insertPorLote(tabla, columnas, valoresDeFila, grupo, extraSql = '') {
+  const params = []
+  const tuplas = grupo.map((c) => {
+    const base = params.length
+    const v = valoresDeFila(c)
+    params.push(...v)
+    return `(${v.map((_, i) => `$${base + i + 1}`).join(',')}${extraSql})`
+  })
+  return { sql: `insert into ${tabla} (${columnas}) values ${tuplas.join(',')}`, params }
+}
+
 /** Reescribe el espejo entero dentro de una transacción. */
 async function escribirEspejo(db, compras) {
   const cols = CAMPOS.join(', ')
-  const marcas = CAMPOS.map((_, i) => `$${i + 1}`).join(',')
   await db.query('delete from public.compra_sheet')
-  for (const c of compras) {
-    await db.query(`insert into public.compra_sheet (${cols}) values (${marcas})`, CAMPOS.map((k) => c[k] ?? null))
+  for (const grupo of lotes(compras, LOTE)) {
+    const { sql, params } = insertPorLote('public.compra_sheet', cols, (c) => CAMPOS.map((k) => c[k] ?? null), grupo)
+    await db.query(sql, params)
   }
 }
 
@@ -96,18 +132,18 @@ async function escribirEspejo(db, compras) {
 async function escribirCostosObra(db, compras) {
   const conObra = compras.filter((c) => c.obra_texto && (c.total || c.importe))
   await db.query("delete from public.costos_obra where origen='compras_sheet'")
-  for (const c of conObra) {
-    await db.query(
-      `insert into public.costos_obra
-        (obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto,
-         importe, iva, total, fecha, fecha_pago, mes, origen, referencia_externa, sincronizado_en)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'compras_sheet',$15, now())`,
-      [c.obra_texto, c.unidad_negocio, c.proveedor, c.modalidad, c.tipo, c.comprobante, c.categoria,
-        [c.detalle_obra, c.concepto].filter(Boolean).join(' — ') || null,
-        c.importe || null, c.iva || null, c.total || c.importe,
-        c.fecha, c.fecha_caja ?? c.fecha_prevista, c.mes,
-        c.sheet_id === null ? String(c.fila) : String(c.sheet_id)],
-    )
+  const cols = `obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto,
+         importe, iva, total, fecha, fecha_pago, mes, referencia_externa, origen, sincronizado_en`
+  const valores = (c) => [
+    c.obra_texto, c.unidad_negocio, c.proveedor, c.modalidad, c.tipo, c.comprobante, c.categoria,
+    [c.detalle_obra, c.concepto].filter(Boolean).join(' — ') || null,
+    c.importe || null, c.iva || null, c.total || c.importe,
+    c.fecha, c.fecha_caja ?? c.fecha_prevista, c.mes,
+    c.sheet_id === null ? String(c.fila) : String(c.sheet_id),
+  ]
+  for (const grupo of lotes(conObra, LOTE)) {
+    const { sql, params } = insertPorLote('public.costos_obra', cols, valores, grupo, ",'compras_sheet', now()")
+    await db.query(sql, params)
   }
   return conObra.length
 }
@@ -136,6 +172,16 @@ async function main() {
   let enCostos = 0
   try {
     enCostos = await withTx(async (db) => {
+      // ═══ DOS CORRIDAS NO SE PISAN (08/09/2026) ═══
+      //
+      // Desde que la carga por chat dispara el espejo apenas escribe en el Sheet, el timer y el
+      // disparo pueden solaparse. El `delete + insert` es atómico adentro de la transacción, pero
+      // dos transacciones concurrentes ven cada una el estado previo y las dos insertan: la segunda
+      // muere con `duplicate key value violates unique constraint "compra_sheet_pkey"` (es
+      // exactamente el error que apareció el 08/09 a las 15:13). El lock de transacción las
+      // serializa —la segunda espera y arranca cuando la primera ya commiteó— y se suelta solo en
+      // el commit o el rollback: no hay forma de dejarlo tomado.
+      await db.query("select pg_advisory_xact_lock(hashtext('sync-compras'))")
       await escribirEspejo(db, compras)
       return escribirCostosObra(db, compras)
     })
