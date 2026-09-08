@@ -170,6 +170,11 @@ export const PASOS = [
   // publicar. Se corre aparte, con su propia verificación.
   ['obras-raw-pestana.mjs', '_OBRAS_RAW — el plan de egresos por obra que el cuadro 4 de OBRAS suma', ['_OBRAS_RAW']],
   ['obras-pestana.mjs', 'OBRAS — el año entero obra por obra: venta/cobrado/pendiente por cliente y las obras del año', ['OBRAS'], ['--escribir']],
+  // SÓLO LEE EL SHEET (Cobranzas + tipo de cambio) y persiste en Postgres lo que OBRAS publica por
+  // obra —contratado, costo MO, costo materiales, margen— para que Clientes lo lea de una sola
+  // fuente. Va DESPUÉS de OBRAS y con las mismas funciones que su generador; no declara pestaña
+  // porque no escribe una sola celda. Si la tabla no existe (migración sin aplicar) avisa y sale en 0.
+  ['obras-economia-sync.mjs', 'OBRAS → public.obra_economia_sheet: contratado, MO, materiales y margen por obra para la web', [], ['--aplicar']],
   // VA DESPUÉS DE OBRAS Y NO ES INDIFERENTE: su control de cierre LEE la Resta que OBRAS acaba de
   // publicar y aborta si no cuadra. Corriendo antes, se compararía contra la Resta de ayer.
   ['calendario-cobros-pestana.mjs', 'Calendario de Cobros — cuándo entra cada peso: cliente × mes y cada hito en su fecha', [PESTANA_CALENDARIO], ['--escribir']],

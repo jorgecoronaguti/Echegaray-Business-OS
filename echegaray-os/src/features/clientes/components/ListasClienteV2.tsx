@@ -34,6 +34,7 @@ import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from 
 import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import type { ObraPanel } from '@/features/obras/types'
+import { SIN_PRECIO_EN_OBRAS, margenPct, pctTexto, type EconomiaDeObra } from '../services/economiaObras'
 
 /**
  * EL ESTADO SE DICE CON LA PALABRA Y SU TINTA, sin punto de color.
@@ -67,7 +68,13 @@ const COLS_OBRAS
   // (medido en la captura de 900px). La pista del handoff ya son 90; acá se respeta desde el
   // primer escalón.
   + ' min-[560px]:gap-[14px] min-[560px]:grid-cols-[minmax(0,1.5fr)_minmax(0,90px)_90px_minmax(0,120px)_28px]'
-  + ' min-[1200px]:gap-[28px] min-[1200px]:grid-cols-[minmax(240px,1.8fr)_150px_90px_170px_28px]'
+  // 08/09/2026: desde 1200px entran las tres columnas de OBRAS —Costo MO · Costo mat. · Margen—
+  // entre Contratado y la pista de acciones. Por debajo no hay ancho: se suelta el detalle
+  // económico, nunca el nombre ni el contratado.
+  + ' min-[1200px]:gap-[20px] min-[1200px]:grid-cols-[minmax(200px,1.8fr)_110px_80px_150px_130px_130px_160px_28px]'
+
+/** Las tres celdas económicas de OBRAS: sólo desde 1200px. */
+const SOLO_ANCHO_ECO = 'max-[1199px]:hidden'
 
 /** Lo que se esconde a 390px. Nunca el nombre ni el importe. */
 const SOLO_ANCHO = 'max-[559px]:hidden'
@@ -98,11 +105,13 @@ function avanceDeObra(o: ObraPanel): { texto: string; medido: boolean; ayuda: st
 }
 
 /** OBRA · ESTADO · AVANCE · CONTRATADO · [acciones]. `dc.html:113-135`. */
-export function ObrasDelCliente({ obras, veEconomia, vacio }: {
+export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null }: {
   obras: ObraPanel[]
   /** El jefe de obra no ve el precio de venta. Lo decide la RLS; acá se deja de dibujar la columna. */
   veEconomia: boolean
   vacio: string
+  /** Lo que OBRAS publica por obra (`obra_economia_cartera`). `null` = no se pudo leer. */
+  economia?: Map<string, EconomiaDeObra> | null
 }) {
   return (
     <div data-testid="obras-del-cliente">
@@ -111,6 +120,9 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
         <RotuloCol>Estado</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Avance</RotuloCol></span>
         <RotuloCol derecha>Contratado</RotuloCol>
+        <span className={`grid ${SOLO_ANCHO_ECO}`}><RotuloCol derecha>Costo MO</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO_ECO}`}><RotuloCol derecha>Costo mat.</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO_ECO}`}><RotuloCol derecha>{veEconomia ? 'Margen' : ''}</RotuloCol></span>
         <span className={SOLO_ANCHO} />
       </div>
 
@@ -122,6 +134,16 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
 
       {obras.map((o) => {
         const avance = avanceDeObra(o)
+        // EL PRECIO ES EL DE OBRAS (la OC de Cobranzas); el del formulario, de respaldo.
+        const e = economia?.get(o.obra_id) ?? null
+        const contratado = e?.contratado ?? o.monto_contratado ?? null
+        const margen = e?.margen ?? null
+        const eco = (v: number | null, testid: string) => (
+          <span className={`font-mono tabular-nums truncate ${SOLO_ANCHO_ECO}`} data-testid={testid}
+            style={{ fontSize: '12px', color: v == null ? V.tenue : V.tintaSuave, textAlign: 'right' }}>
+            {v == null ? '—' : plata(v)}
+          </span>
+        )
         return (
         <Link
           key={o.obra_id} href={`/obras/${o.obra_id}`} prefetch={false} data-testid="fila-obra-cliente"
@@ -129,7 +151,7 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
           style={{
             height: ALTO_V2.cara, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
             // Una obra sin monto contratado bloquea: no se puede decir qué se le facturó al cliente.
-            boxShadow: veEconomia && o.monto_contratado == null ? FILO_BLOQUEA : 'none',
+            boxShadow: veEconomia && contratado == null ? FILO_BLOQUEA : 'none',
           }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
@@ -174,9 +196,10 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
             ? (
                 <span
                   className="font-mono tabular-nums truncate"
-                  style={{ fontSize: '12px', color: o.monto_contratado == null ? V.warn : V.tinta, textAlign: 'right' }}
+                  data-testid="contratado-obra-cliente"
+                  style={{ fontSize: '12px', color: contratado == null ? V.warn : V.tinta, textAlign: 'right' }}
                 >
-                  {o.monto_contratado == null ? 'sin monto' : plata(o.monto_contratado)}
+                  {contratado == null ? SIN_PRECIO_EN_OBRAS : plata(contratado)}
                 </span>
               )
             : (
@@ -188,6 +211,15 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
                   sin permiso
                 </span>
               )}
+
+          {eco(e?.costo_mo ?? null, 'costo-mo-obra-cliente')}
+          {eco(e?.costo_materiales ?? null, 'costo-materiales-obra-cliente')}
+          <span className={`font-mono tabular-nums truncate ${SOLO_ANCHO_ECO}`} data-testid="margen-obra-cliente"
+            style={{ fontSize: '12px', color: margen == null ? V.tenue : margen < 0 ? V.warn : V.tinta, textAlign: 'right' }}>
+            {veEconomia
+              ? (margen == null ? '—' : <>{plata(margen)}<span style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}>{pctTexto(margenPct(margen, contratado))}</span></>)
+              : ''}
+          </span>
 
           {/* LA PISTA DE 28px EXISTE Y VA VACÍA. El handoff pone acá el menú de fila, pero en esta
               ficha no hay ninguna acción de fila cableada para una obra —ni quitar, ni archivar: se
