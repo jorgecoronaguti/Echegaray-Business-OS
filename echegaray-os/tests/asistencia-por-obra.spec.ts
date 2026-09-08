@@ -26,22 +26,30 @@ const OBRA_CON_GENTE = 'pisos-industriales'
 const OBRA_DE_PRUEBA = `zz-e2e-asistencia`
 const NOMBRE_OBRA = `${MARCA_PRUEBA} asistencia por obra`
 
-/** Deja la obra de prueba ACTIVA con una persona real asignada, y devuelve a quién. */
+// ═══ LA PERSONA TAMPOCO ES REAL (08/09/2026) ═══
+//
+// Hasta hoy el escenario tomaba a alguien del plantel de verdad y lo asignaba a la obra ZZ-E2E. El
+// dueño lo vio en producción: el acuse de una persona REAL decía «antes ZZ-E2E asistencia por
+// obra». Un test que mueve de obra a un empleado de la empresa —aunque después lo devuelva— le está
+// escribiendo el legajo a alguien que trabaja acá, en la misma base que él está mirando.
+//
+// Ahora la prueba se fabrica su PROPIA persona, con id fijo, marcada `es_prueba` —que es lo que la
+// saca de `persona_directorio`, la vista que lista Personal— y la borra al terminar. El id es fijo
+// para que una corrida que se corta a la mitad no deje una persona nueva cada vez: la siguiente la
+// pisa.
+const PERSONA_DE_PRUEBA = 'e2e00000-0000-4000-8000-00000000e2e1'
+const NOMBRE_PERSONA = 'ZZ-E2E persona de prueba'
+
+/** Deja la obra de prueba ACTIVA con la persona DE PRUEBA asignada, y devuelve su id. */
 async function prepararObraDePrueba(): Promise<string | null> {
   const sb = servicio()
-  // LA PERSONA SALE DEL PLANTEL, NO DE UNA ASIGNACIÓN CUALQUIERA. La pantalla descarta a quien no
-  // tiene nombre en `persona_plantel`; con `obra_asignacion ... limit(1)` el escenario caía en una
-  // persona ficticia que dejó otro E2E (`e2e00000-…`), sin legajo, y la pantalla decía «Nadie está
-  // asignado» con la obra creada y la asignación puesta. Medido el 07/09 con una sonda.
-  const alguien = await sb.from('persona_plantel')
-    .select('id').not('nombre_completo', 'is', null).limit(1)
-  // `.maybeSingle()` no: con un error de PostgREST devuelve `data: null` y el test se SALTEA como si
-  // la base estuviera vacía. El error se mira.
-  if (alguien.error) throw new Error(`No pude elegir a alguien del plantel: ${alguien.error.message}`)
-  const personaId = (alguien.data?.[0] as { id: string } | undefined)?.id ?? null
-  if (!personaId) return null
-  // LA PERSONA ES REAL Y LA OBRA NO. Al revés —persona inventada— habría que crear un legajo, que
-  // es un maestro con más consecuencias que una obra de prueba que se borra entera.
+  // `en_la_empresa` porque `persona_plantel` —de donde la grilla saca el nombre— sólo publica a
+  // quien está en la empresa, y sin nombre la fila se descarta y el test mide otra cosa.
+  const alta = await sb.from('personas').upsert({
+    id: PERSONA_DE_PRUEBA, nombre_completo: NOMBRE_PERSONA, es_prueba: true, en_la_empresa: true,
+  }).select('id')
+  if (alta.error) throw new Error(`No pude crear la persona de prueba: ${alta.error.message}`)
+  const personaId = PERSONA_DE_PRUEBA
   // CADA ESCRITURA SE MIRA. Un helper que ignora `.error` deja al test fallando en la aserción de
   // la pantalla con un mensaje que no dice nada del verdadero problema — que fue no poder preparar
   // el escenario. Ya pasó: dos tests en rojo por «form-asistencia no visible».
@@ -85,6 +93,11 @@ async function limpiarObraDePrueba(): Promise<void> {
   await sb.from('obra_asignacion').delete().eq('obra_id', OBRA_DE_PRUEBA)
   await sb.from('usuario_obra').delete().eq('obra_canonica_id', OBRA_DE_PRUEBA)
   await sb.from('obra_canonica').delete().eq('id', OBRA_DE_PRUEBA)
+  // Y LA PERSONA DE PRUEBA, con TODO lo suyo — no sólo lo de esta obra: si un test la mandó a otra
+  // obra ZZ-E2E, esas filas la referencian y el borrado quedaría a medias sin decirlo.
+  await sb.from('registros_hh').delete().eq('persona_id', PERSONA_DE_PRUEBA)
+  await sb.from('obra_asignacion').delete().eq('persona_id', PERSONA_DE_PRUEBA)
+  await sb.from('personas').delete().eq('id', PERSONA_DE_PRUEBA)
 }
 
 test('01 · el jefe carga la asistencia en el teléfono', async ({ page }) => {
@@ -640,20 +653,24 @@ const OBRA_DESTINO = 'zz-e2e-asignacion-destino'
 const NOMBRE_ORIGEN = `${MARCA_PRUEBA} asignación origen`
 const NOMBRE_DESTINO = `${MARCA_PRUEBA} asignación destino`
 
+// SU PROPIA PERSONA DE PRUEBA, Y OTRA (08/09/2026). Esta prueba MUEVE de obra a quien usa, y el
+// dueño vio el acuse de ese movimiento sobre una persona real. Es la misma corrección que arriba;
+// el id es distinto porque los dos escenarios no pueden compartir una fila que cada uno necesita
+// intacta —esta prueba borra las asignaciones de sus obras y aquélla las de la suya—.
+const PERSONA_MUDANZA = 'e2e00000-0000-4000-8000-00000000e2e2'
+const NOMBRE_MUDANZA = 'ZZ-E2E persona de mudanza'
+
 async function prepararMudanza(): Promise<{ id: string; nombre: string } | null> {
   const sb = servicio()
   const hoy = new Date().toISOString().slice(0, 10)
-  const ocupadas = await sb.from('obra_asignacion').select('persona_id, hasta')
-  if (ocupadas.error) throw new Error(`No pude leer las asignaciones: ${ocupadas.error.message}`)
-  const conObra = new Set(((ocupadas.data ?? []) as { persona_id: string; hasta: string | null }[])
-    .filter((a) => !a.hasta || a.hasta >= hoy).map((a) => a.persona_id))
-
-  const plantel = await sb.from('persona_plantel')
-    .select('id, nombre_completo').not('nombre_completo', 'is', null).limit(300)
-  if (plantel.error) throw new Error(`No pude leer el plantel: ${plantel.error.message}`)
-  const libre = ((plantel.data ?? []) as { id: string; nombre_completo: string }[])
-    .find((p) => !conObra.has(p.id))
-  if (!libre) return null
+  // NINGUNA PERSONA REAL: la prueba fabrica la suya, marcada `es_prueba` para que no aparezca en el
+  // listado de Personal, y la borra al terminar. Antes buscaba en el plantel a alguien «libre» —sin
+  // asignación vigente— y le cambiaba la obra actual: un empleado de verdad, en la base de verdad.
+  const libre = { id: PERSONA_MUDANZA, nombre_completo: NOMBRE_MUDANZA }
+  const alta = await sb.from('personas').upsert({
+    id: PERSONA_MUDANZA, nombre_completo: NOMBRE_MUDANZA, es_prueba: true, en_la_empresa: true,
+  }).select('id')
+  if (alta.error) throw new Error(`No pude crear la persona de mudanza: ${alta.error.message}`)
 
   for (const [id, nombre] of [[OBRA_ORIGEN, NOMBRE_ORIGEN], [OBRA_DESTINO, NOMBRE_DESTINO]]) {
     const o = await sb.from('obra_canonica')
@@ -683,6 +700,9 @@ async function limpiarMudanza(): Promise<void> {
   const sb = servicio()
   await sb.from('registros_hh').delete().in('obra_canonica_id', [OBRA_ORIGEN, OBRA_DESTINO])
   await sb.from('obra_asignacion').delete().in('obra_id', [OBRA_ORIGEN, OBRA_DESTINO])
+  await sb.from('registros_hh').delete().eq('persona_id', PERSONA_MUDANZA)
+  await sb.from('obra_asignacion').delete().eq('persona_id', PERSONA_MUDANZA)
+  await sb.from('personas').delete().eq('id', PERSONA_MUDANZA)
   await sb.from('usuario_obra').delete().in('obra_canonica_id', [OBRA_ORIGEN, OBRA_DESTINO])
   await sb.from('obra_canonica').delete().in('id', [OBRA_ORIGEN, OBRA_DESTINO])
 }
