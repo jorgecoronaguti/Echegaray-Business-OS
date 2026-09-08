@@ -107,7 +107,22 @@ export async function respaldarArchivo(dep, a, vinculo = {}) {
        (compra_clave, fila_compras, storage_path, nombre, media_type, bytes, origen,
         origen_post_id, origen_file_id, subido_at, vinculado_por, confianza, vinculado_at)
      values ($1,$2,$3,$4,$5,$6,'mattermost',$7,$8,now(),$9,$10,$11)
-     on conflict (origen_file_id) where origen_file_id is not null do nothing`,
+     on conflict (origen_file_id) where origen_file_id is not null do update set
+       -- EL VÍNCULO SE REPONE, NUNCA SE PISA. «do nothing» dejaba el archivo colgado para siempre
+       -- cuando la fila ya existía sin clave: el backfill lo sube como «sin_vincular» apenas aparece
+       -- en el canal, y el respaldo del fajo —que sí trae la clave y la fila— llegaba después y no
+       -- escribía nada. Medido el 08/09/2026: 57 adjuntos de 181 en «sin_vincular», entre ellos los
+       -- de las filas 858, 863, 923, 924 y 928, que la app mostraba «sin comprobante» con el papel
+       -- ya guardado en el bucket. «coalesce» sobre lo que YA está: rellena el hueco y no toca un
+       -- vínculo que alguien (o la conciliación) ya resolvió.
+       compra_clave   = coalesce(public.compra_adjunto.compra_clave, excluded.compra_clave),
+       fila_compras   = coalesce(public.compra_adjunto.fila_compras, excluded.fila_compras),
+       vinculado_por  = case when public.compra_adjunto.compra_clave is null and excluded.compra_clave is not null
+                             then excluded.vinculado_por else public.compra_adjunto.vinculado_por end,
+       confianza      = case when public.compra_adjunto.compra_clave is null and excluded.compra_clave is not null
+                             then excluded.confianza else public.compra_adjunto.confianza end,
+       vinculado_at   = case when public.compra_adjunto.compra_clave is null and excluded.compra_clave is not null
+                             then excluded.vinculado_at else public.compra_adjunto.vinculado_at end`,
     [a.clave ?? null, a.fila ?? null, path, nombre, mediaType, buf.length,
       a.post_id ?? null, a.file_id,
       vinculo.vinculado_por ?? (conClave ? 'registro' : 'sin_vincular'),
