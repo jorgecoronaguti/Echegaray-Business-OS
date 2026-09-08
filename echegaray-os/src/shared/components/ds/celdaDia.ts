@@ -118,15 +118,31 @@ function horasDe(e: EntradaCeldaDia): CapaHoras {
   return { texto: '', tono: 'vacio', sinCargar: true, titulo: 'Sin horas cargadas: no es una falta' }
 }
 
+/**
+ * AUSENCIA DECLARADA Y HORAS CARGADAS EL MISMO DÍA: YA NO ES UN CONFLICTO.
+ *
+ * Lo era —marco rojo, «resolvelo vos»— hasta la regla del dueño del 08/09/2026 18:50: *«no quiero
+ * que al momento de hacer una liquidación de hs las ausencias y licencias sean un conflicto de hs
+ * que se suman y que no»*. Ahora la liquidación decide sola: si el día tiene horas trabajadas, se
+ * liquidan ésas y la ausencia vale cero (`horasLiquidablesDelDia`). Los dos datos siguen guardados
+ * y visibles —el jefe marcó la «A» a la mañana y después le cargaron las horas—; lo que se va es la
+ * alarma, porque ya no hay nada que resolver a ojo antes de pagar.
+ */
+export const AVISO_AUSENCIA_CON_HORAS =
+  'ausencia declarada y horas cargadas: se liquidan las horas cargadas'
+
 export function decidirCeldaDia(e: EntradaCeldaDia): CapasCeldaDia {
   const arriba = presenciaDe(e)
   const abajo = horasDe(e)
   // La celda que no muestra ningún número no tiene de qué ser insignia: el símbolo ES la celda.
   const centrado = arriba.simbolo !== '' && abajo.texto === ''
+  const declaradoNoVino = e.presencia === 'ausente' || e.presencia === 'licencia'
+  const conHoras = declaradoNoVino && (e.horas ?? 0) > 0
   return {
     arriba: { ...arriba, centrado },
     abajo,
-    titulo: [arriba.titulo, abajo.titulo].filter(Boolean).join(' · '),
+    titulo: [arriba.titulo, conHoras ? AVISO_AUSENCIA_CON_HORAS : abajo.titulo]
+      .filter(Boolean).join(' · '),
   }
 }
 
@@ -203,11 +219,17 @@ export function combinarCeldaDia(f: FuentesDelDia): CeldaCombinada {
   const declarado = f.declarada ?? f.enHoras ?? null
   const origenDeclarado: CeldaCombinada['origen'] = f.declarada ? 'declarada' : 'horas'
 
-  // CONFLICTO: se declaró que no vino y sin embargo el día tiene horas trabajadas cargadas, o una
-  // marca de entrada. Sólo se mide sobre lo declarado en `asistencia_dia`: `enHoras` sale de la
-  // misma tabla que las horas y no puede contradecirse consigo misma.
+  // CONFLICTO: se declaró que no vino y sin embargo la persona MARCÓ LA ENTRADA. Sólo se mide sobre
+  // lo declarado en `asistencia_dia`: `enHoras` sale de la misma tabla que las horas y no puede
+  // contradecirse consigo misma.
+  //
+  // LAS HORAS CARGADAS YA NO SON UN CONFLICTO (dueño, 08/09/2026 18:50). Eran el otro caso de esta
+  // condición, y el marco rojo pedía que alguien eligiera cuál de las dos afirmaciones valía antes
+  // de liquidar. Ahora la regla elige: se liquidan las horas cargadas y la ausencia de ese día vale
+  // cero (`liquidacionDeAusencias.ts`). El fichaje sigue siendo un conflicto porque nada lo
+  // resuelve: son dos afirmaciones sobre si la persona ESTUVO, y ninguna regla las concilia.
   const noVino = f.declarada === 'ausente' || f.declarada === 'licencia'
-  const conflicto = noVino && ((f.horas ?? 0) > 0 || ficho)
+  const conflicto = noVino && ficho
 
   if (declarado) {
     const presencia: PresenciaDia = declarado === 'presente'
@@ -242,9 +264,12 @@ export function combinarCeldaDia(f: FuentesDelDia): CeldaCombinada {
 export function tituloDeConflicto(f: FuentesDelDia): string | null {
   if (f.declarada !== 'ausente' && f.declarada !== 'licencia') return null
   const que = f.declarada === 'licencia' ? 'licencia' : 'ausencia'
-  if ((f.horas ?? 0) > 0) {
-    return `Conflicto: ${que} declarada y ${formatearHoras(f.horas as number)} h cargadas el mismo día`
-  }
   if (f.ficho) return `Conflicto: ${que} declarada y marca de entrada el mismo día`
+  // HORAS CARGADAS NO ES UN CONFLICTO: es un día explicado. El `title` lo dice sin alarma y sin
+  // esconder ninguno de los dos datos — la liquidación ya sabe cuál de los dos paga.
+  if ((f.horas ?? 0) > 0) {
+    return `${que === 'licencia' ? 'Licencia' : 'Ausencia'} declarada y `
+      + `${formatearHoras(f.horas as number)} h cargadas: se liquidan las horas cargadas`
+  }
   return null
 }

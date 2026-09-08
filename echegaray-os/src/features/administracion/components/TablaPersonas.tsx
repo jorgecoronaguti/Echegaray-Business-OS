@@ -335,11 +335,15 @@ function CeldaHoy({ clasificacion, ficho }: { clasificacion: ClasificacionDelDia
           ●
         </span>
       )}
+      {/* EL CONFLICTO YA NO ES «Y HORAS CARGADAS». Desde la regla del dueño del 08/09/2026 ese caso
+          lo resuelve la liquidación —se liquidan las horas cargadas— y dejó de ser una alarma. Lo
+          que queda en rojo es la contradicción que nada concilia: se declaró que no vino y la
+          persona marcó la entrada. */}
       <span
         className="truncate"
         data-capa="presencia"
         data-presencia={r.estado}
-        title={r.conflicto ? 'Ausencia declarada y horas cargadas el mismo día' : undefined}
+        title={r.conflicto ? 'Ausencia declarada y marca de entrada el mismo día' : undefined}
         style={{ fontSize: '12px', color: r.conflicto ? 'var(--os-neg)' : TINTA_ESTADO[r.tono], flexShrink: 0 }}
       >
         {r.simbolo && <span style={{ fontWeight: 600 }}>{r.simbolo} </span>}

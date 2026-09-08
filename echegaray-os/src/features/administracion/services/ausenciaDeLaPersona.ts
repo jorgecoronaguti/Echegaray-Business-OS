@@ -39,7 +39,7 @@ export function ausenciaSinObraDe(filas: readonly FilaDelDia[]): FilaDelDia | nu
 }
 
 /**
- * Las horas que vale una ausencia.
+ * La jornada de referencia cuando no hay ninguna otra.
  *
  * ═══ DATO PENDIENTE, DECLARADO ═══
  *
@@ -47,21 +47,18 @@ export function ausenciaSinObraDe(filas: readonly FilaDelDia[]): FilaDelDia | nu
  * existe hoy en el OS: la única jornada cargada es `obra_canonica.jornada_horas`, o sea la de una
  * OBRA. Se usa esa como aproximación —la de la obra donde se la espera ese día— y queda anotado
  * acá: **la jornada legal por categoría es un dato pendiente**. Mientras no exista, una ausencia de
- * alguien sin ninguna obra de referencia vale la jornada estándar declarada abajo.
+ * alguien sin ninguna obra de referencia vale la jornada estándar.
  *
- * No se usa 0: `registros_hh` exige `horas > 0`, y además el dueño lo dijo al revés — «se le suma
- * hs porque corresponde por ley». Un cero diría que ese día no le corresponde nada.
+ * ═══ CUÁNTAS HORAS SE LE RECONOCEN NO SE DECIDE ACÁ ═══
+ *
+ * Esto es una JORNADA —cuánto dura el día de trabajo—, no una liquidación. Que un día no trabajado
+ * se pague o no lo decide `horasDeAusencia` en `liquidacionDeAusencias.ts`, con la tabla del motivo
+ * (dueño, 08/09/2026 18:50: «ausencia sin motivo es cero hs»). Acá vivía `horasDeLaAusencia`, que
+ * devolvía SIEMPRE esta jornada porque la base exigía `horas > 0`; se retiró con la migración
+ * `20260908T2400` en vez de dejarla al lado de la nueva: dos definiciones de cuánto vale una
+ * ausencia discrepan el día que alguien toca una sola.
  */
 export const JORNADA_ESTANDAR_HS = 8
-
-export function horasDeLaAusencia(
-  pedidas: number | null | undefined,
-  jornadaDeSuObra: number | null | undefined,
-): number {
-  if (typeof pedidas === 'number' && pedidas > 0) return pedidas
-  const jornada = Number(jornadaDeSuObra)
-  return Number.isFinite(jornada) && jornada > 0 ? jornada : JORNADA_ESTANDAR_HS
-}
 
 /**
  * La jornada de referencia que la PANTALLA muestra, con las candidatas que tenga a mano y en el
@@ -132,6 +129,9 @@ export interface EscrituraDeLaAusencia {
   obrasSacadas: string[]
   /** Lo que NO se tocó (extras, improductivas, imputaciones a una actividad) y por qué. */
   intactas: readonly { motivo: string }[]
+  /** Las horas que quedaron reconocidas por ley. `0` cuando el motivo no se paga — y el acuse lo
+   *  dice, porque «quedó registrado» sin decir cuánto vale es la mitad del hecho. */
+  horas?: number
 }
 
 /**
@@ -147,6 +147,13 @@ export function acuseDeAusencia(e: EscrituraDeLaAusencia): string {
     ? 'No cambió nada en la base: el día ya estaba así.'
     : 'Día corregido: no vino. La ausencia es de la persona; no se cargó a ninguna obra.'
   const partes = [cabeza]
+  // CUÁNTO VALE EL DÍA, EN EL ACUSE. El dueño, 08/09/2026: «ausencia sin motivo es cero hs». Que la
+  // liquidación sea determinista no alcanza si quien marca no se entera de lo que acaba de decidir.
+  if (e.fila !== null && typeof e.horas === 'number') {
+    partes.push(e.horas > 0
+      ? `Se le reconocen ${e.horas} hs: el motivo se paga.`
+      : 'No suma horas: es una ausencia sin motivo que se pague.')
+  }
   // LAS HORAS QUE SE SACAN SE NOMBRAN, CON SU OBRA. Si alguien tenía el día cargado en una obra y
   // se corrige a «no vino», esas horas dejan de existir como costo de esa obra. Borrarlas en
   // silencio es exactamente lo que este repo prohíbe: el efecto se declara.

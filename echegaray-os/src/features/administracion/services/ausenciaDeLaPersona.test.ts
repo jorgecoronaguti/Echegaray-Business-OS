@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   JORNADA_ESTANDAR_HS, acuseDeAusencia, acuseDeAusenciasDelDia, acuseDeTramo, ausenciaSinObraDe,
-  fechaLegibleCorta, horasDeLaAusencia, horasDeLaAusenciaVisibles, jornadaDeReferenciaVisible,
+  fechaLegibleCorta, horasDeLaAusenciaVisibles, jornadaDeReferenciaVisible,
   planDeAusenciasSinObra,
   planDeTramoDeAusencia,
   restoDeLaSemana, sumarHoras, topeDelTramo,
@@ -72,23 +72,11 @@ test('UNAS HORAS TRABAJADAS SIN OBRA NO SON UNA AUSENCIA', () => {
 })
 
 // ── LAS HORAS DE LA AUSENCIA ────────────────────────────────────────────────────────────────────
-test('LAS HORAS LAS MANDA QUIEN CORRIGE CUANDO LAS MANDA', () => {
-  assert.equal(horasDeLaAusencia(4, 9), 4)
-})
-
-test('SIN HORAS PEDIDAS VALE LA JORNADA DE REFERENCIA, NO UNA HORA SUELTA', () => {
-  // El defecto viejo: `c.horas ?? 1` registraba una ausencia de UNA hora sobre una jornada de nueve.
-  assert.equal(horasDeLaAusencia(null, 9), 9)
-  assert.equal(horasDeLaAusencia(undefined, 8.8), 8.8)
-})
-
-test('SIN NINGUNA JORNADA DE REFERENCIA SE USA LA ESTÁNDAR, NUNCA CERO', () => {
-  // `registros_hh` exige horas > 0, y el dueño lo dijo al revés: «se le suma hs porque corresponde
-  // por ley». Un cero diría que ese día no le corresponde nada.
-  assert.equal(horasDeLaAusencia(null, null), JORNADA_ESTANDAR_HS)
-  assert.equal(horasDeLaAusencia(null, 0), JORNADA_ESTANDAR_HS)
-  assert.ok(horasDeLaAusencia(null, null) > 0)
-})
+//
+// YA NO SE DECIDEN ACÁ. `horasDeLaAusencia` devolvía siempre la jornada de referencia y se retiró
+// el 08/09/2026 18:50, con la regla del dueño: «ausencia sin motivo es cero hs». Quién decide ahora,
+// y sus tests: `liquidacionDeAusencias.ts` (`horasDeAusencia`, tabla motivo → paga). Lo que queda
+// acá es la JORNADA —cuánto dura el día—, que es otra pregunta.
 
 test('LAS HORAS SUMAN AUNQUE POSTGREST LAS MANDE COMO TEXTO', () => {
   // `horas` es numeric: sin el Number la suma concatenaría y el acuse diría «49 hs» por 4 y 9.
@@ -214,14 +202,6 @@ test('LA JORNADA DE REFERENCIA VISIBLE SIGUE EL MISMO ORDEN QUE EL SERVIDOR', ()
   assert.equal(jornadaDeReferenciaVisible([0, null]), JORNADA_ESTANDAR_HS, 'un cero no es una jornada')
 })
 
-test('LAS HORAS DEL FORMULARIO LE GANAN A LA JORNADA DE REFERENCIA, Y EL VACÍO NO ES CERO', () => {
-  // Un accidente de trabajo con 4 hs reconocidas se guarda con 4, no con la jornada de la obra.
-  assert.equal(horasDeLaAusencia(4, 8.8), 4)
-  // Vaciar el campo NO registra cero —`registros_hh` exige horas > 0 y el dueño lo dijo al revés:
-  // «se le suma hs porque corresponde por ley»—: vuelve a la jornada de referencia.
-  assert.equal(horasDeLaAusencia(null, 8.8), 8.8)
-  assert.equal(horasDeLaAusencia(0, 9), 9)
-})
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // EL TRAMO — «si ya sé que no va a haber por X cantidad de días, ya puedo dejarlo asentado»

@@ -37,9 +37,10 @@ import {
   type PlanDeJornada,
 } from './planDeJornada'
 import {
-  acuseDeAusencia, acuseDeAusenciasDelDia, ausenciaSinObraDe, horasDeLaAusencia,
+  acuseDeAusencia, acuseDeAusenciasDelDia, ausenciaSinObraDe,
   planDeAusenciasSinObra, sumarHoras, type FilaDelDia, type MarcaDelDia,
 } from './ausenciaDeLaPersona'
+import { horasDeAusencia, motivoPaga } from './liquidacionDeAusencias'
 import {
   asentarTramoDeAusencia, escribirAusenciaSinObra, escribirAusenciasSinObra, filasSinObraDelDia,
   jornadaDeReferencia, nombresDeObras, sacarAusenciasSinObra,
@@ -140,16 +141,25 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   return { ok: true, mensaje, ...(aviso ? { aviso } : {}) }
 }
 
-/** Las marcas con las horas YA RESUELTAS para la ausencia: la misma resolución del panel
- *  (`horasDeLaAusencia`) — la jornada de la obra de referencia, y `JORNADA_ESTANDAR_HS` si no hay.
- *  No se inventa ninguna otra: dos formas de valorizar un día ausente discrepan el día que se toca
- *  una sola. */
+/** Las marcas con las horas YA RESUELTAS para la ausencia: `horasDeAusencia`, la MISMA regla que
+ *  usa el panel de corrección y el tramo. No se inventa ninguna otra: dos formas de valorizar un día
+ *  ausente discrepan el día que se toca una sola.
+ *
+ *  LA AUSENCIA SIN MOTIVO VALE CERO (dueño, 08/09/2026 18:50). Antes esto devolvía siempre la
+ *  jornada, así que marcar «A» desde el teléfono sin elegir por qué le cargaba 9 horas pagas a
+ *  alguien de quien nadie sabía por qué no vino. */
 const marcasConHoras = (
   marcas: MarcaDeJornada[], jornada: number | string | null,
 ): MarcaDelDia[] => marcas.map((m) => ({
   persona_id: m.persona_id,
   estado: m.estado,
-  horas: m.estado === 'ausente' ? horasDeLaAusencia(m.horas, Number(jornada)) : m.horas,
+  horas: m.estado === 'ausente'
+    ? horasDeAusencia({
+      motivo: motivoDe(m),
+      // Lo tipeado gana; si no vino nada, la jornada de la obra de referencia.
+      jornada: (m.horas ?? 0) > 0 ? m.horas : Number(jornada),
+    })
+    : m.horas,
   motivo: motivoDe(m),
 }))
 
@@ -408,8 +418,18 @@ async function corregirAusencia(
   // V». Le gana a `jornada_horas` de la obra, que es la jornada de un CONTRATO y no la de la
   // persona. El sábado no tiene default y ahí sí se cae a la de referencia.
   const porDefecto = jornadaPorDefecto(c.fecha)
-  const horas = horasDeLaAusencia(
-    c.horas, porDefecto ?? await jornadaDeReferencia(supabase, c, conObra))
+  // ═══ Y SI EL MOTIVO NO SE PAGA, SON CERO HORAS (dueño, 08/09/2026 18:50) ═══
+  //
+  // «Ausencia sin motivo es cero hs». La jornada de referencia se resuelve IGUAL —es el número que
+  // el acuse y el tramo necesitan cuando el motivo sí paga—, pero la decide `horasDeAusencia`, que
+  // es la única que sabe qué motivo paga. Sin esa puerta, una falta sin avisar entraba con 9 horas.
+  const paga = motivoPaga(c.motivo)
+  const horas = paga
+    ? horasDeAusencia({
+      motivo: c.motivo,
+      jornada: c.horas ?? porDefecto ?? await jornadaDeReferencia(supabase, c, conObra),
+    })
+    : 0
 
   // ═══ EL TRAMO: LO QUE YA SE SABE QUE VA A DURAR (dueño, 08/09/2026 16:51) ═══
   //
@@ -463,6 +483,7 @@ async function corregirAusencia(
     obrasSacadas: await nombresDeObras(supabase, conObra
       .filter((f) => sacadas.includes(f.id)).map((f) => f.obra_canonica_id as string)),
     intactas: aSacar.intactas,
+    horas,
   })
   return { ok: true, mensaje: [acuse, avisoDePresencia(declarada.error)].filter(Boolean).join(' ') }
 }

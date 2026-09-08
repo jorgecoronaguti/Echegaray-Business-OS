@@ -154,16 +154,19 @@ test('declarado presente y sin horas: la columna dice «presente», no «sin mar
   assert.notDeepEqual(m.get('a'), SIN_MARCAR, 'la declaración del jefe se perdió en silencio')
 })
 
-test('la ausencia declarada por el jefe gana sobre las horas cargadas, y el conflicto se ve', () => {
+test('la ausencia declarada por el jefe gana sobre las horas cargadas, y las horas se ven', () => {
   const m = asistenciaHoyPorPersona(
     [{ persona_id: 'a', fecha: HOY, horas: 8, tipo_hora: 'normal' }],
     HOY, [{ persona_id: 'a', estado: 'ausente', motivo: 'falta' }],
   )
   const c = m.get('a')!
   assert.equal(c.presencia, 'ausente')
-  // CON CONFLICTO LAS HORAS SE SIGUEN VIENDO: esconderlas elegiría una de las dos afirmaciones.
+  // LAS HORAS SE SIGUEN VIENDO: esconderlas elegiría una de las dos afirmaciones.
   assert.equal(c.horas, 8)
-  assert.equal(c.conflicto, true)
+  // Y YA NO HAY CONFLICTO QUE MARCAR (dueño, 08/09/2026 18:50): la liquidación se queda con las
+  // horas cargadas y la ausencia de ese día vale 0. La columna deja de pintar de rojo un día que
+  // nadie tiene que resolver.
+  assert.equal(c.conflicto ?? false, false)
 })
 
 test('sin presencia declarada la columna se comporta exactamente como antes', () => {

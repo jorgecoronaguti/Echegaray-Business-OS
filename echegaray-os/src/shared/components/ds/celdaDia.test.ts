@@ -207,14 +207,22 @@ test('el silencio de las tres fuentes NUNCA se lee como ausente', () => {
 
 // ── EL CONFLICTO ES VISIBLE, NUNCA SILENCIOSO ────────────────────────────────────────────────────
 
-test('ausencia declarada + horas cargadas el mismo día = conflicto, y las horas SE SIGUEN VIENDO', () => {
+// ═══ SALVO EL QUE LA LIQUIDACIÓN YA RESUELVE (dueño, 08/09/2026 18:50) ═══
+//
+// *«no quiero que al momento de hacer una liquidación de hs las ausencias y licencias sean un
+// conflicto de hs que se suman y que no»*. Una ausencia declarada con horas cargadas el mismo día
+// era marco rojo: alguien tenía que elegir a mano cuál valía antes de pagar. Ahora la regla elige
+// —se liquidan las horas cargadas y la ausencia de ese día vale 0—, así que la celda muestra los
+// dos datos, sin alarma. Si alguien devuelve el rojo, este test se pone en rojo.
+test('ausencia declarada + horas cargadas NO es conflicto: la liquidación ya decidió', () => {
   const fuentes = f({ declarada: 'ausente', horas: 8, motivo: 'falta' })
   const c = combinarCeldaDia(fuentes)
-  assert.equal(c.conflicto, true, 'la contradicción quedó tapada')
-  assert.equal(c.entrada.presencia, 'ausente')
+  assert.equal(c.conflicto, false, 'volvió el marco rojo sobre un día que la regla ya resuelve')
+  assert.equal(c.entrada.presencia, 'ausente', 'la «A» sigue arriba: el dato no se borró')
   const capas = decidirCeldaDia(c.entrada)
-  assert.equal(capas.abajo.texto, '8,0', 'se escondieron las horas que contradicen la ausencia')
-  assert.match(tituloDeConflicto(fuentes) ?? '', /ausencia declarada y 8,0 h cargadas/)
+  assert.equal(capas.abajo.texto, '8,0', 'se escondieron las horas cargadas, que son las que se pagan')
+  assert.match(capas.titulo, /se liquidan las horas cargadas/)
+  assert.doesNotMatch(tituloDeConflicto(fuentes) ?? '', /conflicto/i)
 })
 
 test('licencia declarada + marca de entrada el mismo día también es conflicto', () => {

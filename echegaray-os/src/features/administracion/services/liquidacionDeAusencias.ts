@@ -165,10 +165,10 @@ export function horasLiquidablesDelDia(registros: readonly RegistroLiquidable[])
 export const hayHorasTrabajadas = (registros: readonly RegistroLiquidable[]): boolean =>
   registros.some((r) => esTrabajada(r.tipo_hora) && numero(r.horas) > 0)
 
-/** El `title` de una celda con ausencia declarada y horas cargadas. Reemplaza al de «Conflicto»:
- *  el dato no desapareció —los dos siguen ahí— pero ya no hay nada que resolver a ojo. */
-export const AVISO_AUSENCIA_CON_HORAS =
-  'Ausencia declarada y horas cargadas: se liquidan las horas cargadas'
+// El TÍTULO de esa celda —«ausencia declarada y horas cargadas: se liquidan las horas cargadas»— no
+// vive acá sino en `shared/components/ds/celdaDia.ts` (`AVISO_AUSENCIA_CON_HORAS`): es una frase de
+// pantalla, y `shared/` no puede importar de `features/`. Una copia de ese texto acá serían dos
+// definiciones de la misma frase.
 
 const numero = (v: number | string | null | undefined): number => {
   const n = Number(v)

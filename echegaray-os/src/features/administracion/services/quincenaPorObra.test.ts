@@ -258,17 +258,30 @@ test('LO TRABAJADO GANA A LA AUSENCIA CARGADA EN OTRA OBRA', () => {
   assert.equal(filas[0].celdas[0].tramos.find((t) => t.obra_id === MAMPO)?.ausente, true)
 })
 
-test('una ausencia sola sigue siendo una ausencia', () => {
-  const filas = armar({
+test('una ausencia sola sigue siendo una ausencia, y sólo se liquida si el motivo se paga', () => {
+  // ═══ LA REGLA DEL DUEÑO DEL 08/09/2026 18:50 ═══
+  //
+  // «Ausencia sin motivo es cero hs». Este test afirmaba lo contrario —una ausencia SIEMPRE sumaba
+  // sus horas al total de la persona— porque la base exigía cargarlas (`horas > 0`). Sin motivo, el
+  // día se sigue viendo como ausencia y vale 0: la celda no desaparece, lo que desaparece es la
+  // hora paga que nadie pidió.
+  const sinMotivo = armar({
     asignaciones: [asig('p1', 'Perez Juan', PISOS)],
     registros: [reg('p1', PISOS, L, 8.8, 'ausencia')],
   })
-  assert.equal(filas[0].celdas[0].estado, 'ausente')
-  // LAS HORAS DE LA AUSENCIA SE VEN Y SE PAGAN (dueño, 08/09/2026 16:16): «las ausencias que tienen
-  // motivo registrado dan la posibilidad de que se le registre hs, como pasa con los accidentes
-  // laborales». Lo que NO cambia es de quién son: de la persona, de ninguna obra.
-  assert.equal(filas[0].celdas[0].horas, 8.8)
-  assert.equal(filas[0].horas, 8.8, 'suman al total de la PERSONA, porque se le pagan')
+  assert.equal(sinMotivo[0].celdas[0].estado, 'ausente')
+  assert.equal(sinMotivo[0].celdas[0].horas, 0, 'sin motivo no se liquida')
+  assert.equal(sinMotivo[0].horas, 0)
+
+  // CON MOTIVO QUE SE PAGA, LAS HORAS SE VEN Y SE PAGAN (dueño, 08/09/2026 16:16): «las ausencias
+  // que tienen motivo registrado dan la posibilidad de que se le registre hs, como pasa con los
+  // accidentes laborales». Lo que NO cambia es de quién son: de la persona, de ninguna obra.
+  const conMotivo = armar({
+    asignaciones: [asig('p1', 'Perez Juan', PISOS)],
+    registros: [reg('p1', PISOS, L, 8.8, 'ausencia', 'enfermedad')],
+  })
+  assert.equal(conMotivo[0].celdas[0].horas, 8.8)
+  assert.equal(conMotivo[0].horas, 8.8, 'suman al total de la PERSONA, porque se le pagan')
 })
 
 test('EL DÍA QUE NO PASÓ NO SE RECLAMA, y el que nadie cargó tampoco', () => {
@@ -328,14 +341,19 @@ test('EL TOTAL DE LA QUINCENA ES «—» CUANDO NADIE DECLARÓ UNA HORA', () => 
   assert.equal(totalesPorDia(conHoras, DIAS)[1], null, 'un día sin dato sigue siendo null')
 })
 
-test('una ausencia sola no convierte el total en cero', () => {
+test('una ausencia CON MOTIVO PAGO no convierte el total en cero', () => {
   const filas = armar({
     asignaciones: [asig('p1', 'Perez Juan', PISOS)],
-    registros: [reg('p1', PISOS, L, 8.8, 'ausencia')],
+    registros: [reg('p1', PISOS, L, 8.8, 'ausencia', 'enfermedad')],
   })
   // Ni en cero ni en «—»: son las horas que le corresponden por ley. El `null` sigue siendo para
-  // quien no tiene NINGUNA hora declarada — ver el test de abajo.
+  // quien no tiene NINGUNA hora declarada — ver el test de abajo. Y el 0 tiene su propio
+  // significado desde el 08/09/2026 18:50: el día está declarado y no se paga.
   assert.equal(totalDeLaQuincena(filas), 8.8)
+  assert.equal(totalDeLaQuincena(armar({
+    asignaciones: [asig('p1', 'Perez Juan', PISOS)],
+    registros: [reg('p1', PISOS, L, 8.8, 'ausencia', 'falta')],
+  })), 0, 'una falta sin avisar no se liquida, y el total lo dice con un 0 y no con un «—»')
   assert.equal(totalDeLaQuincena(armar({
     asignaciones: [asig('p1', 'Perez Juan', PISOS)], registros: [],
   })), null, 'sin ninguna hora declarada el total sigue siendo «—», nunca un 0')
@@ -641,7 +659,9 @@ test('LAS HORAS DE UNA AUSENCIA NO SUMAN A NINGUNA OBRA; SÍ AL TOTAL DE LA PERS
   // rechazó— es que aparezcan como horas de una obra.
   const filas = armar({
     asignaciones: [asig('p1', 'GONZALEZ TOBARES', PISOS)],
-    registros: [reg('p1', null, L, 9, 'ausencia'), reg('p1', PISOS, M, 8, 'normal')],
+    registros: [
+      reg('p1', null, L, 9, 'ausencia', 'enfermedad'), reg('p1', PISOS, M, 8, 'normal'),
+    ],
   })
   assert.equal(filas[0].horas, 17, '8 trabajadas + 9 reconocidas por la ausencia')
   assert.equal(totalDeLaQuincena(filas), 17)
@@ -662,7 +682,7 @@ test('UN DÍA FUTURO CON LICENCIA DECLARADA MUESTRA LA LICENCIA, no el vacío de
   const filas = armar({
     asignaciones: [asig('p1', 'Perez Juan', PISOS)],
     // HOY es el viernes 11: el sábado 12 no llegó. La licencia va SIN obra, como se asienta.
-    registros: [reg('p1', null, S, 8.8, 'licencia', 'accidente_trabajo')],
+    registros: [reg('p1', null, S, 8.8, 'licencia', 'accidente')],
   })
   assert.equal(filas[0].celdas[5].estado, 'licencia', 'el sábado 12 es futuro y está declarado')
   assert.equal(filas[0].celdas[5].horas, 8.8, 'las horas que corresponden por ley se ven')

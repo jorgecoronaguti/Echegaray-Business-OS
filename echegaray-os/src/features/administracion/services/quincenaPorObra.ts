@@ -34,6 +34,7 @@
 // la autorizó (enfermedad, ART, vacaciones, suspensión); la ausencia es la falta lisa. Guardarlas
 // como el mismo silencio le saca un derecho al legajo, y es lo que hacía esta grilla.
 
+import { horasLiquidablesDelDia } from './liquidacionDeAusencias.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { redondear } from './jornadaPorObra.ts'
 import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
@@ -505,7 +506,11 @@ function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro
       // horas»— y el dueño lo corrigió el 08/09/2026: un accidente de trabajo o una licencia llevan
       // las horas que corresponden por ley, y se pagan. Lo que NO cambia es a quién se le imputan:
       // la fila vive sin obra, no entra en ningún tramo y no aparece en «horas en …».
-      horas: redondear(registros.reduce((s, r) => s + numero(r.horas), 0)),
+      // Y LAS QUE SE LIQUIDAN SON LAS QUE EL MOTIVO PAGA (dueño, 08/09/2026 18:50: «ausencia sin
+      // motivo es cero hs»). `horasLiquidablesDelDia` es la misma regla que usa el total de la
+      // quincena y la ficha: sumar acá las horas guardadas dejaría a la grilla mostrando 9 hs en
+      // una falta sin avisar —las que la base exigía cargar— y a la liquidación diciendo 0.
+      horas: redondear(horasLiquidablesDelDia(registros)),
       motivo: motivoDelDia(registros),
     }
   }

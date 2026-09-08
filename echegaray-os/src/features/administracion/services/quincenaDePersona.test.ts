@@ -204,12 +204,15 @@ test('declarado presente y sin horas: no es «sin registrar»', () => {
   assert.equal(cifrasDeQuincena(dias, 8.8).ausencias, 0)
 })
 
-test('AUSENCIA DECLARADA CON HORAS EL MISMO DÍA = CONFLICTO VISIBLE, no un día escondido', () => {
+test('AUSENCIA DECLARADA CON HORAS EL MISMO DÍA: los dos datos se ven y ya no hay conflicto', () => {
   const dias = diasDeLaQuincena([r({ fecha: '2026-09-07', horas: 8 })], Q1, {
     hoy: '2026-09-08', presencia: [decl('2026-09-07', 'ausente', 'falta')],
   })
   const d = dia(dias, '2026-09-07')
-  assert.equal(d.conflicto, true, 'la contradicción se silenció: una de las dos se liquida')
+  // Dueño, 08/09/2026 18:50: «ausencia sin motivo es cero hs» y el día no se cuenta dos veces. Con
+  // horas cargadas se liquidan las horas, así que no queda nada que resolver a mano y la ficha deja
+  // de marcarlo. El test anterior exigía `conflicto: true` — era la alarma que él pidió sacar.
+  assert.equal(d.conflicto, false, 'volvió la alarma sobre un día que la regla ya resuelve')
   assert.equal(d.estado, 'ausencia', 'lo declarado gana sobre lo imputado')
   // LAS HORAS SE SIGUEN VIENDO: esconderlas elegiría la ausencia sin decirlo.
   assert.equal(d.horas, 8)

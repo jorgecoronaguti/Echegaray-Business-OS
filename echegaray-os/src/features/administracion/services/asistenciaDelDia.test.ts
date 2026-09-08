@@ -195,10 +195,13 @@ test('declarado presente y con horas: sigue presente Y tiene 8 h. Las dos cosas 
   assert.equal(c.horas, 8)
 })
 
-test('declarado ausente con horas cargadas: conflicto, y las horas SE SIGUEN VIENDO', () => {
+test('declarado ausente con horas cargadas: NO es conflicto, y las horas SE SIGUEN VIENDO', () => {
+  // Dueño, 08/09/2026 18:50: la liquidación decide sola —se liquidan las horas cargadas— así que
+  // este día dejó de ser una alarma. Las dos afirmaciones siguen visibles; lo que se fue es el
+  // pedido de resolverlo a ojo antes de pagar.
   const c = clasificar([reg({ persona_id: 'a', horas: 8 })], 'ausente')
   assert.equal(c.presencia, 'ausente')
-  assert.equal(c.conflicto, true, 'la contradicción quedó tapada')
+  assert.equal(c.conflicto ?? false, false, 'volvió la alarma sobre un día que la regla ya resuelve')
   assert.equal(c.horas, 8, 'se escondieron las horas que contradicen la ausencia declarada')
 })
 

@@ -13,6 +13,7 @@
 import type { createClient } from '@/lib/supabase/server'
 import { etiquetaDeMotivo, tipoDeMotivo } from './motivoDeAusencia'
 import { jornadaPorDefecto } from './jornadaPorDefecto'
+import { horasDeAusencia } from './liquidacionDeAusencias'
 import { planDeBorrado, traducirEscritura, type FilaExistente } from './planDeJornada'
 import { acuseDeTramo, planDeTramoDeAusencia, sumarHoras } from './ausenciaDeLaPersona'
 import { declararPresencia } from './presenciaDelDiaService'
@@ -100,6 +101,14 @@ export function traducirSinObra(error: { code?: string; message: string }): stri
   }
   if (error.code === '23514' && /sin_obra_solo_ausencia/.test(error.message)) {
     return 'Una fila sin obra sólo puede ser una ausencia o una licencia.'
+  }
+  // LA MIGRACIÓN QUE FALTA SE NOMBRA POR SU NOMBRE. Una ausencia que no se paga vale 0 horas, y la
+  // base sólo lo acepta con `20260908T2400_ausencia_cero_horas` aplicada. Sin este mensaje, el
+  // rechazo llega como «viola una restricción» y manda a buscar el problema al código.
+  if (error.code === '23514' && /horas_check/.test(error.message)) {
+    return 'La base todavía no acepta una ausencia de 0 horas: falta aplicar la migración '
+      + '20260908T2400_ausencia_cero_horas. Hasta entonces, la ausencia sin motivo que se pague no '
+      + 'se puede guardar.'
   }
   return traducirEscritura(error)
 }
@@ -252,7 +261,12 @@ export async function asentarTramoDeAusencia(
   const tipo = tipoDeMotivo(c.motivo)
   const plan = planDeTramoDeAusencia<FilaDelRango>({
     desde: c.fecha, hasta: c.hasta, motivo: c.motivo, tipo,
-    horasDelDia: (f) => c.horasATodoElTramo ?? jornadaPorDefecto(f) ?? c.horas,
+    // UN TRAMO QUE NO SE PAGA SON CERO HORAS TODOS SUS DÍAS (dueño, 08/09/2026 18:50). La puerta
+    // está acá y no en el llamador porque el tramo resuelve las horas DÍA POR DÍA —el viernes son
+    // 8 y de lunes a jueves 9—: dejar la decisión afuera obligaría a repetirla por cada día.
+    horasDelDia: (f) => horasDeAusencia({
+      tipo, motivo: c.motivo, jornada: c.horasATodoElTramo ?? jornadaPorDefecto(f) ?? c.horas,
+    }),
     existentes: leidas.data,
     sacarDeLaObra: (filas) => planDeBorrado(filas, { administraLicencias: true }),
   })

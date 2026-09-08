@@ -8,6 +8,7 @@ import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import { corregirJornada } from '../services/jornadaPorObraActions'
 import { motivosDeDiaNoTrabajado } from '../services/motivoDeAusencia'
+import { motivoPaga, reglaDelMotivo } from '../services/liquidacionDeAusencias'
 import { obraDestinoInicial } from '../services/destinoInicial'
 import {
   fechaLegibleCorta, horasDeLaAusenciaVisibles, restoDeLaSemana, topeDelTramo,
@@ -180,8 +181,15 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
   // tope de 24 y el «no es un número» son la misma regla, y dos lecturas distintas del mismo campo
   // discrepan el día que se toca una.
   const ausencia = leerHoras(textoAusencia)
+  // ═══ SÓLO UN MOTIVO QUE SE PAGA TIENE HORAS QUE DISCUTIR (dueño, 08/09/2026 18:50) ═══
+  //
+  // *«Ausencia sin motivo es cero hs»*. El campo «Horas que corresponden» nacía prellenado con la
+  // jornada SIEMPRE —hasta con «faltó sin avisar» elegido—, y un campo con 9 adentro es una oferta:
+  // invitaba a reconocerle el día a quien no vino y no dijo por qué. Con motivo que no paga el campo
+  // no existe, y en su lugar la pantalla dice cuánto vale el día.
+  const paga = motivoPaga(motivo)
   const invalido = (estado === 'presente' && (error !== null || horas === null))
-    || (estado === 'ausente' && ausencia.error !== null)
+    || (estado === 'ausente' && paga && ausencia.error !== null)
 
   const guardar = () => {
     setAviso(null)
@@ -205,7 +213,10 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
         // servidor usa la jornada de referencia (`horasDeLaAusencia`), que es la misma que este
         // panel prellenó. Nunca un cero — la base lo prohíbe y el dueño lo dijo al revés: «se le
         // suma hs porque corresponde por ley».
-        horas: estado === 'ausente' ? ausencia.horas : horas,
+        // SIN MOTIVO QUE SE PAGUE NO VIAJA NINGUNA CIFRA: el servidor la resuelve en 0 con la
+        // misma tabla (`horasDeAusencia`). Mandar el número prellenado sería pedirle que reconozca
+        // horas por un día que la regla no paga.
+        horas: estado === 'ausente' ? (paga ? ausencia.horas : null) : horas,
         // EL MOTIVO DECIDE SI ES AUSENCIA O LICENCIA. Vacaciones y parte médico son licencia;
         // faltar sin avisar, ausencia. Ninguna suma horas trabajadas.
         motivo: estado === 'ausente' ? motivo : null,
@@ -335,7 +346,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
             )}
           </Campo>
         )}
-        {estado === 'ausente' && (
+        {estado === 'ausente' && paga && (
           <Campo rotulo="Horas que corresponden"
             ayuda="Las que se le reconocen por ley. Vacío deja la jornada de referencia.">
             <input value={textoAusencia}
@@ -344,7 +355,16 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
               data-testid="correccion-horas-ausencia" />
           </Campo>
         )}
-        {estado === 'ausente' && ausencia.error && <ErrorCampo>{ausencia.error}</ErrorCampo>}
+        {/* LO QUE VALE EL DÍA, DICHO ANTES DE GUARDAR. Sin esto, «no vino» y «no vino por
+            enfermedad» se guardan con el mismo gesto y valen distinto, y quien marca se entera
+            recién en la liquidación. */}
+        {estado === 'ausente' && !paga && (
+          <p style={{ fontSize: '11.5px', color: V.tenue }} data-testid="correccion-ausencia-cero">
+            0 h: ausencia sin motivo que se pague.
+            {reglaDelMotivo(motivo) ? ` ${reglaDelMotivo(motivo)?.porque}.` : ''}
+          </p>
+        )}
+        {estado === 'ausente' && paga && ausencia.error && <ErrorCampo>{ausencia.error}</ErrorCampo>}
         {estado === 'ausente' && (
           <p style={{ fontSize: '11.5px', color: V.tenue }} data-testid="correccion-ausencia-sin-obra">
             {/* LA FRASE ES DEL DUEÑO (08/09/2026): las horas se reconocen a la PERSONA y no se
