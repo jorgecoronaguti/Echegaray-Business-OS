@@ -147,7 +147,8 @@ export async function BloqueAsistenciaQuincena({
 
       <p style={{ marginTop: 10, fontSize: '11.5px', color: V.tenue, lineHeight: 1.5 }} data-testid="pie-asistencia">
         Cada celda se edita; guarda al salir del campo. Escribí «A» para marcar que no vino: la «A»
-        y la «L» van arriba, como estado; el número abajo, como cantidad.
+        y la «L» son el estado del día y el número es la cantidad de horas; cuando el día no tiene
+        horas que mostrar, la letra ocupa el lugar del número.
         {' '}Un marco punteado es un día hábil sin horas cargadas — no es una falta. Un «—» es un
         día no laborable o un día sin ningún registro en ninguna obra: de eso no se puede afirmar ni
         que no se trabajó ni que nadie lo cargó.

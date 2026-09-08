@@ -10,8 +10,9 @@
 // no dijo nada. Un 0 es una afirmación —«trabajó cero horas», «no tiene papeles vencidos»— y en las
 // tres el silencio significa otra cosa:
 //
-//   · HOY      sin registro es SIN CARGAR, nunca «ausente» ni «sin fichar». Ver el bloque de abajo:
-//              la columna dejó de hablar de fichaje el 08/09/2026.
+//   · HOY      sin registro es SIN MARCAR, nunca «ausente», «sin fichar» ni «sin cargar». Y las
+//              horas son una capa APARTE: «sin marcar · 9 h» es una fila normal. Ver el bloque de
+//              abajo — la columna dejó de hablar de fichaje el 08/09/2026.
 //              (Es la misma regla que ya sostiene `asistenciaDelDia.ts`, escrita una sola vez.)
 //   · HH MES   sin imputaciones es SIN HH, no 0 horas. Las 19 filas legacy de `registros_hh` vienen
 //              del Sheet de JORNALES sin `persona_id`: existen, tienen horas, y no se sabe de quién
@@ -98,9 +99,10 @@ export function marcasPorPersona(marcas: MarcaDeHoy[]): Map<string, MarcaDeHoy> 
 // otra, y por eso conviven «horas sin fichaje» (lo que pasa hoy en toda la empresa) y «fichó sin
 // horas cargadas» sin que ninguna de las dos sea una falta.
 
-/** Lo que no se cargó todavía. Sale de la MISMA función que el resto de los estados —`clasificar`
- *  con las manos vacías— para que «sin cargar» no tenga una segunda definición acá. */
-export const SIN_CARGAR: ClasificacionDelDia = clasificar([])
+/** NADIE DIJO NADA DE ESTA PERSONA HOY. Sale de la MISMA función que el resto —`clasificar` con las
+ *  manos vacías— para que «sin marcar» no tenga una segunda definición acá. No es una ausencia y no
+ *  es cero horas: es la falta de las dos cosas. */
+export const SIN_MARCAR: ClasificacionDelDia = clasificar([])
 
 /**
  * La asistencia de HOY por persona, a partir de las mismas filas del mes que alimentan HH MES.
@@ -138,47 +140,58 @@ export function asistenciaHoyPorPersona(
   return m
 }
 
-/** Qué dibuja la celda HOY. El chip es el ESTADO declarado; el texto, la cantidad o la palabra. */
+/** QUÉ DIBUJA LA CELDA HOY, en DOS capas que no hablan una por la otra.
+ *
+ * El dueño, 08/09/2026, por tercera vez: *«una cosa es asistencia o activo en el día y otra cosa
+ * son las cantidades de hs»*. La celda escribía «9 h» donde va el estado: la cantidad ocupaba el
+ * lugar del hecho, y quien leía la columna daba por presente a alguien que nadie había mirado.
+ */
 export interface RotuloHoy {
-  /** `A` ausencia · `L` licencia · `null` cuando no hay nada declarado. Nunca hay un chip para el
-   *  silencio: no declarar no es un estado de la persona. */
-  chip: 'A' | 'L' | null
-  chipTono: 'neg' | 'neutro' | null
+  /** LA CAPA DE ARRIBA: el estado, y nada más. Nunca sale de un número de horas. */
+  estado: 'presente' | 'ausente' | 'licencia' | 'sin_marcar'
+  /** La palabra que se escribe. El motivo declarado reemplaza a «ausente»/«licencia» cuando existe:
+   *  una falta sin aviso y una carpeta médica son dos novedades distintas para quien liquida. */
   texto: string
-  /**
-   * `cantidad` son horas —tinta plena, monoespaciada, y NUNCA un tono de estado: 9 h no es «bien»
-   * ni «mal», es 9 h—. `motivo` es la palabra que acompaña al chip, legible pero secundaria.
-   * `silencio` es la falta de dato: el gris más tenue de la fila, el mismo de «sin HH».
-   */
-  tono: 'cantidad' | 'motivo' | 'silencio'
+  /** `●` para el presente · `A`/`L` para lo declarado · `''` para el silencio, que no lleva símbolo:
+   *  no hay marca que dibujar sobre un dato que no existe. */
+  simbolo: '●' | 'A' | 'L' | ''
+  /** El tono del ESTADO. `silencio` es el gris más tenue, el mismo de «sin HH». */
+  tono: 'pos' | 'neg' | 'neutro' | 'silencio'
+  /** LA CAPA DE AL LADO: la cantidad, ya formateada, o `null` si no hay ni una hora cargada.
+   *  Va SIEMPRE en tinta y monoespaciada, nunca con el tono del estado: 9 h no es «bien» ni «mal». */
+  horas: string | null
+  /** Presencia y horas se contradicen (ausencia declarada con horas cargadas). Se ve, no se
+   *  resuelve: una de las dos afirmaciones se liquida. */
+  conflicto: boolean
 }
 
 /**
- * La celda en palabras. Es sólo presentación: qué estado tiene la persona ya lo decidió
- * `clasificar`, y acá no se vuelve a mirar `tipo_hora`.
- *
- * El motivo va al lado del chip porque una ausencia sin motivo y una con «carpeta médica» son dos
- * novedades distintas para quien liquida, y en 110 px entra. Cuando no se declaró motivo se escribe
- * la palabra del estado y no un hueco: un hueco al lado de una «A» se lee como un dato perdido.
+ * La celda en palabras. Es sólo presentación: la presencia ya la decidió `clasificar`, y acá no se
+ * vuelve a mirar `tipo_hora` ni un número de horas.
  */
 export function rotuloHoy(c: ClasificacionDelDia): RotuloHoy {
-  switch (c.estado) {
-    case 'con_horas':
-      return { chip: null, chipTono: null, texto: `${horasVisibles(c.horas ?? 0)} h`, tono: 'cantidad' }
-    case 'ausente':
-      return { chip: 'A', chipTono: 'neg', texto: c.motivo?.toLowerCase() ?? 'ausencia', tono: 'motivo' }
-    case 'licencia':
-      return { chip: 'L', chipTono: 'neutro', texto: c.motivo?.toLowerCase() ?? 'licencia', tono: 'motivo' }
+  const horas = c.horas !== null ? `${horasVisibles(c.horas)} h` : null
+  const conflicto = c.conflicto === true
+  switch (c.presencia) {
     case 'presente':
-      // DECLARADO PRESENTE POR EL JEFE (`asistencia_dia`, 08/09/2026) y sin horas todavía. NO es
-      // «sin cargar»: alguien lo miró y dijo que estaba, y eso es más de lo que la columna sabía
-      // hasta hoy. Sin chip de estado —el chip es para A y L, que son las novedades— y en gris,
-      // porque lo que falta sigue siendo la carga de horas.
-      return { chip: null, chipTono: null, texto: 'presente · sin horas', tono: 'silencio' }
-    case 'sin_cargar':
-      // NUNCA «sin fichar» ni «ausente»: es que Administración todavía no cargó el día, y eso no
-      // es una falta de la persona. Por eso va en gris neutro y sin punto de alerta.
-      return { chip: null, chipTono: null, texto: 'sin cargar', tono: 'silencio' }
+      // DECLARADO POR EL JEFE (`asistencia_dia`) O FICHADO. Es una afirmación sobre la persona, y
+      // por eso lleva el verde del sistema: alguien la miró.
+      return { estado: 'presente', texto: 'presente', simbolo: '●', tono: 'pos', horas, conflicto }
+    case 'ausente':
+      return {
+        estado: 'ausente', texto: c.motivo?.toLowerCase() ?? 'ausente',
+        simbolo: 'A', tono: 'neg', horas, conflicto,
+      }
+    case 'licencia':
+      return {
+        estado: 'licencia', texto: c.motivo?.toLowerCase() ?? 'licencia',
+        simbolo: 'L', tono: 'neutro', horas, conflicto,
+      }
+    case 'sin_marcar':
+      // NUNCA «sin fichar», «sin cargar» ni «ausente»: es que nadie declaró nada de esta persona
+      // hoy, y eso no es una falta suya. Puede tener horas cargadas al lado — «sin marcar · 9 h» es
+      // una fila normal mientras el fichaje no esté en uso.
+      return { estado: 'sin_marcar', texto: 'sin marcar', simbolo: '', tono: 'silencio', horas, conflicto }
   }
 }
 

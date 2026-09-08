@@ -53,13 +53,14 @@ import { CeldaDia, type EntradaCeldaDia } from '@/shared/components/ds'
 // del grupo va en su propio rótulo, apagado y en 11,5px, para que no compita con el total de abajo.
 const ROJO = '#B42318'
 
-// ═══ LAS DOS COLUMNAS DE TEXTO TIENEN TECHO ═══
+// ═══ EL NOMBRE NO ENSANCHA LA COLUMNA, PERO LA TABLA SIGUE OCUPANDO TODO ═══
 //
-// Eran porcentajes (34% y 18%) sobre una tabla al 100%: cuanto más ancha la pantalla, más lejos
-// quedaban las horas del nombre al que pertenecen. En píxeles, la grilla empieza donde termina el
-// nombre y no donde termina la pantalla.
+// Se probó llevar la tabla al ancho de su contenido para acercar los días al nombre. El dueño lo
+// rechazó al verlo desplegado: *«están corridos los valores… no sé por qué achicaste el margen»* —
+// quedaban 550 px muertos a la derecha y el total de cada fila caía por la mitad de la pantalla en
+// vez del borde. La tabla vuelve al 100% con sus columnas de siempre; lo único que queda del
+// intento es el techo del NOMBRE, que era el defecto real: un nombre largo corría la quincena.
 const ANCHO_PERSONA = 320
-const ANCHO_OBRA = 240
 
 function textoDe(c: CeldaObra): string {
   if (c.estado === 'horas') return c.horas === null ? '' : hs(c.horas)
@@ -269,19 +270,13 @@ export function GrillaAsistenciaObra({
         que es justo lo que hay que mirar. Abajo de 1024 el panel va entero encima — no hay ancho
         para dos zonas y reservar 400px dejaría la tabla en 0. */}
     <div className={abierta ? 'lg:pr-[400px]' : undefined} style={{ overflowX: 'auto' }}>
-      {/* ═══ LA TABLA MIDE LO QUE MUESTRA (dueño, 08/09/2026: «está roto el diseño») ═══
-          Con `width: 100%` y una columna Persona del 34%, en 2000 px los días arrancaban en x=1058:
-          setecientos píxeles en blanco entre el nombre y sus horas, que es exactamente el recorrido
-          que hay que hacer para leer una fila. Ancho de contenido y pegada a la izquierda: las
-          columnas miden lo que necesitan y el sobrante queda del lado de afuera, donde no estorba.
-          El `overflow-x` del contenedor sigue cubriendo las pantallas angostas. */}
-      <table style={{ width: 'auto', borderCollapse: 'collapse', fontSize: '13px' }} data-testid="grilla-asistencia">
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }} data-testid="grilla-asistencia">
         <thead>
           <tr style={{ borderBottom: `1px solid ${V.lineaFuerte}` }}>
-            <Rotulo ancho={`${ANCHO_PERSONA}px`}>Persona</Rotulo>
+            <Rotulo ancho="34%">Persona</Rotulo>
             {/* «ACTUAL» porque la obra de una persona cambia con el tiempo: acá se ve la de hoy; la de
                 cada día queda guardada en su marca y se lee en la cronología de la persona (ficha → Horas). */}
-            <Rotulo ancho={`${ANCHO_OBRA}px`}>Obra actual</Rotulo>
+            <Rotulo ancho="18%">Obra actual</Rotulo>
             {etiquetas.map((e, i) => (
               <Rotulo key={dias[i]} centro tenue={columnasTenues[i]} titulo={titulos[i]}>{e}</Rotulo>
             ))}
@@ -310,10 +305,7 @@ export function GrillaAsistenciaObra({
             return (
             <Fragment key={fila.clave}>
             <tr style={{ borderBottom: fallo ? undefined : `1px solid ${V.lineaFila}` }} data-testid="fila-quincena">
-              <td style={{
-                padding: '7px 8px 7px 0', verticalAlign: 'middle',
-                maxWidth: ANCHO_PERSONA, width: ANCHO_PERSONA,
-              }}>
+              <td style={{ padding: '7px 8px 7px 0', verticalAlign: 'middle' }}>
                 {/* EL NOMBRE ES LA PUERTA A SU CARPETA. El dueño: *"cada persona debe tener su
                     cronología de trabajo en su propia carpeta, no que se tiene que mostrar todo de
                     todos en la pantalla asistencia"*. Esta grilla es SÓLO la quincena elegida; el
@@ -343,7 +335,6 @@ export function GrillaAsistenciaObra({
               </td>
               <td data-testid="celda-obra" style={{
                 padding: '7px 8px', color: V.apagado, verticalAlign: 'middle',
-                maxWidth: ANCHO_OBRA, width: ANCHO_OBRA,
               }}>
                 {/* ═══ UN DESPLEGABLE, NO UN FORMULARIO (pedido del dueño, 08/09/2026) ═══
                     Elegir otra obra cambia la asignación vigente DESDE HOY: cierra la anterior y
@@ -412,6 +403,11 @@ export function GrillaAsistenciaObra({
                 const editable = celda.estado !== 'no_laborable' && celda.estado !== 'futuro'
                   && celda.estado !== 'licencia'
                   && !repartido && (fila.obraPorDefecto !== null || celda.tramos.length === 1)
+                // Lo que escribe una celda que NO se edita. Vacío en licencia, ausencia y futuro:
+                // el día ya está dicho arriba, y un «—» ahí afirmaría que no era laborable.
+                const textoFijo = celda.estado === 'horas' ? hs(celda.horas ?? 0)
+                  : celda.estado === 'licencia' || celda.estado === 'ausente' || celda.estado === 'futuro'
+                    ? '' : hueco.texto
                 return (
                   <td key={celda.fecha} style={{
                     padding: '4px 2px', textAlign: 'center', verticalAlign: 'middle',
@@ -425,6 +421,10 @@ export function GrillaAsistenciaObra({
                       entrada={entradaDe(celda)}
                       testid={editable ? 'celda-dia' : 'celda-fija'}
                       estado={editable ? undefined : celda.estado}
+                      // CON EL CAMPO VACÍO, LA «A» O LA «L» SON TODO LO QUE LA CELDA DICE, y van al
+                      // centro. El componente no puede verlo solo: lo que hay adentro del `<input>`
+                      // lo sabe esta grilla.
+                      horasVacias={editable ? valor === '' : textoFijo === ''}
                     >
                     {editable ? (
                       <input
@@ -456,7 +456,7 @@ export function GrillaAsistenciaObra({
                           color: celda.estado === 'horas' ? V.tinta : hueco.color,
                         }}
                       >
-                        {celda.estado === 'horas' ? hs(celda.horas ?? 0) : celda.estado === 'licencia' || celda.estado === 'ausente' || celda.estado === 'futuro' ? '' : hueco.texto}
+                        {textoFijo}
                       </span>
                     )}
                     </CeldaDia>

@@ -18,8 +18,9 @@ import { ADMIN, servicio } from './util/identidades'
 //
 // EL DÍA QUE EL FICHAJE ENTRE EN USO este test tiene que seguir midiendo algo: con marcas, el ● de
 // presencia puede aparecer; sin marcas, la palabra «fichar» no puede estar en ningún lado. Lo que
-// NUNCA cambia es que la celda diga la ASISTENCIA —«9 h», «A · motivo», «sin cargar»—, que es el
-// proceso que hoy existe de verdad.
+// NUNCA cambia es que la celda diga un ESTADO —«presente», «A · motivo», «sin marcar»— y, aparte y
+// al lado, la CANTIDAD de horas si la hay. El dueño, 08/09/2026: «una cosa es asistencia o activo en
+// el día y otra cosa son las cantidades de hs».
 
 const RUTA = '/administracion/personas'
 const hoyISO = () => {
@@ -46,8 +47,9 @@ test('01 · sin marcas de fichaje la columna HOY dice la asistencia, no «sin fi
     await expect(page.getByText('sin fichar', { exact: false })).toHaveCount(0)
     await expect(page.getByText('fichó', { exact: false })).toHaveCount(0)
     await expect(page.getByText('no fich', { exact: false })).toHaveCount(0)
-    // El ● de presencia sale de una marca REAL y de nada más.
-    await expect(page.locator('[data-testid="hoy-persona"] [data-capa="presencia"]')).toHaveCount(0)
+    // El ● del FICHAJE sale de una marca REAL y de nada más. La capa de presencia sigue estando
+    // —dice «sin marcar»—: lo que no puede existir sin marcas es el punto del fichaje.
+    await expect(page.locator('[data-testid="hoy-persona"] [data-capa="fichaje"]')).toHaveCount(0)
   }
 
   // ═══ LO QUE SÍ TIENE QUE ESTAR ═══
@@ -59,7 +61,7 @@ test('01 · sin marcas de fichaje la columna HOY dice la asistencia, no «sin fi
   await expect(celdas.first()).toBeVisible()
   const estados = await celdas.evaluateAll((els) => els.map((e) => e.getAttribute('data-estado')))
   expect(estados.every((e) => e != null && e !== ''), 'una celda HOY sin estado').toBe(true)
-  expect(estados.every((e) => ['con_horas', 'ausente', 'licencia', 'sin_cargar'].includes(e ?? '')),
+  expect(estados.every((e) => ['presente', 'ausente', 'licencia', 'sin_marcar'].includes(e ?? '')),
     `estado fuera del vocabulario: ${[...new Set(estados)].join(', ')}`).toBe(true)
 
   const textos = await celdas.evaluateAll((els) => els.map((e) => e.textContent?.trim() ?? ''))
@@ -67,9 +69,14 @@ test('01 · sin marcas de fichaje la columna HOY dice la asistencia, no «sin fi
     expect(t, 'una celda HOY quedó muda').not.toBe('')
     expect(t.toLowerCase(), `la celda dice «${t}»`).not.toMatch(/fich/)
   }
-  // Y lo que dice es la asistencia: horas, una declaración, o «sin cargar».
-  expect(textos.some((t) => /sin cargar|\d\s*h|^[AL]/.test(t)),
-    `ninguna celda HOY habla de asistencia: ${textos.slice(0, 3).join(' | ')}`).toBe(true)
+  // Y lo que dice es el ESTADO —presente, ausente, licencia o «sin marcar»— con las horas, si las
+  // hay, en su propia capa al lado. Una celda cuyo texto sea SÓLO un número volvió al defecto: la
+  // cantidad ocupando el lugar del hecho.
+  expect(textos.some((t) => /sin marcar|presente|ausente|licencia|^[AL] /.test(t)),
+    `ninguna celda HOY dice un estado: ${textos.slice(0, 3).join(' | ')}`).toBe(true)
+  for (const t of textos) {
+    expect(t, `la celda «${t}» resuelve el estado con las horas`).not.toMatch(/^[\d,.]+\s*h$/)
+  }
 
   await page.screenshot({ path: 'qa-shots/plantel-hoy-asistencia-1440.png', fullPage: false })
 })

@@ -26,6 +26,18 @@ de prueba en toda su historia— y las horas por día viven en `registros_hh`.
    la persona: el marco «sin cargar» es neutro. El ● verde aparece sólo con una marca real.
 10. **Tokens, nunca hex.** `text-pos`, `text-neg`, `text-muted`, `text-ink`, `border-line`,
     `font-mono`. Objetivos táctiles ≥ 44 px.
+11. **NINGUNA PRESENCIA SE RESUELVE CON HORAS — el dueño, 08/09/2026, por tercera vez:** *«todas las
+    pantallas en donde aparezca el concepto de fichado no tiene que resolverse con las hs; está mal:
+    una cosa es asistencia o activo en el día y otra cosa son las cantidades de hs»*.
+    La presencia sale SÓLO de (1) `asistencia_dia` —lo declaró el jefe: presente/ausente/licencia—,
+    (2) `asistencia_marca` —fichaje real—, o (3) una fila de `registros_hh` con `tipo_hora` de
+    `ausencia`/`licencia`, que es una **declaración**, no una cantidad. Sin ninguna de las tres:
+    **«sin marcar»**, neutro. Nunca «presente» porque haya horas > 0, nunca «ausente» porque no las
+    haya. Las horas son una cantidad aparte, monoespaciada, en tinta, sin color de estado, al lado
+    o debajo del estado. Una persona puede tener 9 h y estar «sin marcar»; puede estar «presente» y
+    tener 0 h cargadas. **Las dos cosas se ven, ninguna se deduce de la otra.**
+    Vocabulario del estado: `presente · ausente · licencia · sin marcar`. Prohibido: «no fichó»,
+    «sin fichar», «N de M fichados», «con horas» como estado.
 
 ## 2 · Lo que hacen los líderes (investigación 08/09/2026, WebSearch)
 
@@ -49,7 +61,8 @@ el color del estado.
 | Capa | Palabra | Fuente | Cuándo |
 |---|---|---|---|
 | Presencia | **fichó** | `asistencia_marca.entrada` | hay marca real |
-| Presencia | **presente** | `registros_hh` tipo normal/extra con horas > 0 (declarado por quien cargó) | sólo en frases de total («15 presentes») |
+| Presencia | **presente** | `asistencia_dia.estado = 'presente'` (declarado por el jefe) | declarado, nunca inferido de horas |
+| Presencia | **sin marcar** | ninguna de las tres fuentes dijo nada | neutro (`text-faint`); NO es ausencia ni «sin cargar» |
 | Presencia | **ausente / A** | `registros_hh.tipo_hora = ausencia` | declarado, nunca inferido |
 | Presencia | **licencia / L** | `registros_hh.tipo_hora = licencia` | declarado; el motivo va al `title` |
 | Presencia | **sin marca** | ausencia de dato | no se escribe en la celda; en pantallas de fichaje es una línea neutra |
@@ -57,8 +70,12 @@ el color del estado.
 | Horas | **sin cargar** | ausencia de dato en día hábil pasado | marco punteado neutro; nunca rojo |
 | Horas | **—** | día no laborable sin horas | inerte |
 
-Prohibidas: «no fichó», «N de M fichados» contra el plantel, «ausente» sin registro que lo declare,
-«0» donde no hay dato.
+Prohibidas: «no fichó», «sin fichar», «N de M fichados» contra el plantel, «ausente» sin registro
+que lo declare, «con horas» como estado, «0» donde no hay dato.
+
+**Una cantidad de horas nunca produce una fila de esta tabla.** `registros_hh` sólo habla de
+presencia cuando su `tipo_hora` es una declaración (`ausencia`/`licencia`); sus horas trabajadas
+son la otra capa y viven en la fila «Horas».
 
 ## 4 · La celda de dos capas — `src/shared/components/ds/CeldaDia.tsx`
 
@@ -90,9 +107,9 @@ ausencia — la carga no cambió.
 
 | Qué | Cómo se escribe | Qué NO se escribe |
 |---|---|---|
-| Presencia del día | «15 presentes · 1 ausente · 2 licencias» — estados contados, palabras | «15 de 18» contra el plantel |
+| Presencia del día | «15 presentes · 1 ausente · 2 licencia · 6 sin marcar» — estados contados, palabras | «15 de 18» contra el plantel, «N con horas» como si fuera presencia |
 | Fichaje del día | «12 marcas de entrada · 10 salidas» o «Sin marcas de entrada/salida (el fichaje desde el celular todavía no está en uso)» | «12 de 18 fichados», «6 sin fichar» |
-| Horas | «534,0 h» en monoespaciada; «—» cuando nadie cargó | «0 h» |
+| Horas | «534,0 h cargadas · 6 personas sin horas» en monoespaciada; «—» cuando nadie cargó | «0 h», mezclarlas en la frase de la presencia |
 
 Una frase, una unidad. Si hace falta decir las dos, son dos frases (`RotuloPanel` distinto).
 
