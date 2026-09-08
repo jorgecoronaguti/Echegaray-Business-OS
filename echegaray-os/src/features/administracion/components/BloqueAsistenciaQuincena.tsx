@@ -111,7 +111,10 @@ export async function BloqueAsistenciaQuincena({
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'baseline' }}>
           {sinMarcar > 0 && (
             <span data-testid="dias-sin-marcar" style={{ fontSize: '12px', color: V.warn }}>
-              {sinMarcar} {sinMarcar === 1 ? 'día sin marcar' : 'días sin marcar'}
+              {/* «SIN CARGAR», NO «SIN MARCAR». Marcar es fichar —la persona, con su teléfono— y
+                  el fichaje ni siquiera está en uso; lo que falta acá es que alguien cargue las
+                  horas de ese día. El rótulo acusaba del acto equivocado y a quien no fue. */}
+              {sinMarcar} {sinMarcar === 1 ? 'día sin cargar' : 'días sin cargar'}
             </span>
           )}
           <Quincenas quincena={quincena} hrefDe={hrefDe} />
