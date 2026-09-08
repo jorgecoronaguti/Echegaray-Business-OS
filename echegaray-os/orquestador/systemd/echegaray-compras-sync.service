@@ -1,0 +1,27 @@
+# LA PESTAÑA «COMPRAS» DEL SHEET → `public.compra_sheet` + `public.costos_obra`.
+# Es lo que hace que app.ecsas.com.ar › Compras muestre lo que el dueño ve en el Flujo de Caja.
+# NO escribe una sola celda del Sheet: lee el Sheet y escribe Postgres.
+#
+# Se dispara por dos caminos, y los dos son esta misma unidad:
+#   · `echegaray-compras-sync.timer` — la red de seguridad, cada 10 minutos.
+#   · el worker de comprobantes, apenas escribe filas nuevas en Compras
+#     (`orquestador/comunicacion/comprobantes/espejo.mjs`, `systemctl --user start`).
+# Con `Type=oneshot`, un `start` sobre una corrida en curso se engancha al job que ya está en vez de
+# lanzar otro. Y aunque dos se solapen, `pg_advisory_xact_lock` dentro del script las serializa.
+[Unit]
+Description=Echegaray OS - Sync Compras (Flujo de Caja) -> compra_sheet + costos_obra
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+EnvironmentFile=-%h/.config/echegaray-orq/anthropic.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/sync-compras.mjs
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=3min
+
+[Install]
+WantedBy=default.target

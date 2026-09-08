@@ -45,6 +45,7 @@ import { bajarAdjunto } from './flujo.mjs'
 // de `lib/comprobantes/auditoria.mjs` arriba — su cliente de Google es un import dinámico dentro de
 // `main()`. Importarlo acá no abre una conexión ni pide una credencial.
 import { auditar as auditarCompras } from '../../scripts/auditar-comprobantes-cargados.mjs'
+import { dispararEspejo, avisoDeEspejo } from './espejo.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 export const RUTA_CARGADOR = resolve(AQUI, '../../scripts/cargar-comprobantes-compras.mjs')
@@ -396,6 +397,20 @@ export async function escribirFajo(d, fajo) {
     filas: filas.map((f) => ({ clave: f.clave, fila: f.fila, proveedor: f.proveedor, numero: f.numero })),
   })
 
+  // ═══ LA APP TIENE QUE VERLO AHORA, NO DENTRO DE UNA HORA (08/09/2026) ═══
+  //
+  // La fila ya está en la pestaña Compras. `app.ecsas.com.ar › Compras` no lee el Sheet: lee el
+  // espejo `public.compra_sheet`, que refrescaba un timer cada hora. Ese hueco es el «siguen
+  // faltando comprobantes» del dueño — el comprobante estaba, el espejo no.
+  //
+  // SE DISPARA ACÁ Y SE ESPERA ABAJO. Entre este punto y el texto final quedan el respaldo del
+  // archivo, la relectura de las filas y la auditoría: el espejo corre MIENTRAS pasa todo eso y no
+  // le agrega un segundo a la respuesta. Sólo hay algo que espejar si esta corrida escribió filas
+  // nuevas — los caminos de `ya_cargados` ya volvieron sesenta líneas arriba sin tocar el Sheet.
+  const filasNuevas = (r.datos?.filas ?? []).length
+  const espejando = disparadorDeEspejo(d)({ log }, { ensayo: r.datos?.dry === true, filasNuevas })
+    .catch((e) => ({ pedido: true, ok: false, via: null, ms: 0, detalle: recorte(e?.message) }))
+
   // ═══ EL ARCHIVO QUEDA EN LA APP EN EL MISMO ACTO (08/09) ═══
   //
   // Orden del dueño: la carga por chat produce la fila en Compras, la fila en la app Y su archivo en el
@@ -489,7 +504,18 @@ export async function escribirFajo(d, fajo) {
     : { aviso: null, resumen: {} }
   if (control.motivo) log?.warn?.('comprobantes: vigilancia degradada', { detalle: control.motivo })
 
-  const texto = [textoCargado(filas, yaEstaban, r.datos, { pendientes, suma, varios }), prueba, control.aviso, avisoDeRespaldo(respaldo)]
+  // El espejo se pidió al cerrar el fajo; recién acá se cobra lo que haya tardado. «Ya se ve en la
+  // app» sale SÓLO si terminó bien: si falló o tardó, el renglón promete el plazo del timer, que es
+  // la red de seguridad y sí está garantizada.
+  const espejado = await espejando
+  if (espejado.pedido) {
+    log?.info?.('compras: espejo disparado tras la carga', {
+      fajo: fajo.id, filas: filasNuevas, via: espejado.via, ok: espejado.ok, ms: espejado.ms, detalle: espejado.detalle,
+    })
+  }
+
+  const texto = [textoCargado(filas, yaEstaban, r.datos, { pendientes, suma, varios }), prueba,
+    avisoDeEspejo(espejado), control.aviso, avisoDeRespaldo(respaldo)]
     .filter(Boolean).join('\n')
   // EL RECUENTO VIAJA APARTE DEL TEXTO. Desde que la tanda publica UN mensaje para varios posts, el
   // texto de acá ya no se publica tal cual: hay que poder SUMAR lo de tres posts antes de escribir un
@@ -504,6 +530,27 @@ export async function escribirFajo(d, fajo) {
     sinImputar: pendientes,
     avisos: avisosDuros(r.datos, varios, control.aviso),
   }
+}
+
+/**
+ * QUIÉN DISPARA EL ESPEJO — y por qué NO se dispara por default.
+ *
+ * Mismo criterio que el auditor de descalces de acá abajo: sólo el que armó el bot de verdad
+ * (`circuito.mjs`, que trae el cliente de Google en la mano) toca producción. Sin esa marca no se
+ * dispara nada.
+ *
+ * No es una preferencia de estilo: se midió. Con el disparo por default, `node --test` sobre los
+ * tests de comprobantes le pegaba un `systemctl --user start echegaray-compras-sync.service` REAL a
+ * la máquina y esperaba a que terminara — cuatro tests de 45 segundos y dos corridas del sync de
+ * producción lanzadas desde pruebas unitarias (journal del 08/09, 20:0x). Una prueba unitaria no
+ * puede tener efecto sobre producción, ni siquiera uno benigno.
+ *
+ * @returns {(d:object, x:object)=>Promise<object>} el disparador, o uno que no hace nada.
+ */
+export function disparadorDeEspejo(d = {}) {
+  if (d.espejar) return d.espejar
+  if (d.google) return dispararEspejo
+  return async () => ({ pedido: false, ok: false, via: null, ms: 0, detalle: null })
 }
 
 /**
