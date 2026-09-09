@@ -66,6 +66,7 @@ import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
 import { modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
 import { puedeCambiarObraActual } from '@/features/administracion/services/planDeObraActual'
 import { getPerfilActual } from '@/features/auth/services/authService'
+import { esAdministracion } from '@/features/auth/types/areas'
 
 export const dynamic = 'force-dynamic'
 
@@ -276,6 +277,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   const personas = listado.data ?? []
   const pulso = armarPulso(marcas, hh, papeles, presencia, hoy)
   const abierta = sp.nueva === '1'
+  // EL PERFIL YA ESTÁ EN MEMORIA: `getPerfilActual` memoiza por usuario (`recordar`), así que esto
+  // no es un sexto viaje a la base — es la misma lectura que hace la barra de navegación.
+  const rolActual = (await getPerfilActual(supabase)).data?.rol
 
   return (
     <Marco>
@@ -354,6 +358,22 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 conBaja={filtro === 'inactivos'}
                 pulso={pulso}
                 vacio={vacioDe(filtro, sp.q)}
+                // ═══ EL BOTÓN «PRESENTE» DE LA COLUMNA HOY (dueño, 09/09/2026) ═══
+                //
+                // *«marcar que la persona está en el trabajo, a través de los usuarios admin / jefe
+                // de obra, es tan simple como un botón en la vista de computadora que tenés que
+                // crear ahí donde dice "sin marcar"»*.
+                //
+                // `esAdministracion` es Dirección, Administración y Jefe de Obra: LA MISMA LISTA que
+                // `es_administracion()` en Postgres, que es la que decide de verdad el insert en
+                // `asistencia_dia`. Repetir el criterio con otra forma —una lista de roles escrita
+                // acá— crearía una segunda definición que se desincroniza de la policy sin que nada
+                // se ponga rojo. Un rol desconocido o un usuario sin perfil no marca a nadie: las
+                // dos puntas fallan cerrado.
+                //
+                // LA FECHA LA PONE EL SERVIDOR (`hoyEnObra`), no el navegador: un teléfono con el
+                // reloj corrido declararía presencia en otro día y quedaría escrita.
+                marcar={esAdministracion(rolActual) ? { fecha: hoy } : undefined}
               />
 
               <NotaBloque testid="nota-personal">
