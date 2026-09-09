@@ -20,6 +20,16 @@
 // El bloque abierto (01–15/09 al momento de escribir esto) se sigue editando todos los días.
 // Congelarlo en la base como si fuera un pago hecho sería registrar algo que todavía no pasó.
 //
+// ═══ UNA QUINCENA PUEDE ENTRAR PARCIAL, PERO NUNCA EN SILENCIO ═══
+//
+// Decisión del dueño, 09/09/2026: *«no des de alta a nadie, son inactivos los que no están en esta
+// quincena»*. Seis nombres de la planilla no existen en `public.personas` y no se crean; sus líneas
+// no tienen dónde ir (`liquidacion_linea.persona_id` es NOT NULL con FK). La quincena entra igual
+// con las líneas que sí matchean, y el importe que quedó afuera se imprime por quincena y con
+// nombre en esta misma corrida. NO SE PUDO DEJAR ESCRITO EN LA BASE: ni `liquidacion_quincena` ni
+// `liquidacion_linea` tienen columna de observación y no se autorizó migración — o sea que quien
+// mire sólo Postgres va a ver un total corto sin la marca de que lo es. Es el límite de esta carga.
+//
 // ═══ POR QUÉ ENTRA COMO `cerrada` ═══
 //
 // Una quincena `abierta` es, por contrato de la tabla, una cuyas cifras la web RECALCULA en cada
@@ -48,6 +58,9 @@ const ANIO = Number(arg('--anio') ?? 2026)
 const HOY = arg('--hoy') ? new Date(`${arg('--hoy')}T12:00:00Z`) : new Date()
 
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
+
+/** El faltante SIEMPRE al lado del total: un total corto sin marca se lee igual que uno completo. */
+const afueraTexto = (c) => `  ⚠ ${c.excluidas.length} sin persona · afuera ${ars(c.montoExcluido)}`
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig() })
@@ -87,7 +100,7 @@ async function main() {
       l.persona_id = r.persona?.id ?? null
       l.personaBase = r.persona?.nombre ?? null
       l.via = r.via
-      if (!l.persona_id) {
+      if (!l.persona_id && !l.incompleta) {
         const e = sinPersona.get(l.clave) ?? { nombre: l.nombre, via: r.via, candidatos: r.candidatos, monto: 0, q: 0 }
         e.monto += l.cobra ?? 0; e.q++
         sinPersona.set(l.clave, e)
@@ -116,47 +129,67 @@ async function main() {
   for (const q of quincenas) {
     totalAnio += q.control.totalSheet
     const ya = existentes.get(`${q.desde}|${q.hasta}`)
+    const afuera = q.control.excluidas.length
+      ? `${afueraTexto(q.control)}` : ''
     const estado = q.enCurso ? 'EN CURSO — no se carga'
-      : !q.control.cierra ? `NO CIERRA (${q.control.problemas.length} línea/s)`
-        : ya ? `ya cargada (${ya} líneas)` : 'a cargar'
+      : !q.control.cierra ? `NO CIERRA: plata ilegible en ${q.control.bloqueantes.length} línea/s`
+        : ya ? `ya cargada (${ya} líneas)${afuera}` : `a cargar${afuera}`
     if (!q.enCurso && q.control.cierra) aCargar.push(q)
     console.log(`${q.desde}..${q.hasta}  ${String(q.lineas.length).padStart(4)}  `
       + `${ars(q.control.totalSheet).padStart(13)} ${ars(q.control.totalCargable).padStart(13)} `
       + `${ars(q.control.diferencia).padStart(11)}   ${estado}`)
   }
+  const totalAfuera = quincenas.filter((q) => !q.enCurso).reduce((a, q) => a + q.control.montoExcluido, 0)
   console.log(`\nTOTAL AÑO EN LA PLANILLA: ${ars(totalAnio)}`
     + '   (cifra de control externa: «Jornales por Quincena» publica REAL_TOTAL $135.539.027)')
 
   if (sinPersona.size) {
-    console.log('\nPERSONAS SIN RESOLVER EN public.personas — su quincena entera queda sin cargar:')
+    console.log('\nPERSONAS SIN RESOLVER EN public.personas — NO SE DAN DE ALTA (decisión del dueño'
+      + ` 09/09) y su línea NO ENTRA. La quincena entra parcial. Total afuera: ${ars(totalAfuera)}`)
     for (const [, e] of [...sinPersona].sort((a, b) => b[1].monto - a[1].monto)) {
       const extra = e.candidatos ? ` · candidatos: ${e.candidatos.join(' / ')}` : ''
       console.log(`   · ${e.nombre.padEnd(24)} ${String(e.q).padStart(2)} quincena(s)  ${ars(e.monto).padStart(13)}  ${e.via}${extra}`)
     }
   }
-  const porSubconjunto = new Map()
+  const porAlias = new Map()
   for (const q of quincenas) for (const l of q.lineas) {
-    if (l.via === 'subconjunto') porSubconjunto.set(l.clave, `${l.nombre} → ${l.personaBase}`)
+    if (l.via === 'alias') porAlias.set(l.clave, `${l.nombre} → ${l.personaBase}`)
   }
-  if (porSubconjunto.size) {
-    console.log('\nRESUELTAS POR SUBCONJUNTO ÚNICO DE TOKENS (el nivel débil — revisar):')
-    for (const v of porSubconjunto.values()) console.log(`   · ${v}`)
+  if (porAlias.size) {
+    console.log('\nRESUELTAS POR LA TABLA DE ALIAS (revisadas por el dueño el 09/09, en el código):')
+    for (const v of porAlias.values()) console.log(`   · ${v}`)
+  }
+  const derivadas = quincenas.flatMap((q) => q.lineas.filter((l) => l.efectivoDerivado).map((l) => `${q.desde} fila ${l.fila} ${l.nombre}: EFECTIVO derivado ${ars(l.enEfectivo)}`))
+  if (derivadas.length) {
+    console.log('\nEFECTIVO DERIVADO DE LA CADENA DE PAGO (la celda estaba vacía, no en cero):')
+    for (const d of derivadas) console.log(`   · ${d}`)
   }
   const rotas = quincenas.flatMap((q) => q.lineas.filter((l) => l.incompleta).map((l) => ({ q: q.desde, l })))
   if (rotas.length) {
-    console.log('\nLÍNEAS CON PLATA ILEGIBLE — no se cargan:')
+    console.log('\nLÍNEAS CON PLATA ILEGIBLE — voltean su quincena entera:')
     for (const { q, l } of rotas) console.log(`   · ${q} fila ${l.fila} ${l.nombre}: ${l.incompleta}`)
   }
+  console.log('\nLO QUE QUEDA AFUERA, POR QUINCENA (ninguna base guarda esta marca: vive acá):')
+  for (const q of quincenas) {
+    if (q.enCurso || !q.control.excluidas.length) continue
+    for (const l of q.control.excluidas) {
+      console.log(`   · ${q.desde}..${q.hasta}  ${l.nombre.padEnd(22)} ${ars(l.cobra).padStart(12)}  sin persona en la base`)
+    }
+  }
 
-  console.log(`\nRESUMEN  ${aCargar.length} quincena(s) cerradas y completas`
-    + ` · ${aCargar.reduce((a, q) => a + q.control.cargables.length, 0)} línea(s)`
-    + ` · ${ars(aCargar.reduce((a, q) => a + q.control.totalCargable, 0))}`)
+  console.log(`\nRESUMEN  ${aCargar.length} quincena(s) cerradas con la plata legible`
+    + ` · ${aCargar.reduce((a, q) => a + q.control.cargables.length, 0)} línea(s) cargables`
+    + ` · ${ars(aCargar.reduce((a, q) => a + q.control.totalCargable, 0))}`
+    + ` · ${aCargar.filter((q) => !q.control.completa).length} entran PARCIALES`
+    + ` dejando ${ars(totalAfuera)} afuera`)
 
   // ADELANTO Y YA_TRANSFERIDO SÍ TIENEN COLUMNA en 20260909T1200 (se verificó contra
   // information_schema, no contra el archivo del repo: una migración en el repo no está aplicada).
   // Lo que NO tiene destino es «Pagado el» y el «EFECTIVO redondeado» del dueño, que esta pestaña
-  // tampoco trae. `ya_transferido` queda en 0 porque «Obreros 26» no lo distingue del BANCO.
+  // tampoco trae. `ya_transferido` recibe la columna sin rótulo que la planilla descuenta entre
+  // BANCO y ADELANTO desde el 17/8 — por qué, en `columnasSinRotuloEntre`.
   if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')
+
 
   for (const q of aCargar) {
     const { rows } = await query(
@@ -171,15 +204,19 @@ async function main() {
         `insert into public.liquidacion_linea
            (liquidacion_id, persona_id, horas, valor_hora, cobra, adelanto, ya_transferido,
             por_banco, en_efectivo, total)
-         values ($1,$2,$3,$4,$5,$6,0,$7,$8,$9)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          on conflict (liquidacion_id, persona_id) do update set
            horas = excluded.horas, valor_hora = excluded.valor_hora, cobra = excluded.cobra,
-           adelanto = excluded.adelanto, por_banco = excluded.por_banco,
+           adelanto = excluded.adelanto, ya_transferido = excluded.ya_transferido,
+           por_banco = excluded.por_banco,
            en_efectivo = excluded.en_efectivo, total = excluded.total, actualizado_en = now()`,
-        [id, l.persona_id, l.horas, l.valorHora, l.cobra, l.adelanto, l.porBanco, l.enEfectivo, l.total],
+        [id, l.persona_id, l.horas, l.valorHora, l.cobra, l.adelanto, l.yaTransferido,
+          l.porBanco, l.enEfectivo, l.total],
       )
     }
-    console.log(`   ✔ ${q.desde}..${q.hasta}  ${q.control.cargables.length} línea(s)  ${ars(q.control.totalCargable)}`)
+    const falta = q.control.montoExcluido
+      ? `  ⚠ AFUERA ${ars(q.control.montoExcluido)} (${q.control.excluidas.map((l) => l.nombre).join(', ')})` : ''
+    console.log(`   ✔ ${q.desde}..${q.hasta}  ${q.control.cargables.length} línea(s)  ${ars(q.control.totalCargable)}${falta}`)
   }
 }
 
