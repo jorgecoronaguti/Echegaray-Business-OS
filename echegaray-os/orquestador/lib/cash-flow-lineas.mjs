@@ -428,6 +428,22 @@ const MESES_CAB = NOMBRE_MESES
 // dejado de existir y mostraban $33.223.269 en CERO sin que nada avisara. Ahora la fila se busca por
 // el rótulo de la columna A de cada pestaña y se pasa acá; si el rótulo no aparece, el script rompe
 // en vez de escribir una referencia muerta.
+/**
+ * ═══ FÓSIL — NO GOBIERNA NINGUNA CELDA DEL CASH FLOW (auditado 09/09/2026) ═══
+ *
+ * `PROYECCION`, `formulaMesConProyeccion`, `origenProyeccion` y `rubrosDeTabla` describen un circuito
+ * que dejó de existir. La línea «Nómina · Jornales de obra» de los dos Cash Flow sale HOY del libro
+ * `_MOVIMIENTOS` (estado PROYECTADO/VENCIDO/COMPROMETIDO + rubro), y las quincenas proyectadas las
+ * inyecta `scripts/libro-movimientos-pestana.mjs` vía `lib/libro-extractores-nomina.mjs`, que lee
+ * `JORNALES_PROY_TOTAL` de «Jornales por Quincena». Cero consumidores en producción: medido.
+ *
+ * Es peor que código muerto porque tiene el nombre de la pregunta correcta: el próximo que quiera
+ * arreglar la proyección de nómina la va a encontrar acá, la va a corregir, y no va a mover un peso.
+ * `lib/cash-flow-jornales-fosil.test.mjs` se pone rojo si alguien la vuelve a importar.
+ *
+ * NO SE BORRA porque `RUBROS_SIN_PROYECCION` —que sí tiene un consumidor vivo
+ * (`scripts/generar-migracion-caja.mjs`)— lee esta misma tabla.
+ */
 const PROYECCION = {
   'Estructura': { tipo: 'tabla', pestaña: 'Estructura', rotulo: 'TOTAL ESTRUCTURA' },
   'Servicios recurrentes': { tipo: 'tabla', pestaña: 'Recurrentes', rotulo: 'TOTAL' },
