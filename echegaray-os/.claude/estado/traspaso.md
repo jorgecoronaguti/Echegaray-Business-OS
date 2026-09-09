@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 13:35 (hora local −03) · main `d391f2ad` = origin = producción · Vercel al día_
+_actualizado: 2026-09-09 14:15 (hora local −03) · main `9507bd33` = origin = producción · Vercel al día_
 
 ## 1. OBJETIVO GENERAL
 
@@ -81,6 +81,21 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
 Ver §4. Además: memoria `decisiones-0909-sheet-personal` (Plantel se borra · Nómina migra a la web · UOCRA se
 queda en Jornales · Cargas percibido).
 
+**14:00 — Impuestos: «lo que se va a facturar es lo que Cobranzas marca con B»** (`9507bd33`, aplicado al real con
+`pestana-migrar-layout --real`; respaldo `2026-09-09-16-56-Impuestos_y_Financieros-REAL.json`). El débito de un mes
+sin DDJJ pasa a MAX(facturas B de Cobranzas por «Fecha de Factura»; ARCA); el crédito del mes cerrado sigue siendo ARCA
+solo (el Libro mide lo pagado, no lo facturado). Agosto: débito $7.191.299 → $18.064.390, IVA a pagar $0 → $4.703.659
+(21/09); hero «A pagar en 30 días» $5.496.981 → $10.201.763. Memorias `lo-que-se-factura-es-cobranzas-b` y
+`verificar-en-copia-trampas`.
+
+Cableado revisado de Impuestos (09/09): IVA declarado ← PDF F.2051 en Drive `archivo fiscal/2026/IVA` (hasta 07-2026,
+del 18/08) · IIBB ← `2026/IIBB` (hasta 07-2026, del 14/08) · comprobantes ← `comprobantes_arca` (AfipSDK) → `_ARCA_RAW`
+(ventas: 30, última 01/09; compras: 737, última 04/09; cargado 07/09) · retenciones ← Cobranzas X/Y/Z por fecha de cobro
+· impuesto al cheque ← `_BANCO_RAW` · planes F931 ← `CARGAS_MES_PLANES`. **AfipSDK**: el timer (01, 11 y 18 a las 03:00)
+falló el 01/09 porque producción no tenía `scripts/arca/credentials/` (copiado el 07/09) y el 07/09 por cuota (8/10 en la
+ventana 10/08→10/09, plan free, 2 automatizaciones por corrida). Ventana nueva desde el 10/09: **verificar la corrida del
+11/09 03:00** (`journalctl --user -u echegaray-arca-sync`).
+
 ## 6. PENDIENTES REALES
 
 **P0 — Sheet (todo aplicado el 09/09; verificar el pipeline siguiente)**
@@ -89,8 +104,14 @@ queda en Jornales · Cargas percibido).
   pagado). **Impuestos rediseñada** (`98787125`, 43 filas, 5 bloques, hero de 3 filas, cero prosa, sin bloque «Supuestos
   y huecos», sin fila mensual de planes F931; `ALICUOTA_IVA` vive ahora en `Parámetros!B111`).
 - Pipeline 13:08 con las cuatro nuevas: 6 líneas reales de nómina idénticas; «Deuda previsional» 11.547.069 / 4.989.751
-  (sin doble conteo); pipeline 13:29 relanzado tras Impuestos: **releer «Impuestos» 1.023.684 / 11.800.936 y
-  «Financiero» 15.781.442 / 3.848.432** (contrato en `impuestos-contrato-cashflow.test.mjs`).
+  (sin doble conteo). Pipeline 13:29 leído: «Impuestos» 1.023.684 / 12.842.309 (sep 1.719.294 · oct 6.015.159 · nov
+  4.005.752), «Financiero» 15.781.442 / 3.848.432, las 12 líneas de nómina iguales. **Tras el cambio de las 14:00 la línea
+  proyectada de «Impuestos» debe subir en el pipeline de las 14:50**: sep ≈ 6,42 M (IIBB 1.719.294 + IVA 4.703.659), oct
+  ≈ 12,18 M (10.761.596 + 1.422.994), nov ≈ 4,01 M. Confirmar releyendo el Cash Flow Mensual.
+- Datos de Cobranzas a confirmar con el dueño: las 9 filas «B» de Quattropani (78–86) tienen «Fecha de Factura»
+  18/08 y ningún número de comprobante (¿se facturan todas en agosto o una por certificación?); la fila 78 dice
+  «Cobrado» con fecha de cobro 11/09 (futura). Cobranzas B difiere de las F.2051 presentadas en ±$2 M por mes (may
+  +674 k, jun −1,75 M, jul +1,6 M): la DDJJ manda, pero conviene saber por qué.
 - Cambio semántico a firmar: la deuda pendiente en planes del hero de Impuestos pasó de «fecha prevista > hoy» a
   «no marcado Pagado» (hoy las dos dan $4.989.751). Se perdió de la pantalla «El IVA empieza a salir de la caja en»
   (derivable del bloque 1) y la trazabilidad de DDJJ (fecha + N°) sólo queda en el log.
@@ -120,13 +141,14 @@ queda en Jornales · Cargas percibido).
 
 ## 7. ESTADO GIT
 
-- `main` `7455e941` = origin = producción. Árbol limpio. Respaldos JSON/PDF en `~/echegaray-os/respaldos/`.
+- `main` `9507bd33` = origin = producción. Árbol limpio. Respaldos JSON/PDF en `~/echegaray-os/respaldos/`.
 - Sin ramas pendientes; worktrees de hoy retirados.
 
 ## 8. PRÓXIMO PASO
 
-Releer «Impuestos» y «Financiero» del Cash Flow Mensual tras el pipeline de las 13:29 y llevarle al dueño las
-decisiones abiertas (4 importes de EFECTIVO redondeado sin persona, Sosa, «sábado supuesto», adelanto en efectivo y
+Releer la línea proyectada de «Impuestos» del Cash Flow Mensual tras el pipeline de las 14:50 (debe reflejar el IVA de
+agosto por Cobranzas B: sep ≈ 6,42 M · oct ≈ 12,18 M · nov ≈ 4,01 M), verificar la corrida de AfipSDK del 11/09, y
+llevarle al dueño las decisiones abiertas (Quattropani ×9 sin comprobante, (4 importes de EFECTIVO redondeado sin persona, Sosa, «sábado supuesto», adelanto en efectivo y
 horas proyectadas del módulo Liquidación, brecha 25 vs 15 en la DDJJ de agosto).
 
 ## 9. REGLA PARA NUEVAS SESIONES
