@@ -82,8 +82,8 @@ export function clienteDelMail({ from = '', asunto = '', cuerpo = '' } = {}) {
 const REGLAS_TIPO = Object.freeze([
   { tipo: 'orden_pago', re: /orden(?:es)? de pago|\bo\/p\b|notificacion de pago|payment order/ },
   { tipo: 'orden_compra', re: /orden(?:es)? de compra|\bo\/c\b|purchase order|purchase_order/ },
-  { tipo: 'orden_pago', re: /\bop[\s._-]?\d{3,}\b/ },
-  { tipo: 'orden_compra', re: /\boc[\s._-]?\d{3,}\b/ },
+  { tipo: 'orden_pago', re: /\bop[\s._#:-]{0,2}\d{2,}/ },
+  { tipo: 'orden_compra', re: /\boc[\s._#:-]{0,2}\d{2,}/ },
 ])
 
 /**
@@ -163,10 +163,19 @@ export function extraerImporte(texto) {
 // equivocada del cliente equivocado.
 const VACIAS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'para', 'con', 'obra', 'adicional', 'sf', 'me'])
 
-/** Los tokens que de verdad distinguen a una obra dentro de la cartera de su cliente. */
-export function tokensDeObra(nombre) {
+/**
+ * Los tokens que de verdad distinguen a una obra dentro de la cartera de su cliente.
+ *
+ * `nombreCliente` no es un adorno: en `obra_canonica` hay una obra llamada literalmente «Messina»,
+ * y su único token es el nombre del cliente. Sin sacarlo, CUALQUIER mail de Messina caía en esa
+ * obra —medido: la orden de «Clasificación de Escombros» y la de «Pisos Industriales» se fueron las
+ * dos ahí— y la ficha mostraba órdenes bajo una obra que no las produjo. Una obra cuyo nombre es el
+ * del cliente no distingue nada y queda sin tokens: no puede ganar.
+ */
+export function tokensDeObra(nombre, nombreCliente = '') {
+  const delCliente = new Set(norm(nombreCliente).replace(/[^a-z0-9 ]+/g, ' ').split(' ').filter(Boolean))
   return norm(nombre).replace(/[^a-z0-9² ]+/g, ' ').split(' ')
-    .filter((w) => w.length >= 3 && !VACIAS.has(w))
+    .filter((w) => w.length >= 3 && !VACIAS.has(w) && !delCliente.has(w))
 }
 
 /**
@@ -177,10 +186,10 @@ export function tokensDeObra(nombre) {
  * devuelve null a propósito: entre dos obras posibles, la orden queda a nivel CLIENTE y una persona
  * decide. Ésa es la diferencia entre un dato y una adivinanza.
  */
-export function resolverObraDeTexto(obras, texto) {
+export function resolverObraDeTexto(obras, texto, { nombreCliente = '' } = {}) {
   const heno = norm(texto).replace(/[^a-z0-9² ]+/g, ' ')
   const puntuadas = (obras ?? []).map((o) => {
-    const toks = tokensDeObra(o.nombre)
+    const toks = tokensDeObra(o.nombre, nombreCliente)
     if (!toks.length) return { obra: o, puntos: 0 }
     const hits = toks.filter((t) => heno.includes(t)).length
     // Se exige que estén TODOS los tokens distintivos, no la mayoría. «PLAYÓN DE AZUFRE» y

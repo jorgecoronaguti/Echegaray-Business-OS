@@ -117,6 +117,27 @@ test('la clave de idempotencia NO depende del attachment_id', () => {
   assert.notEqual(a, claveDocumento({ messageId: 'm2', nombreArchivo: 'OC.pdf', tamanoBytes: 8123 }))
 })
 
+test('una obra que se llama como el cliente no se lleva todo', () => {
+  // MEDIDO el 09/09/2026 sobre la casilla real: existe `obra_canonica` «Messina», de un solo token
+  // que es el nombre del cliente. Sin descontarlo, la orden de «Clasificación de Escombros» y la de
+  // «Pisos Industriales» aterrizaban las dos ahí, bajo una obra que no las produjo.
+  const conGenerica = [...OBRAS_MESSINA, { id: 'og', nombre: 'Messina' }, { id: 'oe', nombre: 'Limpieza de Escombros' }]
+  assert.deepEqual(tokensDeObra('Messina', 'Messina'), [])
+  // «Clasificación de Escombros» NO es la obra «Limpieza de Escombros»: queda a nivel cliente. Antes
+  // caía en la obra «Messina», que es peor que quedar sin obra — parecía atribuida.
+  assert.equal(resolverObraDeTexto(conGenerica, 'Presupuesto Clasificación de Escombros — Juan Messina', { nombreCliente: 'Messina' }), null)
+  assert.equal(resolverObraDeTexto(conGenerica, 'OC limpieza de escombros', { nombreCliente: 'Messina' })?.id, 'oe')
+  assert.equal(resolverObraDeTexto(conGenerica, 'Orden de compra Juan Messina S.A.', { nombreCliente: 'Messina' }), null)
+})
+
+test('la sigla con el número corto del comprobante también clasifica', () => {
+  // «OC 02-00002097.pdf» quedaba como `otro` porque la regla exigía tres dígitos pegados a la sigla
+  // y el punto de venta son dos. Once adjuntos reales caían por eso.
+  assert.equal(clasificarAdjunto({ nombreArchivo: 'OC 02-00002097.pdf' }).tipo, 'orden_compra')
+  assert.equal(clasificarAdjunto({ nombreArchivo: '50% OC 02-00000279.pdf' }).tipo, 'orden_compra')
+  assert.equal(clasificarAdjunto({ nombreArchivo: 'ocupacion del predio.pdf' }).tipo, 'otro')
+})
+
 test('la extensión del objeto no se inventa', () => {
   assert.equal(extensionDe('Orden de compra.PDF'), 'pdf')
   assert.equal(extensionDe('adjunto sin extension'), 'bin')

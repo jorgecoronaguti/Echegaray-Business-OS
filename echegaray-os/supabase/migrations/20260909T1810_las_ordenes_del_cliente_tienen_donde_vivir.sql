@@ -74,7 +74,10 @@ create table if not exists public.cliente_orden (
   cliente_id        uuid not null references public.clientes(id),
   -- NULLABLE Y ES EL PUNTO: la orden que no se pudo atribuir a una obra queda del CLIENTE, visible,
   -- y una persona la asigna. Dejarla afuera por no saber la obra sería perderla.
-  obra_id           uuid references public.obra_canonica(id),
+  --
+  -- `text` y no `uuid`: `obra_canonica.id` es TEXT en esta base (son claves legibles, no uuid). Una
+  -- columna uuid acá deja la foreign key sin poder crearse y la migración aborta.
+  obra_id           text references public.obra_canonica(id),
 
   tipo              text not null check (tipo in ('orden_compra', 'orden_pago', 'otro')),
 
