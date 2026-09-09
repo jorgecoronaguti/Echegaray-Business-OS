@@ -158,12 +158,20 @@ test('los rangos se declaran anclados a su rótulo, y un rango ciego no se publi
   const fF931 = fila(ROTULOS_CARGAS.f931, Array.from({ length: 12 }, (_, i) => (i < 6 ? VACIO : 1)))
   const fGremiales = fila(ROTULOS_CARGAS.gremiales, Array.from({ length: 12 }, (_, i) => (i < 6 ? VACIO : 1)))
   const fFechas = fila(ROTULOS_CARGAS.fechas, Array.from({ length: 12 }, () => '=DATE(2026;8;10)'))
-  const rangos = rangosDeCargas({ fF931, fGremiales, fFechas, fDeclarado })
-  assert.deepEqual(rangos.map((r) => r.nombre), Object.values(NOMBRES_CARGAS))
+  // LOS DOS DE PLANES ENTRARON EL 09/09: «Impuestos y Financieros» dejó de tener su propio cuadro y
+  // los lee de acá. El de «cuotas sin pagar» es un SALDO: una sola celda, la B.
+  const fPlanes = fila(ROTULOS_CARGAS.planes, Array.from({ length: 12 }, () => 1))
+  const fPlanesSinPagar = fila(ROTULOS_CARGAS.planesSinPagar, [1, ...Array.from({ length: 11 }, () => VACIO)])
+  const todas = { fF931, fGremiales, fFechas, fDeclarado, fPlanes, fPlanesSinPagar }
+  const rangos = rangosDeCargas(todas)
+  assert.deepEqual(rangos.map((r) => r.nombre).sort(), Object.values(NOMBRES_CARGAS).sort())
   assert.deepEqual(verificarRangos(grilla, rangos), [])
+  // El saldo no se publica sobre los doce meses: sería un rango con once celdas vacías al lado.
+  const saldo = rangos.find((r) => r.nombre === NOMBRES_CARGAS.planesSinPagar)
+  assert.equal(saldo.c0, saldo.c1, 'CARGAS_PLANES_SIN_PAGAR es una celda, no una serie')
 
   // Y si la fila se mueve sin que el rótulo la acompañe, salta ANTES de publicar.
-  const problemas = verificarRangos(grilla, rangosDeCargas({ fF931: fGremiales, fGremiales, fFechas, fDeclarado }))
+  const problemas = verificarRangos(grilla, rangosDeCargas({ ...todas, fF931: fGremiales }))
   assert.equal(problemas.length, 1)
   assert.equal(problemas[0].problema, 'desanclado')
 })
@@ -332,11 +340,18 @@ test('los CUATRO rangos se declaran anclados a su rótulo, y falta uno → no se
   const fF931 = fila(ROTULOS_CARGAS.f931, Array.from({ length: 12 }, (_, i) => (i < 8 ? VACIO : 1)))
   const fGremiales = fila(ROTULOS_CARGAS.gremiales, Array.from({ length: 12 }, (_, i) => (i < 8 ? VACIO : 1)))
   const fFechas = fila(ROTULOS_CARGAS.fechas, Array.from({ length: 12 }, () => '=DATE(2026;9;10)'))
-  const rangos = rangosDeCargas({ fF931, fGremiales, fFechas, fDeclarado })
+  const fPlanes = fila(ROTULOS_CARGAS.planes, Array.from({ length: 12 }, () => 1))
+  const fPlanesSinPagar = fila(ROTULOS_CARGAS.planesSinPagar, [1, ...Array.from({ length: 11 }, () => VACIO)])
+  const todas = { fF931, fGremiales, fFechas, fDeclarado, fPlanes, fPlanesSinPagar }
+  const rangos = rangosDeCargas(todas)
   assert.deepEqual(rangos.map((r) => r.nombre).sort(), Object.values(NOMBRES_CARGAS).sort())
   assert.deepEqual(verificarRangos(grilla, rangos), [])
-  assert.throws(() => rangosDeCargas({ fF931, fGremiales, fFechas }), /declarado/,
+  assert.throws(() => rangosDeCargas({ ...todas, fDeclarado: undefined }), /declarado/,
     'sin la fila del declarado el libro volvería en silencio al $6.500.000 tipeado')
+  // NINGUNA ES OPCIONAL. Sin la de planes, «Impuestos y Financieros» publicaría $0 de deuda
+  // previsional —su cuadro ya no existe— sin un solo error a la vista.
+  assert.throws(() => rangosDeCargas({ ...todas, fPlanes: undefined }), /fPlanes/)
+  assert.throws(() => rangosDeCargas({ ...todas, fPlanesSinPagar: undefined }), /fPlanesSinPagar/)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

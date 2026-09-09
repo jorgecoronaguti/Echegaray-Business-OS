@@ -146,8 +146,24 @@ export function podarProsa(filas = [], { pestana = '', procedencia = '', tope = 
     for (let j = 1; j < out[0].length; j++) out[0][j] = VACIO
   }
   if (out[1] && Array.isArray(out[1])) {
-    const a2 = textoVisible(out[1][0]).trim()
-    out[1][0] = recortarProcedencia(a2 || procedencia || glosaDelTitulo) || VACIO
+    // ═══ UNA A2 QUE ES FÓRMULA Y CUMPLE EL CONTRATO NO SE APLANA (09/09/2026) ═══
+    //
+    // Esto hacía `out[1][0] = recortarProcedencia(textoVisible(...))` SIEMPRE, y `textoVisible` de
+    // una fórmula devuelve su literal más largo. O sea: toda línea de procedencia con fecha viva
+    // —que es como la manda `fecha-de-frescura.mjs`— se convertía en un texto fijo antes de
+    // escribirse, y la pestaña quedaba declarando un corte que ya no se movía nunca.
+    //
+    // MEDIDO EN LA COPIA, no deducido: «Cargas Sociales» publicó A2 = «Compras sin datos» —el
+    // literal más largo de su fórmula— arriba de un cuadro con Compras cargada hasta hoy. Una
+    // afirmación FALSA sobre el dato, escrita por el podador. Antes no se veía porque el literal más
+    // largo era, por casualidad, la frase que el generador quería mostrar.
+    //
+    // La regla queda igual de estricta: se mide lo que el LECTOR VE (`textoVisible`) contra el tope,
+    // y sólo si se pasa se recorta —y ahí sí se aplana, porque una fórmula recortada no existe—.
+    const crudo = out[1][0]
+    const a2 = textoVisible(crudo).trim()
+    const esFormulaConforme = typeof crudo === 'string' && crudo.startsWith('=') && a2 && a2.length <= TOPE_SUBTITULO
+    out[1][0] = esFormulaConforme ? crudo : (recortarProcedencia(a2 || procedencia || glosaDelTitulo) || VACIO)
     for (let j = 1; j < out[1].length; j++) out[1][j] = VACIO
   }
   // LA FILA 3 SE VACÍA SALVO EL ATAJO AL PERÍODO EN CURSO (07/09). Vaciarla entera borró el botón

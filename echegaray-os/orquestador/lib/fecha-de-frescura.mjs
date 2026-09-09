@@ -250,6 +250,12 @@ export function rotuloPorFuente(texto, fuentes = [], { avisoDias = DIAS_AVISO, c
   // dijera "sin datos" por un arreglo vacío sería una afirmación falsa sobre la empresa.
   if (!xs.length) throw new Error('rotuloPorFuente: sin fuentes no hay frescura que declarar')
   const fin = cola ? `&" · "&${literal(cola)}` : ''
+  // ═══ EL TEXTO PUEDE SER VACÍO, Y ENTONCES NO HAY PREFIJO (09/09/2026) ═══
+  //
+  // El contrato de diseño dejó la fila 2 en UNA línea de procedencia sin prosa: `F931 al 31/08 ·
+  // Compras al 09/09`. Sin esto, un `texto` vacío escribía `" · "` adelante y la línea arrancaba con
+  // un separador colgando. Es la única forma de tener procedencia por fuente y cero explicación.
+  const cabeza = String(texto ?? '').trim() ? `${literal(`${texto} · `)}&` : ''
   // ═══ COMPACTO: CADA EXPRESIÓN UNA SOLA VEZ, DENTRO DE UN LET (06/08) ═══
   //
   // El dueño, mirando "Impuestos y Financieros": *"no la fórmula de 4.500 caracteres"*. Y tenía razón
@@ -273,7 +279,7 @@ export function rotuloPorFuente(texto, fuentes = [], { avisoDias = DIAS_AVISO, c
       const aviso = `IF(${atraso}>${dias};" ${ALERTA} hace "&TEXT(${atraso};"0")&" días";"")`
       return `IF(${expr}=0;${literal(`${nombre} sin datos`)};${literal(`${nombre} al `)}&TEXT(${expr};"dd/mm")&${aviso})`
     }
-    return `=${literal(`${texto} · `)}&${xs.map(trozo).join('&" · "&')}${fin}`
+    return `=${cabeza}${xs.map(trozo).join('&" · "&')}${fin}`
   }
   const nombreDe = (i) => `fx${String.fromCharCode(97 + i)}`
   const declaraciones = xs.map((f, i) => `${nombreDe(i)};${f.expr}`).join(';')
@@ -282,7 +288,7 @@ export function rotuloPorFuente(texto, fuentes = [], { avisoDias = DIAS_AVISO, c
     const aviso = `IF(TODAY()-${v}>${dias};" ${ALERTA} hace "&TEXT(TODAY()-${v};"0")&" días";"")`
     return `IF(${v}=0;${literal(`${nombre} sin datos`)};${literal(`${nombre} al `)}&TEXT(${v};"dd/mm")&${aviso})`
   }
-  return `=LET(${declaraciones};${literal(`${texto} · `)}&${xs.map(trozo).join('&" · "&')}${fin})`
+  return `=LET(${declaraciones};${cabeza}${xs.map(trozo).join('&" · "&')}${fin})`
 }
 
 /**

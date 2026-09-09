@@ -40,7 +40,7 @@ const PS = [{
 }]
 const C = { total: 'O', cliente: 'J', detalle: 'K', fecha: 'AD', rubro: 'AB', proveedor: 'E', fechaFactura: 'C', estado: 'X' }
 
-const G = grilla({ periodos: PERIODOS, conceptos: CONCEPTOS, ps: PS, C, bloqueBase: { inicio: 559, fin: 573 } })
+const G = grilla({ periodos: PERIODOS, conceptos: CONCEPTOS, ps: PS, C })
 const rotulo = (fila) => String(G.filas[fila - 1]?.[0] ?? '').replace(VACIO, '')
 const filaDe = (re) => G.filas.findIndex((f) => re.test(String(f[0] ?? ''))) + 1
 const celda = (fila, col) => String(G.filas[fila - 1]?.[col] ?? '')
@@ -129,7 +129,7 @@ test('las filas de caja citan el devengado y las cuotas, no la fila de al lado',
 
 test('el titular cita el total pagado, y el «Total declarado» proyectado cita el subtotal F931', () => {
   const fPagTot = filaDe(/^⇒ Total pagado$/)
-  const pagado = celda(filaDe(/^⇒ Cargas sociales pagadas en el año$/), 1)
+  const pagado = celda(filaDe(/^⇒ Pagado en el año$/), 1)
   assert.deepEqual([...new Set(filasCitadas(pagado))], [fPagTot], `el titular cita ${filasCitadas(pagado)} y el total pagado está en la ${fPagTot}`)
   const fSub = filaDe(new RegExp(`^${ROTULOS_CARGAS.f931}`))
   const decl = celda(filaDe(new RegExp(`^${ROTULOS_CARGAS.declarado}`)), 9)
@@ -153,15 +153,17 @@ test('cada fila declarada al FORMATO es la que su declaración dice ser', () => 
   // que una declaración corrida pinta de fecha una fila de importes y de importes una de fechas.
   // Medido el 09/09 en el archivo vivo: un plan de pago mostrando «17/07/4733» y la fila de fechas
   // mostrando «$46.063».
-  assert.equal(rotulo(G.titular), '⇒ Cargas sociales pagadas en el año')
+  assert.equal(rotulo(G.titular), '⇒ Pagado en el año')
   assert.deepEqual(G.fechas.map(rotulo), [ROTULOS_CARGAS.fechas])
-  assert.deepEqual(G.cantidades.map(rotulo), ['Empleados en nómina', 'Dotación proyectada',
-    '   ·    control: plantel de la última quincena'])
-  assert.deepEqual(G.ratios.map(rotulo), ['Remuneración declarada ÷ jornales netos', '   ·    en su primer año de antigüedad'])
-  assert.deepEqual(G.controles.map(rotulo), ['⇒ Diferencia — tiene que ser $0'])
+  // LAS DOS FILAS DE «·» SE FUERON (09/09/2026): el control de plantel pasó a
+  // `divergenciaDePlantel` (log de la corrida) y la proporción de antigüedad a «Parámetros», con su
+  // rango con nombre. Lo que queda declarado al formato es sólo lo que sigue en la grilla.
+  assert.deepEqual(G.cantidades.map(rotulo), ['Empleados en nómina', 'Dotación proyectada'])
+  assert.deepEqual(G.ratios.map(rotulo), ['Remuneración declarada ÷ jornales netos'])
+  assert.deepEqual(G.controles.map(rotulo), ['⇒ Diferencia'])
   assert.deepEqual(G.proyectadas.map((p) => rotulo(p.fila)), [ROTULOS_CARGAS.declarado])
   assert.deepEqual(G.celdasFecha.map((c) => rotulo(c.fila)), ['⇒ Próximo vencimiento'])
   for (const [a, b] of G.moneda) for (let r = a; r <= b; r++) {
-    assert.match(rotulo(r), /Plan F931|Deuda previsional F931/, `la fila ${r} («${rotulo(r)}») no es una cuota de plan`)
+    assert.match(rotulo(r), /Plan F931|Deuda previsional/, `la fila ${r} («${rotulo(r)}») no es una cuota de plan`)
   }
 })

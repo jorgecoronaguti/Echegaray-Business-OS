@@ -38,6 +38,22 @@ export const RANGO_IERIC = 'IERIC_POR_TRABAJADOR'
 export const RANGO_FODECO = 'FODECO_POR_TRABAJADOR'
 /** El día del mes en que sale de la caja el F931 del mes anterior. Es lo que fecha la serie del Libro. */
 export const RANGO_DIA_PAGO_F931 = 'F931_DIA_DE_PAGO'
+/**
+ * LA PROPORCIÓN DEL PLANTEL EN SU PRIMER AÑO — el peso que reparte las dos alícuotas del FCL.
+ *
+ * ═══ POR QUÉ SE MUDÓ A «Parámetros» (09/09/2026) ═══
+ *
+ * Vivía como un renglón de la sección 3 de «Cargas Sociales» —`   · en su primer año de antigüedad
+ * 66,7%`—: un porcentaje suelto en el medio de doce columnas de pesos, con un «·» que lo hacía pasar
+ * por sub-ítem de la fila de arriba. El dueño lo señaló textual junto con el resto de la prosa. No
+ * es un importe del cuadro: es una ENTRADA de la fórmula de FCL, y las entradas viven en la pestaña
+ * de entradas, con su rótulo y su rango con nombre, como ya hicieron `JORNADA_*` en Jornales.
+ *
+ * A DIFERENCIA DE LAS ALÍCUOTAS, ÉSTE LO CALCULA EL OS y se reescribe en cada corrida (`refrescar`):
+ * su fórmula cita las filas del bloque de quincena vigente de `_J_OBREROS`, así que congelarla la
+ * dejaría midiendo sobre el plantel de hace quince días sin dar un solo error.
+ */
+export const RANGO_PROPORCION_PRIMER_ANIO = 'CARGAS_PROPORCION_PRIMER_ANIO'
 
 /** La marca que el auditor busca para saber que un valor está declarado como no verificado. */
 export const A_VERIFICAR = `${ALERTA} A VERIFICAR POR EL DUEÑO`
@@ -212,6 +228,64 @@ export function formulaProporcionPrimerAnio(hoja, bloque) {
   const B = `'${hoja}'!$B$${bloque.inicio}:$B$${bloque.fin}`
   const C = `'${hoja}'!$C$${bloque.inicio}:$C$${bloque.fin}`
   return `=IFERROR(COUNTIFS(${C};">"&EDATE(TODAY();-12);${C};">0")/COUNTA(${B});"")`
+}
+
+/** Cuánto pueden separarse la dotación de la DDJJ y el plantel de la planilla antes de ser un error. */
+export const TOLERANCIA_PLANTEL = 0.3
+
+/**
+ * NÚCLEO PURO: ¿la dotación de la DDJJ y el plantel de la planilla hablan de la misma empresa?
+ *
+ * ═══ EL CONTROL SIGUE, LA CELDA NO (09/09/2026) ═══
+ *
+ * Era un renglón de la sección 3 con un veredicto en glifo («▲» / «✓») en la columna C: el dueño
+ * mandó sacar de la pestaña los glifos y las explicaciones, y un control cuyo resultado es un
+ * triangulito en el medio de una grilla de plata no lo mira nadie. Baja acá, donde se puede PROBAR
+ * que da rojo, y su veredicto sale por el log de la corrida — que es donde lo ve quien puede cargar
+ * el dato que falta. Es el mismo trato que ya tienen los hallazgos de dominio de esta pestaña.
+ *
+ * NO SE APAGÓ: sigue cruzando DOS FUENTES DISTINTAS —la cabecera de la DDJJ y el registro de
+ * quincenas de `_J_OBREROS`—, que es lo único que lo hace un control y no una tautología. La DDJJ
+ * incluye oficina y la planilla de obra no, así que una diferencia chica es esperable y una grande
+ * es un dato mal cargado.
+ *
+ * @param {{dotacion:number|null, plantel:number|null}} d
+ * @returns {{diverge:boolean, motivo:string, brecha:number|null}}
+ */
+export function divergenciaDePlantel({ dotacion, plantel } = {}) {
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null)
+  const d = n(dotacion)
+  const p = n(plantel)
+  // NO PODER MIRAR NO ES DECIR QUE NO. Sin una de las dos cifras el control no tiene veredicto, y
+  // devolver `diverge: false` sería un verde que nadie midió.
+  if (d === null || p === null) return { diverge: false, motivo: 'sin-dato', brecha: null }
+  const brecha = Math.abs(d - p) / d
+  return { diverge: brecha > TOLERANCIA_PLANTEL, motivo: 'medido', brecha }
+}
+
+/**
+ * LOS PARÁMETROS DE ESTA PESTAÑA, INCLUIDO EL QUE CALCULA EL OS.
+ *
+ * Los normativos son constantes que el dueño firma y que ninguna corrida pisa. El de antigüedad es
+ * una FÓRMULA que apunta al bloque de quincena vigente, así que viaja con `refrescar: true` y se
+ * reescribe siempre: es la única forma de que no se fosilice apuntando al plantel de la quincena
+ * anterior. Sin bloque no se declara el parámetro — un rango con nombre sobre una celda que dice
+ * `""` haría que el FCL se proyecte con la alícuota del segundo año para todo el plantel, en
+ * silencio; que falte el nombre, en cambio, deja la celda en `#NAME?` y se ve.
+ *
+ * @param {{inicio:number, fin:number}|null} bloqueBase el bloque del plantel en `_J_OBREROS`
+ */
+export function parametrosDeCargas(bloqueBase = null) {
+  if (!bloqueBase) return [...PARAMETROS_CARGAS]
+  return [...PARAMETROS_CARGAS, {
+    rango: RANGO_PROPORCION_PRIMER_ANIO,
+    rotulo: 'FCL — proporción del plantel en su primer año',
+    valor: formulaProporcionPrimerAnio('_J_OBREROS', bloqueBase),
+    refrescar: true,
+    nota: 'LO CALCULA EL OS, no lo edites: fecha de ingreso de cada persona en _J_OBREROS, sobre el '
+      + 'plantel de la quincena vigente. Es lo que pondera las dos alícuotas del Fondo de Cese, y se '
+      + 'recalcula en cada corrida porque el bloque de la quincena se mueve.',
+  }]
 }
 
 /**

@@ -318,7 +318,10 @@ test('el parámetro de alícuota vive DENTRO de su bloque, no huérfano al pie',
   // lo que es, el único valor del archivo que el dueño firma a mano. Ahora es la PRIMERA fila de su
   // bloque, que pasó a llamarse por lo que de verdad contiene: los supuestos y los huecos.
   const g = armar()
-  const bloque = filaDe(g, /^7 · SUPUESTOS Y HUECOS/)
+  // ERA LA 7 Y AHORA ES LA 6 (09/09/2026): la sección «Planes de pago F931» se retiró —es el cuadro
+  // de «Cargas Sociales», una sola vez— y las de abajo corrieron un número. Sin huecos, que es lo
+  // que el contrato de diseño exige.
+  const bloque = filaDe(g, /^6 · SUPUESTOS Y HUECOS/)
   assert.ok(bloque > 0, 'el bloque tiene que existir y llamarse por su única idea')
   assert.equal(g.filaAlicuotaIva, bloque + 1, 'el parámetro es la primera fila de su bloque')
   assert.equal(g.filas[g.filaAlicuotaIva - 1][0], 'Alícuota general de IVA')

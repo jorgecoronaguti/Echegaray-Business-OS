@@ -40,9 +40,13 @@ export async function formatear(google, fileId, sheetId, filas, {
     // Las filas vuelven a su altura: al sacar el muro de texto de la derecha quedaron con el alto
     // que ESE texto necesitaba, y la pestaña medía tres pantallas de aire.
     { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: filas.length }, properties: { pixelSize: 21 }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 330 }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 13 }, properties: { pixelSize: 108 }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 13, endIndex: 14 }, properties: { pixelSize: 124 }, fields: 'pixelSize' } },
+    // LOS ANCHOS SON LOS DEL CONTRATO, LOS MISMOS DE «Jornales por Quincena» (09/09/2026): la columna
+    // del concepto 300 px y las numéricas 100. Estaban en 330 y 108 —heredados de cuando los rótulos
+    // explicaban— y con los rótulos recortados sobraba espacio, que es tinta sin dato. El Total
+    // queda un poco más ancho porque lleva el número más largo de la fila.
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 300 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 13 }, properties: { pixelSize: 100 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 13, endIndex: 14 }, properties: { pixelSize: 116 }, fields: 'pixelSize' } },
     // La columna de procedencia (O): angosta a propósito. El texto de origen se escribe en la celda
     // —no en una nota, que el dueño hizo sacar— y al ser la ÚLTIMA columna desborda a la derecha como
     // la nota al pie de un tearsheet: se lee al posar el ojo, sin abrir un hueco entre los cuadros.
@@ -92,13 +96,18 @@ export async function formatear(google, fileId, sheetId, filas, {
     { repeatCell: { range: rg(f - 1, f, 0, ANCHO), cell: { userEnteredFormat: { textFormat: { foregroundColor: MUTED, bold: false, italic: false, fontSize: 9, fontFamily: 'Arial' } } }, fields: 'userEnteredFormat.textFormat' } },
     { updateBorders: { range: rg(f - 1, f, 0, ANCHO), top: { style: 'NONE' } } },
   ]))
-  // ═══ EL CONTROL DICE SU RESPUESTA, NO UN GUION ═══
+  // ═══ EL CONTROL DICE SU RESPUESTA, NO UN GUION — NI UN TILDE (09/09/2026) ═══
   //
   // El barrido de moneda dibuja el cero como "—", que en una fila de importes es correcto: un mes sin
-  // movimiento no debe gritar "$0". Pero en "⇒ Diferencia — tiene que ser $0" el cero ES la respuesta,
-  // y salía igual que una celda sin dato. La tercera sección del patrón —la del cero— pasa a decirlo.
+  // movimiento no debe gritar "$0". Pero en la fila «Diferencia» el cero ES la respuesta, y salía
+  // igual que una celda sin dato. La tercera sección del patrón —la del cero— pasa a decirlo.
+  //
+  // Y EL GLIFO SE FUE. Decía «✓ $0», y el dueño mandó sacar los ✓ y los ▲ de la pestaña. El patrón
+  // de número YA es el formato condicional: la primera y la segunda sección llevan `[Red]` y la
+  // tercera —el cero— no. Cerrado se lee «$0» en tinta normal; distinto de cero, el importe en rojo.
+  // Rojo o no rojo es todo el mensaje, sin una palabra ni un símbolo de más.
   for (const f of controles) {
-    reqs.push({ repeatCell: { range: rg(f - 1, f, 1, 2), cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '[Red]"$"#,##0;[Red]-"$"#,##0;"✓ $0"' } } }, fields: 'userEnteredFormat.numberFormat' } })
+    reqs.push({ repeatCell: { range: rg(f - 1, f, 1, 2), cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '[Red]"$"#,##0;[Red]-"$"#,##0;"$0"' } } }, fields: 'userEnteredFormat.numberFormat' } })
   }
   // ═══ LA PROYECCIÓN SE DISTINGUE POR LA TIPOGRAFÍA, NO POR UNA PALABRA (09/09/2026) ═══
   //

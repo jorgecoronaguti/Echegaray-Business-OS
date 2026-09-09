@@ -2102,14 +2102,26 @@ export async function asegurarParametros(google, hojas, params = TODOS_LOS_PARAM
   const filas = await google.readSheetValues(ID, `'${TAB}'!A1:C400`).catch(() => [])
   const ubic = ubicarParametros(filas, params)
 
-  for (const p of ubic.filter((x) => x.nuevo)) {
+  // ═══ `refrescar`: LA EXCEPCIÓN QUE NO ROMPE LA REGLA (09/09/2026) ═══
+  //
+  // "Nunca pisa un valor" es lo correcto para un parámetro NORMATIVO —una alícuota que el dueño
+  // confirma con el contador—. No lo es para un valor que el OS CALCULA y que se mudó acá sólo para
+  // sacarlo del medio de una grilla de plata: la proporción del plantel en su primer año de
+  // antigüedad sale de las fechas de ingreso de `_J_OBREROS` y su fórmula cita las filas del bloque
+  // de la quincena vigente. Escrito una sola vez, el día que entre una quincena nueva ese rango
+  // apunta al bloque viejo y devuelve un porcentaje plausible sobre otra gente — la fosilización
+  // exacta que `auditar-rangos-fosilizados` persigue, y que no da un solo error.
+  //
+  // Entonces: el parámetro del dueño no se pisa NUNCA, y el calculado por el OS se reescribe SIEMPRE.
+  // Quién es cuál lo declara la propia lista, no una heurística.
+  for (const p of ubic.filter((x) => x.nuevo || x.refrescar)) {
     // Se escribe SÓLO la fila del parámetro, con el portón que respeta candado, firma y anotaciones.
     // Nada de batchUpdateValues crudo: Parámetros es una pestaña del dueño, no un espejo.
     const r = await escribirPreservando(google, ID, `'${TAB}'`, [[p.rotulo, p.valor, p.nota]], {
       fila0: p.fila, anchoHoja: 3, pestana: TAB,
     })
     if (r?.bloqueada || r?.editadaPorHumano) { console.log(`  ⚠ "${TAB}" está bajo tu control: no escribí "${p.rotulo}"`); continue }
-    console.log(`  ✚ parámetro nuevo en ${TAB}!A${p.fila}: "${p.rotulo}" = ${p.valor}`)
+    console.log(`  ${p.nuevo ? '✚ parámetro nuevo' : '↻ recalculado'} en ${TAB}!A${p.fila}: "${p.rotulo}" = ${p.valor}`)
   }
 
   // Los nombres apuntan a la celda del VALOR (columna B). Si el dueño mueve la fila, la próxima

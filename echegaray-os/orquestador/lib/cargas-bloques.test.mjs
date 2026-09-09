@@ -14,7 +14,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { crearGrilla } from './cargas-grilla.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
-import { total as rotuloTotal, sub } from './patron-pestana.mjs'
+import { total as rotuloTotal } from './patron-pestana.mjs'
 import { ROTULOS_CARGAS } from './libro-extractores-cargas.mjs'
 import { bloqueDeclarado, bloquePagado, bloqueProyeccion, bloquePlanes } from './cargas-bloques.mjs'
 import { SIN_DDJJ } from './cargas-grilla.mjs'
@@ -142,11 +142,10 @@ test('el desglose de ART sale del código 312 y del F931 EFECTIVAMENTE pagado, n
   // Y enero queda vacío: su F931 es la DDJJ de diciembre del año anterior, que esta grilla no tiene.
   // Prorratearlo contra una columna inexistente sería fabricar el dato que falta.
   assert.equal(G.filas[pag.fArtPag - 1][1], VACIO, 'enero se prorrateó contra una columna que no existe')
-  // El rótulo LLEVA el veredicto: es lo único que le contesta al que abre la pestaña la pregunta que
-  // la auditoría dejó abierta —"¿se paga la ART?"— sin que tenga que ir a buscar el código 312.
-  // EL RÓTULO NOMBRA, NO EXPLICA (09/09): decía «ART · ya incluida en el F931, no se paga aparte».
-  // Que no se sume dos veces lo prueba su posición, que es lo que mide el test de arriba.
-  assert.equal(String(G.filas[pag.fArtPag - 1][0]), sub('ART (dentro del F931)'))
+  // EL RÓTULO NOMBRA Y NADA MÁS (09/09): pasó por «ART · ya incluida en el F931, no se paga aparte»
+  // y por «   · ART (dentro del F931)». Las dos explicaban lo mismo que ya prueba su POSICIÓN, que
+  // es lo que mide el test de arriba. Y no es un sub-ítem: no cuelga de la fila de arriba.
+  assert.equal(String(G.filas[pag.fArtPag - 1][0]), 'ART')
 })
 
 test('sin código 312 en la DDJJ no se inventa la fila: no hay nada que desglosar', () => {

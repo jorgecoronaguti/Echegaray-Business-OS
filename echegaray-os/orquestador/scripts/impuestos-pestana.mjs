@@ -42,16 +42,16 @@ import { resolverColumnas } from '../lib/compras-columnas.mjs'
 // POR TEXTO en la columna A, así que el texto es el contrato y tiene una sola definición.
 import { CALENDARIO_IMPUESTOS, CUADRO } from '../lib/cash-flow-lineas.mjs'
 import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
-import { crearGrilla, ANCHO, M12, MES, cmes } from '../lib/impuestos-grilla.mjs'
+import { crearGrilla, ANCHO, MES, cmes } from '../lib/impuestos-grilla.mjs'
 import {
   IIBB_RAW, IIBB_COL, IIBB_FILA0, ARCA_RAW, ARCA_FILA0, BANCO_RAW,
-  leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, planesDePago, escribirIIBBRaw,
+  leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, escribirIIBBRaw,
 } from '../lib/impuestos-fuentes.mjs'
 import {
-  bloqueIva, mesDeLaUltimaDDJJ, bloqueIibb, bloqueRetenciones, bloqueOtros, bloquePlanes, bloqueDeudaFinanciera, bloqueCierre,
+  bloqueIva, mesDeLaUltimaDDJJ, bloqueIibb, bloqueRetenciones, bloqueOtros, bloqueDeudaFinanciera, bloqueCierre,
 } from '../lib/impuestos-bloques.mjs'
 import {
-  obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, verificarReferenciasDelHero,
+  obligacionesDelCalendario, mesesDeCadaObligacion, altoDeLaPosicion, filasDeLaPosicion, verificarReferenciasDelHero,
   OFFSET_TITULAR, ALTO_HERO, ROTULO_IVA_EN_CAJA, hallazgoDeVencimiento, conDecisionesDelDueno,
 } from '../lib/impuestos-posicion.mjs'
 // Lo que el dueño ya decidió sobre un vencimiento puntual. Ver lib/decisiones-hallazgos.mjs.
@@ -61,6 +61,10 @@ import { informarProyeccion, informarCalendario } from '../lib/impuestos-informe
 import { formatear } from '../lib/impuestos-piel.mjs'
 export { ubicarLineas, sinSolapamiento } from '../lib/impuestos-base-proyeccion.mjs'
 import { resolverAlicuota, ROTULO_ALICUOTA } from '../lib/impuestos-alicuota.mjs'
+// EL CUADRO DE PLANES DEL F931 VIVE EN «Cargas Sociales» (09/09/2026): de acá salen el nombre del
+// rango que se lee y el MISMO lector que arma aquel cuadro — el paralelo se borró para no tener dos.
+import { NOMBRES_CARGAS } from '../lib/libro-extractores-cargas.mjs'
+import { planesDePago } from '../lib/cargas-planes.mjs'
 import { elLayoutCambio, invalidarHuellasDeFormato } from '../lib/huella-formato-layout.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -141,19 +145,9 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   ], { compacto: true })])
   G.blanco()
 
-  // ── QUÉ MESES TIENE CADA OBLIGACIÓN ────────────────────────────────────────────────────────────
-  // Se necesita ANTES de escribir para saber cuántas filas ocupa el calendario, y las FECHAS no
-  // dependen de en qué fila quede el detalle: por eso el calendario se arma dos veces, la primera
-  // sólo para contar. Reservar de menos pisaría el bloque de abajo; reservar de más deja un hueco.
-  const mesesOf = M12.filter((m) => (ivaOficial ?? []).some((d) => Number(String(d.periodo).slice(5, 7)) === m))
-  const anclaIva = proy?.ultimoMesConDato ?? 0
-  const mesesIvaTodos = [...new Set([...mesesOf, ...M12.filter((m) => m <= anclaIva), ...(proy?.meses ?? [])])].sort((a, b) => a - b)
-  const mesesIibbReales = M12.filter((m) => iibb.some((d) => Number(String(d.periodo ?? '').slice(5, 7)) === m))
-  const ultimoIibb = mesesIibbReales[mesesIibbReales.length - 1] ?? 0
-  const hastaIibb = Math.max(proy?.meses?.length ? proy.meses[proy.meses.length - 1] : 0, ultimoIibb)
-  const mesesIibbTodos = M12.filter((m) => mesesIibbReales.includes(m) || (m > ultimoIibb && m <= hastaIibb))
-  const mesesPlan = M12.filter((m) => planes.some((p) => p.porMes[m]))
-  const mesesDelCalendario = { iva: mesesIvaTodos, iibb: mesesIibbTodos, plan: mesesPlan, prendario: M12 }
+  // QUÉ MESES TIENE CADA OBLIGACIÓN — se necesita ANTES de escribir el detalle. El porqué y la
+  // cuenta, en `mesesDeCadaObligacion`, al lado del calendario que los consume.
+  const { mesesOf, ...mesesDelCalendario } = mesesDeCadaObligacion({ ivaOficial, proy, iibb, planes })
   // EL ESPACIO DEL HERO YA NO DEPENDE DE CUÁNTOS VENCIMIENTOS HAYA: el calendario dejó de ocupar
   // filas (ver `filasDeLaPosicion`), así que la reserva es constante y no puede quedar corta.
   const alto = altoDeLaPosicion()
@@ -164,8 +158,9 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   const ibb = bloqueIibb(G, { anio, iibb, proy })
   bloqueRetenciones(G, { anio })
   bloqueOtros(G, { anio, C })
-  const pln = bloquePlanes(G, { anio, C, planes })
-  const deuda = bloqueDeudaFinanciera(G, { anio, C, planes, fPlanTotal: pln.fTotal })
+  // El cuadro de planes se retiró: vive en «Cargas Sociales». Acá queda la FILA de la cuota, leída
+  // por rango con nombre desde el bloque de deuda financiera.
+  const deuda = bloqueDeudaFinanciera(G, { anio, C })
   const cierre = bloqueCierre(G, {
     proy,
     vencimientos: { iibb: `día ${IIBB_SUPUESTO.dia} de cada mes, ${IIBB_SUPUESTO.porQue}. Lo cierra una consulta a la DGR o al estudio contable.` },
@@ -174,7 +169,8 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   // ── LA POSICIÓN, RECIÉN AHORA ──────────────────────────────────────────────────────────────────
   const calCrudo = obligacionesDelCalendario({
     hoy, anio, meses: mesesDelCalendario,
-    filas: { iva: iva.fAPagar, iibb: ibb.fAPagar, plan: pln.fTotal, prendario: deuda.fCuota },
+    // La fila del plan es la del bloque de deuda financiera: es la única que quedó con la cuota del mes.
+    filas: { iva: iva.fAPagar, iibb: ibb.fAPagar, plan: deuda.fPlan, prendario: deuda.fCuota },
   })
   // ═══ LO QUE EL DUEÑO YA MIRÓ NO VUELVE A GRITAR (13/08) ═══
   //
@@ -194,7 +190,8 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
     saldoIva: mesSaldoIva ? `$${cmes(mesSaldoIva)}$${iva.fLibre}` : '0',
     saldoIibb: ibb.ultimoReal ? `$${cmes(ibb.ultimoReal)}$${ibb.fSaldo}` : '0',
     prendPend: `$B$${deuda.fPrendPend}`,
-    planesPend: `$B$${deuda.fPlanesPend}`,
+    // Ya no es una celda de esta pestaña: es el rango con nombre que publica «Cargas Sociales».
+    planesPend: NOMBRES_CARGAS.planesSinPagar,
     // Las tres filas del cuadro de IVA de las que sale "cuándo empieza a salir de la caja".
     ivaAPagar: iva.fAPagar, ivaLibre: iva.fLibre, ivaCabecera: iva.fCabecera,
   }
@@ -365,6 +362,8 @@ async function main() {
   // quiere decir que estén TODOS. El mes en curso es parcial por construcción y el cuadro lo declara.
   const arca = { meses: iva.filter((m) => m.disponible).map((m) => Number(String(m.periodo).slice(5, 7))) }
   const proy = await planDeProyeccionIva(google, ivaOficial, hoy)
+  // SÓLO PARA SABER QUÉ MESES TIENEN CUOTA — es lo que el calendario del hero necesita para poner la
+  // obligación en su ventana. El IMPORTE lo publica «Cargas Sociales» por `CARGAS_MES_PLANES`.
   const planes = await planesDePago(AÑO)
   const cabCompras = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
   const { col: C, faltan } = resolverColumnas(cabCompras, {
@@ -395,7 +394,8 @@ async function main() {
     for (const m of iva.filter((x) => x.disponible || x.es_proyeccion)) {
       console.log(`  [control] ${m.periodo}  débito ${Math.round(m.debito_fiscal).toLocaleString('es-AR').padStart(12)}  crédito ${Math.round(m.credito_fiscal).toLocaleString('es-AR').padStart(12)}  a pagar ${Math.round(m.a_pagar_real ?? 0).toLocaleString('es-AR').padStart(12)}  saldo a favor ${Math.round(m.saldo_queda).toLocaleString('es-AR').padStart(12)}${m.es_proyeccion ? '  (proyección técnica)' : ''}`)
     }
-    for (const p of planes) console.log(`  ${p.nombre.padEnd(42)} ${p.cuotas} cuotas x ${p.monto_cuota.toLocaleString('es-AR')} = ${Math.round(p.total).toLocaleString('es-AR')}`)
+    // La forma la impone `cargas-planes.mjs`, el lector que quedó: `n` cuotas, `saldo` lo que falta.
+    for (const p of planes) console.log(`  ${p.nombre.padEnd(30)} ${p.n} cuota(s) · ${p.pagadas} pagada(s) · total ${Math.round(p.total).toLocaleString('es-AR')} · saldo ${Math.round(p.saldo).toLocaleString('es-AR')}`)
     informarCalendario(g, hoy)
     informarProyeccion(proy)
     const est = await verificarContrato(google, g)
