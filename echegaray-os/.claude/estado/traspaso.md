@@ -87,11 +87,13 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
 ## 6. PENDIENTES REALES
 
 **P0 — siguiente al abrir sesión**
-- Rama `fix/obra-cerrada-por-fecha` (worktree `.claude/worktrees/cerrada-fecha`, 4 archivos
-  modificados SIN commit al cortar: `asignaciones-desde-hh.mjs`, `invariantes/asignaciones.mjs`,
-  `asignaciones-desde-jornales.mjs`, `asistencia-obra-por-dia.mjs`). Objetivo: `fecha_fin` por obra
-  = último día con horas; horas ≤ fecha_fin arman historial y el tramo cierra ahí; invariante
-  `hasta <= fecha_fin`. Revisar diff, test dirigido, commit, merge desde el checkout principal,
+- Rama `fix/obra-cerrada-por-fecha` (`badc43a3`, worktree `cerrada-fecha`; typecheck/eslint/64
+  tests dirigidos en verde, sin auditor). Regla por fecha: `obrasCerradas` es Map obra→`fecha_fin_real`;
+  día ≤ cierre arma historial y el tramo se recorta al cierre; invariante nuevo
+  `asignacion_termina_despues_del_cierre_de_la_obra`. **Ya escrito en la base** (`obra_canonica.fecha_fin_real`):
+  le-comedor 01/09, le-galpon-9 03/09, sf-mamposteria 02/09 (los dos primeros tenían 22/08 de carga
+  masiva). Dry: 4 insert/4 delete, 3 recortes, invariante 5→2 rojos (Pastrán y Zogbe en le-galpon-9
+  hasta 07/09, cargados por la web → decisión del dueño). Falta: merge desde el checkout principal,
   push, ff producción, y correr DESDE producción:
   `ORQ_GOOGLE_FETCH_TIMEOUT_MS=180000 node orquestador/scripts/asistencia-obra-por-dia.mjs --aplicar --desde 2026-01-01`
   y `node orquestador/scripts/invariantes-asignaciones.mjs`.
@@ -119,12 +121,12 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
 - Árbol: limpio salvo capturas `qa-shots/verif-opacidad*` y `tests/verif-opacidad2.spec.ts` sin
   seguimiento (descartables).
 - Producción (`~/echegaray-os/produccion/echegaray-os`): `f27a7195`, igual a main.
-- Ramas con trabajo: `fix/obra-cerrada-por-fecha` (sin commit) · `fix/vercel-function-storage` (`06f056ae`).
+- Ramas con trabajo, sin mergear: `fix/obra-cerrada-por-fecha` (`badc43a3`) · `fix/vercel-function-storage` (`06f056ae`).
 
 ## 8. PRÓXIMO PASO
 
-Cerrar `fix/obra-cerrada-por-fecha` en `orquestador/lib/asignaciones-desde-hh.mjs` (diff sin
-commit en el worktree `cerrada-fecha`), partiendo de main `f27a7195`; luego mergear también
+Mergear `fix/obra-cerrada-por-fecha` (`badc43a3`) desde `~/echegaray-os/app/echegaray-os` sobre main
+`f27a7195`, y en el mismo paso
 `fix/vercel-function-storage`, un solo push, ff producción, y correr el importador `--aplicar` desde producción.
 
 ## 9. REGLA PARA NUEVAS SESIONES
