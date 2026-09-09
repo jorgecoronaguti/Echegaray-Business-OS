@@ -168,6 +168,18 @@ export const PASOS = [
   // La carga desde el Sheet (`obras-previstos-cargar.mjs`) NO está acá a propósito: lee la pestaña
   // OBRAS que este mismo pipeline reescribe, y meterla en el medio la haría leer un estado a medio
   // publicar. Se corre aparte, con su propia verificación.
+  // ═══ MATERIALES VUELVE A TENER DUEÑO (09/09/2026) ═══
+  //
+  // Estuvo veintiséis días sin ninguno: `proveedores-materiales-pestana.mjs` la escribía y se retiró
+  // el 14/08 por apilar capas (ver PASOS_RETIRADOS). La pestaña no se rompió —sus fórmulas siguen
+  // vivas— pero su LAYOUT se congeló, y con él la prosa y el «$» del cuerpo que el contrato de diseño
+  // prohíbe. `materiales-pestana.mjs` es un generador nuevo, chico y con test: no toca «Proveedores».
+  //
+  // VA ANTES DE _OBRAS_RAW Y DE OBRAS, y no es indiferente: `obras-pestana.mjs` ABORTA si no
+  // encuentra en la columna A de Materiales los rótulos «TOTAL POR OBRA» y «2 · POR OBRA». Corriendo
+  // después, OBRAS los ubicaría sobre la grilla de la corrida anterior — que no da error, da una
+  // pestaña vieja. Y va DESPUÉS de `rubro-caja-sheet.mjs`, que es quien define «Familia de material».
+  ['materiales-pestana.mjs', 'Materiales — el costo de material por familia × mes y por familia × obra, en neto', ['Materiales']],
   ['obras-raw-pestana.mjs', '_OBRAS_RAW — el plan de egresos por obra que el cuadro 4 de OBRAS suma', ['_OBRAS_RAW']],
   ['obras-pestana.mjs', 'OBRAS — el año entero obra por obra: venta/cobrado/pendiente por cliente y las obras del año', ['OBRAS'], ['--escribir']],
   // SÓLO LEE EL SHEET (Cobranzas + tipo de cambio) y persiste en Postgres lo que OBRAS publica por
@@ -587,6 +599,9 @@ export const PASOS_RETIRADOS = Object.freeze([
     //     es republicar cuatro celdas rotas cada dos horas. Ver scripts/arca-reapuntar-nombres.mjs.
     //
     // Cada condición tiene su comando: un criterio que no se puede correr vuelve a ser una intención.
+    // 09/09/2026: el criterio habla de «las dos pestañas» porque este script escribía las dos. Desde
+    // hoy sólo le queda «Proveedores»; la medición de Materiales se conserva porque es la evidencia
+    // de que la huella alineaba, y el que evalúe la vuelta tiene que mirar la de Proveedores.
     vuelve: 'las CUATRO, medidas y no afirmadas: (1) la huella de las dos pestañas alinea por encima '
       + 'de 0,6 — medir-huella-pestana.mjs (CUMPLIDO 15/08: 100,0% y 100,0%); '
       + '(2) una corrida informa celdas limpiadas > 0; (3) la pestaña NO crece entre dos corridas '
@@ -594,7 +609,10 @@ export const PASOS_RETIRADOS = Object.freeze([
       + 'las filas 139-145 ya no está; (4) arca-reapuntar-nombres.mjs sale en verde: los nombres en su '
       + 'línea y ningún importe del bloque guardado como texto.',
     // Lo que queda sin actualizar mientras dure el freno. Es el costo, dicho: es menor que apilar.
-    cuesta: ['Proveedores · de la frontera para abajo (notas de crédito, ARCA y control)', 'Materiales'],
+    // «Materiales» SALIÓ DE ACÁ EL 09/09/2026: la pestaña tiene dueño nuevo —`materiales-pestana.mjs`,
+    // en PASOS— así que este freno ya no le cuesta nada. Lo que sigue costando es la mitad de abajo de
+    // «Proveedores», que este script todavía es el único que sabe escribir.
+    cuesta: ['Proveedores · de la frontera para abajo (notas de crédito, ARCA y control)'],
   }),
   Object.freeze({
     script: 'nomina-pestana.mjs',
