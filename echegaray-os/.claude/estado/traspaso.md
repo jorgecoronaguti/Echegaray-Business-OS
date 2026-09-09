@@ -65,9 +65,12 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
   `asignacion_termina_despues_del_cierre_de_la_obra`. Historial reconstruido con `--aplicar` desde
   producción (4 borradas / 4 insertadas, 257 filas, 2 rojos que son decisión del dueño).
 - **Vercel Function Storage**: bundle serverless 85,6 → 43,8 MB (`outputFileTracingExcludes`) y
-  `ignoreCommand` (1 de 4 commits no despliega) en main desde `9e30ba55`. Efecto real en el dashboard
-  aún no medido; causa raíz viva: `orquestador/lib/config.mjs` deriva `APP_DIR` y el trazador arrastra
-  el directorio entero. Vercel no tiene token en la VM.
+  `ignoreCommand` en main desde `9e30ba55` (verificado: el commit sólo-docs 4220df3e quedó CANCELED y
+  `app.ecsas.com.ar` sigue en 9e30ba55; Ignored Build Step del proyecto vacío). Acceso a Vercel desde la
+  VM: token de la CLI en `~/.local/share/com.vercel.cli/auth.json` (cuenta jorge.o.corona@gmail.com,
+  memoria `vercel-acceso-y-limpieza`). Borrado de 645 deploys viejos en curso el 09/09 (200 por ventana
+  de la API; protegidos el actual, los 4 READY anteriores y los aliases). Causa raíz viva:
+  `orquestador/lib/config.mjs` deriva `APP_DIR` y el trazador arrastra el directorio entero.
 - Persona de prueba: `e2e00000-0000-4000-8000-000000000001` (es_prueba), obra `prueba-e2e`.
   Accesos reales rodrigo/hys/ingenieria: `test123`. QA jefe `qa.jefe.obra@ecsas.com.ar`/`TestJefe123!`.
 - Protecciones: firma por pestaña (ORQ_AUTOCANDADO) apagada a propósito; pestañas Compras/Cobranzas/
@@ -90,12 +93,12 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
 ## 6. PENDIENTES REALES
 
 **P0 — verificar en producción (efecto, no intento)**
-- Después del deploy de `9e30ba55`: bajar un recibo real desde el portal (`/portal/recibo/[id]` es la
-  única ruta que las exclusiones de traza pueden romper) y leer Function Storage en el dashboard.
-- Dueño: borrar deploys viejos en Vercel (pasos en `docs/engineering/DEPLOY.md`) y revisar que
-  Settings → Git → Ignored Build Step no pise el `ignoreCommand`.
-- Dueño: Pastrán y Zogbe asignados a le-galpon-9 hasta 07/09 con cierre 03/09 (cargados por la web):
-  corregir la imputación o mover la fecha de cierre.
+- Confirmar que el borrado de deploys terminó (listar con la API: deben quedar ~20) y leer Function
+  Storage en el dashboard de Vercel (no hay API pública; hace falta el navegador logueado).
+- Bajar un recibo real desde el portal (`/portal/recibo/[id]` es la única ruta que las exclusiones de
+  traza pueden romper).
+- Pastrán y Zogbe en le-galpon-9 hasta 07/09 con cierre 03/09: **el dueño dijo dejarlo como está**
+  (09/09). El invariante los seguirá listando en rojo; no tocar.
 
 **P1 — decisiones del dueño abiertas**
 - Messina: aceptar 6 eCHEQ en Santander; fila propia para $38.462,45 «a cuenta».
