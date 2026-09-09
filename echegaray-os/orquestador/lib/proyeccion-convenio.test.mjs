@@ -314,7 +314,8 @@ function glosaDeCargas(baseJornales) {
   const pag = bloquePagado(G, { anio: 2026, C: COLS })
   const proy = bloqueProyeccion(G, {
     anio: 2026, desdeProy: 7, filaDecl: decl.filaDecl, filaPag: pag.filaPag,
-    fRem: decl.fRem, fEmp: decl.fEmp, bloqueBase: { inicio: 495, fin: 510 }, baseJornales,
+    fRem: decl.fRem, fEmp: decl.fEmp, C: COLS, fDeclTot: decl.fDeclTot,
+    bloqueBase: { inicio: 495, fin: 510 }, baseJornales,
   })
   const fila = G.filas[proy.fRemProy - 1]
   assert.match(String(fila[0]), /Remuneración proyectada/, 'la fila que devolvió el bloque no es la que dice ser')

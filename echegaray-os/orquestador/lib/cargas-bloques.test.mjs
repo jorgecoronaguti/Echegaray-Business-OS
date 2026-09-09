@@ -16,9 +16,7 @@ import { crearGrilla } from './cargas-grilla.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { total as rotuloTotal, sub } from './patron-pestana.mjs'
 import { ROTULOS_CARGAS } from './libro-extractores-cargas.mjs'
-import {
-  bloqueDeclarado, bloquePagado, bloqueDiferencia, bloqueProyeccion, bloqueCaja, bloqueSac, bloquePlanes,
-} from './cargas-bloques.mjs'
+import { bloqueDeclarado, bloquePagado, bloqueProyeccion, bloquePlanes } from './cargas-bloques.mjs'
 import { SIN_DDJJ } from './cargas-grilla.mjs'
 
 const ANIO = 2026
@@ -38,31 +36,26 @@ const PS = [{
   porMes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 2494876, 2494876, 2494876, 0],
 }]
 
-/** La pestaña entera, armada como la arma el generador: los siete cuadros sobre UNA grilla. */
+/** La pestaña entera, armada como la arma el generador: los cuatro cuadros sobre UNA grilla. */
 function armar({ conceptos = CONCEPTOS } = {}) {
   const G = crearGrilla(ANIO)
   G.push(['Cargas sociales'])
   G.push()
   const decl = bloqueDeclarado(G, { anio: ANIO, periodos: PERIODOS, conceptos })
   const pag = bloquePagado(G, { anio: ANIO, C, fArtDecl: decl.filaDecl['312'], fDeclTot: decl.fDeclTot })
-  bloqueDiferencia(G, { fPagF931: pag.filaPag.F931, fDeclTot: decl.fDeclTot })
   const proy = bloqueProyeccion(G, {
     anio: ANIO, desdeProy: 7, filaDecl: decl.filaDecl, filaPag: pag.filaPag,
-    fRem: decl.fRem, fEmp: decl.fEmp, bloqueBase: { inicio: 495, fin: 510 },
+    fRem: decl.fRem, fEmp: decl.fEmp, C, fDeclTot: decl.fDeclTot, bloqueBase: { inicio: 495, fin: 510 },
   })
-  const caja = bloqueCaja(G, {
-    anio: ANIO, desdeProy: 7, proyMeses: proy.proyMeses, fDeclTot: decl.fDeclTot, fProyTot: proy.fProyTot, C,
-  })
-  bloqueSac(G, { anio: ANIO, C, fRem: decl.fRem, fRemProy: proy.fRemProy })
   const planes = bloquePlanes(G, { ps: PS, C })
-  return { G, decl, pag, proy, caja, planes }
+  return { G, decl, pag, proy, planes }
 }
 
 /** El rótulo que quedó EN la fila que un bloque devolvió. 1-based, como las filas de un Sheet. */
 const rotuloDe = (G, fila) => String(G.filas[fila - 1]?.[0] ?? '')
 
 test('cada bloque devuelve la fila REAL de cada total, no una posición contada aparte', () => {
-  const { G, decl, pag, proy, caja, planes } = armar()
+  const { G, decl, pag, proy, planes } = armar()
   const esperado = [
     [decl.fDeclTot, rotuloTotal('Total declarado')],
     [decl.fEmp, 'Empleados en nómina'],
@@ -78,8 +71,10 @@ test('cada bloque devuelve la fila REAL de cada total, no una posición contada 
     [proy.fSubGremiales, ROTULOS_CARGAS.gremiales],
     [proy.fProyTot, rotuloTotal('Total devengado en el mes')],
     [proy.fFechaSalida, ROTULOS_CARGAS.fechas],
-    [caja.fCuotasVencen, 'Cuotas de planes de pago que vencen'],
+    [proy.fCuotasVencen, 'Cuotas de planes de pago que vencen'],
+    [proy.fPrevisto, 'Previsto en Compras para ese mes'],
     [planes.fCuotasTot, rotuloTotal('Total de cuotas del año')],
+    [planes.fSinPagar, rotuloTotal('Cuotas sin pagar')],
   ]
   for (const [fila, rotulo] of esperado) {
     assert.equal(rotuloDe(G, fila), rotulo,
@@ -98,24 +93,23 @@ test('las filas de un bloque siguen siendo suyas después de que corran los de a
   for (const f of [decl.fDeclTot, decl.fEmp, decl.fRem, pag.fPagTot]) assert.ok(f >= 1)
 })
 
-test('el cuadro del "al día" compara LO MISMO CONTRA LO MISMO, y con el mes corrido', () => {
-  // EL DEFECTO QUE ATAJA. Restaba `Total pagado − Total declarado`. El pagado suma FCL, UOCRA, IERIC,
-  // FODECO y las cuotas de planes; el declarado sólo los seis códigos del F931. Dos canastas
-  // distintas: la resta daba +$8.020.918 en el año y no significaba ni sobrepago ni deuda. Si alguien
-  // vuelve a apuntar esta fila al TOTAL pagado, este test se pone rojo.
-  const { G, decl, pag } = armar()
-  const dif = G.filas.find((f) => /^F931 pagado − declarado el mes anterior/.test(String(f[0] ?? '')))
-  assert.ok(dif, 'desapareció la fila del control de "¿estamos al día?"')
-  // Julio es la columna H y su contraparte es JUNIO, la G: el F931 del mes m−1 se paga en el mes m.
-  // Sin el corrimiento el cuadro no puede dar cero ningún mes y hay que pedirle perdón en una nota.
-  // La resta va envuelta desde el 07/09: si el mes anterior no tiene DDJJ, su celda dice «sin DDJJ»
-  // (texto) y restarla daba #VALUE!. Lo que se sigue exigiendo es CONTRA QUÉ compara —el F931 del mes
-  // anterior, no el total pagado— y que el corrimiento de un mes esté.
-  assert.equal(String(dif[7]),
-    `=IF(N(G${decl.fDeclTot})=0;"";H${pag.filaPag.F931}-G${decl.fDeclTot})`)
-  assert.notEqual(pag.filaPag.F931, pag.fPagTot, 'la fila del F931 y la del total pagado no son la misma')
-  // Enero no tiene contra qué compararse: su F931 es la DDJJ de diciembre del año anterior.
-  assert.equal(dif[1], VACIO, 'enero comparó contra una columna que no existe en esta grilla')
+test('EL CUADRO DEL «AL DÍA» NO VUELVE: era un hallazgo con cara de control', () => {
+  // ═══ LO QUE MIDIÓ, EL 09/09/2026, EN EL ARCHIVO VIVO ═══
+  //
+  // La fila «F931 pagado − declarado el mes anterior» daba −$14.538.743 acumulado y siempre por los
+  // MISMOS dos meses: febrero −$2.587.890 (la DDJJ de enero-26, que se pagó en parte) y julio
+  // −$11.950.854 (la DDJJ de junio-26, que no se pagó). Los otros nueve meses daban $0.
+  //
+  // Y los dos rojos tienen la misma explicación: enero-26 y junio-26 son exactamente los dos
+  // períodos FINANCIADOS en planes de pago (ver PLANES_F931), cuyas cuotas están en el cuadro 4 y
+  // cierran contra Compras al peso. O sea: no hay un solo F931 impago sin explicar, y el cuadro
+  // pintaba de rojo el año entero por dos hechos ya resueltos en otro cuadro de la misma pestaña.
+  //
+  // Un rojo estructural que no puede volverse verde no es un control: es un cartel. Y entrena al que
+  // mira a ignorar el color, que es lo que después se lleva puesto a un control de verdad.
+  const { G } = armar()
+  const dif = G.filas.find((f) => /pagado − declarado|al día/i.test(String(f[0] ?? '')))
+  assert.equal(dif, undefined, 'volvió el cuadro del «al día»: si hace falta, es un hallazgo del reporte, no una fila')
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -150,7 +144,9 @@ test('el desglose de ART sale del código 312 y del F931 EFECTIVAMENTE pagado, n
   assert.equal(G.filas[pag.fArtPag - 1][1], VACIO, 'enero se prorrateó contra una columna que no existe')
   // El rótulo LLEVA el veredicto: es lo único que le contesta al que abre la pestaña la pregunta que
   // la auditoría dejó abierta —"¿se paga la ART?"— sin que tenga que ir a buscar el código 312.
-  assert.equal(String(G.filas[pag.fArtPag - 1][0]), sub('ART · ya incluida en el F931, no se paga aparte'))
+  // EL RÓTULO NOMBRA, NO EXPLICA (09/09): decía «ART · ya incluida en el F931, no se paga aparte».
+  // Que no se sume dos veces lo prueba su posición, que es lo que mide el test de arriba.
+  assert.equal(String(G.filas[pag.fArtPag - 1][0]), sub('ART (dentro del F931)'))
 })
 
 test('sin código 312 en la DDJJ no se inventa la fila: no hay nada que desglosar', () => {

@@ -1,37 +1,53 @@
-// LOS SIETE CUADROS DE "CARGAS SOCIALES" — cada uno con su dueño, todos sobre la misma grilla.
+// LOS CUATRO CUADROS DE "CARGAS SOCIALES" — cada uno con su dueño, todos sobre la misma grilla.
 //
-// Toda la pestaña habla de lo mismo —el costo de la nómina— visto de siete maneras: lo declarado, lo
-// pagado, la diferencia, lo que viene, cuándo sale de la caja, lo que se devengó y todavía no se pagó,
-// y las cuotas de lo viejo. Cada bloque escribe sus filas y DEVUELVE en qué fila quedó cada total: el
-// que viene abajo lo referencia en vez de recalcularlo por otro camino.
+// ═══ ERAN SIETE Y EL DUEÑO LOS BAJÓ A CUATRO (09/09/2026) ═══
+//
+// La pestaña contestaba la misma pregunta —el costo de la nómina— de siete maneras, y tres de esos
+// cuadros no decidían nada:
+//
+//   · «Al día con el F931» (3) NO era un control: era un HALLAZGO. Daba −$14.538.743 en rojo todos
+//     los meses y siempre por lo mismo —febrero −$2.587.890 y julio −$11.950.854, los dos períodos
+//     (enero-26 y junio-26) que están FINANCIADOS en planes de pago y cuyas cuotas viven en el
+//     cuadro 4—. Un rojo estructural que no puede volverse verde deja de mirarse, y arrastra con él
+//     a los controles que sí pueden dar rojo.
+//   · «Cuándo sale de la caja» (5) era la continuación de la proyección: sus filas se fusionaron
+//     con ella. La única que se fue es «diferencia contra lo proyectado acá», que comparaba «lo
+//     previsto en Compras» —que sólo trae las cuotas de planes— contra el devengado total: la resta
+//     no podía dar cero por construcción.
+//   · «SAC y vacaciones» (6) es DEVENGADO en un archivo PERCIBIDO, y el Libro no lee una sola de sus
+//     filas (ver `rangosDeCargas`). Lo que ahí se calculaba sigue vivo en
+//     `lib/vacaciones-construccion.mjs` y en `lib/desvinculacion-22250.mjs`, sin consumidor por
+//     ahora — y eso hay que decirlo, porque con el cuadro se fue el único lugar donde el Fondo de
+//     Cese devengado (DDJJ de UOCRA) estaba al lado de lo efectivamente pagado.
+//
+// Cada bloque escribe sus filas y DEVUELVE en qué fila quedó cada total: el que viene abajo lo
+// referencia en vez de recalcularlo por otro camino.
 
 import { seccion, sub, total as rotuloTotal } from './patron-pestana.mjs'
 import { rango } from './compras-columnas.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { celdaF931, celdaCabecera, PESTAÑA as RAW } from '../scripts/f931-sheet.mjs'
 import {
-  CONCEPTOS_CADENA, A_VERIFICAR, RANGO_DIA_PAGO_F931,
+  CONCEPTOS_CADENA, RANGO_DIA_PAGO_F931,
   formulaProporcionPrimerAnio, proyeccionDeConcepto, jornalesDelMes,
 } from './cargas-cadena.mjs'
 import { ROTULOS_CARGAS, RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
 import { MES, cm, REALES, MESES_REALES, SIN_DDJJ } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
-import { formulaProvisionVacaciones, formulaSinFechaDeIngreso } from './vacaciones-construccion.mjs'
-// LA JORNADA SALE DEL MISMO ARCHIVO QUE LA DEL PISO DEL CONVENIO: dos definiciones de «un día de
-// trabajo» en dos pestañas no pueden convivir. Acá va el PROMEDIO del día hábil (44/5 = 8,8) y no las
-// 9 del lunes: las vacaciones se cuentan en días corridos, así que lo que corresponde valuar es un día
-// promedio, no el más largo de la semana.
-import { HORAS_POR_DIA_HABIL } from './jornada-uocra.mjs'
+// `vacaciones-construccion.mjs` y `jornada-uocra.mjs` ya NO se importan acá: eran de la sección 6,
+// que se retiró. Los dos módulos siguen existiendo con sus tests y hoy no tienen consumidor — la
+// provisión de vacaciones y el Fondo de Cese devengado son DEVENGADO, y esta pestaña es percibida.
+// Quien los reponga tiene que hacerlo donde vive el devengado, no acá.
 
 const ar = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '')
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 1 · DECLARADO — ¿cuánto generó la nómina cada mes?
+// 1 · DECLARADO EN EL F931
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 export function bloqueDeclarado(G, { anio, periodos, conceptos }) {
-  G.push([seccion(1, 'Declarado en la DDJJ F931 — ¿cuánto generó la nómina cada mes?')])
+  G.push([seccion(1, 'Declarado en el F931')])
   G.cabecera()
   const per = (m) => `${anio}-${String(m).padStart(2, '0')}`
   const d0 = G.n() + 1
@@ -42,9 +58,25 @@ export function bloqueDeclarado(G, { anio, periodos, conceptos }) {
   }
   const d1 = G.n()
   // UN MES SIN DDJJ NO ES UN CERO (07/09): el SUM sobre vacías daba 0 y se leía «declaró cero».
+  //
+  // ═══ Y TAMPOCO ES UNA PALABRA ADENTRO DEL IMPORTE (09/09/2026) ═══
+  //
+  // El generador parchea después estas celdas con la proyección de la cadena (ver `grilla()`), y
+  // hasta hoy las escribía como TEXTO: «≈ $8.717.159 proy.». Un importe que es una frase no se
+  // ordena, no se suma y no se compara con el de al lado. La distinción entre lo declarado y lo
+  // proyectado la hace ahora el FORMATO —gris e itálica, ver `proyectadas` en cargas-piel—, que es
+  // como la hace cualquier modelo financiero serio. `SIN_DDJJ` queda como fallback del bloque: si el
+  // generador no llegara a parchear, el renglón dice la ausencia en vez de quedarse mudo.
+  //
+  // EL TOTAL DEL AÑO SE VA, Y ES A PROPÓSITO. Con cuatro meses proyectados adentro de la fila, un
+  // `SUM(B:M)` daría $100.057.714 — declarado más proyectado en una sola cifra, que es exactamente
+  // el titular «Costo laboral del año — devengado» que el dueño mandó sacar por mezclar dos ventanas
+  // de tiempo. No se reemplaza por un SUM parcial: un total que no es la suma de lo que se ve al lado
+  // es un control que miente.
   const fDeclTot = G.mensual(rotuloTotal('Total declarado'),
     (m) => (periodos.includes(per(m)) ? `=SUM(${cm(m)}${d0}:${cm(m)}${d1})` : SIN_DDJJ),
-    'Suma de los conceptos. Un mes sin DDJJ lo dice, no suma cero.')
+    'Suma de los conceptos. Los meses sin DDJJ los completa la proyección, en gris.',
+    { totaliza: false })
   const fEmp = G.mensual('Empleados en nómina', (m) => (periodos.includes(per(m)) ? celdaCabecera(per(m), 'E') : VACIO),
     'Cabecera de la DDJJ.', { totaliza: false })
   const fRem = G.mensual('Remuneración declarada', (m) => (periodos.includes(per(m)) ? celdaCabecera(per(m), 'F') : VACIO),
@@ -58,7 +90,7 @@ export function bloqueDeclarado(G, { anio, periodos, conceptos }) {
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
-  G.push([seccion(2, 'Pagado — ¿cuánto salió efectivamente de la caja?')])
+  G.push([seccion(2, 'Pagado')])
   G.cabecera()
   // LAS COLUMNAS DE COMPRAS SE RESUELVEN POR SU ENCABEZADO. Éste es el bloque que estaba en #VALUE!
   // desde que una columna de Compras se movió y la referencia por letra quedó en #REF!.
@@ -141,7 +173,10 @@ export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
   // entera. Con el pago completo el prorrateo da exactamente el 312 declarado.
   let fArtPag = 0
   if (fArtDecl && fDeclTot) {
-    fArtPag = G.mensual(sub('ART · ya incluida en el F931, no se paga aparte'),
+    // EL RÓTULO DEJÓ DE EXPLICAR (09/09): decía «ART · ya incluida en el F931, no se paga aparte».
+    // Que no se pague aparte lo dice su POSICIÓN —debajo del total y fuera del rango que ese total
+    // suma—; el renglón sólo tiene que nombrar lo que muestra.
+    fArtPag = G.mensual(sub('ART (dentro del F931)'),
       (m) => `=IFERROR(${cm(m)}${filaPag.F931}*${cm(m - 1)}${fArtDecl}/${cm(m - 1)}${fDeclTot};0)`,
       'El código 312 de la DDJJ del mes anterior, en la proporción del F931 que efectivamente se pagó.',
       // Desde febrero: el F931 que sale en enero es la DDJJ de diciembre del año anterior, que esta
@@ -153,45 +188,21 @@ export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 3 · DECLARADO CONTRA PAGADO — ¿estamos al día?
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-export function bloqueDiferencia(G, { fPagF931, fDeclTot }) {
-  // ═══ UN CONTROL COMPARA LO MISMO CONTRA LO MISMO (06/08) ═══
-  //
-  // Acá decía `Total pagado − Total declarado`, y esos dos totales no son comparables: el pagado suma
-  // FCL, UOCRA, IERIC, FODECO y las cuotas de planes —ninguno de los cuales está en la DDJJ— contra un
-  // declarado que sólo tiene los seis códigos del F931. La resta daba +$8.020.918 en el año y no
-  // significaba nada: ni sobrepago ni deuda, sólo dos canastas distintas restadas entre sí. Un cuadro
-  // titulado "¿estamos al día?" que no puede contestar su propia pregunta es peor que no tenerlo,
-  // porque el que lo mira se queda tranquilo.
-  //
-  // El desfasaje no es una excusa, es la regla: el F931 del mes m−1 se paga en el mes m, así que la
-  // comparación ya viene corrida y SÍ tiene que dar cero. Los meses pagados completos dan $0 y los
-  // financiados en un plan quedan en rojo con su importe exacto, en vez de esconderse en un total.
-  G.push([seccion(3, 'Al día con el F931 — lo pagado contra lo declarado')])
-  G.cabecera()
-  // SIN DDJJ EL MES ANTERIOR NO HAY QUÉ COMPARAR: restar el texto «sin DDJJ» daba #VALUE!.
-  G.mensual('F931 pagado − declarado el mes anterior',
-    (m) => `=IF(N(${cm(m - 1)}${fDeclTot})=0;"";${cm(m)}${fPagF931}-${cm(m - 1)}${fDeclTot})`,
-    'El F931 de un mes se paga al siguiente: la comparación ya viene corrida, así que un mes pagado completo da $0. En rojo queda lo que se declaró y no salió de la caja.',
-    // Enero compara contra diciembre del año anterior, que esta grilla no tiene.
-    { meses: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] })
-  G.push()
-}
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 4 · PROYECCIÓN — ¿cuánto va a costar lo que viene?
+// 3 · PROYECCIÓN Y SALIDA DE CAJA
+//
+// Era la sección 4 y la 5, y eran la misma: una medía lo que la nómina va a generar y la otra CUÁNDO
+// esa misma plata sale. Partirlas obligaba a leer dos cuadros con el mismo encabezado de meses para
+// seguir un solo número, y el segundo repetía el primero corrido un mes.
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 export function bloqueProyeccion(G, {
-  anio, desdeProy, filaDecl, filaPag, fRem, fEmp, bloqueBase = null,
+  anio, desdeProy, filaDecl, filaPag, fRem, fEmp, C, fDeclTot, bloqueBase = null,
   // CON QUÉ BASE QUEDÓ VALUADA LA MASA QUE ESTA PESTAÑA MULTIPLICA. No se decide acá —se lee de lo que
   // Jornales publicó, ver `baseDeJornales`— porque la decisión ya vive en un solo lugar. Sin señal, la
   // glosa lo dice en vez de afirmar un supuesto que puede no estar adentro del número.
   baseJornales = null,
 }) {
-  G.push([seccion(4, `Proyección ${MES[desdeProy]}–dic — ¿cuánto va a costar lo que viene?`)])
+  G.push([seccion(3, `Proyección ${MES[desdeProy]}–dic y salida de caja`)])
   G.cabecera()
   const proyMeses = Array.from({ length: 12 - desdeProy + 1 }, (_, i) => desdeProy + i)
   const fRelacion = G.mensual('Remuneración declarada ÷ jornales netos', (m) => (m === desdeProy
@@ -222,12 +233,16 @@ export function bloqueProyeccion(G, {
   const fPlantel = G.n() + 1
   G.push([sub('   control: plantel de la última quincena'),
     '=IFERROR(INDEX(JORNALES_REAL_PERSONAS;COUNT(JORNALES_REAL_PERSONAS));"")',
-    `=IF(N($B$${fPlantel})=0;"";IF(N($${cm(desdeProy)}$${fDot})=0;"";IF(ABS($${cm(desdeProy)}$${fDot}-$B$${fPlantel})/$${cm(desdeProy)}$${fDot}>0,3;"${ALERTA} la DDJJ y la planilla no coinciden";"✓ coherente con la planilla")))`,
+    // EL VEREDICTO ES UN GLIFO, NO UNA FRASE (09/09). Decía «▲ la DDJJ y la planilla no coinciden» /
+    // «✓ coherente con la planilla»: 44 caracteres de explicación en el medio de la grilla. El
+    // control NO se apaga —sigue pudiendo decir que no, que es lo único que lo hace un control—:
+    // cambia de idioma, y el porqué del 30% vive acá.
+    `=IF(N($B$${fPlantel})=0;"";IF(N($${cm(desdeProy)}$${fDot})=0;"";IF(ABS($${cm(desdeProy)}$${fDot}-$B$${fPlantel})/$${cm(desdeProy)}$${fDot}>0,3;"${ALERTA}";"✓")))`,
     ...Array(11).fill(VACIO),
     'Dos fuentes distintas: la cabecera de la DDJJ y el registro de quincenas de Jornales. La DDJJ incluye oficina; la planilla de obra, no — una diferencia chica es esperable, una grande es un dato mal cargado.'])
   // La proporción del plantel en su primer año: la base de la alícuota legal de FCL. La antigüedad ya
   // estaba en la fuente que se lee todos los días y no tenía un solo consumidor.
-  const fAntig = G.push([sub('   del plantel de obra, en su primer año de antigüedad'),
+  const fAntig = G.push([sub('   en su primer año de antigüedad'),
     formulaProporcionPrimerAnio('_J_OBREROS', bloqueBase), ...Array(12).fill(VACIO),
     'Fecha de ingreso de cada persona en _J_OBREROS, sobre el mismo plantel con el que Jornales proyecta el piso del convenio. Es lo que pondera las dos alícuotas del Fondo de Cese.'])
   const sinBase = []
@@ -269,7 +284,7 @@ export function bloqueProyeccion(G, {
   const fSubGremiales = subtotal(ROTULOS_CARGAS.gremiales, bGrem,
     'Lo que NO declara la DDJJ y se paga aparte. Es la línea "Nómina · Gremiales" del cash flow, y el Libro la lee por CARGAS_MES_GREMIALES.')
   const fProyTot = G.mensual(rotuloTotal('Total devengado en el mes'), (m) => `=${cm(m)}${fSubF931}+${cm(m)}${fSubGremiales}`,
-    'Lo que la nómina de ESE mes genera de cargas. Todavía no es lo que sale de la caja: eso es la sección 5.', { meses: proyMeses })
+    'Lo que la nómina de ESE mes genera de cargas. Todavía no es lo que sale de la caja: eso son las tres filas de abajo.', { meses: proyMeses })
   // ═══ LA FECHA EN QUE ESA PLATA SALE — LA FILA QUE FALTABA (06/08) ═══
   //
   // La pestaña decía "el F931 vence al mes siguiente" y nunca decía QUÉ DÍA. Sin esa fila, el Libro
@@ -285,174 +300,43 @@ export function bloqueProyeccion(G, {
     (m) => `=DATE(${m === 12 ? anio + 1 : anio};${m === 12 ? 1 : m + 1};MAX(1;N(${RANGO_DIA_PAGO_F931})))`,
     `El devengado de ESTE mes sale al siguiente, el día que dice ${RANGO_DIA_PAGO_F931} en Parámetros. El de diciembre cae en enero del año que viene: por eso la última celda dice ${anio + 1}.`,
     { totaliza: false })
-  if (sinBase.length) {
-    G.push([`${ALERTA} ${sinBase.length} concepto(s) sin base para proyectar`, ...Array(13).fill(VACIO),
-      `${sinBase.join(', ')} — no aparecen en las secciones 1 ni 2, así que no se proyectan. El total de arriba está incompleto en esa medida.`])
-  }
-  G.push()
-  return { proyMeses, fRelacion, fRemProy, fDot, fPlantel, fAntig, fSubF931, fSubGremiales, fProyTot, fFechaSalida }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 5 · CUÁNDO SALE DE LA CAJA — el F931 vence al mes siguiente
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-export function bloqueCaja(G, { anio, desdeProy, proyMeses, fDeclTot, fProyTot, C }) {
-  G.push([seccion(5, 'Cuándo sale de la caja — el F931 vence al mes siguiente')])
-  G.cabecera()
+  // ── LO QUE ERA LA SECCIÓN 5: la misma plata, ubicada en el mes en que sale ────────────────────
   G.mensual('Cargas que salen en el mes', (m) => (m === desdeProy
-    ? `=${cm(6)}${fDeclTot}` : `=${cm(m - 1)}${fProyTot}`),
-  'El devengado del mes ANTERIOR. La proyección vieja ponía la carga de julio en julio: en un cuadro de caja eso corre unos $9M de mes. Ésta es la fila que tiene que mirar el cash flow.', { meses: proyMeses })
+    ? `=${cm(desdeProy - 1)}${fDeclTot}` : `=${cm(m - 1)}${fProyTot}`),
+  'El devengado del mes ANTERIOR. La proyección vieja ponía la carga de julio en julio: en un cuadro de caja eso corre unos $9M de mes.', { meses: proyMeses })
   // NO UN NÚMERO PEGADO: UNA FÓRMULA A LA FUENTE ÚNICA. Antes esta fila escribía el resultado de
-  // `ps.reduce(...)` calculado en JS — un número pegado que el censo marcaba con razón (H56…K56). Las
-  // cuotas que vencen cada mes YA viven, sumadas, en el total de la sección 7: esta fila las
-  // referencia en vez de recalcularlas por afuera. Se llena por backfill, cuando ya se sabe en qué
-  // fila quedó ese total (mismo patrón que el hero).
+  // `ps.reduce(...)` calculado en JS — un número pegado que el censo marcaba con razón. Las cuotas
+  // que vencen cada mes YA viven, sumadas, en el total de la sección 4: esta fila las referencia en
+  // vez de recalcularlas por afuera. Se llena por backfill, cuando ya se sabe en qué fila quedó.
   const fCuotasVencen = G.mensual('Cuotas de planes de pago que vencen', () => VACIO,
-    'Sección 7: el total de cuotas del mes, referenciado — no recalculado. Van aparte porque son deuda vieja financiada, no la carga del mes.', { meses: proyMeses })
-  // EL CONTRASTE QUE FALTABA: qué tiene cargado Compras para esos meses. No es otra proyección —es
-  // lo que una persona previó a mano— y por eso vale como control: si la proyección medida y lo
-  // previsto se separan mucho, uno de los dos está mal y conviene saberlo antes y no en el mes.
+    'Sección 4: el total de cuotas del mes, referenciado — no recalculado.', { meses: proyMeses })
+  // EL CONTRASTE CONTRA LO QUE UNA PERSONA PREVIÓ A MANO. No es otra proyección: si lo previsto y lo
+  // medido se separan mucho, uno de los dos está mal y conviene saberlo antes del mes.
+  //
+  // ═══ LA FILA DE «DIFERENCIA» SE FUE, Y NO ES QUE SE HAYA APAGADO UN CONTROL (09/09/2026) ═══
+  //
+  // Restaba «previsto en Compras» − «devengado del mes anterior» y estaba en rojo TODOS los meses,
+  // por construcción: lo previsto que Compras tiene cargado para los meses que vienen son las CUOTAS
+  // DE PLANES, y el devengado es la nómina entera. Dos canastas distintas restadas entre sí — el
+  // mismo defecto que ya se corrigió una vez en el cuadro del «al día». Una resta que no puede dar
+  // cero no mide nada: sólo entrena al que mira a ignorar el rojo.
   const fPrevisto = G.mensual('Previsto en Compras para ese mes', (m) =>
     `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$35;${rango(C.fecha)};">"&TODAY();${rango(C.fecha)};"<="&EOMONTH(DATE(${anio};${m};1);0));0)-IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$35;${rango(C.fecha)};">"&TODAY();${rango(C.fecha)};"<"&DATE(${anio};${m};1));0)`,
   'Los pagos de F931 que Compras tiene cargados con fecha futura. Es lo que alguien previó, no lo que salió.', { meses: proyMeses })
-  // La comparación arranca DESPUÉS del mes en curso: el mes corriente ya tiene su F931 pagado, así
-  // que "previsto de acá en adelante" da cero y restarlo contra el devengado inventaría un desvío de
-  // doce millones que no existe.
-  G.mensual(sub('diferencia contra lo proyectado acá'), (m) => `=${cm(m)}${fPrevisto}-${cm(m - 1)}${fProyTot}`,
-    'Si esta fila se aleja de cero, la previsión cargada a mano y la proyección medida no coinciden.',
-    { meses: proyMeses.filter((m) => m > desdeProy) })
-  // ═══ LAS CUATRO NOTAS AL PIE SE FUERON A LA CONSOLA (06/09/2026) ═══
-  //
-  // Medían 105, 217, 218 y 147 caracteres y eran los CUATRO desvíos de prosa de «Cargas Sociales».
-  // El dueño las prohibió el 05/09 y el contrato lo escribe en su regla 10. No se borran a secas:
-  // dos de las cuatro son HALLAZGOS vivos y salen por `avisos`, que el generador imprime — borrar un
-  // aviso es cómo nace un control que no puede dar rojo. Las otras dos declaraban el ALCANCE, y eso
-  // vive acá: esta caja no contempla SAC ni vacaciones —tienen su cuadro en la sección 6— ni altas
-  // de personal que no estén en los jornales cargados.
+  if (sinBase.length) {
+    G.push([`${ALERTA} ${sinBase.length} concepto(s) sin base para proyectar`, ...Array(13).fill(VACIO),
+      `${sinBase.join(', ')} — no aparecen en las secciones 1 ni 2, así que no se proyectan.`])
+  }
   G.push()
-  return { fCuotasVencen, pies: [], avisos: [] }
+  return { proyMeses, fRelacion, fRemProy, fDot, fPlantel, fAntig, fSubF931, fSubGremiales, fProyTot, fFechaSalida, fCuotasVencen, fPrevisto }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 6 · SAC Y VACACIONES — lo devengado que todavía no se pagó
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-export function bloqueSac(G, { anio, C, fRem, fRemProy, bloqueBase = null }) {
-  G.push([seccion(6, 'SAC y vacaciones — lo devengado que todavía no se pagó')])
-  G.cabecera()
-  // ═══ PAGADO ES PAGADO: SÓLO HASTA HOY, ACÁ TAMBIÉN (06/08) ═══
-  //
-  // La sección 2 aprendió esto el 23/07 y esta fila se quedó afuera: filtraba por fecha de factura SIN
-  // tope. En Compras hay dos filas de SAC con fecha 30/12 y estado "Proyectado" ($7.000.000 y
-  // $1.500.000) —el aguinaldo de diciembre que todavía no existe— y esta fila las contaba como
-  // PAGADAS. Resultado: la provisión acumulada terminaba el año en −$4.914.913, o sea la pestaña
-  // afirmando que se pagó más aguinaldo del que se devengó. El mismo cuadro que la sección 2 vino a
-  // arreglar, un renglón más abajo.
-  const fSacPag = G.mensual('SAC pagado (real, de Compras)', (m) =>
-    `=SUMPRODUCT((LOWER(${rango(C.proveedor)})="sac")*(YEAR(${rango(C.fechaFactura)})=${anio})*(MONTH(${rango(C.fechaFactura)})=${m})*(N(${rango(C.fechaFactura)})<=TODAY())*IF(ISNUMBER(${rango(C.total)});${rango(C.total)};0))`,
-  'Compras · proveedor "SAC", por fecha de factura y sólo hasta hoy: lo cargado con fecha futura es previsión, no pago.')
-  // ═══ EL SAC SE DEVENGA LOS DOCE MESES (06/08 — defecto B10) ═══
-  //
-  // Decía `=B$20/12`: un doceavo de la remuneración DECLARADA, y las DDJJ llegan hasta junio. De
-  // julio en adelante la fila quedaba vacía, así que el devengado se cortaba y el pagado seguía: la
-  // provisión acumulada terminaba diciembre en −$10.308.830. Un aguinaldo pagado contra un devengado
-  // que dejó de devengarse no es un signo raro, es la pestaña afirmando que la empresa se debe plata
-  // a sí misma. La cura es una sola: la remuneración del mes es la DECLARADA si existe, y si no la
-  // PROYECTADA — que es exactamente la cadena que el resto de la pestaña ya usa.
-  const remDelMes = (m) => `IF(N(${cm(m)}$${fRem})>0;${cm(m)}$${fRem};N(${cm(m)}$${fRemProy}))`
-  const fSacDev = G.mensual('SAC devengado (1/12 de la remuneración)', (m) => `=IFERROR(${remDelMes(m)}/12;"")`,
-    'Un doceavo de la remuneración de CADA mes: declarada mientras hay DDJJ, proyectada después. Antes se cortaba donde se cortan las DDJJ y la provisión acumulada terminaba el año en negativo.')
-  G.mensual('Provisión acumulada (devengado − pagado)', (m) => `=SUM($B${fSacDev}:${cm(m)}${fSacDev})-SUM($B${fSacPag}:${cm(m)}${fSacPag})`,
-    'Acumulado, no del mes: es cuánto se debe de aguinaldo a esta altura del año. Si termina en negativo, el devengado dejó de devengarse antes que el pagado.', { totaliza: false })
-  // ═══ VACACIONES: LA ANTIGÜEDAD SÍ ESTÁ, LO QUE FALTA ES LA ESCALA ═══
-  //
-  // Acá decía "falta la antigüedad por legajo" y era FALSO: la columna C del espejo _J_OBREROS trae
-  // la fecha de ingreso de cada persona (26/6/23, 12/8/24, 26/5/25…). El dato estaba en la misma
-  // fuente que ya leemos todos los días.
-  //
-  // Lo que falta es otra cosa, y es normativa: los DÍAS que corresponden por tramo de antigüedad.
-  // Eso no se cita de memoria (la skill laboral lo prohíbe: los valores se verifican, los institutos
-  // se nombran). Va a una celda de Parámetros que confirma el contador, y la provisión se calcula
-  // sola contra las fechas de ingreso reales.
-  // ═══ MENOS TEXTO, LA MISMA ADVERTENCIA (06/08) ═══
-  //
-  // El estándar del dueño para esta pestaña es "poco texto, aire, importes protagonistas". Estas dos
-  // líneas y las de las secciones 5 y 7 eran párrafos de 270 a 330 caracteres cruzando la página
-  // entera al mismo peso tipográfico que los importes: cuatro muros de letra chica que le ganan el ojo
-  // a los números. Se condensan sin perder ni una limitación —una limitación borrada es una mentira
-  // por omisión— y la piel las dibuja como nota al pie: apagadas, 9 puntos, sin regla.
-  // ═══ LA PROVISIÓN, YA NO SÓLO EL AVISO (27/08) ═══
-  //
-  // El aviso de abajo estaba encendido desde el 06/08 y no provisionaba un peso. Tres semanas de
-  // "falta la escala" no son una provisión: las vacaciones devengan todos los meses y el cuadro
-  // económico no las veía. Lo que faltaba —y sigue faltando— son los DÍAS por tramo, que son
-  // normativos; la ANTIGÜEDAD está en la columna C del espejo, la misma que ya pondera el FCL.
-  //
-  // Ahora la fila calcula: Σ(días del tramo × $/hora de la persona × jornada), contra las fechas de
-  // ingreso REALES. Con los cuatro tramos en 0 —como nacen— rinde VACÍO y no cero: un 0 acá afirma
-  // que la empresa no debe vacaciones. El día que el contador carga los días en Parámetros, el número
-  // aparece solo. El porqué completo, en lib/vacaciones-construccion.mjs.
-  const fVac = G.push([sub('   Vacaciones devengadas del plantel de obra'),
-    formulaProvisionVacaciones({ hoja: '_J_OBREROS', bloque: bloqueBase, jornada: HORAS_POR_DIA_HABIL }),
-    ...Array(12).fill(VACIO),
-    'Días por tramo de antigüedad (Parámetros, los confirma el contador) × $/hora de cada persona en _J_OBREROS × la jornada. Vacío = la escala todavía está en cero, NO que no se deba nada.'])
-  // LAS QUE NO SE PUDIERON MEDIR, CONTADAS. Es el número con el que se arregla el faltante, y va en su
-  // propia celda: adentro de un mensaje no se puede comparar contra el plantel de arriba.
-  G.push([sub('   del plantel, sin fecha de ingreso cargada'),
-    formulaSinFechaDeIngreso({ hoja: '_J_OBREROS', bloque: bloqueBase }), ...Array(12).fill(VACIO),
-    `Nombre presente y columna C vacía en _J_OBREROS: esas personas NO entran en la provisión de la fila ${fVac}. Un total que las ignora en silencio es un total corto.`])
-  // HALLAZGO, NO NOTA: la provisión sale de la antigüedad REAL, pero los días por tramo son
-  // normativos y la corrida no puede verificar la norma vigente. Va por consola (ver `avisos`).
-  const avisoVac = `${ALERTA} Vacaciones: cargá en Parámetros los días por tramo que confirme el contador — no se inventan`
-  // ═══ FONDO DE CESE LABORAL: ESTÁ, PERO NO POR DONDE UNO LO BUSCA ═══
-  //
-  // En la construcción NO existe la indemnización por antigüedad de la LCT: rige la Ley 22.250 y el
-  // costo de la desvinculación se va pagando MES A MES al Fondo de Cese. Por eso NO corresponde
-  // provisionar indemnizaciones al estilo del régimen común — el pasivo explosivo del despido no
-  // existe si los aportes están al día.
-  //
-  // Y no está en el F931: los seis conceptos que declara la DDJJ son Seguridad Social (301/351),
-  // Obra Social (302/352), ART (312) y Seguro de Vida (028). El FCL entra por otro lado, desde lo
-  // efectivamente pagado en Compras (ver CONCEPTOS_PROY, base 'pagado'). O sea que su devengado no
-  // se controla contra una declaración: lo único que se sabe es lo que salió de la caja.
-  //
-  // LA PREGUNTA QUE IMPORTA NO ES CUÁNTO, ES SI ESTÁ AL DÍA. Un Fondo de Cese atrasado es
-  // incumplimiento y habilita reclamos, y este cuadro no lo puede contestar solo.
-  // ═══ LA AFIRMACIÓN ANTERIOR ERA FALSA, Y COSTABA CARA (18/08/2026) ═══
-  //
-  // Acá decía: *"no lo declara la DDJJ: su devengado no se controla contra nada"*. **Lo declara.**
-  // La DDJJ Nominativa de UOCRA trae, mes a mes, el renglón "Total Aportes Devengados al Fondo de
-  // Cese Laboral", y los seis PDF de 2026 estaban en Drive desde febrero — en la misma carpeta que
-  // IIBB e IVA, que el OS ya leía. UOCRA era la única de las cuatro subcarpetas que no leía nadie.
-  //
-  // Una limitación declarada bloquea el criterio que toca. Ésta bloqueaba el control del Fondo de
-  // Cese entero, y era falsa: el dato existía, sólo que nadie lo había ido a buscar. Ahora entra por
-  // `_UOCRA_DDJJ_RAW` y el devengado queda al lado de lo pagado, que es la única forma de contestar la
-  // pregunta que importa — no cuánto es, sino si está al día.
-  const fFclDev = G.mensual('Fondo de Cese devengado (DDJJ UOCRA)', (m) =>
-    // El período va como TEXTO literal y no como TEXT(DATE(...)): en la réplica la columna A es
-    // texto ("2026-01"), y hacer que la fórmula lo construya agrega un formato de fecha que en este
-    // locale es justo donde este repo se corta los dedos. El año y el mes se conocen al generar.
-    // SIN DDJJ, LA CELDA VA VACÍA — no en cero. `SUMIFS` sobre cero coincidencias devuelve 0, y ese
-    // 0 se lee como "ese mes devengó cero", que es una afirmación falsa: julio simplemente todavía
-    // no tiene DDJJ presentada. Se comprueba con COUNTIF antes de sumar. Visto en la primera
-    // corrida (18/08): la columna de julio publicó 0 al lado de un devengado de $1,48M en junio.
-    `=IF(COUNTIF(_UOCRA_DDJJ_RAW!$A:$A;"${anio}-${String(m).padStart(2, '0')}")=0;"";SUMIFS(_UOCRA_DDJJ_RAW!$I:$I;_UOCRA_DDJJ_RAW!$A:$A;"${anio}-${String(m).padStart(2, '0')}"))`,
-    'DDJJ Nominativa de UOCRA, renglón "Total Aportes Devengados al Fondo de Cese Laboral", leído del PDF de Drive por scripts/uocra-raw-pestana.mjs. Vacío = ese mes todavía no tiene DDJJ presentada, NO cero.')
-  // Que la diferencia entre devengado y pagado es lo que falta girar ya está DIBUJADO: son dos
-  // renglones y su resta. Lo que es un pendiente —y no un rótulo— va por consola.
-  const avisoFcl = `${ALERTA} Fondo de Cese (Ley 22.250) — ${A_VERIFICAR}: que los aportes estén al día (fila ${fFclDev} contra lo pagado en Compras)`
-  G.push()
-  return { pies: [], avisos: [avisoVac, avisoFcl] }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 7 · PLANES DE PAGO DE DEUDA PREVISIONAL — las cuotas, mes por mes
+// 4 · PLANES DE PAGO DE DEUDA PREVISIONAL
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 export function bloquePlanes(G, { ps, C }) {
-  G.push([seccion(7, 'Planes de pago de deuda previsional — las cuotas, mes por mes')])
+  G.push([seccion(4, 'Planes de pago de deuda previsional')])
   G.cabecera()
   const q0 = G.n() + 1
   for (const p of ps) {
@@ -468,6 +352,19 @@ export function bloquePlanes(G, { ps, C }) {
   }
   const q1 = G.n()
   const fCuotasTot = G.mensual(rotuloTotal('Total de cuotas del año'), (m) => `=SUM(${cm(m)}${q0}:${cm(m)}${q1})`, 'Suma de los planes de arriba.')
+  // ═══ LO QUE FALTA PAGAR BAJÓ DEL TITULAR A SU CUADRO (09/09/2026) ═══
+  //
+  // Era una línea del hero, al lado de REAL · COMPROMETIDO · PROYECTADO, con una aclaración escrita
+  // en la celda de al lado («financia parte de lo comprometido; incluye deuda de 2025»). El titular
+  // pasó a contestar dos preguntas y sólo dos; este número es el saldo de ESTE cuadro y vive acá.
+  //
+  // El criterio es de HECHO y no de posición: lo que falta pagar es lo que la planilla no marcó
+  // «Pagado», venza cuando venza. Con `> MONTH(TODAY())` el mes en curso se perdía entero — al 06/08
+  // dejaba afuera $2.968.643 de cuotas de agosto, una con vencimiento el 16.
+  const fSinPagar = G.push([rotuloTotal('Cuotas sin pagar'),
+    `=SUMIFS(${rango(C.total)};Compras!$${C.rubro}$4:$${C.rubro};"${RUBRO_PLANES}";${rango(C.estado)};"<>Pagado")`,
+    ...Array(11).fill(VACIO), VACIO,
+    `Compras · rubro "${RUBRO_PLANES}", todas las cuotas que la planilla NO marcó "Pagado" — incluidas las vencidas sin pagar y las de otros años, que esta tabla no llega a mostrar.`])
   const fCtrl = G.push([rotuloTotal('Control contra Compras'), `=SUMIF(Compras!$${C.rubro}$4:$${C.rubro};"${RUBRO_PLANES}";${rango(C.total)})`,
     ...Array(11).fill(VACIO), VACIO, 'El total del rubro en Compras, calculado por otro camino.'])
   // EL CONTROL COMPARA LO MISMO CONTRA LO MISMO. La primera versión restaba "cuotas del año" MÁS
@@ -495,5 +392,11 @@ export function bloquePlanes(G, { ps, C }) {
   // HALLAZGO: en Compras están las cuotas cargadas, no de cuántas es cada plan, así que el saldo es
   // lo previsto en la planilla. Se resuelve consiguiendo el plan; no se anota al pie del cuadro.
   const aviso = `${ALERTA} Falta el plan original de ARCA: el saldo de los planes es lo previsto en la planilla`
-  return { fCuotasTot, fControl, pies: [], avisos: [aviso] }
+  // LAS FILAS DE CUOTAS SE DECLARAN COMO MONEDA. Son la ÚNICA réplica de la pestaña —números
+  // escritos, no fórmulas— y en el archivo vivo se leían crudas: «473767,08» en seis meses y
+  // «2842602,48» en el total del plan de enero. El barrido de moneda de la piel las cubre, y aun así
+  // no llegaron: la declaración explícita va DESPUÉS del barrido y el último request gana. Por qué el
+  // barrido no alcanzó no se pudo medir sin escribir la pestaña, así que esto se declara como lo que
+  // es —un cinturón además de los tirantes— y no como el diagnóstico.
+  return { fCuotasTot, fControl, fSinPagar, moneda: [[q0, q1]], pies: [], avisos: [aviso] }
 }

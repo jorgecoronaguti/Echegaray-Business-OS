@@ -10,6 +10,7 @@ import { ANCHO } from './cargas-grilla.mjs'
 /** El formato: la piel de statement compartida más lo propio de la grilla mensual. */
 export async function formatear(google, fileId, sheetId, filas, {
   cantidades = [], ratios = [], fechas = [], titular = 0, prosaFormula = [], pies = [], controles = [],
+  celdasFecha = [], proyectadas = [], moneda = [], /* moneda: pares [filaDesde, filaHasta], 1-based */
 } = {}) {
   // ═══ NINGUNA NOTA. NI UNA. ═══
   //
@@ -27,13 +28,13 @@ export async function formatear(google, fileId, sheetId, filas, {
   const { requests: notas, borradas } = borrarNotas(filas, ANCHO - 1, sheetId)
   if (borradas) console.log(`notas: barro las ${borradas} filas — la procedencia va en el subtítulo, no en un triangulito por fila`)
   const rg = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
-  const moneda = { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }
+  const MONEDA = { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }
   const reqs = [
     ...notas,
     ...skinRequests({ sheetId, filas, cols: ANCHO, congeladas: 2, titular }),
     // Los doce meses más el total: moneda, a la derecha, con cifras tabulares. Es lo que permite
     // comparar hacia abajo sin leer cada número.
-    { repeatCell: { range: rg(3, filas.length, 1, 14), cell: { userEnteredFormat: { numberFormat: moneda, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
+    { repeatCell: { range: rg(3, filas.length, 1, 14), cell: { userEnteredFormat: { numberFormat: MONEDA, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
     // La columna de origen: chica, apagada, y que envuelva. Es explicación, no dato.
 
     // Las filas vuelven a su altura: al sacar el muro de texto de la derecha quedaron con el alto
@@ -98,6 +99,39 @@ export async function formatear(google, fileId, sheetId, filas, {
   // y salía igual que una celda sin dato. La tercera sección del patrón —la del cero— pasa a decirlo.
   for (const f of controles) {
     reqs.push({ repeatCell: { range: rg(f - 1, f, 1, 2), cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '[Red]"$"#,##0;[Red]-"$"#,##0;"✓ $0"' } } }, fields: 'userEnteredFormat.numberFormat' } })
+  }
+  // ═══ LA PROYECCIÓN SE DISTINGUE POR LA TIPOGRAFÍA, NO POR UNA PALABRA (09/09/2026) ═══
+  //
+  // Los meses sin DDJJ de la fila «Total declarado» llevan el número que la cadena proyecta. Hasta
+  // hoy se escribían como texto —«≈ $8.717.159 proy.»— y eso convertía un importe en una oración:
+  // no se suma, no se ordena y no se compara con la celda de al lado. Gris e itálica es como
+  // cualquier statement marca una estimación al lado de un hecho, sin gastar una palabra.
+  //
+  // Va DESPUÉS del barrido de moneda y del de la fila: el último request gana.
+  for (const { fila, meses = [] } of proyectadas) {
+    for (const m of meses) {
+      reqs.push({ repeatCell: {
+        range: { sheetId, startRowIndex: fila - 1, endRowIndex: fila, startColumnIndex: m, endColumnIndex: m + 1 },
+        cell: { userEnteredFormat: { textFormat: { foregroundColor: MUTED, italic: true, bold: false, fontFamily: 'Arial' } } },
+        fields: 'userEnteredFormat.textFormat',
+      } })
+    }
+  }
+  // LAS RÉPLICAS, CON SU FORMATO DECLARADO. Son los únicos números ESCRITOS de la pestaña (las cuotas
+  // de los planes) y en el archivo vivo se leían crudas: «473767,08» en seis meses. El barrido de
+  // arriba ya las cubre y no alcanzó — por qué, no se pudo medir sin escribir la pestaña. Esto es un
+  // cinturón además de los tirantes, no el diagnóstico.
+  for (const [r0, r1] of moneda) {
+    reqs.push({ repeatCell: { range: rg(r0 - 1, r1, 1, 14), cell: { userEnteredFormat: { numberFormat: MONEDA } }, fields: 'userEnteredFormat.numberFormat' } })
+  }
+  // UNA celda con formato de fecha, no la fila entera: el «Próximo vencimiento» del titular lleva el
+  // importe en B y la fecha en C. Con el barrido de moneda esa fecha se dibuja «$46.305».
+  for (const { fila, col } of celdasFecha) {
+    reqs.push({ repeatCell: {
+      range: { sheetId, startRowIndex: fila - 1, endRowIndex: fila, startColumnIndex: col, endColumnIndex: col + 1 },
+      cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'RIGHT' } },
+      fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
+    } })
   }
   reqs.push(...prosaFormula.map(({ fila, col }) => ({
     repeatCell: {

@@ -288,7 +288,14 @@ test('«lo que esta pestaña NO puede decir» no se dibuja, y las limitaciones n
   // con otra cosa. El control se validaba contra información que no era la suya.
   const desde = NOMINA.indexOf('LO QUE ESTA PESTAÑA NO PUEDE DECIR')
   assert.ok(desde > 0, 'desapareció el bloque de comentario que guarda las limitaciones')
-  const bloqueComentario = NOMINA.slice(desde, NOMINA.indexOf('return { nomina: f, plantel: g }', desde))
+  // EL DELIMITADOR TIENE QUE EXISTIR, O ESTE CONTROL NO PUEDE DAR ROJO. Era `return { nomina: f,
+  // plantel: g }` y el 09/09 pasó a `return { nomina: f }` al retirarse «Plantel»: con el corte
+  // fuera del archivo, `indexOf` devuelve −1, el `slice` se lleva el resto del archivo y el bloque
+  // «medido» pasa a ser todo lo que venga después — que es exactamente el defecto que el párrafo de
+  // arriba dice haber arreglado. Se afirma primero que el corte está.
+  const hasta = NOMINA.indexOf('return { nomina: f }', desde)
+  assert.ok(hasta > desde, 'el corte del bloque no existe: este control estaría midiendo el archivo entero')
+  const bloqueComentario = NOMINA.slice(desde, hasta)
   for (const limite of [
     'plantel activo',
     'acuerdos particulares',

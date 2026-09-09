@@ -77,6 +77,8 @@ import {
   A_VERIFICAR, RANGO_FCL_PRIMER_ANIO, RANGO_IERIC, RANGO_DIA_PAGO_F931, PARAMETROS_CARGAS,
 } from '../lib/cargas-cadena.mjs'
 import { rangosDeCargas, ROTULOS_CARGAS, NOMBRES_CARGAS } from '../lib/libro-extractores-cargas.mjs'
+import { SIN_DDJJ as SIN_DDJJ_CS } from '../lib/cargas-grilla.mjs'
+import { total as rotuloTotalCS } from '../lib/patron-pestana.mjs'
 import { verificarRangos as verificarRangosCS, explicarProblemas as explicarProblemasCS } from '../lib/rangos-con-nombre.mjs'
 import { auditarPatron as patronCS } from '../lib/patron-pestana.mjs'
 import { auditarDiseno } from '../lib/diseno-unificado.mjs'
@@ -114,16 +116,20 @@ const filaCS = (re) => gCS.filas.find((f) => re.test(String(f[0] ?? '')))
 const filaProyCS = (re) => [...gCS.filas].reverse().find((f) => re.test(String(f[0] ?? '')))
 const textoCS = gCS.filas.flat().map(String).join('\n')
 
-test('B10 · EL SAC SE DEVENGA LOS DOCE MESES, no hasta donde llegan las DDJJ', () => {
-  // El defecto: `=B$20/12` sobre la remuneración DECLARADA. De julio en adelante esa fila está vacía,
-  // así que el devengado se cortaba y el pagado seguía: la provisión acumulada terminaba diciembre en
-  // −$10.308.830. Un aguinaldo pagado contra un devengado que dejó de devengarse.
-  const dev = filaCS(/^SAC devengado/)
-  assert.ok(dev, 'desapareció la fila del SAC devengado')
-  for (let m = 1; m <= 12; m++) {
-    const c = String(dev[m])
-    assert.ok(c.startsWith('='), `mes ${m}: el SAC devengado quedó vacío — la provisión va a cerrar el año en negativo`)
-    assert.match(c, /IF\(N\(\w\$\d+\)>0;/, `mes ${m}: no cae a la remuneración proyectada cuando no hay DDJJ`)
+test('LA PESTAÑA NO PUBLICA DEVENGADO: SAC, vacaciones y FCL devengado se fueron', () => {
+  // ═══ POR QUÉ SE VAN (09/09/2026) ═══
+  //
+  // «Cargas Sociales» es una pestaña del Flujo de Caja: trabaja en PERCIBIDO. La sección 6 publicaba
+  // SAC devengado, provisión acumulada de aguinaldo, vacaciones devengadas y Fondo de Cese devengado
+  // — cuatro cifras DEVENGADAS, ninguna de las cuales el Libro Canónico lee (ver `rangosDeCargas`) y
+  // ninguna de las cuales decide un peso de caja. Mezclar los dos criterios en un archivo es la
+  // regla de oro 3, y el titular de la pestaña se fue por lo mismo.
+  //
+  // LO QUE SE PIERDE, DICHO: con la sección se fue el único lugar donde el Fondo de Cese devengado
+  // (DDJJ de UOCRA) estaba al lado de lo pagado. Los dos pendientes siguen avisándose por consola
+  // (el test de abajo lo exige) y las funciones siguen vivas en lib/vacaciones-construccion.mjs.
+  for (const re of [/SAC/, /Vacaciones/, /Provisión acumulada/, /Fondo de Cese devengado/]) {
+    assert.equal(filaCS(re), undefined, `volvió una fila de devengado a una pestaña percibida: ${re}`)
   }
 })
 
@@ -136,7 +142,10 @@ test('A7 · LA DOTACIÓN ES LA ÚLTIMA REAL, NO UN AVERAGE — y se controla con
   const ctrl = filaCS(/plantel de la última quincena/)
   assert.ok(ctrl, 'sin el contraste, la dotación se valida contra sí misma')
   assert.match(String(ctrl[1]), /JORNALES_REAL_PERSONAS/)
-  assert.match(String(ctrl[2]), /▲ la DDJJ y la planilla no coinciden/)
+  // EL VEREDICTO ES UN GLIFO (09/09): la frase de 44 caracteres se fue por el minimalismo, pero el
+  // control TIENE que seguir pudiendo decir que no — si acá quedara sólo el "✓", sería una constante.
+  assert.match(String(ctrl[2]), /"▲"/, 'el control perdió su forma de decir que NO')
+  assert.match(String(ctrl[2]), /"✓"/)
 })
 
 test('B13 · IERIC y FODECO multiplican la DOTACIÓN, no la remuneración', () => {
@@ -169,7 +178,7 @@ test('LO QUE NO SE PUDO VERIFICAR ESTÁ DECLARADO EN LA PESTAÑA, no sólo en el
 })
 
 test('B9 · LA DEUDA EN PLANES ES UNA FÓRMULA VIVA, no un número pegado', () => {
-  const deuda = filaCS(/^⇒ En planes de pago/)
+  const deuda = filaCS(/^⇒ Cuotas sin pagar/)
   const v = deuda[1]
   assert.equal(typeof v, 'string', `sigue siendo un número pegado: ${v}`)
   assert.ok(String(v).startsWith('='))
@@ -181,7 +190,7 @@ test('B8 · "POR PAGAR" INCLUYE EL MES EN CURSO — el criterio de posición per
   // —$473.767 con vencimiento el 16 y $2.494.876 de la financiación de junio, ninguna pagada— no
   // estaban en ningún lado. Con el criterio por HECHO (lo que la planilla no marcó "Pagado") el hero
   // da $7.958.394,73, que es exactamente lo que el Libro ya trae como compromiso.
-  const v = String(filaCS(/^⇒ En planes de pago/)[1])
+  const v = String(filaCS(/^⇒ Cuotas sin pagar/)[1])
   assert.doesNotMatch(v, /MONTH\(TODAY\(\)\)/,
     'volvió el criterio de posición: el mes en curso se pierde entero y con él la cuota que vence esta semana')
   assert.match(v, /"<>Pagado"/, 'lo que falta pagar es lo que la planilla no marcó pagado, no lo que vence después')
@@ -222,59 +231,61 @@ test('los dos HALLAZGOS que estaban al pie siguen saliendo — por la corrida, n
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
-// LA POSICIÓN, EN EL IDIOMA DE JORNALES (06/08). El dueño: "separar real / comprometido /
-// proyectado". El hero partía por PROCEDENCIA del dato ("declarado en las DDJJ" contra "proyectado")
-// y hablaba en "devengado": vocabulario contable en una pestaña del Flujo de Caja, que no contesta
-// en qué estado está la plata. Lo que estos tests protegen es que la partición nueva sea EXACTA —si
-// las tres no suman el titular, hay plata en un limbo que nadie mira— y que no vuelva a contar dos
-// veces lo que ya está adentro.
+// EL TITULAR (09/09/2026) — DOS PREGUNTAS, LAS DOS DE CAJA
+//
+// Decía «Costo laboral del año — devengado $100.057.714» y se partía en REAL · COMPROMETIDO ·
+// PROYECTADO. Tres problemas en una sola tarjeta: publicaba un DEVENGADO en un archivo percibido,
+// sumaba ocho meses declarados con cuatro proyectados en una cifra, y las tres particiones sólo
+// existían para explicar ese número. El dueño aprobó reemplazarlo por lo que sí decide: cuánto salió
+// y cuándo sale lo próximo.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 const heroCS = (re) => gCS.filas.findIndex((f) => re.test(String(f[0] ?? ''))) + 1
 
-test('la posición habla REAL · COMPROMETIDO · PROYECTADO, como su hermana Jornales', () => {
-  for (const estado of [/^ {3}· REAL · /, /^ {3}· COMPROMETIDO · /, /^ {3}· PROYECTADO · /]) {
-    assert.ok(filaCS(estado), `falta la línea ${estado} en la posición: la pestaña sigue hablando sólo en devengado`)
+test('el titular es PERCIBIDO: lo pagado en el año y el próximo vencimiento', () => {
+  const pagado = filaCS(/^⇒ Cargas sociales pagadas en el año/)
+  assert.ok(pagado, 'se fue el titular: la pestaña vuelve a arrancar en un cuadro')
+  // Es la suma de la fila de TOTAL del cuadro 2, que mide por HECHO ("Pagado" en Compras). No se
+  // recalcula por otro camino: dos verdades para lo mismo es como se pierde la confianza en la hoja.
+  const fPagTot = heroCS(/^⇒ Total pagado/)
+  assert.equal(String(pagado[1]), `=SUM($B$${fPagTot}:$M$${fPagTot})`)
+  // Los DOCE meses: la pregunta es cuánta plata salió este año, y la de enero salió este año aunque
+  // su devengado sea de diciembre pasado. El hero viejo empezaba en febrero porque medía devengado.
+  assert.doesNotMatch(String(pagado[1]), /^=SUM\(\$C\$/, 'volvió a saltearse enero: eso era del hero devengado')
+})
+
+test('NINGUNA cifra del titular habla en devengado', () => {
+  // El archivo entero es percibido. Un «costo del año» arriba de todo obliga al que lo lee a
+  // acordarse de que esa plata todavía no salió — y nadie se acuerda.
+  const arriba = gCS.filas.slice(0, 8).flat().map(String).join(' ')
+  assert.doesNotMatch(arriba, /devengado/i, 'el titular volvió a hablar en devengado')
+  for (const re of [/^ {3}· REAL · /, /^ {3}· COMPROMETIDO · /, /^ {3}· PROYECTADO · /]) {
+    assert.equal(filaCS(re), undefined, `volvió la partición del hero devengado: ${re}`)
   }
 })
 
-test('las tres particiones SUMAN el titular: sin huecos y sin solapamiento', () => {
-  // El titular no puede ser una cuarta cifra calculada por su cuenta. Si lo fuera, el día que una
-  // partición se mueva el hero seguiría cerrando contra sí mismo y la plata faltante no se vería.
-  const [fTit, fReal, fComp, fProy] = [
-    /^⇒ Costo laboral del año/, /^ {3}· REAL · /, /^ {3}· COMPROMETIDO · /, /^ {3}· PROYECTADO · /,
-  ].map(heroCS)
-  assert.equal(String(filaCS(/^⇒ Costo laboral del año/)[1]), `=$B$${fReal}+$B$${fComp}+$B$${fProy}`)
-  assert.ok(fTit < fReal, 'el titular va arriba de sus partes')
+test('el próximo vencimiento sale de los RANGOS CON NOMBRE, no de un número de fila', () => {
+  // Es la misma serie que lee el Libro Canónico. Con referencias por fila, el titular y el cash flow
+  // podrían discrepar sobre cuál es el próximo vencimiento y ninguna celda se pondría roja.
+  const prox = filaCS(/^⇒ Próximo vencimiento/)
+  assert.ok(prox, 'se fue la segunda pregunta del titular')
+  assert.match(String(prox[1]), new RegExp(`INDEX\\(${NOMBRES_CARGAS.declarado};`), 'el importe tiene que salir del declarado publicado')
+  assert.match(String(prox[2]), new RegExp(`INDEX\\(${NOMBRES_CARGAS.fechas};`), 'y la fecha, de la fila de fechas publicada')
+  // «La primera que NO pasó» incluye la de HOY: con MATCH(...;1)+1 el vencimiento desaparecía del
+  // titular justo el día que vence, que es el día en que la pregunta importa.
+  assert.match(String(prox[1]), /COUNTIF\(\w+;"<"&TODAY\(\)\)\+1/)
+  // Y la fecha se declara como CELDA de fecha: el barrido de moneda la dibujaría «$46.305».
+  assert.deepEqual(gCS.celdasFecha, [{ fila: heroCS(/^⇒ Próximo vencimiento/), col: 2 }])
 })
 
-test('COMPROMETIDO sale POR DIFERENCIA: entre lo declarado y lo pagado no puede quedar un hueco', () => {
-  // Mismo criterio que Jornales. Si algún día lo pagado supera a lo declarado, esta celda se va a
-  // negativo Y SE VE —querría decir que se pagó un período cuya DDJJ no está leída—. Un MAX(...;0)
-  // taparía exactamente el caso que hay que ver.
-  const v = String(filaCS(/^ {3}· COMPROMETIDO · /)[1])
-  const fDecl = heroCS(/^⇒ Total declarado/)
-  assert.equal(v, `=SUM($B$${fDecl}:$M$${fDecl})-$B$${heroCS(/^ {3}· REAL · /)}`)
-  assert.doesNotMatch(v, /MAX\(/, 'un piso en cero esconde el único caso que esta fila tiene que denunciar')
-  // Y el declarado se lee de la fila ENTERA: con el rango de seis meses, la DDJJ de julio entraría a
-  // la pestaña y el hero seguiría mostrando el año hasta junio sin avisar.
-  assert.match(v, /:\$M\$/, 'el hero volvió a leer sólo los seis primeros meses')
-})
-
-test('REAL arranca en FEBRERO: el F931 de enero es la DDJJ de diciembre del año anterior', () => {
-  // Contarlo infla lo REAL y achica lo COMPROMETIDO en $3.811.458 (medido el 06/08) — y COMPROMETIDO
-  // es el número con el que se decide qué hay que pagar.
-  const v = String(filaCS(/^ {3}· REAL · /)[1])
-  assert.match(v, /^=SUM\(\$C\$\d+:\$M\$\d+\)$/, `REAL volvió a incluir enero: ${v}`)
-})
-
-test('los planes NO son una cuarta partición, y la pestaña lo dice al lado del número', () => {
-  // Financian parte de lo que arriba figura como COMPROMETIDO (las DDJJ de enero y junio 2026 se
-  // refinanciaron) y arrastran cuotas de un plan de 2025. Sumarlo al titular lo contaría dos veces.
-  const planes = filaCS(/^⇒ En planes de pago/)
-  assert.match(String(planes[2]), /comprometido/i, 'sin la aclaración al lado, el que lee lo suma al titular')
-  assert.ok(String(planes[2]).length <= 60, 'un texto largo en el medio de la grilla desparrama la fila')
-  assert.doesNotMatch(String(filaCS(/^⇒ Costo laboral del año/)[1]), new RegExp(`\\$B\\$${heroCS(/^⇒ En planes de pago/)}\\b`))
+test('los planes bajaron del titular a su cuadro, y sin la aclaración al lado', () => {
+  // El renglón vivía en el hero con un texto explicativo en la celda C («financia parte de lo
+  // comprometido; incluye deuda de 2025»). El titular ya no es una partición del costo del año, así
+  // que el número no puede sumarse a nada por accidente y la aclaración no tiene qué prevenir.
+  const planes = filaCS(/^⇒ Cuotas sin pagar/)
+  assert.ok(planes, 'se perdió lo que falta pagar de los planes')
+  assert.equal(String(planes[2] ?? ''), VACIO_CS, 'volvió una explicación al lado del importe')
+  assert.ok(heroCS(/^⇒ Cuotas sin pagar/) > heroCS(/^4 · /i), 'tiene que estar dentro del cuadro de planes')
 })
 
 test('el control de integridad se declara para que la piel lo dibuje distinto', () => {
@@ -334,15 +345,6 @@ test('el día de pago vive en Parámetros, no adentro de la fórmula', () => {
   assert.ok(p, 'sin el parámetro, la fila de fechas queda en #NAME? y la cadena no entra al libro')
   assert.equal(p.valor, 10, 'la moda de los seis pagos reales de F931 cargados en Compras')
   assert.ok(p.nota.includes(A_VERIFICAR), 'el calendario de ARCA para F931 no está cableado: hay que decirlo')
-})
-
-test('B12 · el SAC "pagado" se corta HOY: lo cargado con fecha futura es previsión', () => {
-  // El defecto: la fila sumaba por fecha de FACTURA sin tope, así que los $8.500.000 con fecha 30/12
-  // y estado "Proyectado" entraban como pagados y la provisión acumulada cerraba el año en
-  // −$4.914.913 — la pestaña afirmando que se pagó más aguinaldo del que se devengó.
-  const pag = String(filaCS(/^SAC pagado/)[12])
-  assert.match(pag, /<=TODAY\(\)/, 'sin el tope, un aguinaldo previsto para diciembre se cuenta como pagado')
-  assert.match(pag, /LOWER\(Compras!\$E\$4:\$E\)="sac"/)
 })
 
 test('B78 · el control de planes resta DOS CELDAS VIVAS: ninguna constante de la corrida', () => {
@@ -460,39 +462,12 @@ test('2 · PAGADO: los gremiales se acotan a SU rubro', () => {
 test('UNA SOLA DEFINICIÓN DE "PAGADO" EN TODA LA PESTAÑA', () => {
   // El defecto no fue una fórmula: fue que convivieran dos criterios para la misma palabra. Este test
   // los ata. Si mañana alguien agrega un cuadro de "lo que salió" con un tercer criterio, se pone rojo.
-  const hero = String(filaCS(/^⇒ En planes de pago/)[1])
-  assert.match(hero, new RegExp(`Compras!\\$${COLS.estado}\\$4`), 'el hero mide por estado')
+  const sinPagar = String(filaCS(/^⇒ Cuotas sin pagar/)[1])
+  assert.match(sinPagar, new RegExp(`Compras!\\$${COLS.estado}\\$4`), 'el saldo de planes mide por estado')
   for (const rotulo of CONCEPTOS_PAGADOS) {
     assert.match(String(filaCS(new RegExp(`^${rotulo}$`))[8]), new RegExp(`Compras!\\$${COLS.estado}\\$4`),
       `«${rotulo}» mide "pagado" por un criterio distinto al del hero, en la misma pestaña`)
   }
-})
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// LAS VACACIONES DEJARON DE SER UN AVISO Y PASARON A SER UNA PROVISIÓN (27/08/2026)
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-//
-// Desde el 06/08 la sección 6 tenía un pie diciendo "falta la escala" y ni una fila que calculara.
-// Las vacaciones devengan todos los meses: un aviso de tres semanas no es una provisión. La regla y
-// sus guards viven en lib/vacaciones-construccion.mjs; lo que se prueba acá es el CABLEADO, que es
-// donde el arreglo se pierde sin que nada se ponga rojo.
-
-test('la sección 6 provisiona vacaciones contra la antigüedad real, y cuenta a quien no puede medir', () => {
-  const gv = grilla({ periodos, conceptos, ps: [], C, bloqueBase: { inicio: 527, fin: 543 } })
-  const rot = gv.filas.map((f) => String(f[0] ?? ''))
-  const iProv = rot.findIndex((s) => s.includes('Vacaciones devengadas del plantel'))
-  assert.ok(iProv >= 0, 'se fue la fila de provisión de vacaciones: volvió a quedar sólo el aviso')
-  const f = String(gv.filas[iProv][1] ?? '')
-  // Sale de la columna C del espejo —la antigüedad real— y de los cuatro tramos de Parámetros.
-  assert.ok(f.includes("'_J_OBREROS'!$C$527:$C$543"), 'la provisión dejó de mirar las fechas de ingreso')
-  assert.ok(f.includes('VACACIONES_DIAS_HASTA_5'), 'los días dejaron de salir del parámetro que confirma el contador')
-  // EL GUARD QUE NO SE PUEDE PERDER: con la escala en cero rinde VACÍO, nunca 0. Un 0 acá afirma que
-  // la empresa no debe vacaciones, que es lo contrario de lo que pasa.
-  assert.ok(f.includes(')=0;"";'), 'la escala en cero volvió a publicar un número en vez de decir que falta')
-  // Y las personas sin fecha de ingreso se cuentan en su propia celda, no adentro de un mensaje.
-  const iSin = rot.findIndex((s) => s.includes('sin fecha de ingreso cargada'))
-  assert.ok(iSin > iProv, 'falta la cuenta de quiénes quedaron fuera de la provisión')
-  assert.ok(String(gv.filas[iSin][1] ?? '').includes('SUMPRODUCT'))
 })
 
 // ═══ EL RANGO REAL SIGUE AL ÚLTIMO MES DECLARADO (27/08/2026, auditoría de la pestaña) ═══
@@ -533,4 +508,59 @@ test('la pestaña cumple el CONTRATO DE DISEÑO entero: encabezado, numeración 
   }))
   const mal = auditarDiseno(filas, { pestana: 'Cargas Sociales' })
   assert.deepEqual(mal, [], mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA PROYECCIÓN DENTRO DE «TOTAL DECLARADO» — UN NÚMERO CON OTRA TIPOGRAFÍA, NO UNA FRASE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('los meses sin DDJJ traen un NÚMERO, no «≈ $8.717.159 proy.»', () => {
+  const decl = filaCS(new RegExp(`^${ROTULOS_CARGAS.declarado}`))
+  const fSub = gCS.filas.findIndex((f) => String(f[0] ?? '').startsWith(ROTULOS_CARGAS.f931)) + 1
+  // Septiembre (índice 9) es el primer mes sin DDJJ en el caso base (enero–junio declarados = julio).
+  const sep = String(decl[7])
+  assert.doesNotMatch(sep, /TEXT\(/, 'el importe volvió a ser una oración: no se suma, no se ordena, no se compara')
+  assert.doesNotMatch(sep, /proy\./)
+  // Y referencia el SUBTOTAL F931, no el «Total devengado en el mes»: esta fila ES
+  // CARGAS_MES_F931_DECLARADO, y con los gremiales adentro el Libro los publicaría dos veces.
+  assert.equal(sep, `=IF(N(H${fSub})=0;"${SIN_DDJJ_CS}";H${fSub})`)
+})
+
+test('la proyección se declara para que la piel la pinte gris e itálica', () => {
+  // Sin esta declaración el número proyectado se dibuja idéntico al declarado, que es exactamente
+  // mezclar dos ventanas de tiempo — y la palabra «proy.» ya no está para avisarlo.
+  const fDecl = gCS.filas.findIndex((f) => String(f[0] ?? '').startsWith(ROTULOS_CARGAS.declarado)) + 1
+  assert.deepEqual(gCS.proyectadas, [{ fila: fDecl, meses: [7, 8, 9, 10, 11, 12] }])
+})
+
+test('la fila «Total declarado» NO totaliza el año: sería declarado + proyectado en una cifra', () => {
+  // Es el mismo número que el titular viejo publicaba como «Costo laboral del año — devengado»
+  // ($100.057.714 en el archivo vivo). Un total que suma ocho meses declarados con cuatro
+  // proyectados no es un total: es dos cosas sumadas sin decirlo.
+  const decl = filaCS(new RegExp(`^${ROTULOS_CARGAS.declarado}`))
+  assert.equal(decl[13], VACIO_CS)
+})
+
+test('los cuadros son CUATRO y están numerados 1, 2, 3, 4', () => {
+  const secciones = gCS.filas.map((f) => String(f[0] ?? '')).filter((t) => /^\d+ · /.test(t))
+  assert.deepEqual(secciones.map((t) => t.slice(0, 5)), ['1 · D', '2 · P', '3 · P', '4 · P'],
+    `quedaron ${secciones.length} secciones: ${secciones.join(' | ')}`)
+})
+
+test('las filas de caja son filas del cuadro 3, y la «diferencia» estructural no está', () => {
+  // La resta comparaba «previsto en Compras» —que sólo trae cuotas de planes— contra el devengado
+  // entero: no podía dar cero ningún mes. Las otras tres filas siguen, dentro de la proyección.
+  const f3 = gCS.filas.findIndex((f) => /^3 · /.test(String(f[0] ?? ''))) + 1
+  const f4 = gCS.filas.findIndex((f) => /^4 · /.test(String(f[0] ?? ''))) + 1
+  for (const re of [/^Cargas que salen en el mes/, /^Cuotas de planes de pago que vencen/, /^Previsto en Compras/]) {
+    const i = gCS.filas.findIndex((f) => re.test(String(f[0] ?? ''))) + 1
+    assert.ok(i > f3 && i < f4, `«${re}» quedó fuera del cuadro 3`)
+  }
+  assert.equal(filaCS(/diferencia contra lo proyectado/), undefined, 'volvió la resta que no puede dar cero')
+})
+
+test('la fila de cuotas que vencen REFERENCIA el total del cuadro 4, no lo recalcula', () => {
+  const vencen = filaCS(/^Cuotas de planes de pago que vencen/)
+  const fTot = gCS.filas.findIndex((f) => String(f[0] ?? '').startsWith(rotuloTotalCS('Total de cuotas del año'))) + 1
+  assert.equal(String(vencen[9]), `=J${fTot}`, 'el mismo número por dos caminos es como aparecen dos verdades')
 })

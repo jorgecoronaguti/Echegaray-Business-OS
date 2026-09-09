@@ -152,16 +152,33 @@ export const mesDeSerial = (serial) => isoDeSerial(serial).slice(0, 7)
  *
  *   1. Si Compras ya tiene el pago del mes, nada (lo decide el llamador, antes de llegar acá).
  *   2. Si la DDJJ está presentada, el DECLARADO manda: es la obligación cierta, al centavo, y viaja
- *      como `COMPROMETIDO`. Una proyección para un mes declarado no existe (la pestaña no la publica),
- *      y si existiera sería un número peor que el dato.
+ *      como `COMPROMETIDO`.
  *   3. Un declarado cuyo período está FINANCIADO no se emite: sus cuotas entran por Compras.
  *   4. Sin DDJJ, la PROYECCIÓN de la cadena, como `PROYECTADO`.
+ *
+ * ═══ EL ECO: UNA CELDA QUE MUESTRA LA PROYECCIÓN NO ES UNA DECLARACIÓN (09/09/2026) ═══
+ *
+ * Hasta hoy la regla 2 se apoyaba en un accidente: los meses sin DDJJ de la fila «Total declarado»
+ * llevaban TEXTO («≈ $8.717.159 proy.»), así que `num()` devolvía null y caían solos en la regla 4.
+ * El día que esa celda pasó a ser un NÚMERO —el dueño pidió que la proyección se distinga por el
+ * formato y no por una palabra— los cuatro meses proyectados habrían entrado al libro como
+ * `COMPROMETIDO`: el OS afirmando que hay una DDJJ presentada donde no la hay. Eso es presentar una
+ * estimación como un hecho, que es la regla de oro 2.
+ *
+ * La marca no puede ser el formato —el libro lee valores, no tipografía— así que se usa lo único que
+ * es un HECHO del dato: si el declarado del mes es EXACTAMENTE el mismo número que la propia pestaña
+ * publica como proyección de ese mes, esa celda está mostrando la proyección. Es exacto porque las
+ * dos salen de la misma celda (`=IF(...;X;X)`), y es seguro en el peor caso: si alguna vez una DDJJ
+ * real coincidiera al centavo con la proyección, el importe emitido sería el mismo y sólo cambiaría
+ * el estado — nunca puede mover un peso del cash flow.
  *
  * @returns {{importe:number, estado:string, fila:string}|null} `null` = este mes no emite F931
  */
 function obligacionF931({ declarado, proyectado, devengado, mesesFinanciados, aviso }) {
   const decl = num(declarado)
-  if (decl) {
+  const proyNum = num(proyectado)
+  const esEco = decl !== null && proyNum !== null && Math.abs(decl - proyNum) < 0.005
+  if (decl && !esEco) {
     if (mesesFinanciados.has(devengado)) {
       aviso(`libro-extractores-cargas: el F931 de ${devengado} está declarado (${decl}) y FINANCIADO en un plan — sus cuotas entran por Compras, no se emite.`)
       return null
@@ -169,8 +186,7 @@ function obligacionF931({ declarado, proyectado, devengado, mesesFinanciados, av
     // A dos decimales: el SUM de la DDJJ llega como 8331697.6899999995 y el libro publica pesos con centavos.
     return { importe: Math.round(decl * 100) / 100, estado: 'COMPROMETIDO', fila: `F931 · declarado ${Number(devengado.slice(5, 7))}` }
   }
-  const proy = num(proyectado)
-  return proy ? { importe: proy, estado: 'PROYECTADO', fila: `F931 · devengado ${Number(devengado.slice(5, 7))}` } : null
+  return proyNum ? { importe: proyNum, estado: 'PROYECTADO', fila: `F931 · devengado ${Number(devengado.slice(5, 7))}` } : null
 }
 
 /**
