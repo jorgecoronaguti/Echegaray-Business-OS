@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 15:10 · main `eab80d78` = origin = producción · Vercel al día_
+_actualizado: 2026-09-09 12:35 (hora local −03) · main `7455e941` = origin = producción · Vercel al día_
 
 ## 1. OBJETIVO GENERAL
 
@@ -60,7 +60,14 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
   «Pagado el» repuestas por quincena). **Cargas Sociales** migrada (commit `a79c0c8e`: 63 filas × 15 col, 4 bloques,
   titular percibido). Ambas verificadas en el real: REAL_TOTAL 135.539.027 · OFICINA_PAGADO 24.330.363 ·
   DIRECCION_PAGADO 9.000.000 · pagado cargas 71.737.385; auditores de pantalla y censo en 0 para Cargas.
-  **Nómina sigue con el layout viejo.**
+  **Jornales final** (`2cd6141a`, 102 filas: 8 retoques, parámetros `JORNALES_HORAS_MEDIDAS` / `JORNALES_SHARE_ADELANTO`
+  en Parámetros, 5 tests reescritos) aplicada 12:1x con `olvidar-huella-de-formato --todas` + `pestana-migrar-layout --real`.
+  **Nómina** migrada 12:27 (`35699f73`: piel de `estilo-statement` igual a las hermanas, once columnas, 15 «EFECTIVO
+  redondeado» del dueño: 11 junto a su persona + 4 visibles debajo de «⇒ 15 persona(s)» — $120.000 / $340.000 / $290.000
+  / $360.000 — suma total $4.374.000; se reponen con `nomina-pestana.mjs --aplicar --redondeado-de <respaldo>.json`).
+  Cash Flow releído tras el pipeline de las 11:41: las 6 líneas reales idénticas; proyección sep–dic: jornales
+  58.308.813 → 57.362.961, cargas 23.614.127 → 23.264.450, gremiales 7.090.019 → 7.008.105 (el calendario nuevo cuenta
+  días hábiles por `NETWORKDAYS.INTL`; el viejo sumaba un «sábado supuesto») — **el dueño no lo confirmó todavía**.
 - **Herramientas nuevas** (en main): `scripts/en-copia.mjs` (un generador sólo corre contra una copia),
   `scripts/sheet-copia-prueba.mjs` (files.copy + siembra `_UOCRA_RAW` porque IMPORTHTML da #REF! en copias),
   `scripts/pestana-migrar-layout.mjs` (respaldo JSON → celdas del dueño por clave → vaciar → generador → reponer),
@@ -76,25 +83,20 @@ queda en Jornales · Cargas percibido).
 
 ## 6. PENDIENTES REALES
 
-**P0 — Sheet, ramas con trabajo verificado en copia pero NO aplicado ni mergeado**
-- **Jornales retoques** — rama `worktree-agent-a704c774040e30f2e` @ `2cd6141a`: 8 retoques de formato/texto,
-  parámetros a `Parámetros` (`JORNALES_HORAS_MEDIDAS`, `JORNALES_SHARE_ADELANTO`), 5 tests reescritos, y un bug
-  grave corregido (fórmulas mudadas a Parámetros citaban sin pestaña → proyección 0 silenciosa). Grilla 102 filas
-  (3 menos que el real). Para aplicar: copia nueva → `olvidar-huella-de-formato.mjs "Jornales por Quincena" --todas`
-  (si no, la piel no se repone) → `pestana-migrar-layout.mjs --dueno "Pagado el" --clave A,B` → PNG → luego `--real`
-  → mergear a main → prod. **NO mergear a main antes de aplicar**: el timer correría el layout de 102 sobre 105.
-- **Nómina rediseñada** — rama `worktree-agent-a946a695f6c09abf3` @ `9a7904d4`: once columnas iguales en los tres
-  cuadros, titular por fórmula, auditores 0/0 en la copia `1amGWb4-aU_2JWAuyfuvkC7MRcilpkwvovRFdc1dyO8I` (queda en
-  Drive como evidencia). **Bloqueado por dos decisiones del dueño**: (1) la columna «EFECTIVO redondeado» del real
-  está corrida 3 filas: 12 importes caen junto a una persona y 3 ($120.000, $340.000, $290.000 en I26:I28) sobre
-  total/nota/título; ¿van a Aguero/Castillo/Alaniz? (2) Sosa tenía literales pegados ($1.326.283 / $1.327.052 /
-  $946.665) que contradicen su fórmula «MITAD BLANCA» ($330.431): confirmar con el recibo real. Estilo: usa
-  encabezados oscuros propios, NO el `sub()` gris de Jornales/Cargas → unificar antes de aplicar.
-- Explicar la diferencia de `JORNALES_PROY_TOTAL`: 62.423.532 (layout viejo) vs 61.261.890 (nuevo); hipótesis del
-  agente: «Días» de la primera quincena partida por `NETWORKDAYS.INTL`. Después del pipeline, leer las 12 líneas
-  «Nómina · …» del Cash Flow Mensual y compararlas con: 131.082.858/58.308.813 · 33.330.363/46.820.400 ·
-  50.616.496/23.614.127 · 12.068.696/7.090.019 · 7.368.710/8.500.000 · 11.547.069/4.989.751.
-- Jornales real: B30:C30 con formato $ sobre fechas (lo corrige `2cd6141a`).
+**P0 — Sheet**
+- **Cargas Sociales + Impuestos y Financieros**: agente en curso (rama `worktree-agent-a1df7c7dd9993e69f`): fin del
+  rediseño en toda la pestaña (fuera fila 2 de prosa, filas «·», «▲», rótulos con explicación; parámetros del control
+  de plantel a Parámetros) y **una sola casa para los planes de pago F931** (Impuestos bloque 5 y dos filas del bloque 6
+  duplican el bloque 4 de Cargas; la línea «Deuda previsional» del Cash Flow tiene que seguir 11.547.069 / 4.989.751).
+  Si no cerró: aplicar con copia → `pestana-migrar-layout` → `--real` (ver método arriba).
+- Decisiones del dueño sobre Nómina: los 4 importes de EFECTIVO redondeado sin persona (¿a quién van?) y Sosa (literales
+  pegados vs fórmula «MITAD BLANCA» $330.431: confirmar con el recibo). Censo marca los 15 del dueño como «pegados»:
+  declarar la columna I como entrada del dueño en `censo-numeros-pegados`.
+- Confirmar con el dueño la baja de proyección sep–dic (−$1,38 M en total) por el cambio de «sábado supuesto» a días hábiles.
+- Defectos menores de pantalla: Jornales G78 «Σ $/hora con aumento» y Nómina I32 «EFECTIVO redondeado» cortados a 100 px;
+  titular de Jornales con las tres cifras en columnas distintas (B/G/H) en vez de B como Cargas/Nómina.
+- El pipeline termina en `failed` por auditores rojos (cobertura, diseño unificado, censo, formato-pestanas «8 fuera de
+  estándar»): revisar cuáles son de hoy y cuáles preexistentes.
 
 **P1 — decisiones del dueño (módulo Liquidación)**
 - ADELANTO en efectivo sin fuente en Postgres (vive en col. Z de JORNALES): ¿importar o cargar en la web?
@@ -110,14 +112,12 @@ queda en Jornales · Cargas percibido).
 
 ## 7. ESTADO GIT
 
-- `main` `eab80d78` = origin = producción. Árbol limpio.
-- Ramas con trabajo sin mergear: `worktree-agent-a704c774040e30f2e` (`2cd6141a`), `worktree-agent-a946a695f6c09abf3`
-  (`9a7904d4`). Respaldos JSON/PDF de las pestañas en `~/echegaray-os/respaldos/`.
+- `main` `7455e941` = origin = producción. Árbol limpio. Respaldos JSON/PDF en `~/echegaray-os/respaldos/`.
+- Rama en curso: `worktree-agent-a1df7c7dd9993e69f` (Cargas + Impuestos). Worktrees viejos «locked»: `remove -f -f`.
 
 ## 8. PRÓXIMO PASO
 
-Aplicar `2cd6141a` a Jornales por el procedimiento de §6 y verificar las 12 líneas del Cash Flow. Después, con las
-dos respuestas del dueño sobre EFECTIVO redondeado y Sosa, unificar el estilo de Nómina y aplicarla igual.
+Cerrar Cargas + Impuestos (aplicar al real, mergear, prod) y releer las 12 líneas del Cash Flow tras el pipeline siguiente.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
