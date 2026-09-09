@@ -228,7 +228,7 @@ export function GrillaHorasQuincena({
             nombre no entran en 390 y encogerlas dejaría celdas ilegibles. */}
         <div className="overflow-x-auto" style={{ padding: '0 20px' }}>
         <div style={{ minWidth: 760, display: 'flex', flexDirection: 'column' }}>
-          <div style={{
+          <div data-testid="encabezado-columnas" style={{
             display: 'grid', gridTemplateColumns: COLUMNAS, gap: 6, height: 36, alignItems: 'end',
             borderBottom: `1px solid ${V.linea}`, paddingBottom: 9,
             fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)', fontSize: '9.5px',

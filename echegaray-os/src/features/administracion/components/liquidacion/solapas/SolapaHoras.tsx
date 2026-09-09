@@ -149,7 +149,10 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
   ]
 
   return (
-    <div data-testid="solapa-horas">
+    // EL CONTENIDO NO COMPARTE `data-testid` CON SU PESTAÑA. `BarraSolapas` ya publica
+    // `solapa-horas` para el clic; que el contenedor usara el mismo nombre hacía que un selector
+    // resolviera a dos elementos y el test se cayera por «strict mode» sin que nada estuviera mal.
+    <div data-testid="vista-horas">
       {[...datos.errores, ...liquidacion.errores].map((e) => (
         <div key={e.que} style={{ padding: '0 0 10px' }}>
           <Aviso tono="neg" testid="horas-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
