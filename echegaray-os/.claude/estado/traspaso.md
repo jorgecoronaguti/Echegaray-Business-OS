@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 14:15 (hora local −03) · main `9507bd33` = origin = producción · Vercel al día_
+_actualizado: 2026-09-09 15:05 (hora local −03) · main `da0ac75a` = origin = producción · Vercel al día_
 
 ## 1. OBJETIVO GENERAL
 
@@ -88,6 +88,22 @@ solo (el Libro mide lo pagado, no lo facturado). Agosto: débito $7.191.299 → 
 (21/09); hero «A pagar en 30 días» $5.496.981 → $10.201.763. Memorias `lo-que-se-factura-es-cobranzas-b` y
 `verificar-en-copia-trampas`.
 
+**14:45 — el dueño corrigió agosto dos veces** («está mal calculado el IVA de agosto: lo que aparece en AfipSDK, que tiene
+que ser como lo facturado en B»; «revisar bien las fechas de factura con B para lo que pasó y para lo futuro»). Quedó
+(`24210be5` + `da0ac75a`, aplicado al real): mes cerrado = ARCA; mes en curso = MAX(ARCA parcial; B); futuro = B por
+«Fecha de Factura»; B vencida sin comprobante → mes de su «Fecha cobro». Agosto $7.191.299 · sep $19.070.025 · oct
+$7.749.478 · nov $2.227.437 · dic $3.341.155; IVA a pagar 20/10 $8.720.755; hero «A pagar en 30 días» $4.443.499. El
+generador imprime «COBRANZAS «B» CONTRA ARCA» (44 diferencias hoy; lib `cobranzas-vs-arca.mjs`). Memoria
+`lo-que-se-factura-es-cobranzas-b` reescrita. **El dueño dijo después «sigue mal calculado todo IVA» sin decir qué
+número: preguntado.**
+
+**15:00 — Posición impositiva de la empresa** (pedida con skills impuestos/contabilidad/laboral/contratos):
+https://claude.ai/code/artifact/f13e0382-8ff9-4c5a-a79f-540a07e9e405 — IVA a favor $9.856.370 (F.2051 07/26) → se
+consume en septiembre, primer pago en efectivo $8,7 M el 20/10; Ganancias 2025 (cierre 31/10) impuesto $7.310.162
+cancelado con impuesto al cheque, saldo a favor $5.726.887, sin anticipos visibles desde abril; impuesto al cheque
+$12,4 M ene–ago ($19,8 M/año); IIBB a favor $19.073, agosto $665.812 (16/09); planes F931 $4.989.751; F931 declara 25
+vs plantel 17. Para el estudio: anticipos 2026, categoría MiPyME (% cómputo cheque), sellos de contratos 2026.
+
 Cableado revisado de Impuestos (09/09): IVA declarado ← PDF F.2051 en Drive `archivo fiscal/2026/IVA` (hasta 07-2026,
 del 18/08) · IIBB ← `2026/IIBB` (hasta 07-2026, del 14/08) · comprobantes ← `comprobantes_arca` (AfipSDK) → `_ARCA_RAW`
 (ventas: 30, última 01/09; compras: 737, última 04/09; cargado 07/09) · retenciones ← Cobranzas X/Y/Z por fecha de cobro
@@ -149,13 +165,14 @@ ventana 10/08→10/09, plan free, 2 automatizaciones por corrida). Ventana nueva
 
 ## 7. ESTADO GIT
 
-- `main` `9507bd33` = origin = producción. Árbol limpio. Respaldos JSON/PDF en `~/echegaray-os/respaldos/`.
+- `main` `da0ac75a` = origin = producción. Árbol limpio. Respaldos JSON/PDF en `~/echegaray-os/respaldos/`.
 - Sin ramas pendientes; worktrees de hoy retirados.
 
 ## 8. PRÓXIMO PASO
 
-Releer la línea proyectada de «Impuestos» del Cash Flow Mensual tras el pipeline de las 14:50 (debe reflejar el IVA de
-agosto por Cobranzas B: sep ≈ 6,42 M · oct ≈ 12,18 M · nov ≈ 4,01 M), verificar la corrida de AfipSDK del 11/09, y
+Releer la línea proyectada de «Impuestos» del Cash Flow Mensual tras el pipeline de las 14:50 (con la regla final: sep ≈
+0,67 M IIBB · oct ≈ 8,72 M IVA + 1,82 M IIBB · nov ≈ 5,71 + 0,74 M) y que B13/C21/D21 sigan; saber del dueño QUÉ número del
+IVA sigue mal, verificar la corrida de AfipSDK del 11/09, y
 llevarle al dueño las decisiones abiertas (Quattropani ×9 sin comprobante, (4 importes de EFECTIVO redondeado sin persona, Sosa, «sábado supuesto», adelanto en efectivo y
 horas proyectadas del módulo Liquidación, brecha 25 vs 15 en la DDJJ de agosto).
 
