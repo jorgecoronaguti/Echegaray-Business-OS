@@ -50,7 +50,8 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
 import { getClientes, getObrasPorCliente } from '@/features/clientes/services/clientesService'
 import { esVistaCartera, separarArchivados } from '@/features/clientes/services/cartera'
-import { getOrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
+import { getOrdenesDe, getOrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
+import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
@@ -75,12 +76,12 @@ const RUTA = '/clientes'
 
 /** Los dos iconos que esta sección mezcla: un cliente incompleto y una obra sin contrato. */
 
-type Query = { archivados?: string; nuevo?: string; vista?: string; q?: string; c?: string }
+type Query = { archivados?: string; nuevo?: string; vista?: string; q?: string; c?: string; ordenes?: string }
 
 function armarHref(base: Query, cambios: Partial<Query> = {}): string {
   const v = { ...base, ...cambios }
   const p = new URLSearchParams()
-  for (const k of ['archivados', 'nuevo', 'vista', 'q', 'c'] as const) {
+  for (const k of ['archivados', 'nuevo', 'vista', 'q', 'c', 'ordenes'] as const) {
     if (v[k]) p.set(k, v[k] as string)
   }
   const s = p.toString()
@@ -151,6 +152,25 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const contratadoTotal = conMonto.length
     ? conMonto.reduce((a, c) => a + (c.contratado ?? 0), 0)
     : null
+
+  // ═══ EL PANEL DE ÓRDENES (`?ordenes=<obra_id>` o `?ordenes=cliente:<id>`) ═══
+  //
+  // Se resuelve DESDE LA CARTERA que la página ya trajo: el cliente y el nombre no se vuelven a
+  // consultar, y una clave que no corresponda a ninguna fila visible no abre nada — así la URL
+  // tipeada a mano no puede pedir el detalle de una obra que esta sesión no ve.
+  const pedido = sp.ordenes ?? null
+  const dueno = pedido?.startsWith('cliente:')
+    ? cartera.find((c) => c.cliente_id === pedido.slice('cliente:'.length))
+    : cartera.find((c) => c.enCurso.some((o) => o.obra_id === pedido))
+  const obraPedida = pedido?.startsWith('cliente:') ? null : pedido
+  const ordenesDelPanel = dueno
+    ? await getOrdenesDe(supabase, { clienteId: dueno.cliente_id, obraId: obraPedida })
+    : null
+  const tituloPanel = !dueno
+    ? ''
+    : obraPedida
+      ? (dueno.enCurso.find((o) => o.obra_id === obraPedida)?.nombre ?? dueno.nombre)
+      : `${dueno.nombre} · sin obra atribuida`
 
   const abierta = sp.nuevo === '1' && puedeEditar
   const seleccionado = sp.c ? base.find((c) => c.cliente_id === sp.c) ?? null : null
@@ -258,6 +278,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 }}
                 veEconomia={veEconomia}
                 hoy={hoyEnLaEmpresa()}
+                hrefOrdenes={(clave) => armarHref(sp, { ordenes: clave, c: undefined })}
                 obrasNoLeidas={obras === null}
                 limpiarHref={armarHref(sp, { q: undefined, vista: undefined, c: undefined })}
                 vacio={sp.q ? 'Ningún cliente se llama así.' : 'Ningún cliente entra en este recorte.'}
@@ -277,6 +298,15 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 tener varias obras. Esto no es un embudo comercial — no hay leads ni etapa de venta.
               </NotaBloque>
             </div>
+
+            {dueno && (
+              <PanelOrdenes
+                titulo={tituloPanel}
+                ordenes={ordenesDelPanel}
+                veEconomia={veEconomia}
+                cerrarHref={armarHref(sp, { ordenes: undefined })}
+              />
+            )}
 
             {seleccionado && (
               <PanelCliente

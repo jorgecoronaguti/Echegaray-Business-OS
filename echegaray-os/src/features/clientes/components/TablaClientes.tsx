@@ -43,6 +43,7 @@ import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from 
 import { diaRelativo, type ClienteEnCartera } from '@/features/administracion/services/homeCartera'
 import { rotuloChip, type OrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
 import { chipsDeObra, SIN_PRECIO, type Chip } from '@/features/clientes/services/chipsCartera'
+import { BotonOrdenes } from './BotonOrdenes'
 import { pctTexto } from '@/features/clientes/services/economiaObras'
 
 // ── LOS CHIPS DE ÓRDENES ────────────────────────────────────────────────────────────────────────
@@ -55,25 +56,18 @@ import { pctTexto } from '@/features/clientes/services/economiaObras'
 // NO SON UN ENLACE. La fila entera ya es un `<Link>` a la obra y un `<a>` adentro de otro `<a>` es
 // HTML inválido: React lo renderiza igual y el navegador lo desarma, dejando la fila con zonas que
 // navegan a cualquier lado. El detalle vive en la ficha de la obra; acá el chip informa cuántas hay.
-function Chips({ compra, pago }: { compra: number; pago: number }) {
+function Chips({ compra, pago, href }: { compra: number; pago: number; href: string }) {
   const rotulos = [rotuloChip('OC', compra), rotuloChip('OP', pago)].filter((r) => r !== null)
-  if (!rotulos.length) return null
   return (
-    <>
-      {rotulos.map((r) => (
-        <span
-          key={r}
-          data-testid="chip-orden"
-          className={ADORNO_ANCHO}
-          style={{
-            fontSize: '10.5px', letterSpacing: '0.06em', textTransform: 'uppercase',
-            color: V.apagado, flexShrink: 0, whiteSpace: 'nowrap',
-          }}
-        >
-          {r}
-        </span>
-      ))}
-    </>
+    <BotonOrdenes
+      rotulos={rotulos}
+      href={href}
+      className={ADORNO_ANCHO}
+      estilo={{
+        fontSize: '10.5px', letterSpacing: '0.06em', textTransform: 'uppercase',
+        color: V.apagado, flexShrink: 0, whiteSpace: 'nowrap',
+      }}
+    />
   )
 }
 
@@ -108,7 +102,7 @@ const ADORNO_ANCHO = 'max-[1023px]:hidden'
 const TONO = { divisorObra: '#F3F2EE', pista: '#EDECE8', textoObra: '#3A3A38' } as const
 
 export function TablaClientes({
-  clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, ordenes, hoy, limpiarHref, vacio,
+  clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, ordenes, hrefOrdenes, hoy, limpiarHref, vacio,
 }: {
   clientes: ClienteEnCartera[]
   seleccionado?: string
@@ -120,6 +114,8 @@ export function TablaClientes({
   obrasNoLeidas: boolean
   /** obra_id → cuántas OC y cuántas OP le cuelgan. Vacío = ninguna, o la lectura falló (`ordenes.fallo`). */
   ordenes: OrdenesDeLaCartera
+  /** Adónde lleva el chip: la clave es el `obra_id`, o `cliente:<id>` para lo no atribuido a obra. */
+  hrefOrdenes: (clave: string) => string
   /** El día de hoy en la hora de la empresa. Viene del servidor: el reloj del navegador es de quien mira. */
   hoy: string
   limpiarHref: string
@@ -188,7 +184,10 @@ export function TablaClientes({
                 </span>
                 {/* LO QUE NO SE PUDO ATRIBUIR A UNA OBRA cuelga del CLIENTE y se ve acá. Esconderlo
                     hasta saber la obra sería perderlo: son las órdenes que alguien tiene que asignar. */}
-                <Chips {...(ordenes.sinObraPorCliente.get(c.cliente_id) ?? { compra: 0, pago: 0 })} />
+                <Chips
+                  {...(ordenes.sinObraPorCliente.get(c.cliente_id) ?? { compra: 0, pago: 0 })}
+                  href={hrefOrdenes(`cliente:${c.cliente_id}`)}
+                />
                 <ChipsFalta chips={faltantes} testid="aviso-datos" />
               </span>
 
@@ -234,7 +233,10 @@ export function TablaClientes({
                     <IconoObra className="h-[13px] w-[13px]" />
                   </span>
                   <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra }}>{o.nombre}</span>
-                  <Chips {...(ordenes.porObra.get(o.obra_id) ?? { compra: 0, pago: 0 })} />
+                  <Chips
+                    {...(ordenes.porObra.get(o.obra_id) ?? { compra: 0, pago: 0 })}
+                    href={hrefOrdenes(o.obra_id)}
+                  />
                   {/* SIN PRECIO · SIN MEDIR · SIN JEFE · el punto del circuito de certificación.
                       Cada uno con su fuente en el `title`; los cuatro salen de `chipsDeObra`. */}
                   <ChipsFalta chips={chipsDeObra(o)} testid="chip-obra" />

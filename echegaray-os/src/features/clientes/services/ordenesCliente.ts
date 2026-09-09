@@ -55,3 +55,46 @@ export async function getOrdenesDeLaCartera(supabase: SupabaseClient): Promise<O
 export function rotuloChip(prefijo: 'OC' | 'OP', n: number): string | null {
   return n > 0 ? `${prefijo} ·${n}` : null
 }
+
+// ── EL DETALLE, PARA EL PANEL ───────────────────────────────────────────────────────────────────
+//
+// Los conteos de arriba dicen CUÁNTAS hay; esto dice cuáles son. Se lee sólo cuando alguien abre el
+// panel de una obra —no para las decenas de filas de la tabla— y otra vez con la sesión de quien
+// mira: la RLS de `cliente_orden` es la cerradura, acá no se vuelve a filtrar por rol.
+
+export interface OrdenDetallada {
+  id: string
+  tipo: string
+  numero: string | null
+  fecha: string | null
+  importe: number | null
+  moneda: string | null
+  nombre_archivo: string
+  emisor: string | null
+  /** `remitente` lo prueba el dominio del mail; `texto` lo dedujo el OS. HECHO vs INFERENCIA. */
+  atribucion: string
+}
+
+/**
+ * LAS ÓRDENES DE UNA OBRA, o las que quedaron a nivel CLIENTE sin obra atribuida.
+ *
+ * `obraId === SIN_OBRA` NO es un obra_id inventado: es la clave con la que la tabla nombra el resto
+ * del cliente, y acá se traduce a `obra_id is null`. Sin esa rama, las nueve órdenes de Messina que
+ * el OS no pudo atribuir no tendrían panel donde abrirse.
+ */
+export async function getOrdenesDe(
+  supabase: SupabaseClient,
+  { clienteId, obraId }: { clienteId: string; obraId: string | null },
+): Promise<OrdenDetallada[] | null> {
+  let q = supabase
+    .from('cliente_orden')
+    .select('id, tipo, numero, fecha, importe, moneda, nombre_archivo, emisor, atribucion')
+    .eq('cliente_id', clienteId)
+    .is('eliminado_en', null)
+  q = obraId === null ? q.is('obra_id', null) : q.eq('obra_id', obraId)
+  // Las más nuevas primero, y las sin fecha al final: una orden sin fecha no es la más vieja, es
+  // una que el PDF no fechó.
+  const { data, error } = await q.order('fecha', { ascending: false, nullsFirst: false })
+  if (error) return null
+  return (data ?? []) as OrdenDetallada[]
+}
