@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 17:50 (hora local −03) · main `c82b2a58` = origin = producción (Sheet y Vercel)_
+_actualizado: 2026-09-09 18:35 (hora local −03) · main `094051ce` = origin; producción (Sheet) `8b6deeee`; Vercel con el push_
 
 ## 1. OBJETIVO GENERAL
 
@@ -92,6 +92,20 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
 - **Trampa pagada hoy**: `jornales-pestana.mjs` ESCRIBE sin flag (dry sólo con `--dry`); corrí una etapa a medio
   hacer sobre el real y rompió Oficina; se repuso celda por celda. Memoria `generador-sin-flag-escribe-el-sheet-real`.
 - Timer `echegaray-flujo-caja` encendido; producción en `eab80d78` (generadores nuevos de Jornales y Cargas).
+
+- **Tarde/noche 09/09 — lo que entró a main después de las 17:50**: Liquidación web (solapas Horas/Pagos/Costo/Cierre,
+  panel de persona con legajo y edición, día editable con rastro, adelantos, tarifas heredadas de la 2ª de agosto, plantel
+  activo sólo lectura, faltante declarado por quincena; 5 migraciones `20260909T17*`+`T1740`+`T1800` APLICADAS);
+  contador «Comprobantes · histórico» en Proveedores web; Gmail → `cliente_orden` (16 OC/OP de Messina, 9 a nivel cliente;
+  timer `echegaray-gmail-ordenes.timer` habilitado); comprobantes por chat: fusible por tarea (4154baf6), foto pesada se
+  achica (c29359a4), respaldo 25 MB (8b6deeee) — el post de las 17:58 hay que REENVIARLO; capa fósil de nómina en
+  cash-flow-lineas marcada (47b5b1e7). Proyección de nómina verificada en copia: SANA (~$16,6M/mes vs $16,8M pagados) —
+  el «$3,2M» de la auditoría era un tramo de 5 días; NO se cambió la fórmula. Lista de Compras a corregir:
+  `respaldos/2026-09-09-compras-para-corregir.md`.
+- **Agentes en curso al cerrar**: Liquidación 7/8/12 (Convenios, Recibos, Productividad); fidelidad UX/UI contra el
+  mockup (worktree en /home/jorge/echegaray-os/worktrees/wt-fidelidad); Clientes en UNA pantalla + panel/descarga de OC/OP;
+  Gmail → transferencias por proveedor; Cargas Sociales `CARGAS_MES_*` 12/12. Ramas feat/* sin mergear se listan con
+  `git branch`.
 
 ## 5. TRABAJO DE ESTA SESIÓN (09/09)
 
