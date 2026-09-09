@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 18:35 (hora local −03) · main `094051ce` = origin; producción (Sheet) `8b6deeee`; Vercel con el push_
+_actualizado: 2026-09-09 19:45 (hora local −03) · main `9f3dc33e` = origin; producción (Sheet) `39ee6dc9`; Vercel con el push_
 
 ## 1. OBJETIVO GENERAL
 
@@ -102,6 +102,15 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
   cash-flow-lineas marcada (47b5b1e7). Proyección de nómina verificada en copia: SANA (~$16,6M/mes vs $16,8M pagados) —
   el «$3,2M» de la auditoría era un tramo de 5 días; NO se cambió la fórmula. Lista de Compras a corregir:
   `respaldos/2026-09-09-compras-para-corregir.md`.
+- **Noche 09/09 (19:00–19:45), mergeado**: Liquidación completa en solapas (Convenios, Recibos, Productividad; fidelidad parte 1
+  con `tests/liquidacion-fidelidad.spec.ts`); Compras web con auditoría de los 196 adjuntos del canal (159 con papel colgado;
+  31 duplicados sin fila en `respaldos/2026-09-09-adjuntos-canal-compras.txt`; fila 942 Clavero/Axion sin proveedor en el
+  desplegable); transferencias del Gmail a la ficha del proveedor (7 halladas, 3 colgadas, 4 sin CUIT en padrón: AC SAT SRL
+  30-71096504-4 ×3, DATA 2000 SA 30-99907064-3; timer `echegaray-gmail-transferencias.timer` habilitado); Clientes en UNA
+  pantalla `/clientes` (`/administracion` redirige; la barra de nivel 2 perdió los contadores: decisión pendiente);
+  gremiales declarados desde `_UOCRA_DDJJ_RAW` (se aplica al Sheet en la corrida de las 20:50: verificar «no repongo» y PDF
+  de Cargas Sociales). Pipeline 18:50: las tres pestañas rediseñadas ✓, auditor de diseño ✓, sólo `cheques-cobertura-sheet` ✗
+  (preexistente).
 - **Agentes en curso al cerrar**: Liquidación 7/8/12 (Convenios, Recibos, Productividad); fidelidad UX/UI contra el
   mockup (worktree en /home/jorge/echegaray-os/worktrees/wt-fidelidad); Clientes en UNA pantalla + panel/descarga de OC/OP;
   Gmail → transferencias por proveedor; Cargas Sociales `CARGAS_MES_*` 12/12. Ramas feat/* sin mergear se listan con
