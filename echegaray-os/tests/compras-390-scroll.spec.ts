@@ -50,7 +50,9 @@ test.describe('Compras en el teléfono', () => {
     // del defecto, no del arreglo. Lo que hay que exigir es el corte; el desborde pasó a ser una
     // consecuencia que puede o no darse.
     const pistas = await page.getByTestId('compra-proveedor').first()
-      .evaluate((el) => getComputedStyle(el.parentElement!).gridTemplateColumns.split(' ').length)
+      // `closest('[role="row"]')` y no `parentElement`: entre la celda y la fila hay un `<Link>`
+      // con `display: contents`, que no tiene grilla propia y devolvería una sola pista siempre.
+      .evaluate((el) => getComputedStyle(el.closest('[role="row"]')!).gridTemplateColumns.split(' ').length)
     expect(
       pistas,
       `a 390px la fila dibuja ${pistas} columnas: el corte por ancho no llegó al CSS servido (ver cortes-por-ancho-llegan-al-css.test.ts)`,
