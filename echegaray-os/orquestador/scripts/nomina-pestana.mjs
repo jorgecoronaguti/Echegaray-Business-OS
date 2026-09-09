@@ -47,7 +47,7 @@ import { carpetaDe } from '../lib/legajo-drive.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { escalonDe, parsearAcuerdos } from '../lib/uocra-acuerdos.mjs'
 import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, ultimaColumnaHabilCargada, dejoDeCargar as dejoAntesQueElResto } from '../lib/nomina-devengado.mjs'
-import { seccion, sub, total as rotuloTotal, ES_SECCION_NUM, ES_TOTAL, ES_SUBITEM } from '../lib/patron-pestana.mjs'
+import { seccion, total as rotuloTotal, ES_SECCION_NUM, ES_TOTAL, ES_SUBITEM } from '../lib/patron-pestana.mjs'
 import { conColaLimpiable } from '../lib/cola-de-rango.mjs'
 // VACIO vive en `preservar-anotaciones`, no en `cola-de-rango` — ésta lo re-importa de allá.
 import { escribirPreservando, VACIO, letraCol } from '../lib/preservar-anotaciones.mjs'
@@ -1109,6 +1109,32 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
   // de desvincular sigue viviendo en `lib/desvinculacion-22250.mjs` y en `lib/desvinculacion-plantel.mjs`
   // —con sus tests—, y el devengado por persona, en `lib/nomina-devengado.mjs`. Lo que ya no existe es
   // la copia dibujada de esos números en una pestaña que nadie miraba.
+  // ═══ LO QUE ESTA PESTAÑA NO PUEDE DECIR — Y POR QUÉ NO SE DIBUJA ═══
+  //
+  // Estos seis renglones se publicaban al pie. El 05/09/2026 el dueño decidió que se van: se le
+  // planteó que sus dos instrucciones chocaban acá —«minimalismo extremo, sin aclaraciones ni
+  // explicaciones de nada» contra el principio de cierre, que dice que la limitación de una cifra
+  // que decide plata no se saca de su vista— y eligió el minimalismo, sin excepción.
+  //
+  // NO SE PIERDEN: viven acá y siguen siendo verdad, aunque el cuadro que las motivó («Plantel») ya
+  // no exista. Quien mantenga este generador tiene que saber que:
+  //
+  //   1. Es SÓLO el plantel activo. Los desvinculados salieron por pedido del dueño; su devengado
+  //      histórico vive en la planilla de jornales.
+  //   2. Los acuerdos particulares (premios, condiciones fuera de convenio) no están en la planilla
+  //      y no se inventan.
+  //   3. Del legajo se mira QUÉ archivos hay, no qué dicen: el CUIL, la obra social y la familia
+  //      siguen adentro de los PDF.
+  //   4. Las cargas sociales no se abren por persona: la planilla las tiene por total.
+  //   5. El fondo de cese se calcula sobre el jornal de la planilla. Si los aportes se depositaron
+  //      sobre la mitad registrada, el fondo real es la mitad de lo que dice esa columna — y desde
+  //      acá no se puede verificar.
+  //   6. «Activo» es aparecer en la última quincena cargada. Una licencia larga se lee como baja:
+  //      la planilla no las distingue.
+  //
+  // La 5 es la que más pesa: puede duplicar o partir al medio un pasivo laboral real. Y sigue
+  // vigente aunque el cuadro se haya ido, porque el cálculo sigue vivo en desvinculacion-22250.
+
   return { nomina: f }
 }
 
@@ -1195,6 +1221,11 @@ export function conEfectivoRedondeadoDelDueno(grid = [], previo = [], { col = CO
     const v = f?.[col]
     if (v === '' || v === null || v === undefined) return
     if (String(v).startsWith('=')) return                 // una fórmula ahí es del generador, no suya
+    // SÓLO IMPORTES. El encabezado de cada cuadro tiene el RÓTULO en esta columna y la fila de total
+    // dibuja un «—»: son celdas del generador y contarlas como huérfanas del dueño convierte el aviso
+    // en ruido de cada corrida — y un aviso que suena siempre deja de mirarse.
+    const importe = typeof v === 'number' ? v : Number(String(v).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.'))
+    if (!Number.isFinite(importe) || importe === 0) return
     if (!esPersona(f)) { huerfanos.push({ fila: i + 1, valor: v }); return }
     suyos.set(clave(f[0]), v)
   })
@@ -1231,6 +1262,21 @@ async function formatear(google, hoja, filas) {
   const req = [
     { unmergeCells: { range: rTodo(0, Math.max(n, 200)) } },
     E.reset(s, Math.max(n + 20, 200), ANCHO_HISTORICO),
+    // ═══ LAS NOTAS AL PIE NO ESTABAN EN NINGUNA CELDA: ERAN NOTAS DE CELDA (09/09/2026) ═══
+    //
+    // El dueño: «tres notas al pie [1][2][3] idénticas de un párrafo cada una». No aparecían leyendo
+    // valores ni fórmulas —por eso sobrevivieron a todas las limpiezas— porque son el campo `note` de
+    // Sheets: Google las dibuja como un marcador «[1]» pegado al valor, y el PDF las imprime al pie.
+    // `updateCells` con `fields: 'userEnteredValue,userEnteredFormat'` no las toca, así que el
+    // vaciado más agresivo las dejaba intactas.
+    //
+    // Se limpian sobre el rectángulo propio y nada más: si el dueño anota una celda fuera de él, ahí
+    // no llega. Adentro, la nota que había la puso una corrida vieja de este mismo generador.
+    { updateCells: { range: rTodo(0, Math.max(n + 20, 200)), fields: 'note' } },
+    // UN SOLO ALTO DE FILA. La pestaña tenía filas de 21, 26 y 34 px mezcladas —restos de encabezados
+    // y titulares de layouts anteriores— y eso es lo que hace que un cuadro se vea desprolijo sin que
+    // ninguna celda esté mal. Se aplana todo primero y después se levantan las tres que lo necesitan.
+    { updateDimensionProperties: { range: { sheetId: s, dimension: 'ROWS', startIndex: 0, endIndex: n }, properties: { pixelSize: E.ALTO.fila }, fields: 'pixelSize' } },
     // SIN CUADRÍCULA y con el titular congelado: la jerarquía la hace la tipografía, no la reja.
     // SE CONGELA HASTA DEBAJO DEL TITULAR: las tres cifras que se deciden quedan siempre a la vista.
     { updateSheetProperties: { properties: { sheetId: s, gridProperties: { hideGridlines: true, frozenRowCount: DEBAJO_DEL_TITULAR - 1 } }, fields: 'gridProperties.hideGridlines,gridProperties.frozenRowCount' } },
@@ -1301,7 +1347,13 @@ async function formatear(google, hoja, filas) {
     if (ES_TOTAL.test(texto(i))) {
       // Hasta la columna del último importe: pintado hasta el final, `E.total()` dibujaba las HORAS
       // como pesos —«$1.408»— porque trae su propio formato de moneda.
-      fmt(r(i, i + 1, 0, COLUMNAS.indexOf('Horas')), 'userEnteredFormat', E.total())
+      fmt(r(i, i + 1, 0, COLUMNAS.indexOf('Horas') + 1), 'userEnteredFormat', E.total())
+      // LAS HORAS SON CANTIDAD, TAMBIÉN EN EL TOTAL. `E.total()` trae su propio formato de moneda y
+      // dibujaba «$785» donde hay 785 horas; recortar la banda antes de esta columna lo evitaba, pero
+      // dejaba el número flotando fuera del cierre del cuadro, sin negrita y sin fondo. Se pinta la
+      // banda entera y se repone la unidad de esta columna encima.
+      fmt(r(i, i + 1, COLUMNAS.indexOf('Horas'), COLUMNAS.indexOf('Horas') + 1),
+        'userEnteredFormat.numberFormat', { numberFormat: E.NUM.cantidad })
       // El total se rula con una línea fina arriba, no con relleno: es la diferencia entre una
       // planilla y un estado financiero.
       req.push({ updateBorders: { range: r(i, i + 1), top: { style: 'SOLID', color: E.COLOR.hairline ?? { red: 0.8, green: 0.84, blue: 0.86 } } } })
@@ -1436,7 +1488,10 @@ async function publicar(google, PESTANA, filas) {
   // fila, los quince importes del dueño quedaron al lado de otra persona. Acá se leen con el nombre
   // que tenían al lado y se reponen en la fila de ese mismo nombre. Ver
   // `conEfectivoRedondeadoDelDueno` para el porqué y para lo que NO puede resolver.
-  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:${letraCol(ANCHO - 1)}${ALTO_HISTORICO}`).catch(() => [])
+  // CON RENDER FORMULA, Y NO ES UN DETALLE: leído como valores, el `=SUM(I…)` de la fila de total
+  // llega como «$3.624.000» —un importe— y se denuncia como un monto huérfano del dueño en cada
+  // corrida. La pregunta acá es «¿esto lo escribió una persona?», y sólo la fórmula la contesta.
+  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:${letraCol(ANCHO - 1)}${ALTO_HISTORICO}`, { render: 'FORMULA' }).catch(() => [])
   const suyo = conEfectivoRedondeadoDelDueno(filas, previo ?? [])
   filas = suyo.grid
   if (suyo.copiadas) console.log(`  ✋ ${suyo.copiadas} «EFECTIVO redondeado» repuesto(s) en la fila de su persona: esa columna es TUYA`)
@@ -1612,4 +1667,9 @@ async function main() {
 
 }
 
-main().then(() => closePool()).catch(async (e) => { console.error(String(e?.message ?? e)); await closePool().catch(() => {}); process.exit(1) })
+// SÓLO CUANDO SE LO EJECUTA, NO CUANDO SE LO IMPORTA. `scripts/nomina-pestana.test.mjs` importa las
+// funciones puras de este archivo; sin esta guarda, cada corrida del test dispararía `main()` —que
+// lee el Sheet y Postgres— y un test dejaría de ser determinístico y gratis.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().then(() => closePool()).catch(async (e) => { console.error(String(e?.message ?? e)); await closePool().catch(() => {}); process.exit(1) })
+}
