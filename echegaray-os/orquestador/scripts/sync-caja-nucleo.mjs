@@ -80,13 +80,24 @@ export function leerJornales({ real = [], proyeccion = [] } = {}) {
   armar(real, 'real', COL_REGISTRO, (f) => ({
     dias_habiles: Number(f?.[COL_REGISTRO.dias]) || null,
     personas: Number(f?.[COL_REGISTRO.personas]) || null,
-    hs_reales: parseMonto(f?.[COL_REGISTRO.hs_reales]) || null,
+    hs_reales: parseMonto(f?.[COL_REGISTRO.horas]) || null,
     banco: parseMonto(f?.[COL_REGISTRO.banco]),
     adelanto: parseMonto(f?.[COL_REGISTRO.adelanto]),
     total_recibo: parseMonto(f?.[COL_REGISTRO.total_recibo]),
   }))
-  armar(proyeccion, 'proyeccion', COL_PROYECCION, () => ({
-    dias_habiles: null, personas: null, hs_reales: null, banco: null, adelanto: null, total_recibo: null,
+  // ═══ LA PROYECCIÓN YA TRAE SUS CANTIDADES (09/09/2026) ═══
+  //
+  // Iba toda en `null` porque el calendario no tenía esas columnas: eran ocho, con una por nómina.
+  // Con la grilla unificada cada quincena proyectada publica sus días, su plantel, sus horas y su
+  // reparto por canal, en las MISMAS columnas que las cerradas. Leerlas es leer lo que la pestaña
+  // dice; seguir mandando `null` sería tirar el dato en la puerta de la base.
+  armar(proyeccion, 'proyeccion', COL_PROYECCION, (f) => ({
+    dias_habiles: Number(f?.[COL_PROYECCION.dias]) || null,
+    personas: Number(f?.[COL_PROYECCION.personas]) || null,
+    hs_reales: parseMonto(f?.[COL_PROYECCION.horas]) || null,
+    banco: parseMonto(f?.[COL_PROYECCION.banco]),
+    adelanto: parseMonto(f?.[COL_PROYECCION.adelanto]),
+    total_recibo: parseMonto(f?.[COL_PROYECCION.total_recibo]),
   }))
   return out
 }

@@ -75,7 +75,11 @@ export const PESTANAS = [
   // revisó — es la misma falla que dejó OBRAS fuera de la lista durante un mes.
   //
   // El ancho de esta entrada tiene que seguir al `ANCHO` del generador; el test lo ata.
-  { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 90, cols: 14, propio: true },
+  // TRECE COLUMNAS DESDE EL 09/09/2026 (antes 14): «Hs previstas» y «Hs reales» se fundieron en
+  // «Horas». El número lo ata `formato-pestanas.test.mjs` contra el `ANCHO` que exporta el generador:
+  // con `cols` por debajo, el auditor de pantalla deja de mirar las últimas columnas — dos semanas
+  // sin ver la N fue exactamente ese defecto.
+  { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 110, cols: 13, propio: true },
   // ═══ LAS CUOTAS DE LOS PLANES DE PAGO SON UNA RÉPLICA, Y DESDE EL 05/09 NO PUEDEN DECIRLO ═══
   //
   // `lib/cargas-bloques.mjs` (bloquePlanes) escribe cada cuota con la leyenda «Réplica del plan

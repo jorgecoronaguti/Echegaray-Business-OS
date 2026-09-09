@@ -43,14 +43,19 @@ test('LA TRAMPA: con la cadena a medio firmar NO devuelve vacío, dice hasta dó
   // La respuesta útil no es "no sé" ni "firmado" a secas: es hasta qué mes hay acuerdo.
   const o = origenDelEscalon({ escalones: ESC, periodoBase: '2026-06', periodoMes: '2026-12' })
   assert.equal(o.clase, 'mixto')
-  assert.equal(o.rotulo, `${ALERTA} firmado hasta 08/2026`)
+  // SIN EL GLIFO DE ALERTA (09/09/2026). Que un mes futuro no tenga acuerdo firmado es lo NORMAL —el
+  // convenio se firma por tramos— y el ▲ se dibujaba en cinco de doce filas todos los meses: un glifo
+  // de alarma permanente deja de significar algo el día que importa. El rótulo dice lo mismo.
+  assert.equal(o.rotulo, 'firmado hasta 08/2026')
+  assert.ok(!o.rotulo.includes(ALERTA), 'volvió el glifo de alerta a una columna de estado')
   assert.notEqual(o.rotulo, '', 'devolver vacío es la trampa que apagó la Σ del convenio de obra')
 })
 
 test('sin un solo tramo firmado en el camino, la fila lo dice entero', () => {
   const o = origenDelEscalon({ escalones: ESC, periodoBase: '2026-09', periodoMes: '2026-12' })
   assert.equal(o.clase, 'proyectado')
-  assert.equal(o.rotulo, `${ALERTA} escalón proyectado`)
+  assert.equal(o.rotulo, 'escalón proyectado')
+  assert.ok(!o.rotulo.includes(ALERTA), 'volvió el glifo de alerta a una columna de estado')
 })
 
 test('el mes base no lleva rótulo y los anteriores declaran su otro criterio', () => {

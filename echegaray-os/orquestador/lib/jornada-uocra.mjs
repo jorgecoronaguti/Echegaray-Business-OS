@@ -50,6 +50,43 @@ export const HORAS_VIERNES = 8
 /** SUPUESTO — la mejor lectura del espejo, no una regla declarada. Editable en la pestaña. */
 export const HORAS_SABADO_SUPUESTO = 4
 
+/**
+ * LOS TRES RANGOS CON NOMBRE DE LA JORNADA, EN «Parámetros» (09/09/2026).
+ *
+ * Las tres cifras vivían como celdas sueltas en el medio de «Jornales por Quincena» —«9 | 8 | 4» en
+ * una fila de una pestaña donde todo lo demás es plata—, y el barrido de moneda las dibujaba como
+ * pesos y porcentajes. El dueño lo señaló textual: *«900,0% | 8 | $4 | sábado supuesto»*.
+ *
+ * No se pierden: son ENTRADAS que él puede querer cambiar —el sábado sobre todo, que es un SUPUESTO
+ * y no una regla declarada— y su lugar es la pestaña de entradas, con rótulo y rango con nombre. Un
+ * criterio que sólo se puede cambiar editando JavaScript no se cambia: envejece.
+ */
+export const RANGO_JORNADA_LJ = 'JORNADA_LUNES_JUEVES'
+export const RANGO_JORNADA_V = 'JORNADA_VIERNES'
+export const RANGO_JORNADA_S = 'JORNADA_SABADO'
+
+/** Las tres filas que el generador asegura en «Parámetros». */
+export const PARAMETROS_JORNADA = [
+  {
+    rango: RANGO_JORNADA_LJ,
+    rotulo: 'Jornada de lunes a jueves (horas)',
+    valor: HORAS_LUNES_A_JUEVES,
+    nota: 'Horas de la jornada de obra de lunes a jueves. Regla del dueño, no del convenio.',
+  },
+  {
+    rango: RANGO_JORNADA_V,
+    rotulo: 'Jornada del viernes (horas)',
+    valor: HORAS_VIERNES,
+    nota: 'Horas de la jornada de obra el viernes.',
+  },
+  {
+    rango: RANGO_JORNADA_S,
+    rotulo: 'Jornada del sábado (horas) — SUPUESTO',
+    valor: HORAS_SABADO_SUPUESTO,
+    nota: 'SUPUESTO, no una regla declarada: es la mejor lectura del espejo de la planilla. Cambialo y la obligación proyectada se mueve.',
+  },
+]
+
 /** 44 h: la semana que el dueño declaró, sin el sábado. Es el número que se puede afirmar. */
 export const HORAS_SEMANA_DECLARADA = HORAS_LUNES_A_JUEVES * 4 + HORAS_VIERNES
 /** 48 h: lo que efectivamente se trabaja y se paga, con el supuesto del sábado adentro. */
@@ -126,7 +163,13 @@ export const MASCARAS = Object.freeze({
  *          celdaLJ:string, celdaV:string, celdaS:string}} d
  * @returns {string} la expresión (sin `=`), separador es-AR
  */
-export function expresionHorasDeJornada({ celdaDesde, celdaHasta, celdaLJ, celdaV, celdaS }) {
+export function expresionHorasDeJornada({
+  celdaDesde, celdaHasta,
+  // Por RANGO CON NOMBRE y no por celda de la pestaña (09/09/2026): la jornada dejó de tener fila
+  // propia en «Jornales por Quincena» y vive en «Parámetros». Un nombre se mueve solo cuando el dueño
+  // mueve la fila; una letra escrita a mano apunta a la columna de al lado y devuelve un número.
+  celdaLJ = RANGO_JORNADA_LJ, celdaV = RANGO_JORNADA_V, celdaS = RANGO_JORNADA_S,
+}) {
   const n = (mascara) => `NETWORKDAYS.INTL(${celdaDesde};${celdaHasta};${mascara})`
   return `(${n(MASCARAS.lunesAJueves)}*${celdaLJ}`
     + `+${n(MASCARAS.viernes)}*${celdaV}`

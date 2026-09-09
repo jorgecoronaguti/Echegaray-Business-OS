@@ -111,9 +111,10 @@ export function bloqueDelPlantel({ bloques = [], cerrada = null, personasDe = ()
 
 /** El rótulo del cuadro 1.1 lo decide de dónde salió el plantel: un título que miente es un dato falso. */
 export function rotuloDelPlantel(origen) {
-  return origen === 'cerrada'
-    ? 'Plantel base — última quincena cerrada'
-    : 'Plantel vigente — la quincena en curso'
+  // TRES PALABRAS, NO SEIS (09/09/2026). Decía «Plantel vigente — la quincena en curso»: el guión
+  // largo con una frase detrás es la forma en que un rótulo empieza a explicar. De qué quincena sale
+  // el plantel es el criterio, y sigue estando — «vigente» y «cerrada» lo dicen enteras.
+  return origen === 'cerrada' ? 'Plantel de la última cerrada' : 'Plantel vigente'
 }
 
 /**

@@ -7,6 +7,7 @@ import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { grillaObras } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS } from '../lib/obras-datos.mjs'
 import { construir } from '../lib/subcontratistas/pestana.mjs'
+import { grilla as grillaJornales } from './jornales-pestana.mjs'
 
 // EL CONTRATO DE DISEÑO, MEDIDO EN EL GENERADOR Y NO EN EL ARCHIVO VIVO.
 //
@@ -34,18 +35,6 @@ const LIMPIAS = [
     gen: 'nomina-pestana.mjs',
     desde: 'fila(PESTANA)',
     hasta: '«Plantel» SE RETIRÓ DEL ARCHIVO',
-  },
-  {
-    // SIN CONTROL DE ENCABEZADO, Y ESTÁ DICHO POR QUÉ. «Jornales por Quincena» empuja la fila 2 como
-    // centinela y le asigna la línea de procedencia MIL LÍNEAS DESPUÉS, cuando ya conoce las filas
-    // del registro (`filas[fSubtitulo - 1][0] = rotuloAlDia(…)`). Leyendo el código en orden, la
-    // tercera celda del archivo no es la fila 3 de la pestaña: un test de encabezado acá afirmaría
-    // algo que no midió. El encabezado de esta pestaña lo sigue midiendo `auditar-diseno-unificado`
-    // contra el archivo vivo, donde hoy da conforme.
-    titulo: 'Jornales por Quincena',
-    gen: 'jornales-pestana.mjs',
-    fn: 'push',
-    encabezado: false,
   },
 ]
 
@@ -116,12 +105,70 @@ const PURAS = [
   { titulo: 'SUBCONTRATISTAS', grilla: () => construir().filas },
 ]
 
+// ═══ «Jornales por Quincena»: SE CORRE, NO SE LEE (09/09/2026) ═══
+//
+// Estaba arriba en `LIMPIAS`, juzgada por los literales de su código. Eso alcanzaba cuando su grilla
+// necesitaba la red; no la necesita: `grilla()` es pura y con dos bloques de muestra devuelve la
+// pestaña entera —secciones, encabezados, filas y totales—. Se juzga lo que se va a ESCRIBIR.
+//
+// Y CON UNA VARA MÁS DURA QUE EL TOPE DE CARACTERES. El dueño no pidió «textos más cortos»: nombró
+// los glifos, uno por uno. «▲ Escala vencida…», «· El jornal por hora más bajo que pagamos», «✓ los
+// tres canales suman lo pagado», «⇒ El escalón que viene — sin acuerdo publicado». Cada uno es una
+// celda que ARGUMENTA en una pestaña donde todo lo demás es un número o su rótulo.
+const GLIFOS_PROHIBIDOS = [
+  { glifo: '·', re: /^\s*·/, por: 'una glosa: la abre `sub()`, y esta pestaña no la usa más' },
+  { glifo: '▲', re: /▲/, por: 'una alarma dibujada todos los días deja de significar algo el día que importa' },
+  { glifo: '✓', re: /✓/, por: 'un control que repite «todo bien» en cada corrida se vuelve invisible' },
+  { glifo: '⇒ El', re: /^⇒\s+(El|La|Los|Las)\b/, por: 'un total se NOMBRA; con artículo empieza a explicar' },
+  { glifo: '—' + ' + explicación', re: /—\s+\S+(\s+\S+){3,}/, por: 'un rótulo con cuatro palabras después del guión ya no rotula' },
+]
+
+test('«Jornales por Quincena» no publica un solo glifo de prosa en la grilla que va a escribir', () => {
+  const bloques = [{ filaFecha: 6, inicio: 7, fin: 20 }, { filaFecha: 30, inicio: 31, fin: 44 }]
+  const pendientes = [{ desde: new Date(2026, 7, 1) }, { desde: new Date(2026, 7, 16) }]
+  const bloquesOfi = [{ mes: 6, inicio: 5, fin: 8 }, { mes: 7, inicio: 12, fin: 15 }]
+  const filas = comoSeVe(grillaJornales({ bloques, pendientes, bloquesOfi }).filas)
+  // Que la grilla tenga tamaño es parte del control: con una grilla vacía todo pasa (es la mutación
+  // que dejó verde el test de OBRAS mirando una pestaña sin su cuadro 5).
+  assert.ok(filas.length > 50, `no armé la pestaña: ${filas.length} filas`)
+
+  const malas = []
+  filas.forEach((f, i) => {
+    ;(f || []).forEach((celda, j) => {
+      const t = String(celda ?? '').trim()
+      // Las fórmulas no se juzgan por su texto: lo que rinden no está acá. Las que RINDEN prosa se
+      // miden contra el archivo vivo, con `auditar-diseno-unificado`.
+      if (!t || t.startsWith('=')) return
+      for (const g of GLIFOS_PROHIBIDOS) {
+        if (g.re.test(t)) malas.push(`${LETRA(j)}${i + 1} «${t.slice(0, 60)}» — ${g.glifo}: ${g.por}`)
+      }
+    })
+  })
+  assert.deepEqual(malas, [], `volvió la prosa a «Jornales por Quincena»:\n  ${malas.join('\n  ')}`)
+})
+
+test('y su encabezado de bloque sigue siendo el del patrón: dos secciones y cinco sub-secciones', () => {
+  // Sin esto, «sacar la prosa» se podría cumplir borrando también los títulos, que son lo que hace
+  // navegable la pestaña. El patrón los reconoce por su forma (`N · TÍTULO`), la misma que usan
+  // «Cargas Sociales» y «Nómina».
+  const bloques = [{ filaFecha: 6, inicio: 7, fin: 20 }, { filaFecha: 30, inicio: 31, fin: 44 }]
+  const filas = comoSeVe(grillaJornales({
+    bloques, pendientes: [{ desde: new Date(2026, 7, 1) }], bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
+  }).filas)
+  const colA = filas.map((f) => String(f[0] ?? '').trim())
+  assert.deepEqual(colA.filter((c) => /^\d+ · /.test(c)).length, 2, 'la pestaña tiene DOS secciones')
+  assert.deepEqual(colA.filter((c) => /^\d+\.\d+ · /.test(c)).length, 5, '1.1, 1.2, 2.1, 2.2 y 2.3')
+})
+
 /**
  * El centinela dice «esta celda es MÍA y va vacía» y en el archivo se ve VACÍA. Sin traducirlo, el
  * auditor lee «\u0000::VACIO::\u0000» como contenido y marca dos desvíos que el lector no tiene:
  * un título acompañado y una fila 3 ocupada.
  */
 const comoSeVe = (filas) => filas.map((f) => (f || []).map((c) => (c === VACIO ? '' : c)))
+
+/** La letra de una columna, para que el rojo diga la celda y no un índice. */
+const LETRA = (n) => String.fromCharCode(65 + n)
 
 for (const p of PURAS) {
   test(`«${p.titulo}» cumple el contrato entero en la grilla que el generador devuelve`, () => {

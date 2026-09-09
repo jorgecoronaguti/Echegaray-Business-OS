@@ -5,7 +5,7 @@
 // La pestaña «Jornales por Quincena» publicaba, el mismo día y a doce filas de distancia:
 //
 //   · cuadro de pago:  «Obreros · UOCRA · 17 personas · $5.916.500»
-//   · cuadro 4.1:      «⇒ Plantel base — la última quincena cerrada · 15 · $80.400»
+//   · cuadro 2.1:      «⇒ Plantel de la última cerrada · 15 · $80.400»
 //   · calendario:      «✓ las 9 quincenas proyectadas cubren el piso UOCRA»
 //
 // Los tres son coherentes entre sí y los tres juntos son falsos. El término convenio de la proyección
@@ -126,8 +126,11 @@ test('sin nadie cargado en la quincena en curso el plantel VUELVE a la cerrada �
   assert.equal(elegido.origen, 'cerrada', 'un bloque abierto y sin gente no puede fijar el plantel')
   assert.equal(elegido.personas, 15)
   // Y el título del cuadro no puede quedar diciendo lo del otro caso: es el dato que explica el número.
-  assert.equal(rotuloDelPlantel('cerrada'), 'Plantel base — última quincena cerrada')
-  assert.equal(rotuloDelPlantel('vigente'), 'Plantel vigente — la quincena en curso')
+  // TRES PALABRAS DESDE EL 09/09/2026: el guión largo con una frase detrás es un rótulo que empezó
+  // a explicar. El CRITERIO no se pierde —«vigente» y «de la última cerrada» dicen de qué quincena
+  // sale el plantel—, que es lo único que este control tiene que sostener.
+  assert.equal(rotuloDelPlantel('cerrada'), 'Plantel de la última cerrada')
+  assert.equal(rotuloDelPlantel('vigente'), 'Plantel vigente')
 })
 
 // ═══ LAS QUINCENAS PENDIENTES Y EL FACTOR DE PARITARIA, DEL CUADRO 4.2 DEL ARCHIVO VIVO ═══

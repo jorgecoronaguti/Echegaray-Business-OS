@@ -196,11 +196,12 @@ test('y la columna se COPIA de la pestaña antes de escribir — sacar la celda 
   // `anchoHoja: max(ANCHO, hoja.cols)` y rellena la fila hasta ese ancho. La única defensa que no
   // depende del ancho es copiar explícitamente lo que hay en la pestaña a la grilla.
   const src = readFileSync(new URL('../scripts/jornales-pestana.mjs', import.meta.url), 'utf8')
-  assert.match(src, /const iPagado = ANCHO - 1/, 'se ubica la columna del dueño')
-  assert.match(src, /grid\[i\]\[iPagado\] = suyo/, 'y se copia lo que hay en la pestaña')
+  assert.match(src, /const iPagado = colDe\('Pagado el'\)/,
+    'la columna del dueño se ubica POR RÓTULO: el 09/09/2026 bajó de la N a la M y una constante habría medido la de al lado')
+  assert.match(src, /grid\[fila - 1\]\[iPagado\] = suyo/, 'y se copia lo que hay en la pestaña')
   assert.match(src, /esa columna es TUYA, el generador no la escribe/, 'y se dice en el log')
   // El orden importa: la copia va DESPUÉS de conEdicionesRespetadas y ANTES de escribirPreservando.
-  const iCopia = src.indexOf('const iPagado = ANCHO - 1')
+  const iCopia = src.indexOf("const iPagado = colDe('Pagado el')")
   assert.ok(src.indexOf('conEdicionesRespetadas(ID, PESTAÑA') < iCopia, 'después de la Regla 0')
   assert.ok(iCopia < src.indexOf('escribirPreservando(google, ID'), 'y antes de escribir')
 })
@@ -211,9 +212,28 @@ test('la copia de "Pagado el" se ancla en la CABECERA del registro, no en el nú
   // la 67 y la fecha de la última quincena se perdió. Anclar en la fila cuando el bloque se mueve es el
   // mismo error que restaurar por posición.
   const src = readFileSync(new URL('../scripts/jornales-pestana.mjs', import.meta.url), 'utf8')
-  assert.match(src, /const cabeceraDe = \(filas\) =>/, 'se ubica la cabecera del registro')
-  assert.match(src, /String\(f\?\.\[0\] \?\? ''\)\.trim\(\) === 'Quincena'/, 'por su rótulo, no por su fila')
-  assert.match(src, /previo\?\.\[viejo \+ k\]\?\.\[iPagado\]/, 'y la k-ésima quincena de antes va a la k-ésima de ahora')
+  assert.match(src, /export function cabeceraDelRegistro/, 'se ubica la cabecera del registro')
+  assert.match(src, /export function recuperarPagadoEl/, 'y sus fechas se recuperan por QUINCENA, no por posición')
+  // POR SU RÓTULO Y ACEPTANDO EL DE AYER. El rediseño del 09/09/2026 renombró «Quincena» a «Desde»:
+  // con un solo rótulo, la pestaña que estaba en Drive no se habría reconocido y las catorce fechas
+  // se habrían copiado por número de fila, cada una a la quincena de otra. El comportamiento se
+  // prueba con datos en `scripts/jornales-contrato-cashflow.test.mjs`.
+  assert.match(src, /ROTULOS_PRIMERA_COL = \[REGISTRO_COLS\[0\], 'Quincena'\]/, 'por su rótulo de hoy y el de ayer')
+  // ═══ POR QUINCENA, NO POR POSICIÓN (09/09/2026) ═══
+  //
+  // El dry lo midió: la copia por posición llevaba las fechas a las filas nuevas y la cola las
+  // PROTEGÍA en las viejas, que con la grilla más corta quedaban debajo del footprint. Dieciocho
+  // fechas duplicadas, y la mitad huérfanas fuera de toda quincena. Ahora la clave es la fecha de
+  // CIERRE de cada quincena —lo único que la identifica y no se mueve con el layout—.
+  assert.match(src, /suyas\.porClave\.get\(clave\)/, 'la fecha vuelve a SU quincena, buscada por su cierre')
+  assert.match(src, /copiadas !== suyas\.porClave\.size/,
+    'sin el conteo, una fecha que no encontró su quincena se pierde en silencio')
+  assert.match(src, /conColaMedida\(g\.filas, previo, \{ ancho: ANCHO \}\)/,
+    'la cola volvió a proteger la columna del dueño: eso es lo que dejaba las fechas huérfanas debajo de la grilla')
   // Y si la cabecera no aparece, avisa en vez de desalinear en silencio.
+  // SIN ANCLA NO SE ESCRIBE (09/09/2026). Antes se caía a copiar por número de fila «para no perder
+  // nada». Desde que la cola limpia esa columna —que es lo que mata las copias huérfanas— copiar mal
+  // dejó de ser un desorden y pasó a ser borrar: la corrida se detiene y la pestaña queda como está.
   assert.match(src, /no encontré la cabecera del registro/, 'sin ancla, lo dice')
+  assert.match(src, /NO escribo: no encontré la cabecera/, 'y no escribe')
 })
