@@ -5,6 +5,7 @@ import { totalesDeCuadro } from '../../../services/liquidacionQuincena'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
 import { compararValorHora, estadoDeCierre, type LineaParaCerrar } from '../../../services/liquidacionCierre'
 import { pesos } from '../BloqueLiquidacion'
+import { BotonCerrar, FlujoReapertura } from './AccionesDeCierre'
 import { ALTO_LIQ } from './tabla'
 
 // 10 · CERRAR y 11 · CERRADA — la misma solapa, porque son el mismo objeto en dos estados.
@@ -37,9 +38,10 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
 }) {
   const quincena = quincenaDe(quincenaPedida && /^\d{4}-\d{2}-\d{2}$/.test(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const [{ cuadros, estados }, faltante] = await Promise.all([
+  const [{ cuadros, estados }, faltante, sellado] = await Promise.all([
     getLiquidacionDeLaQuincena(supabase, quincena),
     leerFaltante(supabase, quincena),
+    leerSellado(supabase, quincena),
   ])
   const lineas: LineaParaCerrar[] = cuadros.flatMap((c) => c.lineas)
   const estado = estadoDeCierre(lineas)
@@ -65,8 +67,8 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
       <Resumen estado={estado} horas={totalHoras} faltante={faltante} />
 
       {cerrada
-        ? <Cerrada lineas={lineas} puedeCerrar={puedeCerrar} />
-        : <Abierta estado={estado} puedeCerrar={puedeCerrar} />}
+        ? <Cerrada lineas={lineas} puedeCerrar={puedeCerrar} sellado={sellado} quincena={quincena} />
+        : <Abierta estado={estado} puedeCerrar={puedeCerrar} quincena={quincena} />}
     </div>
   )
 }
@@ -81,6 +83,30 @@ async function leerFaltante(
   const monto = Number(fila?.monto_excluido ?? Number.NaN)
   if (!Number.isFinite(monto) || monto <= 0) return null
   return { monto, cuantas: Array.isArray(fila?.excluidas) ? fila.excluidas.length : 0 }
+}
+
+/**
+ * EL $/h QUE QUEDÓ SELLADO, por persona. Es el ÚNICO contra el que la pantalla 11 puede comparar:
+ * `l.valorHora` es la tarifa VIGENTE, y compararla contra sí misma dice «igual» siempre.
+ */
+async function leerSellado(
+  supabase: Awaited<ReturnType<typeof createClient>>, q: Quincena,
+): Promise<Map<string, number | null>> {
+  const { data } = await supabase.from('liquidacion_quincena')
+    .select('id, liquidacion_linea(persona_id, valor_hora, sellado_en)')
+    .eq('desde', q.desde).eq('hasta', q.hasta)
+  type Fila = { persona_id: string; valor_hora: number | string | null; sellado_en: string | null }
+  const cabs = (data ?? []) as { liquidacion_linea: Fila[] | null }[]
+  const porPersona = new Map<string, number | null>()
+  for (const c of cabs) {
+    for (const l of c.liquidacion_linea ?? []) {
+      // SIN `sellado_en` NO HAY SELLO: la fila existe desde antes (el redondeo la crea) y su
+      // `valor_hora` sería el de un cálculo, no el de un cierre.
+      if (l.sellado_en == null) continue
+      porPersona.set(l.persona_id, l.valor_hora == null ? null : Number(l.valor_hora))
+    }
+  }
+  return porPersona
 }
 
 function Resumen({ estado, horas, faltante }: {
@@ -128,8 +154,8 @@ const CONGELA = [
   'las cuatro celdas escritas', 'el costo cargado a cada obra',
 ]
 
-function Abierta({ estado, puedeCerrar }: {
-  estado: ReturnType<typeof estadoDeCierre>; puedeCerrar: boolean
+function Abierta({ estado, puedeCerrar, quincena }: {
+  estado: ReturnType<typeof estadoDeCierre>; puedeCerrar: boolean; quincena: Quincena
 }) {
   const bloqueado = !estado.puedeCerrar || !puedeCerrar
   return (
@@ -156,34 +182,26 @@ function Abierta({ estado, puedeCerrar }: {
           ))}
         </div>
       )}
-      <button
-        type="button"
-        data-testid="cierre-boton"
-        disabled={bloqueado}
-        style={{
-          height: 32, padding: '0 16px', borderRadius: 6, border: 'none',
-          background: bloqueado ? V.lineaFuerte : V.marca,
-          color: bloqueado ? V.apagado : V.grafito,
-          fontSize: '12.5px', fontWeight: 600, cursor: bloqueado ? 'not-allowed' : 'pointer',
-        }}
-      >
-        Cerrar y sellar
-      </button>
-      {bloqueado && (
-        <span data-testid="cierre-porque-no" style={{ fontSize: '11.5px', color: V.apagado, marginLeft: 12 }}>
-          {!puedeCerrar
-            ? 'Cerrar una quincena es de Dirección y Administración.'
-            : estado.pendientes.length
-              ? `${estado.pendientes.length} pendiente(s) arriba: sellar una línea incompleta la vuelve indistinguible de una correcta.`
-              : 'No hay ninguna línea que cerrar.'}
-        </span>
-      )}
+      <BotonCerrar
+        quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
+        bloqueado={bloqueado}
+        porque={!puedeCerrar
+          ? 'Cerrar una quincena es de Dirección y Administración.'
+          : estado.pendientes.length
+            ? `${estado.pendientes.length} pendiente(s) arriba: sellar una línea incompleta la vuelve indistinguible de una correcta.`
+            : 'No hay ninguna línea que cerrar.'}
+      />
     </div>
   )
 }
 
 /** 11 · CERRADA. Sólo lectura, con «$/h hoy» comparado contra el legajo. */
-function Cerrada({ lineas, puedeCerrar }: { lineas: readonly LineaParaCerrar[]; puedeCerrar: boolean }) {
+function Cerrada({ lineas, puedeCerrar, sellado, quincena }: {
+  lineas: readonly LineaParaCerrar[]
+  puedeCerrar: boolean
+  sellado: Map<string, number | null>
+  quincena: Quincena
+}) {
   const grilla = '1.6fr repeat(5, minmax(80px, .8fr))'
   return (
     <div>
@@ -202,9 +220,11 @@ function Cerrada({ lineas, puedeCerrar }: { lineas: readonly LineaParaCerrar[]; 
           ))}
         </div>
         {lineas.map((l) => {
-          // El sellado y el vigente son el MISMO número mientras no exista la lectura del legajo
-          // sellado: la comparación dice «igual» sólo cuando de verdad lo es, y «sin dato» si falta.
-          const comparacion = compararValorHora(l.valorHora, l.valorHora)
+          // EL SELLADO SALE DE LA BASE Y EL VIGENTE DEL LEGAJO. Comparar `l.valorHora` contra sí
+          // mismo decía «igual» siempre, que es la peor de las dos respuestas: afirma que no pasó
+          // nada. `undefined` = esa línea no llegó a sellarse.
+          const valorSellado = sellado.get(l.personaId) ?? null
+          const comparacion = compararValorHora(valorSellado, l.valorHora)
           return (
             <div key={l.personaId} style={{
               display: 'grid', gridTemplateColumns: grilla, gap: 16, padding: '0 16px',
@@ -212,12 +232,13 @@ function Cerrada({ lineas, puedeCerrar }: { lineas: readonly LineaParaCerrar[]; 
               fontSize: '13px', fontVariantNumeric: 'tabular-nums',
             }}>
               <span style={{ color: V.tinta }}>{l.nombre}</span>
-              <span style={{ textAlign: 'right' }}>{l.valorHora == null ? '—' : pesos(l.valorHora)}</span>
+              <span style={{ textAlign: 'right' }}>{valorSellado == null ? '—' : pesos(valorSellado)}</span>
               <span style={{ textAlign: 'right' }}>{l.cobra == null ? '—' : pesos(l.cobra)}</span>
               <span style={{ textAlign: 'right' }}>{pesos(l.porBanco)}</span>
               <span style={{ textAlign: 'right' }}>{l.enEfectivo == null ? '—' : pesos(l.enEfectivo)}</span>
-              <span style={{ textAlign: 'right', color: comparacion === 'cambió' ? V.warn : V.apagado }}>
-                {l.valorHora == null ? '—' : `${pesos(l.valorHora)} · ${comparacion}`}
+              <span data-testid={`cierre-hoy-${l.personaId}`}
+                style={{ textAlign: 'right', color: comparacion === 'cambió' ? V.warn : V.apagado }}>
+                {l.valorHora == null ? `— · ${comparacion}` : `${pesos(l.valorHora)} · ${comparacion}`}
               </span>
             </div>
           )
@@ -227,6 +248,7 @@ function Cerrada({ lineas, puedeCerrar }: { lineas: readonly LineaParaCerrar[]; 
         «$/h hoy» compara contra el legajo actual: es informativa y no cambia lo pagado.
         {puedeCerrar && ' Reabrir pide motivo escrito, recalcula con la retribución vigente y avisa la diferencia antes de guardar.'}
       </p>
+      {puedeCerrar && <FlujoReapertura quincena={{ desde: quincena.desde, hasta: quincena.hasta }} />}
     </div>
   )
 }
