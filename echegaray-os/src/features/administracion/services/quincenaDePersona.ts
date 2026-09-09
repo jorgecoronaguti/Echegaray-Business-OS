@@ -27,6 +27,7 @@ import { combinarCeldaDia } from '../../../shared/components/ds/celdaDia.ts'
 import type { PresenciaDeclarada, PresenciaDia } from '../../../shared/components/ds/celdaDia.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { porObra } from './hhPersonaService.ts'
+import { horasEsperadasDeDias } from './jornadaPorDefecto.ts'
 import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
 import {
   correrQuincena, diasDeLaQuincenaSinDomingos, esFinDeSemana, etiquetaDiaCorta, nombreDia,
@@ -169,8 +170,13 @@ export interface CifrasQuincena {
   /** Días YA TRANSCURRIDOS que no son feriado ni fin de semana. El futuro no se cuenta: diría que
    *  esta persona ya debería haber trabajado días que todavía no llegaron. */
   diasHabiles: number
-  /** `diasHabiles × jornada de la obra`. `null` sin jornada pactada — no se inventa una. */
-  referencia: number | null
+  /**
+   * LAS HORAS QUE ESOS DÍAS HÁBILES ESPERABAN, sumadas día por día: 9 de lunes a jueves, 8 el
+   * viernes (`jornadaPorDefecto`). Ya no es `días × jornada de la obra`: esa cuenta usaba un
+   * promedio uniforme —el 8,8 de `obra_canonica.jornada_horas`— y publicaba «61,6 h» donde la
+   * quincena real esperaba 97.
+   */
+  referencia: number
   ausencias: number
   licencias: number
   /** El motivo más repetido entre los días no trabajados declarados. */
@@ -194,18 +200,21 @@ function motivoFrecuente(dias: DiaDeQuincena[]): string | null {
 /**
  * Las cuatro cifras de la quincena.
  *
- * `jornada` es `obra_canonica.jornada_horas` de la obra donde estuvo. Cero o `null` significan que
- * la obra no la tiene cargada, y entonces NO hay referencia contra la cual comparar.
+ * LA REFERENCIA NO SALE DE LA OBRA. Hasta el 09/09/2026 era `días hábiles × obra_canonica
+ * .jornada_horas`, y con ese promedio la ficha informaba «61,6 h» para una quincena que espera 97:
+ * la jornada la fijó el dueño POR DÍA DE LA SEMANA (9 de L a J, 8 los V), así que la referencia se
+ * suma día por día y no admite un multiplicador único. Por eso ya no recibe `jornada`: pasarle un
+ * número sería volver a la definición vieja sin que nada lo diga.
  */
-export function cifrasDeQuincena(dias: DiaDeQuincena[], jornada: number | null): CifrasQuincena {
+export function cifrasDeQuincena(dias: DiaDeQuincena[]): CifrasQuincena {
   const trabajados = dias.filter((d) => d.estado === 'trabajado')
-  const habiles = dias.filter((d) => d.estado !== 'futuro' && d.estado !== 'no_laborable').length
-  const j = jornada != null && Number.isFinite(jornada) && jornada > 0 ? jornada : null
+  const transcurridos = dias.filter((d) => d.estado !== 'futuro' && d.estado !== 'no_laborable')
+  const habiles = transcurridos.length
   return {
     trabajadas: redondear(trabajados.reduce((s, d) => s + (d.horas ?? 0), 0)),
     diasTrabajados: trabajados.length,
     diasHabiles: habiles,
-    referencia: j === null ? null : redondear(habiles * j),
+    referencia: horasEsperadasDeDias(transcurridos.map((d) => d.fecha)),
     ausencias: dias.filter((d) => d.estado === 'ausencia').length,
     licencias: dias.filter((d) => d.estado === 'licencia').length,
     motivoFrecuente: motivoFrecuente(dias),

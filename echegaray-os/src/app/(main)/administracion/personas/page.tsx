@@ -35,6 +35,7 @@
 //   tocada, y esa pantalla ya existe. DECLARADO COMO PENDIENTE, no como hecho.
 
 import { headers } from 'next/headers'
+import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Aviso } from '@/shared/components/ds'
@@ -67,7 +68,7 @@ import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
 import { modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
 import { puedeCambiarObraActual } from '@/features/administracion/services/planDeObraActual'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
+import { esAdministracion, liquidaSueldos, veEconomia } from '@/features/auth/types/areas'
 
 export const dynamic = 'force-dynamic'
 
@@ -233,6 +234,15 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   // obra actual; leerlo de nuevo en cada rama serían dos viajes a `perfiles` por carga.
   const rol = (await getPerfilActual(supabase)).data?.rol
   const veLaPlata = veEconomia(rol)
+  const liquida = liquidaSueldos(rol)
+
+  // ═══ SIN NIVEL ADMINISTRADOR, LA RUTA NO EXISTE (dueño, 09/09/2026) ═══
+  //
+  // Antes se servía la vista con un aviso amable. Un aviso confirma que el módulo está ahí y en qué
+  // URL: `notFound()` no cuenta nada. Y se corta ANTES de leer una sola fila, así que ni siquiera se
+  // arma la consulta que la RLS iba a devolver vacía. Esto es la puerta; la cerradura es
+  // `public.liquida_sueldos()` en la policy, que también corta una llamada directa a PostgREST.
+  if (enLiquidacion && !liquida) notFound()
 
   if (enLiquidacion) {
     return (
@@ -245,15 +255,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             vistas={vistasDe('liquidacion', sp.quincena, veLaPlata)}
           />
           <div style={{ padding: '10px 20px 24px' }}>
-            {veLaPlata ? (
-              <BloqueLiquidacion
-                quincenaPedida={sp.quincena} hoy={hoy} hrefDe={hrefLiquidacion} puedeCerrar
-              />
-            ) : (
-              <Aviso tono="info" testid="liquidacion-sin-permiso" titulo="Los sueldos no se ven desde este rol">
-                La liquidación de horas y sueldo es de Dirección y Administración.
-              </Aviso>
-            )}
+            <BloqueLiquidacion
+              quincenaPedida={sp.quincena} hoy={hoy} hrefDe={hrefLiquidacion} puedeCerrar
+            />
           </div>
         </div>
       </Marco>

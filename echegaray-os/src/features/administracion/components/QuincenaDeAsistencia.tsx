@@ -190,11 +190,10 @@ export function QuincenaDeAsistencia({
         data-testid="cifras-quincena">
         <Cifra
           k="HH trabajadas" v={sinDatos ? guion : <span data-testid="hh-quincena">{hs(cifras.trabajadas)}</span>}
-          // NO SE INVENTA UNA JORNADA. Sin `obra_canonica.jornada_horas` no hay contra qué comparar,
-          // y se dice QUÉ falta en vez de dibujar un porcentaje que nadie puede verificar.
-          detalle={cifras.referencia == null
-            ? (obra ? 'la obra no tiene jornada pactada' : 'sin obra asignada: no hay referencia')
-            : `de ${hs(cifras.referencia)} h · ${hs(obra?.jornada ?? 0)} h × ${cifras.diasHabiles} días hábiles`}
+          // LA REFERENCIA ES LA JORNADA DEL DÍA, NO LA DE LA OBRA. El renglón decía «8,8 h × 7 días
+          // hábiles» porque multiplicaba `obra_canonica.jornada_horas` por la cantidad de días; con
+          // 9 de L a J y 8 los V no hay un factor único que escribir, así que se nombra la regla.
+          detalle={`de ${hs(cifras.referencia)} h · 9 h de L a J y 8 h los V · ${cifras.diasHabiles} días hábiles`}
         />
         <Cifra
           k="Días trabajados" v={sinDatos ? guion : cifras.diasTrabajados}

@@ -37,7 +37,7 @@
 import {
   horasLiquidablesDelDia, horasDeAusencia, type RegistroLiquidable,
 } from './liquidacionDeAusencias.ts'
-import { jornadaPorDefecto } from './jornadaPorDefecto.ts'
+import { horasEsperadasDeDias, jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { diasDeLaQuincenaSinDomingos, type Quincena } from './quincena.ts'
 
 /** Los tres cuadros de la pestaña. Cada uno se cierra por su cuenta. */
@@ -118,6 +118,18 @@ export function horasDeQuincena(
     if (h > 0) { horas += h; dias++ }
   }
   return { horas: redondear2(horas), dias, presentesSinHoras }
+}
+
+/**
+ * LAS HORAS QUE LA QUINCENA ESPERA — el denominador de «cargadas / esperadas».
+ *
+ * Se suma día por día con `jornadaPorDefecto` (9 de L a J, 8 los V) sobre la misma ventana sin
+ * domingos que usa `horasDeQuincena`: si el numerador recorriera trece días y el denominador
+ * quince, el porcentaje de la pantalla de cierre nunca llegaría al 100 %. La 1ª de septiembre de
+ * 2026 espera 97 h, no las 61,6 que la app publicaba multiplicando por una jornada promedio.
+ */
+export function horasEsperadasDeQuincena(q: Quincena): number {
+  return horasEsperadasDeDias(diasDeLaQuincenaSinDomingos(q))
 }
 
 /** La tarifa vigente de una persona. Exactamente una de las dos, nunca las dos (CHECK de la base). */

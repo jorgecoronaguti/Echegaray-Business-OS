@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { quincenaDe } from './quincena.ts'
 import {
-  horasDeQuincena, liquidarLinea, tarifaVigenteAl, tarjetaDeQuincena, totalesDeCuadro,
+  horasDeQuincena, horasEsperadasDeQuincena, liquidarLinea, tarifaVigenteAl, tarjetaDeQuincena, totalesDeCuadro,
   type EntradaDeLinea, type TarifaVigente,
 } from './liquidacionQuincena.ts'
 
@@ -204,4 +204,18 @@ test('la tarifa vigente es la de la FECHA, no la última cargada', () => {
   assert.equal(tarifaVigenteAl(tarifas, '2026-03-15')?.valorHora, 4000, 'marzo se liquida a marzo')
   assert.equal(tarifaVigenteAl(tarifas, '2026-09-15')?.valorHora, 5250)
   assert.equal(tarifaVigenteAl(tarifas, '2025-12-31'), null, 'antes de la primera no hay tarifa')
+})
+
+test('R2 · LAS HORAS ESPERADAS DE LA 1ª DE SEPTIEMBRE SON 97, NO 61,6', () => {
+  // EL DEFECTO QUE ATRAPA: el denominador de «cargadas / esperadas» salía de multiplicar los días
+  // hábiles por una jornada uniforme (8,8 h × 7 = 61,6 h). El dueño fijó 9 h de L a J y 8 los V el
+  // 08/09/2026, así que la cuenta es día por día: 9 días de L a J y 2 viernes.
+  assert.equal(horasEsperadasDeQuincena(quincenaDe('2026-09-08')), 97)
+
+  // Otra quincena da otro número: clavar 97 sería una constante, no una regla. La 1ª de febrero de
+  // 2026 arranca domingo y tiene un día hábil menos — 8 días de L a J y 2 viernes.
+  assert.equal(horasEsperadasDeQuincena(quincenaDe('2026-02-10')), 88, '8×9 + 2×8')
+
+  // Y el sábado no aporta: es la mitad de la regla que un promedio uniforme borra.
+  assert.equal(horasEsperadasDeQuincena({ desde: '2026-09-05', hasta: '2026-09-05' }), 0)
 })
