@@ -195,6 +195,53 @@ export function rotuloHoy(c: ClasificacionDelDia): RotuloHoy {
   }
 }
 
+// ── MARCAR PRESENTE DESDE EL PLANTEL ───────────────────────────────────────────────────────────
+//
+// El dueño, 09/09/2026, textual: *«marcar que la persona está en el trabajo, a través de los
+// usuarios admin / jefe de obra, es tan simple como un botón en la vista de computadora que tenés
+// que crear ahí donde dice "sin marcar"»*.
+//
+// La escritura NO es nueva: es la misma `guardarPresencia` que ya usa el teléfono. Lo que vive acá
+// es a quién se le OFRECE el botón, que es una regla y no una decisión de maquetado.
+
+/** Qué lleva la celda HOY además del estado. `nada` es el caso normal: no hay nada que ofrecer.
+ *  `sin_obra` no es una falta de la persona: es POR QUÉ el botón no puede estar. */
+export type OfertaDeMarcar = 'boton' | 'sin_obra' | 'nada'
+
+/**
+ * ═══ UN JEFE DE OBRA NO APARECE CON BOTÓN ═══
+ *
+ * Es la regla del teléfono (`personasAMarcar`) traída entera, no reescrita: *«Vos no te marcás:
+ * marcás a tu cuadrilla»*. Allá la lista de presencia excluye a los jefes; acá la columna excluye
+ * su botón. Con eso el jefe de obra —el único rol que además ES una persona del plantel— no puede
+ * declararse presente a sí mismo desde ninguna de las dos pantallas, y no queda una segunda regla
+ * que mantener sincronizada con aquélla.
+ *
+ * ESTO ES LA PUERTA, NO LA CERRADURA. La cerradura es la RLS de `asistencia_dia`
+ * (`es_administracion()` en insert y update), que rechaza una llamada directa a PostgREST venga de
+ * donde venga. Acá sólo se evita ofrecer un control que la base va a rebotar.
+ *
+ * SÓLO SOBRE EL SILENCIO. Un día ya declarado —presente, ausente o licencia— no se corrige desde
+ * una lista de 62 filas: se corrige en Asistencia, que muestra el día entero y el motivo. Un botón
+ * que pisara lo declarado reescribiría `marcado_por` con quien sólo pasó a mirar.
+ */
+export function ofertaDeMarcar({ puedeMarcar, presencia, obraId, esJefe, enLaEmpresa }: {
+  /** El rol de quien mira admite escribir presencia: Dirección, Administración, Jefe de Obra. */
+  puedeMarcar: boolean
+  presencia: ClasificacionDelDia['presencia']
+  /** La obra asignada HOY. Sin ella no hay a qué obra imputar, y no se inventa ninguna. */
+  obraId: string | null
+  esJefe: boolean
+  /** A quien ya no está en la empresa no se le declara un día de trabajo. */
+  enLaEmpresa: boolean
+}): OfertaDeMarcar {
+  if (!puedeMarcar || esJefe || !enLaEmpresa) return 'nada'
+  if (presencia !== 'sin_marcar') return 'nada'
+  // LA OBRA NO SE INVENTA. Marcar presente imputa la jornada por defecto a una obra: sin asignación
+  // vigente no hay ninguna que sea la correcta, y elegir una sería fabricar el costo de esa obra.
+  return obraId ? 'boton' : 'sin_obra'
+}
+
 // ── HH DEL MES ──────────────────────────────────────────────────────────────────────────────────
 
 /** Una fila de `registros_hh` acotada a lo que deciden estas dos columnas. */

@@ -10,10 +10,10 @@
 // entero mezclaba 40 y 42 sin que nada explicara la diferencia. Si algún día llega el canvas de
 // proveedor y dice otro número, manda el canvas.
 //
-// LO QUE NO SE DIBUJA, Y POR QUÉ: la solapa «Papeles» del mockup existe pero no puede afirmar nada.
-// Ninguna tabla vincula un archivo con un proveedor —hoy los documentos cuelgan de una persona o de
-// un cliente—, así que la cara dice exactamente eso en vez de mostrar una lista vacía, que se lee
-// como «este proveedor no tiene papeles».
+// LO QUE NO SE DIBUJA, Y POR QUÉ: la solapa «Papeles» del mockup no trae los comprobantes derivados
+// de sus compras. La tabla existe desde el 06/09 (`proveedor_papel`) y se lee en el panel de la
+// cartera; traerla a esta cara es otro trabajo. Lo que se SUBE contra la ficha —contratos, seguros,
+// audiovisual— vive desde el 09/09 en la cara «Documentos», que sí está.
 
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { BarraDeCostado } from '@/shared/components/v2/segundoNivel'
@@ -252,7 +252,21 @@ export function PaquetesDelProveedor({ filas, error }: {
   )
 }
 
-/** La cara «Papeles», que no puede afirmar nada. `23v2:172-180`. */
+/**
+ * La cara «Papeles». `23v2:172-180`.
+ *
+ * ═══ LO QUE DECÍA DEJÓ DE SER CIERTO Y SE CORRIGE (09/09/2026) ═══
+ *
+ * Este texto afirmaba que «no existe ninguna tabla que vincule un archivo con un proveedor». Ya no:
+ * `proveedor_papel` (06/09) DERIVA los comprobantes de sus compras, y `proveedor_documento` (09/09)
+ * guarda lo que se sube contra la ficha —contrato, póliza, habilitación, audiovisual—, que es la
+ * cara «Documentos» de al lado. Sostener la frase vieja al lado de un botón que sube archivos es
+ * una contradicción en la misma pantalla.
+ *
+ * Lo que esta cara SIGUE sin poder dibujar son los comprobantes derivados: `proveedor_papel` se lee
+ * en el panel de la cartera (`proveedores/PapelesDelProveedor.tsx`) y traerla acá es otro trabajo.
+ * Se dice eso, que es lo que se sabe, y no una limitación que ya no existe.
+ */
 export function PapelesDelProveedor({ nombre }: { nombre: string }) {
   return (
     <div
@@ -266,9 +280,9 @@ export function PapelesDelProveedor({ nombre }: { nombre: string }) {
         <IconoDocumento className="h-[17px] w-[17px]" />
       </span>
       <span style={{ fontSize: '12.5px', lineHeight: 1.6, color: V.tintaSuave, maxWidth: 620, textWrap: 'pretty' }}>
-        No existe ninguna tabla que vincule un archivo con un proveedor. Los papeles de {nombre}
-        {' '}—constancia de ARCA, seguro, cuenta bancaria— están en Drive, sin vincular. Hasta que
-        exista el vínculo, esta cara no puede afirmar que falten ni que estén.
+        Los comprobantes de {nombre} se ven en su panel de la cartera; esta cara todavía no los
+        trae. Los contratos, seguros y habilitaciones que se le cargan a esta ficha están en
+        Documentos.
       </span>
     </div>
   )

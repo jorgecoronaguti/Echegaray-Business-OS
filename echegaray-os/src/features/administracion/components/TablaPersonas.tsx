@@ -64,9 +64,10 @@ import { oracion } from '@/shared/utils/texto'
 import type { PersonaEnDirectorio } from '../types'
 import { agruparPorRolOrganizacional, categoriaVisible, esJefeDeObra } from '../services/vocabularioPersona'
 import {
-  SIN_MARCAR, hayMarcaDeHoy, horasVisibles, rotuloHoy,
+  SIN_MARCAR, hayMarcaDeHoy, horasVisibles, ofertaDeMarcar, rotuloHoy,
   type EstadoDePapeles, type MarcaDeHoy,
 } from '../services/pulsoDelPlantel'
+import { BotonPresenteHoy } from './BotonPresenteHoy'
 import type { ClasificacionDelDia } from '../services/asistenciaDelDia'
 import type { RotuloHoy } from '../services/pulsoDelPlantel'
 
@@ -104,6 +105,21 @@ export interface PulsoDelPlantel {
 const COLS
   = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_110px_90px_70px_90px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.5fr)_minmax(0,1fr)]'
+/**
+ * LA MISMA GRILLA CON HOY EN 150px: el ancho que necesita la celda cuando además del estado lleva
+ * el botón «Presente» (09/09/2026).
+ *
+ * Los 110px del handoff alcanzan para «sin marcar» y para nada más. Con el botón al lado hay dos
+ * salidas malas y una buena: truncar la palabra —la celda diría «sin marc…», que es perder el
+ * estado para ganar una acción—, esconder el estado detrás del botón —el botón «Presente» en una
+ * fila que NO está presente se lee como si lo estuviera— o darle a la columna los 40px que le
+ * faltan. Se eligió lo tercero, y sólo para quien ve el botón: quien no puede marcar sigue viendo
+ * la geometría del handoff carácter por carácter. El corte de 1249px no se mueve — la suma fija
+ * queda en 976px y los `fr` absorben la diferencia.
+ */
+const COLS_MARCA
+  = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_150px_90px_70px_90px]'
+  + ' max-[1249px]:grid-cols-[minmax(200px,1.5fr)_minmax(0,1fr)]'
 /** En «Inactivos» no hay HOY ni HH que preguntarle a quien ya no está: la baja ocupa su lugar. */
 const COLS_BAJA
   = 'grid-cols-[minmax(230px,1.5fr)_minmax(0,1fr)_minmax(0,220px)]'
@@ -113,7 +129,7 @@ const SOLO_ANCHO = 'max-[1249px]:hidden'
 const GAP = 16
 
 export function TablaPersonas({
-  personas, conBaja = false, pulso, vacio = 'Nada coincide.',
+  personas, conBaja = false, pulso, vacio = 'Nada coincide.', marcar,
 }: {
   personas: PersonaEnDirectorio[]
   /** El listado de Inactivos cambia la geometría: sin HOY ni HH, y con la baja. */
@@ -122,9 +138,16 @@ export function TablaPersonas({
   pulso?: PulsoDelPlantel
   /** Qué decir cuando ningún filtro deja nada. Lo decide la página: depende del corte activo. */
   vacio?: string
+  /**
+   * QUIÉN PUEDE DECLARAR PRESENCIA, Y DE QUÉ DÍA. Llega presente sólo cuando el rol de quien mira
+   * lo admite —lo decide la página con `esAdministracion`, la misma lista que la RLS de
+   * `asistencia_dia`—; sin él la columna HOY no dibuja ni un botón. La fecha viaja desde el
+   * servidor: el reloj del navegador de la obra no decide qué día se está declarando.
+   */
+  marcar?: { fecha: string }
 }) {
   const conPulso = Boolean(pulso) && !conBaja
-  const cols = conBaja ? COLS_BAJA : COLS
+  const cols = conBaja ? COLS_BAJA : marcar ? COLS_MARCA : COLS
   // ═══ JEFES DE OBRA ARRIBA, EL RESTO ABAJO (dueño, 08/09/2026) ═══
   //
   // *«dividir en la pestaña asistencia y plantel a los jefes de obra del resto de los obreros»*.
@@ -174,6 +197,18 @@ export function TablaPersonas({
           : null
         const ficho = Boolean(conPulso && pulso?.hoyDisponible && hayMarcaDeHoy(pulso.marcas.get(p.id)))
         const categoria = categoriaVisible(p.categoria, p.puesto)
+        // QUÉ OFRECE LA CELDA HOY. La regla vive en `ofertaDeMarcar` —quién, sobre qué estado y con
+        // qué obra— y acá sólo se dibuja. Sin `asistencia` no hay oferta: cuando la lectura del día
+        // falló, la columna dice «sin lectura» y un botón encima estaría marcando a ciegas.
+        const oferta = asistencia && marcar
+          ? ofertaDeMarcar({
+              puedeMarcar: true,
+              presencia: asistencia.presencia,
+              obraId: p.obra_actual_id,
+              esJefe: esJefeDeObra(p.puesto),
+              enLaEmpresa: p.en_la_empresa,
+            })
+          : 'nada'
         return (
           <Link
             key={p.id}
@@ -249,6 +284,24 @@ export function TablaPersonas({
                       {asistencia
                         ? <CeldaHoy clasificacion={asistencia} ficho={ficho} />
                         : <span style={{ fontSize: '12px', color: V.lupa }}>sin lectura</span>}
+                      {/* LA ACCIÓN VA DESPUÉS DEL ESTADO, NUNCA EN SU LUGAR: la celda sigue diciendo
+                          «sin marcar», y al lado ofrece resolverlo. */}
+                      {oferta === 'boton' && marcar && (
+                        <BotonPresenteHoy
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          obraId={p.obra_actual_id as string}
+                          fecha={marcar.fecha}
+                        />
+                      )}
+                      {/* SIN OBRA NO HAY BOTÓN, Y SE DICE POR QUÉ. Dos palabras apagadas: sin ellas
+                          la fila parecería la única a la que «no le anda» el botón. Marcar presente
+                          imputa la jornada a una obra, y acá no hay ninguna que sea la correcta. */}
+                      {oferta === 'sin_obra' && (
+                        <span style={{ fontSize: '11.5px', color: V.tenue, flexShrink: 0 }} data-testid="sin-obra-para-marcar">
+                          sin obra
+                        </span>
+                      )}
                     </span>
 
                     {/* LA PERSONA SIN IMPUTACIONES DICE «SIN HH», NO 0: un 0 acá afirmaría que no

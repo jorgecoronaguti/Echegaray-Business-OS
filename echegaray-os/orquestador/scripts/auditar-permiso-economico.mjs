@@ -41,6 +41,15 @@ export const LO_ECONOMICO = [
   { que: 'cotizacion_partida_valorizada', sql: 'select count(*)::int n from public.cotizacion_partida_valorizada' },
   { que: 'analisis_sin_precio', sql: 'select count(*)::int n from public.analisis_sin_precio' },
   { que: 'carga_social', sql: 'select count(*)::int n from public.carga_social' },
+  // ═══ EL MÓDULO DE LIQUIDACIÓN (09/09/2026) ═══
+  //
+  // Las tres tablas del sueldo entran acá el mismo día que nacen, y no por prolijidad: el jefe de
+  // obra ENTRA a la pantalla que las muestra —`es_administracion()` lo incluye desde el 19/08— así
+  // que si su RLS se afloja, la fuga no necesita que nadie escriba una URL rara. `persona_tarifa`
+  // es el $/hora de cada persona; `liquidacion_linea`, lo que cobra y lo que se le entrega en mano.
+  { que: 'persona_tarifa', sql: 'select count(*)::int n from public.persona_tarifa' },
+  { que: 'liquidacion_quincena', sql: 'select count(*)::int n from public.liquidacion_quincena' },
+  { que: 'liquidacion_linea', sql: 'select count(*)::int n from public.liquidacion_linea' },
   { que: 'obra_canonica.monto_contratado', sql: 'select count(monto_contratado)::int n from public.obra_canonica' },
   { que: 'presupuestos.monto_presupuestado', sql: 'select count(monto_presupuestado)::int n from public.presupuestos' },
   { que: 'personas.retribucion_pactada', sql: 'select count(retribucion_pactada)::int n from public.personas' },

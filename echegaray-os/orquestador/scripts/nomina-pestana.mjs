@@ -32,20 +32,21 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
-import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
-import { citarCuadro2EnCuadro1, cuentasDelCostoDeSalida, sumaDeColumna, sumaOGuion, totalDelAnio } from '../lib/plantel-formulas.mjs'
-import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
-import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
+import { plantelDelEspejo, separarPlantel, claveNombre } from '../lib/desvinculacion-plantel.mjs'
+// EL COSTO DE DESVINCULAR YA NO SE DIBUJA ACÁ: era el cuadro 3 de «Plantel», la pestaña que el dueño
+// mandó borrar el 09/09. Las funciones siguen vivas —y con sus tests— en `lib/desvinculacion-22250.mjs`
+// y `lib/desvinculacion-plantel.mjs`; lo que se fue es la copia dibujada.
+import { repartoPersona } from '../lib/jornales-reparto-pago.mjs'
 import { bancoDeLaPersona, reparto50DeLiquidacionFinal, tieneLiquidacionFinal, esSubcontratista, comoSeEscribe, CUIL_POR_PERSONA_DE_PLANILLA, COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA, SUELDO_NETO_OFICINA } from '../lib/nomina-banco-recibo.mjs'
 import {
   claveDeCategoria, convenioDe, esInferida, lineaEquivalenciasInferidas,
   jornalConAumento,
 } from '../lib/uocra-paritaria.mjs'
 import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
-import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
+import { carpetaDe } from '../lib/legajo-drive.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { escalonDe, parsearAcuerdos } from '../lib/uocra-acuerdos.mjs'
-import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, mesesDe, totalAnio, ultimaColumnaHabilCargada, dejoDeCargar as dejoAntesQueElResto } from '../lib/nomina-devengado.mjs'
+import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, ultimaColumnaHabilCargada, dejoDeCargar as dejoAntesQueElResto } from '../lib/nomina-devengado.mjs'
 import { seccion, sub, total as rotuloTotal, ES_SECCION_NUM, ES_TOTAL, ES_SUBITEM } from '../lib/patron-pestana.mjs'
 import { conColaLimpiable } from '../lib/cola-de-rango.mjs'
 // VACIO vive en `preservar-anotaciones`, no en `cola-de-rango` — ésta lo re-importa de allá.
@@ -85,7 +86,6 @@ const ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Nómina'
 const ANIO = 2026
 const APLICAR = process.argv.includes('--aplicar')
-const MES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 // 17 DESDE EL 29/08: entró «+ Aumento $/h». La pestaña la escribe este generador entera y nadie más,
 // así que agregar una columna no le pisa nada a nadie — el formato se calcula sobre ANCHO y los
 // tramos numéricos se detectan solos, no hay índices escritos a mano que se corran.
@@ -277,30 +277,6 @@ function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO }
   return { porClave: out, desde: dias[0] ?? null, hasta: dias[dias.length - 1] ?? null, horasPendientes, diasPendientes: pendientes }
 }
 
-/** El costo de desvincular a UNA persona, con el mismo núcleo del bloque 6 de Jornales. */
-function costoDe(p, cese) {
-  const horasPorMes = new Map([...p.devengado.meses].map(([m, v]) => [m, v.horas]))
-  const mejor = mejorMesDelSemestre(horasPorMes, p.jornalPactado, cese)
-  // `fclDevengadoDelAnio` devuelve un NÚMERO (o null si no hay fecha de ingreso), no un objeto: el
-  // acumulado del año, ya valuado mes por mes con la alícuota que regía cada cierre.
-  const fcl = fclDevengadoDelAnio({ horasPorMes, basicoHora: p.jornalPactado, ingreso: p.ingreso, alicuotaDe: alicuotaFcl })
-  return liquidacionFinal({
-    nombre: p.nombre, ingreso: p.ingreso, cese, categoria: p.categoria,
-    basicoHora: p.jornalPactado,
-    mejorRemuneracionMensual: mejor?.importe ?? 0,
-    horasDevengadasPendientes: 0,
-    remuneracionNoDepositada: 0,
-    fclDevengadoAcumulado: typeof fcl === 'number' ? fcl : null,
-  })
-}
-
-/**
- * LOS LEGAJOS DEL DRIVE, leídos del índice y no de Drive.
- *
- * `public.drive_index` ya tiene los 3.627 archivos con su ruta: preguntar ahí cuesta una consulta y
- * no toca la red. La carpeta de cada persona cuelga de «1. ACTIVOS»; los que ya no están tienen la
- * suya en «2. INACTIVOS», y esta pestaña no los mira porque no los muestra.
- */
 /**
  * LO QUE LA BASE SABE DE CADA PERSONA — para completar lo que la planilla no trae.
  *
@@ -365,35 +341,7 @@ async function adelantosPagados(concepto) {
   return { porCuil, filas: rows }
 }
 
-async function legajosDeDrive() {
-  // ═══ TRES CARPETAS, NO UNA (31/08/2026) ═══
-  //
-  // Miraba sólo `1. ACTIVOS` y por eso la pestaña decía «SIN CARPETA» de Jofre y de Sosa, que tienen
-  // la suya en `2. INACTIVOS` porque están dados de baja — que es exactamente donde corresponde que
-  // esté. El cuadro acusaba un faltante de legajo que no existía: «un control que no pudo mirar no
-  // dice "no está"».
-  const RAIZ = 'administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/'
-  const BASES = ['1. ACTIVOS/', '2. INACTIVOS - PERSONAL DADO DE BAJA/', '4. SUBCONTRATISTAS/'].map((x) => RAIZ + x)
-  const carpetas = []
-  const porCarpeta = new Map()
-  for (const BASE of BASES) {
-    const { rows } = await query(
-      `select name, path, is_folder from public.drive_index where path like $1`, [`${BASE}%`],
-    )
-    for (const r of rows.filter((x) => x.is_folder && !x.path.slice(BASE.length).includes('/'))) {
-      if (porCarpeta.has(r.name)) continue
-      carpetas.push(r.name); porCarpeta.set(r.name, [])
-    }
-    for (const r of rows) {
-      if (r.is_folder) continue
-      const carpeta = r.path.slice(BASE.length).split('/')[0]
-      if (porCarpeta.has(carpeta)) porCarpeta.get(carpeta).push(r.name)
-    }
-  }
-  return { carpetas, porCarpeta }
-}
-
-function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new Map(), finales = new Map(), adelantosPorCuil = new Map(), adelantosDeFinal = new Map(), periodoRecibo = '', recibosDelMes = new Map(), oficinaEspejo = new Map() }) {
+function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), finales = new Map(), adelantosPorCuil = new Map(), adelantosDeFinal = new Map(), periodoRecibo = '', recibosDelMes = new Map(), oficinaEspejo = new Map() }) {
   // ═══ UNA HOJA, UN PROPÓSITO ═══
   //
   // Esta pestaña hacía cinco trabajos: la instrucción de pago de la quincena, el plantel, lo
@@ -405,14 +353,12 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // schedules se separan). Y el contrato del dueño dice lo mismo con otras palabras: *menos bloques;
   // antes de agregar un cuadro, preguntar si su información no cabe en uno que ya existe*.
   //
-  // Así que la Nómina se queda con lo que se paga —y nada más— y los cuatro cuadros de respaldo se
-  // mudan a «Plantel». No se borra nada: se mueve, con su propio ancho de grilla y sin competir con
-  // el número que se opera mañana.
-  const meses = mesesDe(ANIO)
+  // Así que la Nómina se queda con lo que se paga —y nada más—. Los cuatro cuadros de respaldo se
+  // habían mudado a «Plantel» el 31/08; el 09/09 el dueño mandó borrar esa pestaña y se fueron con
+  // ella (ver el porqué más abajo, donde estaba el bloque). Este generador vuelve a escribir UNA
+  // sola pestaña: por eso `fila` empuja a un solo destino y no hay `destino` que cambiar.
   const f = []
-  const g = []
-  let destino = f
-  const fila = (...c) => { destino.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
+  const fila = (...c) => { f.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
 
   fila(PESTANA)
   // EL ENCABEZADO SON TRES FILAS Y LA TERCERA VA VACÍA (contrato: lib/diseno-unificado.mjs).
@@ -1223,238 +1169,20 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   if (inferidas) console.warn(`  ⚠ ${inferidas}`)
   fila()
 
-  // ═══ 2 · QUIÉNES SON ═══
-  // ─── DESDE ACÁ, TODO VA A «Plantel» ───
-  destino = g
-  fila('Plantel')
-  // EL ENCABEZADO DEL CONTRATO: A1 el nombre, A2 la ÚNICA línea de procedencia (qué contesta ·
-  // de dónde sale · a qué fecha) y la fila 3 VACÍA. Estaban en tres renglones y el tercero se comía
-  // el respiro que separa el encabezado del primer bloque.
-  fila(`Quiénes son, qué devengaron y qué costaría desvincularlos · respaldo de «Nómina» · al ${fecha(hoy)}`)
-  fila()
-  fila()
-  fila(seccion(1, 'quiénes son'))
-  fila('Persona', 'Sector', 'Cat.', 'Ingreso', 'Antigüedad', '$/hora', 'Horas 2026', 'Devengado 2026', 'Promedio mensual')
-  // ═══ LAS FILAS SE ANOTAN, NO SE DEDUCEN ═══
+  // ═══ «Plantel» SE RETIRÓ DEL ARCHIVO (09/09/2026, decisión del dueño: «sí, borrala») ═══
   //
-  // «Horas 2026», «Devengado 2026» y «Promedio mensual» no son datos de este cuadro: son las
-  // columnas del cuadro 2, que todavía no se escribió. Se empujan vacías, se guarda el índice del
-  // renglón, y se parchean con su CITA cuando el cuadro 2 existe y su fila es un hecho. Calcular
-  // «el cuadro 2 arranca N+4 filas más abajo» es la aritmética de posición fija que se rompe con
-  // el próximo subtítulo que alguien agregue en el medio.
-  const filaQuienes = []
-  const filaEnDevengado = []
-  for (const p of activos) {
-    const ant = antiguedad(p.ingreso, hoy)
-    filaQuienes.push(destino.length)
-    fila(p.nombre, p.sector, p.categoria || SIN_DATO, p.ingreso ? fecha(p.ingreso) : SIN_DATO,
-      ant ? `${ant.anios} a ${ant.meses} m` : SIN_DATO, p.jornalPactado || SIN_DATO)
-  }
-  const q0 = (filaQuienes[0] ?? destino.length) + 1
-  const qF = destino.length
-  // ═══ EL CENTINELA, NO LA CADENA VACÍA (05/09/2026) ═══
+  // Acá vivían los cuatro cuadros de respaldo que el 31/08 se habían mudado de «Nómina» a una pestaña
+  // propia: quiénes son, lo devengado mes a mes, qué cuesta desvincular a cada uno y el índice de
+  // legajos en Drive. Ninguno tenía consumidor —cero rangos con nombre, cero fórmulas de otras
+  // pestañas apuntándole— y el generador la reescribía entera en cada corrida, así que era superficie
+  // de escritura sobre el Sheet real sin nadie que leyera el resultado.
   //
-  // Estas cinco celdas iban con `''`, y `''` NO vacía: la guarda de no-borrar lo lee como «el
-  // generador no escribe acá» y conserva lo que hubiera antes. Resultado medido sobre el archivo
-  // real después de correr esta pestaña: la fila de TOTALES arrastraba `Obra`, `OF`, `46128`,
-  // `0 a 4 m` y `5924` de una versión anterior del cuadro, corrida tras corrida. `D24` se veía
-  // **«$46.128»** — un serial de fecha con formato de moneda, o sea un número mudo con cara de
-  // importe en el renglón que suma la plata, que es exactamente lo que las reglas de oro prohíben.
-  //
-  // `VACIO` dice «esta celda es MÍA y va vacía», y la fusión la limpia. No es saltear la guarda: la
-  // guarda sigue exigiendo huella propia de esa celda.
-  //
-  // ═══ Y ESTO NO ALCANZÓ PARA LIMPIAR EL RESIDUO. LO DIGO ACÁ PORQUE ES LO QUE MIDIÓ ═══
-  //
-  // Se corrió con el cambio puesto y el auditor de pantalla sigue dando los mismos 15 defectos. El
-  // log dice por qué, celda por celda: «F24 nunca fue mía y tiene algo tuyo ("5924"): no la piso».
-  // Esas celdas NO tienen huella del OS — son de una versión del generador anterior al sistema de
-  // huellas, la capa fósil que `cola-de-rango` documenta. `VACIO` sólo se obedece con huella propia,
-  // así que la guarda las conserva, y hace bien: sin huella no puede distinguir su propio sedimento
-  // de una nota del dueño.
-  //
-  // El cambio se queda igual porque expresa la intención correcta —el generador declara que esas
-  // celdas son suyas y van vacías— y el día que tengan huella se limpiarán solas. Pero NO resuelve
-  // lo que hay hoy. Para eso hace falta `MIA_PROBADA`, el tercer estado que se obedece sin huella
-  // cuando lo que hay tiene forma de generador; está detrás de una bandera apagada a propósito y su
-  // regla es explícita: se enciende en la pestaña donde se MIDIÓ el fósil y se verificó el resultado
-  // contra el PDF. Eso no se hizo acá, así que no se enciende.
-  //
-  // Lo que queda visible mientras tanto: `D24` se lee «$46.128» en la fila de TOTALES — un serial de
-  // fecha con formato de moneda, un número mudo con cara de importe en el renglón que suma la plata.
-  fila(rotuloTotal(`${activos.length} persona(s)`), VACIO, VACIO, VACIO, VACIO, VACIO, sumaDeColumna('G', q0, qF), sumaDeColumna('H', q0, qF))
-  fila()
-
-  // ═══ 3 · EL AÑO, MES A MES ═══
-  fila(seccion(2, `lo devengado mes a mes · ${ANIO}`))
-  fila('Persona', ...MES_CORTO, 'TOTAL AÑO', 'Horas')
-  for (const p of activos) {
-    const cel = meses.map((m) => {
-      const v = p.devengado.meses.get(m)
-      if (!v || !v.importe) return SIN_DATO
-      return Math.round(v.importe)
-    })
-    const t = totalAnio(p.devengado)
-    filaEnDevengado.push(destino.length)
-    // El TOTAL AÑO es la suma de los doce meses de su propio renglón: pegarlo es publicar dos veces
-    // el mismo número y que sólo uno se entere cuando cambie una hora en el espejo.
-    fila(p.nombre, ...cel, totalDelAnio(destino.length + 1), Math.round(t.horas))
-  }
-  const m0 = (filaEnDevengado[0] ?? destino.length) + 1
-  const mF = destino.length
-  fila(rotuloTotal('TOTAL'),
-    ...meses.map((_, i) => sumaOGuion(String.fromCharCode(66 + i), m0, mF)),
-    sumaDeColumna('N', m0, mF), sumaDeColumna('O', m0, mF))
-  // AHORA el cuadro 2 existe: el cuadro 1 puede citarlo en vez de repetirlo.
-  citarCuadro2EnCuadro1(destino, { filaQuienes, filaEnDevengado })
-  const sinPrecio = activos.filter((p) => p.devengado.horasSinPrecio > 0)
-  // Es un HALLAZGO de calidad del dato, no una explicación: esas horas se cuentan y no se valorizan,
-  // así que el devengado de esas personas es un piso. El renglón dice cuántas son; el porqué, acá.
-  if (sinPrecio.length) fila(sub(`${sinPrecio.length} persona(s) con horas sin $/hora`))
-  fila()
-
-  // ═══ 4 · QUÉ CUESTA DESVINCULAR ═══
-  //
-  // ═══ LA LIQUIDACIÓN CUBRE LA MITAD, Y ESO TIENE QUE VERSE ═══
-  //
-  // El dueño lo pidió textual: *"la liq sólo contempla el 50%, el restante se tiene que completar
-  // con efectivo"*. Es el mismo acuerdo con el que se paga cada quincena —`ACUERDO_BANCO`, la
-  // política que él fijó— aplicado al día que alguien se va: el recibo formal se arma sobre la mitad
-  // registrada, y para que la persona cobre lo que realmente le corresponde, la otra mitad se
-  // entrega en efectivo.
-  //
-  // POR QUÉ VA EN DOS COLUMNAS Y NO EN UNA NOTA: un total único contesta «cuánto sale» y esconde
-  // «cuánto de eso puedo pagar por recibo», que es la pregunta que decide cómo se junta la plata. Y
-  // porque quedarse sólo con la liquidación formal —el error que esto previene— subestima el costo
-  // de una desvinculación a la mitad exacta.
-  // ═══ LAS DOS LÍNEAS QUE EXPLICABAN ESTE CUADRO SE FUERON (05/09/2026) ═══
-  //
-  // Decían que la liquidación formal cubre el 50% y que el fondo de cese no se suma. Las dos son
-  // ciertas y las dos son EXPLICACIONES, que es lo que el dueño mandó sacar del archivo. Lo que
-  // decían ya está en los rótulos: «Liquidación (por recibo)» + «A completar en efectivo» = «⇒ SALE
-  // DE LA CAJA», y «Fondo de cese acumulado» queda fuera de la columna del ⇒ justamente porque no
-  // sale de la caja. El porqué vive acá, que es donde alguien lo va a buscar cuando importe.
-  fila(seccion(3, 'qué cuesta desvincular a cada uno'))
-  fila('Persona', 'Régimen', 'Antigüedad', 'Vacaciones', 'SAC', 'SAC s/vac.', 'FCL no depositado',
-    'Liquidación (por recibo)', 'A completar en efectivo', rotuloTotal('SALE DE LA CAJA'), 'Fondo de cese acumulado')
-  const filaCosto = []
-  for (const p of activos) {
-    const l = costoDe(p, hoy)
-    const sale = (l.vacaciones || 0) + (l.sac || 0) + (l.sacSobreVacaciones || 0) + (l.fclPagoDirecto || 0)
-    const porRecibo = sale * ACUERDO_BANCO
-    const fondo = l.fclDevengadoAcumulado ?? null
-    filaCosto.push(destino.length)
-    // «SALE DE LA CAJA» y «A completar en efectivo» son aritmética de este mismo renglón: D+E+F+G la
-    // primera, J−H la segunda. Pegadas, el día que alguien corrija a mano una vacación las tres
-    // columnas dejan de sumar lo que su rótulo promete y nada lo dice.
-    const cuentas = cuentasDelCostoDeSalida(destino.length + 1)
-    fila(p.nombre,
-      p.convenio ? (/22\.250/.test(p.convenio) ? 'Ley 22.250' : p.convenio) : 'sin declarar',
-      l.antiguedad ? `${l.antiguedad.anios} a ${l.antiguedad.meses} m` : SIN_DATO,
-      Math.round(l.vacaciones || 0), Math.round(l.sac || 0), Math.round(l.sacSobreVacaciones || 0),
-      Math.round(l.fclPagoDirecto || 0),
-      // `porRecibo` es la ÚNICA que sigue pegada, y con motivo: es la política del 50% registrado,
-      // que no tiene celda de parámetro en el archivo. Ver la especie C en lib/plantel-formulas.mjs.
-      Math.round(porRecibo), cuentas.efectivo, cuentas.sale,
-      typeof fondo === 'number' ? Math.round(fondo) : SIN_DATO)
-  }
-  const c0 = (filaCosto[0] ?? destino.length) + 1
-  const cF = destino.length
-  // EL CENTINELA, NO LA CADENA VACÍA — la misma corrección que la fila de totales del cuadro 1 ya
-  // lleva desde el 05/09, en la fila gemela que quedó sin hacer. `''` NO vacía: no-borrar lo lee como
-  // «acá no escribo» y conserva lo que hubiera. Medido hoy en el archivo vivo, `D66:G66` arrastran
-  // «$259.942 · $200.611 · $21.662 · —» de una corrida anterior: cuatro importes en el renglón que
-  // suma la plata de las diecisiete personas, que NO son la suma de nada — la suma de las vacaciones
-  // de diecisiete personas no puede ser menor que las de Aguero solo ($456.446).
-  //
-  // Y ESTO NO LIMPIA LO QUE HAY HOY, igual que allá: esas celdas no tienen huella del OS (son de una
-  // versión anterior al sistema de huellas) y `VACIO` sólo se obedece con huella propia. Lo que
-  // cambia es que la intención queda declarada y el día que tengan huella se limpian solas. El
-  // residuo de hoy necesita `MIA_PROBADA`, que se enciende en la pestaña donde se MIDIÓ el fósil y
-  // se verificó contra el PDF — no se hizo acá, así que no se enciende.
-  fila(rotuloTotal(`${activos.length} persona(s)`), VACIO, VACIO, VACIO, VACIO, VACIO, VACIO,
-    sumaDeColumna('H', c0, cF), sumaDeColumna('I', c0, cF), sumaDeColumna('J', c0, cF), sumaDeColumna('K', c0, cF))
-  // NO VA UNA LÍNEA DICIENDO «el preaviso y la indemnización son CERO por el art. 15 de la ley
-  // 22.250, no por olvido». Es una explicación, y la columna «Régimen» ya publica el régimen de cada
-  // persona: quien vea «Ley 22.250» y no encuentre preaviso está viendo la consecuencia, no un
-  // olvido. El fundamento queda acá.
-  // ═══ LOS DOS DE «OFICINA» SON CONSTRUCCIÓN, Y ESTÁ PROBADO CON EL PAPEL ═══
-  //
-  // La duda era real y cara: bajo la LCT una liquidación suma preaviso (art. 231/232), integración
-  // del mes (art. 233) e indemnización por antigüedad (art. 245) — millones que bajo la 22.250 no
-  // existen. Aparecen en `_J_OFICINA` sólo porque ahí se cargan sus horas, no por su régimen.
-  //
-  // Se resolvió leyendo sus legajos, no razonando:
-  //   · MALDONADO BATISTA EMILIANO — «Libreta de Fondo de Cese Laboral, Ley 22.250», IERIC.
-  //   · NIEVAS (VILLEGAS) JUAN PABLO — formulario FWEB 1988796 ante el IERIC (nº 173621/4):
-  //     ingreso 07/02/2026, OFICIAL ESPECIALIZADO, albañil. De ahí salió su fecha de ingreso, que
-  //     hasta hoy no estaba en ningún lado y le dejaba la antigüedad, las vacaciones y el fondo en
-  //     cero — que no es «no le corresponde», es «no lo pude calcular».
-  //
-  // ESO YA NO SE ESCRIBE EN LA PESTAÑA. La conclusión —que están bajo la 22.250— la publica la
-  // columna «Régimen» de su propio renglón, persona por persona; la prueba documental es de acá.
-  //
-  // Lo que SÍ es un dato y no una explicación es quién no tiene fecha de ingreso: sin ella la
-  // antigüedad, las vacaciones y el fondo no se pueden calcular, y un cero ahí se lee como «no le
-  // corresponde». Va como RÓTULO, con los nombres y sin argumentar.
-  const oficina = activos.filter((p) => p.sector === 'Oficina')
-  const sinIngreso = oficina.filter((p) => !p.ingreso)
-  if (sinIngreso.length) fila(sub(`Sin fecha de ingreso: ${sinIngreso.map((p) => p.nombre).join(' · ')}`))
-  fila()
-
-  // ═══ 5 · EL LEGAJO EN DRIVE ═══
-  // El cuadro mira el NOMBRE de los archivos de la carpeta, nunca el contenido: un «alta.pdf» que
-  // adentro tenga otra cosa se cuenta como alta igual. Es un límite REAL de lo que dice este cuadro,
-  // y por eso está escrito acá y no en un renglón de la pestaña.
-  fila(seccion(4, 'el legajo de cada uno en Drive'))
-  fila('Persona', 'Carpeta en Drive', ...PAPELES.map((p) => p.rotulo), 'Recibos', 'Último recibo', 'Qué falta')
-  let completos = 0
-  for (const p of activos) {
-    const m = carpetaDe(p.nombre, legajos.carpetas)
-    if (!m.seguro) {
-      // LOS CANDIDATOS VAN EN EL RENGLÓN DE SU PERSONA, NO EN UN RESUMEN AL PIE. La línea del pie
-      // («1 sin carpeta emparejada: Gonzalez Juan (¿TELLO JUAN o …?)») repetía lo que el renglón ya
-      // decía y era el único lugar donde estaban los candidatos: acá quedan al lado del nombre, que
-      // es donde se resuelve el emparejamiento.
-      fila(p.nombre, m.candidatos.length ? 'sin emparejar' : 'SIN CARPETA',
-        ...PAPELES.map(() => SIN_DATO), SIN_DATO, SIN_DATO,
-        m.candidatos.length ? `¿${m.candidatos.slice(0, 2).join(' o ')}?` : 'sin carpeta en 1. ACTIVOS')
-      continue
-    }
-    const pa = papelesDe(legajos.porCarpeta.get(m.carpeta) ?? [])
-    if (!pa.falta.length) completos += 1
-    fila(p.nombre, m.carpeta, ...PAPELES.map((x) => (pa[x.clave] ? 'sí' : SIN_DATO)),
-      pa.recibos || SIN_DATO, pa.ultimoRecibo ?? SIN_DATO, pa.falta.length ? pa.falta.join(' · ') : 'completo')
-  }
-  fila(rotuloTotal(`${completos} de ${activos.length} con los cuatro papeles`))
-  fila()
-
-  // ═══ LO QUE ESTA PESTAÑA NO PUEDE DECIR — Y POR QUÉ YA NO SE DIBUJA ═══
-  //
-  // Estos seis renglones se publicaban al pie de la Nómina. El 05/09/2026 el dueño decidió que se
-  // van: se le planteó explícitamente que sus dos instrucciones chocaban acá —«minimalismo extremo,
-  // sin aclaraciones ni explicaciones de nada» contra el principio de cierre, que dice que la
-  // limitación de una cifra que decide plata no se saca de su vista— y eligió el minimalismo, sin
-  // excepción. Se recomendó lo contrario y se ejecuta lo que él decidió.
-  //
-  // NO SE PIERDEN: viven acá, en el script que genera la pestaña, y siguen siendo verdad. Quien lea
-  // este cuadro tiene que saber que:
-  //
-  //   1. Es SÓLO el plantel activo. Los desvinculados salieron por pedido del dueño; su devengado
-  //      histórico vive en la planilla de jornales.
-  //   2. Los acuerdos particulares (premios, condiciones fuera de convenio) no están en la planilla
-  //      y no se inventan.
-  //   3. Del legajo se mira QUÉ archivos hay, no qué dicen: el CUIL, la obra social y la familia
-  //      siguen adentro de los PDF.
-  //   4. Las cargas sociales no se abren por persona: la planilla las tiene por total.
-  //   5. El fondo de cese se calcula sobre el jornal de la planilla. Si los aportes se depositaron
-  //      sobre la mitad registrada, el fondo real es la mitad de lo que dice esa columna — y desde
-  //      acá no se puede verificar.
-  //   6. «Activo» es aparecer en la última quincena cargada. Una licencia larga se lee como baja:
-  //      la planilla no las distingue.
-  //
-  // La 5 es la que más pesa: puede duplicar o partir al medio un pasivo laboral real.
-  return { nomina: f, plantel: g }
+  // Se retira el CÓDIGO acá y la PESTAÑA con `scripts/pestana-retirar.mjs Plantel --aplicar`, que
+  // exporta el PDF de respaldo antes de borrarla. Lo que ese cuadro calculaba no se pierde: el costo
+  // de desvincular sigue viviendo en `lib/desvinculacion-22250.mjs` y en `lib/desvinculacion-plantel.mjs`
+  // —con sus tests—, y el devengado por persona, en `lib/nomina-devengado.mjs`. Lo que ya no existe es
+  // la copia dibujada de esos números en una pestaña que nadie miraba.
+  return { nomina: f }
 }
 
 /**
@@ -1872,20 +1600,15 @@ async function main() {
       p.ingresoDeLaBase = true
     }
   }
-  const legajos = await legajosDeDrive()
-  console.log(`legajos en Drive: ${legajos.carpetas.length} carpeta(s) en «1. ACTIVOS»`)
-  const filas = grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil, finales, adelantosPorCuil, adelantosDeFinal, periodoRecibo, recibosDelMes, oficinaEspejo: oficinaDelEspejo(oficinaNum ?? []) })
-  console.log(`${PESTANA}: ${filas.nomina.length} filas · Plantel: ${filas.plantel.length} filas × ${ANCHO} columnas`)
+  const filas = grilla(activos, { hoy, quincena, escala, recibosPorCuil, finales, adelantosPorCuil, adelantosDeFinal, periodoRecibo, recibosDelMes, oficinaEspejo: oficinaDelEspejo(oficinaNum ?? []) })
+  console.log(`${PESTANA}: ${filas.nomina.length} filas × ${ANCHO} columnas`)
   for (const x of filas.nomina.slice(5, 12)) console.log('  ', x.filter((c) => c !== '').map((c) => String(c).slice(0, 16)).join(' | '))
   if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')
 
-  for (const [titulo, arr] of [[PESTANA, filas.nomina], ['Plantel', filas.plantel]]) {
-    const malas = arr.map((x, i) => (x.length > ANCHO ? i + 1 : 0)).filter(Boolean)
-    if (malas.length) throw new Error(`${titulo}: ${malas.length} fila(s) más anchas que ${ANCHO}: ${malas.slice(0, 5).join(', ')}. NO escribo.`)
-  }
+  const malas = filas.nomina.map((x, i) => (x.length > ANCHO ? i + 1 : 0)).filter(Boolean)
+  if (malas.length) throw new Error(`${PESTANA}: ${malas.length} fila(s) más anchas que ${ANCHO}: ${malas.slice(0, 5).join(', ')}. NO escribo.`)
 
   await publicar(google, PESTANA, filas.nomina)
-  if (filas.plantel.length) await publicar(google, 'Plantel', filas.plantel)
 
 }
 

@@ -51,6 +51,7 @@ import {
   resumirCompras, type FiltroActivo,
 } from '@/features/administracion/services/proveedoresService'
 import { estadoDePapeles } from '@/features/administracion/services/papelesProveedor'
+import { getDocumentosDelProveedor } from '@/features/administracion/services/documentosProveedorService'
 import {
   archivarProveedor, crearProveedor, crearYVincular, deshacerResolucion,
   editarProveedor, marcarNoEsProveedor, vincularNombre,
@@ -97,7 +98,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
 
   const [
     listado, sinCuit, pendientes, resolucion, subcontratistas, resueltos, nActivos, nArchivados,
-    nTodos, papelesLeidos, deudas,
+    nTodos, papelesLeidos, deudas, documentos,
   ] = await Promise.all([
     getProveedores(supabase, { activo: activoLeido }),
     // LA SEÑAL NO DEPENDE DE LO QUE ESTOY MIRANDO. Cuenta siempre sobre los ACTIVOS, con el mismo
@@ -132,6 +133,10 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     // La deuda por proveedor, en el mismo viaje. Si falla, el Map queda vacío y la cartera se dibuja
     // sin deuda — nunca al revés: inventar una deuda por no poder leer manda a pagar de más.
     maestro ? getDeudaProveedores(supabase) : null,
+    // LOS DOCUMENTOS DEL PROVEEDOR ABIERTO, en esta misma tanda y por el mismo motivo que los
+    // papeles: una por panel abierto, ninguna por fila. El servicio valida la forma del id, así que
+    // `?p=nuevo` no llega a Postgres.
+    sp.p ? getDocumentosDelProveedor(supabase, sp.p) : null,
   ])
 
   if (listado.error) {
@@ -382,6 +387,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
               proveedor={seleccionado}
               compras={compras}
               papeles={papeles}
+              documentos={documentos}
               crear={crearProveedor}
               editar={seleccionado ? editarProveedor.bind(null, seleccionado.id) : crearProveedor}
               archivar={archivarProveedor}

@@ -27,16 +27,14 @@ import { grilla as grillaJornales } from './jornales-pestana.mjs'
 // test pase sería apagar el control, y el diff lo muestra.
 const LIMPIAS = [
   {
+    // EL TRAMO TERMINA DONDE ESTABA «Plantel». Esa pestaña se retiró el 09/09 (el dueño: «sí,
+    // borrala») y con ella su entrada en esta lista; el marcador de corte sigue siendo un texto que
+    // EXISTE en el generador, porque `tramo` con un `hasta` inexistente no corta nada y mediría el
+    // archivo entero — un control que se afloja solo.
     titulo: 'Nómina',
     gen: 'nomina-pestana.mjs',
     desde: 'fila(PESTANA)',
-    hasta: '─── DESDE ACÁ, TODO VA A «Plantel» ───',
-  },
-  {
-    titulo: 'Plantel',
-    gen: 'nomina-pestana.mjs',
-    desde: '─── DESDE ACÁ, TODO VA A «Plantel» ───',
-    hasta: 'LO QUE NO SE PUEDE DECIR',
+    hasta: '«Plantel» SE RETIRÓ DEL ARCHIVO',
   },
 ]
 
