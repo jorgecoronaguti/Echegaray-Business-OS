@@ -26,7 +26,7 @@ import { pesos } from '../BloqueLiquidacion'
 export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: string; hoy: string }) {
   const quincena = quincenaDe(quincenaPedida && /^\d{4}-\d{2}-\d{2}$/.test(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const { cuadros } = await getLiquidacionDeLaQuincena(supabase, quincena)
+  const { cuadros, sinActividad } = await getLiquidacionDeLaQuincena(supabase, quincena)
   const totales = cuadros.map((c) => totalesDeCuadro(c.lineas))
   const tarjeta = tarjetaDeQuincena(totales)
   const lineas = cuadros.flatMap((c) => c.lineas)
@@ -35,6 +35,11 @@ export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: st
     <div data-testid="solapa-pagos">
       <Encabezado quincena={quincena} tarjeta={tarjeta} />
       <Tabla lineas={lineas} />
+      {sinActividad.length > 0 && (
+        <p data-testid="pagos-sin-actividad" style={{ fontSize: '11.5px', color: V.apagado, margin: '10px 0 0' }}>
+          {sinActividad.length} sin actividad esta quincena · no aparecen acá y no se dieron de baja.
+        </p>
+      )}
       <p style={{ fontSize: '11px', color: V.tenue, lineHeight: 1.6, margin: '12px 0 0' }}>
         Se escriben ADELANTO · YA TRANSFERIDO · POR BANCO · EFECT. RED. — el resto es la cadena.
         {' '}Un giro hecho antes de armar el lote va en YA TRANSFERIDO, no en ADELANTO.
