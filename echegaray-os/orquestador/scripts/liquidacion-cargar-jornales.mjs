@@ -26,9 +26,10 @@
 // quincena»*. Seis nombres de la planilla no existen en `public.personas` y no se crean; sus líneas
 // no tienen dónde ir (`liquidacion_linea.persona_id` es NOT NULL con FK). La quincena entra igual
 // con las líneas que sí matchean, y el importe que quedó afuera se imprime por quincena y con
-// nombre en esta misma corrida. NO SE PUDO DEJAR ESCRITO EN LA BASE: ni `liquidacion_quincena` ni
-// `liquidacion_linea` tienen columna de observación y no se autorizó migración — o sea que quien
-// mire sólo Postgres va a ver un total corto sin la marca de que lo es. Es el límite de esta carga.
+// nombre en esta misma corrida, Y ADEMÁS QUEDA ESCRITO EN LA BASE desde la migración
+// 20260909T1800: `liquidacion_quincena.monto_excluido` + `excluidas` (nombre e importe) +
+// `observacion`. Antes el faltante vivía sólo en esta consola y quien mirara Postgres veía un total
+// corto sin la marca de que lo era — que es indistinguible de uno completo.
 //
 // ═══ POR QUÉ ENTRA COMO `cerrada` ═══
 //
@@ -58,13 +59,21 @@ const ANIO = Number(arg('--anio') ?? 2026)
 const HOY = arg('--hoy') ? new Date(`${arg('--hoy')}T12:00:00Z`) : new Date()
 
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
+const redondear2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 
 /** El faltante SIEMPRE al lado del total: un total corto sin marca se lee igual que uno completo. */
 const afueraTexto = (c) => `  ⚠ ${c.excluidas.length} sin persona · afuera ${ars(c.montoExcluido)}`
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig() })
-  const grid = await google.readSheetValues(JORNALES_ID, `'${HOJA}'!A1:AT991`)
+  const RANGO = `'${HOJA}'!A1:AT991`
+  // DOS LECTURAS DEL MISMO RANGO, y no es redundancia: la formateada es la única que deja leer el
+  // «17/8» de los encabezados (cruda llega como serial y no se detecta un solo bloque), y la cruda
+  // es la única que trae los centavos (formateada, las 274 líneas cerraban $3,62 cortas).
+  const [grid, gridCrudo] = await Promise.all([
+    google.readSheetValues(JORNALES_ID, RANGO),
+    google.readSheetValues(JORNALES_ID, RANGO, { render: 'UNFORMATTED_VALUE' }),
+  ])
   const bloques = detectarQuincenas(grid ?? [])
   if (bloques.length === 0) throw new Error(`no encontré ni un bloque en '${HOJA}': NO cargo nada`)
 
@@ -94,7 +103,7 @@ async function main() {
       console.log(`⚠ ${rango.desde}: faltan los rótulos ${faltan.join(', ')} — NO se carga`)
       continue
     }
-    const lineas = lineasDelBloque(grid, bloque, cols)
+    const lineas = lineasDelBloque(grid, bloque, cols, gridCrudo)
     for (const l of lineas) {
       const r = resolverPersona(l.clave, { puente, porCuil, personas })
       l.persona_id = r.persona?.id ?? null
@@ -169,7 +178,7 @@ async function main() {
     console.log('\nLÍNEAS CON PLATA ILEGIBLE — voltean su quincena entera:')
     for (const { q, l } of rotas) console.log(`   · ${q} fila ${l.fila} ${l.nombre}: ${l.incompleta}`)
   }
-  console.log('\nLO QUE QUEDA AFUERA, POR QUINCENA (ninguna base guarda esta marca: vive acá):')
+  console.log('\nLO QUE QUEDA AFUERA, POR QUINCENA (se escribe en liquidacion_quincena.excluidas):')
   for (const q of quincenas) {
     if (q.enCurso || !q.control.excluidas.length) continue
     for (const l of q.control.excluidas) {
@@ -199,6 +208,25 @@ async function main() {
        returning id`, [q.desde, q.hasta, GRUPO],
     )
     const id = rows[0].id
+    // EL FALTANTE SE ESCRIBE SIEMPRE, TAMBIÉN CUANDO ES CERO. Un NULL ahí significaría «nadie lo
+    // midió» y esta corrida sí lo midió: una quincena completa tiene que poder decir que lo está.
+    await query(
+      `update public.liquidacion_quincena
+          set monto_excluido = $2, excluidas = $3::jsonb, observacion = $4
+        where id = $1`,
+      [
+        id,
+        redondear2(q.control.montoExcluido),
+        JSON.stringify(q.control.excluidas.map((l) => ({
+          nombre: l.nombre, importe: redondear2(l.cobra ?? 0),
+        }))),
+        q.control.excluidas.length
+          ? `Cargada desde JORNALES '${HOJA}'. ${q.control.excluidas.length} persona(s) de la`
+            + ' planilla no existen en public.personas y el dueño decidió no darlas de alta'
+            + ' (09/09/2026): su línea no entró y su importe está en monto_excluido.'
+          : `Cargada desde JORNALES '${HOJA}'. Entró completa: ninguna línea quedó afuera.`,
+      ],
+    )
     for (const l of q.control.cargables) {
       await query(
         `insert into public.liquidacion_linea

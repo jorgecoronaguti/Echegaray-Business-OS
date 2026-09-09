@@ -8,7 +8,7 @@
 //   3. `ESTRUCTURA_TOTAL_MESES` en la fila 3 de Estructura, que hoy es una fila en blanco.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { columna, fila, aRangoApi, verificarRangos, usaNombre, clasificarNombrados } from './rangos-con-nombre.mjs'
+import { columna, fila, aRangoApi, verificarRangos, usaNombre, clasificarNombrados, mesesSinFuente } from './rangos-con-nombre.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 
 // Un bloque de oficina en miniatura: encabezado en la fila 2, tres meses en las filas 3-5.
@@ -162,4 +162,37 @@ test('un IFERROR solo NO es guarda: protege del #NAME?, no del cero', () => {
 test('con dato, el estado no cambia por la guarda', () => {
   const [r] = clasificarNombrados([{ nombre: 'X', hoja: 'H', conDato: 5, celdas: 5 }], ['=SUM(X)'])
   assert.equal(r.estado, 'ok')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL HALLAZGO FALSO QUE TAPABA EL VERDADERO (09/09/2026)
+//
+// Medido en la copia `17bS8Ksn…` del Flujo de Caja: el auditor listaba `CARGAS_MES_F931` y
+// `CARGAS_MES_GREMIALES` como HUÉRFANOS con «4/12 celda(s) con dato». Las dos afirmaciones eran
+// falsas por la misma causa: el clasificador sólo mira fórmulas del libro y esos dos los lee el
+// Libro Canónico por la API. Y el 4/12 no es un rango corto: es el subtotal de la PROYECCIÓN.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+test('un rango que el OS lee por la API no es huérfano — pero sólo si quien lo lee lo declaró', () => {
+  const n = [{ nombre: 'CARGAS_MES_F931', hoja: 'Cargas Sociales', conDato: 4, celdas: 12 }]
+  assert.equal(clasificarNombrados(n, [], new Set(['CARGAS_MES_F931']))[0].estado, 'os')
+  // Sin la declaración sigue siendo huérfano: el auditor NO adivina quién lee. Si esta línea se
+  // pone verde con 'os', el padrón se está inventando solo.
+  assert.equal(clasificarNombrados(n, [])[0].estado, 'huérfano')
+})
+
+test('mesesSinFuente: dos rangos parciales que se completan cubren los doce meses', () => {
+  // La serie real de «Nómina · Cargas sociales»: declarado ene–dic (12/12) + proyección sep–dic.
+  const declarado = Array.from({ length: 12 }, () => true)
+  const proyeccion = Array.from({ length: 12 }, (_, i) => i >= 8)
+  assert.deepEqual(mesesSinFuente([declarado, proyeccion], 12), [])
+  // Y la de «Nómina · Gremiales», que NO tiene pareja: los ocho meses cerrados quedan sin fuente en
+  // la cadena y el cash flow cae a la fila plana de Compras. Si este assert se pone en [] sin que
+  // se haya agregado la pareja, el control dejó de poder dar rojo.
+  assert.deepEqual(mesesSinFuente([proyeccion], 12), [1, 2, 3, 4, 5, 6, 7, 8])
+})
+
+test('mesesSinFuente no confunde una máscara ausente con cobertura', () => {
+  // Un rango que no se pudo leer llega sin máscara. `undefined` NO puede contar como fuente: sería
+  // exactamente el «un control que no pudo mirar dice que sí» que este archivo existe para evitar.
+  assert.deepEqual(mesesSinFuente([undefined, [true, false, true]], 3), [2])
 })

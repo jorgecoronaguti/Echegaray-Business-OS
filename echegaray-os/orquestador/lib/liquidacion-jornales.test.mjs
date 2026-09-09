@@ -216,3 +216,37 @@ test('primeraFecha toma la primera escrita, no la mínima', () => {
   const f = []; f[5] = '16/7'; f[8] = '20/7'
   assert.equal(primeraFecha([f], { filaFecha: 1 }), '16/7')
 })
+
+// ═══ LOS CENTAVOS: LA LECTURA FORMATEADA LOS TIRABA ═══
+//
+// La carga de las 274 líneas cerraba $3,62 corta y la fila 568 de la 1ª de septiembre se rechazaba
+// entera con «no cierra por 1». No era la planilla: era leerla con el formato de la celda puesto.
+// Estos tests fallan si alguien vuelve a leer sólo la grilla formateada.
+test('importe: un number crudo se devuelve tal cual, con centavos', () => {
+  assert.equal(importe(260000.05), 260000.05)
+  assert.equal(importe(3650.5), 3650.5)
+  // El parser de miles en castellano destruiría "260000.05": el punto es separador de miles.
+  assert.equal(importe('260000.05'), 26000005)
+})
+
+test('importe: un number no finito no es cero', () => {
+  assert.equal(importe(Number.NaN), null)
+  assert.equal(importe(Number.POSITIVE_INFINITY), null)
+})
+
+test('lineasDelBloque: la plata sale de la grilla cruda y el nombre de la formateada', () => {
+  const cols = { horas: 2, valorHora: 3, cobra: 4, adelanto: 5, porBanco: 6, enEfectivo: 7 }
+  const bloque = { inicio: 2, fin: 2, filaFecha: 1 }
+  // Formateada: Sheets ya redondeó al formato de la celda y la línea NO cierra.
+  const formateada = [[], ['', 'PEREZ JUAN', '10', '$3.650', '$36.500', '$0', '$0', '$36.499']]
+  // Cruda: los mismos centavos que la fórmula calculó, y la línea cierra.
+  const cruda = [[], ['', 'PEREZ JUAN', 10, 3650.05, 36500.5, 0, 0, 36500.5]]
+  const soloFormateada = lineasDelBloque(formateada, bloque, cols)[0]
+  assert.ok(soloFormateada.incompleta, 'con formato la línea no cierra y queda afuera')
+
+  const conCruda = lineasDelBloque(formateada, bloque, cols, cruda)[0]
+  assert.equal(conCruda.nombre, 'PEREZ JUAN', 'el nombre sigue saliendo de la grilla formateada')
+  assert.equal(conCruda.incompleta, null)
+  assert.equal(conCruda.cobra, 36500.5)
+  assert.equal(conCruda.valorHora, 3650.05)
+})

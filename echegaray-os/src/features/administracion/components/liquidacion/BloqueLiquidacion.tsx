@@ -40,7 +40,7 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
 }) {
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const { cuadros, camposEditables, estados, errores } = await getLiquidacionDeLaQuincena(supabase, quincena)
+  const { cuadros, camposEditables, estados, errores, sinActividad } = await getLiquidacionDeLaQuincena(supabase, quincena)
 
   const totales = cuadros.map((c) => totalesDeCuadro(c.lineas))
   const tarjeta = tarjetaDeQuincena(totales)
@@ -74,6 +74,8 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
 
       <Tarjeta tarjeta={tarjeta} desglose={desglose} />
 
+      <SinActividad personas={sinActividad} />
+
       {!conFilas ? (
         <Vacio>
           Nadie tiene horas cargadas ni tarifa vigente en esta quincena. Las horas se cargan en la
@@ -97,6 +99,27 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * QUIÉNES NO ESTÁN EN LA LISTA — porque una lista que se acorta en silencio es indistinguible de
+ * una que se rompió.
+ *
+ * Dueño, 09/09/2026: «solo dejame en plantel quienes estén activos esta quincena». No se dio de baja
+ * a nadie: el padrón está intacto y estos nombres están acá, a un clic de distancia.
+ */
+function SinActividad({ personas }: { personas: { id: string; nombre: string }[] }) {
+  if (personas.length === 0) return null
+  return (
+    <details data-testid="liquidacion-sin-actividad" style={{ margin: '0 0 14px' }}>
+      <summary style={{ fontSize: '11.5px', color: V.apagado, cursor: 'pointer' }}>
+        {personas.length} sin actividad esta quincena · no se dieron de baja
+      </summary>
+      <p style={{ fontSize: '11.5px', color: V.tenue, margin: '6px 0 0', lineHeight: 1.6 }}>
+        {personas.map((p) => p.nombre).join(' · ')}
+      </p>
+    </details>
   )
 }
 
