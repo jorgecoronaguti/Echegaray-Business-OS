@@ -32,8 +32,17 @@ export const esError = (v) => /^#(REF!|N\/A|VALUE!|DIV\/0!|NAME\?|NUM!)/i.test(t
  * NÚCLEO PURO: un importe de la planilla ("$260.000,00") como número.
  * Devuelve `null` cuando la celda está vacía o rota — NUNCA cero. Una quincena sin dato no es una
  * quincena de $ 0, y esa distinción es la que decide si la línea se carga o se informa.
+ *
+ * ═══ UN NÚMERO YA ES UN NÚMERO, Y ES EL CAMINO QUE NO PIERDE CENTAVOS ═══
+ *
+ * Leyendo la pestaña FORMATEADA, Sheets entrega "$260.000" con el formato de la celda: los centavos
+ * quedan del otro lado y la carga de las 274 líneas cerró $3,62 corta, con la fila 568 de la 1ª de
+ * septiembre denunciando «no cierra por 1». Con `valueRenderOption=UNFORMATTED_VALUE` la misma celda
+ * llega como `260000.05` — un `number` de JS, no un texto. Pasarlo por el parser de miles en
+ * castellano lo destruiría (`"260000.05"` → sin puntos → `26000005`), así que se devuelve tal cual.
  */
 export function importe(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
   const s = texto(v)
   if (!s || esError(s)) return null
   const n = Number(s.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.'))
@@ -155,19 +164,24 @@ export function primeraFecha(grid = [], bloque = {}) {
  * Una línea a la que le falte cualquiera de las cuatro cifras de plata sale con `incompleta`: se
  * informa y no se carga. Rellenarla con ceros la haría indistinguible de una liquidación real.
  */
-export function lineasDelBloque(grid = [], bloque = {}, cols = {}) {
+export function lineasDelBloque(grid = [], bloque = {}, cols = {}, gridCrudo = null) {
   const out = []
   for (let r = bloque.inicio; r <= bloque.fin; r++) {
     const f = grid[r - 1] ?? []
+    // LA PLATA SE LEE CRUDA, LOS RÓTULOS Y LAS FECHAS FORMATEADOS. Son dos lecturas del mismo rango
+    // porque cada una miente donde la otra sirve: sin formato, la fecha «17/8» del encabezado llega
+    // como el serial 45886 y `primeraFecha` no reconoce un solo bloque; con formato, el importe
+    // llega redondeado al formato de la celda y se pierden los centavos.
+    const $ = gridCrudo ? (gridCrudo[r - 1] ?? []) : f
     const nombre = texto(f[1])
     if (nombre.length < 3) continue
-    const cobra = importe(f[cols.cobra])
-    const adelanto = importe(f[cols.adelanto]) ?? 0
-    const porBanco = importe(f[cols.porBanco]) ?? 0
+    const cobra = importe($[cols.cobra])
+    const adelanto = importe($[cols.adelanto]) ?? 0
+    const porBanco = importe($[cols.porBanco]) ?? 0
     const colsYa = cols.yaTransferido ?? []
-    const yaTransferido = colsYa.reduce((a, i) => a + (importe(f[i]) ?? 0), 0)
-    const horas = importe(f[cols.horas])
-    const valorHora = importe(f[cols.valorHora])
+    const yaTransferido = colsYa.reduce((a, i) => a + (importe($[i]) ?? 0), 0)
+    const horas = importe($[cols.horas])
+    const valorHora = importe($[cols.valorHora])
     // EL EFECTIVO BORRADO SE DERIVA DE LA CADENA DE PAGO, NO SE INVENTA.
     // En la 2ª de junio alguien borró la fórmula de EFECTIVO en tres filas (401, 407, 414) y la
     // celda quedó vacía: la planilla no dice $0, no dice nada. El resto de la cadena sí está, y la
@@ -177,9 +191,9 @@ export function lineasDelBloque(grid = [], bloque = {}, cols = {}) {
     // ADELANTO $2.378.644 + EFECTIVO $5.745.756 = $8.124.400 contra un SUM(TOTAL) de $9.384.100, y
     // la diferencia — $1.259.700 — es exactamente 408.000 + 408.000 + 443.700, los tres derivados.
     // Sólo se deriva si la celda está VACÍA: un #REF! no se deriva, se denuncia.
-    let enEfectivo = importe(f[cols.enEfectivo])
+    let enEfectivo = importe($[cols.enEfectivo])
     let efectivoDerivado = false
-    if (enEfectivo == null && cobra != null && !esError(f[cols.enEfectivo])) {
+    if (enEfectivo == null && cobra != null && !esError($[cols.enEfectivo])) {
       const d = cobra - adelanto - porBanco - yaTransferido
       // Un derivado negativo significa que la cadena ya no cierra por otro motivo: no se tapa.
       if (d >= -0.5) { enEfectivo = d; efectivoDerivado = true }
@@ -188,9 +202,9 @@ export function lineasDelBloque(grid = [], bloque = {}, cols = {}) {
     if (cobra == null) faltan.push('TOTAL')
     if (enEfectivo == null) faltan.push('EFECTIVO')
     for (const campo of ['cobra', 'adelanto', 'porBanco', 'enEfectivo']) {
-      if (esError(f[cols[campo]])) faltan.push(`${campo} roto`)
+      if (esError($[cols[campo]])) faltan.push(`${campo} roto`)
     }
-    for (const i of colsYa) if (esError(f[i])) faltan.push('yaTransferido roto')
+    for (const i of colsYa) if (esError($[i])) faltan.push('yaTransferido roto')
     const linea = {
       fila: r,
       nombre,
