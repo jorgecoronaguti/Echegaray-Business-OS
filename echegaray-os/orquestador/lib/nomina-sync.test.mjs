@@ -28,12 +28,14 @@ check('grilla vacía no rompe', detectarQuincenas([]).length === 0)
 check('grilla sin bloques', detectarQuincenas([['x'], ['y']]).length === 0)
 
 const filas = filasQuincenas(b)
-// Tiene que coincidir EXACTO con las 10 columnas de la pestaña. Devolvía 7 (de un layout viejo):
-// como sólo escribe cuando algo cambia y nada había cambiado, nunca se notó — la primera quincena
-// nueva habría reescrito el cuadro con las columnas corridas.
-// SIGUEN SIENDO 11: la columna "Se paga el" la intercala jornales-pestana después de Hasta, no ésta.
-// Emitirla también acá la duplicaba y corría todo el registro una columna (visto en el dry del 31/07).
-check('11 columnas por quincena (la 12ª, "Se paga el", la intercala el generador)', filas[0].length === 11)
+// Tiene que coincidir EXACTO con las columnas de la pestaña. Devolvía 7 (de un layout viejo): como
+// sólo escribe cuando algo cambia y nada había cambiado, nunca se notó — la primera quincena nueva
+// habría reescrito el cuadro con las columnas corridas.
+// DIEZ DESDE EL 09/09/2026: eran once y se fue «Hs previstas» (`=D×E×'Parámetros'!$B$43`), un
+// derivado de dos columnas de la misma fila cuyo único consumidor era el aviso del cuadro de pago.
+// «Se paga el» y «Estado» los intercala jornales-pestana; emitirlos también acá los duplicaba y
+// corría todo el registro una columna (visto en el dry del 31/07).
+check('10 columnas por quincena («Se paga el» y «Estado» los pone el generador)', filas[0].length === 10)
 // La etiqueta es una REFERENCIA a la celda de fecha, nunca la fecha copiada.
 check('la fecha se referencia, no se copia', filas[0][0].f === "='_J_OBREROS'!F3")
 // El "Hasta" busca la POSICIÓN del último día cargado, no cuántos días hay: las filas de fecha
@@ -53,21 +55,21 @@ check('cada Hasta indexa la fila de fechas de SU bloque', filas.every((r, i) => 
   const propias = r[1].f.match(/F(\d+):U\1/g) || []
   return propias.length === 3 && propias.every((m) => m === `F${ff}:U${ff}`)
 }))
-check('Σ del jornal por hora del plantel sale de la columna W', filas[0][10].f === "=SUM('_J_OBREROS'!W4:W6)")
+check('Σ del jornal por hora del plantel sale de la columna W', filas[0][9].f === "=SUM('_J_OBREROS'!W4:W6)")
 // ═══ EL TOTAL ES «TOTAL SEMANA» (AB), NO «TOTAL EFECTIVO» (AA) — 08/09/2026 ═══
 // La planilla relaciona sus columnas así: AB = horas × $/h y AA = AB − banco − adelantos. Sumando AA
 // el registro publicaba la mitad del costo de cada quincena ($4,38M contra $8,71M en la del 17/08→31/08)
 // y el libro, CAJA, los dos Cash Flow y Cargas Sociales lo tomaban como el costo entero.
-check('el TOTAL es TOTAL SEMANA (AB), no el efectivo (AA)', filas[0][9].f === "=SUM('_J_OBREROS'!AB4:AB6)")
-check('el segundo bloque usa SU rango', filas[1][9].f === "=SUM('_J_OBREROS'!AB9:AB10)")
-check('Banco sigue siendo el lote (X): es lo que el testigo bancario busca', filas[0][6].f === "=SUM('_J_OBREROS'!X4:X6)")
-check('Adelanto suma los dos adelantos, por banco (Y) y en efectivo (Z)', filas[0][7].f === "=SUM('_J_OBREROS'!Y4:Y6)+SUM('_J_OBREROS'!Z4:Z6)")
-check('Total recibo es lo entregado contra recibo en efectivo (AA)', filas[0][8].f === "=SUM('_J_OBREROS'!AA4:AA6)")
-// Las hs correspondientes se autorreferencian: dependen de la fila donde va a quedar la quincena.
-// Entró "Se paga el" en la columna C (31/07) y todo el registro corrió una a la derecha: días hábiles
-// pasó a D y personas a E. Si alguien inserta otra columna, esto falla acá y no en el Sheet.
-check('hs correspondientes referencian su propia fila', filas[0][4].f === "=D6*E6*'Parámetros'!$B$43")
-check('la segunda quincena referencia la fila 7', filas[1][4].f === "=D7*E7*'Parámetros'!$B$43")
+check('el TOTAL es TOTAL SEMANA (AB), no el efectivo (AA)', filas[0][8].f === "=SUM('_J_OBREROS'!AB4:AB6)")
+check('el segundo bloque usa SU rango', filas[1][8].f === "=SUM('_J_OBREROS'!AB9:AB10)")
+check('Banco sigue siendo el lote (X): es lo que el testigo bancario busca', filas[0][5].f === "=SUM('_J_OBREROS'!X4:X6)")
+check('Adelanto suma los dos adelantos, por banco (Y) y en efectivo (Z)', filas[0][6].f === "=SUM('_J_OBREROS'!Y4:Y6)+SUM('_J_OBREROS'!Z4:Z6)")
+check('Total recibo es lo entregado contra recibo en efectivo (AA)', filas[0][7].f === "=SUM('_J_OBREROS'!AA4:AA6)")
+// LA CELDA QUE SE AUTORREFERENCIABA YA NO EXISTE, Y ESO ES LO QUE SE AFIRMA. «Hs previstas» era la
+// única fórmula de esta función que dependía de la fila donde iba a caer la quincena Y de un número
+// de fila de otra pestaña (`'Parámetros'!$B$43`): las dos son anclas que se rompen sin dar error.
+check('ninguna celda ancla en un número de fila de Parámetros', filas.every((r) => r.every((c) => !c.f.includes("'Parámetros'!"))))
+check('las horas son las MEDIDAS de la planilla, no un producto', filas[0][4].f === "=SUM('_J_OBREROS'!V4:V6)")
 check('ninguna celda trae un número suelto', filas.every((r) => r.every((c) => c.f && !('n' in c))))
 
 // cuerpoDelCuadro: dónde termina el cuerpo. Contar "celdas no vacías de la columna A" daba 30

@@ -48,10 +48,17 @@ export const CONTENIDO = /** @type {const} */ (['os', 'dueño', 'dueño-restaura
  * el bloque se mueve, el nombre se mueve con él porque `r0` sale de la grilla recién armada; si
  * alguien inserta una columna en el medio, el encabezado deja de coincidir y salta acá.
  *
+ * `filaEncabezado` existe para el caso en que un rango NO empieza pegado a su encabezado: una tabla
+ * con dos tramos —lo cerrado y lo proyectado, separados por un subtotal— comparte un solo renglón de
+ * rótulos, y el segundo tramo tiene arriba la fila de total, no la cabecera. Sin esto habría que
+ * elegir entre repetir el encabezado en el medio de la tabla o dejar el rango sin ancla; las dos son
+ * peores. Por defecto sigue siendo la fila de arriba, que es el caso normal.
+ *
  * @param {string} nombre
- * @param {{col:number, r0:number, r1:number, encabezado:string, contenido?:'os'|'dueño'}} d
+ * @param {{col:number, r0:number, r1:number, encabezado:string, filaEncabezado?:number,
+ *          contenido?:'os'|'dueño'}} d
  */
-export function columna(nombre, { col, r0, r1, encabezado, contenido = 'os' }) {
+export function columna(nombre, { col, r0, r1, encabezado, filaEncabezado = null, contenido = 'os' }) {
   return {
     nombre,
     c0: col,
@@ -59,8 +66,9 @@ export function columna(nombre, { col, r0, r1, encabezado, contenido = 'os' }) {
     r0,
     r1,
     contenido,
-    // El encabezado de una columna vive en la fila de arriba del bloque.
-    ancla: { fila: r0 - 1, col, texto: encabezado },
+    // El encabezado de una columna vive en la fila de arriba del bloque, salvo que el llamador
+    // declare otra (ver `filaEncabezado`).
+    ancla: { fila: filaEncabezado ?? r0 - 1, col, texto: encabezado },
   }
 }
 

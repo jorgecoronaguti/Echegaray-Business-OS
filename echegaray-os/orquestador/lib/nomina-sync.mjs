@@ -69,9 +69,14 @@ export function detectarQuincenas(filas = []) {
  *
  * Los índices son 0-based, relativos a la columna A de la pestaña.
  */
+// ═══ TRECE COLUMNAS DESDE EL 09/09/2026 ═══
+// `hs_previstas` se fue (era `Días × Personas × jornada`, un derivado sin consumidor) y `hs_reales`
+// pasó a llamarse `horas` a secas: la columna es una sola. Todo lo que está a su derecha corrió un
+// lugar, y por eso este objeto y `REGISTRO_COLS` del generador tienen que moverse en el MISMO commit
+// — son las dos mitades del mismo contrato, y el lector de la caja usa ésta.
 export const COL_REGISTRO = {
-  desde: 0, hasta: 1, pago: 2, dias: 3, personas: 4, hs_previstas: 5, hs_reales: 6,
-  banco: 7, adelanto: 8, total_recibo: 9, total: 10, sigma_hora: 11, estado: 12,
+  desde: 0, hasta: 1, pago: 2, dias: 3, personas: 4, horas: 5,
+  banco: 6, adelanto: 7, total_recibo: 8, total: 9, sigma_hora: 10, estado: 11,
 }
 /**
  * Ídem para el CALENDARIO DE PAGO (§1.3), que tiene menos columnas y otro orden.
@@ -96,13 +101,19 @@ export const COL_REGISTRO = {
  * nombre inocente, exactamente el índice que no se puede consumir. `banco` y `efectivo` se declaran
  * porque el layout los tiene, y siguen sin consumidores por la misma razón de siempre.
  */
-// `banco` ocupa el lugar que tenía `consolidado` (el TOTAL de la fila) desde el 14/08: el dueño pidió
-// cuatro veces las DOS mitades del acuerdo 50/50 en la proyección y el calendario publicaba sólo el
-// efectivo. El TOTAL salió porque era la suma de las tres columnas que tenía al lado y no decidía
-// nada; y `consolidado` estaba declarado acá sin un solo lector, así que nada aguas abajo lo pierde.
-export const COL_PROYECCION = {
-  desde: 0, hasta: 1, pago: 2, total: 3, oficina: 4, direccion: 5, banco: 6, efectivo: 7,
-}
+// ═══ LA PROYECCIÓN COMPARTE LA GRILLA DEL REGISTRO DESDE EL 09/09/2026 ═══
+//
+// Eran dos tablas con dos anchos y dos juegos de índices. Ahora es una: las quincenas cerradas
+// arriba, las que faltan abajo, un solo encabezado. Este objeto queda como ALIAS de `COL_REGISTRO`
+// —los consumidores lo citan por nombre— y ya no puede desincronizarse del otro, que es exactamente
+// el defecto que costó que la base terminara con cero quincenas reales en julio.
+//
+// `oficina` y `direccion` SE FUERON, no se reapuntaron: esas columnas no existen. Oficina y
+// dirección publican su total en su propio bloque mensual y viajan al Cash Flow por
+// `OFICINA_PROYECTADO` y `DIRECCION_PROYECTADO`; leerlas también desde acá las contaría dos veces
+// —$50M de más en el calendario de caja— con un número perfectamente plausible y ninguna celda en
+// rojo. `total` sigue significando lo mismo: los jornales de OBRA proyectados.
+export const COL_PROYECCION = COL_REGISTRO
 
 export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
   const H = `'${hoja}'`
@@ -129,10 +140,14 @@ export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
       { f: `=IFERROR(INDEX(${H}!F${ff}:U${ff};SUMPRODUCT(MAX((${H}!F${ff}:U${ff}<>"")*(COLUMN(${H}!F${ff}:U${ff})-COLUMN(${H}!F${ff})+1))));"")` },
       { f: `=COUNTA(${H}!F${ff}:U${ff})` },
       { f: `=COUNT(${H}!A${b.inicio}:A${b.fin})` },
-      // D = días hábiles, E = personas. Eran C y D hasta el 31/07: entró "Se paga el" en la columna C
-      // y todo el registro corrió una a la derecha. Quien inserte otra columna tiene que corregir acá:
-      // esta fórmula la escribe el generador, así que el desfase NO daría error, daría un número.
-      { f: `=D${r}*E${r}*'Parámetros'!$B$43` },
+      // ═══ «Hs previstas» SE FUE (09/09/2026) ═══
+      //
+      // Era `=D×E×'Parámetros'!$B$43` —días × personas × jornada—: un derivado de dos columnas que ya
+      // están en la fila, escrito con una referencia a una CELDA de Parámetros por número de fila
+      // (`$B$43`), que es la clase de ancla que se rompe sin dar error el día que alguien inserta una
+      // línea allá. Su único consumidor era el aviso «faltan horas por cargar» del cuadro de pago de
+      // «Jornales por Quincena», retirado el mismo día. Lo que queda es la hora MEDIDA, que es un
+      // hecho de la planilla y no una cuenta.
       { f: `=SUM(${H}!V${b.inicio}:V${b.fin})` },
       // ═══ EL TOTAL DE LA QUINCENA ES «TOTAL SEMANA» (AB), NO «TOTAL EFECTIVO» (AA) — 08/09/2026 ═══
       //

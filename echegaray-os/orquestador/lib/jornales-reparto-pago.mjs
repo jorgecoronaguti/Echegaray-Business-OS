@@ -81,12 +81,20 @@ export const DIRECCION_POR_BANCO = 1
  * construcción. Es lo que permite que el calendario publique las dos mitades sin una tercera columna
  * de total: el total es la suma de las dos que están al lado.
  *
- * @param {{obreros:string, oficina:string, direccion:string}} c referencias A1 de la fila
+ * ═══ OFICINA Y DIRECCIÓN SON OPCIONALES DESDE EL 09/09/2026 ═══
+ *
+ * El calendario dejó de tener una columna por nómina: las quincenas de obra viven en la misma grilla
+ * que el registro y los dos bloques mensuales publican su total aparte. Sumarlas acá contaría dos
+ * veces lo que sus propios rangos con nombre ya llevan al Cash Flow. Con un solo argumento la fórmula
+ * es `=X/2` y no `=(X+undefined)/2+undefined`: pasar `'0'` para taparlo habría dejado ceros escritos
+ * adentro de una fórmula de caja, que es basura que nadie borra después.
+ *
+ * @param {{obreros:string, oficina?:string, direccion?:string}} c referencias A1 de la fila
  * @returns {{banco:string, efectivo:string}} las dos fórmulas es-AR
  */
-export function canalesProyectados({ obreros, oficina, direccion }) {
-  const mitad = `(${obreros}+${oficina})/2`
-  return { banco: `=${mitad}+${direccion}`, efectivo: `=${mitad}` }
+export function canalesProyectados({ obreros, oficina = null, direccion = null }) {
+  const mitad = oficina ? `(${obreros}+${oficina})/2` : `${obreros}/2`
+  return { banco: direccion ? `=${mitad}+${direccion}` : `=${mitad}`, efectivo: `=${mitad}` }
 }
 
 /**

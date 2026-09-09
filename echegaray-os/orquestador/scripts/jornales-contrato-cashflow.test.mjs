@@ -22,7 +22,7 @@
 // de la O de Compras. Eso se afirma acá, columna por columna, y sobrevive al rediseño sin diluirse.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grilla, rangosDeJornales } from './jornales-pestana.mjs'
+import { grilla, rangosDeJornales, cabeceraDelRegistro } from './jornales-pestana.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { isoASerial } from '../lib/jornales-fixture.mjs'
 import {
@@ -186,4 +186,37 @@ test('un mes con PAGADO y PROYECTADO a la vez no se cuenta dos veces: gana el he
   }, ser('2026-09-09'), { aviso: (m) => avisos.push(m) })
   assert.equal(ms.reduce((a, m) => a + m.importe, 0), 1_000_000)
   assert.equal(avisos.length, 1)
+})
+
+// ═══ LA MIGRACIÓN DE LAYOUT NO PUEDE PERDER LAS FECHAS DEL DUEÑO ═══
+//
+// «Pagado el» es la columna que él carga a mano y la que dispara el descuento en CAJA. El generador
+// no la escribe: la COPIA de la pestaña vieja a la grilla nueva, emparejando por la cabecera del
+// registro. El rediseño del 09/09/2026 renombró la primera columna («Quincena» → «Desde») y corrió
+// «Pagado el» de la N a la M — o sea que la pestaña que está en Drive tiene el ancla vieja.
+//
+// EL DEFECTO QUE ESTO ATRAPA: con la cabecera clavada a «Quincena» + última columna, esa pestaña no
+// se reconoce, el código cae a copiar por número de fila y cada fecha aterriza en la quincena de
+// otra. Ya pasó dos veces con este mismo mecanismo, las dos con pérdida de trabajo del dueño.
+test('el ancla de «Pagado el» reconoce la pestaña VIEJA y la nueva, y dice en qué columna estaba', () => {
+  // El layout de hasta el 08/09: catorce columnas, «Quincena» en la A y «Pagado el» en la N.
+  const viejo = [
+    ['Jornales por quincena'], [], [],
+    ['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'Hs previstas', 'Hs reales',
+      'Banco', 'Adelanto', 'Total recibo', 'TOTAL', 'Σ $/hora', 'Estado', 'Pagado el'],
+    ['=x', '=y', '', '', '', '', '', '', '', '', '', '', '', 46237],
+  ]
+  assert.deepEqual(cabeceraDelRegistro(viejo), { fila: 3, col: 13 },
+    'no reconoció la cabecera del layout que está en Drive: las fechas del dueño se copiarían por número de fila')
+
+  // Y el de hoy: trece columnas, «Desde» en la A y «Pagado el» en la M.
+  const g = grilla({ bloques, pendientes, bloquesOfi })
+  const b = cabeceraDelRegistro(g.filas)
+  assert.ok(b, 'no reconoció su propia cabecera')
+  assert.equal(b.fila + 2, g.f0, 'la cabecera no es la fila de arriba de la primera quincena')
+  assert.equal(g.filas[b.fila][b.col], 'Pagado el')
+
+  // Sin cabecera reconocible devuelve null y el llamador avisa en vez de adivinar.
+  assert.equal(cabeceraDelRegistro([['otra cosa'], []]), null)
+  assert.equal(cabeceraDelRegistro([]), null)
 })
