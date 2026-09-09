@@ -146,14 +146,22 @@ export async function getHorasPorObra(
   return { obras: obrasSalida, presupuesto, errores }
 }
 
-/** Las personas que hoy están en la empresa, con su $/h vigente, para proyectar. */
+/**
+ * Las personas que hoy están en la empresa, con su $/h vigente, para proyectar.
+ *
+ * EL CORTE ES `en_la_empresa`, NO `fecha_egreso is null`. Medido el 09/09/2026: 46 personas no
+ * tienen egreso cargado y sólo 18 están en la empresa. Proyectar sobre las 46 publicaría una caja
+ * de nómina que incluye gente que ya no trabaja acá, y como los que faltan salen contados como
+ * «sin tarifa», el error se leería como un dato pendiente en vez de como un total inflado.
+ * `es_prueba` sale por lo mismo: son cuentas de QA, no plantel.
+ */
 export async function getPersonasProyectables(
   supabase: SupabaseClient, tarifas: ReadonlyMap<string, number>,
 ): Promise<{ personas: PersonaProyectable[]; error: Falla | null }> {
-  const r = await supabase.from('personas').select('id, nombre_completo, fecha_egreso')
+  const r = await supabase.from('personas').select('id, nombre_completo, en_la_empresa, es_prueba')
   if (r.error) return { personas: [], error: { que: 'el plantel', error: r.error.message } }
   const personas = (r.data ?? [])
-    .filter((p) => p.fecha_egreso == null)
+    .filter((p) => p.en_la_empresa === true && p.es_prueba !== true)
     .map((p): PersonaProyectable => ({
       personaId: String(p.id),
       nombre: String(p.nombre_completo ?? ''),

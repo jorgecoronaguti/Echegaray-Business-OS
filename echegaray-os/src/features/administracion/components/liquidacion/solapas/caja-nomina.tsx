@@ -53,7 +53,12 @@ export async function SolapaCajaNomina({ quincena }: { quincena: Quincena; hoy?:
   const fallas = [...errores, ...liq.errores, ...(errTarifa ? [errTarifa] : []), ...(errPlantel ? [errPlantel] : []), ...(jornales.error ? [jornales.error] : [])]
   const delSheet = jornales.fila
   const totalPropio = efectivo + porBanco
-  const difiere = delSheet?.total != null && Math.abs(delSheet.total - totalPropio) > 1
+  // UN ESPEJO SINCRONIZADO ANTES DE QUE LA QUINCENA EMPEZARA NO PROYECTA ESTA VENTANA, y restarle
+  // el cálculo daría una «diferencia» del tamaño del total entero. Medido el 09/09/2026: la fila
+  // del Sheet para el 1-15 de septiembre trae total 1,04 y `sincronizado_en` del 20/07 — es un
+  // residuo, no un pronóstico. Se muestra igual (con su fecha), pero no se resta.
+  const espejoUtil = delSheet?.sincronizadoEn != null && delSheet.sincronizadoEn >= quincena.desde
+  const difiere = espejoUtil && delSheet?.total != null && Math.abs(delSheet.total - totalPropio) > 1
 
   return (
     <section data-testid="solapa-caja-nomina">
@@ -82,7 +87,9 @@ export async function SolapaCajaNomina({ quincena }: { quincena: Quincena; hoy?:
           <Renglon testid="cf-os" rotulo="Este módulo (horas cargadas)" valor={pesos(totalPropio || null)} />
           <Renglon testid="cf-sheet" rotulo={`Sheet · línea Jornales${delSheet ? ` (${delSheet.estado})` : ''}`}
             valor={delSheet?.total == null ? 'sin espejo' : pesos(delSheet.total)}
-            nota={delSheet?.sincronizadoEn ? `espejo del ${delSheet.sincronizadoEn}` : 'no hay fila del Sheet para esta ventana'} />
+            nota={delSheet?.sincronizadoEn
+              ? `espejo del ${delSheet.sincronizadoEn}${espejoUtil ? '' : ' — anterior a esta quincena: no la proyecta'}`
+              : 'no hay fila del Sheet para esta ventana'} />
           {difiere && delSheet?.total != null && (
             <Renglon testid="cf-diferencia" fuerte rotulo="Diferencia" valor={pesos(delSheet.total - totalPropio)}
               nota="el Sheet completa los días que faltan con la jornada; este módulo sólo muestra lo cargado" />
