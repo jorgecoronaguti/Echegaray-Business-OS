@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 18:10 (hora local −03) · main `ad805242` = origin; producción (Sheet) en `b1e60bbb`; Vercel con el push_
+_actualizado: 2026-09-09 17:50 (hora local −03) · main `c82b2a58` = origin = producción (Sheet y Vercel)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -188,8 +188,19 @@ ventana 10/08→10/09, plan free, 2 automatizaciones por corrida). Ventana nueva
 
 ## 8. PRÓXIMO PASO
 
-1. Proveedores: bloque «4 · RESPALDO FISCAL» (RUBROS_COMERCIALES de cruce-arca-compras) y alertas 87–88 (`devolverElAire`);
-   los nombres `ARCA_*` ya no tienen lector: retirarlos con `rangos-nombrados`.
+1. Sheet: las tres pestañas están en 0 desvíos y miradas por PDF (Proveedores con bloque 4 en A158:B165, pie de la
+   sección 2 como controles, colchón de 15 filas conservado por razón medida). Queda: la barra gris del título «3 · CON
+   QUIÉN SE GASTA» (ningún generador la pinta: probablemente el estilo nativo del pivot); retirar los nombres `ARCA_*`
+   sin lector; pipeline de las 18:50 como prueba de la corrida automática (`proveedores-que-sale-cada-dia` ya sale en 0).
+   Materiales: «Sin obra» y «⇒» del bloque 3 siguen en MONEDA_CONTROL (decisión pendiente).
+1b. Liquidación · carga JORNALES «Obreros 26» (`orquestador/scripts/liquidacion-cargar-jornales.mjs --hoy … --aplicar`,
+   idempotente): 5 de 16 quincenas cerradas cargadas ($36.584.548, verificadas en Postgres). Traban las otras 11 ($91,8M):
+   6 personas que no existen en `public.personas` (Pablo Ramos, Gonzalez Valentin, Ruben Palacio, Alex Videla, Jose Luis
+   Balmaceda, Hugo Barrera — pedir al dueño si se dan de alta como bajas), 8 filas con plata ilegible (2ª de junio EFECTIVO
+   vacío; agosto/sept con la columna 24 sin rótulo), 6 matcheos por parecido a confirmar (Castillo Carlos → CASTILLO BENITEZ
+   JUAN CARLOS). `jornales.mjs` declara TOTAL_COL['Obreros 26']=26 que hoy es EFECTIVO (27 es TOTAL): revisar consumidores.
+1c. Web · el dueño pidió saber si el contador de comprobantes del Sheet está en Proveedores de la web: NO se muestra
+   (la vista lo calcula, `TablaProveedores` no lo dibuja); ofrecido «Comprobantes 2026» con la misma ventana/universo.
 2. Aplicar las 4 migraciones de Liquidación en orden (`aplicar-migracion.mjs`) y probar como jefe_obra que no vea el
    módulo; guarda admin en `liquidacionActions.ts`; pantallas 1–12 del handoff (`/home/jorge/liqhs`).
 3. Pipeline de las 18:50: confirmar Materiales/Estructura/Proveedores sin «no repongo» y OBRAS leyendo «TOTAL POR OBRA».
