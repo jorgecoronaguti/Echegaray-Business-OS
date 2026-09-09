@@ -293,6 +293,13 @@ export async function guardarValorHora(entrada: unknown): Promise<ResultadoLiqui
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const { persona_id: personaId, valor, ...v } = parsed.data
 
+  // SÓLO LOS OBREROS COBRAN POR HORA. `persona_tarifa` acepta `valor_hora` O `neto_mensual`, nunca
+  // los dos (CHECK «una sola forma»): escribir un $/h para alguien de Oficina le borraría el neto
+  // mensual acordado. La pantalla no dibuja esa celda; esto es la cerradura.
+  if (v.grupo !== 'obreros') {
+    return { ok: false, error: 'El $/hora es de los obreros: oficina cobra un neto mensual.' }
+  }
+
   const supabase = await createClient()
   const permiso = await puedeLiquidar(supabase)
   if (!permiso.ok) return { ok: false, error: permiso.error }

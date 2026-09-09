@@ -66,3 +66,15 @@ test('VACÍO NO ES CERO: la celda vacía viaja como «» y la acción la traduce
   // EL DEFECTO QUE ATRAPA: un `Number(valor) || 0` que convierte «borré la celda» en «le pago $ 0».
   assert.doesNotMatch(cuerpo, /\|\| 0/)
 })
+
+test('EL $/HORA NO SE ESCRIBE EN OFICINA: le borraría el neto mensual acordado', () => {
+  // EL DEFECTO QUE ATRAPA: `persona_tarifa` acepta `valor_hora` O `neto_mensual` (CHECK «una sola
+  // forma»). Un $/h escrito sobre Maldonado o Nievas convertiría $1.800.000 mensuales en una tarifa
+  // horaria, y el cuadro los movería solos de Oficina a Obreros.
+  const cuerpo = cuerpoDe('guardarValorHora')
+  assert.match(cuerpo, /if \(v\.grupo !== 'obreros'\)/)
+  assert.ok(
+    cuerpo.indexOf("v.grupo !== 'obreros'") < cuerpo.indexOf('createAdminClient()'),
+    'se rechaza antes de tomar la clave de servicio',
+  )
+})

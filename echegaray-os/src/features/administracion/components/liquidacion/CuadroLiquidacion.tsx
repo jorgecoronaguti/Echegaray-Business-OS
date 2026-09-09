@@ -222,7 +222,10 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
           personaId={linea.personaId}
           quincena={quincena}
           grupo={grupo}
-          soloLectura={bloqueada}
+          // OFICINA Y LAS FINALES NO COBRAN POR HORA: escribir un $/h ahí crearía una tarifa
+          // `valor_hora` que, por el CHECK «una sola forma», borraría el neto mensual de esa
+          // persona — $1.800.000 convertidos en una tarifa horaria sin que nadie lo pida.
+          soloLectura={bloqueada || grupo !== 'obreros'}
         />
       </Celda>
       {celda('cobra', linea.cobra, pesos)}
@@ -318,6 +321,7 @@ function ValorHora({ valor, origen, personaId, quincena, grupo, soloLectura }: {
   soloLectura: boolean
 }) {
   if (soloLectura) return <span title={origen ?? undefined}>{pesos(valor)}</span>
+
   return (
     <span title={origen ?? undefined} style={{ display: 'inline-flex', justifyContent: 'flex-end' }}>
       <InlineEdit
