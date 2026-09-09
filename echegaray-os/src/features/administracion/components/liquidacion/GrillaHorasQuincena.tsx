@@ -17,6 +17,7 @@
 // cargar, cerrar está deshabilitado y debajo se publica la lista de lo que lo traba. Un botón
 // apagado sin explicación obliga a adivinar, y lo que se adivina se cierra igual.
 
+import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import type {
   CeldaDeGrilla, EstadoDeFila, FilaDeGrilla, ResumenDeGrilla,
@@ -62,10 +63,25 @@ function Celda({ celda }: { celda: CeldaDeGrilla }) {
   return <div style={{ textAlign: 'center' }}>{numero(celda.horas ?? 0)}</div>
 }
 
-function Fila({ fila }: { fila: FilaDeGrilla }) {
+function Fila({ fila, abrir, abierta }: {
+  fila: FilaDeGrilla
+  /** Abrir la persona NO NAVEGA (handoff v2 §4): el panel se despliega al costado. */
+  abrir?: (personaId: string) => void
+  abierta?: boolean
+}) {
   const estado = ESTADOS[fila.estado]
   return (
-    <div style={filaGrid(58)} data-testid={`fila-${fila.personaId}`}>
+    <div
+      style={{
+        ...filaGrid(58),
+        cursor: abrir ? 'pointer' : undefined,
+        background: abierta ? '#FAFAF8' : undefined,
+        // LA BARRA AMARILLA DE 3 px MARCA LA FILA ABIERTA. Es la única marca de marca del cuadro.
+        boxShadow: abierta ? `inset 3px 0 0 ${V.marca}` : undefined,
+      }}
+      data-testid={`fila-${fila.personaId}`}
+      onClick={abrir ? () => abrir(fila.personaId) : undefined}
+    >
       <div>{fila.nombre}</div>
       {fila.celdas.map((c) => <Celda key={c.fecha} celda={c} />)}
       <div style={{ textAlign: 'right', fontWeight: 600 }}>{numero(fila.cargadas)}</div>
@@ -77,7 +93,8 @@ function Fila({ fila }: { fila: FilaDeGrilla }) {
 
 export interface FiltroDeGrilla {
   rotulo: string
-  opciones: { texto: string; detalle: string; activa?: boolean; alerta?: boolean }[]
+  /** `href` convierte la opción en un recorte navegable; sin él es una etiqueta y no promete nada. */
+  opciones: { texto: string; detalle: string; activa?: boolean; alerta?: boolean; href?: string }[]
 }
 
 function Filtro({ filtro }: { filtro: FiltroDeGrilla }) {
@@ -92,7 +109,7 @@ function Filtro({ filtro }: { filtro: FiltroDeGrilla }) {
       }}>{filtro.rotulo}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, fontSize: '12.5px' }}>
         {filtro.opciones.map((o) => (
-          <div key={o.texto} style={{
+          <FilaFiltro key={o.texto} href={o.href} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
             height: 29, padding: '0 9px', margin: '0 -9px', borderRadius: 6,
             background: o.activa ? '#FFFFFF' : 'transparent',
@@ -105,14 +122,30 @@ function Filtro({ filtro }: { filtro: FiltroDeGrilla }) {
               fontSize: '11px', fontVariantNumeric: 'tabular-nums',
               color: o.alerta ? V.warn : V.tenue, fontWeight: o.alerta ? 500 : 400,
             }}>{o.detalle}</span>
-          </div>
+          </FilaFiltro>
         ))}
       </div>
     </div>
   )
 }
 
-export function GrillaHorasQuincena({ titulo, jornadaTexto, filas, resumen, filtros, accion }: {
+/** La misma caja para la opción navegable y la que no lo es: dos formas darían dos alturas. */
+function FilaFiltro({ href, style, children }: {
+  href?: string
+  style: React.CSSProperties
+  children: React.ReactNode
+}) {
+  if (!href) return <div style={style}>{children}</div>
+  return (
+    <Link href={href} prefetch={false} style={{ ...style, textDecoration: 'none', color: style.color }}>
+      {children}
+    </Link>
+  )
+}
+
+export function GrillaHorasQuincena({
+  titulo, jornadaTexto, filas, resumen, filtros, accion, abrir, abierta,
+}: {
   /** «1 al 15 de septiembre». */
   titulo: string
   /** «9 h L a J · 8 h los viernes» — el prop del mockup, para poder validar R2 contra el dato real. */
@@ -122,14 +155,23 @@ export function GrillaHorasQuincena({ titulo, jornadaTexto, filas, resumen, filt
   filtros: readonly FiltroDeGrilla[]
   /** El botón de cierre. Se dibuja siempre; lo habilita `resumen.puedeCerrar`. */
   accion?: React.ReactNode
+  /** Sin `abrir`, la grilla sigue siendo lo que era: una tabla que no responde al clic. */
+  abrir?: (personaId: string) => void
+  abierta?: string | null
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'stretch', flexDirection: 'row-reverse' }}>
+    // EN EL TELÉFONO LOS FILTROS VAN ABAJO Y LA GRILLA SE DESLIZA. El mockup está dibujado a
+    // 1240-1440 px; a 390 la columna de 230 px se le come la mitad al cuadro y las trece columnas de
+    // día quedan cortadas sin forma de llegar a ellas. Es la misma salida que ya usa la grilla de
+    // Asistencia: apilar y dejar que el ancho real se recorra.
+    <div className="flex flex-col-reverse items-stretch lg:flex-row-reverse">
 
-      <aside style={{
-        width: 230, flex: 'none', borderLeft: `1px solid ${V.lineaFuerte}`, background: '#FAFAF8',
-        display: 'flex', flexDirection: 'column',
-      }}>
+      <aside
+        className="w-full border-t lg:w-[230px] lg:flex-none lg:border-l lg:border-t-0"
+        style={{
+          borderColor: V.lineaFuerte, background: '#FAFAF8',
+          display: 'flex', flexDirection: 'column',
+        }}>
         {filtros.map((f) => <Filtro key={f.rotulo} filtro={f} />)}
         <div style={{ marginTop: 'auto', padding: 15, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Resumen rotulo="Cargadas" valor={numero(resumen.cargadas)} />
@@ -157,7 +199,7 @@ export function GrillaHorasQuincena({ titulo, jornadaTexto, filas, resumen, filt
         </div>
       </aside>
 
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <div className="min-w-0 flex-1" style={{ display: 'flex', flexDirection: 'column' }}>
         <div style={{
           padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 16,
           borderBottom: `1px solid ${V.linea}`,
@@ -166,7 +208,10 @@ export function GrillaHorasQuincena({ titulo, jornadaTexto, filas, resumen, filt
           <div style={{ fontSize: '11.5px', color: V.apagado }}>{jornadaTexto}</div>
         </div>
 
-        <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column' }}>
+        {/* EL ANCHO REAL DE LA GRILLA SE RECORRE, no se aplasta: trece columnas de 30 px más el
+            nombre no entran en 390 y encogerlas dejaría celdas ilegibles. */}
+        <div className="overflow-x-auto" style={{ padding: '0 20px' }}>
+        <div style={{ minWidth: 760, display: 'flex', flexDirection: 'column' }}>
           <div style={{
             display: 'grid', gridTemplateColumns: COLUMNAS, gap: 6, height: 36, alignItems: 'end',
             borderBottom: `1px solid ${V.linea}`, paddingBottom: 9,
@@ -182,7 +227,9 @@ export function GrillaHorasQuincena({ titulo, jornadaTexto, filas, resumen, filt
             <div style={{ textAlign: 'right' }}>Estado</div>
           </div>
 
-          {filas.map((f) => <Fila key={f.personaId} fila={f} />)}
+          {filas.map((f) => (
+            <Fila key={f.personaId} fila={f} abrir={abrir} abierta={f.personaId === abierta} />
+          ))}
 
           <div style={{
             ...filaGrid(56), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
@@ -199,6 +246,7 @@ export function GrillaHorasQuincena({ titulo, jornadaTexto, filas, resumen, filt
             <div style={{ textAlign: 'right' }}>{numero(resumen.esperadas)}</div>
             <div />
           </div>
+        </div>
         </div>
 
         <div style={{ padding: '12px 20px 20px', fontSize: '11px', color: V.apagado }}>
