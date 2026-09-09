@@ -47,6 +47,8 @@ import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { BloqueAsistenciaQuincena } from '@/features/administracion/components/BloqueAsistenciaQuincena'
 import { BloqueLiquidacion } from '@/features/administracion/components/liquidacion/BloqueLiquidacion'
+import { BarraSolapas } from '@/features/administracion/components/liquidacion/solapas/BarraSolapas'
+import { solapaDe } from '@/features/administracion/components/liquidacion/solapas'
 import { BloqueAsistenciaDia } from '@/features/administracion/components/asistencia/BloqueAsistenciaDia'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
@@ -74,7 +76,12 @@ export const dynamic = 'force-dynamic'
 
 const RUTA = '/administracion/personas'
 
-type Busqueda = { q?: string; f?: string; nueva?: string; vista?: string; quincena?: string; modo?: string; obra?: string; dia?: string }
+type Busqueda = {
+  q?: string; f?: string; nueva?: string; vista?: string; quincena?: string; modo?: string
+  obra?: string; dia?: string
+  /** Las seis solapas de Liquidación (`solapas/index.ts`). Default `horas`. */
+  solapa?: string; convenio?: string; pendiente?: string
+}
 
 function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): string {
   const params = new URLSearchParams()
@@ -96,6 +103,25 @@ const hrefAsistencia = (quincena?: string): string =>
  *  ventana sirve y el bloque la resuelve. */
 const hrefLiquidacion = (quincena?: string): string =>
   `${RUTA}?vista=liquidacion${quincena ? `&quincena=${quincena}` : ''}`
+
+/**
+ * UN ENLACE DENTRO DE LIQUIDACIÓN, conservando lo que ya estaba puesto.
+ *
+ * Cambiar de solapa NO puede perder la quincena que se está mirando, y elegir otro período no puede
+ * devolver a la solapa Horas: los dos son el mismo recorte visto desde otro eje. Un valor
+ * `undefined` en `cambios` BORRA ese parámetro — así se apaga un filtro con el mismo enlace que lo
+ * prendió.
+ */
+function hrefSolapa(base: Busqueda, cambios: Record<string, string | undefined>): string {
+  const actual: Record<string, string | undefined> = {
+    solapa: base.solapa, quincena: base.quincena, convenio: base.convenio, pendiente: base.pendiente,
+  }
+  const params = new URLSearchParams({ vista: 'liquidacion' })
+  for (const [k, v] of Object.entries({ ...actual, ...cambios })) {
+    if (v) params.set(k, v)
+  }
+  return `${RUTA}?${params.toString()}`
+}
 
 /** La carga del día en el teléfono. `modo=dia` viaja SIEMPRE: sin él, tocar «‹ ayer» desde un
  *  navegador que no manda las pistas devolvería la grilla de quincena y el paso se perdería. */
@@ -245,6 +271,8 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   if (enLiquidacion && !liquida) notFound()
 
   if (enLiquidacion) {
+    const solapa = solapaDe(sp.solapa)
+    const Contenido = solapa.Componente
     return (
       <Marco>
         <NavAdministracion />
@@ -254,10 +282,35 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             espacioPanel={false}
             vistas={vistasDe('liquidacion', sp.quincena, veLaPlata)}
           />
-          <div style={{ padding: '10px 20px 24px' }}>
-            <BloqueLiquidacion
-              quincenaPedida={sp.quincena} hoy={hoy} hrefDe={hrefLiquidacion} puedeCerrar
+          <div style={{ padding: '0 20px 24px' }}>
+            <BarraSolapas
+              activa={solapa.clave}
+              hrefDe={(clave) => hrefSolapa(sp, { solapa: clave })}
             />
+            <div style={{ paddingTop: 10 }}>
+              {Contenido ? (
+                <Contenido
+                  quincenaPedida={sp.quincena}
+                  hoy={hoy}
+                  parametros={{ convenio: sp.convenio, pendiente: sp.pendiente }}
+                  hrefDe={(cambios) => hrefSolapa(sp, cambios)}
+                />
+              ) : (
+                // LA PANTALLA 4 TODAVÍA NO EXISTE, Y EL CUADRO QUE YA CONTESTA LA CADENA DE PAGO SÍ.
+                // Dejarlo acá mientras tanto evita que la solapa Pagos lleve a una pantalla en
+                // blanco; quien construya la pantalla 4 registra su componente y esto se cae solo.
+                solapa.clave === 'pagos' ? (
+                  <BloqueLiquidacion
+                    quincenaPedida={sp.quincena} hoy={hoy} hrefDe={hrefLiquidacion} puedeCerrar
+                  />
+                ) : (
+                  <p style={{ fontSize: '12.5px', color: V.apagado, padding: '18px 0' }}
+                    data-testid="solapa-sin-pantalla">
+                    «{solapa.titulo}» todavía no está construida.
+                  </p>
+                )
+              )}
+            </div>
           </div>
         </div>
       </Marco>
