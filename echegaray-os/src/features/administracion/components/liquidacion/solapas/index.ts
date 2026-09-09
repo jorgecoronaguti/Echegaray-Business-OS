@@ -19,6 +19,7 @@
 
 import type { ComponentType } from 'react'
 import { SolapaHoras } from './SolapaHoras'
+import { SolapaCosto } from './costo'
 
 export type ClaveDeSolapa = 'horas' | 'pagos' | 'costo' | 'convenios' | 'cierre' | 'recibos'
 
@@ -50,7 +51,7 @@ export const SOLAPA_POR_DEFECTO: ClaveDeSolapa = 'horas'
 export const SOLAPAS: SolapaDeLiquidacion[] = [
   { clave: 'horas', titulo: 'Horas', Componente: SolapaHoras },
   { clave: 'pagos', titulo: 'Pagos', Componente: null },
-  { clave: 'costo', titulo: 'Costo a la obra', Componente: null },
+  { clave: 'costo', titulo: 'Costo a la obra', Componente: SolapaCosto },
   { clave: 'convenios', titulo: 'Convenios', Componente: null },
   { clave: 'cierre', titulo: 'Cierre', Componente: null },
   { clave: 'recibos', titulo: 'Recibos', Componente: null },
