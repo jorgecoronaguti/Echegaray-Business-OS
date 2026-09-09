@@ -108,6 +108,14 @@ ventana 10/08→10/09, plan free, 2 automatizaciones por corrida). Ventana nueva
   4.005.752), «Financiero» 15.781.442 / 3.848.432, las 12 líneas de nómina iguales. **Tras el cambio de las 14:00 la línea
   proyectada de «Impuestos» debe subir en el pipeline de las 14:50**: sep ≈ 6,42 M (IIBB 1.719.294 + IVA 4.703.659), oct
   ≈ 12,18 M (10.761.596 + 1.422.994), nov ≈ 4,01 M. Confirmar releyendo el Cash Flow Mensual.
+- **14:30 — tres celdas repuestas a mano en Impuestos** (bypass `yaGuardado`): B13 libre disponibilidad de enero
+  $20.803.502, C21/D21 retenciones IIBB feb $839.024 y mar $282.153. Cotejados los 7 PDF de IVA y los 7 de IIBB del
+  archivo fiscal contra la pestaña: coinciden. Marzo dejó de mostrar $14.074 de IIBB a pagar (la DDJJ dice $0); hero
+  «A pagar en 30 días» $10.182.690, «A favor» $9.875.444 (+$19.073 de IIBB jul). Causa (bucle de «vaciaste» por forma)
+  en memoria `celda-vaciada-falsa-por-forma`; **de raíz: que `respetar-ediciones` no selle como escrita una celda que
+  rechazó**. Verificar tras el pipeline de las 14:50 que las tres siguen.
+- El lector del 931 de Cargas toma sólo `*F.931*.pdf` de `<año>/931`: «2026-08 pago vep» y los `Tk` no entran (bien).
+  Suelto en `2026/IIBB`: un zip de comprobantes de compras (ruido, no rompe nada).
 - Datos de Cobranzas a confirmar con el dueño: las 9 filas «B» de Quattropani (78–86) tienen «Fecha de Factura»
   18/08 y ningún número de comprobante (¿se facturan todas en agosto o una por certificación?); la fila 78 dice
   «Cobrado» con fecha de cobro 11/09 (futura). Cobranzas B difiere de las F.2051 presentadas en ±$2 M por mes (may
@@ -122,7 +130,7 @@ ventana 10/08→10/09, plan free, 2 automatizaciones por corrida). Ventana nueva
   pegados vs fórmula «MITAD BLANCA» $330.431: confirmar con el recibo). Censo marca los 15 del dueño como «pegados»:
   declarar la columna I como entrada del dueño en `censo-numeros-pegados`.
 - Confirmar con el dueño la baja de proyección sep–dic (−$1,38 M en total) por el cambio de «sábado supuesto» a días hábiles.
-- Defectos menores de pantalla: Jornales G78 «Σ $/hora con aumento» y Nómina I32 «EFECTIVO redondeado» cortados a 100 px;
+- Defectos menores de pantalla (B13 de Impuestos ya repuesta): Jornales G78 «Σ $/hora con aumento» y Nómina I32 «EFECTIVO redondeado» cortados a 100 px;
   titular de Jornales con las tres cifras en columnas distintas (B/G/H) en vez de B como Cargas/Nómina.
 - El pipeline termina en `failed` por auditores rojos (cobertura, diseño unificado, censo, formato-pestanas «8 fuera de
   estándar»): revisar cuáles son de hoy y cuáles preexistentes.
