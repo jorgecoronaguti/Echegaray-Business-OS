@@ -43,13 +43,13 @@ test('cuenta las celdas con dato de un rango con nombre, y la fórmula cuenta co
   const grilla = { filas: [[{ valor: 'Banco' }], [{ formula: '=1' }], [{ valor: '' }], [{}]] }
   // Filas 2-4 (0-based 1..3): una fórmula, una cadena vacía y una celda sin nada.
   assert.deepEqual(contarConDato(grilla, { startRowIndex: 1, endRowIndex: 4, startColumnIndex: 0, endColumnIndex: 1 }),
-    { con: 1, total: 3 })
+    { con: 1, total: 3, mask: [true, false, false] })
 })
 
 test('UN RANGO CIEGO DA CERO CELDAS CON DATO — es el caso de OFICINA_BANCO', () => {
   const grilla = { filas: [[{ valor: 'Banco' }], [{}], [{}], [{}]] }
   assert.deepEqual(contarConDato(grilla, { startRowIndex: 1, endRowIndex: 4, startColumnIndex: 0, endColumnIndex: 1 }),
-    { con: 0, total: 3 })
+    { con: 0, total: 3, mask: [false, false, false] })
 })
 
 test('UN RANGO FUERA DEL TRAMO LEÍDO NO SE DECLARA VACÍO: devuelve null', () => {
@@ -71,7 +71,7 @@ test('UN RANGO FUERA DEL TRAMO LEÍDO NO SE DECLARA VACÍO: devuelve null', () =
 test('una celda CON dato de otra especie pasa el control de "ciego": por eso hace falta el de especie', () => {
   const grilla = { filas: [[], [], [], [{ valor: '30-56736337-2' }]] }
   const cuenta = contarConDato(grilla, { startRowIndex: 3, endRowIndex: 4, startColumnIndex: 0, endColumnIndex: 1 })
-  assert.deepEqual(cuenta, { con: 1, total: 1 }, 'un CUIT es "dato": el auditor viejo lo daba por bueno')
+  assert.deepEqual(cuenta, { con: 1, total: 1, mask: [true] }, 'un CUIT es "dato": el auditor viejo lo daba por bueno')
   assert.deepEqual(
     clasificarNombrados([{ nombre: 'ARCA_SIN_CARGAR_N', hoja: 'Proveedores', conDato: 1, celdas: 1 }], ['=ARCA_SIN_CARGAR_N&" comprobantes"'])
       .map((n) => n.estado),
@@ -85,8 +85,11 @@ test('una celda CON dato de otra especie pasa el control de "ciego": por eso hac
 
 test('el auditor sale con código ≠0 cuando un nombre miente, no sólo cuando está ciego', () => {
   const SRC = readFileSync(new URL('./auditar-rangos-fosilizados.mjs', import.meta.url), 'utf8')
-  assert.match(SRC, /if \(ciegos\.length \|\| mienten\.length\) process\.exitCode = 1/,
-    'un nombre que publica un CUIT donde promete plata tiene que poner el auditor en rojo')
+  // `huecos` entró el 09/09/2026 con la auditoría de series: una serie sin fuente algún mes hace que
+  // el cash flow caiga a la fila plana de Compras, que es plata mal proyectada. Tiene que ser rojo
+  // por la misma razón que el nombre que miente: si sólo se imprime, se lee una vez y se olvida.
+  assert.match(SRC, /if \(ciegos\.length \|\| mienten\.length \|\| huecos\.length\) process\.exitCode = 1/,
+    'un nombre que publica un CUIT donde promete plata —o una serie con un mes sin fuente— tiene que poner el auditor en rojo')
   assert.match(SRC, /mientenPorEspecie\(conValor\)/)
 })
 
