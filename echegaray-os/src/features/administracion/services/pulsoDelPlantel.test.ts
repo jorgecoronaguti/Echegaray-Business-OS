@@ -9,8 +9,8 @@ import test from 'node:test'
 import type { ClasificacionDelDia } from './asistenciaDelDia.ts'
 import {
   SIN_MARCAR, asistenciaHoyPorPersona, estadoHoy, hayControlDeVencimientos, hayMarcaDeHoy,
-  hhPorPersona, horasVisibles, marcasPorPersona, mesCorriente, papelesPorPersona, rotuloDePapeles,
-  rotuloHoy,
+  hhPorPersona, horasVisibles, marcasPorPersona, mesCorriente, ofertaDeMarcar, papelesPorPersona,
+  rotuloDePapeles, rotuloHoy,
 } from './pulsoDelPlantel.ts'
 
 const HOY = '2026-08-24'
@@ -359,4 +359,50 @@ test('el vencido NO se dibuja mientras el control de vencimientos no exista', ()
     rotuloDePapeles({ vencidos: 2, porVencer: 0, faltan: 0, total: 9 }, SIN_CONTROL).texto,
     '9 cargados',
   )
+})
+
+// ── EL BOTÓN «PRESENTE» DE LA COLUMNA HOY (09/09/2026) ─────────────────────────────────────────
+//
+// Cada una se pone roja si se afloja UNA de las condiciones que impiden que un botón repetido en
+// 62 filas escriba lo que nadie quiso escribir.
+
+const PUEDE = {
+  puedeMarcar: true, presencia: 'sin_marcar', obraId: 'quattropani', esJefe: false, enLaEmpresa: true,
+} as const
+
+test('el caso para el que se hizo: con permiso, sobre el silencio y con obra, hay botón', () => {
+  assert.equal(ofertaDeMarcar(PUEDE), 'boton')
+})
+
+test('un jefe de obra NO ve el botón: no se marca a sí mismo', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Es la regla del teléfono («Vos no te marcás: marcás a tu cuadrilla», `personasAMarcar`). El
+  // jefe de obra es el único rol que además ES una persona del plantel: sin esto, la fila con su
+  // propio nombre le ofrece declararse presente —y cargarse la jornada del día— en la pantalla que
+  // abre todas las mañanas.
+  assert.equal(ofertaDeMarcar({ ...PUEDE, esJefe: true }), 'nada')
+})
+
+test('sin obra asignada NO hay botón, y la celda lo dice: la obra no se inventa', () => {
+  // Marcar presente imputa la jornada por defecto a UNA obra. Si esto devolviera 'boton', el clic
+  // rebotaría en la acción («Elegí la obra») o —peor, el día que alguien "arregle" ese rebote—
+  // escribiría costo de mano de obra en una obra elegida por la pantalla.
+  assert.equal(ofertaDeMarcar({ ...PUEDE, obraId: null }), 'sin_obra')
+})
+
+test('sobre un día ya declarado no hay botón: corregir es otra pantalla', () => {
+  // Un segundo toque sobre alguien ya declarado reescribiría `marcado_por` con quien sólo pasó a
+  // mirar la lista — y esa firma es lo que hace que la declaración valga.
+  for (const presencia of ['presente', 'ausente', 'licencia'] as const) {
+    assert.equal(ofertaDeMarcar({ ...PUEDE, presencia }), 'nada', `${presencia} recibió botón`)
+  }
+})
+
+test('sin permiso no hay botón ni «sin obra»; a quien ya no está tampoco', () => {
+  // Falla cerrado por las dos puntas: el rol y la pertenencia. La cerradura sigue siendo la RLS,
+  // pero una puerta que ofrece lo que la base va a rebotar enseña a desconfiar de la pantalla.
+  assert.equal(ofertaDeMarcar({ ...PUEDE, puedeMarcar: false }), 'nada')
+  assert.equal(ofertaDeMarcar({ ...PUEDE, puedeMarcar: false, obraId: null }), 'nada')
+  assert.equal(ofertaDeMarcar({ ...PUEDE, enLaEmpresa: false }), 'nada')
 })

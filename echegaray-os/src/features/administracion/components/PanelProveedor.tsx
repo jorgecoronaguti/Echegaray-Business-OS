@@ -31,6 +31,23 @@
 // vista `proveedor_papel` hace la normalización DENTRO de Postgres reusando la resolución de
 // nombres. Ahí cada papel viene con su compra —fecha, comprobante e importe—, así que el bloqueo de
 // arriba vale para las compras SIN archivo, no para las que tienen uno.
+//
+// ═══ DOCUMENTOS: LA ÚNICA SECCIÓN DE ESTE PANEL DONDE SE ESCRIBE UN PAPEL (09/09/2026) ═══
+//
+// El dueño mandó la captura de ESTE panel: «sigo sin tener forma de cargarle docs a proveedores».
+// La subida existía sólo en la ficha completa, a dos clics y una pantalla de distancia de donde
+// trabaja. Se reusa el MISMO componente de la ficha en su variante de panel: una segunda subida
+// escrita acá se habría desincronizado de la de la ficha en la primera corrección.
+//
+// Va ANTES que PAPELES y que NOMBRES porque es la única de las tres que se CARGA: las otras dos se
+// derivan de las compras y nadie puede hacer nada parado en ellas.
+//
+// ═══ CERO PROSA (decisión del dueño, 09/09/2026) ═══
+//
+// Este panel tenía tres párrafos explicativos —dos en PAPELES y uno en NOMBRES— que decían de dónde
+// sale cada bloque. Se fueron: en 344px la explicación empuja el dato fuera de la pantalla y se lee
+// una vez en la vida. Lo que NO se fue es la distinción entre «no pude leerlo» y «no hay»: son dos
+// estados distintos y siguen escritos, en una línea cada uno.
 
 import Link from 'next/link'
 import { BotonAccion, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
@@ -40,7 +57,10 @@ import { pesos } from '@/shared/components/canon/formato'
 import { formatearCuit } from '../services/identidad'
 import { PanelFilo, RotuloPanel, V } from '@/shared/components/v2/patron'
 import { PapelesDelProveedor } from './proveedores/PapelesDelProveedor'
+import { DocumentosDelProveedor } from './proveedores/DocumentosDelProveedor'
 import type { EstadoPapeles } from '../services/papelesProveedor'
+import type { DocumentosLeidos } from '../services/documentosProveedorService'
+import type { ServiceResult } from '../types'
 import type { ComprasDelProveedor } from '../services/proveedoresService'
 import type { Proveedor } from '../types'
 
@@ -101,7 +121,7 @@ function CargarCuit({ proveedor, editar, abierto }: {
 }
 
 export function PanelProveedor({
-  proveedor, compras, papeles, crear, editar, archivar, cerrarHref, abrirCuit = false,
+  proveedor, compras, papeles, documentos, crear, editar, archivar, cerrarHref, abrirCuit = false,
 }: {
   /** `null` = alta. */
   proveedor: Proveedor | null
@@ -109,6 +129,8 @@ export function PanelProveedor({
   compras: ComprasDelProveedor | null
   /** Sus comprobantes guardados, ya resueltos a una de las cuatro cosas que el bloque puede decir. */
   papeles: EstadoPapeles
+  /** Lo que alguien SUBIÓ contra esta ficha. `null` sólo en el alta, donde todavía no hay ficha. */
+  documentos: ServiceResult<DocumentosLeidos> | null
   crear: AccionFormulario
   editar: AccionFormulario
   archivar: (proveedorId: string, activo: boolean) => Promise<ResultadoAccion>
@@ -162,6 +184,16 @@ export function PanelProveedor({
         <Prop k="Notas" apagado={!proveedor.notas}>{proveedor.notas ?? 'sin cargar'}</Prop>
       </div>
 
+      <DocumentosDelProveedor
+        variante="panel"
+        proveedorId={proveedor.id}
+        documentos={documentos?.data?.documentos ?? []}
+        truncado={documentos?.data?.truncado ?? false}
+        // SIN LECTURA NO SE DIBUJA UN CERO. Que la página no haya traído los documentos es otra
+        // cosa que no tenerlos, y de las dos la única que no se puede afirmar es la segunda.
+        error={documentos ? documentos.error : 'no se leyeron'}
+      />
+
       {/* EL PAPEL VA ANTES QUE LOS NOMBRES VINCULADOS. Los nombres son diagnóstico de la
           canonicalización —sirven para auditar que tres grafías son un proveedor—; el papel es lo
           que alguien vino a buscar cuando abre la ficha de un proveedor. */}
@@ -173,10 +205,8 @@ export function PanelProveedor({
         </RotuloPanel>
         {sinCompras
           ? (
-              <p style={{ fontSize: '12px', color: V.tenue, padding: '7px 0' }} data-testid="proveedor-sin-nombres">
-                {compras === null
-                  ? 'No pude leer la resolución de nombres: esta ficha no puede afirmar que no se le compró nada.'
-                  : 'Todavía no se le compró nada: ningún texto de Compras apunta a esta ficha.'}
+              <p style={{ fontSize: '12px', color: compras === null ? V.warn : V.tenue, padding: '7px 0' }} data-testid="proveedor-sin-nombres">
+                {compras === null ? 'no pude leerlos' : 'sin nombres vinculados'}
               </p>
             )
           : (
@@ -196,11 +226,6 @@ export function PanelProveedor({
                 ))}
               </div>
             )}
-        <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 10, textWrap: 'pretty' }} data-testid="sin-detalle-comprobantes">
-          Las compras SIN papel no se listan una por una acá: Compras guarda el proveedor como
-          texto libre y ninguna vista publica esas filas por proveedor. Se ven por nombre vinculado,
-          que es lo que el OS sí puede probar; comprobante por comprobante, en la ficha.
-        </p>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>

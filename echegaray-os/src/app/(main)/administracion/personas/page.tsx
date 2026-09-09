@@ -45,6 +45,7 @@ import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { BloqueAsistenciaQuincena } from '@/features/administracion/components/BloqueAsistenciaQuincena'
+import { BloqueLiquidacion } from '@/features/administracion/components/liquidacion/BloqueLiquidacion'
 import { BloqueAsistenciaDia } from '@/features/administracion/components/asistencia/BloqueAsistenciaDia'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
@@ -66,6 +67,7 @@ import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
 import { modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
 import { puedeCambiarObraActual } from '@/features/administracion/services/planDeObraActual'
 import { getPerfilActual } from '@/features/auth/services/authService'
+import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 
 export const dynamic = 'force-dynamic'
 
@@ -89,6 +91,11 @@ function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): st
 const hrefAsistencia = (quincena?: string): string =>
   `${RUTA}?vista=asistencia${quincena ? `&quincena=${quincena}` : ''}`
 
+/** La solapa Liquidación, con la misma convención de quincena que Asistencia: cualquier día de la
+ *  ventana sirve y el bloque la resuelve. */
+const hrefLiquidacion = (quincena?: string): string =>
+  `${RUTA}?vista=liquidacion${quincena ? `&quincena=${quincena}` : ''}`
+
 /** La carga del día en el teléfono. `modo=dia` viaja SIEMPRE: sin él, tocar «‹ ayer» desde un
  *  navegador que no manda las pistas devolvería la grilla de quincena y el paso se perdería. */
 const hrefDia = (p: { obra?: string | null; dia?: string | null }): string => {
@@ -96,6 +103,30 @@ const hrefDia = (p: { obra?: string | null; dia?: string | null }): string => {
   if (p.obra) params.set('obra', p.obra)
   if (p.dia) params.set('dia', p.dia)
   return `${RUTA}?${params.toString()}`
+}
+
+/**
+ * LAS TRES SOLAPAS DE PERSONAL, EN UN SOLO LUGAR.
+ *
+ * Estaban escritas dos veces —una en la rama de Asistencia y otra en la del Plantel— y ya eran dos
+ * definiciones de la misma barra. Con una tercera solapa, la que se olvide de agregar deja media
+ * pantalla sin la puerta.
+ *
+ * NINGUNA LLEVA CUENTA: el número de una solapa promete cuántas filas hay del otro lado del clic, y
+ * del otro lado de Asistencia y Liquidación hay una QUINCENA, no una población estable.
+ *
+ * `veLaPlata` decide si Liquidación se dibuja. No es el permiso —ése es `ve_economia()` en la
+ * base—: es no ofrecer una puerta que va a rebotar.
+ */
+function vistasDe(activa: 'personal' | 'asistencia' | 'liquidacion', quincena: string | undefined, veLaPlata: boolean) {
+  const vistas = [
+    { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: activa === 'personal', href: armarHref({}) },
+    { clave: 'asistencia', titulo: 'Asistencia', cuenta: null, activa: activa === 'asistencia', href: hrefAsistencia(quincena) },
+  ]
+  if (veLaPlata) {
+    vistas.push({ clave: 'liquidacion', titulo: 'Liquidación', cuenta: null, activa: activa === 'liquidacion', href: hrefLiquidacion(quincena) })
+  }
+  return vistas
 }
 
 /** Qué decir cuando no hay ninguna fila: una línea, y que diga qué hacer. */
@@ -176,6 +207,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   const supabase = await createClient()
   const hoy = hoyEnObra()
   const enAsistencia = sp.vista === 'asistencia'
+  const enLiquidacion = sp.vista === 'liquidacion'
 
   // ═══ EL TELÉFONO NO CARGA LA GRILLA DE QUINCENA (08/09/2026) ═══
   //
@@ -191,6 +223,43 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   // LA SOLAPA QUE NO SE MIRA NO SE LEE. El pulso del plantel son cuatro consultas —presencia,
   // horas del mes, papeles y los conteos de los recortes— que la grilla de asistencia no usa para
   // nada: pedirlas igual sería pagar cinco viajes a la base para tirarlos.
+  // ═══ LA SOLAPA LIQUIDACIÓN NO ES PARA EL JEFE DE OBRA ═══
+  //
+  // `es_administracion()` lo incluye desde el 19/08/2026 y el jefe entra a esta misma pantalla a
+  // cargar asistencia. Los sueldos son de dirección y administración: la solapa ni se dibuja, y si
+  // alguien escribe la URL a mano, `ve_economia()` en la RLS devuelve cero filas. Esto es la puerta;
+  // la policy es la cerradura.
+  // EL ROL SE LEE UNA VEZ PARA LAS TRES RAMAS. La de Asistencia ya lo leía para el desplegable de
+  // obra actual; leerlo de nuevo en cada rama serían dos viajes a `perfiles` por carga.
+  const rol = (await getPerfilActual(supabase)).data?.rol
+  const veLaPlata = veEconomia(rol)
+
+  if (enLiquidacion) {
+    return (
+      <Marco>
+        <NavAdministracion />
+        <div style={{ lineHeight: 'normal' }}>
+          <CabeceraSeccion
+            testid="vistas-personal"
+            espacioPanel={false}
+            vistas={vistasDe('liquidacion', sp.quincena, veLaPlata)}
+          />
+          <div style={{ padding: '10px 20px 24px' }}>
+            {veLaPlata ? (
+              <BloqueLiquidacion
+                quincenaPedida={sp.quincena} hoy={hoy} hrefDe={hrefLiquidacion} puedeCerrar
+              />
+            ) : (
+              <Aviso tono="info" testid="liquidacion-sin-permiso" titulo="Los sueldos no se ven desde este rol">
+                La liquidación de horas y sueldo es de Dirección y Administración.
+              </Aviso>
+            )}
+          </div>
+        </div>
+      </Marco>
+    )
+  }
+
   if (enAsistencia) {
     return (
       <Marco>
@@ -199,10 +268,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           <CabeceraSeccion
             testid="vistas-personal"
             espacioPanel={false}
-            vistas={[
-              { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: false, href: armarHref({}) },
-              { clave: 'asistencia', titulo: 'Asistencia', cuenta: null, activa: true, href: hrefAsistencia(sp.quincena) },
-            ]}
+            vistas={vistasDe('asistencia', sp.quincena, veLaPlata)}
             // EL BUSCADOR ES DE LA GRILLA. En la carga del día el bloque muestra UNA obra y su
             // gente —seis o siete nombres en una pantalla de 390px—: buscar ahí no filtra nada y
             // le come una línea entera a la única vista que se usa parado en la obra.
@@ -235,7 +301,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 // MOVER A ALGUIEN DE OBRA NO ES CORREGIR UN DÍA. El jefe de obra llega a esta
                 // pantalla —`es_administracion()` lo incluye— y sigue cargando y corrigiendo la
                 // jornada; el desplegable de obra actual es de Dirección y Administración.
-                puedeCambiarObra={puedeCambiarObraActual((await getPerfilActual(supabase)).data?.rol)}
+                puedeCambiarObra={puedeCambiarObraActual(rol)}
               />
               {/* LA VUELTA. Quien forzó la grilla desde el teléfono necesita cómo volver, y quien
                   está en escritorio no ve este enlace: `md:hidden` lo apaga a partir de 768px. */}
@@ -276,6 +342,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   const personas = listado.data ?? []
   const pulso = armarPulso(marcas, hh, papeles, presencia, hoy)
   const abierta = sp.nueva === '1'
+  // EL PERFIL YA ESTÁ EN MEMORIA: `getPerfilActual` memoiza por usuario (`recordar`), así que esto
+  // no es un sexto viaje a la base — es la misma lectura que hace la barra de navegación.
+  const rolActual = (await getPerfilActual(supabase)).data?.rol
 
   return (
     <Marco>
@@ -304,13 +373,8 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
         <CabeceraSeccion
           testid="vistas-personal"
           espacioPanel={abierta}
-          vistas={[
-            { clave: 'personal', titulo: 'Plantel', cuenta: conteos.plantel, activa: true, href: armarHref({}) },
-            // SIN CUENTA: el número de una solapa promete cuántas filas hay del otro lado del clic, y
-            // del otro lado hay una fila por par (persona, obra) de UNA quincena — no una
-            // población estable. Un número acá diría algo distinto cada quince días.
-            { clave: 'asistencia', titulo: 'Asistencia', cuenta: null, activa: false, href: hrefAsistencia() },
-          ]}
+          vistas={vistasDe('personal', undefined, veLaPlata)
+            .map((v) => (v.clave === 'personal' ? { ...v, cuenta: conteos.plantel } : v))}
           buscador={{
             accion: RUTA,
             q: sp.q,
@@ -354,6 +418,22 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 conBaja={filtro === 'inactivos'}
                 pulso={pulso}
                 vacio={vacioDe(filtro, sp.q)}
+                // ═══ EL BOTÓN «PRESENTE» DE LA COLUMNA HOY (dueño, 09/09/2026) ═══
+                //
+                // *«marcar que la persona está en el trabajo, a través de los usuarios admin / jefe
+                // de obra, es tan simple como un botón en la vista de computadora que tenés que
+                // crear ahí donde dice "sin marcar"»*.
+                //
+                // `esAdministracion` es Dirección, Administración y Jefe de Obra: LA MISMA LISTA que
+                // `es_administracion()` en Postgres, que es la que decide de verdad el insert en
+                // `asistencia_dia`. Repetir el criterio con otra forma —una lista de roles escrita
+                // acá— crearía una segunda definición que se desincroniza de la policy sin que nada
+                // se ponga rojo. Un rol desconocido o un usuario sin perfil no marca a nadie: las
+                // dos puntas fallan cerrado.
+                //
+                // LA FECHA LA PONE EL SERVIDOR (`hoyEnObra`), no el navegador: un teléfono con el
+                // reloj corrido declararía presencia en otro día y quedaría escrita.
+                marcar={esAdministracion(rolActual) ? { fecha: hoy } : undefined}
               />
 
               <NotaBloque testid="nota-personal">
