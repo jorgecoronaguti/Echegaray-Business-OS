@@ -22,6 +22,14 @@
 //
 // El archivo se abre en pestaña nueva porque es un archivo, no una pantalla: mismo gesto que en
 // Compras.
+//
+// ═══ CERO PROSA (decisión del dueño, 09/09/2026) ═══
+//
+// Este bloque tenía dos párrafos: de dónde salen los papeles y por qué un proveedor con compras
+// puede no tener ninguno. Los sacó el dueño: en un panel de 344px la explicación empuja el dato
+// fuera de la pantalla y se lee una vez en la vida. LO QUE NO SE FUE ES LA DISTINCIÓN: «no pude
+// leerlos» y «sin papeles» siguen siendo dos estados, porque un vacío por error de lectura afirma
+// sobre el respaldo de la empresa algo que nadie miró. Se dicen en una línea, no en un párrafo.
 
 import { useState } from 'react'
 import { urlDelAdjunto } from '../../services/comprasAdjuntoActions'
@@ -31,14 +39,11 @@ import { fechaCortaConAnio, pesos } from '@/shared/components/canon/formato'
 import { RotuloPanel, V } from '@/shared/components/v2/patron'
 import type { PapelProveedor } from '../../types'
 
-/** Lo que dice el bloque cuando no hay ningún papel que mostrar. Cuatro ausencias, cuatro frases. */
+/** Lo que dice el bloque cuando no hay ningún papel. Una línea cada una, y siguen siendo tres. */
 const SIN_PAPELES: Record<string, string> = {
-  'sin-compras':
-    'No hay ningún papel suyo: todavía ningún comprobante de Compras apunta a esta ficha.',
-  'sin-archivo':
-    'Se le compró, y ninguna de esas compras tiene el archivo guardado. Los que llegan por el canal de comprobantes se vinculan solos.',
-  'no-se-sabe':
-    'No hay ningún papel suyo guardado. No pude leer sus compras, así que no puedo decir si es porque todavía no se le compró.',
+  'sin-compras': 'sin compras',
+  'sin-archivo': 'sin papeles',
+  'no-se-sabe': 'sin papeles',
 }
 
 export function PapelesDelProveedor({ estado }: { estado: EstadoPapeles }) {
@@ -51,7 +56,7 @@ export function PapelesDelProveedor({ estado }: { estado: EstadoPapeles }) {
         // tiene», y eso es una afirmación sobre el respaldo de la empresa que esta lectura no
         // habilita.
         <p style={{ fontSize: '12px', color: V.warn, padding: '7px 0' }} data-testid="papeles-sin-leer">
-          No pude leer sus papeles: esta ficha no puede afirmar que no tenga ninguno.
+          no pude leerlos
         </p>
       )}
 
@@ -73,12 +78,6 @@ export function PapelesDelProveedor({ estado }: { estado: EstadoPapeles }) {
           )}
         </>
       )}
-
-      <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 10, textWrap: 'pretty' }} data-testid="papeles-de-donde-salen">
-        Cada papel llega acá por la compra de la que cuelga, no por una carga aparte. Los que
-        entraron y todavía no se colgaron de ninguna compra no tienen proveedor y se vinculan desde
-        Compras.
-      </p>
     </div>
   )
 }

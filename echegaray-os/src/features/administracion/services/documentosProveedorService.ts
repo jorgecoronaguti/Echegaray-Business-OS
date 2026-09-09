@@ -9,6 +9,7 @@
 // Administración y jefe de obra ven los mismos documentos. No hay recorte por obra porque un
 // contrato no cuelga de una obra — cuelga de la relación con el proveedor.
 
+import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '../types'
 import type { DocumentoProveedor } from './documentosProveedor'
@@ -42,6 +43,13 @@ export async function getDocumentosDelProveedor(
   supabase: SupabaseClient,
   proveedorId: string,
 ): Promise<ServiceResult<DocumentosLeidos>> {
+  // EL ID VIENE DE LA QUERY STRING desde que el PANEL de la cartera lee documentos (`?p=…`), o sea
+  // de quien tipea la URL. Sin esto `?p=nuevo` viaja a Postgres y vuelve como error de sintaxis de
+  // uuid, que la pantalla escribiría como «no pude leer sus documentos» — un fallo de lectura donde
+  // no hay nada que leer. Misma guarda que `getPapelesDelProveedor`.
+  if (!z.string().uuid().safeParse(proveedorId).success) {
+    return { data: null, error: 'Ese proveedor no existe.' }
+  }
   const { data, error } = await supabase
     .from('proveedor_documento')
     .select('id, nombre_archivo, tipo_mime, tamano_bytes, categoria, descripcion, creado_en, subido_por')

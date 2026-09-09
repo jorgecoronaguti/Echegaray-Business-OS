@@ -391,10 +391,69 @@ test('COMPRADO no promete una ventana de tiempo que el dato no tiene', () => {
   assert.match(codigo('PanelProveedor.tsx'), /· histórico/)
 })
 
-test('la ficha declara EN PANTALLA por qué no hay detalle comprobante por comprobante', () => {
-  const src = fuente('PanelProveedor.tsx')
-  assert.match(src, /data-testid="sin-detalle-comprobantes"/)
-  assert.match(src, /texto libre y ninguna vista publica esas filas por proveedor/)
+// ── CERO PROSA EN EL PANEL (decisión del dueño, 09/09/2026) ──────────────────────────────────────
+//
+// El panel tenía TRES párrafos explicativos —dos en PAPELES y uno en NOMBRES— que contaban de dónde
+// sale cada bloque. En 344px eso empuja el dato fuera de la pantalla y se lee una vez en la vida.
+// El defecto que este test atrapa es la vuelta atrás: alguien «aclara» un bloque con un párrafo y
+// nadie lo mira hasta que el dueño manda otra captura.
+//
+// LO QUE NO SE PUEDE PERDER en el camino es la distinción entre «no pude leerlo» y «no hay»: son
+// dos estados y siguen escritos, en una línea cada uno. Por eso el test no dice sólo «no haya
+// párrafos»: exige que los dos estados existan.
+
+test('el panel no explica: cada sección dice el dato o un estado de una línea', () => {
+  const panel = fuente('PanelProveedor.tsx')
+  const papeles = fuente('proveedores/PapelesDelProveedor.tsx')
+  const documentos = fuente('proveedores/DocumentosDelProveedor.tsx')
+
+  // Los tres párrafos que el dueño mandó sacar, por su testid: si vuelve el bloque, vuelve el id.
+  for (const t of ['sin-detalle-comprobantes', 'papeles-de-donde-salen']) {
+    assert.equal(panel.includes(t) || papeles.includes(t), false, `volvió la prosa de ${t}`)
+  }
+  // `textWrap: 'pretty'` sólo tiene sentido en un párrafo que envuelve: en un estado de una línea no
+  // hace nada. Es la huella barata de que alguien volvió a escribir prosa acá.
+  for (const [a, src] of [['PanelProveedor', panel], ['PapelesDelProveedor', papeles]] as const) {
+    assert.equal(/textWrap: 'pretty'/.test(src), false, `${a} volvió a dibujar un párrafo`)
+  }
+
+  // Ningún estado de estos tres bloques pasa de una línea corta.
+  for (const linea of ["'sin compras'", "'sin papeles'", "'no pude leerlos'", "'sin nombres vinculados'"]) {
+    assert.ok(panel.includes(linea) || papeles.includes(linea), `falta el estado ${linea}`)
+  }
+  assert.match(documentos, />\s*0 documentos\s*</)
+  assert.match(documentos, />\s*no pude leerlos\s*</)
+})
+
+// ── LOS DOCUMENTOS SE CARGAN DESDE EL PANEL (pedido del dueño, 09/09/2026) ───────────────────────
+//
+// «sigo sin tener forma de cargarle docs a proveedores», con la captura de ESTE panel abierto. La
+// subida existía sólo en la ficha completa. Lo que se protege es que esté acá Y que sea EL MISMO
+// componente: una segunda subida escrita en el panel se desincroniza de la de la ficha en la
+// primera corrección, y la que se olvida es siempre la que nadie mira.
+
+test('el panel carga documentos con el MISMO componente de la ficha, no con una copia', () => {
+  const panel = codigo('PanelProveedor.tsx')
+  assert.match(panel, /<DocumentosDelProveedor/)
+  assert.match(panel, /variante="panel"/)
+  assert.match(panel, /proveedorId=\{proveedor\.id\}/)
+  // La subida y la baja NO se vuelven a escribir acá: se llegan por el componente compartido.
+  for (const copia of ['SubirDocumentoProveedor', 'darDeBajaDocumento', 'registrarDocumento']) {
+    assert.equal(panel.includes(copia), false, `${copia} se duplicó dentro del panel`)
+  }
+  // El componente compartido dibuja los DOS anchos, y el de la ficha sigue siendo el de la ficha.
+  const doc = codigo('proveedores/DocumentosDelProveedor.tsx')
+  assert.match(doc, /variante = 'ficha'/)
+  assert.match(doc, /const enPanel = variante === 'panel'/)
+})
+
+test('los documentos del proveedor abierto se leen UNA vez, en la tanda paralela', () => {
+  const pag = codigoPagina()
+  // Import + llamada. Una tercera aparición sería una segunda lectura de la misma tabla.
+  assert.equal((pag.match(/getDocumentosDelProveedor/g) ?? []).length, 2)
+  assert.match(pag, /sp\.p \? getDocumentosDelProveedor\(supabase, sp\.p\) : null/)
+  // Nunca por fila: la cartera no dibuja documentos en la lista.
+  assert.equal(/proveedores\.map[\s\S]{0,400}getDocumentosDelProveedor/.test(pag), false)
 })
 
 // ── LOS PAPELES DEL PROVEEDOR (06/09/2026) ───────────────────────────────────────────────────────
@@ -430,7 +489,9 @@ test('las cuatro ausencias del papel se dicen con palabras, nunca con un cero ni
   const src = fuente('proveedores/PapelesDelProveedor.tsx')
   for (const t of ['papeles-sin-leer', 'sin-papeles-proveedor']) assert.match(src, new RegExp(`data-testid="${t}"`))
   for (const k of ['sin-compras', 'sin-archivo', 'no-se-sabe']) assert.match(src, new RegExp(`'${k}':`))
-  assert.match(src, /esta ficha no puede afirmar que no tenga ninguno/)
+  // La frase larga se fue (cero prosa), el ESTADO no: sigue siendo distinto de «sin papeles».
+  assert.equal(/esta ficha no puede afirmar que no tenga ninguno/.test(src), false)
+  assert.match(src, />\s*no pude leerlos\s*</)
   // Un importe o una fecha que faltan se nombran; el mockup pone «—» en su tabla ancha y acá, en un
   // panel de 372px, un guión suelto no se distingue de un dato en blanco.
   assert.match(src, /'sin fecha'/)
