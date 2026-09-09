@@ -43,9 +43,25 @@ import { M12, cmes, AJENO } from './impuestos-grilla.mjs'
 //
 //   1. DDJJ F.2051 presentada          → el dato oficial, valor. Gana siempre.
 //   2. mes con dato de una persona      → AJENO: no se toca. Ver `anclaDeProyeccion`.
-//   3. comprobantes de ARCA del período → FÓRMULA contra _ARCA_RAW. El mes en curso, con piso en la
-//                                         proyección (ver `nuncaMenosQue`).
-//   4. proyección del Libro             → como antes.
+//   3. mes sin DDJJ (cerrado o en curso) → MAX(lo que Cobranzas dice que se factura; lo que ARCA
+//                                         ya registró). Ver «LO QUE SE VA A FACTURAR» abajo.
+//   4. proyección                       → las facturas B de Cobranzas, por «Fecha de Factura».
+//
+// ═══ LO QUE SE VA A FACTURAR ES LO QUE COBRANZAS MARCA CON «B» (09/09/2026) ═══
+//
+// El dueño: *«considerar que lo que se va a facturar es lo que Cobranzas indica con B»*. Hasta hoy
+// un mes CERRADO sin DDJJ salía de ARCA solo, y ARCA sólo tiene lo ya emitido. MEDIDO el 09/09:
+// agosto tenía en _ARCA_RAW 8 facturas ($34.244.282 de neto, $7.191.299 de IVA) y en Cobranzas 18
+// filas «B» con fecha de factura de agosto ($85.964.721, $18.052.591): las diez que faltan
+// —Quattropani ×9 y MESSINA 31/08— no tienen número de comprobante todavía. El bloque de IIBB, tres
+// filas más abajo, ya contaba las dieciocho: la misma pestaña afirmaba dos bases distintas para el
+// mismo mes, y el hero reservaba $4,7M de menos para el IVA que vence el 18/09.
+//
+// Un mes sin DDJJ —cerrado o en curso— usa entonces la MISMA regla: MAX(Cobranzas B; ARCA). Cobranzas
+// es el plan del dueño (lo que se va a facturar); ARCA es el piso (lo que ya se facturó y Cobranzas
+// pudo no tener cargado). Cuando la F.2051 se presenta, gana ella y el mes se cierra con el dato
+// oficial. Verificado contra las DDJJ ya presentadas: Cobranzas B difiere de la F.2051 en ±$2M por
+// mes (mayo +$674k, junio −$1,75M, julio +$1,6M), por eso ARCA queda como piso y la DDJJ manda.
 //
 // POR QUÉ EL MES AJENO LE GANA A ARCA, que es mejor dato. Porque un mes que una persona calculó a
 // mano es una afirmación firmada, y `respetar-ediciones` no protege importes: pisarlo con una fórmula
@@ -159,19 +175,26 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
   const fLibre = fDeb + 3
   const colAnt = (m) => `${cmes(m - 1)}${fLibre}`
 
-  /** El término del mes: ARCA si el período ya tiene comprobantes, y si no la proyección del Libro. */
-  const termino = (m, { deArca, proyectado }) => {
+  /**
+   * El término del mes. El mes EN CURSO es MAX(hecho parcial; proyección) en los dos lados. El mes
+   * CERRADO sin DDJJ distingue los lados: el DÉBITO es MAX(Cobranzas B; ARCA) —ver «LO QUE SE VA A
+   * FACTURAR»—, y el CRÉDITO es ARCA solo, porque las compras de un mes cerrado ya están todas en el
+   * libro R y el Libro del cash flow mide otra cosa (lo PAGADO en el mes, no lo facturado). MEDIDO
+   * el 09/09 en la copia: con MAX en el crédito, agosto saltaba de $3.504.360 (ARCA) a $11.355.577
+   * y el IVA a pagar del 21/09 bajaba de $4,7M a $0 — un crédito que la DDJJ no va a tener.
+   */
+  const termino = (m, { deArca, proyectado, planDelDueno = false }) => {
     const o = origen(m)
-    if (o === ORIGEN.arca) return deArca(periodo(m))
     if (o === ORIGEN.arcaParcial) return nuncaMenosQue(deArca(periodo(m)), proyectado(m))
+    if (o === ORIGEN.arca) return planDelDueno ? nuncaMenosQue(deArca(periodo(m)), proyectado(m)) : deArca(periodo(m))
     return proyectado(m)
   }
 
   G.mensual('Débito fiscal del período',
     (m) => (calculado(m)
-      ? termino(m, { deArca: formulaDebitoArca, proyectado: (x) => formulaDebitoDeclarado(proy.brutoDebito(x)) })
+      ? termino(m, { deArca: formulaDebitoArca, proyectado: (x) => formulaDebitoDeclarado(proy.brutoDebito(x)), planDelDueno: true })
       : ofOAjeno(m, 'debito')),
-    'F.2051 · IVA generado por las ventas del mes. Los meses sin DDJJ pero CON comprobantes salen de _ARCA_RAW —las ventas reales que ARCA registró para ese período— y los que no tienen ni eso son PROYECCIÓN: el IVA contenido en las cobranzas que el Libro ya da por cobradas y esperadas.', { meses })
+    'F.2051 · IVA generado por las ventas del mes. Sin DDJJ: MAX(el IVA de las facturas B de Cobranzas por «Fecha de Factura»; lo que ARCA ya registró en _ARCA_RAW). Sin comprobantes: las facturas B solas.', { meses })
   G.mensual('Crédito fiscal del período',
     (m) => (calculado(m)
       ? termino(m, { deArca: formulaCreditoArca, proyectado: (x) => formulaCreditoProyectado(proy.brutoCredito(x)) })
@@ -210,7 +233,7 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
   // busca cuando hay que verificar contra ARCA — no en una celda de 100 px que se lee doce veces por
   // día sin necesitarlos.
   const procedencia = {
-    [ORIGEN.arca]: 'ARCA',
+    [ORIGEN.arca]: 'Cobranzas',
     [ORIGEN.arcaParcial]: 'parcial',
     [ORIGEN.proyeccion]: 'proyección',
     [ORIGEN.sinVentas]: 'sin ventas',

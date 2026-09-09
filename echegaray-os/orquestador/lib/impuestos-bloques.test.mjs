@@ -162,7 +162,7 @@ test('ninguna celda de IMPORTE del cuadro de IVA lleva texto — sólo la fila d
     }
   }
   // Y la leyenda de procedencia SÍ está, en la fila que le corresponde.
-  assert.match(String(celda(G, iva.fDDJJ, 7)), /ARCA/, 'el aviso vive en "DDJJ presentada"')
+  assert.match(String(celda(G, iva.fDDJJ, 7)), /Cobranzas/, 'el aviso vive en "DDJJ presentada"')
 })
 
 test('la fórmula de ARCA va en locale es-AR: separador ";" y ni una coma de argumento', () => {
@@ -194,15 +194,27 @@ test('el MES EN CURSO nunca queda por debajo de la proyección: MAX de los dos',
   const cred = String(celda(G, iva.fCred, 8))
   assert.match(cred, /^=MAX\(/)
   assert.match(cred, /BRUTO_CRE_8/)
-  // Y el mes CERRADO no lleva MAX: ahí el hecho manda solo.
-  assert.ok(!String(celda(G, iva.fDeb, 7)).startsWith('=MAX('))
+})
+
+test('el mes CERRADO sin DDJJ también lleva MAX: lo que se va a facturar es lo que Cobranzas marca con B (09/09)', () => {
+  // Agosto tenía 8 facturas en ARCA y 18 filas «B» en Cobranzas: las diez sin número de comprobante
+  // son lo que el dueño dice que se factura. ARCA solo reservaba $4,7M de menos para el 18/09.
+  const { G, iva } = armarBloque({ arca: { meses: [7, 8] }, hoy: '2026-08-07' })
+  const deb = String(celda(G, iva.fDeb, 7))
+  assert.match(deb, /^=MAX\(/)
+  assert.match(deb, /_ARCA_RAW!\$A\$4:\$A="2026-07"/, 'ARCA es el piso')
+  assert.match(deb, /BRUTO_DEB_7/, 'Cobranzas B es el plan')
+  // El CRÉDITO del mes cerrado NO lleva MAX: las compras ya están todas en ARCA y el Libro mide lo
+  // pagado, no lo facturado. Con MAX, agosto tenía $7,85M de crédito que la DDJJ no va a tener.
+  assert.ok(!String(celda(G, iva.fCred, 7)).startsWith('=MAX('))
+  assert.match(String(celda(G, iva.fCred, 7)), /_ARCA_RAW!\$B\$4:\$B="Compras"/)
 })
 
 test('la fila de procedencia distingue ARCA de una PROYECCIÓN, y el parcial del cerrado', () => {
   // Verlos con la misma leyenda hacía discutir un número que no había que discutir: un mes de ARCA es
   // un hecho sobre comprobantes reales; una proyección es un supuesto sobre el Libro.
   const { G, iva } = armarBloque({ arca: { meses: [7, 8] } })
-  assert.equal(celda(G, iva.fDDJJ, 7), 'ARCA')
+  assert.equal(celda(G, iva.fDDJJ, 7), 'Cobranzas')
   assert.equal(celda(G, iva.fDDJJ, 8), 'parcial')
   assert.equal(celda(G, iva.fDDJJ, 9), 'proyección')
   // Y el mes con DDJJ dice UNA palabra: la fecha y el N° de transacción salen en el log de la
