@@ -63,7 +63,6 @@
 // suya, que ningún generador reescribe, y que la tabla viva lee por nombre de proveedor. Así la nota
 // viaja con la entidad de la que habla, por construcción y no por reconstrucción.
 
-import { ALERTA } from './glifos.mjs'
 
 /** El separador de argumentos del archivo (locale es_AR). La coma es el decimal: nunca va acá. */
 export const SEP = ';'
@@ -150,7 +149,7 @@ function condPendiente(R, criterioProv) {
  * (Ruviño Matías Esteban, $136.000) y su propia fila se contradice: `Total o Parcial` dice «Total»,
  * `Estado` dice «Pendiente» y el importe está en la columna de un parcial. O está pagada y falta
  * cambiarle el estado, o el importe está en la columna equivocada — y eso lo sabe quien la cargó, no
- * esta función. Se publica como hallazgo con nombre y monto (`formulaParcial1Sospechoso`) en vez de
+ * esta función. Se publica como hallazgo con nombre y monto (`formulaParcial1Monto`, en el encabezado) en vez de
  * elegir por su cuenta una de las dos respuestas y borrar la pregunta.
  *
  * @param {Record<string,string>} R rangos de Compras
@@ -317,22 +316,22 @@ export function formulaPorFactura({ rangos, reserva }) {
  *    organizan por proveedor). No es un error del cuadro: es un defecto de carga en Compras que hasta
  *    hoy no lo veía nadie, y el control es el único lugar del archivo donde aparece.
  *
- * Un mensaje que sólo dijera "agrandá el bloque" mandaría a arreglar lo que no está roto.
+ * ═══ ES UN NÚMERO, NO UNA ORACIÓN (09/09/2026) ═══
  *
- * @param {{rangos:object, rangoSaldo:string, que:string}} opts rangoSaldo = la columna de saldo del bloque
+ * Publicaba «✓ el detalle cierra con el titular al peso» o «▲ el detalle no cierra con el titular:
+ * falta $X · sin proveedor en Compras: $Y». El contrato de diseño no admite una oración en una celda:
+ * el control es «rótulo | número», y el rojo lo pone `MONEDA_CONTROL` sólo cuando no da cero.
+ *
+ * LA APERTURA («sin proveedor en Compras») NO SE PIERDE POR SER OTRA CELDA: es un SUMANDO de esta
+ * diferencia, así que mientras exista, este número no da cero y se pone rojo. Cuál de las dos causas
+ * es se resuelve mirando Compras, que es donde está el dato — y las dos están nombradas acá arriba.
+ *
+ * @param {{rangos:object, rangoSaldo:string}} opts rangoSaldo = la columna de saldo del bloque
  */
-export function formulaControl({ rangos, rangoSaldo, que }) {
-  const total = deudaComercialTotal(rangos)
-  const sinProv = `SUMIFS(${rangos.total}${SEP}${rangos.estado}${SEP}"${PENDIENTE}"${SEP}${rangos.comercial}${SEP}1${SEP}${rangos.prov}${SEP}"")`
-  // LAS DOS CAUSAS SE SIGUEN NOMBRANDO, PERO NO SE EXPLICAN (06/09/2026). El mensaje anterior medía
-  // 151 caracteres —«ningún bloque organizado por proveedor la puede mostrar, y hay que completarla
-  // allá… pedime que lo agrande»— o sea que le daba instrucciones al lector desde una celda. Lo que
-  // no se puede deducir mirando es CUÁNTO falta y cuánto de eso es deuda sin proveedor cargado: eso
-  // queda. El qué hacer con cada una está en el `POR QUÉ` de arriba.
-  const msg = `"${ALERTA} ${lit(que)} no cierra con el titular: falta "&TEXT(dif${SEP}"$#,##0")`
-    + `&IF(ROUND(huerfana${SEP}0)<>0${SEP}" · sin proveedor en Compras: "&TEXT(huerfana${SEP}"$#,##0")${SEP}"")`
-  return `=LET(dif${SEP}ROUND((${total})-SUM(${rangoSaldo})${SEP}0)${SEP}huerfana${SEP}${sinProv}${SEP}`
-    + `IF(dif=0${SEP}"✓ el detalle cierra con el titular al peso"${SEP}${msg}))`
+export const ROTULO_CONTROL = '⇒ Detalle − titular'
+
+export function formulaControl({ rangos, rangoSaldo }) {
+  return `=ROUND((${deudaComercialTotal(rangos)})-SUM(${rangoSaldo})${SEP}0)`
 }
 
 /**

@@ -42,6 +42,10 @@
 //   node orquestador/scripts/proveedores-fosil-frontera.mjs             → audita, no toca nada
 //   node orquestador/scripts/proveedores-fosil-frontera.mjs --aplicar   → borra las filas y verifica
 //
+// Los dos flags de excepción, que NO son default y se escriben después de mirar la lista que imprime:
+//   --tambien-sin-sello   incluye celdas sin sello (capas viejas cuyo sello pisó la capa siguiente)
+//   --tambien-repuestas   incluye celdas que el dueño borró y una capa posterior volvió a escribir
+//
 // Si debajo de la frontera hay celdas SIN sello —capas viejas del mismo generador, cuyo sello pisó
 // la capa siguiente— el script las lista una por una y se niega igual. Incluirlas exige
 // `--tambien-sin-sello`, que es un acto explícito y no un default.
@@ -53,12 +57,40 @@ import { query } from '../lib/db.mjs'
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const APLICAR = process.argv.includes('--aplicar')
 const ACEPTAR_SIN_SELLO = process.argv.includes('--tambien-sin-sello')
+// ═══ EL SEGUNDO ACTO EXPLÍCITO, Y POR QUÉ HACE FALTA UNO (09/09/2026) ═══
+//
+// Medido en el archivo vivo: de las 63 celdas que el dueño borró debajo de la frontera, CUATRO
+// tienen contenido hoy — A173, B173, D173 y F173, que son cuatro CAPAS DISTINTAS del generador
+// retirado escribiendo sobre la misma fila física («6 · LO QUE ARCA REGISTRÓ» en la A, 450000 en la
+// B, «▲ revisar» en la F). No es el dueño peleando con el generador por un dato: es la superposición
+// que este script existe para sacar.
+//
+// El default NO se afloja: sin el flag, una celda que el dueño borró y volvió a aparecer frena todo.
+// Con el flag, quien lo escribe ya vio la lista impresa arriba — que se imprime SIEMPRE, aunque el
+// flag esté puesto, para que la decisión quede en el log de la corrida.
+const ACEPTAR_REPUESTAS = process.argv.includes('--tambien-repuestas')
 const PESTANA = 'Proveedores'
 
 /** LA FRONTERA. La sección 3 —la dinámica de concentración— cierra en su fila de TOTAL. Todo lo que
  *  vive por debajo de esa fila más el colchón es la capa fósil. Se busca por RÓTULO, nunca por
  *  posición fija: la dinámica cambia de alto cada vez que aparece un proveedor nuevo. */
-const ROTULO_FIN_SECCION_3 = 'TOTAL COMPRADO A PROVEEDORES'
+/**
+ * LA FRONTERA ES EL FINAL DEL ÚLTIMO BLOQUE VIVO, Y SE BUSCA LA ÚLTIMA COINCIDENCIA (09/09/2026).
+ *
+ * Estaba anclada SÓLO a «TOTAL COMPRADO A PROVEEDORES» —el pie de la sección 3— y borraba desde ahí
+ * hasta el final de la hoja. Mientras la 3 fue la última sección eso era correcto; el día que la
+ * pestaña gane un bloque debajo, este script se lo lleva puesto sin decir una palabra. Un borrador
+ * que decide su límite mirando UN rótulo fijo es una escopeta cargada esperando a que alguien agregue
+ * una sección — y agregar secciones es lo que se está haciendo.
+ *
+ * Se busca la ÚLTIMA aparición de CUALQUIERA de los cierres conocidos: el que esté más abajo es el
+ * final del contenido vivo, y todo lo que venga después es capa fósil. Con `findLastIndex`, agregar
+ * un bloque al pie es agregar su rótulo de cierre acá y nada más.
+ */
+const CIERRES_VIVOS = ['TOTAL COMPRADO A PROVEEDORES', 'FILAS SIN COMPROBANTE EN ARCA']
+
+/** La letra de una columna base 0. Se usa para poder NOMBRAR cada celda que frena la corrida. */
+const letraCol = (n) => { let s = ''; for (let i = n; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
 const COLCHON = 1
 
 /** Los títulos de la capa fósil. Si NINGUNO aparece debajo de la frontera, no hay nada que borrar. */
@@ -66,7 +98,10 @@ const TITULOS_FOSILES = ['NOTAS DE CRÉDITO', 'LO QUE ARCA FACTURÓ', 'CONTROL Y
   'LO QUE ARCA REGISTRÓ', 'LO QUE HAY QUE CORREGIR']
 
 export function frontera(colA) {
-  const i = colA.findIndex((v) => String(v ?? '').toUpperCase().includes(ROTULO_FIN_SECCION_3))
+  const i = colA.findLastIndex((v) => {
+    const t = String(v ?? '').toUpperCase()
+    return CIERRES_VIVOS.some((c) => t.includes(c))
+  })
   return i < 0 ? null : i + 1 + COLCHON // 1-based, ya con el colchón
 }
 
@@ -84,13 +119,13 @@ async function main() {
   const colA = filas.map((r) => (r || [])[0])
   const desde = frontera(colA)
   if (!desde) {
-    console.error(`✖ no encuentro la fila "${ROTULO_FIN_SECCION_3}": sin frontera no borro nada.`)
+    console.error(`✖ no encuentro ninguno de los cierres vivos (${CIERRES_VIVOS.join(" · ")}): sin frontera no borro nada.`)
     process.exit(1)
   }
   const ultima = filas.reduce((n, r, i) => ((r || []).some((c) => String(c ?? '').trim()) ? i + 1 : n), 0)
   const titulos = tieneFosil(filas, desde)
 
-  console.log(`${PESTANA}: ${ultima} filas con contenido · frontera en la ${desde} (después de «${ROTULO_FIN_SECCION_3}»)`)
+  console.log(`${PESTANA}: ${ultima} filas con contenido · frontera en la ${desde} (después del último cierre vivo)`)
   if (ultima < desde) return console.log('✓ no hay nada debajo de la frontera: la pestaña ya está limpia.')
   console.log(`  capa fósil: filas ${desde}–${ultima} (${ultima - desde + 1} filas)`)
   console.log(`  títulos fósiles encontrados: ${titulos.length ? titulos.join(' · ') : 'ninguno'}`)
@@ -104,22 +139,43 @@ async function main() {
     `select fila, col, borrada_en from public.sheet_huella_celda where pestana = $1`, [PESTANA],
   )
   const mias = new Set(sello.filter((s) => !s.borrada_en).map((s) => `${s.fila}:${s.col}`))
-  const borradasPorElDueno = sello.filter((s) => s.borrada_en).length
+  // ═══ LO QUE LA MARCA DE BORRADO TIENE QUE PROBAR ES QUE EL GENERADOR LA REPUSO (09/09/2026) ═══
+  //
+  // La guarda contaba TODA celda con `borrada_en` de la pestaña y se negaba. Medido en el archivo
+  // vivo: las 63 marcas están en las filas 157–173, 177, 246 y 247 — o sea DENTRO de la capa fósil, y
+  // son del dueño borrando a mano justamente esto. La guarda se negaba a borrar una basura usando
+  // como prueba que el dueño ya había empezado a borrarla.
+  //
+  // El peligro real que esta guarda cuida es otro: que el generador HAYA REPUESTO lo que el dueño
+  // borró. Eso se prueba mirando la celda HOY. Una celda marcada borrada y hoy vacía no puede perder
+  // nada al borrarla. Una marcada borrada y hoy CON CONTENIDO sí: ahí el generador pisó una decisión
+  // suya, y eso sigue frenando la corrida entera.
+  const conContenido = (fila, col) => String((filas[fila - 1] || [])[col] ?? '').trim() !== ''
+  const repuestas = sello.filter((s) => s.borrada_en && s.fila >= desde && conContenido(s.fila, s.col))
+  const borradasPorElDueno = repuestas.length
 
-  const letra = (n) => { let s = ''; for (let i = n; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
   const ajenas = []
   for (let f = desde - 1; f < ultima; f++) {
     const fila = filas[f] || []
     for (let c = 0; c < fila.length; c++) {
       if (!String(fila[c] ?? '').trim()) continue
-      if (!mias.has(`${f + 1}:${c}`)) ajenas.push(`${letra(c)}${f + 1}`)
+      if (!mias.has(`${f + 1}:${c}`)) ajenas.push(`${letraCol(c)}${f + 1}`)
     }
   }
 
-  console.log(`\nPROPIEDAD  ${mias.size} celdas selladas como mías · ${borradasPorElDueno} con marca de borrado del dueño`)
+  const marcadas = sello.filter((s) => s.borrada_en && s.fila >= desde).length
+  console.log(`\nPROPIEDAD  ${mias.size} celdas selladas como mías · ${marcadas} que el dueño borró debajo de la`
+    + ` frontera · ${borradasPorElDueno} de ellas con contenido HOY (o sea, repuestas por el generador)`)
   if (borradasPorElDueno) {
-    console.error(`✖ hay ${borradasPorElDueno} celda(s) que el dueño borró y el generador repuso: no toco nada.`)
-    process.exit(1)
+    console.log(`  celdas que el dueño borró y volvieron a tener contenido: ${repuestas.map((r) => `${letraCol(r.col)}${r.fila}`).join(' ')}`)
+    for (const r of repuestas) {
+      console.log(`     ${letraCol(r.col)}${r.fila} = "${String((filas[r.fila - 1] || [])[r.col] ?? '').slice(0, 70)}"`)
+    }
+    if (!ACEPTAR_REPUESTAS) {
+      console.error('\n✖ no borro: agregá --tambien-repuestas para incluirlas, después de mirar la lista de arriba.')
+      process.exit(1)
+    }
+    console.log('   → --tambien-repuestas: se incluyen en el borrado.')
   }
   // ── SEGUNDO GATE: DÓNDE VIVE, DE VERDAD, LO QUE ESCRIBIÓ EL DUEÑO ──────────────────────────────
   //

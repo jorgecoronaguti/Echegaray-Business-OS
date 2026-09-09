@@ -18,11 +18,11 @@ import assert from 'node:assert/strict'
 import {
   SEP, COLS_PROVEEDOR, COLS_FACTURA, PENDIENTE,
   rangosCompras, esRangoAbierto, referenciasCompras,
-  formulaPorProveedor, formulaPorFactura, formulaControl,
+  formulaPorProveedor, formulaPorFactura, formulaControl, ROTULO_CONTROL,
   saldoNetoProveedor, deudaComercialTotal, reservaPara,
   filasLibreta, verificarMigracionNotas, esNombreSeguro,
 } from './proveedores-deuda-viva.mjs'
-import { expresionSaldo, formulaParcial1Sospechoso } from './deuda-por-tramos.mjs'
+import { expresionSaldo, formulaParcial1Monto } from './deuda-por-tramos.mjs'
 import { esProsa } from './diseno-unificado.mjs'
 
 /** Las columnas reales de Compras, tal como las resuelve el generador por encabezado. */
@@ -46,7 +46,7 @@ const LIBRETA = 'PROV_LIBRETA'
 const FORMULAS = () => ([
   ['por proveedor', formulaPorProveedor({ rangos: R, libreta: LIBRETA, reserva: 40 })],
   ['por factura', formulaPorFactura({ rangos: R, reserva: 150 })],
-  ['control', formulaControl({ rangos: R, rangoSaldo: '$D$21:$D$60', que: 'el detalle por proveedor' })],
+  ['control', formulaControl({ rangos: R, rangoSaldo: '$D$21:$D$60' })],
 ])
 
 /** Saca del texto todo lo que está entre comillas: lo de adentro es un literal y no se audita igual. */
@@ -118,14 +118,20 @@ test('el saldo del bloque dice EXACTAMENTE lo mismo que la canónica de deuda-po
   assert.ok(!deudaComercialTotal(R).includes(R.parcial1), 'y el titular del bloque tampoco')
 })
 
-test('el hallazgo de «Monto Parcial 1» nombra al proveedor y dice el monto', () => {
-  const f = formulaParcial1Sospechoso()
+// ═══ EL HALLAZGO PASÓ DE ORACIÓN A NÚMERO (09/09/2026) ═══
+//
+// Publicaba «2 factura(s) pendientes con $108.272 cargado en «Monto Parcial 1» (Corralon Progreso)»:
+// 180 caracteres en una celda del encabezado, derramando sobre dos columnas. El contrato de diseño
+// del archivo no admite una oración en una celda; el control es «rótulo | número» y el rojo lo pone
+// el formato. Los NOMBRES se pierden a propósito: el rótulo dice con qué filtro se encuentran en
+// Compras, que es donde hay que ir a corregirlas.
+test('el hallazgo de «Monto Parcial 1» es el monto, y nada más', () => {
+  const f = formulaParcial1Monto()
   assert.ok(f.startsWith('='), 'es una fórmula viva, no un número calculado acá')
   assert.ok(f.includes('$U$4:$U') && f.includes('>0'), 'mira los positivos de Parcial 1, con rango abierto')
-  assert.ok(f.includes('$E$4:$E'), 'nombra al proveedor: sin nombre no se puede ir a arreglarlo')
-  assert.ok(f.includes('SUMPRODUCT'), 'cuenta y suma sobre rangos abiertos')
-  // Y no puede quedarse callado cuando no hay ninguno: un control mudo no se distingue de uno roto.
-  assert.ok(f.includes('✓'), 'dice algo también cuando no encuentra nada')
+  assert.ok(f.includes('SUMPRODUCT'), 'pondera por importe sobre rangos abiertos')
+  assert.ok(f.includes('ISNUMBER'), 'coerciona el texto: sin esto un valor tipeado como texto rompe el SUMPRODUCT')
+  assert.ok(!/[✓✗▲]|factura\(s\)/.test(f), 'no publica un veredicto ni una oración: publica un número')
 })
 
 // ── 2 · LOCALE es_AR ────────────────────────────────────────────────────────────────────────────
@@ -228,28 +234,30 @@ test('reservaPara deja aire sin dejar un agujero de filas muertas', () => {
 })
 
 test('el control compara el titular contra lo que el bloque muestra y puede dar distinto de cero', () => {
-  const f = formulaControl({ rangos: R, rangoSaldo: '$D$21:$D$60', que: 'el detalle' })
+  const f = formulaControl({ rangos: R, rangoSaldo: '$D$21:$D$60' })
   assert.ok(f.includes('SUM($D$21:$D$60)'), 'suma la columna de saldo del bloque')
   assert.ok(f.includes('SUMIFS('), 'y la compara contra el titular calculado sobre Compras')
-  assert.ok(/IF\(dif=0/.test(f), 'el control se pronuncia: cierra o no cierra')
-  assert.ok(/▲/.test(f), 'y cuando no cierra, avisa')
+  assert.ok(/^=ROUND\(/.test(f), 'redondea a pesos: un centavo de diferencia no puede encender el rojo')
+  assert.ok(!/[✓✗▲]/.test(f), 'el control es un número: el estado lo dibuja el formato, no un glifo tipeado')
+  assert.ok(ROTULO_CONTROL.startsWith('⇒'), 'y su rótulo lleva el prefijo de control del contrato')
   // Un control que no puede fallar no controla nada (ya pasó en esta pestaña: =X-Y-(X-Y)).
   assert.ok(!/-\(.*\)\s*\)\s*;0\)\s*;IF\(dif=0/.test(f.replace(/\s/g, '')), 'no puede ser una identidad que dé siempre 0')
 })
 
-test('el control distingue el truncado de la deuda SIN proveedor: manda a arreglar el lugar correcto', () => {
-  const f = formulaControl({ rangos: R, rangoSaldo: '$D$21:$D$60', que: 'el detalle' })
-  // La deuda comercial pendiente sin nombre de proveedor la suma el titular y ningún bloque organizado
-  // por proveedor la puede mostrar. Es un defecto de carga en Compras, no un bloque chico.
-  assert.ok(f.includes(`${R.prov};""`), 'mide la deuda pendiente comercial con proveedor vacío')
-  assert.ok(/huerfana/.test(f), 'y la nombra aparte del truncado')
-  // EL MENSAJE NOMBRA LAS DOS CAUSAS Y YA NO EXPLICA NINGUNA (06/09/2026). Decía «ningún bloque
-  // organizado por proveedor la puede mostrar, y hay que completarla allá … pedime que lo agrande»:
-  // 151 caracteres de instrucción al lector adentro de una celda, que es lo que el minimalismo
-  // extremo saca. Lo que no se puede deducir mirando —cuánto falta, y cuánto de eso es deuda sin
-  // proveedor cargado— sigue publicándose.
-  assert.ok(/sin proveedor en Compras/.test(f), 'el mensaje separa la deuda sin proveedor del truncado')
-  assert.ok(!/pedime que lo agrande|hay que completarla/.test(f), 'y no le da instrucciones al lector')
+// ═══ LA APERTURA POR CAUSA SE FUE DE LA CELDA, Y NO SE PIERDE (09/09/2026) ═══
+//
+// El control publicaba, además de la diferencia, cuánto de ella era deuda comercial pendiente SIN
+// nombre de proveedor —que el titular suma y ningún bloque organizado por proveedor puede mostrar—.
+// Eso era una segunda cifra adentro de una oración. Ahora es UN número: la deuda huérfana es un
+// SUMANDO de esa diferencia, así que mientras exista el control no da cero y se pinta rojo. Cuál de
+// las dos causas es —bloque truncado o carga sin proveedor— se resuelve mirando Compras.
+test('el control puede dar rojo por deuda sin proveedor: es un sumando de la misma diferencia', () => {
+  const f = formulaControl({ rangos: R, rangoSaldo: '$D$21:$D$60' })
+  // El titular filtra SÓLO estado y comercial; el bloque se organiza por proveedor. Una fila
+  // pendiente sin nombre entra en el primero y no en el segundo: la resta no puede dar cero.
+  assert.ok(f.includes(`${R.estado};"Pendiente"`) && f.includes(`${R.comercial};1`),
+    'el titular no filtra por proveedor, y por eso ve la deuda huérfana')
+  assert.ok(!f.includes(`${R.prov};""`), 'y ya no la publica aparte: es un sumando, no otra cifra')
 })
 
 // ── 5 · LA LIBRETA DEL DUEÑO ────────────────────────────────────────────────────────────────────
@@ -334,8 +342,13 @@ test('NINGUNA variable de LET de la sección puede leerse como una referencia de
   // token que está en posición de nombre (después de `LET(` o de un `;` que cierra un valor).
   for (const [que, f] of FORMULAS()) {
     const cuerpo = sinLiterales(f)
+    // El control dejó de usar LET el 09/09/2026 (pasó de oración a `=ROUND(titular − SUM(bloque);0)`).
+    // Una fórmula sin LET no tiene variables que puedan colisionar con una referencia, así que no hay
+    // nada que auditar; lo que NO se afloja es que una fórmula CON `LET(` declare nombres: si el
+    // extractor dejara de encontrarlos, este test pasaría a verde sin haber mirado nada.
+    if (!/\bLET\(/.test(cuerpo)) continue
     const nombres = [...cuerpo.matchAll(/(?:LET\(|;)\s*([A-Za-z_][A-Za-z0-9_]*)\s*;/g)].map((m) => m[1])
-    assert.ok(nombres.length > 0, `${que}: no encontré ninguna declaración de LET`)
+    assert.ok(nombres.length > 0, `${que}: usa LET( y no encontré ninguna declaración`)
     for (const n of nombres) {
       assert.ok(esNombreSeguro(n),
         `${que}: la variable "${n}" se puede leer como referencia de celda (columna+fila). Sheets la `
@@ -381,7 +394,8 @@ test('el bloque POR PROVEEDOR no necesita ARRAYFORMULA y no se la agrega de más
 //
 // Se mide con `esProsa`, el mismo núcleo puro que audita el Sheet: cualquier párrafo nuevo que
 // alguien meta adentro de esta fórmula da rojo acá y no dos horas después en la pantalla del dueño.
-test('EL DEFECTO · el control del titular nombra las dos causas sin explicar ninguna', () => {
-  const p = esProsa(formulaControl({ rangos: R, rangoSaldo: '$D$21:$D$60', que: 'el detalle' }))
+test('EL DEFECTO · ni el control ni su rótulo publican prosa', () => {
+  const p = esProsa(formulaControl({ rangos: R, rangoSaldo: '$D$21:$D$60' }))
   assert.equal(p, null, `la fórmula publica prosa: ${JSON.stringify(p)}`)
+  assert.equal(esProsa(ROTULO_CONTROL), null, 'el rótulo del control tampoco')
 })

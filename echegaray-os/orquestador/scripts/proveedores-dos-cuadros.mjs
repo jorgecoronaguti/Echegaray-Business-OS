@@ -50,7 +50,7 @@ import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-
 import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon } from '../lib/proveedores-colchon.mjs'
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
-import { SECCIONES_DINAMICAS, VALORES_DETALLE } from '../lib/proveedores-titulos.mjs'
+import { esSubtituloDeDetalle, SECCIONES_DINAMICAS, subtituloDetalle, VALORES_DETALLE } from '../lib/proveedores-titulos.mjs'
 import {
   altoEmitido, bandasDeFormato, COL, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
   diasDePago, letraDeLaDeuda, PENDIENTE, pivotSeccion1, rotulosDelCuadro, VISTA,
@@ -60,7 +60,8 @@ import {
   ROTULOS_A_LA_DERECHA,
 } from '../lib/proveedores-cuadro-a.mjs'
 import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
-import { formulaControl, rangosCompras } from '../lib/proveedores-deuda-viva.mjs'
+import { formulaControl, rangosCompras, ROTULO_CONTROL } from '../lib/proveedores-deuda-viva.mjs'
+import { MONEDA_CONTROL } from '../lib/formato-statement.mjs'
 import { rangosDesdeEncabezado } from '../lib/proveedores-bloque-vivo.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 
@@ -238,7 +239,7 @@ async function main() {
     { updateCells: { range: { sheetId, startRowIndex: iA, endRowIndex: finIdx, startColumnIndex: 0, endColumnIndex: 7 },
       rows: vacias, fields: 'userEnteredValue,pivotTable' } },
     anclaPivot(iA, cuadroTotales(fuente)),
-    texto(sheetId, iSub, 'Cada operación', true),
+    texto(sheetId, iSub, subtituloDetalle(), true),
     anclaPivot(iB, cuadroDetalle(fuente)),
     // CADA COLUMNA, DECLARADA EN CADA CORRIDA Y SOBRE EL FOOTPRINT ENTERO. Una dinámica no trae
     // formato: usa el que la celda ya tenía. Midiendo la banda con el alto de la corrida, el cuadro
@@ -406,10 +407,9 @@ async function reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo }) {
   // deja de reconocerse a sí mismo, y ahí es donde un generador se engancha en la fila equivocada.
   // Arriba, la fila de rótulos del cuadro A (que sale del contrato de la sección, ver `geo`); abajo,
   // el subtítulo del cuadro de detalle, que es el TOPE que estas dos columnas no pueden pasar.
-  const iSub = (visible ?? []).findIndex((f, i) => i >= geo.filaEncabezado
-    && /^cada operaci[oó]n/i.test(String(f?.[0] ?? '').trim()))
+  const iSub = (visible ?? []).findIndex((f, i) => i >= geo.filaEncabezado && esSubtituloDeDetalle(f?.[0]))
   if (iSub < 0) {
-    console.error('  ✗ no encontré el subtítulo "Cada operación": NO repongo "Vence" ni "Qué hacer".'
+    console.error(`  ✗ no encontré el subtítulo "${subtituloDetalle()}": NO repongo "Vence" ni "Qué hacer".`
       + '\n    → node orquestador/scripts/proveedores-notas-visibles.mjs --aplicar')
     process.exitCode = 1
     return
@@ -467,10 +467,19 @@ async function reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo }) {
 async function requestsDelControl({ google, sheetId, geo, rango }) {
   const filaControl = geo.filaEncabezado - 1
   if (filaControl < 1) return []
-  const celda = `${PESTAÑA}!A${filaControl}`
-  const vieja = String((await google.readSheetValues(ID, celda, { render: 'FORMULA' }))?.[0]?.[0] ?? '')
-  if (!/^=/.test(vieja) || !/SUM\(/.test(vieja)) {
-    console.log(`  ⚠ A${filaControl} no tiene el control de la sección (${vieja.slice(0, 40) || 'vacía'}): no lo toco`)
+  // ═══ EL CONTROL PASA A SER «RÓTULO | NÚMERO», Y POR ESO SE LEEN LAS DOS CELDAS (09/09/2026) ═══
+  //
+  // La guarda miraba si A tenía una fórmula con SUM: era el control entero, oración incluida. Ahora
+  // el rótulo va en la A (texto) y el número en la B, así que esa guarda daría «no lo toco» para
+  // siempre en cuanto la migración corriera una vez — el modo de falla más caro de esta pestaña: no
+  // da error, se congela. Se acepta cualquiera de las DOS formas: la vieja (fórmula en A) y la nueva
+  // (el rótulo en A). Cualquier otra cosa sigue siendo motivo para no tocar nada.
+  const par = (await google.readSheetValues(ID, `${PESTAÑA}!A${filaControl}:B${filaControl}`, { render: 'FORMULA' }))?.[0] ?? []
+  const rotuloViejo = String(par[0] ?? '')
+  const vieja = String(par[1] ?? '')
+  const esLaForma = rotuloViejo.trim() === ROTULO_CONTROL || (/^=/.test(rotuloViejo) && /SUM\(/.test(rotuloViejo))
+  if (!esLaForma) {
+    console.log(`  ⚠ A${filaControl} no tiene el control de la sección (${rotuloViejo.slice(0, 40) || 'vacía'}): no lo toco`)
     return []
   }
   const columna = letraDeLaDeuda()
@@ -494,10 +503,9 @@ async function requestsDelControl({ google, sheetId, geo, rango }) {
   const nueva = formulaControl({
     rangos: rangosCompras(crudos),
     rangoSaldo: `$${columna}$${rango.desde}:$${columna}$${rango.hasta - 1}`,
-    que: 'el detalle',
   })
-  if (nueva === vieja) {
-    console.log(`  ○ el control de A${filaControl} ya estaba al día (suma ${columna}${rango.desde}:${columna}${rango.hasta - 1})`)
+  if (nueva === vieja && rotuloViejo.trim() === ROTULO_CONTROL) {
+    console.log(`  ○ el control de B${filaControl} ya estaba al día (suma ${columna}${rango.desde}:${columna}${rango.hasta - 1})`)
     return []
   }
   // Se dice qué cambió, no sólo que cambió: si además del rango cambió el CRITERIO, eso es noticia.
@@ -506,8 +514,15 @@ async function requestsDelControl({ google, sheetId, geo, rango }) {
   console.log(`  CONTROL A${filaControl} → SUM(${columna}${rango.desde}:${columna}${rango.hasta - 1})`
     + (cambioCriterio ? '  ⟵ y con el criterio de deuda REGENERADO desde la definición canónica' : ''))
   return [{ updateCells: {
-    range: { sheetId, startRowIndex: filaControl - 1, endRowIndex: filaControl, startColumnIndex: 0, endColumnIndex: 1 },
-    rows: [{ values: [{ userEnteredValue: { formulaValue: nueva } }] }], fields: 'userEnteredValue' } }]
+    range: { sheetId, startRowIndex: filaControl - 1, endRowIndex: filaControl, startColumnIndex: 0, endColumnIndex: 2 },
+    rows: [{ values: [
+      { userEnteredValue: { stringValue: ROTULO_CONTROL }, userEnteredFormat: { horizontalAlignment: 'LEFT' } },
+      // El rojo va en el PATRÓN y no en una regla condicional: una regla hay que borrarla antes de
+      // reponerla y esta celda se reescribe en cada corrida del pipeline. Ver `formato-statement.mjs`.
+      { userEnteredValue: { formulaValue: nueva },
+        userEnteredFormat: { numberFormat: MONEDA_CONTROL, horizontalAlignment: 'RIGHT' } },
+    ] }],
+    fields: 'userEnteredValue,userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment' } }]
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })

@@ -79,6 +79,33 @@ export const SECCIONES_DINAMICAS = Object.freeze([
 /** Los valores del cuadro de detalle de la sección 1, que no tiene título propio (es un subtítulo). */
 export const VALORES_DETALLE = Object.freeze(['Importe'])
 
+/**
+ * EL SUBTÍTULO DEL CUADRO DE DETALLE — «1.1 · CADA OPERACIÓN».
+ *
+ * ═══ POR QUÉ CAMBIA DE FORMA (09/09/2026) ═══
+ *
+ * Decía «Cada operación», en minúscula y sin numerar. El contrato de diseño del archivo pide que el
+ * respaldo de un bloque cuelgue como `N.1 · …` y no como un rótulo suelto: en una pestaña sin reja,
+ * un texto en negrita a mitad de la grilla no se distingue de un encabezado de tabla, y el lector no
+ * sabe si abrió un bloque nuevo o si sigue adentro del 1.
+ *
+ * EL NÚMERO NO SE TIPEA: sale de `nSeccion('deuda')`, la misma fuente que numera el título de arriba.
+ * Escrito a mano, el día que se intercale una sección la madre sería la 2 y su respaldo seguiría
+ * diciendo 1.1 — que es exactamente el defecto que `SECCIONES_PROVEEDORES` existe para no tener.
+ */
+export const subtituloDetalle = () => `${nSeccion('deuda')}.1 · CADA OPERACIÓN`
+
+/**
+ * ¿ESTA CELDA ES ESE SUBTÍTULO? — reconoce también el nombre que tenía antes.
+ *
+ * Tres scripts lo BUSCAN para ubicarse (`proveedores-dos-cuadros`, dos veces, y
+ * `proveedores-notas-visibles`) y los tres fallan cerrado si no lo encuentran. Sin el alias, la
+ * corrida en la que el texto cambia deja a los tres buscando un ancla que todavía no está escrita:
+ * la pestaña no da error y se congela, que es como ya se perdieron días con «3 · NOTAS DE CRÉDITO».
+ */
+export const esSubtituloDeDetalle = (celda) =>
+  /^\s*(?:\d+\.\d+\s*·\s*)?cada operaci[oó]n\b/i.test(String(celda ?? '').trim())
+
 const norm = (v) => String(v ?? '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const sinNumero = (v) => norm(v).replace(/^\d{1,2}\s*[·.\-]\s*/, '')
 const vacia = (f) => (f ?? []).every((c) => String(c ?? '').trim() === '')

@@ -40,6 +40,7 @@ import { COL_PROVEEDOR, colNota, letra, rangoDelCuadroA } from '../lib/proveedor
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { COL_NOTA_AUX } from '../lib/proveedores-auxiliar.mjs'
 import { AUX, notasQueNoEntran, requestsDeNotas } from '../lib/proveedores-notas-columna.mjs'
+import { esSubtituloDeDetalle, subtituloDetalle } from '../lib/proveedores-titulos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -87,9 +88,8 @@ async function main() {
   // EL TOPE ES EL SUBTÍTULO DEL CUADRO DE DETALLE, ubicado por su texto — no por la salida anterior
   // de nadie, que es lo que deja de reconocerse el día que un cuadro da #REF!. Contrato de la
   // sección: título · aire · control · rótulos · cuadro A · aire · subtítulo · rótulos · detalle.
-  const iSub = visible.findIndex((f, i) => i >= filaRotulos
-    && /^cada operaci[oó]n/i.test(String(f?.[0] ?? '').trim()))
-  if (iSub < 0) throw new Error('no encontré el subtítulo "Cada operación": sin tope no escribo')
+  const iSub = visible.findIndex((f, i) => i >= filaRotulos && esSubtituloDeDetalle(f?.[0]))
+  if (iSub < 0) throw new Error(`no encontré el subtítulo "${subtituloDetalle()}": sin tope no escribo`)
   const { desde, hasta, emitidas } = rangoDelCuadroA({
     visible, filaRotulos, filaTope: iSub + 1, colchon: COLCHON,
   })
@@ -108,7 +108,7 @@ async function main() {
   const L = letra(COL_NOTA)
   console.log(`\nCUADRO "A QUIÉN SE LE DEBE": rótulos en la fila ${filaRotulos} · ${emitidas} proveedor(es)`
     + ` · el nombre en la ${LETRA_PROV} · la nota va en ${L}${desde}:${L}${hasta - 1}`
-    + ` · el detalle ("Cada operación") empieza en la ${iSub + 1}`)
+    + ` · el detalle ("${subtituloDetalle()}") empieza en la ${iSub + 1}`)
   if (hasta - desde < 1) throw new Error('el cuadro no tiene filas entre sus rótulos y el detalle: no escribo')
   if (!APLICAR) { console.log('\n(sin --aplicar: no se escribió nada)'); return }
 

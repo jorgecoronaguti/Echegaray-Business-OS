@@ -284,10 +284,9 @@ export function formulaPagadasSinImporte() {
   return `=SUMPRODUCT(${universoSinImporte()})`
 }
 
-/** A quiénes, para poder preguntar sin abrir Compras. `UNIQUE` porque hay proveedores con más de una. */
-export function formulaProveedoresSinImporte() {
-  return `=IFERROR(TEXTJOIN(" · ";TRUE;UNIQUE(FILTER(Compras!$E$4:$E;${universoSinImporte()})));"")`
-}
+// `formulaProveedoresSinImporte` —la lista de nombres al lado del conteo— se retiró el 09/09/2026:
+// era una celda de texto libre en el encabezado, que es lo que el contrato de diseño prohíbe. Quién
+// es cada una se encuentra en Compras con el filtro que el rótulo del control nombra.
 
 /** El universo, en un solo lugar: el conteo y los nombres tienen que hablar de las mismas filas. */
 function universoSinImporte() {
@@ -312,27 +311,26 @@ function universoSinImporte() {
  * contradice sola: o ya está pagada y le falta el estado, o el importe está en la columna equivocada.
  * Mientras tanto su saldo se publica entero, y puede estar de más.
  *
- * Esta fórmula no resuelve la contradicción: la NOMBRA, con proveedor y monto, para que se arregle en
- * Compras, que es donde está el dato. Elegir una de las dos respuestas acá sería fabricarla.
+ * Esta fórmula no resuelve la contradicción: la MIDE, para que se arregle en Compras, que es donde
+ * está el dato. Elegir una de las dos respuestas acá sería fabricarla.
+ *
+ * ═══ DEVUELVE EL NÚMERO Y NADA MÁS (09/09/2026) ═══
+ *
+ * Devolvía una ORACIÓN de hasta 180 caracteres con el conteo, el monto y los nombres, y derramaba
+ * sobre dos columnas del encabezado de «Proveedores». El contrato de diseño no admite una oración en
+ * una celda: el control es «rótulo | número», el rótulo dice con qué filtro se encuentran las filas
+ * en Compras y el rojo lo pone el formato cuando el número no es cero.
  *
  * @returns {string}
  */
-export function formulaParcial1Sospechoso() {
+export function formulaParcial1Monto() {
   // `IF(ISNUMBER(...))` NO SOBRA, y la primera versión sin él publicó `#VALUE!` en la pestaña real.
   // `Monto Parcial 1` tiene 302 valores cargados a mano y entre ellos hay celdas de TEXTO: la
   // comparación `>0` las tolera, pero la MULTIPLICACIÓN de la máscara por la columna arrastra el
   // texto y rompe el SUMPRODUCT entero. Es la misma coerción que ya hace `expresionSaldo`.
   const n = '(IF(ISNUMBER(Compras!$U$4:$U);Compras!$U$4:$U;0))'
   const u = `(${n}>0)*(Compras!$X$4:$X="${PENDIENTE}")*(Compras!$AJ$4:$AJ=1)`
-  return `=LET(n;SUMPRODUCT(${u});m;SUMPRODUCT(${u}*${n});`
-    + `IF(n=0;"✓ ningún importe suelto en «Monto Parcial 1»";`
-    + `n&" factura(s) pendientes con "&TEXT(m;"$#,##0")&" cargado en «Monto Parcial 1» ("`
-    // LAS DOS RESPUESTAS POSIBLES —o ya está pagada y le falta el estado, o el importe va en «Monto
-    // Pagado»— NO SE ESCRIBEN EN LA CELDA (06/09/2026). Están tres párrafos más arriba, en el `POR
-    // QUÉ` de esta función, que es donde las va a buscar el que tenga que arreglarlo en Compras. La
-    // celda nombra la contradicción con proveedor y monto, que es lo único que no se puede deducir.
-    + `&IFERROR(TEXTJOIN(" · ";TRUE;UNIQUE(FILTER(Compras!$E$4:$E;${u})));"sin nombre")`
-    + '&")"))'
+  return `=SUMPRODUCT(${u}*${n})`
 }
 
 /** El rótulo de la columna en Compras. Una sola constante: el que escribe y el que busca leen ésta. */
