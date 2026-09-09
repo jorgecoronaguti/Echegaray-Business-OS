@@ -338,3 +338,60 @@ test('los CUATRO rangos se declaran anclados a su rótulo, y falta uno → no se
   assert.throws(() => rangosDeCargas({ fF931, fGremiales, fFechas }), /declarado/,
     'sin la fila del declarado el libro volvería en silencio al $6.500.000 tipeado')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA GRILLA VIEJA Y LA NUEVA TIENEN QUE DAR EL MISMO LIBRO (09/09/2026)
+//
+// El rediseño de «Cargas Sociales» convirtió los meses sin DDJJ de la fila «Total declarado» —que ES
+// `CARGAS_MES_F931_DECLARADO`— de TEXTO («≈ $6.381.653 proy.») a NÚMERO. Ese cambio es de PRESENTACIÓN
+// y no puede mover un peso del cash flow, pero tocaba justo la celda de la que el libro deduce si un
+// mes está declarado. Dos cosas podían romperse, y las dos eran caras:
+//
+//   1. Los cuatro meses proyectados pasarían a viajar como COMPROMETIDO: el OS afirmando que hay una
+//      DDJJ presentada donde no la hay.
+//   2. Peor: la celda vieja mostraba el TOTAL DEVENGADO (F931 + gremiales), así que el libro habría
+//      publicado los gremiales DOS VECES — una en la línea de cargas sociales y otra en la suya.
+//      Medido sobre este mismo fixture: octubre entraría por $6.381.652,74 en vez de $5.154.707,83,
+//      $1.226.944,91 de más, que son exactamente los gremiales de ese mes.
+//
+// Por eso la fila nueva referencia el SUBTOTAL F931 y el extractor reconoce el ECO. Este test corre
+// las dos grillas y compara el resultado entero: si alguna de las dos protecciones se cae, se pone rojo.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+/** La fila «Total declarado» como la escribía la grilla VIEJA: texto en los meses sin DDJJ. */
+const DECLARADO_VIEJO = DECLARADO
+/** Y como la escribe la NUEVA: el mismo número que la pestaña publica en CARGAS_MES_F931. */
+const DECLARADO_NUEVO = [...DECLARADO.slice(0, 8), ...F931_SEP.slice(8)]
+
+const libroDe = (declarado) => deCargasSociales(
+  { fechas: FECHAS_12, f931: F931_SEP, gremiales: GREM_SEP, declarado }, CORTE_08_09,
+  { mesesPagados: PAGADOS_08_09, mesesFinanciados: new Set(['2026-06']) },
+)
+
+test('GRILLA VIEJA vs. NUEVA: el libro publica exactamente los mismos movimientos', () => {
+  const viejo = libroDe(DECLARADO_VIEJO)
+  const nuevo = libroDe(DECLARADO_NUEVO)
+  assert.deepEqual(nuevo, viejo, 'el rediseño de la pestaña movió el cash flow: era de presentación')
+})
+
+test('el eco no puede colarse como declarado: los meses proyectados siguen PROYECTADO y por su importe', () => {
+  // El control sin el deepEqual de arriba: si mañana alguien saca la regla del eco, este test dice
+  // POR DÓNDE se rompió — el estado y el importe de cada mes proyectado.
+  const f931 = libroDe(DECLARADO_NUEVO).filter((m) => m.rubro === RUBRO_CARGAS)
+  assert.deepEqual(f931.map((m) => [isoDe(m.fecha), m.estado, m.importe]), [
+    ['2026-09-10', 'COMPROMETIDO', 8331697.69],
+    ['2026-10-10', 'PROYECTADO', 5154707.83],
+    ['2026-11-10', 'PROYECTADO', 11792283.9],
+    ['2026-12-10', 'PROYECTADO', 4660805.97],
+    ['2027-01-10', 'PROYECTADO', 5137203.7],
+  ])
+})
+
+test('una DDJJ REAL que difiere de la proyección sigue ganando: el eco es igualdad exacta', () => {
+  // El eco no puede volverse una puerta trasera que apague el declarado. Con un peso de diferencia,
+  // la celda es una declaración y manda como siempre.
+  const casi = [...DECLARADO_NUEVO]
+  casi[8] = F931_SEP[8] + 1
+  const f931 = libroDe(casi).filter((m) => m.rubro === RUBRO_CARGAS && isoDe(m.fecha) === '2026-10-10')
+  assert.deepEqual(f931.map((m) => [m.estado, m.importe]), [['COMPROMETIDO', 5154707.83 + 1]])
+})

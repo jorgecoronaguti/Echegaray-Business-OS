@@ -5,7 +5,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  citaLaPestana, sheetIdsDe, referenciasAPestana, rangoDeLaHoja, nombreDelRespaldo, retirar,
+  citaLaPestana, sheetIdsDe, rangoDeLaHoja, nombreDelRespaldo, retirar,
 } from './pestana-retirar.mjs'
 
 const HOJAS = [
