@@ -82,7 +82,11 @@ const ALTO_HISTORICO = 160
 // después corrija su número no lo autoriza a borrar lo que una persona escribió: primero se respeta,
 // y lo que quede en conflicto se dice, no se pisa.
 
-const ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
+// EL DESTINO SALE DEL ENTORNO PARA PODER PROBAR SIN TOCAR EL ARCHIVO REAL. Un generador que sólo
+// sabe escribir el Sheet vivo no se puede verificar: la única forma de ver el resultado de una
+// fórmula es aplicarla y mirarla, y hacerlo sobre el real ya rompió «Jornales por Quincena».
+// `scripts/en-copia.mjs` exige esta variable y se niega si trae el id del archivo real.
+const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Nómina'
 const ANIO = 2026
 const APLICAR = process.argv.includes('--aplicar')
