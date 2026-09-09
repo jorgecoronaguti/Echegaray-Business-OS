@@ -50,6 +50,15 @@ export const SOLAPA_POR_DEFECTO: ClaveDeSolapa = 'horas'
 // Cada agente agrega SU línea acá y nada más. `pagos` apunta hoy al cuadro que ya existe
 // (`BloqueLiquidacion`) para que la cadena de pago no quede sin puerta mientras se construye la
 // pantalla 4; quien la haga reemplaza ese componente por el suyo.
+//
+// ═══ «CAJA DE NÓMINA» NO ES UNA SOLAPA ═══
+//
+// El mockup lista CINCO solapas de nivel 3 (`Horas · Pagos · Costo a la obra · Convenios · Cierre`,
+// + Recibos) y la pantalla 9 no está entre ellas: se dibuja aparte, a 1040 px, y sus dos primeras
+// filas —«Efectivo en mano» y «Lote de haberes al banco»— son literalmente los dos totales del pie
+// de Pagos. Por eso vive DENTRO de `pagos.tsx`, debajo del cuadro. Una séptima solapa obligaría a
+// cambiar de pantalla para leer el total que se acaba de calcular, y agregaría un nivel de
+// navegación que el handoff §4 prohíbe («máximo dos niveles» de header, tres con las solapas).
 export const SOLAPAS: SolapaDeLiquidacion[] = [
   { clave: 'horas', titulo: 'Horas', Componente: SolapaHoras },
   { clave: 'pagos', titulo: 'Pagos', Componente: SolapaPagos as unknown as ComponentType<PropsDeSolapa> },
