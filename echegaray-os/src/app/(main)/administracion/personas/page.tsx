@@ -47,6 +47,11 @@ import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { BloqueAsistenciaQuincena } from '@/features/administracion/components/BloqueAsistenciaQuincena'
 import { BloqueLiquidacion } from '@/features/administracion/components/liquidacion/BloqueLiquidacion'
+// PROVISORIO — se reemplaza por `components/liquidacion/solapas/index.ts` (registro de las seis
+// solapas) en cuanto exista. Está acá para que las tres pantallas del costo se puedan ver con
+// datos reales: una pantalla que nadie miró no está terminada.
+import { SOLAPAS_DE_COSTO } from '@/features/administracion/components/liquidacion/solapas/registro-costo'
+import { quincenaDe, esFechaISO } from '@/features/administracion/services/quincena'
 import { BloqueAsistenciaDia } from '@/features/administracion/components/asistencia/BloqueAsistenciaDia'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
@@ -74,7 +79,7 @@ export const dynamic = 'force-dynamic'
 
 const RUTA = '/administracion/personas'
 
-type Busqueda = { q?: string; f?: string; nueva?: string; vista?: string; quincena?: string; modo?: string; obra?: string; dia?: string }
+type Busqueda = { q?: string; f?: string; nueva?: string; vista?: string; quincena?: string; modo?: string; obra?: string; dia?: string; solapa?: string }
 
 function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): string {
   const params = new URLSearchParams()
@@ -244,6 +249,10 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   // `public.liquida_sueldos()` en la policy, que también corta una llamada directa a PostgREST.
   if (enLiquidacion && !liquida) notFound()
 
+  const solapaCosto = enLiquidacion
+    ? SOLAPAS_DE_COSTO.find((s) => s.clave === sp.solapa)
+    : undefined
+
   if (enLiquidacion) {
     return (
       <Marco>
@@ -255,9 +264,16 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             vistas={vistasDe('liquidacion', sp.quincena, veLaPlata)}
           />
           <div style={{ padding: '10px 20px 24px' }}>
-            <BloqueLiquidacion
-              quincenaPedida={sp.quincena} hoy={hoy} hrefDe={hrefLiquidacion} puedeCerrar
-            />
+            {solapaCosto ? (
+              <solapaCosto.Componente
+                quincena={quincenaDe(esFechaISO(sp.quincena) ? sp.quincena : hoy)}
+                hoy={hoy}
+              />
+            ) : (
+              <BloqueLiquidacion
+                quincenaPedida={sp.quincena} hoy={hoy} hrefDe={hrefLiquidacion} puedeCerrar
+              />
+            )}
           </div>
         </div>
       </Marco>
