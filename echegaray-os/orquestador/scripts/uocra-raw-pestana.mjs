@@ -58,6 +58,29 @@ export const COL = {
 }
 export const FILA0 = 4
 
+/**
+ * NÚCLEO PURO: la celda que trae de la boleta de UOCRA el dato `col` del período — el equivalente de
+ * `celdaCabecera` para esta réplica. Devuelve `""` si el período no está: una boleta que todavía no
+ * se presentó no es un cero.
+ *
+ * ═══ LA RECTIFICATIVA LE GANA A LA ORIGINAL, Y HAY QUE ELEGIRLA A PROPÓSITO (09/09/2026) ═══
+ *
+ * Un período puede estar DOS VECES en la réplica, una por cada boleta presentada: 2026-07 tiene la
+ * Original ($649.940,06 de Total determinado) y la Rectificativa ($1.261.611,38). Un `MATCH` simple
+ * devuelve la PRIMERA fila que encuentra, y cuál es la primera depende del orden en que Drive
+ * devolvió los archivos — o sea, del azar. Un `SUMIF` sería peor: sumaría las dos y declararía
+ * $1.911.551 de una obligación que es una sola. La rectificativa reemplaza a la original por
+ * definición, así que se la busca primero por (período · tipo de boleta) y sólo si no existe se cae
+ * a la que haya.
+ */
+export function celdaUocra(periodo, col) {
+  const per = `${PESTAÑA}!$${COL.periodo}$${FILA0}:$${COL.periodo}`
+  const bol = `${PESTAÑA}!$${COL.boleta}$${FILA0}:$${COL.boleta}`
+  const val = `${PESTAÑA}!$${col}$${FILA0}:$${col}`
+  const rect = `MATCH("${periodo}|Rectificativa";ARRAYFORMULA(${per}&"|"&${bol});0)`
+  return `=IFERROR(INDEX(${val};${rect});IFERROR(INDEX(${val};MATCH("${periodo}";${per};0));""))`
+}
+
 /** NÚCLEO PURO: una fila de la réplica. Sin red. Un null queda VACÍO, nunca cero. */
 export function fila(d) {
   const n = (v) => (v == null ? '' : Number(v))
@@ -164,4 +187,10 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// EL GUARDIA ES DE HOY (09/09/2026) y no es cosmético: «Cargas Sociales» importa `celdaUocra` de acá
+// —igual que importa `celdaF931` de `f931-sheet.mjs`— y sin él un `import` habría ESCRITO la réplica
+// como efecto secundario de armar otra pestaña. Un generador que corre porque alguien lo leyó es
+// exactamente el modo de falla que borró una pestaña entera desde un worktree.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}

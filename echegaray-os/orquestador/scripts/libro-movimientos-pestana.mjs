@@ -157,9 +157,9 @@ async function extraerDeLasFuentes(google, corte) {
       return null
     }
   }
-  const [fechasCargas, f931Cargas, gremialesCargas, declaradoCargas] = await Promise.all([
+  const [fechasCargas, f931Cargas, gremialesCargas, declaradoCargas, gremialesDeclarados] = await Promise.all([
     opcional(NOMBRES_CARGAS.fechas), opcional(NOMBRES_CARGAS.f931), opcional(NOMBRES_CARGAS.gremiales),
-    opcional(NOMBRES_CARGAS.declarado),
+    opcional(NOMBRES_CARGAS.declarado), opcional(NOMBRES_CARGAS.gremialesDeclarado),
   ])
 
   // El registro de cheques se ubica por el DATO (FISICO/ECHEQ), no por una fila fija.
@@ -221,15 +221,18 @@ async function extraerDeLasFuentes(google, corte) {
   // hecho le gana a la proyección (el mes pagado en Compras la cadena no lo emite) y la cadena le gana
   // a la fila plana (los meses que publica, Compras no los aporta). Ver libro-extractores-cargas.mjs.
   // Y EL DECLARADO LE GANA A LA PROYECCIÓN (08/09): el F931 ya presentado entra por su importe de DDJJ,
-  // COMPROMETIDO, salvo que Compras lo tenga pagado o un plan lo financie. Ver `obligacionF931`.
+  // COMPROMETIDO, salvo que Compras lo tenga pagado o un plan lo financie. Ver `obligacionDeclarada`.
   const enCompras = cargasEnCompras(compras)
   const cargas = deCargasSociales(
-    { fechas: fechasCargas, f931: f931Cargas, gremiales: gremialesCargas, declarado: declaradoCargas },
+    {
+      fechas: fechasCargas, f931: f931Cargas, gremiales: gremialesCargas,
+      declarado: declaradoCargas, gremialesDeclarado: gremialesDeclarados,
+    },
     corte, { mesesPagados: enCompras.mesesPagados, mesesFinanciados: enCompras.financiados, aviso: (m) => console.warn(`  · ${m}`) },
   )
-  const declarados = cargas.filter((m) => String(m.origen?.fila ?? '').startsWith('F931 · declarado'))
+  const declarados = cargas.filter((m) => / · declarado /.test(String(m.origen?.fila ?? '')))
   if (declarados.length) {
-    console.log(`  cargas sociales: ${declarados.length} F931 DECLARADO(s) sin pagar en Compras → `
+    console.log(`  cargas sociales: ${declarados.length} obligación(es) DECLARADA(s) sin pagar en Compras → `
       + declarados.map((m) => `${m.concepto} ${pesos(m.importe)} el ${isoDeSerial(m.fecha)}`).join(' · '))
   }
   const cargasCubiertas = mesesCubiertos(cargas)

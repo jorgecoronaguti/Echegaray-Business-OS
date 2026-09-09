@@ -96,3 +96,29 @@ export function crearGrilla(anio) {
 
   return { filas, push, mensual, cabecera, n: () => filas.length }
 }
+
+/**
+ * EL ECO: la celda de un «Total declarado» que todavía no tiene DDJJ muestra la PROYECCIÓN.
+ *
+ * Las dos filas declaradas de la pestaña —el F931 y los gremiales— tienen el mismo problema y la
+ * misma solución, y por eso la regla se escribe UNA vez: un mes sin DDJJ no puede quedarse mudo,
+ * porque el Libro leería vacío y la línea del cash flow volvería a la fila PLANA de Compras (los
+ * $6.500.000 del F931 que el dueño denunció el 08/09, los $1.500.000 de gremiales del 09/09).
+ *
+ * NO SE MARCA CON UNA PALABRA ADENTRO DEL IMPORTE. La distinción entre lo presentado y lo proyectado
+ * la hace el FORMATO —gris e itálica— y el Libro la hace por el ECO: si el declarado del mes es
+ * exactamente el mismo número que la propia pestaña publica como proyección, esa celda está mostrando
+ * la proyección y el movimiento viaja como PROYECTADO (ver `obligacionDeclarada`). Sin proyección la
+ * celda vuelve a decir «sin DDJJ»: un cero sigue sin ser una respuesta posible.
+ *
+ * @returns {{fila:number, meses:number[]}} lo que la piel necesita para dibujar esos meses en gris
+ */
+export function ecoDeLaProyeccion(G, { fila, filaProy, declarado }) {
+  const meses = []
+  for (let m = 1; m <= 12; m++) {
+    if (declarado(m)) continue
+    meses.push(m)
+    G.filas[fila - 1][m] = `=IF(N(${cm(m)}${filaProy})=0;"${SIN_DDJJ}";${cm(m)}${filaProy})`
+  }
+  return { fila, meses }
+}

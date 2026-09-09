@@ -27,11 +27,12 @@ import { seccion, total as rotuloTotal } from './patron-pestana.mjs'
 import { rango } from './compras-columnas.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { celdaF931, celdaCabecera, PESTAÑA as RAW } from '../scripts/f931-sheet.mjs'
+import { celdaUocra, COL as COL_UOCRA, PESTAÑA as RAW_UOCRA } from '../scripts/uocra-raw-pestana.mjs'
 import {
   CONCEPTOS_CADENA, RANGO_DIA_PAGO_F931, RANGO_PROPORCION_PRIMER_ANIO,
   proyeccionDeConcepto, jornalesDelMes,
 } from './cargas-cadena.mjs'
-import { ROTULOS_CARGAS, RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
+import { ROTULOS_CARGAS, NOMBRES_CARGAS, RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
 import { MES, cm, REALES, MESES_REALES, SIN_DDJJ } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
@@ -46,8 +47,11 @@ const ar = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '
 // 1 · DECLARADO EN EL F931
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-export function bloqueDeclarado(G, { anio, periodos, conceptos }) {
-  G.push([seccion(1, 'Declarado en el F931')])
+export function bloqueDeclarado(G, { anio, periodos, conceptos, periodosUocra = [] }) {
+  // EL CUADRO DEJÓ DE SER SÓLO DEL F931 (09/09/2026): abajo del bloque de ARCA entra el de UOCRA. Las
+  // dos son DDJJ presentadas del mismo mes de nómina, y la línea de gremiales del cash flow necesitaba
+  // su declarado por la misma razón que lo necesitó el F931 — ver `SERIES_DE_CARGAS`.
+  G.push([seccion(1, 'Declarado en las DDJJ')])
   G.cabecera()
   const per = (m) => `${anio}-${String(m).padStart(2, '0')}`
   const d0 = G.n() + 1
@@ -81,8 +85,29 @@ export function bloqueDeclarado(G, { anio, periodos, conceptos }) {
     'Cabecera de la DDJJ.', { totaliza: false })
   const fRem = G.mensual('Remuneración declarada', (m) => (periodos.includes(per(m)) ? celdaCabecera(per(m), 'F') : VACIO),
     'Cabecera de la DDJJ. Es la base de todas las alícuotas.')
+  // ── LO QUE DECLARA UOCRA, QUE NO ESTÁ EN EL F931 ────────────────────────────────────────────────
+  //
+  // Dos filas y un subtotal. Son la fuente que a la línea «Nómina · Gremiales» del cash flow le
+  // faltaba: hasta hoy el mes que va de la presentación al pago no tenía de dónde salir y el Libro
+  // caía a la fila PLANA de Compras ($1.500.000 redondos en sep-26).
+  //
+  // IERIC Y FODECO NO ESTÁN ACÁ PORQUE NO ESTÁN EN NINGUNA BOLETA: son aportes por trabajador
+  // registrado que se pagan aparte. El subtotal viene corto en esos dos (~$26.000 sobre ~$1,6M) y lo
+  // dice su columna de origen. Completarlo con la proyección lo volvería una estimación emitida como
+  // hecho — el meses sin boleta sí caen a la proyección entera, y viajan como PROYECTADO.
+  const u0 = G.n() + 1
+  const conBoleta = (m) => periodosUocra.includes(per(m))
+  G.mensual('Fondo de Cese Laboral', (m) => (conBoleta(m) ? celdaUocra(per(m), COL_UOCRA.fondoCese) : VACIO),
+    `Renglón "Total Aportes Devengados al Fondo de Cese Laboral" de la DDJJ Nominativa · ${RAW_UOCRA}`)
+  G.mensual('UOCRA', (m) => (conBoleta(m) ? celdaUocra(per(m), COL_UOCRA.totalDeterminado) : VACIO),
+    `"Total determinado" de la DDJJ Nominativa · ${RAW_UOCRA}. Con boleta rectificativa manda la rectificativa.`)
+  const u1 = G.n()
+  const fGremDecl = G.mensual(ROTULOS_CARGAS.gremialesDeclarado,
+    (m) => (conBoleta(m) ? `=SUM(${cm(m)}${u0}:${cm(m)}${u1})` : SIN_DDJJ),
+    `Suma de las dos filas de arriba. Es ${NOMBRES_CARGAS.gremialesDeclarado}, la serie que el Libro lee para la línea "${RUBRO_GREMIALES}". NO incluye IERIC ni FODECO: no se declaran en la boleta. Los meses sin boleta los completa la proyección, en gris.`,
+    { totaliza: false })
   G.push()
-  return { filaDecl, fDeclTot, fEmp, fRem }
+  return { filaDecl, fDeclTot, fEmp, fRem, fGremDecl }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -204,6 +229,16 @@ export function bloqueProyeccion(G, {
   // en Compras para ese mes», que repetía las cuotas del cuadro 4. Un parámetro que ya nadie usa se
   // saca: dejarlo invita a que la próxima fila que necesite Compras nazca acá en vez de en su cuadro.
   anio, desdeProy, filaDecl, filaPag, fRem, fEmp, fDeclTot,
+  // ═══ LOS GREMIALES SE PROYECTAN DESDE ANTES QUE EL F931, Y NO ES UN CAPRICHO (09/09/2026) ═══
+  //
+  // Las dos DDJJ no llegan juntas: al 09/09 el F931 estaba presentado hasta AGOSTO y la boleta de
+  // UOCRA hasta JULIO. Con las dos proyecciones arrancando en el mismo mes, agosto quedaba sin
+  // ninguna fuente para los gremiales —ni declarada ni proyectada— y su salida de caja (10/09) caía a
+  // la fila plana de Compras. Ése es exactamente el defecto que este cambio cierra.
+  //
+  // Sólo se adelanta el bloque de gremiales. El de F931 sigue empezando en `desdeProy`: proyectar un
+  // mes que ya tiene DDJJ presentada sería dibujar una estimación al lado de un hecho.
+  desdeGrem = null,
   // CON QUÉ BASE QUEDÓ VALUADA LA MASA QUE ESTA PESTAÑA MULTIPLICA. No se decide acá —se lee de lo que
   // Jornales publicó, ver `baseDeJornales`— porque la decisión ya vive en un solo lugar. Sin señal, la
   // glosa lo dice en vez de afirmar un supuesto que puede no estar adentro del número.
@@ -212,6 +247,10 @@ export function bloqueProyeccion(G, {
   G.push([seccion(3, `Proyección ${MES[desdeProy]}–dic y salida de caja`)])
   G.cabecera()
   const proyMeses = Array.from({ length: 12 - desdeProy + 1 }, (_, i) => desdeProy + i)
+  // Nunca DESPUÉS de `desdeProy`: si UOCRA fuera el que va adelantado, los gremiales se siguen
+  // proyectando desde el primer mes sin F931 y los meses con boleta los cubre el declarado.
+  const desde1 = Math.min(Number.isInteger(desdeGrem) && desdeGrem > 0 ? desdeGrem : desdeProy, desdeProy)
+  const gremMeses = Array.from({ length: 12 - desde1 + 1 }, (_, i) => desde1 + i)
   const fRelacion = G.mensual('Remuneración declarada ÷ jornales netos', (m) => (m === desdeProy
     ? `=IFERROR(SUM(${REALES(fRem, desdeProy)})/(${MESES_REALES(desdeProy).map((x) => jornalesDelMes(`DATE(${anio};${x};1)`)).join('+')});"")` : VACIO),
   `Medido sobre los ${desdeProy - 1} meses que tienen las dos cifras. Lo declarado en F931 no es el neto pagado en mano: esta relación traduce una en otra.`, { meses: proyMeses, totaliza: false })
@@ -224,8 +263,14 @@ export function bloqueProyeccion(G, {
   // caída, Jornales publicaba la masa al jornal PACTADO y esta glosa seguía afirmando el 100% de la
   // escala. Una nota que declara un supuesto que el número de al lado no tiene adentro no es una
   // limitación declarada: es una afirmación falsa, y encima tranquiliza.
-  const fRemProy = G.mensual('Remuneración proyectada', (m) => `=IFERROR((${jornalesDelMes(`DATE(${anio};${m};1)`)})*$${cm(desdeProy)}$${fRelacion};0)`,
-    `Jornales proyectados × la relación de arriba. ${notaSupuesto(baseJornales)}`, { meses: proyMeses })
+  // UN MES QUE YA TIENE DDJJ NO SE PROYECTA: SE LEE. Esta fila se extendió hacia atrás para que los
+  // gremiales de agosto tengan base, y la base de agosto NO es una estimación de jornales — es la
+  // remuneración que la propia empresa declaró en el F931, doce filas más arriba. Proyectarla teniendo
+  // el hecho al lado sería fabricar un dato que ya existe.
+  const fRemProy = G.mensual('Remuneración proyectada', (m) => (m < desdeProy
+    ? `=N(${cm(m)}$${fRem})`
+    : `=IFERROR((${jornalesDelMes(`DATE(${anio};${m};1)`)})*$${cm(desdeProy)}$${fRelacion};0)`),
+  `Jornales proyectados × la relación de arriba; en los meses con DDJJ, la remuneración declarada. ${notaSupuesto(baseJornales)}`, { meses: gremMeses })
   // ═══ LA DOTACIÓN ES LA ÚLTIMA REAL, NO UN PROMEDIO (defecto A7) ═══
   //
   // Decía `AVERAGE(B19:G19)` = 21 personas: el promedio de los seis F931 presentados (18·16·24·22·23·22).
@@ -235,8 +280,10 @@ export function bloqueProyeccion(G, {
   // Y AL LADO, EL CONTROL CONTRA OTRA FUENTE. La regla del archivo: un control nunca se valida contra
   // la misma información que produce. La dotación de la DDJJ y el plantel de la planilla de jornales
   // vienen de dos lugares distintos; si se separan mucho, uno de los dos está mal.
-  const fDot = G.mensual('Dotación proyectada', () => `=IFERROR(INDEX(${REALES(fEmp, desdeProy)};COUNT(${REALES(fEmp, desdeProy)}));"")`,
-    'El ÚLTIMO mes con DDJJ, no el promedio: un promedio no fue cierto ningún mes y acá multiplica costos por persona.', { meses: proyMeses, totaliza: false })
+  const fDot = G.mensual('Dotación proyectada', (m) => (m < desdeProy
+    ? `=N(${cm(m)}$${fEmp})`
+    : `=IFERROR(INDEX(${REALES(fEmp, desdeProy)};COUNT(${REALES(fEmp, desdeProy)}));"")`),
+  'El ÚLTIMO mes con DDJJ, no el promedio: un promedio no fue cierto ningún mes y acá multiplica costos por persona. En los meses que ya tienen DDJJ, la dotación declarada de ese mes.', { meses: gremMeses, totaliza: false })
   // ═══ LAS DOS FILAS DE «·» QUE ESTABAN ACÁ SE FUERON (09/09/2026) ═══
   //
   // Eran `   · control: plantel de la última quincena  15  ▲` y `   · en su primer año de antigüedad
@@ -257,7 +304,7 @@ export function bloqueProyeccion(G, {
    * lee cada subtotal por su nombre. Con un solo total, los gremiales se mudarían a la línea de
    * cargas sociales: el consolidado seguiría bien y las dos líneas dirían cosas falsas.
    */
-  const bloqueProyectado = (conceptos) => {
+  const bloqueProyectado = (conceptos, meses) => {
     const desde = G.n() + 1
     for (const c of conceptos) {
       const origen = c.de === 'declarado' ? filaDecl[c.codigo] : filaPag[c.rotulo]
@@ -274,20 +321,20 @@ export function bloqueProyeccion(G, {
         filaOrigen: origen, fRem, fEmp, reales: (fila) => REALES(fila, desdeProy), colMes: cm, fRemProy, fDot,
         celdaProporcion: RANGO_PROPORCION_PRIMER_ANIO,
       })
-      G.mensual(c.rotulo, p.celda, p.origen, { meses: proyMeses })
+      G.mensual(c.rotulo, p.celda, p.origen, { meses })
     }
     return { desde, hasta: G.n() }
   }
   /** El subtotal de un bloque. Con el bloque vacío escribe un cero honesto: `SUM(B45:B44)` sumaría otra cosa. */
-  const subtotal = (rotulo, { desde, hasta }, origen) => G.mensual(rotulo,
-    (m) => (hasta >= desde ? `=SUM(${cm(m)}${desde}:${cm(m)}${hasta})` : '=0'), origen, { meses: proyMeses })
+  const subtotal = (rotulo, { desde, hasta }, origen, meses) => G.mensual(rotulo,
+    (m) => (hasta >= desde ? `=SUM(${cm(m)}${desde}:${cm(m)}${hasta})` : '=0'), origen, { meses })
 
-  const bDecl = bloqueProyectado(CONCEPTOS_CADENA.filter((c) => c.de === 'declarado'))
+  const bDecl = bloqueProyectado(CONCEPTOS_CADENA.filter((c) => c.de === 'declarado'), proyMeses)
   const fSubF931 = subtotal(ROTULOS_CARGAS.f931, bDecl,
-    'Los seis conceptos de la DDJJ. Es la línea "Nómina · Cargas sociales" del cash flow, y el Libro la lee por CARGAS_MES_F931.')
-  const bGrem = bloqueProyectado(CONCEPTOS_CADENA.filter((c) => c.de !== 'declarado'))
+    'Los seis conceptos de la DDJJ. Es la línea "Nómina · Cargas sociales" del cash flow, y el Libro la lee por CARGAS_MES_F931.', proyMeses)
+  const bGrem = bloqueProyectado(CONCEPTOS_CADENA.filter((c) => c.de !== 'declarado'), gremMeses)
   const fSubGremiales = subtotal(ROTULOS_CARGAS.gremiales, bGrem,
-    'Lo que NO declara la DDJJ y se paga aparte. Es la línea "Nómina · Gremiales" del cash flow, y el Libro la lee por CARGAS_MES_GREMIALES.')
+    'Lo que NO declara la DDJJ y se paga aparte. Es la línea "Nómina · Gremiales" del cash flow, y el Libro la lee por CARGAS_MES_GREMIALES. Empieza antes que el F931 cuando la boleta de UOCRA viene más atrasada que la DDJJ de ARCA.', gremMeses)
   const fProyTot = G.mensual(rotuloTotal('Total devengado en el mes'), (m) => `=${cm(m)}${fSubF931}+${cm(m)}${fSubGremiales}`,
     'Lo que la nómina de ESE mes genera de cargas. Todavía no es lo que sale de la caja: eso son las tres filas de abajo.', { meses: proyMeses })
   // ═══ LA FECHA EN QUE ESA PLATA SALE — LA FILA QUE FALTABA (06/08) ═══
@@ -334,7 +381,7 @@ export function bloqueProyeccion(G, {
   // igual —el subtotal la suma— así que viaja en `sinBase` hasta `avisos` y se imprime en el log,
   // donde lo lee quien puede agregar el concepto que falta.
   G.push()
-  return { proyMeses, fRelacion, fRemProy, fDot, fSubF931, fSubGremiales, fProyTot, fFechaSalida, sinBase }
+  return { proyMeses, gremMeses, fRelacion, fRemProy, fDot, fSubF931, fSubGremiales, fProyTot, fFechaSalida, sinBase }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

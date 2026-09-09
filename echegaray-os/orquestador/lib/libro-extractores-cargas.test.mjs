@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   deCargasSociales, mesesCubiertos, cubiertaPorLaCadena, cargasEnCompras, reemplazadasPorLaCadena,
   rangosDeCargas, ROTULOS_CARGAS, NOMBRES_CARGAS, RUBRO_CARGAS, RUBRO_GREMIALES, PESTANA_CARGAS, PLANES_F931,
+  SERIES_DE_CARGAS,
 } from './libro-extractores-cargas.mjs'
 import { deCompras } from './libro-extractores.mjs'
 import { serialDe, isoDeSerial as isoDe } from './libro-extractores-fechas.mjs'
@@ -157,12 +158,13 @@ test('los rangos se declaran anclados a su rótulo, y un rango ciego no se publi
   const fDeclarado = fila(ROTULOS_CARGAS.declarado, Array.from({ length: 12 }, (_, i) => (i < 6 ? 1 : VACIO)))
   const fF931 = fila(ROTULOS_CARGAS.f931, Array.from({ length: 12 }, (_, i) => (i < 6 ? VACIO : 1)))
   const fGremiales = fila(ROTULOS_CARGAS.gremiales, Array.from({ length: 12 }, (_, i) => (i < 6 ? VACIO : 1)))
+  const fGremialesDeclarado = fila(ROTULOS_CARGAS.gremialesDeclarado, Array.from({ length: 12 }, (_, i) => (i < 6 ? 1 : VACIO)))
   const fFechas = fila(ROTULOS_CARGAS.fechas, Array.from({ length: 12 }, () => '=DATE(2026;8;10)'))
   // LOS DOS DE PLANES ENTRARON EL 09/09: «Impuestos y Financieros» dejó de tener su propio cuadro y
   // los lee de acá. El de «cuotas sin pagar» es un SALDO: una sola celda, la B.
   const fPlanes = fila(ROTULOS_CARGAS.planes, Array.from({ length: 12 }, () => 1))
   const fPlanesSinPagar = fila(ROTULOS_CARGAS.planesSinPagar, [1, ...Array.from({ length: 11 }, () => VACIO)])
-  const todas = { fF931, fGremiales, fFechas, fDeclarado, fPlanes, fPlanesSinPagar }
+  const todas = { fF931, fGremiales, fFechas, fDeclarado, fGremialesDeclarado, fPlanes, fPlanesSinPagar }
   const rangos = rangosDeCargas(todas)
   assert.deepEqual(rangos.map((r) => r.nombre).sort(), Object.values(NOMBRES_CARGAS).sort())
   assert.deepEqual(verificarRangos(grilla, rangos), [])
@@ -339,15 +341,20 @@ test('los CUATRO rangos se declaran anclados a su rótulo, y falta uno → no se
   const fDeclarado = fila(ROTULOS_CARGAS.declarado, Array.from({ length: 12 }, (_, i) => (i < 8 ? 1 : '≈ $1 proy.')))
   const fF931 = fila(ROTULOS_CARGAS.f931, Array.from({ length: 12 }, (_, i) => (i < 8 ? VACIO : 1)))
   const fGremiales = fila(ROTULOS_CARGAS.gremiales, Array.from({ length: 12 }, (_, i) => (i < 8 ? VACIO : 1)))
+  const fGremialesDeclarado = fila(ROTULOS_CARGAS.gremialesDeclarado, Array.from({ length: 12 }, (_, i) => (i < 8 ? 1 : '=1')))
   const fFechas = fila(ROTULOS_CARGAS.fechas, Array.from({ length: 12 }, () => '=DATE(2026;9;10)'))
   const fPlanes = fila(ROTULOS_CARGAS.planes, Array.from({ length: 12 }, () => 1))
   const fPlanesSinPagar = fila(ROTULOS_CARGAS.planesSinPagar, [1, ...Array.from({ length: 11 }, () => VACIO)])
-  const todas = { fF931, fGremiales, fFechas, fDeclarado, fPlanes, fPlanesSinPagar }
+  const todas = { fF931, fGremiales, fFechas, fDeclarado, fGremialesDeclarado, fPlanes, fPlanesSinPagar }
   const rangos = rangosDeCargas(todas)
   assert.deepEqual(rangos.map((r) => r.nombre).sort(), Object.values(NOMBRES_CARGAS).sort())
   assert.deepEqual(verificarRangos(grilla, rangos), [])
   assert.throws(() => rangosDeCargas({ ...todas, fDeclarado: undefined }), /declarado/,
     'sin la fila del declarado el libro volvería en silencio al $6.500.000 tipeado')
+  // Y sin la de gremiales declarados vuelve al $1.500.000 tipeado, que es el mismo agujero en el
+  // otro rubro: la fila es obligatoria, no «la que haya».
+  assert.throws(() => rangosDeCargas({ ...todas, fGremialesDeclarado: undefined }), /fGremialesDeclarado/,
+    'sin la fila de gremiales declarados el libro vuelve a la fila plana de Compras')
   // NINGUNA ES OPCIONAL. Sin la de planes, «Impuestos y Financieros» publicaría $0 de deuda
   // previsional —su cuadro ya no existe— sin un solo error a la vista.
   assert.throws(() => rangosDeCargas({ ...todas, fPlanes: undefined }), /fPlanes/)
@@ -409,4 +416,78 @@ test('una DDJJ REAL que difiere de la proyección sigue ganando: el eco es igual
   casi[8] = F931_SEP[8] + 1
   const f931 = libroDe(casi).filter((m) => m.rubro === RUBRO_CARGAS && isoDe(m.fecha) === '2026-10-10')
   assert.deepEqual(f931.map((m) => [m.estado, m.importe]), [['COMPROMETIDO', 5154707.83 + 1]])
+})
+
+// ═══ LOS GREMIALES DEL MES QUE VA DE LA PRESENTACIÓN AL PAGO (09/09/2026) ═══
+//
+// El defecto medido: la línea «Nómina · Gremiales» tenía fuente DECLARADA en ninguna parte, así que
+// el mes entre la presentación de la boleta y su pago caía a la fila PLANA de Compras — sep-26
+// publicaba $1.500.000 redondos donde la cadena mide $1.649.741. `CARGAS_MES_GREMIALES_DECLARADO`
+// es la pareja que faltaba, y estos cuatro tests prueben cada mitad de la regla. Si se revierte la
+// precedencia, el eco o la exclusión de Compras, alguno se pone rojo.
+
+/** Lo que declara la boleta de UOCRA (Total determinado + Fondo de Cese devengado), ene–ago. El de
+ *  jul-26 es el real medido en `_UOCRA_DDJJ_RAW`: $1.261.611,38 + $1.319.119,20. */
+const G_DECL = [1035588, 1116177, 1556534, 1819443, 2204948, 2265688, 2580730.58, 1712238.58, NADA, NADA, NADA, NADA]
+
+test('gremiales: lo DECLARADO por UOCRA le gana a la fila plana de Compras — el mes de sep-26', () => {
+  const ms = deCargasSociales({
+    fechas: FECHAS, f931: F931, gremiales: GREMIALES, gremialesDeclarado: G_DECL,
+  }, CORTE)
+  const sep = ms.filter((m) => m.fecha === S('2026-09-10') && m.rubro === RUBRO_GREMIALES)
+  assert.equal(sep.length, 1, 'un solo movimiento de gremiales: declarado O proyección, nunca los dos')
+  assert.equal(sep[0].importe, 1712238.58, 'la boleta al centavo, no el $1.446.499 proyectado')
+  assert.equal(sep[0].estado, 'COMPROMETIDO', 'una boleta presentada no es una proyección')
+  assert.match(sep[0].origen.fila, /gremiales · declarado 8/)
+  // Y el mes SIN boleta sigue saliendo de la proyección, declarado como tal.
+  const oct = ms.find((m) => m.fecha === S('2026-10-10') && m.rubro === RUBRO_GREMIALES)
+  assert.equal(oct.importe, 1618257)
+  assert.equal(oct.estado, 'PROYECTADO')
+})
+
+test('gremiales: NO SE CUENTAN DOS VECES — el declarado no se suma a la proyección del mismo mes', () => {
+  const ms = deCargasSociales({
+    fechas: FECHAS, f931: F931, gremiales: GREMIALES, gremialesDeclarado: G_DECL,
+  }, CORTE)
+  const gremiales = ms.filter((m) => m.rubro === RUBRO_GREMIALES)
+  assert.equal(gremiales.length, 6, 'seis meses con fecha, un movimiento por mes')
+  const total = gremiales.reduce((s, m) => s + m.importe, 0)
+  // jul y ago con boleta (2.580.731 y 1.712.238,58 — los reales: Total determinado + Fondo de Cese),
+  // sep..dic con la proyección. Ninguno sumado dos veces: si el declarado se ACUMULARA sobre la
+  // proyección, el total daría $2.580.731 + $1.614.090 de más.
+  assert.equal(Math.round(total), Math.round(2580730.58 + 1712238.58 + 1618257 + 1696905 + 1699997 + 1955967))
+  // Y la fila plana de Compras del mes cubierto NO entra: la cadena la reemplaza.
+  const cubiertos = mesesCubiertos(ms)
+  assert.ok(cubiertos.has(`2026-09·${RUBRO_GREMIALES}`), 'sep-26 quedó cubierto por la cadena')
+  assert.ok(cubiertaPorLaCadena({ rubro: RUBRO_GREMIALES, fecha: S('2026-09-10'), pagada: false }, cubiertos),
+    'la fila plana de $1.500.000 de Compras queda excluida')
+})
+
+test('gremiales: EL ECO — una celda que muestra la proyección no es una boleta presentada', () => {
+  // La pestaña completa los meses sin boleta con el MISMO número que publica como proyección. Si eso
+  // se leyera como declarado, el OS afirmaría que hay una DDJJ de UOCRA presentada donde no la hay.
+  const eco = [...G_DECL]
+  eco[8] = GREMIALES[8] // oct: el eco exacto de la proyección
+  const ms = deCargasSociales({ fechas: FECHAS, f931: F931, gremiales: GREMIALES, gremialesDeclarado: eco }, CORTE)
+  const oct = ms.find((m) => m.fecha === S('2026-10-10') && m.rubro === RUBRO_GREMIALES)
+  assert.equal(oct.estado, 'PROYECTADO')
+  assert.equal(oct.importe, GREMIALES[8])
+})
+
+test('gremiales: el HECHO le gana igual — un mes pagado en Compras no lo emite la cadena', () => {
+  const ms = deCargasSociales({
+    fechas: FECHAS, f931: F931, gremiales: GREMIALES, gremialesDeclarado: G_DECL,
+  }, CORTE, { mesesPagados: new Set([`2026-09·${RUBRO_GREMIALES}`]) })
+  assert.equal(ms.filter((m) => m.fecha === S('2026-09-10') && m.rubro === RUBRO_GREMIALES).length, 0)
+  // Y sólo ese rubro: el F931 de la misma fecha sigue saliendo.
+  assert.equal(ms.filter((m) => m.fecha === S('2026-09-10') && m.rubro === RUBRO_CARGAS).length, 1)
+})
+
+test('la serie de gremiales se declara con SUS DOS partes: 12/12 celdas o el auditor lo grita', () => {
+  // El auditor de rangos fosilizados audita `SERIES_DE_CARGAS`: con una sola parte declarada, los
+  // ocho meses que aporta el declarado se leían como «SERIE INCOMPLETA» del rango proyectado.
+  const grem = SERIES_DE_CARGAS.find((s) => s.serie === RUBRO_GREMIALES)
+  assert.deepEqual(grem.partes, [NOMBRES_CARGAS.gremialesDeclarado, NOMBRES_CARGAS.gremiales])
+  const cubre = (i) => [G_DECL, GREMIALES].some((p) => typeof p[i] === 'number' && p[i] !== 0)
+  for (let i = 0; i < 12; i++) assert.ok(cubre(i), `el mes ${i + 1} no tiene fuente en ninguna de las dos partes`)
 })
