@@ -63,7 +63,6 @@
 // Acá el equivalente sería devolver "no sé" cuando parte de la cadena de tramos no está firmada. No
 // se hace: se devuelve HASTA DÓNDE está firmada. Un dato que falta degrada la fila, nunca la apaga.
 
-import { ALERTA } from './glifos.mjs'
 import { escalonDe, rotuloDeAcuerdo } from './uocra-acuerdos.mjs'
 import { ORIGEN_ACUERDO, factorUocraEntre } from './uocra-paritaria.mjs'
 
@@ -129,10 +128,17 @@ export function origenDelEscalon({ escalones = [], periodoBase = null, periodoMe
     return { clase: 'firmado', rotulo: acuerdo || 'acuerdo firmado' }
   }
   const firmados = f.tramos.filter((t) => t.origen === ORIGEN_ACUERDO)
-  if (!firmados.length) return { clase: 'proyectado', rotulo: `${ALERTA} escalón proyectado` }
+  // ═══ SIN GLIFO DE ALERTA EN UNA COLUMNA DE ESTADO (09/09/2026) ═══
+  //
+  // Decía «▲ escalón proyectado» y «▲ firmado hasta 08/2026». El ▲ es la notación de alarma de este
+  // libro y acá no hay ninguna: que un mes futuro no tenga acuerdo firmado es lo NORMAL —el convenio
+  // se firma por tramos— y la columna se llama «Estado» justamente para decirlo. Un glifo de alerta
+  // que se dibuja en cinco de doce filas todos los meses deja de significar algo el día que importa.
+  // El rótulo dice lo mismo con las mismas palabras y sin el ruido.
+  if (!firmados.length) return { clase: 'proyectado', rotulo: 'escalón proyectado' }
   return {
     clase: 'mixto',
-    rotulo: `${ALERTA} firmado hasta ${mesAño(firmados[firmados.length - 1].periodo)}`,
+    rotulo: `firmado hasta ${mesAño(firmados[firmados.length - 1].periodo)}`,
   }
 }
 

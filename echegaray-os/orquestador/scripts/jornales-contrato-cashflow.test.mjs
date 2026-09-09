@@ -22,7 +22,9 @@
 // de la O de Compras. Eso se afirma acá, columna por columna, y sobrevive al rediseño sin diluirse.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grilla, rangosDeJornales, cabeceraDelRegistro } from './jornales-pestana.mjs'
+import {
+  grilla, rangosDeJornales, cabeceraDelRegistro, recuperarPagadoEl, claveDeFecha,
+} from './jornales-pestana.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { isoASerial } from '../lib/jornales-fixture.mjs'
 import {
@@ -219,4 +221,93 @@ test('el ancla de «Pagado el» reconoce la pestaña VIEJA y la nueva, y dice en
   // Sin cabecera reconocible devuelve null y el llamador avisa en vez de adivinar.
   assert.equal(cabeceraDelRegistro([['otra cosa'], []]), null)
   assert.equal(cabeceraDelRegistro([]), null)
+})
+
+// ═══ LAS FECHAS DEL DUEÑO NO PUEDEN QUEDAR DUPLICADAS NI HUÉRFANAS ═══
+//
+// MEDIDO EN EL DRY DEL 09/09/2026: «18 fechas de Pagado el copiadas» y, a la vez, el auditor de
+// patrón marcando las filas 132–139 con `N="18/05/2026"` como filas sin concepto. Las dos cosas eran
+// ciertas: la copia por POSICIÓN las llevaba a las filas nuevas y la cola las PROTEGÍA en las viejas
+// («columna ajena»), que con la grilla más corta quedaban debajo del footprint del generador. Una
+// fecha huérfana fuera de toda quincena la puede leer CAJA como un pago que ya salió.
+//
+// La cura es emparejar por la QUINCENA —su fecha de cierre, lo único que la identifica y no se mueve
+// con el layout— y negarse a escribir si queda una sola sin atribuir.
+test('cada fecha de «Pagado el» vuelve a SU quincena, aunque el layout haya cambiado entero', () => {
+  // La pestaña vieja: catorce columnas, «Quincena» en la A, «Pagado el» en la N, y sus dos fechas.
+  const previo = [
+    ['Jornales por quincena'], [], [],
+    ['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'Hs previstas', 'Hs reales',
+      'Banco', 'Adelanto', 'Total recibo', 'TOTAL', 'Σ $/hora', 'Estado', 'Pagado el'],
+    ['15/07/2026', '31/07/2026', '', '', '', '', '', '', '', '', '', '', '', '03/08/2026'],
+    ['01/08/2026', '15/08/2026', '', '', '', '', '', '', '', '', '', '', '', '18/08/2026'],
+  ]
+  const cab = cabeceraDelRegistro(previo)
+  const r = recuperarPagadoEl(previo, cab)
+  assert.equal(r.total, 2)
+  assert.deepEqual(r.sinClave, [], 'las dos fechas tenían su cierre al lado y tienen que emparejar')
+  assert.equal(r.porClave.get('2026-07-31'), '03/08/2026')
+  assert.equal(r.porClave.get('2026-08-15'), '18/08/2026')
+
+  // EL MISMO CIERRE ESCRITO DE OTRA FORMA ES EL MISMO CIERRE. Google renderiza «31/7/2026» o el
+  // serial según el formato que tenga la celda ese día: comparar cadenas es cómo dos fechas iguales
+  // dejan de serlo y una quincena pierde su pago.
+  assert.equal(claveDeFecha('31/7/2026'), '2026-07-31')
+  assert.equal(claveDeFecha('31/07/26'), '2026-07-31')
+  assert.equal(claveDeFecha(46234), claveDeFecha('31/07/2026'))
+  assert.equal(claveDeFecha(''), null)
+  assert.equal(claveDeFecha('cerrada · a pagar'), null)
+})
+
+test('una fecha que no se puede atribuir a ninguna quincena NO se borra: se declara y frena la corrida', () => {
+  // El caso del dry: copias huérfanas de un layout anterior, debajo de la grilla, sin nada al lado.
+  // Si el generador las limpiara «porque están fuera del footprint» estaría borrando trabajo del
+  // dueño; si las dejara, CAJA leería un pago que no pertenece a ninguna quincena. La única salida
+  // honesta es no escribir y decir dónde están.
+  const previo = [
+    ['Jornales por quincena'], [], [],
+    ['Quincena', 'Hasta', 'Se paga el', '', '', '', '', '', '', '', '', '', '', 'Pagado el'],
+    ['15/07/2026', '31/07/2026', '', '', '', '', '', '', '', '', '', '', '', '03/08/2026'],
+    [], [],
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', '18/05/2026'],
+  ]
+  const r = recuperarPagadoEl(previo, cabeceraDelRegistro(previo))
+  assert.equal(r.total, 2)
+  assert.equal(r.porClave.size, 1)
+  assert.deepEqual(r.sinClave, [{ fila: 8, valor: '18/05/2026' }],
+    'la fecha huérfana tiene que salir declarada, con su fila, para que alguien la mire')
+
+  // ═══ Y LO QUE NO ES UNA FECHA NO CUENTA COMO MARCA SUYA (09/09/2026) ═══
+  //
+  // El dry se negó a escribir por «31 fechas que no puedo atribuir». No eran fechas: la columna
+  // «Estado» rinde frases como «pagada el 18/5» y un layout desplazado las dejó en la columna de al
+  // lado. Contar cualquier celda con un dígito adentro convertía residuo del generador en trabajo del
+  // dueño y frenaba la corrida con una razón falsa. «Pagado el» es una columna de FECHAS.
+  const conEstado = [
+    ['Jornales por quincena'], [], [],
+    ['Quincena', 'Hasta', 'Se paga el', '', '', '', '', '', '', '', '', '', '', 'Pagado el'],
+    ['15/07/2026', '31/07/2026', '', '', '', '', '', '', '', '', '', '', '', 'pagada el 18/5'],
+    ['01/08/2026', '15/08/2026', '', '', '', '', '', '', '', '', '', '', '', 'cerrada · a pagar'],
+    ['16/08/2026', '31/08/2026', '', '', '', '', '', '', '', '', '', '', '', '03/09/2026'],
+  ]
+  const re = recuperarPagadoEl(conEstado, cabeceraDelRegistro(conEstado))
+  assert.equal(re.total, 1, 'sólo la fecha cuenta: las dos frases son residuo, no marcas del dueño')
+  assert.deepEqual(re.sinClave, [], 'ninguna fecha real quedó sin atribuir: la corrida no tiene por qué frenarse')
+  assert.equal(re.noEsFecha.length, 2, 'el residuo se declara para poder limpiarlo, no se cuenta como suyo')
+  assert.equal(re.porClave.get('2026-08-31'), '03/09/2026')
+
+  // Y una misma quincena con DOS fechas distintas —el layout duplicado a medio limpiar— también
+  // frena: elegir una de las dos sería inventar cuál es la buena.
+  const dup = [
+    ['Jornales por quincena'], [], [],
+    ['Quincena', 'Hasta', 'Se paga el', '', '', '', '', '', '', '', '', '', '', 'Pagado el'],
+    ['15/07/2026', '31/07/2026', '', '', '', '', '', '', '', '', '', '', '', '03/08/2026'],
+    ['15/07/2026', '31/07/2026', '', '', '', '', '', '', '', '', '', '', '', '05/08/2026'],
+  ]
+  const rd = recuperarPagadoEl(dup, cabeceraDelRegistro(dup))
+  assert.equal(rd.sinClave.length, 1, 'dos fechas para la misma quincena tienen que frenar la corrida')
+  // La MISMA fecha repetida no frena: es la copia duplicada, y las dos dicen lo mismo.
+  const igual = [...dup]
+  igual[5] = ['15/07/2026', '31/07/2026', '', '', '', '', '', '', '', '', '', '', '', '03/08/2026']
+  assert.deepEqual(recuperarPagadoEl(igual, cabeceraDelRegistro(igual)).sinClave, [])
 })

@@ -115,10 +115,16 @@ export const COL_REGISTRO = {
 // rojo. `total` sigue significando lo mismo: los jornales de OBRA proyectados.
 export const COL_PROYECCION = COL_REGISTRO
 
-export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
+// ═══ `filaInicio` SE FUE DE LA FIRMA (09/09/2026) ═══
+//
+// La ÚNICA celda que dependía de en qué fila de la pestaña iba a caer la quincena era «Hs previstas»
+// (`=D×E×'Parámetros'!$B$43`), y se retiró. Todo lo que queda apunta al ESPEJO, que no se mueve con
+// el layout — que es como tiene que ser: una fórmula que sabe en qué fila va a caer es una fórmula
+// que se rompe cuando la fila cambia, y este archivo ya pagó esa cuenta dos veces. Dejar el
+// parámetro «por compatibilidad» habría sido dejar la puerta abierta a que alguien lo vuelva a usar.
+export function filasQuincenas(bloques, hoja = '_J_OBREROS') {
   const H = `'${hoja}'`
-  return bloques.map((b, i) => {
-    const r = filaInicio + i
+  return bloques.map((b) => {
     const ff = b.filaFecha
     return [
       { f: `=${H}!F${ff}` },
@@ -311,7 +317,7 @@ export async function sincronizarNomina(google, {
     fila_inicio: FILA_INICIO,
     fila_total: cuerpo.filaTotal,
     insertar_filas: Math.max(0, bloques.length - cuerpo.filas),
-    spec_quincenas: filasQuincenas(bloques, FILA_INICIO),
+    spec_quincenas: filasQuincenas(bloques),
     ddjj: ddjj?.meses ?? [],
   }
 }
