@@ -100,7 +100,11 @@ test('oficina va a su cuadro por tener neto mensual, aunque tenga horas cargadas
     }],
     horas: new Map([['o1', { horas: 80, presentesSinHoras: 0 }]]),
   }))
-  assert.equal(cuadros.find((c) => c.grupo === 'oficina')!.lineas[0].cobra, 1800000)
+  const linea = cuadros.find((c) => c.grupo === 'oficina')!.lineas[0]
+  assert.equal(linea.cobra, 1800000)
+  // LAS HORAS NO SE PUBLICAN EN OFICINA. Maldonado tiene asistencia cargada como todos, pero su
+  // sueldo no sale de multiplicarlas: «80 h» al lado de $1.800.000 invita a una cuenta que no existe.
+  assert.equal(linea.horas, null)
   assert.equal(cuadros.find((c) => c.grupo === 'obreros')!.lineas.length, 0)
 })
 

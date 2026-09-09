@@ -150,8 +150,12 @@ interface Contexto extends DatosDeCuadros {
 /** La entrada de una persona en el cuadro de obreros o de oficina. */
 function entradaDe(
   ctx: Contexto, p: PersonaDeLiquidacion, tarifa: TarifaVigente | null,
+  grupo: GrupoLiquidacion,
 ): EntradaDeLinea {
-  const h = ctx.horas.get(p.id) ?? null
+  // OFICINA NO SE LIQUIDA POR HORAS. Maldonado y Nievas tienen asistencia cargada como todos, pero
+  // su sueldo es un neto mensual acordado: publicar «54 h» al lado de $1.800.000 invita a
+  // multiplicar y a discutir un número que no decide nada. La columna va vacía, que es lo cierto.
+  const h = grupo === 'oficina' ? null : (ctx.horas.get(p.id) ?? null)
   const recibo = ctx.recibos.find((r) => r.cuil === p.cuil && r.periodo === ctx.periodo) ?? null
   const neto = recibo == null ? null : Number(recibo.neto)
   const { giroEnElLote, yaTransferido } = girosDe(ctx.quincena, ctx.adelantos, p.cuil, 'QUINCENA', neto)
@@ -200,7 +204,7 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
       continue
     }
     if (vigente?.netoMensual != null) {
-      cuadros.oficina.push(liquidarLinea(entradaDe(ctx, p, vigente), 'oficina', redondeo))
+      cuadros.oficina.push(liquidarLinea(entradaDe(ctx, p, vigente, 'oficina'), 'oficina', redondeo))
       continue
     }
     // SIN TARIFA POR HORA Y SIN MOVIMIENTO EN LA VENTANA NO ES UNA FILA. Listar al plantel entero
@@ -208,7 +212,7 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     // caso que hay que resolver antes de pagar.
     if (vigente?.valorHora == null && (h == null || (h.horas === 0 && h.presentesSinHoras === 0))) continue
     if (!p.enLaEmpresa && (h == null || h.horas === 0)) continue
-    cuadros.obreros.push(liquidarLinea(entradaDe(ctx, p, vigente), 'obreros', redondeo))
+    cuadros.obreros.push(liquidarLinea(entradaDe(ctx, p, vigente, 'obreros'), 'obreros', redondeo))
   }
 
   const orden: GrupoLiquidacion[] = ['obreros', 'oficina', 'final']

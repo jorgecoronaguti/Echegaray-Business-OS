@@ -76,18 +76,49 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
           Nadie tiene horas cargadas ni tarifa vigente en esta quincena. Las horas se cargan en la
           solapa <Link href={hrefDe(quincena.desde).replace('liquidacion', 'asistencia')} className="underline">Asistencia</Link>.
         </Vacio>
-      ) : cuadros.map((c, i) => (
-        <CuadroLiquidacion
-          key={c.grupo}
-          cuadro={c}
-          totales={totales[i]}
-          quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
-          estado={estados[c.grupo]?.estado ?? 'abierta'}
-          cerradaEn={estados[c.grupo]?.cerradaEn ?? null}
-          puedeCerrar={puedeCerrar}
-        />
-      ))}
+      ) : (
+        <>
+          {cuadros.map((c, i) => (
+            <CuadroLiquidacion
+              key={c.grupo}
+              cuadro={c}
+              totales={totales[i]}
+              quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
+              estado={estados[c.grupo]?.estado ?? 'abierta'}
+              cerradaEn={estados[c.grupo]?.cerradaEn ?? null}
+              puedeCerrar={puedeCerrar}
+            />
+          ))}
+          <Origenes adelantoSinFuente={cuadros.some((c) => c.adelantoSinFuente)} />
+        </>
+      )}
     </div>
+  )
+}
+
+/**
+ * DE DÓNDE SALE CADA COLUMNA. Una sola vez al pie, no repetido en cada cuadro.
+ *
+ * Es la regla del dueño —ningún importe sin origen— y no es prosa: son cuatro nombres de tabla. Lo
+ * que falta se dice con el mismo peso que lo que está: el ADELANTO en efectivo no tiene tabla, y un
+ * cero mudo en una columna que se RESTA le paga dos veces a quien ya recibió plata.
+ */
+function Origenes({ adelantoSinFuente }: { adelantoSinFuente: boolean }) {
+  return (
+    <p data-testid="origenes" style={{ fontSize: '11px', color: V.tenue, lineHeight: 1.6, margin: 0 }}>
+      COBRA <code>registros_hh</code> + <code>asistencia_dia</code> × <code>persona_tarifa</code>
+      {' · '}YA TRANSFERIDO <code>nomina_adelanto</code>
+      {' · '}POR BANCO <code>nomina_recibo_neto</code> confirmado contra el lote del extracto
+      {' · '}EFECTIVO redondeado lo escribís vos
+      {adelantoSinFuente && (
+        <>
+          <br />
+          <span style={{ color: V.warn }}>
+            ADELANTO en efectivo: sin fuente en el OS — sigue en la columna Z de JORNALES.
+          </span>
+        </>
+      )}
+    </p>
   )
 }
 

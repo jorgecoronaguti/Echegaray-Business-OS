@@ -133,18 +133,12 @@ export function CuadroLiquidacion({ cuadro, totales, quincena, estado, cerradaEn
         </tbody>
       </table>
 
-      <p style={{ fontSize: '11px', color: V.tenue, margin: '6px 0 0', lineHeight: 1.5 }}>
-        {/* CADA COLUMNA DICE SU TABLA. Es la regla del dueño: ningún importe sin origen. */}
-        COBRA: <code>registros_hh</code> + <code>asistencia_dia</code> × <code>persona_tarifa</code> ·
-        {' '}YA TRANSFERIDO: <code>nomina_adelanto</code> ·
-        {' '}POR BANCO: <code>nomina_recibo_neto</code> confirmado contra el lote del extracto.
-        {cuadro.adelantoSinFuente && (
-          <> {' '}ADELANTO en efectivo: sin fuente en el OS todavía — vive en la planilla JORNALES.</>
-        )}
-        {cuadro.presentesSinHoras > 0 && (
-          <> {' '}{cuadro.presentesSinHoras} día(s) declarados presentes sin horas cargadas: valen 0.</>
-        )}
-      </p>
+      {cuadro.presentesSinHoras > 0 && (
+        <p data-testid={`presentes-sin-horas-${cuadro.grupo}`}
+          style={{ fontSize: '11px', color: V.warn, margin: '6px 0 0' }}>
+          {cuadro.presentesSinHoras} día(s) declarados presentes sin horas cargadas: valen 0.
+        </p>
+      )}
     </section>
   )
 }
