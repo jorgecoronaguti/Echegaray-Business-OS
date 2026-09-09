@@ -10,6 +10,7 @@ import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincen
 import { totalesDeCuadro } from '../../../services/liquidacionQuincena'
 import type { Quincena } from '../../../services/quincena'
 import { FilaAlicuota } from './AlicuotaEditor'
+import { ALTO_LIQ } from './tabla'
 
 // PANTALLA 5 · EL COSTO REAL DE UNA HORA (handoff v2 §5, R9).
 //
@@ -124,7 +125,7 @@ const th = {
   borderBottom: `1px solid ${V.lineaFuerte}`, padding: '0 8px 8px', height: 30, verticalAlign: 'bottom' as const,
   whiteSpace: 'nowrap' as const,
 }
-const celda = { padding: '0 8px', height: 48, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
+const celda = { padding: '0 8px', height: ALTO_LIQ.filaPersona, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
 
 function Dato({ rotulo, valor, nota, testid }: { rotulo: string; valor: string; nota?: string; testid: string }) {
   return (

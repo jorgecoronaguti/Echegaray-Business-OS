@@ -6,6 +6,7 @@ import { getAlicuotas, getJornalesDelSheet, getPersonasProyectables, getValorHor
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
 import { horasEsperadasDeQuincena, totalesDeCuadro } from '../../../services/liquidacionQuincena'
 import { correrQuincena, rotuloQuincena, type Quincena } from '../../../services/quincena'
+import { ALTO_LIQ } from './tabla'
 
 // PANTALLA 9 · CAJA DE NÓMINA — cuánto efectivo hay que tener el viernes.
 //
@@ -142,7 +143,7 @@ const th = {
   borderBottom: `1px solid ${V.lineaFuerte}`, padding: '0 8px 8px', height: 30, verticalAlign: 'bottom' as const,
   whiteSpace: 'nowrap' as const,
 }
-const celda = { padding: '0 8px', height: 52, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
+const celda = { padding: '0 8px', height: ALTO_LIQ.fila, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
 
 function Dato({ rotulo, valor, nota, testid }: { rotulo: string; valor: string; nota?: string; testid: string }) {
   return (

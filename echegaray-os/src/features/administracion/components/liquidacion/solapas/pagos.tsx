@@ -7,6 +7,7 @@ import {
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
 import { pesos } from '../BloqueLiquidacion'
 import { SolapaCajaNomina } from './caja-nomina'
+import { ALTO_LIQ } from './tabla'
 
 // 4 · PAGOS · LA CADENA DE LA QUINCENA.
 //
@@ -116,7 +117,7 @@ function Tabla({ lineas, totales }: { lineas: readonly LineaLiquidada[]; totales
     <div className="overflow-x-auto" style={{ padding: '16px 20px 0' }}>
       <div data-testid="pagos-tabla" style={{ minWidth: 940, display: 'flex', flexDirection: 'column' }}>
         <div style={{
-          display: 'grid', gridTemplateColumns: COLUMNAS, gap: 10, height: 36, alignItems: 'end',
+          display: 'grid', gridTemplateColumns: COLUMNAS, gap: 10, height: ALTO_LIQ.encabezadoAncho, alignItems: 'end',
           borderBottom: `1px solid ${V.linea}`, paddingBottom: 9, fontFamily: MONO,
           fontSize: '9.5px', letterSpacing: '.04em', color: V.tenue, textTransform: 'uppercase',
         }}>

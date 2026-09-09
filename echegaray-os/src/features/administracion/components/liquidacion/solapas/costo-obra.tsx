@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { alicuotasVigentes, lineasDeObra, multiplicadorDeCosto } from '../../../services/costoHora'
 import { getAlicuotas, getHorasPorObra, getValorHoraVigente } from '../../../services/costoLecturas'
 import { rotuloQuincena, type Quincena } from '../../../services/quincena'
+import { ALTO_LIQ } from './tabla'
 
 // PANTALLA 6 · LA QUINCENA CARGADA A LA OBRA (handoff v2).
 //
@@ -122,4 +123,4 @@ const th = {
   borderBottom: `1px solid ${V.lineaFuerte}`, padding: '0 8px 8px', height: 30, verticalAlign: 'bottom' as const,
   whiteSpace: 'nowrap' as const,
 }
-const celda = { padding: '0 8px', height: 52, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
+const celda = { padding: '0 8px', height: ALTO_LIQ.fila, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
