@@ -90,11 +90,68 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const PESTANA = 'Nómina'
 const ANIO = 2026
 const APLICAR = process.argv.includes('--aplicar')
-// 17 DESDE EL 29/08: entró «+ Aumento $/h». La pestaña la escribe este generador entera y nadie más,
-// así que agregar una columna no le pisa nada a nadie — el formato se calcula sobre ANCHO y los
-// tramos numéricos se detectan solos, no hay índices escritos a mano que se corran.
-const ANCHO = 17
+// ═══ ONCE COLUMNAS, LAS MISMAS EN LOS TRES CUADROS (09/09/2026) ═══
+//
+// El dueño: «los diseños de todas las pestañas son distintos, tenés que mejorar y unificar». Acá el
+// descuadre era literal: el cuadro 1 declaraba doce columnas, el 2 nueve con «Quincenas del mes» en
+// la letra de «EFECTIVO redondeado», y el 3 nueve con «MITAD BLANCA» en esa misma letra. Tres
+// significados para la columna I es lo que obliga a releer el encabezado en cada cuadro.
+//
+// Ahora hay UN contrato de columnas (`COLUMNAS`) y los tres cuadros lo escriben entero: el que no usa
+// una columna la deja vacía, que se ve y no corre nada de lugar.
+const ANCHO = 11
+/**
+ * HASTA DÓNDE ESCRIBIÓ ESTE GENERADOR ALGUNA VEZ, A LO ANCHO.
+ *
+ * La pestaña tuvo diecisiete columnas hasta el 09/09 («$/h hoy», «$/h c/aumento», y la cola de la
+ * versión con los cuadros de respaldo). Bajar `ANCHO` a once no borra esas columnas: las deja vivas
+ * a la derecha, con los datos de la corrida vieja publicados. La escritura se hace hasta acá para
+ * que la reducción limpie lo que dejó de ser suyo.
+ */
+const ANCHO_HISTORICO = 17
 const SIN_DATO = '—'
+/**
+ * LA PRIMERA FILA QUE EL TITULAR PUEDE SUMAR.
+ *
+ * El encabezado son tres filas (título · procedencia · respiro), el titular otras tres y el
+ * respiro que lo separa del primer cuadro, una más: el cuadro 1 abre en la 8. Las tres cifras del
+ * titular también empiezan con «⇒», así que un rango que las incluyera las haría sumarse a sí
+ * mismas — dependencia circular, #REF! publicado en las tres.
+ */
+const DEBAJO_DEL_TITULAR = 8
+
+/**
+ * EL CONTRATO DE COLUMNAS DE LA PESTAÑA — UNO SOLO PARA LOS TRES CUADROS.
+ *
+ * Lo consume «Jornales por Quincena», que busca sus celdas por el TEXTO del encabezado
+ * (`MATCH("TOTAL A PAGAR"; INDEX('Nómina'!$A:$Z; MATCH("Persona";'Nómina'!$A:$A;0);0);0)`): renombrar
+ * uno de estos rótulos rompe esa pestaña, no la de acá.
+ *
+ * ═══ QUÉ ES CADA UNA, Y QUIÉN LO DECIDIÓ ═══
+ *
+ * · Categoría — la pidió el dueño el 31/08 («necesito q aparezcan las categorias») y va AL LADO del
+ *   nombre («poner la categoria al lado del nombre»): es parte de quién es la persona, porque explica
+ *   contra qué piso de convenio se la mide. Se muestra el nombre de convenio, no el código de la
+ *   planilla («OF», «M OF»), que obligaría a traducir de memoria.
+ * · COBRA — lo que GANA la persona, pagado o no. El dueño, 31/08: «me borraste los totales por más
+ *   que tengan algo pagado». Son dos preguntas distintas y por eso son dos columnas: COBRA es el
+ *   devengado y TOTAL A PAGAR es lo que todavía sale de la caja.
+ * · ADELANTO y YA TRANSFERIDO — dos columnas y no una: «no me gusta esa mezcla de conceptos en la
+ *   columna "ya transferido" con "adelantos", separar». Un adelanto en efectivo se discute con quien
+ *   lo entregó; una transferencia se busca en el extracto del Santander.
+ * · POR BANCO — «por banco va lo q dice recibo y en efectivo se completa todo hasta llegar al
+ *   numero». Es el recibo, no el 50% calculado.
+ * · EFECTIVO redondeado — es del DUEÑO y el OS NO la escribe: «voy a hacer cargas manuales de montos
+ *   en columna efectivo redondeado, no tocarla». No reemplaza al efectivo exacto, va al lado: el
+ *   exacto es lo devengado y hace falta para auditar. Ver `conEfectivoRedondeadoDelDueno`.
+ * · $/hora — UNA sola tarifa, la que se cobra. Hasta el 09/09 había dos («$/h hoy» y «$/h
+ *   c/aumento») y `COBRA` multiplicaba por la segunda: la primera era historia dibujada al lado del
+ *   número que decide.
+ */
+const COLUMNAS = Object.freeze(['Persona', 'Categoría', 'COBRA', 'ADELANTO', 'YA TRANSFERIDO',
+  'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR', 'EFECTIVO redondeado', 'Horas', '$/hora'])
+/** La columna del dueño, 0-based. Ver `conEfectivoRedondeadoDelDueno`. */
+export const COL_REDONDEADO = COLUMNAS.indexOf('EFECTIVO redondeado')
 
 const fecha = (d) => (d instanceof Date && !Number.isNaN(+d)
   ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
@@ -365,200 +422,81 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
   const fila = (...c) => { f.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
 
   fila(PESTANA)
-  // EL ENCABEZADO SON TRES FILAS Y LA TERCERA VA VACÍA (contrato: lib/diseno-unificado.mjs).
-  // Eran dos renglones de texto y la fila 3 ocupada, así que el encabezado se comía el respiro que
-  // separa el título del primer bloque. Y el primero ARGUMENTABA («cuánto hay que pagarle…»): la
-  // línea de procedencia declara qué contesta, de dónde sale y a qué fecha — no explica para qué
-  // sirve la pestaña.
-  fila(`Qué se le paga a cada uno esta quincena · espejo de la planilla de jornales · al ${fecha(hoy)}`)
+  // ═══ FILA 2: PROCEDENCIA, NO SUBTÍTULO (09/09/2026) ═══
+  //
+  // El dueño pidió «minimalismo extremo, sin aclaraciones ni explicaciones de nada», y lo que había
+  // acá era una explicación de 89 caracteres —«Qué se le paga a cada uno esta quincena · espejo de la
+  // planilla de jornales · al …»—: argumentaba para qué sirve la pestaña.
+  //
+  // La fila NO se puede dejar vacía: la gramática del archivo (`lib/diseno-unificado.mjs`,
+  // `encabezadoRoto`) exige una línea de PROCEDENCIA en A2 y `pestanas-sin-prosa.test.mjs` la mide.
+  // Son dos cosas distintas: declarar de dónde sale el número no es explicar nada. Queda lo mínimo
+  // que declara —fuentes y fecha de corte— y nada más.
+  fila(`Jornales · recibos · al ${fecha(hoy)}`)
   fila()
 
-  // ═══ 1 · LO QUE HAY QUE PAGAR, EN LOS DOS ESCENARIOS ═══
+  // ═══ EL TITULAR: TRES CIFRAS, UNA SOLA VEZ ═══
   //
-  // El dueño lo pidió así: *"cuanto le tengo q pagar este mes a cada uno, segun el acuerdo 50 y 50,
-  // cubriendo el piso de uocra vs lo q le pagamos hoy"*. Son DOS columnas de plata al lado, no dos
-  // cuadros: la decisión es «cuánto me sale llevar a todos al piso», y esa resta tiene que estar
-  // escrita, no que la haga el que mira.
+  // Estaba escrito DOS VECES en la pantalla: «QUÉ SALE DE LA CAJA MAÑANA» en A4 y otra vez en A5. No
+  // era un `fila()` de más — la fila de rótulos empezaba con `''` en la columna A, y una cadena vacía
+  // NO borra (la guarda NO-BORRAR conserva el destino), así que el titular de una corrida vieja
+  // sobrevivía debajo del nuevo. La forma de que no pueda volver a pasar no es escribir la celda
+  // vacía con más cuidado: es que ninguna fila tenga un hueco en la columna A.
   //
-  // EL 50/50 NO ES UNA REGLA DE ESTA PESTAÑA: es `repartoPersona`, el mismo núcleo con el que se
-  // paga la quincena. Y el efectivo NO se recorta en cero — un efectivo negativo es un adelanto de
-  // más, y es información.
-  // ═══ EL TITULAR: LAS TRES CIFRAS QUE SE DECIDEN, ANTES QUE NADA ═══
+  // Ahora son tres renglones «⇒ rótulo | cifra», la misma forma con la que cierra cada cuadro de
+  // abajo, y las dos primeras dan la tercera — se verifica sumando una columna, mirando.
   //
-  // Contrato del dueño («Sheets de clase mundial», legibilidad): *el titular arriba, siempre — las
-  // 2-3 cifras que se deciden. El resto es el detalle de esas cifras.* Esta pestaña arrancaba
-  // directamente en el cuadro: había que leer quince filas y llegar al total para saber cuánta plata
-  // sale mañana.
+  // POR FÓRMULA, NO PEGADO. `SUMIF` sobre las filas de total, ancladas por el «⇒» con que las escribe
+  // `rotuloTotal`: cuando entre un cuadro más, entra solo. El rango arranca DEBAJO del titular
+  // (fila 7) porque estas tres filas también empiezan con «⇒» y sumarse a sí mismas es una referencia
+  // circular — Sheets publica #REF! y la pestaña queda rota.
   //
-  // POR FÓRMULA, no por número pegado (regla de oro 5): cita la fila de total del cuadro 1, anclada
-  // al rótulo y no a la posición. Si mañana entra una persona más, el titular se mueve solo. Un
-  // número pegado acá sería la misma cifra escrita dos veces, y ésa es la forma en que dos totales
-  // empiezan a discrepar.
-  // ═══ EL TITULAR SUMA LOS TRES CUADROS, Y SIGNIFICA LO QUE SALE MAÑANA ═══
-  //
-  // Hasta el 31/08 citaba UNA fila —la del cuadro de obra— porque era el único que había. Con
-  // oficina y liquidaciones abajo, «qué sale de la caja mañana» publicaba $7.540.500 cuando lo que
-  // sale son $9.706.145: dejaba afuera $2.652.566 de oficina y $721.723 de liquidaciones.
-  //
-  // Y decía de más por otro lado: su tercera cifra era «TOTAL A PAGAR» del cuadro de obra, que es
-  // `horas × $/hora` — el bruto, con los $1.208.644 ya entregados adentro. De la caja sale el BANCO
-  // más el EFECTIVO, y nada más.
-  //
-  // SUMIF sobre las filas de total, ancladas por el «⇒» con el que las escribe `rotuloTotal`. No
-  // cita filas ni letras: cuando entre un cuadro más, entra solo. Rango CERRADO como pide el
-  // checklist, y arranca en la 9 porque el titular vive arriba y no puede sumarse a sí mismo.
-  const deTodos = (col) => `SUMIF($A$9:$A$400;"⇒*";$${col}$9:$${col}$400)`
-  // NINGUNA DE LAS TRES CIFRAS VA EN LA COLUMNA A. Sus fórmulas ubican la fila buscando rótulos EN
-  // la columna A, así que una celda de plata puesta ahí se referencia a sí misma: Sheets lo resuelve
-  // como dependencia circular y publica #REF!. Pasó en la primera corrida — «POR BANCO» salió en
-  // error y las otras dos, que caen en C y en E, salieron bien.
-  fila('QUÉ SALE DE LA CAJA MAÑANA')
-  // ═══ TRES CIFRAS QUE SE PUEDEN VERIFICAR SUMANDO UNA COLUMNA (31/08) ═══
-  //
-  // El dueño: «quitar las filas 5 a 7 de pestaña nomina, estan mal calculadas y ademas confunden […]
-  // o dejarlas si eso indica una de las reglas de oro, pero corregirlas». La regla de oro pide el
-  // titular arriba, así que se corrige.
-  //
-  // Y confundían por una razón concreta: la tarjeta «EN EFECTIVO» decía $4.932.467 mientras la suma
-  // de las columnas EN EFECTIVO de los tres cuadros da $5.532.467. No estaba mal la cuenta —le
-  // restaba los $600.000 ya transferidos a Jofre y Sosa— pero ninguna columna de la pestaña muestra
-  // ese número, así que no se podía verificar mirando. Un titular que no se puede reconciliar con
-  // lo de abajo es peor que no tener titular.
-  //
-  // Ahora las tres cifras salen de sumar UNA columna cada una:
-  //   SE DEBE      = Σ TOTAL A PAGAR   (columna G de los tres cuadros)
-  //   YA SE ENTREGÓ = Σ ADELANTO + Σ YA TRANSFERIDO
-  //   SALE MAÑANA  = la resta de las dos anteriores
-  //
-  // El reparto entre transferencia y efectivo —que es operativo y él lo necesita— baja a la glosa,
-  // donde se puede decir de dónde sale cada uno sin fingir que es una columna.
-  fila('', 'POR TRANSFERENCIA', '', 'EN EFECTIVO', '', 'TOTAL A PAGAR')
-  // CADA TARJETA ES LA SUMA DE SU COLUMNA, y las dos primeras dan la tercera. Se puede verificar
-  // mirando: es la única forma de que un titular genere confianza.
-  // LA TERCERA TARJETA ES LA SUMA DE LAS DOS PRIMERAS, ESCRITA ASÍ. Sumar la columna «TOTAL A
-  // PAGAR» dependía de que las tres tablas la tuvieran en la MISMA letra, y cada vez que se agrega
-  // una columna a una sola de ellas eso se rompe en silencio. El subtítulo promete «las dos primeras
-  // dan la tercera»: que la fórmula diga exactamente eso.
-  fila('', `=${deTodos('F')}`, '', `=${deTodos('G')}`, '', `=${deTodos('F')}+${deTodos('G')}`)
-  // UNA SOLA FÓRMULA, no texto con un «=» adentro: una celda es fórmula o es texto, no las dos.
-  // El patrón de TEXT va en formato US («#,##0») aunque el archivo sea es-AR — la API lo interpreta
-  // en US y lo MUESTRA con el punto de miles local; escribirlo con el separador local lo rompe.
-  // ═══ LA GLOSA DEL TITULAR SE FUE, Y NO SE PIERDE NINGÚN NÚMERO ═══
-  //
-  // Debajo de las tres tarjetas iba un renglón de 101 caracteres que decía cómo se suman las
-  // columnas y cuánto se había entregado ya. Las dos cosas están publicadas sin él: la suma la hace
-  // la propia tarjeta, y lo entregado son las columnas ADELANTO y YA TRANSFERIDO, que tienen su
-  // total en la fila «⇒» de cada cuadro. Un renglón que repite en palabras lo que el cuadro muestra
-  // en cifras es exactamente la aclaración que el dueño mandó sacar el 05/09/2026.
-  //
-  // LO QUE SÍ ERA CONOCIMIENTO Y NO SE PIERDE PORQUE VIVE ACÁ: «POR TRANSFERENCIA» no es la suma
-  // simple de la columna POR BANCO. En las liquidaciones finales esa columna muestra el ACUERDO
-  // —la mitad blanca entera— y de ahí ya salieron los $600.000 del lote del 28/08; sumarla cruda
-  // pediría transferir dos veces. Por eso la tarjeta suma sólo las filas de total («⇒»).
-  fila('')
+  // «POR BANCO» de las liquidaciones finales muestra lo que falta GIRAR, no el acuerdo: por eso la
+  // tarjeta suma la columna y no hay que restarle nada.
+  const deTodos = (col) => `SUMIF($A$${DEBAJO_DEL_TITULAR}:$A$400;"⇒*";$${col}$${DEBAJO_DEL_TITULAR}:$${col}$400)`
+  fila(rotuloTotal('Por banco'), `=${deTodos('F')}`)
+  fila(rotuloTotal('En efectivo'), `=${deTodos('G')}`)
+  fila(rotuloTotal('Total a pagar'), `=${deTodos('F')}+${deTodos('G')}`)
+  fila()
 
-  fila(seccion(1, `qué se le paga a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
+  // Los cuadros se numeran CORRIDOS, no con su número escrito a mano: oficina y liquidaciones finales
+  // son condicionales, y un archivo sin oficina publicaba «1 ·» y «3 ·» — el hueco que
+  // `numeracionRota` denuncia y que el dueño lee como que falta un cuadro.
+  let nBloque = 0
+  const bloque = (texto) => fila(seccion(++nBloque, texto))
 
-  // ═══ SE FUERON DOS RENGLONES DE MÉTODO, Y UNO DEJÓ UN DATO ATRÁS ═══
+  // ═══ EL RÓTULO NOMBRA AL GRUPO Y AL PERÍODO, Y NADA MÁS (09/09/2026) ═══
   //
-  // Acá se explicaba el acuerdo 50/50 —«al banco la mitad del bruto, en efectivo el resto menos el
-  // adelanto ya entregado»— y cómo se cierra la brecha hasta el piso de convenio. Es método: quien
-  // mira este cuadro el día de pago no lo necesita, y el dueño pidió el 05/09/2026 «minimalismo
-  // extremo, sin aclaraciones ni explicaciones de nada».
+  // Decía «1 · QUÉ SE LE PAGA A CADA UNO · QUINCENA 01/09 A 15/09»: la primera mitad es la pregunta
+  // que contesta la pestaña entera, repetida en el título de un cuadro. Lo que distingue este cuadro
+  // de los otros dos es QUIÉNES: obreros, oficina, liquidaciones finales.
   //
-  // El segundo renglón NO era sólo explicación: adentro de la frase iba el DATO de qué días se
-  // completaron a jornada y con cuántas horas. Eso no es glosa, es de dónde sale el número de horas
-  // que se paga — borrarlo entero lo escondía. Queda el dato con rótulo mínimo y sin la lección de
-  // cómo se cuenta una jornada.
+  // El rótulo lo consume `lib/origen-declarado.mjs` (recorta en el primer « · », así que el período
+  // no lo identifica): si se renombra acá, hay que renombrarlo en `scripts/formato-pestanas.mjs` o el
+  // amparo de «EFECTIVO redondeado» queda huérfano y el censo denuncia catorce números que están bien.
+  bloque(`obreros · quincena ${quincena.desde ?? SIN_DATO}–${quincena.hasta ?? SIN_DATO}`)
+
+  // ═══ LO QUE SE FUE DE ESTE CUADRO, Y A DÓNDE ═══
   //
-  // El método sigue escrito donde se ejecuta: el 50/50 en `ACUERDO_BANCO`, la brecha en
-  // `PORCENTAJE_DE_AUMENTO` y su comentario, y la jornada (9 h L–J, 8 h viernes) en el cálculo de
-  // `diasPendientes`.
-  // EL DATO SÍ, EL DETALLE NO. Acá se listaba día por día («07/09 9 h · 08/09 9 h · …»): 110
-  // caracteres para publicar un número —las horas que se completan— que la columna HORAS ya suma
-  // por persona. El día por día vive en «_J_OBREROS», que es la planilla de la que sale.
-  if (quincena.diasPendientes.length) {
-    fila(`Jornadas completadas: ${quincena.diasPendientes.length} · ${quincena.horasPendientes} h`)
-  }
-  // ═══ LAS TRES TARIFAS, UNA AL LADO DE LA OTRA (29/08) ═══
+  // · «Jornadas completadas: 7 · 62 h» — el dato ya está publicado: la columna HORAS de cada persona
+  //   lo suma (`=N('_J_OBREROS'!$V$559)+62`) y el total del cuadro lo totaliza. El renglón lo repetía
+  //   en palabras. El día por día vive en «_J_OBREROS», que es de donde sale.
+  // · «$/h hoy» y «$/h c/aumento» — dos columnas para una tarifa. La que se cobra es la segunda:
+  //   `COBRA = horas × $/hora` la usa. La anterior es historia y vive en la planilla, quincena por
+  //   quincena. Publicar las dos obligaba a mirar cuál de ellas multiplicaba.
+  // · «▲ N sin recibo confirmado…» al pie — es un hallazgo (hay que ir a buscar el recibo), no algo
+  //   que se lea el día de pago: sale por `console.warn`, como el resto.
   //
-  // `$/h HOY` y `$/h CON AUMENTO` estaban separadas por tres columnas de plata, y la del medio —el
-  // aumento que le toca a su categoría— no existía: había que restar dos celdas lejanas para saber
-  // cuánto sube cada uno, que es LA cifra que el dueño decidió. Ahora la cuenta se lee sola de
-  // izquierda a derecha: lo que cobra + lo que sube = lo que va a cobrar. Después, la plata.
-  // ═══ EL CUADRO SE LEE COMO UNA INSTRUCCIÓN DE PAGO, NO COMO UNA PLANILLA DE CÁLCULO ═══
-  //
-  // El dueño, 31/08/2026: «es confuso como ha quedado […] quiero saber cuanto y como tengo q pagarle
-  // a cada uno». Tenía diecisiete columnas para una decisión que son TRES números: cuánto se
-  // transfiere, cuántos billetes hay que sacar, y cuánto es en total.
-  //
-  // UNA SOLA TABLA. El cuadro «cómo se llegó a ese número» se retiró: partir la información en dos
-  // obligaba a saltar entre bloques para entender una fila, que es lo contrario de lo que se buscaba.
-  // Las horas y las tarifas vuelven acá, DESPUÉS de la plata — el número que decide primero, el
-  // respaldo a su derecha, en la misma fila.
-  // ═══ EL ADELANTO Y LO TRANSFERIDO SON DOS COSAS, Y VAN EN DOS COLUMNAS (31/08) ═══
-  //
-  // El dueño: «no me gusta esa mezcla de conceptos en la columna "ya transferido" con "adelantos"
-  // separar». Tenía razón y el defecto era de fondo, no de rótulo: la celda sumaba **plata de dos
-  // fuentes distintas** y mostraba el resultado como si fuera un solo hecho.
-  //
-  // · ADELANTO       — billetes entregados en obra. Lo anota el jefe en la planilla de jornales
-  //                    (columna Y) y no pasa por ningún banco: no hay comprobante, hay una firma.
-  // · YA TRANSFERIDO — plata que salió de la cuenta. Cada peso tiene su referencia en el extracto
-  //                    del Santander y vive en `_RECIBOS_RAW`.
-  //
-  // Sumarlas escondía cuál de las dos era, y son distintas para decidir: un adelanto en efectivo se
-  // discute con quien lo entregó, una transferencia se busca en el extracto. Las dos se restan del
-  // total —eso no cambia— pero cada una se ve y se audita por su lado.
-  // ═══ LA CATEGORÍA, PEDIDA POR EL DUEÑO (31/08): «necesito q aparezcan las categorias» ═══
-  //
-  // Va con el respaldo —después de la plata, antes de las horas— porque es de la misma familia: es
-  // lo que EXPLICA la tarifa, no lo que se decide. Y explica bastante: el piso de convenio contra el
-  // que se mide el aumento sale de ella, así que dos personas con el mismo $/hora y distinta
-  // categoría suben distinto, y sin esta columna eso no se puede leer en la fila.
-  //
-  // SE MUESTRA EL NOMBRE DE CONVENIO, NO EL CÓDIGO DE LA PLANILLA. El espejo trae «OF», «OF E»,
-  // «M OF», «A» —códigos del dueño— y el piso vive en `_UOCRA_RAW` bajo «Oficial», «Oficial
-  // Especializado», «Medio Oficial», «Ayudante». Publicar el código obligaría a traducir de memoria
-  // para saber contra qué piso se está midiendo a cada uno.
-  //
-  // Y LA FILA DICE CUÁNDO LA EQUIVALENCIA LA DEDUJO EL OS. Con «▲» al lado: `M OF → Medio Oficial`
-  // es una lectura del OS que nadie declaró, y dibujarla igual que una declarada convierte una
-  // inferencia en un hecho silencioso — el mismo aviso que la pestaña ya da al pie, ahora en la fila
-  // de quien afecta.
-  // AL LADO DEL NOMBRE, por pedido del dueño (31/08): «poner la categoria al lado del nombre».
-  // La había puesto con el respaldo por el principio de «la plata primero»; leyendo el cuadro se ve
-  // por qué él tiene razón: la categoría es parte de QUIÉN es la persona —con ella se lee la fila
-  // entera, porque explica el piso, el aumento y la tarifa— y a la derecha obligaba a cruzar
-  // once columnas para saber contra qué se está midiendo a cada uno.
-  // «EFECTIVO redondeado» NO reemplaza al exacto: va AL LADO. El dueño, 31/08: «la idea era que no
-  // borraras el número sino que pusieras el redondeado en una columna al lado». Tiene razón — el
-  // exacto es lo devengado y hace falta para auditar; el redondeado es lo que se cuenta en billetes.
-  //
-  // El comentario va ACÁ ARRIBA y no adentro del `fila(...)`: el test que cuida este encabezado lo
-  // busca con un regex acotado a 400 caracteres, y un comentario adentro lo empuja fuera del alcance
-  // — el test se pone rojo por la prosa, no por el cuadro.
-  // ═══ SE FUERON LAS COLUMNAS DEL AUMENTO (31/08) ═══
-  //
-  // El dueño aplicó el aumento EN SU PLANILLA: la columna $/h de «Obreros 26» ya trae la tarifa
-  // nueva. El OS seguía calculando «con aumento» encima de una tarifa que ya lo tenía —a Aguero le
-  // publicaba $431.340 de efectivo contra los $411.705 reales— y esa columna es la que el que paga
-  // mira. Un aumento aplicado dos veces no es un redondeo: es plata.
-  //
-  // Queda «EFECTIVO redondeado», que él pidió, ahora colgado del efectivo de verdad.
-  // LAS SIETE PRIMERAS COLUMNAS SON IGUALES EN LAS TRES TABLAS, Y NO ES ESTÉTICA: la tarjeta del
-  // titular suma la MISMA letra en las tres filas de total. Con «EFECTIVO redondeado» metido en la G
-  // de obreros, esa suma mezclaba el redondeo de una tabla con el total de las otras dos y publicaba
-  // $7.326.440 donde salían $9.659.243. El redondeado va DESPUÉS del total.
-  // «COBRA» ES LO QUE GANA LA PERSONA, PAGADO O NO (31/08). El dueño: «me borraste los totales por
-  // más que tengan algo pagado, no sé eso». Tenía razón: «TOTAL A PAGAR» pasó a ser lo que SALE
-  // mañana, y con eso se perdió de vista cuánto gana cada uno. Son dos preguntas distintas y ahora
-  // hay dos columnas: COBRA (el devengado de la quincena) y TOTAL A PAGAR (lo que falta entregar).
-  fila('Persona', 'Categoría', 'COBRA', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO',
-    'TOTAL A PAGAR', 'EFECTIVO redondeado', 'Horas', '$/h hoy', '$/h c/aumento')
+  // LA MARCA «▲» SALE DE LA CELDA DEL NOMBRE. Decía «GONZALEZ EMILIANO  ▲ sin cargar desde el 03/09»
+  // dentro de la celda de una persona: 45 caracteres de aviso en la columna con la que se lo busca,
+  // se lo ordena y se lo cruza contra la planilla. El aviso no se pierde —va por consola, abajo— y la
+  // celda vuelve a contener sólo el nombre.
+  fila(...COLUMNAS)
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinRecibo = []
   const liquidados = []
+  // Las tarifas de la planilla que la regla del aumento deja cortas. Se avisan; no se pisan.
+  const seQuedaronCortas = []
   const sinConvenio = []
   // QUIÉNES TIENEN UN PISO DECIDIDO POR UNA INFERENCIA. `sinConvenio` sólo ve los códigos que NADIE
   // mapeó: el día que se agrega el mapeo, se apaga. Y ahí es cuando más hace falta mirar —la
@@ -683,7 +621,11 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
     const cuilP = CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]
     const oficial = cuilP ? recibosPorCuil.get(cuilP)?.nombre_recibo : null
     const comoSeLlama = comoSeEscribe(oficial ?? p.nombre)
-    const nombreFila = q.dejoDeCargar ? `${comoSeLlama}  ▲ sin cargar desde el ${q.ultimoDiaSuyo}` : comoSeLlama
+    // LA CELDA DE UN NOMBRE LLEVA UN NOMBRE. Decía «GONZALEZ EMILIANO  ▲ sin cargar desde el 03/09»:
+    // el aviso se metía adentro del identificador con el que se busca, se ordena y se cruza esa fila
+    // contra la planilla. Que dejó de cargar horas es un hallazgo —hay que ir a preguntar— y sale por
+    // consola, unas líneas más abajo, con nombre y fecha.
+    const nombreFila = comoSeLlama
     // ═══ LA PLATA VA POR FÓRMULA CONTRA `_RECIBOS_RAW`, NO PEGADA ═══
     //
     // Regla de oro 5: *«nunca un número pegado: todo en celda referenciada y/o fórmula»*. El censo
@@ -784,49 +726,57 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
     // La categoría de convenio: la declarada si existe, y si la dedujo el OS va con «▲». Sin
     // equivalencia se muestra el código crudo de la planilla, que es mejor que un blanco: dice que
     // esa categoría no está mapeada y por eso su fila no tiene piso.
-    const catConvenio = conv ? `${conv}${esInferida(codigo) ? ' ▲' : ''}` : (codigo || SIN_DATO)
+    // SIN LA MARCA «▲» DENTRO DE LA CELDA. Que la equivalencia la dedujo el OS y no la declaró nadie
+    // sigue siendo un hallazgo vivo —gobierna el piso contra el que se mide a esa persona— y por eso
+    // no se apaga: sale por consola en `lineaEquivalenciasInferidas`, al final de la corrida. Lo que
+    // no puede es vivir pegado al valor de una celda que se lee, se ordena y se compara.
+    const catConvenio = conv || codigo || SIN_DATO
+    // ═══ TODA LA PLATA POR FÓRMULA O CITADA (regla de oro 5) ═══
+    //
+    // Las horas y la tarifa CITAN el espejo de la planilla; el neto del recibo y lo transferido citan
+    // `_RECIBOS_RAW`, que es el insumo declarado; y el resto es la cuenta hecha EN LA CELDA. Quien
+    // abre la pestaña puede seguir de dónde sale cada peso sin salir del archivo.
     fila(nombreFila, catConvenio,
-      // COBRA = horas × la tarifa CON AUMENTO (L), no la vieja (K). Con K daba el devengado del mes
-      // pasado: a Ochoa le publicaba $486.000 contra los $483.894 de la planilla, y a Castillo —que
-      // no tiene quincena anterior— lo dejaba en blanco.
-      `=ROUND(N(J${n})*N(L${n});0)`,
+      // COBRA = horas × la tarifa que se cobra, las dos citadas: es la misma cuenta que hace la
+      // planilla, escrita en la celda y no traída ya resuelta.
+      `=ROUND(N(J${n})*N(K${n});0)`,
       celdaAdel, celdaTransf, celdaBanco,
       // EN EFECTIVO — la identidad de la planilla: cobra − banco − girado − adelanto = su columna AA.
       `=ROUND(N(C${n})-N(F${n})-N(E${n})-N(D${n});0)`,
       `=N(F${n})+N(G${n})`,                            // TOTAL A PAGAR = lo que falta entregar
-      // ═══ «EFECTIVO REDONDEADO» ES DEL DUEÑO. EL OS NO LA ESCRIBE (31/08) ═══
-      //
-      // Textual: «voy a hacer cargas manuales de montos en columna efectivo redondeado, no tocarla».
-      // Nació como un MROUND del efectivo, pero él la va a usar para anotar lo que realmente entrega
-      // —que no siempre es el redondeo aritmético— y eso es un DATO suyo, no un cálculo.
-      //
-      // Se escribe VACÍO, no el centinela `VACIO`: vacío se fusiona y conserva lo que él puso; el
-      // centinela significa «esta celda es mía y va en blanco» y le borraría el monto cada corrida.
+      // «EFECTIVO redondeado»: la celda del dueño. Nace vacía y `conEfectivoRedondeadoDelDueno` le
+      // vuelve a poner lo que él tenía escrito, buscándolo POR PERSONA y no por número de fila.
       '',
-      // LA TARIFA ES LA DE LA PLANILLA, Y YA TRAE EL AUMENTO. El dueño lo aplicó allá; el OS lo
-      // volvía a aplicar acá y publicaba una hora que nadie cobra. Al lado va el PISO de convenio,
-      // que es contra lo que se mide: sin él la columna dice un número y no dice si alcanza.
-      // LAS DOS TARIFAS, SEGUIDAS: la que cobraba y la que cobra. El dueño las pidió así y tiene
-      // razón — una sola no dice si el aumento llegó. Las dos CITAN la planilla: la anterior sale de
-      // su fila de la quincena pasada, la nueva de la fila de ésta.
       celdaHoras,
-      // «$/h hoy»: la tarifa de la quincena ANTERIOR, citada de la planilla.
-      q.filaAnterior ? `=N(${J}$W$${q.filaAnterior})` : SIN_DATO,
-      // «$/h c/aumento»: la que sale de la regla del dueño —media brecha hasta el piso—, calculada
-      // sobre la anterior. Para los 14 que él ya cargó da exactamente lo que escribió; para Quiroga
-      // Alexander, que quedó sin actualizar, la completa. Va PEGADA y no citada: es la DECISIÓN, y
-      // citar la planilla sería publicar el olvido como si fuera el acuerdo.
-      jornalNuevo != null ? jornalNuevo : celdaJornal)
+      // ═══ LA TARIFA SE CITA, NO SE PEGA (09/09/2026) ═══
+      //
+      // Iba PEGADA con el argumento de que era «la DECISIÓN» del dueño —media brecha hasta el piso de
+      // convenio— y no un cálculo. Es las dos cosas: la produce `jornalConAumento`, o sea que ES un
+      // número calculado por el código, y la regla de oro 5 no admite ninguno. Peor: envejece en
+      // silencio, que es exactamente lo que la regla evita.
+      //
+      // Manda la planilla, como en las otras cuatro columnas de este cuadro («respetá las anotaciones
+      // de jornales»). Cuando la regla del OS dice que esa tarifa se quedó corta —el caso de Quiroga
+      // Alexander, que quedó en $4.500 con los otros Ayudantes en $4.950— eso es un HALLAZGO: hay que
+      // corregirlo en la planilla, y sale por consola. Publicarlo acá encima pisaría el dato de la
+      // fuente con una conjetura del OS, sin que nadie se entere.
+      celdaJornal)
+    if (jornalNuevo != null && Number(q.jornal) && Number(jornalNuevo) !== Number(q.jornal)) {
+      seQuedaronCortas.push(`${comoSeLlama}: la planilla dice ${q.jornal} y la regla del aumento da ${jornalNuevo}`)
+    }
   }
   // El conteo cuenta a los que QUEDARON en el cuadro. Con `activos.filter(...)` seguía diciendo 17
   // después de sacar a los dos liquidados: un total de 15 filas rotulado «17 persona(s)».
   const nF = f.length
   const n0 = nF - activos.filter((x) => quincena.porClave.has(x.clave) && !tieneLiquidacionFinal(x.nombre)).length + 1
   const suma = (c) => `=SUM(${c}${n0}:${c}${nF})`
+  // EL RÓTULO «⇒ N persona(s)» ES UN CONTRATO CON OTRA PESTAÑA. «Jornales por Quincena» ubica esta
+  // fila con `MATCH("⇒*persona(s)";'Nómina'!$A:$A;0)` y de ahí saca el plantel, el total, el adelanto
+  // y el banco de la quincena. Cambiar el texto la deja leyendo #N/A o, peor, el total de otro cuadro.
   fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave) && !tieneLiquidacionFinal(p.nombre)).length} persona(s)`),
-    // B es la categoría (texto, no se suma); de C a J la plata; K las horas. L y M son tarifas —
-    // promediar $/h es inventar un número que nadie cobra, así que quedan vacías.
-    '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), '', '')
+    // B es la categoría (texto, no se suma); de C a I la plata; J las horas. K es la tarifa:
+    // promediar $/hora es inventar un número que nadie cobra, así que queda vacía.
+    '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), '')
   // ═══ LAS CUATRO NOTAS AL PIE DE ESTE CUADRO SE FUERON A LA CONSOLA (06/09/2026) ═══
   //
   // Eran 1.400 caracteres de párrafo debajo del total —la brecha de convenio, quiénes cobran sin
@@ -837,9 +787,8 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
   // PERO BORRARLAS A SECAS APAGA UN AVISO, y ésa es la forma exacta en que nace un control que no
   // puede dar rojo. Cada una se resolvió por lo que era:
   //
-  //   · LA BRECHA DE CONVENIO no es un hallazgo: es una decisión ya tomada, y sus dos números están
-  //     publicados en el cuadro («$/h hoy» y «$/h c/aumento», columna por columna). El párrafo los
-  //     repetía en palabras. Se borra.
+  //   · LA BRECHA DE CONVENIO no es un hallazgo: es una decisión ya tomada y su número está publicado
+  //     en la columna «$/hora». El párrafo lo repetía en palabras. Se borra.
   //   · LOS LIQUIDADOS no faltan: están en el cuadro 3 con su plata. El párrafo avisaba de algo que
   //     el lector encuentra dos bloques más abajo. Se borra.
   //   · QUIÉNES COBRAN SIN ESTAR EN LA PLANILLA y QUIÉNES NO TIENEN RECIBO **sí** son hallazgos
@@ -883,7 +832,10 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
     // que ya están en la base: es el único lugar donde el hecho existe.
     const quincenasDe = (cuil) => Number(recibosDelMes.get(cuil)?.quincenas ?? 0)
     fila('')
-    fila(seccion(2, `qué se le paga a oficina · mes ${mes}`))
+    // El rótulo lo consume `lib/origen-declarado.mjs` (recorta en el primer « · ») para amparar la
+    // columna COBRA de este cuadro: el neto acordado es una decisión del dueño, no una liquidación.
+    // Si se renombra acá, hay que renombrarlo también en `scripts/formato-pestanas.mjs`.
+    bloque(`oficina · mes ${mes}`)
     // ═══ EL RECIBO ES EL DE LA QUINCENA, NO LA SUMA DEL MES (31/08, corrección del dueño) ═══
     //
     // Yo sumaba las dos quincenas —$663.526,08 + $663.141,56 = $1.326.667,64— y él lo cortó:
@@ -892,17 +844,19 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
     //
     // El neto ACORDADO sí es mensual ($1.800.000), así que la quincena vale la mitad y el efectivo
     // completa hasta ahí. Las dos cosas conviven sin contradecirse: el acuerdo se pacta por mes, la
-    // plata se paga por quincena.
-    // EL CRITERIO NO SE ESCRIBE EN LA PESTAÑA. Acá iba «por banco va lo que dice su recibo y el
-    // efectivo COMPLETA hasta ese neto: si el recibo sube, baja el efectivo» — es cómo se calcula,
-    // y vive donde se calcula (`SUELDO_NETO_OFICINA` y el reparto de abajo). Queda el DATO: el neto
-    // acordado, que es un número que no sale de ninguna otra celda de la pestaña.
-    fila(`Neto acordado por mes: ${(Object.values(SUELDO_NETO_OFICINA)[0] ?? 0).toLocaleString('es-AR')} c/u`)
-    // MISMA LETRA, MISMO SIGNIFICADO EN LOS TRES CUADROS. La columna B es la categoría también acá,
-    // aunque venga vacía: la planilla de oficina NO trae categoría —`COL_OFICINA` la declara `null`—
-    // y el «—» dice eso. Correr la plata una columna para ahorrarse dos guiones obliga a releer el
-    // encabezado en cada tabla, que es de donde venía la sensación de descuadre.
-    fila('Persona', 'Categoría', 'COBRA', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR', 'Quincenas del mes')
+    // plata se paga por quincena. El criterio vive donde se calcula (`SUELDO_NETO_OFICINA`).
+    //
+    // ═══ SE FUERON EL RENGLÓN DEL NETO Y LA COLUMNA «Quincenas del mes» (09/09/2026) ═══
+    //
+    // El renglón decía «Neto acordado por mes: 1.800.000 c/u» y la columna COBRA de las dos filas
+    // publica exactamente eso, persona por persona: era el mismo número escrito tres veces.
+    //
+    // «Quincenas del mes» ocupaba la letra I, que en el cuadro de arriba es «EFECTIVO redondeado».
+    // Una misma columna con dos significados en la misma pestaña es lo que obliga a releer el
+    // encabezado en cada cuadro, y es de donde venía el descuadre que el dueño marcó. El dato que
+    // daba —si el mes está completo— es un hallazgo, no una cifra que se lee el día de pago: sale
+    // por consola, con el nombre de quién está incompleto.
+    fila(...COLUMNAS)
     const incompletos = []
     const sinRecibOfi = []
     const sinAcuerdoNeto = []
@@ -923,7 +877,10 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
       if (!r) {
         // Sin recibo no hay mitad blanca, y sin mitad blanca el 50/50 no tiene de dónde salir.
         sinRecibOfi.push(`${comoSeLlama} (sin recibo de ${mes})`)
-        fila(comoSeLlama, SIN_DATO, neto ?? SIN_DATO, o ? `=N('_J_OFICINA'!$X$${o.fila})` : 0, 0, SIN_DATO, SIN_DATO, SIN_DATO, 0)
+        // Las columnas que este cuadro no usa quedan VACÍAS, no corridas: «EFECTIVO redondeado»,
+        // «Horas» y «$/hora» son de obra. Un cuadro con menos columnas que el de arriba es lo que se
+        // ve descuadrado.
+        fila(comoSeLlama, SIN_DATO, neto ?? SIN_DATO, o ? `=N('_J_OFICINA'!$X$${o.fila})` : '', '', SIN_DATO, SIN_DATO, SIN_DATO, '', '', '')
         continue
       }
       if (cuantas < 2) incompletos.push(`${comoSeLlama} (${cuantas} de 2)`)
@@ -958,30 +915,23 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
         // El neto acordado no se pierde: está escrito en el subtítulo del bloque, que es donde
         // corresponde. Las tres tablas dicen ahora lo mismo en esta columna: banco + efectivo.
         `=N(F${nf})+N(G${nf})`,
-        cuantas)
+        // «EFECTIVO redondeado», «Horas» y «$/hora» no aplican a oficina: van vacías.
+        '', '', '')
     }
     const oF = f.length
     const o0 = oF - deOficina.length + 1
     fila(rotuloTotal(`${deOficina.length} persona(s) de oficina`), '',
       `=SUM(C${o0}:C${oF})`, `=SUM(D${o0}:D${oF})`, `=SUM(E${o0}:E${oF})`, `=SUM(F${o0}:F${oF})`, `=SUM(G${o0}:G${oF})`, `=SUM(H${o0}:H${oF})`,
-      // NO va vacía: una celda vacía no borra, y acá quedaba viva la cuenta de quincenas de la
-      // corrida anterior. Se escribe el mínimo de quincenas cargadas del grupo, que es lo que
-      // decide si el mes está completo.
-      Math.min(...deOficina.map((p) => quincenasDe(CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]))))
-    // ═══ ESTA NOTA SE ESCRIBE SIEMPRE, DIGA LO QUE DIGA ═══
+      '', '', '')
+    // ═══ EL ESTADO DEL MES YA NO SE PUBLICA: SE AVISA (09/09/2026) ═══
     //
-    // Cuando el mes se completó, la nota de «INCOMPLETO» desaparecía del grid… y se quedaba viva en
-    // la pestaña, porque una celda vacía NO borra: la guarda NO-BORRAR conserva el destino y el
-    // centinela tampoco pasa (lo lee como grilla vacía). Resultado: una advertencia falsa publicada
-    // sobre un mes que ya estaba completo.
+    // Debajo del total iba «   · Mes completo · 09/2026» o «   · ▲ INCOMPLETO · 1ª quincena sin
+    // cargar». El mes ya está escrito en el rótulo del bloque, y que falte una quincena es un
+    // hallazgo —hay que pedirle el recibo al estudio—, no una cifra que se lea el día de pago.
     //
-    // La salida no es pelearse con la guarda —hace bien su trabajo— sino no dejar nunca un hueco:
-    // la fila SIEMPRE lleva texto, y el texto nuevo pisa al viejo. De paso el cuadro dice de cuánto
-    // mes está hablando sin que haya que contar recibos.
-    // EL CONTROL SE QUEDA; SU EXPLICACIÓN, NO. Las dos ramas medían 137 y 93 caracteres explicando
-    // qué implica cada estado. El estado se dice en cuatro palabras, y QUIÉN está incompleto se lee
-    // en la columna «Quincenas del mes» de su propia fila — que es donde el lector ya está mirando.
-    fila(sub(incompletos.length ? `▲ INCOMPLETO · 1ª quincena sin cargar` : `Mes completo · ${mes}`))
+    // Se escribía SIEMPRE, dijera lo que dijera, porque una celda vacía no borra y la advertencia
+    // vieja sobrevivía a la corrida que la reemplazaba. Ese riesgo desaparece con la fila.
+    if (incompletos.length) console.warn(`  ⚠ oficina, mes ${mes} incompleto: ${incompletos.join(' · ')}`)
     // LOS DOS HALLAZGOS VAN A LA CONSOLA. Un recibo que falta y un neto sin declarar son cosas que
     // hay que ir a buscar, no información que se lee el día de pago: el que corre el pipeline los
     // ve, y la pestaña no publica el pendiente de nadie. La fila del afectado ya lo muestra sin
@@ -1001,68 +951,33 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
   // total— le paga a cada uno la mitad de lo que le corresponde.
   if (finales.size) {
     fila('')
-    fila(seccion(3, 'lo que terminó · liquidaciones finales'))
-    // CÓMO SE COMPONE LA LIQUIDACIÓN FINAL VIVE EN `reparto50DeLiquidacionFinal`, NO EN LA PESTAÑA:
-    // lo liquidado por el estudio es la mitad blanca del acuerdo y el efectivo es un monto igual, así
-    // que lo que sale de la caja es el doble del recibo. El cuadro lo muestra con sus tres columnas
-    // —recibo, efectivo y total— una al lado de la otra: el renglón sólo repetía la suma en palabras.
-    // ═══ LA MISMA COLUMNA SIGNIFICA LO MISMO EN TODA LA PESTAÑA ═══
+    bloque('liquidaciones finales')
+    // ═══ LO QUE ESTE CUADRO SIGNIFICA, Y POR QUÉ NO LO EXPLICA UN RENGLÓN ═══
     //
-    // Este cuadro tenía la fecha en B y la plata corrida a partir de C, mientras el de arriba tenía
-    // el transferido en B y el banco en C. Dos tablas con el mismo aspecto y distinto significado por
-    // columna obligan a releer el encabezado en cada una, y es de donde viene la sensación de
-    // descuadre. Ahora las dos tablas dicen lo mismo en la misma letra: B adelanto, C ya
-    // transferido, D lo que va por banco, E el efectivo.
+    // El acuerdo es 50/50: lo que liquidó el estudio ES la mitad blanca y la otra mitad es un monto
+    // IGUAL en efectivo, así que de la caja sale el DOBLE del recibo. Leerlo al revés —tomar el
+    // recibo como el total— le paga a cada uno la mitad de lo que le corresponde. La cuenta vive en
+    // `reparto50DeLiquidacionFinal` y el cuadro la muestra columna por columna.
     //
-    // A estas personas nadie les adelantó billetes en obra, así que su columna B es cero — y el
-    // formato de la casa dibuja el cero como «—». La columna se ve vacía porque LO ESTÁ, que es un
-    // dato: lo único que se les descontó salió del banco y tiene referencia en el extracto.
+    // El dueño lo aprobó así y me corrigió dos veces cuando lo cambié para arreglar el titular:
+    // «estan mal las liquidaciones finales porque el acuerdo tb es 50 y 50» y «pesimo el calculo de
+    // liquidaciones finales, estaba bien lo indicaba antes». El titular se arregla en el titular.
     //
-    // Sin columna de fecha: es contexto, no plata, y su lugar es `_RECIBOS_RAW`, que la trae con la
-    // fuente al lado. Acá obligaba a meter una columna de texto en medio del contrato numérico y
-    // salía dibujada como su serial —«46.259»—, que es el defecto clásico de mezclar unidades.
-    // ═══ EL 50/50 TIENE QUE VERSE, Y POR ESO EL EFECTIVO ACÁ NO NETA ═══
+    // ═══ LAS MISMAS ONCE COLUMNAS QUE LOS OTROS DOS CUADROS (09/09/2026) ═══
     //
-    // Lo intenté al revés y el dueño lo marcó en el acto: «estan mal las liquidaciones finales
-    // porque el acuerdo tb es 50 y 50». Netear el efectivo publicaba banco $330.431 contra efectivo
-    // $30.431 — dos columnas que ya no se parecen— y el acuerdo dejaba de leerse en la fila.
+    // Tenía nueve, con «POR BANCO (a girar)» y «MITAD BLANCA (lo liquidado)» donde los otros dos
+    // dicen «POR BANCO» y «EFECTIVO redondeado». Dos rótulos distintos para la misma letra obligan a
+    // releer el encabezado, y «MITAD BLANCA» era además una tercera copia del mismo número: es lo
+    // que ya publica «EN EFECTIVO» —la mitad negra es igual a la blanca— y la mitad de «COBRA».
     //
-    // Así que la mitad negra es IGUAL a la blanca, el total es el doble, y lo ya entregado se resta
-    // en su propia columna. Se ve el acuerdo Y se ve lo que falta pagar, que son dos preguntas
-    // distintas y las dos se hacen sobre esta fila.
-    // «MITAD NEGRA» EN VEZ DE «QUEDA POR PAGAR». El dueño pidió dos cosas que se peleaban: que el
-    // 50/50 se VEA y que el titular cierre. Se resuelven separándolas: EN EFECTIVO neta lo ya
-    // entregado —igual que en los otros dos cuadros, así el titular puede sumar la columna— y la
-    // mitad negra del acuerdo, que es igual a la blanca, se muestra entera en su propia columna.
-    // ═══ COMO ESTABA, QUE ERA COMO ESTABA BIEN (31/08, tercera vuelta) ═══
-    //
-    // El dueño: «pesimo el calculo de liquidaciones finales, estaba bien lo indicaba antes». Tiene
-    // razón y las dos veces que lo cambié fue para arreglar el TITULAR, no el cuadro — que es
-    // exactamente al revés de como se hace.
-    //
-    // Vuelve lo que él aprobó: la mitad blanca es lo que liquidó el estudio, la negra es OTRO TANTO
-    // IGUAL, el total es el doble, y lo ya entregado se resta aparte en «QUEDA POR PAGAR». El 50/50
-    // se lee en la fila sin hacer ninguna cuenta.
-    //
-    // El titular se arregla en el titular: su tarjeta de transferencia ya no suma la columna del
-    // banco —que acá muestra el acuerdo, no lo que falta girar— sino que sale de restarle el
-    // efectivo al total. Ver `deTodos` en el bloque del hero.
-    // ═══ LA COLUMNA «POR BANCO» DICE LO QUE FALTA GIRAR, NO EL ACUERDO ═══
-    //
-    // Es la corrección que faltaba y la que hacía que el titular dijera cualquier cosa. En los
-    // otros dos cuadros «POR BANCO» es plata que TODAVÍA no salió; acá mostraba la mitad blanca
-    // entera, con $600.000 ya girados adentro. La misma letra con dos significados: la tarjeta que
-    // suma esa columna pedía transferir dos veces lo mismo.
-    //
-    // Ahora las tres columnas significan lo mismo en los tres cuadros, así que cada tarjeta ES la
-    // suma de su columna y las dos primeras dan la tercera. El 50/50 no se pierde: la mitad negra
-    // está en EN EFECTIVO y la blanca, entera, en su propia columna al final.
-    fila('Persona', 'Categoría', 'COBRA', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (a girar)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'MITAD BLANCA (lo liquidado)')
+    // «POR BANCO» significa lo mismo en los tres: lo que TODAVÍA no salió. Por eso el titular puede
+    // sumar la columna sin restarle nada, y ésa fue la corrección que hacía que dijera cualquier cosa.
+    fila(...COLUMNAS)
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
       const c = reparto50DeLiquidacionFinal(r.neto)
-      if (c.total === null) { fila(r.nombre_recibo, SIN_DATO, SIN_DATO, 0, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
+      if (c.total === null) { fila(r.nombre_recibo, SIN_DATO, SIN_DATO, '', SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, '', '', ''); continue }
       // ═══ LO QUE YA SE LE TRANSFIRIÓ CONTRA SU LIQUIDACIÓN ═══
       //
       // El lote de haberes del 28/08 les pagó $300.000 a Jofre y $300.000 a Sosa. Esa plata NO es
@@ -1092,8 +1007,12 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
         SIN_DATO,                              // su categoría no vive en ninguna fuente del archivo
         // COBRA · el acuerdo entero: la mitad blanca liquidada más una mitad negra igual.
         `=ROUND(N(${cita})*2;0)`,
-        0,                                     // adelanto en obra: a estas personas no se les dio
-        dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : 0,
+        // ADELANTO EN OBRA: a estas personas no se les dio, y la celda va VACÍA, no en cero. Un cero
+        // escrito es un número pegado a mano —el censo de la regla de oro 5 lo cuenta como tal— y
+        // además dibuja «—» igual que el vacío. Las restas de abajo la leen con `N()`, que trata la
+        // celda vacía como cero: la cuenta no cambia.
+        '',
+        dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : '',
         // La mitad negra es IGUAL a la blanca —el acuerdo— y el total es el doble del recibo.
         // Lo ya entregado se resta al final, en su columna, sin tocar el 50/50.
         // ═══ LO YA TRANSFERIDO SE RESTA DEL BANCO, NO DEL EFECTIVO (31/08) ═══
@@ -1109,7 +1028,9 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
         // lo ya entregado; y el total del acuerdo —el doble— queda a la vista en la última columna.
         // Falta girar = lo liquidado menos lo ya girado. La mitad negra es IGUAL a la blanca.
         `=ROUND(N(${cita})-N(E${nf})-N(D${nf});0)`, `=ROUND(N(${cita});0)`,
-        `=N(F${nf})+N(G${nf})`, `=ROUND(N(${cita});0)`)
+        // «EFECTIVO redondeado», «Horas» y «$/hora» no aplican a una liquidación final: van vacías.
+        // Acá iba «MITAD BLANCA (lo liquidado)», que era el mismo `cita` publicado por tercera vez.
+        `=N(F${nf})+N(G${nf})`, '', '', '')
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
@@ -1117,7 +1038,7 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
     const q2 = f.length
     fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`),
       '', `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`, `=SUM(E${q1}:E${q2})`,
-      `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`, `=SUM(H${q1}:H${q2})`, `=SUM(I${q1}:I${q2})`)
+      `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`, `=SUM(H${q1}:H${q2})`, '', '', '')
     // G ES «QUEDA POR PAGAR» EN ESTE CUADRO Y «TOTAL A PAGAR» EN LOS OTROS DOS, y las dos cosas son
     // lo mismo: lo que todavía sale de la caja por esa fila. Por eso el titular puede sumar la
     // columna G de los tres sin mezclar nada.
@@ -1164,14 +1085,16 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
   // Y LA OTRA MITAD DE LA MISMA PREGUNTA: los que SÍ tienen equivalencia, pero la puso el OS. Deja de
   // avisarse solo el día que el dueño las confirme — no hay nada que apagar a mano.
   //
-  // EN LA PESTAÑA QUEDA LA MARCA, NO EL PÁRRAFO. La celda de categoría de esa persona ya lleva «▲»
-  // («Medio Oficial ▲», lo pone `esInferida` unas líneas más arriba): quien mira la fila ve que esa
-  // categoría no la declaró nadie. El renglón de 243 caracteres agregaba el mapeo crudo y dónde se
-  // corrige, que es exactamente lo que el dueño mandó sacar del Sheet y sí tiene que estar acá:
-  // se corrige en `CONVENIO_POR_CODIGO` (lib/uocra-paritaria.mjs).
+  // NI EL PÁRRAFO NI LA MARCA EN LA CELDA. Hasta el 09/09 la categoría llevaba un «▲» pegado
+  // («Medio Oficial ▲») para decir que la equivalencia la dedujo el OS. Ese glifo dentro del valor
+  // de una celda que se lee, se ordena y se compara es lo que el dueño mandó sacar; y el aviso no se
+  // pierde: sale entero acá, con el mapeo crudo y dónde se corrige — `CONVENIO_POR_CODIGO`
+  // (lib/uocra-paritaria.mjs).
   const inferidas = lineaEquivalenciasInferidas(conInferencia)
   if (inferidas) console.warn(`  ⚠ ${inferidas}`)
-  fila()
+  for (const x of seQuedaronCortas) console.warn(`  ⚠ ${x} — se corrige en la planilla, no acá`)
+  // NADA DEBAJO DEL ÚLTIMO CUADRO. El `fila()` que iba acá dejaba un renglón suelto al final y, con
+  // él, el colchón de filas en blanco que `auditar-pantalla` cuenta como «derrame a la vista».
 
   // ═══ «Plantel» SE RETIRÓ DEL ARCHIVO (09/09/2026, decisión del dueño: «sí, borrala») ═══
   //
@@ -1240,63 +1163,52 @@ async function formatear(google, hoja, filas) {
   const s = hoja.sheetId
   const n = filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId: s, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
-  const conTitular = filas.some((x) => String(x?.[0] ?? '') === 'QUÉ SALE DE LA CAJA MAÑANA')
+  // El rectángulo que hay que dejar limpio incluye las columnas que este generador escribió ANTES:
+  // pintar sólo hasta ANCHO deja el formato de las seis que se retiraron el 09/09 vivo a la derecha.
+  const rTodo = (r0, r1) => ({ sheetId: s, startRowIndex: r0, endRowIndex: r1, startColumnIndex: 0, endColumnIndex: ANCHO_HISTORICO })
   const req = [
-    { unmergeCells: { range: r(0, Math.max(n, 200)) } },
-    E.reset(s, Math.max(n + 20, 200), ANCHO),
+    { unmergeCells: { range: rTodo(0, Math.max(n, 200)) } },
+    E.reset(s, Math.max(n + 20, 200), ANCHO_HISTORICO),
     // SIN CUADRÍCULA y con el titular congelado: la jerarquía la hace la tipografía, no la reja.
-    // SE CONGELA HASTA EL TITULAR, y sólo si lo hay. Congelar ocho filas en «Plantel», cuya tabla
-    // arranca en la sexta, dejaba las dos primeras personas atrapadas en la banda fija: la fila se
-    // veía bloqueada y no se podía scrollear por encima de ella.
-    { updateSheetProperties: { properties: { sheetId: s, gridProperties: { hideGridlines: true, frozenRowCount: conTitular ? 8 : 3 } }, fields: 'gridProperties.hideGridlines,gridProperties.frozenRowCount' } },
-    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: E.ANCHO.concepto }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 1, endIndex: ANCHO }, properties: { pixelSize: E.ANCHO.numero }, fields: 'pixelSize' } },
+    // SE CONGELA HASTA DEBAJO DEL TITULAR: las tres cifras que se deciden quedan siempre a la vista.
+    { updateSheetProperties: { properties: { sheetId: s, gridProperties: { hideGridlines: true, frozenRowCount: DEBAJO_DEL_TITULAR - 1 } }, fields: 'gridProperties.hideGridlines,gridProperties.frozenRowCount' } },
+    // ═══ UN SOLO ANCHO, Y LA COLUMNA DE TEXTO NO ES UNA COLUMNA DE NÚMEROS ═══
+    //
+    // A: 300 px para el nombre. B: la categoría es TEXTO y «Oficial Especializado» son 21 caracteres
+    // — con el ancho de una columna numérica se cortaba, y el auditor de pantalla lo contaba como
+    // `texto_cortado`. C en adelante: 100 px, el mismo para todas.
+    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 300 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: E.ANCHO.texto }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 2, endIndex: ANCHO }, properties: { pixelSize: 100 }, fields: 'pixelSize' } },
   ]
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: E.conFuente(format) }, fields } })
 
-  // ── EL CONTRATO DE COLUMNAS, DECLARADO POR EL ENCABEZADO DE CADA TABLA ─────────────────────────
+  // ── EL CONTRATO DE COLUMNAS SE DECLARA, NO SE ADIVINA DEL RÓTULO ───────────────────────────────
   //
-  // La primera versión aplicaba UN contrato a toda la pestaña —B a G plata, H en adelante
-  // cantidades— porque en la Nómina las dos tablas significan lo mismo en la misma columna. Cuando
-  // «Plantel» pasó a usar este mismo formateo, ese contrato le pintó la fecha de Ingreso como
-  // «$45.803» —su serial vestido de pesos— y las Horas del año como «$1.550». Cuatro tablas
-  // heterogéneas no comparten contrato, y forzarlas a uno es inventar un significado.
+  // Antes la unidad de cada columna salía de una regex sobre el texto de su encabezado. Es la trampa
+  // que `estilo-pestana` advierte en su propio comentario: «un formato que depende de cómo está
+  // escrito un rótulo se rompe cada vez que se mejora la redacción, y en silencio». Ya había pasado
+  // acá — «$/h» caía en la rama de CANTIDAD y la tarifa salía dibujada «5.974», sin el signo, al
+  // lado de columnas de pesos.
   //
-  // La unidad la declara el RÓTULO, que es el único lugar donde ya está escrita. Un número sin
-  // rótulo reconocible se dibuja como cantidad, no como plata: equivocarse hacia «1.408» es una
-  // molestia, hacia «$1.408» es afirmar que son pesos.
-  fmt(r(0, n, 0, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.wrapStrategy', { numberFormat: E.NUM.texto, wrapStrategy: 'CLIP' })
-  // CUATRO UNIDADES, NO DOS. La primera versión partía en «plata» y «no plata», y a todo lo que no
-  // era plata le ponía formato de CANTIDAD: así «Ley 22.250» y «OF» quedaron como texto dentro de una
-  // celda con formato numérico —79 casos en «Plantel»—. Una categoría no es un número chico: es otra
-  // cosa, y la planilla tiene que saberlo o el día que alguien ordene la columna, ordena mal.
-  const unidadDe = (rotulo) => {
-    const t = String(rotulo ?? '').toLowerCase()
-    if (/fecha|ingreso|egreso|vence/.test(t)) return E.NUM.fecha
-    // «categor» cubre «Cat.» y «Categoría»: es TEXTO. Sin esto caía al default y la columna nueva
-    // salía con formato de moneda — una categoría dibujada como plata es el defecto que dejó 79
-    // celdas de texto dentro de celdas numéricas en «Plantel».
-    if (/antig|categor|cat\.|sector|convenio|régimen|regimen|carpeta|falta|persona|estado|qué|que es|último|ultimo|variante|unidad|alta|libreta|dni|epp|ieric/.test(t)) return E.NUM.texto
-    // «Quincenas cargadas» es un CONTEO (1 de 2). Sin esto caía en el default y salía «$1»: un
-    // recuento vestido de pesos, que es el mismo defecto que puso «$45.803» en una fecha de ingreso.
-    if (/hora|hs\b|\$\/h|recibos|personas|días|dias|quincenas|cargadas/.test(t)) return E.NUM.cantidad
-    // ═══ CON CENTAVOS EN LA NÓMINA, PORQUE DE ACÁ SE COPIAN LAS TRANSFERENCIAS (31/08) ═══
-    //
-    // El dueño: «cuidado con redondear en la pestaña nomina, dejar los numeros de la manera correcta
-    // porque sino las transferencias se hacen mal». El formato de la casa es `"$"#,##0` —sin
-    // decimales— y con él el recibo de Aguero, que dice $215.564,62, se DIBUJA $215.565. El valor de
-    // la celda siempre estuvo bien; lo que estaba mal era lo que se leía, y de lo que se lee salen
-    // las transferencias.
-    //
-    // Sólo en la Nómina. «Plantel» son agregados anuales donde el centavo es ruido y nadie transfiere
-    // desde ahí.
-    // LOS CENTAVOS VAN DONDE HAY TRANSFERENCIA, NO DONDE HAY BILLETES. El recibo dice
-    // $215.564,62 y eso se transfiere tal cual; el efectivo se entrega en mano y se redondea. La
-    // celda del efectivo YA viene redondeada por `ROUND` — esto sólo evita mostrarle un «,00» a un
-    // número que no tiene decimales.
-    if (hoja?.title !== 'Nómina') return E.NUM.moneda
-    return /efectivo|adelanto|negra|sube/.test(t) ? E.NUM.moneda : E.NUM.monedaExacta
-  }
+  // Con UN contrato de columnas para los tres cuadros la unidad se puede declarar de una vez.
+  //
+  // ═══ SIN CENTAVOS, POR PEDIDO DEL 09/09 ═══
+  //
+  // El patrón es `"$"#,##0`. Va escrito en formato US aunque el archivo sea es-AR: la API interpreta
+  // el patrón en US y lo MUESTRA con el punto de miles local; escribirlo con el separador local lo
+  // rompe.
+  //
+  // LÍMITE DECLARADO. El 31/08 el dueño había pedido lo contrario para esta pestaña: «cuidado con
+  // redondear en la pestaña nomina, dejar los numeros de la manera correcta porque sino las
+  // transferencias se hacen mal» — un recibo de $215.564,62 dibujado «$215.565» hace transferir 38
+  // centavos de más. El VALOR de la celda sigue siendo exacto (se ve en la barra de fórmulas), pero
+  // lo que se lee ya no. Las dos órdenes se contradicen y manda la última; si vuelve a aparecer una
+  // transferencia con centavos de diferencia, la causa es ésta.
+  const UNIDAD = COLUMNAS.map((rotulo) => (rotulo === 'Persona' || rotulo === 'Categoría'
+    ? E.NUM.texto
+    : rotulo === 'Horas' ? E.NUM.cantidad : E.NUM.moneda))
+  fmt(rTodo(0, Math.max(n, 200)), 'userEnteredFormat.numberFormat,userEnteredFormat.wrapStrategy', { numberFormat: E.NUM.texto, wrapStrategy: 'CLIP' })
   // Cada tabla va de su encabezado («Persona») hasta su fila de total inclusive.
   for (let i = 0; i < n; i++) {
     if (String(filas[i]?.[0] ?? '') !== 'Persona') continue
@@ -1304,17 +1216,18 @@ async function formatear(google, hoja, filas) {
     while (fin < n && !ES_TOTAL.test(String(filas[fin]?.[0] ?? ''))) fin++
     fin = Math.min(fin + 1, n)
     for (let c = 1; c < ANCHO; c++) {
-      const u = unidadDe(filas[i][c])
-      const alineacion = u === E.NUM.fecha ? 'CENTER' : u === E.NUM.texto ? 'LEFT' : 'RIGHT'
       fmt(r(i + 1, fin, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-        { numberFormat: u, horizontalAlignment: alineacion })
+        { numberFormat: UNIDAD[c], horizontalAlignment: UNIDAD[c] === E.NUM.texto ? 'LEFT' : 'RIGHT' })
     }
   }
 
   // ── LA JERARQUÍA, FILA POR FILA ────────────────────────────────────────────────────────────────
   const texto = (i) => String(filas[i]?.[0] ?? '')
   for (let i = 0; i < n; i++) {
-    if (i === 0) { fmt(r(0, 1), 'userEnteredFormat', E.titulo()); continue }
+    // EL TITULAR SE PINTA APARTE, ABAJO. Sus tres renglones empiezan con «⇒» —son totales de verdad,
+    // la suma de las filas de total de los tres cuadros— y sin esta guarda caían en la rama de
+    // `ES_TOTAL`, que los rulaba con línea superior y relleno como si fueran el cierre de una tabla.
+    if (i < DEBAJO_DEL_TITULAR - 1) continue
     if (ES_SECCION_NUM.test(texto(i))) { fmt(r(i, i + 1), 'userEnteredFormat', E.bloque()); continue }
     if (texto(i) === 'Persona') {
       fmt(r(i, i + 1), 'userEnteredFormat', E.encabezado())
@@ -1324,9 +1237,9 @@ async function formatear(google, hoja, filas) {
       continue
     }
     if (ES_TOTAL.test(texto(i))) {
-      // Sólo hasta la columna de plata: pintado hasta el final, el total dibujaba las HORAS como
-      // pesos —«$1.408»— porque `E.total()` trae su propio formato de moneda.
-      fmt(r(i, i + 1, 0, 7), 'userEnteredFormat', E.total())
+      // Hasta la columna del último importe: pintado hasta el final, `E.total()` dibujaba las HORAS
+      // como pesos —«$1.408»— porque trae su propio formato de moneda.
+      fmt(r(i, i + 1, 0, COLUMNAS.indexOf('Horas')), 'userEnteredFormat', E.total())
       // El total se rula con una línea fina arriba, no con relleno: es la diferencia entre una
       // planilla y un estado financiero.
       req.push({ updateBorders: { range: r(i, i + 1), top: { style: 'SOLID', color: E.COLOR.hairline ?? { red: 0.8, green: 0.84, blue: 0.86 } } } })
@@ -1335,23 +1248,19 @@ async function formatear(google, hoja, filas) {
     if (ES_SUBITEM.test(texto(i))) fmt(r(i, i + 1), 'userEnteredFormat', E.nota())
   }
 
-  // ── EL TITULAR: rótulo chico y gris, cifra grande, contexto chico ──────────────────────────────
+  // ── EL TÍTULO Y EL TITULAR ─────────────────────────────────────────────────────────────────────
   //
-  // Es la forma de una tarjeta en cualquier producto de tesorería, y es la misma que ya usa CAJA.
-  // Repetirla idéntica es lo que hace que las tres cifras se lean de un vistazo en vez de una a una.
-  const fHero = filas.findIndex((x) => String(x?.[0] ?? '') === 'QUÉ SALE DE LA CAJA MAÑANA')
-  if (fHero >= 0) {
-    fmt(r(fHero, fHero + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.bloque, foregroundColor: E.COLOR.titulo } })
-    fmt(r(fHero + 1, fHero + 2), 'userEnteredFormat', { numberFormat: E.NUM.texto, textFormat: { bold: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.bloqueTexto }, horizontalAlignment: 'LEFT', verticalAlignment: 'BOTTOM', wrapStrategy: 'CLIP' })
-    // CON FORMATO DE MONEDA. El contrato de columnas pasó a aplicarse por TABLA —de un encabezado
-    // «Persona» hasta su total— y el titular no es una tabla: quedó fuera y sus tres cifras salieron
-    // como números pelados. Una cifra de titular sin el signo no se lee como plata, que es lo único
-    // que tiene que hacer.
-    fmt(r(fHero + 2, fHero + 3, 1, ANCHO), 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.titulo, foregroundColor: E.COLOR.titulo }, horizontalAlignment: 'LEFT' })
-    fmt(r(fHero + 3, fHero + 4), 'userEnteredFormat', { numberFormat: E.NUM.texto, textFormat: { fontSize: E.TAM.nota, foregroundColor: E.COLOR.bloqueTexto }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
-    req.push({ updateDimensionProperties: { range: { sheetId: s, dimension: 'ROWS', startIndex: fHero + 2, endIndex: fHero + 3 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
-  }
+  // Tres renglones «⇒ rótulo | cifra», la misma forma con la que cierra cada cuadro: el rótulo a la
+  // izquierda en negrita, la cifra al lado, grande. Es lo que hace que las tres se lean de un
+  // vistazo en vez de una a una, y que se pueda verificar que las dos primeras dan la tercera.
+  fmt(r(0, 1), 'userEnteredFormat', E.titulo())
+  fmt(r(1, 2), 'userEnteredFormat', { numberFormat: E.NUM.texto, textFormat: { fontSize: E.TAM.nota, foregroundColor: E.COLOR.bloqueTexto }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
+  const f0 = 3                                   // la primera fila del titular, 0-based
+  fmt(r(f0, DEBAJO_DEL_TITULAR - 1, 0, 1), 'userEnteredFormat',
+    { numberFormat: E.NUM.texto, textFormat: { bold: true, fontSize: E.TAM.bloque, foregroundColor: E.COLOR.titulo }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
+  fmt(r(f0, DEBAJO_DEL_TITULAR - 1, 1, 2), 'userEnteredFormat',
+    { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.titulo, foregroundColor: E.COLOR.titulo }, horizontalAlignment: 'LEFT' })
+  req.push({ updateDimensionProperties: { range: { sheetId: s, dimension: 'ROWS', startIndex: f0, endIndex: DEBAJO_DEL_TITULAR - 1 }, properties: { pixelSize: 26 }, fields: 'pixelSize' } })
   await google.spreadsheetBatchUpdate(ID, req)
   console.log(`  formato: ${req.length} reglas`)
 }
