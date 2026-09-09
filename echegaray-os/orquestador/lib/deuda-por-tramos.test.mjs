@@ -8,7 +8,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   COL, PENDIENTE, clasificar, esComercial, estadoTipeadoQueContradice,
-  formulaSaldoPendiente, formulaParcial1Sospechoso, pagadoDe, posicionComercial, saldoDeLaFila,
+  formulaSaldoPendiente, formulaParcial1Monto, pagadoDe, posicionComercial, saldoDeLaFila,
 } from './deuda-por-tramos.mjs'
 import { esProsa } from './diseno-unificado.mjs'
 
@@ -207,7 +207,7 @@ describe('la fórmula de la columna AL', () => {
 //
 // Se mide con `esProsa`, el mismo núcleo puro que audita el Sheet: cualquier párrafo nuevo que
 // alguien meta adentro de esta fórmula da rojo acá y no dos horas después en la pantalla del dueño.
-it('EL DEFECTO · el veredicto de «Monto Parcial 1» no le da al lector las dos respuestas posibles', () => {
-  const p = esProsa(formulaParcial1Sospechoso())
+it('EL DEFECTO · «Monto Parcial 1» publica un número, no un veredicto', () => {
+  const p = esProsa(formulaParcial1Monto())
   assert.equal(p, null, `la fórmula publica prosa: ${JSON.stringify(p)}`)
 })

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grillaEncabezado, celdasEncabezado, encabezadoSinFormato, FILAS_AGING, MEDIOS, F } from './proveedores-encabezado.mjs'
-import { ALERTA } from './glifos.mjs'
+import { grillaEncabezado, celdasEncabezado, encabezadoSinFormato, FILAS_AGING, MEDIOS, F, SUBTITULO } from './proveedores-encabezado.mjs'
+import { esProsa, TOPE_SUBTITULO } from './diseno-unificado.mjs'
 
 const G = grillaEncabezado()
 const celda = (fila, col) => G[fila - 1][col]
@@ -68,10 +68,13 @@ test('los paréntesis cierran en todas las fórmulas', () => {
 })
 
 test('el control compara dos caminos independientes al mismo total', () => {
-  const c = celda(F.control, 0)
+  const c = celda(F.cuadratura, 1)
   assert.ok(c.includes(`$B$${F.totalAging}`) && c.includes(`$G$${F.totalMedios}`),
     'el control tiene que cruzar el total del aging contra el del medio de pago')
-  assert.ok(c.includes('✓') && c.includes('✗'), 'el control tiene que decir verde o rojo, no un número suelto')
+  // ROUND(…;0) es lo que impide que una diferencia de fracciones de centavo encienda el rojo con los
+  // datos perfectos — el falso positivo que hace que un control se deje de mirar.
+  assert.ok(/^=ROUND\(/.test(c), 'el control redondea a pesos antes de comparar')
+  assert.ok(!/[✓✗▲]/.test(c), 'el control es un número: el estado lo dibuja el formato, no un glifo tipeado')
 })
 
 test('el control NO se valida contra la misma información que produce', () => {
@@ -125,22 +128,65 @@ test('ninguna celda del encabezado publica plata de facturas que NO están Pendi
 //
 // La primera corrección BORRÓ la fila 12 y subió el control a la 12. El dueño: *"no has respetado el
 // diseño q tenía"*. Tenía razón: lo que estaba mal era lo que la fila DECÍA, no que la fila existiera.
-test('el bloque conserva su forma: la línea que cuelga del total y el control al pie', () => {
-  assert.equal(F.sinImporte, F.totalAging + 1, 'la línea colgada del total es parte del diseño')
-  assert.equal(F.control, F.totalAging + 2, 'el control va al pie del bloque')
-  assert.equal(F.fin, F.control, 'el bloque termina en el control: ni una fila más')
+test('el bloque conserva su forma: dos filas de control colgadas del total, y ni una más', () => {
+  assert.equal(F.cuadratura, F.totalAging + 1, 'la primera línea colgada del total es parte del diseño')
+  assert.equal(F.carga, F.totalAging + 2, 'la segunda va al pie del bloque')
+  assert.equal(F.fin, F.carga, 'el bloque termina ahí: ni una fila más')
 })
 
-test('la línea colgada del total publica un CONTEO y jamás un importe', () => {
-  // El defecto entero en una línea: un número en pesos pegado al TOTAL se lee como deuda haga lo que
-  // haga el rótulo. Esas facturas están PAGADAS —lo declaró el dueño— y lo que les falta es el
-  // importe con el que CAJA las imputa. Se cuenta, no se valúa.
-  const C = celdasEncabezado()[F.sinImporte - 1]
-  assert.equal(C[3].t, 'entero', 'la cifra de esa fila es una cantidad de facturas')
-  for (const j of [1, 2]) {
-    assert.equal(C[j], null, `la columna ${j} de esa fila tiene que quedar vacía: ahí va plata en todo el resto del cuadro`)
+// ═══ EL CONTRATO DE DISEÑO NO ADMITE UNA ORACIÓN EN UNA CELDA (09/09/2026) ═══
+//
+// EL DEFECTO QUE ESTE TEST ATRAPA, medido en el archivo vivo el 09/09: las cuatro celdas del pie del
+// encabezado eran oraciones — «▲ Pagadas sin registrar con cuánto — CAJA no las puede imputar», «✗
+// difieren en $279.586 — hay deuda que un cuadro ve y el otro no» y, en la F, 180 caracteres con
+// nombres de proveedores que derramaban sobre G y H. El dueño (05/09): «minimalismo extremo, sin
+// aclaraciones ni explicaciones de nada».
+//
+// Si alguien vuelve a poner una oración acá —es lo que pasa cada vez que aparece un hallazgo nuevo—
+// este test se pone rojo antes de que llegue al Sheet. Se mide con el MISMO detector que audita el
+// archivo (`esProsa` de `diseno-unificado`), no con una regla paralela que pueda decir otra cosa.
+test('ninguna celda del encabezado es prosa: los controles son «rótulo | número»', () => {
+  for (const [i, fila] of grillaEncabezado().entries()) {
+    if (i + 1 <= 2) continue   // A1 es el nombre y A2 la línea de procedencia: tienen su propia regla
+    for (const [j, c] of fila.entries()) {
+      const p = esProsa(c)
+      assert.equal(p, null, `fila ${i + 1} col ${j} es prosa (${p?.clase}): "${p?.texto ?? c}"`)
+    }
   }
-  assert.ok(!String(C[3].v).includes('$O$4:$O)'), 'el conteo no puede ponderar por importe')
+})
+
+test('cada control lleva su número al lado y con especie de control', () => {
+  const C = celdasEncabezado()
+  for (const [fila, colRotulo, colNumero, especie] of [
+    [F.cuadratura, 0, 1, 'control'],
+    [F.carga, 0, 1, 'controlEntero'],
+    [F.carga, 5, 6, 'control'],
+  ]) {
+    const rotulo = C[fila - 1][colRotulo]
+    const numero = C[fila - 1][colNumero]
+    assert.ok(rotulo && String(rotulo.v).startsWith('⇒'), `el rótulo de ${fila}/${colRotulo} lleva el prefijo de control`)
+    assert.ok(!String(rotulo.v).startsWith('='), 'el rótulo es texto: una fórmula ahí vuelve a ser una oración')
+    assert.ok(numero, `falta el número del control en la fila ${fila}`)
+    assert.equal(numero.t, especie, `el número de ${fila}/${colNumero} tiene que dibujarse como control (rojo sólo si ≠ 0)`)
+  }
+})
+
+// ═══ LA LÍNEA DE ARCA SE FUE DEL ENCABEZADO (09/09/2026) ═══
+//
+// Publicaba «ARCA que Compras no tiene» con `ARCA_SIN_CARGAR_MONTO`, un rango con nombre que hace
+// semanas apunta a una celda del layout anterior: la celda mostraba "—" por su propia guarda. No es
+// deuda, no es medio de pago y no pertenece a la posición — es respaldo fiscal, y su lugar es el
+// bloque que cruza la pestaña contra el libro de IVA de ARCA.
+test('el encabezado ya no cita ARCA: eso es respaldo fiscal, no posición de deuda', () => {
+  assert.equal(F.arca, undefined, 'la fila de ARCA dejó de existir en el encabezado')
+  for (const c of todas()) {
+    assert.ok(!/ARCA_SIN_CARGAR/.test(c), `el encabezado sigue citando un rango de ARCA: "${c.slice(0, 60)}"`)
+  }
+})
+
+test('A2 declara procedencia y entra en el tope del contrato', () => {
+  assert.ok(SUBTITULO.length <= TOPE_SUBTITULO, `${SUBTITULO.length} caracteres, el tope es ${TOPE_SUBTITULO}`)
+  assert.equal(grillaEncabezado()[F.bajada - 1][0], SUBTITULO)
 })
 
 // ═══ TODA CELDA QUE ESCRIBE UN NÚMERO DECLARA SU ESPECIE (14/08/2026) ═══
@@ -170,24 +216,3 @@ test('grillaEncabezado es la proyección de celdasEncabezado: una sola fuente', 
   }
 })
 
-// ═══ UNA CELDA QUE PROMETE PLATA NO PUEDE PUBLICAR UN COMPROBANTE (14/08/2026) ═══
-//
-// `ARCA_SIN_CARGAR_MONTO` vive hoy en `Materiales!B53`, que publica `0038-00025483`. Estas dos celdas son
-// sus únicos lectores, así que la posición mostraba ese comprobante bajo el rótulo "Saldo" y un CUIT
-// bajo "%". El rango se cura en `rangos-nombrados.mjs`; acá se cura el lector, que hace falta igual:
-// mientras el nombre exista apuntando a cualquier lado, el que lo cita a ciegas publica lo que haya.
-test('las dos celdas de ARCA no publican lo que no sea un número', () => {
-  for (const [col, nombre] of [[6, 'ARCA_SIN_CARGAR_MONTO'], [7, 'ARCA_SIN_CARGAR_N']]) {
-    const v = celda(F.arca, col)
-    assert.ok(v.includes(`ISNUMBER(${nombre})`),
-      `${nombre} se publica sin preguntar si es un número: un comprobante se dibujaría como plata`)
-    assert.ok(v.includes('IFERROR('), `${nombre}: si el rango se retira, la celda tiene que dar "—", no #REF!`)
-    assert.ok(v.includes('"—"'), `${nombre}: cuando el número no está, la celda muestra "—"`)
-  }
-})
-
-test('cuando no hay número, el rótulo de ARCA lo dice: un "—" solo se lee como "no hay deuda"', () => {
-  const rotulo = celda(F.arca, 5)
-  assert.ok(rotulo.includes(`ISNUMBER($G$${F.arca})`), 'el rótulo tiene que mirar la celda que acompaña')
-  assert.ok(rotulo.includes(ALERTA), 'y avisar con el mismo triángulo que el resto del cuadro')
-})

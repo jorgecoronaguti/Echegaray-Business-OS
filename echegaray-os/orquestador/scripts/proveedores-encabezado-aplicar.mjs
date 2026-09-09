@@ -29,6 +29,11 @@ import { grillaEncabezado, celdasEncabezado, F } from '../lib/proveedores-encabe
 // Los anchos de columna son de TODA la pestaña: su definición vive una sola vez y este script es el
 // único que la aplica. Ver el lib: el encabezado los fijaba mirando sólo su propio cuadro.
 import { requestsDeAncho } from '../lib/proveedores-frontera.mjs'
+// El rojo del control vive en el PATRÓN de número, no en una regla condicional. Ver el porqué en
+// `formato-statement.mjs`: una regla condicional hay que borrarla antes de reponerla, y para eso hay
+// que saber cuántas hay — un `deleteConditionalFormatRule` sobre un índice que no existe tumba el
+// lote entero, y no borrarla apila una regla muerta por corrida.
+import { CONTADOR_CONTROL, MONEDA_CONTROL } from '../lib/formato-statement.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -38,7 +43,6 @@ const ANCHO = 8
 const GRIS = { red: 0.62, green: 0.62, blue: 0.62 }
 const TINTA = { red: 0.13, green: 0.13, blue: 0.13 }
 const TENUE = { red: 0.45, green: 0.45, blue: 0.45 }
-const ROJO = { red: 0.7, green: 0.11, blue: 0.11 }
 /** El cero como raya: un tramo sin deuda se ve vacío sin leerlo. */
 // EL NEGATIVO VA ENTRE PARÉNTESIS, NO CON SIGNO MENOS.
 //
@@ -96,7 +100,10 @@ function pedidosDeFormato(sheetId, anchoHoja) {
   // vive en otro archivo. Ahora se recorre la grilla ENTERA y cada celda pide el formato de la especie
   // que declaró donde se escribió su valor (ver lib/proveedores-encabezado.mjs). Una fila nueva se
   // dibuja bien el día que se escribe, sin tocar este archivo.
-  const PORESPECIE = { monto: MONTO, montoTotal: MONTO_TOTAL, porcentaje: PORCENTAJE, entero: ENTERO }
+  const PORESPECIE = {
+    monto: MONTO, montoTotal: MONTO_TOTAL, porcentaje: PORCENTAJE, entero: ENTERO,
+    control: MONEDA_CONTROL, controlEntero: CONTADOR_CONTROL,
+  }
   for (const [i, fila] of celdasEncabezado().entries()) {
     for (const [j, c] of fila.entries()) {
       const nf = c && PORESPECIE[c.t]
@@ -113,21 +120,18 @@ function pedidosDeFormato(sheetId, anchoHoja) {
   total(F.totalAging, 0, 4)
   total(F.totalMedios, 5, ANCHO)
 
-  // La línea de ARCA: no es deuda, no se suma a nada, y por eso va tenue y sin borde.
-  for (const col of [5, 6, 7]) {
-    p.push(celda(sheetId, F.arca, col, { userEnteredFormat: { textFormat: { fontSize: 9, foregroundColor: TENUE }, borders: {} } }, `${FMT}.textFormat,${FMT}.borders`))
+  // ═══ LAS DOS FILAS DE CONTROL NO SON EL TOTAL, Y NO SE PUEDEN VER COMO UNO (09/09/2026) ═══
+  //
+  // Van pegadas abajo del total a propósito —lo que no cierra tiene que leerse junto al número que
+  // contradice— pero sin esto heredan la negrita y la regla de la fila de arriba, y un control
+  // dibujado como subtotal se lee como plata que suma. Tenue, chico y sin borde.
+  //
+  // `F.noMostrada` —una fila que dejó de existir el 18/08— seguía nombrada acá. `rango()` la recibía
+  // como `undefined`, `undefined - 1` da NaN y NaN se serializa como `null`: un rango SIN límite de
+  // filas, o sea este formato aplicado a las columnas A..H de la pestaña ENTERA. No daba error.
+  for (const fila of [F.cuadratura, F.carga]) {
+    p.push(rango(sheetId, fila, fila, 0, ANCHO, { userEnteredFormat: { textFormat: { bold: false, fontSize: 9, foregroundColor: TENUE }, borders: {} } }, `${FMT}.textFormat,${FMT}.borders`))
   }
-  // LA FILA QUE CUELGA DEL TOTAL NO ES EL TOTAL. Está pegada abajo a propósito —la contradicción tiene
-  // que leerse junto al número que contradice— pero sin esto hereda la negrita y la regla de la fila de
-  // arriba, y un aviso dibujado como subtotal se lee como plata que suma.
-  p.push(rango(sheetId, F.noMostrada, F.noMostrada, 0, ANCHO, { userEnteredFormat: { textFormat: { bold: false, fontSize: 9, foregroundColor: TENUE }, borders: {} } }, `${FMT}.textFormat,${FMT}.borders`))
-
-  p.push(celda(sheetId, F.control, 0, { userEnteredFormat: { textFormat: { fontSize: 9, foregroundColor: TENUE } } }, `${FMT}.textFormat`))
-  // El único color de la pestaña: rojo cuando el control no cierra.
-  p.push({ addConditionalFormatRule: { index: 0, rule: {
-    ranges: [{ sheetId, startRowIndex: F.control - 1, endRowIndex: F.control, startColumnIndex: 0, endColumnIndex: 1 }],
-    booleanRule: { condition: { type: 'TEXT_STARTS_WITH', values: [{ userEnteredValue: '✗' }] },
-      format: { textFormat: { bold: true, foregroundColor: ROJO } } } } } })
 
   // Sin cuadrícula: es lo que convierte la planilla en un informe.
   p.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { hideGridlines: true, frozenRowCount: 2 } }, fields: 'gridProperties.hideGridlines,gridProperties.frozenRowCount' } })
@@ -181,7 +185,18 @@ async function main() {
   }
   if (!APLICAR) { console.log('\n(sin --aplicar: no se escribió nada)'); return }
 
+  // ═══ LA REGLA CONDICIONAL QUE ESTE SCRIPT PONÍA SE RETIRA, Y SE RETIRA DEL ARCHIVO (09/09/2026) ═══
+  //
+  // Pintaba de rojo A13 cuando su texto empezaba con "✗". Ese texto ya no existe —el control es un
+  // NÚMERO y el rojo se lo pone su patrón— así que la regla quedó apuntando a una celda que nunca va
+  // a cumplir su condición: una regla muerta, del mismo tipo de residuo que esta pestaña acumuló
+  // abajo de la frontera. Se borran TODAS las de esta pestaña porque este script es el único que
+  // alguna vez agregó una acá, y de la última a la primera: cada borrado corre los índices de arriba.
+  const reglas = (await google.getConditionalFormats(ID)).find((s) => s.title === PESTAÑA)?.reglas ?? 0
+  if (reglas) console.log(`  ⌫ ${reglas} regla(s) de formato condicional: el rojo vive en el patrón del número`)
+
   await google.spreadsheetBatchUpdate(ID, [
+    ...Array.from({ length: reglas }, (_, i) => ({ deleteConditionalFormatRule: { sheetId: hoja.sheetId, index: reglas - 1 - i } })),
     { updateCells: {
       range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: F.fin, startColumnIndex: 0, endColumnIndex: ANCHO },
       rows: grilla.map((f) => ({ values: f.map((c) => ({

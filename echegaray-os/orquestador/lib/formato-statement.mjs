@@ -94,3 +94,15 @@ export const VECES = { type: 'NUMBER', pattern: '0.00" \u00d7";;"\u2014"' }
  * con los datos perfectos) que hacía que el control se dejara de mirar.
  */
 export const MONEDA_CONTROL = { type: 'CURRENCY', pattern: '[Red]"$"#,##0;[Red]-"$"#,##0;"—"' }
+
+/**
+ * EL MISMO CONTROL, CUANDO LO QUE NO CIERRA SE CUENTA EN FILAS Y NO EN PESOS.
+ *
+ * Existe porque `MONEDA_CONTROL` dibuja "$9" sobre un conteo de nueve facturas: el número correcto
+ * vestido de plata, que es el defecto que `CONTADOR` ya arregló para el cuerpo de las tablas. Un
+ * control que cuenta filas necesita las dos cosas a la vez —contador Y rojo— y no había ninguna.
+ *
+ * Mismo criterio que su hermano de moneda: cero → raya gris (no hay nada que mirar), cualquier otra
+ * cosa → rojo. Sin miles y sin decimales: nueve facturas son "9", nunca "9,00" ni "$9".
+ */
+export const CONTADOR_CONTROL = { type: 'NUMBER', pattern: '[Red]0;[Red](0);"—"' }
