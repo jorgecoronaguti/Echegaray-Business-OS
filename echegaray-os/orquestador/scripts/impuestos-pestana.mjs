@@ -1,24 +1,17 @@
 #!/usr/bin/env node
 // "IMPUESTOS Y FINANCIEROS" — primero la posición, después el detalle.
 //
-// ═══ LA ORDEN DEL DUEÑO (06/08) ═══
+// EL DUEÑO (06/08): *"la pestaña mezcla posición, deuda, vencimientos, proyecciones y obligaciones.
+// Separalas. La pantalla muestra PRIMERO la posición. Después el detalle técnico. Los impuestos
+// proyectados salen de obligaciones reales, vencimientos y bases imponibles, NO de un promedio.
+// Menos texto, importes protagonistas, menos de cinco segundos. Nada de IFERROR para esconder. No
+// romper conexiones."* Y el 09/09: *"un diseño nuevo, unificado, minimalismo extremo, sin
+// aclaraciones ni explicaciones de nada"* — de ahí el hero de tres filas y la sección 6 eliminada.
 //
-// *"La pestaña mezcla posición, deuda, vencimientos, proyecciones y obligaciones. Separalas. La
-// pantalla muestra PRIMERO: posición actual · próximos vencimientos · riesgo · proyección 30 días ·
-// 60 · 90. Después el detalle técnico. Los impuestos proyectados salen de obligaciones reales,
-// vencimientos y bases imponibles, NO de un promedio. Menos texto, importes protagonistas, menos de
-// cinco segundos. Nada de IFERROR para esconder. No romper conexiones."*
-//
-// ═══ LO QUE CAMBIÓ, Y LA PLATA QUE ESTABA MAL ═══
-//
-//   · La cuota del prendario salía de un SUMIF sobre TODO el extracto: declaraba $2.567.316 donde la
-//     cuota es $1.282.811, cinco meses seguidos. $6,4M de salida financiera que no existe.
-//   · La "deuda pendiente" sumaba las doce cuotas del año, siete YA PAGADAS: el hero decía
-//     $31.895.983 donde lo pendiente son $14.372.450. $17,5M de sobredeclaración.
-//   · IIBB no proyectaba nada: seis meses en blanco y cero filas en el Libro.
-//   · El impuesto al cheque proyectaba con un AVERAGEIF en una fila fuera del total.
-//   · No había calendario de vencimientos: toda la noción de vencimiento del OS era `EOMONTH+20`.
-//   · El título dice "y Financieros" y faltaban dos de las cuatro fuentes de financiamiento.
+// LA PLATA QUE ESTABA MAL, y que los tests de este árbol impiden que vuelva: la cuota del prendario
+// salía de un SUMIF sobre TODO el extracto ($2.567.316 donde la cuota es $1.282.811, cinco meses); la
+// "deuda pendiente" sumaba las doce cuotas del año, siete YA PAGADAS ($17,5M de más); IIBB no
+// proyectaba nada; el impuesto al cheque se calculaba con un AVERAGEIF fuera del total.
 //
 //   node orquestador/scripts/impuestos-pestana.mjs [--dry]
 
@@ -27,10 +20,9 @@ import { ventasFacturadasDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, p
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import {
-  anclaDeProyeccion, supuestoDelMes, RANGO_ALICUOTA_IVA, soloLoTipeado,
+  anclaDeProyeccion, supuestoDelMes, soloLoTipeado, RANGO_ALICUOTA_IVA,
   filasReferenciadas, contratoDeFilas, contratoDeRotulos,
 } from '../lib/iva-libre-disponibilidad.mjs'
-import { publicar as publicarNombres } from '../lib/rangos-nombrados.mjs'
 import { query } from '../lib/db.mjs'
 import { conColaMedida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
@@ -48,19 +40,21 @@ import {
   leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, escribirIIBBRaw,
 } from '../lib/impuestos-fuentes.mjs'
 import {
-  bloqueIva, mesDeLaUltimaDDJJ, bloqueIibb, bloqueRetenciones, bloqueOtros, bloqueDeudaFinanciera, bloqueCierre,
+  bloqueIva, mesDeLaUltimaDDJJ, bloqueIibb, bloqueRetenciones, bloqueOtros, bloqueDeudaFinanciera,
 } from '../lib/impuestos-bloques.mjs'
 import {
   obligacionesDelCalendario, mesesDeCadaObligacion, altoDeLaPosicion, filasDeLaPosicion, verificarReferenciasDelHero,
-  OFFSET_TITULAR, ALTO_HERO, ROTULO_IVA_EN_CAJA, hallazgoDeVencimiento, conDecisionesDelDueno,
+  ALTO_HERO, ROTULO_A_PAGAR_30, hallazgoDeVencimiento, conDecisionesDelDueno,
 } from '../lib/impuestos-posicion.mjs'
 // Lo que el dueño ya decidió sobre un vencimiento puntual. Ver lib/decisiones-hallazgos.mjs.
 import { CONTROLES, decidir, explicarDecisiones } from '../lib/decisiones-hallazgos.mjs'
-import { IIBB_SUPUESTO } from '../lib/vencimientos-fiscales.mjs'
 import { informarProyeccion, informarCalendario } from '../lib/impuestos-informe.mjs'
 import { formatear } from '../lib/impuestos-piel.mjs'
 export { ubicarLineas, sinSolapamiento } from '../lib/impuestos-base-proyeccion.mjs'
-import { resolverAlicuota, ROTULO_ALICUOTA } from '../lib/impuestos-alicuota.mjs'
+import { alicuotaVigente, publicarAlicuotaEnParametros, ROTULO_ALICUOTA } from '../lib/impuestos-alicuota.mjs'
+// EL PARÁMETRO VIVE EN «Parámetros» Y LO ASEGURA EL MISMO MECANISMO QUE LOS DE JORNALES Y CARGAS:
+// crea la fila si falta, nunca pisa un valor cargado, y reapunta el rango con nombre por rótulo.
+import { asegurarParametros } from './jornales-pestana.mjs'
 // EL CUADRO DE PLANES DEL F931 VIVE EN «Cargas Sociales» (09/09/2026): de acá salen el nombre del
 // rango que se lee y el MISMO lector que arma aquel cuadro — el paralelo se borró para no tener dos.
 import { NOMBRES_CARGAS } from '../lib/libro-extractores-cargas.mjs'
@@ -135,13 +129,21 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   // vivas (ARCA, el extracto, Cobranzas) con congeladas (las DDJJ de PDF, que se quedan en el último
   // período presentado), y un MAX le prestaría la fecha de la viva a la congelada. Con `compacto` cada
   // expresión se evalúa UNA vez dentro de un LET: mismas cuatro fuentes, de 3.029 a 1.239 caracteres.
-  G.push([rotuloPorFuente('Qué se le debe al fisco, qué está inmovilizado y con qué se cuenta', [
-    { nombre: 'IVA de ARCA', expr: formulaUltimaFecha(`${ARCA_RAW}!$C$${ARCA_FILA0}:$C`) },
+  // ═══ Y LA PROSA SE FUE DE LA A2 (09/09/2026) ═══
+  //
+  // Decía «Qué se le debe al fisco, qué está inmovilizado y con qué se cuenta · …»: eso ya lo
+  // contestan el nombre en A1 y los cinco títulos de sección. La fila 2 sólo declara PROCEDENCIA y
+  // queda `ARCA al dd/mm · IIBB al dd/mm · banco al dd/mm`, igual que las pestañas hermanas.
+  //
+  // SE FUE TAMBIÉN LA CUARTA FUENTE. «retenciones» miraba `Cobranzas!$Q$5:$Q`, que es la MISMA
+  // columna de fecha por la que ya se declara Cobranzas en otras pestañas y cuyo dato acá alimenta
+  // un solo cuadro. Tres fechas se leen de un vistazo; cuatro ya es un renglón que se saltea.
+  G.push([rotuloPorFuente('', [
+    { nombre: 'ARCA', expr: formulaUltimaFecha(`${ARCA_RAW}!$C$${ARCA_FILA0}:$C`) },
     // IIBB: NO la fecha en que se bajó el PDF sino el PERÍODO que la DDJJ cubre. Una DDJJ de junio
     // presentada el 16/07 habla de junio; declarar el 16/07 sería declarar frescura de la gestión.
     { nombre: 'IIBB', expr: formulaUltimoPeriodo(`${IIBB_RAW}!$${IIBB_COL.periodo}$${IIBB_FILA0}:$${IIBB_COL.periodo}`), avisoDias: DIAS_AVISO_MENSUAL },
     { nombre: 'banco', expr: formulaUltimaFecha(`${BANCO_RAW}!$A$4:$A`) },
-    { nombre: 'retenciones', expr: formulaUltimaFecha('Cobranzas!$Q$5:$Q') },
   ], { compacto: true })])
   G.blanco()
 
@@ -158,19 +160,25 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   const ibb = bloqueIibb(G, { anio, iibb, proy })
   bloqueRetenciones(G, { anio })
   bloqueOtros(G, { anio, C })
-  // El cuadro de planes se retiró: vive en «Cargas Sociales». Acá queda la FILA de la cuota, leída
-  // por rango con nombre desde el bloque de deuda financiera.
+  // El cuadro de planes se retiró: vive en «Cargas Sociales». Desde el 09/09/2026 tampoco queda la
+  // fila mensual de la cuota — era la misma serie de aquella pestaña, publicada dos veces.
   const deuda = bloqueDeudaFinanciera(G, { anio, C })
-  const cierre = bloqueCierre(G, {
-    proy,
-    vencimientos: { iibb: `día ${IIBB_SUPUESTO.dia} de cada mes, ${IIBB_SUPUESTO.porQue}. Lo cierra una consulta a la DGR o al estudio contable.` },
-  })
+  // NADA DEBAJO DEL ÚLTIMO BLOQUE. La sección 6 («Supuestos y huecos») se eliminó entera y su
+  // parámetro —la alícuota de IVA— vive en «Parámetros». El porqué de cada hueco, en
+  // `lib/impuestos-bloques.mjs`, al pie del archivo.
 
   // ── LA POSICIÓN, RECIÉN AHORA ──────────────────────────────────────────────────────────────────
   const calCrudo = obligacionesDelCalendario({
     hoy, anio, meses: mesesDelCalendario,
-    // La fila del plan es la del bloque de deuda financiera: es la única que quedó con la cuota del mes.
-    filas: { iva: iva.fAPagar, iibb: ibb.fAPagar, plan: deuda.fPlan, prendario: deuda.fCuota },
+    // La cuota de los planes ya no tiene fila acá: entra al calendario por el rango con nombre que
+    // publica «Cargas Sociales», dentro de la fórmula del hero. Es lo que impide que «A pagar en 30
+    // días» se olvide de una cuota de F931 que sí hay que pagar.
+    filas: {
+      iva: iva.fAPagar,
+      iibb: ibb.fAPagar,
+      plan: (m) => `INDEX(${NOMBRES_CARGAS.planes};${m})`,
+      prendario: deuda.fCuota,
+    },
   })
   // ═══ LO QUE EL DUEÑO YA MIRÓ NO VUELVE A GRITAR (13/08) ═══
   //
@@ -192,38 +200,30 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
     prendPend: `$B$${deuda.fPrendPend}`,
     // Ya no es una celda de esta pestaña: es el rango con nombre que publica «Cargas Sociales».
     planesPend: NOMBRES_CARGAS.planesSinPagar,
-    // Las tres filas del cuadro de IVA de las que sale "cuándo empieza a salir de la caja".
-    ivaAPagar: iva.fAPagar, ivaLibre: iva.fLibre, ivaCabecera: iva.fCabecera,
   }
-  const hero = filasDeLaPosicion({ cal, hoy, refs })
+  const hero = filasDeLaPosicion({ cal, refs })
   G.fijar(base, alto, hero)
   // EL CONTROL SE HACE CONTRA LO ESCRITO, no contra otra cuenta con las mismas constantes.
   verificarReferenciasDelHero(hero, G.filas)
 
-  // Los meses PROYECTADOS en ámbar, celda por celda: una proyección que se ve igual que un hecho
-  // termina leyéndose como un hecho.
-  const ambar = []
-  for (const m of proy?.meses ?? []) for (const f of [iva.fDeb, iva.fCred, iva.fAPagar, iva.fLibre, iva.fDDJJ]) ambar.push({ fila: f, mes: m })
-  for (const m of ibb.proyectados) for (const f of [ibb.fBase, ibb.fAli, ibb.fImp, ibb.fRet, ibb.fAPagar, ibb.fSaldo]) ambar.push({ fila: f, mes: m })
+  // LOS MESES PROYECTADOS: GRIS ITÁLICA, NO FONDO ÁMBAR (09/09/2026). El porqué, en la piel.
+  const proyectadas = []
+  for (const m of proy?.meses ?? []) for (const f of [iva.fDeb, iva.fCred, iva.fAPagar, iva.fLibre, iva.fDDJJ]) proyectadas.push({ fila: f, mes: m })
+  for (const m of ibb.proyectados) for (const f of [ibb.fBase, ibb.fAli, ibb.fImp, ibb.fRet, ibb.fAPagar, ibb.fSaldo]) proyectadas.push({ fila: f, mes: m })
 
   return {
     filas: G.filas,
-    // `base` es 0-based y la primera fila del hero es la siguiente: +1 para pasar a 1-based, y
-    // OFFSET_TITULAR lo declara el propio hero. Antes decía `base + 2` — un número que había que
-    // recordar mover a mano cada vez que el hero cambiaba de orden.
-    titular: base + 1 + OFFSET_TITULAR,
-    // El bloque que la piel jerarquiza distinto del resto: importes grandes, desgloses apagados.
+    // El bloque que la piel jerarquiza distinto del resto: los tres totales con los que se decide.
     hero: { desde: base + 1, hasta: base + ALTO_HERO },
-    alicuotas: [ibb.fAli, cierre.fAlic],
+    alicuotas: [ibb.fAli],
     textos: [iva.fDDJJ],
-    // El MES que el hero publica al lado del importe: una etiqueta, no un importe. La fila se BUSCA
-    // por su rótulo, nunca por su posición dentro del hero.
-    textosCelda: [{ fila: base + 1 + hero.findIndex((f) => String(f?.[0] ?? '').includes(ROTULO_IVA_EN_CAJA)), col: 2 }],
-    ambar,
+    // La FECHA que el hero publica al lado del importe: un dato, no plata. La fila se BUSCA por su
+    // rótulo, nunca por su posición dentro del hero.
+    fechasCelda: [{ fila: base + 1 + hero.findIndex((f) => String(f?.[0] ?? '').includes(ROTULO_A_PAGAR_30)), col: 2 }],
+    proyectadas,
     // El título, la frescura y el hero ENTERO quedan congelados: la posición no se va al scrollear.
-    // Sale del hero, no de un 12 tipeado — un renglón más en el hero y el 12 se lo dejaba afuera.
+    // Sale del hero, no de un número tipeado.
     congeladas: base + ALTO_HERO,
-    filaAlicuotaIva: cierre.fAlic,
     cal,
     refs,
     filasCalendario: { iva: iva.fAPagar, iibb: ibb.fAPagar },
@@ -264,10 +264,12 @@ async function planDeProyeccionIva(google, ivaOficial, hoy) {
   // LA ALÍCUOTA SALE DE LA CELDA, NO DE UNA CONSTANTE: si el dueño la editó, manda la suya
   // («edición manual = verdad definitiva»). Lo que la celda NO puede hacer es apagar el impuesto:
   // un 0 —o un "$0" de un formato equivocado— no es una alícuota, es una celda sin declarar.
+  //
+  // LA CELDA ES LA DE «Parámetros» DESDE EL 09/09/2026, con la vieja de esta pestaña como fallback de
+  // migración. El porqué —y por qué el fallback caduca solo— está en `alicuotaVigente`.
   const iA = filaDe(ROTULO_ALICUOTA)
-  const alic = resolverAlicuota(iA >= 0 ? previo[iA]?.[1] : null)
-  if (alic.sembrada) console.log(`  alícuota de IVA: ${alic.motivo} (${(alic.alicuota * 100).toFixed(2)}%)`)
-  const alicuotaVigente = alic.alicuota
+  const alic = await alicuotaVigente(google, ID, iA >= 0 ? previo[iA]?.[1] : null)
+  console.log(`  alícuota de IVA: ${(alic.alicuota * 100).toFixed(2)}% — ${alic.motivo} (${alic.donde})`)
 
   // LA BASE, DEL LIBRO. Se recalcula en código el mismo número que la fórmula va a calcular en la
   // celda: el --dry exhibe el insumo y un importe fiscal se puede rehacer a mano contra el Libro.
@@ -298,7 +300,7 @@ async function planDeProyeccionIva(google, ivaOficial, hoy) {
     ultimoMesConDato,
     libreDisp,
     textoDondeVaImporte,
-    alicuotaVigente,
+    alicuotaVigente: alic.alicuota,
     bases,
     brutoDebito: brutoDebitoLibro, brutoCredito: brutoCreditoLibro,
     sinBase: ventas.sinBase(mesesAProyectar),
@@ -410,6 +412,13 @@ async function main() {
   }
   console.log(`  ✓ contrato con quien lee esta pestaña: ${estable.motivo}`)
 
+  // EL PARÁMETRO VA PRIMERO, ANTES DE TOCAR LA PESTAÑA (09/09/2026): `ALICUOTA_IVA` apunta a una fila
+  // que este rediseño elimina. El porqué del orden, en `publicarAlicuotaEnParametros`.
+  const hojas = await google.getSheetMeta(ID)
+  const pub = await publicarAlicuotaEnParametros(google, ID, hojas, asegurarParametros, proy.alicuotaVigente)
+  if (!pub.ok) { console.error(`✖ NO escribo ${PESTAÑA}: ${pub.motivo}`); process.exit(1) }
+  console.log(`  ✓ ${RANGO_ALICUOTA_IVA} → ${pub.motivo}`)
+
   // PRIMERO la réplica _IIBB_RAW: las fórmulas del bloque de IIBB la referencian.
   await escribirIIBBRaw(google, ID, iibb)
 
@@ -429,7 +438,7 @@ async function main() {
     console.log(`  🎨 cambió el layout (${layout.motivo}): invalido ${n} huella(s) de formato y las vuelvo a sellar`)
   }
 
-  const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
+  const hoja = hojas.find((s) => s.title === PESTAÑA)
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Las NOTAS viejas del
   // generador se limpian SÓLO en su propia grilla (antes barría 200x26 y se llevaba los comentarios).
   await google.spreadsheetBatchUpdate(ID, [{ updateCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: g.filas.length, startColumnIndex: 0, endColumnIndex: ANCHO }, fields: 'note' } }]).catch(() => {})
@@ -452,14 +461,6 @@ async function main() {
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   g.filas = gridFinal
   vaciarColumnaDeProsa(g.filas, ANCHO - 1)
-  // ═══ UNA HUELLA DE FORMATO DE UN LAYOUT QUE YA NO EXISTE NO ES EVIDENCIA (04/09/2026) ═══
-  //
-  // Cuando esta pestaña pasó de 105 filas a 68, las 350 huellas viejas quedaron describiendo filas
-  // que ya no contienen lo que contenían: la guarda las leyó como diseño del dueño y bloqueó los 419
-  // rangos de formato de golpe. La pestaña se publicó con los importes crudos —`1419600` en vez de
-  // `$1.419.600`— y el bloqueo era permanente, porque sin re-aplicar tampoco se re-sella. Se
-  // invalidan ANTES de escribir; la corrida vuelve a aplicar y a sellar sobre el layout nuevo, que es
-  // el único sobre el que la protección puede significar algo. Ver lib/huella-formato-layout.mjs.
   const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { respetar: false, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07). Una pestaña que no se escribió no
   // cambió de forma: su formato y sus nombres son los de su última escritura y así tienen que quedar.
@@ -468,13 +469,9 @@ async function main() {
   const { conservadas } = salteada ? { conservadas: [] } : escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   if (!salteada) await formatear(google, ID, hoja.sheetId, g, hoja.rows ?? 0)
-  // EL NOMBRE SE PUBLICA DESPUÉS DE ESCRIBIR, NUNCA ANTES: un nombre que apunta a una fila que no
-  // existe se resuelve a una celda vacía, y las fórmulas leerían alícuota cero.
-  if (!salteada && g.filaAlicuotaIva) {
-    await publicarNombres(google, ID, hoja.sheetId, [{ name: RANGO_ALICUOTA_IVA, fila: g.filaAlicuotaIva, col: 2 }])
-      .then(() => console.log(`  ${RANGO_ALICUOTA_IVA} → ${PESTAÑA}!B${g.filaAlicuotaIva}`))
-      .catch((e) => console.warn(`  ⚠ no pude publicar ${RANGO_ALICUOTA_IVA}: ${e.message} — la proyección de IVA quedaría en $0`))
-  }
+  // EL RANGO CON NOMBRE `ALICUOTA_IVA` YA NO SE PUBLICA ACÁ: apunta a «Parámetros» y lo dejó apuntado
+  // `asegurarParametros`, antes de la primera escritura. Publicarlo después de escribir era correcto
+  // mientras la celda vivía en esta pestaña; ahora sería reapuntarlo a una fila que ya no existe.
   informarCalendario(g, hoy)
   informarProyeccion(proy)
 
@@ -492,8 +489,7 @@ async function main() {
 }
 
 // SÓLO CUANDO SE LO INVOCA COMO COMANDO. Sin esta guarda bastaba `import` para que el archivo
-// escribiera el Sheet real: un test que quisiera probar una función pura de acá corría la pestaña
-// entera contra producción. Un módulo se importa; un comando se ejecuta.
+// escribiera el Sheet real. Un módulo se importa; un comando se ejecuta.
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().then(() => process.exit(0)).catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
 }

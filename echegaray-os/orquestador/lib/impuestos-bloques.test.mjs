@@ -9,7 +9,8 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { origenDelMes, ORIGEN, bloqueIva, bloqueCierre, mesDelSaldoVigente } from './impuestos-bloques.mjs'
+import { readFileSync } from 'node:fs'
+import { origenDelMes, ORIGEN, bloqueIva, mesDelSaldoVigente } from './impuestos-bloques.mjs'
 import { crearGrilla } from './impuestos-grilla.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { anclaDeProyeccion } from './iva-libre-disponibilidad.mjs'
@@ -201,11 +202,14 @@ test('la fila de procedencia distingue ARCA de una PROYECCIÓN, y el parcial del
   // Verlos con la misma leyenda hacía discutir un número que no había que discutir: un mes de ARCA es
   // un hecho sobre comprobantes reales; una proyección es un supuesto sobre el Libro.
   const { G, iva } = armarBloque({ arca: { meses: [7, 8] } })
-  assert.equal(celda(G, iva.fDDJJ, 7), '▲ ARCA (sin DDJJ)')
-  assert.equal(celda(G, iva.fDDJJ, 8), '▲ ARCA parcial')
-  assert.equal(celda(G, iva.fDDJJ, 9), '▲ PROYECCIÓN')
-  // Y el mes con DDJJ sigue mostrando su comprobante de presentación.
-  assert.match(String(celda(G, iva.fDDJJ, 3)), /^19\/02·N…1234$/)
+  assert.equal(celda(G, iva.fDDJJ, 7), 'ARCA')
+  assert.equal(celda(G, iva.fDDJJ, 8), 'parcial')
+  assert.equal(celda(G, iva.fDDJJ, 9), 'proyección')
+  // Y el mes con DDJJ dice UNA palabra: la fecha y el N° de transacción salen en el log de la
+  // corrida, no en una celda de 100 px que se lee doce veces por día sin necesitarlos.
+  assert.equal(celda(G, iva.fDDJJ, 3), 'presentada')
+  // NINGUNO de los cuatro estados lleva glifo. Es lo que el dueño nombró textualmente el 09/09.
+  for (const m of [3, 7, 8, 9]) assert.doesNotMatch(String(celda(G, iva.fDDJJ, m)), /[▲⚠✓·]/)
 })
 
 test('el arrastre del mes ARCA usa la MISMA aritmética que la proyección', () => {
@@ -233,36 +237,27 @@ test('sin comprobantes en ARCA el cuadro queda IDÉNTICO al de antes', () => {
   const conArca = armarBloque({ arca: { meses: [] } })
   for (const m of [7, 8, 9]) {
     assert.match(String(celda(conArca.G, conArca.iva.fDeb, m)), /BRUTO_DEB_/)
-    assert.equal(celda(conArca.G, conArca.iva.fDDJJ, m), '▲ PROYECCIÓN')
+    assert.equal(celda(conArca.G, conArca.iva.fDDJJ, m), 'proyección')
   }
 })
 
-// ── EL HUECO SE DECLARA EN LA PANTALLA, NO SÓLO EN LA CONSOLA (17/08) ────────────────────────────
+// ── EL BLOQUE DE HUECOS SE ELIMINÓ, Y ESO NO PUEDE VOLVER SOLO (09/09/2026) ──────────────────────
 //
-// Arreglar `esNumero` evita el número inventado, pero por sí solo cambia una falla ruidosa por una
-// silenciosa: el generador recalcula la columna que una persona escribió a mano y nadie se entera de
-// que había algo puesto ahí. La sección 10 es donde viven los huecos declarados de esta pestaña, y
-// una leyenda sentada en una celda de importe es exactamente eso.
+// Eran seis renglones «▲ …» al pie de la pestaña, entre ellos el aviso de que una persona había
+// dejado un texto donde va el saldo de libre disponibilidad. El dueño mandó sacarlos («sin
+// aclaraciones ni explicaciones de nada»); el conocimiento vive en el comentario al pie de
+// `impuestos-bloques.mjs` y CADA CASO se sigue imprimiendo en el log de la corrida.
+//
+// Lo que este test fija es que el módulo no vuelva a escribir un bloque de prosa: ni una sección
+// numerada más allá de la 5, ni un ▲ en un rótulo. Sin él, «se eliminó» es una afirmación de la
+// descripción del commit y nada más.
 
-test('un texto donde va un importe se declara como HUECO en la sección 10', () => {
-  const G = crearGrilla(2026)
-  bloqueCierre(G, {
-    proy: { meses: [7, 8], supuesto: 'x', textoDondeVaImporte: [{ mes: 7, valor: '⚠ vence 20/08' }] },
-    vencimientos: { iibb: 'día 20' },
-  })
-  const fila = G.filas.find((f) => /libre disponibilidad/i.test(String(f[0] ?? '')))
-  assert.ok(fila, 'la sección 10 nombra la fila donde estaba el texto')
-  assert.match(String(fila[0]), /jul/i, 'dice de qué MES era la celda: sin eso no se sabe dónde ir')
-  // La prosa va en la columna de procedencia (la última), nunca en la de importes.
-  assert.match(String(fila[fila.length - 1]), /HUECO DECLARADO/)
-  assert.match(String(fila[fila.length - 1]), /⚠ vence 20\/08/, 'cita el texto que había, para poder recuperarlo')
-  assert.equal(fila[1], VACIO, 'la columna B es de plata: el aviso no se sienta ahí')
-})
-
-test('sin texto mal puesto la sección 10 no inventa un aviso', () => {
-  const G = crearGrilla(2026)
-  bloqueCierre(G, { proy: { meses: [7], supuesto: 'x', textoDondeVaImporte: [] }, vencimientos: { iibb: 'día 20' } })
-  assert.equal(G.filas.filter((f) => /libre disponibilidad/i.test(String(f[0] ?? ''))).length, 0)
+test('el módulo no exporta ni escribe la sección de huecos', async () => {
+  const mod = await import('./impuestos-bloques.mjs')
+  assert.equal(mod.bloqueCierre, undefined, 'bloqueCierre se retiró: lo que nadie llama es capa fósil')
+  const src = readFileSync(new URL('./impuestos-bloques.mjs', import.meta.url), 'utf8')
+  assert.equal(/seccion\(6/.test(src), false, 'no hay sección 6: la numeración corre de 1 a 5, sin huecos')
+  assert.equal(/\$\{ALERTA\}/.test(src), false, 'ningún rótulo de este módulo lleva el glifo de alarma')
 })
 
 // ── DE QUÉ MES ES EL SALDO A FAVOR QUE PUBLICA EL HERO (17/08) ───────────────────────────────────

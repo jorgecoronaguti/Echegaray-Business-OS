@@ -12,13 +12,11 @@
 // borran (el dueño: "quitá las notas, son confusas"), así que una fecha supuesta que sólo se declarara
 // ahí sería una fecha supuesta invisible. Las supuestas llevan "⚠ fecha supuesta" en la columna A.
 
-import { sub as subItem, total as rotuloTotal } from './patron-pestana.mjs'
+import { total as rotuloTotal } from './patron-pestana.mjs'
 import { cmes, M12 } from './impuestos-grilla.mjs'
 import { calendario, diasEntre } from './vencimientos-fiscales.mjs'
 import {
-  formulaVentana, formulaDeudaPendiente, proximoVencimiento,
-  formulaSaldoAFavor, formulaSaldoDeclarado,
-  formulaMesQueElIvaPideCaja, formulaIvaQuePideCaja, formulaColchonQueSeAgota,
+  formulaVentana, formulaDeudaPendiente, proximoVencimiento, formulaSaldoAFavor,
 } from './impuestos-cuadro.mjs'
 
 /**
@@ -42,7 +40,15 @@ import {
  */
 export const VENTANA = { atras: 45, adelante: 95, conPasado: ['iva', 'iibb'] }
 
-const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+// ═══ LA FECHA VA COMO FECHA, NO COMO TEXTO (09/09/2026) ═══
+//
+// MEDIDO en la copia: escribir «07/09» dejaba la celda en **46281**. Con `USER_ENTERED` Sheets parsea
+// esa cadena como fecha y guarda su serial; el formato TEXT que la celda tenía declarado dibuja ese
+// serial crudo. Un número de cinco dígitos al lado de un importe no es una fecha: es basura.
+//
+// `DATE(a;m;d)` es explícito y no depende del locale de quien mire, y la celda se declara con formato
+// de fecha —la misma solución, letra por letra, que usa «Próximo vencimiento» en «Cargas Sociales».
+const fecha = (iso) => `=DATE(${Number(iso.slice(0, 4))};${Number(iso.slice(5, 7))};${Number(iso.slice(8, 10))})`
 
 /**
  * NÚCLEO PURO: qué obligaciones entran al calendario, con la celda de la que sale cada importe.
@@ -90,6 +96,15 @@ export function obligacionesDelCalendario({ hoy, anio, meses, filas }) {
     prendario: 'Prendario Ford XLS (Santander)',
   }
   const obligaciones = []
+  // DE DÓNDE SALE EL IMPORTE DE CADA OBLIGACIÓN. Casi siempre es una fila de esta pestaña, y entonces
+  // basta el número de fila. La cuota de los planes de F931 NO tiene fila acá desde el 09/09/2026 —el
+  // cuadro vive en «Cargas Sociales», una sola vez— así que su importe entra como EXPRESIÓN: una
+  // función que devuelve `INDEX(CARGAS_MES_PLANES;m)`. Sin esto, sacarle la fila a una obligación
+  // obliga a sacarla también del calendario, y «A pagar en 30 días» bajaría el importe de una cuota
+  // que sí hay que pagar.
+  const celdaDe = (tipo, m) => (typeof filas[tipo] === 'function'
+    ? filas[tipo](m)
+    : `$${cmes(m)}$${filas[tipo]}`)
   for (const tipo of ['iva', 'iibb', 'plan', 'prendario']) {
     for (const m of meses[tipo] ?? []) {
       // El período del IVA y del IIBB es el mes DECLARADO (vence al siguiente); el del plan y el del
@@ -99,7 +114,7 @@ export function obligacionesDelCalendario({ hoy, anio, meses, filas }) {
         periodo: `${anio}-${String(m).padStart(2, '0')}`,
         concepto: CONCEPTO[tipo],
         mes: m,
-        celda: `$${cmes(m)}$${filas[tipo]}`,
+        celda: celdaDe(tipo, m),
       })
     }
   }
@@ -162,24 +177,23 @@ export function conDecisionesDelDueno(cal = [], liberados = new Map()) {
 // mismas constantes estaban tipeadas tres veces (`base + 10 + 2`, `base + 10 + cal.length + 4 + 10 +
 // 2`); mover un bloque exigía acordarse de las tres, y una referencia que se queda atrás no da error:
 // apunta a otro importe. Con un solo bloque de alto fijo, ese modo de falla deja de existir.
-export const ALTO_HERO = 10
+//
+// ═══ DE DIEZ A CUATRO (09/09/2026) ═══
+//
+// El dueño, sobre las cuatro pestañas rediseñadas: *«minimalismo extremo, sin aclaraciones ni
+// explicaciones de nada»*. El hero tenía un titular («LA POSICIÓN AL dd/mm»), cuatro totales y
+// cuatro sub-líneas que glosaban al total de arriba. Las hermanas ya rediseñadas —«Cargas Sociales»
+// y «Nómina»— abren con dos o tres renglones «⇒ rótulo | cifra» y nada más. Son tres filas y el
+// separador.
+export const ALTO_HERO = 4
 
 /**
- * En qué fila del hero va el TITULAR — el único número grande de la pantalla.
- *
- * Es el 1 (la fila inmediatamente debajo del rótulo del bloque) y lo consume el generador para
- * pasárselo a la piel. Vive acá, al lado del orden del hero, porque son la misma decisión: si mañana
- * el hero se reordena y esto se queda en 1, la piel agranda el número equivocado sin dar un error.
- */
-export const OFFSET_TITULAR = 1
-
-/**
- * El rótulo de la línea que publica el MES al lado del importe. Vive acá, al lado de donde se
+ * El rótulo de la línea que publica una FECHA al lado del importe. Vive acá, al lado de donde se
  * escribe, porque el generador tiene que ENCONTRAR esa fila para declararle a la piel que su columna
- * C es texto. Buscarla por su número —"la cuarta del hero"— es cómo una referencia se queda apuntando
- * a la fila de al lado el día que el hero cambia de orden, sin dar un solo error.
+ * C es texto. Buscarla por su número —"la primera del hero"— es cómo una referencia se queda
+ * apuntando a la fila de al lado el día que el hero cambia de orden, sin dar un solo error.
  */
-export const ROTULO_IVA_EN_CAJA = 'EL IVA EMPIEZA A SALIR DE LA CAJA EN'
+export const ROTULO_A_PAGAR_30 = 'A pagar en 30 días'
 
 /**
  * Cuántas filas ocupa la posición entera. Se necesita ANTES de escribir el detalle, para reservarlas.
@@ -187,18 +201,15 @@ export const ROTULO_IVA_EN_CAJA = 'EL IVA EMPIEZA A SALIR DE LA CAJA EN'
  */
 export const altoDeLaPosicion = () => ALTO_HERO
 
-/** El concepto, sin el emisor entre paréntesis. En el hero manda el "qué", no el "de quién". */
-export const conceptoCorto = (s) => String(s ?? '').replace(/\s*\([^)]*\)\s*$/, '').trim()
-
 /**
  * NÚCLEO PURO: las filas de la posición, ya con sus referencias resueltas.
  *
  * @param {object} f
  * @param {Array} f.cal el calendario de `obligacionesDelCalendario`
- * @param {object} f.refs celdas del detalle. Todas salen de los bloques 1 a 6: el hero no calcula
- *   nada por su cuenta. {saldoIva, saldoIibb, prendPend, planesPend, ivaAPagar, ivaLibre, ivaCabecera}
+ * @param {object} f.refs celdas del detalle. Todas salen de los bloques 1 a 5: el hero no calcula
+ *   nada por su cuenta. {saldoIva, saldoIibb, prendPend, planesPend}
  */
-export function filasDeLaPosicion({ cal, hoy, refs }) {
+export function filasDeLaPosicion({ cal, refs }) {
   const F = []
   // ═══ EL CALENDARIO YA NO OCUPA FILAS: ES EL INSUMO DEL HERO (04/09/2026) ═══
   //
@@ -224,47 +235,33 @@ export function filasDeLaPosicion({ cal, hoy, refs }) {
   const conCelda = cal.map((o) => ({ ...o, celdaImporte: o.celda }))
   const prox = proximoVencimiento(conCelda)
 
-  // ── HERO — CUATRO MENSAJES, OCHO NÚMEROS, Y NADA MÁS ────────────────────────────────────────────
+  // ── HERO — TRES RENGLONES, TRES NÚMEROS, Y NADA MÁS ─────────────────────────────────────────────
   //
-  // ═══ POR QUÉ SE REESCRIBIÓ (04/09/2026) ═══
+  // ═══ POR QUÉ SE VOLVIÓ A REESCRIBIR (09/09/2026) ═══
   //
-  // El estándar ejecutivo —IBCS 2.0, alineado con la ISO 24896 «Notation for business reporting»—
-  // pide que un informe TRANSMITA UN MENSAJE (regla SAY) y que sus bloques no se solapen (STRUCTURE).
-  // El hero anterior gastaba dos de sus nueve renglones en repetir importes que el detalle ya publica
-  // —"prendario · cuotas por vencer" es literalmente el `$B$` de una fila de la sección 6— y en
-  // cambio NO contestaba la pregunta por la que esta pestaña existe: cuándo el IVA empieza a salir de
-  // la caja. Se van los dos desgloses de deuda y entra esa respuesta. Mismo alto, una pregunta menos.
-  F.push([`LA POSICIÓN AL ${ddmm(hoy)}`])
-  F.push([rotuloTotal('A PAGAR EN LOS PRÓXIMOS 30 DÍAS'), formulaVentana(conCelda, 30)])
-  F.push([prox
-    ? subItem(`primer vencimiento · ${ddmm(prox.fecha)} · ${conceptoCorto(prox.concepto)}`)
-    : subItem('no hay ningún vencimiento en la ventana'),
-  prox ? prox.formulaImporte : '=0'])
-  // ═══ LA PREGUNTA QUE LA PESTAÑA EXISTÍA PARA CONTESTAR Y NO CONTESTABA ═══
+  // Tenía un titular («LA POSICIÓN AL dd/mm»), cuatro totales y cuatro sub-líneas. Tres de esas
+  // sub-líneas GLOSABAN el total de arriba —«saldo a favor de IVA · F.2051» debajo de «impuestos a
+  // favor»— y eso es exactamente lo que el dueño mandó sacar de las cuatro pestañas: *«minimalismo
+  // extremo, sin aclaraciones ni explicaciones de nada»*. Las hermanas ya rediseñadas abren con dos
+  // o tres «⇒ rótulo | cifra».
   //
-  // En 2026 el IVA no salió nunca en efectivo: marzo y julio quedaron a favor de ARCA por $10,75M y
-  // $9,52M y los absorbió el saldo de libre disponibilidad. Pero ese colchón cae —$19,3M en junio,
-  // $9,86M al cierre de julio, $4,0M en agosto— y el día que se agote, el IVA pide caja como
-  // cualquier otro pago. Hasta hoy eso había que deducirlo leyendo la fila del saldo mes por mes,
-  // doce columnas a la derecha, en el cuadro de la sección 1.
+  // LA ÚNICA SUB-LÍNEA QUE TRAÍA UN DATO PROPIO ERA LA FECHA DEL PRIMER VENCIMIENTO, y no se pierde:
+  // sube a la columna C de su propia fila, que es donde vive un dato que no es plata. Su IMPORTE sí
+  // se va —era un sumando de la cifra de al lado, no otra pregunta—.
   //
-  // EL MES VA EN LA COLUMNA C Y NO EN LA B. En toda esta pestaña la B es EL IMPORTE, en todos los
-  // bloques: un texto ahí lo dibuja el formato de moneda como plata que no se ve, que es la clase de
-  // defecto `texto_en_numero` que el auditor de pantalla ya cuenta. El mes es una etiqueta, va al
-  // lado, y su celda se declara como texto (ver `textosCelda` en la piel).
-  F.push([rotuloTotal(ROTULO_IVA_EN_CAJA),
-    formulaIvaQuePideCaja(refs.ivaAPagar), formulaMesQueElIvaPideCaja(refs.ivaAPagar, refs.ivaCabecera)])
-  F.push([subItem('saldo a favor que lo venía absorbiendo, y se agota'),
-    formulaColchonQueSeAgota(refs.ivaAPagar, refs.ivaLibre)])
-  F.push([rotuloTotal('DEUDA PENDIENTE · FISCAL Y FINANCIERA'),
+  // ═══ LO QUE SE PERDIÓ, DECLARADO: «EL IVA EMPIEZA A SALIR DE LA CAJA EN» ═══
+  //
+  // Ese renglón contestaba en qué mes el saldo de libre disponibilidad deja de absorber el IVA. Es
+  // una buena pregunta y el hero de tres filas no la contesta más: sigue siendo derivable de la
+  // sección 1 —la primera columna con importe en «IVA a pagar»— pero hay que leerla mes por mes.
+  // Se retira por orden explícita sobre la FORMA del hero, no porque el dato sobre.
+  F.push([rotuloTotal(ROTULO_A_PAGAR_30), formulaVentana(conCelda, 30), prox ? fecha(prox.fecha) : ''])
+  F.push([rotuloTotal('Deuda fiscal y financiera'),
     formulaDeudaPendiente(refs.prendPend, refs.planesPend)])
-  // LAS TRES CELDAS DEL SALDO A FAVOR APUNTAN A CELDAS QUE ESCRIBE UNA PERSONA (el mes ajeno del
+  // LAS DOS CELDAS DEL SALDO A FAVOR APUNTAN A CELDAS QUE ESCRIBE UNA PERSONA (el mes ajeno del
   // cuadro de IVA), así que no pueden asumir que ahí hay un número: el 17/08 había una leyenda y esta
   // fila publicó #VALUE! en la primera pantalla. Ver `formulaSaldoAFavor`.
-  F.push([rotuloTotal('IMPUESTOS A FAVOR · inmovilizado en el fisco'),
-    formulaSaldoAFavor(refs.saldoIva, refs.saldoIibb)])
-  F.push([subItem('saldo a favor de IVA · F.2051'), formulaSaldoDeclarado(refs.saldoIva)])
-  F.push([subItem('saldo a favor de IIBB · DGR'), formulaSaldoDeclarado(refs.saldoIibb)])
+  F.push([rotuloTotal('A favor en el fisco'), formulaSaldoAFavor(refs.saldoIva, refs.saldoIibb)])
   F.push([])
   return F
 }

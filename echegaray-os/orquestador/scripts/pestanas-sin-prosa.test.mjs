@@ -8,6 +8,9 @@ import { grillaObras } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS } from '../lib/obras-datos.mjs'
 import { construir } from '../lib/subcontratistas/pestana.mjs'
 import { grilla as grillaJornales } from './jornales-pestana.mjs'
+import { grilla as grillaImpuestos } from './impuestos-pestana.mjs'
+import { ANCHO as ANCHO_IMPUESTOS } from '../lib/impuestos-grilla.mjs'
+import { vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 
 // EL CONTRATO DE DISEÑO, MEDIDO EN EL GENERADOR Y NO EN EL ARCHIVO VIVO.
 //
@@ -103,7 +106,33 @@ for (const p of LIMPIAS) {
 const PURAS = [
   { titulo: 'OBRAS', grilla: () => grillaObras({ obras: OBRAS_FUTURAS }).filas },
   { titulo: 'SUBCONTRATISTAS', grilla: () => construir().filas },
+  // ═══ «Impuestos y Financieros» ENTRA EL 09/09/2026, Y SE CORRE, NO SE LEE ═══
+  //
+  // Su `grilla()` es pura: con los datos de muestra devuelve la pestaña entera —hero, cinco
+  // secciones, encabezados, totales— sin una llamada a la red. Se juzga lo que se va a ESCRIBIR.
+  //
+  // La columna O se vacía primero porque `main()` la vacía antes de escribir (`vaciarColumnaDeProsa`):
+  // ahí es donde este generador manda toda la prosa larga a propósito, y medirla con su texto adentro
+  // marcaría veintinueve desvíos que el lector no tiene — un rojo que no significa nada se ignora.
+  { titulo: 'Impuestos y Financieros', grilla: () => { const g = grillaImpuestos(FIXTURE_IMPUESTOS); vaciarColumnaDeProsa(g.filas, ANCHO_IMPUESTOS - 1); return g.filas } },
 ]
+
+/** Los mismos datos de muestra que usa el test del generador: seis DDJJ, un plan, cinco meses proyectados. */
+const FIXTURE_IMPUESTOS = {
+  anio: 2026,
+  C: { total: 'O', concepto: 'L', fecha: 'AD', rubro: 'AB', fechaPrev: 'Q', detalle: 'K' },
+  hoy: '2026-09-09',
+  iibb: [1, 2, 3, 4, 5, 6].map((m) => ({ periodo: `2026-0${m}` })),
+  ivaOficial: [1, 2, 3, 4, 5, 6].map((m) => ({
+    periodo: `2026-0${m}`, debito: 1, credito: 1, a_pagar_efectivo: 0, libre_disp: 1e6,
+    fecha_presentacion: '19/02/2026', nro_transaccion: '1',
+  })),
+  planes: [{ nombre: 'Plan F931 W303094', porMes: [0, 0, 0, 0, 0, 0, 0, 0, 2494876, 2494876, 2494876, 0, 0] }],
+  proy: {
+    meses: [8, 9, 10, 11, 12], ultimoMesConDato: 7, libreDisp: 7050036, alicuotaVigente: 0.21,
+    brutoDebito: (m) => [`BRUTO_DEB_${m}`], brutoCredito: (m) => [`BRUTO_CRE_${m}`], supuesto: 'el supuesto',
+  },
+}
 
 // ═══ «Jornales por Quincena»: SE CORRE, NO SE LEE (09/09/2026) ═══
 //

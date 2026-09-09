@@ -197,41 +197,18 @@ export const formulaImpuestoCheque = (hoja, anio, m) =>
 // EL RANGO ARRANCA EN B Y TERMINA EN M: los doce meses, sin la columna del Total —que suma la fila
 // entera y daría "positivo" aunque ningún mes suelto lo sea.
 
-/**
- * El texto de la celda cuando ningún mes del año pide caja. Es un hecho —el crédito de libre
- * disponibilidad lo absorbió todo—, no un hueco: no lleva ⚠.
- *
- * CORTO A PROPÓSITO (04/09/2026): va en la columna del mes, que mide 108 px ≈ 18 caracteres, y con
- * la de al lado ocupada no hay adónde derramar. "ninguno en el año" se dibujaba cortado en "ninguno
- * en el" — y un rótulo cortado al medio dice otra cosa que el rótulo entero. El renglón se lee
- * completo: «EL IVA EMPIEZA A SALIR DE LA CAJA EN … ningún mes».
- */
-export const IVA_SIN_SALIDA = 'ningún mes'
-
-/**
- * NÚCLEO PURO: la posición (1..12) del primer mes con un importe POSITIVO en la fila `f`.
- *
- * `IF(ISNUMBER(...))` no es decorativo: esa fila puede tener texto —el mes que escribió una persona,
- * una leyenda— y en Sheets cualquier texto es MAYOR que cualquier número, así que sin el filtro una
- * leyenda se leería como "acá el IVA pide caja" y publicaría el mes equivocado.
- */
-const primerMesPositivo = (f) => `MATCH(TRUE;INDEX(IF(ISNUMBER($B$${f}:$M$${f});$B$${f}:$M$${f};0)>0;0);0)`
-
-/** NÚCLEO PURO: el MES en que el IVA empieza a salir de la caja, leído del encabezado del cuadro. */
-export const formulaMesQueElIvaPideCaja = (fAPagar, fCabecera) =>
-  `=IFERROR(INDEX($B$${fCabecera}:$M$${fCabecera};${primerMesPositivo(fAPagar)});"${IVA_SIN_SALIDA}")`
-
-/** NÚCLEO PURO: CUÁNTO pide ese primer mes. Cero si ninguno pide: es la verdad, no un hueco. */
-export const formulaIvaQuePideCaja = (fAPagar) =>
-  `=IFERROR(INDEX($B$${fAPagar}:$M$${fAPagar};${primerMesPositivo(fAPagar)});0)`
-
-/**
- * NÚCLEO PURO: el colchón de libre disponibilidad que queda al cierre del mes ANTERIOR — el que se
- * agota. Si ningún mes pide caja, el colchón vigente es el último que la fila publica: `LOOKUP(9^99)`
- * devuelve el último valor numérico de la fila, que es lo que un saldo acumulado significa.
- */
-export const formulaColchonQueSeAgota = (fAPagar, fLibre) =>
-  `=IFERROR(INDEX($B$${fLibre}:$M$${fLibre};MAX(1;${primerMesPositivo(fAPagar)}-1));LOOKUP(9^99;$B$${fLibre}:$M$${fLibre}))`
+// ═══ LAS TRES FÓRMULAS DE «EL IVA EMPIEZA A SALIR DE LA CAJA EN» SE RETIRARON (09/09/2026) ═══
+//
+// Eran `formulaMesQueElIvaPideCaja`, `formulaIvaQuePideCaja` y `formulaColchonQueSeAgota`, y las
+// consumía un renglón del hero que el rediseño de hoy eliminó: el dueño lo dejó en tres filas «⇒
+// rótulo | cifra». Sin ese renglón no las llama nadie, y una función que nadie llama es la capa
+// fósil que la próxima lectura confunde con algo vigente.
+//
+// LO QUE CONTESTABAN, PARA EL DÍA QUE HAGA FALTA VOLVER A PREGUNTARLO: en qué mes el saldo de libre
+// disponibilidad deja de absorber el IVA (el primer mes con importe POSITIVO en la fila «IVA a
+// pagar», con `IF(ISNUMBER(...))` adelante —en Sheets cualquier texto es mayor que cualquier número,
+// así que una leyenda tipeada en esa fila publicaba el mes equivocado—), cuánto pide ese mes, y qué
+// colchón queda al cierre del anterior. La respuesta sigue estando en la sección 1, mes por mes.
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // EL HERO Y LA VENTANA — REFERENCIAS, NUNCA RECÁLCULOS
@@ -291,13 +268,13 @@ const faltante = (celdaIva, celdaIibb) =>
 export const formulaSaldoAFavor = (celdaIva, celdaIibb) =>
   `=IF(COUNT(${celdaIva};${celdaIibb})=2;${celdaIva}+${celdaIibb};${faltante(celdaIva, celdaIibb)})`
 
-/**
- * NÚCLEO PURO: un saldo suelto del hero. Si la celda tiene un importe, manda el importe; si tiene
- * texto, se muestra ESE texto precedido del glifo —el dueño tiene que poder leer qué hay puesto ahí
- * para ir a corregirlo— y si está vacía se declara el hueco en vez de dibujar un $0.
- */
-export const formulaSaldoDeclarado = (celda) =>
-  `=IF(ISNUMBER(${celda});${celda};IF(${celda}="";"${ALERTA} sin dato";"${ALERTA} "&${celda}))`
+// ═══ `formulaSaldoDeclarado` SE RETIRÓ CON SUS DOS SUB-LÍNEAS (09/09/2026) ═══
+//
+// La usaban «· saldo a favor de IVA · F.2051» y «· saldo a favor de IIBB · DGR», los dos desgloses
+// del total «A favor en el fisco». El hero quedó en tres renglones sin sub-líneas y no las llama
+// nadie. Lo que hacía —mostrar el TEXTO que hubiera en la celda, con ⚠ adelante, en vez de un $0 que
+// se lee como «no tengo nada a favor»— lo sigue haciendo `formulaSaldoAFavor` para el total, que es
+// el número que ahora se publica.
 
 /**
  * NÚCLEO PURO: el próximo vencimiento, como las tres piezas que se muestran.

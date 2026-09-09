@@ -13,13 +13,12 @@ import { ALERTA, ALERTA_HEREDADA } from './glifos.mjs'
 /** La columna A de una alarma ARRANCA con la marca. Anclada: "…⚠…" en el medio no es una alarma. */
 const MARCA_ALERTA_INICIAL = new RegExp(`^[${ALERTA}${ALERTA_HEREDADA}]`)
 
-const AMBAR = { red: 1, green: 0.97, blue: 0.88 }
 const ALARMA = { red: 0.7, green: 0.2, blue: 0.1 }
 /** Un renglón vacío entre bloques respira; uno de datos no. Es el "espacio en blanco" del dueño. */
 const ALTO_SEPARADOR = 32
 
 /** El ancho de la columna A, la de los rótulos. El porqué del número está donde se aplica. */
-export const ANCHO_ROTULO = 500
+export const ANCHO_ROTULO = 300
 
 /**
  * NÚCLEO PURO: qué trato tipográfico le toca a cada fila, decidido por el CONTENIDO.
@@ -41,8 +40,8 @@ export const ANCHO_ROTULO = 500
  * que hay que mantener.
  *
  * @param {any[][]} filas la grilla del generador (índice 0 → fila 1)
- * @param {{desde:number, hasta:number, titular:number}} hero el bloque de posición, en filas 1-based.
- *   El titular queda AFUERA: se lo lleva la piel compartida, que es la única que lo agranda.
+ * @param {{desde:number, hasta:number}} hero el bloque de posición, en filas 1-based. Desde el
+ *   09/09/2026 no tiene titular: son tres renglones «⇒ rótulo | cifra» y el separador.
  * @returns {{alarmas:number[], notas:number[], subitems:number[], totalesHero:number[], separadores:number[]}}
  */
 export function tratamientoDeFilas(filas = [], hero = null) {
@@ -56,7 +55,7 @@ export function tratamientoDeFilas(filas = [], hero = null) {
     // Las DOS alertas: la vigente y la que quedó publicada en las celdas. Ver `ALERTA_HEREDADA`.
     if (MARCA_ALERTA_INICIAL.test(a)) { (conPlata(f) ? t.alarmas : t.notas).push(fila); return }
     if (/^\s{2,}·\s/.test(a)) { t.subitems.push(fila); return }
-    if (hero && fila >= hero.desde && fila <= hero.hasta && fila !== hero.titular && /^⇒/.test(a)) {
+    if (hero && fila >= hero.desde && fila <= hero.hasta && /^⇒/.test(a)) {
       t.totalesHero.push(fila)
     }
   })
@@ -71,7 +70,7 @@ export function tratamientoDeFilas(filas = [], hero = null) {
  * limitaciones declaradas— se apaga para que los importes queden solos adelante.
  */
 export function requestsDeJerarquia(sheetId, g) {
-  const t = tratamientoDeFilas(g.filas || [], g.hero ? { ...g.hero, titular: g.titular } : null)
+  const t = tratamientoDeFilas(g.filas || [], g.hero ?? null)
   const rq = []
   const texto = (filas, format, cols = [0, ANCHO]) => {
     for (const f of filas) {
@@ -117,7 +116,7 @@ export function requestsDeJerarquia(sheetId, g) {
 }
 
 /**
- * @param {object} g la grilla armada: {filas, titular, hero, alicuotas, textos, textosCelda, ambar, congeladas}
+ * @param {object} g la grilla armada: {filas, hero, alicuotas, textos, fechasCelda, proyectadas, congeladas}
  * @param {number} filasHoja cuántas filas tiene hoy la pestaña
  */
 export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
@@ -142,30 +141,38 @@ export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
   g.filas.forEach((f, i) => {
     const a = String(f?.[0] ?? '')
     // Los encabezados son rótulos, no importes: sin formato de moneda encima.
-    if (/^(Concepto|Fecha y concepto|Línea de financiamiento|LA POSICIÓN)/.test(a)) {
+    if (/^(Concepto|Fecha y concepto|Línea de financiamiento)/.test(a)) {
       fmt(r(i, i + 1, 1, 14), 'userEnteredFormat(numberFormat,horizontalAlignment)', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })
     }
   })
   for (const f of g.alicuotas ?? []) fmt(r(f - 1, f, 1, 14), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'PERCENT', pattern: '0.00%;;"—"' } })
   for (const f of g.textos ?? []) fmt(r(f - 1, f, 1, 14), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })
-  // UNA CELDA SUELTA DE TEXTO, NO UNA FILA ENTERA (04/09/2026). El hero publica el MES en que el IVA
-  // empieza a salir de la caja al lado de su importe: la B lleva plata y la C una etiqueta. Con
-  // `textos`, que formatea B..N, el importe de la B también habría quedado como texto crudo —y con el
-  // formato de moneda heredado, la etiqueta se cuenta como el defecto `texto_en_numero` que el
-  // auditor de pantalla ya reporta nueve veces en esta misma pestaña.
-  for (const { fila, col } of g.textosCelda ?? []) {
-    fmt(r(fila - 1, fila, col, col + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
+  // ═══ UNA CELDA SUELTA, Y ES UNA FECHA — NO TEXTO (09/09/2026) ═══
+  //
+  // El hero publica la fecha del primer vencimiento al lado de su importe: la B lleva plata y la C la
+  // fecha. Es UNA celda y no la fila entera: con `textos`, que formatea B..N, el importe de la B
+  // quedaría dibujado como texto crudo.
+  //
+  // Y EL FORMATO ES DATE, NO TEXT. Medido en la copia: con TEXT la celda mostraba **46281**, el serial
+  // que Sheets guarda al parsear «07/09». La fecha se escribe como `DATE(a;m;d)` y se dibuja acá —la
+  // misma pareja que usa «Próximo vencimiento» en «Cargas Sociales».
+  for (const { fila, col } of g.fechasCelda ?? []) {
+    fmt(r(fila - 1, fila, col, col + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'LEFT' })
   }
 
-  // ═══ EL ÁMBAR VA POR CELDA, NO POR COLUMNA (06/08) ═══
+  // ═══ LA PROYECCIÓN SE DISTINGUE POR LA TIPOGRAFÍA, NO POR UN FONDO DE COLOR (09/09/2026) ═══
   //
-  // Antes pintaba la columna del mes entera de la fila 4 para abajo. Con la posición y el calendario
-  // ARRIBA del detalle, la columna B ya no es "enero": es el importe del hero y el del calendario.
-  // Pintar la columna habría teñido de proyección la posición de HOY, que es exactamente lo contrario
-  // de lo que el color dice. Una proyección que se ve igual que un hecho termina leyéndose como un
-  // hecho; un hecho pintado de proyección también miente, y en el sentido que más caro sale.
-  for (const { fila, mes } of g.ambar ?? []) {
-    fmt(r(fila - 1, fila, mes, mes + 1), 'userEnteredFormat.backgroundColor', { backgroundColor: AMBAR })
+  // Era un fondo ámbar por celda —correcto en su momento: pintar la COLUMNA entera habría teñido de
+  // proyección la posición de hoy—. Pero el amarillo de agosto a octubre terminó siendo lo único con
+  // color de la pestaña, y le daba a una estimación más peso visual que a una DDJJ presentada. Las
+  // pestañas hermanas ya marcan la estimación como la marca cualquier statement serio: misma cifra,
+  // gris e itálica. Se distingue igual, en la misma escala de lectura que el resto.
+  //
+  // VA POR CELDA, COMO IBA EL ÁMBAR: la fila mezcla meses declarados con meses proyectados.
+  for (const { fila, mes } of g.proyectadas ?? []) {
+    fmt(r(fila - 1, fila, mes, mes + 1), 'userEnteredFormat.textFormat',
+      { textFormat: { foregroundColor: MUTED, italic: true, bold: false, fontFamily: 'Arial' } })
   }
 
   // Al sacar el muro de texto de la derecha, las filas quedaban con el alto que ese texto necesitaba
@@ -190,8 +197,8 @@ export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
   // largo. Acortar habría significado tirar el nombre de quien decidió o su palabra textual, que es
   // lo único que hace verificable la decisión.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: ANCHO_ROTULO }, fields: 'pixelSize' } })
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 13 }, properties: { pixelSize: 108 }, fields: 'pixelSize' } })
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 13, endIndex: 14 }, properties: { pixelSize: 124 }, fields: 'pixelSize' } })
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 13 }, properties: { pixelSize: 100 }, fields: 'pixelSize' } })
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 13, endIndex: 14 }, properties: { pixelSize: 116 }, fields: 'pixelSize' } })
   // La columna de procedencia ya no muestra texto (se vacía): angosta.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 14, endIndex: 15 }, properties: { pixelSize: 24 }, fields: 'pixelSize' } })
   req.push(...notas)
@@ -221,7 +228,7 @@ export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
   // CONGELADAS HASTA EL HERO: al desplazarse por el detalle, la posición sigue arriba. Es lo que
   // pidió el dueño ("la pantalla muestra PRIMERO la posición") y no sirve de nada si se va al scrollear.
   await google.spreadsheetBatchUpdate(fileId, skinRequests({
-    sheetId, filas: g.filas, cols: ANCHO, congeladas: g.congeladas ?? 2, titular: g.titular, filasHoja: alto,
+    sheetId, filas: g.filas, cols: ANCHO, congeladas: g.congeladas ?? 2, filasHoja: alto,
   }))
 
   // ═══ LA JERARQUÍA PROPIA DE ESTA PESTAÑA — DESPUÉS DE LA PIEL, O LA PIEL SE LA LLEVA PUESTA ═══
