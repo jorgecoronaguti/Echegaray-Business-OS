@@ -66,7 +66,44 @@ export function columnasDelBloque(grid = [], bloque = {}) {
     }
   }
   const faltan = Object.keys(ROTULOS).filter((k) => cols[k] === undefined)
-  return faltan.length ? { faltan } : { cols, faltan: [] }
+  if (faltan.length) return { faltan }
+  cols.yaTransferido = columnasSinRotuloEntre(grid, bloque, cols.porBanco, cols.adelanto)
+  return { cols, faltan: [] }
+}
+
+/**
+ * NÚCLEO PURO: las columnas de plata SIN RÓTULO que la planilla metió entre BANCO y ADELANTO.
+ *
+ * ═══ QUÉ ES LA COLUMNA 24 (Y) ═══
+ *
+ * Desde el bloque del 17/8/2026 aparecen ~$200.000 por cabeza en la columna Y, que no tiene rótulo
+ * y que la fila de totales del bloque NO suma (esa fila suma X=BANCO, Z=ADELANTO y AA=EFECTIVO, y
+ * saltea Y). Leer sólo lo rotulado dejaba cinco filas sin cerrar por exactamente ese importe.
+ *
+ * Lo que decide la lectura no es el rótulo —no hay— sino LA PROPIA FÓRMULA DE LA PLANILLA. En ese
+ * bloque el EFECTIVO se calcula `=V*W-Z-X-Y`, mientras que hasta julio era `=V*W-Z-X`. O sea: la
+ * planilla DESCUENTA Y de lo que la persona cobra, exactamente igual que BANCO y que ADELANTO. Con
+ * eso la cadena cierra al peso (fila 531: 586.476 − 192.887,48 − 200.000 − 60.000 = 133.589).
+ *
+ * Se carga como `ya_transferido`, que es la tercera columna de descuento que la tabla ya tiene y la
+ * única libre: BANCO ya es `por_banco` y ADELANTO ya es `adelanto`, y la fila 531 trae los tres
+ * juntos con importes distintos, así que no son el mismo concepto. AFIRMO SU ARITMÉTICA, NO SU
+ * NOMBRE: qué rotularía el dueño esa columna es un dato que la planilla no da. La pista más fuerte
+ * de qué es está en las fórmulas del propio importe — fila 538 `189591` y fila 568 (quincena
+ * siguiente, misma persona) `=189591/2`: plata ya entregada que se descuenta en cuotas.
+ *
+ * Se busca por posición relativa y no por índice fijo: el día que la planilla corra las columnas,
+ * esto las sigue. Si BANCO y ADELANTO quedan pegados, no hay columna intermedia y devuelve [].
+ */
+export function columnasSinRotuloEntre(grid = [], bloque = {}, a, b) {
+  if (a === undefined || b === undefined) return []
+  const [lo, hi] = a < b ? [a, b] : [b, a]
+  const filas = [grid[bloque.filaFecha - 1], grid[bloque.filaFecha - 2]]
+  const out = []
+  for (let i = lo + 1; i < hi; i++) {
+    if (!filas.some((f) => texto((f ?? [])[i]))) out.push(i)
+  }
+  return out
 }
 
 const dosDigitos = (n) => String(n).padStart(2, '0')
@@ -127,15 +164,33 @@ export function lineasDelBloque(grid = [], bloque = {}, cols = {}) {
     const cobra = importe(f[cols.cobra])
     const adelanto = importe(f[cols.adelanto]) ?? 0
     const porBanco = importe(f[cols.porBanco]) ?? 0
-    const enEfectivo = importe(f[cols.enEfectivo])
+    const colsYa = cols.yaTransferido ?? []
+    const yaTransferido = colsYa.reduce((a, i) => a + (importe(f[i]) ?? 0), 0)
     const horas = importe(f[cols.horas])
     const valorHora = importe(f[cols.valorHora])
+    // EL EFECTIVO BORRADO SE DERIVA DE LA CADENA DE PAGO, NO SE INVENTA.
+    // En la 2ª de junio alguien borró la fórmula de EFECTIVO en tres filas (401, 407, 414) y la
+    // celda quedó vacía: la planilla no dice $0, no dice nada. El resto de la cadena sí está, y la
+    // definición de la columna en las filas vecinas es `=Hs*$/h - ADELANTO - BANCO (- Y)`, así que
+    // el hueco tiene una sola solución. Lo que lo convierte en evidencia y no en conveniencia es
+    // que la propia fila de totales del bloque (417) lo confirma desde afuera: suma BANCO $0 +
+    // ADELANTO $2.378.644 + EFECTIVO $5.745.756 = $8.124.400 contra un SUM(TOTAL) de $9.384.100, y
+    // la diferencia — $1.259.700 — es exactamente 408.000 + 408.000 + 443.700, los tres derivados.
+    // Sólo se deriva si la celda está VACÍA: un #REF! no se deriva, se denuncia.
+    let enEfectivo = importe(f[cols.enEfectivo])
+    let efectivoDerivado = false
+    if (enEfectivo == null && cobra != null && !esError(f[cols.enEfectivo])) {
+      const d = cobra - adelanto - porBanco - yaTransferido
+      // Un derivado negativo significa que la cadena ya no cierra por otro motivo: no se tapa.
+      if (d >= -0.5) { enEfectivo = d; efectivoDerivado = true }
+    }
     const faltan = []
     if (cobra == null) faltan.push('TOTAL')
     if (enEfectivo == null) faltan.push('EFECTIVO')
     for (const campo of ['cobra', 'adelanto', 'porBanco', 'enEfectivo']) {
       if (esError(f[cols[campo]])) faltan.push(`${campo} roto`)
     }
+    for (const i of colsYa) if (esError(f[i])) faltan.push('yaTransferido roto')
     const linea = {
       fila: r,
       nombre,
@@ -145,7 +200,9 @@ export function lineasDelBloque(grid = [], bloque = {}, cols = {}) {
       cobra,
       adelanto,
       porBanco,
+      yaTransferido,
       enEfectivo,
+      efectivoDerivado,
       total: cobra == null || enEfectivo == null ? null : porBanco + enEfectivo,
       incompleta: faltan.length ? faltan.join(', ') : null,
     }
@@ -155,15 +212,39 @@ export function lineasDelBloque(grid = [], bloque = {}, cols = {}) {
     // El residuo se nombra porque tiene culpable: en la quincena del 17/8 la planilla estrenó una
     // columna de plata SIN RÓTULO (la 24, $200.000 por cabeza) que su propia fila de totales tampoco
     // suma. Decir «no cierra» sin el número obliga a rehacer la resta a mano.
-    const residuo = cobra == null || enEfectivo == null ? null : cobra - (porBanco + adelanto + enEfectivo)
+    const pagado = porBanco + yaTransferido + adelanto + enEfectivo
+    const residuo = cobra == null || enEfectivo == null ? null : cobra - pagado
     linea.residuo = residuo
     if (!linea.incompleta && Math.abs(residuo) > 0.5) {
-      linea.incompleta = `no cierra por ${residuo.toFixed(2)}: TOTAL ${cobra} vs BANCO+ADELANTO+EFECTIVO ${porBanco + adelanto + enEfectivo}`
+      linea.incompleta = `no cierra por ${residuo.toFixed(2)}: TOTAL ${cobra} vs BANCO+YA_TRANSFERIDO+ADELANTO+EFECTIVO ${pagado}`
     }
     out.push(linea)
   }
   return out
 }
+
+/**
+ * LOS SEIS ALIAS QUE EL DUEÑO ACEPTÓ, ESCRITOS — NO ADIVINADOS.
+ *
+ * Los seis salieron de un emparejamiento por subconjunto único de tokens y el dueño los revisó uno
+ * por uno el 09/09/2026. Quedan acá, en el código, porque una regla que resuelve en runtime resuelve
+ * también los que nadie miró: fue esa misma regla la que una vez metió a «Castillo Carlos» dentro de
+ * «GONZALEZ CARLOS SAMUEL». Un nombre nuevo que no esté en esta tabla no se carga: se informa.
+ *
+ * Izquierda: como lo escribe la planilla. Derecha: `personas.nombre_completo`.
+ */
+export const ALIAS_JORNALES = {
+  'Emanuel Alaniz': 'ALANIZ EMANUEL ARIEL',
+  'Bronia Rodrigo': 'BRONIA JOFRE RODRIGO EMANUEL',
+  'Navarro Matias': 'NAVARRO MATIAS JESUS',
+  'Sosa Raul': 'SOSA NESTOR RAUL',
+  'Castillo Carlos': 'CASTILLO BENITEZ JUAN CARLOS',
+  'Zogbe Leonardo': 'ZOGBE RAMOS WALTER LEONARDO',
+}
+
+const ALIAS_POR_CLAVE = new Map(
+  Object.entries(ALIAS_JORNALES).map(([planilla, base]) => [claveNombre(planilla), claveNombre(base)]),
+)
 
 /**
  * NÚCLEO PURO: quién es esta persona, y por qué vía se lo afirma.
@@ -185,34 +266,56 @@ export function resolverPersona(clave, { puente, porCuil, personas }) {
     const p = porCuil.get(cuil)
     if (p) return { persona: p, via: 'puente' }
   }
-  const tokens = clave.split(' ').filter(Boolean)
-  const exactas = personas.filter((p) => p.clave === clave)
-  if (exactas.length === 1) return { persona: exactas[0], via: 'exacta' }
+  const alias = ALIAS_POR_CLAVE.get(clave)
+  const buscada = alias ?? clave
+  const tokens = buscada.split(' ').filter(Boolean)
+  const exactas = personas.filter((p) => p.clave === buscada)
+  if (exactas.length === 1) return { persona: exactas[0], via: alias ? 'alias' : 'exacta' }
   if (exactas.length > 1) return { persona: null, via: 'ambiguo', candidatos: exactas.map((p) => p.nombre) }
   const sub = personas.filter((p) => tokens.every((t) => p.tokens.includes(t)))
-  if (sub.length === 1) return { persona: sub[0], via: 'subconjunto' }
-  if (sub.length > 1) return { persona: null, via: 'ambiguo', candidatos: sub.map((p) => p.nombre) }
-  return { persona: null, via: 'sin-persona' }
+  return sub.length
+    ? { persona: null, via: 'sin-persona', candidatos: sub.map((p) => p.nombre) }
+    : { persona: null, via: 'sin-persona' }
 }
 
 /**
  * NÚCLEO PURO: EL CONTROL DE CIERRE de una quincena.
  *
- * La regla es dura a propósito: una quincena entra COMPLETA o no entra. Cargar las líneas que
- * matchean y dejar afuera las que no dejaría en la base una quincena con el total corto que se lee
- * igual de bien que una correcta — que es exactamente la forma en que un dato miente en silencio.
+ * ═══ POR QUÉ LA REGLA DEJÓ DE SER «COMPLETA O NADA» ═══
+ *
+ * Era «una quincena entra COMPLETA o no entra», y con eso 11 de 16 quincenas cerradas quedaban
+ * afuera enteras por unas pocas personas que no existen en `public.personas`. El dueño, 09/09/2026:
+ * *«no des de alta a nadie, son inactivos los que no están en esta quincena»*. Esas personas no se
+ * crean y esas líneas no tienen dónde ir: `liquidacion_linea.persona_id` es NOT NULL con FK a
+ * `personas` y la tabla no tiene columna de nombre libre (verificado contra information_schema del
+ * Postgres vivo, no contra el archivo del repo).
+ *
+ * Así que la quincena entra PARCIAL, y el riesgo que la regla vieja evitaba —un total corto que se
+ * lee igual de bien que uno correcto— sigue vivo y hay que nombrarlo: `excluidas` y `montoExcluido`
+ * existen para que ningún consumidor pueda sumar sin ver el faltante. LO QUE NO SE PUDO HACER es
+ * dejarlo escrito EN LA BASE: `liquidacion_quincena` no tiene `observacion` ni `nota` y no se
+ * autorizó migración. Hoy el faltante vive en el log de la corrida y en el informe, no en Postgres.
+ *
+ * Lo que sigue siendo bloqueante es OTRA cosa: la plata ilegible. Una línea cuya cadena de pago no
+ * cierra no se sabe cuánto es, y esa sí voltea la quincena entera.
  */
 export function controlDeCierre(lineas = []) {
   const totalSheet = lineas.reduce((a, l) => a + (l.cobra ?? 0), 0)
+  const bloqueantes = lineas.filter((l) => l.incompleta)
+  const excluidas = lineas.filter((l) => !l.incompleta && !l.persona_id)
   const cargables = lineas.filter((l) => !l.incompleta && l.persona_id)
   const totalCargable = cargables.reduce((a, l) => a + (l.cobra ?? 0), 0)
-  const problemas = lineas.filter((l) => l.incompleta || !l.persona_id)
+  const montoExcluido = excluidas.reduce((a, l) => a + (l.cobra ?? 0), 0)
   return {
     totalSheet,
     totalCargable,
     diferencia: totalSheet - totalCargable,
     cargables,
-    problemas,
-    cierra: problemas.length === 0 && Math.abs(totalSheet - totalCargable) <= 0.5,
+    excluidas,
+    montoExcluido,
+    bloqueantes,
+    problemas: [...bloqueantes, ...excluidas],
+    cierra: bloqueantes.length === 0,
+    completa: bloqueantes.length === 0 && excluidas.length === 0,
   }
 }
