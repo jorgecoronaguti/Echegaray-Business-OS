@@ -148,7 +148,7 @@ function PanelDeCarga({ carga, onCerrar }: { carga: Carga; onCerrar: () => void 
           {carga.subiendo ? 'Subiendo…' : `Guardar${carga.elegidos.length ? ` ${carga.elegidos.length}` : ''}`}
         </button>
         <button
-          type="button" onClick={onCerrar}
+          type="button" onClick={onCerrar} data-testid="cerrar-subida-documento"
           className="rounded-[6px] border px-[11px] py-[6px] text-[12.5px]"
           style={{ borderColor: V.linea, color: V.tintaSuave, background: '#FFFFFF' }}
         >
