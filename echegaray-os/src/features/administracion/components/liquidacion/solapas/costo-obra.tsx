@@ -98,7 +98,10 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
             </div>
           </div>
 
-          <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>
+          {/* A 390 px LAS SIETE COLUMNAS NO ENTRAN Y NO SE ENCOGEN: sin el scroller empujan la
+              página entera y la fila de total queda fuera de pantalla. Rueda dentro de su caja. */}
+          <div className="overflow-x-auto" style={{ padding: '18px 22px 0' }}>
+          <div style={{ minWidth: 700, display: 'flex', flexDirection: 'column', fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>
             <div data-testid="encabezado-obras" style={{ ...renglon, height: 34, alignItems: 'end', paddingBottom: 9, borderBottom: `1px solid ${V.linea}`, ...rotuloColumna }}>
               <div>Obra</div>
               <div style={{ textAlign: 'right' }}>HH</div>
@@ -122,6 +125,7 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
               <div />
               <div />
             </div>
+          </div>
           </div>
           <div style={{ height: 20 }} />
         </div>

@@ -103,7 +103,7 @@ export async function SolapaCostoHora({ quincena, hoy }: { quincena: Quincena; h
                 {/* R1 · SIN CARGAR NO ES 0 %. Un cero diría que ese concepto no cuesta nada. */}
                 {vigentes[c]
                   ? <span>{pct(vigentes[c]!.porcentaje)}</span>
-                  : <span data-testid={`escalon-sin-cargar-${c}`} style={{ color: V.tenue }}>sin cargar</span>}
+                  : <span data-testid={`sin-cargar-en-escalera-${c}`} style={{ color: V.tenue }}>sin cargar</span>}
               </Escalon>
             ))}
             <div data-testid="costo-por-hora" style={{
@@ -149,7 +149,9 @@ export async function SolapaCostoHora({ quincena, hoy }: { quincena: Quincena; h
 
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontSize: '12.5px', fontWeight: 600 }}>Lo que cambia al usar el costo y no el bolsillo</div>
-          <div style={{ display: 'flex', flexDirection: 'column', fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>
+          {/* Las tres columnas de números son fijas (86+96+110): a 390 px no entran y no se encogen. */}
+          <div className="overflow-x-auto">
+          <div style={{ minWidth: 380, display: 'flex', flexDirection: 'column', fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>
             <div data-testid="encabezado-categorias" style={{ ...renglon, height: 32, alignItems: 'end', paddingBottom: 8, borderBottom: `1px solid ${V.linea}`, ...rotuloColumna }}>
               <div>Categoría</div>
               <div style={{ textAlign: 'right' }}>Bolsillo</div>
@@ -195,6 +197,7 @@ export async function SolapaCostoHora({ quincena, hoy }: { quincena: Quincena; h
               <div />
             </div>
           </div>
+          </div>
         </div>
       </div>
 
@@ -207,7 +210,8 @@ export async function SolapaCostoHora({ quincena, hoy }: { quincena: Quincena; h
         <p style={{ ...bajada, margin: '10px 0 12px' }}>
           Cambiar una alícuota guarda una versión nueva con su fecha: la obra vieja conserva la suya.
         </p>
-        <table style={tabla}>
+        <div className="overflow-x-auto">
+        <table style={{ ...tabla, minWidth: 640 }}>
           <thead>
             <tr>
               {['Concepto', 'Alícuota', 'Pesa sobre', 'Rige desde', 'Fuente', ''].map((c, i) => (
@@ -221,6 +225,7 @@ export async function SolapaCostoHora({ quincena, hoy }: { quincena: Quincena; h
             ))}
           </tbody>
         </table>
+        </div>
       </details>
     </section>
   )
