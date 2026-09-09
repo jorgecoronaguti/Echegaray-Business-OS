@@ -74,8 +74,8 @@ test('el saldo a favor de fin de año era el crédito de dos meses que nunca tuv
 })
 
 test('LAS DOS DEFINICIONES SON LA MISMA FUNCIÓN — sólo cambian de columna', () => {
-  const debito = ventasFacturadasDelMes(2026, 9, 'iva')
-  const baseIibb = ventasFacturadasDelMes(2026, 9, 'neto')
+  const debito = ventasFacturadasDelMes(2026, 9, 'iva', { hoy: '2026-09-04' })
+  const baseIibb = ventasFacturadasDelMes(2026, 9, 'neto', { hoy: '2026-09-04' })
   // Idénticas salvo la columna que suman: si alguien vuelve a escribir una de las dos por su cuenta,
   // esta igualdad se rompe.
   assert.equal(debito.replace('Cobranzas!$K$5:$K', '<medida>'), baseIibb.replace('Cobranzas!$J$5:$J', '<medida>'))
@@ -90,7 +90,8 @@ test('LAS DOS DEFINICIONES SON LA MISMA FUNCIÓN — sólo cambian de columna', 
 })
 
 test('la medida no puede ser cualquier cosa: una columna inventada rompe, no devuelve cero', () => {
-  assert.throws(() => ventasFacturadasDelMes(2026, 9, 'total'), /no es una medida/)
+  assert.throws(() => ventasFacturadasDelMes(2026, 9, 'total', { hoy: '2026-09-04' }), /no es una medida/)
+  assert.throws(() => ventasFacturadasDelMes(2026, 9, 'iva'), /falta `hoy`/, 'sin fecha no sabe qué mes cerró')
 })
 
 test('LA FRONTERA SE MUEVE SOLA: cargar una factura de noviembre le devuelve la base', () => {
@@ -109,7 +110,7 @@ test('un mes YA TRANSCURRIDO sin ventas sí se calcula: ahí el cero es un hecho
 })
 
 test('las ventas por mes de emisión traen neto e IVA juntos, y no cuentan las N', () => {
-  const r = ventasPorMesDeEmision(COMO_EL_ARCHIVO)
+  const r = ventasPorMesDeEmision(COMO_EL_ARCHIVO, '2026-09-04')
   assert.deepEqual(r['2026-09'], { neto: 71149689, iva: 14941435, facturas: 1 })
   assert.equal(r['2026-11'], undefined, 'una fila N no convierte a noviembre en un mes facturado')
 })
@@ -121,4 +122,47 @@ test('el núcleo NO vuelve a convertir un débito que ya es impuesto', () => {
   assert.throws(() => proyectarLibreDisponibilidad([], [
     { periodo: '2026-10', debito_declarado: 1, base_debito: 1, base_credito: 0, supuesto: 's' },
   ], 0.21), /elegí cuál/)
+})
+
+// ═══ «REVISAR BIEN LAS FECHAS DE FACTURA CON B, PARA LO QUE PASÓ Y PARA LO FUTURO» (09/09/2026) ═══
+import { periodoDeVenta } from './impuestos-base-libro.mjs'
+const serialDe = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
+const filaB = ({ comprobante = '', factura, cobro = null, neto = 100, iva = 21 }) => {
+  const f = []; f[1] = 'B'; f[4] = comprobante; f[9] = neto; f[10] = iva; f[15] = factura; f[16] = cobro; return f
+}
+const HOY = '2026-09-09'
+
+test('mes CERRADO: sólo cuenta la B EMITIDA — la misma población que ARCA', () => {
+  assert.equal(periodoDeVenta(filaB({ comprobante: '01-00000227', factura: serialDe(2026, 8, 18) }), HOY), '2026-08')
+  // Quattropani, fila 78: «18/08» sin comprobante y cobro el 11/09. No es una venta de agosto.
+  assert.notEqual(periodoDeVenta(filaB({ factura: serialDe(2026, 8, 18), cobro: serialDe(2026, 9, 11) }), HOY), '2026-08')
+})
+
+test('B vencida y no emitida se corre al mes de su FECHA DE COBRO — el dato del dueño, no un supuesto', () => {
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 8, 18), cobro: serialDe(2026, 9, 11) }), HOY), '2026-09')
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 8, 18), cobro: serialDe(2026, 12, 30) }), HOY), '2026-12')
+  // ARCOR, fila 59: factura «30/01», cobro 30/09, «Proyectado» → septiembre.
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 1, 30), cobro: serialDe(2026, 9, 30) }), HOY), '2026-09')
+})
+
+test('B vencida, no emitida y con cobro también vencido cae en el MES EN CURSO', () => {
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 6, 11), cobro: serialDe(2026, 8, 5) }), HOY), '2026-09')
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 6, 11) }), HOY), '2026-09', 'sin fecha de cobro, también')
+})
+
+test('el plan FUTURO va por «Fecha de Factura», emitida o no', () => {
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 10, 9), cobro: serialDe(2026, 10, 9) }), HOY), '2026-10')
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 9, 22) }), HOY), '2026-09')
+})
+
+test('la fórmula del mes CERRADO exige comprobante y la del futuro suma las vencidas por su cobro', () => {
+  const ago = ventasFacturadasDelMes(2026, 8, 'iva', { hoy: HOY })
+  assert.match(ago, /\$E\$5:\$E<>""/)
+  assert.doesNotMatch(ago, /\$Q\$5:\$Q/)
+  const oct = ventasFacturadasDelMes(2026, 10, 'iva', { hoy: HOY })
+  assert.match(oct, /\$Q\$5:\$Q>=DATE\(2026;10;1\)/)
+  assert.match(oct, /\$P\$5:\$P<DATE\(2026;9;1\)/, 'sólo las vencidas se corren')
+  const sep = ventasFacturadasDelMes(2026, 9, 'iva', { hoy: HOY })
+  assert.match(sep, /N\(Cobranzas!\$Q\$5:\$Q\)<DATE\(2026;9;1\)/, 'el mes en curso recoge las que ya vencieron del todo')
+  assert.doesNotMatch(oct, /N\(Cobranzas!\$Q\$5:\$Q\)<DATE/)
 })

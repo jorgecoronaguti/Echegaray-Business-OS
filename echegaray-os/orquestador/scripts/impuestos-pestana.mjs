@@ -17,6 +17,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { ventasFacturadasDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, planDeVentas } from '../lib/impuestos-base-libro.mjs'
+import { conciliarCobranzasConArca, informarConciliacion } from '../lib/cobranzas-vs-arca.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import {
@@ -114,7 +115,7 @@ const LINEAS_CREDITO = [
 ]
 
 // La base de la proyección sale del Libro, no del Cash Flow por posición: ver `basesDelLibro`.
-const brutoDebitoLibro = (m) => [ventasFacturadasDelMes(AÑO, m, 'iva')]
+const brutoDebitoLibro = (hoy) => (m) => [ventasFacturadasDelMes(AÑO, m, 'iva', { hoy })]
 const brutoCreditoLibro = (m) => [creditoDeComprasDelMes(AÑO, m)]
 
 /**
@@ -157,7 +158,7 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
 
   // ── EL DETALLE ─────────────────────────────────────────────────────────────────────────────────
   const iva = bloqueIva(G, { anio, ivaOficial, proy, arca, hoy })
-  const ibb = bloqueIibb(G, { anio, iibb, proy })
+  const ibb = bloqueIibb(G, { anio, iibb, proy, hoy })
   bloqueRetenciones(G, { anio })
   bloqueOtros(G, { anio, C })
   // El cuadro de planes se retiró: vive en «Cargas Sociales». Desde el 09/09/2026 tampoco queda la
@@ -281,8 +282,11 @@ async function planDeProyeccionIva(google, ivaOficial, hoy) {
     }))
 
   // El débito sale de Cobranzas, no del Libro: el IVA que cada factura B ya declara, por emisión.
-  const cob = (await google.readSheetValues(ID, 'Cobranzas!A5:P', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+  const cob = (await google.readSheetValues(ID, 'Cobranzas!A5:Q', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
   const ventas = planDeVentas(cob, AÑO, hoy)
+  // «Lo que aparece en AfipSDK tiene que ser como lo facturado en B»: las diferencias, al log.
+  const arcaRaw = (await google.readSheetValues(ID, `${ARCA_RAW}!A${ARCA_FILA0}:L`, { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+  for (const linea of informarConciliacion(conciliarCobranzasConArca(cob, arcaRaw, { hoy }))) console.log(linea)
   const serialUTC = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
   const enMes = (mv, m) => mv.fecha >= serialUTC(AÑO, m, 1) && mv.fecha < serialUTC(AÑO, m + 1, 1)
   const bases = Object.fromEntries(mesesAProyectar.map((m) => [m, {
@@ -302,7 +306,7 @@ async function planDeProyeccionIva(google, ivaOficial, hoy) {
     textoDondeVaImporte,
     alicuotaVigente: alic.alicuota,
     bases,
-    brutoDebito: brutoDebitoLibro, brutoCredito: brutoCreditoLibro,
+    brutoDebito: brutoDebitoLibro(hoy), brutoCredito: brutoCreditoLibro,
     sinBase: ventas.sinBase(mesesAProyectar),
     supuesto: supuestoDelMes({ cobranzas: LINEAS_DEBITO, compras: LINEAS_CREDITO })
       + ` Arranca del saldo a favor de ${MES[(ultimoMesConDato ?? 1) - 1]} ($${Math.round(libreDisp ?? 0).toLocaleString('es-AR')}).`

@@ -14,9 +14,10 @@ import assert from 'node:assert/strict'
 import { ventasPorMesDeEmision, ventasFacturadasDelMes } from './impuestos-base-libro.mjs'
 
 /** El débito del mes es LA MISMA definición con la medida `iva`: no hay una función aparte. */
-const debitoFacturadoDelMes = (anio, m) => ventasFacturadasDelMes(anio, m, 'iva')
+const HOY = '2026-09-04'
+const debitoFacturadoDelMes = (anio, m) => ventasFacturadasDelMes(anio, m, 'iva', { hoy: HOY })
 const ivaDeclaradoPorMesDeEmision = (filas) => Object.fromEntries(
-  Object.entries(ventasPorMesDeEmision(filas)).map(([k, v]) => [k, v.iva]))
+  Object.entries(ventasPorMesDeEmision(filas, HOY)).map(([k, v]) => [k, v.iva]))
 
 const SEP26 = 46266 // 01/09/2026
 // Índices reales de `Cobranzas!A5:P`: 1 = Categoría · 10 = IVA · 15 = «Fecha de Factura».
