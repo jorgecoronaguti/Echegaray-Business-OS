@@ -20,6 +20,8 @@
 import type { ComponentType } from 'react'
 import { SolapaHoras } from './SolapaHoras'
 import { SolapaCosto } from './costo'
+import { SolapaPagos } from './pagos'
+import { SolapaCierre } from './cierre'
 
 export type ClaveDeSolapa = 'horas' | 'pagos' | 'costo' | 'convenios' | 'cierre' | 'recibos'
 
@@ -50,10 +52,11 @@ export const SOLAPA_POR_DEFECTO: ClaveDeSolapa = 'horas'
 // pantalla 4; quien la haga reemplaza ese componente por el suyo.
 export const SOLAPAS: SolapaDeLiquidacion[] = [
   { clave: 'horas', titulo: 'Horas', Componente: SolapaHoras },
-  { clave: 'pagos', titulo: 'Pagos', Componente: null },
+  { clave: 'pagos', titulo: 'Pagos', Componente: SolapaPagos as unknown as ComponentType<PropsDeSolapa> },
   { clave: 'costo', titulo: 'Costo a la obra', Componente: SolapaCosto },
   { clave: 'convenios', titulo: 'Convenios', Componente: null },
-  { clave: 'cierre', titulo: 'Cierre', Componente: null },
+  // La ruta ya cortó con notFound() a quien no liquida: llegar acá es poder cerrar.
+  { clave: 'cierre', titulo: 'Cierre', Componente: ((p: PropsDeSolapa) => SolapaCierre({ ...p, puedeCerrar: true })) as unknown as ComponentType<PropsDeSolapa> },
   { clave: 'recibos', titulo: 'Recibos', Componente: null },
 ]
 

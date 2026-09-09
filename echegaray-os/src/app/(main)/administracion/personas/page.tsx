@@ -228,6 +228,7 @@ function armarPulso(
   }
 }
 
+
 export default async function PersonalPage({ searchParams }: { searchParams: Promise<Busqueda> }) {
   const sp = await searchParams
   const filtro = (FILTROS.find((f) => f.valor === sp.f)?.valor ?? 'plantel') as FiltroPersonal
