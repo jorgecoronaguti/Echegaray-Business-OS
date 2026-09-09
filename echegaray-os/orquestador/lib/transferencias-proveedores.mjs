@@ -70,7 +70,10 @@ const MARCAS = [
 export function extraerComprobante(texto) {
   const t = aplanar(texto)
   const num = /n[uú]mero de comprobante\s*:?\s*(\d{4,})/i.exec(t)
-  const imp = /importe\s*:?\s*\$?\s*([\d.]+,\d{2})/i.exec(t)
+  // UN SOLO DECIMAL TAMBIÉN ES UN IMPORTE. Medido: `Comprobante_16301130.pdf` (02/09/2026) dice
+  // «Importe $ 14.675,5» —el banco no rellena el centavo cero— y exigir dos decimales descartaba en
+  // silencio un comprobante legítimo. Un descarte silencioso es peor que un error: no se ve.
+  const imp = /importe\s*:?\s*\$?\s*([\d.]+,\d{1,2})/i.exec(t)
   const fec = /fecha de ejecuci[oó]n\s*:?\s*(\d{2}[/-]\d{2}[/-]\d{4})/i.exec(t)
   const cbu = /\bCBU\s*:?\s*(\d{22})\b/i.exec(t)
   const nom = /nombre o raz[oó]n social\s*:?\s*(.+?)\s+(?:CBU|CUIT|Alias)\b/i.exec(t)
@@ -140,9 +143,20 @@ export function resolverProveedor(datos, { padron = [], pagos = [] } = {}) {
   }
 }
 
-/** La ruta del objeto en el bucket. `<uid>/<proveedor|sin-proveedor>/<message>-<attachment>.<ext>`
- *  El uid es parte de la cerradura del bucket (policy de storage), no orden. */
-export function rutaObjeto({ uid, proveedorId, messageId, attachmentId, extension = 'pdf' }) {
-  const corto = String(attachmentId ?? '').replace(/[^A-Za-z0-9]/g, '').slice(-24)
+/**
+ * LA RUTA DEL OBJETO: `<uid>/<proveedor|sin-proveedor>/<mail>-<nº de comprobante>.<ext>`
+ *
+ * El uid adelante es parte de la cerradura del bucket (policy de storage), no orden.
+ *
+ * ═══ EL `attachmentId` DE GMAIL NO SIRVE COMO IDENTIDAD, Y SE MIDIÓ ═══
+ *
+ * La primera versión ponía el `attachmentId` en la ruta. Dos corridas seguidas del importador
+ * dejaron OCHO objetos para CUATRO comprobantes: Gmail devuelve un `attachmentId` distinto para el
+ * mismo adjunto en cada lectura del mensaje. Lo estable es el mail y el NÚMERO DEL COMPROBANTE
+ * —que es lo que identifica el papel—, así que la ruta se arma con eso y la segunda corrida
+ * sobreescribe el mismo objeto en vez de crear otro.
+ */
+export function rutaObjeto({ uid, proveedorId, messageId, identificador, extension = 'pdf' }) {
+  const corto = String(identificador ?? 'sin-numero').replace(/[^A-Za-z0-9]/g, '').slice(0, 32)
   return `${uid}/${proveedorId ?? 'sin-proveedor'}/${messageId}-${corto}.${extension}`
 }

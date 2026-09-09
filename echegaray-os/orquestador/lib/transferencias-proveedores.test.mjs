@@ -20,6 +20,19 @@ const COBRO = SIN_TITULO
   .replace('CUIT o CUIL 30-71096504-4', 'CUIT o CUIL 30-71630464-3')
   .replace('CUIT 30-71630464-3 Cuenta de débito', 'CUIT 30-71096504-4 Cuenta de débito')
 
+// LITERAL de `Comprobante_16301130.pdf` (02/09/2026): el banco escribió «14.675,5», con UN decimal.
+// Exigir dos descartaba este comprobante sin decir nada. Si alguien vuelve a poner `\d{2}`, esto
+// se pone rojo.
+const UN_DECIMAL = `02-09-2026 08:56 Importe $ 14.675,5 Fecha de ejecución 02/09/2026 Plazo de acreditación 24h Concepto Varios Información adicional autos CP7937816 Número de comprobante 04168228 Nombre o razón social DATA 2000 SA C AGUERO CRISTIAN DOMINGO CBU 0450009402800048169079 CUIT o CUIL 30-99907064-3 Tipo de cuenta Caja de ahorro Entidad financiera BANCO DE SAN JUAN S.A. Nombre o razón social ECHEGARAY CONSTRUCCIONES SAS CUIT 30-71630464-3 Cuenta de débito CC en pesos 179-091383/6 Banco Santander Argentina S.A | CUIT 30-50000845-4`
+
+test('un importe con UN solo decimal es un importe: no se descarta el comprobante', () => {
+  const r = clasificarTexto(UN_DECIMAL)
+  assert.equal(r.es, true, r.motivo)
+  assert.equal(r.datos.importe, 14675.5)
+  assert.equal(r.datos.numero, '04168228')
+  assert.equal(r.datos.cuitDestino, '30999070643')
+})
+
 test('normalizarCuit acepta con y sin guiones, y rechaza lo que no tiene 11 dígitos', () => {
   assert.equal(normalizarCuit('20-37924019-5'), '20379240195')
   assert.equal(normalizarCuit('20379240195'), '20379240195')
@@ -126,11 +139,18 @@ test('un CUIT repetido en el padrón no elige ninguno', () => {
 })
 
 test('la ruta del objeto lleva el uid adelante y el proveedor después; sin proveedor, su carpeta', () => {
-  const con = rutaObjeto({ uid: 'u1', proveedorId: 'p1', messageId: 'm1', attachmentId: 'ANGjdJ_x-9', extension: 'pdf' })
-  assert.equal(con, 'u1/p1/m1-ANGjdJx9.pdf')
-  const sin = rutaObjeto({ uid: 'u1', proveedorId: null, messageId: 'm1', attachmentId: 'ANGjdJ_x-9' })
-  assert.equal(sin, 'u1/sin-proveedor/m1-ANGjdJx9.pdf')
-  // La ruta es la identidad del objeto (unique en la tabla): el mismo adjunto del mismo mail da la
-  // misma ruta y por eso una segunda corrida no duplica.
-  assert.equal(con, rutaObjeto({ uid: 'u1', proveedorId: 'p1', messageId: 'm1', attachmentId: 'ANGjdJ_x-9' }))
+  const con = rutaObjeto({ uid: 'u1', proveedorId: 'p1', messageId: 'm1', identificador: '87690673', extension: 'pdf' })
+  assert.equal(con, 'u1/p1/m1-87690673.pdf')
+  const sin = rutaObjeto({ uid: 'u1', proveedorId: null, messageId: 'm1', identificador: '87690673' })
+  assert.equal(sin, 'u1/sin-proveedor/m1-87690673.pdf')
+})
+
+test('la ruta NO depende del attachmentId de Gmail, que cambia entre lecturas', () => {
+  // MEDIDO: dos corridas seguidas dejaron 8 objetos para 4 comprobantes porque Gmail devolvió un
+  // `attachmentId` distinto en cada lectura del mismo mail. La ruta se arma con el número del
+  // comprobante, que es lo que identifica el papel, y por eso la segunda corrida sobreescribe.
+  const a = rutaObjeto({ uid: 'u1', proveedorId: 'p1', messageId: 'm1', identificador: '87690673' })
+  const b = rutaObjeto({ uid: 'u1', proveedorId: 'p1', messageId: 'm1', identificador: '87690673' })
+  assert.equal(a, b)
+  assert.notEqual(a, rutaObjeto({ uid: 'u1', proveedorId: 'p1', messageId: 'm1', identificador: '04074824' }))
 })
