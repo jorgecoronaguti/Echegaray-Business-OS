@@ -3,7 +3,12 @@ import { createClient } from '@/lib/supabase/server'
 import { quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
 import { totalesDeCuadro } from '../../../services/liquidacionQuincena'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
-import { compararValorHora, estadoDeCierre, type LineaParaCerrar } from '../../../services/liquidacionCierre'
+import {
+  avisoDeReapertura, estadoDeCierre, filasDeQuincenaCerrada,
+  type AvisoDeReapertura, type FilaDeQuincenaCerrada, type LineaParaCerrar, type SelloDeLinea,
+} from '../../../services/liquidacionCierre'
+import { getValorHoraVigente } from '../../../services/costoLecturas'
+import { ReabrirQuincena, type VentanaDeReapertura } from './ReabrirQuincena'
 import { pesos } from '../BloqueLiquidacion'
 
 // 10 · CERRAR y 11 · CERRADA — la misma solapa, porque son el mismo objeto en dos estados.
@@ -36,15 +41,34 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
 }) {
   const quincena = quincenaDe(quincenaPedida && /^\d{4}-\d{2}-\d{2}$/.test(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const [{ cuadros, estados }, faltante] = await Promise.all([
+  const [{ cuadros, estados }, faltante, sellado, { porPersona: vigenteHoy }] = await Promise.all([
     getLiquidacionDeLaQuincena(supabase, quincena),
     leerFaltante(supabase, quincena),
+    leerSellado(supabase, quincena),
+    // LA TARIFA DE HOY, NO LA DE LA QUINCENA. La columna «$/h hoy» compara contra el legajo ACTUAL:
+    // pedirla al último día de la quincena la haría comparar el sello contra sí mismo.
+    getValorHoraVigente(supabase, hoy),
   ])
   const lineas: LineaParaCerrar[] = cuadros.flatMap((c) => c.lineas)
   const estado = estadoDeCierre(lineas)
   const cerrada = Object.values(estados).some((e) => e.estado === 'cerrada')
   const cerradaEn = Object.values(estados).find((e) => e.cerradaEn)?.cerradaEn ?? null
   const totalHoras = cuadros.map((c) => totalesDeCuadro(c.lineas)).reduce((a, t) => a + t.horas, 0)
+
+  // LAS FILAS DE LA PANTALLA 11 SON LAS SELLADAS, NO LAS RECALCULADAS. Lo que se pagó vive en
+  // `liquidacion_linea`; recalcularlo al dibujar haría que cambiar una tarifa hoy reescribiera la
+  // quincena de agosto, que es exactamente lo que cerrar existe para impedir.
+  const filasCerradas = filasDeQuincenaCerrada(lineas, sellado, vigenteHoy)
+  const aviso = avisoDeReapertura(
+    filasCerradas.map((f) => ({
+      personaId: f.personaId, nombre: f.nombre, horas: f.horas,
+      valorHoraSellado: f.valorHoraSellado, cobraSellado: f.cobra,
+    })),
+    (id) => vigenteHoy.get(id) ?? null,
+  )
+  const ventanas: VentanaDeReapertura[] = Object.entries(estados)
+    .filter(([, e]) => e.estado === 'cerrada')
+    .map(([grupo]) => ({ desde: quincena.desde, hasta: quincena.hasta, grupo }))
 
   return (
     <div data-testid="solapa-cierre">
@@ -64,10 +88,45 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
       <Resumen estado={estado} horas={totalHoras} faltante={faltante} />
 
       {cerrada
-        ? <Cerrada lineas={lineas} puedeCerrar={puedeCerrar} />
+        ? <Cerrada filas={filasCerradas} cerradaEn={cerradaEn} aviso={aviso} ventanas={ventanas} puedeCerrar={puedeCerrar} />
         : <Abierta estado={estado} puedeCerrar={puedeCerrar} />}
     </div>
   )
+}
+
+const num = (v: unknown): number | null => {
+  if (v == null) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * LO QUE QUEDÓ SELLADO EN `liquidacion_linea`.
+ *
+ * Sin esta lectura la pantalla 11 comparaba `l.valorHora` contra `l.valorHora` y decía «igual»
+ * siempre: un control que no puede dar rojo. Y «igual» es la peor de las dos respuestas, porque
+ * afirma que la retribución no se movió cuando nadie la miró.
+ */
+async function leerSellado(
+  supabase: Awaited<ReturnType<typeof createClient>>, q: Quincena,
+): Promise<Map<string, SelloDeLinea>> {
+  const { data } = await supabase.from('liquidacion_quincena')
+    .select('liquidacion_linea(persona_id, horas, valor_hora, cobra, por_banco, en_efectivo, total)')
+    .eq('desde', q.desde).eq('hasta', q.hasta).eq('estado', 'cerrada')
+  const salida = new Map<string, SelloDeLinea>()
+  for (const cab of (data ?? []) as { liquidacion_linea: Record<string, unknown>[] | null }[]) {
+    for (const l of cab.liquidacion_linea ?? []) {
+      salida.set(String(l.persona_id), {
+        horas: num(l.horas),
+        valorHora: num(l.valor_hora),
+        cobra: num(l.cobra),
+        porBanco: num(l.por_banco),
+        enEfectivo: num(l.en_efectivo),
+        total: num(l.total),
+      })
+    }
+  }
+  return salida
 }
 
 /** El faltante que la carga desde JORNALES dejó declarado. `null` = la quincena no se cargó de ahí. */
@@ -181,51 +240,115 @@ function Abierta({ estado, puedeCerrar }: {
   )
 }
 
-/** 11 · CERRADA. Sólo lectura, con «$/h hoy» comparado contra el legajo. */
-function Cerrada({ lineas, puedeCerrar }: { lineas: readonly LineaParaCerrar[]; puedeCerrar: boolean }) {
-  const grilla = '1.6fr repeat(5, minmax(80px, .8fr))'
+/**
+ * 11 · CERRADA. Sólo lectura, con «$/h hoy» comparado contra el legajo ACTUAL.
+ *
+ * Las ocho columnas del mockup (liqhs v2:638): Persona · Horas · $/h sellado · Cobró · Por banco ·
+ * Efectivo · Total · $/h hoy. La última es informativa y no cambia lo pagado.
+ */
+function Cerrada({ filas, cerradaEn, aviso, ventanas, puedeCerrar }: {
+  filas: readonly FilaDeQuincenaCerrada[]
+  cerradaEn: string | null
+  aviso: AvisoDeReapertura
+  ventanas: readonly VentanaDeReapertura[]
+  puedeCerrar: boolean
+}) {
+  const grilla = 'minmax(0, 1fr) 50px 80px 100px 92px 96px 100px 118px'
+  const totales = filas.reduce((a, f) => ({
+    horas: a.horas + (f.horas ?? 0),
+    cobra: a.cobra + (f.cobra ?? 0),
+    porBanco: a.porBanco + (f.porBanco ?? 0),
+    enEfectivo: a.enEfectivo + (f.enEfectivo ?? 0),
+    total: a.total + (f.total ?? 0),
+  }), { horas: 0, cobra: 0, porBanco: 0, enEfectivo: 0, total: 0 })
+
   return (
     <div>
       <div data-testid="cierre-cerrada" style={{
-        border: `1px solid ${V.lineaFuerte}`, borderRadius: 10, background: '#FFFFFF',
+        maxWidth: 1240, border: `1px solid ${V.lineaFuerte}`, borderRadius: 10, background: '#FFFFFF',
+        overflow: 'hidden',
       }}>
         <div style={{
-          display: 'grid', gridTemplateColumns: grilla, gap: 16, padding: '12px 16px 9px',
-          borderBottom: `1px solid ${V.linea}`, alignItems: 'end',
+          padding: '20px 22px 17px', display: 'flex', alignItems: 'center', gap: 16,
+          flexWrap: 'wrap', borderBottom: `1px solid ${V.linea}`,
         }}>
-          {['Persona', '$/h sellado', 'Cobró', 'Por banco', 'Efectivo', '$/h hoy'].map((c, i) => (
-            <span key={c} style={{
-              fontSize: '10.5px', letterSpacing: '.06em', textTransform: 'uppercase',
-              color: V.tenue, textAlign: i === 0 ? 'left' : 'right',
-            }}>{c}</span>
-          ))}
-        </div>
-        {lineas.map((l) => {
-          // El sellado y el vigente son el MISMO número mientras no exista la lectura del legajo
-          // sellado: la comparación dice «igual» sólo cuando de verdad lo es, y «sin dato» si falta.
-          const comparacion = compararValorHora(l.valorHora, l.valorHora)
-          return (
-            <div key={l.personaId} style={{
-              display: 'grid', gridTemplateColumns: grilla, gap: 16, padding: '0 16px',
-              alignItems: 'center', minHeight: 52, borderBottom: `1px solid ${V.lineaFila}`,
-              fontSize: '13px', fontVariantNumeric: 'tabular-nums',
-            }}>
-              <span style={{ color: V.tinta }}>{l.nombre}</span>
-              <span style={{ textAlign: 'right' }}>{l.valorHora == null ? '—' : pesos(l.valorHora)}</span>
-              <span style={{ textAlign: 'right' }}>{l.cobra == null ? '—' : pesos(l.cobra)}</span>
-              <span style={{ textAlign: 'right' }}>{pesos(l.porBanco)}</span>
-              <span style={{ textAlign: 'right' }}>{l.enEfectivo == null ? '—' : pesos(l.enEfectivo)}</span>
-              <span style={{ textAlign: 'right', color: comparacion === 'cambió' ? V.warn : V.apagado }}>
-                {l.valorHora == null ? '—' : `${pesos(l.valorHora)} · ${comparacion}`}
-              </span>
+          <div style={{ fontSize: '14.5px', fontWeight: 600 }}>Lo pagado no se mueve cuando cambia la retribución</div>
+          {cerradaEn && (
+            <div style={{ fontSize: '12px', color: V.apagado }}>
+              cerrada el {cerradaEn.slice(8, 10)}/{cerradaEn.slice(5, 7)}
             </div>
-          )
-        })}
+          )}
+          {/* REABRIR ES DE QUIEN LIQUIDA. Sin el permiso ni siquiera se dibuja el botón: ofrecer una
+              acción que la acción va a rechazar es prometer algo que no se puede cumplir. */}
+          {puedeCerrar && ventanas.length > 0 && (
+            <ReabrirQuincena
+              ventanas={ventanas} cambian={aviso.cambian} total={aviso.total} sinCambios={aviso.sinCambios}
+            />
+          )}
+        </div>
+
+        <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>
+          <div data-testid="encabezado-cerrada" style={{
+            display: 'grid', gridTemplateColumns: grilla, gap: 14, height: 34, alignItems: 'end',
+            paddingBottom: 9, borderBottom: `1px solid ${V.linea}`,
+            fontFamily: "'IBM Plex Mono', monospace", fontSize: '9.5px', letterSpacing: '.04em',
+            color: V.tenue, textTransform: 'uppercase',
+          }}>
+            {['Persona', 'Horas', '$/h sellado', 'Cobró', 'Por banco', 'Efectivo', 'Total', '$/h hoy'].map((c, i) => (
+              <div key={c} style={{ textAlign: i === 0 ? 'left' : 'right' }}>{c}</div>
+            ))}
+          </div>
+
+          {filas.map((f) => {
+            const comparacion = f.comparacion
+            return (
+              <div key={f.personaId} data-testid="fila-cerrada" style={{
+                display: 'grid', gridTemplateColumns: grilla, gap: 14, minHeight: 52,
+                alignItems: 'center', borderBottom: `1px solid ${V.linea}`,
+              }}>
+                <span style={{ color: V.tinta }}>{f.nombre}</span>
+                <span style={derecha}>{f.horas == null ? '—' : f.horas.toLocaleString('es-AR')}</span>
+                <span style={{ ...derecha, fontWeight: 500 }}>{pesos(f.valorHoraSellado)}</span>
+                <span style={derecha}>{pesos(f.cobra)}</span>
+                <span style={derecha}>{pesos(f.porBanco)}</span>
+                <span style={derecha}>{pesos(f.enEfectivo)}</span>
+                <span style={derecha}>{pesos(f.total)}</span>
+                <span data-testid={`hoy-${f.personaId}`} style={{
+                  ...derecha, fontSize: '11.5px',
+                  color: comparacion === 'cambió' ? V.warn : V.apagado,
+                }}>
+                  {/* «SIN DATO» NO ES «IGUAL». Si hoy la persona no tiene tarifa vigente, decir
+                      «igual» afirmaría que la retribución se mantuvo: lo que pasó es que desapareció. */}
+                  {f.valorHoraHoy == null
+                    ? `— · ${comparacion}`
+                    : `${pesos(f.valorHoraHoy)} · ${comparacion}`}
+                </span>
+              </div>
+            )
+          })}
+
+          <div data-testid="total-cerrada" style={{
+            display: 'grid', gridTemplateColumns: grilla, gap: 14, height: 56,
+            alignItems: 'center', borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
+          }}>
+            <span>{filas.length} persona{filas.length === 1 ? '' : 's'}</span>
+            <span style={derecha}>{totales.horas.toLocaleString('es-AR')}</span>
+            <span />
+            <span style={derecha}>{pesos(totales.cobra)}</span>
+            <span style={derecha}>{pesos(totales.porBanco)}</span>
+            <span style={derecha}>{pesos(totales.enEfectivo)}</span>
+            <span style={derecha}>{pesos(totales.total)}</span>
+            <span />
+          </div>
+        </div>
+        <div style={{ height: 20 }} />
       </div>
       <p style={{ fontSize: '11.5px', color: V.apagado, margin: '12px 0 0' }}>
-        «$/h hoy» compara contra el legajo actual: es informativa y no cambia lo pagado.
-        {puedeCerrar && ' Reabrir pide motivo escrito, recalcula con la retribución vigente y avisa la diferencia antes de guardar.'}
+        «$/h hoy» compara el valor sellado contra la tarifa vigente del legajo: es informativa y no
+        cambia lo pagado.
       </p>
     </div>
   )
 }
+
+const derecha = { textAlign: 'right' as const }

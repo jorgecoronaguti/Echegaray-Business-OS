@@ -30,6 +30,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion, type PermisoLiquidacion } from './liquidacionPermiso'
 import { CAMPOS_EDITABLES, COLUMNA_DE, type CampoEditable } from './liquidacionOverrides'
 import { hoyISO } from './diaDeJornada'
+import { validarMotivoDeReapertura } from './liquidacionCierre'
 
 const RUTA = '/administracion/personas'
 
@@ -180,6 +181,65 @@ export async function cerrarQuincena(entrada: unknown): Promise<ResultadoLiquida
     ok: true,
     mensaje: `Quincena cerrada: ${lineas.length} línea(s) congeladas. No se marcó ningún pago.`,
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// REABRIR — R6: motivo escrito, autor y fecha
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La diferencia contra la retribución vigente se le muestra a quien reabre ANTES de llamar acá
+// (`avisoDeReapertura`, núcleo puro). Acá no se recalcula ni se pisa una sola línea: reabrir
+// devuelve la quincena al estado editable y DEJA las cifras selladas como están. Recalcularlas en
+// el mismo movimiento borraría la única foto de lo que se pagó, que es lo que el sello existe para
+// conservar; el recálculo lo hace el siguiente cierre, con las líneas a la vista.
+//
+// EL RASTRO SE ESCRIBE ANTES DE ABRIR. Al revés, una falla entre las dos escrituras dejaría la
+// quincena abierta y sin registro de por qué — que es exactamente el agujero que R6 cierra.
+
+const reaperturaSchema = ventanaSchema.extend({ motivo: z.string().max(600) })
+
+export async function reabrirQuincena(entrada: unknown): Promise<ResultadoLiquidacion> {
+  const parsed = reaperturaSchema.safeParse(entrada)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const { motivo: crudo, ...v } = parsed.data
+
+  const validado = validarMotivoDeReapertura(crudo)
+  if (!validado.ok) return { ok: false, error: validado.error }
+
+  const supabase = await createClient()
+  const permiso = await puedeLiquidar(supabase)
+  if (!permiso.ok) return { ok: false, error: permiso.error }
+
+  const { data: cab, error: errCab } = await supabase.from('liquidacion_quincena')
+    .select('id, estado').eq('desde', v.desde).eq('hasta', v.hasta).eq('grupo', v.grupo).maybeSingle()
+  if (errCab) return { ok: false, error: errCab.message }
+  if (!cab) return { ok: false, error: 'Esa quincena no está cerrada: no hay nada que reabrir.' }
+  if ((cab as { estado: string }).estado !== 'cerrada') {
+    return { ok: false, error: 'Esa quincena ya estaba abierta.' }
+  }
+
+  const { data: perfil } = await getPerfilActual(supabase)
+  const admin = createAdminClient()
+
+  const rastro = await admin.from('liquidacion_reapertura').insert({
+    liquidacion_id: (cab as { id: string }).id,
+    motivo: validado.motivo,
+    autor: perfil?.id ?? null,
+  }).select('id').maybeSingle()
+  if (rastro.error || !rastro.data) {
+    return { ok: false, error: `No pude registrar el motivo${rastro.error ? `: ${rastro.error.message}` : ''}. NO reabrí la quincena.` }
+  }
+
+  const abierta = await admin.from('liquidacion_quincena')
+    .update({ estado: 'abierta', cerrada_en: null })
+    .eq('id', (cab as { id: string }).id).select('id, estado')
+  if (abierta.error) return { ok: false, error: abierta.error.message }
+  if ((abierta.data ?? []).length === 0) {
+    return { ok: false, error: 'Guardé el motivo pero la base no reabrió la quincena. Avisá antes de tocar nada.' }
+  }
+
+  revalidatePath(RUTA)
+  return { ok: true, mensaje: 'Quincena reabierta. Las cifras selladas quedaron como estaban: el próximo cierre las vuelve a calcular.' }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
