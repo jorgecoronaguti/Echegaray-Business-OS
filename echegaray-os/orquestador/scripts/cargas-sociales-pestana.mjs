@@ -41,13 +41,14 @@ import { ALERTA } from '../lib/glifos.mjs'
 // módulo que los consume. Escritos de los dos lados, el día que uno cambie el nombre queda apuntando
 // a la fila de al lado y devuelve un número plausible en vez de un error.
 import { rangosDeCargas, NOMBRES_CARGAS } from '../lib/libro-extractores-cargas.mjs'
+import { PESTAÑA as RAW_UOCRA } from './uocra-raw-pestana.mjs'
 import { aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { ultimaQuincenaCerrada, personasDelBloque } from '../lib/motor-salarial.mjs'
 import { bloqueDelPlantel } from '../lib/jornales-piso-uocra.mjs'
 import { asegurarParametros, ultimoDiaCargado, PESTAÑA as PESTAÑA_JORNALES } from './jornales-pestana.mjs'
 import { baseDeJornales } from '../lib/proyeccion-convenio.mjs'
-import { ANCHO, COL_ORIGEN, SIN_DDJJ, cm, crearGrilla, desdeQueMesSeProyecta } from '../lib/cargas-grilla.mjs'
+import { ANCHO, COL_ORIGEN, crearGrilla, desdeQueMesSeProyecta, ecoDeLaProyeccion } from '../lib/cargas-grilla.mjs'
 import { bloqueDeclarado, bloquePagado, bloqueProyeccion, bloquePlanes } from '../lib/cargas-bloques.mjs'
 import { planesDePago } from '../lib/cargas-planes.mjs'
 import { formatear } from '../lib/cargas-piel.mjs'
@@ -84,8 +85,11 @@ const AVISOS_DEL_DOMINIO = Object.freeze([
 ])
 
 /** NÚCLEO PURO: arma la grilla entera de la pestaña. Devuelve las filas y las marcas que usa el formato. */
-export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
+export function grilla({ periodos, conceptos, ps, C, baseJornales = null, periodosUocra = [] }) {
   const desdeProy = desdeQueMesSeProyecta(periodos)
+  // Cada DDJJ se atrasa por su cuenta —ARCA presenta el F931, UOCRA la boleta— así que cada
+  // proyección tiene su frontera. Con una sola, el mes que una tiene y la otra no quedaba sin fuente.
+  const desdeGrem = desdeQueMesSeProyecta(periodosUocra)
   const G = crearGrilla(AÑO)
 
   // ── TÍTULO Y HERO ──────────────────────────────────────────────────────────────────────────────
@@ -142,13 +146,13 @@ export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
   // ── LOS CUATRO CUADROS ─────────────────────────────────────────────────────────────────────────
   // Cada uno devuelve en qué fila quedaron sus totales: el de abajo los REFERENCIA en vez de
   // recalcular el mismo número por otro camino, que es como aparecen dos verdades en una pestaña.
-  const decl = bloqueDeclarado(G, { anio: AÑO, periodos, conceptos })
+  const decl = bloqueDeclarado(G, { anio: AÑO, periodos, conceptos, periodosUocra })
   // El código 312 es la ART DENTRO de la DDJJ, no un comprobante aparte: el cuadro de lo pagado lo
   // desglosa sin volver a sumarlo. El porqué, con la evidencia, en `bloquePagado`.
   const pag = bloquePagado(G, { anio: AÑO, C, fArtDecl: decl.filaDecl['312'], fDeclTot: decl.fDeclTot })
   const proy = bloqueProyeccion(G, {
     anio: AÑO, desdeProy, filaDecl: decl.filaDecl, filaPag: pag.filaPag, fRem: decl.fRem, fEmp: decl.fEmp,
-    fDeclTot: decl.fDeclTot, baseJornales,
+    fDeclTot: decl.fDeclTot, baseJornales, desdeGrem,
   })
   const planes = bloquePlanes(G, { ps, C })
 
@@ -159,9 +163,8 @@ export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
   // mes»*. El SUM sobre celdas vacías daba literalmente 0 y se leía «declaró cero»; el texto «sin
   // DDJJ» ya no miente pero deja el renglón mudo cuatro meses.
   //
-  // Lo que falta no es un dato declarado —una DDJJ que todavía no venció no existe y no se inventa—:
-  // es que el renglón diga lo que la empresa YA SABE que va a generar. Ese número existe, calculado
-  // en la sección 3 desde los jornales del plantel, y acá se REFERENCIA en vez de recalcularse.
+  // Lo que falta no es un dato declarado —una DDJJ que no venció no existe y no se inventa—: es que
+  // el renglón diga lo que la empresa YA SABE que va a generar, calculado en la sección 3.
   //
   // ═══ SE REFERENCIA EL SUBTOTAL F931, NO EL DEVENGADO TOTAL (09/09/2026) ═══
   //
@@ -171,21 +174,10 @@ export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
   // esta fila ES `CARGAS_MES_F931_DECLARADO`, la serie que el Libro Canónico lee, así que un número
   // con los gremiales adentro habría publicado los gremiales dos veces en el cash flow el día que la
   // celda dejara de ser texto. Con el subtotal F931 la fila es homogénea de enero a diciembre.
-  //
-  // ═══ Y ES UN NÚMERO, NO UNA FRASE — la distinción la hace el FORMATO (09/09/2026) ═══
-  //
-  // Decía «≈ $8.717.159 proy.»: un importe convertido en oración, que no se suma ni se ordena ni se
-  // compara con el de al lado. La proyección se distingue como en cualquier modelo financiero serio,
-  // por la tipografía (gris e itálica, ver `proyectadas`), y el Libro la sigue tratando como
-  // proyección porque reconoce que ese número ES el que la propia pestaña publica en CARGAS_MES_F931
-  // (ver `obligacionF931`). Si no hubiera proyección, la celda vuelve a decir «sin DDJJ»: un cero
-  // sigue sin ser una respuesta posible.
-  const proyectadas = { fila: decl.fDeclTot, meses: [] }
-  for (let m = 1; m <= 12; m++) {
-    if (periodos.includes(`${AÑO}-${String(m).padStart(2, '0')}`)) continue
-    proyectadas.meses.push(m)
-    G.filas[decl.fDeclTot - 1][m] = `=IF(N(${cm(m)}${proy.fSubF931})=0;"${SIN_DDJJ}";${cm(m)}${proy.fSubF931})`
-  }
+  // Los meses sin DDJJ los completa la proyección, en gris y por ECO — la regla vive en `ecoDeLaProyeccion`.
+  const per = (m) => `${AÑO}-${String(m).padStart(2, '0')}`
+  const proyectadas = ecoDeLaProyeccion(G, { fila: decl.fDeclTot, filaProy: proy.fSubF931, declarado: (m) => periodos.includes(per(m)) })
+  const proyectadasGrem = ecoDeLaProyeccion(G, { fila: decl.fGremDecl, filaProy: proy.fSubGremiales, declarado: (m) => periodosUocra.includes(per(m)) })
 
   // ── EL BACKFILL DE «CUOTAS QUE VENCEN» SE FUE CON SU FILA (09/09/2026) ──────────────────────────
   // Copiaba el vector del cuadro 4 dentro del cuadro 3. Que fuera referencia y no número pegado
@@ -225,7 +217,7 @@ export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
     celdasFecha: [{ fila: hProximo, col: 2 }],
     // LOS MESES SIN DDJJ DE LA FILA «Total declarado»: mismo número, otra tipografía. Es lo que
     // reemplaza a la palabra «proy.» adentro del importe.
-    proyectadas: [proyectadas],
+    proyectadas: [proyectadas, proyectadasGrem],
     // Las cuotas de planes son la única RÉPLICA de la pestaña —números escritos, no fórmulas— y en el
     // archivo vivo se leían crudas («473767,08»). Se declaran para que el formato de moneda se les
     // aplique al final, después del barrido.
@@ -259,6 +251,7 @@ export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
     // pestaña se reordena, los nombres se mueven con ella.
     rangos: {
       fF931: proy.fSubF931, fGremiales: proy.fSubGremiales, fFechas: proy.fFechaSalida, fDeclarado: decl.fDeclTot,
+      fGremialesDeclarado: decl.fGremDecl,
       // Los dos que «Impuestos y Financieros» lee desde el 09/09: su cuadro de planes se retiró.
       fPlanes: planes.fCuotasTot, fPlanesSinPagar: planes.fSinPagar,
     },
@@ -271,6 +264,10 @@ async function main() {
   // ── Qué períodos y qué conceptos declaró de verdad la empresa: sale de la réplica de los PDF. ──
   const raw = await google.readSheetValues(ID, `${RAW}!A4:G200`)
   const periodos = [...new Set(raw.map((f) => String(f?.[0] ?? '').trim()).filter((p) => /^\d{4}-\d{2}$/.test(p)))].sort()
+  // ── Los meses con boleta de UOCRA: la OTRA réplica, la que declara los gremiales. Si no está, se
+  // proyecta el año entero (el estado anterior a la réplica) y la corrida lo dice. ────────────────
+  const rawUocra = await google.readSheetValues(ID, `${RAW_UOCRA}!A4:B200`).catch(() => [])
+  const periodosUocra = [...new Set(rawUocra.map((f) => String(f?.[0] ?? '').trim()).filter((p) => /^\d{4}-\d{2}$/.test(p)))].sort()
   const vistos = new Map()
   for (const f of raw) {
     const cod = String(f?.[1] ?? '').trim()
@@ -340,7 +337,10 @@ async function main() {
   else console.log(`  ✓ control de plantel: DDJJ ${dotacion} · planilla ${plantel.personas} (${(div.brecha * 100).toFixed(0)}% de brecha)`)
 
   const ps = await planesDePago(AÑO)
-  console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
+  console.log(`${periodos.length} período(s) F931 · ${periodosUocra.length} boleta(s) UOCRA · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
+  if (!periodosUocra.length) {
+    console.log(`  ⚠ sin ${RAW_UOCRA}: la línea de gremiales del cash flow queda sólo proyectada — corré uocra-raw-pestana.mjs`)
+  }
 
   // `filas` es `let` porque la cola de la pestaña vieja se le agrega abajo, después de leerla.
   // ═══ LA GRILLA VIAJA ENTERA HASTA EL FORMATO — NO SE DESARMA ACÁ (09/09/2026) ═══
@@ -353,7 +353,7 @@ async function main() {
   //
   // Pasando el objeto entero, agregar una declaración nueva no requiere acordarse de nada: la clase
   // de defecto deja de existir en vez de quedar cubierta por un test.
-  const g = grilla({ periodos, conceptos, ps, C, baseJornales })
+  const g = grilla({ periodos, conceptos, ps, C, baseJornales, periodosUocra })
   let { filas } = g
   const { rangos, avisos } = g
   // LOS HALLAZGOS, EN LA CORRIDA Y NO EN LA PESTAÑA: es donde los ve quien puede resolverlos.

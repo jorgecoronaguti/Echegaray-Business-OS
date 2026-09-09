@@ -85,6 +85,14 @@ export const NOMBRES_CARGAS = Object.freeze({
   // Un plan de pago de un F931 es DEUDA PREVISIONAL, así que el cuadro vive en «Cargas Sociales» y
   // «Impuestos y Financieros» lo LEE por estos dos nombres. El día que cambie el criterio, cambia en
   // un lugar y las dos pestañas dicen lo mismo — hoy coinciden por casualidad, no por construcción.
+  // ═══ EL SÉPTIMO: LO DECLARADO POR UOCRA (09/09/2026) ═══
+  //
+  // Es la pareja que a los gremiales les faltaba. Sin ella, el mes que va de la presentación al pago
+  // no tenía fuente en la cadena y el libro caía a la fila PLANA de Compras: sep-26 publicaba
+  // $1.500.000 redondos. La fila la arma «Cargas Sociales» sobre la réplica `_UOCRA_DDJJ_RAW` (Total
+  // determinado + Fondo de Cese devengado) para los meses con boleta presentada, y sobre su propia
+  // proyección para los que todavía no la tienen — igual que el «Total declarado» del F931.
+  gremialesDeclarado: 'CARGAS_MES_GREMIALES_DECLARADO',
   planes: 'CARGAS_MES_PLANES',
   planesSinPagar: 'CARGAS_PLANES_SIN_PAGAR',
 })
@@ -98,28 +106,38 @@ export const NOMBRES_CARGAS = Object.freeze({
  * dato». Las dos mitades del hallazgo eran falsas y por la misma razón: ese auditor sólo ve FÓRMULAS
  * del libro, y esta serie la lee el OS por la API. Cuatro de doce no es un rango que se quedó corto:
  * es el subtotal de la PROYECCIÓN, que existe sólo para los meses sin DDJJ — los otros ocho los
- * aporta `CARGAS_MES_F931_DECLARADO`, y la precedencia de `obligacionF931` elige cuál manda.
+ * aporta `CARGAS_MES_F931_DECLARADO`, y la precedencia de `obligacionDeclarada` elige cuál manda.
  *
  * Verificado en copia el 09/09/2026: declarado 12/12 (ene–ago con la DDJJ real leída de los PDF de
  * Drive, sep–dic con la proyección) + proyección 4/12 ⇒ la línea «Nómina · Cargas sociales» tiene
  * fuente los doce meses y ningún mes tiene las dos contadas.
  *
- * GREMIALES NO TIENE PAREJA, Y ESO SÍ ES UN HUECO: FCL, UOCRA, IERIC y FODECO no están en el F931, así
- * que no hay «declarado» que los cubra. Los meses cerrados entran por Compras cuando están pagados —lo
- * que está bien— pero el mes que va de la presentación al pago cae a la fila PLANA: septiembre-26
- * publicaba $1.500.000 redondos donde la cadena mide ~$1.649.741. Es el mismo defecto que el
- * $6.500.000 tipeado que el dueño denunció el 08/09 para el F931, en el rubro que quedó sin cerrar.
- * Se declara acá para que el auditor lo GRITE en vez de esconderlo abajo de un falso positivo.
+ * GREMIALES YA TIENE SU PAREJA (09/09/2026). FCL, UOCRA, IERIC y FODECO no están en el F931, así que
+ * durante meses no hubo «declarado» que cubriera los meses cerrados: entraban por Compras cuando
+ * estaban pagados —lo que está bien— pero el mes que va de la presentación al pago caía a la fila
+ * PLANA, y septiembre-26 publicaba $1.500.000 redondos donde la cadena mide ~$1.649.741. La fuente
+ * existía y no la leía nadie: la DDJJ nominativa de UOCRA, replicada en `_UOCRA_DDJJ_RAW` desde el
+ * 18/08, declara el Total determinado (cuota sindical y aportes de convenio) y el Fondo de Cese
+ * devengado mes a mes. `CARGAS_MES_GREMIALES_DECLARADO` es esa fila, y la precedencia es la misma
+ * que la del F931.
+ *
+ * LO QUE LA DDJJ DE UOCRA NO DECLARA, Y HAY QUE DECIRLO: IERIC y FODECO no están en ninguna boleta
+ * —son aportes POR TRABAJADOR REGISTRADO que se pagan aparte— así que el declarado de un mes con
+ * boleta viene corto en esos dos conceptos (~$26.000 sobre ~$1,6M, 1,6%). Se prefiere quedarse corto
+ * con dos fuentes reales antes que completar la fila con una estimación y emitirla como COMPROMETIDO:
+ * eso sería presentar una estimación como un hecho. En los meses SIN boleta la fila cae a la
+ * proyección, que sí los tiene, y viaja como PROYECTADO.
  */
 export const SERIES_DE_CARGAS = Object.freeze([
   Object.freeze({ serie: RUBRO_CARGAS, partes: [NOMBRES_CARGAS.declarado, NOMBRES_CARGAS.f931] }),
-  Object.freeze({ serie: RUBRO_GREMIALES, partes: [NOMBRES_CARGAS.gremiales] }),
+  Object.freeze({ serie: RUBRO_GREMIALES, partes: [NOMBRES_CARGAS.gremialesDeclarado, NOMBRES_CARGAS.gremiales] }),
 ])
 
 /** Los nombres a los que el OS entra por la API. Ninguna fórmula del libro los cita: sin esto, el
  *  auditor los llama huérfanos — que es afirmar que nadie los lee mirando sólo la mitad de quienes leen. */
 export const LEIDOS_POR_EL_OS = Object.freeze([
   NOMBRES_CARGAS.fechas, NOMBRES_CARGAS.f931, NOMBRES_CARGAS.gremiales, NOMBRES_CARGAS.declarado,
+  NOMBRES_CARGAS.gremialesDeclarado,
 ])
 
 /**
@@ -143,6 +161,7 @@ export const ROTULOS_CARGAS = Object.freeze({
   gremiales: rotuloTotal('Subtotal gremiales'),
   fechas: 'Sale de la caja el',
   declarado: rotuloTotal('Total declarado'),
+  gremialesDeclarado: rotuloTotal('Total declarado gremiales'),
   planes: rotuloTotal('Total de cuotas del año'),
   planesSinPagar: rotuloTotal('Cuotas sin pagar'),
 })
@@ -179,7 +198,7 @@ export const planDeLaFila = (texto) => PLANES_F931.find((p) => p.patron.test(Str
  * @param {{fF931:number, fGremiales:number, fFechas:number}} g las filas (1-based) de la grilla armada
  * @param {{c0?:number, c1?:number}} cols las columnas de los doce meses (B..M por defecto, 0-based)
  */
-export function rangosDeCargas({ fF931, fGremiales, fFechas, fDeclarado, fPlanes, fPlanesSinPagar }, { c0 = 1, c1 = 12 } = {}) {
+export function rangosDeCargas({ fF931, fGremiales, fFechas, fDeclarado, fGremialesDeclarado, fPlanes, fPlanesSinPagar }, { c0 = 1, c1 = 12 } = {}) {
   // LAS SEIS FILAS SON OBLIGATORIAS. Una fila `undefined` pasa `verificarRangos` sin ruido (ninguna
   // comparación numérica falla) y publicaría un nombre ciego: el libro no leería el declarado y
   // volvería, en silencio, al $6.500.000 tipeado. Se rompe acá, con el nombre de lo que falta.
@@ -187,7 +206,7 @@ export function rangosDeCargas({ fF931, fGremiales, fFechas, fDeclarado, fPlanes
   // Las dos de planes entraron el 09/09 con la unificación contra «Impuestos y Financieros»: esa
   // pestaña dejó de tener su propio cuadro de planes y lee éstas. Si quedaran opcionales, un día que
   // el bloque 4 no se arme «Impuestos» mostraría $0 de deuda previsional sin un solo error.
-  const filas = { fFechas, fF931, fGremiales, fDeclarado, fPlanes, fPlanesSinPagar }
+  const filas = { fFechas, fF931, fGremiales, fDeclarado, fGremialesDeclarado, fPlanes, fPlanesSinPagar }
   const faltan = Object.entries(filas).filter(([, f]) => !(Number.isInteger(f) && f > 0)).map(([k]) => k)
   if (faltan.length) throw new Error(`rangosDeCargas: falta la fila de ${faltan.join(', ')} (fDeclarado es el «Total declarado»)`)
   return [
@@ -195,6 +214,7 @@ export function rangosDeCargas({ fF931, fGremiales, fFechas, fDeclarado, fPlanes
     rangoFila(NOMBRES_CARGAS.f931, { fila: fF931, c0, c1, rotulo: ROTULOS_CARGAS.f931 }),
     rangoFila(NOMBRES_CARGAS.gremiales, { fila: fGremiales, c0, c1, rotulo: ROTULOS_CARGAS.gremiales }),
     rangoFila(NOMBRES_CARGAS.declarado, { fila: fDeclarado, c0, c1, rotulo: ROTULOS_CARGAS.declarado }),
+    rangoFila(NOMBRES_CARGAS.gremialesDeclarado, { fila: fGremialesDeclarado, c0, c1, rotulo: ROTULOS_CARGAS.gremialesDeclarado }),
     rangoFila(NOMBRES_CARGAS.planes, { fila: fPlanes, c0, c1, rotulo: ROTULOS_CARGAS.planes }),
     // «Cuotas sin pagar» es un SALDO, no una serie: una sola celda, la B. Publicarlo sobre B..M lo
     // dejaría con doce celdas vacías al lado y un SUM del nombre daría el número correcto por
@@ -217,7 +237,11 @@ export const serie = (v) => {
 export const mesDeSerial = (serial) => isoDeSerial(serial).slice(0, 7)
 
 /**
- * NÚCLEO PURO: qué obligación de F931 le toca a un mes devengado — la declarada o la proyectada.
+ * NÚCLEO PURO: qué obligación le toca a un mes devengado — la declarada o la proyectada.
+ *
+ * SIRVE A LOS DOS RUBROS. Nació para el F931 y desde el 09/09 también decide los gremiales: la
+ * precedencia es la misma —lo presentado le gana a lo proyectado— y escribirla dos veces habría
+ * dejado dos definiciones de «cuál manda» que se separan el día que una se corrige sola.
  *
  * ═══ LA PRECEDENCIA DENTRO DE LA CADENA (08/09/2026) ═══
  *
@@ -245,19 +269,23 @@ export const mesDeSerial = (serial) => isoDeSerial(serial).slice(0, 7)
  *
  * @returns {{importe:number, estado:string, fila:string}|null} `null` = este mes no emite F931
  */
-function obligacionF931({ declarado, proyectado, devengado, mesesFinanciados, aviso }) {
+function obligacionDeclarada({ declarado, proyectado, devengado, mesesFinanciados = new Set(), aviso = () => {}, que = 'F931' }) {
   const decl = num(declarado)
   const proyNum = num(proyectado)
   const esEco = decl !== null && proyNum !== null && Math.abs(decl - proyNum) < 0.005
+  const mes = Number(devengado.slice(5, 7))
   if (decl && !esEco) {
+    // Sólo el F931 tiene planes de pago: los gremiales no se financian en ARCA y llegan con el
+    // conjunto vacío. Se deja la condición y no un `if (que === 'F931')` porque lo que decide es el
+    // HECHO —que ese período esté financiado—, no de qué rubro se trate.
     if (mesesFinanciados.has(devengado)) {
-      aviso(`libro-extractores-cargas: el F931 de ${devengado} está declarado (${decl}) y FINANCIADO en un plan — sus cuotas entran por Compras, no se emite.`)
+      aviso(`libro-extractores-cargas: el ${que} de ${devengado} está declarado (${decl}) y FINANCIADO en un plan — sus cuotas entran por Compras, no se emite.`)
       return null
     }
     // A dos decimales: el SUM de la DDJJ llega como 8331697.6899999995 y el libro publica pesos con centavos.
-    return { importe: Math.round(decl * 100) / 100, estado: 'COMPROMETIDO', fila: `F931 · declarado ${Number(devengado.slice(5, 7))}` }
+    return { importe: Math.round(decl * 100) / 100, estado: 'COMPROMETIDO', fila: `${que} · declarado ${mes}` }
   }
-  return proyNum ? { importe: proyNum, estado: 'PROYECTADO', fila: `F931 · devengado ${Number(devengado.slice(5, 7))}` } : null
+  return proyNum ? { importe: proyNum, estado: 'PROYECTADO', fila: `${que} · devengado ${mes}` } : null
 }
 
 /**
@@ -267,24 +295,25 @@ function obligacionF931({ declarado, proyectado, devengado, mesesFinanciados, av
  * El F931 y los gremiales viajan SEPARADOS porque son dos líneas del cash flow y dos rubros de la
  * taxonomía única — juntarlos acá obligaría a repartirlos después, que es donde se inventa.
  *
- * El F931 tiene DOS fuentes en la pestaña y una precedencia (ver `obligacionF931`): lo DECLARADO en
- * la DDJJ para los meses ya presentados, la PROYECCIÓN de la cadena para los que no. Los gremiales
- * no tienen DDJJ: sólo proyección.
+ * LOS DOS RUBROS TIENEN DOS FUENTES Y UNA PRECEDENCIA (ver `obligacionDeclarada`): lo DECLARADO para
+ * los meses ya presentados —la DDJJ de ARCA para el F931, la boleta de UOCRA para los gremiales— y la
+ * PROYECCIÓN de la cadena para los que no. Hasta el 09/09 los gremiales tenían sólo proyección, y por
+ * eso el mes entre la presentación y el pago caía a la fila plana de Compras.
  *
- * @param {{fechas:Array, f931:Array, gremiales:Array, declarado?:Array}} rangos lo leído de los rangos con nombre
+ * @param {{fechas:Array, f931:Array, gremiales:Array, declarado?:Array, gremialesDeclarado?:Array}} rangos lo leído de los rangos con nombre
  * @param {number|null} corte serial del corte: un vencimiento ya pasado y sin pagar es VENCIDO
  * @param {{mesesPagados?:Set<string>, mesesFinanciados?:Set<string>, aviso?:(m:string)=>void}} opciones
  *        `mesesPagados` son claves `YYYY-MM·rubro` del mes de CAJA; `mesesFinanciados`, los períodos
  *        DEVENGADOS (`YYYY-MM`) que un plan de pago financia — ver `PLANES_F931`.
  * @returns {Array} movimientos
  */
-export function deCargasSociales({ fechas, f931, gremiales, declarado } = {}, corte = null,
+export function deCargasSociales({ fechas, f931, gremiales, declarado, gremialesDeclarado } = {}, corte = null,
   { mesesPagados = new Set(), mesesFinanciados = new Set(), aviso = () => {} } = {}) {
   const F = serie(fechas)
   const D = serie(declarado)
   const bloques = [
-    { importes: serie(f931), rubro: RUBRO_CARGAS, que: 'F931' },
-    { importes: serie(gremiales), rubro: RUBRO_GREMIALES, que: 'gremiales' },
+    { importes: serie(f931), declarado: D, rubro: RUBRO_CARGAS, que: 'F931' },
+    { importes: serie(gremiales), declarado: serie(gremialesDeclarado), rubro: RUBRO_GREMIALES, que: 'gremiales' },
   ]
   const out = []
   for (let i = 0; i < F.length; i++) {
@@ -306,9 +335,11 @@ export function deCargasSociales({ fechas, f931, gremiales, declarado } = {}, co
         aviso(`libro-extractores-cargas: ${mes} · ${b.que} ya tiene el pago cargado en Compras — la cadena no lo emite.`)
         continue
       }
-      const o = b.que === 'F931'
-        ? obligacionF931({ declarado: D[i], proyectado: b.importes[i], devengado, mesesFinanciados, aviso })
-        : (num(b.importes[i]) ? { importe: num(b.importes[i]), estado: 'PROYECTADO', fila: `gremiales · devengado ${i + 1}` } : null)
+      const o = obligacionDeclarada({
+        declarado: b.declarado[i], proyectado: b.importes[i], devengado, aviso, que: b.que,
+        // Los planes de pago son de ARCA: un mes de gremiales nunca está «financiado».
+        mesesFinanciados: b.que === 'F931' ? mesesFinanciados : new Set(),
+      })
       if (!o) continue
       out.push(movimiento({
         fecha,

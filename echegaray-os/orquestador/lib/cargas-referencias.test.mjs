@@ -199,9 +199,51 @@ test('cada fila declarada al FORMATO es la que su declaración dice ser', () => 
   assert.deepEqual(G.cantidades.map(rotulo), ['Empleados en nómina', 'Dotación proyectada'])
   assert.deepEqual(G.ratios.map(rotulo), ['Remuneración declarada ÷ jornales netos'])
   assert.deepEqual(G.controles.map(rotulo), ['⇒ Diferencia'])
-  assert.deepEqual(G.proyectadas.map((p) => rotulo(p.fila)), [ROTULOS_CARGAS.declarado])
+  // DOS filas proyectadas desde el 09/09: el «Total declarado» del F931 y el de gremiales. Las dos
+  // se dibujan en gris e itálica en los meses sin DDJJ — la distinción entre lo presentado y lo
+  // proyectado la hace el formato, no una palabra adentro del importe.
+  assert.deepEqual(G.proyectadas.map((p) => rotulo(p.fila)).sort(),
+    [ROTULOS_CARGAS.declarado, ROTULOS_CARGAS.gremialesDeclarado].sort())
   assert.deepEqual(G.celdasFecha.map((c) => rotulo(c.fila)), ['⇒ Próximo vencimiento'])
   for (const [a, b] of G.moneda) for (let r = a; r <= b; r++) {
     assert.match(rotulo(r), /Plan F931|Deuda previsional/, `la fila ${r} («${rotulo(r)}») no es una cuota de plan`)
   }
+})
+
+// ═══ LOS GREMIALES TIENEN SU DECLARADO, Y SU PROYECCIÓN EMPIEZA ANTES (09/09/2026) ═══
+
+const UOCRA_HASTA_JULIO = PERIODOS.slice(0, 7)
+
+test('la pestaña publica CARGAS_MES_GREMIALES_DECLARADO y su fila NO mezcla el F931', () => {
+  const g = grilla({ periodos: PERIODOS, conceptos: CONCEPTOS, ps: PS, C, periodosUocra: UOCRA_HASTA_JULIO })
+  const cel = (f, m) => String(g.filas[f - 1]?.[m] ?? '')
+  assert.equal(String(g.filas[g.rangos.fGremialesDeclarado - 1][0]), ROTULOS_CARGAS.gremialesDeclarado)
+  // Un mes CON boleta suma las dos filas de UOCRA que están arriba, no el total del F931.
+  assert.match(cel(g.rangos.fGremialesDeclarado, 1), /^=SUM\(B\d+:B\d+\)$/)
+  assert.notEqual(cel(g.rangos.fGremialesDeclarado, 1), cel(g.rangos.fDeclarado, 1), 'no es la celda del F931')
+  // Un mes SIN boleta es el ECO del subtotal proyectado de GREMIALES, nunca el del F931.
+  const dic = cel(g.rangos.fGremialesDeclarado, 12)
+  assert.ok(dic.includes(`M${g.rangos.fGremiales}`), 'el eco apunta al subtotal de gremiales')
+  assert.ok(!dic.includes(`M${g.rangos.fF931}`), 'el eco de gremiales no puede apuntar al subtotal del F931')
+  // Y LOS DOCE MESES TIENEN FUENTE: es lo que el auditor de rangos audita como serie completa.
+  for (let m = 1; m <= 12; m++) {
+    assert.ok(cel(g.rangos.fGremialesDeclarado, m) !== VACIO, `el mes ${m} quedó mudo en el declarado`)
+  }
+})
+
+test('la proyección de gremiales cubre el mes que la boleta de UOCRA todavía no declara', () => {
+  // El caso real del 09/09: F931 presentado hasta AGOSTO, boleta de UOCRA hasta JULIO. Sin esto,
+  // agosto no tenía NI declarado NI proyección y su salida de caja (10/09) caía a la fila plana de
+  // Compras — los $1.500.000 redondos que el cash flow publicaba en sep-26.
+  const g = grilla({ periodos: PERIODOS, conceptos: CONCEPTOS, ps: PS, C, periodosUocra: UOCRA_HASTA_JULIO })
+  const cel = (f, m) => String(g.filas[f - 1]?.[m] ?? '')
+  const AGO = 8
+  assert.match(cel(g.rangos.fGremiales, AGO), /^=SUM\(/, 'agosto tiene subtotal de gremiales proyectado')
+  assert.equal(cel(g.rangos.fF931, AGO), VACIO, 'agosto NO se proyecta en el F931: ya tiene DDJJ presentada')
+  // Y la base de agosto es el HECHO declarado, no una estimación de jornales.
+  const fRemProy = g.filas.findIndex((f) => /^Remuneración proyectada$/.test(String(f[0] ?? ''))) + 1
+  assert.match(cel(fRemProy, AGO), /^=N\(I\$\d+\)$/)
+  // Con la boleta al día que el F931, la proyección de gremiales vuelve a empezar donde la del F931.
+  const alDia = grilla({ periodos: PERIODOS, conceptos: CONCEPTOS, ps: PS, C, periodosUocra: PERIODOS })
+  assert.equal(String(alDia.filas[alDia.rangos.fGremiales - 1][AGO] ?? ''), VACIO)
 })
