@@ -270,9 +270,14 @@ test('los dos ⇒ de Estructura tienen TODOS sus insumos amparados por un bloque
   const controles = g.filas
     .map((f, i) => ({ fila: i + 1, rotulo: String(f[0] ?? ''), formula: String(f[1] ?? '') }))
     .filter((x) => x.rotulo.startsWith('⇒') && x.formula.startsWith('='))
-  assert.equal(controles.length, 2, 'Estructura publica dos controles: la diferencia y la cobertura')
+  // Tres desde el 09/09/2026: la diferencia, la cobertura y «⇒ Filas sin comprobante en ARCA», que
+  // reemplazó al veredicto en prosa del bloque compartido (lib/control-arca-bloque.mjs).
+  assert.equal(controles.length, 3, 'Estructura publica tres controles: la diferencia, la cobertura y las filas sin comprobante')
   for (const c of controles) {
-    const refs = [...c.formula.matchAll(/\$?[A-Z]{1,2}\$?(\d+)/g)].map((m) => Number(m[1]))
+    // Sólo las referencias a ESTA pestaña necesitan amparo: una celda de `_CRUCE_ARCA` (precedida
+    // por `!`) la escribe otro generador y la huella de acá no la puede declarar.
+    const refs = [...c.formula.matchAll(/(?<![!$A-Z])\$?[A-Z]{1,2}\$?(\d+)/g)].map((m) => Number(m[1]))
+    if (c.rotulo.startsWith('⇒ Filas sin comprobante')) { assert.equal(refs.length, 0, 'ese control sólo lee la réplica'); continue }
     assert.ok(refs.length, `${c.rotulo} no referencia ninguna celda`)
     for (const r of refs) {
       // LA ÚNICA EXCEPCIÓN es la fila de totales del propio cuadro de datos: no es parte del bloque
