@@ -1,0 +1,23 @@
+[Unit]
+# LAS ÓRDENES DEL CLIENTE, DE LA CASILLA A LA FICHA.
+#
+# Nivel D con efecto INTERNO: lee Gmail (sólo lectura, nunca manda ni borra) y escribe en el bucket
+# privado y en `public.cliente_orden`. NO toca el Sheet, no llama a ningún modelo y no manda nada
+# hacia afuera — por eso no necesita aprobación, a diferencia de `portal-mails`.
+Description=Echegaray OS - Órdenes de compra y de pago de los clientes desde Gmail
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/orquestador/scripts/gmail-ordenes-clientes.mjs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/gmail-ordenes-clientes.mjs --aplicar
+# La corrida completa mide ~90 s con 15 mensajes: baja cada adjunto y le lee la capa de texto. El
+# techo es generoso porque el costo de que lo maten a mitad es dejar objetos huérfanos en el bucket.
+TimeoutStartSec=600
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gmail-ordenes

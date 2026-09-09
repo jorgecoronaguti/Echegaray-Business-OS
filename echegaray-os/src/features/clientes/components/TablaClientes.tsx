@@ -26,6 +26,39 @@ import { pesos, porcentajeCanon } from '@/shared/components/canon/formato'
 import { IconoCliente, IconoObra } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import type { ClienteEnCartera } from '@/features/administracion/services/homeCartera'
+import { rotuloChip, type OrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
+
+// ── LOS CHIPS DE ÓRDENES ────────────────────────────────────────────────────────────────────────
+//
+// «OC ·3» al lado del nombre de la obra: las órdenes de compra y de pago que el cliente mandó por
+// mail y el OS bajó a `cliente_orden`. Versalita apagada y SIN fondo de color, como el resto de los
+// adornos de esta fila: un chip con fondo compite con el filo ámbar de «esto bloquea», que es lo
+// único de esta pantalla que tiene derecho a gritar.
+//
+// NO SON UN ENLACE. La fila entera ya es un `<Link>` a la obra y un `<a>` adentro de otro `<a>` es
+// HTML inválido: React lo renderiza igual y el navegador lo desarma, dejando la fila con zonas que
+// navegan a cualquier lado. El detalle vive en la ficha de la obra; acá el chip informa cuántas hay.
+function Chips({ compra, pago }: { compra: number; pago: number }) {
+  const rotulos = [rotuloChip('OC', compra), rotuloChip('OP', pago)].filter((r) => r !== null)
+  if (!rotulos.length) return null
+  return (
+    <>
+      {rotulos.map((r) => (
+        <span
+          key={r}
+          data-testid="chip-orden"
+          className={ADORNO_ANCHO}
+          style={{
+            fontSize: '10.5px', letterSpacing: '0.06em', textTransform: 'uppercase',
+            color: V.apagado, flexShrink: 0, whiteSpace: 'nowrap',
+          }}
+        >
+          {r}
+        </span>
+      ))}
+    </>
+  )
+}
 
 /** `25v2:154`. Literales porque Tailwind no compila una clase armada en runtime. */
 const COLS
@@ -51,7 +84,7 @@ const ADORNO_ANCHO = 'max-[1023px]:hidden'
 const TONO = { divisorObra: '#F3F2EE', pista: '#EDECE8', textoObra: '#3A3A38' } as const
 
 export function TablaClientes({
-  clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, limpiarHref, vacio,
+  clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, ordenes, limpiarHref, vacio,
 }: {
   clientes: ClienteEnCartera[]
   seleccionado?: string
@@ -61,6 +94,8 @@ export function TablaClientes({
   veEconomia: boolean
   /** `true` = la lectura de obras falló. Ninguna fila puede decir «ninguna en ejecución». */
   obrasNoLeidas: boolean
+  /** obra_id → cuántas OC y cuántas OP le cuelgan. Vacío = ninguna, o la lectura falló (`ordenes.fallo`). */
+  ordenes: OrdenesDeLaCartera
   limpiarHref: string
   /** Qué se escribe cuando el recorte no deja a nadie. */
   vacio: string
@@ -105,6 +140,9 @@ export function TablaClientes({
                 <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta }}>
                   {c.nombre}
                 </span>
+                {/* LO QUE NO SE PUDO ATRIBUIR A UNA OBRA cuelga del CLIENTE y se ve acá. Esconderlo
+                    hasta saber la obra sería perderlo: son las órdenes que alguien tiene que asignar. */}
+                <Chips {...(ordenes.sinObraPorCliente.get(c.cliente_id) ?? { compra: 0, pago: 0 })} />
                 {aviso && (
                   <span
                     title={c.aviso ?? aviso}
@@ -148,6 +186,7 @@ export function TablaClientes({
                     <IconoObra className="h-[13px] w-[13px]" />
                   </span>
                   <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra }}>{o.nombre}</span>
+                  <Chips {...(ordenes.porObra.get(o.obra_id) ?? { compra: 0, pago: 0 })} />
                   {/* BARRA SÓLO SI EL NÚMERO ES UNA FRACCIÓN 0–100. `null` no es cero: una obra sin
                       avance sincronizado no avanzó cero por ciento — no se sabe, y una barra vacía
                       dice que sí. */}
