@@ -1177,6 +1177,32 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
   // pestañas apuntándole— y el generador la reescribía entera en cada corrida, así que era superficie
   // de escritura sobre el Sheet real sin nadie que leyera el resultado.
   //
+  // ═══ LO QUE ESTA PESTAÑA NO PUEDE DECIR — Y POR QUÉ NO SE DIBUJA ═══
+  //
+  // Estos seis renglones se publicaban al pie. El 05/09/2026 el dueño decidió que se van: se le
+  // planteó que sus dos instrucciones chocaban acá —«minimalismo extremo, sin aclaraciones ni
+  // explicaciones de nada» contra el principio de cierre, que dice que la limitación de una cifra
+  // que decide plata no se saca de su vista— y eligió el minimalismo, sin excepción.
+  //
+  // NO SE PIERDEN: viven acá y siguen siendo verdad, aunque el cuadro que las motivó («Plantel») ya
+  // no exista. Quien mantenga este generador tiene que saber que:
+  //
+  //   1. Es SÓLO el plantel activo. Los desvinculados salieron por pedido del dueño; su devengado
+  //      histórico vive en la planilla de jornales.
+  //   2. Los acuerdos particulares (premios, condiciones fuera de convenio) no están en la planilla
+  //      y no se inventan.
+  //   3. Del legajo se mira QUÉ archivos hay, no qué dicen: el CUIL, la obra social y la familia
+  //      siguen adentro de los PDF.
+  //   4. Las cargas sociales no se abren por persona: la planilla las tiene por total.
+  //   5. El fondo de cese se calcula sobre el jornal de la planilla. Si los aportes se depositaron
+  //      sobre la mitad registrada, el fondo real es la mitad de lo que dice esa columna — y desde
+  //      acá no se puede verificar.
+  //   6. «Activo» es aparecer en la última quincena cargada. Una licencia larga se lee como baja:
+  //      la planilla no las distingue.
+  //
+  // La 5 es la que más pesa: puede duplicar o partir al medio un pasivo laboral real. Y sigue
+  // vigente aunque el cuadro se haya ido, porque el cálculo sigue vivo en desvinculacion-22250.
+  //
   // Se retira el CÓDIGO acá y la PESTAÑA con `scripts/pestana-retirar.mjs Plantel --aplicar`, que
   // exporta el PDF de respaldo antes de borrarla. Lo que ese cuadro calculaba no se pierde: el costo
   // de desvincular sigue viviendo en `lib/desvinculacion-22250.mjs` y en `lib/desvinculacion-plantel.mjs`
