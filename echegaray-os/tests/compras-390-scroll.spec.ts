@@ -11,10 +11,14 @@ import { ADMIN } from './util/identidades'
 // entera. Al deslizar para ver Estado, Forma de pago o Importe se iban de pantalla el header, la
 // navegación y los chips: la fila que se estaba leyendo quedaba sin dueño y sin salida.
 //
-// Los tres asertos de abajo son el defecto al revés, y son tres porque hay tres formas de "arreglar"
-// esto mal: tapar el desborde con `overflow: hidden` (pasaría el primero y no el segundo — el dato
-// quedaría cortado sin barra que lo delate), dejar la cinta sin contenido ancho (idem), o poner el
-// scroll sin fijar la identidad de la fila (pasaría los dos primeros y no el tercero).
+// Los asertos de abajo son el defecto al revés, y son varios porque hay varias formas de "arreglar"
+// esto mal: tapar el desborde con `overflow: hidden` (el dato quedaría cortado sin barra que lo
+// delate), o poner el scroll sin fijar la identidad de la fila.
+//
+// ACTUALIZADO EL 08/09 A LA TARDE: hasta ese día NINGUNA variante de ancho del repositorio llegaba
+// al CSS emitido, así que a 390px la fila traía sus nueve columnas y la cinta SIEMPRE desbordaba.
+// Con los cortes vivos la fila queda en dos columnas y puede entrar entera: exigir desborde sería
+// exigir el defecto. Lo que se exige ahora es el corte, y que lo que sobre se pueda desplazar.
 //
 // Es de LECTURA: no escribe en la base ni en el Sheet.
 
@@ -40,15 +44,35 @@ test.describe('Compras en el teléfono', () => {
       `la página se desplaza de costado (${pagina.doc}px de documento y ${pagina.body} de body en una pantalla de ${pagina.win}px)`,
     ).toBeLessThanOrEqual(pagina.win)
 
-    // 2 · Y NO ES QUE EL DATO SE PERDIÓ: la cinta tiene más ancho adentro del que muestra.
-    const cinta = page.getByTestId('cinta-compras')
-    const medida = await cinta.evaluate((el) => ({ dentro: el.scrollWidth, visible: el.clientWidth }))
+    // 2 · EL CORTE POR ANCHO LLEGÓ AL NAVEGADOR: a 390px la fila dibuja DOS pistas, no nueve.
+    // Este aserto reemplaza al de «la cinta desborda» del 08/09: mientras las variantes de ancho
+    // estuvieron apagadas en el build, la fila traía sus nueve columnas y el desborde era la prueba
+    // del defecto, no del arreglo. Lo que hay que exigir es el corte; el desborde pasó a ser una
+    // consecuencia que puede o no darse.
+    const pistas = await page.getByTestId('compra-proveedor').first()
+      // `closest('[role="row"]')` y no `parentElement`: entre la celda y la fila hay un `<Link>`
+      // con `display: contents`, que no tiene grilla propia y devolvería una sola pista siempre.
+      .evaluate((el) => getComputedStyle(el.closest('[role="row"]')!).gridTemplateColumns.split(' ').length)
     expect(
-      medida.dentro,
-      `la cinta no tiene contenido que desplazar (${medida.dentro} adentro, ${medida.visible} a la vista): el dato se está recortando, no desplazando`,
-    ).toBeGreaterThan(medida.visible)
+      pistas,
+      `a 390px la fila dibuja ${pistas} columnas: el corte por ancho no llegó al CSS servido (ver cortes-por-ancho-llegan-al-css.test.ts)`,
+    ).toBe(2)
 
-    // 3 · AL FINAL DEL RECORRIDO LA FILA SIGUE TENIENDO DUEÑO: Proveedor queda a la vista.
+    // 3 · Y EL DATO NO SE RECORTA: si algo sobra del ancho visible, la cinta lo desplaza.
+    const cinta = page.getByTestId('cinta-compras')
+    const medida = await cinta.evaluate((el) => ({
+      dentro: el.scrollWidth,
+      visible: el.clientWidth,
+      desborde: getComputedStyle(el).overflowX,
+    }))
+    if (medida.dentro > medida.visible) {
+      expect(
+        medida.desborde,
+        `sobran ${medida.dentro - medida.visible}px adentro de la cinta y no se pueden desplazar: el dato se está recortando`,
+      ).toMatch(/auto|scroll/)
+    }
+
+    // 4 · AL FINAL DEL RECORRIDO LA FILA SIGUE TENIENDO DUEÑO: Proveedor queda a la vista.
     await cinta.evaluate((el) => { el.scrollLeft = el.scrollWidth })
     await page.waitForTimeout(200)
     const proveedor = page.getByTestId('compra-proveedor').first()
