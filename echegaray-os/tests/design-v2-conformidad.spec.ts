@@ -31,6 +31,9 @@ const PANTALLAS: { nombre: string; url: string; movil?: boolean }[] = [
   { nombre: 'obra-operacion', url: '/obras/le-comedor?vista=operacion' },
   { nombre: 'obra-documentos', url: '/obras/le-comedor?vista=documentos' },
   { nombre: 'clientes-cartera', url: '/clientes' },
+  // `/administracion` REDIRIGE a `/clientes` desde el 09/09/2026 (una sola pantalla de la sección).
+  // Se deja en la lista a propósito: mide que el aterrizaje de todos los roles llegue a una pantalla
+  // que cumple el handoff, que es lo que se rompería si el redirect cayera en un error.
   { nombre: 'administracion-entrada', url: '/administracion' },
   { nombre: 'admin-personas', url: '/administracion/personas' },
   { nombre: 'admin-cuadrillas', url: '/administracion/personas/cuadrillas' },

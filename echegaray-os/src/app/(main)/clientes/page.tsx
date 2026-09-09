@@ -1,4 +1,16 @@
-// 25 · CLIENTES v2 — el patrón de sección aplicado a la cartera.
+// 25 · CLIENTES — LA ÚNICA PANTALLA DE LA SECCIÓN (09/09/2026, orden del dueño).
+//
+// «Hay mezcla de pantalla con información; dejá, en lo que respecta a módulo Administración sección
+// Clientes, UNA pantalla que contenga la info de las dos.» Eran dos: ésta y la entrada
+// `/administracion`, que dibujaba `CarteraHome` con las MISMAS filas y otra verdad —$156.174.253
+// contratado de Messina acá se leía «sin contrato»—. `/administracion` ahora redirige acá y
+// `CarteraHome` se eliminó.
+//
+// LA DISCREPANCIA ERA DE FUENTE, no de formato: la entrada le pasaba `economia` a `armarCartera`
+// (`obra_economia_cartera` = la pestaña OBRAS del Flujo de Caja) y esta pantalla no, así que caía a
+// `obra_panel.monto_contratado`, el campo del formulario que nadie carga. Ahora la lee una sola vez
+// y la pasa siempre. Y «sin contrato» dejó de ser la palabra para un hueco de precio: es un
+// documento con rol `contrato` en la ficha, que es otro concepto y tiene su propia lectura.
 //
 // ═══ EL ORDEN DE LA PANTALLA ES EL ARGUMENTO ═══
 //
@@ -37,15 +49,19 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
 import { getClientes, getObrasPorCliente } from '@/features/clientes/services/clientesService'
-import { esVistaCartera, recortarCartera, separarArchivados } from '@/features/clientes/services/cartera'
-import { getOrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
+import { esVistaCartera, separarArchivados } from '@/features/clientes/services/cartera'
+import { getOrdenesDe, getOrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
+import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
+import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
 import { PanelCliente } from '@/features/clientes/components/PanelCliente'
 import { TablaClientes } from '@/features/clientes/components/TablaClientes'
 import {
-  armarCartera, getCertificadosDeLaCartera, getObrasDeLaCartera, getUltimoParte,
+  armarCartera, getCertificadosDeLaCartera, getContratosDeLaCartera, getObrasDeLaCartera,
+  getUltimoParte, hoyEnLaEmpresa,
 } from '@/features/administracion/services/homeCartera'
+import { pesos } from '@/shared/components/canon/formato'
 import { Aviso } from '@/shared/components/ds'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { FormAccion } from '@/shared/components/ui'
@@ -60,12 +76,12 @@ const RUTA = '/clientes'
 
 /** Los dos iconos que esta sección mezcla: un cliente incompleto y una obra sin contrato. */
 
-type Query = { archivados?: string; nuevo?: string; vista?: string; q?: string; c?: string }
+type Query = { archivados?: string; nuevo?: string; vista?: string; q?: string; c?: string; ordenes?: string }
 
 function armarHref(base: Query, cambios: Partial<Query> = {}): string {
   const v = { ...base, ...cambios }
   const p = new URLSearchParams()
-  for (const k of ['archivados', 'nuevo', 'vista', 'q', 'c'] as const) {
+  for (const k of ['archivados', 'nuevo', 'vista', 'q', 'c', 'ordenes'] as const) {
     if (v[k]) p.set(k, v[k] as string)
   }
   const s = p.toString()
@@ -78,7 +94,8 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const vista = esVistaCartera(sp.vista) ? sp.vista : 'todo'
 
   const supabase = await createClient()
-  const [lectura, perfil, obras, partes, certificados, todasLasObras, ordenes] = await Promise.all([
+  const [lectura, perfil, obras, partes, certificados, todasLasObras, ordenes, economia, contratos]
+    = await Promise.all([
     getClientes(supabase),
     getPerfilActual(supabase),
     getObrasDeLaCartera(supabase),
@@ -91,6 +108,12 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
     // por obra sería una cascada de decenas. La RLS de `cliente_orden` ya recorta por rol —el jefe
     // de obra sólo ve la suya—, así que acá no se vuelve a filtrar.
     getOrdenesDeLaCartera(supabase),
+    // LO QUE OBRAS PUBLICA POR OBRA: contratado, costo MO, materiales y margen. Es la fuente del
+    // dinero de esta tabla y la única — el campo del formulario de la obra queda de respaldo.
+    getEconomiaDeObras(supabase),
+    // QUIÉN TIENE EL CONTRATO CARGADO. Es un papel (`cliente_documento.rol = 'contrato'`), no un
+    // monto: por eso es una lectura aparte y no se deduce de que haya precio.
+    getContratosDeLaCartera(supabase),
   ])
 
   const rol = perfil.data?.rol ?? null
@@ -112,11 +135,42 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
 
   const { activos, archivados: guardados } = separarArchivados(lectura.data ?? [])
   const base = conArchivados ? [...activos, ...guardados] : activos
-  const cartera = armarCartera({ clientes: base, obras, partes, certificados })
-  const porVista = recortarCartera(base, vista)
+  const cartera = armarCartera({ clientes: base, obras, partes, certificados, economia, contratos })
+  // ═══ EL RECORTE SALE DE LA MISMA FILA QUE SE DIBUJA ═══
+  //
+  // `recortarCartera` decidía «Datos faltantes» con `cliente_panel.contratado === null`, que es la
+  // suma del campo del formulario: por eso Messina entraba en «datos faltantes» al mismo tiempo que
+  // la tabla le mostraba $156M. Ahora el corte es `faltaUnDato` de la fila —CUIT, teléfono,
+  // contrato cargado—, el mismo booleano que enciende el filo ámbar y dibuja los chips.
+  const enElRecorte = (c: (typeof cartera)[number]) =>
+    vista === 'todo' ? true : vista === 'activos' ? c.enCurso.length > 0 : c.faltaUnDato
   const visibles = cartera
-    .filter((c) => porVista.some((x) => x.cliente_id === c.cliente_id))
+    .filter(enElRecorte)
     .filter((c) => contieneEnAlguno([c.nombre, razonDe(base, c.cliente_id)], sp.q ?? ''))
+  const obrasEnCurso = visibles.reduce((a, c) => a + c.enCurso.length, 0)
+  const conMonto = visibles.filter((c) => c.contratado !== null)
+  const contratadoTotal = conMonto.length
+    ? conMonto.reduce((a, c) => a + (c.contratado ?? 0), 0)
+    : null
+
+  // ═══ EL PANEL DE ÓRDENES (`?ordenes=<obra_id>` o `?ordenes=cliente:<id>`) ═══
+  //
+  // Se resuelve DESDE LA CARTERA que la página ya trajo: el cliente y el nombre no se vuelven a
+  // consultar, y una clave que no corresponda a ninguna fila visible no abre nada — así la URL
+  // tipeada a mano no puede pedir el detalle de una obra que esta sesión no ve.
+  const pedido = sp.ordenes ?? null
+  const dueno = pedido?.startsWith('cliente:')
+    ? cartera.find((c) => c.cliente_id === pedido.slice('cliente:'.length))
+    : cartera.find((c) => c.enCurso.some((o) => o.obra_id === pedido))
+  const obraPedida = pedido?.startsWith('cliente:') ? null : pedido
+  const ordenesDelPanel = dueno
+    ? await getOrdenesDe(supabase, { clienteId: dueno.cliente_id, obraId: obraPedida })
+    : null
+  const tituloPanel = !dueno
+    ? ''
+    : obraPedida
+      ? (dueno.enCurso.find((o) => o.obra_id === obraPedida)?.nombre ?? dueno.nombre)
+      : `${dueno.nombre} · sin obra atribuida`
 
   const abierta = sp.nuevo === '1' && puedeEditar
   const seleccionado = sp.c ? base.find((c) => c.cliente_id === sp.c) ?? null : null
@@ -143,7 +197,19 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
         <CabeceraSeccion
           testid="vistas-clientes"
           espacioPanel={hayPanel}
-          vistas={[{ clave: 'clientes', titulo: 'Clientes', cuenta: base.length, activa: true, href: armarHref({}) }]}
+          vistas={[{
+            clave: 'clientes', titulo: 'Clientes', cuenta: base.length, activa: true, href: armarHref({}),
+            // EL RESUMEN CUENTA LO QUE SE VE. Un total de la cartera entera al lado de tres filas
+            // filtradas es un número que no cuadra con nada de lo que hay en pantalla.
+            subtitulo: [
+              obras === null
+                ? 'no pude leer las obras'
+                : `${obrasEnCurso} ${obrasEnCurso === 1 ? 'obra' : 'obras'} en ejecución`,
+              veEconomia
+                ? (contratadoTotal === null ? 'sin precios en OBRAS' : `${pesos(contratadoTotal)} contratado`)
+                : null,
+            ].filter(Boolean).join(' · '),
+          }]}
           buscador={{
             accion: RUTA,
             q: sp.q,
@@ -181,9 +247,9 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                     clave: 'sin-datos', etiqueta: 'Datos faltantes',
                     href: armarHref(sp, { vista: 'sin-datos', c: undefined }),
                     activo: vista === 'sin-datos',
-                    // LA POBLACIÓN DEL CORTE, no la de la página. Es lo que la banda de señales
-                    // decía en tres renglones y ahora dice el recorte que lo aísla, en un número.
-                    cuenta: recortarCartera(base, 'sin-datos').length,
+                    // LA POBLACIÓN DEL CORTE, no la de la página, y contada sobre las MISMAS filas
+                    // que la tabla dibuja: si saliera de otra cuenta diría 4 con 3 filas abajo.
+                    cuenta: cartera.filter((c) => c.faltaUnDato).length,
                   },
                 ]}
               />
@@ -211,6 +277,8 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                   return slug ? `/clientes/${slug}` : armarHref(sp, { c: id, nuevo: undefined })
                 }}
                 veEconomia={veEconomia}
+                hoy={hoyEnLaEmpresa()}
+                hrefOrdenes={(clave) => armarHref(sp, { ordenes: clave, c: undefined })}
                 obrasNoLeidas={obras === null}
                 limpiarHref={armarHref(sp, { q: undefined, vista: undefined, c: undefined })}
                 vacio={sp.q ? 'Ningún cliente se llama así.' : 'Ningún cliente entra en este recorte.'}
@@ -230,6 +298,15 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 tener varias obras. Esto no es un embudo comercial — no hay leads ni etapa de venta.
               </NotaBloque>
             </div>
+
+            {dueno && (
+              <PanelOrdenes
+                titulo={tituloPanel}
+                ordenes={ordenesDelPanel}
+                veEconomia={veEconomia}
+                cerrarHref={armarHref(sp, { ordenes: undefined })}
+              />
+            )}
 
             {seleccionado && (
               <PanelCliente
