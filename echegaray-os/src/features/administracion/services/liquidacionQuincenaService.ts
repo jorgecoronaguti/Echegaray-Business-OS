@@ -23,7 +23,16 @@ import {
   type HorasPorPersona, type PersonaDeLiquidacion,
 } from './liquidacionCuadros.ts'
 import { horasDeQuincena, type PresenciaDeQuincena, type RegistroDeQuincena } from './liquidacionQuincena.ts'
+import {
+  aplicarOverrides, camposGuardables, sinOverrides,
+  type CampoEditable, type LineaConOverrides, type OverridesDeLinea,
+} from './liquidacionOverrides.ts'
 import type { Quincena } from './quincena.ts'
+
+/** Un cuadro con sus líneas ya pisadas por lo que el dueño escribió a mano. */
+export interface CuadroConOverrides extends Omit<CuadroDeLiquidacion, 'lineas'> {
+  lineas: LineaConOverrides[]
+}
 
 export interface EstadoDeLaQuincena {
   id: string | null
@@ -32,7 +41,14 @@ export interface EstadoDeLaQuincena {
 }
 
 export interface LiquidacionDeLaQuincena {
-  cuadros: CuadroDeLiquidacion[]
+  cuadros: CuadroConOverrides[]
+  /**
+   * QUÉ CELDAS SE PUEDEN EDITAR HOY. Sale de las columnas que la base REALMENTE tiene, no de una
+   * lista escrita a mano: mientras `20260909T1740` no esté aplicada, las seis celdas sin columna
+   * `*_manual` se dibujan de sólo lectura en vez de guardar en una columna que no puede decir
+   * «vacío». El día que se aplique, se encienden solas y sin tocar código.
+   */
+  camposEditables: CampoEditable[]
   estados: Record<string, EstadoDeLaQuincena>
   /** Cada fuente que no se pudo leer, con su mensaje. Vacío = se leyó todo. */
   errores: { que: string; error: string }[]
@@ -73,9 +89,7 @@ export async function getLiquidacionDeLaQuincena(
       supabase.from('nomina_recibo_neto').select('cuil, periodo, neto, fecha_pago'),
       supabase.from('nomina_adelanto').select('cuil, fecha, importe, concepto')
         .gte('fecha', q.desde).lte('fecha', q.hasta),
-      supabase.from('liquidacion_quincena')
-        .select('id, grupo, estado, cerrada_en, liquidacion_linea(persona_id, efectivo_redondeado)')
-        .eq('desde', q.desde).eq('hasta', q.hasta),
+      leerCabecerasGuardadas(supabase, q),
     ])
 
   const errores: { que: string; error: string }[] = []
@@ -103,10 +117,10 @@ export async function getLiquidacionDeLaQuincena(
         enLaEmpresa: r.en_la_empresa !== false,
       }))
 
-  const { estados, redondeos } = leerGuardadas(guardadas.data)
+  const { estados, redondeos, overrides } = leerGuardadas(guardadas.data)
+  const camposEditables = camposGuardables(guardadas.columnas)
 
-  return {
-    cuadros: armarCuadros({
+  const cuadros = armarCuadros({
       quincena: q,
       personas,
       tarifas: (tarifas.data ?? []) as FilaTarifa[],
@@ -115,9 +129,58 @@ export async function getLiquidacionDeLaQuincena(
       adelantos: ((adelantos.data ?? []) as FilaAdelanto[])
         .map((a) => ({ ...a, importe: numero(a.importe) })),
       redondeos,
-    }),
+  })
+
+  return {
+    // LA QUINCENA CERRADA NO SE PISA. Sus cifras son la foto del cierre y no admiten override: si
+    // se aplicaran acá, una celda escrita después del cierre cambiaría el registro de lo que ya se
+    // pagó, que es exactamente lo que cerrar existe para impedir.
+    cuadros: cuadros.map((c) => ({
+      ...c,
+      lineas: estados[c.grupo]?.estado === 'cerrada'
+        ? c.lineas.map(sinOverrides)
+        : c.lineas.map((l) => aplicarOverrides(l, overrides.get(l.personaId) ?? {}, c.grupo)),
+    })),
+    camposEditables,
     estados,
     errores,
+  }
+}
+
+/** Las columnas de override, si la migración `20260909T1740` ya se aplicó. */
+const COLUMNAS_MANUALES = [
+  'cobra_manual', 'adelanto_manual', 'ya_transferido_manual',
+  'por_banco_manual', 'en_efectivo_manual', 'total_manual',
+] as const
+
+const COLUMNAS_LINEA = ['persona_id', 'efectivo_redondeado', 'horas'] as const
+
+/**
+ * LAS CABECERAS Y SUS LÍNEAS — preguntando por las columnas de override y aceptando que no estén.
+ *
+ * SE PRUEBA CONTRA LA BASE, NO CONTRA `migrations/`. Un archivo `.sql` commiteado no es una columna
+ * aplicada: el repo ya perdió medio día por dar una migración por vigente. Si la base contesta
+ * 42703 («column does not exist») se relee sin ellas y la pantalla se degrada a sólo lectura en esas
+ * seis celdas, en vez de romperse entera.
+ */
+async function leerCabecerasGuardadas(
+  supabase: SupabaseClient, q: Quincena,
+): Promise<{ data: unknown; error: { code?: string; message: string } | null; columnas: string[] }> {
+  const pedir = (columnas: readonly string[]) => supabase.from('liquidacion_quincena')
+    .select(`id, grupo, estado, cerrada_en, liquidacion_linea(${columnas.join(', ')})`)
+    .eq('desde', q.desde).eq('hasta', q.hasta)
+
+  const conManuales = [...COLUMNAS_LINEA, ...COLUMNAS_MANUALES]
+  const primera = await pedir(conManuales)
+  if (!primera.error) return { data: primera.data, error: null, columnas: [...conManuales] }
+  if (primera.error.code !== '42703' && !/column .* does not exist/i.test(primera.error.message)) {
+    return { data: null, error: primera.error, columnas: [] }
+  }
+  const segunda = await pedir(COLUMNAS_LINEA)
+  return {
+    data: segunda.data,
+    error: segunda.error,
+    columnas: segunda.error ? [] : [...COLUMNAS_LINEA],
   }
 }
 
@@ -140,22 +203,53 @@ function horasPorPersona(
   return porPersona
 }
 
+type LineaGuardada = {
+  persona_id: string
+  efectivo_redondeado: number | string | null
+  horas?: number | string | null
+  cobra_manual?: number | string | null
+  adelanto_manual?: number | string | null
+  ya_transferido_manual?: number | string | null
+  por_banco_manual?: number | string | null
+  en_efectivo_manual?: number | string | null
+  total_manual?: number | string | null
+}
+
 interface CabeceraGuardada {
   id: string
   grupo: string
   estado: string
   cerrada_en: string | null
-  liquidacion_linea: { persona_id: string; efectivo_redondeado: number | string | null }[] | null
+  liquidacion_linea: LineaGuardada[] | null
 }
+
+/** `null`/ausente = no hay override. Un 0 guardado SÍ es un override y tiene que sobrevivir acá. */
+const overrideDe = (v: number | string | null | undefined): number | null => {
+  if (v == null) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+const overridesDeLinea = (l: LineaGuardada): OverridesDeLinea => ({
+  horas: overrideDe(l.horas),
+  cobra: overrideDe(l.cobra_manual),
+  adelanto: overrideDe(l.adelanto_manual),
+  yaTransferido: overrideDe(l.ya_transferido_manual),
+  porBanco: overrideDe(l.por_banco_manual),
+  enEfectivo: overrideDe(l.en_efectivo_manual),
+  total: overrideDe(l.total_manual),
+})
 
 /** El estado de cada cuadro y el redondeo ya escrito. Sin cabecera guardada, la quincena está abierta. */
 function leerGuardadas(data: unknown): {
   estados: Record<string, EstadoDeLaQuincena>
   redondeos: Map<string, number | null>
+  overrides: Map<string, OverridesDeLinea>
 } {
   const filas = (data ?? []) as CabeceraGuardada[]
   const estados: Record<string, EstadoDeLaQuincena> = {}
   const redondeos = new Map<string, number | null>()
+  const overrides = new Map<string, OverridesDeLinea>()
   for (const f of filas) {
     estados[f.grupo] = {
       id: f.id,
@@ -166,7 +260,8 @@ function leerGuardadas(data: unknown): {
       // NULL SE GUARDA COMO NULL. Un cero acá diría «no le doy nada en mano», que es una afirmación
       // que el dueño no hizo.
       redondeos.set(l.persona_id, l.efectivo_redondeado == null ? null : numero(l.efectivo_redondeado))
+      overrides.set(l.persona_id, overridesDeLinea(l))
     }
   }
-  return { estados, redondeos }
+  return { estados, redondeos, overrides }
 }
