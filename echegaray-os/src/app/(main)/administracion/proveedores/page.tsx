@@ -349,8 +349,9 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                     <NotaBloque testid="nota-proveedores">
                       Lo que identifica a un proveedor es el CUIT, no el nombre: «Corralón Progreso»,
                       «CORRALON PROGRESO» y «Corralon Progreso SRL» son tres textos y un proveedor.
-                      Sin CUIT no cruza con ARCA ni con el banco. Lo comprado es histórico, no de los
-                      últimos doce meses.
+                      Sin CUIT no cruza con ARCA ni con el banco. Lo comprado y sus comprobantes son
+                      históricos: cuentan todo lo cargado, no el año en curso — el «Comprado 2026»
+                      del Flujo de Caja cuenta otra ventana y da otro número.
                     </NotaBloque>
                   </>
                 )

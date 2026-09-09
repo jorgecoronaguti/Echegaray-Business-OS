@@ -262,7 +262,7 @@ test('el rotulo que se suelta en angosto no lleva `display` inline', () => {
   }
 })
 
-test('el maestro tiene las CINCO columnas del handoff v4, con su grilla literal', () => {
+test('el maestro tiene las SEIS columnas: las cinco del v4 más el contador que pidió el dueño', () => {
   // ═══ EL CONTRATO CAMBIÓ, Y ÉSTE ES EL VALOR NUEVO ═══
   //
   // Hasta el 05/09/2026 este test exigía CUATRO columnas —PROVEEDOR · CUIT · COMPRADO · COMPROB.—
@@ -277,24 +277,40 @@ test('el maestro tiene las CINCO columnas del handoff v4, con su grilla literal'
   // Que la grilla y los rótulos dejen de tener la MISMA cantidad de pistas. Una columna de más o de
   // menos corre la fila entera respecto de su cabecera, y es el defecto más caro de agregar o sacar
   // una columna: la pantalla sigue dibujándose, con cada dato bajo el rótulo equivocado.
+  //
+  // ═══ LA SEXTA PISTA (09/09/2026) ═══
+  //
+  // El dueño pidió el contador de comprobantes por proveedor. El v4 no lo dibuja —había retirado
+  // «COMPROB.»—, así que acá el pedido del dueño gana sobre el mockup y la grilla se corre a seis
+  // pistas. Lo que NO se negocia es el rótulo: el Sheet cuenta 2026 y esta columna cuenta el
+  // histórico, y sin la ventana escrita al lado los dos números se leen como el mismo.
   const src = codigo('TablaProveedores.tsx')
-  for (const c of ['Proveedor', 'CUIT', 'Tipo', 'Comprado', 'Última compra']) {
+  for (const c of ['Proveedor', 'CUIT', 'Tipo', 'Comprado', 'Comprobantes · histórico', 'Última compra']) {
     assert.ok(src.includes(`>${c}<`), `falta la columna ${c}`)
   }
-  // PAPELES sigue sin fuente y sigue sin dibujarse. «Comprob.» se fue con el v4.
+  // Un «Comprobantes» pelado, sin la ventana, es el defecto que este test existe para atrapar.
+  assert.equal(src.includes('>Comprobantes<'), false, 'el contador perdió la ventana que declara qué cuenta')
+  // PAPELES sigue sin fuente y sigue sin dibujarse. «Comprob.» abreviado se fue con el v4.
   for (const c of ['>Rubro<', '>Papeles<', 'PAPELES', '>Comprob.<']) {
     assert.equal(src.includes(c), false, `volvió una columna sin fuente: ${c}`)
   }
-  // LA GRILLA, CARÁCTER POR CARÁCTER contra el mockup (`Administración v4 · Pantallas.dc.html:152`).
+  // LA GRILLA, CARÁCTER POR CARÁCTER: las cinco medidas del mockup
+  // (`Administración v4 · Pantallas.dc.html:152`) intactas, más los 176px del contador.
   assert.ok(
-    src.includes('grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_minmax(120px,1fr)]'),
-    'la grilla ancha dejó de ser la del handoff v4',
+    src.includes('grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_200px_minmax(120px,1fr)]'),
+    'la grilla ancha dejó de tener las cinco medidas del handoff v4 más el contador',
   )
-  // Cinco pistas declaradas y cinco celdas dibujadas por fila. Se cuentan sobre el bloque de la
+  // Seis pistas declaradas y seis celdas dibujadas por fila. Se cuentan sobre el bloque de la
   // fila, no sobre el archivo, para que un `<span>` del encabezado no infle el número.
   const cuerpo = src.slice(src.indexOf('{proveedores.map('))
-  const celdas = ['IconoProveedor', 'formatearCuit', 'tipo-proveedor', 'pesos(c.total)', 'ultima-compra']
+  const celdas = [
+    'IconoProveedor', 'formatearCuit', 'tipo-proveedor', 'pesos(c.total)',
+    'textoComprobantes(c, comprado !== null)', 'ultima-compra',
+  ]
   for (const c of celdas) assert.ok(cuerpo.includes(c), `la fila perdió la celda ${c}`)
+  // EL CONTADOR NO SE CUENTA EN LA PANTALLA. Un `filas.length` o un `reduce` acá sería la segunda
+  // definición de «cuántos comprobantes tiene X», justo lo que la vista existe para evitar.
+  assert.equal(/comprobantes\s*\+/.test(cuerpo), false, 'la tabla volvió a sumar comprobantes por su cuenta')
 })
 
 test('TIPO no inventa un rubro: sale de la deducción o de una persona, nunca del nombre', () => {
@@ -383,7 +399,11 @@ test('ÚLTIMA COMPRA muestra la fecha real, y nunca la de otra cosa', () => {
 })
 
 test('COMPRADO no promete una ventana de tiempo que el dato no tiene', () => {
-  assert.match(pagina().replace(/\s+/g, ' '), /Lo comprado es histórico, no de los últimos doce meses/)
+  // La nota al pie declara la ventana de las DOS columnas derivadas de la misma vista —el total y
+  // el contador— y nombra el número con el que se puede confundir: el «Comprado 2026» del Sheet.
+  const nota = pagina().replace(/\s+/g, ' ')
+  assert.match(nota, /Lo comprado y sus comprobantes son históricos: cuentan todo lo cargado, no el año en curso/)
+  assert.match(nota, /Comprado 2026/)
   for (const a of ['TablaProveedores.tsx', 'PanelProveedor.tsx']) {
     assert.equal(/12 M\b|últimos 12 meses|12 meses/i.test(codigo(a)), false,
       `${a} rotula lo comprado con una ventana de tiempo inventada`)

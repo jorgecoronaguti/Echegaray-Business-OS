@@ -12,6 +12,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { agruparComprado, coincideProveedor, condicionesDe, resumirCompras, coincideDeuda, coincideRubro, rubrosDe,
+  textoComprobantes,
 } from './proveedoresService.ts'
 import type { NombreResuelto, Proveedor } from '../types/index.ts'
 
@@ -237,4 +238,47 @@ test('el desplegable de rubros no ofrece «sin rubro» ni repite', () => {
     prov({ id: 'd', rubro_deducido: 'Combustible' }),
   ])
   assert.deepEqual(l, ['Combustible', 'Materiales'])
+})
+
+// ═══ EL CONTADOR DE COMPROBANTES DE LA CARTERA (pedido del dueño, 09/09/2026) ═══
+//
+// Los tres estados de la celda, que la columna COMPRADO de al lado ya distinguía y ésta tenía que
+// heredar. El defecto que atrapan es el barato y el que más miente: escribir «0».
+//
+// «0» afirma que ese proveedor tiene cero comprobantes cargados. En esta cartera eso pasa por dos
+// motivos que NO son el mismo trabajo —ningún nombre del Sheet apunta todavía a este proveedor
+// (canonicalización pendiente), o la vista entera no se pudo leer (permiso, RLS, red)— y ninguno de
+// los dos es un dato económico. Un cero al lado de «$ 64.180.000» en la fila de arriba se lee como
+// medido.
+
+test('el contador nunca escribe «0»: cero comprobantes es «—» y no haber leído es «sin leer»', () => {
+  assert.equal(textoComprobantes({ comprobantes: 14, total: 900000, ultima: '2026-09-01' }, true), '14')
+  assert.equal(textoComprobantes({ comprobantes: 0, total: 0, ultima: null }, true), '—',
+    'cero comprobantes se dice como ausencia, nunca como el número 0')
+  assert.equal(textoComprobantes(undefined, true), '—',
+    'un proveedor sin filas en la vista tampoco es «0»: no está en el mapa porque no tiene nada vinculado')
+  assert.equal(textoComprobantes(undefined, false), 'sin leer',
+    'sin la cartera leída la columna no afirma nada — un control que no pudo mirar no dice «no hay»')
+  assert.equal(textoComprobantes({ comprobantes: 190, total: 1, ultima: null }, false), 'sin leer',
+    'la lectura fallida manda sobre cualquier resto en memoria')
+})
+
+test('el contador separa los miles: 1.240 comprobantes no se leen como 1240', () => {
+  // A esta escala (811 comprobantes en 2026 según el Sheet, 940 filas en `costos_obra`) el punto es
+  // la diferencia entre leer una cartera y contar dígitos.
+  assert.equal(textoComprobantes({ comprobantes: 1240, total: 0, ultima: null }, true), '1.240')
+})
+
+test('el número de la columna es EL MISMO que agrupa la cartera, no uno recontado', () => {
+  // El defecto que atrapa: que alguien vuelva a sumar comprobantes en la pantalla. La tabla y la
+  // ficha tienen que decir lo mismo del mismo proveedor, y la única forma es una sola definición.
+  const mapa = agruparComprado([
+    n('CORRALON DEL CENTRO', 12, 500000, 'exacto'),
+    n('CORR CENTRO', 8, 300000, 'resolucion_manual'),
+  ])
+  assert.equal(textoComprobantes(mapa.get('p1'), true), '20')
+  assert.equal(resumirCompras([
+    n('CORRALON DEL CENTRO', 12, 500000, 'exacto'),
+    n('CORR CENTRO', 8, 300000, 'resolucion_manual'),
+  ]).comprobantes, 20, 'la ficha cuenta lo mismo que la fila de la cartera')
 })
