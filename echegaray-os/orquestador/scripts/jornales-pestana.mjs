@@ -137,7 +137,6 @@ import { claveQuincena, formulaProyectadoQuincena } from '../lib/jornales-demand
 import { demandaParaJornales } from '../lib/jornales-demanda-fuente.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
-import { formulaUltimaFechaConImporte, rotuloAlDia } from '../lib/fecha-de-frescura.mjs'
 import { formulaSePagaEl, expresionPagoDelMes, PARAMETROS } from '../lib/jornales-fecha-pago.mjs'
 import {
   NOMBRES_DIRECCION, formulaRetiroMensual, formulaPrimerRetiro, expresionMesBaseRetiro,
@@ -165,14 +164,6 @@ const AÑO = 2026
 // quedarse corta: el auditor de pantalla recorre esa lista y con `cols: 13` no miraba la N durante dos
 // semanas. Un número declarado dos veces se separa sin dar error; atado por el test, no.
 export const ANCHO = 13
-/**
- * El ancho de la columna D, la del ESTADO de cada fila. Va aparte de los 112px del resto porque su
- * contenido es una frase, no un número: el peor caso medido en la pestaña viva es
- * "proyección · ▲ firmado hasta 08/2026" (36 caracteres ⇒ 206px). Con 215 entra el peor caso y sobra
- * lo mínimo — y con el texto entrando, `reparar-textos.mjs` no tiene defecto que arreglar y no le
- * disputa el ancho a este generador.
- */
-const ANCHO_ESTADO = 215
 /**
  * EL ENCABEZADO DEL REGISTRO ES EL CONTRATO — Y LA LETRA DE CADA COLUMNA SALE DE ACÁ, NUNCA A MANO.
  *
@@ -444,15 +435,43 @@ export function grilla({
   // El blanco también respeta la columna del dueño: 13 centinelas + '' (la 14 no es nuestra).
   const blanco = () => push([...Array(ANCHO - 1).fill(VACIO), ''])
 
-  // ── El encabezado de la pestaña ──
+  // ══ EL ENCABEZADO Y EL TITULAR — EL MISMO PATRÓN QUE «Cargas Sociales» (09/09/2026) ══
+  //
+  // El dueño, textual: *«los diseños de todas las pestañas son distintos, tenés que mejorar y
+  // unificar»*. La forma es una sola en todo el libro: fila 1 el título, fila 2 en blanco, y de la 3
+  // a la 5 el TITULAR — dos o tres renglones «⇒ rótulo | cifra» con lo único que decide algo.
+  //
+  // EL SUBTÍTULO SE FUE. Declaraba procedencia y fecha de corte («Obra, oficina y dirección · fuente:
+  // planilla JORNALES … al 08/09»): una línea de prosa arriba de todo, que es lo que el dueño mandó
+  // sacar de esta pestaña. La cobertura de la planilla sigue midiéndose —sale por el log de la
+  // corrida y por `registrarSincronizacion`—, que es donde la lee quien puede cargar los días que
+  // faltan.
   push(['Jornales por quincena'])
-  // EL SUBTÍTULO ENTRA EN UN RENGLÓN. El anterior medía 190 caracteres, se envolvía en una fila de
-  // 21px y se leía la mitad: un subtítulo cortado es peor que ninguno.
-  // LA FECHA DEL SUBTÍTULO SALE DEL REGISTRO, NO DEL RELOJ (03/08). Era `fecha(new Date())`: decía
-  // "al 02/08" porque ese día corrió el script, no porque los jornales llegaran hasta ahí. La
-  // fórmula se resuelve más abajo, cuando se conocen las filas del registro — igual que el resto de
-  // las referencias de esta grilla.
-  const fSubtitulo = push([VACIO])
+  // ═══ LAS FILAS 2 Y 3 SON DEL CONTRATO, NO MÍAS (09/09/2026) ═══
+  //
+  // `podarProsa` —el podador que corre en el camino de escritura de las quince pestañas de pantalla—
+  // impone el encabezado: fila 1 el nombre de la pestaña, fila 2 la línea de procedencia recortada,
+  // fila 3 VACÍA. No es negociable desde acá: es lo que hace que las quince arranquen igual, que es
+  // exactamente lo que el dueño pidió al decir que «los diseños de todas las pestañas son distintos».
+  //
+  // Y ES POR QUÉ EL TITULAR NO PUEDE IR EN LA 3. La primera versión lo puso ahí y el podador vació la
+  // fila entera: «⇒ Próxima quincena» y sus dos cifras desaparecieron de la pestaña sin un error.
+  // Medido sobre la copia del Sheet, no deducido. El titular arranca en la 4.
+  blanco()
+  blanco()
+  // ═══ TRES CIFRAS, Y LAS TRES SALEN DE ESTA PESTAÑA ═══
+  //
+  // «Cuánto hay que pagar, cuándo, y por qué canal» es la pregunta con la que se abre la planilla. El
+  // hero anterior la contestaba CITANDO a «Nómina» —trece fórmulas `INDEX('Nómina'!…)`— y por eso se
+  // retiró: dos pestañas publicando el mismo número es como empiezan las dos verdades, y «Nómina» va
+  // a desaparecer. Estas tres celdas salen de la grilla de abajo, de la misma columna que el Cash
+  // Flow lee por rango con nombre: si el cuadro cambia, el titular cambia con él y no puede
+  // contradecirlo.
+  //
+  // Se resuelven abajo, cuando se conocen las filas de la grilla.
+  const fProxima = push([rotuloTotal('Próxima quincena')])
+  const fBanco = push([rotuloTotal('Por banco')])
+  const fEfectivo = push([rotuloTotal('En efectivo')])
   blanco()
 
   // ══ 1 · EL CALENDARIO DE PAGO ══
@@ -1140,17 +1159,23 @@ export function grilla({
   // frescura tiene que salir de la plata. Es el patrón que la fila 4 ya usa en vivo, con la letra
   // resuelta por rótulo — que es justamente por qué no se escribe la letra: en la pestaña viva el
   // TOTAL es la K y en el layout anterior de este generador era la J. `colDe` contesta la de HOY.
-  const hastaCargado = formulaUltimaFechaConImporte(
-    `$${colDe('Hasta')}$${f0}:$${colDe('Hasta')}$${fLast}`,
-    `$${colDe('Total')}$${f0}:$${colDe('Total')}$${fLast}`,
-  )
-  // LA FILA 2 ES EL ÚNICO LUGAR DONDE LA GRAMÁTICA PIDE PROSA: qué contesta · fuente · fecha de corte.
-  // Decía "Jornales de obra y sueldos de oficina" y desde el 13/08 la pestaña tiene TRES nóminas —
-  // dirección incluida—, así que además de más corto ahora es cierto.
-  filas[fSubtitulo - 1][0] = rotuloAlDia(
-    'Obra, oficina y dirección · fuente: planilla JORNALES y escala UOCRA',
-    hastaCargado,
-  )
+  // ── EL TITULAR: LA PRÓXIMA QUINCENA QUE HAY QUE PAGAR, Y CÓMO SALE ──
+  //
+  // LA FILA SE ELIGE POR SU FECHA DE CAJA, no por su posición: la primera con «Se paga el» de hoy en
+  // adelante y con plata adentro. Las filas de subtotal no tienen fecha de pago, así que el MINIFS
+  // las saltea solo — y por eso el rango puede barrer la grilla entera, lo cerrado y lo proyectado,
+  // sin partirse en dos. El día que una quincena cerrada se pague, el titular pasa a la siguiente sin
+  // que nadie toque nada.
+  const rgFecha = `$${colDe('Se paga el')}$${f0}:$${colDe('Se paga el')}$${pFin}`
+  const porFecha = (rotulo) => `SUMIFS($${colDe(rotulo)}$${f0}:$${colDe(rotulo)}$${pFin};${rgFecha};$B$${fProxima})`
+  filas[fProxima - 1][1] = `=IFERROR(MINIFS(${rgFecha};${rgFecha};">="&TODAY();`
+    + `$${colDe('Total')}$${f0}:$${colDe('Total')}$${pFin};">0");"")`
+  filas[fProxima - 1][2] = `=IF(N($B$${fProxima})=0;"";${porFecha('Total')})`
+  // POR BANCO es lo que se transfiere; EN EFECTIVO es todo lo demás —adelanto más recibo—, que es
+  // exactamente lo que hay que sacar en billetes. Las dos salen de las columnas de la grilla, así que
+  // suman el total de arriba por construcción y no por disciplina.
+  filas[fBanco - 1][2] = `=IF(N($B$${fProxima})=0;"";${porFecha('Banco')})`
+  filas[fEfectivo - 1][2] = `=IF(N($B$${fProxima})=0;"";${porFecha('Adelanto')}+${porFecha('Recibo')})`
   // ═══ LOS TRES CANALES DEJARON DE SER TRES FILAS (09/09/2026) ═══
   //
   // Vivían debajo del registro como «· De lo pagado — por banco / en adelantos / contra recibo», con
@@ -1358,6 +1383,8 @@ export function grilla({
     fMin,
     fTotalProy,
     fTotalReal,
+    // Las tres filas del titular, para que el formato les dé el tipo de lo que son.
+    fProxima, fBanco, fEfectivo,
     f0,
     // LA ÚLTIMA FILA DEL REGISTRO. Se expone para que un test pueda afirmar que los rangos con nombre
     // LLEGAN hasta ella: un rango que no crece con el registro señala a enero para siempre, y lo que
@@ -1392,8 +1419,16 @@ export function claveDeFecha(v) {
     const anio = a.length === 2 ? `20${a}` : a
     return `${anio}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`
   }
-  // Serial de Google (epoch 1899-12-30). Aparece cuando la celda quedó sin formato de fecha.
-  const n = Number(s.replace(',', '.'))
+  // ═══ EL SERIAL, TAMBIÉN CUANDO ESTÁ DIBUJADO COMO PLATA (09/09/2026) ═══
+  //
+  // Medido en la copia del Sheet: la columna «Hasta» de las dos últimas quincenas está dibujada con
+  // formato de MONEDA y la API devuelve «$46.265». Es una fecha —el 31/08/2026— con el formato de
+  // otro layout encima, y es exactamente uno de los defectos que hay que arreglar. Pero el
+  // emparejamiento de las fechas del dueño NO puede depender de que el formato esté bien: si no lo
+  // lee, esas dos quincenas se quedan sin su pago y el generador frena por un defecto de dibujo.
+  // Se limpian el «$» y los puntos de miles, y sólo si lo que queda es un serial creíble.
+  const crudo = s.replace(/[$\s]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')
+  const n = Number(crudo)
   if (Number.isFinite(n) && n > 20000 && n < 80000) {
     const d = new Date(Math.round((n - 25569) * 86400000))
     return d.toISOString().slice(0, 10)
@@ -1427,14 +1462,14 @@ export function claveDeFecha(v) {
  * @param {{fila:number, col:number}} cab la cabecera del registro viejo (`cabeceraDelRegistro`)
  * @param {number[]} [colsClave] columnas donde buscar la fecha de cierre de la fila (B, y si no, A)
  * @returns {{porClave:Map<string,any>, sinClave:{fila:number,valor:any}[],
- *            noEsFecha:{fila:number,valor:any}[], total:number}}
+ *            copias:{fila:number,valor:any}[], noEsFecha:{fila:number,valor:any}[], total:number}}
  */
 export function recuperarPagadoEl(previo, cab, colsClave = [1, 0]) {
   const porClave = new Map()
-  const sinClave = []
+  const huerfanas = []
   const noEsFecha = []
   let total = 0
-  if (!cab) return { porClave, sinClave, noEsFecha, total }
+  if (!cab) return { porClave, sinClave: [], huerfanas, noEsFecha, total }
   for (let i = 0; i < (previo ?? []).length; i++) {
     if (i === cab.fila) continue // el propio encabezado «Pagado el»
     const v = previo[i]?.[cab.col]
@@ -1454,16 +1489,27 @@ export function recuperarPagadoEl(previo, cab, colsClave = [1, 0]) {
     // La clave puede salir de «Hasta» o de «Desde»: un layout viejo pudo tener la fecha de cierre en
     // otra columna, y con las dos se cubre el corrimiento sin adivinar.
     const clave = colsClave.map((c) => claveDeFecha(previo[i]?.[c])).find(Boolean) ?? null
-    if (!clave) { sinClave.push({ fila: i + 1, valor: v }); continue }
+    if (!clave) { huerfanas.push({ fila: i + 1, valor: v }); continue }
     // Una clave repetida con dos fechas distintas es un layout duplicado a medio limpiar: se conserva
     // la PRIMERA (la del registro de arriba) y la otra se declara para que el generador se niegue.
     if (porClave.has(clave) && claveDeFecha(porClave.get(clave)) !== claveDeFecha(v)) {
-      sinClave.push({ fila: i + 1, valor: v })
+      huerfanas.push({ fila: i + 1, valor: v })
       continue
     }
     if (!porClave.has(clave)) porClave.set(clave, v)
   }
-  return { porClave, sinClave, noEsFecha, total }
+  // ═══ UNA HUÉRFANA QUE YA ESTÁ RECUPERADA NO FRENA LA CORRIDA (09/09/2026) ═══
+  //
+  // Medido en la copia: de las cuatro fechas sin quincena, dos eran COPIAS —el mismo «18/05/2026» de
+  // una fila de glosa y el mismo «01/09/2026» en la fila de total— de fechas que sí se recuperan por
+  // su cierre. Frenar por ellas sería negarse a limpiar el desorden que este mismo rediseño existe
+  // para limpiar; y limpiarlas sin mirar sería borrar a ciegas. La regla es simple y no arriesga
+  // nada: si su valor ya está atribuido a una quincena, es una copia y se va. Si no, se declara y el
+  // generador NO escribe — ésa es la fecha que nadie puede reponer.
+  const ya = new Set([...porClave.values()].map((v) => claveDeFecha(v)))
+  const sinClave = huerfanas.filter((x) => !ya.has(claveDeFecha(x.valor)))
+  const copias = huerfanas.filter((x) => ya.has(claveDeFecha(x.valor)))
+  return { porClave, sinClave, copias, noEsFecha, total }
 }
 
 /**
@@ -1761,6 +1807,10 @@ async function main() {
     return
   }
   if (suyas.total) console.log(`  ✋ ${suyas.total} fecha(s) de «Pagado el» recuperadas por quincena: esa columna es TUYA`)
+  if (suyas.copias?.length) {
+    console.log(`  🧹 ${suyas.copias.length} copia(s) de una fecha que ya está en su quincena: se limpian.`)
+    for (const x of suyas.copias.slice(0, 5)) console.log(`     fila ${x.fila}: "${x.valor}"`)
+  }
   if (suyas.noEsFecha.length) {
     console.log(`  🧹 ${suyas.noEsFecha.length} celda(s) de esa columna no son una fecha (residuo de un layout anterior): se limpian.`)
     for (const x of suyas.noEsFecha.slice(0, 5)) console.log(`     fila ${x.fila}: "${String(x.valor).slice(0, 40)}"`)
@@ -2298,26 +2348,17 @@ export function requestsDeFormato(sheetId, filas, g) {
     // DERRAMAR NO ES INVADIR: el texto sólo se extiende sobre celdas VACÍAS. Donde hay un número al
     // lado, se recorta igual que antes. Lo que se elimina es la fila que se parte y se corta sola.
     { repeatCell: { range: rg(0, filas.length, 0, ANCHO), cell: { userEnteredFormat: { wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat.wrapStrategy' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 330 }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: ANCHO }, properties: { pixelSize: 112 }, fields: 'pixelSize' } },
-    // ═══ LA D ES MÁS ANCHA, Y ESTE GENERADOR TIENE QUE DECLARARLO (15/08) ═══
+    // EL MISMO ANCHO QUE «Cargas Sociales» (09/09/2026): la A de 300 px para el concepto y 100 px
+    // parejos para todo lo numérico. Un solo ancho en toda la pestaña, sin excepciones — que es lo
+    // que hace que las dos hermanas se lean como el mismo documento.
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 300 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: ANCHO }, properties: { pixelSize: 100 }, fields: 'pixelSize' } },
+    // ═══ LA D DEJÓ DE SER MÁS ANCHA (09/09/2026) ═══
     //
-    // La D lleva el ESTADO de cada fila, que no es una palabra sino una frase con su fundamento:
-    // "proyección · ▲ firmado hasta 08/2026" son 36 caracteres y en 112px entran 19. Como la E de esas
-    // mismas filas tiene la fecha de pago, no derrama: la mitad de la frase —justamente la parte que
-    // dice hasta dónde llega la paritaria firmada— simplemente no se ve. Cinco filas del cuadro de
-    // oficina, medidas por `auditar-pantalla`.
-    //
-    // POR QUÉ ENSANCHAR Y NO ACORTAR: 36 caracteres piden 206px, que es un ancho normal para una
-    // columna de estado. La regla del archivo es acortar cuando ningún ancho razonable alcanza; acá
-    // alcanza de sobra, y lo que se perdería al acortar es el "hasta cuándo está firmado", que es
-    // exactamente lo que separa un dato de una proyección.
-    //
-    // Y SE DECLARA ACÁ PORQUE ACÁ HAY UN DUEÑO. `reparar-textos.mjs` ensancha por su cuenta toda
-    // columna cuyo texto no entre y no esté gobernada, y corre DESPUÉS de este generador: con la D en
-    // 112 los dos se la disputaban en cada pasada y ganaba el último. Con la D ya ancha el texto entra,
-    // el reparador no encuentra defecto y no la toca — el conflicto se apaga solo en vez de alternar.
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 3, endIndex: 4 }, properties: { pixelSize: ANCHO_ESTADO }, fields: 'pixelSize' } },
+    // Llevaba 215 px porque en el layout viejo la D era la columna «Estado», cuyo contenido es una
+    // frase. Con la grilla unificada la D es «Días»: un entero de dos dígitos en una columna de 215
+    // px, y el resto de la pestaña a 100. Un ancho que sobrevive al cambio de dueño de su columna es
+    // el mismo defecto que un formato que sobrevive: no da error y descuadra la lectura.
   ]
   // TODO RANGO SE ACOTA A LA GRILLA. Un `repeatCell` que pide una fila que la hoja no tiene hace
   // fallar el LOTE ENTERO ("exceeds grid limits"), no sólo esa regla: la corrida se cae después de
@@ -2398,6 +2439,13 @@ export function requestsDeFormato(sheetId, filas, g) {
       fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
     },
   })
+  // ═══ EL TITULAR: SU FECHA ES FECHA Y SUS CIFRAS SON PLATA (09/09/2026) ═══
+  //
+  // Tres celdas en dos columnas distintas, arriba de todo y con el barrido de moneda encima: sin esta
+  // regla la fecha de la próxima quincena se dibuja «$46.280» —el serial con signo de peso—, que es
+  // el defecto que el dueño señaló tres veces en esta misma pestaña.
+  fmt(g.fProxima - 1, g.fProxima, 1, 2, { type: 'DATE', pattern: 'dd/mm/yyyy' })
+  fmt(g.fProxima - 1, g.fEfectivo, 2, 3, moneda)
   const ENTERO = { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' }
   // EL "Ajuste escalón" DE LOS DOS BLOQUES MENSUALES, CON CUATRO DECIMALES Y EL MISMO PATRÓN. Iba con
   // "0.00" —heredado del ajuste por inflación del layout viejo— y un tramo de paritaria de +1,9% se
