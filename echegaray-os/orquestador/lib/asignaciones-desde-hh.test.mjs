@@ -261,3 +261,18 @@ test('obra cerrada: la asignación vieja es historia — no se borra ni se vuelv
   assert.deepEqual(r.protegidas.map((x) => x.id), ['v1'])
   assert.deepEqual(r.insertar, [])
 })
+
+test('obra cerrada: el día corta el tramo — no funde los dos tramos vecinos en uno', () => {
+  // Sin esto, quitar el día de la obra cerrada dejaba pegados el tramo de antes y el de después:
+  // «estuvo en obra-a del 31/08 al 07/09» cuando el 04/09 estuvo en otra parte. Son dos tramos.
+  const filas = [
+    ...habiles('2026-08-31', 4, 'obra-a'),
+    fila('2026-09-04', 'la-estrella', 9),
+    ...habiles('2026-09-07', 2, 'obra-a'),
+  ]
+  const { tramos } = armarTramos(filas, { hoy: HOY, activos, obrasCerradas: CERRADAS })
+  assert.deepEqual(tramos.map((t) => [t.obra_id, t.desde, t.hasta]), [
+    ['obra-a', '2026-08-31', '2026-09-03'],
+    ['obra-a', '2026-09-07', '2026-09-08'],
+  ])
+})

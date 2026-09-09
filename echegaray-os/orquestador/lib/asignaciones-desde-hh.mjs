@@ -61,18 +61,24 @@ export function armarTramos(filas, { hoy, activos, maxHueco = MAX_HUECO_HABIL, o
   const umbral = umbralQuincena(hoy)
   const porPersonaDia = new Map()
   const cerradas = []
+  const diaDe = (persona_id, fecha) => {
+    const clave = `${persona_id}|${fecha}`
+    let dia = porPersonaDia.get(clave)
+    if (!dia) { dia = { persona_id, fecha, obras: new Map(), ausencia: false, cierra: false }; porPersonaDia.set(clave, dia) }
+    return dia
+  }
   for (const f of filas) {
     if (!f.persona_id || !f.fecha) continue
     const fecha = fechaIso(f.fecha)
-    // OBRA CERRADA: el día no arma tramo NI cuenta como ausencia que hereda la obra anterior. Se
-    // descarta antes de existir como día, porque «heredar» habría estirado el tramo de al lado.
+    const dia = diaDe(f.persona_id, fecha)
+    // OBRA CERRADA: ni arma tramo ni hereda la obra del tramo en curso — lo CIERRA. Heredar habría
+    // estirado el tramo de al lado; ignorar el día habría fundido los dos tramos vecinos en uno
+    // solo, afirmando una continuidad que no existió (ese día estuvo en otra parte).
     if (esTrabajada(f.tipo_hora) && f.obra_id && obrasCerradas.has(f.obra_id)) {
       cerradas.push({ persona_id: f.persona_id, fecha, obra_id: f.obra_id, horas: Number(f.horas ?? 0), tipo_hora: f.tipo_hora })
+      dia.cierra = true
       continue
     }
-    const clave = `${f.persona_id}|${fecha}`
-    let dia = porPersonaDia.get(clave)
-    if (!dia) { dia = { persona_id: f.persona_id, fecha, obras: new Map(), ausencia: false }; porPersonaDia.set(clave, dia) }
     if (esTrabajada(f.tipo_hora) && f.obra_id) {
       dia.obras.set(f.obra_id, (dia.obras.get(f.obra_id) ?? 0) + Number(f.horas ?? 0))
     } else {
@@ -111,6 +117,8 @@ export function armarTramos(filas, { hoy, activos, maxHueco = MAX_HUECO_HABIL, o
     for (const dia of dias) {
       const corta = actual && diasHabilesEntre(actual.hasta, dia.fecha) > maxHueco
       if (dia.obra === null) {
+        // Día sobre obra cerrada y nada más: corta el tramo en curso (ver `cierra` arriba).
+        if (dia.cierra) { actual = null; continue }
         // Ausencia sin tramo en curso (o tras un hueco largo): no hay obra que heredar.
         if (!actual || corta) continue
         actual.hasta = dia.fecha
