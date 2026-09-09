@@ -14,7 +14,7 @@
 // `.docx`, un `.dwg` o un `.mp4` sería rechazar exactamente lo que el dueño nombró.
 
 /** Para qué sirve el papel. Es el CHECK de `public.proveedor_documento.categoria`, palabra por palabra. */
-export const CATEGORIAS = ['contrato', 'seguro', 'habilitacion', 'factura_modelo', 'otro'] as const
+export const CATEGORIAS = ['contrato', 'seguro', 'habilitacion', 'factura_modelo', 'transferencia', 'otro'] as const
 export type CategoriaDocumento = (typeof CATEGORIAS)[number]
 
 /** Cómo se nombra cada categoría en pantalla. */
@@ -23,6 +23,9 @@ export const ROTULO_CATEGORIA: Record<CategoriaDocumento, string> = {
   seguro: 'Seguro',
   habilitacion: 'Habilitación',
   factura_modelo: 'Factura modelo',
+  // El comprobante de pago que prueba que a este proveedor se le transfirió. Lo sube una persona o
+  // lo trae del mail `orquestador/scripts/gmail-transferencias-proveedores.mjs`.
+  transferencia: 'Transferencia',
   otro: 'Otro',
 }
 

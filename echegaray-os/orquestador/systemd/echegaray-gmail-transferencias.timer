@@ -1,0 +1,17 @@
+[Unit]
+Description=Echegaray OS - Comprobantes de transferencia del mail (diario 07:15)
+
+[Timer]
+# DIARIO Y TEMPRANO, no cada hora. Lo que se busca son los comprobantes que el dueño o
+# Administración reenviaron al mail: llegan de a uno o dos por día, no por minuto. Correrlo cada
+# hora multiplicaría por 24 la lectura de 280 adjuntos para encontrar lo mismo.
+#
+# 07:15 es antes de que se mire una ficha de proveedor en el día, y después de que hayan entrado los
+# mails de la noche.
+OnCalendar=*-*-* 07:15:00
+# Si la VM estuvo apagada, la corrida se hace igual al arrancar: un comprobante que no entró hoy no
+# se recupera solo, porque nadie va a volver a mandarlo.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
