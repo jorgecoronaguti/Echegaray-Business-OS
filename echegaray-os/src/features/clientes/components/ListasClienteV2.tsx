@@ -62,18 +62,41 @@ const COLOR_ESTADO_OBRA: Record<string, string> = {
 // para nada, aunque no desborde. Debajo de 560px se ESCONDE AVANCE —de las tres columnas de estado
 // es la que menos decide y la de texto más largo— y la fila queda en OBRA · ESTADO · CONTRATADO,
 // que es la pregunta de un teléfono: qué obras tiene y por cuánto.
+//
+// ═══ LA PLANTILLA SIN PREFIJO ES LA ENTERA, Y ESO NO ES UN GUSTO (09/09/2026) ═══
+//
+// Hasta hoy esta grilla se escribía al revés que todas las demás del v2: la plantilla sin prefijo
+// era la del TELÉFONO —tres pistas— y los anchos se agregaban con dos variantes `min` de ancho.
+// Con ocho celdas dibujadas siempre, el estado por defecto de la tabla tenía CINCO CELDAS MÁS QUE
+// PISTAS. Y el estado por defecto no es una hipótesis: mientras los cortes por ancho no llegaron al
+// CSS emitido (`cortes-por-ancho-llegan-al-css.test.ts`) era el que corría en producción a 1440px.
+// Las cinco celdas sobrantes caían en filas implícitas y —como el encabezado y la fila llevan alto
+// FIJO (`ENCABEZADO.height`, `ALTO_V2.cara`)— se dibujaban encima de la fila de abajo: «CONTRATADO»
+// y «COSTO MAT.» quedaban tapados por el importe de la primera obra
+// (`qa-shots/verif-opacidad2-10-cliente-ficha.png`).
+//
+// Escrita de ancho entero hacia abajo, la degradación es segura: si una media query no llega, se
+// dibuja la tabla de escritorio —apretada, nunca superpuesta—, y cada variante de ancho con `hidden` retira su
+// celda EN EL MISMO CORTE en que su pista desaparece. Es además la forma en que ya están escritas
+// la cartera y Compras.
+//
+// ═══ POR QUÉ `minmax(0,…)` Y NO ANCHOS FIJOS ═══
+//
+// Ocho pistas fijas suman 788px + 200 del nombre + 140 de `gap` = 1128, y el ancho útil de esta
+// ficha a 1440px de viewport es 1068 (el costado se lleva 300+53): la tabla se salía de su columna
+// por 60px aun con los cortes andando. Con `minmax(0,X)` la pista cede cuando no hay lugar en vez
+// de desbordar; el único piso que se defiende es el del nombre, que es lo que identifica la fila.
 const COLS_OBRAS
-  = 'gap-[10px] grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
-  // 90px y no 72: «sin cronograma» a 11,5px mide 84px y en 72 se cortaba en «sin cronogr…»
-  // (medido en la captura de 900px). La pista del handoff ya son 90; acá se respeta desde el
-  // primer escalón.
-  + ' min-[560px]:gap-[14px] min-[560px]:grid-cols-[minmax(0,1.5fr)_minmax(0,90px)_90px_minmax(0,120px)_28px]'
-  // 08/09/2026: desde 1200px entran las tres columnas de OBRAS —Costo MO · Costo mat. · Margen—
-  // entre Contratado y la pista de acciones. Por debajo no hay ancho: se suelta el detalle
-  // económico, nunca el nombre ni el contratado.
-  + ' min-[1200px]:gap-[20px] min-[1200px]:grid-cols-[minmax(200px,1.8fr)_110px_80px_150px_130px_130px_160px_28px]'
+  = 'gap-[20px] grid-cols-[minmax(200px,1.8fr)_minmax(0,110px)_minmax(0,80px)_minmax(0,150px)_minmax(0,130px)_minmax(0,130px)_minmax(0,160px)_minmax(0,28px)]'
+  // Por debajo de 1200px no hay ancho para la economía de OBRAS —Costo MO · Costo mat. · Margen—:
+  // se suelta el detalle, nunca el nombre ni el contratado.
+  // 90px y no 72 para el avance: «sin cronograma» a 11,5px mide 84px y en 72 se cortaba en «sin
+  // cronogr…» (medido en la captura de 900px). La pista del handoff ya son 90.
+  + ' max-[1199px]:gap-[14px] max-[1199px]:grid-cols-[minmax(0,1.5fr)_minmax(0,90px)_90px_minmax(0,120px)_28px]'
+  // A 390px no entran cinco columnas sin estrangular el nombre: quedan OBRA · ESTADO · CONTRATADO.
+  + ' max-[559px]:gap-[10px] max-[559px]:grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
 
-/** Las tres celdas económicas de OBRAS: sólo desde 1200px. */
+/** Las tres celdas económicas de OBRAS: se sueltan en el mismo corte que sus pistas. */
 const SOLO_ANCHO_ECO = 'max-[1199px]:hidden'
 
 /** Lo que se esconde a 390px. Nunca el nombre ni el importe. */
@@ -252,12 +275,15 @@ export interface PresupuestoDeFicha {
  * necesita 210+170+60+160+150+28 + 5×28 = 918px útiles, o sea 1311px de viewport con el costado
  * puesto. Por eso su breakpoint es más alto que el de Obras: es la lista más ancha de la ficha.
  */
+//
+// Se escribe de ancho entero hacia abajo por lo mismo que la de Obras: sin prefijo declaraba tres
+// pistas contra seis celdas, y ése es el estado que corre cuando una media query no llega.
 const COLS_PRES
-  = 'gap-[10px] grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
-  + ' min-[560px]:gap-[14px]'
-  + ' min-[560px]:grid-cols-[minmax(0,1.4fr)_minmax(0,90px)_44px_minmax(0,110px)_minmax(0,1fr)_28px]'
-  + ' min-[1320px]:gap-[28px]'
-  + ' min-[1320px]:grid-cols-[minmax(210px,1.8fr)_170px_60px_160px_minmax(150px,1fr)_28px]'
+  = 'gap-[28px] grid-cols-[minmax(210px,1.8fr)_minmax(0,170px)_minmax(0,60px)_minmax(0,160px)_minmax(150px,1fr)_minmax(0,28px)]'
+  + ' max-[1319px]:gap-[14px]'
+  + ' max-[1319px]:grid-cols-[minmax(0,1.4fr)_minmax(0,90px)_44px_minmax(0,110px)_minmax(0,1fr)_28px]'
+  + ' max-[559px]:gap-[10px]'
+  + ' max-[559px]:grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
 
 /** El estado del presupuesto, con la tinta del handoff (`dc.html:815`). */
 function colorEstadoPresupuesto(estado: string | null): string {
