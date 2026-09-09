@@ -15,8 +15,9 @@
 //
 // ═══ LA PANTALLA ES LA PUERTA; LA POLICY ES LA CERRADURA ═══
 //
-// La solapa sólo se dibuja para quien ve economía, pero esta acción puede llamarse desde cualquier
-// lado. Quién puede escribir lo decide `ve_economia()` en la RLS, y que una quincena CERRADA no se
+// La solapa sólo se dibuja para quien liquida y la ruta corta con `notFound()`, pero estas acciones
+// se invocan desde cualquier lado con el id que viaja en el HTML: por eso las dos vuelven a
+// preguntar el rol acá (`puedeLiquidar`). La cerradura final la decide `liquida_sueldos()` en la RLS, y que una quincena CERRADA no se
 // pueda editar lo decide la policy `liquidacion_linea_edita_abierta` — no un `if` de acá. Además el
 // GRANT de UPDATE de `authenticated` está acotado a `efectivo_redondeado`: aunque alguien llame a
 // PostgREST a mano, no puede reescribir `cobra` ni `total`.
@@ -24,6 +25,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { permisoDeLiquidacion, type PermisoLiquidacion } from './liquidacionPermiso'
 
 const RUTA = '/administracion/personas'
 
@@ -43,6 +46,21 @@ const redondeoSchema = ventanaSchema.extend({
 })
 
 export type ResultadoLiquidacion = { ok: true; mensaje: string } | { ok: false; error: string }
+
+/**
+ * LA PUERTA DEL SERVIDOR. Las dos escrituras la cruzan ANTES de tocar la base: rechazar después de
+ * haber abierto la cabecera dejaría una quincena creada por alguien que no puede liquidar.
+ *
+ * Dueño, 09/09/2026: *«sólo con nivel de usuario administrador»*. El jefe de obra entra a esta
+ * misma pantalla a cargar asistencia — `esAdministracion` lo incluye —, y por eso acá se pregunta
+ * `liquidaSueldos`, no el área.
+ */
+async function puedeLiquidar(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<PermisoLiquidacion> {
+  const { data: perfil, error } = await getPerfilActual(supabase)
+  return permisoDeLiquidacion(perfil?.rol, error)
+}
 
 /** La cabecera de esa quincena y ese grupo; se crea si no existe. `null` si la base la rechazó. */
 async function cabecera(
@@ -78,6 +96,9 @@ export async function guardarEfectivoRedondeado(entrada: unknown): Promise<Resul
   const { persona_id: personaId, importe, ...v } = parsed.data
 
   const supabase = await createClient()
+  const permiso = await puedeLiquidar(supabase)
+  if (!permiso.ok) return { ok: false, error: permiso.error }
+
   const cab = await cabecera(supabase, v)
   if ('error' in cab) return { ok: false, error: cab.error }
   if (cab.estado === 'cerrada') return { ok: false, error: 'La quincena está cerrada: no se edita.' }
@@ -125,6 +146,9 @@ export async function cerrarQuincena(entrada: unknown): Promise<ResultadoLiquida
   const { lineas, ...v } = parsed.data
 
   const supabase = await createClient()
+  const permiso = await puedeLiquidar(supabase)
+  if (!permiso.ok) return { ok: false, error: permiso.error }
+
   const cab = await cabecera(supabase, v)
   if ('error' in cab) return { ok: false, error: cab.error }
   if (cab.estado === 'cerrada') return { ok: false, error: 'Esa quincena ya estaba cerrada.' }
