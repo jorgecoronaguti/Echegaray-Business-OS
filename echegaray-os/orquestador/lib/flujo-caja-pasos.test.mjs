@@ -122,7 +122,10 @@ test('OBRAS corre DESPUÉS de lo que lee: el rubro de Compras y la pestaña Mate
   // anterior — y eso no da error, da un número viejo.
   const pos = (s) => PASOS.findIndex(([x]) => x === s)
   assert.ok(pos('obras-pestana.mjs') > pos('rubro-caja-sheet.mjs'), 'OBRAS corre antes del rubro de caja')
-  assert.ok(pos('obras-pestana.mjs') > pos('proveedores-materiales-pestana.mjs'), 'OBRAS corre antes de Materiales')
+  // 09/09/2026: el dueño de Materiales es `materiales-pestana.mjs`. Con el nombre viejo —retirado del
+  // pipeline— `pos()` devolvía -1 y este assert pasaba SIEMPRE: comparaba contra un paso que no corre.
+  assert.ok(pos('obras-pestana.mjs') > pos('materiales-pestana.mjs'), 'OBRAS corre antes de Materiales')
+  assert.ok(pos('materiales-pestana.mjs') > pos('rubro-caja-sheet.mjs'), 'Materiales corre antes del rubro de caja del que sale su familia')
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
