@@ -23,13 +23,13 @@
 // Cada bloque escribe sus filas y DEVUELVE en qué fila quedó cada total: el que viene abajo lo
 // referencia en vez de recalcularlo por otro camino.
 
-import { seccion, sub, total as rotuloTotal } from './patron-pestana.mjs'
+import { seccion, total as rotuloTotal } from './patron-pestana.mjs'
 import { rango } from './compras-columnas.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { celdaF931, celdaCabecera, PESTAÑA as RAW } from '../scripts/f931-sheet.mjs'
 import {
-  CONCEPTOS_CADENA, RANGO_DIA_PAGO_F931,
-  formulaProporcionPrimerAnio, proyeccionDeConcepto, jornalesDelMes,
+  CONCEPTOS_CADENA, RANGO_DIA_PAGO_F931, RANGO_PROPORCION_PRIMER_ANIO,
+  proyeccionDeConcepto, jornalesDelMes,
 } from './cargas-cadena.mjs'
 import { ROTULOS_CARGAS, RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
 import { MES, cm, REALES, MESES_REALES, SIN_DDJJ } from './cargas-grilla.mjs'
@@ -176,7 +176,11 @@ export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
     // EL RÓTULO DEJÓ DE EXPLICAR (09/09): decía «ART · ya incluida en el F931, no se paga aparte».
     // Que no se pague aparte lo dice su POSICIÓN —debajo del total y fuera del rango que ese total
     // suma—; el renglón sólo tiene que nombrar lo que muestra.
-    fArtPag = G.mensual(sub('ART (dentro del F931)'),
+    // Y EL «·» TAMBIÉN SE FUE (09/09): decía `· ART (dentro del F931)`. El paréntesis volvía a
+    // explicar lo mismo que el rótulo viejo, y el sub-ítem sugería que la fila cuelga de la de
+    // arriba cuando lo que dice es dónde NO está sumada. Eso lo dice su posición: debajo del total y
+    // fuera del rango que ese total suma. Es una fila normal y se llama ART.
+    fArtPag = G.mensual('ART',
       (m) => `=IFERROR(${cm(m)}${filaPag.F931}*${cm(m - 1)}${fArtDecl}/${cm(m - 1)}${fDeclTot};0)`,
       'El código 312 de la DDJJ del mes anterior, en la proporción del F931 que efectivamente se pagó.',
       // Desde febrero: el F931 que sale en enero es la DDJJ de diciembre del año anterior, que esta
@@ -196,7 +200,7 @@ export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 export function bloqueProyeccion(G, {
-  anio, desdeProy, filaDecl, filaPag, fRem, fEmp, C, fDeclTot, bloqueBase = null,
+  anio, desdeProy, filaDecl, filaPag, fRem, fEmp, C, fDeclTot,
   // CON QUÉ BASE QUEDÓ VALUADA LA MASA QUE ESTA PESTAÑA MULTIPLICA. No se decide acá —se lee de lo que
   // Jornales publicó, ver `baseDeJornales`— porque la decisión ya vive en un solo lugar. Sin señal, la
   // glosa lo dice en vez de afirmar un supuesto que puede no estar adentro del número.
@@ -230,21 +234,19 @@ export function bloqueProyeccion(G, {
   // vienen de dos lugares distintos; si se separan mucho, uno de los dos está mal.
   const fDot = G.mensual('Dotación proyectada', () => `=IFERROR(INDEX(${REALES(fEmp, desdeProy)};COUNT(${REALES(fEmp, desdeProy)}));"")`,
     'El ÚLTIMO mes con DDJJ, no el promedio: un promedio no fue cierto ningún mes y acá multiplica costos por persona.', { meses: proyMeses, totaliza: false })
-  const fPlantel = G.n() + 1
-  G.push([sub('   control: plantel de la última quincena'),
-    '=IFERROR(INDEX(JORNALES_REAL_PERSONAS;COUNT(JORNALES_REAL_PERSONAS));"")',
-    // EL VEREDICTO ES UN GLIFO, NO UNA FRASE (09/09). Decía «▲ la DDJJ y la planilla no coinciden» /
-    // «✓ coherente con la planilla»: 44 caracteres de explicación en el medio de la grilla. El
-    // control NO se apaga —sigue pudiendo decir que no, que es lo único que lo hace un control—:
-    // cambia de idioma, y el porqué del 30% vive acá.
-    `=IF(N($B$${fPlantel})=0;"";IF(N($${cm(desdeProy)}$${fDot})=0;"";IF(ABS($${cm(desdeProy)}$${fDot}-$B$${fPlantel})/$${cm(desdeProy)}$${fDot}>0,3;"${ALERTA}";"✓")))`,
-    ...Array(11).fill(VACIO),
-    'Dos fuentes distintas: la cabecera de la DDJJ y el registro de quincenas de Jornales. La DDJJ incluye oficina; la planilla de obra, no — una diferencia chica es esperable, una grande es un dato mal cargado.'])
-  // La proporción del plantel en su primer año: la base de la alícuota legal de FCL. La antigüedad ya
-  // estaba en la fuente que se lee todos los días y no tenía un solo consumidor.
-  const fAntig = G.push([sub('   en su primer año de antigüedad'),
-    formulaProporcionPrimerAnio('_J_OBREROS', bloqueBase), ...Array(12).fill(VACIO),
-    'Fecha de ingreso de cada persona en _J_OBREROS, sobre el mismo plantel con el que Jornales proyecta el piso del convenio. Es lo que pondera las dos alícuotas del Fondo de Cese.'])
+  // ═══ LAS DOS FILAS DE «·» QUE ESTABAN ACÁ SE FUERON (09/09/2026) ═══
+  //
+  // Eran `   · control: plantel de la última quincena  15  ▲` y `   · en su primer año de antigüedad
+  // 66,7%`. El dueño: *«minimalismo extremo, sin aclaraciones ni explicaciones de nada»*, y las dos
+  // eran justo eso — un porcentaje y un conteo de personas sueltos en el medio de doce columnas de
+  // pesos, con un veredicto en glifo al lado. Ninguna de las dos es un importe del cuadro:
+  //
+  //   · la ANTIGÜEDAD es una ENTRADA de la fórmula de FCL y se mudó a «Parámetros» con su rango con
+  //     nombre (`CARGAS_PROPORCION_PRIMER_ANIO`, ver `parametrosDeCargas`), que es donde viven las
+  //     entradas desde que Jornales hizo lo mismo con la jornada;
+  //   · el CONTROL de plantel no se apagó: pasó a `divergenciaDePlantel`, se prueba con un test que
+  //     puede darlo rojo, y su veredicto sale por el log de la corrida — donde lo ve quien puede
+  //     corregir el dato, y no como un triangulito que nadie mira.
   const sinBase = []
   /**
    * UN BLOQUE DE LA PROYECCIÓN, CON SU SUBTOTAL. Se arma en dos pasadas —lo que declara la DDJJ y lo
@@ -267,7 +269,7 @@ export function bloqueProyeccion(G, {
         // El rango real llega YA atado al mes desde el que se proyecta: la cadena mide sus cinco
         // alícuotas sobre él y no tiene por qué saber cuántos meses hay declarados.
         filaOrigen: origen, fRem, fEmp, reales: (fila) => REALES(fila, desdeProy), colMes: cm, fRemProy, fDot,
-        celdaProporcion: `$B$${fAntig}`,
+        celdaProporcion: RANGO_PROPORCION_PRIMER_ANIO,
       })
       G.mensual(c.rotulo, p.celda, p.origen, { meses: proyMeses })
     }
@@ -323,12 +325,13 @@ export function bloqueProyeccion(G, {
   const fPrevisto = G.mensual('Previsto en Compras para ese mes', (m) =>
     `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$35;${rango(C.fecha)};">"&TODAY();${rango(C.fecha)};"<="&EOMONTH(DATE(${anio};${m};1);0));0)-IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$35;${rango(C.fecha)};">"&TODAY();${rango(C.fecha)};"<"&DATE(${anio};${m};1));0)`,
   'Los pagos de F931 que Compras tiene cargados con fecha futura. Es lo que alguien previó, no lo que salió.', { meses: proyMeses })
-  if (sinBase.length) {
-    G.push([`${ALERTA} ${sinBase.length} concepto(s) sin base para proyectar`, ...Array(13).fill(VACIO),
-      `${sinBase.join(', ')} — no aparecen en las secciones 1 ni 2, así que no se proyectan.`])
-  }
+  // EL HALLAZGO SALE POR LA CORRIDA, NO POR UN RENGLÓN (09/09/2026). Era una fila con «▲ N
+  // concepto(s) sin base para proyectar» al pie del cuadro: un glifo y una frase en el medio de la
+  // grilla, que es lo que el dueño mandó sacar. Que falte una fila de la proyección tiene que verse
+  // igual —el subtotal la suma— así que viaja en `sinBase` hasta `avisos` y se imprime en el log,
+  // donde lo lee quien puede agregar el concepto que falta.
   G.push()
-  return { proyMeses, fRelacion, fRemProy, fDot, fPlantel, fAntig, fSubF931, fSubGremiales, fProyTot, fFechaSalida, fCuotasVencen, fPrevisto }
+  return { proyMeses, fRelacion, fRemProy, fDot, fSubF931, fSubGremiales, fProyTot, fFechaSalida, fCuotasVencen, fPrevisto, sinBase }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -351,7 +354,8 @@ export function bloquePlanes(G, { ps, C }) {
       `Réplica del plan cargado en Compras · ${p.n} cuota(s) · ${p.pagadas} pagada(s) · saldo ${Math.round(p.saldo).toLocaleString('es-AR')} · próxima ${ar(p.proxima) || '—'}`)
   }
   const q1 = G.n()
-  const fCuotasTot = G.mensual(rotuloTotal('Total de cuotas del año'), (m) => `=SUM(${cm(m)}${q0}:${cm(m)}${q1})`, 'Suma de los planes de arriba.')
+  const fCuotasTot = G.mensual(ROTULOS_CARGAS.planes, (m) => `=SUM(${cm(m)}${q0}:${cm(m)}${q1})`,
+    'Suma de los planes de arriba. Es lo que «Impuestos y Financieros» lee por CARGAS_MES_PLANES: el cuadro vive acá, una sola vez.')
   // ═══ LO QUE FALTA PAGAR BAJÓ DEL TITULAR A SU CUADRO (09/09/2026) ═══
   //
   // Era una línea del hero, al lado de REAL · COMPROMETIDO · PROYECTADO, con una aclaración escrita
@@ -361,7 +365,7 @@ export function bloquePlanes(G, { ps, C }) {
   // El criterio es de HECHO y no de posición: lo que falta pagar es lo que la planilla no marcó
   // «Pagado», venza cuando venza. Con `> MONTH(TODAY())` el mes en curso se perdía entero — al 06/08
   // dejaba afuera $2.968.643 de cuotas de agosto, una con vencimiento el 16.
-  const fSinPagar = G.push([rotuloTotal('Cuotas sin pagar'),
+  const fSinPagar = G.push([ROTULOS_CARGAS.planesSinPagar,
     `=SUMIFS(${rango(C.total)};Compras!$${C.rubro}$4:$${C.rubro};"${RUBRO_PLANES}";${rango(C.estado)};"<>Pagado")`,
     ...Array(11).fill(VACIO), VACIO,
     `Compras · rubro "${RUBRO_PLANES}", todas las cuotas que la planilla NO marcó "Pagado" — incluidas las vencidas sin pagar y las de otros años, que esta tabla no llega a mostrar.`])
@@ -387,7 +391,13 @@ export function bloquePlanes(G, { ps, C }) {
   // ES la respuesta, y salía como el mismo guion que significa "no hay dato". El único control de
   // integridad de la pestaña se leía como una celda vacía. La fila se declara `control` y la piel le
   // pone su propio formato: verde "✓ $0" cuando cierra, el número en rojo cuando no.
-  const fControl = G.push([rotuloTotal('Diferencia — tiene que ser $0'), `=$B$${fCtrl}-$N$${fCuotasTot}`,
+  // ═══ EL RÓTULO DEJÓ DE INSTRUIR Y EL VEREDICTO DEJÓ DE SER UN GLIFO (09/09/2026) ═══
+  //
+  // Decía «⇒ Diferencia — tiene que ser $0» y la piel dibujaba el cero como «✓ $0». Las dos cosas
+  // son la misma: explicarle al lector qué significa el número en vez de dejar que el número hable.
+  // Ahora la fila se llama «Diferencia» y el cero se dibuja «$0» en tinta normal; cuando NO cierra,
+  // el importe sale en rojo. Rojo o no rojo es la respuesta, y no gasta una palabra.
+  const fControl = G.push([rotuloTotal('Diferencia'), `=$B$${fCtrl}-$N$${fCuotasTot}`,
     ...Array(11).fill(VACIO), VACIO, `Las dos celdas vivas: el total del rubro en Compras menos el total de esta tabla (${ps.reduce((s, p) => s + p.n, 0)} cuota(s) de ${ps.length} plan(es)). Si no da cero, hay cuotas del rubro que esta tabla no ve — por ejemplo, de otro año.`])
   // HALLAZGO: en Compras están las cuotas cargadas, no de cuántas es cada plan, así que el saldo es
   // lo previsto en la planilla. Se resuelve consiguiendo el plan; no se anota al pie del cuadro.

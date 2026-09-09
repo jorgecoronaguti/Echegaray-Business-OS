@@ -13,7 +13,7 @@
 // ahí sería una fecha supuesta invisible. Las supuestas llevan "⚠ fecha supuesta" en la columna A.
 
 import { sub as subItem, total as rotuloTotal } from './patron-pestana.mjs'
-import { cmes } from './impuestos-grilla.mjs'
+import { cmes, M12 } from './impuestos-grilla.mjs'
 import { calendario, diasEntre } from './vencimientos-fiscales.mjs'
 import {
   formulaVentana, formulaDeudaPendiente, proximoVencimiento,
@@ -53,6 +53,35 @@ const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
  * @param {{iva:number[], iibb:number[], plan:number[], prendario:number[]}} f.meses qué meses tiene cada bloque
  * @param {{iva:number, iibb:number, plan:number, prendario:number}} f.filas la fila del detalle de cada uno
  */
+/**
+ * NÚCLEO PURO: qué meses tiene cada obligación del calendario.
+ *
+ * Se calcula ANTES de escribir el detalle porque el generador reserva el espacio del hero antes de
+ * saber en qué fila queda cada total: las FECHAS no dependen de la fila, así que el calendario se
+ * arma dos veces y la primera es sólo para contar. Vive acá y no en el generador porque su único
+ * consumidor es `obligacionesDelCalendario`, tres funciones más abajo.
+ *
+ * `mesesOf` sale además del objeto: es el último mes con DDJJ oficial, que el hero usa aparte para
+ * elegir de qué mes publica el saldo a favor.
+ *
+ * @returns {{iva:number[], iibb:number[], plan:number[], prendario:number[], mesesOf:number[]}}
+ */
+export function mesesDeCadaObligacion({ ivaOficial, proy, iibb = [], planes = [] }) {
+  const mesesOf = M12.filter((m) => (ivaOficial ?? []).some((d) => Number(String(d.periodo).slice(5, 7)) === m))
+  const anclaIva = proy?.ultimoMesConDato ?? 0
+  const iva = [...new Set([...mesesOf, ...M12.filter((m) => m <= anclaIva), ...(proy?.meses ?? [])])].sort((a, b) => a - b)
+  const iibbReales = M12.filter((m) => iibb.some((d) => Number(String(d.periodo ?? '').slice(5, 7)) === m))
+  const ultimoIibb = iibbReales[iibbReales.length - 1] ?? 0
+  const hastaIibb = Math.max(proy?.meses?.length ? proy.meses[proy.meses.length - 1] : 0, ultimoIibb)
+  return {
+    mesesOf,
+    iva,
+    iibb: M12.filter((m) => iibbReales.includes(m) || (m > ultimoIibb && m <= hastaIibb)),
+    plan: M12.filter((m) => planes.some((p) => p.porMes[m])),
+    prendario: M12,
+  }
+}
+
 export function obligacionesDelCalendario({ hoy, anio, meses, filas }) {
   const CONCEPTO = {
     iva: 'IVA · DDJJ F.2051 (ARCA)',

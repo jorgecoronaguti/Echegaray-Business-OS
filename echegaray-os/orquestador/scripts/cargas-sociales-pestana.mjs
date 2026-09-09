@@ -33,7 +33,7 @@ import { total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 import { vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 import { PESTAÑA as RAW, COL as F931_COL, FILA0 as F931_FILA0 } from './f931-sheet.mjs'
 import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
-import { CONCEPTOS_CADENA, PARAMETROS_CARGAS, A_VERIFICAR } from '../lib/cargas-cadena.mjs'
+import { CONCEPTOS_CADENA, parametrosDeCargas, divergenciaDePlantel, TOLERANCIA_PLANTEL, A_VERIFICAR } from '../lib/cargas-cadena.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 // LA PESTAÑA PUBLICA, EL LIBRO LEE — y los rótulos que anclan cada nombre se declaran UNA vez, en el
 // módulo que los consume. Escritos de los dos lados, el día que uno cambie el nombre queda apuntando
@@ -45,7 +45,7 @@ import { ultimaQuincenaCerrada, personasDelBloque } from '../lib/motor-salarial.
 import { bloqueDelPlantel } from '../lib/jornales-piso-uocra.mjs'
 import { asegurarParametros, ultimoDiaCargado, PESTAÑA as PESTAÑA_JORNALES } from './jornales-pestana.mjs'
 import { baseDeJornales } from '../lib/proyeccion-convenio.mjs'
-import { ANCHO, COL_ORIGEN, SIN_DDJJ, cm, crearGrilla } from '../lib/cargas-grilla.mjs'
+import { ANCHO, COL_ORIGEN, SIN_DDJJ, cm, crearGrilla, desdeQueMesSeProyecta } from '../lib/cargas-grilla.mjs'
 import { bloqueDeclarado, bloquePagado, bloqueProyeccion, bloquePlanes } from '../lib/cargas-bloques.mjs'
 import { planesDePago } from '../lib/cargas-planes.mjs'
 import { formatear } from '../lib/cargas-piel.mjs'
@@ -54,22 +54,6 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const PESTAÑA = 'Cargas Sociales'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
-/**
- * DESDE QUÉ MES SE PROYECTA — SE DEDUCE DEL DATO, NO SE ESCRIBE A MANO.
- *
- * POR QUÉ CAMBIÓ (23/07). El dueño: "si tienen proyecciones que dejaron de serlo porque ya estamos
- * en el momento determinado, ¿se actualiza?". Acá decía `DESDE_PROY = 7`. Una constante no se entera
- * de que pasó el tiempo: en agosto el cuadro habría seguido proyectando julio aunque el F931 de
- * julio ya estuviera presentado y leído — una estimación dibujada al lado de un hecho, sin que nada
- * lo avisara. Es la clase de error que envejece en silencio, igual que un número pegado.
- *
- * Ahora la frontera la pone el dato: se proyecta desde el primer mes SIN DDJJ presentada.
- */
-function desdeQueMesSeProyecta(periodos) {
-  const conDato = periodos.map((p) => Number(p.slice(5, 7))).filter(Boolean)
-  return conDato.length ? Math.max(...conDato) + 1 : 1
-}
-
 // SE CASA POR CÓDIGO, NO POR RÓTULO.
 //
 // EL DEFECTO QUE ESTO CORRIGE (23/07). La primera versión buscaba la fila del concepto por su
@@ -98,7 +82,7 @@ const AVISOS_DEL_DOMINIO = Object.freeze([
 ])
 
 /** NÚCLEO PURO: arma la grilla entera de la pestaña. Devuelve las filas y las marcas que usa el formato. */
-export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJornales = null }) {
+export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
   const desdeProy = desdeQueMesSeProyecta(periodos)
   const G = crearGrilla(AÑO)
 
@@ -114,8 +98,17 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJorn
   //
   // El F931 declara su PERÍODO, no la fecha en que se leyó el PDF: una DDJJ de junio presentada en
   // julio habla de junio, y decir "al 16/07" sería declarar frescura de la gestión, no del dato.
-  G.push([rotuloPorFuente('Qué genera la nómina, qué se paga y cuándo sale de la caja', [
-    { nombre: 'DDJJ F931', expr: formulaUltimoPeriodo(`${RAW}!$${F931_COL.periodo}$${F931_FILA0}:$${F931_COL.periodo}`), avisoDias: DIAS_AVISO_MENSUAL },
+  //
+  // ═══ Y LA PROSA SE FUE DE LA A2 (09/09/2026) ═══
+  //
+  // Decía «Qué genera la nómina, qué se paga y cuándo sale de la caja · …»: eso ya lo contestan el
+  // nombre en A1 y los cuatro títulos de sección. La fila 2 sólo declara PROCEDENCIA y queda
+  // `F931 al dd/mm · Compras al dd/mm`. NO se pudo dejar UNA sola fecha, como se pidió: las dos
+  // fuentes tienen frescuras distintas —el F931 sale de PDF y se congela en el último período
+  // presentado— y resumirlas le presta la frescura de la viva a la congelada, que es justo lo que
+  // `rotuloPorFuente` existe para impedir.
+  G.push([rotuloPorFuente('', [
+    { nombre: 'F931', expr: formulaUltimoPeriodo(`${RAW}!$${F931_COL.periodo}$${F931_FILA0}:$${F931_COL.periodo}`), avisoDias: DIAS_AVISO_MENSUAL },
     // Lo pagado sale de Compras, por la misma columna de fecha que usan las SUMIFS de la sección 3.
     // `mixto`: esa columna convive como serial y como texto tipeado — un MAX crudo pierde las
     // tipeadas EN SILENCIO y declararía como corte la última que entró por casualidad como número.
@@ -142,7 +135,10 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJorn
   // que la pregunta más importa. Con un MATCH(...;1)+1 el vencimiento desaparecía del titular el
   // mismo día que vence.
   const proximo = `COUNTIF(${NOMBRES_CARGAS.fechas};"<"&TODAY())+1`
-  const hPagado = G.push([rotuloTotal('Cargas sociales pagadas en el año'), '@PAGADO', ...Array(11).fill(VACIO), VACIO, 'Sección 2 · lo que Compras marcó Pagado.'])
+  // «Cargas sociales pagadas en el año» no entraba en la columna A de 300 px y derramaba sobre el
+  // importe (medido en la copia). La pestaña ya se llama «Cargas Sociales»: el rótulo no tiene que
+  // repetirlo.
+  const hPagado = G.push([rotuloTotal('Pagado en el año'), '@PAGADO', ...Array(11).fill(VACIO), VACIO, 'Sección 2 · lo que Compras marcó Pagado.'])
   const hProximo = G.push([rotuloTotal('Próximo vencimiento'),
     `=IFERROR(INDEX(${NOMBRES_CARGAS.declarado};${proximo});"")`,
     `=IFERROR(INDEX(${NOMBRES_CARGAS.fechas};${proximo});"")`,
@@ -158,7 +154,7 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJorn
   const pag = bloquePagado(G, { anio: AÑO, C, fArtDecl: decl.filaDecl['312'], fDeclTot: decl.fDeclTot })
   const proy = bloqueProyeccion(G, {
     anio: AÑO, desdeProy, filaDecl: decl.filaDecl, filaPag: pag.filaPag, fRem: decl.fRem, fEmp: decl.fEmp,
-    C, fDeclTot: decl.fDeclTot, bloqueBase, baseJornales,
+    C, fDeclTot: decl.fDeclTot, baseJornales,
   })
   const planes = bloquePlanes(G, { ps, C })
 
@@ -219,8 +215,8 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJorn
   // error y hace dudar del cuadro completo, que es exactamente lo que este bloque vino a evitar.
   return {
     filas: G.filas,
-    cantidades: [decl.fEmp, proy.fDot, proy.fPlantel],
-    ratios: [proy.fRelacion, proy.fAntig],
+    cantidades: [decl.fEmp, proy.fDot],
+    ratios: [proy.fRelacion],
     // La fila de fechas es la única de la grilla que NO es plata: sin esto sale "$46.244".
     fechas: [proy.fFechaSalida],
     titular: hPagado,
@@ -248,15 +244,24 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJorn
      *  que denunciaba son del NEGOCIO y no del cuadro: los días de vacaciones por tramo los tiene que
      *  confirmar el contador, y que el Fondo de Cese esté al día se sigue sin poder afirmar. Borrar
      *  el aviso junto con la fila sería apagar la alarma al mudar el cuarto. */
-    avisos: [...AVISOS_DEL_DOMINIO, ...(planes.avisos ?? [])],
+    avisos: [
+      ...AVISOS_DEL_DOMINIO,
+      ...(planes.avisos ?? []),
+      // El hallazgo que antes era un renglón al pie de la sección 3.
+      ...(proy.sinBase?.length ? [`${ALERTA} ${proy.sinBase.length} concepto(s) sin base para proyectar: ${proy.sinBase.join(', ')} — no aparecen en las secciones 1 ni 2`] : []),
+    ],
     // El único control de integridad de la pestaña: el cero es la respuesta, no una celda vacía.
     controles: [planes.fControl],
-    // Texto en el medio de la grilla: sin esto lo pinta el barrido de moneda y sale a la derecha,
-    // pegado al importe de al lado. Queda una sola: el veredicto del control de plantel.
-    prosaFormula: [{ fila: proy.fPlantel, col: 2 }],
+    // NINGUNA CELDA DE PROSA EN EL MEDIO DE LA GRILLA (09/09/2026): quedaba una —el veredicto en
+    // glifo del control de plantel— y se fue con la fila. El canal se deja declarado, no adivinado.
+    prosaFormula: [],
     // La geometría que se publica como rangos con nombre. Sale de la grilla recién armada: si la
     // pestaña se reordena, los nombres se mueven con ella.
-    rangos: { fF931: proy.fSubF931, fGremiales: proy.fSubGremiales, fFechas: proy.fFechaSalida, fDeclarado: decl.fDeclTot },
+    rangos: {
+      fF931: proy.fSubF931, fGremiales: proy.fSubGremiales, fFechas: proy.fFechaSalida, fDeclarado: decl.fDeclTot,
+      // Los dos que «Impuestos y Financieros» lee desde el 09/09: su cuadro de planes se retiró.
+      fPlanes: planes.fCuotasTot, fPlanesSinPagar: planes.fSinPagar,
+    },
   }
 }
 
@@ -325,6 +330,15 @@ async function main() {
   const baseJornales = baseDeJornales(jorn ?? [])
   console.log(`base de los jornales proyectados: ${baseJornales ?? '⚠ no la pude leer de la pestaña de Jornales'}`)
 
+  // EL CONTROL DE PLANTEL, QUE ERA UN GLIFO EN LA GRILLA Y AHORA SALE POR ACÁ: cruza la dotación de
+  // la cabecera del último F931 contra el plantel de `_J_OBREROS`. El porqué, en `divergenciaDePlantel`.
+  const ultimoPeriodo = periodos[periodos.length - 1]
+  const dotacion = Number(raw.find((f) => String(f?.[0] ?? '').trim() === ultimoPeriodo)?.[4]) || null
+  const div = divergenciaDePlantel({ dotacion, plantel: plantel.personas })
+  if (div.motivo === 'sin-dato') console.warn(`  ${ALERTA} control de plantel: no pude medirlo (DDJJ ${dotacion ?? 's/d'} · planilla ${plantel.personas ?? 's/d'})`)
+  else if (div.diverge) console.warn(`  ${ALERTA} control de plantel: la DDJJ de ${ultimoPeriodo} declara ${dotacion} y la planilla tiene ${plantel.personas} — ${(div.brecha * 100).toFixed(0)}% de brecha, por encima del ${TOLERANCIA_PLANTEL * 100}% tolerado`)
+  else console.log(`  ✓ control de plantel: DDJJ ${dotacion} · planilla ${plantel.personas} (${(div.brecha * 100).toFixed(0)}% de brecha)`)
+
   const ps = await planesDePago(AÑO)
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
@@ -339,7 +353,7 @@ async function main() {
   //
   // Pasando el objeto entero, agregar una declaración nueva no requiere acordarse de nada: la clase
   // de defecto deja de existir en vez de quedar cubierta por un test.
-  const g = grilla({ periodos, conceptos, ps, C, bloqueBase, baseJornales })
+  const g = grilla({ periodos, conceptos, ps, C, baseJornales })
   let { filas } = g
   const { rangos, avisos } = g
   // LOS HALLAZGOS, EN LA CORRIDA Y NO EN LA PESTAÑA: es donde los ve quien puede resolverlos.
@@ -357,7 +371,9 @@ async function main() {
   // cuatro filas quedan en #NAME? hasta la corrida siguiente — el mismo motivo por el que Jornales
   // asegura los suyos antes de escribir. `asegurarParametros` NUNCA pisa un valor cargado: si el
   // dueño corrigió la alícuota, la corrida siguiente la respeta.
-  await asegurarParametros(google, hojas, PARAMETROS_CARGAS)
+  // Desde el 09/09 la lista incluye la proporción del plantel en su primer año, que era una fila de
+  // la sección 3 y ahora es una entrada con rango con nombre (ver `parametrosDeCargas`).
+  await asegurarParametros(google, hojas, parametrosDeCargas(bloqueBase))
     .catch((e) => console.warn(`  ⚠ no pude asegurar los parámetros normativos: ${e.message} — las filas de FCL/IERIC/FODECO pueden quedar en #NAME?`))
 
   // ═══ LA COLA DE LA PESTAÑA VIEJA ═══
@@ -471,7 +487,11 @@ async function publicarRangos(google, sheetId, filas, rangos) {
       : { addNamedRange: { namedRange: { name: d.nombre, range } } }
   })
   await google.spreadsheetBatchUpdate(ID, reqs)
-  console.log(`rangos con nombre publicados: ${quiero.map((d) => `${d.nombre}=B${d.r0}:M${d.r1}`).join(' · ')} — el Libro Canónico ya no proyecta cargas con las filas planas de Compras`)
+  // LAS COLUMNAS SE IMPRIMEN DE LA DECLARACIÓN, NO CLAVADAS. Decía `B${d.r0}:M${d.r1}` a fuego, y
+  // `CARGAS_PLANES_SIN_PAGAR` —que es UNA celda— salía en el log como si cubriera los doce meses:
+  // un aviso que describe otra cosa que la que se publicó es peor que no tenerlo.
+  const col = (i) => String.fromCharCode(65 + i)
+  console.log(`rangos con nombre publicados: ${quiero.map((d) => `${d.nombre}=${col(d.c0)}${d.r0}:${col(d.c1)}${d.r1}`).join(' · ')} — el Libro Canónico ya no proyecta cargas con las filas planas de Compras`)
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

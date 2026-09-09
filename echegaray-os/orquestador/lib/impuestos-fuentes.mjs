@@ -5,7 +5,6 @@
 // en `impuestos-bloques.mjs` no se toca una sola API.
 
 import * as E from './estilo-pestana.mjs'
-import { query } from './db.mjs'
 import { parsearDDJJ, alicuotaDeclarada } from './iibb-ddjj.mjs'
 import { parsearDJIVA } from './iva-ddjj.mjs'
 import { parseMonto } from './cash-briefing.mjs'
@@ -264,52 +263,17 @@ export async function ventasProyectadas(google, fileId) {
   return porMes
 }
 
-/**
- * Los planes de pago F931.
- *
- * ═══ UNA FUENTE, Y LA OTRA COMO CONTROL (06/08) — el defecto J ═══
- *
- * La lista de planes salía de Postgres y los importes del Sheet: dos fuentes para una misma cosa. Un
- * plan cargado en el Sheet y ausente de la base no generaba fila; uno en la base sin filas en el
- * Sheet generaba una fila de doce ceros. Ahora la ÚNICA fuente de la que sale plata es Compras (las
- * SUMIFS del cuadro), y Postgres se consulta para CONTROLAR que las dos digan lo mismo: la
- * divergencia se informa, no se promedia ni se elige en silencio.
- */
-export async function planesDePago(anio) {
-  const r = await query(`
-    select concepto, total, fecha_pago
-      from public.costos_obra
-     where origen = 'compras_sheet'
-       and concepto ~* 'deuda previcional|deuda previsional|plan f931'
-     order by fecha_pago`)
-  const planes = new Map()
-  for (const x of r.rows) {
-    const c = String(x.concepto ?? '')
-    // nombre = cómo se muestra; patron = el fragmento que la SUMIFS usa para sumar las cuotas desde
-    // el Sheet (no se pega el importe, se referencia Compras); campo = EN QUÉ columna de Compras vive
-    // ese fragmento — verificado leyendo las 15 filas reales: el W303094 por "Concepto", los dos de
-    // deuda previsional por "Detalles / Obra". Buscar en la columna equivocada daría cero, o sea una
-    // cuota que se paga y el cuadro declararía inexistente.
-    const [nombre, patron, campo] = /w303094/i.test(c) ? ['Plan F931 W303094 (financiación junio)', 'W303094', 'concepto']
-      : /dic\s*25/i.test(c) ? ['Deuda previsional F931 Diciembre 2025', '931 Dic 25', 'detalle']
-        : /enero\s*26/i.test(c) ? ['Deuda previsional F931 Enero 2026', '931 Enero 26', 'detalle']
-          : ['Otro plan', null, null]
-    const p = planes.get(nombre) ?? { nombre, patron, campo, cuotas: 0, total: 0, primera: null, ultima: null, monto_cuota: 0 }
-    p.cuotas++
-    p.total += Number(x.total) || 0
-    const f = x.fecha_pago ? new Date(x.fecha_pago).toISOString().slice(0, 10) : null
-    if (f && (!p.primera || f < p.primera)) p.primera = f
-    if (f && (!p.ultima || f > p.ultima)) p.ultima = f
-    p.monto_cuota = Math.round(p.total / p.cuotas)
-    if (f && Number(f.slice(0, 4)) === anio) {
-      const mm = Number(f.slice(5, 7))
-      p.porMes = p.porMes ?? Array(13).fill(0)
-      p.porMes[mm] += Number(x.total) || 0
-    }
-    planes.set(nombre, p)
-  }
-  return [...planes.values()].map((p) => ({ ...p, porMes: p.porMes ?? Array(13).fill(0) })).sort((a, b) => b.total - a.total)
-}
+// ═══ `planesDePago` SE BORRÓ (09/09/2026) ═══
+//
+// Leía la MISMA consulta que `lib/cargas-planes.mjs` —los mismos conceptos de `costos_obra`— y les
+// ponía OTROS nombres («Plan F931 W303094 (financiación junio)» contra «Plan F931 W303094») y otra
+// agrupación. Dos lectores de la misma fuente en el mismo repositorio es cómo aparecen dos verdades:
+// el día que cambiara el texto de un plan en Compras, uno de los dos lo seguía y el otro devolvía
+// una fila de doce ceros sin un solo error.
+//
+// El cuadro de planes de pago del F931 es DEUDA PREVISIONAL y vive en «Cargas Sociales»; el lector
+// que quedó es el suyo. «Impuestos y Financieros» lo importa para saber en qué meses hay cuota —lo
+// único que su calendario necesita— y los importes los lee por `CARGAS_MES_PLANES`.
 
 /**
  * Escribe la réplica _IIBB_RAW: las DDJJ de Ingresos Brutos leídas del PDF, adentro del Sheet, con su

@@ -131,3 +131,32 @@ test('el auditor no cuenta el atajo del período como fila 3 ocupada', () => {
     assert.equal(mal.filter((x) => x.regla === 'sin-respiro').length, 0, `"${a3}" no es contenido: es el control`)
   }
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL PODADOR APLANABA LA FECHA DE FRESCURA DE LA FILA 2 (09/09/2026)
+//
+// Medido en la copia del Sheet, no deducido: «Cargas Sociales» publicó A2 = «Compras sin datos»
+// arriba de un cuadro con Compras cargada hasta el día. El motivo: la fila 2 se reescribía SIEMPRE
+// con `textoVisible(...)`, que de una fórmula devuelve su literal más largo — así que toda línea de
+// procedencia con fecha viva se convertía en texto fijo ANTES de escribirse, y de paso podía quedar
+// afirmando lo contrario de lo que el dato dice.
+//
+// Antes no se veía porque el literal más largo era, por casualidad, la frase que el generador quería
+// mostrar. El contrato pide que A2 declare «qué contesta · fuente · CORTE»: un corte que no se mueve
+// es exactamente la mentira que `fecha-de-frescura.mjs` existe para impedir.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('una A2 en fórmula que cumple el contrato llega ENTERA: la fecha de frescura no se aplana', () => {
+  const viva = '=IF(A9=0;"F931 sin datos";"F931 al "&TEXT(A9;"dd/mm"))&" · "&IF(A10=0;"Compras sin datos";"Compras al "&TEXT(A10;"dd/mm"))'
+  const out = podarProsa([['Cargas Sociales'], [viva], [], ['1 · UNO'], ['x']], { pestana: 'Cargas Sociales' })
+  assert.equal(out[1][0], viva, 'el podador volvió a aplanar la fórmula a su literal más largo')
+})
+
+test('PUEDE dar rojo: una A2 en fórmula que se pasa del tope SÍ se recorta y se aplana', () => {
+  // Una fórmula recortada no existe: si el texto visible no entra en el contrato, lo que queda es
+  // texto. La regla no se ablanda por venir en fórmula — se mide lo que el lector ve.
+  const larga = `=A1&"${'x'.repeat(200)}"`
+  const out = podarProsa([['P'], [larga], [], ['1 · UNO'], ['y']], { pestana: 'Cash Flow Mensual' })
+  assert.ok(!String(out[1][0]).startsWith('='), 'una glosa de 200 caracteres sobrevivió por venir en fórmula')
+  assert.ok(String(out[1][0]).length <= 120)
+})

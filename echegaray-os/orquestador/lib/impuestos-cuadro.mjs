@@ -79,17 +79,16 @@ export function formulaPrendarioPendiente(C) {
   return `=SUMIFS(${rango(C.total)};${rango(C.rubro)};"${RUBRO_PRENDARIO}";${rango(C.fechaPrev)};">"&${CORTE_VIVO})`
 }
 
-/**
- * NÚCLEO PURO: lo que FALTA pagar de los planes F931. Mismo criterio que el prendario.
- * @param {Array<{patron:string, campo:'concepto'|'detalle'}>} planes
- */
-export function formulaPlanesPendiente(C, planes = []) {
-  const conPatron = planes.filter((p) => p.patron)
-  if (!conPatron.length) return '=0'
-  const term = (p) => `SUMIFS(${rango(C.total)};${rango(p.campo === 'concepto' ? C.concepto : C.detalle)};"*${p.patron}*";`
-    + `${rango(C.fechaPrev)};">"&${CORTE_VIVO})`
-  return `=${conPatron.map(term).join('+')}`
-}
+// ═══ `formulaPlanesPendiente` SE RETIRÓ (09/09/2026) ═══
+//
+// Medía lo que falta pagar de los planes F931 por FECHA («prevista > HOY»), plan por plan, por su
+// patrón de texto. Era la TERCERA definición de la misma plata: «Cargas Sociales» ya la publica —y
+// la publicaba antes que esto— medida por HECHO, o sea lo que la planilla no marcó «Pagado».
+//
+// El criterio de hecho gana y no es una preferencia: incluye la cuota vencida que nadie pagó y las
+// de otros años, que la definición por fecha dejaba afuera en silencio. «Impuestos y Financieros»
+// lee ahora `CARGAS_PLANES_SIN_PAGAR`. El prendario conserva la suya porque es débito automático del
+// banco y su único registro de estado es la fecha: ahí «vencida» sí quiere decir «debitada».
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // IIBB PROYECTADO — BASE × ALÍCUOTA, EL DRIVER REAL

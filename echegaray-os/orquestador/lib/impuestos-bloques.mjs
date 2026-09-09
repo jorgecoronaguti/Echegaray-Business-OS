@@ -12,7 +12,7 @@ import {
   formulaLibreDispProyectada, RANGO_ALICUOTA_IVA,
 } from './iva-libre-disponibilidad.mjs'
 import {
-  formulaCuotaPrendario, formulaPrendarioPendiente, formulaPlanesPendiente,
+  formulaCuotaPrendario, formulaPrendarioPendiente,
   formulaAlicuotaIibbVigente, formulaIibbDeterminado,
   formulaImpuestoCheque, rangoIibb,
 } from './impuestos-cuadro.mjs'
@@ -22,6 +22,9 @@ import { IIBB_RAW, IIBB_COL, IIBB_FILA0, BANCO_RAW } from './impuestos-fuentes.m
 import { M12, MES, cmes, AJENO } from './impuestos-grilla.mjs'
 import { ALERTA } from './glifos.mjs'
 import { ROTULO_ALICUOTA, ALICUOTA_POR_DEFECTO } from './impuestos-alicuota.mjs'
+// LOS DOS NOMBRES POR LOS QUE ESTA PESTAÑA ENTRA A LA DEUDA PREVISIONAL. Se importan del módulo que
+// los publica —no se escriben acá como texto— para que el día que cambien no queden dos versiones.
+import { NOMBRES_CARGAS } from './libro-extractores-cargas.mjs'
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // 1 · IVA — LA DDJJ OFICIAL (F.2051)
@@ -343,47 +346,42 @@ export function bloqueOtros(G, { anio, C }) {
   return { fCheque, fGanancias, fTotal }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 5 · PLANES DE PAGO F931
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-export function bloquePlanes(G, { anio, C, planes }) {
-  G.push([seccion(5, 'Planes de pago F931 — ¿qué cuota vence cada mes?')])
-  G.cabecera()
-  const q0 = G.n() + 1
-  const colPlan = (campo) => (campo === 'concepto' ? C.concepto : C.detalle)
-  // CADA CUOTA SE SUMA DESDE COMPRAS, NO SE PEGA. Y sin IFERROR: un plan renombrado tiene que
-  // romperse a la vista, no valer $0 (defecto G).
-  const cuota = (p) => (m) => `=SUMIFS(${rango(C.total)};${rango(colPlan(p.campo))};"*${p.patron}*";${rango(C.fechaPrev)};">="&DATE(${anio};${m};1);${rango(C.fechaPrev)};"<="&EOMONTH(DATE(${anio};${m};1);0))`
-  for (const p of planes) {
-    const sinFechas = !p.porMes.some((x) => x)
-    const meses = M12.filter((m) => p.porMes[m])
-    G.mensual(sinFechas || !p.patron ? `${p.nombre}  ${ALERTA} sin fechas de vencimiento cargadas` : p.nombre,
-      p.patron ? cuota(p) : () => VACIO,
-      `${p.cuotas} cuota(s) de ${p.monto_cuota.toLocaleString('es-AR')} · total ${Math.round(p.total).toLocaleString('es-AR')} · Compras, "${p.patron ?? p.nombre}", por su fecha prevista de pago`
-      + (sinFechas ? ` · ${ALERTA} SIN FECHAS DE VENCIMIENTO cargadas: por eso la fila está vacía y su plata no aparece en ningún mes.` : ''),
-      { meses })
-  }
-  const q1 = G.n()
-  const fTotal = G.mensual(rotuloTotal('Cuotas del año'), (m) => `=SUM(${cmes(m)}${q0}:${cmes(m)}${q1})`,
-    'Lo que sale por planes previsionales cada mes. Es el TOTAL DEL AÑO, pagadas incluidas: lo pendiente está en la sección 6.')
-  G.blanco()
-  return { fTotal }
-}
+// ═══ LA SECCIÓN 5 —«PLANES DE PAGO F931»— SE RETIRÓ (09/09/2026) ═══
+//
+// El dueño: *«Cargas Sociales sigue mezclando conceptos con la pestaña Impuestos y Financieros»*.
+// Era, renglón por renglón, el cuadro 4 de «Cargas Sociales»: los mismos tres planes, la misma
+// plata, la misma columna de Compras — pero por OTRO criterio (fecha PREVISTA acá, fecha de caja
+// allá) y con OTROS nombres. Dos cuadros de la misma obligación que coincidían por casualidad.
+//
+// Un plan de pago de un F931 es DEUDA PREVISIONAL, no un impuesto: su cuadro vive donde vive el
+// F931, y la cuota del mes se LEE por `CARGAS_MES_PLANES`. `bloquePlanes` y el `planesDePago` de
+// `impuestos-fuentes.mjs` se borraron con él: lo que ya no llama nadie es capa fósil.
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 6 · DEUDA FINANCIERA — LO QUE FALTA PAGAR (los defectos A y B, muertos)
+// 5 · DEUDA FINANCIERA — LO QUE FALTA PAGAR (los defectos A y B, muertos)
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-export function bloqueDeudaFinanciera(G, { anio, C, planes, fPlanTotal }) {
-  G.push([seccion(6, 'Deuda financiera — cuánto se va por mes y cuánto FALTA pagar')])
+export function bloqueDeudaFinanciera(G, { anio, C }) {
+  G.push([seccion(5, 'Deuda financiera')])
   G.cabecera()
   const fCuota = G.mensual('Prendario Ford XLS · Santander — cuota',
     (m) => formulaCuotaPrendario(C, anio, m),
     'Compras, rubro "Financiero": el cuadro de amortización del banco, cuota por cuota, por su fecha prevista de pago (el banco debita el día 7). NO sale del extracto: un SUMIF sobre el extracto crece cada vez que se importa un mes más de banco, y así declaraba $2.567.316 de cuota donde la cuota es $1.282.811.')
-  G.mensual('Planes previsionales F931 — cuota', (m) => `=${cmes(m)}${fPlanTotal}`,
-    'Traído de la sección 5: un solo cálculo, un solo lugar.')
-  const fSalida = G.mensual(rotuloTotal('Salida financiera del mes'), (m) => `=${cmes(m)}${fCuota}+${cmes(m)}${fPlanTotal}`,
+  // ═══ LA CUOTA DEL PLAN SE LEE DE «Cargas Sociales», NO SE VUELVE A CALCULAR (09/09/2026) ═══
+  //
+  // Antes referenciaba la sección 5 de ESTA pestaña, que era una segunda réplica del cuadro 4 de
+  // «Cargas Sociales». El rango con nombre `CARGAS_MES_PLANES` va a la fila «⇒ Total de cuotas del
+  // año» de aquella pestaña: se mueve con ella si se reordena, y no puede apuntar a otra fila sin
+  // que `verificarRangos` lo denuncie contra su rótulo antes de publicarse.
+  //
+  // INDEX y no una referencia directa porque el nombre cubre B..M de UNA fila: `INDEX(rango;m)` toma
+  // la columna del mes. Una referencia al nombre entero derramaría los doce meses en cada celda.
+  // SIN ATAJAR EL ERROR, como todo este bloque (defecto G): si «Cargas Sociales» todavía no publicó
+  // el nombre, la celda dice `#NAME?` y se ve. Taparlo con un cero diría «este mes no hay cuota que
+  // pagar», que es la mentira exacta que este cuadro existe para evitar.
+  const fPlan = G.mensual('Planes previsionales F931', (m) => `=INDEX(${NOMBRES_CARGAS.planes};${m})`,
+    `Cargas Sociales · ${NOMBRES_CARGAS.planes}. El cuadro de planes vive allá, una sola vez.`)
+  const fSalida = G.mensual(rotuloTotal('Salida financiera del mes'), (m) => `=${cmes(m)}${fCuota}+${cmes(m)}${fPlan}`,
     'Todo lo que se va por deuda con instrumento, mes a mes.')
   // ═══ "PENDIENTE" QUIERE DECIR PENDIENTE (el defecto B) ═══
   //
@@ -396,18 +394,21 @@ export function bloqueDeudaFinanciera(G, { anio, C, planes, fPlanTotal }) {
   const fPrendPend = G.lista(subItem('prendario — cuotas que todavía no vencieron'),
     [formulaPrendarioPendiente(C)],
     'Compras, rubro "Financiero", SÓLO las cuotas con fecha prevista posterior a HOY (el corte lo evalúa la planilla, no la corrida). Es un saldo, no una serie: por eso va fuera de la grilla mensual.')
-  const fPlanesPend = G.lista(subItem('planes F931 — cuotas que todavía no vencieron'),
-    [formulaPlanesPendiente(C, planes)],
-    `Compras, los ${planes.length} planes por su patrón, SÓLO las cuotas con fecha prevista posterior a HOY.`)
+  // ═══ Y LA TERCERA DEFINICIÓN DE «LO QUE FALTA PAGAR DE LOS PLANES» TAMBIÉN SE FUE ═══
+  //
+  // Era el renglón `   · planes F931 — cuotas que todavía no vencieron  $4.989.751`, medido por
+  // FECHA. «Cargas Sociales» publica el mismo saldo medido por HECHO —lo que la planilla no marcó
+  // «Pagado»—, criterio estrictamente mejor: incluye la cuota vencida que nadie pagó y las de otros
+  // años. Hoy las dos dan $4.989.751; el día que se separen, la que tiene razón es la de hecho.
   const fPend = G.lista(rotuloTotal('Deuda fiscal-financiera PENDIENTE'),
-    [`=$B$${fPrendPend}+$B$${fPlanesPend}`],
-    'Lo que FALTA pagar con instrumento. Es el número del hero, y el hero lo REFERENCIA: no lo vuelve a calcular.')
+    [`=$B$${fPrendPend}+${NOMBRES_CARGAS.planesSinPagar}`],
+    'Lo que FALTA pagar con instrumento: el prendario de acá arriba más las cuotas de planes que Cargas Sociales publica sin pagar.')
   G.blanco()
-  return { fCuota, fSalida, fPrendPend, fPlanesPend, fPend }
+  return { fCuota, fSalida, fPlan, fPrendPend, fPend }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 7 · SUPUESTOS Y HUECOS — lo que este cuadro ASUME, y lo que NO sabe
+// 6 · SUPUESTOS Y HUECOS — lo que este cuadro ASUME, y lo que NO sabe
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 export function bloqueCierre(G, { proy, vencimientos }) {
@@ -421,7 +422,7 @@ export function bloqueCierre(G, { proy, vencimientos }) {
   // Es UNA sola idea, y el título nuevo la nombra: qué asume este cuadro y qué no sabe. Una alícuota
   // es un supuesto declarado; un hueco es un supuesto que ni siquiera se puede cuantificar. El
   // parámetro va PRIMERO porque es el único que se edita y el único que cambia un número de arriba.
-  G.push([seccion(7, 'Supuestos y huecos — lo que este cuadro asume, y lo que no sabe')])
+  G.push([seccion(6, 'Supuestos y huecos')])
   // LA ALÍCUOTA VIVE EN UNA CELDA CON NOMBRE, NO ADENTRO DE UNA FÓRMULA. La skill de impuestos
   // prohíbe afirmar una alícuota vigente sin verificarla, y el OS no puede verificar una norma en
   // cada corrida. Así que el OS no la afirma — la LEE de acá, y la firma quien puede.

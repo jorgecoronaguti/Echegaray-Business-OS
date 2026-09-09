@@ -41,7 +41,7 @@
 import { movimiento, SALE, estadoContraCorte } from './libro-movimientos.mjs'
 import { isoDeSerial } from './libro-extractores-fechas.mjs'
 import { columnasDeCompras, estaPagada } from './libro-extractores-compras.mjs'
-import { sub, total as rotuloTotal } from './patron-pestana.mjs'
+import { total as rotuloTotal } from './patron-pestana.mjs'
 import { fila as rangoFila } from './rangos-con-nombre.mjs'
 
 /** La pestaña de la que sale la serie. Es el `origen.pestana` de cada movimiento. */
@@ -73,6 +73,20 @@ export const NOMBRES_CARGAS = Object.freeze({
   // los meses sin DDJJ; entre la presentación y el pago —los diez días que más importan— el libro
   // caía a la fila plana. Éste es el rango que cierra ese hueco: el «Total declarado», mes por mes.
   declarado: 'CARGAS_MES_F931_DECLARADO',
+  // ═══ EL QUINTO Y EL SEXTO: LOS PLANES, QUE VIVÍAN DOS VECES (09/09/2026) ═══
+  //
+  // El dueño: *«Cargas Sociales sigue mezclando conceptos con la pestaña Impuestos y Financieros»*.
+  // «Impuestos y Financieros» tenía su propio cuadro de planes de pago del F931 —mismas tres
+  // financiaciones, sumadas desde Compras por OTRO criterio (fecha PREVISTA de pago, no fecha de
+  // caja)— y su bloque de deuda financiera calculaba lo pendiente con una TERCERA definición
+  // («fecha prevista > HOY») al lado de la de acá («la planilla no marcó Pagado»). Tres cuentas de
+  // la misma plata en dos pestañas: exactamente lo que REALIDAD ÚNICA prohíbe.
+  //
+  // Un plan de pago de un F931 es DEUDA PREVISIONAL, así que el cuadro vive en «Cargas Sociales» y
+  // «Impuestos y Financieros» lo LEE por estos dos nombres. El día que cambie el criterio, cambia en
+  // un lugar y las dos pestañas dicen lo mismo — hoy coinciden por casualidad, no por construcción.
+  planes: 'CARGAS_MES_PLANES',
+  planesSinPagar: 'CARGAS_PLANES_SIN_PAGAR',
 })
 
 /**
@@ -83,11 +97,21 @@ export const NOMBRES_CARGAS = Object.freeze({
  * día que uno cambie el nombre queda apuntando a la fila de al lado — y un rango con nombre mal
  * apuntado devuelve un número plausible, nunca un error.
  */
+// ═══ LOS RÓTULOS DEJARON DE EXPLICAR (09/09/2026) ═══
+//
+// Decían «⇒ Subtotal F931 — lo que declara la DDJJ», «⇒ Subtotal gremiales — FCL, UOCRA, IERIC y
+// FODECO» y «   · sale de la caja el mes siguiente». El dueño, mirando la pestaña: *«no se ha
+// aplicado todo el rediseño … minimalismo extremo, sin aclaraciones ni explicaciones de nada»*.
+// Lo que va después del guion es la definición del renglón, y la definición vive en el código del
+// bloque que lo escribe, no al lado del importe. El «·» además mentía: esa fila no es un sub-ítem
+// de la de arriba, es la fila de fechas que el Libro lee por `CARGAS_MES_FECHAS`.
 export const ROTULOS_CARGAS = Object.freeze({
-  f931: rotuloTotal('Subtotal F931 — lo que declara la DDJJ'),
-  gremiales: rotuloTotal('Subtotal gremiales — FCL, UOCRA, IERIC y FODECO'),
-  fechas: sub('sale de la caja el mes siguiente'),
+  f931: rotuloTotal('Subtotal F931'),
+  gremiales: rotuloTotal('Subtotal gremiales'),
+  fechas: 'Sale de la caja el',
   declarado: rotuloTotal('Total declarado'),
+  planes: rotuloTotal('Total de cuotas del año'),
+  planesSinPagar: rotuloTotal('Cuotas sin pagar'),
 })
 
 /**
@@ -102,10 +126,15 @@ export const ROTULOS_CARGAS = Object.freeze({
  * donde la planilla dice a qué período pertenece la cuota. `cargas-planes.mjs` deriva de acá el
  * nombre de cada plan para la pestaña: una sola definición.
  */
+// EL NOMBRE NOMBRA, NO EXPLICA (09/09/2026). Decían «Plan F931 W303094 — financiación de junio
+// 2026» y «Deuda previsional F931 — Diciembre 2025»: el período que cada plan financia ya está acá
+// abajo, en `periodo`, y es lo que usa el código. Repetirlo en castellano al lado del rótulo es la
+// aclaración que el dueño mandó sacar. El período queda en el nombre en la forma corta que usa el
+// resto del libro (`dic-25`), que ocupa seis caracteres en vez de una frase.
 export const PLANES_F931 = Object.freeze([
-  Object.freeze({ patron: /w303094/i, periodo: '2026-06', nombre: 'Plan F931 W303094 — financiación de junio 2026' }),
-  Object.freeze({ patron: /dic\s*25/i, periodo: '2025-12', nombre: 'Deuda previsional F931 — Diciembre 2025' }),
-  Object.freeze({ patron: /enero\s*26/i, periodo: '2026-01', nombre: 'Deuda previsional F931 — Enero 2026' }),
+  Object.freeze({ patron: /w303094/i, periodo: '2026-06', nombre: 'Plan F931 W303094' }),
+  Object.freeze({ patron: /dic\s*25/i, periodo: '2025-12', nombre: 'Deuda previsional dic-25' }),
+  Object.freeze({ patron: /enero\s*26/i, periodo: '2026-01', nombre: 'Deuda previsional ene-26' }),
 ])
 
 /** NÚCLEO PURO: el plan al que pertenece una fila, por lo que dice su texto; `null` si ninguno. */
@@ -117,11 +146,15 @@ export const planDeLaFila = (texto) => PLANES_F931.find((p) => p.patron.test(Str
  * @param {{fF931:number, fGremiales:number, fFechas:number}} g las filas (1-based) de la grilla armada
  * @param {{c0?:number, c1?:number}} cols las columnas de los doce meses (B..M por defecto, 0-based)
  */
-export function rangosDeCargas({ fF931, fGremiales, fFechas, fDeclarado }, { c0 = 1, c1 = 12 } = {}) {
-  // LAS CUATRO FILAS SON OBLIGATORIAS. Una fila `undefined` pasa `verificarRangos` sin ruido (ninguna
+export function rangosDeCargas({ fF931, fGremiales, fFechas, fDeclarado, fPlanes, fPlanesSinPagar }, { c0 = 1, c1 = 12 } = {}) {
+  // LAS SEIS FILAS SON OBLIGATORIAS. Una fila `undefined` pasa `verificarRangos` sin ruido (ninguna
   // comparación numérica falla) y publicaría un nombre ciego: el libro no leería el declarado y
   // volvería, en silencio, al $6.500.000 tipeado. Se rompe acá, con el nombre de lo que falta.
-  const filas = { fFechas, fF931, fGremiales, fDeclarado }
+  //
+  // Las dos de planes entraron el 09/09 con la unificación contra «Impuestos y Financieros»: esa
+  // pestaña dejó de tener su propio cuadro de planes y lee éstas. Si quedaran opcionales, un día que
+  // el bloque 4 no se arme «Impuestos» mostraría $0 de deuda previsional sin un solo error.
+  const filas = { fFechas, fF931, fGremiales, fDeclarado, fPlanes, fPlanesSinPagar }
   const faltan = Object.entries(filas).filter(([, f]) => !(Number.isInteger(f) && f > 0)).map(([k]) => k)
   if (faltan.length) throw new Error(`rangosDeCargas: falta la fila de ${faltan.join(', ')} (fDeclarado es el «Total declarado»)`)
   return [
@@ -129,6 +162,11 @@ export function rangosDeCargas({ fF931, fGremiales, fFechas, fDeclarado }, { c0 
     rangoFila(NOMBRES_CARGAS.f931, { fila: fF931, c0, c1, rotulo: ROTULOS_CARGAS.f931 }),
     rangoFila(NOMBRES_CARGAS.gremiales, { fila: fGremiales, c0, c1, rotulo: ROTULOS_CARGAS.gremiales }),
     rangoFila(NOMBRES_CARGAS.declarado, { fila: fDeclarado, c0, c1, rotulo: ROTULOS_CARGAS.declarado }),
+    rangoFila(NOMBRES_CARGAS.planes, { fila: fPlanes, c0, c1, rotulo: ROTULOS_CARGAS.planes }),
+    // «Cuotas sin pagar» es un SALDO, no una serie: una sola celda, la B. Publicarlo sobre B..M lo
+    // dejaría con doce celdas vacías al lado y un SUM del nombre daría el número correcto por
+    // casualidad — hasta el día que alguien escriba algo en C.
+    rangoFila(NOMBRES_CARGAS.planesSinPagar, { fila: fPlanesSinPagar, c0, c1: c0, rotulo: ROTULOS_CARGAS.planesSinPagar }),
   ]
 }
 

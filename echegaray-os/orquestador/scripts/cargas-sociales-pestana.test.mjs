@@ -28,7 +28,7 @@ test('no hay ninguna fecha estampada adentro', () => {
 })
 
 test('cada fuente declara SU fecha: no hay un MAX que le preste frescura a la congelada', () => {
-  assert.match(subtitulo, /"DDJJ F931 al "/, 'el F931 tiene que declarar la suya')
+  assert.match(subtitulo, /"F931 al "/, 'el F931 tiene que declarar la suya')
   assert.match(subtitulo, /"Compras al "/, 'y Compras la suya')
   // El defecto que esto ataja: una sola fecha para las dos.
   assert.doesNotMatch(subtitulo, /"al "&TEXT\(MAX\(/, 'volvió a resumir las dos fuentes en una sola fecha')
@@ -59,7 +59,7 @@ test('la columna de fecha de Compras se coacciona: mezcla serial y texto tipeado
 })
 
 test('la fuente sin datos lo dice, y no muestra el 31/01/1900 que da EOMONTH(0;0)', () => {
-  assert.match(subtitulo, /"DDJJ F931 sin datos"/)
+  assert.match(subtitulo, /"F931 sin datos"/)
 })
 
 test('separador es-AR en la parte calculada: una coma parte la fórmula', () => {
@@ -75,6 +75,7 @@ test('separador es-AR en la parte calculada: una coma parte la fórmula', () => 
 import { grilla as grillaCS, jornalesDelMes } from './cargas-sociales-pestana.mjs'
 import {
   A_VERIFICAR, RANGO_FCL_PRIMER_ANIO, RANGO_IERIC, RANGO_DIA_PAGO_F931, PARAMETROS_CARGAS,
+  RANGO_PROPORCION_PRIMER_ANIO, parametrosDeCargas, divergenciaDePlantel,
 } from '../lib/cargas-cadena.mjs'
 import { rangosDeCargas, ROTULOS_CARGAS, NOMBRES_CARGAS } from '../lib/libro-extractores-cargas.mjs'
 import { SIN_DDJJ as SIN_DDJJ_CS } from '../lib/cargas-grilla.mjs'
@@ -138,14 +139,20 @@ test('A7 · LA DOTACIÓN ES LA ÚLTIMA REAL, NO UN AVERAGE — y se controla con
   const celda = String(dot[7])
   assert.doesNotMatch(celda, /AVERAGE/, 'volvió el promedio: 21 personas que no fueron ciertas ningún mes')
   assert.match(celda, /INDEX\(.*COUNT\(/, 'tiene que tomar el último mes con DDJJ')
-  // Y el control cruzado: la planilla de jornales, que es otra fuente.
-  const ctrl = filaCS(/plantel de la última quincena/)
-  assert.ok(ctrl, 'sin el contraste, la dotación se valida contra sí misma')
-  assert.match(String(ctrl[1]), /JORNALES_REAL_PERSONAS/)
-  // EL VEREDICTO ES UN GLIFO (09/09): la frase de 44 caracteres se fue por el minimalismo, pero el
-  // control TIENE que seguir pudiendo decir que no — si acá quedara sólo el "✓", sería una constante.
-  assert.match(String(ctrl[2]), /"▲"/, 'el control perdió su forma de decir que NO')
-  assert.match(String(ctrl[2]), /"✓"/)
+  // ═══ EL CONTRASTE CONTRA LA OTRA FUENTE SIGUE, FUERA DE LA GRILLA (09/09/2026) ═══
+  //
+  // Era una fila con un veredicto en glifo («▲»/«✓») en el medio del cuadro, y el dueño mandó sacar
+  // los glifos y las explicaciones de la pestaña. El control no se apagó: bajó a
+  // `divergenciaDePlantel` y su veredicto sale por el log de la corrida. Acá se prueba que la fila
+  // ya NO está y que la función SÍ puede decir que no — lo único que la hace un control.
+  assert.equal(filaCS(/plantel de la última quincena/), undefined,
+    'volvió el renglón del control al medio de la grilla')
+  assert.equal(divergenciaDePlantel({ dotacion: 25, plantel: 15 }).diverge, true,
+    'el control dejó de poder dar rojo: 25 contra 15 son 40% de brecha')
+  assert.equal(divergenciaDePlantel({ dotacion: 16, plantel: 15 }).diverge, false)
+  // Y NO PODER MIRAR NO ES DECIR QUE NO: sin una de las dos cifras no hay veredicto, no hay verde.
+  assert.deepEqual(divergenciaDePlantel({ dotacion: null, plantel: 15 }),
+    { diverge: false, motivo: 'sin-dato', brecha: null })
 })
 
 test('B13 · IERIC y FODECO multiplican la DOTACIÓN, no la remuneración', () => {
@@ -164,9 +171,22 @@ test('B13 · IERIC y FODECO multiplican la DOTACIÓN, no la remuneración', () =
 test('FCL usa la alícuota legal por antigüedad, y la antigüedad sale del espejo', () => {
   const fcl = filaProyCS(/^FCL$/)
   assert.match(String(fcl[8]), new RegExp(RANGO_FCL_PRIMER_ANIO))
-  const antig = filaCS(/en su primer año de antigüedad/)
-  assert.ok(antig, 'falta la fila que mide la proporción del plantel en su primer año')
-  assert.match(String(antig[1]), /'_J_OBREROS'!\$C\$495:\$C\$510/)
+  // ═══ LA PROPORCIÓN SE MUDÓ A «Parámetros» (09/09/2026) ═══
+  //
+  // Era un renglón `   · en su primer año de antigüedad  66,7%` en el medio de doce columnas de
+  // pesos. Es una ENTRADA de esta fórmula, no un importe del cuadro: vive en la pestaña de entradas,
+  // con rango con nombre, y la fórmula la cita por ese nombre. En la grilla no queda nada.
+  assert.match(String(fcl[8]), new RegExp(RANGO_PROPORCION_PRIMER_ANIO),
+    'el FCL dejó de leer la proporción por su rango con nombre')
+  assert.equal(filaCS(/en su primer año de antigüedad/), undefined, 'volvió el renglón a la grilla')
+  const p = parametrosDeCargas({ inicio: 495, fin: 510 }).find((x) => x.rango === RANGO_PROPORCION_PRIMER_ANIO)
+  assert.ok(p, 'el parámetro no se declara: el FCL quedaría en #NAME?')
+  assert.match(String(p.valor), /'_J_OBREROS'!\$C\$495:\$C\$510/)
+  // SE REESCRIBE EN CADA CORRIDA. Su fórmula cita el bloque de la quincena vigente: congelada,
+  // mediría la antigüedad del plantel de hace quince días sin dar un solo error.
+  assert.equal(p.refrescar, true, 'sin `refrescar` el parámetro se fosiliza apuntando al bloque viejo')
+  // Y sin bloque no se declara: un nombre sobre una celda vacía apagaría la alícuota del primer año.
+  assert.equal(parametrosDeCargas(null).some((x) => x.rango === RANGO_PROPORCION_PRIMER_ANIO), false)
 })
 
 test('LO QUE NO SE PUDO VERIFICAR ESTÁ DECLARADO EN LA PESTAÑA, no sólo en el código', () => {
@@ -243,7 +263,7 @@ test('los dos HALLAZGOS que estaban al pie siguen saliendo — por la corrida, n
 const heroCS = (re) => gCS.filas.findIndex((f) => re.test(String(f[0] ?? ''))) + 1
 
 test('el titular es PERCIBIDO: lo pagado en el año y el próximo vencimiento', () => {
-  const pagado = filaCS(/^⇒ Cargas sociales pagadas en el año/)
+  const pagado = filaCS(/^⇒ Pagado en el año/)
   assert.ok(pagado, 'se fue el titular: la pestaña vuelve a arrancar en un cuadro')
   // Es la suma de la fila de TOTAL del cuadro 2, que mide por HECHO ("Pagado" en Compras). No se
   // recalcula por otro camino: dos verdades para lo mismo es como se pierde la confianza en la hoja.
@@ -293,7 +313,7 @@ test('el control de integridad se declara para que la piel lo dibuje distinto', 
   // Las cuatro notas al pie que este test también declaraba se retiraron el 06/09: `pies` queda como
   // canal —el formato de una nota futura tiene que declararse, no adivinarse— pero llega vacío.
   assert.deepEqual(gCS.pies, [], 'una nota al pie volvió a declararse: el contrato la prohíbe')
-  assert.deepEqual(gCS.controles, [heroCS(/^⇒ Diferencia — tiene que ser \$0/)])
+  assert.deepEqual(gCS.controles, [heroCS(/^⇒ Diferencia$/)])
 })
 
 test('la pestaña armada cumple el patrón de diseño: cero defectos', () => {
@@ -348,7 +368,7 @@ test('el día de pago vive en Parámetros, no adentro de la fórmula', () => {
 })
 
 test('B78 · el control de planes resta DOS CELDAS VIVAS: ninguna constante de la corrida', () => {
-  const dif = filaCS(/^⇒ Diferencia — tiene que ser \$0/)
+  const dif = filaCS(/^⇒ Diferencia$/)
   assert.match(String(dif[1]), /^=\$B\$\d+-\$N\$\d+$/,
     `el control volvió a restar contra una constante: ${dif[1]}`)
 })
@@ -370,11 +390,11 @@ test('NINGUNA FÓRMULA DE LA GRILLA LLEVA UN LITERAL DE MILLONES ADENTRO', () =>
 
 test('lo que no es plata no se dibuja como plata: personas, proporción y fechas', () => {
   const fila = (re) => gCS.filas.findIndex((f) => re.test(String(f[0] ?? ''))) + 1
-  assert.ok(gCS.cantidades.includes(fila(/plantel de la última quincena/)),
-    'las 16 personas del control de plantel se dibujaban "$16"')
-  assert.ok(gCS.ratios.includes(fila(/en su primer año de antigüedad/)),
-    'la proporción 0,7 del plantel se dibujaba "$1"')
-  assert.deepEqual(gCS.fechas, [fila(new RegExp(ROTULOS_CARGAS.fechas.trim().slice(0, 20)))],
+  // Las dos filas que no eran plata y estaban en el medio de la grilla se fueron (ver arriba). Queda
+  // la dotación —que sigue siendo un insumo visible del cuadro— y la fila de fechas.
+  assert.ok(gCS.cantidades.includes(fila(/^Dotación proyectada/)), 'la dotación se dibujaba "$21"')
+  assert.ok(gCS.ratios.includes(fila(/^Remuneración declarada ÷/)), 'la relación 0,67 se dibujaba "$1"')
+  assert.deepEqual(gCS.fechas, [fila(new RegExp(ROTULOS_CARGAS.fechas.trim().slice(0, 15)))],
     'la fila de fechas sin formato de fecha sale "$46.244"')
 })
 

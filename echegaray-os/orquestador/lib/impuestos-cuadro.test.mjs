@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  RUBRO_PRENDARIO, formulaCuotaPrendario, formulaPrendarioPendiente, formulaPlanesPendiente,
+  RUBRO_PRENDARIO, formulaCuotaPrendario, formulaPrendarioPendiente,
   formulaAlicuotaIibbVigente, formulaIibbDeterminado,
   formulaImpuestoChequeProyectado, formulaImpuestoCheque,
   formulaVentana, formulaDeudaPendiente,
@@ -51,30 +51,24 @@ test('EL CORTE DE "PENDIENTE" LO EVALÚA LA PLANILLA: ni un serial tipeado', () 
   // El defecto: `">"&46240` —el serial del día de la corrida— en las dos celdas que el hero publica
   // como DEUDA PENDIENTE. Con eso, una pestaña que no se regenera un día empieza a contar como
   // pendientes cuotas que ya se debitaron, y ese es el número con el que se decide cubrir un bache.
-  const planes = [{ patron: 'W303094', campo: 'concepto' }]
-  for (const f of [formulaPrendarioPendiente(C), formulaPlanesPendiente(C, planes)]) {
-    assert.match(f, /">"&TODAY\(\)/, 'el corte tiene que ser vivo')
-    assert.ok(!/">"&\d+/.test(f), `hay un serial tipeado: ${f}`)
-    // Y el serial del día de hoy no puede aparecer por ninguna otra vía.
-    assert.ok(!f.includes(String(serialDe(HOY))), 'el serial del día de la corrida no va en la fórmula')
-  }
+  //
+  // Desde el 09/09 sólo queda el prendario: la fórmula de los planes se retiró porque «Cargas
+  // Sociales» ya publicaba el mismo saldo por HECHO («la planilla no marcó Pagado»), y dos
+  // definiciones de la misma deuda es lo que el dueño mandó unificar. Ver `impuestos-cuadro.mjs`.
+  const f = formulaPrendarioPendiente(C)
+  assert.match(f, /">"&TODAY\(\)/, 'el corte tiene que ser vivo')
+  assert.ok(!/">"&\d+/.test(f), `hay un serial tipeado: ${f}`)
+  // Y el serial del día de hoy no puede aparecer por ninguna otra vía.
+  assert.ok(!f.includes(String(serialDe(HOY))), 'el serial del día de la corrida no va en la fórmula')
 })
 
-test('la deuda pendiente de los planes también es sólo lo futuro, y por plan', () => {
-  const planes = [
-    { patron: 'W303094', campo: 'concepto' },
-    { patron: '931 Dic 25', campo: 'detalle' },
-    { patron: '931 Enero 26', campo: 'detalle' },
-  ]
-  const f = formulaPlanesPendiente(C, planes)
-  assert.ok(f.includes('Compras!$L$4:$L;"*W303094*"'), 'W303094 se identifica por Concepto')
-  assert.ok(f.includes('Compras!$K$4:$K;"*931 Dic 25*"'), 'los de deuda previsional, por Detalles / Obra')
-  assert.equal((f.match(/SUMIFS/g) ?? []).length, 3, 'un término por plan')
-  assert.equal((f.match(/">"&TODAY\(\)/g) ?? []).length, 3, 'los tres, sólo hacia adelante')
-  // Sin planes reconocidos no se inventa un importe: da 0 explícito.
-  assert.equal(formulaPlanesPendiente(C, []), '=0')
-  assert.equal(formulaPlanesPendiente(C, [{ patron: null, campo: null }]), '=0')
-})
+// ═══ EL TEST DE `formulaPlanesPendiente` SE FUE CON LA FUNCIÓN (09/09/2026) ═══
+//
+// Probaba que la deuda de los planes F931 se midiera por fecha prevista y plan por plan. Esa
+// definición ya no existe acá: la deuda en planes la publica «Cargas Sociales» por HECHO —lo que la
+// planilla no marcó «Pagado»— y esta pestaña la lee por `CARGAS_PLANES_SIN_PAGAR`. Lo que ese test
+// protegía —que el corte no fuera un serial tipeado— sigue probado arriba sobre el prendario, y la
+// definición que quedó viva la prueba `libro-extractores-cargas.test.mjs`.
 
 test('el rubro del prendario es contrato con Compras y está declarado', () => {
   assert.equal(RUBRO_PRENDARIO, 'Financiero')

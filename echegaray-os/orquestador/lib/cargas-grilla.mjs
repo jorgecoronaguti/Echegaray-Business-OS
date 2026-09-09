@@ -50,6 +50,22 @@ export const REALES = (fila, desdeProy) => {
   return `$B$${fila}:$${cm(desdeProy - 1)}$${fila}`
 }
 
+/**
+ * DESDE QUÉ MES SE PROYECTA — SE DEDUCE DEL DATO, NO SE ESCRIBE A MANO.
+ *
+ * POR QUÉ CAMBIÓ (23/07). El dueño: "si tienen proyecciones que dejaron de serlo porque ya estamos
+ * en el momento determinado, ¿se actualiza?". Acá decía `DESDE_PROY = 7`. Una constante no se entera
+ * de que pasó el tiempo: en agosto el cuadro habría seguido proyectando julio aunque el F931 de
+ * julio ya estuviera presentado y leído — una estimación dibujada al lado de un hecho, sin que nada
+ * lo avisara. Es la clase de error que envejece en silencio, igual que un número pegado.
+ *
+ * Ahora la frontera la pone el dato: se proyecta desde el primer mes SIN DDJJ presentada.
+ */
+export function desdeQueMesSeProyecta(periodos) {
+  const conDato = periodos.map((p) => Number(p.slice(5, 7))).filter(Boolean)
+  return conDato.length ? Math.max(...conDato) + 1 : 1
+}
+
 /** Los meses que YA tienen DDJJ: 1..desdeProy-1. El denominador de lo que se mide sobre lo real. */
 export const MESES_REALES = (desdeProy) => Array.from({ length: desdeProy - 1 }, (_, i) => i + 1)
 
