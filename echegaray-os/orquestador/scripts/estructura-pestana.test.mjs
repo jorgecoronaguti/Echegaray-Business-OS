@@ -12,7 +12,11 @@ import assert from 'node:assert/strict'
 import { grilla, rangosDeEstructura, ROTULO_TOTAL, formatosPropios } from './estructura-pestana.mjs'
 import { verificarRangos, explicarProblemas, fila } from '../lib/rangos-con-nombre.mjs'
 import { tiene, fusionar, limpiarCentinela } from '../lib/preservar-anotaciones.mjs'
-import { auditarDiseno } from '../lib/diseno-unificado.mjs'
+import { auditarDiseno, encabezadoRoto, TOPE_SUBTITULO } from '../lib/diseno-unificado.mjs'
+import { textoVisible } from '../lib/patron-pestana.mjs'
+import { MONEDA_CUERPO, MONEDA_TOTAL, CONTADOR } from '../lib/formato-statement.mjs'
+import { ANCHO as ANCHO_COLUMNA } from '../lib/estilo-pestana.mjs'
+import { FILA_BLOQUE } from '../lib/control-arca-bloque.mjs'
 import { MIN_MESES } from '../lib/cash-flow-lineas.mjs'
 import { evaluarFormula, hojaDeGrilla } from '../lib/evaluar-formula-sheet.mjs'
 import { enBloqueIndivisible } from '../lib/celda-de-estructura.mjs'
@@ -58,17 +62,25 @@ test('EL CUADRO DUPLICADO: la fusión limpia el encabezado y los datos del layou
   enLaPestana[1] = ['(subtítulo viejo)', 46023, 46054, 46082, 46113, 46143, 46174, 46204, 46235, 46266, 46296, 46327, 46357, 'Total real', 'Proyectado', 'Total 2026', '% del total']
   enLaPestana[2] = ['Equipos y rodados (inversión)', '=IF(S3<>0;S3;0)', '', '', '', '', '', '', '', '', '', '', '', '=SUM($S3:$AD3)', '=$P3-$N3', '=SUM($B3:$M3)', '=IFERROR($P3/$P11;0)']
   enLaPestana[3] = ['Combustible', '=IF(S4<>0;S4;0)']
-  enLaPestana[4] = ['1 · EL GASTO DE ESTRUCTURA, MES A MES', '=IF(S5<>0;S5;0)']
+  enLaPestana[4] = ['Vehículos y taller', '=IF(S5<>0;S5;0)']
+  enLaPestana[6] = ['Insumos y ferretería', '=IF(S7<>0;S7;0)']
+  enLaPestana[7] = ['1 · EL GASTO DE ESTRUCTURA, MES A MES', '=IF(S8<>0;S8;0)']
 
   const fusion = fusionar(g.filas, enLaPestana)
-  for (const i of [1, 2, 3, 4]) {
+  // LA COLUMNA B DE LAS FILAS DEL TITULAR SÍ SE ESCRIBE: es la cifra que la pestaña contesta. Lo que
+  // no puede sobrevivir es el importe del layout anterior — se comprueba por el valor, no por el hueco.
+  for (const i of [1, 2, 3, 4, 6, 7]) {
     for (let c = 1; c <= 16; c++) {
-      assert.equal(fusion[i][c], '', `fila ${i + 1}, columna ${c + 1}: sobrevivió "${fusion[i][c]}" del layout anterior`)
+      const propio = String(g.filas[i]?.[c] ?? '').startsWith('=')
+      const esperado = propio ? g.filas[i][c] : ''
+      assert.equal(fusion[i][c], esperado, `fila ${i + 1}, columna ${c + 1}: sobrevivió "${fusion[i][c]}" del layout anterior`)
     }
   }
   // Y el rótulo del cuadro fantasma tampoco sobrevive: la fila 3 es una separadora, no "Equipos y rodados".
   assert.equal(fusion[2][0], '')
-  assert.equal(fusion[4][0], '1 · EL GASTO DE ESTRUCTURA, MES A MES', 'el título de sección del layout de hoy sí se escribe')
+  assert.equal(fusion[6][0], '', 'la fila en blanco entre el titular y el bloque 1 se limpia')
+  assert.equal(fusion[3][0], 'GASTO DE ESTRUCTURA 2026', 'el titular del layout de hoy sí se escribe')
+  assert.equal(fusion[7][0], '1 · EL GASTO DE ESTRUCTURA, MES A MES', 'el título de sección del layout de hoy sí se escribe')
 })
 
 test('lo que la persona anota fuera del ancho declarado se preserva igual', () => {
@@ -92,8 +104,18 @@ test('NI UNA COLUMNA DE PROSA: la columna D del bloque de control quedó vacía'
   }
 })
 
+// EL SUBTÍTULO SE MIDE POR LO QUE SE VE, NO POR LO QUE PESA (09/09/2026). Medía el largo del valor
+// CRUDO, y desde que la fila 2 declara su fecha de corte con una fórmula —la frescura se mide, no se
+// tipea— ese largo es el de la fórmula (742 caracteres) y no el del renglón que el dueño lee. El
+// contrato mide `textoVisible` contra `TOPE_SUBTITULO` (lib/diseno-unificado.mjs) y esto mide lo
+// mismo: dos varas para la misma regla es cómo se termina con una pestaña conforme y un test verde
+// que no miran lo mismo.
 test('el subtítulo entra en una línea', () => {
-  assert.ok(String(g.filas[1][0]).length <= 130, `mide ${String(g.filas[1][0]).length} caracteres`)
+  const visible = textoVisible(g.filas[1][0])
+  assert.ok(visible, 'la fila 2 tiene que declarar procedencia')
+  assert.ok(visible.length <= TOPE_SUBTITULO, `mide ${visible.length} caracteres visibles`)
+  assert.deepEqual(encabezadoRoto(limpiarCentinela(g.filas), { pestana: 'Estructura' }), [],
+    'el encabezado de tres filas tiene que pasar el contrato tal como sale del generador')
 })
 
 test('los formatos propios no pintan un solo fondo: el color quedó en el rojo del control', () => {
@@ -249,7 +271,10 @@ test('EL MÍNIMO DE MESES SE MIDE SOBRE CERRADOS: 3 cerrados + una factura de es
 
 test('LOS RÓTULOS DICEN "CERRADOS" PORQUE ES LO QUE MIDEN', () => {
   // Si el número cambia de significado y el rótulo no, el cuadro miente sin un solo error.
-  assert.match(String(g.filas[1][0]), /meses cerrados/i, 'el subtítulo explica la regla de proyección')
+  // LA MITAD QUE MEDÍA EL SUBTÍTULO SE FUE (09/09/2026): exigía que la fila 2 explicara la regla de
+  // proyección («sólo lo que apareció en 4 meses cerrados o más»), y bajo el minimalismo extremo la
+  // fila 2 declara procedencia y no explica nada. Lo que queda es el rótulo del CONTROL, que sí tiene
+  // que decir «cerrados» porque es el universo exacto que su COUNTIFS cuenta.
   assert.match(String(g.filas[g.fCtrl + 1][0]), /meses cerrados/i, 'el control de rubros no proyectados')
 })
 
@@ -312,4 +337,83 @@ test('EL DEFECTO · la grilla que se escribe no tiene un solo desvío del contra
   const h = auditarDiseno(limpiarCentinela(g.filas), { pestana: 'Estructura' })
   const detalle = h.map((x) => `${(x.col ?? 'A')}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n  ')
   assert.deepEqual(h, [], `Estructura vuelve a desviarse del contrato:\n  ${detalle}`)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL TITULAR Y LOS FORMATOS QUE EL ARCHIVO VIVO NO TENÍA — 09/09/2026
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Medido en el Sheet real antes de este cambio: el encabezado del cuadro de servicios recurrentes
+// publicaba «1/1/2026» al lado de un «ene» —dos formas del mismo encabezado en la misma pestaña— y
+// `B20` (Movistar, enero) salía «393970» en crudo. Las dos son fallas de FORMATO, no de dato, y las
+// dos se prueban acá sobre los requests: es la única forma de que un rediseño no las reintroduzca sin
+// que nadie mire la pantalla.
+
+/** El último formato que gana sobre una celda: los requests se aplican EN ORDEN, como en la API. */
+function formatoDe(reqs, fila, col, campo = 'numberFormat') {
+  let out = null
+  for (const r of reqs) {
+    const rg = r.repeatCell?.range
+    const v = r.repeatCell?.cell?.userEnteredFormat?.[campo]
+    if (!rg || v === undefined) continue
+    if (fila - 1 < (rg.startRowIndex ?? 0) || fila - 1 >= (rg.endRowIndex ?? Infinity)) continue
+    if (col - 1 < (rg.startColumnIndex ?? 0) || col - 1 >= (rg.endColumnIndex ?? Infinity)) continue
+    out = v
+  }
+  return out
+}
+
+test('EL TITULAR: la cifra que la pestaña contesta está arriba y sale de la fila de totales', () => {
+  assert.equal(g.filas[3][0], 'GASTO DE ESTRUCTURA 2026', 'A4 es el titular')
+  assert.equal(g.filas[3][1], `=$P${g.fTot}`, 'B4 cita el total del año de la fila de totales')
+  assert.equal(g.filas[4][0], '   · Real a la fecha')
+  assert.equal(g.filas[4][1], `=$N${g.fTot}`)
+  assert.equal(g.filas[5][0], '   · Proyectado')
+  assert.equal(g.filas[5][1], `=$O${g.fTot}`)
+  // NINGUNA CELDA PUEDE QUEDAR CON EL MARCADOR SIN RESOLVER: `$TOT` se reemplaza al final de `grilla`,
+  // y una que se escape publica `#REF!` en la cifra más visible de la pestaña.
+  for (const [i, f] of g.filas.entries()) {
+    for (const [j, c] of (f || []).entries()) {
+      assert.ok(!String(c ?? '').includes('$TOT'), `fila ${i + 1}, columna ${j + 1}: quedó "${c}" sin resolver`)
+    }
+  }
+  // Y la fila 7 es el respiro entre el titular y el bloque 1: sin ella el titular se lee como parte
+  // del cuadro.
+  assert.ok(!tiene(g.filas[6]?.[0]), 'la fila 7 separa el titular del primer bloque')
+  assert.match(String(g.filas[7][0]), /^1 · /, 'el bloque 1 abre en la fila 8')
+})
+
+test('EL DEFECTO DEL SHEET VIVO: los meses del SEGUNDO cuadro salían «1/1/2026» y su cuerpo sin formato', () => {
+  const gr = grilla(['MASS CONSULTORA', 'Movistar'])
+  const reqs = formatosPropios(1, gr)
+  assert.ok(gr.fCabRec && gr.fTotRec, 'con proveedores, la sección de recurrentes existe')
+  // Los DOS encabezados de mes llevan el mismo formato, y el segundo se resuelve por la fila que la
+  // grilla declara — no por una constante.
+  for (const fc of [9, gr.fCabRec]) {
+    const f = formatoDe(reqs, fc, 2)
+    assert.deepEqual(f, { type: 'DATE', pattern: 'mmm' }, `el encabezado de la fila ${fc} tiene que decir «ene», no «1/1/2026»`)
+  }
+  // EL CUERPO DEL SEGUNDO CUADRO: la primera fila de proveedor, en enero. Es la B20 del archivo real.
+  const primera = gr.fCabRec + 1
+  assert.deepEqual(formatoDe(reqs, primera, 2), MONEDA_CUERPO, 'un importe del cuadro de recurrentes sin formato sale «393970»')
+  assert.deepEqual(formatoDe(reqs, gr.fTotRec, 2), MONEDA_TOTAL, 'la fila de total del segundo cuadro lleva el "$"')
+})
+
+test('LOS CONTROLES SON «rótulo | número»: el titular lleva "$" y el cierre del bloque de ARCA cuenta filas', () => {
+  const gr = grilla(['Movistar'])
+  const reqs = formatosPropios(1, gr)
+  assert.deepEqual(formatoDe(reqs, 4, 2), MONEDA_TOTAL, 'el titular es la cifra más fuerte: lleva la unidad')
+  assert.deepEqual(formatoDe(reqs, 5, 2), MONEDA_CUERPO, 'la sub-línea no repite el "$"')
+  assert.equal(formatoDe(reqs, 6, 2, 'textFormat')?.italic, true, 'lo proyectado va en itálica también arriba')
+  // La última fila del bloque de ARCA dejó de ser un veredicto en prosa: cuenta FILAS, y sin este
+  // formato la columna B hereda el barrido de moneda y «3 filas» se dibuja «$3».
+  assert.deepEqual(formatoDe(reqs, gr.arca0 + FILA_BLOQUE.veredicto, 2), CONTADOR,
+    'el cierre del respaldo fiscal es un contador, no plata')
+})
+
+test('el ancho de la columna de concepto sale del estándar, no de un número tipeado', () => {
+  const reqs = formatosPropios(1, g)
+  const anchoA = reqs.find((r) => r.updateDimensionProperties?.range?.dimension === 'COLUMNS'
+    && r.updateDimensionProperties.range.startIndex === 0)
+  assert.equal(anchoA?.updateDimensionProperties?.properties?.pixelSize, ANCHO_COLUMNA.concepto)
 })

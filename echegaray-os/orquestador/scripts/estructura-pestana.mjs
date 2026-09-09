@@ -21,7 +21,10 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { MIN_MESES, MES_EN_CURSO } from '../lib/cash-flow-lineas.mjs'
+import { MIN_MESES, MES_EN_CURSO, COL_FECHA } from '../lib/cash-flow-lineas.mjs'
+import { rotuloPorFuente, formulaUltimaFecha } from '../lib/fecha-de-frescura.mjs'
+// El ancho de la columna de concepto es del estándar, no de esta pestaña: ver `ANCHO` en el lib.
+import { ANCHO as ANCHO_COLUMNA } from '../lib/estilo-pestana.mjs'
 // LA DEFINICION COMPARTIDA de una fila de gasto propio. Ver el encabezado de ese archivo.
 import { CRITERIO, celdasDelAnio, seccionRecurrentes, RUBRO_RECURRENTE } from '../lib/estructura-filas.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
@@ -57,7 +60,14 @@ const C_NMESES = 30          // AE: en cuántos meses CERRADOS hubo gasto
 const C_REALCERRADO = 31     // AF: lo real de esos meses cerrados — el numerador del promedio
 const ANCHO = 32
 
-const FILA_CAB = 6
+// ═══ EL ENCABEZADO Y EL TITULAR OCUPAN OCHO FILAS, Y POR ESO EL CUADRO EMPIEZA EN LA 9 (09/09/2026) ═══
+//
+// 1 el nombre · 2 la procedencia · 3 el respiro · 4-6 el titular con sus dos sub-líneas · 7 el respiro
+// · 8 el título del bloque 1 · 9 el encabezado de la tabla. `FILA_CAB` NO se tipea dos veces: la
+// máscara de meses cerrados y el constructor compartido de celdas leen esta misma constante, así que
+// mover el titular no puede dejar la ventana de meses apuntando a otra fila.
+const FILA_TITULAR = 4
+const FILA_CAB = 9
 // ═══ LA VENTANA DE MESES CERRADOS, COMO MÁSCARA DE DOCE CELDAS (13/08/2026) ═══
 //
 // Vale 1 en cada mes que YA TERMINÓ y 0 en el que corre y en los que faltan. La usan el contador de
@@ -101,13 +111,42 @@ export function grilla(recurrentes = []) {
   // contrato de `lib/diseno-unificado.mjs` lo mide como `titulo-distinto`.
   const t = vacia(); t[0] = PESTAÑA; push(t)
   const s = vacia()
-  // UNA LÍNEA. El párrafo anterior se envolvía sobre la columna de enero y quedaba cortado; lo que
-  // explicaba —qué es proyección— lo dice ahora la itálica del propio cuadro.
-  // "MESES CERRADOS" Y NO "MESES", PORQUE ES LO QUE MIDE. Si el número cambia de significado y el
-  // rótulo no, el cuadro miente sin un solo error.
-  s[0] = `Rubro "Estructura" de Compras. Desde agosto, proyección (itálica): sólo lo que apareció en ${MIN_MESES} meses cerrados o más.`
+  // ═══ LA FILA 2 DECLARA PROCEDENCIA Y NO EXPLICA NADA (09/09/2026) ═══
+  //
+  // Decía «Rubro "Estructura" de Compras. Desde agosto, proyección (itálica): sólo lo que apareció en
+  // 4 meses cerrados o más»: eso es la REGLA de proyección, o sea una explicación, y bajo el
+  // minimalismo extremo no va en la pestaña — vive en el encabezado de `lib/estructura-filas.mjs`,
+  // que es donde alguien la va a buscar. Lo que la itálica y la columna «Proyectado» ya dicen no hace
+  // falta decirlo con palabras.
+  //
+  // Y LA FECHA DE CORTE SE MIDE, NO SE TIPEA: `rotuloPorFuente` la saca de la última compra cargada y
+  // avisa sola cuando la fuente se congela. Una fecha escrita a mano envejece sin que nadie se entere.
+  s[0] = rotuloPorFuente('Gasto propio del año', [
+    // `mixto`: la columna de fecha de Compras convive como serial y como texto tipeado — un MAX crudo
+    // pierde las tipeadas EN SILENCIO y declararía como corte la última que entró como número.
+    { nombre: 'Compras', expr: formulaUltimaFecha(COL_FECHA, { mixto: true }) },
+  ])
   push(s)
-  push(vacia()); push(vacia())
+  push(vacia())
+
+  // ═══ EL TITULAR: LA CIFRA QUE LA PESTAÑA CONTESTA, ARRIBA Y SIN BUSCARLA ═══
+  //
+  // Las tres celdas apuntan a la MISMA fila de totales del cuadro (`$TOT` se resuelve abajo, cuando
+  // se sabe en qué fila quedó): el titular no puede discrepar del cuadro porque no vuelve a calcular
+  // nada. Y las dos sub-líneas suman exactamente el titular por construcción — «Proyectado» está
+  // definido en el cuadro como total menos real.
+  //
+  // ES EL TOTAL DE ESTRUCTURA, NO LA SUMA CON SERVICIOS RECURRENTES. Los dos cuadros son universos
+  // disjuntos de Compras (ver `lib/estructura-filas.mjs`) y sólo el primero tiene control contra
+  // Compras y contra el libro de ARCA: un titular que sumara los dos publicaría una cifra que ningún
+  // control de esta pestaña verifica.
+  const tit = vacia()
+  tit[0] = `GASTO DE ESTRUCTURA ${AÑO}`
+  tit[1] = `=$${letra(C_TOTAL)}$TOT`
+  push(tit)
+  const subReal = vacia(); subReal[0] = '   · Real a la fecha'; subReal[1] = `=$${letra(C_TOTREAL)}$TOT`; push(subReal)
+  const subProy = vacia(); subProy[0] = '   · Proyectado'; subProy[1] = `=$${letra(C_PROY)}$TOT`; push(subProy)
+  push(vacia())
   // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO. Aprovecha una de las filas en blanco que
   // ya había, así que no corre ninguna fila: las fórmulas de abajo referencian filas absolutas y un
   // desplazamiento las dejaría apuntando a otra cosa, en silencio.
@@ -421,6 +460,13 @@ export function formatosPropios(sheetId, g) {
 
   fmt(r(0, g.filas.length, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
+  // EL TITULAR LLEVA EL "$" Y SUS DOS SUB-LÍNEAS NO. Es la misma jerarquía que dentro del cuadro: la
+  // cifra que la pestaña contesta se marca con la unidad, y lo que la descompone se lee debajo sin
+  // repetirla. Va DESPUÉS del barrido de cuerpo, que cubre la columna entera desde la fila 1.
+  fmt(r(FILA_TITULAR - 1, FILA_TITULAR, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  // La sub-línea de lo proyectado, en itálica: la MISMA convención que las columnas de agosto a
+  // diciembre del cuadro. Un estimado nunca se dibuja como un hecho, tampoco arriba de todo.
+  fmt(r(FILA_TITULAR + 1, FILA_TITULAR + 2, 1, 2), 'userEnteredFormat.textFormat', { textFormat: { italic: true } })
   // LOS DOS ENCABEZADOS DE MES LLEVAN EL MISMO FORMATO, y el segundo se resuelve por la fila que la
   // grilla declara — no por una constante. Sin esto la fila 18 publicaba «1/1/2026» crudo al lado de
   // un «ene»: dos formas del mismo encabezado en la misma pestaña, que es justo lo que la
@@ -438,8 +484,12 @@ export function formatosPropios(sheetId, g) {
     'userEnteredFormat.textFormat', { textFormat: { italic: true } })
   fmt({ ...r(g.f0 - 1, g.fTot + 1), startColumnIndex: C_PROY, endColumnIndex: C_PROY + 1 },
     'userEnteredFormat.textFormat', { textFormat: { italic: true } })
-  // La fila del total es la única del cuadro que lleva "$".
-  fmt(r(g.fTot - 1, g.fTot, 1, C_PCT + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  // LAS DOS FILAS DE TOTAL LLEVAN "$", y la del segundo cuadro se resuelve por la fila que la grilla
+  // declara — no por una constante. Sin esto el cierre de «Servicios recurrentes» se dibujaba igual
+  // que el cuerpo: dos totales con dos jerarquías distintas en la misma pestaña.
+  for (const ft of [g.fTot, ...(g.fTotRec ? [g.fTotRec] : [])]) {
+    fmt(r(ft - 1, ft, 1, C_PCT + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  }
   fmt({ ...r(g.f0 - 1, g.fTot), startColumnIndex: C_PCT, endColumnIndex: C_PCT + 1 },
     'userEnteredFormat.numberFormat', { numberFormat: PORCENTAJE })
   // El bloque de control: dos importes de cierre, la diferencia en formato de control (el único rojo
@@ -457,9 +507,17 @@ export function formatosPropios(sheetId, g) {
   fmt(r(fArca(MONTOS_BLOQUE.desde), fArca(MONTOS_BLOQUE.hasta), 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
   fmt(r(fArca(FILA_BLOQUE.cobertura), fArca(FILA_BLOQUE.cobertura + 1), 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: PORCENTAJE })
   fmt(r(fArca(FILA_BLOQUE.global), fArca(FILA_BLOQUE.global + 1), 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
+  // LA ÚLTIMA FILA DEL BLOQUE YA NO ES UN VEREDICTO EN PROSA SINO UN CONTROL «rótulo | número»
+  // (09/09/2026, `control-arca-bloque.mjs`): cuenta FILAS, no pesos. Sin este formato la columna B
+  // hereda el barrido de moneda y una cuenta de 3 filas se dibuja "$3" — el mismo defecto que ya se
+  // midió con la cobertura fiscal en `Materiales!B52`.
+  fmt(r(fArca(FILA_BLOQUE.veredicto), fArca(FILA_BLOQUE.veredicto + 1), 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: CONTADOR })
 
-  // La columna A tiene que entrar el rótulo del control entero, que ahora dice lo que decía la prosa.
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 400 }, fields: 'pixelSize' } })
+  // EL ANCHO DE LA COLUMNA DE CONCEPTO ES DEL ESTÁNDAR, NO DE ESTA PESTAÑA (09/09/2026). Estaban
+  // tipeados 400 px acá y otro número en cada una de las otras pestañas: tres anchos distintos para
+  // la misma columna es lo que hace que el archivo se lea como tres archivos. Ver `ANCHO` en
+  // lib/estilo-pestana.mjs, que es donde el estándar vive una sola vez.
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: ANCHO_COLUMNA.concepto }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: C_PCT + 1 }, properties: { pixelSize: 100 }, fields: 'pixelSize' } })
   // Las auxiliares se ocultan: el dueño pidió "no quiero el detalle de nada".
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: C_PCT + 1, endIndex: ANCHO }, properties: { hiddenByUser: true }, fields: 'hiddenByUser' } })
@@ -477,6 +535,9 @@ async function formatear(google, sheetId, g) {
       filas: limpiarCentinela(g.filas).map((f) => f.slice(0, C_PCT + 1)),
       cols: C_PCT + 1,
       congeladas: FILA_CAB,
+      // EL TITULAR, EN ACENTO Y A MAYOR CUERPO: lo aplica la piel, que es la única que sabe dibujarlo
+      // igual en todas las pestañas del archivo. Ver `skinRequests` en lib/estilo-statement.mjs.
+      titular: FILA_TITULAR,
       filasHoja: g.filas.length,
     }),
     ...formatosPropios(sheetId, g),
