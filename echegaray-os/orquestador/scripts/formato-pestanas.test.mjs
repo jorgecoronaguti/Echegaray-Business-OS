@@ -115,3 +115,42 @@ test('ninguna declaración ampara más columnas de las que la pestaña tiene, ni
     }
   }
 })
+
+// ═══ EL RECORTE DE GRILLA NO PUEDE BORRAR EL LIENZO DE OTRO GENERADOR (09/09/2026) ═══
+//
+// EL DEFECTO QUE ATRAPA, con los números medidos en el archivo vivo: CAJA tiene 68 filas de grilla y su
+// última fila con texto en la columna A es la 19. El recorte «contenido + 40» la dejaba en 59, y el
+// editor VIVO de Google —que sube un gráfico hasta que entre— dibujaba el tercer bloque encima del
+// segundo. Pasó el 08/09 y otra vez el 09/09: `caja-graficos-verificar.mjs` dio ✓ a las 07:02:33 y a
+// las 07:06 este recorte la achicó. El alto de CAJA no lo decide el texto: lo deciden los gráficos.
+import { filasTrasRecorte } from './formato-pestanas.mjs'
+import { altoMinimoDeCaja } from '../lib/caja-graficos.mjs'
+
+test('el recorte respeta el piso de la pestaña: CAJA de 68 filas con texto hasta la 19 NO se toca', () => {
+  const piso = altoMinimoDeCaja()
+  assert.equal(piso, 68, 'el piso de CAJA sale del generador de gráficos, no de un número copiado')
+  // Sin piso —el código de antes— el destino era 59, que es exactamente la pestaña rota.
+  assert.equal(filasTrasRecorte({ filas: 68, ultima: 19, margen: 40, piso: 0 }), 59)
+  // Con el piso, no hay recorte que hacer.
+  assert.equal(filasTrasRecorte({ filas: 68, ultima: 19, margen: 40, piso }), null)
+})
+
+test('el recorte sigue recortando lo que sobra de verdad, y nunca por debajo del piso', () => {
+  // Cargas Sociales: 1.092 filas de grilla para 78 de contenido — el caso que este recorte vino a resolver.
+  assert.equal(filasTrasRecorte({ filas: 1092, ultima: 78, margen: 40 }), 118)
+  // Una CAJA que quedó con 400 filas se recorta, pero al piso, no a 59.
+  assert.equal(filasTrasRecorte({ filas: 400, ultima: 19, margen: 40, piso: altoMinimoDeCaja() }), 68)
+  // Si no se pudo leer el contenido, no se toca nada: un 0 leído por error borraría la pestaña entera.
+  assert.equal(filasTrasRecorte({ filas: 400, ultima: 0, margen: 40 }), null)
+  // Ya está en su alto o por debajo: nada que hacer (un destino MENOR sería un deleteDimension).
+  assert.equal(filasTrasRecorte({ filas: 59, ultima: 19, margen: 40, piso: 68 }), null)
+})
+
+test('CAJA declara su piso en la lista: sin la marca, el piso nunca llega al recorte', () => {
+  // El invariante que hace falta además de la función pura: `filasTrasRecorte` puede ser perfecta y el
+  // defecto vuelve igual si la entrada de CAJA no pide el piso. Es el `piso: 0` de arriba.
+  const caja = PESTANAS.find((p) => p.titulo === 'CAJA')
+  assert.ok(caja, 'CAJA tiene que seguir en la lista del formateador')
+  assert.equal(caja.pisoDeGraficos, true)
+  assert.ok(!caja.carga, 'si fuera de carga el margen sería 300 y el piso tampoco haría falta — no es el caso')
+})

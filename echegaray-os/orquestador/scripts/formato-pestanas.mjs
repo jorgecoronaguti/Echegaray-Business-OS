@@ -32,6 +32,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { FUENTE, FUENTE_NUM, TAM, ALTO, auditar } from '../lib/estilo-pestana.mjs'
 import { INK, HAIR, BLANCO } from '../lib/estilo-statement.mjs'
+import { altoMinimoDeCaja, finDeContenido, FILA_ANCLA } from '../lib/caja-graficos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -156,7 +157,11 @@ export const PESTANAS = [
   // extracto del banco, del arqueo de caja o de la réplica de la tarjeta. Son los quince números que
   // el censo contaba como violación de la regla — y la regla dice justo lo contrario: el dato de
   // origen SÍ se pega, y se declara. Acá se declara.
-  { titulo: 'CAJA', congeladas: 0, hastaFila: 120, cols: 12, origen: [{ col: 'C', que: 'extracto del banco, arqueo de caja o réplica de la tarjeta — cada fila declara el suyo en la columna "Origen del dato"' }] },
+  // Y SU GRILLA TIENE UN PISO QUE NO SE NEGOCIA (09/09/2026): los cuatro gráficos cuelgan de filas-ancla
+  // muy por debajo de donde termina el texto de la columna A, y el editor VIVO de Google sube el último
+  // bloque encima del anterior si la hoja no tiene filas por debajo. El recorte de acá la dejaba en
+  // 19+40 = 59 y rompía la pestaña cada corrida. El piso lo dice `altoMinimoDeCaja`, no un número acá.
+  { titulo: 'CAJA', congeladas: 0, hastaFila: 120, cols: 12, pisoDeGraficos: true, origen: [{ col: 'C', que: 'extracto del banco, arqueo de caja o réplica de la tarjeta — cada fila declara el suyo en la columna "Origen del dato"' }] },
   { titulo: 'Cash Flow Semanal', congeladas: 3, hastaFila: 90, cols: 60 },
   { titulo: 'Cash Flow Mensual', congeladas: 3, hastaFila: 90, cols: 20 },
   // LAS DOS QUE FALTABAN (13/08). Nacieron con piel propia y nunca se anotaron acá, así que el censo
@@ -354,6 +359,34 @@ async function ultimaConContenido(google, titulo, filas) {
   return ultima
 }
 
+/**
+ * A CUÁNTAS FILAS QUEDA LA GRILLA DESPUÉS DEL RECORTE, o `null` si no hay que recortar. PURA.
+ *
+ * El recorte por «contenido + margen» mide el contenido en la COLUMNA A, y hay pestañas cuyo alto no
+ * lo decide el texto: en CAJA lo deciden los gráficos, que anclan cuarenta filas más abajo de la última
+ * palabra. Por eso el destino es el MÁXIMO entre el margen y el piso que la pestaña declara — sin el
+ * piso, este recorte es un `deleteDimension` que borra el lienzo de otro generador.
+ */
+export function filasTrasRecorte({ filas = 0, ultima = 0, margen = 40, piso = 0 } = {}) {
+  if (!ultima) return null                                   // no pude leer el contenido: no toco nada
+  const destino = Math.max(ultima + margen, piso)
+  return filas > destino ? destino : null
+}
+
+/**
+ * EL PISO DE ALTO DE UNA PESTAÑA, leído del generador que lo define — nunca copiado.
+ *
+ * Se deriva de la portada REAL, igual que el generador y que el verificador: con la constante a secas,
+ * una portada más larga baja las anclas de los gráficos y el piso se queda corto. Si la lectura falla,
+ * `finDeContenido([])` devuelve 0 y `altoMinimoDeCaja` cae en el ancla de siempre: el piso queda en el
+ * valor conservador, nunca en cero.
+ */
+async function pisoDeAlto(google, p) {
+  if (!p.pisoDeGraficos) return 0
+  const portada = await google.readSheetValues(ID, `${p.titulo}!A1:R${FILA_ANCLA}`).catch(() => [])
+  return altoMinimoDeCaja(finDeContenido(portada))
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
@@ -387,9 +420,11 @@ async function main() {
     // lugar es peor que sobrar— y ajustado en las que rehace el OS.
     const ultima = await ultimaConContenido(google, p.titulo, hoja.rows ?? 0)
     const margen = p.carga ? 300 : 40
-    if (ultima && (hoja.rows ?? 0) > ultima + margen && !SOLO_AUDITAR) {
-      await google.spreadsheetBatchUpdate(ID, [{ deleteDimension: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: ultima + margen, endIndex: hoja.rows } } }])
-      console.log(`  ${p.titulo.padEnd(26)} grilla recortada: ${hoja.rows} → ${ultima + margen} filas (contenido hasta la ${ultima})`)
+    const piso = await pisoDeAlto(google, p)
+    const destino = filasTrasRecorte({ filas: hoja.rows ?? 0, ultima, margen, piso })
+    if (destino !== null && !SOLO_AUDITAR) {
+      await google.spreadsheetBatchUpdate(ID, [{ deleteDimension: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: destino, endIndex: hoja.rows } } }])
+      console.log(`  ${p.titulo.padEnd(26)} grilla recortada: ${hoja.rows} → ${destino} filas (contenido hasta la ${ultima}${piso ? `, piso ${piso}` : ''})`)
     }
 
     const a = auditar(f, { congeladas: p.congeladas })

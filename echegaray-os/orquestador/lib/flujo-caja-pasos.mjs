@@ -320,10 +320,6 @@ export const PASOS = [
   ['caja-centinela-conteo.mjs', 'centinela del conteo de efectivo: cuándo apareció el monto tipeado y qué se cargó tarde sobre filas viejas', []],
   ['caja-anexo-pestana.mjs', '_CAJA_ANEXO — el detalle y las conciliaciones que sostienen los veredictos de CAJA', ['_CAJA_ANEXO']],
   ['caja-pestana.mjs', 'CAJA — la portada ejecutiva de tesorería: cinco tarjetas y una pantalla', ['CAJA']],
-  // LEE, NO ESCRIBE. El 08/09 la hoja apareció en 59 filas (necesita 68) con el generador en verde:
-  // algo la achicó DESPUÉS de la corrida y nadie lo vio hasta que el dueño abrió la pestaña. Con el
-  // control adentro del pipeline, una hoja corta o un gráfico corrido salen en FALLARON a las 2 h.
-  ['caja-graficos-verificar.mjs', 'CAJA — verifica leyendo la hoja que los cuatro gráficos anclan donde deben y que el alto alcanza', []],
   // ═══ LAS DOS VISTAS VAN DESPUÉS DEL LIBRO Y DESPUÉS DE CAJA (13/08/2026) ═══
   //
   // Estaban en el noveno lugar, antes de Impuestos, Cargas Sociales, Cheques, Tarjeta, OBRAS y CAJA.
@@ -469,6 +465,21 @@ export const PASOS = [
   // llegan al cuadro" —celdas que tiene que llenar el dueño—, no "no pude generar los datos". Contado
   // como fallo dejaría el servicio siempre en rojo y la frescura del Cash Flow sin registrar.
   ['auditar-cobertura-cash-flow.mjs', 'la regla 8 en pesos: cuánta plata del archivo no llega a ningún Cash Flow, y de qué fila sale', []],
+  // ═══ EL VERIFICADOR DE CAJA VA DESPUÉS DEL ÚLTIMO QUE ESCRIBE (09/09/2026) ═══
+  //
+  // LEE, NO ESCRIBE (el cliente nace sin scopes de escritura). Estaba pegado a `caja-pestana.mjs`, que
+  // es donde parecía tener sentido: verificar lo que el generador acaba de dibujar. Medido el 09/09: dio
+  // ✓ a las 07:02:33 y a las 07:56 el dueño tenía la pestaña en 59 filas con los gráficos encimados.
+  // Entre las dos cosas, a las 07:06, `formato-pestanas.mjs` le recortó la grilla a «última fila con
+  // texto en la columna A + 40» = 19 + 40 = 59. El control no mintió: contestó otra pregunta. Decía
+  // «así estaba a mitad de camino» cuando lo único que le importa a alguien es «así queda la hoja».
+  //
+  // Corriendo acá —después de `reparar-textos`, `formato-condicional` y todos los auditores de
+  // pantalla, o sea después del último paso que toca una celda del archivo— un ✓ significa que la
+  // pestaña quedó bien, y un ✗ significa que algo la rompió, sin importar cuál de los cuarenta y siete
+  // pasos fue. NO va en `REPORTES` a propósito: una CAJA con los gráficos encimados es la portada de
+  // tesorería rota, no un aviso de presentación.
+  ['caja-graficos-verificar.mjs', 'CAJA — verifica leyendo la hoja que los cuatro gráficos anclan donde deben y que el alto alcanza', []],
   ['sync-compras.mjs', 'núcleo: Compras → costos_obra', []],
   ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago', []],
   // ÚLTIMO: con el Sheet ya regenerado, el motor de Ingeniería Financiera arma el calendario diario y

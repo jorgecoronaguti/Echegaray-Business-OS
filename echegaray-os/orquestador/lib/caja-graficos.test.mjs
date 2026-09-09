@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs'
 import {
   graficos, requestsDeGraficos, MARCA, FILA_ANCLA, COL_ANCLA, FILA_FINAL_DE_GRAFICOS,
   TITULO_EQUILIBRIO, TITULO_NECESIDAD, TITULO_EFECTIVO_BANCO, TITULO_PROYECCION,
-  layoutEsperado, verificarLayoutGraficos, requestDeAltoMinimo,
+  layoutEsperado, verificarLayoutGraficos, requestDeAltoMinimo, altoMinimoDeCaja,
 } from './caja-graficos.mjs'
 import { CLASE, clasificarRequest } from './clasificar-request.mjs'
 import { SALIDAS, COL_NECESIDAD, esEjecutado } from './caja-necesidad-baldes.mjs'
@@ -514,4 +514,20 @@ test('y con alertas de verdad los gráficos se corren solos: ninguna queda tapad
 
 test('una grilla sin nada no manda los gráficos a la fila 6', () => {
   assert.equal(anclaDeGraficos(finDeContenido([[''], ['']])), FILA_ANCLA)
+})
+
+// ═══ UNA SOLA DEFINICIÓN DEL ALTO DE CAJA (09/09/2026) ═══
+//
+// Lo que atrapa: que `requestDeAltoMinimo` y el resto del OS dejen de coincidir. El 09/09 el alto
+// mínimo lo sabía este archivo y NO lo sabía `formato-pestanas.mjs`, que recortaba la grilla a 59
+// filas cada corrida. Si mañana alguien vuelve a escribir el número a mano en un lado, estos dos
+// asserts lo dicen: el pedido de alto tiene que salir de `altoMinimoDeCaja`, no de una copia.
+test('altoMinimoDeCaja: 68 filas, y es de donde sale el rowCount que pide el generador', () => {
+  assert.equal(altoMinimoDeCaja(), 68)
+  assert.equal(altoMinimoDeCaja(), filaFinalDeGraficos() + 1)
+  const r = requestDeAltoMinimo(7, 0)
+  assert.equal(r.updateSheetProperties.properties.gridProperties.rowCount, altoMinimoDeCaja())
+  // Con una portada más larga el ancla baja y el piso sube: el mínimo NO es una constante fija.
+  assert.ok(altoMinimoDeCaja(30) > altoMinimoDeCaja(), 'una portada de 30 filas empuja los gráficos hacia abajo')
+  assert.equal(requestDeAltoMinimo(7, 0, 30).updateSheetProperties.properties.gridProperties.rowCount, altoMinimoDeCaja(30))
 })

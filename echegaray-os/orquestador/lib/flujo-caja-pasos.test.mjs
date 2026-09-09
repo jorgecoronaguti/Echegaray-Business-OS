@@ -361,3 +361,36 @@ test('nomina-pestana.mjs está FUERA del pipeline y su retiro está declarado', 
   assert.match(r.vuelve, /EFECTIVO redondeado|columna que no conozca|no escribe la columna/i)
   assert.match(r.motivo, /01\/09|revertido/i)
 })
+
+// ═══ UN VERIFICADOR A MITAD DE CAMINO CERTIFICA UNA HOJA QUE TODAVÍA VA A CAMBIAR (09/09/2026) ═══
+//
+// EL DEFECTO QUE ATRAPA. `caja-graficos-verificar.mjs` corría pegado a `caja-pestana.mjs`. El 09/09 dio
+// ✓ a las 07:02:33 y a las 07:06 `formato-pestanas.mjs` le recortó la grilla a 59 filas: el dueño abrió
+// la pestaña a las 07:56 con los gráficos encimados y el pipeline había dicho que estaba bien. Un
+// control que corre antes del último escritor contesta «así estaba a mitad de camino», que no es la
+// pregunta. Si alguien lo vuelve a subir en la lista, o mete un paso que escribe el Sheet después de
+// él, esto se pone rojo.
+test('el verificador de CAJA corre después del último paso que escribe el Sheet', () => {
+  const orden = PASOS.map((p) => p[0])
+  const i = orden.indexOf('caja-graficos-verificar.mjs')
+  assert.ok(i > 0, 'el verificador tiene que seguir en el pipeline')
+
+  for (const escritor of ['caja-pestana.mjs', 'formato-pestanas.mjs', 'reparar-pantalla.mjs',
+    'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs']) {
+    const j = orden.indexOf(escritor)
+    if (j === -1) continue                       // el paso se retiró: no es asunto de este test
+    assert.ok(j < i, `${escritor} escribe el archivo y tiene que correr ANTES del verificador (está en ${j}, el verificador en ${i})`)
+  }
+
+  // Y lo que quede DESPUÉS no puede tocar una celda: los `sync-*` sólo escriben Postgres. Un paso
+  // nuevo con otro prefijo detrás del verificador es exactamente el agujero que se acaba de tapar.
+  const despues = orden.slice(i + 1)
+  assert.ok(despues.length, 'si el verificador quedó último del todo, este control ya no prueba nada')
+  for (const s of despues) assert.match(s, /^sync-/, `${s} corre después del verificador: si escribe el Sheet, el ✓ vuelve a mentir`)
+})
+
+// El ✗ de este control no es un aviso de presentación: es la portada de tesorería rota. Si entrara a
+// REPORTES, el pipeline seguiría saliendo verde con los gráficos encimados — el estado del 08 y el 09.
+test('caja-graficos-verificar NO es un reporte: su rojo tiene que voltear la corrida', () => {
+  assert.equal(esReporte('caja-graficos-verificar.mjs'), false)
+})

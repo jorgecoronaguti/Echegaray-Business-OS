@@ -164,6 +164,22 @@ export function filaFinalDeGraficos(finPortada = null) {
   return FILA_FINAL_DE_GRAFICOS + (anclaDeGraficos(finPortada) - FILA_ANCLA)
 }
 
+/**
+ * CUÁNTAS FILAS DE GRILLA NECESITA CAJA, COMO NÚMERO. LA ÚNICA DEFINICIÓN. PURA.
+ *
+ * POR QUÉ EXISTE (09/09/2026). El alto mínimo estaba escrito tres veces: acá como `filaFinalDeGraficos
+ * + 1` dentro de `requestDeAltoMinimo`, otra vez en el veredicto del verificador, y —sin saberlo— en
+ * NINGÚN lado del formateador general, que recortaba la grilla de CAJA a `última fila con contenido en
+ * la columna A + 40` = 19 + 40 = 59 filas y dejaba al editor vivo subiendo el tercer bloque de gráficos
+ * encima del segundo. El verificador corría antes y daba ✓ sobre una hoja que después se achicaba.
+ *
+ * Quien toque el `rowCount` de CAJA usa ESTE número: mientras el mínimo viva en el generador y el
+ * recorte viva en otro archivo, el que corra último gana y no hay control que lo note.
+ */
+export function altoMinimoDeCaja(finPortada = null) {
+  return filaFinalDeGraficos(finPortada) + 1
+}
+
 /** El prefijo que marca un gráfico como PROPIO. Se conserva para poder reconocerlos en el archivo. */
 export const MARCA = '⟡ '
 export const TITULO_EQUILIBRIO = `${MARCA}Ingresos vs egresos por mes — punto de equilibrio`
@@ -591,7 +607,7 @@ export function verificarLayoutGraficos({ rows, charts, finPortada = null, esper
  * alto de la portada corta — dos definiciones del mismo alto, una de ellas equivocada.
  */
 export function requestDeAltoMinimo(sheetId, filasActuales = 0, finPortada = null) {
-  const rowCount = Math.max(filaFinalDeGraficos(finPortada) + 1, Number.isFinite(filasActuales) ? filasActuales : 0)
+  const rowCount = Math.max(altoMinimoDeCaja(finPortada), Number.isFinite(filasActuales) ? filasActuales : 0)
   return { updateSheetProperties: { properties: { sheetId, gridProperties: { rowCount } }, fields: 'gridProperties.rowCount' } }
 }
 
