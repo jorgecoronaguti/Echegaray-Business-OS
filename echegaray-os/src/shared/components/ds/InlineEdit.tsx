@@ -43,6 +43,7 @@ export function InlineEdit({
   tipo = 'texto',
   opciones,
   falta = 'sin cargar',
+  mostrar,
   sufijo,
   etiqueta,
   testid,
@@ -56,6 +57,14 @@ export function InlineEdit({
   /** Obligatorias con `tipo='seleccion'`. La primera opción suele ser la ausencia. */
   opciones?: OpcionInline[]
   falta?: string
+  /**
+   * Cómo se LEE el valor guardado: moneda, porcentaje, miles. Sólo afecta al estado de lectura —al
+   * editar se muestra el número crudo, porque un `<input type=number>` con «$100.000» adentro no
+   * puede recibir un tecleo y el navegador lo descarta entero. Sin esto, una columna de plata pierde
+   * el formato en el momento en que se vuelve editable, y una tabla de sueldos sin separador de
+   * miles se lee mal justo donde más caro sale leerla mal.
+   */
+  mostrar?: (valor: string | number) => string
   sufijo?: string
   /** Rótulo accesible: es lo único que distingue esta celda de las otras trescientas. */
   etiqueta: string
@@ -127,7 +136,9 @@ export function InlineEdit({
             alineado === 'right' ? 'text-right font-mono tabular-nums' : ''
           } ${valor === null ? 'text-faint' : 'text-ink'} text-[12.5px]`}
         >
-          {valor === null ? falta : `${paraLeer}${sufijo ? ` ${sufijo}` : ''}`}
+          {valor === null
+            ? falta
+            : `${mostrar ? mostrar(valor) : paraLeer}${sufijo ? ` ${sufijo}` : ''}`}
         </button>
         {error && <span className="text-[11px] text-neg" data-testid={testid ? `${testid}-error` : undefined}>{error}</span>}
       </span>
