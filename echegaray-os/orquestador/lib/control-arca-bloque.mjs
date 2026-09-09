@@ -157,10 +157,16 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // contra un tope de 60, y los dos últimos tramos del ⓘ eran una explicación entera: dónde está el
   // detalle ya lo dice `${C}`, y por qué la cifra está inflada es el motivo de que el estado sea ⓘ y
   // no ✗ — está escrito arriba, en el código, que es donde se busca el día que importe.
-  const sinR = `B${f(FILA_BLOQUE.sinRespaldo)}`
-  filas.push([`=IF(NOT(${HAY_FUENTE});"${ALERTA} NO PUEDO VERIFICAR · ARCA no replicó comprobantes";`
-    + `IF(ROUND(${sinR};0)=0;"✓ todo lo de la ventana tiene comprobante en ARCA";`
-    + `"ⓘ "&TEXT(${sinR};"$#,##0")&" en "&${sinRespaldoN(rubros)}&" fila(s) · detalle en ${C}"))`])
+  // ═══ LA ÚLTIMA FILA ES UN CONTROL, NO UN VEREDICTO EN PROSA (09/09/2026) ═══
+  //
+  // Hasta hoy cerraba con una oración de tres estados —«▲ NO PUEDO VERIFICAR · ARCA no replicó…»,
+  // «✓ todo lo de la ventana tiene comprobante…», «ⓘ $X en N fila(s) · detalle en _CRUCE_ARCA»— de
+  // hasta 190 caracteres, y el auditor del contrato (`diseno-unificado`) la medía como PROSA en las
+  // tres pestañas que comparten este bloque. El dueño prohibió la aclaración: el bloque cierra con
+  // «rótulo | número». El número es la CANTIDAD de filas sin comprobante (el monto ya está dos filas
+  // arriba); sin fuente replicada da «—», que es el mismo cero dibujado del resto del archivo, y la
+  // fila «Ventana comparable» ya dice sola que ARCA no replicó nada.
+  filas.push(['⇒ Filas sin comprobante en ARCA', `=IF(NOT(${HAY_FUENTE});"—";${sinRespaldoN(rubros)})`])
   return filas
 }
 

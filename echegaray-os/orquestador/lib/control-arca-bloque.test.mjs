@@ -94,18 +94,14 @@ test('EL DEFECTO · la cifra global no se publica sin comprobar que es un númer
     'cuando el número no está disponible la celda tiene que decir "—", no un número creíble')
 })
 
-test('LO SIN RESPALDO NO SE PRESENTA COMO ERROR mientras la cifra esté inflada', () => {
-  const veredicto = String(armar().at(-1)[0])
-  // El ✗ está reservado para lo inequívoco. Marcar en rojo una cifra que se sabe inflada entrena a
-  // ignorar el control — que es justo lo que pasó con los −$212M.
-  //
-  // DESDE EL 06/09 EL LÍMITE NO SE ESCRIBE EN LA PESTAÑA: «hasta entonces esta cifra está inflada y
-  // no es una lista de errores» eran 130 de los 190 caracteres del veredicto, y el dueño prohibió la
-  // aclaración. Lo que queda es el ESTADO —ⓘ y no ✗— que es lo que dice que no es una lista de
-  // errores sin argumentarlo, más el remite a la pestaña que tiene el detalle fila por fila.
-  assert.doesNotMatch(veredicto, /"✗/, 'sin respaldo no lleva ✗')
-  assert.match(veredicto, /ⓘ /)
-  assert.match(veredicto, new RegExp(C), 'y el detalle se remite a la pestaña que lo tiene')
+test('LA ÚLTIMA FILA ES UN CONTROL «rótulo | número», no una oración (regla del dueño, 09/09/2026)', () => {
+  const fila = armar().at(-1)
+  assert.equal(fila.length, 2, 'rótulo y fórmula, nada más')
+  assert.match(String(fila[0]), /^⇒ Filas sin comprobante en ARCA$/)
+  assert.doesNotMatch(String(fila[0]), /[✗✓ⓘ▲]/, 'sin glifos de veredicto')
+  assert.ok(String(fila[0]).length < 40, 'un rótulo, no una frase')
+  assert.match(String(fila[1]), /COUNTIFS\(/, 'cuenta filas: el monto ya está en la fila «sin comprobante»')
+  assert.match(String(fila[1]), new RegExp(C), 'y las cuenta en la pestaña que tiene el detalle')
 })
 
 test('LA VENTANA ES DEVENGADA: compara por fecha de FACTURA (col C), nunca por fecha de caja (col AD)', () => {
@@ -120,10 +116,10 @@ test('la ventana sale de _ARCA_RAW y no está escrita a mano — se estira sola 
   assert.doesNotMatch(armar().flat().join(' '), /2026-0\d\b/, 'ningún período literal en el bloque')
 })
 
-test('EL VEREDICTO NO SE PONE VERDE SIN FUENTE', () => {
-  const v = String(armar().at(-1)[0])
-  assert.match(v, /NO PUEDO VERIFICAR/)
-  assert.match(v, /IF\(NOT\(COUNTIFS/, 'lo primero que evalúa es si la fuente llegó')
+test('EL CONTROL NO CUENTA CERO SIN FUENTE: sin réplica de ARCA da «—»', () => {
+  const v = String(armar().at(-1)[1])
+  assert.match(v, /^=IF\(NOT\(COUNTIFS/, 'lo primero que evalúa es si la fuente llegó')
+  assert.match(v, /"—"/)
 })
 
 test('las fórmulas usan el separador es_AR (;) y no la coma', () => {
@@ -144,7 +140,7 @@ test('un universo de varios rubros suma todos — Materiales cubre Civil y Mante
 
 test('el detalle accionable se remite a la pestaña que lo tiene', () => {
   assert.equal(C, '_CRUCE_ARCA')
-  assert.match(String(armar().at(-1)[0]), /_CRUCE_ARCA/)
+  assert.match(String(armar().at(-1)[1]), /_CRUCE_ARCA/, "el número se cuenta en la pestaña del detalle: ahí está la lista fila por fila")
 })
 
 test('NI UNA EXPLICACIÓN EN LAS OCHO FILAS: el bloque nombra, no argumenta', () => {
@@ -184,7 +180,7 @@ test('FILA_BLOQUE apunta a la fila que dice: la cobertura, los montos y el vered
   assert.match(filas[FILA_BLOQUE.conRespaldo][0], /con su comprobante/)
   assert.match(filas[FILA_BLOQUE.sinRespaldo][0], /sin comprobante/)
   assert.match(filas[FILA_BLOQUE.global][0], /ARCA facturó y Compras no lo tiene/)
-  assert.equal(filas[FILA_BLOQUE.veredicto].length, 1, 'el veredicto es una sola celda de texto')
+  assert.match(filas[FILA_BLOQUE.veredicto][0], /^⇒ Filas sin comprobante/)
   assert.equal(Object.keys(FILA_BLOQUE).length, ALTO_BLOQUE, 'hay una fila del bloque sin nombre')
 })
 
