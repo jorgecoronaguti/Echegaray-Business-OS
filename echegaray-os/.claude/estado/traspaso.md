@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 · main `9e30ba55` = origin = checkout de producción_
+_actualizado: 2026-09-09 10:00 · main `0ff901f5` = origin · producción `4220df3e` (sólo difiere en docs)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -88,7 +88,11 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
   Cobranzas/Cheques Recibidos, retención repartida.
 - Infra: symlink `node_modules` retirado del repo (rompía Vercel); CAJA 59→68 filas; Tailwind con
   `<alpha-value>`; tests de cortes por ancho.
-- Último commit en main: `f27a7195` (Merge fix/caja-59-filas-culpable). Producción igual.
+- Obra cerrada por fecha (`fecha_fin_real`; historial aplicado desde producción) y Vercel (bundle a la
+  mitad + `ignoreCommand`) publicados en `9e30ba55`; typecheck + 53 tests dirigidos en verde.
+- Vercel: acceso desde la VM conseguido (memoria `vercel-acceso-y-limpieza`); Ignored Build Step vacío;
+  borrado de 645 deploys viejos lanzado (quedaban 320 de 658 al cerrar; 200 por ventana de la API).
+- Decisión del dueño: Pastrán/Zogbe en le-galpon-9 hasta 07/09 quedan como están.
 
 ## 6. PENDIENTES REALES
 
@@ -114,16 +118,18 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
 
 ## 7. ESTADO GIT
 
-- Rama `main` · HEAD `9e30ba55` (+ este traspaso) · igual a `origin/main`.
+- Rama `main` · HEAD `0ff901f5` (+ este traspaso) · igual a `origin/main`.
 - Árbol: limpio salvo capturas `qa-shots/verif-opacidad*` y `tests/verif-opacidad2.spec.ts` sin
   seguimiento (descartables).
-- Producción (`~/echegaray-os/produccion/echegaray-os`): `9e30ba55`, igual a main. Sin ramas pendientes.
+- Producción (`~/echegaray-os/produccion/echegaray-os`): `4220df3e`; sólo le faltan commits de docs.
+  Sin ramas pendientes ni worktrees de esta sesión.
 
 ## 8. PRÓXIMO PASO
 
-Verificar el efecto del deploy `9e30ba55` en Vercel: descargar un recibo real desde el portal y leer
-Function Storage en el dashboard. Si falla el recibo, el sospechoso es `outputFileTracingExcludes` en
-`next.config.ts`.
+Confirmar la limpieza de Vercel: listar deploys con la API (`GET /v6/deployments?projectId=prj_z9g8rawBnhOExjj12OST7XFb3xxM&teamId=team_vDSURnTraRXncUzKQjzJs0zq`,
+token en `~/.local/share/com.vercel.cli/auth.json`); deben quedar ~20. Si quedan más, el proceso murió con
+la sesión: borrar con `DELETE /v13/deployments/{uid}?teamId=` protegiendo el aliased a `app.ecsas.com.ar`
+y los 4 READY anteriores (200 por ventana). Después, bajar un recibo real desde el portal.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
