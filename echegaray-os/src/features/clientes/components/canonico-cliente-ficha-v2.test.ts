@@ -210,23 +210,34 @@ test('«Quitar el vínculo» aclara que el archivo sigue en Drive, al lado de la
 // Clientes». Entran Costo MO · Costo mat. · Margen, y con ocho columnas la plantilla única del
 // handoff v4 ya no existe: se dibujan tres anchos.
 //
-//   <560px    OBRA · ESTADO · CONTRATADO — la pregunta de un teléfono, y el nombre nunca se suelta.
-//   ≥560px    entra AVANCE en su pista propia (el defecto del 05/09: vivía dentro de ESTADO y a
-//             390px se superponía con el importe).
-//   ≥1200px   entra la economía de OBRAS. Es DETALLE: se suelta antes que la identidad y antes que
-//             el contratado, nunca al revés.
+//   sin corte  las ocho columnas. Es la plantilla del ancho entero Y la que corre cuando ninguna
+//              media query alcanza (ver abajo).
+//   ≤1199px    sale la economía de OBRAS. Es DETALLE: se suelta antes que la identidad y antes que
+//              el contratado, nunca al revés.
+//   ≤559px     queda OBRA · ESTADO · CONTRATADO — la pregunta de un teléfono, y el nombre nunca se
+//              suelta. AVANCE conserva su pista propia hasta ahí (el defecto del 05/09: vivía
+//              dentro de ESTADO y a 390px se superponía con el importe).
 //
 // LO QUE ESTE TEST VIGILA DE VERDAD no son las cadenas: es que cada ancho tenga TANTAS CELDAS COMO
 // PISTAS. Una celda de más cae en una fila implícita y desalinea la tabla entera —el mismo defecto
 // que `grilla-v2-en-telefono` persigue en la cartera—, y agregar una columna sin su celda escondida
 // es exactamente cómo se cuela.
+//
+// 09/09/2026 — Y LA PLANTILLA SIN PREFIJO TIENE QUE SER LA ENTERA. La grilla estaba escrita
+// mobile-first: sin prefijo declaraba TRES pistas contra ocho celdas, y los anchos los agregaban
+// dos variantes `min` de ancho (escritas acá sin sus corchetes a propósito: ver
+// `cortes-por-ancho-llegan-al-css.test.ts`). Mientras los cortes por ancho no llegaron al CSS emitido
+// (`cortes-por-ancho-llegan-al-css.test.ts`), esa plantilla de tres pistas fue la que corrió a
+// 1440px en producción: cinco celdas en filas implícitas, dibujadas encima de la fila siguiente
+// porque el encabezado y la fila llevan alto fijo. Escrita de ancho entero hacia abajo, el peor
+// caso de una media query que no llega es una tabla apretada, no una tabla superpuesta.
 
 /** Las plantillas declaradas en `COLS_OBRAS`, por corte (`''` = la base, sin prefijo). */
 function plantillasDeObras(): Map<string, string[]> {
   const bloque = codigoListas().slice(codigoListas().indexOf('const COLS_OBRAS'))
   const m = new Map<string, string[]>()
   for (const [, prefijo, cuerpo] of bloque.slice(0, bloque.indexOf('\n\n')).matchAll(
-    /(min-\[(?:\d+)px\]:)?grid-cols-\[([^\]]+)\]/g,
+    /((?:min|max)-\[(?:\d+)px\]:)?grid-cols-\[([^\]]+)\]/g,
   )) {
     m.set(prefijo ?? '', cuerpo.split('_'))
   }
@@ -248,21 +259,24 @@ test('Obras dibuja sus tres anchos, y cada ancho tiene tantas celdas como pistas
   const plantillas = plantillasDeObras()
   assert.deepEqual(
     [...plantillas.keys()].sort(),
-    ['', 'min-[1200px]:', 'min-[560px]:'],
-    'la grilla de Obras dejó de declarar sus tres anchos',
+    ['', 'max-[1199px]:', 'max-[559px]:'],
+    'la grilla de Obras dejó de declarar sus tres anchos, o volvió a escribirse mobile-first',
   )
   const pistas = (corte: string) => (plantillas.get(corte) ?? []).length
 
   const celdas = celdasDelEncabezado()
   const escondidas = (clase: string) => celdas.filter((c) => c.includes(clase)).length
 
-  assert.equal(celdas.length, pistas('min-[1200px]:'),
+  // LA PLANTILLA SIN PREFIJO ES LA QUE CORRE CUANDO NINGUNA MEDIA QUERY LLEGA: tiene que poder
+  // dibujar TODAS las celdas. Con menos pistas que celdas, las sobrantes caen en filas implícitas
+  // y se superponen con la fila de abajo (09/09/2026, medido en producción a 1440px).
+  assert.equal(celdas.length, pistas(''),
     'el encabezado de Obras no dibuja una celda por cada pista del ancho entero')
-  assert.equal(celdas.length - escondidas('SOLO_ANCHO_ECO'), pistas('min-[560px]:'),
+  assert.equal(celdas.length - escondidas('SOLO_ANCHO_ECO'), pistas('max-[1199px]:'),
     'las celdas que sobreviven a 1199px no son las pistas declaradas para ese ancho')
   assert.equal(
     celdas.length - escondidas('SOLO_ANCHO_ECO') - escondidas('SOLO_ANCHO}') - escondidas('SOLO_ANCHO`'),
-    pistas(''),
+    pistas('max-[559px]:'),
     'las celdas que sobreviven en el teléfono no son las pistas declaradas para el teléfono',
   )
 })
@@ -313,8 +327,13 @@ test('el avance no se dibuja con una barra: el handoff pone el número y nada m�
 
 test('Presupuestos dibuja las seis pistas del handoff, con REV. y MOTIVO / DESTINO', () => {
   const src = codigoListas()
-  assert.match(src, /minmax\(210px,1\.8fr\)_170px_60px_160px_minmax\(150px,1fr\)_28px/,
-    'la grilla de Presupuestos dejó de ser la del handoff v4')
+  // Las pistas del handoff, con `minmax(0,…)` para que cedan en vez de desbordar la columna de la
+  // ficha, y SIN prefijo: es la plantilla que corre cuando ninguna media query llega, y tiene que
+  // poder dibujar las seis celdas (mismo defecto que arrastraba Obras — 09/09/2026).
+  assert.match(
+    src,
+    /\n {2}= 'gap-\[28px\] grid-cols-\[minmax\(210px,1\.8fr\)_minmax\(0,170px\)_minmax\(0,60px\)_minmax\(0,160px\)_minmax\(150px,1fr\)_minmax\(0,28px\)\]'/,
+    'la grilla de Presupuestos dejó de ser la del handoff v4, o volvió a escribirse mobile-first')
   assert.match(src, /<RotuloCol derecha>Rev\.<\/RotuloCol>/)
   assert.match(src, /Motivo \/ destino/)
 })
