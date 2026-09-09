@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 12:35 (hora local −03) · main `7455e941` = origin = producción · Vercel al día_
+_actualizado: 2026-09-09 12:50 (hora local −03) · main `bf84380e` = origin = producción · Vercel al día_
 
 ## 1. OBJETIVO GENERAL
 
@@ -84,11 +84,13 @@ queda en Jornales · Cargas percibido).
 ## 6. PENDIENTES REALES
 
 **P0 — Sheet**
-- **Cargas Sociales + Impuestos y Financieros**: agente en curso (rama `worktree-agent-a1df7c7dd9993e69f`): fin del
-  rediseño en toda la pestaña (fuera fila 2 de prosa, filas «·», «▲», rótulos con explicación; parámetros del control
-  de plantel a Parámetros) y **una sola casa para los planes de pago F931** (Impuestos bloque 5 y dos filas del bloque 6
-  duplican el bloque 4 de Cargas; la línea «Deuda previsional» del Cash Flow tiene que seguir 11.547.069 / 4.989.751).
-  Si no cerró: aplicar con copia → `pestana-migrar-layout` → `--real` (ver método arriba).
+- **Cargas Sociales final + Impuestos** aplicadas 12:43 (`29c6baf3`): Cargas 61 filas × 15, 4 bloques, cero prosa,
+  A2 = `F931 al 31/08 · Compras al 08/09`; Impuestos perdió el bloque «Planes de pago F931» (duplicaba Cargas) y su
+  bloque 5 «Deuda financiera» lee `CARGAS_MES_PLANES` / `CARGAS_MES_PLANES_SIN_PAGAR`. Pipeline relanzado 12:45:
+  **verificar la línea «Deuda previsional» del Cash Flow = 11.547.069 / 4.989.751** (el agente no la midió en vivo) y
+  las otras 11. Impuestos conserva prosa en su bloque 6 «Supuestos y huecos» (▲…): fuera del pedido, pendiente.
+- Cambio semántico a firmar: la deuda pendiente en planes del hero de Impuestos pasó de «fecha prevista > hoy» a
+  «no marcado Pagado» (hoy las dos dan $4.989.751).
 - Decisiones del dueño sobre Nómina: los 4 importes de EFECTIVO redondeado sin persona (¿a quién van?) y Sosa (literales
   pegados vs fórmula «MITAD BLANCA» $330.431: confirmar con el recibo). Censo marca los 15 del dueño como «pegados»:
   declarar la columna I como entrada del dueño en `censo-numeros-pegados`.
@@ -113,11 +115,14 @@ queda en Jornales · Cargas percibido).
 ## 7. ESTADO GIT
 
 - `main` `7455e941` = origin = producción. Árbol limpio. Respaldos JSON/PDF en `~/echegaray-os/respaldos/`.
-- Rama en curso: `worktree-agent-a1df7c7dd9993e69f` (Cargas + Impuestos). Worktrees viejos «locked»: `remove -f -f`.
+- Sin ramas pendientes. Worktrees de hoy «locked» (a704c…, a5b1a…, a946a…, aaa43…, a1df7…): `git worktree remove -f -f`.
 
 ## 8. PRÓXIMO PASO
 
-Cerrar Cargas + Impuestos (aplicar al real, mergear, prod) y releer las 12 líneas del Cash Flow tras el pipeline siguiente.
+Releer las 12 líneas «Nómina · …» del Cash Flow Mensual tras el pipeline (esperadas: reales idénticas; proyección
+jornales 57.362.961 · cargas 23.264.450 · gremiales 7.008.105 · deuda previsional 4.989.751) y llevarle al dueño las
+decisiones abiertas (4 importes de EFECTIVO redondeado sin persona, Sosa, «sábado supuesto», adelanto en efectivo y
+horas proyectadas del módulo Liquidación).
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
