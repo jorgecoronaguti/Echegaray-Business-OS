@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   parsearPosted, esRelevante, mapearAPayload, Deduplicador, crearConsumidorWS, AREAS_DE_ADJUNTOS,
-  verificarCanalesDeIngesta,
+  verificarCanalesDeIngesta, crearCanalesDeIngesta,
 } from './mattermost-ws-consumer.mjs'
 import {
   CommunicationService, RepositorioMemoria, MattermostAdapter, FakeMattermost,
@@ -344,6 +344,74 @@ test('el binding se relee por minuto, no por mensaje', async () => {
   // invariante que importa es que no se consulte POR MENSAJE.
   assert.equal(port.veces, AREAS_DE_ADJUNTOS.length,
     `una sola relectura del binding para cinco mensajes (${AREAS_DE_ADJUNTOS.length} consulta(s): una por área)`)
+})
+
+// ── EL ÚNICO CANAL DE COMPROBANTES (09/09) ──────────────────────────────────
+//
+// Decisión del dueño: «el único canal de comprobantes es comprobantes-gastos; los demás son fotos
+// de obra y demás». Antes entraban DOS áreas por adjunto y la segunda —`administracion_finanzas`—
+// es, en el binding vivo, el canal **Oficina**: cada foto que alguien soltaba ahí abría un evento
+// que terminaba en el circuito de comprobantes y el bot contestaba por una foto que nadie le mandó
+// a cargar.
+//
+// El doble reproduce el binding REAL (leído de `comunicacion.canales_area` el 09/09), no una lista
+// cómoda: si mañana alguien vuelve a meter `administracion_finanzas` en `AREAS_DE_ADJUNTOS`, la
+// fila de Oficina ya está acá y estos tests se ponen rojos. Ése es el punto — el control puede dar
+// rojo.
+
+const BINDING_VIVO = {
+  compras: [{ channel_id: 'ataehrdpmfyctqyjcfz5rs9jka', canal_nombre: 'Comprobantes-gastos' }],
+  administracion_finanzas: [{ channel_id: '9crfuy4qebyu58wpo1yo4a9cer', canal_nombre: 'Oficina' }],
+  personas: [{ channel_id: 'md5677yrtidztd7453rj6hxxmc', canal_nombre: 'Asistencia' }],
+}
+
+/** Port que contesta POR ÁREA, como la base: el área viaja en $2. */
+function portBindingReal() {
+  const areas = []
+  return {
+    get areas() { return areas },
+    async query(sql, params) {
+      if (!/canales_area/.test(sql)) return { rows: [] }
+      const area = params?.[1]
+      areas.push(area)
+      return { rows: BINDING_VIVO[area] ?? [] }
+    },
+  }
+}
+
+test('una foto en Oficina NO entra: ese canal dejó de ser de ingesta', async () => {
+  const { con, repo } = armarCon()
+  const c = crearConsumidorWS({
+    con, wsUrl: 'ws://x', token: 't', botUserId: BOT, log: crearLog(() => {}), port: portBindingReal(),
+    canalesAdjuntos: new Set(['compras', 'ataehrdpmfyctqyjcfz5rs9jka']), // lo que dice el entorno hoy
+  })
+  // Por SLUG y por ID: los dos identifican al canal según por dónde se lo mire, y los dos tienen
+  // que quedar afuera. Con el id adentro y el slug afuera la guarda seguiría dejando pasar todo.
+  const porSlug = await c.manejarMensaje(frameEnCanal({ channelName: 'oficina', channelId: 'otro' }))
+  const porId = await c.manejarMensaje(frameEnCanal({ channelName: 'lo-que-sea', channelId: '9crfuy4qebyu58wpo1yo4a9cer' }))
+  assert.equal(porSlug.estado, 'ignorado', 'una foto en Oficina no puede crear evento')
+  assert.equal(porId.estado, 'ignorado', 'tampoco por channel_id')
+  assert.equal(repo.eventos.length, 0, 'cero eventos ⇒ el bot no contesta nada por esa foto')
+})
+
+test('la misma foto en el canal de comprobantes SÍ entra', async () => {
+  const { con, repo } = armarCon()
+  const c = crearConsumidorWS({
+    con, wsUrl: 'ws://x', token: 't', botUserId: BOT, log: crearLog(() => {}), port: portBindingReal(),
+    canalesAdjuntos: new Set(['compras', 'ataehrdpmfyctqyjcfz5rs9jka']),
+  })
+  const r = await c.manejarMensaje(FRAME_REAL_COMPROBANTES)
+  assert.equal(r.estado, 'aceptado')
+  assert.equal(repo.eventos.length, 1)
+})
+
+test('los canales de ingesta resueltos son SÓLO los de compras', async () => {
+  const port = portBindingReal()
+  const canales = await crearCanalesDeIngesta({ port, base: new Set(['compras']) })()
+  assert.deepEqual([...canales].sort(), ['ataehrdpmfyctqyjcfz5rs9jka', 'comprobantes-gastos', 'compras'].sort())
+  assert.equal(canales.has('oficina'), false, 'Oficina no puede estar en la lista que sale en el log')
+  assert.equal(canales.has('9crfuy4qebyu58wpo1yo4a9cer'), false)
+  assert.deepEqual(port.areas, ['compras'], 'se le pregunta al binding por UNA sola área')
 })
 
 // ── El canal que no existe (04/08) ──────────────────────────────────────────

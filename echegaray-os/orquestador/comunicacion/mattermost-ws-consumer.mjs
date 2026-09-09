@@ -83,15 +83,24 @@ export function canalesDeAdjuntos(env = process.env) {
  * soltarlo convertiría lo natural en un trámite. Sumar un área es agregar una clave acá y atar el
  * canal en el binding.
  *
- *   · `compras`                 → la foto de la factura al canal de comprobantes (03/08).
- *   · `administracion_finanzas` → el CSV/Excel del extracto al canal de Admin y Finanzas (04/08).
+ *   · `compras` → la foto de la factura al canal de comprobantes (03/08).
  *
- * LA SEGUNDA ES EL PEDIDO DEL 04/08 («que reciba cualquier tipo de archivo por acá») y no afloja
- * nada: entrar al prefiltro sólo cuesta un evento. Leer y previsualizar un archivo no cambia un solo
- * dato de la empresa, y lo único que escribe —importar movimientos— vuelve a preguntarle al binding
- * y al permiso en `archivos/guarda.mjs`, y encima exige que una persona apriete un botón.
+ * UNA SOLA ÁREA, Y ES DECISIÓN DEL DUEÑO (09/09): «el único canal de comprobantes es
+ * comprobantes-gastos; los demás son fotos de obra y demás». Hasta hoy también entraba
+ * `administracion_finanzas`, que en el binding es el canal **Oficina**: ahí se sube de todo —fotos
+ * de obra, capturas, papeles— y cada archivo abría un evento que terminaba en el circuito de
+ * comprobantes. El costo no era un evento de más: era el bot contestando por una foto que nadie le
+ * mandó a cargar, y una foto de obra tratada como un comprobante que se deniega.
+ *
+ * LO QUE ESTO APAGA, dicho al lado: el pedido del 04/08 («que reciba cualquier tipo de archivo por
+ * acá») quedaba servido por esta lista, así que el extracto del banco soltado en Oficina ya NO crea
+ * evento solo. Sigue entrando mencionando a @os en el mismo mensaje —la mención es su propio camino
+ * de ingesta— y por la cola web. Volver a la ingesta muda del extracto es agregar el área de nuevo
+ * acá, y con ella vuelve a entrar TODO lo que se suba a ese canal: ese es el trueque, y es entero.
+ * No hay forma de dejar pasar el CSV del banco y no la foto del contrapiso — el prefiltro mira el
+ * canal, no el contenido.
  */
-export const AREAS_DE_ADJUNTOS = Object.freeze(['compras', 'administracion_finanzas'])
+export const AREAS_DE_ADJUNTOS = Object.freeze(['compras'])
 
 /**
  * LA LISTA DE CANALES DE INGESTA SALE DEL BINDING, no de una lista escrita a mano.
