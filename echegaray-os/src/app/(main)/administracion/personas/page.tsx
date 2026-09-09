@@ -47,6 +47,9 @@ import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { BloqueAsistenciaQuincena } from '@/features/administracion/components/BloqueAsistenciaQuincena'
 import { BloqueLiquidacion } from '@/features/administracion/components/liquidacion/BloqueLiquidacion'
+import { SolapaPagos } from '@/features/administracion/components/liquidacion/solapas/pagos'
+import { SolapaCierre } from '@/features/administracion/components/liquidacion/solapas/cierre'
+import { SOLAPAS_DE_PAGOS_Y_CIERRE } from '@/features/administracion/components/liquidacion/solapas/registro-pagos'
 import { BloqueAsistenciaDia } from '@/features/administracion/components/asistencia/BloqueAsistenciaDia'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
@@ -74,7 +77,7 @@ export const dynamic = 'force-dynamic'
 
 const RUTA = '/administracion/personas'
 
-type Busqueda = { q?: string; f?: string; nueva?: string; vista?: string; quincena?: string; modo?: string; obra?: string; dia?: string }
+type Busqueda = { q?: string; f?: string; nueva?: string; vista?: string; quincena?: string; modo?: string; obra?: string; dia?: string; solapa?: string }
 
 function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): string {
   const params = new URLSearchParams()
@@ -202,6 +205,30 @@ function armarPulso(
   }
 }
 
+/**
+ * LAS SOLAPAS DE LIQUIDACIÓN. `Horas` es la de por defecto (sin `solapa=`), y las demás se registran
+ * en su propio archivo para que dos frentes en paralelo no escriban el mismo índice.
+ */
+function BarraDeSolapas({ quincena, activa }: { quincena?: string; activa?: string }) {
+  const href = (s?: string) =>
+    `${RUTA}?vista=liquidacion${quincena ? `&quincena=${quincena}` : ''}${s ? `&solapa=${s}` : ''}`
+  const solapas = [{ clave: '', titulo: 'Horas' }, ...SOLAPAS_DE_PAGOS_Y_CIERRE]
+  return (
+    <div data-testid="solapas-liquidacion" style={{ display: 'flex', gap: 20, padding: '6px 20px 0' }}>
+      {solapas.map((s) => {
+        const esta = (activa ?? '') === s.clave
+        return (
+          <Link key={s.titulo} href={href(s.clave || undefined)} prefetch={false} style={{
+            fontSize: '13px', paddingBottom: 6, textDecoration: 'none',
+            color: esta ? '#1F1F1E' : '#6B6B67',
+            borderBottom: esta ? '2px solid #30302F' : '2px solid transparent',
+          }}>{s.titulo}</Link>
+        )
+      })}
+    </div>
+  )
+}
+
 export default async function PersonalPage({ searchParams }: { searchParams: Promise<Busqueda> }) {
   const sp = await searchParams
   const filtro = (FILTROS.find((f) => f.valor === sp.f)?.valor ?? 'plantel') as FiltroPersonal
@@ -254,10 +281,20 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             espacioPanel={false}
             vistas={vistasDe('liquidacion', sp.quincena, veLaPlata)}
           />
+          <BarraDeSolapas quincena={sp.quincena} activa={sp.solapa} />
           <div style={{ padding: '10px 20px 24px' }}>
-            <BloqueLiquidacion
-              quincenaPedida={sp.quincena} hoy={hoy} hrefDe={hrefLiquidacion} puedeCerrar
-            />
+            {/* Las solapas propias se dibujan en archivos aparte (`liquidacion/solapas/`) porque
+                cada una contesta una pregunta distinta de la misma quincena y crecen por su cuenta.
+                Cuando exista `solapas/index.ts` esta cadena de ternarios la reemplaza el registro. */}
+            {sp.solapa === 'pagos' ? (
+              <SolapaPagos quincenaPedida={sp.quincena} hoy={hoy} />
+            ) : sp.solapa === 'cierre' ? (
+              <SolapaCierre quincenaPedida={sp.quincena} hoy={hoy} puedeCerrar />
+            ) : (
+              <BloqueLiquidacion
+                quincenaPedida={sp.quincena} hoy={hoy} hrefDe={hrefLiquidacion} puedeCerrar
+              />
+            )}
           </div>
         </div>
       </Marco>
