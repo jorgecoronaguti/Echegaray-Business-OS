@@ -32,7 +32,7 @@ async function leer() {
            from registros_hh where fuente_legacy = $1 and persona_id is not null`, [FUENTE]),
     query(`select id, nombre_completo, en_la_empresa, fecha_egreso from personas`),
     query(`select id, persona_id, obra_id, desde, hasta, notas, creado_en from obra_asignacion`),
-    query(`select id, nombre, estado from obra_canonica`),
+    query(`select id, nombre, estado, to_char(fecha_fin_real, 'YYYY-MM-DD') as fecha_fin from obra_canonica`),
   ])
   return { hh: hh.rows, personas: personas.rows, asig: asig.rows, obras: obras.rows }
 }
@@ -55,9 +55,10 @@ async function main() {
   const activos = new Set(personas.filter((p) => p.en_la_empresa && !p.fecha_egreso).map((p) => p.id))
   const obraNombre = new Map(obras.map((o) => [o.id, `${o.nombre} (${o.estado})`]))
 
-  // Una obra cerrada no recibe historial nuevo (decisión del dueño 09/09/2026): sus días de horas
-  // salen aparte, en «HORAS SOBRE OBRA CERRADA», y no arman tramo.
-  const obrasCerradas = new Set(obras.filter((o) => o.estado === 'cerrada').map((o) => o.id))
+  // Una obra cerrada no recibe historial POSTERIOR A SU CIERRE (dueño 09/09/2026): los días de
+  // horas de después de `fecha_fin` salen aparte, en «HORAS SOBRE OBRA CERRADA», y no arman tramo.
+  // Los de antes sí: la obra estaba abierta. Por eso Map<obra_id, fecha_fin|null>, no Set.
+  const obrasCerradas = new Map(obras.filter((o) => o.estado === 'cerrada').map((o) => [o.id, o.fecha_fin ?? null]))
   const { tramos, dobles, umbral, cerradas } = armarTramos(hh, { hoy: HOY, activos, obrasCerradas })
   const r = conciliar(tramos, asig, { obrasCerradas })
 
@@ -77,6 +78,7 @@ async function main() {
   console.log(`\n== CONCILIACIÓN CON obra_asignacion`)
   console.log(`   a insertar ${r.insertar.length} (abiertas ${r.insertar.filter((i) => i.hasta === null).length}) · recortados por web misma obra ${r.recortados.length} · cerrados por web vigente en otra obra ${r.cerrados.length} · omitidos ${r.omitidos.length}`)
   for (const x of r.recortados) console.log(`   RECORTE  ${nombre.get(x.tramo.persona_id)} · ${x.tramo.obra_id} ${x.tramo.desde}→${x.hasta} (web ${x.contra.obra_id} desde ${f(x.contra.desde)})`)
+  for (const x of r.recortadosPorCierre) console.log(`   CIERRE OBRA ${nombre.get(x.tramo.persona_id)} · ${x.obra_id} ${x.tramo.desde}→${x.tramo.hasta_original ?? x.tramo.hasta} queda hasta ${x.fecha_fin}`)
   for (const x of r.cerrados) console.log(`   CIERRE   ${nombre.get(x.tramo.persona_id)} · ${x.tramo.obra_id} ${x.tramo.desde}→${x.tramo.hasta} (web vigente en ${x.contra.obra_id} desde ${f(x.contra.desde)})`)
   for (const x of r.omitidos) console.log(`   OMITIDO  ${nombre.get(x.tramo.persona_id)} · ${x.tramo.obra_id} ${x.tramo.desde}→${x.tramo.hasta} · ${x.motivo}${x.contra ? ` (web ${x.contra.obra_id} ${f(x.contra.desde)}→${f(x.contra.hasta)})` : ''}`)
   const dupWeb = r.omitidos.filter((x) => x.motivo === 'solapa_web').length

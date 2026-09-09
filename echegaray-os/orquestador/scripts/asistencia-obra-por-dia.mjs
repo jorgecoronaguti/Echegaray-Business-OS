@@ -46,7 +46,8 @@ async function catalogos() {
   const [personas, alias, canonicas, clienteAlias] = await Promise.all([
     query('select id, nombre_completo, en_la_empresa, fecha_egreso, es_prueba from public.personas'),
     query('select alias, obra_id from public.obra_alias where obra_id is not null'),
-    query('select id, nombre, cliente_texto, estado from public.obra_canonica'),
+    query(`select id, nombre, cliente_texto, estado, to_char(fecha_fin_real, 'YYYY-MM-DD') as fecha_fin
+             from public.obra_canonica`),
     query("select rotulo_clave, cliente_canonico from public.cliente_alias where fuente = 'JORNALES'"),
   ])
   return {
@@ -163,10 +164,15 @@ async function main() {
   const plan = planDeCorreccion({ dias, hh })
   imprimirPlan(plan, planillaSinHh({ dias, hh }))
 
-  const obrasCerradas = new Set(cat.obras.filter((o) => o.estado === 'cerrada').map((o) => o.id))
+  // Map, no Set: el corte es la FECHA DE CIERRE, no el estado. Los días anteriores a `fecha_fin`
+  // son historial legítimo — la obra estaba abierta y la gente estuvo ahí.
+  const obrasCerradas = new Map(cat.obras.filter((o) => o.estado === 'cerrada').map((o) => [o.id, o.fecha_fin ?? null]))
   const antesAsig = await planAsignaciones(cat.personas, obrasCerradas)
   imprimirObrasCerradas(antesAsig.cerradas, cat.personas)
-  console.log(`\nASIGNACIONES (historial JORNALES recalculado como conjunto): tramos ${antesAsig.tramos.length} · a insertar ${antesAsig.insertar.length} · a borrar ${antesAsig.borrar.length} · sin cambio ${antesAsig.conservar.length} · protegidas (desde >= ${HOY}) ${antesAsig.protegidas.length}`)
+  console.log(`\nASIGNACIONES (historial JORNALES recalculado como conjunto): tramos ${antesAsig.tramos.length} · a insertar ${antesAsig.insertar.length} · a borrar ${antesAsig.borrar.length} · sin cambio ${antesAsig.conservar.length} · protegidas ${antesAsig.protegidas.length} · recortados al cierre de su obra ${antesAsig.recortadosPorCierre.length}`)
+  for (const x of antesAsig.recortadosPorCierre.slice(0, DETALLE ? 500 : 20)) {
+    console.log(`    RECORTE AL CIERRE  ${x.tramo.persona_id} · ${x.obra_id} ${x.tramo.desde}→${x.tramo.hasta_original ?? x.tramo.hasta} queda hasta ${x.fecha_fin}`)
+  }
 
   if (!APLICAR) {
     await invariantes('estado actual')
