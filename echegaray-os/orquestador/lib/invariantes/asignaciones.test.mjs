@@ -57,3 +57,37 @@ test('obra desconocida en el catálogo no se declara cerrada por las dudas', () 
   const r = revisarAsignaciones({ asignaciones: [a({ obra_id: 'obra-que-no-esta' })], obras })
   assert.deepEqual(r.hallazgos, [])
 })
+
+// ═══ NINGÚN TRAMO TERMINA DESPUÉS DEL CIERRE DE SU OBRA (09/09/2026) ════════════════════════════
+// Desde que la obra cerrada conserva su historial anterior al cierre, hace falta el otro lado del
+// control: que el historial no se pase de la fecha en que la obra terminó. Sin esta regla, un
+// recorte mal hecho dejaría a alguien «en Galpón 9» una semana después de que Galpón 9 cerró.
+const OBRAS_CON_FIN = [
+  { id: 'le-galpon-9', estado: 'cerrada', fecha_fin: '2026-09-03' },
+  { id: 'le-comedor', estado: 'activa', fecha_fin: null },
+]
+
+test('verde: el tramo termina el día del cierre', () => {
+  const r = revisarAsignaciones({ asignaciones: [a({ obra_id: 'le-galpon-9', hasta: '2026-09-03' })], obras: OBRAS_CON_FIN })
+  assert.deepEqual(r.hallazgos, [])
+})
+
+test('ROJO: el tramo termina después del cierre de su obra', () => {
+  const r = revisarAsignaciones({ asignaciones: [a({ obra_id: 'le-galpon-9', hasta: '2026-09-08' })], obras: OBRAS_CON_FIN })
+  assert.equal(r.hallazgos.length, 1)
+  assert.equal(r.hallazgos[0].regla, REGLAS.TERMINA_DESPUES_DEL_CIERRE)
+  assert.match(r.hallazgos[0].detalle, /2026-09-08.*cerró el 2026-09-03/)
+})
+
+test('una vigente sobre obra cerrada con fecha grita UNA vez, no dos', () => {
+  const r = revisarAsignaciones({ asignaciones: [a({ obra_id: 'le-galpon-9', hasta: null })], obras: OBRAS_CON_FIN })
+  assert.deepEqual(r.hallazgos.map((h) => h.regla), [REGLAS.VIGENTE_EN_OBRA_CERRADA])
+})
+
+test('obra ACTIVA con fecha de fin cargada: no es hallazgo aunque el tramo la pase', () => {
+  const r = revisarAsignaciones({
+    asignaciones: [a({ obra_id: 'le-comedor', hasta: '2026-12-31' })],
+    obras: [{ id: 'le-comedor', estado: 'activa', fecha_fin: '2026-06-30' }],
+  })
+  assert.deepEqual(r.hallazgos, [])
+})

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   armarTramos, conciliar, umbralQuincena, diasHabilesEntre, NOTAS_JORNALES, MARCA_JORNALES,
+  fueraDelCierre,
 } from './asignaciones-desde-hh.mjs'
 
 const P = 'p-1'
@@ -227,7 +228,10 @@ test('conjunto: dos filas de JORNALES iguales (duplicado histórico) dejan una y
 // —un cliente sin obra activa— porque su fila de JORNALES de ese día está rotulada así. Si se
 // revierte la guarda de `armarTramos`, el primero de estos tests vuelve a ver el tramo abierto.
 
-const CERRADAS = new Set(['la-estrella'])
+// `la-estrella` está cerrada y NO se sabe cuándo (fecha_fin null): ahí sigue valiendo el descarte
+// entero. `le-galpon-9` cerró el 03/09: lo de antes es historial, lo de después no.
+const CERRADAS = new Map([['la-estrella', null]])
+const CERRADAS_CON_FECHA = new Map([['le-galpon-9', '2026-09-03']])
 
 test('obra cerrada: sus días no arman tramo y salen listados para decidir', () => {
   const filas = [...habiles('2026-09-01', 5, 'la-estrella')]
@@ -275,4 +279,72 @@ test('obra cerrada: el día corta el tramo — no funde los dos tramos vecinos e
     ['obra-a', '2026-08-31', '2026-09-03'],
     ['obra-a', '2026-09-07', '2026-09-08'],
   ])
+})
+
+// ═══ OBRA CERRADA: EL CORTE ES LA FECHA, NO EL ESTADO (dueño 09/09/2026) ════════════════════════
+// El defecto que atrapan: la primera versión de la regla miraba sólo `estado = 'cerrada'` y tiraba
+// las 3.056 filas de horas ANTERIORES al cierre de le-comedor, le-galpon-9 y sf-mamposteria —
+// meses en que la obra estaba abierta y la gente estuvo ahí. Si se vuelve a mirar sólo el estado,
+// el primero de estos tests ve `tramos = []`.
+
+test('cierre con fecha: los días anteriores arman tramo y el tramo cierra en la fecha de cierre', () => {
+  const filas = [...habiles('2026-09-01', 5, 'le-galpon-9')] // 01,02,03,04,07 de septiembre
+  const { tramos, cerradas } = armarTramos(filas, { hoy: HOY, activos, obrasCerradas: CERRADAS_CON_FECHA })
+  assert.equal(tramos.length, 1)
+  assert.deepEqual([tramos[0].desde, tramos[0].hasta, tramos[0].dias], ['2026-09-01', '2026-09-03', 3])
+  assert.equal(tramos[0].abierto, false, 'nadie queda vigente en una obra que ya cerró')
+  assert.deepEqual(cerradas.map((c) => c.fecha), ['2026-09-04', '2026-09-07'])
+})
+
+test('cierre con fecha: el día posterior al cierre queda afuera y sale listado para decidir', () => {
+  const filas = [fila('2026-09-07', 'le-galpon-9', 9)]
+  const { tramos, cerradas } = armarTramos(filas, { hoy: HOY, activos, obrasCerradas: CERRADAS_CON_FECHA })
+  assert.deepEqual(tramos, [])
+  assert.deepEqual(cerradas, [{ persona_id: P, fecha: '2026-09-07', obra_id: 'le-galpon-9', horas: 9, tipo_hora: 'normal' }])
+})
+
+test('obra cerrada SIN fecha de cierre: no se sabe cuándo terminó, así que no arma historial', () => {
+  const filas = [...habiles('2026-04-01', 5, 'la-estrella')]
+  const { tramos, cerradas } = armarTramos(filas, { hoy: HOY, activos, obrasCerradas: CERRADAS })
+  assert.deepEqual(tramos, [])
+  assert.equal(cerradas.length, 5)
+})
+
+test('fueraDelCierre: sólo lo posterior al cierre, y todo si no hay fecha', () => {
+  assert.equal(fueraDelCierre(CERRADAS_CON_FECHA, 'le-galpon-9', '2026-09-03'), false) // el día del cierre entra
+  assert.equal(fueraDelCierre(CERRADAS_CON_FECHA, 'le-galpon-9', '2026-09-04'), true)
+  assert.equal(fueraDelCierre(CERRADAS_CON_FECHA, 'obra-a', '2030-01-01'), false) // obra abierta: nunca
+  assert.equal(fueraDelCierre(CERRADAS, 'la-estrella', '2020-01-01'), true) // cerrada sin fecha: todo
+})
+
+test('un Set de obras cerradas se rechaza: confundir «sin fecha» con «cerró el 03/09» borra historia', () => {
+  assert.throws(
+    () => armarTramos([], { hoy: HOY, activos, obrasCerradas: new Set(['le-galpon-9']) }),
+    /Map<obra_id, fecha_fin\|null>/,
+  )
+})
+
+test('conciliar recorta a la fecha de cierre el tramo que la pasa, y nunca lo deja vigente', () => {
+  const t = [tramo({ obra_id: 'le-galpon-9', desde: '2026-08-20', hasta: '2026-09-08', abierto: true })]
+  const r = conciliar(t, [], { obrasCerradas: CERRADAS_CON_FECHA })
+  assert.equal(r.insertar.length, 1)
+  assert.equal(r.insertar[0].hasta, '2026-09-03')
+  assert.deepEqual(r.recortadosPorCierre.map((x) => [x.obra_id, x.hasta]), [['le-galpon-9', '2026-09-03']])
+})
+
+test('conciliar omite el tramo que EMPIEZA después del cierre', () => {
+  const t = [tramo({ obra_id: 'le-galpon-9', desde: '2026-09-04', hasta: '2026-09-08' })]
+  const r = conciliar(t, [], { obrasCerradas: CERRADAS_CON_FECHA })
+  assert.deepEqual(r.insertar, [])
+  assert.deepEqual(r.omitidos.map((o) => o.motivo), ['obra_cerrada'])
+})
+
+test('el conjunto corrige la asignación vigente sobre una obra que ya cerró', () => {
+  // Era lo que quedaba en la base: GONZALEZ vigente en una obra cerrada. Con fecha de cierre, la
+  // fila vieja se borra y entra la misma acotada al cierre — no se protege una fila incorrecta.
+  const previas = [asig({ id: 'v1', obra_id: 'le-galpon-9', desde: '2026-08-20', hasta: null })]
+  const tramos = [tramo({ obra_id: 'le-galpon-9', desde: '2026-08-20', hasta: '2026-09-08', abierto: true })]
+  const r = planDeConjunto(tramos, previas, { hoy: HOY, obrasCerradas: CERRADAS_CON_FECHA })
+  assert.deepEqual(r.borrar.map((b) => b.id), ['v1'])
+  assert.deepEqual(r.insertar.map((i) => [i.obra_id, i.desde, i.hasta]), [['le-galpon-9', '2026-08-20', '2026-09-03']])
 })

@@ -20,15 +20,17 @@ export const esDePrueba = (a) => /PRUEBA|ZZ-E2E/i.test(a.notas ?? '') || /^ZZ/i.
 export const REGLAS = Object.freeze({
   VIGENTE_EN_OBRA_CERRADA: 'asignacion_vigente_sobre_obra_cerrada',
   DOS_VIGENTES: 'persona_con_mas_de_una_asignacion_vigente',
+  TERMINA_DESPUES_DEL_CIERRE: 'asignacion_termina_despues_del_cierre_de_la_obra',
 })
 
 /**
  * @param asignaciones [{ id, persona_id, persona, obra_id, desde, hasta, notas }] — `hasta` null = vigente
- * @param obras        [{ id, estado }]
+ * @param obras        [{ id, estado, fecha_fin }] — `fecha_fin` 'YYYY-MM-DD' o null
  * @returns { hallazgos, revisadas, vigentes }  `hallazgos` vacío = verde.
  */
 export function revisarAsignaciones({ asignaciones = [], obras = [] } = {}) {
   const estado = new Map(obras.map((o) => [o.id, String(o.estado ?? '')]))
+  const fin = new Map(obras.map((o) => [o.id, o.fecha_fin ? String(o.fecha_fin).slice(0, 10) : null]))
   const filas = asignaciones.filter((a) => !esDePrueba(a))
   const vigentes = filas.filter((a) => a.hasta === null || a.hasta === undefined)
   const hallazgos = []
@@ -41,6 +43,21 @@ export function revisarAsignaciones({ asignaciones = [], obras = [] } = {}) {
         detalle: `vigente en «${a.obra_id}», que figura cerrada`,
       })
     }
+  }
+
+  // Desde el 09/09/2026 la obra cerrada SÍ conserva su historial, pero acotado a su fecha de cierre:
+  // nadie puede figurar en una obra después del día en que terminó. Las vigentes ya las reporta la
+  // regla de arriba — acá sólo las que tienen `hasta` y se pasan, para no gritar dos veces por lo mismo.
+  for (const a of filas) {
+    if (a.hasta === null || a.hasta === undefined) continue
+    if (estado.get(a.obra_id) !== 'cerrada') continue
+    const f = fin.get(a.obra_id)
+    if (!f || String(a.hasta).slice(0, 10) <= f) continue
+    hallazgos.push({
+      regla: REGLAS.TERMINA_DESPUES_DEL_CIERRE, id: a.id,
+      persona: a.persona ?? a.persona_id, obra_id: a.obra_id, desde: a.desde ?? null,
+      detalle: `termina el ${String(a.hasta).slice(0, 10)} y «${a.obra_id}» cerró el ${f}`,
+    })
   }
 
   const porPersona = new Map()
@@ -71,4 +88,7 @@ export const SQL_ASIGNACIONES = `
     from public.obra_asignacion a
     left join public.personas p on p.id = a.persona_id
    where coalesce(p.es_prueba, false) = false`
-export const SQL_OBRAS = 'select id, estado from public.obra_canonica'
+// `fecha_fin_real` es la fecha de cierre de la obra; el invariante la lee como `fecha_fin`. No se
+// usa `fecha_fin_plan`: es una previsión, y una obra que se estiró seguiría teniendo gente adentro.
+export const SQL_OBRAS = `select id, estado, to_char(fecha_fin_real, 'YYYY-MM-DD') as fecha_fin
+    from public.obra_canonica`
