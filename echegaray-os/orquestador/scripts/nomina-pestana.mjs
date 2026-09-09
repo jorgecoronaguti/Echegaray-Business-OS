@@ -50,7 +50,7 @@ import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, ultimaColumnaHabilC
 import { seccion, sub, total as rotuloTotal, ES_SECCION_NUM, ES_TOTAL, ES_SUBITEM } from '../lib/patron-pestana.mjs'
 import { conColaLimpiable } from '../lib/cola-de-rango.mjs'
 // VACIO vive en `preservar-anotaciones`, no en `cola-de-rango` — ésta lo re-importa de allá.
-import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, VACIO, letraCol } from '../lib/preservar-anotaciones.mjs'
 import { alMultiplo } from '../lib/jornales-neto-pago.mjs'
 
 /**
@@ -1149,6 +1149,68 @@ export function sinNotasRepetidas(filas = []) {
   return out
 }
 
+/**
+ * NÚCLEO PURO: «EFECTIVO redondeado» VUELVE A LA FILA DE SU PERSONA, NO A SU NÚMERO DE FILA.
+ *
+ * ═══ EL DEFECTO QUE ESTO IMPIDE, MEDIDO EN EL ARCHIVO VIVO (09/09/2026) ═══
+ *
+ * La columna I es del dueño («voy a hacer cargas manuales de montos en columna efectivo redondeado,
+ * no tocarla») y hasta hoy la protegía la guarda NO-BORRAR: el generador escribe `''` en esa celda y
+ * la fusión conserva lo que hubiera. Es una protección POR CELDA, y por eso se rompe sola en cuanto
+ * el cuadro se mueve de fila.
+ *
+ * Se rompió: la Nómina tiene quince importes escritos por él en un tramo contiguo (`I14:I28`) y el
+ * cuadro de personas hoy va de la fila 11 a la 25. Doce de esos importes quedaron al lado de una
+ * persona que NO es la suya, y los otros tres cayeron sobre la fila de total, sobre una nota y sobre
+ * el título del cuadro de oficina — donde además pisaban el `=SUM(I…)` del propio generador.
+ *
+ * El ancla no puede ser el número de fila: tiene que ser QUIÉN. Esta función lee la columna del
+ * dueño de la pestaña anterior emparejada con el nombre que tenía al lado, y la vuelve a poner en la
+ * fila de ese mismo nombre en la grilla nueva. Si el cuadro sube dos filas, los importes suben con
+ * su persona.
+ *
+ * LO QUE NO PUEDE HACER, Y POR ESO LO DEVUELVE EN VEZ DE INVENTARLO: un importe que estaba sobre una
+ * fila que no es de una persona no tiene dueño conocido. Reubicarlo «por orden» sería adivinar a
+ * quién se le entregan esos billetes. Sale en `huerfanos` para que se pregunte, y no se publica.
+ *
+ * @param {any[][]} grid     la grilla nueva (se devuelve una copia con la columna repuesta)
+ * @param {any[][]} previo   lo que hoy tiene la pestaña, desde su fila 1
+ * @param {{col?:number}} o  la columna del dueño, 0-based
+ * @returns {{grid:any[][], copiadas:number, huerfanos:{fila:number, valor:any}[]}}
+ */
+export function conEfectivoRedondeadoDelDueno(grid = [], previo = [], { col = COL_REDONDEADO } = {}) {
+  // El nombre se compara por lo que IDENTIFICA a la persona. La pestaña vieja lo escribía con el
+  // aviso pegado —«GONZALEZ EMILIANO  ▲ sin cargar desde el 03/09»— y sin recortarlo, esa fila no se
+  // reconocería y su importe saldría huérfano: el defecto se arreglaría para catorce y no para el
+  // decimoquinto, que es el que más mira.
+  const clave = (v) => String(v ?? '').split('▲')[0].trim().toUpperCase().replace(/\s+/g, ' ')
+  // Una fila DE PERSONA: tiene rótulo en A y no es un encabezado, un total ni un título de bloque.
+  const esPersona = (f) => {
+    const a = String(f?.[0] ?? '').trim()
+    return Boolean(a) && !ES_TOTAL.test(a) && !ES_SECCION_NUM.test(a) && !ES_SUBITEM.test(a) && a !== 'Persona'
+  }
+  const suyos = new Map()
+  const huerfanos = []
+  ;(previo ?? []).forEach((f, i) => {
+    const v = f?.[col]
+    if (v === '' || v === null || v === undefined) return
+    if (String(v).startsWith('=')) return                 // una fórmula ahí es del generador, no suya
+    if (!esPersona(f)) { huerfanos.push({ fila: i + 1, valor: v }); return }
+    suyos.set(clave(f[0]), v)
+  })
+  let copiadas = 0
+  const salida = (grid ?? []).map((f) => {
+    const fila = [...f]
+    if (!esPersona(fila)) return fila
+    const v = suyos.get(clave(fila[0]))
+    if (v === undefined) return fila
+    fila[col] = v
+    copiadas++
+    return fila
+  })
+  return { grid: salida, copiadas, huerfanos }
+}
+
 async function formatear(google, hoja, filas) {
   // ═══ EL FORMATO SALE DE `estilo-pestana`, COMO EN TODO EL ARCHIVO ═══
   //
@@ -1274,6 +1336,7 @@ async function formatear(google, hoja, filas) {
  * segura de que dentro de un mes una tenga una guarda que la otra no.
  */
 async function publicar(google, PESTANA, filas) {
+  // `filas` se reasigna abajo: la columna del dueño se repone antes de escribir.
   // ═══ EL TÍTULO SE COMPARA EXACTO, NUNCA POR PREFIJO ═══
   //
   // `hallarPestana` prueba exacto y DESPUÉS por prefijo: si no existiera una pestaña llamada
@@ -1341,7 +1404,7 @@ async function publicar(google, PESTANA, filas) {
         properties: {
           title: PESTANA,
           ...(indicePrevio == null ? {} : { index: indicePrevio }),
-          gridProperties: { rowCount: filas.length + 40, columnCount: ANCHO, frozenRowCount: 3 },
+          gridProperties: { rowCount: filas.length + 40, columnCount: ANCHO_HISTORICO, frozenRowCount: DEBAJO_DEL_TITULAR - 1 },
         },
       },
     }])
@@ -1367,7 +1430,31 @@ async function publicar(google, PESTANA, filas) {
   // La cola existe para limpiar lo que dejó una corrida MÁS LARGA de este mismo script, y eso vive
   // en las columnas que él escribe y en las filas que ya no llena. Fuera de ese rectángulo no hay
   // cola posible: hay, si acaso, algo que escribió una persona.
-  const anchoPropio = Math.max(...filas.map((f) => f.filter((c) => String(c ?? '').trim()).length), 1)
+  // ═══ «EFECTIVO redondeado» SE REPONE POR PERSONA ANTES DE ESCRIBIR ═══
+  //
+  // La guarda NO-BORRAR ya conservaba esa columna, pero por CELDA: el día que el cuadro se movió de
+  // fila, los quince importes del dueño quedaron al lado de otra persona. Acá se leen con el nombre
+  // que tenían al lado y se reponen en la fila de ese mismo nombre. Ver
+  // `conEfectivoRedondeadoDelDueno` para el porqué y para lo que NO puede resolver.
+  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:${letraCol(ANCHO - 1)}${ALTO_HISTORICO}`).catch(() => [])
+  const suyo = conEfectivoRedondeadoDelDueno(filas, previo ?? [])
+  filas = suyo.grid
+  if (suyo.copiadas) console.log(`  ✋ ${suyo.copiadas} «EFECTIVO redondeado» repuesto(s) en la fila de su persona: esa columna es TUYA`)
+  for (const h of suyo.huerfanos) {
+    console.error(`  ✗ «EFECTIVO redondeado» ${h.valor} estaba en la fila ${h.fila}, que no es la de ninguna persona: `
+      + 'no lo publico porque no sé de quién es — decime a quién va')
+  }
+  // ═══ EL RECTÁNGULO PROPIO ES EL HISTÓRICO, NO EL DE HOY (09/09/2026) ═══
+  //
+  // La pestaña bajó de diecisiete columnas a once. Declarar como propias sólo las once deja las seis
+  // que se retiraron vivas a la derecha, con los datos de la corrida vieja publicados: exactamente
+  // el mismo modo de falla que la cola de filas, girado noventa grados.
+  //
+  // Y no contradice la lección del 31/08 («había puesto la cola en 160 filas × 17 columnas […] el
+  // centinela declaraba suyas 2.720 celdas y vaciaba TODAS las que el generador no escribe»): lo que
+  // estaba mal ahí era reclamar columnas que el generador NUNCA escribió. `ANCHO_HISTORICO` es, por
+  // definición, hasta dónde escribió — ni una celda más.
+  const anchoPropio = ANCHO_HISTORICO
   // ═══ UNA CELDA VACÍA NO BORRA: HAY QUE PEDIR QUE SE BORRE ═══
   //
   // `fila()` rellena cada renglón hasta ANCHO con cadena vacía, y la guarda NO-BORRAR conserva el
@@ -1382,7 +1469,7 @@ async function publicar(google, PESTANA, filas) {
   const conCentinela = filas.map((f) => {
     let fin = f.length
     while (fin > 0 && !String(f[fin - 1] ?? '').trim()) fin--
-    return [...f.slice(0, fin), ...Array(Math.max(0, f.length - fin)).fill(VACIO)]
+    return [...f.slice(0, fin), ...Array(Math.max(0, anchoPropio - fin)).fill(VACIO)]
   })
   const conCola = conColaLimpiable(sinNotasRepetidas(conCentinela), { ancho: anchoPropio, alto: ALTO_HISTORICO, quien: PESTANA })
   // ═══ EL CONTRATO, DICHO EN UNA LÍNEA: ESTE GENERADOR ES DUEÑO DE SU RECTÁNGULO ═══
