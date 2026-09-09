@@ -58,10 +58,9 @@
 
 import { COL, PENDIENTE } from './proveedores-pivot-seccion1.mjs'
 import { COL as COL_TRAMOS } from './deuda-por-tramos.mjs'
-import { MONEDA_CUERPO, MONEDA_TOTAL } from './formato-statement.mjs'
+import { MONEDA_CONTROL, MONEDA_CUERPO, MONEDA_TOTAL } from './formato-statement.mjs'
 import { COLCHON_FINAL, filaDelSiguienteTitulo } from './proveedores-colchon.mjs'
 import { normalizarTitulo } from './proveedores-frontera.mjs'
-import { ALERTA } from './glifos.mjs'
 
 /** El título de la sección. Su número lo pone `nSeccion`, nunca esta constante. */
 export const TITULO_POR_DIA = 'QUÉ SALE CADA DÍA'
@@ -310,31 +309,52 @@ export function formulaQuienes(fila) {
 export const formulaTotalColumna = (letra, desde, hasta) => `=SUM($${letra}$${desde}:$${letra}$${hasta})`
 
 /**
- * EL CONTROL, EN UNA SOLA LÍNEA Y CON DOS PREGUNTAS INDEPENDIENTES.
+ * LOS DOS RÓTULOS DEL PIE. Se exportan porque `residuoDelBloque` y el script los usan para RECONOCER
+ * lo que el bloque publicó antes: un pie que cambió de forma deja su versión anterior en la pestaña.
+ */
+export const ROTULOS_CONTROL = Object.freeze([
+  '⇒ Deuda comercial que el cuadro no muestra',
+  '⇒ Sale por un medio de pago sin columna',
+])
+
+/**
+ * EL PIE: DOS CONTROLES, DOS PREGUNTAS INDEPENDIENTES, «RÓTULO | NÚMERO».
  *
- *   1. ¿Los días suman toda la deuda? El otro camino es `SUM(Compras!AL)`, que no pasa por ninguna
- *      de las fórmulas del cuadro. Si falta plata: hay facturas sin fecha de pago, o aparecieron más
- *      días que filas tiene el cuadro y hay que volver a correr el generador.
+ *   1. ¿Los días suman toda la deuda? Si falta plata: hay facturas sin fecha de pago, o aparecieron
+ *      más días que filas tiene el cuadro y hay que volver a correr el generador.
  *   2. ¿Los cuatro instrumentos explican el total? Si no, hay deuda que sale por un medio sin columna.
  *
- * `ROUND(…;0)` para que una diferencia de centavos no encienda una alerta que después nadie mira.
+ * ═══ ERA UNA ORACIÓN, Y EL CONTRATO NO ADMITE PROSA (09/09/2026) ═══
+ *
+ * Publicaba una sola celda con tres redacciones alternativas —«▲ el cuadro no muestra $16.730.193 de
+ * deuda», «▲ $X salen por un medio de pago que no tiene columna», «✓ N días que suman la deuda
+ * comercial entera»— de hasta 55 caracteres de texto ARMADO con TEXT(). `diseno-unificado` la medía
+ * como prosa, y el dueño la vio renderizada al lado de los pies de Estructura y Materiales, que
+ * cierran con «⇒ rótulo | número». Ahora son dos filas de esa misma forma: el número en MONEDA_CONTROL
+ * dibuja «—» cuando da cero, que es el mismo cero dibujado del resto del archivo, y se pone en rojo
+ * solo cuando deja de darlo. El diagnóstico lo hace quien lo lee; está escrito acá arriba.
+ *
+ * ═══ Y EL PRIMER CONTROL COMPARABA CONTRA OTRO UNIVERSO ═══
+ *
+ * El otro camino era `SUM(Compras!AL)`: TODOS los saldos de Compras, comerciales o no, pendientes o
+ * no. El titular del cuadro y las siete columnas miran `universoPendiente()` —pendiente Y comercial—,
+ * así que el control acusaba de faltante toda la deuda no comercial y toda la ya pagada con saldo
+ * residual. Un control tiene que medir la MISMA población que el número que controla; si no, su
+ * alerta es constante y se aprende a ignorarla. Sigue sin pasar por ninguna fórmula del cuadro —es
+ * SUMPRODUCT sobre Compras, no SUM(B:E)—, que es lo que lo mantiene independiente.
+ *
+ * @param {{filaTotal:number}} o `filaTotal` base 1
+ * @returns {Array<Array<string|null>>} dos filas `[rótulo, fórmula, …null]` del ancho del bloque
  */
-export function formulaControlPorDia({ filaTotal, primeraFila, ultimaFila }) {
+export function filasDeControlPorDia({ filaTotal }) {
   const total = `$${letraDeColumna(COL_TOTAL_DIA)}$${filaTotal}`
   const medios = `SUM($B$${filaTotal}:$${letraDeColumna(MEDIOS_DEL_DIA.length)}$${filaTotal})`
-  const deuda = `SUM(${saldoDeCompras()})`
-  // `COUNT` no sirve: cuenta sólo números y dejaría afuera los días que en Compras son texto. Y
-  // `COUNTA` cuenta de más: una fórmula que devuelve "" no es una celda vacía para COUNTA.
-  const dias = `SUMPRODUCT(($A$${primeraFila}:$A$${ultimaFila}<>"")*1)`
-  // LAS CAUSAS NO VAN EN LA CELDA (06/09/2026). Decía «: hay facturas sin fecha de pago, o más días
-  // que filas» y «abierta por los cuatro medios»: las dos son la interpretación del número, y las dos
-  // están dichas arriba, en el `POR QUÉ` de esta función. Lo que la celda tiene que decir es CUÁNTO
-  // falta y por dónde se está yendo; el diagnóstico lo hace quien lo lee.
-  return `=IF(ROUND(${total}-${deuda};0)<>0;"${ALERTA} el cuadro no muestra "`
-    + `&TEXT(${deuda}-${total};"$#,##0")&" de deuda"`
-    + `;IF(ROUND(${total}-${medios};0)<>0;"${ALERTA} "&TEXT(${total}-${medios};"$#,##0")`
-    + `&" salen por un medio de pago que no tiene columna"`
-    + `;"✓ "&${dias}&" días que suman la deuda comercial entera"))`
+  const deuda = `SUMPRODUCT(${universoPendiente()}*${saldoDeCompras()})`
+  // `ROUND(…;0)` para que una diferencia de centavos no encienda una alerta que después nadie mira.
+  return [
+    [ROTULOS_CONTROL[0], `=ROUND(${deuda}-${total};0)`],
+    [ROTULOS_CONTROL[1], `=ROUND(${total}-${medios};0)`],
+  ]
 }
 
 /**
@@ -354,7 +374,7 @@ export function formulaControlPorDia({ filaTotal, primeraFila, ultimaFila }) {
  * @param {{filas:any[][], filaTitulo:number, numeroDeSeccion:number}} o `filaTitulo` base 1
  * @returns {{alto:number, filas:(string|null)[][], filaTitulo:number, filaRotulos:number,
  *            primeraFila:number, ultimaFila:number, filaTotal:number, filaControl:number,
- *            modelo:object}}
+ *            filasControl:number[], modelo:object}}
  */
 export function bloqueQueSaleCadaDia({ filas = [], filaTitulo = 1, numeroDeSeccion = 2 } = {}) {
   const modelo = diasQueSalen(filas)
@@ -380,12 +400,17 @@ export function bloqueQueSaleCadaDia({ filas = [], filaTitulo = 1, numeroDeSecci
   }
   salida.push(['TOTAL', ...Array.from({ length: ancho - 2 }, (_, i) =>
     formulaTotalColumna(letraDeColumna(i + 1), primeraFila, ultimaFila)), null])
-  salida.push([formulaControlPorDia({ filaTotal, primeraFila, ultimaFila }), ...vacia().slice(1)])
+  for (const [rotulo, formula] of filasDeControlPorDia({ filaTotal })) {
+    salida.push([rotulo, formula, ...vacia().slice(2)])
+  }
 
   return {
     alto: salida.length,
     filas: salida,
     filaTitulo, filaRotulos, primeraFila, ultimaFila, filaTotal, filaControl,
+    // Los dos controles del pie, por su fila real. `filaControl` sigue siendo el primero: lo lee el
+    // verificador del script, y renombrarlo por gusto rompe un ancla sin cambiar nada.
+    filasControl: [filaControl, filaControl + 1],
     modelo,
   }
 }
@@ -460,5 +485,45 @@ export function formatosDelBloque({ sheetId, bloque }) {
     cell: celda({ type: 'TEXT', pattern: '@' }, 'LEFT'),
     fields: campos,
   } })
+  // EL PIE DECLARA SU FORMATO O HEREDA EL DEL LAYOUT ANTERIOR. La columna A del pie estuvo hasta hoy
+  // dentro del rango de fechas de un layout más alto: un rótulo sobre una celda con formato DATE se
+  // ve bien sólo porque es texto, y el día que la celda quede con un número se dibuja «31/12/1899».
+  // La B es un control: MONEDA_CONTROL pinta el cero en raya y el desvío en rojo.
+  const [c1, c2] = bloque.filasControl ?? [filaTotal + 1, filaTotal + 2]
+  out.push({ repeatCell: { range: rango(c1, c2, 0), cell: celda({ type: 'TEXT', pattern: '@' }, 'LEFT'), fields: campos } })
+  out.push({ repeatCell: { range: rango(c1, c2, 1), cell: celda(MONEDA_CONTROL, 'RIGHT'), fields: campos } })
   return out
+}
+
+/**
+ * LAS FILAS QUE EL BLOQUE DEJÓ ESCRITAS ABAJO Y YA NO SON SUYAS. Base 1, `hasta` exclusivo.
+ *
+ * ═══ EL DEFECTO (09/09/2026) ═══
+ *
+ * La pestaña publicaba en la fila 88 «▲ el cuadro no muestra $16.730.193 de deuda», con la fórmula
+ * apuntando a `$F$87`. No era una alerta: era el PIE de una versión anterior del bloque, de cuando
+ * tenía seis días. El cuadro de hoy tiene tres, su TOTAL está seis filas más arriba, y esas dos
+ * filas quedaron abajo mostrando el control de un total que ya no existe.
+ *
+ * La causa es de reparto de propiedad. `devolverElAire` sólo entraba con `delta < 0` y borraba las
+ * filas de ABAJO —las pegadas al título siguiente, que están en blanco—, nunca las de arriba del
+ * colchón, que son las del bloque viejo. Cuando el cuadro se achicaba, la primera corrida devolvía el
+ * aire sobrante y dejaba el residuo intacto; a partir de la segunda `necesita == disponibles`, o sea
+ * `delta == 0`, y el residuo quedaba fuera del alcance de todo el mecanismo — para siempre. Y si el
+ * cálculo alguna vez proponía borrarlo, `filasNoVacias` lo leía SUCIO (tiene fórmulas) y frenaba con
+ * «✗ NO borro», que es lo correcto para una fila ajena y lo inútil para la propia.
+ *
+ * Un bloque es dueño de TODO su ancho y de todo lo que escribió: lo que dejó de caber en su alto lo
+ * limpia él, y no espera a que el colchón se lo lleve por delante.
+ *
+ * @param {{filaTitulo:number, alto:number, siguiente:number}} o `siguiente` = la fila del título de
+ *        la sección de abajo, base 1
+ * @returns {{desde:number, hasta:number}} vacío (`desde === hasta`) = no hay nada que limpiar
+ */
+export function residuoDelBloque({ filaTitulo = 0, alto = 0, siguiente = 0 } = {}) {
+  const desde = filaTitulo + alto
+  // Sin ancla de abajo no se limpia a ciegas: el límite es de otro dueño y sin él no se sabe hasta
+  // dónde llega lo mío.
+  if (!(filaTitulo > 0) || !(alto > 0) || !(siguiente > desde)) return { desde: 0, hasta: 0 }
+  return { desde, hasta: siguiente }
 }

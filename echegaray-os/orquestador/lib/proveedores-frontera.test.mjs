@@ -48,14 +48,19 @@ test('la numeración sale de UNA lista: 1 y 3 son dinámicas, 2 es el cuadro por
   assert.equal(nSeccion('salePorDia'), 2)
   assert.equal(nSeccion('cuentaCorriente'), 3)
   assert.equal(nSeccion(PRIMERA_GENERADA), 4)
-  assert.equal(nSeccion('faltanEnCompras'), 5)
-  assert.equal(nSeccion('control'), 6)
+  assert.equal(nSeccion('respaldoFiscal'), 4)
+  // LAS TRES SECCIONES DE LA CAPA FÓSIL YA NO EXISTEN (09/09/2026). Las escribía el generador
+  // retirado el 14/08 y el dueño firmó el borrado de esas filas. Declararlas seguía numerando hasta
+  // 6 una pestaña que tiene 4: si alguna vuelve a la lista sin volver al archivo, esto se pone rojo.
+  assert.throws(() => nSeccion('notasCredito'), /sección desconocida/)
+  assert.throws(() => nSeccion('faltanEnCompras'), /sección desconocida/)
+  assert.throws(() => nSeccion('control'), /sección desconocida/)
   // Materiales es una pestaña propia: sus secciones arrancan en 1.
   assert.equal(nSeccion('familiaMes', SECCIONES_MATERIALES), 1)
   assert.equal(nSeccion('obra', SECCIONES_MATERIALES), 2)
   // Una clave que no existe no devuelve un número cualquiera: falla.
   assert.throws(() => nSeccion('inventada'), /sección desconocida/)
-  assert.equal(SECCIONES_PROVEEDORES.length, 6)
+  assert.equal(SECCIONES_PROVEEDORES.length, 4)
 })
 
 test('las ventas y "la plomería" ya no son secciones de esta pestaña', () => {
@@ -66,8 +71,8 @@ test('las ventas y "la plomería" ya no son secciones de esta pestaña', () => {
   assert.ok(!SECCIONES_PROVEEDORES.includes('arca'))
   assert.throws(() => nSeccion('emitidas'), /sección desconocida/)
   assert.throws(() => nSeccion('arca'), /sección desconocida/)
-  // Y la numeración queda consecutiva y sin huecos: 1..6, ni un salto.
-  assert.deepEqual(SECCIONES_PROVEEDORES.map((c) => nSeccion(c)), [1, 2, 3, 4, 5, 6])
+  // Y la numeración queda consecutiva y sin huecos: 1..4, ni un salto.
+  assert.deepEqual(SECCIONES_PROVEEDORES.map((c) => nSeccion(c)), [1, 2, 3, 4])
 })
 
 test('el título se compara SIN su número y SIN tildes: "5 · NOTAS DE CRÉDITO" ≡ "3 · Notas de credito"', () => {

@@ -134,10 +134,20 @@ export const SECCIONES_PROVEEDORES = [
   // después qué sale cada día. Es de fórmulas vivas, no una dinámica: la API no emite el subtotal de
   // un nivel externo de un pivot y sin total por día el cuadro no decide nada.
   'salePorDia',         // 2 · QUÉ SALE CADA DÍA               (proveedores-que-sale-cada-dia.mjs)
-  'cuentaCorriente',    // 3 · CUENTA CORRIENTE POR PROVEEDOR   (tabla dinámica, ídem)
-  'notasCredito',       // 4 · NOTAS DE CRÉDITO                 ← LA FRONTERA
-  'faltanEnCompras',    // 5 · LO QUE ARCA FACTURÓ Y COMPRAS NO TIENE
-  'control',            // 6 · LO QUE HAY QUE CORREGIR EN COMPRAS
+  'cuentaCorriente',    // 3 · CON QUIÉN SE GASTA               (tabla dinámica, ídem)
+  // ═══ DE SEIS A CUATRO: LA PESTAÑA DECLARABA DOS SECCIONES QUE YA NO ESTÁN (09/09/2026) ═══
+  //
+  // `notasCredito`, `faltanEnCompras` y `control` las escribía `proveedores-materiales-pestana.mjs`,
+  // retirado el 14/08 por apilar una capa por corrida. Hoy el dueño firmó el borrado de esa capa
+  // fósil (`proveedores-fosil-frontera.mjs`), así que las tres dejaron de existir en el archivo y
+  // esta lista seguía numerando hasta 6. Una lista de secciones que nombra secciones que no están es
+  // exactamente el defecto que esta constante existe para no tener: el "1, 2, 7, 5" del 04/08 salía
+  // de ahí.
+  //
+  // El respaldo fiscal ocupa el 4 —el número que dejó libre `notasCredito`— y lo escribe un paso
+  // propio y chico, `proveedores-respaldo-fiscal.mjs`. Es el MISMO bloque que cierran Materiales y
+  // Estructura (`lib/control-arca-bloque.mjs`): una definición, tres pestañas.
+  'respaldoFiscal',     // 4 · RESPALDO FISCAL — contra el libro de IVA de ARCA
 ]
 
 // ═══ DOS SECCIONES QUE SE FUERON, Y POR QUÉ (04/08) ═══
@@ -194,6 +204,9 @@ export const DUENOS_DE_PROVEEDORES = Object.freeze([
   // la 1 ya esté escrita; y cuando cambia de alto corre todo lo de abajo, que se reancla por título.
   Object.freeze({ bloque: '2 · qué sale cada día', script: 'proveedores-que-sale-cada-dia.mjs' }),
   Object.freeze({ bloque: '3 · cuenta corriente por proveedor', script: 'proveedores-seccion2-pivot.mjs' }),
+  // DESPUÉS de la dinámica de concentración: se ancla a su fila de TOTAL, que la dinámica recoloca
+  // en cada corrida según cuántos proveedores emita. Anclado antes, escribiría sobre el cuadro.
+  Object.freeze({ bloque: '4 · respaldo fiscal contra el libro de ARCA', script: 'proveedores-respaldo-fiscal.mjs' }),
   Object.freeze({ bloque: 'la columna "Qué hacer" del dueño', script: 'proveedores-notas-visibles.mjs' }),
   Object.freeze({ bloque: 'el encabezado (la posición) y los anchos', script: 'proveedores-encabezado-aplicar.mjs' }),
 ])
@@ -202,8 +215,15 @@ export const DUENOS_DE_PROVEEDORES = Object.freeze([
 // `controlArca` cierra la pestaña: es el único control de Materiales que no se valida contra Compras.
 export const SECCIONES_MATERIALES = ['familiaMes', 'obra', 'controlArca']
 
-/** La primera sección que este generador escribe. Las anteriores son dinámicas. */
-export const PRIMERA_GENERADA = 'notasCredito'
+/**
+ * La primera sección que NO es una tabla dinámica. Las tres anteriores lo son (o son fórmulas vivas
+ * ancladas entre dos dinámicas), y por eso el número de ésta no se tipea en ningún lado.
+ *
+ * Apuntaba a `notasCredito`, que dejó de existir. `proveedores-materiales-pestana.mjs` —retirado— es
+ * el único que la lee: si algún día vuelve, tiene que volver a declarar SUS secciones acá, no
+ * reusar ésta. Mientras tanto lo que numera es el bloque de respaldo fiscal.
+ */
+export const PRIMERA_GENERADA = 'respaldoFiscal'
 
 /**
  * El número que le toca a una sección. Una sola fuente para el número: el orden de la lista.

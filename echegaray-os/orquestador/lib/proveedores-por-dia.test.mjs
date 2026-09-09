@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 
 import {
   bloqueQueSaleCadaDia, COL_QUIENES, COL_TOTAL_DIA, diasQueSalen, diasSinNombre, expresionDias,
-  formatosDelBloque, formulaControlPorDia, formulaDia, formulaMedio, formulaQuienes,
+  filasDeControlPorDia, formatosDelBloque, formulaDia, formulaMedio, formulaQuienes,
   formulaTotalColumna, formulaTotalDelDia, letraDeColumna, MEDIOS_DEL_DIA, mediosSinColumna,
   ROTULOS_POR_DIA, tramo2DeLaFila, tramosDeLaFila, tramosQueNoEntran, ubicarBloque,
-  filasQueNecesita,
+  filasQueNecesita, residuoDelBloque, ROTULOS_CONTROL, saldoDeCompras, universoPendiente,
 } from './proveedores-por-dia.mjs'
 import { COL, geometriaDeLaSeccion } from './proveedores-pivot-seccion1.mjs'
 import { COLCHON_FINAL } from './proveedores-colchon.mjs'
@@ -143,7 +143,9 @@ test('el alto declarado coincide con el emitido, y las anclas de abajo se deriva
     const filas = Array.from({ length: n }, (_, i) => fila({ q: D('2026-09-01') + i, saldo: 1000 * (i + 1) }))
     const b = bloque(filas)
     assert.equal(b.alto, b.filas.length, `alto declarado ${b.alto} ≠ ${b.filas.length} filas emitidas`)
-    assert.equal(b.filaControl - b.filaTitulo + 1, b.alto, 'la última fila del bloque no es su alto')
+    // La última fila del bloque es el SEGUNDO control: el pie son dos desde que dejó de ser una
+    // oración. Contar sólo el primero es exactamente cómo un bloque declara menos de lo que escribe.
+    assert.equal(b.filasControl.at(-1) - b.filaTitulo + 1, b.alto, 'la última fila del bloque no es su alto')
     assert.equal(b.ultimaFila - b.primeraFila + 1, Math.max(n, 1))
     assert.equal(b.filaTotal, b.ultimaFila + 1, 'el TOTAL va pegado al último día: sin filas de colchón')
   }
@@ -169,17 +171,24 @@ test('NINGUNA fórmula usa la coma como separador de argumentos (es_AR: la coma 
   for (const f of fs) assert.ok(!sinTextos(f).includes(','), `separador con coma (rompe en es-AR): ${f}`)
   for (const f of [expresionDias(), formulaDia(10), formulaMedio('Efectivo', 10), formulaTotalDelDia(10),
     formulaQuienes(10), formulaTotalColumna('F', 10, 20),
-    formulaControlPorDia({ filaTotal: 21, primeraFila: 10, ultimaFila: 20 })]) {
+    ...filasDeControlPorDia({ filaTotal: 21 }).map(([, f]) => f)]) {
     assert.ok(!sinTextos(f).includes(','), `separador con coma: ${f}`)
   }
 })
 
-test('el patrón de TEXT va en convención US aunque el archivo sea es_AR', () => {
-  const c = formulaControlPorDia({ filaTotal: 21, primeraFila: 10, ultimaFila: 20 })
-  assert.ok(c.includes('TEXT(SUM(Compras!$AL$4:$AL)-$F$21;"$#,##0")'), c)
-  // El patrón lleva `,` de miles y `.` decimal SIEMPRE, aunque el archivo dibuje al revés: adentro
-  // de un patrón la coma no es un separador de argumentos. `0,00` no son dos decimales, son "003".
-  assert.ok(!/TEXT\([^;]*;"[^"]*\."/.test(c), 'ningún patrón de esta fórmula pide decimales')
+// ═══ EL PIE DEJÓ DE ARMAR TEXTO: EL FORMATO DIBUJA EL NÚMERO ═══
+//
+// Armaba el importe con `TEXT(…;"$#,##0")` adentro de una oración, y ese patrón tenía que ir en
+// convención US aunque el archivo sea es_AR. Ahora la celda publica un NÚMERO pelado y quien lo
+// dibuja es `MONEDA_CONTROL`: no hay patrón que pueda quedar en el locale equivocado, que es la
+// forma más barata de no volver a tener ese defecto.
+test('el pie publica números, no texto armado: ni un TEXT() ni una oración', () => {
+  for (const [rotulo, f] of filasDeControlPorDia({ filaTotal: 21 })) {
+    assert.ok(!f.includes('TEXT('), `el pie vuelve a armar texto: ${f}`)
+    assert.ok(f.startsWith('=ROUND('), f)
+    assert.ok(rotulo.startsWith('⇒ '), `un control abre con ⇒: ${rotulo}`)
+    assert.ok(rotulo.length <= 60, `${rotulo.length} caracteres: es una oración, no un rótulo`)
+  }
 })
 
 // ═══ LAS COLUMNAS SALEN DE UNA SOLA FUENTE ═══
@@ -226,15 +235,27 @@ test('un medio de pago sin columna se reporta antes de escribir y el control lo 
   assert.equal(dias[0].porMedio.Transferencia, 1_000_000)
   assert.equal(dias[0].otrosMedios, 300_000)
   assert.deepEqual(mediosSinColumna(filas), [{ medio: 'Tarjeta Crédito', monto: 300_000 }])
-  const c = formulaControlPorDia({ filaTotal: 21, primeraFila: 10, ultimaFila: 20 })
-  assert.ok(c.includes('SUM($B$21:$E$21)'), c)
-  assert.ok(c.includes('un medio de pago que no tiene columna'), c)
+  const [, medios] = filasDeControlPorDia({ filaTotal: 21 })
+  assert.ok(medios[1].includes('SUM($B$21:$E$21)'), medios[1])
+  assert.ok(/medio de pago sin columna/.test(medios[0]), medios[0])
 })
 
-test('el control compara contra un camino INDEPENDIENTE del cuadro: la columna de saldo de Compras', () => {
-  const c = formulaControlPorDia({ filaTotal: 21, primeraFila: 10, ultimaFila: 20 })
-  assert.ok(c.includes('SUM(Compras!$AL$4:$AL)'), c)
-  assert.ok(c.startsWith('=IF(ROUND('), c)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO · UN CONTROL QUE COMPARA CONTRA OTRA POBLACIÓN (09/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Comparaba el total del cuadro contra `SUM(Compras!$AL$4:$AL)`: TODOS los saldos de Compras, sin
+// filtrar ni por estado ni por comercial. El titular del cuadro y sus siete columnas miran
+// `universoPendiente()`. Con dos poblaciones distintas la resta nunca puede dar cero, así que la
+// alerta quedaba encendida siempre y dejaba de significar algo.
+test('EL DEFECTO · el control mide el MISMO universo que el cuadro, y por un camino independiente', () => {
+  const [deuda] = filasDeControlPorDia({ filaTotal: 21 })
+  assert.ok(deuda[1].includes(universoPendiente()), `no filtra el universo del cuadro: ${deuda[1]}`)
+  assert.ok(!/SUM\(Compras!\$AL\$4:\$AL\)/.test(deuda[1]), `vuelve al total sin filtrar: ${deuda[1]}`)
+  // Independiente: no suma las celdas del cuadro, va a Compras. Un control validado contra la
+  // información que él mismo produce no puede dar rojo nunca.
+  assert.ok(deuda[1].includes(saldoDeCompras()), deuda[1])
+  assert.ok(!deuda[1].includes('SUM($B$21'), deuda[1])
 })
 
 // ═══ ORDEN Y FORMATO ═══
@@ -348,6 +369,57 @@ test('la sección 1 se limita con la sección que SIGUE, sea cual sea su número
 // Se mide con `esProsa`, el mismo núcleo puro que audita el Sheet: cualquier párrafo nuevo que
 // alguien meta adentro de esta fórmula da rojo acá y no dos horas después en la pantalla del dueño.
 test('EL DEFECTO · el control del cuadro por día dice cuánto falta, no por qué puede faltar', () => {
-  const p = esProsa(formulaControlPorDia({ filaTotal: 87, primeraFila: 81, ultimaFila: 86 }))
-  assert.equal(p, null, `la fórmula publica prosa: ${JSON.stringify(p)}`)
+  for (const fila of filasDeControlPorDia({ filaTotal: 87 })) {
+    for (const celda of fila) {
+      const p = esProsa(celda)
+      assert.equal(p, null, `el pie publica prosa: ${JSON.stringify(p)}`)
+    }
+  }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO · EL PIE DE UN CUADRO DE SEIS DÍAS SOBREVIVIENDO A UN CUADRO DE TRES (09/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Medido en el archivo vivo: A88 publicaba «▲ el cuadro no muestra $16.730.193 de deuda» con la
+// fórmula apuntando a `$F$87`. Ese `$F$87` era el TOTAL de cuando el cuadro tenía seis días; hoy
+// tiene tres y su TOTAL está seis filas más arriba. Las dos filas del pie viejo quedaron abajo,
+// mostrando el control de un total que ya no existe.
+//
+// El mecanismo de aire sólo entraba con `delta < 0` y borraba las filas de ABAJO —las pegadas al
+// título siguiente, que están en blanco—, nunca el residuo propio. A la segunda corrida
+// `necesita == disponibles`, `delta == 0`, y el residuo quedaba fuera de alcance para siempre.
+test('EL DEFECTO · el bloque limpia lo que escribió abajo cuando se achica, incluso con delta = 0', () => {
+  // La geometría real del día del defecto: el bloque arranca en la 78, hoy mide 10 filas (título +
+  // rótulos + 3 días + TOTAL + 2 controles = 8) y el pie viejo quedó en la 87-88.
+  const alto = 8
+  const filaTitulo = 78
+  const siguiente = 104   // el título de la sección 3
+  const r = residuoDelBloque({ filaTitulo, alto, siguiente })
+  assert.equal(r.desde, 86, 'el residuo arranca en la primera fila DEBAJO del bloque de hoy')
+  assert.equal(r.hasta, siguiente, 'y llega hasta el título de abajo: todo eso es del bloque')
+  assert.ok(r.desde <= 87 && 88 < r.hasta, 'las filas 87 y 88 —el pie viejo— quedan dentro de lo que se limpia')
+})
+
+test('sin ancla de abajo el bloque NO limpia: sin límite, borrar es borrar de otro dueño', () => {
+  assert.deepEqual(residuoDelBloque({ filaTitulo: 78, alto: 8, siguiente: 0 }), { desde: 0, hasta: 0 })
+  assert.deepEqual(residuoDelBloque({ filaTitulo: 0, alto: 8, siguiente: 104 }), { desde: 0, hasta: 0 })
+  // Y cuando el bloque termina PEGADO al título siguiente no hay nada abajo que sea suyo.
+  assert.deepEqual(residuoDelBloque({ filaTitulo: 78, alto: 8, siguiente: 86 }), { desde: 0, hasta: 0 })
+})
+
+test('el pie son DOS filas del bloque, con sus rótulos y su número al lado', () => {
+  const b = bloque([
+    fila({ q: D('2026-09-15'), saldo: 1_000_000 }),
+    fila({ q: D('2026-09-30'), saldo: 500_000 }),
+  ])
+  assert.deepEqual(b.filasControl, [b.filaTotal + 1, b.filaTotal + 2])
+  assert.equal(b.alto, b.filasControl[1] - b.filaTitulo + 1, 'el alto declarado tiene que contar las dos')
+  const pie = b.filas.slice(-2)
+  assert.deepEqual(pie.map((f) => f[0]), [...ROTULOS_CONTROL])
+  for (const f of pie) {
+    assert.equal(f.length, ROTULOS_POR_DIA.length, 'el pie ocupa TODO el ancho del bloque')
+    assert.ok(String(f[1]).startsWith('=ROUND('), 'el número va en la B, al lado del rótulo')
+    assert.deepEqual(f.slice(2), Array.from({ length: ROTULOS_POR_DIA.length - 2 }, () => null))
+  }
 })

@@ -51,6 +51,20 @@
  * Esto NO reemplaza a la inserción de filas de `proveedores-dos-cuadros`: ésa sigue siendo la que
  * resuelve un crecimiento grande. El colchón es lo que evita que un crecimiento normal tenga que
  * esperar dos horas al próximo pase para no romper nada.
+ *
+ * ═══ SE EVALUÓ BAJARLO A 3 EL 09/09/2026 Y NO SE BAJÓ ═══
+ *
+ * El pedido era del dueño y es legítimo: quince filas en blanco entre secciones se leen como un
+ * error de la pestaña. Pero el 15 no es una preferencia, es una MEDICIÓN —los 17 comprobantes en 32
+ * minutos de arriba— y el 3 es exactamente el número con el que esa medición terminó en `#REF!` y en
+ * «pestaña proveedores esta rota». Bajarlo es reponer el defecto conocido para ganar estética.
+ *
+ * LO QUE SÍ CAMBIÓ ES DÓNDE APLICA. Este colchón protege a una DINÁMICA que crece sin lugar: la de
+ * la sección 1, cuyo cuadro B se renderiza sólo si tiene filas libres por debajo. La sección 4
+ * —`proveedores-respaldo-fiscal.mjs`— no está debajo de una dinámica con lugar para crecer: está
+ * debajo del PIE de la sección 3, que su generador escribe pegado al último proveedor emitido y
+ * recoloca en cada corrida. Ahí no hay nada que absorber, así que ese bloque deja UNA fila de aire y
+ * no quince. El aire que se ve grande queda entre 1↔2 y 2↔3, que es donde tiene una razón medida.
  */
 export const COLCHON_FINAL = 15
 
