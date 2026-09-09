@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 15:05 (hora local −03) · main `da0ac75a` = origin = producción · Vercel al día_
+_actualizado: 2026-09-09 17:35 (hora local −03) · main `baee17cd` = origin = producción (Sheet); Vercel se despliega con el push_
 
 ## 1. OBJETIVO GENERAL
 
@@ -50,6 +50,19 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
 
 ## 4. ESTADO ACTUAL
 
+- **Rediseño Estructura · Materiales · Proveedores (09/09 tarde)**: contrato uniforme (titular fila 4, bloques
+  1..N, cuerpo sin «$», meses «mmm», último bloque «RESPALDO FISCAL» que ahora cierra con «⇒ Filas sin comprobante
+  en ARCA | número», sin prosa). Aplicado al REAL: Materiales (dueño nuevo `materiales-pestana.mjs`, en PASOS antes
+  de `obras-raw-pestana.mjs`; respaldo `respaldos/2026-09-09-19-45-Materiales-REAL.json`), Estructura (migrador +
+  `olvidar-huella-de-formato --todas` + A25/A26/B26 repuestas con yaGuardado; respaldo `…19-49-Estructura-REAL.json`),
+  Proveedores (hero y sección 1 sin prosa, controles con número, «1.1 · CADA OPERACIÓN»). Auditor de diseño: Estructura ✓,
+  Materiales ✓, **Proveedores 11 desvíos = la capa fósil 156–266**, que `proveedores-fosil-frontera.mjs` NO borra porque el
+  registro atribuye 44 celdas al dueño (G158, I175, B176…): decisión del dueño. Falta el bloque «4 · RESPALDO FISCAL» de
+  Proveedores y las alertas de la sección 2 (filas 87–88; la 88 es fósil del propio bloque, `devolverElAire`).
+- **Liquidación de horas v2** (handoff en `/home/jorge/liqhs/`): mergeado `feat/liquidacion-horas-v2` — jornada 9/8 en el
+  cálculo (1ª quincena sep = 97 h), módulo SÓLO administrador (`liquidaSueldos()` en areas.ts, `notFound()` en la ruta),
+  4 migraciones `20260909T1700…T1730` **SIN APLICAR** (adelantos, sellado de quincena + reapertura, alícuotas versionadas +
+  escala 0076/75, CBU + rastro de corrección). Sin pantallas todavía (hitos 3–5), server actions sin guarda admin.
 - **Web publicada hoy (09/09)**: botón «Presente» en Plantel (`2c76456f`); Documentos del proveedor en ficha y
   panel lateral con bucket privado `proveedores-documentos` + tabla `proveedor_documento` (`3c6b1143`, `73b82964`);
   módulo **Liquidación** (Administración → Personal, `fbae2a0a`): tablas `persona_tarifa`, `liquidacion_quincena`,
@@ -165,15 +178,18 @@ ventana 10/08→10/09, plan free, 2 automatizaciones por corrida). Ventana nueva
 
 ## 7. ESTADO GIT
 
-- `main` `da0ac75a` = origin = producción. Árbol limpio. Respaldos JSON/PDF en `~/echegaray-os/respaldos/`.
-- Sin ramas pendientes; worktrees de hoy retirados.
+- `main` `baee17cd` = origin = producción (`~/echegaray-os/produccion`, pull hecho durante una corrida del pipeline).
+  Worktrees de hoy en el scratchpad de la sesión (wt-estructura, wt-materiales, wt-proveedores, wt-liqhs): borrar.
+  Ramas feat/* mergeadas: borrar.
 
 ## 8. PRÓXIMO PASO
 
-Pipeline de las 14:50 confirmado: «Impuestos» proyectado sep 665.812 · oct 10.536.117 · nov 6.443.663 · dic 1.781.722
-(abril ya sin los $14.074); B13/C21/D21 siguen. Falta saber del dueño QUÉ número del IVA sigue mal, verificar la corrida de AfipSDK del 11/09, y
-llevarle al dueño las decisiones abiertas (Quattropani ×9 sin comprobante, (4 importes de EFECTIVO redondeado sin persona, Sosa, «sábado supuesto», adelanto en efectivo y
-horas proyectadas del módulo Liquidación, brecha 25 vs 15 en la DDJJ de agosto).
+1. Dueño decide: borrar la capa fósil de Proveedores (`node orquestador/scripts/proveedores-fosil-frontera.mjs
+   --tambien-repuestas --tambien-sin-sello --aplicar` la frena `propiedad-estructura` por 44 celdas «tuyas»; hace falta su OK
+   para forzar) → después bloque «4 · RESPALDO FISCAL» y alertas 87–88.
+2. Aplicar las 4 migraciones de Liquidación en orden (`aplicar-migracion.mjs`) y probar como jefe_obra que no vea el
+   módulo; guarda admin en `liquidacionActions.ts`; pantallas 1–12 del handoff (`/home/jorge/liqhs`).
+3. Pipeline de las 18:50: confirmar Materiales/Estructura/Proveedores sin «no repongo» y OBRAS leyendo «TOTAL POR OBRA».
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
