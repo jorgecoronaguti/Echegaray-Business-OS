@@ -23,7 +23,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  grilla, rangosDeJornales, cabeceraDelRegistro, recuperarPagadoEl, claveDeFecha,
+  grilla, rangosDeJornales, cabeceraDelRegistro, recuperarPagadoEl, claveDeFecha, conPestaña,
+  RANGO_HORAS_MEDIDAS, RANGO_SHARE_ADELANTO,
 } from './jornales-pestana.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { isoASerial } from '../lib/jornales-fixture.mjs'
@@ -310,4 +311,40 @@ test('una fecha que no se puede atribuir a ninguna quincena NO se borra: se decl
   const igual = [...dup]
   igual[5] = ['15/07/2026', '31/07/2026', '', '', '', '', '', '', '', '', '', '', '', '03/08/2026']
   assert.deepEqual(recuperarPagadoEl(igual, cabeceraDelRegistro(igual)).sinClave, [])
+})
+
+
+// ═══ UNA FÓRMULA QUE SE MUDA DE PESTAÑA TIENE QUE LLEVARSE SUS RANGOS ═══
+//
+// EL DEFECTO, MEDIDO EN LA COPIA (09/09/2026). Las dos mediciones que gobiernan la proyección de
+// obreros —horas por persona y día, y el ponderado de adelantos— se mudaron a «Parámetros» para
+// sacarlas del medio de la pestaña. Sus fórmulas nacieron viviendo EN «Jornales por Quincena», así
+// que citan `$J$12:$J$28` a secas: en «Parámetros» eso apunta a las columnas de «Parámetros».
+//
+// La celda NO da error: devuelve 0. Leído en la copia: `Parámetros!B106 = 0`, y con ese cero las
+// nueve quincenas proyectadas publicaron $30.695.869 donde valen $59.650.055 — la mitad del egreso de
+// nómina del último trimestre, con un número perfectamente plausible y ninguna celda en rojo.
+test('las mediciones que viven en «Parámetros» citan la pestaña: sin eso devuelven 0 y nadie lo ve', () => {
+  const g = grilla({ bloques, pendientes, bloquesOfi })
+  const medidos = Object.fromEntries(g.medidos.map((m) => [m.rango, m.formula]))
+  for (const rango of [RANGO_HORAS_MEDIDAS, RANGO_SHARE_ADELANTO]) {
+    const f = medidos[rango]
+    assert.ok(f, `${rango} no viaja en la grilla: «Parámetros» no lo puede actualizar`)
+    // NINGÚN rango puede quedar sin hoja. Se buscan los `$X$n:$X$m` que NO estén precedidos por «!».
+    const huerfanos = f.match(/(?<!!)\$[A-Z]{1,2}\$\d+:\$[A-Z]{1,2}\$\d+/g) ?? []
+    assert.deepEqual(huerfanos, [],
+      `${rango} cita rangos sin pestaña: en «Parámetros» apuntan a otra columna y devuelven 0`)
+    assert.match(f, /'Jornales por Quincena'!/, `${rango} dejó de citar la pestaña de la que mide`)
+  }
+})
+
+test('calificar una fórmula no toca los rangos que YA tienen hoja, ni los rangos con nombre', () => {
+  // La otra mitad del control: si `conPestaña` fuera codicioso, reescribiría los rangos del espejo
+  // —`'_J_OBREROS'!$W$1:$W$2`— y la fórmula pasaría a leer la pestaña equivocada. Y los rangos con
+  // nombre no llevan `$`, así que no pueden matchear: `JORNALES_MESES_BASE` tiene que salir intacto.
+  const dentro = "=SUM($J$5:$J$9)/N($D$5:$D$9)"
+  assert.equal(conPestaña(dentro, 'X'), "=SUM('X'!$J$5:$J$9)/N('X'!$D$5:$D$9)")
+  const conHoja = "=SUM('_J_OBREROS'!$W$1:$W$2)+JORNALES_MESES_BASE"
+  assert.equal(conPestaña(conHoja, 'X'), conHoja, 'reescribió un rango que ya tenía su hoja')
+  assert.equal(conPestaña('=JORNALES_HORAS_MEDIDAS*2', 'X'), '=JORNALES_HORAS_MEDIDAS*2')
 })

@@ -89,14 +89,26 @@ test('NINGÚN ESTADO INVENTA UN "el escalón baja": desde los acuerdos no puede 
   assert.ok(['firmado', 'mixto', 'proyectado'].includes(o.clase), `clase inesperada: ${o.clase}`)
 })
 
-test('el estado une los dos hechos y el mes pagado no arrastra ninguno', () => {
+test('el estado es UNA palabra: la columna contesta una sola cosa', () => {
+  // ═══ EL DEFECTO, VISTO EN EL RENDER DE LA COPIA (09/09/2026) ═══
+  //
+  // Devolvía «proyección · Ac.Mayo 2026» y «proyección · firmado hasta 08/2026». En una columna de
+  // 100 px eso sale «proyección · firm…»: el lector ve una frase cortada donde tenía que ver un
+  // estado. Y la pregunta de la columna es una sola —¿este mes es un hecho o una estimación?—.
+  //
+  // De DÓNDE sale el aumento no se pierde: el cuadro 2.2 lo publica mes por mes, con el escalón y su
+  // origen en dos columnas propias. Repetirlo acá era la segunda copia de un dato que ya vive en su
+  // lugar, y encima recortada.
   const firmado = { rotulo: 'Ac.Mayo 2026' }
-  assert.equal(estadoOficinaDelMes({ pago: 'proyección', origen: firmado }), 'proyección · Ac.Mayo 2026')
-  assert.equal(estadoOficinaDelMes({ pago: 'parcial', origen: firmado }), 'parcial · Ac.Mayo 2026')
-  // Un mes PAGADO es un hecho: no tiene proyección adentro y un sufijo de escalón lo haría dudar.
+  assert.equal(estadoOficinaDelMes({ pago: 'proyección', origen: firmado }), 'proyección')
+  assert.equal(estadoOficinaDelMes({ pago: 'parcial', origen: firmado }), 'parcial')
   assert.equal(estadoOficinaDelMes({ pago: 'pagado', origen: firmado }), 'pagado')
-  // Sin origen se conserva el comportamiento anterior, no se emite un "·" colgando.
   assert.equal(estadoOficinaDelMes({ pago: 'proyección', origen: { rotulo: '' } }), 'proyección')
+  // Y NINGUNO SE PASA DE UNA PALABRA: si vuelve el sufijo, esto se pone rojo.
+  for (const pago of ['pagado', 'parcial', 'proyección']) {
+    assert.ok(!estadoOficinaDelMes({ pago, origen: firmado }).includes('·'),
+      `volvió el sufijo del escalón al estado de «${pago}»`)
+  }
 })
 
 test('ningún estado se pasa del tope de la grilla: la columna D está en el MEDIO', () => {

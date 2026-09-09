@@ -74,7 +74,10 @@ test('A3 · EL MES BASE ABRE EL CUADRO CON FACTOR 1: no hay dónde escribir el d
   // devolver otra cosa, así que no existe la celda donde escribir el doble aumento.
   assert.equal(base[4], '=1')
   assert.equal(base[3], VACIO, 'la primera fila no puede declarar un "sube en el mes"')
-  assert.match(String(base[7]), /factor 1,0000/)
+  // UNA PALABRA DESDE EL 09/09/2026. Decía «mes base: factor 1,0000, sin aumento» en una columna de
+  // 100 px, o sea que se leía «mes base: factor 1,0…». Que el factor de la primera fila es 1 lo dice
+  // la celda de al lado, que ES ese 1 y no puede mentir.
+  assert.equal(String(base[7]), 'mes base')
 })
 
 test('EL DRIVER ES EL TRAMO DE LA PARITARIA, NO EL COCIENTE DE BÁSICOS PUBLICADOS', () => {
@@ -92,7 +95,9 @@ test('EL DRIVER ES EL TRAMO DE LA PARITARIA, NO EL COCIENTE DE BÁSICOS PUBLICAD
   // pega un acuerdo nuevo, la pestaña se mueve sola y sin tocar código.
   assert.match(String(ago[3]), /REGEXEXTRACT\(INDEX\('_UOCRA_RAW'!\$A\$1:\$A;\d+\)/)
   assert.match(String(ago[3]), new RegExp(`;${RANGO_PARITARIA}\\)$`), 'sin % en el rótulo tiene que caer al parámetro')
-  assert.match(String(ago[7]), /✓ acuerdo firmado/)
+  // SIN GLIFO Y EN UNA PALABRA: el ✓ dibuja un control donde sólo hay un estado, y de qué acuerdo se
+  // trata está en la columna «Escalón publicado» de esta misma fila.
+  assert.equal(String(ago[7]), 'firmado')
 })
 
 test('los meses SIN acuerdo firmado repiten el último tramo, y la fila dice que es PROYECCIÓN', () => {
@@ -103,7 +108,10 @@ test('los meses SIN acuerdo firmado repiten el último tramo, y la fila dice que
   assert.equal(String(sep[3]), `=${RANGO_PARITARIA}`, 'el mes sin acuerdo tiene que tomar el parámetro, no un número')
   assert.match(String(sep[2]), /\*\(1\+\$D\d+\)/, 'el piso estimado se encadena con el MISMO tramo que el factor')
   assert.match(String(sep[6]), /proyección/)
-  assert.match(String(sep[7]), /▲ proyección/, 'el estado dice que no hay acuerdo, al ancho de la columna')
+  // SIN ▲: que un mes futuro no tenga acuerdo firmado es lo NORMAL —el convenio se firma por
+  // tramos— y una alarma dibujada en cuatro de cinco filas todos los meses deja de significar algo.
+  assert.equal(String(sep[7]), 'proyección', 'el estado dice que no hay acuerdo, al ancho de la columna')
+  assert.ok(!String(sep[7]).includes('▲'), 'volvió el glifo de alarma a una columna de estado')
   // Y NINGUNA celda del cuadro puede citar el bloque de inflación de Parámetros: son series distintas.
   const todo = esc.filas.flat().map(String).join(' ')
   assert.doesNotMatch(todo, /Par[áa]metros'!\$[AC]\$7[0-9]/, 'el motor está leyendo el bloque de IPC')

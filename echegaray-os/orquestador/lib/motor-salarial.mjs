@@ -604,7 +604,6 @@ export function filasEscalon({
   filas.push(['Mes', 'Escalón publicado', `Básico ${CATEGORIA_ANCLA}`, 'Sube en el mes', 'Factor sobre la base',
     conAumento ? ROTULO_SIGMA.conAumento : ROTULO_SIGMA.pactado, 'De dónde sale', 'Estado'])
   const f0 = filaInicio + 1
-  const ult = ultimoEscalon(escalones)
   // ═══ LA Σ $/hora SE ANCLA EN EL MES DE OBRA, NO EN LA PRIMERA FILA DEL CUADRO (07/08) ═══
   //
   // El cuadro arranca en el mes MÁS VIEJO de los tres bloques, y ése suele ser el de Oficina, que va un
@@ -648,9 +647,14 @@ export function filasEscalon({
       `=IFERROR(${sigma}*$E${r}/$E$${rAncla};"")`,
       // EL MISMO ACORTADOR QUE CITA EL «Estado» DE OFICINA (14/08): dos `.replace()` iguales envejecen
       firmado && e ? (rotuloDeAcuerdo(e.acuerdo) || 'acuerdo') : 'proyección',
-      i === 0
-        ? 'mes base: factor 1,0000, sin aumento'
-        : (firmado ? '✓ acuerdo firmado' : `${ALERTA} proyección · últ: ${(ult?.rotulo ?? '—').slice(0, 12)}`),
+      // ═══ UNA PALABRA, SIN GLIFO Y SIN «últ:» (09/09/2026) ═══
+      //
+      // Publicaba «▲ proyección · últ: Agosto +1,9%» y «✓ acuerdo firmado» en una columna de 100 px:
+      // se cortaba al medio y el ▲ dibujaba una alarma donde no hay ninguna —que un mes futuro no
+      // tenga acuerdo firmado es lo normal, el convenio se firma por tramos—. Cuál es el último
+      // acuerdo publicado ya está en la columna «Escalón publicado» de este mismo cuadro, fila por
+      // fila: repetirlo acá era la segunda copia de un dato que está a dos celdas de distancia.
+      i === 0 ? 'mes base' : (firmado ? 'firmado' : 'proyección'),
     ])
   })
   const f1 = f0 + meses.length - 1

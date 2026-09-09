@@ -158,10 +158,18 @@ export function origenDelEscalon({ escalones = [], periodoBase = null, periodoMe
  *
  * @param {{pago:'pagado'|'parcial'|'proyección', origen?:{rotulo?:string}|null}} o
  */
-export function estadoOficinaDelMes({ pago, origen = null } = {}) {
-  if (pago === 'pagado') return 'pagado'
-  const r = String(origen?.rotulo ?? '').trim()
-  return r ? `${pago} · ${r}` : String(pago ?? '')
+export function estadoOficinaDelMes({ pago } = {}) {
+  // ═══ UNA PALABRA, NO UNA FRASE (09/09/2026) ═══
+  //
+  // Devolvía «proyección · firmado hasta 08/2026» y «parcial · acuerdo firmado»: en una columna de
+  // 100 px eso se corta al medio y el lector ve «proyección · firm…», que es peor que no decir nada.
+  // Lo que la columna «Estado» tiene que contestar es UNA cosa —¿este mes es un hecho o una
+  // estimación?— y para eso alcanza una palabra.
+  //
+  // De DÓNDE sale el aumento de un mes proyectado no se pierde: está en el cuadro 2.2, mes por mes,
+  // con su escalón publicado y su origen en dos columnas propias. Repetirlo acá era la segunda copia
+  // de una información que ya vive en su lugar.
+  return String(pago ?? '')
 }
 
 /**
