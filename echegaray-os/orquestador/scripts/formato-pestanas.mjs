@@ -213,10 +213,14 @@ export const PESTANAS = [
   // El rótulo de los dos bloques lleva su período —«· QUINCENA 01/09 A 15/09», «· MES 09/2026»— y por
   // eso `normalizarRotulo` corta en el primer « · »: anclado al texto entero, el amparo se apagaría
   // solo cada quincena y el censo empezaría a gritar por catorce números que están bien.
-  { titulo: 'Nómina', congeladas: 3, hastaFila: 175, cols: 15, propio: true, origenPorBloque: [
-    { bloque: '1 · QUÉ SE LE PAGA A CADA UNO', cols: 'I',
+  // LOS RÓTULOS SE RENOMBRARON EL 09/09 («1 · OBREROS», «2 · OFICINA»): el título viejo repetía la
+  // pregunta que contesta la pestaña entera en lugar de nombrar al grupo. Estas declaraciones se
+  // anclan al rótulo, así que se renombran con él — una declaración huérfana no ampara nada y el
+  // censo empieza a denunciar catorce números que están bien.
+  { titulo: 'Nómina', congeladas: 7, hastaFila: 175, cols: 11, propio: true, origenPorBloque: [
+    { bloque: '1 · OBREROS', cols: 'I',
       que: '«EFECTIVO redondeado» es la cifra que el dueño decide y tipea al pagar: redondea el efectivo calculado al billete con el que se paga de verdad. Nunca se calcula — hay una regla explícita de que esta columna no se genera' },
-    { bloque: '2 · QUÉ SE LE PAGA A OFICINA', cols: 'C',
+    { bloque: '2 · OFICINA', cols: 'C',
       que: 'el neto acordado con cada persona de oficina ($1.800.000 hoy) es un ACUERDO del dueño, no una liquidación: por banco va lo que dice el recibo y el efectivo completa hasta ese neto. No sale de ninguna fuente que el Sheet pueda leer' },
   ] },
   { titulo: 'SUBCONTRATISTAS', congeladas: 3, hastaFila: 60, cols: 12, propio: true },
