@@ -94,8 +94,9 @@ queda en Jornales · Cargas percibido).
 - Cambio semántico a firmar: la deuda pendiente en planes del hero de Impuestos pasó de «fecha prevista > hoy» a
   «no marcado Pagado» (hoy las dos dan $4.989.751). Se perdió de la pantalla «El IVA empieza a salir de la caja en»
   (derivable del bloque 1) y la trazabilidad de DDJJ (fecha + N°) sólo queda en el log.
-- Aviso del generador de Cargas: «la DDJJ de 2026-08 declara 25 y la planilla tiene 15 — 40 % de brecha» (dato del
-  negocio, no del código).
+- Aviso del generador de Cargas: «la DDJJ de 2026-08 declara 25 y la planilla tiene 15». **El dueño (09/09): el plantel
+  son 17 = 15 obreros + 2 oficina.** El control de Cargas compara sólo obreros: corregirlo para que cuente obreros +
+  oficina (17); la brecha real contra la DDJJ es 8, no 10.
 - Decisiones del dueño sobre Nómina: los 4 importes de EFECTIVO redondeado sin persona (¿a quién van?) y Sosa (literales
   pegados vs fórmula «MITAD BLANCA» $330.431: confirmar con el recibo). Censo marca los 15 del dueño como «pegados»:
   declarar la columna I como entrada del dueño en `censo-numeros-pegados`.
