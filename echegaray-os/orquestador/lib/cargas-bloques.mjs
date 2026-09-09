@@ -200,7 +200,10 @@ export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 export function bloqueProyeccion(G, {
-  anio, desdeProy, filaDecl, filaPag, fRem, fEmp, C, fDeclTot,
+  // SIN `C`: la proyección dejó de leer Compras el 09/09 — la única fila que lo hacía era «Previsto
+  // en Compras para ese mes», que repetía las cuotas del cuadro 4. Un parámetro que ya nadie usa se
+  // saca: dejarlo invita a que la próxima fila que necesite Compras nazca acá en vez de en su cuadro.
+  anio, desdeProy, filaDecl, filaPag, fRem, fEmp, fDeclTot,
   // CON QUÉ BASE QUEDÓ VALUADA LA MASA QUE ESTA PESTAÑA MULTIPLICA. No se decide acá —se lee de lo que
   // Jornales publicó, ver `baseDeJornales`— porque la decisión ya vive en un solo lugar. Sin señal, la
   // glosa lo dice en vez de afirmar un supuesto que puede no estar adentro del número.
@@ -306,32 +309,32 @@ export function bloqueProyeccion(G, {
   G.mensual('Cargas que salen en el mes', (m) => (m === desdeProy
     ? `=${cm(desdeProy - 1)}${fDeclTot}` : `=${cm(m - 1)}${fProyTot}`),
   'El devengado del mes ANTERIOR. La proyección vieja ponía la carga de julio en julio: en un cuadro de caja eso corre unos $9M de mes.', { meses: proyMeses })
-  // NO UN NÚMERO PEGADO: UNA FÓRMULA A LA FUENTE ÚNICA. Antes esta fila escribía el resultado de
-  // `ps.reduce(...)` calculado en JS — un número pegado que el censo marcaba con razón. Las cuotas
-  // que vencen cada mes YA viven, sumadas, en el total de la sección 4: esta fila las referencia en
-  // vez de recalcularlas por afuera. Se llena por backfill, cuando ya se sabe en qué fila quedó.
-  const fCuotasVencen = G.mensual('Cuotas de planes de pago que vencen', () => VACIO,
-    'Sección 4: el total de cuotas del mes, referenciado — no recalculado.', { meses: proyMeses })
-  // EL CONTRASTE CONTRA LO QUE UNA PERSONA PREVIÓ A MANO. No es otra proyección: si lo previsto y lo
-  // medido se separan mucho, uno de los dos está mal y conviene saberlo antes del mes.
+  // ═══ LAS DOS FILAS DE CUOTAS SE FUERON DE ACÁ — EL CUADRO 4 ES SU ÚNICO DUEÑO (09/09/2026) ═══
   //
-  // ═══ LA FILA DE «DIFERENCIA» SE FUE, Y NO ES QUE SE HAYA APAGADO UN CONTROL (09/09/2026) ═══
+  // El dueño: *«siguen duplicando cosas Cargas Sociales e Impuestos y Financieros»*. Eran
+  // «Cuotas de planes de pago que vencen» y «Previsto en Compras para ese mes», y en el archivo vivo
+  // publicaban EL MISMO VECTOR que el cuadro 4 — sep $2.494.876 · oct $2.494.876 · nov $0 · dic $0—:
   //
-  // Restaba «previsto en Compras» − «devengado del mes anterior» y estaba en rojo TODOS los meses,
-  // por construcción: lo previsto que Compras tiene cargado para los meses que vienen son las CUOTAS
-  // DE PLANES, y el devengado es la nómina entera. Dos canastas distintas restadas entre sí — el
-  // mismo defecto que ya se corrigió una vez en el cuadro del «al día». Una resta que no puede dar
-  // cero no mide nada: sólo entrena al que mira a ignorar el rojo.
-  const fPrevisto = G.mensual('Previsto en Compras para ese mes', (m) =>
-    `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$35;${rango(C.fecha)};">"&TODAY();${rango(C.fecha)};"<="&EOMONTH(DATE(${anio};${m};1);0));0)-IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$35;${rango(C.fecha)};">"&TODAY();${rango(C.fecha)};"<"&DATE(${anio};${m};1));0)`,
-  'Los pagos de F931 que Compras tiene cargados con fecha futura. Es lo que alguien previó, no lo que salió.', { meses: proyMeses })
+  //   · la primera era literalmente `=J58`, la fila «⇒ Total de cuotas del año» del cuadro 4 copiada
+  //     dentro del cuadro 3. Referenciar no evita duplicar: evita que los dos números se separen.
+  //     El mismo importe escrito dos veces en la misma pestaña sigue leyéndose como dos obligaciones
+  //     —el ojo suma para abajo—, y una cuota contada dos veces son $2,5M de caja que no existen.
+  //   · la segunda traía de Compras los pagos futuros del F931, que hoy son EXACTAMENTE esas cuotas:
+  //     un tercer renglón con el mismo número, ahora por un tercer camino. Era el resto del cuadro de
+  //     contraste cuya fila de «diferencia» ya se había retirado por no poder dar cero; sin esa resta
+  //     el renglón no decidía nada y sólo repetía.
+  //
+  // Lo que NO se cambió: «Cargas que salen en el mes» no sumaba las cuotas antes y sigue sin
+  // sumarlas. Es el devengado de la nómina del mes anterior; las cuotas de planes son deuda de
+  // períodos viejos y salen por su propio cuadro. Sumarlas acá habría sido inventar una fila nueva
+  // en la corrección de una duplicación.
   // EL HALLAZGO SALE POR LA CORRIDA, NO POR UN RENGLÓN (09/09/2026). Era una fila con «▲ N
   // concepto(s) sin base para proyectar» al pie del cuadro: un glifo y una frase en el medio de la
   // grilla, que es lo que el dueño mandó sacar. Que falte una fila de la proyección tiene que verse
   // igual —el subtotal la suma— así que viaja en `sinBase` hasta `avisos` y se imprime en el log,
   // donde lo lee quien puede agregar el concepto que falta.
   G.push()
-  return { proyMeses, fRelacion, fRemProy, fDot, fSubF931, fSubGremiales, fProyTot, fFechaSalida, fCuotasVencen, fPrevisto, sinBase }
+  return { proyMeses, fRelacion, fRemProy, fDot, fSubF931, fSubGremiales, fProyTot, fFechaSalida, sinBase }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

@@ -110,9 +110,8 @@ test('los subtotales suman EXACTAMENTE sus conceptos, ni una fila más', () => {
   sub(ROTULOS_CARGAS.gremiales, ['FCL', 'UOCRA', 'IERIC', 'FODECO'])
 })
 
-test('las filas de caja citan el devengado y las cuotas, no la fila de al lado', () => {
+test('la fila de caja cita el devengado, no la fila de al lado', () => {
   const fProyTot = filaDe(/^⇒ Total devengado en el mes$/)
-  const fCuotas = filaDe(/^⇒ Total de cuotas del año$/)
   // «Cargas que salen en el mes» es el devengado del mes ANTERIOR. El PRIMER mes proyectado es la
   // excepción y tiene que serlo: su mes anterior TIENE DDJJ, así que cita el «Total declarado» —el
   // hecho— y no la proyección. Los demás citan el total devengado.
@@ -122,9 +121,28 @@ test('las filas de caja citan el devengado y las cuotas, no la fila de al lado',
     `el primer mes proyectado tiene que citar el declarado (fila ${fDeclTot}) y cita ${filasCitadas(celda(salen, 9))}`)
   assert.deepEqual([...new Set(filasCitadas(celda(salen, 10)))], [fProyTot],
     `los meses siguientes citan el devengado (fila ${fProyTot}) y citan ${filasCitadas(celda(salen, 10))}`)
-  // Y las cuotas que vencen citan el total del cuadro 4, no un número recalculado por afuera.
-  const vencen = celda(filaDe(/^Cuotas de planes de pago que vencen$/), 9)
-  assert.equal(filasCitadas(vencen).join(), String(fCuotas), `«cuotas que vencen» cita ${filasCitadas(vencen)} y el total está en la ${fCuotas}`)
+})
+
+// ═══ EL VECTOR DE CUOTAS SE PUBLICA UNA SOLA VEZ, Y ESTE TEST PUEDE DAR ROJO ═══
+//
+// El defecto que atrapa: el cuadro 3 tenía «Cuotas de planes de pago que vencen» escrita como
+// `=J<fila del total de cuotas>` y «Previsto en Compras para ese mes», que por SUMIFS traía las
+// mismas cuotas por un tercer camino. Los tres renglones daban sep $2.494.876 · oct $2.494.876 ·
+// nov $0 · dic $0 en el archivo vivo. Si alguien repone cualquiera de las dos filas —o hace que
+// otra cite el total de cuotas desde afuera del cuadro 4— esto se pone rojo.
+test('sólo el cuadro 4 publica el total de cuotas: nadie más lo cita ni lo repite', () => {
+  const fCuotas = filaDe(/^⇒ Total de cuotas del año$/)
+  assert.ok(fCuotas > 0, 'no está la fila que es dueña de las cuotas')
+  const f4 = filaDe(/^4 · /)
+  const citan = []
+  G.filas.forEach((f, i) => (f || []).forEach((c) => {
+    if (i + 1 >= f4) return // adentro del cuadro 4 el total puede citarse: es su casa.
+    if (filasCitadas(c).includes(fCuotas)) citan.push(`${i + 1} · ${rotulo(i + 1)}`)
+  }))
+  assert.deepEqual(citan, [], `filas fuera del cuadro 4 citan el total de cuotas: ${citan.join(' | ')}`)
+  for (const re of [/^Cuotas de planes de pago que vencen/, /^Previsto en Compras/]) {
+    assert.equal(filaDe(re), 0, `volvió la fila «${re}», que repite el vector de cuotas del cuadro 4`)
+  }
 })
 
 test('el titular cita el total pagado, y el «Total declarado» proyectado cita el subtotal F931', () => {

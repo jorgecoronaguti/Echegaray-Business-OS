@@ -45,7 +45,7 @@ function armar({ conceptos = CONCEPTOS } = {}) {
   const pag = bloquePagado(G, { anio: ANIO, C, fArtDecl: decl.filaDecl['312'], fDeclTot: decl.fDeclTot })
   const proy = bloqueProyeccion(G, {
     anio: ANIO, desdeProy: 7, filaDecl: decl.filaDecl, filaPag: pag.filaPag,
-    fRem: decl.fRem, fEmp: decl.fEmp, C, fDeclTot: decl.fDeclTot, bloqueBase: { inicio: 495, fin: 510 },
+    fRem: decl.fRem, fEmp: decl.fEmp, fDeclTot: decl.fDeclTot, bloqueBase: { inicio: 495, fin: 510 },
   })
   const planes = bloquePlanes(G, { ps: PS, C })
   return { G, decl, pag, proy, planes }
@@ -71,8 +71,6 @@ test('cada bloque devuelve la fila REAL de cada total, no una posición contada 
     [proy.fSubGremiales, ROTULOS_CARGAS.gremiales],
     [proy.fProyTot, rotuloTotal('Total devengado en el mes')],
     [proy.fFechaSalida, ROTULOS_CARGAS.fechas],
-    [proy.fCuotasVencen, 'Cuotas de planes de pago que vencen'],
-    [proy.fPrevisto, 'Previsto en Compras para ese mes'],
     [planes.fCuotasTot, rotuloTotal('Total de cuotas del año')],
     [planes.fSinPagar, rotuloTotal('Cuotas sin pagar')],
   ]

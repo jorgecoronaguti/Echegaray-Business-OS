@@ -154,7 +154,7 @@ export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
   const pag = bloquePagado(G, { anio: AÑO, C, fArtDecl: decl.filaDecl['312'], fDeclTot: decl.fDeclTot })
   const proy = bloqueProyeccion(G, {
     anio: AÑO, desdeProy, filaDecl: decl.filaDecl, filaPag: pag.filaPag, fRem: decl.fRem, fEmp: decl.fEmp,
-    C, fDeclTot: decl.fDeclTot, baseJornales,
+    fDeclTot: decl.fDeclTot, baseJornales,
   })
   const planes = bloquePlanes(G, { ps, C })
 
@@ -193,10 +193,9 @@ export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
     G.filas[decl.fDeclTot - 1][m] = `=IF(N(${cm(m)}${proy.fSubF931})=0;"${SIN_DDJJ}";${cm(m)}${proy.fSubF931})`
   }
 
-  // ── LA FILA DE «CUOTAS QUE VENCEN» REFERENCIA EL TOTAL DE LA SECCIÓN 4, RECIÉN AHORA ────────────
-  // Antes escribía el mismo número por dos caminos (JS acá, fórmula allá); ahora hay UNA fuente y el
-  // cuadro de caja lee exactamente lo que dice el detalle de planes. Sólo los meses proyectados.
-  for (const m of proy.proyMeses) G.filas[proy.fCuotasVencen - 1][m] = `=${cm(m)}${planes.fCuotasTot}`
+  // ── EL BACKFILL DE «CUOTAS QUE VENCEN» SE FUE CON SU FILA (09/09/2026) ──────────────────────────
+  // Copiaba el vector del cuadro 4 dentro del cuadro 3. Que fuera referencia y no número pegado
+  // resolvía la divergencia, no la DUPLICACIÓN. El porqué, en `bloqueProyeccion`.
 
   // ── EL TITULAR, RECIÉN AHORA: ya se sabe en qué fila quedó el total de lo pagado ────────────────
   // Los DOCE meses, no de febrero en adelante: la pregunta es cuánta plata salió este año por cargas

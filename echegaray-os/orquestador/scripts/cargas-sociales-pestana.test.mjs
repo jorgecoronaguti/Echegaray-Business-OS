@@ -567,20 +567,32 @@ test('los cuadros son CUATRO y están numerados 1, 2, 3, 4', () => {
     `quedaron ${secciones.length} secciones: ${secciones.join(' | ')}`)
 })
 
-test('las filas de caja son filas del cuadro 3, y la «diferencia» estructural no está', () => {
+test('la fila de caja es del cuadro 3, y la «diferencia» estructural no está', () => {
   // La resta comparaba «previsto en Compras» —que sólo trae cuotas de planes— contra el devengado
-  // entero: no podía dar cero ningún mes. Las otras tres filas siguen, dentro de la proyección.
+  // entero: no podía dar cero ningún mes. La fila de caja sigue, dentro de la proyección.
   const f3 = gCS.filas.findIndex((f) => /^3 · /.test(String(f[0] ?? ''))) + 1
   const f4 = gCS.filas.findIndex((f) => /^4 · /.test(String(f[0] ?? ''))) + 1
-  for (const re of [/^Cargas que salen en el mes/, /^Cuotas de planes de pago que vencen/, /^Previsto en Compras/]) {
-    const i = gCS.filas.findIndex((f) => re.test(String(f[0] ?? ''))) + 1
-    assert.ok(i > f3 && i < f4, `«${re}» quedó fuera del cuadro 3`)
-  }
+  const i = gCS.filas.findIndex((f) => /^Cargas que salen en el mes/.test(String(f[0] ?? ''))) + 1
+  assert.ok(i > f3 && i < f4, '«Cargas que salen en el mes» quedó fuera del cuadro 3')
   assert.equal(filaCS(/diferencia contra lo proyectado/), undefined, 'volvió la resta que no puede dar cero')
 })
 
-test('la fila de cuotas que vencen REFERENCIA el total del cuadro 4, no lo recalcula', () => {
-  const vencen = filaCS(/^Cuotas de planes de pago que vencen/)
+// ═══ LA DUPLICACIÓN QUE ESTE TEST ATRAPA (09/09/2026) ═══
+//
+// El dueño: *«siguen duplicando cosas Cargas Sociales e Impuestos y Financieros»*. En la pestaña
+// viva, tres renglones publicaban el MISMO vector —sep $2.494.876 · oct $2.494.876 · nov $0 ·
+// dic $0—: «⇒ Total de cuotas del año» (cuadro 4, el dueño), «Cuotas de planes de pago que vencen»
+// (cuadro 3, `=J58`) y «Previsto en Compras para ese mes» (cuadro 3, por SUMIFS). Revertir el
+// arreglo repone alguna de las dos filas del cuadro 3 y esto se pone rojo.
+test('el vector de cuotas de planes aparece UNA sola vez en la pestaña', () => {
+  for (const re of [/^Cuotas de planes de pago que vencen/, /^Previsto en Compras/]) {
+    assert.equal(filaCS(re), undefined, `«${re}» repite el vector de cuotas del que el cuadro 4 es dueño`)
+  }
   const fTot = gCS.filas.findIndex((f) => String(f[0] ?? '').startsWith(rotuloTotalCS('Total de cuotas del año'))) + 1
-  assert.equal(String(vencen[9]), `=J${fTot}`, 'el mismo número por dos caminos es como aparecen dos verdades')
+  assert.ok(fTot > 0, 'desapareció la fila dueña de las cuotas')
+  // Y la única fila de caja del cuadro 3 sigue siendo el devengado del mes anterior — NO se le
+  // sumaron las cuotas al sacarlas de al lado: la corrección de una duplicación no inventa una fila.
+  const salen = filaCS(/^Cargas que salen en el mes/)
+  assert.ok(!String(salen[9]).includes(`${fTot}`) && !String(salen[10]).includes(`${fTot}`),
+    `«Cargas que salen en el mes» empezó a citar el total de cuotas (fila ${fTot}): ${salen[9]} · ${salen[10]}`)
 })
