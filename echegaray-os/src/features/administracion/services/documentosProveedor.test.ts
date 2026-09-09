@@ -148,8 +148,12 @@ test('una ruta con carpetas de más no se acepta', () => {
 
 // ── CATEGORÍAS ──────────────────────────────────────────────────────────────────────────────────
 
-test('las categorías son las cinco del CHECK de la tabla', () => {
-  assert.deepEqual([...CATEGORIAS], ['contrato', 'seguro', 'habilitacion', 'factura_modelo', 'otro'])
+test('las categorías son las seis del CHECK de la tabla', () => {
+  // `transferencia` se sumó el 09/09 con la migración 20260909T1820: el comprobante de pago que
+  // trae del mail `gmail-transferencias-proveedores.mjs`. Esta lista y el CHECK de la tabla tienen
+  // que decir lo mismo, palabra por palabra: si divergen, el insert rebota recién en producción.
+  assert.deepEqual([...CATEGORIAS], ['contrato', 'seguro', 'habilitacion', 'factura_modelo', 'transferencia', 'otro'])
+  assert.equal(esCategoria('transferencia'), true)
   assert.equal(esCategoria('contrato'), true)
   assert.equal(esCategoria('cualquiera'), false)
   assert.equal(esCategoria(null), false)

@@ -1,0 +1,17 @@
+[Unit]
+Description=Echegaray OS - Comprobantes de transferencia del mail -> ficha del proveedor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+# El script NO manda ni borra mails: el OAuth del dueño se usa con scope de lectura. La única
+# escritura es el bucket privado y `public.proveedor_documento`. No toca el Sheet.
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/gmail-transferencias-proveedores.mjs --aplicar
+StandardOutput=journal
+StandardError=journal
+# 130 mails y ~280 adjuntos tardan ~4 minutos con la lectura local de PDF. El techo deja margen para
+# un buzón que crezca, y es corte duro: un proceso colgado contra Gmail no debe quedar vivo.
+TimeoutStartSec=20min
