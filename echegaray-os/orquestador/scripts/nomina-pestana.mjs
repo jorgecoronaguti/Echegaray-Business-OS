@@ -28,9 +28,13 @@
 //   node orquestador/scripts/nomina-pestana.mjs           → muestra qué escribiría
 //   node orquestador/scripts/nomina-pestana.mjs --aplicar → escribe la pestaña
 
+import { readFileSync } from 'node:fs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import * as E from '../lib/estilo-pestana.mjs'
+// LA PIEL ES LA DE «Cargas Sociales» Y «Jornales por Quincena», no una propia: ver
+// `requestsDeFormato`. `estilo-pestana` —el que rellenaba títulos y encabezados con fondo oscuro— se
+// retiró de este archivo el 09/09/2026, cuando el dueño pidió las tres hermanas con un solo diseño.
+import { skinRequests, MUTED, HAIR } from '../lib/estilo-statement.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre } from '../lib/desvinculacion-plantel.mjs'
 // EL COSTO DE DESVINCULAR YA NO SE DIBUJA ACÁ: era el cuadro 3 de «Plantel», la pestaña que el dueño
@@ -90,6 +94,26 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const PESTANA = 'Nómina'
 const ANIO = 2026
 const APLICAR = process.argv.includes('--aplicar')
+/**
+ * DE DÓNDE SE LEE LA COLUMNA DEL DUEÑO CUANDO LA PESTAÑA YA SE VACIÓ.
+ *
+ * ═══ POR QUÉ EXISTE (09/09/2026) ═══
+ *
+ * `pestana-migrar-layout.mjs` respalda, VACÍA la pestaña, corre el generador y repone las celdas del
+ * dueño buscándolas por su clave de columna A. Para esta pestaña esa reposición no sirve, y se midió:
+ * tres de los quince importes no están al lado de una persona —caen sobre la fila de total, sobre una
+ * nota al pie que el layout nuevo retiró y sobre el título del cuadro de oficina, que se renombró—.
+ * El migrador o no encuentra esas claves y aborta, o —peor— repone «⇒ 15 persona(s)» → $120.000
+ * ENCIMA del `=SUM(I…)` del cuadro nuevo.
+ *
+ * Con esta bandera la migración se hace en dos pasos y sin claves frágiles: el migrador vacía y
+ * genera, y después se vuelve a correr el generador con el respaldo que él mismo escribió. Los
+ * importes se reparten por PERSONA y los que no tienen persona quedan visibles, que es la misma regla
+ * de todos los días.
+ *
+ *   node orquestador/scripts/nomina-pestana.mjs --aplicar --redondeado-de <respaldo>.json
+ */
+const REDONDEADO_DE = (() => { const i = process.argv.indexOf('--redondeado-de'); return i > 0 ? process.argv[i + 1] : null })()
 // ═══ ONCE COLUMNAS, LAS MISMAS EN LOS TRES CUADROS (09/09/2026) ═══
 //
 // El dueño: «los diseños de todas las pestañas son distintos, tenés que mejorar y unificar». Acá el
@@ -402,7 +426,7 @@ async function adelantosPagados(concepto) {
   return { porCuil, filas: rows }
 }
 
-function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), finales = new Map(), adelantosPorCuil = new Map(), adelantosDeFinal = new Map(), periodoRecibo = '', recibosDelMes = new Map(), oficinaEspejo = new Map() }) {
+function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), finales = new Map(), adelantosPorCuil = new Map(), adelantosDeFinal = new Map(), periodoRecibo = '', recibosDelMes = new Map(), oficinaEspejo = new Map(), previoDelDueno = [] }) {
   // ═══ UNA HOJA, UN PROPÓSITO ═══
   //
   // Esta pestaña hacía cinco trabajos: la instrucción de pago de la quincena, el plantel, lo
@@ -777,6 +801,30 @@ function grilla(activos, { hoy, quincena, escala, recibosPorCuil = new Map(), fi
     // B es la categoría (texto, no se suma); de C a I la plata; J las horas. K es la tarifa:
     // promediar $/hora es inventar un número que nadie cobra, así que queda vacía.
     '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), '')
+  // ═══ LA COLUMNA DEL DUEÑO SE RESUELVE ACÁ, CON EL CUADRO 1 RECIÉN CERRADO ═══
+  //
+  // Los quince importes de «EFECTIVO redondeado» los tipea él y el OS no los puede deducir de ninguna
+  // fuente. Se parten en tres destinos y NINGUNO se pierde:
+  //
+  //   · los que están al lado de una persona vuelven a la fila de ESA persona, no a su número de fila;
+  //   · los que no estaban al lado de nadie (`huerfanos`) y los que no encontraron su persona en el
+  //     plantel de hoy (`sinUbicar`) quedan visibles en filas propias, con la A vacía.
+  //
+  // JUSTO ACÁ Y NO DESPUÉS: las filas visibles van debajo del renglón «⇒», que es donde ningún `=SUM`
+  // las alcanza, y tienen que existir ANTES de que se abran los cuadros 2 y 3 —sus fórmulas se
+  // escriben con el número de fila que tienen al construirse—. Ver `conHuerfanosVisibles`.
+  const suyo = conEfectivoRedondeadoDelDueno(f, previoDelDueno)
+  f.splice(0, f.length, ...suyo.grid)
+  if (suyo.copiadas) console.log(`  ✋ ${suyo.copiadas} «EFECTIVO redondeado» repuesto(s) en la fila de su persona: esa columna es TUYA`)
+  for (const h of suyo.huerfanos) {
+    console.warn(`  ⚠ «EFECTIVO redondeado» ${h.valor} estaba en la fila ${h.fila}, que no es la de ninguna persona: `
+      + 'lo republico debajo del total del cuadro 1 para que no se pierda — decime a quién va')
+  }
+  for (const s of suyo.sinUbicar) {
+    console.warn(`  ⚠ «EFECTIVO redondeado» ${s.valor} estaba al lado de «${s.quien}», que hoy no está en el cuadro: `
+      + 'lo republico debajo del total del cuadro 1 para que no se pierda — decime a quién va')
+  }
+  f.push(...conHuerfanosVisibles(f, [...suyo.huerfanos, ...suyo.sinUbicar]).slice(f.length))
   // ═══ LAS CUATRO NOTAS AL PIE DE ESTE CUADRO SE FUERON A LA CONSOLA (06/09/2026) ═══
   //
   // Eran 1.400 caracteres de párrafo debajo del total —la brecha de convenio, quiénes cobran sin
@@ -1202,6 +1250,146 @@ export function sinNotasRepetidas(filas = []) {
 }
 
 /**
+ * El nombre se compara por lo que IDENTIFICA a la persona. La pestaña vieja lo escribía con el aviso
+ * pegado —«GONZALEZ EMILIANO  ▲ sin cargar desde el 03/09»— y sin recortarlo, esa fila no se
+ * reconocería y su importe saldría huérfano: el defecto se arreglaría para catorce y no para el
+ * decimoquinto, que es el que más mira.
+ */
+const claveDePersona = (v) => String(v ?? '').split('▲')[0].trim().toUpperCase().replace(/\s+/g, ' ')
+
+/**
+ * NÚCLEO PURO: QUÉ FILAS SON DE UNA PERSONA — LAS QUE ESTÁN ADENTRO DE UN CUADRO, 0-BASED.
+ *
+ * ═══ POR QUÉ NO ALCANZA CON MIRAR LA FILA SOLA (09/09/2026, medido en una copia del archivo) ═══
+ *
+ * La primera versión preguntaba «¿tiene rótulo en A y no es un total, una sección ni un encabezado?».
+ * Con eso, `A27` —«▲ 15 sin recibo confirmado esta quincena — …», una nota al pie del layout viejo—
+ * pasaba por fila de persona, y sus $340.000 se buscaban bajo el nombre «▲ 15 SIN RECIBO…»: no
+ * matcheaban a nadie, así que no se reponían Y TAMPOCO se denunciaban como huérfanos. El importe
+ * desaparecía en silencio, que es la forma exacta de pérdida que esta columna no puede tener.
+ *
+ * Una persona está adentro de un cuadro: entre la fila «Persona» que lo abre y el renglón «⇒» que lo
+ * cierra. Fuera de eso no hay personas, hay estructura — y la estructura no tiene billetes.
+ */
+export function filasDePersona(filas = []) {
+  const dentro = new Set()
+  let abierto = false
+  ;(filas ?? []).forEach((f, i) => {
+    const a = String(f?.[0] ?? '').trim()
+    if (a === 'Persona') { abierto = true; return }
+    if (ES_TOTAL.test(a)) { abierto = false; return }
+    if (!abierto) return
+    if (!a || ES_SECCION_NUM.test(a) || ES_SUBITEM.test(a)) return
+    dentro.add(i)
+  })
+  return dentro
+}
+
+/**
+ * NÚCLEO PURO: LO QUE EL DUEÑO TIENE TIPEADO HOY EN LA COLUMNA «EFECTIVO redondeado».
+ *
+ * Devuelve las dos mitades por separado porque cada una se resuelve distinto: las que están al lado
+ * de una persona se reponen en la fila de ESA persona (`conEfectivoRedondeadoDelDueno`), y las que
+ * no —`huerfanos`— no tienen dueño conocido y se republican tal cual, visibles
+ * (`conHuerfanosVisibles`). Ninguna de las dos se pierde y ninguna se adivina.
+ *
+ * @param {any[][]} previo   lo que hoy tiene la pestaña, desde su fila 1, LEÍDO COMO FÓRMULA
+ * @param {{col?:number}} o  la columna del dueño, 0-based
+ * @returns {{suyos:Map<string,any>, huerfanos:{fila:number, valor:any}[]}}
+ */
+export function leerRedondeadoDelDueno(previo = [], { col = COL_REDONDEADO } = {}) {
+  const suyos = new Map()
+  const huerfanos = []
+  const personas = filasDePersona(previo)
+  ;(previo ?? []).forEach((f, i) => {
+    const v = f?.[col]
+    if (v === '' || v === null || v === undefined) return
+    if (String(v).startsWith('=')) return                 // una fórmula ahí es del generador, no suya
+    // SÓLO IMPORTES. El encabezado de cada cuadro tiene el RÓTULO en esta columna y la fila de total
+    // dibuja un «—»: son celdas del generador y contarlas como del dueño convierte el aviso en ruido
+    // de cada corrida — y un aviso que suena siempre deja de mirarse.
+    const importe = typeof v === 'number' ? v : Number(String(v).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.'))
+    if (!Number.isFinite(importe) || importe === 0) return
+    if (!personas.has(i)) { huerfanos.push({ fila: i + 1, valor: v }); return }
+    suyos.set(claveDePersona(f[0]), v)
+  })
+  return { suyos, huerfanos }
+}
+
+/**
+ * NÚCLEO PURO: UNA FILA QUE SÓLO LLEVA UN IMPORTE DEL DUEÑO, SIN PERSONA AL LADO.
+ *
+ * El resto del renglón va con el CENTINELA y no con `''`: `''` le dice a la guarda NO-BORRAR
+ * «conservá lo que haya en el destino», y acá hace falta lo contrario — la fila es de este generador
+ * y va vacía salvo el importe. Con `''` sobreviviría, debajo del total, cualquier residuo de la
+ * corrida anterior.
+ */
+export function filaDeRedondeadoSinPersona(valor, { col = COL_REDONDEADO, ancho = ANCHO } = {}) {
+  const f = Array(ancho).fill(VACIO)
+  f[col] = valor
+  return f
+}
+
+/**
+ * NÚCLEO PURO: LOS IMPORTES DEL DUEÑO QUE NO TIENEN PERSONA SE PUBLICAN IGUAL, DEBAJO DEL TOTAL.
+ *
+ * ═══ POR QUÉ NO SE DESCARTAN, QUE ES LO QUE HACÍA HASTA HOY ═══
+ *
+ * Tres de los quince importes de `I14:I28` no estaban al lado de una persona: caían sobre la fila de
+ * total, sobre una nota y sobre el título del cuadro siguiente. `conEfectivoRedondeadoDelDueno` los
+ * denunciaba por consola y NO los publicaba — y eso los hacía desaparecer de la pestaña en la primera
+ * corrida. Son $750.000 en billetes que alguien anotó: perderlos de la vista es peor que mostrarlos
+ * sin dueño. La regla del dueño, textual: no se infiere a quién van y no se pierden.
+ *
+ * Quedan en SU MISMA COLUMNA, en filas propias inmediatamente debajo del «⇒ N persona(s)», con la A
+ * vacía: se ven al lado de los otros doce, y que no tengan nombre es exactamente la pregunta que hay
+ * que hacerle al dueño.
+ *
+ * ═══ POR QUÉ VAN DEBAJO DEL TOTAL Y NO EN CUALQUIER LADO ═══
+ *
+ *   · NINGÚN `=SUM` LOS ALCANZA. El total del cuadro suma `I n0:I nF`, donde `nF` es la última
+ *     persona: una fila debajo del renglón `⇒` queda fuera del rango. Y el titular suma con
+ *     `SUMIF(A:A;"⇒*")`, que no las ve porque su columna A está vacía. Sumarlos sería contar dos
+ *     veces una plata cuyo destinatario ni siquiera se conoce.
+ *   · NADIE LAS PISA. Están dentro del bloque «1 · OBREROS» —no hay fila vacía entre el total y
+ *     ellas—, así que el amparo de origen declarado en `formato-pestanas.mjs` las cubre y el censo de
+ *     números pegados sigue en cero.
+ *
+ * LA GUARDA. Se llama con la grilla PARCIAL, apenas cerrado el primer cuadro, y no sobre la pestaña
+ * ya armada: insertar filas en el medio correría las fórmulas `=SUM(C…)` de los cuadros 2 y 3, que se
+ * escriben con el número de fila que tenían al construirse. Si la última fila no es un total, el
+ * llamador se movió de lugar y esto falla en vez de publicar sumas corridas.
+ *
+ * @param {any[][]} filas      la grilla parcial: su última fila es el «⇒ N persona(s)» del cuadro 1
+ * @param {{fila:number, valor:any}[]} huerfanos
+ * @returns {any[][]} una copia con una fila por importe huérfano
+ */
+export function conHuerfanosVisibles(filas = [], huerfanos = [], { col = COL_REDONDEADO, ancho = ANCHO } = {}) {
+  if (!huerfanos?.length) return [...(filas ?? [])]
+  const ultima = String((filas ?? [])[filas.length - 1]?.[0] ?? '')
+  if (!ES_TOTAL.test(ultima)) {
+    throw new Error(`conHuerfanosVisibles: la última fila es "${ultima.slice(0, 40)}" y tiene que ser la de total `
+      + '— insertar más arriba corre las fórmulas de los cuadros que vienen después')
+  }
+  return [...filas, ...huerfanos.map((h) => filaDeRedondeadoSinPersona(h.valor, { col, ancho }))]
+}
+
+/**
+ * NÚCLEO PURO: LAS FILAS CUYO ÚNICO CONTENIDO ES UN IMPORTE DE LA COLUMNA DEL DUEÑO, 0-BASED.
+ *
+ * Las escribe `conHuerfanosVisibles` y las necesita el formateador: viven fuera de todo cuadro, así
+ * que el barrido de moneda por tabla no las alcanza y sin esto se dibujarían crudas. Se las reconoce
+ * por su FORMA y no por su número de fila, que cambia con cada quincena.
+ */
+export function filasSoloRedondeado(filas = [], { col = COL_REDONDEADO } = {}) {
+  const hay = (v) => v !== undefined && v !== null && v !== VACIO && String(v).trim() !== ''
+  return (filas ?? []).reduce((out, f, i) => {
+    if (hay(f?.[col]) && !String(f[col]).startsWith('=') && !(f ?? []).some((c, j) => j !== col && hay(c))) out.push(i)
+    return out
+  }, [])
+}
+
+/**
  * NÚCLEO PURO: «EFECTIVO redondeado» VUELVE A LA FILA DE SU PERSONA, NO A SU NÚMERO DE FILA.
  *
  * ═══ EL DEFECTO QUE ESTO IMPIDE, MEDIDO EN EL ARCHIVO VIVO (09/09/2026) ═══
@@ -1231,118 +1419,124 @@ export function sinNotasRepetidas(filas = []) {
  * @returns {{grid:any[][], copiadas:number, huerfanos:{fila:number, valor:any}[]}}
  */
 export function conEfectivoRedondeadoDelDueno(grid = [], previo = [], { col = COL_REDONDEADO } = {}) {
-  // El nombre se compara por lo que IDENTIFICA a la persona. La pestaña vieja lo escribía con el
-  // aviso pegado —«GONZALEZ EMILIANO  ▲ sin cargar desde el 03/09»— y sin recortarlo, esa fila no se
-  // reconocería y su importe saldría huérfano: el defecto se arreglaría para catorce y no para el
-  // decimoquinto, que es el que más mira.
-  const clave = (v) => String(v ?? '').split('▲')[0].trim().toUpperCase().replace(/\s+/g, ' ')
-  // Una fila DE PERSONA: tiene rótulo en A y no es un encabezado, un total ni un título de bloque.
-  const esPersona = (f) => {
-    const a = String(f?.[0] ?? '').trim()
-    return Boolean(a) && !ES_TOTAL.test(a) && !ES_SECCION_NUM.test(a) && !ES_SUBITEM.test(a) && a !== 'Persona'
-  }
-  const suyos = new Map()
-  const huerfanos = []
-  ;(previo ?? []).forEach((f, i) => {
-    const v = f?.[col]
-    if (v === '' || v === null || v === undefined) return
-    if (String(v).startsWith('=')) return                 // una fórmula ahí es del generador, no suya
-    // SÓLO IMPORTES. El encabezado de cada cuadro tiene el RÓTULO en esta columna y la fila de total
-    // dibuja un «—»: son celdas del generador y contarlas como huérfanas del dueño convierte el aviso
-    // en ruido de cada corrida — y un aviso que suena siempre deja de mirarse.
-    const importe = typeof v === 'number' ? v : Number(String(v).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.'))
-    if (!Number.isFinite(importe) || importe === 0) return
-    if (!esPersona(f)) { huerfanos.push({ fila: i + 1, valor: v }); return }
-    suyos.set(clave(f[0]), v)
-  })
+  const { suyos, huerfanos } = leerRedondeadoDelDueno(previo, { col })
+  const personas = filasDePersona(grid)
+  const usadas = new Set()
   let copiadas = 0
-  const salida = (grid ?? []).map((f) => {
+  const salida = (grid ?? []).map((f, i) => {
     const fila = [...f]
-    if (!esPersona(fila)) return fila
-    const v = suyos.get(clave(fila[0]))
+    if (!personas.has(i)) return fila
+    const clave = claveDePersona(fila[0])
+    const v = suyos.get(clave)
     if (v === undefined) return fila
     fila[col] = v
+    usadas.add(clave)
     copiadas++
     return fila
   })
-  return { grid: salida, copiadas, huerfanos }
+  // ═══ EL QUE NO ENCUENTRA SU PERSONA TAMPOCO SE PIERDE (09/09/2026) ═══
+  //
+  // Medido en una copia: el previo decía «ZOGBER LEONARDO» y la grilla nueva dice «ZOGBE LEONARDO»
+  // —el nombre canónico sale del recibo y cambió—, así que sus $360.000 no se reponían en ninguna
+  // fila Y TAMPOCO salían por huérfanos, porque en el previo sí estaban al lado de una persona. Se
+  // caían entre las dos listas, en silencio.
+  //
+  // No se empareja «por parecido»: que dos nombres se parezcan no prueba que sean la misma persona, y
+  // acá se decide a quién se le entregan billetes. Sale por la misma puerta que los huérfanos —una
+  // fila visible debajo del total— y con la misma pregunta al dueño.
+  const sinUbicar = [...suyos.entries()].filter(([k]) => !usadas.has(k)).map(([quien, valor]) => ({ quien, valor }))
+  return { grid: salida, copiadas, huerfanos, sinUbicar }
 }
 
-async function formatear(google, hoja, filas) {
-  // ═══ EL FORMATO SALE DE `estilo-pestana`, COMO EN TODO EL ARCHIVO ═══
-  //
-  // Esta pestaña era la ÚNICA del Sheet con su propio formateo escrito a mano: CAJA, Cheques,
-  // Jornales, Estructura, OBRAS y Calendario pasan todas por `lib/estilo-pestana.mjs`. Por eso se
-  // veía distinta por más que se le arreglaran los detalles — no era un problema de detalles, era
-  // que no hablaba el mismo idioma. El dueño lo dijo así: «no coincide con el formato de todo el
-  // sheet».
-  //
-  // Todo formato pasa por `E.conFuente`: si se define `textFormat` sin nombrar la tipografía, Sheets
-  // la reemplaza por la de la hoja y la celda queda en otra fuente.
-  const s = hoja.sheetId
+/**
+ * NÚCLEO PURO: LOS PEDIDOS DE FORMATO — LA MISMA PIEL QUE «Cargas Sociales» Y «Jornales por Quincena».
+ *
+ * ═══ POR QUÉ SE TIRÓ LA PIEL PROPIA (09/09/2026) ═══
+ *
+ * El dueño pidió las tres hermanas —«Jornales por Quincena», «Nómina» y «Cargas Sociales»— con un
+ * diseño unificado. Las otras dos ya pasan por `lib/estilo-statement.mjs`: sin reja, sin una sola
+ * barra de color, y la jerarquía dada por la TIPOGRAFÍA (título 15 pt, procedencia 9 pt apagada,
+ * rótulo de bloque en negrita con línea fina arriba, encabezado en versalita gris con línea fina
+ * abajo, total rulado). Ésta usaba `lib/estilo-pestana.mjs`, que RELLENA con fondo oscuro el título,
+ * los rótulos de bloque y los encabezados. El contenido ya era el mismo; lo distinto era la PIEL.
+ *
+ * No se escribió una tercera piel: se importa la de las hermanas. Una piel propia por pestaña es
+ * exactamente lo que produjo «los diseños de todas las pestañas son distintos».
+ *
+ * ═══ LO QUE ESTA PESTAÑA AGREGA, Y POR QUÉ NO PUDO SALIR DE LA PIEL COMPARTIDA ═══
+ *
+ *   · «Persona» NO está en `ES_ENCABEZADO`, la lista de primeras palabras con que un cuadro abre su
+ *     columna A. Agregarla a la gramática compartida le cambiaría el ancho declarado a «Jornales por
+ *     Quincena» —su bloque 1.2 abre con «Persona | Retiro mensual | Desde», cinco columnas contra
+ *     trece— y `auditarPatron` empezaría a denunciar `anchos-mezclados` en una pestaña que nadie
+ *     pidió tocar. Se dibuja acá, con EL MISMO formato que la piel le da a cualquier encabezado.
+ *   · EL ALTO DE LA FILA DE ENCABEZADO. «EFECTIVO redondeado» y «YA TRANSFERIDO» no entran en 100 px:
+ *     envuelven, y una fila de 21 px muestra la primera línea y corta la segunda sin avisar.
+ *   · LA UNIDAD DE CADA COLUMNA sale del contrato `COLUMNAS`, no de una regex sobre el rótulo.
+ *
+ * Separado de la llamada a la API para que se pueda probar en frío QUÉ formato recibe cada bloque:
+ * los defectos de piel no dan error, sólo se ven mirando la pestaña.
+ */
+export function requestsDeFormato(sheetId, filas) {
+  const s = sheetId
   const n = filas.length
+  const hastaHoja = Math.max(n + 20, 200)
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId: s, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   // El rectángulo que hay que dejar limpio incluye las columnas que este generador escribió ANTES:
-  // pintar sólo hasta ANCHO deja el formato de las seis que se retiraron el 09/09 vivo a la derecha.
-  const rTodo = (r0, r1) => ({ sheetId: s, startRowIndex: r0, endRowIndex: r1, startColumnIndex: 0, endColumnIndex: ANCHO_HISTORICO })
+  // pintar sólo hasta ANCHO deja vivo a la derecha el formato de las seis que se retiraron el 09/09.
+  const rTodo = (r0, r1) => r(r0, r1, 0, ANCHO_HISTORICO)
+  // El patrón va escrito en formato US aunque el archivo sea es-AR: la API lo interpreta en US y lo
+  // MUESTRA con el punto de miles local; escribirlo con el separador local lo rompe. Es el mismo
+  // literal que usan «Cargas Sociales» y «Jornales por Quincena».
+  //
+  // SIN CENTAVOS, POR PEDIDO DEL 09/09. LÍMITE DECLARADO: el 31/08 el dueño había pedido lo contrario
+  // para esta pestaña —«cuidado con redondear en la pestaña nomina […] sino las transferencias se
+  // hacen mal»—. El VALOR de la celda sigue siendo exacto; lo que se lee, no. Manda la última orden:
+  // si vuelve a aparecer una transferencia con centavos de diferencia, la causa es ésta.
+  const MONEDA = { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }
+  const CANTIDAD = { type: 'NUMBER', pattern: '#,##0;(#,##0);"—"' }
+  const TEXTO = { type: 'TEXT' }
   const req = [
-    { unmergeCells: { range: rTodo(0, Math.max(n, 200)) } },
-    E.reset(s, Math.max(n + 20, 200), ANCHO_HISTORICO),
-    // ═══ LAS NOTAS AL PIE NO ESTABAN EN NINGUNA CELDA: ERAN NOTAS DE CELDA (09/09/2026) ═══
+    // NINGUNA CELDA COMBINADA, NINGUNA NOTA. Las notas al pie de esta pestaña no vivían en ninguna
+    // celda: eran el campo `note` de Sheets —invisibles al leer valores o fórmulas, impresas al pie
+    // del PDF—, y por eso sobrevivían a todas las limpiezas.
+    { unmergeCells: { range: rTodo(0, hastaHoja) } },
+    { updateCells: { range: rTodo(0, hastaHoja), fields: 'note' } },
+    // LA PIEL COMPARTIDA. Se le declara el ancho HISTÓRICO: el fondo blanco, el reset de tipografía y
+    // el barrido de bordes tienen que alcanzar las seis columnas que la pestaña dejó de usar, o el
+    // formato de la corrida vieja queda dibujado a la derecha del contenido nuevo.
     //
-    // El dueño: «tres notas al pie [1][2][3] idénticas de un párrafo cada una». No aparecían leyendo
-    // valores ni fórmulas —por eso sobrevivieron a todas las limpiezas— porque son el campo `note` de
-    // Sheets: Google las dibuja como un marcador «[1]» pegado al valor, y el PDF las imprime al pie.
-    // `updateCells` con `fields: 'userEnteredValue,userEnteredFormat'` no las toca, así que el
-    // vaciado más agresivo las dejaba intactas.
-    //
-    // Se limpian sobre el rectángulo propio y nada más: si el dueño anota una celda fuera de él, ahí
-    // no llega. Adentro, la nota que había la puso una corrida vieja de este mismo generador.
-    { updateCells: { range: rTodo(0, Math.max(n + 20, 200)), fields: 'note' } },
-    // UN SOLO ALTO DE FILA. La pestaña tenía filas de 21, 26 y 34 px mezcladas —restos de encabezados
-    // y titulares de layouts anteriores— y eso es lo que hace que un cuadro se vea desprolijo sin que
-    // ninguna celda esté mal. Se aplana todo primero y después se levantan las tres que lo necesitan.
-    { updateDimensionProperties: { range: { sheetId: s, dimension: 'ROWS', startIndex: 0, endIndex: n }, properties: { pixelSize: E.ALTO.fila }, fields: 'pixelSize' } },
-    // SIN CUADRÍCULA y con el titular congelado: la jerarquía la hace la tipografía, no la reja.
-    // SE CONGELA HASTA DEBAJO DEL TITULAR: las tres cifras que se deciden quedan siempre a la vista.
-    { updateSheetProperties: { properties: { sheetId: s, gridProperties: { hideGridlines: true, frozenRowCount: DEBAJO_DEL_TITULAR - 1 } }, fields: 'gridProperties.hideGridlines,gridProperties.frozenRowCount' } },
-    // ═══ UN SOLO ANCHO, Y LA COLUMNA DE TEXTO NO ES UNA COLUMNA DE NÚMEROS ═══
-    //
-    // A: 300 px para el nombre. B: la categoría es TEXTO y «Oficial Especializado» son 21 caracteres
-    // — con el ancho de una columna numérica se cortaba, y el auditor de pantalla lo contaba como
-    // `texto_cortado`. C en adelante: 100 px, el mismo para todas.
+    // `titular: 0` COMO EN «Jornales», y no es un descuido: la piel dibuja el titular en acento sobre
+    // UNA fila, y el de acá son TRES renglones «⇒ …». Se rulean solos por su «⇒», que es lo que hace
+    // que las tres cifras se lean como el cierre de la pestaña entera.
+    ...skinRequests({ sheetId: s, filas, cols: ANCHO_HISTORICO, congeladas: DEBAJO_DEL_TITULAR - 1, titular: 0, filasHoja: hastaHoja }),
+    // ═══ TODA LA PESTAÑA DERRAMA, NO ENVUELVE ═══
+    // Todas las filas miden 21 px: una celda que envuelve muestra la primera línea y corta el resto.
+    // Derramar no es invadir — el texto sólo se extiende sobre las celdas vacías de su derecha.
+    { repeatCell: { range: rTodo(0, hastaHoja), cell: { userEnteredFormat: { wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat.wrapStrategy' } },
+    // EL MISMO ANCHO QUE LAS HERMANAS: la A de 300 px para el concepto y 100 px parejos para lo
+    // numérico. La B es la excepción declarada: es TEXTO —«Oficial Especializado» son 21 caracteres—
+    // y a 100 px el auditor de pantalla la cuenta como `texto_cortado`, porque a su derecha hay un
+    // número y el derrame no puede taparlo.
     { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 300 }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: E.ANCHO.texto }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 150 }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 2, endIndex: ANCHO }, properties: { pixelSize: 100 }, fields: 'pixelSize' } },
+    // Todo arranca como TEXTO y cada cuadro repone la unidad de sus columnas encima. Sin este
+    // barrido, el formato de moneda de una corrida anterior sobrevive en una celda que hoy lleva un
+    // rótulo, y se lee «$0» donde dice una palabra.
+    { repeatCell: { range: rTodo(0, hastaHoja), cell: { userEnteredFormat: { numberFormat: TEXTO } }, fields: 'userEnteredFormat.numberFormat' } },
   ]
-  const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: E.conFuente(format) }, fields } })
+  const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: format }, fields } })
 
   // ── EL CONTRATO DE COLUMNAS SE DECLARA, NO SE ADIVINA DEL RÓTULO ───────────────────────────────
   //
   // Antes la unidad de cada columna salía de una regex sobre el texto de su encabezado. Es la trampa
   // que `estilo-pestana` advierte en su propio comentario: «un formato que depende de cómo está
   // escrito un rótulo se rompe cada vez que se mejora la redacción, y en silencio». Ya había pasado
-  // acá — «$/h» caía en la rama de CANTIDAD y la tarifa salía dibujada «5.974», sin el signo, al
-  // lado de columnas de pesos.
-  //
-  // Con UN contrato de columnas para los tres cuadros la unidad se puede declarar de una vez.
-  //
-  // ═══ SIN CENTAVOS, POR PEDIDO DEL 09/09 ═══
-  //
-  // El patrón es `"$"#,##0`. Va escrito en formato US aunque el archivo sea es-AR: la API interpreta
-  // el patrón en US y lo MUESTRA con el punto de miles local; escribirlo con el separador local lo
-  // rompe.
-  //
-  // LÍMITE DECLARADO. El 31/08 el dueño había pedido lo contrario para esta pestaña: «cuidado con
-  // redondear en la pestaña nomina, dejar los numeros de la manera correcta porque sino las
-  // transferencias se hacen mal» — un recibo de $215.564,62 dibujado «$215.565» hace transferir 38
-  // centavos de más. El VALOR de la celda sigue siendo exacto (se ve en la barra de fórmulas), pero
-  // lo que se lee ya no. Las dos órdenes se contradicen y manda la última; si vuelve a aparecer una
-  // transferencia con centavos de diferencia, la causa es ésta.
+  // acá — «$/h» caía en la rama de CANTIDAD y la tarifa salía dibujada «5.974», sin el signo.
   const UNIDAD = COLUMNAS.map((rotulo) => (rotulo === 'Persona' || rotulo === 'Categoría'
-    ? E.NUM.texto
-    : rotulo === 'Horas' ? E.NUM.cantidad : E.NUM.moneda))
-  fmt(rTodo(0, Math.max(n, 200)), 'userEnteredFormat.numberFormat,userEnteredFormat.wrapStrategy', { numberFormat: E.NUM.texto, wrapStrategy: 'CLIP' })
+    ? TEXTO
+    : rotulo === 'Horas' ? CANTIDAD : MONEDA))
   // Cada tabla va de su encabezado («Persona») hasta su fila de total inclusive.
   for (let i = 0; i < n; i++) {
     if (String(filas[i]?.[0] ?? '') !== 'Persona') continue
@@ -1351,56 +1545,37 @@ async function formatear(google, hoja, filas) {
     fin = Math.min(fin + 1, n)
     for (let c = 1; c < ANCHO; c++) {
       fmt(r(i + 1, fin, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-        { numberFormat: UNIDAD[c], horizontalAlignment: UNIDAD[c] === E.NUM.texto ? 'LEFT' : 'RIGHT' })
+        { numberFormat: UNIDAD[c], horizontalAlignment: UNIDAD[c] === TEXTO ? 'LEFT' : 'RIGHT' })
     }
+    // EL ENCABEZADO, CON EL MISMO FORMATO QUE LA PIEL LE DA A LOS SUYOS: versalita gris de 9 pt y una
+    // línea fina abajo. No sale de `skinRequests` porque «Persona» no está en su lista de primeras
+    // palabras — ver el encabezado de esta función.
+    fmt(r(i, i + 1), 'userEnteredFormat(textFormat,horizontalAlignment,wrapStrategy)',
+      { textFormat: { foregroundColor: MUTED, bold: true, fontSize: 9, fontFamily: 'Arial' }, horizontalAlignment: 'LEFT', wrapStrategy: 'WRAP' })
+    req.push({ updateBorders: { range: r(i, i + 1, 0, ANCHO), bottom: { style: 'SOLID', width: 1, color: HAIR } } })
+    // Es la ÚNICA fila que envuelve, y por eso la única con alto propio: «EFECTIVO redondeado» no
+    // entra en 100 px y con los 21 px de una fila normal se leería sólo «EFECTIVO».
+    req.push({ updateDimensionProperties: { range: { sheetId: s, dimension: 'ROWS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
   }
 
-  // ── LA JERARQUÍA, FILA POR FILA ────────────────────────────────────────────────────────────────
-  const texto = (i) => String(filas[i]?.[0] ?? '')
-  for (let i = 0; i < n; i++) {
-    // EL TITULAR SE PINTA APARTE, ABAJO. Sus tres renglones empiezan con «⇒» —son totales de verdad,
-    // la suma de las filas de total de los tres cuadros— y sin esta guarda caían en la rama de
-    // `ES_TOTAL`, que los rulaba con línea superior y relleno como si fueran el cierre de una tabla.
-    if (i < DEBAJO_DEL_TITULAR - 1) continue
-    if (ES_SECCION_NUM.test(texto(i))) { fmt(r(i, i + 1), 'userEnteredFormat', E.bloque()); continue }
-    if (texto(i) === 'Persona') {
-      fmt(r(i, i + 1), 'userEnteredFormat', E.encabezado())
-      // El encabezado envuelve, así que necesita alto propio: con los 20px de una fila normal se ve
-      // la primera línea y el resto queda cortado abajo, sin que nada avise.
-      req.push({ updateDimensionProperties: { range: { sheetId: s, dimension: 'ROWS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
-      continue
-    }
-    if (ES_TOTAL.test(texto(i))) {
-      // Hasta la columna del último importe: pintado hasta el final, `E.total()` dibujaba las HORAS
-      // como pesos —«$1.408»— porque trae su propio formato de moneda.
-      fmt(r(i, i + 1, 0, COLUMNAS.indexOf('Horas') + 1), 'userEnteredFormat', E.total())
-      // LAS HORAS SON CANTIDAD, TAMBIÉN EN EL TOTAL. `E.total()` trae su propio formato de moneda y
-      // dibujaba «$785» donde hay 785 horas; recortar la banda antes de esta columna lo evitaba, pero
-      // dejaba el número flotando fuera del cierre del cuadro, sin negrita y sin fondo. Se pinta la
-      // banda entera y se repone la unidad de esta columna encima.
-      fmt(r(i, i + 1, COLUMNAS.indexOf('Horas'), COLUMNAS.indexOf('Horas') + 1),
-        'userEnteredFormat.numberFormat', { numberFormat: E.NUM.cantidad })
-      // El total se rula con una línea fina arriba, no con relleno: es la diferencia entre una
-      // planilla y un estado financiero.
-      req.push({ updateBorders: { range: r(i, i + 1), top: { style: 'SOLID', color: E.COLOR.hairline ?? { red: 0.8, green: 0.84, blue: 0.86 } } } })
-      continue
-    }
-    if (ES_SUBITEM.test(texto(i))) fmt(r(i, i + 1), 'userEnteredFormat', E.nota())
-  }
+  // EL TITULAR LLEVA SU IMPORTE EN LA B, y sus tres filas están fuera de todo cuadro: el barrido por
+  // tabla no las alcanza y las tres cifras que la pestaña contesta saldrían crudas.
+  fmt(r(3, DEBAJO_DEL_TITULAR - 1, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: MONEDA, horizontalAlignment: 'RIGHT' })
 
-  // ── EL TÍTULO Y EL TITULAR ─────────────────────────────────────────────────────────────────────
-  //
-  // Tres renglones «⇒ rótulo | cifra», la misma forma con la que cierra cada cuadro: el rótulo a la
-  // izquierda en negrita, la cifra al lado, grande. Es lo que hace que las tres se lean de un
-  // vistazo en vez de una a una, y que se pueda verificar que las dos primeras dan la tercera.
-  fmt(r(0, 1), 'userEnteredFormat', E.titulo())
-  fmt(r(1, 2), 'userEnteredFormat', { numberFormat: E.NUM.texto, textFormat: { fontSize: E.TAM.nota, foregroundColor: E.COLOR.bloqueTexto }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
-  const f0 = 3                                   // la primera fila del titular, 0-based
-  fmt(r(f0, DEBAJO_DEL_TITULAR - 1, 0, 1), 'userEnteredFormat',
-    { numberFormat: E.NUM.texto, textFormat: { bold: true, fontSize: E.TAM.bloque, foregroundColor: E.COLOR.titulo }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
-  fmt(r(f0, DEBAJO_DEL_TITULAR - 1, 1, 2), 'userEnteredFormat',
-    { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.titulo, foregroundColor: E.COLOR.titulo }, horizontalAlignment: 'LEFT' })
-  req.push({ updateDimensionProperties: { range: { sheetId: s, dimension: 'ROWS', startIndex: f0, endIndex: DEBAJO_DEL_TITULAR - 1 }, properties: { pixelSize: 26 }, fields: 'pixelSize' } })
+  // LOS IMPORTES DEL DUEÑO QUE NO TIENEN PERSONA (ver `conHuerfanosVisibles`): viven debajo de la fila
+  // de total, o sea fuera del cuadro, así que tampoco los alcanza el barrido por tabla. Se los
+  // reconoce por su FORMA —la única celda con contenido de la fila es la columna del dueño— y no por
+  // su número de fila, que cambia con cada quincena.
+  for (const i of filasSoloRedondeado(filas)) {
+    fmt(r(i, i + 1, COL_REDONDEADO, COL_REDONDEADO + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: MONEDA, horizontalAlignment: 'RIGHT' })
+  }
+  return req
+}
+
+async function formatear(google, hoja, filas) {
+  const req = requestsDeFormato(hoja.sheetId, filas)
   await google.spreadsheetBatchUpdate(ID, req)
   console.log(`  formato: ${req.length} reglas`)
 }
@@ -1508,23 +1683,10 @@ async function publicar(google, PESTANA, filas) {
   // La cola existe para limpiar lo que dejó una corrida MÁS LARGA de este mismo script, y eso vive
   // en las columnas que él escribe y en las filas que ya no llena. Fuera de ese rectángulo no hay
   // cola posible: hay, si acaso, algo que escribió una persona.
-  // ═══ «EFECTIVO redondeado» SE REPONE POR PERSONA ANTES DE ESCRIBIR ═══
-  //
-  // La guarda NO-BORRAR ya conservaba esa columna, pero por CELDA: el día que el cuadro se movió de
-  // fila, los quince importes del dueño quedaron al lado de otra persona. Acá se leen con el nombre
-  // que tenían al lado y se reponen en la fila de ese mismo nombre. Ver
-  // `conEfectivoRedondeadoDelDueno` para el porqué y para lo que NO puede resolver.
-  // CON RENDER FORMULA, Y NO ES UN DETALLE: leído como valores, el `=SUM(I…)` de la fila de total
-  // llega como «$3.624.000» —un importe— y se denuncia como un monto huérfano del dueño en cada
-  // corrida. La pregunta acá es «¿esto lo escribió una persona?», y sólo la fórmula la contesta.
-  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:${letraCol(ANCHO - 1)}${ALTO_HISTORICO}`, { render: 'FORMULA' }).catch(() => [])
-  const suyo = conEfectivoRedondeadoDelDueno(filas, previo ?? [])
-  filas = suyo.grid
-  if (suyo.copiadas) console.log(`  ✋ ${suyo.copiadas} «EFECTIVO redondeado» repuesto(s) en la fila de su persona: esa columna es TUYA`)
-  for (const h of suyo.huerfanos) {
-    console.error(`  ✗ «EFECTIVO redondeado» ${h.valor} estaba en la fila ${h.fila}, que no es la de ninguna persona: `
-      + 'no lo publico porque no sé de quién es — decime a quién va')
-  }
+  // «EFECTIVO redondeado» YA VINO RESUELTO EN LA GRILLA. Se hace en `grilla`, con el cuadro 1 recién
+  // cerrado, y no acá: las filas de los importes que no tienen persona van debajo del renglón «⇒» y
+  // tienen que existir antes de que se escriban los cuadros 2 y 3, cuyas fórmulas llevan el número de
+  // fila que tienen al construirse. Acá ya sería tarde para insertarlas sin correrles el rango.
   // ═══ EL RECTÁNGULO PROPIO ES EL HISTÓRICO, NO EL DE HOY (09/09/2026) ═══
   //
   // La pestaña bajó de diecisiete columnas a once. Declarar como propias sólo las once deja las seis
@@ -1681,7 +1843,21 @@ async function main() {
       p.ingresoDeLaBase = true
     }
   }
-  const filas = grilla(activos, { hoy, quincena, escala, recibosPorCuil, finales, adelantosPorCuil, adelantosDeFinal, periodoRecibo, recibosDelMes, oficinaEspejo: oficinaDelEspejo(oficinaNum ?? []) })
+  // ═══ LA COLUMNA DEL DUEÑO SE LEE ANTES DE ARMAR LA GRILLA ═══
+  //
+  // Los importes que no encuentran persona se publican en filas propias debajo del total del cuadro 1,
+  // y esas filas tienen que existir ANTES de que se escriban los cuadros 2 y 3: sus `=SUM(C…)` se
+  // arman con el número de fila que tienen al construirse, así que insertarlas después les correría
+  // el rango. Ver `conHuerfanosVisibles`.
+  //
+  // CON RENDER FORMULA, Y NO ES UN DETALLE: leído como valores, el `=SUM(I…)` de la fila de total
+  // llega como «$3.624.000» —un importe— y se denunciaría como un monto huérfano del dueño en cada
+  // corrida. La pregunta es «¿esto lo escribió una persona?», y sólo la fórmula la contesta.
+  const previo = REDONDEADO_DE
+    ? JSON.parse(readFileSync(REDONDEADO_DE, 'utf8')).formulas ?? []
+    : await google.readSheetValues(ID, `'${PESTANA}'!A1:${letraCol(ANCHO - 1)}${ALTO_HISTORICO}`, { render: 'FORMULA' }).catch(() => [])
+  if (REDONDEADO_DE) console.log(`«EFECTIVO redondeado» sale del respaldo ${REDONDEADO_DE} (${previo.length} filas), no de la pestaña`)
+  const filas = grilla(activos, { hoy, quincena, escala, recibosPorCuil, finales, adelantosPorCuil, adelantosDeFinal, periodoRecibo, recibosDelMes, oficinaEspejo: oficinaDelEspejo(oficinaNum ?? []), previoDelDueno: previo ?? [] })
   console.log(`${PESTANA}: ${filas.nomina.length} filas × ${ANCHO} columnas`)
   for (const x of filas.nomina.slice(5, 12)) console.log('  ', x.filter((c) => c !== '').map((c) => String(c).slice(0, 16)).join(' | '))
   if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')
