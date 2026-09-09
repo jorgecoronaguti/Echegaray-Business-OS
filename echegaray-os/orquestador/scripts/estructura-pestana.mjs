@@ -259,7 +259,11 @@ export function grilla(recurrentes = []) {
   push(c3)
   // EL RÓTULO SIGUE DICIENDO "CERRADOS" —es lo que el número mide y sin eso el cuadro miente— pero
   // deja de argumentar: "no son tendencia" era la conclusión, y la conclusión es del que lee.
-  const c4 = vacia(); c4[0] = `Rubros no proyectados — menos de ${MIN_MESES} meses cerrados`
+  // EL RÓTULO ENTRA EN LA COLUMNA (09/09/2026). Con el ancho del estándar (`ANCHO.concepto`, 270 px)
+  // entran 43 caracteres y «— menos de 4 meses cerrados» medía 49: `auditar-pantalla` lo contaba como
+  // texto cortado. Se acorta el separador, no lo que el rótulo DICE: sigue diciendo «cerrados» porque
+  // es el universo exacto que cuenta su COUNTIFS.
+  const c4 = vacia(); c4[0] = `Rubros no proyectados · <${MIN_MESES} meses cerrados`
   c4[1] = `=COUNTIFS($${letra(C_NMESES)}${f0}:$${letra(C_NMESES)}${f1};"<${MIN_MESES}";$${letra(C_TOTREAL)}${f0}:$${letra(C_TOTREAL)}${f1};">0")`
   push(c4)
 
