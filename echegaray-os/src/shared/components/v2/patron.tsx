@@ -138,10 +138,14 @@ export const FILO_ELEGIDA = `inset 2px 0 0 ${V.marca}`
  * cabecera deja de separar. Los seis canvas del v4 lo escriben en 600 sin excepción.
  */
 export function RotuloCol(
-  { children, derecha, centro }: { children?: ReactNode; derecha?: boolean; centro?: boolean },
+  // `titulo` es la DEFINICIÓN de la columna, no una descripción: un rótulo de una o dos palabras
+  // —«Contratado», «Últ. mov.»— no puede cargar solo con decir de qué fuente sale su número.
+  { children, derecha, centro, titulo }:
+  { children?: ReactNode; derecha?: boolean; centro?: boolean; titulo?: string },
 ) {
   return (
     <span
+      title={titulo}
       style={{
         fontSize: '11px', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase',
         color: V.tenue, textAlign: derecha ? 'right' : centro ? 'center' : undefined,

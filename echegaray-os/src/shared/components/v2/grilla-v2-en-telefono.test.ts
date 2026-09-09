@@ -43,7 +43,10 @@ const GEOMETRIA = { gap: 14, padding: 0 }
 
 /** Las grillas que dibujan una fila con nombre y no llevan la caja de scroll del canon. */
 const GRILLAS = [
-  'src/features/administracion/components/CarteraHome.tsx',
+  // La cartera de clientes: hasta el 09/09/2026 esta grilla vivía en `CarteraHome`, la segunda
+  // pantalla de la sección. Se unificaron en `TablaClientes` y `CarteraHome` se eliminó; la grilla
+  // —siete columnas y sus dos cortes— es la misma que esta regla venía midiendo.
+  'src/features/clientes/components/TablaClientes.tsx',
   // COMPRAS entra el 06/09/2026, cuando deja el canon de agosto. Es la grilla más ancha del OS:
   // las OCHO columnas del canvas son todas inelásticas —los `minmax(150px,…)` declaran piso— y
   // suman 826px más 98 de `gap`. Mientras vivió dentro de `TarjetaTabla` eso lo tapaba la caja de

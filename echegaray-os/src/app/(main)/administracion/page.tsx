@@ -1,99 +1,33 @@
-// 00 · ADMINISTRACIÓN — LA ENTRADA DEL ÁREA. NO ES UN ÍNDICE TEXTUAL.
+// 00 · ADMINISTRACIÓN — LA ENTRADA DEL ÁREA ES LA SECCIÓN CLIENTES. NO HAY DOS.
 //
-// ═══ QUÉ CAMBIÓ (00 · Home Navegación v2, zip del 25/08/2026) ═══
+// ═══ POR QUÉ ESTA PANTALLA DEJÓ DE DIBUJARSE (09/09/2026, orden del dueño) ═══
 //
-//   · La barra pasa de DIEZ tablas en fila a SIETE destinos en tres grupos separados por un filo.
-//     Presupuestos sube a nivel 1 (es comercial) y Usuarios baja al menú de la cuenta; Pendientes y
-//     Asistencia se absorben en «Trabajo», que es esta pantalla. Ninguna ruta se rompió.
-//   · La cartera dibuja las obras en ejecución colgando de su cliente.
+// «Hay mezcla de pantalla con información; dejá, en lo que respecta a módulo Administración sección
+// Clientes, UNA pantalla que contenga la info de las dos y permita cubrir todas las funciones que
+// tiene que cubrir la sección Clientes.»
 //
-// ═══ LA BANDA «LO QUE PIDE TRABAJO» SE RETIRÓ (08/09/2026, orden del dueño) ═══
+// Esta entrada dibujaba `CarteraHome`: los mismos cinco clientes y las mismas nueve obras que
+// `/clientes`, con las columnas económicas de OBRAS. Y decían cosas distintas del MISMO cliente
+// —$156.174.253 contratado acá, «sin contrato» allá— porque cada una leía una fuente distinta del
+// mismo concepto. Eso no es una vista alternativa: es la definición de lo que REALIDAD ÚNICA
+// prohíbe. La tabla económica se mudó a `/clientes` y `CarteraHome` se eliminó.
 //
-// El libro mayor de siete señales abría esta pantalla desde el 25/08. El dueño lo sacó de toda la
-// plataforma: «no es útil y confunde». Las señales NO se apagaron —siguen contándose en
-// `homeAdministracion.senalesDeTrabajo`, que alimenta el contador de «Trabajo» en la barra y la
-// campanita del encabezado—; lo que se retiró es la banda que las repetía arriba de la cartera.
-// Por eso esta pantalla abre directamente con Clientes y obras en ejecución.
+// ═══ REDIRECT Y NO UNA RUTA BORRADA ═══
 //
-// ═══ LAS SEIS LECTURAS VAN EN UNA SOLA TANDA, Y SON SEIS PORQUE ANTES ERAN DIECINUEVE ═══
+// `/administracion` es el ATERRIZAJE de todos los roles después de entrar (`aterrizajeDeIngreso`),
+// y está enlazada desde la barra de nivel 1, desde `ubicacion.ts` y desde media docena de tests.
+// Borrar la ruta rompería todo eso; redirigir la deja llegando a la única pantalla que existe.
 //
-// El perfil hace falta para decidir QUÉ destinos se dibujan, pero pedirlo antes de contar
-// convertiría la pantalla en dos viajes encadenados. Se lanza todo junto y se descarta después: lo
-// que el rol no puede ver lo cierra la base, no el orden de las consultas.
-//
-// Medido el 25/08 en producción (Navigation Timing, `respEnd − respStart`), esta pantalla tardaba
-// 4.904 ms —la más lenta del OS— con el shell saliendo en 51 ms: los 4,85 s eran íntegramente el
-// servidor esperando a la base. Lo que se hizo, en orden de efecto:
-//
-//   · quince conteos `head:true` → ocho lecturas (ver `homeAdministracion.getConteosHome`);
-//   · `getObrasPorCliente` se fue entera: el panel lateral que la usaba ya no existe en v2;
-//   · el conteo de clientes se fue: sale de la cartera que esta página ya trae.
-//
-// Lo que NO se hizo y sería el próximo salto: una sola función `security definer` que devuelva los
-// once números en una fila. Está escrita en `supabase/migrations` y SIN APLICAR — una migración en
-// el repo no es una migración aplicada, y aplicarla no es de este trabajo.
+// LO QUE SE PIERDE, DICHO: la barra de nivel 2 se dibujaba acá CON contadores
+// (`homeAdministracion.getConteosHome`) y en el resto del área sin ellos (`NavAdministracion`).
+// Después del redirect ya no hay ninguna pantalla que los muestre. Los conteos siguen calculándose
+// —`getConteosHome` y `areasDeAdministracion` no se tocaron— y volver a encenderlos es pasarle
+// `areas` con cuenta a `BarraAreas` desde donde el dueño decida. No se hizo acá porque poner ocho
+// lecturas más en la pantalla que ya hace nueve es pagar el aterrizaje de todos los días para
+// dibujar cuatro números que nadie pidió.
 
-import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual } from '@/features/auth/services/authService'
-import { veEconomia } from '@/features/auth/types/areas'
-import { getClientes } from '@/features/clientes/services/clientesService'
-import { separarArchivados } from '@/features/clientes/services/cartera'
-import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
-import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
-import { Aviso } from '@/shared/components/ds'
-import { C } from '@/shared/components/canon'
-import { BarraAreas } from '@/features/administracion/components/BarraAreas'
-import { CarteraHome } from '@/features/administracion/components/CarteraHome'
-import { areasDeAdministracion, getConteosHome } from '@/features/administracion/services/homeAdministracion'
-import {
-  armarCartera, getCertificadosDeLaCartera, getObrasDeLaCartera, getUltimoParte, hoyEnLaEmpresa,
-} from '@/features/administracion/services/homeCartera'
+import { redirect } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
-
-export default async function AdministracionPage() {
-  const supabase = await createClient()
-  const [leidos, cartera, perfil, obras, partes, certificados, economia] = await Promise.all([
-    getConteosHome(supabase),
-    getClientes(supabase),
-    getPerfilActual(supabase),
-    getObrasDeLaCartera(supabase),
-    getUltimoParte(supabase),
-    getCertificadosDeLaCartera(supabase),
-    // Lo que OBRAS publica por obra (contratado, MO, materiales, margen), desde Postgres.
-    getEconomiaDeObras(supabase),
-  ])
-
-  const rol = perfil.data?.rol ?? null
-  const vePrecio = veEconomia(rol)
-  const { activos } = separarArchivados(cartera.data ?? [])
-  // EL CONTADOR DE CLIENTES SALE DE LA CARTERA QUE YA SE TRAJO. Un `count` aparte sería una consulta
-  // más para decir lo mismo, y el día que una de las dos cambie de criterio dirían números distintos.
-  const conteos = { ...leidos, clientes: cartera.error ? null : activos.length }
-  const areas = areasDeAdministracion(conteos, rol)
-
-  return (
-    // SIN `PageShell` (porte 25/08, canónico 00 v2). El shell dibuja padding 16/24px y un ancho de
-    // lectura; el canon dibuja la barra a sangre y el contenido con 20px de costado. Lo único del
-    // shell que no se puede perder es `SelloDatoBueno`, que es lo que le da al `error.tsx` la hora
-    // del último dato bueno.
-    <div style={{ minHeight: '100vh', background: C.fondo, display: 'flex', flexDirection: 'column' }}>
-      <SelloDatoBueno />
-      <BarraAreas areas={areas} />
-
-      {/* UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS» (INTERACTION.md §Error). */}
-      {cartera.error ? (
-        <div style={{ padding: '30px 20px 24px' }}>
-          <Aviso tono="neg" titulo="No pude leer los clientes">{cartera.error}</Aviso>
-        </div>
-      ) : (
-        <CarteraHome
-          clientes={armarCartera({ clientes: activos, obras, partes, certificados, economia })}
-          hoy={hoyEnLaEmpresa()}
-          veEconomia={vePrecio}
-          obrasNoLeidas={obras === null}
-        />
-      )}
-    </div>
-  )
+export default function AdministracionPage() {
+  redirect('/clientes')
 }

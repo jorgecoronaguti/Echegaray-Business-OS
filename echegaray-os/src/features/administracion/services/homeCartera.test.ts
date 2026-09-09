@@ -44,24 +44,54 @@ test('`avance_pct` NULL NO es 0 %, y `monto_contratado` NULL no es $ 0', () => {
   // Una obra sin avance sincronizado no avanzó cero por ciento: no se sabe. Y una obra sin contrato
   // cargado no se contrató en cero — eso ES trabajo pendiente y la fila tiene que decirlo.
   const [c] = armarCartera({
-    clientes: [cliente({ cliente_id: 'c1', cuit: '30-1-2' })],
+    clientes: [cliente({ cliente_id: 'c1', cuit: '30-1-2', telefono: '2645551234' })],
     obras: [obra({ obra_id: 'o1', avance_pct: null, monto_contratado: null, jefe_obra: null })],
-    partes: new Map(), certificados: [],
+    partes: new Map(), certificados: [], contratos: new Set(['c1']),
   })
   assert.equal(c.enCurso[0].avance, null)
   assert.equal(c.enCurso[0].contratado, null)
   assert.equal(c.enCurso[0].jefe, null, 'un jefe en blanco no es un nombre')
-  assert.equal(c.avisoCorto, 'obra sin precio en OBRAS')
+  // EL HUECO DE PRECIO NO ES UN CHIP DEL CLIENTE (09/09/2026): lo dice la obra, en su fila.
+  assert.deepEqual(c.chips.map((x) => x.clave), [], 'el cliente tiene CUIT, teléfono y contrato')
+  assert.equal(c.faltaUnDato, false, 'un hueco de precio en OBRAS no es un dato faltante del cliente')
 })
 
-test('el aviso del CUIT le gana al del contrato: sin CUIT no se factura', () => {
+test('sin CUIT el cliente lo dice en su chip, y eso SÍ lo mete en «datos faltantes»', () => {
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1', cuit: null })],
     obras: [obra({ obra_id: 'o1', monto_contratado: null })],
-    partes: new Map(), certificados: [],
+    partes: new Map(), certificados: [], contratos: new Set(['c1']),
   })
-  assert.equal(c.avisoCorto, 'sin CUIT')
+  assert.deepEqual(c.chips.map((x) => x.clave), ['sin-cuit', 'sin-telefono'])
+  assert.equal(c.faltaUnDato, true)
   assert.match(c.aviso ?? '', /no se le puede facturar/)
+})
+
+test('«sin contrato» sale de los DOCUMENTOS y no del monto: son dos conceptos', () => {
+  // El defecto del 09/09/2026: la misma fila decía «$156M contratado» y «sin contrato». El monto lo
+  // publica OBRAS; el contrato es un papel en la ficha. Acá se prueban las cuatro combinaciones que
+  // importan — con plata y sin papel, y sin plata y con papel.
+  const completo = cliente({ cliente_id: 'c1', cuit: '30-1-2', telefono: '2645551234' })
+  const base = { clientes: [completo], partes: new Map(), certificados: [] }
+  const conPlata = armarCartera({
+    ...base,
+    obras: [obra({ obra_id: 'o1', monto_contratado: 156_174_253 })],
+    contratos: new Set<string>(),
+  })[0]
+  assert.equal(conPlata.contratado, 156_174_253)
+  assert.deepEqual(conPlata.chips.map((x) => x.clave), ['sin-contrato'])
+
+  const sinPlata = armarCartera({
+    ...base,
+    obras: [obra({ obra_id: 'o1', monto_contratado: null })],
+    contratos: new Set(['c1']),
+  })[0]
+  assert.equal(sinPlata.contratado, null, 'sin precio en OBRAS: NUNCA cero')
+  assert.deepEqual(sinPlata.chips.map((x) => x.clave), [], 'tiene el contrato cargado')
+
+  const sinLeer = armarCartera({ ...base, obras: [obra({ obra_id: 'o1' })], contratos: null })[0]
+  assert.equal(sinLeer.tieneContrato, null)
+  assert.deepEqual(sinLeer.chips.map((x) => x.clave), [], 'no se pudo mirar: no se acusa')
 })
 
 // ═══ CERTIFICACIÓN ═══
