@@ -66,12 +66,22 @@ test('franco/feriado, lluvia y obra parada pagan el jornal', () => {
   assert.equal(horasDeAusencia({ motivo: 'sin_tarea', jornada: 9 }), 9)
 })
 
-test('lo que el dueño no dijo explícito queda marcado para que lo ajuste él', () => {
-  const claves = motivosARevisar().map((m) => m.clave).sort()
-  assert.deepEqual(claves, ['lluvia', 'permiso', 'sin_tarea'])
-  // Y nada de lo que él SÍ dijo puede estar marcado: eso convertiría su decisión en provisoria.
-  assert.equal(PAGA_POR_MOTIVO.falta.revisar, false)
-  assert.equal(PAGA_POR_MOTIVO.enfermedad.revisar, false)
+test('ya no queda ningún motivo decidido por el OS: la tabla entera la firmó el dueño', () => {
+  // DECISIÓN DEL DUEÑO 09/09/2026: lluvia, obra parada y permiso se pagan. Eran los tres últimos
+  // `revisar: true`. Si alguien vuelve a marcar uno sin que él lo pida, este test se pone rojo.
+  assert.deepEqual(motivosARevisar(), [])
+  for (const clave of Object.keys(PAGA_POR_MOTIVO)) {
+    assert.equal(PAGA_POR_MOTIVO[clave].revisar, false, clave)
+  }
+})
+
+test('lluvia, obra parada y permiso pagan por decisión del dueño (09/09), no por criterio del OS', () => {
+  for (const clave of ['lluvia', 'sin_tarea', 'permiso']) {
+    assert.equal(motivoPaga(clave), true, clave)
+    assert.equal(PAGA_POR_MOTIVO[clave].revisar, false, clave)
+  }
+  // El permiso no tenía test propio de horas: se paga la jornada como cualquier motivo que paga.
+  assert.equal(horasDeAusencia({ motivo: 'permiso', jornada: 8 }), 8)
 })
 
 // ── UN MISMO DÍA NUNCA SUMA DOS VECES ──────────────────────────────────────────────────────────

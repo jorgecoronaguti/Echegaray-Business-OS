@@ -42,13 +42,15 @@ export interface ReglaDeMotivo {
 /**
  * MOTIVO → ¿SE PAGA?
  *
- * ═══ DECISIÓN PROVISORIA DEL OS, EL DUEÑO LA AJUSTA ═══
+ * ═══ TABLA DECIDIDA POR EL DUEÑO (08/09 y 09/09/2026) ═══
  *
  * Lo que él dijo textual el 08/09/2026 está marcado `revisar: false`: sin motivo, «faltó sin
  * avisar», «faltó con aviso», suspensión, paro y «otro» no se pagan; enfermedad, accidente de
- * trabajo, vacaciones, licencia especial y franco/feriado sí. Lo que NO dijo —lluvia, obra parada
- * y permiso— quedó `revisar: true`: son los tres casos donde la persona se presentó (o pidió) y la
- * decisión tiene efecto económico directo, así que la elige él, no el OS.
+ * trabajo, vacaciones, licencia especial y franco/feriado sí. Los tres que faltaban —lluvia, obra
+ * parada y permiso— los resolvió él el 09/09/2026: «se pagan → sí». Por eso hoy NINGÚN motivo
+ * queda en `revisar: true` y `motivosARevisar()` devuelve vacío: la tabla entera es decisión del
+ * dueño, no criterio del OS. El campo `revisar` se conserva porque el catálogo va a crecer y el
+ * motivo nuevo tiene que poder nacer marcado.
  *
  * SUSPENSIÓN ES EL CASO RARO Y ESTÁ ASÍ A PROPÓSITO: `tipoDeMotivo` la clasifica como `licencia`
  * —tiene acta y respaldo documental— y sin embargo no se paga. Por eso esta tabla es por MOTIVO y
@@ -71,9 +73,11 @@ export const PAGA_POR_MOTIVO: Readonly<Record<string, ReglaDeMotivo>> = Object.f
   [MOTIVO.LICENCIA_ESPECIAL]: { paga: true, revisar: false, porque: 'licencia especial (LCT art. 158): paga y obligatoria' },
   [MOTIVO.FRANCO]: { paga: true, revisar: false, porque: 'franco o feriado: el jornal se paga' },
 
-  [MOTIVO.LLUVIA]: { paga: true, revisar: true, porque: 'se presentó y la obra paró por clima: el jornal se paga' },
-  [MOTIVO.SIN_TAREA]: { paga: true, revisar: true, porque: 'vino y no había qué hacer: la falla es nuestra' },
-  [MOTIVO.PERMISO]: { paga: true, revisar: true, porque: 'permiso concedido por la empresa' },
+  // DECISIÓN DEL DUEÑO 09/09/2026: «Lluvia, obra parada y permiso: se pagan → sí». Estaban en
+  // `revisar: true` porque el OS los había resuelto solo; ahora los firmó él.
+  [MOTIVO.LLUVIA]: { paga: true, revisar: false, porque: 'se presentó y la obra paró por clima: el jornal se paga' },
+  [MOTIVO.SIN_TAREA]: { paga: true, revisar: false, porque: 'vino y no había qué hacer: la falla es nuestra' },
+  [MOTIVO.PERMISO]: { paga: true, revisar: false, porque: 'permiso concedido por la empresa' },
 })
 
 /** La regla de ese motivo, o `null` si la clave no está en la tabla. `null` NO es «paga»: es «no se
