@@ -26,7 +26,7 @@ import { FILA_TOTAL as ROTULO_TOTAL_OBRA } from '../lib/materiales-por-obra.mjs'
 import { FILA_BLOQUE } from '../lib/control-arca-bloque.mjs'
 import { SIN_FAMILIA, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
-import { CONTADOR } from '../lib/formato-statement.mjs'
+import { CONTADOR, MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL } from '../lib/formato-statement.mjs'
 
 const L = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
@@ -224,4 +224,63 @@ test('FALLA CERRADO: sin un rango resuelto no se emite una fórmula rota', () =>
   // El rótulo se resuelve contra el encabezado real de Compras; acá se fija el contrato de nombres.
   assert.equal(ROTULOS_COMPRAS.familia, 'Familia de material')
   assert.equal(ROTULOS_COMPRAS.neto, 'Importe')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LOS DOS DEFECTOS QUE EL DUEÑO VIO RENDERIZADA (09/09/2026).
+
+/** El formato que QUEDA en una celda: gana la ÚLTIMA request que la toca, igual que en Sheets. */
+function formatoEfectivo(reqs, fila0, col0) {
+  let ultimo
+  for (const q of reqs) {
+    const rg = q.repeatCell?.range
+    const nf = q.repeatCell?.cell?.userEnteredFormat?.numberFormat
+    if (!rg || !nf) continue
+    if (fila0 >= rg.startRowIndex && fila0 < rg.endRowIndex && col0 >= rg.startColumnIndex && col0 < rg.endColumnIndex) ultimo = nf
+  }
+  return ultimo
+}
+
+// El residuo se dibujaba en MONEDA_CONTROL: rojo y con «$» en TODO el cuerpo, al lado de doce meses
+// sin «$». No es un control —es plata comprada, la que hace cerrar la fila— y un rojo prendido con
+// los datos perfectos deja de mirarse. Se mide el formato EFECTIVO, no la existencia de la request:
+// las pasadas se pisan entre sí y lo que importa es la última.
+test('«Fuera de los 12 meses» se dibuja como el resto del cuerpo, no como un control', () => {
+  const { g } = pestana()
+  const reqs = formatosPropios(9, g)
+  const C_FUERA = 13
+  for (let f = g.f0; f <= g.f1; f++) {
+    assert.deepEqual(formatoEfectivo(reqs, f - 1, C_FUERA), MONEDA_CUERPO,
+      `la fila ${f} del residuo no está en MONEDA_CUERPO: el cuerpo no lleva «$» ni rojo`)
+    // El mes de al lado es la prueba de que la columna no es especial: mismo formato, misma plata.
+    assert.deepEqual(formatoEfectivo(reqs, f - 1, C_FUERA - 1), MONEDA_CUERPO)
+  }
+  assert.deepEqual(formatoEfectivo(reqs, g.fTot - 1, C_FUERA), MONEDA_TOTAL,
+    'la fila TOTAL es la única del cuadro que declara la unidad')
+  const enControl = []
+  for (let f = g.f0; f <= g.fTot; f++) {
+    if (JSON.stringify(formatoEfectivo(reqs, f - 1, C_FUERA)) === JSON.stringify(MONEDA_CONTROL)) enControl.push(f)
+  }
+  assert.deepEqual(enControl, [], 'si el residuo tiene que gritar, es un control «⇒ … | número» del bloque 3')
+})
+
+// A2 decía «al 30/12/2026» mirada el 09/09: un MAX crudo se lleva la fecha MÁS GRANDE de la columna,
+// y una compra fechada adelante publica un corte que todavía no ocurrió.
+test('la fila 2 declara el corte del DATO, y nunca una fecha futura', () => {
+  const HOY = new Date(Date.UTC(2026, 8, 9))
+  const dia = (a, m, d) => Math.round((Date.UTC(a, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
+  // La misma trampa del archivo real: una fila con «Fecha de caja» en diciembre, ya cargada hoy.
+  const filas = [...FILAS, ['LA ESTRELLA', 100_000, 21_000, 121_000, 'Hierro y malla', CIVIL, dia(2026, 12, 30)]]
+  const { g } = pestana({ filas })
+  const a2 = String(g.filas[1][0])
+
+  // La coacción mixta se prueba por TEXTO: el evaluador no modela DATEVALUE a propósito —una función
+  // adivinada da tests verdes sobre nada— y sin ella las fechas tipeadas a mano se pierden en silencio.
+  const coerc = `IFERROR(DATEVALUE(${RANGOS.fechaCaja}&"");N(${RANGOS.fechaCaja}))`
+  assert.ok(a2.includes(coerc), 'el corte no coacciona la columna mixta de Compras')
+  const evaluable = a2.replaceAll(coerc, `N(${RANGOS.fechaCaja})`)
+
+  const texto = evaluarFormula(evaluable, { hoja: {}, hojas: { Compras: hojaCompras(filas) }, hoy: HOY })
+  assert.match(String(texto), /Compras al 01\/03/, 'el corte es la última «Fecha de caja» YA OCURRIDA')
+  assert.doesNotMatch(String(texto), /30\/12|12\/2026/, 'una fecha futura como corte afirma meses que no están cargados')
 })

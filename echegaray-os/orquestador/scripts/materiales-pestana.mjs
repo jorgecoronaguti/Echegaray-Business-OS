@@ -55,6 +55,7 @@ import { sumaNetaSheet } from '../lib/costo-materiales.mjs'
 import { obrasConMateriales } from '../lib/obras-con-materiales.mjs'
 import { letra, resolverColumnas, rango as rangoDeCompras } from '../lib/compras-columnas.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
+import { rotuloPorFuente, formulaUltimaFecha } from '../lib/fecha-de-frescura.mjs'
 import { elLayoutCambio, invalidarHuellasDeFormato } from '../lib/huella-formato-layout.mjs'
 import { query } from '../lib/db.mjs'
 
@@ -92,14 +93,14 @@ export const FAMILIAS_DEL_CUADRO = Object.freeze([...FAMILIAS.map(([n]) => n), S
  * @param {object} a
  * @param {string[]} a.obras nombres EXACTOS como están en Compras, ya ordenados por monto
  * @param {{neto:string, iva:string, total:string, familia:string, fechaCaja:string, rubro:string,
- *          obra:string, fechaFactura:string}} a.rangos rangos abiertos de Compras YA resueltos por
+ *          obra:string}} a.rangos rangos abiertos de Compras YA resueltos por
  *          rótulo — nunca por letra fija: el dueño edita Compras y las posiciones se mueven
  * @returns {{filas:any[][], ancho:number, f0:number, f1:number, fTot:number, fCabObra:number,
  *            f0Obra:number, f1Obra:number, fTotObra:number, arca0:number, obras:string[],
  *            indivisibles:{desde:number,hasta:number}[]}}
  */
 export function grilla({ obras = [], rangos }) {
-  for (const k of ['neto', 'iva', 'total', 'familia', 'fechaCaja', 'rubro', 'obra', 'fechaFactura']) {
+  for (const k of ['neto', 'iva', 'total', 'familia', 'fechaCaja', 'rubro', 'obra']) {
     // Un rango `undefined` produce `$undefined$4:$undefined`, que PARSEA distinto y Sheets lo rechaza
     // al EVALUAR: cuarenta celdas con #ERROR! en la cara del dueño ya se publicaron así una vez.
     if (typeof rangos?.[k] !== 'string' || !rangos[k]) {
@@ -117,11 +118,23 @@ export function grilla({ obras = [], rangos }) {
 
   // ── 1. EL ENCABEZADO DE TRES FILAS (contrato, regla 1) ──────────────────────────────────────────
   const t = vacia(); t[0] = PESTAÑA; push(t)
-  // LA FECHA DE CORTE ES UNA FÓRMULA, no un literal: escrita a mano envejece igual que un importe
-  // pegado, y una procedencia que miente sobre su corte es peor que no tenerla. El auditor mide el
-  // literal visible (`textoVisible`), que son 56 caracteres contra un tope de 120.
+  // ═══ LA FECHA DE CORTE ES LA DEL DATO, Y NUNCA UNA FECHA FUTURA (09/09/2026) ═══
+  //
+  // Decía «al 30/12/2026» sobre un archivo mirado el 09/09: era un `MAX` crudo sobre «Fecha factura»,
+  // y ese MAX se lleva la fecha MÁS GRANDE de la columna — una compra fechada adelante (o un tipeo)
+  // publica un corte que todavía no ocurrió. Una procedencia que declara un corte futuro es peor que
+  // no tenerla: afirma que la pestaña cubre meses que no tiene cargados.
+  //
+  // El corte lo declara `rotuloPorFuente` igual que en «Estructura»: `formulaUltimaFecha` filtra
+  // `<=TODAY()`, así que es la última compra YA OCURRIDA, y si la fuente se congela el propio rótulo
+  // avisa «⚠ hace N días» sin que nadie lo mire. Es «Fecha de caja» —no «Fecha factura»— porque es la
+  // columna con la que el cuadro reparte los doce meses: el corte tiene que ser el de la dimensión
+  // que se muestra. `mixto`: esa columna convive como serial y como texto tipeado, y un MAX crudo
+  // pierde las tipeadas EN SILENCIO.
   const s = vacia()
-  s[0] = `="En qué se va la plata de materiales · Compras, en neto · al "&TEXT(MAX(${rangos.fechaFactura});"dd/mm/yyyy")`
+  s[0] = rotuloPorFuente('En qué se va la plata de materiales', [
+    { nombre: 'Compras', expr: formulaUltimaFecha(rangos.fechaCaja, { mixto: true }) },
+  ], { cola: 'en neto' })
   push(s)
   push(vacia())
 
@@ -258,12 +271,21 @@ export function formatosPropios(sheetId, g) {
       { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })
   }
 
-  // BLOQUE 1: el residuo es un control (rojo apenas deja de dar cero), el % un porcentaje y la fila
-  // del total la única del cuadro con «$».
-  num({ ...r(g.f0 - 1, g.fTot), startColumnIndex: 13, endColumnIndex: 14 }, MONEDA_CONTROL)
+  // BLOQUE 1: el % es un porcentaje y la fila del total la única del cuadro con «$».
+  //
+  // ═══ «FUERA DE LOS 12 MESES» ES UNA COLUMNA MÁS, NO UN CONTROL (09/09/2026) ═══
+  //
+  // Se dibujaba en MONEDA_CONTROL: rojo y con «$» en TODO el cuerpo. Pero no es un control — es el
+  // residuo que hace cerrar la fila, o sea plata comprada de verdad, exactamente igual que los doce
+  // meses de al lado; y en un cuadro donde ninguna otra columna del cuerpo lleva «$», la que lo lleva
+  // se lee como un error aunque el dato esté perfecto. Un rojo que está prendido con los datos bien
+  // deja de mirarse, y cuando algo se rompa de verdad nadie lo va a ver.
+  //
+  // Si el residuo tiene que gritar, el lugar es un control «⇒ … | número» del bloque 3, que es donde
+  // el contrato pone lo que hay que ir a arreglar. En el cuerpo va como el resto: MONEDA_CUERPO
+  // (heredado de la pasada de arriba) y «$» sólo en la fila TOTAL.
   num({ ...r(g.f0 - 1, g.fTot), startColumnIndex: 17, endColumnIndex: 18 }, PORCENTAJE)
   num(r(g.fTot - 1, g.fTot, 1, 18), MONEDA_TOTAL)
-  num({ ...r(g.fTot - 1, g.fTot), startColumnIndex: 13, endColumnIndex: 14 }, MONEDA_CONTROL)
 
   // BLOQUE 2: la última columna es «Sin obra» — el mismo control, y su ancho depende de cuántas obras
   // haya, así que se calcula y no se tipea.
@@ -307,7 +329,10 @@ export function formatosPropios(sheetId, g) {
 /** Los rangos abiertos de Compras que esta pestaña cita, resueltos por RÓTULO contra el encabezado real. */
 export const ROTULOS_COMPRAS = Object.freeze({
   neto: 'Importe', iva: 'IVA', total: 'Total', familia: 'Familia de material',
-  fechaCaja: 'Fecha de caja', fechaFactura: 'Fecha factura', obra: 'Cliente / Asignación',
+  // «Fecha factura» ya no se cita: el corte de la fila 2 se mide sobre la MISMA columna con la que
+  // el cuadro reparte los meses. Un rótulo exigido y no usado aborta la corrida por una columna que
+  // a esta pestaña no le hace falta.
+  fechaCaja: 'Fecha de caja', obra: 'Cliente / Asignación',
   // ⚠ COMPRAS TIENE DOS COLUMNAS ROTULADAS «Rubro de caja» (AB y AC, con fórmulas que ya divergieron:
   // AC conoce «mass consultora» y AB no). `resolverColumnas` se queda con la PRIMERA, o sea AB — que
   // es de la que cuelga la propia columna «Familia de material», así que el cuerpo de esta pestaña
