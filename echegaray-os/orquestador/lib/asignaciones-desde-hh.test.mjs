@@ -220,3 +220,44 @@ test('conjunto: dos filas de JORNALES iguales (duplicado histórico) dejan una y
   const r = planDeConjunto(t, previas, { hoy: HOY })
   assert.deepEqual([r.insertar.length, r.borrar.map((x) => x.id), r.conservar.map((x) => x.id)], [0, ['a2'], ['a1']])
 })
+
+
+// ═══ OBRA CERRADA: NI SE RECONSTRUYE NI SE REABRE (decisión del dueño 09/09/2026) ═══════════════
+// El defecto que atrapan: el 08/09 GONZALEZ TOBARES JUAN GUILLERMO quedó VIGENTE en `la-estrella`
+// —un cliente sin obra activa— porque su fila de JORNALES de ese día está rotulada así. Si se
+// revierte la guarda de `armarTramos`, el primero de estos tests vuelve a ver el tramo abierto.
+
+const CERRADAS = new Set(['la-estrella'])
+
+test('obra cerrada: sus días no arman tramo y salen listados para decidir', () => {
+  const filas = [...habiles('2026-09-01', 5, 'la-estrella')]
+  const { tramos, cerradas } = armarTramos(filas, { hoy: HOY, activos, obrasCerradas: CERRADAS })
+  assert.deepEqual(tramos, [])
+  assert.equal(cerradas.length, 5)
+  assert.deepEqual(cerradas[0], { persona_id: P, fecha: '2026-09-01', obra_id: 'la-estrella', horas: 8, tipo_hora: 'normal' })
+})
+
+test('obra cerrada: el día descartado NO estira el tramo de la obra de al lado', () => {
+  // Sin la guarda, el día de la-estrella entraba como día sin obra («ausencia») y heredaba obra-a,
+  // corriendo su `hasta` al 08/09 y dejándolo abierto. La obra de ayer no se hereda de una cerrada.
+  const filas = [...habiles('2026-08-31', 4, 'obra-a'), fila('2026-09-08', 'la-estrella', 9)]
+  const { tramos } = armarTramos(filas, { hoy: HOY, activos, obrasCerradas: CERRADAS })
+  assert.equal(tramos.length, 1)
+  assert.equal(tramos[0].obra_id, 'obra-a')
+  assert.equal(tramos[0].hasta, '2026-09-03')
+})
+
+test('obra cerrada: aunque llegue un tramo armado por otro, conciliar no lo inserta', () => {
+  const t = [tramo({ obra_id: 'la-estrella', desde: '2026-09-08', hasta: '2026-09-08', abierto: true })]
+  const r = conciliar(t, [], { obrasCerradas: CERRADAS })
+  assert.deepEqual(r.insertar, [])
+  assert.deepEqual(r.omitidos.map((o) => o.motivo), ['obra_cerrada'])
+})
+
+test('obra cerrada: la asignación vieja es historia — no se borra ni se vuelve a insertar', () => {
+  const previas = [asig({ id: 'v1', obra_id: 'la-estrella', desde: '2025-03-01', hasta: '2025-06-30' })]
+  const r = planDeConjunto([], previas, { hoy: HOY, obrasCerradas: CERRADAS })
+  assert.deepEqual(r.borrar, [])
+  assert.deepEqual(r.protegidas.map((x) => x.id), ['v1'])
+  assert.deepEqual(r.insertar, [])
+})

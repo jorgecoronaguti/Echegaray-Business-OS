@@ -8,6 +8,12 @@
 // no eligen obra: heredan la del tramo en curso y lo mantienen vivo (quien está de licencia sigue
 // siendo de su obra). Un día con dos obras va al tramo de la obra con más horas y se reporta.
 //
+// UNA OBRA CERRADA NO RECIBE HISTORIAL (decisión del dueño 09/09/2026: «no está bien que a nadie
+// le salga La Estrella al marcar»). Los días de horas imputados a una obra con `estado = 'cerrada'`
+// NO arman ni extienden ningún tramo: salen en `cerradas` para que alguien decida qué eran. Y las
+// asignaciones que ya existen sobre una obra cerrada NO se borran ni se reabren — son historia, y
+// el conjunto las protege igual que a lo que empieza mañana.
+//
 // EL ÚLTIMO TRAMO QUEDA ABIERTO sólo si la persona está en la empresa y su último día cae en la
 // quincena en curso o en la anterior. Si no, se cierra en su último día. Y NUNCA compite con lo
 // que la web ya dice: `conciliar` recorta o cierra el tramo frente a una asignación vigente creada
@@ -47,15 +53,23 @@ const esTrabajada = (tipo) => TIPOS_TRABAJADOS.test(String(tipo ?? ''))
 /**
  * Arma los tramos por persona.
  * @param filas  [{ persona_id, fecha, obra_id, horas, tipo_hora }] — cualquier orden.
- * @param opts   { hoy: 'YYYY-MM-DD', activos: Set<persona_id>, maxHueco?: number }
- * @returns { tramos: [{ persona_id, obra_id, desde, hasta, dias, horas, abierto }], dobles: [...] }
+ * @param opts   { hoy: 'YYYY-MM-DD', activos: Set<persona_id>, maxHueco?: number,
+ *                 obrasCerradas?: Set<obra_id> }
+ * @returns { tramos: [{ persona_id, obra_id, desde, hasta, dias, horas, abierto }], dobles, cerradas }
  */
-export function armarTramos(filas, { hoy, activos, maxHueco = MAX_HUECO_HABIL }) {
+export function armarTramos(filas, { hoy, activos, maxHueco = MAX_HUECO_HABIL, obrasCerradas = new Set() }) {
   const umbral = umbralQuincena(hoy)
   const porPersonaDia = new Map()
+  const cerradas = []
   for (const f of filas) {
     if (!f.persona_id || !f.fecha) continue
     const fecha = fechaIso(f.fecha)
+    // OBRA CERRADA: el día no arma tramo NI cuenta como ausencia que hereda la obra anterior. Se
+    // descarta antes de existir como día, porque «heredar» habría estirado el tramo de al lado.
+    if (esTrabajada(f.tipo_hora) && f.obra_id && obrasCerradas.has(f.obra_id)) {
+      cerradas.push({ persona_id: f.persona_id, fecha, obra_id: f.obra_id, horas: Number(f.horas ?? 0), tipo_hora: f.tipo_hora })
+      continue
+    }
     const clave = `${f.persona_id}|${fecha}`
     let dia = porPersonaDia.get(clave)
     if (!dia) { dia = { persona_id: f.persona_id, fecha, obras: new Map(), ausencia: false }; porPersonaDia.set(clave, dia) }
@@ -114,7 +128,8 @@ export function armarTramos(filas, { hoy, activos, maxHueco = MAX_HUECO_HABIL })
   }
   for (const t of tramos) t.horas = Math.round(t.horas * 100) / 100
   tramos.sort((a, b) => a.persona_id.localeCompare(b.persona_id) || a.desde.localeCompare(b.desde))
-  return { tramos, dobles, umbral }
+  cerradas.sort((a, b) => a.persona_id.localeCompare(b.persona_id) || a.fecha.localeCompare(b.fecha))
+  return { tramos, dobles, umbral, cerradas }
 }
 
 const esDePrueba = (a) => /PRUEBA|ZZ-E2E/i.test(a.notas ?? '') || /^ZZ/i.test(a.obra_id ?? '')
@@ -133,7 +148,7 @@ const seSolapan = (a, b) =>
  *   - la persona tiene una asignación WEB vigente (hasta null) en OTRA obra → el tramo abierto se
  *     cierra en su último día (`cerrados`). La obra de hoy la dice la web, no el histórico.
  */
-export function conciliar(tramos, existentes, { conjunto = false } = {}) {
+export function conciliar(tramos, existentes, { conjunto = false, obrasCerradas = new Set() } = {}) {
   const previas = existentes.filter((a) => !esDePrueba(a)).map((a) => ({
     ...a, desde: a.desde ? fechaIso(a.desde) : null, hasta: a.hasta ? fechaIso(a.hasta) : null,
   }))
@@ -144,6 +159,10 @@ export function conciliar(tramos, existentes, { conjunto = false } = {}) {
   for (const t0 of tramos) {
     const t = { ...t0, hasta_original: t0.hasta }
     const rango = { desde: t.desde, hasta: t.abierto ? null : t.hasta }
+
+    // SEGUNDO CINTURÓN. `armarTramos` ya no produce tramos de obras cerradas; esta guarda existe
+    // porque `conciliar` también se llama con tramos armados por otro (asignaciones-desde-jornales).
+    if (obrasCerradas.has(t.obra_id)) { omitidos.push({ tramo: t, motivo: 'obra_cerrada' }); continue }
 
     if (!conjunto && jornales.some((a) => a.persona_id === t.persona_id && a.obra_id === t.obra_id && a.desde === t.desde)) {
       omitidos.push({ tramo: t, motivo: 'ya_importado' })
@@ -199,11 +218,11 @@ const claveTramo = (a) => `${a.persona_id}|${a.obra_id}|${a.desde}|${a.hasta ?? 
 /**
  * @param tramos      salida de `armarTramos`
  * @param existentes  TODAS las filas de `obra_asignacion` tal como están en la base
- * @param opts        { hoy: 'YYYY-MM-DD' } — nada con `desde >= hoy` se borra ni se duplica
- * @returns { insertar, borrar, conservar, protegidas, omitidos, recortados, cerrados }
+ * @param opts        { hoy: 'YYYY-MM-DD', obrasCerradas?: Set<obra_id> } — nada con `desde >= hoy`
+ *                    ni nada sobre una obra cerrada se borra, se duplica ni se reabre
  */
-export function planDeConjunto(tramos, existentes, { hoy }) {
-  const { insertar: deseadas, omitidos, recortados, cerrados } = conciliar(tramos, existentes, { conjunto: true })
+export function planDeConjunto(tramos, existentes, { hoy, obrasCerradas = new Set() }) {
+  const { insertar: deseadas, omitidos, recortados, cerrados } = conciliar(tramos, existentes, { conjunto: true, obrasCerradas })
   const previas = existentes
     .filter((a) => !esDePrueba(a) && esDeJornales(a))
     .map((a) => ({ ...a, desde: a.desde ? fechaIso(a.desde) : null, hasta: a.hasta ? fechaIso(a.hasta) : null }))
@@ -211,7 +230,9 @@ export function planDeConjunto(tramos, existentes, { hoy }) {
   const vivas = new Set(); const borrar = []; const conservar = []; const protegidas = []
   for (const a of previas) {
     const k = claveTramo(a)
-    if (a.desde && hoy && a.desde >= hoy) { protegidas.push(a); vivas.add(k); continue }
+    // Una asignación vieja a una obra cerrada es HISTORIA: el conjunto ya no la produce (los días
+    // salen en `cerradas`), y borrarla sería reescribir el pasado por un cambio de estado de obra.
+    if ((a.desde && hoy && a.desde >= hoy) || obrasCerradas.has(a.obra_id)) { protegidas.push(a); vivas.add(k); continue }
     if (quiere.has(k) && !vivas.has(k)) { vivas.add(k); conservar.push(a) } else borrar.push(a)
   }
   const insertar = deseadas.filter((d) => !vivas.has(claveTramo(d)))

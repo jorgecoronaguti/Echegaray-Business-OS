@@ -98,6 +98,23 @@ function imprimirPlan(plan, sinHh) {
   for (const s of sinHh.slice(0, DETALLE ? 500 : 20)) console.log(`    ${s.fecha} ${String(s.persona).padEnd(30)} ${s.obras.join(', ')}`)
 }
 
+/** Horas imputadas a una obra CERRADA: no arman historial (decisión del dueño 09/09/2026) y nadie
+ *  las adivina por él. Se agrupan por persona y obra para que la decisión sea una por caso. */
+function imprimirObrasCerradas(cerradas = [], personas = []) {
+  const nombre = new Map(personas.map((p) => [p.id, p.nombre_completo]))
+  const grupos = new Map()
+  for (const c of cerradas) {
+    const k = `${c.persona_id}|${c.obra_id}`
+    if (!grupos.has(k)) grupos.set(k, { persona: nombre.get(c.persona_id) ?? c.persona_id, obra: c.obra_id, dias: [], horas: 0 })
+    const g = grupos.get(k); g.dias.push(c.fecha); g.horas += c.horas
+  }
+  const orden = [...grupos.values()].sort((a, b) => b.dias.at(-1).localeCompare(a.dias.at(-1)))
+  console.log(`\n  PARA EL DUEÑO · horas sobre OBRA CERRADA: no arman asignación · ${cerradas.length} filas en ${orden.length} casos`)
+  for (const g of orden.slice(0, DETALLE ? 500 : 20)) {
+    console.log(`    obra cerrada: decidir · ${String(g.obra).padEnd(24)} ${String(g.persona).padEnd(34)} ${g.dias.length} días ${g.dias[0]}..${g.dias.at(-1)} · ${g.horas} h`)
+  }
+}
+
 async function corregirHh(corregir) {
   return withTx(async (tx) => {
     let n = 0
@@ -107,15 +124,15 @@ async function corregirHh(corregir) {
 }
 
 /** El historial de JORNALES se recalcula ENTERO y se aplica como diferencia (ver `planDeConjunto`). */
-async function planAsignaciones(personas) {
+async function planAsignaciones(personas, obrasCerradas) {
   const [hh, asig] = await Promise.all([
     query(`select persona_id, to_char(fecha, 'YYYY-MM-DD') fecha, obra_canonica_id as obra_id, horas, tipo_hora
              from public.registros_hh where fuente_legacy = $1 and persona_id is not null`, [FUENTE_JORNALES]),
     query('select id, persona_id, obra_id, desde, hasta, notas from public.obra_asignacion'),
   ])
   const activos = new Set(personas.filter((p) => p.en_la_empresa && !p.fecha_egreso).map((p) => p.id))
-  const { tramos } = armarTramos(hh.rows, { hoy: HOY, activos })
-  return { ...planDeConjunto(tramos, asig.rows, { hoy: HOY }), tramos }
+  const { tramos, cerradas } = armarTramos(hh.rows, { hoy: HOY, activos, obrasCerradas })
+  return { ...planDeConjunto(tramos, asig.rows, { hoy: HOY, obrasCerradas }), tramos, cerradas }
 }
 
 async function aplicarAsignaciones({ insertar, borrar }) {
@@ -146,7 +163,9 @@ async function main() {
   const plan = planDeCorreccion({ dias, hh })
   imprimirPlan(plan, planillaSinHh({ dias, hh }))
 
-  const antesAsig = await planAsignaciones(cat.personas)
+  const obrasCerradas = new Set(cat.obras.filter((o) => o.estado === 'cerrada').map((o) => o.id))
+  const antesAsig = await planAsignaciones(cat.personas, obrasCerradas)
+  imprimirObrasCerradas(antesAsig.cerradas, cat.personas)
   console.log(`\nASIGNACIONES (historial JORNALES recalculado como conjunto): tramos ${antesAsig.tramos.length} · a insertar ${antesAsig.insertar.length} · a borrar ${antesAsig.borrar.length} · sin cambio ${antesAsig.conservar.length} · protegidas (desde >= ${HOY}) ${antesAsig.protegidas.length}`)
 
   if (!APLICAR) {
@@ -166,10 +185,10 @@ async function main() {
   if (plan2.corregir.length) process.exitCode = 1
 
   if (!SIN_ASIGNACIONES) {
-    const p = await planAsignaciones(cat.personas)
+    const p = await planAsignaciones(cat.personas, obrasCerradas)
     const res = await aplicarAsignaciones(p)
     console.log(`obra_asignacion: ${res.borradas} borradas · ${res.insertadas} insertadas (sólo filas marcadas «${MARCA_JORNALES}»)`)
-    const p2 = await planAsignaciones(cat.personas)
+    const p2 = await planAsignaciones(cat.personas, obrasCerradas)
     console.log(`  releído: quedan ${p2.insertar.length} por insertar y ${p2.borrar.length} por borrar (tienen que ser 0)`)
     if (p2.insertar.length || p2.borrar.length) process.exitCode = 1
   }

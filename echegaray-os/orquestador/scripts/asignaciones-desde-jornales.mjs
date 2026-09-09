@@ -55,11 +55,15 @@ async function main() {
   const activos = new Set(personas.filter((p) => p.en_la_empresa && !p.fecha_egreso).map((p) => p.id))
   const obraNombre = new Map(obras.map((o) => [o.id, `${o.nombre} (${o.estado})`]))
 
-  const { tramos, dobles, umbral } = armarTramos(hh, { hoy: HOY, activos })
-  const r = conciliar(tramos, asig)
+  // Una obra cerrada no recibe historial nuevo (decisión del dueño 09/09/2026): sus días de horas
+  // salen aparte, en «HORAS SOBRE OBRA CERRADA», y no arman tramo.
+  const obrasCerradas = new Set(obras.filter((o) => o.estado === 'cerrada').map((o) => o.id))
+  const { tramos, dobles, umbral, cerradas } = armarTramos(hh, { hoy: HOY, activos, obrasCerradas })
+  const r = conciliar(tramos, asig, { obrasCerradas })
 
   console.log(`HOY ${HOY} · umbral de tramo abierto ${umbral} · filas HH ${hh.length} · personas ${new Set(hh.map((x) => x.persona_id)).size} (activas ${[...new Set(hh.map((x) => x.persona_id))].filter((p) => activos.has(p)).length})`)
   console.log(`tramos ${tramos.length} · abiertos ${tramos.filter((t) => t.abierto).length} · días con doble obra ${dobles.length}`)
+  console.log(`horas sobre obra cerrada (no arman tramo, «obra cerrada: decidir»): ${cerradas.length} filas`)
   console.log(`\n== TRAMOS POR PERSONA`)
   let ultima = null
   for (const t of tramos) {
