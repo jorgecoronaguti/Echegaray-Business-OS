@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 12:50 (hora local −03) · main `bf84380e` = origin = producción · Vercel al día_
+_actualizado: 2026-09-09 13:35 (hora local −03) · main `d391f2ad` = origin = producción · Vercel al día_
 
 ## 1. OBJETIVO GENERAL
 
@@ -83,14 +83,19 @@ queda en Jornales · Cargas percibido).
 
 ## 6. PENDIENTES REALES
 
-**P0 — Sheet**
-- **Cargas Sociales final + Impuestos** aplicadas 12:43 (`29c6baf3`): Cargas 61 filas × 15, 4 bloques, cero prosa,
-  A2 = `F931 al 31/08 · Compras al 08/09`; Impuestos perdió el bloque «Planes de pago F931» (duplicaba Cargas) y su
-  bloque 5 «Deuda financiera» lee `CARGAS_MES_PLANES` / `CARGAS_MES_PLANES_SIN_PAGAR`. Pipeline relanzado 12:45:
-  **verificar la línea «Deuda previsional» del Cash Flow = 11.547.069 / 4.989.751** (el agente no la midió en vivo) y
-  las otras 11. Impuestos conserva prosa en su bloque 6 «Supuestos y huecos» (▲…): fuera del pedido, pendiente.
+**P0 — Sheet (todo aplicado el 09/09; verificar el pipeline siguiente)**
+- **Cargas final** (`5e8663d5`, 59 filas): sin filas duplicadas de cuotas (sólo bloque 4), titular «Próximo vencimiento»
+  = primer período con fecha ≥ hoy y SIN pago en bloque 2 → $6.959.556 · 10/10 (antes anunciaba el F931 de agosto ya
+  pagado). **Impuestos rediseñada** (`98787125`, 43 filas, 5 bloques, hero de 3 filas, cero prosa, sin bloque «Supuestos
+  y huecos», sin fila mensual de planes F931; `ALICUOTA_IVA` vive ahora en `Parámetros!B111`).
+- Pipeline 13:08 con las cuatro nuevas: 6 líneas reales de nómina idénticas; «Deuda previsional» 11.547.069 / 4.989.751
+  (sin doble conteo); pipeline 13:29 relanzado tras Impuestos: **releer «Impuestos» 1.023.684 / 11.800.936 y
+  «Financiero» 15.781.442 / 3.848.432** (contrato en `impuestos-contrato-cashflow.test.mjs`).
 - Cambio semántico a firmar: la deuda pendiente en planes del hero de Impuestos pasó de «fecha prevista > hoy» a
-  «no marcado Pagado» (hoy las dos dan $4.989.751).
+  «no marcado Pagado» (hoy las dos dan $4.989.751). Se perdió de la pantalla «El IVA empieza a salir de la caja en»
+  (derivable del bloque 1) y la trazabilidad de DDJJ (fecha + N°) sólo queda en el log.
+- Aviso del generador de Cargas: «la DDJJ de 2026-08 declara 25 y la planilla tiene 15 — 40 % de brecha» (dato del
+  negocio, no del código).
 - Decisiones del dueño sobre Nómina: los 4 importes de EFECTIVO redondeado sin persona (¿a quién van?) y Sosa (literales
   pegados vs fórmula «MITAD BLANCA» $330.431: confirmar con el recibo). Censo marca los 15 del dueño como «pegados»:
   declarar la columna I como entrada del dueño en `censo-numeros-pegados`.
@@ -115,14 +120,13 @@ queda en Jornales · Cargas percibido).
 ## 7. ESTADO GIT
 
 - `main` `7455e941` = origin = producción. Árbol limpio. Respaldos JSON/PDF en `~/echegaray-os/respaldos/`.
-- Sin ramas pendientes. Worktrees de hoy «locked» (a704c…, a5b1a…, a946a…, aaa43…, a1df7…): `git worktree remove -f -f`.
+- Sin ramas pendientes; worktrees de hoy retirados.
 
 ## 8. PRÓXIMO PASO
 
-Releer las 12 líneas «Nómina · …» del Cash Flow Mensual tras el pipeline (esperadas: reales idénticas; proyección
-jornales 57.362.961 · cargas 23.264.450 · gremiales 7.008.105 · deuda previsional 4.989.751) y llevarle al dueño las
+Releer «Impuestos» y «Financiero» del Cash Flow Mensual tras el pipeline de las 13:29 y llevarle al dueño las
 decisiones abiertas (4 importes de EFECTIVO redondeado sin persona, Sosa, «sábado supuesto», adelanto en efectivo y
-horas proyectadas del módulo Liquidación).
+horas proyectadas del módulo Liquidación, brecha 25 vs 15 en la DDJJ de agosto).
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
