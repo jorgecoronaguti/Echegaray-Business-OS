@@ -139,6 +139,11 @@ export const PASOS = [
   // hacia abajo la cuenta corriente — que se reancla por su título en la corrida siguiente.
   ['proveedores-que-sale-cada-dia.mjs', 'Proveedores · sección 2 — qué sale cada día: a quiénes y por qué medio', [], ['--aplicar']],
   ['proveedores-seccion2-pivot.mjs', 'Proveedores · sección 3 — la dinámica de concentración con su resto y su total', [], ['--aplicar']],
+  // DESPUÉS de la dinámica de concentración y ANTES de las notas del dueño. El bloque se ancla al
+  // rótulo con el que cierra esa dinámica —«TOTAL COMPRADO A PROVEEDORES COMERCIALES»—, que la
+  // dinámica recoloca en cada corrida según cuántos proveedores emita: corrido antes, escribiría
+  // sobre el cuadro. Declara `[]` como pestaña porque es dueño de un BLOQUE, no de «Proveedores».
+  ['proveedores-respaldo-fiscal.mjs', 'Proveedores · sección 4 — el respaldo fiscal contra el libro de IVA de ARCA', [], ['--aplicar']],
   ['proveedores-notas-visibles.mjs', 'Proveedores · la columna "Qué hacer" del dueño, anclada a su proveedor', [], ['--aplicar']],
   ['proveedores-encabezado-aplicar.mjs', 'Proveedores · el encabezado (la posición) y LOS ANCHOS de toda la pestaña', [], ['--aplicar']],
   // ═══ OBRAS ENTRA AL PIPELINE (13/08) ═══
@@ -612,6 +617,21 @@ export const PASOS_RETIRADOS = Object.freeze([
     // «Materiales» SALIÓ DE ACÁ EL 09/09/2026: la pestaña tiene dueño nuevo —`materiales-pestana.mjs`,
     // en PASOS— así que este freno ya no le cuesta nada. Lo que sigue costando es la mitad de abajo de
     // «Proveedores», que este script todavía es el único que sabe escribir.
+    // ═══ SU TEST SE BORRÓ CON LA CAPA FÓSIL QUE PROBABA (09/09/2026) ═══
+    //
+    // `scripts/proveedores-materiales-pestana.test.mjs` —1.132 líneas, 59 tests— verificaba la grilla
+    // de las secciones 4, 5 y 6 de «Proveedores»: NOTAS DE CRÉDITO, LO QUE ARCA FACTURÓ Y COMPRAS NO
+    // TIENE, LO QUE HAY QUE CORREGIR EN COMPRAS. Hoy el dueño firmó el borrado de esas filas del
+    // archivo y `SECCIONES_PROVEEDORES` dejó de declararlas, así que `nSeccion('faltanEnCompras')`
+    // tira «sección desconocida» y el test se pone rojo en tres casos.
+    //
+    // NO SE MANTIENE VIVO. Un test que sigue afirmando la forma de tres secciones que no existen ni
+    // en el archivo ni en la lista de secciones no protege nada: obliga a mantener la lista vieja
+    // para que él pase, que es la cola moviendo al perro. El script sigue en el árbol —un retiro no
+    // es un borrado— y el día que vuelva, vuelve declarando SUS secciones y con las pruebas que esa
+    // forma nueva necesite. Lo que ese archivo probaba de las libs compartidas (`aAnchoCompleto`,
+    // `anchoALimpiar`, `partir`, `destinosDeArca`, `aplicarHuella`, `encabezadoRoto`) tiene test
+    // propio en cada una de ellas.
     cuesta: ['Proveedores · de la frontera para abajo (notas de crédito, ARCA y control)'],
   }),
   Object.freeze({

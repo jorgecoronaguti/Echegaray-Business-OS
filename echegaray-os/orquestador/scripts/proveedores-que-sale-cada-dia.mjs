@@ -22,14 +22,14 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { COLCHON_FINAL, filasNoVacias } from '../lib/proveedores-colchon.mjs'
+import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon } from '../lib/proveedores-colchon.mjs'
 import { ANCHOS_PROVEEDORES, nSeccion } from '../lib/proveedores-frontera.mjs'
 import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 import { tituloDeSeccion } from '../lib/proveedores-titulos.mjs'
 import {
   bloqueQueSaleCadaDia, COL_QUIENES, COL_TOTAL_DIA, diasSinNombre, filasQueNecesita,
-  formatosDelBloque, MEDIOS_DEL_DIA, mediosSinColumna, ROTULOS_POR_DIA, TITULO_POR_DIA,
-  tramosQueNoEntran, ubicarBloque,
+  formatosDelBloque, MEDIOS_DEL_DIA, mediosSinColumna, residuoDelBloque, ROTULOS_POR_DIA,
+  TITULO_POR_DIA, tramosQueNoEntran, ubicarBloque,
 } from '../lib/proveedores-por-dia.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 
@@ -68,7 +68,7 @@ async function main() {
 
   const delta = necesita - sitio.disponibles
   if (delta > 0) console.log(`⚠ se insertan ${delta} fila(s) antes de la fila ${sitio.siguiente}`)
-  if (delta < 0) console.log(`⚠ se devuelven ${-delta} fila(s) de aire (sólo si están vacías al releer)`)
+  if (delta < 0) console.log(`⚠ sobran ${-delta} fila(s): se limpia el residuo propio y se devuelve el aire vacío`)
   if (!APLICAR) {
     console.log('\nEL CUADRO QUE SE ESCRIBIRÍA:')
     for (const d of dias) {
@@ -112,12 +112,13 @@ async function escribir({ google, bloque, sitio, delta }) {
   const sheetId = meta.find((s) => s.title === PESTAÑA)?.sheetId
   if (!Number.isInteger(sheetId)) throw new Error('no pude resolver la pestaña Proveedores: no escribo a ciegas')
 
+  // SÓLO SE INSERTA ANTES DE ESCRIBIR. Lo que sobra NO se toca acá: primero se escribe el bloque,
+  // después el bloque limpia lo suyo y recién entonces se devuelve el aire que quedó en blanco. Ese
+  // orden es el arreglo — ver `residuoDelBloque` y `limpiarResiduo`.
   if (delta > 0) {
     await google.spreadsheetBatchUpdate(ID, [{ insertDimension: {
       range: { sheetId, dimension: 'ROWS', startIndex: sitio.siguiente - 1, endIndex: sitio.siguiente - 1 + delta },
       inheritFromBefore: true } }], { espejo: true })
-  } else if (delta < 0) {
-    await devolverElAire({ google, sheetId, sitio, sobran: -delta })
   }
 
   // El bloque se recoloca sobre su fila real: `bloqueQueSaleCadaDia` calcula sus fórmulas con las
@@ -153,24 +154,59 @@ async function escribir({ google, bloque, sitio, delta }) {
     properties: { hiddenByUser: false }, fields: 'hiddenByUser' } },
   ], { espejo: true })
 
+  await limpiarResiduo({ google, sheetId, puesto, siguiente: sitio.siguiente + Math.max(delta, 0) })
+  await recortarElAire({ google, sheetId, puesto })
   await verificar({ google, puesto })
+}
+
+/**
+ * LO QUE EL BLOQUE ESCRIBIÓ ANTES Y HOY LE SOBRA, BORRADO POR ÉL Y SÓLO EN SU ANCHO.
+ *
+ * No borra filas: vacía las celdas A..G desde el final del bloque hasta el título de abajo. Borrar
+ * una fila se lleva puesta la columna H, que es del dueño; vaciar el propio rectángulo no. Las filas
+ * quedan en blanco y `recortarElAire` las devuelve después, ya con la comprobación de siempre.
+ *
+ * Es el arreglo del defecto de la fila 88 — el pie de un cuadro de seis días sobreviviendo a un
+ * cuadro de tres. El porqué completo está en `residuoDelBloque`.
+ */
+async function limpiarResiduo({ google, sheetId, puesto, siguiente }) {
+  const r = residuoDelBloque({ filaTitulo: puesto.filaTitulo, alto: puesto.alto, siguiente })
+  if (r.desde >= r.hasta) return
+  const filas = Array.from({ length: r.hasta - r.desde }, () => ({
+    values: Array.from({ length: ANCHO }, () => ({ userEnteredValue: null })),
+  }))
+  await google.spreadsheetBatchUpdate(ID, [{ updateCells: {
+    range: { sheetId, startRowIndex: r.desde - 1, endRowIndex: r.hasta - 1, startColumnIndex: 0, endColumnIndex: ANCHO },
+    rows: filas, fields: 'userEnteredValue' } }], { espejo: true })
+  console.log(`limpiadas las filas ${r.desde}..${r.hasta - 1} en A:${String.fromCharCode(64 + ANCHO)} — residuo del bloque anterior`)
 }
 
 /**
  * DEVOLVER EL AIRE QUE SOBRA. Se borra sólo lo que se releyó VACÍO EN TODO EL ANCHO —no hasta la G—:
  * un generador que se cree dueño hasta su última columna ya le borró al dueño catorce fechas que
  * vivían más a la derecha. Borrar no tiene vuelta.
+ *
+ * Se decide RELEYENDO, y con el mismo `sobranteDeColchon` que usan la sección 1 y la 3: antes se
+ * calculaba de la lectura previa a escribir, que es la lectura en la que el residuo propio todavía
+ * ocupaba lugar.
  */
-async function devolverElAire({ google, sheetId, sitio, sobran }) {
-  const ancho = await google.readSheetValues(ID, `${PESTAÑA}!A1:${ANCHO_LECTURA}${sitio.siguiente}`, { render: 'FORMULA' })
-  const rango = { desdeBorrar: sitio.siguiente - sobran, hastaBorrar: sitio.siguiente }
-  const sucias = filasNoVacias(ancho ?? [], rango)
+async function recortarElAire({ google, sheetId, puesto }) {
+  const ancho = await google.readSheetValues(ID, `${PESTAÑA}!A1:${ANCHO_LECTURA}400`, { render: 'FORMULA' })
+  const siguiente = filaDelSiguienteTitulo(ancho ?? [], puesto.filaTitulo)
+  if (!siguiente) { console.log('no hay sección debajo: no se devuelve aire'); return }
+  const s = sobranteDeColchon({ filas: ancho ?? [], desde: puesto.filaTitulo, hasta: siguiente })
+  if (!s.sobrante) {
+    console.log(`${s.blancas} fila(s) de aire antes de la sección siguiente: no sobra nada (colchón ${COLCHON_FINAL})`)
+    return
+  }
+  const sucias = filasNoVacias(ancho ?? [], s)
   if (sucias.length) {
     console.error(`✗ NO borro: las filas ${sucias.join(', ')} tienen datos — el bloque queda con más aire del previsto`)
     return
   }
   await google.spreadsheetBatchUpdate(ID, [{ deleteDimension: { range: {
-    sheetId, dimension: 'ROWS', startIndex: rango.desdeBorrar - 1, endIndex: rango.hastaBorrar - 1 } } }], { espejo: true })
+    sheetId, dimension: 'ROWS', startIndex: s.desdeBorrar - 1, endIndex: s.hastaBorrar - 1 } } }], { espejo: true })
+  console.log(`${s.blancas} fila(s) de aire → se devuelven ${s.sobrante}, quedan ${COLCHON_FINAL}`)
 }
 
 /**

@@ -72,6 +72,14 @@ export function referencias(idx, primeraFila = 4) {
 }
 
 /**
+ * EL RÓTULO CON EL QUE CIERRA LA SECCIÓN. Se exporta porque dejó de ser sólo texto de esta pestaña:
+ * `proveedores-respaldo-fiscal.mjs` se ANCLA a él para saber dónde termina la sección 3 y dónde
+ * empieza la suya, y `proveedores-fosil-frontera.mjs` lo usa para saber hasta dónde llega lo vivo.
+ * Tipeado en tres lados, el día que cambie el texto los otros dos se enganchan en cualquier lado.
+ */
+export const ROTULO_TOTAL_COMERCIALES = 'TOTAL COMPRADO A PROVEEDORES COMERCIALES'
+
+/**
  * EL PIE COMPLETO: dos filas, cuatro columnas, todo fórmula.
  *
  * @param {{R:object, p0:number, p1:number, fResto:number, fTotal:number}} o  filas en base 1
@@ -94,7 +102,7 @@ export function filasDelPie({ R, p0, p1, fResto, fTotal }) {
       `=$D$${fTotal}-${listadoCuenta}`,
     ],
     total: [
-      'TOTAL COMPRADO A PROVEEDORES COMERCIALES',
+      ROTULO_TOTAL_COMERCIALES,
       null,
       `=SUMIFS(${R.total}${SEP}${R.comercial}${SEP}1)`,
       `=COUNTIFS(${R.comercial}${SEP}1${SEP}${R.proveedor}${SEP}"<>")`,
