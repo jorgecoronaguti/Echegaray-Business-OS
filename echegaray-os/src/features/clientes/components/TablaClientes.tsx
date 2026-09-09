@@ -16,6 +16,20 @@
 //   · EL AVISO ES TEXTO, NO UN TRIÁNGULO: «sin CUIT» dicho con palabras al lado del nombre. Un
 //     icono obliga a pasar el mouse para saber qué falta.
 //
+// ═══ UNA SOLA TABLA DE CLIENTES (09/09/2026, orden del dueño) ═══
+//
+// Hasta hoy la sección se dibujaba dos veces: ésta y `CarteraHome` en `/administracion`, con las
+// MISMAS filas y distinta verdad —una decía «$156.174.253 contratado» y la otra «sin contrato» del
+// mismo cliente—. `CarteraHome` se eliminó; sus cuatro columnas económicas viven acá y
+// `/administracion` redirige. Dos tablas del mismo maestro no son dos vistas: son dos verdades.
+//
+// CADA COLUMNA, SU FUENTE (y no hay una segunda):
+//   Contratado · Costo MO · Costo mat. · Margen → `obra_economia_cartera` = la pestaña OBRAS del
+//     Flujo de Caja, persistida por `obras-economia-sync.mjs`. Nunca el campo del formulario.
+//   Últ. mov. → el último parte (`obra_ejecucion`) o la fecha más avanzada de sus certificados.
+//   Chips del cliente → `cliente_panel` (CUIT, teléfono) y `cliente_documento.rol` (contrato).
+//   Chips de la obra → OBRAS (precio), `obra_panel` (avance, jefe) y `certificados`.
+//
 // ═══ EL NOMBRE NUNCA SE ESTRANGULA ═══
 //
 // Por debajo de 1250px se suelta OBRAS —nunca el cliente ni lo contratado (`25v2:154`)—. Lo decide
@@ -23,10 +37,14 @@
 
 import Link from 'next/link'
 import { pesos, porcentajeCanon } from '@/shared/components/canon/formato'
+import { Estado } from '@/shared/components/ds'
 import { IconoCliente, IconoObra } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
-import type { ClienteEnCartera } from '@/features/administracion/services/homeCartera'
+import { diaRelativo, type ClienteEnCartera } from '@/features/administracion/services/homeCartera'
 import { rotuloChip, type OrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
+import { chipsDeObra, SIN_PRECIO, type Chip } from '@/features/clientes/services/chipsCartera'
+import { BotonOrdenes } from './BotonOrdenes'
+import { pctTexto } from '@/features/clientes/services/economiaObras'
 
 // ── LOS CHIPS DE ÓRDENES ────────────────────────────────────────────────────────────────────────
 //
@@ -38,34 +56,34 @@ import { rotuloChip, type OrdenesDeLaCartera } from '@/features/clientes/service
 // NO SON UN ENLACE. La fila entera ya es un `<Link>` a la obra y un `<a>` adentro de otro `<a>` es
 // HTML inválido: React lo renderiza igual y el navegador lo desarma, dejando la fila con zonas que
 // navegan a cualquier lado. El detalle vive en la ficha de la obra; acá el chip informa cuántas hay.
-function Chips({ compra, pago }: { compra: number; pago: number }) {
+function Chips({ compra, pago, href }: { compra: number; pago: number; href: string }) {
   const rotulos = [rotuloChip('OC', compra), rotuloChip('OP', pago)].filter((r) => r !== null)
-  if (!rotulos.length) return null
   return (
-    <>
-      {rotulos.map((r) => (
-        <span
-          key={r}
-          data-testid="chip-orden"
-          className={ADORNO_ANCHO}
-          style={{
-            fontSize: '10.5px', letterSpacing: '0.06em', textTransform: 'uppercase',
-            color: V.apagado, flexShrink: 0, whiteSpace: 'nowrap',
-          }}
-        >
-          {r}
-        </span>
-      ))}
-    </>
+    <BotonOrdenes
+      rotulos={rotulos}
+      href={href}
+      className={ADORNO_ANCHO}
+      estilo={{
+        fontSize: '10.5px', letterSpacing: '0.06em', textTransform: 'uppercase',
+        color: V.apagado, flexShrink: 0, whiteSpace: 'nowrap',
+      }}
+    />
   )
 }
 
 /** `25v2:154`. Literales porque Tailwind no compila una clase armada en runtime. */
 const COLS
-  = 'grid-cols-[minmax(240px,1.7fr)_minmax(0,110px)_minmax(0,150px)]'
-  + ' max-[1249px]:grid-cols-[minmax(200px,1.7fr)_minmax(0,140px)]'
-/** La celda que se suelta en angosto. Su `display` NUNCA va inline: un inline gana a la media query. */
+  = 'grid-cols-[minmax(0,1.9fr)_110px_150px_130px_130px_150px_96px]'
+  + ' max-[1249px]:grid-cols-[minmax(200px,1.9fr)_110px_150px]'
+  + ' max-[767px]:grid-cols-[minmax(0,1.9fr)_150px]'
+/**
+ * LO QUE SE SUELTA POR DEBAJO DE 1250px: el detalle económico y la fecha del último movimiento.
+ * Sobreviven siempre el nombre y lo contratado (`25v2:154`). Su `display` NUNCA va inline: un
+ * inline le gana a la media query y la celda seguiría ocupando sus píxeles inelásticos.
+ */
 const SOLO_ANCHO = 'max-[1249px]:hidden'
+/** «Obras»: en 350px sólo entra quién es y cuánto. El número se lee contando las filas de abajo. */
+const SOLO_TABLET = 'max-[767px]:hidden'
 
 /**
  * LO QUE CUELGA DEL NOMBRE DE LA OBRA, y que en el teléfono se lo comía (medido a 390x844 el
@@ -84,7 +102,7 @@ const ADORNO_ANCHO = 'max-[1023px]:hidden'
 const TONO = { divisorObra: '#F3F2EE', pista: '#EDECE8', textoObra: '#3A3A38' } as const
 
 export function TablaClientes({
-  clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, ordenes, limpiarHref, vacio,
+  clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, ordenes, hrefOrdenes, hoy, limpiarHref, vacio,
 }: {
   clientes: ClienteEnCartera[]
   seleccionado?: string
@@ -96,6 +114,10 @@ export function TablaClientes({
   obrasNoLeidas: boolean
   /** obra_id → cuántas OC y cuántas OP le cuelgan. Vacío = ninguna, o la lectura falló (`ordenes.fallo`). */
   ordenes: OrdenesDeLaCartera
+  /** Adónde lleva el chip: la clave es el `obra_id`, o `cliente:<id>` para lo no atribuido a obra. */
+  hrefOrdenes: (clave: string) => string
+  /** El día de hoy en la hora de la empresa. Viene del servidor: el reloj del navegador es de quien mira. */
+  hoy: string
   limpiarHref: string
   /** Qué se escribe cuando el recorte no deja a nadie. */
   vacio: string
@@ -104,13 +126,33 @@ export function TablaClientes({
     <div data-testid="clientes-tabla">
       <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
         <RotuloCol>Cliente</RotuloCol>
-        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Obras</RotuloCol></span>
-        <RotuloCol derecha>{veEconomia ? 'Contratado' : ''}</RotuloCol>
+        <span className={`grid ${SOLO_TABLET}`}><RotuloCol derecha>Obras</RotuloCol></span>
+        {/* CONTRATADO ES LO QUE PUBLICA OBRAS (la OC de Cobranzas), no lo facturado ni el campo del
+            formulario de la obra. El `title` lleva la fuente: un rótulo de una palabra no puede
+            cargar solo con decir de qué está hablando. */}
+        <RotuloCol derecha titulo="Lo que la pestaña OBRAS del Flujo de Caja publica por obra. Es precio contratado, no facturado">
+          {veEconomia ? 'Contratado' : ''}
+        </RotuloCol>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloCol derecha titulo="Mano de obra con cargas proyectada, según la pestaña OBRAS">Costo MO</RotuloCol>
+        </span>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloCol derecha titulo="Materiales proyectados, según la pestaña OBRAS">Costo mat.</RotuloCol>
+        </span>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloCol derecha titulo="Contratado − costo MO − costo materiales">{veEconomia ? 'Margen' : ''}</RotuloCol>
+        </span>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloCol derecha titulo="El hecho más reciente que el OS registró: un parte de obra o un certificado. No es la última edición de la ficha.">
+            Últ. mov.
+          </RotuloCol>
+        </span>
       </div>
 
       {clientes.map((c) => {
         const elegido = c.cliente_id === seleccionado
-        const aviso = c.avisoCorto
+        // LOS CHIPS DE LO QUE FALTA, de la MISMA función que decide el recorte «Datos faltantes».
+        const faltantes = c.chips
         return (
           <div key={c.cliente_id}>
             <Link
@@ -142,20 +184,15 @@ export function TablaClientes({
                 </span>
                 {/* LO QUE NO SE PUDO ATRIBUIR A UNA OBRA cuelga del CLIENTE y se ve acá. Esconderlo
                     hasta saber la obra sería perderlo: son las órdenes que alguien tiene que asignar. */}
-                <Chips {...(ordenes.sinObraPorCliente.get(c.cliente_id) ?? { compra: 0, pago: 0 })} />
-                {aviso && (
-                  <span
-                    title={c.aviso ?? aviso}
-                    data-testid="aviso-datos"
-                    style={{ fontSize: '11px', color: V.warn, flexShrink: 0 }}
-                  >
-                    {aviso}
-                  </span>
-                )}
+                <Chips
+                  {...(ordenes.sinObraPorCliente.get(c.cliente_id) ?? { compra: 0, pago: 0 })}
+                  href={hrefOrdenes(`cliente:${c.cliente_id}`)}
+                />
+                <ChipsFalta chips={faltantes} testid="aviso-datos" />
               </span>
 
               <span
-                className={`font-mono tabular-nums ${SOLO_ANCHO}`}
+                className={`font-mono tabular-nums ${SOLO_TABLET}`}
                 style={{ fontSize: '12px', color: V.apagado, textAlign: 'right' }}
               >
                 {/* CERO OBRAS SE ESCRIBE CON PALABRAS: «0 obras» y «nadie le cargó ninguna» se leen
@@ -163,11 +200,21 @@ export function TablaClientes({
                 {c.obras ? `${c.obras} ${c.obras === 1 ? 'obra' : 'obras'}` : 'sin obras'}
               </span>
 
+              {/* «SIN PRECIO EN OBRAS» Y NO «SIN CONTRATO»: acá falta el MONTO en la pestaña OBRAS.
+                  El contrato —el papel— lo dice su propio chip, al lado del nombre. */}
               <span
                 className="font-mono tabular-nums"
+                data-testid="contratado"
                 style={{ fontSize: '12px', textAlign: 'right', color: c.contratado === null ? V.warn : V.tinta }}
               >
-                {veEconomia ? (c.contratado === null ? 'sin contrato' : pesos(c.contratado)) : ''}
+                {veEconomia ? (c.contratado === null ? SIN_PRECIO : pesos(c.contratado)) : ''}
+              </span>
+              <Economia
+                mo={c.costoMo} mat={c.costoMateriales} margen={c.margen} pct={c.margenPct}
+                veEconomia={veEconomia} parcial={c.economiaParcial} tam="12px"
+              />
+              <span className={`font-mono ${SOLO_ANCHO}`} style={{ fontSize: '11.5px', color: V.lupa, textAlign: 'right' }}>
+                {diaRelativo(c.ultimoMovimiento, hoy) ?? 'sin movimientos'}
               </span>
             </Link>
 
@@ -186,7 +233,13 @@ export function TablaClientes({
                     <IconoObra className="h-[13px] w-[13px]" />
                   </span>
                   <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra }}>{o.nombre}</span>
-                  <Chips {...(ordenes.porObra.get(o.obra_id) ?? { compra: 0, pago: 0 })} />
+                  <Chips
+                    {...(ordenes.porObra.get(o.obra_id) ?? { compra: 0, pago: 0 })}
+                    href={hrefOrdenes(o.obra_id)}
+                  />
+                  {/* SIN PRECIO · SIN MEDIR · SIN JEFE · el punto del circuito de certificación.
+                      Cada uno con su fuente en el `title`; los cuatro salen de `chipsDeObra`. */}
+                  <ChipsFalta chips={chipsDeObra(o)} testid="chip-obra" />
                   {/* BARRA SÓLO SI EL NÚMERO ES UNA FRACCIÓN 0–100. `null` no es cero: una obra sin
                       avance sincronizado no avanzó cero por ciento — no se sabe, y una barra vacía
                       dice que sí. */}
@@ -194,7 +247,7 @@ export function TablaClientes({
                       `display: 'flex'` en el atributo `style` le gana a `hidden` y la barra
                       seguiría ocupando sus 80px inelásticos. */}
                   {o.avance === null
-                    ? <span className={ADORNO_ANCHO} style={{ fontSize: '11.5px', color: V.lupa, flexShrink: 0 }}>sin medir</span>
+                    ? null
                     : (
                         <>
                           <span className={`flex ${ADORNO_ANCHO}`} style={{ height: 4, width: 80, borderRadius: 2, background: TONO.pista, flexShrink: 0, marginLeft: 2 }}>
@@ -206,12 +259,22 @@ export function TablaClientes({
                         </>
                       )}
                 </span>
-                <span className={SOLO_ANCHO} />
+                {/* La celda vacía de «Obras»: existe para que la obra caiga en la MISMA columna
+                    que su cliente, y desaparece con la columna. */}
+                <span className={SOLO_TABLET} />
                 <span
                   className="font-mono tabular-nums"
+                  data-testid="contratado-obra"
                   style={{ fontSize: '11.5px', textAlign: 'right', color: o.contratado === null ? V.warn : V.apagado }}
                 >
-                  {veEconomia ? (o.contratado === null ? 'sin contrato' : pesos(o.contratado)) : ''}
+                  {veEconomia ? (o.contratado === null ? SIN_PRECIO : pesos(o.contratado)) : ''}
+                </span>
+                <Economia
+                  mo={o.costoMo} mat={o.costoMateriales} margen={o.margen} pct={o.margenPct}
+                  veEconomia={veEconomia} parcial={false} tam="11.5px"
+                />
+                <span className={`font-mono ${SOLO_ANCHO}`} style={{ fontSize: '11.5px', color: V.lupa, textAlign: 'right' }}>
+                  {diaRelativo(o.ultimoParte, hoy) ?? 'sin partes'}
                 </span>
               </Link>
             ))}
@@ -244,5 +307,65 @@ export function TablaClientes({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * LOS CHIPS DE LO QUE FALTA — pastilla del handoff (`ds/Estado`), con la fuente en el `title`.
+ *
+ * El texto y el tono los decide `chipsCartera`, que es puro y está probado: acá no se decide nada,
+ * se dibuja. Si esta lista y el recorte «Datos faltantes» pudieran discrepar, la pantalla volvería a
+ * tener dos verdades del mismo cliente, que es exactamente lo que se vino a cerrar.
+ */
+function ChipsFalta({ chips, testid }: { chips: Chip[]; testid: string }) {
+  if (!chips.length) return null
+  return (
+    <>
+      {chips.map((ch) => (
+        <span key={ch.clave} title={ch.porque} data-testid={testid} data-chip={ch.clave} style={{ flexShrink: 0 }}>
+          <Estado tono={ch.tono}>{ch.texto}</Estado>
+        </span>
+      ))}
+    </>
+  )
+}
+
+/**
+ * LAS TRES CELDAS DE OBRAS: Costo MO · Costo mat. · Margen ($ y %).
+ *
+ * Los costos los ve todo rol interno —una compra es COSTO, no precio (19/08)—; el margen es plata de
+ * venta y se dibuja sólo con `veEconomia`. La vista ya devuelve NULL al jefe de obra: acá se deja de
+ * ofrecer la celda, que no es la cerradura sino no ofrecer lo que la base va a negar.
+ *
+ * «—» ES «OBRAS NO TIENE EL DATO», NO CERO. Un cero acá diría que la obra no gastó nada.
+ */
+function Economia({ mo, mat, margen, pct, veEconomia, parcial, tam }: {
+  mo: number | null; mat: number | null; margen: number | null; pct: number | null
+  veEconomia: boolean; parcial: boolean; tam: string
+}) {
+  const celda = (v: number | null, testid: string) => (
+    <span
+      className={`font-mono tabular-nums ${SOLO_ANCHO}`} data-testid={testid}
+      style={{ fontSize: tam, textAlign: 'right', color: v === null ? V.lupa : V.apagado }}
+    >
+      {v === null ? '—' : pesos(v)}
+    </span>
+  )
+  return (
+    <>
+      {celda(mo, 'costo-mo')}
+      {celda(mat, 'costo-materiales')}
+      <span
+        className={`font-mono tabular-nums ${SOLO_ANCHO}`} data-testid="margen"
+        title={parcial ? 'Suma sólo las obras con precio en OBRAS' : undefined}
+        style={{ fontSize: tam, textAlign: 'right', color: margen === null ? V.lupa : margen < 0 ? V.warn : V.tinta }}
+      >
+        {veEconomia
+          ? (margen === null
+              ? '—'
+              : <>{pesos(margen)}<span style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}>{pctTexto(pct)}{parcial ? ' ·' : ''}</span></>)
+          : ''}
+      </span>
+    </>
   )
 }

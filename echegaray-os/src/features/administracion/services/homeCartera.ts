@@ -34,7 +34,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ClientePanel } from '@/features/clientes/types'
-import { avisoDeDatos, faltaUnDatoQueFrena } from '../../clientes/services/cartera.ts'
+import { avisoDeDatos } from '../../clientes/services/cartera.ts'
+import { chipsDeCliente, leFaltaUnDato, margenDeLaFila, type Chip } from '../../clientes/services/chipsCartera.ts'
 import { margenPct, sumaConHuecos, type EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
 
 /** Una obra `activa`, tal como la lee la cartera. Es un subconjunto de `obra_panel`. */
@@ -76,15 +77,22 @@ export interface ClienteEnCartera {
   nombre: string
   /** Qué le falta al maestro. `null` = nada. */
   aviso: string | null
-  /** El texto corto del aviso, para la etiqueta de la fila. */
-  avisoCorto: string | null
   /**
-   * ¿LE FALTA ALGO QUE FRENA EL COBRO? Es el MISMO conjunto que el recorte «Datos faltantes» de la
-   * pantalla 25 (`faltaUnDatoQueFrena`): CUIT, teléfono o contrato. Se calcula acá, donde ya están
-   * las obras, para que el filo ámbar de la fila y el recorte no puedan discrepar.
+   * ¿TIENE UN CONTRATO CARGADO? Sale de `cliente_documento.rol = 'contrato'` y NO del monto: son
+   * dos conceptos y hasta el 09/09/2026 la pantalla los decía con la misma palabra. `null` = no se
+   * pudo leer la tabla de documentos, y entonces la fila NO dice «sin contrato».
+   */
+  tieneContrato: boolean | null
+  /** Lo que le falta al MAESTRO, ya resuelto a chips. La fila no vuelve a decidir nada. */
+  chips: Chip[]
+  /**
+   * ¿LE FALTA ALGO DEL MAESTRO QUE FRENA EL COBRO? CUIT, teléfono o el contrato SIN CARGAR
+   * (`chipsCartera.leFaltaUnDato`). Es el mismo conjunto que dibuja los chips de la fila y el mismo
+   * que recorta el filtro «Datos faltantes»: una sola cuenta, para que el contador del filtro no
+   * pueda decir 4 mientras la tabla muestra 3.
    *
-   * NO es lo mismo que `avisoCorto`, que sigue nombrando una sola cosa: una fila con tres etiquetas
-   * ámbar deja de señalar nada.
+   * EL PRECIO FALTANTE NO ENTRA. Un hueco de OBRAS se resuelve en el Sheet, no en la ficha; era lo
+   * que metía a Messina —con $156M publicados— en la lista de «datos faltantes».
    */
   faltaUnDato: boolean
   obras: number
@@ -157,6 +165,28 @@ export async function getUltimoParte(supabase: SupabaseClient): Promise<Map<stri
     if (obra && !por.has(obra)) por.set(obra, p.fecha as string)
   }
   return por
+}
+
+/**
+ * QUÉ CLIENTES TIENEN UN CONTRATO CARGADO — la fuente de «sin contrato», que NO es un monto.
+ *
+ * Un documento con `rol = 'contrato'` en la ficha del cliente. La lista de roles es cerrada
+ * (`ROLES_DOCUMENTO`), así que esto no depende de cómo alguien haya escrito el nombre del archivo.
+ *
+ * Un fallo devuelve `null` —no un conjunto vacío—: si la lectura no pudo mirar, la pantalla no
+ * puede afirmar que a nadie le falta el contrato, y tampoco puede acusar a todos de no tenerlo.
+ */
+export async function getContratosDeLaCartera(
+  supabase: SupabaseClient,
+): Promise<Set<string> | null> {
+  const { data, error } = await supabase
+    .from('cliente_documento')
+    .select('cliente_id, rol')
+    .eq('rol', 'contrato')
+  if (error) return null
+  const con = new Set<string>()
+  for (const d of (data ?? []) as { cliente_id: string }[]) con.add(d.cliente_id)
+  return con
 }
 
 /** Lo mínimo de un certificado para saber en qué punto del circuito está. */
@@ -236,7 +266,7 @@ const masReciente = (a: string | null, b: string | null) =>
  * decir de qué está hablando.
  */
 export function armarCartera({
-  clientes, obras, partes, certificados, economia = null,
+  clientes, obras, partes, certificados, economia = null, contratos = null,
 }: {
   clientes: ClientePanel[]
   obras: ObraDeCartera[] | null
@@ -244,6 +274,8 @@ export function armarCartera({
   certificados: FilaCertificado[] | null
   /** Lo que OBRAS publica por obra (`obra_economia_cartera`). `null` = no se pudo leer. */
   economia?: Map<string, EconomiaDeObra> | null
+  /** Los clientes con un documento `contrato` cargado. `null` = no se pudo leer. */
+  contratos?: Set<string> | null
 }): ClienteEnCartera[] {
   const porCliente = new Map<string, ObraDeCartera[]>()
   for (const o of obras ?? []) {
@@ -257,7 +289,13 @@ export function armarCartera({
       // Si OBRAS no lo tiene, cae al del formulario; si tampoco, «sin precio en OBRAS».
       const e = economia?.get(o.obra_id) ?? null
       const contratado = e?.contratado ?? o.monto_contratado
-      const margen = e?.margen ?? null
+      // UNA sola definición del margen, y `null` cuando falta un sumando: ver `margenDeLaFila`.
+      const margen = margenDeLaFila({
+        margenPublicado: e?.margen ?? null,
+        contratado,
+        costoMo: e?.costo_mo ?? null,
+        costoMateriales: e?.costo_materiales ?? null,
+      })
       return {
         obra_id: o.obra_id,
         nombre: o.nombre,
@@ -285,16 +323,18 @@ export function armarCartera({
     const ultimoMovimiento = [...enCurso.map((o) => o.ultimoParte), ...fechasCert]
       .reduce<string | null>((a, b) => masReciente(a, b), null)
 
-    const sinContrato = enCurso.some((o) => o.contratado === null)
+    // «TIENE CONTRATO» ES UN PAPEL, NO UN MONTO (09/09/2026). Antes esta fila derivaba
+    // «sin contrato» de `contratado === null`, que es el hueco de PRECIO de OBRAS: por eso el mismo
+    // cliente aparecía con $156.174.253 contratado en una pantalla y «sin contrato» en la otra.
+    const tieneContrato = contratos === null ? null : contratos.has(c.cliente_id)
     return {
       cliente_id: c.cliente_id,
       slug: c.slug,
       nombre: c.nombre_comercial,
       aviso: avisoDeDatos(c),
-      // La etiqueta corta de la fila; la frase entera va en el `title`. El mockup escribe «sin CUIT»
-      // y «obra sin contrato» — las dos son ciertas y las dos frenan el cobro.
-      avisoCorto: avisoDeDatos(c) ? 'sin CUIT' : sinContrato ? 'obra sin precio en OBRAS' : null,
-      faltaUnDato: faltaUnDatoQueFrena(c),
+      tieneContrato,
+      chips: chipsDeCliente({ cuit: c.cuit, telefono: c.telefono, tieneContrato }),
+      faltaUnDato: leFaltaUnDato({ cuit: c.cuit, telefono: c.telefono, tieneContrato }),
       obras: c.n_obras,
       contratado: tContratado.total,
       costoMo: tMo.total,
