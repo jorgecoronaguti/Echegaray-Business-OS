@@ -19,7 +19,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getProductividadDeLaQuincena } from '../../../services/productividadHHService'
 import type { LineaProductividad } from '../../../services/productividadHH'
 import { quincenaDe, esFechaISO } from '../../../services/quincena'
-import { Cuadro, Cuerpo, Encabezado, Fila, Hueco, Titulo, Total, miles } from './tabla'
+import { ALTO_LIQ, Cuadro, Cuerpo, Encabezado, Fila, Hueco, Titulo, Total, miles } from './tabla'
 
 // `dc:526` — las siete columnas de la pantalla 7, al píxel.
 const COLS = 'minmax(240px,1fr) 88px 84px 96px 132px 100px 140px'
@@ -32,7 +32,11 @@ export async function SolapaProductividad({ quincenaPedida, hoy }: {
   const { lineas, resumen, errores } = await getProductividadDeLaQuincena(supabase, q)
 
   return (
-    <section data-testid="solapa-productividad">
+// EL TESTID DICE «PANTALLA», NO «SOLAPA», Y NO ES UN CAPRICHO: `BarraSolapas` ya emite
+// `data-testid="solapa-<clave>"` para CADA PESTAÑA de la barra. Con el mismo nombre acá,
+// `[data-testid="solapa-productividad"]` devolvía DOS nodos —la pestaña y el contenido— y cualquier
+// aserción futura habría medido el botón creyendo que medía la pantalla.
+    <section data-testid="pantalla-productividad">
       <Titulo numero="7" titulo="Productividad · HH contra avance"
         bajada="la única pregunta que convierte la liquidación en gestión." />
 
@@ -85,7 +89,7 @@ export async function SolapaProductividad({ quincenaPedida, hoy }: {
 function FilaActividad({ l }: { l: LineaProductividad }) {
   const r = l.rendimientoPct
   return (
-    <Fila columnas={COLS} alto={l.porQueNoSeMide ? 58 : 52} testid={`prod-${l.actividadId}`} celdas={[
+    <Fila columnas={COLS} alto={l.porQueNoSeMide ? ALTO_LIQ.filaAlta : ALTO_LIQ.fila} testid={`prod-${l.actividadId}`} celdas={[
       <span key="n" style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {l.etiqueta}
       </span>,

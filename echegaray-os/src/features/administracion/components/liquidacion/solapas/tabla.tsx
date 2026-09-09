@@ -13,6 +13,47 @@ import { V } from '@/shared/components/v2/patron'
 
 export const MONO = "'IBM Plex Mono', monospace"
 
+/**
+ * EL RITMO VERTICAL DE ESTAS TRES PANTALLAS — UNA CONSTANTE, NO UN NÚMERO POR ARCHIVO.
+ *
+ * ═══ POR QUÉ NO ES `ALTO_V2` ═══
+ *
+ * Porque `ALTO_V2` sale de OTRO canvas. Su `fila: 44` es la lista de `Administración v4 · Pantallas`
+ * y `ritmo-vertical.test.ts` fija explícitamente que ninguna fila de lista puede llegar a 52 ahí.
+ * El canvas que gobierna estas pantallas es `design/Liquidación de horas v2.dc.html`, que dibuja
+ * cuadros de datos —no listas maestras— con filas de 44 a 58 px. Promediar los dos ritmos daría una
+ * pantalla que no es fiel a ninguno de los dos canvas, que es exactamente el error que ese test
+ * documenta («cada canvas es la pantalla que gobierna, y el número sale de ESA pantalla»).
+ *
+ * ═══ POR QUÉ IGUAL ES UNA CONSTANTE ═══
+ *
+ * Porque el defecto que `ritmo-vertical.test.ts` caza es real y aplica igual acá: tres pantallas
+ * escribiendo `52` a mano derivan sin que nadie se entere. Acá el número se pide una sola vez y cada
+ * uno cita la línea del canvas de la que salió. Si el zip cambia, cambia este bloque y nada más.
+ *
+ * INTEGRADOR: si el OS decide que `patron.tsx` es la única casa de todo ritmo vertical, esto se
+ * muda ahí como una familia más. No lo puse ahí solo porque `patron.tsx` es de otro frente y su
+ * test declara los cuatro números del v4 como el contrato de ese archivo.
+ */
+export const ALTO_LIQ = {
+  /** Encabezado de columnas, alineado abajo. `dc:526`, `:544`, `:684`. */
+  encabezado: 34,
+  /** Fila de dato de un cuadro. `dc:527` (pantalla 7), `:545` (pantalla 8). */
+  fila: 52,
+  /** La fila de persona de la pantalla 8: el canvas la escribe en 48, no en 52. `dc:545`. */
+  filaPersona: 48,
+  /** La fila de los tres cuadros angostos de la pantalla 12. `dc:687`, `:692`. */
+  filaAngosta: 46,
+  /** Fila de dato que puede llevar dos renglones. `dc:529`. */
+  filaAlta: 58,
+  /** Renglón de la lista «lo que no se puede afirmar». `dc:552`. */
+  renglon: 44,
+  /** Fila de agregado en gris («3 más»). `dc:530`. */
+  agregado: 34,
+  /** Fila de total, cerrada por arriba con el grafito. `dc:547`, `:694`. */
+  total: 52,
+} as const
+
 /** El contenedor de un cuadro: radio 10, filo `line-2`, sin sombra y sin gradiente. `dc:525`. */
 export function Cuadro({ children, ancho, testid }: {
   children: ReactNode; ancho?: number | string; testid?: string
@@ -45,7 +86,7 @@ const grilla = (columnas: string, alto: number): CSSProperties => ({
 export function Encabezado({ columnas, celdas }: { columnas: string; celdas: ReactNode[] }) {
   return (
     <div style={{
-      ...grilla(columnas, 34), alignItems: 'end', paddingBottom: 9,
+      ...grilla(columnas, ALTO_LIQ.encabezado), alignItems: 'end', paddingBottom: 9,
       fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.04em', color: V.tenue,
       textTransform: 'uppercase',
     }}>
@@ -57,7 +98,7 @@ export function Encabezado({ columnas, celdas }: { columnas: string; celdas: Rea
 }
 
 /** Una fila. `tenue` la baja de peso: es la línea de agregado, no un dato más. */
-export function Fila({ columnas, celdas, alto = 52, tenue = false, testid }: {
+export function Fila({ columnas, celdas, alto = ALTO_LIQ.fila, tenue = false, testid }: {
   columnas: string; celdas: ReactNode[]; alto?: number; tenue?: boolean; testid?: string
 }) {
   return (
@@ -78,8 +119,8 @@ export function Total({ columnas, celdas, testid }: {
 }) {
   return (
     <div data-testid={testid} style={{
-      display: 'grid', gridTemplateColumns: columnas, gap: 14, minHeight: 52, alignItems: 'center',
-      borderTop: `1px solid ${V.grafito}`, fontWeight: 600, color: V.tinta,
+      display: 'grid', gridTemplateColumns: columnas, gap: 14, minHeight: ALTO_LIQ.total,
+      alignItems: 'center', borderTop: `1px solid ${V.grafito}`, fontWeight: 600, color: V.tinta,
     }}>
       {celdas.map((c, i) => (
         <div key={i} style={i === 0 ? { minWidth: 0 } : { textAlign: 'right' }}>{c}</div>

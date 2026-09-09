@@ -34,7 +34,7 @@ import {
 import { motivoDe as motivoDelCatalogo } from '../../../../../../orquestador/lib/asistencia-motivos.mjs'
 import { PAGA_POR_MOTIVO } from '../../../services/liquidacionDeAusencias'
 import { esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
-import { Cuadro, Cuerpo, Encabezado, Fila, Hueco, MONO, Titulo, Total, miles } from './tabla'
+import { ALTO_LIQ, Cuadro, Cuerpo, Encabezado, Fila, Hueco, MONO, Titulo, Total, miles } from './tabla'
 
 /**
  * El catálogo es JavaScript sin tipos y su `motivoDe` devuelve `unknown`. Se estrecha acá, una sola
@@ -61,7 +61,11 @@ export async function SolapaRecibos({ quincenaPedida, hoy }: {
   )
 
   return (
-    <section data-testid="solapa-recibos">
+// EL TESTID DICE «PANTALLA», NO «SOLAPA», Y NO ES UN CAPRICHO: `BarraSolapas` ya emite
+// `data-testid="solapa-<clave>"` para CADA PESTAÑA de la barra. Con el mismo nombre acá,
+// `[data-testid="solapa-recibos"]` devolvía DOS nodos —la pestaña y el contenido— y cualquier
+// aserción futura habría medido el botón creyendo que medía la pantalla.
+    <section data-testid="pantalla-recibos">
       <Titulo numero="12" titulo="Los tres eslabones que ya viven en el legajo"
         bajada="la liquidación los lee; no los vuelve a pedir." />
 
@@ -78,7 +82,7 @@ export async function SolapaRecibos({ quincenaPedida, hoy }: {
             <Cuerpo>
               <Encabezado columnas={COLS_RET} celdas={['Persona', 'Retribución', 'Origen']} />
               {personas.slice(0, 8).map((p) => (
-                <Fila key={p.personaId} columnas={COLS_RET} alto={46} testid={`retribucion-${p.personaId}`} celdas={[
+                <Fila key={p.personaId} columnas={COLS_RET} alto={ALTO_LIQ.filaAngosta} testid={`retribucion-${p.personaId}`} celdas={[
                   <Nombre key="n">{p.nombre}</Nombre>,
                   p.valorHora != null
                     ? `${miles(p.valorHora)} $/h`
@@ -89,7 +93,7 @@ export async function SolapaRecibos({ quincenaPedida, hoy }: {
                 ]} />
               ))}
               {personas.length > 8 && (
-                <Fila columnas={COLS_RET} alto={34} tenue celdas={[`${personas.length - 8} más`, '', '']} />
+                <Fila columnas={COLS_RET} alto={ALTO_LIQ.agregado} tenue celdas={[`${personas.length - 8} más`, '', '']} />
               )}
             </Cuerpo>
             <p style={{ margin: 0, fontSize: '11px', color: V.apagado, lineHeight: 1.55 }}>
@@ -105,14 +109,14 @@ export async function SolapaRecibos({ quincenaPedida, hoy }: {
             <Cuerpo>
               <Encabezado columnas={COLS_AUS} celdas={['Día', 'Persona', 'Motivo']} />
               {ausencias.length === 0 && (
-                <Fila columnas={COLS_AUS} alto={44} tenue celdas={[
+                <Fila columnas={COLS_AUS} alto={ALTO_LIQ.renglon} tenue celdas={[
                   `Sin ausencias declaradas en ${rotuloQuincena(q)}.`, '', '',
                 ]} />
               )}
               {ausencias.slice(0, 6).map((a) => {
                 const paga = a.motivo ? PAGA_POR_MOTIVO[a.motivo.trim()]?.paga === true : false
                 return (
-                  <Fila key={`${a.personaId}-${a.fecha}`} columnas={COLS_AUS} alto={46}
+                  <Fila key={`${a.personaId}-${a.fecha}`} columnas={COLS_AUS} alto={ALTO_LIQ.filaAngosta}
                     testid={`ausencia-${a.personaId}-${a.fecha}`} celdas={[
                       <span key="f" style={{ fontFamily: MONO, fontSize: '11.5px' }}>{a.fecha.slice(8, 10)}/{a.fecha.slice(5, 7)}</span>,
                       <Nombre key="n">{a.nombre}</Nombre>,
@@ -123,7 +127,7 @@ export async function SolapaRecibos({ quincenaPedida, hoy }: {
                 )
               })}
               {ausencias.length > 6 && (
-                <Fila columnas={COLS_AUS} alto={34} tenue celdas={[`${ausencias.length - 6} más`, '', '']} />
+                <Fila columnas={COLS_AUS} alto={ALTO_LIQ.agregado} tenue celdas={[`${ausencias.length - 6} más`, '', '']} />
               )}
             </Cuerpo>
             <TablaDeMotivos />
@@ -138,7 +142,7 @@ export async function SolapaRecibos({ quincenaPedida, hoy }: {
               {personas.filter((p) => p.reciboNeto != null || p.chip != null).slice(0, 8)
                 .map((p) => <FilaLote key={p.personaId} p={p} hayExtracto={hayExtracto} />)}
               {personas.every((p) => p.reciboNeto == null && p.chip == null) && (
-                <Fila columnas={COLS_LOTE} alto={44} tenue celdas={[
+                <Fila columnas={COLS_LOTE} alto={ALTO_LIQ.renglon} tenue celdas={[
                   'Ningún recibo del estudio para esta quincena.', '', '',
                 ]} />
               )}
@@ -161,7 +165,7 @@ export async function SolapaRecibos({ quincenaPedida, hoy }: {
 /** Una fila del lote. El ámbar es pendiente accionable; sin extracto no hay color ni acusación. */
 function FilaLote({ p, hayExtracto }: { p: EslabonPersona; hayExtracto: boolean }) {
   return (
-    <Fila columnas={COLS_LOTE} alto={46} testid={`lote-${p.personaId}`} celdas={[
+    <Fila columnas={COLS_LOTE} alto={ALTO_LIQ.filaAngosta} testid={`lote-${p.personaId}`} celdas={[
       <span key="n" style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
         <Nombre>{p.nombre}</Nombre>
         {p.chip && (

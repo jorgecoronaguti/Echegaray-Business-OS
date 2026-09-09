@@ -25,7 +25,7 @@ import type { LineaExposicion } from '../../../services/exposicionConvenio'
 import { categoriaVisible } from '../../../services/vocabularioPersona'
 import { esFechaISO, quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
 import { FormularioEscala } from './FormularioEscala'
-import { Cuadro, Cuerpo, Encabezado, Fila, Hueco, Titulo, Total, miles } from './tabla'
+import { ALTO_LIQ, Cuadro, Cuerpo, Encabezado, Fila, Hueco, Titulo, Total, miles } from './tabla'
 
 // `dc:544` — las seis columnas de la pantalla 8.
 const COLS = 'minmax(200px,1fr) 120px 90px 90px 88px 120px'
@@ -41,7 +41,11 @@ export async function SolapaConvenios({ quincenaPedida, hoy }: {
   const sinComparar = lineas.filter((l) => l.porQueNoSeCompara != null)
 
   return (
-    <section data-testid="solapa-convenios">
+// EL TESTID DICE «PANTALLA», NO «SOLAPA», Y NO ES UN CAPRICHO: `BarraSolapas` ya emite
+// `data-testid="solapa-<clave>"` para CADA PESTAÑA de la barra. Con el mismo nombre acá,
+// `[data-testid="solapa-convenios"]` devolvía DOS nodos —la pestaña y el contenido— y cualquier
+// aserción futura habría medido el botón creyendo que medía la pantalla.
+    <section data-testid="pantalla-convenios">
       <Titulo numero="8" titulo="Exposición del convenio · cuantificada"
         bajada="un renglón en rojo no es una decisión; un número sí." />
 
@@ -105,7 +109,7 @@ export async function SolapaConvenios({ quincenaPedida, hoy }: {
 /** Una persona comparada contra su piso. El rojo sale SÓLO cuando el piso es real y está debajo. */
 function FilaPersona({ l }: { l: LineaExposicion }) {
   return (
-    <Fila columnas={COLS} alto={48} testid={`convenio-${l.personaId}`} celdas={[
+    <Fila columnas={COLS} alto={ALTO_LIQ.filaPersona} testid={`convenio-${l.personaId}`} celdas={[
       <span key="n" title={l.origenTarifa ?? undefined} style={{
         display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}>{l.nombre}</span>,
@@ -133,7 +137,7 @@ const COLS_SIN_PISO = 'minmax(200px,1fr) 120px 90px minmax(280px,1fr)'
 
 function FilaSinPiso({ l }: { l: LineaExposicion }) {
   return (
-    <Fila columnas={COLS_SIN_PISO} alto={44} tenue testid={`convenio-${l.personaId}`} celdas={[
+    <Fila columnas={COLS_SIN_PISO} alto={ALTO_LIQ.renglon} tenue testid={`convenio-${l.personaId}`} celdas={[
       <span key="n" style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {l.nombre}
       </span>,
@@ -151,7 +155,7 @@ function NoDibujable({ resumen }: {
   const fila = (que: string, estado: string) => (
     <div key={que} style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14,
-      minHeight: 44, borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px',
+      minHeight: ALTO_LIQ.renglon, borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px',
     }}>
       <span style={{ color: V.apagado }}>{que}</span>
       <span style={{ fontSize: '11.5px', color: V.tenue, textAlign: 'right' }}>{estado}</span>

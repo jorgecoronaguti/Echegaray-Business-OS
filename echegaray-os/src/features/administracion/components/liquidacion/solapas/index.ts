@@ -22,6 +22,8 @@ import { SolapaHoras } from './SolapaHoras'
 import { SolapaCosto } from './costo'
 import { SolapaPagos } from './pagos'
 import { SolapaCierre } from './cierre'
+import { SolapaConvenios } from './convenios'
+import { SolapaRecibos } from './recibos'
 
 export type ClaveDeSolapa = 'horas' | 'pagos' | 'costo' | 'convenios' | 'cierre' | 'recibos'
 
@@ -54,10 +56,10 @@ export const SOLAPAS: SolapaDeLiquidacion[] = [
   { clave: 'horas', titulo: 'Horas', Componente: SolapaHoras },
   { clave: 'pagos', titulo: 'Pagos', Componente: SolapaPagos as unknown as ComponentType<PropsDeSolapa> },
   { clave: 'costo', titulo: 'Costo a la obra', Componente: SolapaCosto },
-  { clave: 'convenios', titulo: 'Convenios', Componente: null },
+  { clave: 'convenios', titulo: 'Convenios', Componente: SolapaConvenios },
   // La ruta ya cortó con notFound() a quien no liquida: llegar acá es poder cerrar.
   { clave: 'cierre', titulo: 'Cierre', Componente: ((p: PropsDeSolapa) => SolapaCierre({ ...p, puedeCerrar: true })) as unknown as ComponentType<PropsDeSolapa> },
-  { clave: 'recibos', titulo: 'Recibos', Componente: null },
+  { clave: 'recibos', titulo: 'Recibos', Componente: SolapaRecibos },
 ]
 
 /** La solapa pedida, o la de por defecto. Una clave inventada en la URL no rompe la pantalla. */
