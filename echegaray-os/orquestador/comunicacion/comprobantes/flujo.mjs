@@ -77,8 +77,11 @@ export async function bajarAdjunto(mattermost, fileId, { preparar = prepararPara
     if (!MEDIA_ACEPTADOS.includes(tipo)) {
       return { ok: false, fileId, nombre, error: `no puedo mirar un archivo ${tipo || 'de tipo desconocido'}` }
     }
-    if (Number(info?.size ?? 0) > MAX_BYTES_ADJUNTO) {
-      return { ok: false, fileId, nombre, error: 'la imagen pesa demasiado; mandala más liviana' }
+    // Una IMAGEN pesada se baja igual y se achica en `prepararParaVision` (09/09/2026); el techo de
+    // la API sólo frena acá lo que no se puede achicar (un PDF) o lo que ni vale la pena bajar.
+    const esImagen = /^image\//.test(tipo)
+    if (Number(info?.size ?? 0) > (esImagen ? MAX_BYTES_ADJUNTO * 6 : MAX_BYTES_ADJUNTO)) {
+      return { ok: false, fileId, nombre, error: 'el archivo pesa demasiado; mandalo más liviano' }
     }
     const buf = await mattermost.archivo(fileId)
     const crudo = Buffer.isBuffer(buf) ? buf.toString('base64') : Buffer.from(buf).toString('base64')

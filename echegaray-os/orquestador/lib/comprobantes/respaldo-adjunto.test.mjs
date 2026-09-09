@@ -102,7 +102,7 @@ test('respaldarFajoCargado: sin Mattermost se OMITE y se dice; sin archivos no d
 
 test('admisible / rutaDe / tipoDe: los puros', () => {
   assert.equal(admisible({ media_type: 'application/pdf', bytes: 10 }).ok, true)
-  assert.equal(admisible({ media_type: 'image/jpeg', bytes: 6 * 1024 * 1024 }).motivo, 'pesa 6.0 MB')
+  assert.equal(admisible({ media_type: 'image/jpeg', bytes: 30 * 1024 * 1024 }).motivo, 'pesa 30.0 MB')
   assert.equal(admisible({ media_type: 'image/jpeg', bytes: 0 }).motivo, 'tamaño cero')
   assert.equal(rutaDe(null, 'X', 'sin-extension'), 'historico/sin-post/X.sinextension')
   assert.equal(tipoDe('application/octet-stream', 'foto.JPG'), 'image/jpeg')

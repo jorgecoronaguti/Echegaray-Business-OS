@@ -25,7 +25,9 @@ import { subirAStorage } from '../storage-supabase.mjs'
 
 export const BUCKET = 'comprobantes'
 /** El techo del bucket (`20260825T1000`). Un archivo más grande no entra: se declara, no se trunca. */
-export const MAX_BYTES = 5 * 1024 * 1024
+// 25 MB desde el 09/09/2026: era 5 MB —el techo de la API de visión— y dejaba fuera del respaldo
+// las fotos del iPhone (5,0–5,2 MB), que ahora se achican para la API pero se guardan enteras.
+export const MAX_BYTES = 25 * 1024 * 1024
 /** Los tipos que el bucket acepta. Lo que no está acá no es un comprobante mirable. */
 export const MEDIA_OK = Object.freeze([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'image/heic', 'image/heif',

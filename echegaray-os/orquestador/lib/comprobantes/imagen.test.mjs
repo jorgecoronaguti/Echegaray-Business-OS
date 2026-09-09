@@ -97,3 +97,24 @@ test('el tipo se reconoce por la EXTENSIÓN cuando Mattermost no lo declara', ()
 test('bloqueAdjunto sigue rechazando HEIC crudo: la API no lo acepta y no se le manda igual', () => {
   assert.equal(bloqueAdjunto({ data: HEIC, mediaType: 'image/heic' }), null)
 })
+
+
+// ═══ LA FOTO PESADA SE ACHICA, NO SE RECHAZA (09/09/2026) ═══
+test('un JPEG por encima del umbral pasa por achicar y sale más liviano', async () => {
+  const { prepararParaVision, BYTES_SIN_ACHICAR } = await import('./imagen.mjs')
+  const grande = Buffer.alloc(Math.ceil(BYTES_SIN_ACHICAR) + 1024, 1)
+  const chico = Buffer.alloc(1000, 2)
+  const sharpImpl = () => ({ metadata: async () => ({ width: 4000, height: 3000 }), rotate: () => ({ resize: () => ({ jpeg: () => ({ toBuffer: async () => chico }) }) }) })
+  const r = await prepararParaVision({ data: grande.toString('base64'), mediaType: 'image/jpeg' }, { sharpImpl })
+  assert.equal(r.ok, true)
+  assert.equal(r.bytes, chico.length, 'lo que viaja a la API es la versión achicada')
+  assert.equal(r.achicadaDe, grande.length)
+})
+
+test('un JPEG chico viaja tal cual, sin tocar sharp', async () => {
+  const { prepararParaVision } = await import('./imagen.mjs')
+  const data = Buffer.alloc(2000, 3).toString('base64')
+  const sharpImpl = () => { throw new Error('no debía llamarse') }
+  const r = await prepararParaVision({ data, mediaType: 'image/jpeg' }, { sharpImpl })
+  assert.equal(r.ok, true); assert.equal(r.data, data)
+})

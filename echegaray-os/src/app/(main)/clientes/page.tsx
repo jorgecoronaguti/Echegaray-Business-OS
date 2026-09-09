@@ -38,6 +38,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
 import { getClientes, getObrasPorCliente } from '@/features/clientes/services/clientesService'
 import { esVistaCartera, recortarCartera, separarArchivados } from '@/features/clientes/services/cartera'
+import { getOrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
 import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
 import { PanelCliente } from '@/features/clientes/components/PanelCliente'
@@ -77,7 +78,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const vista = esVistaCartera(sp.vista) ? sp.vista : 'todo'
 
   const supabase = await createClient()
-  const [lectura, perfil, obras, partes, certificados, todasLasObras] = await Promise.all([
+  const [lectura, perfil, obras, partes, certificados, todasLasObras, ordenes] = await Promise.all([
     getClientes(supabase),
     getPerfilActual(supabase),
     getObrasDeLaCartera(supabase),
@@ -86,6 +87,10 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
     // El panel muestra TODAS las obras del cliente, no sólo las activas. Una consulta más para toda
     // la cartera, no una por cliente abierto.
     getObrasPorCliente(supabase),
+    // LAS ÓRDENES DEL CLIENTE (OC/OP bajadas de Gmail). Una sola consulta para toda la cartera: una
+    // por obra sería una cascada de decenas. La RLS de `cliente_orden` ya recorta por rol —el jefe
+    // de obra sólo ve la suya—, así que acá no se vuelve a filtrar.
+    getOrdenesDeLaCartera(supabase),
   ])
 
   const rol = perfil.data?.rol ?? null
@@ -185,6 +190,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
 
               <TablaClientes
                 clientes={visibles}
+                ordenes={ordenes}
                 seleccionado={seleccionado?.cliente_id}
                 // ═══ LA FILA ABRE LA FICHA, NO EL PANEL (26/08/2026) ═══
                 //

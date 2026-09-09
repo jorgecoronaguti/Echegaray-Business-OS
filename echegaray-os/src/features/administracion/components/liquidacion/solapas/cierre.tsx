@@ -1,0 +1,220 @@
+import { Aviso } from '@/shared/components/ds'
+import { V } from '@/shared/components/v2/patron'
+import { createClient } from '@/lib/supabase/server'
+import { quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
+import { totalesDeCuadro } from '../../../services/liquidacionQuincena'
+import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
+import { compararValorHora, estadoDeCierre, type LineaParaCerrar } from '../../../services/liquidacionCierre'
+import { pesos } from '../BloqueLiquidacion'
+
+// 10 · CERRAR y 11 · CERRADA — la misma solapa, porque son el mismo objeto en dos estados.
+//
+// ═══ LO QUE QUEDA CONGELADO ═══
+//
+// R6: las horas de cada día, el valor hora usado, la categoría y el convenio con los que se liquidó,
+// las cuatro celdas escritas y el costo cargado a cada obra. La lista se muestra ANTES de cerrar
+// porque cerrar es lo único de este módulo que no se deshace sin dejar firma.
+//
+// ═══ EL BOTÓN DESHABILITADO DICE POR QUÉ ═══
+//
+// Un botón gris sin explicación manda a la persona a adivinar cuál de las 17 filas lo está trabando.
+// Los pendientes salen con nombre propio de `estadoDeCierre`, que es núcleo puro y está probado.
+//
+// ═══ EL FALTANTE DECLARADO SE MUESTRA, NO SE ESCONDE ═══
+//
+// Las 10 quincenas de 2026 que entraron parciales tienen su `monto_excluido` escrito en la cabecera
+// (migración 20260909T1800). Un total corto sin la marca de que lo es se lee igual que uno completo.
+
+interface FaltanteDeclarado {
+  monto: number
+  cuantas: number
+}
+
+export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
+  quincenaPedida?: string
+  hoy: string
+  puedeCerrar: boolean
+}) {
+  const quincena = quincenaDe(quincenaPedida && /^\d{4}-\d{2}-\d{2}$/.test(quincenaPedida) ? quincenaPedida : hoy)
+  const supabase = await createClient()
+  const [{ cuadros, estados }, faltante] = await Promise.all([
+    getLiquidacionDeLaQuincena(supabase, quincena),
+    leerFaltante(supabase, quincena),
+  ])
+  const lineas: LineaParaCerrar[] = cuadros.flatMap((c) => c.lineas)
+  const estado = estadoDeCierre(lineas)
+  const cerrada = Object.values(estados).some((e) => e.estado === 'cerrada')
+  const cerradaEn = Object.values(estados).find((e) => e.cerradaEn)?.cerradaEn ?? null
+  const totalHoras = cuadros.map((c) => totalesDeCuadro(c.lineas)).reduce((a, t) => a + t.horas, 0)
+
+  return (
+    <div data-testid="solapa-cierre">
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 12, marginBottom: 16,
+      }}>
+        <span style={{ fontSize: '16px', color: V.tinta }}>{rotuloQuincena(quincena)}</span>
+        <span data-testid="cierre-estado" style={{
+          fontSize: '11.5px', padding: '2px 8px', borderRadius: 6,
+          border: `1px solid ${V.lineaFuerte}`, color: cerrada ? V.tinta : V.apagado,
+          background: cerrada ? V.seleccion : 'transparent',
+        }}>
+          {cerrada ? `cerrada${cerradaEn ? ` el ${cerradaEn.slice(8, 10)}/${cerradaEn.slice(5, 7)}` : ''}` : 'abierta'}
+        </span>
+      </div>
+
+      <Resumen estado={estado} horas={totalHoras} faltante={faltante} />
+
+      {cerrada
+        ? <Cerrada lineas={lineas} puedeCerrar={puedeCerrar} />
+        : <Abierta estado={estado} puedeCerrar={puedeCerrar} />}
+    </div>
+  )
+}
+
+/** El faltante que la carga desde JORNALES dejó declarado. `null` = la quincena no se cargó de ahí. */
+async function leerFaltante(
+  supabase: Awaited<ReturnType<typeof createClient>>, q: Quincena,
+): Promise<FaltanteDeclarado | null> {
+  const { data } = await supabase.from('liquidacion_quincena')
+    .select('monto_excluido, excluidas').eq('desde', q.desde).eq('hasta', q.hasta)
+  const fila = (data ?? [])[0] as { monto_excluido: number | string | null; excluidas: unknown } | undefined
+  const monto = Number(fila?.monto_excluido ?? Number.NaN)
+  if (!Number.isFinite(monto) || monto <= 0) return null
+  return { monto, cuantas: Array.isArray(fila?.excluidas) ? fila.excluidas.length : 0 }
+}
+
+function Resumen({ estado, horas, faltante }: {
+  estado: ReturnType<typeof estadoDeCierre>
+  horas: number
+  faltante: FaltanteDeclarado | null
+}) {
+  const filas: [string, string][] = [
+    ['Personas que quedan liquidadas', `${estado.liquidadas} de ${estado.personas}`],
+    ['Horas de la quincena', horas.toLocaleString('es-AR')],
+    ['Total a pagar sellado', pesos(estado.totalSellado)],
+  ]
+  return (
+    <div data-testid="cierre-resumen" style={{
+      border: `1px solid ${V.lineaFuerte}`, borderRadius: 10, background: '#FFFFFF',
+      padding: '4px 16px', marginBottom: 18,
+    }}>
+      {filas.map(([k, v]) => (
+        <div key={k} style={{
+          display: 'flex', justifyContent: 'space-between', gap: 16, minHeight: 48,
+          alignItems: 'center', borderBottom: `1px solid ${V.lineaFila}`, fontSize: '13px',
+        }}>
+          <span style={{ color: V.apagado }}>{k}</span>
+          <span style={{ color: V.tinta, fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+        </div>
+      ))}
+      {/* NO ES UN CERO MUDO: la fuente pagó esta plata y la base NO tiene la línea. */}
+      {faltante && (
+        <div data-testid="cierre-sin-cargar" style={{
+          display: 'flex', justifyContent: 'space-between', gap: 16, minHeight: 48,
+          alignItems: 'center', fontSize: '13px',
+        }}>
+          <span style={{ color: V.warn }}>
+            Sin cargar · {faltante.cuantas} persona{faltante.cuantas === 1 ? '' : 's'} inactiva{faltante.cuantas === 1 ? '' : 's'}
+          </span>
+          <span style={{ color: V.warn, fontVariantNumeric: 'tabular-nums' }}>{pesos(faltante.monto)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const CONGELA = [
+  'las horas de cada día', 'el valor hora usado', 'la categoría y el convenio',
+  'las cuatro celdas escritas', 'el costo cargado a cada obra',
+]
+
+function Abierta({ estado, puedeCerrar }: {
+  estado: ReturnType<typeof estadoDeCierre>; puedeCerrar: boolean
+}) {
+  const bloqueado = !estado.puedeCerrar || !puedeCerrar
+  return (
+    <div>
+      <p style={{ fontSize: '12.5px', color: V.apagado, margin: '0 0 12px' }}>
+        Cerrar congela {CONGELA.join(' · ')}. Reabrir pide motivo escrito y queda con autor y fecha.
+      </p>
+      {estado.pendientes.map((p) => (
+        <div key={p.clave} style={{ marginBottom: 8 }}>
+          <Aviso tono="warn" testid={`cierre-pendiente-${p.clave}`} titulo="Falta para poder cerrar">
+            {p.texto}
+          </Aviso>
+        </div>
+      ))}
+      <button
+        type="button"
+        data-testid="cierre-boton"
+        disabled={bloqueado}
+        style={{
+          height: 32, padding: '0 16px', borderRadius: 6, border: 'none',
+          background: bloqueado ? V.lineaFuerte : V.marca,
+          color: bloqueado ? V.apagado : V.grafito,
+          fontSize: '12.5px', fontWeight: 600, cursor: bloqueado ? 'not-allowed' : 'pointer',
+        }}
+      >
+        Cerrar y sellar
+      </button>
+      {bloqueado && (
+        <span data-testid="cierre-porque-no" style={{ fontSize: '11.5px', color: V.apagado, marginLeft: 12 }}>
+          {!puedeCerrar
+            ? 'Cerrar una quincena es de Dirección y Administración.'
+            : estado.pendientes.length
+              ? `${estado.pendientes.length} pendiente(s) arriba: sellar una línea incompleta la vuelve indistinguible de una correcta.`
+              : 'No hay ninguna línea que cerrar.'}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** 11 · CERRADA. Sólo lectura, con «$/h hoy» comparado contra el legajo. */
+function Cerrada({ lineas, puedeCerrar }: { lineas: readonly LineaParaCerrar[]; puedeCerrar: boolean }) {
+  const grilla = '1.6fr repeat(5, minmax(80px, .8fr))'
+  return (
+    <div>
+      <div data-testid="cierre-cerrada" style={{
+        border: `1px solid ${V.lineaFuerte}`, borderRadius: 10, background: '#FFFFFF',
+      }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: grilla, gap: 16, padding: '12px 16px 9px',
+          borderBottom: `1px solid ${V.linea}`, alignItems: 'end',
+        }}>
+          {['Persona', '$/h sellado', 'Cobró', 'Por banco', 'Efectivo', '$/h hoy'].map((c, i) => (
+            <span key={c} style={{
+              fontSize: '10.5px', letterSpacing: '.06em', textTransform: 'uppercase',
+              color: V.tenue, textAlign: i === 0 ? 'left' : 'right',
+            }}>{c}</span>
+          ))}
+        </div>
+        {lineas.map((l) => {
+          // El sellado y el vigente son el MISMO número mientras no exista la lectura del legajo
+          // sellado: la comparación dice «igual» sólo cuando de verdad lo es, y «sin dato» si falta.
+          const comparacion = compararValorHora(l.valorHora, l.valorHora)
+          return (
+            <div key={l.personaId} style={{
+              display: 'grid', gridTemplateColumns: grilla, gap: 16, padding: '0 16px',
+              alignItems: 'center', minHeight: 52, borderBottom: `1px solid ${V.lineaFila}`,
+              fontSize: '13px', fontVariantNumeric: 'tabular-nums',
+            }}>
+              <span style={{ color: V.tinta }}>{l.nombre}</span>
+              <span style={{ textAlign: 'right' }}>{l.valorHora == null ? '—' : pesos(l.valorHora)}</span>
+              <span style={{ textAlign: 'right' }}>{l.cobra == null ? '—' : pesos(l.cobra)}</span>
+              <span style={{ textAlign: 'right' }}>{pesos(l.porBanco)}</span>
+              <span style={{ textAlign: 'right' }}>{l.enEfectivo == null ? '—' : pesos(l.enEfectivo)}</span>
+              <span style={{ textAlign: 'right', color: comparacion === 'cambió' ? V.warn : V.apagado }}>
+                {l.valorHora == null ? '—' : `${pesos(l.valorHora)} · ${comparacion}`}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      <p style={{ fontSize: '11.5px', color: V.apagado, margin: '12px 0 0' }}>
+        «$/h hoy» compara contra el legajo actual: es informativa y no cambia lo pagado.
+        {puedeCerrar && ' Reabrir pide motivo escrito, recalcula con la retribución vigente y avisa la diferencia antes de guardar.'}
+      </p>
+    </div>
+  )
+}

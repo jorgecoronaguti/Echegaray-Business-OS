@@ -46,6 +46,19 @@
 // escribe el año («15/11/25»): sin él, una compra de hace catorce meses se lee como una de la
 // semana pasada, que es mezclar dos ventanas de tiempo en la misma columna.
 //
+// ═══ «COMPROBANTES» VUELVE, Y AHORA DICE QUÉ CUENTA (09/09/2026) ═══
+//
+// El dueño la pidió: «quiero que se contabilice por proveedor cuántos comprobantes hay», como la
+// pestaña «Proveedores» del Flujo de Caja. El número ya lo calculaba `agruparComprado` y esta tabla
+// lo tiraba a la basura. La diferencia con la «COMPROB.» que el v4 había retirado es el rótulo: el
+// Sheet cuenta 811 comprobantes de 2026 y de proveedores comerciales, y esta columna cuenta el
+// histórico entero porque eso es lo que `proveedor_nombre_resuelto` publica. La ventana declarada al
+// lado del rótulo es lo que impide que los dos números se lean como el mismo (regla de oro 3); el
+// razonamiento completo, en `textoComprobantes`.
+//
+// La grilla se corre de cinco a seis pistas: el v4 no dibuja esta columna, así que el ancho sale del
+// rótulo más largo de la tabla (200px, medidos en el navegador: con 176 el rótulo se cortaba en «HISTÓRI…») y no del mockup. Todo lo demás queda carácter por carácter.
+//
 // COMPRADO es HISTÓRICO y así lo dice la nota al pie: rotularlo «12 M» inventaría una ventana de
 // tiempo que el dato no tiene (regla de oro 3). PAPELES sigue sin dibujarse: ninguna tabla vincula
 // un archivo con un proveedor.
@@ -62,7 +75,7 @@ import { IconoProblema, IconoProveedor } from '@/shared/components/iconos'
 import { formatearCuit } from '../services/identidad'
 import { fechaCortaConAnio, pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
-import type { CompradoProveedor } from '../services/proveedoresService'
+import { textoComprobantes, type CompradoProveedor } from '../services/proveedoresService'
 import { rubroDe, type Proveedor } from '../types'
 
 /**
@@ -70,7 +83,7 @@ import { rubroDe, type Proveedor } from '../types'
  * armado en runtime.
  */
 const COLS
-  = 'grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_minmax(120px,1fr)]'
+  = 'grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_200px_minmax(120px,1fr)]'
   + ' max-[1249px]:grid-cols-[minmax(160px,1.6fr)_minmax(0,1fr)]'
 /** `gap:16` del bloque «2 · PROVEEDORES». El patrón v2 declara 14 y esta pantalla lo corre a 16. */
 const GAP = 16
@@ -113,6 +126,10 @@ export function TablaProveedores({
         <RotuloCol>CUIT</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Tipo</RotuloCol></span>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprado</RotuloCol></span>
+        {/* LA VENTANA VA EN EL RÓTULO, no en una nota al pie: el Sheet cuenta 811 comprobantes de
+            2026 y esta columna cuenta todo lo que hay en `costos_obra`. Sin la palabra «histórico»
+            los dos números se leen como el mismo. El porqué está en `textoComprobantes`. */}
+        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprobantes · histórico</RotuloCol></span>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Última compra</RotuloCol></span>
       </div>
 
@@ -217,6 +234,20 @@ export function TablaProveedores({
                   (`22v2:316`). A esta escala la abreviatura «$ 64,2 M» esconde justo el orden de
                   magnitud que separa a un proveedor de $ 900.000 de uno de $ 90.000.000. */}
               {c ? (pesos(c.total) ?? 'sin compras') : comprado ? 'sin compras' : 'sin leer'}
+            </span>
+
+            {/* COMPROBANTES — CUÁNTOS SOSTIENEN ESE TOTAL. Pedido del dueño (09/09/2026).
+                El total de al lado no dice si son cuatro facturas grandes o doscientas chicas, y esa
+                diferencia es la que separa a un proveedor de cuenta corriente de una compra suelta.
+                La cifra y sus dos ausencias las decide `textoComprobantes`, del mismo módulo que
+                define el número: si el «—» y el «sin leer» se escribieran acá, la ficha y la tabla
+                podrían decir cosas distintas sobre el mismo proveedor. */}
+            <span
+              className={`font-mono tabular-nums ${SOLO_ANCHO}`}
+              style={{ fontSize: '12px', textAlign: 'right', color: c?.comprobantes ? V.tinta : V.cuentaApagada }}
+              data-testid="comprobantes-proveedor"
+            >
+              {textoComprobantes(c, comprado !== null)}
             </span>
 
             {/* ÚLTIMA COMPRA — LA FECHA, Y DOS AUSENCIAS QUE NO SE DICEN IGUAL. Sin ningún nombre

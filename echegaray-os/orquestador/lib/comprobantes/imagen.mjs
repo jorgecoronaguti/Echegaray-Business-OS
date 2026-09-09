@@ -51,6 +51,8 @@ export const LADO_MAXIMO = 1568
 
 /** Calidad del JPEG. 0,82 mantiene legible un tique térmico y deja el archivo bien por debajo del tope. */
 export const CALIDAD = 0.82
+/** Por debajo de esto una imagen viaja tal cual; por encima se achica antes de la API (techo 5 MB). */
+export const BYTES_SIN_ACHICAR = 3.5 * 1024 * 1024
 
 /** Por qué un adjunto no se pudo preparar. Es lo que se le dice al dueño, con su archivo al lado. */
 export const MOTIVO = Object.freeze({
@@ -117,7 +119,25 @@ export async function achicar(buffer, { lado = LADO_MAXIMO, sharpImpl = null } =
 export async function prepararParaVision(adjunto = {}, ctx = {}) {
   const mediaType = String(adjunto.mediaType ?? '').split(';')[0].trim().toLowerCase()
   if (!hayQueConvertir(mediaType)) {
-    return { ok: true, data: adjunto.data, mediaType, bytes: bytesDeBase64(adjunto.data) }
+    // ═══ LA FOTO PESADA SE ACHICA, NO SE RECHAZA (09/09/2026) ═══
+    //
+    // Una foto del iPhone pesa 5,0–5,2 MB y el techo de la API es 5 MB: tres de las cinco fotos del
+    // post de las 17:58 de hoy quedaron afuera con «la imagen pesa demasiado; mandala más liviana».
+    // El dueño no va a comprimir fotos: se achican acá, con el mismo `achicar` que ya usan las HEIC.
+    const bytes = bytesDeBase64(adjunto.data)
+    if (bytes <= BYTES_SIN_ACHICAR || !/^image\//.test(mediaType)) {
+      return { ok: true, data: adjunto.data, mediaType, bytes }
+    }
+    try {
+      const entrada = Buffer.from(String(adjunto.data ?? ''), 'base64')
+      const salida = await achicar(entrada, { sharpImpl: ctx.sharpImpl ?? null })
+      if (!salida?.length || salida.length >= entrada.length) {
+        return { ok: true, data: adjunto.data, mediaType, bytes }
+      }
+      return { ok: true, data: salida.toString('base64'), mediaType: MEDIA_DESTINO, bytes: salida.length, achicadaDe: bytes }
+    } catch (e) {
+      return { ok: false, error: `${MOTIVO.FALLO}: ${String(e?.message ?? e).slice(0, 120)}` }
+    }
   }
   // `convertir: null` EXPLÍCITO es "no hay convertidor en este servidor", que es un caso que hay que
   // poder probar. Con `??` se caía al real y el test verificaba lo contrario de lo que decía.

@@ -10,6 +10,7 @@ import { z } from 'zod'
 // La ruta es relativa y con extensión a propósito: `node --test` corre este archivo sin el alias
 // `@/` de Next, y un import por alias lo hace fallar antes del primer test.
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
+import { entero } from '../../../shared/components/canon/formato.ts'
 import type {
   NombrePendiente, NombreResuelto, PapelesLeidos, PapelProveedor, Proveedor, ServiceResult,
 } from '../types'
@@ -316,6 +317,43 @@ export function agruparComprado(filas: NombreResuelto[]): Map<string, CompradoPr
     })
   }
   return mapa
+}
+
+/**
+ * CUÁNTOS COMPROBANTES TIENE ESTE PROVEEDOR, Y CÓMO SE DICEN SUS DOS AUSENCIAS.
+ *
+ * Pedido del dueño (09/09/2026): «quiero que se contabilice por proveedor cuántos comprobantes
+ * hay», como la pestaña «Proveedores» del Flujo de Caja. El número ya se calculaba —`agruparComprado`
+ * lo devuelve desde siempre— y la tabla no lo dibujaba.
+ *
+ * ═══ POR QUÉ HISTÓRICO Y NO «2026», AUNQUE EL SHEET CUENTE 2026 ═══
+ *
+ * El Sheet dice «Comprado 2026 · Comprobantes» sobre las compras del año y sólo de proveedores
+ * comerciales: 811 comprobantes, $332.574.962. Esta vista NO puede dar ese número. Su definición
+ * (`20260905T1600…sql`) agrupa `costos_obra` ENTERA por nombre normalizado —`count(*)`, `sum(total)`,
+ * `max(fecha)`— sin ninguna ventana de tiempo: es histórica por diseño, y de ella cuelgan además la
+ * ficha del proveedor, sus papeles (`proveedor_papel`) y la cola de resolución.
+ *
+ * Acotar el conteo al año en curso exigía una de dos cosas, y las dos estaban peor:
+ *   · filtrar en TypeScript — imposible: la vista publica el agregado ya sumado, no las filas;
+ *   · publicar un `comprobantes_2026` al lado del histórico — eso es DOS respuestas a «cuántos
+ *     comprobantes tiene este proveedor», y el día que difieran nadie sabría cuál mirar.
+ *
+ * Así que se muestra el histórico Y SE DICE QUE LO ES en el rótulo. El lector tiene que saber qué
+ * cuenta la columna: un número sin ventana declarada al lado de un Sheet que cuenta 2026 se lee como
+ * el mismo número y no lo es (regla de oro 3). Cuando el dueño quiera el corte anual, la ventana se
+ * agrega en la VISTA, para las tres caras a la vez, no en esta pantalla.
+ *
+ * ═══ LAS DOS AUSENCIAS NO SE DICEN IGUAL ═══
+ *
+ * `null` de lectura ⇒ «sin leer»: un control que no pudo mirar no puede afirmar que no hay nada.
+ * Cero comprobantes ⇒ «—», nunca «0»: un cero se lee como un dato medido, y acá es la ausencia de
+ * filas vinculadas. Es la misma pareja que ya usan COMPRADO y ÚLTIMA COMPRA en la misma fila.
+ */
+export function textoComprobantes(c: CompradoProveedor | undefined, seLeyoLaCartera: boolean): string {
+  if (!seLeyoLaCartera) return 'sin leer'
+  const n = c?.comprobantes ?? 0
+  return n === 0 ? '—' : (entero(n) ?? '—')
 }
 
 export async function getResolucionCartera(

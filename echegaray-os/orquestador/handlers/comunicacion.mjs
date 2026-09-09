@@ -19,8 +19,20 @@
 import { query, withTx } from '../lib/db.mjs'
 import { resolver, renderCatalogo, areaDelCanal, VIA } from '../comunicacion/director.mjs'
 import { googleDelOs } from '../lib/google-os.mjs'
+import { conPresupuesto } from '../lib/ia/fusible.mjs'
 
-export async function comunicacionResponderHandler(task, ctx) {
+// ═══ CADA TAREA CORRE CON SU PROPIO PRESUPUESTO DE IA (09/09/2026) ═══
+//
+// Sin envolver, `admitir()` cae en el presupuesto DE PROCESO, que se renueva por HORA y cuenta el
+// tope de tiempo (`ORQ_IA_MAX_MS`, 5 min) desde la PRIMERA llamada de esa hora. Medido hoy: el post
+// de las 17:43 abrió la hora; el de las 17:58 (5 fotos) llegó 15 min después y las 5 se cortaron
+// «fusible runtime — >300000 ms» en 2 segundos, sin leer una sola. El servidor de webhooks ya
+// envuelve cada pedido en `conPresupuesto`; el worker no lo hacía. Una tarea = un presupuesto.
+export function comunicacionResponderHandler(task, ctx) {
+  return conPresupuesto({ correlacion: task?.id ?? 'comunicacion.responder' }, () => responderConPresupuesto(task, ctx))
+}
+
+async function responderConPresupuesto(task, ctx) {
   const inp = task.inputs ?? {}
   ctx.logger?.info?.('comunicacion.responder: ejecutando', { task_id: task.id, comm_event_id: inp.comm_event_id })
   const port = ctx.port ?? { query, withTx }

@@ -1,0 +1,17 @@
+[Unit]
+# CADA SEIS HORAS, NO CADA MINUTO. Una orden de compra llega por mail y nadie la espera al segundo;
+# lo que sí cuesta es la corrida: baja cada adjunto de Gmail entero para poder leerlo. Correr cada
+# minuto sería descargar la misma casilla 1.440 veces por día para encontrar una orden nueva.
+Description=Echegaray OS - Órdenes de clientes desde Gmail (cada 6 horas)
+
+[Timer]
+OnBootSec=15min
+OnUnitInactiveSec=6h
+# La corrida es idempotente (índice único en la base), así que un disparo perdido por la VM apagada
+# se recupera solo en el siguiente y no duplica nada.
+Persistent=true
+AccuracySec=1min
+Unit=echegaray-gmail-ordenes.service
+
+[Install]
+WantedBy=timers.target
