@@ -170,9 +170,8 @@ ventana 10/08→10/09, plan free, 2 automatizaciones por corrida). Ventana nueva
 
 ## 8. PRÓXIMO PASO
 
-Releer la línea proyectada de «Impuestos» del Cash Flow Mensual tras el pipeline de las 14:50 (con la regla final: sep ≈
-0,67 M IIBB · oct ≈ 8,72 M IVA + 1,82 M IIBB · nov ≈ 5,71 + 0,74 M) y que B13/C21/D21 sigan; saber del dueño QUÉ número del
-IVA sigue mal, verificar la corrida de AfipSDK del 11/09, y
+Pipeline de las 14:50 confirmado: «Impuestos» proyectado sep 665.812 · oct 10.536.117 · nov 6.443.663 · dic 1.781.722
+(abril ya sin los $14.074); B13/C21/D21 siguen. Falta saber del dueño QUÉ número del IVA sigue mal, verificar la corrida de AfipSDK del 11/09, y
 llevarle al dueño las decisiones abiertas (Quattropani ×9 sin comprobante, (4 importes de EFECTIVO redondeado sin persona, Sosa, «sábado supuesto», adelanto en efectivo y
 horas proyectadas del módulo Liquidación, brecha 25 vs 15 en la DDJJ de agosto).
 
