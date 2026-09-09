@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 17:35 (hora local −03) · main `baee17cd` = origin = producción (Sheet); Vercel se despliega con el push_
+_actualizado: 2026-09-09 17:55 (hora local −03) · main `b1e60bbb` = origin = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -55,9 +55,11 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
   en ARCA | número», sin prosa). Aplicado al REAL: Materiales (dueño nuevo `materiales-pestana.mjs`, en PASOS antes
   de `obras-raw-pestana.mjs`; respaldo `respaldos/2026-09-09-19-45-Materiales-REAL.json`), Estructura (migrador +
   `olvidar-huella-de-formato --todas` + A25/A26/B26 repuestas con yaGuardado; respaldo `…19-49-Estructura-REAL.json`),
-  Proveedores (hero y sección 1 sin prosa, controles con número, «1.1 · CADA OPERACIÓN»). Auditor de diseño: Estructura ✓,
-  Materiales ✓, **Proveedores 11 desvíos = la capa fósil 156–266**, que `proveedores-fosil-frontera.mjs` NO borra porque el
-  registro atribuye 44 celdas al dueño (G158, I175, B176…): decisión del dueño. Falta el bloque «4 · RESPALDO FISCAL» de
+  Proveedores (hero y sección 1 sin prosa, controles con número, «1.1 · CADA OPERACIÓN»). Auditor de diseño en el REAL: **Estructura ✓ · Materiales ✓ · Proveedores ✓ (0 desvíos)**. La capa fósil 156–266 se
+  borró a las 17:45 con la firma del dueño («sí, no rompas las fórmulas o mejora»): respaldo
+  `respaldos/2026-09-09-Proveedores-fosil-156-266.json`, 480 sellos retirados. La línea «ARCA facturó y Compras no lo
+  tiene» dejó de leer el nombre `ARCA_SIN_CARGAR_MONTO` (apuntaba a la fósil, $2.319.107 congelado desde el 14/08) y es
+  SUMIFS vivo sobre `_CRUCE_ARCA`: hoy $25.431.371 (b1e60bbb). Falta el bloque «4 · RESPALDO FISCAL» de
   Proveedores y las alertas de la sección 2 (filas 87–88; la 88 es fósil del propio bloque, `devolverElAire`).
 - **Liquidación de horas v2** (handoff en `/home/jorge/liqhs/`): mergeado `feat/liquidacion-horas-v2` — jornada 9/8 en el
   cálculo (1ª quincena sep = 97 h), módulo SÓLO administrador (`liquidaSueldos()` en areas.ts, `notFound()` en la ruta),
@@ -184,9 +186,8 @@ ventana 10/08→10/09, plan free, 2 automatizaciones por corrida). Ventana nueva
 
 ## 8. PRÓXIMO PASO
 
-1. Dueño decide: borrar la capa fósil de Proveedores (`node orquestador/scripts/proveedores-fosil-frontera.mjs
-   --tambien-repuestas --tambien-sin-sello --aplicar` la frena `propiedad-estructura` por 44 celdas «tuyas»; hace falta su OK
-   para forzar) → después bloque «4 · RESPALDO FISCAL» y alertas 87–88.
+1. Proveedores: bloque «4 · RESPALDO FISCAL» (RUBROS_COMERCIALES de cruce-arca-compras) y alertas 87–88 (`devolverElAire`);
+   los nombres `ARCA_*` ya no tienen lector: retirarlos con `rangos-nombrados`.
 2. Aplicar las 4 migraciones de Liquidación en orden (`aplicar-migracion.mjs`) y probar como jefe_obra que no vea el
    módulo; guarda admin en `liquidacionActions.ts`; pantallas 1–12 del handoff (`/home/jorge/liqhs`).
 3. Pipeline de las 18:50: confirmar Materiales/Estructura/Proveedores sin «no repongo» y OBRAS leyendo «TOTAL POR OBRA».
