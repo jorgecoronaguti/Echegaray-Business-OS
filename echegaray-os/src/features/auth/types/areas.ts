@@ -59,6 +59,22 @@ export const veEconomia = (rol: Rol | null | undefined) =>
   rol === 'direccion' || rol === 'administracion'
 
 /**
+ * QUIÉN ENTRA A LIQUIDACIÓN DE HORAS. Dueño, 09/09/2026: *«sólo con nivel de usuario
+ * administrador»*.
+ *
+ * Hoy devuelve el mismo conjunto que `veEconomia`, y aun así es una función aparte: `veEconomia`
+ * gobierna la plata de las OBRAS, y el día que alguien la abra a un rol más —un cliente que mira su
+ * certificado, un rol nuevo de compras— los sueldos del plantel se abrirían con ella sin que nadie
+ * lo decida. Su gemela en Postgres es `public.liquida_sueldos()`, y por el mismo motivo tampoco es
+ * `ve_economia()`.
+ *
+ * JEFE DE OBRA NO. `esAdministracion` lo incluye desde el 19/08/2026 y entra a esta misma pantalla
+ * a cargar asistencia: usar esa función acá le abriría los sueldos de todos.
+ */
+export const liquidaSueldos = (rol: Rol | null | undefined) =>
+  rol === 'direccion' || rol === 'administracion'
+
+/**
  * LAS ÁREAS QUE VE UN ROL EN LA NAVEGACIÓN GLOBAL.
  *
  * Administración ve las dos —necesita entrar a una obra igual que un jefe—; el nivel Obras ve una
