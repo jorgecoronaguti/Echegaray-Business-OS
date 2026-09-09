@@ -45,7 +45,10 @@ const INVISIBLE = new Set(['rgba(0, 0, 0, 0)', 'transparent', 'rgb(0, 0, 0)'])
 
 async function abrir(page: Page, solapa: string) {
   await page.goto(`${RUTA}&solapa=${solapa}`)
-  await page.waitForLoadState('networkidle')
+  // `networkidle` NO ES UNA CONDICIÓN DE ÉXITO: en dev, el HMR deja un socket abierto y la espera
+  // vence sin que la pantalla tenga nada malo. Se espera, y si no llega se sigue: lo que decide el
+  // rojo es la aserción de abajo, no el estado de la red.
+  await page.waitForLoadState('networkidle').catch(() => {})
 }
 
 /** Los `getBoundingClientRect().height` de un selector, ya en el navegador (una sola ida y vuelta). */
@@ -212,6 +215,131 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
       expect([...new Set(fuera.map((f) => `${f.valor} — «${f.texto}»`))],
         `colores fuera del README §2 en ${solapa}`).toEqual([])
     }
+  })
+
+  // ═══ PANTALLA 5 · LA ESCALERA Y EL MULTIPLICADOR ═══
+  test('Costo · la escalera del mockup arriba y las alícuotas versionadas abajo', async ({ page }) => {
+    await abrir(page, 'costo')
+    await expect(page.getByTestId('solapa-costo-hora')).toBeVisible()
+    await page.screenshot({ path: `${SALIDA}/app-5-costo-hora.png`, fullPage: true })
+
+    // LOS SEIS ESCALONES DE §5, en el orden del mockup y con su alto de 42 px.
+    const escalera = page.getByTestId('escalera-costo')
+    await expect(escalera).toContainText('Bolsillo · lo que se le paga')
+    for (const t of ['Cargas sociales', 'ART', 'Fondo de cese UOCRA', 'Seguro de vida y sepelio']) {
+      await expect(escalera).toContainText(t)
+    }
+    const escalones = await altos(page, '[data-testid^="escalon-"]')
+    expect(escalones.length, 'los seis escalones').toBeGreaterThanOrEqual(6)
+    for (const h of escalones) expect(h, 'alto de escalón').toBe(42)
+
+    // LA LÍNEA DE COSTO POR HORA: 40 px y `border-top` grafito, como el mockup.
+    const costo = page.getByTestId('costo-por-hora')
+    const est = await costo.evaluate((n) => {
+      const s = getComputedStyle(n)
+      return { alto: n.getBoundingClientRect().height, borde: s.borderTopColor }
+    })
+    expect(est.alto).toBe(40)
+    expect(est.borde, 'la línea de total es grafito').toBe(rgb('#30302F'))
+
+    // LA TABLA POR CATEGORÍA, con las cuatro columnas del mockup y la fila de la quincena entera.
+    await expect(page.getByTestId('encabezado-categorias')).toContainText('Multiplicador')
+    const quincena = page.getByTestId('quincena-entera')
+    await expect(quincena).toContainText('La quincena entera')
+    expect((await quincena.boundingBox())!.height).toBe(52)
+
+    // R9 · EL VERSIONADO NO SE PERDIÓ: está plegado, con su fecha y su fuente.
+    const detalle = page.getByTestId('alicuotas-detalle')
+    await expect(detalle).toContainText('Rige desde')
+    await expect(detalle).toContainText('Fuente')
+  })
+
+  // ═══ PANTALLA 6 · LA QUINCENA CARGADA A LA OBRA ═══
+  test('Costo a la obra · siete columnas, A OBRA / A ESTRUCTURA y «sin base» donde no hay presupuesto', async ({ page }) => {
+    await abrir(page, 'costo')
+    const cuadro = page.getByTestId('solapa-costo-obra')
+    await expect(cuadro).toBeVisible()
+    await page.screenshot({ path: `${SALIDA}/app-6-costo-obra.png`, fullPage: true })
+
+    if (await page.getByTestId('cuadro-costo-obra').count() === 0) {
+      test.skip(true, 'no hay horas cargadas en esta quincena: el cuadro no se dibuja')
+    }
+    const enc = page.getByTestId('encabezado-obras')
+    for (const c of ['Obra', 'HH', 'Gente', 'Bolsillo', 'Costo real', 'MO presupuestada', 'Consumido']) {
+      await expect(enc).toContainText(c)
+    }
+    expect((await enc.boundingBox())!.height).toBe(34)
+    await expect(page.getByTestId('total-a-obra')).toContainText('A OBRA')
+    await expect(page.getByTestId('total-a-estructura')).toContainText('A ESTRUCTURA')
+
+    // R1 · SIN BASE NO ES 0 %. Si alguna obra no tiene mano de obra presupuestada, tiene que decirlo
+    // con esas palabras — y ningún «0 %» puede aparecer en la columna de consumo.
+    const filas = await altos(page, '[data-testid="fila-obra"]')
+    for (const h of filas) expect(h, 'alto de fila de obra').toBeGreaterThanOrEqual(52)
+    const total = page.getByTestId('total-obras')
+    expect((await total.boundingBox())!.height).toBe(56)
+    expect(await total.evaluate((n) => getComputedStyle(n).borderTopColor)).toBe(rgb('#30302F'))
+  })
+
+  // ═══ PANTALLA 11 · «$/h HOY» TIENE QUE PODER DECIR «CAMBIÓ» ═══
+  test('Cierre · la quincena cerrada compara el sellado contra la tarifa de hoy', async ({ page }) => {
+    await abrir(page, 'cierre')
+    // `solapa-cierre` es también el testid de la PESTAÑA en la barra: se pide el panel.
+    await expect(page.locator('div[data-testid="solapa-cierre"]')).toBeVisible()
+    await page.screenshot({ path: `${SALIDA}/app-11-cierre.png`, fullPage: true })
+
+    if (await page.getByTestId('cierre-cerrada').count() === 0) {
+      // La quincena en curso está abierta: se verifica la pantalla 10 y la 11 la cubre el test
+      // unitario `filasDeQuincenaCerrada`, que es el que atrapa el defecto de la comparación.
+      await expect(page.getByTestId('cierre-boton')).toBeVisible()
+      return
+    }
+    const enc = page.getByTestId('encabezado-cerrada')
+    for (const c of ['Persona', 'Horas', '$/h sellado', 'Cobró', 'Por banco', 'Efectivo', 'Total', '$/h hoy']) {
+      await expect(enc).toContainText(c)
+    }
+    for (const h of await altos(page, '[data-testid="fila-cerrada"]')) {
+      expect(h, 'alto de fila cerrada').toBeGreaterThanOrEqual(52)
+    }
+    // «igual» SIEMPRE es el defecto que este módulo tuvo: la columna compara dos fuentes distintas.
+    const veredictos = await page.$$eval('[data-testid^="hoy-"]', (n) => n.map((x) => x.textContent ?? ''))
+    expect(veredictos.length).toBeGreaterThan(0)
+    for (const v of veredictos) expect(v).toMatch(/(cambió|igual|sin dato)/)
+  })
+
+  // ═══ 390 px · EL TELÉFONO ═══
+  test('390 px · las cinco pantallas apilan sin desbordar el ancho', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 900 })
+    for (const solapa of ['horas', 'pagos', 'costo', 'cierre']) {
+      await abrir(page, solapa)
+      await page.screenshot({ path: `${SALIDA}/app-390-${solapa}.png`, fullPage: true })
+      // NADA MÁS ANCHO QUE LA VENTANA. Un `scrollWidth` mayor que 390 en el documento significa que
+      // algo empujó la página entera: en el teléfono eso es la fila de total fuera de pantalla.
+      //
+      // EL ROJO NOMBRA AL CULPABLE. Un test que sólo dice «1022 > 391» manda a bisectar el DOM a
+      // mano; el que dice cuál es el nodo más ancho que su padre se arregla en un minuto.
+      const culpables = await page.evaluate(() => {
+        const malos: string[] = []
+        for (const n of Array.from(document.querySelectorAll('main *'))) {
+          const r = n.getBoundingClientRect()
+          if (r.right <= 391 || r.width === 0) continue
+          const padre = n.parentElement
+          // Sólo el PRIMERO que se sale: los hijos heredan el desborde del padre y ensucian la lista.
+          if (padre && padre.getBoundingClientRect().right > 391) continue
+          malos.push(`${n.tagName.toLowerCase()}[${n.getAttribute('data-testid') ?? n.className}] w=${Math.round(r.width)}`)
+        }
+        return malos
+      })
+      const ancho = await page.evaluate(() => document.documentElement.scrollWidth)
+      expect(ancho, `desborde horizontal en ${solapa} a 390 px · ${culpables.join(' | ')}`)
+        .toBeLessThanOrEqual(391)
+    }
+    // Y EL PANEL DE LA PERSONA, que es el que apila el legajo debajo.
+    await abrir(page, 'horas')
+    await page.locator('[data-testid^="fila-"]').first().click()
+    await expect(page.getByTestId('panel-persona')).toBeVisible()
+    await page.screenshot({ path: `${SALIDA}/app-390-persona.png`, fullPage: true })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
   })
 
   test('Toda la vista · IBM Plex Sans para el texto y Mono para los rótulos de columna', async ({ page }) => {

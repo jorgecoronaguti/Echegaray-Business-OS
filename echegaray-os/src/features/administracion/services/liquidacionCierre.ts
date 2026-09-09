@@ -152,6 +152,64 @@ export function compararValorHora(
   return Math.abs(sellado - hoy) < 0.005 ? 'igual' : 'cambió'
 }
 
+/** Lo que quedó sellado en `liquidacion_linea` para una persona. `null` = la columna vino vacía. */
+export interface SelloDeLinea {
+  horas: number | null
+  valorHora: number | null
+  cobra: number | null
+  porBanco: number | null
+  enEfectivo: number | null
+  total: number | null
+}
+
+/** Una fila de la pantalla 11: lo sellado, el $/h de hoy y el veredicto de la comparación. */
+export interface FilaDeQuincenaCerrada extends SelloDeLinea {
+  personaId: string
+  nombre: string
+  valorHoraSellado: number | null
+  valorHoraHoy: number | null
+  comparacion: ComparacionDeValorHora
+}
+
+/**
+ * LAS FILAS DE LA QUINCENA CERRADA — SELLADO CONTRA VIGENTE, DOS FUENTES DISTINTAS.
+ *
+ * ═══ EL DEFECTO QUE ESTA FUNCIÓN EXISTE PARA IMPEDIR ═══
+ *
+ * La pantalla comparaba `compararValorHora(l.valorHora, l.valorHora)`: el mismo número contra sí
+ * mismo, así que decía «igual» siempre. Un control que no puede dar rojo no es un control, y éste
+ * además AFIRMA algo —«la retribución no se movió»— que nadie verificó. El sellado sale de
+ * `liquidacion_linea` y el vigente de `persona_tarifa`: si las dos entradas fueran la misma, la
+ * columna volvería a mentir.
+ *
+ * Una persona sin línea sellada queda con todo en `null` y comparación «sin dato». No se completa
+ * con el cálculo de hoy: eso publicaría como pagado algo que el cierre nunca selló.
+ */
+export function filasDeQuincenaCerrada(
+  lineas: readonly { personaId: string; nombre: string; horas: number | null }[],
+  sellado: ReadonlyMap<string, SelloDeLinea>,
+  vigenteHoy: ReadonlyMap<string, number>,
+): FilaDeQuincenaCerrada[] {
+  return lineas.map((l) => {
+    const s = sellado.get(l.personaId)
+    const valorHoraSellado = s?.valorHora ?? null
+    const valorHoraHoy = vigenteHoy.get(l.personaId) ?? null
+    return {
+      personaId: l.personaId,
+      nombre: l.nombre,
+      horas: s?.horas ?? l.horas,
+      valorHora: valorHoraSellado,
+      cobra: s?.cobra ?? null,
+      porBanco: s?.porBanco ?? null,
+      enEfectivo: s?.enEfectivo ?? null,
+      total: s?.total ?? null,
+      valorHoraSellado,
+      valorHoraHoy,
+      comparacion: compararValorHora(valorHoraSellado, valorHoraHoy),
+    }
+  })
+}
+
 export interface DiferenciaDeReapertura {
   personaId: string
   nombre: string

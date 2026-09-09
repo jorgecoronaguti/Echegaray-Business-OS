@@ -16,7 +16,10 @@ import { quincenaDe } from '../../../services/quincena'
 export async function SolapaCosto(props: PropsDeSolapa) {
   const quincena = quincenaDe(props.quincenaPedida ?? props.hoy)
   return (
-    <div style={{ display: 'grid', gap: 32 }}>
+    // `minmax(0, 1fr)` NO ES DECORACIÓN: un item de grid nace con `min-width: auto` y crece hasta su
+    // min-content. A 390 px eso hacía que las dos pantallas empujaran la página a 746 px aunque cada
+    // tabla ya tuviera su propio scroller — el desborde venía del contenedor, no de las tablas.
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 32 }}>
       {await SolapaCostoHora({ quincena, hoy: props.hoy })}
       {await SolapaCostoObra({ quincena, hoy: props.hoy })}
       {await SolapaProductividad({ quincenaPedida: props.quincenaPedida, hoy: props.hoy })}

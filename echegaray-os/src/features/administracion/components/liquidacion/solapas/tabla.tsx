@@ -62,6 +62,10 @@ export const ALTO_LIQ = {
   renglonBajo: 34,
   /** Renglón de dos columnas que puede llevar una frase entera a la derecha. `dc:701`-`:705`. */
   renglonAlto: 48,
+  /** Escalón de la escalera bolsillo → costo (pantalla 5), `dc:` costo-hora. */
+  escalon: 40,
+  /** Fila de total alta de los cuadros por obra y de la quincena cerrada (`dc:` costo-obra / cierre). */
+  filaTotalAlta: 56,
 } as const
 
 /** El contenedor de un cuadro: radio 10, filo `line-2`, sin sombra y sin gradiente. `dc:525`. */

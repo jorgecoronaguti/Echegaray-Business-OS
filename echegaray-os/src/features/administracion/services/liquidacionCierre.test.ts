@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  avisoDeReapertura, compararValorHora, estadoDeCierre, sellarLineas,
-  validarMotivoDeReapertura, type LineaParaCerrar,
+  avisoDeReapertura, compararValorHora, estadoDeCierre, filasDeQuincenaCerrada, sellarLineas,
+  validarMotivoDeReapertura, type LineaParaCerrar, type SelloDeLinea,
 } from './liquidacionCierre.ts'
 
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN:
@@ -118,4 +118,44 @@ test('el motivo de reapertura tiene que estar escrito', () => {
   assert.equal(validarMotivoDeReapertura('ok').ok, false)
   const r = validarMotivoDeReapertura('  Faltó   cargar el jueves 27  ')
   assert.deepEqual(r, { ok: true, motivo: 'Faltó cargar el jueves 27' })
+})
+
+// ═══ PANTALLA 11 · «$/h HOY» TIENE QUE PODER DECIR «CAMBIÓ» ═══
+//
+// La pantalla comparaba el valor hora contra SÍ MISMO y decía «igual» siempre. Estos tres casos
+// mueren si alguien vuelve a alimentar la comparación con una sola fuente: el primero exige rojo
+// donde la tarifa cambió, el segundo exige que dos fuentes distintas puedan coincidir de verdad, y
+// el tercero exige que la ausencia de tarifa no se disfrace de «igual».
+
+const sello = (valorHora: number | null): SelloDeLinea => ({
+  horas: 88, valorHora, cobra: valorHora == null ? null : 88 * valorHora,
+  porBanco: 0, enEfectivo: null, total: null,
+})
+
+const PERSONAS = [
+  { personaId: 'p1', nombre: 'Maldonado', horas: 88 },
+  { personaId: 'p2', nombre: 'Aguero', horas: 96 },
+  { personaId: 'p3', nombre: 'Alaniz', horas: 105 },
+]
+
+test('pantalla 11 · el sellado se compara contra la tarifa VIGENTE, no contra sí mismo', () => {
+  const filas = filasDeQuincenaCerrada(
+    PERSONAS,
+    new Map([['p1', sello(7_500)], ['p2', sello(5_250)], ['p3', sello(3_400)]]),
+    new Map([['p1', 8_125], ['p2', 5_250]]),
+  )
+  assert.equal(filas[0].comparacion, 'cambió', 'subir la tarifa tiene que dar rojo')
+  assert.equal(filas[0].valorHoraSellado, 7_500, 'el sellado NO se pisa con el de hoy')
+  assert.equal(filas[0].valorHoraHoy, 8_125)
+  assert.equal(filas[1].comparacion, 'igual', 'dos fuentes que coinciden de verdad')
+  // R1: sin tarifa vigente hoy, «igual» afirmaría que la retribución se mantuvo. Desapareció.
+  assert.equal(filas[2].comparacion, 'sin dato')
+})
+
+test('pantalla 11 · sin línea sellada no se completa con el cálculo de hoy', () => {
+  const filas = filasDeQuincenaCerrada(PERSONAS.slice(0, 1), new Map(), new Map([['p1', 8_125]]))
+  assert.equal(filas[0].valorHoraSellado, null)
+  assert.equal(filas[0].cobra, null, 'publicar un cobra recalculado diría que se pagó algo que nadie selló')
+  assert.equal(filas[0].total, null)
+  assert.equal(filas[0].comparacion, 'sin dato')
 })
