@@ -77,7 +77,13 @@ function Fila({ fila, abrir, abierta }: {
         cursor: abrir ? 'pointer' : undefined,
         background: abierta ? '#FAFAF8' : undefined,
         // LA BARRA AMARILLA DE 3 px MARCA LA FILA ABIERTA. Es la única marca de marca del cuadro.
+        // El mockup (línea 176) la mete DENTRO del cuadro: 12 px de padding compensados con 12 px
+        // de margen negativo, para que la barra quede pegada al filo y el nombre no se corra.
         boxShadow: abierta ? `inset 3px 0 0 ${V.marca}` : undefined,
+        paddingLeft: abierta ? 12 : undefined,
+        marginLeft: abierta ? -12 : undefined,
+        borderRadius: abierta ? '0 6px 6px 0' : undefined,
+        fontWeight: abierta ? 500 : undefined,
       }}
       data-testid={`fila-${fila.personaId}`}
       onClick={abrir ? () => abrir(fila.personaId) : undefined}
@@ -86,7 +92,11 @@ function Fila({ fila, abrir, abierta }: {
       {fila.celdas.map((c) => <Celda key={c.fecha} celda={c} />)}
       <div style={{ textAlign: 'right', fontWeight: 600 }}>{numero(fila.cargadas)}</div>
       <div style={{ textAlign: 'right', color: V.apagado }}>{numero(fila.esperadas)}</div>
-      <div style={{ textAlign: 'right', fontSize: '11px', color: estado.color }}>{estado.texto}</div>
+      <div style={{ textAlign: 'right', fontSize: '11px', color: estado.color }}>
+        {/* «18 lic.» — el mockup publica las HORAS de licencia delante del rótulo: «lic.» sola no
+            dice cuánto no se va a pagar. */}
+        {fila.estado === 'licencia' ? `${numero(fila.horasDeLicencia)} ${estado.texto}` : estado.texto}
+      </div>
     </div>
   )
 }
@@ -144,12 +154,16 @@ function FilaFiltro({ href, style, children }: {
 }
 
 export function GrillaHorasQuincena({
-  titulo, jornadaTexto, filas, resumen, filtros, accion, abrir, abierta,
+  titulo, jornadaTexto, habilesTexto, hoy, filas, resumen, filtros, accion, abrir, abierta,
 }: {
   /** «1 al 15 de septiembre». */
   titulo: string
   /** «9 h L a J · 8 h los viernes» — el prop del mockup, para poder validar R2 contra el dato real. */
   jornadaTexto: string
+  /** «7 de 11 hábiles transcurridos» — cuánto de la quincena ya pasó. */
+  habilesTexto?: string
+  /** Para teñir la columna del día en curso. Sin él, el encabezado no distingue hoy. */
+  hoy?: string
   filas: readonly FilaDeGrilla[]
   resumen: ResumenDeGrilla
   filtros: readonly FiltroDeGrilla[]
@@ -205,7 +219,9 @@ export function GrillaHorasQuincena({
           borderBottom: `1px solid ${V.linea}`,
         }}>
           <div style={{ fontSize: '14.5px', fontWeight: 600 }}>{titulo}</div>
-          <div style={{ fontSize: '11.5px', color: V.apagado }}>{jornadaTexto}</div>
+          <div style={{ fontSize: '11.5px', color: V.apagado }} data-testid="grilla-subtitulo">
+            {habilesTexto ? `${habilesTexto} · ${jornadaTexto}` : jornadaTexto}
+          </div>
         </div>
 
         {/* EL ANCHO REAL DE LA GRILLA SE RECORRE, no se aplasta: trece columnas de 30 px más el
@@ -219,8 +235,14 @@ export function GrillaHorasQuincena({
             letterSpacing: '.03em', color: V.tenue, textTransform: 'uppercase',
           }}>
             <div>Persona</div>
-            {resumen.dias.map((f) => (
-              <div key={f} style={{ textAlign: 'center' }}>{rotuloDia(f)}</div>
+            {/* EL ENCABEZADO DEL DÍA DICE SI HAY ALGO ADENTRO. Mockup línea 145: el día que nadie
+                cargó va en gris de línea (#D7D5CF) y el día en curso en tinta plena. Un encabezado
+                todo del mismo gris obliga a bajar la vista para saber dónde está parado uno. */}
+            {resumen.dias.map((f, i) => (
+              <div key={f} style={{
+                textAlign: 'center',
+                color: f === hoy ? V.tinta : (resumen.porDia[i] == null ? V.lineaFuerte : V.tenue),
+              }}>{rotuloDia(f)}</div>
             ))}
             <div style={{ textAlign: 'right' }}>Carg.</div>
             <div style={{ textAlign: 'right' }}>Esper.</div>

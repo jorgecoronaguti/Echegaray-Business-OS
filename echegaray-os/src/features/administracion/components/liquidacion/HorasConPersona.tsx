@@ -16,11 +16,13 @@ import type { FilaDeGrilla, ResumenDeGrilla } from '../../services/grillaHorasQu
 import type { CorreccionDeDia } from '../../services/panelDePersona'
 
 export function HorasConPersona({
-  titulo, jornadaTexto, filas, resumen, filtros, accion, personas, correcciones, cerrada, quincena,
-  lineas, camposEditables,
+  titulo, jornadaTexto, habilesTexto, hoy, filas, resumen, filtros, accion, personas, correcciones,
+  cerrada, quincena, lineas, camposEditables, multiplicador,
 }: {
   titulo: string
   jornadaTexto: string
+  habilesTexto?: string
+  hoy?: string
   filas: FilaDeGrilla[]
   resumen: ResumenDeGrilla
   filtros: FiltroDeGrilla[]
@@ -33,6 +35,8 @@ export function HorasConPersona({
   /** La línea del cuadro de Pagos de cada persona: la MISMA fila que se edita allá. */
   lineas: Record<string, LineaDeLaPersona>
   camposEditables: CampoEditable[]
+  /** Multiplicador de costo vigente. `null` = alícuotas sin cargar → «sin base», nunca un número. */
+  multiplicador?: number | null
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
   const datos = abierta ? personas[abierta] : undefined
@@ -42,6 +46,8 @@ export function HorasConPersona({
       <GrillaHorasQuincena
         titulo={titulo}
         jornadaTexto={jornadaTexto}
+        habilesTexto={habilesTexto}
+        hoy={hoy}
         filas={filas}
         resumen={resumen}
         filtros={filtros}
@@ -52,6 +58,9 @@ export function HorasConPersona({
       {datos && (
         <PanelDePersona
           persona={{ ...datos, cargadas: fila?.cargadas ?? 0 }}
+          fila={fila}
+          habilesTexto={habilesTexto}
+          multiplicador={multiplicador}
           cerrada={cerrada}
           correcciones={correcciones}
           quincena={quincena}
