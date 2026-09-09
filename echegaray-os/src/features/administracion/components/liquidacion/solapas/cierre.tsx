@@ -1,4 +1,3 @@
-import { Aviso } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
@@ -137,13 +136,25 @@ function Abierta({ estado, puedeCerrar }: {
       <p style={{ fontSize: '12.5px', color: V.apagado, margin: '0 0 12px' }}>
         Cerrar congela {CONGELA.join(' · ')}. Reabrir pide motivo escrito y queda con autor y fecha.
       </p>
-      {estado.pendientes.map((p) => (
-        <div key={p.clave} style={{ marginBottom: 8 }}>
-          <Aviso tono="warn" testid={`cierre-pendiente-${p.clave}`} titulo="Falta para poder cerrar">
-            {p.texto}
-          </Aviso>
+      {/* ═══ EL PENDIENTE ES UN RENGLÓN, NO UNA CAJA DE COLOR ═══
+          El mockup (pantalla 10, línea 611) dibuja lo que traba el cierre como una fila más de la
+          lista, con el TEXTO en ámbar y nada de fondo. `Aviso tono="warn"` pinta una superficie
+          entera de `--os-warn-soft` (#FDF0E4), que además es un color que no está en la lista del
+          README §2 — y §2 prohíbe la superficie grande coloreada sin excepción. Con fondo, tres
+          pendientes convierten la pantalla de cierre en un semáforo y el botón deja de leerse. */}
+      {estado.pendientes.length > 0 && (
+        <div data-testid="cierre-pendientes" style={{ marginBottom: 16 }}>
+          {estado.pendientes.map((p) => (
+            <div key={p.clave} data-testid={`cierre-pendiente-${p.clave}`} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+              minHeight: 44, borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px',
+              color: V.warn,
+            }}>
+              <span>{p.texto}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
       <button
         type="button"
         data-testid="cierre-boton"

@@ -162,6 +162,7 @@ export async function getDatosDeLaSolapaHoras(
       nombre: p.nombre_completo,
       valorHora: tarifaDe.get(p.id) ?? null,
       convenio: legajoDe.get(p.id)?.convenio_colectivo ?? null,
+      modalidad: legajoDe.get(p.id)?.modalidad_liquidacion ?? null,
     })),
     registros: filasHH
       .filter((f) => f.fecha >= q.desde && f.fecha <= q.hasta)

@@ -23,6 +23,7 @@ import {
   guardarCeldaLiquidacion, guardarEfectivoRedondeado, guardarValorHora,
 } from '../../services/liquidacionActions'
 import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
+import type { FilaDeGrilla } from '../../services/grillaHorasQuincena'
 import {
   calcularCadena, diasDelPanel, hhPorMes,
   type CorreccionDeDia, type DiaDelPanel, type RegistroDelPanel,
@@ -243,12 +244,86 @@ function CadenaDePago({ persona, cerrada, linea, camposEditables, quincena }: {
   )
 }
 
+/**
+ * LA BANDA DE CUATRO MÉTRICAS — lo primero que se lee al abrir a alguien (mockup, líneas 226-247).
+ *
+ * Contesta las cuatro preguntas en el orden en que se hacen: cuánto trabajó, cuántos días vino,
+ * cuánto faltó, y cuánto le cuesta a la obra. Sin ella el panel arranca con la cadena de pago, que
+ * es la respuesta a la cuarta pregunta sin haber contestado las tres anteriores.
+ *
+ * «SIN BASE» NO ES CERO (R1): sin alícuotas cargadas el costo NO se publica como número. Un costo
+ * de obra inventado se copia a un presupuesto y ahí ya no se distingue de un dato.
+ */
+function Metricas({ fila, habilesTexto, bolsillo, multiplicador }: {
+  fila?: FilaDeGrilla
+  habilesTexto?: string
+  bolsillo: number | null
+  multiplicador?: number | null
+}) {
+  if (!fila) return null
+  const trabajados = fila.celdas.filter((c) => c.marca === 'horas').length
+  const ausencias = fila.celdas.filter((c) => c.marca === 'ausencia').length
+  const costo = bolsillo != null && multiplicador != null ? bolsillo * multiplicador : null
+  return (
+    <div data-testid="metricas-persona" style={{
+      display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, padding: '14px 0',
+      borderTop: `1px solid ${V.linea}`, borderBottom: `1px solid ${V.linea}`,
+    }}>
+      <Metrica rotulo="HH cargadas" valor={horas(fila.cargadas)}
+        nota={`de ${horas(fila.esperadas)} esperadas`} />
+      <Metrica rotulo="Días trabajados" valor={String(trabajados)} nota={habilesTexto} />
+      <Metrica rotulo="Ausencias" valor={String(ausencias)}
+        alerta={fila.diasSinMotivo > 0}
+        nota={fila.diasSinMotivo > 0 ? `${fila.diasSinMotivo} sin motivo` : (ausencias > 0 ? 'todas con motivo' : undefined)} />
+      <Metrica rotulo="Costo cargado" valor={costo == null ? 'sin base' : pesos(costo)}
+        nota={costo == null
+          ? 'faltan las alícuotas del costo real'
+          : `${pesos(bolsillo)} de bolsillo + cargas`} />
+    </div>
+  )
+}
+
+function Metrica({ rotulo, valor, nota, alerta }: {
+  rotulo: string; valor: string; nota?: string; alerta?: boolean
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Eyebrow>{rotulo}</Eyebrow>
+      <div style={{
+        fontSize: '19px', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+        color: alerta ? V.warn : V.tinta,
+      }}>{valor}</div>
+      {nota && <div style={{ fontSize: '11px', color: alerta ? V.warn : V.apagado }}>{nota}</div>}
+    </div>
+  )
+}
+
 /** PANTALLA 3 · el día editable ahí mismo, con su rastro. */
-function DiasDeLaPersona({ dias }: { dias: DiaDelPanel[] }) {
+function DiasDeLaPersona({ dias, titulo, subtitulo, habiles }: {
+  dias: DiaDelPanel[]
+  titulo: string
+  subtitulo: string
+  /** «5 hábiles por delante»: lo que todavía se puede cargar sin que sea una falta (R3). */
+  habiles: number
+}) {
   const COLUMNAS = '82px minmax(200px,1fr) 118px 108px 210px 62px 92px'
   const [verOriginal, setVerOriginal] = useState<string | null>(null)
+  const conHoras = dias.filter((d) => d.horas != null && d.horas > 0).length
+  const sinVenir = dias.filter((d) => d.horas == null || d.horas === 0).length
+  // NULL NO SUMA: el día sin horas no aporta 0, queda fuera de la cuenta y se declara aparte.
+  const totalHH = dias.reduce((s2, d) => s2 + (d.horas ?? 0), 0)
   return (
-    <div className="overflow-x-auto" data-testid="dias-de-la-persona">
+    <div data-testid="dias-de-la-persona">
+    {/* EL ENCABEZADO DEL BLOQUE (mockup pantalla 3, línea 329): quién y qué ventana. Sin él, la
+        tabla de días se lee como la continuación de la cadena de pago. */}
+    <div style={{
+      display: 'flex', alignItems: 'baseline', gap: 14, paddingBottom: 14,
+      borderBottom: `1px solid ${V.linea}`,
+    }}>
+      <div style={{ fontSize: '14.5px', fontWeight: 600 }}>{titulo}</div>
+      <div style={{ fontSize: '11.5px', color: V.apagado }} data-testid="dias-subtitulo">{subtitulo}</div>
+    </div>
+    <div className="overflow-x-auto">
     <div style={{ display: 'flex', flexDirection: 'column', minWidth: 700 }}>
       <div style={{
         display: 'grid', gridTemplateColumns: COLUMNAS, gap: 12, height: 34, alignItems: 'end',
@@ -314,6 +389,20 @@ function DiasDeLaPersona({ dias }: { dias: DiaDelPanel[] }) {
           </div>
         </div>
       ))}
+      <div style={{
+        display: 'grid', gridTemplateColumns: COLUMNAS, gap: 12, height: 54, alignItems: 'center',
+        borderTop: `1px solid ${V.grafito}`, fontSize: '12.5px', fontWeight: 600,
+        fontVariantNumeric: 'tabular-nums',
+      }} data-testid="total-dias">
+        <div>{conHoras} día{conHoras === 1 ? '' : 's'}</div>
+        <div style={{ fontWeight: 400, fontSize: '11.5px', color: V.apagado }}>
+          {sinVenir > 0 && `${sinVenir} sin venir · `}{habiles} hábil{habiles === 1 ? '' : 'es'} por delante
+        </div>
+        <div /><div /><div />
+        <div style={{ textAlign: 'right' }}>{horas(totalHH)}</div>
+        <div />
+      </div>
+    </div>
     </div>
     </div>
   )
@@ -321,9 +410,14 @@ function DiasDeLaPersona({ dias }: { dias: DiaDelPanel[] }) {
 
 export function PanelDePersona({
   persona, cerrada, correcciones, cerrar, quincena, linea, camposEditables,
+  fila, habilesTexto, multiplicador,
 }: {
   persona: PersonaAbierta
   cerrada: boolean
+  /** La fila de la grilla de esta persona: de ahí salen días trabajados y ausencias, ya contados. */
+  fila?: FilaDeGrilla
+  habilesTexto?: string
+  multiplicador?: number | null
   correcciones: Record<string, CorreccionDeDia[]>
   cerrar: () => void
   quincena: { desde: string; hasta: string }
@@ -375,11 +469,22 @@ export function PanelDePersona({
         {persona.encabezado && (
           <div style={{ fontSize: '12.5px', color: V.apagado }}>{persona.encabezado}</div>
         )}
+        <Metricas
+          fila={fila}
+          habilesTexto={habilesTexto}
+          bolsillo={linea?.linea.cobra ?? (persona.valorHora == null ? null : persona.cargadas * persona.valorHora)}
+          multiplicador={multiplicador}
+        />
         <CadenaDePago
           persona={persona} cerrada={cerrada} linea={linea}
           camposEditables={camposEditables} quincena={quincena}
         />
-        <DiasDeLaPersona dias={dias} />
+        <DiasDeLaPersona
+          dias={dias}
+          titulo={`${persona.nombre} · ${quincena.desde.slice(8, 10)} al ${quincena.hasta.slice(8, 10)}`}
+          subtitulo={`${horas(persona.cargadas)} de ${horas(fila?.esperadas ?? null)}`}
+          habiles={fila ? fila.celdas.filter((c) => c.marca === 'sin-cargar').length : 0}
+        />
       </div>
 
       <aside

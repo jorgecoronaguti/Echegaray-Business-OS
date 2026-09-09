@@ -17,6 +17,8 @@ import { createClient } from '@/lib/supabase/server'
 import { filasDeGrilla, resumenDeGrilla, type FilaDeGrilla } from '../../../services/grillaHorasQuincena'
 import { getDatosDeLaSolapaHoras } from '../../../services/grillaHorasQuincenaService'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
+import { alicuotasVigentes, multiplicadorDeCosto } from '../../../services/costoHora'
+import { getAlicuotas } from '../../../services/costoLecturas'
 import type { LineaDeLaPersona } from '../PanelDePersona'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
 import type { PropsDeSolapa } from './index'
@@ -35,17 +37,25 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? (quincenaPedida as string) : hoy)
   // Los recortes de ESTA solapa. `pendiente` y `convenio` viajan en la URL porque son un recorte
   // del trabajo que falta, y eso se comparte por link con quien lo tiene que resolver.
-  const recorte = { convenio: parametros.convenio, pendiente: parametros.pendiente }
+  const recorte = {
+    convenio: parametros.convenio,
+    pendiente: parametros.pendiente,
+    modalidad: parametros.modalidad,
+  }
   const hrefCierre = hrefDe({ solapa: 'cierre' })
   const supabase = await createClient()
   // LA CADENA DE PAGO DE LA PERSONA ES LA MISMA FILA DEL CUADRO DE PAGOS, no una copia: el dueño
   // pidió editarla desde acá con las mismas celdas, y dos cuentas de lo que cobra una persona serían
   // dos respuestas de las que se cree la última que alguien miró. Cuesta una segunda tanda de
   // lecturas y ese es el precio de tener UNA definición.
-  const [datos, liquidacion] = await Promise.all([
+  // EL COSTO CARGADO DE LA BANDA SALE DEL MISMO MULTIPLICADOR QUE «Costo a la obra», no de una
+  // cuenta propia: dos definiciones de «cuánto cuesta esta hora» darían dos costos de obra.
+  const [datos, liquidacion, costo] = await Promise.all([
     getDatosDeLaSolapaHoras(supabase, quincena),
     getLiquidacionDeLaQuincena(supabase, quincena),
+    getAlicuotas(supabase),
   ])
+  const multiplicador = multiplicadorDeCosto(alicuotasVigentes(costo.alicuotas, quincena.hasta), 1).valor
   const lineas: Record<string, LineaDeLaPersona> = {}
   for (const cuadro of liquidacion.cuadros) {
     for (const linea of cuadro.lineas) lineas[linea.personaId] = { grupo: cuadro.grupo, linea }
@@ -64,8 +74,10 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
   const resumen = resumenDeGrilla(quincena, todas)
 
   const convenioDe = new Map(datos.personas.map((p) => [p.id, p.convenio]))
+  const modalidadDe = new Map(datos.personas.map((p) => [p.id, p.modalidad ?? null]))
   const visibles = todas.filter((f) => {
     if (recorte.convenio && (convenioDe.get(f.personaId) ?? 'sin convenio') !== recorte.convenio) return false
+    if (recorte.modalidad && modalidadDe.get(f.personaId) !== recorte.modalidad) return false
     if (recorte.pendiente && !(PENDIENTES[recorte.pendiente]?.toca(f) ?? true)) return false
     return true
   })
@@ -90,8 +102,25 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
     },
     {
       rotulo: 'Quién',
+      // EL CORTE OBRERO/OFICINA YA EXISTE EN EL LEGAJO: es `modalidad_liquidacion` (README §1). No
+      // se inventa un campo nuevo. La modalidad que no tiene a nadie se OFRECE IGUAL con «sin
+      // cargar» al lado —el mockup la dibuja así—: esconderla haría creer que el corte no existe.
       opciones: [
-        { texto: 'Todo el plantel', detalle: String(datos.personas.length), activa: !recorte.convenio && !recorte.pendiente, href: hrefDe({ convenio: undefined, pendiente: undefined }) },
+        {
+          texto: 'Todo el plantel',
+          detalle: String(datos.personas.length),
+          activa: !recorte.convenio && !recorte.pendiente && !recorte.modalidad,
+          href: hrefDe({ convenio: undefined, pendiente: undefined, modalidad: undefined }),
+        },
+        ...['hora', 'mensual'].map((m) => {
+          const n = datos.personas.filter((p) => (p.modalidad ?? null) === m).length
+          return {
+            texto: `Modalidad ${m}`,
+            detalle: n === 0 ? 'sin cargar' : String(n),
+            activa: recorte.modalidad === m,
+            href: n === 0 ? undefined : hrefDe({ modalidad: recorte.modalidad === m ? undefined : m }),
+          }
+        }),
       ],
     },
     {
@@ -120,7 +149,10 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
   ]
 
   return (
-    <div data-testid="solapa-horas">
+    // EL CONTENIDO NO COMPARTE `data-testid` CON SU PESTAÑA. `BarraSolapas` ya publica
+    // `solapa-horas` para el clic; que el contenedor usara el mismo nombre hacía que un selector
+    // resolviera a dos elementos y el test se cayera por «strict mode» sin que nada estuviera mal.
+    <div data-testid="vista-horas">
       {[...datos.errores, ...liquidacion.errores].map((e) => (
         <div key={e.que} style={{ padding: '0 0 10px' }}>
           <Aviso tono="neg" testid="horas-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
@@ -129,6 +161,8 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
       <HorasConPersona
         titulo={rotuloQuincena(quincena)}
         jornadaTexto="9 h de lunes a jueves · 8 h los viernes"
+        habilesTexto={habilesTranscurridos(resumen.dias, hoy)}
+        hoy={hoy}
         filas={visibles}
         resumen={resumen}
         filtros={filtros}
@@ -138,10 +172,29 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
         quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
         lineas={lineas}
         camposEditables={liquidacion.camposEditables}
+        multiplicador={multiplicador}
         accion={<BotonCierre puede={resumen.puedeCerrar} href={hrefCierre} />}
       />
     </div>
   )
+}
+
+/**
+ * «7 de 11 hábiles transcurridos» — cuánto de la quincena ya pasó, en DÍAS HÁBILES.
+ *
+ * Es el numerito que dice si «1.019 de 1.400» es un atraso o es que la quincena recién empieza. Se
+ * cuenta de lunes a viernes porque ésa es la jornada del convenio (R2): el sábado de la grilla está
+ * para poder cargar una extra, no porque se lo espere.
+ */
+function habilesTranscurridos(dias: readonly string[], hoy: string): string {
+  const esHabil = (f: string) => {
+    const [a, m, d] = f.split('-').map(Number)
+    const dow = new Date(Date.UTC(a, m - 1, d)).getUTCDay()
+    return dow >= 1 && dow <= 5
+  }
+  const habiles = dias.filter(esHabil)
+  const pasados = habiles.filter((f) => f <= hoy)
+  return `${pasados.length} de ${habiles.length} hábiles transcurridos`
 }
 
 /**

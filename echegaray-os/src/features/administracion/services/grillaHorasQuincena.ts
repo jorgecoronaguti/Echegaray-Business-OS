@@ -30,6 +30,8 @@ export interface PersonaDeGrilla {
   /** `null` es «sin retribución cargada», que NO es cero (R1): la fila queda pendiente. */
   valorHora: number | null
   convenio: string | null
+  /** `hora` o `mensual` del legajo. `null` es «sin cargar»: es el corte obrero/oficina del handoff. */
+  modalidad?: string | null
 }
 
 /** Lo que se dibuja en una celda. `horas` viaja para el `tabular-nums`; `texto` para la A y la L. */

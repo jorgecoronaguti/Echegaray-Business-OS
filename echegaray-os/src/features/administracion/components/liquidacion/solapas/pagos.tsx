@@ -1,9 +1,12 @@
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
-import { tarjetaDeQuincena, totalesDeCuadro, type LineaLiquidada } from '../../../services/liquidacionQuincena'
+import {
+  tarjetaDeQuincena, totalesDeCuadro, type LineaLiquidada, type TotalesDeCuadro,
+} from '../../../services/liquidacionQuincena'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
 import { pesos } from '../BloqueLiquidacion'
+import { SolapaCajaNomina } from './caja-nomina'
 
 // 4 · PAGOS · LA CADENA DE LA QUINCENA.
 //
@@ -26,15 +29,33 @@ import { pesos } from '../BloqueLiquidacion'
 export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: string; hoy: string }) {
   const quincena = quincenaDe(quincenaPedida && /^\d{4}-\d{2}-\d{2}$/.test(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const { cuadros, sinActividad } = await getLiquidacionDeLaQuincena(supabase, quincena)
+  const { cuadros, sinActividad, estados } = await getLiquidacionDeLaQuincena(supabase, quincena)
   const totales = cuadros.map((c) => totalesDeCuadro(c.lineas))
   const tarjeta = tarjetaDeQuincena(totales)
   const lineas = cuadros.flatMap((c) => c.lineas)
+  // EL TOTAL DE LA TABLA ES EL DE TODAS LAS LÍNEAS QUE SE VEN, no la suma de los cuadros: los
+  // grupos se dibujan juntos, así que el pie tiene que cerrar contra lo que está arriba.
+  const totalPlantel = totalesDeCuadro(lineas)
+  const cerrada = Object.values(estados).some((e) => e.estado === 'cerrada')
 
   return (
     <div data-testid="solapa-pagos">
-      <Encabezado quincena={quincena} tarjeta={tarjeta} />
-      <Tabla lineas={lineas} />
+      {/* UN SOLO CUADRO: encabezado, tabla y total comparten filo. */}
+      <div style={{
+        background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 10,
+        overflow: 'hidden',
+      }}>
+        <Encabezado quincena={quincena} tarjeta={tarjeta} cerrada={cerrada} />
+        <Tabla lineas={lineas} totales={totalPlantel} />
+        <div style={{ height: 20 }} />
+      </div>
+      {/* PANTALLA 9 · CAJA DE NÓMINA VIVE ACÁ, no en una solapa propia: el mockup lista CINCO
+          solapas (§4) y «Caja de nómina» no es una de ellas. Es la consecuencia directa de esta
+          pantalla —POR BANCO y EN EFECTIVO son sus dos primeras filas—, y una solapa aparte
+          obligaría a cruzar de pantalla para leer el total que se acaba de calcular. */}
+      <div style={{ marginTop: 32 }}>
+        {await SolapaCajaNomina({ quincena })}
+      </div>
       {sinActividad.length > 0 && (
         <p data-testid="pagos-sin-actividad" style={{ fontSize: '11.5px', color: V.apagado, margin: '10px 0 0' }}>
           {sinActividad.length} sin actividad esta quincena · no aparecen acá y no se dieron de baja.
@@ -48,78 +69,121 @@ export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: st
   )
 }
 
-function Encabezado({ quincena, tarjeta }: {
+/**
+ * EL ENCABEZADO VIVE DENTRO DEL CUADRO (mockup pantalla 4, línea 385), no en una caja aparte.
+ *
+ * La regla de geometría del handoff §2 es explícita: «antes de una card, ¿hace falta esta caja?».
+ * Dos cajas apiladas —una con los tres números y otra con la tabla— dicen que son dos cosas, y son
+ * la misma: el total de abajo es la suma de la tabla de arriba.
+ */
+function Encabezado({ quincena, tarjeta, cerrada }: {
   quincena: Quincena
   tarjeta: { porBanco: number; enEfectivo: number; total: number; cierra: boolean }
+  cerrada?: boolean
 }) {
   return (
     <div style={{
-      display: 'flex', flexWrap: 'wrap', gap: 32, alignItems: 'baseline',
-      border: `1px solid ${V.linea}`, borderRadius: 10, padding: '14px 18px', marginBottom: 18,
-      background: '#FFFFFF',
+      padding: '20px 20px 17px', display: 'flex', alignItems: 'flex-end',
+      justifyContent: 'space-between', gap: 24, flexWrap: 'wrap',
+      borderBottom: `1px solid ${V.linea}`,
     }}>
-      <span style={{ fontSize: '16px', color: V.tinta, marginRight: 'auto' }}>
-        {rotuloQuincena(quincena)}
-      </span>
-      <Cifra rotulo="POR BANCO" valor={tarjeta.porBanco} testid="pagos-por-banco" />
-      <Cifra rotulo="EN EFECTIVO" valor={tarjeta.enEfectivo} testid="pagos-en-efectivo" />
-      <Cifra rotulo="TOTAL" valor={tarjeta.total} testid="pagos-total" fuerte />
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
+        <span style={{ fontSize: '14.5px', fontWeight: 600, color: V.tinta }}>{rotuloQuincena(quincena)}</span>
+        <span style={{ fontSize: '12px', color: V.apagado }}>{cerrada ? 'cerrada' : 'abierta'}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}>
+        <Cifra rotulo="POR BANCO" valor={tarjeta.porBanco} testid="pagos-por-banco" />
+        <Cifra rotulo="EN EFECTIVO" valor={tarjeta.enEfectivo} testid="pagos-en-efectivo" />
+        <Cifra rotulo="TOTAL" valor={tarjeta.total} testid="pagos-total" />
+      </div>
     </div>
   )
 }
 
-const COLUMNAS = ['Persona', 'Horas', '$/h', 'Cobra', 'Adelanto', 'Ya transf.', 'Por banco', 'Efectivo', 'Total', 'Efect. red.']
+/** Las diez columnas del mockup, en píxeles medidos (línea 396). El orden es el de R5. */
+const COLUMNAS = 'minmax(220px,1fr) 46px 60px 92px 84px 94px 92px 96px 96px 96px'
+const ROTULOS = ['Persona', 'Horas', '$/h', 'Cobra', 'Adelanto', 'Ya transf.', 'Por banco', 'Efectivo', 'Total', 'Efect. red.']
+const MONO = 'var(--font-mono, "IBM Plex Mono", monospace)'
 
-function Tabla({ lineas }: { lineas: readonly LineaLiquidada[] }) {
-  const grilla = '1.6fr repeat(9, minmax(72px, .75fr))'
+const fila = (alto: number): React.CSSProperties => ({
+  display: 'grid', gridTemplateColumns: COLUMNAS, gap: 10, minHeight: alto,
+  alignItems: 'center', borderBottom: `1px solid ${V.linea}`,
+  fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
+})
+
+function Tabla({ lineas, totales }: { lineas: readonly LineaLiquidada[]; totales: TotalesDeCuadro }) {
   return (
-    <div data-testid="pagos-tabla" style={{ border: `1px solid ${V.lineaFuerte}`, borderRadius: 10, background: '#FFFFFF' }}>
-      <div style={{
-        display: 'grid', gridTemplateColumns: grilla, gap: 16, padding: '0 16px 9px',
-        alignItems: 'end', minHeight: 34, borderBottom: `1px solid ${V.linea}`, paddingTop: 12,
-      }}>
-        {COLUMNAS.map((c, i) => (
-          <span key={c} style={{
-            fontSize: '10.5px', letterSpacing: '.06em', textTransform: 'uppercase',
-            color: V.tenue, textAlign: i === 0 ? 'left' : 'right',
-          }}>{c}</span>
-        ))}
-      </div>
-      {lineas.map((l) => (
-        <div key={l.personaId} style={{
-          display: 'grid', gridTemplateColumns: grilla, gap: 16, padding: '0 16px',
-          alignItems: 'center', minHeight: 52, borderBottom: `1px solid ${V.linea}`,
-          fontSize: '13px', fontVariantNumeric: 'tabular-nums',
+    <div className="overflow-x-auto" style={{ padding: '16px 20px 0' }}>
+      <div data-testid="pagos-tabla" style={{ minWidth: 940, display: 'flex', flexDirection: 'column' }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: COLUMNAS, gap: 10, height: 36, alignItems: 'end',
+          borderBottom: `1px solid ${V.linea}`, paddingBottom: 9, fontFamily: MONO,
+          fontSize: '9.5px', letterSpacing: '.04em', color: V.tenue, textTransform: 'uppercase',
         }}>
-          <span style={{ color: V.tinta }}>
-            {l.nombre}
-            {l.reciboSinGiro && (
-              <span data-testid="pagos-recibo-sin-giro" style={{ display: 'block', fontSize: '10.5px', color: V.warn }}>
-                recibo sin giro · no cuenta como banco
-              </span>
-            )}
-          </span>
-          <Celda valor={l.horas} />
-          <Celda valor={l.valorHora} />
-          <Celda valor={l.cobra} />
-          <Escribible valor={l.adelanto} />
-          <Escribible valor={l.yaTransferido} />
-          <Escribible valor={l.porBanco} />
-          <Celda valor={l.enEfectivo} />
-          <Celda valor={l.total} fuerte />
-          <Escribible valor={l.efectivoRedondeado} />
+          {ROTULOS.map((c, i) => (
+            <div key={c} style={{ textAlign: i === 0 ? 'left' : 'right' }}>{c}</div>
+          ))}
         </div>
-      ))}
+
+        {lineas.map((l) => (
+          <div key={l.personaId} style={fila(58)}>
+            <div style={{ color: V.tinta }}>
+              {l.nombre}
+              {l.reciboSinGiro && (
+                <span data-testid="pagos-recibo-sin-giro" style={{ display: 'block', fontSize: '10.5px', color: V.warn }}>
+                  recibo sin giro · no cuenta como banco
+                </span>
+              )}
+            </div>
+            <Celda valor={l.horas} />
+            <Celda valor={l.valorHora} apagada />
+            <Celda valor={l.cobra} medio />
+            <Escribible valor={l.adelanto} ancho={76} />
+            <Escribible valor={l.yaTransferido} ancho={86} />
+            <Escribible valor={l.porBanco} ancho={84} />
+            <Celda valor={l.enEfectivo} medio />
+            <Celda valor={l.total} />
+            <Escribible valor={l.efectivoRedondeado} ancho={88} />
+          </div>
+        ))}
+
+        {/* LA FILA DE TOTAL FALTABA ENTERA. Es el número que se lleva a la caja: sin ella hay que
+            sumar diecisiete filas a ojo para saber cuánto efectivo pedir. Línea grafito de 1 px
+            (handoff §2, «fila de total 48-58 px con border-top #30302F»). */}
+        <div data-testid="pagos-total-fila" style={{
+          ...fila(58), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
+        }}>
+          <div>
+            {totales.personas} persona{totales.personas === 1 ? '' : 's'}
+            {totales.sinTarifa > 0 && ` · ${totales.sinTarifa} sin retribución`}
+          </div>
+          <Celda valor={totales.horas} />
+          <div />
+          <Celda valor={totales.cobra} />
+          <Celda valor={totales.adelanto} />
+          <Celda valor={totales.yaTransferido} />
+          <Celda valor={totales.porBanco} />
+          <Celda valor={totales.enEfectivo} />
+          <Celda valor={totales.total} />
+          <div />
+        </div>
+      </div>
     </div>
   )
 }
 
 /** Una celda calculada. `null` se dibuja «—»: falta el dato, no es cero (R1). */
-function Celda({ valor, fuerte = false }: { valor: number | null; fuerte?: boolean }) {
+function Celda({ valor, medio = false, apagada = false }: {
+  valor: number | null; medio?: boolean; apagada?: boolean
+}) {
   return (
-    <span style={{ textAlign: 'right', color: valor == null ? V.tenue : V.tinta, fontWeight: fuerte ? 600 : 400 }}>
+    <div style={{
+      textAlign: 'right',
+      color: valor == null ? V.tenue : (apagada ? V.apagado : V.tinta),
+      fontWeight: medio ? 500 : undefined,
+    }}>
       {valor == null ? '—' : pesos(valor)}
-    </span>
+    </div>
   )
 }
 
@@ -128,27 +192,28 @@ function Celda({ valor, fuerte = false }: { valor: number | null; fuerte?: boole
  * la diferencia que la pantalla tiene que enseñar entre «esto lo decidís vos» y «esto es una
  * cuenta». El `<input>` real lo monta la grilla editable.
  */
-function Escribible({ valor }: { valor: number | null }) {
+function Escribible({ valor, ancho }: { valor: number | null; ancho: number }) {
   return (
-    <span style={{
-      textAlign: 'right', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6,
-      padding: '3px 8px', minHeight: 26, color: valor == null || valor === 0 ? V.tenue : V.tinta,
-    }}>
-      {valor == null ? '—' : pesos(valor)}
-    </span>
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <span style={{
+        width: ancho, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+        border: `1px solid ${V.lineaFuerte}`, borderRadius: 4, padding: '0 4px',
+        color: valor == null || valor === 0 ? V.lineaFuerte : V.tinta,
+      }}>
+        {valor == null || valor === 0 ? '—' : pesos(valor)}
+      </span>
+    </div>
   )
 }
 
-function Cifra({ rotulo, valor, testid, fuerte = false }: {
-  rotulo: string; valor: number; testid: string; fuerte?: boolean
-}) {
+/** El rótulo va en mono y versalita: es un encabezado de columna, no una etiqueta de formulario. */
+function Cifra({ rotulo, valor, testid }: { rotulo: string; valor: number; testid: string }) {
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <span style={{ fontSize: '10.5px', letterSpacing: '.06em', color: V.tenue }}>{rotulo}</span>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+      <span style={{ fontSize: '11px', color: V.tenue, fontFamily: MONO, letterSpacing: '.05em' }}>{rotulo}</span>
       <span data-testid={testid} style={{
-        fontSize: fuerte ? '21px' : '18px', fontWeight: fuerte ? 600 : 500,
-        color: V.tinta, fontVariantNumeric: 'tabular-nums',
+        fontSize: '17px', fontWeight: 600, color: V.tinta, fontVariantNumeric: 'tabular-nums',
       }}>{pesos(valor)}</span>
-    </span>
+    </div>
   )
 }
