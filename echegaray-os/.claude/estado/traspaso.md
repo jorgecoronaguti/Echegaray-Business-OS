@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 (mañana) · main `f27a7195` = origin = checkout de producción · Vercel al día_
+_actualizado: 2026-09-09 · main `9e30ba55` = origin = checkout de producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -57,14 +57,17 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
   `obra_asignacion` (desde/hasta), `obra_canonica` (estado, fecha_fin).
 - **Compras app**: columna «A pagar» (= col. Q del Sheet), orden por carga, espejo `compra_sheet`
   inmediato tras cada carga + timer 10 min. Canal único de comprobantes: `comprobantes-gastos`.
-- **CAJA**: gráficos a 68 filas; la causa (recorte de `formato-pestanas.mjs` tras el verificador) está
-  corregida en `f27a7195`; el verificador va al FINAL del pipeline. Confirmar en la próxima corrida.
+- **CAJA**: gráficos a 68 filas, verificado en la hoja viva después de la corrida de las 08:50 del 09/09
+  (`caja-graficos-verificar.mjs` ✓). El verificador va al FINAL del pipeline.
 - **Navegación sin recarga** entre secciones (Link en vez de `<a>`; invariante).
-- **Regla «no asignar a obra cerrada»** vigente pero ciega a la fecha: hoy descarta horas legítimas
-  anteriores al cierre (Comedor, Galpón 9, SF Mampostería cerraron la semana pasada). En corrección.
-- **Vercel Function Storage 75 %**: bundle serverless 85,6 → 43,8 MB y `ignoreCommand` (1 de 4
-  commits no despliega) listos en rama, sin mergear. Causa raíz viva: `orquestador/lib/config.mjs`
-  deriva `APP_DIR` y el trazador arrastra el directorio entero. Vercel no tiene token en la VM.
+- **Regla «no asignar a obra cerrada» por fecha** (publicada 09/09): `obra_canonica.fecha_fin_real`
+  manda; día ≤ cierre arma historial, el tramo se recorta al cierre; invariante
+  `asignacion_termina_despues_del_cierre_de_la_obra`. Historial reconstruido con `--aplicar` desde
+  producción (4 borradas / 4 insertadas, 257 filas, 2 rojos que son decisión del dueño).
+- **Vercel Function Storage**: bundle serverless 85,6 → 43,8 MB (`outputFileTracingExcludes`) y
+  `ignoreCommand` (1 de 4 commits no despliega) en main desde `9e30ba55`. Efecto real en el dashboard
+  aún no medido; causa raíz viva: `orquestador/lib/config.mjs` deriva `APP_DIR` y el trazador arrastra
+  el directorio entero. Vercel no tiene token en la VM.
 - Persona de prueba: `e2e00000-0000-4000-8000-000000000001` (es_prueba), obra `prueba-e2e`.
   Accesos reales rodrigo/hys/ingenieria: `test123`. QA jefe `qa.jefe.obra@ecsas.com.ar`/`TestJefe123!`.
 - Protecciones: firma por pestaña (ORQ_AUTOCANDADO) apagada a propósito; pestañas Compras/Cobranzas/
@@ -86,22 +89,13 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
 
 ## 6. PENDIENTES REALES
 
-**P0 — siguiente al abrir sesión**
-- Rama `fix/obra-cerrada-por-fecha` (`badc43a3`, worktree `cerrada-fecha`; typecheck/eslint/64
-  tests dirigidos en verde, sin auditor). Regla por fecha: `obrasCerradas` es Map obra→`fecha_fin_real`;
-  día ≤ cierre arma historial y el tramo se recorta al cierre; invariante nuevo
-  `asignacion_termina_despues_del_cierre_de_la_obra`. **Ya escrito en la base** (`obra_canonica.fecha_fin_real`):
-  le-comedor 01/09, le-galpon-9 03/09, sf-mamposteria 02/09 (los dos primeros tenían 22/08 de carga
-  masiva). Dry: 4 insert/4 delete, 3 recortes, invariante 5→2 rojos (Pastrán y Zogbe en le-galpon-9
-  hasta 07/09, cargados por la web → decisión del dueño). Falta: merge desde el checkout principal,
-  push, ff producción, y correr DESDE producción:
-  `ORQ_GOOGLE_FETCH_TIMEOUT_MS=180000 node orquestador/scripts/asistencia-obra-por-dia.mjs --aplicar --desde 2026-01-01`
-  y `node orquestador/scripts/invariantes-asignaciones.mjs`.
-- Rama `fix/vercel-function-storage` (`06f056ae`, worktree `vercel-storage`): mergear, push, y
-  probar después del deploy que `/portal/recibo/[id]` baja un recibo real (única ruta en riesgo).
-  Dueño: borrar deploys viejos en el dashboard (pasos en `docs/engineering/DEPLOY.md`) y revisar
-  que Settings → Git → Ignored Build Step no pise el `ignoreCommand`.
-- Confirmar CAJA 68 filas tras una corrida del pipeline: `node orquestador/scripts/caja-graficos-verificar.mjs`.
+**P0 — verificar en producción (efecto, no intento)**
+- Después del deploy de `9e30ba55`: bajar un recibo real desde el portal (`/portal/recibo/[id]` es la
+  única ruta que las exclusiones de traza pueden romper) y leer Function Storage en el dashboard.
+- Dueño: borrar deploys viejos en Vercel (pasos en `docs/engineering/DEPLOY.md`) y revisar que
+  Settings → Git → Ignored Build Step no pise el `ignoreCommand`.
+- Dueño: Pastrán y Zogbe asignados a le-galpon-9 hasta 07/09 con cierre 03/09 (cargados por la web):
+  corregir la imputación o mover la fecha de cierre.
 
 **P1 — decisiones del dueño abiertas**
 - Messina: aceptar 6 eCHEQ en Santander; fila propia para $38.462,45 «a cuenta».
@@ -117,17 +111,16 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
 
 ## 7. ESTADO GIT
 
-- Rama `main` · HEAD `f27a71954af1f7341f44dad00873d0817893db4e` · igual a `origin/main`.
+- Rama `main` · HEAD `9e30ba55` (+ este traspaso) · igual a `origin/main`.
 - Árbol: limpio salvo capturas `qa-shots/verif-opacidad*` y `tests/verif-opacidad2.spec.ts` sin
   seguimiento (descartables).
-- Producción (`~/echegaray-os/produccion/echegaray-os`): `f27a7195`, igual a main.
-- Ramas con trabajo, sin mergear: `fix/obra-cerrada-por-fecha` (`badc43a3`) · `fix/vercel-function-storage` (`06f056ae`).
+- Producción (`~/echegaray-os/produccion/echegaray-os`): `9e30ba55`, igual a main. Sin ramas pendientes.
 
 ## 8. PRÓXIMO PASO
 
-Mergear `fix/obra-cerrada-por-fecha` (`badc43a3`) desde `~/echegaray-os/app/echegaray-os` sobre main
-`f27a7195`, y en el mismo paso
-`fix/vercel-function-storage`, un solo push, ff producción, y correr el importador `--aplicar` desde producción.
+Verificar el efecto del deploy `9e30ba55` en Vercel: descargar un recibo real desde el portal y leer
+Function Storage en el dashboard. Si falla el recibo, el sospechoso es `outputFileTracingExcludes` en
+`next.config.ts`.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
