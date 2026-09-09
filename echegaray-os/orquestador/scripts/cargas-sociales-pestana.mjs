@@ -33,7 +33,9 @@ import { total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 import { vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 import { PESTAÑA as RAW, COL as F931_COL, FILA0 as F931_FILA0 } from './f931-sheet.mjs'
 import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
-import { CONCEPTOS_CADENA, parametrosDeCargas, divergenciaDePlantel, TOLERANCIA_PLANTEL, A_VERIFICAR } from '../lib/cargas-cadena.mjs'
+import {
+  CONCEPTOS_CADENA, parametrosDeCargas, divergenciaDePlantel, TOLERANCIA_PLANTEL, A_VERIFICAR, indiceProximoVencimiento,
+} from '../lib/cargas-cadena.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 // LA PESTAÑA PUBLICA, EL LIBRO LEE — y los rótulos que anclan cada nombre se declaran UNA vez, en el
 // módulo que los consume. Escritos de los dos lados, el día que uno cambie el nombre queda apuntando
@@ -126,23 +128,15 @@ export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
   // El dueño aprobó reemplazarlo por las dos preguntas que sí decide acá:
   //   · CUÁNTO SALIÓ este año por cargas sociales — la suma del cuadro 2, que mide por HECHO
   //     («Pagado» en Compras) y no por fecha.
-  //   · CUÁNDO Y CUÁNTO SALE LO PRÓXIMO — la primera fecha de CARGAS_MES_FECHAS que todavía no pasó,
-  //     con el importe que le corresponde en CARGAS_MES_F931_DECLARADO. Se lee por los rangos con
-  //     NOMBRE y no por número de fila: es la misma serie que lee el Libro Canónico, así que el
-  //     titular y el cash flow no pueden discrepar sobre cuál es el próximo vencimiento.
+  //   · CUÁNDO Y CUÁNTO SALE LO PRÓXIMO — el primer período que no venció Y NO ESTÁ PAGADO. Los
+  //     importes se leen por los rangos con NOMBRE y no por número de fila: son las mismas series
+  //     que lee el Libro Canónico, así que el titular y el cash flow no pueden discrepar.
   //
-  // `COUNTIF(<"&TODAY())+1` es «la primera que NO pasó»: incluye la de HOY, que es justo el día en
-  // que la pregunta más importa. Con un MATCH(...;1)+1 el vencimiento desaparecía del titular el
-  // mismo día que vence.
-  const proximo = `COUNTIF(${NOMBRES_CARGAS.fechas};"<"&TODAY())+1`
-  // «Cargas sociales pagadas en el año» no entraba en la columna A de 300 px y derramaba sobre el
-  // importe (medido en la copia). La pestaña ya se llama «Cargas Sociales»: el rótulo no tiene que
-  // repetirlo.
+  // LA CONDICIÓN «Y NO ESTÁ PAGADO» ES DE HOY (09/09/2026): el porqué, con la evidencia, está en
+  // `indiceProximoVencimiento`. Se llenan por BACKFILL — la regla necesita las filas de los cuadros.
   const hPagado = G.push([rotuloTotal('Pagado en el año'), '@PAGADO', ...Array(11).fill(VACIO), VACIO, 'Sección 2 · lo que Compras marcó Pagado.'])
-  const hProximo = G.push([rotuloTotal('Próximo vencimiento'),
-    `=IFERROR(INDEX(${NOMBRES_CARGAS.declarado};${proximo});"")`,
-    `=IFERROR(INDEX(${NOMBRES_CARGAS.fechas};${proximo});"")`,
-    ...Array(10).fill(VACIO), VACIO, 'La primera fecha que no pasó, con su F931.'])
+  const hProximo = G.push([rotuloTotal('Próximo vencimiento'), '@PROX_IMPORTE', '@PROX_FECHA',
+    ...Array(10).fill(VACIO), VACIO, 'El primer vencimiento que no pasó y que el cuadro 2 no muestra pagado.'])
   G.push()
 
   // ── LOS CUATRO CUADROS ─────────────────────────────────────────────────────────────────────────
@@ -202,6 +196,13 @@ export function grilla({ periodos, conceptos, ps, C, baseJornales = null }) {
   // sociales, y la de enero salió este año aunque su devengado sea de diciembre pasado. El hero
   // anterior excluía enero porque medía COSTO DEL AÑO (devengado) y ahí sí habría sido de otro año.
   G.filas[hPagado - 1][1] = `=SUM($B$${pag.fPagTot}:$M$${pag.fPagTot})`
+
+  // ── EL PRÓXIMO VENCIMIENTO SALTEA LO QUE EL CUADRO 2 YA MUESTRA PAGADO ──────────────────────────
+  const prox = indiceProximoVencimiento({
+    fFechas: proy.fFechaSalida, fPagoF931: pag.filaPag.F931, nombreFechas: NOMBRES_CARGAS.fechas,
+  })
+  G.filas[hProximo - 1][1] = `=IFERROR(INDEX(${NOMBRES_CARGAS.declarado};${prox});"")`
+  G.filas[hProximo - 1][2] = `=IFERROR(INDEX(${NOMBRES_CARGAS.fechas};${prox});"")`
 
   // NO TODO LO QUE ESTÁ EN LA GRILLA ES PLATA. Una dotación de 21 personas mostrada como "$21" y
   // una relación de 0,67 mostrada como "$1" son números que el ojo lee mal y que además hacen dudar

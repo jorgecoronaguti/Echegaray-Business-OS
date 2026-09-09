@@ -15,6 +15,7 @@ import {
   CONCEPTOS_CADENA, PARAMETROS_CARGAS, A_VERIFICAR,
   RANGO_FCL_PRIMER_ANIO, RANGO_FCL_POSTERIOR, RANGO_IERIC, RANGO_FODECO, RANGO_DIA_PAGO_F931,
   expresionAlicuotaFCL, formulaProporcionPrimerAnio, proyeccionDeConcepto,
+  indiceProximoVencimiento,
 } from './cargas-cadena.mjs'
 import { RANGOS_VACACIONES } from './vacaciones-construccion.mjs'
 
@@ -105,4 +106,48 @@ test('la alícuota que se muestra es la que se APLICÓ: sale por fórmula, no es
   assert.ok(p.origen.startsWith('='), 'el texto de origen quedó estampado: envejece con la corrida')
   assert.match(p.origen, /TEXT\(/)
   assert.match(p.celda(7), /\*H\$39$/)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PRÓXIMO VENCIMIENTO NO ANUNCIA UNA DEUDA QUE YA SE PAGÓ
+//
+// EL HECHO (09/09/2026): el titular decía «$8.331.698 · 10/09/2026» —el F931 de agosto— mientras el
+// cuadro 2 de la MISMA pestaña mostraba ese pago hecho en sep-26, leído de Compras. El dueño lo vio
+// en el extracto del banco. La fórmula vieja era `COUNTIF(FECHAS;"<"&TODAY())+1`: no preguntaba nada
+// sobre el pago, así que cualquier reversión a esa forma tiene que ponerse roja acá.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+const PROX = indiceProximoVencimiento({ fFechas: 48, fPagoF931: 21, nombreFechas: 'CARGAS_MES_FECHAS' })
+
+test('el próximo vencimiento EXIGE que el cuadro 2 no muestre pago: una fecha futura no es una deuda', () => {
+  assert.match(PROX, /N\(\$B\$21:\$M\$21\)=0/,
+    'se fue la condición de «sin pago»: el titular vuelve a anunciar F931 que ya salieron del banco')
+  assert.match(PROX, /N\(\$A\$48:\$L\$48\)>=TODAY\(\)/, 'se fue la condición de que el vencimiento no haya pasado')
+})
+
+test('el desplazamiento es el calendario: la fecha del período k-1 al lado del pago del mes k', () => {
+  // El devengado del mes m sale el mes m+1, así que su pago vive en la columna m+1 del cuadro 2. Si
+  // los dos rangos arrancaran en la misma columna, el titular compararía el vencimiento de agosto
+  // contra el pago hecho en agosto —que es el F931 de julio— y volvería a anunciar deuda saldada.
+  const col = (l) => l.charCodeAt(0) - 64
+  const [, fDesde, fHasta] = PROX.match(/N\(\$([A-Z])\$48:\$([A-Z])\$48\)/)
+  const [, pDesde, pHasta] = PROX.match(/N\(\$([A-Z])\$21:\$([A-Z])\$21\)/)
+  assert.equal(col(pDesde) - col(fDesde), 1, 'los pagos van UN mes adelantados respecto de las fechas')
+  assert.equal(col(pHasta) - col(fHasta), 1, 'y el desplazamiento se mantiene hasta el final del rango')
+  // Del mismo largo: con largos distintos el producto se evalúa contra un array recortado y el MATCH
+  // devuelve una posición que no significa nada — sin dar un solo error.
+  assert.equal(col(fHasta) - col(fDesde), col(pHasta) - col(pDesde))
+  assert.equal(col(pHasta), 13, 'el rango de pagos llega a M (diciembre), nunca a N, que es el TOTAL del año')
+  assert.equal(col(fDesde), 1, 'las fechas arrancan en A —el rótulo— y N() lo vuelve 0: el período «0» se descarta solo')
+})
+
+test('sin ARRAYFORMULA el MATCH compara escalares y el titular miente sin dar error', () => {
+  assert.match(PROX, /MATCH\(1;ARRAYFORMULA\(/)
+})
+
+test('el índice del MATCH se convierte en PERÍODO, y si no hay ninguno vivo el titular no se apaga', () => {
+  // El -1 traduce posición de mes de CAJA a período devengado. El IFERROR cubre diciembre, cuyo pago
+  // cae en enero del año siguiente y esta grilla no llega a registrar: ahí vuelve la regla vieja.
+  assert.ok(PROX.includes(';0)-1;'), 'sin el -1 el titular muestra el mes siguiente al que corresponde')
+  assert.ok(PROX.startsWith('IFERROR(MATCH(1;') && PROX.endsWith(`COUNTIF(CARGAS_MES_FECHAS;"<"&TODAY())+1)`),
+    `un titular que se apaga es peor que uno conservador: ${PROX}`)
 })

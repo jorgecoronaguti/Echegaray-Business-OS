@@ -329,3 +329,44 @@ export function proyeccionDeConcepto(c, {
     origen: `=TEXT(${medidaRem};"0,00%")&" de la remuneración declarada, medido sobre los meses con DDJJ. ${(c.nota ?? '').replace(/"/g, "'")}"`,
   }
 }
+
+/**
+ * EL ÍNDICE DEL PRÓXIMO VENCIMIENTO DE F931: el primer período que NO PASÓ **Y NO ESTÁ PAGADO**.
+ *
+ * ═══ EL DEFECTO QUE ESTO CORRIGE (09/09/2026) ═══
+ *
+ * El titular decía «⇒ Próximo vencimiento · $8.331.698 · 10/09/2026»: el F931 de AGOSTO, que ya está
+ * pagado. La propia pestaña lo prueba dos filas más abajo — el cuadro 2 tiene «F931 · sep-26
+ * $8.331.698», leído de Compras con el pago marcado. El titular anunciaba como deuda una plata que
+ * ya salió del banco, y el dueño lo vio en el extracto: *«lo muestra pagado más de una vez»*.
+ *
+ * La fórmula vieja era `COUNTIF(FECHAS;"<"&TODAY())+1` — «la primera fecha que no pasó», sin una
+ * palabra sobre si esa obligación seguía viva. Una fecha futura no es una deuda: entre el día del
+ * pago y el día del vencimiento hay una ventana en la que las dos cosas son ciertas a la vez, y ésa
+ * es justo la ventana en la que alguien mira el titular para decidir cuánta caja reservar.
+ *
+ * LA REGLA, ESCRITA CONTRA LOS DOS HECHOS QUE LA PESTAÑA YA TIENE:
+ *   · la fecha de salida del período (`CARGAS_MES_FECHAS`) todavía no pasó, y
+ *   · en el mes en que esa plata salía, el cuadro 2 no registra pago de F931.
+ *
+ * EL DESPLAZAMIENTO NO ES UN TRUCO, ES EL CALENDARIO. El devengado del mes m sale el mes m+1, así
+ * que el pago del período m vive en la columna m+1 del cuadro 2. Por eso las fechas se leen desde la
+ * columna A —el rótulo— y los pagos desde la B: en la posición k quedan la fecha del período k−1 y
+ * el pago del mes k, que son la misma obligación. `N()` sobre el rótulo devuelve 0, y 0 nunca es
+ * mayor o igual que hoy: el período «0» se descarta solo, sin un caso especial que alguien pueda
+ * borrar sin darse cuenta.
+ *
+ * SI NO ENCUENTRA NINGUNO, VUELVE A LA REGLA VIEJA. Pasa cuando el único vencimiento que queda es el
+ * de diciembre, cuyo pago cae en enero del año siguiente y esta grilla no llega a registrar. Un
+ * titular que se apaga es peor que uno conservador: el fallback muestra el vencimiento aunque no
+ * pueda probar que sigue impago.
+ *
+ * @param {{fFechas:number, fPagoF931:number, nombreFechas:string}} g las filas de la grilla ya armada
+ * @returns {string} una EXPRESIÓN (sin `=`) que da la posición 1..12 del período a mostrar
+ */
+export function indiceProximoVencimiento({ fFechas, fPagoF931, nombreFechas }) {
+  // ARRAYFORMULA es obligatorio: sin él `N()` se aplica sólo a la primera celda del rango y el MATCH
+  // compara un escalar contra un escalar — devuelve 1 siempre y el titular miente en silencio.
+  const vivo = `ARRAYFORMULA((N($A$${fFechas}:$L$${fFechas})>=TODAY())*(N($B$${fPagoF931}:$M$${fPagoF931})=0))`
+  return `IFERROR(MATCH(1;${vivo};0)-1;COUNTIF(${nombreFechas};"<"&TODAY())+1)`
+}

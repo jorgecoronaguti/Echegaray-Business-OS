@@ -145,6 +145,26 @@ test('sólo el cuadro 4 publica el total de cuotas: nadie más lo cita ni lo rep
   }
 })
 
+// ═══ EL «PRÓXIMO VENCIMIENTO» MIRA LA FILA DE PAGOS DEL CUADRO 2, NO UNA DE AL LADO ═══
+//
+// La regla vive en `indiceProximoVencimiento` y sus rangos se arman con números de fila calculados
+// en la corrida: apuntados a la fila equivocada devuelven una posición plausible y el titular
+// anuncia el vencimiento de otro mes, sin un solo error. Es el mismo modo de falla que hizo existir
+// este archivo. El defecto original: anunciaba $8.331.698 el 10/09 —el F931 de agosto— con ese pago
+// ya hecho y visible en el cuadro 2.
+test('el próximo vencimiento cita la fila de FECHAS y la fila de F931 PAGADO, y ninguna otra', () => {
+  const fFechas = filaDe(/^Sale de la caja el$/)
+  // La fila «F931» del cuadro 2, que es la ÚLTIMA con ese rótulo exacto: en la proyección no existe
+  // —ahí los conceptos van desglosados— pero buscar la primera igual anclaría por posición.
+  const fPago = G.filas.reduce((acc, f, i) => (/^F931$/.test(String(f[0] ?? '')) ? i + 1 : acc), 0)
+  assert.ok(fFechas > 0 && fPago > 0, `no encontré las filas ancla: fechas=${fFechas} pago=${fPago}`)
+  for (const col of [1, 2]) {
+    const citadas = [...new Set(filasCitadas(celda(filaDe(/^⇒ Próximo vencimiento$/), col)))].sort((a, b) => a - b)
+    assert.deepEqual(citadas, [fPago, fFechas].sort((a, b) => a - b),
+      `la celda ${col} del titular cita ${citadas} y las anclas son fechas=${fFechas} y F931 pagado=${fPago}`)
+  }
+})
+
 test('el titular cita el total pagado, y el «Total declarado» proyectado cita el subtotal F931', () => {
   const fPagTot = filaDe(/^⇒ Total pagado$/)
   const pagado = celda(filaDe(/^⇒ Pagado en el año$/), 1)
