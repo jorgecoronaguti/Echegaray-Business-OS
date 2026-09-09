@@ -616,8 +616,9 @@ export const PASOS_RETIRADOS = Object.freeze([
       + 'contiene todas las columnas que hoy están, y ninguna se pierde; (3) el dueño mira el '
       + 'resultado de esa corrida en seco y lo aprueba. Recién ahí se repone la línea en PASOS, con '
       + 'este retiro borrado y su test actualizado en el MISMO commit.',
-    // Plantel cae con Nómina porque las escribe el mismo generador: no hay forma de correr una sola.
-    cuesta: ['Nómina', 'Plantel'],
+    // «Plantel» ya no está en la lista: el 09/09 el dueño mandó borrar la pestaña y el generador dejó
+    // de escribirla, así que el freno no le cuesta nada a una pestaña que no existe.
+    cuesta: ['Nómina'],
   }),
 ])
 

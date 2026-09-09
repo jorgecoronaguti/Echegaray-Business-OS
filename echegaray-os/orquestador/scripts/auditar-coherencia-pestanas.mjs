@@ -38,7 +38,7 @@ const CUENTA = process.env.ORQ_SHEETS_CUENTA || 'jorge@ecsas.com.ar'
 /** Las del Flujo de Fondos que el OS mantiene. Las réplicas `_RAW` van aparte: su frescura la
  *  gobierna su fuente, no este pipeline. */
 const MANTENIDAS = [
-  'Compras', 'Jornales por Quincena', 'Nómina', 'Plantel', 'Cargas Sociales',
+  'Compras', 'Jornales por Quincena', 'Nómina', 'Cargas Sociales',
   'Impuestos y Financieros', 'Recurrentes', 'Estructura', 'Materiales', 'Proveedores',
   'Cobranzas', 'OBRAS', 'Tarjeta de Credito', 'Cheques Recibidos', 'Cheques Emitidos',
   'CAJA', 'Cash Flow Semanal', 'Cash Flow Mensual', 'Calendario de Cobros', 'SUBCONTRATISTAS',
@@ -94,9 +94,9 @@ async function main() {
 
   // ── 2) COHERENCIA ──────────────────────────────────────────────────────────
   const leer = async (p, r) => { try { return await google.readSheetValues(ID, `'${p}'!${r}`) } catch { return null } }
-  const [nomina, jornales, plantel, subcon] = await Promise.all([
+  const [nomina, jornales, subcon] = await Promise.all([
     leer('Nómina', 'A1:N200'), leer('Jornales por Quincena', 'A1:N120'),
-    leer('Plantel', 'A1:Q140'), leer('SUBCONTRATISTAS', 'A1:L90'),
+    leer('SUBCONTRATISTAS', 'A1:L90'),
   ])
 
   const cruces = []
@@ -144,16 +144,16 @@ async function main() {
 
   // B · CUÁNTA GENTE COBRA ESTA QUINCENA — y no «cuánta gente hay», que es otra pregunta.
   //
-  // La primera versión cruzaba el ⇒ de Plantel (19) contra Jornales (17) y daba rojo. No era un
-  // defecto de las pestañas: Plantel es el plantel del AÑO —incluye a los dos que ya cobraron su
-  // liquidación final— y Jornales es quién cobra AHORA. Comparar los dos es la trampa de «una vista
-  // que cambia de significado»: dos números correctos que no hablan de lo mismo.
+  // La primera versión cruzaba el ⇒ de «Plantel» (19) contra Jornales (17) y daba rojo. No era un
+  // defecto de las pestañas: aquélla contaba el plantel del AÑO —incluidos los dos que ya cobraron
+  // su liquidación final— y Jornales cuenta a quien cobra AHORA. Comparar los dos es la trampa de
+  // «una vista que cambia de significado»: dos números correctos que no hablan de lo mismo. La
+  // pestaña se retiró del archivo el 09/09 y con ella se fue el informativo que la citaba.
   //
   // Lo que sí tiene que cerrar es Nómina contra Jornales: las dos contestan la MISMA pregunta, y de
   // hecho Jornales cita a Nómina desde el 31/08. Si alguna vez difieren, una de las dos se
   // desconectó.
   const personasNomina = num(String(porRotulo(nomina, /^⇒\s*\d+ persona\(s\)$/, 0) ?? '').replace(/\D/g, ''))
-  const personasOficina = num(porRotulo(nomina, /^⇒.*de oficina/, 1)) ?? num(String(porRotulo(nomina, /^⇒.*de oficina/, 0) ?? '').replace(/\D/g, ''))
   const personasJornales = num(porRotulo(jornales, /^Obreros/, 1))
   cruces.push(cruzar({
     que: 'obreros que cobran esta quincena', izquierda: 'Nómina', derecha: 'Jornales por Quincena',
@@ -163,13 +163,6 @@ async function main() {
     que: 'lo que se le paga a los obreros', izquierda: 'Nómina', derecha: 'Jornales por Quincena',
     a: deNomina(/^⇒\s*\d+ persona\(s\)$/, 'TOTAL A PAGAR'), b: num(porRotulo(jornales, /^Obreros/, 3)),
   }))
-  // El plantel del año se INFORMA, no se cruza: su universo es otro a propósito.
-  const personasPlantel = num(String(porRotulo(plantel, /^⇒\s*\d+ persona/, 0) ?? '').replace(/\D/g, ''))
-  if (personasPlantel != null && personasNomina != null && personasOficina != null) {
-    console.log(`\n  ℹ Plantel declara ${personasPlantel} persona(s) del AÑO; esta quincena cobran `
-      + `${personasNomina} obrero(s) + ${personasOficina} de oficina. La diferencia son los que ya cobraron su liquidación final.`)
-  }
-
   // C · Los subcontratistas que cobran por nómina, ¿figuran en su pestaña?
   const textoSub = (subcon ?? []).flat().map((c) => String(c ?? '').toUpperCase()).join(' | ')
   const enPestana = subcon == null ? null
@@ -181,7 +174,7 @@ async function main() {
   }))
 
   // D · Celdas en error: cero es el único número aceptable en una pestaña calculada.
-  for (const [p, filas] of [['Nómina', nomina], ['Jornales por Quincena', jornales], ['Plantel', plantel], ['SUBCONTRATISTAS', subcon]]) {
+  for (const [p, filas] of [['Nómina', nomina], ['Jornales por Quincena', jornales], ['SUBCONTRATISTAS', subcon]]) {
     cruces.push(cruzar({ que: `celdas en error en ${p}`, izquierda: p, derecha: 'cero', a: filas == null ? null : cuentaErrores(filas), b: 0, tolerancia: 0 }))
   }
 

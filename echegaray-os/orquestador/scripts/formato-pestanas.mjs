@@ -216,41 +216,6 @@ export const PESTANAS = [
       que: 'el neto acordado con cada persona de oficina ($1.800.000 hoy) es un ACUERDO del dueño, no una liquidación: por banco va lo que dice el recibo y el efectivo completa hasta ese neto. No sale de ninguna fuente que el Sheet pueda leer' },
   ] },
   { titulo: 'SUBCONTRATISTAS', congeladas: 3, hastaFila: 60, cols: 12, propio: true },
-  // «Plantel» nace el 31/08 al partir la Nómina: los cuatro cuadros de respaldo —quiénes son, lo
-  // devengado, el costo de desvincular y el índice de legajos— salen de la pestaña que se opera y
-  // pasan a la suya. Se anota acá EN LA MISMA corrida que la crea, para no repetir el descuido que
-  // dejó a OBRAS y a la propia Nómina fuera de todos los controles.
-  //
-  // ═══ LOS 285 NÚMEROS PEGADOS DE «Plantel», Y POR QUÉ NO SON 285 DEFECTOS (06/09/2026) ═══
-  //
-  // Medido: `censo-numeros-pegados` daba 285 sobre 122 fórmulas. La clasificación ya vive en
-  // `lib/plantel-formulas.mjs` y su parte A/B ya está hecha —el TOTAL AÑO, el SALE DE LA CAJA, las
-  // citas del cuadro 1 al 2 son fórmulas hoy—. Lo que faltaba es la especie C: los números que el
-  // Sheet NO puede rehacer, que la regla de oro 5 manda pegar CON su declaración de origen, y que
-  // desde el minimalismo extremo del 05/09 ya no pueden declararse en una celda visible.
-  //
-  // Con estas cinco declaraciones el censo de la pestaña pasa de 285 a 9, y los 9 que quedan son
-  // defectos reales: seis celdas fósiles en las dos filas «⇒ N persona(s)» (D24/F24 y D66:G66 — el
-  // porqué y su límite, en nomina-pestana.mjs) y tres del renglón de desvinculación que quedó pegado
-  // sobre el título de la sección 4 (D68:F68). El control quedó pudiendo dar rojo, que es la prueba
-  // de que la excepción explica en vez de apagar.
-  //
-  // NINGUNA declaración incluye la columna del total del renglón (N del cuadro 2, I/J del cuadro 3):
-  // ésas son fórmulas y si aparece un número pegado ahí tiene que salir en rojo.
-  { titulo: 'Plantel', congeladas: 3, hastaFila: 140, cols: 17, propio: true, origenPorBloque: [
-    { bloque: '1 · QUIÉNES SON', cols: 'F',
-      que: 'el $/hora pactado de cada persona — sale del jornal del espejo `_J_OBREROS`/`_J_OFICINA`, no de una cuenta sobre esta pestaña' },
-    { bloque: '2 · LO DEVENGADO MES A MES · 2026', cols: 'B:M',
-      que: 'los doce importes salen de reducir `_J_OBREROS`/`_J_OFICINA` quincena por quincena con la equivalencia de nombres del espejo — un SUMIFS no puede casar por rótulo lo que el espejo casa por persona (ver especie C en lib/plantel-formulas.mjs)' },
-    { bloque: '2 · LO DEVENGADO MES A MES · 2026', cols: 'O',
-      que: 'las horas del año, de la misma reducción del espejo que los importes' },
-    { bloque: '3 · QUÉ CUESTA DESVINCULAR A CADA UNO', cols: 'D:H',
-      que: 'vacaciones, SAC, SAC s/vacaciones y FCL salen de la antigüedad y del régimen de cada persona (ley 22.250 vs. LCT): es criterio laboral, no aritmética de planilla. «Liquidación (por recibo)» es SALE DE LA CAJA × la política del 50% registrado, que todavía no tiene celda de parámetro con rótulo ni rango con nombre' },
-    { bloque: '3 · QUÉ CUESTA DESVINCULAR A CADA UNO', cols: 'K',
-      que: 'el fondo de cese acumulado, de los depósitos reales del régimen de la 22.250' },
-    { bloque: '4 · EL LEGAJO DE CADA UNO EN DRIVE', cols: 'G',
-      que: 'cuántos recibos tiene cada persona en su carpeta de Drive — el Sheet no puede contar archivos de Drive. El fósil `G68`, que vive en la fila del título de la sección, NO queda amparado: el amparo se corta en las filas de estructura' },
-  ] },
 ]
 
 /**

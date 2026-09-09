@@ -355,8 +355,9 @@ test('nomina-pestana.mjs está FUERA del pipeline y su retiro está declarado', 
     'el generador de Nómina no puede correr en el pipeline: pisa la columna del dueño')
   assert.equal(estaRetirado('nomina-pestana.mjs'), true, 'y el freno tiene que estar DECLARADO, no comentado')
   const r = PASOS_RETIRADOS.find((x) => x.script === 'nomina-pestana.mjs')
-  // Las dos pestañas, porque las escribe el mismo generador y no se puede correr una sola.
-  assert.deepEqual(r.cuesta, ['Nómina', 'Plantel'])
+  // UNA sola pestaña desde el 09/09: «Plantel» se retiró del archivo y del generador, así que el
+  // freno ya no puede costarle nada. Si alguien la vuelve a listar, se pone rojo.
+  assert.deepEqual(r.cuesta, ['Nómina'])
   // El criterio de vuelta tiene que ser verificable por un tercero, no una intención.
   assert.match(r.vuelve, /EFECTIVO redondeado|columna que no conozca|no escribe la columna/i)
   assert.match(r.motivo, /01\/09|revertido/i)
