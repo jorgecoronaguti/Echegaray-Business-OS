@@ -28,6 +28,7 @@
 // el corte; qué se hace con cada uno lo decide una persona.
 
 import { admisible } from './respaldo-adjunto.mjs'
+import { claveComprobante } from './lectura.mjs'
 import { filaConciliada } from './clave-conciliada.mjs'
 
 export const ESLABON = Object.freeze({
@@ -92,15 +93,23 @@ export function clasificarAdjunto(archivo = {}, { respaldo = null, lectura = nul
     }
   }
 
-  const clave = lectura?.clave ?? null
+  // LA LECTURA VIVE EN DOS LADOS Y LAS DOS CUENTAN. El bot deja la suya en el ítem del fajo; el
+  // repaso con visión (`leer-adjuntos-sin-lectura.mjs`) la deja en `compra_adjunto.lectura`. Mirar
+  // sólo el fajo hacía que un papel recién leído volviera a salir «sin_lectura» y el reporte pidiera
+  // pagar otra vez el modelo por algo que ya se sabe.
+  const clave = lectura?.clave
+    ?? (respaldo.lectura ? claveComprobante(respaldo.lectura)?.clave ?? null : null)
   if (!clave) {
-    return { eslabon: ESLABON.SIN_LECTURA, motivo: 'nadie leyó el papel: no tiene número ni CUIT', clave: null, fila: null }
+    const motivo = respaldo.lectura
+      ? 'se leyó el papel y no dice número ni CUIT'
+      : 'nadie leyó el papel'
+    return { eslabon: ESLABON.SIN_LECTURA, motivo, clave: null, fila: null }
   }
 
   // Se leyó. ¿Hay fila? `filaConciliada` es la misma regla que usa el reparador de huérfanos: exige
   // que el número y el tipo coincidan, y sólo afloja la identidad (c: vs p:) si el proveedor la
   // confirma. Acá NO se escribe el vínculo: se reporta que existe.
-  const f = filaConciliada(clave, compras, { proveedor: lectura?.proveedor ?? null })
+  const f = filaConciliada(clave, compras, { proveedor: lectura?.proveedor ?? respaldo.lectura?.proveedor ?? null })
   if (f) {
     return { eslabon: ESLABON.EN_COMPRAS, motivo: 'la fila existe y el vínculo está sin escribir', clave: f.clave, fila: f.fila ?? null }
   }

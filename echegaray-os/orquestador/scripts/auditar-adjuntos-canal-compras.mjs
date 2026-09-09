@@ -64,7 +64,7 @@ async function main() {
 
   const archivos = await archivosDelCanal(mm, c.channel_id)
   const [{ rows: resp }, { rows: fajos }, { rows: compras }, { rows: edad }] = await Promise.all([
-    query(`select origen_file_id, compra_clave, fila_compras, vinculado_por
+    query(`select origen_file_id, compra_clave, fila_compras, vinculado_por, lectura
              from public.compra_adjunto where origen_file_id is not null`),
     query('select items, filas from comunicacion.comprobante_fajos'),
     query('select fila, clave, proveedor, comprobante, total from public.compra_sheet where clave is not null'),
