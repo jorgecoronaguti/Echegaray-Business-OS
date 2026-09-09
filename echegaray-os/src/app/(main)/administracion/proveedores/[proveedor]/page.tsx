@@ -11,6 +11,10 @@
 // declara: Compras · Nombres resueltos · Obras · Paquetes · Papeles. «Resumen» era una cara que
 // mezclaba tres listas distintas en una sola pantalla y obligaba a bajar para encontrar cualquiera.
 //
+// La SEXTA —Documentos— no está en el mockup y se agregó el 09/09/2026 por pedido del dueño: los
+// contratos de subcontratistas no tenían dónde vivir en el OS. No se metió dentro de «Papeles»
+// porque son otro concepto (ver el comentario de `CARAS`).
+//
 // ═══ DE DÓNDE SALEN LOS NÚMEROS, Y DE DÓNDE NO ═══
 //
 // De `costos_obra`, el espejo de la pestaña Compras. NO de `compras` ni de `compra_resumen`: las dos
@@ -45,10 +49,12 @@ import {
   comprasPorObra, conceptosProvistos, resumirProveedor,
 } from '@/features/administracion/services/fichaProveedor'
 import { formatearCuit } from '@/features/administracion/services/identidad'
+import { getDocumentosDelProveedor } from '@/features/administracion/services/documentosProveedorService'
 import {
   ComprasDelProveedor, NombresDelProveedor, ObrasDelProveedor, PaquetesDelProveedor,
   PapelesDelProveedor, QueProvee, RepartoPorObra,
 } from '@/features/administracion/components/ListasProveedorV2'
+import { DocumentosDelProveedor } from '@/features/administracion/components/proveedores/DocumentosDelProveedor'
 import { Aviso } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import { IconoEditar } from '@/shared/components/iconos'
@@ -61,7 +67,11 @@ import { pesos } from '@/shared/components/canon/formato'
 
 export const dynamic = 'force-dynamic'
 
-const CARAS = ['compras', 'nombres', 'obras', 'paquetes', 'papeles'] as const
+// «DOCUMENTOS» ES UNA CARA APARTE DE «PAPELES», Y NO SON SINÓNIMOS: papeles son los comprobantes
+// que se DERIVAN de sus compras (nadie los sube acá); documentos es lo que alguien de Administración
+// guardó contra esta ficha —contrato de subcontrato, póliza, habilitación, un video—. Juntarlos en
+// una sola cara haría que dar de baja un contrato pareciera borrar una factura.
+const CARAS = ['compras', 'nombres', 'obras', 'paquetes', 'papeles', 'documentos'] as const
 type Cara = (typeof CARAS)[number]
 
 const esCara = (v: unknown): v is Cara =>
@@ -85,9 +95,10 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   if (!ficha.data) notFound()
   const proveedor = ficha.data
 
-  const [nombres, paquetes] = await Promise.all([
+  const [nombres, paquetes, documentos] = await Promise.all([
     getNombresDelProveedor(supabase, proveedor.id),
     getPaquetesDelProveedor(supabase, proveedor.id),
+    getDocumentosDelProveedor(supabase, proveedor.id),
   ])
   const norms = (nombres.data ?? []).map((n) => n.nombre_norm)
   const lectura = await getComprobantes(supabase, norms)
@@ -192,6 +203,14 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
           // SIN CONTADOR: no hay tabla que vincule un archivo con un proveedor, así que un 0 ahí
           // afirmaría que se contaron los papeles y no hay ninguno.
           { clave: 'papeles', titulo: 'Papeles', cuenta: null, activa: cara === 'papeles', href: href('papeles') },
+          // ACÁ SÍ HAY CONTADOR, y sólo cuando la lectura salió bien: si `proveedor_documento` no se
+          // pudo leer, un 0 diría que este proveedor no tiene contrato guardado, que es una
+          // afirmación que la lectura no habilita.
+          {
+            clave: 'documentos', titulo: 'Documentos',
+            cuenta: documentos.error ? null : (documentos.data?.documentos.length || null),
+            activa: cara === 'documentos', href: href('documentos'),
+          },
         ]}
       />
 
@@ -229,6 +248,14 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
             <PaquetesDelProveedor filas={paquetes.data ?? []} error={paquetes.error} />
           )}
           {cara === 'papeles' && <PapelesDelProveedor nombre={proveedor.nombre} />}
+          {cara === 'documentos' && (
+            <DocumentosDelProveedor
+              proveedorId={proveedor.id}
+              documentos={documentos.data?.documentos ?? []}
+              truncado={documentos.data?.truncado ?? false}
+              error={documentos.error}
+            />
+          )}
         </div>
 
         <CostadoDeFicha testid="costado-proveedor">
