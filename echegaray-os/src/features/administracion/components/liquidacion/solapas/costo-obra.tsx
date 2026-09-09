@@ -1,7 +1,7 @@
 import { Aviso, Vacio } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
-import { alicuotasVigentes, lineasDeObra, multiplicadorDeCosto } from '../../../services/costoHora'
+import { alicuotasVigentes, lineasDeObra, multiplicadorDeCosto, type LineaDeObra } from '../../../services/costoHora'
 import { getAlicuotas, getHorasPorObra, getValorHoraVigente } from '../../../services/costoLecturas'
 import { rotuloQuincena, type Quincena } from '../../../services/quincena'
 
@@ -20,11 +20,34 @@ import { rotuloQuincena, type Quincena } from '../../../services/quincena'
 //
 // Sumar sólo a los que tienen $/h daría un costo que parece completo y le falta gente. Se dice
 // cuántos faltan, que es lo que se puede resolver hoy.
+//
+// ═══ «SIN OBRA IMPUTADA» ES LA CIFRA QUE EL MOCKUP PONE ARRIBA EN ÁMBAR ═══
+//
+// Esas horas se pagan igual y no las paga ninguna obra: van a estructura. Sumadas al total y sin
+// separar, cada obra parece más cara de lo que es y la estructura parece gratis.
 
-const pesos = (n: number | null): string =>
-  n == null ? '—' : `$${Math.round(n).toLocaleString('es-AR')}`
+const MONO = "'IBM Plex Mono', monospace"
+
+const miles = (n: number | null): string =>
+  n == null ? '—' : Math.round(n).toLocaleString('es-AR')
 
 const horas = (n: number): string => n.toLocaleString('es-AR', { maximumFractionDigits: 1 })
+
+/**
+ * EL COLOR DEL CONSUMO. Rojo sólo problema real: pasarse del presupuesto de mano de obra.
+ *
+ * El corte en ámbar es un CRITERIO DECLARADO, no una medición: el mockup pinta 31 % verde y 78 %
+ * ámbar, así que la frontera está entre esos dos y se fija en 75 %. Que una sola quincena consuma
+ * tres cuartos de toda la mano de obra presupuestada de la obra es algo que alguien tiene que mirar
+ * hoy — que es exactamente lo que el ámbar significa en el README §2.
+ */
+const UMBRAL_AMBAR = 75
+
+function colorDelConsumo(consumo: number): string {
+  if (consumo > 100) return V.neg
+  if (consumo >= UMBRAL_AMBAR) return V.warn
+  return V.pos
+}
 
 export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: string }) {
   const supabase = await createClient()
@@ -37,8 +60,15 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
   const fallas = [...errores, ...errHoras, ...(errTarifa ? [errTarifa] : [])]
 
   const totalHoras = lineas.reduce((s, l) => s + l.horas, 0)
+  const gente = lineas.reduce((s, l) => Math.max(s, l.gente), 0)
   const conCosto = lineas.filter((l) => l.costoReal != null)
   const totalCosto = conCosto.length === 0 ? null : conCosto.reduce((s, l) => s + (l.costoReal as number), 0)
+  const totalBolsillo = lineas.some((l) => l.bolsillo == null)
+    ? null
+    : lineas.reduce((s, l) => s + (l.bolsillo as number), 0)
+  const estructura = lineas.find((l) => l.obraId == null)?.costoReal ?? null
+  const aObra = totalCosto == null ? null : totalCosto - (estructura ?? 0)
+  const conObra = lineas.filter((l) => l.obraId != null).length
 
   return (
     <section data-testid="solapa-costo-obra">
@@ -50,76 +80,124 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
 
       <h3 style={titulo}>La quincena cargada a la obra</h3>
       <p style={bajada}>
-        {rotuloQuincena(quincena)} · horas de <code style={code}>registros_hh</code> por el $/h vigente
+        Las horas ya se imputan; la plata todavía no. Esto lo cierra.
         {m.valor == null
-          ? ' — falta el multiplicador: cargá las alícuotas en «Costo a la obra» para que estas horas se conviertan en costo.'
-          : ` por el multiplicador × ${m.valor.toLocaleString('es-AR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}.`}
+          ? ' Falta el multiplicador: cargá las alícuotas arriba para que estas horas se conviertan en costo.'
+          : ''}
       </p>
 
       {lineas.length === 0 ? (
         <Vacio>No hay horas cargadas en esta quincena. Se cargan en la solapa Asistencia.</Vacio>
       ) : (
-        <table style={tabla}>
-          <thead>
-            <tr>
-              {['Obra', 'Horas', 'Bolsillo', 'Costo real', 'Mano de obra presupuestada', 'Consumo'].map((c, i) => (
-                <th key={c} style={{ ...th, textAlign: i === 0 ? 'left' : 'right' }}>{c}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {lineas.map((l) => (
-              <tr key={l.obraId ?? 'sin-obra'} data-testid="fila-obra" style={{ borderBottom: `1px solid ${V.lineaFila}` }}>
-                <td style={{ ...celda, textAlign: 'left', color: l.obraId == null ? V.warn : V.tinta }}>
-                  {l.rotulo}
-                  {l.sinTarifa > 0 && (
-                    <span data-testid="obra-sin-tarifa" style={{ marginLeft: 8, fontSize: '11.5px', color: V.warn }}>
-                      {l.sinTarifa} sin tarifa
-                    </span>
-                  )}
-                </td>
-                <td style={celda}>{horas(l.horas)}</td>
-                <td style={celda}>{pesos(l.bolsillo)}</td>
-                <td style={{ ...celda, fontWeight: 600 }}>{pesos(l.costoReal)}</td>
-                <td style={celda}>
-                  {l.presupuesto == null
-                    ? <span data-testid="sin-base" style={{ color: V.tenue }}>sin base</span>
-                    : pesos(l.presupuesto)}
-                </td>
-                <td style={{ ...celda, color: l.consumo == null ? V.tenue : l.consumo > 100 ? V.neg : V.tinta }}>
-                  {l.consumo == null
-                    ? 'sin base'
-                    : `${l.consumo.toLocaleString('es-AR', { maximumFractionDigits: 1 })} %`}
-                </td>
-              </tr>
-            ))}
-            <tr data-testid="total-obras" style={{ borderTop: `1px solid ${V.grafito}` }}>
-              <td style={{ ...celda, textAlign: 'left', fontWeight: 600 }}>⇒ {lineas.length} obra(s)</td>
-              <td style={{ ...celda, fontWeight: 600 }}>{horas(totalHoras)}</td>
-              <td style={celda} />
-              <td style={{ ...celda, fontWeight: 600 }}>{pesos(totalCosto)}</td>
-              <td colSpan={2} style={{ ...celda, textAlign: 'left', fontSize: '11.5px', color: V.apagado }}>
-                {/* NO SE SUMA UN TOTAL DE PRESUPUESTO: sumar el de las obras que sí tienen base
-                    daría un consumo global contra un denominador incompleto. */}
-                {lineas.length - conCosto.length > 0
-                  ? `${lineas.length - conCosto.length} obra(s) sin costo publicable`
-                  : ''}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div data-testid="cuadro-costo-obra" style={cuadro}>
+          <div style={cabecera}>
+            <div style={{ fontSize: '14.5px', fontWeight: 600 }}>{rotuloQuincena(quincena)} · por obra</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}>
+              <Cifra rotulo="A OBRA" valor={miles(aObra)} testid="total-a-obra" />
+              <Cifra rotulo="A ESTRUCTURA" valor={miles(estructura)} tono={V.warn} testid="total-a-estructura" />
+            </div>
+          </div>
+
+          <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>
+            <div data-testid="encabezado-obras" style={{ ...renglon, height: 34, alignItems: 'end', paddingBottom: 9, borderBottom: `1px solid ${V.linea}`, ...rotuloColumna }}>
+              <div>Obra</div>
+              <div style={{ textAlign: 'right' }}>HH</div>
+              <div style={{ textAlign: 'right' }}>Gente</div>
+              <div style={{ textAlign: 'right' }}>Bolsillo</div>
+              <div style={{ textAlign: 'right' }}>Costo real</div>
+              <div style={{ textAlign: 'right' }}>MO presupuestada</div>
+              <div style={{ textAlign: 'right' }}>Consumido</div>
+            </div>
+
+            {lineas.map((l) => <FilaDeObra key={l.obraId ?? 'sin-obra'} l={l} />)}
+
+            <div data-testid="total-obras" style={{ ...renglon, height: 56, alignItems: 'center', borderTop: `1px solid ${V.grafito}`, fontWeight: 600 }}>
+              <div>{conObra} obra{conObra === 1 ? '' : 's'} · {gente} persona{gente === 1 ? '' : 's'}</div>
+              <div style={{ textAlign: 'right' }}>{horas(totalHoras)}</div>
+              <div />
+              <div style={{ textAlign: 'right' }}>{miles(totalBolsillo)}</div>
+              <div style={{ textAlign: 'right' }}>{miles(totalCosto)}</div>
+              {/* NO SE SUMA UN TOTAL DE PRESUPUESTO: sumar el de las obras que sí tienen base daría
+                  un consumo global contra un denominador incompleto. */}
+              <div />
+              <div />
+            </div>
+          </div>
+          <div style={{ height: 20 }} />
+        </div>
+      )}
+
+      {lineas.length > conCosto.length && (
+        <p data-testid="obras-sin-costo" style={{ fontSize: '11.5px', color: V.warn, margin: '10px 0 0' }}>
+          {lineas.length - conCosto.length} obra(s) sin costo publicable: falta el $/h de alguien o el multiplicador.
+        </p>
       )}
     </section>
   )
 }
 
+function FilaDeObra({ l }: { l: LineaDeObra }) {
+  const sinObra = l.obraId == null
+  return (
+    <div data-testid="fila-obra" style={{
+      ...renglon, minHeight: sinObra ? 58 : 52, alignItems: 'center',
+      borderBottom: `1px solid ${V.linea}`, background: sinObra ? V.hover : undefined,
+    }}>
+      <div style={{ color: V.tinta }}>
+        {l.rotulo}
+        {l.sinTarifa > 0 && (
+          <span data-testid="obra-sin-tarifa" style={{ marginLeft: 8, fontSize: '11.5px', color: V.warn }}>
+            {l.sinTarifa} sin tarifa
+          </span>
+        )}
+      </div>
+      <div style={{ textAlign: 'right', color: sinObra ? V.warn : V.tinta }}>{horas(l.horas)}</div>
+      <div style={{ textAlign: 'right', color: V.apagado }}>{l.gente}</div>
+      <div style={{ textAlign: 'right' }}>{miles(l.bolsillo)}</div>
+      <div style={{ textAlign: 'right', fontWeight: 500, color: sinObra ? V.warn : V.tinta }}>{miles(l.costoReal)}</div>
+      <div style={{ textAlign: 'right', color: V.tenue }}>
+        {/* LA OBRA QUE NO EXISTE NO PUEDE TENER PRESUPUESTO: «—», no «sin cargar». */}
+        {sinObra ? '—' : l.presupuesto == null
+          ? <span data-testid="sin-cargar-mo">sin cargar</span>
+          : <span style={{ color: V.apagado }}>{miles(l.presupuesto)}</span>}
+      </div>
+      <div style={{ textAlign: 'right', color: l.consumo == null ? V.tenue : colorDelConsumo(l.consumo) }}>
+        {sinObra ? '—' : l.consumo == null
+          ? <span data-testid="sin-base">sin base</span>
+          : `${l.consumo.toLocaleString('es-AR', { maximumFractionDigits: 0 })} %`}
+      </div>
+    </div>
+  )
+}
+
+function Cifra({ rotulo, valor, tono, testid }: { rotulo: string; valor: string; tono?: string; testid: string }) {
+  return (
+    <div data-testid={testid} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+      <span style={{ fontSize: '11px', color: tono ?? V.tenue, fontFamily: MONO, letterSpacing: '.05em' }}>{rotulo}</span>
+      <span style={{ fontSize: '16px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: tono ?? V.tinta }}>{valor}</span>
+    </div>
+  )
+}
+
 const titulo = { fontSize: '15px', fontWeight: 600, color: V.tinta, margin: '0 0 4px' }
 const bajada = { fontSize: '12.5px', color: V.apagado, margin: '0 0 16px', maxWidth: 760 }
-const code = { fontFamily: 'var(--font-mono, monospace)', fontSize: '11.5px', color: V.apagado }
-const tabla = { width: '100%', borderCollapse: 'collapse' as const, fontVariantNumeric: 'tabular-nums' as const }
-const th = {
-  fontSize: '11px', fontWeight: 600, letterSpacing: '.06em', color: V.tenue, textTransform: 'uppercase' as const,
-  borderBottom: `1px solid ${V.lineaFuerte}`, padding: '0 8px 8px', height: 30, verticalAlign: 'bottom' as const,
-  whiteSpace: 'nowrap' as const,
+const cuadro = {
+  maxWidth: 1240, background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`,
+  borderRadius: 10, overflow: 'hidden' as const,
 }
-const celda = { padding: '0 8px', height: 52, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
+const cabecera = {
+  padding: '20px 22px 17px', display: 'flex', alignItems: 'flex-end' as const,
+  justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' as const,
+  borderBottom: `1px solid ${V.linea}`,
+}
+// LAS SIETE COLUMNAS DEL MOCKUP. `minmax(0,…)` en vez de `minmax(220px,…)`: a 390 px un mínimo de
+// 220 más las otras seis columnas desbordaba el cuadro y la fila de total quedaba fuera de pantalla.
+const renglon = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) 62px 60px 108px 110px 130px 110px',
+  gap: 14,
+}
+const rotuloColumna = {
+  fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.04em', color: V.tenue,
+  textTransform: 'uppercase' as const,
+}
