@@ -184,3 +184,41 @@ export function avisoDeCola(r, quien = '') {
   const pres = r.preservadas?.length ? ` · ✋ ${r.preservadas.length} fila(s) con algo que no es del generador — CONSERVADAS (${r.preservadas.slice(0, 6).join(', ')})` : ''
   return `  🧹 cola de una corrida anterior: limpio ${r.limpiadas} fila(s) entre la ${r.desde} y la ${r.hasta}${pres}`
 }
+
+/**
+ * LO MISMO QUE LA COLA, PERO ADENTRO DEL CUADRO: las celdas del CUERPO que el generador declara
+ * vacías y que hoy tienen un residuo con forma de generador.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (09/09/2026, medido rompiendo la pestaña viva) ═══
+ *
+ * «Cargas Sociales» pasó de 7 cuadros a 4 y su titular de 6 filas a 2: TODA la pestaña se corrió
+ * cuatro filas hacia arriba. La escritura informó *«conservo 287 celda(s) que esta escritura dejaba
+ * vacías (no puedo probar de quién son)»* y la pestaña quedó MEZCLADA — el cuadro 6 viejo debajo del
+ * 4 nuevo, importes viejos en filas que las fórmulas nuevas leen como si fueran suyas. No dio un solo
+ * error: publicó números plausibles y equivocados.
+ *
+ * Por qué la huella no alcanzó: `huella-celda` realinea probando desplazamientos [0,±1,±2,±3,±5] —y
+ * el corrimiento fue de CUATRO—, y sobre una copia del archivo no hay ninguna huella que realinear.
+ * Ampliar esa lista es tocar el realineado de catorce pestañas; esto no lo toca.
+ *
+ * QUÉ SE BORRA Y QUÉ NO: exactamente el mismo criterio que la cola —`formaDeGenerador`: una fórmula,
+ * un importe, una fecha, un guion, una marca tipográfica del OS—. Un TEXTO LIBRE nunca: si el dueño
+ * escribió una nota adentro del cuadro, se conserva. Y sólo se toca donde el generador declaró
+ * `VACIO`, o sea donde él mismo dice «esta celda es mía y va en blanco».
+ *
+ * @param {any[][]} grid   lo que se va a escribir (con centinelas `VACIO`)
+ * @param {any[][]} previo lo que hay HOY en la pestaña, leído con render FORMULA
+ * @returns {{grid:any[][], probadas:number}}
+ */
+export function cuerpoProbadoPorForma(grid = [], previo = []) {
+  let probadas = 0
+  const out = grid.map((fila, i) => (fila || []).map((c, j) => {
+    if (c !== VACIO) return c
+    const hoy = (previo[i] || [])[j]
+    if (!String(hoy ?? '').trim()) return c
+    if (!formaDeGenerador(hoy)) return c
+    probadas += 1
+    return MIA_PROBADA
+  }))
+  return { grid: out, probadas }
+}

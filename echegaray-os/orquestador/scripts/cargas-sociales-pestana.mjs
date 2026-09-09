@@ -26,7 +26,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
-import { conColaMedida, avisoDeCola } from '../lib/cola-de-rango.mjs'
+import { conColaMedida, avisoDeCola, cuerpoProbadoPorForma } from '../lib/cola-de-rango.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
 import { total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
@@ -329,7 +329,19 @@ async function main() {
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
   // `filas` es `let` porque la cola de la pestaña vieja se le agrega abajo, después de leerla.
-  let { filas, cantidades, ratios, fechas, titular, prosaFormula, pies, controles, rangos, avisos } = grilla({ periodos, conceptos, ps, C, bloqueBase, baseJornales })
+  // ═══ LA GRILLA VIAJA ENTERA HASTA EL FORMATO — NO SE DESARMA ACÁ (09/09/2026) ═══
+  //
+  // Estaba desarmada en doce variables y `formatear` recibía UNA LISTA ESCRITA A MANO de ellas. Las
+  // tres declaraciones nuevas del rediseño —el gris de la proyección, la celda de fecha del titular
+  // y la moneda de las réplicas— se declararon en `grilla()` y NO se agregaron a esa lista: viajaron
+  // hasta acá y se cayeron en la última línea. No da error, no lo ve ningún test de la grilla y no lo
+  // ve el `--dry`: sale mal y se ve mal, que es como se enteró el dueño.
+  //
+  // Pasando el objeto entero, agregar una declaración nueva no requiere acordarse de nada: la clase
+  // de defecto deja de existir en vez de quedar cubierta por un test.
+  const g = grilla({ periodos, conceptos, ps, C, bloqueBase, baseJornales })
+  let { filas } = g
+  const { rangos, avisos } = g
   // LOS HALLAZGOS, EN LA CORRIDA Y NO EN LA PESTAÑA: es donde los ve quien puede resolverlos.
   for (const a of (avisos ?? [])) console.warn(`  ${a}`)
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
@@ -360,7 +372,11 @@ async function main() {
   // conserva igual, porque la fusión sólo limpia donde hay centinela. El mecanismo vive en
   // lib/cola-de-rango.mjs: era este mismo bucle copiado en cinco generadores, con cinco variantes.
   const previo = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:${COL_ORIGEN}400`)
-  const cola = conColaMedida(filas, previo, { ancho: ANCHO })
+  // `probarPorForma`: la pestaña bajó de 83 filas a 61 y su cola no se podía borrar — las celdas de
+  // una versión anterior al sistema de huellas no tienen ninguna, así que la guarda respondía «nunca
+  // fue mía» y el cuadro 6 viejo quedaba publicado debajo del 4 nuevo. Mismo criterio y mismo umbral
+  // que «Impuestos y Financieros», que ya pagó este defecto.
+  const cola = conColaMedida(filas, previo, { ancho: ANCHO, probarPorForma: true })
   if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
   filas = cola.filas
 
@@ -379,7 +395,15 @@ async function main() {
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   // LA COLUMNA DE PROSA SE VA CON LA GRILLA, NO DESPUÉS: ver vaciarColumnaDeProsa en lib/nota-celda.mjs.
   vaciarColumnaDeProsa(gridFinal, ANCHO - 1)
-  const escritura = await escribirPreservando(google, ID, `'${PESTAÑA}'`, gridFinal, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  // ═══ Y EL CUERPO TAMBIÉN SE LIMPIA, NO SÓLO LA COLA (09/09/2026) ═══
+  //
+  // El rediseño corrió TODA la pestaña cuatro filas. La escritura informó «conservo 287 celda(s) que
+  // esta escritura dejaba vacías (no puedo probar de quién son)» y el resultado fue una pestaña
+  // MEZCLADA que no dio un solo error: importes viejos en las filas que las fórmulas nuevas leen.
+  // El porqué completo, y qué se borra y qué no, en `cuerpoProbadoPorForma`.
+  const cuerpo = cuerpoProbadoPorForma(gridFinal, previo)
+  if (cuerpo.probadas) console.log(`  🧹 ${cuerpo.probadas} celda(s) del cuerpo con forma de generador: las declaro mías y las limpio`)
+  const escritura = await escribirPreservando(google, ID, `'${PESTAÑA}'`, cuerpo.grid, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //
   // El defecto que arruinó CAJA, buscado en todos los generadores y encontrado en seis. La guarda hace
@@ -397,7 +421,7 @@ async function main() {
   const { conservadas } = salteada ? { conservadas: [] } : escritura
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
-  if (!salteada) await formatear(google, ID, hoja.sheetId, gridFinal, { cantidades, ratios, fechas, titular, prosaFormula, pies, controles })
+  if (!salteada) await formatear(google, ID, hoja.sheetId, gridFinal, g)
   // LOS NOMBRES SE PUBLICAN SOBRE LO QUE SE ESCRIBIÓ, NUNCA SOBRE LO QUE SE QUISO ESCRIBIR: si la
   // guarda salteó la escritura, la pestaña conserva la geometría de su última corrida y reapuntar los
   // nombres los dejaría sobre filas que en la pestaña son otra cosa. Es el defecto que vació CAJA.
