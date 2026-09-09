@@ -68,30 +68,15 @@ test('LA COBERTURA SE MUESTRA COMO PROPORCIÓN, no sólo como monto', () => {
   assert.equal(cob[1], '=IF(B52=0;"";B53/B52)')
 })
 
-test('EL NÚMERO GLOBAL VA REFERENCIADO POR NOMBRE, NO RECALCULADO', () => {
-  // Recalcularlo acá daba $13.090.051 contra los $13,8M de ARCA_SIN_CARGAR_MONTO que publica Proveedores:
-  // dos cifras parecidas, con nombres parecidos, respondiendo preguntas distintas.
+test('EL NÚMERO GLOBAL ES UNA FÓRMULA VIVA SOBRE LA RÉPLICA, no un nombre que apunta a un bloque muerto (09/09/2026)', () => {
+  // `ARCA_SIN_CARGAR_MONTO` apuntaba a `Proveedores!C184`, capa fósil borrada hoy con la firma del dueño.
   const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras no lo tiene'))
   assert.ok(g, 'la línea global existe')
-  assert.match(String(g[1]), /ARCA_SIN_CARGAR_MONTO/, 'la cifra sale del nombre, no de un recálculo local')
+  assert.doesNotMatch(String(g[1]), /ARCA_SIN_CARGAR/, 'ya no depende de un rango con nombre')
+  assert.match(String(g[1]), new RegExp(`SUMIFS\\(${C}!\\$G\\$4:\\$G;${C}!\\$B\\$4:\\$B;"${DIR.arcaSinCompras}"\\)`), 'suma la dirección «ARCA sin Compras» de la réplica, todos los rubros')
+  assert.match(String(g[1]), /^=IF\(NOT\(COUNTIFS/, 'sin fuente replicada no publica un cero creíble')
+  assert.match(String(g[1]), /"—"/)
   assert.match(String(g[0]), /· Compras entera/, 'y dice de qué universo es')
-})
-
-// ═══ EL DEFECTO · UN LECTOR QUE CONFÍA A CIEGAS PUBLICA LO QUE HAYA (15/08/2026) ═══
-//
-// Medido en el archivo vivo: `Materiales!B53` tenía `=ARCA_SIN_CARGAR_MONTO` pelado y mostraba
-// `"0010-00000001"` —un número de comprobante— porque el nombre había quedado anclado en una celda
-// del layout anterior de "Proveedores". `Proveedores!G11`, el único otro lector del mismo nombre, ya
-// llevaba la guarda desde el 14/08 y por eso mostraba "—". Mismo nombre roto, dos lectores, uno solo
-// defendido: el indefenso dibuja un comprobante como si fuera plata, y eso no se ve.
-test('EL DEFECTO · la cifra global no se publica sin comprobar que es un número', () => {
-  const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras no lo tiene'))
-  assert.match(String(g[1]), /ISNUMBER\(ARCA_SIN_CARGAR_MONTO\)/,
-    'cita el rango con nombre sin verificar su especie: si el nombre quedó sobre un CUIT o un comprobante, esta celda lo publica como plata')
-  assert.match(String(g[1]), /IFERROR\(/,
-    'sin IFERROR, el día que el nombre se retire por mentir esta celda queda en #NAME? en vez de "—"')
-  assert.match(String(g[1]), /;"—"\)$/,
-    'cuando el número no está disponible la celda tiene que decir "—", no un número creíble')
 })
 
 test('LA ÚLTIMA FILA ES UN CONTROL «rótulo | número», no una oración (regla del dueño, 09/09/2026)', () => {

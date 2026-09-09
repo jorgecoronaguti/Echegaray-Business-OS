@@ -142,8 +142,15 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // `IFERROR` cubre el nombre retirado (#NAME?) e `ISNUMBER`, el nombre vivo apuntando a basura.
   // «de Compras ENTERA, no de esta pestaña» era la glosa que defendía el número; «· Compras entera» es
   // su DIMENSIÓN, que es lo que el contrato pide al lado del concepto. Dice lo mismo y no argumenta.
+  // ═══ VIVA, NO UN NOMBRE QUE APUNTA A UN BLOQUE MUERTO (09/09/2026) ═══
+  //
+  // Leía `ARCA_SIN_CARGAR_MONTO`, un rango con nombre que apuntaba a `Proveedores!C184`: una celda
+  // de la capa fósil del generador retirado el 14/08, congelada en $2.319.107 desde ese día. Hoy esa
+  // capa se borró con la firma del dueño y el nombre queda en #REF!. La cifra sale de la réplica que
+  // el OS escribe en cada corrida —`_CRUCE_ARCA`, dirección «ARCA sin Compras», todos los rubros—,
+  // que es la misma fuente de las dos filas de arriba. Sin fuente replicada, «—».
   filas.push([`${ALERTA} ARCA facturó y Compras no lo tiene · Compras entera`,
-    '=IFERROR(IF(ISNUMBER(ARCA_SIN_CARGAR_MONTO);ARCA_SIN_CARGAR_MONTO;"—");"—")'])
+    `=IF(NOT(${HAY_FUENTE});"—";SUMIFS(${rg(CC.importe)};${rg(CC.direccion)};"${DIR.arcaSinCompras}"))`])
 
   // ═══ EL VEREDICTO ═══
   //
