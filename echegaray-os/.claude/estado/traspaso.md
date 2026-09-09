@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 17:55 (hora local −03) · main `b1e60bbb` = origin = producción_
+_actualizado: 2026-09-09 18:10 (hora local −03) · main `ad805242` = origin; producción (Sheet) en `b1e60bbb`; Vercel con el push_
 
 ## 1. OBJETIVO GENERAL
 
@@ -64,7 +64,9 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
 - **Liquidación de horas v2** (handoff en `/home/jorge/liqhs/`): mergeado `feat/liquidacion-horas-v2` — jornada 9/8 en el
   cálculo (1ª quincena sep = 97 h), módulo SÓLO administrador (`liquidaSueldos()` en areas.ts, `notFound()` en la ruta),
   4 migraciones `20260909T1700…T1730` **SIN APLICAR** (adelantos, sellado de quincena + reapertura, alícuotas versionadas +
-  escala 0076/75, CBU + rastro de corrección). Sin pantallas todavía (hitos 3–5), server actions sin guarda admin.
+  escala 0076/75, CBU + rastro de corrección). Después (ad805242): guarda `liquidaSueldos()` en las dos server actions (`liquidacionPermiso.ts`) y la grilla
+  «Horas» de la quincena (`grillaHorasQuincena.ts` + `GrillaHorasQuincena.tsx`, medidas del mockup) **sin montar en ninguna
+  ruta ni conectada a datos**; filtros presentacionales. Sin captura. Pantallas 2–12 sin hacer.
 - **Web publicada hoy (09/09)**: botón «Presente» en Plantel (`2c76456f`); Documentos del proveedor en ficha y
   panel lateral con bucket privado `proveedores-documentos` + tabla `proveedor_documento` (`3c6b1143`, `73b82964`);
   módulo **Liquidación** (Administración → Personal, `fbae2a0a`): tablas `persona_tarifa`, `liquidacion_quincena`,
