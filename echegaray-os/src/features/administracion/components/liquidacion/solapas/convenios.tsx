@@ -63,8 +63,8 @@ export async function SolapaConvenios({ quincenaPedida, hoy }: {
 
             <Cuerpo>
               <Encabezado columnas={COLS} celdas={['Persona', 'Categoría', 'Paga', 'Piso', 'Brecha', 'Regularizar']} />
-              {conPiso.length === 0 && (
-                <Fila columnas={COLS} tenue celdas={['Ninguna persona se pudo comparar contra un piso.', '', '', '', '', '']} />
+              {lineas.length === 0 && (
+                <Fila columnas={COLS} tenue celdas={['No hay nadie en el plantel para esta quincena.', '', '', '', '', '']} />
               )}
               {conPiso.map((l) => <FilaPersona key={l.personaId} l={l} />)}
               {sinComparar.map((l) => <FilaSinPiso key={l.personaId} l={l} />)}
@@ -122,17 +122,24 @@ function FilaPersona({ l }: { l: LineaExposicion }) {
   )
 }
 
-/** Una persona que no se pudo comparar. Gris, sin importe y con el motivo escrito en la celda. */
+/**
+ * Una persona que no se pudo comparar. Gris, sin importe y con el motivo escrito entero.
+ *
+ * LLEVA SU PROPIA REJILLA A PROPÓSITO: el motivo es una frase —«sin piso: la escala de X no está
+ * cargada»— y en la columna de 90 px del piso se partía en cinco renglones, con filas de 110 px que
+ * enterraban a los que sí se compararon. Acá las tres últimas columnas se funden en una sola.
+ */
+const COLS_SIN_PISO = 'minmax(200px,1fr) 120px 90px minmax(280px,1fr)'
+
 function FilaSinPiso({ l }: { l: LineaExposicion }) {
   return (
-    <Fila columnas={COLS} alto={44} tenue testid={`convenio-${l.personaId}`} celdas={[
+    <Fila columnas={COLS_SIN_PISO} alto={44} tenue testid={`convenio-${l.personaId}`} celdas={[
       <span key="n" style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {l.nombre}
       </span>,
       categoriaVisible(l.categoria, null),
       l.valorHora == null ? '—' : miles(l.valorHora),
-      <span key="m" style={{ gridColumn: 'span 3', textAlign: 'right' }}>{l.porQueNoSeCompara}</span>,
-      '', '',
+      l.porQueNoSeCompara,
     ]} />
   )
 }

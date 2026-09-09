@@ -22,7 +22,7 @@ import { quincenaDe, esFechaISO } from '../../../services/quincena'
 import { Cuadro, Cuerpo, Encabezado, Fila, Hueco, Titulo, Total, miles } from './tabla'
 
 // `dc:526` — las siete columnas de la pantalla 7, al píxel.
-const COLS = 'minmax(240px,1fr) 88px 84px 96px 96px 100px 140px'
+const COLS = 'minmax(240px,1fr) 88px 84px 96px 132px 100px 140px'
 
 export async function SolapaProductividad({ quincenaPedida, hoy }: {
   quincenaPedida?: string; hoy: string

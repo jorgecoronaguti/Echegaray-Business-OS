@@ -31,9 +31,20 @@ import { createClient } from '@/lib/supabase/server'
 import {
   getAusenciasDeLaQuincena, getEslabonesDeLaQuincena, type EslabonPersona,
 } from '../../../services/eslabonesLegajoService'
+import { motivoDe as motivoDelCatalogo } from '../../../../../../orquestador/lib/asistencia-motivos.mjs'
 import { PAGA_POR_MOTIVO } from '../../../services/liquidacionDeAusencias'
 import { esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
 import { Cuadro, Cuerpo, Encabezado, Fila, Hueco, MONO, Titulo, Total, miles } from './tabla'
+
+/**
+ * El catálogo es JavaScript sin tipos y su `motivoDe` devuelve `unknown`. Se estrecha acá, una sola
+ * vez, en vez de castear en cada llamada: el `unknown` es el tipo correcto en el borde, y `any`
+ * apagaría el chequeo de todo lo que venga después.
+ */
+const etiquetaDeMotivo = (clave: string | null | undefined): string => {
+  const m = motivoDelCatalogo(clave) as { etiqueta?: unknown } | null
+  return typeof m?.etiqueta === 'string' ? m.etiqueta : (clave?.trim() ?? '')
+}
 
 const COLS_RET = 'minmax(140px,1fr) 100px 150px'
 const COLS_AUS = '86px minmax(110px,1fr) 150px'
@@ -106,7 +117,7 @@ export async function SolapaRecibos({ quincenaPedida, hoy }: {
                       <span key="f" style={{ fontFamily: MONO, fontSize: '11.5px' }}>{a.fecha.slice(8, 10)}/{a.fecha.slice(5, 7)}</span>,
                       <Nombre key="n">{a.nombre}</Nombre>,
                       <span key="m" style={{ color: paga ? V.apagado : V.neg, fontSize: '11.5px' }}>
-                        {a.motivo?.trim() || 'sin motivo'} · {paga ? 'paga' : '0 h'}
+                        {a.motivo?.trim() ? etiquetaDeMotivo(a.motivo) : 'sin motivo'} · {paga ? 'paga' : '0 h'}
                       </span>,
                     ]} />
                 )
@@ -176,8 +187,12 @@ function FilaLote({ p, hayExtracto }: { p: EslabonPersona; hayExtracto: boolean 
  * dueño agregue un motivo, la pantalla seguiría mostrando la lista vieja y nadie se enteraría.
  */
 function TablaDeMotivos() {
-  const pagan = Object.entries(PAGA_POR_MOTIVO).filter(([, r]) => r.paga).map(([m]) => m)
-  const noPagan = Object.entries(PAGA_POR_MOTIVO).filter(([, r]) => !r.paga).map(([m]) => m)
+  // LA ETIQUETA LA PUBLICA EL CATÁLOGO, no este archivo: `falta_con_aviso` es la clave con la que
+  // se guarda, y «Faltó con aviso» es como se llama. Tipear la segunda acá sería una tercera copia
+  // del catálogo de motivos, que ya vive en `orquestador/lib/asistencia-motivos.mjs`.
+  const etiqueta = etiquetaDeMotivo
+  const pagan = Object.entries(PAGA_POR_MOTIVO).filter(([, r]) => r.paga).map(([m]) => etiqueta(m).toLowerCase())
+  const noPagan = Object.entries(PAGA_POR_MOTIVO).filter(([, r]) => !r.paga).map(([m]) => etiqueta(m).toLowerCase())
   return (
     <p data-testid="tabla-motivos" style={{ margin: 0, fontSize: '11px', color: V.apagado, lineHeight: 1.55 }}>
       <strong style={{ color: '#067647', fontWeight: 600 }}>Pagan</strong> {pagan.join(', ')}.{' '}

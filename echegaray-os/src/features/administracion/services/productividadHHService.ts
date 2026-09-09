@@ -65,8 +65,15 @@ export async function getProductividadDeLaQuincena(
   ])
 
   const errores: { que: string; error: string }[] = []
+  // UN MENSAJE VACÍO NO ES UN MENSAJE. PostgREST devuelve 403 con `message: ""` cuando falta el
+  // GRANT, y un aviso en blanco manda a leer los logs para descubrir que la tabla está cerrada.
   const anotar = (que: string, e: { code?: string; message: string } | null) => {
-    if (e && !sinTabla(e)) errores.push({ que, error: e.message })
+    if (!e || sinTabla(e)) return
+    const texto = e.message?.trim()
+    errores.push({
+      que,
+      error: texto || `la base rechazó la consulta (permiso o GRANT faltante${e.code ? `, código ${e.code}` : ''}).`,
+    })
   }
   anotar('las horas de la quincena', hh.error)
   anotar('las actividades de obra', actividades.error)
