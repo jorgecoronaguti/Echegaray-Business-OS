@@ -111,7 +111,7 @@ test('los comentarios de la Nómina no describen un código que ya no existe', (
 // cobra, cuánto sube, cuánto va a cobrar. Antes las dos puntas estaban separadas por tres columnas de
 // plata y la del medio no existía — para saber cuánto subía cada uno había que restar dos celdas
 // lejanas, que es justo la cifra que el dueño decidió.
-test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detalle', () => {
+test('la Nómina publica UNA tarifa, y la plata ANTES que el detalle', () => {
   // ═══ EL ENCABEZADO SE BUSCA POR SU PRIMERA COLUMNA, NO POR LA SEGUNDA ═══
   //
   // Este test anclaba al literal `fila('Persona', 'Cat.', 'Convenio'`. El 31/08/2026 el dueño mandó
@@ -131,19 +131,28 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // El rótulo pasó a «$/h c/aumento» el 31/08, cuando el dueño pidió ver las dos tarifas seguidas
   // («queria una columna con lo q se paga de hora hoy y con el aumento como lo pedi»). El test acepta
   // las dos escrituras: lo que cuida es que las DOS tarifas estén y estén pegadas, no cómo se abrevia.
-  const enc = /fila\('Persona',[\s\S]{0,400}?'\$\/h c\/aum(?:\.|ento)'\)/.exec(NOMINA)
-  assert.ok(enc, 'se fue el encabezado con las tarifas')
-  const cols = [...enc[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
-  const i = cols.indexOf('$/h hoy')
-  assert.ok(i > 0, 'desapareció la columna de lo que cobra hoy')
+  // ═══ UNA SOLA TARIFA DESDE EL 09/09/2026, Y EL CONTRATO VIVE EN UNA CONSTANTE ═══
+  //
+  // Este test exigía «$/h hoy» y «$/h c/aumento» pegadas, del pedido del 31/08 («queria una columna
+  // con lo q se paga de hora hoy y con el aumento como lo pedi»). El 09/09 el dueño mandó unificar
+  // los tres cuadros con las MISMAS columnas y sacar todo lo que no se decide: la tarifa que se
+  // cobra es una —`COBRA = horas × $/hora` la multiplica— y la anterior es historia, que vive
+  // quincena por quincena en la planilla.
+  //
+  // Y el encabezado ya no se escribe como literal en cada cuadro: sale de `COLUMNAS`, una sola
+  // constante que los tres despliegan. Por eso acá se mide la constante y no el `fila(...)`.
+  const enc = /const COLUMNAS = Object\.freeze\(\[([\s\S]*?)\]\)/.exec(NOMINA)
+  assert.ok(enc, 'se fue el contrato de columnas de la pestaña')
+  const cols = [...enc[1].matchAll(/'([^']+)'/g)].map((m) => m[1])
+  assert.ok(cols.includes('$/hora'), 'desapareció la tarifa con la que se calcula lo que cobra')
+  assert.ok(!cols.includes('$/h hoy'), 'volvió la segunda tarifa: la que se cobra es una sola')
   // Y el cuadro que DECIDE existe, con las tres columnas de plata y sin el detalle encima.
   // ANCLADO A LO QUE EL CUADRO ES, NO AL ORDEN DE SUS COLUMNAS. Este literal ya se rompió dos veces
   // en un día —cuando se separó ADELANTO de YA TRANSFERIDO y cuando la categoría pasó al lado del
   // nombre—, y las dos veces el test se puso rojo por un reordenamiento que el dueño pidió, no por
   // un defecto. Se busca el encabezado que contiene las tres columnas de plata que él opera.
-  const decide = /fila\('Persona',[\s\S]{0,400}?'TOTAL A PAGAR',[\s\S]{0,400}?'\$\/h c\/aum(?:\.|ento)'\)/.exec(NOMINA)
-  assert.ok(decide, 'se fue el cuadro de instrucción de pago')
-  const dc = [...decide[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
+  const dc = cols
+  assert.ok(dc.includes('TOTAL A PAGAR'), 'se fue el cuadro de instrucción de pago')
   // TRECE, Y CADA UNA LA PIDIÓ EL DUEÑO (31/08). El tope existe para que el cuadro no vuelva a
   // llenarse de detalle solo, no para bloquear lo que él pide: sube de a uno y con el pedido escrito.
   //
@@ -217,8 +226,9 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // publica #ERROR!. Se vio en el render real del 29/08 — la celda decía #ERROR! sobre la columna
   // con los números correctos abajo.
   assert.ok(!cols.some((c) => /^\s*[+=]/.test(String(c ?? ''))), 'un rótulo que empieza con + o = entra como fórmula y publica #ERROR!')
-  assert.deepEqual(cols.slice(i, i + 2), ['$/h hoy', '$/h c/aumento'],
-    'las dos tarifas dejaron de leerse seguidas: la comparación no se puede hacer de un vistazo')
+  // LA TARIFA VA ÚLTIMA, DETRÁS DE LAS HORAS: es el respaldo de `COBRA`, no una cifra que se decide.
+  assert.deepEqual(cols.slice(-2), ['Horas', '$/hora'],
+    'la tarifa se despegó de las horas: juntas se lee de dónde sale COBRA sin cruzar el cuadro')
 
   // Y el aumento sale de la MISMA función que la tarifa nueva: dos cuentas del mismo aumento se
   // separan el día que el porcentaje cambie.
