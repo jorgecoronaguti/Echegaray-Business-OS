@@ -16,6 +16,8 @@ import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { filasDeGrilla, resumenDeGrilla, type FilaDeGrilla } from '../../../services/grillaHorasQuincena'
 import { getDatosDeLaSolapaHoras } from '../../../services/grillaHorasQuincenaService'
+import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
+import type { LineaDeLaPersona } from '../PanelDePersona'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
 import type { PropsDeSolapa } from './index'
 import { HorasConPersona } from '../HorasConPersona'
@@ -36,7 +38,18 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
   const recorte = { convenio: parametros.convenio, pendiente: parametros.pendiente }
   const hrefCierre = hrefDe({ solapa: 'cierre' })
   const supabase = await createClient()
-  const datos = await getDatosDeLaSolapaHoras(supabase, quincena)
+  // LA CADENA DE PAGO DE LA PERSONA ES LA MISMA FILA DEL CUADRO DE PAGOS, no una copia: el dueño
+  // pidió editarla desde acá con las mismas celdas, y dos cuentas de lo que cobra una persona serían
+  // dos respuestas de las que se cree la última que alguien miró. Cuesta una segunda tanda de
+  // lecturas y ese es el precio de tener UNA definición.
+  const [datos, liquidacion] = await Promise.all([
+    getDatosDeLaSolapaHoras(supabase, quincena),
+    getLiquidacionDeLaQuincena(supabase, quincena),
+  ])
+  const lineas: Record<string, LineaDeLaPersona> = {}
+  for (const cuadro of liquidacion.cuadros) {
+    for (const linea of cuadro.lineas) lineas[linea.personaId] = { grupo: cuadro.grupo, linea }
+  }
 
   const todas = filasDeGrilla({
     quincena,
@@ -108,7 +121,7 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
 
   return (
     <div data-testid="solapa-horas">
-      {datos.errores.map((e) => (
+      {[...datos.errores, ...liquidacion.errores].map((e) => (
         <div key={e.que} style={{ padding: '0 0 10px' }}>
           <Aviso tono="neg" testid="horas-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
         </div>
@@ -122,7 +135,9 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
         personas={datos.porPersona}
         correcciones={datos.correcciones}
         cerrada={datos.cerrada}
-        hasta={quincena.hasta}
+        quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
+        lineas={lineas}
+        camposEditables={liquidacion.camposEditables}
         accion={<BotonCierre puede={resumen.puedeCerrar} href={hrefCierre} />}
       />
     </div>

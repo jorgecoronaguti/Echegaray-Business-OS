@@ -15,15 +15,27 @@
 // sobre el trabajo administrativo pendiente.
 
 import React, { useState } from 'react'
+import Link from 'next/link'
 import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { corregirHorasDelDia } from '../../services/liquidacionDiaActions'
+import {
+  guardarCeldaLiquidacion, guardarEfectivoRedondeado, guardarValorHora,
+} from '../../services/liquidacionActions'
+import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
 import {
   calcularCadena, diasDelPanel, hhPorMes,
   type CorreccionDeDia, type DiaDelPanel, type RegistroDelPanel,
 } from '../../services/panelDePersona'
 
+/** La línea de esta persona en el cuadro de Pagos, con su grupo: es la MISMA fila, no una copia. */
+export interface LineaDeLaPersona {
+  grupo: string
+  linea: LineaConOverrides
+}
+
 export interface PersonaAbierta {
+  id: string
   nombre: string
   numeroLegajo: string | null
   encabezado: string
@@ -82,9 +94,26 @@ function Bloque({ titulo, campos }: {
 }
 
 
-/** La cadena de R5 de esta persona: cuatro celdas escritas, tres calculadas. */
-function CadenaDePago({ persona, cerrada }: { persona: PersonaAbierta; cerrada: boolean }) {
-  const c = calcularCadena({
+/**
+ * LA CADENA DE R5 DE ESTA PERSONA, EDITABLE — las MISMAS celdas del cuadro de Pagos.
+ *
+ * Dueño, 09/09/2026: *«ahí tengo que poder editar lo de cada uno así como lo que tenemos disponible
+ * de edición en la pantalla de todos juntos»*. Por eso esto no recalcula nada propio cuando existe
+ * la línea: muestra `LineaConOverrides` —la fila que ya arma `liquidacionQuincenaService`— y guarda
+ * con las mismas server actions. Una segunda cuenta acá sería la segunda definición de lo que cobra
+ * una persona, y de las dos se cree la última que alguien miró.
+ *
+ * SIN LÍNEA EN EL CUADRO (nadie con horas ni tarifa) se dibuja la cadena calculada y NO se ofrece
+ * edición: no hay dónde guardarla todavía.
+ */
+function CadenaDePago({ persona, cerrada, linea, camposEditables, quincena }: {
+  persona: PersonaAbierta
+  cerrada: boolean
+  linea?: LineaDeLaPersona
+  camposEditables: CampoEditable[]
+  quincena: { desde: string; hasta: string }
+}) {
+  const calculada = calcularCadena({
     horas: persona.cargadas,
     valorHora: persona.valorHora,
     adelanto: persona.adelanto,
@@ -92,17 +121,48 @@ function CadenaDePago({ persona, cerrada }: { persona: PersonaAbierta; cerrada: 
     porBanco: null,
     efectivoRedondeado: null,
   })
-  const fila = (rotulo: string, valor: string, opciones?: { total?: boolean; tenue?: boolean }) => (
-    <div key={rotulo} style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 42,
+  const l = linea?.linea
+  const grupo = linea?.grupo ?? 'obreros'
+  const editable = (campo: CampoEditable): boolean =>
+    !cerrada && l != null && camposEditables.includes(campo)
+
+  const celda = (campo: CampoEditable, valor: number | null) => (
+    editable(campo) ? (
+      <InlineEdit
+        valor={valor}
+        tipo="numero"
+        alineado="right"
+        ancho="w-28"
+        falta="—"
+        etiqueta={`${campo} de ${persona.nombre}`}
+        testid={`panel-celda-${campo}`}
+        mostrar={(v) => pesos(Number(v))}
+        guardar={async (v) => {
+          const r = await guardarCeldaLiquidacion({
+            ...quincena, grupo, persona_id: persona.id, campo, valor: v.trim(),
+          })
+          return r.ok ? { ok: true } : { ok: false, error: r.error }
+        }}
+      />
+    ) : <span style={{ color: valor == null ? V.tenue : V.tinta }}>{pesos(valor)}</span>
+  )
+
+  const fila = (rotulo: React.ReactNode, valor: React.ReactNode, opciones?: { total?: boolean; manual?: boolean }) => (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 42,
       borderBottom: opciones?.total ? 'none' : `1px solid ${V.linea}`,
       borderTop: opciones?.total ? `1px solid ${V.grafito}` : undefined,
       fontWeight: opciones?.total ? 600 : 400,
     }}>
-      <span style={{ color: opciones?.total ? V.tinta : V.apagado }}>{rotulo}</span>
-      <span style={{ color: opciones?.tenue ? V.tenue : V.tinta }}>{valor}</span>
+      <span style={{ color: opciones?.total ? V.tinta : V.apagado }}>
+        {rotulo}
+        {/* UNA CELDA ESCRITA A MANO SE DECLARA: sin la marca, un número pisado se lee como calculado. */}
+        {opciones?.manual && <span style={{ marginLeft: 6, fontSize: '10px', color: V.warn }}>a mano</span>}
+      </span>
+      <span>{valor}</span>
     </div>
   )
+
   return (
     <div data-testid="cadena-de-pago" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
@@ -116,20 +176,68 @@ function CadenaDePago({ persona, cerrada }: { persona: PersonaAbierta; cerrada: 
         fontVariantNumeric: 'tabular-nums', maxWidth: 460,
       }}>
         {fila(
-          c.valorHora == null
-            ? `${horas(c.horas)} h × sin retribución cargada`
-            : `${horas(c.horas)} h × ${pesos(c.valorHora)}`,
-          pesos(c.cobra),
-          { tenue: c.cobra == null },
+          grupo !== 'obreros' ? (
+            // OFICINA COBRA UN NETO MENSUAL: escribir «0 h × sin retribución» al lado de un importe
+            // real diría que la cifra salió de una tarifa que no existe. El $/h ni se ofrece.
+            <>Neto del período</>
+          ) : (
+          <>
+            {horas(l?.horas ?? calculada.horas)} h ×{' '}
+            {/* EL $/H VIVE EN `persona_tarifa`, NO EN LA LÍNEA: se escribe con su propia acción y
+                sólo para obreros — oficina cobra un neto mensual (CHECK «una sola forma»). */}
+            {!cerrada && l != null && grupo === 'obreros' ? (
+              <InlineEdit
+                valor={l.valorHora}
+                tipo="numero"
+                alineado="right"
+                ancho="w-20"
+                falta="sin tarifa"
+                etiqueta={`valor hora de ${persona.nombre}`}
+                testid="panel-celda-valorHora"
+                mostrar={(v) => pesos(Number(v))}
+                guardar={async (v) => {
+                  const r = await guardarValorHora({
+                    ...quincena, grupo, persona_id: persona.id, valor: v.trim(),
+                  })
+                  return r.ok ? { ok: true } : { ok: false, error: r.error }
+                }}
+              />
+            ) : pesos(l?.valorHora ?? calculada.valorHora)}
+          </>
+          ),
+          celda('cobra', l?.cobra ?? calculada.cobra),
+          { manual: l?.manual.cobra },
         )}
-        {fila('Adelanto', c.adelanto == null ? '—' : `− ${pesos(c.adelanto)}`, { tenue: c.adelanto == null })}
-        {fila('Ya transferido', '—', { tenue: true })}
-        {fila('Por banco', '—', { tenue: true })}
-        {fila('En efectivo', pesos(c.enEfectivo), { total: true, tenue: c.enEfectivo == null })}
+        {fila('Adelanto', celda('adelanto', l?.adelanto ?? calculada.adelanto), { manual: l?.manual.adelanto })}
+        {fila('Ya transferido', celda('yaTransferido', l?.yaTransferido ?? null), { manual: l?.manual.yaTransferido })}
+        {fila('Por banco', celda('porBanco', l?.porBanco ?? null), { manual: l?.manual.porBanco })}
+        {fila('En efectivo', celda('enEfectivo', l?.enEfectivo ?? calculada.enEfectivo), { total: true, manual: l?.manual.enEfectivo })}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 34 }}>
+          <span style={{ color: V.apagado }}>Efectivo redondeado</span>
+          {!cerrada && l != null ? (
+            <InlineEdit
+              valor={l.efectivoRedondeado}
+              tipo="numero"
+              alineado="right"
+              ancho="w-28"
+              falta="—"
+              etiqueta={`efectivo redondeado de ${persona.nombre}`}
+              testid="panel-celda-efectivoRedondeado"
+              mostrar={(v) => pesos(Number(v))}
+              guardar={async (v) => {
+                const r = await guardarEfectivoRedondeado({
+                  ...quincena, grupo, persona_id: persona.id, importe: v.trim(),
+                })
+                return r.ok ? { ok: true } : { ok: false, error: r.error }
+              }}
+            />
+          ) : <span>{pesos(l?.efectivoRedondeado ?? null)}</span>}
+        </div>
       </div>
       <p style={{ fontSize: '11px', color: V.tenue, lineHeight: 1.6, margin: 0 }}>
-        ADELANTO <code>nomina_adelanto</code> · YA TRANSFERIDO y POR BANCO se escriben en la solapa
-        Pagos · EFECTIVO = COBRA − los tres.
+        {l == null
+          ? 'Esta persona todavía no tiene línea en el cuadro de Pagos: sin horas ni tarifa no hay dónde guardar una celda.'
+          : 'COBRA = horas × $/h · EN EFECTIVO = COBRA − adelanto − ya transferido − por banco. Lo que se escribe a mano pisa el cálculo y se marca.'}
       </p>
     </div>
   )
@@ -140,7 +248,8 @@ function DiasDeLaPersona({ dias }: { dias: DiaDelPanel[] }) {
   const COLUMNAS = '82px minmax(200px,1fr) 118px 108px 210px 62px 92px'
   const [verOriginal, setVerOriginal] = useState<string | null>(null)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }} data-testid="dias-de-la-persona">
+    <div className="overflow-x-auto" data-testid="dias-de-la-persona">
+    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 700 }}>
       <div style={{
         display: 'grid', gridTemplateColumns: COLUMNAS, gap: 12, height: 34, alignItems: 'end',
         borderBottom: `1px solid ${V.linea}`, paddingBottom: 9, fontFamily: MONO,
@@ -206,16 +315,20 @@ function DiasDeLaPersona({ dias }: { dias: DiaDelPanel[] }) {
         </div>
       ))}
     </div>
+    </div>
   )
 }
 
-export function PanelDePersona({ persona, cerrada, correcciones, cerrar, hasta }: {
+export function PanelDePersona({
+  persona, cerrada, correcciones, cerrar, quincena, linea, camposEditables,
+}: {
   persona: PersonaAbierta
   cerrada: boolean
   correcciones: Record<string, CorreccionDeDia[]>
   cerrar: () => void
-  /** Último día de la quincena: es el mes que «HH por mes» marca como actual. */
-  hasta: string
+  quincena: { desde: string; hasta: string }
+  linea?: LineaDeLaPersona
+  camposEditables: CampoEditable[]
 }) {
   const dias = diasDelPanel(
     persona.registrosDeLaQuincena,
@@ -223,13 +336,14 @@ export function PanelDePersona({ persona, cerrada, correcciones, cerrar, hasta }
     // QUINCENA CERRADA → SÓLO LECTURA (R6). La acción vuelve a comprobarlo en el servidor.
     { editable: !cerrada },
   )
-  const meses = hhPorMes(persona.filasHH, hasta)
+  const meses = hhPorMes(persona.filasHH, quincena.hasta)
   return (
-    <div data-testid="panel-persona" style={{
-      borderTop: `1px solid ${V.lineaFuerte}`, display: 'flex', alignItems: 'stretch',
-      background: '#FFFFFF',
+    // EN EL TELÉFONO EL LEGAJO VA DEBAJO. Con la columna de 300 px fija, a 390 px la cadena de pago
+    // quedaba en cuarenta píxeles de ancho y el texto salía en vertical, letra por letra.
+    <div data-testid="panel-persona" className="flex flex-col items-stretch lg:flex-row" style={{
+      borderTop: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF',
     }}>
-      <div style={{ flex: 1, minWidth: 0, padding: '20px 20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div className="min-w-0 flex-1" style={{ padding: '20px 20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
           <div style={{ fontSize: '16px', fontWeight: 600 }}>{persona.nombre}</div>
           {persona.numeroLegajo && (
@@ -237,10 +351,23 @@ export function PanelDePersona({ persona, cerrada, correcciones, cerrar, hasta }
               legajo {persona.numeroLegajo}
             </div>
           )}
+          {/* EL LEGAJO COMPLETO ES OTRA PANTALLA, y esto es la puerta: el dueño la pidió textual
+              («desde liq de hs quiero entrar al legajo de cada uno»). Abre en la misma pestaña: la
+              solapa Horas se recupera con el botón atrás y sin perder la quincena. */}
+          <Link
+            href={`/administracion/personas/${persona.id}`}
+            prefetch={false}
+            data-testid="ver-legajo-completo"
+            style={{
+              marginLeft: 'auto', height: 26, padding: '0 10px', display: 'inline-flex',
+              alignItems: 'center', border: `1px solid ${V.lineaFuerte}`, borderRadius: 6,
+              background: '#FFFFFF', fontSize: '11.5px', color: V.tinta, textDecoration: 'none',
+            }}
+          >Ver el legajo completo</Link>
           <button
             type="button" onClick={cerrar} data-testid="cerrar-panel-persona"
             style={{
-              marginLeft: 'auto', height: 26, padding: '0 10px', border: `1px solid ${V.lineaFuerte}`,
+              height: 26, padding: '0 10px', border: `1px solid ${V.lineaFuerte}`,
               borderRadius: 6, background: '#FFFFFF', fontSize: '11.5px', cursor: 'pointer',
             }}
           >Cerrar</button>
@@ -248,14 +375,19 @@ export function PanelDePersona({ persona, cerrada, correcciones, cerrar, hasta }
         {persona.encabezado && (
           <div style={{ fontSize: '12.5px', color: V.apagado }}>{persona.encabezado}</div>
         )}
-        <CadenaDePago persona={persona} cerrada={cerrada} />
+        <CadenaDePago
+          persona={persona} cerrada={cerrada} linea={linea}
+          camposEditables={camposEditables} quincena={quincena}
+        />
         <DiasDeLaPersona dias={dias} />
       </div>
 
-      <aside style={{
-        width: 300, flex: 'none', borderLeft: `1px solid ${V.lineaFuerte}`, background: '#FAFAF8',
-        padding: '20px 20px 26px', display: 'flex', flexDirection: 'column', gap: 24,
-      }}>
+      <aside
+        className="order-first w-full border-b lg:order-none lg:w-[300px] lg:flex-none lg:border-b-0 lg:border-l"
+        style={{
+          borderColor: V.lineaFuerte, background: '#FAFAF8',
+          padding: '20px 20px 26px', display: 'flex', flexDirection: 'column', gap: 24,
+        }}>
         <Bloque titulo="Legajo" campos={persona.legajo} />
         <Bloque titulo="Laboral" campos={persona.laboral} />
         <Bloque titulo="Asignación" campos={persona.asignacion} />

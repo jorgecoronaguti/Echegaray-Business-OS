@@ -20,6 +20,7 @@ import type { PresenciaDeQuincena, RegistroDeQuincena } from './liquidacionQuinc
 import { correrQuincena, type Quincena } from './quincena.ts'
 
 export interface DatosDePersona {
+  id: string
   legajo: { rotulo: string; valor: string | null; mono?: boolean }[]
   laboral: { rotulo: string; valor: string | null; mono?: boolean }[]
   asignacion: { rotulo: string; valor: string | null; mono?: boolean }[]
@@ -88,10 +89,15 @@ export async function getDatosDeLaSolapaHoras(
       supabase.from('persona_directorio').select(
         'id, nombre_completo, en_la_empresa, categoria, especialidad, puesto, fecha_ingreso, ' +
         'fecha_egreso, cuadrilla, obra_actual, rol_en_obra, asignada_desde, legajo'),
-      // `retribucion_pactada` NO se pide: su GRANT está cerrado para `authenticated` desde
-      // 20260819T4900 y pedirla haría fallar el select entero. El $/h que liquida es
-      // `persona_tarifa`, que es el que este módulo usa en todas sus cuentas.
-      supabase.from('personas').select(
+      // ═══ EL LEGAJO SE LEE POR `persona_legajo`, NUNCA POR `personas` ═══
+      //
+      // Medido el 09/09/2026 con la sesión de Dirección: `personas` devuelve «permission denied for
+      // table personas» y los ocho campos del bloque LEGAJO salían escritos «sin cargar» — una
+      // afirmación falsa sobre el legajo de diecisiete personas producida por un control que no
+      // pudo mirar. `persona_legajo` es la vista con portero que ya usa la ficha 360, y es el único
+      // camino de la web a esos campos. `retribucion_pactada` sigue sin pedirse: su GRANT está
+      // cerrado y el $/h que liquida es `persona_tarifa`.
+      supabase.from('persona_legajo').select(
         'id, dni, cuil, fecha_nacimiento, nacionalidad, telefono, email, domicilio, ' +
         'contacto_emergencia, convenio_colectivo, modalidad_liquidacion, notas'),
       supabase.from('persona_tarifa').select('persona_id, desde, valor_hora').lte('desde', q.hasta),
@@ -101,6 +107,8 @@ export async function getDatosDeLaSolapaHoras(
         .gte('fecha', desdeAncho).lte('fecha', q.hasta).not('persona_id', 'is', null),
       supabase.from('asistencia_dia').select('persona_id, fecha, estado, motivo')
         .gte('fecha', q.desde).lte('fecha', q.hasta),
+      // El CUIL ya viene con el legajo; esta lectura queda para el día que el portero de la vista
+      // deje afuera a alguien que igual tiene adelantos.
       supabase.from('persona_legajo').select('id, cuil'),
       supabase.from('nomina_adelanto').select('cuil, importe')
         .gte('fecha', q.desde).lte('fecha', q.hasta),
@@ -210,6 +218,7 @@ function armarPersona(
 ): DatosDePersona {
   const convenio = l?.convenio_colectivo ?? null
   return {
+    id: p.id,
     nombre: p.nombre_completo,
     numeroLegajo: p.legajo == null ? null : String(p.legajo),
     valorHora,

@@ -10,12 +10,14 @@
 
 import { useState } from 'react'
 import { GrillaHorasQuincena, type FiltroDeGrilla } from './GrillaHorasQuincena'
-import { PanelDePersona, type PersonaAbierta } from './PanelDePersona'
+import { PanelDePersona, type LineaDeLaPersona, type PersonaAbierta } from './PanelDePersona'
+import type { CampoEditable } from '../../services/liquidacionOverrides'
 import type { FilaDeGrilla, ResumenDeGrilla } from '../../services/grillaHorasQuincena'
 import type { CorreccionDeDia } from '../../services/panelDePersona'
 
 export function HorasConPersona({
-  titulo, jornadaTexto, filas, resumen, filtros, accion, personas, correcciones, cerrada, hasta,
+  titulo, jornadaTexto, filas, resumen, filtros, accion, personas, correcciones, cerrada, quincena,
+  lineas, camposEditables,
 }: {
   titulo: string
   jornadaTexto: string
@@ -27,7 +29,10 @@ export function HorasConPersona({
   personas: Record<string, Omit<PersonaAbierta, 'cargadas'>>
   correcciones: Record<string, CorreccionDeDia[]>
   cerrada: boolean
-  hasta: string
+  quincena: { desde: string; hasta: string }
+  /** La línea del cuadro de Pagos de cada persona: la MISMA fila que se edita allá. */
+  lineas: Record<string, LineaDeLaPersona>
+  camposEditables: CampoEditable[]
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
   const datos = abierta ? personas[abierta] : undefined
@@ -49,7 +54,9 @@ export function HorasConPersona({
           persona={{ ...datos, cargadas: fila?.cargadas ?? 0 }}
           cerrada={cerrada}
           correcciones={correcciones}
-          hasta={hasta}
+          quincena={quincena}
+          linea={lineas[abierta!]}
+          camposEditables={camposEditables}
           cerrar={() => setAbierta(null)}
         />
       )}

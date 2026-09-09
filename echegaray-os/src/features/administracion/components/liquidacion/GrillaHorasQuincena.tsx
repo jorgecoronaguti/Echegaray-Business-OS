@@ -160,12 +160,18 @@ export function GrillaHorasQuincena({
   abierta?: string | null
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'stretch', flexDirection: 'row-reverse' }}>
+    // EN EL TELÉFONO LOS FILTROS VAN ABAJO Y LA GRILLA SE DESLIZA. El mockup está dibujado a
+    // 1240-1440 px; a 390 la columna de 230 px se le come la mitad al cuadro y las trece columnas de
+    // día quedan cortadas sin forma de llegar a ellas. Es la misma salida que ya usa la grilla de
+    // Asistencia: apilar y dejar que el ancho real se recorra.
+    <div className="flex flex-col-reverse items-stretch lg:flex-row-reverse">
 
-      <aside style={{
-        width: 230, flex: 'none', borderLeft: `1px solid ${V.lineaFuerte}`, background: '#FAFAF8',
-        display: 'flex', flexDirection: 'column',
-      }}>
+      <aside
+        className="w-full border-t lg:w-[230px] lg:flex-none lg:border-l lg:border-t-0"
+        style={{
+          borderColor: V.lineaFuerte, background: '#FAFAF8',
+          display: 'flex', flexDirection: 'column',
+        }}>
         {filtros.map((f) => <Filtro key={f.rotulo} filtro={f} />)}
         <div style={{ marginTop: 'auto', padding: 15, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Resumen rotulo="Cargadas" valor={numero(resumen.cargadas)} />
@@ -193,7 +199,7 @@ export function GrillaHorasQuincena({
         </div>
       </aside>
 
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <div className="min-w-0 flex-1" style={{ display: 'flex', flexDirection: 'column' }}>
         <div style={{
           padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 16,
           borderBottom: `1px solid ${V.linea}`,
@@ -202,7 +208,10 @@ export function GrillaHorasQuincena({
           <div style={{ fontSize: '11.5px', color: V.apagado }}>{jornadaTexto}</div>
         </div>
 
-        <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column' }}>
+        {/* EL ANCHO REAL DE LA GRILLA SE RECORRE, no se aplasta: trece columnas de 30 px más el
+            nombre no entran en 390 y encogerlas dejaría celdas ilegibles. */}
+        <div className="overflow-x-auto" style={{ padding: '0 20px' }}>
+        <div style={{ minWidth: 760, display: 'flex', flexDirection: 'column' }}>
           <div style={{
             display: 'grid', gridTemplateColumns: COLUMNAS, gap: 6, height: 36, alignItems: 'end',
             borderBottom: `1px solid ${V.linea}`, paddingBottom: 9,
@@ -237,6 +246,7 @@ export function GrillaHorasQuincena({
             <div style={{ textAlign: 'right' }}>{numero(resumen.esperadas)}</div>
             <div />
           </div>
+        </div>
         </div>
 
         <div style={{ padding: '12px 20px 20px', fontSize: '11px', color: V.apagado }}>
