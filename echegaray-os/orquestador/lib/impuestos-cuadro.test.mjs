@@ -5,8 +5,7 @@ import {
   formulaAlicuotaIibbVigente, formulaIibbDeterminado,
   formulaImpuestoChequeProyectado, formulaImpuestoCheque,
   formulaVentana, formulaDeudaPendiente,
-  formulaMesQueElIvaPideCaja, formulaIvaQuePideCaja, formulaColchonQueSeAgota, IVA_SIN_SALIDA,
-  proximoVencimiento, rangoIibb, formulaSaldoAFavor, formulaSaldoDeclarado,
+  proximoVencimiento, rangoIibb, formulaSaldoAFavor,
 } from './impuestos-cuadro.mjs'
 import { serialDe } from './vencimientos-fiscales.mjs'
 
@@ -179,53 +178,22 @@ test('el saldo a favor con un término que no es número: ni #VALUE! ni un cero,
   assert.ok(f.includes('IVA') && f.includes('IIBB'), `dice qué impuesto falta: ${f}`)
 })
 
-test('un saldo suelto que no es número tampoco se muestra como plata', () => {
-  const f = formulaSaldoDeclarado('$G$57')
-  assert.ok(f.startsWith('=IF(ISNUMBER($G$57);$G$57;'), `el importe manda cuando es importe: ${f}`)
-  assert.ok(/sin dato/.test(f), `una celda vacía se declara, no se dibuja en $0: ${f}`)
+// ═══ LO QUE SE RETIRÓ CON EL HERO DE TRES FILAS (09/09/2026) ═══
+//
+// Acá vivían siete tests de `formulaSaldoDeclarado`, `formulaMesQueElIvaPideCaja`,
+// `formulaIvaQuePideCaja` y `formulaColchonQueSeAgota`. Las cuatro fórmulas se fueron con los
+// renglones del hero que las consumían, así que sus tests probaban código muerto — y un test verde
+// sobre una función que nadie llama enseña a confiar en que algo sigue funcionando.
+//
+// El único de ellos que protegía una regla y no una redacción se conserva abajo, sobre la fórmula
+// que SÍ quedó: que un texto en una celda de saldo no se lea como un importe.
+
+test('el hero no se rompe cuando la celda de un saldo tiene texto en vez de plata', () => {
+  // El 17/08 alguien tipeó «⚠ vence 20/08» donde va el saldo de libre disponibilidad de julio y la
+  // fila del hero publicó #VALUE! en la primera pantalla de la pestaña. `COUNT` cuenta números y sólo
+  // números: con un término de texto la suma no se hace y se declara cuál falta.
+  const f = formulaSaldoAFavor('$G$57', '$G$67')
+  assert.ok(!/IFERROR/.test(f), 'un IFERROR dejaría $0 donde hay millones a favor')
+  assert.ok(f.includes('ISNUMBER($G$57)') && f.includes('ISNUMBER($G$67)'), f)
 })
 
-// ══ LOCALE ════════════════════════════════════════════════════════════════════════════════════════
-
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// ¿CUÁNDO EL IVA EMPIEZA A SALIR DE LA CAJA? — la pregunta que la pestaña no contestaba
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-test('el mes que pide caja se busca en los DOCE MESES, nunca en la columna del Total', () => {
-  // La N suma la fila entera. Incluida en el rango, un año en que ningún mes suelto pide caja pero
-  // el total del año da positivo publicaría "el IVA pide caja" señalando una columna que no es un mes.
-  const f = formulaMesQueElIvaPideCaja(55, 52)
-  assert.ok(f.includes('$B$55:$M$55'), f)
-  assert.ok(!f.includes('$N$'), `el rango no puede llegar al Total: ${f}`)
-  assert.ok(f.includes('$B$52:$M$52'), 'el nombre del mes sale del encabezado del cuadro')
-})
-
-test('un TEXTO en la fila del a-pagar no puede leerse como "acá pide caja"', () => {
-  // En Sheets cualquier texto es MAYOR que cualquier número: sin el filtro por ISNUMBER, la leyenda
-  // que una persona deja en un mes ajeno se compara como > 0 y publica el mes equivocado.
-  for (const f of [formulaMesQueElIvaPideCaja(55, 52), formulaIvaQuePideCaja(55), formulaColchonQueSeAgota(55, 56)]) {
-    assert.ok(f.includes('ISNUMBER('), `sin ISNUMBER un texto se lee como importe: ${f}`)
-  }
-})
-
-test('sin ningún mes que pida caja se dice, y el colchón es el último saldo publicado', () => {
-  // "ninguno en el año" es un HECHO —el crédito de libre disponibilidad lo absorbió todo—, no un
-  // hueco: por eso no lleva ⚠. Y el colchón vigente de un saldo acumulado es el último valor de la
-  // fila, no una suma: LOOKUP(9^99) devuelve exactamente eso.
-  assert.ok(formulaMesQueElIvaPideCaja(55, 52).includes(`"${IVA_SIN_SALIDA}"`))
-  assert.ok(formulaColchonQueSeAgota(55, 56).includes('LOOKUP(9^99;$B$56:$M$56)'))
-  assert.ok(formulaIvaQuePideCaja(55).endsWith(';0)'), 'cero pesos es la verdad, no un hueco')
-})
-
-test('el colchón es el del mes ANTERIOR: el que se agota, no el que ya se agotó', () => {
-  const f = formulaColchonQueSeAgota(55, 56)
-  assert.ok(/MAX\(1;MATCH\(/.test(f), `tiene que restar uno con piso en enero: ${f}`)
-  assert.ok(f.includes(');0)-1))'), `el -1 va sobre la posición, no sobre el rango: ${f}`)
-})
-
-test('las tres fórmulas van en locale es-AR: ni una coma de argumento', () => {
-  for (const f of [formulaMesQueElIvaPideCaja(55, 52), formulaIvaQuePideCaja(55), formulaColchonQueSeAgota(55, 56)]) {
-    assert.ok(!f.replace(/"[^"]*"/g, '').includes(','), `una coma rompe la fórmula en es-AR: ${f}`)
-  }
-})

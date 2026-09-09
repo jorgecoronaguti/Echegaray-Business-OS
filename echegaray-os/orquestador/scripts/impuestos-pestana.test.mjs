@@ -10,8 +10,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { ubicarLineas, sinSolapamiento, grilla } from './impuestos-pestana.mjs'
 import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
-import { contratoDeRotulos } from '../lib/iva-libre-disponibilidad.mjs'
-import { auditarPatron } from '../lib/patron-pestana.mjs'
+import { contratoDeRotulos, RANGO_ALICUOTA_IVA } from '../lib/iva-libre-disponibilidad.mjs'
+import { parametroAlicuota, ROTULO_ALICUOTA } from '../lib/impuestos-alicuota.mjs'
+import { auditarPatron, textoVisible } from '../lib/patron-pestana.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { ANCHO_ROTULO } from '../lib/impuestos-piel.mjs'
 import { auditarDiseno } from '../lib/diseno-unificado.mjs'
@@ -229,7 +230,9 @@ const comoSeVe = (g) => g.filas.map((f) => f.map((c, j) => {
   return typeof c === 'string' && c.startsWith('=') ? 1234 : c
 }))
 
-const rotulos = (g) => g.filas.map((f) => String(f[0] ?? '').trim())
+// EL CENTINELA NO ES UN RÓTULO: `VACIO` dice «esta celda es mía y va vacía», y en la pestaña se ve
+// vacía. Sin traducirlo, cada fila de separación cuenta como una fila con contenido.
+const rotulos = (g) => g.filas.map((f) => (f[0] === VACIO ? '' : String(f[0] ?? '').trim()))
 const filaDe = (g, re) => rotulos(g).findIndex((r) => re.test(r)) + 1
 
 test('LOS DOS RÓTULOS DEL CONTRATO están, una sola vez, y con el texto exacto', () => {
@@ -246,36 +249,92 @@ test('LOS DOS RÓTULOS DEL CONTRATO están, una sola vez, y con el texto exacto'
   assert.equal(r.destino.iibb, g.filasCalendario.iibb)
 })
 
-test('LA POSICIÓN VA PRIMERO, Y AHORA ES LO ÚNICO QUE VA ARRIBA DEL DETALLE', () => {
-  // ═══ EL REDISEÑO DEL 04/09/2026 ═══
+test('LA POSICIÓN VA PRIMERO, Y ENTRA EN CUATRO RENGLONES', () => {
+  // ═══ EL REDISEÑO DEL 04/09 Y EL DEL 09/09 ═══
   //
   // El dueño, mirando la pestaña renderizada: "no me sirven del cuadro 1 al 3, veo del 4 en
-  // adelante". Entre el hero y el primer número que él usa había treinta y dos renglones: el riesgo
-  // 30/60/90, el calendario de vencimientos y el financiamiento. Ahora el hero cae directamente
-  // sobre la sección 1, que es el cuadro de IVA.
+  // adelante". Se fueron el riesgo 30/60/90, el calendario y el financiamiento —treinta y dos
+  // renglones antes del primer número que él usa—. El 09/09 se fueron además el titular y las cuatro
+  // sub-líneas: quedan tres «⇒ rótulo | cifra» y el separador, como en las pestañas hermanas.
   const g = armar()
-  const hero = filaDe(g, /^LA POSICIÓN AL/)
-  const detalle = filaDe(g, /^1 · IVA — LA DDJJ OFICIAL/)
-  assert.ok(hero > 0 && detalle > hero, `orden real: hero ${hero}, detalle ${detalle}`)
-  assert.equal(detalle - hero, 10, 'entre el titular y el primer cuadro no puede haber otra pantalla')
+  const primero = filaDe(g, /^⇒ A pagar en 30 días$/)
+  const detalle = filaDe(g, /^1 · IVA$/)
+  assert.ok(primero > 0 && detalle > primero, `orden real: hero ${primero}, detalle ${detalle}`)
+  assert.equal(detalle - primero, 4, 'entre el primer renglón y el primer cuadro van sólo las otras dos filas y el aire')
   assert.ok(g.filasCalendario.iva > detalle, 'el IVA a pagar es detalle: va abajo')
-  // Y la posición queda congelada ENTERA, o se va al scrollear y no sirve de nada. El número sale
-  // del hero: con un 12 tipeado, un renglón más arriba dejaba el último sub-ítem fuera del congelado.
+  // Y la posición queda congelada ENTERA, o se va al scrollear y no sirve de nada.
   assert.ok(g.congeladas >= g.hero.hasta, `congela ${g.congeladas} filas y el hero llega hasta la ${g.hero.hasta}`)
   assert.ok(g.congeladas < detalle, 'congelar el detalle además de la posición se come media pantalla')
 })
 
-test('el TITULAR que la piel agranda es la fila que decide, y el hero se declara entero', () => {
-  // La piel no adivina cuál es el número grande: lo recibe. Si el hero se reordena y `titular` se
-  // queda quieto, el que crece es el renglón de al lado — y la pestaña entera pasa a gritar otra cosa
-  // sin un solo error. Acá se prueba el EFECTO: qué dice la fila que se va a agrandar.
+test('el hero se declara entero y son TRES totales, sin titular ni sub-líneas', () => {
+  // La piel recibe el rango del hero y le da a esas filas su peso de lectura. Si el rango se queda
+  // corto —o largo— el peso cae en el renglón de al lado sin dar un solo error.
   const g = armar()
-  assert.match(String(g.filas[g.titular - 1][0]), /A PAGAR EN LOS PRÓXIMOS 30 DÍAS/)
-  assert.ok(String(g.filas[g.titular - 1][1]).startsWith('='), 'el titular es una referencia, no un pegado')
-  // Y el rango del hero contiene al titular y a los tres totales, sin desbordar al riesgo.
-  assert.ok(g.hero.desde <= g.titular && g.titular <= g.hero.hasta)
-  assert.equal(String(g.filas[g.hero.desde - 1][0]).startsWith('LA POSICIÓN AL'), true)
-  assert.ok(g.hero.hasta < filaDe(g, /^1 · IVA — LA DDJJ OFICIAL/), 'el hero termina antes de la sección 1')
+  const delHero = rotulos(g).slice(g.hero.desde - 1, g.hero.hasta).filter(Boolean)
+  assert.deepEqual(delHero, ['⇒ A pagar en 30 días', '⇒ Deuda fiscal y financiera', '⇒ A favor en el fisco'])
+  for (const f of g.filas.slice(g.hero.desde - 1, g.hero.hasta)) {
+    if (f[0] && f[0] !== VACIO) assert.ok(String(f[1]).startsWith('='), 'cada cifra es una referencia, no un pegado')
+  }
+  assert.ok(g.hero.hasta < filaDe(g, /^1 · IVA$/), 'el hero termina antes de la sección 1')
+  // Y ninguna fila de la pestaña vuelve a decir «LA POSICIÓN AL …».
+  assert.equal(rotulos(g).some((r) => /^LA POSICIÓN/.test(r)), false)
+})
+
+test('LA FILA 2 DECLARA PROCEDENCIA Y NADA MÁS: tres fuentes, cero prosa', () => {
+  // ═══ POR QUÉ NO ALCANZA `auditar-diseno-unificado` PARA ESTA FILA (09/09/2026) ═══
+  //
+  // La A2 no es un texto: es una fórmula `LET(...)` que rinde «ARCA al dd/mm · IIBB al dd/mm · banco
+  // al dd/mm». Los auditores leen VALORES, y el valor de una fórmula en frío es la fórmula — así que
+  // el párrafo «Qué se le debe al fisco, qué está inmovilizado y con qué se cuenta» podía volver a
+  // la celda con los dos controles de diseño en verde. MEDIDO: reponerlo dejaba pasar
+  // `pestanas-sin-prosa` sin una queja.
+  //
+  // Se mide el LITERAL MÁS LARGO de la fórmula, que es el que ocupa la fila — la misma técnica que
+  // `textoVisible` usa para cazar las glosas escondidas dentro de un IF.
+  const a2 = String(armar().filas[1][0])
+  assert.ok(a2.startsWith('='), 'la frescura es una fórmula viva, no una fecha estampada el día de la corrida')
+  const visible = textoVisible(a2)
+  assert.ok(visible.length <= 24, `la A2 publica una glosa de ${visible.length} caracteres: «${visible}»`)
+  // Las TRES fuentes, y sólo tres. Cada una con su propia fecha: un MAX le prestaría la frescura de
+  // la fuente viva a la congelada, que es el defecto que `rotuloPorFuente` existe para impedir.
+  for (const fuente of ['ARCA al ', 'IIBB al ', 'banco al ']) assert.ok(a2.includes(`"${fuente}"`), fuente)
+  assert.equal(a2.includes('retenciones al '), false, 'la cuarta fuente se retiró: tres fechas se leen de un vistazo')
+  assert.equal(/Qué se le debe|inmovilizado|con qué se cuenta/.test(a2), false, 'ni una palabra de explicación')
+})
+
+test('LAS CINCO SECCIONES SE LLAMAN POR SU CONCEPTO, SIN PREGUNTAS NI EXPLICACIÓN', () => {
+  // ═══ LA ORDEN DEL 09/09 ═══
+  //
+  // Decían «1 · IVA — LA DDJJ OFICIAL (F.2051): QUÉ SE DEBE O SE TIENE A FAVOR», «2 · … ¿CUÁNTO SE
+  // DEBE CADA MES?», «4 · … ¿QUÉ MÁS SE PAGA Y NO ESTABA A LA VISTA?». Un título que hace una
+  // pregunta está explicando el cuadro que tiene debajo, y el cuadro se explica solo.
+  //
+  // Y LA NUMERACIÓN CORRE SIN HUECOS: la sección 6 se eliminó entera, así que la última es la 5. Un
+  // hueco en la numeración es lo que hace dudar de si falta un bloque.
+  const secciones = rotulos(armar()).filter((r) => /^\d+ · /.test(r))
+  assert.deepEqual(secciones, [
+    '1 · IVA', '2 · INGRESOS BRUTOS SAN JUAN', '3 · RETENCIONES SUFRIDAS',
+    '4 · OTROS IMPUESTOS', '5 · DEUDA FINANCIERA',
+  ])
+})
+
+test('NADA DEBAJO DEL ÚLTIMO BLOQUE', () => {
+  // El bloque de supuestos y huecos vivía al pie: seis renglones «▲ …» y la alícuota. Se eliminó
+  // entero (la alícuota se mudó a «Parámetros»). Lo que este test fija es que no quede una cola de
+  // renglones sueltos después del último total, que es como vuelve la prosa sin que nadie la vea.
+  const g = armar()
+  const ultima = rotulos(g).reduce((acc, r, i) => (r ? i : acc), -1)
+  const rotulosSinFrescura = rotulos(g).filter((_, i) => i !== 1 && !rotulos(g)[i].startsWith('='))
+  assert.deepEqual(rotulosSinFrescura.filter((r) => /[▲✓]/.test(r)), [])
+  const fSalida = filaDe(g, /^⇒ Salida financiera del mes$/)
+  const fPrend = filaDe(g, /^Prendario · cuotas por vencer$/)
+  assert.ok(fSalida > 0 && fPrend > fSalida, 'el bloque 5 termina con el saldo del prendario')
+  assert.equal(ultima + 1, fPrend, `después de la fila ${fPrend} hay contenido en la ${ultima + 1}`)
+  // Y ni un ▲ en un RÓTULO: el dueño los nombró uno por uno. La fila 2 queda afuera y es la única
+  // excepción: es la fórmula de frescura, que muestra «▲ hace N días» SÓLO cuando una fuente se
+  // quedó atrás — un aviso que aparece por excepción, no un glifo dibujado todos los días. Es el
+  // mismo mecanismo, letra por letra, que usan «Cargas Sociales» y «Nómina».
 })
 
 test('la pestaña cumple su propia gramática — cero defectos de patrón', () => {
@@ -299,34 +358,36 @@ test('el mes EN CURSO queda vinculado a ARCA y se declara como parcial', () => {
   // HOY es 06/08/2026, así que agosto es el mes en curso.
   const g = armar({ arca: { meses: [7, 8] } })
   const fDDJJ = filaDe(g, /^DDJJ presentada$/)
-  assert.equal(g.filas[fDDJJ - 1][8], '▲ ARCA parcial')
+  assert.equal(g.filas[fDDJJ - 1][8], 'parcial')
   const debito = String(g.filas[filaDe(g, /^Débito fiscal del período$/) - 1][8])
   assert.match(debito, /_ARCA_RAW/, 'agosto sale de la réplica de comprobantes')
   assert.match(debito, /^=MAX\(/, 'y nunca por debajo de la proyección del Libro')
   // Julio, en cambio, es del dueño (ancla = 7): cadena vacía, que es lo que `fusionar()` preserva.
   assert.equal(g.filas[fDDJJ - 1][7], '')
-  // Y los meses de ARCA quedan en ÁMBAR igual que la proyección: no son la DDJJ oficial.
-  assert.ok(g.ambar.some((x) => x.mes === 8 && x.fila === fDDJJ))
+  // Y los meses de ARCA quedan en gris itálica igual que la proyección: no son la DDJJ oficial.
+  assert.ok(g.proyectadas.some((x) => x.mes === 8 && x.fila === fDDJJ))
 })
 
-test('el parámetro de alícuota vive DENTRO de su bloque, no huérfano al pie', () => {
-  // ═══ LO QUE SE ARREGLÓ (04/09/2026) ═══
+test('LA ALÍCUOTA YA NO ES UNA FILA DE ESTA PESTAÑA: es un parámetro del dueño', () => {
+  // ═══ POR QUÉ SE MUDÓ (09/09/2026) ═══
   //
-  // El bloque se llamaba "Lo que falta, y el parámetro que edita el dueño" —una "y" en el título de
-  // un bloque es la confesión de que son dos ideas— y encima la alícuota no quedaba adentro: la
-  // separaba una fila en blanco, así que se leía como un resto suelto al pie de la pestaña y no como
-  // lo que es, el único valor del archivo que el dueño firma a mano. Ahora es la PRIMERA fila de su
-  // bloque, que pasó a llamarse por lo que de verdad contiene: los supuestos y los huecos.
+  // Vivía en B53, dentro del bloque «Supuestos y huecos» que el dueño mandó eliminar. Pero además
+  // estaba mal ubicada desde antes: una alícuota que él FIRMA es una ENTRADA, de la misma categoría
+  // que `F931_DIA_DE_PAGO` o las alícuotas del FCL, que ya viven en «Parámetros» con su rango con
+  // nombre. Un parámetro escondido al pie del cuadro que lo consume es un parámetro que nadie
+  // encuentra para cambiar — y ninguna fórmula de la pestaña deja de andar: leen el NOMBRE.
   const g = armar()
-  // ERA LA 7 Y AHORA ES LA 6 (09/09/2026): la sección «Planes de pago F931» se retiró —es el cuadro
-  // de «Cargas Sociales», una sola vez— y las de abajo corrieron un número. Sin huecos, que es lo
-  // que el contrato de diseño exige.
-  const bloque = filaDe(g, /^6 · SUPUESTOS Y HUECOS/)
-  assert.ok(bloque > 0, 'el bloque tiene que existir y llamarse por su única idea')
-  assert.equal(g.filaAlicuotaIva, bloque + 1, 'el parámetro es la primera fila de su bloque')
-  assert.equal(g.filas[g.filaAlicuotaIva - 1][0], 'Alícuota general de IVA')
-  // Y ninguna fila en blanco lo separa del título de su bloque: eso es lo que lo dejaba huérfano.
-  assert.notEqual(String(g.filas[bloque][0] ?? '').trim(), '')
+  assert.equal(rotulos(g).includes(ROTULO_ALICUOTA), false, 'la fila se retiró de la pestaña')
+  assert.equal(g.filaAlicuotaIva, undefined, 'el generador ya no declara una fila de alícuota')
+  // El rango con nombre lo sigue leyendo la proyección de IVA: si alguien reemplazara el nombre por
+  // un 0,21 tipeado en la fórmula, la alícuota dejaría de ser editable sin que nada se rompa.
+  const cred = String(g.filas[filaDe(g, /^Crédito fiscal del período$/) - 1][10])
+  assert.match(cred, new RegExp(RANGO_ALICUOTA_IVA), 'la proyección sigue leyendo el rango con nombre')
+  // Y el parámetro que se publica en «Parámetros» declara el MISMO rótulo por el que se lo busca.
+  const p = parametroAlicuota(0.21)
+  assert.equal(p.rotulo, ROTULO_ALICUOTA)
+  assert.equal(p.rango, RANGO_ALICUOTA_IVA)
+  assert.equal(p.valor, 0.21, 'se migra el valor vigente, no la semilla: si no, se pisa lo que él firmó')
 })
 
 test('IIBB PROYECTA de julio en adelante: seis meses en blanco era el hueco', () => {
@@ -362,18 +423,26 @@ test('un mes FUTURO sin facturas cargadas no proyecta NINGUNO de los dos lados',
   }
   // Y EL HUECO SE DECLARA: una columna vacía sin explicación se lee como «no debo nada».
   const proc = g.filas[filaDe(g, /^DDJJ presentada$/) - 1]
-  for (const mes of [11, 12]) assert.match(String(proc[mes]), /SIN VENTAS CARGADAS/)
+  for (const mes of [11, 12]) assert.equal(String(proc[mes]), 'sin ventas')
 })
 
-test('los meses proyectados se marcan en ÁMBAR por celda, nunca por columna entera', () => {
-  // Pintar la columna del mes de arriba abajo teñiría de proyección el hero y el calendario, que son
-  // la posición de HOY. Un hecho pintado de proyección miente en el sentido que más caro sale.
+test('los meses proyectados se marcan por CELDA, nunca por columna entera', () => {
+  // Pintar la columna del mes de arriba abajo teñiría de proyección el hero, que es la posición de
+  // HOY. Un hecho marcado como proyección miente en el sentido que más caro sale.
+  //
+  // Y DESDE EL 09/09/2026 LA MARCA ES TIPOGRÁFICA, NO UN FONDO ÁMBAR: el amarillo de agosto a
+  // octubre era lo único con color de la pestaña y le daba a una estimación más peso visual que a
+  // una DDJJ presentada. Gris e itálica es como marca una estimación cualquier statement serio, y
+  // es lo que ya hacen «Cargas Sociales» y «Nómina».
   const g = armar()
-  assert.ok(g.ambar.length > 0)
+  assert.ok(g.proyectadas.length > 0)
+  assert.equal(g.ambar, undefined, 'el fondo ámbar se retiró: la piel ya no lo recibe')
   const filasDetalle = new Set([g.filasCalendario.iva, g.filasCalendario.iibb])
-  assert.ok(g.ambar.some((x) => filasDetalle.has(x.fila)))
-  const heroHasta = filaDe(g, /^1 · RIESGO Y PROYECCIÓN/)
-  for (const x of g.ambar) assert.ok(x.fila > heroHasta, `la fila ${x.fila} está en la posición: no se pinta de proyección`)
+  assert.ok(g.proyectadas.some((x) => filasDetalle.has(x.fila)))
+  for (const x of g.proyectadas) {
+    assert.ok(x.fila > g.hero.hasta, `la fila ${x.fila} está en el hero: no se marca como proyección`)
+    assert.ok(x.mes >= 1 && x.mes <= 12, `la columna ${x.mes} no es un mes`)
+  }
 })
 
 test('el ancho de toda fila es exactamente el de la pestaña', () => {
@@ -425,16 +494,16 @@ test('las filas del HERO declaran suyo todo su ancho: C:O van con centinela, no 
   // preservá" y el residuo sería legítimo. Las declara suyas con VACIO —esto lo fija— y la limpieza
   // la desbloquea `huella-celda`.
   //
-  // Las filas angostas eran las del calendario; el calendario se fue. Ahora son las del HERO, que
-  // usan A y B (a lo sumo C) y dejan el resto de su ancho para limpiar. Y el riesgo es MAYOR que
-  // antes: este rediseño acorta la pestaña treinta y dos renglones, así que debajo de cada fila del
-  // hero hay contenido de un layout que ya no existe.
+  // Las filas angostas eran las del calendario; el calendario se fue. Ahora son las TRES del HERO,
+  // que usan A y B (a lo sumo C) y dejan el resto de su ancho para limpiar. Y el riesgo es MAYOR que
+  // antes: entre el rediseño del 04/09 y el del 09/09 la pestaña se acortó cuarenta renglones, así
+  // que debajo de cada fila del hero hay contenido de un layout que ya no existe.
   const g = armar()
   const filasHero = g.filas
     .map((f, i) => ({ f, i }))
     .filter(({ i }) => i + 1 >= g.hero.desde && i + 1 <= g.hero.hasta)
-    .filter(({ f }) => /^(⇒|\s{2,}·)/.test(String(f[0] ?? '')))
-  assert.ok(filasHero.length >= 6, `esperaba filas de hero y encontré ${filasHero.length}`)
+    .filter(({ f }) => /^⇒/.test(String(f[0] ?? '')))
+  assert.equal(filasHero.length, 3, `esperaba las tres filas del hero y encontré ${filasHero.length}`)
   for (const { f, i } of filasHero) {
     // A el rótulo, B el importe, C la etiqueta del mes cuando la hay; de ahí a O es ancho propio.
     const desde = String(f[2] ?? '') === VACIO ? 2 : 3
@@ -453,13 +522,23 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   // celda que la escritura dejaba vacía. El residuo de I20:M20 seguía visible con este test en verde.
   const { preservarNoVacias } = await import('../lib/no-borrar.mjs')
   const g = armar()
-  const idxCal = g.filas.findIndex((f) => /^⇒ DEUDA PENDIENTE/.test(String(f[0] ?? '')))
+  const idxCal = g.filas.findIndex((f) => /^⇒ Deuda fiscal y financiera/.test(String(f[0] ?? '')))
   assert.ok(idxCal > 0, 'tiene que haber una fila angosta del hero')
-  // La pestaña de hoy: lo que el generador escribió, más el residuo del layout viejo en I:M.
-  const huellas = new Map(huellasDeEscritura(g.filas).map((h) => [claveCelda(h.fila, h.col), { forma: h.forma, huella: h.huella, borrada: false }]))
-  const hoy = g.filas.map((f, i) => (i === idxCal
-    ? f.map((c, j) => (j >= 8 && j <= 12 ? '▲ PROYECCIÓN' : (c === VACIO ? '' : c)))
-    : f.map((c) => (c === VACIO ? '' : c))))
+  // ═══ LAS HUELLAS SE SELLAN DEL LAYOUT VIEJO, QUE ES LO QUE PASA EN PRODUCCIÓN (09/09/2026) ═══
+  //
+  // Antes se sellaban de la grilla NUEVA y el residuo se simulaba con un texto que esa misma grilla
+  // seguía escribiendo en otra fila: la limpieza salía por el reconocimiento de forma, no por la
+  // huella. Con el rediseño ese texto («▲ PROYECCIÓN») dejó de existir en la pestaña y el test se
+  // puso rojo — señalando bien que el atajo no probaba el mecanismo.
+  //
+  // Lo que ocurre de verdad es esto: la corrida ANTERIOR escribió «▲ PROYECCIÓN» en esas celdas y
+  // selló su huella; la de HOY pide limpiarlas. La huella es la evidencia de que la celda es del
+  // generador, y sin ella un residuo propio se lee como texto del dueño y se conserva para siempre.
+  const viejo = g.filas.map((f, i) => (i === idxCal
+    ? f.map((c, j) => (j >= 8 && j <= 12 ? '▲ PROYECCIÓN' : c))
+    : f))
+  const huellas = new Map(huellasDeEscritura(viejo).map((h) => [claveCelda(h.fila, h.col), { forma: h.forma, huella: h.huella, borrada: false }]))
+  const hoy = viejo.map((f) => f.map((c) => (c === VACIO ? '' : c)))
   const { grid, alineacion } = aplicarHuella(g.filas, hoy, huellas)
   assert.equal(alineacion.alineada, true, alineacion.motivo)
   const enPestana = preservarNoVacias(hoy, fusionar(grid, hoy)).values
@@ -468,7 +547,7 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   }
   // Y el texto sigue vivo donde SÍ va: la fila de la DDJJ presentada.
   const idxDDJJ = g.filas.findIndex((f) => String(f[0] ?? '').trim() === 'DDJJ presentada')
-  assert.equal(enPestana[idxDDJJ][8], '▲ PROYECCIÓN')
+  assert.equal(enPestana[idxDDJJ][8], 'proyección')
 })
 
 test('un rótulo con un importe al lado tiene que ENTRAR en su columna', () => {

@@ -8,7 +8,10 @@ import assert from 'node:assert/strict'
 import { tratamientoDeFilas, requestsDeJerarquia } from './impuestos-piel.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 
-const HERO = { desde: 4, hasta: 13, titular: 5 }
+// EL HERO DE HOY: tres renglones «⇒ rótulo | cifra» y el separador. Sin titular y sin sub-líneas
+// (09/09/2026). La grilla de abajo CONSERVA sub-ítems y notas fuera del hero a propósito: son las
+// formas de fila que esta piel tiene que seguir sabiendo tratar en el resto del libro.
+const HERO = { desde: 4, hasta: 7 }
 /** Una fila del generador: rótulo, importe, y el resto del ancho declarado como propio. */
 const fila = (rotulo, importe) => {
   const f = [rotulo, importe === undefined ? VACIO : importe]
@@ -22,15 +25,15 @@ const GRILLA = [
   fila('Impuestos y financiero'),
   fila('Qué se le debe al fisco'),
   vacia(),
-  fila('LA POSICIÓN AL 06/08'),
-  fila('⇒ A PAGAR EN LOS PRÓXIMOS 30 DÍAS', '=$B$26+$B$27'),
-  fila('   · primer vencimiento · 07/08 · Prendario Ford XLS', '=$B$26'),
-  fila('⇒ DEUDA PENDIENTE · FISCAL Y FINANCIERA', '=$B$92+$B$93'),
-  fila('   · prendario · cuotas por vencer', '=$B$92'),
-  fila('   · planes F931 · cuotas por vencer', '=$B$93'),
-  fila('⇒ IMPUESTOS A FAVOR', '=$H$56+$G$66'),
-  fila('   · saldo a favor de IVA · F.2051', '=$H$56'),
-  fila('   · saldo a favor de IIBB · DGR', '=$G$66'),
+  fila('⇒ A pagar en 30 días', '=$B$26+$B$27'),
+  fila('⇒ Deuda fiscal y financiera', '=$B$92+CARGAS_PLANES_SIN_PAGAR'),
+  fila('⇒ A favor en el fisco', '=$H$56+$G$66'),
+  vacia(),
+  fila('   · un sub-ítem de otro bloque del libro', '=$B$92'),
+  fila('   · y otro más', '=$B$93'),
+  fila('Prendario · cuotas por vencer', '=$B$92'),
+  fila('Otra fila normal del detalle', '=$H$56'),
+  fila('Y una más', '=$G$66'),
   vacia(),
   fila('1 · RIESGO Y PROYECCIÓN — 30 · 60 · 90 DÍAS'),
   fila('⚠ vencido s/verificar al 06/08 · ver extracto', '=$B$24+$B$25'),
@@ -52,19 +55,21 @@ test('una ALARMA lleva plata adentro; una limitación declarada, no', () => {
   assert.deepEqual(t.notas, [18, 19], '"s/d" y la prosa del cierre no son alarmas')
 })
 
-test('el TITULAR queda afuera del trato de los otros totales del hero', () => {
-  // Es el único número que la piel compartida agranda a 13 pt en acento. Si además entrara acá, el
-  // request posterior lo bajaría a 11 y la pestaña se quedaría sin su única cifra protagonista.
+test('los TRES renglones del hero reciben el mismo peso: ninguno es el titular', () => {
+  // ═══ LO QUE CAMBIÓ (09/09/2026) ═══
+  //
+  // El hero tenía un titular que la piel agrandaba y tres totales por debajo. Ahora son tres
+  // preguntas del mismo rango —cuánto pagar, cuánto se debe, cuánto se tiene a favor— y ninguna
+  // manda sobre las otras: las tres se dibujan igual, como en «Cargas Sociales» y «Nómina».
   const t = tratamientoDeFilas(GRILLA, HERO)
-  assert.ok(!t.totalesHero.includes(HERO.titular))
-  assert.deepEqual(t.totalesHero, [7, 10], 'deuda pendiente e impuestos a favor')
+  assert.deepEqual(t.totalesHero, [4, 5, 6], 'los tres renglones del hero, sin titular que los opaque')
 })
 
 test('los desgloses se apagan: no compiten con el total del que cuelgan', () => {
   const t = tratamientoDeFilas(GRILLA, HERO)
-  assert.deepEqual(t.subitems, [6, 8, 9, 11, 12])
-  const rq = requestsDeJerarquia(1, { filas: GRILLA, hero: HERO, titular: HERO.titular })
-  const delSub = rq.find((r) => r.repeatCell?.range?.startRowIndex === 5)
+  assert.deepEqual(t.subitems, [8, 9])
+  const rq = requestsDeJerarquia(1, { filas: GRILLA, hero: HERO })
+  const delSub = rq.find((r) => r.repeatCell?.range?.startRowIndex === 7)
   assert.equal(delSub.repeatCell.cell.userEnteredFormat.textFormat.fontSize, 9)
   assert.equal(delSub.repeatCell.cell.userEnteredFormat.textFormat.bold, false)
 })
@@ -77,10 +82,10 @@ test('EL CENTINELA NO ES CONTENIDO: una fila de separación se reconoce como vac
   // llenas: los separadores no se detectan, no reciben aire, y —en la piel compartida— ningún título
   // de sección se reconoce como tal. Si alguien vuelve a comparar contra cadena vacía, esto se cae.
   const t = tratamientoDeFilas(GRILLA, HERO)
-  assert.deepEqual(t.separadores, [3, 13, 17])
-  const rq = requestsDeJerarquia(1, { filas: GRILLA, hero: HERO, titular: HERO.titular })
+  assert.deepEqual(t.separadores, [3, 7, 13, 17])
+  const rq = requestsDeJerarquia(1, { filas: GRILLA, hero: HERO })
   const aire = rq.filter((r) => r.updateDimensionProperties?.properties?.pixelSize > 21)
-  assert.equal(aire.length, 3, 'las tres filas de separación respiran; ninguna otra')
+  assert.equal(aire.length, 4, 'las cuatro filas de separación respiran; ninguna otra')
 })
 
 test('sin hero declarado no se inventa jerarquía', () => {
