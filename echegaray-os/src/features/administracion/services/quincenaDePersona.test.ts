@@ -47,9 +47,9 @@ test('LOS DÍAS HÁBILES DE LA QUINCENA NO CUENTAN DOMINGOS', () => {
   // EL DEFECTO QUE ATRAPA: con los domingos en la ventana, `diasHabiles` los sumaba como
   // «no_laborable» y no molestaba; pero cualquier conteo que los recorra (la referencia de horas,
   // el «sin marcar») los tenía delante. Ahora no existen, y el número de referencia lo demuestra.
-  const cifras = cifrasDeQuincena(diasDeLaQuincena([], Q1, { hoy: '2026-09-15' }), 9)
+  const cifras = cifrasDeQuincena(diasDeLaQuincena([], Q1, { hoy: '2026-09-15' }))
   assert.equal(cifras.diasHabiles, 11, '13 columnas menos los dos sábados no laborables')
-  assert.equal(cifras.referencia, 99, '11 × 9 hs')
+  assert.equal(cifras.referencia, 97, '9 días de L a J × 9 h + 2 viernes × 8 h')
 })
 
 test('UNA QUINCENA CON TRES DOMINGOS PIERDE TRES COLUMNAS', () => {
@@ -95,18 +95,36 @@ test('UN DÍA REPARTIDO ENTRE DOS OBRAS SE VE, y con el nombre real de cada una'
   const d = dia(dias, '2026-09-07')
   assert.equal(d.horas, 8.5)
   assert.deepEqual(d.obras, ['La Estrella', 'ARCOR Planta'])
-  assert.equal(cifrasDeQuincena(dias, 9).enDosObras, 1)
+  assert.equal(cifrasDeQuincena(dias).enDosObras, 1)
 })
 
-test('LA REFERENCIA SALE DE LA JORNADA DE LA OBRA, y sin jornada NO HAY REFERENCIA', () => {
-  // El defecto que atrapa: el «/ 44,0 h» del bloque anterior — un total teórico que no existe como
-  // dato. Sin `obra_canonica.jornada_horas` la comparación no se dibuja.
+test('R2 · LA REFERENCIA ES 9 H DE L A J Y 8 LOS V, SUMADAS DÍA POR DÍA', () => {
+  // EL DEFECTO QUE ATRAPA: la referencia era `días hábiles × obra_canonica.jornada_horas`, un
+  // promedio uniforme. Con el 8,8 que traen las obras, la 1ª de septiembre publicaba «61,6 h» —el
+  // número que el dueño marcó como bug el 09/09/2026— y la quincena espera 97. Si alguien vuelve a
+  // multiplicar por una jornada única, ninguna quincena con viernes va a dar este número.
   const dias = diasDeLaQuincena([r({ fecha: '2026-09-01', horas: 9 })], Q1, { hoy: '2026-09-02' })
   // Transcurridos y hábiles: el martes 1 y el miércoles 2. Los otros trece no llegaron.
-  assert.equal(cifrasDeQuincena(dias, 9).diasHabiles, 2)
-  assert.equal(cifrasDeQuincena(dias, 9).referencia, 18)
-  assert.equal(cifrasDeQuincena(dias, null).referencia, null, 'sin jornada, «—»')
-  assert.equal(cifrasDeQuincena(dias, 0).referencia, null, 'cero no es una jornada')
+  assert.equal(cifrasDeQuincena(dias).diasHabiles, 2)
+  assert.equal(cifrasDeQuincena(dias).referencia, 18, 'martes y miércoles: 9 + 9')
+
+  // La quincena entera del 1 al 15 de septiembre: 9 días de L a J y 2 viernes (4 y 11).
+  const enteros = diasDeLaQuincena([], Q1, { hoy: '2026-09-15' })
+  assert.equal(cifrasDeQuincena(enteros).referencia, 97, 'NO 61,6: 9×9 + 2×8')
+
+  // El viernes vale 8, no 9: una quincena que empieza y termina en viernes lo demuestra sola.
+  const soloViernes = diasDeLaQuincena([], { desde: '2026-09-04', hasta: '2026-09-04' }, { hoy: '2026-09-04' })
+  assert.equal(cifrasDeQuincena(soloViernes).referencia, 8, 'el viernes son 8 h')
+})
+
+test('R2 · EL SÁBADO NO SUMA A LA REFERENCIA AUNQUE SE HAYA TRABAJADO', () => {
+  // Sábado y domingo no tienen jornada por defecto (`jornadaPorDefecto` devuelve null): reclamarle
+  // 9 h a un sábado convertiría en deuda un día que nadie tenía que trabajar. Trabajado, el día se
+  // cuenta como hábil transcurrido y sus horas suman a lo TRABAJADO, pero no a lo esperado.
+  const dias = diasDeLaQuincena([r({ fecha: '2026-09-05', horas: 5 })], Q1, { hoy: '2026-09-05' })
+  const c = cifrasDeQuincena(dias)
+  assert.equal(c.trabajadas, 5, 'el sábado trabajado se ve')
+  assert.equal(c.referencia, 35, 'martes a viernes: 9+9+9+8; el sábado aporta 0')
 })
 
 test('LAS CIFRAS SEPARAN AUSENCIA DE LICENCIA Y CUENTAN EL MOTIVO MÁS FRECUENTE', () => {
@@ -119,7 +137,7 @@ test('LAS CIFRAS SEPARAN AUSENCIA DE LICENCIA Y CUENTAN EL MOTIVO MÁS FRECUENTE
     r({ fecha: '2026-09-07', tipo_hora: 'ausencia', horas: 8, notas: 'lluvia' }),
     r({ fecha: '2026-09-08', tipo_hora: 'licencia', horas: 8, notas: 'vacaciones' }),
   ], Q1, { hoy: '2026-09-08' })
-  const c = cifrasDeQuincena(dias, 9)
+  const c = cifrasDeQuincena(dias)
   assert.equal(c.trabajadas, 26, 'la extra suma; la ausencia no')
   assert.equal(c.diasTrabajados, 3)
   assert.equal(c.ausencias, 2)
@@ -133,7 +151,7 @@ test('UNA PERSONA SIN NINGÚN REGISTRO NO PUBLICA CEROS DE TRABAJO', () => {
   // El defecto que atrapa: una ficha recién abierta que se lee igual que la de alguien que faltó.
   const dias = diasDeLaQuincena([], Q1, { hoy: '2026-09-15' })
   assert.equal(dias.every((d) => d.horas === null), true, 'ningún día afirma horas')
-  const c = cifrasDeQuincena(dias, 9)
+  const c = cifrasDeQuincena(dias)
   assert.equal(c.diasTrabajados, 0)
   assert.equal(c.ausencias, 0, 'no cargar no es faltar')
   assert.equal(c.motivoFrecuente, null)
@@ -189,7 +207,7 @@ test('la ausencia declarada por el jefe pinta el día aunque no haya una sola fi
   assert.equal(d.presencia, 'ausente')
   assert.equal(d.conflicto, false)
   // Y cuenta como ausencia en las cifras: es lo que la ficha resume arriba.
-  assert.equal(cifrasDeQuincena(dias, 8.8).ausencias, 1)
+  assert.equal(cifrasDeQuincena(dias).ausencias, 1)
 })
 
 test('declarado presente y sin horas: no es «sin registrar»', () => {
@@ -201,7 +219,7 @@ test('declarado presente y sin horas: no es «sin registrar»', () => {
   assert.equal(d.presencia, 'presente')
   // NO es una ausencia ni un día trabajado: nadie cargó horas todavía.
   assert.equal(d.horas, null)
-  assert.equal(cifrasDeQuincena(dias, 8.8).ausencias, 0)
+  assert.equal(cifrasDeQuincena(dias).ausencias, 0)
 })
 
 test('AUSENCIA DECLARADA CON HORAS EL MISMO DÍA: los dos datos se ven y ya no hay conflicto', () => {

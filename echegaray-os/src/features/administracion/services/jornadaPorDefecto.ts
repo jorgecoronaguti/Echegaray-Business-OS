@@ -9,3 +9,20 @@ export function jornadaPorDefecto(fecha: string): number | null {
   if (dow === 5) return 8
   return null
 }
+
+/**
+ * LAS HORAS QUE UN CONJUNTO DE DÍAS ESPERA, día por día.
+ *
+ * Existe porque la app calculaba la referencia de una quincena como `días hábiles × una jornada
+ * uniforme` —el «61,6 h = 8,8 × 7» que informaba la ficha—, y con la regla del dueño del 08/09/2026
+ * la jornada ya no es un número por período: es 9 de lunes a jueves y 8 los viernes. Multiplicar un
+ * promedio por la cantidad de días da un número que no coincide con ninguna quincena real, y encima
+ * cambia si la quincena tiene uno o dos viernes.
+ *
+ * El sábado y el domingo suman 0: no tienen jornada por defecto, y trabajarlos se carga a mano.
+ */
+export function horasEsperadasDeDias(dias: readonly string[]): number {
+  let total = 0
+  for (const f of dias) total += jornadaPorDefecto(f) ?? 0
+  return Math.round(total * 100) / 100
+}

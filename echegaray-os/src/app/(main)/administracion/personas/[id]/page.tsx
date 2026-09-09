@@ -439,7 +439,7 @@ export default async function FichaPersonaPage({
             <>
               <QuincenaDeAsistencia
                 dias={dias}
-                cifras={cifrasDeQuincena(dias, obraVigente?.data?.jornada ?? null)}
+                cifras={cifrasDeQuincena(dias)}
                 barras={ultimasQuincenas(filasHH, hoy)}
                 obra={vigente || obraDeLasHoras
                   ? {
