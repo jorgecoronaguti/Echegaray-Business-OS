@@ -160,7 +160,14 @@ drop policy if exists cliente_orden_select on public.cliente_orden;
 create policy cliente_orden_select on public.cliente_orden for select to authenticated
   using (
     (select public.current_rol()) = any (array['direccion', 'administracion'])
-    or (obra_id is not null and public.ve_obra(obra_id))
+    or (
+      -- EL ROL VA JUNTO A `ve_obra()`, NO SOLO. MEDIDO sobre la base viva: con `ve_obra()` a secas,
+      -- un usuario de nivel CAMPO veía una orden de compra —con el precio que le cobramos al
+      -- cliente— porque está asignado a esa obra. `ve_obra()` contesta «¿esta obra es suya?», no
+      -- «¿puede ver la plata de esta obra?». La segunda pregunta la contesta el rol.
+      (select public.current_rol()) = 'jefe_obra'
+      and obra_id is not null and public.ve_obra(obra_id)
+    )
   );
 
 -- LA BAJA ES EL ÚNICO CAMBIO POSIBLE DESDE LA WEB, y queda firmada. El `using` exige la fila viva:

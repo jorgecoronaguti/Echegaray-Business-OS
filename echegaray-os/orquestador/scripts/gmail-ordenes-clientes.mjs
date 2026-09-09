@@ -176,6 +176,9 @@ async function main() {
     const sub = await sb.storage.from(BUCKET).upload(ruta, f.bytes, { contentType: f.tipo_mime || 'application/octet-stream', upsert: false })
     if (sub.error) { console.log(`  ✗ ${f.nombre_archivo}: no subió — ${sub.error.message}`); continue }
 
+    // Se sacan las tres claves que son de la CORRIDA y no de la fila: los bytes ya se subieron, y
+    // `cliente`/`obra` son los nombres que dibujó la tabla —la fila guarda los ids.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { bytes, cliente, obra, ...fila } = f
     const { error } = await sb.from('cliente_orden').insert({ ...fila, archivo_path: ruta, origen: 'gmail' })
     if (error) {
