@@ -90,6 +90,39 @@ export const NOMBRES_CARGAS = Object.freeze({
 })
 
 /**
+ * LAS DOS SERIES QUE EL LIBRO ARMA, Y CON QUÉ RANGOS ARMA CADA UNA.
+ *
+ * ═══ POR QUÉ ESTÁ DECLARADO Y NO SE DEDUCE (09/09/2026) ═══
+ *
+ * `auditar-rangos-fosilizados` reportaba `CARGAS_MES_F931` como huérfano con «4/12 celda(s) con
+ * dato». Las dos mitades del hallazgo eran falsas y por la misma razón: ese auditor sólo ve FÓRMULAS
+ * del libro, y esta serie la lee el OS por la API. Cuatro de doce no es un rango que se quedó corto:
+ * es el subtotal de la PROYECCIÓN, que existe sólo para los meses sin DDJJ — los otros ocho los
+ * aporta `CARGAS_MES_F931_DECLARADO`, y la precedencia de `obligacionF931` elige cuál manda.
+ *
+ * Verificado en copia el 09/09/2026: declarado 12/12 (ene–ago con la DDJJ real leída de los PDF de
+ * Drive, sep–dic con la proyección) + proyección 4/12 ⇒ la línea «Nómina · Cargas sociales» tiene
+ * fuente los doce meses y ningún mes tiene las dos contadas.
+ *
+ * GREMIALES NO TIENE PAREJA, Y ESO SÍ ES UN HUECO: FCL, UOCRA, IERIC y FODECO no están en el F931, así
+ * que no hay «declarado» que los cubra. Los meses cerrados entran por Compras cuando están pagados —lo
+ * que está bien— pero el mes que va de la presentación al pago cae a la fila PLANA: septiembre-26
+ * publicaba $1.500.000 redondos donde la cadena mide ~$1.649.741. Es el mismo defecto que el
+ * $6.500.000 tipeado que el dueño denunció el 08/09 para el F931, en el rubro que quedó sin cerrar.
+ * Se declara acá para que el auditor lo GRITE en vez de esconderlo abajo de un falso positivo.
+ */
+export const SERIES_DE_CARGAS = Object.freeze([
+  Object.freeze({ serie: RUBRO_CARGAS, partes: [NOMBRES_CARGAS.declarado, NOMBRES_CARGAS.f931] }),
+  Object.freeze({ serie: RUBRO_GREMIALES, partes: [NOMBRES_CARGAS.gremiales] }),
+])
+
+/** Los nombres a los que el OS entra por la API. Ninguna fórmula del libro los cita: sin esto, el
+ *  auditor los llama huérfanos — que es afirmar que nadie los lee mirando sólo la mitad de quienes leen. */
+export const LEIDOS_POR_EL_OS = Object.freeze([
+  NOMBRES_CARGAS.fechas, NOMBRES_CARGAS.f931, NOMBRES_CARGAS.gremiales, NOMBRES_CARGAS.declarado,
+])
+
+/**
  * LOS RÓTULOS DE LAS TRES FILAS, ESCRITOS UNA VEZ.
  *
  * Son a la vez lo que se escribe en la columna A y el ANCLA con la que `verificarRangos` comprueba,

@@ -195,7 +195,7 @@ export function usaNombre(formula, nombre) {
  * @param {{nombre:string, hoja:string|null, conDato:number, celdas:number}[]} nombrados
  * @param {string[]} formulas todas las fórmulas del libro
  */
-export function clasificarNombrados(nombrados = [], formulas = []) {
+export function clasificarNombrados(nombrados = [], formulas = [], leidosPorElOS = new Set()) {
   return nombrados.map((n) => {
     const lectoras = formulas.filter((f) => usaNombre(f, n.nombre))
     const usos = lectoras.length
@@ -203,8 +203,20 @@ export function clasificarNombrados(nombrados = [], formulas = []) {
     // cero?». Basta UNA fórmula desprotegida para que el defecto exista; que las demás se defiendan
     // no la salva.
     const desprotegidas = lectoras.filter((f) => !seDefiendeDeLaAusencia(f)).length
+    // ═══ «HUÉRFANO» ERA UNA AFIRMACIÓN QUE ESTE ARCHIVO NO PODÍA HACER (09/09/2026) ═══
+    //
+    // Este clasificador sólo mira FÓRMULAS del libro, así que «ninguna fórmula lo lee» lo traducía a
+    // «nadie lo lee». Media docena de rangos los lee el OS por la API —el Libro Canónico entra a
+    // `CARGAS_MES_*` desde node, no desde una celda— y salían listados como layout viejo sin dueño.
+    // Con `CARGAS_MES_F931` eso publicaba un hallazgo FALSO («4/12 celda(s) con dato») sobre una fila
+    // que tiene cuatro meses A PROPÓSITO: es el subtotal de la PROYECCIÓN, y los ocho meses cerrados
+    // los aporta `CARGAS_MES_F931_DECLARADO`. Un auditor que grita por algo bien hecho se deja de
+    // mirar — y tapaba el hallazgo verdadero que estaba al lado (ver `mesesSinFuente`).
+    //
+    // Los nombres que el OS lee llegan declarados por quien los lee, nunca adivinados acá: un
+    // auditor que inventa su propio padrón de consumidores no audita nada.
     const estado = usos === 0
-      ? 'huérfano'
+      ? (leidosPorElOS.has?.(n.nombre) ? 'os' : 'huérfano')
       : n.conDato === 0
         ? (desprotegidas > 0 ? 'ciego' : 'esperando')
         : 'ok'
@@ -232,4 +244,32 @@ export function seDefiendeDeLaAusencia(formula) {
   const pregunta = /<>\s*0|=\s*0\s*[;,)]|ISBLANK|ESBLANCO|ISNUMBER|ESNUMERO|COUNT\s*\(|CONTAR\s*\(/i.test(f)
   const hueco = /"—"|"-"|"sin cargar"|"sin dato"|""/.test(f)
   return pregunta && hueco
+}
+
+/**
+ * NÚCLEO PURO: los meses que quedan SIN NINGUNA FUENTE en una serie armada entre varios rangos.
+ *
+ * ═══ LA PREGUNTA QUE FALTABA (09/09/2026) ═══
+ *
+ * El auditor preguntaba «¿este RANGO tiene dato?». La pregunta que decide plata es «¿esta SERIE tiene
+ * fuente todos los meses?», y no son la misma: la línea «Nómina · Cargas sociales» del cash flow la
+ * arma el Libro con DOS rangos —lo declarado en la DDJJ para los meses cerrados y la proyección de la
+ * cadena para los que no— y ninguno de los dos, solo, cubre los doce. Preguntando por el rango, el
+ * par completo se reportaba roto y el hueco real quedaba invisible: `CARGAS_MES_GREMIALES` no tiene
+ * pareja declarada, así que entre la presentación de una DDJJ y su pago el cash flow cae a la fila
+ * PLANA de Compras — $1.500.000 redondos en septiembre-26, medido, contra ~$1,65M de la cadena.
+ *
+ * Un mes «con fuente» es un mes con dato en AL MENOS UNO de los rangos de la serie: solapar no es un
+ * problema de este control (el doble conteo lo resuelve la precedencia del extractor, no la geometría).
+ *
+ * @param {Array<Array<boolean>>} mascaras una máscara por rango, `true` donde la celda tiene dato
+ * @param {number} meses cuántas posiciones tiene que cubrir la serie
+ * @returns {number[]} los meses (1-based) sin una sola fuente
+ */
+export function mesesSinFuente(mascaras = [], meses = 12) {
+  const sin = []
+  for (let m = 0; m < meses; m++) {
+    if (!mascaras.some((mask) => mask?.[m] === true)) sin.push(m + 1)
+  }
+  return sin
 }

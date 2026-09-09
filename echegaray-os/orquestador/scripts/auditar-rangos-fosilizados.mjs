@@ -31,7 +31,8 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diagnosticarRango } from '../lib/cobranzas-por-cliente.mjs'
-import { clasificarNombrados } from '../lib/rangos-con-nombre.mjs'
+import { clasificarNombrados, mesesSinFuente } from '../lib/rangos-con-nombre.mjs'
+import { SERIES_DE_CARGAS, LEIDOS_POR_EL_OS } from '../lib/libro-extractores-cargas.mjs'
 import { mientenPorEspecie } from '../lib/rangos-nombrados.mjs'
 import { PESTANAS } from './formato-pestanas.mjs'
 
@@ -193,14 +194,19 @@ export function contarConDato(grilla, rango) {
   const c1 = rango.endColumnIndex ?? 0
   if (r1 > grilla.filas.length || c1 > 78 /* hasta BZ */) return null
   let con = 0, total = 0
+  // LA MÁSCARA, CELDA POR CELDA. El conteo contesta «¿hay dato?»; la máscara contesta «¿en CUÁLES?»,
+  // que es lo único con lo que se puede juzgar una serie armada entre dos rangos (ver `mesesSinFuente`).
+  const mask = []
   for (let i = r0; i < r1; i++) {
     for (let j = c0; j < c1; j++) {
       total++
       const c = grilla.filas[i]?.[j]
-      if (c && (c.formula != null || (c.valor != null && String(c.valor).trim() !== ''))) con++
+      const hay = !!(c && (c.formula != null || (c.valor != null && String(c.valor).trim() !== '')))
+      if (hay) con++
+      mask.push(hay)
     }
   }
-  return { con, total }
+  return { con, total, mask }
 }
 
 async function auditarNombrados(google, meta, grillas, formulas) {
@@ -219,15 +225,16 @@ async function auditarNombrados(google, meta, grillas, formulas) {
     const gr = hoja ? grillas.get(hoja) : null
     const cuenta = gr ? contarConDato(gr, nr.range ?? {}) : null
     if (!cuenta) { noVerificables.push({ nombre: nr.name, hoja }); continue }
-    nombrados.push({ nombre: nr.name, hoja, conDato: cuenta.con, celdas: cuenta.total })
+    nombrados.push({ nombre: nr.name, hoja, conDato: cuenta.con, celdas: cuenta.total, mask: cuenta.mask })
     const c = gr.filas[nr.range?.startRowIndex ?? 0]?.[nr.range?.startColumnIndex ?? 0]
     conValor.push({ nombre: nr.name, hoja, valor: c?.numero ?? c?.valor ?? null })
   }
 
-  const clasificados = clasificarNombrados(nombrados, formulas)
+  const clasificados = clasificarNombrados(nombrados, formulas, new Set(LEIDOS_POR_EL_OS))
   const ciegos = clasificados.filter((n) => n.estado === 'ciego')
   const esperando = clasificados.filter((n) => n.estado === 'esperando')
   const huerfanos = clasificados.filter((n) => n.estado === 'huérfano')
+  const delOS = clasificados.filter((n) => n.estado === 'os')
 
   console.log(`\nRANGOS CON NOMBRE — ${clasificados.length} verificados de ${clasificados.length + noVerificables.length}`)
   if (ciegos.length) {
@@ -243,6 +250,24 @@ async function auditarNombrados(google, meta, grillas, formulas) {
   if (huerfanos.length) {
     console.log('· HUÉRFANOS — ninguna fórmula los lee. Sin dueño, se quedan anclados al layout viejo:')
     for (const n of huerfanos) console.log(`   ${n.nombre} → ${n.hoja}, ${n.conDato}/${n.celdas} celda(s) con dato`)
+  }
+  // LO QUE LEE EL OS NO SE JUZGA POR RANGO SINO POR SERIE. Un subtotal de proyección con cuatro
+  // meses no está corto: los otros ocho los aporta su pareja. Lo que decide plata es si la SERIE
+  // —el par entero— tiene fuente los doce meses, y ésa es la pregunta que se hace acá abajo.
+  if (delOS.length) {
+    console.log(`· LEÍDOS POR EL OS — ${delOS.length} rango(s) que ninguna fórmula cita porque entra el Libro Canónico por la API: ${delOS.map((n) => `${n.nombre} ${n.conDato}/${n.celdas}`).join(' · ')}`)
+  }
+  const huecos = []
+  for (const s of SERIES_DE_CARGAS) {
+    const partes = s.partes.map((p) => clasificados.find((n) => n.nombre === p)).filter(Boolean)
+    // NO SE AFIRMA SOBRE LO QUE NO SE PUDO MIRAR: si falta una parte, el control dice que no sabe.
+    if (partes.length !== s.partes.length) { console.log(`   ? serie «${s.serie}»: falta ${s.partes.filter((p) => !clasificados.some((n) => n.nombre === p)).join(', ')} — NO se puede afirmar que esté cubierta`); continue }
+    const sin = mesesSinFuente(partes.map((p) => p.mask), 12)
+    if (sin.length) huecos.push({ serie: s.serie, sin, partes: s.partes })
+  }
+  if (huecos.length) {
+    console.log('⚠ SERIES INCOMPLETAS — meses sin NINGUNA fuente: el cash flow cae a la fila plana de Compras o publica cero:')
+    for (const h of huecos) console.log(`   «${h.serie}» sin fuente en el/los mes(es) ${h.sin.join(', ')} · la arman ${h.partes.join(' + ')}`)
   }
   for (const n of noVerificables) console.log(`   ? ${n.nombre} → ${n.hoja ?? 'sin pestaña'}: fuera del tramo leído, NO se puede afirmar que esté vacío`)
 
@@ -265,8 +290,8 @@ async function auditarNombrados(google, meta, grillas, formulas) {
     }
   }
 
-  if (!ciegos.length && !huerfanos.length && !mienten.length) console.log('✓ ningún rango con nombre apunta a celdas vacías ni a otra especie')
-  if (ciegos.length || mienten.length) process.exitCode = 1
+  if (!ciegos.length && !huerfanos.length && !mienten.length && !huecos.length) console.log('✓ ningún rango con nombre apunta a celdas vacías ni a otra especie, y las series del OS cubren los doce meses')
+  if (ciegos.length || mienten.length || huecos.length) process.exitCode = 1
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
