@@ -78,7 +78,7 @@ test('LAS DOS DEFINICIONES SON LA MISMA FUNCIÓN — sólo cambian de columna', 
   const baseIibb = ventasFacturadasDelMes(2026, 9, 'neto', { hoy: '2026-09-04' })
   // Idénticas salvo la columna que suman: si alguien vuelve a escribir una de las dos por su cuenta,
   // esta igualdad se rompe.
-  assert.equal(debito.replace('Cobranzas!$K$5:$K', '<medida>'), baseIibb.replace('Cobranzas!$J$5:$J', '<medida>'))
+  assert.equal(debito.replaceAll('Cobranzas!$K$5:$K', '<medida>'), baseIibb.replaceAll('Cobranzas!$J$5:$J', '<medida>'))
   for (const f of [debito, baseIibb]) {
     assert.match(f, /Cobranzas!\$B\$5:\$B="B"/, 'sólo lo facturado — la orden permanente del dueño')
     assert.match(f, /Cobranzas!\$P\$5:\$P>=DATE\(2026;9;1\)/, 'la ventana es la de EMISIÓN de la factura')
