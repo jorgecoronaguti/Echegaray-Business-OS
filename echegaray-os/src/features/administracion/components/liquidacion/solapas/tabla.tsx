@@ -38,6 +38,8 @@ export const MONO = "'IBM Plex Mono', monospace"
 export const ALTO_LIQ = {
   /** Encabezado de columnas, alineado abajo. `dc:526`, `:544`, `:684`. */
   encabezado: 34,
+  /** Encabezado de las DOS grillas anchas, que respiran un renglón más. `dc:144`, `dc:398`. */
+  encabezadoAncho: 36,
   /** Fila de dato de un cuadro. `dc:527` (pantalla 7), `:545` (pantalla 8). */
   fila: 52,
   /** La fila de persona de la pantalla 8: el canvas la escribe en 48, no en 52. `dc:545`. */
@@ -52,6 +54,14 @@ export const ALTO_LIQ = {
   agregado: 34,
   /** Fila de total, cerrada por arriba con el grafito. `dc:547`, `:694`. */
   total: 52,
+  /** Total de una grilla ancha, que pesa más que el total de un cuadro. `dc:368`. */
+  totalAncho: 54,
+  /** Renglón de panel de dos columnas —rótulo a la izquierda, valor a la derecha—. `dc:248`, `:466`, `:578`. */
+  filaPanel: 42,
+  /** El ÚLTIMO renglón de un panel: más bajo porque no lleva filo abajo. `dc:560`, `:610`. */
+  renglonBajo: 34,
+  /** Renglón de dos columnas que puede llevar una frase entera a la derecha. `dc:701`-`:705`. */
+  renglonAlto: 48,
 } as const
 
 /** El contenedor de un cuadro: radio 10, filo `line-2`, sin sombra y sin gradiente. `dc:525`. */

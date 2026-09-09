@@ -22,6 +22,7 @@ import { V } from '@/shared/components/v2/patron'
 import type {
   CeldaDeGrilla, EstadoDeFila, FilaDeGrilla, ResumenDeGrilla,
 } from '../../services/grillaHorasQuincena'
+import { ALTO_LIQ } from './solapas/tabla'
 
 const COLUMNAS = 'minmax(230px,1fr) repeat(13,30px) 50px 56px 58px'
 
@@ -229,7 +230,7 @@ export function GrillaHorasQuincena({
         <div className="overflow-x-auto" style={{ padding: '0 20px' }}>
         <div style={{ minWidth: 760, display: 'flex', flexDirection: 'column' }}>
           <div data-testid="encabezado-columnas" style={{
-            display: 'grid', gridTemplateColumns: COLUMNAS, gap: 6, height: 36, alignItems: 'end',
+            display: 'grid', gridTemplateColumns: COLUMNAS, gap: 6, height: ALTO_LIQ.encabezadoAncho, alignItems: 'end',
             borderBottom: `1px solid ${V.linea}`, paddingBottom: 9,
             fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)', fontSize: '9.5px',
             letterSpacing: '.03em', color: V.tenue, textTransform: 'uppercase',

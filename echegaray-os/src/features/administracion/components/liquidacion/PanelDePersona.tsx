@@ -28,6 +28,7 @@ import {
   calcularCadena, diasDelPanel, hhPorMes,
   type CorreccionDeDia, type DiaDelPanel, type RegistroDelPanel,
 } from '../../services/panelDePersona'
+import { ALTO_LIQ } from './solapas/tabla'
 
 /** La línea de esta persona en el cuadro de Pagos, con su grupo: es la MISMA fila, no una copia. */
 export interface LineaDeLaPersona {
@@ -150,7 +151,7 @@ function CadenaDePago({ persona, cerrada, linea, camposEditables, quincena }: {
 
   const fila = (rotulo: React.ReactNode, valor: React.ReactNode, opciones?: { total?: boolean; manual?: boolean }) => (
     <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 42,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: ALTO_LIQ.filaPanel,
       borderBottom: opciones?.total ? 'none' : `1px solid ${V.linea}`,
       borderTop: opciones?.total ? `1px solid ${V.grafito}` : undefined,
       fontWeight: opciones?.total ? 600 : 400,
@@ -213,7 +214,7 @@ function CadenaDePago({ persona, cerrada, linea, camposEditables, quincena }: {
         {fila('Ya transferido', celda('yaTransferido', l?.yaTransferido ?? null), { manual: l?.manual.yaTransferido })}
         {fila('Por banco', celda('porBanco', l?.porBanco ?? null), { manual: l?.manual.porBanco })}
         {fila('En efectivo', celda('enEfectivo', l?.enEfectivo ?? calculada.enEfectivo), { total: true, manual: l?.manual.enEfectivo })}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 34 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: ALTO_LIQ.renglonBajo }}>
           <span style={{ color: V.apagado }}>Efectivo redondeado</span>
           {!cerrada && l != null ? (
             <InlineEdit
@@ -326,7 +327,7 @@ function DiasDeLaPersona({ dias, titulo, subtitulo, habiles }: {
     <div className="overflow-x-auto">
     <div style={{ display: 'flex', flexDirection: 'column', minWidth: 700 }}>
       <div style={{
-        display: 'grid', gridTemplateColumns: COLUMNAS, gap: 12, height: 34, alignItems: 'end',
+        display: 'grid', gridTemplateColumns: COLUMNAS, gap: 12, height: ALTO_LIQ.encabezado, alignItems: 'end',
         borderBottom: `1px solid ${V.linea}`, paddingBottom: 9, fontFamily: MONO,
         fontSize: '9.5px', letterSpacing: '.04em', color: V.tenue, textTransform: 'uppercase',
       }}>
@@ -340,7 +341,7 @@ function DiasDeLaPersona({ dias, titulo, subtitulo, habiles }: {
       )}
       {dias.map((d) => (
         <div key={d.registroId} style={{
-          display: 'grid', gridTemplateColumns: COLUMNAS, gap: 12, minHeight: 52,
+          display: 'grid', gridTemplateColumns: COLUMNAS, gap: 12, minHeight: ALTO_LIQ.fila,
           alignItems: 'center', borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px',
           fontVariantNumeric: 'tabular-nums',
           background: d.rastro.texto ? '#FAFAF8' : undefined,
@@ -390,7 +391,7 @@ function DiasDeLaPersona({ dias, titulo, subtitulo, habiles }: {
         </div>
       ))}
       <div style={{
-        display: 'grid', gridTemplateColumns: COLUMNAS, gap: 12, height: 54, alignItems: 'center',
+        display: 'grid', gridTemplateColumns: COLUMNAS, gap: 12, height: ALTO_LIQ.totalAncho, alignItems: 'center',
         borderTop: `1px solid ${V.grafito}`, fontSize: '12.5px', fontWeight: 600,
         fontVariantNumeric: 'tabular-nums',
       }} data-testid="total-dias">

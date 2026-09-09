@@ -5,6 +5,7 @@ import { totalesDeCuadro } from '../../../services/liquidacionQuincena'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
 import { compararValorHora, estadoDeCierre, type LineaParaCerrar } from '../../../services/liquidacionCierre'
 import { pesos } from '../BloqueLiquidacion'
+import { ALTO_LIQ } from './tabla'
 
 // 10 · CERRAR y 11 · CERRADA — la misma solapa, porque son el mismo objeto en dos estados.
 //
@@ -99,7 +100,7 @@ function Resumen({ estado, horas, faltante }: {
     }}>
       {filas.map(([k, v]) => (
         <div key={k} style={{
-          display: 'flex', justifyContent: 'space-between', gap: 16, minHeight: 48,
+          display: 'flex', justifyContent: 'space-between', gap: 16, minHeight: ALTO_LIQ.renglonAlto,
           alignItems: 'center', borderBottom: `1px solid ${V.lineaFila}`, fontSize: '13px',
         }}>
           <span style={{ color: V.apagado }}>{k}</span>
@@ -109,7 +110,7 @@ function Resumen({ estado, horas, faltante }: {
       {/* NO ES UN CERO MUDO: la fuente pagó esta plata y la base NO tiene la línea. */}
       {faltante && (
         <div data-testid="cierre-sin-cargar" style={{
-          display: 'flex', justifyContent: 'space-between', gap: 16, minHeight: 48,
+          display: 'flex', justifyContent: 'space-between', gap: 16, minHeight: ALTO_LIQ.renglonAlto,
           alignItems: 'center', fontSize: '13px',
         }}>
           <span style={{ color: V.warn }}>
@@ -147,7 +148,7 @@ function Abierta({ estado, puedeCerrar }: {
           {estado.pendientes.map((p) => (
             <div key={p.clave} data-testid={`cierre-pendiente-${p.clave}`} style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
-              minHeight: 44, borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px',
+              minHeight: ALTO_LIQ.renglon, borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px',
               color: V.warn,
             }}>
               <span>{p.texto}</span>
@@ -207,7 +208,7 @@ function Cerrada({ lineas, puedeCerrar }: { lineas: readonly LineaParaCerrar[]; 
           return (
             <div key={l.personaId} style={{
               display: 'grid', gridTemplateColumns: grilla, gap: 16, padding: '0 16px',
-              alignItems: 'center', minHeight: 52, borderBottom: `1px solid ${V.lineaFila}`,
+              alignItems: 'center', minHeight: ALTO_LIQ.fila, borderBottom: `1px solid ${V.lineaFila}`,
               fontSize: '13px', fontVariantNumeric: 'tabular-nums',
             }}>
               <span style={{ color: V.tinta }}>{l.nombre}</span>

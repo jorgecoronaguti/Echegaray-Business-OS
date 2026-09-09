@@ -6,6 +6,7 @@ import { guardarAlicuota } from '../../../services/liquidacionCostoActions'
 import {
   ROTULO_CONCEPTO, type Alicuota, type ConceptoCosto,
 } from '../../../services/costoHora'
+import { ALTO_LIQ } from './tabla'
 
 // LA FILA DE UNA ALÍCUOTA, EDITABLE EN LÍNEA.
 //
@@ -110,7 +111,7 @@ export function FilaAlicuota({ concepto, vigente, historial, hoy }: {
   )
 }
 
-const celda = { padding: '0 8px', height: 44, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
+const celda = { padding: '0 8px', height: ALTO_LIQ.renglon, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
 
 const control = {
   height: 26, borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF',
