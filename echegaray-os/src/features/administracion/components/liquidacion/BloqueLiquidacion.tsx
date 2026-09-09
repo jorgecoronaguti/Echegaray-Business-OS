@@ -5,7 +5,9 @@ import { createClient } from '@/lib/supabase/server'
 import {
   correrQuincena, esFechaISO, quincenaDe, rotuloQuincena,
 } from '../../services/quincena'
-import { tarjetaDeQuincena, totalesDeCuadro } from '../../services/liquidacionQuincena'
+import {
+  desgloseDeQuincena, tarjetaDeQuincena, totalesDeCuadro, type ParteDeLaTarjeta,
+} from '../../services/liquidacionQuincena'
 import { getLiquidacionDeLaQuincena } from '../../services/liquidacionQuincenaService'
 import { CuadroLiquidacion } from './CuadroLiquidacion'
 
@@ -38,10 +40,11 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
 }) {
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const { cuadros, estados, errores } = await getLiquidacionDeLaQuincena(supabase, quincena)
+  const { cuadros, camposEditables, estados, errores } = await getLiquidacionDeLaQuincena(supabase, quincena)
 
   const totales = cuadros.map((c) => totalesDeCuadro(c.lineas))
   const tarjeta = tarjetaDeQuincena(totales)
+  const desglose = desgloseDeQuincena(cuadros.map((c, i) => ({ titulo: c.titulo, totales: totales[i] })))
   const conFilas = cuadros.some((c) => c.lineas.length > 0)
 
   return (
@@ -69,7 +72,7 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
         </span>
       </div>
 
-      <Tarjeta tarjeta={tarjeta} />
+      <Tarjeta tarjeta={tarjeta} desglose={desglose} />
 
       {!conFilas ? (
         <Vacio>
@@ -87,6 +90,7 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
               estado={estados[c.grupo]?.estado ?? 'abierta'}
               cerradaEn={estados[c.grupo]?.cerradaEn ?? null}
               puedeCerrar={puedeCerrar}
+              camposEditables={camposEditables}
             />
           ))}
           <Origenes adelantoSinFuente={cuadros.some((c) => c.adelantoSinFuente)} />
@@ -129,8 +133,9 @@ function Origenes({ adelantoSinFuente }: { adelantoSinFuente: boolean }) {
  * tarjeta lo dice en vez de dibujar tres números que no se sostienen — un total que no cuadra y no
  * se avisa es peor que ningún total.
  */
-function Tarjeta({ tarjeta }: {
+function Tarjeta({ tarjeta, desglose }: {
   tarjeta: { porBanco: number; enEfectivo: number; total: number; cierra: boolean }
+  desglose: ParteDeLaTarjeta[]
 }) {
   return (
     <div
@@ -147,6 +152,15 @@ function Tarjeta({ tarjeta }: {
       {!tarjeta.cierra && (
         <span style={{ fontSize: '12px', color: V.neg }} data-testid="tarjeta-no-cierra">
           Por banco + en efectivo no da el total.
+        </span>
+      )}
+      {/* DE DÓNDE SALE EL TOTAL. Sin esto, el pie de Obreros y la tarjeta se leen como dos
+          respuestas a la misma pregunta y una de las dos tiene que estar mal. */}
+      {desglose.length > 0 && (
+        <span data-testid="tarjeta-desglose" style={{
+          flexBasis: '100%', fontSize: '11.5px', color: V.tenue, fontVariantNumeric: 'tabular-nums',
+        }}>
+          {desglose.map((d) => `${d.rotulo}: ${pesos(d.total)}`).join('  ·  ')}
         </span>
       )}
     </div>

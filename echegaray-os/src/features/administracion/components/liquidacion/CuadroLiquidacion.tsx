@@ -1,19 +1,39 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { InlineEdit } from '@/shared/components/ds/InlineEdit'
 import { V } from '@/shared/components/v2/patron'
-import type { CuadroDeLiquidacion } from '../../services/liquidacionCuadros'
-import type { LineaLiquidada, TotalesDeCuadro } from '../../services/liquidacionQuincena'
-import { cerrarQuincena, guardarEfectivoRedondeado } from '../../services/liquidacionActions'
+import type { TotalesDeCuadro } from '../../services/liquidacionQuincena'
+import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
+import type { CuadroConOverrides } from '../../services/liquidacionQuincenaService'
+import {
+  cerrarQuincena, guardarCeldaLiquidacion, guardarEfectivoRedondeado, guardarValorHora,
+} from '../../services/liquidacionActions'
 
 // UN CUADRO DE LA LIQUIDACIÓN. Las mismas ocho columnas en los tres.
 //
-// ═══ LA ÚNICA CELDA EDITABLE ES «EFECTIVO redondeado» ═══
+// ═══ TODO SE EDITA MENOS EL NOMBRE (dueño, 09/09/2026) ═══
 //
-// Es la columna DEL DUEÑO: los billetes redondos que entrega en mano. No se calcula de nada y no se
-// pisa nunca. Guarda al salir del campo, sin recargar la página — igual que la grilla de asistencia.
-// El GRANT de UPDATE de la base está acotado a esa columna: aunque alguien llame a PostgREST a mano,
-// no puede reescribir COBRA ni TOTAL.
+// *«quiero más editables todas esas filas y columnas, no los nombres pero lo demás sí»*. Cada celda
+// guarda al salir del campo, sin recargar la pantalla, y **lo escrito a mano gana sobre la cuenta**:
+// es la regla más vieja del repo —edición manual = verdad definitiva—. Vaciar la celda no escribe
+// cero: borra el override y la cuenta vuelve sola.
+//
+// LO PISADO SE VE QUE ESTÁ PISADO. Un punto y la palabra «manual» al lado del número, sin fondo de
+// color: un importe escrito a mano que se disfraza de calculado es el que después nadie puede
+// explicar frente al recibo.
+//
+// ═══ LO QUE NO SE PUEDE EDITAR TODAVÍA SE DICE, NO SE ESCONDE ═══
+//
+// Seis de las celdas necesitan columnas `*_manual` que la migración `20260909T1740` agrega y que
+// NADIE APLICÓ TODAVÍA: `cobra`, `adelanto`, … nacieron `not null default 0` y un 0 ahí no puede
+// significar «vacío». Hasta que se aplique se dibujan de sólo lectura. `camposEditables` sale de
+// preguntarle a la base qué columnas tiene, no de una lista escrita a mano.
+//
+// ═══ LA QUINCENA CERRADA NO SE TOCA ═══
+//
+// Cerrada = foto. Ninguna celda se dibuja editable, y el servidor lo vuelve a comprobar releyendo el
+// estado: la pantalla es la puerta, no la cerradura.
 //
 // ═══ «SIN TARIFA» NO ES $ 0 ═══
 //
@@ -32,13 +52,17 @@ const pesos = (n: number | null): string =>
 const numero = (n: number | null): string =>
   n == null ? '—' : Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })
 
-export function CuadroLiquidacion({ cuadro, totales, quincena, estado, cerradaEn, puedeCerrar }: {
-  cuadro: CuadroDeLiquidacion
+export function CuadroLiquidacion({
+  cuadro, totales, quincena, estado, cerradaEn, puedeCerrar, camposEditables,
+}: {
+  cuadro: CuadroConOverrides
   totales: TotalesDeCuadro
   quincena: { desde: string; hasta: string }
   estado: 'abierta' | 'cerrada'
   cerradaEn: string | null
   puedeCerrar: boolean
+  /** Las celdas que la BASE puede guardar hoy. El resto se dibuja de sólo lectura. */
+  camposEditables: readonly CampoEditable[]
 }) {
   const [aviso, setAviso] = useState<string | null>(null)
   const [cerrando, empezar] = useTransition()
@@ -116,7 +140,14 @@ export function CuadroLiquidacion({ cuadro, totales, quincena, estado, cerradaEn
         </thead>
         <tbody>
           {cuadro.lineas.map((l) => (
-            <Fila key={l.personaId} linea={l} quincena={quincena} grupo={cuadro.grupo} bloqueada={estado === 'cerrada'} />
+            <Fila
+              key={l.personaId}
+              linea={l}
+              quincena={quincena}
+              grupo={cuadro.grupo}
+              bloqueada={estado === 'cerrada'}
+              camposEditables={camposEditables}
+            />
           ))}
           <tr data-testid={`total-${cuadro.grupo}`}>
             <Celda izquierda fuerte>⇒ {cuadro.lineas.length} persona(s)</Celda>
@@ -143,12 +174,29 @@ export function CuadroLiquidacion({ cuadro, totales, quincena, estado, cerradaEn
   )
 }
 
-function Fila({ linea, quincena, grupo, bloqueada }: {
-  linea: LineaLiquidada
+function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
+  linea: LineaConOverrides
   quincena: { desde: string; hasta: string }
   grupo: string
   bloqueada: boolean
+  camposEditables: readonly CampoEditable[]
 }) {
+  const celda = (campo: CampoEditable, valor: number | null, formato: (n: number | null) => string) => (
+    <Celda>
+      <Editable
+        campo={campo}
+        valor={valor}
+        formato={formato}
+        manual={linea.manual[campo]}
+        personaId={linea.personaId}
+        quincena={quincena}
+        grupo={grupo}
+        // SÓLO LECTURA SI LA QUINCENA ESTÁ CERRADA O SI LA BASE NO PUEDE GUARDAR ESA CELDA.
+        soloLectura={bloqueada || !camposEditables.includes(campo)}
+      />
+    </Celda>
+  )
+
   return (
     <tr data-testid="fila-liquidacion" style={{ borderBottom: `1px solid ${V.lineaFila}` }}>
       <Celda izquierda>
@@ -164,14 +212,28 @@ function Fila({ linea, quincena, grupo, bloqueada }: {
           </span>
         )}
       </Celda>
-      <Celda>{numero(linea.horas)}</Celda>
-      <Celda title={linea.origenTarifa ?? undefined}>{pesos(linea.valorHora)}</Celda>
-      <Celda>{pesos(linea.cobra)}</Celda>
-      <Celda>{pesos(linea.adelanto)}</Celda>
-      <Celda>{pesos(linea.yaTransferido)}</Celda>
-      <Celda>{pesos(linea.porBanco)}</Celda>
-      <Celda>{pesos(linea.enEfectivo)}</Celda>
-      <Celda>{pesos(linea.total)}</Celda>
+      {celda('horas', linea.horas, numero)}
+      <Celda>
+        {/* EL $/HORA NO VIVE EN LA LÍNEA: vive en `persona_tarifa`, que es de la persona y no de
+            esta quincena. Escribirlo acá escribe una tarifa vigente desde hoy. */}
+        <ValorHora
+          valor={linea.valorHora}
+          origen={linea.origenTarifa}
+          personaId={linea.personaId}
+          quincena={quincena}
+          grupo={grupo}
+          // OFICINA Y LAS FINALES NO COBRAN POR HORA: escribir un $/h ahí crearía una tarifa
+          // `valor_hora` que, por el CHECK «una sola forma», borraría el neto mensual de esa
+          // persona — $1.800.000 convertidos en una tarifa horaria sin que nadie lo pida.
+          soloLectura={bloqueada || grupo !== 'obreros'}
+        />
+      </Celda>
+      {celda('cobra', linea.cobra, pesos)}
+      {celda('adelanto', linea.adelanto, pesos)}
+      {celda('yaTransferido', linea.yaTransferido, pesos)}
+      {celda('porBanco', linea.porBanco, pesos)}
+      {celda('enEfectivo', linea.enEfectivo, pesos)}
+      {celda('total', linea.total, pesos)}
       <Celda>
         <Redondeo
           personaId={linea.personaId}
@@ -182,6 +244,103 @@ function Fila({ linea, quincena, grupo, bloqueada }: {
         />
       </Celda>
     </tr>
+  )
+}
+
+/** LA MARCA DE LO ESCRITO A MANO. Un punto y una palabra: ni fondo de color ni negrita. */
+function Manual() {
+  return (
+    <span data-testid="marca-manual" title="Escrito a mano: manda sobre el cálculo"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 6 }}>
+      <span aria-hidden style={{
+        width: 6, height: 6, borderRadius: '50%', background: V.marca, display: 'inline-block',
+      }} />
+      <span style={{
+        fontSize: '9.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: V.tenue,
+      }}>manual</span>
+    </span>
+  )
+}
+
+/**
+ * UNA CELDA DE LA LÍNEA. Guarda al salir del campo y acusa el error del servidor sin perder lo
+ * escrito (contrato de `InlineEdit`).
+ *
+ * VACÍO BORRA EL OVERRIDE. `InlineEdit` manda `''` cuando se borra el campo, y la acción lo traduce
+ * a NULL: convertirlo a 0 fabricaría un dato y liquidaría a alguien en cero.
+ */
+function Editable({ campo, valor, formato, manual, personaId, quincena, grupo, soloLectura }: {
+  campo: CampoEditable
+  valor: number | null
+  formato: (n: number | null) => string
+  manual: boolean
+  personaId: string
+  quincena: { desde: string; hasta: string }
+  grupo: string
+  soloLectura: boolean
+}) {
+  if (soloLectura) {
+    return <>{formato(valor)}{manual && <Manual />}</>
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+      <InlineEdit
+        valor={valor}
+        tipo="numero"
+        alineado="right"
+        ancho="w-24"
+        falta="—"
+        etiqueta={`${campo} de ${personaId}`}
+        testid={`celda-${campo}-${personaId}`}
+        mostrar={(v) => formato(Number(v))}
+        guardar={async (v) => {
+          const r = await guardarCeldaLiquidacion({
+            ...quincena, grupo, persona_id: personaId, campo, valor: v.trim(),
+          })
+          return r.ok ? { ok: true } : { ok: false, error: r.error }
+        }}
+      />
+      {manual && <Manual />}
+    </span>
+  )
+}
+
+/**
+ * EL $/HORA. Escribe `persona_tarifa` con `desde` = hoy, no la línea de esta quincena.
+ *
+ * SIN HISTORIAL POR TECLEO: el handoff dice que la retribución no lo tiene y que lo que conserva el
+ * pasado es el sellado al cerrar. Vaciar la celda borra la tarifa de hoy y vuelve a mandar la
+ * anterior — así un error de tipeo no queda como un aumento.
+ */
+function ValorHora({ valor, origen, personaId, quincena, grupo, soloLectura }: {
+  valor: number | null
+  origen: string | null
+  personaId: string
+  quincena: { desde: string; hasta: string }
+  grupo: string
+  soloLectura: boolean
+}) {
+  if (soloLectura) return <span title={origen ?? undefined}>{pesos(valor)}</span>
+
+  return (
+    <span title={origen ?? undefined} style={{ display: 'inline-flex', justifyContent: 'flex-end' }}>
+      <InlineEdit
+        valor={valor}
+        tipo="numero"
+        alineado="right"
+        ancho="w-20"
+        falta="sin tarifa"
+        etiqueta={`valor hora de ${personaId}`}
+        testid={`celda-valorHora-${personaId}`}
+        mostrar={(v) => pesos(Number(v))}
+        guardar={async (v) => {
+          const r = await guardarValorHora({
+            ...quincena, grupo, persona_id: personaId, valor: v.trim(),
+          })
+          return r.ok ? { ok: true } : { ok: false, error: r.error }
+        }}
+      />
+    </span>
   )
 }
 

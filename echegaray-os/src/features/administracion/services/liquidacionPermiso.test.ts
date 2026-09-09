@@ -35,14 +35,24 @@ test('FALLA CERRADO: rol desconocido, sin perfil, o perfil ilegible', () => {
 
 const ACTIONS = new URL('./liquidacionActions.ts', import.meta.url)
 
-test('LAS DOS ESCRITURAS CRUZAN LA GUARDA, Y ANTES DE TOCAR LA BASE', () => {
+test('TODAS LAS ESCRITURAS CRUZAN LA GUARDA, Y ANTES DE TOCAR LA BASE', () => {
   // Sin base no se puede ejecutar la action; lo que sí se puede probar es que el llamado existe y
   // que está antes del primer `cabecera(...)`, que es lo que CREA la quincena. Rechazar después
   // dejaría una cabecera abierta por alguien que no puede liquidar.
+  //
+  // EL CONTEO NO SE CLAVA: se cuentan las acciones exportadas y se exige una guarda por cada una.
+  // Un número fijo obliga a editar el test al agregar la quinta acción, y ese día el camino corto
+  // es subir el número — que es exactamente cómo entra una escritura sin guarda (09/09/2026: eran
+  // dos, se agregaron `guardarCeldaLiquidacion` y `guardarValorHora`).
   const src = readFileSync(ACTIONS, 'utf8')
+  const acciones = (src.match(/^export async function \w+\(/gm) ?? []).length
+  assert.ok(acciones >= 2, 'el módulo tiene acciones exportadas')
   const guardas = src.match(/const permiso = await puedeLiquidar\(supabase\)/g) ?? []
-  assert.equal(guardas.length, 2, 'guardarEfectivoRedondeado y cerrarQuincena, las dos')
-  assert.equal((src.match(/if \(!permiso\.ok\) return \{ ok: false, error: permiso\.error \}/g) ?? []).length, 2)
+  assert.equal(guardas.length, acciones, 'una guarda por cada acción exportada')
+  assert.equal(
+    (src.match(/if \(!permiso\.ok\) return \{ ok: false, error: permiso\.error \}/g) ?? []).length,
+    acciones,
+  )
   assert.ok(
     src.indexOf('const permiso = await puedeLiquidar(supabase)') <
       src.indexOf('const cab = await cabecera(supabase, v)'),

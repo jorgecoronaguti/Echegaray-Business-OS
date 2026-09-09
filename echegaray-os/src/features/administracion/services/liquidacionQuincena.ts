@@ -299,6 +299,34 @@ export interface TarjetaDeQuincena {
   cierra: boolean
 }
 
+/**
+ * DE QUÉ CUADRO SALE CADA PESO DE LA TARJETA.
+ *
+ * EL DEFECTO QUE ESTO CIERRA (09/09/2026): la tarjeta decía «TOTAL DE LA QUINCENA $7.782.724» y el
+ * pie de Obreros sumaba $4.182.724. Los dos números eran correctos y ninguno mentía —la diferencia
+ * son los $3.600.000 de Oficina, dos netos MENSUALES de $1.800.000— pero la tarjeta no decía que
+ * sumaba los tres cuadros, así que la única lectura posible era «uno de los dos está mal». Un total
+ * que no se puede descomponer no se puede auditar.
+ *
+ * Y deja a la vista algo que hay que decidir y no decide esta pantalla: el neto de Oficina es
+ * MENSUAL y la tarjeta es QUINCENAL, así que aparece entero en las dos quincenas del mes. Mientras
+ * el dueño no defina si se parte en dos, el desglose lo muestra separado en vez de esconderlo dentro
+ * de un solo número.
+ */
+export interface ParteDeLaTarjeta {
+  rotulo: string
+  personas: number
+  total: number
+}
+
+export function desgloseDeQuincena(
+  cuadros: readonly { titulo: string; totales: TotalesDeCuadro }[],
+): ParteDeLaTarjeta[] {
+  return cuadros
+    .filter((c) => c.totales.personas > 0)
+    .map((c) => ({ rotulo: c.titulo, personas: c.totales.personas, total: c.totales.total }))
+}
+
 export function tarjetaDeQuincena(cuadros: readonly TotalesDeCuadro[]): TarjetaDeQuincena {
   const porBanco = redondear2(cuadros.reduce((s, c) => s + c.porBanco, 0))
   const enEfectivo = redondear2(cuadros.reduce((s, c) => s + c.enEfectivo, 0))
