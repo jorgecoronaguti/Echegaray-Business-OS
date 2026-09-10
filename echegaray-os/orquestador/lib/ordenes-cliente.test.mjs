@@ -142,3 +142,80 @@ test('la extensión del objeto no se inventa', () => {
   assert.equal(extensionDe('Orden de compra.PDF'), 'pdf')
   assert.equal(extensionDe('adjunto sin extension'), 'bin')
 })
+
+// ═══ IDENTIDAD Y HERENCIA (10/09/2026) ═══════════════════════════════════════════════════════════
+//
+// Todos los textos de acá están COPIADOS de los PDF reales del bucket `obras-documentos` (leídos el
+// 10/09/2026 con `orquestador/lib/ingesta/pdf.mjs`). Un texto inventado prueba la expresión regular
+// contra sí misma; éstos prueban contra el papel que manda Messina.
+import {
+  agruparPorNumero, comprobantePropio, comprobantesCitados, numeroCanonico, numeroCorto,
+  obraPorReferencia, ocsCitadas,
+} from './ordenes-cliente.mjs'
+
+test('«Nro.» también trae número: la orden de pago quedaba sin identidad', () => {
+  const pdf = 'IMPUTACION ORDEN DE PAGO Nro.: 0000000004865 Fecha de emisión: 28/07/2026'
+  assert.equal(extraerNumero(pdf), '0000000004865')
+  assert.equal(numeroCorto(extraerNumero(pdf)), '4865')
+})
+
+test('el número partido por el PDF es el mismo número', () => {
+  // La factura nuestra parte el número: «OC 02- 00002162». La orden que emitió Messina dice
+  // «00002-00002162». Sin canónico son dos órdenes y la pantalla dibuja dos chips de una sola OC.
+  assert.equal(extraerNumero('0001 Limpieza de Escombros Embolsado OC 02- 00002162 1,00 unidades'), '02-00002162')
+  assert.equal(numeroCanonico('02-00002162'), numeroCanonico('00002-00002162'))
+  assert.equal(numeroCanonico('00002-00002162'), '2-2162')
+  assert.equal(numeroCorto('00002-00002162'), '2162')
+  assert.equal(numeroCanonico(null), null)
+})
+
+test('«VIGENCIA DE LA O/C:» sin número no inventa uno', () => {
+  assert.equal(extraerNumero('VIGENCIA DE LA O/C: AVDA RIOJA NORTE 75 (5400 ) SAN JUAN'), null)
+})
+
+test('la factura cita la OC que factura, y ésa es la evidencia de la obra', () => {
+  assert.deepEqual(ocsCitadas('0001 Planta BSA 50% OC 00002-00000279 1,00 unidades 4073021,70'), ['2-279'])
+  assert.deepEqual(ocsCitadas('0001 Pisos 120m2 - OC: 02-00002097 1,00 unidades'), ['2-2097'])
+  assert.deepEqual(ocsCitadas('Comprobante de Retención Nro : 00000-2026-00002208'), [])
+})
+
+test('la orden de pago cita FACTURAS, no OC: sin ese eslabón la cadena se corta', () => {
+  const op = 'Nro. de Comp. Tipo Comp. Importe 1 FAC A0000100000225 22/08/2026 6.060.479,39 '
+    + '2 FAC A0000100000223 22/08/2026 4.300.876,36 3 FAC A0000100000227 05/09/2026 4.928.356,26'
+  assert.deepEqual(comprobantesCitados(op), ['A-1-225', 'A-1-223', 'A-1-227'])
+})
+
+test('una factura sabe qué comprobante es; una orden de compra no es una factura', () => {
+  const fac = 'Punto de Venta: Comp. Nro: 00001 00000225 Razón Social: ECHEGARAY CONSTRUCCIONES '
+    + 'S.A.S. FACTURA A COD. 01 IVA Responsable Inscripto'
+  assert.equal(comprobantePropio(fac), 'A-1-225')
+  assert.equal(comprobantePropio('Orden de compra Nº: 00002-00002162 Mendoza - 05 /08 /2026'), null)
+})
+
+test('hereda la obra sólo cuando la referencia apunta a UNA obra', () => {
+  const mapa = new Map([['A-1-225', 'limpieza-de-escombros'], ['A-1-223', 'pisos-120m2']])
+  assert.equal(obraPorReferencia(['A-1-225'], mapa).obraId, 'limpieza-de-escombros')
+  // La OP 5146 cancela tres facturas de tres obras: repartirla sería inventar. Queda sin obra Y
+  // con el motivo escrito — una lista de nueve órdenes sin motivo no sirve para decidir nada.
+  const varias = obraPorReferencia(['A-1-225', 'A-1-223'], mapa)
+  assert.equal(varias.obraId, null)
+  assert.match(varias.porque, /2 obras distintas/)
+  assert.match(obraPorReferencia(['A-1-999'], mapa).porque, /no está en el OS/)
+  assert.match(obraPorReferencia([], mapa).porque, /no cita/)
+})
+
+test('la OC 2162 es UNA orden aunque haya llegado en dos mails', () => {
+  const filas = [
+    { id: 'a', tipo: 'orden_compra', numero: '00002-00002162' },
+    { id: 'b', tipo: 'orden_compra', numero: '02-00002162' },
+    { id: 'c', tipo: 'orden_pago', numero: '0000000004865' },
+    { id: 'd', tipo: 'orden_compra', numero: null },
+    { id: 'e', tipo: 'orden_compra', numero: null },
+  ]
+  const grupos = agruparPorNumero(filas)
+  assert.equal(grupos.length, 4)
+  assert.deepEqual(grupos[0].filas.map((f) => f.id), ['a', 'b'])
+  // Dos documentos sin número NO son el mismo documento: agruparlos por su falta sería el peor
+  // de los inventos.
+  assert.deepEqual(grupos.slice(2).map((g) => g.filas.length), [1, 1])
+})
