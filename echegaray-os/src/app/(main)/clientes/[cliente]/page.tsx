@@ -46,7 +46,9 @@ import { BloqueActividad } from '@/features/clientes/components/BloqueActividad'
 import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
 import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
+import { getDocumentosSubidos } from '@/features/documentos/services/documentosSubidosService'
 import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
+import { DocumentosSubidos } from '@/features/documentos/components/DocumentosSubidos'
 import { BloqueInformacion } from '@/features/clientes/components/BloqueInformacion'
 import {
   ObrasDelCliente, PresupuestosDelCliente, type PresupuestoDeFicha,
@@ -179,6 +181,8 @@ export default async function ClientePage({ params, searchParams }: {
   // de arriba lista los archivos VINCULADOS; éste, lo que está en la carpeta aunque nadie lo haya
   // vinculado — que es la mitad de los papeles de un cliente nuevo.
   const archivosDrive = solapa === 'documentos' ? await getArchivosDeEntidad(supabase, 'cliente', id) : null
+  // Lo que Administración sube desde la ficha del cliente: la factura, la OC, el contrato firmado.
+  const subidos = solapa === 'documentos' ? await getDocumentosSubidos(supabase, 'cliente', id) : null
 
   const todas = lector.leer(obras, [])
   const cerradas = todas.filter((o) => o.estado === 'cerrada')
@@ -477,6 +481,11 @@ export default async function ClientePage({ params, searchParams }: {
                 urlTodo={url({ documentos: 'todo' })}
                 urlPoco={url({ documentos: null })}
               />
+              {subidos && (
+                <div style={{ marginTop: 32 }}>
+                  <DocumentosSubidos datos={subidos} tipo="cliente" entidadId={id} testid="cliente-documentos-subidos" />
+                </div>
+              )}
               {archivosDrive && (
                 <div style={{ marginTop: 32 }}>
                   <ArchivosDeDrive
