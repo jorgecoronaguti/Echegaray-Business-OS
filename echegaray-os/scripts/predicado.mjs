@@ -1,8 +1,15 @@
 // ¿LA POLICY NUEVA DEVUELVE EXACTAMENTE LAS MISMAS FILAS QUE LA VIEJA, PARA CADA ROL?
 // Una migración de rendimiento que cambia QUIÉN VE QUÉ no es una optimización, es un incidente.
 // Se compara el conjunto entero de `drive_file_id` visible, antes y después, con rollback.
-import { query, closePool } from '/home/jorge/echegaray-os/app/echegaray-os/orquestador/lib/db.mjs'
+import { query, closePool } from '../orquestador/lib/db.mjs'
 import fs from 'node:fs'
+
+if (!process.argv[2]) {
+  console.error('uso: node scripts/predicado.mjs <migracion.sql>')
+  process.exit(1)
+}
+// Los tres roles que ven distinto. Son usuarios REALES del padrón: la prueba no sirve con un id
+// inventado, porque la policy que se compara resuelve el rol contra `perfiles`.
 const USUARIOS = [
   ['direccion ', 'ede1fa51-517b-4f27-b6d9-09ce8a704aca'],
   ['jefe_obra ', '543b2008-7540-494f-bfd6-5e30bc601ac8'],
