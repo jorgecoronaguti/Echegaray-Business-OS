@@ -181,10 +181,19 @@ async function publicadasPorCliente() {
  */
 async function informarCobrosOcultos() {
   const { rows } = await query(
-    `select e.id, e.cliente_id, c.nombre_comercial cliente, e.estado, e.monto, e.concepto,
+    // EL CONCEPTO SE LEE DE LA RÉPLICA VIVA, NO DE LA COPIA. `esquema_pago.concepto` es una foto del
+    // día que se sincronizó: el 10/09 tenía «RECLAMAR OC!» en ARCOR mientras el Sheet ya decía
+    // «Hormigón en Ecopatio». Un informe que le pide al dueño mover una celda que él ya movió es un
+    // informe que se deja de leer.
+    `select e.id, e.cliente_id, c.nombre_comercial cliente, e.estado, e.monto,
+            coalesce(cb.concepto, e.concepto) concepto,
             to_char(e.fecha, 'DD/MM/YYYY') fecha, e.visible_portal, e.publicado_at,
             e.origen, e.cobranza_fila, e.obra_id, e.orden, e.moneda
-       from public.esquema_pago e join public.clientes c on c.id = e.cliente_id
+       from public.esquema_pago e
+       join public.clientes c on c.id = e.cliente_id
+       left join public.cobranzas cb
+              on cb.origen = 'cobranzas_sheet' and cb.sheet_id ~ '^[0-9]+$'
+             and cb.sheet_id::int + 4 = e.cobranza_fila
       where e.origen = 'sync_cobranzas'`)
   const huerfanas = filasQueElSyncNoAlcanza(rows)
   if (huerfanas.length) {

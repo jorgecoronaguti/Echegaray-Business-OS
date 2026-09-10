@@ -355,6 +355,27 @@ export function pagosEnPantalla(pagos: PagoConObra[], obraId: string | null): Pa
 /** Lo contratado de una obra, en la moneda en que se firmó. */
 export type ContratoDeObra = { monto: number | null; moneda: 'ARS' | 'USD' }
 
+/**
+ * EL CONTRATO DE UNA OBRA, EN LA MONEDA EN QUE SE FIRMÓ — la regla, una sola vez.
+ *
+ * Quattropani se firmó en U$S 63.000 por ajuste alzado: publicar su equivalente en pesos publica un
+ * número que mañana está mal. `contrato_monto`/`contrato_moneda` son la declaración del contrato y
+ * `monto_contratado` su respaldo en pesos, que queda para los tableros internos.
+ *
+ * NULL NO ES CERO: una obra sin contrato cargado entra como `null` y la pantalla escribe «sin
+ * cargar». Está acá y no repetido en cada pantalla porque son tres las que lo preguntan —Pagos,
+ * Terminadas y el detalle de una terminada— y tres copias de esta elección son tres contratos.
+ */
+export function contratoDeLaObra(o: {
+  monto_contratado?: number | string | null
+  contrato_moneda?: string | null
+  contrato_monto?: number | string | null
+}): ContratoDeObra {
+  const propio = o.contrato_monto == null ? null : Number(o.contrato_monto)
+  if (propio != null) return { monto: propio, moneda: o.contrato_moneda === 'USD' ? 'USD' : 'ARS' }
+  return { monto: o.monto_contratado == null ? null : Number(o.monto_contratado), moneda: 'ARS' }
+}
+
 /** El contrato del conjunto, y de cuántas obras salió. */
 export type ContratoDelConjunto = ContratoDeObra & {
   /** Cuántas obras aportaron su contrato a la suma. */

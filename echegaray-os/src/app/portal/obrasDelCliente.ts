@@ -1,3 +1,5 @@
+import { contratoDeLaObra, type ContratoDeObra } from './esquema.ts'
+
 // LAS OBRAS DEL CLIENTE, COMO LAS VE EL CLIENTE — núcleo puro, sin base.
 //
 // ═══ POR QUÉ EXISTE (10/09/2026) ═══
@@ -25,6 +27,9 @@ export type FilaObraCanonica = {
   /** Cuándo terminó de verdad. `null` = no se cargó, y la pantalla lo dice en vez de inventarla. */
   fecha_fin_real?: string | null
   drive_carpeta_id?: string | null
+  monto_contratado?: number | string | null
+  contrato_moneda?: string | null
+  contrato_monto?: number | string | null
   /** El id de la obra que ABSORBIÓ a ésta. `null` = la obra sigue siendo ella misma. */
   fusionada_en: string | null
 }
@@ -40,6 +45,8 @@ export type ObraDelInicio = {
   hasta: string | null
   /** La carpeta de Drive de la obra. `null` = todavía no se conectó, y la pantalla lo dice. */
   carpeta: string | null
+  /** Lo contratado, en la moneda en que se firmó. `monto: null` = sin contrato cargado. */
+  contrato: ContratoDeObra
   /**
    * Los ids de las obras que se fusionaron EN ésta. Casi siempre vacío.
    *
@@ -88,6 +95,9 @@ export function obrasDelCliente(
       // el cierre. Sin la real, la pantalla escribe «sin fecha de cierre».
       hasta: f.fecha_fin_real ?? null,
       carpeta: f.drive_carpeta_id ?? null,
+      // La MISMA regla que usa el pie de Pagos. Terminadas la resolvía por su cuenta contra
+      // `public.obras.monto_contratado` y publicaba «sin cargar» sobre obras que tienen precio.
+      contrato: contratoDeLaObra(f),
       absorbidas: absorbidas.get(String(f.id)) ?? [],
     }))
     .filter((o) => alcanza(o.id) || o.absorbidas.some(alcanza))

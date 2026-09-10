@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { AccesoDelPortal } from '../permisos'
 import { alcanzaLaObra } from '../permisos'
 import {
-  agruparPorObra, pagosDelEsquema, sinImportes,
+  agruparPorObra, contratoDeLaObra, pagosDelEsquema, sinImportes,
   type BloqueDeObra, type FilaEsquema, type PagoConObra, type ContratoDeObra,
 } from '../esquema'
 import { refrescarConCobranzas, type FilaCobranzaViva } from '../vivo.ts'
@@ -73,14 +73,8 @@ export async function esquemaDelPortal(acceso: AccesoDelPortal): Promise<Esquema
   // publicar su equivalente en pesos publica un número que mañana está mal. `monto_contratado` queda
   // para los tableros internos, que suman en pesos; el portal usa el declarado cuando existe.
   // NULL no es cero: una obra sin contrato entra como `null` y la pantalla escribe «sin cargar».
-  const contratos = new Map<string, { monto: number | null; moneda: 'ARS' | 'USD' }>(
-    filasObra.map((o) => {
-      const propio = o.contrato_monto == null ? null : Number(o.contrato_monto)
-      const moneda = o.contrato_moneda === 'USD' ? 'USD' as const : 'ARS' as const
-      return [String(o.id), propio != null
-        ? { monto: propio, moneda }
-        : { monto: o.monto_contratado == null ? null : Number(o.monto_contratado), moneda: 'ARS' as const }]
-    }),
+  const contratos = new Map<string, ContratoDeObra>(
+    filasObra.map((o) => [String(o.id), contratoDeLaObra(o)]),
   )
 
   // EL ESTADO DE LA OBRA VIAJA CON EL PAGO. Es la definición canónica de «obra terminada» —la misma
@@ -141,7 +135,7 @@ export type { ObraDelInicio }
 export async function obrasParaElInicio(acceso: AccesoDelPortal): Promise<ObraDelInicio[]> {
   const { data } = await createAdminClient()
     .from('obra_canonica')
-    .select('id, nombre, estado, fecha_inicio_real, fecha_inicio_plan, fecha_fin_real, drive_carpeta_id, fusionada_en')
+    .select('id, nombre, estado, fecha_inicio_real, fecha_inicio_plan, fecha_fin_real, drive_carpeta_id, monto_contratado, contrato_moneda, contrato_monto, fusionada_en')
     .eq('cliente_id', acceso.clienteId)
     .order('nombre')
 

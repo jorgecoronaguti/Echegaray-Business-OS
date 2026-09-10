@@ -40,17 +40,16 @@ export default async function Terminadas() {
   // EL ALCANCE SALE DE `cliente_acceso`, NO DE LA COOKIE: `obrasParaElInicio` aplica
   // `alcanzaLaObra` fila por fila, así que un acceso revocado o acotado no ve nada de más.
   const { anteriores } = partirEnCursoYAnteriores(await obrasParaElInicio(acceso))
-  const { pagos, contratos } = await esquemaDelPortal(acceso)
+  const { pagos } = await esquemaDelPortal(acceso)
 
   const obras = anteriores.map((o) => ({
     ...o,
-    contrato: contratos.get(o.id) ?? null,
     cierre: cierreDeObra(pagos.filter((p) => p.obraId === o.id), o.desde, o.hasta),
   }))
   // El total suma sólo lo que tiene contrato cargado y está en pesos: una obra sin contrato no vale
   // cero, y sumar dólares con pesos daría un número que no existe.
-  const conMonto = obras.filter((o) => o.contrato?.monto != null && o.contrato.moneda === 'ARS')
-  const total = conMonto.reduce((s, o) => s + Number(o.contrato?.monto ?? 0), 0)
+  const conMonto = obras.filter((o) => o.contrato.monto != null && o.contrato.moneda === 'ARS')
+  const total = conMonto.reduce((s, o) => s + Number(o.contrato.monto ?? 0), 0)
   const montos = acceso.puedeVerMontos
 
   return (
@@ -80,7 +79,7 @@ export default async function Terminadas() {
               {montos ? (
                 <span className="text-right">
                   <span className="tnum block font-mono text-[15px]">
-                    {pesos(o.contrato?.monto ?? null, o.contrato?.moneda ?? 'ARS')}
+                    {pesos(o.contrato.monto, o.contrato.moneda)}
                   </span>
                   <span className={`mt-0.5 block text-[12.5px] ${o.cierre.faltaReparo ? 'text-warn' : 'text-pos'}`}>
                     {o.cierre.faltaReparo ? `falta ${pesos(o.cierre.faltaReparo)} de reparo` : o.cierre.rotuloCobro}

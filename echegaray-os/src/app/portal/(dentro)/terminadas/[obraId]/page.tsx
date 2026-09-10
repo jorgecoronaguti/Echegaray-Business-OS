@@ -40,9 +40,8 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
   // Una obra que existe pero NO está terminada no se abre acá: esta pantalla habla en pasado.
   if (!obra || !esObraAnterior(obra)) notFound()
 
-  const { pagos, contratos } = await esquemaDelPortal(acceso)
+  const { pagos } = await esquemaDelPortal(acceso)
   const cierre = cierreDeObra(pagos.filter((p) => p.obraId === obraId), obra.desde, obra.hasta)
-  const contrato = contratos.get(obraId) ?? null
   const montos = acceso.puedeVerMontos
 
   // LOS PAPELES SALEN DEL ESPEJO, NO DE DRIVE. Esta pantalla también leía Google en vivo y en Vercel
@@ -80,7 +79,7 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
       <dl className="mt-6 flex flex-wrap gap-x-12 gap-y-5 border-y border-line py-5">
         {/* SIN PERMISO DE MONTOS NO SE DIBUJA NI UNA CIFRA. Es la misma cerradura que en Pagos: un
             contacto que no puede ver plata tampoco la ve acá porque la obra esté cerrada. */}
-        {montos ? <Dato rotulo="Monto final" valor={pesos(contrato?.monto ?? null, contrato?.moneda ?? 'ARS')} /> : null}
+        {montos ? <Dato rotulo="Monto final" valor={pesos(obra.contrato.monto, obra.contrato.moneda)} /> : null}
         {montos ? <Dato rotulo="Cobrado" valor={cierre.pendiente === 0 && cierre.cobrado > 0 ? 'todo' : pesos(cierre.cobrado)} /> : null}
         <Dato
           rotulo="Duración"
