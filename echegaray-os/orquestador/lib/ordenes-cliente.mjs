@@ -21,10 +21,23 @@ export function norm(texto) {
     .toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
-/** El mail pelado de un header From ("Isabel <i@x.com>" → "i@x.com"). '' si no hay. */
+/**
+ * El mail pelado de un header From ("Isabel <i@x.com>" → "i@x.com"). '' si no hay.
+ *
+ * EL PRIMER `<…>` NO ES SIEMPRE LA DIRECCIÓN. MEDIDO el 10/09/2026 sobre 68 mensajes de
+ * Saint-Gobain: el header es `"Saint-Gobain <No-Reply>" <SG.AR.SAP@saint-gobain.com>` — el nombre
+ * para mostrar TRAE ángulos adentro de las comillas. Tomando el primero salía `no-reply`, sin
+ * arroba, y el dominio quedaba vacío: 68 órdenes de compra de un cliente conocido caían en «sin
+ * cliente identificable», que se lee igual que «no hay nada de este emisor».
+ *
+ * Se exige la arroba y se toma el ÚLTIMO paréntesis angular que la tenga, que es donde la pone
+ * cualquier cliente de correo.
+ */
 export function mailDe(from) {
-  const m = String(from ?? '').match(/<([^>]+)>/)
-  return norm(m ? m[1] : from).replace(/[<>]/g, '')
+  const crudo = String(from ?? '')
+  const conArroba = [...crudo.matchAll(/<([^<>]*@[^<>]*)>/g)]
+  if (conArroba.length) return norm(conArroba[conArroba.length - 1][1])
+  return norm(crudo).replace(/[<>]/g, '')
 }
 
 export function dominioDe(from) {

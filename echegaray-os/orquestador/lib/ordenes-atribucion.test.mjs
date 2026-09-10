@@ -372,3 +372,26 @@ test('un adjunto ya guardado no vuelve a entrar aunque hoy se clasifique distint
   assert.equal(nuevos.length, 0)
   assert.match(repetidos[0].porque, /mismo mensaje/)
 })
+
+test('el nombre para mostrar con ángulos adentro no roba la dirección', () => {
+  // 68 mensajes reales: `"Saint-Gobain <No-Reply>" <SG.AR.SAP@saint-gobain.com>`. El primer <…> es
+  // parte del nombre y no tiene arroba; tomándolo, el dominio quedaba vacío y el cliente sin resolver.
+  assert.equal(dominioDe('"Saint-Gobain <No-Reply>" <SG.AR.SAP@saint-gobain.com>'), 'saint-gobain.com')
+  const c = clienteDelDocumento({
+    from: '"Saint-Gobain <No-Reply>" <SG.AR.SAP@saint-gobain.com>',
+    asunto: 'Orden de Compra 4500285086', nombreArchivo: 'Orden de Compra 4500285086.pdf', clientes: CLIENTES_BD,
+  })
+  assert.equal(c?.nombre, 'Saint-Gobain')
+  assert.equal(c.via, 'remitente')
+})
+
+test('ARCOR manda sus órdenes de pago desde arcornovedades.com', () => {
+  // 181 mensajes de `Grupo_Arcor_SCP@arcornovedades.com`, asunto «ORDEN DE PAGO: 966878».
+  const d = documentoDeAdjunto({
+    from: 'Grupo_Arcor_SCP@arcornovedades.com', asunto: 'ORDEN DE PAGO: 966878',
+    nombreArchivo: '00001_966878_OP.PDF', textoPdf: '', clientes: CLIENTES_BD, obras: OBRAS,
+  })
+  assert.equal(d.ok, true, d.motivo)
+  assert.equal(d.cliente.id, 'cli-arcor')
+  assert.equal(d.tipo, 'orden_pago')
+})

@@ -52,7 +52,11 @@ export const CLIENTES = Object.freeze([
     clave: 'arcor', nombre: 'ARCOR',
     // `arcornet` es la red interna desde la que salen las órdenes de pago («Grupo_Arcor_SCP@…»);
     // `arcor.com` es la casilla de compras que manda «GENERACION OC». Son la misma empresa.
-    dominios: ['arcor.com', 'arcor.com.ar', 'arcornet.com', 'arcornet.com.ar'],
+    // `arcornovedades.com` es de donde salen de verdad: MEDIDO el 10/09/2026, 181 mensajes de
+    // `Grupo_Arcor_SCP@arcornovedades.com` con asunto «ORDEN DE PAGO: 966878» y adjunto
+    // `00001_966878_OP.PDF`. Sin ese dominio en la lista, 140 documentos ya clasificados como orden
+    // caían en «sin cliente identificable». `arcornet` se deja porque también aparece citado.
+    dominios: ['arcor.com', 'arcor.com.ar', 'arcornet.com', 'arcornet.com.ar', 'arcornovedades.com'],
     textos: ['arcor'],
     archivos: [/^6a_\d{6,}\.pdf$/i, /^\d{4,6}_\d{3,}_op\.pdf$/i],
   },

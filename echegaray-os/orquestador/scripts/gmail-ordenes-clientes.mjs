@@ -47,7 +47,7 @@ import { makeGoogleClient } from '../lib/google.mjs'
 import { getTokenFor, tieneToken } from '../lib/google-oauth.mjs'
 import { leerPdf } from '../lib/ingesta/pdf.mjs'
 import { loadEnvLocalInto } from '../../scripts/lib/env-file.mjs'
-import { clasificarAdjunto, extensionDe } from '../lib/ordenes-cliente.mjs'
+import { clasificarAdjunto, dominioDe, extensionDe } from '../lib/ordenes-cliente.mjs'
 import {
   consultasDeGmail, deduplicar, documentoDeAdjunto, fecharOrdenesDePagoPorSuRetencion,
   hashDocumento, heredarObras,
@@ -367,6 +367,17 @@ async function main() {
     }
     for (const [motivo, ds] of [...porMotivo.entries()].sort((a, b) => b[1].length - a[1].length)) {
       console.log(`  ${String(ds.length).padStart(5)} × ${motivo}`)
+      // «SIN CLIENTE» SE ABRE POR DOMINIO, y no es un adorno: cada dominio de esa lista con muchos
+      // documentos es un emisor que el catálogo no conoce o que emite desde otra máquina que la
+      // registrada — y ésa es una decisión concreta («¿este remitente es un cliente?»), no un resto.
+      // Sin abrirlo, 298 descartes se leen como ruido y adentro puede haber una cartera entera.
+      if (/sin cliente/.test(motivo)) {
+        const porDom = new Map()
+        for (const d of ds) { const k = dominioDe(d.from) || '(sin remitente)'; porDom.set(k, (porDom.get(k) ?? 0) + 1) }
+        for (const [dom, n] of [...porDom.entries()].sort((x, y) => y[1] - x[1]).slice(0, 12)) {
+          console.log(`          ${String(n).padStart(5)} ${dom}`)
+        }
+      }
       for (const d of ds.slice(0, 3)) console.log(`          ej: ${fmt(d.from, 32)} ${fmt(d.adjunto, 34)} ${fmt(d.subject, 40)}`)
     }
   }
