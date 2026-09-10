@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { accesoVigente, alcanzaLaObra, limpiarNombre, loQueSiPuedeVer } from './permisos.ts'
+import { accesoVigente, alcanzaLaObra, limpiarNombre, loQueSiPuedeVer, nombreParaSaludar } from './permisos.ts'
 
 // LOS CUATRO DEFECTOS QUE ESTE ARCHIVO ATRAPA — los cuatro se cometieron de verdad al leer
 // `cliente_mail` en vez de `cliente_acceso`.
@@ -48,4 +48,17 @@ test('sin puede_ver_montos la pantalla dice QUÉ SÍ puede ver, y no habla de im
 test('el nombre del cliente pierde los paréntesis de la anotación interna', () => {
   assert.equal(limpiarNombre('(IMOTOR / Javier Sánchez)'), 'IMOTOR / Javier Sánchez')
   assert.equal(limpiarNombre('  ARCOR  '), 'ARCOR')
+})
+
+test('EL SALUDO NO LLEVA LA ANOTACIÓN DE DESAMBIGUACIÓN', () => {
+  // El portal abría con «Bienvenido, Javier Sánchez - San Francisco - IMOTOR»: `nombre_comercial` es
+  // un campo de trabajo de administración, no el nombre con el que se saluda a alguien.
+  assert.equal(nombreParaSaludar('Javier Sánchez - San Francisco - IMOTOR'), 'Javier Sánchez')
+  assert.equal(nombreParaSaludar('(IMOTOR / Javier Sánchez)'), 'IMOTOR / Javier Sánchez')
+  // Un nombre sin anotación no se toca — y un guión SIN espacios es parte del nombre.
+  assert.equal(nombreParaSaludar('Franco Quattropani'), 'Franco Quattropani')
+  assert.equal(nombreParaSaludar('Sáenz-Peña'), 'Sáenz-Peña')
+  assert.equal(nombreParaSaludar('Messina'), 'Messina')
+  // Y nunca se devuelve vacío: «Bienvenido, » sin nada es peor que el nombre entero.
+  assert.equal(nombreParaSaludar(' - IMOTOR'), '- IMOTOR')
 })

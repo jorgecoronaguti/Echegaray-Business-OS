@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   agruparPorObra, aPagoDelPortal, estadoFijadoDe, obrasQueFiltran, pagosDelEsquema, pagosEnPantalla,
-  publicadoAlPortal, sinImportes, tipoDelPago, SIN_OBRA, alcanceDelContrato, type FilaEsquema,
+  publicadoAlPortal, sinImportes, tipoDelPago, SIN_OBRA, alcanceDelContrato,
+  esSaldoDeObraTerminada, type FilaEsquema,
 } from './esquema.ts'
 import { estadoDePago, proximoPago, resumenDeCobro, type ResumenCobro } from './cronograma.ts'
 import { contratoDelConjunto } from './esquema.ts'
@@ -470,4 +471,52 @@ test('el pie del contrato declara su alcance y las obras que quedaron sin precio
     alcanceDelContrato({ obras: 2, sinContrato: 3 }),
     'de 2 obras con cronograma publicado · 3 obras sin contrato cargado',
   )
+})
+
+// ── «OBRA TERMINADA» TENÍA DOS DEFINICIONES ─────────────────────────────────────────────────────
+//
+// El Inicio partía la lista con `obra_canonica.estado`; Pagos decidía por su cuenta que «una obra sin
+// pagos pendientes es una obra anterior». Las dos filas de abajo son las de Messina del 10/09/2026 y
+// son los dos casos en que las definiciones se contradicen. Si alguien vuelve a la regla vieja —o se
+// olvida de pasar las cerradas—, los dos tests se ponen rojos.
+
+const CERRADAS_ME = new Set(['bsa-adicional'])
+const NOMBRES_ME = new Map([
+  ['bsa-adicional', 'BSA - Adicional'],
+  ['messina-pisos-120-rampa', 'ME - PISOS 120 M² Y RAMPA'],
+])
+
+const messina = () => pagosDelEsquema([
+  // Cerrada el 22/08 y con $7.228.782 todavía por cobrar.
+  { ...fila({ orden: 1 }), id: 'bsa-cobrado', obra_id: 'bsa-adicional', estado: 'cobrado', fecha: '2026-07-29', monto: '6866157.2' },
+  { ...fila({ orden: 2 }), id: 'bsa-pendiente', obra_id: 'bsa-adicional', estado: 'a_vencer', fecha: '2026-09-17', monto: '7228782' },
+  // ACTIVA y cobrada al día: no es trabajo anterior.
+  { ...fila({ orden: 1 }), id: 'pisos-1', obra_id: 'messina-pisos-120-rampa', estado: 'cobrado', fecha: '2026-08-04', monto: '4234267.49' },
+  { ...fila({ orden: 2 }), id: 'pisos-2', obra_id: 'messina-pisos-120-rampa', estado: 'cobrado', fecha: '2026-09-03', monto: '4230868.85' },
+], NOMBRES_ME, TODAS, CERRADAS_ME)
+
+test('una obra CERRADA con saldo pendiente se queda en el listado principal, y se dice', () => {
+  const pagos = messina()
+  const bsa = pagos.filter((p) => p.obraId === 'bsa-adicional')
+  assert.equal(bsa.every((p) => !p.historico), true, 'con saldo pendiente NO es una obra anterior')
+  // Y la pantalla tiene con qué decirlo: el saldo, no el cobro ya hecho.
+  assert.deepEqual(bsa.filter(esSaldoDeObraTerminada).map((p) => p.id), ['bsa-pendiente'])
+})
+
+test('una obra ACTIVA y cobrada al día NO es «trabajo anterior que ya nos pagó»', () => {
+  // Con la regla vieja —«sin pagos pendientes ⇒ obra anterior»— los dos cobros de ME - PISOS 120 M²
+  // se iban a la sección gris, con el pie que dice que es trabajo anterior, sobre una obra abierta.
+  const pisos = messina().filter((p) => p.obraId === 'messina-pisos-120-rampa')
+  assert.equal(pisos.every((p) => !p.historico), true)
+  assert.equal(pisos.some(esSaldoDeObraTerminada), false, 'no está terminada: no lleva la aclaración')
+})
+
+test('una obra CERRADA y cobrada entera SÍ es una obra anterior', () => {
+  const pagos = pagosDelEsquema([
+    { ...fila({ orden: 1 }), id: 'c1', obra_id: 'bsa-adicional', estado: 'cobrado', fecha: '2026-07-29' },
+  ], NOMBRES_ME, TODAS, CERRADAS_ME)
+  assert.equal(pagos[0]?.historico, true)
+  // Y su contrato sale de los totales, que es la otra mitad de la regla del 27/08.
+  assert.equal(contratoDelConjunto(agruparPorObra(pagos),
+    new Map([['bsa-adicional', { monto: 5_974_200, moneda: 'ARS' as const }]])), null)
 })

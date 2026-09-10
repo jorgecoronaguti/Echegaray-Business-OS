@@ -27,10 +27,21 @@ export type ObraCerrada = {
   recibos: number
 }
 
+/**
+ * CUÁNTOS MESES DURÓ. `null` cuando falta una fecha o cuando no llega a un mes.
+ *
+ * SE CUENTA SOBRE EL TEXTO DE LA FECHA, NO SOBRE UN `Date`. `new Date('2026-05-01')` es medianoche
+ * UTC, que en San Juan (UTC−3) es el 30/04 a las 21:00: `getMonth()` devolvía ABRIL y una obra de
+ * mayo a agosto se publicaba como «4 meses». Una fecha sin hora es un día del calendario, no un
+ * instante, y tratarla como instante corre el mes en la cara del cliente.
+ */
 export function mesesEntre(desde: string | null, hasta: string | null): number | null {
+  const partes = (f: string) => [Number(f.slice(0, 4)), Number(f.slice(5, 7))]
   if (!desde || !hasta) return null
-  const a = new Date(desde), b = new Date(hasta)
-  const m = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth())
+  const [ay, am] = partes(desde)
+  const [by, bm] = partes(hasta)
+  if (!ay || !am || !by || !bm) return null
+  const m = (by - ay) * 12 + (bm - am)
   return m > 0 ? m : null
 }
 
