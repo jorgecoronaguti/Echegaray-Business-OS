@@ -1,9 +1,17 @@
 // LA ECONOMÍA DE CADA OBRA, LEÍDA DE UNA SOLA FUENTE: `public.obra_economia_cartera`.
 //
-// Es lo que la pestaña OBRAS del Flujo de Caja publica por obra —contratado, costo MO, costo
-// materiales, margen— persistido por `orquestador/scripts/obras-economia-sync.mjs`. La vista
-// devuelve `contratado` y `margen` en NULL a quien no ve economía (decisión 19/08: el jefe de obra
-// no ve montos de venta); los costos los ve todo rol interno, igual que `obra_panel.costo_real`.
+// Es lo que la pestaña OBRAS del Flujo de Caja publica por obra, persistido por
+// `orquestador/scripts/obras-economia-sync.mjs`. La vista devuelve `contratado` en NULL a quien no
+// ve economía (decisión 19/08: el jefe de obra no ve montos de venta).
+//
+// ═══ ACÁ SE LEÍAN TAMBIÉN `costo_mo`, `costo_materiales` Y `margen` (10/09/2026, orden del dueño) ═══
+//
+// «Administración es un CRM y Obra un ERP: todo lo pertinente a datos de clientes va en CRM, no
+// mezcles cosas con obras.» El costo de una obra es del ERP: se decide contra el avance, el
+// certificado y el costo real, y ninguna de esas tres cosas se mira desde la ficha de un cliente.
+// Mientras esta lectura siguiera trayendo los tres campos, la próxima pantalla de Clientes los iba
+// a encontrar servidos y la columna volvería sola — es exactamente lo que pasó con Margen.
+// `definiciones.json · costo_de_obra` lo prohíbe ahora con un test.
 //
 // «sin contrato» dejó de existir acá: si OBRAS no tiene el dato, la pantalla dice «sin precio en
 // OBRAS», que es lo único cierto. Un cero diría que la obra vale cero.
@@ -13,9 +21,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 export interface EconomiaDeObra {
   obra_canonica_id: string
   contratado: number | null
-  costo_mo: number | null
-  costo_materiales: number | null
-  margen: number | null
   /**
    * POR QUÉ CAMINO SALIÓ EL CONTRATADO (`obra_economia_cartera.origen`). No es metadato: cambia lo
    * que el número SIGNIFICA, y hasta el 10/09/2026 la pantalla los dibujaba todos iguales.
@@ -44,16 +49,13 @@ export async function getEconomiaDeObras(
 ): Promise<Map<string, EconomiaDeObra> | null> {
   const { data, error } = await supabase
     .from('obra_economia_cartera')
-    .select('obra_canonica_id, contratado, costo_mo, costo_materiales, margen, origen')
+    .select('obra_canonica_id, contratado, origen')
   if (error) return null
   const m = new Map<string, EconomiaDeObra>()
   for (const f of (data ?? []) as Record<string, unknown>[]) {
     m.set(String(f.obra_canonica_id), {
       obra_canonica_id: String(f.obra_canonica_id),
       contratado: aNumero(f.contratado),
-      costo_mo: aNumero(f.costo_mo),
-      costo_materiales: aNumero(f.costo_materiales),
-      margen: aNumero(f.margen),
       origen: f.origen == null ? null : String(f.origen),
     })
   }
@@ -80,48 +82,16 @@ export function aNumero(v: unknown): number | null {
 // tienen sus propios tests allá. Dejar acá una función que nadie llama sería verde que no cuida
 // nada, y peor: la próxima pantalla la encontraría servida y la columna volvería sola.
 
-/**
- * SUMA QUE NO INVENTA: si NINGUNA fila trae el dato, el total es `null`; si alguna lo trae, suma las
- * que lo traen. Un total sobre filas parcialmente vacías se marca con `parcial` para que la
- * pantalla lo diga.
- */
-export function sumaConHuecos(valores: (number | null)[]): { total: number | null; parcial: boolean } {
-  const con = valores.filter((v): v is number => v !== null)
-  if (con.length === 0) return { total: null, parcial: false }
-  return { total: con.reduce((a, b) => a + b, 0), parcial: con.length < valores.length }
-}
+// ═══ `sumaConHuecos` Y `pctTexto` SE RETIRARON CON SU ÚLTIMO CONSUMIDOR (10/09/2026) ═══
+//
+// `sumaConHuecos` sólo sumaba las dos columnas de costo de la cartera (MO ppto. · Mat. ppto.), que
+// se fueron con la orden del dueño de sacar el ERP del CRM; `pctTexto` ya había quedado sin llamador
+// cuando se retiró Margen. Una función exportada que nadie llama no es inofensiva: es la pieza
+// servida que hace que la columna vuelva sin que nadie la decida — pasó con el margen.
 
-/** `–12,3 %` / `18 %`: el margen en porcentaje, sin decimales falsos. */
-export function pctTexto(p: number | null): string | null {
-  if (p === null) return null
-  return `${p.toLocaleString('es-AR', { maximumFractionDigits: 0 })} %`
-}
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// EL MARGEN DE UNA FILA — vivía en `chipsCartera.ts`, que se retiró el 10/09/2026 junto con los
-// chips «sin CUIT · sin teléfono · sin contrato» que el dueño mandó sacar de la pantalla. La
-// regla del margen no era un chip: es economía de la obra, y su casa es este archivo — que además
-// era el otro que declaraba `sin precio en OBRAS`, la misma frase escrita dos veces.
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/**
- * EL MARGEN DE LA FILA. UNA definición, y `null` cuando no se puede afirmar.
- *
- * Manda lo que OBRAS publica (`obra_economia_cartera.margen`): es el número que el dueño mira en el
- * Sheet, y recalcularlo acá sería una segunda versión del mismo concepto. Sólo si la vista NO lo
- * trae se deriva, y con la MISMA fórmula que el rótulo de la columna declara —contratado − MO −
- * materiales—, que es lo que hace que las dos no puedan divergir.
- *
- * SI FALTA CUALQUIERA DE LOS TRES, EL RESULTADO ES `null`. Tratar un hueco como cero publicaría el
- * margen entero como ganancia el día que el costo de materiales no esté cargado.
- */
-export function margenDeLaFila(e: {
-  margenPublicado: number | null
-  contratado: number | null
-  costoMo: number | null
-  costoMateriales: number | null
-}): number | null {
-  if (e.margenPublicado !== null) return e.margenPublicado
-  if (e.contratado === null || e.costoMo === null || e.costoMateriales === null) return null
-  return e.contratado - e.costoMo - e.costoMateriales
-}
+// ═══ `margenDeLaFila` TAMBIÉN SE FUE (10/09/2026) ═══
+//
+// Era la última función de este módulo que restaba costos contra el contratado. Se retiró con las
+// dos lecturas de costo: una regla sin consumidor es verde que no cuida nada, y servida como estaba
+// era la invitación a que la columna volviera. El margen se mide en `features/obras`, contra el
+// costo REAL y el forecast, y tiene sus tests allá.

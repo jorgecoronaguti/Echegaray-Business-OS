@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { aNumero, sumaConHuecos } from './economiaObras.ts'
+import { aNumero } from './economiaObras.ts'
 
 // ═══ LO QUE ESTE ARCHIVO YA NO PRUEBA, Y POR QUÉ ═══
 //
@@ -22,9 +22,6 @@ test('numeric de PostgREST llega como texto; null y vacío se quedan null, nunca
   assert.equal(aNumero(0), 0)
 })
 
-test('suma con huecos: nada → null; algunos → suma marcada parcial; todos → suma', () => {
-  assert.deepEqual(sumaConHuecos([null, null]), { total: null, parcial: false })
-  assert.deepEqual(sumaConHuecos([10, null, 5]), { total: 15, parcial: true })
-  assert.deepEqual(sumaConHuecos([10, 5]), { total: 15, parcial: false })
-  assert.deepEqual(sumaConHuecos([]), { total: null, parcial: false })
-})
+// `sumaConHuecos` se retiró el 10/09/2026 con su único consumidor —las dos columnas de costo de la
+// cartera, que salieron del CRM por orden del dueño—, y su test se fue con ella: un test de una
+// función que nadie llama es verde que no cuida nada.

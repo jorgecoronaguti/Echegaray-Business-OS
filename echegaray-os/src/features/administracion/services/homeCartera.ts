@@ -34,7 +34,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ClientePanel } from '@/features/clientes/types'
-import { sumaConHuecos, type EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
+import type { EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
 import type { EconomiaDeCliente } from '../../clientes/services/economiaCliente.ts'
 
 /** Una obra `activa`, tal como la lee la cartera. Es un subconjunto de `obra_panel`. */
@@ -66,14 +66,34 @@ export interface ObraEnCurso {
    * BSA publica $14.120.243 por ese camino mientras el cliente mandó 5 OC por $49.886.583 c/IVA.
    */
   origenContratado: string | null
-  costoMo: number | null
-  costoMateriales: number | null
   certificacion: EstadoCertificacion
-  /** El último parte de la obra, `YYYY-MM-DD`. `null` = ninguno registrado. */
-  /** LO COBRADO DE ESTA OBRA, percibido y SIN IVA (`obra_cobranza.cobrado_neto`) — el único
-   *  comparable contra lo contratado, que tampoco lo lleva. `null` = ninguna cobranza imputada a la
-   *  obra, que NO es «no cobró»: hoy Cobranzas anota casi todo el cobro contra el cliente. */
-  cobrado: number | null
+  /**
+   * ═══ LAS CUATRO COLUMNAS DE LA PESTAÑA OBRAS, EN LA FILA DEL TRABAJO (10/09/2026) ═══
+   *
+   * El dueño cruzó `/clientes` contra la pestaña OBRAS del Flujo de Caja y los números no eran los
+   * mismos: la app publicaba el cobrado NETO en una columna que en OBRAS es el TOTAL con IVA, así
+   * que las nueve obras se leían mal. La fila del trabajo reproduce ahora la fila de OBRAS —
+   * Contratado (neto) · Cobrado (total) · Por cobrar · ▲ Vencido · Próx. cobro— con la MISMA
+   * definición: la del generador `orquestador/scripts/obras-pestana.mjs`.
+   *
+   * LO COBRADO, BRUTO Y CON IVA (`obra_cobranza.cobrado`). `null` = ninguna cobranza imputada a la
+   * obra, que NO es «no cobró»: hoy Cobranzas anota casi todo el cobro contra el cliente.
+   */
+  cobradoTotal: number | null
+  /** Lo mismo SIN IVA (`obra_cobranza.cobrado_neto`). NO se dibuja: es el único comparable contra
+   *  lo contratado y queda leído para quien tenga que restar, nunca para la columna «Cobrado». */
+  cobradoNeto: number | null
+  /** Lo pendiente de cobro de esta obra, BRUTO (`obra_cobranza.por_cobrar_proyectado`). */
+  porCobrar: number | null
+  /**
+   * LO VENCIDO, con el reloj de `orquestador/lib/cobranzas-vencido.mjs`: emisión + 30 días, NO
+   * `fecha_cobro < hoy` —que se re-tipea cada vez que el cobro se posterga y está condenado a cero
+   * por construcción—. `null` = la vista todavía no publica la columna, y entonces la celda calla:
+   * un 0 acá diría que este cliente no debe nada vencido.
+   */
+  vencido: number | null
+  /** Cuándo y cómo se espera el próximo cobro. `null` = la vista no lo publica todavía. */
+  proximo: ProximoCobro | null
   /** Cómo llegó ese número a esta obra. `cliente` = no se pudo repartir y la fila lo dice. */
   imputacion: Imputacion | null
   /** ¿La base puede repartir el cobro por obra? `false` = la columna `imputacion` no existe todavía
@@ -120,8 +140,6 @@ export interface ClienteEnCartera {
   /** Lo contratado de TODAS sus obras no fusionadas (`cliente_economia.contratado`), incluidas las
    *  cerradas. Es el denominador de la barra de cobro: lo cobrado del cliente no distingue obra. */
   contratadoTotal: number | null
-  costoMo: number | null
-  costoMateriales: number | null
   /**
    * LO COBRADO DEL CLIENTE, ACUMULADO Y SIN IVA (`cliente_economia.cobrado_neto_total`).
    *
@@ -130,10 +148,14 @@ export interface ClienteEnCartera {
    * obra, así que casi ninguna cobranza llega a una obra. El cobro del cliente sí existe y sale de
    * `cliente_id`.
    *
-   * SIN IVA porque lo contratado tampoco lo lleva: restar o dividir bruto contra neto daría clientes
-   * que cobraron más de lo que contrataron.
+   * SE PUBLICAN LAS DOS ESPECIES Y LA COLUMNA DIBUJA EL TOTAL (10/09/2026). La pestaña OBRAS —que
+   * es contra la que el dueño lee esta pantalla— publica «Cobrado (total)»: con IVA. Mientras la
+   * app dibujaba el neto en una columna llamada igual, los dos sistemas decían números distintos
+   * del mismo hecho. El neto sigue leído porque es el único comparable contra lo contratado, que
+   * no lleva IVA — pero eso es una RESTA, no la columna.
    */
-  cobrado: number | null
+  cobradoTotal: number | null
+  cobradoNeto: number | null
   /** `contratado (todas) − cobrado neto`. `null` si falta cualquiera de los dos. */
   pendienteContractual: number | null
   /**
@@ -219,20 +241,38 @@ export async function getCobradoPorObra(
   // NO ES UN «por las dudas» ni un patrón para copiar: es el ÚNICO caso del módulo, y sólo se
   // tolera la AUSENCIA de una columna nueva. Cualquier otro error —permiso, red, RLS— sigue
   // devolviendo `null`, que es «no pude leer» y no «no hay cobros».
-  const conImputacion = await supabase.from('obra_cobranza').select('obra_id, cobrado_neto, imputacion')
-  const disponible = conImputacion.error?.code !== COLUMNA_INEXISTENTE
-  const { data, error } = disponible
-    ? conImputacion
-    : await supabase.from('obra_cobranza').select('obra_id, cobrado_neto')
+  // ═══ SE BAJA UN ESCALÓN POR VEZ, Y NO DOS ═══
+  //
+  // Las columnas nuevas no llegan todas juntas: `imputacion` la trae una migración y
+  // `vencido`/`proximo_cobro` otra. Con un solo reintento «todo o nada», el día que existiera
+  // `imputacion` pero no `vencido` la lectura caería hasta la forma más vieja y APAGARÍA la columna
+  // Cobrado de todas las obras — un dato que la base ya tiene, perdido por la forma de pedirlo.
+  type Leido = { data: unknown; error: { code?: string } | null }
+  let leido: Leido = { data: null, error: null }
+  let escalon = 0
+  for (; escalon < ESCALONES_COBRO.length; escalon++) {
+    leido = await supabase.from('obra_cobranza').select(ESCALONES_COBRO[escalon]) as unknown as Leido
+    if (leido.error?.code !== COLUMNA_INEXISTENTE) break
+  }
+  const { data, error } = leido
   if (error) return null
+  // «Puede repartir» = la vista publica `imputacion`, o sea que no hizo falta bajar hasta el último
+  // escalón, que es el único sin esa columna.
+  const disponible = escalon < ESCALONES_COBRO.length - 1
   const por = new Map<string, CobroDeObra>()
-  for (const f of (data ?? []) as { obra_id: string; cobrado_neto: number | null; imputacion?: string | null }[]) {
+  for (const f of (data ?? []) as unknown as FilaCobro[]) {
     // NULL cuando la obra tiene filas de Cobranzas pero ninguna cobrada. Eso NO es cero cobrado: es
     // que todavía no entró nada, y la barra lo dibuja como 0 sólo si la obra aparece con un número.
     // Un null no se guarda: el mapa dice quién tiene cobro, no quién no.
-    if (f.cobrado_neto == null) continue
+    if (f.cobrado_neto == null && f.por_cobrar_proyectado == null) continue
     por.set(f.obra_id, {
-      cobrado: Number(f.cobrado_neto),
+      total: numero(f.cobrado),
+      neto: numero(f.cobrado_neto),
+      porCobrar: numero(f.por_cobrar_proyectado),
+      vencido: numero(f.vencido),
+      proximo: f.proximo_cobro || f.proximo_medio
+        ? { fecha: f.proximo_cobro ?? null, medio: f.proximo_medio?.trim() || null }
+        : null,
       imputacion: esImputacion(f.imputacion) ? f.imputacion : null,
     })
   }
@@ -241,6 +281,41 @@ export async function getCobradoPorObra(
 
 /** El código de PostgREST/Postgres para «esa columna no existe». */
 const COLUMNA_INEXISTENTE = '42703'
+
+/**
+ * LO QUE SE LE PIDE A `obra_cobranza`, Y LO QUE SE LE PEDÍA ANTES.
+ *
+ * `imputacion`, `vencido`, `proximo_cobro` y `proximo_medio` las agrega la migración que reparte el
+ * cobro por obra y que traduce a Postgres el criterio de vencido del generador de la pestaña OBRAS
+ * (emisión + 30 días, `orquestador/lib/cobranzas-vencido.mjs`). Se piden PRIMERO: el día que la
+ * vista las publique, las columnas del CRM encienden solas y sin tocar código. Mientras no existan,
+ * PostgREST devuelve 42703 y se vuelve a pedir la forma vieja — y las celdas quedan VACÍAS, que es
+ * lo único cierto: un 0 en «Vencido» afirmaría que no hay mora.
+ */
+const ESCALONES_COBRO = [
+  'obra_id, cobrado, cobrado_neto, por_cobrar_proyectado, vencido, proximo_cobro, proximo_medio, imputacion',
+  'obra_id, cobrado, cobrado_neto, por_cobrar_proyectado, imputacion',
+  'obra_id, cobrado, cobrado_neto, por_cobrar_proyectado',
+] as const
+
+/** La fila cruda. Todo opcional salvo la clave: la forma vieja no trae la mitad de los campos. */
+interface FilaCobro {
+  obra_id: string
+  cobrado?: unknown
+  cobrado_neto?: unknown
+  por_cobrar_proyectado?: unknown
+  vencido?: unknown
+  proximo_cobro?: string | null
+  proximo_medio?: string | null
+  imputacion?: unknown
+}
+
+/** PostgREST devuelve `numeric` como texto. Un hueco NUNCA se vuelve cero. */
+function numero(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
 
 const IMPUTACIONES = ['oc', 'alias', 'cliente'] as const
 function esImputacion(v: unknown): v is Imputacion {
@@ -286,9 +361,24 @@ export async function getContratosDeLaCartera(
  */
 export type Imputacion = 'oc' | 'alias' | 'cliente' | 'unica-obra'
 
+/** Cuándo y con qué medio se espera el próximo cobro de una obra — la columna «Próx. cobro». */
+export interface ProximoCobro {
+  /** `YYYY-MM-DD`. `null` = la vista lo publica sin fecha. */
+  fecha: string | null
+  /** «Transferencia», «Efectivo», «Cheque»… tal como lo escribe Cobranzas. */
+  medio: string | null
+}
+
 export interface CobroDeObra {
-  /** Percibido y SIN IVA (`obra_cobranza.cobrado_neto`). */
-  cobrado: number
+  /** BRUTO, con IVA (`obra_cobranza.cobrado`). Es lo que OBRAS publica como «Cobrado». */
+  total: number | null
+  /** SIN IVA (`obra_cobranza.cobrado_neto`). El comparable contra lo contratado. */
+  neto: number | null
+  /** Pendiente de cobro, bruto (`obra_cobranza.por_cobrar_proyectado`). */
+  porCobrar: number | null
+  /** Vencido con el reloj de la emisión + 30 días. `null` = la vista no lo publica todavía. */
+  vencido: number | null
+  proximo: ProximoCobro | null
   imputacion: Imputacion | null
 }
 
@@ -341,7 +431,7 @@ export interface CobroPorObra {
 export function atribuirAlaUnicaObra(enCurso: ObraEnCurso[]): ObraEnCurso[] {
   if (enCurso.length !== 1) return enCurso
   const [o] = enCurso
-  if (o.imputacion !== 'cliente' || o.cobrado === null) return enCurso
+  if (o.imputacion !== 'cliente' || o.cobradoTotal === null) return enCurso
   return [{ ...o, imputacion: 'unica-obra' }]
 }
 
@@ -366,7 +456,7 @@ export function sinRepartir({ obrasDelCliente, cobrado, yaAtribuidas }: {
   for (const o of obrasDelCliente) {
     if (yaAtribuidas.has(o.obra_id)) continue
     const c = cobrado.por.get(o.obra_id)
-    if (c?.imputacion === 'cliente' && c.cobrado > 0) total += c.cobrado
+    if (c?.imputacion === 'cliente' && (c.total ?? 0) > 0) total += c.total ?? 0
   }
   return total > 0 ? total : null
 }
@@ -499,13 +589,18 @@ export function armarCartera({
         jefe: o.jefe_obra?.trim() || null,
         contratado,
         origenContratado: e?.origen ?? null,
-        costoMo: e?.costo_mo ?? null,
-        costoMateriales: e?.costo_materiales ?? null,
         certificacion: certificacionDe(certificados, o.obra_id),
         // TODO O NADA: sin `imputacion` en la base, la fila de la obra no publica cobro. Se corta
         // ACÁ y no en el componente —dos pantallas podrían dibujar la misma fila— y así el control
         // se prueba sin montar nada.
-        cobrado: cobroDisponible ? cobrado?.por.get(o.obra_id)?.cobrado ?? null : null,
+        cobradoTotal: cobroDisponible ? cobrado?.por.get(o.obra_id)?.total ?? null : null,
+        cobradoNeto: cobroDisponible ? cobrado?.por.get(o.obra_id)?.neto ?? null : null,
+        // POR COBRAR Y VENCIDO NO ENTRAN EN «TODO O NADA», y es una diferencia con el cobrado: no
+        // hay nada que repartir entre obras: la vista los publica por obra o no los publica. Si
+        // faltan, la celda calla — nunca dice cero.
+        porCobrar: cobrado?.por.get(o.obra_id)?.porCobrar ?? null,
+        vencido: cobrado?.por.get(o.obra_id)?.vencido ?? null,
+        proximo: cobrado?.por.get(o.obra_id)?.proximo ?? null,
         imputacion: cobroDisponible ? cobrado?.por.get(o.obra_id)?.imputacion ?? null : null,
         cobroDisponible,
       }
@@ -530,8 +625,6 @@ export function armarCartera({
     // nada. `cliente_economia` es la única, y acá sólo se lee — si no se pudo leer, las columnas
     // dicen «—» en vez de caer a una segunda cuenta que nadie más hace igual.
     const ec = economiaCliente?.get(c.cliente_id) ?? null
-    const tMo = sumaConHuecos(enCurso.map((o) => o.costoMo))
-    const tMat = sumaConHuecos(enCurso.map((o) => o.costoMateriales))
     // «TIENE CONTRATO» ES UN PAPEL, NO UN MONTO (09/09/2026). Antes esta fila derivaba
     // «sin contrato» de `contratado === null`, que es el hueco de PRECIO de OBRAS: por eso el mismo
     // cliente aparecía con $156.174.253 contratado en una pantalla y «sin contrato» en la otra.
@@ -547,9 +640,8 @@ export function armarCartera({
       obrasSinPrecio: ec?.n_obras_sin_precio ?? null,
       contratado: ec?.contratado_en_curso ?? null,
       contratadoTotal: ec?.contratado ?? null,
-      costoMo: tMo.total,
-      costoMateriales: tMat.total,
-      cobrado: ec?.cobrado_neto_total ?? null,
+      cobradoTotal: ec?.cobrado_total ?? null,
+      cobradoNeto: ec?.cobrado_neto_total ?? null,
       cobradoSinObra,
       pendienteContractual: ec?.pendiente_contractual ?? null,
       enCurso: enCursoAtribuido,
