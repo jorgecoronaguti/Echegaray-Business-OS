@@ -63,6 +63,7 @@ import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from 
 import { oracion } from '@/shared/utils/texto'
 import type { PersonaEnDirectorio } from '../types'
 import { agruparPorRolOrganizacional, categoriaVisible, esJefeDeObra } from '../services/vocabularioPersona'
+import { RotuloDeGrupo } from './RotuloDeGrupo'
 import {
   SIN_MARCAR, hayMarcaDeHoy, horasVisibles, ofertaDeMarcar, rotuloHoy,
   type EstadoDePapeles, type MarcaDeHoy,
@@ -416,30 +417,6 @@ function CeldaHoy({ clasificacion, ficho }: { clasificacion: ClasificacionDelDia
           sirve». La columna HOY dice sólo la presencia; la cantidad ya tiene su columna (HH MES) y su
           pantalla (Asistencia). */}
     </>
-  )
-}
-
-/**
- * EL RÓTULO DE SECCIÓN — un filo y una palabra, no una tarjeta.
- *
- * Es el mismo rótulo de 11px versalita tenue que ya usan las columnas (`RotuloCol`): dentro de la
- * lista no puede aparecer un tercer nivel tipográfico. Va SIN card, sin fondo y sin icono — un
- * bloque con caja por grupo convertiría una lista de trabajo en dos tableros.
- *
- * El primero no lleva filo arriba: el encabezado de columnas ya trae el suyo y dos líneas seguidas
- * a 8px se leen como un borde grueso. Los que siguen sí, con 8px de aire, que es lo que separa un
- * grupo del anterior sin abrir un hueco.
- */
-function RotuloDeGrupo({ texto, primero }: { texto: string; primero: boolean }) {
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', height: 32,
-      marginTop: primero ? 0 : 8,
-      paddingTop: primero ? 0 : 8,
-      borderTop: primero ? undefined : `1px solid ${V.linea}`,
-    }}>
-      <RotuloCol>{texto}</RotuloCol>
-    </div>
   )
 }
 

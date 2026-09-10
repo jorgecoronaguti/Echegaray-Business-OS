@@ -46,6 +46,13 @@ export interface PersonaDeGrilla {
    * mismo corte da dos respuestas y se cree la última que alguien miró.
    */
   modalidad?: ModalidadDeLiquidacion | null
+  /**
+   * SI ES JEFE DE OBRA — el mismo `esJefeDeObra(persona_directorio.puesto)` que separan el plantel
+   * y la asistencia. La grilla se dibuja en los mismos dos grupos y en el mismo orden que las otras
+   * dos solapas de Personal: el dueño lo pidió (10/09/2026) porque una lista que cambia de orden
+   * entre pantallas obliga a buscar a cada persona de nuevo.
+   */
+  esJefe?: boolean
 }
 
 /** Lo que se dibuja en una celda. `horas` viaja para el `tabular-nums`; `texto` para la A y la L. */
@@ -72,7 +79,12 @@ export interface FilaDeGrilla {
   diasSinMotivo: number
   diasSinCargar: number
   horasDeLicencia: number
+  /** Jefe de obra según `esJefeDeObra(puesto)`: el mismo corte que Plantel y Asistencia. */
+  esJefe: boolean
 }
+
+/** El orden del plantel y de la asistencia: alfabético por nombre, en español. */
+const porNombre = (a: PersonaDeGrilla, b: PersonaDeGrilla) => a.nombre.localeCompare(b.nombre, 'es')
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -150,7 +162,9 @@ export interface DatosDeGrilla {
 export function filasDeGrilla(d: DatosDeGrilla): FilaDeGrilla[] {
   const dias = diasDeLaQuincenaSinDomingos(d.quincena)
   const esperadas = horasEsperadasDeQuincena(d.quincena)
-  return d.personas.map((p) => {
+  // MISMO ORDEN QUE PLANTEL Y ASISTENCIA. El directorio llegaba en el orden de la base y la grilla
+  // lo publicaba tal cual: la misma persona estaba en un lugar distinto en cada solapa.
+  return [...d.personas].sort(porNombre).map((p) => {
     const regs = d.registros.filter((r) => d.personaDeRegistro(r) === p.id)
     const pres = new Map(
       d.presencias.filter((x) => d.personaDePresencia(x) === p.id).map((x) => [x.fecha, x]),
@@ -159,6 +173,7 @@ export function filasDeGrilla(d: DatosDeGrilla): FilaDeGrilla[] {
     const base = {
       personaId: p.id,
       nombre: p.nombre,
+      esJefe: p.esJefe === true,
       celdas,
       cargadas: r2(celdas.reduce((s, c) => s + (c.horas ?? 0), 0)),
       esperadas,

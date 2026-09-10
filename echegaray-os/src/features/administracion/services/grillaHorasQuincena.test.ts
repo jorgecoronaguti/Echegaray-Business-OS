@@ -131,3 +131,21 @@ test('LO TRABAJADO LE SIGUE GANANDO A LA LICENCIA DEL MISMO DÍA — sin doble c
   assert.equal(fila.celdas[0].marca, 'horas')
   assert.equal(fila.celdas[0].horas, 9)
 })
+
+test('LA GRILLA ORDENA COMO EL PLANTEL Y LA ASISTENCIA: POR NOMBRE, Y PUBLICA QUIÉN ES JEFE', () => {
+  // EL DEFECTO QUE ATRAPA (dueño, 10/09/2026): el directorio llegaba en el orden de la base y la
+  // grilla de Horas lo publicaba tal cual —Maldonado, Nievas, Quiroga, Reta, Ochoa…— mientras
+  // Plantel y Asistencia iban alfabéticas y separadas en Jefes / Obreros. La misma persona estaba
+  // en un lugar distinto en cada solapa.
+  const filas = filasDeGrilla(base({
+    personas: [
+      { id: 'p3', nombre: 'Reta', valorHora: 1, convenio: null },
+      { id: 'p1', nombre: 'Álvarez', valorHora: 1, convenio: null, esJefe: true },
+      { id: 'p2', nombre: 'Maldonado', valorHora: 1, convenio: null },
+    ],
+    personaDeRegistro: () => 'nadie',
+    personaDePresencia: () => 'nadie',
+  }))
+  assert.deepEqual(filas.map((f) => f.nombre), ['Álvarez', 'Maldonado', 'Reta'], 'alfabético en español: la tilde no manda a Álvarez al final')
+  assert.deepEqual(filas.map((f) => f.esJefe), [true, false, false])
+})

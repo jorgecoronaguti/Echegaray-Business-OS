@@ -23,6 +23,8 @@ import type {
   CeldaDeGrilla, EstadoDeFila, FilaDeGrilla, ResumenDeGrilla,
 } from '../../services/grillaHorasQuincena'
 import { ALTO_LIQ } from './solapas/tabla'
+import { agruparPorRolOrganizacional } from '../../services/vocabularioPersona'
+import { RotuloDeGrupo } from '../RotuloDeGrupo'
 
 const COLUMNAS = 'minmax(230px,1fr) repeat(13,30px) 50px 56px 58px'
 
@@ -250,8 +252,16 @@ export function GrillaHorasQuincena({
             <div style={{ textAlign: 'right' }}>Estado</div>
           </div>
 
-          {filas.map((f) => (
-            <Fila key={f.personaId} fila={f} abrir={abrir} abierta={f.personaId === abierta} />
+          {/* LOS MISMOS DOS GRUPOS QUE PLANTEL Y ASISTENCIA — Jefes de obra arriba, Obreros abajo,
+              con el mismo rótulo y el mismo orden alfabético adentro. `esJefe` ya viene resuelto por
+              el servidor con `esJefeDeObra(puesto)`; con un solo grupo no hay rótulo, como allá. */}
+          {agruparPorRolOrganizacional(filas, (f) => f.esJefe).map((g, iGrupo, grupos) => (
+            <div key={g.clave} data-testid={`grupo-${g.clave}`}>
+              {grupos.length > 1 && <RotuloDeGrupo texto={g.rotulo} primero={iGrupo === 0} />}
+              {g.integrantes.map((f) => (
+                <Fila key={f.personaId} fila={f} abrir={abrir} abierta={f.personaId === abierta} />
+              ))}
+            </div>
           ))}
 
           <div style={{

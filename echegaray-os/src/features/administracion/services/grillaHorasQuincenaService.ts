@@ -28,6 +28,7 @@ import type { PresenciaDeQuincena, RegistroDeQuincena } from './liquidacionQuinc
 import { modalidadDe, type ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
 import { correrQuincena, type Quincena } from './quincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
+import { esJefeDeObra } from './vocabularioPersona.ts'
 
 export interface DatosDePersona {
   id: string
@@ -175,6 +176,8 @@ export async function getDatosDeLaSolapaHoras(
     personas: directorioFilas.map((p) => ({
       id: p.id,
       nombre: p.nombre_completo,
+      // EL MISMO CORTE QUE EL PLANTEL Y LA ASISTENCIA: `esJefeDeObra(puesto)`, una sola definición.
+      esJefe: esJefeDeObra(p.puesto),
       valorHora: tarifaDe.get(p.id)?.valorHora ?? null,
       netoMensual: tarifaDe.get(p.id)?.netoMensual ?? null,
       convenio: legajoDe.get(p.id)?.convenio_colectivo ?? null,
