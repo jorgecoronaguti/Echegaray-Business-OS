@@ -24,8 +24,13 @@ test('la fila de ME - PLAYÓN DE AZUFRE muestra el total de sus OC y abre su det
   // «OC 2173 · 11/08 · $78.650.000» vivía debajo del nombre de la obra, en monoespaciado, y el
   // dueño lo llamó ruido: competía con las siete columnas de plata de la derecha. La fila publica
   // el TOTAL en su columna y el detalle se abre a un clic, sin salir de la lista.
-  await expect(fila.getByTestId('chip-orden')).toHaveCount(0)
-  const total = fila.getByTestId('total-oc-obra')
+  // LOS NÚMEROS DE LAS OC ESTÁN, y son lo que el dueño pidió ver a las 16:20 («esta pantalla sigue
+  // sin mostrar el nº de OC»): uno por orden, debajo del nombre, cada uno abriendo su PDF. Este caso
+  // esperaba CERO desde la mañana, cuando se habían retirado por ruidosos — el error fue sacarlos.
+  expect(await fila.getByTestId('chip-orden').count()).toBeGreaterThan(0)
+  // EL TOTAL DE LA COLUMNA OC SALE DE `obra_economia_cartera` (la ventana que acota lo contratado)
+  // y ya no de los papeles: el histórico de una obra fusionada se dice en el `title` y no se suma.
+  const total = fila.getByTestId('oc-trabajo')
   await expect(total).toContainText('1 OC')
   // EL IMPORTE. Hasta el 10/09 la OC 2173 estaba guardada por $ 78,65 —el PDF de Messina imprime
   // «78,650,000.00» en formato norteamericano y el parser leía es_AR—, así que este caso da rojo
@@ -34,40 +39,37 @@ test('la fila de ME - PLAYÓN DE AZUFRE muestra el total de sus OC y abre su det
   // Y no un conteo pelado: «OC ·1» no identifica nada.
   await expect(fila).not.toContainText('OC ·1')
 
-  // ═══ EL DETALLE SIGUE ESTANDO, A UN CLIC ═══
+  // ═══ EL DETALLE SE ABRE DESDE LA FILA, DENTRO DEL CRM (10/09/2026 17:15) ═══
   //
-  // Sacar el ruido no puede ser sacar el acceso. Se prueban las DOS mitades del acceso por
-  // separado, y no el clic:
+  // La fila iba a `/obras/<id>` y sacaba al dueño del módulo de un clic. Ahora abre el panel
+  // lateral de esta misma pantalla, y el botón de la celda se retiró: dos puertas al mismo panel,
+  // una encima de la otra, eran dos zonas de clic para lo mismo.
   //
-  //   1. que el botón exista y prometa lo que va a mostrar (su `aria-label`);
-  //   2. que el DESTINO —`?ordenes=<obra_id>`, la URL exacta que el botón empuja— traiga el número
-  //      y el importe de la OC.
-  //
-  // POR QUÉ NO SE HACE CLIC. Medido el 10/09/2026 contra este `next dev --webpack`: la página NO
-  // HIDRATA — cero nodos con `__reactFiber$` en `/login`, en `/administracion/personas` y acá, o
-  // sea en rutas que este cambio no toca. Sin hidratación, el `<button>` que corta el evento no
-  // tiene handler y el clic cae en el `<Link>` de la fila: el caso mediría el servidor de
-  // desarrollo, no la pantalla. El clic real queda por verificar en producción, y está declarado
-  // como límite en el informe de la rama.
-  const boton = fila.getByTestId('abrir-ordenes-obra')
-  await expect(boton).toBeVisible()
-  await expect(boton).toHaveAttribute('aria-label', /órdenes de compra de ME - PLAYÓN DE AZUFRE/i)
+  // SE PRUEBA EL DESTINO Y NO EL CLIC. Medido el 10/09/2026 contra este `next dev --webpack`: la
+  // página NO HIDRATA —cero nodos con `__reactFiber$` en rutas que este cambio no toca—, así que
+  // un clic mediría el servidor de desarrollo y no la pantalla. Queda declarado como límite.
+  const fila2 = page.getByTestId('fila-obra').filter({ hasText: 'PLAYÓN DE AZUFRE' }).first()
+  await expect(fila2).toHaveAttribute('href', /ordenes=messina-playon-azufre/)
 
   await page.goto('/clientes?ordenes=messina-playon-azufre')
   const panel = page.getByTestId('panel-ordenes')
   await expect(panel).toBeVisible({ timeout: 30000 })
   await expect(panel).toContainText('2173')
   await expect(panel).toContainText('78.650.000')
-  // NINGUNA ORDEN DE PAGO EN LA FILA DE LA OBRA: la OP 5156 ($39.325.000) existe y vive en la ficha
-  // del cliente. Que no esté en la lista es la decisión, no un dato que falte.
-  await expect(fila).not.toContainText('5156')
+  // ═══ LA OP TIENE SU PROPIA COLUMNA (dueño, 10/09/2026 18:12: «4) OP — total c/IVA y conteo») ═══
+  //
+  // Hasta hoy este caso exigía que la OP NO estuviera en la fila. El dueño la pidió como columna, y
+  // con una sola la celda dice cuál —«OP 5156»—. Lo que sigue prohibido es que la OP engorde el
+  // total de las OC: son dos papeles distintos y el de la izquierda es lo que el cliente ENCARGÓ.
+  await expect(fila.getByTestId('total-op-obra')).toContainText('5156')
+  await expect(total).not.toContainText('39.325.000')
   await page.goto('/clientes')
   await expect(page.getByTestId('clientes-tabla')).toBeVisible()
 
   await page.screenshot({ path: 'tests/capturas/clientes-ordenes-1440.png', fullPage: false })
 })
 
-test('la ficha del cliente muestra las OC por obra, y las obras CERRADAS con sus papeles', async ({ page }) => {
+test('la ficha del cliente muestra las OC por trabajo, y los TERMINADOS con sus papeles', async ({ page }) => {
   test.setTimeout(180000)
   await entrar(page)
   await page.setViewportSize({ width: 1600, height: 1000 })
@@ -97,11 +99,13 @@ test('la ficha del cliente muestra las OC por obra, y las obras CERRADAS con sus
   // control se había roto: el test afirmaba el estado del mundo en vez de la regla. Lo que no puede
   // cambiar es que la obra cerrada publique un IMPORTE y un CONTEO en sus dos columnas — si vuelve
   // a esconderse, las dos celdas quedan vacías y esto da rojo.
-  await expect(page.getByTestId('titulo-grupo-obras')).toContainText('Cerradas')
+  await expect(page.getByTestId('titulo-grupo-obras')).toContainText('Terminados')
   const cerrada = page.getByTestId('fila-obra-cliente').filter({ hasText: 'BASES TANQUE SO2' }).first()
   await expect(cerrada).toBeVisible()
-  await expect(cerrada.getByTestId('oc-obra-cliente')).toHaveText(/\$ ?[\d.]+\s*\d+ OC/)
-  await expect(cerrada.getByTestId('op-obra-cliente')).toHaveText(/\$ ?[\d.]+\s*\d+ OP/)
+  // CON UNA SOLA, LA CELDA DICE CUÁL —«OP 4865»— y con varias las cuenta —«2 OC»—: las dos formas
+  // son correctas y el invariante es que publique un IMPORTE y una identificación, no cuál de las dos.
+  await expect(cerrada.getByTestId('oc-obra-cliente')).toHaveText(/\$ ?[\d.]+\s*(\d+ OC|OC [\d-]+)/)
+  await expect(cerrada.getByTestId('op-obra-cliente')).toHaveText(/\$ ?[\d.]+\s*(\d+ OP|OP [\d-]+)/)
 
   await page.screenshot({ path: 'tests/capturas/cliente-obras-oc-1600.png', fullPage: false })
 })

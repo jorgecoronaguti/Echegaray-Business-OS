@@ -40,7 +40,6 @@ import { SIN_PRECIO_EN_OBRAS, type EconomiaDeObra } from '../services/economiaOb
 import type { PapelesDelCliente } from '../services/papelesCliente'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
-import { AbrirOrdenes } from './AbrirOrdenes'
 
 /**
  * EL ESTADO SE DICE CON LA PALABRA Y SU TINTA, sin punto de color.
@@ -104,11 +103,17 @@ const PALABRA_ESTADO: Record<string, string> = {
 // ficha a 1440px de viewport es 1068 (el costado se lleva 300+53): la tabla se salía de su columna
 // por 60px aun con los cortes andando. Con `minmax(0,X)` la pista cede cuando no hay lugar en vez
 // de desbordar; el único piso que se defiende es el del nombre, que es lo que identifica la fila.
+// LA PISTA DEL COBRADO MIDE 150 Y NO 80. Heredó los 80px que eran del AVANCE —«94 %» entra en 80,
+// «$ 107.877.339» no— y el dueño vio «$107.877.3…» y «COBRADO C…» cortados en la ficha de
+// Quattropani (captura de producción, 10/09/2026 18:10). Una cifra truncada es una cifra falsa.
 const COLS_OBRAS
-  = 'gap-[20px] grid-cols-[minmax(200px,1.8fr)_minmax(0,110px)_minmax(0,80px)_minmax(0,150px)_minmax(0,150px)_minmax(0,150px)_minmax(0,28px)]'
+  // EL NOMBRE SE LLEVA 2fr Y EL ESTADO 84: «ME - PLAYÓN DILUCIÓN DE ÁCIDO» mide 195px a 12,5px y con
+  // 1,6fr quedaba cortado por SEIS píxeles a 1440 (medido en el navegador, 10/09/2026 18:50). Un
+  // nombre cortado es una fila que no se puede identificar.
+  = 'gap-[20px] grid-cols-[minmax(180px,2fr)_minmax(0,84px)_minmax(0,150px)_minmax(0,150px)_minmax(0,140px)_minmax(0,130px)_minmax(0,28px)]'
   // Por debajo de 1200px se suelta la OP: la pregunta que sobrevive en una pantalla angosta es qué
   // se le vendió (contratado), qué se cobró y con qué papel (OC).
-  + ' max-[1199px]:gap-[14px] max-[1199px]:grid-cols-[minmax(0,1.5fr)_minmax(0,90px)_90px_minmax(0,120px)_minmax(0,130px)_28px]'
+  + ' max-[1199px]:gap-[14px] max-[1199px]:grid-cols-[minmax(0,1.4fr)_minmax(0,90px)_140px_minmax(0,130px)_minmax(0,130px)_28px]'
   // A 390px no entran cinco columnas sin estrangular el nombre: quedan OBRA · ESTADO · CONTRATADO.
   + ' max-[559px]:gap-[10px] max-[559px]:grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
 
@@ -243,19 +248,12 @@ export function ObrasDelCliente({
               <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
                 {o.nombre}
               </span>
-              {/* EL ÚNICO PUENTE AL ERP, Y ES EXPLÍCITO. Es un `<button>` porque vive dentro del
-                  `<Link>` de la fila: un `<a>` dentro de otro `<a>` es HTML inválido. */}
-              {hrefTrabajo && (
-                <AbrirOrdenes
-                  href={`/obras/${o.obra_id}`}
-                  titulo="Abre este trabajo en el módulo Obras (el ERP): avance, costos, plan."
-                  etiqueta={`Ver ${o.nombre} en el módulo Obras`}
-                  testid="ver-en-obras-ficha"
-                  className={`shrink-0 ${SOLO_ANCHO}`}
-                >
-                  <span style={{ fontSize: '10.5px', color: V.tenue }}>Ver en Obras →</span>
-                </AbrirOrdenes>
-              )}
+              {/* ═══ «VER EN OBRAS» NO CUELGA DE CADA FILA (dueño, 10/09/2026 18:12) ═══
+
+                  Repetía el enlace al ERP tantas veces como trabajos tiene el cliente, y el módulo
+                  del que hay que separarse terminaba nombrado en toda la pantalla. El puente existe
+                  UNA vez: adentro del detalle del trabajo, y en el encabezado de su grupo de
+                  Cobranzas. */}
             </span>
             <OrdenesDeLaObra ordenes={papelesDeLaObra?.oc ?? []} veEconomia={veEconomia} sangria={24} />
           </span>

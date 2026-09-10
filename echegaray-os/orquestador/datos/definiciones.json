@@ -175,6 +175,10 @@
         {
           "patron": "Cobranzas!\\$?A\\$?[0-9]+:",
           "porque": "Leer las FILAS de la pestaña Cobranzas por rango es saltear la réplica `public.cobranzas`: quien lo hace no ve `cliente_id`, no ve la valuación de moneda (la columna Moneda es la AA y estos rangos llegan hasta la R o la Q) y vuelve a decidir por su cuenta qué está cobrado. La fila 62 de Quattropani, U$S 15.400, entraba como $15.400."
+        },
+        {
+          "patron": "from\\('cobranzas'\\)",
+          "porque": "`public.cobranzas` es la RÉPLICA CRUDA de la pestaña: no tiene RLS ni grant para authenticated, y por eso una pantalla que la pidiera fallaría —o, peor, la haría exponer si alguien le agrega el grant para 'destrabarla'—. La app lee las vistas que ya deciden qué está cobrado y quién puede verlo: cliente_cobranza (fila por fila), obra_cuenta y cliente_economia (agregados). El orquestador la lee por SQL directo con la clave de servicio, que es otra puerta."
         }
       ],
       "excepciones": [
@@ -272,6 +276,10 @@
         {
           "archivo": "orquestador/scripts/caja-conectividad.mjs",
           "porque": "Control de conectividad entre pestañas del Sheet: su objeto de estudio es el archivo."
+        },
+        {
+          "archivo": "src/app/portal/(dentro)/datosObra.ts",
+          "porque": "EL PORTAL DEL CLIENTE LEE LA RÉPLICA CON LA CLAVE DE SERVICIO (`createAdminClient`) y acotado a las filas del esquema que ese cliente ya tiene publicado: necesita el importe EN LA MONEDA EN QUE SE FIRMÓ (`monto_neto_origen`, `tipo_cambio`), que ninguna vista agregada publica. No es una segunda definición de «cobrado»: es el mismo renglón, leído por el `sheet_id` que el esquema declara."
         }
       ]
     },
@@ -364,7 +372,7 @@
     },
     {
       "concepto": "cobro_por_obra",
-      "canonica": "public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra) · public.obra_cuenta (la fila entera de la pestaña OBRAS: contratado, cobrado total y neto, por cobrar, vencido y próximo cobro)",
+      "canonica": "public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra) · public.obra_cuenta (la fila entera de la pestaña OBRAS: contratado, cobrado total y neto, por cobrar, vencido y próximo cobro) · public.cliente_cobranza (la fila de la pestaña Cobranzas atada a su cliente y a su obra, para la solapa Cobranzas de la ficha)",
       "propietario": "public.cobranza_imputacion — la cadena OC → cliente_orden → obra; public.obra_alias.en_texto_libre — el diccionario de los textos que nombran una obra",
       "criterio": "A qué OBRA pertenece una fila de Cobranzas se decide en tres pasos y en ese orden: (1) la orden de compra que declara la columna H (`cobranzas.orden_compra`), buscada por número CANÓNICO en `cliente_orden` del MISMO cliente — es el único eslabón documental; (2) el texto de `concepto`/`orden_compra` que NOMBRA una obra del cliente, sólo contra alias marcados `obra_alias.en_texto_libre`; (3) la obra bolsa del cliente, marcada `imputacion = 'cliente'`, que significa «no se pudo» y NO autoriza a dibujar una barra de cobro por obra. Dos obras candidatas ⇒ ninguna. El papel le gana al texto: la fila 94 de Messina nombra el Playón de Azufre y pertenece al Adicional Tercer Muro según su OC 00002-00002256. La imputación reparte plata ENTRE OBRAS DE UN MISMO CLIENTE y nunca entre clientes. CONSUMIDORES DEL LADO DEL ORQUESTADOR: orquestador/lib/cobranzas-contrato.mjs (`filasDeObra`, con el selector `imputadas`), orquestador/lib/obras-economia.mjs y orquestador/scripts/obras-economia-sync.mjs, que persiste el contratado de cada obra. El diccionario lo arma orquestador/lib/cobranza-obra-diccionario.mjs leyendo las tablas base — la vista lleva ve_economia() y desde la conexión de servicio devolvería cero filas sin dar error.",
       "ventana": "acumulado, el mismo de `cobrado`. La imputación no tiene ventana: es de la fila, no del período.",
@@ -381,6 +389,10 @@
         {
           "patron": "needle:\\s*[A-Za-z_]+\\.ventaTexto",
           "porque": "Seleccionar las filas de una obra buscando el NOMBRE de la obra dentro del Concepto o de la Orden de Compra es una SEGUNDA regla de imputación, y da distinto: la fila 46 de Messina («ACTUALIZACION DE PRECIOS OC 02-00000279», $3.583.956 netos) es de BSA por su orden 00002-00001984 y no dice «BSA» en ninguna columna. Con el needle, el contratado de BSA salía $14.120.243,40 y el cobrado —que ya usaba la imputación— incluía esa fila: la misma obra medida sobre dos universos. Lo que LEE usa `filasDeObra(..., { imputadas })`; el needle queda sólo para los tres generadores de Sheets, que emiten criterios de SUMIFS y no pueden consultar Postgres."
+        },
+        {
+          "patron": "cobrado=\\{[a-z]\\.cobradoNeto\\}",
+          "porque": "LA COLUMNA «COBRADO» DE LA PESTAÑA OBRAS ES EL TOTAL CON IVA (obra_cuenta.cobrado_total). Hasta el 10/09/2026 la cartera de clientes dibujaba el NETO bajo el mismo rótulo y el dueño, cruzando la pantalla contra el Sheet, no encontró coincidencia en NINGUNA de las nueve obras. El neto se sigue leyendo —es el único comparable contra un contrato neto— pero es una RESTA, no la columna: quien lo dibuje ahí vuelve a publicar dos números distintos del mismo hecho."
         }
       ],
       "excepciones": [
@@ -409,6 +421,10 @@
         {
           "patron": "from\\('obra_egreso_proyectado'\\)",
           "porque": "Sumar la explosión del presupuesto en una pantalla es una SEGUNDA definición del costo proyectado: la primera la hace `obra_economia_sheet` con las mismas reglas que la columna D de OBRAS (qué filas cuentan, cómo se valúa el dólar, qué estado excluye la venta). Dos sumas de las mismas filas se separan en cuanto una aprende algo, y nadie se entera porque las dos dan un número plausible."
+        },
+        {
+          "patron": "select\\([^)]*costo_(mo|materiales)",
+          "porque": "EL COSTO DE UNA OBRA ES DEL ERP (dueño, 10/09/2026 17:15: «Administración es un CRM y Obra un ERP: todo lo pertinente a datos de clientes va en CRM, no mezcles cosas con obras»). Una pantalla que vuelve a pedirle los dos costos a PostgREST los tiene servidos, y una columna servida vuelve sola: pasó con Margen y volvió a pasar con «MO ppto. · Mat. ppto.» en /clientes. El costo presupuestado se consume donde se DECIDE sobre él —el módulo Obras y costo-hora—, y esas lecturas van por obra_economia_cartera entera o por costoLecturas.ts, no por un select puntual desde una pantalla."
         }
       ],
       "excepciones": [

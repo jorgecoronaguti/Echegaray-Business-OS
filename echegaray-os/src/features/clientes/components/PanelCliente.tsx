@@ -27,7 +27,7 @@
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { BotonAccion } from '@/shared/components/ui'
-import { pesos, porcentajeCanon } from '@/shared/components/canon/formato'
+import { pesos } from '@/shared/components/canon/formato'
 import { IconoBloqueo, IconoCerrar, IconoCrear, IconoEditar } from '@/shared/components/iconos'
 import { PanelFilo, RotuloPanel, V } from '@/shared/components/v2/patron'
 import { archivarCliente } from '../services/actions'
@@ -144,13 +144,12 @@ export function PanelCliente({
               : pesos(economia.contratado_en_curso)}
           </Dato>
         )}
-        {veEconomia && (
-          // COSTO REAL no está en el mockup y no se saca: es el otro lado de lo contratado y ya
-          // viene en la misma lectura. Sacarlo sería perder un dato para parecerse más a un dibujo.
-          <Dato k="Costo real" falta={economia?.costo_real == null} mono>
-            {economia?.costo_real == null ? 'sin costo imputado' : pesos(economia.costo_real)}
-          </Dato>
-        )}
+        {/* ═══ «COSTO REAL» SE FUE DEL PANEL (dueño, 10/09/2026 17:15) ═══
+
+            «Administración es un CRM y Obra un ERP: no mezcles cosas con obras.» El costo se decide
+            contra el avance, el certificado y los comprobantes imputados —nada de eso se mira desde
+            la ficha de un cliente— y vive en el módulo Obras. Con la celda se fue la LECTURA:
+            `cliente_economia` ya no se lee por `costo_real`. */}
       </div>
 
       <div style={{ marginTop: 20 }}>
@@ -179,16 +178,8 @@ export function PanelCliente({
                 <span className="truncate" style={{ fontSize: '12px', color: V.tinta, minWidth: 0 }}>{o.nombre}</span>
                 {/* EL ESTADO NUNCA VA SÓLO EN EL COLOR: la palabra viaja al lado del punto. */}
                 <span style={{ fontSize: '11px', color: V.tenue, flexShrink: 0 }}>{rotuloEstado(o.estado)}</span>
-                {/* UN AVANCE QUE NO SE SINCRONIZÓ NO ES 0 %. */}
-                <span
-                  className="font-mono tabular-nums"
-                  style={{
-                    marginLeft: 'auto', fontSize: '11.5px', flexShrink: 0,
-                    color: o.avance_pct === null ? V.lupa : o.estado === 'cerrada' ? PUNTO.fin : V.tinta,
-                  }}
-                >
-                  {o.avance_pct === null ? 'sin medir' : porcentajeCanon(o.avance_pct, 0)}
-                </span>
+                {/* EL AVANCE FÍSICO SE FUE CON EL COSTO: es del ERP. Lo que el CRM tiene para
+                    decir de un trabajo es su plata, y eso vive en la fila de la lista. */}
               </Link>
             ))}
       </div>

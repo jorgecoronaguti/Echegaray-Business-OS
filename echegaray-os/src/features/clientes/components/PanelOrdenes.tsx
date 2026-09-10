@@ -16,15 +16,26 @@
 // la obra: la misma orden se mira desde el cliente y desde la obra, y dos listas parecidas se
 // separan en cuanto una aprende algo. Este componente es el CAJÓN; la lista es el contenido.
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Drawer } from '@/shared/components/ds'
+import { V } from '@/shared/components/v2/patron'
 import { ListaOrdenes } from './ListaOrdenes'
 import type { OrdenDetallada } from '../services/ordenesCliente'
 
 export function PanelOrdenes({
-  titulo, ordenes, veEconomia, cerrarHref, de = 'del cliente',
+  titulo, ordenes, veEconomia, cerrarHref, de = 'del cliente', verEnObras = null,
 }: {
   titulo: string
+  /**
+   * EL ÚNICO PUENTE AL ERP, Y VIVE ACÁ ADENTRO (dueño, 10/09/2026 18:12).
+   *
+   * «Ver en Obras →» colgaba de cada obra de la lista y repetía el enlace al módulo Obras en toda
+   * la pantalla, que es de lo que el dueño mandó separar este módulo. Quien quiera la obra abre su
+   * detalle y lo encuentra una vez, abajo del todo. `null` = el panel es del cliente y no hay obra
+   * a la que ir.
+   */
+  verEnObras?: string | null
   /** De quién son los papeles que se listan. Un panel abierto desde un TRABAJO no puede decir «del
    *  cliente»: son dos recortes distintos y el subtítulo es lo único que los distingue. */
   de?: 'del cliente' | 'de este trabajo'
@@ -45,6 +56,14 @@ export function PanelOrdenes({
       testid="panel-ordenes"
     >
       <ListaOrdenes ordenes={ordenes} veEconomia={veEconomia} />
+      {verEnObras && (
+        <Link
+          href={verEnObras} prefetch={false} data-testid="ver-en-obras"
+          style={{ display: 'inline-block', marginTop: 18, fontSize: '12px', color: V.tenue }}
+        >
+          Ver esta obra en el módulo Obras →
+        </Link>
+      )}
     </Drawer>
   )
 }

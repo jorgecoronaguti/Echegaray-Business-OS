@@ -123,6 +123,11 @@ esté abierta, el nombre lleva la ventana.
 «cobrado» contaba como cobro en una vista y como deuda en la otra) y en la fecha futura. Se adoptó
 el que **no afirma plata que todavía no entró**, y vive en `public.es_cobrada()`.
 
+**La réplica cruda no se lee desde una pantalla.** `public.cobranzas` es la copia de la pestaña: sin
+RLS y sin grant para `authenticated`. La app lee las vistas que ya deciden qué está cobrado y quién
+puede verlo — `cliente_cobranza` fila por fila, `obra_cuenta` y `cliente_economia` agregadas—; el
+orquestador la lee por SQL directo con la clave de servicio, que es otra puerta.
+
 ### Lo prohibido
 
 - `from\('certificado_cliente'\)[^;]*estado` — esa columna guarda **dos** cosas: dónde está el cobro
@@ -134,6 +139,9 @@ el que **no afirma plata que todavía no entró**, y vive en `public.es_cobrada(
   `public.cobranzas`: quien lo hace no ve `cliente_id`, no ve la valuación de moneda (la columna
   Moneda es la **AA** y estos rangos llegan hasta la R o la Q) y vuelve a decidir por su cuenta qué
   está cobrado. La fila 62 de Quattropani, U$S 15.400, entraba como $15.400.
+
+- `from\('cobranzas'\)` — pedirle la réplica cruda a PostgREST desde una pantalla. Falla por falta
+  de grant, y el arreglo tentador —agregarle el grant— expondría la tabla entera sin RLS.
 
 ### Las excepciones
 
@@ -338,11 +346,11 @@ no prueba que no esté en Drive.
 
 | | |
 |---|---|
-| **Fuente primaria** | public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra) · public.obra_cuenta (la fila entera de la pestaña OBRAS: contratado, cobrado total y neto, por cobrar, vencido y próximo cobro) |
+| **Fuente primaria** | public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra) · public.obra_cuenta (la fila entera de la pestaña OBRAS: contratado, cobrado total y neto, por cobrar, vencido y próximo cobro) · public.cliente_cobranza (la fila de la pestaña Cobranzas atada a su cliente y a su obra, para la solapa Cobranzas de la ficha) |
 | **Propietario** | `public.cobranza_imputacion` — la cadena OC → `cliente_orden` → obra · `public.obra_alias.en_texto_libre` — el diccionario de los textos que nombran una obra |
 | **Criterio** | Tres pasos **en este orden**: (1) la **orden de compra** que declara la columna H (`cobranzas.orden_compra`), buscada por número canónico en `cliente_orden` del **mismo** cliente; (2) el **texto** de `concepto`/`orden_compra` que nombra una obra del cliente, sólo contra alias marcados `en_texto_libre`; (3) la **obra bolsa** del cliente, marcada `imputacion = 'cliente'`, que significa «no se pudo». Dos obras candidatas ⇒ ninguna. |
 | **Ventana** | Acumulado, el mismo de `cobrado`. La imputación no tiene ventana: es de la fila, no del período. |
-| **Consumidores** | barra de cobro por obra de `/clientes`, ficha de obra, `obra_economia`; del lado del orquestador `cobranzas-contrato.filasDeObra({ imputadas })`, `obras-economia.mjs` y `obras-economia-sync.mjs` |
+| **Consumidores** | la fila del TRABAJO en `/clientes` (contratado · cobrado c/IVA · por cobrar · ▲ vencido · próx. cobro, vía `getCobradoPorObra` sobre `obra_cuenta`), la cabecera de la cuenta corriente de la ficha del cliente (`cuentaDeTrabajos`), la ficha de obra, `obra_economia`; del lado del orquestador `cobranzas-contrato.filasDeObra({ imputadas })`, `obras-economia.mjs` y `obras-economia-sync.mjs` |
 | **Confianza** | **D** · la cadena se apoya en los papeles ya cargados en `cliente_orden`, y cada alias nuevo sale de una fila real de Cobranzas citada en `obra_alias.ejemplo_raw` |
 | **Última decisión del dueño** | 10/09/2026: reclamó ver el cobro **por obra**; hasta ese día no existía en la base. |
 
@@ -359,6 +367,13 @@ la suma por cliente cambia respecto de la regla vieja, el `raise exception` la f
 las 17 filas de ARCOR tienen su OC escrita en H, pero las obras de ARCOR no están dadas de alta en
 `obra_canonica` y no hay a qué imputarlas. Dibujar una barra ahí sería una ausencia con cara de dato.
 
+**La columna «Cobrado» es el TOTAL con IVA.** `public.obra_cuenta` publica las dos especies con su
+nombre —`cobrado_total` y `cobrado_neto`— justamente porque el nombre corto se llevaba la ambigüedad
+puesta: hasta el 10/09/2026 la cartera de clientes dibujaba el neto bajo el rótulo «Cobrado» y el
+dueño, cruzando la pantalla contra la pestaña OBRAS del Flujo de Caja, no encontró coincidencia en
+ninguna de las nueve obras. El neto se sigue leyendo —es lo único comparable contra un contrato, que
+es neto— pero eso es una RESTA, no la columna.
+
 ### Lo prohibido
 
 - `norm_obra\([^)\n]*obra_cliente` — `cobranzas.obra_cliente` **nombra al cliente**, no a la obra:
@@ -370,6 +385,10 @@ las 17 filas de ARCOR tienen su OC escrita en H, pero las obras de ARCOR no est�
   cobranza fuera de `cobranza_imputacion` es una **segunda** regla de imputación: sin el recorte por
   cliente y sin la marca `en_texto_libre`, el alias `san francisco` se lleva «Saldo obras San
   Francisco — cuota 1 de 4» —$ 47,6 M de **todas** las obras— a una sola.
+- `cobrado=\{[a-z]\.cobradoNeto\}` — dibujar el **neto** donde la pestaña OBRAS publica el **total**.
+  Es el defecto exacto del 10/09/2026: la fila de la cartera pasaba `cobrado={o.cobradoNeto}` y la
+  columna decía «Cobrado». Las dos especies se leen —el neto es lo único comparable contra un
+  contrato, que es neto— pero eso es una **resta**, no la columna.
 - `needle:\s*[A-Za-z_]+\.ventaTexto` — seleccionar las filas de una obra buscando su **nombre**
   dentro del Concepto o de la Orden de Compra. La fila 46 de Messina («ACTUALIZACION DE PRECIOS OC
   02-00000279», $ 3.583.956 netos) es de BSA por su orden `00002-00001984` y no dice «BSA» en
@@ -403,11 +422,19 @@ emparejan, ese test avisa.
 | **Propietario** | `public.obra_egreso_proyectado` — la explosión del presupuesto · `public.compras` — los comprobantes imputados |
 | **Criterio** | **Son dos números distintos y ninguno reemplaza al otro.** El **presupuestado** es lo que la obra dijo que iba a costar, y lo publica la pestaña OBRAS del Flujo de Caja vía `obra_economia_sheet`. El **real** es lo que se gastó, y sale de los comprobantes imputados a la obra. |
 | **Ventana** | Acumulado por obra. El presupuestado no tiene ventana (es el plan entero); el real acumula lo imputado hasta hoy. |
-| **Consumidores** | columnas «MO ppto.» y «Mat. ppto.» de `/clientes`, ficha de la obra, costo-hora |
+| **Consumidores** | ficha de la obra (módulo Obras) y costo-hora. **El CRM no lo consume**: ver abajo. |
 | **Confianza** | **D** · el camino presupuesto → `obra_egreso_proyectado` → `obra_economia_sheet` lo escribe `obras-economia-sync.mjs` |
-| **Última decisión del dueño** | 10/09/2026: la cartera de clientes muestra el PRESUPUESTO y lo dice en el rótulo. |
+| **Última decisión del dueño** | 10/09/2026 17:15: el costo SALE del módulo Administración. «Administración es un CRM y Obra un ERP: todo lo pertinente a datos de clientes va en CRM, no mezcles cosas con obras.» |
 
-**El rótulo mentía, y por eso este concepto entró al registro.** La auditoría independiente del
+**El costo salió del CRM el 10/09/2026 a las 17:15.** Las columnas «MO ppto.» y «Mat. ppto.» de
+`/clientes` se retiraron por orden del dueño, y con ellas la LECTURA: `economiaObras.ts` —el servicio
+del módulo Clientes— dejó de pedir `costo_mo`, `costo_materiales` y `margen`. No alcanzaba con sacar
+la columna: mientras el dato siguiera servido, la próxima pantalla lo iba a encontrar a mano y la
+columna volvería sola. Ya había pasado con Margen, doce horas antes. El costo se decide contra el
+avance, el certificado y el costo real —tres cosas que no se miran desde la ficha de un cliente— y
+por eso vive en el ERP.
+
+**Y el rótulo mentía, que fue por lo que este concepto entró al registro.** La auditoría independiente del
 10/09/2026 encontró que `/clientes` rotulaba «Costo MO» y «Costo mat.» dos números que salen de la
 explosión del presupuesto. Medido el mismo día: **`obra_panel.costo_real` está en CERO en 8 de las 9
 obras**, porque casi ningún comprobante está imputado todavía. Un «Costo» al lado de un «Contratado»
@@ -421,6 +448,13 @@ invita a restar y a leer **margen real donde hay margen proyectado**. Los rótul
   mismas reglas que la columna D de OBRAS (qué filas cuentan, cómo se valúa el dólar, qué estado
   excluye la venta). Dos sumas de las mismas filas se separan en cuanto una aprende algo, y nadie se
   entera porque las dos dan un número plausible.
+
+- `select\([^)]*costo_(mo|materiales)` — una pantalla que vuelve a pedirle los dos costos a
+  PostgREST los tiene **servidos**, y una columna servida vuelve sola. El costo presupuestado se
+  consume donde se decide sobre él —el módulo Obras y costo-hora—, por `obra_economia_cartera`
+  entera o por `costoLecturas.ts`, nunca por un `select` puntual desde una pantalla de otro módulo.
+  Además, `src/features/clientes/**` y `src/app/(main)/clientes/**` tienen su propia prohibición con
+  test: ver `clientes-no-lee-el-erp.test.ts`.
 
 ### Lo permitido, con su motivo
 

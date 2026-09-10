@@ -56,6 +56,10 @@ import { CamposObra } from '@/features/obras/components/CamposObra'
 import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorrienteService'
 import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
 import { SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
+import {
+  esRecorteCobranza, getCobranzasDelCliente, type FilaCobranza,
+} from '@/features/clientes/services/cobranzasCliente'
+import { SolapaCobranzas } from '@/features/clientes/components/cobranzas/SolapaCobranzas'
 import { cuentaDeTrabajos } from '@/features/clientes/services/cuentaDeTrabajos'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
 import { getOrdenesDe } from '@/features/clientes/services/ordenesCliente'
@@ -108,6 +112,9 @@ type Query = {
   /** Abre el alta de obra, que en el v2 es la acción primaria de la cabecera y no un `details`
    *  escondido arriba de la tabla. */
   nueva?: string
+  /** El recorte de la solapa Cobranzas: `todo` · `pendiente` · `cobrado` · `b` · `n`. Viaja en la
+   *  URL como todo filtro del OS: se comparte por chat y vuelve con el botón de atrás. */
+  cob?: string
   /**
    * EL DETALLE DE UN TRABAJO, DENTRO DEL CRM (`?trabajo=<obra_id>`).
    *
@@ -193,7 +200,7 @@ export default async function ClientePage({ params, searchParams }: {
   // encadenadas (`getArchivosDeEntidad` y después `getDocumentosSubidos`) por nada. Con una ola
   // sola, la ficha tarda lo que su lectura más lenta y no la suma de todas.
   const [
-    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos,
+    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos, cobranzas,
   ] = await Promise.all([
     solapa === 'cuenta' && veEconomia
       ? Promise.all([getCuentaCorriente(supabase, id), getCertificados(supabase, id)])
@@ -212,6 +219,17 @@ export default async function ClientePage({ params, searchParams }: {
     solapa === 'documentos' ? getArchivosDeEntidad(supabase, 'cliente', id) : Promise.resolve(null),
     // Lo que Administración sube desde la ficha del cliente: la factura, la OC, el contrato firmado.
     solapa === 'documentos' ? getDocumentosSubidos(supabase, 'cliente', id) : Promise.resolve(null),
+    // ═══ LA PESTAÑA COBRANZAS DEL CLIENTE, FILA POR FILA (`public.cliente_cobranza`) ═══
+    //
+    // Es la ÚNICA lectura de esta ficha que no viaja en `pantalla_cliente()`: la RPC se escribió
+    // antes de que existiera esta cara. Se pide sólo en su solapa —son todas las filas del cliente,
+    // 24 en Messina— así que no encarece las otras siete, y por eso no bloquea publicar. PENDIENTE
+    // DECLARADO: cuando la RPC la absorba, esta consulta se retira y la ficha vuelve a un viaje.
+    solapa === 'cobranzas' && veEconomia
+      ? getCobranzasDelCliente(supabase, id)
+      // `null` FUERA DE SU CARA, y no `[]`: un cero al lado de la solapa diría que este cliente no
+      // tiene ninguna cobranza, y lo que pasa es que no se leyó.
+      : Promise.resolve<FilaCobranza[] | null>(null),
   ])
   const [cuenta, certificados] = cuentaYCertificados
   const esquema = esquemaRes
@@ -235,6 +253,26 @@ export default async function ClientePage({ params, searchParams }: {
   /** El detalle del trabajo, DENTRO del CRM. Es una función y no una arrow creada en el JSX: una
    *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
   const hrefTrabajo = (obraId: string) => url({ trabajo: obraId })
+
+  const recorteCobranza = esRecorteCobranza(q.cob) ? q.cob : 'todo'
+  /** El recorte de Cobranzas en la URL. Función declarada y no arrow en el JSX: una arrow creada en
+   *  un Server Component y pasada como prop revienta en producción con React #419. */
+  const hrefRecorteCobranza = (r: string) => url({ cob: r === 'todo' ? null : r })
+
+  /** Las OC de cada obra, para el encabezado de cada grupo de Cobranzas. Sale de los MISMOS papeles
+   *  que ya trajo la ficha: ninguna consulta nueva. */
+  const ordenesPorObra = new Map(
+    (papeles ? [...papeles.porObra.entries()] : []).map(([obraId, r]) => [obraId, r.oc]),
+  )
+
+  // ═══ EL CONTRATO EN DÓLARES DEL CLIENTE ═══
+  //
+  // Σ de lo que sus obras tienen contratado en U$S. `null` = ninguna lo tiene, y entonces la
+  // ausencia de órdenes de compra es lo que parece: no hay ningún papel.
+  const contratoUsd = todas.reduce<number | null>((a, o) => {
+    const usd = economia?.get(o.obra_id)?.contratado_usd ?? null
+    return usd == null ? a : (a ?? 0) + usd
+  }, null)
 
   /** La misma dirección con un parámetro cambiado. Los demás se preservan. */
   const url = (cambio: Partial<Record<keyof Query, string | null>>) => {
@@ -279,7 +317,13 @@ export default async function ClientePage({ params, searchParams }: {
       // Muro tiene una OC de $12.100.000 contra $10.000.000 contratados, que es el mismo número.
       rotulo: `OC recibidas c/IVA${papeles ? ` (${papeles.totalOC.n})` : ''}`,
       valor: papeles?.totalOC.importe != null ? money(papeles.totalOC.importe) : null,
-      falta: papeles === null ? 'no pude leerlas' : 'ninguna',
+      // ═══ «NINGUNA» NO ERA LA VERDAD DE QUATTROPANI (dueño, 10/09/2026 18:10) ═══
+      //
+      // Su trabajo no se encargó con una orden de compra: se encargó con un CONTRATO en dólares.
+      // «OC recibidas c/IVA (0) · ninguna» se lee como un papel que falta, y no falta ninguno.
+      falta: papeles === null
+        ? 'no pude leerlas'
+        : contratoUsd != null ? `contrato U$S ${Math.round(contratoUsd).toLocaleString('es-AR')} · sin OC` : 'ninguna',
     },
     {
       // «RECIBIDAS», NO «COBRADAS»: una orden de pago es la instrucción del cliente a su banco. Que
@@ -409,6 +453,7 @@ export default async function ClientePage({ params, searchParams }: {
           obras: todas.length,
           presupuestos: presupuestos.length,
           documentos: lector.leer(documentos, []).length + nPapeles,
+          cobranzas: cobranzas?.length ?? null,
         }).map((s) => ({
           clave: s.clave,
           titulo: s.label,
@@ -419,6 +464,18 @@ export default async function ClientePage({ params, searchParams }: {
           href: url({ vista: s.clave === 'obras' ? null : s.clave, nueva: null }),
         }))}
       />
+
+      {solapa === 'cobranzas' && veEconomia && (
+        <SolapaCobranzas
+          filas={cobranzas}
+          obras={todas.map((o) => ({ obra_id: o.obra_id, nombre: o.nombre }))}
+          obrasConOC={ordenesPorObra}
+          contratado={contratadoEnCurso}
+          contratadoUsd={contratoUsd}
+          recorte={recorteCobranza}
+          hrefRecorte={hrefRecorteCobranza}
+        />
+      )}
 
       {solapa === 'cuenta' && veEconomia && (
         <div style={{ padding: '18px 20px 24px' }}>
@@ -632,14 +689,16 @@ export default async function ClientePage({ params, searchParams }: {
                 <div style={{ marginTop: 22 }}>
                   <RotuloPanel>Portal del cliente</RotuloPanel>
                 </div>
-                {/* EL RESUMEN DEL PORTAL SÓLO SE AFIRMA CUANDO SE LEYÓ. Fuera de la cara «Acceso al
-                    portal» no se consulta, y un «0 habilitados» ahí diría que nadie de afuera puede
-                    entrar — que es exactamente la conclusión que hace que nadie revise. */}
-                <p style={{ fontSize: '12px', color: V.tenue, padding: '7px 0' }} data-testid="resumen-portal">
-                  {solapa === 'accesos'
-                    ? `${portal.habilitados} ${portal.habilitados === 1 ? 'acceso habilitado' : 'accesos habilitados'}`
-                    : 'Se lee al abrir la cara.'}
-                </p>
+                {/* EL RESUMEN SÓLO SE AFIRMA CUANDO SE LEYÓ, Y CUANDO NO, NO SE ESCRIBE NADA.
+                    Decía «Se lee al abrir la cara», que es un placeholder: le explica al dueño una
+                    decisión interna del renderizado en el lugar donde esperaba un dato (10/09/2026
+                    18:10). Un «0 habilitados» tampoco se puede escribir sin haber leído: diría que
+                    nadie de afuera puede entrar, que es la conclusión que hace que nadie revise. */}
+                {solapa === 'accesos' && (
+                  <p style={{ fontSize: '12px', color: V.tenue, padding: '7px 0' }} data-testid="resumen-portal">
+                    {portal.habilitados} {portal.habilitados === 1 ? 'acceso habilitado' : 'accesos habilitados'}
+                  </p>
+                )}
                 <a
                   href={url({ vista: 'accesos' })} data-testid="gestionar-accesos"
                   style={{ display: 'inline-block', fontSize: '12.5px', fontWeight: 500, color: V.tinta, marginTop: 4 }}
@@ -656,6 +715,7 @@ export default async function ClientePage({ params, searchParams }: {
           titulo={nombreDeObra.get(trabajoAbierto) ?? trabajoAbierto}
           ordenes={ordenesDelTrabajo}
           de="de este trabajo"
+          verEnObras={`/obras/${trabajoAbierto}`}
           veEconomia={veEconomia}
           cerrarHref={url({ trabajo: null })}
         />

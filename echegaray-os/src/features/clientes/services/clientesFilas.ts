@@ -46,8 +46,9 @@ export function armarObrasPorCliente(filas: unknown[]): Map<string, ObraDePanel[
         obra_id: o.obra_id as string,
         nombre: o.nombre as string,
         estado: o.estado as string,
-        // NULL NO ES 0. Una obra sin avance sincronizado no avanzó cero por ciento: no se sabe.
-        avance_pct: (o.avance_pct as number | null) ?? null,
+        // SIN `avance_pct` (10/09/2026): el avance físico es del ERP y el CRM dejó de dibujarlo
+        // («Administración es un CRM y Obra un ERP»). El armador no puede seguir poniéndolo: un
+        // campo servido es cómo una columna vuelve sin que nadie la decida.
       },
     ])
   }
