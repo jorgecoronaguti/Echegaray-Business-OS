@@ -41,6 +41,7 @@ import { leerPdf } from '../lib/ingesta/pdf.mjs'
 import { loadEnvLocalInto } from '../../scripts/lib/env-file.mjs'
 import {
   clasificarAdjunto, clienteDelMail, extensionDe, extraerFecha, extraerImporte, extraerNumero,
+  facturaPropiaDe,
   resolverObraDeTexto,
 } from '../lib/ordenes-cliente.mjs'
 
@@ -135,11 +136,15 @@ async function main() {
       const obra = resolverObraDeTexto(obrasDelCliente, `${m.subject} ${textoPdf}`, { nombreCliente: cli.nombre })
 
       const { importe, moneda } = extraerImporte(textoPdf)
+      // SI EL PDF SE DECLARA FACTURA NUESTRA, ES ESO. El nombre del archivo dice «OC 02-...» porque
+      // así lo archivamos, y el detalle cita la orden que factura: las dos cosas engañan a la
+      // clasificación por texto. El encabezado del propio comprobante, no.
+      const fac = facturaPropiaDe(textoPdf)
       filas.push({
         cliente_id: clienteId, cliente: cli.nombre, atribucion: cli.via,
         obra_id: obra?.id ?? null, obra: obra?.nombre ?? null,
-        tipo,
-        numero: extraerNumero(textoPdf), fecha: extraerFecha(textoPdf), importe, moneda,
+        tipo: fac?.tipo ?? tipo, cita: fac?.cita ?? null,
+        numero: fac?.numero ?? extraerNumero(textoPdf), fecha: extraerFecha(textoPdf), importe, moneda,
         emisor: m.from, message_id: m.id, attachment_id: a.attachmentId,
         nombre_archivo: a.nombre, tamano_bytes: bytes.length, tipo_mime: a.mime || null,
         asunto: m.subject, recibido_en: new Date(m.date).toISOString(),

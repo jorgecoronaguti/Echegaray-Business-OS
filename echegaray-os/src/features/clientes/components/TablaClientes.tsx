@@ -54,10 +54,14 @@ import { pctTexto } from '@/features/clientes/services/economiaObras'
 //
 // NO SON UN ENLACE. La fila entera ya es un `<Link>` y un `<a>` adentro de otro `<a>` es HTML
 // inválido: el navegador lo desarma y la fila queda con zonas que navegan a cualquier lado.
-function Chips({ ordenes, href, titulo, max }: {
-  ordenes: OrdenBreve[] | undefined; href: string; titulo?: string; max?: number
+//
+// EL IMPORTE VIAJA EN EL RÓTULO Y SÓLO CON `veEconomia`: «OC 2173 · 11/08 · $78.650.000» es el
+// precio de venta de esa obra. Al jefe de obra y al campo les llega el mismo rótulo sin el importe
+// —qué orden hay, no cuánto se cobra—, y quien lo decide es esta pantalla, que ya sabe el rol.
+function Chips({ ordenes, href, titulo, max, veEconomia }: {
+  ordenes: OrdenBreve[] | undefined; href: string; titulo?: string; max?: number; veEconomia: boolean
 }) {
-  const { visibles, resto } = ordenesParaFila(ordenes, max === undefined ? {} : { max })
+  const { visibles, resto } = ordenesParaFila(ordenes, { ...(max === undefined ? {} : { max }), veEconomia })
   return (
     <BotonOrdenes
       grupos={visibles} resto={resto} href={href} className={ADORNO_ANCHO} color={V.apagado}
@@ -190,6 +194,7 @@ export function TablaClientes({
                   href={hrefOrdenes(`cliente:${c.cliente_id}`)}
                   titulo="Órdenes del cliente sin obra en ejecución debajo"
                   max={2}
+                  veEconomia={veEconomia}
                 />
                 <ChipsFalta chips={faltantes} testid="aviso-datos" />
               </span>
@@ -231,15 +236,25 @@ export function TablaClientes({
                 className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-[#FAFAF8]`}
                 style={{ height: ALTO_V2.hija, borderBottom: `1px solid ${TONO.divisorObra}` }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, paddingLeft: 14 }}>
+                {/* `overflow: hidden` Y NO SÓLO `minWidth: 0`. MEDIDO a 1440px con la captura del
+                    10/09: los rótulos de las órdenes son `nowrap` y `flexShrink: 0`, así que con el
+                    importe adentro se salían de la celda y se montaban encima de la columna
+                    Contratado — el número de la orden tapando el número del contrato. Lo que no
+                    entra se corta en el borde de SU celda; nunca invade la de al lado. */}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, overflow: 'hidden', paddingLeft: 14 }}>
                   <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
                     <IconoObra className="h-[13px] w-[13px]" />
                   </span>
                   <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
+                  {/* DOS RÓTULOS Y «+N». Con el importe adentro cada uno pasó de ~90 a ~150px: tres
+                      no entran a 1440px. Se muestran los MÁS RECIENTES (`ordenesParaFila` ordena por
+                      fecha) y el resto se anuncia con «+N» — nada se esconde en silencio. */}
                   <Chips
                     ordenes={ordenes.porObra.get(o.obra_id)}
                     href={hrefOrdenes(o.obra_id)}
                     titulo="Órdenes de compra y de pago que el cliente mandó por mail para esta obra"
+                    veEconomia={veEconomia}
+                    max={2}
                   />
                   {/* SIN PRECIO · SIN MEDIR · SIN JEFE · el punto del circuito de certificación.
                       Cada uno con su fuente en el `title`; los cuatro salen de `chipsDeObra`. */}

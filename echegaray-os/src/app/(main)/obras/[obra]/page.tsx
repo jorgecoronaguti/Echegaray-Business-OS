@@ -71,6 +71,7 @@ import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
 import { getOperacionObra, subDeLaUrl, type SubOperacion } from '@/features/obras/services/operacionService'
 import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
+import { getOrdenesDeObra } from '@/features/clientes/services/ordenesCliente'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
@@ -132,7 +133,7 @@ export default async function ObraPage({
     perfilRes, obraRes, actividadesRes, restriccionesRes, planRes, planPersonalRes, planEconomiaRes,
     diasHabilesRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
     actividadHHRes, cuadrillas, integrantes, partesRes, certificadosRes, economiaRes,
-    documentosRes, catalogoEquipos, opRes, personasDeHoy,
+    documentosRes, catalogoEquipos, opRes, personasDeHoy, ordenesRes,
   ] = await Promise.all([
     // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración: el jefe de obra ve el
     // COSTO de su obra, pero no cuánto se vendió — `veEconomia`, no `esAdministracion`.
@@ -189,6 +190,11 @@ export default async function ObraPage({
     vista === 'operacion' ? getOperacionObra(supabase, obraId) : null,
     // PERSONAS del Resumen (§25): asignadas vigentes y presentes HOY. Dos conteos con cabeza.
     vista === 'resumen' ? getPersonasDeHoy(supabase, obraId) : null,
+    // LAS ÓRDENES QUE MANDÓ EL CLIENTE PARA ESTA OBRA. Viven en `cliente_orden` —bajadas de Gmail
+    // al bucket— y hasta hoy sólo se veían desde `/clientes`: quien abría la ficha de la obra no
+    // tenía forma de saber que la OC que la encargó estaba en el OS. La cerradura es la RLS de la
+    // tabla, no esta lectura.
+    vista === 'documentos' ? getOrdenesDeObra(supabase, obraId) : null,
   ])
 
   const rolActual = perfilRes.data?.rol ?? null
@@ -462,6 +468,8 @@ export default async function ObraPage({
       {vista === 'documentos' && (
         <TabDocumentos
           documentos={documentos}
+          ordenes={ordenesRes}
+          veEconomia={veComercial}
           actividades={acts}
           carpetaDriveId={obra.drive_carpeta_id}
           vincular={vincularDocumento.bind(null, obraId)}

@@ -16,6 +16,7 @@ export interface OrdenBreve {
   numero: string | null
   fecha: string | null
   importe: number | null
+  moneda: string | null
   obra_id: string | null
 }
 
@@ -37,7 +38,7 @@ export type OrdenesDeLaCartera = {
 export async function getOrdenesDeLaCartera(supabase: SupabaseClient): Promise<OrdenesDeLaCartera> {
   const { data, error } = await supabase
     .from('cliente_orden')
-    .select('id, cliente_id, obra_id, tipo, numero, fecha, importe')
+    .select('id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda')
     .is('eliminado_en', null)
 
   const porObra = new Map<string, OrdenBreve[]>()
@@ -84,16 +85,35 @@ export function diaMes(fecha: string | null): string | null {
   return m ? `${m[3]}/${m[2]}` : null
 }
 
-const PREFIJO: Record<string, string> = { orden_compra: 'OC', orden_pago: 'OP' }
+const PREFIJO: Record<string, string> = { orden_compra: 'OC', orden_pago: 'OP', factura: 'Factura' }
+
+/** «$10.133.750» — SIN centavos y sin espacio. La fila tiene ~110 px para el rótulo entero y los
+ *  centavos de una orden de ocho cifras no cambian ninguna decisión. El importe exacto, con sus
+ *  decimales, está en el panel. `Intl` y no `pesos()`: este archivo es lógica pura y lo prueba
+ *  `node --test`, que no monta componentes. */
+export function importeCorto(importe: number | null, moneda: string | null = 'ARS'): string | null {
+  if (importe === null) return null
+  const n = Math.round(importe).toLocaleString('es-AR')
+  return moneda === 'USD' ? `U$S ${n}` : `$${n}`
+}
 
 /**
- * El rótulo de UNA orden: «OC 2162 · 05/08». Sin número se escribe «s/n» y sin fecha se omite la
- * fecha — nunca se rellena con la fecha del mail ni con un guión que parezca un dato.
+ * El rótulo de UNA orden: «OC 2173 · 11/08 · $78.650.000». Sin número se escribe «s/n» y sin fecha
+ * se omite la fecha — nunca se rellena con la fecha del mail ni con un guión que parezca un dato.
+ *
+ * EL IMPORTE SÓLO CON `veEconomia`, y por eso es un parámetro y no un `??`: el importe de una orden
+ * de compra ES el precio de venta de la obra. El jefe de obra y el campo ven qué orden hay; cuánto
+ * se cobra por ella, no. Un `false` de más deja la pantalla pobre; uno de menos publica el precio.
  */
-export function rotuloOrden(o: Pick<OrdenBreve, 'tipo' | 'numero' | 'fecha'>): string {
+export function rotuloOrden(
+  o: Pick<OrdenBreve, 'tipo' | 'numero' | 'fecha'> & Partial<Pick<OrdenBreve, 'importe' | 'moneda'>>,
+  { veEconomia = false }: { veEconomia?: boolean } = {},
+): string {
   const partes = [`${PREFIJO[o.tipo] ?? 'Doc'} ${numeroCorto(o.numero) ?? 's/n'}`]
   const dm = diaMes(o.fecha)
   if (dm) partes.push(dm)
+  const imp = veEconomia ? importeCorto(o.importe ?? null, o.moneda ?? null) : null
+  if (imp) partes.push(imp)
   return partes.join(' · ')
 }
 
@@ -107,11 +127,15 @@ export type GrupoOrden = { clave: string; rotulo: string; ids: string[]; fecha: 
  * Las que no tienen número NO se agrupan entre sí: dos papeles sin número no son el mismo papel.
  */
 export function ordenesParaFila(
-  ordenes: OrdenBreve[] | undefined, { max = 3 }: { max?: number } = {},
+  ordenes: OrdenBreve[] | undefined,
+  { max = 3, veEconomia = false }: { max?: number; veEconomia?: boolean } = {},
 ): { visibles: GrupoOrden[]; resto: number } {
   const porClave = new Map<string, GrupoOrden>()
   const grupos: GrupoOrden[] = []
-  for (const o of ordenes ?? []) {
+  // LA FACTURA NUESTRA NO SE DIBUJA COMO ORDEN. Es evidencia de la obra —cita la OC y describe el
+  // trabajo— pero no la emitió el cliente: mostrarla acá decía que Messina mandó el doble de
+  // órdenes de las que mandó. Vive en el panel, con su cita.
+  for (const o of (ordenes ?? []).filter((x) => x.tipo === 'orden_compra' || x.tipo === 'orden_pago')) {
     const canon = canonico(o.numero)
     const clave = canon ? `${o.tipo}::${canon}` : `sola::${o.id}`
     const ya = canon ? porClave.get(clave) : undefined
@@ -119,10 +143,10 @@ export function ordenesParaFila(
       ya.ids.push(o.id)
       // La fecha del grupo es la MÁS VIEJA de sus papeles: la orden se emitió una vez, y la copia
       // que llegó después no la vuelve más nueva.
-      if (o.fecha && (!ya.fecha || o.fecha < ya.fecha)) { ya.fecha = o.fecha; ya.rotulo = rotuloOrden(o) }
+      if (o.fecha && (!ya.fecha || o.fecha < ya.fecha)) { ya.fecha = o.fecha; ya.rotulo = rotuloOrden(o, { veEconomia }) }
       continue
     }
-    const g: GrupoOrden = { clave, rotulo: rotuloOrden(o), ids: [o.id], fecha: o.fecha }
+    const g: GrupoOrden = { clave, rotulo: rotuloOrden(o, { veEconomia }), ids: [o.id], fecha: o.fecha }
     if (canon) porClave.set(clave, g)
     grupos.push(g)
   }
@@ -157,6 +181,8 @@ export interface OrdenDetallada {
   fecha: string | null
   importe: number | null
   moneda: string | null
+  /** La OC que este papel NOMBRA, en canónico. Una factura nuestra la trae; una OC no. */
+  cita: string | null
   nombre_archivo: string
   emisor: string | null
   /** `remitente` lo prueba el dominio del mail; `texto` lo dedujo el OS. HECHO vs INFERENCIA. */
@@ -176,13 +202,37 @@ export async function getOrdenesDe(
 ): Promise<OrdenDetallada[] | null> {
   let q = supabase
     .from('cliente_orden')
-    .select('id, tipo, numero, fecha, importe, moneda, nombre_archivo, emisor, atribucion')
+    .select('id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, emisor, atribucion')
     .eq('cliente_id', clienteId)
     .is('eliminado_en', null)
   q = obraId === null ? q.is('obra_id', null) : q.eq('obra_id', obraId)
   // Las más nuevas primero, y las sin fecha al final: una orden sin fecha no es la más vieja, es
   // una que el PDF no fechó.
   const { data, error } = await q.order('fecha', { ascending: false, nullsFirst: false })
+  if (error) return null
+  return (data ?? []) as OrdenDetallada[]
+}
+
+/**
+ * LAS ÓRDENES DE UNA OBRA, PEDIDAS DESDE LA OBRA. Misma tabla, misma RLS, otra puerta.
+ *
+ * `getOrdenesDe` exige el cliente porque la pantalla de la cartera puede pedir «las del cliente sin
+ * obra». La ficha de la obra no tiene esa pregunta: sabe la obra y nada más. Filtrar además por
+ * cliente acá obligaría a leer el cliente de la obra sólo para repetir un dato que `obra_id` ya
+ * determina — y el día que los dos no coincidieran, la ficha escondería la orden en silencio.
+ *
+ * NO SE VUELVE A FILTRAR POR ROL: la policy de `cliente_orden` ya recorta (el jefe de obra ve la
+ * suya). Filtrar dos veces esconde el día que una de las dos reglas cambie.
+ */
+export async function getOrdenesDeObra(
+  supabase: SupabaseClient, obraId: string,
+): Promise<OrdenDetallada[] | null> {
+  const { data, error } = await supabase
+    .from('cliente_orden')
+    .select('id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, emisor, atribucion')
+    .eq('obra_id', obraId)
+    .is('eliminado_en', null)
+    .order('fecha', { ascending: false, nullsFirst: false })
   if (error) return null
   return (data ?? []) as OrdenDetallada[]
 }

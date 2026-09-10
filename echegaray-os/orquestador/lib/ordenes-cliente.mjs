@@ -144,18 +144,53 @@ export function extraerFecha(texto) {
 }
 
 /**
+ * EN QUÉ LOCALE ESTÁ ESCRITO EL DINERO DE ESTE DOCUMENTO: 'US' o 'AR'.
+ *
+ * MEDIDO el 10/09/2026 sobre las cinco OC de Messina en el bucket: el sistema que las emite imprime
+ * en formato norteamericano —«Total :$ 78,650,000.00», y el precio unitario como «$ 000000.0000»—
+ * mientras que el resto de los papeles de la empresa (nuestras facturas A) vienen en es_AR. Leer
+ * los dos con la misma regla es lo que dejó la OC 2173 guardada por $ 78,65: el patrón `\d+,\d{2}`
+ * de es_AR agarró «78,65» de «78,650,000.00» y lo llamó importe.
+ *
+ * NO SE MIRA EL EMISOR NI EL NOMBRE DEL ARCHIVO: se mira el PATRÓN, que es lo que el documento
+ * declara de sí mismo. Un token con LOS DOS separadores prueba el locale solo —el último que
+ * aparece es el decimal—, y cuatro decimales detrás de un punto también, porque un separador de
+ * miles agrupa de a tres exactos y nunca de a cuatro.
+ *
+ * Ante un documento sin ninguna evidencia (una cifra sin separadores, o ninguna cifra) devuelve
+ * 'AR': es el locale de la empresa y el que esta función tenía cableado antes de existir.
+ */
+export function formatoNumerico(texto) {
+  const t = String(texto ?? '')
+  const us = (t.match(/\d{1,3}(?:,\d{3})+\.\d+/g) ?? []).length + (t.match(/\d+\.\d{4}(?!\d)/g) ?? []).length
+  const ar = (t.match(/\d{1,3}(?:\.\d{3})+,\d+/g) ?? []).length + (t.match(/\d+,\d{4}(?!\d)/g) ?? []).length
+  return us > ar ? 'US' : 'AR'
+}
+
+/**
  * El importe MAYOR que declara el documento, y su moneda. El mayor y no el primero: una OC lista
- * ítems y el total es lo que compromete. Formato es_AR: el punto separa miles y la coma decimales.
+ * ítems y el total es lo que compromete. El locale lo decide `formatoNumerico` sobre el MISMO
+ * texto, salvo que se lo fuercen: nunca se asume es_AR porque la empresa sea argentina.
+ *
  * Devuelve { importe, moneda } con importe null si el texto no trae ninguna cifra con formato de
  * dinero — un número suelto (un CUIT, un teléfono) no es un importe.
  */
-export function extraerImporte(texto) {
+export function extraerImporte(texto, { formato } = {}) {
   const t = String(texto ?? '')
+  const loc = formato ?? formatoNumerico(t)
   const moneda = /u\$s|usd|dolar|dólar/i.test(t) && !/\bars\b|\$\s*\d/.test(t.replace(/u\$s/gi, '')) ? 'USD' : 'ARS'
+  // Exige separador de miles O decimales: así una cifra tiene que PARECER dinero. Las dos ramas son
+  // simétricas — sólo se intercambian el punto y la coma — y por eso van armadas del mismo molde:
+  // dos expresiones escritas a mano se habrían separado en el primer arreglo.
+  const [miles, dec] = loc === 'US' ? [',', '.'] : ['.', ',']
+  const esc = (c) => (c === '.' ? '\\.' : c)
+  const re = new RegExp(
+    `(?:\\$|u\\$s|ars|usd)?\\s*(\\d{1,3}(?:${esc(miles)}\\d{3})+(?:${esc(dec)}\\d{1,4})?|\\d+${esc(dec)}\\d{2,4})`, 'gi',
+  )
   let mejor = null
-  // Exige separador de miles O decimales con coma: así una cifra tiene que PARECER dinero.
-  for (const m of t.matchAll(/(?:\$|u\$s|ars|usd)?\s*(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+,\d{2})/gi)) {
-    const v = Number(m[1].replace(/\./g, '').replace(',', '.'))
+  for (const m of t.matchAll(re)) {
+    const crudo = m[1].split(miles).join('').replace(dec, '.')
+    const v = Number(crudo)
     if (Number.isFinite(v) && (mejor === null || v > mejor)) mejor = v
   }
   return { importe: mejor, moneda: mejor === null ? null : moneda }
@@ -415,4 +450,60 @@ export function fechaImposible(fecha, { hoy = new Date() } = {}) {
   if (!fecha) return false
   const a = Number(String(fecha).slice(0, 4))
   return !Number.isFinite(a) || a < 2015 || a > hoy.getFullYear() + 1
+}
+
+// ── LA FACTURA NUESTRA NO ES UNA ORDEN DE COMPRA ────────────────────────────────────────────────
+//
+// MEDIDO el 10/09/2026: seis de las dieciséis filas de `cliente_orden` estaban guardadas como
+// `orden_compra` y son FACTURAS A EMITIDAS POR NOSOTROS. Se colaron porque la regla de tipo mira el
+// nombre del archivo («OC 02-00002162.pdf») y el detalle de la factura cita la OC que factura. El
+// resultado era una pantalla que dibujaba dos órdenes de compra donde el cliente emitió una sola, y
+// le atribuía a Messina un papel que Messina no firmó.
+//
+// LA EVIDENCIA QUE MANDA ES EL ENCABEZADO DEL PROPIO PDF, no el nombre ni la cita: si el documento
+// dice «FACTURA A» y trae su «Comp. Nro», ES esa factura. Sigue siendo evidencia de la obra —cita
+// la OC y describe el trabajo—, por eso no se descarta: cambia de clase.
+export const TIPOS = Object.freeze(['orden_compra', 'orden_pago', 'factura', 'otro'])
+
+/**
+ * Qué es REALMENTE este documento, con el PDF ya leído. Devuelve `{ tipo, numero, cita }`:
+ *   · `numero` de una factura es SU comprobante («A-1-225»), no el de la OC que cita — guardar ahí
+ *     el número ajeno es lo que hacía que dos papeles distintos parecieran la misma orden;
+ *   · `cita` es la OC que la factura nombra, en canónico. Es lo que deja el rótulo «Factura 225 ·
+ *     cita OC 2162» y lo que ata la factura a la orden sin fingir que la reemplaza.
+ * `null` cuando el PDF no se declara factura: no se fuerza nada y el tipo previo queda como está.
+ */
+export function facturaPropiaDe(texto) {
+  const comprobante = comprobantePropio(texto)
+  if (!comprobante) return null
+  const citadas = ocsCitadas(texto)
+  return { tipo: 'factura', numero: comprobante, cita: citadas.length === 1 ? citadas[0] : null }
+}
+
+/**
+ * EL CAMINO INVERSO DE LA HERENCIA: clave de OC → obra, según los documentos que la CITAN.
+ *
+ * `mapaDeEvidencia` responde «¿qué obra tiene la OC que yo cito?». Ésta responde la otra mitad: la
+ * factura nuestra describe el trabajo («Construccion de platea... PLAYON DE AZUFRE») y por eso el
+ * OS le encuentra obra; la OC del cliente, en cambio, a veces sólo trae el código de centro de
+ * costo. Sin este mapa, la obra que la factura ya probó no llegaba nunca a la OC que factura.
+ *
+ * Hasta el 10/09 esa herencia existía por accidente: la factura quedaba guardada con el número de
+ * la OC y `agruparPorNumero` las juntaba como si fueran el mismo papel. Al separar los tipos eso
+ * desaparece, y lo que era un efecto colateral pasa a ser una regla escrita y probada.
+ *
+ * DOS OBRAS PARA LA MISMA OC ⇒ LA CLAVE SE CAE. Dos facturas de obras distintas citando la misma OC
+ * significa que la cita no distingue nada: heredar ahí sería sortear.
+ */
+export function mapaDeCitas(docs) {
+  const mapa = new Map()
+  for (const d of docs ?? []) {
+    if (!d.obra_id) continue
+    for (const c of d.citadas ?? []) {
+      if (!/^\d/.test(c)) continue // los comprobantes («A-1-225») no son OC: no dan obra a nadie
+      mapa.set(c, mapa.has(c) && mapa.get(c) !== d.obra_id ? null : d.obra_id)
+    }
+  }
+  for (const [c, obraId] of [...mapa]) if (!obraId) mapa.delete(c)
+  return mapa
 }
