@@ -7,9 +7,16 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { crudoDesdePdf, leerSinModelo } from './sin-modelo.mjs'
 
+// ═══ ESTE LITERAL DEJÓ PASAR EL DEFECTO DEL 10/09/2026, Y POR ESO AHORA ES EL CONTRATO ═══
+//
+// Decía `tipo: 'Factura A'` —que no es una letra— y no traía `emisor`. Con eso, cualquier salida de
+// `crudoDesdePdf` pasaba: se comparaba con lo que la función escribía, nunca con lo que
+// `normalizar_lectura` lee. `pdf-afip-real.test.mjs` corre la cadena entera sobre los PDF reales;
+// esto congela la FORMA que `comprobanteDesdePdf` devuelve.
 const BUENO = {
   cuit: '30710423184', comprobante: '00009-00003204', puntoVenta: 9, numero: 3204,
-  tipo: 'Factura A', esNotaCredito: false, fecha: '21/08/2026',
+  tipo: 'A', emisor: 'ALUMETAL S A', condicionVenta: 'Cuenta Corriente', concepto: 'Chapa galvanizada',
+  esNotaCredito: false, esNotaDebito: false, fecha: '21/08/2026',
   neto: 388070, iva: 81494.7, ivaDiscriminado: true, otrosTributos: 0, total: 469564.7,
   cae: '86316774738912', via: 'pdf_afip', cuadra: true,
 }
@@ -28,6 +35,32 @@ test('si la aritmética NO cierra, se niega: este camino no tiene quién lo corr
   // lectura: si se afirmara igual, un importe mal leído entraría a Compras sin que nadie lo mire.
   assert.equal(crudoDesdePdf({ ...BUENO, cuadra: false }), null)
   assert.equal(crudoDesdePdf({ ...BUENO, cuadra: null }), null)
+})
+
+test('sin LETRA no contesta: la columna B se llenaría con N sobre una factura con CAE', () => {
+  // `categoriaDelComprobante` deriva la categoría del tipo. Sin tipo, una factura electrónica entra
+  // a Compras marcada «en negro». Antes del 10/09 esto no se controlaba: la letra se leía bien y se
+  // perdía en el camino porque viajaba con la clave equivocada.
+  assert.equal(crudoDesdePdf({ ...BUENO, tipo: null }), null)
+})
+
+test('sin RAZÓN SOCIAL no contesta: la columna E quedaría vacía', () => {
+  assert.equal(crudoDesdePdf({ ...BUENO, emisor: null }), null)
+})
+
+test('sin FECHA no contesta: sin mes la fila no entra en ningún período', () => {
+  // `fechaDeEmision` devuelve null cuando el texto no la determina sin ambigüedad. Ese null tiene
+  // que frenar el atajo, no escribirse en la columna C.
+  assert.equal(crudoDesdePdf({ ...BUENO, fecha: null }), null)
+})
+
+test('la letra viaja con el nombre que el consumidor lee, y arrastra la categoría', () => {
+  const c = crudoDesdePdf(BUENO)
+  assert.equal(c.letra, 'A', 'normalizar_lectura lee `letra`; `tipo` no lo mira nadie')
+  assert.equal(c.emisor, 'ALUMETAL S A')
+  assert.equal(c.concepto, 'Chapa galvanizada')
+  assert.equal(c.condicion_venta, 'Cuenta Corriente')
+  assert.equal(c.es_presupuesto_o_remito, false)
 })
 
 test('con dos CUIT ajenos el emisor es ambiguo y tampoco contesta', () => {
@@ -80,11 +113,25 @@ test('si el extractor explota, NO rompe la lectura: se cae al camino de siempre'
 })
 
 test('el camino completo devuelve la lectura y de dónde salió', async () => {
-  const TEXTO = `FACTURA COD. 01
+  const TEXTO = `Fecha de Emisión:
+ORIGINAL
+ALUMETAL S A
+Domicilio del emisor - San Juan,
+Condición de venta:
+21/08/2026
+ECHEGARAY CONSTRUCCIONES S.A.S.
+Cuenta Corriente
+CUIT:
+Ingresos Brutos:
+ALUMETAL S A
+FACTURA COD. 01
 Punto de Venta: Comp. Nro:	00009 00003204
-Fecha de Emisión: 21/08/2026
 CUIT: 30710423184
 CUIT: 30111111117
+Producto / Servicio
+Chapa galvanizada
+1,00
+unidades
 Importe Neto Gravado: $ 388070,00
 IVA 21%: $ 81494,70
 Importe Otros Tributos: $ 0,00

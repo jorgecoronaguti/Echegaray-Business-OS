@@ -40,6 +40,9 @@ const POR_CODIGO = Object.freeze({
   211: 'C', 212: 'C', 213: 'C',
 })
 const NOTAS_DE_CREDITO = new Set([3, 8, 13, 53, 203, 208, 213])
+/** Y las de DÉBITO, que SUMAN. Los dos se llaman «notas»: confundirlos ya costó $41,9M en este repo.
+ *  Viaja hasta la clave de idempotencia porque una nota de débito comparte numeración con la factura. */
+const NOTAS_DE_DEBITO = new Set([2, 7, 12, 202, 207, 212])
 
 /**
  * UN IMPORTE ESCRITO EN es-AR. `388.070,00` y `388070,00` son el mismo número; `388,070.00` no
@@ -99,6 +102,148 @@ export function pieDeFacturaSinIva(texto) {
   return { subtotal, total, otrosTributos: otros ?? 0, verificadoConElDetalle: cierraConElDetalle }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE EL PAPEL DICE ADEMÁS DE LOS NÚMEROS (10/09/2026)
+//
+// Hasta hoy este módulo leía identidad e importes y nada más. Alcanzaba mientras lo llamaba sólo su
+// test; desde el 05/09 su salida va DERECHO a una fila de Compras sin que ningún modelo la mire, y
+// una factura sin razón social, sin letra, sin concepto y sin condición de venta deja cuatro celdas
+// vacías y —lo grave— hace que la columna B se llene con `N`, "en negro", sobre un comprobante con
+// CAE. Todo eso está impreso en el PDF: no leerlo era una decisión, no un límite.
+//
+// Las cuatro funciones de abajo son PURAS y devuelven `null` cuando el texto no lo dice sin
+// ambigüedad. `null` acá no es una pérdida: `sin-modelo.mjs` lo convierte en «este papel sigue al
+// camino del modelo», que es exactamente lo que corresponde cuando el atajo no alcanza.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Lo que NO puede ser el valor de un campo: un rótulo, una fecha, un CUIT o puros números. */
+function pareceValor(linea) {
+  const t = String(linea ?? '').trim()
+  if (t.length < 2 || t.length > 90) return false
+  if (t.endsWith(':')) return false
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return false
+  if (/^[\d\s.,%$-]+$/.test(t)) return false
+  return /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(t)
+}
+
+/**
+ * LA RAZÓN SOCIAL DEL QUE FACTURA, que en este formato está impresa en el renglón siguiente al
+ * rótulo de la copia (`ORIGINAL` / `DUPLICADO` / `TRIPLICADO`).
+ *
+ * Medido sobre los cuatro PDF que entraron por el canal entre el 01 y el 10/09/2026: 4 de 4. Los
+ * otros dos lugares donde el nombre aparece —el bloque «Razón Social:» y el pie— NO son estables:
+ * en la factura de Turiaci el rótulo «Razón Social:» viaja separado de su valor.
+ *
+ * Se exige que el nombre aparezca MÁS DE UNA VEZ en el documento (todas las copias lo repiten): un
+ * renglón suelto que casualmente siga a la palabra ORIGINAL no es una razón social.
+ */
+export function razonSocialEmisor(texto) {
+  const t = String(texto ?? '')
+  const m = t.match(/(?:^|\n)\s*(?:ORIGINAL|DUPLICADO|TRIPLICADO)\s*\r?\n\s*([^\n]+)/i)
+  const nombre = m?.[1]?.trim() ?? null
+  if (!nombre || !pareceValor(nombre)) return null
+  // Ni el comprador ni un rótulo del formulario.
+  if (/ECHEGARAY CONSTRUCCIONES/i.test(nombre)) return null
+  const veces = t.split(nombre).length - 1
+  return veces >= 2 ? nombre : null
+}
+
+/**
+ * LA CONDICIÓN DE VENTA IMPRESA. En este formato es el último valor del bloque del encabezado: el
+ * renglón que precede al `CUIT:` / `Ingresos Brutos:` del segundo cuadro.
+ *
+ * Viaja TAL CUAL (`Contado`, `Cuenta Corriente`, `Cheque`, `Transferencia Bancaria`) sin traducirse:
+ * quien la convierte en modalidad, estado y forma de pago es `condicionAPago` / `tipoPagoValido` del
+ * cargador, que es el mismo camino por el que pasa lo que lee el modelo. Traducirla acá sería tener
+ * dos reglas para la misma columna.
+ */
+export function condicionDeVentaImpresa(texto) {
+  const t = String(texto ?? '')
+  if (!/Condici[óo]n de venta:/i.test(t)) return null
+  const m = t.match(/\n\s*([^\n]+?)\s*\r?\n\s*CUIT:\s*\r?\n\s*Ingresos Brutos:/i)
+  const v = m?.[1]?.trim() ?? null
+  return v && pareceValor(v) ? v : null
+}
+
+/**
+ * QUÉ SE COMPRÓ, sacado de los RENGLONES del detalle — nunca del nombre del proveedor, que es el
+ * error que ya convirtió una carga de combustible en «comestibles y bebidas».
+ *
+ * La descripción de cada ítem es el texto que PRECEDE inmediatamente a su cantidad. Esa regla
+ * resuelve sola las dos trampas del formato: el código de artículo (`001`) no es texto y queda
+ * afuera, y la unidad de medida (`otras` + `unidades`) va DESPUÉS de la cantidad, así que nunca se
+ * confunde con la descripción. Una descripción partida en dos renglones se vuelve a unir.
+ */
+export function conceptoDelDetalle(texto) {
+  const t = String(texto ?? '')
+  const desde = t.search(/Producto\s*\/\s*Servicio/i)
+  if (desde < 0) return null
+  const resto = t.slice(desde)
+  const hasta = resto.search(/CAE\s*N[°º]|Importe Otros Tributos:|Subtotal:\s*\$/i)
+  const bloque = hasta > 0 ? resto.slice(0, hasta) : resto
+  const cantidad = /^\d{1,3}(?:\.\d{3})*,\d{1,4}$/
+  const items = []
+  let corriendo = []
+  for (const cruda of bloque.split(/\r?\n/).slice(1)) {
+    const l = cruda.trim()
+    if (!l) continue
+    if (cantidad.test(l)) {
+      if (corriendo.length) items.push(corriendo.join(' '))
+      corriendo = []
+      continue
+    }
+    if (pareceValor(l)) corriendo.push(l)
+    else corriendo = []
+  }
+  const texto2 = items.join(' + ').replace(/\s+/g, ' ').trim()
+  return texto2 ? texto2.slice(0, 300) : null
+}
+
+/**
+ * LA FECHA DE EMISIÓN, Y SÓLO CUANDO EL TEXTO LA DETERMINA.
+ *
+ * ═══ EL DEFECTO (10/09/2026) ═══
+ *
+ * Acá decía `t.match(/(\d{2}\/\d{2}\/\d{4})/)` — la PRIMERA fecha del texto. En una factura de
+ * servicios con período facturado, la primera fecha es el «Período Facturado Desde». Medido sobre
+ * los honorarios de Robles (`0001-00000211`): el texto arranca con **01/08/2026** y el comprobante
+ * se emitió el **07/09/2026**. Un mes entero de diferencia, que en Compras es la columna D y en el
+ * Flujo de Fondos es el mes en que ese costo aparece.
+ *
+ * ═══ LA REGLA, Y POR QUÉ NO ADIVINA ═══
+ *
+ * Las fechas del encabezado —las que van antes del `Punto de Venta:` del segundo cuadro— salen en
+ * el orden del formulario. Cuando hay período facturado, las dos primeras son «Desde» y «Hasta»; lo
+ * que queda son la emisión y el vencimiento para el pago. Si esas dos coinciden, la emisión no tiene
+ * ambigüedad posible. Si no coinciden, **no se afirma nada**: se devuelve null y el papel sigue al
+ * camino del modelo, que lee el formulario mirándolo.
+ *
+ * Y se cruza contra una fuente del propio papel que no participó de la elección: la emisión no puede
+ * ser posterior al vencimiento del CAE.
+ */
+export function fechaDeEmision(texto) {
+  const t = String(texto ?? '')
+  const corte = t.search(/Punto de Venta:/i)
+  const cabecera = corte > 0 ? t.slice(0, corte) : t
+  let fechas = [...cabecera.matchAll(/(\d{2}\/\d{2}\/\d{4})/g)].map((m) => m[1])
+  if (!fechas.length) return null
+  if (/Per[íi]odo Facturado Desde:/i.test(cabecera)) {
+    fechas = fechas.slice(2)
+    if (!fechas.length) return null
+  }
+  const unica = fechas.every((f) => f === fechas[0]) ? fechas[0] : null
+  if (!unica) return null
+  const vtoCae = t.match(/Fecha de Vto\.? de CAE:[\s\S]{0,200}?(\d{2}\/\d{2}\/\d{4})/i)?.[1] ?? null
+  if (vtoCae && aDia(unica) > aDia(vtoCae)) return null
+  return unica
+}
+
+/** DD/MM/AAAA → número comparable. Sólo para ordenar; no se exporta. */
+function aDia(f) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(f ?? ''))
+  return m ? Number(`${m[3]}${m[2]}${m[1]}`) : 0
+}
+
 /**
  * EL NOMBRE DEL ARCHIVO QUE PONE AFIP: `20287737824_001_00009_00003204 …pdf`
  * → CUIT del emisor, código de comprobante, punto de venta, número.
@@ -154,7 +299,15 @@ export function comprobanteDesdePdf(texto, { nombreArchivo = null } = {}) {
     numero: Number(pvNro[2]),
     tipo: codigo == null ? null : (POR_CODIGO[codigo] ?? null),
     esNotaCredito: codigo != null && NOTAS_DE_CREDITO.has(codigo),
-    fecha: t.match(/(\d{2}\/\d{2}\/\d{4})/)?.[1] ?? null,
+    esNotaDebito: codigo != null && NOTAS_DE_DEBITO.has(codigo),
+    // LA DE EMISIÓN, NO LA PRIMERA QUE APAREZCA. El porqué, en `fechaDeEmision`: en una factura con
+    // período facturado la primera fecha del texto es el «Desde», y el gasto se iba un mes atrás.
+    fecha: fechaDeEmision(t),
+    // Lo que el papel dice además de los números, y que hasta hoy se tiraba: sin esto la fila de
+    // Compras sale sin proveedor (E), sin concepto (L) y sin modalidad (F/P/S/X).
+    emisor: razonSocialEmisor(t),
+    condicionVenta: condicionDeVentaImpresa(t),
+    concepto: conceptoDelDetalle(t),
     // Sin IVA discriminado el neto ES el total: la C no lo separa, y dividir por 1,21 sería inventar.
     neto: neto ?? (ivaDiscriminado ? null : (pie?.subtotal ?? total)),
     iva,

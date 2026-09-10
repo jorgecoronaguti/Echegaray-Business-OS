@@ -64,16 +64,48 @@ export function crudoDesdePdf(salida) {
   // Cualquiera de las dos en falso NO es un error: es que este camino no alcanza, y el papel sigue
   // al camino de siempre. Afirmar con la mitad de la evidencia sería peor que pagar la llamada.
   if (c.cuadra !== true || !c.cuit) return null
+  // ═══ Y LOS TRES QUE HACEN A LA FILA, NO SÓLO A LA PLATA (10/09/2026) ═══
+  //
+  // Sin LETRA la columna G queda vacía **y la B se llena con `N`** —«en negro»— sobre una factura
+  // con CAE: `categoriaDelComprobante` deriva la categoría del tipo, y sin tipo no hay comprobante
+  // fiscal que valga. Sin EMISOR la columna E queda vacía y la fila no tiene proveedor. Sin FECHA
+  // no hay mes. Los tres están impresos en el papel; si alguno no se pudo leer, este atajo no
+  // alcanza y el papel sigue al camino del modelo, que es lo que hacía antes del 05/09.
+  if (!c.tipo || !c.emisor || !c.fecha) return null
 
   return {
     legible: true,
     cuit: c.cuit,
     // El número viene como «00009-00003204»: punto de venta a 5 dígitos, que es como lo imprime
-    // AFIP en este formato. NO se recorta a 4: el identificador es el que está en el papel.
+    // AFIP en este formato. NO se recorta a 4: el identificador es el que está en el papel, y
+    // `numeroCanonico` le saca los ceros de relleno más adelante, para todos por igual.
     numero: c.comprobante,
     punto_venta: c.puntoVenta,
-    tipo: c.tipo,
+    // ═══ SE LLAMA `letra`, NO `tipo` (10/09/2026) ═══
+    //
+    // Acá decía `tipo: c.tipo`. Quien consume esto es `normalizar_lectura`, que lee `crudo.letra`:
+    // la clave `tipo` no la mira NADIE. O sea que desde el 05/09 todo PDF de factura electrónica
+    // entraba a Compras sin letra (G vacía) y clasificado `N` en la columna B. Un gasto documentado
+    // con CAE registrado como si no tuviera comprobante.
+    //
+    // El test que había no lo vio porque fabricaba la lectura a mano —llegó a escribir
+    // `tipo: 'Factura A'`— y comparaba la salida consigo misma en vez de con lo que el consumidor
+    // lee. Ahora `pdf-afip-real.test.mjs` corre la cadena entera sobre los PDF reales del canal.
+    letra: c.tipo,
+    emisor: c.emisor,
     es_nota_credito: c.esNotaCredito,
+    es_nota_debito: c.esNotaDebito === true,
+    // Un PDF con CAE y letra NO es un presupuesto ni un remito: `comprobanteDesdePdf` devuelve null
+    // sin `COD.` y sin punto de venta. Se declara igual para que el campo viaje siempre y
+    // `faltantes.mjs` no tenga que distinguir «false» de «no contestó».
+    es_presupuesto_o_remito: false,
+    varios_comprobantes: false,
+    // LO QUE EL PAPEL DICE DE LA OPERACIÓN. `condicion_venta` decide modalidad (F), estado (X) y
+    // total/parcial (S); `forma_pago` sólo entra en P si es uno de los valores del desplegable.
+    // Las dos viajan CRUDAS y las traduce el cargador, igual que lo que lee el modelo.
+    condicion_venta: c.condicionVenta ?? null,
+    forma_pago: c.condicionVenta ?? null,
+    concepto: c.concepto ?? null,
     fecha: c.fecha,
     neto_gravado: c.neto,
     iva_21: c.iva,
