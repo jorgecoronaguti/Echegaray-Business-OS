@@ -47,8 +47,11 @@ export function lecturaPorArchivo(fajos = []) {
       const anotada = filas.find((x) => x?.clave === clave) ?? null
       const proveedor = it?.proveedor ?? it?.emisor?.nombre ?? anotada?.proveedor ?? null
       const fila = Number.isInteger(anotada?.fila) ? anotada.fila : null
+      // El TOTAL viaja con la lectura porque es la corroboración de un candidato por número
+      // (`papel-sin-vincular.mjs`): dos comprobantes distintos pueden compartir número, el importe no.
+      const total = Number.isFinite(Number(it?.total)) ? Number(it.total) : null
       for (const o of [it?.origen, ...(it?.copias ?? [])]) {
-        if (o?.fileId) mapa.set(String(o.fileId), { clave, proveedor, fila })
+        if (o?.fileId) mapa.set(String(o.fileId), { clave, proveedor, fila, total })
       }
     }
   }
