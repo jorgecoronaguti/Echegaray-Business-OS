@@ -68,6 +68,7 @@ import {
   type EstadoDePapeles, type MarcaDeHoy,
 } from '../services/pulsoDelPlantel'
 import { BotonPresenteHoy } from './BotonPresenteHoy'
+import { BotonQuitarPresente } from './BotonQuitarPresente'
 import type { ClasificacionDelDia } from '../services/asistenciaDelDia'
 import type { RotuloHoy } from '../services/pulsoDelPlantel'
 
@@ -291,6 +292,15 @@ export function TablaPersonas({
                           personaId={p.id}
                           nombre={oracion(p.nombre_completo)}
                           obraId={p.obra_actual_id as string}
+                          fecha={marcar.fecha}
+                        />
+                      )}
+                      {/* DESHACER VIVE DONDE SE HIZO (dueño, 10/09/2026). El estado se dice
+                          primero y la acción va al lado, apagada: «● presente · quitar». */}
+                      {oferta === 'quitar' && marcar && (
+                        <BotonQuitarPresente
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
                           fecha={marcar.fecha}
                         />
                       )}

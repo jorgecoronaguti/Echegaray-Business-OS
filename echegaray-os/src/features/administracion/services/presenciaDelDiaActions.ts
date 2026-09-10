@@ -50,7 +50,9 @@ import {
   planDePresencia, resumenPresencia,
   type HoraDelDia, type MarcaPresencia, type PresenciaGuardada,
 } from './presenciaDelDia'
-import { getPresenciaDelDia } from './presenciaDelDiaService'
+import { getPresenciaDelDia, quitarPresenciaDelDia } from './presenciaDelDiaService'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { puedeCambiarObraActual } from './planDeObraActual'
 
 // EL MOTIVO SE VALIDA CONTRA EL CATÁLOGO, NO CONTRA UNA LISTA DE ESTA PANTALLA. `esMotivo` mira
 // `orquestador/lib/asistencia-motivos.mjs`, que es lo que usa el bot desde julio. Y una presencia
@@ -233,4 +235,44 @@ function mezclar(
   const porPersona = new Map(antes.map((g) => [g.persona_id, g]))
   for (const m of ahora) porPersona.set(m.persona_id, { ...m })
   return [...porPersona.values()]
+}
+
+// ═══ QUITAR EL PRESENTE — 10/09/2026 ═══
+//
+// El dueño: *«si quiero sacarle el presente a alguien que lo tiene, no puedo actualmente; está mal,
+// y así se ve en la imagen. Te dije que asistencia es distinto a horas trabajadas»*.
+//
+// LO QUE ESTA ACCIÓN NO HACE ES LA MITAD DE SU DEFINICIÓN: no escribe «ausente» —sin registrar no
+// es ausente— y no toca `registros_hh`. Las horas que ya se imputaron a una obra son un hecho
+// aparte, y borrarlas por haber sacado una marca sería exactamente la deducción que la regla E del
+// 08/09 prohíbe, sólo que al revés.
+
+const quitaSchema = z.object({
+  persona_id: z.string().uuid('No sé a quién le quitás la marca'),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
+})
+
+export type ResultadoQuita = { ok: true; mensaje: string } | { ok: false; error: string }
+
+export async function quitarPresencia(entrada: unknown): Promise<ResultadoQuita> {
+  const parsed = quitaSchema.safeParse(entrada)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+
+  const supabase = await createClient()
+  // LA MISMA LISTA QUE PARA MARCAR (`ROLES_QUE_MUEVEN_DE_OBRA`): quien puede afirmar que alguien
+  // estuvo puede revocarlo. Esto es la puerta; la cerradura es la RLS de `asistencia_dia`, que al
+  // jefe de obra lo acota como siempre.
+  const { data: perfil, error: errorPerfil } = await getPerfilActual(supabase)
+  if (errorPerfil) return { ok: false, error: `No pude verificar tu rol: ${errorPerfil}` }
+  if (!puedeCambiarObraActual(perfil?.rol)) {
+    return { ok: false, error: 'Tu usuario no puede quitar marcas de asistencia.' }
+  }
+
+  const r = await quitarPresenciaDelDia(supabase, parsed.data.persona_id, parsed.data.fecha)
+  if (r.error !== null) return { ok: false, error: r.error }
+
+  revalidatePath('/administracion/personas')
+  revalidatePath('/administracion/personas/en-obra')
+  revalidatePath('/campo/asistencia')
+  return { ok: true, mensaje: 'Marca quitada: el día quedó sin marcar. Las horas cargadas no se tocaron.' }
 }

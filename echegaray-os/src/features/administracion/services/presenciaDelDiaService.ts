@@ -20,7 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
 import type { EstadoPresencia, PresenciaGuardada } from './presenciaDelDia'
 import {
-  planDeDeclaracion, seRetiraLaPresencia,
+  planDeDeclaracion, seQuitaLaPresencia, seRetiraLaPresencia,
   type DeclaracionPedida, type PresenciaEnLaBase,
 } from './presenciaPorHoras'
 
@@ -225,4 +225,46 @@ async function presenciaGuardadaDe(
     })),
     error: null,
   }
+}
+
+/**
+ * QUITAR LA MARCA DEL DÍA A MANO — la revocación explícita (dueño, 10/09/2026).
+ *
+ * No es `retirarPresenciaPorHoras`. Aquélla la dispara el sistema al borrar unas horas y por eso
+ * sólo alcanza a lo que esas horas produjeron; ésta la pide una persona que está mirando la fila,
+ * y por eso alcanza también a lo declarado. La regla —una sola— vive en `seQuitaLaPresencia`.
+ *
+ * EL DÍA VUELVE A «SIN MARCAR», NUNCA A «AUSENTE»: se borra la fila en vez de escribirle otro
+ * estado. Y NO SE TOCAN LAS HORAS: son otra tabla y otro hecho.
+ *
+ * CERO FILAS ES UN FALLO, NO UN ÉXITO SILENCIOSO. Mientras `20260910T1200` no esté aplicada, la
+ * policy vieja (`origen = 'horas'`) rechaza el borrado SIN error: PostgREST devuelve 204 y nada.
+ * Decir «listo» ahí dejaría la pantalla en blanco y la marca puesta (memoria: postgrest-204-no-
+ * prueba-escritura).
+ */
+export async function quitarPresenciaDelDia(
+  supabase: SupabaseClient, personaId: string, fecha: string,
+): Promise<{ quitadas: number; error: string | null }> {
+  const previas = await presenciaGuardadaDe(supabase, [{ persona_id: personaId, fecha }])
+  if (previas.error !== null) return { quitadas: 0, error: previas.error }
+  const previa = previas.data.find((p) => p.persona_id === personaId && p.fecha === fecha) ?? null
+  const decision = seQuitaLaPresencia(previa)
+  if (!decision.quita) return { quitadas: 0, error: decision.porque }
+
+  const { data, error } = await supabase.from('asistencia_dia')
+    .delete().eq('persona_id', personaId).eq('fecha', fecha).select('id')
+  if (error) return { quitadas: 0, error: traducirRetiro(error.message) }
+  if ((data ?? []).length === 0) return { quitadas: 0, error: FALTA_LA_MIGRACION }
+  return { quitadas: (data ?? []).length, error: null }
+}
+
+const FALTA_LA_MIGRACION =
+  'La base no borró la marca. Falta aplicar 20260910T1200_asistencia_dia_retiro.sql: hasta '
+  + 'entonces sólo se puede quitar una marca que salió de cargar horas.'
+
+function traducirRetiro(mensaje: string): string {
+  if (/permission denied|42501/i.test(mensaje)) {
+    return 'Tu usuario no puede quitar marcas de asistencia. Eso es de Administración.'
+  }
+  return mensaje
 }

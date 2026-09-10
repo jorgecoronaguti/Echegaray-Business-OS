@@ -44,7 +44,7 @@ import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 // esa asignación es la que después decide a qué obra se le imputa el costo de esa persona. Antes
 // aparecía sólo cuando la acción rechazaba; sin rechazo, atarla a él la habría hecho inalcanzable.
 
-type Estado = 'presente' | 'ausente' | 'borrar'
+type Estado = 'presente' | 'ausente' | 'borrar' | 'sin_novedad'
 
 /** Hasta cuándo dura lo que se está asentando. `dia` es el default y es lo que el panel hizo hasta
  *  el 08/09/2026: un día, una fila. */
@@ -65,17 +65,22 @@ export interface ObraElegible {
   nombre: string
 }
 
-export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPorObra, alCerrar }: {
+export function PanelCorreccionJornada({
+  fila, dias, etiquetas, obras, jornadaPorObra, diaInicial = null, alCerrar,
+}: {
   fila: FilaQuincena
   dias: string[]
   etiquetas: string[]
   obras: ObraElegible[]
   /** `obra_canonica.jornada_horas` por obra. Es lo que vale una ausencia en la obra elegida. */
   jornadaPorObra: Record<string, number>
+  /** El día sobre el que se abre. `null` = el primero con datos, que es como abría hasta el
+   *  10/09/2026. Lo manda la celda que se tocó: abrir en otro día invita a corregir el equivocado. */
+  diaInicial?: string | null
   alCerrar: () => void
 }) {
   const primero = fila.celdas.find((c) => c.estado === 'horas' || c.estado === 'ausente') ?? fila.celdas[0]
-  const [fecha, setFecha] = useState(primero?.fecha ?? dias[0])
+  const [fecha, setFecha] = useState(diaInicial ?? primero?.fecha ?? dias[0])
   const celda = fila.celdas.find((c) => c.fecha === fecha) ?? null
   const tramos = celda?.tramos ?? []
   // DE QUÉ OBRA SON LAS HORAS QUE SE ESTÁN CORRIGIENDO. Con la fila por persona, un día puede tener
@@ -83,6 +88,12 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
   const [origen, setOrigen] = useState<string | null>(tramos[0]?.obra_id ?? null)
   const tramo = tramos.find((t) => t.obra_id === origen) ?? tramos[0] ?? null
   const cargado = tramo !== null
+  // QUÉ HACE QUE HAYA ALGO QUE REVOCAR. No es el tramo de obra: una ausencia y una licencia viven
+  // SIN obra (dueño, 08/09), así que preguntarle a los tramos deja fuera justo los dos días que hay
+  // que poder liberar. Un día futuro con licencia programada llega acá con `estado === 'licencia'`
+  // y cero tramos, y es el caso que el dueño reportó.
+  const hayAlgoQueSacar = cargado
+    || celda?.estado === 'ausente' || celda?.estado === 'licencia' || celda?.estado === 'horas'
 
   // Sólo una obra ELEGIBLE puede ser el valor inicial: ver `obraDestinoInicial`.
   const [obraDestino, setObraDestino] = useState(
@@ -216,7 +227,9 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
         // SIN MOTIVO QUE SE PAGUE NO VIAJA NINGUNA CIFRA: el servidor la resuelve en 0 con la
         // misma tabla (`horasDeAusencia`). Mandar el número prellenado sería pedirle que reconozca
         // horas por un día que la regla no paga.
-        horas: estado === 'ausente' ? (paga ? ausencia.horas : null) : horas,
+        // SIN NOVEDAD NO MANDA HORAS. No se está corrigiendo un número: se está sacando el día.
+        horas: estado === 'sin_novedad' ? null
+          : estado === 'ausente' ? (paga ? ausencia.horas : null) : horas,
         // EL MOTIVO DECIDE SI ES AUSENCIA O LICENCIA. Vacaciones y parte médico son licencia;
         // faltar sin avisar, ausencia. Ninguna suma horas trabajadas.
         motivo: estado === 'ausente' ? motivo : null,
@@ -276,7 +289,7 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
 
         {/* LA OBRA SÓLO SE PIDE PARA UN DÍA TRABAJADO. Ver el bloque «LA AUSENCIA ES DE LA
             PERSONA» arriba: con «No vino» el selector desaparece y la obra la deduce la acción. */}
-        {estado !== 'ausente' && (
+        {estado !== 'ausente' && estado !== 'sin_novedad' && (
           <Campo rotulo="Obra" ayuda="Cambiarla mueve esas horas a la obra elegida.">
             <select value={obraDestino} onChange={(e) => setObraDestino(e.target.value)}
               className={CAMPO} data-testid="correccion-obra">
@@ -295,7 +308,13 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
             className={CAMPO} data-testid="correccion-estado">
             <option value="presente">Trabajó</option>
             <option value="ausente">No vino</option>
-            <option value="borrar" disabled={!cargado}>Sacar lo cargado</option>
+            {/* ═══ «SIN NOVEDAD» NO SE DESHABILITA POR NO TENER TRAMO (dueño, 10/09/2026) ═══
+                `cargado` mira los TRAMOS DE OBRA, y una licencia se guarda sin obra: con una «L»
+                puesta el select mostraba las dos opciones que no servían —«Trabajó» y «No vino»— y
+                la única que sí, gris. Lo que habilita revocar es que el día tenga ALGO: un tramo,
+                una ausencia, una licencia o una marca declarada. */}
+            <option value="sin_novedad" disabled={!hayAlgoQueSacar}>Sin novedad (dejar el día libre)</option>
+            <option value="borrar" disabled={!cargado}>Sacar lo cargado (sólo esta obra)</option>
           </select>
         </Campo>
 
@@ -375,10 +394,19 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornadaPo
           </p>
         )}
 
+        {estado === 'sin_novedad' && (
+          <p style={{ fontSize: '11.5px', color: V.tenue }} data-testid="correccion-sin-novedad">
+            {/* LO QUE QUEDA, DICHO ANTES DE GUARDAR. «Libre» no es «ausente» ni «0 h»: es que nadie
+                declaró nada de ese día, y a futuro se dibuja «·». */}
+            El día queda sin novedad: se sacan las horas, la ausencia o la licencia de ese día y la
+            marca de asistencia. No queda como ausente ni como 0 h.
+          </p>
+        )}
+
         {/* ASIGNAR A UNA OBRA ES DECIDIR DÓNDE TRABAJA DE ACÁ EN ADELANTE: no tiene nada que ver
             con que un día no haya venido, y ofrecerlo ahí invita a mover a alguien de obra por
             haberse enfermado. */}
-        {estado !== 'ausente' && (
+        {estado !== 'ausente' && estado !== 'sin_novedad' && (
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '12.5px', color: V.tinta }}>
             <input type="checkbox" checked={asignar} onChange={(e) => setAsignar(e.target.checked)}
               data-testid="correccion-asignar" style={{ marginTop: 3 }} />

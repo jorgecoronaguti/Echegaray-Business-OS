@@ -184,3 +184,27 @@ export function seRetiraLaPresencia(
   // `null` —columna sin aplicar— NO se retira: sin poder saber el origen, borrar es adivinar.
   return previa.origen === 'horas'
 }
+
+// ═══ QUITAR UNA PRESENCIA DECLARADA — 10/09/2026 ═══
+//
+// El dueño, textual: *«si quiero sacarle el presente a alguien que lo tiene, no puedo actualmente;
+// está mal (…) te dije que asistencia es distinto a horas trabajadas»*. `seRetiraLaPresencia` —la
+// de arriba— responde otra pregunta: si el BORRADO DE LAS HORAS arrastra la presencia que esas
+// mismas horas produjeron, y por eso exige `origen === 'horas'`. Esto es un acto: alguien mira la
+// fila y dice «esa marca está mal». Un acto revoca lo que otro acto afirmó, así que acá el origen
+// NO decide — decide el permiso, que es de la base.
+//
+// LO QUE QUEDA ES «SIN MARCAR», NUNCA «AUSENTE». Sacar la marca es volver al estado en que nadie
+// dijo nada de esa persona ese día, y ése es el silencio, no una falta (regla E del 08/09/2026:
+// «sin registrar» no es ausente). Por eso se BORRA la fila en vez de escribirle otro estado.
+//
+// Y NO TOCA LAS HORAS. Son dos hechos con dos tablas: quitar el presente de hoy no borra las 9 h
+// que alguien ya imputó a una obra, porque nadie afirmó que ese costo no existió.
+
+/** La respuesta lleva el porqué: un botón que no hace nada tiene que poder decir por qué. */
+export type RetiroDePresencia = { quita: true } | { quita: false; porque: string }
+
+export function seQuitaLaPresencia(previa: PresenciaEnLaBase | null): RetiroDePresencia {
+  if (previa === null) return { quita: false, porque: 'Ese día no tiene ninguna marca para quitar.' }
+  return { quita: true }
+}

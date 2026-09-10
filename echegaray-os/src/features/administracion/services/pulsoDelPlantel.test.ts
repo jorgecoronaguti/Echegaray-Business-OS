@@ -391,12 +391,35 @@ test('sin obra asignada NO hay botón, y la celda lo dice: la obra no se inventa
   assert.equal(ofertaDeMarcar({ ...PUEDE, obraId: null }), 'sin_obra')
 })
 
-test('sobre un día ya declarado no hay botón: corregir es otra pantalla', () => {
+test('sobre una ausencia o una licencia no hay botón: corregirlas es otra pantalla', () => {
   // Un segundo toque sobre alguien ya declarado reescribiría `marcado_por` con quien sólo pasó a
-  // mirar la lista — y esa firma es lo que hace que la declaración valga.
-  for (const presencia of ['presente', 'ausente', 'licencia'] as const) {
+  // mirar la lista — y esa firma es lo que hace que la declaración valga. Y sacar una ausencia sin
+  // ver su motivo borraría el porqué que alguien cargó.
+  for (const presencia of ['ausente', 'licencia'] as const) {
     assert.equal(ofertaDeMarcar({ ...PUEDE, presencia }), 'nada', `${presencia} recibió botón`)
   }
+})
+
+test('sobre un PRESENTE la celda ofrece quitarlo (dueño, 10/09/2026)', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Textual: *«si quiero sacarle el presente a alguien que lo tiene, no puedo actualmente; está
+  // mal»*. La marca se ponía desde esta celda y no había forma de sacarla desde ninguna pantalla:
+  // `asistencia_dia` no admite «volver a sin marcar» por update —eso es borrar la fila— y la lista
+  // devolvía 'nada'. Si alguien vuelve a colapsar «ya declarado» en un solo caso, esto da rojo.
+  assert.equal(ofertaDeMarcar({ ...PUEDE, presencia: 'presente' }), 'quitar')
+})
+
+test('quitar se ofrece aunque la persona ya no tenga obra asignada', () => {
+  // Quitar no imputa nada a ninguna obra: es lo contrario de marcar, así que la razón por la que
+  // 'boton' exige obra no aplica. Sin esto, justo la fila sin obra —la que más se marca por error,
+  // porque la marca es la que le pone la jornada— sería la única que no se puede deshacer.
+  assert.equal(ofertaDeMarcar({ ...PUEDE, presencia: 'presente', obraId: null }), 'quitar')
+})
+
+test('quien no puede marcar tampoco puede quitar', () => {
+  assert.equal(ofertaDeMarcar({ ...PUEDE, presencia: 'presente', puedeMarcar: false }), 'nada')
+  assert.equal(ofertaDeMarcar({ ...PUEDE, presencia: 'presente', esJefe: true }), 'nada')
 })
 
 test('sin permiso no hay botón ni «sin obra»; a quien ya no está tampoco', () => {
