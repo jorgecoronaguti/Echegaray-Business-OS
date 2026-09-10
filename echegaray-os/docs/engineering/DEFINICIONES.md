@@ -252,3 +252,45 @@ escondería **$219.055,92** de Fondo de Cese declarado que ninguna acreditación
 Los tests (`libro-extractores-cargas.test.mjs`, `libro-deuda-cruzada.test.mjs`) nombran la fuente
 secundaria a propósito —probar la precedencia exige poder escribir la que pierde— y no figuran acá
 porque el barrido excluye los `*.test.*`: declararlos dejaría dos excepciones mirando al aire.
+
+## `cobro_por_obra`
+
+| | |
+|---|---|
+| **Fuente primaria** | public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra) |
+| **Propietario** | `public.cobranza_imputacion` — la cadena OC → `cliente_orden` → obra · `public.obra_alias.en_texto_libre` — el diccionario de los textos que nombran una obra |
+| **Criterio** | Tres pasos **en este orden**: (1) la **orden de compra** que declara la columna H (`cobranzas.orden_compra`), buscada por número canónico en `cliente_orden` del **mismo** cliente; (2) el **texto** de `concepto`/`orden_compra` que nombra una obra del cliente, sólo contra alias marcados `en_texto_libre`; (3) la **obra bolsa** del cliente, marcada `imputacion = 'cliente'`, que significa «no se pudo». Dos obras candidatas ⇒ ninguna. |
+| **Ventana** | Acumulado, el mismo de `cobrado`. La imputación no tiene ventana: es de la fila, no del período. |
+| **Consumidores** | barra de cobro por obra de `/clientes`, ficha de obra, `obra_economia` |
+| **Confianza** | **D** · la cadena se apoya en los papeles ya cargados en `cliente_orden`, y cada alias nuevo sale de una fila real de Cobranzas citada en `obra_alias.ejemplo_raw` |
+| **Última decisión del dueño** | 10/09/2026: reclamó ver el cobro **por obra**; hasta ese día no existía en la base. |
+
+**El papel le gana al texto, y no es estético.** La fila 94 de Messina —«Adicional tercer muro
+(armado 20 m) Playon de Azufre», OC 00002-00002256— *nombra* el Playón de Azufre y *pertenece* al
+Adicional Tercer Muro. Si el alias ganara, $ 12.100.000 se imputarían a la obra equivocada del
+mismo cliente.
+
+**Nunca entre clientes.** La imputación reparte plata entre obras de **un** cliente. La migración
+`20260910T2330` lleva el control adentro: si alguna fila termina en una obra de otro cliente, o si
+la suma por cliente cambia respecto de la regla vieja, el `raise exception` la frena.
+
+**`imputacion` no es decoración.** Con `'cliente'` la pantalla tiene que decir «sin obra asignada»:
+las 17 filas de ARCOR tienen su OC escrita en H, pero las obras de ARCOR no están dadas de alta en
+`obra_canonica` y no hay a qué imputarlas. Dibujar una barra ahí sería una ausencia con cara de dato.
+
+### Lo prohibido
+
+- `norm_obra\([^)\n]*obra_cliente` — `cobranzas.obra_cliente` **nombra al cliente**, no a la obra:
+  `MESSINA`, `ARCOR`, `IMOTOR/San Francisco/JAVI SANCHEZ`. Resolver la obra de un cobro con esa
+  etiqueta es lo que metía las 24 filas de Messina —$ 223 M— en una sola obra bolsa y dejaba las
+  cinco obras vivas del cliente publicando `cobrado NULL`. La etiqueta sólo sirve para el paso 3, y
+  ese paso vive dentro de `cobranza_imputacion`.
+- `obra_alias[^\n]*(concepto|orden_compra)` — cruzar el diccionario contra el texto libre de una
+  cobranza fuera de `cobranza_imputacion` es una **segunda** regla de imputación: sin el recorte por
+  cliente y sin la marca `en_texto_libre`, el alias `san francisco` se lleva «Saldo obras San
+  Francisco — cuota 1 de 4» —$ 47,6 M de **todas** las obras— a una sola.
+
+### Las excepciones
+
+Ninguna. Las dos prohibiciones son cables trampa: hoy no matchean ningún archivo, y ése es el
+estado que tienen que conservar.

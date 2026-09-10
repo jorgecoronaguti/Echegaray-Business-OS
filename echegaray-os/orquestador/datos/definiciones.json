@@ -256,6 +256,25 @@
           "porque": "El único llamador del pipeline: arma las dos fuentes (Compras y el apareo del banco) y se las pasa a la cadena. Un consumidor NUEVO de la marca de Compras no puede aparecer sin declararse acá."
         }
       ]
+    },
+    {
+      "concepto": "cobro_por_obra",
+      "canonica": "public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra)",
+      "propietario": "public.cobranza_imputacion — la cadena OC → cliente_orden → obra; public.obra_alias.en_texto_libre — el diccionario de los textos que nombran una obra",
+      "criterio": "A qué OBRA pertenece una fila de Cobranzas se decide en tres pasos y en ese orden: (1) la orden de compra que declara la columna H (`cobranzas.orden_compra`), buscada por número CANÓNICO en `cliente_orden` del MISMO cliente — es el único eslabón documental; (2) el texto de `concepto`/`orden_compra` que NOMBRA una obra del cliente, sólo contra alias marcados `obra_alias.en_texto_libre`; (3) la obra bolsa del cliente, marcada `imputacion = 'cliente'`, que significa «no se pudo» y NO autoriza a dibujar una barra de cobro por obra. Dos obras candidatas ⇒ ninguna. El papel le gana al texto: la fila 94 de Messina nombra el Playón de Azufre y pertenece al Adicional Tercer Muro según su OC 00002-00002256. La imputación reparte plata ENTRE OBRAS DE UN MISMO CLIENTE y nunca entre clientes.",
+      "ventana": "acumulado, el mismo de `cobrado`. La imputación no tiene ventana: es de la fila, no del período.",
+      "confianza": "D · conocimiento interno validado: la cadena se apoya en los papeles ya cargados en `cliente_orden` y los alias nuevos salen cada uno de una fila real de Cobranzas, citada en `obra_alias.ejemplo_raw`",
+      "prohibidas": [
+        {
+          "patron": "norm_obra\\([^)\\n]*obra_cliente",
+          "porque": "`cobranzas.obra_cliente` NOMBRA AL CLIENTE, no a la obra: 'MESSINA', 'ARCOR', 'IMOTOR/San Francisco/JAVI SANCHEZ'. Resolver la obra de un cobro con esa etiqueta es lo que metía las 24 filas de Messina —$ 223 M— en una sola obra bolsa y dejaba las cinco obras vivas del cliente publicando cobrado NULL. La etiqueta sólo sirve para el paso 3, y ese paso vive dentro de cobranza_imputacion."
+        },
+        {
+          "patron": "obra_alias[^\\n]*(concepto|orden_compra)",
+          "porque": "Cruzar el diccionario de alias contra el texto libre de una cobranza fuera de `cobranza_imputacion` es una SEGUNDA regla de imputación: sin el recorte por cliente y sin la marca `en_texto_libre`, el alias «san francisco» se lleva «Saldo obras San Francisco — cuota 1 de 4» —$ 47,6 M de todas las obras— a una sola obra."
+        }
+      ],
+      "excepciones": []
     }
   ]
 }
