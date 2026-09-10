@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-10 ~15:45 (hora local −03) · main `b427ade7` · producción = main_
+_actualizado: 2026-09-10 ~17:05 (hora local −03) · main `08fcd88b`+ (fix RLS obra_canonica encima) · producción = main_
 
 ## 1. OBJETIVO GENERAL
 
@@ -57,89 +57,59 @@ ensayo, `--aplicar`). Playwright anda sin root con las libs del scratchpad (`lib
 `LD_LIBRARY_PATH`) y `NODE_PATH=<proyecto>/node_modules`; login de prueba en memoria
 `qa-visual-sin-root`. **Antes de buscar nada: `.claude/MAPA.md`.**
 
-## 4. ESTADO ACTUAL (10/09 15:45)
+## 4. ESTADO ACTUAL (10/09 17:05)
 
-- **Publicado hoy en main y producción** (todo mergeado, worktrees eliminados): Personal uniforme +
-  filtro por obra + Liquidación (proyección, 50/50) · solapa «Asistencia» → «Horas» (`b427ade7`) ·
-  Clientes v3 · portal (fusionadas, cuenta corriente, esquema) · bot de comprobantes · importador OC/OP
-  (2 casillas) · Puente Drive H1 · FCL «PAGO SIMPLE AFON» + skill · fix banco (saldo declarado, eCheq
-  48 h; `95fee905`) · fix OBRAS (contratado U$S×TC, moneda; `9f795036`) · **Realidad única H1**
-  (`deffba9f`): vista `public.cliente_economia` + `es_cobrada()` (migraciones 20260910T2100/2110
-  APLICADAS), registro `orquestador/datos/definiciones.json` + `docs/engineering/DEFINICIONES.md` +
-  test canónico `src/shared/definiciones/canonico-definiciones.test.ts` (prohíbe leer
-  `monto_contratado` fuera de la fuente). `/clientes` ya lee la vista: Quattropani $95.270.932 (antes
-  $1.504), barra de cobro del cliente viva.
-- **Datos**: A.C.SAT = RSV · OC Messina por obra · Cobranzas corregida por orden del dueño (M32, fila
-  55, W notas, W refs OP) · extracto 10/09 importado y cadena rehecha · UOCRA 08/2026 pagado por DEBIN
-  $994.941,26 (comprobante en Drive `archivo-fiscal/2026/UOCRA/`, id `1EjfU-AyBiuRrgEViQW60rgzb-V1FiVKI`;
-  débito en `banco_movimientos`) · ARCOR: 40 OC reales subidas a Drive (`PRESUPUESTOS - CLIENTES/ARCOR -
-  SAN JUAN/<obra>` y `ORDENES DE COMPRA`), 8 filas nuevas en `cliente_orden`; informe en
-  `/tmp/claude-1001/arcor/`.
-- **Pipeline Flujo de Caja en rojo (exit 1) desde las 11:12, igual a 13:13 y 15:13**: tres auditores
-  de presentación (`auditar-pantalla` 1 defecto en Cash Flow Mensual, `auditar-diseno-unificado`,
-  `auditar-cobertura-cash-flow`), «datos OK». Preexistente, no lo causó ningún despliegue de hoy.
-- `orq:test` rojo por 8–17 tests preexistentes (generadores Sheet, RLS/security_invoker, regla-cero).
+- **Publicado hoy** (todo en main y producción; migraciones aplicadas): RU H1 (`cliente_economia`, `es_cobrada()`,
+  registro `definiciones.json` + test canónico) · solapa «Horas» · Clientes v4 (sin Margen, cobro neto, OC listadas
+  bajo cada obra con PDF, barra por obra TODO O NADA leyendo `obra_cobranza.imputacion`, sin párrafos, una tipografía)
+  · **cobro por obra** (`20260910T2330`: vista `cobranza_imputacion` + `obra_cobranza.imputacion` 'oc'|'alias'|'cliente',
+  alias nuevos en `obra_alias` con `en_texto_libre`; `20260910T2350` GRANT SELECT obra_canonica → authenticated: sin él
+  PostgREST daba 42501 y la columna Cobrado se apagaba) · OC en la ficha de obra (`OrdenesDeLaObra`) · portal 5 clientes
+  (`vivo.ts` lee `cobranzas` en vivo por `cobranza_fila`; «obra terminada» = `obra_canonica.estado`; Terminadas rehabilitada;
+  saludo; datos.sql aplicado; sync-esquema encadenado al servicio cobranzas-sync — nunca tuvo timer) · puente Drive H2
+  (`ArchivosDeDrive` en 4 fichas, `entidad_documento` + subida al bucket con cola a Drive `drive_estado`, `20260910T2210/2320`)
+  · clasificador OC (`20260910T2300` drive_file_id; ARCOR 148→40 OC; 107 `otro` sin importe) · cargas gremiales pagadas
+  desde el banco (`cargas-pagos-banco.mjs`) · perf tramo 1 (ficha cliente en una ola; `20260910T2340` RLS drive_index OR→CASE).
+- **Datos**: Cobranzas escrita por orden del dueño (Messina efectivo N 34/69/102; Quattropani 78/101 FA 230 + IVA; ARCOR 17 filas
+  H uniforme, I conceptos de OC, E facturas, O/Q 51/52/59 Pendiente 24/11, W refs; W51/52/59 OC 53376178) · Quattropani portal:
+  esquema fila 78 vinculada, IVA 101 publicada, FA 230 visible en Facturas · Drive: FC 230 Quattropani, nota Rodrigo Messina
+  (`14-oxfzzm6EHyObGysr8xjNJfDtBHyx2Z`), OC 2097 Messina, 40 OC ARCOR, comprobante UOCRA · `clientes.drive_carpeta_id` ARCOR y
+  San Francisco; `messina-bsa`/`messina-pisos-120-rampa` heredaron carpeta · `esquema_pago` Quattropani 61/63 ocultas, SF 94/95 obra.
+- **Rendimiento (medido 16:30–16:55, sesión real)**: /clientes ~10 s, /clientes/messina 10,6 s, /obras/<slug> 8–12 s, Personal 1 s.
+  Causa medida: arranque en frío del catálogo por CONEXIÓN (~800 ms planning), multiplicado por consultas paralelas y funciones
+  Vercel nuevas; Supabase con incidente «Unresponsive Projects» todo el día (fix global 19:41Z). Solución de fondo pendiente:
+  UNA consulta/RPC por pantalla; `getNovedades` dispara 7 consultas post-hidratación en toda ruta.
+- Pipeline Flujo de Caja en rojo por 3 auditores de presentación (preexistente). `orq:test` 19–21 rojos preexistentes
+  (incluye `obra_panel` sin security_invoker → mirar).
 
-## 5. TRABAJO DE ESTA SESIÓN (10/09 09:30 → en curso)
+## 5. TRABAJO DE ESTA SESIÓN
 
-Sesión larga con muchos agentes en paralelo. QA independiente del portal de los 5 clientes
-(hallazgos en `/tmp/claude-1001/qa-portal/`, 9 puntos) → en corrección. El dueño reclamó varias veces
-por Clientes (datos falsos, UX) y por Cobranzas (nota Rodrigo 10/09 sin cruzar).
+Ver §4. Reclamos del dueño resueltos con evidencia: Clientes (fuente única, OC por obra, barra por obra), portal, ARCOR, UOCRA,
+Quattropani FC 230, Messina nota/cuadre (sin duplicaciones; +$8,95 M en negro de Bases tanque SO2 sin papel), cash flow cierre.
 
 ## 6. PENDIENTES REALES
 
-**P0 — agentes en curso al cerrar** (si la sesión corta, sus ramas quedan sin mergear; retomar):
-- `fix/clientes-v4-datos-y-ux` (wt-clientes-v4): quitar columna Margen (orden 15:33), barra de cobro
-  POR OBRA (hoy «—»), sacar «Datos faltantes» y el «5» suelto, «11 obras» vs 5 listadas, OC c/IVA vs
-  contratado neto, chips monoespaciados, ARCOR triple «sin obra». Skill `diseno-ui-ux-producto-os`.
-- `fix/portal-5-clientes` (wt-portal-fix): Quattropani pagos duplicados (espejo ARS visible filas 61/63),
-  Messina `esquema_pago` desactualizado vs `cobranzas` (encadenar sync o leer vivo), «RECLAMAR OC!»
-  publicado a ARCOR, dos definiciones de «obra terminada», SF Pisos Industriales duplicado huérfano,
-  /portal/terminadas «0 obras», saludo con alias. Puede dejar SQL de datos en
-  `/tmp/claude-1001/portal-fix/datos.sql` (aplicar desde main).
-- Cobranzas (agente de datos, desde main): nota Rodrigo 10/09 (Platea Azufre 50 % 18.159.641 ·
-  Cancelación Pilón 3.484.558 · Cancelación TK 23 bases 2.844.877 = 24.489.076) → cruces; FC A
-  0001-00000230 Quattropani (neto 5.262.600 cobrado, IVA 1.105.146 adeudado → fila nueva ligada al
-  próximo pago; PDF a Drive + `documento_cliente` visible en portal); conceptos ARCOR I5/I6/I8/I9/I10.
-  Respaldo en `/tmp/claude-1001/cobranzas-1009/`. Al terminar corre sync-cobranzas + sync-esquema.
-- `fix/ordenes-cliente-clasificador` (wt-ordenes-clasif): 108 filas ARCOR que no son OC → `otro`;
-  número leído del PDF; baja `ORDEN DE COMPRA ECSAS.pdf`; migración `drive_file_id` en `cliente_orden`
-  (APLICAR desde main) + backfill desde `notas`; `clientes.drive_carpeta_id` ARCOR (hoy apunta a SECONDI).
-- `feat/cargas-pagadas-desde-banco` (wt-cargas-banco): «gremial pagada» = débito en `banco_movimientos`
-  al CUIT del organismo (UOCRA 30-50304909-7; IERIC; FCL «fondo desempleo»), precedencia banco >
-  Compras > declarado > proyección; registro en definiciones.json.
-- `feat/puente-drive-h2` (wt-drive-h2): archivos de `drive_index` en cada ficha (obra/cliente/proveedor/
-  persona) + copia app→Drive en cola idempotente + resolución de carpeta por entidad. Migraciones a aplicar.
-
-**P1 — del dueño**: invitar a alguien al portal de Messina, La Estrella y ARCOR (0 accesos) · ME - BSA:
-5 OC $49.886.583 vs Cobranzas $14.120.243 y sin precio en OBRAS · ARCOR: qué obras dar de alta para
-las 17 OC sin carpeta; OC 53239036 facturada al 50 % ($3.286.884,46 sin facturar); 30 OC
-anteriores a 12/2025 ($317 M) sin fila en Cobranzas (no cargar como pendientes) · Oficina en la
-proyección · `drive_carpeta_id` de Adicional tercer muro / Playón azufre / Playón dilución · alta
-CICON, Saint-Gobain, Orica · OC 2135 sin PDF · 5 personas del FCL fuera del padrón · nro de acuerdo
-FUR (producto 012) · 3 filas de Compras con caja doble (Robles, Hormisuelo, Rodriguez).
-
-**P2**: pipeline Flujo de Caja: los 3 auditores de presentación en rojo · `orq:test` rojos preexistentes
-· `certificado_cliente.estado` → vista derivada (H4 en DEFINICIONES.md) · `estadoDePago()` en
-`cobranzas-a-cliente.mjs` contradice `es_cobrada()` (fecha futura) · D1/D2 del PRP realidad única ·
-pie de Pagos del portal en moneda del contrato (excepción declarada) · auditor de cierre para
-Clientes v4, portal y RU H1 (sin tercero) · `libro-sueldos` fuera de las raíces del índice · 17
-`esquema_pago` huérfanos.
+**P0 — agentes en curso al cerrar**: auditor «tabla de verdad» OBRAS+Cobranzas vs app por obra (por qué 4 obras de Messina
+salen «suma de Cobranzas»: ¿OBRAS tiene precio en otra fila/nombre tras las fusiones?) → corregir el lector
+(`cobranzas-contrato.mjs`/`obras-economia.mjs`) · Clientes: cliente con UNA obra hereda el cobro 'cliente' (Quattropani) ·
+auditoría completa del Sheet por bot (a5cb…) · W69 respaldo tramo N Playón.
+**P1 — del dueño**: Bases tanque SO2 negro: fila 31 $6.700.000 sin respaldo · OC 53239036 50 % sin facturar ($3.286.884) ·
+OC 53376178 +$738.190 vs Sheet · F68 Q 08/09→12/09 y $102.474 · OP 5146 $38.462 sin fila · OC 2135 pedir a Isabel Villanueva ·
+invitar accesos al portal (Messina, La Estrella, ARCOR) · SF 17 filas N publicadas al portal vs `apto_para_portal` ·
+Terminadas rehabilitada · obras de ARCOR a dar de alta (17 filas en bolsa) · carpeta Drive de proveedores · 13 obras sin carpeta.
+**P2**: una RPC por pantalla (perf) · `getNovedades` · consumidor de la cola app→Drive (H3) · `certificado_cliente.estado` (H4) ·
+`estadoDePago()` vs `es_cobrada()` · sync-esquema `orden` choca al insertar · falso positivo «cobros que el portal no refleja»
+(espejos ARS) · Cargas Sociales sección Pagado lee sólo Compras · IERIC/FODECO sin apareo · pipeline auditores · `obra_panel` RLS.
 
 ## 7. ESTADO GIT
 
-- `main` = origin/main = producción (`b427ade7`).
-- Worktrees vivos en `/home/jorge/echegaray-os/worktrees/`: `wt-ru-h1` (mergeado, eliminar),
-  `wt-clientes-v4`, `wt-portal-fix`, `wt-ordenes-clasif`, `wt-cargas-banco`, `wt-drive-h2`.
-- Migraciones: todas las de main aplicadas (últimas 20260910T2100, 20260910T2110). Las de los worktrees
-  en curso, SIN aplicar hasta mergear (`aplicar-migracion.mjs <archivo>` ensayo → `--aplicar`, desde main).
+- `main` = origin/main = producción. Worktrees vivos: `wt-clientes-v4` (agente activo), `wt-portal-fix` (mergeado, eliminar).
+- Migraciones: todas las de main aplicadas (última `20260910T2350`).
 
 ## 8. PRÓXIMO PASO
 
-Recibir cada agente de §6-P0 → aplicar su migración si trae → mergear → `git push origin main` → pull
-en `~/echegaray-os/produccion/echegaray-os` (fuera de una corrida del pipeline; reiniciar worker/ws si
-tocó el bot) → capturas de verificación → avisar al dueño con celdas/ids. Después: auditor de cierre
-sobre Clientes v4 + portal; los 3 auditores del pipeline.
+Recibir tabla de verdad → corregir lector OBRAS→`obra_economia_cartera` → correr sync-cobranzas → verificar /clientes contra
+OBRAS y Cobranzas número a número. Publicar el commit de Quattropani-una-obra. Perf: diseñar RPC por pantalla.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
