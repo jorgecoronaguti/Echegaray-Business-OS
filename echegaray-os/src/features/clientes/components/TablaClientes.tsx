@@ -176,11 +176,19 @@ function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'o
     )
   }
   const p = medible ? progresoDeCobro(cobrado, contratado) : null
-  const titulo = tituloDeCobro({ cobrado, contratado, ambito, obrasSinPrecio })
+  // LA DEDUCCIÓN SE DECLARA. `unica-obra` es la única imputación que NO sale de la base: la deriva
+  // `armarCartera` porque el cliente tiene una sola obra en curso y no hay entre qué repartir. El
+  // número se dibuja igual —esconderlo sería peor— pero el `title` dice que se dedujo: una
+  // inferencia y un hecho no se pueden publicar iguales.
+  const titulo = (imputacion === 'unica-obra'
+    ? 'Cobranzas registra este cobro contra el CLIENTE, y se le atribuye a esta obra por ser la '
+      + 'ÚNICA en curso: no hay entre qué repartirlo. Es una deducción, no una imputación por OC. — '
+    : '') + tituloDeCobro({ cobrado, contratado, ambito, obrasSinPrecio })
   return (
     <span
       className={`flex flex-col items-end justify-center ${SOLO_ANCHO}`}
-      data-testid={testid} data-cobro={p ? String(p.pct) : 'sin-porcentaje'} title={titulo}
+      data-testid={testid} data-cobro={p ? String(p.pct) : 'sin-porcentaje'}
+      data-imputacion={imputacion ?? undefined} title={titulo}
       style={{ gap: 2, textAlign: 'right' }}
     >
       {/* «—» ES «NINGUNA COBRANZA IMPUTADA», NO CERO: el `title` dice cuál de las dos. */}

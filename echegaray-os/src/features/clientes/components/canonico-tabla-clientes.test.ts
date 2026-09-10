@@ -262,3 +262,17 @@ test('el pie de la tabla no explica nada con un párrafo', () => {
   // Lo que NO es un párrafo y se queda: la puerta de vuelta a los archivados, un verbo con número.
   assert.match(pagina, /pie-archivados/)
 })
+
+test('la atribución DEDUCIDA se declara: la barra sale, pero el `title` dice que se dedujo', () => {
+  // `unica-obra` es la única imputación que NO sale de la base. Un hecho y una inferencia no se
+  // pueden publicar iguales (regla de oro 2): el número se dibuja —esconderlo sería peor— y la
+  // frase del `title` lo antepone todo.
+  const src = codigo()
+  assert.match(src, /imputacion === 'unica-obra'/)
+  assert.match(src, /ÚNICA en curso: no hay entre qué repartirlo/)
+  assert.match(src, /data-imputacion=\{imputacion \?\? undefined\}/, 'sin esto no es auditable desde afuera')
+  // Y NO entra por la puerta de «cobro sin obra asignada», que es la de dos o más candidatas.
+  const corte = src.indexOf("if (imputacion === 'cliente')")
+  assert.ok(corte > src.indexOf("imputacion === 'unica-obra'") - 4000)
+  assert.match(src.slice(corte, corte + 200), /cobro sin obra asignada|data-cobro="sin-obra-asignada"/)
+})
