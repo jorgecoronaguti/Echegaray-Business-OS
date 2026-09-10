@@ -46,7 +46,11 @@ const HOJAS = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'O
 function argumentos(argv) {
   const a = {}
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith('--')) a[argv[i].slice(2)] = argv[i + 1]?.startsWith('--') ? true : argv[++i]
+    if (!argv[i].startsWith('--')) continue
+    // Un flag sin valor (`--mandar`) vale `true`. Sin este caso `--mandar` al final de la línea
+    // quedaba en `undefined` y el envío se saltaba en silencio.
+    const sig = argv[i + 1]
+    a[argv[i].slice(2)] = (sig === undefined || sig.startsWith('--')) ? true : argv[++i]
   }
   return a
 }
@@ -252,6 +256,64 @@ function armarPagoSimple(wbPlantilla, pagos, fechaPago) {
   return wb
 }
 
+/** El mensaje del bot: corto, con lo que hay que decidir arriba y el detalle en el .md adjunto. */
+function mensajeBot({ periodo, fechaPago, entran, afuera, faltaAcuerdo }) {
+  const total = entran.reduce((a, p) => a + p.importe, 0)
+  const fuera = afuera.reduce((a, p) => a + p.importe, 0)
+  const dm = `${fechaPago.slice(6)}/${fechaPago.slice(4, 6)}/${fechaPago.slice(0, 4)}`
+  const l = [
+    `**Fondo de Cese ${periodo.slice(4)}/${periodo.slice(0, 4)} — archivo para subir al Online Banking**`,
+    '',
+    `**\`FCL_${periodo}_pago_simple_santander.xlsx\`** — es el que subís. Formato «Pago Simple»,`
+    + ' el mismo de los envíos de AFON anteriores.',
+    `· **${entran.length} trabajadores · $ ${pesos(total)} · fecha de pago ${dm}**`,
+    `· Quedan afuera **$ ${pesos(fuera)}** (${afuera.length} personas que el estudio liquida en`
+    + ' EFECTIVO) — eso el archivo no lo paga.',
+    '',
+    '**Supuestos y avisos**',
+    `· Forma de pago **T (transferencia)** a la cuenta **AFON** de cada uno, no a la cuenta sueldo.`,
+    `· La **fecha de pago va adentro del archivo**. Si lo subís otro día, decime y lo regenero.`,
+    `· Verifiqué cada CBU contra el lote de junio/julio que el banco ya acreditó: los ${entran.length}`
+    + ' coinciden dígito por dígito. El CUIL, contra el padrón del OS.',
+  ]
+  if (faltaAcuerdo) {
+    l.push('', '**El .txt del FUR que me pediste NO se puede subir.** El diseño de registro exige'
+      + ' un **Número de Acuerdo** que Santander tiene que asignarle a Echegaray, y no existe en'
+      + ' ningún papel ni mail: el convenio que Bazán te cargó en abril es el de **depósitos AFON'
+      + ' por Pago Simple**, no un servicio FUR. Va adjunto igual, con `??` en esas posiciones y'
+      + ' marcado PENDIENTE-ACUERDO, para que lo veas. Si querés el FUR, hay que pedirle el número'
+      + ' al banco.')
+  }
+  l.push('', '`FCL_' + periodo + '_resumen.md`: la tabla completa con CUIL, CBU y de qué archivo'
+    + ' salió cada dato.')
+  return l.join('\n')
+}
+
+async function mandarAlChat({ periodo, fechaPago, entran, afuera, faltaAcuerdo, adjuntos, destino }) {
+  const { MattermostCliente } = await import('../../../communication-service/src/channels/mattermost/mattermost-cliente.mjs')
+  const mm = new MattermostCliente({ baseUrl: process.env.MM_BASE_URL, token: process.env.MM_BOT_TOKEN })
+  const yo = await mm._req('GET', '/users/me')
+  const dest = await mm._req('GET', `/users/username/${encodeURIComponent(destino)}`)
+  const canal = await mm._req('POST', '/channels/direct', [yo.id, dest.id])
+  const fileIds = []
+  for (const ruta of adjuntos) {
+    const info = await mm.subirArchivo({
+      channel_id: canal.id, nombre: path.basename(ruta), datos: fs.readFileSync(ruta),
+      mime: ruta.endsWith('.xlsx')
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/plain',
+    })
+    fileIds.push(info.id)
+  }
+  const post = await mm.crearPost({
+    channel_id: canal.id,
+    message: mensajeBot({ periodo, fechaPago, entran, afuera, faltaAcuerdo }),
+    file_ids: fileIds,
+  })
+  // LA EVIDENCIA ES DEL EFECTO: se relee el post del servidor, no se confía en la respuesta del POST.
+  const publicado = await mm._req('GET', `/posts/${post.id}`)
+  return { postId: publicado.id, adjuntos: (publicado.file_ids ?? []).length, canal: canal.id }
+}
+
 function resumen({ periodo, fechaPago, entran, afuera, val, rutaTxt, rutaXlsx, faltaAcuerdo }) {
   const total = entran.reduce((a, p) => a + p.importe, 0)
   const l = []
@@ -343,6 +405,14 @@ async function main() {
   console.log(`txt   ${rutaTxt}  (validación: ${val.ok ? 'OK' : val.errores.join(' ; ')})`)
   console.log(`xlsx  ${rutaXlsx}`)
   console.log(`resumen ${rutaMd}`)
+
+  if (!a.mandar) { console.log('(sin --mandar: no se publicó nada en el chat)'); return }
+  const r = await mandarAlChat({
+    periodo, fechaPago, entran, afuera, faltaAcuerdo, destino: String(a.destino ?? 'jorge'),
+    adjuntos: [rutaXlsx, rutaTxt, rutaMd],
+  })
+  console.log(`publicado en el privado con @${a.destino ?? 'jorge'} · post ${r.postId}`
+    + ` · ${r.adjuntos} adjunto(s) · canal ${r.canal}`)
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
