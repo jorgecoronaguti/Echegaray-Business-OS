@@ -124,3 +124,36 @@ test('un 403 SIN «quota» sigue siendo permanente: no se reintenta cinco veces 
   await assert.rejects(() => cliente(fetchImpl).gmailSearch('x', { max: 10 }), /403/)
   assert.equal(llamadas, 1, 'esperar 89 segundos por un scope que falta no lo arregla')
 })
+
+test('soloIds no gasta una llamada por mensaje: quien va a leer el mensaje entero ya recibe sus encabezados', () => {
+  // Nueve consultas que se superponen sobre 1.300 mensajes pedían los metadatos de cada uno EN CADA
+  // consulta: ~2.000 llamadas contra una cuota que se mide por minuto, para un dato que `gmailFull`
+  // devuelve gratis con el `format=full` que igual hay que pedir.
+  return (async () => {
+    const { fetchImpl, pedidos } = gmailFalso({ total: 250, porPagina: 100 })
+    const g = cliente(fetchImpl)
+    const ids = await g.gmailSearch('has:attachment', { max: 5000, soloIds: true })
+    assert.equal(ids.length, 250)
+    assert.deepEqual(Object.keys(ids[0]), ['id'])
+    assert.equal(pedidos.length, 3, `con soloIds sólo van los 3 listados, hubo ${pedidos.length} llamadas`)
+  })()
+})
+
+test('gmailFull devuelve remitente, asunto y fecha del mismo format=full', async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      snippet: 's',
+      payload: {
+        headers: [{ name: 'From', value: 'Isabel <i@juanmessina.com.ar>' }, { name: 'Subject', value: 'OC 2173' }, { name: 'Date', value: 'Tue, 11 Aug 2026 10:00:00 -0300' }],
+        parts: [{ mimeType: 'text/plain', body: { data: Buffer.from('hola').toString('base64') } }],
+      },
+    }),
+  })
+  const m = await cliente(fetchImpl).gmailFull('m1')
+  assert.equal(m.from, 'Isabel <i@juanmessina.com.ar>')
+  assert.equal(m.subject, 'OC 2173')
+  assert.match(m.date, /11 Aug 2026/)
+  assert.equal(m.text, 'hola')
+})

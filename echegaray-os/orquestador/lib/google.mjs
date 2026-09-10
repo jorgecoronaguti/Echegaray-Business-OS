@@ -635,7 +635,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      * recibe `{ query, traidos, tope }` y quien llama decide si eso es un límite aceptado o un
      * agujero. Un recorte silencioso no vuelve a pasar.
      */
-    async gmailSearch(queryStr, { max = 8, onAviso } = {}) {
+    async gmailSearch(queryStr, { max = 8, onAviso, soloIds = false } = {}) {
       const ids = []
       let pageToken = ''
       let hayMas = false
@@ -652,6 +652,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       if (hayMas && ids.length >= max && typeof onAviso === 'function') {
         onAviso({ query: queryStr || '', traidos: ids.length, tope: max })
       }
+      // `soloIds` NO es una comodidad: quien va a leer el mensaje entero después (`gmailFull`) ya
+      // recibe ahí el From, el Subject y el Date, así que pedir los metadatos acá es una llamada por
+      // mensaje Y POR CONSULTA que se tira. Con nueve consultas que se superponen sobre 1.300
+      // mensajes son ~2.000 llamadas de más contra una cuota que se mide por minuto.
+      if (soloIds) return ids.slice(0, max).map((id) => ({ id }))
       const out = []
       for (const id of ids.slice(0, max)) {
         const msg = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`)
@@ -692,7 +697,13 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         for (const c of p.parts || []) walk(c)
       }
       walk(msg.payload)
-      return { id, snippet: msg.snippet || '', text: parts.join('\n').slice(0, maxChars), adjuntos }
+      // Los encabezados vienen en el MISMO `format=full`: devolverlos evita que quien ya pidió el
+      // mensaje entero tenga que pedir aparte su remitente y su asunto.
+      const enc = Object.fromEntries((msg.payload?.headers || []).map((x) => [x.name.toLowerCase(), x.value]))
+      return {
+        id, from: enc.from || '', subject: enc.subject || '(sin asunto)', date: enc.date || '',
+        snippet: msg.snippet || '', text: parts.join('\n').slice(0, maxChars), adjuntos,
+      }
     },
     /** Texto plano de un mensaje por id (para leer el cuerpo). Acotado. */
     async gmailGet(id, { maxChars = 4000 } = {}) {

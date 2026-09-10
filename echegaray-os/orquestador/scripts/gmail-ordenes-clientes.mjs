@@ -138,30 +138,39 @@ function escribirCache(casilla, id, leido) {
 // al final, al lado del resumen, para que nadie lea el conteo como si fuera completo.
 const consultasRotas = []
 
-/** Los mensajes con adjunto de UNA casilla, sin repetir, con el cliente que los puede releer. */
+/**
+ * Los IDS de los mensajes con adjunto de UNA casilla, sin repetir, con el cliente que los lee.
+ *
+ * SÓLO IDS. Las nueve consultas se superponen —un mail de Messina cae en «from:», en «orden de
+ * compra» y en «subject:OC»— y pedir los encabezados de cada mensaje EN CADA consulta eran ~2.000
+ * llamadas para 1.300 mensajes, contra una cuota que Gmail mide por minuto. El remitente, el asunto
+ * y la fecha llegan después con `gmailFull`, que hay que pedir igual para ver los adjuntos.
+ */
 async function mensajesDe(casilla) {
   if (!await tieneToken(casilla)) {
     avisar(`  ⚠ ${casilla}: no autorizó su Google (orq.google_tokens) — esa casilla NO se leyó`)
     return []
   }
   const g = makeGoogleClient({ getToken: getTokenFor(casilla), soloUsuario: true })
-  const mensajes = new Map()
+  const ids = new Set()
   for (const q of consultasDeGmail()) {
     let hallados = 0
     try {
       const r = await g.gmailSearch(q, {
         max: MAX_POR_CONSULTA,
+        soloIds: true,
         onAviso: ({ traidos, tope }) => avisar(`  ⚠ ${casilla}: «${q}» se cortó en ${traidos} (tope ${tope}) y Gmail tenía más`),
       })
       hallados = r.length
-      for (const m of r) if (!mensajes.has(m.id)) mensajes.set(m.id, { ...m, casilla, cliente: g })
+      for (const m of r) ids.add(m.id)
     } catch (e) {
       consultasRotas.push({ casilla, q, motivo: String(e.message).replace(/\s+/g, ' ').slice(0, 120) })
       avisar(`  ✗ ${casilla}: «${q}» falló — ${String(e.message).replace(/\s+/g, ' ').slice(0, 120)}`)
     }
     avisar(`  · ${casilla} · ${fmt(q, 62)} ${String(hallados).padStart(5)}`)
   }
-  return [...mensajes.values()]
+  avisar(`  = ${casilla}: ${ids.size} mensajes distintos`)
+  return [...ids].map((id) => ({ id, casilla, cliente: g }))
 }
 
 async function main() {
@@ -204,13 +213,16 @@ async function main() {
       // seguidas del mismo mail duplicaba la cuota, y Gmail la corta con un 403 que parece un
       // problema de permisos.
       await pausa()
-      let adjuntos = []; let cuerpo = ''
-      try { ({ adjuntos, text: cuerpo } = await g.gmailFull(m.id, { maxChars: 3000 })) }
-      catch (e) { descartes.push({ ...m, adjunto: '(mensaje)', motivo: `no se pudo leer el mensaje: ${e.message}` }); continue }
+      let adjuntos = []; let cuerpo = ''; let enc = {}
+      try {
+        const full = await g.gmailFull(m.id, { maxChars: 3000 })
+        adjuntos = full.adjuntos; cuerpo = full.text
+        enc = { from: full.from, subject: full.subject, date: full.date }
+      } catch (e) { descartes.push({ ...m, adjunto: '(mensaje)', motivo: `no se pudo leer el mensaje: ${e.message}` }); continue }
       // Las partes `inline` son la firma con el logo, no un adjunto. Se descartan por tamaño y por
       // marca a la vez: un logo pesa poco y una orden de compra nunca pesa 4 kB.
       const reales = adjuntos.filter((a) => !(a.inline && (a.bytes ?? 0) < 40_000))
-      leido = { cuerpo, adjuntos: [] }
+      leido = { ...enc, cuerpo, adjuntos: [] }
       for (const a of reales) {
         // NO SE BAJA LO QUE NO PUEDE SER UNA ORDEN. Un PDF hay que abrirlo —el nombre puede ser
         // neutro y la orden estar adentro—, pero una imagen o una planilla que además no clasifica
@@ -231,6 +243,10 @@ async function main() {
       }
       escribirCache(m.casilla, m.id, leido)
     }
+
+    // Los encabezados salen del mensaje leído (o de la caché), no de la búsqueda: la búsqueda ya no
+    // los trae, y traerlos costaba una llamada por mensaje y por consulta.
+    Object.assign(m, { from: leido.from ?? '', subject: leido.subject ?? '', date: leido.date ?? '' })
 
     for (const a of leido.adjuntos) {
       if (a.saltado) { descartes.push({ ...m, adjunto: a.nombre, motivo: a.saltado }); continue }
@@ -254,7 +270,9 @@ async function main() {
         emisor: m.from, message_id: m.id, attachment_id: a.attachmentId, casilla: m.casilla,
         nombre_archivo: a.nombre, tamano_bytes: a.tamano, tipo_mime: a.mime || null,
         hash_sha256: a.sha256,
-        asunto: m.subject, recibido_en: new Date(m.date).toISOString(),
+        // Un `Date` inválido no puede tirar la corrida ni inventar «hoy»: si el mail no trae fecha
+        // legible, la fila no la afirma.
+        asunto: m.subject, recibido_en: Number.isFinite(Date.parse(m.date)) ? new Date(m.date).toISOString() : null,
         // Sólo para la herencia y la tabla; no van a la fila.
         cliente_google: g, texto: a.textoPdf, citadas: d.citadas, comprobante: d.comprobante,
         opCitada: d.opCitada, porque: d.obra ? 'el PDF nombra la obra' : null,
@@ -309,7 +327,7 @@ async function main() {
   console.log(`\nadjuntos leídos: ${leidos} · candidatos: ${filas.length} · nuevos: ${nuevos.length} · ya estaban: ${repetidos.length} · descartados: ${descartes.length} · sin alta: ${sinAlta.length}\n`)
   console.log(`${fmt('CASILLA', 8)} ${fmt('REMITENTE', 30)} ${fmt('FECHA', 10)} ${fmt('ADJUNTO', 32)} ${fmt('TIPO', 13)} ${fmt('NÚMERO', 16)} ${fmt('VÍA', 9)} ${fmt('CLIENTE', 16)} OBRA`)
   for (const f of nuevos.sort((a, b) => String(a.cliente + a.fecha).localeCompare(String(b.cliente + b.fecha)))) {
-    console.log(`${fmt(f.casilla.split('@')[0], 8)} ${fmt(f.emisor, 30)} ${fmt(f.fecha ?? f.recibido_en.slice(0, 10), 10)} ${fmt(f.nombre_archivo, 32)} ${fmt(f.tipo, 13)} ${fmt(f.numero, 16)} ${fmt(f.atribucion, 9)} ${fmt(f.cliente, 16)} ${nombreObra.get(f.obra_id) ?? '— (nivel cliente)'}`)
+    console.log(`${fmt(f.casilla.split('@')[0], 8)} ${fmt(f.emisor, 30)} ${fmt(f.fecha ?? f.recibido_en?.slice(0, 10) ?? '—', 10)} ${fmt(f.nombre_archivo, 32)} ${fmt(f.tipo, 13)} ${fmt(f.numero, 16)} ${fmt(f.atribucion, 9)} ${fmt(f.cliente, 16)} ${nombreObra.get(f.obra_id) ?? '— (nivel cliente)'}`)
   }
 
   // ── 5. LOS RESÚMENES QUE CONTESTAN LA PREGUNTA DEL DUEÑO ──────────────────────────────────────
@@ -319,7 +337,7 @@ async function main() {
     return [...m.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
   }
   console.log('\nPOR CLIENTE / TIPO / AÑO:')
-  for (const [k, n] of cuenta((f) => `${f.cliente} · ${f.tipo} · ${(f.fecha ?? f.recibido_en).slice(0, 4)}`)) console.log(`  ${fmt(k, 60)} ${String(n).padStart(4)}`)
+  for (const [k, n] of cuenta((f) => `${f.cliente} · ${f.tipo} · ${(f.fecha ?? f.recibido_en ?? 'sin fecha').slice(0, 4)}`)) console.log(`  ${fmt(k, 60)} ${String(n).padStart(4)}`)
   console.log('\nPOR CASILLA:')
   for (const [k, n] of cuenta((f) => f.casilla)) console.log(`  ${fmt(k, 30)} ${String(n).padStart(4)}`)
   console.log('\nPOR VÍA DE ATRIBUCIÓN:')
