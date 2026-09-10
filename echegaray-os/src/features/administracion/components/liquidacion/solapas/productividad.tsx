@@ -22,7 +22,13 @@ import { quincenaDe, esFechaISO } from '../../../services/quincena'
 import { ALTO_LIQ, Cuadro, Cuerpo, Encabezado, Fila, Hueco, Titulo, Total, miles } from './tabla'
 
 // `dc:526` — las siete columnas de la pantalla 7, al píxel.
-const COLS = 'minmax(240px,1fr) 88px 84px 96px 132px 100px 140px'
+// `minmax(0,…)` Y NO `minmax(240px,…)`: dentro del scroller de abajo la primera columna tiene que
+// poder encogerse, si no el ancho mínimo real son 880 + 240 y el cuadro vuelve a empujar la página.
+// Es la misma corrección que ya lleva `costo-obra.tsx` por el mismo motivo.
+const COLS = 'minmax(0,1fr) 88px 84px 96px 132px 100px 140px'
+
+/** Lo que suman las siete columnas del mockup. A 390 px no entran y no se encogen: ruedan. */
+const ANCHO_MINIMO = 880
 
 export async function SolapaProductividad({ quincenaPedida, hoy }: {
   quincenaPedida?: string; hoy: string
@@ -47,6 +53,12 @@ export async function SolapaProductividad({ quincenaPedida, hoy }: {
       ))}
 
       <Cuadro testid="cuadro-productividad">
+        {/* A 390 px LAS SIETE COLUMNAS NO ENTRAN. Sin el scroller empujan la página entera y la
+            fila de total queda fuera de pantalla — el mismo desborde que ya tenían «Costo a la
+            obra» y la escalera. No se veía porque el cuadro sólo dibuja filas cuando hay horas
+            imputadas, y hasta el 10/09/2026 la solapa las estaba perdiendo en la lectura. */}
+        <div className="overflow-x-auto">
+        <div style={{ minWidth: ANCHO_MINIMO }}>
         <Cuerpo>
           <Encabezado columnas={COLS} celdas={[
             'Actividad', 'Unidad', 'Ejecutado', 'HH gastadas', 'HH/un. real', 'HH/un. plan', 'Rendimiento',
@@ -75,6 +87,8 @@ export async function SolapaProductividad({ quincenaPedida, hoy }: {
             resumen.medidas > 0 ? `${resumen.medidas} medida(s)` : 'ninguna medible', '', '',
           ]} />
         </Cuerpo>
+        </div>
+        </div>
 
         <QueLoDestraba resumen={resumen} />
       </Cuadro>

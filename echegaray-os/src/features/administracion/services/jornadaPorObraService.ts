@@ -19,6 +19,7 @@ import type {
 import {
   candidatosParaTraer, type AsignacionParaTraer, type CandidatoParaTraer,
 } from './traerALaObra.ts'
+import { leerRegistrosHH } from './registrosHHService.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 
 export interface ObraDeLaJornada {
@@ -190,19 +191,24 @@ export async function getQuincenaPorObra(
     getAsignaciones(supabase),
     // `notas` viaja porque ahí está la CLAVE DEL MOTIVO (`enfermedad`, `falta`…): es lo que
     // convierte una casilla «L» muda en una que dice de qué licencia se trata.
-    supabase.from('registros_hh')
-      .select('persona_id, obra_canonica_id, fecha, horas, tipo_hora, notas')
-      .gte('fecha', desde).lte('fecha', hasta)
-      // LAS FILAS SIN OBRA VIAJAN. Antes se excluían porque sin obra sólo había historia de
-      // JORNALES; desde el 08/09/2026 una ausencia se registra SIN obra, y filtrarla acá dejaría a
-      // la persona con el día en blanco: la grilla diría «sin marcar» sobre alguien que ya está
-      // declarado ausente. No cuentan en ninguna obra — de eso se ocupa `quincenaPorObra`.
-      .not('persona_id', 'is', null),
+    //
+    // LAS FILAS SIN OBRA VIAJAN. Antes se excluían porque sin obra sólo había historia de JORNALES;
+    // desde el 08/09/2026 una ausencia se registra SIN obra, y filtrarla acá dejaría a la persona
+    // con el día en blanco: la grilla diría «sin marcar» sobre alguien que ya está declarado
+    // ausente. No cuentan en ninguna obra — de eso se ocupa `quincenaPorObra`.
+    //
+    // POR `leerRegistrosHH`, QUE ES LA MISMA PUERTA QUE USA LA SOLAPA «HORAS» DE LIQUIDACIÓN. Las
+    // dos pantallas dibujan la misma quincena de la misma gente: dos consultas escritas a mano ya
+    // dieron dos totales distintos (1.019 h acá, 206 allá, el 10/09/2026) y el dueño tuvo que
+    // decidir cuál creer. El filtro, la ventana y la paginación se definen UNA vez.
+    leerRegistrosHH(supabase, {
+      desde, hasta, columnas: 'persona_id, obra_canonica_id, fecha, horas, tipo_hora, notas',
+    }),
     supabase.from('obra_canonica').select('id, nombre, estado, cliente_texto'),
     getNoLaborables(supabase, desde, hasta),
   ])
   if (asignaciones.error) return { data: null, error: asignaciones.error }
-  if (registros.error) return { data: null, error: registros.error.message }
+  if (registros.error) return { data: null, error: registros.error }
   if (obras.error) return { data: null, error: obras.error.message }
 
   const catalogo = (obras.data ?? []) as {

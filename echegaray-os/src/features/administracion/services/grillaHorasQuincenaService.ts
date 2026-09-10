@@ -12,12 +12,22 @@
 // ═══ UNA FUENTE QUE FALLÓ SE DICE CON SU ERROR ═══
 //
 // Una grilla vacía porque la RLS rechazó la consulta es indistinguible de una quincena sin cargar.
+//
+// ═══ Y UNA FUENTE QUE SE CORTÓ TAMPOCO SE PUEDE CALLAR (10/09/2026) ═══
+//
+// Esa ventana ancha es de 2.400 filas y PostgREST devolvía las primeras 1.000 con `error: null`:
+// las de la quincena en curso, que son las más nuevas, quedaban afuera. La grilla dibujaba «·»
+// sobre nueve horas trabajadas y el pie publicaba 206 h donde Asistencia mostraba 1.019. Las horas
+// se leen ahora por `leerRegistrosHH`, la MISMA función que usa la solapa Asistencia: una fuente,
+// una paginación, y un error declarado si la ventana no entra.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PersonaDeGrilla } from './grillaHorasQuincena.ts'
 import type { CorreccionDeDia, RegistroDelPanel } from './panelDePersona.ts'
 import type { PresenciaDeQuincena, RegistroDeQuincena } from './liquidacionQuincena.ts'
+import { modalidadDe, type ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
 import { correrQuincena, type Quincena } from './quincena.ts'
+import { leerRegistrosHH } from './registrosHHService.ts'
 
 export interface DatosDePersona {
   id: string
@@ -100,11 +110,16 @@ export async function getDatosDeLaSolapaHoras(
       supabase.from('persona_legajo').select(
         'id, dni, cuil, fecha_nacimiento, nacionalidad, telefono, email, domicilio, ' +
         'contacto_emergencia, convenio_colectivo, modalidad_liquidacion, notas'),
-      supabase.from('persona_tarifa').select('persona_id, desde, valor_hora').lte('desde', q.hasta),
-      supabase.from('registros_hh')
-        .select('id, persona_id, fecha, horas, tipo_hora, notas, fuente_legacy, created_at, ' +
-          'creado_por, obra_canonica(nombre), obra_actividad(nombre)')
-        .gte('fecha', desdeAncho).lte('fecha', q.hasta).not('persona_id', 'is', null),
+      // `neto_mensual` VIAJA. Sin él, Oficina —que cobra un neto acordado y por definición no tiene
+      // valor hora— salía «sin retribución cargada» y trababa el cierre desde esta pantalla.
+      supabase.from('persona_tarifa')
+        .select('persona_id, desde, valor_hora, neto_mensual').lte('desde', q.hasta),
+      leerRegistrosHH(supabase, {
+        desde: desdeAncho,
+        hasta: q.hasta,
+        columnas: 'id, persona_id, fecha, horas, tipo_hora, notas, fuente_legacy, created_at, '
+          + 'creado_por, obra_canonica(nombre), obra_actividad(nombre)',
+      }),
       supabase.from('asistencia_dia').select('persona_id, fecha, estado, motivo')
         .gte('fecha', q.desde).lte('fecha', q.hasta),
       // El CUIL ya viene con el legajo; esta lectura queda para el día que el portero de la vista
@@ -125,7 +140,7 @@ export async function getDatosDeLaSolapaHoras(
   anotar('el plantel', directorio.error)
   anotar('el legajo', personas.error)
   anotar('las tarifas', tarifas.error)
-  anotar('las horas', hh.error)
+  anotar('las horas', hh.error == null ? null : { message: hh.error })
   anotar('la presencia declarada', presencias.error)
   anotar('los adelantos', adelantos.error)
   anotar('el estado de la quincena', cabeceras.error)
@@ -137,7 +152,7 @@ export async function getDatosDeLaSolapaHoras(
     ...((correcciones.data ?? []) as { autor: string | null }[]).map((c) => c.autor),
   ])
 
-  const tarifaDe = vigentes((tarifas.data ?? []) as { persona_id: string; desde: string; valor_hora: unknown }[])
+  const tarifaDe = vigentes((tarifas.data ?? []) as FilaTarifa[])
   const legajoDe = new Map(((personas.data ?? []) as unknown as FilaPersona[]).map((p) => [p.id, p]))
   const cuilDe = new Map(((legajos.data ?? []) as { id: string; cuil: string | null }[])
     .map((r) => [r.id, r.cuil]))
@@ -152,7 +167,7 @@ export async function getDatosDeLaSolapaHoras(
   for (const p of directorioFilas) {
     const suyas = filasHH.filter((f) => f.persona_id === p.id)
     const cuil = cuilDe.get(p.id) ?? legajoDe.get(p.id)?.cuil ?? null
-    porPersona[p.id] = armarPersona(p, legajoDe.get(p.id), tarifaDe.get(p.id) ?? null, suyas, q, nombres,
+    porPersona[p.id] = armarPersona(p, legajoDe.get(p.id), tarifaDe.get(p.id)?.valorHora ?? null, suyas, q, nombres,
       cuil ? (adelantoDe.get(cuil) ?? null) : null)
   }
 
@@ -160,9 +175,13 @@ export async function getDatosDeLaSolapaHoras(
     personas: directorioFilas.map((p) => ({
       id: p.id,
       nombre: p.nombre_completo,
-      valorHora: tarifaDe.get(p.id) ?? null,
+      valorHora: tarifaDe.get(p.id)?.valorHora ?? null,
+      netoMensual: tarifaDe.get(p.id)?.netoMensual ?? null,
       convenio: legajoDe.get(p.id)?.convenio_colectivo ?? null,
-      modalidad: legajoDe.get(p.id)?.modalidad_liquidacion ?? null,
+      // LA MISMA REGLA QUE `armarCuadros`: quien tiene neto mensual vigente es Oficina, el resto se
+      // liquida por hora. El campo `modalidad_liquidacion` del legajo está vacío en las diecisiete
+      // personas de la base y publicaba «Modalidad mensual sin cargar» sobre gente que cobra por mes.
+      modalidad: modalidadDeLaTarifa(tarifaDe.get(p.id) ?? null),
     })),
     registros: filasHH
       .filter((f) => f.fecha >= q.desde && f.fecha <= q.hasta)
@@ -181,16 +200,36 @@ export async function getDatosDeLaSolapaHoras(
   }
 }
 
-/** El $/h vigente de cada persona: la tarifa con el `desde` más alto que no pasa de la quincena. */
-function vigentes(
-  filas: readonly { persona_id: string; desde: string; valor_hora: unknown }[],
-): Map<string, number | null> {
-  const m = new Map<string, { desde: string; valor: number | null }>()
+interface FilaTarifa { persona_id: string; desde: string; valor_hora: unknown; neto_mensual: unknown }
+
+/** Las dos mitades de la tarifa vigente. Exactamente una está cargada, nunca las dos. */
+interface TarifaDeGrilla { valorHora: number | null; netoMensual: number | null }
+
+/** La tarifa vigente de cada persona: la del `desde` más alto que no pasa de la quincena. */
+function vigentes(filas: readonly FilaTarifa[]): Map<string, TarifaDeGrilla> {
+  const m = new Map<string, TarifaDeGrilla & { desde: string }>()
   for (const f of filas) {
     const previa = m.get(f.persona_id)
-    if (!previa || f.desde > previa.desde) m.set(f.persona_id, { desde: f.desde, valor: numeroONulo(f.valor_hora) })
+    if (!previa || f.desde > previa.desde) {
+      m.set(f.persona_id, {
+        desde: f.desde,
+        valorHora: numeroONulo(f.valor_hora),
+        netoMensual: numeroONulo(f.neto_mensual),
+      })
+    }
   }
-  return new Map([...m].map(([id, v]) => [id, v.valor]))
+  return new Map([...m].map(([id, v]) => [id, { valorHora: v.valorHora, netoMensual: v.netoMensual }]))
+}
+
+/**
+ * EL CORTE OBRERO/OFICINA, POR LA FUNCIÓN DE LA LIQUIDACIÓN.
+ *
+ * `armarCuadros` manda a Oficina a quien tiene neto mensual vigente; `modalidadDe` traduce el
+ * cuadro a la modalidad. Escribir acá `netoMensual != null ? 'mensual' : 'hora'` sería la misma
+ * cuenta con otra cara y se despegaría de la liquidación en el primer cambio de criterio.
+ */
+function modalidadDeLaTarifa(t: TarifaDeGrilla | null): ModalidadDeLiquidacion {
+  return modalidadDe(t?.netoMensual != null ? 'oficina' : 'obreros')
 }
 
 function agruparCorrecciones(
