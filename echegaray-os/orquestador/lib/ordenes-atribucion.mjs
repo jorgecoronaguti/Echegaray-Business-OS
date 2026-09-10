@@ -25,7 +25,8 @@ import { CUIT_ECSAS } from './transferencias-proveedores.mjs'
 import {
   agruparPorNumero, clasificarAdjunto, comprobantePropio, comprobantesCitados, dominioDe, extraerFechaDeOrden,
   extraerImporte, extraerNumero, facturaPropiaDe, mapaDeCitas, mapaDeEvidencia, norm,
-  numeroCanonico, numeroDeRetencion, obraPorReferencia, ocsCitadas, resolverObraDeTexto,
+  numeroCanonico, numeroDeRetencion, obraPorReferencia, ocsCitadas, ordenDePagoDeLaRetencion,
+  resolverObraDeTexto,
 } from './ordenes-cliente.mjs'
 
 // ── QUIÉN ES CLIENTE, Y POR QUÉ NO ALCANZA EL DOMINIO ───────────────────────────────────────────
@@ -272,6 +273,43 @@ export function deduplicar(candidatos, { yaEnBase = [] } = {}) {
   return { nuevos, repetidos }
 }
 
+// ── LA FECHA QUE UN PAPEL PERDIÓ Y OTRO CONSERVA ────────────────────────────────────────────────
+
+/**
+ * LA FECHA DE UNA ORDEN DE PAGO, TOMADA DEL CERTIFICADO DE RETENCIÓN DE ESA MISMA ORDEN.
+ *
+ * MEDIDO el 10/09/2026 sobre las órdenes de pago viejas de Messina: la capa de texto del PDF corta
+ * el año («Fecha : 25/09/2»). El mismo pago viene acompañado del certificado de retención
+ * —`O_P_0000000000730_G00000347.pdf`—, que lo escribe entero: «O/P : 0000000000730 Fecha :
+ * 25/09/2024». Los dos papeles los emitió el CLIENTE por el mismo pago, así que no es una
+ * estimación: es el mismo hecho leído donde se pudo leer.
+ *
+ * Nunca se toma la fecha de otro documento cualquiera: sólo del certificado que declara ESE número
+ * de orden y del mismo cliente. Y sólo cuando la orden quedó sin fecha — una fecha que el propio
+ * papel dice no se pisa. Cada relleno deja escrito de dónde salió.
+ */
+export function fecharOrdenesDePagoPorSuRetencion(docs) {
+  const porOp = new Map()
+  for (const d of docs ?? []) {
+    if (d.tipo !== 'retencion' || !d.fecha || !d.opCitada) continue
+    const k = `${d.cliente_id ?? '?'}::${d.opCitada}`
+    // Dos certificados con fechas distintas para la misma orden ⇒ la clave deja de significar algo.
+    porOp.set(k, porOp.has(k) && porOp.get(k)?.fecha !== d.fecha ? null : d)
+  }
+  let rellenadas = 0
+  for (const d of docs ?? []) {
+    if (d.tipo !== 'orden_pago' || d.fecha) continue
+    const canon = numeroCanonico(d.numero)
+    if (!canon) continue
+    const cert = porOp.get(`${d.cliente_id ?? '?'}::${canon}`)
+    if (!cert) continue
+    d.fecha = cert.fecha
+    d.porqueFecha = `del certificado de retención ${cert.nombre_archivo ?? ''}`.trim()
+    rellenadas++
+  }
+  return { rellenadas }
+}
+
 // ── LA OBRA QUE EL PAPEL NO NOMBRA ──────────────────────────────────────────────────────────────
 
 /**
@@ -381,6 +419,9 @@ export function documentoDeAdjunto({
     // El comprobante que este papel ES («A-1-225»). Es la clave con la que una orden de pago lo
     // encuentra: la OP no cita la OC, cita la FACTURA.
     comprobante: comprobantePropio(textoPdf),
+    // Sólo para una retención: la orden de pago que este certificado prueba. Es lo que le devuelve
+    // la fecha a esa orden cuando su propio PDF la trae cortada.
+    opCitada: tipoFinal === 'retencion' ? ordenDePagoDeLaRetencion({ nombreArchivo, textoPdf }) : null,
     fecha: extraerFechaDeOrden(textoPdf, { hoy }),
     importe,
     moneda,

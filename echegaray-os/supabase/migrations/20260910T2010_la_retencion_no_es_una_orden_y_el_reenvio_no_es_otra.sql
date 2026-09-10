@@ -2,12 +2,13 @@
 -- LA RETENCIÓN NO ES UNA ORDEN DE PAGO, Y EL MISMO PDF REENVIADO NO ES OTRO DOCUMENTO
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 --
--- MEDIDO el 10/09/2026 sobre las 16 filas vivas de `public.cliente_orden`:
+-- MEDIDO el 10/09/2026 sobre `public.cliente_orden` (16 filas por la mañana, 42 después de la carga
+-- del histórico de rodrigo@):
 --
---   · la OP 4865 tiene DOS filas y la OP 5156 también. La segunda de cada par es el CERTIFICADO DE
---     RETENCIÓN que Messina manda junto con el pago (`O_P_0000000004865_G00002208.pdf`): cita el
---     número de la orden, no trae importe, y quedó guardado como `orden_pago`. La cartera declaraba
---     dos pagos donde hubo uno — una afirmación falsa sobre plata cobrada.
+--   · doce filas son CERTIFICADOS DE RETENCIÓN que Messina manda junto con el pago
+--     (`O_P_0000000004865_G00002208.pdf`): citan el número de la orden, no traen importe propio, y
+--     quedaron guardados unos como `orden_pago` —la cartera declaraba dos pagos donde hubo uno, una
+--     afirmación falsa sobre plata cobrada— y otros como `otro`, que no dice qué son.
 --   · el importador leía UNA casilla (jorge@, que arranca en 07/2026) y las órdenes originales
 --     llegan a rodrigo@ (8.186 mensajes desde 2021). Al leer las dos, el MISMO adjunto entra dos
 --     veces: rodrigo lo recibe de Messina y lo reenvía a jorge, y la clave de idempotencia
@@ -24,10 +25,10 @@
 --
 -- ═══ SE PUEDE APLICAR SOBRE LOS DATOS DE HOY ═══
 --
--- Los dos índices únicos nuevos son PARCIALES sobre columnas que hoy son NULL en las 16 filas, así
--- que no hay conflicto al crearlos. Los duplicados existentes (OP 4865 y OP 5156) los resuelve
--- `orquestador/scripts/reatribuir-ordenes-clientes.mjs --aplicar`, que relee los PDF del bucket y
--- reclasifica el certificado; hasta que corra, esas cuatro filas siguen como están.
+-- Los dos índices únicos nuevos son PARCIALES sobre columnas que hoy son NULL en todas las filas,
+-- así que no hay conflicto al crearlos. El punto 7 reclasifica los certificados por su nombre; el
+-- número propio de cada uno lo escribe después `reatribuir-ordenes-clientes.mjs --aplicar`, que
+-- relee el PDF del bucket.
 
 -- ── 1. LA RETENCIÓN ES UN TIPO ──────────────────────────────────────────────────────────────────
 alter table public.cliente_orden drop constraint if exists cliente_orden_tipo_check;
@@ -110,3 +111,21 @@ comment on column public.cliente_orden.numero_canonico is
 -- script del OS y desde la web lo único posible sigue siendo la baja lógica.
 grant select on public.cliente_orden to authenticated;
 grant select, insert, update, delete on public.cliente_orden to service_role;
+
+-- ── 7. LAS FILAS QUE YA ESTÁN GUARDADAS COMO OTRA COSA ──────────────────────────────────────────
+--
+-- Al 10/09/2026 hay doce certificados de retención en la tabla, cargados como `otro` (los cuatro
+-- primeros habían entrado como `orden_pago`, duplicando la OP). Todos tienen la firma con que
+-- Messina los emite: `O_P_<orden>_G<certificado>.pdf`. Se reclasifican acá —es una afirmación sobre
+-- QUÉ ES el papel, y la prueba está en su nombre— y nada más.
+--
+-- EL NÚMERO NO SE TOCA ACÁ. Estas filas siguen guardando el número de la ORDEN de pago, no el del
+-- certificado, y corregirlo exige leer el PDF: lo hace `reatribuir-ordenes-clientes.mjs --aplicar`,
+-- que después de esta migración les pone su `G00000347` y su `numero_canonico`. Escribir en SQL una
+-- segunda versión de esa regla —«el número es lo que va después del _G»— es exactamente la doble
+-- definición que el resto de esta migración evita.
+update public.cliente_orden
+   set tipo = 'retencion'
+ where eliminado_en is null
+   and tipo in ('otro', 'orden_pago')
+   and nombre_archivo ~ '^O_P_[0-9]+_G[0-9]+\.pdf$';

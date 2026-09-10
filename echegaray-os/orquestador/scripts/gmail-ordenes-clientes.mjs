@@ -36,6 +36,8 @@
 // · Sabe el cliente pero no la obra → lo guarda A NIVEL CLIENTE (`obra_id` null). La pantalla lo
 //   muestra bajo el cliente y una persona lo asigna.
 // · El PDF no dice el número, la fecha o el importe → esos campos quedan NULL. Nunca estimados.
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
@@ -47,7 +49,8 @@ import { leerPdf } from '../lib/ingesta/pdf.mjs'
 import { loadEnvLocalInto } from '../../scripts/lib/env-file.mjs'
 import { clasificarAdjunto, extensionDe } from '../lib/ordenes-cliente.mjs'
 import {
-  consultasDeGmail, deduplicar, documentoDeAdjunto, hashDocumento, heredarObras,
+  consultasDeGmail, deduplicar, documentoDeAdjunto, fecharOrdenesDePagoPorSuRetencion,
+  hashDocumento, heredarObras,
 } from '../lib/ordenes-atribucion.mjs'
 
 // Igual que la sonda de proveedores: un worktree no tiene `.env.local` (no se versiona) y sin esto
@@ -87,6 +90,49 @@ async function textoDelPdf(bytes, mime, nombre) {
 const fmt = (v, n) => String(v ?? '').replace(/\s+/g, ' ').slice(0, n).padEnd(n)
 const avisar = (m) => console.log(m)
 
+// ── LA CUOTA DE GMAIL SE RESPETA POR LAS DOS PUNTAS: MÁS DESPACIO Y UNA SOLA VEZ ────────────────
+//
+// MEDIDO el 10/09/2026: Gmail corta con «Quota exceeded … Units per minute per user» a las ~77
+// llamadas en 28 segundos sobre rodrigo@. El reintento con backoff ya evita que eso se lea como un
+// error de permisos, pero esperar 89 segundos cada dos minutos convierte un recorrido de 1.300
+// mensajes en algo que no termina. Las dos medidas que sí lo resuelven:
+//
+//   · una PAUSA entre llamadas, para no llegar al techo;
+//   · una CACHÉ por mensaje, para no volver a bajar lo que ya se leyó. Guarda lo DERIVADO —texto
+//     del PDF, hash, tamaño—, nunca los bytes: los bytes sólo hacen falta para subir al bucket, y
+//     eso pasa una vez, con `--aplicar`, y sólo con los documentos nuevos.
+//
+// Vive fuera del repo y con permisos 0700: son precios y condiciones de compra de clientes reales.
+const PAUSA_MS = Number(process.env.ORQ_GMAIL_PAUSA_MS ?? 300)
+const pausa = () => new Promise((r) => setTimeout(r, PAUSA_MS))
+
+const CACHE_DIR = process.env.ORQ_ORDENES_CACHE
+  ?? path.join(os.homedir(), '.cache', 'echegaray-orq', 'ordenes-gmail')
+const SIN_CACHE = process.argv.includes('--sin-cache')
+const VERSION_CACHE = 1
+
+const rutaCache = (casilla, id) => path.join(CACHE_DIR, casilla.replace(/[^a-z0-9@.-]/gi, '_'), `${id}.json`)
+
+/** Lo leído de un mensaje, si ya se leyó con ESTA versión del formato. null si no. */
+function leerCache(casilla, id) {
+  if (SIN_CACHE) return null
+  try {
+    const j = JSON.parse(fs.readFileSync(rutaCache(casilla, id), 'utf8'))
+    return j?.v === VERSION_CACHE ? j.leido : null
+  } catch { return null }
+}
+
+/** Guarda lo leído. Un fallo de escritura NO puede tumbar la corrida: la caché es una optimización,
+ *  no una fuente de verdad — sin ella el resultado es el mismo, sólo más lento. */
+function escribirCache(casilla, id, leido) {
+  if (SIN_CACHE) return
+  try {
+    const ruta = rutaCache(casilla, id)
+    fs.mkdirSync(path.dirname(ruta), { recursive: true, mode: 0o700 })
+    fs.writeFileSync(ruta, JSON.stringify({ v: VERSION_CACHE, leido }), { mode: 0o600 })
+  } catch { /* la caché es opcional */ }
+}
+
 // LO QUE NO SE PUDO MIRAR SE DECLARA. Una consulta que falló y devolvió 0 se ve igual que una
 // casilla sin órdenes, y ésa es la diferencia entre «no hay» y «no pude». Se junta acá y se imprime
 // al final, al lado del resumen, para que nadie lea el conteo como si fuera completo.
@@ -120,7 +166,15 @@ async function mensajesDe(casilla) {
 
 async function main() {
   const { rows: clientes } = await query('select id, nombre_comercial, cuit from public.clientes')
-  const { rows: obras } = await query('select id, nombre, cliente_id from public.obra_canonica where cliente_id is not null')
+  // UNA OBRA FUSIONADA YA NO EXISTE COMO DESTINO. `bsa-planta` se fusionó en `ME - BSA` y
+  // `pisos-120m2` en `ME - PISOS 120 M² Y RAMPA` (decisión del dueño, 10/09/2026): siguen en la
+  // tabla para que sus alias resuelvan, pero colgar una orden nueva de ellas la esconde de la obra
+  // viva. Se buscan sólo las canónicas, y `aDondeFueron` traduce una obra vieja a su destino.
+  const { rows: obras } = await query(
+    'select id, nombre, cliente_id from public.obra_canonica where cliente_id is not null and fusionada_en is null')
+  const { rows: fusionadas } = await query(
+    'select id, fusionada_en from public.obra_canonica where fusionada_en is not null')
+  const aDondeFue = new Map(fusionadas.map((f) => [f.id, f.fusionada_en]))
   const nombreCliente = new Map(clientes.map((c) => [c.id, c.nombre_comercial]))
   const nombreObra = new Map(obras.map((o) => [o.id, o.nombre]))
   const sinCuit = clientes.filter((c) => !String(c.cuit ?? '').replace(/\D/g, ''))
@@ -140,43 +194,51 @@ async function main() {
   const filas = []
   const descartes = []
   const sinAlta = []
-  let leidos = 0
+  let leidos = 0; let deCache = 0
   for (const m of mensajes) {
     const g = m.cliente
-    // UNA sola lectura del mensaje para el cuerpo Y los adjuntos: pedir `format=full` dos veces
-    // seguidas del mismo mail duplicaba la cuota, y Gmail la corta con un 403 que parece un
-    // problema de permisos.
-    let adjuntos = []; let cuerpo = ''
-    try { ({ adjuntos, text: cuerpo } = await g.gmailFull(m.id, { maxChars: 3000 })) }
-    catch (e) { descartes.push({ ...m, adjunto: '(mensaje)', motivo: `no se pudo leer el mensaje: ${e.message}` }); continue }
-    // Las partes `inline` son la firma con el logo, no un adjunto. Se descartan por tamaño y por
-    // marca a la vez: un logo pesa poco y una orden de compra nunca pesa 4 kB.
-    const reales = adjuntos.filter((a) => !(a.inline && (a.bytes ?? 0) < 40_000))
-    if (!reales.length) continue
-
-    for (const a of reales) {
-      // NO SE BAJA LO QUE NO PUEDE SER UNA ORDEN. Un PDF hay que abrirlo —el nombre puede ser
-      // neutro y la orden estar adentro—, pero una imagen o una planilla que además no clasifica
-      // por nombre ni por asunto no justifica traer megas de una casilla de cinco años.
-      const esPdf = /pdf/i.test(a.mime ?? '') || /\.pdf$/i.test(a.nombre ?? '')
-      const previo = clasificarAdjunto({ asunto: m.subject, nombreArchivo: a.nombre, cuerpo })
-      if (!esPdf && previo.tipo === 'otro') { descartes.push({ ...m, adjunto: a.nombre, motivo: `no es PDF y no clasifica por nombre/asunto (${a.mime || '?'})` }); continue }
-
-      let bytes = null; let textoPdf = ''
-      // Los bytes se bajan SIEMPRE, también en dry: sin leer el PDF el ensayo no puede decir si es
-      // una OC ni de qué obra, y entonces no sería un ensayo de nada. Bajar es leer, no escribir.
-      try {
-        bytes = await g.gmailAttachmentBytes(m.id, a.attachmentId)
-        textoPdf = await textoDelPdf(bytes, a.mime, a.nombre)
-      } catch (e) {
-        descartes.push({ ...m, adjunto: a.nombre, motivo: `no se pudo bajar: ${e.message}` })
-        continue
+    let leido = leerCache(m.casilla, m.id)
+    if (leido) deCache++
+    else {
+      // UNA sola lectura del mensaje para el cuerpo Y los adjuntos: pedir `format=full` dos veces
+      // seguidas del mismo mail duplicaba la cuota, y Gmail la corta con un 403 que parece un
+      // problema de permisos.
+      await pausa()
+      let adjuntos = []; let cuerpo = ''
+      try { ({ adjuntos, text: cuerpo } = await g.gmailFull(m.id, { maxChars: 3000 })) }
+      catch (e) { descartes.push({ ...m, adjunto: '(mensaje)', motivo: `no se pudo leer el mensaje: ${e.message}` }); continue }
+      // Las partes `inline` son la firma con el logo, no un adjunto. Se descartan por tamaño y por
+      // marca a la vez: un logo pesa poco y una orden de compra nunca pesa 4 kB.
+      const reales = adjuntos.filter((a) => !(a.inline && (a.bytes ?? 0) < 40_000))
+      leido = { cuerpo, adjuntos: [] }
+      for (const a of reales) {
+        // NO SE BAJA LO QUE NO PUEDE SER UNA ORDEN. Un PDF hay que abrirlo —el nombre puede ser
+        // neutro y la orden estar adentro—, pero una imagen o una planilla que además no clasifica
+        // por nombre ni por asunto no justifica traer megas de una casilla de cinco años.
+        const esPdf = /pdf/i.test(a.mime ?? '') || /\.pdf$/i.test(a.nombre ?? '')
+        const previo = clasificarAdjunto({ asunto: m.subject, nombreArchivo: a.nombre, cuerpo })
+        if (!esPdf && previo.tipo === 'otro') {
+          leido.adjuntos.push({ ...a, saltado: `no es PDF y no clasifica por nombre/asunto (${a.mime || '?'})` })
+          continue
+        }
+        await pausa()
+        try {
+          const bytes = await g.gmailAttachmentBytes(m.id, a.attachmentId)
+          leido.adjuntos.push({ ...a, tamano: bytes.length, sha256: hashDocumento(bytes), textoPdf: await textoDelPdf(bytes, a.mime, a.nombre) })
+        } catch (e) {
+          leido.adjuntos.push({ ...a, saltado: `no se pudo bajar: ${e.message}` })
+        }
       }
+      escribirCache(m.casilla, m.id, leido)
+    }
+
+    for (const a of leido.adjuntos) {
+      if (a.saltado) { descartes.push({ ...m, adjunto: a.nombre, motivo: a.saltado }); continue }
       leidos++
-      if (leidos % 50 === 0) avisar(`  … ${leidos} adjuntos leídos`)
+      if (leidos % 100 === 0) avisar(`  … ${leidos} adjuntos leídos (${deCache} mensajes desde la caché)`)
 
       const d = documentoDeAdjunto({
-        from: m.from, asunto: m.subject, cuerpo, nombreArchivo: a.nombre, textoPdf, clientes, obras,
+        from: m.from, asunto: m.subject, cuerpo: leido.cuerpo, nombreArchivo: a.nombre, textoPdf: a.textoPdf, clientes, obras,
       })
       if (!d.ok) {
         const destino = d.cliente ? sinAlta : descartes
@@ -190,14 +252,20 @@ async function main() {
         tipo: d.tipo, cita: d.cita, numero: d.numero, numero_canonico: d.numeroCanonico,
         fecha: d.fecha, importe: d.importe, moneda: d.moneda,
         emisor: m.from, message_id: m.id, attachment_id: a.attachmentId, casilla: m.casilla,
-        nombre_archivo: a.nombre, tamano_bytes: bytes.length, tipo_mime: a.mime || null,
-        hash_sha256: hashDocumento(bytes),
+        nombre_archivo: a.nombre, tamano_bytes: a.tamano, tipo_mime: a.mime || null,
+        hash_sha256: a.sha256,
         asunto: m.subject, recibido_en: new Date(m.date).toISOString(),
         // Sólo para la herencia y la tabla; no van a la fila.
-        bytes, texto: textoPdf, citadas: d.citadas, comprobante: d.comprobante, porque: d.obra ? 'el PDF nombra la obra' : null,
+        cliente_google: g, texto: a.textoPdf, citadas: d.citadas, comprobante: d.comprobante,
+        opCitada: d.opCitada, porque: d.obra ? 'el PDF nombra la obra' : null,
       })
     }
   }
+
+  // LA FECHA QUE UN PAPEL PERDIÓ Y OTRO CONSERVA. Va antes de la herencia y de la tabla: una orden
+  // de pago sin fecha no se puede ordenar ni cruzar con la cobranza.
+  const { rellenadas } = fecharOrdenesDePagoPorSuRetencion(filas)
+  if (rellenadas) avisar(`\nórdenes de pago fechadas desde su certificado de retención: ${rellenadas}`)
 
   // ── 3. LO QUE YA ESTÁ, Y LA HERENCIA DE OBRA ──────────────────────────────────────────────────
   const { rows: yaEnBase } = await query(`select id, cliente_id, obra_id, tipo, numero, numero_canonico,
@@ -210,7 +278,12 @@ async function main() {
   // Las filas ya guardadas entran SIN releer su PDF (eso es trabajo de `reatribuir`), pero sí con
   // su comprobante: el número de una factura ES su comprobante («A-1-225»), y es la clave con la que
   // una orden de pago recién bajada encuentra la obra de la factura que paga.
-  const previas = yaEnBase.map((r) => ({ ...r, citadas: [], texto: '', comprobante: r.tipo === 'factura' ? r.numero : null }))
+  const previas = yaEnBase.map((r) => ({
+    ...r, citadas: [], texto: '', comprobante: r.tipo === 'factura' ? r.numero : null,
+    // Una fila vieja que apunta a una obra fusionada aporta el DESTINO, no el nombre retirado: si
+    // no, la orden nueva heredaría `bsa-planta` y quedaría colgada de una obra que ya no se usa.
+    obra_id: aDondeFue.get(r.obra_id) ?? r.obra_id,
+  }))
   heredarObras([...previas, ...nuevos], { obras, nombreClientePorId: nombreCliente })
 
   // ── 4. LA TABLA ───────────────────────────────────────────────────────────────────────────────
@@ -271,17 +344,38 @@ async function main() {
 
   let escritas = 0; let rechazadas = 0
   for (const f of nuevos) {
+    // LOS BYTES SE BAJAN ACÁ Y NO ANTES. El ensayo necesita el TEXTO del PDF (para clasificar), y
+    // eso la caché lo guarda; los bytes sólo hacen falta para subir al bucket, que pasa una vez y
+    // sólo con lo nuevo. Bajarlos en cada ensayo era traer gigas de una casilla de cinco años.
+    //
+    // OJO: Gmail REGENERA el `attachmentId` entre lecturas, así que el de la caché puede estar
+    // vencido. Si falla, se relee el mensaje para conseguir el id de hoy — y si el hash no coincide
+    // con el que se clasificó, NO se guarda: sería subir un archivo distinto del que se leyó.
+    let bytes = null
+    try { bytes = await f.cliente_google.gmailAttachmentBytes(f.message_id, f.attachment_id) }
+    catch {
+      try {
+        const { adjuntos } = await f.cliente_google.gmailFull(f.message_id, { maxChars: 1 })
+        const otra = adjuntos.find((a) => a.nombre === f.nombre_archivo)
+        if (otra) bytes = await f.cliente_google.gmailAttachmentBytes(f.message_id, otra.attachmentId)
+      } catch { /* se informa abajo */ }
+    }
+    if (!bytes) { console.log(`  ✗ ${f.nombre_archivo}: no se pudieron bajar los bytes`); continue }
+    if (hashDocumento(bytes) !== f.hash_sha256) {
+      console.log(`  ✗ ${f.nombre_archivo}: los bytes de hoy no son los que se leyeron (hash distinto) — no se guarda`)
+      continue
+    }
     const ruta = `${f.cliente_id}/${f.obra_id ?? 'sin-obra'}/${randomUUID()}.${extensionDe(f.nombre_archivo)}`
     // EL ORDEN ES OBJETO PRIMERO, FILA DESPUÉS, y no al revés: una fila que apunta a un objeto que
     // no llegó a subir es un documento roto en la pantalla. Un objeto sin fila es basura invisible
     // que no le miente a nadie.
-    const sub = await sb.storage.from(BUCKET).upload(ruta, f.bytes, { contentType: f.tipo_mime || 'application/octet-stream', upsert: false })
+    const sub = await sb.storage.from(BUCKET).upload(ruta, bytes, { contentType: f.tipo_mime || 'application/octet-stream', upsert: false })
     if (sub.error) { console.log(`  ✗ ${f.nombre_archivo}: no subió — ${sub.error.message}`); continue }
 
-    // Se sacan las claves que son de la CORRIDA y no de la fila: los bytes ya se subieron, y
-    // `cliente`/`texto`/`citadas`/`comprobante`/`porque` son andamiaje de la herencia.
+    // Se sacan las claves que son de la CORRIDA y no de la fila: el cliente de Google, el texto y
+    // el andamiaje de la herencia. `porqueFecha` tampoco va: la fila guarda la fecha, no el relato.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { bytes, cliente, texto, citadas, comprobante, porque, ...fila } = f
+    const { cliente, cliente_google: _g, texto, citadas, comprobante, opCitada, porque, porqueFecha, ...fila } = f
     const { error } = await sb.from('cliente_orden').insert({ ...fila, archivo_path: ruta, origen: 'gmail' })
     if (error) {
       // 23505 = una restricción de idempotencia hizo su trabajo: este documento ya estaba. Se borra

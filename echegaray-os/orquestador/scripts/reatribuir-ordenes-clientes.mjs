@@ -55,7 +55,15 @@ async function textoDe(sb, ruta) {
 
 async function main() {
   const { rows: clientes } = await query('select id, nombre_comercial from public.clientes')
-  const { rows: obras } = await query('select id, nombre, cliente_id from public.obra_canonica where cliente_id is not null')
+  // UNA OBRA FUSIONADA YA NO EXISTE COMO DESTINO. `bsa-planta` se fusionó en `ME - BSA` y
+  // `pisos-120m2` en `ME - PISOS 120 M² Y RAMPA` (decisión del dueño, 10/09/2026): siguen en la
+  // tabla para que sus alias resuelvan, pero colgar una orden nueva de ellas la esconde de la obra
+  // viva. Se buscan sólo las canónicas, y `aDondeFueron` traduce una obra vieja a su destino.
+  const { rows: obras } = await query(
+    'select id, nombre, cliente_id from public.obra_canonica where cliente_id is not null and fusionada_en is null')
+  const { rows: fusionadas } = await query(
+    'select id, fusionada_en from public.obra_canonica where fusionada_en is not null')
+  const aDondeFue = new Map(fusionadas.map((f) => [f.id, f.fusionada_en]))
   const nombreCliente = new Map(clientes.map((c) => [c.id, c.nombre_comercial]))
   const { rows } = await query(`select id, cliente_id, obra_id, tipo, numero, numero_canonico, fecha,
     importe, moneda, cita, origen, nombre_archivo, archivo_path, asunto
@@ -97,8 +105,11 @@ async function main() {
       fecha: fechaImposible(fechaISO(r.fecha)) || !r.fecha ? extraerFechaDeOrden(texto) : fechaISO(r.fecha),
       comprobante: comprobantePropio(texto),
       citadas: [...ocsCitadas(texto), ...comprobantesCitados(texto)],
+      // Una fila que ya apunta a una obra FUSIONADA se traduce al destino: no es reasignarla, es
+      // el mismo lugar con su nombre vivo. `bsa-planta` → `messina-bsa`.
+      obra_id: aDondeFue.get(r.obra_id) ?? r.obra_id,
       obraOriginal: r.obra_id,
-      porque: r.obra_id ? 'ya la tenía' : null,
+      porque: r.obra_id ? (aDondeFue.has(r.obra_id) ? `la obra se fusionó en ${aDondeFue.get(r.obra_id)}` : 'ya la tenía') : null,
     })
   }
 

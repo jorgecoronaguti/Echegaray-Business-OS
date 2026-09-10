@@ -12,9 +12,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   clienteDelDocumento, clienteDelMail, clientePorArchivo, clientePorCuit, consultasDeGmail,
-  deduplicar, documentoDeAdjunto, hashDocumento, heredarObras,
+  deduplicar, documentoDeAdjunto, fecharOrdenesDePagoPorSuRetencion, hashDocumento, heredarObras,
 } from './ordenes-atribucion.mjs'
-import { clasificarAdjunto, dominioDe, numeroDeRetencion } from './ordenes-cliente.mjs'
+import {
+  clasificarAdjunto, dominioDe, extraerFechaDeOrden, fechaRotulada, numeroDeRetencion,
+  ordenDePagoDeLaRetencion,
+} from './ordenes-cliente.mjs'
 
 // El padrón REAL, tal como está en `public.clientes` el 10/09/2026. Se clava porque el defecto que
 // estas pruebas atrapan es de identidad: con clientes inventados, cualquier regla pasa.
@@ -274,4 +277,86 @@ test('la orden de pago que cancela facturas de DOS obras no cuelga de ninguna, y
   heredarObras(docs, { obras: OBRAS })
   assert.equal(docs[2].obra_id, null, 'repartir una OP entre dos obras sería inventar')
   assert.match(docs[2].porque, /2 obras distintas/)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// TEXTOS LITERALES DE PDF QUE HOY ESTÁN EN EL BUCKET (leídos el 10/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// No son ejemplos escritos a mano: son la capa de texto real, con sus espacios y sus cortes. Un
+// fixture inventado habría pasado las dos pruebas de abajo desde el primer día.
+
+const OC_2226 = 'Orden de compra Nº: 00002-00002226 Mendoza - 24 /08 /2026 ORDEN DE COMPRA '
+  + 'Manufacturas Químicas Juan Messina S.A. CUIT: 30-62031170-3 Sede Timbrado 01 S.Central '
+  + 'Fecha Inicio Act. 22-08-86 Proveedor : 2113 ECHEGARAY CONSTRUCCIONES S.A.S VIGENCIA DE LA O/C: '
+  + 'AUTORIZADO POR: ERICA Cond.Compra : 3 CUENTA CORRIENTE 15 DIAS COMPRADOR: VILLANUEVA ISABEL '
+  + 'Observaciones: RAMPA PARA PISO 120 M2 DEPOSITO DESTINO: G3 FABRICA '
+  + '1.00 SERVICIOS DE TERCEROS FCA $ 354255.3900 0.00 0.00 $ ,354,255.39 21.00 21/08/2026 1.00 '
+  + 'C.COSTO: 010109 DETALLE: PLAYON AZUFRE Subtotal :$ 2,354,255.39'
+
+const OP_730 = 'O R D E N D E P A G O MANUFACTURAS QUIMICAS JUAN MESSINA SA NºOrden de Pago: '
+  + '0000000000730 Fecha : 25/09/2 Proveedor : 2113 ECHEGARAY CONSTRUCCIONES S.A.S C.U.I.T: '
+  + '30-71630464-3 IMPUTACION Tipo Comp. Nro. Comprobante Fecha Vto. Importe '
+  + 'FAC A0000100000165 24/09/2024 13,142,283.35 PAGO A CUENTA: 0.00 TOTAL : 13,142,283.35 '
+  + 'Retención Impuesto a las Ganancias : 212,747.82 NETO A ABONAR : 12,929,535.53 '
+  + 'Nro. Cheque Banco Fecha Importe 86692743 MACRO S.A. 27/09/2024 12375001.24'
+
+const RET_730 = 'MANUFACTURAS QUIMICAS JUAN MES Av LIBERTADOR SAN MARTIN 149 SAN JUAN '
+  + 'C.U.I.T- 30-62031170-3 Comprobante de Retención Nro : 00000-2024-00000347 '
+  + 'O/P : 0000000000730 Fecha : 25/09/2024 Apellido y Nombre o Razón Social : '
+  + 'ECHEGARAY CONSTRUCCIONES S.A.S Nro. de C.U.I.T. : 30-71630464-3 '
+  + 'Concepto del Pago : Enajenación de Bienes Código de R?gimen : 78 '
+  + 'Importe pagado sujeto a retención : 10861391.20 Importe retenido : 212747.82'
+
+test('la OC 2226 es de PISOS 120 M² Y RAMPA, aunque el centro de costo diga PLAYON AZUFRE', () => {
+  // El defecto medido: «Observaciones: RAMPA PARA PISO 120 M2» aportaba cero puntos porque la obra
+  // se llama «PISOS» y el papel dice «PISO», y la orden se fue al playón por sus dos tokens.
+  const obras = [
+    { id: 'o-azufre', nombre: 'ME - PLAYÓN DE AZUFRE', cliente_id: 'cli-messina' },
+    { id: 'o-pisos', nombre: 'ME - PISOS 120 M² Y RAMPA', cliente_id: 'cli-messina' },
+  ]
+  const d = documentoDeAdjunto({
+    from: 'ivillanueva@juanmessina.com.ar', nombreArchivo: 'OC_32_0000200002226.pdf', textoPdf: OC_2226,
+    clientes: CLIENTES_BD, obras, hoy: new Date('2026-09-10T12:00:00Z'),
+  })
+  assert.equal(d.obra?.id, 'o-pisos')
+  assert.equal(d.fecha, '2026-08-24')
+})
+
+test('una orden de pago con el año cortado NO se fecha con el vencimiento de la factura que paga', () => {
+  // «Fecha : 25/09/2». El papel también dice 24/09/2024 (vencimiento) y 27/09/2024 (cheque): el
+  // rastreo a ciegas devolvía el 24, que es otro hecho. Sin el certificado, la respuesta es null.
+  assert.equal(fechaRotulada(OP_730), 'truncada')
+  assert.equal(extraerFechaDeOrden(OP_730, { hoy: new Date('2026-09-10T12:00:00Z') }), null)
+})
+
+test('la fecha de esa orden sale del certificado de retención de la MISMA O/P', () => {
+  assert.equal(ordenDePagoDeLaRetencion({ nombreArchivo: 'O_P_0000000000730_G00000347.pdf' }), '730')
+  assert.equal(ordenDePagoDeLaRetencion({ textoPdf: RET_730 }), '730')
+  const docs = [
+    { cliente_id: 'cli-messina', tipo: 'orden_pago', numero: '0000000000730', fecha: null },
+    { cliente_id: 'cli-messina', tipo: 'retencion', numero: 'G00000347', fecha: '2024-09-25', opCitada: '730', nombre_archivo: 'O_P_0000000000730_G00000347.pdf' },
+  ]
+  const { rellenadas } = fecharOrdenesDePagoPorSuRetencion(docs)
+  assert.equal(rellenadas, 1)
+  assert.equal(docs[0].fecha, '2024-09-25')
+  assert.match(docs[0].porqueFecha, /certificado de retención/)
+})
+
+test('el certificado de OTRA orden de pago no le presta su fecha a ésta', () => {
+  const docs = [
+    { cliente_id: 'cli-messina', tipo: 'orden_pago', numero: '0000000000730', fecha: null },
+    { cliente_id: 'cli-messina', tipo: 'retencion', numero: 'G00000556', fecha: '2024-12-20', opCitada: '1237', nombre_archivo: 'O_P_0000000001237_G00000556.pdf' },
+  ]
+  assert.equal(fecharOrdenesDePagoPorSuRetencion(docs).rellenadas, 0)
+  assert.equal(docs[0].fecha, null, 'un hueco declarado es mejor que la fecha de otro pago')
+})
+
+test('la fecha que el propio papel dice no se pisa con la del certificado', () => {
+  const docs = [
+    { cliente_id: 'cli-messina', tipo: 'orden_pago', numero: '0000000000730', fecha: '2024-09-25' },
+    { cliente_id: 'cli-messina', tipo: 'retencion', numero: 'G00000347', fecha: '2024-09-30', opCitada: '730', nombre_archivo: 'x.pdf' },
+  ]
+  assert.equal(fecharOrdenesDePagoPorSuRetencion(docs).rellenadas, 0)
+  assert.equal(docs[0].fecha, '2024-09-25')
 })

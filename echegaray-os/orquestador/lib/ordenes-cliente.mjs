@@ -218,6 +218,23 @@ const VACIAS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'para', 'con
  * dos ahí— y la ficha mostraba órdenes bajo una obra que no las produjo. Una obra cuyo nombre es el
  * del cliente no distingue nada y queda sin tokens: no puede ganar.
  */
+/**
+ * ¿ESTE TOKEN ESTÁ EN EL TEXTO? Con el plural, que es la MISMA palabra.
+ *
+ * MEDIDO el 10/09/2026 sobre `OC_32_0000200002226.pdf`: la orden dice «Observaciones: RAMPA PARA
+ * PISO 120 M2» y también «C.COSTO: 010109 DETALLE: PLAYON AZUFRE». La obra «ME - PISOS 120 M² Y
+ * RAMPA» aportaba los tokens `pisos`, `120` y `rampa`, y `pisos` no está en «PISO 120»: la obra
+ * quedaba con CERO puntos y la orden se fue a «ME - PLAYÓN DE AZUFRE», que sí tenía sus dos.
+ *
+ * El nombre de la obra dice «PISOS» y el papel dice «PISO». Es la misma palabra, y tratarlas como
+ * distintas convirtió una coincidencia de tres tokens en una de ninguno. Se acepta la forma sin la
+ * «s» final, y sólo desde cuatro caracteres: con menos, quitar una letra empareja cualquier cosa.
+ */
+function presente(token, heno) {
+  if (heno.includes(token)) return true
+  return token.length >= 4 && token.endsWith('s') && heno.includes(token.slice(0, -1))
+}
+
 export function tokensDeObra(nombre, nombreCliente = '') {
   const delCliente = new Set(norm(nombreCliente).replace(/[^a-z0-9 ]+/g, ' ').split(' ').filter(Boolean))
   return norm(nombre).replace(/[^a-z0-9² ]+/g, ' ').split(' ')
@@ -237,7 +254,7 @@ export function resolverObraDeTexto(obras, texto, { nombreCliente = '' } = {}) {
   const puntuadas = (obras ?? []).map((o) => {
     const toks = tokensDeObra(o.nombre, nombreCliente)
     if (!toks.length) return { obra: o, puntos: 0 }
-    const hits = toks.filter((t) => heno.includes(t)).length
+    const hits = toks.filter((t) => presente(t, heno)).length
     // Se exige que estén TODOS los tokens distintivos, no la mayoría. «PLAYÓN DE AZUFRE» y
     // «PLAYÓN DILUCIÓN DE ÁCIDO» comparten «playon»: con mayoría, un mail que sólo dice «playón»
     // se lleva una de las dos por sorteo.
@@ -425,6 +442,32 @@ export function mapaDeEvidencia(docs) {
  * Por eso se busca por ETIQUETA primero y sólo después a ciegas, y toda fecha fuera de una ventana
  * razonable se descarta: un documento administrativo de esta empresa no es de 2086 ni de 1986.
  */
+/**
+ * ¿EL DOCUMENTO ROTULA SU FECHA, Y ESE RÓTULO SE PUDO LEER?
+ * `'entera'` · `'truncada'` (el año quedó en un dígito al extraer el texto) · `null` (no rotula).
+ */
+export function fechaRotulada(texto) {
+  const t = String(texto ?? '').replace(/\s*([/-])\s*/g, '$1')
+  const m = t.match(/\bfecha\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{1,4})/i)
+  if (!m) return null
+  return /[/-]\d{2,4}$/.test(m[1]) ? 'entera' : 'truncada'
+}
+
+/**
+ * QUÉ ORDEN DE PAGO PRUEBA ESTE CERTIFICADO DE RETENCIÓN. Número canónico, o null.
+ *
+ * El certificado lo dice dos veces y las dos sirven: en su texto («O/P : 0000000000730») y en el
+ * nombre con que Messina lo emite (`O_P_0000000000730_G00000347.pdf`). Es el eslabón que le devuelve
+ * la fecha a una orden de pago cuyo rótulo vino roto — la misma fecha, escrita entera, en el papel
+ * que el cliente emitió por el mismo pago.
+ */
+export function ordenDePagoDeLaRetencion({ nombreArchivo = '', textoPdf = '' } = {}) {
+  const delNombre = String(nombreArchivo).match(/^o_?p_?(\d{5,})_g\d+/i)
+  if (delNombre) return numeroCanonico(delNombre[1])
+  const delTexto = String(textoPdf).match(/\bo\s*\/\s*p\s*:?\s*(\d{5,})/i)
+  return delTexto ? numeroCanonico(delTexto[1]) : null
+}
+
 export function extraerFechaDeOrden(texto, { hoy = new Date() } = {}) {
   const t = String(texto ?? '')
   const FECHA = String.raw`(\d{1,2}\s*[/-]\s*\d{1,2}\s*[/-]\s*\d{2,4})`
@@ -438,6 +481,16 @@ export function extraerFechaDeOrden(texto, { hoy = new Date() } = {}) {
     const m = t.match(re)
     if (m) candidatas.push(m[1])
   }
+  // ═══ LA ETIQUETA ROTA NO SE REEMPLAZA POR OTRA FECHA ═══
+  //
+  // MEDIDO el 10/09/2026 sobre `O_P_0000000000730.pdf`: la capa de texto trae «Fecha : 25/09/2» —
+  // el año se cortó al extraer. El papel además contiene «24/09/2024» (vencimiento de la factura
+  // que paga) y «27/09/2024» (fecha del cheque). El rastreo a ciegas devolvía el 24, y el 24 no es
+  // la fecha de la orden de pago: es la de OTRO hecho. Un dato equivocado con cara de dato es peor
+  // que un hueco declarado, así que acá se corta: si el documento SÍ rotula su fecha y ese rótulo
+  // vino roto, la función contesta null y el llamador la busca donde está escrita entera —el
+  // certificado de retención de la misma O/P—.
+  if (!candidatas.length && fechaRotulada(t) === 'truncada') return null
   // A CIEGAS, PERO TODAS LAS FECHAS DEL PAPEL Y EN ORDEN, no sólo la primera.
   //
   // Hasta el 10/09/2026 acá se empujaba el texto entero y `extraerFecha` devolvía su PRIMER match:
