@@ -101,9 +101,9 @@
     },
     {
       "concepto": "cobrado",
-      "canonica": "public.cliente_economia.cobrado_total / cobrado_neto_total (cliente) · public.obra_cobranza.cobrado (obra)",
+      "canonica": "public.cliente_economia.cobrado_total / cobrado_neto_total (cliente) · public.obra_cobranza.cobrado / cobrado_neto (obra)",
       "propietario": "public.es_cobrada(estado, fecha_cobro) — el predicado; public.cobranzas — el dato",
-      "criterio": "PERCIBIDO. Una fila está cobrada si su estado dice cobrado (sin importar mayúsculas ni espacios) Y su fecha de cobro no es futura: un «Cobrado» con fecha adelante es percibido imposible y cuenta como POR COBRAR. `cobrado_total` es bruto (lo que entra al banco); `cobrado_neto_total` es sin IVA y es el ÚNICO comparable contra el contratado.",
+      "criterio": "PERCIBIDO. Una fila está cobrada si su estado dice cobrado (sin importar mayúsculas ni espacios) Y su fecha de cobro no es futura: un «Cobrado» con fecha adelante es percibido imposible y cuenta como POR COBRAR. `cobrado_total` es bruto (lo que entra al banco); `cobrado_neto_total` es sin IVA y es el ÚNICO comparable contra el contratado. Por obra vale lo mismo: `obra_cobranza.cobrado` es bruto y `obra_cobranza.cobrado_neto` es el que se divide por lo contratado — dividir el bruto por un neto daba «100 % cobrado» en Quattropani con el IVA como diferencia.",
       "ventana": "acumulado. `cobrado_90d` existe aparte y lleva su ventana en el nombre.",
       "confianza": "D · conocimiento interno validado: el predicado replica la columna U del Sheet y el control de cobros con fecha futura que ya hacía repasar-cobranzas-y-caja.mjs",
       "prohibidas": [

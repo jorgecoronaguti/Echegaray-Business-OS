@@ -1,62 +1,31 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { avisoDeDatos, faltaUnDatoQueFrena, recortarCartera } from './cartera.ts'
-import { senalesDeClientes } from './senalesClientes.ts'
+import { esVistaCartera, separarArchivados } from './cartera.ts'
 
-// ═══ QUÉ DEFECTOS ATRAPA ═══
+// `separarArchivados` y `totalesCartera` los prueba también `orquestador/lib/cliente-cartera.test.mjs`,
+// que es más viejo que este archivo. Acá se prueba SÓLO lo que la pantalla decide hoy.
+
+test('archivar tiene efecto: el archivado sale de la lista y se puede contar aparte', () => {
+  const partido = separarArchivados([
+    { cliente_id: 'a', activo: true }, { cliente_id: 'b', activo: false },
+  ])
+  assert.deepEqual(partido.activos.map((c) => c.cliente_id), ['a'])
+  assert.deepEqual(partido.archivados.map((c) => c.cliente_id), ['b'])
+})
+
+// ═══ «DATOS FALTANTES» YA NO ES UNA VISTA (10/09/2026) ═══
 //
-// 1. Que «Datos faltantes» vuelva a ser sólo el CUIT. Si eso pasa, las dos señales que abren la
-//    pantalla aterrizan en un recorte que NO las contiene: el que toca «Cargar» sobre «1 obra sin
-//    contrato» cae en una lista donde esa obra no está, y da por hecho que ya se resolvió.
-// 2. Que una lectura fallida se dibuje como «no hay nada que cargar». Un `null` que se filtra igual
-//    que un cero convierte una base caída en la afirmación «la cartera está completa».
-// 3. Que la etiqueta ámbar de la fila crezca a tres avisos: el recorte mira tres datos, la etiqueta
-//    sigue mirando uno. Son dos decisiones distintas y comparten archivo.
+// El dueño mandó sacar dos veces las aclaraciones «sin teléfono · sin contrato · sin jefe · sin
+// medir» de la pantalla de clientes («quiero info precisa»), y el filtro las devolvía: contaba a
+// los clientes por lo que les falta sin que nada en pantalla dijera qué era.
+//
+// LO QUE ATRAPA ESTE TEST: que alguien vuelva a admitir `?vista=sin-datos`. Sin él, agregar la
+// clave al arreglo compila y la pantalla vuelve a recortar por un criterio que dejó de existir.
 
-const cliente = (x: Partial<Parameters<typeof faltaUnDatoQueFrena>[0]> = {}) => ({
-  cuit: '30-71042318-4', telefono: '+54 351 512-3344', n_obras_activas: 1, contratado: 1_000_000, ...x,
+test('`?vista=sin-datos` dejó de ser una vista y no vuelve por la URL', () => {
+  assert.equal(esVistaCartera('sin-datos'), false)
+  assert.equal(esVistaCartera('todo'), true)
+  assert.equal(esVistaCartera('activos'), true)
+  assert.equal(esVistaCartera(undefined), false)
+  assert.equal(esVistaCartera('cualquiera'), false)
 })
-
-test('«datos faltantes» mira las TRES cosas que frenan el cobro, no sólo el CUIT', () => {
-  assert.equal(faltaUnDatoQueFrena(cliente()), false)
-  assert.equal(faltaUnDatoQueFrena(cliente({ cuit: null })), true, 'sin CUIT no se factura')
-  assert.equal(faltaUnDatoQueFrena(cliente({ telefono: null })), true, 'sin teléfono no se reclama')
-  assert.equal(faltaUnDatoQueFrena(cliente({ contratado: null })), true, 'sin contrato no se certifica')
-  // Un campo con espacios está tan vacío como uno en `null`, y así entró más de un teléfono.
-  assert.equal(faltaUnDatoQueFrena(cliente({ cuit: '   ' })), true)
-})
-
-test('el recorte de la pantalla y la etiqueta de la fila NO son el mismo conjunto', () => {
-  const sinTelefono = cliente({ telefono: null })
-  assert.equal(recortarCartera([sinTelefono], 'sin-datos').length, 1, 'el recorte lo tiene que traer')
-  assert.equal(avisoDeDatos(sinTelefono), null, 'la fila no lleva etiqueta: la etiqueta es sólo el CUIT')
-})
-
-test('el verbo de cada señal aterriza en el recorte que produjo su número', () => {
-  const lista = [cliente(), cliente({ cuit: null }), cliente({ contratado: null })]
-  const senales = senalesDeClientes(lista, 2)
-  assert.deepEqual(senales.map((s) => s.href), ['/clientes?vista=sin-datos', '/clientes?vista=sin-datos'])
-  // Los dos clientes incompletos son exactamente los que el recorte devuelve.
-  assert.equal(senales[0].numero, recortarCartera(lista, 'sin-datos').length)
-})
-
-test('cero no se dibuja y sin leer SÍ se dibuja: no son lo mismo', () => {
-  assert.deepEqual(senalesDeClientes([cliente()], 0), [], 'una cartera completa no reclama nada')
-
-  const sinLeer = senalesDeClientes(null, null)
-  assert.equal(sinLeer.length, 2, 'una lectura fallida no puede callarse')
-  assert.deepEqual(sinLeer.map((s) => s.numero), [null, null], 'y no puede inventarse un 0')
-  for (const s of sinLeer) assert.match(s.bloquea, /No pude leer/)
-})
-
-test('las dos señales cuentan unidades distintas y por eso no se suman', () => {
-  const s = senalesDeClientes([cliente({ cuit: null })], 3)
-  assert.equal(s[0].numero, 1)
-  assert.match(s[0].texto, /cliente/)
-  assert.equal(s[1].numero, 3)
-  assert.match(s[1].texto, /obras/)
-})
-
-// `separarArchivados` y `totalesCartera` los prueba `orquestador/lib/cliente-cartera.test.mjs`, que
-// es más viejo que este archivo. No se duplican acá: dos pruebas de la misma función se corrigen de
-// a una, y la que queda sin tocar sigue afirmando la regla anterior en verde.

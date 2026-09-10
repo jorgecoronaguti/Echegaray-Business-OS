@@ -1,70 +1,171 @@
-// LA FILA DEL CLIENTE DE `/clientes`: DE DÓNDE SALE CADA NÚMERO QUE DIBUJA.
+// LA FILA DEL CLIENTE DE `/clientes`: DE DÓNDE SALE CADA NÚMERO QUE DIBUJA, Y QUÉ NO PUEDE DECIR.
 //
 // ═══ QUÉ DEFECTO ATRAPA ═══
 //
-// Esta tabla dibuja, en la MISMA fila, dos números de plata que vienen de dos preguntas distintas:
+// Esta tabla dibuja, en la MISMA fila, números de plata que vienen de preguntas distintas:
 //
 //   COLUMNA «CONTRATADO»  lo contratado de las obras EN CURSO (`contratado_en_curso`). Es el que
 //                         tiene que cerrar contra la suma de las filas de obra que cuelgan debajo.
-//   BARRA «COBRADO»       lo cobrado ACUMULADO del cliente sobre lo contratado de TODAS sus obras
-//                         (`cobrado_neto_total` / `contratadoTotal`). Va así porque `cobranzas`
-//                         anota el cobro contra el CLIENTE y no contra la obra: dividir el cobro de
-//                         todas las obras por el contrato de las que están en curso da más de 100 %
-//                         en cuanto una obra se cierre, y no es un porcentaje de nada.
+//   CELDA «COBRADO»       lo cobrado ACUMULADO del cliente (`cobrado_neto_total`) sobre lo
+//                         contratado de TODAS sus obras (`contratadoTotal`). Va así porque
+//                         `cobranzas` anota el cobro contra el CLIENTE y no contra la obra.
+//   COLUMNA «OC · OP»     el total de los PDF que mandó el cliente, CON IVA. Nunca se resta ni se
+//                         compara directo contra lo contratado, que es neto.
 //
-// El error fácil —y el que este test impide— es pasarle a la barra `c.contratado`, que es la
-// columna de al lado: compila, se dibuja, y publica una fracción de dos universos distintos que
-// nadie puede detectar mirando la pantalla. Es la misma clase de defecto que el hito H1 vino a
-// cerrar, una capa más arriba.
-//
-// Y el `title` tiene que DECIRLO con palabras (`ambito="cliente"`): dos porcentajes con el mismo
-// rótulo y distinto universo, sin nada que los distinga, es cómo nace la sexta definición.
+// El error fácil —y el que este test impide— es pasarle al cobro `c.contratado`, que es la columna
+// de al lado: compila, se dibuja, y publica una fracción de dos universos distintos que nadie puede
+// detectar mirando la pantalla.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { frasesDeObras } from '../services/cartera.ts'
 
 const codigo = () => readFileSync(
   fileURLToPath(new URL('./TablaClientes.tsx', import.meta.url)), 'utf8',
 )
 
-/** El bloque de la barra de cobro DEL CLIENTE (la de la obra tiene su propio `testid`). */
-function barraDelCliente(): string {
+/** El bloque de la celda de cobro DEL CLIENTE (la de la obra tiene su propio `testid`). */
+function cobroDelCliente(): string {
   const src = codigo()
   const donde = src.indexOf('testid="cobro-cliente"')
-  assert.notEqual(donde, -1, 'no existe la barra de cobro del cliente: este test quedó mirando al aire')
-  const abre = src.lastIndexOf('<BarraDeCobro', donde)
+  assert.notEqual(donde, -1, 'no existe la celda de cobro del cliente: este test quedó mirando al aire')
+  const abre = src.lastIndexOf('<Cobrado', donde)
   return src.slice(abre, src.indexOf('/>', donde) + 2)
 }
 
-test('la barra de cobro del cliente NO usa el contratado de la columna de al lado', () => {
-  const barra = barraDelCliente()
+test('el cobro del cliente NO se divide por el contratado de la columna de al lado', () => {
+  const celda = cobroDelCliente()
   assert.match(
-    barra, /contratado=\{c\.contratadoTotal\}/,
-    'el denominador de la barra del cliente tiene que ser el contratado de TODAS sus obras '
-    + '(`contratadoTotal`). Con `c.contratado` —lo contratado EN CURSO— el numerador y el '
-    + 'denominador son de universos distintos y la barra pasa el 100 % al cerrarse una obra.',
+    celda, /contratado=\{c\.contratadoTotal\}/,
+    'el denominador del cliente tiene que ser el contratado de TODAS sus obras (`contratadoTotal`), '
+    + 'no el de las que están en curso: el cobro es acumulado y no distingue obra',
   )
-  assert.doesNotMatch(barra, /contratado=\{c\.contratado\}/)
-})
-
-test('el título de la barra del cliente dice de qué universo habla', () => {
-  assert.match(
-    barraDelCliente(), /ambito="cliente"/,
-    'sin `ambito="cliente"` el `title` dice «cobrado X de Y contratado», la misma frase que la fila '
-    + 'de una obra, sobre dos números que no son de la obra',
-  )
+  assert.doesNotMatch(celda, /contratado=\{c\.contratado\}/)
 })
 
 test('lo cobrado del cliente sale de la vista y no de la suma de sus obras', () => {
-  // `c.cobrado` es `cliente_economia.cobrado_neto_total` (ver homeCartera). Lo que no puede volver
-  // es que la barra use el mapa de `obra_cobranza`, que hasta el 10/09/2026 daba `null` en TODAS
-  // las filas de cliente porque casi ninguna cobranza llega a una obra.
-  assert.match(barraDelCliente(), /cobrado=\{c\.cobrado\}/)
+  assert.match(cobroDelCliente(), /cobrado=\{c\.cobrado\}/)
+})
+
+// ═══ EL PORCENTAJE NO SE PUBLICA CON UN DENOMINADOR INCOMPLETO ═══
+//
+// `cobrado_neto_total` suma TODAS las obras del cliente y `contratado` sólo las que tienen precio en
+// OBRAS. San Francisco publicaba «100 % cobrado» dividiendo $132.415.646 —de sus 5 obras— por
+// $109.592.102 —de 4—. El importe es un hecho y se publica igual; el porcentaje, no.
+
+test('el % del cliente sólo sale si NINGUNA de sus obras quedó sin precio', () => {
+  assert.match(
+    cobroDelCliente(), /medible=\{c\.obrasSinPrecio === 0\}/,
+    'sin esta condición, una obra sin precio en OBRAS convierte la fracción en dos universos',
+  )
 })
 
 test('la fila del cliente no vuelve a leer el campo del formulario de la obra', () => {
-  // `obra_panel.monto_contratado` se retiró de todas las lecturas de clientes en el hito H1.
+  // `obra_panel.monto_contratado` es la definición que el hito H1 borró: la que sumaba las obras
+  // cerradas de Messina y publicaba $1.504 de contratado en Quattropani.
   assert.doesNotMatch(codigo(), /monto_contratado/)
+})
+
+// ═══ LO QUE EL DUEÑO MANDÓ SACAR (10/09/2026) ═══
+
+test('las OC no vuelven a colgar del nombre de la obra', () => {
+  const src = codigo()
+  assert.doesNotMatch(src, /BotonOrdenes|rotuloDe\(/, 'los rótulos «OC 2256 · 02/09 · $…» se retiraron')
+  // Y el total de la obra SÍ tiene que seguir abriendo su detalle: sacar el ruido no puede ser
+  // sacar el acceso.
+  assert.match(src, /AbrirOrdenes/)
+  assert.match(src, /testid="abrir-ordenes-obra"/)
+})
+
+test('la fila no vuelve a marcar en ámbar lo que la pantalla ya no explica', () => {
+  const src = codigo()
+  assert.doesNotMatch(
+    src, /FILO_BLOQUEA/,
+    'el filo ámbar decía «le falta el CUIT o el teléfono» sin nada en pantalla que lo dijera: '
+    + 'es una cifra sin rótulo, y el dueño mandó sacar esas aclaraciones dos veces',
+  )
+  assert.doesNotMatch(src, /sin teléfono|sin jefe|sin medir|sin certificar/)
+})
+
+test('el rótulo de la columna de papeles dice que llevan IVA', () => {
+  // El Adicional Tercer Muro: OC $12.100.000 contra $10.000.000 contratados = el mismo número ×1,21.
+  // Sin el «c/IVA» en el rótulo, las dos columnas vecinas invitan a una resta que da $2.100.000 de
+  // nada. La unidad va en el RÓTULO y no sólo en el `title`: si no, hay que pasar el mouse.
+  assert.match(codigo(), /OC · OP c\/IVA/)
+})
+
+test('«sin obra en curso» dejó de escribirse en la celda de plata', () => {
+  const src = codigo()
+  assert.doesNotMatch(
+    src, /'sin obra en curso'/,
+    'ARCOR decía «1 obra», «sin obra en curso» y «ninguna obra en ejecución» en la misma fila: '
+    + 'lo dice la columna Obras, una sola vez',
+  )
+  assert.doesNotMatch(src, /'ninguna obra en ejecución'/)
+})
+
+// ═══ CUÁNTAS OBRAS TIENE — la frase, probada sin pantalla ═══
+
+test('«11 obras» con 5 filas debajo se reemplaza por el desglose que las explica', () => {
+  assert.deepEqual(
+    frasesDeObras({ obras: 11, nEnCurso: 5, nCerradas: 6 }), ['5 en curso', '6 cerradas'],
+    'el 11 y el 5 eran los dos ciertos y ninguno explicaba al otro',
+  )
+  assert.deepEqual(frasesDeObras({ obras: 1, nEnCurso: 0, nCerradas: 1 }), ['1 cerrada'])
+  assert.deepEqual(frasesDeObras({ obras: 3, nEnCurso: 0, nCerradas: 3 }), ['3 cerradas'])
+  assert.deepEqual(frasesDeObras({ obras: 1, nEnCurso: 1, nCerradas: 0 }), ['1 en curso'])
+  assert.deepEqual(frasesDeObras({ obras: 0, nEnCurso: 0, nCerradas: 0 }), ['sin obras'])
+})
+
+test('sin leer la vista NO se escribe «0 en curso»: se dice el total y se dice que es total', () => {
+  // Es el caso del jefe de obra, a quien `cliente_economia` le devuelve cero filas por `ve_economia()`.
+  assert.deepEqual(
+    frasesDeObras({ obras: 11, nEnCurso: null, nCerradas: null }), ['11 en total'],
+    'un control que no pudo mirar no puede afirmar que no hay ninguna en curso',
+  )
+  assert.deepEqual(frasesDeObras({ obras: 0, nEnCurso: null, nCerradas: null }), ['sin obras'])
+})
+
+test('un cliente sin obras en curso no dibuja cuatro guiones: no hay universo que sumar', () => {
+  // «Guiones por todos lados» fue textual del dueño. ARCOR y La Estrella dibujaban «—» en
+  // Contratado, Costo MO, Costo mat. y Margen: cuatro huecos por cliente para decir lo que su
+  // columna «Obras» ya dice en dos palabras («1 cerrada»). Un «—» significa «falta el dato»; acá no
+  // falta ninguno, no hay pregunta.
+  const src = codigo()
+  assert.match(src, /sinUniverso=\{c\.enCurso\.length === 0\}/)
+  assert.match(src, /sinUniverso \? '' : '—'/)
+  // Y la celda de plata del cliente entra por la misma puerta.
+  assert.match(src, /c\.enCurso\.length \? SIN_PRECIO_EN_OBRAS : ''/)
+})
+
+test('el «·» de un total incompleto lleva su explicación', () => {
+  // «$ 524.163.838 · 148 OC ·»: noventa de esas OC no declaran importe en el PDF, y el punto final
+  // se lee como un tipeo. Sin `title`, el total afirma más de lo que sabe.
+  const total = readFileSync(fileURLToPath(new URL('./TotalDePapeles.tsx', import.meta.url)), 'utf8')
+  assert.match(total, /title=\{total\.parcial \? PARCIAL : undefined\}/)
+  assert.match(total, /const PARCIAL = /)
+})
+
+// ═══ LA COLUMNA MARGEN SE FUE (dueño, 10/09/2026 15:33) ═══
+//
+// «Quitá esa columna Margen, no es útil». El margen es una pregunta de la OBRA —contra su costo
+// real, su avance y su certificación— y acá se dibujaba contra un contratado que en cuatro de las
+// cinco filas de Messina no era un precio sino la suma viva de Cobranzas.
+
+test('la tabla no dibuja el margen ni su porcentaje', () => {
+  const src = codigo()
+  assert.doesNotMatch(src, />\{veEconomia \? 'Margen' : ''\}</)
+  assert.doesNotMatch(src, /pctTexto|margenPct/, 'el % del margen se fue con la columna')
+  assert.doesNotMatch(src, /data-testid="margen"/)
+  // Los COSTOS se quedan: una compra es costo, no precio, y la ve todo rol interno.
+  assert.match(src, /celda\(mo, 'costo-mo'\)/)
+  assert.match(src, /celda\(mat, 'costo-materiales'\)/)
+})
+
+test('la grilla perdió exactamente una columna, no dos', () => {
+  // Siete columnas: Cliente · Obras · OC·OP · Contratado · Costo MO · Costo mat. · Cobrado. Si el
+  // literal y las celdas se desincronizan, la tabla se corre entera y nadie lo ve en un typecheck.
+  assert.match(codigo(), /grid-cols-\[minmax\(0,1\.9fr\)_116px_156px_150px_124px_124px_150px\]/)
 })

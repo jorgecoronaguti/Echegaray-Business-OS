@@ -14,16 +14,18 @@ test('la pantalla única de Clientes: capturas a 1440 y 390', async ({ page }) =
   await page.waitForURL('**/clientes', { timeout: 15000 })
   await page.waitForLoadState('networkidle').catch(() => {})
   await page.screenshot({ path: `${SALIDA}/clientes-1440.png`, fullPage: true })
-  const chip = page.locator('[data-testid="chip-orden"]').first()
+  const chip = page.locator('[data-testid="abrir-ordenes-obra"]').first()
   if (await chip.count()) {
     await chip.click()
     await page.waitForTimeout(1200)
     await page.screenshot({ path: `${SALIDA}/panel-ordenes-1440.png`, fullPage: true })
     await page.goto('/clientes', { waitUntil: 'domcontentloaded' })
   }
-  await page.goto('/clientes?vista=sin-datos', { waitUntil: 'domcontentloaded' })
+  // «?vista=sin-datos» dejó de existir el 10/09/2026 (ver `cartera.ts`). El recorte que queda es
+  // «Con obra activa», que es el que contesta «qué le estoy ejecutando a cada uno».
+  await page.goto('/clientes?vista=activos', { waitUntil: 'domcontentloaded' })
   await page.waitForLoadState('networkidle').catch(() => {})
-  await page.screenshot({ path: `${SALIDA}/clientes-datos-faltantes-1440.png`, fullPage: true })
+  await page.screenshot({ path: `${SALIDA}/clientes-con-obra-activa-1440.png`, fullPage: true })
   await page.goto('/clientes', { waitUntil: 'domcontentloaded' })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.waitForTimeout(600)

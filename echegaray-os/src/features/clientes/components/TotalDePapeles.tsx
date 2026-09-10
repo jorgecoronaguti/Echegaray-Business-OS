@@ -7,10 +7,20 @@
 // `null` NO ES CERO: una orden sin importe cargado no es una orden por $ 0 —eso sería una
 // afirmación falsa sobre un contrato— y cuando alguna del grupo no lo tiene, el total lleva «·»
 // para decir que suma sólo las que sí. Es la misma marca que el margen parcial de la cartera.
+//
+// EL PUNTO SOLO ERA UNA CIFRA SIN RÓTULO (10/09/2026). ARCOR dibuja «$ 524.163.838 · 148 OC ·» y
+// noventa de esas ciento cuarenta y ocho no declaran importe en el PDF: el punto final se lee como
+// un tipeo, no como «este total no está completo». Ahora la marca lleva su frase en el `title`.
 
 import { pesos } from '@/shared/components/canon/formato'
 import { V } from '@/shared/components/v2/patron'
 import type { Total } from '../services/papelesCliente'
+
+/** Qué dice el «·» del final. La frase no puede decir CUÁNTAS faltan: `Total` guarda el importe
+ *  sumado y el conteo, no cuántas lo traían. Decirlo sin el número es mejor que no decirlo. */
+const PARCIAL = 'El total suma SÓLO las órdenes cuyo PDF declara un importe. Alguna de este grupo '
+  + 'no lo trae, y no se cuenta como $ 0: una orden por cero sería una afirmación falsa sobre un '
+  + 'contrato. El detalle, orden por orden, está en la ficha del cliente.'
 
 /** Un total en cero papeles: constante, para no crear un objeto por fila. */
 export const SIN_PAPELES: Total = { n: 0, importe: null, parcial: false }
@@ -42,7 +52,10 @@ export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = nul
   return (
     <span className="font-mono tabular-nums" data-testid={testid} style={{ fontSize: tam, color: V.apagado }}>
       {total.importe === null ? 'sin importe' : pesos(total.importe)}
-      <span style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}>
+      <span
+        style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}
+        title={total.parcial ? PARCIAL : undefined}
+      >
         {total.n} {sigla}{total.parcial ? ' ·' : ''}
       </span>
     </span>

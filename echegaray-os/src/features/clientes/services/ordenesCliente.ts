@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { agruparPapeles, type Orden, type PapelCrudo, type PapelesDelCliente } from './papelesCliente.ts'
+import { agruparPapeles, type PapelCrudo, type PapelesDelCliente } from './papelesCliente.ts'
 
 // LAS ÓRDENES DEL CLIENTE, PARA LA PANTALLA — cuántas OC y cuántas OP cuelgan de cada obra.
 //
@@ -82,66 +82,14 @@ export function numeroCorto(numero: string | null): string | null {
   return canonico(numero)?.split('-').pop() ?? null
 }
 
-/** «05/08» — día y mes, sin año: todas las órdenes de la cartera son del ejercicio en curso y el
- *  año repetido veinte veces en la misma columna no distingue ninguna. El año está en el panel. */
-export function diaMes(fecha: string | null): string | null {
-  const m = String(fecha ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/)
-  return m ? `${m[3]}/${m[2]}` : null
-}
-
-// `Ret.` y no «OP»: un certificado de retención no es un pago. La fila sólo dibuja OC y OP
-// (`ordenesParaFila` filtra), pero el rótulo también se usa en el panel y ahí tiene que decir la verdad.
-const PREFIJO: Record<string, string> = { orden_compra: 'OC', orden_pago: 'OP', retencion: 'Ret.', factura: 'Factura' }
-
-/** «$10.133.750» — SIN centavos y sin espacio. La fila tiene ~110 px para el rótulo entero y los
- *  centavos de una orden de ocho cifras no cambian ninguna decisión. El importe exacto, con sus
- *  decimales, está en el panel. `Intl` y no `pesos()`: este archivo es lógica pura y lo prueba
- *  `node --test`, que no monta componentes. */
-export function importeCorto(importe: number | null, moneda: string | null = 'ARS'): string | null {
-  if (importe === null) return null
-  const n = Math.round(importe).toLocaleString('es-AR')
-  return moneda === 'USD' ? `U$S ${n}` : `$${n}`
-}
-
-/**
- * El rótulo de UNA orden: «OC 2173 · 11/08 · $78.650.000». Sin número se escribe «s/n» y sin fecha
- * se omite la fecha — nunca se rellena con la fecha del mail ni con un guión que parezca un dato.
- *
- * EL IMPORTE SÓLO CON `veEconomia`, y por eso es un parámetro y no un `??`: el importe de una orden
- * de compra ES el precio de venta de la obra. El jefe de obra y el campo ven qué orden hay; cuánto
- * se cobra por ella, no. Un `false` de más deja la pantalla pobre; uno de menos publica el precio.
- */
-export function rotuloOrden(
-  o: Pick<OrdenBreve, 'tipo' | 'numero' | 'fecha'> & Partial<Pick<OrdenBreve, 'importe' | 'moneda'>>,
-  { veEconomia = false }: { veEconomia?: boolean } = {},
-): string {
-  const partes = [`${PREFIJO[o.tipo] ?? 'Doc'} ${numeroCorto(o.numero) ?? 's/n'}`]
-  const dm = diaMes(o.fecha)
-  if (dm) partes.push(dm)
-  const imp = veEconomia ? importeCorto(o.importe ?? null, o.moneda ?? null) : null
-  if (imp) partes.push(imp)
-  return partes.join(' · ')
-}
-
-/**
- * EL RÓTULO DE UNA ORDEN YA AGRUPADA: «OC 2256 · 02/09 · $12.100.000».
- *
- * `Orden` viene de `papelesCliente` —que es quien decide qué es una orden y cuántas hay—; acá sólo
- * se escribe. Es la MISMA función que arma el rótulo de la lista y el de la ficha: dos formatos
- * parecidos se separan en cuanto uno aprende algo.
- */
-export function rotuloDe(o: Orden, { veEconomia = false }: { veEconomia?: boolean } = {}): string {
-  return rotuloOrden(
-    {
-      tipo: o.clase === 'oc' ? 'orden_compra' : 'orden_pago',
-      numero: o.numeroCanonico,
-      fecha: o.fecha,
-      importe: o.importe,
-      moneda: o.moneda,
-    },
-    { veEconomia },
-  )
-}
+// ═══ LO QUE SE RETIRÓ EL 10/09/2026 ═══
+//
+// `rotuloDe`, `rotuloOrden`, `diaMes` e `importeCorto` armaban «OC 2256 · 02/09 · $12.100.000», el
+// rótulo que colgaba de cada obra en `/clientes` y que el dueño llamó ruido: tres de esos en
+// monoespaciado debajo del nombre competían con las siete columnas de plata de la derecha. La lista
+// ahora dibuja el TOTAL («$ 49.886.583 · 5 OC») y el detalle vive en el panel lateral, que arma su
+// propio rótulo en `ListaOrdenes` — con la cita de la OP y el nombre del archivo, que este formato
+// no tenía. No quedaron dos definiciones: quedó una, la del panel.
 
 /**
  * LOS PAPELES DE TODA LA CARTERA, AGRUPADOS POR CLIENTE.

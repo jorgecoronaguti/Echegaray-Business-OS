@@ -303,10 +303,17 @@ test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el
     assert.ok(!src.includes(`>${rotulo}<`), `«${rotulo}» es COSTO: vive en la obra, no en el cliente`)
   }
   // OP se suelta por debajo de 1200px; OC no, porque es la pregunta que el dueño hace primero.
-  assert.match(src, /SOLO_ANCHO_ECO[^\n]*<RotuloCol derecha>OP<\/RotuloCol>/,
+  assert.match(src, /SOLO_ANCHO_ECO[^\n]*<RotuloCol derecha>OP c\/IVA<\/RotuloCol>/,
     '«OP» tiene que soltarse por debajo de 1200px: en una pantalla angosta sobrevive lo que se vendió')
-  assert.match(src, /SOLO_ANCHO}`} title=\{AYUDA_OC\}><RotuloCol derecha>OC<\/RotuloCol>/,
+  assert.match(src, /SOLO_ANCHO}`} title=\{AYUDA_OC\}><RotuloCol derecha>OC c\/IVA<\/RotuloCol>/,
     '«OC» no puede esconderse antes que el detalle: es lo que el dueño pidió ver')
+  // ═══ EL «c/IVA» ES PARTE DEL RÓTULO, NO DEL `title` (10/09/2026) ═══
+  //
+  // El importe de una OC es el TOTAL del PDF y «Contratado», dos columnas a la izquierda, es NETO:
+  // el Adicional Tercer Muro tiene una OC de $12.100.000 contra $10.000.000 contratados, que es el
+  // mismo número ×1,21. Un rótulo que calla la unidad obliga a pasar el mouse para saber si las dos
+  // columnas vecinas se pueden restar — y en un PDF impreso no hay mouse.
+  assert.ok(!/<RotuloCol derecha>OC<\/RotuloCol>/.test(src), 'el rótulo «OC» volvió sin decir el IVA')
   // Ni Obra ni Contratado llevan clase de escondido: son las dos que no se negocian.
   const celdas = celdasDelEncabezado()
   for (const fija of ['Obra', 'Contratado']) {

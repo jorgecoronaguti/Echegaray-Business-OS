@@ -151,12 +151,12 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   })
   // ═══ EL RECORTE SALE DE LA MISMA FILA QUE SE DIBUJA ═══
   //
-  // `recortarCartera` decidía «Datos faltantes» con `cliente_panel.contratado === null`, que es la
-  // suma del campo del formulario: por eso Messina entraba en «datos faltantes» al mismo tiempo que
-  // la tabla le mostraba $156M. Ahora el corte es `faltaUnDato` de la fila —CUIT, teléfono,
-  // contrato cargado—, el mismo booleano que enciende el filo ámbar y dibuja los chips.
+  // DOS RECORTES Y NO TRES (10/09/2026). «Datos faltantes» se retiró: contaba a los clientes por lo
+  // que les falta —CUIT, teléfono, contrato sin cargar— y esas mismas aclaraciones son las que el
+  // dueño mandó sacar de la pantalla dos veces («quiero info precisa»). Un chip que recorta por un
+  // criterio que no se ve en ninguna fila es una puerta a ciegas. Ver `cartera.ts`.
   const enElRecorte = (c: (typeof cartera)[number]) =>
-    vista === 'todo' ? true : vista === 'activos' ? c.enCurso.length > 0 : c.faltaUnDato
+    vista === 'todo' ? true : c.enCurso.length > 0
   const visibles = cartera
     .filter(enElRecorte)
     .filter((c) => contieneEnAlguno([c.nombre, razonDe(base, c.cliente_id)], sp.q ?? ''))
@@ -211,15 +211,28 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
           testid="vistas-clientes"
           espacioPanel={hayPanel}
           vistas={[{
-            clave: 'clientes', titulo: 'Clientes', cuenta: base.length, activa: true, href: armarHref({}),
+            clave: 'clientes',
+            titulo: 'Clientes',
+            // NINGUNA CIFRA SIN RÓTULO (10/09/2026). `cuenta` dibuja el número SOLO —«Clientes 5»—
+            // y con una única sub-vista no hay solapa que lo explique: el dueño lo leyó como un «5»
+            // suelto pegado a «$ 251.494.283 contratado». El conteo se dice con su sustantivo, en
+            // el resumen, junto a los otros dos.
+            cuenta: null,
+            activa: true,
+            href: armarHref({}),
             // EL RESUMEN CUENTA LO QUE SE VE. Un total de la cartera entera al lado de tres filas
             // filtradas es un número que no cuadra con nada de lo que hay en pantalla.
             subtitulo: [
+              `${visibles.length} ${visibles.length === 1 ? 'cliente' : 'clientes'}`,
               obras === null
                 ? 'no pude leer las obras'
                 : `${obrasEnCurso} ${obrasEnCurso === 1 ? 'obra' : 'obras'} en ejecución`,
+              // «EN CURSO» NO ES ADORNO: es la suma de la columna Contratado, que sólo mira las
+              // obras `activa`. Sin la aclaración se lee como el contrato histórico del cliente.
               veEconomia
-                ? (contratadoTotal === null ? 'sin precios en OBRAS' : `${pesos(contratadoTotal)} contratado`)
+                ? (contratadoTotal === null
+                    ? 'sin precios en OBRAS'
+                    : `${pesos(contratadoTotal)} contratado en curso`)
                 : null,
             ].filter(Boolean).join(' · '),
           }]}
@@ -256,14 +269,6 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 opciones={[
                   { clave: 'todo', etiqueta: 'Todos', href: armarHref(sp, { vista: undefined, c: undefined }), activo: vista === 'todo' },
                   { clave: 'activos', etiqueta: 'Con obra activa', href: armarHref(sp, { vista: 'activos', c: undefined }), activo: vista === 'activos' },
-                  {
-                    clave: 'sin-datos', etiqueta: 'Datos faltantes',
-                    href: armarHref(sp, { vista: 'sin-datos', c: undefined }),
-                    activo: vista === 'sin-datos',
-                    // LA POBLACIÓN DEL CORTE, no la de la página, y contada sobre las MISMAS filas
-                    // que la tabla dibuja: si saliera de otra cuenta diría 4 con 3 filas abajo.
-                    cuenta: cartera.filter((c) => c.faltaUnDato).length,
-                  },
                 ]}
               />
 
@@ -304,6 +309,25 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                     {conArchivados
                       ? <>Se muestran también {guardados.length} cliente{guardados.length === 1 ? '' : 's'} archivado{guardados.length === 1 ? '' : 's'}. <Link href={armarHref(sp, { archivados: undefined })} style={{ color: V.tinta, textDecoration: 'underline' }}>Ocultarlos</Link>. </>
                       : <>{guardados.length} cliente{guardados.length === 1 ? '' : 's'} archivado{guardados.length === 1 ? '' : 's'} fuera de esta lista. <Link href={armarHref(sp, { archivados: '1' })} data-testid="ver-archivados" style={{ color: V.tinta, textDecoration: 'underline' }}>Verlos</Link>. </>}
+                  </span>
+                )}
+                {/* ═══ POR QUÉ LA BARRA DE COBRO NO SALE EN CASI NINGUNA OBRA ═══
+
+                    El dueño pidió una barra de cobro POR OBRA y la pantalla la dibuja sólo en
+                    Quattropani. No es un defecto de esta tabla: `cobranzas.obra_cliente` guarda una
+                    etiqueta de CLIENTE —«MESSINA», «IMOTOR/San Francisco/JAVI SANCHEZ»— y
+                    `obra_alias` la resuelve a una obra sólo cuando esa etiqueta nombra una obra.
+                    Medido el 10/09/2026: las 96 filas de Cobranzas cobradas caen en TRES obra_id.
+
+                    Se dice UNA vez, acá, y no un «sin imputar» debajo de cada celda: el motivo es
+                    el mismo para todas las filas y repetirlo nueve veces es la clase de aclaración
+                    que el dueño mandó sacar. Lo que falta no es código: es que Cobranzas diga de
+                    qué OBRA es cada cobro. */}
+                {veEconomia && (
+                  <span data-testid="nota-cobro-por-obra">
+                    Cobranzas registra el cobro contra el CLIENTE, no contra la obra: por eso la
+                    columna Cobrado tiene número en la fila del cliente y «—» en casi todas las
+                    obras. Un «—» ahí no es «no cobró»: es que ese cobro no está imputado a una obra.{' '}
                   </span>
                 )}
                 El cliente es la relación empresarial y la obra la unidad operativa: un cliente puede

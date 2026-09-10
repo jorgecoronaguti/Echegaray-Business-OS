@@ -221,14 +221,18 @@ export default async function ClientePage({ params, searchParams }: {
         } as CifraDeFicha]
       : []),
     {
-      rotulo: `OC recibidas${papeles ? ` (${papeles.totalOC.n})` : ''}`,
+      // «c/IVA» EN EL RÓTULO, IGUAL QUE EN LA LISTA (10/09/2026). El importe de una OC es el TOTAL
+      // del PDF —con IVA— y «Contratado en curso», tres cifras a la izquierda, es NETO. Puestas en
+      // la misma línea sin decirlo, invitan a una resta que no significa nada: el Adicional Tercer
+      // Muro tiene una OC de $12.100.000 contra $10.000.000 contratados, que es el mismo número.
+      rotulo: `OC recibidas c/IVA${papeles ? ` (${papeles.totalOC.n})` : ''}`,
       valor: papeles?.totalOC.importe != null ? money(papeles.totalOC.importe) : null,
       falta: papeles === null ? 'no pude leerlas' : 'ninguna',
     },
     {
       // «RECIBIDAS», NO «COBRADAS»: una orden de pago es la instrucción del cliente a su banco. Que
       // el dinero entró lo prueba el extracto, no el PDF de un tercero.
-      rotulo: `OP recibidas${papeles ? ` (${papeles.totalOP.n})` : ''}`,
+      rotulo: `OP recibidas c/IVA${papeles ? ` (${papeles.totalOP.n})` : ''}`,
       valor: papeles?.totalOP.importe != null ? money(papeles.totalOP.importe) : null,
       falta: papeles === null ? 'no pude leerlas' : 'ninguna',
     },

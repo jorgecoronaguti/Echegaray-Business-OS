@@ -62,11 +62,13 @@ test('la cartera trae exactamente las columnas del canónico 25 v2, y ninguna m�
       await expect(tabla).not.toContainText(columna)
     }
 
-    // LOS TRES RECORTES DEL CANÓNICO, con su contador. Sin ellos la cartera vuelve a ser una lista
-    // sin recorte y «datos faltantes» —el CUIT que frena una factura— no se puede ver de un vistazo.
-    for (const t of ['filtro-cartera-todo', 'filtro-cartera-activos', 'filtro-cartera-sin-datos']) {
+    // LOS DOS RECORTES QUE QUEDAN. «Datos faltantes» se retiró el 10/09/2026: recortaba por CUIT,
+    // teléfono y contrato sin cargar, que son exactamente las aclaraciones que el dueño mandó sacar
+    // de esta pantalla dos veces. Que no vuelva se prueba acá y en `cartera.test.ts`.
+    for (const t of ['filtro-cartera-todo', 'filtro-cartera-activos']) {
       await expect(page.getByTestId(t)).toBeVisible()
     }
+    await expect(page.getByTestId('filtro-cartera-sin-datos')).toHaveCount(0)
   } finally {
     await limpiar(sb)
     await sb.auth.signOut()
