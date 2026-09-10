@@ -52,21 +52,32 @@ export function corto(numero: string | null | undefined): string | null {
 }
 
 /**
- * ¿ES UN COMPROBANTE DE RETENCIÓN? Lo decide el NOMBRE DEL ARCHIVO, no el `tipo` de la fila.
+ * ¿ES UN COMPROBANTE DE RETENCIÓN POR SU NOMBRE DE ARCHIVO?
  *
  * El proveedor los emite como `O_P_<número de la orden de pago>_G<número del comprobante>.pdf`
  * (verificado el 10/09/2026 abriendo el PDF: dice «Comprobante de Retención», «O/P: 0000000005156»
- * y «Código de Régimen: 78»). Hoy llegan con `tipo = 'otro'`, pero llevan el número de SU OP: el
- * día que el extractor los tome por órdenes de pago —o que alguien los reclasifique a mano— el
- * total cobrado del cliente se duplica sin que nada se ponga rojo. Por eso la marca del archivo
- * gana sobre el `tipo`, y hay un test que lo prueba con la fila tipada como `orden_pago`.
+ * y «Código de Régimen: 78»).
+ *
+ * ES LA MISMA MARCA QUE USA `orquestador/lib/ordenes-cliente.mjs` (`/_g\d{5,}…/`) para escribir
+ * `tipo = 'retencion'` al bajar el adjunto — se repite acá porque `src/` no importa del
+ * orquestador, con el mismo patrón y un test que lo clava, igual que el número canónico.
  */
 export function esRetencion(nombreArchivo: string | null | undefined): boolean {
-  return /_G\d{3,}\.pdf$/i.test(String(nombreArchivo ?? ''))
+  return /_g\d{5,}(?:\.[a-z0-9]+)?$/i.test(String(nombreArchivo ?? ''))
 }
 
+/**
+ * QUÉ ES CADA PAPEL. El `tipo` de la fila manda cuando dice `retencion`; el NOMBRE DEL ARCHIVO es
+ * la red: doce certificados de Messina están guardados como `otro` —y algunos llegaron a estar como
+ * `orden_pago`, declarando dos pagos donde hubo uno—. Un certificado lleva el número de SU orden,
+ * así que contado como orden duplica el dinero cobrado sin que nada se ponga rojo.
+ *
+ * Por eso la marca del archivo GANA sobre el `tipo`, y hay un test que lo prueba con la fila tipada
+ * como `orden_pago`. Cuando la reclasificación de la base (migración
+ * `20260910T2010_la_retencion_no_es_una_orden…`) termine de correr, las dos vías dirán lo mismo.
+ */
 export function clasePapel(p: PapelCrudo): ClasePapel {
-  if (esRetencion(p.nombre_archivo)) return 'retencion'
+  if (p.tipo === 'retencion' || esRetencion(p.nombre_archivo)) return 'retencion'
   if (p.tipo === 'orden_compra') return 'oc'
   if (p.tipo === 'orden_pago') return 'op'
   if (p.tipo === 'factura') return 'factura'

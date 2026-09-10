@@ -40,7 +40,11 @@ const TIPO: Record<string, string> = {
 export function tituloDeOrden(
   o: Pick<OrdenDetallada, 'tipo' | 'numero' | 'cita'> & { nombre_archivo?: string | null },
 ): string {
-  if (esRetencion(o.nombre_archivo)) return `Retención · OP ${numeroCorto(o.numero) ?? 's/n'}`
+  // El `tipo` de la base manda desde la migración del 10/09; el nombre del archivo es la red para
+  // las filas que todavía están guardadas como `otro`. La misma regla que `papelesCliente`.
+  if (o.tipo === 'retencion' || esRetencion(o.nombre_archivo)) {
+    return `Retención · OP ${numeroCorto(o.numero) ?? 's/n'}`
+  }
   const clase = TIPO[o.tipo] ?? o.tipo
   if (o.tipo !== 'factura') return `${clase} ${o.numero ? `N° ${o.numero}` : 'sin número'}`
   const cita = o.cita ? ` · cita OC ${o.cita.split('-').pop()}` : ''

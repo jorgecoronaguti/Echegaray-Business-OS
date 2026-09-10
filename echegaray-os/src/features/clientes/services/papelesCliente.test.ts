@@ -24,6 +24,13 @@ test('un certificado de retención NUNCA se cuenta como orden de pago', () => {
   // sacando. Revertir `esRetencion` pone en rojo estas cuatro afirmaciones.
   assert.equal(esRetencion('O_P_0000000005156_G00002353.pdf'), true)
   assert.equal(esRetencion('0000000005156.pdf'), false)
+  // EL MISMO PATRÓN QUE `orquestador/lib/ordenes-cliente.mjs` usa para escribir `tipo='retencion'`
+  // al bajar el adjunto: cinco dígitos o más después de la G, con o sin extensión. Si una de las
+  // dos reglas cambia sola, este caso se pone rojo.
+  assert.equal(esRetencion('O_P_0000000004865_G00002208'), true)
+  assert.equal(esRetencion('algo_G123.pdf'), false)
+  // Y cuando la base ya lo dice, se le cree: la migración del 10/09 agregó el tipo `retencion`.
+  assert.equal(clasePapel(uno({ tipo: 'retencion', nombre_archivo: 'certificado.pdf' })), 'retencion')
   assert.equal(clasePapel(uno({ tipo: 'otro', nombre_archivo: 'O_P_0000000000730_G00000347.pdf' })), 'retencion')
   assert.equal(
     clasePapel(uno({ tipo: 'orden_pago', numero: '0000000005156', nombre_archivo: 'O_P_0000000005156_G00002353.pdf' })),
