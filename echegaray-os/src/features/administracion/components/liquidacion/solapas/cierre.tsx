@@ -12,6 +12,8 @@ import { ReabrirQuincena, type VentanaDeReapertura } from './ReabrirQuincena'
 import { BotonCerrar } from './AccionesDeCierre'
 import { pesos } from '../BloqueLiquidacion'
 import { ALTO_LIQ } from './tabla'
+import { agruparPorRolOrganizacional } from '../../../services/vocabularioPersona'
+import { RotuloDeGrupo } from '../../RotuloDeGrupo'
 
 // 10 · CERRAR y 11 · CERRADA — la misma solapa, porque son el mismo objeto en dos estados.
 //
@@ -60,6 +62,11 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
   // LAS FILAS DE LA PANTALLA 11 SON LAS SELLADAS, NO LAS RECALCULADAS. Lo que se pagó vive en
   // `liquidacion_linea`; recalcularlo al dibujar haría que cambiar una tarifa hoy reescribiera la
   // quincena de agosto, que es exactamente lo que cerrar existe para impedir.
+  // QUIÉN ES JEFE VIENE CON LA LÍNEA, no se vuelve a leer: es el mismo `esJefeDeObra(puesto)` que
+  // ya trajo `getLiquidacionDeLaQuincena`. La foto de la quincena cerrada se dibuja con los mismos
+  // dos grupos y en el mismo orden que Plantel, Asistencia y Horas (dueño, 10/09/2026).
+  const jefes = new Set(lineas.filter((l) => l.esJefe).map((l) => l.personaId))
+  // El orden ya llega del servicio (Oficina/jefes primero, alfabético en español): esto mapea 1:1.
   const filasCerradas = filasDeQuincenaCerrada(lineas, sellado, vigenteHoy)
   const aviso = avisoDeReapertura(
     filasCerradas.map((f) => ({
@@ -90,7 +97,7 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
       <Resumen estado={estado} horas={totalHoras} faltante={faltante} />
 
       {cerrada
-        ? <Cerrada filas={filasCerradas} cerradaEn={cerradaEn} aviso={aviso} ventanas={ventanas} puedeCerrar={puedeCerrar} />
+        ? <Cerrada filas={filasCerradas} esJefe={jefes} cerradaEn={cerradaEn} aviso={aviso} ventanas={ventanas} puedeCerrar={puedeCerrar} />
         : <Abierta estado={estado} puedeCerrar={puedeCerrar} quincena={quincena} />}
     </div>
   )
@@ -238,8 +245,10 @@ function Abierta({ estado, puedeCerrar, quincena }: {
  * Las ocho columnas del mockup (liqhs v2:638): Persona · Horas · $/h sellado · Cobró · Por banco ·
  * Efectivo · Total · $/h hoy. La última es informativa y no cambia lo pagado.
  */
-function Cerrada({ filas, cerradaEn, aviso, ventanas, puedeCerrar }: {
+function Cerrada({ filas, esJefe, cerradaEn, aviso, ventanas, puedeCerrar }: {
   filas: readonly FilaDeQuincenaCerrada[]
+  /** `personaId` de los jefes de obra, para los mismos dos grupos que el resto del módulo. */
+  esJefe: ReadonlySet<string>
   cerradaEn: string | null
   aviso: AvisoDeReapertura
   ventanas: readonly VentanaDeReapertura[]
@@ -291,7 +300,12 @@ function Cerrada({ filas, cerradaEn, aviso, ventanas, puedeCerrar }: {
             ))}
           </div>
 
-          {filas.map((f) => {
+          {agruparPorRolOrganizacional(filas, (f) => esJefe.has(f.personaId)).map((g, iG, gs) => (
+            <div key={g.clave} data-testid={`grupo-cerrada-${g.clave}`}>
+              {/* CON UN SOLO GRUPO NO HAY RÓTULO, igual que en Plantel y en la grilla de Horas: un
+                  rótulo solitario encima de la lista entera no separa nada. */}
+              {gs.length > 1 && <RotuloDeGrupo texto={g.rotulo} primero={iG === 0} />}
+              {g.integrantes.map((f) => {
             const comparacion = f.comparacion
             return (
               <div key={f.personaId} data-testid="fila-cerrada" style={{
@@ -317,7 +331,9 @@ function Cerrada({ filas, cerradaEn, aviso, ventanas, puedeCerrar }: {
                 </span>
               </div>
             )
-          })}
+              })}
+            </div>
+          ))}
 
           <div data-testid="total-cerrada" style={{
             display: 'grid', gridTemplateColumns: grilla, gap: 14, height: ALTO_LIQ.filaTotalAlta,

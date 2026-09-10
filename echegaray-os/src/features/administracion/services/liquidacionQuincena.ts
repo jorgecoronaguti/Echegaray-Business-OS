@@ -39,6 +39,7 @@ import {
 } from './liquidacionDeAusencias.ts'
 import { horasEsperadasDeDias, jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { diasDeLaQuincenaSinDomingos, type Quincena } from './quincena.ts'
+import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
 
 /** Los tres cuadros de la pestaña. Cada uno se cierra por su cuenta. */
 export type GrupoLiquidacion = 'obreros' | 'oficina' | 'final'
@@ -177,6 +178,13 @@ export interface EntradaDeLinea {
   giroEnElLote: boolean
   /** Sólo liquidaciones finales: la mitad blanca que liquidó el estudio. El total es el doble. */
   mitadBlanca?: number | null
+  /**
+   * SI ES JEFE DE OBRA — el mismo `esJefeDeObra(persona_directorio.puesto)` que separan el plantel,
+   * la asistencia y la grilla de Horas. Viaja con la línea para que las pantallas de Liquidación
+   * ordenen y rotulen como el resto del módulo Personal sin volver a leer el directorio: una
+   * segunda lectura sería una segunda respuesta a «¿éste es jefe?».
+   */
+  esJefe?: boolean
 }
 
 export interface LineaLiquidada {
@@ -199,12 +207,34 @@ export interface LineaLiquidada {
   /** No hay tarifa cargada para esa persona: la fila lo dice y no inventa $ 0. */
   sinTarifa: boolean
   /**
+   * EL NETO QUE LIQUIDÓ EL ESTUDIO. `null` = no hay recibo para esta quincena.
+   *
+   * Viaja porque `porBanco` NO es el recibo: es el recibo GIRADO. Cuando el extracto todavía no
+   * muestra el lote, `porBanco` vale 0 y la pantalla escribía «recibo $ 0» sobre una persona que sí
+   * tiene recibo (auditoría del 10/09/2026).
+   */
+  reciboNeto: number | null
+  /**
+   * LA MITAD BLANCA DEL ACUERDO 50/50, que NO es «por banco». `null` cuando no hay acuerdo 50/50
+   * que publicar — hoy, Oficina y las finales sin recibo (ver `liquidacionAcuerdo.ts`).
+   *
+   * Es lo ACORDADO; `porBanco` es lo LIQUIDADO por el estudio y girado por el banco. Los dos se
+   * publican al lado justamente para que la diferencia se vea: el 31/08/2026 el cuadro calculaba
+   * POR BANCO como el 50% y el recibo de Aguero decía $215.564,62 sobre $294.000 acordados —
+   * $78.435 que iban a terminar en efectivo y el cuadro mandaba al banco.
+   */
+  blancoAcuerdo: number | null
+  /** La mitad en efectivo del acuerdo 50/50. `null` cuando no hay acuerdo 50/50. */
+  efectivoAcuerdo: number | null
+  /**
    * HAY RECIBO Y EL EXTRACTO NO MUESTRA EL GIRO. No es «por banco»: un recibo es lo que el estudio
    * liquidó, no la prueba de que la plata salió. Se muestra aparte para que alguien lo mire.
    */
   reciboSinGiro: boolean
   /** De dónde salió la tarifa. Ningún importe sin origen a la vista. */
   origenTarifa: string | null
+  /** Jefe de obra según `esJefeDeObra(puesto)`: el mismo corte que Plantel, Asistencia y Horas. */
+  esJefe: boolean
 }
 
 /**
@@ -247,8 +277,14 @@ export function liquidarLinea(
     // una tarifa de la modalidad equivocada; ahora falta la que ESTA línea cobra. La gente de
     // Oficina tiene valor hora NULL por definición y NO está sin tarifa: tiene un neto mensual.
     sinTarifa: faltaLaTarifa(modalidad, valorHora, netoMensual),
+    // LAS FINALES REPARTEN CONTRA LA MITAD BLANCA DEL RECIBO, que es de donde salió COBRA
+    // (`mitadBlanca × 2`). Partir ese COBRA al medio otra vez daría el mismo número por un camino
+    // que no es el de la fuente, y dejaría de coincidir el día que el recibo no sea la mitad justa.
+    ...repartoComoCampos(cobra, modalidad, e.mitadBlanca ?? null),
+    reciboNeto: e.reciboNeto,
     reciboSinGiro: e.reciboNeto != null && !e.giroEnElLote,
     origenTarifa: e.tarifa?.origen ?? null,
+    esJefe: e.esJefe === true,
   }
 }
 
@@ -266,6 +302,13 @@ export function faltaLaTarifa(
   if (modalidad === 'hora') return valorHora == null
   if (modalidad === 'mensual') return netoMensual == null
   return false
+}
+
+const repartoComoCampos = (
+  cobra: number | null, modalidad: ModalidadDeLiquidacion, mitadBlanca: number | null,
+) => {
+  const r = repartoDelAcuerdo(cobra, modalidad, mitadBlanca)
+  return { blancoAcuerdo: r.blanco, efectivoAcuerdo: r.efectivo }
 }
 
 /** COBRA, según el cuadro. Cada grupo cobra por una razón distinta y ninguna es la del otro. */
@@ -295,6 +338,11 @@ export interface TotalesDeCuadro {
   porBanco: number
   enEfectivo: number
   total: number
+  /** Las dos mitades ACORDADAS del cuadro. Sólo suman las líneas que tienen acuerdo 50/50. */
+  blancoAcuerdo: number
+  efectivoAcuerdo: number
+  /** Cuántas líneas no llevan reparto 50/50 (Oficina y subcontratistas): no suman y se dicen. */
+  sinReparto: number
   /** Cuántas líneas no se pudieron liquidar. El total de arriba NO las incluye, y hay que decirlo. */
   sinTarifa: number
   /** Cuántas tienen recibo sin giro confirmado en el extracto. */
@@ -312,11 +360,15 @@ export function totalesDeCuadro(lineas: readonly LineaLiquidada[]): TotalesDeCua
   const t: TotalesDeCuadro = {
     personas: lineas.length,
     horas: 0, cobra: 0, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: 0, total: 0,
-    sinTarifa: 0, reciboSinGiro: 0,
+    blancoAcuerdo: 0, efectivoAcuerdo: 0, sinReparto: 0, sinTarifa: 0, reciboSinGiro: 0,
   }
   for (const l of lineas) {
     if (l.sinTarifa || l.cobra == null) t.sinTarifa++
     if (l.reciboSinGiro) t.reciboSinGiro++
+    // NULL NO SUMA COMO 0, TAMPOCO ACÁ: una línea sin acuerdo 50/50 se cuenta aparte para que el
+    // pie pueda escribir «2 sin reparto» en vez de publicar dos mitades que le faltan personas.
+    if (l.blancoAcuerdo == null) t.sinReparto++
+    else { t.blancoAcuerdo += l.blancoAcuerdo; t.efectivoAcuerdo += l.efectivoAcuerdo ?? 0 }
     t.horas += numero(l.horas)
     if (l.cobra == null) continue
     t.cobra += l.cobra
@@ -326,7 +378,8 @@ export function totalesDeCuadro(lineas: readonly LineaLiquidada[]): TotalesDeCua
     t.enEfectivo += numero(l.enEfectivo)
     t.total += numero(l.total)
   }
-  for (const k of ['horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total'] as const) {
+  for (const k of ['horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total',
+    'blancoAcuerdo', 'efectivoAcuerdo'] as const) {
     t[k] = redondear2(t[k])
   }
   return t
