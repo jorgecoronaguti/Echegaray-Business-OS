@@ -31,7 +31,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { deduplicar, separarInternas, sumar } from '../lib/libro-movimientos.mjs'
 import {
   deCompras, deCobranzas, deChequesEmitidos, deBancoCargos,
-  deTarjetaSinFactura, deImpuestosCalendario, deCartera,
+  deTarjetaSinFactura, deImpuestosCalendario, debitosDeImpuestoAlCheque, deCartera,
   deJornalesQuincenas, deOficina, deDireccion, comprasPagadasConCheque,
   deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
   RUBRO_GREMIALES,
@@ -66,6 +66,7 @@ import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosP
 // reclamó otro. Ver lib/libro-cruce-banco.mjs.
 import { cruzarLibroContraBanco, aplicarCruce, VEREDICTO_CRUCE, GRITAN_CRUCE } from '../lib/libro-cruce-banco.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
+import { ROTULO as ROTULO_IMPUESTO_CHEQUE } from '../lib/impuesto-cheque.mjs'
 import { coberturaPorRubro, huecosDeCobertura, problemasDeRol, verificarCobertura } from '../lib/cash-flow-cobertura.mjs'
 import { fechaDeSerial, isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
 import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, exigirColumnasNeteo, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
@@ -179,9 +180,16 @@ async function extraerDeLasFuentes(google, corte) {
   // impuestos-pestana.mjs (por eso el contrato se importa y no se copia: el 30/07 se renombró de un
   // solo lado razonando sobre el número de fila y los dos cash flow quedaron sin poder regenerarse).
   const filaDeRotulo = (rot) => impuestos.findIndex((f) => String(f?.[0] ?? '').trim() === rot) + 1 || null
-  const filasCal = { filaIva: filaDeRotulo(total(ROTULOS_CALENDARIO.iva)), filaIibb: filaDeRotulo(total(ROTULOS_CALENDARIO.iibb)) }
-  if (!filasCal.filaIva || !filasCal.filaIibb) {
-    throw new Error(`no encontré "${total(ROTULOS_CALENDARIO.iva)}" / "${total(ROTULOS_CALENDARIO.iibb)}" en `
+  // La del impuesto al cheque se ubica igual, y por la misma razón: su rótulo lo define
+  // lib/impuesto-cheque.mjs y lo escribe impuestos-bloques.mjs importándolo.
+  const filasCal = {
+    filaIva: filaDeRotulo(total(ROTULOS_CALENDARIO.iva)),
+    filaIibb: filaDeRotulo(total(ROTULOS_CALENDARIO.iibb)),
+    filaCheque: filaDeRotulo(ROTULO_IMPUESTO_CHEQUE),
+  }
+  if (!filasCal.filaIva || !filasCal.filaIibb || !filasCal.filaCheque) {
+    throw new Error(`no encontré "${total(ROTULOS_CALENDARIO.iva)}" / "${total(ROTULOS_CALENDARIO.iibb)}" / `
+      + `"${ROTULO_IMPUESTO_CHEQUE}" en `
       + `${CALENDARIO_IMPUESTOS.pestaña}. Una referencia a una fila muerta devuelve $0 sin un solo error: no extraigo.`)
   }
 
@@ -414,6 +422,11 @@ async function extraerDeLasFuentes(google, corte) {
       + 'quedan FUERA del flujo — una compra de equipo es una decisión, no una necesidad de caja que se repite.')
   }
 
+  // Los cargos del banco se calculan UNA vez: los consume el libro y, además, el neteo del impuesto
+  // al cheque proyectado necesita saber exactamente cuánto de ese impuesto ya entró por esta puerta.
+  const cargosBanco = deBancoCargos(banco, { fila0: 4 })
+  const anioDelLibro = new Date().getFullYear()
+
   const decorados = estadosDecorados(compras)
   if (decorados.length) {
     console.warn(`  ⚠ ${decorados.length} fila(s) de Compras dicen "Pagado" con decoración `
@@ -442,9 +455,12 @@ async function extraerDeLasFuentes(google, corte) {
       Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos, tipoCambio }),
       'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
       'Tarjeta de Credito': deTarjetaSinFactura(tarjeta, { pagos: pagosTarjeta }),
-      _BANCO_RAW: deBancoCargos(banco, { fila0: 4 }),
+      _BANCO_RAW: cargosBanco,
       _CHEQUES_RAW: deCartera(carteraRaw),
-      'Impuestos y Financieros': deImpuestosCalendario(impuestos, filasCal, new Date().getFullYear(), corte),
+      // El impuesto al cheque proyectado entra NETO de lo que el banco ya debitó en el mes: esos
+      // débitos ya están en el Libro por `_BANCO_RAW`, y sumarlos dos veces sería el defecto del día.
+      'Impuestos y Financieros': deImpuestosCalendario(impuestos, filasCal, anioDelLibro, corte,
+        { yaDebitado: debitosDeImpuestoAlCheque(cargosBanco, anioDelLibro) }),
       // EL EXTRACTO TAMBIÉN ES TESTIGO DE LAS QUINCENAS (16/08). Con la columna "Pagado el"
       // desalineada, ocho quincenas entraban impagas y CAJA publicaba $70.431.250 de deuda que no
       // existía. `JORNALES_REAL_BANCO` es la parte que sale por transferencia: es lo único que el

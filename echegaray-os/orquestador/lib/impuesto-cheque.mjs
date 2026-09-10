@@ -24,6 +24,35 @@
 /** La alícuota de la Ley 25.413, por cada lado del movimiento. */
 export const ALICUOTA = 0.006
 
+/**
+ * EL NOMBRE DEL CONCEPTO, DECLARADO UNA SOLA VEZ.
+ *
+ * Lo escriben la fila mensual de «Impuestos y Financieros» (impuestos-bloques.mjs) y el movimiento
+ * que el Libro emite para los meses que el extracto todavía no cubre; lo BUSCAN el extractor del
+ * Libro —que ubica la fila por su rótulo, nunca por su número— y la fórmula que mide lo ya debitado
+ * en el extracto. Es la misma lección que costó los dos cash flow el 30/07: el rótulo del IVA se
+ * renombró de un solo lado razonando sobre el número de fila y el generador quedó apuntando a la nada.
+ */
+export const ROTULO = 'Impuesto al cheque (Ley 25.413)'
+
+/** Cómo lo nombra el extracto del banco, ya clasificado por `banco-santander.mjs` (columna F). */
+export const NATURALEZA_BANCO = 'Impuesto al cheque'
+
+/**
+ * LA MARCA QUE LO IDENTIFICA EN CUALQUIER TEXTO: el número de la ley.
+ *
+ * El extracto lo escribe «Impuesto Ley 25.413 Debito 0,6%» y la pestaña «Impuesto al cheque (Ley
+ * 25.413)». Buscar el rótulo lindo dejaría afuera las filas del banco —que son la mitad del año— y un
+ * filtro que cree haber mirado y no miró es peor que no filtrar. El número de la ley está en las dos.
+ */
+export const MARCA = '25.413'
+
+/** NÚCLEO PURO: ¿este texto (naturaleza del extracto o concepto del Libro) es el impuesto al cheque? */
+export const esImpuestoAlCheque = (texto) => {
+  const t = String(texto ?? '').toLowerCase()
+  return t.includes(NATURALEZA_BANCO.toLowerCase()) || t.includes(MARCA)
+}
+
 /** El período contra el que se verificó el modelo. Es evidencia, no un supuesto. */
 export const VERIFICACION = {
   desde: '2026-07-04',

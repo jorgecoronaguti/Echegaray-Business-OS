@@ -68,6 +68,7 @@ import { MARCAS } from './cheques-cobertura.mjs'
 import { mismaMarca } from './glifos.mjs'
 import { EN_CARTERA } from './cartera-cheques.mjs'
 import { vencimientoIva, vencimientoIibb, serialDe } from './vencimientos-fiscales.mjs'
+import { ROTULO as ROTULO_IMPUESTO_CHEQUE, esImpuestoAlCheque } from './impuesto-cheque.mjs'
 import { COL as COL_RAW, FILA0 as FILA0_RAW, PESTAÑA as PESTANA_RAW } from '../scripts/cheques-raw-pestana.mjs'
 import { RUBRO_JORNALES, RUBRO_ADMINISTRACION } from './libro-extractores-nomina.mjs'
 import { cubiertaPorLaCadena } from './libro-extractores-cargas.mjs'
@@ -397,6 +398,92 @@ export function deTarjetaSinFactura(filas = [], { filaCab = INSTRUMENTOS.tarjeta
 }
 
 /**
+ * IMPUESTOS Y FINANCIEROS → EL IMPUESTO AL CHEQUE DE LOS MESES QUE EL EXTRACTO NO CUBRE.
+ *
+ * ═══ POR QUÉ EXISTE (auditoría del 10/09/2026, hallazgo #5: −$7,5M) ═══
+ *
+ * La Ley 25.413 la debita el banco solo, sin factura: no está en Compras y nunca va a estar. Cuando
+ * el Cash Flow era un cuadro de líneas tenía la suya —"Impuesto al cheque (Ley 25.413, 0,6% de cada
+ * lado)", dentro de Actividades de Financiación— y al pasar a la matriz por rubro sobre el Libro esa
+ * línea se quedó sin extractor: los meses ya debitados siguen entrando por `_BANCO_RAW`, pero los
+ * PROYECTADOS de septiembre a diciembre ($7,5M medidos en `Impuestos y Financieros`!J34:M34) no
+ * llegaban a ninguna celda de ningún cash flow. Capa fósil de un generador retirado, con plata
+ * adentro.
+ *
+ * ═══ LOS MESES YA CERRADOS NO ENTRAN, Y EL MES EN CURSO ENTRA NETO ═══
+ *
+ * La fila de la pestaña es `MAX(lo que el banco ya debitó; el 0,6% de cada lado del movimiento que el
+ * Libro proyecta)`. Para un mes que ya pasó, la verdad es el extracto — y esos débitos YA están en el
+ * Libro por `deBancoCargos`: volver a emitirlos sería el doble conteo del día, otra vez. Para el mes
+ * en curso el extracto cubre una parte, así que entra sólo la diferencia. De ahí en adelante entra
+ * entero.
+ *
+ * SU RUBRO ES `Financiero`, EL MISMO CON EL QUE LLEGAN LOS DÉBITOS REALES. Es un impuesto y la
+ * pestaña lo clasifica entre los impuestos, pero si el real cae en una fila del cuadro y el
+ * proyectado en otra, el mismo concepto se parte en dos renglones y ninguna comparación mes contra
+ * mes significa nada.
+ *
+ * LA FECHA ES EL FIN DE MES: el banco lo cobra movimiento a movimiento durante todo el mes, así que
+ * no hay un día de vencimiento. Fin de mes es el único punto en el que el mes ya está cobrado entero
+ * — y en la vista semanal deja el cargo en la semana del cierre, que es donde el extracto real lo
+ * muestra concentrado.
+ *
+ * @param {Array<Array>} filas la pestaña entera, UNFORMATTED_VALUE
+ * @param {{filaCheque:number}} ubic la fila ubicada POR RÓTULO (1-based)
+ * @param {number} anio
+ * @param {number|null} corte serial del corte
+ * @param {{yaDebitado?:Object<number,number>}} extra lo que el banco ya cobró en el mes, por mes
+ */
+export function deImpuestoAlCheque(filas = [], { filaCheque } = {}, anio, corte = null, { yaDebitado = {} } = {}) {
+  if (!filaCheque) {
+    throw new Error(`libro-extractores(Impuestos y Financieros): necesito la fila "${ROTULO_IMPUESTO_CHEQUE}" `
+      + 'ubicada por rótulo. Sin ella el impuesto al cheque proyectado no llega a ningún cash flow, '
+      + 'que es exactamente el defecto que esta puerta vino a cerrar.')
+  }
+  const f = filas[filaCheque - 1] ?? []
+  const out = []
+  for (let m = 1; m <= 12; m++) {
+    const importe = num(f[m])
+    if (!importe) continue
+    const finDeMes = serialDe(new Date(Date.UTC(anio, m, 0)).toISOString().slice(0, 10))
+    // El mes ya cerrado lo cuenta el extracto, y el extracto ya está en el Libro.
+    if (Number.isFinite(corte) && finDeMes < corte) continue
+    const neto = importe - (Number(yaDebitado[m]) || 0)
+    if (!(neto > 0)) continue
+    out.push(movimiento({
+      fecha: finDeMes,
+      signo: SALE,
+      importe: neto,
+      concepto: `${ROTULO_IMPUESTO_CHEQUE} · ${String(m).padStart(2, '0')}/${anio}`,
+      contraparte: 'Banco Santander',
+      rubro: 'Financiero',
+      estado: estadoContraCorte('PROYECTADO', finDeMes, corte),
+      instrumento: 'debito',
+      origen: { pestana: 'Impuestos y Financieros', fila: `${colMesDelAnio(m)}${filaCheque}` },
+    }))
+  }
+  return out
+}
+
+/**
+ * NÚCLEO PURO: lo que el banco YA debitó de Ley 25.413 en cada mes del año, de los cargos del extracto.
+ *
+ * Se mide sobre los movimientos que `deBancoCargos` ya produjo —no sobre la pestaña otra vez— para
+ * que el neteo del mes en curso reste EXACTAMENTE lo que el Libro tiene cargado, ni un peso más.
+ */
+export function debitosDeImpuestoAlCheque(cargos = [], anio) {
+  const porMes = {}
+  for (const mv of cargos) {
+    if (!esImpuestoAlCheque(mv?.concepto)) continue
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(Number(mv.fecha) || 0) * 86400000)
+    if (d.getUTCFullYear() !== anio) continue
+    const m = d.getUTCMonth() + 1
+    porMes[m] = (porMes[m] ?? 0) + Math.abs(Number(mv.importe) || 0)
+  }
+  return porMes
+}
+
+/**
  * IMPUESTOS Y FINANCIEROS → el IVA y el IIBB a pagar. La salida que Compras NO tiene.
  *
  * `impuestos-pestana.mjs` lo dice sin ambigüedad: *"En Compras no hay UNA SOLA fila de IVA ni de
@@ -419,13 +506,14 @@ export function deTarjetaSinFactura(filas = [], { filaCab = INSTRUMENTOS.tarjeta
  * @param {{filaIva:number, filaIibb:number}} filasCal filas ubicadas POR RÓTULO (1-based)
  * @param {number} anio el año de la grilla
  * @param {number|null} corte serial del corte: un vencimiento ya pasado es VENCIDO, no proyectado
+ * @param {{yaDebitado?:Object<number,number>}} extra lo que el banco YA cobró de Ley 25.413, por mes
  */
-export function deImpuestosCalendario(filas = [], { filaIva, filaIibb } = {}, anio, corte = null) {
+export function deImpuestosCalendario(filas = [], { filaIva, filaIibb, filaCheque } = {}, anio, corte = null, extra = {}) {
   if (!filaIva || !filaIibb || !anio) {
     throw new Error('libro-extractores(Impuestos y Financieros): necesito las filas del IVA y del IIBB '
       + 'ubicadas por rótulo y el año. Una fila muerta devolvería $0 sin un solo error.')
   }
-  const out = []
+  const out = [...deImpuestoAlCheque(filas, { filaCheque }, anio, corte, extra)]
   for (const [clave, fila] of [['IVA', filaIva], ['IIBB', filaIibb]]) {
     const f = filas[fila - 1] ?? []
     for (let m = 1; m <= 12; m++) {

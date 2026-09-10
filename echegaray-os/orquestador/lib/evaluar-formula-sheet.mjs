@@ -312,6 +312,25 @@ function llamar(n, args, ev) {
     }
     case 'TEXT': return textoConPatron(v[0], v[1])
     case 'TODAY': return aSerial(ev.hoy)
+    // SEARCH(aguja; pajar) — la posición, 1-based, SIN distinguir mayúsculas, y #VALUE! cuando no
+    // está. El error no es un capricho: `ISNUMBER(SEARCH(…))` es el idioma con el que este repo
+    // pregunta «¿este texto contiene aquello?», y depende de que la ausencia sea un ERROR DE HOJA.
+    // Sobre un rango contesta rango, como ISNUMBER y UPPER.
+    case 'SEARCH': {
+      const aguja = String(v[0] ?? '').toLowerCase()
+      const buscar = (x) => {
+        const i = String(x ?? '').toLowerCase().indexOf(aguja)
+        if (i < 0) throw new ErrorHoja('#VALUE! — SEARCH sin coincidencia')
+        return i + 1
+      }
+      if (!Array.isArray(v[1])) return buscar(v[1])
+      // Adentro de un rango, la celda que no coincide vale #VALUE! sólo para ELLA: se representa con
+      // un texto que ISNUMBER va a contestar FALSE, porque tirar acá reventaría el rango entero.
+      return v[1].map((x) => { try { return buscar(x) } catch { return '#VALUE!' } })
+    }
+    // DATE(a;m;d) — el serial de una fecha literal. Es como este repo escribe el borde de un mes
+    // (`DATE(2026;10;1)`), y sin ella no se podía evaluar en frío ninguna ventana mensual.
+    case 'DATE': return aSerial(new Date(Date.UTC(num(v[0]), num(v[1]) - 1, num(v[2]))))
     case 'EOMONTH': { const d = aFecha(num(v[0])); return aSerial(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + num(v[1]) + 1, 0))) }
     // MINIFS: el mínimo de lo que cumple TODOS los pares (rango; criterio). Devuelve 0 cuando no hay
     // ninguna coincidencia — igual que Sheets, y ése es justo el comportamiento que hay que poder
