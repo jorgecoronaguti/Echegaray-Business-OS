@@ -189,3 +189,30 @@ test('la misma persona de Oficina SIN tarifa cargada bloquea el cierre por «sin
   assert.equal(e.pendientes[0].clave, 'sin-tarifa')
   assert.match(e.pendientes[0].texto, /Maldonado Ana Laura/)
 })
+
+// ═══ EL ORDEN DEL MÓDULO PERSONAL (dueño, 10/09/2026) ═══
+
+test('LOS CUADROS SALEN OFICINA PRIMERO, Y CADA LÍNEA SABE SI ES JEFE', () => {
+  const nievas: PersonaDeLiquidacion =
+    { id: 'j1', nombre: 'Nievas Villegas Juan Pablo', cuil: '204', enLaEmpresa: true, esJefe: true }
+  const tello: PersonaDeLiquidacion =
+    { id: 'o1', nombre: 'Tello Juan', cuil: '203', enLaEmpresa: true, esJefe: false }
+  const aguero: PersonaDeLiquidacion =
+    { id: 'o2', nombre: 'Aguero Cristian', cuil: '202', enLaEmpresa: true, esJefe: false }
+  const cuadros = armarCuadros(base({
+    // Llegan en el orden de la base: obrero, jefe, obrero.
+    personas: [tello, nievas, aguero],
+    tarifas: [
+      porHora('o1', 5000), porHora('o2', 5000),
+      { persona_id: 'j1', desde: '2026-09-01', valor_hora: null, neto_mensual: 1800000, origen: 'persona_tarifa' },
+    ],
+  }))
+  // EL DEFECTO QUE ATRAPA: el orden era ['obreros','oficina','final'], y Pagos publicaba a los dos
+  // jefes de Oficina DESPUÉS de los quince obreros — al revés que Plantel, Asistencia y Horas.
+  assert.deepEqual(cuadros.map((c) => c.grupo), ['oficina', 'obreros', 'final'])
+  assert.deepEqual(cuadros[0].lineas.map((l) => l.nombre), ['Nievas Villegas Juan Pablo'])
+  assert.equal(cuadros[0].lineas[0].esJefe, true, 'el rótulo «Jefes de obra» sale de acá')
+  // Dentro del cuadro, alfabético en español y no el orden en que llegó de la base.
+  assert.deepEqual(cuadros[1].lineas.map((l) => l.nombre), ['Aguero Cristian', 'Tello Juan'])
+  assert.equal(cuadros[1].lineas[0].esJefe, false)
+})

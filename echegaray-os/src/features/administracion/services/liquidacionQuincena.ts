@@ -177,6 +177,13 @@ export interface EntradaDeLinea {
   giroEnElLote: boolean
   /** Sólo liquidaciones finales: la mitad blanca que liquidó el estudio. El total es el doble. */
   mitadBlanca?: number | null
+  /**
+   * SI ES JEFE DE OBRA — el mismo `esJefeDeObra(persona_directorio.puesto)` que separan el plantel,
+   * la asistencia y la grilla de Horas. Viaja con la línea para que las pantallas de Liquidación
+   * ordenen y rotulen como el resto del módulo Personal sin volver a leer el directorio: una
+   * segunda lectura sería una segunda respuesta a «¿éste es jefe?».
+   */
+  esJefe?: boolean
 }
 
 export interface LineaLiquidada {
@@ -216,6 +223,8 @@ export interface LineaLiquidada {
   reciboSinGiro: boolean
   /** De dónde salió la tarifa. Ningún importe sin origen a la vista. */
   origenTarifa: string | null
+  /** Jefe de obra según `esJefeDeObra(puesto)`: el mismo corte que Plantel, Asistencia y Horas. */
+  esJefe: boolean
 }
 
 /**
@@ -261,6 +270,7 @@ export function liquidarLinea(
     ...repartoComoCampos(cobra, modalidad),
     reciboSinGiro: e.reciboNeto != null && !e.giroEnElLote,
     origenTarifa: e.tarifa?.origen ?? null,
+    esJefe: e.esJefe === true,
   }
 }
 

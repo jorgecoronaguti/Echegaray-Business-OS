@@ -7,6 +7,8 @@ import {
 } from '../../../services/liquidacionQuincena'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
 import { pesos } from '../BloqueLiquidacion'
+import { seccionesDePersonal, type SeccionDePersonal } from '../../../services/ordenDePersonal'
+import { RotuloDeGrupo } from '../../RotuloDeGrupo'
 import { SolapaCajaNomina } from './caja-nomina'
 import { ALTO_LIQ } from './tabla'
 
@@ -35,6 +37,15 @@ export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: st
   const totales = cuadros.map((c) => totalesDeCuadro(c.lineas))
   const tarjeta = tarjetaDeQuincena(totales)
   const lineas = cuadros.flatMap((c) => c.lineas)
+  // ═══ EL MISMO ORDEN Y LOS MISMOS RÓTULOS QUE PLANTEL, ASISTENCIA Y HORAS ═══
+  //
+  // Dueño, 10/09/2026: «te pedí uniformidad en las pantallas; acá estoy en la sección y es distinto
+  // a las demás». Los cuadros de pago se conservan —son la definición de POR QUÉ cobra cada uno— y
+  // salen en el orden del módulo (Oficina/jefes arriba), cada uno con el rótulo de su rol. Antes
+  // esta tabla era una lista plana: quince obreros alfabéticos y los dos jefes de Oficina al final,
+  // sin nada que dijera por qué estaban ahí.
+  const secciones = cuadros.flatMap((c) =>
+    seccionesDePersonal(c.grupo, c.titulo, c.lineas, (l) => l.nombre, (l) => l.esJefe))
   // EL TOTAL DE LA TABLA ES EL DE TODAS LAS LÍNEAS QUE SE VEN, no la suma de los cuadros: los
   // grupos se dibujan juntos, así que el pie tiene que cerrar contra lo que está arriba.
   const totalPlantel = totalesDeCuadro(lineas)
@@ -48,7 +59,7 @@ export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: st
         overflow: 'hidden',
       }}>
         <Encabezado quincena={quincena} tarjeta={tarjeta} cerrada={cerrada} />
-        <Tabla lineas={lineas} totales={totalPlantel} />
+        <Tabla secciones={secciones} totales={totalPlantel} />
         <div style={{ height: 20 }} />
       </div>
       {/* PANTALLA 9 · CAJA DE NÓMINA VIVE ACÁ, no en una solapa propia: el mockup lista CINCO
@@ -123,7 +134,10 @@ const fila = (alto: number): React.CSSProperties => ({
   fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
 })
 
-function Tabla({ lineas, totales }: { lineas: readonly LineaLiquidada[]; totales: TotalesDeCuadro }) {
+function Tabla({ secciones, totales }: {
+  secciones: readonly SeccionDePersonal<LineaLiquidada>[]
+  totales: TotalesDeCuadro
+}) {
   return (
     <div className="overflow-x-auto" style={{ padding: '16px 20px 0' }}>
       <div data-testid="pagos-tabla" style={{ minWidth: 1144, display: 'flex', flexDirection: 'column' }}>
@@ -137,7 +151,13 @@ function Tabla({ lineas, totales }: { lineas: readonly LineaLiquidada[]; totales
           ))}
         </div>
 
-        {lineas.map((l) => (
+        {secciones.map((sec, iSec) => (
+          <div key={sec.clave} data-testid={`seccion-${sec.clave}`}>
+            {/* CON UNA SOLA SECCIÓN TAMBIÉN VA EL RÓTULO: en Pagos siempre hay al menos dos roles
+                (Oficina y Obreros) y omitirlo en el caso raro de uno solo haría que la pantalla se
+                viera distinta según qué quincena se mire. */}
+            <RotuloDeGrupo texto={sec.rotulo} primero={iSec === 0} />
+            {sec.lineas.map((l) => (
           <div key={l.personaId} style={fila(58)}>
             <div style={{ color: V.tinta }}>
               {l.nombre}
@@ -170,6 +190,8 @@ function Tabla({ lineas, totales }: { lineas: readonly LineaLiquidada[]; totales
             <Celda valor={l.enEfectivo} medio />
             <Celda valor={l.total} />
             <Escribible valor={l.efectivoRedondeado} ancho={88} />
+          </div>
+            ))}
           </div>
         ))}
 
