@@ -186,6 +186,11 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
         const e = economia?.get(o.obra_id) ?? null
         const contratado = e?.contratado ?? o.monto_contratado ?? null
         const margen = e?.margen ?? null
+        // UNA OBRA CERRADA SIN PRECIO NO BLOQUEA NADA. El filo ámbar y el «sin precio en OBRAS»
+        // existen para que alguien cargue el monto de una obra que se está ejecutando; sobre una
+        // obra terminada hace dos años son una alarma que nadie puede apagar — y en el grupo
+        // «Cerradas» eran seis alarmas seguidas. Ahí el hueco se dice con un «—» y se calla.
+        const cerrada = o.estado === 'cerrada'
         return (
         <Link
           key={o.obra_id} href={`/obras/${o.obra_id}`} prefetch={false} data-testid="fila-obra-cliente"
@@ -193,7 +198,7 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
           style={{
             height: ALTO_V2.cara, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
             // Una obra sin monto contratado bloquea: no se puede decir qué se le facturó al cliente.
-            boxShadow: veEconomia && contratado == null ? FILO_BLOQUEA : 'none',
+            boxShadow: veEconomia && contratado == null && !cerrada ? FILO_BLOQUEA : 'none',
           }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
@@ -239,9 +244,12 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
                 <span
                   className="font-mono tabular-nums truncate"
                   data-testid="contratado-obra-cliente"
-                  style={{ fontSize: '12px', color: contratado == null ? V.warn : V.tinta, textAlign: 'right' }}
+                  style={{
+                    fontSize: '12px', textAlign: 'right',
+                    color: contratado == null ? (cerrada ? V.tenue : V.warn) : V.tinta,
+                  }}
                 >
-                  {contratado == null ? SIN_PRECIO_EN_OBRAS : plata(contratado)}
+                  {contratado == null ? (cerrada ? '—' : SIN_PRECIO_EN_OBRAS) : plata(contratado)}
                 </span>
               )
             : (

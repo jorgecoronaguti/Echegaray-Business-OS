@@ -19,14 +19,17 @@
 
 import { pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, ENCABEZADO, RotuloCol, V } from '@/shared/components/v2/patron'
-import type { Orden, Papel, PapelesDelCliente } from '../services/papelesCliente'
+import type { ClasePapel, Orden, Papel, PapelesDelCliente } from '../services/papelesCliente'
 import { VARIAS_OBRAS } from '../services/papelesCliente'
 
 /** El archivo se abre por la ruta que ya sirve el bucket privado con la credencial del OS. */
 const HREF = (id: string) => `/api/clientes/orden/${id}`
 
-const COLS = 'grid-cols-[110px_minmax(0,90px)_minmax(0,1.4fr)_minmax(0,150px)_minmax(0,1.2fr)]'
-  + ' max-[767px]:grid-cols-[100px_minmax(0,1fr)_minmax(0,120px)]'
+// 170px Y NO 110: «Retención · OP 5156» son 19 caracteres en mono de 12,5px ≈ 143px, y con 110 se
+// dibujaba «Retención · …» — el número de la orden a la que pertenece, que es TODO lo que ese
+// renglón tiene para decir, quedaba cortado (medido en la captura del 10/09/2026).
+const COLS = 'grid-cols-[170px_minmax(0,90px)_minmax(0,1.4fr)_minmax(0,150px)_minmax(0,1.2fr)]'
+  + ' max-[767px]:grid-cols-[150px_minmax(0,1fr)_minmax(0,120px)]'
 /** Lo que se suelta en el teléfono: la fecha y el vínculo. Nunca el número ni el importe. */
 const SOLO_ANCHO = 'max-[767px]:hidden'
 
@@ -49,14 +52,18 @@ function obraTexto(obraId: string | null, nombreDe: (id: string) => string): str
   return nombreDe(obraId)
 }
 
-function Fila({ clave, numero, fecha, obra, monto, vinculo, href, tono = V.tinta }: {
-  clave: string; numero: string; fecha: string; obra: string; monto: string; vinculo: string
+function Fila({ clave, clase, numero, fecha, obra, monto, vinculo, href, tono = V.tinta }: {
+  clave: string
+  /** QUÉ ES ESTE PAPEL, en el DOM. No es decoración: es lo que deja que un test cuente órdenes de
+   *  compra sin contar la factura que las cita — el defecto que ya se coló una vez. */
+  clase: ClasePapel
+  numero: string; fecha: string; obra: string; monto: string; vinculo: string
   href: string; tono?: string
 }) {
   return (
     <a
       key={clave} href={href} target="_blank" rel="noreferrer"
-      data-testid="papel-fila"
+      data-testid="papel-fila" data-clase={clase}
       className={`grid items-center gap-[14px] ${COLS} hover:bg-[#F2F1ED]`}
       style={{ height: ALTO_V2.hija, borderBottom: `1px solid ${V.lineaFila}`, paddingLeft: 2 }}
     >
@@ -75,8 +82,11 @@ function Fila({ clave, numero, fecha, obra, monto, vinculo, href, tono = V.tinta
   )
 }
 
-function Grupo({ titulo, n, ayuda, total, veEconomia, children }: {
+function Grupo({ titulo, n, ayuda, total, veEconomia, mostrarObra, children }: {
   titulo: string; n: number; ayuda: string; total?: number | null; veEconomia: boolean
+  /** Mirado desde la obra la columna va vacía: su pista se queda para no mover los números, pero
+   *  un rótulo sobre una columna vacía promete un dato que no está. */
+  mostrarObra: boolean
   children: React.ReactNode
 }) {
   if (!n) return null
@@ -88,7 +98,7 @@ function Grupo({ titulo, n, ayuda, total, veEconomia, children }: {
       <div className={`grid items-center gap-[14px] ${COLS}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: 2 }}>
         <RotuloCol>Número</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Fecha</RotuloCol></span>
-        <RotuloCol>Obra</RotuloCol>
+        <RotuloCol>{mostrarObra ? 'Obra' : ''}</RotuloCol>
         <RotuloCol derecha>{veEconomia ? 'Importe' : ''}</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Vínculo</RotuloCol></span>
       </div>
@@ -161,22 +171,22 @@ export function PapelesPorTipo({ papeles, nombreDeObra, veEconomia, mostrarObra 
 
   return (
     <div data-testid="papeles-por-tipo">
-      <Grupo titulo="Órdenes de compra" n={oc.length} total={suma(oc)} veEconomia={veEconomia}
+      <Grupo titulo="Órdenes de compra" n={oc.length} total={suma(oc)} veEconomia={veEconomia} mostrarObra={mostrarObra}
         ayuda="Las emite el cliente y encargan el trabajo. Se identifican por su número: la misma OC puede haber llegado en dos mails.">
         {oc.map((o) => (
           <Fila
-            key={o.clave} clave={o.clave} numero={`OC ${o.numeroCorto ?? 's/n'}`} fecha={dia(o.fecha)}
+            key={o.clave} clase="oc" clave={o.clave} numero={`OC ${o.numeroCorto ?? 's/n'}`} fecha={dia(o.fecha)}
             obra={obraDe(o.obraId)} monto={importe(o.importe, o.moneda, veEconomia)}
             vinculo={vinculoDeOC(o)} href={HREF(o.archivoId)}
           />
         ))}
       </Grupo>
 
-      <Grupo titulo="Órdenes de pago" n={op.length} total={suma(op)} veEconomia={veEconomia}
+      <Grupo titulo="Órdenes de pago" n={op.length} total={suma(op)} veEconomia={veEconomia} mostrarObra={mostrarObra}
         ayuda="Las emite el cliente y ordenan pagar facturas nuestras. Una OP no prueba el cobro: eso lo prueba el extracto del banco.">
         {op.map((o) => (
           <Fila
-            key={o.clave} clave={o.clave} numero={`OP ${o.numeroCorto ?? 's/n'}`} fecha={dia(o.fecha)}
+            key={o.clave} clase="op" clave={o.clave} numero={`OP ${o.numeroCorto ?? 's/n'}`} fecha={dia(o.fecha)}
             obra={obraDe(o.obraId)} monto={importe(o.importe, o.moneda, veEconomia)}
             vinculo={vinculoDeOP(o)} href={HREF(o.archivoId)}
           />
@@ -187,33 +197,33 @@ export function PapelesPorTipo({ papeles, nombreDeObra, veEconomia, mostrarObra 
           el nombre de un impuesto: el PDF dice «Comprobante de Retención», «O/P» y «Código de
           Régimen: 78», pero no nombra el tributo (verificado abriendo el archivo el 10/09/2026).
           Escribir «Ganancias» sería fabricar un dato fiscal. */}
-      <Grupo titulo="Certificados de retención" n={retenciones.length} veEconomia={veEconomia}
+      <Grupo titulo="Certificados de retención" n={retenciones.length} veEconomia={veEconomia} mostrarObra={mostrarObra}
         ayuda="El comprobante de retención que acompaña a una orden de pago. Lleva el número de ESA orden: nunca es una orden de pago más.">
         {retenciones.map((r) => (
           <Fila
-            key={r.id} clave={r.id} numero={`Retención · OP ${r.numeroCorto ?? 's/n'}`} fecha={dia(r.fecha)}
+            key={r.id} clase="retencion" clave={r.id} numero={`Retención · OP ${r.numeroCorto ?? 's/n'}`} fecha={dia(r.fecha)}
             obra={obraDe(r.obra_id)} monto={importe(r.importe, r.moneda, veEconomia)}
             vinculo="del cliente" href={HREF(r.id)} tono={V.apagado}
           />
         ))}
       </Grupo>
 
-      <Grupo titulo="Facturas emitidas" n={facturas.length} total={suma(facturas)} veEconomia={veEconomia}
+      <Grupo titulo="Facturas emitidas" n={facturas.length} total={suma(facturas)} veEconomia={veEconomia} mostrarObra={mostrarObra}
         ayuda="Las emitimos NOSOTROS y citan la OC que facturan. No son órdenes del cliente: contarlas como OC duplicaba lo vendido.">
         {facturas.map((f) => (
           <Fila
-            key={f.id} clave={f.id} numero={`Factura ${f.numeroCorto ?? 's/n'}`} fecha={dia(f.fecha)}
+            key={f.id} clase="factura" clave={f.id} numero={`Factura ${f.numeroCorto ?? 's/n'}`} fecha={dia(f.fecha)}
             obra={obraDe(f.obra_id)} monto={importe(f.importe, f.moneda, veEconomia)}
             vinculo={f.cita ? `cita OC ${String(f.cita).split('-').pop()}` : 'sin cita'} href={HREF(f.id)}
           />
         ))}
       </Grupo>
 
-      <Grupo titulo="Otros papeles del mail" n={otros.length} veEconomia={veEconomia}
+      <Grupo titulo="Otros papeles del mail" n={otros.length} veEconomia={veEconomia} mostrarObra={mostrarObra}
         ayuda="Bajados del mail y todavía sin clasificar. No se cuentan como órdenes.">
         {otros.map((x: Papel) => (
           <Fila
-            key={x.id} clave={x.id} numero={x.numeroCorto ?? 's/n'} fecha={dia(x.fecha)}
+            key={x.id} clase="otro" clave={x.id} numero={x.numeroCorto ?? 's/n'} fecha={dia(x.fecha)}
             obra={obraDe(x.obra_id)} monto={importe(x.importe, x.moneda, veEconomia)}
             vinculo={x.nombre_archivo ?? ''} href={HREF(x.id)} tono={V.apagado}
           />

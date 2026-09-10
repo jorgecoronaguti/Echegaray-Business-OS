@@ -227,7 +227,10 @@ export function TablaClientes({
             así que la columna publicaba un hueco de datos como si fuera una noticia. En su lugar va
             LO COBRADO, que es la pregunta que sí se hace mirando esta lista. */}
         <span className={`grid ${SOLO_ANCHO}`}>
-          <RotuloCol derecha titulo={AYUDA_COBRO}>Cobrado</RotuloCol>
+          {/* SIN PERMISO ECONÓMICO, EL RÓTULO TAMPOCO: una columna «COBRADO» con la celda vacía en
+              todas las filas se lee como un dato que se rompió, no como uno que no corresponde.
+              Es lo mismo que ya hacen Contratado y Margen. */}
+          <RotuloCol derecha titulo={AYUDA_COBRO}>{veEconomia ? 'Cobrado' : ''}</RotuloCol>
         </span>
       </div>
 

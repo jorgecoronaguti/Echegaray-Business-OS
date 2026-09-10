@@ -149,11 +149,35 @@ que cambia de ellas es que dejan de cargar con preguntas que no son suyas.
 - **Less is more.** Ninguna solapa nueva, dos columnas menos en Obras, dos números de cabecera
   reemplazados por dos que no estaban.
 
+## 4 bis · `/clientes`: qué se fue y qué entró (alcance del 10/09 por la tarde)
+
+- **Se fue «Últ. mov.»** («esa columna sin movimientos quitarla»). Decía «sin movimientos» o «sin
+  partes» en casi todas las filas: publicaba un hueco de datos como si fuera una noticia. Con ella
+  se retiraron del modelo `ultimoMovimiento` y `ultimoParte` —nadie más los dibujaba— y la lectura
+  de `obra_ejecucion` entera que los alimentaba.
+- **Entró la barra de LO COBRADO**, por obra y agregada en el cliente. Numerador
+  `public.obra_cobranza` (percibido: `estado = 'cobrado'` y `fecha_cobro <= hoy`), denominador
+  `obra_economia_cartera` — la MISMA fuente que la columna Contratado. Sin contratado no hay barra:
+  «—» con el motivo, nunca 0 %. Cobrado por encima de lo contratado se dibuja lleno y en ámbar, y el
+  exceso se dice en el `title` (pasa hoy con Quattropani).
+- **Sólo la ve quien ve economía** (`veEconomia` = dirección + administración, que es como se llama
+  en este repo el «admin» del pedido). La vista ya lleva `WHERE ve_economia()`: al jefe de obra le
+  devuelve cero filas y la pantalla, además, no le ofrece ni la celda ni el rótulo.
+- **El relleno es GRAFITO**, no amarillo: el amarillo es marca (1,6:1 de contraste) y esta misma
+  tabla ya dibuja el avance de la obra en grafito. Dos barras con dos colores en la misma fila
+  serían dos vocabularios.
+
 ## 5 · Lo que este diseño NO puede contestar todavía
 
 - **Qué facturas paga cada OP.** `cliente_orden.cita` está lleno en las 8 facturas (citan su OC) y
   **vacío en las 12 OP** (medido el 10/09/2026 sobre la tabla entera: 0 de 12). El dato existe en el
   texto del PDF de la orden de pago, que hoy el extractor no lee. La pantalla dice «no consta», no
   adivina: emparejar por importe acertaría en 2 de 12 y sería una inferencia dibujada como hecho.
+- **De qué OBRA es cada cobro.** `cobranzas.obra_cliente` guarda una etiqueta de CLIENTE
+  («messina», «arcor», «imotor san francisco javi sanchez») y `obra_alias` sólo la resuelve cuando
+  esa etiqueta nombra una obra. Medido: de las 96 filas de Cobranzas, las cobradas se agrupan en
+  TRES `obra_id` y ninguna de las cinco obras activas de Messina tiene cobro imputado. La barra
+  existe, está probada y hoy dice «—» en casi todas las filas. Lo que falta no es código: es que
+  Cobranzas diga la obra.
 - **Cuánto retuvo cada certificado.** El PDF lo imprime («Importe retenido: 650000.00») pero la
   tabla guarda `importe = null` para los 12 certificados. Se dice «sin importe».
