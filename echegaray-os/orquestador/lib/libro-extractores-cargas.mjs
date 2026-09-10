@@ -288,6 +288,36 @@ function obligacionDeclarada({ declarado, proyectado, devengado, mesesFinanciado
   return proyNum ? { importe: proyNum, estado: 'PROYECTADO', fila: `${que} · devengado ${mes}` } : null
 }
 
+/** Cuánto puede quedar sin cubrir y considerarse cero: el redondeo, no una diferencia real. */
+export const TOLERANCIA_BANCO = 1
+
+/**
+ * NÚCLEO PURO: la obligación NETA de lo que el banco ya pagó.
+ *
+ * Devuelve `null` cuando no queda nada por salir —la plata ya está descontada del saldo y volver a
+ * publicarla como vencimiento es contarla dos veces—, y en ese caso ANOTA el mes de caja como
+ * cubierto: si no lo hiciera, `mesesCubiertos` no lo vería y las filas planas de Compras de ese mes
+ * volverían a entrar al libro.
+ *
+ * @param {{importe:number, estado:string, fila:string}} o la obligación que salió de `obligacionDeclarada`
+ * @param {{cubierto:number, fecha:number}|null} banco lo apareado por `cargas-pagos-banco.mjs`
+ * @returns {{importe:number, parcial:boolean}|null}
+ */
+function netoDelBanco(o, banco, { mes, rubro, devengado, aviso, anotarCubierto }) {
+  const cubierto = num(banco?.cubierto)
+  if (!cubierto || cubierto <= 0) return { importe: o.importe, parcial: false }
+  const resto = Math.round((o.importe - cubierto) * 100) / 100
+  if (resto <= TOLERANCIA_BANCO) {
+    aviso(`libro-extractores-cargas: ${devengado} · ${rubro} lo pagó EL BANCO (${cubierto}) — la cadena `
+      + 'no lo emite: esa plata ya está descontada del saldo.')
+    anotarCubierto(`${mes}·${rubro}`)
+    return null
+  }
+  aviso(`libro-extractores-cargas: ${devengado} · ${rubro} — el banco cubre ${cubierto} de ${o.importe}; `
+    + `la cadena emite el resto (${resto}).`)
+  return { importe: resto, parcial: true }
+}
+
 /**
  * CARGAS SOCIALES → los egresos de la nómina que todavía no salieron.
  *
@@ -300,15 +330,35 @@ function obligacionDeclarada({ declarado, proyectado, devengado, mesesFinanciado
  * PROYECCIÓN de la cadena para los que no. Hasta el 09/09 los gremiales tenían sólo proyección, y por
  * eso el mes entre la presentación y el pago caía a la fila plana de Compras.
  *
+ * ═══ Y EL BANCO LE GANA A TODO (10/09/2026) ═══
+ *
+ * `pagosDelBanco` son los períodos gremiales que un DÉBITO REAL ya canceló, apareados contra la
+ * boleta en `cargas-pagos-banco.mjs`. Entró porque el dueño prohibió cargar los gremiales en Compras
+ * —*"tienen pestañas especiales donde esto tiene que quedar registrado"*— y sin esa fila el pago de
+ * UOCRA de agosto ($994.941,26 por DEBIN el 10/09) se contaba dos veces: en el saldo del banco y otra
+ * vez como egreso futuro. Un pago es un hecho de la cuenta; la marca de Compras es lo que alguien
+ * declaró sobre ese hecho.
+ *
+ * SE RESTA, NO SE APAGA EL MES. La boleta de agosto declara $2.374.397,18 (UOCRA + Fondo de Cese) y el
+ * banco muestra $2.155.341,26: dar el mes por pagado escondería $219.055,92 de Fondo de Cese que
+ * ninguna acreditación respalda. Se emite el RESTO, y sólo cuando no queda resto el mes no emite.
+ *
  * @param {{fechas:Array, f931:Array, gremiales:Array, declarado?:Array, gremialesDeclarado?:Array}} rangos lo leído de los rangos con nombre
  * @param {number|null} corte serial del corte: un vencimiento ya pasado y sin pagar es VENCIDO
- * @param {{mesesPagados?:Set<string>, mesesFinanciados?:Set<string>, aviso?:(m:string)=>void}} opciones
+ * @param {{mesesPagados?:Set<string>, mesesFinanciados?:Set<string>, aviso?:(m:string)=>void,
+ *          pagosDelBanco?:Map<string,object>, anotarCubierto?:(clave:string)=>void}} opciones
  *        `mesesPagados` son claves `YYYY-MM·rubro` del mes de CAJA; `mesesFinanciados`, los períodos
- *        DEVENGADOS (`YYYY-MM`) que un plan de pago financia — ver `PLANES_F931`.
+ *        DEVENGADOS (`YYYY-MM`) que un plan de pago financia — ver `PLANES_F931`; `pagosDelBanco`, lo
+ *        que el extracto ya pagó por período DEVENGADO.
+ *        `anotarCubierto` recibe la clave `YYYY-MM·rubro` del mes de CAJA de cada obligación que el
+ *        banco apagó. NO es decorativo: `mesesCubiertos` se deriva de los movimientos EMITIDOS, así que
+ *        un mes apagado por el banco dejaría de estar cubierto y las filas PLANAS de Compras de ese mes
+ *        volverían a entrar — los $1.500.000 tipeados de septiembre, encima de la plata que ya salió.
  * @returns {Array} movimientos
  */
 export function deCargasSociales({ fechas, f931, gremiales, declarado, gremialesDeclarado } = {}, corte = null,
-  { mesesPagados = new Set(), mesesFinanciados = new Set(), aviso = () => {} } = {}) {
+  { mesesPagados = new Set(), mesesFinanciados = new Set(), aviso = () => {},
+    pagosDelBanco = new Map(), anotarCubierto = () => {} } = {}) {
   const F = serie(fechas)
   const D = serie(declarado)
   const bloques = [
@@ -341,11 +391,21 @@ export function deCargasSociales({ fechas, f931, gremiales, declarado, gremiales
         mesesFinanciados: b.que === 'F931' ? mesesFinanciados : new Set(),
       })
       if (!o) continue
+      // EL BANCO ES EL HECHO; LA MARCA DE COMPRAS ES LO QUE ALGUIEN DIJO SOBRE EL HECHO. Va después
+      // del filtro de arriba y no antes porque los dos apagan lo mismo: cuando Compras ya tapó el mes
+      // —enero a agosto, cuando los gremiales sí se cargaban ahí— restarle además lo del banco no
+      // cambiaría nada, y adelantarlo emitiría como deuda el resto de un mes que la planilla da por
+      // saldado y cuyo respaldo bancario el OS no siempre puede atribuir (el lote de Fondo de Cese del
+      // 18/08 llegó sin período).
+      const banco = pagosDelBanco.get(`${devengado}·${b.rubro}`) ?? null
+      const neto = netoDelBanco(o, banco, { mes, rubro: b.rubro, devengado, aviso, anotarCubierto })
+      if (!neto) continue
       out.push(movimiento({
         fecha,
         signo: SALE,
-        importe: o.importe,
-        concepto: `${b.que === 'F931' ? 'F931' : 'Gremiales'} · nómina de ${MES[i + 1] ?? i + 1}-${devengado.slice(2, 4)}`,
+        importe: neto.importe,
+        concepto: `${b.que === 'F931' ? 'F931' : 'Gremiales'} · nómina de ${MES[i + 1] ?? i + 1}-${devengado.slice(2, 4)}`
+          + (neto.parcial ? ' · resto tras el banco' : ''),
         contraparte: b.que === 'F931' ? 'ARCA' : 'FCL · UOCRA · IERIC · FODECO',
         rubro: b.rubro,
         estado: estadoContraCorte(o.estado, fecha, corte),
