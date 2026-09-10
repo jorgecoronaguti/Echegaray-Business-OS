@@ -28,7 +28,7 @@ import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
 import {
-  PRODUCTOS, armarArchivo, validarArchivo, cbuValido, cuitValido, transliterar,
+  PRODUCTOS, LAYOUT_PROVEEDORES, armarArchivo, validarArchivo, cbuValido, cuitValido, transliterar,
 } from '../lib/santander-fur.mjs'
 
 const CUIT_ECSAS = '30716304643'
@@ -79,6 +79,21 @@ export function mismoNombre(a, b) {
     libres.splice(i, 1)
   }
   return true
+}
+
+/**
+ * La «Orden de pago» del Pago Simple es el PERÍODO, y sin ella el débito queda ciego.
+ *
+ * MEDIDO EN EL EXTRACTO (`banco_movimientos`, fuente independiente del Excel): los lotes de
+ * abril y mayo llevaban 42026 y 52026 en esa columna y el banco los debitó como «Acreditacion
+ * fondo desempleo 042026 / 052026». El lote de junio/julio la dejó vacía y sus 35 movimientos
+ * del 18/08 salieron como «Acreditacion fondo desempleo 000000»: no se puede saber a qué mes
+ * corresponden mirando la cuenta.
+ *
+ * El formato es MAAAA — el mes SIN cero a la izquierda.
+ */
+export function ordenDePago(periodo) {
+  return Number(`${Number(periodo.slice(4))}${periodo.slice(0, 4)}`)
 }
 
 /** Próximo día hábil ≥ la fecha dada. Sólo excluye sábado y domingo: NO hay tabla de feriados, y
@@ -205,7 +220,7 @@ function serialExcel(aaaammdd) {
   return Math.round((d - Date.UTC(1899, 11, 30)) / 86400000)
 }
 
-function armarPagoSimple(wbPlantilla, pagos, fechaPago) {
+function armarPagoSimple(wbPlantilla, pagos, fechaPago, periodo) {
   const wb = wbPlantilla
   const ws = wb.Sheets.Pagos
   const f = filas(wb, 'Pagos', { reales: true })
@@ -214,6 +229,7 @@ function armarPagoSimple(wbPlantilla, pagos, fechaPago) {
   const enc = f[iEnc].map((c) => String(c ?? '').toLowerCase())
   const idx = {
     forma: 0,
+    orden: enc.findIndex((c) => /orden de pago/.test(c)),
     razon: enc.findIndex((c) => /raz[oó]n social/.test(c)),
     tipoDoc: enc.findIndex((c) => /tipo de documento/.test(c)),
     doc: enc.findIndex((c) => /cuit *\/ *cuil/.test(c)),
@@ -242,6 +258,7 @@ function armarPagoSimple(wbPlantilla, pagos, fechaPago) {
       ws[XLSX.utils.encode_cell({ r, c })] = { t, v, ...(fmt ? { z: fmt } : {}), ...(m?.s ? { s: m.s } : {}) }
     }
     put(idx.forma, 'T', 's')
+    put(idx.orden, ordenDePago(periodo), 'n')
     put(idx.razon, transliterar(p.nombre).toUpperCase(), 's')
     put(idx.tipoDoc, 'CUIL', 's')
     put(idx.doc, Number(p.cuil), 'n')
@@ -273,6 +290,9 @@ function mensajeBot({ periodo, fechaPago, entran, afuera, faltaAcuerdo }) {
     '**Supuestos y avisos**',
     `· Forma de pago **T (transferencia)** a la cuenta **AFON** de cada uno, no a la cuenta sueldo.`,
     `· La **fecha de pago va adentro del archivo**. Si lo subís otro día, decime y lo regenero.`,
+    `· Le puse **${ordenDePago(periodo)}** en «Orden de pago» (el período). En junio/julio ese campo`
+    + ' fue vacío y los 35 débitos del 18/08 salieron en el extracto como «fondo desempleo 000000»,'
+    + ' sin mes. Con esto el débito se va a poder conciliar solo.',
     `· Verifiqué cada CBU contra el lote de junio/julio que el banco ya acreditó: los ${entran.length}`
     + ' coinciden dígito por dígito. El CUIL, contra el padrón del OS.',
   ]
@@ -281,8 +301,9 @@ function mensajeBot({ periodo, fechaPago, entran, afuera, faltaAcuerdo }) {
       + ' un **Número de Acuerdo** que Santander tiene que asignarle a Echegaray, y no existe en'
       + ' ningún papel ni mail: el convenio que Bazán te cargó en abril es el de **depósitos AFON'
       + ' por Pago Simple**, no un servicio FUR. Va adjunto igual, con `??` en esas posiciones y'
-      + ' marcado PENDIENTE-ACUERDO, para que lo veas. Si querés el FUR, hay que pedirle el número'
-      + ' al banco.')
+      + ' marcado PENDIENTE-ACUERDO, para que lo veas. Si querés el FUR, hay que pedirle al banco'
+      + ' el número de acuerdo del producto **012 Pagos Personalizados** — que es como el extracto'
+      + ' identifica estos débitos, no como haberes.')
   }
   l.push('', '`FCL_' + periodo + '_resumen.md`: la tabla completa con CUIL, CBU y de qué archivo'
     + ' salió cada dato.')
@@ -326,6 +347,9 @@ function resumen({ periodo, fechaPago, entran, afuera, val, rutaTxt, rutaXlsx, f
   l.push(`- **Archivo a subir**: \`${path.basename(rutaXlsx)}\` (Pago Simple, Online Banking Empresas)`)
   l.push(`- **Archivo FUR (no subible)**: \`${path.basename(rutaTxt)}\``)
   l.push(`- **Fecha de pago**: ${fechaPago.slice(6)}/${fechaPago.slice(4, 6)}/${fechaPago.slice(0, 4)}`)
+  l.push(`- **Orden de pago (= período)**: \`${ordenDePago(periodo)}\` — el débito va a aparecer en`
+    + ' el extracto como «Acreditacion fondo desempleo ' + String(ordenDePago(periodo)).padStart(6, '0')
+    + '». El lote de junio/julio salió sin este dato y quedó como «000000».')
   l.push(`- **Trabajadores**: ${entran.length} · **Total**: $ ${pesos(total)}`)
   l.push(`- **Validación del .txt**: ${val.ok ? 'OK' : `${val.errores.length} error(es)`}`)
   if (!val.ok) for (const e of val.errores) l.push(`  - ${e}`)
@@ -383,11 +407,17 @@ async function main() {
   // El FUR sale con el acuerdo sin resolver a propósito: el archivo se puede leer y auditar, y
   // `validarArchivo` prueba solo que no se puede subir.
   const faltaAcuerdo = !a.acuerdo
+  //
+  // EL PRODUCTO NO ES «HABERES»: el extracto dice «Pagos personalizados acred cuenta». El FUR
+  // equivalente es 012 (Pagos Personalizados) con el layout de proveedores, no 011 con el de
+  // haberes. Lo decide la evidencia del banco, no el hecho de que el pago sea de personal.
   const txt = armarArchivo({
-    cuit: CUIT_ECSAS, producto: PRODUCTOS.HABERES, acuerdo: a.acuerdo || '??',
+    cuit: CUIT_ECSAS, producto: PRODUCTOS.PERSONALIZADOS, acuerdo: a.acuerdo || '??',
+    layout: LAYOUT_PROVEEDORES, concepto: 'FCL',
     pagos: entran.map((p) => ({
-      beneficiario: String(p.legajo ?? p.cuil), nombre: p.nombre, cuil: p.cuil, cbu: p.cbu,
-      importe: p.importe, periodo, fechaPago,
+      beneficiario: String(p.legajo ?? p.cuil), nombre: p.nombre, cuit: p.cuil, cbu: p.cbu,
+      importe: p.importe, comprobante: String(ordenDePago(periodo)), tipoComprobante: 'OP',
+      liquidacion: ordenDePago(periodo), fechaPago,
     })),
   })
   const val = validarArchivo(txt)
@@ -396,7 +426,7 @@ async function main() {
   fs.writeFileSync(rutaTxt, Buffer.from(txt, 'latin1'))
 
   const rutaXlsx = path.join(salida, `FCL_${periodo}_pago_simple_santander.xlsx`)
-  XLSX.writeFile(armarPagoSimple(wbLote, entran, fechaPago), rutaXlsx)
+  XLSX.writeFile(armarPagoSimple(wbLote, entran, fechaPago, periodo), rutaXlsx)
 
   const rutaMd = path.join(salida, `FCL_${periodo}_resumen.md`)
   fs.writeFileSync(rutaMd, resumen({ periodo, fechaPago, entran, afuera, val, rutaTxt, rutaXlsx, faltaAcuerdo }))

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mismoNombre, proximoHabil } from './santander-fur-fcl.mjs'
+import { mismoNombre, ordenDePago, proximoHabil } from './santander-fur-fcl.mjs'
 
 // EL EMPAREJAMIENTO POR NOMBRE DECIDE A QUIÉN SE LE PAGA. Los casos son los rótulos REALES: el
 // estudio contable abrevia, el resumen de cuentas escribe entero, y los dos usan comas donde
@@ -33,4 +33,12 @@ test('proximoHabil: el viernes se queda, el sábado y el domingo saltan al lunes
   assert.equal(proximoHabil(new Date(Date.UTC(2026, 8, 12))), '20260914') // sábado → lunes
   assert.equal(proximoHabil(new Date(Date.UTC(2026, 8, 13))), '20260914') // domingo → lunes
   assert.equal(proximoHabil(new Date(Date.UTC(2026, 8, 10))), '20260910') // jueves
+})
+
+test('ordenDePago: el período va como MAAAA, con el mes sin cero adelante', () => {
+  // El banco lo devuelve en el concepto del extracto: 42026 salió como «fondo desempleo 042026».
+  assert.equal(ordenDePago('202608'), 82026)
+  assert.equal(ordenDePago('202604'), 42026)
+  assert.equal(ordenDePago('202610'), 102026)
+  assert.equal(ordenDePago('202701'), 12027)
 })
