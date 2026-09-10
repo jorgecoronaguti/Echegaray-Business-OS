@@ -198,10 +198,22 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
       (m) => aviso(`libro-extractores(Compras) fila ${i + 1}: ${m}`)))
     // ═══ EL CHEQUE VIVO PARTE LA FILA EN DOS (06/08) ═══
     //
-    // El cruce sólo actúa donde la fila iba a salir como REAL: es ahí donde el compromiso desaparece
-    // de las tres vistas de proyección. Si ya es COMPROMETIDO o PROYECTADO, la escalera la ve igual y
-    // partirla no agregaría nada — sí agregaría una diferencia de criterio entre dos casos gemelos.
-    const enCheques = estadoBase === 'REAL' ? cruce?.porCompra?.get(i + 1) : null
+    // El cruce nació para el caso REAL: es ahí donde el compromiso desaparecía de las tres vistas de
+    // proyección. Pero la puerta la decide `puertaDeCheque` para TODOS los vivos cruzados, no sólo
+    // para los que caen contra una fila REAL — y `deChequesEmitidos` se aparta de todos ellos.
+    //
+    // ═══ POR QUÉ YA NO SE MIRA EL ESTADO DE LA FILA (10/09/2026) ═══
+    //
+    // Medido: los echeqs 378 y 379 (Machuca, $2.560.965, vencen el 25/09) están vivos en «Cheques
+    // Emitidos», el cruce los empareja con Compras f858 —que NO está pagada, así que su estado base
+    // es COMPROMETIDO— y con la condición vieja no pasaba ninguna de las dos cosas: la cuota no se
+    // emitía y el cheque tampoco, porque el otro extractor ya se había apartado. La plata seguía
+    // contada UNA vez (la fila entera salía con el rubro de la factura), pero la línea «Cheques
+    // emitidos» del cuadro perdió $2.560.965 de un día para el otro sin contrapartida visible.
+    //
+    // Partir siempre no puede duplicar: cuotas + resto = el pendiente de la fila, y el extractor de
+    // cheques se aparta exactamente de los mismos cheques que acá se convierten en cuota.
+    const enCheques = cruce?.porCompra?.get(i + 1) ?? null
     const enVuelo = Math.min(debe, enCheques?.vivo ?? 0)
     if (enVuelo > 0) {
       out.push(...cuotasEnCheque(base, enCheques.cuotas, corte, { fila: i + 1, comprobante: txt(f[c.comprobante]) }))
