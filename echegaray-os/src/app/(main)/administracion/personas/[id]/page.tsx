@@ -73,6 +73,10 @@ import { getNoLaborables, getObraDeLaJornada } from '@/features/administracion/s
 import { getPresenciaDePersona } from '@/features/administracion/services/presenciaDelDiaService'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { BloqueAsignacion, BloqueDocumentos, BloqueHoras } from '@/features/administracion/components/BloquesFicha'
+import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
+import { getDocumentosSubidos } from '@/features/documentos/services/documentosSubidosService'
+import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
+import { DocumentosSubidos } from '@/features/documentos/components/DocumentosSubidos'
 import { BloqueAuditoria } from '@/features/administracion/components/BloqueAuditoria'
 import { BloqueUsuario } from '@/features/administracion/components/BloqueUsuario'
 import { CamposIdentidad, CamposLaboral } from '@/features/administracion/components/FormularioPersona'
@@ -176,6 +180,15 @@ export default async function FichaPersonaPage({
   const anotaciones = vista === 'resumen' && veAnotaciones(rolActor)
     ? await getAnotaciones(supabase, id)
     : null
+  // LO QUE HAY EN LA CARPETA DEL LEGAJO EN DRIVE. Distinto de `getDocumentos`: eso son los papeles
+  // que alguien TIPIFICÓ (alta temprana, DNI, EPP), esto es lo que ESTÁ en la carpeta —incluidos los
+  // recibos que suben los scripts de la VM, que nunca se tipificaron—. Sólo en su solapa: es una
+  // consulta más y las otras cinco no la dibujan.
+  const archivosDrive = vista === 'documentos' ? await getArchivosDeEntidad(supabase, 'persona', id) : null
+  // LOS PAPELES QUE ADMINISTRACIÓN SUBE DESDE ACÁ (DNI, alta en ARCA, libreta del IERIC). Hasta hoy
+  // el legajo sólo podía VINCULAR un archivo que ya estuviera en Drive: quien tenía la foto del DNI
+  // en el teléfono no tenía por dónde meterla.
+  const subidos = vista === 'documentos' ? await getDocumentosSubidos(supabase, 'persona', id) : null
   const cuantos = cuantosCambios(sp.n)
   const bitacora = vista === 'auditoria' ? await getBitacora(supabase, 'personas', id, cuantos) : null
 
@@ -528,6 +541,18 @@ export default async function FichaPersonaPage({
                 carpetaDrive={persona.drive_folder_id}
               />
               <AltaDocumento vincular={vincularDocumento.bind(null, id)} />
+              {subidos && (
+                <div className="mt-8">
+                  <DocumentosSubidos datos={subidos} tipo="persona" entidadId={id} testid="persona-documentos-subidos" />
+                </div>
+              )}
+              {archivosDrive && (
+                <div className="mt-8">
+                  <ArchivosDeDrive
+                    datos={archivosDrive} tipo="persona" rol={rolActor} testid="persona-archivos-drive"
+                  />
+                </div>
+              )}
               <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 12, maxWidth: 720 }}>
                 Vínculos a Drive: el archivo no se copia. Ninguno vence —`documento_legajo` no guarda
                 fecha de vencimiento—, así que esta cara nunca dice «al día»: sería una afirmación

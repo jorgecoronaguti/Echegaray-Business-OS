@@ -55,6 +55,8 @@ import {
   PapelesDelProveedor, QueProvee, RepartoPorObra,
 } from '@/features/administracion/components/ListasProveedorV2'
 import { DocumentosDelProveedor } from '@/features/administracion/components/proveedores/DocumentosDelProveedor'
+import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
+import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
 import { Aviso } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import { IconoEditar } from '@/shared/components/iconos'
@@ -117,6 +119,16 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   const conPrecio = (paquetes.data ?? []).filter((p) => p.precio !== null)
   const contratado = conPrecio.length === 0 ? null : conPrecio.reduce((a, p) => a + (p.precio ?? 0), 0)
   const cuit = formatearCuit(proveedor.cuit)
+  // ═══ EL PROVEEDOR TODAVÍA NO TIENE CARPETA EN DRIVE, Y LA FICHA LO DICE ═══
+  //
+  // No es un olvido de esta pantalla: en el Drive de la empresa NO EXISTEN carpetas por proveedor.
+  // Los comprobantes que llegan viven en el bucket `comprobantes` y en `Archivos GESTIÓN ECSAS/
+  // FACTURAS A` sueltos. Dónde va el papel de un proveedor es una decisión abierta del dueño (PRP
+  // del puente, «Decisiones del dueño»), y hasta que la tome el bloque muestra «carpeta
+  // desconocida» — que es el hecho, y es lo que hace visible la decisión pendiente.
+  const archivosDrive = cara === 'documentos'
+    ? await getArchivosDeEntidad(supabase, 'proveedor', proveedor.id)
+    : null
 
   const href = (v: Cara) => `/administracion/proveedores/${proveedor.id}${v === 'compras' ? '' : `?vista=${v}`}`
   const panelDeEdicion = `/administracion/proveedores?p=${proveedor.id}`
@@ -255,6 +267,14 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
               truncado={documentos.data?.truncado ?? false}
               error={documentos.error}
             />
+          )}
+          {cara === 'documentos' && archivosDrive && (
+            <div style={{ marginTop: 32 }}>
+              <ArchivosDeDrive
+                datos={archivosDrive} tipo="proveedor" rol={perfil.data?.rol ?? null}
+                testid="proveedor-archivos-drive"
+              />
+            </div>
           )}
         </div>
 
