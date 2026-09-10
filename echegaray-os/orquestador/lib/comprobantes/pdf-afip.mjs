@@ -174,6 +174,24 @@ export function condicionDeVentaImpresa(texto) {
  * afuera, y la unidad de medida (`otras` + `unidades`) va DESPUÉS de la cantidad, así que nunca se
  * confunde con la descripción. Una descripción partida en dos renglones se vuelve a unir.
  */
+/**
+ * LOS RÓTULOS DE LA TABLA DEL DETALLE, que salen como renglones sueltos igual que los artículos.
+ * Sin esta lista el concepto de la factura de Rodríguez salía «Cantidad U. medida Precio Unit. %
+ * Bonif Subtotal Alicuota IVA Subtotal c/IVA Orden 641 + Orden 642»: el encabezado pegado adelante.
+ * Se comparan normalizados (sin acentos, sin puntos) para que `U. medida` y `U. Medida` sean el mismo.
+ */
+const ROTULOS_DETALLE = new Set([
+  'codigo', 'producto / servicio', 'producto/servicio', 'cantidad', 'u medida', 'precio unit',
+  '% bonif', 'imp bonif', 'subtotal', 'alicuota', 'iva', 'subtotal c/iva', 'otras', 'unidades',
+  'otras unidades', 'unidad', 'kg', 'kilogramos', 'metros', 'litros',
+])
+
+/** Para comparar un renglón contra `ROTULOS_DETALLE`. */
+function comoRotulo(linea) {
+  return String(linea ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[.:]/g, '').replace(/\s+/g, ' ').trim()
+}
+
 export function conceptoDelDetalle(texto) {
   const t = String(texto ?? '')
   const desde = t.search(/Producto\s*\/\s*Servicio/i)
@@ -184,9 +202,10 @@ export function conceptoDelDetalle(texto) {
   const cantidad = /^\d{1,3}(?:\.\d{3})*,\d{1,4}$/
   const items = []
   let corriendo = []
-  for (const cruda of bloque.split(/\r?\n/).slice(1)) {
+  for (const cruda of bloque.split(/\r?\n/)) {
     const l = cruda.trim()
     if (!l) continue
+    if (ROTULOS_DETALLE.has(comoRotulo(l))) continue // un rótulo de la tabla no es un artículo
     if (cantidad.test(l)) {
       if (corriendo.length) items.push(corriendo.join(' '))
       corriendo = []
@@ -195,8 +214,11 @@ export function conceptoDelDetalle(texto) {
     if (pareceValor(l)) corriendo.push(l)
     else corriendo = []
   }
-  const texto2 = items.join(' + ').replace(/\s+/g, ' ').trim()
-  return texto2 ? texto2.slice(0, 300) : null
+  // Un artículo que aparece en la copia ORIGINAL vuelve a aparecer en el DUPLICADO y el TRIPLICADO:
+  // es el MISMO renglón, no tres compras.
+  const unicos = [...new Set(items)]
+  const salida = unicos.join(' + ').replace(/\s+/g, ' ').trim()
+  return salida ? salida.slice(0, 300) : null
 }
 
 /**

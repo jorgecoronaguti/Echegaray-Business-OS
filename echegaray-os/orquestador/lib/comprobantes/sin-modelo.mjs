@@ -104,7 +104,14 @@ export function crudoDesdePdf(salida) {
     // total/parcial (S); `forma_pago` sólo entra en P si es uno de los valores del desplegable.
     // Las dos viajan CRUDAS y las traduce el cargador, igual que lo que lee el modelo.
     condicion_venta: c.condicionVenta ?? null,
-    forma_pago: c.condicionVenta ?? null,
+    // ═══ «CONTADO» NO ES «EFECTIVO» ═══
+    //
+    // El campo «Condición de venta» de AFIP trae a veces la CONDICIÓN (Contado, Cuenta Corriente) y a
+    // veces el MEDIO (Cheque, Transferencia Bancaria). Sólo el medio puede ir a la columna P: pasar
+    // «Contado» por ahí lo convierte en «Efectivo» por la tabla de alias del cargador, y el papel no
+    // dice con qué se pagó. Lo que el papel no dice, queda vacío.
+    forma_pago: /contado|cuenta corriente|cta\.? ?cte/i.test(String(c.condicionVenta ?? ''))
+      ? null : (c.condicionVenta ?? null),
     concepto: c.concepto ?? null,
     fecha: c.fecha,
     neto_gravado: c.neto,

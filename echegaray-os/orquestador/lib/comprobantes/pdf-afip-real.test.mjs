@@ -27,11 +27,13 @@ const REALES = [
     archivo: 'factura-a-servicios.txt', nombre: '20441267690_001_00004_00000198.pdf',
     emisor: 'RODRIGUEZ RODRIGO DAVID', letra: 'A', fecha: '01/09/2026',
     numero: '0004-00000198', condicion: 'Cuenta Corriente', total: 228690, iva: 39690,
+    concepto: 'Orden 641 + Orden 642', formaPago: null,
   },
   {
     archivo: 'factura-a-sin-periodo.txt', nombre: 'Echegaray FA1110.pdf',
     emisor: 'FEMENIA CONSTRUCCIONES SRL', letra: 'A', fecha: '01/09/2026',
     numero: '0002-00001110', condicion: 'Cheque', total: 3823600, iva: 663600,
+    concepto: 'limpieza', formaPago: 'Cheque',
   },
   {
     // El que prueba la fecha: el texto arranca con «01/08/2026», que es el período facturado
@@ -39,12 +41,16 @@ const REALES = [
     archivo: 'factura-c-con-periodo.txt', nombre: '20379240195_011_00001_00000211.pdf',
     emisor: 'ROBLES JOSE MARIA', letra: 'C', fecha: '07/09/2026',
     numero: '0001-00000211', condicion: 'Contado', total: 696502.61, iva: 0,
+    concepto: 'Honorarios Profesionales Agosto 2026 + Excedente liquidacion de sueldos 13 empleados',
+    // «Contado» es una CONDICIÓN, no un medio de pago: la columna P queda vacía a propósito.
+    formaPago: null,
   },
   {
     // El de la fila 946 de Compras, cargado el 10/09/2026 a las 13:51.
     archivo: 'factura-a-un-renglon.txt', nombre: '27276929491_001_00001_00000321.pdf',
     emisor: 'TURIACI SANDRA VERONICA', letra: 'A', fecha: '10/09/2026',
     numero: '0001-00000321', condicion: 'Transferencia Bancaria', total: 229900, iva: 39900,
+    concepto: 'Sistemas', formaPago: 'Transferencia Bancaria',
   },
 ]
 
@@ -57,7 +63,9 @@ for (const r of REALES) {
     assert.equal(c.condicionVenta, r.condicion)
     assert.equal(c.total, r.total)
     assert.equal(c.cuadra, true)
-    assert.ok(c.concepto && c.concepto.length > 2, `sin concepto la columna L queda vacía (${c.concepto})`)
+    // Los ARTÍCULOS, sin los rótulos de la tabla pegados adelante y sin repetir el renglón que la
+    // copia DUPLICADO vuelve a imprimir. Es la columna L de Compras.
+    assert.equal(c.concepto, r.concepto)
   })
 
   test(`${r.archivo}: lo que sale del camino sin modelo llega ENTERO a la fila de Compras`, () => {
@@ -78,8 +86,9 @@ for (const r of REALES) {
     assert.equal(c.total, r.total)
     assert.equal(c.iva ?? 0, r.iva)
     // L Concepto y F/P/X, que salen de la condición de venta impresa.
-    assert.ok(c.concepto, 'la columna L quedaba vacía en todo PDF desde el 05/09')
+    assert.equal(c.concepto, r.concepto, 'la columna L quedaba vacía en todo PDF desde el 05/09')
     assert.equal(c.condicion, r.condicion)
+    assert.equal(c.formaPago ?? null, r.formaPago)
   })
 }
 
