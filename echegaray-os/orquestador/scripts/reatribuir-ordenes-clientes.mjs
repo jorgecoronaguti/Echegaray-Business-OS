@@ -14,6 +14,11 @@
 // nada. Lo único que escribe son tres campos de una fila existente (obra_id, numero, fecha), y sólo
 // cuando estaban vacíos: una obra puesta a mano por una persona NUNCA se pisa.
 //
+// SEGUNDA PASADA (10/09/2026): además de la obra, esto CORRIGE lo que el primer parser leyó mal y
+// quedó escrito como si fuera un hecho — el importe en locale equivocado y la factura nuestra
+// disfrazada de orden de compra. Un dato falso no es un dato faltante: no se puede esperar a que
+// alguien lo note. Lo que una PERSONA eligió (`origen = 'manual'`) nunca se pisa.
+//
 // LAS TRES REGLAS, EN ORDEN, Y NINGUNA ADIVINA:
 //   1. El texto del PDF nombra la obra   → `resolverObraDeTexto` (misma función que la ingesta).
 //   2. El documento cita una OC o una factura que YA tiene obra → hereda esa obra.
@@ -27,9 +32,9 @@ import { query } from '../lib/db.mjs'
 import { leerPdf } from '../lib/ingesta/pdf.mjs'
 import { loadEnvLocalInto } from '../../scripts/lib/env-file.mjs'
 import {
-  agruparPorNumero, comprobantePropio, comprobantesCitados, extraerNumero,
-  extraerFechaDeOrden, fechaImposible, mapaDeEvidencia, obraPorReferencia, ocsCitadas,
-  resolverObraDeTexto,
+  agruparPorNumero, comprobantePropio, comprobantesCitados, extraerImporte, extraerNumero,
+  extraerFechaDeOrden, facturaPropiaDe, fechaImposible, mapaDeCitas, mapaDeEvidencia,
+  numeroCanonico, obraPorReferencia, ocsCitadas, resolverObraDeTexto,
 } from '../lib/ordenes-cliente.mjs'
 
 loadEnvLocalInto(process.env, process.env.ORDENES_ENV_FILE ?? path.join(APP_DIR, '.env.local'))
@@ -52,8 +57,9 @@ async function main() {
   const { rows: clientes } = await query('select id, nombre_comercial from public.clientes')
   const { rows: obras } = await query('select id, nombre, cliente_id from public.obra_canonica where cliente_id is not null')
   const nombreCliente = new Map(clientes.map((c) => [c.id, c.nombre_comercial]))
-  const { rows } = await query(`select id, cliente_id, obra_id, tipo, numero, fecha, nombre_archivo,
-    archivo_path, asunto from public.cliente_orden where eliminado_en is null order by nombre_archivo`)
+  const { rows } = await query(`select id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda,
+    cita, origen, nombre_archivo, archivo_path, asunto
+    from public.cliente_orden where eliminado_en is null order by nombre_archivo`)
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -64,10 +70,21 @@ async function main() {
   const docs = []
   for (const r of rows) {
     const texto = await textoDe(sb, r.archivo_path)
+    const manual = r.origen === 'manual'
+    // QUÉ ES ESTE PAPEL, según su propio encabezado y no según cómo se llama el archivo. Una
+    // factura nuestra guardada como `orden_compra` duplicaba la orden del cliente en la pantalla.
+    const fac = manual ? null : facturaPropiaDe(texto)
+    // EL IMPORTE SE RECALCULA SIEMPRE, no sólo cuando falta: el guardado se leyó con el locale
+    // equivocado («78,650,000.00» → $ 78,65) y está mal escrito, no ausente.
+    const { importe, moneda } = extraerImporte(texto)
     docs.push({
       ...r,
       texto,
-      numero: r.numero ?? extraerNumero(texto),
+      tipo: fac?.tipo ?? r.tipo,
+      numero: fac?.numero ?? r.numero ?? extraerNumero(texto),
+      cita: fac?.cita ?? r.cita ?? null,
+      importe: manual || importe === null ? (r.importe === null ? null : Number(r.importe)) : importe,
+      moneda: manual || importe === null ? r.moneda : moneda,
       // La fecha guardada se PISA cuando es imposible: las cinco OC de Messina quedaron en 2086
       // porque el parser leyó «Fecha Inicio Act. 22-08-86» del encabezado.
       fecha: fechaImposible(fechaISO(r.fecha)) || !r.fecha ? extraerFechaDeOrden(texto) : fechaISO(r.fecha),
@@ -84,6 +101,7 @@ async function main() {
   // detecta solo; sin repetir, la herencia dependería del orden en que Gmail devolvió los mails.
   for (let vuelta = 0; vuelta < 3; vuelta++) {
     const mapa = mapaDeEvidencia(docs)
+    const citas = mapaDeCitas(docs)
     let cambios = 0
     for (const d of docs) {
       if (d.obra_id) continue
@@ -92,7 +110,14 @@ async function main() {
       if (porTexto) { d.obra_id = porTexto.id; d.porque = 'el PDF nombra la obra'; cambios++; continue }
       const ref = obraPorReferencia(d.citadas, mapa)
       d.porque = ref.porque
-      if (ref.obraId) { d.obra_id = ref.obraId; cambios++ }
+      if (ref.obraId) { d.obra_id = ref.obraId; cambios++; continue }
+      // EL CAMINO INVERSO: la factura que CITA esta OC ya tiene obra (describe el trabajo y nombra
+      // el playón; la OC del cliente sólo trae el código de centro de costo). Antes esto pasaba
+      // solo, porque la factura quedaba guardada con el número de la OC y `agruparPorNumero` las
+      // confundía; separados los tipos, la herencia tiene que estar escrita.
+      const propio = numeroCanonico(d.numero)
+      const porCita = propio ? citas.get(propio) : null
+      if (porCita) { d.obra_id = porCita; d.porque = `una factura que cita ${propio} tiene esa obra`; cambios++ }
     }
     // Misma orden, dos papeles: el que tiene obra se la pasa al que no. `agruparPorNumero` es la
     // que decide qué es «la misma orden» — la pantalla agrupa con esa misma función.
@@ -111,12 +136,20 @@ async function main() {
 
   // ── 3. LA TABLA ───────────────────────────────────────────────────────────────────────────────
   const nombreObra = new Map(obras.map((o) => [o.id, o.nombre]))
-  const cambia = docs.filter((d) => d.obra_id !== d.obraOriginal || d.numero !== rows.find((r) => r.id === d.id).numero
-    || d.fecha !== fechaISO(rows.find((r) => r.id === d.id).fecha))
+  const antesDe = new Map(rows.map((r) => [r.id, r]))
+  const difiere = (d) => {
+    const a = antesDe.get(d.id)
+    return d.obra_id !== a.obra_id || d.numero !== a.numero || d.fecha !== fechaISO(a.fecha)
+      || d.tipo !== a.tipo || d.cita !== a.cita
+      || (d.importe === null) !== (a.importe === null)
+      || (d.importe !== null && Math.abs(d.importe - Number(a.importe)) > 0.005)
+  }
+  const cambia = docs.filter(difiere)
   console.log(`\ndocumentos: ${docs.length} · con obra: ${docs.filter((d) => d.obra_id).length} · sin obra: ${docs.filter((d) => !d.obra_id).length}\n`)
-  console.log(`${fmt('ARCHIVO', 34)} ${fmt('TIPO', 13)} ${fmt('NÚMERO', 16)} ${fmt('FECHA', 11)} ${fmt('OBRA', 30)} POR QUÉ`)
+  console.log(`${fmt('ARCHIVO', 34)} ${fmt('TIPO', 13)} ${fmt('NÚMERO', 16)} ${fmt('FECHA', 11)} ${fmt('IMPORTE', 16)} ${fmt('OBRA', 30)} POR QUÉ`)
   for (const d of docs) {
-    console.log(`${fmt(d.nombre_archivo, 34)} ${fmt(d.tipo, 13)} ${fmt(d.numero, 16)} ${fmt(d.fecha, 11)} ${fmt(nombreObra.get(d.obra_id) ?? '— nivel cliente', 30)} ${d.porque ?? ''}`)
+    const imp = d.importe === null ? '—' : d.importe.toLocaleString('es-AR', { minimumFractionDigits: 2 })
+    console.log(`${fmt(d.nombre_archivo, 34)} ${fmt(d.tipo, 13)} ${fmt(d.numero, 16)} ${fmt(d.fecha, 11)} ${String(imp).padStart(16)} ${fmt(nombreObra.get(d.obra_id) ?? '— nivel cliente', 30)} ${d.porque ?? ''}`)
   }
 
   if (!APLICAR) { console.log(`\nENSAYO — ${cambia.length} filas cambiarían. Nada se escribió. Con --aplicar.`); return }
@@ -124,10 +157,18 @@ async function main() {
   let escritas = 0
   for (const d of cambia) {
     const patch = {}
-    const antes = rows.find((r) => r.id === d.id)
+    const antes = antesDe.get(d.id)
     if (!antes.obra_id && d.obra_id) patch.obra_id = d.obra_id
-    if (!antes.numero && d.numero) patch.numero = d.numero
     if (d.fecha && (!antes.fecha || fechaImposible(fechaISO(antes.fecha)))) patch.fecha = d.fecha
+    // EL TIPO Y EL NÚMERO VIAJAN JUNTOS. Reclasificar una factura sin corregir su número la dejaría
+    // como «Factura 2162», que es el número de la OC ajena: media corrección miente distinto.
+    if (d.tipo !== antes.tipo) { patch.tipo = d.tipo; patch.numero = d.numero; patch.cita = d.cita }
+    else if (!antes.numero && d.numero) patch.numero = d.numero
+    // El importe es el único campo que se PISA aunque ya tuviera valor: estaba mal leído.
+    if (d.importe !== null && (antes.importe === null || Math.abs(d.importe - Number(antes.importe)) > 0.005)) {
+      patch.importe = d.importe
+      patch.moneda = d.moneda
+    }
     if (!Object.keys(patch).length) continue
     const { error } = await sb.from('cliente_orden').update(patch).eq('id', d.id)
     if (error) console.log(`  ✗ ${d.nombre_archivo}: ${error.message}`)

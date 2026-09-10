@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   clasificarAdjunto, claveDocumento, clienteDelMail, dominioDe, extensionDe,
-  extraerFecha, extraerImporte, extraerNumero, resolverObraDeTexto, tokensDeObra,
+  extraerFecha, extraerImporte, extraerNumero, facturaPropiaDe, formatoNumerico, mapaDeCitas,
+  resolverObraDeTexto, TIPOS, tokensDeObra,
 } from './ordenes-cliente.mjs'
 
 // Las obras REALES de Messina y San Francisco, tal como están en obra_canonica el 09/09/2026.
@@ -253,4 +254,71 @@ test('la fecha de la orden no es «Fecha Inicio Act. 22-08-86»', () => {
   assert.equal(fechaImposible('2086-08-22'), true)
   assert.equal(fechaImposible('2026-08-11'), false)
   assert.equal(fechaImposible(null), false)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL LOCALE DEL DINERO — el defecto que dejó la OC 2173 guardada por $ 78,65
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Los dos textos son literales de PDF que están HOY en el bucket: la OC 2173 la imprime el sistema
+// de Messina en formato norteamericano, y la factura A 225 la imprime ARCA en es_AR. Si alguien
+// vuelve a cablear un locale, uno de los dos se pone rojo.
+const OC_2173_US = 'Precio Unitario $   000000.0000   0.00   0.00 '
+  + 'Subtotal :$   65,000,000.00 I.V.A.   :$   13,650,000.00 Total   :$   78,650,000.00'
+const FACTURA_225_AR = 'FACTURA A  Comp. Nro: 00001   00000225 '
+  + 'Limpieza de Escombros Embolsado OC 02- 00002162   1,00   unidades   5008660,65   0,00 '
+  + 'Importe Neto Gravado: $   5008660,65 IVA 21%: $   1051818,74 Importe Total: $   6060479,39'
+
+test('el importe se lee en el locale que el propio documento declara', () => {
+  assert.equal(formatoNumerico(OC_2173_US), 'US')
+  assert.equal(formatoNumerico(FACTURA_225_AR), 'AR')
+  // EL DEFECTO: con el parser es_AR cableado, «78,650,000.00» daba 78,65 — cinco órdenes de
+  // magnitud abajo y escrito como si fuera un hecho.
+  assert.deepEqual(extraerImporte(OC_2173_US), { importe: 78650000, moneda: 'ARS' })
+  assert.deepEqual(extraerImporte(FACTURA_225_AR), { importe: 6060479.39, moneda: 'ARS' })
+})
+
+test('el mismo importe escrito en los dos formatos da el mismo número', () => {
+  assert.equal(extraerImporte('Total: $ 10.133.750,00').importe, 10133750)
+  assert.equal(extraerImporte('Total: $ 10,133,750.00').importe, 10133750)
+  // Un documento sin ninguna evidencia de locale sigue leyéndose como es_AR, que es el de la casa.
+  assert.equal(formatoNumerico('Total: $ 1.089.000,00'), 'AR')
+  // Y el locale forzado manda sobre la detección: es la puerta para un emisor que ya se conoce.
+  assert.equal(extraerImporte('1.089.000,00', { formato: 'AR' }).importe, 1089000)
+})
+
+test('un número que no parece dinero no es un importe, en ningún locale', () => {
+  assert.deepEqual(extraerImporte('CUIT 30-62031170-3 tel (0264) 4941119'), { importe: null, moneda: null })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA FACTURA NUESTRA NO ES UNA ORDEN DEL CLIENTE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el PDF que se declara factura A es una factura, con SU número y la OC que cita', () => {
+  // EL DEFECTO: seis filas guardadas como `orden_compra` con el número de la OC ajena. El archivo
+  // se llama «OC 02-00002162.pdf» y el detalle cita la OC: las dos señales engañan.
+  assert.equal(clasificarAdjunto({ nombreArchivo: 'OC 02-00002162.pdf' }).tipo, 'orden_compra')
+  assert.deepEqual(facturaPropiaDe(FACTURA_225_AR), { tipo: 'factura', numero: 'A-1-225', cita: '2-2162' })
+  // La OC que emitió el cliente NO se convierte en factura por nombrar la palabra.
+  assert.equal(facturaPropiaDe(OC_2173_US), null)
+  assert.ok(TIPOS.includes('factura'))
+})
+
+test('la obra que probó la factura llega a la OC que factura, y no cuando hay dos', () => {
+  // Antes esto pasaba de rebote —la factura quedaba con el número de la OC y `agruparPorNumero`
+  // las confundía—. Separados los tipos, la regla tiene que estar escrita o la OC pierde su obra.
+  const mapa = mapaDeCitas([
+    { obra_id: 'playon', citadas: ['2-2173', 'A-1-225'] },
+    { obra_id: null, citadas: ['2-2266'] },
+  ])
+  assert.equal(mapa.get('2-2173'), 'playon')
+  // Un comprobante propio no atribuye obra a nadie: no es una orden.
+  assert.equal(mapa.has('A-1-225'), false)
+  // Una OC citada por dos facturas de obras distintas deja de distinguir: la clave se cae.
+  const ambiguo = mapaDeCitas([
+    { obra_id: 'playon', citadas: ['2-2173'] },
+    { obra_id: 'acido', citadas: ['2-2173'] },
+  ])
+  assert.equal(ambiguo.has('2-2173'), false)
 })
