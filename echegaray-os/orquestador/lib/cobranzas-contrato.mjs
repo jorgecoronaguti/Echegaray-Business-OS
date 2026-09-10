@@ -335,28 +335,67 @@ export function sumaConUSD({ rango, criterios, moneda, tc }) {
 const contiene = (texto, aguja) => String(texto ?? '').toLowerCase().includes(String(aguja ?? '').toLowerCase())
 
 /**
- * LAS FILAS DE COBRANZAS QUE SON DE ESTA OBRA.
+ * ¿ESTA FILA CAE EN EL AÑO DE LA VENTANA? Sin `anio` declarado, TODAS caen.
  *
- * ES LA MISMA REGLA QUE `tramos()` DE `obras-grilla.mjs`, EN JAVASCRIPT. La de allá arma criterios de
- * SUMIFS para que Sheets los evalúe; ésta selecciona filas acá. Son dos representaciones de UNA
- * decisión de negocio, y por eso `obras-contrato.test.mjs` las corre a las dos sobre las mismas filas
- * y compara: si divergen, el contrato se estaría midiendo sobre un universo distinto que la venta, y
- * el saldo saldría mal sin dar error.
+ * ═══ EL DEFECTO QUE ESTO CIERRA (10/09/2026) ═══
  *
- * · `unica`  — un cliente con UNA sola obra declarada ES esa obra (regla del dueño, 13/08): su
- *   anticipo no nombra la obra en ninguna columna y sin esto quedaba media obra afuera.
- * · si no, la obra se reconoce por el Concepto **O** por la Orden de Compra.
+ * La columna D de OBRAS acota la venta por su FECHA DE VENTA al año del rótulo (`enElAno` en
+ * `obras-grilla.mjs`, «⇒ TOTAL 2026»); `ventaViva()` —la misma cuenta hecha en JS para persistirla en
+ * `obra_economia_sheet`— no acotaba nada. Las dos caras publicaban la misma obra sobre universos
+ * distintos y la diferencia no se veía: la fila 3 de San Francisco vende $15.000.000 el 15/12/2025 y
+ * entraba entera en la pantalla y en ninguna celda de la pestaña.
+ *
+ * La fecha se lee como SERIAL de Sheets (`UNFORMATTED_VALUE`) o como texto ISO. Una fecha ilegible NO
+ * saca la fila: sacarla restaría plata por un formato, que es peor que contarla de más y además es
+ * invisible. Se cuenta, y quien audita ve la fila.
+ */
+export function enElAnio(valor, anio) {
+  if (!anio) return true
+  if (typeof valor === 'number' && Number.isFinite(valor)) {
+    return new Date(Date.UTC(1899, 11, 30) + valor * 86400000).getUTCFullYear() === anio
+  }
+  const m = /^(\d{4})-\d{2}-\d{2}/.exec(String(valor ?? '').trim())
+  return m ? Number(m[1]) === anio : true
+}
+
+/**
+ * LAS FILAS DE COBRANZAS QUE SON DE ESTA OBRA — POR LA IMPUTACIÓN CANÓNICA O POR EL ESPEJO DE LA
+ * FÓRMULA.
+ *
+ * ═══ EL CAMINO BUENO: `imputadas` ═══
+ *
+ * Los índices ya resueltos por `cobro_por_obra` —la OC de la columna H contra `cliente_orden`, el
+ * texto que nombra la obra, la bolsa del cliente— tal como los publica `public.cobranza_imputacion`.
+ * Cuando vienen, MANDAN: no se mira ni el cliente ni el `needle`, porque la imputación ya resolvió
+ * las dos cosas y volver a filtrar sería una segunda regla encima de la canónica.
+ *
+ * ═══ EL CAMINO VIEJO: `needle`, Y POR QUÉ SIGUE VIVO ═══
+ *
+ * Es el espejo EXACTO de `tramos()` de `obras-grilla.mjs`, que arma los criterios del SUMIFS que
+ * publica la pestaña OBRAS. La pestaña no puede consultar Postgres: su celda D es una fórmula que
+ * Sheets evalúa sobre la propia hoja, así que el generador del Sheet tiene que seguir seleccionando
+ * por texto y `obras-contrato.test.mjs` corre las dos y compara.
+ *
+ * PERO NO ES LA DEFINICIÓN DE «QUÉ FILA ES DE QUÉ OBRA» Y NO PUEDE USARSE PARA LEER. Medido el
+ * 10/09/2026: la fila 46 —«ACTUALIZACION DE PRECIOS OC 02-00000279», $3.583.956— pertenece a BSA por
+ * su orden de compra 00002-00001984 y no dice «BSA» en ninguna columna. El `needle` la dejaba afuera
+ * del contratado ($14.120.243,40) mientras el cobro —que sí sale de la imputación— la incluía: la
+ * misma obra, dos universos, y una obra $3,58 M más barata de lo que es. El registro
+ * `orquestador/datos/definiciones.json` prohíbe el patrón fuera de los dos generadores de Sheets.
  *
  * @param {Array<Array>} filas filas de datos de Cobranzas (sin encabezado)
- * @param {{cliente:number, concepto:number, oc:number}} cols índices 0-based
- * @param {{variantes:string[], needle:string, unica:boolean}} obra
+ * @param {{cliente:number, concepto:number, oc:number, fechaVenta?:number}} cols índices 0-based
+ * @param {{imputadas?:number[], variantes?:string[], needle?:string, unica?:boolean, anio?:number}} obra
  * @returns {number[]} índices 0-based dentro de `filas`
  */
 export function filasDeObra(filas = [], cols = {}, obra = {}) {
+  const enVentana = (i) => enElAnio(filas[i]?.[cols.fechaVenta], obra.anio)
+  if (obra.imputadas) return [...obra.imputadas].filter((i) => filas[i] !== undefined && enVentana(i))
   const variantes = obra.variantes ?? []
   const out = []
   filas.forEach((f, i) => {
     if (!variantes.includes(String(f?.[cols.cliente] ?? '').trim())) return
+    if (!enVentana(i)) return
     if (obra.unica) { out.push(i); return }
     if (contiene(f?.[cols.concepto], obra.needle) || contiene(f?.[cols.oc], obra.needle)) out.push(i)
   })
