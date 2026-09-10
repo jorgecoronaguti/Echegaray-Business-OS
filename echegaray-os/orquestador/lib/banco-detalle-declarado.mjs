@@ -41,7 +41,16 @@ const rango = (col, hoja = DEP.hoja, desde = DEP.desde) => `${hoja}!$${col}$${de
 export function expresionDetalle({ importe = DEP.importe, saldo = COL_SALDO } = {}) {
   const C = rango(importe)
   const D = rango(saldo)
-  return `(INDEX(${D};1)-INDEX(${C};1))+SUM(${C})`
+  // ═══ LO QUE EL BANCO NO ACREDITÓ NO ENTRA AL DETALLE (10/09/2026) ═══
+  //
+  // Un depósito de eCheq retenido 48 hs está LISTADO —tiene fecha, concepto e importe— y no está en el
+  // saldo del banco. Sumarlo dejaba esta línea denunciando un hueco de $38.572.526,23 que no existe: la
+  // alarma más rápida de silenciar es la que grita cuando todo está bien.
+  //
+  // La marca en la pestaña es la CELDA DE SALDO VACÍA: la escribe así `banco-raw-pestana.mjs` para las
+  // filas retenidas, y es la misma condición con la que CAJA las saltea. No hace falta una columna
+  // nueva ni un número escrito: `SUMIFS` sobre la columna del saldo alcanza.
+  return `(INDEX(${D};1)-INDEX(${C};1))+SUM(${C})-SUMIFS(${C};${D};"")`
 }
 
 /**
@@ -76,7 +85,7 @@ export function filaHuecoDelExtracto(tolerancia = 1) {
   return [
     rotulo, 'ARS', `=IF(COUNT(${C})=0;"";ROUND(${dif};2))`, '', '',
     `=IF(COUNT(${A})=0;"";MIN(${A}))`,
-    'Saldo declarado por el banco − (saldo inicial + suma de los movimientos de _BANCO_RAW). '
+    'Saldo declarado por el banco − (saldo inicial + suma de los movimientos de _BANCO_RAW, sin los depósitos que el banco todavía no acreditó: los que van con la celda de saldo vacía). '
     + 'NO se resta de ninguna disponibilidad: CAJA muestra el saldo del banco, que es el dato real. '
     + 'Mide hasta dónde llega el detalle que el archivo puede reconstruir. Detalle por movimiento: auditar-saldo-banco.mjs.',
   ]

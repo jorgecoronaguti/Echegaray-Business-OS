@@ -34,7 +34,18 @@ test('el detalle se reconstruye como lo hace el auditor: inicial + Σ importes',
   // La fórmula dice literalmente eso: (primer saldo − primer importe) + suma de importes.
   const e = expresionDetalle()
   assert.equal(e, `(INDEX(${DEP.hoja}!$${COL_SALDO}$4:$${COL_SALDO};1)-INDEX(${DEP.hoja}!$${DEP.importe}$4:$${DEP.importe};1))`
-    + `+SUM(${DEP.hoja}!$${DEP.importe}$4:$${DEP.importe})`)
+    + `+SUM(${DEP.hoja}!$${DEP.importe}$4:$${DEP.importe})`
+    + `-SUMIFS(${DEP.hoja}!$${DEP.importe}$4:$${DEP.importe};${DEP.hoja}!$${COL_SALDO}$4:$${COL_SALDO};"")`)
+})
+
+test('los depósitos que el banco no acreditó NO cuentan como detalle cargado', () => {
+  // Sin esta resta, la línea del anexo denunciaba un hueco de $38.572.526,23 que el banco ya explica:
+  // dos eCheq retenidos 48 hs, listados en el extracto y fuera del saldo. Una alarma que grita cuando
+  // todo está bien es la primera que se apaga.
+  const e = expresionDetalle()
+  assert.match(e, /-SUMIFS\(/)
+  // La marca es la celda de saldo VACÍA, la misma con la que CAJA los saltea: sin columna nueva.
+  assert.ok(e.includes(`;${DEP.hoja}!$${COL_SALDO}$4:$${COL_SALDO};""`))
 })
 
 test('la diferencia se mide contra el ÚLTIMO saldo del extracto, que es el que muestra CAJA', () => {
