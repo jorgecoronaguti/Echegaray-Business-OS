@@ -96,3 +96,22 @@ test('un texto que no es una factura electrónica no se inventa', () => {
   assert.equal(comprobanteDesdePdf('hola'), null)
   assert.equal(comprobanteDesdePdf(null), null)
 })
+
+test('las tres COPIAS de un comprobante son una sola compra; dos facturas en un PDF son dos', () => {
+  const una = fx('factura-a-un-renglon.txt')
+  // El archivo real trae ORIGINAL, DUPLICADO y TRIPLICADO: mismo par y mismo CAE.
+  const { comprobante: c } = comprobanteDesdePdf(una)
+  assert.equal(c.cuantosComprobantes, 1)
+  assert.equal(crudoDesdePdf({ comprobante: c }).varios_comprobantes, false)
+
+  // Dos facturas DEL MISMO PROVEEDOR pegadas en el mismo PDF —el caso que pasa de verdad cuando se
+  // descarga un lote—. Este módulo lee SÓLO la primera: si no lo declarara, la segunda
+  // desaparecería sin que nada lo diga. (Con dos emisores distintos ni siquiera llega hasta acá: el
+  // CUIT queda ambiguo y el papel se va al camino del modelo.)
+  const dos = `${una}\n${una.split('00000321').join('00000322').split('86372375796634').join('86372375796635')}`
+  const { comprobante: d } = comprobanteDesdePdf(dos)
+  assert.equal(d.cuantosComprobantes, 2)
+  const crudo = crudoDesdePdf({ comprobante: d })
+  assert.equal(crudo.varios_comprobantes, true)
+  assert.equal(normalizarLectura(crudo).comprobante.variosComprobantes, true)
+})

@@ -99,7 +99,14 @@ export function crudoDesdePdf(salida) {
     // sin `COD.` y sin punto de venta. Se declara igual para que el campo viaje siempre y
     // `faltantes.mjs` no tenga que distinguir «false» de «no contestó».
     es_presupuesto_o_remito: false,
-    varios_comprobantes: false,
+    // ═══ NO SE AFIRMA «UNO SOLO»: SE CUENTA ═══
+    //
+    // `comprobanteDesdePdf` lee SIEMPRE el primero (cada rótulo se busca por su primera aparición).
+    // Declarar `false` a ciegas haría que un PDF con tres facturas entrara como una y las otras dos
+    // se perdieran calladas. `cuantosComprobantes` distingue las COPIAS —mismo par y mismo CAE— de
+    // los comprobantes distintos, y el fajo ya sabe qué hacer con la declaración.
+    varios_comprobantes: (c.cuantosComprobantes ?? 1) > 1,
+    cuantos_comprobantes: c.cuantosComprobantes ?? 1,
     // LO QUE EL PAPEL DICE DE LA OPERACIÓN. `condicion_venta` decide modalidad (F), estado (X) y
     // total/parcial (S); `forma_pago` sólo entra en P si es uno de los valores del desplegable.
     // Las dos viajan CRUDAS y las traduce el cargador, igual que lo que lee el modelo.

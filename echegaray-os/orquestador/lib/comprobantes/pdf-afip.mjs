@@ -267,6 +267,26 @@ function aDia(f) {
 }
 
 /**
+ * CUÁNTOS COMPROBANTES DISTINTOS TRAE ESTE PDF.
+ *
+ * Las páginas de un mismo comprobante —ORIGINAL, DUPLICADO, TRIPLICADO, o una factura de dos
+ * hojas— repiten el MISMO par (punto de venta, número) y el mismo CAE: son uno. Dos facturas
+ * distintas en el mismo archivo son dos pares distintos.
+ *
+ * Importa porque este módulo lee SÓLO el primero: `trasEtiqueta` toma la primera aparición de cada
+ * rótulo. Sin contarlos, un PDF con tres facturas entraría a Compras como una sola y las otras dos
+ * desaparecerían sin que nada lo diga — el peor resultado posible de este flujo. Contarlos convierte
+ * el silencio en una declaración que el fajo ya sabe tratar (`variosComprobantes`).
+ */
+export function cuantosComprobantes(texto) {
+  const t = String(texto ?? '')
+  const pares = new Set([...t.matchAll(/Punto de Venta:\s*Comp\.\s*Nro:?\s*(\d{4,5})\s+(\d{8})/gi)]
+    .map((m) => `${m[1]}-${m[2]}`))
+  const caes = new Set([...t.matchAll(/CAE\s*N[°º]?\s*:?\s*(\d{14})/gi)].map((m) => m[1]))
+  return Math.max(pares.size, caes.size, 1)
+}
+
+/**
  * EL NOMBRE DEL ARCHIVO QUE PONE AFIP: `20287737824_001_00009_00003204 …pdf`
  * → CUIT del emisor, código de comprobante, punto de venta, número.
  *
@@ -330,6 +350,8 @@ export function comprobanteDesdePdf(texto, { nombreArchivo = null } = {}) {
     emisor: razonSocialEmisor(t),
     condicionVenta: condicionDeVentaImpresa(t),
     concepto: conceptoDelDetalle(t),
+    // UN ARCHIVO PUEDE TRAER MÁS DE UNA FACTURA, y este módulo lee sólo la primera.
+    cuantosComprobantes: cuantosComprobantes(t),
     // Sin IVA discriminado el neto ES el total: la C no lo separa, y dividir por 1,21 sería inventar.
     neto: neto ?? (ivaDiscriminado ? null : (pie?.subtotal ?? total)),
     iva,
