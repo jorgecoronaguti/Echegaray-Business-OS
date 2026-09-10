@@ -263,7 +263,7 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
  * NO se toma en este archivo ni en el otro: se toma en `puertaDeCheque`, una sola vez, y los dos
  * extractores la leen. Sin `cruce`, este extractor se comporta exactamente como antes.
  */
-export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colMarca = INSTRUMENTOS.cheques.colMarca, cruce = null } = {}) {
+export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colMarca = INSTRUMENTOS.cheques.colMarca, cruce = null, aviso = null } = {}) {
   const enc = filas[fila0 - 2] ?? [] // el encabezado del registro, una fila arriba del primer dato
   // El encabezado real del registro: "Nro" es el número
   // del cheque, "Monto" el importe, y hay DOS columnas de fecha de pago — "fecha de pago" (la fecha)
@@ -284,7 +284,20 @@ export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colM
     // emparejaba desaparecía del plan ($12,1M medidos hoy). Ahora TODO vivo no cruzado entra por
     // esta puerta; el cruzado sale por Compras como cuota COMPROMETIDA (cuotasEnCheque), que es la
     // única exclusión que evita el doble conteo con certeza.
-    if (cruce?.porCheque?.has(i + 1)) continue // cruzado: su plata sale por Compras (cuotas)
+    // ═══ CRUZADO ⇒ SALE POR COMPRAS, Y SE DICE POR CUÁL FILA (10/09/2026) ═══
+    //
+    // Un cheque que desaparece de esta puerta es correcto —su plata viaja con la factura— pero desde
+    // afuera es indistinguible de uno que se perdió: la auditoría de consistencia del 10/09 midió
+    // «$8.207.866 de cheques vivos que no aparecen en ninguna celda» sin poder decir cuáles salieron
+    // por Compras y cuáles no salieron por ningún lado. El aviso nombra la fila que se lo llevó.
+    const cruzado = cruce?.porCheque?.get(i + 1)
+    if (cruzado) {
+      aviso?.({
+        fila: i + 1, importe, proveedor: txt(f[c.proveedor]), numero: txt(f[c.numero]),
+        comprasQueLoCubren: (cruzado.compras ?? []).map((x) => x.fila), confianza: cruzado.confianza,
+      })
+      continue // cruzado: su plata sale por Compras (cuotas)
+    }
     const esEcheq = /echeq/i.test(txt(f[c.tipo]))
     out.push(movimiento({
       // Sin fecha de pago cargada el cheque existe igual: cae al corte para que pese YA — un

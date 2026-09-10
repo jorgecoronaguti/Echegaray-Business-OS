@@ -424,6 +424,11 @@ async function extraerDeLasFuentes(google, corte) {
 
   // Los cargos del banco se calculan UNA vez: los consume el libro y, además, el neteo del impuesto
   // al cheque proyectado necesita saber exactamente cuánto de ese impuesto ya entró por esta puerta.
+  // Los cheques vivos que NO salen por su propia puerta porque el cruce dice que su factura ya los
+  // lleva. Se juntan para publicarlos: sin la lista, un cheque que salió por Compras y uno que no
+  // salió por ningún lado se ven igual desde afuera — la auditoría del 10/09 midió $8,2M sin poder
+  // separarlos.
+  const chequesPorCompras = []
   const cargosBanco = deBancoCargos(banco, { fila0: 4 })
   const anioDelLibro = new Date().getFullYear()
 
@@ -453,7 +458,7 @@ async function extraerDeLasFuentes(google, corte) {
       Estructura: gastosEstructura.movimientos,
       'Cargas Sociales': cargas,
       Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos, tipoCambio }),
-      'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
+      'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce, aviso: (x) => chequesPorCompras.push(x) }),
       'Tarjeta de Credito': deTarjetaSinFactura(tarjeta, { pagos: pagosTarjeta }),
       _BANCO_RAW: cargosBanco,
       _CHEQUES_RAW: deCartera(carteraRaw),
@@ -570,6 +575,15 @@ async function main() {
   // filas de Compras que chocan por (CUIT · comprobante · signo) no llegaban a ninguna celda de
   // ningún cash flow y nadie lo veía en la corrida. El `⚠` es lo que el pipeline levanta de la
   // salida, así que sin él el hallazgo no existe para el que lee el resumen.
+  if (chequesPorCompras.length) {
+    const t = chequesPorCompras.reduce((a, x) => a + x.importe, 0)
+    console.log(`  ↪ ${chequesPorCompras.length} cheque(s) vivo(s) por ${pesos(t)} NO salen por «Cheques Emitidos»: `
+      + 'su factura ya los lleva por Compras (cuotas comprometidas). No es un hueco — es la otra puerta:')
+    for (const x of chequesPorCompras) {
+      console.log(`      f${x.fila} ${String(x.proveedor).slice(0, 24).padEnd(26)} ${pesos(x.importe).padStart(14)} `
+        + `→ Compras f${x.comprasQueLoCubren.join(', f')} (${x.confianza ?? 'sin confianza declarada'})`)
+    }
+  }
   const colapsada = plataColapsada(colapsos)
   if (colapsada.total > 0) {
     console.warn(`  ⚠ ${colapsos.length} colapso(s) de deduplicación dejaron ${pesos(colapsada.total)} FUERA del libro: `
