@@ -30,8 +30,8 @@
       {
         "funcion": "public.campanita_atencion()",
         "pantalla": "la campanita del header — TODAS las pantallas",
-        "migracion": "supabase/migrations/20260911T0020_campanita_una_consulta.sql",
-        "reemplaza": "6 consultas de PostgREST por navegación (el perfil más las cinco señales)",
+        "migracion": "supabase/migrations/20260911T0020_campanita_una_consulta.sql (reemplazada por 20260911T0130_la_campanita_cuenta_en_la_base.sql, que además cuenta en la base)",
+        "reemplaza": "6 consultas de PostgREST por navegación (el perfil más las cinco señales), y desde 20260911T0130 también las 737 filas que viajaban para contarse en TypeScript",
         "consume": [
           "perfiles",
           "proveedores",
@@ -40,7 +40,13 @@
           "imputacion_pendiente",
           "correccion_asistencia_bandeja"
         ],
-        "porque": "La campanita vive en todas las pantallas: sus viajes no son el costo de una pantalla sino un impuesto por navegación que le disputaba el pool de PostgREST al render. Transporta las filas crudas y NO cuenta: los cuatro números de Compras los sigue decidiendo PREDICADO en comprasEstado.ts, que está escrito una sola vez y lo usan tres consumidores."
+        "porque": "La campanita vive en todas las pantallas: sus viajes no son el costo de una pantalla sino un impuesto por navegación que le disputaba el pool de PostgREST al render. Transportar las filas crudas para que PREDICADO siguiera siendo la única definición costaba 76.366 bytes y 248.056 bloques del buffer pool POR NAVEGACIÓN (34 llamadas, 3.064 ms de media y 14,8 s de máximo en pg_stat_statements el 10/09/2026: el mayor consumidor de la base). Desde 20260911T0130 devuelve los siete conteos —251 bytes, 417 bloques, 98 ms— y quien decide qué cuenta cada KPI es public.comprobante_cumple_filtro(), el lado SQL de PREDICADO. NO es una copia suelta: es el mismo trato que cobranza_imputacion (SQL) y cobranza-obra.mjs (JS), dos implementaciones de una regla atadas por un test que las compara sobre los datos reales — orquestador/lib/campanita-rpc.pg.test.mjs recorre los SEIS filtros sobre los 737 comprobantes y exige el mismo número, y un filtro desconocido levanta excepción en vez de devolver false.",
+        "predicado_compartido": {
+          "sql": "public.comprobante_cumple_filtro(filtro, imputacion, tiene_posible_duplicado, estado_control) — 20260911T0130",
+          "typescript": "PREDICADO / aplicarFiltro / cumpleFiltro — src/features/administracion/services/comprasEstado.ts",
+          "atadas_por": "orquestador/lib/campanita-rpc.pg.test.mjs (los seis filtros, sobre las filas reales)",
+          "no_se_llama_comprobante_estado_porque": "el ESTADO del comprobante (la columna CONTROL de la pantalla 24) NO es una partición de los seis KPI: un comprobante parecido a otro Y sin obra cuenta en «duplicados» y en «sin imputar», pero su columna CONTROL dice una sola cosa. Derivar los conteos de un único rótulo publicaría menos «sin imputar» de los que la lista muestra, que es el defecto que comprasEstado.ts existe para impedir."
+        }
       },
       {
         "funcion": "public.pantalla_cliente(text)",

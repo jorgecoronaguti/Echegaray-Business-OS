@@ -155,21 +155,16 @@ test('el jefe de obra ve los cuatro destinos de la v4', () => {
 // no llega. Lo que NO puede pasar es que una clave ausente se lea como cero: una campanita apagada
 // se ve idéntica a un área sin pendientes, y ése es el estado que se pierde siempre.
 
-test('armarConteosDeAtencion cuenta con el mismo predicado de la pantalla de Compras', () => {
+test('armarConteosDeAtencion lee los siete conteos que la base ya resolvió', () => {
   const conteos = armarConteosDeAtencion({
-    proveedores_cuit: [{ cuit: '20-1-3' }, { cuit: null }, { cuit: '' }],
-    compras: [
-      { imputacion: 'sin_identificar', tiene_posible_duplicado: false, estado_control: 'sin_revisar' },
-      { imputacion: 'sin_resolver', tiene_posible_duplicado: false, estado_control: 'sin_revisar' },
-      { imputacion: 'obra', tiene_posible_duplicado: true, estado_control: 'sin_revisar' },
-      // Un parecido YA REVISADO no es trabajo pendiente: si contara, el número nunca bajaría.
-      { imputacion: 'obra', tiene_posible_duplicado: true, estado_control: 'en_revision' },
-    ],
+    proveedores_sin_cuit: 2,
+    compras_sin_imputar: 1,
+    compras_sin_resolver: 1,
+    compras_duplicadas: 1,
     nombres_sin_resolver: 2,
     pendientes: 0,
     correcciones: 7,
   })
-  // La cadena vacía también es «sin CUIT»: la decisión está escrita una vez y es `!p.cuit`.
   assert.equal(conteos.proveedoresSinCuit, 2)
   assert.equal(conteos.comprasSinImputar, 1)
   assert.equal(conteos.comprasSinResolver, 1)
@@ -178,6 +173,34 @@ test('armarConteosDeAtencion cuenta con el mismo predicado de la pantalla de Com
   // CERO ES CERO cuando la base lo dijo. Sólo la ausencia es «no sé».
   assert.equal(conteos.pendientes, 0)
   assert.equal(conteos.correcciones, 7)
+})
+
+// ═══ LAS FILAS CRUDAS YA NO SE CUENTAN ACÁ, Y ESO TIENE QUE DOLER SI VUELVEN ═══
+//
+// Hasta 20260911T0020 la RPC transportaba `proveedores_cuit` y `compras` (737 filas, 76 KB por
+// navegación) y el conteo lo hacía `cumpleFiltro`. Si alguien vuelve a mandar las filas SIN cambiar
+// las claves de conteo, la campanita se apagaría entera —siete `null`, «no pude mirar»— en vez de
+// contar de más: la campanita puede quedarse muda, pero no puede afirmar «no hay nada».
+test('las filas crudas de la RPC vieja NO se leen como cero', () => {
+  const conteos = armarConteosDeAtencion({
+    proveedores_cuit: [{ cuit: null }, { cuit: '' }],
+    compras: [{ imputacion: 'sin_identificar', tiene_posible_duplicado: false, estado_control: 'sin_revisar' }],
+  })
+  assert.equal(atencionNoLeida(conteos), true)
+  assert.equal(conteos.comprasSinImputar, null)
+  assert.equal(conteos.proveedoresSinCuit, null)
+})
+
+// Un `count(*)` que llega roto —`NaN`, una cadena, un booleano— no es un número que se pueda dibujar.
+test('un conteo que no es un número finito es «no pude mirar»', () => {
+  const conteos = armarConteosDeAtencion({
+    proveedores_sin_cuit: Number.NaN, compras_sin_imputar: '3', compras_duplicadas: true,
+    compras_sin_resolver: 0, nombres_sin_resolver: 0, pendientes: 0, correcciones: 0,
+  })
+  assert.equal(conteos.proveedoresSinCuit, null)
+  assert.equal(conteos.comprasSinImputar, null)
+  assert.equal(conteos.comprasDuplicadas, null)
+  assert.equal(conteos.comprasSinResolver, 0)
 })
 
 test('un JSON que no llegó es «no pude mirar», nunca cero', () => {

@@ -8,6 +8,15 @@
 // `db-max-rows` sin error, y la quincena en curso —las filas más nuevas— quedaba fuera del corte.
 //
 // Si alguien vuelve a leer `registros_hh` sin paginar, estos tres tests se ponen rojos.
+//
+// ═══ Y LO QUE SE MIDIÓ DESPUÉS (10/09/2026) ═══
+//
+// Esa ventana ancha se pedía con las ONCE columnas del detalle del día y con los dos
+// `obra_canonica(nombre)` / `obra_actividad(nombre)`: 2.069 filas, 903 KB por carga, y 201 llamadas
+// con 15 s de máximo en pg_stat_statements. El costo no eran las filas sino el `left join lateral` a
+// `obra_canonica`, que tiene RLS por `ve_obra(id)` y se evaluaba una vez por fila. Los dos últimos
+// tests fijan la forma que reemplazó eso: DOS ventanas, cada una con sus columnas. Sin ellos, la
+// próxima columna que alguien necesite en el panel vuelve a la ventana ancha y nadie lo nota.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -19,21 +28,29 @@ const Q = { desde: '2026-09-01', hasta: '2026-09-15' } as const
 
 type Fila = Record<string, unknown>
 
+/** Lo que una lectura le pidió a la base: la tabla, las columnas y los filtros de rango. */
+interface Pedido { tabla: string; columnas: string; gte: Record<string, string>; lte: Record<string, string> }
+
 /**
  * Una base de mentira que aplica el TOPE de PostgREST: nunca devuelve más de `maxRows` por viaje,
  * y no lo dice. Es la única forma de reproducir el defecto sin la base real.
+ *
+ * `pedidos` es opcional y anota lo que cada lectura pidió: sin eso no hay forma de probar que la
+ * ventana de los meses NO trae las once columnas, porque el resultado sería el mismo.
  */
-function baseCapada(tablas: Record<string, Fila[]>, maxRows = 1000): SupabaseClient {
+function baseCapada(tablas: Record<string, Fila[]>, maxRows = 1000, pedidos?: Pedido[]): SupabaseClient {
   const from = (tabla: string) => {
     const filtros: ((f: Fila) => boolean)[] = []
+    const pedido: Pedido = { tabla, columnas: '', gte: {}, lte: {} }
+    if (pedidos) pedidos.push(pedido)
     let orden: string | null = null
     let inicio = 0
     let fin = maxRows - 1
     const api = {
-      select: () => api,
+      select: (columnas?: string) => { pedido.columnas = columnas ?? ''; return api },
       eq: (c: string, v: unknown) => { filtros.push((f) => f[c] === v); return api },
-      gte: (c: string, v: string) => { filtros.push((f) => String(f[c]) >= v); return api },
-      lte: (c: string, v: string) => { filtros.push((f) => String(f[c]) <= v); return api },
+      gte: (c: string, v: string) => { pedido.gte[c] = v; filtros.push((f) => String(f[c]) >= v); return api },
+      lte: (c: string, v: string) => { pedido.lte[c] = v; filtros.push((f) => String(f[c]) <= v); return api },
       in: (c: string, v: unknown[]) => { filtros.push((f) => v.includes(f[c])); return api },
       not: (c: string, _op: string, _v: unknown) => { filtros.push((f) => f[c] != null); return api },
       order: (c: string) => { orden = c; return api },
@@ -140,4 +157,52 @@ test('NETO MENSUAL CARGADO NO ES «SIN RETRIBUCIÓN» (mismo criterio que el cie
   assert.equal(resumenDeGrilla(Q, filas).sinRetribucion, 0)
   const suyas = filas.filter((f) => oficina.some((o) => o.id === f.personaId))
   for (const f of suyas) assert.notEqual(f.estado, 'tarifa')
+})
+
+
+// ═══ LAS DOS VENTANAS, FIJADAS ═══
+
+/** Las lecturas de `registros_hh` de una carga, sin las páginas repetidas del mismo pedido. */
+function lecturasDeHH(pedidos: Pedido[]): Pedido[] {
+  const vistas = new Map<string, Pedido>()
+  for (const p of pedidos.filter((x) => x.tabla === 'registros_hh')) {
+    vistas.set(`${p.columnas}|${JSON.stringify(p.gte)}|${JSON.stringify(p.lte)}`, p)
+  }
+  return [...vistas.values()]
+}
+
+test('LA VENTANA DE LOS MESES PIDE TRES COLUMNAS Y NO PISA LA QUINCENA', async () => {
+  const pedidos: Pedido[] = []
+  await getDatosDeLaSolapaHoras(baseCapada(tablasDePrueba(), 1000, pedidos), Q)
+  const lecturas = lecturasDeHH(pedidos)
+  assert.equal(lecturas.length, 2, 'registros_hh tiene que leerse en dos ventanas y sólo dos')
+
+  const meses = lecturas.find((l) => l.columnas === 'persona_id, fecha, horas')
+  assert.ok(meses, 'la ventana de los meses dejó de pedir sólo persona_id, fecha y horas: '
+    + `pidió ${lecturas.map((l) => `«${l.columnas}»`).join(' y ')}`)
+  // NI UN `obra_canonica(...)`: cada nombre de obra es una evaluación de `ve_obra()` POR FILA, y en
+  // esta ventana son 1.671 filas para dibujar cinco barras.
+  assert.doesNotMatch(meses.columnas, /obra_canonica|obra_actividad/)
+  // CINCO MESES CALENDARIO contados desde `hasta`, y cierra el día ANTERIOR a la quincena: lo de la
+  // quincena ya vino en la otra lectura y traerlo dos veces era el motivo de leer una sola ventana.
+  assert.equal(meses.gte.fecha, '2026-05-01')
+  assert.equal(meses.lte.fecha, '2026-08-31')
+
+  const quincena = lecturas.find((l) => l !== meses)!
+  assert.match(quincena.columnas, /obra_canonica\(nombre\)/)
+  assert.match(quincena.columnas, /obra_actividad\(nombre\)/)
+  assert.equal(quincena.gte.fecha, Q.desde)
+  assert.equal(quincena.lte.fecha, Q.hasta)
+})
+
+test('EL GRÁFICO DE CINCO MESES NO PIERDE EL MES EN CURSO', async () => {
+  const datos = await getDatosDeLaSolapaHoras(baseCapada(tablasDePrueba()), Q)
+  const meses = datos.porPersona.p00.mesesHH
+  // Las dos ventanas se unen para el gráfico: si sólo se sumara la ancha, septiembre —que está
+  // partido por el corte— saldría «sin cargar» sobre nueve horas cargadas.
+  assert.deepEqual(meses.map((m) => m.clave), ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09'])
+  assert.equal(meses[4].horas, 9, 'el mes en curso perdió las horas de la quincena')
+  assert.ok((meses[0].horas ?? 0) > 0, 'mayo perdió las 1.400 filas de la ventana ancha')
+  // Un mes sin ninguna hora es `null`, nunca 0: un 0 afirmaría que no trabajó el mes entero.
+  assert.equal(meses[1].horas, null)
 })

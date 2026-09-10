@@ -3,11 +3,25 @@
 // La grilla la arma `grillaHorasQuincena.ts` y el panel de la persona `panelDePersona.ts`, los dos
 // puros y probados sin Supabase. Este archivo sólo decide QUÉ se pide y en cuántos viajes.
 //
-// ═══ UNA SOLA VENTANA ANCHA PARA DOS PREGUNTAS ═══
+// ═══ DOS VENTANAS, CADA UNA CON SUS COLUMNAS (10/09/2026, medido) ═══
 //
-// «HH por mes» del panel necesita cinco meses y la grilla sólo la quincena. Se lee UNA vez el rango
-// ancho y la quincena se recorta en memoria: dos consultas sobre la misma tabla traerían las filas
-// de la quincena dos veces por carga de pantalla.
+// Había UNA sola ventana ancha —cinco meses— con las once columnas y los dos `obra_canonica(nombre)`
+// / `obra_actividad(nombre)` que sólo necesita el detalle de la quincena. Costaba esto, leído en la
+// base real: 2.069 filas y 903 KB por carga, y en pg_stat_statements 201 llamadas con 15 s de
+// máximo. Lo caro no eran las filas: era el `left join lateral` a `obra_canonica`, que tiene RLS por
+// `ve_obra(id)` y por lo tanto se evaluaba una vez POR FILA — 2.069 veces para dibujar 138 renglones.
+//
+// Ahora se piden las dos cosas que de verdad se necesitan, cada una con su forma:
+//
+//   LA QUINCENA         las once columnas y los dos nombres de obra. 138 filas · 57 KB.
+//   LOS CINCO MESES     `persona_id, fecha, horas` y nada más, y sólo hasta el día ANTERIOR a la
+//                       quincena: lo de la quincena ya vino arriba. 1.671 filas · 154 KB, sin un
+//                       solo lateral y por lo tanto sin RLS por fila.
+//
+// Y el gráfico «HH por mes» se AGRUPA EN EL SERVIDOR con `hhPorMes` —la misma función que llamaba el
+// panel—, así que al navegador ya no viajan 2.069 filas: viajan cinco números por persona. La
+// ventana de esos cinco meses la decide `desdeDeHHPorMes`, que vive al lado de `hhPorMes`: lo que se
+// le pide a la base y lo que se dibuja son la misma decisión y no pueden separarse.
 //
 // ═══ UNA FUENTE QUE FALLÓ SE DICE CON SU ERROR ═══
 //
@@ -23,7 +37,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PersonaDeGrilla } from './grillaHorasQuincena.ts'
-import type { CorreccionDeDia, RegistroDelPanel } from './panelDePersona.ts'
+import { desdeDeHHPorMes, hhPorMes } from './panelDePersona.ts'
+import type { CorreccionDeDia, MesDeHH, RegistroDelPanel } from './panelDePersona.ts'
 import type { PresenciaDeQuincena, RegistroDeQuincena } from './liquidacionQuincena.ts'
 import { modalidadDe, type ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
 import { correrQuincena, type Quincena } from './quincena.ts'
@@ -40,8 +55,9 @@ export interface DatosDePersona {
   numeroLegajo: string | null
   valorHora: number | null
   convenio: string | null
-  /** Todas las filas de HH de los últimos cinco meses: el panel recorta lo que necesita. */
-  filasHH: { fecha: string; horas: number | null }[]
+  /** Los cinco meses del gráfico, YA SUMADOS. Antes viajaban las filas de cinco meses de las 17
+   *  personas para que el panel las agrupara en el navegador: 2.069 filas para dibujar 85 barras. */
+  mesesHH: MesDeHH[]
   registrosDeLaQuincena: RegistroDelPanel[]
   adelanto: number | null
 }
@@ -65,6 +81,11 @@ const numeroONulo = (v: unknown): number | null => {
 const fechaCorta = (iso: string | null): string | null =>
   iso == null ? null : `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 
+/** El día de antes, en UTC. La ventana de los meses cierra acá para no traer dos veces la quincena. */
+const diaAnterior = (iso: string): string =>
+  new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) - 1))
+    .toISOString().slice(0, 10)
+
 interface FilaDirectorio {
   id: string; nombre_completo: string; en_la_empresa: boolean | null; categoria: string | null
   especialidad: string | null; puesto: string | null; fecha_ingreso: string | null
@@ -78,6 +99,9 @@ interface FilaPersona {
   domicilio: string | null; contacto_emergencia: string | null; convenio_colectivo: string | null
   modalidad_liquidacion: string | null; notas: string | null
 }
+
+/** Las tres columnas de la ventana de los meses. Todo lo que `hhPorMes` mira, y nada más. */
+interface FilaDeMes { persona_id: string | null; fecha: string; horas: number | string | null }
 
 interface FilaHH {
   id: string; persona_id: string; fecha: string; horas: number | string | null
@@ -94,8 +118,15 @@ interface FilaHH {
 export async function getDatosDeLaSolapaHoras(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<DatosDeLaSolapaHoras> {
+  // EL 1º DEL MES MÁS VIEJO QUE EL GRÁFICO DIBUJA. Era `correrQuincena(q, -9).desde` —diez
+  // quincenas— que no es lo mismo que cinco meses calendario: pedía medio mes de más y el gráfico
+  // igual lo tiraba.
+  const desdeDeLosMeses = desdeDeHHPorMes(q.hasta)
+  // LAS CORRECCIONES NO CAMBIAN DE VENTANA. `corregido_en` es CUÁNDO alguien corrigió, no qué día
+  // corrigió, y esa lectura ya era chica: tocarla acá sería un cambio de criterio colado dentro de
+  // un cambio de performance.
   const desdeAncho = correrQuincena(q, -9).desde
-  const [directorio, personas, tarifas, hh, presencias, legajos, adelantos, cabeceras, correcciones] =
+  const [directorio, personas, tarifas, hh, mensuales, presencias, legajos, adelantos, cabeceras, correcciones] =
     await Promise.all([
       supabase.from('persona_directorio').select(
         'id, nombre_completo, en_la_empresa, categoria, especialidad, puesto, fecha_ingreso, ' +
@@ -115,11 +146,22 @@ export async function getDatosDeLaSolapaHoras(
       // valor hora— salía «sin retribución cargada» y trababa el cierre desde esta pantalla.
       supabase.from('persona_tarifa')
         .select('persona_id, desde, valor_hora, neto_mensual').lte('desde', q.hasta),
+      // LA QUINCENA, con todo lo que el detalle del día necesita: quién cargó, cuándo, en qué obra y
+      // en qué actividad. Los dos nombres de obra viajan por `left join lateral`, que con la RLS de
+      // `obra_canonica` cuesta una evaluación por fila: acá son 138, antes eran 2.069.
       leerRegistrosHH(supabase, {
-        desde: desdeAncho,
+        desde: q.desde,
         hasta: q.hasta,
         columnas: 'id, persona_id, fecha, horas, tipo_hora, notas, fuente_legacy, created_at, '
           + 'creado_por, obra_canonica(nombre), obra_actividad(nombre)',
+      }),
+      // LOS MESES DEL GRÁFICO, hasta el día ANTERIOR a la quincena. Tres columnas y ningún lateral:
+      // `hhPorMes` suma `horas` por mes y no mira nada más. Pedirle acá el nombre de la obra sería
+      // pagar 1.671 evaluaciones de `ve_obra()` para un gráfico de cinco barras.
+      leerRegistrosHH(supabase, {
+        desde: desdeDeLosMeses,
+        hasta: diaAnterior(q.desde),
+        columnas: 'persona_id, fecha, horas',
       }),
       supabase.from('asistencia_dia').select('persona_id, fecha, estado, motivo')
         .gte('fecha', q.desde).lte('fecha', q.hasta),
@@ -142,12 +184,28 @@ export async function getDatosDeLaSolapaHoras(
   anotar('el legajo', personas.error)
   anotar('las tarifas', tarifas.error)
   anotar('las horas', hh.error == null ? null : { message: hh.error })
+  // UNA LECTURA QUE FALLÓ NO ES UN GRÁFICO VACÍO: sin los meses, `hhPorMes` dibujaría «sin cargar»
+  // en las cinco barras de las diecisiete personas, que es una afirmación sobre sus legajos.
+  anotar('las horas de los meses anteriores', mensuales.error == null ? null : { message: mensuales.error })
   anotar('la presencia declarada', presencias.error)
   anotar('los adelantos', adelantos.error)
   anotar('el estado de la quincena', cabeceras.error)
   anotar('las correcciones', correcciones.error)
 
   const filasHH = (hh.data ?? []) as unknown as FilaHH[]
+  // LAS DOS VENTANAS SE UNEN PARA EL GRÁFICO Y SÓLO PARA EL GRÁFICO: el mes en curso está partido
+  // entre las dos lecturas —los meses llegan hasta el día ANTERIOR a la quincena— y sumar una sola
+  // dibujaría la barra del mes actual a la mitad.
+  const mesesDe = new Map<string, { fecha: string; horas: number | null }[]>()
+  const anotarMes = (personaId: string | null, fecha: string, horas: unknown) => {
+    if (!personaId) return
+    const fila = { fecha, horas: numeroONulo(horas) }
+    const suyas = mesesDe.get(personaId)
+    if (suyas) suyas.push(fila)
+    else mesesDe.set(personaId, [fila])
+  }
+  for (const f of (mensuales.data ?? []) as FilaDeMes[]) anotarMes(f.persona_id, f.fecha, f.horas)
+  for (const f of filasHH) anotarMes(f.persona_id, f.fecha, f.horas)
   const nombres = await nombresDePerfil(supabase, [
     ...filasHH.map((f) => f.creado_por),
     ...((correcciones.data ?? []) as { autor: string | null }[]).map((c) => c.autor),
@@ -169,7 +227,11 @@ export async function getDatosDeLaSolapaHoras(
     const suyas = filasHH.filter((f) => f.persona_id === p.id)
     const cuil = cuilDe.get(p.id) ?? legajoDe.get(p.id)?.cuil ?? null
     porPersona[p.id] = armarPersona(p, legajoDe.get(p.id), tarifaDe.get(p.id)?.valorHora ?? null, suyas, q, nombres,
-      cuil ? (adelantoDe.get(cuil) ?? null) : null)
+      cuil ? (adelantoDe.get(cuil) ?? null) : null,
+      // SIN LECTURA NO HAY GRÁFICO. `hhPorMes([])` devuelve cinco `null`, que el panel escribe «sin
+      // cargar» — y eso es correcto sólo cuando la lectura SÍ se hizo. El error ya está anotado
+      // arriba y la pantalla lo muestra; acá el gráfico queda como lo que es: sin dato.
+      hhPorMes(mesesDe.get(p.id) ?? [], q.hasta))
   }
 
   return {
@@ -258,6 +320,7 @@ function agruparCorrecciones(
 function armarPersona(
   p: FilaDirectorio, l: FilaPersona | undefined, valorHora: number | null,
   suyas: FilaHH[], q: Quincena, nombres: Map<string, string>, adelanto: number | null,
+  mesesHH: MesDeHH[],
 ): DatosDePersona {
   const convenio = l?.convenio_colectivo ?? null
   return {
@@ -298,7 +361,7 @@ function armarPersona(
       { rotulo: 'Rol', valor: p.rol_en_obra },
       { rotulo: 'Desde', valor: fechaCorta(p.asignada_desde), mono: true },
     ],
-    filasHH: suyas.map((f) => ({ fecha: f.fecha, horas: numeroONulo(f.horas) })),
+    mesesHH,
     registrosDeLaQuincena: suyas
       .filter((f) => f.fecha >= q.desde && f.fecha <= q.hasta)
       .map((f) => ({

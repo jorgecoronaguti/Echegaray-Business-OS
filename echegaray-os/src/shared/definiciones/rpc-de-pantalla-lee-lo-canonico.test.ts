@@ -58,12 +58,15 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
     ],
   },
   {
-    archivo: 'supabase/migrations/20260911T0020_campanita_una_consulta.sql',
+    // 20260911T0130 reemplazó a 20260911T0020: la campanita dejó de transportar 737 filas por
+    // navegación y cuenta en la base con `comprobante_cumple_filtro()`, el lado SQL de PREDICADO.
+    // Auditar la versión vieja sería auditar lo que ya no corre.
+    archivo: 'supabase/migrations/20260911T0130_la_campanita_cuenta_en_la_base.sql',
     funcion: 'campanita_atencion',
     lee: [
       'perfiles',                       // decide qué chips existen para este rol
-      'proveedores',                    // los CUIT: quién cuenta «sin CUIT» es TypeScript
-      'comprobante_compra',             // las tres columnas de PREDICADO, sin filtrar
+      'proveedores',                    // los CUIT: «sin CUIT» es la misma decisión que `!p.cuit`
+      'comprobante_compra',             // las tres columnas que PREDICADO mira, ya contadas
       'proveedor_nombre_pendiente',
       'imputacion_pendiente',
       'correccion_asistencia_bandeja',
@@ -103,7 +106,15 @@ const RETIRADAS = [
   { patron: /cliente_panel\.(contratado|costo_real|vencido|saldo)/, porque: 'cliente_panel dejó de publicar economía (20260910T2110)' },
 ]
 
-/** Agregaciones: la RPC transporta filas, no fabrica números. */
+/**
+ * Agregaciones: la RPC transporta filas, no fabrica números.
+ *
+ * `count(` NO está en la lista, y es una decisión: contar cuántas filas cumplen un `where` no
+ * inventa un número, sólo evita traerlas. Lo que sí sería una definición nueva es SUMAR importes —un
+ * `sum(imp_total)` acá adentro podría discrepar con el Sheet sin que nada lo notara—. Quien cuida
+ * que el `where` de un `count` sea el criterio canónico es el test de paridad de cada RPC
+ * (`orquestador/lib/campanita-rpc.pg.test.mjs` compara los seis filtros contra `PREDICADO`).
+ */
 const AGREGA = /\b(sum|avg|min|max)\s*\(/i
 
 /** `from public.x` / `join public.x` → las relaciones que el cuerpo lee. */
