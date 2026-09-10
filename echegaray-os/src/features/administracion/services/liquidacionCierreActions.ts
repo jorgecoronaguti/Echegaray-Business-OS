@@ -130,6 +130,11 @@ async function escribirFoto(
 /**
  * EL SELLO, CON LA SESIÓN DEL QUE CIERRA. Una fila por persona porque el valor es distinto en cada
  * una, y con `.select()` en cada una: cero filas devueltas es la policy rechazando en silencio.
+ *
+ * `valor_hora` viaja NULL en las líneas que no se liquidan por hora (Oficina cobra un neto mensual,
+ * la liquidación final sale del recibo). No es un hueco: `liquidacion_linea` no tiene columna de
+ * neto mensual y ese importe ya quedó escrito en `cobra` por `escribirFoto`. Lo que se congela de
+ * esas líneas es categoría, convenio y `sellado_en`.
  */
 async function escribirSello(
   supabase: Cliente, liquidacionId: string, selladas: readonly LineaSellada[],
@@ -146,7 +151,12 @@ async function escribirSello(
     if (error) return { error: error.message }
     const fila = (data ?? [])[0] as { valor_hora: number | string | null } | undefined
     if (!fila) return { error: `La base no selló la línea de ${s.persona_id} (permiso).` }
-    if (Number(fila.valor_hora) !== Number(s.valor_hora)) {
+    // NULL SE VERIFICA CONTRA NULL, no contra `Number(null)`: `Number(null)` es 0, así que la
+    // comparación numérica daría por buena una línea de Oficina que la base hubiera sellado en $ 0.
+    const igual = s.valor_hora == null
+      ? fila.valor_hora == null
+      : Number(fila.valor_hora) === Number(s.valor_hora)
+    if (!igual) {
       return { error: `La base selló ${fila.valor_hora} y yo mandé ${s.valor_hora}.` }
     }
   }
