@@ -5,7 +5,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   filaSheetDe, normalizarTexto, resolverCliente, certificacionDeConcepto, clasificar,
-  estadoDePago, estadoDeCertificado, apto_para_portal, proyectar, estadoAGuardar,
+  estadoDePago, estadoDeCertificado, apto_para_portal, proyectar, estadoAGuardar, huellaDe,
 } from './cobranzas-a-cliente.mjs'
 
 const ARCOR = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -226,4 +226,15 @@ test('los estados que declara el Sheet SÍ se refrescan entre corridas', () => {
   assert.equal(estadoAGuardar('vencido', 'emitido'), 'vencido', 'venció: el reclamo es real')
   assert.equal(estadoAGuardar('emitido', 'vencido'), 'emitido', 'le corrieron la fecha en la columna Q')
   assert.equal(estadoAGuardar('emitido', null), 'emitido', 'fila nueva: no hay nada que respetar')
+})
+
+test('la huella del bisturí lleva el monto NATIVO: la celda J del Sheet está en la moneda de la fila', () => {
+  // Desde que la réplica valúa los dólares, `monto_neto` está en pesos. Si la huella viajara valuada,
+  // la fila 62 de Quattropani (U$S 15.400) no coincidiría nunca con su propia celda J y el worker
+  // rechazaría todo cambio sobre ella con «huella_distinta».
+  const h = huellaDe({ numero_comprobante: '01-000048', monto_neto: 15_400 * 1512.262, monto_neto_origen: 15_400 })
+  assert.equal(h.huella_monto, 15_400)
+  // Y la fila en pesos —que no tiene origen distinto— sigue igual que siempre.
+  assert.equal(huellaDe({ monto_neto: 5_424_174, monto_neto_origen: 5_424_174 }).huella_monto, 5_424_174)
+  assert.equal(huellaDe({ monto_neto: 5_424_174 }).huella_monto, 5_424_174, 'sin la migración aplicada, el valuado')
 })
