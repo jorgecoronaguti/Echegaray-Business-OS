@@ -81,3 +81,46 @@ test('una consulta sin resultados devuelve [] y no pide una segunda página', as
   assert.deepEqual(r, [])
   assert.equal(pedidos.length, 1)
 })
+
+// ── EL 403 QUE ES UNA CUOTA ─────────────────────────────────────────────────────────────────────
+//
+// MEDIDO el 10/09/2026 recorriendo rodrigo@ecsas.com.ar: al pasarse del límite por minuto Gmail NO
+// contesta 429, contesta **403** con «Quota exceeded for quota metric 'Total Query Cost' and limit
+// 'Units per minute per user'». El reintento sólo miraba el 429, así que ese 403 se trataba como
+// «no tenés permiso» y ocho de las nueve consultas de la casilla devolvieron 0 — indistinguible de
+// una casilla vacía.
+
+/** Falla `veces` veces con el 403 de cuota y después contesta bien. `clone()` porque así es una
+ *  Response real, y es de donde el reintento lee el cuerpo sin consumirlo. */
+function gmailConCuota({ veces }) {
+  let fallos = 0
+  const cuerpo = JSON.stringify({ error: { code: 403, message: "Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user'" } })
+  return async (url) => {
+    if (fallos < veces) {
+      fallos++
+      const res = { ok: false, status: 403, text: async () => cuerpo, json: async () => JSON.parse(cuerpo) }
+      res.clone = () => ({ text: async () => cuerpo })
+      return res
+    }
+    if (new URL(url).pathname.endsWith('/messages')) return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'm1' }] }) }
+    return { ok: true, status: 200, json: async () => ({ payload: { headers: [] } }) }
+  }
+}
+
+test('un 403 que dice «Quota exceeded» se reintenta: no es falta de permiso', async () => {
+  const r = await cliente(gmailConCuota({ veces: 1 })).gmailSearch('from:juanmessina.com.ar', { max: 10 })
+  assert.equal(r.length, 1, 'la consulta devolvió 0 y la casilla parecía vacía')
+})
+
+test('un 403 SIN «quota» sigue siendo permanente: no se reintenta cinco veces una falta de permiso', async () => {
+  const cuerpo = JSON.stringify({ error: { code: 403, message: 'Request had insufficient authentication scopes.' } })
+  let llamadas = 0
+  const fetchImpl = async () => {
+    llamadas++
+    const res = { ok: false, status: 403, text: async () => cuerpo, json: async () => JSON.parse(cuerpo) }
+    res.clone = () => ({ text: async () => cuerpo })
+    return res
+  }
+  await assert.rejects(() => cliente(fetchImpl).gmailSearch('x', { max: 10 }), /403/)
+  assert.equal(llamadas, 1, 'esperar 89 segundos por un scope que falta no lo arregla')
+})

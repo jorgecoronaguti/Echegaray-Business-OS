@@ -87,6 +87,11 @@ async function textoDelPdf(bytes, mime, nombre) {
 const fmt = (v, n) => String(v ?? '').replace(/\s+/g, ' ').slice(0, n).padEnd(n)
 const avisar = (m) => console.log(m)
 
+// LO QUE NO SE PUDO MIRAR SE DECLARA. Una consulta que falló y devolvió 0 se ve igual que una
+// casilla sin órdenes, y ésa es la diferencia entre «no hay» y «no pude». Se junta acá y se imprime
+// al final, al lado del resumen, para que nadie lea el conteo como si fuera completo.
+const consultasRotas = []
+
 /** Los mensajes con adjunto de UNA casilla, sin repetir, con el cliente que los puede releer. */
 async function mensajesDe(casilla) {
   if (!await tieneToken(casilla)) {
@@ -105,7 +110,8 @@ async function mensajesDe(casilla) {
       hallados = r.length
       for (const m of r) if (!mensajes.has(m.id)) mensajes.set(m.id, { ...m, casilla, cliente: g })
     } catch (e) {
-      avisar(`  ✗ ${casilla}: «${q}» falló — ${e.message}`)
+      consultasRotas.push({ casilla, q, motivo: String(e.message).replace(/\s+/g, ' ').slice(0, 120) })
+      avisar(`  ✗ ${casilla}: «${q}» falló — ${String(e.message).replace(/\s+/g, ' ').slice(0, 120)}`)
     }
     avisar(`  · ${casilla} · ${fmt(q, 62)} ${String(hallados).padStart(5)}`)
   }
@@ -137,15 +143,16 @@ async function main() {
   let leidos = 0
   for (const m of mensajes) {
     const g = m.cliente
-    let adjuntos = []
-    try { adjuntos = await g.gmailAttachments(m.id) } catch (e) { descartes.push({ ...m, adjunto: '(lista)', motivo: `no se pudieron listar los adjuntos: ${e.message}` }); continue }
+    // UNA sola lectura del mensaje para el cuerpo Y los adjuntos: pedir `format=full` dos veces
+    // seguidas del mismo mail duplicaba la cuota, y Gmail la corta con un 403 que parece un
+    // problema de permisos.
+    let adjuntos = []; let cuerpo = ''
+    try { ({ adjuntos, text: cuerpo } = await g.gmailFull(m.id, { maxChars: 3000 })) }
+    catch (e) { descartes.push({ ...m, adjunto: '(mensaje)', motivo: `no se pudo leer el mensaje: ${e.message}` }); continue }
     // Las partes `inline` son la firma con el logo, no un adjunto. Se descartan por tamaño y por
     // marca a la vez: un logo pesa poco y una orden de compra nunca pesa 4 kB.
     const reales = adjuntos.filter((a) => !(a.inline && (a.bytes ?? 0) < 40_000))
     if (!reales.length) continue
-
-    let cuerpo = ''
-    try { ({ text: cuerpo } = await g.gmailGet(m.id, { maxChars: 3000 })) } catch { /* el cuerpo es opcional */ }
 
     for (const a of reales) {
       // NO SE BAJA LO QUE NO PUEDE SER UNA ORDEN. Un PDF hay que abrirlo —el nombre puede ser
@@ -222,6 +229,10 @@ async function main() {
   console.log('\nPOR VÍA DE ATRIBUCIÓN:')
   for (const [k, n] of cuenta((f) => f.atribucion)) console.log(`  ${fmt(k, 30)} ${String(n).padStart(4)}`)
 
+  if (consultasRotas.length) {
+    console.log(`\n⚠ ESTE CONTEO ESTÁ INCOMPLETO: ${consultasRotas.length} consultas fallaron y devolvieron 0 sin haber podido mirar.`)
+    for (const r of consultasRotas) console.log(`  · ${fmt(r.casilla, 22)} ${fmt(r.q, 62)} ${r.motivo}`)
+  }
   if (sinAlta.length) {
     console.log('\nRECONOCIDOS PERO SIN ALTA EN public.clientes (no se guardan; darlos de alta es del dueño):')
     const porCliente = new Map()

@@ -359,11 +359,27 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   // pestaña al medio), que nunca se había aplicado a la lectura.
   //
   // Si Google dice cuánto esperar (Retry-After), se le hace caso: sabe mejor que nosotros.
+  //
+  // ═══ GMAIL DISFRAZA SU CUOTA DE 403 ═══
+  //
+  // MEDIDO el 10/09/2026 recorriendo rodrigo@ecsas.com.ar: Gmail no contesta 429 cuando se pasa el
+  // límite por minuto, contesta **403** con «Quota exceeded for quota metric 'Total Query Cost' and
+  // limit 'Units per minute per user'». Un 403 acá se leía como «no tenés permiso» —permanente— y
+  // ocho de las nueve consultas de una casilla devolvían 0 resultados sin que nada estuviera roto.
+  // El síntoma era idéntico al de una casilla vacía, que es el peor modo de falla posible.
+  //
+  // Se distingue por el CUERPO, no por el status: un 403 real (sin permiso sobre el archivo) no
+  // dice «quota». El cuerpo se lee sobre un `clone()` para no consumirlo — quien llama todavía lo
+  // necesita para armar el mensaje de error.
+  async function esCuotaDisfrazada(res) {
+    if (res.status !== 403 || typeof res.clone !== 'function') return false
+    try { return /quota exceeded|ratelimitexceeded|userratelimitexceeded/i.test(await res.clone().text()) } catch { return false }
+  }
   async function withRetry(doer) {
     for (let intento = 0; ; intento++) {
       const res = await doer()
       if (res.ok || res.status === 204) return res
-      const esCuota = res.status === 429
+      const esCuota = res.status === 429 || await esCuotaDisfrazada(res)
       const esperas = esCuota ? ESPERAS_429 : ESPERAS_5XX
       const transitorio = esCuota || (res.status >= 500 && res.status < 600)
       if (!transitorio || intento >= esperas.length) return res
@@ -644,17 +660,44 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       }
       return out
     },
-    /** Texto plano de un mensaje por id (para leer el cuerpo). Acotado. */
-    async gmailGet(id, { maxChars = 4000 } = {}) {
+    /**
+     * EL MENSAJE ENTERO, EN UNA SOLA LLAMADA: el cuerpo Y la lista de adjuntos.
+     *
+     * `gmailGet` y `gmailAttachments` pedían el MISMO `format=full` del MISMO mensaje, uno detrás
+     * del otro: dos descargas del mail completo para leer dos partes del mismo objeto. Con dos
+     * casillas y cinco años de correo eso duplica la cuota gastada, y Gmail la corta por minuto —
+     * devolviendo un 403 que parece un problema de permisos. Quien necesita las dos cosas pide
+     * ésta; los dos métodos viejos siguen existiendo y la usan.
+     */
+    async gmailFull(id, { maxChars = 4000 } = {}) {
       const msg = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`)
       const parts = []
+      const adjuntos = []
       const walk = (p) => {
         if (!p) return
         if (p.mimeType === 'text/plain' && p.body?.data) parts.push(Buffer.from(p.body.data, 'base64').toString('utf8'))
+        // Un adjunto real tiene `attachmentId`. Las partes inline (la firma con el logo) también,
+        // así que se informa `inline` y decide quien llama: descartarlas acá escondería un adjunto
+        // legítimo que el cliente de mail marcó inline.
+        if (p.body?.attachmentId && p.filename) {
+          const h = Object.fromEntries((p.headers || []).map((x) => [x.name.toLowerCase(), x.value]))
+          adjuntos.push({
+            attachmentId: p.body.attachmentId,
+            nombre: p.filename,
+            mime: p.mimeType || '',
+            bytes: p.body.size ?? null,
+            inline: String(h['content-disposition'] || '').toLowerCase().startsWith('inline'),
+          })
+        }
         for (const c of p.parts || []) walk(c)
       }
       walk(msg.payload)
-      return { id, snippet: msg.snippet || '', text: parts.join('\n').slice(0, maxChars) }
+      return { id, snippet: msg.snippet || '', text: parts.join('\n').slice(0, maxChars), adjuntos }
+    },
+    /** Texto plano de un mensaje por id (para leer el cuerpo). Acotado. */
+    async gmailGet(id, { maxChars = 4000 } = {}) {
+      const { snippet, text } = await cliente.gmailFull(id, { maxChars })
+      return { id, snippet, text }
     },
     /**
      * LOS ADJUNTOS DE UN MAIL: primero la lista, después los bytes.
@@ -666,27 +709,8 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      * bajarlos todos para mirar la lista sería traer megas para leer nombres.
      */
     async gmailAttachments(id) {
-      const msg = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`)
-      const out = []
-      const walk = (p) => {
-        if (!p) return
-        // Un adjunto real tiene `attachmentId`. Las partes inline (la firma con el logo) también,
-        // así que se informa `inline` y decide quien llama: descartarlas acá escondería un adjunto
-        // legítimo que el cliente de mail marcó inline.
-        if (p.body?.attachmentId && p.filename) {
-          const h = Object.fromEntries((p.headers || []).map((x) => [x.name.toLowerCase(), x.value]))
-          out.push({
-            attachmentId: p.body.attachmentId,
-            nombre: p.filename,
-            mime: p.mimeType || '',
-            bytes: p.body.size ?? null,
-            inline: String(h['content-disposition'] || '').toLowerCase().startsWith('inline'),
-          })
-        }
-        for (const c of p.parts || []) walk(c)
-      }
-      walk(msg.payload)
-      return out
+      // `cliente` y no `this`: así el método sigue funcionando si alguien lo destructura.
+      return (await cliente.gmailFull(id)).adjuntos
     },
     /** Los bytes de UN adjunto. Devuelve Buffer; el llamador decide dónde lo pone. */
     async gmailAttachmentBytes(id, attachmentId) {
