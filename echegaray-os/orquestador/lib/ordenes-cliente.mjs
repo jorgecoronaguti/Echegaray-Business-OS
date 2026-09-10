@@ -11,23 +11,8 @@
 // sólo hace entrada/salida. El motivo es el de siempre: lo que decide tiene que poder dar rojo en
 // `node --test` sin una casilla de correo del otro lado.
 
-// ── QUIÉN ES CLIENTE, Y POR QUÉ NO ALCANZA EL DOMINIO ───────────────────────────────────────────
-//
-// El remitente NO identifica al cliente por sí solo: la mayoría de estas órdenes llegan REENVIADAS
-// desde adentro (rodrigo@ecsas.com.ar reenvía la notificación de Messina). Por eso la resolución
-// mira, en orden: el dominio del remitente, y si ese dominio es de la propia empresa, el texto del
-// asunto/cuerpo. Un reenvío interno sin ninguna marca de cliente queda SIN CLIENTE, no adivinado.
-export const CLIENTES = Object.freeze([
-  { clave: 'messina', nombre: 'Messina', dominios: ['juanmessina.com.ar'], textos: ['messina', 'juan messina', 'bsa'] },
-  { clave: 'arcor', nombre: 'ARCOR', dominios: ['arcor.com', 'arcor.com.ar'], textos: ['arcor'] },
-  { clave: 'quattropani', nombre: 'Franco Quattropani', dominios: [], textos: ['quattropani'] },
-  { clave: 'la-estrella', nombre: 'La Estrella', dominios: ['alimentosdelsur.com.ar'], textos: ['la estrella', 'alimentos del sur', 'palitos'] },
-  { clave: 'san-francisco', nombre: 'Javier Sánchez - San Francisco - IMOTOR', dominios: ['imotor.com.ar'], textos: ['imotor', 'san francisco', 'javier sanchez', 'javier sánchez'] },
-  { clave: 'mb', nombre: 'MB Emprendimientos', dominios: [], textos: ['mb emprendimientos'] },
-])
-
-/** Dominios propios: un remitente de acá NO es el cliente, es quien reenvió. */
-export const DOMINIOS_PROPIOS = Object.freeze(['ecsas.com.ar'])
+// EL CATÁLOGO DE CLIENTES (dominios, textos, patrones de archivo) y la resolución de «de quién es
+// este papel» VIVEN EN `ordenes-atribucion.mjs`. Acá quedó lo que el documento DICE de sí mismo.
 
 /** Minúsculas, sin tildes, espacios colapsados. La normalización de todo lo que se compara acá. */
 export function norm(texto) {
@@ -48,40 +33,39 @@ export function dominioDe(from) {
   return i < 0 ? '' : mail.slice(i + 1)
 }
 
-/**
- * De qué CLIENTE es este mail. `{ clave, nombre, via }` o null.
- * `via` dice de dónde salió la atribución: 'remitente' (el dominio lo prueba) o 'texto' (se dedujo
- * del asunto/cuerpo de un reenvío interno). No es cosmético: un reenvío mal titulado es la única
- * forma de que esto se equivoque, y quien lea la tabla tiene que poder distinguirlo.
- */
-export function clienteDelMail({ from = '', asunto = '', cuerpo = '' } = {}) {
-  const dom = dominioDe(from)
-  if (dom) {
-    for (const c of CLIENTES) {
-      if (c.dominios.some((d) => dom === d || dom.endsWith('.' + d))) return { clave: c.clave, nombre: c.nombre, via: 'remitente' }
-    }
-  }
-  const propio = DOMINIOS_PROPIOS.some((d) => dom === d || dom.endsWith('.' + d))
-  const heno = norm(`${asunto} ${cuerpo}`)
-  // Sólo se cae al texto cuando el remitente es de casa o desconocido. Si el dominio es de un
-  // tercero identificado (un proveedor), que el cuerpo nombre a Messina no lo vuelve de Messina.
-  if (propio || !dom) {
-    for (const c of CLIENTES) {
-      if (c.textos.some((t) => heno.includes(norm(t)))) return { clave: c.clave, nombre: c.nombre, via: 'texto' }
-    }
-  }
-  return null
-}
-
 // ── QUÉ CLASE DE PAPEL ES ───────────────────────────────────────────────────────────────────────
 //
 // El orden importa y no es alfabético: «orden de pago» gana sobre «orden de compra» porque la
 // notificación de pago de Messina cita la OC que está pagando, y clasificarla como OC duplicaría
 // la compra. Y las dos ganan sobre la sigla suelta: «OC» aparece dentro de palabras y de números
 // de comprobante, así que la sigla exige borde de palabra y un dígito cerca.
+//
+// ═══ LA RETENCIÓN NO ES UNA ORDEN DE PAGO, Y POR ESO VA PRIMERA ═══
+//
+// MEDIDO el 10/09/2026 sobre `cliente_orden`: la OP 4865 y la OP 5156 tienen DOS filas cada una. La
+// segunda de cada par es el certificado de retención que Messina manda junto con el pago
+// (`O_P_0000000004865_G00002208.pdf`): cita el número de la orden, no trae importe propio, y la
+// clasificación lo leía como la misma orden de pago. El resultado era una cartera que declaraba dos
+// pagos donde hubo uno — un error sobre plata cobrada, no un detalle de archivo.
+//
+// Un certificado de retención es un comprobante FISCAL (SICORE, ganancias, IVA, IIBB): prueba un
+// impuesto retenido, no una promesa de cobro. Tiene su propio tipo, su propio número, y nunca suma
+// en la columna de lo que el cliente ordenó pagar.
+//
+// LAS SEÑALES SON FUERTES A PROPÓSITO. Una orden de pago LISTA sus retenciones en el detalle, así
+// que la palabra «retención» suelta no alcanza y clasificarla por ella daría vuelta el error: todas
+// las OP pasarían a ser retenciones. Se exige el rótulo del certificado, el régimen, o la marca
+// `_G<número>` del nombre con que el sistema de Messina los emite.
 const REGLAS_TIPO = Object.freeze([
+  { tipo: 'retencion', re: /_g\d{5,}(?:\.[a-z0-9]+)?$/, fuentes: ['nombre'] },
+  { tipo: 'retencion', re: /(?:certificado|constancia|comprobante)\s+(?:de\s+)?retencion|\bsicore\b|regimen de retencion|retenciones? sufridas?/ },
   { tipo: 'orden_pago', re: /orden(?:es)? de pago|\bo\/p\b|notificacion de pago|payment order/ },
-  { tipo: 'orden_compra', re: /orden(?:es)? de compra|\bo\/c\b|purchase order|purchase_order/ },
+  { tipo: 'orden_compra', re: /orden(?:es)? de compra|\bo\/c\b|purchase order|purchase_order|generacion oc/ },
+  // Los dos nombres de archivo con los que ARCOR emite. No traen ninguna palabra: «6A_50123456.PDF»
+  // es una orden de compra y «00001_5000123_OP.PDF» una orden de pago, y sin esto quedaban en
+  // `otro` aunque el asunto del mail lo dijera en otro idioma.
+  { tipo: 'orden_compra', re: /^6a_\d{6,}\.pdf$/, fuentes: ['nombre'] },
+  { tipo: 'orden_pago', re: /^\d{4,6}_\d{3,}_op\.pdf$/, fuentes: ['nombre'] },
   { tipo: 'orden_pago', re: /\bop[\s._#:-]{0,2}\d{2,}/ },
   { tipo: 'orden_compra', re: /\boc[\s._#:-]{0,2}\d{2,}/ },
 ])
@@ -90,6 +74,9 @@ const REGLAS_TIPO = Object.freeze([
  * Clasifica UN adjunto. Devuelve { tipo, señal } donde señal dice qué texto lo decidió.
  * `otro` es una respuesta legítima: un adjunto que llegó en el mismo mail y no es ninguna de las
  * dos cosas (el plano, la factura) no se fuerza a una categoría para que la tabla quede llena.
+ *
+ * Una regla puede acotar de qué FUENTES acepta evidencia. Las que miran la forma del nombre de
+ * archivo lo hacen: `_G00002208` dentro del texto de un PDF cualquiera no prueba nada.
  */
 export function clasificarAdjunto({ asunto = '', nombreArchivo = '', cuerpo = '', textoPdf = '' } = {}) {
   // El nombre del archivo y el asunto pesan más que el cuerpo: el cuerpo de un reenvío arrastra
@@ -100,12 +87,31 @@ export function clasificarAdjunto({ asunto = '', nombreArchivo = '', cuerpo = ''
     ['pdf', norm(textoPdf).slice(0, 1200)],
     ['cuerpo', norm(cuerpo).slice(0, 1200)],
   ]
-  for (const { tipo, re } of REGLAS_TIPO) {
+  for (const regla of REGLAS_TIPO) {
     for (const [fuente, texto] of fuentes) {
-      if (texto && re.test(texto)) return { tipo, senal: fuente }
+      if (regla.fuentes && !regla.fuentes.includes(fuente)) continue
+      if (texto && regla.re.test(texto)) return { tipo: regla.tipo, senal: fuente }
     }
   }
   return { tipo: 'otro', senal: null }
+}
+
+/**
+ * EL NÚMERO DE UN CERTIFICADO DE RETENCIÓN ES EL SUYO, NO EL DE LA ORDEN QUE ACOMPAÑA.
+ *
+ * `O_P_0000000004865_G00002208.pdf` nombra dos cosas: la orden de pago 4865 y el certificado
+ * G00002208. `extraerNumero` devolvía la primera, y por eso el certificado quedaba guardado con el
+ * número de la orden y la pantalla mostraba la OP 4865 dos veces. El certificado se identifica por
+ * su propio comprobante; sin él, dos papeles distintos comparten identidad.
+ *
+ * Devuelve `null` cuando el papel no declara su número: el tipo sigue siendo `retencion` y la fila
+ * queda sin número, que es la verdad.
+ */
+export function numeroDeRetencion({ nombreArchivo = '', textoPdf = '' } = {}) {
+  const delNombre = String(nombreArchivo).match(/_g(\d{5,})(?:\.[a-z0-9]+)?$/i)
+  if (delNombre) return `G${delNombre[1]}`
+  const delTexto = String(textoPdf).match(/(?:certificado|comprobante|constancia)\s*(?:n[°ºro.]*)?\s*[:#-]?\s*(\d{6,})/i)
+  return delTexto ? delTexto[1] : null
 }
 
 // ── EL NÚMERO, LA FECHA Y EL IMPORTE ────────────────────────────────────────────────────────────
@@ -432,7 +438,16 @@ export function extraerFechaDeOrden(texto, { hoy = new Date() } = {}) {
     const m = t.match(re)
     if (m) candidatas.push(m[1])
   }
-  candidatas.push(t)
+  // A CIEGAS, PERO TODAS LAS FECHAS DEL PAPEL Y EN ORDEN, no sólo la primera.
+  //
+  // Hasta el 10/09/2026 acá se empujaba el texto entero y `extraerFecha` devolvía su PRIMER match:
+  // si esa fecha caía fuera de la ventana —«Fecha Inicio Act. 22-08-86»— la función devolvía null
+  // aunque la fecha buena estuviera tres palabras más adelante. Que las cinco OC del bucket se
+  // salvaran era un accidente del orden en que ese PDF derrama el encabezado, y el orden en que un
+  // PDF derrama su encabezado no es un criterio: el mismo emisor con otra plantilla dejaba la orden
+  // sin fecha. Los espacios se sacan antes porque Messina imprime «11 /08 /2026».
+  const plano = t.replace(/\s*([/-])\s*/g, '$1')
+  for (const m of plano.matchAll(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g)) candidatas.push(m[0])
   const anio = hoy.getFullYear()
   for (const c of candidatas) {
     const iso = extraerFecha(String(c).replace(/\s*([/-])\s*/g, '$1'))
@@ -463,7 +478,7 @@ export function fechaImposible(fecha, { hoy = new Date() } = {}) {
 // LA EVIDENCIA QUE MANDA ES EL ENCABEZADO DEL PROPIO PDF, no el nombre ni la cita: si el documento
 // dice «FACTURA A» y trae su «Comp. Nro», ES esa factura. Sigue siendo evidencia de la obra —cita
 // la OC y describe el trabajo—, por eso no se descarta: cambia de clase.
-export const TIPOS = Object.freeze(['orden_compra', 'orden_pago', 'factura', 'otro'])
+export const TIPOS = Object.freeze(['orden_compra', 'orden_pago', 'retencion', 'factura', 'otro'])
 
 /**
  * Qué es REALMENTE este documento, con el PDF ya leído. Devuelve `{ tipo, numero, cita }`:
