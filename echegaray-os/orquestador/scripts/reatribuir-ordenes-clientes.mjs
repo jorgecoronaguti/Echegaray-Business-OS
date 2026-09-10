@@ -159,7 +159,26 @@ async function main() {
     console.log(`${fmt(d.nombre_archivo, 34)} ${fmt(d.tipo, 13)} ${fmt(d.numero, 16)} ${fmt(d.fecha, 11)} ${String(imp).padStart(16)} ${fmt(nombreObra.get(d.obra_id) ?? '— nivel cliente', 30)} ${d.porque ?? ''}`)
   }
 
-  if (!APLICAR) { console.log(`\nENSAYO — ${cambia.length} filas cambiarían. Nada se escribió. Con --aplicar.`); return }
+  // EL ENSAYO MUESTRA EL CAMPO Y SUS DOS VALORES, no un total. «152 filas cambiarían» no deja
+  // decidir si el criterio es el correcto: el 10/09/2026 esas 152 eran 108 pliegos degradados a
+  // `otro` y 44 números que el parser recién aprendió a leer, y las dos cosas se veían igual.
+  if (!APLICAR) {
+    for (const d of cambia) {
+      const a = antesDe.get(d.id)
+      const campos = []
+      if (d.tipo !== a.tipo) campos.push(`tipo ${a.tipo}→${d.tipo}`)
+      if (d.numero !== a.numero) campos.push(`n° ${a.numero ?? '—'}→${d.numero ?? '—'}`)
+      if (d.fecha !== fechaISO(a.fecha)) campos.push(`fecha ${fechaISO(a.fecha) ?? '—'}→${d.fecha ?? '—'}`)
+      if (d.obra_id !== a.obra_id) campos.push(`obra ${a.obra_id ?? '—'}→${d.obra_id ?? '—'}`)
+      if ((d.importe === null) !== (a.importe === null) || (d.importe !== null && Math.abs(d.importe - Number(a.importe)) > 0.005)) {
+        campos.push(`importe ${a.importe ?? '—'}→${d.importe ?? '—'}`)
+      }
+      if (d.cita !== a.cita) campos.push(`cita ${a.cita ?? '—'}→${d.cita ?? '—'}`)
+      console.log(`  ~ ${fmt(d.nombre_archivo, 40)} ${campos.join(' · ')}`)
+    }
+    console.log(`\nENSAYO — ${cambia.length} filas cambiarían. Nada se escribió. Con --aplicar.`)
+    return
+  }
 
   let escritas = 0
   for (const d of cambia) {
