@@ -65,7 +65,7 @@ test('ARCOR emite archivos sin ninguna palabra, y aun así se clasifican', () =>
   // Y EL ASUNTO NO CLASIFICA A NADIE. «GENERACION OC» es el título del mail con que ARCOR manda la
   // orden, la firma pegada, el pliego y la planilla: hasta el 10/09/2026 los cuatro entraban como
   // orden de compra, y así se contaron 148 órdenes donde hay 40.
-  assert.equal(clasificarAdjunto({ nombreArchivo: 'image001.png', textoPdf: '' }).tipo, 'otro')
+  assert.equal(clasificarAdjunto({ nombreArchivo: 'image001.png', textoPdf: '', asunto: 'GENERACION OC' }).tipo, 'otro')
 })
 
 // ── DE QUIÉN ES ─────────────────────────────────────────────────────────────────────────────────

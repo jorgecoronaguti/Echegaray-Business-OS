@@ -46,9 +46,16 @@ test('la sigla suelta no clasifica sin un número al lado', () => {
 test('el asunto del mail NO puede convertir un adjunto en orden de compra', () => {
   // El mail de ARCOR se titula «CAPEX - GENERACION OC - REQ. 22638535» y viaja con la firma pegada
   // del remitente, el pliego y la planilla de cotización. Los tres entraron como orden de compra.
+  // El asunto y el cuerpo VIAJAN en la llamada a propósito: la función tiene que poder recibirlos y
+  // no mirarlos. Si un día vuelven a ser una fuente, estos cinco papeles vuelven a ser órdenes.
   for (const nombre of ['image001.png', 'Requisitos_Ingreso.zip', 'PLIEGO CHATARRA.pdf',
     'Planilla para cotizar - Licitación 22739898.xlsx', 'ARSJ Puente de Playa - Plano.pdf']) {
-    assert.equal(clasificarAdjunto({ nombreArchivo: nombre }).tipo, 'otro', nombre)
+    const r = clasificarAdjunto({
+      nombreArchivo: nombre,
+      asunto: 'RE: [241120-000139] CAPEX - GENERACION OC - REQ. 22638535 - PROV. 26080',
+      cuerpo: 'Buen día, adjunto lo necesario para la orden de compra 53067392.',
+    })
+    assert.equal(r.tipo, 'otro', nombre)
   }
 })
 
