@@ -6,7 +6,9 @@ import {
   agruparPorObra, pagosDelEsquema, sinImportes,
   type BloqueDeObra, type FilaEsquema, type PagoConObra, type ContratoDeObra,
 } from '../esquema'
-import { obrasDelCliente, type FilaObraCanonica, type ObraDelInicio } from '../obrasDelCliente'
+import { refrescarConCobranzas, type FilaCobranzaViva } from '../vivo.ts'
+import { FILA_BASE } from '../../../../orquestador/lib/portal/cobranzas-a-cliente.mjs'
+import { esObraAnterior, obrasDelCliente, type FilaObraCanonica, type ObraDelInicio } from '../obrasDelCliente'
 
 // LO QUE SE LE PREGUNTA A LA BASE. Una sola vez, para las tres pantallas de plata.
 //
@@ -23,40 +25,9 @@ import { obrasDelCliente, type FilaObraCanonica, type ObraDelInicio } from '../o
 // en una consulta y se agrupa acá: pedirlo por obra dejaría afuera, sin que nadie lo note, los pagos
 // acordados que todavía no cuelgan de ninguna obra.
 
-export type ObraDetalle = {
-  id: string
-  nombre: string
-  contrato: number | null
-  fechaInicio: string | null
-  fechaCierre: string | null
-  estado: string
-  driveCarpetaId: string | null
-}
-
-/**
- * Una obra de `public.obras`, para Documentos y Terminadas.
- *
- * Sigue siendo `public.obras` y no `obra_canonica` porque es el registro que esas dos pantallas —y
- * `obra_adjunto_cliente`— ya usan. El cronograma, en cambio, vive en `obra_canonica`. Que existan
- * dos registros de obra es un problema anterior a este archivo y está declarado en `datos.ts`.
- */
-export async function obraDetalle(obraId: string): Promise<ObraDetalle | null> {
-  const { data } = await createAdminClient()
-    .from('obras')
-    .select('id, nombre, monto_contratado, fecha_inicio, fecha_cierre, estado, drive_carpeta_id')
-    .eq('id', obraId).maybeSingle()
-  if (!data) return null
-  return {
-    id: String(data.id),
-    nombre: String(data.nombre),
-    // `monto_contratado` puede no estar: NULL no es cero, y la pantalla lo dice.
-    contrato: data.monto_contratado == null ? null : Number(data.monto_contratado),
-    fechaInicio: data.fecha_inicio ?? null,
-    fechaCierre: data.fecha_cierre ?? null,
-    estado: String(data.estado),
-    driveCarpetaId: data.drive_carpeta_id ?? null,
-  }
-}
+// `obraDetalle` y `ObraDetalle` SE FUERON (10/09/2026). Leían `public.obras` para la pantalla de una
+// obra terminada, que ahora sale de `obra_canonica` como el resto del portal. Un lector del registro
+// viejo que ya no usa nadie es la puerta por la que vuelve la segunda definición.
 
 /** Hoy, en la zona de San Juan. Comparar contra UTC corre el vencimiento tres horas. */
 export function hoyEnObra(): string {
@@ -87,14 +58,15 @@ export type EsquemaDelPortal = {
 export async function esquemaDelPortal(acceso: AccesoDelPortal): Promise<EsquemaDelPortal> {
   const sb = createAdminClient()
   const { data } = await sb.from('esquema_pago').select('*').eq('cliente_id', acceso.clienteId)
-  const filas = (data ?? []) as unknown as FilaEsquema[]
+  const guardadas = (data ?? []) as unknown as FilaEsquema[]
+  const filas = refrescarConCobranzas(guardadas, await cobranzasVivas(guardadas))
 
   const idsDeObra = [...new Set(filas.map((f) => f.obra_id).filter((id): id is string => !!id))]
   const { data: obras } = idsDeObra.length
-    ? await sb.from('obra_canonica').select('id, nombre, monto_contratado, contrato_moneda, contrato_monto').in('id', idsDeObra)
-    : { data: [] as { id: string; nombre: string; monto_contratado: number | null }[] }
+    ? await sb.from('obra_canonica').select('id, nombre, estado, monto_contratado, contrato_moneda, contrato_monto').in('id', idsDeObra)
+    : { data: [] as { id: string; nombre: string; estado: string | null; monto_contratado: number | null }[] }
 
-  type FilaObra = { id: string; nombre: string; monto_contratado: number | null; contrato_moneda?: string | null; contrato_monto?: number | null }
+  type FilaObra = { id: string; nombre: string; estado?: string | null; monto_contratado: number | null; contrato_moneda?: string | null; contrato_monto?: number | null }
   const filasObra = (obras ?? []) as FilaObra[]
   const nombres = new Map(filasObra.map((o) => [String(o.id), String(o.nombre)]))
   // EL CONTRATO EN LA MONEDA EN QUE SE FIRMÓ. Quattropani se firmó en U$S 63.000 por ajuste alzado:
@@ -111,11 +83,40 @@ export async function esquemaDelPortal(acceso: AccesoDelPortal): Promise<Esquema
     }),
   )
 
-  const visibles = pagosDelEsquema(filas, nombres, (obraId) => alcanzaLaObra(acceso.obras, obraId))
+  // EL ESTADO DE LA OBRA VIAJA CON EL PAGO. Es la definición canónica de «obra terminada» —la misma
+  // que parte la lista del Inicio— y sin ella la pantalla de Pagos volvía a inventarse la suya.
+  const cerradas = new Set(filasObra.filter((o) => esObraAnterior({ estado: o.estado ?? null }))
+    .map((o) => String(o.id)))
+
+  const visibles = pagosDelEsquema(filas, nombres, (obraId) => alcanzaLaObra(acceso.obras, obraId), cerradas)
   const pagos = acceso.puedeVerMontos ? visibles : sinImportes(visibles)
   return { pagos, bloques: agruparPorObra(pagos), contratos }
 }
 
+
+/**
+ * LAS FILAS VIVAS DE COBRANZAS QUE LE CORRESPONDEN A ESTE ESQUEMA.
+ *
+ * Se piden por `sheet_id` —la columna A de la pestaña— y no por `cliente_id`: `cobranzas.cliente_id`
+ * lo resuelve un sync por alias y hay filas donde no resolvió (4 de 96, medido el 10/09/2026).
+ * Preguntar por el cliente dejaría esas filas sin refrescar y el portal seguiría publicando su copia
+ * vieja, que es exactamente el defecto que este camino existe para cerrar.
+ *
+ * Sin ninguna fila con `cobranza_fila` no se consulta: un `.in()` vacío trae la tabla entera.
+ */
+async function cobranzasVivas(filas: FilaEsquema[]): Promise<FilaCobranzaViva[]> {
+  const ids = [...new Set(filas
+    .map((f) => f.cobranza_fila)
+    .filter((n): n is number => typeof n === 'number' && Number.isInteger(n))
+    .map((n) => String(n - FILA_BASE)))]
+  if (!ids.length) return []
+  const { data } = await createAdminClient()
+    .from('cobranzas')
+    .select('sheet_id, categoria, concepto, estado, fecha_cobro, monto_neto, monto_neto_origen, iva, total_bruto, total_bruto_origen, moneda, tipo_cambio')
+    .eq('origen', 'cobranzas_sheet')
+    .in('sheet_id', ids)
+  return (data ?? []) as unknown as FilaCobranzaViva[]
+}
 
 // `contratoDelConjunto` vive en `esquema.ts` —módulo puro, sin `server-only`— para poder
 // probarlo con `node --test`. Se re-exporta desde acá porque es donde lo buscan las pantallas.
@@ -140,7 +141,7 @@ export type { ObraDelInicio }
 export async function obrasParaElInicio(acceso: AccesoDelPortal): Promise<ObraDelInicio[]> {
   const { data } = await createAdminClient()
     .from('obra_canonica')
-    .select('id, nombre, estado, fecha_inicio_real, fecha_inicio_plan, fusionada_en')
+    .select('id, nombre, estado, fecha_inicio_real, fecha_inicio_plan, fecha_fin_real, drive_carpeta_id, fusionada_en')
     .eq('cliente_id', acceso.clienteId)
     .order('nombre')
 

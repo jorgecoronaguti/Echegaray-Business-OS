@@ -298,6 +298,9 @@ const CONTRATOS_IM = new Map([
   ['san-francisco', { monto: 204_361_104, moneda: 'ARS' as const }],
 ])
 
+/** Las obras del cliente que `obra_canonica` declara cerradas. */
+const CERRADAS_IM = new Set(['san-francisco'])
+
 const interMotor = () => pagosDelEsquema(
   INTER_MOTOR.map(([obra, orden, monto, neto, iva, fecha, cobrado, historico]) => ({
     ...fila({ orden, fecha }),
@@ -308,6 +311,10 @@ const interMotor = () => pagosDelEsquema(
     historico,
   })),
   NOMBRES_IM, TODAS,
+  // «Galpones, Mampostería, Cancha de Padel» está CERRADA en `obra_canonica` — el mismo estado con el
+  // que el Inicio parte la lista. Las otras tres siguen activas. Sin este dato la pantalla volvía a
+  // decidir por su cuenta qué obra terminó, que es el defecto del 10/09.
+  CERRADAS_IM,
 )
 
 /** Los centavos de `9_273_576.4` sumados nueve veces no se comparan con `===`. */

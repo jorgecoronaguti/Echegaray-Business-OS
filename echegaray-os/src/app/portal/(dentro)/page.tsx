@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../sesion'
 import { accesoDelPortal } from '../datos'
+import { nombreParaSaludar } from '../permisos'
 import { obrasParaElInicio, type ObraDelInicio } from './datosObra'
 import { partirEnCursoYAnteriores } from '../obrasDelCliente'
 import { Vacio } from '../Piezas'
@@ -45,9 +46,10 @@ export default async function Inicio() {
   return (
     <section className="flex flex-col">
       {/* SE SALUDA A LA PERSONA SI ADMINISTRACIÓN CARGÓ SU NOMBRE; si no, al cliente. Nunca se
-          deriva del mail: «j.perez@» no es «J Perez». */}
+          deriva del mail: «j.perez@» no es «J Perez». Y el nombre del cliente va SIN la anotación de
+          desambiguación: decía «Bienvenido, Javier Sánchez - San Francisco - IMOTOR». */}
       <h1 className="text-[26px] font-semibold tracking-[-.02em] md:text-[30px]">
-        Bienvenido, {acceso.persona ?? acceso.clienteNombre}
+        Bienvenido, {acceso.persona ?? nombreParaSaludar(acceso.clienteNombre)}
       </h1>
       <p className="mt-2 max-w-[520px] text-[14px] leading-relaxed text-muted">
         Acá está lo que estamos construyendo para usted. Toque una obra para ver su cronograma de

@@ -60,7 +60,9 @@ export const NACE_VISIBLE_AL_CLIENTE = true
  */
 export function esCobroOculto(fila) {
   if (String(fila?.estado ?? '') !== 'cobrado') return false
-  return !(fila?.visible_portal === true && fila?.publicado_at != null)
+  // El predicado está escrito UNA vez, más abajo: si se copiara acá, el día que cambie la policy este
+  // control seguiría contestando con la regla vieja y diría que no hay nada oculto.
+  return !publicadaAlCliente(fila)
 }
 
 /**
@@ -234,4 +236,116 @@ export async function repararCobrosOcultos({ query }) {
         and visible_portal = false
       returning cliente_id, concepto, monto, fecha`)
   return rows
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// UN HECHO ECONÓMICO SE PUBLICA UNA SOLA VEZ — los dos invariantes de la cara del cliente.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Viven acá, y no en la pantalla, porque los aplican DOS: el portal cuando arma el cronograma y el
+// sync cuando decide con qué visibilidad nace una fila nueva. Escritos dos veces, el portal taparía
+// una copia que el sync sigue publicando y nadie sabría cuál de las dos está mirando el cliente.
+
+/** EL PREDICADO DE PUBLICACIÓN, UNA VEZ. Copia literal de la policy `esquema_pago_select`. */
+export const publicadaAlCliente = (f) => f?.visible_portal === true && f?.publicado_at != null
+
+/** Minúsculas, sin tildes y sin puntuación: dos conceptos se comparan por lo que dicen. */
+const claveDeConcepto = (s) => String(s ?? '')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+const monedaDe = (f) => (String(f?.moneda ?? '').trim().toUpperCase() === 'USD' ? 'USD' : 'ARS')
+
+/**
+ * INVARIANTE 1 · EL ESPEJO EN PESOS DE UNA FILA EN DÓLARES NO SE PUBLICA.
+ *
+ * ═══ EL DEFECTO, MEDIDO EN QUATTROPANI (10/09/2026) ═══
+ *
+ * Su obra se firmó en dólares y su cronograma vive en dólares, pero la pestaña Cobranzas registra
+ * cada cobro también en pesos —es lo que entró al banco—. `esquema_pago` terminó con los dos: once
+ * pares con el MISMO concepto, uno en U$S y otro en $. Nueve pares estaban bien, con el de pesos
+ * apagado. En dos —las filas 61 y 63 del Sheet— el de pesos había quedado visible, y el portal le
+ * mostraba al cliente el mismo cobro dos veces: el pie decía «Pagados 6 · $72.808.419» sobre tres
+ * cobros reales.
+ *
+ * LA CLAVE ES EL CONCEPTO, Y NO ES CASUALIDAD: las dos filas describen el mismo hecho con el mismo
+ * texto, porque una se sembró a partir de la otra. Se exige además que las MONEDAS SEAN DISTINTAS, y
+ * eso es lo que hace que la regla sea segura: dos cobros reales y distintos pueden compartir concepto
+ * —San Francisco tiene dos «Cobro» del 08/05 por importes distintos— pero están los dos en pesos y no
+ * se tocan. Que el mismo texto aparezca en dos monedas sólo pasa cuando es la misma plata.
+ *
+ * GANA EL DÓLAR porque es la moneda en la que el cliente firmó: es el número que él puede reconocer.
+ *
+ * @param fila la que se evalúa. @param publicadas TODAS las publicadas DEL MISMO CLIENTE.
+ */
+export function esEspejoEnPesos(fila, publicadas = []) {
+  if (monedaDe(fila) !== 'ARS') return false
+  const clave = claveDeConcepto(fila?.concepto)
+  if (!clave) return false
+  return publicadas.some((o) => o !== fila && monedaDe(o) !== 'ARS' && claveDeConcepto(o?.concepto) === clave)
+}
+
+/**
+ * INVARIANTE 2 · UNA FILA DE COBRANZAS, UN PAGO VISIBLE COMO MÁXIMO.
+ *
+ * `cobranza_fila` es la fila física del Sheet: dos filas del esquema que la comparten son dos
+ * representaciones del mismo cobro. La base tiene un índice único parcial que hoy lo impide, y aun
+ * así el invariante se aplica —y se prueba— acá: el índice es PARCIAL (`where cobranza_fila is not
+ * null`), un `drop index` lo saca sin que nada se ponga rojo, y en San Francisco ya convivieron dos
+ * copias del saldo del anticipo con estados que se contradecían (una «cobrado», la otra «a vencer»).
+ * Un control que depende de que nadie toque un índice no es un control.
+ *
+ * GANA LA QUE TIENE OBRA: es la que el cliente puede ubicar en su obra en vez de en «Sin obra
+ * asignada». Desempata el `orden` y, si empatan, el `id` — para que dos cargas de la misma pantalla
+ * no muestren una vez una y otra vez la otra.
+ */
+export function unaPorFilaDeCobranzas(filas = []) {
+  const mejorPorFila = new Map()
+  const sinFila = []
+  for (const f of filas) {
+    if (f?.cobranza_fila == null) { sinFila.push(f); continue }
+    const clave = Number(f.cobranza_fila)
+    const previa = mejorPorFila.get(clave)
+    if (!previa || ganaSobre(f, previa)) mejorPorFila.set(clave, f)
+  }
+  // Se devuelve en el orden de entrada: ordenar es decisión de quien dibuja.
+  const elegidas = new Set([...mejorPorFila.values(), ...sinFila])
+  return filas.filter((f) => elegidas.has(f))
+}
+
+const ganaSobre = (a, b) => {
+  const conObra = (f) => (f?.obra_id ? 1 : 0)
+  if (conObra(a) !== conObra(b)) return conObra(a) > conObra(b)
+  const orden = (f) => Number(f?.orden ?? 0)
+  if (orden(a) !== orden(b)) return orden(a) < orden(b)
+  return String(a?.id ?? '') < String(b?.id ?? '')
+}
+
+/**
+ * LO QUE EL CLIENTE PUEDE VER DE SU ESQUEMA, con los dos invariantes aplicados.
+ *
+ * @param filas TODAS las filas de `esquema_pago` DE UN SOLO CLIENTE. Mezclar clientes emparejaría
+ *   conceptos de dos empresas distintas, que es exactamente lo que un portal no puede hacer.
+ */
+export function publicablesDelCliente(filas = []) {
+  const publicadas = filas.filter(publicadaAlCliente)
+  return unaPorFilaDeCobranzas(publicadas.filter((f) => !esEspejoEnPesos(f, publicadas)))
+}
+
+/**
+ * LAS FILAS PUBLICADAS QUE VIOLAN UN INVARIANTE — el control que informa el sync.
+ *
+ * Que el portal las tape no las arregla: la base sigue teniendo dos verdades sobre el mismo cobro y
+ * la ficha del cliente —que no pasa por acá— sigue mostrando las dos. El informe dice cuáles son
+ * para que administración apague la que sobra en la pantalla 32.
+ *
+ * @param filas las publicadas de UN cliente. @returns `[{ motivo, fila }]`
+ */
+export function duplicadosPublicados(filas = []) {
+  const publicadas = filas.filter(publicadaAlCliente)
+  const buenas = new Set(publicablesDelCliente(filas))
+  return publicadas.filter((f) => !buenas.has(f)).map((f) => ({
+    motivo: esEspejoEnPesos(f, publicadas) ? 'espejo_en_pesos' : 'misma_fila_de_cobranzas',
+    fila: f,
+  }))
 }
