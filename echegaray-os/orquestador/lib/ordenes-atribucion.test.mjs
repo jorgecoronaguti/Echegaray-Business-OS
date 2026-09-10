@@ -12,7 +12,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   clienteDelDocumento, clienteDelMail, clientePorArchivo, clientePorCuit, consultasDeGmail,
-  deduplicar, documentoDeAdjunto, hashDocumento,
+  deduplicar, documentoDeAdjunto, hashDocumento, heredarObras,
 } from './ordenes-atribucion.mjs'
 import { clasificarAdjunto, dominioDe, numeroDeRetencion } from './ordenes-cliente.mjs'
 
@@ -249,4 +249,29 @@ test('las consultas cubren a los cinco emisores conocidos y no usan filename:', 
     assert.ok(qs.some((q) => q.includes(`from:${d}`)), `falta la consulta por remitente de ${d}`)
   }
   assert.ok(!qs.some((q) => /filename:/.test(q)), 'filename:OC_32 devuelve 0: el guión bajo rompe el operador')
+})
+
+// ── LA OBRA QUE EL PAPEL NO NOMBRA ──────────────────────────────────────────────────────────────
+
+test('la orden de pago cuelga de la obra de las facturas que paga', () => {
+  // La cadena real: la OP 5146 no nombra ninguna obra; nombra la FAC A0000100000225, que cita la
+  // OC 2162, que describe la limpieza de escombros. Sin recorrerla, la OP queda a nivel cliente.
+  const docs = [
+    { cliente_id: 'c', obra_id: 'o-escombros', nombre_archivo: 'OC 02-00002162.pdf', tipo: 'factura', numero: 'A-1-225', comprobante: 'A-1-225', citadas: ['2-2162'], texto: 'Limpieza de Escombros' },
+    { cliente_id: 'c', obra_id: null, nombre_archivo: '0000000005146.pdf', tipo: 'orden_pago', numero: '0000000005146', citadas: ['A-1-225'], texto: 'ORDEN DE PAGO' },
+  ]
+  heredarObras(docs, { obras: OBRAS })
+  assert.equal(docs[1].obra_id, 'o-escombros')
+  assert.match(docs[1].porque, /hereda la obra de A-1-225/)
+})
+
+test('la orden de pago que cancela facturas de DOS obras no cuelga de ninguna, y dice por qué', () => {
+  const docs = [
+    { cliente_id: 'c', obra_id: 'o-escombros', nombre_archivo: 'f1.pdf', tipo: 'factura', numero: 'A-1-225', comprobante: 'A-1-225', citadas: [], texto: '' },
+    { cliente_id: 'c', obra_id: 'o-azufre', nombre_archivo: 'f2.pdf', tipo: 'factura', numero: 'A-1-226', comprobante: 'A-1-226', citadas: [], texto: '' },
+    { cliente_id: 'c', obra_id: null, nombre_archivo: 'op.pdf', tipo: 'orden_pago', numero: '5156', citadas: ['A-1-225', 'A-1-226'], texto: '' },
+  ]
+  heredarObras(docs, { obras: OBRAS })
+  assert.equal(docs[2].obra_id, null, 'repartir una OP entre dos obras sería inventar')
+  assert.match(docs[2].porque, /2 obras distintas/)
 })

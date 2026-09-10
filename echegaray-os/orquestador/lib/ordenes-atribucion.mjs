@@ -23,8 +23,9 @@ import { createHash } from 'node:crypto'
 import { extraer as cuitsDelTexto } from './cuit.mjs'
 import { CUIT_ECSAS } from './transferencias-proveedores.mjs'
 import {
-  clasificarAdjunto, dominioDe, extraerFechaDeOrden, extraerImporte, extraerNumero, facturaPropiaDe,
-  norm, numeroCanonico, numeroDeRetencion, ocsCitadas, comprobantesCitados, resolverObraDeTexto,
+  agruparPorNumero, clasificarAdjunto, comprobantePropio, comprobantesCitados, dominioDe, extraerFechaDeOrden,
+  extraerImporte, extraerNumero, facturaPropiaDe, mapaDeCitas, mapaDeEvidencia, norm,
+  numeroCanonico, numeroDeRetencion, obraPorReferencia, ocsCitadas, resolverObraDeTexto,
 } from './ordenes-cliente.mjs'
 
 // ── QUIÉN ES CLIENTE, Y POR QUÉ NO ALCANZA EL DOMINIO ───────────────────────────────────────────
@@ -271,6 +272,63 @@ export function deduplicar(candidatos, { yaEnBase = [] } = {}) {
   return { nuevos, repetidos }
 }
 
+// ── LA OBRA QUE EL PAPEL NO NOMBRA ──────────────────────────────────────────────────────────────
+
+/**
+ * HEREDAR LA OBRA DE LOS DEMÁS PAPELES, hasta que nadie más pueda.
+ *
+ * Una orden de pago no nombra ninguna obra: nombra las FACTURAS que cancela («FAC A0000100000225»).
+ * La cadena entera es OP → factura → OC → obra, y recorrerla es lo único que le da obra a una OP
+ * sin adivinar. Cuando las facturas que paga caen en DOS obras distintas, la OP no pertenece a
+ * ninguna de las dos: se queda a nivel cliente y se escribe por qué. Repartirla sería inventar.
+ *
+ * Se repite porque la cadena tiene eslabones: la factura le da la obra a la OC, y recién entonces la
+ * OC se la puede dar a la orden de pago que la cita. Tres vueltas alcanzan y el punto fijo se
+ * detecta solo; sin repetir, la herencia dependería del orden en que Gmail devolvió los mails.
+ *
+ * Vivía adentro de `reatribuir-ordenes-clientes.mjs` y la ingesta no la tenía: una orden de pago
+ * bajada hoy quedaba sin obra hasta que alguien corriera el otro script. Una definición, dos usos.
+ *
+ * MUTA `docs` (les pone `obra_id` y `porque`) y los devuelve. Cada doc necesita `cliente_id`,
+ * `obra_id`, `asunto`, `texto`, `citadas`, `numero` y `nombre_archivo`.
+ */
+export function heredarObras(docs, { obras = [], nombreClientePorId = new Map(), vueltas = 3 } = {}) {
+  const lista = docs ?? []
+  for (let v = 0; v < vueltas; v++) {
+    const mapa = mapaDeEvidencia(lista)
+    const citas = mapaDeCitas(lista)
+    let cambios = 0
+    for (const d of lista) {
+      if (d.obra_id) continue
+      const delCliente = obras.filter((o) => o.cliente_id === d.cliente_id)
+      const porTexto = resolverObraDeTexto(delCliente, `${d.asunto ?? ''} ${d.texto ?? ''}`, { nombreCliente: nombreClientePorId.get(d.cliente_id) ?? '' })
+      if (porTexto) { d.obra_id = porTexto.id; d.porque = 'el PDF nombra la obra'; cambios++; continue }
+      const ref = obraPorReferencia(d.citadas, mapa)
+      d.porque = ref.porque
+      if (ref.obraId) { d.obra_id = ref.obraId; cambios++; continue }
+      // EL CAMINO INVERSO: la factura que CITA esta OC ya tiene obra (describe el trabajo y nombra
+      // el playón; la OC del cliente sólo trae el código de centro de costo).
+      const propio = numeroCanonico(d.numero)
+      const porCita = propio ? citas.get(propio) : null
+      if (porCita) { d.obra_id = porCita; d.porque = `una factura que cita ${propio} tiene esa obra`; cambios++ }
+    }
+    // Misma orden, dos papeles: el que tiene obra se la pasa al que no. `agruparPorNumero` es la que
+    // decide qué es «la misma orden» — la pantalla agrupa con esa misma función.
+    for (const g of agruparPorNumero(lista)) {
+      const conObra = g.filas.find((f) => f.obra_id)
+      if (!conObra) continue
+      for (const f of g.filas) {
+        if (f.obra_id) continue
+        f.obra_id = conObra.obra_id
+        f.porque = `misma orden que ${conObra.nombre_archivo}`
+        cambios++
+      }
+    }
+    if (!cambios) break
+  }
+  return lista
+}
+
 // ── EL DOCUMENTO ENTERO, DECIDIDO DE UNA VEZ ────────────────────────────────────────────────────
 
 /**
@@ -320,6 +378,9 @@ export function documentoDeAdjunto({
     numero: numero ?? null,
     numeroCanonico: numeroCanonico(numero),
     cita: fac?.cita ?? null,
+    // El comprobante que este papel ES («A-1-225»). Es la clave con la que una orden de pago lo
+    // encuentra: la OP no cita la OC, cita la FACTURA.
+    comprobante: comprobantePropio(textoPdf),
     fecha: extraerFechaDeOrden(textoPdf, { hoy }),
     importe,
     moneda,

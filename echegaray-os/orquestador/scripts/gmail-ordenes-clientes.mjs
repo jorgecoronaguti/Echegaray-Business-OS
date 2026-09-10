@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
-// LAS ÓRDENES DEL CLIENTE, DE LA CASILLA A LA FICHA
+// LAS ÓRDENES DEL CLIENTE, DE LAS CASILLAS A LA FICHA
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 //
 //   node orquestador/scripts/gmail-ordenes-clientes.mjs            # DRY: mira y no toca nada
@@ -15,18 +15,24 @@
 // Este script LEE. No manda, no responde, no etiqueta, no archiva y no borra un mail. Lo único que
 // escribe está del lado del OS: un objeto en el bucket privado y una fila en `cliente_orden`.
 //
-// ═══ POR QUÉ ES IDEMPOTENTE POR (mensaje, nombre, tamaño) Y NO POR attachment_id ═══
+// ═══ DOS CASILLAS, NO UNA ═══
 //
-// Gmail REGENERA el `attachmentId` entre lecturas del mismo mensaje. Una clave que lo usara haría
-// que la segunda corrida viera todo como nuevo y duplicara cada orden sin violar ninguna
-// restricción — el modo de falla más caro, porque el error se ve recién cuando alguien cuenta.
-// La restricción vive en la BASE (`cliente_orden_gmail_unica_idx`), no en un `select` previo: dos
-// corridas simultáneas se pisarían igual con el `select`.
+// Hasta el 10/09/2026 esto leía la cuenta de `ORQ_GOOGLE_IMPERSONATE` —jorge@ecsas.com.ar, que
+// arranca en 07/2026— y ahí no está el histórico: las OC y OP de Messina, ARCOR, Saint-Gobain y
+// Orica llegan a rodrigo@ecsas.com.ar, 8.186 mensajes desde 2021. Las dos autorizaron su Google
+// (`orq.google_tokens`), así que se recorren las dos y la fila guarda de cuál vino.
+//
+// Leer dos casillas trae el problema que una sola no tenía: el MISMO adjunto entra dos veces
+// —rodrigo lo recibe y lo reenvía a jorge— con dos `message_id`. La clave de idempotencia de la
+// base no puede verlo. Por eso además se deduplica por SHA-256 de los bytes y por (cliente, tipo,
+// número canónico); `deduplicar()` es puro y está probado en `lib/ordenes-atribucion.test.mjs`.
 //
 // ═══ QUÉ HACE CUANDO NO SABE ═══
 //
 // · No sabe de qué cliente es → NO guarda nada y lo lista como «sin cliente». Un documento
 //   archivado contra el cliente equivocado es peor que uno que no se archivó.
+// · Reconoce al cliente pero NO está en `public.clientes` (Saint-Gobain, Orica) → tampoco guarda, y
+//   lo lista aparte con su nombre. Dar de alta un cliente es una decisión del dueño, no de un parser.
 // · Sabe el cliente pero no la obra → lo guarda A NIVEL CLIENTE (`obra_id` null). La pantalla lo
 //   muestra bajo el cliente y una persona lo asigna.
 // · El PDF no dice el número, la fecha o el importe → esos campos quedan NULL. Nunca estimados.
@@ -36,14 +42,13 @@ import { createClient } from '@supabase/supabase-js'
 import { APP_DIR } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
-import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
+import { getTokenFor, tieneToken } from '../lib/google-oauth.mjs'
 import { leerPdf } from '../lib/ingesta/pdf.mjs'
 import { loadEnvLocalInto } from '../../scripts/lib/env-file.mjs'
+import { clasificarAdjunto, extensionDe } from '../lib/ordenes-cliente.mjs'
 import {
-  clasificarAdjunto, clienteDelMail, extensionDe, extraerFecha, extraerImporte, extraerNumero,
-  facturaPropiaDe,
-  resolverObraDeTexto,
-} from '../lib/ordenes-cliente.mjs'
+  consultasDeGmail, deduplicar, documentoDeAdjunto, hashDocumento, heredarObras,
+} from '../lib/ordenes-atribucion.mjs'
 
 // Igual que la sonda de proveedores: un worktree no tiene `.env.local` (no se versiona) y sin esto
 // el script arranca con «supabaseUrl is required» sin decir por qué.
@@ -51,18 +56,17 @@ loadEnvLocalInto(process.env, process.env.ORDENES_ENV_FILE ?? path.join(APP_DIR,
 
 const BUCKET = 'obras-documentos'
 const APLICAR = process.argv.includes('--aplicar')
-const MAX_POR_CONSULTA = Number(process.env.ORDENES_MAX ?? 60)
 
-// LAS CONSULTAS. Sin límite de fecha, como pidió el dueño. Se buscan por separado y se unen por
-// id: una sola consulta con todos los OR se topa con el límite de Gmail y devuelve los más nuevos
-// de todo junto, escondiendo lo viejo de un cliente callado.
-const CONSULTAS = [
-  'has:attachment ("orden de compra" OR "purchase order" OR "O/C")',
-  'has:attachment ("orden de pago" OR "O/P" OR "notificación de pago")',
-  'has:attachment (subject:OC OR subject:OP OR filename:OC OR filename:OP)',
-  'has:attachment from:juanmessina.com.ar',
-  'has:attachment (subject:"orden" OR subject:"pago" OR subject:"compra")',
-]
+// LAS CASILLAS SE CONFIGURAN, Y EL DEFAULT SON LAS DOS QUE RECIBEN ÓRDENES. No sale de
+// ORQ_GOOGLE_IMPERSONATE: esa variable dice con qué cuenta OPERA el OS, no dónde llegan las órdenes
+// del cliente, y confundirlas fue exactamente lo que dejó afuera cinco años de correo.
+const CASILLAS = String(process.env.ORQ_GMAIL_ORDENES_CASILLAS ?? 'jorge@ecsas.com.ar,rodrigo@ecsas.com.ar')
+  .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+
+// El tope por consulta existe para que una casilla de 8.186 mensajes no se recorra por accidente,
+// pero AHORA es alto y, cuando corta, `gmailSearch` avisa y el aviso se imprime. Un recorte que
+// nadie ve es peor que un error.
+const MAX_POR_CONSULTA = Number(process.env.ORDENES_MAX ?? 2000)
 
 /** Texto plano del PDF, o '' si no es PDF / no se pudo leer. NUNCA rasteriza: acá alcanza con la
  *  capa de texto (medido en este repo: el 100% de los PDF administrativos la tiene) y una corrida
@@ -81,37 +85,76 @@ async function textoDelPdf(bytes, mime, nombre) {
 }
 
 const fmt = (v, n) => String(v ?? '').replace(/\s+/g, ' ').slice(0, n).padEnd(n)
+const avisar = (m) => console.log(m)
+
+/** Los mensajes con adjunto de UNA casilla, sin repetir, con el cliente que los puede releer. */
+async function mensajesDe(casilla) {
+  if (!await tieneToken(casilla)) {
+    avisar(`  ⚠ ${casilla}: no autorizó su Google (orq.google_tokens) — esa casilla NO se leyó`)
+    return []
+  }
+  const g = makeGoogleClient({ getToken: getTokenFor(casilla), soloUsuario: true })
+  const mensajes = new Map()
+  for (const q of consultasDeGmail()) {
+    let hallados = 0
+    try {
+      const r = await g.gmailSearch(q, {
+        max: MAX_POR_CONSULTA,
+        onAviso: ({ traidos, tope }) => avisar(`  ⚠ ${casilla}: «${q}» se cortó en ${traidos} (tope ${tope}) y Gmail tenía más`),
+      })
+      hallados = r.length
+      for (const m of r) if (!mensajes.has(m.id)) mensajes.set(m.id, { ...m, casilla, cliente: g })
+    } catch (e) {
+      avisar(`  ✗ ${casilla}: «${q}» falló — ${e.message}`)
+    }
+    avisar(`  · ${casilla} · ${fmt(q, 62)} ${String(hallados).padStart(5)}`)
+  }
+  return [...mensajes.values()]
+}
 
 async function main() {
-  const email = await operadorEmail()
-  if (!email) throw new Error('ninguna cuenta autorizó su Google (orq.google_tokens vacía)')
-  const g = makeGoogleClient({ getToken: getTokenFor(email), soloUsuario: true })
-
-  const { rows: clientes } = await query('select id, nombre_comercial from public.clientes')
+  const { rows: clientes } = await query('select id, nombre_comercial, cuit from public.clientes')
   const { rows: obras } = await query('select id, nombre, cliente_id from public.obra_canonica where cliente_id is not null')
-  const idPorNombre = new Map(clientes.map((c) => [String(c.nombre_comercial).toLowerCase(), c.id]))
-
-  // ── 1. LOS MENSAJES, UNA VEZ CADA UNO ─────────────────────────────────────────────────────────
-  const mensajes = new Map()
-  for (const q of CONSULTAS) {
-    for (const m of await g.gmailSearch(q, { max: MAX_POR_CONSULTA })) {
-      if (!mensajes.has(m.id)) mensajes.set(m.id, m)
-    }
+  const nombreCliente = new Map(clientes.map((c) => [c.id, c.nombre_comercial]))
+  const nombreObra = new Map(obras.map((o) => [o.id, o.nombre]))
+  const sinCuit = clientes.filter((c) => !String(c.cuit ?? '').replace(/\D/g, ''))
+  if (sinCuit.length) {
+    avisar(`NOTA — sin CUIT en public.clientes (la vía más fuerte no se puede usar con ellos): ${sinCuit.map((c) => c.nombre_comercial).join(', ')}`)
   }
 
+  // ── 1. LOS MENSAJES DE TODAS LAS CASILLAS ─────────────────────────────────────────────────────
+  avisar(`\nCASILLAS: ${CASILLAS.join(' · ')}`)
+  // Un id de mensaje es de SU casilla: el mismo mail en dos buzones tiene dos ids distintos, así
+  // que no se pueden unir por id. El reenvío real lo deduplica el hash de los bytes, más abajo.
+  const mensajes = []
+  for (const casilla of CASILLAS) mensajes.push(...await mensajesDe(casilla))
+  avisar(`\nmensajes con adjunto: ${mensajes.length}`)
+
+  // ── 2. LOS ADJUNTOS, UNO POR UNO ──────────────────────────────────────────────────────────────
   const filas = []
   const descartes = []
-  for (const m of mensajes.values()) {
-    const adjuntos = await g.gmailAttachments(m.id)
+  const sinAlta = []
+  let leidos = 0
+  for (const m of mensajes) {
+    const g = m.cliente
+    let adjuntos = []
+    try { adjuntos = await g.gmailAttachments(m.id) } catch (e) { descartes.push({ ...m, adjunto: '(lista)', motivo: `no se pudieron listar los adjuntos: ${e.message}` }); continue }
     // Las partes `inline` son la firma con el logo, no un adjunto. Se descartan por tamaño y por
     // marca a la vez: un logo pesa poco y una orden de compra nunca pesa 4 kB.
     const reales = adjuntos.filter((a) => !(a.inline && (a.bytes ?? 0) < 40_000))
     if (!reales.length) continue
 
-    const { text: cuerpo } = await g.gmailGet(m.id, { maxChars: 3000 })
-    const cli = clienteDelMail({ from: m.from, asunto: m.subject, cuerpo })
+    let cuerpo = ''
+    try { ({ text: cuerpo } = await g.gmailGet(m.id, { maxChars: 3000 })) } catch { /* el cuerpo es opcional */ }
 
     for (const a of reales) {
+      // NO SE BAJA LO QUE NO PUEDE SER UNA ORDEN. Un PDF hay que abrirlo —el nombre puede ser
+      // neutro y la orden estar adentro—, pero una imagen o una planilla que además no clasifica
+      // por nombre ni por asunto no justifica traer megas de una casilla de cinco años.
+      const esPdf = /pdf/i.test(a.mime ?? '') || /\.pdf$/i.test(a.nombre ?? '')
+      const previo = clasificarAdjunto({ asunto: m.subject, nombreArchivo: a.nombre, cuerpo })
+      if (!esPdf && previo.tipo === 'otro') { descartes.push({ ...m, adjunto: a.nombre, motivo: `no es PDF y no clasifica por nombre/asunto (${a.mime || '?'})` }); continue }
+
       let bytes = null; let textoPdf = ''
       // Los bytes se bajan SIEMPRE, también en dry: sin leer el PDF el ensayo no puede decir si es
       // una OC ni de qué obra, y entonces no sería un ensayo de nada. Bajar es leer, no escribir.
@@ -122,58 +165,97 @@ async function main() {
         descartes.push({ ...m, adjunto: a.nombre, motivo: `no se pudo bajar: ${e.message}` })
         continue
       }
+      leidos++
+      if (leidos % 50 === 0) avisar(`  … ${leidos} adjuntos leídos`)
 
-      const { tipo } = clasificarAdjunto({ asunto: m.subject, nombreArchivo: a.nombre, cuerpo, textoPdf })
-      if (tipo === 'otro') { descartes.push({ ...m, adjunto: a.nombre, motivo: 'no es orden de compra ni de pago' }); continue }
-      if (!cli) { descartes.push({ ...m, adjunto: a.nombre, motivo: 'sin cliente identificable' }); continue }
+      const d = documentoDeAdjunto({
+        from: m.from, asunto: m.subject, cuerpo, nombreArchivo: a.nombre, textoPdf, clientes, obras,
+      })
+      if (!d.ok) {
+        const destino = d.cliente ? sinAlta : descartes
+        destino.push({ ...m, adjunto: a.nombre, motivo: d.motivo, clienteReconocido: d.cliente?.nombre ?? null })
+        continue
+      }
 
-      const clienteId = idPorNombre.get(cli.nombre.toLowerCase()) ?? null
-      if (!clienteId) { descartes.push({ ...m, adjunto: a.nombre, motivo: `cliente «${cli.nombre}» no existe en public.clientes` }); continue }
-
-      // La obra se busca SÓLO entre las del cliente resuelto, y sobre el asunto + el PDF. El cuerpo
-      // de un reenvío arrastra la conversación entera y ahí aparece el nombre de cualquier obra.
-      const obrasDelCliente = obras.filter((o) => o.cliente_id === clienteId)
-      const obra = resolverObraDeTexto(obrasDelCliente, `${m.subject} ${textoPdf}`, { nombreCliente: cli.nombre })
-
-      const { importe, moneda } = extraerImporte(textoPdf)
-      // SI EL PDF SE DECLARA FACTURA NUESTRA, ES ESO. El nombre del archivo dice «OC 02-...» porque
-      // así lo archivamos, y el detalle cita la orden que factura: las dos cosas engañan a la
-      // clasificación por texto. El encabezado del propio comprobante, no.
-      const fac = facturaPropiaDe(textoPdf)
       filas.push({
-        cliente_id: clienteId, cliente: cli.nombre, atribucion: cli.via,
-        obra_id: obra?.id ?? null, obra: obra?.nombre ?? null,
-        tipo: fac?.tipo ?? tipo, cita: fac?.cita ?? null,
-        numero: fac?.numero ?? extraerNumero(textoPdf), fecha: extraerFecha(textoPdf), importe, moneda,
-        emisor: m.from, message_id: m.id, attachment_id: a.attachmentId,
+        cliente_id: d.cliente.id, cliente: d.cliente.nombre, atribucion: d.cliente.via,
+        obra_id: d.obra?.id ?? null,
+        tipo: d.tipo, cita: d.cita, numero: d.numero, numero_canonico: d.numeroCanonico,
+        fecha: d.fecha, importe: d.importe, moneda: d.moneda,
+        emisor: m.from, message_id: m.id, attachment_id: a.attachmentId, casilla: m.casilla,
         nombre_archivo: a.nombre, tamano_bytes: bytes.length, tipo_mime: a.mime || null,
+        hash_sha256: hashDocumento(bytes),
         asunto: m.subject, recibido_en: new Date(m.date).toISOString(),
-        bytes,
+        // Sólo para la herencia y la tabla; no van a la fila.
+        bytes, texto: textoPdf, citadas: d.citadas, comprobante: d.comprobante, porque: d.obra ? 'el PDF nombra la obra' : null,
       })
     }
   }
 
-  // ── 2. LA TABLA ───────────────────────────────────────────────────────────────────────────────
-  console.log(`\nmensajes con adjunto revisados: ${mensajes.size} · candidatos: ${filas.length} · descartados: ${descartes.length}\n`)
-  console.log(`${fmt('REMITENTE', 34)} ${fmt('ASUNTO', 40)} ${fmt('FECHA', 10)} ${fmt('ADJUNTO', 30)} ${fmt('TIPO', 13)} ${fmt('CLIENTE', 20)} OBRA`)
-  for (const f of filas.sort((a, b) => (a.cliente + a.obra).localeCompare(b.cliente + b.obra))) {
-    console.log(`${fmt(f.emisor, 34)} ${fmt(f.asunto, 40)} ${fmt(f.recibido_en.slice(0, 10), 10)} ${fmt(f.nombre_archivo, 30)} ${fmt(f.tipo, 13)} ${fmt(f.cliente, 20)} ${f.obra ?? '— (nivel cliente)'}`)
+  // ── 3. LO QUE YA ESTÁ, Y LA HERENCIA DE OBRA ──────────────────────────────────────────────────
+  const { rows: yaEnBase } = await query(`select id, cliente_id, obra_id, tipo, numero, numero_canonico,
+    hash_sha256, nombre_archivo, cita from public.cliente_orden where eliminado_en is null`)
+  const { nuevos, repetidos } = deduplicar(filas, { yaEnBase })
+
+  // La herencia mira las filas nuevas Y las que ya están: la OC que le da la obra a una orden de
+  // pago puede haberse bajado la semana pasada. `heredarObras` es la MISMA función que usa
+  // `reatribuir-ordenes-clientes.mjs` — una definición de «esta OP es de esta obra».
+  heredarObras([...yaEnBase.map((r) => ({ ...r, citadas: [], texto: '' })), ...nuevos], { obras, nombreClientePorId: nombreCliente })
+
+  // ── 4. LA TABLA ───────────────────────────────────────────────────────────────────────────────
+  console.log(`\nadjuntos leídos: ${leidos} · candidatos: ${filas.length} · nuevos: ${nuevos.length} · ya estaban: ${repetidos.length} · descartados: ${descartes.length} · sin alta: ${sinAlta.length}\n`)
+  console.log(`${fmt('CASILLA', 8)} ${fmt('REMITENTE', 30)} ${fmt('FECHA', 10)} ${fmt('ADJUNTO', 32)} ${fmt('TIPO', 13)} ${fmt('NÚMERO', 16)} ${fmt('VÍA', 9)} ${fmt('CLIENTE', 16)} OBRA`)
+  for (const f of nuevos.sort((a, b) => String(a.cliente + a.fecha).localeCompare(String(b.cliente + b.fecha)))) {
+    console.log(`${fmt(f.casilla.split('@')[0], 8)} ${fmt(f.emisor, 30)} ${fmt(f.fecha ?? f.recibido_en.slice(0, 10), 10)} ${fmt(f.nombre_archivo, 32)} ${fmt(f.tipo, 13)} ${fmt(f.numero, 16)} ${fmt(f.atribucion, 9)} ${fmt(f.cliente, 16)} ${nombreObra.get(f.obra_id) ?? '— (nivel cliente)'}`)
+  }
+
+  // ── 5. LOS RESÚMENES QUE CONTESTAN LA PREGUNTA DEL DUEÑO ──────────────────────────────────────
+  const cuenta = (llave) => {
+    const m = new Map()
+    for (const f of nuevos) { const k = llave(f); m.set(k, (m.get(k) ?? 0) + 1) }
+    return [...m.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+  }
+  console.log('\nPOR CLIENTE / TIPO / AÑO:')
+  for (const [k, n] of cuenta((f) => `${f.cliente} · ${f.tipo} · ${(f.fecha ?? f.recibido_en).slice(0, 4)}`)) console.log(`  ${fmt(k, 60)} ${String(n).padStart(4)}`)
+  console.log('\nPOR CASILLA:')
+  for (const [k, n] of cuenta((f) => f.casilla)) console.log(`  ${fmt(k, 30)} ${String(n).padStart(4)}`)
+  console.log('\nPOR VÍA DE ATRIBUCIÓN:')
+  for (const [k, n] of cuenta((f) => f.atribucion)) console.log(`  ${fmt(k, 30)} ${String(n).padStart(4)}`)
+
+  if (sinAlta.length) {
+    console.log('\nRECONOCIDOS PERO SIN ALTA EN public.clientes (no se guardan; darlos de alta es del dueño):')
+    const porCliente = new Map()
+    for (const s of sinAlta) porCliente.set(s.clienteReconocido, (porCliente.get(s.clienteReconocido) ?? 0) + 1)
+    for (const [c, n] of porCliente) console.log(`  ${fmt(c, 30)} ${String(n).padStart(4)} documentos`)
+  }
+  if (repetidos.length) {
+    console.log('\nYA ESTABAN (no se vuelven a guardar):')
+    for (const r of repetidos.slice(0, 40)) console.log(`  · ${fmt(r.fila.nombre_archivo, 34)} ${r.porque}`)
+    if (repetidos.length > 40) console.log(`  … y ${repetidos.length - 40} más`)
   }
   if (descartes.length) {
     console.log('\nDESCARTADOS (no se guardan):')
-    for (const d of descartes) console.log(`  · ${fmt(d.from, 34)} ${fmt(d.adjunto, 28)} ${d.motivo}`)
+    const porMotivo = new Map()
+    for (const d of descartes) {
+      const k = d.motivo.replace(/[«»].*?[«»]/g, '…').slice(0, 70)
+      porMotivo.set(k, [...(porMotivo.get(k) ?? []), d])
+    }
+    for (const [motivo, ds] of [...porMotivo.entries()].sort((a, b) => b[1].length - a[1].length)) {
+      console.log(`  ${String(ds.length).padStart(5)} × ${motivo}`)
+      for (const d of ds.slice(0, 3)) console.log(`          ej: ${fmt(d.from, 32)} ${fmt(d.adjunto, 34)} ${fmt(d.subject, 40)}`)
+    }
   }
 
   if (!APLICAR) { console.log('\nENSAYO. Nada se subió ni se escribió. Con --aplicar.'); return }
 
-  // ── 3. APLICAR ────────────────────────────────────────────────────────────────────────────────
+  // ── 6. APLICAR ────────────────────────────────────────────────────────────────────────────────
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) throw new Error('faltan NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY')
   const sb = createClient(url, key, { auth: { persistSession: false } })
 
-  let nuevas = 0; let repetidas = 0
-  for (const f of filas) {
+  let escritas = 0; let rechazadas = 0
+  for (const f of nuevos) {
     const ruta = `${f.cliente_id}/${f.obra_id ?? 'sin-obra'}/${randomUUID()}.${extensionDe(f.nombre_archivo)}`
     // EL ORDEN ES OBJETO PRIMERO, FILA DESPUÉS, y no al revés: una fila que apunta a un objeto que
     // no llegó a subir es un documento roto en la pantalla. Un objeto sin fila es basura invisible
@@ -181,21 +263,21 @@ async function main() {
     const sub = await sb.storage.from(BUCKET).upload(ruta, f.bytes, { contentType: f.tipo_mime || 'application/octet-stream', upsert: false })
     if (sub.error) { console.log(`  ✗ ${f.nombre_archivo}: no subió — ${sub.error.message}`); continue }
 
-    // Se sacan las tres claves que son de la CORRIDA y no de la fila: los bytes ya se subieron, y
-    // `cliente`/`obra` son los nombres que dibujó la tabla —la fila guarda los ids.
+    // Se sacan las claves que son de la CORRIDA y no de la fila: los bytes ya se subieron, y
+    // `cliente`/`texto`/`citadas`/`comprobante`/`porque` son andamiaje de la herencia.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { bytes, cliente, obra, ...fila } = f
+    const { bytes, cliente, texto, citadas, comprobante, porque, ...fila } = f
     const { error } = await sb.from('cliente_orden').insert({ ...fila, archivo_path: ruta, origen: 'gmail' })
     if (error) {
-      // 23505 = la restricción de idempotencia hizo su trabajo: este documento ya estaba. Se borra
+      // 23505 = una restricción de idempotencia hizo su trabajo: este documento ya estaba. Se borra
       // el objeto recién subido para no dejar un huérfano por cada corrida.
-      if (error.code === '23505') { repetidas++; await sb.storage.from(BUCKET).remove([ruta]) }
+      if (error.code === '23505') { rechazadas++; await sb.storage.from(BUCKET).remove([ruta]) }
       else console.log(`  ✗ ${f.nombre_archivo}: ${error.message}`)
       continue
     }
-    nuevas++
+    escritas++
   }
-  console.log(`\nAPLICADO — nuevas: ${nuevas} · ya estaban: ${repetidas}`)
+  console.log(`\nAPLICADO — nuevas: ${escritas} · rechazadas por la base: ${rechazadas}`)
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1) })
