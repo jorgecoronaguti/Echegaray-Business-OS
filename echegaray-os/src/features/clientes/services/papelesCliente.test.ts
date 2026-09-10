@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agruparPapeles, clasePapel, corto, esRetencion, opDeRetencion, VARIAS_OBRAS, type PapelCrudo,
+  agruparPapeles, clasePapel, corto, esRetencion, hrefDelPapel, opDeRetencion, VARIAS_OBRAS,
+  type PapelCrudo,
 } from './papelesCliente.ts'
 import { PAPELES_MESSINA } from './papelesMessina.fixture.ts'
 
@@ -179,4 +180,34 @@ test('sin papeles no se rompe ni se inventa un cero', () => {
   const p = agruparPapeles([])
   assert.deepEqual(p.totalOC, { n: 0, importe: null, parcial: false })
   assert.equal(p.porObra.size, 0)
+})
+
+// ═══ ADÓNDE VA LA FILA DE UN PAPEL (10/09/2026) ═══
+//
+// Hasta hoy la única puerta era `/api/clientes/orden/<id>`, un proxy que devuelve los bytes: el que
+// mira nunca llegaba al archivo EN SU CARPETA. Con el backfill de Drive la mayoría tiene
+// `drive_file_id`, pero medido el 10/09/2026 sólo 44 de 385 lo tenían: publicar SIEMPRE el de Drive
+// dejaría 341 filas sin adónde ir.
+
+test('el papel abre en Drive cuando el PDF está subido, y en el proxy cuando todavía no', () => {
+  assert.equal(
+    hrefDelPapel({ driveFileId: '1AbC', archivoId: 'x' }),
+    'https://drive.google.com/file/d/1AbC/view',
+  )
+  assert.equal(hrefDelPapel({ driveFileId: null, archivoId: 'x' }), '/api/clientes/orden/x')
+  assert.equal(hrefDelPapel({ driveFileId: undefined, archivoId: 'x' }), '/api/clientes/orden/x')
+  // Un id vacío NO es un id: sería `.../file/d//view`, una URL que abre un 404 de Google.
+  assert.equal(hrefDelPapel({ driveFileId: '', archivoId: 'x' }), '/api/clientes/orden/x')
+})
+
+test('el enlace de Drive viaja con la COPIA que el grupo eligió, no con la primera que llegó', () => {
+  // `agruparPapeles` se queda con la copia MÁS VIEJA como la buena (`archivoId`). Si el
+  // `drive_file_id` no se moviera con ella, la fila descargaría un PDF y abriría otro.
+  const [oc] = agruparPapeles([
+    { id: 'nueva', tipo: 'orden_compra', numero: '00002-00002173', fecha: '2026-08-20', importe: 1, moneda: 'ARS', obra_id: 'o1', drive_file_id: 'DRIVE-NUEVA' },
+    { id: 'vieja', tipo: 'orden_compra', numero: '00002-00002173', fecha: '2026-08-11', importe: 1, moneda: 'ARS', obra_id: 'o1', drive_file_id: 'DRIVE-VIEJA' },
+  ]).oc
+  assert.equal(oc.archivoId, 'vieja')
+  assert.equal(oc.driveFileId, 'DRIVE-VIEJA')
+  assert.equal(hrefDelPapel(oc), 'https://drive.google.com/file/d/DRIVE-VIEJA/view')
 })

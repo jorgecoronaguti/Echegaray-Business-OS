@@ -142,7 +142,7 @@ test('lo cobrado de la OBRA cuelga de su obra; lo del CLIENTE lo dice `cliente_e
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'o1' }), obra({ obra_id: 'o2' })],
-    cobrado: new Map([['o1', 500_000]]),
+    cobrado: new Map([['o1', { cobrado: 500_000, imputacion: 'oc' as const }]]),
     certificados: [],
     economia: new Map([eco('o1', 1_000_000), eco('o2', 2_000_000)]),
     economiaCliente: new Map([['c1', ecCliente({
@@ -174,7 +174,7 @@ test('sin `cliente_economia` legible, el cliente NO cae a sumar sus obras: dice 
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'o1' }), obra({ obra_id: 'o2' })],
-    cobrado: new Map([['o1', 500_000]]),
+    cobrado: new Map([['o1', { cobrado: 500_000, imputacion: 'oc' as const }]]),
     certificados: [],
     economia: new Map([eco('o1', 1_000_000), eco('o2', 2_000_000)]),
     economiaCliente: null,
@@ -306,14 +306,27 @@ test('Messina: la fila del cliente publica lo que dice la vista, no la suma del 
 // Con el neto ($84.697.935) la misma fila dice 89 %. Si alguien vuelve a `cobrado`, este test da
 // rojo con el número bruto en el mensaje.
 
-/** Un Supabase de mentira que devuelve las DOS columnas: la buena y la que ya engañó una vez. */
-function baseConLasDos(filas: Record<string, unknown>[], recordar: string[]) {
+/**
+ * Un Supabase de mentira que devuelve las DOS columnas: la buena y la que ya engañó una vez.
+ *
+ * `columnasQueExisten` es lo que la BASE tiene hoy: pedir una que no está devuelve 42703, igual que
+ * PostgREST. Es lo que hace probable el `select` tolerante de `imputacion` — con la migración sin
+ * aplicar y con ella aplicada, sin tocar el código entre las dos corridas.
+ */
+function baseConLasDos(
+  filas: Record<string, unknown>[], recordar: string[],
+  columnasQueExisten = ['obra_id', 'cobrado', 'cobrado_neto'],
+) {
   return {
     from: () => ({
       select: (columnas: string) => {
         recordar.push(columnas)
-        // Sólo devuelve lo que se pidió, igual que PostgREST: pedir `cobrado` no puede traer el neto.
         const pedidas = columnas.split(',').map((c) => c.trim())
+        const falta = pedidas.find((c) => !columnasQueExisten.includes(c))
+        if (falta) {
+          return Promise.resolve({ data: null, error: { code: '42703', message: `column ${falta} does not exist` } })
+        }
+        // Sólo devuelve lo que se pidió, igual que PostgREST: pedir `cobrado` no puede traer el neto.
         return Promise.resolve({
           data: filas.map((f) => Object.fromEntries(pedidas.map((c) => [c, f[c] ?? null]))),
           error: null,
@@ -331,9 +344,56 @@ test('la barra de la obra divide el cobrado NETO, nunca el bruto con IVA', async
   ))
   assert.ok(pedidas[0].includes('cobrado_neto'), `pidió «${pedidas[0]}»: sin el neto no hay qué dividir`)
   assert.equal(
-    cobrado?.get('quattropani'), 84_697_934.83,
+    cobrado?.get('quattropani')?.cobrado, 84_697_934.83,
     'el bruto ($102.606.669) sobre un contratado neto da «100 % cobrado» y el resto es IVA',
   )
+})
+
+// ═══ EL `select` TOLERANTE DE `imputacion` ═══
+//
+// La columna la agrega la migración que reparte el cobro por obra (la OC de la columna H de
+// Cobranzas atada a `cliente_orden.obra_id`). El código la pide SIEMPRE: el día que la migración se
+// aplique, la barra por obra enciende sola y sin tocar una línea. Mientras no exista, PostgREST
+// devuelve 42703 y hay que volver a pedir sin ella — si no, la lectura falla entera y la columna
+// Cobrado se apaga para todo el mundo.
+//
+// LOS DOS MUNDOS SE PRUEBAN CON EL MISMO CÓDIGO, que es lo único que prueba que la migración va a
+// encender la barra sin una segunda entrega.
+
+test('sin la columna `imputacion` la lectura NO se cae: se vuelve a pedir sin ella', async () => {
+  const pedidas: string[] = []
+  const cobrado = await getCobradoPorObra(baseConLasDos(
+    [{ obra_id: 'quattropani', cobrado_neto: 84_697_934.83 }], pedidas,
+  ))
+  assert.ok(pedidas[0].includes('imputacion'), 'se pide primero CON la columna, para que encienda sola')
+  assert.equal(pedidas.length, 2, 'y se reintenta una sola vez, sin ella')
+  assert.equal(cobrado?.get('quattropani')?.cobrado, 84_697_934.83)
+  assert.equal(cobrado?.get('quattropani')?.imputacion, null, 'la columna no existe: no se inventa')
+})
+
+test('con la columna aplicada, la imputación llega tal cual y sin segundo viaje', async () => {
+  const pedidas: string[] = []
+  const cobrado = await getCobradoPorObra(baseConLasDos(
+    [
+      { obra_id: 'messina-playon-azufre', cobrado_neto: 32_500_000, imputacion: 'oc' },
+      { obra_id: 'messina', cobrado_neto: 2_330_000, imputacion: 'cliente' },
+    ],
+    pedidas,
+    ['obra_id', 'cobrado', 'cobrado_neto', 'imputacion'],
+  ))
+  assert.equal(pedidas.length, 1, 'con la columna viva no hay reintento')
+  assert.equal(cobrado?.get('messina-playon-azufre')?.imputacion, 'oc')
+  assert.equal(cobrado?.get('messina')?.imputacion, 'cliente')
+})
+
+test('un valor de imputación que el OS no conoce se descarta, no se dibuja', async () => {
+  // Si mañana la vista publica un cuarto valor, la fila NO puede dibujar una palabra que nadie
+  // definió: se trata como «no se sabe» hasta que alguien la agregue acá a propósito.
+  const cobrado = await getCobradoPorObra(baseConLasDos(
+    [{ obra_id: 'o1', cobrado_neto: 1, imputacion: 'certificado' }], [],
+    ['obra_id', 'cobrado', 'cobrado_neto', 'imputacion'],
+  ))
+  assert.equal(cobrado?.get('o1')?.imputacion, null)
 })
 
 test('sin cobranzas cobradas la obra NO entra al mapa: un hueco no es un cero', async () => {

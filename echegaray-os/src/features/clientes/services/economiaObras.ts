@@ -67,35 +67,18 @@ export function aNumero(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-/**
- * EL TECHO ARITMÉTICO DEL MARGEN SOBRE EL CONTRATADO.
- *
- * `margen = contratado − MO − materiales` y ningún costo es negativo, así que el cociente no puede
- * pasar de 100 %. Si pasa, los dos números NO son de la misma obra —o el denominador no es un
- * precio— y el porcentaje deja de medir nada.
- */
-export const MARGEN_PCT_MAX = 100
-/**
- * EL PISO. Por debajo, el contratado es menos de la décima parte del costo: el $ ya dice todo lo que
- * hay que saber y el % sólo agrega ruido con seis dígitos.
- *
- * Es el defecto que el dueño vio el 10/09/2026: Quattropani salía «$ -39.149.629 · 2.603.726 %»
- * porque OBRAS publicaba $1.504 de contratado (un dólar leído como peso). El $ negativo era la
- * noticia; el porcentaje era una cifra que sólo podía confundir.
- */
-export const MARGEN_PCT_MIN = -1000
-
-/**
- * El margen en % del contratado. Sin contratado (o contratado 0) no hay porcentaje — y tampoco lo
- * hay cuando el resultado cae fuera de `[MARGEN_PCT_MIN, MARGEN_PCT_MAX]`: un porcentaje imposible
- * no es un dato con ruido, es la prueba de que el denominador no corresponde.
- */
-export function margenPct(margen: number | null, contratado: number | null): number | null {
-  if (margen === null || contratado === null || contratado <= 0) return null
-  const p = (margen / contratado) * 100
-  if (!Number.isFinite(p) || p > MARGEN_PCT_MAX || p < MARGEN_PCT_MIN) return null
-  return p
-}
+// ═══ EL MARGEN SE FUE DE ESTE MÓDULO (10/09/2026) ═══
+//
+// Vivían acá `margenPct`, `pctTexto`, `margenDeLaFila` y el techo aritmético que impedía publicar
+// un porcentaje imposible (el «2.603.726 %» que el dueño vio en la fila de Quattropani). Se
+// retiraron con las dos columnas Margen que los usaban —la de `/clientes` y la de la ficha del
+// cliente— por orden del dueño: «quitá esa columna Margen, no es útil».
+//
+// NO SE PERDIÓ LA CAPACIDAD, CAMBIÓ DE MÓDULO. El margen de una obra vive en `features/obras`
+// (`obra_economia`, `planVsReal`), donde se mide contra el costo REAL y el forecast y no contra un
+// contratado que en cuatro de las cinco obras de Messina es una suma viva de Cobranzas. Sus reglas
+// tienen sus propios tests allá. Dejar acá una función que nadie llama sería verde que no cuida
+// nada, y peor: la próxima pantalla la encontraría servida y la columna volvería sola.
 
 /**
  * SUMA QUE NO INVENTA: si NINGUNA fila trae el dato, el total es `null`; si alguna lo trae, suma las

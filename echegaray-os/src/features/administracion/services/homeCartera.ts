@@ -74,6 +74,8 @@ export interface ObraEnCurso {
    *  comparable contra lo contratado, que tampoco lo lleva. `null` = ninguna cobranza imputada a la
    *  obra, que NO es «no cobró»: hoy Cobranzas anota casi todo el cobro contra el cliente. */
   cobrado: number | null
+  /** Cómo llegó ese número a esta obra. `cliente` = no se pudo repartir y la fila lo dice. */
+  imputacion: Imputacion | null
 }
 
 export interface ClienteEnCartera {
@@ -186,17 +188,44 @@ export async function getObrasDeLaCartera(
  *
  * `null` = la lectura falló, que no es lo mismo que «no hay cobranzas».
  */
-export async function getCobradoPorObra(supabase: SupabaseClient): Promise<Map<string, number> | null> {
-  const { data, error } = await supabase.from('obra_cobranza').select('obra_id, cobrado_neto')
+export async function getCobradoPorObra(
+  supabase: SupabaseClient,
+): Promise<Map<string, CobroDeObra> | null> {
+  // ═══ EL `select` ES TOLERANTE A PROPÓSITO, Y ES LO ÚNICO QUE LO ES ═══
+  //
+  // `imputacion` la agrega la migración que reparte el cobro por obra (OC de la columna H de
+  // Cobranzas → `cliente_orden.obra_id`). Se pide primero CON la columna: el día que la migración
+  // se aplique, la barra por obra enciende sola y sin tocar código. Mientras no exista, PostgREST
+  // devuelve 42703 y se vuelve a pedir sin ella.
+  //
+  // NO ES UN «por las dudas» ni un patrón para copiar: es el ÚNICO caso del módulo, y sólo se
+  // tolera la AUSENCIA de una columna nueva. Cualquier otro error —permiso, red, RLS— sigue
+  // devolviendo `null`, que es «no pude leer» y no «no hay cobros».
+  const conImputacion = await supabase.from('obra_cobranza').select('obra_id, cobrado_neto, imputacion')
+  const { data, error } = conImputacion.error?.code === COLUMNA_INEXISTENTE
+    ? await supabase.from('obra_cobranza').select('obra_id, cobrado_neto')
+    : conImputacion
   if (error) return null
-  const por = new Map<string, number>()
-  for (const f of (data ?? []) as { obra_id: string; cobrado_neto: number | null }[]) {
+  const por = new Map<string, CobroDeObra>()
+  for (const f of (data ?? []) as { obra_id: string; cobrado_neto: number | null; imputacion?: string | null }[]) {
     // NULL cuando la obra tiene filas de Cobranzas pero ninguna cobrada. Eso NO es cero cobrado: es
     // que todavía no entró nada, y la barra lo dibuja como 0 sólo si la obra aparece con un número.
     // Un null no se guarda: el mapa dice quién tiene cobro, no quién no.
-    if (f.cobrado_neto != null) por.set(f.obra_id, Number(f.cobrado_neto))
+    if (f.cobrado_neto == null) continue
+    por.set(f.obra_id, {
+      cobrado: Number(f.cobrado_neto),
+      imputacion: esImputacion(f.imputacion) ? f.imputacion : null,
+    })
   }
   return por
+}
+
+/** El código de PostgREST/Postgres para «esa columna no existe». */
+const COLUMNA_INEXISTENTE = '42703'
+
+const IMPUTACIONES = ['oc', 'alias', 'cliente'] as const
+function esImputacion(v: unknown): v is Imputacion {
+  return typeof v === 'string' && (IMPUTACIONES as readonly string[]).includes(v)
 }
 
 /**
@@ -219,6 +248,24 @@ export async function getContratosDeLaCartera(
   const con = new Set<string>()
   for (const d of (data ?? []) as { cliente_id: string }[]) con.add(d.cliente_id)
   return con
+}
+
+/**
+ * CÓMO LLEGÓ EL COBRO A ESTA OBRA (`obra_cobranza.imputacion`).
+ *
+ *   `oc`       por el número de OC de la columna H de Cobranzas, atado a su obra por
+ *              `cliente_orden.obra_id`. Es la atribución fuerte: la dice un papel.
+ *   `alias`    porque la etiqueta de Cobranzas nombra a esa obra (`obra_alias`).
+ *   `cliente`  NO se pudo repartir: la etiqueta nombra al CLIENTE y el cobro quedó en la bolsa.
+ *              La fila lo dice con palabras y NO dibuja barra: repartirlo a ojo sería inventar.
+ *   `null`     la columna todavía no existe en la base (la migración no está aplicada).
+ */
+export type Imputacion = 'oc' | 'alias' | 'cliente'
+
+export interface CobroDeObra {
+  /** Percibido y SIN IVA (`obra_cobranza.cobrado_neto`). */
+  cobrado: number
+  imputacion: Imputacion | null
 }
 
 /** Lo mínimo de un certificado para saber en qué punto del circuito está. */
@@ -301,8 +348,9 @@ export function armarCartera({
 }: {
   clientes: ClientePanel[]
   obras: ObraDeCartera[] | null
-  /** obra_id → lo cobrado (percibido). `null` = no se pudo leer o el rol no ve economía. */
-  cobrado: Map<string, number> | null
+  /** obra_id → lo cobrado (percibido, neto) y cómo se imputó. `null` = no se pudo leer o el rol
+   *  no ve economía. */
+  cobrado: Map<string, CobroDeObra> | null
   certificados: FilaCertificado[] | null
   /** Lo que OBRAS publica por obra (`obra_economia_cartera`). `null` = no se pudo leer. */
   economia?: Map<string, EconomiaDeObra> | null
@@ -339,7 +387,8 @@ export function armarCartera({
         costoMo: e?.costo_mo ?? null,
         costoMateriales: e?.costo_materiales ?? null,
         certificacion: certificacionDe(certificados, o.obra_id),
-        cobrado: cobrado?.get(o.obra_id) ?? null,
+        cobrado: cobrado?.get(o.obra_id)?.cobrado ?? null,
+        imputacion: cobrado?.get(o.obra_id)?.imputacion ?? null,
       }
     })
     // ═══ LO CONTRATADO Y LO COBRADO DEL CLIENTE LOS DICE LA VISTA, NO ESTA FUNCIÓN ═══

@@ -13,7 +13,7 @@
 import { V } from '@/shared/components/v2/patron'
 import { pesos } from '@/shared/components/canon/formato'
 import { numeroCorto, type OrdenDetallada } from '../services/ordenesCliente'
-import { esRetencion, opDeRetencion } from '../services/papelesCliente'
+import { esRetencion, hrefDelPapel, opDeRetencion } from '../services/papelesCliente'
 
 // `retencion` es el certificado de retención impositiva que el cliente manda junto con el pago.
 // Se nombra por lo que es: llamarlo «Documento» escondía que la OP 4865 tenía dos filas, y llamarlo
@@ -72,11 +72,16 @@ export function ListaOrdenes({ ordenes, veEconomia }: {
       {(ordenes ?? []).map((o) => (
         <a
           key={o.id}
-          href={`/api/clientes/orden/${o.id}`}
+          // EL PDF EN DRIVE CUANDO ESTÁ SUBIDO; el proxy de bytes cuando todavía no. Ver
+          // `hrefDelPapel`: el archivo en Drive es la fuente y se abre en su carpeta —con lo que
+          // llegó junto a él—, el proxy es una copia servida y existe para los que faltan.
+          href={hrefDelPapel({ driveFileId: o.drive_file_id, archivoId: o.id })}
           target="_blank"
           rel="noreferrer"
           data-testid="orden-descargar"
+          data-drive={o.drive_file_id ?? undefined}
           data-tipo={o.tipo}
+          title={o.drive_file_id ? 'Abrir el PDF en Drive' : 'Descargar el PDF (todavía no está subido a Drive)'}
           style={{ display: 'grid', gap: 2, padding: '9px 0', borderBottom: `1px solid ${V.lineaFila}` }}
         >
           <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>

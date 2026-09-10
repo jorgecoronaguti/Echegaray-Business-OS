@@ -20,10 +20,14 @@
 import { pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, ENCABEZADO, RotuloCol, V } from '@/shared/components/v2/patron'
 import type { ClasePapel, Orden, Papel, PapelesDelCliente } from '../services/papelesCliente'
-import { opDeRetencion, VARIAS_OBRAS } from '../services/papelesCliente'
+import { hrefDelPapel, opDeRetencion, VARIAS_OBRAS } from '../services/papelesCliente'
 
 /** El archivo se abre por la ruta que ya sirve el bucket privado con la credencial del OS. */
-const HREF = (id: string) => `/api/clientes/orden/${id}`
+/** Adónde va cada renglón. Drive cuando el PDF ya está subido —es la fuente, y se abre en su
+ *  carpeta—; el proxy de bytes cuando todavía no. La regla vive en `papelesCliente.hrefDelPapel` y
+ *  se prueba sin pantalla: dos formas de armar la misma URL se separan en cuanto una aprende algo. */
+const HREF = (archivoId: string, driveFileId?: string | null) =>
+  hrefDelPapel({ driveFileId, archivoId })
 
 // 170px Y NO 110: «Retención · OP 5156» son 19 caracteres en mono de 12,5px ≈ 143px, y con 110 se
 // dibujaba «Retención · …» — el número de la orden a la que pertenece, que es TODO lo que ese
@@ -177,7 +181,7 @@ export function PapelesPorTipo({ papeles, nombreDeObra, veEconomia, mostrarObra 
           <Fila
             key={o.clave} clase="oc" clave={o.clave} numero={`OC ${o.numeroCorto ?? 's/n'}`} fecha={dia(o.fecha)}
             obra={obraDe(o.obraId)} monto={importe(o.importe, o.moneda, veEconomia)}
-            vinculo={vinculoDeOC(o)} href={HREF(o.archivoId)}
+            vinculo={vinculoDeOC(o)} href={HREF(o.archivoId, o.driveFileId)}
           />
         ))}
       </Grupo>
@@ -188,7 +192,7 @@ export function PapelesPorTipo({ papeles, nombreDeObra, veEconomia, mostrarObra 
           <Fila
             key={o.clave} clase="op" clave={o.clave} numero={`OP ${o.numeroCorto ?? 's/n'}`} fecha={dia(o.fecha)}
             obra={obraDe(o.obraId)} monto={importe(o.importe, o.moneda, veEconomia)}
-            vinculo={vinculoDeOP(o)} href={HREF(o.archivoId)}
+            vinculo={vinculoDeOP(o)} href={HREF(o.archivoId, o.driveFileId)}
           />
         ))}
       </Grupo>
@@ -203,7 +207,7 @@ export function PapelesPorTipo({ papeles, nombreDeObra, veEconomia, mostrarObra 
           <Fila
             key={r.id} clase="retencion" clave={r.id} numero={`Retención · OP ${opDeRetencion(r.nombre_archivo) ?? r.numeroCorto ?? 's/n'}`} fecha={dia(r.fecha)}
             obra={obraDe(r.obra_id)} monto={importe(r.importe, r.moneda, veEconomia)}
-            vinculo="del cliente" href={HREF(r.id)} tono={V.apagado}
+            vinculo="del cliente" href={HREF(r.id, r.drive_file_id)} tono={V.apagado}
           />
         ))}
       </Grupo>
@@ -214,7 +218,7 @@ export function PapelesPorTipo({ papeles, nombreDeObra, veEconomia, mostrarObra 
           <Fila
             key={f.id} clase="factura" clave={f.id} numero={`Factura ${f.numeroCorto ?? 's/n'}`} fecha={dia(f.fecha)}
             obra={obraDe(f.obra_id)} monto={importe(f.importe, f.moneda, veEconomia)}
-            vinculo={f.cita ? `cita OC ${String(f.cita).split('-').pop()}` : 'sin cita'} href={HREF(f.id)}
+            vinculo={f.cita ? `cita OC ${String(f.cita).split('-').pop()}` : 'sin cita'} href={HREF(f.id, f.drive_file_id)}
           />
         ))}
       </Grupo>
@@ -225,7 +229,7 @@ export function PapelesPorTipo({ papeles, nombreDeObra, veEconomia, mostrarObra 
           <Fila
             key={x.id} clase="otro" clave={x.id} numero={x.numeroCorto ?? 's/n'} fecha={dia(x.fecha)}
             obra={obraDe(x.obra_id)} monto={importe(x.importe, x.moneda, veEconomia)}
-            vinculo={x.nombre_archivo ?? ''} href={HREF(x.id)} tono={V.apagado}
+            vinculo={x.nombre_archivo ?? ''} href={HREF(x.id, x.drive_file_id)} tono={V.apagado}
           />
         ))}
       </Grupo>

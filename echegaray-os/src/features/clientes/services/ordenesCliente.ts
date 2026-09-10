@@ -19,6 +19,9 @@ export interface OrdenBreve {
   importe: number | null
   moneda: string | null
   obra_id: string | null
+  /** EL PDF EN DRIVE. `null` mientras el backfill no haya subido ese papel: la pantalla cae al
+   *  proxy de descarga, que existe para los 385, en vez de dejar la fila sin adónde ir. */
+  drive_file_id: string | null
 }
 
 /** Clave para lo que no se pudo atribuir a una obra: cuelga del CLIENTE. */
@@ -42,7 +45,7 @@ export async function getOrdenesDeLaCartera(supabase: SupabaseClient): Promise<O
     // `cita` y `nombre_archivo` NO son adorno: sin el nombre no se puede distinguir un comprobante
     // de retención —que lleva el número de SU orden de pago— de una orden de pago, y el total
     // cobrado de la cartera se duplicaría. La clasificación vive en `papelesCliente.clasePapel`.
-    .select('id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo')
+    .select('id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, drive_file_id')
     .is('eliminado_en', null)
 
   const porObra = new Map<string, OrdenBreve[]>()
@@ -102,7 +105,7 @@ export async function getPapelesDeLaCartera(
 ): Promise<{ porCliente: Map<string, PapelesDelCliente>; fallo: boolean }> {
   const { data, error } = await supabase
     .from('cliente_orden')
-    .select('id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo')
+    .select('id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, drive_file_id')
     .is('eliminado_en', null)
 
   const crudos = new Map<string, PapelCrudo[]>()
@@ -126,7 +129,7 @@ export async function ordenesPorClienteYObra(
 ): Promise<PapelesDelCliente | null> {
   const { data, error } = await supabase
     .from('cliente_orden')
-    .select('id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, atribucion')
+    .select('id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, atribucion, drive_file_id')
     .eq('cliente_id', clienteId)
     .is('eliminado_en', null)
   if (error) return null
@@ -146,6 +149,8 @@ export interface OrdenDetallada {
   fecha: string | null
   importe: number | null
   moneda: string | null
+  /** EL PDF EN DRIVE. `null` = todavía no se subió: se cae al proxy de descarga. */
+  drive_file_id: string | null
   /** La OC que este papel NOMBRA, en canónico. Una factura nuestra la trae; una OC no. */
   cita: string | null
   nombre_archivo: string
@@ -167,7 +172,7 @@ export async function getOrdenesDe(
 ): Promise<OrdenDetallada[] | null> {
   let q = supabase
     .from('cliente_orden')
-    .select('id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, emisor, atribucion')
+    .select('id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, emisor, atribucion, drive_file_id')
     .eq('cliente_id', clienteId)
     .is('eliminado_en', null)
   q = obraId === null ? q.is('obra_id', null) : q.eq('obra_id', obraId)
@@ -194,7 +199,7 @@ export async function getOrdenesDeObra(
 ): Promise<OrdenDetallada[] | null> {
   const { data, error } = await supabase
     .from('cliente_orden')
-    .select('id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, emisor, atribucion')
+    .select('id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, emisor, atribucion, drive_file_id')
     .eq('obra_id', obraId)
     .is('eliminado_en', null)
     .order('fecha', { ascending: false, nullsFirst: false })

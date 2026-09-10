@@ -34,9 +34,7 @@ import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from 
 import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import type { ObraPanel } from '@/features/obras/types'
-import {
-  SIN_PRECIO_EN_OBRAS, margenDeLaFila, margenPct, pctTexto, type EconomiaDeObra,
-} from '../services/economiaObras'
+import { SIN_PRECIO_EN_OBRAS, type EconomiaDeObra } from '../services/economiaObras'
 import type { PapelesDelCliente } from '../services/papelesCliente'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 
@@ -91,7 +89,7 @@ const COLOR_ESTADO_OBRA: Record<string, string> = {
 // por 60px aun con los cortes andando. Con `minmax(0,X)` la pista cede cuando no hay lugar en vez
 // de desbordar; el único piso que se defiende es el del nombre, que es lo que identifica la fila.
 const COLS_OBRAS
-  = 'gap-[20px] grid-cols-[minmax(200px,1.8fr)_minmax(0,110px)_minmax(0,80px)_minmax(0,150px)_minmax(0,150px)_minmax(0,150px)_minmax(0,140px)_minmax(0,28px)]'
+  = 'gap-[20px] grid-cols-[minmax(200px,1.8fr)_minmax(0,110px)_minmax(0,80px)_minmax(0,150px)_minmax(0,150px)_minmax(0,150px)_minmax(0,28px)]'
   // Por debajo de 1200px se sueltan OP y MARGEN —lo que se cobró y lo que queda—: la pregunta que
   // sobrevive en una pantalla angosta es qué se le vendió (contratado) y con qué papel (OC).
   // 90px y no 72 para el avance: «sin cronograma» a 11,5px mide 84px y en 72 se cortaba en «sin
@@ -173,7 +171,6 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
         <RotuloCol derecha>Contratado</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_OC}><RotuloCol derecha>OC c/IVA</RotuloCol></span>
         <span className={`grid ${SOLO_ANCHO_ECO}`} title={AYUDA_OP}><RotuloCol derecha>OP c/IVA</RotuloCol></span>
-        <span className={`grid ${SOLO_ANCHO_ECO}`}><RotuloCol derecha>{veEconomia ? 'Margen' : ''}</RotuloCol></span>
         <span className={SOLO_ANCHO} />
       </div>
 
@@ -191,23 +188,11 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
         // la lista decía $156,1 M. Una obra sin precio en OBRAS lo dice; no se rellena con otra cosa.
         const e = economia?.get(o.obra_id) ?? null
         const contratado = e?.contratado ?? null
-        // LA MISMA REGLA QUE USABA LA CARTERA, Y NO UNA LECTURA CRUDA. `e.margen` es lo que OBRAS
-        // publica, pero cuando la vista NO lo trae hay que derivarlo con la fórmula que el rótulo
-        // declara —contratado − MO − materiales— y devolver `null` si falta un sumando. Escrito acá
-        // a mano, la ficha publicaba «—» donde la lista mostraba un número, y el día que OBRAS deje
-        // de publicar el margen las dos pantallas dirían cosas distintas del mismo cliente. La
-        // cartera de `/clientes` retiró su columna Margen el 10/09/2026 y ésta quedó como la ÚNICA
-        // consumidora de la regla: por eso la llama, en vez de dejarla sin dueño.
-        const margen = margenDeLaFila({
-          margenPublicado: e?.margen ?? null,
-          contratado,
-          costoMo: e?.costo_mo ?? null,
-          costoMateriales: e?.costo_materiales ?? null,
-        })
         // UNA OBRA CERRADA SIN PRECIO NO BLOQUEA NADA. El filo ámbar y el «sin precio en OBRAS»
         // existen para que alguien cargue el monto de una obra que se está ejecutando; sobre una
         // obra terminada hace dos años son una alarma que nadie puede apagar — y en el grupo
         // «Cerradas» eran seis alarmas seguidas. Ahí el hueco se dice con un «—» y se calla.
+        const papelesDeLaObra = papeles?.porObra.get(o.obra_id) ?? null
         const cerrada = o.estado === 'cerrada'
         return (
         <Link
@@ -285,19 +270,28 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
               vive en la obra: con las dos columnas de costo puestas no había ancho para las dos que
               contestan la pregunta comercial —con qué papel nos lo encargó y qué ordenó pagar—.
               El costo real sigue estando en la obra, que es donde se decide sobre él. */}
+          {/* CON UNA SOLA, SE DICE CUÁL: «OC 2173» y no «1 OC». Misma regla que la lista de
+              `/clientes`, y por eso la decide el MISMO componente. */}
           <span className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid="oc-obra-cliente">
-            <TotalDePapeles total={papeles?.porObra.get(o.obra_id)?.totalOC ?? SIN_PAPELES} sigla="OC" tam="12px" veEconomia={veEconomia} />
+            <TotalDePapeles
+              total={papelesDeLaObra?.totalOC ?? SIN_PAPELES} sigla="OC" tam="12px" veEconomia={veEconomia}
+              numero={papelesDeLaObra?.totalOC.n === 1 ? papelesDeLaObra.oc[0]?.numeroCorto ?? null : null}
+            />
           </span>
           <span className={`flex items-center justify-end ${SOLO_ANCHO_ECO}`} data-testid="op-obra-cliente">
-            <TotalDePapeles total={papeles?.porObra.get(o.obra_id)?.totalOP ?? SIN_PAPELES} sigla="OP" tam="12px" veEconomia={veEconomia} />
+            <TotalDePapeles
+              total={papelesDeLaObra?.totalOP ?? SIN_PAPELES} sigla="OP" tam="12px" veEconomia={veEconomia}
+              numero={papelesDeLaObra?.totalOP.n === 1 ? papelesDeLaObra.op[0]?.numeroCorto ?? null : null}
+            />
           </span>
-          <span className={`font-mono tabular-nums truncate ${SOLO_ANCHO_ECO}`} data-testid="margen-obra-cliente"
-            style={{ fontSize: '12px', color: margen == null ? V.tenue : margen < 0 ? V.warn : V.tinta, textAlign: 'right' }}>
-            {veEconomia
-              ? (margen == null ? '—' : <>{plata(margen)}<span style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}>{pctTexto(margenPct(margen, contratado))}</span></>)
-              : ''}
-          </span>
+          {/* ═══ MARGEN FUERA (dueño, 10/09/2026: «quitá esa columna Margen, no es útil») ═══
 
+              Se retiró de `/clientes` a las 15:33 y de acá en el mismo día: es el MISMO concepto
+              sobre los mismos números, y dejarlo en una de las dos pantallas del módulo Clientes es
+              volver a tener dos verdades sobre el mismo cliente. El margen de una obra vive en el
+              módulo Obras —`features/obras`, con `obra_economia` y `planVsReal`, que lo miden
+              contra el costo REAL y el forecast—, no contra un contratado que en cuatro de las
+              cinco obras de Messina ni siquiera es un precio. */}
           {/* LA PISTA DE 28px EXISTE Y VA VACÍA. El handoff pone acá el menú de fila, pero en esta
               ficha no hay ninguna acción de fila cableada para una obra —ni quitar, ni archivar: se
               archiva desde la obra—. Dibujar un `···` que sólo repite el enlace de la fila sería

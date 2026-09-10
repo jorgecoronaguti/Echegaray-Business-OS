@@ -302,6 +302,16 @@ test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el
   for (const rotulo of ['Costo MO', 'Costo mat.']) {
     assert.ok(!src.includes(`>${rotulo}<`), `«${rotulo}» es COSTO: vive en la obra, no en el cliente`)
   }
+  // ═══ Y MARGEN TAMPOCO (dueño, 10/09/2026: «quitá esa columna Margen, no es útil») ═══
+  //
+  // Se retiró de `/clientes` a las 15:33 y de acá en el mismo día: es el MISMO concepto sobre los
+  // mismos números, y dejarlo en una sola de las dos pantallas del módulo Clientes es volver a
+  // tener dos verdades del mismo cliente — que es el defecto que `CarteraHome` ya costó una vez.
+  // El margen de una obra vive en `features/obras` (`obra_economia`, `planVsReal`), medido contra
+  // el costo REAL y no contra un contratado que en cuatro de las cinco obras de Messina es la suma
+  // viva de Cobranzas.
+  assert.ok(!src.includes('>Margen<'), 'el rótulo Margen volvió a la ficha del cliente')
+  assert.doesNotMatch(src, /margen-obra-cliente|margenPct|pctTexto|margenDeLaFila/)
   // OP se suelta por debajo de 1200px; OC no, porque es la pregunta que el dueño hace primero.
   assert.match(src, /SOLO_ANCHO_ECO[^\n]*<RotuloCol derecha>OP c\/IVA<\/RotuloCol>/,
     '«OP» tiene que soltarse por debajo de 1200px: en una pantalla angosta sobrevive lo que se vendió')

@@ -50,7 +50,7 @@ import Link from 'next/link'
 import { pesos, porcentajeCanon } from '@/shared/components/canon/formato'
 import { IconoCliente, IconoObra } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, RotuloCol, V } from '@/shared/components/v2/patron'
-import type { ClienteEnCartera, ObraEnCurso } from '@/features/administracion/services/homeCartera'
+import type { ClienteEnCartera, Imputacion, ObraEnCurso } from '@/features/administracion/services/homeCartera'
 import { frasesDeObras } from '@/features/clientes/services/cartera'
 import { progresoDeCobro, tituloDeCobro } from '@/features/clientes/services/progresoCobro'
 import type { PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
@@ -126,9 +126,16 @@ const VACIO: PapelesDelCliente = {
  * OS es el grafito, que es además con lo que esta misma tabla dibuja el avance de la obra. Dos
  * barras con dos colores en la misma fila serían dos vocabularios.
  */
-function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'obra', tam, obrasSinPrecio = null }: {
+function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'obra', tam, obrasSinPrecio = null, imputacion = null }: {
   cobrado: number | null
   contratado: number | null
+  /**
+   * CÓMO LLEGÓ EL COBRO A ESTA OBRA. `cliente` = la vista no pudo repartirlo —la etiqueta de
+   * Cobranzas nombra al CLIENTE— y entonces esta obra NO tiene un cobro propio: la fila lo dice con
+   * palabras y no dibuja ni el importe ni la barra. Poner el número acá afirmaría que esa plata es
+   * de esta obra, que es exactamente lo que la vista dice que no sabe.
+   */
+  imputacion?: Imputacion | null
   /** ¿El denominador cubre lo mismo que el numerador? Sin eso, importe sí y porcentaje no. */
   medible: boolean
   veEconomia: boolean
@@ -138,6 +145,19 @@ function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'o
   obrasSinPrecio?: number | null
 }) {
   if (!veEconomia) return <span className={SOLO_ANCHO} />
+  if (imputacion === 'cliente') {
+    return (
+      <span
+        className={`flex items-center justify-end ${SOLO_ANCHO}`}
+        data-testid={testid} data-cobro="sin-obra-asignada"
+        title={'Cobranzas registra este cobro contra el CLIENTE y la vista no pudo repartirlo a una '
+          + 'obra: el importe está en la fila del cliente, arriba. No es «no cobró».'}
+        style={{ fontSize: '10.5px', color: V.tenue, textAlign: 'right' }}
+      >
+        cobro sin obra asignada
+      </span>
+    )
+  }
   const p = medible ? progresoDeCobro(cobrado, contratado) : null
   const titulo = tituloDeCobro({ cobrado, contratado, ambito, obrasSinPrecio })
   return (
@@ -357,6 +377,11 @@ export function TablaClientes({
             {c.enCurso.map((o) => {
               const deLaObra = papelesDe(c.cliente_id).porObra.get(o.obra_id)
               const totalOC = deLaObra?.totalOC ?? SIN_PAPELES
+              // EL NÚMERO DE LA OC ES DATO DE PRIMERA CLASE CUANDO HAY UNA SOLA. «OC 2173» dice cuál
+              // papel encargó la obra; «1 OC» sólo dice que hay uno, y un conteo de uno no
+              // identifica nada. Con dos o más se cuenta y el número se lee en el panel — enumerar
+              // tres números en la celda es volver a los rótulos que el dueño mandó sacar.
+              const unicaOC = totalOC.n === 1 ? (deLaObra?.oc[0]?.numeroCorto ?? null) : null
               return (
                 <Link
                   key={o.obra_id}
@@ -410,7 +435,7 @@ export function TablaClientes({
                             etiqueta={`Ver las ${totalOC.n} órdenes de compra de ${o.nombre}`}
                             testid="abrir-ordenes-obra"
                           >
-                            <TotalDePapeles total={totalOC} sigla="OC" tam="11.5px" testid="total-oc-obra" veEconomia={veEconomia} />
+                            <TotalDePapeles total={totalOC} sigla="OC" tam="11.5px" testid="total-oc-obra" veEconomia={veEconomia} numero={unicaOC} />
                           </AbrirOrdenes>
                         )}
                   </span>
@@ -420,7 +445,7 @@ export function TablaClientes({
                   {/* EN LA OBRA LOS DOS NÚMEROS SON DE LA MISMA OBRA: el porcentaje siempre se
                       puede calcular cuando hay contratado. */}
                   <Cobrado
-                    cobrado={o.cobrado} contratado={o.contratado} medible
+                    cobrado={o.cobrado} contratado={o.contratado} medible imputacion={o.imputacion}
                     veEconomia={veEconomia} testid="cobro-obra" tam="11.5px"
                   />
                 </Link>

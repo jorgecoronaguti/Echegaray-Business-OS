@@ -25,18 +25,29 @@ const PARCIAL = 'El total suma SÓLO las órdenes cuyo PDF declara un importe. A
 /** Un total en cero papeles: constante, para no crear un objeto por fila. */
 export const SIN_PAPELES: Total = { n: 0, importe: null, parcial: false }
 
-export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = null, veEconomia = false }: {
+export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = null, veEconomia = false, numero = null }: {
   total: Total
   sigla: 'OC' | 'OP'
   tam?: string
   testid?: string
   /** Qué escribir cuando no hay ninguno. `null` = no dibujar nada. */
   vacio?: string | null
+  /**
+   * EL NÚMERO, CUANDO HAY UNA SOLA. «OC 2173» identifica el papel; «1 OC» sólo lo cuenta, y un
+   * conteo de uno no identifica nada. Con dos o más se vuelve al conteo —«5 OC»— porque enumerarlas
+   * en la celda es lo que hacía ilegible la fila; ahí el número se lee en el panel.
+   *
+   * `null` = no se sabe, o hay más de una. La celda NO decide eso: se lo dan hecho.
+   */
+  numero?: string | null
   /** EL IMPORTE DE UNA OC ES EL PRECIO DE VENTA DE LA OBRA. Sin permiso económico se dice cuántas
    *  hay y nada más: qué papel existe es operativo, cuánto se cobra por él no. Nace en `false` —un
    *  olvido tiene que dejar la pantalla pobre, no abierta. */
   veEconomia?: boolean
 }) {
+  // «OC 2173» con una sola; «5 OC» con varias. Se calcula UNA vez: los dos caminos de abajo —con y
+  // sin permiso económico— tienen que decir lo mismo.
+  const rotulo = total.n === 1 && numero ? `${sigla} ${numero}` : `${total.n} ${sigla}`
   if (!total.n) {
     return vacio === null
       ? null
@@ -45,7 +56,7 @@ export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = nul
   if (!veEconomia) {
     return (
       <span className="tabular-nums" data-testid={testid} style={{ fontSize: tam, color: V.tenue }}>
-        {total.n} {sigla}
+        {rotulo}
       </span>
     )
   }
@@ -56,7 +67,7 @@ export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = nul
         style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}
         title={total.parcial ? PARCIAL : undefined}
       >
-        {total.n} {sigla}{total.parcial ? ' ·' : ''}
+        {rotulo}{total.parcial ? ' ·' : ''}
       </span>
     </span>
   )

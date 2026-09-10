@@ -169,3 +169,29 @@ test('la grilla perdió exactamente una columna, no dos', () => {
   // literal y las celdas se desincronizan, la tabla se corre entera y nadie lo ve en un typecheck.
   assert.match(codigo(), /grid-cols-\[minmax\(0,1\.9fr\)_116px_156px_150px_124px_124px_150px\]/)
 })
+
+// ═══ LA BARRA POR OBRA, PREPARADA PARA CUANDO LA BASE LA PUEDA DAR ═══
+//
+// `obra_cobranza.imputacion` la agrega la migración que reparte el cobro por obra (la OC de la
+// columna H de Cobranzas atada a `cliente_orden.obra_id`). La lectura ya la pide —`select`
+// tolerante, probado en los dos mundos en `homeCartera.test.ts`— y la fila ya sabe qué hacer con
+// cada valor. Al aplicar la migración, la barra enciende sin una segunda entrega.
+
+test('una obra cuyo cobro no se pudo repartir lo DICE, y no dibuja un importe ajeno', () => {
+  const src = codigo()
+  assert.match(src, /imputacion === 'cliente'/)
+  assert.match(src, /cobro sin obra asignada/)
+  assert.match(src, /imputacion=\{o\.imputacion\}/, 'la fila de la obra tiene que pasarla')
+  // Y la del CLIENTE no la pasa: la imputación es una propiedad de la OBRA, y el cobro del cliente
+  // es la bolsa entera — ahí no hay nada que repartir.
+  const delCliente = src.slice(src.lastIndexOf('<Cobrado', src.indexOf('testid="cobro-cliente"')), src.indexOf('/>', src.indexOf('testid="cobro-cliente"')) + 2)
+  assert.doesNotMatch(delCliente, /imputacion=/)
+})
+
+test('con una sola OC la celda dice CUÁL, no cuántas', () => {
+  // «1 OC» cuenta; «OC 2173» identifica. Con dos o más se vuelve al conteo: enumerarlas en la celda
+  // es volver a los rótulos que el dueño mandó sacar.
+  const src = codigo()
+  assert.match(src, /totalOC\.n === 1 \? \(deLaObra\?\.oc\[0\]\?\.numeroCorto \?\? null\) : null/)
+  assert.match(src, /numero=\{unicaOC\}/)
+})

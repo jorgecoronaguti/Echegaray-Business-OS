@@ -32,6 +32,8 @@ export interface PapelCrudo {
   obra_id: string | null
   cita?: string | null
   nombre_archivo?: string | null
+  /** EL PDF EN DRIVE. `null` = todavía no está subido y el papel se abre por el proxy. */
+  drive_file_id?: string | null
 }
 
 export type ClasePapel = 'oc' | 'op' | 'retencion' | 'factura' | 'otro'
@@ -127,6 +129,10 @@ export interface Orden {
   obraId: string | null
   /** El papel que se descarga: `/api/clientes/orden/<id>`. */
   archivoId: string
+  /** El PDF de ESA copia en Drive. `null` = no está subido; se cae al proxy. Viaja junto a
+   *  `archivoId` y no aparte: las dos rutas tienen que hablar de la MISMA copia, y cuando el grupo
+   *  elige otra copia como la buena (la más vieja) el enlace tiene que moverse con ella. */
+  driveFileId: string | null
   /** Todas las copias que llegaron de esta misma orden. */
   ids: string[]
   /** OC: las facturas que la citan. OP: las facturas que paga (hoy vacío, ver el pie del archivo). */
@@ -267,6 +273,7 @@ function agruparOrdenes(papeles: Papel[], clase: 'oc' | 'op'): Orden[] {
         ya.importe = p.importe
         ya.moneda = p.moneda
         ya.archivoId = p.id
+        ya.driveFileId = p.drive_file_id ?? null
       }
       // La obra la aporta cualquiera de las copias: si una llegó atribuida y la otra no, la orden
       // ES de esa obra. Perderla porque la segunda copia vino vacía sería esconder el papel.
@@ -283,6 +290,7 @@ function agruparOrdenes(papeles: Papel[], clase: 'oc' | 'op'): Orden[] {
       moneda: p.moneda,
       obraId: p.obra_id,
       archivoId: p.id,
+      driveFileId: p.drive_file_id ?? null,
       ids: [p.id],
       facturas: [],
       retenciones: [],
@@ -301,3 +309,31 @@ function agruparOrdenes(papeles: Papel[], clase: 'oc' | 'op'): Orden[] {
 // texto del PDF, que el extractor todavía no lee—, así que «paga la factura X» y «OP que paga esta
 // OC» salen vacíos y la pantalla escribe «no consta». Emparejar por importe acertaría en 2 de 12 y
 // dibujaría una inferencia como si fuera un hecho.
+
+// ═══ ADÓNDE LLEVA UN PAPEL (10/09/2026) ═══
+//
+// Hasta hoy la única puerta era `/api/clientes/orden/<id>`, un proxy que devuelve los bytes: sirve
+// para los 385 papeles pero deja al que mira sin el archivo EN SU CARPETA —sin poder ver qué más
+// llegó con él, ni compartirlo, ni comentarlo—. Desde el backfill de Drive
+// (`orquestador/scripts/backfill-drive-ordenes-cliente.mjs`) la mayoría tiene `drive_file_id`.
+//
+// MANDA DRIVE CUANDO EXISTE, Y EL PROXY CUANDO NO. No es una preferencia estética: el archivo en
+// Drive es la fuente, el proxy es una copia servida. Y no se puede publicar SIEMPRE el de Drive
+// porque medido el 10/09/2026 sólo 44 de 385 papeles lo tienen todavía — una fila sin adónde ir es
+// peor que una fila que descarga.
+//
+// UN SOLO ENLACE POR FILA, NUNCA DOS. La fila entera es el enlace; meterle un segundo `<a>` adentro
+// es HTML inválido y el navegador lo desarma dejando zonas que navegan a cualquier lado.
+
+/** `https://drive.google.com/file/d/<id>/view`. Se escribe acá y no se importa de `obras/` para no
+ *  atar el módulo Clientes a un servicio de Obras por una plantilla de URL de cuatro palabras. */
+export function urlDriveDelPapel(driveFileId: string): string {
+  return `https://drive.google.com/file/d/${driveFileId}/view`
+}
+
+/** Adónde va la fila de un papel: Drive si el PDF ya está subido, el proxy si todavía no. */
+export function hrefDelPapel(
+  { driveFileId, archivoId }: { driveFileId: string | null | undefined; archivoId: string },
+): string {
+  return driveFileId ? urlDriveDelPapel(driveFileId) : `/api/clientes/orden/${archivoId}`
+}
