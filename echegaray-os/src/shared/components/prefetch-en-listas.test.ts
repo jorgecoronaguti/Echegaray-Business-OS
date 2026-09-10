@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { sinComentarios } from '../definiciones/fuente.ts'
 
 // ═══ QUÉ DEFECTO ATRAPA ═══
 //
@@ -142,19 +143,12 @@ function cierreDeParentesis(fuente: string, abre: number): number {
   return fuente.length
 }
 
-/**
- * Borra los comentarios sin mover las líneas: un `<Link>` nombrado en un comentario no es un
- * enlace. El 10/09/2026 este barrido acusó a `TablaClientes.tsx:229`, que es un comentario que
- * explica dónde vive el alto de la fila; el `<Link>` real de esa fila ya tenía `prefetch={false}`.
- * Se reemplaza cada carácter por un espacio (los saltos de línea se conservan) para que el
- * número de línea que se reporta siga siendo el del archivo.
- */
-export function sinComentarios(fuente: string): string {
-  const blanquear = (s: string) => s.replace(/[^\n]/g, ' ')
-  return fuente
-    .replace(/\/\*[\s\S]*?\*\//g, blanquear)
-    .replace(/^([ \t]*)\/\/.*$/gm, (m) => blanquear(m))
-}
+// `sinComentarios` SE MUDÓ a `shared/definiciones/fuente.ts` (10/09/2026). Nació acá —este barrido
+// acusó a `TablaClientes.tsx:229`, que es un comentario que explica dónde vive el alto de la fila—
+// y el control de definiciones canónicas necesita exactamente lo mismo. Se comparte en lugar de
+// copiarse: dos copias de la misma lectura es el defecto que aquel control existe para impedir, una
+// capa más abajo. Se re-exporta porque hay quien la importa por este nombre.
+export { sinComentarios }
 
 /** Los `<Link>` de `fuente` que están adentro de algún `.map(`, con su línea. */
 export function enlacesMultiplicados(fuenteCruda: string): { linea: number; atributos: string }[] {

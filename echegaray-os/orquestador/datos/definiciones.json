@@ -1,0 +1,237 @@
+{
+  "_lea_esto": "El registro de conceptos críticos del OS. Una entrada por concepto: dónde vive la definición canónica, quién la escribe, con qué criterio, en qué ventana, y qué lecturas quedaron PROHIBIDAS porque eran una segunda definición del mismo número. Lo hace cumplir src/shared/definiciones/canonico-definiciones.test.ts, que barre src/ y orquestador/ y pone rojo ante cualquier lectura prohibida no declarada. La cara humana es docs/engineering/DEFINICIONES.md, y el test exige correspondencia 1:1. Origen: docs/engineering/PRP-REALIDAD-UNICA.md.",
+  "_carpetas_barridas": [
+    "src",
+    "orquestador",
+    "scripts"
+  ],
+  "_minimo_de_archivos": 500,
+  "conceptos": [
+    {
+      "concepto": "contratado",
+      "canonica": "public.cliente_economia.contratado (cliente) · public.obra_economia_cartera.contratado (obra)",
+      "propietario": "orquestador/scripts/obras-economia-sync.mjs",
+      "criterio": "Lo que la pestaña OBRAS del Flujo de Caja publica por obra (OC de Cobranzas en pesos > U$S x TC > suma viva de sus filas), sumado por cliente sobre sus obras NO FUSIONADAS. Es venta NETA, sin IVA. NULL —nunca 0— cuando OBRAS no tiene el dato.",
+      "ventana": "acumulado; `contratado_en_curso` recorta a las obras con estado activa",
+      "confianza": "D · conocimiento interno validado: el número lo publica el Sheet que el dueño edita y lo replica un sync del pipeline",
+      "prohibidas": [
+        {
+          "patron": "cliente_panel[^\\n]*contratado",
+          "porque": "`cliente_panel` dejó de publicar `contratado` el 10/09/2026 (migración 20260910T2110). Sumaba `obra_panel.monto_contratado` —el campo del formulario de la obra, que nadie carga— y publicaba $31.846.475 de Messina, los de sus cinco obras CERRADAS, al lado de una lista que decía $156.174.253."
+        },
+        {
+          "patron": "from\\('obra_panel'\\)[^;]*monto_contratado",
+          "porque": "`obra_panel.monto_contratado` es `contratado_de_obra()`, o sea `obra_canonica.monto_contratado`: el campo del formulario. Era el RESPALDO de cuatro pantallas y por eso las cuatro podían discrepar. El precio de una obra sale de `obra_economia_cartera`."
+        },
+        {
+          "patron": "from\\('obra_canonica'\\)[^;]*monto_contratado",
+          "porque": "La misma columna, leída de la tabla en vez de la vista."
+        },
+        {
+          "patron": "contratado_de_obra\\(",
+          "porque": "La función lee el campo del formulario con un portero adentro. Sigue viva porque `obra_panel` la usa; llamarla desde la aplicación sería saltear la canónica."
+        }
+      ],
+      "excepciones": [
+        {
+          "archivo": "src/features/obras/services/actions.ts",
+          "porque": "ESCRIBE `obra_canonica.monto_contratado`: es el formulario de la obra, el productor del campo. Un productor no puede estar prohibido de tocar lo que produce."
+        },
+        {
+          "archivo": "src/app/portal/(dentro)/datosObra.ts",
+          "porque": "El portal muestra el contrato EN LA MONEDA EN QUE SE FIRMÓ (decisión del dueño: «que diga eso, 63 más IVA en el footer» — Quattropani se firmó por U$S 63.000). `contrato_monto`/`contrato_moneda` son esa declaración y `monto_contratado` su respaldo en pesos. Cambiarlo por el contratado valuado publicaría hacia AFUERA un número distinto del contrato firmado: es Nivel E y no lo decide este hito.",
+          "hasta": "decisión D1 del PRP"
+        },
+        {
+          "archivo": "src/features/obras/services/preparacionService.ts",
+          "porque": "Pantalla de OBRA, no de cliente: el alcance de H1 es el contratado del CLIENTE. Queda inventariado para el hito que unifique el contratado por obra.",
+          "hasta": "H1-obras"
+        }
+      ]
+    },
+    {
+      "concepto": "facturado",
+      "canonica": "public.cliente_economia.facturado_90d (vía public.cliente_cuenta_corriente)",
+      "propietario": "vista sobre public.cobranzas, que escribe orquestador/scripts/sync-cobranzas.mjs",
+      "criterio": "Suma del total bruto de las filas de Cobranzas emitidas en la ventana, con `cliente_id` resuelto y estado distinto de CANCELAR. Es DEVENGADO y no se mezcla con lo cobrado.",
+      "ventana": "90 días desde la fecha de emisión. PROVISORIA: la decisión D2 del PRP (90 días o acumulado por obra) sigue abierta, y por eso la ventana va en el NOMBRE de la columna.",
+      "confianza": "C · patrón probable: la ventana de 90 días la eligió la vista, no el dueño",
+      "prohibidas": [
+        {
+          "patron": "from\\('certificado_cliente'\\)[^;]*monto",
+          "porque": "`certificado_cliente.monto` es la copia que el sync del portal hace de una fila de Cobranzas: sumarlo para saber cuánto se le facturó a un cliente es contar la copia y no la fuente, y deja afuera todo lo facturado que todavía no pasó por el portal (una fila `N`, no facturada, ni siquiera se ofrece). Lo facturado del cliente sale de `cliente_cuenta_corriente`."
+        },
+        {
+          "patron": "certificados'\\)[^;]*monto_facturado",
+          "porque": "`public.certificados` es la tabla del ciclo certificar → facturar → cobrar de la OBRA y está VACÍA (0 filas, medido el 25/08/2026). Un facturado sumado de ahí da 0 y afirma que no se facturó nada."
+        }
+      ],
+      "excepciones": [
+        {
+          "archivo": "src/features/clientes/services/cuentaCorrienteService.ts",
+          "porque": "La pantalla 28 dibuja el PLAN DE COBRANZA: los certificados uno por uno con su monto, que es la lista, no el total facturado del cliente. El total lo toma de la vista."
+        },
+        {
+          "archivo": "src/features/clientes/services/cuentaCorrienteActions.ts",
+          "porque": "ESCRIBE el cobro de un certificado cuando Administración lo registra a mano: es un productor."
+        },
+        {
+          "archivo": "src/features/portal/services/portalActions.ts",
+          "porque": "ESCRIBE la aprobación u observación del cliente sobre el certificado."
+        },
+        {
+          "archivo": "src/features/portal/services/portalService.ts",
+          "porque": "La cara del cliente: le muestra SUS certificados con su monto. No suma «lo facturado del cliente»: dibuja las filas que el cliente tiene que pagar."
+        },
+        {
+          "archivo": "src/features/clientes/services/clientesService.ts",
+          "porque": "Lee `certificados` para la línea de tiempo de la ficha (qué pasó y cuándo), no para totalizar. La tabla está vacía y la línea de tiempo lo dice.",
+          "hasta": "H6"
+        },
+        {
+          "archivo": "src/features/obras/services/contratoService.ts",
+          "porque": "La solapa Contrato de la OBRA lista sus certificados: es el ciclo de la obra, no el facturado del cliente.",
+          "hasta": "H6"
+        },
+        {
+          "archivo": "src/features/obras/services/actionsContrato.ts",
+          "porque": "ESCRIBE el certificado de la obra: es su productor."
+        }
+      ]
+    },
+    {
+      "concepto": "cobrado",
+      "canonica": "public.cliente_economia.cobrado_total / cobrado_neto_total (cliente) · public.obra_cobranza.cobrado (obra)",
+      "propietario": "public.es_cobrada(estado, fecha_cobro) — el predicado; public.cobranzas — el dato",
+      "criterio": "PERCIBIDO. Una fila está cobrada si su estado dice cobrado (sin importar mayúsculas ni espacios) Y su fecha de cobro no es futura: un «Cobrado» con fecha adelante es percibido imposible y cuenta como POR COBRAR. `cobrado_total` es bruto (lo que entra al banco); `cobrado_neto_total` es sin IVA y es el ÚNICO comparable contra el contratado.",
+      "ventana": "acumulado. `cobrado_90d` existe aparte y lleva su ventana en el nombre.",
+      "confianza": "D · conocimiento interno validado: el predicado replica la columna U del Sheet y el control de cobros con fecha futura que ya hacía repasar-cobranzas-y-caja.mjs",
+      "prohibidas": [
+        {
+          "patron": "from\\('certificado_cliente'\\)[^;]*estado",
+          "porque": "`certificado_cliente.estado` guarda DOS cosas en una columna: dónde está el cobro (lo copia el sync desde Cobranzas por `cobranza_fila`) y qué dijo el cliente del documento (`aprobado`, `observado`, `en_disputa`). Leerlo como fuente del COBRO es leer una copia, no la fuente: hasta el 10/09/2026 la factura 01-00000225 de Messina figuraba cobrada en el Sheet y `emitido` acá, y la ficha ofrecía reclamar plata ya percibida."
+        },
+        {
+          "patron": "Cobranzas!\\$?A\\$?[0-9]+:",
+          "porque": "Leer las FILAS de la pestaña Cobranzas por rango es saltear la réplica `public.cobranzas`: quien lo hace no ve `cliente_id`, no ve la valuación de moneda (la columna Moneda es la AA y estos rangos llegan hasta la R o la Q) y vuelve a decidir por su cuenta qué está cobrado. La fila 62 de Quattropani, U$S 15.400, entraba como $15.400."
+        }
+      ],
+      "excepciones": [
+        {
+          "archivo": "src/features/clientes/services/cuentaCorrienteService.ts",
+          "porque": "La pantalla 28 es la cara propia de la cuenta corriente."
+        },
+        {
+          "archivo": "src/features/portal/services/portalActions.ts",
+          "porque": "ESCRIBE el estado de APROBACIÓN que pone el cliente en el portal (`aprobado`, `observado`). Es la mitad de la columna que el Sheet no conoce."
+        },
+        {
+          "archivo": "src/features/portal/services/portalService.ts",
+          "porque": "La cara del cliente: lee SUS certificados con su estado, que es el del documento. El cobro que muestra viene del sync que copia Cobranzas por `cobranza_fila`. Derivarlo de una vista sobre `cobranzas` sin romper la aprobación del cliente exige separar las dos mitades de la columna en dos: está anotado como paso siguiente en DEFINICIONES.md.",
+          "hasta": "H4"
+        },
+        {
+          "archivo": "orquestador/lib/cobranzas-contrato.mjs",
+          "porque": "DEFINE el rango y las columnas de la pestaña: es el contrato de lectura que usa el sync. La fuente del Sheet la lee alguien, y es éste."
+        },
+        {
+          "archivo": "orquestador/lib/cobranzas-replica.mjs",
+          "porque": "Réplica de la pestaña a Postgres: es el productor de `public.cobranzas`."
+        },
+        {
+          "archivo": "orquestador/lib/cobranzas-cuadre-vivo.mjs",
+          "porque": "Cuadra la réplica contra el Sheet vivo: para controlar la copia hay que leer el original."
+        },
+        {
+          "archivo": "orquestador/scripts/repasar-cobranzas-y-caja.mjs",
+          "porque": "Control sobre el Sheet: valida la pestaña que el dueño edita, incluidos los COBRADOS con fecha futura que dieron origen a `es_cobrada`."
+        },
+        {
+          "archivo": "orquestador/scripts/portal-sembrar.mjs",
+          "porque": "Sync del portal: convierte filas de Cobranzas en certificados del cliente. Es el productor de `certificado_cliente`."
+        },
+        {
+          "archivo": "orquestador/scripts/cobranzas-san-francisco-anticipos.mjs",
+          "porque": "ESCRIBE en la pestaña (bisturí sobre filas declaradas por el dueño): un generador es dueño de lo que escribe."
+        },
+        {
+          "archivo": "orquestador/scripts/proveedores-materiales-pestana.mjs",
+          "porque": "Generador de una pestaña del Sheet que necesita el saldo del cliente; escribe en el mismo libro.",
+          "hasta": "H2"
+        },
+        {
+          "archivo": "orquestador/scripts/libro-movimientos-pestana.mjs",
+          "porque": "Generador de _MOVIMIENTOS: arma el libro leyendo las pestañas del propio archivo.",
+          "hasta": "H2"
+        },
+        {
+          "archivo": "orquestador/scripts/impuestos-pestana.mjs",
+          "porque": "Lee `Cobranzas!A5:Q` para el Libro IVA Ventas: uno de los cinco lectores que tratan los dólares como pesos. Lo unifica el hito H2.",
+          "hasta": "H2"
+        },
+        {
+          "archivo": "orquestador/lib/impuestos-fuentes.mjs",
+          "porque": "Ídem, del lado de las fuentes del cuadro impositivo.",
+          "hasta": "H2"
+        },
+        {
+          "archivo": "orquestador/scripts/cruce-banco.mjs",
+          "porque": "Cruza los cobros del Sheet contra el extracto: lee el rango por debajo de la columna de moneda.",
+          "hasta": "H2"
+        },
+        {
+          "archivo": "orquestador/scripts/fechas-vs-extracto.mjs",
+          "porque": "Ídem, comparando fechas de cobro contra el banco.",
+          "hasta": "H2"
+        },
+        {
+          "archivo": "orquestador/lib/calendario-financiero.mjs",
+          "porque": "Arma el calendario leyendo `Cobranzas!A5:R2000` directo, en lugar de `obligacion_resumen` y la réplica.",
+          "hasta": "H2"
+        },
+        {
+          "archivo": "orquestador/lib/cash-briefing.mjs",
+          "porque": "El briefing de caja lee el mismo rango para el detalle de cobros próximos.",
+          "hasta": "H2"
+        },
+        {
+          "archivo": "scripts/sync-calendario.mjs",
+          "porque": "Sync del calendario financiero: mismo rango, misma deuda.",
+          "hasta": "H2"
+        },
+        {
+          "archivo": "src/features/flujo-caja/services/calendarioReader.ts",
+          "porque": "La pantalla del calendario lee los rangos del Sheet en vez de Postgres. Es la misma deuda del lado web.",
+          "hasta": "H2"
+        },
+        {
+          "archivo": "orquestador/scripts/auditar-cobertura-cash-flow.mjs",
+          "porque": "Auditoría de cobertura: mide qué pestañas del Sheet están cubiertas, así que tiene que leerlas."
+        },
+        {
+          "archivo": "orquestador/scripts/caja-conectividad.mjs",
+          "porque": "Control de conectividad entre pestañas del Sheet: su objeto de estudio es el archivo."
+        }
+      ]
+    },
+    {
+      "concepto": "pendiente_vencido",
+      "canonica": "public.cliente_economia.pendiente_contractual · .vencido · .por_vencer · .saldo",
+      "propietario": "public.cliente_cuenta_corriente (vencido, por vencer, saldo) · public.cliente_economia (pendiente contractual)",
+      "criterio": "VENCIDO es la definición de la columna U del propio Sheet: no cobrado (estado Pendiente o Facturado) y la fecha de la columna Q ya pasó. `Proyectado` es previsión del dueño y NUNCA es deuda. PENDIENTE CONTRACTUAL es contratado menos cobrado NETO —neto contra neto, porque el contratado no lleva IVA— y es NULL si falta cualquiera de los dos: un cliente sin filas en Cobranzas no cobró $0, no se sabe.",
+      "ventana": "acumulado, por fecha de cobro",
+      "confianza": "D · el criterio de «vencido» está copiado textualmente de la fórmula del Sheet; `pendiente_contractual` es CÁLCULO y nace el 10/09/2026",
+      "prohibidas": [
+        {
+          "patron": "cliente_panel[^\\n]*(vencido|pendiente|saldo|costo_real)",
+          "porque": "`cliente_panel` no publica economía desde el 10/09/2026. Una pantalla que le pida el saldo recibe `undefined`, que en JavaScript no falla: dibuja un hueco donde debería ir plata."
+        },
+        {
+          "patron": "contratado\\s*-\\s*coalesce\\(\\s*cobrado",
+          "porque": "La resta a mano en SQL fuera de la vista. Es el punto donde vuelve el defecto de mezclar bruto con neto: `cobrado_total` lleva IVA y el contratado no."
+        }
+      ],
+      "excepciones": []
+    }
+  ]
+}
