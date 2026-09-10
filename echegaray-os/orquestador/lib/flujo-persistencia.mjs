@@ -23,7 +23,7 @@
 
 import { createHash } from 'node:crypto'
 import { sumar } from './libro-movimientos.mjs'
-import { MEDIDAS, terminosDeMedida, terminosDeRubro } from './cash-flow-medidas.mjs'
+import { MEDIDAS, terminosDeMedida, terminosDeRubro, valorDeTerminos } from './cash-flow-medidas.mjs'
 import { RUBROS_INGRESO, RUBROS_EGRESO, OTROS, rubrosDeApertura } from './cash-flow-rubros.mjs'
 import { LIBRO } from './libro-sumas.mjs'
 import { ventanas, serialDeFecha } from './cash-flow-matriz.mjs'
@@ -160,10 +160,6 @@ const COLUMNA_MEDIDA = Object.freeze({
   egresoReal: 'egreso_real', egresoProyectado: 'egreso_proyectado',
 })
 
-/** Evalúa una lista de términos de `cash-flow-medidas` sobre el libro, en JS. PURA. */
-const evaluar = (libro, terminos) =>
-  terminos.reduce((total, t) => total + t.coef * sumar(libro, t.filtro).total, 0)
-
 /**
  * NÚCLEO PURO: el valor de las cuatro medidas en una ventana, y el resultado que se despeja de ellas.
  *
@@ -171,10 +167,10 @@ const evaluar = (libro, terminos) =>
  * egresos se MUESTRAN en positivo y RESTAN. Recalcularlo acá con otro criterio haría que el resultado
  * de la base y el de la pestaña se separaran sin que nada diera error.
  */
-export function medidasDeVentana(libro, desde, hasta) {
+export function medidasDeVentana(libro, desde, hasta, { ancla = null } = {}) {
   const out = { ingreso_real: 0, ingreso_proyectado: 0, egreso_real: 0, egreso_proyectado: 0, resultado: 0 }
   for (const m of MEDIDAS) {
-    const v = evaluar(libro, terminosDeMedida(m, desde, hasta))
+    const v = valorDeTerminos(libro, terminosDeMedida(m, desde, hasta, { ancla }))
     out[COLUMNA_MEDIDA[m.clave]] = redondear(v)
     out.resultado += m.signoNeto * v
   }
@@ -198,13 +194,13 @@ export const RUBROS_DEL_CUADRO = Object.freeze([...RUBROS_INGRESO, ...RUBROS_EGR
  * sub-líneas, un rubro que el libro empiece a emitir mañana desaparecería del cuadro y el total
  * seguiría cerrando consigo mismo. Con el despeje, ese rubro nuevo aparece en "Otros" y se ve.
  */
-export function rubrosDeVentana(libro, desde, hasta, totales) {
+export function rubrosDeVentana(libro, desde, hasta, totales, { ancla = null } = {}) {
   const filas = new Map(RUBROS_DEL_CUADRO.map((r) => [r, { rubro: r, ...vacio() }]))
   for (const m of MEDIDAS) {
     const columna = COLUMNA_MEDIDA[m.clave]
     let sumaAbierta = 0
     for (const rubro of rubrosDeApertura(m.signo, m.estados.includes('REAL'))) {
-      const v = redondear(evaluar(libro, terminosDeRubro(m, desde, hasta, rubro)))
+      const v = redondear(valorDeTerminos(libro, terminosDeRubro(m, desde, hasta, rubro, { ancla })))
       filas.get(rubro)[columna] = v
       sumaAbierta += v
     }
@@ -226,15 +222,20 @@ const vacio = () => ({ ingreso_real: 0, ingreso_proyectado: 0, egreso_real: 0, e
  * un calendario propio sería garantizar que las dos discrepen en los bordes del año.
  *
  * @param {Array<object>} libro
- * @param {{granularidad:'mes'|'semana', anio:number, saldos?:Map<string,{inicio:number|null, cierre:number|null}>}} p
+ * `ancla` ES EL SERIAL DE `CAJA_FECHA_SALDO`, y NO es opcional por comodidad: decide en qué período
+ * cae el vencido, exactamente igual que en la hoja (`condicionAncla` en cash-flow-medidas). Si acá
+ * entrara `null` mientras la pestaña sí tiene ancla, la base y el cuadro publicarían dos repartos
+ * distintos del mismo libro sin que nada diera error — que es la definición de dos verdades.
+ *
+ * @param {{granularidad:'mes'|'semana', anio:number, saldos?:Map<string,{inicio:number|null, cierre:number|null}>, ancla?:number|null}} p
  */
-export function filasDePeriodo(libro, { granularidad, anio, saldos = new Map() } = {}) {
+export function filasDePeriodo(libro, { granularidad, anio, saldos = new Map(), ancla = null } = {}) {
   const filas = []
   for (const v of ventanas(granularidad, { anio })) {
     const desde = serialDeFecha(v.desde)
     const hasta = serialDeFecha(v.hasta)
     const inicio = iso(v.desde)
-    const totales = medidasDeVentana(libro, desde, hasta)
+    const totales = medidasDeVentana(libro, desde, hasta, { ancla })
     const saldo = saldos.get(inicio) ?? {}
     filas.push({
       granularidad, periodo_inicio: inicio, periodo_fin: iso(v.hasta), nivel: 'total', rubro: null,
@@ -244,7 +245,7 @@ export function filasDePeriodo(libro, { granularidad, anio, saldos = new Map() }
       saldo_inicio: saldo.inicio ?? null,
       saldo_cierre: saldo.cierre ?? null,
     })
-    for (const r of rubrosDeVentana(libro, desde, hasta, totales)) {
+    for (const r of rubrosDeVentana(libro, desde, hasta, totales, { ancla })) {
       filas.push({
         granularidad, periodo_inicio: inicio, periodo_fin: iso(v.hasta), nivel: 'rubro', rubro: r.rubro,
         ingreso_real: r.ingreso_real, ingreso_proyectado: r.ingreso_proyectado,

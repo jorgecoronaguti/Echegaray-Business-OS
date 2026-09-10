@@ -92,14 +92,14 @@ async function nombrado(g, nombre) {
  * exacta para un conjunto que vive en catorce. Lo que SÍ es una propiedad del grupo es la medida: el
  * subtotal contiene a todos, siempre. Las sub-líneas se cuentan aparte, que es la información honesta.
  */
-function porMetodo(libro, anio) {
+function porMetodo(libro, anio, ancla) {
   const gS = rejilla('semana', anio)
   const gM = rejilla('mes', anio)
   const acc = new Map()
   for (const m of libro) {
     if (m.origen !== 'Compras' && m.origen !== 'Cobranzas') continue
-    const uS = ubicar(m, 'semana', gS)
-    const uM = ubicar(m, 'mes', gM)
+    const uS = ubicar(m, 'semana', gS, { ancla })
+    const uM = ubicar(m, 'mes', gM, { ancla })
     if (!uS.medida) continue
     const k = `${m.origen}|${m.instrumento}|${uS.medida}`
     const a = acc.get(k) ?? {
@@ -156,7 +156,7 @@ async function main() {
 
   console.log(`\n¿EN QUÉ FILA Y CUÁNTA PLATA? (fila del subtotal SEM/MES · sub-líneas que toca)`)
   console.log(raya(112))
-  for (const v of porMetodo(libro, anio)) {
+  for (const v of porMetodo(libro, anio, fechaSaldo)) {
     const marca = v.sinColumna ? '✗' : '✓'
     console.log(`  ${marca} ${v.origen.padEnd(10)} ${String(v.metodo).padEnd(14)}`
       + ` ${pesos(v.monto).padStart(16)} ${String(v.filas).padStart(4)} mov`
@@ -168,7 +168,7 @@ async function main() {
   console.log(`\n1 · PLATA SIN COLUMNA — el movimiento existe en el libro y no está en el cuadro`)
   console.log(raya())
   for (const [tipo, pest] of [['semana', PESTANA_SEMANAL], ['mes', PESTANA_MENSUAL]]) {
-    const v = plataSinColumna(libro, tipo, anio)
+    const v = plataSinColumna(libro, tipo, anio, { ancla: fechaSaldo })
     if (!v.filas) { console.log(`  ✓ ${pest.padEnd(20)} ningún movimiento queda fuera de toda columna.`); continue }
     rojo++
     console.log(`  ✗ ${pest.padEnd(20)} ${v.filas} mov · ${pesos(v.neto)} que NINGUNA celda contiene`)
