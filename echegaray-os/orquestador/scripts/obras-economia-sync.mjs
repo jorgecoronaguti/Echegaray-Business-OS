@@ -42,7 +42,7 @@ import { ANO } from '../lib/obras-grilla.mjs'
 import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
 import { indiceDeLetra, refsReales } from './obras-pestana.mjs'
 import { contratoDeObra } from '../lib/cobranzas-contrato.mjs'
-import { filaEconomia, totalesDeOrdenes, ventaViva } from '../lib/obras-economia.mjs'
+import { filaEconomia, totalesDeOrdenes, ventaViva, ORIGEN } from '../lib/obras-economia.mjs'
 import { cargarDiccionarios, imputarFilas } from '../lib/cobranza-obra-diccionario.mjs'
 import { resolverCliente } from '../lib/portal/cobranzas-a-cliente.mjs'
 
@@ -208,6 +208,14 @@ async function main() {
   for (const c of COLUMNAS_NUEVAS) if (await hayColumna('obra_economia_sheet', c)) extras.push(c)
   if (extras.length !== COLUMNAS_NUEVAS.length) {
     console.log(`⚠ migración 20260910T2355 sin aplicar: no persisto ${COLUMNAS_NUEVAS.filter((c) => !extras.includes(c)).join(', ')}`)
+    // EL CHECK VIEJO NO CONOCE `oc-cliente` Y EL INSERT FALLARÍA ENTERO. Se degrada a la marca que
+    // esas obras tenían ayer —`suma-viva`, que es débil pero no es falsa— en vez de tumbar el
+    // pipeline del Flujo de Caja por una migración que el dueño todavía no aplicó. Se dice obra por
+    // obra: un degradado silencioso sería peor que el rojo que se está evitando.
+    for (const f of filas.filter((x) => x.origen === ORIGEN.ocCliente)) {
+      console.log(`  ↓ ${f.obra_canonica_id}: «${f.referencia}» no se puede publicar todavía; va como suma-viva`)
+      f.origen = ORIGEN.sumaViva
+    }
   }
   const columnas = ['obra_canonica_id', 'obra_clave', 'contratado', 'contratado_usd', 'costo_mo',
     'costo_materiales', 'margen', 'plazo_desde', 'plazo_hasta', 'origen', ...extras,

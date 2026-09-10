@@ -31,7 +31,10 @@ const obra = (p: Partial<ObraDeCartera> & { obra_id: string }): ObraDeCartera =>
 const eco = (obraId: string, contratado: number | null, extra: Partial<EconomiaDeObra> = {}):
 [string, EconomiaDeObra] => [obraId, {
   obra_canonica_id: obraId, contratado, costo_mo: null, costo_materiales: null, margen: null,
-  origen: contratado === null ? null : 'oc-pesos', ...extra,
+  origen: contratado === null ? null : 'oc-pesos',
+  referencia: null, nota: null,
+  oc_civa_ventana: null, oc_civa_historico: null, oc_n_ventana: null, oc_n_historico: null,
+  ...extra,
 }]
 
 /** Una fila de `public.cliente_economia`, que es de donde salen los totales del cliente. */

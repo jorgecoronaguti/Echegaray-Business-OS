@@ -21,12 +21,35 @@ export interface EconomiaDeObra {
    * que el número SIGNIFICA, y hasta el 10/09/2026 la pantalla los dibujaba todos iguales.
    *
    *   `oc-pesos` · `oc-usd-x-tc`  hay un PRECIO en la columna de contrato de OBRAS.
+   *   `oc-cliente`                OBRAS no lo declara, pero las ÓRDENES DE COMPRA que mandó el
+   *                               cliente suman lo mismo (±$1): hay un papel que respalda el número
+   *                               y `referencia` dice cuál. NO es una suma viva.
    *   `suma-viva`                 OBRAS no tiene precio: es la suma de lo que Cobranzas registró
    *                               como venta hasta hoy. Sube cada vez que se factura, y por eso no
    *                               se puede leer como «lo que vale la obra».
    *   `null`                      no hay ninguno de los dos.
    */
   origen: string | null
+  /** El papel que respalda el contratado: «según OC 2256». `null` = no lo respalda ninguno. */
+  referencia: string | null
+  /**
+   * LA DISCREPANCIA DECLARADA contra las OC cargadas: «OC $X c/IVA ($Y neto) vs Cobranzas $Z».
+   * Se publica cuando la obra TIENE órdenes y no cierran. Una diferencia escrita se resuelve; una
+   * que sólo existe entre dos pantallas, no.
+   */
+  nota: string | null
+  /**
+   * LOS DOS TOTALES DE ÓRDENES DE COMPRA, CON IVA, Y POR QUÉ SON DOS.
+   *
+   * `oc_civa_ventana` es lo que emitió el cliente DENTRO del año que acota el contratado;
+   * `oc_civa_historico`, lo de otros años — típicamente las órdenes que entraron con una obra
+   * fusionada. NO SE SUMAN: BSA absorbió `bsa-planta` y con ella tres OC de 2024 por $38.321.214,
+   * y el panel mostraba «OC · OP c/IVA $49.886.583» al lado de un contratado de $17,7 M.
+   */
+  oc_civa_ventana: number | null
+  oc_civa_historico: number | null
+  oc_n_ventana: number | null
+  oc_n_historico: number | null
 }
 
 /** El `origen` que dice «esto NO es un precio contratado, es lo vendido hasta hoy». */
@@ -44,7 +67,7 @@ export async function getEconomiaDeObras(
 ): Promise<Map<string, EconomiaDeObra> | null> {
   const { data, error } = await supabase
     .from('obra_economia_cartera')
-    .select('obra_canonica_id, contratado, costo_mo, costo_materiales, margen, origen')
+    .select('obra_canonica_id, contratado, costo_mo, costo_materiales, margen, origen, referencia,  nota, oc_civa_ventana, oc_civa_historico, oc_n_ventana, oc_n_historico')
   if (error) return null
   const m = new Map<string, EconomiaDeObra>()
   for (const f of (data ?? []) as Record<string, unknown>[]) {
@@ -55,6 +78,12 @@ export async function getEconomiaDeObras(
       costo_materiales: aNumero(f.costo_materiales),
       margen: aNumero(f.margen),
       origen: f.origen == null ? null : String(f.origen),
+      referencia: f.referencia == null ? null : String(f.referencia),
+      nota: f.nota == null ? null : String(f.nota),
+      oc_civa_ventana: aNumero(f.oc_civa_ventana),
+      oc_civa_historico: aNumero(f.oc_civa_historico),
+      oc_n_ventana: aNumero(f.oc_n_ventana),
+      oc_n_historico: aNumero(f.oc_n_historico),
     })
   }
   return m
