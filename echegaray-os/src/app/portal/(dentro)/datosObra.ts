@@ -6,6 +6,7 @@ import {
   agruparPorObra, pagosDelEsquema, sinImportes,
   type BloqueDeObra, type FilaEsquema, type PagoConObra, type ContratoDeObra,
 } from '../esquema'
+import { obrasDelCliente, type FilaObraCanonica, type ObraDelInicio } from '../obrasDelCliente'
 
 // LO QUE SE LE PREGUNTA A LA BASE. Una sola vez, para las tres pantallas de plata.
 //
@@ -120,43 +121,31 @@ export async function esquemaDelPortal(acceso: AccesoDelPortal): Promise<Esquema
 // probarlo con `node --test`. Se re-exporta desde acá porque es donde lo buscan las pantallas.
 export { contratoDelConjunto } from '../esquema'
 export type { BloqueDeObra, PagoConObra, ContratoDeObra }
-
-/** Una obra del cliente para el Inicio: sin un peso, sólo qué es y cómo va. */
-export type ObraDelInicio = {
-  id: string
-  nombre: string
-  /** `'en ejecución'`, `'terminada'`… tal como lo declara el registro. `null` = sin declarar. */
-  estado: string | null
-  /** `null` = SIN FECHA DE INICIO cargada. No se rellena con la de creación del registro. */
-  desde: string | null
-}
+// El tipo vive con la regla que lo produce (`obrasDelCliente.ts`, puro y con test); se re-exporta
+// desde acá porque es donde lo buscan las pantallas.
+export type { ObraDelInicio }
 
 /**
- * LAS OBRAS DEL CLIENTE PARA EL INICIO — desde `obra_canonica`, el registro real.
+ * LAS OBRAS DEL CLIENTE PARA EL INICIO Y PARA DOCUMENTOS — desde `obra_canonica`, el registro real.
  *
- * No usa `obrasDelCliente` (que lee `public.obras`) a propósito: el alcance de un acceso —
- * `cliente_acceso.obras` — guarda ids de `obra_canonica`, así que preguntarle a la otra tabla obliga
- * a fallar cerrado cuando el acceso está acotado. Acá el filtro es exacto y un contacto con acceso a
- * dos obras ve exactamente esas dos.
+ * No usa `obrasDelCliente` de `datos.ts` (que lee `public.obras`) a propósito: el alcance de un
+ * acceso —`cliente_acceso.obras`— guarda ids de `obra_canonica`, así que preguntarle a la otra tabla
+ * obliga a fallar cerrado cuando el acceso está acotado. Acá el filtro es exacto y un contacto con
+ * acceso a dos obras ve exactamente esas dos.
+ *
+ * TAMPOCO USA `obra_panel`, que ya deja afuera las fusionadas: el portal necesita saber CUÁLES se
+ * absorbieron para poder encontrar sus papeles, archivados bajo el id viejo. Se traen todas y el
+ * recorte lo hace `obrasDelCliente`, que es puro y tiene test.
  */
 export async function obrasParaElInicio(acceso: AccesoDelPortal): Promise<ObraDelInicio[]> {
   const { data } = await createAdminClient()
     .from('obra_canonica')
-    .select('id, nombre, estado, fecha_inicio_real, fecha_inicio_plan')
+    .select('id, nombre, estado, fecha_inicio_real, fecha_inicio_plan, fusionada_en')
     .eq('cliente_id', acceso.clienteId)
     .order('nombre')
 
-  type Fila = { id: string; nombre: string; estado: string | null; fecha_inicio_real: string | null; fecha_inicio_plan: string | null }
-  return ((data ?? []) as Fila[])
-    .filter((o) => alcanzaLaObra(acceso.obras, String(o.id)))
-    .map((o) => ({
-      id: String(o.id),
-      nombre: String(o.nombre),
-      estado: o.estado ?? null,
-      // La REAL manda sobre la planificada: es cuándo arrancó de verdad. Sin ninguna de las dos,
-      // `null` — y la pantalla no escribe una fecha inventada.
-      desde: o.fecha_inicio_real ?? o.fecha_inicio_plan ?? null,
-    }))
-    // Las cerradas al final: el cliente entra a ver lo que está en curso.
-    .sort((a, b) => Number(a.estado === 'cerrada') - Number(b.estado === 'cerrada'))
+  return obrasDelCliente(
+    (data ?? []) as unknown as FilaObraCanonica[],
+    (obraId) => alcanzaLaObra(acceso.obras, obraId),
+  )
 }

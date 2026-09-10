@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   agruparPorObra, aPagoDelPortal, estadoFijadoDe, obrasQueFiltran, pagosDelEsquema, pagosEnPantalla,
-  publicadoAlPortal, sinImportes, tipoDelPago, SIN_OBRA, type FilaEsquema,
+  publicadoAlPortal, sinImportes, tipoDelPago, SIN_OBRA, alcanceDelContrato, type FilaEsquema,
 } from './esquema.ts'
 import { estadoDePago, proximoPago, resumenDeCobro, type ResumenCobro } from './cronograma.ts'
 import { contratoDelConjunto } from './esquema.ts'
@@ -445,4 +445,22 @@ test('LA PRUEBA CRUZADA: la suma de los pies por obra es el pie sin filtro', () 
   // declara aparte en vez de esconderse dentro del total.
   assert.deepEqual(contratoDelConjunto(agruparPorObra(pagos), CONTRATOS_IM),
     { monto: 95_318_526, moneda: 'ARS', obras: 3, sinContrato: 0, cobradoAntes: 0 })
+})
+
+// ═══ EL PIE DEL CONTRATO DICE DE QUÉ CONTRATO HABLA (10/09/2026) ═══
+//
+// Messina leía tres números llamados «contrato»: $31,85 M en el esquema de la ficha, $156.174.253
+// en `/clientes` y $12.692.935 en su portal. Los dos primeros eran el mismo concepto leído de dos
+// fuentes —arreglado—; el tercero es otro concepto y lo que le faltaba era decirlo.
+
+test('el pie del contrato declara su alcance y las obras que quedaron sin precio', () => {
+  assert.equal(
+    alcanceDelContrato({ obras: 3, sinContrato: 1 }),
+    'de 3 obras con cronograma publicado · 1 obra sin contrato cargado',
+  )
+  assert.equal(alcanceDelContrato({ obras: 1, sinContrato: 0 }), 'de 1 obra con cronograma publicado')
+  assert.equal(
+    alcanceDelContrato({ obras: 2, sinContrato: 3 }),
+    'de 2 obras con cronograma publicado · 3 obras sin contrato cargado',
+  )
 })

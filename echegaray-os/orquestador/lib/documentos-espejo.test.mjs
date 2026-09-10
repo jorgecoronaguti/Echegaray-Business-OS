@@ -46,3 +46,12 @@ test('la clasificación no está duplicada: el espejo usa las reglas con test', 
   assert.ok(script.includes("from '../../src/app/portal/papeles.ts'"))
   assert.ok(script.includes('veredicto') && script.includes('esCarpetaDelCliente') && script.includes('rutaEnBucket'))
 })
+
+test('el espejo archiva bajo la obra que sigue viva, no bajo la fusionada', () => {
+  // Sin esto, la corrida siguiente al 10/09 volvía a publicar los once papeles de «BSA - Planta»
+  // bajo un id que el portal ya no mira: once documentos invisibles y once duplicados en la tabla.
+  assert.ok(script.includes('fusionada_en'), 'la consulta tiene que traer `fusionada_en`')
+  assert.ok(script.includes('const obraId = obraVigente(o)'),
+    'el ámbito y el `obra_id` que se escribe salen de la obra vigente')
+  assert.ok(!script.includes('clave: `obra:${o.id}`'), 'el id crudo vuelve a archivar en la fusionada')
+})

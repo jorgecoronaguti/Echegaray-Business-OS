@@ -4,8 +4,11 @@ import { sesionDelPortal } from '../../sesion'
 import { accesoDelPortal } from '../../datos'
 import { loQueSiPuedeVer } from '../../permisos'
 import { contratoDelConjunto, esquemaDelPortal, hoyEnObra } from '../datosObra'
-import { obrasQueFiltran, pagosEnPantalla } from '../../esquema'
-import { corto, estadoDePago, proximoPago, resumenDeCobro, pesos, diaMes, ROTULO_ESTADO } from '../../cronograma'
+import { alcanceDelContrato, obrasQueFiltran, pagosEnPantalla } from '../../esquema'
+import {
+  corto, estadoDePago, marcaDeFila, proximoPago, resumenDeCobro, rotuloDelCronograma, pesos, diaMes,
+  ROTULO_ESTADO,
+} from '../../cronograma'
 import { IconoEstado, Vacio, Fila, TINTA } from '../../Piezas'
 import { grillaDelMes } from '@/features/clientes/services/reglasEsquema'
 import { Calendario } from './Calendario'
@@ -221,8 +224,14 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
             obras» arriba de una lista de dos: el primer número de la pantalla contradecía a la
             pantalla. Con filtro puesto se nombra la obra, que es de lo único que se está hablando. */}
         <span className="text-[12.5px] text-faint">
-          {delFiltro.length === 1 ? '1 pago' : `${delFiltro.length} pagos`}
-          {obra ? ` · ${nombreDelFiltro}` : bloques.length > 1 ? ` · ${bloques.length} obras` : ''}
+          {rotuloDelCronograma({
+            enCurso: enOrden.length,
+            anteriores: anteriores.length,
+            // Las MISMAS obras que ofrecen las pastillas de abajo: contar los bloques contaba
+            // también las terminadas y el de los cobros que no cuelgan de ninguna obra.
+            obras: conPagos.length,
+            obraNombre: obra ? nombreDelFiltro : null,
+          })}
         </span>
       </div>
 
@@ -329,9 +338,12 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
             {visibles.map((p) => {
               const estado = estadoDePago(p, hoy)
               const esProximo = p.id === proximo?.id
+              // La fila se sigue resaltando si es el próximo pago; lo que NO puede es perder la
+              // palabra «vencido» por serlo. Ver `marcaDeFila`.
+              const marca = marcaDeFila(estado, esProximo)
               return (
                 <Fila key={p.id} resaltada={esProximo}>
-                  <IconoEstado estado={esProximo ? 'proximo' : estado} />
+                  <IconoEstado estado={marca} />
                   <span className="min-w-0 flex-1 basis-[38%]">
                     <span className="block truncate text-sm">{p.rotulo}</span>
                     {/* LA OBRA, ABAJO Y CHICA — igual que en la pantalla 32. Sin obra no se escribe
@@ -358,8 +370,8 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
                     </>
                   ) : null}
                   {/* Una factura pagada muestra su RECIBO: es el comprobante que le sirve al cliente. */}
-                  <span className={`w-[112px] text-right text-[12.5px] ${esProximo ? 'font-semibold text-ink' : TINTA[estado]}`}>
-                    {p.reciboNumero ? `Recibo ${p.reciboNumero}` : esProximo ? 'próximo' : ROTULO_ESTADO[estado]}
+                  <span className={`w-[112px] text-right text-[12.5px] ${esProximo ? 'font-semibold' : ''} ${esProximo && marca !== 'vencido' ? 'text-ink' : TINTA[marca]}`}>
+                    {p.reciboNumero ? `Recibo ${p.reciboNumero}` : ROTULO_ESTADO[marca]}
                   </span>
                 </Fila>
               )
@@ -451,14 +463,23 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
                 que sólo se puede leer como que falta cargar algo. No falta: ese contrato no existe
                 en pesos. */}
             {hayPesos && contratoARS != null ? (
-              <Cifra rotulo={hayDolares ? 'CONTRATO ARS$' : 'CONTRATO'} neto={contratoARS} pie={deQuienEsElContrato(cobertura)} />
+              <Cifra
+                rotulo={obra ? (hayDolares ? 'CONTRATO ARS$' : 'CONTRATO') : (hayDolares ? 'CONTRATO EN CURSO ARS$' : 'CONTRATO EN CURSO')}
+                neto={contratoARS}
+                pie={alcanceDelContrato(cobertura)}
+              />
             ) : null}
             {/* ═══ «U$S 63.000 + IVA», COMO LO DICE EL CONTRATO ═══
                 El contrato de Quattropani se firmó por U$S 63.000 MÁS IVA, y así es como el cliente
                 lo leyó. Publicar U$S 76.230 sería correcto de aritmética y ajeno al papel que él
                 tiene: el número que reconoce es el neto, y el «+ IVA» es parte de cómo se pactó. */}
             {contratoUSD != null ? (
-              <Cifra rotulo="CONTRATO US$" neto={contratoUSD} moneda="USD" pie={deQuienEsElContrato(cobertura)} />
+              <Cifra
+                rotulo={obra ? 'CONTRATO US$' : 'CONTRATO EN CURSO US$'}
+                neto={contratoUSD}
+                moneda="USD"
+                pie={alcanceDelContrato(cobertura)}
+              />
             ) : null}
             {hayPesos ? (
               <>
@@ -507,12 +528,6 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
       ) : null}
     </>
   )
-}
-
-/** «de 1 obra» · «de 2 obras · 1 sin contrato cargado». El total nunca sale sin su cobertura. */
-function deQuienEsElContrato({ obras, sinContrato }: { obras: number; sinContrato: number }): string {
-  const base = obras === 1 ? 'de 1 obra' : `de ${obras} obras`
-  return sinContrato ? `${base} · ${sinContrato === 1 ? '1 obra sin contrato cargado' : `${sinContrato} obras sin contrato cargado`}` : base
 }
 
 /** «6 pagos hechos» · «1 pago pendiente» — el conteo que ata la cifra del pie con las filas de
