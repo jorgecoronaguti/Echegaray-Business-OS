@@ -37,12 +37,11 @@
 
 import Link from 'next/link'
 import { pesos, porcentajeCanon } from '@/shared/components/canon/formato'
-import { Estado } from '@/shared/components/ds'
 import { IconoCliente, IconoObra } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { diaRelativo, type ClienteEnCartera } from '@/features/administracion/services/homeCartera'
 import { ordenesParaFila, sinFilaPropia, type OrdenBreve, type OrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
-import { chipsDeObra, SIN_PRECIO, type Chip } from '@/features/clientes/services/chipsCartera'
+import { SIN_PRECIO } from '@/features/clientes/services/chipsCartera'
 import { BotonOrdenes } from './BotonOrdenes'
 import { pctTexto } from '@/features/clientes/services/economiaObras'
 
@@ -152,8 +151,6 @@ export function TablaClientes({
 
       {clientes.map((c) => {
         const elegido = c.cliente_id === seleccionado
-        // LOS CHIPS DE LO QUE FALTA, de la MISMA función que decide el recorte «Datos faltantes».
-        const faltantes = c.chips
         return (
           <div key={c.cliente_id}>
             <Link
@@ -198,7 +195,6 @@ export function TablaClientes({
                   max={2}
                   veEconomia={veEconomia}
                 />
-                <ChipsFalta chips={faltantes} testid="aviso-datos" />
               </span>
 
               <span
@@ -267,10 +263,10 @@ export function TablaClientes({
                       <IconoObra className="h-[13px] w-[13px]" />
                     </span>
                     <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
-                    {/* SIN PRECIO · SIN MEDIR · SIN JEFE · el punto del circuito de certificación.
-                        Cada uno con su fuente en el `title`; los cuatro salen de `chipsDeObra`.
-                        Comparten la PRIMERA línea con el nombre: son estado de la obra, no papeles. */}
-                    <ChipsFalta chips={chipsDeObra(o)} testid="chip-obra" />
+                    {/* SIN CHIPS DE «LO QUE FALTA» (dueño, 10/09/2026): «sin medir · sin jefe ·
+                        sin certificar» y «sin teléfono · sin contrato» sobraban; la pantalla publica
+                        el dato preciso y nada más. Lo que falta sigue contándose en el recorte
+                        «Datos faltantes» (misma función `chipsDeCliente`), que es donde se decide. */}
                     {/* BARRA SÓLO SI EL NÚMERO ES UNA FRACCIÓN 0–100. `null` no es cero: una obra sin
                         avance sincronizado no avanzó cero por ciento — no se sabe, y una barra vacía
                         dice que sí. */}
@@ -356,26 +352,6 @@ export function TablaClientes({
         </div>
       )}
     </div>
-  )
-}
-
-/**
- * LOS CHIPS DE LO QUE FALTA — pastilla del handoff (`ds/Estado`), con la fuente en el `title`.
- *
- * El texto y el tono los decide `chipsCartera`, que es puro y está probado: acá no se decide nada,
- * se dibuja. Si esta lista y el recorte «Datos faltantes» pudieran discrepar, la pantalla volvería a
- * tener dos verdades del mismo cliente, que es exactamente lo que se vino a cerrar.
- */
-function ChipsFalta({ chips, testid }: { chips: Chip[]; testid: string }) {
-  if (!chips.length) return null
-  return (
-    <>
-      {chips.map((ch) => (
-        <span key={ch.clave} title={ch.porque} data-testid={testid} data-chip={ch.clave} style={{ flexShrink: 0 }}>
-          <Estado tono={ch.tono}>{ch.texto}</Estado>
-        </span>
-      ))}
-    </>
   )
 }
 
