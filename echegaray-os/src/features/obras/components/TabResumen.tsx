@@ -7,12 +7,14 @@ import { PlanVsRealResumen } from './PlanVsRealResumen'
 import { ChecklistPreparacion } from './ChecklistPreparacion'
 import { CurvaAvance } from './CurvaAvance'
 import { Ficha, UltimoMovimiento } from './FichaObra'
+import { OrdenesDeLaObra } from './OrdenesDeLaObra'
 import { Tarjeta, CabeceraTarjeta } from './TarjetaResumen'
 import { Titular } from './TitularObra'
 import { AtencionObra, type ItemAtencion } from './AtencionObra'
 import { proximasDeLaObra } from '../services/resumenDelPlan'
 import { lineasPlanVsReal } from '../services/planVsReal'
 import type { PersonasDeHoy } from '../services/personalService'
+import type { BloqueOrdenes } from '../services/ordenesDeLaObra'
 import { fecha } from './formato'
 
 // EL RESUMEN DE LA OBRA — tres preguntas, en este orden y sin párrafos entre medio:
@@ -192,7 +194,8 @@ function Proximas({ actividades, obraId, hoy }: {
 
 export function TabResumen({
   obra, plan, economia = null, abiertas, obraId, editar, archivar, veComercial = true,
-  actividades, partes, personasDeHoy = null, hoy = new Date().toISOString().slice(0, 10),
+  actividades, partes, personasDeHoy = null, ordenes = null,
+  hoy = new Date().toISOString().slice(0, 10),
 }: {
   /** Asignadas vigentes y presentes hoy (§25). `null` = la página no lo pidió o no se pudo leer. */
   personasDeHoy?: PersonasDeHoy | null
@@ -216,6 +219,10 @@ export function TabResumen({
   actividades?: Actividad[]
   /** Los partes, para el último movimiento. Misma regla que `actividades`. */
   partes?: ParteEjecucion[]
+  /** LAS ÓRDENES DEL CLIENTE PARA ESTA OBRA (`bloqueDeOrdenes`). `null` = la página no las pidió,
+   *  y entonces el bloque no se dibuja: eso NO es lo mismo que una obra sin OC, que sí se dibuja y
+   *  dice «Sin OC registrada». */
+  ordenes?: BloqueOrdenes | null
   /** Entra por parámetro para que «vencido» se pueda probar en cualquier fecha. */
   hoy?: string
 }) {
@@ -265,6 +272,16 @@ export function TabResumen({
 
       <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-[352px]">
         <Ficha obra={obra} plan={plan} />
+        {/* LA OC, PEGADA AL CLIENTE Y AL CONTRATO. Jerarquía obra → OC → plata: quien entra a la
+            obra tiene que ver con qué número se la encargaron sin ir a Documentos (pedido del
+            dueño, 10/09/2026 16:26). */}
+        {ordenes && (
+          <OrdenesDeLaObra
+            bloque={ordenes}
+            cliente={obra.cliente_nombre ?? obra.cliente_texto ?? null}
+            veComercial={veComercial}
+          />
+        )}
         {/* LO QUE FALTA PARA QUE LA OBRA PRODUZCA. Va en la columna de contexto y ABIERTO (Design
             canónico 02): estaba plegado al final del cuerpo, donde explicaba los «sin medir» de las
             métricas a dos pantallas de distancia y sólo si alguien lo abría. Sigue desapareciendo
