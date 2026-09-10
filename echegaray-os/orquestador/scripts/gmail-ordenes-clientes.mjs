@@ -268,8 +268,26 @@ async function main() {
   if (rellenadas) avisar(`\nórdenes de pago fechadas desde su certificado de retención: ${rellenadas}`)
 
   // ── 3. LO QUE YA ESTÁ, Y LA HERENCIA DE OBRA ──────────────────────────────────────────────────
-  const { rows: yaEnBase } = await query(`select id, cliente_id, obra_id, tipo, numero, numero_canonico,
-    hash_sha256, nombre_archivo, cita from public.cliente_orden where eliminado_en is null`)
+  // EL ENSAYO CORRE AUNQUE LA MIGRACIÓN NO ESTÉ APLICADA, Y LO DICE.
+  //
+  // `hash_sha256`, `numero_canonico` y `casilla` los crea `20260910T2010`, que se aplica desde la
+  // sesión principal y no desde acá. Pedirlas a ciegas tumbaba la corrida entera con «column
+  // numero_canonico does not exist» DESPUÉS de bajar 1.350 adjuntos — cuarenta minutos de lectura
+  // tirados por una columna. Se mira qué existe y se pregunta sólo por eso.
+  const { rows: cols } = await query(
+    `select column_name from information_schema.columns where table_schema = 'public' and table_name = 'cliente_orden'`)
+  const hay = new Set(cols.map((c) => c.column_name))
+  const NUEVAS = ['hash_sha256', 'numero_canonico', 'casilla']
+  const faltan = NUEVAS.filter((c) => !hay.has(c))
+  if (faltan.length) {
+    avisar(`\n⚠ LA MIGRACIÓN NO ESTÁ APLICADA — faltan ${faltan.join(', ')} en public.cliente_orden.`)
+    avisar('  supabase/migrations/20260910T2010_la_retencion_no_es_una_orden_y_el_reenvio_no_es_otra.sql')
+    avisar('  El ensayo sigue: lo único que pierde es poder comparar el hash contra lo ya guardado.')
+  }
+  const columnas = ['id', 'cliente_id', 'obra_id', 'tipo', 'numero', 'nombre_archivo', 'cita',
+    ...NUEVAS.filter((c) => hay.has(c))]
+  const { rows: yaEnBase } = await query(
+    `select ${columnas.join(', ')} from public.cliente_orden where eliminado_en is null`)
   const { nuevos, repetidos } = deduplicar(filas, { yaEnBase })
 
   // La herencia mira las filas nuevas Y las que ya están: la OC que le da la obra a una orden de
@@ -335,6 +353,13 @@ async function main() {
   }
 
   if (!APLICAR) { console.log('\nENSAYO. Nada se subió ni se escribió. Con --aplicar.'); return }
+
+  // APLICAR SIN LA MIGRACIÓN NO ES «APLICAR A MEDIAS»: es escribir filas sin las tres columnas que
+  // impiden el duplicado. Se corta antes de tocar el bucket.
+  if (faltan.length) {
+    throw new Error(`falta aplicar supabase/migrations/20260910T2010_...sql (sin ${faltan.join(', ')} `
+      + 'la base no puede impedir que la misma orden entre dos veces)')
+  }
 
   // ── 6. APLICAR ────────────────────────────────────────────────────────────────────────────────
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
