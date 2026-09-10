@@ -143,6 +143,43 @@ export function estadoDeCertificado(fila, hoy = new Date()) {
 }
 
 /**
+ * LOS ESTADOS DE UN CERTIFICADO QUE SALEN DEL SHEET, y los que no.
+ *
+ * `certificado_cliente.estado` guarda DOS cosas en una columna: dónde está el cobro —lo declara la
+ * columna O de Cobranzas— y qué dijo el cliente del documento (`en_revision`, `aprobado`,
+ * `observado`, `en_disputa`), que el Sheet no conoce. Sin esta distinción, cada corrida del sync
+ * tenía que elegir entre pisar la aprobación del cliente o congelar el cobro. Eligió lo segundo, y
+ * ese es el defecto que se arregla acá.
+ */
+export const ESTADOS_QUE_DECLARA_EL_SHEET = new Set(['emitido', 'vencido', 'cobrado'])
+
+/**
+ * QUÉ ESTADO ESCRIBE EL SYNC SOBRE UN CERTIFICADO QUE YA EXISTE.
+ *
+ * ═══ EL DEFECTO QUE ESTA FUNCIÓN EXISTE PARA QUE NO VUELVA (10/09/2026) ═══
+ *
+ * El `on conflict do update` del sync actualizaba número, factura, monto, emisión y vencimiento, y
+ * NO tocaba `estado`, con el argumento de que el estado de aprobación lo pone el cliente. El efecto
+ * medido en producción: la factura 01-00000225 de Messina figura `Cobrado` en Cobranzas desde el
+ * 03/09 y `certificado_cliente` la seguía teniendo `emitido`, así que la ficha publicaba «7 días
+ * vencido · Sin cobro registrado» y ofrecía «Enviar recordatorio» sobre plata ya percibida. El
+ * cliente cobra el reclamo de algo que pagó; peor todavía, la cabecera decía VENCIDO $ 0 al lado,
+ * porque ese número sí sale de la réplica viva.
+ *
+ * LA REGLA: el COBRO lo declara Cobranzas y nada lo sobreescribe —una factura que el Sheet tiene
+ * cobrada no puede quedar `emitido` ni `vencido`—; la APROBACIÓN la pone el cliente en el portal y
+ * el sync no la pisa, salvo que el dinero haya entrado, porque entonces la discusión terminó.
+ *
+ * @param delSheet el estado proyectado desde la réplica (`estadoDeCertificado`).
+ * @param guardado el estado que hoy tiene la fila. `null`/ausente = la fila es nueva.
+ */
+export function estadoAGuardar(delSheet, guardado) {
+  if (delSheet === 'cobrado') return 'cobrado'
+  if (!guardado) return delSheet
+  return ESTADOS_QUE_DECLARA_EL_SHEET.has(guardado) ? delSheet : guardado
+}
+
+/**
  * ¿SE PUEDE MOSTRAR ESTA FILA A UN CLIENTE?
  *
  * HALLAZGO del 25/08/2026, verificado contra la base: la columna B («Categoría») tiene dos valores,

@@ -29,7 +29,8 @@
 import { query, closePool } from '../lib/db.mjs'
 import { proyectar } from '../lib/portal/cobranzas-a-cliente.mjs'
 import {
-  cobrosOcultos, filasQueElSyncNoAlcanza, guardarPagoDelSync, plataOculta, repararCobrosOcultos,
+  cobrosOcultos, filasQueElSyncNoAlcanza, guardarCertificadoDelSync, guardarPagoDelSync, plataOculta,
+  repararCobrosOcultos,
 } from '../lib/portal/publicacion.mjs'
 
 const APLICAR = process.argv.includes('--aplicar')
@@ -182,24 +183,11 @@ async function informarCobrosOcultos() {
   console.log('  (pantalla 32 · «Publicar»), que es quien tiene que autorizar lo que se le muestra.')
 }
 
-// El UPDATE toca SÓLO lo que viene del Sheet. `estado` y `observacion` no se pisan: el estado de
-// aprobación lo pone el cliente en el portal y el Sheet no sabe nada de eso.
-async function guardarCertificado(c) {
-  await query(
-    `insert into public.certificado_cliente
-       (cliente_id, numero, factura, monto, emitido_at, vence, estado, cobranza_fila,
-        huella_comprobante, huella_monto, origen, sincronizado_en)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'sync_cobranzas',now())
-     on conflict (cobranza_fila) where cobranza_fila is not null do update
-       set numero = excluded.numero, factura = excluded.factura, monto = excluded.monto,
-           emitido_at = excluded.emitido_at, vence = excluded.vence,
-           huella_comprobante = excluded.huella_comprobante, huella_monto = excluded.huella_monto,
-           sincronizado_en = now(), actualizado_at = now()
-     where public.certificado_cliente.origen = 'sync_cobranzas'`,
-    [c.cliente_id, c.numero, c.factura, c.monto, c.emitido_at, c.vence, c.estado, c.cobranza_fila,
-      c.huella_comprobante, c.huella_monto],
-  )
-}
+// EL UPSERT DEL CERTIFICADO VIVE EN `lib/portal/publicacion.mjs`, al lado del del pago y por la
+// misma razón: es la regla de qué pisa una corrida del sync y qué respeta, y acá no se podía probar
+// sin escribir en la base productiva. El `estado` NO se pisaba, y por eso un certificado cobrado en
+// Cobranzas se quedaba `emitido` para siempre — ver `estadoAGuardar`.
+const guardarCertificado = (c) => guardarCertificadoDelSync(c, { query })
 
 // EL UPSERT DEL PAGO VIVE EN `lib/portal/publicacion.mjs`, junto al criterio de con qué visibilidad
 // nace una fila del sync. Estaba acá y decía lo contrario que el OTRO escritor de la misma tabla

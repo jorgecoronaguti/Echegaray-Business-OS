@@ -18,7 +18,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { getPool } from '../db.mjs'
-import { cobrosOcultos, guardarPagoDelSync, repararCobrosOcultos } from './publicacion.mjs'
+import {
+  cobrosOcultos, guardarCertificadoDelSync, guardarPagoDelSync, repararCobrosOcultos,
+} from './publicacion.mjs'
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
@@ -151,6 +153,76 @@ test('la reparación toca los cobros ocultos y NADA más', { skip: !hayBase }, a
         `select cliente_id, estado, monto, visible_portal, publicado_at
            from public.esquema_pago where cobranza_fila = $1`, [FILA_QA])
       assert.deepEqual(cobrosOcultos(rows), [])
+    })
+  } finally {
+    await c.query('rollback')
+    c.release()
+  }
+})
+
+// ═══ EL CERTIFICADO COBRADO — el defecto del 10/09/2026 ═══
+//
+// El `on conflict do update` del sync no incluía `estado`: una factura que Cobranzas pasó a
+// `Cobrado` se quedaba `emitido` en `certificado_cliente` para siempre, y la ficha del cliente
+// ofrecía «Enviar recordatorio» sobre plata ya percibida (Messina, FA 01-00000225, $6.060.479).
+//
+// Esto tampoco se puede probar sin la base: lo que fallaba era la sentencia, no el cálculo. Se
+// prueba la fila LEÍDA DE VUELTA, dentro de una transacción que termina en ROLLBACK.
+
+const certificado = (cambios = {}) => ({
+  cliente_id: null, numero: 'QA 01-00000225', factura: 'FA QA 01-00000225', monto: 5961829.95,
+  emitido_at: '2026-08-06', vence: '2026-09-03', estado: 'emitido', cobranza_fila: FILA_QA,
+  huella_comprobante: 'QA 01-00000225', huella_monto: 5008660.65,
+  ...cambios,
+})
+
+const leerCert = (q, fila) => q(
+  `select estado, monto, observacion from public.certificado_cliente where cobranza_fila = $1`,
+  [fila]).then((r) => r.rows[0])
+
+test('un certificado que Cobranzas pasó a cobrado deja de estar emitido', { skip: !hayBase }, async (t) => {
+  const c = await getPool().connect()
+  const q = (sql, params) => c.query(sql, params)
+  try {
+    await q('begin')
+    await q('select pg_advisory_xact_lock(20260822)')
+    const { rows: [cli] } = await q('select id from public.clientes limit 1')
+    assert.ok(cli, 'sin un cliente no hay certificado que probar')
+
+    await t.test('la corrida siguiente escribe el COBRO, no lo congela', async () => {
+      await guardarCertificadoDelSync(certificado({ cliente_id: cli.id }), { query: q })
+      assert.equal((await leerCert(q, FILA_QA)).estado, 'emitido', 'así nace mientras está pendiente')
+      // El Sheet lo cobra: la proyección trae `cobrado` sobre la MISMA fila.
+      await guardarCertificadoDelSync(
+        certificado({ cliente_id: cli.id, estado: 'cobrado' }), { query: q })
+      const f = await leerCert(q, FILA_QA)
+      assert.equal(f.estado, 'cobrado',
+        'sin esto la ficha reclama por mail una factura que el cliente ya pagó')
+    })
+
+    await t.test('lo que el CLIENTE contestó del documento no lo pisa el sync', async () => {
+      await q(`update public.certificado_cliente
+                  set estado = 'observado', observacion = 'falta el remito'
+                where cobranza_fila = $1`, [FILA_QA])
+      await guardarCertificadoDelSync(
+        certificado({ cliente_id: cli.id, estado: 'emitido', monto: 6000000 }), { query: q })
+      const f = await leerCert(q, FILA_QA)
+      assert.equal(f.estado, 'observado', 'la observación del cliente sobrevive a la corrida')
+      assert.equal(f.observacion, 'falta el remito')
+      assert.equal(Number(f.monto), 6000000, 'pero el importe del Sheet sí se actualizó')
+    })
+
+    await t.test('y si esa factura observada se cobra, el cobro manda', async () => {
+      await guardarCertificadoDelSync(
+        certificado({ cliente_id: cli.id, estado: 'cobrado' }), { query: q })
+      assert.equal((await leerCert(q, FILA_QA)).estado, 'cobrado')
+    })
+
+    await t.test('sigue siendo idempotente por cobranza_fila', async () => {
+      await guardarCertificadoDelSync(certificado({ cliente_id: cli.id }), { query: q })
+      const { rows } = await q(
+        'select count(*)::int n from public.certificado_cliente where cobranza_fila = $1', [FILA_QA])
+      assert.equal(rows[0].n, 1, 'dos corridas no pueden dejar dos veces el mismo documento')
     })
   } finally {
     await c.query('rollback')

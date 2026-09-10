@@ -11,23 +11,12 @@
 // sólo hace entrada/salida. El motivo es el de siempre: lo que decide tiene que poder dar rojo en
 // `node --test` sin una casilla de correo del otro lado.
 
-// ── QUIÉN ES CLIENTE, Y POR QUÉ NO ALCANZA EL DOMINIO ───────────────────────────────────────────
+// EL CATÁLOGO DE CLIENTES (dominios, textos, patrones de archivo) y la resolución de «de quién es
+// este papel» VIVEN EN `ordenes-atribucion.mjs`. Acá quedó lo que el documento DICE de sí mismo.
 //
-// El remitente NO identifica al cliente por sí solo: la mayoría de estas órdenes llegan REENVIADAS
-// desde adentro (rodrigo@ecsas.com.ar reenvía la notificación de Messina). Por eso la resolución
-// mira, en orden: el dominio del remitente, y si ese dominio es de la propia empresa, el texto del
-// asunto/cuerpo. Un reenvío interno sin ninguna marca de cliente queda SIN CLIENTE, no adivinado.
-export const CLIENTES = Object.freeze([
-  { clave: 'messina', nombre: 'Messina', dominios: ['juanmessina.com.ar'], textos: ['messina', 'juan messina', 'bsa'] },
-  { clave: 'arcor', nombre: 'ARCOR', dominios: ['arcor.com', 'arcor.com.ar'], textos: ['arcor'] },
-  { clave: 'quattropani', nombre: 'Franco Quattropani', dominios: [], textos: ['quattropani'] },
-  { clave: 'la-estrella', nombre: 'La Estrella', dominios: ['alimentosdelsur.com.ar'], textos: ['la estrella', 'alimentos del sur', 'palitos'] },
-  { clave: 'san-francisco', nombre: 'Javier Sánchez - San Francisco - IMOTOR', dominios: ['imotor.com.ar'], textos: ['imotor', 'san francisco', 'javier sanchez', 'javier sánchez'] },
-  { clave: 'mb', nombre: 'MB Emprendimientos', dominios: [], textos: ['mb emprendimientos'] },
-])
-
-/** Dominios propios: un remitente de acá NO es el cliente, es quien reenvió. */
-export const DOMINIOS_PROPIOS = Object.freeze(['ecsas.com.ar'])
+// Y lo que relaciona VARIOS papeles entre sí —número canónico, citas, herencia de obra— vive en
+// `ordenes-identidad.mjs`.
+import { numeroCanonico } from './ordenes-identidad.mjs'
 
 /** Minúsculas, sin tildes, espacios colapsados. La normalización de todo lo que se compara acá. */
 export function norm(texto) {
@@ -36,10 +25,23 @@ export function norm(texto) {
     .toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
-/** El mail pelado de un header From ("Isabel <i@x.com>" → "i@x.com"). '' si no hay. */
+/**
+ * El mail pelado de un header From ("Isabel <i@x.com>" → "i@x.com"). '' si no hay.
+ *
+ * EL PRIMER `<…>` NO ES SIEMPRE LA DIRECCIÓN. MEDIDO el 10/09/2026 sobre 68 mensajes de
+ * Saint-Gobain: el header es `"Saint-Gobain <No-Reply>" <SG.AR.SAP@saint-gobain.com>` — el nombre
+ * para mostrar TRAE ángulos adentro de las comillas. Tomando el primero salía `no-reply`, sin
+ * arroba, y el dominio quedaba vacío: 68 órdenes de compra de un cliente conocido caían en «sin
+ * cliente identificable», que se lee igual que «no hay nada de este emisor».
+ *
+ * Se exige la arroba y se toma el ÚLTIMO paréntesis angular que la tenga, que es donde la pone
+ * cualquier cliente de correo.
+ */
 export function mailDe(from) {
-  const m = String(from ?? '').match(/<([^>]+)>/)
-  return norm(m ? m[1] : from).replace(/[<>]/g, '')
+  const crudo = String(from ?? '')
+  const conArroba = [...crudo.matchAll(/<([^<>]*@[^<>]*)>/g)]
+  if (conArroba.length) return norm(conArroba[conArroba.length - 1][1])
+  return norm(crudo).replace(/[<>]/g, '')
 }
 
 export function dominioDe(from) {
@@ -48,40 +50,39 @@ export function dominioDe(from) {
   return i < 0 ? '' : mail.slice(i + 1)
 }
 
-/**
- * De qué CLIENTE es este mail. `{ clave, nombre, via }` o null.
- * `via` dice de dónde salió la atribución: 'remitente' (el dominio lo prueba) o 'texto' (se dedujo
- * del asunto/cuerpo de un reenvío interno). No es cosmético: un reenvío mal titulado es la única
- * forma de que esto se equivoque, y quien lea la tabla tiene que poder distinguirlo.
- */
-export function clienteDelMail({ from = '', asunto = '', cuerpo = '' } = {}) {
-  const dom = dominioDe(from)
-  if (dom) {
-    for (const c of CLIENTES) {
-      if (c.dominios.some((d) => dom === d || dom.endsWith('.' + d))) return { clave: c.clave, nombre: c.nombre, via: 'remitente' }
-    }
-  }
-  const propio = DOMINIOS_PROPIOS.some((d) => dom === d || dom.endsWith('.' + d))
-  const heno = norm(`${asunto} ${cuerpo}`)
-  // Sólo se cae al texto cuando el remitente es de casa o desconocido. Si el dominio es de un
-  // tercero identificado (un proveedor), que el cuerpo nombre a Messina no lo vuelve de Messina.
-  if (propio || !dom) {
-    for (const c of CLIENTES) {
-      if (c.textos.some((t) => heno.includes(norm(t)))) return { clave: c.clave, nombre: c.nombre, via: 'texto' }
-    }
-  }
-  return null
-}
-
 // ── QUÉ CLASE DE PAPEL ES ───────────────────────────────────────────────────────────────────────
 //
 // El orden importa y no es alfabético: «orden de pago» gana sobre «orden de compra» porque la
 // notificación de pago de Messina cita la OC que está pagando, y clasificarla como OC duplicaría
 // la compra. Y las dos ganan sobre la sigla suelta: «OC» aparece dentro de palabras y de números
 // de comprobante, así que la sigla exige borde de palabra y un dígito cerca.
+//
+// ═══ LA RETENCIÓN NO ES UNA ORDEN DE PAGO, Y POR ESO VA PRIMERA ═══
+//
+// MEDIDO el 10/09/2026 sobre `cliente_orden`: la OP 4865 y la OP 5156 tienen DOS filas cada una. La
+// segunda de cada par es el certificado de retención que Messina manda junto con el pago
+// (`O_P_0000000004865_G00002208.pdf`): cita el número de la orden, no trae importe propio, y la
+// clasificación lo leía como la misma orden de pago. El resultado era una cartera que declaraba dos
+// pagos donde hubo uno — un error sobre plata cobrada, no un detalle de archivo.
+//
+// Un certificado de retención es un comprobante FISCAL (SICORE, ganancias, IVA, IIBB): prueba un
+// impuesto retenido, no una promesa de cobro. Tiene su propio tipo, su propio número, y nunca suma
+// en la columna de lo que el cliente ordenó pagar.
+//
+// LAS SEÑALES SON FUERTES A PROPÓSITO. Una orden de pago LISTA sus retenciones en el detalle, así
+// que la palabra «retención» suelta no alcanza y clasificarla por ella daría vuelta el error: todas
+// las OP pasarían a ser retenciones. Se exige el rótulo del certificado, el régimen, o la marca
+// `_G<número>` del nombre con que el sistema de Messina los emite.
 const REGLAS_TIPO = Object.freeze([
+  { tipo: 'retencion', re: /_g\d{5,}(?:\.[a-z0-9]+)?$/, fuentes: ['nombre'] },
+  { tipo: 'retencion', re: /(?:certificado|constancia|comprobante)\s+(?:de\s+)?retencion|\bsicore\b|regimen de retencion|retenciones? sufridas?/ },
   { tipo: 'orden_pago', re: /orden(?:es)? de pago|\bo\/p\b|notificacion de pago|payment order/ },
-  { tipo: 'orden_compra', re: /orden(?:es)? de compra|\bo\/c\b|purchase order|purchase_order/ },
+  { tipo: 'orden_compra', re: /orden(?:es)? de compra|\bo\/c\b|purchase order|purchase_order|generacion oc/ },
+  // Los dos nombres de archivo con los que ARCOR emite. No traen ninguna palabra: «6A_50123456.PDF»
+  // es una orden de compra y «00001_5000123_OP.PDF» una orden de pago, y sin esto quedaban en
+  // `otro` aunque el asunto del mail lo dijera en otro idioma.
+  { tipo: 'orden_compra', re: /^6a_\d{6,}\.pdf$/, fuentes: ['nombre'] },
+  { tipo: 'orden_pago', re: /^\d{4,6}_\d{3,}_op\.pdf$/, fuentes: ['nombre'] },
   { tipo: 'orden_pago', re: /\bop[\s._#:-]{0,2}\d{2,}/ },
   { tipo: 'orden_compra', re: /\boc[\s._#:-]{0,2}\d{2,}/ },
 ])
@@ -90,6 +91,9 @@ const REGLAS_TIPO = Object.freeze([
  * Clasifica UN adjunto. Devuelve { tipo, señal } donde señal dice qué texto lo decidió.
  * `otro` es una respuesta legítima: un adjunto que llegó en el mismo mail y no es ninguna de las
  * dos cosas (el plano, la factura) no se fuerza a una categoría para que la tabla quede llena.
+ *
+ * Una regla puede acotar de qué FUENTES acepta evidencia. Las que miran la forma del nombre de
+ * archivo lo hacen: `_G00002208` dentro del texto de un PDF cualquiera no prueba nada.
  */
 export function clasificarAdjunto({ asunto = '', nombreArchivo = '', cuerpo = '', textoPdf = '' } = {}) {
   // El nombre del archivo y el asunto pesan más que el cuerpo: el cuerpo de un reenvío arrastra
@@ -100,12 +104,31 @@ export function clasificarAdjunto({ asunto = '', nombreArchivo = '', cuerpo = ''
     ['pdf', norm(textoPdf).slice(0, 1200)],
     ['cuerpo', norm(cuerpo).slice(0, 1200)],
   ]
-  for (const { tipo, re } of REGLAS_TIPO) {
+  for (const regla of REGLAS_TIPO) {
     for (const [fuente, texto] of fuentes) {
-      if (texto && re.test(texto)) return { tipo, senal: fuente }
+      if (regla.fuentes && !regla.fuentes.includes(fuente)) continue
+      if (texto && regla.re.test(texto)) return { tipo: regla.tipo, senal: fuente }
     }
   }
   return { tipo: 'otro', senal: null }
+}
+
+/**
+ * EL NÚMERO DE UN CERTIFICADO DE RETENCIÓN ES EL SUYO, NO EL DE LA ORDEN QUE ACOMPAÑA.
+ *
+ * `O_P_0000000004865_G00002208.pdf` nombra dos cosas: la orden de pago 4865 y el certificado
+ * G00002208. `extraerNumero` devolvía la primera, y por eso el certificado quedaba guardado con el
+ * número de la orden y la pantalla mostraba la OP 4865 dos veces. El certificado se identifica por
+ * su propio comprobante; sin él, dos papeles distintos comparten identidad.
+ *
+ * Devuelve `null` cuando el papel no declara su número: el tipo sigue siendo `retencion` y la fila
+ * queda sin número, que es la verdad.
+ */
+export function numeroDeRetencion({ nombreArchivo = '', textoPdf = '' } = {}) {
+  const delNombre = String(nombreArchivo).match(/_g(\d{5,})(?:\.[a-z0-9]+)?$/i)
+  if (delNombre) return `G${delNombre[1]}`
+  const delTexto = String(textoPdf).match(/(?:certificado|comprobante|constancia)\s*(?:n[°ºro.]*)?\s*[:#-]?\s*(\d{6,})/i)
+  return delTexto ? delTexto[1] : null
 }
 
 // ── EL NÚMERO, LA FECHA Y EL IMPORTE ────────────────────────────────────────────────────────────
@@ -131,6 +154,60 @@ export function extraerNumero(texto) {
     if (m) return m[1].replace(/\s+/g, '').replace(/[._/-]+$/, '')
   }
   return null
+}
+
+/**
+ * EL NÚMERO QUE EL EMISOR PUSO EN EL NOMBRE DEL ARCHIVO. null si el nombre no lo declara.
+ *
+ * MEDIDO el 10/09/2026 sobre las órdenes de ARCOR: `6A_53049655.PDF` quedó guardada con el número
+ * 53031073 —el de OTRA orden, citada adentro del PDF como antecedente— y `00001_966878_OP.PDF`
+ * quedó sin número. Los dos son peores que un hueco: un número ajeno hace que dos órdenes distintas
+ * se vean como la misma, y sin número la orden no se puede identificar ni deduplicar.
+ *
+ * El sistema que emite escribe SU número en el nombre, y eso es una declaración del emisor sobre el
+ * documento — más fuerte que rastrear dígitos en el cuerpo, donde conviven el número propio, los
+ * ajenos y los códigos de artículo. Sólo se aceptan las formas que un emisor conocido produce:
+ *
+ *   6A_53049655.PDF              orden de compra de ARCOR
+ *   00001_966878_OP.PDF          orden de pago de ARCOR
+ *   00001_24034724_$I.PDF        certificado de retención de ARCOR ($G ganancias, $I IVA, $B IIBB)
+ *
+ * Messina NO está: escribe `OC_32_0000200002097.pdf`, donde el punto de venta y el número van
+ * pegados y partirlos sería adivinar dónde termina uno. Ahí manda el PDF, que los separa.
+ */
+const NUMERO_EN_NOMBRE = Object.freeze([
+  /^6[a-z]_(\d{6,})\.pdf$/i,
+  /^\d{4,6}_(\d{4,})_op\.pdf$/i,
+  /^\d{4,6}_(\d{4,})_\$[a-z](?:_[\w-]+)*\.pdf$/i,
+])
+
+export function numeroDeNombreArchivo(nombreArchivo) {
+  const n = String(nombreArchivo ?? '')
+  for (const re of NUMERO_EN_NOMBRE) {
+    const m = n.match(re)
+    if (m) return m[1]
+  }
+  return null
+}
+
+/**
+ * ¿ESTE ARCHIVO ES UN COMPROBANTE QUE EMITIMOS NOSOTROS? Devuelve su número o null.
+ *
+ * `30716304643_201_00001_00000006.pdf`: CUIT del emisor, tipo de comprobante, punto de venta,
+ * número. Es el nombre con que ARCA entrega todo comprobante electrónico, y el mismo patrón que
+ * `src/app/portal/papeles.ts` ya usa para reconocer una factura nuestra.
+ *
+ * MEDIDO: ese archivo entró como `orden_compra` de ARCOR con el número de la OC que factura, porque
+ * el encabezado dice «FACTURA DE CREDITO ELECTRONICA MiPyME» y `comprobantePropio` sólo reconoce
+ * «FACTURA A». Una factura nuestra publicada como orden del cliente le atribuye a ARCOR un
+ * compromiso que ARCOR no firmó.
+ *
+ * `cuitPropio` se recibe —no se cablea— porque quién es «nosotros» ya está definido en el OS.
+ */
+export function comprobanteDelNombre(nombreArchivo, cuitPropio) {
+  const m = String(nombreArchivo ?? '').match(/^(\d{11})_(\d{3})_(\d{4,5})_(\d{6,8})\./)
+  if (!m || m[1] !== String(cuitPropio ?? '').replace(/\D/g, '')) return null
+  return `${Number(m[3])}-${Number(m[4])}`
 }
 
 /** Fecha en ISO (YYYY-MM-DD) leída como DD/MM/AAAA — locale es_AR, nunca MM/DD. null si no hay. */
@@ -212,6 +289,23 @@ const VACIAS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'para', 'con
  * dos ahí— y la ficha mostraba órdenes bajo una obra que no las produjo. Una obra cuyo nombre es el
  * del cliente no distingue nada y queda sin tokens: no puede ganar.
  */
+/**
+ * ¿ESTE TOKEN ESTÁ EN EL TEXTO? Con el plural, que es la MISMA palabra.
+ *
+ * MEDIDO el 10/09/2026 sobre `OC_32_0000200002226.pdf`: la orden dice «Observaciones: RAMPA PARA
+ * PISO 120 M2» y también «C.COSTO: 010109 DETALLE: PLAYON AZUFRE». La obra «ME - PISOS 120 M² Y
+ * RAMPA» aportaba los tokens `pisos`, `120` y `rampa`, y `pisos` no está en «PISO 120»: la obra
+ * quedaba con CERO puntos y la orden se fue a «ME - PLAYÓN DE AZUFRE», que sí tenía sus dos.
+ *
+ * El nombre de la obra dice «PISOS» y el papel dice «PISO». Es la misma palabra, y tratarlas como
+ * distintas convirtió una coincidencia de tres tokens en una de ninguno. Se acepta la forma sin la
+ * «s» final, y sólo desde cuatro caracteres: con menos, quitar una letra empareja cualquier cosa.
+ */
+function presente(token, heno) {
+  if (heno.includes(token)) return true
+  return token.length >= 4 && token.endsWith('s') && heno.includes(token.slice(0, -1))
+}
+
 export function tokensDeObra(nombre, nombreCliente = '') {
   const delCliente = new Set(norm(nombreCliente).replace(/[^a-z0-9 ]+/g, ' ').split(' ').filter(Boolean))
   return norm(nombre).replace(/[^a-z0-9² ]+/g, ' ').split(' ')
@@ -231,7 +325,7 @@ export function resolverObraDeTexto(obras, texto, { nombreCliente = '' } = {}) {
   const puntuadas = (obras ?? []).map((o) => {
     const toks = tokensDeObra(o.nombre, nombreCliente)
     if (!toks.length) return { obra: o, puntos: 0 }
-    const hits = toks.filter((t) => heno.includes(t)).length
+    const hits = toks.filter((t) => presente(t, heno)).length
     // Se exige que estén TODOS los tokens distintivos, no la mayoría. «PLAYÓN DE AZUFRE» y
     // «PLAYÓN DILUCIÓN DE ÁCIDO» comparten «playon»: con mayoría, un mail que sólo dice «playón»
     // se lleva una de las dos por sorteo.
@@ -265,160 +359,32 @@ export function extensionDe(nombreArchivo) {
   return m ? m[1].toLowerCase() : 'bin'
 }
 
-// ── IDENTIDAD DE LA ORDEN: EL NÚMERO CANÓNICO ───────────────────────────────────────────────────
-//
-// El mismo número de orden se escribe de tres formas según quién lo teclee: Messina emite
-// «00002-00002162», su propia notificación de pago cita «OC 02- 00002162» (con el espacio adentro)
-// y la factura que le mandamos dice «OC: 02-00002097». Comparar los tres como cadenas da tres
-// órdenes distintas, y por eso la OC 2162 entró dos veces en `cliente_orden`: llegó en dos mails.
-//
-// El canónico tira los ceros a la izquierda de cada tramo y se queda con los dígitos: «2-2162».
-// No sirve para mostrar —eso es `numeroCorto`— sino para decir «esto ya lo tengo».
-export function numeroCanonico(numero) {
-  const tramos = String(numero ?? '').match(/\d+/g)
-  if (!tramos) return null
-  const limpios = tramos.map((t) => t.replace(/^0+/, '') || '0').filter((t) => t !== '0')
-  return limpios.length ? limpios.join('-') : null
-}
-
-/** Lo que se DIBUJA: el último tramo sin ceros. «00002-00002162» → «2162». La fila de una obra
- *  tiene 80px para esto y «00002-00002162» los gasta sin decir nada que el 2162 no diga. */
-export function numeroCorto(numero) {
-  const canon = numeroCanonico(numero)
-  return canon ? canon.split('-').pop() : null
-}
-
-/** Todos los números de OC que este texto CITA, en canónico y sin repetir. Es lo que convierte una
- *  factura nuestra («Limpieza de Escombros Embolsado OC 02- 00002162») en evidencia de qué obra es
- *  esa OC, y lo que deja a una orden de pago colgada de la OC que paga. */
-export function ocsCitadas(texto) {
-  const t = String(texto ?? '')
-  const salida = new Set()
-  for (const m of t.matchAll(/\bo\/?c\s*(?:n[°ºo.]*)?\s*[:#-]?\s*(\d{1,5}\s*-\s*\d{3,10}|\d{4,10})/gi)) {
-    const canon = numeroCanonico(m[1])
-    if (canon) salida.add(canon)
-  }
-  return [...salida]
+/**
+ * ¿EL DOCUMENTO ROTULA SU FECHA, Y ESE RÓTULO SE PUDO LEER?
+ * `'entera'` · `'truncada'` (el año quedó en un dígito al extraer el texto) · `null` (no rotula).
+ */
+export function fechaRotulada(texto) {
+  const t = String(texto ?? '').replace(/\s*([/-])\s*/g, '$1')
+  const m = t.match(/\bfecha\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{1,4})/i)
+  if (!m) return null
+  return /[/-]\d{2,4}$/.test(m[1]) ? 'entera' : 'truncada'
 }
 
 /**
- * El comprobante que este PDF ES (una factura nuestra) o los que CITA (una orden de pago).
+ * QUÉ ORDEN DE PAGO PRUEBA ESTE CERTIFICADO DE RETENCIÓN. Número canónico, o null.
  *
- * Messina no cita la OC en su orden de pago: cita la FACTURA («FAC A0000100000225»). La cadena
- * completa es entonces OP → factura → OC → obra, y sin este eslabón la OP se queda sin obra aunque
- * la evidencia esté escrita. Devuelve claves «A-1-225».
+ * El certificado lo dice dos veces y las dos sirven: en su texto («O/P : 0000000000730») y en el
+ * nombre con que Messina lo emite (`O_P_0000000000730_G00000347.pdf`). Es el eslabón que le devuelve
+ * la fecha a una orden de pago cuyo rótulo vino roto — la misma fecha, escrita entera, en el papel
+ * que el cliente emitió por el mismo pago.
  */
-export function comprobantesCitados(texto) {
-  const salida = new Set()
-  for (const m of String(texto ?? '').matchAll(/\bfac\.?\s*([abcm])\s*(\d{4,5})(\d{8})\b/gi)) {
-    salida.add(`${m[1].toUpperCase()}-${Number(m[2])}-${Number(m[3])}`)
-  }
-  return [...salida]
+export function ordenDePagoDeLaRetencion({ nombreArchivo = '', textoPdf = '' } = {}) {
+  const delNombre = String(nombreArchivo).match(/^o_?p_?(\d{5,})_g\d+/i)
+  if (delNombre) return numeroCanonico(delNombre[1])
+  const delTexto = String(textoPdf).match(/\bo\s*\/\s*p\s*:?\s*(\d{5,})/i)
+  return delTexto ? numeroCanonico(delTexto[1]) : null
 }
 
-/** El comprobante que este PDF es, leído de su propio encabezado. null si no es una factura. */
-export function comprobantePropio(texto) {
-  const t = String(texto ?? '')
-  const letra = t.match(/factura\s+([abcm])\b/i)
-  const nro = t.match(/comp\.?\s*n(?:ro|°|º)\.?:?\s*(\d{4,5})\s+(\d{6,8})/i)
-  if (!letra || !nro) return null
-  return `${letra[1].toUpperCase()}-${Number(nro[1])}-${Number(nro[2])}`
-}
-
-// ── ATRIBUIR SIN ADIVINAR ───────────────────────────────────────────────────────────────────────
-
-/**
- * A qué obra pertenece un documento que no la nombra, según los DEMÁS documentos ya atribuidos.
- *
- * `citadas` son las claves que este documento cita (números de OC canónicos o comprobantes) y
- * `obraPorClave` el mapa que arman los documentos que sí tienen obra. Devuelve
- * `{ obraId, porque }` o `{ obraId: null, porque }` — el motivo se escribe SIEMPRE, también cuando
- * no se pudo: una lista de nueve órdenes sin obra y sin motivo no le sirve a nadie para decidir.
- *
- * DOS OBRAS DISTINTAS ⇒ NADA. Una orden de pago que cancela tres facturas de tres obras no
- * pertenece a una de las tres: repartirla sería inventar. Queda a nivel cliente y se dice por qué.
- */
-export function obraPorReferencia(citadas, obraPorClave) {
-  const halladas = new Map()
-  const sinRastro = []
-  for (const c of citadas ?? []) {
-    const obra = obraPorClave.get(c)
-    if (obra) halladas.set(obra, [...(halladas.get(obra) ?? []), c])
-    else sinRastro.push(c)
-  }
-  if (!citadas?.length) return { obraId: null, porque: 'el PDF no cita ninguna OC ni comprobante' }
-  if (halladas.size === 1) {
-    const [obraId, claves] = [...halladas.entries()][0]
-    return { obraId, porque: `hereda la obra de ${claves.join(', ')}` }
-  }
-  if (halladas.size > 1) {
-    return { obraId: null, porque: `cita ${citadas.join(', ')} y caen en ${halladas.size} obras distintas` }
-  }
-  return { obraId: null, porque: `cita ${sinRastro.join(', ')}, que no está en el OS` }
-}
-
-/**
- * UNA SOLA FILA POR ORDEN. Agrupa por (tipo, número canónico) y devuelve un grupo por orden real,
- * con todas sus filas adentro: la OC 2162 llegó dos veces —la orden que emitió Messina y la
- * factura nuestra que la cita— y son dos papeles de UNA orden, no dos órdenes.
- *
- * Las filas SIN número no se agrupan entre sí: dos documentos sin número no son el mismo documento,
- * y unirlos por «ninguno de los dos tiene número» sería el peor de los inventos.
- */
-export function agruparPorNumero(filas) {
-  const grupos = new Map()
-  const salida = []
-  for (const f of filas ?? []) {
-    const canon = numeroCanonico(f.numero)
-    const clave = canon ? `${f.tipo}::${canon}` : null
-    if (clave && grupos.has(clave)) { grupos.get(clave).filas.push(f); continue }
-    const g = { clave: clave ?? `sola::${f.id}`, tipo: f.tipo, numero: f.numero, filas: [f] }
-    if (clave) grupos.set(clave, g)
-    salida.push(g)
-  }
-  return salida
-}
-
-/**
- * EL MAPA CONTRA EL QUE SE HEREDA: clave → obra, armado sólo con los documentos que YA tienen obra.
- *
- * Cada documento entra por su número canónico («2-2173») y, si es una factura nuestra, por su
- * comprobante («A-1-225»). Y entra TAMBIÉN por su número corto («2173»), porque el papel se cita
- * como se habla: la OC 2256 dice «ADICIONAL OC 2173, CONSTRUCCION DEL TERCER MURO» y sin la clave
- * corta esa cita se leía como «no está en el OS» — un motivo falso, que es peor que no atribuir.
- *
- * LA CLAVE CORTA SE CAE SOLA CUANDO ES AMBIGUA: si dos órdenes de puntos de venta distintos
- * terminan en el mismo número y apuntan a obras distintas, «2173» deja de significar algo y se
- * borra. Heredar por una clave ambigua es exactamente la adivinanza que esto no hace.
- */
-export function mapaDeEvidencia(docs) {
-  const mapa = new Map()
-  const cortas = new Map()
-  for (const d of docs ?? []) {
-    if (!d.obra_id) continue
-    const canon = numeroCanonico(d.numero)
-    if (canon) {
-      mapa.set(canon, d.obra_id)
-      const corta = canon.split('-').pop()
-      if (corta !== canon) cortas.set(corta, cortas.has(corta) && cortas.get(corta) !== d.obra_id ? null : d.obra_id)
-    }
-    if (d.comprobante) mapa.set(d.comprobante, d.obra_id)
-  }
-  for (const [corta, obraId] of cortas) if (obraId && !mapa.has(corta)) mapa.set(corta, obraId)
-  return mapa
-}
-
-/**
- * LA FECHA DE LA ORDEN, que no es la primera fecha del papel.
- *
- * MEDIDO el 10/09/2026 contra las cinco OC del bucket: las cinco quedaron fechadas «22/08/86». El
- * encabezado de Messina trae «Fecha Inicio Act. 22-08-86» —cuándo abrió la empresa— antes que la
- * fecha de la orden, que además viene con espacios adentro («Mendoza - 11 /08 /2026»). La primera
- * fecha que encontraba `extraerFecha` era la del año 1986 leído como 2086.
- *
- * Por eso se busca por ETIQUETA primero y sólo después a ciegas, y toda fecha fuera de una ventana
- * razonable se descarta: un documento administrativo de esta empresa no es de 2086 ni de 1986.
- */
 export function extraerFechaDeOrden(texto, { hoy = new Date() } = {}) {
   const t = String(texto ?? '')
   const FECHA = String.raw`(\d{1,2}\s*[/-]\s*\d{1,2}\s*[/-]\s*\d{2,4})`
@@ -432,7 +398,26 @@ export function extraerFechaDeOrden(texto, { hoy = new Date() } = {}) {
     const m = t.match(re)
     if (m) candidatas.push(m[1])
   }
-  candidatas.push(t)
+  // ═══ LA ETIQUETA ROTA NO SE REEMPLAZA POR OTRA FECHA ═══
+  //
+  // MEDIDO el 10/09/2026 sobre `O_P_0000000000730.pdf`: la capa de texto trae «Fecha : 25/09/2» —
+  // el año se cortó al extraer. El papel además contiene «24/09/2024» (vencimiento de la factura
+  // que paga) y «27/09/2024» (fecha del cheque). El rastreo a ciegas devolvía el 24, y el 24 no es
+  // la fecha de la orden de pago: es la de OTRO hecho. Un dato equivocado con cara de dato es peor
+  // que un hueco declarado, así que acá se corta: si el documento SÍ rotula su fecha y ese rótulo
+  // vino roto, la función contesta null y el llamador la busca donde está escrita entera —el
+  // certificado de retención de la misma O/P—.
+  if (!candidatas.length && fechaRotulada(t) === 'truncada') return null
+  // A CIEGAS, PERO TODAS LAS FECHAS DEL PAPEL Y EN ORDEN, no sólo la primera.
+  //
+  // Hasta el 10/09/2026 acá se empujaba el texto entero y `extraerFecha` devolvía su PRIMER match:
+  // si esa fecha caía fuera de la ventana —«Fecha Inicio Act. 22-08-86»— la función devolvía null
+  // aunque la fecha buena estuviera tres palabras más adelante. Que las cinco OC del bucket se
+  // salvaran era un accidente del orden en que ese PDF derrama el encabezado, y el orden en que un
+  // PDF derrama su encabezado no es un criterio: el mismo emisor con otra plantilla dejaba la orden
+  // sin fecha. Los espacios se sacan antes porque Messina imprime «11 /08 /2026».
+  const plano = t.replace(/\s*([/-])\s*/g, '$1')
+  for (const m of plano.matchAll(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g)) candidatas.push(m[0])
   const anio = hoy.getFullYear()
   for (const c of candidatas) {
     const iso = extraerFecha(String(c).replace(/\s*([/-])\s*/g, '$1'))
@@ -450,60 +435,4 @@ export function fechaImposible(fecha, { hoy = new Date() } = {}) {
   if (!fecha) return false
   const a = Number(String(fecha).slice(0, 4))
   return !Number.isFinite(a) || a < 2015 || a > hoy.getFullYear() + 1
-}
-
-// ── LA FACTURA NUESTRA NO ES UNA ORDEN DE COMPRA ────────────────────────────────────────────────
-//
-// MEDIDO el 10/09/2026: seis de las dieciséis filas de `cliente_orden` estaban guardadas como
-// `orden_compra` y son FACTURAS A EMITIDAS POR NOSOTROS. Se colaron porque la regla de tipo mira el
-// nombre del archivo («OC 02-00002162.pdf») y el detalle de la factura cita la OC que factura. El
-// resultado era una pantalla que dibujaba dos órdenes de compra donde el cliente emitió una sola, y
-// le atribuía a Messina un papel que Messina no firmó.
-//
-// LA EVIDENCIA QUE MANDA ES EL ENCABEZADO DEL PROPIO PDF, no el nombre ni la cita: si el documento
-// dice «FACTURA A» y trae su «Comp. Nro», ES esa factura. Sigue siendo evidencia de la obra —cita
-// la OC y describe el trabajo—, por eso no se descarta: cambia de clase.
-export const TIPOS = Object.freeze(['orden_compra', 'orden_pago', 'factura', 'otro'])
-
-/**
- * Qué es REALMENTE este documento, con el PDF ya leído. Devuelve `{ tipo, numero, cita }`:
- *   · `numero` de una factura es SU comprobante («A-1-225»), no el de la OC que cita — guardar ahí
- *     el número ajeno es lo que hacía que dos papeles distintos parecieran la misma orden;
- *   · `cita` es la OC que la factura nombra, en canónico. Es lo que deja el rótulo «Factura 225 ·
- *     cita OC 2162» y lo que ata la factura a la orden sin fingir que la reemplaza.
- * `null` cuando el PDF no se declara factura: no se fuerza nada y el tipo previo queda como está.
- */
-export function facturaPropiaDe(texto) {
-  const comprobante = comprobantePropio(texto)
-  if (!comprobante) return null
-  const citadas = ocsCitadas(texto)
-  return { tipo: 'factura', numero: comprobante, cita: citadas.length === 1 ? citadas[0] : null }
-}
-
-/**
- * EL CAMINO INVERSO DE LA HERENCIA: clave de OC → obra, según los documentos que la CITAN.
- *
- * `mapaDeEvidencia` responde «¿qué obra tiene la OC que yo cito?». Ésta responde la otra mitad: la
- * factura nuestra describe el trabajo («Construccion de platea... PLAYON DE AZUFRE») y por eso el
- * OS le encuentra obra; la OC del cliente, en cambio, a veces sólo trae el código de centro de
- * costo. Sin este mapa, la obra que la factura ya probó no llegaba nunca a la OC que factura.
- *
- * Hasta el 10/09 esa herencia existía por accidente: la factura quedaba guardada con el número de
- * la OC y `agruparPorNumero` las juntaba como si fueran el mismo papel. Al separar los tipos eso
- * desaparece, y lo que era un efecto colateral pasa a ser una regla escrita y probada.
- *
- * DOS OBRAS PARA LA MISMA OC ⇒ LA CLAVE SE CAE. Dos facturas de obras distintas citando la misma OC
- * significa que la cita no distingue nada: heredar ahí sería sortear.
- */
-export function mapaDeCitas(docs) {
-  const mapa = new Map()
-  for (const d of docs ?? []) {
-    if (!d.obra_id) continue
-    for (const c of d.citadas ?? []) {
-      if (!/^\d/.test(c)) continue // los comprobantes («A-1-225») no son OC: no dan obra a nadie
-      mapa.set(c, mapa.has(c) && mapa.get(c) !== d.obra_id ? null : d.obra_id)
-    }
-  }
-  for (const [c, obraId] of [...mapa]) if (!obraId) mapa.delete(c)
-  return mapa
 }
