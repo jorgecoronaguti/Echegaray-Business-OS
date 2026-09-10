@@ -111,8 +111,9 @@ const AIRE_DERECHO = 'max-[559px]:pr-4'
 /** QUÉ SON LAS DOS COLUMNAS NUEVAS, para el que pasa el mouse. Dos rótulos de dos letras no pueden
  *  cargar solos con decir de qué están hablando — y lo que tienen que decir es sobre todo que NO
  *  son la misma fuente que Contratado. */
-const AYUDA_OC = 'Órdenes de compra que el cliente mandó por esta obra (los PDF de su mail). Es otra '
-  + 'fuente que Contratado, que sale de la pestaña OBRAS: que no coincidan no es un error.'
+const AYUDA_OC = 'Órdenes de compra que el cliente mandó por esta obra (los PDF de su mail). EL '
+  + 'IMPORTE ES EL TOTAL DEL PDF, CON IVA, y Contratado —de la pestaña OBRAS— es neto: los dos '
+  + 'números no se restan. Que no coincidan no es un error de esta pantalla.'
 const AYUDA_OP = 'Órdenes de pago del cliente imputadas a esta obra. Una OP no prueba el cobro: '
   + 'eso lo prueba el extracto del banco.'
 
@@ -168,8 +169,8 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
         <RotuloCol>Estado</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Avance</RotuloCol></span>
         <RotuloCol derecha>Contratado</RotuloCol>
-        <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_OC}><RotuloCol derecha>OC</RotuloCol></span>
-        <span className={`grid ${SOLO_ANCHO_ECO}`} title={AYUDA_OP}><RotuloCol derecha>OP</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_OC}><RotuloCol derecha>OC c/IVA</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO_ECO}`} title={AYUDA_OP}><RotuloCol derecha>OP c/IVA</RotuloCol></span>
         <span className={`grid ${SOLO_ANCHO_ECO}`}><RotuloCol derecha>{veEconomia ? 'Margen' : ''}</RotuloCol></span>
         <span className={SOLO_ANCHO} />
       </div>
