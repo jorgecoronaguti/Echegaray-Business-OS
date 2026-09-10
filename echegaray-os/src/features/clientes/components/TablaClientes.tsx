@@ -297,13 +297,24 @@ export function TablaClientes({
               </span>
 
               {/* «SIN PRECIO EN OBRAS» Y NO «SIN CONTRATO»: acá falta el MONTO en la pestaña OBRAS.
-                  El contrato —el papel— lo dice su propio chip, al lado del nombre. */}
+                  El contrato —el papel— lo dice su propio chip, al lado del nombre.
+                  PERO UN CLIENTE SIN OBRAS EN CURSO NO TIENE PRECIO QUE FALTAR (10/09/2026): ARCOR
+                  y La Estrella salían en ÁMBAR acusando un hueco de datos que no existe — su suma
+                  es de cero obras, no de obras sin precio. La ficha ya lo decía bien
+                  (`[cliente]/page.tsx:195`); acá se acusaba a dos clientes por no tener trabajo. */}
               <span
                 className="font-mono tabular-nums"
                 data-testid="contratado"
-                style={{ fontSize: '12px', textAlign: 'right', color: c.contratado === null ? V.warn : V.tinta }}
+                style={{
+                  fontSize: '12px', textAlign: 'right',
+                  color: c.contratado !== null ? V.tinta : c.enCurso.length ? V.warn : V.tenue,
+                }}
               >
-                {veEconomia ? (c.contratado === null ? SIN_PRECIO : pesos(c.contratado)) : ''}
+                {veEconomia
+                  ? (c.contratado === null
+                      ? (c.enCurso.length ? SIN_PRECIO : 'sin obra en curso')
+                      : pesos(c.contratado))
+                  : ''}
               </span>
               <Economia
                 mo={c.costoMo} mat={c.costoMateriales} margen={c.margen} pct={c.margenPct}
