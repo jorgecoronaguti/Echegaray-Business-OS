@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agruparPapeles, clasePapel, corto, esRetencion, VARIAS_OBRAS, type PapelCrudo,
+  agruparPapeles, clasePapel, corto, esRetencion, opDeRetencion, VARIAS_OBRAS, type PapelCrudo,
 } from './papelesCliente.ts'
 import { PAPELES_MESSINA } from './papelesMessina.fixture.ts'
 
@@ -44,6 +44,24 @@ test('un certificado de retención NUNCA se cuenta como orden de pago', () => {
   const op5156 = p.op.find((o) => o.numeroCorto === '5156')
   assert.equal(op5156?.retenciones.length, 1)
   assert.equal(op5156?.retenciones[0].numeroCorto, '5156')
+})
+
+test('el certificado dice de qué ORDEN es, aunque su `numero` sea el del comprobante', () => {
+  // EL DEFECTO, MEDIDO EL 10/09/2026: la re-atribución guardó el MISMO PDF dos veces —una con
+  // `numero = 0000000005156` (la orden) y otra con `numero = G00002353` (el comprobante)—, y el
+  // rótulo salía «Retención · OP 2353», que es una orden de pago que no existe. El nombre del
+  // archivo trae los dos números y nunca cambió: de ahí sale la orden.
+  assert.equal(opDeRetencion('O_P_0000000005156_G00002353.pdf'), '5156')
+  assert.equal(opDeRetencion('O_P_0000000004865_G00002208.pdf'), '4865')
+  assert.equal(opDeRetencion('cualquier-cosa.pdf'), null)
+
+  // Y por eso el certificado se ata a SU orden aunque su número diga otra cosa.
+  const p = agruparPapeles([
+    uno({ id: 'op', tipo: 'orden_pago', numero: '0000000005156', importe: 39325000 }),
+    uno({ id: 'r', tipo: 'retencion', numero: 'G00002353', nombre_archivo: 'O_P_0000000005156_G00002353.pdf' }),
+  ])
+  assert.equal(p.op.length, 1)
+  assert.deepEqual(p.op[0].retenciones.map((r) => r.id), ['r'])
 })
 
 test('la factura nuestra no es una orden del cliente, y cita la OC que factura', () => {

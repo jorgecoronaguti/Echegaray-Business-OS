@@ -20,7 +20,7 @@
 import { pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, ENCABEZADO, RotuloCol, V } from '@/shared/components/v2/patron'
 import type { ClasePapel, Orden, Papel, PapelesDelCliente } from '../services/papelesCliente'
-import { VARIAS_OBRAS } from '../services/papelesCliente'
+import { opDeRetencion, VARIAS_OBRAS } from '../services/papelesCliente'
 
 /** El archivo se abre por la ruta que ya sirve el bucket privado con la credencial del OS. */
 const HREF = (id: string) => `/api/clientes/orden/${id}`
@@ -201,7 +201,7 @@ export function PapelesPorTipo({ papeles, nombreDeObra, veEconomia, mostrarObra 
         ayuda="El comprobante de retención que acompaña a una orden de pago. Lleva el número de ESA orden: nunca es una orden de pago más.">
         {retenciones.map((r) => (
           <Fila
-            key={r.id} clase="retencion" clave={r.id} numero={`Retención · OP ${r.numeroCorto ?? 's/n'}`} fecha={dia(r.fecha)}
+            key={r.id} clase="retencion" clave={r.id} numero={`Retención · OP ${opDeRetencion(r.nombre_archivo) ?? r.numeroCorto ?? 's/n'}`} fecha={dia(r.fecha)}
             obra={obraDe(r.obra_id)} monto={importe(r.importe, r.moneda, veEconomia)}
             vinculo="del cliente" href={HREF(r.id)} tono={V.apagado}
           />

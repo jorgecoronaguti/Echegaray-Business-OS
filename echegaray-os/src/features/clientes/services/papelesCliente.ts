@@ -84,6 +84,24 @@ export function clasePapel(p: PapelCrudo): ClasePapel {
   return 'otro'
 }
 
+/**
+ * DE QUÉ ORDEN DE PAGO ES ESTE CERTIFICADO — sale del NOMBRE DEL ARCHIVO, que es la evidencia.
+ *
+ * `O_P_0000000004865_G00002208.pdf` = la orden de pago 4865, comprobante G00002208. Los dos números
+ * viven en el mismo nombre y son cosas distintas.
+ *
+ * POR QUÉ NO SE USA `numero` (10/09/2026): la re-atribución del orquestador guarda en `numero` unas
+ * veces el de la ORDEN (`0000000005156`) y otras el del COMPROBANTE (`G00002353`) — el mismo PDF
+ * quedó dos veces con los dos números. Rotular con `numero` decía «Retención · OP 2353», que es una
+ * orden de pago que no existe. El nombre del archivo dice las dos cosas y no cambió nunca.
+ *
+ * `null` cuando el nombre no lo dice: entonces se cae al número de la fila, y si tampoco está, «s/n».
+ */
+export function opDeRetencion(nombreArchivo: string | null | undefined): string | null {
+  const m = /o_?p_?[ -]*(\d{3,})_g\d+/i.exec(String(nombreArchivo ?? ''))
+  return m ? corto(m[1]) : null
+}
+
 /** Un papel ya clasificado, con su número corto resuelto. */
 export interface Papel extends PapelCrudo {
   clase: ClasePapel
@@ -180,7 +198,10 @@ export function agruparPapeles(crudos: readonly PapelCrudo[]): PapelesDelCliente
     o.facturas = facturas.filter((f) => canonico(f.cita) && canonico(f.cita) === o.numeroCanonico)
   }
   for (const o of op) {
-    o.retenciones = retenciones.filter((r) => r.numeroCanonico === o.numeroCanonico)
+    // El certificado se ata a su orden por el NOMBRE DEL ARCHIVO y, si no lo dice, por su número.
+    o.retenciones = retenciones.filter(
+      (r) => (opDeRetencion(r.nombre_archivo) ?? r.numeroCanonico) === o.numeroCanonico,
+    )
     // Una OP puede citar la factura que paga o, directamente, la OC. Se aceptan las dos formas: el
     // día que el extractor lea el detalle del PDF, esto funciona sin tocar la pantalla.
     const citada = canonico(o.cita)

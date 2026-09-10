@@ -13,7 +13,7 @@
 import { V } from '@/shared/components/v2/patron'
 import { pesos } from '@/shared/components/canon/formato'
 import { numeroCorto, type OrdenDetallada } from '../services/ordenesCliente'
-import { esRetencion } from '../services/papelesCliente'
+import { esRetencion, opDeRetencion } from '../services/papelesCliente'
 
 // `retencion` es el certificado de retención impositiva que el cliente manda junto con el pago.
 // Se nombra por lo que es: llamarlo «Documento» escondía que la OP 4865 tenía dos filas, y llamarlo
@@ -43,7 +43,7 @@ export function tituloDeOrden(
   // El `tipo` de la base manda desde la migración del 10/09; el nombre del archivo es la red para
   // las filas que todavía están guardadas como `otro`. La misma regla que `papelesCliente`.
   if (o.tipo === 'retencion' || esRetencion(o.nombre_archivo)) {
-    return `Retención · OP ${numeroCorto(o.numero) ?? 's/n'}`
+    return `Retención · OP ${opDeRetencion(o.nombre_archivo) ?? numeroCorto(o.numero) ?? 's/n'}`
   }
   const clase = TIPO[o.tipo] ?? o.tipo
   if (o.tipo !== 'factura') return `${clase} ${o.numero ? `N° ${o.numero}` : 'sin número'}`

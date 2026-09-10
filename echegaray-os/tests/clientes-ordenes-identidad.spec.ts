@@ -100,9 +100,16 @@ test('Documentos separa OC, OP, certificados de retención y facturas nuestras',
   await expect(bloque).not.toContainText('Documento N°')
   const retenciones = bloque.locator('[data-clase="retencion"]')
   await expect(retenciones.first()).toContainText('Retención · OP')
-  // Tantos certificados como órdenes de pago, y NINGUNO contado como orden de pago: si alguno se
-  // colara en el grupo de las OP, los dos conteos dejarían de coincidir con la base.
-  expect(await retenciones.count()).toBe(await bloque.locator('[data-clase="op"]').count())
+  // NINGÚN CERTIFICADO CONTADO COMO ORDEN DE PAGO. Se mide así y no comparando los dos conteos:
+  // «tantos certificados como OP» parecía un invariante y no lo es —una orden puede venir con
+  // varios certificados (Ganancias, IVA, IIBB) o sin ninguno—, y el 10/09 la re-atribución sumó
+  // filas y lo puso rojo sin que nada estuviera mal. Lo que SÍ es invariante: un papel que se
+  // anuncia como retención no puede estar en el grupo de las órdenes de pago, porque ahí su
+  // importe se sumaría al dinero cobrado.
+  expect(await retenciones.count()).toBeGreaterThan(0)
+  for (const texto of await bloque.locator('[data-clase="op"]').allInnerTexts()) {
+    expect(texto).not.toContain('Retención')
+  }
   // La factura nuestra tiene grupo propio y dice qué OC cita: no es una orden del cliente.
   await expect(bloque.locator('[data-clase="factura"]').first()).toContainText('cita OC')
 
@@ -116,7 +123,9 @@ test('la ficha de la obra lista sus papeles agrupados, sin contar la factura com
   await page.goto('/obras/messina-playon-azufre?vista=documentos')
 
   const bloque = page.getByTestId('ordenes-de-la-obra')
-  await expect(bloque).toBeVisible()
+  // 30 s y no los 5 de por defecto: contra `next dev` esta ruta se compila la primera vez que se
+  // pide, y el timeout medía el compilador, no la pantalla.
+  await expect(bloque).toBeVisible({ timeout: 30000 })
   await expect(bloque).toContainText('2173')
   // La fecha se escribe como se lee, no en ISO: «11/08/26».
   await expect(bloque).toContainText('11/08/26')
@@ -128,7 +137,16 @@ test('la ficha de la obra lista sus papeles agrupados, sin contar la factura com
   // `data-clase="factura"` es la misma falla. Conteos que PUEDEN dar distinto, no constantes.
   await expect(bloque).not.toContainText('2256')
   await expect(bloque.locator('[data-clase="oc"]')).toHaveCount(1)
-  await expect(bloque.locator('[data-clase="factura"]')).toHaveCount(0)
+  // LA FACTURA NUESTRA NO SE CUENTA COMO ORDEN DEL CLIENTE. Antes esto se medía con «cero
+  // facturas», y era el estado de ese día: el 10/09 la re-atribución vinculó la factura 229 a esta
+  // obra y el caso se puso rojo sin que nada estuviera mal. Lo que hay que probar es que la
+  // factura no engorda lo que el cliente encargó: el grupo de las OC sigue con una fila y su total
+  // sigue siendo el de la OC. Si una factura volviera a entrar como `orden_compra`, el total sube.
+  const grupoOC = page.getByTestId('grupo-papeles').filter({ hasText: 'ÓRDENES DE COMPRA' })
+  await expect(grupoOC.getByTestId('total-grupo')).toContainText('78.650.000')
+  for (const texto of await bloque.locator('[data-clase="factura"]').allInnerTexts()) {
+    expect(texto).toMatch(/Factura/)
+  }
   // Y el certificado de retención de la OP 5156 se rotula con SU orden, no como un documento suelto.
   await expect(bloque.locator('[data-clase="retencion"]')).toContainText('Retención · OP 5156')
 
