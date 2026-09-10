@@ -6,6 +6,67 @@
     "scripts"
   ],
   "_minimo_de_archivos": 500,
+  "_consumidores_rpc": {
+    "_lea_esto": "Las pantallas que leen su dato con UNA sola llamada a una función de Postgres, en vez de N consultas de PostgREST. Son CONSUMIDORAS de las mismas vistas canónicas: transportan filas, no definen números. Están acá porque canonico-definiciones.test.ts es estático y no ve adentro de un rpc() cuyo cuerpo vive en SQL: mover las lecturas a una migración las sacaría del alcance del barrido. Quien las cuida es src/shared/definiciones/rpc-de-pantalla-lee-lo-canonico.test.ts, que lee el cuerpo de cada migración y exige que sólo lea las relaciones declaradas, que no resucite ninguna fuente retirada y que no agregue con sum/avg/min/max.",
+    "funciones": [
+      {
+        "funcion": "public.pantalla_clientes()",
+        "pantalla": "/clientes",
+        "migracion": "supabase/migrations/20260911T0010_pantalla_clientes_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql)",
+        "reemplaza": "10 consultas de PostgREST en una ola",
+        "consume": [
+          "perfiles",
+          "cliente_panel",
+          "obra_panel",
+          "obra_cuenta",
+          "certificados",
+          "cliente_orden",
+          "obra_economia_cartera",
+          "cliente_documento",
+          "cliente_economia"
+        ],
+        "porque": "El costo dominante de la pantalla era el arranque en frío por CONEXIÓN (~800 ms de catálogo la primera vez que un backend ve las vistas anidadas del OS), pagado hasta diez veces porque cada consulta paralela puede caer en un backend distinto del pool. Un viaje, un backend, un arranque. Publica obra_cuenta tal cual la vista la calcula (cobrado bruto y neto, por cobrar, vencido, próximo cobro con su medio): la fila del trabajo NO resta esos números en la pantalla, que era la segunda definición de «lo que falta cobrar»."
+      },
+      {
+        "funcion": "public.campanita_atencion()",
+        "pantalla": "la campanita del header — TODAS las pantallas",
+        "migracion": "supabase/migrations/20260911T0020_campanita_una_consulta.sql",
+        "reemplaza": "6 consultas de PostgREST por navegación (el perfil más las cinco señales)",
+        "consume": [
+          "perfiles",
+          "proveedores",
+          "comprobante_compra",
+          "proveedor_nombre_pendiente",
+          "imputacion_pendiente",
+          "correccion_asistencia_bandeja"
+        ],
+        "porque": "La campanita vive en todas las pantallas: sus viajes no son el costo de una pantalla sino un impuesto por navegación que le disputaba el pool de PostgREST al render. Transporta las filas crudas y NO cuenta: los cuatro números de Compras los sigue decidiendo PREDICADO en comprasEstado.ts, que está escrito una sola vez y lo usan tres consumidores."
+      },
+      {
+        "funcion": "public.pantalla_cliente(text)",
+        "pantalla": "/clientes/[cliente]",
+        "migracion": "supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql)",
+        "reemplaza": "15 consultas de PostgREST en TRES olas encadenadas",
+        "consume": [
+          "cliente_panel",
+          "perfiles",
+          "cliente_contacto",
+          "obra_panel",
+          "obra_economia_cartera",
+          "obra_cuenta",
+          "cliente_economia",
+          "cliente_orden",
+          "cliente_documento",
+          "drive_index",
+          "cliente_nota",
+          "clientes",
+          "certificados",
+          "cotizacion_cascada"
+        ],
+        "porque": "Dos de las quince lecturas ESPERABAN a la ola anterior (drive_index por los ids de cliente_documento, certificados por las obras del cliente): adentro de un cuerpo SQL esa dependencia es una subconsulta y deja de costar un viaje. Los cruces con decisión adentro —vínculo sin archivo, nota sin autor, certificado sin obra— siguen en TypeScript: un left join los reproduciría hoy y se separaría el día que alguien lo toque."
+      }
+    ]
+  },
   "conceptos": [
     {
       "concepto": "contratado",

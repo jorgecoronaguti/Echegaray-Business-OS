@@ -29,11 +29,8 @@
 
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
-import {
-  getActividadCliente, getCliente, getContactos, getDocumentosCliente, getObrasDelCliente, getResponsables,
-} from '@/features/clientes/services/clientesService'
+import { leerFichaDeUnaConsulta } from '@/features/clientes/services/fichaDeUnaConsulta'
 import {
   archivarCliente, borrarContacto, crearContacto, crearNota, editarCliente, editarContacto,
 } from '@/features/clientes/services/actions'
@@ -41,7 +38,6 @@ import {
   clasificarDocumentoCliente, desvincularDocumentoCliente, vincularCarpetaCliente, vincularDocumentoCliente,
 } from '@/features/clientes/services/actionsDocumentos'
 import { crearObra } from '@/features/obras/services/actions'
-import { getCartera } from '@/features/presupuestos/services/presupuestosService'
 import { BloqueActividad } from '@/features/clientes/components/BloqueActividad'
 import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
@@ -59,16 +55,14 @@ import { AccesosPortal } from '@/features/clientes/components/accesos/AccesosPor
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorrienteService'
 import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
-import { getEconomiaDeObras, SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
-import { getEconomiaDeCliente } from '@/features/clientes/services/economiaCliente'
-import { getCobradoPorObra } from '@/features/administracion/services/homeCartera'
+import { SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
 import {
   esRecorteCobranza, getCobranzasDelCliente, type FilaCobranza,
 } from '@/features/clientes/services/cobranzasCliente'
 import { SolapaCobranzas } from '@/features/clientes/components/cobranzas/SolapaCobranzas'
 import { cuentaDeTrabajos } from '@/features/clientes/services/cuentaDeTrabajos'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
-import { getOrdenesDe, ordenesPorClienteYObra } from '@/features/clientes/services/ordenesCliente'
+import { getOrdenesDe } from '@/features/clientes/services/ordenesCliente'
 import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
 import { PapelesPorTipo } from '@/features/clientes/components/PapelesPorTipo'
 import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
@@ -118,6 +112,9 @@ type Query = {
   /** Abre el alta de obra, que en el v2 es la acción primaria de la cabecera y no un `details`
    *  escondido arriba de la tabla. */
   nueva?: string
+  /** El recorte de la solapa Cobranzas: `todo` · `pendiente` · `cobrado` · `b` · `n`. Viaja en la
+   *  URL como todo filtro del OS: se comparte por chat y vuelve con el botón de atrás. */
+  cob?: string
   /**
    * EL DETALLE DE UN TRABAJO, DENTRO DEL CRM (`?trabajo=<obra_id>`).
    *
@@ -127,9 +124,6 @@ type Query = {
    * abre en el panel lateral de esta misma ficha, con la MISMA lectura que usa `/clientes`.
    */
   trabajo?: string
-  /** El recorte de la solapa Cobranzas: `todo` · `pendiente` · `cobrado` · `b` · `n`. Viaja en la
-   *  URL como todo filtro del OS: se comparte por chat y vuelve con el botón de atrás. */
-  cob?: string
 }
 
 export default async function ClientePage({ params, searchParams }: {
@@ -140,53 +134,53 @@ export default async function ClientePage({ params, searchParams }: {
   const q = await searchParams
 
   const supabase = await createClient()
-  // ═══ EL PERFIL NO ESPERA AL CLIENTE (10/09/2026) ═══
+  // ═══ UN VIAJE, NO QUINCE (10/09/2026) ═══
   //
-  // Eran dos `await` encadenados y no dependen entre sí: quién sos no se deduce de qué ficha
-  // abriste. Cada viaje que sale solo puede caer en una conexión FRÍA del pool, y un backend frío
-  // paga ~800 ms cargando el catálogo de vistas y policies antes de planificar nada (medido). Dos
-  // olas seriales son dos arranques en frío que no se solapan; una sola ola, uno.
-  const [clienteRes, perfilRes] = await Promise.all([
-    getCliente(supabase, slug),
-    getPerfilActual(supabase),
-  ])
-  const { data: cliente, error } = clienteRes
+  // Eran TRES olas encadenadas: la ficha y el perfil; después nueve lecturas en paralelo —de las
+  // que «actividad» escondía cinco—; y al final `drive_index` y `certificados`, que no compiten
+  // sino que ESPERAN, porque dependen de ids que sólo existen cuando la ola anterior volvió.
+  //
+  // El costo dominante no es ninguna consulta: es el arranque en frío por CONEXIÓN (~800 ms de
+  // catálogo la primera vez que un backend ve las vistas anidadas del OS), y quince consultas
+  // pueden caer en quince backends del pool de PostgREST. `pantalla_cliente()` trae exactamente las
+  // mismas filas en un viaje, y las dos dependencias de la tercera ola pasan a ser subconsultas.
+  //
+  // Los cruces en memoria NO se movieron a SQL: ver `fichaDeUnaConsulta.ts`.
+  const ficha = await leerFichaDeUnaConsulta(supabase, slug)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas: confundirlas escondió un defecto de permisos
   // detrás de un «página no encontrada» durante horas.
-  if (error) return <EstadoError mensaje={error} que="la ficha del cliente" />
+  if (ficha.error) return <EstadoError mensaje={ficha.error} que="la ficha del cliente" />
+  const cliente = ficha.cliente
   if (!cliente) notFound()
 
   const id = cliente.cliente_id
-  const rol = perfilRes.data?.rol ?? null
+  const rol = ficha.perfil?.rol ?? null
   const puedeEditar = esAdministracion(rol)
   // EL PRECIO NO ES DE TODOS: el jefe de obra no ve contratado. Decide la RLS; acá sólo se deja de
   // dibujar la métrica, para no mostrarle un rótulo económico vacío y que parezca un error.
   const veEconomia = puedeVerEconomia(rol)
 
-  const [responsables, contactos, obras, linea, documentos, cartera, economia, papeles,
-    economiaCliente, cobradoPorObra] = await Promise.all([
-    puedeEditar ? getResponsables(supabase) : Promise.resolve({ data: [], error: null }),
-    getContactos(supabase, id),
-    getObrasDelCliente(supabase, id),
-    getActividadCliente(supabase, id),
-    getDocumentosCliente(supabase, id),
-    veEconomia ? getCartera(supabase) : Promise.resolve({ data: [], error: null }),
-    // Lo que OBRAS publica por obra (contratado, MO, materiales, margen), desde Postgres.
-    getEconomiaDeObras(supabase),
-    // LOS PAPELES DEL CLIENTE —OC, OP, certificados de retención y nuestras facturas—, agrupados
-    // por la MISMA función pura que usa `/clientes`. `null` = la lectura falló, y eso no se dibuja
-    // como «no tiene ninguno».
-    ordenesPorClienteYObra(supabase, id),
-    // LO CONTRATADO DEL CLIENTE, SUMADO POR LA BASE (`public.cliente_economia`). La cabecera ya no
-    // suma las obras acá: era la cuarta de las cinco definiciones que este hito borra.
-    veEconomia ? getEconomiaDeCliente(supabase, id) : Promise.resolve(null),
-    // LO COBRADO POR TRABAJO, de la MISMA función que lee `/clientes` (`obra_cobranza`). Sin esto,
-    // la ficha no podía decir si un trabajo cobró y había que salir a la cuenta corriente; y con
-    // una lectura propia, las dos pantallas del módulo volverían a poder decir números distintos.
-    veEconomia ? getCobradoPorObra(supabase) : Promise.resolve(null),
-  ])
-  // Estas lecturas se leían con `?? []`: si la de obras fallaba, la ficha decía que el cliente no
-  // tiene obras. Sobre un cliente eso es una afirmación comercial sacada de un fallo de la base.
+  // LAS DIEZ LISTAS YA VIENEN LEÍDAS, EN UN SOLO VIAJE. Se envuelven en la forma `{ data, error }`
+  // que esperan los componentes y `crearLector`: una lectura que falló tira la ficha entera abajo
+  // antes de llegar acá, así que a esta altura `error` es siempre `null`.
+  const responsables = { data: puedeEditar ? ficha.responsables : [], error: null }
+  const contactos = { data: ficha.contactos, error: null }
+  const obras = { data: ficha.obras, error: null }
+  const linea = { data: ficha.actividad, error: null }
+  const documentos = { data: ficha.documentos, error: null }
+  // Los presupuestos DE ESTE CLIENTE: la RPC ya recorta por `cliente_id`, con el mismo predicado.
+  const cartera = { data: veEconomia ? ficha.presupuestos : [], error: null }
+  const economia = ficha.economia
+  const papeles = ficha.papeles
+  const economiaCliente = veEconomia ? ficha.economiaCliente : null
+  // LO COBRADO POR TRABAJO, de la MISMA conversión que usa `/clientes` (`armarCobradoPorObra` sobre
+  // `public.obra_cuenta`). Sin esto la ficha no puede decir si un trabajo cobró; y con una lectura
+  // propia, las dos pantallas del módulo volverían a poder decir números distintos.
+  const cobradoPorObra = veEconomia ? ficha.cobradoPorObra : null
+
+  // `crearLector` distingue «no pude leer» de «no hay». Se conserva aunque ahora la lectura sea una
+  // sola: los componentes reciben la misma forma, y el día que alguna clave vuelva a poder fallar
+  // sola, el que la agregue no tiene que reinventar la distinción.
   const lector = crearLector()
 
   const solapa = solapaDe(q.vista, q.solapa)
@@ -225,8 +219,12 @@ export default async function ClientePage({ params, searchParams }: {
     solapa === 'documentos' ? getArchivosDeEntidad(supabase, 'cliente', id) : Promise.resolve(null),
     // Lo que Administración sube desde la ficha del cliente: la factura, la OC, el contrato firmado.
     solapa === 'documentos' ? getDocumentosSubidos(supabase, 'cliente', id) : Promise.resolve(null),
-    // LA PESTAÑA COBRANZAS DEL CLIENTE, fila por fila (`public.cliente_cobranza`). Se lee sólo en
-    // su cara: son todas las filas del cliente y no hace falta pagarlas en las otras siete.
+    // ═══ LA PESTAÑA COBRANZAS DEL CLIENTE, FILA POR FILA (`public.cliente_cobranza`) ═══
+    //
+    // Es la ÚNICA lectura de esta ficha que no viaja en `pantalla_cliente()`: la RPC se escribió
+    // antes de que existiera esta cara. Se pide sólo en su solapa —son todas las filas del cliente,
+    // 24 en Messina— así que no encarece las otras siete, y por eso no bloquea publicar. PENDIENTE
+    // DECLARADO: cuando la RPC la absorba, esta consulta se retira y la ficha vuelve a un viaje.
     solapa === 'cobranzas' && veEconomia
       ? getCobranzasDelCliente(supabase, id)
       // `null` FUERA DE SU CARA, y no `[]`: un cero al lado de la solapa diría que este cliente no
@@ -252,6 +250,10 @@ export default async function ClientePage({ params, searchParams }: {
   // cifra dice qué falta; no se rellena con otra cuenta.
   const contratadoEnCurso = economiaCliente?.contratado_en_curso ?? null
 
+  /** El detalle del trabajo, DENTRO del CRM. Es una función y no una arrow creada en el JSX: una
+   *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
+  const hrefTrabajo = (obraId: string) => url({ trabajo: obraId })
+
   const recorteCobranza = esRecorteCobranza(q.cob) ? q.cob : 'todo'
   /** El recorte de Cobranzas en la URL. Función declarada y no arrow en el JSX: una arrow creada en
    *  un Server Component y pasada como prop revienta en producción con React #419. */
@@ -262,10 +264,6 @@ export default async function ClientePage({ params, searchParams }: {
   const ordenesPorObra = new Map(
     (papeles ? [...papeles.porObra.entries()] : []).map(([obraId, r]) => [obraId, r.oc]),
   )
-
-  /** El detalle del trabajo, DENTRO del CRM. Es una función y no una arrow creada en el JSX: una
-   *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
-  const hrefTrabajo = (obraId: string) => url({ trabajo: obraId })
 
   // ═══ EL CONTRATO EN DÓLARES DEL CLIENTE ═══
   //

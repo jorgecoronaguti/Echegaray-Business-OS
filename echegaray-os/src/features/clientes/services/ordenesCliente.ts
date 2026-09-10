@@ -108,15 +108,22 @@ export async function getPapelesDeLaCartera(
     .select('id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, drive_file_id')
     .is('eliminado_en', null)
 
-  const crudos = new Map<string, PapelCrudo[]>()
   if (error || !data) return { porCliente: new Map(), fallo: Boolean(error) }
-  for (const fila of data as (PapelCrudo & { cliente_id: string })[]) {
+  return { porCliente: armarPapelesDeLaCartera(data), fallo: false }
+}
+
+/** Las filas de `cliente_orden` ya leídas → los papeles agrupados por cliente. Separada de la
+ *  consulta porque las mismas filas llegan por dos transportes: PostgREST y la RPC de la pantalla.
+ *  El agrupador (`agruparPapeles`) es el mismo que usa la ficha, y sigue siendo uno solo. */
+export function armarPapelesDeLaCartera(filas: unknown[]): Map<string, PapelesDelCliente> {
+  const crudos = new Map<string, PapelCrudo[]>()
+  for (const fila of filas as (PapelCrudo & { cliente_id: string })[]) {
     const { cliente_id: clienteId, ...papel } = fila
     crudos.set(clienteId, [...(crudos.get(clienteId) ?? []), papel])
   }
   const porCliente = new Map<string, PapelesDelCliente>()
   for (const [clienteId, papeles] of crudos) porCliente.set(clienteId, agruparPapeles(papeles))
-  return { porCliente, fallo: false }
+  return porCliente
 }
 
 /**

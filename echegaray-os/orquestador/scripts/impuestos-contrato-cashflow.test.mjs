@@ -8,10 +8,18 @@
 // Cash Flow Mensual que cuelgan de acá.
 //
 // LO QUE ESTA PESTAÑA ALIMENTA, Y LO QUE NO. Entre la pestaña y el cash flow hay UN eslabón, y es
-// estrecho: `deImpuestosCalendario` lee DOS filas —«⇒ IVA a pagar en el mes» e «⇒ IIBB a pagar»—
-// ubicadas POR RÓTULO, y de ahí salen doce movimientos de cada una. Ninguna otra fila de la pestaña
-// llega al Libro. Por eso retirar la fila de planes no podía mover la línea «Financiero» ni la de
-// «Impuestos»: el modo de falla no era ése, era que el rótulo cambiara o se duplicara.
+// estrecho: `deImpuestosCalendario` lee TRES filas —«⇒ IVA a pagar en el mes», «⇒ IIBB a pagar» y,
+// desde el 10/09/2026, «Impuesto al cheque (Ley 25.413)»— ubicadas POR RÓTULO. Ninguna otra fila de
+// la pestaña llega al Libro. Por eso retirar la fila de planes no podía mover la línea «Financiero»
+// ni la de «Impuestos»: el modo de falla no era ése, era que el rótulo cambiara o se duplicara.
+//
+// ═══ LA TERCERA FILA ENTRÓ EL 10/09/2026, Y NO CAMBIA EL CONTRATO: LO EXTIENDE ═══
+//
+// La auditoría de ese día midió que el impuesto de la Ley 25.413 proyectado de septiembre a
+// diciembre ($7,5M en J34:M34) no llegaba a NINGUNA celda de ningún cash flow: la línea que lo tenía
+// murió con el cuadro de líneas y la matriz por rubro no tenía extractor para esa fila. Ahora sí,
+// y sale con rubro «Impuestos» como todo lo demás de esta pestaña — la invariante de abajo sigue
+// intacta a propósito: una segunda puerta hacia «Financiero» haría entrar la misma cuota dos veces.
 //
 // LAS CIFRAS SON LAS MEDIDAS EN EL CASH FLOW MENSUAL EL 09/09/2026, y viven acá y no en un mensaje:
 //
@@ -28,6 +36,7 @@ import assert from 'node:assert/strict'
 import { grilla } from './impuestos-pestana.mjs'
 import { deImpuestosCalendario } from '../lib/libro-extractores.mjs'
 import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
+import { ROTULO as ROTULO_IMPUESTO_CHEQUE } from '../lib/impuesto-cheque.mjs'
 import { contratoDeRotulos } from '../lib/iva-libre-disponibilidad.mjs'
 
 /** Los cuatro totales del cuadro, medidos el 09/09/2026. */
@@ -67,6 +76,11 @@ test('EL PRIMER ESLABÓN: los dos rótulos que el Libro busca siguen ahí, una s
   const colA = g.filas.map((f) => String(f[0] ?? '').trim())
   assert.equal(colA.filter((x) => x === CALENDARIO_IMPUESTOS.rotulos.iva).length, 1)
   assert.equal(colA.filter((x) => x === CALENDARIO_IMPUESTOS.rotulos.iibb).length, 1)
+  // Y el tercero, que entró el 10/09/2026. Mismo riesgo exacto: si se renombra de un solo lado, el
+  // Libro no lo encuentra, el paso ROMPE y los dos cash flow se quedan sin regenerar — que es lo que
+  // pasó el 30/07 con el rótulo del IVA.
+  assert.equal(colA.filter((x) => x === ROTULO_IMPUESTO_CHEQUE).length, 1,
+    'la fila del impuesto al cheque existe UNA sola vez y con el rótulo que el Libro busca')
   // Y la fila que el generador DECLARA es la misma que el contrato resuelve leyendo la grilla: si se
   // separan, el Libro lee una fila y la pestaña publica otra.
   assert.equal(r.destino.iva, g.filasCalendario.iva)
@@ -79,10 +93,13 @@ test('EL SEGUNDO ESLABÓN: el proyectado de «Impuestos» sale ENTERO de esas do
   const filas = []
   filas[17] = ['⇒ IVA a pagar', ...Array(12).fill(0)]
   filas[18] = ['⇒ IIBB a pagar', ...Array(12).fill(0)]
+  // La tercera fila del contrato, VACÍA: este test mide el proyectado de IVA/IIBB y un mes sin
+  // importe no emite movimiento. Su comportamiento propio lo prueba lib/libro-impuesto-cheque.test.mjs.
+  filas[19] = [ROTULO_IMPUESTO_CHEQUE, ...Array(12).fill(0)]
   // El reparto es sintético y suma exactamente el proyectado medido: 11.800.936.
   filas[17][10] = IMPUESTOS.proyectado - 800_936
   filas[18][11] = 800_936
-  const ms = deImpuestosCalendario(filas, { filaIva: 18, filaIibb: 19 }, 2026, serial('2026-09-09'))
+  const ms = deImpuestosCalendario(filas, { filaIva: 18, filaIibb: 19, filaCheque: 20 }, 2026, serial('2026-09-09'))
   assert.equal(ms.length, 2, 'un movimiento por celda con importe; las vacías no emiten nada')
   assert.equal(ms.reduce((a, m) => a + m.importe, 0), IMPUESTOS.proyectado)
   for (const m of ms) {
@@ -103,8 +120,12 @@ test('LA LÍNEA «Financiero» NO PUEDE SALIR DE ESTA PESTAÑA, y por eso el red
   const filas = []
   filas[17] = ['⇒ IVA a pagar', ...Array(12).fill(1_000)]
   filas[18] = ['⇒ IIBB a pagar', ...Array(12).fill(1_000)]
-  const ms = deImpuestosCalendario(filas, { filaIva: 18, filaIibb: 19 }, 2026, serial('2026-09-09'))
+  // Con importe en las TRES filas: ni siquiera el impuesto al cheque —que el banco cobra y que en el
+  // extracto llega como cargo «Financiero»— sale de acá con ese rubro.
+  filas[19] = [ROTULO_IMPUESTO_CHEQUE, ...Array(12).fill(1_000)]
+  const ms = deImpuestosCalendario(filas, { filaIva: 18, filaIibb: 19, filaCheque: 20 }, 2026, serial('2026-09-09'))
   assert.equal(ms.filter((m) => m.rubro === 'Financiero').length, 0)
+  assert.ok(ms.some((m) => m.concepto.startsWith(ROTULO_IMPUESTO_CHEQUE)), 'la tercera fila SÍ emite')
   assert.ok(FINANCIERO.real > 0 && FINANCIERO.proyectado > 0, 'las dos cifras del contrato están declaradas')
   // Y la pestaña ya no publica una fila mensual de planes que alguien pudiera enchufar por error.
   const colA = armar().filas.map((f) => String(f[0] ?? '').trim())

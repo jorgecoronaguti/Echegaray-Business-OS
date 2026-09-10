@@ -264,8 +264,26 @@ export async function getCobradoPorObra(
     .from('obra_cuenta')
     .select('obra_id, cobrado_total, cobrado_neto, por_cobrar, vencido, proximo_cobro_fecha, proximo_cobro_medio, imputacion')
   if (error) return null
+  // LA VISTA REPARTE POR OBRA POR CONSTRUCCIÓN: sale de `cobranza_imputacion`, que ata cada fila de
+  // Cobranzas a su obra. Si se pudo leer, la base sabe repartir — la regla de «todo o nada» sigue
+  // siendo la misma y ahora su respuesta es sí.
+  return armarCobradoPorObra(data ?? [], true)
+}
+
+/**
+ * Las filas de `public.obra_cuenta` ya leídas → el mapa por obra.
+ *
+ * Separada de la consulta porque las mismas filas llegan por DOS transportes: PostgREST (la función
+ * de arriba) y la RPC `pantalla_clientes()`, que las trae junto con las otras nueve lecturas de la
+ * pantalla. Una conversión, dos transportes: si cada uno tuviera la suya, la misma fila podría
+ * publicar dos cobros según por dónde entró el dato.
+ *
+ * `disponible` es un hecho del TRANSPORTE, no de las filas —que la vista se haya podido leer—, y
+ * por eso entra como parámetro en vez de adivinarse acá.
+ */
+export function armarCobradoPorObra(filas: unknown[], disponible: boolean): CobroPorObra {
   const por = new Map<string, CobroDeObra>()
-  for (const f of (data ?? []) as unknown as FilaCobro[]) {
+  for (const f of filas as unknown as FilaCobro[]) {
     // UNA OBRA SIN NINGUNA FILA DE COBRANZAS NO ENTRA AL MAPA. Eso NO es cero cobrado: es que no
     // hay nada anotado contra ella, y la celda lo dice quedándose vacía.
     if (f.cobrado_total == null && f.cobrado_neto == null && f.por_cobrar == null) continue
@@ -280,10 +298,7 @@ export async function getCobradoPorObra(
       imputacion: esImputacion(f.imputacion) ? f.imputacion : null,
     })
   }
-  // LA VISTA REPARTE POR OBRA POR CONSTRUCCIÓN: sale de `cobranza_imputacion`, que ata cada fila de
-  // Cobranzas a su obra. Si se pudo leer, la base sabe repartir — la regla de «todo o nada» sigue
-  // siendo la misma y ahora su respuesta es sí.
-  return { por, disponible: true }
+  return { por, disponible }
 }
 
 /** La fila cruda de `public.obra_cuenta`. `numeric` llega como texto y `null` se queda `null`. */

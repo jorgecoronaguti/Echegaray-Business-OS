@@ -143,7 +143,13 @@ export async function getCartera(supabase: SupabaseClient): Promise<ServiceResul
     .eq('vigente', true)
     .order('fecha_cotizacion', { ascending: false })
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []).map((r) => aCascada(r as Fila)), error: null }
+  return { data: armarPresupuestos(data ?? []), error: null }
+}
+
+/** Las filas de `cotizacion_cascada` ya leídas. Separada de la consulta porque la ficha del cliente
+ *  las recibe por la RPC `pantalla_cliente()`: una conversión, dos transportes. */
+export function armarPresupuestos(filas: unknown[]): PresupuestoCascada[] {
+  return (filas as Fila[]).map((r) => aCascada(r))
 }
 
 export async function getPresupuesto(

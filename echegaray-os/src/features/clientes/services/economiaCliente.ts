@@ -62,7 +62,10 @@ const COLUMNAS =
 
 /** PostgREST devuelve los `numeric` como texto y los `int` como número. Los conteos son 0 de
  *  verdad cuando la vista los publica; nunca se inventan. */
-function fila(f: Record<string, unknown>): EconomiaDeCliente {
+/** UNA fila de `cliente_economia` → el tipo de la pantalla. Exportada porque la ficha la recibe
+ *  por la RPC `pantalla_cliente()` y no puede tener su propia conversión: lo contratado del cliente
+ *  tuvo cinco definiciones en tres semanas. */
+export function armarEconomiaDeCliente(f: Record<string, unknown>): EconomiaDeCliente {
   const n = (k: string) => aNumero(f[k])
   const entero = (k: string) => Number(f[k] ?? 0)
   return {
@@ -96,9 +99,16 @@ export async function getEconomiaDeClientes(
 ): Promise<Map<string, EconomiaDeCliente> | null> {
   const { data, error } = await supabase.from('cliente_economia').select(COLUMNAS)
   if (error) return null
+  return armarEconomiaDeClientes(data ?? [])
+}
+
+/** Las filas de `cliente_economia` ya leídas → el mapa por cliente. Separada de la consulta porque
+ *  las mismas filas llegan por dos transportes: PostgREST y la RPC de la pantalla. Lo contratado
+ *  del cliente tuvo CINCO definiciones en tres semanas; no va a tener dos conversiones. */
+export function armarEconomiaDeClientes(filas: unknown[]): Map<string, EconomiaDeCliente> {
   const m = new Map<string, EconomiaDeCliente>()
-  for (const f of (data ?? []) as unknown as Record<string, unknown>[]) {
-    const e = fila(f)
+  for (const f of filas as Record<string, unknown>[]) {
+    const e = armarEconomiaDeCliente(f)
     m.set(e.cliente_id, e)
   }
   return m
@@ -112,5 +122,5 @@ export async function getEconomiaDeCliente(
   const { data, error } = await supabase
     .from('cliente_economia').select(COLUMNAS).eq('cliente_id', clienteId).maybeSingle()
   if (error || !data) return null
-  return fila(data as unknown as Record<string, unknown>)
+  return armarEconomiaDeCliente(data as unknown as Record<string, unknown>)
 }

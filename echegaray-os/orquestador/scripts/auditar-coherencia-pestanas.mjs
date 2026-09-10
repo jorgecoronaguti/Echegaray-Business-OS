@@ -18,19 +18,23 @@ import { getTokenFor, OAUTH_SCOPES } from '../lib/google-oauth.mjs'
 import { query } from '../lib/db.mjs'
 import { frescuraDe, cruzar, veredicto, FRESCURA, COHERENCIA } from '../lib/coherencia-pestanas.mjs'
 import { SUBCONTRATISTAS_CON_LIQUIDACION } from '../lib/nomina-banco-recibo.mjs'
-import { PASOS_RETIRADOS } from '../lib/flujo-caja-pasos.mjs'
+import { pestanasSinDuenoActivo } from '../lib/flujo-caja-pasos.mjs'
 
 /**
  * PESTAÑAS SIN DUEÑO ACTIVO — deuda declarada, no un fallo de hoy.
  *
- * `Materiales` está vieja desde el 14/08 y eso NO es un descuido: su generador se retiró porque cada
- * corrida apilaba una capa sobre el archivo del dueño. Llamarla «atrasada» pondría el control en rojo
- * todos los días por una decisión tomada a propósito, y un control que grita siempre deja de leerse.
- * Se dice lo que es: nadie la mantiene, y el motivo está escrito en `PASOS_RETIRADOS`.
+ * Una pestaña cuyo generador se retiró a propósito no está «atrasada»: no la mantiene nadie, y el
+ * motivo está escrito en `PASOS_RETIRADOS`. Llamarla atrasada pondría el control en rojo todos los
+ * días por una decisión tomada a conciencia, y un control que grita siempre deja de leerse.
+ *
+ * ═══ NO SE DEDUCE MÁS DE UN REGEX (10/09/2026) ═══
+ *
+ * Decía `/materiales/i.test(script retirado) → 'Materiales'`. El 09/09 «Materiales» recuperó dueño
+ * (`materiales-pestana.mjs`, en PASOS) y el regex siguió dando positivo: la auditoría del 10/09 la
+ * encontró publicada como SIN_GENERADOR con una lista vieja, sin que nadie le mirara la frescura. La
+ * respuesta la da el registro, en `pestanasSinDuenoActivo`.
  */
-const SIN_DUENO = new Set(PASOS_RETIRADOS
-  .filter((p) => /materiales/i.test(String(p.script ?? '')))
-  .map(() => 'Materiales'))
+const SIN_DUENO = pestanasSinDuenoActivo()
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const CUENTA = process.env.ORQ_SHEETS_CUENTA || 'jorge@ecsas.com.ar'

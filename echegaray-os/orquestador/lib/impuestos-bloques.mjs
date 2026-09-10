@@ -5,6 +5,8 @@
 
 import { seccion, total as rotuloTotal } from './patron-pestana.mjs'
 import { CALENDARIO_IMPUESTOS } from './cash-flow-lineas.mjs'
+// El rótulo lo define el dueño del concepto y lo BUSCA el extractor del Libro: no se tipea dos veces.
+import { ROTULO as ROTULO_IMPUESTO_CHEQUE } from './impuesto-cheque.mjs'
 import { rango } from './compras-columnas.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import {
@@ -346,7 +348,7 @@ export function bloqueOtros(G, { anio, C }) {
   G.push([seccion(4, 'Otros impuestos')])
   G.cabecera()
   const o0 = G.n() + 1
-  const fCheque = G.mensual('Impuesto al cheque (Ley 25.413)', (m) => formulaImpuestoCheque(BANCO_RAW, anio, m),
+  const fCheque = G.mensual(ROTULO_IMPUESTO_CHEQUE, (m) => formulaImpuestoCheque(BANCO_RAW, anio, m),
     'MAX(lo que el banco YA debitó en el extracto; el 0,6% de cada lado del movimiento que el Libro proyecta para el mes). El banco declara la alícuota en el propio concepto ("debito 0,6%"): no se cita de memoria. Nunca subestima.')
   // Y EN LA COLUMNA DONDE ESTÁ, NO EN LA QUE PARECE. El texto "Anticipo de Ganancias" no vive en
   // "Concepto" sino en "Detalles / Obra": buscarlo en la columna equivocada daba cero en los doce
