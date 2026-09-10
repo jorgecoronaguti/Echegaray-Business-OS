@@ -73,6 +73,32 @@ export function limpiarNombre(crudo: string): string {
 }
 
 /**
+ * CON QUÉ NOMBRE SE SALUDA A UN CLIENTE — el suyo, sin la anotación que usamos para distinguirlo.
+ *
+ * ═══ EL DEFECTO (10/09/2026) ═══
+ *
+ * El portal abría con «Bienvenido, Javier Sánchez - San Francisco - IMOTOR». `nombre_comercial` es un
+ * campo de TRABAJO: administración le encadena la obra y la razón social para no confundirlo en una
+ * lista de cuarenta clientes. Eso sirve adentro; en la cara del cliente es una etiqueta de archivo
+ * puesta como saludo.
+ *
+ * Se corta en el primer « - » y se toma el PRIMER segmento, que es el nombre: los que vienen después
+ * son las desambiguaciones. No se corta por guión pelado —un apellido compuesto lleva guión sin
+ * espacios— ni se elige el más largo ni el que «parece» un nombre: la posición es un hecho del dato,
+ * lo demás sería adivinar quién es el cliente.
+ *
+ * Se usa SÓLO para saludar. En cualquier lugar donde haya que IDENTIFICAR al cliente se sigue usando
+ * el nombre entero: ahí la desambiguación es justamente lo que hace falta.
+ */
+export function nombreParaSaludar(nombre: string): string {
+  const entero = limpiarNombre(nombre)
+  const primero = entero.split(/\s+[-—]\s+/)[0]?.trim()
+  // Un nombre que EMPIEZA con el separador dejaría el saludo vacío: ahí vale más el nombre entero
+  // que un «Bienvenido, » colgado.
+  return primero || entero
+}
+
+/**
  * QUÉ PUEDE VER ESTE ACCESO, EN UNA FRASE. La pantalla la escribe cuando retira la plata.
  *
  * `puede_ver_montos = false` no dibuja «$ 0» ni un guión: retira los importes y DICE qué queda. Un

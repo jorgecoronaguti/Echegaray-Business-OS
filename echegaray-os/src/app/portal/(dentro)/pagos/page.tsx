@@ -4,7 +4,7 @@ import { sesionDelPortal } from '../../sesion'
 import { accesoDelPortal } from '../../datos'
 import { loQueSiPuedeVer } from '../../permisos'
 import { contratoDelConjunto, esquemaDelPortal, hoyEnObra } from '../datosObra'
-import { alcanceDelContrato, obrasQueFiltran, pagosEnPantalla } from '../../esquema'
+import { alcanceDelContrato, esSaldoDeObraTerminada, obrasQueFiltran, pagosEnPantalla } from '../../esquema'
 import {
   corto, estadoDePago, marcaDeFila, proximoPago, resumenDeCobro, rotuloDelCronograma, pesos, diaMes,
   ROTULO_ESTADO,
@@ -347,9 +347,18 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
                   <span className="min-w-0 flex-1 basis-[38%]">
                     <span className="block truncate text-sm">{p.rotulo}</span>
                     {/* LA OBRA, ABAJO Y CHICA — igual que en la pantalla 32. Sin obra no se escribe
-                        un texto inventado: la línea simplemente no tiene renglón de abajo. */}
+                        un texto inventado: la línea simplemente no tiene renglón de abajo.
+
+                        Y SI LA OBRA YA TERMINÓ, SE DICE ACÁ. Una obra cerrada con saldo pendiente se
+                        queda en el listado principal —es plata que el cliente todavía debe y no puede
+                        irse a la sección gris de «trabajo anterior»—, pero sin este renglón el
+                        cliente la lee como una obra en marcha. Es el caso de BSA - Adicional:
+                        terminada el 22/08 y con $7.228.782 por cobrar. */}
                     {p.obraNombre ? (
-                      <span className="block truncate text-[11.5px] text-faint">{p.obraNombre}</span>
+                      <span className="block truncate text-[11.5px] text-faint">
+                        {p.obraNombre}
+                        {esSaldoDeObraTerminada(p) ? ' · obra terminada · saldo pendiente' : ''}
+                      </span>
                     ) : null}
                   </span>
                   <span className="tnum w-[74px] font-mono text-[13px] text-muted">

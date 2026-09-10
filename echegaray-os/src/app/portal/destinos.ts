@@ -19,16 +19,15 @@ export const DESTINOS: readonly Destino[] = [
   { href: '/portal/pagos', rotulo: 'Pagos', icono: 'pagos' },
   { href: '/portal/facturas', rotulo: 'Facturas', icono: 'facturas' },
   { href: '/portal/documentos', rotulo: 'Documentos', icono: 'documentos' },
-  // TERMINADAS QUEDA FRENADA (26/08/2026, decisión del dueño: «es confuso lo de terminadas,
-  // bloquear esto por ahora»). Y es confuso por un motivo real, no de rótulo: una obra terminada se
-  // decide por `obras.estado = 'cerrada'` en `public.obras`, mientras que el cronograma vive en
-  // `obra_canonica` — dos registros de obra distintos y sin mapeo entre ellos. La pantalla mostraba
-  // «0 obras» a clientes que sí tienen obras terminadas, o al revés.
+  // TERMINADAS VUELVE (10/09/2026). Se frenó el 26/08 —«es confuso lo de terminadas, bloquear esto
+  // por ahora»— y era confuso por un motivo real: decidía «obra terminada» con `public.obras.estado`
+  // mientras el cronograma vive en `obra_canonica`, así que le contestaba «0 obras» a Messina, que
+  // tiene seis cerradas. Ese defecto está corregido: la pantalla lee `obra_canonica` —la misma fuente
+  // que el Inicio y que Pagos— y su economía sale de los mismos pagos que el cronograma.
   //
-  // Se marca `masAdelante` en vez de borrarse: el rótulo sigue a la vista, en gris y sin enlace, para
-  // que el cliente sepa que va a estar. Esconderlo lo convertiría en una sorpresa, y borrar la ruta
-  // rompería los enlaces que ya se compartieron — sigue respondiendo si se la escribe.
-  { href: '/portal/terminadas', rotulo: 'Terminadas', icono: 'terminadas', masAdelante: true },
+  // ES UNA DECISIÓN DE PRODUCTO Y LA FIRMA EL DUEÑO: si con el dato correcto le sigue pareciendo
+  // confusa, se vuelve a marcar `masAdelante` y la ruta sigue respondiendo igual.
+  { href: '/portal/terminadas', rotulo: 'Terminadas', icono: 'terminadas' },
   // Se enchufa cuando exista el módulo de Obras. Se dibuja igual: que el cliente vea que viene es
   // parte del acuerdo, esconderlo lo convertiría en una sorpresa.
   { href: '/portal/avance', rotulo: 'Avance', icono: 'avance', masAdelante: true },

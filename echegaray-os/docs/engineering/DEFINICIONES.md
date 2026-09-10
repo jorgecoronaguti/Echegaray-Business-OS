@@ -1,6 +1,6 @@
 # DEFINICIONES — un concepto, una fuente
 
-_Creado el 10/09/2026 · hito H1 de `PRP-REALIDAD-UNICA.md` · cubre 4 de los 22 conceptos críticos._
+_Creado el 10/09/2026 · hito H1 de `PRP-REALIDAD-UNICA.md` · cubre 6 de los 22 conceptos críticos._
 
 Esto es la cara humana de `orquestador/datos/definiciones.json`. El `.json` lo lee un test
 (`src/shared/definiciones/canonico-definiciones.test.ts`, dentro de `npm run orq:test`) que barre
@@ -252,3 +252,41 @@ escondería **$219.055,92** de Fondo de Cese declarado que ninguna acreditación
 Los tests (`libro-extractores-cargas.test.mjs`, `libro-deuda-cruzada.test.mjs`) nombran la fuente
 secundaria a propósito —probar la precedencia exige poder escribir la que pierde— y no figuran acá
 porque el barrido excluye los `*.test.*`: declararlos dejaría dos excepciones mirando al aire.
+
+---
+
+## `obra_terminada`
+
+| | |
+|---|---|
+| **Fuente primaria** | public.obra_canonica.estado = 'cerrada' · el predicado, en src/app/portal/obrasDelCliente.ts (`esObraAnterior`) |
+| **Propietario** | `src/features/obras/services/actions.ts` — el formulario de la obra es quien declara que terminó |
+| **Criterio** | Una obra está terminada **cuando el registro de obras lo dice**. No se deriva de que no le queden pagos por cobrar (eso es estar **al día**) ni de `public.obras.estado`, que es el registro viejo. |
+| **Ventana** | Puntual: es el estado de hoy. El corte `clientes.portal_cobros_desde` es otra cosa y no se mezcla. |
+| **Consumidores** | portal · Inicio (parte la lista), Pagos (sección de obras anteriores y totales del pie), Terminadas (lista y detalle) |
+| **Confianza** | **D** · conocimiento interno validado |
+| **Última decisión del dueño** | 27/08/2026: «tomá sólo lo pendiente, sólo esas obras» — una obra terminada y cobrada no ocupa el pie con su contrato. Se cumple pidiendo las **dos** condiciones, no reemplazando el estado por la plata. |
+
+**Terminada con saldo pendiente sigue en el listado principal**, rotulada «obra terminada · saldo
+pendiente». Es plata que el cliente debe: la sección de trabajo anterior dice «ya nos pagó» y sobre
+un saldo abierto eso es falso.
+
+**El defecto que esto cierra (10/09/2026).** El Inicio usaba el estado canónico y Pagos usaba «obra
+sin pagos pendientes». En Messina: **BSA - Adicional** —cerrada, con $7.228.782 por cobrar— figuraba
+como obra en curso, y **ME - PISOS 120 M² Y RAMPA** —activa, cobrada al día— figuraba como «trabajo
+anterior que ya nos pagó». El mismo cliente, dos pantallas, dos respuestas.
+
+### Lo prohibido
+
+- `from\('obras'\)[^;]*estado` — `public.obras` es el registro **viejo** de obras (uuid, otra
+  granularidad: tiene «MAMPOSTERÍA» donde `obra_canonica` tiene «Galpones, Mampostería, Cancha de
+  Padel») y no hay mapeo entre los dos. `/portal/terminadas` preguntaba ahí y le contestaba
+  **«0 obras»** a Messina, que tiene **seis** cerradas — y lo mismo a La Estrella (3) y ARCOR (1).
+- `terminadaEsAnterior` — la regla del 27/08/2026 escrita como segunda definición. La reemplaza
+  `anterioresPorObraTerminada`, que pide cerrada **y** al día.
+
+### Las excepciones
+
+| Archivo | Por qué | Hasta |
+|---|---|---|
+| `src/features/reportes/services/generadores.ts` | Lee `public.obras` con `estado = 'activa'` para el reporte semanal de producción. Es el registro viejo y está mal, pero migrarlo es del hito que unifica los dos registros de obra | **H1-obras** |

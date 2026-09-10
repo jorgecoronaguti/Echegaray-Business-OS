@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../../sesion'
-import { accesoDelPortal, obrasDelCliente } from '../../../datos'
-import { obraDetalle } from '../../datosObra'
-import { papelesDelCliente, corridasDelEspejo, obrasCanonicasDeCarpeta } from '../../documentos/datos'
+import { accesoDelPortal } from '../../../datos'
+import { esquemaDelPortal, obrasParaElInicio } from '../../datosObra'
+import { ambitosDelEspejo, esObraAnterior } from '../../../obrasDelCliente'
+import { papelesDelCliente, corridasDelEspejo } from '../../documentos/datos'
 import { papelesVisibles, vistaDeObra } from '../../../papeles'
 import { cierreDeObra } from '../cierre'
 import { pesos } from '../../../cronograma'
@@ -15,6 +16,14 @@ import { IconoChevron, IconoDescarga, IconoFactura, IconoCheck, IconoCarpeta } f
 //
 // No hay nada que tocar acá: la obra está cerrada. Por eso no hay «Adjuntar» ni acción primaria
 // amarilla — el amarillo es acción, y acá no hay ninguna. «Descargar todo» es lo único que se ofrece.
+//
+// ═══ DEJÓ DE APOYARSE EN `public.obras` (10/09/2026) ═══
+//
+// La obra, el alcance y los papeles salían de tres registros distintos: `public.obras` (uuid) para la
+// obra, `public.obras` otra vez para el permiso, y `obra_canonica` para los papeles, unidos por la
+// carpeta de Drive. El puente por carpeta funcionaba, pero la lista de arriba mostraba las obras de
+// `obra_canonica` y ésta las de `public.obras`: el enlace no llevaba a ningún lado. Ahora las tres
+// cosas salen del mismo registro y el id de la URL ES el de `obra_canonica`.
 
 export const dynamic = 'force-dynamic'
 
@@ -24,23 +33,25 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
   const { obraId } = await params
 
   // EL ALCANCE SE COMPRUEBA CONTRA LA BASE, no contra la URL. Cambiar el id a mano no abre la obra
-  // de otro cliente.
+  // de otro cliente: `obrasParaElInicio` ya aplicó `alcanzaLaObra` fila por fila.
   const acceso = await accesoDelPortal(sesion)
   if (!acceso) redirect('/portal/login')
-  const permitidas = await obrasDelCliente(acceso)
-  if (!permitidas.some((o) => o.id === obraId)) notFound()
+  const obra = (await obrasParaElInicio(acceso)).find((o) => o.id === obraId)
+  // Una obra que existe pero NO está terminada no se abre acá: esta pantalla habla en pasado.
+  if (!obra || !esObraAnterior(obra)) notFound()
 
-  const [obra, cierre] = await Promise.all([obraDetalle(obraId), cierreDeObra(obraId)])
-  if (!obra) notFound()
+  const { pagos } = await esquemaDelPortal(acceso)
+  const cierre = cierreDeObra(pagos.filter((p) => p.obraId === obraId), obra.desde, obra.hasta)
+  const montos = acceso.puedeVerMontos
 
   // LOS PAPELES SALEN DEL ESPEJO, NO DE DRIVE. Esta pantalla también leía Google en vivo y en Vercel
-  // eso nunca funcionó: no hay disco donde vive la credencial de la cuenta de servicio. El puente
-  // entre `public.obras` (donde vive esta obra) y `obra_canonica` (donde escribe el espejo) es la
-  // MISMA CARPETA DE DRIVE — un hecho, no un mapeo por nombre.
-  const canonicas = await obrasCanonicasDeCarpeta(obra.driveCarpetaId)
+  // eso nunca funcionó: no hay disco donde vive la credencial de la cuenta de servicio. Los ámbitos
+  // incluyen los de las obras ABSORBIDAS: después de una fusión, los papeles siguen archivados bajo
+  // el id viejo (`obra:bsa-planta`).
+  const canonicas = [obra.id, ...obra.absorbidas]
   const [todos, corridas] = await Promise.all([
     papelesDelCliente(acceso.clienteId),
-    corridasDelEspejo(canonicas.map((id) => `obra:${id}`)),
+    corridasDelEspejo(ambitosDelEspejo(obra)),
   ])
   const datos = vistaDeObra(
     papelesVisibles(todos, acceso).filter((p) => p.obraId !== null && canonicas.includes(p.obraId)),
@@ -58,7 +69,7 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[22px] font-semibold tracking-[-.015em]">{obra.nombre}</h1>
         <span className="text-[12.5px] text-muted">
-          {obra.fechaCierre ? `terminada ${obra.fechaCierre.slice(8, 10)}/${obra.fechaCierre.slice(5, 7)}/${obra.fechaCierre.slice(0, 4)}` : 'sin fecha de cierre'}
+          {obra.hasta ? `terminada ${obra.hasta.slice(8, 10)}/${obra.hasta.slice(5, 7)}/${obra.hasta.slice(0, 4)}` : 'sin fecha de cierre'}
         </span>
         <span className="ml-auto grid min-h-11 place-items-center rounded-[6px] border border-line-strong bg-surface px-4 text-[13px] text-muted">
           <span className="flex items-center gap-2"><IconoDescarga tamano={17} /> Descargar todo</span>
@@ -66,17 +77,21 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
       </div>
 
       <dl className="mt-6 flex flex-wrap gap-x-12 gap-y-5 border-y border-line py-5">
-        <Dato rotulo="Monto final" valor={pesos(obra.contrato)} />
-        <Dato rotulo="Cobrado" valor={cierre.pendiente === 0 && cierre.cobrado > 0 ? 'todo' : pesos(cierre.cobrado)} />
+        {/* SIN PERMISO DE MONTOS NO SE DIBUJA NI UNA CIFRA. Es la misma cerradura que en Pagos: un
+            contacto que no puede ver plata tampoco la ve acá porque la obra esté cerrada. */}
+        {montos ? <Dato rotulo="Monto final" valor={pesos(obra.contrato.monto, obra.contrato.moneda)} /> : null}
+        {montos ? <Dato rotulo="Cobrado" valor={cierre.pendiente === 0 && cierre.cobrado > 0 ? 'todo' : pesos(cierre.cobrado)} /> : null}
         <Dato
           rotulo="Duración"
-          valor={obra.fechaInicio && obra.fechaCierre ? `${mesAno(obra.fechaInicio)} – ${mesAno(obra.fechaCierre)}` : 'sin fechas'}
+          valor={obra.desde && obra.hasta ? `${mesAno(obra.desde)} – ${mesAno(obra.hasta)}` : 'sin fechas'}
         />
-        <Dato
-          rotulo="Fondo de reparo"
-          valor={cierre.reparoDevueltoEn ? `devuelto ${mesAno(cierre.reparoDevueltoEn)}` : cierre.faltaReparo ? `abierto · ${pesos(cierre.faltaReparo)}` : 'sin plan'}
-          alerta={Boolean(cierre.faltaReparo)}
-        />
+        {montos ? (
+          <Dato
+            rotulo="Fondo de reparo"
+            valor={cierre.reparoDevueltoEn ? `devuelto ${mesAno(cierre.reparoDevueltoEn)}` : cierre.faltaReparo ? `abierto · ${pesos(cierre.faltaReparo)}` : 'sin plan'}
+            alerta={Boolean(cierre.faltaReparo)}
+          />
+        ) : null}
       </dl>
 
       <Rubro derecha={`Drive · ${haceCuanto(al)}`}>CONTRATO Y COTIZACIÓN</Rubro>
@@ -86,7 +101,7 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
           {datos.contrato ? <FilaLectura nombre="Contrato firmado" detalle={detalle(datos.contrato.revision, datos.contrato.fecha)} /> : null}
         </>
       ) : (
-        <div className="mt-4"><Vacio>{!obra.driveCarpetaId ? 'Todavía no conectamos la carpeta de esta obra.' : al ? 'Sin cotización ni contrato en la carpeta.' : 'Todavía no sincronizamos los papeles de esta obra.'}</Vacio></div>
+        <div className="mt-4"><Vacio>{!obra.carpeta ? 'Todavía no conectamos la carpeta de esta obra.' : al ? 'Sin cotización ni contrato en la carpeta.' : 'Todavía no sincronizamos los papeles de esta obra.'}</Vacio></div>
       )}
 
       <Rubro derecha={datos.hojasTotales != null ? `${datos.hojasTotales} hojas` : 'hojas sin contar'}>
@@ -113,7 +128,7 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
         <span className="flex-1 text-sm">
           {cierre.facturas} {cierre.facturas === 1 ? 'factura' : 'facturas'} · {cierre.recibos} {cierre.recibos === 1 ? 'recibo' : 'recibos'}
         </span>
-        <span className="tnum font-mono text-[15px]">{pesos(cierre.cobrado)}</span>
+        {montos ? <span className="tnum font-mono text-[15px]">{pesos(cierre.cobrado)}</span> : null}
         <span className="grid min-h-11 min-w-11 place-items-center text-faint"><IconoDescarga tamano={18} /></span>
       </div>
       {datos.certificados.length ? (

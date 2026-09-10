@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Shell } from '../Shell'
 import { sesionDelPortal } from '../sesion'
-import { accesoDelPortal, obrasDelCliente } from '../datos'
+import { accesoDelPortal } from '../datos'
 
 // EL PORTAL ES OTRA APLICACIÓN. Vive fuera de `(main)` a propósito: no hereda el header del OS, ni el
 // sidebar, ni el buscador global. Un cliente que ve un pedazo del chrome interno ve algo que no es
@@ -31,9 +31,12 @@ export default async function LayoutPortal({ children }: { children: ReactNode }
   const acceso = await accesoDelPortal(sesion)
   if (!acceso) redirect('/portal/login')
 
-  const obras = await obrasDelCliente(acceso)
+  // NO SE CUENTAN LAS OBRAS ACÁ. Se contaban con `obrasDelCliente` —que lee `public.obras`, el
+  // registro viejo— para un subtítulo que el Shell dejó de dibujar el 26/08 («el header del portal no
+  // tiene que decir siempre el nombre del cliente»). Era una consulta por página, a la fuente
+  // equivocada, para un dato que nadie mostraba.
   return (
-    <Shell cliente={acceso.clienteNombre} obras={obras.length} previa={sesion.previa === true}>
+    <Shell previa={sesion.previa === true}>
       {children}
     </Shell>
   )

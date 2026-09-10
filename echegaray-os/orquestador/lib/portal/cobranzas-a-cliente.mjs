@@ -266,6 +266,9 @@ export function proyectar(filas = [], indice = [], hoy = new Date()) {
       estado: estadoDePago(fila, hoy),
       medio: medioDe(fila?.forma_cobro),
       apto_para_portal: apto_para_portal(fila),
+      // La moneda VIAJA aunque el esquema no la guarde: la necesita el invariante que decide si esta
+      // fila es el espejo en pesos de una que ya se publicó en dólares (`esEspejoEnPesos`).
+      moneda: fila?.moneda ?? null,
     })
 
     if (tipo === 'certificado') {

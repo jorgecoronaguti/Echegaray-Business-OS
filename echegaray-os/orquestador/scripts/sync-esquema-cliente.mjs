@@ -29,9 +29,10 @@
 import { query, closePool } from '../lib/db.mjs'
 import { proyectar } from '../lib/portal/cobranzas-a-cliente.mjs'
 import {
-  cobrosOcultos, filasQueElSyncNoAlcanza, guardarCertificadoDelSync, guardarPagoDelSync, plataOculta,
-  repararCobrosOcultos,
+  cobrosOcultos, duplicadosPublicados, esEspejoEnPesos, filasQueElSyncNoAlcanza,
+  guardarCertificadoDelSync, guardarPagoDelSync, plataOculta, repararCobrosOcultos,
 } from '../lib/portal/publicacion.mjs'
+import { conceptosInternosPublicados } from '../lib/portal/rotulo-publicable.mjs'
 
 const APLICAR = process.argv.includes('--aplicar')
 // NIVEL E: publica cobros en la cara del cliente. Apagada siempre salvo que alguien la escriba a
@@ -114,6 +115,18 @@ async function main() {
     lista.forEach((g, i) => { g.orden = i })
   }
 
+  // ═══ EL ESPEJO EN PESOS DE UNA FILA EN DÓLARES NACE OCULTO ═══
+  //
+  // Se decide ANTES de escribir y contra lo que HOY está publicado: una fila nueva cuyo concepto ya
+  // se le mostró al cliente en otra moneda es el mismo cobro dicho dos veces. Sólo rige en el
+  // `insert` —lo que administración publicó o apagó a mano no lo toca un sync— y por eso se calcula
+  // acá y no en el `on conflict`.
+  const publicadas = await publicadasPorCliente()
+  for (const p of pagos) {
+    const suyas = publicadas.get(String(p.cliente_id)) ?? []
+    if (esEspejoEnPesos(p, suyas)) p.nace_visible = false
+  }
+
   const noAptos = pagos.filter((p) => !p.apto_para_portal).length
   if (noAptos) console.log(`\n${noAptos} pagos quedan marcados NO aptos para el portal (categoría N).`)
 
@@ -143,6 +156,19 @@ async function main() {
   await closePool()
 }
 
+/** Lo que cada cliente YA tiene publicado, para decidir con qué visibilidad nace una fila nueva. */
+async function publicadasPorCliente() {
+  const { rows } = await query(
+    `select cliente_id, concepto, moneda, visible_portal, publicado_at
+       from public.esquema_pago where visible_portal and publicado_at is not null`)
+  const porCliente = new Map()
+  for (const r of rows) {
+    const clave = String(r.cliente_id)
+    porCliente.set(clave, [...(porCliente.get(clave) ?? []), r])
+  }
+  return porCliente
+}
+
 /**
  * EL CONTROL QUE NO EXISTÍA: cuánta plata YA COBRADA no está llegando al cliente.
  *
@@ -155,10 +181,19 @@ async function main() {
  */
 async function informarCobrosOcultos() {
   const { rows } = await query(
-    `select e.cliente_id, c.nombre_comercial cliente, e.estado, e.monto, e.concepto,
+    // EL CONCEPTO SE LEE DE LA RÉPLICA VIVA, NO DE LA COPIA. `esquema_pago.concepto` es una foto del
+    // día que se sincronizó: el 10/09 tenía «RECLAMAR OC!» en ARCOR mientras el Sheet ya decía
+    // «Hormigón en Ecopatio». Un informe que le pide al dueño mover una celda que él ya movió es un
+    // informe que se deja de leer.
+    `select e.id, e.cliente_id, c.nombre_comercial cliente, e.estado, e.monto,
+            coalesce(cb.concepto, e.concepto) concepto,
             to_char(e.fecha, 'DD/MM/YYYY') fecha, e.visible_portal, e.publicado_at,
-            e.origen, e.cobranza_fila
-       from public.esquema_pago e join public.clientes c on c.id = e.cliente_id
+            e.origen, e.cobranza_fila, e.obra_id, e.orden, e.moneda
+       from public.esquema_pago e
+       join public.clientes c on c.id = e.cliente_id
+       left join public.cobranzas cb
+              on cb.origen = 'cobranzas_sheet' and cb.sheet_id ~ '^[0-9]+$'
+             and cb.sheet_id::int + 4 = e.cobranza_fila
       where e.origen = 'sync_cobranzas'`)
   const huerfanas = filasQueElSyncNoAlcanza(rows)
   if (huerfanas.length) {
@@ -171,6 +206,9 @@ async function informarCobrosOcultos() {
       console.log(`    · ${f.cliente}: ${f.fecha ?? 'sin fecha'} ${f.estado} — ${f.concepto}`)
     }
   }
+  informarDuplicados(rows)
+  informarConceptosInternos(rows)
+
   const grupos = cobrosOcultos(rows)
   if (!grupos.length) { console.log('\ncobros ocultos al cliente: ninguno.'); return }
   const $ = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
@@ -181,6 +219,40 @@ async function informarCobrosOcultos() {
   }
   console.log('  Son cobros REALES que el cliente no ve. Se publican desde la ficha del cliente')
   console.log('  (pantalla 32 · «Publicar»), que es quien tiene que autorizar lo que se le muestra.')
+}
+
+/**
+ * EL MISMO COBRO PUBLICADO DOS VECES — lo que el portal tapa y la base sigue teniendo.
+ *
+ * Que la pantalla del cliente ya no lo muestre no arregla nada: la ficha del cliente (pantalla 32)
+ * sigue mostrando las dos filas y administración no tiene forma de saber cuál está apagada. Se
+ * informa con el id, que es lo que hace falta para apagar la que sobra.
+ */
+function informarDuplicados(rows) {
+  const porCliente = new Map()
+  for (const r of rows) porCliente.set(String(r.cliente_id), [...(porCliente.get(String(r.cliente_id)) ?? []), r])
+  const hallados = [...porCliente.values()].flatMap((filas) => duplicadosPublicados(filas))
+  if (!hallados.length) { console.log('\npagos publicados dos veces: ninguno.'); return }
+  console.log(`\n⚠ ${hallados.length} pago(s) PUBLICADOS DOS VECES — el portal muestra uno, la ficha los dos:`)
+  for (const { motivo, fila } of hallados) {
+    console.log(`  · ${fila.cliente ?? fila.cliente_id}: «${fila.concepto}» (${motivo}) — apagar en la pantalla 32`)
+  }
+}
+
+/**
+ * LOS CONCEPTOS QUE SON NOTAS INTERNAS — con la celda exacta que hay que mover a Notas (W).
+ *
+ * El portal ya no los publica (`rotuloPublicable` los reemplaza por un rótulo derivado), y por eso
+ * este informe es obligatorio: un defecto tapado en pantalla y no dicho en ningún lado es un defecto
+ * que nadie corrige nunca. La nota tiene su lugar en el Sheet y no es la columna I.
+ */
+function informarConceptosInternos(rows) {
+  const hallados = conceptosInternosPublicados(rows)
+  if (!hallados.length) { console.log('\nconceptos internos publicados: ninguno.'); return }
+  console.log(`\n⚠ ${hallados.length} concepto(s) que son NOTAS INTERNAS y llegan al cliente:`)
+  for (const h of hallados) {
+    console.log(`  · ${h.cliente}: «${h.concepto}» — ${h.celda ?? 'sin fila del Sheet'} → mover a ${h.mover_a ?? 'Notas (W)'}`)
+  }
 }
 
 // EL UPSERT DEL CERTIFICADO VIVE EN `lib/portal/publicacion.mjs`, al lado del del pago y por la

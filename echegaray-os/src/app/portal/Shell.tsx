@@ -32,20 +32,19 @@ import { DESTINOS, NAVEGABLES, destinoActivo } from './destinos'
 import { IconoDestino } from './IconoDestino'
 import { IconoUsuario } from './iconos'
 
-export type ObraDelPortal = { id: string; nombre: string }
+// `ObraDelPortal` se fue con las props que este componente dejó de recibir (10/09/2026).
 
 type Props = {
-  /** El nombre del cliente: es de quién es TODO lo que se ve abajo. */
-  cliente: string
   /** Dirección está mirando desde la ficha. Ya no cambia NADA de lo que se dibuja —el portal es
    *  idéntico para los dos— y se conserva por si alguna pantalla necesitara saberlo. */
   previa?: boolean
-  /** Cuántas obras suyas hay. Sólo para el subtítulo — la lista vive en el contenido. */
-  obras: number
   children: ReactNode
 }
 
-export function Shell({ cliente, obras, children }: Props) {
+// `cliente` y `obras` SE FUERON (10/09/2026): eran props que este componente ya no dibujaba desde
+// que el header dejó de nombrar al cliente, y para calcular `obras` el layout consultaba
+// `public.obras` —el registro viejo de obras— en cada página del portal.
+export function Shell({ children }: Props) {
   const ruta = usePathname() ?? '/portal'
   const activo = destinoActivo(ruta)
 

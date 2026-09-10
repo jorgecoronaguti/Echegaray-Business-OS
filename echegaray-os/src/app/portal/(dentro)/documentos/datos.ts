@@ -121,20 +121,7 @@ export async function papelParaDescargar(papelId: string): Promise<PapelParaDesc
   }
 }
 
-/**
- * LAS OBRAS DEL REGISTRO CANÓNICO QUE DECLARAN ESTA CARPETA DE DRIVE.
- *
- * Es el puente que necesita la pantalla de una obra TERMINADA, que sigue apoyada en `public.obras`
- * (uuid) mientras el espejo escribe contra `obra_canonica` (texto). No es un mapeo inventado por
- * nombre —«MAMPOSTERÍA» y «Galpones, Mampostería, Cancha de Padel» son la misma obra en dos
- * registros y ningún nombre lo prueba—: es la MISMA CARPETA DE DRIVE, que es un hecho.
- *
- * Devuelve una lista y no un id porque dos obras canónicas comparten carpeta en el Drive real
- * («BSA - Planta» y «BSA - Adicional»).
- */
-export async function obrasCanonicasDeCarpeta(carpetaDrive: string | null): Promise<string[]> {
-  if (!carpetaDrive) return []
-  const { data } = await createAdminClient()
-    .from('obra_canonica').select('id').eq('drive_carpeta_id', carpetaDrive)
-  return ((data ?? []) as { id: string }[]).map((o) => String(o.id))
-}
+// `obrasCanonicasDeCarpeta` se retiró el 10/09/2026: existía para tender un puente entre
+// `public.obras` y `obra_canonica` por la carpeta de Drive, y la pantalla que lo necesitaba —una obra
+// terminada— ya lee la canónica directo.
+

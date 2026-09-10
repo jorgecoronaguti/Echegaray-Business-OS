@@ -17,6 +17,8 @@
 // `cambio_pendiente` NO oculta la fila: significa que hay ediciones posteriores a la publicación, y
 // la policy no lo mira. Esconder la fila dejaría al cliente sin un pago que ya le fue comunicado.
 
+import { publicablesDelCliente, publicadaAlCliente } from '../../../orquestador/lib/portal/publicacion.mjs'
+import { rotuloPublicable } from '../../../orquestador/lib/portal/rotulo-publicable.mjs'
 import type { EstadoPago, Pago, TipoPago } from './cronograma'
 
 /**
@@ -29,6 +31,8 @@ import type { EstadoPago, Pago, TipoPago } from './cronograma'
 export interface FilaEsquema {
   id: string
   obra_id: string | null
+  /** La fila FÍSICA de la pestaña Cobranzas de la que salió. `null` = la sembró `portal-sembrar`. */
+  cobranza_fila?: number | null
   concepto: string
   fecha: string | null
   neto?: string | number | null
@@ -47,12 +51,25 @@ export interface FilaEsquema {
   recibo_numero?: string | null
 }
 
-/** Un pago del portal que sabe de qué obra es. `obraId` `null` = la fila no tiene obra asignada. */
-export type PagoConObra = Pago & { obraId: string | null; obraNombre: string }
+/**
+ * Un pago del portal que sabe de qué obra es. `obraId` `null` = la fila no tiene obra asignada.
+ *
+ * `obraCerrada` es el estado CANÓNICO de la obra (`obra_canonica.estado`), el mismo que parte la
+ * lista del Inicio. Viaja con el pago porque la pantalla lo necesita para dos cosas distintas: no
+ * mandar a «obras anteriores» una obra viva que ya se cobró, y decir «obra terminada · saldo
+ * pendiente» cuando queda algo por cobrar de una que sí terminó.
+ */
+export type PagoConObra = Pago & { obraId: string | null; obraNombre: string; obraCerrada: boolean }
 
-/** LO QUE EL CLIENTE PUEDE VER. Copia literal de la policy `esquema_pago_select`. Ver arriba. */
+/**
+ * LO QUE EL CLIENTE PUEDE VER — el predicado de la policy `esquema_pago_select`, importado.
+ *
+ * Estaba escrito acá y otra vez en `publicacion.mjs` (el control del sync). Dos copias del mismo
+ * predicado son dos definiciones: el día que la policy cambie, una de las dos se queda con la regla
+ * vieja y nadie se entera, porque las dos siguen en verde. Ahora existe una sola y las dos la leen.
+ */
 export const publicadoAlPortal = (f: Pick<FilaEsquema, 'visible_portal' | 'publicado_at'>): boolean =>
-  f.visible_portal === true && f.publicado_at !== null
+  publicadaAlCliente(f) === true
 
 /**
  * QUÉ CLASE DE PAGO ES. `esquema_pago` no tiene columna `tipo` —la pestaña Cobranzas tampoco— así
@@ -111,15 +128,24 @@ const aNumero = (v: number | string | null | undefined): number | null =>
  * @param obraNombre `''` cuando la fila no tiene obra o su id no resuelve. NO se rellena con un
  *   texto inventado: un rótulo fabricado en una tabla de cobranzas se lee como el nombre real.
  */
-export function aPagoDelPortal(f: FilaEsquema, obraNombre: string): PagoConObra {
+export function aPagoDelPortal(f: FilaEsquema, obraNombre: string, obraCerrada = false): PagoConObra {
   const cobrado = f.estado === 'cobrado'
   return {
     id: f.id,
     obraId: f.obra_id,
     obraNombre,
+    obraCerrada,
     orden: f.orden,
     tipo: tipoDelPago(f),
-    rotulo: f.concepto,
+    // EL CONCEPTO SE PUBLICA SI ES UN CONCEPTO. «RECLAMAR OC!» es una nota que administración se
+    // escribió a sí misma en la columna I de Cobranzas, y el portal la copiaba a la cara del cliente.
+    // La regla vive en `rotulo-publicable.mjs` porque la usa también el informe del sync.
+    rotulo: rotuloPublicable({
+      concepto: f.concepto,
+      obraNombre,
+      fecha: f.fecha,
+      facturaNumero: f.factura_numero ?? null,
+    }),
     monto: aNumero(f.monto),
     // El cliente factura con IVA discriminado: un único importe no le sirve para conciliar contra su
     // propia contabilidad. Se publican los tres y la pantalla los muestra juntos.
@@ -157,47 +183,75 @@ export function pagosDelEsquema(
   filas: FilaEsquema[],
   nombres: Map<string, string>,
   alcanza: (obraId: string | null) => boolean,
+  /** Las obras del cliente con `obra_canonica.estado = 'cerrada'`. Vacío = ninguna terminada. */
+  cerradas: ReadonlySet<string> = new Set<string>(),
 ): PagoConObra[] {
   // EL CORTE DEL DUEÑO MANDA, FILA POR FILA. `clientes.portal_cobros_desde` es una fecha que él puso
   // a mano para decidir DESDE CUÁNDO el cliente ve sus pagos, y el sembrador marca `historico` con
   // ese criterio. Reescribir esa marca —«si la obra sigue viva, todos sus pagos son actuales»— le
   // devolvía al cliente los cinco cobros anteriores al 01/07 que el corte existía para no mostrar.
   // Lo que se ajusta es el CONTRATO, no los pagos: ver `contratoDelConjunto`.
-  return terminadaEsAnterior(filas
-    .filter((f) => publicadoAlPortal(f) && alcanza(f.obra_id))
-    .sort((a, b) => a.orden - b.orden || (a.fecha ?? '9999').localeCompare(b.fecha ?? '9999'))
-    .map((f) => aPagoDelPortal(f, (f.obra_id ? nombres.get(f.obra_id) : null) ?? '')))
+  //
+  // `publicablesDelCliente` aplica ANTES los dos invariantes de duplicado —el espejo en pesos de una
+  // fila en dólares y una sola fila por `cobranza_fila`—, sobre el conjunto ENTERO del cliente. El
+  // alcance por obra se aplica después: un acceso acotado no puede cambiar cuál de dos copias gana,
+  // o dos contactos del mismo cliente verían dos importes distintos del mismo cobro.
+  return anterioresPorObraTerminada(publicablesDelCliente(filas)
+    .filter((f: FilaEsquema) => alcanza(f.obra_id))
+    .sort((a: FilaEsquema, b: FilaEsquema) => a.orden - b.orden
+      || (a.fecha ?? '9999').localeCompare(b.fecha ?? '9999'))
+    .map((f: FilaEsquema) => aPagoDelPortal(
+      f,
+      (f.obra_id ? nombres.get(f.obra_id) : null) ?? '',
+      f.obra_id ? cerradas.has(f.obra_id) : false,
+    )))
 }
 
 /**
- * UNA OBRA SIN PAGOS PENDIENTES ES UNA OBRA ANTERIOR.
+ * UNA OBRA ANTERIOR ES UNA OBRA TERMINADA Y COBRADA — y «terminada» lo dice el registro de obras.
  *
- * ═══ LA REGLA, DEL DUEÑO Y TEXTUAL (27/08/2026) ═══
+ * ═══ HABÍA DOS DEFINICIONES DE «OBRA TERMINADA» Y SE CONTRADECÍAN (10/09/2026) ═══
  *
- * *«tomá sólo lo pendiente, sólo esas obras»*. «Galpones, Mampostería, Cancha de Padel» se terminó y
- * se cobró entera —el último cobro es del 21/08— y seguía ocupando el pie con sus $204.361.104 de
- * contrato y sus nueve pagos, encima de un cliente que tiene otras TRES obras abiertas. El pie
- * hablaba de una obra cerrada y de tres vivas al mismo tiempo.
+ * El Inicio partía la lista con `obra_canonica.estado = 'cerrada'`; Pagos usaba otra regla propia
+ * —«una obra sin pagos pendientes es una obra anterior», del 27/08— y el mismo cliente leía dos
+ * cosas opuestas en dos pantallas. Medido en Messina:
  *
- * Se pregunta por PAGOS PENDIENTES y no por `obra_canonica.estado`: ese estado lo mantiene otra
- * gente para otra cosa —la obra figura «activa», etapa «terminación»— y el portal habla de plata. La
- * plata la dice el cronograma. El día que se le agregue un pago, la obra vuelve sola.
+ *   BSA - Adicional      CERRADA, con $7.228.782 por cobrar   → Pagos la mostraba como obra en curso
+ *   ME - PISOS 120 M²    ACTIVA, cobrada al día               → Pagos la mandaba a «obras anteriores»,
+ *                                                               con el pie «trabajo anterior que ya
+ *                                                               nos pagó» sobre una obra que sigue
+ *                                                               abierta
  *
- * Una obra SIN ningún pago no entra acá: su cronograma no se cargó todavía, que es lo contrario de
- * estar terminada.
+ * La regla del 27/08 resolvía un problema real —«tomá sólo lo pendiente, sólo esas obras»: una obra
+ * cerrada y cobrada no puede ocupar el pie con su contrato— pero lo resolvía con el dato equivocado.
+ * Que no queden pagos NO significa que la obra terminó: significa que está al día.
+ *
+ * LA DEFINICIÓN CANÓNICA ES `obra_canonica.estado`, la misma que usa el Inicio, y las dos condiciones
+ * se piden juntas:
+ *
+ *   · obra CERRADA y sin pagos pendientes  → obra anterior (sección gris, fuera de los totales).
+ *   · obra CERRADA con saldo pendiente     → sección principal, rotulada «obra terminada · saldo
+ *                                            pendiente». Es plata que el cliente todavía debe: la
+ *                                            última pantalla donde puede desaparecer es la suya.
+ *   · obra ACTIVA, cobrada o no            → sección principal. Siempre.
+ *
+ * `historico` que YA venía en `true` no se toca: ése es el corte `portal_cobros_desde` del dueño, que
+ * es una ventana de tiempo y no un estado de obra.
  */
-export function terminadaEsAnterior(pagos: PagoConObra[]): PagoConObra[] {
+export function anterioresPorObraTerminada(pagos: PagoConObra[]): PagoConObra[] {
   const conPendiente = new Set<string>()
   // Cobrado = tiene fecha de pago, o alguien lo fijó como pagado a mano. No se usa `estadoDePago`
   // porque necesitaría la fecha de hoy y esto no depende de cuándo se mire: un pago cobrado en junio
   // sigue cobrado en agosto.
   const cobrado = (p: PagoConObra) => p.fechaPago != null || p.estadoFijado === 'pagado'
   for (const p of pagos) if (p.obraId && !p.historico && !cobrado(p)) conPendiente.add(p.obraId)
-  const conAlgo = new Set<string>()
-  for (const p of pagos) if (p.obraId) conAlgo.add(p.obraId)
   return pagos.map((p) =>
-    p.obraId && conAlgo.has(p.obraId) && !conPendiente.has(p.obraId) ? { ...p, historico: true } : p)
+    p.obraId && p.obraCerrada && !conPendiente.has(p.obraId) ? { ...p, historico: true } : p)
 }
+
+/** ¿Este pago es el saldo pendiente de una obra que ya se terminó? Lo dice la pantalla, textual. */
+export const esSaldoDeObraTerminada = (p: PagoConObra): boolean =>
+  p.obraCerrada && !p.historico && p.fechaPago == null && p.estadoFijado !== 'pagado'
 
 /**
  * SEGUNDA CERRADURA DE `puede_ver_montos`: el importe NO SALE de la capa de datos.
@@ -284,7 +338,7 @@ export type PagosEnPantalla = {
  *
  * Las tres listas salen de acá y de un solo `filter`, para que no exista la posibilidad de que una
  * se olvide del filtro. Que `anteriores` quede vacía con una obra elegida no es casualidad ni un
- * caso a mano: `terminadaEsAnterior` ya decidió que los pagos de una obra terminada son de una obra
+ * caso a mano: `anterioresPorObraTerminada` ya decidió que los pagos de una obra terminada son de una obra
  * en curso, y `obrasQueFiltran` sólo ofrece obras en curso. El invariante se prueba, no se supone.
  *
  * @param obraId `null` = sin filtro: entran todas las obras Y los pagos que no cuelgan de ninguna.
@@ -300,6 +354,27 @@ export function pagosEnPantalla(pagos: PagoConObra[], obraId: string | null): Pa
 
 /** Lo contratado de una obra, en la moneda en que se firmó. */
 export type ContratoDeObra = { monto: number | null; moneda: 'ARS' | 'USD' }
+
+/**
+ * EL CONTRATO DE UNA OBRA, EN LA MONEDA EN QUE SE FIRMÓ — la regla, una sola vez.
+ *
+ * Quattropani se firmó en U$S 63.000 por ajuste alzado: publicar su equivalente en pesos publica un
+ * número que mañana está mal. `contrato_monto`/`contrato_moneda` son la declaración del contrato y
+ * `monto_contratado` su respaldo en pesos, que queda para los tableros internos.
+ *
+ * NULL NO ES CERO: una obra sin contrato cargado entra como `null` y la pantalla escribe «sin
+ * cargar». Está acá y no repetido en cada pantalla porque son tres las que lo preguntan —Pagos,
+ * Terminadas y el detalle de una terminada— y tres copias de esta elección son tres contratos.
+ */
+export function contratoDeLaObra(o: {
+  monto_contratado?: number | string | null
+  contrato_moneda?: string | null
+  contrato_monto?: number | string | null
+}): ContratoDeObra {
+  const propio = o.contrato_monto == null ? null : Number(o.contrato_monto)
+  if (propio != null) return { monto: propio, moneda: o.contrato_moneda === 'USD' ? 'USD' : 'ARS' }
+  return { monto: o.monto_contratado == null ? null : Number(o.monto_contratado), moneda: 'ARS' }
+}
 
 /** El contrato del conjunto, y de cuántas obras salió. */
 export type ContratoDelConjunto = ContratoDeObra & {
@@ -322,17 +397,21 @@ export type ContratoDelConjunto = ContratoDeObra & {
  * Mampostería, Cancha de Padel» se cerró el 21/08 con su último cobro y arrastraba $204.361.104 de
  * contrato a un pie que debía hablar de las TRES obras que siguen abiertas.
  *
- * Se pregunta por PAGOS PENDIENTES y no por `obra_canonica.estado` a propósito: ese estado lo
- * mantiene otra gente para otra cosa —la obra figura «activa», etapa «terminación»— y el portal
- * habla de plata. La plata la dice el cronograma: mientras quede algo por cobrar la obra está en
- * juego, y cuando no queda nada, se terminó. El día que se le agregue un pago, vuelve sola.
+ * QUÉ CAMBIÓ EL 10/09/2026: se preguntaba por PAGOS PENDIENTES, y eso era una SEGUNDA definición de
+ * obra terminada que contradecía a la del Inicio. Ahora la obra está en juego mientras tenga algún
+ * pago no histórico, y quién es histórico lo decide `anterioresPorObraTerminada` con la canónica —
+ * `obra_canonica.estado`— más la condición de estar al día.
  *
  * Un bloque SIN pagos es una obra cuyo cronograma todavía no se cargó, no una obra terminada: su
  * contrato cuenta. (`[].every()` es `true` por vacuidad y confundiría los dos casos.)
  */
 export function obraEnCurso(b: BloqueDeObra): boolean {
   if (!b.pagos.length) return true
-  return b.pagos.some((p) => !p.historico && p.fechaPago == null && p.estadoFijado !== 'pagado')
+  // NO se vuelve a preguntar «¿le queda algo por cobrar?»: ésa era la segunda definición de obra
+  // terminada. `anterioresPorObraTerminada` ya marcó `historico` con la canónica —cerrada Y al día—
+  // y acá sólo se lee esa marca. Preguntarlo de nuevo dejaba fuera del contrato a una obra ACTIVA
+  // que estaba cobrada al día, que es exactamente el caso de ME - PISOS 120 M².
+  return b.pagos.some((p) => !p.historico)
 }
 
 /**
