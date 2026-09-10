@@ -201,3 +201,54 @@ NULL y no el contrato entero.
 ### Las excepciones
 
 Ninguna.
+
+---
+
+## `gremial_pagada`
+
+| | |
+|---|---|
+| **Fuente primaria** | public.banco_movimientos (réplica _BANCO_RAW del Flujo de Caja), apareado contra la boleta de _UOCRA_DDJJ_RAW por orquestador/lib/cargas-pagos-banco.mjs |
+| **Propietario** | `orquestador/lib/cargas-pagos-banco.mjs` (el apareo) · `importar-banco.mjs` (el extracto) · `uocra-raw-pestana.mjs` (la boleta) |
+| **Criterio** | Una obligación gremial está pagada cuando **un débito de la cuenta la cancela**. Fondo de Cese: por el período que el propio banco escribe en el concepto (`Acreditacion fondo desempleo 082026`). UOCRA: por importe contra el «Total determinado» de la boleta — un débito dentro de **$1**, o el **único** subconjunto de DEBIN libres que suma exacto. Se cubre **hasta lo declarado y nunca más**. |
+| **Ventana** | Por período **devengado** (`YYYY-MM`), como nombra la obligación la cadena de Cargas Sociales — no por el mes en que salió la plata. |
+| **Consumidores** | la cadena de «Cargas Sociales» → `_MOVIMIENTOS` → las tres vistas del cash flow |
+| **Confianza** | **C** · patrón probable |
+| **Última decisión del dueño** | 10/09/2026: los gremiales **no se cargan en Compras**, «tienen pestañas especiales donde esto tiene que quedar registrado». |
+
+**La precedencia, escrita:** `banco > Compras «Pagado» > boleta declarada > proyección de la cadena`.
+Compras **no se apagó**: es la única fuente que cubre enero–agosto 2026, cuando los gremiales
+todavía se cargaban ahí. Quedó como **secundaria**.
+
+**Se resta, no se apaga el mes.** La boleta de agosto declara $2.374.397,18 (UOCRA $994.941,26 +
+Fondo de Cese devengado $1.379.455,92) y el banco muestra $2.155.341,26 (el DEBIN del 10/09 más las
+quince acreditaciones de fondo de desempleo de ese día, $1.160.400). Dar el mes por pagado
+escondería **$219.055,92** de Fondo de Cese declarado que ninguna acreditación respalda.
+
+**Lo que este criterio NO puede probar**, y por eso se declara al lado del número:
+
+- **IERIC y FODECO** no se declaran en la boleta de UOCRA y en el extracto llegan sin período
+  (`Merpago*ieric`, `Pago de servicios - Ieric`, de $13.191 a $47.670): no hay importe declarado
+  contra el cual aparearlos. Siguen dependiendo de Compras.
+- **El lote de Fondo de Cese del 18/08/2026** ($2.481.098,40, 35 acreditaciones) llegó con período
+  `000000`: el banco no dice de qué mes es y ninguna suma de devengados lo reproduce. No se le
+  atribuye período.
+- **El CUIT 30-70774398-7**, al que el DEBIN del 19/08 le pagó exactamente el «Total determinado» de
+  la boleta **original** de julio, no es el de UOCRA. Viaja marcado `porVerificar` en
+  `COBRADORES_UOCRA` y avisa cada vez que se usa.
+
+### Lo prohibido
+
+- `mesesPagados` — es «la gremial está pagada porque alguien marcó *Pagado* en Compras». El dueño
+  prohibió esa carga el 10/09/2026 y ese mismo día pagó la boleta de UOCRA de agosto por DEBIN: sin
+  fila en Compras, el egreso ya debitado seguía proyectado como futuro y el cash flow lo contaba dos
+  veces.
+
+### Las excepciones
+
+- `orquestador/lib/libro-extractores-cargas.mjs` — es donde vive la precedencia: recibe las dos
+  fuentes y decide cuál manda.
+- `orquestador/scripts/libro-movimientos-pestana.mjs` — el único llamador del pipeline.
+Los tests (`libro-extractores-cargas.test.mjs`, `libro-deuda-cruzada.test.mjs`) nombran la fuente
+secundaria a propósito —probar la precedencia exige poder escribir la que pierde— y no figuran acá
+porque el barrido excluye los `*.test.*`: declararlos dejaría dos excepciones mirando al aire.

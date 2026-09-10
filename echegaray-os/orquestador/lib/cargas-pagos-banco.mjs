@@ -55,7 +55,7 @@
 
 import { combinacionUnica } from './jornales-testigos.mjs'
 import { isoDeSerial } from './libro-extractores-fechas.mjs'
-import { COL as COL_UOCRA, FILA0 as FILA0_UOCRA, PESTAÑA as RAW_UOCRA } from '../scripts/uocra-raw-pestana.mjs'
+import { COL as COL_UOCRA, FILA0 as FILA0_UOCRA } from '../scripts/uocra-raw-pestana.mjs'
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const txt = (v) => String(v ?? '').trim()
