@@ -18,9 +18,20 @@ import type { GrupoOrden } from '../services/ordenesCliente'
  *  proporcional «2162» y «2097» no se comparan de un vistazo. Sin fondo de color, como el resto de
  *  los adornos de la fila: el único que tiene derecho a gritar es el filo ámbar de «esto bloquea». */
 const ESTILO: CSSProperties = {
-  fontSize: '10.5px', letterSpacing: '0.04em', flexShrink: 0, whiteSpace: 'nowrap',
+  fontSize: '10.5px', letterSpacing: '0.04em', flexShrink: 0,
   textDecoration: 'underline', textUnderlineOffset: 3,
 }
+
+/**
+ * EL `nowrap` VA EN LA CLASE Y NUNCA INLINE, igual que el `display` del contenedor: un `style`
+ * inline le gana a la media query y a 390px el rótulo seguiría siendo una línea inelástica de
+ * ~195px dentro de una celda de ~194 — el recorte que este cambio vino a cerrar. En el teléfono
+ * los rótulos se apilan uno debajo del otro y el que no entra parte por sus separadores.
+ */
+const CLASE_CHIP = 'font-mono tabular-nums whitespace-nowrap text-left max-[767px]:whitespace-normal'
+
+/** Uno al lado del otro en escritorio; APILADOS a 390px, donde no hay ancho para dos rótulos. */
+const CLASE_FILA = 'flex items-baseline gap-2 max-[767px]:flex-col max-[767px]:items-start max-[767px]:gap-[3px]'
 
 export function BotonOrdenes({
   grupos, resto, href, className, color, titulo,
@@ -40,7 +51,7 @@ export function BotonOrdenes({
     e.preventDefault(); e.stopPropagation(); router.push(href)
   }
   return (
-    <span className={className} style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
+    <span className={`${CLASE_FILA} ${className ?? ''}`} style={{ flexShrink: 0, minWidth: 0 }}>
       {grupos.map((g) => (
         <button
           key={g.clave}
@@ -49,7 +60,7 @@ export function BotonOrdenes({
           data-orden={g.clave}
           title={titulo}
           aria-label={`Ver ${g.rotulo}`}
-          className="font-mono tabular-nums"
+          className={CLASE_CHIP}
           style={{ ...ESTILO, color }}
           onClick={abrir}
         >
@@ -61,7 +72,7 @@ export function BotonOrdenes({
           type="button"
           data-testid="chip-orden-resto"
           aria-label={`Ver las otras ${resto} órdenes`}
-          className="font-mono tabular-nums"
+          className={CLASE_CHIP}
           style={{ ...ESTILO, color, textDecoration: 'underline' }}
           onClick={abrir}
         >

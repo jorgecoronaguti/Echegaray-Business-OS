@@ -58,13 +58,15 @@ import { pctTexto } from '@/features/clientes/services/economiaObras'
 // EL IMPORTE VIAJA EN EL RÓTULO Y SÓLO CON `veEconomia`: «OC 2173 · 11/08 · $78.650.000» es el
 // precio de venta de esa obra. Al jefe de obra y al campo les llega el mismo rótulo sin el importe
 // —qué orden hay, no cuánto se cobra—, y quien lo decide es esta pantalla, que ya sabe el rol.
-function Chips({ ordenes, href, titulo, max, veEconomia }: {
+function Chips({ ordenes, href, titulo, max, veEconomia, className = ADORNO_ANCHO }: {
   ordenes: OrdenBreve[] | undefined; href: string; titulo?: string; max?: number; veEconomia: boolean
+  /** Al lado del nombre se sueltan por ancho (`ADORNO_ANCHO`); en su propia línea NO se sueltan. */
+  className?: string
 }) {
   const { visibles, resto } = ordenesParaFila(ordenes, { ...(max === undefined ? {} : { max }), veEconomia })
   return (
     <BotonOrdenes
-      grupos={visibles} resto={resto} href={href} className={ADORNO_ANCHO} color={V.apagado}
+      grupos={visibles} resto={resto} href={href} className={className} color={V.apagado}
       titulo={titulo}
     />
   )
@@ -226,57 +228,84 @@ export function TablaClientes({
               </span>
             </Link>
 
-            {c.enCurso.map((o) => (
+            {c.enCurso.map((o) => {
+              // ¿ESTA OBRA TIENE ÓRDENES QUE DIBUJAR? Decide el alto de la fila —una línea o dos— y
+              // no puede deducirse dentro del `<span>`: el alto vive en el `<Link>`, que es el
+              // contenedor de la grilla. Se pregunta por lo que HAY, y `ordenesParaFila` decide
+              // después cuáles entran y cuántas van al «+N».
+              const conOrdenes = (ordenes.porObra.get(o.obra_id)?.length ?? 0) > 0
+              return (
               <Link
                 key={o.obra_id}
                 href={`/obras/${o.obra_id}`}
                 prefetch={false}
                 role="row"
                 data-testid="fila-obra"
+                data-ordenes={conOrdenes ? '' : undefined}
                 className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-[#FAFAF8]`}
-                style={{ height: ALTO_V2.hija, borderBottom: `1px solid ${TONO.divisorObra}` }}
+                // `minHeight` Y NO `height`: a 390px las órdenes se apilan y la fila tiene que poder
+                // crecer. Con `height` clavado el segundo rótulo quedaba cortado por abajo, que es
+                // el mismo recorte una capa más adentro.
+                style={{
+                  minHeight: conOrdenes ? ALTO_V2.hijaConOrdenes : ALTO_V2.hija,
+                  borderBottom: `1px solid ${TONO.divisorObra}`,
+                }}
               >
-                {/* `overflow: hidden` Y NO SÓLO `minWidth: 0`. MEDIDO a 1440px con la captura del
-                    10/09: los rótulos de las órdenes son `nowrap` y `flexShrink: 0`, así que con el
-                    importe adentro se salían de la celda y se montaban encima de la columna
-                    Contratado — el número de la orden tapando el número del contrato. Lo que no
-                    entra se corta en el borde de SU celda; nunca invade la de al lado. */}
-                <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, overflow: 'hidden', paddingLeft: 14 }}>
-                  <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
-                    <IconoObra className="h-[13px] w-[13px]" />
+                {/* DOS LÍNEAS, Y LAS ÓRDENES ABAJO. Con el importe adentro cada rótulo pasó de ~90
+                    a ~150px: al lado del nombre empujaban los chips de lo que falta contra el borde
+                    de la celda y «sin medir · sin jefe · sin certificar» quedaba cortado (medido a
+                    1440 el 10/09/2026 en «ME - PLAYÓN DE AZUFRE», con dos OC con importe). Ensanchar
+                    la columna no era una opción: el ancho que sobra es el de Contratado, que es
+                    plata. El `overflow: hidden` se queda: lo que igual no entre se corta en el borde
+                    de SU celda y nunca invade la de al lado. */}
+                <span style={{
+                  display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
+                  minWidth: 0, overflow: 'hidden', paddingLeft: 14,
+                }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                    <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
+                      <IconoObra className="h-[13px] w-[13px]" />
+                    </span>
+                    <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
+                    {/* SIN PRECIO · SIN MEDIR · SIN JEFE · el punto del circuito de certificación.
+                        Cada uno con su fuente en el `title`; los cuatro salen de `chipsDeObra`.
+                        Comparten la PRIMERA línea con el nombre: son estado de la obra, no papeles. */}
+                    <ChipsFalta chips={chipsDeObra(o)} testid="chip-obra" />
+                    {/* BARRA SÓLO SI EL NÚMERO ES UNA FRACCIÓN 0–100. `null` no es cero: una obra sin
+                        avance sincronizado no avanzó cero por ciento — no se sabe, y una barra vacía
+                        dice que sí. */}
+                    {/* EL `display` DE LO QUE SE SUELTA VA EN LA CLASE Y NUNCA INLINE: un
+                        `display: 'flex'` en el atributo `style` le gana a `hidden` y la barra
+                        seguiría ocupando sus 80px inelásticos. */}
+                    {o.avance === null
+                      ? null
+                      : (
+                          <>
+                            <span className={`flex ${ADORNO_ANCHO}`} style={{ height: 4, width: 80, borderRadius: 2, background: TONO.pista, flexShrink: 0, marginLeft: 2 }}>
+                              <span style={{ width: `${Math.min(100, Math.max(0, o.avance))}%`, background: V.grafito, borderRadius: 2 }} />
+                            </span>
+                            <span className={`font-mono tabular-nums ${ADORNO_ANCHO}`} style={{ fontSize: '11.5px', color: V.apagado, flexShrink: 0 }}>
+                              {porcentajeCanon(o.avance, 0)}
+                            </span>
+                          </>
+                        )}
                   </span>
-                  <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
-                  {/* DOS RÓTULOS Y «+N». Con el importe adentro cada uno pasó de ~90 a ~150px: tres
-                      no entran a 1440px. Se muestran los MÁS RECIENTES (`ordenesParaFila` ordena por
-                      fecha) y el resto se anuncia con «+N» — nada se esconde en silencio. */}
-                  <Chips
-                    ordenes={ordenes.porObra.get(o.obra_id)}
-                    href={hrefOrdenes(o.obra_id)}
-                    titulo="Órdenes de compra y de pago que el cliente mandó por mail para esta obra"
-                    veEconomia={veEconomia}
-                    max={2}
-                  />
-                  {/* SIN PRECIO · SIN MEDIR · SIN JEFE · el punto del circuito de certificación.
-                      Cada uno con su fuente en el `title`; los cuatro salen de `chipsDeObra`. */}
-                  <ChipsFalta chips={chipsDeObra(o)} testid="chip-obra" />
-                  {/* BARRA SÓLO SI EL NÚMERO ES UNA FRACCIÓN 0–100. `null` no es cero: una obra sin
-                      avance sincronizado no avanzó cero por ciento — no se sabe, y una barra vacía
-                      dice que sí. */}
-                  {/* EL `display` DE LO QUE SE SUELTA VA EN LA CLASE Y NUNCA INLINE: un
-                      `display: 'flex'` en el atributo `style` le gana a `hidden` y la barra
-                      seguiría ocupando sus 80px inelásticos. */}
-                  {o.avance === null
-                    ? null
-                    : (
-                        <>
-                          <span className={`flex ${ADORNO_ANCHO}`} style={{ height: 4, width: 80, borderRadius: 2, background: TONO.pista, flexShrink: 0, marginLeft: 2 }}>
-                            <span style={{ width: `${Math.min(100, Math.max(0, o.avance))}%`, background: V.grafito, borderRadius: 2 }} />
-                          </span>
-                          <span className={`font-mono tabular-nums ${ADORNO_ANCHO}`} style={{ fontSize: '11.5px', color: V.apagado, flexShrink: 0 }}>
-                            {porcentajeCanon(o.avance, 0)}
-                          </span>
-                        </>
-                      )}
+                  {/* LA SEGUNDA LÍNEA: los papeles. DOS RÓTULOS Y «+N» a partir del tercero — se
+                      muestran los MÁS RECIENTES (`ordenesParaFila` ordena por fecha) y lo que queda
+                      afuera se anuncia, nunca se esconde en silencio. Acá NO llevan `ADORNO_ANCHO`:
+                      tienen su renglón propio, así que en el teléfono no le disputan nada al nombre
+                      y se apilan (lo decide `BotonOrdenes` con su media query). La sangría los
+                      alinea bajo el nombre — 13px de icono + 9 de aire. */}
+                  {conOrdenes && (
+                    <Chips
+                      ordenes={ordenes.porObra.get(o.obra_id)}
+                      href={hrefOrdenes(o.obra_id)}
+                      titulo="Órdenes de compra y de pago que el cliente mandó por mail para esta obra"
+                      veEconomia={veEconomia}
+                      max={2}
+                      className="pl-[22px]"
+                    />
+                  )}
                 </span>
                 {/* La celda vacía de «Obras»: existe para que la obra caiga en la MISMA columna
                     que su cliente, y desaparece con la columna. */}
@@ -296,7 +325,8 @@ export function TablaClientes({
                   {diaRelativo(o.ultimoParte, hoy) ?? 'sin partes'}
                 </span>
               </Link>
-            ))}
+              )
+            })}
 
             {c.enCurso.length === 0 && (
               <div
