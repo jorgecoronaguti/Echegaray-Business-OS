@@ -36,14 +36,13 @@ export const alcanceDeLectura = (rol: Rol | null | undefined): Alcance =>
 export interface ArchivosDeEntidad {
   carpeta: Carpeta
   archivos: ArchivoDeCarpeta[]
-  alcance: Alcance
   /** Se llegó al tope: hay más archivos que los que se muestran. */
   truncado: boolean
   error: string | null
 }
 
-const vacio = (carpeta: Carpeta, alcance: Alcance, error: string | null = null): ArchivosDeEntidad =>
-  ({ carpeta, archivos: [], alcance, truncado: false, error })
+const vacio = (carpeta: Carpeta, error: string | null = null): ArchivosDeEntidad =>
+  ({ carpeta, archivos: [], truncado: false, error })
 
 /**
  * La carpeta de Drive de una entidad. ÚNICA función que lo contesta en la app.
@@ -80,6 +79,10 @@ export async function getCarpetaDeEntidad(
 /**
  * Los archivos que cuelgan de la carpeta de una entidad, del catálogo.
  *
+ * NO RECIBE EL ROL: qué tan completa es la lista lo decide `alcanceDeLectura` en el componente que
+ * la dibuja. Meter el rol acá haría que dos lecturas idénticas devolvieran objetos distintos y que
+ * el `Promise.all` de la ficha —que corre antes de resolver el perfil— tuviera que esperarlo.
+ *
  * SÓLO SE PIDEN LOS ARCHIVOS SI LA CARPETA PUEDE LISTARSE. Con la carpeta en la papelera el índice
  * devuelve cero hijos sin error, y dibujar «no hay archivos» sobre eso es la trampa que este hito
  * vino a cerrar.
@@ -88,11 +91,9 @@ export async function getArchivosDeEntidad(
   supabase: SupabaseClient,
   tipo: TipoEntidad,
   entidadId: string,
-  rol: Rol | null | undefined,
 ): Promise<ArchivosDeEntidad> {
-  const alcance = alcanceDeLectura(rol)
   const carpeta = await getCarpetaDeEntidad(supabase, tipo, entidadId)
-  if (!puedeListar(carpeta) || !carpeta.path) return vacio(carpeta, alcance)
+  if (!puedeListar(carpeta) || !carpeta.path) return vacio(carpeta)
 
   const { data, error } = await supabase
     .from('drive_index')
@@ -101,13 +102,12 @@ export async function getArchivosDeEntidad(
     .like('path', patronDeDescendencia(carpeta.path))
     .order('modified_time', { ascending: false, nullsFirst: false })
     .limit(TOPE_ARCHIVOS)
-  if (error) return vacio(carpeta, alcance, error.message)
+  if (error) return vacio(carpeta, error.message)
 
   const filas = data ?? []
   return {
     carpeta,
     archivos: archivosDeLaCarpeta(filas, carpeta.path),
-    alcance,
     truncado: filas.length >= TOPE_ARCHIVOS,
     error: null,
   }

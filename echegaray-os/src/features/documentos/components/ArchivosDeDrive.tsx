@@ -26,20 +26,24 @@ import { Aviso, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/component
 import { IconoAbrir } from '@/shared/components/iconos'
 import { enlaceDrive } from '../services/documentos'
 import { MOTIVO, NOMBRE_DE_TIPO, tamano, type TipoEntidad } from '../services/carpetaDeEntidad'
-import type { ArchivosDeEntidad } from '../services/carpetaDeEntidadService'
+import { alcanceDeLectura, type ArchivosDeEntidad } from '../services/carpetaDeEntidadService'
+import type { Rol } from '@/features/auth/types'
 
 /** La fecha como se lee en una tabla: 10/09/2026. Sin hora — nadie decide con la hora de un papel. */
 const fecha = (iso: string | null): string =>
   iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 
 export function ArchivosDeDrive({
-  datos, tipo, testid = 'archivos-de-drive',
+  datos, tipo, rol, testid = 'archivos-de-drive',
 }: {
   datos: ArchivosDeEntidad
   tipo: TipoEntidad
+  /** El rol de quien mira. Decide si esta lista puede estar recortada por la RLS de `drive_index`. */
+  rol: Rol | null | undefined
   testid?: string
 }) {
-  const { carpeta, archivos, alcance, truncado, error } = datos
+  const { carpeta, archivos, truncado, error } = datos
+  const alcance = alcanceDeLectura(rol)
 
   const encabezado = (
     <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">

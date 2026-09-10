@@ -47,6 +47,8 @@ import {
   asignarPersona, cerrarAsignacion, quitarAsignacion,
 } from '@/features/obras/services/actionsPersonal'
 import { getCatalogoEquipos } from '@/features/obras/services/recursosService'
+import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
+import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
 import { AccionesRapidas } from '@/features/obras/components/AccionesRapidas'
@@ -133,7 +135,7 @@ export default async function ObraPage({
     perfilRes, obraRes, actividadesRes, restriccionesRes, planRes, planPersonalRes, planEconomiaRes,
     diasHabilesRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
     actividadHHRes, cuadrillas, integrantes, partesRes, certificadosRes, economiaRes,
-    documentosRes, catalogoEquipos, opRes, personasDeHoy, ordenesRes,
+    documentosRes, catalogoEquipos, opRes, personasDeHoy, ordenesRes, archivosDrive,
   ] = await Promise.all([
     // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración: el jefe de obra ve el
     // COSTO de su obra, pero no cuánto se vendió — `veEconomia`, no `esAdministracion`.
@@ -195,6 +197,11 @@ export default async function ObraPage({
     // tenía forma de saber que la OC que la encargó estaba en el OS. La cerradura es la RLS de la
     // tabla, no esta lectura.
     vista === 'documentos' ? getOrdenesDeObra(supabase, obraId) : null,
+    // LO QUE HAY EN LA CARPETA DE DRIVE DE ESTA OBRA. Es distinto de `getDocumentos`: eso son los
+    // papeles que alguien VINCULÓ, esto es lo que ESTÁ en la carpeta —vinculado o no—. Un plano
+    // subido ayer aparece acá sin que nadie lo ate. Sale del catálogo `drive_index`, nunca de Drive
+    // en vivo: la ficha se dibuja en Vercel y el token de Drive vive en la VM.
+    vista === 'documentos' ? getArchivosDeEntidad(supabase, 'obra', obraId) : null,
   ])
 
   const rolActual = perfilRes.data?.rol ?? null
@@ -477,6 +484,12 @@ export default async function ObraPage({
           asignarActividad={asignarActividadADocumento.bind(null, obraId)}
           clasificar={clasificarDocumento.bind(null, obraId)}
         />
+      )}
+
+      {vista === 'documentos' && archivosDrive && (
+        <div className="mt-8">
+          <ArchivosDeDrive datos={archivosDrive} tipo="obra" rol={rolActual} testid="obra-archivos-drive" />
+        </div>
       )}
       </div>
     </div>

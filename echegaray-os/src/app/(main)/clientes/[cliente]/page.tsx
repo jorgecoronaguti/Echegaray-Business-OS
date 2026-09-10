@@ -45,6 +45,8 @@ import { getCartera } from '@/features/presupuestos/services/presupuestosService
 import { BloqueActividad } from '@/features/clientes/components/BloqueActividad'
 import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
+import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
+import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
 import { BloqueInformacion } from '@/features/clientes/components/BloqueInformacion'
 import {
   ObrasDelCliente, PresupuestosDelCliente, type PresupuestoDeFicha,
@@ -173,6 +175,10 @@ export default async function ClientePage({ params, searchParams }: {
     ? await Promise.all([getAccesos(supabase, id), getActividadPortal(supabase, id)])
     : [{ data: [], error: null }, { data: [], error: null }]
   const portal = resumenAccesos(lector.leer(accesos, []))
+  // LO QUE HAY EN LA CARPETA DEL CLIENTE EN DRIVE (`PRESUPUESTOS - CLIENTES/<CLIENTE>`). El bloque
+  // de arriba lista los archivos VINCULADOS; éste, lo que está en la carpeta aunque nadie lo haya
+  // vinculado — que es la mitad de los papeles de un cliente nuevo.
+  const archivosDrive = solapa === 'documentos' ? await getArchivosDeEntidad(supabase, 'cliente', id) : null
 
   const todas = lector.leer(obras, [])
   const cerradas = todas.filter((o) => o.estado === 'cerrada')
@@ -471,6 +477,13 @@ export default async function ClientePage({ params, searchParams }: {
                 urlTodo={url({ documentos: 'todo' })}
                 urlPoco={url({ documentos: null })}
               />
+              {archivosDrive && (
+                <div style={{ marginTop: 32 }}>
+                  <ArchivosDeDrive
+                    datos={archivosDrive} tipo="cliente" rol={rol} testid="cliente-archivos-drive"
+                  />
+                </div>
+              )}
               </>
             )}
 
