@@ -229,7 +229,9 @@ export default async function ClientePage({ params, searchParams }: {
     // su cara: son todas las filas del cliente y no hace falta pagarlas en las otras siete.
     solapa === 'cobranzas' && veEconomia
       ? getCobranzasDelCliente(supabase, id)
-      : Promise.resolve<FilaCobranza[] | null>([]),
+      // `null` FUERA DE SU CARA, y no `[]`: un cero al lado de la solapa diría que este cliente no
+      // tiene ninguna cobranza, y lo que pasa es que no se leyó.
+      : Promise.resolve<FilaCobranza[] | null>(null),
   ])
   const [cuenta, certificados] = cuentaYCertificados
   const esquema = esquemaRes
