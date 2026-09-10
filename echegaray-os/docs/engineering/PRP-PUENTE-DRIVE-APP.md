@@ -154,3 +154,45 @@ tiene carpeta con 49 archivos; `messina-bsa`, la que queda viva, no tiene ningun
    espeja la carpeta entera en `documentacion_legajo`, así que las dos listas dicen casi lo mismo.
    Para persona el bloque agrega poco; para obra, cliente y proveedor agrega todo.
 4. **La vuelta app→Drive sigue sin empezar** (H3, H4, H5). Nada de lo de este hito escribe en Drive.
+
+### El acopio: las fichas RECIBEN documentos (agregado al H2 el 10/09/2026)
+
+Reclamo del dueño, textual: *«te había pedido formas de subir documentos a las distintas secciones
+que permitan acopio de datos en la plataforma app.ecsas.com.ar y no está hecho»*.
+
+Lo construido:
+
+- `supabase/migrations/20260910T2320_entidad_documento.sql` — **ESCRITA, NO APLICADA.** Una tabla
+  para las cuatro entidades (`entidad_tipo`/`entidad_id`), con RLS por el mismo eje que ya gobierna
+  cada ficha (`ve_obra()` para la obra, `es_administracion()` para el resto, la persona ve lo suyo),
+  GRANT explícito, y las policies de INSERT de Storage que faltaban en `obras-documentos`,
+  `documentos-cliente` y `documentos-legajo`. **Ningún bucket nuevo**: los cuatro ya existían.
+- `subidaDeDocumento.ts` (puro, 10 tests) · `subidaAlBucket.ts` (navegador → bucket) ·
+  `subidaActions.ts` (la fila) · `SubirDocumento.tsx` + `DocumentosSubidos.tsx` (el control y la
+  lista) · `documentosSubidosService.ts` (lectura con URL firmada de 10 minutos).
+- `altaDeDocumento.test.ts` (10 tests) prueba los rechazos de la acción **y el contrato con la
+  base**: que el CHECK de categorías del `.sql` diga exactamente lo mismo que la app en las dos
+  direcciones, que la fila nazca `pendiente` (si naciera `copiado`, cada papel afirmaría estar en
+  Drive sin que nadie lo hubiera subido), y que el techo de 25 MB esté en los dos lados.
+
+**El archivo no pasa por la Server Action.** 25 MB no entran en el techo de 1 MB de Next ni en el de
+4,5 MB de Vercel: el navegador sube al bucket con su sesión (la RLS de Storage decide) y la acción
+registra el renglón. Es el mismo camino que el proveedor usa desde el 09/09, generalizado, no otro.
+
+**La cola a Drive es una columna.** `drive_estado='pendiente'` ES la cola; su consumidor es el H3 y
+todavía no existe. Cada fila lo dice en la ficha («en cola para Drive»): una cola sin consumidor es
+un hecho que hay que ver, no un detalle de implementación. El md5 nace NULL porque los bytes no
+pasan por el servidor; lo escribe el consumidor cuando baja el objeto, que es cuando puede.
+
+**En la ficha del PROVEEDOR no se montó el control nuevo**, y es a propósito: ya tiene el suyo desde
+el 09/09 (`SubirDocumentoProveedor`, multi-archivo, con su bucket y sus acciones andando sobre
+`proveedor_documento`, 7 filas vivas). Dos botones que hacen lo mismo contra dos tablas distintas es
+peor que uno viejo. Unificar `proveedor_documento` → `entidad_documento` es H6, con su movimiento de
+datos.
+
+**Lo que quedó sin evidencia del efecto:** nada de esto se pudo probar contra la base. La migración
+no se aplica desde un worktree, así que no existe una fila subida de verdad; la captura de la ficha
+de persona muestra el aviso «falta aplicar la migración», que es el estado correcto de hoy y NO
+prueba que la subida funcione. La prueba pendiente, cuando la migración esté aplicada, es: subir un
+PDF desde la ficha de una obra, verlo listado, abrirlo con su firma, y confirmar en Postgres que la
+fila quedó con `drive_estado='pendiente'`.
