@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarQuincenaPorObra, diasSinMarcar, personasPorObra, SIN_OBRA, totalDeLaQuincena, totalesPorDia,
+  armarQuincenaPorObra, diasSinMarcar, filtrarPorObra, OBRA_SIN, personasPorObra, SIN_OBRA,
+  totalDeLaQuincena, totalesPorDia,
 } from './quincenaPorObra.ts'
 import type {
   AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena, TramoFuturoFuera,
@@ -695,4 +696,74 @@ test('UN DÍA FUTURO CON AUSENCIA DECLARADA MUESTRA LA AUSENCIA', () => {
     registros: [reg('p1', null, S, 8, 'ausencia', 'enfermedad')],
   })
   assert.equal(filas[0].celdas[5].estado, 'ausente')
+})
+
+// ═══ EL RECORTE POR OBRA (dueño, 10/09/2026: «crear filtro por obras para los obreros») ═════════
+
+const CUATRO = () => armar({
+  asignaciones: [
+    asig('p1', 'Alaniz Emanuel', PISOS),
+    asig('p2', 'Gomez Ana', MAMPO),
+    asig('p3', 'Tello Juan', PISOS),
+    // p4 no tiene ninguna asignación vigente ni horas en obra: cae a «Sin obra activa».
+    asig('p4', 'Zogbe Walter', PISOS, null, L, L),
+  ],
+  registros: [reg('p1', PISOS, L, 8.8)],
+  hoy: X,
+})
+
+test('EL FILTRO POR OBRA RECORTA POR EL RÓTULO EXACTO DEL CHIP', () => {
+  // EL DEFECTO QUE ATRAPA: que el chip diga «MAMPOSTERÍA 1» y el clic devuelva a toda la empresa,
+  // o a la gente de otra obra. El chip y el recorte tienen que hablar del mismo rótulo.
+  const filas = CUATRO()
+  const soloMampo = filtrarPorObra(filas, 'MAMPOSTERÍA')
+  assert.deepEqual(soloMampo.map((f) => f.persona.nombre), ['Gomez Ana'])
+  assert.deepEqual(personasPorObra(soloMampo), [{ rotulo: 'MAMPOSTERÍA', personas: 1 }])
+})
+
+test('«sin-obra» TRAE LAS FILAS SIN OBRA ACTIVA, y el rótulo largo también', () => {
+  const filas = CUATRO()
+  assert.deepEqual(filtrarPorObra(filas, OBRA_SIN).map((f) => f.persona.nombre), ['Zogbe Walter'])
+  assert.deepEqual(filtrarPorObra(filas, SIN_OBRA).map((f) => f.persona.nombre), ['Zogbe Walter'])
+})
+
+test('SIN PARÁMETRO DEVUELVE TODAS, Y NO REORDENA NI COPIA DE MÁS', () => {
+  const filas = CUATRO()
+  assert.equal(filtrarPorObra(filas), filas, 'sin filtro, la misma grilla')
+  assert.equal(filtrarPorObra(filas, '  '), filas, 'un parámetro en blanco no es un filtro')
+  assert.deepEqual(filtrarPorObra(filas, 'PISOS INDUSTRIALES').map((f) => f.persona.nombre),
+    ['Alaniz Emanuel', 'Tello Juan'], 'el orden por nombre sobrevive al recorte')
+})
+
+test('UNA OBRA QUE NO ESTÁ EN LA QUINCENA DEVUELVE VACÍO, NUNCA TODO', () => {
+  // Un filtro que al no encontrar nada muestra la lista entera afirma que esa obra tiene a toda la
+  // empresa. Vacío es la respuesta honesta, y la pantalla escribe «Nadie de esta quincena está en…».
+  assert.deepEqual(filtrarPorObra(CUATRO(), 'GALPÓN 4'), [])
+})
+
+test('EL PIE DEL RECORTE ES EL DE LA OBRA, y el buscador no lo mueve', () => {
+  // La decisión del dueño (10/09/2026): con el filtro por obra puesto, los totales por día y el
+  // total del pie miden LAS FILAS VISIBLES y el rótulo lo dice («Total · <obra>»). El buscador NO:
+  // escribir tres letras no es elegir una población, y por eso el pie se calcula sobre `todas`
+  // recortado SÓLO por obra.
+  //
+  // EL DEFECTO QUE ATRAPA: 1.146 hs de toda la empresa escritas debajo de cinco filas de una obra,
+  // con el cartel «Total de la quincena». Se lee como el total de esa obra y no lo es.
+  const filas = armar({
+    asignaciones: [
+      asig('p1', 'Alaniz Emanuel', PISOS), asig('p2', 'Gomez Ana', PISOS),
+      asig('p3', 'Tello Juan', MAMPO),
+    ],
+    registros: [
+      reg('p1', PISOS, L, 8), reg('p2', PISOS, L, 9), reg('p3', MAMPO, L, 4), reg('p3', MAMPO, M, 6),
+    ],
+    hoy: X,
+  })
+  assert.equal(totalDeLaQuincena(filas), 27, 'la quincena entera')
+  const soloPisos = filtrarPorObra(filas, 'PISOS INDUSTRIALES')
+  assert.equal(totalDeLaQuincena(soloPisos), 17, 'el pie del recorte suma sólo esa obra')
+  assert.deepEqual(totalesPorDia(soloPisos, [L, M]), [17, null],
+    'y el día sin horas EN ESA OBRA es «—», no el 6 que puso la otra')
+  assert.equal(totalDeLaQuincena(filtrarPorObra(filas, OBRA_SIN)), null,
+    'un recorte sin nadie no afirma cero horas')
 })

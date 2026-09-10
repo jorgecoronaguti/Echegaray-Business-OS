@@ -44,7 +44,14 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
   let proveedorNuevo = false
   let inventadas = []
   const nombreLeido = comprobante.proveedor
-  if (listasOk && comprobante.proveedor) {
+  // ═══ CON CUIT ALCANZA, AUNQUE EL MEMBRETE NO SE HAYA LEÍDO (10/09/2026) ═══
+  //
+  // Acá decía `if (listasOk && comprobante.proveedor)`: sin nombre no se consultaba nada, y la
+  // columna E quedaba vacía aunque el CUIT estuviera impreso, fuera válido y el desplegable tuviera
+  // a ese proveedor con ese mismo CUIT. `matchProveedor` mira el CUIT PRIMERO —es identidad exacta,
+  // no un parecido— y era lo único que hacía falta darle. Lo destapó el camino sin modelo, que no
+  // lee la razón social, pero también pasa con una foto cuyo logo salió quemado.
+  if (listasOk && (comprobante.proveedor || comprobante.cuit)) {
     // EL DESPLEGABLE ES EL ÁRBITRO, NO EL MODELO. Cuando hubo revisión, las dos pasadas pueden haber
     // leído nombres distintos del mismo membrete ("Néstor Rubén Corralón Progreso" y "MATERIALES DE
     // CONSTRUCCION"): se prueban las dos contra la lista estricta y gana la que matchea. Si ninguna
@@ -63,7 +70,9 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
     // prueban esos nombres contra la MISMA lista estricta y con el MISMO matcheo: no se afloja nada
     // —un nombre que el desplegable no tiene sigue sin llegar a ninguna celda—, sólo se le dan al
     // matcheo los nombres que el papel no dejó leer.
-    if (m.esNuevo) {
+    // `esNuevo` es falso cuando NO había nombre que matchear (`motivo:'sin nombre'`, valor vacío):
+    // ese caso también tiene que probar los nombres del padrón, o el CUIT se consulta a medias.
+    if (m.esNuevo || !m.valor) {
       const c = String(comprobante.cuit ?? '').replace(/\D/g, '')
       const mapa = listas.nombresPorCuit
       const candidatos = c.length === 11 && mapa ? (mapa instanceof Map ? mapa.get(c) : mapa[c]) ?? [] : []
@@ -72,7 +81,9 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
         if (!otro.esNuevo) { m = { ...otro, motivo: otro.motivo ?? 'cuit-padron' }; break }
       }
     }
-    comprobante.proveedor = m.valor
+    // Vacío es NULL, no cadena vacía: `faltantes` ya declaró que falta el proveedor y una cadena
+    // vacía en la celda se ve igual pero se compara distinto.
+    comprobante.proveedor = m.valor || null
     proveedorNuevo = m.esNuevo === true
     // ═══ EL ECO DEL NOMBRE MAL LEÍDO (04/08) ═══
     //

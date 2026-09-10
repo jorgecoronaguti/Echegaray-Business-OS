@@ -1,0 +1,53 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { mismoNombre, proximoHabil } from './santander-fur-fcl.mjs'
+import { ordenDePago } from '../lib/pago-simple.mjs'
+
+// EL EMPAREJAMIENTO POR NOMBRE DECIDE A QUIÉN SE LE PAGA. Los casos son los rótulos REALES: el
+// estudio contable abrevia, el resumen de cuentas escribe entero, y los dos usan comas donde
+// quieren. Un falso positivo acá deposita el Fondo de Cese de una persona en la cuenta de otra.
+
+test('la abreviatura del estudio encuentra al nombre entero del padrón', () => {
+  assert.equal(mismoNombre('GONZALEZ TOBARES, EMILIAN', 'GONZALEZ TOBARES EMILIANO'), true)
+  assert.equal(mismoNombre('GONZALEZ TOBARES, JUAN GU', 'GONZALEZ TOBARES JUAN GUILLERMO'), true)
+  assert.equal(mismoNombre('TELLO, JUAN ALBERTO', 'TELLO JUAN ALBERTO'), true)
+  assert.equal(mismoNombre('MALDONADO, BATISTA EMILIANO MIGUEL', 'MALDONADO BATISTA EMILIANO MIGUEL'), true)
+})
+
+test('dos hermanos con el mismo apellido NO se confunden', () => {
+  // Están los dos en la planilla de agosto y cobran importes distintos.
+  assert.equal(mismoNombre('CASTRO GALVAN, GERSON ULISES', 'CASTRO GALVAN HEBER LUCAS'), false)
+  assert.equal(mismoNombre('GONZALEZ TOBARES, EMILIAN', 'GONZALEZ TOBARES JUAN GUILLERMO'), false)
+  assert.equal(mismoNombre('QUIROGA, SEBASTIAN ADOLFO', 'QUIROGA ALEXANDER SEBASTIAN'), false)
+})
+
+test('un nombre incompleto no matchea con uno que tiene un token de más', () => {
+  assert.equal(mismoNombre('GONZALEZ, CARLOS', 'GONZALEZ CARLOS SAMUEL'), false)
+})
+
+test('el acento y la coma no cambian la identidad', () => {
+  assert.equal(mismoNombre('BENÍTEZ, JOSÉ', 'BENITEZ JOSE'), true)
+})
+
+test('proximoHabil: el viernes se queda, el sábado y el domingo saltan al lunes', () => {
+  assert.equal(proximoHabil(new Date(Date.UTC(2026, 8, 11))), '20260911') // viernes
+  assert.equal(proximoHabil(new Date(Date.UTC(2026, 8, 12))), '20260914') // sábado → lunes
+  assert.equal(proximoHabil(new Date(Date.UTC(2026, 8, 13))), '20260914') // domingo → lunes
+  assert.equal(proximoHabil(new Date(Date.UTC(2026, 8, 10))), '20260910') // jueves
+})
+
+test('ordenDePago: el período va como MAAAA, con el mes sin cero adelante', () => {
+  // El banco lo devuelve en el concepto del extracto: 42026 salió como «fondo desempleo 042026».
+  assert.equal(ordenDePago('202608'), 82026)
+  assert.equal(ordenDePago('202604'), 42026)
+  assert.equal(ordenDePago('202610'), 102026)
+  assert.equal(ordenDePago('202701'), 12027)
+})
+
+test('el nombre que usa el BANCO no se empareja por nombre: para eso está el CUIL', () => {
+  // El banco escribe «MALDONADO BATISTA EMILIANO» (3 tokens) donde el estudio escribe
+  // «MALDONADO, BATISTA EMILIANO MIGUEL» (4). Una regla que tolerara esa diferencia toleraría
+  // también confundir a dos hermanos, así que contra el banco se cruza por CUIL y esto da false.
+  assert.equal(mismoNombre('MALDONADO, BATISTA EMILIANO MIGUEL', 'MALDONADO BATISTA EMILIANO'), false)
+  assert.equal(mismoNombre('PETINA RODRIGUEZ JAIRO EMANUEL', 'PETINA RODRIGUEZ JAIRO E.'), true)
+})

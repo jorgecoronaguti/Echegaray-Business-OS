@@ -9,7 +9,8 @@ import {
 } from '../services/quincena'
 import { getQuincenaPorObra } from '../services/jornadaPorObraService'
 import {
-  armarQuincenaPorObra, diasSinMarcar, personasPorObra, totalDeLaQuincena, totalesPorDia,
+  armarQuincenaPorObra, diasSinMarcar, filtrarPorObra, OBRA_SIN, personasPorObra, SIN_OBRA,
+  totalDeLaQuincena, totalesPorDia,
 } from '../services/quincenaPorObra'
 import { GrillaAsistenciaObra } from './GrillaAsistenciaObra'
 
@@ -32,14 +33,19 @@ import { GrillaAsistenciaObra } from './GrillaAsistenciaObra'
 // pasada» por mensaje, y recargar no devuelve a hoy.
 
 export async function BloqueAsistenciaQuincena({
-  quincenaPedida, hoy, q, hrefDe, puedeCorregir, puedeCambiarObra,
+  quincenaPedida, hoy, q, obra, hrefDe, hrefObra, puedeCorregir, puedeCambiarObra,
 }: {
   /** Cualquier día de la quincena que se quiere ver. Lo que no sea una fecha vuelve a la de hoy. */
   quincenaPedida?: string
   hoy: string
   /** El texto del buscador. Filtra DESPUÉS de armar la grilla — ver abajo. */
   q?: string
+  /** `?obra=` — el RÓTULO del chip, o `sin-obra`. Recorta igual que `q`: después de armar. */
+  obra?: string
   hrefDe: (quincena: string) => string
+  /** Esta misma vista con otro recorte de obra. `undefined` lo apaga; lo demás (quincena, texto,
+   *  modo) lo conserva la página, que es la dueña de la URL. */
+  hrefObra: (obra?: string) => string
   /** Corregir la OBRA de un día es de Administración. La policy decide de verdad; esto evita
    *  ofrecer un botón que va a rebotar contra un `permission denied`. */
   puedeCorregir: boolean
@@ -78,12 +84,37 @@ export async function BloqueAsistenciaQuincena({
   }
   // EL TEXTO FILTRA DESPUÉS DE ARMAR LA GRILLA, nunca antes. Filtrar los registros crudos sacaría a
   // una persona de las celdas de sus propios compañeros y un día marcado pasaría a «sin marcar».
-  const filas = q?.trim()
+  const porTexto = q?.trim()
     ? todas.filter((f) => contieneEnAlguno([f.persona.nombre, f.rotuloObra, f.persona.nota], q))
     : todas
-  // LOS CHIPS, LOS TOTALES Y EL RECLAMO SON DE LA QUINCENA ENTERA, no de lo que sobrevive al
-  // buscador: un total que cambia al escribir deja de ser el total de la quincena.
-  const totales = totalesPorDia(todas, dias)
+  // EL RECORTE POR OBRA VA DESPUÉS DEL TEXTO Y SOBRE LA MISMA GRILLA ARMADA — dueño, 10/09/2026.
+  // La regla es de `filtrarPorObra`: acá sólo se elige el orden, y el orden importa porque el
+  // buscador mira el rótulo de obra: filtrar por obra primero no cambiaría el resultado, pero
+  // partiría en dos la única regla de «se recorta lo dibujado, nunca lo crudo».
+  const filas = filtrarPorObra(porTexto, obra)
+  // EL VALOR DE LA URL, NORMALIZADO AL TOKEN DEL CHIP. `sin-obra` y el rótulo largo «Sin obra
+  // activa» piden el mismo recorte —una URL que ya se compartió por mensaje no puede morir porque
+  // se acortó el token—, y el chip que se marca activo tiene que ser el mismo en los dos casos.
+  const pedida = obra?.trim() ?? ''
+  const elegida = pedida === SIN_OBRA ? OBRA_SIN : pedida
+  const rotuloElegido = elegida === OBRA_SIN ? SIN_OBRA : elegida
+  // ═══ QUÉ MIDE CADA NÚMERO DE LA PANTALLA (decisión del dueño, 10/09/2026) ═══
+  //
+  // LOS CHIPS Y «DÍAS SIN CARGAR» SON SIEMPRE DE LA QUINCENA ENTERA (`todas`). Un chip que al
+  // activarse pone a los demás en cero deja de ser un filtro, y el reclamo de días sin cargar es de
+  // la empresa: esconderlo detrás de un recorte lo haría desaparecer justo cuando se está mirando
+  // otra obra.
+  //
+  // EL PIE —totales por día y total— SIGUE AL FILTRO POR OBRA Y NO AL BUSCADOR. Con una obra
+  // elegida el número que se necesita es el de esa obra, y el rótulo lo dice («Total · <obra>»): un
+  // total que cambia de población sin cambiar de cartel se lee como el de todos. El texto de `q`
+  // NO lo mueve —escribir tres letras no es elegir una población— y por eso el pie mira
+  // `paraElPie`, que recorta por obra sobre `todas` y deja el buscador afuera.
+  //
+  // LOS SUBTOTALES POR GRUPO —Jefes/Obreros— los calcula la grilla sobre las filas que recibe: ésos
+  // contestan siempre «lo que estoy viendo».
+  const paraElPie = filtrarPorObra(todas, obra)
+  const totales = totalesPorDia(paraElPie, dias)
   const chips = personasPorObra(todas)
   const sinMarcar = diasSinMarcar(todas)
   // LAS OBRAS A LAS QUE SE PUEDE MOVER UN DÍA: las activas que la sesión ve. La jornada de cada una
@@ -100,14 +131,7 @@ export async function BloqueAsistenciaQuincena({
         <span style={{ fontSize: '13px', color: V.tinta }} data-testid="rotulo-quincena">
           {rotuloQuincena(quincena)}
         </span>
-        {chips.map((c) => (
-          <span key={c.rotulo} data-testid="chip-obra" style={{
-            fontSize: '12px', color: V.apagado, border: `1px solid ${V.linea}`,
-            borderRadius: 999, padding: '2px 9px',
-          }}>
-            {c.rotulo} <span style={{ color: V.tenue }}>{c.personas}</span>
-          </span>
-        ))}
+        <ChipsDeObra chips={chips} elegida={elegida} hrefObra={hrefObra} />
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'baseline' }}>
           {sinMarcar > 0 && (
             <span data-testid="dias-sin-marcar" style={{ fontSize: '12px', color: V.warn }}>
@@ -123,9 +147,13 @@ export async function BloqueAsistenciaQuincena({
 
       {filas.length === 0 ? (
         <Vacio>
-          {q?.trim()
-            ? `Ninguna persona de esta quincena coincide con «${q.trim()}».`
-            : 'Nadie tiene asignación vigente ni horas cargadas en esta quincena.'}
+          {/* EL VACÍO NOMBRA AL RECORTE QUE LO CAUSÓ. Si el texto ya no dejó a nadie, la obra no
+              tiene la culpa: por eso se mira `porTexto`, no `todas`. */}
+          {elegida && porTexto.length > 0
+            ? `Nadie de esta quincena está en «${rotuloElegido}».`
+            : q?.trim()
+              ? `Ninguna persona de esta quincena coincide con «${q.trim()}».`
+              : 'Nadie tiene asignación vigente ni horas cargadas en esta quincena.'}
           {' '}La asistencia se carga por obra, desde{' '}
           <Link href="/campo/asistencia" className="underline">Campo · Asistencia</Link>.
         </Vacio>
@@ -137,7 +165,10 @@ export async function BloqueAsistenciaQuincena({
           titulos={dias.map(nombreDia)}
           columnasTenues={dias.map((d) => tenues.has(d))}
           totalesDia={totales}
-          total={totalDeLaQuincena(todas)}
+          total={totalDeLaQuincena(paraElPie)}
+          rotuloTotal={elegida
+            ? `Total · ${elegida === OBRA_SIN ? 'sin obra' : rotuloElegido}`
+            : undefined}
           jornadaPorObra={jornadaPorObra}
           obras={obras.map((o) => ({ id: o.id, nombre: o.nombre }))}
           puedeCorregir={puedeCorregir}
@@ -198,5 +229,69 @@ function Quincenas({ quincena, hrefDe }: {
         siguiente ›
       </Link>
     </span>
+  )
+}
+
+/**
+ * LOS CHIPS POR OBRA — el filtro que pidió el dueño el 10/09/2026: *«crear filtro por obras para
+ * los obreros»*.
+ *
+ * ═══ POR QUÉ ENLACES Y NO BOTONES ═══
+ *
+ * El recorte viaja en la URL: se comparte por mensaje —«miralo filtrado por BSA»—, se recarga, y
+ * vuelve con el botón de atrás. Es la misma decisión de `FiltrosSuaves`, de donde sale también la
+ * marca del activo: tinta plena, negrita y el fondo #F2F1ED, sin un color que no exista ya.
+ *
+ * ═══ EL NÚMERO SIGUE SIENDO EL DE LA QUINCENA ENTERA ═══
+ *
+ * Los chips se arman con `todas`, no con el recorte. Un chip que al activarse se queda con su
+ * propio número y pone los demás en cero deja de ser un filtro: se vuelve un informe de sí mismo, y
+ * quien lo mira ya no puede comparar contra dónde está el resto de la gente.
+ */
+function ChipsDeObra({ chips, elegida, hrefObra }: {
+  chips: { rotulo: string; personas: number }[]
+  /** El token activo, ya normalizado (`''` = todas). */
+  elegida: string
+  hrefObra: (obra?: string) => string
+}) {
+  const chip = (activo: boolean) => ({
+    fontSize: '12px', borderRadius: 999, padding: '2px 9px',
+    border: `1px solid ${V.linea}`,
+    color: activo ? V.tinta : V.apagado,
+    fontWeight: activo ? 600 : 400,
+    background: activo ? V.hover : 'transparent',
+  })
+  return (
+    <>
+      <Link
+        href={hrefObra(undefined)}
+        // NO SE PRECARGA: cada chip apunta a esta misma pantalla, que es `force-dynamic`. Precargar
+        // dispara un render de servidor entero por chip y el payload no se reusa al hacer clic.
+        prefetch={false}
+        data-testid="chip-obra-todas"
+        aria-current={!elegida ? 'true' : undefined}
+        style={chip(!elegida)}
+      >
+        Todas
+      </Link>
+      {chips.map((c) => {
+        const token = c.rotulo === SIN_OBRA ? OBRA_SIN : c.rotulo
+        const activo = elegida === token
+        return (
+          <Link
+            key={c.rotulo}
+            // CLIC EN LA OBRA YA ACTIVA LA APAGA. Sin esto el único camino de vuelta a la quincena
+            // entera sería borrar el parámetro a mano en la barra de direcciones.
+            href={hrefObra(activo ? undefined : token)}
+            prefetch={false}
+            data-testid="chip-obra"
+            aria-current={activo ? 'true' : undefined}
+            style={chip(activo)}
+          >
+            {c.rotulo} <span className="font-mono tabular-nums" style={{ color: V.tenue }}>{c.personas}</span>
+          </Link>
+        )
+      })}
+    </>
   )
 }

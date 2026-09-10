@@ -21,6 +21,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { girosDe, periodoDeRecibo, type FilaAdelanto, type FilaRecibo } from './liquidacionCuadros.ts'
 import { tarifaVigenteAl } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
+import { esJefeDeObra } from './vocabularioPersona.ts'
+import { ordenarComoPersonal } from './ordenDePersonal.ts'
 
 /** El estado del recibo del estudio en Documentos del legajo. */
 export type ChipRecibo = 'cargado' | 'solicitado'
@@ -38,6 +40,8 @@ export interface EslabonPersona {
   chip: ChipRecibo | null
   /** `true` sólo si el extracto muestra el giro. Ver `girosDe`. */
   giroEnElLote: boolean
+  /** Jefe de obra según `esJefeDeObra(puesto)`: el corte con el que ordena todo el módulo. */
+  esJefe: boolean
 }
 
 export interface AusenciaDeclarada {
@@ -74,7 +78,7 @@ interface FilaLegajo {
 export async function getEslabonesDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<EslabonesDeLaQuincena> {
-  const [legajo, tarifas, recibos, adelantos, estudio, banco] = await Promise.all([
+  const [legajo, tarifas, recibos, adelantos, estudio, banco, directorio] = await Promise.all([
     supabase.from('persona_legajo').select('id, nombre_completo, cuil, en_la_empresa'),
     supabase.from('persona_tarifa')
       .select('persona_id, desde, valor_hora, neto_mensual, origen').lte('desde', q.hasta),
@@ -88,6 +92,11 @@ export async function getEslabonesDeLaQuincena(
     // NO se leen los movimientos: se cuenta si HAY. Es la diferencia entre «no giró» y «no miré».
     supabase.from('banco_movimientos')
       .select('id', { count: 'exact', head: true }).gte('fecha', q.desde).lte('fecha', q.hasta),
+    // EL PUESTO, SÓLO PARA ORDENAR Y ROTULAR como el resto de Personal (dueño, 10/09/2026). Es la
+    // misma columna y la misma función que Plantel, Asistencia, Horas y Pagos. Si no se puede leer,
+    // la lista sigue saliendo alfabética: el orden no es un dato que se pueda inventar, pero
+    // tampoco es motivo para dejar la pantalla en blanco.
+    supabase.from('persona_directorio').select('id, puesto'),
   ])
 
   const errores: { que: string; error: string }[] = []
@@ -109,7 +118,9 @@ export async function getEslabonesDeLaQuincena(
   anotar('el extracto bancario', banco.error)
 
   const hayExtracto = (banco.count ?? 0) > 0
-  const personas = armarPersonas(q, legajo.data, tarifas.data, recibos.data, adelantos.data, estudio.data, hayExtracto)
+  const personas = armarPersonas(
+    q, legajo.data, tarifas.data, recibos.data, adelantos.data, estudio.data, hayExtracto, directorio.data,
+  )
 
   return {
     personas,
@@ -126,8 +137,12 @@ export async function getEslabonesDeLaQuincena(
 
 function armarPersonas(
   q: Quincena, legajo: unknown, tarifas: unknown, recibos: unknown, adelantos: unknown,
-  estudio: unknown, hayExtracto: boolean,
+  estudio: unknown, hayExtracto: boolean, directorio: unknown,
 ): EslabonPersona[] {
+  const jefes = new Set(
+    ((directorio ?? []) as { id: string; puesto: string | null }[])
+      .filter((d) => esJefeDeObra(d.puesto)).map((d) => d.id),
+  )
   const periodo = periodoDeRecibo(q)
   const filasRecibo = (recibos ?? []) as FilaRecibo[]
   const filasAdelanto = ((adelantos ?? []) as FilaAdelanto[])
@@ -140,7 +155,7 @@ function armarPersonas(
     persona_id: string; desde: string; valor_hora: number | null; neto_mensual: number | null; origen: string
   }[]
 
-  return ((legajo ?? []) as FilaLegajo[])
+  const filas = ((legajo ?? []) as FilaLegajo[])
     .filter((p) => p.en_la_empresa !== false)
     .map((p) => {
       const vigente = tarifaVigenteAl(
@@ -169,9 +184,13 @@ function armarPersonas(
         reciboNeto,
         chip: doc == null ? null : (doc.drive_file_id ? ('cargado' as const) : ('solicitado' as const)),
         giroEnElLote: giro,
+        esJefe: jefes.has(p.id),
       }
     })
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  // EL ORDEN DEL MÓDULO PERSONAL: jefes primero y alfabético en español. Antes era un
+  // `localeCompare` suelto —la mitad de la regla—, y los dos jefes de obra caían en el medio de la
+  // lista, en un lugar distinto al que ocupan en Plantel, Asistencia, Horas y Pagos.
+  return ordenarComoPersonal(filas, (p) => p.nombre, (p) => p.esJefe)
 }
 
 /** Las ausencias declaradas de la ventana, con su motivo. Lectura aparte: la tabla es otra. */

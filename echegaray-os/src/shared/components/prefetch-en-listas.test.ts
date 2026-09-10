@@ -142,8 +142,23 @@ function cierreDeParentesis(fuente: string, abre: number): number {
   return fuente.length
 }
 
+/**
+ * Borra los comentarios sin mover las líneas: un `<Link>` nombrado en un comentario no es un
+ * enlace. El 10/09/2026 este barrido acusó a `TablaClientes.tsx:229`, que es un comentario que
+ * explica dónde vive el alto de la fila; el `<Link>` real de esa fila ya tenía `prefetch={false}`.
+ * Se reemplaza cada carácter por un espacio (los saltos de línea se conservan) para que el
+ * número de línea que se reporta siga siendo el del archivo.
+ */
+export function sinComentarios(fuente: string): string {
+  const blanquear = (s: string) => s.replace(/[^\n]/g, ' ')
+  return fuente
+    .replace(/\/\*[\s\S]*?\*\//g, blanquear)
+    .replace(/^([ \t]*)\/\/.*$/gm, (m) => blanquear(m))
+}
+
 /** Los `<Link>` de `fuente` que están adentro de algún `.map(`, con su línea. */
-export function enlacesMultiplicados(fuente: string): { linea: number; atributos: string }[] {
+export function enlacesMultiplicados(fuenteCruda: string): { linea: number; atributos: string }[] {
+  const fuente = sinComentarios(fuenteCruda)
   const rangos: [number, number][] = []
   for (let m = fuente.indexOf('.map('); m >= 0; m = fuente.indexOf('.map(', m + 1)) {
     rangos.push([m, cierreDeParentesis(fuente, m + 4)])
@@ -183,4 +198,22 @@ test('ningún <Link> dentro de un .map() precarga', () => {
     + 'completo del destino, que además es force-dynamic y no se reusa al hacer clic. '
     + `Poné prefetch={false}:\n  ${culpables.join('\n  ')}`,
   )
+})
+
+test('un <Link> nombrado en un comentario dentro del .map() no cuenta', () => {
+  // EL DEFECTO QUE ATRAPA: el barrido leyó «el alto vive en el `<Link>`» de un comentario de
+  // TablaClientes.tsx:229 como si fuera un enlace sin prefetch, y puso rojo un archivo correcto.
+  const fuente = [
+    'export function X({ filas }) {',
+    '  return filas.map((f) => {',
+    '    // el alto vive en el `<Link>`, que es el contenedor',
+    '    /* otro <Link> en bloque */',
+    '    return <Link href={`/x/${f.id}`} prefetch={false}>{f.nombre}</Link>',
+    '  })',
+    '}',
+  ].join('\n')
+  const hallados = enlacesMultiplicados(fuente)
+  assert.equal(hallados.length, 1, 'sólo el <Link> real')
+  assert.equal(hallados[0].linea, 5)
+  assert.match(hallados[0].atributos, /prefetch=\{false\}/)
 })

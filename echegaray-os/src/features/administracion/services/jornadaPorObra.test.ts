@@ -4,7 +4,7 @@ import {
   armarJornada, asignadosPorObra, ausenciasSinJornada, avisoDeFaltantes, casillasIniciales,
   otrasCargasDelDia,
   estadoDeCasilla, hs,
-  leerHoras, loQueViaja, ponerLaJornada, resumenJornada, sobreLaJornada, sumarPersonasNuevas,
+  leerHoras, obraElegidaDe, loQueViaja, ponerLaJornada, resumenJornada, sobreLaJornada, sumarPersonasNuevas,
 } from './jornadaPorObra.ts'
 import type { PersonaDeLaObra, RegistroDelDia } from './jornadaPorObra.ts'
 
@@ -354,4 +354,34 @@ test('SIN NINGUNA FILA SIN OBRA EL AVISO SIGUE SIENDO EL DE SIEMPRE', () => {
     { persona_id: 'p1', horas: 8.8, obra_canonica_id: 'quattropani', obra: 'QUATTROPANI' },
   ])
   assert.deepEqual(otras.get('p1'), { obra: 'QUATTROPANI', horas: 8.8, ausente: false })
+})
+
+// ═══ `?obra=` SIGNIFICA LO MISMO EN LAS DOS VISTAS DE ASISTENCIA (10/09/2026) ═══════════════════
+
+const DEL_DIA = [
+  { id: 'pisos-industriales', nombre: 'PISOS INDUSTRIALES' },
+  { id: 'sf-mamposteria', nombre: 'MAMPOSTERÍA' },
+]
+
+test('LA OBRA SE ELIGE POR ID O POR NOMBRE: venir del chip de la grilla no pierde la obra', () => {
+  // EL DEFECTO QUE ATRAPA: el filtro por obra de la quincena manda el RÓTULO en `?obra=`. Con la
+  // búsqueda sólo por id, tocar «Cargar la asistencia de un día» desde una obra filtrada caía en la
+  // lista de obras y había que volver a elegir la misma que ya estaba elegida.
+  assert.equal(obraElegidaDe(DEL_DIA, 'sf-mamposteria'), 'sf-mamposteria')
+  assert.equal(obraElegidaDe(DEL_DIA, 'MAMPOSTERÍA'), 'sf-mamposteria')
+})
+
+test('LO QUE NO COINCIDE NO CAE EN UNA OBRA CUALQUIERA', () => {
+  // «Sin obra activa» y una obra cerrada son rótulos legítimos del chip y NO son cargables. Elegir
+  // igual la primera obra imputaría horas a una obra que nadie eligió.
+  assert.equal(obraElegidaDe(DEL_DIA, 'Sin obra activa'), null)
+  assert.equal(obraElegidaDe(DEL_DIA, 'MAMPOSTERÍA VIEJA (cerrada)'), null)
+  assert.equal(obraElegidaDe([{ id: 'unica', nombre: 'ÚNICA' }], 'OTRA'), null,
+    'con una sola obra visible, pedir otra sigue siendo pedir otra')
+})
+
+test('SIN PEDIDO: una sola obra se elige sola, dos no', () => {
+  assert.equal(obraElegidaDe([{ id: 'unica', nombre: 'ÚNICA' }], undefined), 'unica')
+  assert.equal(obraElegidaDe(DEL_DIA, undefined), null)
+  assert.equal(obraElegidaDe(DEL_DIA, '   '), null, 'un parámetro en blanco no elige')
 })

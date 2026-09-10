@@ -71,7 +71,7 @@ export function PanelDocumento({
           buenos aunque mañana alguien mueva el archivo de carpeta. */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <BotonEnlace
-          href={enlaceDrive(documento.drive_file_id)}
+          href={enlaceDrive(documento.drive_file_id, documento.web_view_link)}
           variante="primaria"
           target="_blank"
           rel="noreferrer"

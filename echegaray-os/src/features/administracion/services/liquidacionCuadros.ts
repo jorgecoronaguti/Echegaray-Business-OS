@@ -32,6 +32,7 @@ import {
   type TarifaVigente,
 } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
+import { ORDEN_DE_CUADROS, ordenarComoPersonal } from './ordenDePersonal.ts'
 
 export interface PersonaDeLiquidacion {
   id: string
@@ -39,6 +40,8 @@ export interface PersonaDeLiquidacion {
   /** Sin CUIL no hay recibo ni giro que emparejar: la fila lo dice, no lo adivina. */
   cuil: string | null
   enLaEmpresa: boolean
+  /** `esJefeDeObra(persona_directorio.puesto)`, leído UNA vez en el servicio y propagado. */
+  esJefe?: boolean
 }
 
 export interface FilaTarifa {
@@ -162,6 +165,7 @@ function entradaDe(
   return {
     personaId: p.id,
     nombre: p.nombre,
+    esJefe: p.esJefe === true,
     horas: h == null ? null : h.horas,
     tarifa,
     // CERO CON SU MOTIVO ESCRITO AL LADO (`adelantoSinFuente`), no un cero mudo.
@@ -215,11 +219,16 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     cuadros.obreros.push(liquidarLinea(entradaDe(ctx, p, vigente, 'obreros'), 'obreros', redondeo))
   }
 
-  const orden: GrupoLiquidacion[] = ['obreros', 'oficina', 'final']
-  return orden.map((grupo) => ({
+  // ═══ EL ORDEN DEL MÓDULO PERSONAL, TAMBIÉN ACÁ (dueño, 10/09/2026) ═══
+  //
+  // Los cuadros salen Oficina → Obreros → Finales, y dentro de cada uno jefes primero y alfabético
+  // en español. Antes era `['obreros','oficina','final']` con un `localeCompare` suelto: Pagos
+  // publicaba a los quince obreros y a los dos jefes de Oficina al final, al revés que Plantel,
+  // Asistencia y Horas. Un `sort` escrito a mano por pantalla es cómo se separan los órdenes.
+  return [...ORDEN_DE_CUADROS].map((grupo) => ({
     grupo,
     titulo: TITULOS[grupo],
-    lineas: cuadros[grupo].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+    lineas: ordenarComoPersonal(cuadros[grupo], (l) => l.nombre, (l) => l.esJefe),
     presentesSinHoras: grupo === 'obreros' ? presentesSinHoras : 0,
     // LA COLUMNA ADELANTO ESTÁ EN CERO PORQUE NO TIENE TABLA, no porque nadie haya cobrado nada a
     // cuenta. Se declara en los tres cuadros: los tres la restan.
@@ -243,6 +252,7 @@ function lineaFinal(
   return liquidarLinea({
     personaId: p.id,
     nombre: p.nombre,
+    esJefe: p.esJefe === true,
     horas: null,
     tarifa: null,
     adelanto: 0,
