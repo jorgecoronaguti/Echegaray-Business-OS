@@ -201,3 +201,50 @@ NULL y no el contrato entero.
 ### Las excepciones
 
 Ninguna.
+
+---
+
+## `carpeta_de_drive`
+
+| | |
+|---|---|
+| **Fuente primaria** | src/features/documentos/services/carpetaDeEntidad.ts · FUENTE_DE_CARPETA — obra: public.obra_canonica.drive_carpeta_id · cliente: public.clientes.drive_carpeta_id · persona: public.persona_legajo.drive_folder_id · proveedor: NINGUNA (no existen carpetas de proveedor en Drive) |
+| **Propietario** | Quien edita la ficha (el campo «Carpeta Drive» de la obra y del cliente) · `legajos-sincronizar.mjs` para la persona |
+| **Criterio** | Cuál es la carpeta de Drive de una entidad **y con qué estado**: `sin_declarar` · `no_indexada` · `en_papelera` · `ausente` · `no_se_pudo_leer` · `ok`. Ninguno de los cinco primeros se dibuja como «no hay archivos». |
+| **Ventana** | Estado actual. El catálogo `drive_index` lo refresca el timer cada 6 h y desde el H1 nunca borra: marca `ausente_en_drive`. |
+| **Consumidores** | ficha de obra, de persona, de cliente y de proveedor (solapa Documentos) · `censo-carpetas-drive.mjs` · el H3 del puente, que sin carpeta no tiene destino |
+| **Confianza** | **D** · el censo lo mide contra la base y la ficha lo publica con su estado |
+| **Última decisión del dueño** | Pendiente: dónde vive la carpeta de un proveedor, y cuál es la de las 13 obras reales que no la tienen. |
+
+**Una carpeta en la papelera se lee vacía y sin error.** Es la razón de que el estado exista y de que
+no alcance con un booleano: Drive contesta 200 con cero hijos, el índice guarda cero hijos, y la
+ficha dibujaría «sin archivos» sobre una obra con treinta papeles adentro. Lo mismo, al revés, con
+«no tiene carpeta»: es trabajo pendiente de una persona, no un hecho sobre Drive.
+
+**El listado sale del catálogo, nunca de Drive en vivo.** La ficha se dibuja en Vercel y el token de
+Drive vive en la VM: una llamada en vivo al renderizar sería lenta cuando anda y una pantalla rota
+cuando Drive no contesta.
+
+**La lista dice hasta dónde ve.** La RLS de `drive_index` abre el catálogo entero a Dirección y
+Administración (`ve_economia()`) y al resto sólo los archivos ya vinculados
+(`drive_file_ids_vinculados()`). Con el rol recortado, la ficha declara que la ausencia de un papel
+no prueba que no esté en Drive.
+
+### Lo prohibido
+
+- `from\('obras'\)[^;]*drive_carpeta_id` — `obras` (10 filas, uuid) y `obra_canonica` (26 filas,
+  slug) tienen las **dos** una columna `drive_carpeta_id` con contenidos distintos. La ficha
+  `/obras/[obra]` lee `obra_canonica`; resolver la carpeta contra `obras` mostraría los papeles de
+  otra obra —o ninguno— sin fallar.
+- `from\('personas'\)[^;]*drive_folder_id` — la carpeta del legajo se lee por la vista
+  `persona_legajo`, el único portero por el que Administración llega al legajo. Leerla de la tabla
+  saltea ese portero.
+
+### Las excepciones
+
+| Archivo | Por qué | Hasta |
+|---|---|---|
+| `src/app/portal/(dentro)/datosObra.ts` | El **portal del cliente** vive sobre `public.obras`, no sobre `obra_canonica`: es el registro que usan sus dos pantallas y `obra_adjunto_cliente`. **La consecuencia no es teórica: la carpeta que el portal le muestra al cliente puede no ser la misma que ve el equipo en la ficha.** Unificar los dos registros de obra es anterior a este hito y tiene efecto hacia afuera. | **H6** del puente Drive |
+
+`censo-carpetas-drive.mjs` no necesita excepción: consulta las tablas por SQL crudo con
+`service_role`, que es otra cosa —el censo de TODAS las filas, sin RLS y sin pantalla—.

@@ -232,6 +232,31 @@
         }
       ],
       "excepciones": []
+    },
+    {
+      "concepto": "carpeta_de_drive",
+      "canonica": "src/features/documentos/services/carpetaDeEntidad.ts · FUENTE_DE_CARPETA — obra: public.obra_canonica.drive_carpeta_id · cliente: public.clientes.drive_carpeta_id · persona: public.persona_legajo.drive_folder_id · proveedor: NINGUNA (no existen carpetas de proveedor en Drive)",
+      "propietario": "quien edita la ficha (el campo «Carpeta Drive» de la obra y del cliente) · orquestador/scripts/legajos-sincronizar.mjs para la persona",
+      "criterio": "Cuál es la carpeta de Drive de una entidad, y con qué estado: sin_declarar · no_indexada · en_papelera · ausente · no_se_pudo_leer · ok. NINGUNO de los cinco primeros se dibuja como «no hay archivos»: una carpeta en la papelera se lee vacía y sin error. El listado de sus archivos sale SIEMPRE del catálogo public.drive_index, nunca de la API de Drive en vivo.",
+      "ventana": "estado actual; el catálogo lo refresca el timer drive-index cada 6 h y desde el H1 nunca borra (marca `ausente_en_drive`)",
+      "confianza": "D · conocimiento interno validado: el censo `orquestador/scripts/censo-carpetas-drive.mjs` lo mide contra la base y la ficha lo publica con su estado",
+      "prohibidas": [
+        {
+          "patron": "from\\('obras'\\)[^;]*drive_carpeta_id",
+          "porque": "`obras` (10 filas, uuid) y `obra_canonica` (26 filas, slug) tienen las DOS una columna `drive_carpeta_id` con contenidos distintos. La ficha /obras/[obra] lee `obra_canonica`; resolver la carpeta contra `obras` mostraría los papeles de otra obra —o ninguno— sin fallar. Que existan dos columnas es un problema abierto; cuál manda no lo es."
+        },
+        {
+          "patron": "from\\('personas'\\)[^;]*drive_folder_id",
+          "porque": "La carpeta del legajo se lee por la vista `persona_legajo`, que es el único portero por el que Administración llega al legajo. Leerla de la tabla `personas` saltea ese portero y publica la carpeta de alguien a quien el que mira no puede ver."
+        }
+      ],
+      "excepciones": [
+        {
+          "archivo": "src/app/portal/(dentro)/datosObra.ts",
+          "porque": "El PORTAL DEL CLIENTE vive sobre `public.obras`, no sobre `obra_canonica`: es el registro que usan sus dos pantallas y `obra_adjunto_cliente`. La consecuencia está declarada y no es teórica — la carpeta que el portal le muestra al cliente puede no ser la misma que ve el equipo en la ficha. Unificar los dos registros de obra es anterior a este hito y tiene efecto hacia AFUERA.",
+          "hasta": "H6 del puente Drive (o el hito que unifique obras/obra_canonica)"
+        }
+      ]
     }
   ]
 }
