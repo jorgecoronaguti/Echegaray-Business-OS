@@ -1,8 +1,7 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { SesionPortal } from './sesion'
-import type { ObraDelPortal } from './Shell'
-import { accesoVigente, alcanzaLaObra, limpiarNombre, type AccesoDelPortal, type FilaAcceso } from './permisos'
+import { accesoVigente, limpiarNombre, type AccesoDelPortal, type FilaAcceso } from './permisos'
 
 // QUÉ VE ESTE MAIL — la pregunta se le hace a `public.cliente_acceso`, que es la ficha del cliente.
 //

@@ -32,7 +32,7 @@ import { DESTINOS, NAVEGABLES, destinoActivo } from './destinos'
 import { IconoDestino } from './IconoDestino'
 import { IconoUsuario } from './iconos'
 
-export type ObraDelPortal = { id: string; nombre: string }
+// `ObraDelPortal` se fue con las props que este componente dejó de recibir (10/09/2026).
 
 type Props = {
   /** Dirección está mirando desde la ficha. Ya no cambia NADA de lo que se dibuja —el portal es
