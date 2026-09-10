@@ -107,10 +107,13 @@ test('CON FRONTERA, COMPROMETIDA suma en vivo las pendientes que el libro todav�
   // (total − pagado). Una pagada nueva NO entra: ya salió del banco, sumarla sería doble conteo.
   const c = tarjetas({ ...REF, fronteraCompras: 833 }).find((t) => t.clave === 'comprometida')
   assert.match(c.valor, /\+SUMPRODUCT/)
-  assert.ok(c.valor.includes('Compras!$X$834:$X$1334'), 'arranca en la fila siguiente a la frontera')
+  // RANGO ABIERTO desde el 10/09/2026: la cota `+500` no protegía de nada —el filtro es «Pendiente»
+  // más fecha, no la posición— y el día que Compras creciera más de 500 filas por encima de la
+  // frontera el término dejaba de ver las pendientes nuevas SIN dar un error.
+  assert.match(c.valor, /Compras!\$X\$834:\$X[^$]/, 'arranca en la fila siguiente a la frontera y no tiene techo')
   assert.ok(c.valor.includes('="Pendiente"'), 'sólo pendientes: una pagada nueva ya salió del saldo')
   assert.ok(c.valor.includes(`<${FIN_DE_MES}`), 'sólo lo que cae dentro del mes')
-  assert.ok(c.valor.includes('N(Compras!$O$834:$O$1334)-N(Compras!$T$834:$T$1334)'), 'el saldo, no el total')
+  assert.ok(c.valor.includes('N(Compras!$O$834:$O)-N(Compras!$T$834:$T)'), 'el saldo, no el total')
   assert.ok(!c.valor.includes(','), 'locale es-AR: sin comas como separador de argumentos')
   // Y LA LIBRE LO HEREDA SOLA: sigue siendo la resta de las tarjetas vecinas, por referencia.
   const l = tarjetas({ ...REF, fronteraCompras: 833 }).find((t) => t.clave === 'libre')
