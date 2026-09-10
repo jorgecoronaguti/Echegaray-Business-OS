@@ -131,3 +131,14 @@ export function corridaMasFresca<T extends { al: Date | null }>(
   if (!halladas.length) return null
   return halladas.reduce((mejor, c) => ((c.al?.getTime() ?? 0) > (mejor.al?.getTime() ?? 0) ? c : mejor))
 }
+
+/**
+ * EL ID BAJO EL QUE SE ARCHIVA LO DE ESTA OBRA HOY.
+ *
+ * Una obra fusionada dejó de ser un destino válido: sus papeles, sus pagos y su avance viven en la
+ * que la absorbió. Lo usa `orquestador/scripts/documentos-espejo.mjs`, que recorre `obra_canonica`
+ * entera y —sin esto— volvería a publicar los once papeles de «BSA - Planta» bajo el id viejo, donde
+ * el portal ya no los mira. No serían un error visible: serían once documentos invisibles.
+ */
+export const obraVigente = (o: { id: string; fusionada_en?: string | null }): string =>
+  o.fusionada_en ?? o.id

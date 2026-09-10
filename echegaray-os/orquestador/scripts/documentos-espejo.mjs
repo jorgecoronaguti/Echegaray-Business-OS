@@ -29,6 +29,8 @@ import { query } from '../lib/db.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { veredicto, esCarpetaDelCliente, rutaEnBucket } from '../../src/app/portal/papeles.ts'
+// UNA OBRA FUSIONADA NO ES UN DESTINO. La regla vive con el portal, que es quien la lee.
+import { obraVigente } from '../../src/app/portal/obrasDelCliente.ts'
 
 const BUCKET = 'documentos-cliente'
 const CAMPOS = 'id,name,mimeType,modifiedTime,size'
@@ -52,7 +54,7 @@ async function ambitos() {
     `select id::text, coalesce(nombre_comercial, razon_social, 'Cliente') nombre, drive_carpeta_id
        from clientes order by 2`)
   const { rows: obras } = await query(
-    `select id, nombre, cliente_id::text, drive_carpeta_id
+    `select id, nombre, cliente_id::text, drive_carpeta_id, fusionada_en
        from obra_canonica where cliente_id is not null order by id`)
 
   // Las carpetas que ALGUNA obra declara como suya. La carpeta del cliente no se recorre si es una
@@ -63,7 +65,15 @@ async function ambitos() {
   const lista = []
   for (const o of obras) {
     if (!o.drive_carpeta_id) continue
-    lista.push({ clave: `obra:${o.id}`, clienteId: o.cliente_id, obraId: o.id, rotulo: o.nombre, carpeta: o.drive_carpeta_id })
+    // ═══ LOS PAPELES SE ARCHIVAN BAJO LA OBRA QUE SIGUE VIVA (10/09/2026) ═══
+    //
+    // «BSA - Planta» se fusionó en «ME - BSA» y sus once documentos se repuntaron. Este script
+    // recorre `obra_canonica` ENTERA, así que la corrida siguiente los habría vuelto a publicar
+    // bajo `bsa-planta` —donde el portal ya no mira— y el cliente tendría once papeles invisibles
+    // y once duplicados en la tabla. Con el destino resuelto, el upsert cae sobre las filas que ya
+    // existen y la corrida es idempotente.
+    const obraId = obraVigente(o)
+    lista.push({ clave: `obra:${obraId}`, clienteId: o.cliente_id, obraId, rotulo: o.nombre, carpeta: o.drive_carpeta_id })
   }
   for (const c of clientes) {
     if (!c.drive_carpeta_id || deObras.has(c.drive_carpeta_id)) continue
