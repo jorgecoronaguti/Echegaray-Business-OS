@@ -2,6 +2,7 @@ import { describe, it, test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   completarCadenaDelDia, identidadGlobal, roturasDeCadena, roturasQueExplican, auditarCuenta,
+  contrastarConDeclarado,
 } from './banco-cadena-saldos.mjs'
 
 /** Un extracto sano: cada saldo es el anterior más el importe. */
@@ -121,4 +122,63 @@ describe('completar la cadena de los movimientos del día', () => {
     assert.equal(r.filas[0].saldoCalculado, undefined)
     assert.equal(r.filas[1].saldoCalculado, true, 'y las completadas quedan marcadas como tales')
   })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CONTRASTE CONTRA EL BANCO, Y EL DEPÓSITO RETENIDO (10/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+/** El día en chico: ayer cerró en 5.000.000 y hoy entran un eCheq retenido y dos débitos. */
+const conRetenido = () => [
+  { fecha: '2026-09-09', concepto: 'Impuesto ley 25.413', importe: -31586.22, saldo_despues: 5000000 },
+  { fecha: '2026-09-10', concepto: 'Deposito e-cheq 48hs presencia bsr', importe: 38572526.23, saldo_despues: null, acreditacion_pendiente: true },
+  { fecha: '2026-09-10', concepto: 'Compra con tarjeta de debito', importe: -1415058.73, saldo_despues: 3584941.27 },
+]
+
+test('el contraste EXTERNO resta los retenidos y cierra contra el pie del banco', () => {
+  const r = contrastarConDeclarado(conRetenido(), { fecha: '2026-09-10', saldo: 3584941.27 })
+  assert.equal(r.estado, 'cierra')
+  assert.equal(r.retenidos, 1)
+  assert.equal(r.retenido, 38572526.23)
+})
+
+test('EL FALSO VERDE: sin restar el retenido, el mismo día NO cierra contra el banco', () => {
+  // Es el defecto del 10/09: la identidad interna daba ✓ y el saldo publicado estaba $38,5 M arriba.
+  const sinMarca = conRetenido().map((m) => ({ ...m, acreditacion_pendiente: false }))
+  const r = contrastarConDeclarado(sinMarca, { fecha: '2026-09-10', saldo: 3584941.27 })
+  assert.equal(r.estado, 'no_cierra')
+  assert.equal(r.diferencia, -38572526.23)
+})
+
+test('sin pie del banco el control lo DICE, en vez de firmar un ✓ contra sí mismo', () => {
+  assert.equal(contrastarConDeclarado(conRetenido(), null).estado, 'sin_declarado')
+})
+
+test('la ventana del contraste es la del pie: no cuenta los movimientos posteriores', () => {
+  const conMasNuevo = [...conRetenido(), { fecha: '2026-09-11', concepto: 'Cheque debitado', importe: -900000, saldo_despues: 2684941.27 }]
+  assert.equal(contrastarConDeclarado(conMasNuevo, { fecha: '2026-09-10', saldo: 3584941.27 }).estado, 'cierra')
+})
+
+test('completarCadenaDelDia no encadena un retenido ni le pone saldo', () => {
+  const movs = [
+    { fecha: '2026-09-09', importe: -100, saldo: 5000000 },
+    { fecha: '2026-09-10', importe: 38572526.23, acreditacionPendiente: true },
+    { fecha: '2026-09-10', importe: -1415058.73 },
+  ]
+  const r = completarCadenaDelDia(movs, 3584941.27)
+  assert.equal(r.filas[1].saldo, null)
+  assert.equal(r.filas[2].saldo, 3584941.27)
+  assert.equal(r.cierra, true)
+  assert.equal(r.ajustada, false)
+})
+
+test('cuando la cadena no cierra se publica el saldo DECLARADO por el banco', () => {
+  const movs = [
+    { fecha: '2026-09-09', importe: -100, saldo: 5000000 },
+    { fecha: '2026-09-10', importe: -1000000 },
+  ]
+  const r = completarCadenaDelDia(movs, 3584941.27)
+  assert.equal(r.cierra, false)
+  assert.equal(r.ajustada, true)
+  assert.equal(r.filas.at(-1).saldo, 3584941.27) // el dato del banco, no nuestra reconstrucción
 })

@@ -41,8 +41,12 @@ import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { query } from '../lib/db.mjs'
-import { parsearExtracto, novedades, verificarCadena, clave } from '../lib/banco-importar.mjs'
-import { insertarMovimientos } from '../lib/banco-escribir.mjs'
+import { parsearExtracto, novedades, verificarCadena, clave, saldoDeCierre } from '../lib/banco-importar.mjs'
+import {
+  insertarMovimientos, marcarAcreditacionPendiente, acreditarPendientes,
+  guardarSaldoDeclarado, recalcularSaldosDelDia,
+} from '../lib/banco-escribir.mjs'
+import { cerrarDia, explicacionPendientes } from '../lib/banco-acreditacion.mjs'
 import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, ORIGEN } from '../lib/banco-santander.mjs'
 import { registrarIngesta, FUENTES_INGESTA } from '../lib/registrar-sincronizacion.mjs'
 
@@ -57,6 +61,9 @@ const MIGRACIONES = [
   '20260723120000_banco_movimientos.sql',
   '20260730160000_banco_movimientos_referencia.sql',
   '20260731130000_banco_referencia_mas_importe.sql',
+  // La cuarta marca los depósitos que el banco lista y todavía no acredita (retención de 48 hs): sin
+  // ella la cadena de saldos vuelve a contar como disponible plata que no lo está.
+  '20260910T1300_un_deposito_retenido_no_es_saldo.sql',
 ].map((f) => join(RAIZ, 'supabase', 'migrations', f))
 const DRY = process.argv.includes('--dry')
 const IGUAL = process.argv.includes('--igual-cargalo')
@@ -106,6 +113,53 @@ async function insertar(movs, origen) {
   return insertados
 }
 
+/**
+ * EL CIERRE DEL DÍA — la parte que faltaba entre "cargué el extracto" y "el saldo es éste".
+ *
+ * Corre SIEMPRE, también cuando no hubo un solo movimiento nuevo: la re-descarga del mismo día no trae
+ * filas nuevas y sin embargo es la que confirma (o desmiente) el saldo. Cuatro pasos, en este orden:
+ *
+ *   1. GUARDAR EL PIE. "Saldo al DD/MM/AAAA" es la única fuente independiente del saldo. La tabla
+ *      existía desde el 19/08 y nadie la poblaba, así que el aviso "no coincide con el declarado"
+ *      nunca podía dispararse: el control se verificaba contra su propio resultado.
+ *   2. MARCAR los depósitos retenidos que ya estaban cargados (el importador no re-inserta nada).
+ *   3. ACREDITAR los que un extracto posterior ya trae con saldo: el número se COPIA del banco.
+ *   4. REHACER la cadena del día, y sólo si cierra al peso contra el declarado.
+ *
+ * Si no cierra, no se escribe el saldo: se publica el declarado (que es el dato del banco) y la
+ * diferencia sale como HALLAZGO. Nunca en silencio.
+ */
+async function cerrarElDia(movimientos, saldosDeclarados, origen) {
+  const pie = saldoDeCierre(saldosDeclarados ?? [])
+  if (!pie) {
+    console.log('\n⚠ el archivo no trae la línea "Saldo al DD/MM/AAAA": no puedo contrastar la cadena '
+      + 'del día contra el banco. Bajá el extracto completo (el CSV del homebanking la incluye al pie).')
+    return
+  }
+  if (pie.conflicto) console.log('⚠ el archivo trae dos cierres de la misma fecha con importes distintos')
+  const cierre = cerrarDia(movimientos, pie.saldo)
+  console.log(`\nsaldo declarado por el banco: ${$(pie.saldo)} al ${pie.fecha ?? '(sin fecha en la línea)'}`)
+  if (cierre.pendientes.length) {
+    console.log(`   ${explicacionPendientes(cierre.pendientes)}:`)
+    for (const m of cierre.pendientes) console.log(`     ${m.fecha} · ${String(m.concepto).slice(0, 46)} · ${$(m.importe)}`)
+  }
+  console.log(`   cadena del día: ${$(cierre.saldoCalculado)} → ${cierre.cierra ? 'CIERRA ✓' : `NO CIERRA (dif ${$(cierre.diferencia)})`}`)
+  if (cierre.hallazgo) console.log(`   ⚠ HALLAZGO: ${cierre.hallazgo}`)
+  if (DRY) { console.log('   — dry: no escribí el saldo declarado ni las marcas'); return }
+
+  const guardado = await guardarSaldoDeclarado({ query }, pie, origen)
+  if (guardado) console.log(`   ✓ banco_saldo_declarado: ${$(guardado.saldo)} al ${guardado.fecha} (leído de vuelta de la tabla)`)
+  const marcados = await marcarAcreditacionPendiente({ query }, movimientos)
+  const acreditados = await acreditarPendientes({ query }, movimientos)
+  if (marcados) console.log(`   ✓ ${marcados} depósito(s) marcados como no acreditados`)
+  if (acreditados) console.log(`   ✓ ${acreditados} depósito(s) que el banco ya acreditó: saldo copiado del extracto`)
+  if (pie.fecha) {
+    const r = await recalcularSaldosDelDia({ query }, pie.fecha, pie.saldo)
+    if (r.aplicado) console.log(`   ✓ cadena del ${pie.fecha} rehecha en la base: ${r.actualizadas} fila(s) corregidas`)
+    else console.log(`   · la cadena del ${pie.fecha} NO se reescribió: no cierra contra el declarado (dif ${$(r.cierre.diferencia ?? 0)})`)
+  }
+}
+
 async function main() {
   // ── 1. La tabla, y la semilla ──
   if (!DRY) {
@@ -132,7 +186,7 @@ async function main() {
     console.log('  cat extracto.txt | node orquestador/scripts/importar-banco.mjs')
     return
   }
-  const { movimientos, rechazos } = parsearExtracto(texto)
+  const { movimientos, rechazos, saldosDeclarados } = parsearExtracto(texto)
   console.log(`\nextracto: ${movimientos.length} movimiento(s) leído(s)${rechazos.length ? ` · ${rechazos.length} línea(s) que no entendí` : ''}`)
   // LAS LÍNEAS QUE NO ENTENDÍ SE MUESTRAN. Callarlas es cómo se pierde un movimiento sin que nadie
   // se entere, y después la caja no cierra por un motivo que nadie puede rastrear.
@@ -167,8 +221,12 @@ async function main() {
   // superpuestas sin decir una palabra de por qué: un contador que no muestra su base no es evidencia.
   const conRef = (a) => a.filter((m) => m.referencia != null).length
   console.log(`   clave: ${conRef(movimientos)}/${movimientos.length} del extracto y ${conRef(norm)}/${norm.length} de la base traen referencia; el resto se coteja por fecha + concepto + importe`)
+  const origen = `${ARCHIVO ? `archivo ${ARCHIVO}` : 'pegado en la terminal'} · importado ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`
   if (!nuevos.length) {
     console.log('\n✓ nada que cargar: el extracto ya estaba entero en la base')
+    // PERO EL DÍA IGUAL SE CIERRA. Volver a bajar el mismo día no trae filas nuevas y sí trae el pie
+    // del banco: es la corrida que confirma el saldo, y salir acá era perderla.
+    await cerrarElDia(movimientos, saldosDeclarados, origen)
     // Igual es una lectura exitosa del extracto: el dato está al día. Marcar la frescura (no --dry).
     if (!DRY) await registrarFrescuraBanco()
     return
@@ -225,9 +283,11 @@ async function main() {
   if (nuevos.length > 6) console.log(`   … y ${nuevos.length - 6} más`)
   if (DRY) { console.log('\n— dry: no escribí nada'); return }
 
-  const origen = `${ARCHIVO ? `archivo ${ARCHIVO}` : 'pegado en la terminal'} · importado ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`
   const n = await insertar(nuevos, origen)
   console.log(`\n✓ ${n} movimiento(s) cargados${n !== nuevaClave.size ? ` (${nuevaClave.size - n} los rechazó el índice único: ya estaban)` : ''}`)
+
+  // EL SALDO DEL DÍA SE CIERRA DESPUÉS DE INSERTAR, nunca antes: el cierre mira la base ya completa.
+  await cerrarElDia(movimientos, saldosDeclarados, origen)
 
   // La ingesta cerró bien: se registra la frescura con la cobertura real del extracto en la base.
   await registrarFrescuraBanco()

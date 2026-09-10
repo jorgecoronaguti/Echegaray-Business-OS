@@ -30,6 +30,43 @@ const num = (v) => Number(v ?? 0)
 const redondo = (n) => Math.round(n * 100) / 100
 
 /**
+ * NÚCLEO PURO: EL CONTRASTE CONTRA UNA FUENTE INDEPENDIENTE — el saldo que declara el banco.
+ *
+ * POR QUÉ NO ALCANZA `identidadGlobal` (10/09/2026). Esa identidad compara la suma de los importes
+ * contra el ÚLTIMO `saldo_despues` cargado… que para los "Movimientos del Día" lo calculamos nosotros
+ * sumando esos mismos importes. Con el día abierto la identidad cierra SIEMPRE, por construcción: el
+ * auditor dijo "✓ todos los saldos cierran" el mismo día en que el saldo publicado estaba $38.572.526,23
+ * arriba del real. UN CONTROL NUNCA SE VALIDA CONTRA LA MISMA INFORMACIÓN QUE PRODUCE.
+ *
+ * Acá el término de la derecha es `public.banco_saldo_declarado`: la línea "Saldo al DD/MM/AAAA" del
+ * pie del extracto, que el banco escribió y el OS no calculó. Y los depósitos retenidos se RESTAN,
+ * porque el banco tampoco los cuenta todavía.
+ *
+ * @param {Mov[]} movimientos de la MISMA cuenta, en el orden del extracto
+ * @param {{fecha:string, saldo:number|string}|null} declarado el pie más nuevo de esa cuenta
+ * @returns {{estado:'sin_declarado'|'sin_ancla'|'cierra'|'no_cierra', ...}}
+ */
+export function contrastarConDeclarado(movimientos = [], declarado = null, { tolerancia = 0.5 } = {}) {
+  if (!declarado?.fecha) return { estado: 'sin_declarado' }
+  const fecha = String(declarado.fecha).slice(0, 10)
+  // La ventana es la del pie: los movimientos posteriores no los cuenta ese saldo.
+  const hasta = movimientos.filter((m) => String(m.fecha).slice(0, 10) <= fecha)
+  const conSaldo = hasta.filter((m) => m?.saldo_despues !== null && m?.saldo_despues !== undefined)
+  if (!conSaldo.length) return { estado: 'sin_ancla', fecha }
+  const inicial = redondo(num(conSaldo[0].saldo_despues) - num(conSaldo[0].importe))
+  const retenidos = hasta.filter((m) => m?.acreditacion_pendiente === true || m?.acreditacionPendiente === true)
+  const retenido = redondo(retenidos.reduce((a, m) => a + num(m.importe), 0))
+  const suma = redondo(hasta.reduce((a, m) => a + num(m.importe), 0))
+  const esperado = redondo(inicial + suma - retenido)
+  const banco = redondo(num(declarado.saldo))
+  const diferencia = redondo(banco - esperado)
+  return {
+    estado: Math.abs(diferencia) <= tolerancia ? 'cierra' : 'no_cierra',
+    fecha, inicial, suma, retenido, retenidos: retenidos.length, esperado, declarado: banco, diferencia,
+  }
+}
+
+/**
  * NÚCLEO PURO: la identidad que no depende del orden.
  *
  * @param {Mov[]} movimientos en cualquier orden, todos de la MISMA cuenta
@@ -130,8 +167,13 @@ export function completarCadenaDelDia(movimientos = [], saldoDeclarado = null, t
   const filas = []
   let corriente = null
   let completados = 0
+  let ultimaCalculada = -1
   for (const m of movimientos) {
     const importe = Number(m?.importe) || 0
+    // ═══ UN DEPÓSITO RETENIDO NO ENTRA A LA CADENA (10/09/2026) ═══
+    // El banco lo LISTA y no lo acredita (eCheq a 48 hs). Ni recibe saldo ni arrastra su importe: el
+    // 10/09, contarlos infló el saldo del día en $38.572.526,23. Ver lib/banco-acreditacion.mjs.
+    if (m?.acreditacionPendiente) { filas.push({ ...m, saldo: null }); continue }
     if (Number.isFinite(m?.saldo) && m.saldo !== null && m.saldo !== undefined) {
       corriente = Number(m.saldo)
       filas.push({ ...m, saldo: corriente })
@@ -142,15 +184,22 @@ export function completarCadenaDelDia(movimientos = [], saldoDeclarado = null, t
     if (corriente === null) { filas.push({ ...m }); continue }
     corriente += importe
     completados++
+    ultimaCalculada = filas.length
     filas.push({ ...m, saldo: corriente, saldoCalculado: true })
   }
   const cierra = saldoDeclarado == null || corriente === null
     ? null
     : Math.abs(corriente - Number(saldoDeclarado)) <= tol
-  return {
-    filas,
-    completados,
-    cierra,
-    diferencia: saldoDeclarado == null || corriente === null ? 0 : corriente - Number(saldoDeclarado),
-  }
+  const diferencia = saldoDeclarado == null || corriente === null ? 0 : corriente - Number(saldoDeclarado)
+
+  // ═══ CUANDO NO CIERRA, MANDA EL BANCO ═══
+  //
+  // La cadena es nuestra reconstrucción; el pie del extracto es el dato. Si difieren, publicar el
+  // nuestro sería publicar el error —fue exactamente lo que pasó el 10/09—. Se pisa el saldo de la
+  // ÚLTIMA fila calculada con el declarado y se devuelve `ajustada`, para que el generador lo diga en
+  // la pestaña. Sin fila calculada no hay nada que ajustar: la cadena ya es del banco.
+  const ajustada = cierra === false && ultimaCalculada >= 0
+  if (ajustada) filas[ultimaCalculada] = { ...filas[ultimaCalculada], saldo: Number(saldoDeclarado), saldoDeclarado: true }
+
+  return { filas, completados, cierra, diferencia, ajustada }
 }
