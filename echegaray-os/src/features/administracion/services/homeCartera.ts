@@ -68,7 +68,9 @@ export interface ObraEnCurso {
   margenPct: number | null
   certificacion: EstadoCertificacion
   /** El último parte de la obra, `YYYY-MM-DD`. `null` = ninguno registrado. */
-  ultimoParte: string | null
+  /** LO COBRADO DE ESTA OBRA, criterio PERCIBIDO (`obra_cobranza`). `null` = ninguna cobranza
+   *  imputada a la obra, que NO es «no cobró»: hoy Cobranzas anota el cobro contra el cliente. */
+  cobrado: number | null
 }
 
 export interface ClienteEnCartera {
@@ -104,8 +106,9 @@ export interface ClienteEnCartera {
   margenPct: number | null
   /** `true` cuando alguna obra en curso no tiene precio en OBRAS: el total suma sólo las que sí. */
   economiaParcial: boolean
-  /** El hecho más reciente que el OS conoce de este cliente. `null` = ninguno. */
-  ultimoMovimiento: string | null
+  /** Lo cobrado de LAS MISMAS obras que suma `contratado` — las que están en ejecución. Sumar
+   *  sobre otro conjunto haría una fracción de dos universos distintos. */
+  cobrado: number | null
   enCurso: ObraEnCurso[]
 }
 
@@ -137,32 +140,27 @@ export async function getObrasDeLaCartera(
 }
 
 /**
- * EL ÚLTIMO PARTE DE CADA OBRA — `obra_ejecucion` es el hecho, no la vista de avance.
+ * LO COBRADO POR OBRA — `public.obra_cobranza`, criterio PERCIBIDO y UNA sola fuente.
  *
- * Se lee la tabla entera (`obra_id, fecha`) y se reduce en memoria porque PostgREST tiene los
- * agregados APAGADOS en esta base (`PGRST123: Use of aggregate functions is not allowed`, medido el
- * 25/08): no hay forma de pedir un `max(fecha) group by obra_id` sin crear una vista, y una vista
- * es una migración que este trabajo no puede aplicar.
+ * La vista ya decide qué está cobrado (`estado = 'cobrado'` y `fecha_cobro <= hoy`) y ata cada fila
+ * de Cobranzas a su obra por `obra_alias`. Acá no se vuelve a decidir nada: recalcular el criterio
+ * en la pantalla es cómo nacen dos definiciones de «cobrado».
  *
- * ESCALA CONOCIDA: 248 filas hoy (~12 KB) y el índice `obra_ejecucion_por_obra (obra_id, fecha
- * desc)` ya existe. Cuando esta tabla pase de unas decenas de miles, la respuesta correcta es la
- * vista `obra_ultimo_parte` — está escrita en `supabase/migrations`, SIN aplicar, y hasta que
- * alguien la aplique esto sigue siendo correcto, sólo que más caro.
+ * LA VISTA LLEVA `WHERE ve_economia()`: al jefe de obra le devuelve CERO FILAS, no un error. Por eso
+ * un mapa vacío no significa «nadie cobró nada» y la pantalla, además, no ofrece la celda cuando el
+ * rol no ve economía — no ofrecer lo que la base va a negar.
  *
- * NO SE ACOTA CON UN `limit`: cortar las N más recientes haría que una obra cuyo último parte
- * quedó fuera del corte dijera «sin partes», que es una afirmación falsa. Más vale cara que mentirosa.
+ * `null` = la lectura falló, que no es lo mismo que «no hay cobranzas».
  */
-export async function getUltimoParte(supabase: SupabaseClient): Promise<Map<string, string> | null> {
-  const { data, error } = await supabase
-    .from('obra_ejecucion')
-    .select('obra_id, fecha')
-    .order('fecha', { ascending: false })
+export async function getCobradoPorObra(supabase: SupabaseClient): Promise<Map<string, number> | null> {
+  const { data, error } = await supabase.from('obra_cobranza').select('obra_id, cobrado')
   if (error) return null
-  const por = new Map<string, string>()
-  for (const p of data ?? []) {
-    const obra = p.obra_id as string
-    // Vienen ordenados de más nuevo a más viejo: el primero de cada obra ES el último parte.
-    if (obra && !por.has(obra)) por.set(obra, p.fecha as string)
+  const por = new Map<string, number>()
+  for (const f of (data ?? []) as { obra_id: string; cobrado: number | null }[]) {
+    // `cobrado` viene NULL cuando la obra tiene filas de Cobranzas pero ninguna cobrada. Eso NO es
+    // cero cobrado: es que todavía no entró nada, y la barra lo dibuja como 0 sólo si la obra
+    // aparece con un número. Un null no se guarda: el mapa dice quién tiene cobro, no quién no.
+    if (f.cobrado != null) por.set(f.obra_id, Number(f.cobrado))
   }
   return por
 }
@@ -234,7 +232,9 @@ export function certificacionDe(
   return { texto: `${n} sin fechas`, reclama: true }
 }
 
-/** `2026-08-25` con hoy `2026-08-25` → `hoy`. Sin año: en esta columna siempre es éste. */
+/** `2026-08-25` con hoy `2026-08-25` → `hoy`. La columna «Últ. mov.» se retiró de `/clientes` el
+ *  10/09/2026 («esa columna sin movimientos quitarla»); esto se queda porque es la única forma
+ *  probada de escribir una fecha relativa en esta capa. */
 export function diaRelativo(fecha: string | null, hoy: string): string | null {
   if (!fecha) return null
   if (fecha === hoy) return 'hoy'
@@ -253,9 +253,6 @@ export function hoyEnLaEmpresa(ahora: Date = new Date()): string {
   return p
 }
 
-const masReciente = (a: string | null, b: string | null) =>
-  a === null ? b : b === null ? a : (a > b ? a : b)
-
 /**
  * ARMA LA CARTERA. Puro: cuatro listas entran, las filas que se dibujan salen.
  *
@@ -266,11 +263,12 @@ const masReciente = (a: string | null, b: string | null) =>
  * decir de qué está hablando.
  */
 export function armarCartera({
-  clientes, obras, partes, certificados, economia = null, contratos = null,
+  clientes, obras, cobrado, certificados, economia = null, contratos = null,
 }: {
   clientes: ClientePanel[]
   obras: ObraDeCartera[] | null
-  partes: Map<string, string> | null
+  /** obra_id → lo cobrado (percibido). `null` = no se pudo leer o el rol no ve economía. */
+  cobrado: Map<string, number> | null
   certificados: FilaCertificado[] | null
   /** Lo que OBRAS publica por obra (`obra_economia_cartera`). `null` = no se pudo leer. */
   economia?: Map<string, EconomiaDeObra> | null
@@ -307,7 +305,7 @@ export function armarCartera({
         margen,
         margenPct: margenPct(margen, contratado),
         certificacion: certificacionDe(certificados, o.obra_id),
-        ultimoParte: partes?.get(o.obra_id) ?? null,
+        cobrado: cobrado?.get(o.obra_id) ?? null,
       }
     })
     // LOS TOTALES DEL CLIENTE SON LA SUMA DE SUS OBRAS EN EJECUCIÓN, no `cliente_panel.contratado`
@@ -317,11 +315,10 @@ export function armarCartera({
     const tMat = sumaConHuecos(enCurso.map((o) => o.costoMateriales))
     const tMargen = sumaConHuecos(enCurso.map((o) => o.margen))
 
-    const fechasCert = (certificados ?? [])
-      .filter((x) => enCurso.some((o) => o.obra_id === x.obra_canonica_id))
-      .map((x) => masReciente(masReciente(x.fecha_certificacion, x.fecha_facturacion), x.fecha_cobranza))
-    const ultimoMovimiento = [...enCurso.map((o) => o.ultimoParte), ...fechasCert]
-      .reduce<string | null>((a, b) => masReciente(a, b), null)
+    // EL COBRADO DEL CLIENTE SE SUMA SOBRE LAS MISMAS OBRAS QUE `contratado`: las en ejecución. Un
+    // cobro de 2024 de una obra cerrada dividido por lo contratado de las que están en curso no es
+    // un porcentaje de nada.
+    const tCobrado = sumaConHuecos(enCurso.map((o) => o.cobrado))
 
     // «TIENE CONTRATO» ES UN PAPEL, NO UN MONTO (09/09/2026). Antes esta fila derivaba
     // «sin contrato» de `contratado === null`, que es el hueco de PRECIO de OBRAS: por eso el mismo
@@ -342,7 +339,7 @@ export function armarCartera({
       margen: tMargen.total,
       margenPct: margenPct(tMargen.total, tContratado.total),
       economiaParcial: tContratado.parcial || tMargen.parcial,
-      ultimoMovimiento,
+      cobrado: tCobrado.total,
       enCurso,
     }
   })

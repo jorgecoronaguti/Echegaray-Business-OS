@@ -58,8 +58,8 @@ import { CamposCliente } from '@/features/clientes/components/CamposCliente'
 import { PanelCliente } from '@/features/clientes/components/PanelCliente'
 import { TablaClientes } from '@/features/clientes/components/TablaClientes'
 import {
-  armarCartera, getCertificadosDeLaCartera, getContratosDeLaCartera, getObrasDeLaCartera,
-  getUltimoParte, hoyEnLaEmpresa,
+  armarCartera, getCertificadosDeLaCartera, getCobradoPorObra, getContratosDeLaCartera,
+  getObrasDeLaCartera,
 } from '@/features/administracion/services/homeCartera'
 import { pesos } from '@/shared/components/canon/formato'
 import { Aviso } from '@/shared/components/ds'
@@ -94,12 +94,14 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const vista = esVistaCartera(sp.vista) ? sp.vista : 'todo'
 
   const supabase = await createClient()
-  const [lectura, perfil, obras, partes, certificados, todasLasObras, papeles, economia, contratos]
+  const [lectura, perfil, obras, cobrado, certificados, todasLasObras, papeles, economia, contratos]
     = await Promise.all([
     getClientes(supabase),
     getPerfilActual(supabase),
     getObrasDeLaCartera(supabase),
-    getUltimoParte(supabase),
+    // LO COBRADO POR OBRA (percibido), para la barra de progreso. La vista lleva `ve_economia()`:
+    // al jefe de obra le devuelve cero filas, y la pantalla además no le dibuja la celda.
+    getCobradoPorObra(supabase),
     getCertificadosDeLaCartera(supabase),
     // El panel muestra TODAS las obras del cliente, no sólo las activas. Una consulta más para toda
     // la cartera, no una por cliente abierto.
@@ -137,7 +139,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
 
   const { activos, archivados: guardados } = separarArchivados(lectura.data ?? [])
   const base = conArchivados ? [...activos, ...guardados] : activos
-  const cartera = armarCartera({ clientes: base, obras, partes, certificados, economia, contratos })
+  const cartera = armarCartera({ clientes: base, obras, cobrado, certificados, economia, contratos })
   // ═══ EL RECORTE SALE DE LA MISMA FILA QUE SE DIBUJA ═══
   //
   // `recortarCartera` decidía «Datos faltantes» con `cliente_panel.contratado === null`, que es la
@@ -279,7 +281,6 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                   return slug ? `/clientes/${slug}` : armarHref(sp, { c: id, nuevo: undefined })
                 }}
                 veEconomia={veEconomia}
-                hoy={hoyEnLaEmpresa()}
                 hrefOrdenes={(clave) => armarHref(sp, { ordenes: clave, c: undefined })}
                 obrasNoLeidas={obras === null}
                 limpiarHref={armarHref(sp, { q: undefined, vista: undefined, c: undefined })}

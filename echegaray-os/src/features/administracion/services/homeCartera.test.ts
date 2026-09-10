@@ -26,7 +26,7 @@ test('la obra cuelga de SU cliente, y de ninguno más', () => {
   const filas = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' }), cliente({ cliente_id: 'c2' })],
     obras: [obra({ obra_id: 'o1', cliente_id: 'c1' }), obra({ obra_id: 'o2', cliente_id: 'c2' })],
-    partes: new Map(), certificados: [],
+    cobrado: new Map(), certificados: [],
   })
   assert.deepEqual(filas.map((c) => c.enCurso.map((o) => o.obra_id)), [['o1'], ['o2']])
 })
@@ -35,7 +35,7 @@ test('una obra sin cliente no se cuelga de nadie ni se pierde de vista en otro l
   const filas = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'huerfana', cliente_id: null })],
-    partes: new Map(), certificados: [],
+    cobrado: new Map(), certificados: [],
   })
   assert.deepEqual(filas[0].enCurso, [])
 })
@@ -46,7 +46,7 @@ test('`avance_pct` NULL NO es 0 %, y `monto_contratado` NULL no es $ 0', () => {
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1', cuit: '30-1-2', telefono: '2645551234' })],
     obras: [obra({ obra_id: 'o1', avance_pct: null, monto_contratado: null, jefe_obra: null })],
-    partes: new Map(), certificados: [], contratos: new Set(['c1']),
+    cobrado: new Map(), certificados: [], contratos: new Set(['c1']),
   })
   assert.equal(c.enCurso[0].avance, null)
   assert.equal(c.enCurso[0].contratado, null)
@@ -60,7 +60,7 @@ test('sin CUIT el cliente lo dice en su chip, y eso SÍ lo mete en «datos falta
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1', cuit: null })],
     obras: [obra({ obra_id: 'o1', monto_contratado: null })],
-    partes: new Map(), certificados: [], contratos: new Set(['c1']),
+    cobrado: new Map(), certificados: [], contratos: new Set(['c1']),
   })
   assert.deepEqual(c.chips.map((x) => x.clave), ['sin-cuit', 'sin-telefono'])
   assert.equal(c.faltaUnDato, true)
@@ -72,7 +72,7 @@ test('«sin contrato» sale de los DOCUMENTOS y no del monto: son dos conceptos'
   // publica OBRAS; el contrato es un papel en la ficha. Acá se prueban las cuatro combinaciones que
   // importan — con plata y sin papel, y sin plata y con papel.
   const completo = cliente({ cliente_id: 'c1', cuit: '30-1-2', telefono: '2645551234' })
-  const base = { clientes: [completo], partes: new Map(), certificados: [] }
+  const base = { clientes: [completo], cobrado: new Map(), certificados: [] }
   const conPlata = armarCartera({
     ...base,
     obras: [obra({ obra_id: 'o1', monto_contratado: 156_174_253 })],
@@ -127,26 +127,41 @@ test('el estado es la fecha MÁS AVANZADA que existe, y no se inventa un vencimi
   assert.deepEqual(certificacionDe([cert({})], 'o1'), { texto: 'cert. 2 sin fechas', reclama: true })
 })
 
-// ═══ ÚLTIMO MOVIMIENTO ═══
+// ═══ LO COBRADO POR OBRA (10/09/2026) ═══
+//
+// La columna «Últ. mov.» se retiró de `/clientes` por pedido del dueño («esa columna sin
+// movimientos quitarla») y en su lugar va la barra de lo cobrado. Con ella se fueron
+// `ultimoMovimiento` y `ultimoParte` del modelo: nadie más los dibujaba, y un campo que ninguna
+// pantalla muestra es una lectura que se paga sin que nadie la mire.
 
-test('«últ. mov.» es el hecho MÁS RECIENTE del cliente, parte o certificado', () => {
+test('lo cobrado cuelga de SU obra, y el total del cliente suma las MISMAS obras que contratado', () => {
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'o1' }), obra({ obra_id: 'o2' })],
-    partes: new Map([['o1', '2026-08-15'], ['o2', '2026-08-18']]),
-    certificados: [cert({ obra_canonica_id: 'o1', fecha_cobranza: '2026-08-22' })],
+    cobrado: new Map([['o1', 500_000]]),
+    certificados: [],
+    economia: new Map([
+      ['o1', { obra_canonica_id: 'o1', obra_clave: 'o1', contratado: 1_000_000, costo_mo: null, costo_materiales: null, margen: null }],
+      ['o2', { obra_canonica_id: 'o2', obra_clave: 'o2', contratado: 2_000_000, costo_mo: null, costo_materiales: null, margen: null }],
+    ]),
   })
-  assert.equal(c.ultimoMovimiento, '2026-08-22')
-  assert.equal(c.enCurso[0].ultimoParte, '2026-08-15')
+  assert.equal(c.enCurso[0].cobrado, 500_000)
+  // LA OBRA SIN COBRANZA IMPUTADA NO COBRÓ CERO: no se sabe, y por eso es `null` y no 0. Hoy
+  // Cobranzas anota el cobro contra el CLIENTE, así que casi todas las obras están en este caso.
+  assert.equal(c.enCurso[1].cobrado, null)
+  // El total del cliente suma lo que hay, y el denominador de la barra es el contratado de las
+  // mismas obras en ejecución: dos universos distintos no hacen un porcentaje.
+  assert.equal(c.cobrado, 500_000)
+  assert.equal(c.contratado, 3_000_000)
 })
 
-test('sin ningún hecho registrado, «últ. mov.» es null y no una fecha inventada', () => {
+test('sin ninguna cobranza imputada, el cobrado del cliente es null y no cero', () => {
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
-    obras: [obra({ obra_id: 'o1' })], partes: new Map(), certificados: [],
+    obras: [obra({ obra_id: 'o1' })], cobrado: new Map(), certificados: [],
   })
-  assert.equal(c.ultimoMovimiento, null)
-  assert.equal(c.enCurso[0].ultimoParte, null)
+  assert.equal(c.cobrado, null)
+  assert.equal(c.enCurso[0].cobrado, null)
 })
 
 test('`diaRelativo` escribe hoy, ayer y el día/mes con dos dígitos', () => {
@@ -174,7 +189,7 @@ test('la economía de OBRAS manda: contratado, MO, materiales y margen por obra,
   const economia = new Map([
     ['o1', { obra_canonica_id: 'o1', contratado: 100, costo_mo: 60, costo_materiales: 10, margen: 30 }],
   ])
-  const [c] = armarCartera({ clientes, obras, partes: new Map(), certificados: [], economia })
+  const [c] = armarCartera({ clientes, obras, cobrado: new Map(), certificados: [], economia })
   assert.equal(c.enCurso[0].contratado, 100)
   assert.equal(c.enCurso[0].margen, 30)
   assert.equal(c.enCurso[0].margenPct, 30)

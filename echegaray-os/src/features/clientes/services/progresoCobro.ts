@@ -1,0 +1,92 @@
+// CUÁNTO SE COBRÓ DE LO QUE SE CONTRATÓ — la barra de la fila de cada obra.
+//
+// Pedido del dueño (10/09/2026): «quiero que agregues a cada obra una barra de progreso de lo
+// cobrado que sólo sea visible si tenés nivel de usuario admin dentro de esa vista».
+//
+// ═══ LAS DOS FUENTES, Y POR QUÉ SON LAS QUE SON ═══
+//
+//   COBRADO      `public.obra_cobranza` — la réplica viva de la pestaña Cobranzas, filtrada por
+//                `estado = 'cobrado'` Y `fecha_cobro <= hoy`. Es criterio PERCIBIDO: lo que entró.
+//                NUNCA se mezcla con facturado, que es devengado y vive en otra pregunta.
+//   CONTRATADO   `obra_economia_cartera` — la MISMA fuente que la columna «Contratado» de esta
+//                tabla. Si la barra usara otro denominador, la fila diría dos verdades del mismo
+//                número, que es el defecto que ya costó `CarteraHome`.
+//
+// ═══ SIN CONTRATADO NO HAY BARRA, Y SIN COBRADO TAMPOCO ES CERO ═══
+//
+// Una obra sin precio en OBRAS no está cobrada al 0 %: no hay contra qué medirla. Y una obra sin
+// ninguna cobranza imputada tampoco cobró cero — puede ser que el cobro exista y esté anotado
+// contra el cliente y no contra la obra, que es exactamente lo que pasa hoy (ver el pie).
+
+/** El progreso listo para dibujar. `null` = no hay barra que dibujar, y se dice por qué. */
+export interface ProgresoDeCobro {
+  /** 0–100. Nunca pasa de 100: lo cobrado de más se dice con palabras, no con una barra rota. */
+  pct: number
+  /** `true` cuando se cobró MÁS que lo contratado. Pasa con adicionales que no entraron al precio. */
+  excede: boolean
+  /** Cuánto de más, en pesos. `null` si no excede. */
+  exceso: number | null
+}
+
+/**
+ * LA REGLA, PURA. `null` cuando falta cualquiera de los dos números: una barra necesita numerador
+ * Y denominador, y dibujar una vacía afirma que se midió y dio cero.
+ *
+ * Contratado en 0 o negativo tampoco produce barra: dividir por cero da infinito, y un contrato por
+ * $ 0 no es un contrato.
+ */
+export function progresoDeCobro(
+  cobrado: number | null | undefined,
+  contratado: number | null | undefined,
+): ProgresoDeCobro | null {
+  if (cobrado == null || contratado == null) return null
+  if (!(contratado > 0)) return null
+  const crudo = (cobrado / contratado) * 100
+  const excede = cobrado > contratado
+  return {
+    pct: Math.max(0, Math.min(100, Math.round(crudo))),
+    excede,
+    exceso: excede ? cobrado - contratado : null,
+  }
+}
+
+/** Cómo se escribe un peso en el `title`. Sin centavos: la barra es una proporción, no un recibo. */
+function money(v: number): string {
+  return `$${Math.round(v).toLocaleString('es-AR')}`
+}
+
+/**
+ * LO QUE DICE LA BARRA AL PASAR EL MOUSE. Es donde vive la trazabilidad: la regla del OS es que un
+ * número no lleva un párrafo permanente debajo, pero tampoco puede quedarse sin decir de dónde sale.
+ *
+ * `facturado` entra sólo si existe. Es DEVENGADO y por eso va al final y nombrado: la barra mide
+ * percibido, y las dos ventanas no se suman ni se restan.
+ */
+export function tituloDeCobro(
+  { cobrado, contratado, facturado = null }:
+  { cobrado: number | null; contratado: number | null; facturado?: number | null },
+): string {
+  if (contratado == null) {
+    return 'Sin precio en OBRAS: no hay contra qué medir el cobro. No es 0 % cobrado.'
+  }
+  if (cobrado == null) {
+    // NO ES «NO COBRÓ NADA». Cobranzas anota la fila contra el cliente o la unidad de negocio, no
+    // contra la obra: mientras eso sea así, esta obra no tiene cobro IMPUTADO, que es otra cosa.
+    return `Sin cobranzas imputadas a esta obra (contratado ${money(contratado)}). `
+      + 'No significa que no se haya cobrado: Cobranzas registra el cobro por cliente, no por obra.'
+  }
+  const p = progresoDeCobro(cobrado, contratado)
+  const base = `cobrado ${money(cobrado)} de ${money(contratado)} contratado`
+  const exceso = p?.exceso != null ? ` · ${money(p.exceso)} por encima de lo contratado` : ''
+  const fact = facturado != null ? ` · facturado ${money(facturado)} (devengado)` : ''
+  return `${base}${exceso}${fact}`
+}
+
+// LO QUE ESTA BARRA NO PUEDE DIBUJAR TODAVÍA (medido el 10/09/2026 contra la base):
+// `cobranzas.obra_cliente` guarda una etiqueta de CLIENTE —«messina», «arcor», «imotor san
+// francisco javi sanchez»—, y `obra_alias` la resuelve a una obra sólo cuando esa etiqueta nombra
+// una obra. Resultado: de las 96 filas de Cobranzas, las cobradas se agrupan en TRES obra_id
+// (`messina`, `arcor`, `quattropani`), y ninguna de las obras que tienen contratado en
+// `obra_economia_cartera` tiene cobro imputado. La barra está construida y probada; hoy dice «—»
+// con su motivo en todas las filas. Lo que falta no es código: es que Cobranzas diga de qué OBRA es
+// cada cobro (o que se carguen los alias por obra que ya existen para otras).

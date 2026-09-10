@@ -39,7 +39,8 @@ import Link from 'next/link'
 import { pesos, porcentajeCanon } from '@/shared/components/canon/formato'
 import { IconoCliente, IconoObra } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
-import { diaRelativo, type ClienteEnCartera } from '@/features/administracion/services/homeCartera'
+import type { ClienteEnCartera } from '@/features/administracion/services/homeCartera'
+import { progresoDeCobro, tituloDeCobro } from '@/features/clientes/services/progresoCobro'
 import { rotuloDe } from '@/features/clientes/services/ordenesCliente'
 import type { Orden, PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
 import { SIN_PRECIO } from '@/features/clientes/services/chipsCartera'
@@ -109,6 +110,55 @@ const SOLO_TABLET = 'max-[767px]:hidden'
  */
 const ADORNO_ANCHO = 'max-[1023px]:hidden'
 
+const AYUDA_COBRO = 'Lo cobrado de esta obra sobre lo contratado, criterio PERCIBIDO '
+  + '(pestaña Cobranzas, sólo lo que ya entró). Nunca mezcla con lo facturado, que es devengado.'
+
+/**
+ * LA BARRA DE LO COBRADO. Sólo para quien ve economía: lo cobrado de una obra es plata de venta.
+ *
+ * ═══ EL RELLENO ES GRAFITO, NO AMARILLO ═══
+ *
+ * El amarillo `#FDC900` es la MARCA —da 1,6:1 sobre blanco— y el contrato visual del OS lo reserva
+ * para el isotipo y la regla de «acá estás»; el énfasis es el grafito, que es además con lo que
+ * esta misma tabla dibuja la barra de avance de la obra dos celdas más a la izquierda. Dos barras
+ * de progreso con dos colores en la misma fila serían dos vocabularios.
+ *
+ * ═══ SIN BARRA NO SE DIBUJA UN CERO ═══
+ *
+ * `progresoDeCobro` devuelve `null` cuando falta el contratado o el cobrado, y entonces la celda
+ * dice «—» con el motivo en el `title`. Una barra vacía afirmaría que se midió y dio cero.
+ */
+function BarraDeCobro({ cobrado, contratado, veEconomia, testid }: {
+  cobrado: number | null; contratado: number | null; veEconomia: boolean; testid: string
+}) {
+  if (!veEconomia) return <span className={SOLO_ANCHO} />
+  const p = progresoDeCobro(cobrado, contratado)
+  const titulo = tituloDeCobro({ cobrado, contratado })
+  if (!p) {
+    return (
+      <span
+        className={SOLO_ANCHO} data-testid={testid} data-cobro="sin-dato" title={titulo}
+        style={{ fontSize: '11.5px', color: V.lupa, textAlign: 'right' }}
+      >
+        —
+      </span>
+    )
+  }
+  return (
+    <span
+      className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid={testid}
+      data-cobro={String(p.pct)} title={titulo} style={{ gap: 6 }}
+    >
+      <span style={{ display: 'flex', height: 4, width: 62, borderRadius: 2, background: TONO.pista, flexShrink: 0 }}>
+        <span style={{ width: `${p.pct}%`, background: p.excede ? V.warn : V.grafito, borderRadius: 2 }} />
+      </span>
+      <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.apagado, flexShrink: 0 }}>
+        {p.pct} %
+      </span>
+    </span>
+  )
+}
+
 /** Un cliente del que no llegó ningún papel. Es una constante y no un objeto nuevo por fila: la
  *  tabla dibuja decenas de filas y ninguna necesita su propio vacío. */
 const VACIO: PapelesDelCliente = {
@@ -120,7 +170,7 @@ const VACIO: PapelesDelCliente = {
 const TONO = { divisorObra: '#F3F2EE', pista: '#EDECE8', textoObra: '#3A3A38' } as const
 
 export function TablaClientes({
-  clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, papeles, hrefOrdenes, hoy, limpiarHref, vacio,
+  clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, papeles, hrefOrdenes, limpiarHref, vacio,
 }: {
   clientes: ClienteEnCartera[]
   seleccionado?: string
@@ -134,8 +184,6 @@ export function TablaClientes({
   papeles: Map<string, PapelesDelCliente>
   /** Adónde lleva el chip: la clave es el `obra_id`, o `cliente:<id>` para lo no atribuido a obra. */
   hrefOrdenes: (clave: string) => string
-  /** El día de hoy en la hora de la empresa. Viene del servidor: el reloj del navegador es de quien mira. */
-  hoy: string
   limpiarHref: string
   /** Qué se escribe cuando el recorte no deja a nadie. */
   vacio: string
@@ -173,10 +221,13 @@ export function TablaClientes({
         <span className={`grid ${SOLO_ANCHO}`}>
           <RotuloCol derecha titulo="Contratado − costo MO − costo materiales">{veEconomia ? 'Margen' : ''}</RotuloCol>
         </span>
+        {/* ═══ «ÚLT. MOV.» SE FUE (dueño, 10/09/2026: «esa columna sin movimientos quitarla») ═══
+            Decía «sin movimientos» en casi todas las filas —el hecho más reciente que el OS
+            registraba era un parte o un certificado, y la mayoría de las obras no tiene ninguno—,
+            así que la columna publicaba un hueco de datos como si fuera una noticia. En su lugar va
+            LO COBRADO, que es la pregunta que sí se hace mirando esta lista. */}
         <span className={`grid ${SOLO_ANCHO}`}>
-          <RotuloCol derecha titulo="El hecho más reciente que el OS registró: un parte de obra o un certificado. No es la última edición de la ficha.">
-            Últ. mov.
-          </RotuloCol>
+          <RotuloCol derecha titulo={AYUDA_COBRO}>Cobrado</RotuloCol>
         </span>
       </div>
 
@@ -255,9 +306,7 @@ export function TablaClientes({
                 mo={c.costoMo} mat={c.costoMateriales} margen={c.margen} pct={c.margenPct}
                 veEconomia={veEconomia} parcial={c.economiaParcial} tam="12px"
               />
-              <span className={`font-mono ${SOLO_ANCHO}`} style={{ fontSize: '11.5px', color: V.lupa, textAlign: 'right' }}>
-                {diaRelativo(c.ultimoMovimiento, hoy) ?? 'sin movimientos'}
-              </span>
+              <BarraDeCobro cobrado={c.cobrado} contratado={c.contratado} veEconomia={veEconomia} testid="cobro-cliente" />
             </Link>
 
             {c.enCurso.map((o) => {
@@ -364,9 +413,7 @@ export function TablaClientes({
                   mo={o.costoMo} mat={o.costoMateriales} margen={o.margen} pct={o.margenPct}
                   veEconomia={veEconomia} parcial={false} tam="11.5px"
                 />
-                <span className={`font-mono ${SOLO_ANCHO}`} style={{ fontSize: '11.5px', color: V.lupa, textAlign: 'right' }}>
-                  {diaRelativo(o.ultimoParte, hoy) ?? 'sin partes'}
-                </span>
+                <BarraDeCobro cobrado={o.cobrado} contratado={o.contratado} veEconomia={veEconomia} testid="cobro-obra" />
               </Link>
               )
             })}
