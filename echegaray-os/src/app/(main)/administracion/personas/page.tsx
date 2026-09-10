@@ -153,7 +153,7 @@ const hrefDia = (p: { obra?: string | null; dia?: string | null }): string => {
 function vistasDe(activa: 'personal' | 'asistencia' | 'liquidacion', quincena: string | undefined, veLaPlata: boolean) {
   const vistas = [
     { clave: 'personal', titulo: 'Plantel', cuenta: null, activa: activa === 'personal', href: armarHref({}) },
-    { clave: 'asistencia', titulo: 'Asistencia', cuenta: null, activa: activa === 'asistencia', href: hrefAsistencia(quincena) },
+    { clave: 'asistencia', titulo: 'Horas', cuenta: null, activa: activa === 'asistencia', href: hrefAsistencia(quincena) },
   ]
   if (veLaPlata) {
     vistas.push({ clave: 'liquidacion', titulo: 'Liquidación', cuenta: null, activa: activa === 'liquidacion', href: hrefLiquidacion(quincena) })
