@@ -86,6 +86,25 @@ function celdaDelDia(
   if (hayHorasTrabajadas(delDia)) {
     return { fecha, marca: 'horas', horas: r2(horasLiquidablesDelDia(delDia)), sinMotivo: false }
   }
+  // ═══ LA LICENCIA TAMBIÉN SE CARGA EN `registros_hh`, Y ES LA FUENTE QUE ASISTENCIA MIRA ═══
+  //
+  // Antes esta celda buscaba la licencia SÓLO en `asistencia_dia`. Quiroga tiene los cinco días del
+  // 1 al 7 de septiembre cargados como `tipo_hora = 'licencia'` con motivo «enfermedad» en
+  // `registros_hh` y ninguna fila en `asistencia_dia`: Asistencia mostraba 62 h y esta grilla 18.
+  // Es la misma precedencia que ya usan `horasDeQuincena` y la franja de la ficha —lo trabajado
+  // gana; si no hay trabajado, manda lo declarado, y la licencia le gana a la ausencia—, sólo que
+  // acá faltaba la mitad que vive en la tabla de horas.
+  const declaradoEnHoras = delDia.filter((r) => r.tipo_hora === 'licencia' || r.tipo_hora === 'ausencia')
+  if (declaradoEnHoras.length > 0) {
+    const esLicencia = declaradoEnHoras.some((r) => r.tipo_hora === 'licencia')
+    const notas = declaradoEnHoras.find((r) => r.notas)?.notas ?? null
+    return {
+      fecha,
+      marca: esLicencia ? 'licencia' : 'ausencia',
+      horas: r2(horasLiquidablesDelDia(delDia)),
+      sinMotivo: !esLicencia && !motivoPaga(notas) && !notas,
+    }
+  }
   if (presencia?.estado === 'licencia') {
     const h = horasDeAusencia({ tipo: 'licencia', motivo: presencia.motivo, jornada: jornadaPorDefecto(fecha) })
     return { fecha, marca: 'licencia', horas: h, sinMotivo: false }

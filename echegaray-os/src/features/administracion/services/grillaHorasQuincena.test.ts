@@ -93,3 +93,41 @@ test('SIN PENDIENTES SE PUEDE CERRAR — el control puede dar verde', () => {
   assert.equal(r.porQueNo, '')
   assert.equal(filas[0].estado, 'al-dia')
 })
+
+test('LA LICENCIA CARGADA EN `registros_hh` CUENTA — Asistencia la ve y la grilla la veía «·»', () => {
+  // DEFECTO REAL (captura del dueño, 10/09/2026): QUIROGA ALEXANDER SEBASTIAN tiene cinco días de
+  // `tipo_hora = 'licencia'` con motivo «enfermedad» en `registros_hh` y NINGUNA fila en
+  // `asistencia_dia`. Asistencia sumaba 62 h y la grilla de Liquidación 18: la celda buscaba la
+  // licencia sólo en la tabla de presencia declarada. Si vuelve a mirar una sola de las dos, rojo.
+  const [fila] = filasDeGrilla(base({
+    registros: [
+      { fecha: '2026-09-01', tipo_hora: 'licencia', horas: 9, notas: 'enfermedad' },
+      { fecha: '2026-09-02', tipo_hora: 'licencia', horas: 9, notas: 'enfermedad' },
+      { fecha: '2026-09-03', tipo_hora: 'licencia', horas: 9, notas: 'enfermedad' },
+      { fecha: '2026-09-04', tipo_hora: 'licencia', horas: 8, notas: 'enfermedad' },
+      { fecha: '2026-09-07', tipo_hora: 'licencia', horas: 9, notas: 'enfermedad' },
+      { fecha: '2026-09-08', tipo_hora: 'normal', horas: 9 },
+      { fecha: '2026-09-09', tipo_hora: 'normal', horas: 9 },
+    ],
+    presencias: [],
+    hoy: '2026-09-09',
+  }))
+  assert.equal(fila.celdas[0].marca, 'licencia')
+  assert.equal(fila.celdas[0].horas, 9)
+  assert.equal(fila.cargadas, 62, 'la grilla publicaba 18 sobre las mismas filas que Asistencia lee')
+  assert.equal(fila.diasSinMotivo, 0)
+})
+
+test('LO TRABAJADO LE SIGUE GANANDO A LA LICENCIA DEL MISMO DÍA — sin doble conteo', () => {
+  // GONZALEZ TOBARES tiene el 10/09 cargado dos veces: licencia 9 h y normal 9 h. El día vale 9,
+  // no 18. Es la regla contra el doble conteo, y esta celda no puede tener su propia versión.
+  const [fila] = filasDeGrilla(base({
+    registros: [
+      { fecha: '2026-09-01', tipo_hora: 'licencia', horas: 9, notas: 'enfermedad' },
+      { fecha: '2026-09-01', tipo_hora: 'normal', horas: 9 },
+    ],
+    hoy: '2026-09-01',
+  }))
+  assert.equal(fila.celdas[0].marca, 'horas')
+  assert.equal(fila.celdas[0].horas, 9)
+})
