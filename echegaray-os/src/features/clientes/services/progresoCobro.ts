@@ -74,12 +74,21 @@ function money(v: number): string {
  * lea el % del cliente como si fuera el de su obra en marcha.
  */
 export function tituloDeCobro(
-  { cobrado, contratado, facturado = null, ambito = 'obra' }:
+  { cobrado, contratado, facturado = null, ambito = 'obra', obrasSinPrecio = null }:
   {
     cobrado: number | null
     contratado: number | null
     facturado?: number | null
     ambito?: 'obra' | 'cliente'
+    /**
+     * CUÁNTAS OBRAS DEL CLIENTE NO TIENEN PRECIO EN OBRAS (`cliente_economia.n_obras_sin_precio`).
+     *
+     * Mientras haya una, el porcentaje no existe: arriba va el cobro de TODAS sus obras y abajo el
+     * contrato de las que tienen precio. San Francisco publicaba «100 % cobrado» dividiendo
+     * $132.415.646 —de sus 5 obras— por $109.592.102 —de 4—. El importe cobrado sigue siendo un
+     * hecho y se publica; el porcentaje no se publica y esta frase dice por qué.
+     */
+    obrasSinPrecio?: number | null
   },
 ): string {
   const deCliente = ambito === 'cliente'
@@ -96,6 +105,11 @@ export function tituloDeCobro(
         + 'No es que no haya cobrado: es que ninguna fila de Cobranzas quedó atada a su ficha.'
       : `Sin cobranzas imputadas a esta obra (contratado ${money(contratado)}). `
         + 'No significa que no se haya cobrado: Cobranzas registra el cobro por cliente, no por obra.'
+  }
+  if (deCliente && obrasSinPrecio != null && obrasSinPrecio > 0) {
+    return `Cobrado ${money(cobrado)} sin IVA (acumulado, todas sus obras). SIN PORCENTAJE: `
+      + `${obrasSinPrecio} de sus obras no tienen precio en OBRAS, así que lo contratado `
+      + `(${money(contratado)}) no cubre lo que se cobró y la fracción no mediría nada.`
   }
   const p = progresoDeCobro(cobrado, contratado)
   const base = deCliente

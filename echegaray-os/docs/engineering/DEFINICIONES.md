@@ -110,9 +110,9 @@ esté abierta, el nombre lleva la ventana.
 
 | | |
 |---|---|
-| **Fuente primaria** | public.cliente_economia.cobrado_total / cobrado_neto_total (cliente) · public.obra_cobranza.cobrado (obra) |
+| **Fuente primaria** | public.cliente_economia.cobrado_total / cobrado_neto_total (cliente) · public.obra_cobranza.cobrado / cobrado_neto (obra) |
 | **Propietario** | `public.es_cobrada(estado, fecha_cobro)` — el predicado · `public.cobranzas` — el dato |
-| **Criterio** | **Percibido.** Una fila está cobrada si su estado dice cobrado (sin importar mayúsculas ni espacios) **y** su fecha de cobro no es futura. `cobrado_total` es bruto (lo que entra al banco); `cobrado_neto_total` es sin IVA y es el **único** comparable contra el contratado. |
+| **Criterio** | **Percibido.** Una fila está cobrada si su estado dice cobrado (sin importar mayúsculas ni espacios) **y** su fecha de cobro no es futura. `cobrado_total` es bruto (lo que entra al banco); `cobrado_neto_total` es sin IVA y es el **único** comparable contra el contratado. Por obra vale lo mismo: `obra_cobranza.cobrado` es bruto y `obra_cobranza.cobrado_neto` es el que se divide por lo contratado. |
 | **Ventana** | Acumulado. `cobrado_90d` existe aparte y lleva su ventana en el nombre. |
 | **Consumidores** | barra de cobro de `/clientes`, cuenta corriente, `pendiente_contractual`, Cash Flow |
 | **Confianza** | **D** · el predicado replica la columna U del Sheet y el control de cobros con fecha futura que ya hacía `repasar-cobranzas-y-caja.mjs` |

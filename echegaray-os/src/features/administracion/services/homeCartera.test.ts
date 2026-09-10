@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { ClientePanel } from '@/features/clientes/types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  armarCartera, certificacionDe, diaRelativo, hoyEnLaEmpresa,
+  armarCartera, certificacionDe, diaRelativo, getCobradoPorObra, hoyEnLaEmpresa,
   type FilaCertificado, type ObraDeCartera,
 } from './homeCartera.ts'
 import type { EconomiaDeCliente } from '@/features/clientes/services/economiaCliente'
@@ -26,7 +27,8 @@ const obra = (p: Partial<ObraDeCartera> & { obra_id: string }): ObraDeCartera =>
 /** Lo que publica `obra_economia_cartera` para una obra. Es la ÚNICA fuente del precio por obra. */
 const eco = (obraId: string, contratado: number | null, extra: Partial<EconomiaDeObra> = {}):
 [string, EconomiaDeObra] => [obraId, {
-  obra_canonica_id: obraId, contratado, costo_mo: null, costo_materiales: null, margen: null, ...extra,
+  obra_canonica_id: obraId, contratado, costo_mo: null, costo_materiales: null, margen: null,
+  origen: contratado === null ? null : 'oc-pesos', ...extra,
 }]
 
 /** Una fila de `public.cliente_economia`, que es de donde salen los totales del cliente. */
@@ -66,20 +68,6 @@ test('`avance_pct` NULL NO es 0 %, y sin precio en OBRAS el contratado no es $ 0
   assert.equal(c.enCurso[0].avance, null)
   assert.equal(c.enCurso[0].contratado, null)
   assert.equal(c.enCurso[0].jefe, null, 'un jefe en blanco no es un nombre')
-  // EL HUECO DE PRECIO NO ES UN CHIP DEL CLIENTE (09/09/2026): lo dice la obra, en su fila.
-  assert.deepEqual(c.chips.map((x) => x.clave), [], 'el cliente tiene CUIT, teléfono y contrato')
-  assert.equal(c.faltaUnDato, false, 'un hueco de precio en OBRAS no es un dato faltante del cliente')
-})
-
-test('sin CUIT el cliente lo dice en su chip, y eso SÍ lo mete en «datos faltantes»', () => {
-  const [c] = armarCartera({
-    clientes: [cliente({ cliente_id: 'c1', cuit: null })],
-    obras: [obra({ obra_id: 'o1' })],
-    cobrado: new Map(), certificados: [], contratos: new Set(['c1']),
-  })
-  assert.deepEqual(c.chips.map((x) => x.clave), ['sin-cuit', 'sin-telefono'])
-  assert.equal(c.faltaUnDato, true)
-  assert.match(c.aviso ?? '', /no se le puede facturar/)
 })
 
 test('«sin contrato» sale de los DOCUMENTOS y no del monto: son dos conceptos', () => {
@@ -96,7 +84,7 @@ test('«sin contrato» sale de los DOCUMENTOS y no del monto: son dos conceptos'
     contratos: new Set<string>(),
   })[0]
   assert.equal(conPlata.contratado, 156_174_253)
-  assert.deepEqual(conPlata.chips.map((x) => x.clave), ['sin-contrato'])
+  assert.equal(conPlata.tieneContrato, false, 'plata publicada no prueba que el papel esté archivado')
 
   const sinPlata = armarCartera({
     ...base,
@@ -104,11 +92,10 @@ test('«sin contrato» sale de los DOCUMENTOS y no del monto: son dos conceptos'
     contratos: new Set(['c1']),
   })[0]
   assert.equal(sinPlata.contratado, null, 'sin precio en OBRAS: NUNCA cero')
-  assert.deepEqual(sinPlata.chips.map((x) => x.clave), [], 'tiene el contrato cargado')
+  assert.equal(sinPlata.tieneContrato, true, 'tiene el contrato cargado')
 
   const sinLeer = armarCartera({ ...base, obras: [obra({ obra_id: 'o1' })], contratos: null })[0]
-  assert.equal(sinLeer.tieneContrato, null)
-  assert.deepEqual(sinLeer.chips.map((x) => x.clave), [], 'no se pudo mirar: no se acusa')
+  assert.equal(sinLeer.tieneContrato, null, 'no se pudo mirar: no se acusa')
 })
 
 // ═══ CERTIFICACIÓN ═══
@@ -287,4 +274,87 @@ test('Messina: la fila del cliente publica lo que dice la vista, no la suma del 
   assert.equal(Math.round(c.contratadoTotal ?? 0), 188_020_729)
   assert.equal(Math.round(c.cobrado ?? 0), 90_579_117)
   assert.equal(Math.round(c.pendienteContractual ?? 0), 97_441_612)
+})
+
+// ═══ EL COBRO DE LA OBRA SE LEE NETO, NO BRUTO ═══
+//
+// `obra_cobranza` publica los dos: `cobrado` es lo que entró al banco (con IVA) y `cobrado_neto` es
+// sin IVA. Lo contratado de OBRAS es NETO, así que la barra sólo puede dividir por el segundo.
+//
+// EL DEFECTO QUE ATRAPA: la fila de Quattropani decía «100 % cobrado» —$102.606.669 sobre
+// $95.270.932— y el 7,7 % de más era el IVA de las facturas, no un cobro por encima del contrato.
+// Con el neto ($84.697.935) la misma fila dice 89 %. Si alguien vuelve a `cobrado`, este test da
+// rojo con el número bruto en el mensaje.
+
+/** Un Supabase de mentira que devuelve las DOS columnas: la buena y la que ya engañó una vez. */
+function baseConLasDos(filas: Record<string, unknown>[], recordar: string[]) {
+  return {
+    from: () => ({
+      select: (columnas: string) => {
+        recordar.push(columnas)
+        // Sólo devuelve lo que se pidió, igual que PostgREST: pedir `cobrado` no puede traer el neto.
+        const pedidas = columnas.split(',').map((c) => c.trim())
+        return Promise.resolve({
+          data: filas.map((f) => Object.fromEntries(pedidas.map((c) => [c, f[c] ?? null]))),
+          error: null,
+        })
+      },
+    }),
+  } as unknown as SupabaseClient
+}
+
+test('la barra de la obra divide el cobrado NETO, nunca el bruto con IVA', async () => {
+  const pedidas: string[] = []
+  const cobrado = await getCobradoPorObra(baseConLasDos(
+    [{ obra_id: 'quattropani', cobrado: 102_606_668.76, cobrado_neto: 84_697_934.83 }],
+    pedidas,
+  ))
+  assert.ok(pedidas[0].includes('cobrado_neto'), `pidió «${pedidas[0]}»: sin el neto no hay qué dividir`)
+  assert.equal(
+    cobrado?.get('quattropani'), 84_697_934.83,
+    'el bruto ($102.606.669) sobre un contratado neto da «100 % cobrado» y el resto es IVA',
+  )
+})
+
+test('sin cobranzas cobradas la obra NO entra al mapa: un hueco no es un cero', async () => {
+  const cobrado = await getCobradoPorObra(baseConLasDos(
+    [{ obra_id: 'messina-bsa', cobrado: null, cobrado_neto: null }], [],
+  ))
+  assert.equal(cobrado?.has('messina-bsa'), false, 'una barra en 0 % afirmaría que se midió')
+})
+
+// ═══ LOS CONTEOS QUE LA FILA ESCRIBE ═══
+
+test('la fila trae el desglose en curso / cerradas, y no lo inventa cuando no lo leyó', () => {
+  // Messina: «11 obras» con 5 filas colgando debajo fue lo que el dueño no pudo cuadrar.
+  const [conVista] = armarCartera({
+    clientes: [cliente({ cliente_id: 'c1', n_obras: 11 })],
+    obras: [obra({ obra_id: 'o1' })],
+    cobrado: new Map(), certificados: [],
+    economiaCliente: new Map([['c1', ecCliente({
+      cliente_id: 'c1', n_obras_en_curso: 5, n_obras_cerradas: 6, n_obras_sin_precio: 6,
+    })]]),
+  })
+  assert.equal(conVista.obras, 11)
+  assert.equal(conVista.nEnCurso, 5)
+  assert.equal(conVista.nCerradas, 6)
+  assert.equal(conVista.obrasSinPrecio, 6, 'el % de cobro no se puede publicar con 6 obras sin precio')
+
+  const [sinVista] = armarCartera({
+    clientes: [cliente({ cliente_id: 'c1', n_obras: 11 })],
+    obras: [obra({ obra_id: 'o1' })], cobrado: new Map(), certificados: [],
+  })
+  assert.equal(sinVista.nEnCurso, null, 'no se leyó la vista: no se escribe «0 en curso»')
+  assert.equal(sinVista.nCerradas, null)
+  assert.equal(sinVista.obrasSinPrecio, null)
+})
+
+test('la obra lleva de qué camino salió su contratado: «suma-viva» no es un precio', () => {
+  const [c] = armarCartera({
+    clientes: [cliente({ cliente_id: 'c1' })],
+    obras: [obra({ obra_id: 'messina-bsa' })],
+    cobrado: new Map(), certificados: [],
+    economia: new Map([eco('messina-bsa', 14_120_243.4, { origen: 'suma-viva' })]),
+  })
+  assert.equal(c.enCurso[0].origenContratado, 'suma-viva')
 })

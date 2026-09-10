@@ -34,9 +34,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ClientePanel } from '@/features/clientes/types'
-import { avisoDeDatos } from '../../clientes/services/cartera.ts'
-import { chipsDeCliente, leFaltaUnDato, margenDeLaFila, type Chip } from '../../clientes/services/chipsCartera.ts'
-import { margenPct, sumaConHuecos, type EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
+import {
+  margenDeLaFila, margenPct, sumaConHuecos, type EconomiaDeObra,
+} from '../../clientes/services/economiaObras.ts'
 import type { EconomiaDeCliente } from '../../clientes/services/economiaCliente.ts'
 
 /** Una obra `activa`, tal como la lee la cartera. Es un subconjunto de `obra_panel`. */
@@ -62,14 +62,21 @@ export interface ObraEnCurso {
   jefe: string | null
   /** Lo que OBRAS publica: contratado de la OC de Cobranzas. `null` = «sin precio en OBRAS». */
   contratado: number | null
+  /**
+   * DE QUÉ CAMINO SALIÓ ESE NÚMERO (`obra_economia_cartera.origen`). `suma-viva` NO es un precio
+   * contratado: es lo que Cobranzas lleva registrado como venta, y la fila tiene que decirlo — ME -
+   * BSA publica $14.120.243 por ese camino mientras el cliente mandó 5 OC por $49.886.583 c/IVA.
+   */
+  origenContratado: string | null
   costoMo: number | null
   costoMateriales: number | null
   margen: number | null
   margenPct: number | null
   certificacion: EstadoCertificacion
   /** El último parte de la obra, `YYYY-MM-DD`. `null` = ninguno registrado. */
-  /** LO COBRADO DE ESTA OBRA, criterio PERCIBIDO (`obra_cobranza`). `null` = ninguna cobranza
-   *  imputada a la obra, que NO es «no cobró»: hoy Cobranzas anota el cobro contra el cliente. */
+  /** LO COBRADO DE ESTA OBRA, percibido y SIN IVA (`obra_cobranza.cobrado_neto`) — el único
+   *  comparable contra lo contratado, que tampoco lo lleva. `null` = ninguna cobranza imputada a la
+   *  obra, que NO es «no cobró»: hoy Cobranzas anota casi todo el cobro contra el cliente. */
   cobrado: number | null
 }
 
@@ -77,27 +84,33 @@ export interface ClienteEnCartera {
   cliente_id: string
   slug: string | null
   nombre: string
-  /** Qué le falta al maestro. `null` = nada. */
-  aviso: string | null
   /**
    * ¿TIENE UN CONTRATO CARGADO? Sale de `cliente_documento.rol = 'contrato'` y NO del monto: son
    * dos conceptos y hasta el 09/09/2026 la pantalla los decía con la misma palabra. `null` = no se
    * pudo leer la tabla de documentos, y entonces la fila NO dice «sin contrato».
    */
   tieneContrato: boolean | null
-  /** Lo que le falta al MAESTRO, ya resuelto a chips. La fila no vuelve a decidir nada. */
-  chips: Chip[]
   /**
-   * ¿LE FALTA ALGO DEL MAESTRO QUE FRENA EL COBRO? CUIT, teléfono o el contrato SIN CARGAR
-   * (`chipsCartera.leFaltaUnDato`). Es el mismo conjunto que dibuja los chips de la fila y el mismo
-   * que recorta el filtro «Datos faltantes»: una sola cuenta, para que el contador del filtro no
-   * pueda decir 4 mientras la tabla muestra 3.
-   *
-   * EL PRECIO FALTANTE NO ENTRA. Un hueco de OBRAS se resuelve en el Sheet, no en la ficha; era lo
-   * que metía a Messina —con $156M publicados— en la lista de «datos faltantes».
+   * CUÁNTAS OBRAS TIENE, EN TOTAL. Es `cliente_panel.n_obras` y NO cierra con las filas de abajo:
+   * abajo cuelgan sólo las `activa`. Por eso la fila ya no escribe «11 obras» a secas —Messina
+   * mostraba 11 con 5 filas debajo— sino el desglose de los dos campos que siguen.
    */
-  faltaUnDato: boolean
   obras: number
+  /** De `cliente_economia.n_obras_en_curso`. `null` = no se pudo leer la vista (o el rol no ve
+   *  economía), y entonces la fila cae a `obras` sin desglosar: nunca se inventa un cero. */
+  nEnCurso: number | null
+  /** De `cliente_economia.n_obras_cerradas`. Es el número que explica la resta que el dueño vio. */
+  nCerradas: number | null
+  /**
+   * CUÁNTAS DE SUS OBRAS NO TIENEN PRECIO EN OBRAS (`n_obras_sin_precio`).
+   *
+   * ES LA CONDICIÓN DEL PORCENTAJE DE COBRO. `cobrado_neto_total` es de TODAS sus obras y
+   * `contratado` sólo de las que tienen precio: mientras falte una, la fracción tiene arriba y
+   * abajo dos universos distintos. San Francisco publicaba «100 % cobrado» dividiendo el cobro de
+   * sus 5 obras por el contrato de 4. Con esto la pantalla publica el importe —que es un hecho— y
+   * se guarda el porcentaje.
+   */
+  obrasSinPrecio: number | null
   /**
    * LO CONTRATADO DE SUS OBRAS EN CURSO, de `cliente_economia.contratado_en_curso` — la vista, no
    * una suma hecha acá. `null` = ninguna obra en curso tiene precio en OBRAS, o no se pudo leer.
@@ -167,6 +180,14 @@ export async function getObrasDeLaCartera(
  * de Cobranzas a su obra por `obra_alias`. Acá no se vuelve a decidir nada: recalcular el criterio
  * en la pantalla es cómo nacen dos definiciones de «cobrado».
  *
+ * ═══ SE LEE `cobrado_neto` Y NO `cobrado` (10/09/2026) ═══
+ *
+ * `cobrado` es el BRUTO —lo que entró al banco, con IVA— y lo contratado de OBRAS es NETO. La fila
+ * de Quattropani publicaba «100 %» con $102.606.669 cobrados sobre $95.270.932 contratados: el 7 %
+ * de más era el IVA de las facturas, no un cobro por encima del contrato. Con el neto
+ * ($84.697.935) la misma fila dice 89 %, que es lo que pasó. El bruto sigue vivo en la vista para
+ * quien pregunte cuánta plata entró; lo que no puede es dividirse por un neto.
+ *
  * LA VISTA LLEVA `WHERE ve_economia()`: al jefe de obra le devuelve CERO FILAS, no un error. Por eso
  * un mapa vacío no significa «nadie cobró nada» y la pantalla, además, no ofrece la celda cuando el
  * rol no ve economía — no ofrecer lo que la base va a negar.
@@ -174,14 +195,14 @@ export async function getObrasDeLaCartera(
  * `null` = la lectura falló, que no es lo mismo que «no hay cobranzas».
  */
 export async function getCobradoPorObra(supabase: SupabaseClient): Promise<Map<string, number> | null> {
-  const { data, error } = await supabase.from('obra_cobranza').select('obra_id, cobrado')
+  const { data, error } = await supabase.from('obra_cobranza').select('obra_id, cobrado_neto')
   if (error) return null
   const por = new Map<string, number>()
-  for (const f of (data ?? []) as { obra_id: string; cobrado: number | null }[]) {
-    // `cobrado` viene NULL cuando la obra tiene filas de Cobranzas pero ninguna cobrada. Eso NO es
-    // cero cobrado: es que todavía no entró nada, y la barra lo dibuja como 0 sólo si la obra
-    // aparece con un número. Un null no se guarda: el mapa dice quién tiene cobro, no quién no.
-    if (f.cobrado != null) por.set(f.obra_id, Number(f.cobrado))
+  for (const f of (data ?? []) as { obra_id: string; cobrado_neto: number | null }[]) {
+    // NULL cuando la obra tiene filas de Cobranzas pero ninguna cobrada. Eso NO es cero cobrado: es
+    // que todavía no entró nada, y la barra lo dibuja como 0 sólo si la obra aparece con un número.
+    // Un null no se guarda: el mapa dice quién tiene cobro, no quién no.
+    if (f.cobrado_neto != null) por.set(f.obra_id, Number(f.cobrado_neto))
   }
   return por
 }
@@ -329,6 +350,7 @@ export function armarCartera({
         avance: o.avance_pct,
         jefe: o.jefe_obra?.trim() || null,
         contratado,
+        origenContratado: e?.origen ?? null,
         costoMo: e?.costo_mo ?? null,
         costoMateriales: e?.costo_materiales ?? null,
         margen,
@@ -361,11 +383,11 @@ export function armarCartera({
       cliente_id: c.cliente_id,
       slug: c.slug,
       nombre: c.nombre_comercial,
-      aviso: avisoDeDatos(c),
       tieneContrato,
-      chips: chipsDeCliente({ cuit: c.cuit, telefono: c.telefono, tieneContrato }),
-      faltaUnDato: leFaltaUnDato({ cuit: c.cuit, telefono: c.telefono, tieneContrato }),
       obras: c.n_obras,
+      nEnCurso: ec?.n_obras_en_curso ?? null,
+      nCerradas: ec?.n_obras_cerradas ?? null,
+      obrasSinPrecio: ec?.n_obras_sin_precio ?? null,
       contratado: ec?.contratado_en_curso ?? null,
       contratadoTotal: ec?.contratado ?? null,
       costoMo: tMo.total,

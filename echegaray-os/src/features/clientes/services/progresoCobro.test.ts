@@ -82,3 +82,32 @@ test('el ámbito por defecto sigue siendo la obra: ninguna llamada vieja cambia 
     tituloDeCobro({ cobrado: null, contratado: 1000, ambito: 'obra' }),
   )
 })
+
+// ═══ EL DENOMINADOR QUE NO CUBRE AL NUMERADOR (10/09/2026) ═══
+//
+// `cobrado_neto_total` suma TODAS las obras del cliente; `contratado` sólo las que tienen precio en
+// OBRAS. San Francisco publicaba «100 % cobrado» dividiendo $132.415.646 —de sus 5 obras— por
+// $109.592.102 —de 4—: no era un cobro completo, era una fracción de dos universos. La pantalla
+// deja de dibujar el porcentaje y el `title` tiene que decir por qué, con el número de obras.
+
+test('con obras sin precio el título dice que NO hay porcentaje, y cuántas faltan', () => {
+  const t = tituloDeCobro({
+    cobrado: 132_415_646, contratado: 109_592_102, ambito: 'cliente', obrasSinPrecio: 1,
+  })
+  assert.match(t, /SIN PORCENTAJE/)
+  assert.match(t, /1 de sus obras/)
+  assert.match(t, /132\.415\.646/, 'el importe cobrado es un hecho y se sigue diciendo')
+})
+
+test('sin obras sin precio, el título vuelve a ser la fracción de siempre', () => {
+  const t = tituloDeCobro({
+    cobrado: 84_697_935, contratado: 95_270_932, ambito: 'cliente', obrasSinPrecio: 0,
+  })
+  assert.doesNotMatch(t, /SIN PORCENTAJE/)
+  assert.match(t, /sin IVA/)
+})
+
+test('la fila de la OBRA nunca entra por esa puerta: sus dos números son de la misma obra', () => {
+  const t = tituloDeCobro({ cobrado: 84_697_935, contratado: 95_270_932, obrasSinPrecio: 6 })
+  assert.doesNotMatch(t, /SIN PORCENTAJE/, '`obrasSinPrecio` es del cliente y no aplica a una obra')
+})
