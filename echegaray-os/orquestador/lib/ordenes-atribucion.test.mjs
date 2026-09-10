@@ -15,8 +15,8 @@ import {
   deduplicar, documentoDeAdjunto, fecharOrdenesDePagoPorSuRetencion, hashDocumento, heredarObras,
 } from './ordenes-atribucion.mjs'
 import {
-  clasificarAdjunto, dominioDe, extraerFechaDeOrden, fechaRotulada, numeroDeRetencion,
-  ordenDePagoDeLaRetencion,
+  clasificarAdjunto, comprobanteDelNombre, dominioDe, extraerFechaDeOrden, fechaRotulada,
+  numeroDeNombreArchivo, numeroDeRetencion, ordenDePagoDeLaRetencion,
 } from './ordenes-cliente.mjs'
 
 // El padrón REAL, tal como está en `public.clientes` el 10/09/2026. Se clava porque el defecto que
@@ -394,4 +394,43 @@ test('ARCOR manda sus órdenes de pago desde arcornovedades.com', () => {
   assert.equal(d.ok, true, d.motivo)
   assert.equal(d.cliente.id, 'cli-arcor')
   assert.equal(d.tipo, 'orden_pago')
+})
+
+test('el número de una OC de ARCOR es el del NOMBRE, no el de la orden que cita adentro', () => {
+  // MEDIDO: `6A_53049655.PDF` quedó guardada con 53031073 — el número de otra orden, citada en el
+  // cuerpo como antecedente. Dos órdenes distintas se veían como la misma.
+  const d = documentoDeAdjunto({
+    from: 'Milena Castore <mcastore@arcor.com>', asunto: 'GENERACION OC',
+    nombreArchivo: '6A_53049655.PDF',
+    textoPdf: 'ORDEN DE COMPRA ARCOR Ref. OC 53031073 antecedente material 21.00',
+    clientes: CLIENTES_BD, obras: OBRAS,
+  })
+  assert.equal(d.numero, '53049655')
+  assert.equal(d.tipo, 'orden_compra')
+})
+
+test('la orden de pago y el certificado de ARCOR dejan de quedar sin número', () => {
+  assert.equal(numeroDeNombreArchivo('00001_966878_OP.PDF'), '966878')
+  assert.equal(numeroDeNombreArchivo('00001_24034724_$I.PDF'), '24034724')
+  assert.equal(numeroDeNombreArchivo('00001_00061033_$B_2024_18.PDF'), '00061033')
+  // Messina queda afuera a propósito: en `OC_32_0000200002097.pdf` el punto de venta y el número
+  // van pegados, y partirlos sería adivinar dónde termina uno.
+  assert.equal(numeroDeNombreArchivo('OC_32_0000200002097.pdf'), null)
+})
+
+test('nuestra factura de crédito electrónica no es una orden de compra del cliente', () => {
+  // `30716304643_201_00001_00000006.pdf` entró como `orden_compra` de ARCOR con el número de la OC
+  // que factura: el encabezado dice «FACTURA DE CREDITO ELECTRONICA MiPyME» y la regla de factura
+  // sólo reconocía «FACTURA A». El nombre lo prueba igual: adelante va NUESTRO CUIT.
+  assert.equal(comprobanteDelNombre('30716304643_201_00001_00000006.pdf', '30716304643'), '1-6')
+  assert.equal(comprobanteDelNombre('30620311703_001_00001_00000006.pdf', '30716304643'), null, 'el comprobante de otro no es nuestro')
+  const d = documentoDeAdjunto({
+    from: 'Rodrigo Echegaray <rodrigo@ecsas.com.ar>', asunto: 'Fwd: ARCOR',
+    nombreArchivo: '30716304643_201_00001_00000006.pdf',
+    textoPdf: 'FACTURA DE CREDITO ELECTRONICA MiPyME Orden de compra 53016726',
+    clientes: CLIENTES_BD, obras: OBRAS,
+  })
+  assert.equal(d.tipo, 'factura')
+  assert.equal(d.numero, '1-6')
+  assert.equal(d.cita, '53016726')
 })

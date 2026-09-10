@@ -152,6 +152,60 @@ export function extraerNumero(texto) {
   return null
 }
 
+/**
+ * EL NÚMERO QUE EL EMISOR PUSO EN EL NOMBRE DEL ARCHIVO. null si el nombre no lo declara.
+ *
+ * MEDIDO el 10/09/2026 sobre las órdenes de ARCOR: `6A_53049655.PDF` quedó guardada con el número
+ * 53031073 —el de OTRA orden, citada adentro del PDF como antecedente— y `00001_966878_OP.PDF`
+ * quedó sin número. Los dos son peores que un hueco: un número ajeno hace que dos órdenes distintas
+ * se vean como la misma, y sin número la orden no se puede identificar ni deduplicar.
+ *
+ * El sistema que emite escribe SU número en el nombre, y eso es una declaración del emisor sobre el
+ * documento — más fuerte que rastrear dígitos en el cuerpo, donde conviven el número propio, los
+ * ajenos y los códigos de artículo. Sólo se aceptan las formas que un emisor conocido produce:
+ *
+ *   6A_53049655.PDF              orden de compra de ARCOR
+ *   00001_966878_OP.PDF          orden de pago de ARCOR
+ *   00001_24034724_$I.PDF        certificado de retención de ARCOR ($G ganancias, $I IVA, $B IIBB)
+ *
+ * Messina NO está: escribe `OC_32_0000200002097.pdf`, donde el punto de venta y el número van
+ * pegados y partirlos sería adivinar dónde termina uno. Ahí manda el PDF, que los separa.
+ */
+const NUMERO_EN_NOMBRE = Object.freeze([
+  /^6[a-z]_(\d{6,})\.pdf$/i,
+  /^\d{4,6}_(\d{4,})_op\.pdf$/i,
+  /^\d{4,6}_(\d{4,})_\$[a-z](?:_[\w-]+)*\.pdf$/i,
+])
+
+export function numeroDeNombreArchivo(nombreArchivo) {
+  const n = String(nombreArchivo ?? '')
+  for (const re of NUMERO_EN_NOMBRE) {
+    const m = n.match(re)
+    if (m) return m[1]
+  }
+  return null
+}
+
+/**
+ * ¿ESTE ARCHIVO ES UN COMPROBANTE QUE EMITIMOS NOSOTROS? Devuelve su número o null.
+ *
+ * `30716304643_201_00001_00000006.pdf`: CUIT del emisor, tipo de comprobante, punto de venta,
+ * número. Es el nombre con que ARCA entrega todo comprobante electrónico, y el mismo patrón que
+ * `src/app/portal/papeles.ts` ya usa para reconocer una factura nuestra.
+ *
+ * MEDIDO: ese archivo entró como `orden_compra` de ARCOR con el número de la OC que factura, porque
+ * el encabezado dice «FACTURA DE CREDITO ELECTRONICA MiPyME» y `comprobantePropio` sólo reconoce
+ * «FACTURA A». Una factura nuestra publicada como orden del cliente le atribuye a ARCOR un
+ * compromiso que ARCOR no firmó.
+ *
+ * `cuitPropio` se recibe —no se cablea— porque quién es «nosotros» ya está definido en el OS.
+ */
+export function comprobanteDelNombre(nombreArchivo, cuitPropio) {
+  const m = String(nombreArchivo ?? '').match(/^(\d{11})_(\d{3})_(\d{4,5})_(\d{6,8})\./)
+  if (!m || m[1] !== String(cuitPropio ?? '').replace(/\D/g, '')) return null
+  return `${Number(m[3])}-${Number(m[4])}`
+}
+
 /** Fecha en ISO (YYYY-MM-DD) leída como DD/MM/AAAA — locale es_AR, nunca MM/DD. null si no hay. */
 export function extraerFecha(texto) {
   const m = String(texto ?? '').match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/)
@@ -330,9 +384,19 @@ export function numeroCorto(numero) {
 export function ocsCitadas(texto) {
   const t = String(texto ?? '')
   const salida = new Set()
-  for (const m of t.matchAll(/\bo\/?c\s*(?:n[°ºo.]*)?\s*[:#-]?\s*(\d{1,5}\s*-\s*\d{3,10}|\d{4,10})/gi)) {
-    const canon = numeroCanonico(m[1])
-    if (canon) salida.add(canon)
+  // Dos formas, y las dos exigen el rótulo entero: la sigla («OC 02- 00002162», como la escribe
+  // nuestra factura) y la frase («Orden de compra 53016726», como la escribe ARCOR). Sin la
+  // segunda, la factura que le emitimos a ARCOR no citaba ninguna orden y la cadena
+  // factura → OC → obra se cortaba en el primer eslabón.
+  const patrones = [
+    /\bo\/?c\s*(?:n[°ºo.]*)?\s*[:#-]?\s*(\d{1,5}\s*-\s*\d{3,10}|\d{4,10})/gi,
+    /\borden(?:es)?\s+de\s+compra\s*(?:n[°ºo.r]*)?\s*[:#-]?\s*(\d{1,5}\s*-\s*\d{3,10}|\d{4,10})/gi,
+  ]
+  for (const re of patrones) {
+    for (const m of t.matchAll(re)) {
+      const canon = numeroCanonico(m[1])
+      if (canon) salida.add(canon)
+    }
   }
   return [...salida]
 }

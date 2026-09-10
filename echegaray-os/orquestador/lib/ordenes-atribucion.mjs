@@ -25,7 +25,8 @@ import { CUIT_ECSAS } from './transferencias-proveedores.mjs'
 import {
   agruparPorNumero, clasificarAdjunto, comprobantePropio, comprobantesCitados, dominioDe, extraerFechaDeOrden,
   extraerImporte, extraerNumero, facturaPropiaDe, mapaDeCitas, mapaDeEvidencia, norm,
-  numeroCanonico, numeroDeRetencion, obraPorReferencia, ocsCitadas, ordenDePagoDeLaRetencion,
+  comprobanteDelNombre, numeroCanonico, numeroDeNombreArchivo, numeroDeRetencion,
+  obraPorReferencia, ocsCitadas, ordenDePagoDeLaRetencion,
   resolverObraDeTexto,
 } from './ordenes-cliente.mjs'
 
@@ -419,9 +420,19 @@ export function documentoDeAdjunto({
   // lo archivamos, y el detalle cita la orden que factura: las dos cosas engañan a la clasificación
   // por texto. El encabezado del propio comprobante, no.
   const fac = facturaPropiaDe(textoPdf)
-  const tipoFinal = fac?.tipo ?? tipo
+  // Y si el ENCABEZADO no se deja leer, el NOMBRE puede probar lo mismo: `30716304643_201_…pdf`
+  // lleva nuestro CUIT adelante porque lo emitimos nosotros. Sin esto, nuestra factura de crédito
+  // electrónica entraba como orden de compra de ARCOR, con el número de la OC que factura.
+  const nuestro = fac ? null : comprobanteDelNombre(nombreArchivo, CUIT_ECSAS)
+  const tipoFinal = fac?.tipo ?? (nuestro ? 'factura' : tipo)
+  // EL NÚMERO QUE EL EMISOR ESCRIBIÓ EN EL NOMBRE LE GANA AL QUE HAYA QUE RASTREAR EN EL CUERPO: en
+  // el cuerpo conviven el número propio, los ajenos que cita y los códigos de artículo, y de ahí
+  // salió una OC de ARCOR guardada con el número de otra.
   const numero = fac?.numero
-    ?? (tipoFinal === 'retencion' ? numeroDeRetencion({ nombreArchivo, textoPdf }) : extraerNumero(textoPdf))
+    ?? nuestro
+    ?? (tipoFinal === 'retencion' ? (numeroDeRetencion({ nombreArchivo, textoPdf }) ?? numeroDeNombreArchivo(nombreArchivo)) : null)
+    ?? numeroDeNombreArchivo(nombreArchivo)
+    ?? extraerNumero(textoPdf)
   const { importe, moneda } = extraerImporte(textoPdf)
 
   // La obra se busca SÓLO entre las del cliente resuelto, y sobre el asunto + el PDF. El cuerpo de
@@ -437,7 +448,7 @@ export function documentoDeAdjunto({
     senal,
     numero: numero ?? null,
     numeroCanonico: numeroCanonico(numero),
-    cita: fac?.cita ?? null,
+    cita: fac?.cita ?? (nuestro ? (ocsCitadas(textoPdf)[0] ?? null) : null),
     // El comprobante que este papel ES («A-1-225»). Es la clave con la que una orden de pago lo
     // encuentra: la OP no cita la OC, cita la FACTURA.
     comprobante: comprobantePropio(textoPdf),
