@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-10 08:55 (hora local −03) · main `ffa50844` = origin = producción (Sheet); Vercel con el push_
+_actualizado: 2026-09-10 09:20 (hora local −03) · main `ecd69cd8` = origin = producción; Vercel con el push_
 
 ## 1. OBJETIVO GENERAL
 
@@ -127,6 +127,14 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
   «Copiar día anterior» / «Jornada completa» (qué obra); contadores de la barra nivel 2; 8 ausencias sin motivo y 16 días sin
   cargar traban el cierre de la 1ª de septiembre; regresión visual: chips «sin medir/sin jefe» recortados en filas con dos
   órdenes con importe.
+- **10/09 09:00–09:20**: decisiones del dueño aplicadas (memoria `decisiones-1009-obras-cheques-compras`): obras fusionadas
+  BSA - Planta→ME - BSA y Pisos 120m2→ME - PISOS 120 M² Y RAMPA (T1900 `fusionada_en`, alias); `/clientes` fila de obra en
+  dos líneas; papeles del canal: 16 vínculos confirmados, altas A.C.SAT / DATA 2000 / Clavero, transferencias colgadas,
+  Barceló 0103-00003797 cargado en Compras fila 945 con su foto. Pendiente del dueño: NC Alumetal 0031-00002661
+  (−$1.095.076, obra ambigua) y 0011-00014272 (lectura sin importe); obra/unidad de la fila 945.
+- **Cheques**: los 17 proyectados están indicados en «Cheques Emitidos»; los $2,56M de Machuca (echeqs 378/379) se fueron a
+  la línea Materiales Civil por cruzar contra factura COMPROMETIDA; fix en rama `fix/cheques-proyectados-solo-indicados`
+  (134332f5) en verificación de copia (mueve $7,1M entre sub-líneas; cierre igual). Mergear sólo con esa evidencia.
 - **Agentes en curso al cerrar**: Liquidación 7/8/12 (Convenios, Recibos, Productividad); fidelidad UX/UI contra el
   mockup (worktree en /home/jorge/echegaray-os/worktrees/wt-fidelidad); Clientes en UNA pantalla + panel/descarga de OC/OP;
   Gmail → transferencias por proveedor; Cargas Sociales `CARGAS_MES_*` 12/12. Ramas feat/* sin mergear se listan con
