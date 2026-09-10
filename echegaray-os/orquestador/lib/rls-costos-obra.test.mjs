@@ -65,7 +65,16 @@ test('la única policy de `costos_obra` es la lectura acotada por obra', { skip:
   assert.equal(rows.length, 1,
     `costos_obra tiene ${rows.length} policies: sobra alguna de escritura (${rows.map((r) => r.polname).join(', ')})`)
   assert.equal(rows[0].polcmd, 'r', 'la policy que quedó no es de SELECT')
-  assert.match(rows[0].usando, /ve_obra_texto\(/,
+  // LAS DOS FORMAS DE ACOTAR POR OBRA, Y POR QUÉ HAY DOS (10/09/2026).
+  //
+  // `ve_obra_texto(obra_texto)` recibe una COLUMNA, así que Postgres la ejecuta UNA VEZ POR FILA:
+  // medido con `explain (analyze)` como perfil `campo`, 560,7 ms para las 938 filas de la tabla.
+  // `20260911T0110` la reemplaza por la pertenencia al conjunto `mis_alias_de_obra()`, que se
+  // evalúa una vez y se hashea (67 ms), y probó devolver exactamente las mismas filas.
+  //
+  // Lo que este control tiene que impedir sigue siendo lo mismo: que la lectura vuelva a ser
+  // `using(true)`. Las dos formas de acotarla son aceptables; ninguna otra.
+  assert.match(rows[0].usando, /mis_alias_de_obra\(\)|ve_obra_texto\(/,
     'la lectura de costos_obra dejó de acotarse por obra: volvió a ser using(true)')
 })
 
