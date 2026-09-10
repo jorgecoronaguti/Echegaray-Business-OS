@@ -393,3 +393,37 @@ texto, la pestaña OBRAS y `/clientes` van a decir distinto de **BSA** —contra
 contra $ 17.704.199,40, por cobrar $ 12.157.138,26 contra $ 16.493.725,02—. La diferencia es
 exactamente la fila 46 y está clavada en `orquestador/lib/obra-cuenta.pg.test.mjs`: si algún día se
 emparejan, ese test avisa.
+---
+
+## `costo_de_obra`
+
+| | |
+|---|---|
+| **Fuente primaria** | public.obra_economia_cartera.costo_mo / costo_materiales (PRESUPUESTO, suma de public.obra_egreso_proyectado) · public.obra_panel.costo_real (REAL, comprobantes imputados) |
+| **Propietario** | `public.obra_egreso_proyectado` — la explosión del presupuesto · `public.compras` — los comprobantes imputados |
+| **Criterio** | **Son dos números distintos y ninguno reemplaza al otro.** El **presupuestado** es lo que la obra dijo que iba a costar, y lo publica la pestaña OBRAS del Flujo de Caja vía `obra_economia_sheet`. El **real** es lo que se gastó, y sale de los comprobantes imputados a la obra. |
+| **Ventana** | Acumulado por obra. El presupuestado no tiene ventana (es el plan entero); el real acumula lo imputado hasta hoy. |
+| **Consumidores** | columnas «MO ppto.» y «Mat. ppto.» de `/clientes`, ficha de la obra, costo-hora |
+| **Confianza** | **D** · el camino presupuesto → `obra_egreso_proyectado` → `obra_economia_sheet` lo escribe `obras-economia-sync.mjs` |
+| **Última decisión del dueño** | 10/09/2026: la cartera de clientes muestra el PRESUPUESTO y lo dice en el rótulo. |
+
+**El rótulo mentía, y por eso este concepto entró al registro.** La auditoría independiente del
+10/09/2026 encontró que `/clientes` rotulaba «Costo MO» y «Costo mat.» dos números que salen de la
+explosión del presupuesto. Medido el mismo día: **`obra_panel.costo_real` está en CERO en 8 de las 9
+obras**, porque casi ningún comprobante está imputado todavía. Un «Costo» al lado de un «Contratado»
+invita a restar y a leer **margen real donde hay margen proyectado**. Los rótulos pasaron a
+**«MO ppto.»** y **«Mat. ppto.»**, con la explicación entera en el `title` de cada columna.
+
+### Lo prohibido
+
+- `from\('obra_egreso_proyectado'\)` — sumar la explosión del presupuesto en una pantalla es una
+  **segunda definición** del costo proyectado: la primera la hace `obra_economia_sheet` con las
+  mismas reglas que la columna D de OBRAS (qué filas cuentan, cómo se valúa el dólar, qué estado
+  excluye la venta). Dos sumas de las mismas filas se separan en cuanto una aprende algo, y nadie se
+  entera porque las dos dan un número plausible.
+
+### Lo permitido, con su motivo
+
+| archivo | por qué | hasta |
+|---|---|---|
+| `src/features/administracion/services/costoLecturas.ts` | El módulo de costo-hora necesita la mano de obra presupuestada **desglosada por actividad** para compararla contra las HH imputadas, y `obra_economia_sheet` sólo publica el total de la obra. No es una segunda definición del total: es otra pregunta sobre las mismas filas. | — |

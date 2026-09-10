@@ -136,6 +136,21 @@ export interface ClienteEnCartera {
   cobrado: number | null
   /** `contratado (todas) − cobrado neto`. `null` si falta cualquiera de los dos. */
   pendienteContractual: number | null
+  /**
+   * LO COBRADO QUE NO LLEGÓ A NINGUNA OBRA — la suma de las cobranzas que quedaron con imputación
+   * `cliente` en TODAS sus obras, incluidas las cerradas. `null` = no hay ninguna, o no se pudo leer.
+   *
+   * ES LA PIEZA QUE FALTABA PARA QUE EL % POR OBRA NO SE LEA COMO DEUDA. San Francisco tiene cuatro
+   * filas «Saldo obras San Francisco — cuota n/4» por $47.659.263 que son del CLIENTE y no de una
+   * obra: sus tres obras muestran 25–29 % cobrado mientras el cliente lleva el 50 %. Sin este
+   * número, la diferencia se lee como plata que falta cobrar. Con él, se lee como plata cobrada que
+   * todavía no se repartió.
+   *
+   * SÓLO CUENTA LO QUE QUEDÓ SIN REPARTIR DE VERDAD: se calcula DESPUÉS de `atribuirAlaUnicaObra`,
+   * así que un cliente con una sola obra en curso —cuyo cobro ya se le atribuyó— no publica un
+   * «sin asignar» que contradiga su propia barra.
+   */
+  cobradoSinObra: number | null
   enCurso: ObraEnCurso[]
 }
 
@@ -261,10 +276,15 @@ export async function getContratosDeLaCartera(
  *              `cliente_orden.obra_id`. Es la atribución fuerte: la dice un papel.
  *   `alias`    porque la etiqueta de Cobranzas nombra a esa obra (`obra_alias`).
  *   `cliente`  NO se pudo repartir: la etiqueta nombra al CLIENTE y el cobro quedó en la bolsa.
- *              La fila lo dice con palabras y NO dibuja barra: repartirlo a ojo sería inventar.
+ *              La fila lo dice con palabras y NO dibuja barra: repartirlo entre varias obras a ojo
+ *              sería inventar.
  *   `null`     la columna todavía no existe en la base (la migración no está aplicada).
+ *
+ * `unica-obra` NO SALE DE LA BASE: lo DERIVA `armarCartera` cuando el cliente tiene UNA sola obra
+ * en curso y por lo tanto no hay entre qué repartir. Es una DEDUCCIÓN, no una medición, y por eso
+ * lleva nombre propio en vez de disfrazarse de `alias`. Ver `atribuirAlaUnicaObra`.
  */
-export type Imputacion = 'oc' | 'alias' | 'cliente'
+export type Imputacion = 'oc' | 'alias' | 'cliente' | 'unica-obra'
 
 export interface CobroDeObra {
   /** Percibido y SIN IVA (`obra_cobranza.cobrado_neto`). */
@@ -292,6 +312,63 @@ export interface CobroDeObra {
 export interface CobroPorObra {
   por: Map<string, CobroDeObra>
   disponible: boolean
+}
+
+/**
+ * ═══ UN CLIENTE CON UNA SOLA OBRA EN CURSO NO TIENE ENTRE QUÉ REPARTIR ═══
+ *
+ * `imputacion = 'cliente'` significa que la vista no pudo atar esa cobranza a una obra: ni por el
+ * número de OC de la columna H ni por la etiqueta de Cobranzas. Pero cuando el cliente tiene UNA
+ * sola obra en curso no hay ambigüedad que resolver — no hay dos candidatas—, y dejar la fila
+ * diciendo «cobro sin obra asignada» es esconder un número que sí se sabe de quién es.
+ *
+ * ES EL CASO DE QUATTROPANI (medido el 10/09/2026): su etiqueta «Quattropani - Melisa García SAS»
+ * resuelve por `obra_alias` al id `quattropani`, que es la obra bolsa y a la vez su ÚNICA obra en
+ * curso. La vista la marca `cliente` porque llegó por el alias del cliente, no por la OC; la
+ * pantalla puede afirmar sin inventar que ese cobro es de esa obra.
+ *
+ * ═══ LO QUE ESTA REGLA NO PUEDE VER, Y HAY QUE DECIRLO ═══
+ *
+ * Mira las obras EN CURSO. Un cliente con una obra en curso y varias CERRADAS que todavía deban
+ * plata recibiría en la obra en curso un cobro que puede ser de una cerrada. Hoy no pasa —el único
+ * cliente que entra en la regla, Quattropani, no tiene ninguna cerrada— pero el día que pase, el
+ * número va a estar en la fila equivocada y nada se va a poner rojo. Por eso la atribución NO se
+ * disfraza de medición: viaja marcada como `unica-obra` y el `title` dice que se dedujo.
+ *
+ * Con DOS o más obras en curso no se toca nada: repartir a ojo sería inventar, y la fila sigue
+ * diciendo «cobro sin obra asignada».
+ */
+export function atribuirAlaUnicaObra(enCurso: ObraEnCurso[]): ObraEnCurso[] {
+  if (enCurso.length !== 1) return enCurso
+  const [o] = enCurso
+  if (o.imputacion !== 'cliente' || o.cobrado === null) return enCurso
+  return [{ ...o, imputacion: 'unica-obra' }]
+}
+
+/**
+ * CUÁNTO DEL COBRO DEL CLIENTE NO LLEGÓ A NINGUNA OBRA.
+ *
+ * Suma las cobranzas con imputación `cliente` de TODAS sus obras —las cerradas incluidas, porque la
+ * obra bolsa donde caen casi siempre lo está— y descuenta las que `atribuirAlaUnicaObra` ya le
+ * asignó a la única obra en curso: publicar un «sin asignar» al lado de una barra que dice lo
+ * contrario sería contradecirse en la misma fila.
+ *
+ * `null` Y NO CERO cuando no hay nada sin repartir: la fila no dibuja el renglón. Un «$ 0 sin
+ * asignar» es ruido que ocupa una línea en todas las filas para decir que no pasa nada.
+ */
+export function sinRepartir({ obrasDelCliente, cobrado, yaAtribuidas }: {
+  obrasDelCliente: { obra_id: string }[] | null
+  cobrado: CobroPorObra | null
+  yaAtribuidas: Set<string>
+}): number | null {
+  if (!obrasDelCliente || !cobrado?.disponible) return null
+  let total = 0
+  for (const o of obrasDelCliente) {
+    if (yaAtribuidas.has(o.obra_id)) continue
+    const c = cobrado.por.get(o.obra_id)
+    if (c?.imputacion === 'cliente' && c.cobrado > 0) total += c.cobrado
+  }
+  return total > 0 ? total : null
 }
 
 /** Lo mínimo de un certificado para saber en qué punto del circuito está. */
@@ -371,6 +448,7 @@ export function hoyEnLaEmpresa(ahora: Date = new Date()): string {
  */
 export function armarCartera({
   clientes, obras, cobrado, certificados, economia = null, contratos = null, economiaCliente = null,
+  todasLasObras = null,
 }: {
   clientes: ClientePanel[]
   obras: ObraDeCartera[] | null
@@ -389,6 +467,13 @@ export function armarCartera({
    * vino a borrar.
    */
   economiaCliente?: Map<string, EconomiaDeCliente> | null
+  /**
+   * TODAS las obras de cada cliente, incluidas las CERRADAS (`getObrasPorCliente`). Hace falta para
+   * `cobradoSinObra`: el cobro que Cobranzas no pudo repartir cae en la obra bolsa del cliente, que
+   * casi siempre está cerrada y por eso NO aparece en `obras` —que sólo trae las `activa`—.
+   * `null`/ausente = no se pudo leer, y entonces el «sin asignar» no se afirma.
+   */
+  todasLasObras?: Map<string, { obra_id: string }[]> | null
 }): ClienteEnCartera[] {
   const porCliente = new Map<string, ObraDeCartera[]>()
   for (const o of obras ?? []) {
@@ -425,6 +510,18 @@ export function armarCartera({
         cobroDisponible,
       }
     })
+    // UN CLIENTE CON UNA SOLA OBRA EN CURSO NO TIENE ENTRE QUÉ REPARTIR: ver `atribuirAlaUnicaObra`.
+    // Se hace acá y no dentro del `map` de arriba porque la regla mira el CONJUNTO de las obras del
+    // cliente, no una fila.
+    const enCursoAtribuido = atribuirAlaUnicaObra(enCurso)
+    const cobradoSinObra = sinRepartir({
+      obrasDelCliente: todasLasObras?.get(c.cliente_id) ?? null,
+      cobrado,
+      yaAtribuidas: new Set(
+        enCursoAtribuido.filter((o) => o.imputacion === 'unica-obra').map((o) => o.obra_id),
+      ),
+    })
+
     // ═══ LO CONTRATADO Y LO COBRADO DEL CLIENTE LOS DICE LA VISTA, NO ESTA FUNCIÓN ═══
     //
     // Hasta el 10/09/2026 `contratado` era `sumaConHuecos` de las filas de obra y `cobrado` la suma
@@ -453,8 +550,9 @@ export function armarCartera({
       costoMo: tMo.total,
       costoMateriales: tMat.total,
       cobrado: ec?.cobrado_neto_total ?? null,
+      cobradoSinObra,
       pendienteContractual: ec?.pendiente_contractual ?? null,
-      enCurso,
+      enCurso: enCursoAtribuido,
     }
   })
 }

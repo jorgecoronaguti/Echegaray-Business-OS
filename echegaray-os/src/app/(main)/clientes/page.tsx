@@ -148,6 +148,10 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const base = conArchivados ? [...activos, ...guardados] : activos
   const cartera = armarCartera({
     clientes: base, obras, cobrado, certificados, economia, contratos, economiaCliente,
+    // TODAS sus obras, cerradas incluidas: el cobro que Cobranzas no pudo repartir cae en la obra
+    // bolsa del cliente, que casi siempre está cerrada y no aparece en `obras` —que sólo trae las
+    // `activa`—. Ya está leída para el panel: no es una consulta más.
+    todasLasObras,
   })
   // ═══ EL RECORTE SALE DE LA MISMA FILA QUE SE DIBUJA ═══
   //

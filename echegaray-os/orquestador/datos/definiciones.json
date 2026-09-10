@@ -336,6 +336,26 @@
           "porque": "Genera la pestaña «Calendario de Cobros», que tiene el mismo límite: sus celdas son fórmulas sobre la hoja. Marca el ⚠ de «el cobro cae después del fin de obra» sobre el mismo universo que la venta de esa obra EN LA PESTAÑA."
         }
       ]
+    },
+    {
+      "concepto": "costo_de_obra",
+      "canonica": "public.obra_economia_cartera.costo_mo / costo_materiales (PRESUPUESTO, suma de public.obra_egreso_proyectado) · public.obra_panel.costo_real (REAL, comprobantes imputados)",
+      "propietario": "public.obra_egreso_proyectado — la explosión del presupuesto; public.compras — los comprobantes imputados",
+      "criterio": "SON DOS NÚMEROS DISTINTOS Y NINGUNO REEMPLAZA AL OTRO. El PRESUPUESTADO es lo que la obra dijo que iba a costar y lo publica la pestaña OBRAS del Flujo de Caja vía `obra_economia_sheet`; el REAL es lo que se gastó y sale de los comprobantes imputados a la obra. Medido el 10/09/2026: `obra_panel.costo_real` está en CERO en 8 de las 9 obras, porque casi ningún comprobante está imputado. Una pantalla que rotula «Costo MO» un número presupuestado invita a restarlo del contratado y a leer margen REAL donde hay margen proyectado: por eso `/clientes` los rotula «MO ppto.» y «Mat. ppto.».",
+      "ventana": "acumulado por obra. El presupuestado no tiene ventana (es el plan entero); el real acumula lo imputado hasta hoy.",
+      "confianza": "D · conocimiento interno validado: el camino presupuesto → `obra_egreso_proyectado` → `obra_economia_sheet` lo escribe `obras-economia-sync.mjs` y lo audita la auditoría independiente del 10/09/2026",
+      "prohibidas": [
+        {
+          "patron": "from\\('obra_egreso_proyectado'\\)",
+          "porque": "Sumar la explosión del presupuesto en una pantalla es una SEGUNDA definición del costo proyectado: la primera la hace `obra_economia_sheet` con las mismas reglas que la columna D de OBRAS (qué filas cuentan, cómo se valúa el dólar, qué estado excluye la venta). Dos sumas de las mismas filas se separan en cuanto una aprende algo, y nadie se entera porque las dos dan un número plausible."
+        }
+      ],
+      "excepciones": [
+        {
+          "archivo": "src/features/administracion/services/costoLecturas.ts",
+          "porque": "El módulo de costo-hora necesita la mano de obra presupuestada DESGLOSADA por actividad para compararla contra las HH imputadas, y `obra_economia_sheet` sólo publica el total de la obra. No es una segunda definición del total: es otra pregunta sobre las mismas filas."
+        }
+      ]
     }
   ]
 }
