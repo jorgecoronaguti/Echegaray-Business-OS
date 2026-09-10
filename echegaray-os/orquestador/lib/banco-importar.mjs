@@ -92,6 +92,12 @@ export function campos(linea) {
 /** Las líneas que no son un movimiento: encabezados, totales, cortes de página. */
 const ES_RUIDO = /^(fecha\b|saldo (inicial|final|anterior|al\b)|[úu]ltimos movimientos|movimientos|cuenta|per[ií]odo|total\b|p[áa]gina|banco santander|consolidado|=+$|-+$)/i
 
+/** El sello de cuándo se bajó el archivo ("10/09/2026 12:44:55"): una fecha con hora y nada más. No es
+ *  un movimiento —no tiene concepto ni importe— y hasta hoy salía como "línea que no entendí". Un
+ *  rechazo falso en cada corrida es cómo se aprende a no leer la lista de rechazos, que es la que
+ *  avisa cuando de verdad se perdió un movimiento. */
+const ES_SELLO = /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s+\d{1,2}:\d{2}(:\d{2})?$/
+
 /**
  * EL PIE DEL EXTRACTO NO ES RUIDO: ES LA ÚNICA FUENTE INDEPENDIENTE DEL SALDO (10/09/2026).
  *
@@ -243,7 +249,7 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
     if (cab) { cols = cab; continue }
     const pie = parsearSaldoDeclarado(cruda, anio)
     if (pie) { saldosDeclarados.push(pie); continue }
-    if (ES_RUIDO.test(cruda)) continue
+    if (ES_RUIDO.test(cruda) || ES_SELLO.test(cruda)) continue
 
     // ── RE-UNIR UNA FILA ENVUELTA POR UN SALTO DE LÍNEA ──
     // Si la línea ABRE una fila (arranca con fecha) pero NO cierra (su último campo es texto del

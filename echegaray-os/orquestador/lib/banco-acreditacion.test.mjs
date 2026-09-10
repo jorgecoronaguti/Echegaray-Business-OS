@@ -75,6 +75,12 @@ test('el pie no entra como movimiento ni como rechazo silencioso', () => {
   assert.equal(saldosDeclarados.length, 1)
 })
 
+test('el sello de descarga del archivo no es un movimiento ni un rechazo', () => {
+  const { movimientos, rechazos } = parsearExtracto(EXTRACTO)
+  assert.equal(rechazos.length, 0)
+  assert.equal(movimientos.length, 7)
+})
+
 test('un depósito retenido se marca; el MISMO concepto ya acreditado (con saldo por fila) no', () => {
   const hoy = { concepto: 'Deposito e-cheq 48hs presencia bsr', importe: 6567841.01, saldo: null }
   const ayer = { concepto: 'Deposito e-cheq 48hs presencia bsr', importe: 15079296.20, saldo: 14503182.66 }
