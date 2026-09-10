@@ -19,13 +19,14 @@
           "cliente_panel",
           "obra_panel",
           "obra_cobranza",
+          "obra_cuenta",
           "certificados",
           "cliente_orden",
           "obra_economia_cartera",
           "cliente_documento",
           "cliente_economia"
         ],
-        "porque": "El costo dominante de la pantalla era el arranque en frío por CONEXIÓN (~800 ms de catálogo la primera vez que un backend ve las vistas anidadas del OS), pagado hasta diez veces porque cada consulta paralela puede caer en un backend distinto del pool. Un viaje, un backend, un arranque."
+        "porque": "El costo dominante de la pantalla era el arranque en frío por CONEXIÓN (~800 ms de catálogo la primera vez que un backend ve las vistas anidadas del OS), pagado hasta diez veces porque cada consulta paralela puede caer en un backend distinto del pool. Un viaje, un backend, un arranque. Publica obra_cuenta tal cual la vista la calcula (contratado, cobrado, por cobrar, vencido, próximo cobro): la fila de trabajo NO resta esos números en la pantalla, que era la segunda definición de «lo que falta cobrar»."
       },
       {
         "funcion": "public.campanita_atencion()",
@@ -41,6 +42,28 @@
           "correccion_asistencia_bandeja"
         ],
         "porque": "La campanita vive en todas las pantallas: sus viajes no son el costo de una pantalla sino un impuesto por navegación que le disputaba el pool de PostgREST al render. Transporta las filas crudas y NO cuenta: los cuatro números de Compras los sigue decidiendo PREDICADO en comprasEstado.ts, que está escrito una sola vez y lo usan tres consumidores."
+      },
+      {
+        "funcion": "public.pantalla_cliente(text)",
+        "pantalla": "/clientes/[cliente]",
+        "migracion": "supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql",
+        "reemplaza": "15 consultas de PostgREST en TRES olas encadenadas",
+        "consume": [
+          "cliente_panel",
+          "perfiles",
+          "cliente_contacto",
+          "obra_panel",
+          "obra_economia_cartera",
+          "cliente_economia",
+          "cliente_orden",
+          "cliente_documento",
+          "drive_index",
+          "cliente_nota",
+          "clientes",
+          "certificados",
+          "cotizacion_cascada"
+        ],
+        "porque": "Dos de las quince lecturas ESPERABAN a la ola anterior (drive_index por los ids de cliente_documento, certificados por las obras del cliente): adentro de un cuerpo SQL esa dependencia es una subconsulta y deja de costar un viaje. Los cruces con decisión adentro —vínculo sin archivo, nota sin autor, certificado sin obra— siguen en TypeScript: un left join los reproduciría hoy y se separaría el día que alguien lo toque."
       }
     ]
   },

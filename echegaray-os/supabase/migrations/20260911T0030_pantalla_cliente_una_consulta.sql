@@ -93,7 +93,12 @@ as $$
       select coalesce(jsonb_agg(jsonb_build_object(
                'obra_canonica_id', e.obra_canonica_id, 'contratado', e.contratado,
                'costo_mo', e.costo_mo, 'costo_materiales', e.costo_materiales,
-               'margen', e.margen, 'origen', e.origen)), '[]'::jsonb)
+               'margen', e.margen, 'origen', e.origen,
+               -- El papel que respalda el precio y la discrepancia declarada contra las OC
+               -- (20260910T2355). Los dos totales de OC NO se suman: ver economiaObras.ts.
+               'referencia', e.referencia, 'nota', e.nota,
+               'oc_civa_ventana', e.oc_civa_ventana, 'oc_civa_historico', e.oc_civa_historico,
+               'oc_n_ventana', e.oc_n_ventana, 'oc_n_historico', e.oc_n_historico)), '[]'::jsonb)
         from public.obra_economia_cartera e
     ),
 

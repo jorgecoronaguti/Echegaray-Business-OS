@@ -148,8 +148,39 @@ as $$
       select coalesce(jsonb_agg(
                jsonb_build_object('obra_canonica_id', e.obra_canonica_id, 'contratado', e.contratado,
                                   'costo_mo', e.costo_mo, 'costo_materiales', e.costo_materiales,
-                                  'margen', e.margen, 'origen', e.origen)), '[]'::jsonb)
+                                  'margen', e.margen, 'origen', e.origen,
+                                  -- El papel que respalda el precio y la discrepancia declarada
+                                  -- contra las OC (20260910T2355). No se recalculan: se transportan.
+                                  'referencia', e.referencia, 'nota', e.nota,
+                                  -- LOS DOS TOTALES DE OC NO SE SUMAN: `ventana` es lo que el
+                                  -- cliente emitió dentro del año que acota el contratado e
+                                  -- `historico` lo de otros años, que en una obra fusionada son
+                                  -- órdenes viejas. Sumarlos publicó $49,8 M de OC al lado de un
+                                  -- contratado de $17,7 M.
+                                  'oc_civa_ventana', e.oc_civa_ventana,
+                                  'oc_civa_historico', e.oc_civa_historico,
+                                  'oc_n_ventana', e.oc_n_ventana,
+                                  'oc_n_historico', e.oc_n_historico)), '[]'::jsonb)
         from public.obra_economia_cartera e
+    ),
+
+    -- ═══ LA CUENTA DE CADA OBRA (`public.obra_cuenta`, 20260910T2356) ═══
+    --
+    -- Contratado, cobrado, por cobrar, vencido y el próximo cobro con su medio, PUBLICADOS POR LA
+    -- VISTA con las mismas columnas que la pestaña OBRAS. La fila de trabajo de `/clientes` sale de
+    -- acá y no de una resta entre `obra_economia_cartera` y `obra_cobranza`: esa resta hecha en la
+    -- pantalla era una segunda definición de «lo que falta cobrar», y la que más veces discrepó.
+    -- La RPC no recalcula ninguna de estas columnas — las transporta.
+    'cuenta_por_obra', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'obra_id', u.obra_id, 'obra', u.obra, 'cliente_id', u.cliente_id,
+               'contratado', u.contratado, 'n_cobranzas', u.n_cobranzas, 'n_cobradas', u.n_cobradas,
+               'cobrado_total', u.cobrado_total, 'cobrado_neto', u.cobrado_neto,
+               'por_cobrar', u.por_cobrar, 'vencido', u.vencido,
+               'proximo_cobro_fecha', u.proximo_cobro_fecha,
+               'proximo_cobro_medio', u.proximo_cobro_medio,
+               'imputacion', u.imputacion)), '[]'::jsonb)
+        from public.obra_cuenta u
     ),
 
     -- QUIÉN TIENE EL CONTRATO CARGADO (`getContratosDeLaCartera`). Es un PAPEL, no un monto.

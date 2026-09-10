@@ -53,6 +53,7 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
       'certificados',          // las fechas del circuito certificar → facturar → cobrar
       'cliente_orden',         // los papeles del cliente (OC, OP, retenciones, facturas)
       'obra_economia_cartera', // canónica del PRECIO de una obra
+      'obra_cuenta',           // canónica de contratado/cobrado/por cobrar/vencido POR OBRA
       'cliente_documento',     // quién tiene el contrato CARGADO (un papel, no un monto)
       'cliente_economia',      // canónica de lo contratado/cobrado DEL CLIENTE
     ],
@@ -67,6 +68,25 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
       'proveedor_nombre_pendiente',
       'imputacion_pendiente',
       'correccion_asistencia_bandeja',
+    ],
+  },
+  {
+    archivo: 'supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql',
+    funcion: 'pantalla_cliente',
+    lee: [
+      'cliente_panel',          // la ficha, y el slug → cliente_id
+      'perfiles',               // quién mira, y los responsables posibles
+      'cliente_contacto',
+      'obra_panel',             // sus obras (y el recorte de los certificados)
+      'obra_economia_cartera',  // canónica del PRECIO de una obra
+      'cliente_economia',       // canónica de lo contratado/cobrado DEL CLIENTE
+      'cliente_orden',          // los papeles
+      'cliente_documento',      // los vínculos a Drive
+      'drive_index',            // los archivos: se cruzan en TypeScript, no con un join
+      'cliente_nota',
+      'clientes',               // las fechas de alta/edición, que cliente_panel no publica
+      'certificados',
+      'cotizacion_cascada',     // los presupuestos vigentes del cliente
     ],
   },
 ]
