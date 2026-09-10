@@ -26,10 +26,50 @@
 // como está y se cuenta como colgado, para que alguien lo asigne a mano. Y `match_manual` no se
 // pisa nunca: lo que dijo una persona le gana a este cálculo (sólo se le refresca el renglón).
 
-import { filaConciliada } from './clave-conciliada.mjs'
+import { filaConciliada, partesDeClave } from './clave-conciliada.mjs'
 
-/** El proveedor que el lector le entendió al papel, si quedó anotado. */
-const proveedorLeido = (a) => a?.lectura?.proveedor ?? a?.lectura?.emisor?.nombre ?? null
+/**
+ * El proveedor que el lector le entendió al papel.
+ *
+ * `lectura` está vacía en casi todos los adjuntos históricos (el bot no la guardaba), y sin nombre
+ * de proveedor un `c:` NUNCA empata con un `p:`: la conciliación se niega, y con razón. Por eso el
+ * sync le adjunta `proveedor_leido` desde `comunicacion.comprobante_fajos`, que es donde el bot SÍ
+ * dejó lo que entendió. Sin ese dato, 2 de los 3 colgados del 10/09 se quedaban colgados teniendo
+ * el nombre escrito a dos tablas de distancia.
+ */
+const proveedorLeido = (a) => {
+  // SÓLO cuando la clave del adjunto identifica por CUIT. Si la clave ya es `p:<proveedor>|…`, el
+  // nombre bueno es el de la clave: el fajo puede traer el titular del CUIT («D' AMICO BARTOL
+  // GISELA AGOSTINA») en vez del nombre comercial («MASS CONSULTORA»), y pisarlo rompía un empate
+  // que funcionaba.
+  if (partesDeClave(a?.compra_clave)?.por !== 'cuit') return null
+  return a?.proveedor_leido ?? a?.lectura?.proveedor ?? a?.lectura?.emisor?.nombre ?? null
+}
+
+/**
+ * `file_id` → lo que el bot leyó del papel (proveedor), sacado de los fajos. Puro.
+ *
+ * TODOS los estados de fajo, no sólo «cargado»: un fajo se marca «descartado» cuando sus pendientes
+ * se mudan a uno nuevo, y la LECTURA del papel que quedó ahí sigue siendo válida.
+ */
+export function proveedorPorArchivo(fajos = []) {
+  const mapa = new Map()
+  for (const f of fajos) {
+    const filas = f?.filas ?? []
+    for (const it of (f?.items ?? [])) {
+      // EL PROVEEDOR SE BUSCA POR CLAVE, NUNCA POR POSICIÓN. `filas` guarda sólo los ítems que
+      // ENTRARON al Sheet, así que `filas[k]` no es el ítem `k`: cruzar por índice ya le colgó la
+      // factura de Robles Pintureria al PDF de MASS CONSULTORA (08/09/2026).
+      const anotada = it?.clave ? filas.find((x) => x?.clave === it.clave) : null
+      const proveedor = it?.proveedor ?? it?.emisor?.nombre ?? anotada?.proveedor ?? null
+      if (!proveedor) continue
+      for (const o of [it?.origen, ...(it?.copias ?? [])]) {
+        if (o?.fileId) mapa.set(String(o.fileId), proveedor)
+      }
+    }
+  }
+  return mapa
+}
 
 /**
  * Qué hay que escribir para que cada adjunto quede colgado de su fila. Puro: no toca la base.
@@ -61,12 +101,13 @@ export function planDeReconciliacion(adjuntos = [], filas = []) {
     if (exactas.length > 1) { plan.colgados.push({ ...a, motivo: `la clave está en ${exactas.length} filas` }); continue }
     const f = filaConciliada(a.compra_clave, conClave, { proveedor: proveedorLeido(a) })
     if (!f) { plan.colgados.push({ ...a, motivo: 'ninguna fila es ese comprobante' }); continue }
-    // Lo que dijo una persona no se recalcula: se le refresca el renglón y nada más.
-    if (a.vinculado_por === 'match_manual') {
-      if (f.fila !== a.fila_compras) plan.refrescar.push({ id: a.id, fila: f.fila })
-      continue
-    }
-    plan.reasignar.push({ id: a.id, de: a.compra_clave, clave: f.clave, fila: f.fila, proveedor: f.proveedor ?? null })
+    // LO QUE DIJO UNA PERSONA SE CONSERVA, PERO SU VÍNCULO SE SIGUE. La decisión humana es «este
+    // papel es de esta compra»; la clave es sólo el nombre que esa compra tiene hoy. Dejarla vieja
+    // haría desaparecer de la pantalla el papel que alguien asignó a mano.
+    plan.reasignar.push({
+      id: a.id, de: a.compra_clave, clave: f.clave, fila: f.fila,
+      proveedor: f.proveedor ?? null, manual: a.vinculado_por === 'match_manual',
+    })
   }
   return plan
 }

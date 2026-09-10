@@ -34,7 +34,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool, withTx } from '../lib/db.mjs'
 import { CASHFLOW_ID } from '../lib/cash-briefing.mjs'
 import { PRIMERA_FILA, claveDeCompra, contratoDeColumnas, filaACompra } from '../lib/compras-fila.mjs'
-import { planDeReconciliacion } from '../lib/comprobantes/reconciliar-adjuntos.mjs'
+import { planDeReconciliacion, proveedorPorArchivo } from '../lib/comprobantes/reconciliar-adjuntos.mjs'
 
 const DRY = process.argv.includes('--dry')
 
@@ -165,8 +165,12 @@ async function escribirCostosObra(db, compras) {
  */
 async function reconciliarAdjuntos(db, compras) {
   const { rows: adjuntos } = await db.query(
-    'select id, compra_clave, fila_compras, vinculado_por, lectura from public.compra_adjunto')
-  const plan = planDeReconciliacion(adjuntos, compras)
+    'select id, origen_file_id, compra_clave, fila_compras, vinculado_por, lectura from public.compra_adjunto')
+  const { rows: fajos } = await db.query('select items, filas from comunicacion.comprobante_fajos')
+  const proveedores = proveedorPorArchivo(fajos)
+  const plan = planDeReconciliacion(
+    adjuntos.map((a) => ({ ...a, proveedor_leido: proveedores.get(String(a.origen_file_id)) ?? null })),
+    compras)
   for (const r of plan.refrescar) {
     await db.query('update public.compra_adjunto set fila_compras=$2 where id=$1', [r.id, r.fila])
   }
@@ -175,8 +179,11 @@ async function reconciliarAdjuntos(db, compras) {
     // haya visto. La pantalla muestra esa diferencia y tiene que poder seguir mostrándola.
     await db.query(
       `update public.compra_adjunto
-          set compra_clave=$2, fila_compras=$3, vinculado_por='match_numero', confianza=0.9, vinculado_at=now()
-        where id=$1 and vinculado_por <> 'match_manual'`, [r.id, r.clave, r.fila])
+          set compra_clave=$2, fila_compras=$3,
+              vinculado_por = case when vinculado_por='match_manual' then vinculado_por else 'match_numero' end,
+              confianza     = case when vinculado_por='match_manual' then confianza else 0.9 end,
+              vinculado_at  = now()
+        where id=$1`, [r.id, r.clave, r.fila])
   }
   return plan
 }
