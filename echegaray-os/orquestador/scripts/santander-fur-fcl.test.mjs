@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mismoNombre, ordenDePago, proximoHabil } from './santander-fur-fcl.mjs'
+import { mismoNombre, proximoHabil } from './santander-fur-fcl.mjs'
+import { ordenDePago } from '../lib/pago-simple.mjs'
 
 // EL EMPAREJAMIENTO POR NOMBRE DECIDE A QUIÉN SE LE PAGA. Los casos son los rótulos REALES: el
 // estudio contable abrevia, el resumen de cuentas escribe entero, y los dos usan comas donde
@@ -41,4 +42,12 @@ test('ordenDePago: el período va como MAAAA, con el mes sin cero adelante', () 
   assert.equal(ordenDePago('202604'), 42026)
   assert.equal(ordenDePago('202610'), 102026)
   assert.equal(ordenDePago('202701'), 12027)
+})
+
+test('el nombre que usa el BANCO no se empareja por nombre: para eso está el CUIL', () => {
+  // El banco escribe «MALDONADO BATISTA EMILIANO» (3 tokens) donde el estudio escribe
+  // «MALDONADO, BATISTA EMILIANO MIGUEL» (4). Una regla que tolerara esa diferencia toleraría
+  // también confundir a dos hermanos, así que contra el banco se cruza por CUIL y esto da false.
+  assert.equal(mismoNombre('MALDONADO, BATISTA EMILIANO MIGUEL', 'MALDONADO BATISTA EMILIANO'), false)
+  assert.equal(mismoNombre('PETINA RODRIGUEZ JAIRO EMANUEL', 'PETINA RODRIGUEZ JAIRO E.'), true)
 })

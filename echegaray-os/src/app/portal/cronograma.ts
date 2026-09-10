@@ -290,3 +290,47 @@ export const ROTULO_ESTADO: Record<EstadoPago, string> = {
   programado: 'pendiente',
   sin_factura: 'sin factura',
 }
+
+/**
+ * CÓMO SE MARCA UNA FILA: el «próximo» NO TAPA AL «vencido» (10/09/2026).
+ *
+ * El portal de Messina escribía «Cobro · Pilón · 28/08 · próximo» sobre un pago cuya fecha había
+ * pasado trece días antes. No era un error de fechas —`estadoDePago` lo daba vencido— sino de
+ * rotulado: la fila que además es el próximo pago se marcaba «próximo» y con eso perdía la única
+ * palabra que decía que estaba en mora. Al cliente se le presentaba una deuda vencida como si
+ * todavía tuviera tiempo.
+ *
+ * Un pago vencido SIGUE SIENDO el próximo que hay que pagar —por eso `proximoPago` no lo saltea— y
+ * la fila se sigue resaltando. Lo que cambia es la palabra: manda el estado.
+ *
+ * `pagado` está en la misma lista por la misma razón, aunque hoy `proximoPago` no pueda devolver
+ * uno: la regla no depende de que otra función siga filtrando bien.
+ */
+const NO_LOS_TAPA_EL_PROXIMO: EstadoPago[] = ['vencido', 'pagado']
+
+export function marcaDeFila(estado: EstadoPago, esProximo: boolean): EstadoPago {
+  if (NO_LOS_TAPA_EL_PROXIMO.includes(estado)) return estado
+  return esProximo ? 'proximo' : estado
+}
+
+/**
+ * EL CONTEO DEL ENCABEZADO CUENTA LO QUE SE VE (10/09/2026).
+ *
+ * Decía «13 pagos · 7 obras» arriba de una lista de 10 pagos, cuatro pastillas de obra y un pie que
+ * suma 10. Los 13 incluían los de obras anteriores —que van en su propia sección, abajo y en gris—
+ * y las 7 obras salían de `agruparPorObra`, que agrupa TODO, incluidas las terminadas y el bloque
+ * de los cobros sin obra. El primer número de la pantalla contradecía a la pantalla.
+ *
+ * Lo anterior no se esconde: se dice aparte, con las mismas palabras que la sección de abajo.
+ */
+export function rotuloDelCronograma(
+  { enCurso, anteriores, obras, obraNombre }:
+  { enCurso: number; anteriores: number; obras: number; obraNombre: string | null },
+): string {
+  const partes = [enCurso === 1 ? '1 pago' : `${enCurso} pagos`]
+  // Con una obra elegida se la nombra: de eso —y de nada más— está hablando la pantalla.
+  if (obraNombre) partes.push(obraNombre)
+  else if (obras > 1) partes.push(`${obras} obras`)
+  if (anteriores) partes.push(`+${anteriores} de obras anteriores`)
+  return partes.join(' · ')
+}

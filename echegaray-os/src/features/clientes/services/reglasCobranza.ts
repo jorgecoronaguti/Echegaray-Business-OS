@@ -44,6 +44,19 @@ export const BANDAS: { clave: ClaveBanda; rotulo: string }[] = [
  * NO se filtra además por «retenido»: eso NO es un estado de certificado y la base no lo puede
  * guardar. El fondo de reparo es la columna `reparo` de un certificado que por lo demás sigue
  * emitido, tiene su propia cifra arriba, y la vista ya lo excluye del saldo por su lado.
+ *
+ * ═══ QUIÉN DECIDE QUE UN DOCUMENTO ESTÁ COBRADO (10/09/2026) ═══
+ *
+ * `certificado_cliente.estado` NO es una opinión de esta pantalla: es la materialización de la
+ * columna O de Cobranzas que escribe `orquestador/scripts/sync-esquema-cliente.mjs`. La fuente
+ * única del cobro es Cobranzas y este archivo la lee a través de esa copia — nunca decide por su
+ * cuenta si algo se cobró.
+ *
+ * Esa copia estuvo MINTIENDO: hasta hoy el upsert del sync no actualizaba `estado`, así que una
+ * factura que el Sheet pasó a `Cobrado` se quedaba `emitido` para siempre y el plan de abajo pedía
+ * «Enviar recordatorio» por $6.060.479 que Messina ya había pagado. El arreglo está donde estaba el
+ * defecto —`lib/portal/publicacion.mjs`, regla `estadoAGuardar`— y la cadena entera (fila de
+ * Cobranzas → proyección → estado guardado → plan) se prueba en `reglasCobranza.test.ts`.
  */
 export const sigueEnLaCalle = (d: CertificadoCliente): boolean => d.estado !== 'cobrado'
 
@@ -272,7 +285,10 @@ export function planDeCobranza(documentos: CertificadoCliente[], hoy: string): I
     } else if (vencido) {
       items.push({
         documento: d, tono: 'neg', accion: 'recordatorio', rotulo: ROTULO.recordatorio,
-        motivo: `${dias} días vencido. Sin cobro registrado.`,
+        // «SEGÚN COBRANZAS» NO ES UN ADORNO: el que lee tiene que poder ir a verificarlo. Este
+        // motivo se publicó durante días sobre facturas cobradas —la copia estaba vieja— y decía
+        // «Sin cobro registrado» a secas, como un hecho del mundo y no como lo que dice una fuente.
+        motivo: `${dias} días vencido. Sin cobro registrado en Cobranzas.`,
       })
     } else if (dias != null && dias >= -30) {
       items.push({

@@ -22,6 +22,7 @@ scripts · 14 timers en producción.
 | el libro canónico de movimientos | `orquestador/lib/libro-*.mjs` · las sumas del Sheet, `lib/libro-sumas.mjs` (`terminoLibro`) |
 | banco, extracto, conciliación | `orquestador/lib/banco-*.mjs` · la puerta es `scripts/importar-banco.mjs` |
 | cobranzas, certificados, portal del cliente | `src/features/clientes/` + `src/app/(portal)/` · sync en `scripts/portal-esquema-sync.mjs` |
+| las órdenes de compra y de pago que MANDA el cliente | `public.cliente_orden` + bucket privado `obras-documentos` · importador `orquestador/scripts/gmail-ordenes-clientes.mjs` (ENSAYO por defecto, escribe con `--aplicar`; lee **dos casillas**, `ORQ_GMAIL_ORDENES_CASILLAS`; caché en `~/.cache/echegaray-orq/`) · segunda pasada sobre lo ya bajado, `scripts/reatribuir-ordenes-clientes.mjs` · lo que el papel DICE en `lib/ordenes-cliente.mjs`, de QUIÉN es y si ya está en `lib/ordenes-atribucion.mjs` · pantalla `src/features/clientes/` |
 | los recibos del cliente (el PDF de Drive) | `public.recibo_cliente` · barrido `orquestador/scripts/recibos-drive-sembrar.mjs` + reglas en `lib/recibos-drive.mjs` · pantalla `src/app/portal/(dentro)/facturas/` · la descarga la sirve `src/app/portal/recibo/[id]/route.ts` con la credencial del OS |
 | el bot, el Director, los especialistas | `orquestador/comunicacion/` · el WS es `mattermost-ws-consumer.mjs` |
 | jornales, quincenas, UOCRA | `orquestador/scripts/jornales-pestana.mjs` (2.835 líneas — **leé el tramo, no el archivo**) |
@@ -146,6 +147,12 @@ cuota de una herramienta de desarrollo, y el control de arriba lo caza.
 - **En un plano el punto es DECIMAL, no separador de miles.** «0.40» son 40 cm, no 40 m. La
   convención argentina del dinero no aplica a una medida — ya convirtió una columna de 0,40 × 0,20
   en una de 40 × 20.
+- **Gmail disfraza su cuota de 403.** Al pasarse del límite por minuto no contesta 429: contesta
+  **403 «Quota exceeded … Units per minute per user»**, y un 403 se lee como falta de permiso. Ocho
+  de nueve consultas sobre rodrigo@ devolvieron 0 sin que nada estuviera roto — idéntico a una
+  casilla vacía. `withRetry` en `lib/google.mjs` ahora lo distingue por el CUERPO.
+- **`gmailSearch` devuelve UNA página.** Sin seguir el `nextPageToken` una consulta que empareja 577
+  mensajes devuelve 60 —los más nuevos— y lo viejo no existe para el OS. Cuando el tope corta, avisa.
 - **La medición desde esta VM**: el resolver falla y suma hasta 1 s; para medir contra producción,
   `curl -4` o Chromium con `--host-resolver-rules`.
 

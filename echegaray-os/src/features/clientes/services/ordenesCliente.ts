@@ -89,7 +89,9 @@ export function diaMes(fecha: string | null): string | null {
   return m ? `${m[3]}/${m[2]}` : null
 }
 
-const PREFIJO: Record<string, string> = { orden_compra: 'OC', orden_pago: 'OP', factura: 'Factura' }
+// `Ret.` y no «OP»: un certificado de retención no es un pago. La fila sólo dibuja OC y OP
+// (`ordenesParaFila` filtra), pero el rótulo también se usa en el panel y ahí tiene que decir la verdad.
+const PREFIJO: Record<string, string> = { orden_compra: 'OC', orden_pago: 'OP', retencion: 'Ret.', factura: 'Factura' }
 
 /** «$10.133.750» — SIN centavos y sin espacio. La fila tiene ~110 px para el rótulo entero y los
  *  centavos de una orden de ocho cifras no cambian ninguna decisión. El importe exacto, con sus

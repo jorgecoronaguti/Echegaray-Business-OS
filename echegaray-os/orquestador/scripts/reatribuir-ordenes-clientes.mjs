@@ -32,10 +32,13 @@ import { query } from '../lib/db.mjs'
 import { leerPdf } from '../lib/ingesta/pdf.mjs'
 import { loadEnvLocalInto } from '../../scripts/lib/env-file.mjs'
 import {
-  agruparPorNumero, comprobantePropio, comprobantesCitados, extraerImporte, extraerNumero,
-  extraerFechaDeOrden, facturaPropiaDe, fechaImposible, mapaDeCitas, mapaDeEvidencia,
-  numeroCanonico, obraPorReferencia, ocsCitadas, resolverObraDeTexto,
+  clasificarAdjunto, extraerImporte, extraerNumero, extraerFechaDeOrden, fechaImposible,
+  numeroDeRetencion,
 } from '../lib/ordenes-cliente.mjs'
+import {
+  comprobantePropio, comprobantesCitados, facturaPropiaDe, numeroCanonico, ocsCitadas,
+} from '../lib/ordenes-identidad.mjs'
+import { heredarObras } from '../lib/ordenes-atribucion.mjs'
 
 loadEnvLocalInto(process.env, process.env.ORDENES_ENV_FILE ?? path.join(APP_DIR, '.env.local'))
 
@@ -55,10 +58,18 @@ async function textoDe(sb, ruta) {
 
 async function main() {
   const { rows: clientes } = await query('select id, nombre_comercial from public.clientes')
-  const { rows: obras } = await query('select id, nombre, cliente_id from public.obra_canonica where cliente_id is not null')
+  // UNA OBRA FUSIONADA YA NO EXISTE COMO DESTINO. `bsa-planta` se fusionó en `ME - BSA` y
+  // `pisos-120m2` en `ME - PISOS 120 M² Y RAMPA` (decisión del dueño, 10/09/2026): siguen en la
+  // tabla para que sus alias resuelvan, pero colgar una orden nueva de ellas la esconde de la obra
+  // viva. Se buscan sólo las canónicas, y `aDondeFueron` traduce una obra vieja a su destino.
+  const { rows: obras } = await query(
+    'select id, nombre, cliente_id from public.obra_canonica where cliente_id is not null and fusionada_en is null')
+  const { rows: fusionadas } = await query(
+    'select id, fusionada_en from public.obra_canonica where fusionada_en is not null')
+  const aDondeFue = new Map(fusionadas.map((f) => [f.id, f.fusionada_en]))
   const nombreCliente = new Map(clientes.map((c) => [c.id, c.nombre_comercial]))
-  const { rows } = await query(`select id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda,
-    cita, origen, nombre_archivo, archivo_path, asunto
+  const { rows } = await query(`select id, cliente_id, obra_id, tipo, numero, numero_canonico, fecha,
+    importe, moneda, cita, origen, nombre_archivo, archivo_path, asunto
     from public.cliente_orden where eliminado_en is null order by nombre_archivo`)
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -74,14 +85,21 @@ async function main() {
     // QUÉ ES ESTE PAPEL, según su propio encabezado y no según cómo se llama el archivo. Una
     // factura nuestra guardada como `orden_compra` duplicaba la orden del cliente en la pantalla.
     const fac = manual ? null : facturaPropiaDe(texto)
+    // Y SI NO ES UNA FACTURA, PUEDE SER UN CERTIFICADO DE RETENCIÓN. La OP 4865 y la OP 5156 tienen
+    // dos filas cada una: la segunda es el certificado que Messina manda con el pago, guardado como
+    // `orden_pago` con el número de la orden. Se reclasifica y se le devuelve SU número, que es lo
+    // único que impide que dos papeles distintos compartan identidad.
+    const ret = manual || fac ? null : clasificarAdjunto({ nombreArchivo: r.nombre_archivo, asunto: r.asunto ?? '', textoPdf: texto })
+    const esRetencion = ret?.tipo === 'retencion'
     // EL IMPORTE SE RECALCULA SIEMPRE, no sólo cuando falta: el guardado se leyó con el locale
     // equivocado («78,650,000.00» → $ 78,65) y está mal escrito, no ausente.
     const { importe, moneda } = extraerImporte(texto)
     docs.push({
       ...r,
       texto,
-      tipo: fac?.tipo ?? r.tipo,
-      numero: fac?.numero ?? r.numero ?? extraerNumero(texto),
+      tipo: fac?.tipo ?? (esRetencion ? 'retencion' : r.tipo),
+      numero: fac?.numero
+        ?? (esRetencion ? (numeroDeRetencion({ nombreArchivo: r.nombre_archivo, textoPdf: texto }) ?? r.numero) : (r.numero ?? extraerNumero(texto))),
       cita: fac?.cita ?? r.cita ?? null,
       importe: manual || importe === null ? (r.importe === null ? null : Number(r.importe)) : importe,
       moneda: manual || importe === null ? r.moneda : moneda,
@@ -90,49 +108,19 @@ async function main() {
       fecha: fechaImposible(fechaISO(r.fecha)) || !r.fecha ? extraerFechaDeOrden(texto) : fechaISO(r.fecha),
       comprobante: comprobantePropio(texto),
       citadas: [...ocsCitadas(texto), ...comprobantesCitados(texto)],
+      // Una fila que ya apunta a una obra FUSIONADA se traduce al destino: no es reasignarla, es
+      // el mismo lugar con su nombre vivo. `bsa-planta` → `messina-bsa`.
+      obra_id: aDondeFue.get(r.obra_id) ?? r.obra_id,
       obraOriginal: r.obra_id,
-      porque: r.obra_id ? 'ya la tenía' : null,
+      porque: r.obra_id ? (aDondeFue.has(r.obra_id) ? `la obra se fusionó en ${aDondeFue.get(r.obra_id)}` : 'ya la tenía') : null,
     })
   }
 
   // ── 2. HEREDAR, HASTA QUE NADIE MÁS PUEDA ─────────────────────────────────────────────────────
-  // Se repite porque la cadena tiene eslabones: la factura le da la obra a la OC, y recién entonces
-  // la OC se la puede dar a la orden de pago que la cita. Tres vueltas alcanzan y el punto fijo se
-  // detecta solo; sin repetir, la herencia dependería del orden en que Gmail devolvió los mails.
-  for (let vuelta = 0; vuelta < 3; vuelta++) {
-    const mapa = mapaDeEvidencia(docs)
-    const citas = mapaDeCitas(docs)
-    let cambios = 0
-    for (const d of docs) {
-      if (d.obra_id) continue
-      const delCliente = obras.filter((o) => o.cliente_id === d.cliente_id)
-      const porTexto = resolverObraDeTexto(delCliente, `${d.asunto ?? ''} ${d.texto}`, { nombreCliente: nombreCliente.get(d.cliente_id) ?? '' })
-      if (porTexto) { d.obra_id = porTexto.id; d.porque = 'el PDF nombra la obra'; cambios++; continue }
-      const ref = obraPorReferencia(d.citadas, mapa)
-      d.porque = ref.porque
-      if (ref.obraId) { d.obra_id = ref.obraId; cambios++; continue }
-      // EL CAMINO INVERSO: la factura que CITA esta OC ya tiene obra (describe el trabajo y nombra
-      // el playón; la OC del cliente sólo trae el código de centro de costo). Antes esto pasaba
-      // solo, porque la factura quedaba guardada con el número de la OC y `agruparPorNumero` las
-      // confundía; separados los tipos, la herencia tiene que estar escrita.
-      const propio = numeroCanonico(d.numero)
-      const porCita = propio ? citas.get(propio) : null
-      if (porCita) { d.obra_id = porCita; d.porque = `una factura que cita ${propio} tiene esa obra`; cambios++ }
-    }
-    // Misma orden, dos papeles: el que tiene obra se la pasa al que no. `agruparPorNumero` es la
-    // que decide qué es «la misma orden» — la pantalla agrupa con esa misma función.
-    for (const g of agruparPorNumero(docs)) {
-      const conObra = g.filas.find((f) => f.obra_id)
-      if (!conObra) continue
-      for (const f of g.filas) {
-        if (f.obra_id) continue
-        f.obra_id = conObra.obra_id
-        f.porque = `misma orden que ${conObra.nombre_archivo}`
-        cambios++
-      }
-    }
-    if (!cambios) break
-  }
+  // La regla vive en `lib/ordenes-atribucion.mjs` y la usa TAMBIÉN la ingesta: hasta el 10/09 estaba
+  // escrita sólo acá, y una orden de pago recién bajada quedaba sin obra hasta que alguien corriera
+  // este script. Dos caminos, una definición de «esta OP es de esta obra».
+  heredarObras(docs, { obras, nombreClientePorId: nombreCliente })
 
   // ── 3. LA TABLA ───────────────────────────────────────────────────────────────────────────────
   const nombreObra = new Map(obras.map((o) => [o.id, o.nombre]))
@@ -140,6 +128,7 @@ async function main() {
   const difiere = (d) => {
     const a = antesDe.get(d.id)
     return d.obra_id !== a.obra_id || d.numero !== a.numero || d.fecha !== fechaISO(a.fecha)
+      || numeroCanonico(d.numero) !== (a.numero_canonico ?? null)
       || d.tipo !== a.tipo || d.cita !== a.cita
       || (d.importe === null) !== (a.importe === null)
       || (d.importe !== null && Math.abs(d.importe - Number(a.importe)) > 0.005)
@@ -169,6 +158,10 @@ async function main() {
       patch.importe = d.importe
       patch.moneda = d.moneda
     }
+    // EL CANÓNICO VIAJA CON EL NÚMERO, SIEMPRE. Es la columna con la que la base impide que la
+    // misma orden entre dos veces, y una fila con número y sin canónico deja ese guardián dormido.
+    const canon = numeroCanonico(patch.numero ?? d.numero)
+    if (canon !== (antes.numero_canonico ?? null)) patch.numero_canonico = canon
     if (!Object.keys(patch).length) continue
     const { error } = await sb.from('cliente_orden').update(patch).eq('id', d.id)
     if (error) console.log(`  ✗ ${d.nombre_archivo}: ${error.message}`)
