@@ -12,8 +12,13 @@ import assert from 'node:assert/strict'
 import {
   bandaDe, bandasAntiguedad, comportamientoDePago, planDeCobranza, previsionSemanal,
   saldoSinCertificado, sinVencimiento,
+  sigueEnLaCalle,
 } from './reglasCobranza.ts'
 import type { CertificadoCliente, CuentaCorriente } from '../types/cobranzas.ts'
+// LA CADENA SE PRUEBA CON LAS FUNCIONES DE PRODUCCIÓN, no con un certificado fabricado a mano: el
+// defecto del 10/09 vivía justamente entre la proyección y lo que se guarda, y un fixture escrito
+// acá lo habría saltado entero.
+import { proyectar, estadoAGuardar } from '../../../../orquestador/lib/portal/cobranzas-a-cliente.mjs'
 
 const HOY = '2026-08-24'
 
@@ -193,4 +198,41 @@ test('un promedio de cobro negativo no se publica como un plazo de pago', () => 
   assert.equal(comportamientoDePago([], cta({ dias_cobro_promedio: 34 })).cobraAntesDeFacturar, false)
   // Y sin dato no se afirma ni una cosa ni la otra.
   assert.equal(comportamientoDePago([], cta()).cobraAntesDeFacturar, false)
+})
+
+// ═══ LA FACTURA QUE COBRANZAS TIENE COBRADA NO SE RECLAMA (10/09/2026) ═══
+//
+// Producción, cliente Messina: la fila 83 de la pestaña Cobranzas —FA 01-00000225, $5.961.829,95—
+// está `Cobrado` con fecha 03/09. La ficha mostraba «hoy: 01-00000225 · 7 días vencido · Sin cobro
+// registrado» con su botón «Enviar recordatorio», porque `certificado_cliente` había quedado
+// `emitido`: el upsert del sync no actualizaba el estado.
+//
+// El recorrido completo, con las funciones que corren en producción: fila del Sheet → `proyectar`
+// → `estadoAGuardar` (lo que el sync escribe sobre la fila que ya existía) → las reglas de esta
+// pantalla. Si alguno de los tres eslabones vuelve a dejar pasar «emitido», esto se pone rojo.
+test('una factura cobrada en Cobranzas no aparece vencida ni con recordatorio', () => {
+  const filaDelSheet = {
+    sheet_id: '83', categoria: 'B', factura: 'FA', numero_comprobante: '01-00000225',
+    obra_cliente: 'MESSINA', concepto: 'Limpieza de Escombros - Embolsado',
+    monto_neto: 5008660.65, total_bruto: 5961829.95, estado: 'Cobrado',
+    fecha_emision: '2026-08-06', fecha_cobro: '2026-09-03',
+  }
+  const HOY_QA = '2026-09-10'
+  const { certificados } = proyectar(
+    [filaDelSheet], [{ alias: 'messina', cliente_id: 'c1' }], new Date(`${HOY_QA}T12:00:00Z`),
+  )
+  const proyectado = certificados[0] as { estado: string; monto: number; vence: string }
+  const guardado = doc({
+    numero: '01-00000225', monto: proyectado.monto, vence: proyectado.vence,
+    // Lo que el sync deja en la base cuando la fila ya existía como «emitido».
+    estado: estadoAGuardar(proyectado.estado, 'emitido') as CertificadoCliente['estado'],
+    cobranza_fila: 87,
+  })
+
+  assert.equal(guardado.estado, 'cobrado', 'el cobro del Sheet tiene que llegar al documento')
+  assert.equal(sigueEnLaCalle(guardado), false, 'un cobrado no es deuda')
+  assert.deepEqual(planDeCobranza([guardado], HOY_QA), [],
+    'el plan del día no puede pedir un recordatorio por plata que el cliente ya pagó')
+  assert.equal(sinVencimiento([guardado], HOY_QA), 0)
+  assert.equal(saldoSinCertificado([guardado], cta({ saldo: 0 })), 0)
 })
