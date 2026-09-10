@@ -96,18 +96,27 @@ export function medidaDe(mov = {}) {
  * `enOtros: true` no es un hueco —el subtotal la contiene y "Otros" se despeja de la resta— pero
  * marca un rubro que la taxonomía no nombra, que es como un canal entero se vuelve invisible.
  *
+ * ═══ EL VENCIDO NO CAE EN LA COLUMNA DE SU FECHA (10/09/2026) ═══
+ *
+ * Desde ese día la celda lo suma ENTERO en la columna del ancla y lo saca de la ventana de todas las
+ * demás (`condicionAncla` en cash-flow-medidas). Este diagnóstico tiene que decir lo mismo o deja de
+ * ser un diagnóstico: sin `ancla` reportaría "está en la columna de septiembre" sobre una celda que no
+ * lo tiene, y peor, marcaría como PLATA SIN COLUMNA un vencido de 2025 que el cuadro sí publica.
+ *
  * @param {object} mov un movimiento del libro
  * @param {'semana'|'mes'} tipo
  * @param {Array} grilla la salida de `rejilla(tipo, anio)`
+ * @param {{ancla?:number|null}} [opciones] el serial de `CAJA_FECHA_SALDO`. Sin él se ubica por fecha,
+ *   que es lo que hace la celda cuando el cuadro se genera sin los rangos con nombre de CAJA.
  */
-export function ubicar(mov = {}, tipo, grilla = []) {
+export function ubicar(mov = {}, tipo, grilla = [], { ancla = null } = {}) {
   const medida = medidaDe(mov)
   if (!medida) return { medida: null, fila: null, columna: null, enOtros: false, motivo: 'estado que ninguna medida mira' }
   // La apertura de la medida, no la del signo: bajo "Ingresos reales" no hay sub-línea de cartera, así
   // que un "Valores en cartera" REAL cae en "· Otros" — que es exactamente lo que se quiere ver.
   const propio = rubrosDeApertura(ladoDe(mov), mov.estado === 'REAL').includes(mov.rubro)
   const clave = claveSub(medida, propio ? mov.rubro : OTROS)
-  const v = grilla.find((w) => mov.fecha >= w.desde && mov.fecha < w.hasta)
+  const v = columnaDe(mov, grilla, ancla)
   return {
     medida,
     fila: filaDeConcepto(tipo, clave),
@@ -116,8 +125,19 @@ export function ubicar(mov = {}, tipo, grilla = []) {
     rotulo: conceptosDe(tipo).find((c) => c.clave === clave)?.rotulo ?? null,
     columna: v ? letra(v.col) : null,
     enOtros: !propio,
-    motivo: v ? null : 'la fecha queda fuera de toda columna del ejercicio',
+    motivo: v ? null : (esDelAncla(mov, ancla)
+      ? 'es un VENCIDO y el ancla queda fuera del ejercicio que muestra el cuadro'
+      : 'la fecha queda fuera de toda columna del ejercicio'),
   }
+}
+
+/** ¿Este movimiento se suma en la columna del ancla en vez de en la de su fecha? PURA. */
+const esDelAncla = (mov, ancla) => mov.estado === 'VENCIDO' && Number.isFinite(ancla)
+
+/** La columna que de verdad contiene al movimiento: la del ancla si es vencido, la de su fecha si no. */
+function columnaDe(mov, grilla, ancla) {
+  const cae = esDelAncla(mov, ancla) ? ancla : mov.fecha
+  return grilla.find((w) => cae >= w.desde && cae < w.hasta)
 }
 
 /** Suma con signo. Es lo que decide: contar filas no distingue $0 de $40M. */
@@ -132,10 +152,10 @@ const neto = (a) => a.reduce((x, m) => x + (Number(m.signo) || 0) * (Number(m.im
  *
  * @returns {{filas:number, neto:number, porOrigen:Array, movimientos:Array}}
  */
-export function plataSinColumna(movimientos = [], tipo, anio) {
+export function plataSinColumna(movimientos = [], tipo, anio, { ancla = null } = {}) {
   const grilla = rejilla(tipo, anio)
-  const fuera = movimientos.filter((m) => Number.isFinite(m.fecha)
-    && !grilla.some((w) => m.fecha >= w.desde && m.fecha < w.hasta))
+  // El vencido se busca en la columna del ANCLA, no en la de su fecha: es donde la celda lo suma.
+  const fuera = movimientos.filter((m) => Number.isFinite(m.fecha) && !columnaDe(m, grilla, ancla))
   const g = new Map()
   for (const m of fuera) {
     const k = `${m.origen ?? '?'}|${m.estado}`

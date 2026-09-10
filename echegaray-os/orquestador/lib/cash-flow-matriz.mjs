@@ -266,21 +266,26 @@ export const bloquesDeMedida = (tipo) => medidasDeLaMatriz().map((c) => bloqueDe
  * LAS DOS VISTAS LLAMAN A ESTA MISMA FUNCIÓN, y por eso no pueden discrepar: lo único que cambia
  * entre la semanal y la mensual es la ventana.
  *
+ * `ancla` ES LA FECHA DEL SALDO DECLARADO, y viaja hasta acá porque decide QUÉ SUMA cada columna: el
+ * vencido no pertenece a la ventana de su fecha sino a la columna del ancla (ver `condicionAncla` en
+ * cash-flow-medidas). Sin ella, el subtotal y sus rubros vuelven al criterio histórico — los dos a la
+ * vez, que es lo único que importa para que "Otros" siga despejando bien.
+ *
  * EL SUBTOTAL ES EL LIBRO, NO LA SUMA DE LAS SUB-LÍNEAS. Si fuera la suma, un rubro que el Libro
  * empiece a emitir mañana desaparecería del cuadro y el total seguiría cerrando consigo mismo.
  * "Otros" se DESPEJA de la resta, así que ese rubro nuevo aparece ahí y se ve.
  *
  * @returns {Array<{fila:number, formula:string}>}
  */
-export function formulasDeMedida(tipo, claveMedida, { col, desde, hasta }) {
+export function formulasDeMedida(tipo, claveMedida, { col, desde, hasta, ancla = null }) {
   const concepto = CONCEPTOS.find((c) => c.clave === claveMedida)
   const m = MEDIDAS[concepto.medida]
   const { subtotal, rubros, otros } = bloqueDeMedida(tipo, claveMedida)
   const primera = rubros[0].fila
   const ultima = rubros[rubros.length - 1].fila
   return [
-    { fila: subtotal, formula: formulaMedida(m, desde, hasta) },
-    ...rubros.map((r) => ({ fila: r.fila, formula: formulaRubro(m, desde, hasta, r.rubro) })),
+    { fila: subtotal, formula: formulaMedida(m, desde, hasta, { ancla }) },
+    ...rubros.map((r) => ({ fila: r.fila, formula: formulaRubro(m, desde, hasta, r.rubro, { ancla }) })),
     { fila: otros, formula: `=N(${celda(col, subtotal)})-SUM(${celda(col, primera)}:${celda(col, ultima)})` },
   ]
 }
