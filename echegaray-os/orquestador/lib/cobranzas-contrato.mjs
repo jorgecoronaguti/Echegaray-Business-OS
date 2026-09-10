@@ -173,6 +173,23 @@ export function normalizarMoneda(valor) {
  */
 export const COL_MONEDA_COBRANZAS = 'AA'
 
+/** La letra de columna del Sheet, como índice 0-based dentro de una fila leída desde la A. */
+export const indiceDeColumna = (letra) =>
+  String(letra).toUpperCase().split('').reduce((a, c) => a * 26 + (c.charCodeAt(0) - 64), 0) - 1
+
+/** Índice 0-based de la columna "Moneda" dentro de una fila leída desde la A. */
+export const IDX_MONEDA_COBRANZAS = indiceDeColumna(COL_MONEDA_COBRANZAS)
+
+/**
+ * EL RANGO QUE HAY QUE LEER PARA REPLICAR COBRANZAS — DERIVADO DE LA COLUMNA DE LA MONEDA.
+ *
+ * `sync-cobranzas.mjs` lo tenía escrito a mano como `A5:R5000` y por eso la moneda no llegaba nunca:
+ * la R es la 18 y la moneda es la 27. Un rango a mano y una columna declarada aparte son dos verdades
+ * que se separan sin avisar — el modo de falla no es un error, es una fila en dólares sumada como
+ * pesos. Acá el rango NO PUEDE quedarse corto: sale de la misma constante.
+ */
+export const RANGO_COBRANZAS = `Cobranzas!A5:${COL_MONEDA_COBRANZAS}5000`
+
 /**
  * LA FORMA DE COBRO, TRADUCIDA AL INSTRUMENTO. PURA.
  *
@@ -223,6 +240,39 @@ export function valuarEnPesos(importe, celdaMoneda, tc = null) {
     return { moneda, motivo: `está en ${MONEDA_USD} y no tengo tipo de cambio (leí ${JSON.stringify(tc)})` }
   }
   return { moneda, tipoCambio: tc, pesos: importe * tc }
+}
+
+/**
+ * LOS IMPORTES DE UNA FILA DE COBRANZAS, TODOS VALUADOS EN PESOS DE UNA SOLA VEZ.
+ *
+ * EL DEFECTO QUE ARREGLA (10/09/2026). `sync-cobranzas.mjs` leía `A5:R` — hasta la columna 18— y la
+ * columna "Moneda" es la AA. La fila 62 de Quattropani dice `U$S 15.400` y entraba a
+ * `public.cobranzas` como **$15.400**: el cobrado de su cuenta corriente daba $23.273.434 de menos
+ * que el Sheet, y nadie podía verlo, porque un 15.400 en una columna de pesos no se ve mal. Es el
+ * MISMO defecto que se arregló en la pestaña el 13/08 —ahí Obras!D14 valuaba y el Cash Flow no—,
+ * reaparecido en la réplica de Postgres por el lado del rango leído.
+ *
+ * LOS CUATRO IMPORTES DE LA FILA SON DE LA MISMA MONEDA: neto, IVA, retenciones y total bruto
+ * describen UN comprobante. Valuar uno solo dejaría una fila donde el total no es la suma de sus
+ * partes — un cuadre roto que después nadie sabe de dónde salió.
+ *
+ * NO CONVIERTE A MEDIAS: si la moneda no se entiende o falta el tipo de cambio, devuelve `motivo` y
+ * NINGÚN importe. El llamador tiene que abortar nombrando la fila, nunca grabar el número nativo.
+ *
+ * @param {Record<string, any>} importes los importes tal como los escribe la fila, en SU moneda
+ * @param {any} celdaMoneda la celda de la columna "Moneda" (AA)
+ * @param {number|null} tc el tipo de cambio en uso, o null
+ * @returns {{moneda:string|null, tipoCambio?:number, importes?:Record<string,number|null>, motivo?:string}}
+ */
+export function valuarFilaCobranza(importes = {}, celdaMoneda = '', tc = null) {
+  const cabeza = valuarEnPesos(1, celdaMoneda, tc)
+  if (cabeza.motivo) return { moneda: cabeza.moneda, motivo: cabeza.motivo }
+  const factor = cabeza.tipoCambio
+  const out = {}
+  for (const [k, v] of Object.entries(importes)) {
+    out[k] = Number.isFinite(v) ? v * factor : null
+  }
+  return { moneda: cabeza.moneda, tipoCambio: factor, importes: out }
 }
 
 /**

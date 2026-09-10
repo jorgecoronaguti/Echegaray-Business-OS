@@ -8,7 +8,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   contratoDeclarado, contratoDeObra, filasDeObra, normalizarMoneda, monedasDesconocidas, saldoDeObra,
-  sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO, contratoUsdDeclarado, sinCuentas, prefiereContratoUsd,
+  sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO, contratoUsdDeclarado, sinCuentas, prefiereContratoUsd, valuarFilaCobranza,
+  RANGO_COBRANZAS, IDX_MONEDA_COBRANZAS, COL_MONEDA_COBRANZAS, indiceDeColumna,
 } from './cobranzas-contrato.mjs'
 import { FILAS, COLUMNAS, comoFilas, DESDE } from './cobranzas-fixture.mjs'
 
@@ -285,4 +286,50 @@ test('un contrato en pesos MENOR que su cifra en dólares es imposible: manda el
   assert.equal(prefiereContratoUsd(47_590_272, 63_000), false, 'el contrato en pesos real le sigue ganando')
   assert.equal(prefiereContratoUsd(95_000_000, null), false)
   assert.equal(prefiereContratoUsd(null, null), false)
+})
+
+// ═══ LA RÉPLICA DE COBRANZAS Y LA COLUMNA AA — DEFECTO DEL 10/09/2026 ═══
+
+test('la fila en U$S entra a la réplica valuada, no con el número desnudo (fila 62, Quattropani)', () => {
+  // `sync-cobranzas.mjs` leía `A5:R` y la columna "Moneda" es la AA: los U$S 15.400 de la fila 62 se
+  // guardaban como $15.400 y el cobrado de la cuenta corriente daba $23.273.434 de menos.
+  const v = valuarFilaCobranza(
+    { monto_neto: 15_400, iva: null, retenciones: null, total_bruto: 15_400 }, 'USD', 1512.262)
+  assert.equal(v.moneda, 'USD')
+  assert.equal(v.tipoCambio, 1512.262)
+  assert.equal(v.importes.total_bruto, 15_400 * 1512.262)
+  assert.ok(v.importes.total_bruto > 23_000_000, 'son veintitrés millones de pesos, no quince mil')
+  assert.equal(v.importes.iva, null, 'lo que no tiene importe sigue sin tenerlo: null no es cero')
+})
+
+test('la fila en pesos no se toca, y el tipo de cambio queda declarado en 1', () => {
+  const v = valuarFilaCobranza({ monto_neto: 8_601_753, total_bruto: 10_408_121 }, '', 1512.262)
+  assert.deepEqual(v, { moneda: 'ARS', tipoCambio: 1, importes: { monto_neto: 8_601_753, total_bruto: 10_408_121 } })
+})
+
+test('los cuatro importes de la fila se valúan JUNTOS: un total que no es la suma de sus partes es un cuadre roto', () => {
+  const v = valuarFilaCobranza({ monto_neto: 100, iva: 21, retenciones: 1, total_bruto: 120 }, 'U$S', 1000)
+  assert.deepEqual(v.importes, { monto_neto: 100_000, iva: 21_000, retenciones: 1_000, total_bruto: 120_000 })
+  assert.equal(v.importes.monto_neto + v.importes.iva - v.importes.retenciones, v.importes.total_bruto)
+})
+
+test('sin tipo de cambio, o con una moneda que no se entiende, NO se devuelve ningún importe', () => {
+  // Grabar el número nativo cuando no se puede valuar es exactamente el defecto que esto arregla.
+  const sinTc = valuarFilaCobranza({ total_bruto: 15_400 }, 'USD', null)
+  assert.equal(sinTc.importes, undefined)
+  assert.match(sinTc.motivo, /tipo de cambio/)
+  const rara = valuarFilaCobranza({ total_bruto: 100 }, 'EUR', 1512.262)
+  assert.equal(rara.moneda, null)
+  assert.equal(rara.importes, undefined)
+})
+
+test('el rango que replica Cobranzas LLEGA hasta la columna de la moneda: A5:R nunca la leía', () => {
+  // Éste es el defecto entero, en una línea: la R es la columna 18 y la moneda es la 27. Mientras el
+  // rango se escribía a mano, la columna declarada y la columna leída eran dos verdades distintas.
+  assert.equal(IDX_MONEDA_COBRANZAS, 26)
+  assert.equal(indiceDeColumna('A'), 0)
+  assert.equal(indiceDeColumna('R'), 17, 'hasta donde llegaba el rango viejo')
+  assert.ok(RANGO_COBRANZAS.includes(`A5:${COL_MONEDA_COBRANZAS}`), `el rango es ${RANGO_COBRANZAS}`)
+  const hasta = /A5:([A-Z]+)/.exec(RANGO_COBRANZAS)[1]
+  assert.ok(indiceDeColumna(hasta) >= IDX_MONEDA_COBRANZAS, 'el rango no puede quedarse corto de la moneda')
 })
