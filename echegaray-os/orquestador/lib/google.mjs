@@ -602,15 +602,45 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       return { id: j.id, name: j.name, mimeType: j.mimeType }
     },
     // ---- PRP-024: GMAIL (lectura) — requiere delegation + impersonación activa ----
-    /** Busca hilos/mensajes por query estilo Gmail (ej. "from:proveedor factura vencida").
-     *  Devuelve [{id, from, subject, date, snippet}]. Vacío si no hay o si falta acceso. */
-    async gmailSearch(queryStr, { max = 8 } = {}) {
-      const list = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(queryStr || '')}&maxResults=${max}`)
+    /**
+     * Busca hilos/mensajes por query estilo Gmail (ej. "from:proveedor factura vencida").
+     * Devuelve [{id, from, subject, date, snippet}]. Vacío si no hay o si falta acceso.
+     *
+     * ═══ PAGINA, Y CUANDO SE QUEDA CORTA LO DICE ═══
+     *
+     * Gmail devuelve `maxResults` por PÁGINA y un `nextPageToken` con el resto. Hasta el 10/09/2026
+     * esto pedía una sola página y se olvidaba del token: una consulta de la casilla de rodrigo@
+     * que empareja 577 mensajes devolvía 60 —LOS MÁS NUEVOS— y las órdenes de compra de 2021 a 2025
+     * simplemente no existían para el OS. No fallaba: contestaba menos, en silencio, que es el modo
+     * de falla que nadie audita.
+     *
+     * El tope sigue existiendo (`max`) porque una casilla de 8.186 mensajes no se recorre por
+     * accidente, pero AHORA se avisa cuando se cortó con Gmail teniendo más para dar: `onAviso`
+     * recibe `{ query, traidos, tope }` y quien llama decide si eso es un límite aceptado o un
+     * agujero. Un recorte silencioso no vuelve a pasar.
+     */
+    async gmailSearch(queryStr, { max = 8, onAviso } = {}) {
+      const ids = []
+      let pageToken = ''
+      let hayMas = false
+      do {
+        // Gmail admite hasta 500 por página; se pide sólo lo que falta para el tope.
+        const pedir = Math.max(1, Math.min(500, max - ids.length))
+        const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(queryStr || '')}&maxResults=${pedir}`
+          + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
+        const list = await apiGet(url)
+        for (const m of list.messages || []) ids.push(m.id)
+        pageToken = list.nextPageToken || ''
+        hayMas = Boolean(pageToken)
+      } while (pageToken && ids.length < max)
+      if (hayMas && ids.length >= max && typeof onAviso === 'function') {
+        onAviso({ query: queryStr || '', traidos: ids.length, tope: max })
+      }
       const out = []
-      for (const m of (list.messages || []).slice(0, max)) {
-        const msg = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`)
+      for (const id of ids.slice(0, max)) {
+        const msg = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`)
         const h = Object.fromEntries((msg.payload?.headers || []).map((x) => [x.name.toLowerCase(), x.value]))
-        out.push({ id: m.id, from: h.from || '', subject: h.subject || '(sin asunto)', date: h.date || '', snippet: msg.snippet || '' })
+        out.push({ id, from: h.from || '', subject: h.subject || '(sin asunto)', date: h.date || '', snippet: msg.snippet || '' })
       }
       return out
     },
