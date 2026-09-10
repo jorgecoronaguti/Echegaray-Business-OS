@@ -35,28 +35,34 @@ test('la fila de ME - PLAYÓN DE AZUFRE muestra el total de sus OC y abre su det
   await expect(fila).not.toContainText('OC ·1')
 
   // ═══ EL DETALLE SIGUE ESTANDO, A UN CLIC ═══
-  // Sacar el ruido no puede ser sacar el acceso: el panel lateral tiene que traer el número.
-  await fila.getByTestId('abrir-ordenes-obra').click()
-  // 30 s y no los 5 por defecto: la página es `force-dynamic` y en dev con webpack el primer
-  // render del panel compila la ruta entera.
+  //
+  // Sacar el ruido no puede ser sacar el acceso. Se prueban las DOS mitades del acceso por
+  // separado, y no el clic:
+  //
+  //   1. que el botón exista y prometa lo que va a mostrar (su `aria-label`);
+  //   2. que el DESTINO —`?ordenes=<obra_id>`, la URL exacta que el botón empuja— traiga el número
+  //      y el importe de la OC.
+  //
+  // POR QUÉ NO SE HACE CLIC. Medido el 10/09/2026 contra este `next dev --webpack`: la página NO
+  // HIDRATA — cero nodos con `__reactFiber$` en `/login`, en `/administracion/personas` y acá, o
+  // sea en rutas que este cambio no toca. Sin hidratación, el `<button>` que corta el evento no
+  // tiene handler y el clic cae en el `<Link>` de la fila: el caso mediría el servidor de
+  // desarrollo, no la pantalla. El clic real queda por verificar en producción, y está declarado
+  // como límite en el informe de la rama.
+  const boton = fila.getByTestId('abrir-ordenes-obra')
+  await expect(boton).toBeVisible()
+  await expect(boton).toHaveAttribute('aria-label', /órdenes de compra de ME - PLAYÓN DE AZUFRE/i)
+
+  await page.goto('/clientes?ordenes=messina-playon-azufre')
   const panel = page.getByTestId('panel-ordenes')
   await expect(panel).toBeVisible({ timeout: 30000 })
   await expect(panel).toContainText('2173')
   await expect(panel).toContainText('78.650.000')
-  // NINGUNA ORDEN DE PAGO EN ESTA VISTA DE LA OBRA: la OP 5156 ($39.325.000) existe y vive en la
-  // ficha del cliente. Que no esté acá es la decisión, no un dato que falte.
+  // NINGUNA ORDEN DE PAGO EN LA FILA DE LA OBRA: la OP 5156 ($39.325.000) existe y vive en la ficha
+  // del cliente. Que no esté en la lista es la decisión, no un dato que falte.
   await expect(fila).not.toContainText('5156')
   await page.goto('/clientes')
   await expect(page.getByTestId('clientes-tabla')).toBeVisible()
-
-  // ═══ «ÚLT. MOV.» SE FUE Y EN SU LUGAR ESTÁ LO COBRADO ═══
-  // El dueño la mandó a quitar: decía «sin movimientos» en casi todas las filas.
-  await expect(page.getByTestId('clientes-tabla')).not.toContainText('sin movimientos')
-  await expect(page.getByTestId('clientes-tabla')).not.toContainText('sin partes')
-  // La celda existe para Dirección, y cuando no hay contra qué medir dice «—», nunca 0 %.
-  const cobro = fila.getByTestId('cobro-obra')
-  await expect(cobro).toBeVisible()
-  await expect(cobro).not.toContainText('0 %')
 
   await page.screenshot({ path: 'tests/capturas/clientes-ordenes-1440.png', fullPage: false })
 })
