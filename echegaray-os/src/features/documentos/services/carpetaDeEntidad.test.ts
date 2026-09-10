@@ -7,7 +7,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  FUENTE_DE_CARPETA, archivosDeLaCarpeta, estadoDeCarpeta, patronDeDescendencia, puedeListar, tamano,
+  FUENTE_DE_CARPETA, archivosDeLaCarpeta, estadoDeCarpeta, fechaDeArchivo, patronDeDescendencia,
+  puedeListar, tamano,
 } from './carpetaDeEntidad.ts'
 
 const CARPETA = {
@@ -66,6 +67,18 @@ test('la obra resuelve contra obra_canonica y no contra obras', () => {
   assert.deepEqual(FUENTE_DE_CARPETA.obra, { tabla: 'obra_canonica', columna: 'drive_carpeta_id' })
 })
 
+// ── Defecto 2 bis: EL ERROR DE LECTURA DISFRAZADO DE «NO TIENE CARPETA» ─────────────────────
+// Apareció probando esta misma capa: la ficha del cliente resuelve por slug y el uuid sale de otra
+// columna. Con el id equivocado PostgREST contesta 22P02 y, si el error se tragara, la pantalla
+// diría «carpeta desconocida» sobre un cliente que tiene su carpeta cargada — y alguien iría a
+// cargarla de nuevo.
+test('no haber podido leer la entidad no es no tener carpeta', () => {
+  const c = estadoDeCarpeta('cliente', null, null, true)
+  assert.equal(c.estado, 'no_se_pudo_leer')
+  assert.notEqual(c.estado, 'sin_declarar')
+  assert.equal(puedeListar(c), false)
+})
+
 // ── Defecto 3: EL COMODÍN DE LIKE TRAE ARCHIVOS DE OTRA ENTIDAD ──────────────────────────────
 // `_` en LIKE es «una letra cualquiera». Sin escapar, la carpeta `SF_PISOS` traería lo que cuelga
 // de `SFXPISOS` — un papel de otra obra en la ficha equivocada, sin error y sin que nadie lo note.
@@ -118,4 +131,15 @@ test('el archivo en la papelera se lista marcado, no se esconde', () => {
   const f3 = r.find((a) => a.drive_file_id === 'F3')
   assert.ok(f3, 'el archivo en papelera tiene que seguir en la lista')
   assert.equal(f3.trashed, true)
+})
+
+// ── Defecto 5: LA FECHA FORMATEADA EN EL HUSO DE QUIEN MIRA ──────────────────────────────────
+// Sin huso fijo, el servidor y el navegador formatean distinto: React rompe la hidratación (pasó,
+// y el navegador lo escribió en la consola) y, peor, un archivo de las 22 h se lee con la fecha del
+// día siguiente. Este test corre con el TZ de la máquina, sea cual sea: si alguien saca el
+// `timeZone`, en una máquina en UTC este caso da 10/09 y se pone rojo.
+test('la fecha se lee en el huso de la empresa, no en el de la máquina', () => {
+  assert.equal(fechaDeArchivo('2026-09-10T02:00:00Z'), '09/09/2026')
+  assert.equal(fechaDeArchivo(null), '—')
+  assert.equal(fechaDeArchivo('no es una fecha'), '—')
 })

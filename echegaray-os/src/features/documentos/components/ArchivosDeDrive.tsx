@@ -25,13 +25,9 @@
 import { Aviso, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { IconoAbrir } from '@/shared/components/iconos'
 import { enlaceDrive } from '../services/documentos'
-import { MOTIVO, NOMBRE_DE_TIPO, tamano, type TipoEntidad } from '../services/carpetaDeEntidad'
+import { MOTIVO, NOMBRE_DE_TIPO, fechaDeArchivo, tamano, type TipoEntidad } from '../services/carpetaDeEntidad'
 import { alcanceDeLectura, type ArchivosDeEntidad } from '../services/carpetaDeEntidadService'
 import type { Rol } from '@/features/auth/types'
-
-/** La fecha como se lee en una tabla: 10/09/2026. Sin hora — nadie decide con la hora de un papel. */
-const fecha = (iso: string | null): string =>
-  iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 
 export function ArchivosDeDrive({
   datos, tipo, rol, testid = 'archivos-de-drive',
@@ -49,7 +45,7 @@ export function ArchivosDeDrive({
     <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
       <p className="text-[12.5px] text-muted" data-testid={`${testid}-titulo`}>
         {carpeta.estado === 'ok'
-          ? <>En la carpeta de Drive de {NOMBRE_DE_TIPO[tipo]}: {archivos.length}{truncado ? '+' : ''} archivo{archivos.length === 1 ? '' : 's'}</>
+          ? <>En la carpeta de Drive {NOMBRE_DE_TIPO[tipo]}: {archivos.length}{truncado ? '+' : ''} archivo{archivos.length === 1 ? '' : 's'}</>
           : <>Archivos en Drive</>}
       </p>
       {carpeta.drive_carpeta_id && (
@@ -86,13 +82,13 @@ export function ArchivosDeDrive({
       )}
       {archivos.length > 0 && (
         <Tabla testid={`${testid}-tabla`} minWidth={620}>
+          {/* `THead` YA pone su propio `<tr>`: envolver los `Th` en un `Tr` anida dos filas, que es
+              HTML inválido y rompe la hidratación en el navegador. Lo dijo el navegador, no yo. */}
           <THead>
-            <Tr>
-              <Th>Archivo</Th>
-              <Th>Subcarpeta</Th>
-              <Th>Modificado</Th>
-              <Th num>Tamaño</Th>
-            </Tr>
+            <Th>Archivo</Th>
+            <Th>Subcarpeta</Th>
+            <Th>Modificado</Th>
+            <Th num>Tamaño</Th>
           </THead>
           <tbody>
             {archivos.map((a) => (
@@ -112,7 +108,7 @@ export function ArchivosDeDrive({
                   {a.ausente_en_drive && <span className="ml-2 text-[11px] text-faint">ausente en Drive</span>}
                 </Td>
                 <Td>{a.subcarpeta || <Nulo />}</Td>
-                <Td>{fecha(a.modified_time)}</Td>
+                <Td>{fechaDeArchivo(a.modified_time)}</Td>
                 <Td num>{tamano(a.size_bytes)}</Td>
               </Tr>
             ))}

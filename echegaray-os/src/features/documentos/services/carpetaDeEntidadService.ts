@@ -63,8 +63,13 @@ export async function getCarpetaDeEntidad(
   // «la base está rota» en vez de «falta una decisión».
   if (!fuente) return estadoDeCarpeta(tipo, null, null)
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from(fuente.tabla).select(fuente.columna).eq('id', entidadId).maybeSingle()
+  // UN ERROR ACÁ NO ES «NO TIENE CARPETA». Pasó de verdad al probar esto: la ficha del cliente
+  // resuelve por slug en la URL y el uuid sale de otra columna; con el valor equivocado PostgREST
+  // contesta 22P02, y devolver `sin_declarar` dibujaba «carpeta desconocida» sobre un cliente que
+  // tenía su carpeta cargada. Se distingue.
+  if (error) return estadoDeCarpeta(tipo, null, null, true)
   const id = (data as Record<string, string | null> | null)?.[fuente.columna] ?? null
   if (!id) return estadoDeCarpeta(tipo, null, null)
 

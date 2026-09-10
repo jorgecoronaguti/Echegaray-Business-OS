@@ -57,9 +57,10 @@ export const FUENTE_DE_CARPETA: Record<TipoEntidad, { tabla: string; columna: st
   cliente: { tabla: 'clientes', columna: 'drive_carpeta_id' },
 }
 
-/** Cómo se nombra cada tipo cuando hay que escribirlo en la pantalla. */
+/** Cómo se nombra cada tipo en la pantalla, CON su preposición: «de la obra», «del cliente». Sin
+ *  ella la frase sale «de el cliente», que es lo que pasó la primera vez. */
 export const NOMBRE_DE_TIPO: Record<TipoEntidad, string> = {
-  persona: 'la persona', proveedor: 'el proveedor', obra: 'la obra', cliente: 'el cliente',
+  persona: 'de la persona', proveedor: 'del proveedor', obra: 'de la obra', cliente: 'del cliente',
 }
 
 export type EstadoCarpeta =
@@ -71,6 +72,10 @@ export type EstadoCarpeta =
   | 'en_papelera'
   /** El indexador no la vio en la última corrida que pudo listar entera su carpeta padre. */
   | 'ausente'
+  /** NO SE PUDO PREGUNTAR. La consulta a la entidad falló —permiso, id con otra forma, base
+   *  caída—. No es «no tiene carpeta»: es que nadie miró. Un control que no pudo mirar no dice
+   *  «no está», y confundir los dos manda a cargar a mano una carpeta que ya estaba cargada. */
+  | 'no_se_pudo_leer'
   /** Carpeta viva y en el índice. Recién acá una lista vacía significa «no hay archivos». */
   | 'ok'
 
@@ -104,9 +109,15 @@ export function estadoDeCarpeta(
   tipo: TipoEntidad,
   driveCarpetaId: string | null | undefined,
   fila: FilaCarpeta | null | undefined,
+  fallaAlLeerLaEntidad = false,
 ): Carpeta {
   const f = FUENTE_DE_CARPETA[tipo]
   const fuente = f ? `${f.tabla}.${f.columna}` : null
+  // PRIMER CORTE, ANTES QUE NADA. Si la consulta de la entidad falló, todo lo que sigue estaría
+  // decidiendo sobre un `null` que no significa «no tiene»: significa «no lo pude leer».
+  if (fallaAlLeerLaEntidad) {
+    return { estado: 'no_se_pudo_leer', drive_carpeta_id: null, path: null, web_view_link: null, fuente }
+  }
   const id = (driveCarpetaId ?? '').trim() || null
   if (!id) return { estado: 'sin_declarar', drive_carpeta_id: null, path: null, web_view_link: null, fuente }
   const base = { drive_carpeta_id: id, path: fila?.path ?? null, web_view_link: fila?.web_view_link ?? null, fuente }
@@ -204,6 +215,23 @@ export function archivosDeLaCarpeta(filas: FilaArchivo[], carpetaPath: string | 
     })
 }
 
+/**
+ * La fecha de modificación como se lee en una tabla: 10/09/2026.
+ *
+ * EL HUSO ES FIJO Y ES EL DE LA EMPRESA. Sin `timeZone` explícito, el servidor formatea en el huso
+ * de la máquina y el navegador en el de quien mira: la misma fila sale con dos días distintos a
+ * cada lado y React rompe la hidratación. Y peor que el error: un archivo subido a las 22 h se
+ * leería con la fecha del día siguiente.
+ */
+export function fechaDeArchivo(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('es-AR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Argentina/Buenos_Aires',
+  })
+}
+
 /** El tamaño como lo lee una persona. `null` no es 0 bytes: los formatos nativos de Google no lo tienen. */
 export function tamano(bytes: number | null): string {
   if (bytes === null || !Number.isFinite(bytes)) return '—'
@@ -217,6 +245,7 @@ export function tamano(bytes: number | null): string {
 /** Lo que la ficha escribe cuando no puede listar. Una frase por estado, sin ninguna que diga «0». */
 export const MOTIVO: Record<Exclude<EstadoCarpeta, 'ok'>, string> = {
   sin_declarar: 'Carpeta desconocida: nadie declaró cuál es la carpeta de Drive.',
+  no_se_pudo_leer: 'No se pudo consultar la carpeta. Esto NO dice que no tenga: dice que nadie pudo mirar.',
   no_indexada: 'La carpeta declarada no está en el catálogo: puede estar fuera de las carpetas que el OS recorre, o haber sido borrada.',
   en_papelera: 'La carpeta está EN LA PAPELERA de Drive. Lo que tenga adentro no se ve hasta que alguien la restaure.',
   ausente: 'El catálogo no encontró la carpeta en su última recorrida. No se borró nada: se dejó marcada.',
