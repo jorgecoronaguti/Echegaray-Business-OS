@@ -54,10 +54,14 @@ import { pctTexto } from '@/features/clientes/services/economiaObras'
 //
 // NO SON UN ENLACE. La fila entera ya es un `<Link>` y un `<a>` adentro de otro `<a>` es HTML
 // inválido: el navegador lo desarma y la fila queda con zonas que navegan a cualquier lado.
-function Chips({ ordenes, href, titulo, max }: {
-  ordenes: OrdenBreve[] | undefined; href: string; titulo?: string; max?: number
+//
+// EL IMPORTE VIAJA EN EL RÓTULO Y SÓLO CON `veEconomia`: «OC 2173 · 11/08 · $78.650.000» es el
+// precio de venta de esa obra. Al jefe de obra y al campo les llega el mismo rótulo sin el importe
+// —qué orden hay, no cuánto se cobra—, y quien lo decide es esta pantalla, que ya sabe el rol.
+function Chips({ ordenes, href, titulo, max, veEconomia }: {
+  ordenes: OrdenBreve[] | undefined; href: string; titulo?: string; max?: number; veEconomia: boolean
 }) {
-  const { visibles, resto } = ordenesParaFila(ordenes, max === undefined ? {} : { max })
+  const { visibles, resto } = ordenesParaFila(ordenes, { ...(max === undefined ? {} : { max }), veEconomia })
   return (
     <BotonOrdenes
       grupos={visibles} resto={resto} href={href} className={ADORNO_ANCHO} color={V.apagado}
@@ -190,6 +194,7 @@ export function TablaClientes({
                   href={hrefOrdenes(`cliente:${c.cliente_id}`)}
                   titulo="Órdenes del cliente sin obra en ejecución debajo"
                   max={2}
+                  veEconomia={veEconomia}
                 />
                 <ChipsFalta chips={faltantes} testid="aviso-datos" />
               </span>
@@ -240,6 +245,7 @@ export function TablaClientes({
                     ordenes={ordenes.porObra.get(o.obra_id)}
                     href={hrefOrdenes(o.obra_id)}
                     titulo="Órdenes de compra y de pago que el cliente mandó por mail para esta obra"
+                    veEconomia={veEconomia}
                   />
                   {/* SIN PRECIO · SIN MEDIR · SIN JEFE · el punto del circuito de certificación.
                       Cada uno con su fuente en el `title`; los cuatro salen de `chipsDeObra`. */}

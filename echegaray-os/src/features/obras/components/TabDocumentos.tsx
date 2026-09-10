@@ -57,6 +57,8 @@ import {
 import { requiereAtencion, ultimosCambios } from '../services/documentosPaneles'
 import { CeldaCategoriaDocumento } from './CeldaCategoriaDocumento'
 import { PanelDocumentos } from './PanelDocumentos'
+import { ListaOrdenes } from '@/features/clientes/components/ListaOrdenes'
+import type { OrdenDetallada } from '@/features/clientes/services/ordenesCliente'
 import { fecha as fmtFecha } from './formato'
 
 /** Cómo se lee cada origen. Un mapa y no un ternario: el día que se agregue un cuarto, el ternario
@@ -206,8 +208,15 @@ function Vincular({
 
 export function TabDocumentos({
   documentos, carpetaDriveId, vincular, desvincular, actividades = [], asignarActividad, clasificar,
+  ordenes = null, veEconomia = false,
 }: {
   documentos: DocumentoObra[]
+  /** LAS ÓRDENES QUE MANDÓ EL CLIENTE PARA ESTA OBRA (`cliente_orden`). `null` = no se pudieron
+   *  leer, y eso NO se dibuja como «no hay ninguna». Van con el MISMO componente que el panel de
+   *  `/clientes` (`ListaOrdenes`): es el mismo papel mirado desde el otro lado. */
+  ordenes?: OrdenDetallada[] | null
+  /** El importe de una OC es el precio de venta de la obra: nace en false. */
+  veEconomia?: boolean
   /** El cronograma vivo, para poder decir de qué actividad es un papel. Sin él no se dibuja el
    *  desplegable: uno vacío es peor que no tenerlo. */
   actividades?: Actividad[]
@@ -247,6 +256,20 @@ export function TabDocumentos({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* LO QUE EL CLIENTE MANDÓ, ARRIBA DEL ÍNDICE DE DRIVE. No es un papel más de la carpeta: es
+          el documento que encarga el trabajo, y vive en el OS (bucket privado), no en Drive. Por
+          eso va antes y con su propia lista — la misma que el panel de `/clientes`.
+          NO SE DIBUJA CUANDO NO HAY NINGUNA Y LA LECTURA ANDUVO: un bloque vacío en las siete obras
+          que todavía no tienen orden bajada sería ruido en todas ellas. */}
+      {(ordenes === null || ordenes.length > 0) && (
+        <section data-testid="ordenes-de-la-obra" className="flex flex-col">
+          <span className="text-[13px] font-semibold text-ink">Órdenes del cliente</span>
+          <span className="text-[12px] text-muted">
+            Bajadas del mail. La factura que las cita queda al lado como evidencia.
+          </span>
+          <ListaOrdenes ordenes={ordenes} veEconomia={veEconomia} />
+        </section>
+      )}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
         <span className="text-[13px] text-muted">
           Carpeta de la obra en Drive:{' '}
