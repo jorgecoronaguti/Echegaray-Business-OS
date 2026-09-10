@@ -418,10 +418,17 @@ export function deTarjetaSinFactura(filas = [], { filaCab = INSTRUMENTOS.tarjeta
  * en curso el extracto cubre una parte, así que entra sólo la diferencia. De ahí en adelante entra
  * entero.
  *
- * SU RUBRO ES `Financiero`, EL MISMO CON EL QUE LLEGAN LOS DÉBITOS REALES. Es un impuesto y la
- * pestaña lo clasifica entre los impuestos, pero si el real cae en una fila del cuadro y el
- * proyectado en otra, el mismo concepto se parte en dos renglones y ninguna comparación mes contra
- * mes significa nada.
+ * SU RUBRO ES `Impuestos`, COMO TODO LO QUE SALE DE ESTA PESTAÑA. Es la invariante que protege
+ * `impuestos-contrato-cashflow.test.mjs` —«la línea Financiero NO PUEDE salir de esta pestaña»— y no
+ * se cruza para acomodar una fila: el rubro `Financiero` es el de Compras y una segunda puerta ahí
+ * haría entrar la misma cuota dos veces. Además es lo que la propia pestaña dice: la Ley 25.413 vive
+ * en su sección «4 · Otros impuestos».
+ *
+ * LÍMITE DECLARADO: los débitos REALES del mismo impuesto llegan por `_BANCO_RAW` con rubro
+ * `Financiero`, porque `deBancoCargos` mete ahí todo lo que el banco cobra sin factura. O sea que el
+ * mismo concepto se lee en dos renglones del cuadro según sea pasado o futuro. Es anterior a esta
+ * puerta y no se resuelve acá: arreglarlo es clasificar los cargos del extracto por su naturaleza
+ * —que `_BANCO_RAW` ya trae en su columna F— y eso mueve la línea «Financiero» entera.
  *
  * LA FECHA ES EL FIN DE MES: el banco lo cobra movimiento a movimiento durante todo el mes, así que
  * no hay un día de vencimiento. Fin de mes es el único punto en el que el mes ya está cobrado entero
@@ -456,7 +463,7 @@ export function deImpuestoAlCheque(filas = [], { filaCheque } = {}, anio, corte 
       importe: neto,
       concepto: `${ROTULO_IMPUESTO_CHEQUE} · ${String(m).padStart(2, '0')}/${anio}`,
       contraparte: 'Banco Santander',
-      rubro: 'Financiero',
+      rubro: 'Impuestos',
       estado: estadoContraCorte('PROYECTADO', finDeMes, corte),
       instrumento: 'debito',
       origen: { pestana: 'Impuestos y Financieros', fila: `${colMesDelAnio(m)}${filaCheque}` },

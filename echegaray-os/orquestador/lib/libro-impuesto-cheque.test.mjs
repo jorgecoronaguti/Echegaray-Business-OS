@@ -40,7 +40,9 @@ test('el impuesto al cheque proyectado de sep–dic entra al Libro con su celda 
   assert.equal(ms.length, 4, 'un movimiento por mes abierto')
   assert.equal(ms.reduce((s, m) => s + m.importe, 0), SEP + OCT + NOV + DIC)
   assert.deepEqual(ms.map((m) => m.origen.fila), ['J34', 'K34', 'L34', 'M34'])
-  assert.ok(ms.every((m) => m.signo === -1 && m.rubro === 'Financiero' && m.estado === 'PROYECTADO'))
+  // Rubro «Impuestos», como TODO lo que sale de esta pestaña: es la invariante que fija
+  // impuestos-contrato-cashflow.test.mjs y la taxonomía de la propia pestaña («4 · Otros impuestos»).
+  assert.ok(ms.every((m) => m.signo === -1 && m.rubro === 'Impuestos' && m.estado === 'PROYECTADO'))
 })
 
 test('los meses que el extracto ya cubrió NO entran: si entraran, se contarían dos veces', () => {

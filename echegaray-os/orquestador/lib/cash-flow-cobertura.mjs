@@ -127,17 +127,9 @@ export const DUENOS = [
       + 'materializado. Movistar y los seguros se pagan todos los meses, haya obra o no.',
   },
   {
-    // `dueno` es UNA pestaña y tiene que existir en el mapa (lo fija `verificarCobertura`): la
-    // principal sigue siendo Compras. Las otras dos fuentes de este rubro van en el porqué.
     rubro: 'Financiero', dueno: 'Compras', horizonte: HORIZONTE.cargado,
     porque: 'Cuotas del prendario y cargos del banco ya conocidos. El costo del descubierto futuro '
-      + 'depende del saldo proyectado y lo calcula el motor de liquidez, no esta línea. '
-      // Desde el 10/09/2026 entra además el impuesto al cheque de los meses que el extracto todavía
-      // no cubre (lib/libro-extractores.mjs · deImpuestoAlCheque), que SÍ llega a diciembre. El
-      // horizonte del rubro sigue siendo «hasta lo cargado» a propósito: exigirle diciembre lo ataría
-      // entero a esa línea y un mes con impuesto cero pondría en rojo algo que está bien.
-      + 'El impuesto al cheque de los meses sin extracto entra por «Impuestos y Financieros», neto de '
-      + 'lo que el banco ya debitó; los meses ya cerrados los cubre el extracto.',
+      + 'depende del saldo proyectado y lo calcula el motor de liquidez, no esta línea.',
   },
   {
     rubro: 'Deuda previsional (planes de pago)', dueno: 'Compras', horizonte: HORIZONTE.cargado,
