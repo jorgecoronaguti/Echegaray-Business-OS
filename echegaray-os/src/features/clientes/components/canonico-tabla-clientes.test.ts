@@ -127,3 +127,23 @@ test('sin leer la vista NO se escribe «0 en curso»: se dice el total y se dice
   )
   assert.deepEqual(frasesDeObras({ obras: 0, nEnCurso: null, nCerradas: null }), ['sin obras'])
 })
+
+test('un cliente sin obras en curso no dibuja cuatro guiones: no hay universo que sumar', () => {
+  // «Guiones por todos lados» fue textual del dueño. ARCOR y La Estrella dibujaban «—» en
+  // Contratado, Costo MO, Costo mat. y Margen: cuatro huecos por cliente para decir lo que su
+  // columna «Obras» ya dice en dos palabras («1 cerrada»). Un «—» significa «falta el dato»; acá no
+  // falta ninguno, no hay pregunta.
+  const src = codigo()
+  assert.match(src, /sinUniverso=\{c\.enCurso\.length === 0\}/)
+  assert.match(src, /sinUniverso \? '' : '—'/)
+  // Y la celda de plata del cliente entra por la misma puerta.
+  assert.match(src, /c\.enCurso\.length \? SIN_PRECIO_EN_OBRAS : ''/)
+})
+
+test('el «·» de un total incompleto lleva su explicación', () => {
+  // «$ 524.163.838 · 148 OC ·»: noventa de esas OC no declaran importe en el PDF, y el punto final
+  // se lee como un tipeo. Sin `title`, el total afirma más de lo que sabe.
+  const total = readFileSync(fileURLToPath(new URL('./TotalDePapeles.tsx', import.meta.url)), 'utf8')
+  assert.match(total, /title=\{total\.parcial \? PARCIAL : undefined\}/)
+  assert.match(total, /const PARCIAL = /)
+})

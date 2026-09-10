@@ -336,13 +336,14 @@ export function TablaClientes({
               >
                 {veEconomia
                   ? (c.contratado === null
-                      ? (c.enCurso.length ? SIN_PRECIO_EN_OBRAS : '—')
+                      ? (c.enCurso.length ? SIN_PRECIO_EN_OBRAS : '')
                       : pesos(c.contratado))
                   : ''}
               </span>
               <Economia
                 mo={c.costoMo} mat={c.costoMateriales} margen={c.margen} pct={c.margenPct}
                 veEconomia={veEconomia} parcial={c.economiaParcial} tam="12px"
+                sinUniverso={c.enCurso.length === 0}
               />
               {/* EL DENOMINADOR DEL CLIENTE ES `contratadoTotal`, NO la columna de al lado. La
                   columna dice lo contratado EN CURSO —cierra con las filas de obra de abajo— y el
@@ -473,20 +474,27 @@ export function TablaClientes({
  *
  * «—» ES «OBRAS NO TIENE EL DATO», NO CERO. Un cero acá diría que la obra no gastó nada.
  *
+ * Y CUANDO NO HAY NADA QUE SUMAR, TAMPOCO HAY «—». Las tres celdas suman las obras EN CURSO del
+ * cliente: si no tiene ninguna, no falta un dato — no hay universo. ARCOR y La Estrella dibujaban
+ * cuatro guiones cada una, y «guiones por todos lados» fue textual del dueño. Su columna «Obras»
+ * ya dice «1 cerrada»: la celda vacía se lee contra esa frase, no contra un hueco.
+ *
  * EL % PUEDE FALTAR AUNQUE EL $ ESTÉ (`margenPct` devuelve `null` fuera de rango): un margen sobre
  * el contratado no puede pasar de 100 %, y cuando pasa —o cuando cae por debajo de −1000 %— los dos
  * números no son de la misma obra. Es el «2.603.726 %» que el dueño vio el 10/09/2026.
  */
-function Economia({ mo, mat, margen, pct, veEconomia, parcial, tam }: {
+function Economia({ mo, mat, margen, pct, veEconomia, parcial, tam, sinUniverso = false }: {
   mo: number | null; mat: number | null; margen: number | null; pct: number | null
   veEconomia: boolean; parcial: boolean; tam: string
+  /** `true` = no hay obras en curso que sumar. No es un dato que falta: no hay pregunta. */
+  sinUniverso?: boolean
 }) {
   const celda = (v: number | null, testid: string) => (
     <span
       className={`font-mono tabular-nums ${SOLO_ANCHO}`} data-testid={testid}
       style={{ fontSize: tam, textAlign: 'right', color: v === null ? V.lupa : V.apagado }}
     >
-      {v === null ? '—' : pesos(v)}
+      {v === null ? (sinUniverso ? '' : '—') : pesos(v)}
     </span>
   )
   return (
@@ -500,7 +508,7 @@ function Economia({ mo, mat, margen, pct, veEconomia, parcial, tam }: {
       >
         {veEconomia
           ? (margen === null
-              ? '—'
+              ? (sinUniverso ? '' : '—')
               : <>{pesos(margen)}<span className="tabular-nums" style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}>{pctTexto(pct)}{parcial ? ' ·' : ''}</span></>)
           : ''}
       </span>
