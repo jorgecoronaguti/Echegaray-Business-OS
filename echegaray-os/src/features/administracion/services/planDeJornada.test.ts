@@ -557,3 +557,41 @@ test('UNA OBRA QUE NO ESTÁ NI ACTIVA NI CERRADA DICE EN QUÉ ESTADO ESTÁ', () 
   )
   assert.equal(puertaDeObraNoActiva({ nombre: 'X', estado: 'activa', crea: true }), null)
 })
+
+// ── DEJAR UN DÍA SIN NOVEDAD (dueño, 10/09/2026) ─────────────────────────────────────────────────
+
+test('SE PUEDE PEDIR «SIN NOVEDAD» SIN OBRA, SIN HORAS Y SIN MOTIVO', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Textual: *«tengo una persona que tenía licencia por accidente pero ya tiene el alta, quiero
+  // cambiarle ese estado y no puedo dejarle libre el día que es a futuro; está mal»*. El enum tenía
+  // tres estados y ninguno servía: `borrar` saca lo cargado EN UNA OBRA y una licencia se guarda
+  // SIN obra, y `ausente` convertiría un alta médica en una falta que además se liquida distinto.
+  // Si alguien saca 'sin_novedad' del enum, esto se pone rojo.
+  const r = correccionSchema.safeParse({
+    persona_id: A, fecha: '2026-09-11', estado: 'sin_novedad',
+  })
+  assert.equal(r.success, true, 'sin_novedad tiene que entrar sin obra ni horas')
+  assert.equal(r.success && r.data.horas, null)
+  assert.equal(r.success && r.data.motivo, null)
+})
+
+test('«SIN NOVEDAD» NO ASIENTA UN TRAMO: liberar diez días no se hace por decreto', () => {
+  // Un `hasta` con 'sin_novedad' sería un borrado masivo detrás de un campo opcional. El mismo
+  // refine que ya protege a 'presente'.
+  assert.equal(correccionSchema.safeParse({
+    persona_id: A, fecha: '2026-09-11', estado: 'sin_novedad', hasta: '2026-09-20',
+  }).success, false)
+})
+
+test('SIN NOVEDAD SACA LA LICENCIA SIN OBRA, que es lo que `borrar` no veía', () => {
+  // EL DEFECTO QUE ATRAPA: que liberar el día se llevara puesto lo que no es la jornada, o que NO
+  // se llevara la licencia. La licencia del caso real (accidente de trabajo, sin obra) es `r1`; lo
+  // imputado a una actividad y lo improductivo tienen que quedar, como en cualquier borrado.
+  const plan = planDeBorrado([
+    fila('r1', A, 9, 'licencia'),
+    fila('r2', A, 4, 'normal', { actividad_id: '00000000-0000-4000-8000-000000000001' }),
+  ], { administraLicencias: true })
+  assert.deepEqual(plan.borrar, ['r1'])
+  assert.deepEqual(plan.intactas.map((i) => i.id), ['r2'])
+})

@@ -45,7 +45,9 @@ import {
   asentarTramoDeAusencia, escribirAusenciaSinObra, escribirAusenciasSinObra, filasSinObraDelDia,
   jornadaDeReferencia, nombresDeObras, sacarAusenciasSinObra,
 } from './ausenciaDeLaPersonaService'
-import { declararPresencia, retirarPresenciaPorHoras } from './presenciaDelDiaService'
+import {
+  declararPresencia, quitarPresenciaDelDia, retirarPresenciaPorHoras,
+} from './presenciaDelDiaService'
 import {
   declaracionDeCorreccion, declaracionesDeJornada, type MarcaConHoras,
 } from './presenciaPorHoras'
@@ -278,6 +280,60 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   if (previos.error) return { ok: false, error: previos.error.message }
   const filas = (previos.data ?? []) as (FilaExistente & { obra_canonica_id: string | null })[]
   const enOrigen = filas.filter((f) => f.obra_canonica_id === c.obra_origen)
+
+  // ═══ SIN NOVEDAD — EL DÍA VUELVE A NO TENER NADA (dueño, 10/09/2026) ═══
+  //
+  // *«tengo una persona que tenía licencia por accidente pero ya tiene el alta, quiero cambiarle
+  // ese estado y no puedo dejarle libre el día que es a futuro»*.
+  //
+  // TRES DIFERENCIAS CON `borrar`, y las tres son la razón de que exista:
+  //
+  //  1 · ALCANZA TODO EL DÍA, con obra y SIN obra. Una licencia se guarda sin obra desde el
+  //      08/09, así que `borrar` —que filtra por `obra_origen`— no la veía nunca.
+  //  2 · RETIRA LA DECLARACIÓN de `asistencia_dia`. Sin esto se borran las horas y la celda sigue
+  //      dibujando la «L»: la presencia y las horas son dos fuentes, y quedaba una en pie.
+  //  3 · NO ESCRIBE NADA EN SU LUGAR. Ni ausencia, ni cero horas: «sin novedad» es el silencio, y
+  //      un día futuro sin novedad se dibuja «·».
+  if (c.estado === 'sin_novedad') {
+    const plan = planDeBorrado(filas, { administraLicencias: true })
+    if (plan.borrar.length === 0 && filas.length > 0) {
+      return {
+        ok: false,
+        error: `Ese día no tiene jornada, ausencia ni licencia para sacar. Lo que hay es otra cosa: ${plan.intactas[0]?.motivo ?? 'horas de otro tipo'}.`,
+      }
+    }
+    let borradas = 0
+    if (plan.borrar.length > 0) {
+      const { data, error } = await supabase.from('registros_hh').delete()
+        .in('id', plan.borrar).select('id')
+      if (error) return { ok: false, error: traducirEscritura(error) }
+      borradas = (data ?? []).length
+      // EL EFECTO, NO LA INTENCIÓN. Un delete que la policy rechaza sin error devuelve cero filas:
+      // decir «el día quedó libre» ahí dejaría la licencia puesta y a nadie mirándola.
+      if (borradas === 0) {
+        return {
+          ok: false,
+          error: 'La base no borró ninguna fila de ese día. Puede ser un permiso: no cambió nada.',
+        }
+      }
+    }
+    // LA DECLARACIÓN SE RETIRA SIEMPRE QUE HAYA UNA, aunque no hubiera horas: un día futuro puede
+    // tener sólo la «L» de `asistencia_dia`. Que falle no borra lo ya borrado — se dice y se sigue.
+    const quitada = await quitarPresenciaDelDia(supabase, c.persona_id, c.fecha)
+    revalidar()
+    return {
+      ok: true,
+      mensaje: [
+        borradas > 0 ? `Día libre: se sacaron ${borradas} ${borradas === 1 ? 'registro' : 'registros'}.` : 'El día quedó sin novedad.',
+        quitada.quitadas > 0 ? 'Se retiró la marca del día.' : null,
+        // NO SE DISFRAZA DE ÉXITO. Si la marca sigue puesta, la celda va a seguir mostrándola.
+        quitada.error !== null && quitada.quitadas === 0 && !/ninguna marca/i.test(quitada.error)
+          ? `La marca de asistencia NO se pudo retirar: ${quitada.error}`
+          : null,
+        plan.intactas.length > 0 ? acuseDeBorrado(borradas, plan.intactas).split('. ').slice(1).join('. ') : null,
+      ].filter(Boolean).join(' '),
+    }
+  }
 
   if (c.estado === 'borrar') {
     if (enOrigen.length === 0) return { ok: false, error: 'Ese día no tiene nada cargado.' }

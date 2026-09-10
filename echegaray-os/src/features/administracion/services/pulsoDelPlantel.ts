@@ -206,7 +206,7 @@ export function rotuloHoy(c: ClasificacionDelDia): RotuloHoy {
 
 /** Qué lleva la celda HOY además del estado. `nada` es el caso normal: no hay nada que ofrecer.
  *  `sin_obra` no es una falta de la persona: es POR QUÉ el botón no puede estar. */
-export type OfertaDeMarcar = 'boton' | 'sin_obra' | 'nada'
+export type OfertaDeMarcar = 'boton' | 'quitar' | 'sin_obra' | 'nada'
 
 /**
  * ═══ UN JEFE DE OBRA NO APARECE CON BOTÓN ═══
@@ -221,9 +221,16 @@ export type OfertaDeMarcar = 'boton' | 'sin_obra' | 'nada'
  * (`es_administracion()` en insert y update), que rechaza una llamada directa a PostgREST venga de
  * donde venga. Acá sólo se evita ofrecer un control que la base va a rebotar.
  *
- * SÓLO SOBRE EL SILENCIO. Un día ya declarado —presente, ausente o licencia— no se corrige desde
- * una lista de 62 filas: se corrige en Asistencia, que muestra el día entero y el motivo. Un botón
- * que pisara lo declarado reescribiría `marcado_por` con quien sólo pasó a mirar.
+ * SÓLO SOBRE EL SILENCIO — SALVO PARA DESHACER (dueño, 10/09/2026). Un día declarado no se
+ * CORRIGE desde una lista de 62 filas: cambiar «presente» por «licencia por accidente» necesita el
+ * motivo, y eso vive en Asistencia. Pero DESHACER la marca que se acaba de poner sí pertenece acá,
+ * porque acá se puso: *«si quiero sacarle el presente a alguien que lo tiene, no puedo
+ * actualmente»*. El botón y su deshacer viven en el mismo lugar o el deshacer no existe.
+ *
+ * `quitar` SÓLO SOBRE `presente`. Una ausencia o una licencia llevan motivo, y sacarlas desde una
+ * lista sin verlo borraría el porqué que alguien cargó: ésas siguen siendo de Asistencia. Y sin
+ * obra igual se ofrece —quitar no imputa nada a ninguna obra, es justamente lo contrario—, así que
+ * la condición de `obraId` se pregunta DESPUÉS.
  */
 export function ofertaDeMarcar({ puedeMarcar, presencia, obraId, esJefe, enLaEmpresa }: {
   /** El rol de quien mira admite escribir presencia: Dirección, Administración, Jefe de Obra. */
@@ -236,6 +243,7 @@ export function ofertaDeMarcar({ puedeMarcar, presencia, obraId, esJefe, enLaEmp
   enLaEmpresa: boolean
 }): OfertaDeMarcar {
   if (!puedeMarcar || esJefe || !enLaEmpresa) return 'nada'
+  if (presencia === 'presente') return 'quitar'
   if (presencia !== 'sin_marcar') return 'nada'
   // LA OBRA NO SE INVENTA. Marcar presente imputa la jornada por defecto a una obra: sin asignación
   // vigente no hay ninguna que sea la correcta, y elegir una sería fabricar el costo de esa obra.

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   declaracionDeCorreccion, declaracionesDeJornada, estadoDeAusencia, planDeDeclaracion,
-  seRetiraLaPresencia,
+  seQuitaLaPresencia, seRetiraLaPresencia,
 } from './presenciaPorHoras.ts'
 import type { DeclaracionPedida, PresenciaEnLaBase } from './presenciaPorHoras.ts'
 
@@ -156,4 +156,32 @@ test('sin poder saber el origen no se borra: un control que no distingue, no adi
 
 test('sin presencia guardada no hay nada que retirar', () => {
   assert.equal(seRetiraLaPresencia(null, false), false)
+})
+
+// ── 4 · QUITAR EL PRESENTE A MANO (dueño, 10/09/2026) ────────────────────────────────────────────
+//
+// EL DEFECTO QUE ATRAPAN: que una marca declarada no se pueda revocar. Textual: *«si quiero
+// sacarle el presente a alguien que lo tiene, no puedo actualmente»*. `seRetiraLaPresencia` decía
+// que no —y con razón, porque responde otra pregunta: si BORRAR LAS HORAS arrastra la marca—, y esa
+// negativa se había convertido en la respuesta a las dos preguntas. Si alguien vuelve a exigir
+// `origen === 'horas'` acá, estos dos casos se ponen rojos.
+
+test('quitar el presente a mano SÍ revoca una marca declarada', () => {
+  assert.deepEqual(seQuitaLaPresencia(enLaBase('p1', 'presente', 'declarada')), { quita: true })
+})
+
+test('quitar también alcanza a la marca que produjeron las horas', () => {
+  assert.deepEqual(seQuitaLaPresencia(enLaBase('p1', 'presente', 'horas')), { quita: true })
+})
+
+test('sin saber el origen igual se quita: es un acto, no una deducción', () => {
+  // Al revés que `seRetiraLaPresencia`, donde no saber el origen obliga a no tocar nada: allá el
+  // sistema decide solo, acá alguien está mirando la fila y lo pidió.
+  assert.deepEqual(seQuitaLaPresencia(enLaBase('p1', 'presente', null)), { quita: true })
+})
+
+test('sin marca guardada no hay nada que quitar, y se dice por qué', () => {
+  const r = seQuitaLaPresencia(null)
+  assert.equal(r.quita, false)
+  assert.match(r.quita === false ? r.porque : '', /ninguna marca/i)
 })

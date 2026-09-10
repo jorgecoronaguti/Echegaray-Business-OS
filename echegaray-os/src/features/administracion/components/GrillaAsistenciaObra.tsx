@@ -163,6 +163,11 @@ export function GrillaAsistenciaObra({
   const [errores, setErrores] = useState<Record<string, string>>({})
   const [corrigiendo, setCorrigiendo] = useState<string | null>(null)
   const [copia, setCopia] = useState<FilaQuincena | null>(null)
+  // SOBRE QUÉ DÍA SE ABRE EL PANEL. `null` = el que el panel elige solo (el primero con datos).
+  // Cuando se toca una celda que no se edita en línea —licencia, ausencia, futuro— el panel tiene
+  // que abrir EN ESE DÍA: abrir en otro es pedirle a quien tocó el viernes que lo busque de nuevo,
+  // y ya pasó que se corrigiera el día equivocado por eso.
+  const [diaFoco, setDiaFoco] = useState<string | null>(null)
   // EL ACUSE ES POR PERSONA Y ES LO QUE DIJO LA BASE, no lo que se pidió: la acción devuelve el
   // texto ya armado con los nombres de las dos obras.
   const [acuses, setAcuses] = useState<Record<string, { texto: string; error: boolean }>>({})
@@ -556,6 +561,38 @@ export function GrillaAsistenciaObra({
                         }}
                       />
                     ) : (
+                      // ═══ LA CELDA QUE NO SE EDITA EN LÍNEA IGUAL SE TOCA (dueño, 10/09/2026) ═══
+                      //
+                      // *«no me sirve no poder editar las horas desde ahí mismo (…) quiero
+                      // cambiarle ese estado y no puedo»*. Una licencia, una ausencia y un día
+                      // futuro siguen SIN campo de horas —el porqué está arriba: un número encima de
+                      // una «L» significaría dos cosas a la vez—, pero ahora abren el panel EN ESE
+                      // DÍA, que es donde el estado sí se cambia. Antes eran las únicas celdas
+                      // muertas de la grilla: había que buscar «corregir» al final de la fila y
+                      // volver a elegir el día en un desplegable de quince.
+                      puedeCorregir ? (
+                        <button
+                          type="button"
+                          data-testid="celda-abrir-panel"
+                          data-estado={celda.estado}
+                          title={`${tituloDe(celda) ?? ''}${tituloDe(celda) ? ' · ' : ''}Tocá para corregir este día`.trim()}
+                          aria-label={`Corregir el ${celda.fecha} de ${fila.persona.nombre}`}
+                          onClick={() => {
+                            setCopia(fila)
+                            setDiaFoco(celda.fecha)
+                            setCorrigiendo(fila.clave)
+                          }}
+                          className="font-mono tabular-nums"
+                          style={{
+                            display: 'flex', width: 42, height: 28, alignItems: 'center',
+                            justifyContent: 'center', fontSize: '12.5px', background: 'transparent',
+                            border: '1px solid transparent', borderRadius: 5, cursor: 'pointer',
+                            color: celda.estado === 'horas' ? V.tinta : hueco.color,
+                          }}
+                        >
+                          {textoFijo}
+                        </button>
+                      ) : (
                       <span
                         data-capa="horas"
                         title={tituloDe(celda)}
@@ -567,6 +604,7 @@ export function GrillaAsistenciaObra({
                       >
                         {textoFijo}
                       </span>
+                      )
                     )}
                     </CeldaDia>
                     {repartido && (
@@ -604,6 +642,7 @@ export function GrillaAsistenciaObra({
                     data-testid="abrir-correccion"
                     onClick={() => {
                       setCopia(fila)
+                      setDiaFoco(null)
                       setCorrigiendo(corrigiendo === fila.clave ? null : fila.clave)
                     }}
                     style={{ fontSize: '11.5px', color: corrigiendo === fila.clave ? V.tinta : V.apagado }}
@@ -695,6 +734,7 @@ export function GrillaAsistenciaObra({
         etiquetas={etiquetas}
         obras={obras}
         jornadaPorObra={jornadaPorObra}
+        diaInicial={diaFoco}
         alCerrar={() => setCorrigiendo(null)}
       />
     )}

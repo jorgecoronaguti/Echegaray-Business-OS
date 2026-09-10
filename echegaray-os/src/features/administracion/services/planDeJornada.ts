@@ -341,7 +341,18 @@ export const correccionSchema = z.object({
   obra_origen: obraOpcional,
   /** A qué obra va el día. OPCIONAL cuando no vino: ver «LA AUSENCIA ES DE LA PERSONA». */
   obra_destino: obraOpcional,
-  estado: z.enum(['presente', 'ausente', 'borrar']),
+  /** ═══ `sin_novedad` — REVOCAR LO QUE SE PROGRAMÓ (dueño, 10/09/2026) ═══
+   *
+   *  Textual: *«tengo una persona que tenía licencia por accidente pero ya tiene el alta, quiero
+   *  cambiarle ese estado y no puedo dejarle libre el día que es a futuro; está mal»*. El panel
+   *  tenía tres estados y ninguno era «nada»: `borrar` saca lo cargado EN UNA OBRA —y una licencia
+   *  se guarda SIN obra desde el 08/09—, y `ausente` convertiría un alta médica en una falta.
+   *
+   *  Una licencia a futuro es una DECISIÓN, no un hecho consumado: revocarla deja el día como
+   *  estaba antes de que alguien decidiera —sin novedad—, que no es una ausencia ni son cero horas.
+   *  Se distingue de `borrar` en dos cosas: alcanza TODO el día (con obra y sin obra) y retira
+   *  también la declaración de `asistencia_dia`, que es la que dibuja la «L». */
+  estado: z.enum(['presente', 'ausente', 'borrar', 'sin_novedad']),
   /** HASTA QUÉ DÍA DURA. `null` = sólo el día elegido, que es como funcionó hasta el 08/09/2026.
    *  Con fecha se asienta cada día HÁBIL del tramo (ver `planDeTramoDeAusencia`): un parte médico
    *  de diez días se sabe el primero, y volver cada mañana a marcar el mismo día es lo que hacía
