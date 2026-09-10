@@ -119,6 +119,14 @@ export const ALTO_V2 = {
   cara: 46,
   /** La obra colgada de su cliente — más chica que la madre, no igual. `v4B:97`. */
   hija: 38,
+  /**
+   * LA MISMA OBRA CUANDO ADEMÁS LLEVA SUS ÓRDENES DEBAJO DEL NOMBRE. Derivado, no dibujado: la
+   * hija más el renglón de los números (10,5px ⇒ caja de 14px, y 2 de aire entre las dos líneas).
+   * Los números de la orden NO caben al lado del nombre sin comerse los chips de lo que falta —
+   * medido a 1440 el 10/09/2026 con «ME - PLAYÓN DE AZUFRE» y sus dos OC—, y estrangular la celda
+   * de al lado no es una opción: Contratado es plata.
+   */
+  hijaConOrdenes: 54,
   /** La cabeza de un bloque que se despliega — no un renglón de lista. `21v2:99`. */
   cabezaBloque: 44,
   /** Cabecera de columnas. Universal en los seis canvas. `v4A:81`, `v4B:88`. */

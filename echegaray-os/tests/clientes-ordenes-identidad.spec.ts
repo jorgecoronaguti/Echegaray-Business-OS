@@ -60,3 +60,60 @@ test('la ficha de la obra lista sus órdenes con número, fecha e importe', asyn
 
   await page.screenshot({ path: 'tests/capturas/obra-ordenes-1440.png', fullPage: false })
 })
+
+// LOS CHIPS DE LO QUE FALTA NO PUEDEN QUEDAR CORTADOS POR LOS NÚMEROS DE LAS ÓRDENES.
+//
+// EL DEFECTO QUE ATRAPA (regresión medida el 10/09/2026 en `/clientes`, main `ffa50844`): con las
+// dos OC de «ME - PLAYÓN DE AZUFRE» dibujadas AL LADO del nombre —cada rótulo ~150px con el importe
+// adentro—, «sin medir · sin jefe · sin certificar» se salía de la celda y el `overflow: hidden`
+// que protege a la columna Contratado lo cortaba. La celda no puede ensancharse: lo de al lado es
+// plata. Se mide la geometría, no el texto: `toBeVisible()` da verde con un chip recortado.
+//
+// Volver las órdenes a la primera línea deja este caso ROJO por el borde derecho.
+test('los chips de la obra entran enteros y las órdenes van en la segunda línea', async ({ page }) => {
+  test.setTimeout(180000)
+  await entrar(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/clientes')
+  await expect(page.getByTestId('clientes-tabla')).toBeVisible({ timeout: 60000 })
+
+  const fila = page.getByTestId('fila-obra').filter({ hasText: 'PLAYÓN DE AZUFRE' }).first()
+  await expect(fila).toBeVisible({ timeout: 30000 })
+  const celda = (await fila.locator('> span').first().boundingBox())!
+  const borde = celda.x + celda.width
+
+  const chips = fila.getByTestId('chip-obra')
+  const cuantos = await chips.count()
+  // Un cero acá volvería la prueba una constante verde: esta obra TIENE datos faltantes que decir.
+  expect(cuantos).toBeGreaterThan(0)
+  let ultimoChipAbajo = 0
+  for (let i = 0; i < cuantos; i++) {
+    const b = (await chips.nth(i).boundingBox())!
+    expect(Math.round(b.x + b.width), `el chip ${i + 1} se sale de su celda`).toBeLessThanOrEqual(Math.round(borde))
+    ultimoChipAbajo = Math.max(ultimoChipAbajo, b.y + b.height)
+  }
+
+  // LA SEGUNDA LÍNEA, medida: el número de la orden arranca por debajo de los chips de estado.
+  const orden = (await fila.getByTestId('chip-orden').first().boundingBox())!
+  expect(orden.y, 'las órdenes volvieron al renglón del nombre').toBeGreaterThanOrEqual(ultimoChipAbajo - 2)
+  expect(Math.round(orden.x + orden.width)).toBeLessThanOrEqual(Math.round(borde))
+  await page.screenshot({ path: 'tests/capturas/clientes-fila-dos-lineas-1440.png', fullPage: false })
+
+  // ═══ 390px: LAS ÓRDENES SE APILAN ═══
+  // Dos rótulos de ~150px no entran uno al lado del otro en una celda de ~190: en el teléfono van
+  // uno debajo del otro, y ninguno se sale de la celda.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.waitForTimeout(400)
+  const celdaMovil = (await fila.locator('> span').first().boundingBox())!
+  const ordenes = fila.getByTestId('chip-orden')
+  const cajas = await ordenes.evaluateAll((ns) => ns.map((n) => {
+    const r = n.getBoundingClientRect()
+    return { y: Math.round(r.y), derecha: Math.round(r.right) }
+  }))
+  expect(cajas.length).toBeGreaterThan(1)
+  expect(new Set(cajas.map((c) => c.y)).size, 'a 390px las órdenes siguen en la misma línea').toBe(cajas.length)
+  for (const c of cajas) {
+    expect(c.derecha, 'una orden se sale de la celda a 390px').toBeLessThanOrEqual(Math.round(celdaMovil.x + celdaMovil.width) + 1)
+  }
+  await page.screenshot({ path: 'tests/capturas/clientes-fila-dos-lineas-390.png', fullPage: false })
+})
