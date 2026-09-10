@@ -28,7 +28,7 @@ import { getPool } from './db.mjs'
 
 const RAIZ = join(import.meta.dirname, '..', '..')
 const MIGRACION = readFileSync(
-  join(RAIZ, 'supabase', 'migrations', '20260911T0010_pantalla_clientes_una_consulta.sql'), 'utf8')
+  join(RAIZ, 'supabase', 'migrations', '20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql'), 'utf8')
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
@@ -66,8 +66,11 @@ const VIEJAS = {
     from public.obra_panel o`,
   cobrado_por_obra: `
     select coalesce(jsonb_agg(jsonb_build_object(
-      'obra_id', k.obra_id, 'cobrado_neto', k.cobrado_neto, 'imputacion', k.imputacion)), '[]'::jsonb)
-    from public.obra_cobranza k`,
+      'obra_id', u.obra_id, 'cobrado_total', u.cobrado_total, 'cobrado_neto', u.cobrado_neto,
+      'por_cobrar', u.por_cobrar, 'vencido', u.vencido,
+      'proximo_cobro_fecha', u.proximo_cobro_fecha, 'proximo_cobro_medio', u.proximo_cobro_medio,
+      'imputacion', u.imputacion)), '[]'::jsonb)
+    from public.obra_cuenta u`,
   certificados: `
     select coalesce(jsonb_agg(jsonb_build_object(
       'obra_canonica_id', t.obra_canonica_id, 'numero', t.numero,
@@ -82,20 +85,13 @@ const VIEJAS = {
     from public.cliente_orden r where r.eliminado_en is null`,
   economia_obras: `
     select coalesce(jsonb_agg(jsonb_build_object(
-      'obra_canonica_id', e.obra_canonica_id, 'contratado', e.contratado, 'costo_mo', e.costo_mo,
-      'costo_materiales', e.costo_materiales, 'margen', e.margen, 'origen', e.origen,
-      'referencia', e.referencia, 'nota', e.nota,
+      'obra_canonica_id', e.obra_canonica_id, 'contratado', e.contratado,
+      'contratado_usd', e.contratado_usd, 'tipo_cambio', e.tipo_cambio,
+      'origen', e.origen, 'referencia', e.referencia, 'nota', e.nota,
       'oc_civa_ventana', e.oc_civa_ventana, 'oc_civa_historico', e.oc_civa_historico,
       'oc_n_ventana', e.oc_n_ventana, 'oc_n_historico', e.oc_n_historico)), '[]'::jsonb)
     from public.obra_economia_cartera e`,
-  cuenta_por_obra: `
-    select coalesce(jsonb_agg(jsonb_build_object(
-      'obra_id', u.obra_id, 'obra', u.obra, 'cliente_id', u.cliente_id, 'contratado', u.contratado,
-      'n_cobranzas', u.n_cobranzas, 'n_cobradas', u.n_cobradas, 'cobrado_total', u.cobrado_total,
-      'cobrado_neto', u.cobrado_neto, 'por_cobrar', u.por_cobrar, 'vencido', u.vencido,
-      'proximo_cobro_fecha', u.proximo_cobro_fecha, 'proximo_cobro_medio', u.proximo_cobro_medio,
-      'imputacion', u.imputacion)), '[]'::jsonb)
-    from public.obra_cuenta u`,
+
   contratos: `
     select coalesce(jsonb_agg(distinct d.cliente_id), '[]'::jsonb)
     from public.cliente_documento d where d.rol = 'contrato'`,
@@ -131,7 +127,7 @@ test('pantalla_clientes() devuelve lo mismo que las diez consultas', { skip: !ha
 
     const rpc = (await q('select public.pantalla_clientes() j'))[0].j
 
-    await t.test('las diez listas coinciden fila por fila', async () => {
+    await t.test('las nueve listas coinciden fila por fila', async () => {
       for (const [clave, sql] of Object.entries(VIEJAS)) {
         const viejo = (await q(sql))[0].coalesce
         assert.deepEqual(rpc[clave], viejo, `la clave «${clave}» de la RPC no coincide con su consulta`)
@@ -145,7 +141,7 @@ test('pantalla_clientes() devuelve lo mismo que las diez consultas', { skip: !ha
       assert.ok(rpc.obras_activas.length > 0, 'ninguna obra activa')
       assert.ok(rpc.economia_clientes.length > 0, 'ninguna economía de cliente')
       assert.ok(rpc.papeles.length > 0, 'ningún papel')
-      assert.ok(rpc.cuenta_por_obra.length > 0, 'ninguna obra en obra_cuenta')
+      assert.ok(rpc.cobrado_por_obra.length > 0, 'ninguna obra en obra_cuenta')
     })
 
     await t.test('el perfil que devuelve es el de la sesión, no otro', () => {
@@ -162,8 +158,7 @@ test('pantalla_clientes() devuelve lo mismo que las diez consultas', { skip: !ha
       // ES EL PORTERO, NO LA PANTALLA: `ve_economia()` recorta adentro de las vistas. Si esto
       // devolviera la economía completa, la RPC sería un agujero de permisos con nombre de mejora.
       assert.equal(suyo.economia_clientes.length, 0, 'el jefe de obra vio la economía de los clientes')
-      assert.equal(suyo.cobrado_por_obra.length, 0, 'el jefe de obra vio lo cobrado por obra')
-      assert.equal(suyo.cuenta_por_obra.length, 0, 'el jefe de obra vio la cuenta de cada obra')
+      assert.equal(suyo.cobrado_por_obra.length, 0, 'el jefe de obra vio la cuenta de cada obra')
       await c.query(`select set_config('request.jwt.claims', $1, true)`,
         [JSON.stringify({ sub: direccion.id, role: 'authenticated' })])
     })

@@ -12,13 +12,12 @@
       {
         "funcion": "public.pantalla_clientes()",
         "pantalla": "/clientes",
-        "migracion": "supabase/migrations/20260911T0010_pantalla_clientes_una_consulta.sql",
+        "migracion": "supabase/migrations/20260911T0010_pantalla_clientes_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql)",
         "reemplaza": "10 consultas de PostgREST en una ola",
         "consume": [
           "perfiles",
           "cliente_panel",
           "obra_panel",
-          "obra_cobranza",
           "obra_cuenta",
           "certificados",
           "cliente_orden",
@@ -26,7 +25,7 @@
           "cliente_documento",
           "cliente_economia"
         ],
-        "porque": "El costo dominante de la pantalla era el arranque en frío por CONEXIÓN (~800 ms de catálogo la primera vez que un backend ve las vistas anidadas del OS), pagado hasta diez veces porque cada consulta paralela puede caer en un backend distinto del pool. Un viaje, un backend, un arranque. Publica obra_cuenta tal cual la vista la calcula (contratado, cobrado, por cobrar, vencido, próximo cobro): la fila de trabajo NO resta esos números en la pantalla, que era la segunda definición de «lo que falta cobrar»."
+        "porque": "El costo dominante de la pantalla era el arranque en frío por CONEXIÓN (~800 ms de catálogo la primera vez que un backend ve las vistas anidadas del OS), pagado hasta diez veces porque cada consulta paralela puede caer en un backend distinto del pool. Un viaje, un backend, un arranque. Publica obra_cuenta tal cual la vista la calcula (cobrado bruto y neto, por cobrar, vencido, próximo cobro con su medio): la fila del trabajo NO resta esos números en la pantalla, que era la segunda definición de «lo que falta cobrar»."
       },
       {
         "funcion": "public.campanita_atencion()",
@@ -46,7 +45,7 @@
       {
         "funcion": "public.pantalla_cliente(text)",
         "pantalla": "/clientes/[cliente]",
-        "migracion": "supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql",
+        "migracion": "supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql)",
         "reemplaza": "15 consultas de PostgREST en TRES olas encadenadas",
         "consume": [
           "cliente_panel",
@@ -54,6 +53,7 @@
           "cliente_contacto",
           "obra_panel",
           "obra_economia_cartera",
+          "obra_cuenta",
           "cliente_economia",
           "cliente_orden",
           "cliente_documento",

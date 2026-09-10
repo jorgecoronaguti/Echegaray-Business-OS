@@ -22,9 +22,12 @@ import { ListaOrdenes } from './ListaOrdenes'
 import type { OrdenDetallada } from '../services/ordenesCliente'
 
 export function PanelOrdenes({
-  titulo, ordenes, veEconomia, cerrarHref,
+  titulo, ordenes, veEconomia, cerrarHref, de = 'del cliente',
 }: {
   titulo: string
+  /** De quién son los papeles que se listan. Un panel abierto desde un TRABAJO no puede decir «del
+   *  cliente»: son dos recortes distintos y el subtítulo es lo único que los distingue. */
+  de?: 'del cliente' | 'de este trabajo'
   /** `null` = la lectura falló. «No pude leerlas» no se dibuja como «no hay ninguna». */
   ordenes: OrdenDetallada[] | null
   /** El campo y el jefe de obra no ven precios: el importe de la orden ES precio de venta. */
@@ -35,7 +38,9 @@ export function PanelOrdenes({
   return (
     <Drawer
       titulo={titulo}
-      subtitulo={ordenes === null ? 'no se pudieron leer' : `${ordenes.length} documento${ordenes.length === 1 ? '' : 's'} del cliente`}
+      subtitulo={ordenes === null
+        ? 'no se pudieron leer'
+        : `${ordenes.length} documento${ordenes.length === 1 ? '' : 's'} ${de}`}
       onCerrar={() => router.push(cerrarHref)}
       testid="panel-ordenes"
     >

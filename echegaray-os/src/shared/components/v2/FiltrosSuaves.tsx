@@ -34,8 +34,16 @@ export interface OpcionFiltro {
 
 export function FiltrosSuaves({ opciones, conteo, testid = 'filtros' }: {
   opciones: OpcionFiltro[]
-  /** `{ n, total }`. Se dibuja siempre: el mockup lo escribe aunque no filtre nada (`22v2:399`). */
-  conteo: { n: number; total: number }
+  /**
+   * `{ n, total }`. Se dibuja siempre: el mockup lo escribe aunque no filtre nada (`22v2:399`).
+   *
+   * `sustantivo` DICE DE QUÉ SON ESOS DOS NÚMEROS. «5/5» solo es una cifra sin rótulo, y el dueño
+   * ya marcó ese defecto en la cabecera de Clientes («un 5 suelto pegado a $ 251.494.283»). Es
+   * opcional porque las otras seis pantallas que usan este control todavía lo escriben pelado: se
+   * les agrega cuando cada una se toque, no de prepo desde acá — cambiar siete pantallas en un
+   * cambio que el dueño pidió para una es cómo se rompe lo que ya funcionaba.
+   */
+  conteo: { n: number; total: number; sustantivo?: string }
   testid?: string
 }) {
   return (
@@ -77,7 +85,7 @@ export function FiltrosSuaves({ opciones, conteo, testid = 'filtros' }: {
         style={{ marginLeft: 'auto', fontSize: '11.5px', color: V.lupa }}
         data-testid={`${testid}-conteo`}
       >
-        {conteo.n}/{conteo.total}
+        {conteo.n}/{conteo.total}{conteo.sustantivo ? ` ${conteo.sustantivo}` : ''}
       </span>
     </div>
   )

@@ -21,7 +21,7 @@ import { getPool } from './db.mjs'
 
 const MIGRACION = readFileSync(join(
   import.meta.dirname, '..', '..', 'supabase', 'migrations',
-  '20260911T0030_pantalla_cliente_una_consulta.sql'), 'utf8')
+  '20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql'), 'utf8')
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
@@ -56,6 +56,14 @@ const VIEJAS = {
                  where t.obra_canonica_id in (select o.obra_id from public.obra_panel o where o.cliente_id = $1)`,
   presupuestos: `select coalesce(jsonb_agg(to_jsonb(z) order by z.fecha_cotizacion desc), '[]'::jsonb)
                    from public.cotizacion_cascada z where z.vigente = true and z.cliente_id = $1`,
+  // LO COBRADO POR TRABAJO: la misma vista y las mismas ocho columnas que /clientes, recortadas a
+  // las obras del cliente. Un recorte perdido acá le mostraría a esta ficha la cuenta de otro.
+  cobrado_por_obra: `select coalesce(jsonb_agg(jsonb_build_object(
+                       'obra_id', u.obra_id, 'cobrado_total', u.cobrado_total, 'cobrado_neto', u.cobrado_neto,
+                       'por_cobrar', u.por_cobrar, 'vencido', u.vencido,
+                       'proximo_cobro_fecha', u.proximo_cobro_fecha, 'proximo_cobro_medio', u.proximo_cobro_medio,
+                       'imputacion', u.imputacion)), '[]'::jsonb)
+                     from public.obra_cuenta u where u.cliente_id = $1`,
 }
 
 test('pantalla_cliente() devuelve lo mismo que las quince lecturas', { skip: !hayBase }, async (t) => {

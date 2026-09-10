@@ -20,6 +20,34 @@
 // ninguna cobranza imputada tampoco cobró cero — puede ser que el cobro exista y esté anotado
 // contra el cliente y no contra la obra, que es exactamente lo que pasa hoy (ver el pie).
 
+/**
+ * EL IVA CON EL QUE SE COMPARA UN COBRO CONTRA UN CONTRATO (10/09/2026).
+ *
+ * La columna «Cobrado» de la pestaña OBRAS —contra la que el dueño lee esta pantalla— es el TOTAL
+ * con IVA, y «Contratado» es NETO. Para que la barra mida algo, el denominador se lleva a la misma
+ * especie que el numerador: contratado × 1,21.
+ *
+ * ES UN SUPUESTO Y SE DECLARA. Todo el trabajo de Echegaray en estas obras es obra sobre inmueble
+ * ajeno de destino industrial, con IVA general del 21 % —el propio Adicional Tercer Muro lo
+ * confirma: OC de $12.100.000 contra $10.000.000 contratados—. El día que haya una obra al 10,5 %
+ * (vivienda) esta constante deja de servir y hay que leer el IVA de la factura. Por eso el `title`
+ * de la celda lo dice: un porcentaje que esconde su supuesto es precisión inventada.
+ */
+export const IVA_GENERAL = 1.21
+
+/**
+ * LA BARRA DEL COBRO, CON LAS DOS ESPECIES PUESTAS EN LA MISMA. Numerador BRUTO (lo que entró al
+ * banco), denominador el contrato NETO llevado a bruto. Es la única forma de que el porcentaje de
+ * la pantalla y el de la pestaña OBRAS hablen del mismo hecho.
+ */
+export function progresoDeCobroBruto(
+  cobradoTotal: number | null | undefined,
+  contratadoNeto: number | null | undefined,
+): ProgresoDeCobro | null {
+  if (contratadoNeto == null) return null
+  return progresoDeCobro(cobradoTotal, contratadoNeto * IVA_GENERAL)
+}
+
 /** El progreso listo para dibujar. `null` = no hay barra que dibujar, y se dice por qué. */
 export interface ProgresoDeCobro {
   /** 0–100. Nunca pasa de 100: lo cobrado de más se dice con palabras, no con una barra rota. */
@@ -115,7 +143,17 @@ export function tituloDeCobro(
   const base = deCliente
     ? `cobrado ${money(cobrado)} sin IVA de ${money(contratado)} contratado en todas sus obras`
     : `cobrado ${money(cobrado)} de ${money(contratado)} contratado`
-  const exceso = p?.exceso != null ? ` · ${money(p.exceso)} por encima de lo contratado` : ''
+  // ═══ COBRAR MÁS QUE EL CONTRATO NO ES UN ERROR, Y SE EXPLICA (10/09/2026 · Quattropani) ═══
+  //
+  // El Salón Comercial cobró $107.877.339 contra un contrato de U$S 63.000 (≈$95,3 M neto, ≈$115,3 M
+  // con IVA). Lo que entró de más son ventas facturadas FUERA del contrato —materiales, adicionales—
+  // que Cobranzas registra contra la misma obra. La fila no lo pinta de ámbar: el ámbar de este OS
+  // significa problema, y esto es plata cobrada.
+  const exceso = p?.exceso != null
+    ? ` · ${money(p.exceso)} por encima de lo contratado: son ventas facturadas fuera del contrato `
+      + '(adicionales o materiales) que Cobranzas anota contra el mismo trabajo. No es un error ni '
+      + 'un cobro de más'
+    : ''
   const fact = facturado != null ? ` · facturado ${money(facturado)} (devengado)` : ''
   return `${base}${exceso}${fact}`
 }

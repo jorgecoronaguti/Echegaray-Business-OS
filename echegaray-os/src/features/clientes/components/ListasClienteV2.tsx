@@ -2,14 +2,16 @@
 //
 // Obras y presupuestos, con la grilla LITERAL del handoff v4. Cada columna cita su ancho.
 //
-// ═══ POR QUÉ AVANCE ES UNA COLUMNA Y NO UN ADORNO DENTRO DE ESTADO ═══
+// ═══ EL AVANCE SE FUE, Y EN SU PISTA VA EL COBRO (dueño, 10/09/2026 17:15) ═══
 //
-// Hasta el 05/09/2026 el avance vivía DENTRO de la celda de estado —punto, palabra, barra de 70px y
-// porcentaje, todos con `flexShrink: 0`—. A 390px eso desbordaba sobre el importe y se leía
-// «94$246.149.261». Se parcheó con `overflow:hidden`; la solución del diseño es otra: AVANCE es su
-// propia pista de 90px (`dc.html:113`). Separada, no hay nada que pueda desbordar sobre el importe,
-// y la barra —que era decoración -- desaparece porque el handoff no la dibuja. El `overflow:hidden`
-// se queda igual: es defensa barata contra el próximo hijo que no se pueda encoger.
+// «Administración es un CRM y Obra un ERP: todo lo pertinente a datos de clientes va en CRM, no
+// mezcles cosas con obras.» El avance físico —cuánto lleva ejecutado— es la pregunta del ERP: se
+// mide contra el cronograma y se decide con el jefe de obra. En su pista va ahora lo COBRADO, que
+// es la relación con el cliente y la columna que esta ficha no tenía: para saber si Messina había
+// pagado había que salir a la cuenta corriente.
+//
+// EL COBRADO ES EL TOTAL CON IVA, igual que la pestaña OBRAS del Flujo de Caja y que la lista de
+// `/clientes`. Tres caras del mismo hecho no pueden publicar tres números.
 //
 // ═══ LO QUE NO SE DIBUJA, Y POR QUÉ ═══
 //
@@ -38,6 +40,7 @@ import { SIN_PRECIO_EN_OBRAS, type EconomiaDeObra } from '../services/economiaOb
 import type { PapelesDelCliente } from '../services/papelesCliente'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
+import { AbrirOrdenes } from './AbrirOrdenes'
 
 /**
  * EL ESTADO SE DICE CON LA PALABRA Y SU TINTA, sin punto de color.
@@ -48,6 +51,18 @@ import { OrdenesDeLaObra } from './OrdenesDeLaObra'
  */
 const COLOR_ESTADO_OBRA: Record<string, string> = {
   activa: V.tinta, pausada: V.warn, cerrada: V.apagado,
+}
+
+/**
+ * EL ESTADO, EN EL IDIOMA DEL CRM (10/09/2026).
+ *
+ * `obra_canonica.estado` es del ERP y dice `activa` / `cerrada`: una obra se abre y se cierra. Lo
+ * que el cliente reconoce es otra cosa —su trabajo está en curso o terminado— y es lo único que
+ * esta pantalla toma prestado del registro de obras. El VALOR de la base viaja igual en
+ * `data-estado`: la palabra que se ve cambia, el hecho que se lee no.
+ */
+const PALABRA_ESTADO: Record<string, string> = {
+  activa: 'en curso', cerrada: 'terminado', pausada: 'pausado',
 }
 
 // ═══ LA GRILLA ES LA DEL HANDOFF; EL BREAKPOINT SALE DE UNA CUENTA, NO DE UN GUSTO ═══
@@ -91,10 +106,8 @@ const COLOR_ESTADO_OBRA: Record<string, string> = {
 // de desbordar; el único piso que se defiende es el del nombre, que es lo que identifica la fila.
 const COLS_OBRAS
   = 'gap-[20px] grid-cols-[minmax(200px,1.8fr)_minmax(0,110px)_minmax(0,80px)_minmax(0,150px)_minmax(0,150px)_minmax(0,150px)_minmax(0,28px)]'
-  // Por debajo de 1200px se sueltan OP y MARGEN —lo que se cobró y lo que queda—: la pregunta que
-  // sobrevive en una pantalla angosta es qué se le vendió (contratado) y con qué papel (OC).
-  // 90px y no 72 para el avance: «sin cronograma» a 11,5px mide 84px y en 72 se cortaba en «sin
-  // cronogr…» (medido en la captura de 900px). La pista del handoff ya son 90.
+  // Por debajo de 1200px se suelta la OP: la pregunta que sobrevive en una pantalla angosta es qué
+  // se le vendió (contratado), qué se cobró y con qué papel (OC).
   + ' max-[1199px]:gap-[14px] max-[1199px]:grid-cols-[minmax(0,1.5fr)_minmax(0,90px)_90px_minmax(0,120px)_minmax(0,130px)_28px]'
   // A 390px no entran cinco columnas sin estrangular el nombre: quedan OBRA · ESTADO · CONTRATADO.
   + ' max-[559px]:gap-[10px] max-[559px]:grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
@@ -115,33 +128,38 @@ const AIRE_DERECHO = 'max-[559px]:pr-4'
 const AYUDA_OC = 'Órdenes de compra que el cliente mandó por esta obra (los PDF de su mail). EL '
   + 'IMPORTE ES EL TOTAL DEL PDF, CON IVA, y Contratado —de la pestaña OBRAS— es neto: los dos '
   + 'números no se restan. Que no coincidan no es un error de esta pantalla.'
-const AYUDA_OP = 'Órdenes de pago del cliente imputadas a esta obra. Una OP no prueba el cobro: '
+const AYUDA_OP = 'Órdenes de pago del cliente imputadas a este trabajo. Una OP no prueba el cobro: '
   + 'eso lo prueba el extracto del banco.'
+
+/** La MISMA columna «Cobrado» de la pestaña OBRAS y de `/clientes`: total, con IVA, percibido. */
+const AYUDA_COBRADO = 'Lo cobrado de este trabajo, CON IVA y criterio percibido '
+  + '(obra_cobranza.cobrado) — la misma columna «Cobrado» de la pestaña OBRAS del Flujo de Caja. '
+  + 'Vacío no es cero: mientras Cobranzas anote el cobro contra el CLIENTE y no contra el trabajo, '
+  + 'la base no puede decir cuánto entró por éste.'
 
 /** La sangría del handoff (`dc.html:113`, `padding-left:16px`), que reemplaza los 13 del v2. */
 const SANGRIA = 16
 
-/**
- * EL AVANCE, DICHO EN 90px.
- *
- * Sin cronograma no hay 0 %: no hay avance, y se dice con palabras. Las palabras tienen que ENTRAR
- * en la pista —«sin avance cargado» se cortaba en «sin avance car…» (medido en la captura del
- * 05/09/2026)—, así que la frase corta va en la celda y la larga en el `title`. «sin medir» es,
- * además, la palabra del propio handoff (`dc.html:896`).
- */
-function avanceDeObra(o: ObraPanel): { texto: string; medido: boolean; ayuda: string } {
-  if (o.avance_pct != null) {
-    return { texto: `${o.avance_pct} %`, medido: true, ayuda: 'Avance físico cargado en el cronograma' }
-  }
-  if (o.n_actividades) {
-    return { texto: 'sin medir', medido: false, ayuda: 'Tiene cronograma y todavía nadie le cargó avance' }
-  }
-  return { texto: 'sin cronograma', medido: false, ayuda: 'Sin cronograma no hay contra qué medir el avance' }
-}
+// ═══ `avanceDeObra` SE RETIRÓ CON SU COLUMNA (10/09/2026) ═══
+//
+// Traducía `avance_pct` a «94 %», «sin medir» o «sin cronograma». Es una regla del ERP y su casa es
+// `features/obras`, donde el avance se mide contra el plan. Dejarla acá servida era la invitación a
+// que la columna volviera al CRM sin que nadie lo decidiera.
 
-/** OBRA · ESTADO · AVANCE · CONTRATADO · [acciones]. `dc.html:113-135`. */
-export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, papeles = null, titulo }: {
+/** TRABAJO · ESTADO · COBRADO · CONTRATADO · OC · OP · [acciones]. `dc.html:113-135`. */
+export function ObrasDelCliente({
+  obras, veEconomia, vacio, economia = null, papeles = null, titulo, cobrado = null, hrefTrabajo,
+}: {
   obras: ObraPanel[]
+  /**
+   * LO COBRADO POR TRABAJO (`obra_cobranza`), con la MISMA regla de «todo o nada» que la lista de
+   * `/clientes`: mientras la base no pueda repartir el cobro, NINGUNA fila lo publica. Una sola
+   * fila con número en una columna vacía no se lee como «la base sólo sabe de ésta».
+   */
+  cobrado?: { por: Map<string, { total: number | null }>; disponible: boolean } | null
+  /** Adónde va la fila: el detalle del trabajo DENTRO del CRM. Sin esto, al ERP — que es de donde
+   *  el dueño mandó separar esta pantalla. */
+  hrefTrabajo?: (obraId: string) => string
   /** Los papeles del cliente ya agrupados. `null` = no se pudieron leer o no hay ninguno; en los
    *  dos casos la celda queda vacía, y quien dice «no pude leerlos» es la página. */
   papeles?: PapelesDelCliente | null
@@ -166,9 +184,9 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
         </p>
       )}
       <div className={`grid ${COLS_OBRAS} ${AIRE_DERECHO}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
-        <RotuloCol>Obra</RotuloCol>
+        <RotuloCol>Trabajo</RotuloCol>
         <RotuloCol>Estado</RotuloCol>
-        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Avance</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_COBRADO}><RotuloCol derecha>Cobrado c/IVA</RotuloCol></span>
         <RotuloCol derecha>Contratado</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_OC}><RotuloCol derecha>OC c/IVA</RotuloCol></span>
         <span className={`grid ${SOLO_ANCHO_ECO}`} title={AYUDA_OP}><RotuloCol derecha>OP c/IVA</RotuloCol></span>
@@ -182,7 +200,6 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
       )}
 
       {obras.map((o) => {
-        const avance = avanceDeObra(o)
         // EL PRECIO ES EL DE OBRAS (la OC de Cobranzas) Y NADA MÁS (H1, 10/09/2026). El respaldo
         // `obra_panel.monto_contratado` —el campo del formulario— se retiró: era la segunda
         // definición del contratado, la que sumaba $31,8 M de Messina en el panel lateral mientras
@@ -197,7 +214,11 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
         const cerrada = o.estado === 'cerrada'
         return (
         <Link
-          key={o.obra_id} href={`/obras/${o.obra_id}`} prefetch={false} data-testid="fila-obra-cliente"
+          key={o.obra_id}
+          // EL TRABAJO SE ABRE EN EL CRM. Iba a `/obras/<id>`: un clic y el dueño estaba en el ERP
+          // sin haber pedido irse. El puente al módulo Obras está, nombrado, en la fila.
+          href={hrefTrabajo ? hrefTrabajo(o.obra_id) : `/obras/${o.obra_id}`}
+          prefetch={false} data-testid="fila-obra-cliente"
           className={`grid items-center ${CAJA_CONTENIDO} ${COLS_OBRAS} ${AIRE_DERECHO} hover:bg-[#F2F1ED]`}
           style={{
             // `minHeight`: con las OC debajo del nombre la fila tiene DOS líneas, y a 390px los
@@ -222,6 +243,19 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
               <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
                 {o.nombre}
               </span>
+              {/* EL ÚNICO PUENTE AL ERP, Y ES EXPLÍCITO. Es un `<button>` porque vive dentro del
+                  `<Link>` de la fila: un `<a>` dentro de otro `<a>` es HTML inválido. */}
+              {hrefTrabajo && (
+                <AbrirOrdenes
+                  href={`/obras/${o.obra_id}`}
+                  titulo="Abre este trabajo en el módulo Obras (el ERP): avance, costos, plan."
+                  etiqueta={`Ver ${o.nombre} en el módulo Obras`}
+                  testid="ver-en-obras-ficha"
+                  className={`shrink-0 ${SOLO_ANCHO}`}
+                >
+                  <span style={{ fontSize: '10.5px', color: V.tenue }}>Ver en Obras →</span>
+                </AbrirOrdenes>
+              )}
             </span>
             <OrdenesDeLaObra ordenes={papelesDeLaObra?.oc ?? []} veEconomia={veEconomia} sangria={24} />
           </span>
@@ -231,28 +265,28 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
               separar AVANCE en su propia pista. */}
           <span
             data-testid="estado-obra-cliente"
+            data-estado={o.estado}
             className="truncate"
             style={{
               fontSize: '12px', color: COLOR_ESTADO_OBRA[o.estado] ?? V.apagado,
               minWidth: 0, overflow: 'hidden',
             }}
           >
-            {o.estado}
+            {PALABRA_ESTADO[o.estado] ?? o.estado}
           </span>
 
-          {/* AVANCE — SIN CRONOGRAMA NO HAY 0 %. La ausencia se dice con palabras y en tenue: no
-              bloquea nada, sólo todavía no se midió. */}
+          {/* COBRADO — VACÍO NO ES CERO. Mientras `obra_cobranza` no reparta el cobro por trabajo,
+              la celda calla: un «$ 0» diría que este trabajo no cobró nada, y lo que pasa es que
+              Cobranzas anota el cobro contra el cliente. Es todo o nada, igual que en `/clientes`. */}
           <span
-            data-testid="avance-obra-cliente"
-            title={avance.ayuda}
-            className={`truncate ${SOLO_ANCHO} ${avance.medido ? 'font-mono tabular-nums' : ''}`}
-            style={{
-              fontSize: avance.medido ? '12px' : '11.5px',
-              color: avance.medido ? V.tintaSuave : V.tenue,
-              textAlign: 'right',
-            }}
+            data-testid="cobrado-obra-cliente"
+            title={AYUDA_COBRADO}
+            className={`truncate font-mono tabular-nums ${SOLO_ANCHO}`}
+            style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
           >
-            {avance.texto}
+            {veEconomia && cobrado?.disponible && cobrado.por.get(o.obra_id)?.total != null
+              ? plata(cobrado.por.get(o.obra_id)?.total ?? 0)
+              : ''}
           </span>
 
           {/* MONO CUANDO ES UNA CIFRA, TIPOGRAFÍA DE TEXTO CUANDO ES UNA FRASE. «sin precio en

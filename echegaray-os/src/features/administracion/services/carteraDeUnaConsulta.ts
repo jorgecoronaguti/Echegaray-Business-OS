@@ -43,7 +43,6 @@ import {
   armarEconomiaDeClientes, type EconomiaDeCliente,
 } from '../../clientes/services/economiaCliente.ts'
 import { armarPapelesDeLaCartera } from '../../clientes/services/ordenesCliente.ts'
-import { armarCuentaPorObra, type CuentaDeObra } from '../../clientes/services/cuentaDeObra.ts'
 import type { PapelesDelCliente } from '../../clientes/services/papelesCliente.ts'
 import {
   armarCobradoPorObra, type CobroPorObra, type FilaCertificado, type ObraDeCartera,
@@ -57,15 +56,14 @@ export interface CarteraLeida {
   /** Quién mira. Viene en el mismo viaje: el rol decide qué columnas se dibujan. */
   perfil: Perfil | null
   obras: ObraDeCartera[] | null
-  cobrado: CobroPorObra | null
   /**
-   * LA CUENTA DE CADA OBRA (`public.obra_cuenta`): contratado, cobrado, por cobrar, vencido y el
-   * próximo cobro, PUBLICADOS por la vista con las mismas columnas que la pestaña OBRAS. La fila de
-   * trabajo de la pantalla sale de acá y no de una resta hecha en el cliente — esa resta era una
-   * segunda definición de «lo que falta cobrar». Vacío = el rol no ve economía (`ve_economia()`
-   * adentro de la vista), que no es lo mismo que «no debe nada».
+   * LO COBRADO POR OBRA, de `public.obra_cuenta`: la fila de la pestaña OBRAS traducida a Postgres
+   * —contrato, cobro con IVA, saldo, vencido con el reloj de la emisión + 30 días y el próximo
+   * cobro con su medio—. La pantalla NO resta ninguno de esos números: esa resta hecha en el
+   * cliente era la segunda definición de «lo que falta cobrar». `null` = no se pudo leer; vacío =
+   * el rol no ve economía, que no es lo mismo que «no debe nada».
    */
-  cuentaPorObra: Map<string, CuentaDeObra>
+  cobrado: CobroPorObra | null
   certificados: FilaCertificado[] | null
   todasLasObras: Map<string, ObraDePanel[]>
   papeles: { porCliente: Map<string, PapelesDelCliente>; fallo: boolean }
@@ -82,7 +80,6 @@ interface CarteraCruda {
   obras_activas: unknown[]
   obras_todas: unknown[]
   cobrado_por_obra: unknown[]
-  cuenta_por_obra: unknown[]
   certificados: unknown[]
   papeles: unknown[]
   economia_obras: unknown[]
@@ -94,8 +91,7 @@ interface CarteraCruda {
  *  «no hay». Las listas que la pantalla no distingue (papeles, panel lateral) llevan su marca. */
 function nadaLeido(error: string): CarteraLeida {
   return {
-    clientes: null, error, perfil: null, obras: null, cobrado: null, cuentaPorObra: new Map(),
-    certificados: null,
+    clientes: null, error, perfil: null, obras: null, cobrado: null, certificados: null,
     todasLasObras: new Map(), papeles: { porCliente: new Map(), fallo: true },
     economia: null, contratos: null, economiaCliente: null,
   }
@@ -105,9 +101,9 @@ function nadaLeido(error: string): CarteraLeida {
  * UN VIAJE. Devuelve exactamente las mismas estructuras que las diez llamadas que reemplaza.
  *
  * `disponible: true` en lo cobrado NO es un supuesto: el cuerpo de `pantalla_clientes()` nombra
- * `obra_cobranza.imputacion`, así que una respuesta exitosa PRUEBA que la columna existe. Ése era
- * el motivo del sondeo tolerante que la aplicación hacía en cada render —dos viajes seriales, el
- * primero entero para cobrar un 42703—: sin columna, acá no hay respuesta que interpretar.
+ * `public.obra_cuenta`, que reparte el cobro por obra POR CONSTRUCCIÓN —sale de
+ * `cobranza_imputacion`—: si la función pudo correr, la base sabe repartir. La regla de «todo o
+ * nada» del dueño sigue siendo la misma y ahora su respuesta es sí.
  */
 export async function leerCarteraDeUnaConsulta(supabase: SupabaseClient): Promise<CarteraLeida> {
   const { data, error } = await supabase.rpc('pantalla_clientes')
@@ -120,7 +116,6 @@ export async function leerCarteraDeUnaConsulta(supabase: SupabaseClient): Promis
     perfil: j.perfil ?? null,
     obras: (j.obras_activas ?? []) as ObraDeCartera[],
     cobrado: armarCobradoPorObra(j.cobrado_por_obra ?? [], true),
-    cuentaPorObra: armarCuentaPorObra(j.cuenta_por_obra ?? []),
     certificados: (j.certificados ?? []) as FilaCertificado[],
     todasLasObras: armarObrasPorCliente(j.obras_todas ?? []),
     papeles: { porCliente: armarPapelesDeLaCartera(j.papeles ?? []), fallo: false },

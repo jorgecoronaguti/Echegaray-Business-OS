@@ -4,7 +4,7 @@ import type { ClientePanel } from '@/features/clientes/types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   armarCartera, atribuirAlaUnicaObra, certificacionDe, diaRelativo, getCobradoPorObra,
-  hoyEnLaEmpresa, sinRepartir, type FilaCertificado, type ObraDeCartera,
+  hoyEnLaEmpresa, sinRepartir, type CobroDeObra, type FilaCertificado, type ObraDeCartera,
 } from './homeCartera.ts'
 import type { EconomiaDeCliente } from '@/features/clientes/services/economiaCliente'
 import type { EconomiaDeObra } from '@/features/clientes/services/economiaObras'
@@ -23,6 +23,15 @@ const cliente = (p: Partial<ClientePanel> & { cliente_id: string }): ClientePane
 /** Ninguna cobranza imputada Y la base todavía no sabe repartir: el caso de hoy en producción. */
 const SIN_COBRO = { por: new Map(), disponible: false }
 
+/**
+ * UNA FILA DE `obra_cobranza` COMO LA DEVUELVE LA LECTURA. El `total` es el BRUTO —lo que la
+ * pestaña OBRAS publica en «Cobrado»— y el `neto` el comparable contra lo contratado. Que el
+ * helper exija los dos por separado es lo que hace imposible volver a dibujar uno donde va el otro.
+ */
+const cobro = (p: Partial<CobroDeObra> = {}): CobroDeObra => ({
+  total: null, neto: null, porCobrar: null, vencido: null, proximo: null, imputacion: null, ...p,
+})
+
 const obra = (p: Partial<ObraDeCartera> & { obra_id: string }): ObraDeCartera => ({
   nombre: p.obra_id, cliente_id: 'c1', avance_pct: 50, jefe_obra: 'S. Ledesma', ...p,
 })
@@ -30,9 +39,8 @@ const obra = (p: Partial<ObraDeCartera> & { obra_id: string }): ObraDeCartera =>
 /** Lo que publica `obra_economia_cartera` para una obra. Es la ÚNICA fuente del precio por obra. */
 const eco = (obraId: string, contratado: number | null, extra: Partial<EconomiaDeObra> = {}):
 [string, EconomiaDeObra] => [obraId, {
-  obra_canonica_id: obraId, contratado, costo_mo: null, costo_materiales: null, margen: null,
-  origen: contratado === null ? null : 'oc-pesos',
-  referencia: null, nota: null,
+  obra_canonica_id: obraId, contratado, contratado_usd: null, tipo_cambio: null,
+  origen: contratado === null ? null : 'oc-pesos', referencia: null, nota: null,
   oc_civa_ventana: null, oc_civa_historico: null, oc_n_ventana: null, oc_n_historico: null,
   ...extra,
 }]
@@ -148,22 +156,26 @@ test('lo cobrado de la OBRA cuelga de su obra; lo del CLIENTE lo dice `cliente_e
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'o1' }), obra({ obra_id: 'o2' })],
-    cobrado: { por: new Map([['o1', { cobrado: 500_000, imputacion: 'oc' as const }]]), disponible: true },
+    cobrado: { por: new Map([['o1', cobro({ total: 500_000, neto: 500_000, imputacion: 'oc' as const })]]), disponible: true },
     certificados: [],
     economia: new Map([eco('o1', 1_000_000), eco('o2', 2_000_000)]),
     economiaCliente: new Map([['c1', ecCliente({
       cliente_id: 'c1', contratado: 4_000_000, contratado_en_curso: 3_000_000,
-      cobrado_neto_total: 900_000, pendiente_contractual: 3_100_000,
+      cobrado_neto_total: 900_000, cobrado_total: 1_089_000, pendiente_contractual: 3_100_000,
     })]]),
   })
-  assert.equal(c.enCurso[0].cobrado, 500_000)
+  assert.equal(c.enCurso[0].cobradoTotal, 500_000)
   // LA OBRA SIN COBRANZA IMPUTADA NO COBRÓ CERO: no se sabe, y por eso es `null` y no 0. Hoy
   // Cobranzas anota el cobro contra el CLIENTE, así que casi todas las obras están en este caso.
-  assert.equal(c.enCurso[1].cobrado, null)
+  assert.equal(c.enCurso[1].cobradoTotal, null)
   // EL COBRADO DEL CLIENTE NO ES LA SUMA DE SUS OBRAS (10/09/2026). Era $500.000 —lo único
   // imputado— cuando el cliente cobró $900.000: `cobranzas` ata el cobro al cliente, no a la obra,
   // así que sumar las filas de obra subregistra el cobro y no lo dice.
-  assert.equal(c.cobrado, 900_000)
+  assert.equal(c.cobradoNeto, 900_000)
+  // Y LA COLUMNA DIBUJA EL TOTAL, que es lo que publica la pestaña OBRAS: los dos se leen, uno se
+  // dibuja. Mientras la app mostraba el neto bajo el rótulo «Cobrado», el dueño leía en pantalla
+  // números distintos de los del Sheet en las nueve obras.
+  assert.equal(c.cobradoTotal, 1_089_000)
   // Y su denominador es el contratado de TODAS sus obras, no el de las que están en curso: los dos
   // números de la barra tienen que ser del mismo universo.
   assert.equal(c.contratadoTotal, 4_000_000)
@@ -180,14 +192,15 @@ test('sin `cliente_economia` legible, el cliente NO cae a sumar sus obras: dice 
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'o1' }), obra({ obra_id: 'o2' })],
-    cobrado: { por: new Map([['o1', { cobrado: 500_000, imputacion: 'oc' as const }]]), disponible: true },
+    cobrado: { por: new Map([['o1', cobro({ total: 500_000, neto: 500_000, imputacion: 'oc' as const })]]), disponible: true },
     certificados: [],
     economia: new Map([eco('o1', 1_000_000), eco('o2', 2_000_000)]),
     economiaCliente: null,
   })
   assert.equal(c.contratado, null)
   assert.equal(c.contratadoTotal, null)
-  assert.equal(c.cobrado, null)
+  assert.equal(c.cobradoTotal, null)
+  assert.equal(c.cobradoNeto, null)
   assert.equal(c.enCurso[0].contratado, 1_000_000, 'el precio POR OBRA sigue siendo el de OBRAS')
 })
 
@@ -213,21 +226,21 @@ test('la economía de OBRAS manda por obra, y el total del cliente sale de la vi
     { obra_id: 'o1', nombre: 'A', cliente_id: 'c1', avance_pct: null, jefe_obra: null },
     { obra_id: 'o2', nombre: 'B', cliente_id: 'c1', avance_pct: null, jefe_obra: null },
   ]
-  const economia = new Map([eco('o1', 100, { costo_mo: 60, costo_materiales: 10, margen: 30 })])
+  const economia = new Map([eco('o1', 100)])
   const [c] = armarCartera({
     clientes, obras, cobrado: SIN_COBRO, certificados: [], economia,
     economiaCliente: new Map([['c1', ecCliente({ cliente_id: 'c1', contratado_en_curso: 100, contratado: 100 })]]),
   })
   assert.equal(c.enCurso[0].contratado, 100)
-  assert.equal(c.enCurso[0].costoMo, 60)
-  assert.equal(c.enCurso[0].costoMateriales, 10)
+  assert.equal(c.enCurso[0].contratado, 100)
+  
   // SIN FILA EN `obra_economia_cartera` NO HAY RESPALDO (H1): `obra_panel.monto_contratado` —el
   // campo del formulario— era la segunda definición del precio y se retiró de la lectura entera.
   assert.equal(c.enCurso[1].contratado, null)
-  assert.equal(c.enCurso[1].costoMo, null)
+  
   // El total del cliente NO lo suma esta función: lo dice `cliente_economia`.
   assert.equal(c.contratado, 100)
-  assert.equal(c.costoMo, 60)
+  
 })
 
 // ═══ EL MARGEN SE FUE DE LA CARTERA (dueño, 10/09/2026 15:33) ═══
@@ -243,14 +256,14 @@ test('la fila de la cartera ya no calcula ningún margen', () => {
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'o1' })],
     cobrado: SIN_COBRO, certificados: [],
-    economia: new Map([eco('o1', 100, { costo_mo: 60, costo_materiales: 10, margen: 30 })]),
+    economia: new Map([eco('o1', 100)]),
   })
   assert.equal('margen' in c, false, 'la fila del cliente volvió a traer el margen servido')
   assert.equal('margenPct' in c, false)
   assert.equal('economiaParcial' in c, false)
   assert.equal('margen' in c.enCurso[0], false, 'la fila de la obra volvió a traer el margen servido')
   // Y lo que sí tiene que seguir trayendo, porque una compra es COSTO y lo ve todo rol interno.
-  assert.equal(c.enCurso[0].costoMo, 60)
+  assert.equal(c.enCurso[0].contratado, 100)
 })
 
 // ═══ MESSINA, EL CASO QUE ORIGINÓ EL HITO (medido contra la base el 10/09/2026) ═══
@@ -298,115 +311,104 @@ test('Messina: la fila del cliente publica lo que dice la vista, no la suma del 
   // con el formulario cargado. Ninguna cara puede volver a decir eso.
   assert.notEqual(Math.round(c.contratado ?? 0), 31_846_476)
   assert.equal(Math.round(c.contratadoTotal ?? 0), 188_020_729)
-  assert.equal(Math.round(c.cobrado ?? 0), 90_579_117)
+  assert.equal(Math.round(c.cobradoNeto ?? 0), 90_579_117)
   assert.equal(Math.round(c.pendienteContractual ?? 0), 97_441_612)
 })
 
-// ═══ EL COBRO DE LA OBRA SE LEE NETO, NO BRUTO ═══
+// ═══ EL COBRO DE LA OBRA SE LEE EN LAS DOS ESPECIES ═══
 //
-// `obra_cobranza` publica los dos: `cobrado` es lo que entró al banco (con IVA) y `cobrado_neto` es
-// sin IVA. Lo contratado de OBRAS es NETO, así que la barra sólo puede dividir por el segundo.
+// `obra_cobranza` publica los dos: `cobrado` es lo que entró al banco (con IVA) —la columna
+// «Cobrado» de la pestaña OBRAS— y `cobrado_neto` es sin IVA, el único comparable contra lo
+// contratado. La lectura trae los dos y la pantalla dibuja el TOTAL: hasta el 10/09/2026 dibujaba
+// el neto bajo el mismo rótulo y por eso las nueve obras se leían distinto del Sheet.
 //
-// EL DEFECTO QUE ATRAPA: la fila de Quattropani decía «100 % cobrado» —$102.606.669 sobre
-// $95.270.932— y el 7,7 % de más era el IVA de las facturas, no un cobro por encima del contrato.
-// Con el neto ($84.697.935) la misma fila dice 89 %. Si alguien vuelve a `cobrado`, este test da
-// rojo con el número bruto en el mensaje.
+// La barra de progreso divide contra `contratado × 1,21` y lo declara en su `title`: el numerador
+// lleva IVA y el denominador no, y eso se dice en vez de esconderse cambiando el numerador.
 
 /**
- * Un Supabase de mentira que devuelve las DOS columnas: la buena y la que ya engañó una vez.
+ * UN SUPABASE DE MENTIRA SOBRE `public.obra_cuenta`.
  *
- * `columnasQueExisten` es lo que la BASE tiene hoy: pedir una que no está devuelve 42703, igual que
- * PostgREST. Es lo que hace probable el `select` tolerante de `imputacion` — con la migración sin
- * aplicar y con ella aplicada, sin tocar el código entre las dos corridas.
+ * Guarda de qué TABLA y con qué columnas se preguntó: la fuente es parte de la regla desde el
+ * 10/09/2026 —`obra_cuenta` publica el cobro con IVA y `obra_cobranza` el neto— y una lectura que
+ * cambia de vista cambia el número sin cambiar una sola cuenta.
  */
-function baseConLasDos(
-  filas: Record<string, unknown>[], recordar: string[],
-  columnasQueExisten = ['obra_id', 'cobrado', 'cobrado_neto'],
-) {
+function baseDeCuenta(filas: Record<string, unknown>[], recordar: string[] = [], tablas: string[] = []) {
   return {
-    from: () => ({
-      select: (columnas: string) => {
-        recordar.push(columnas)
-        const pedidas = columnas.split(',').map((c) => c.trim())
-        const falta = pedidas.find((c) => !columnasQueExisten.includes(c))
-        if (falta) {
-          return Promise.resolve({ data: null, error: { code: '42703', message: `column ${falta} does not exist` } })
-        }
-        // Sólo devuelve lo que se pidió, igual que PostgREST: pedir `cobrado` no puede traer el neto.
-        return Promise.resolve({
-          data: filas.map((f) => Object.fromEntries(pedidas.map((c) => [c, f[c] ?? null]))),
-          error: null,
-        })
-      },
-    }),
+    from: (tabla: string) => {
+      tablas.push(tabla)
+      return {
+        select: (columnas: string) => {
+          recordar.push(columnas)
+          const pedidas = columnas.split(',').map((c) => c.trim())
+          return Promise.resolve({
+            data: filas.map((f) => Object.fromEntries(pedidas.map((c) => [c, f[c] ?? null]))),
+            error: null,
+          })
+        },
+      }
+    },
   } as unknown as SupabaseClient
 }
 
-test('la barra de la obra divide el cobrado NETO, nunca el bruto con IVA', async () => {
+test('el cobro se lee de `obra_cuenta` — la fila de la pestaña OBRAS, no `obra_cobranza`', async () => {
+  const tablas: string[] = []
   const pedidas: string[] = []
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [{ obra_id: 'quattropani', cobrado: 102_606_668.76, cobrado_neto: 84_697_934.83 }],
-    pedidas,
+  const cobrado = await getCobradoPorObra(baseDeCuenta(
+    [{
+      obra_id: 'quattropani', cobrado_total: 107_877_339, cobrado_neto: 89_154_825,
+      por_cobrar: 52_357_048, vencido: null, proximo_cobro_fecha: '2026-09-25',
+      proximo_cobro_medio: 'Transferencia', imputacion: 'alias',
+    }],
+    pedidas, tablas,
   ))
-  assert.ok(pedidas[0].includes('cobrado_neto'), `pidió «${pedidas[0]}»: sin el neto no hay qué dividir`)
-  assert.equal(
-    cobrado?.por.get('quattropani')?.cobrado, 84_697_934.83,
-    'el bruto ($102.606.669) sobre un contratado neto da «100 % cobrado» y el resto es IVA',
-  )
+  assert.deepEqual(tablas, ['obra_cuenta'],
+    '`obra_cobranza` publica el cobro NETO: leerla de ahí es el defecto que el dueño vio contra el Sheet')
+  for (const columna of ['cobrado_total', 'cobrado_neto', 'por_cobrar', 'vencido',
+    'proximo_cobro_fecha', 'proximo_cobro_medio', 'imputacion']) {
+    assert.ok(pedidas[0].includes(columna), `no se pidió \`${columna}\`: la fila no puede dibujarla`)
+  }
+  const q = cobrado?.por.get('quattropani')
+  assert.equal(q?.total, 107_877_339, 'la columna «Cobrado» de OBRAS es el TOTAL con IVA')
+  assert.equal(q?.neto, 89_154_825, 'y el neto se sigue leyendo: es lo comparable contra el contrato')
+  assert.equal(q?.porCobrar, 52_357_048)
+  assert.equal(q?.vencido, null, 'lo que la vista no publica NO se inventa: vacío, nunca cero')
+  assert.deepEqual(q?.proximo, { fecha: '2026-09-25', medio: 'Transferencia' })
+  assert.equal(q?.imputacion, 'alias')
 })
 
-// ═══ EL `select` TOLERANTE DE `imputacion` ═══
-//
-// La columna la agrega la migración que reparte el cobro por obra (la OC de la columna H de
-// Cobranzas atada a `cliente_orden.obra_id`). El código la pide SIEMPRE: el día que la migración se
-// aplique, la barra por obra enciende sola y sin tocar una línea. Mientras no exista, PostgREST
-// devuelve 42703 y hay que volver a pedir sin ella — si no, la lectura falla entera y la columna
-// Cobrado se apaga para todo el mundo.
-//
-// LOS DOS MUNDOS SE PRUEBAN CON EL MISMO CÓDIGO, que es lo único que prueba que la migración va a
-// encender la barra sin una segunda entrega.
-
-test('sin la columna `imputacion` la lectura NO se cae: se vuelve a pedir sin ella', async () => {
-  const pedidas: string[] = []
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [{ obra_id: 'quattropani', cobrado_neto: 84_697_934.83 }], pedidas,
+test('una obra sin ninguna fila de Cobranzas NO entra al mapa: un hueco no es un cero', async () => {
+  const cobrado = await getCobradoPorObra(baseDeCuenta(
+    [{ obra_id: 'messina-bsa', cobrado_total: null, cobrado_neto: null, por_cobrar: null }],
   ))
-  assert.ok(pedidas[0].includes('imputacion'), 'se pide primero CON la columna, para que encienda sola')
-  assert.equal(pedidas.length, 2, 'y se reintenta una sola vez, sin ella')
-  assert.equal(cobrado?.por.get('quattropani')?.cobrado, 84_697_934.83)
-  assert.equal(cobrado?.por.get('quattropani')?.imputacion, null, 'la columna no existe: no se inventa')
+  assert.equal(cobrado?.por.has('messina-bsa'), false, 'una barra en 0 % afirmaría que se midió')
 })
 
-test('con la columna aplicada, la imputación llega tal cual y sin segundo viaje', async () => {
-  const pedidas: string[] = []
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [
-      { obra_id: 'messina-playon-azufre', cobrado_neto: 32_500_000, imputacion: 'oc' },
-      { obra_id: 'messina', cobrado_neto: 2_330_000, imputacion: 'cliente' },
-    ],
-    pedidas,
-    ['obra_id', 'cobrado', 'cobrado_neto', 'imputacion'],
+test('una obra que todavía no cobró pero TIENE por cobrar sí entra', async () => {
+  // ME - ADICIONAL TERCER MURO: cobrado «—» y $12.100.000 por cobrar. Si el mapa la descartara por
+  // no tener cobro, su saldo y su vencimiento desaparecerían de la pantalla.
+  const cobrado = await getCobradoPorObra(baseDeCuenta(
+    [{ obra_id: 'messina-adicional-tercer-muro', cobrado_total: null, por_cobrar: 12_100_000 }],
   ))
-  assert.equal(pedidas.length, 1, 'con la columna viva no hay reintento')
-  assert.equal(cobrado?.por.get('messina-playon-azufre')?.imputacion, 'oc')
-  assert.equal(cobrado?.por.get('messina')?.imputacion, 'cliente')
+  assert.equal(cobrado?.por.get('messina-adicional-tercer-muro')?.porCobrar, 12_100_000)
+  assert.equal(cobrado?.por.get('messina-adicional-tercer-muro')?.total, null)
 })
 
 test('un valor de imputación que el OS no conoce se descarta, no se dibuja', async () => {
   // Si mañana la vista publica un cuarto valor, la fila NO puede dibujar una palabra que nadie
   // definió: se trata como «no se sabe» hasta que alguien la agregue acá a propósito.
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [{ obra_id: 'o1', cobrado_neto: 1, imputacion: 'certificado' }], [],
-    ['obra_id', 'cobrado', 'cobrado_neto', 'imputacion'],
+  const cobrado = await getCobradoPorObra(baseDeCuenta(
+    [{ obra_id: 'o1', cobrado_total: 1, imputacion: 'certificado' }],
   ))
   assert.equal(cobrado?.por.get('o1')?.imputacion, null)
 })
 
-test('sin cobranzas cobradas la obra NO entra al mapa: un hueco no es un cero', async () => {
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [{ obra_id: 'messina-bsa', cobrado: null, cobrado_neto: null }], [],
-  ))
-  assert.equal(cobrado?.por.has('messina-bsa'), false, 'una barra en 0 % afirmaría que se midió')
+test('si la lectura falla, es `null` y no un mapa vacío', async () => {
+  // «No pude leer» y «no hay cobros» son dos cosas distintas: con un mapa vacío la pantalla diría
+  // que nadie cobró nada.
+  const rota = {
+    from: () => ({ select: () => Promise.resolve({ data: null, error: { code: '42501' } }) }),
+  } as unknown as SupabaseClient
+  assert.equal(await getCobradoPorObra(rota), null)
 })
 
 // ═══ LOS CONTEOS QUE LA FILA ESCRIBE ═══
@@ -465,11 +467,11 @@ test('sin la columna `imputacion`, NINGUNA fila de obra publica cobro — ni la 
     obras: [obra({ obra_id: 'quattropani', cliente_id: 'quattropani' })],
     // La base SÍ tiene el número —la etiqueta del cliente coincide con el id de la obra— pero
     // TODAVÍA no sabe repartir: `disponible: false`.
-    cobrado: { por: new Map([['quattropani', { cobrado: 89_968_804.78, imputacion: null }]]), disponible: false },
+    cobrado: { por: new Map([['quattropani', cobro({ total: 89_968_804.78, neto: 89_968_804.78, imputacion: null })]]), disponible: false },
     certificados: [],
     economia: new Map([eco('quattropani', 95_270_932.26)]),
   })
-  assert.equal(c.enCurso[0].cobrado, null, 'la fila de la obra no puede publicar el cobro afortunado')
+  assert.equal(c.enCurso[0].cobradoTotal, null, 'la fila de la obra no puede publicar el cobro afortunado')
   assert.equal(c.enCurso[0].imputacion, null)
   assert.equal(c.enCurso[0].cobroDisponible, false, 'y la celda tiene que saber que no hay pregunta')
 })
@@ -483,15 +485,15 @@ test('con la columna aplicada, TODAS las que tienen imputación publican', () =>
     ],
     cobrado: {
       por: new Map([
-        ['messina-playon-azufre', { cobrado: 32_500_000, imputacion: 'oc' as const }],
-        ['messina-bsa', { cobrado: 4_073_021.7, imputacion: 'cliente' as const }],
+        ['messina-playon-azufre', cobro({ total: 32_500_000, neto: 32_500_000, imputacion: 'oc' as const })],
+        ['messina-bsa', cobro({ total: 4_073_021.7, neto: 4_073_021.7, imputacion: 'cliente' as const })],
       ]),
       disponible: true,
     },
     certificados: [],
     economia: new Map([eco('messina-playon-azufre', 102_500_000), eco('messina-bsa', 14_120_243.4)]),
   })
-  assert.equal(c.enCurso[0].cobrado, 32_500_000)
+  assert.equal(c.enCurso[0].cobradoTotal, 32_500_000)
   assert.equal(c.enCurso[0].imputacion, 'oc')
   assert.equal(c.enCurso[0].cobroDisponible, true)
   // La `cliente` trae su número pero la fila lo dice con palabras y no dibuja barra: eso lo decide
@@ -524,13 +526,13 @@ test('con UNA obra en curso, el cobro del cliente se le atribuye y la barra sale
     clientes: [cliente({ cliente_id: 'quattropani', n_obras: 1 })],
     obras: [obra({ obra_id: 'quattropani', cliente_id: 'quattropani' })],
     cobrado: {
-      por: new Map([['quattropani', { cobrado: 89_968_804.78, imputacion: 'cliente' as const }]]),
+      por: new Map([['quattropani', cobro({ total: 89_968_804.78, neto: 89_968_804.78, imputacion: 'cliente' as const })]]),
       disponible: true,
     },
     certificados: [],
     economia: new Map([eco('quattropani', 95_270_932.26)]),
   })
-  assert.equal(c.enCurso[0].cobrado, 89_968_804.78)
+  assert.equal(c.enCurso[0].cobradoTotal, 89_968_804.78)
   assert.equal(
     c.enCurso[0].imputacion, 'unica-obra',
     'NO se disfraza de `alias`: es una deducción y el `title` de la celda lo dice',
@@ -545,7 +547,7 @@ test('con DOS o más obras en curso NO se reparte a ojo: la fila lo sigue dicien
       obra({ obra_id: 'messina-pisos-120-rampa', cliente_id: 'messina' }),
     ],
     cobrado: {
-      por: new Map([['messina-bsa', { cobrado: 4_073_021.7, imputacion: 'cliente' as const }]]),
+      por: new Map([['messina-bsa', cobro({ total: 4_073_021.7, neto: 4_073_021.7, imputacion: 'cliente' as const })]]),
       disponible: true,
     },
     certificados: [],
@@ -560,7 +562,7 @@ test('la regla NO toca una imputación que la base sí pudo hacer', () => {
     const [c] = armarCartera({
       clientes: [cliente({ cliente_id: 'c1' })],
       obras: [obra({ obra_id: 'o1' })],
-      cobrado: { por: new Map([['o1', { cobrado: 10, imputacion: original }]]), disponible: true },
+      cobrado: { por: new Map([['o1', cobro({ total: 10, neto: 10, imputacion: original })]]), disponible: true },
       certificados: [],
       economia: new Map([eco('o1', 100)]),
     })
@@ -570,9 +572,12 @@ test('la regla NO toca una imputación que la base sí pudo hacer', () => {
 
 test('sin cobro, la única obra no se inventa una atribución', () => {
   const sinNada = atribuirAlaUnicaObra([{
-    obra_id: 'o1', nombre: 'O', avance: null, jefe: null, contratado: 100, origenContratado: 'oc-pesos',
-    costoMo: null, costoMateriales: null, certificacion: { texto: 'sin certificar', reclama: false },
-    cobrado: null, imputacion: 'cliente', cobroDisponible: true,
+    obra_id: 'o1', nombre: 'O', avance: null, jefe: null, contratado: 100, contratadoUsd: null,
+    tipoCambio: null, origenContratado: 'oc-pesos', referencia: null, nota: null,
+    ocCivaVentana: null, ocCivaHistorico: null, ocNVentana: null, ocNHistorico: null,
+    certificacion: { texto: 'sin certificar', reclama: false },
+    cobradoTotal: null, cobradoNeto: null, porCobrar: null, vencido: null, proximo: null,
+    imputacion: 'cliente', cobroDisponible: true,
   }])
   assert.equal(sinNada[0].imputacion, 'cliente', 'sin número no hay nada que atribuir')
 })
@@ -593,8 +598,8 @@ test('el cobro sin repartir se suma de TODAS sus obras, cerradas incluidas', () 
     obrasDelCliente: ['san-francisco', 'entrepiso-y-escalera', 'pisos-industriales'].map(obraDe),
     cobrado: {
       por: new Map([
-        ['san-francisco', { cobrado: 47_659_263, imputacion: 'cliente' as const }],
-        ['entrepiso-y-escalera', { cobrado: 1_932_063, imputacion: 'oc' as const }],
+        ['san-francisco', cobro({ total: 47_659_263, neto: 47_659_263, imputacion: 'cliente' as const })],
+        ['entrepiso-y-escalera', cobro({ total: 1_932_063, neto: 1_932_063, imputacion: 'oc' as const })],
       ]),
       disponible: true,
     },
@@ -607,7 +612,7 @@ test('cero sin repartir es `null`, no cero: la fila no dibuja el renglón', () =
   // Un «$ 0 s/obra» en todas las filas ocupa una línea para decir que no pasa nada.
   assert.equal(sinRepartir({
     obrasDelCliente: [obraDe('o1')],
-    cobrado: { por: new Map([['o1', { cobrado: 10, imputacion: 'oc' as const }]]), disponible: true },
+    cobrado: { por: new Map([['o1', cobro({ total: 10, neto: 10, imputacion: 'oc' as const })]]), disponible: true },
     yaAtribuidas: new Set(),
   }), null)
 })
@@ -618,7 +623,7 @@ test('lo que ya se atribuyó a la única obra NO se cuenta dos veces', () => {
   assert.equal(sinRepartir({
     obrasDelCliente: [obraDe('quattropani')],
     cobrado: {
-      por: new Map([['quattropani', { cobrado: 89_968_804.78, imputacion: 'cliente' as const }]]),
+      por: new Map([['quattropani', cobro({ total: 89_968_804.78, neto: 89_968_804.78, imputacion: 'cliente' as const })]]),
       disponible: true,
     },
     yaAtribuidas: new Set(['quattropani']),
@@ -628,7 +633,7 @@ test('lo que ya se atribuyó a la única obra NO se cuenta dos veces', () => {
 test('sin la columna `imputacion` no se afirma que haya nada sin repartir', () => {
   assert.equal(sinRepartir({
     obrasDelCliente: [obraDe('o1')],
-    cobrado: { por: new Map([['o1', { cobrado: 10, imputacion: null }]]), disponible: false },
+    cobrado: { por: new Map([['o1', cobro({ total: 10, neto: 10, imputacion: null })]]), disponible: false },
     yaAtribuidas: new Set(),
   }), null)
   // Y sin poder leer las obras del cliente, tampoco.
@@ -640,7 +645,7 @@ test('la fila del cliente publica el sin repartir, y Quattropani NO se contradic
     clientes: [cliente({ cliente_id: 'sf', n_obras: 5 })],
     obras: [obra({ obra_id: 'entrepiso-y-escalera', cliente_id: 'sf' }), obra({ obra_id: 'pisos-industriales', cliente_id: 'sf' })],
     cobrado: {
-      por: new Map([['san-francisco', { cobrado: 47_659_263, imputacion: 'cliente' as const }]]),
+      por: new Map([['san-francisco', cobro({ total: 47_659_263, neto: 47_659_263, imputacion: 'cliente' as const })]]),
       disponible: true,
     },
     certificados: [],
@@ -652,7 +657,7 @@ test('la fila del cliente publica el sin repartir, y Quattropani NO se contradic
     clientes: [cliente({ cliente_id: 'quattropani', n_obras: 1 })],
     obras: [obra({ obra_id: 'quattropani', cliente_id: 'quattropani' })],
     cobrado: {
-      por: new Map([['quattropani', { cobrado: 89_968_804.78, imputacion: 'cliente' as const }]]),
+      por: new Map([['quattropani', cobro({ total: 89_968_804.78, neto: 89_968_804.78, imputacion: 'cliente' as const })]]),
       disponible: true,
     },
     certificados: [],

@@ -55,10 +55,18 @@ const CARTERA = {
     { obra_id: 'o1', nombre: 'BSA', cliente_id: 'c1', estado: 'activa', avance_pct: 40 },
     { obra_id: 'o9', nombre: 'Bolsa', cliente_id: 'c1', estado: 'cerrada', avance_pct: null },
   ],
+  // `public.obra_cuenta`: la fila de la pestaña OBRAS traducida a Postgres.
   cobrado_por_obra: [
-    { obra_id: 'o1', cobrado_neto: 1000, imputacion: 'oc' },
-    // Sin cobro todavía: NO se guarda, porque «no entró nada» no es «cobró cero».
-    { obra_id: 'o9', cobrado_neto: null, imputacion: null },
+    {
+      obra_id: 'o1', cobrado_total: 1210, cobrado_neto: 1000, por_cobrar: 500, vencido: 0,
+      proximo_cobro_fecha: '2026-09-18', proximo_cobro_medio: ' Efectivo ', imputacion: 'oc',
+    },
+    // Una obra SIN NINGUNA fila de Cobranzas no entra al mapa: eso no es «cobró cero», es que no
+    // hay nada anotado contra ella, y la celda lo dice quedándose vacía.
+    {
+      obra_id: 'o9', cobrado_total: null, cobrado_neto: null, por_cobrar: null, vencido: null,
+      proximo_cobro_fecha: null, proximo_cobro_medio: null, imputacion: null,
+    },
   ],
   certificados: [
     { obra_canonica_id: 'o1', numero: '1', fecha_certificacion: '2026-08-01', fecha_facturacion: null, fecha_cobranza: null },
@@ -94,11 +102,17 @@ test('cada lista de la RPC aterriza donde la pantalla la espera', async () => {
   assert.deepEqual(r.obras?.map((o) => o.obra_id), ['o1'])
   assert.deepEqual(r.todasLasObras.get('c1')?.map((o) => o.obra_id), ['o1', 'o9'])
 
-  // El `null` de `cobrado_neto` NO entra al mapa: quien no cobró todavía no cobró cero.
-  assert.equal(r.cobrado?.por.get('o1')?.cobrado, 1000)
+  // BRUTO Y NETO SON DOS COLUMNAS, no una: el Sheet publica el bruto y el comparable contra lo
+  // contratado es el neto. Confundirlos publicaba «100 %» sobre un contrato que no se cobró entero.
+  assert.equal(r.cobrado?.por.get('o1')?.total, 1210)
+  assert.equal(r.cobrado?.por.get('o1')?.neto, 1000)
+  assert.equal(r.cobrado?.por.get('o1')?.porCobrar, 500)
+  assert.equal(r.cobrado?.por.get('o1')?.proximo?.medio, 'Efectivo')
   assert.equal(r.cobrado?.por.get('o1')?.imputacion, 'oc')
+  // La obra sin nada anotado NO entra al mapa: no cobró cero, no hay nada que decir de ella.
   assert.equal(r.cobrado?.por.has('o9'), false)
-  // Que la RPC haya respondido PRUEBA que `obra_cobranza.imputacion` existe: su cuerpo la nombra.
+  // `obra_cuenta` reparte por obra POR CONSTRUCCIÓN (sale de `cobranza_imputacion`): que la RPC
+  // haya respondido lo prueba, y la regla de «todo o nada» del dueño se cumple con un sí.
   assert.equal(r.cobrado?.disponible, true)
 
   assert.equal(r.certificados?.length, 1)

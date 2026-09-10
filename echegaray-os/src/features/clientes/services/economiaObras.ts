@@ -1,9 +1,17 @@
 // LA ECONOMÍA DE CADA OBRA, LEÍDA DE UNA SOLA FUENTE: `public.obra_economia_cartera`.
 //
-// Es lo que la pestaña OBRAS del Flujo de Caja publica por obra —contratado, costo MO, costo
-// materiales, margen— persistido por `orquestador/scripts/obras-economia-sync.mjs`. La vista
-// devuelve `contratado` y `margen` en NULL a quien no ve economía (decisión 19/08: el jefe de obra
-// no ve montos de venta); los costos los ve todo rol interno, igual que `obra_panel.costo_real`.
+// Es lo que la pestaña OBRAS del Flujo de Caja publica por obra, persistido por
+// `orquestador/scripts/obras-economia-sync.mjs`. La vista devuelve `contratado` en NULL a quien no
+// ve economía (decisión 19/08: el jefe de obra no ve montos de venta).
+//
+// ═══ ACÁ SE LEÍAN TAMBIÉN `costo_mo`, `costo_materiales` Y `margen` (10/09/2026, orden del dueño) ═══
+//
+// «Administración es un CRM y Obra un ERP: todo lo pertinente a datos de clientes va en CRM, no
+// mezcles cosas con obras.» El costo de una obra es del ERP: se decide contra el avance, el
+// certificado y el costo real, y ninguna de esas tres cosas se mira desde la ficha de un cliente.
+// Mientras esta lectura siguiera trayendo los tres campos, la próxima pantalla de Clientes los iba
+// a encontrar servidos y la columna volvería sola — es exactamente lo que pasó con Margen.
+// `definiciones.json · costo_de_obra` lo prohíbe ahora con un test.
 //
 // «sin contrato» dejó de existir acá: si OBRAS no tiene el dato, la pantalla dice «sin precio en
 // OBRAS», que es lo único cierto. Un cero diría que la obra vale cero.
@@ -12,10 +20,18 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface EconomiaDeObra {
   obra_canonica_id: string
+  /** En PESOS. Cuando el contrato es en dólares, es la valuación al tipo de cambio VIVO. */
   contratado: number | null
-  costo_mo: number | null
-  costo_materiales: number | null
-  margen: number | null
+  /**
+   * LA MONEDA DEL CONTRATO SE DICE, NO SE ESCONDE (dueño, 10/09/2026 · Quattropani).
+   *
+   * El Salón Comercial se contrató en U$S 63.000. La pantalla publicaba sólo los pesos y el número
+   * cambiaba solo de un día para otro sin que nada lo explicara. `contratado_usd` es el contrato y
+   * `contratado` su valuación de HOY: se dibujan los dos, con el tipo de cambio en el `title`.
+   */
+  contratado_usd: number | null
+  /** El TC con el que se valuó. `null` = el contrato es en pesos y no hubo que valuar nada. */
+  tipo_cambio: number | null
   /**
    * POR QUÉ CAMINO SALIÓ EL CONTRATADO (`obra_economia_cartera.origen`). No es metadato: cambia lo
    * que el número SIGNIFICA, y hasta el 10/09/2026 la pantalla los dibujaba todos iguales.
@@ -55,6 +71,11 @@ export interface EconomiaDeObra {
 /** El `origen` que dice «esto NO es un precio contratado, es lo vendido hasta hoy». */
 export const ORIGEN_SUMA_VIVA = 'suma-viva'
 
+/** El `origen` que dice «no lo declara OBRAS, pero hay una ORDEN DE COMPRA que lo respalda». Es un
+ *  papel del cliente, no una suma que sube sola: la fila lo dice con la `referencia` («según OC
+ *  2256») en vez de con la marca de suma viva. */
+export const ORIGEN_OC_CLIENTE = 'oc-cliente'
+
 export const SIN_PRECIO_EN_OBRAS = 'sin precio en OBRAS'
 
 /**
@@ -67,7 +88,7 @@ export async function getEconomiaDeObras(
 ): Promise<Map<string, EconomiaDeObra> | null> {
   const { data, error } = await supabase
     .from('obra_economia_cartera')
-    .select('obra_canonica_id, contratado, costo_mo, costo_materiales, margen, origen, referencia,  nota, oc_civa_ventana, oc_civa_historico, oc_n_ventana, oc_n_historico')
+    .select('obra_canonica_id, contratado, contratado_usd, tipo_cambio, origen, referencia, nota, oc_civa_ventana, oc_civa_historico, oc_n_ventana, oc_n_historico')
   if (error) return null
   return armarEconomiaDeObras(data ?? [])
 }
@@ -82,9 +103,8 @@ export function armarEconomiaDeObras(filas: unknown[]): Map<string, EconomiaDeOb
     m.set(String(f.obra_canonica_id), {
       obra_canonica_id: String(f.obra_canonica_id),
       contratado: aNumero(f.contratado),
-      costo_mo: aNumero(f.costo_mo),
-      costo_materiales: aNumero(f.costo_materiales),
-      margen: aNumero(f.margen),
+      contratado_usd: aNumero(f.contratado_usd),
+      tipo_cambio: aNumero(f.tipo_cambio),
       origen: f.origen == null ? null : String(f.origen),
       referencia: f.referencia == null ? null : String(f.referencia),
       nota: f.nota == null ? null : String(f.nota),
@@ -117,48 +137,10 @@ export function aNumero(v: unknown): number | null {
 // tienen sus propios tests allá. Dejar acá una función que nadie llama sería verde que no cuida
 // nada, y peor: la próxima pantalla la encontraría servida y la columna volvería sola.
 
-/**
- * SUMA QUE NO INVENTA: si NINGUNA fila trae el dato, el total es `null`; si alguna lo trae, suma las
- * que lo traen. Un total sobre filas parcialmente vacías se marca con `parcial` para que la
- * pantalla lo diga.
- */
-export function sumaConHuecos(valores: (number | null)[]): { total: number | null; parcial: boolean } {
-  const con = valores.filter((v): v is number => v !== null)
-  if (con.length === 0) return { total: null, parcial: false }
-  return { total: con.reduce((a, b) => a + b, 0), parcial: con.length < valores.length }
-}
-
-/** `–12,3 %` / `18 %`: el margen en porcentaje, sin decimales falsos. */
-export function pctTexto(p: number | null): string | null {
-  if (p === null) return null
-  return `${p.toLocaleString('es-AR', { maximumFractionDigits: 0 })} %`
-}
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// EL MARGEN DE UNA FILA — vivía en `chipsCartera.ts`, que se retiró el 10/09/2026 junto con los
-// chips «sin CUIT · sin teléfono · sin contrato» que el dueño mandó sacar de la pantalla. La
-// regla del margen no era un chip: es economía de la obra, y su casa es este archivo — que además
-// era el otro que declaraba `sin precio en OBRAS`, la misma frase escrita dos veces.
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/**
- * EL MARGEN DE LA FILA. UNA definición, y `null` cuando no se puede afirmar.
- *
- * Manda lo que OBRAS publica (`obra_economia_cartera.margen`): es el número que el dueño mira en el
- * Sheet, y recalcularlo acá sería una segunda versión del mismo concepto. Sólo si la vista NO lo
- * trae se deriva, y con la MISMA fórmula que el rótulo de la columna declara —contratado − MO −
- * materiales—, que es lo que hace que las dos no puedan divergir.
- *
- * SI FALTA CUALQUIERA DE LOS TRES, EL RESULTADO ES `null`. Tratar un hueco como cero publicaría el
- * margen entero como ganancia el día que el costo de materiales no esté cargado.
- */
-export function margenDeLaFila(e: {
-  margenPublicado: number | null
-  contratado: number | null
-  costoMo: number | null
-  costoMateriales: number | null
-}): number | null {
-  if (e.margenPublicado !== null) return e.margenPublicado
-  if (e.contratado === null || e.costoMo === null || e.costoMateriales === null) return null
-  return e.contratado - e.costoMo - e.costoMateriales
-}
+// ═══ `sumaConHuecos`, `pctTexto` Y `margenDeLaFila` SE RETIRARON CON SU ÚLTIMO CONSUMIDOR ═══
+//
+// Las tres restaban o sumaban COSTOS contra el contratado, y el costo salió del CRM el 10/09/2026
+// por orden del dueño. Una función exportada que nadie llama no es inofensiva: es la pieza servida
+// que hace que la columna vuelva sin que nadie la decida — pasó con el margen. El margen de una
+// obra vive en `features/obras` (`obra_economia`, `planVsReal`), medido contra el costo REAL, y
+// tiene sus tests allá.

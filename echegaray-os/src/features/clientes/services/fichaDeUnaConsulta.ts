@@ -45,6 +45,9 @@ import { construirLineaDeTiempo } from './timeline.ts'
 import { agruparPapeles, type PapelCrudo, type PapelesDelCliente } from './papelesCliente.ts'
 import { armarEconomiaDeObras, type EconomiaDeObra } from './economiaObras.ts'
 import { armarEconomiaDeCliente, type EconomiaDeCliente } from './economiaCliente.ts'
+import {
+  armarCobradoPorObra, type CobroPorObra,
+} from '../../administracion/services/homeCartera.ts'
 import { armarPresupuestos } from '@/features/presupuestos/services/presupuestosService'
 
 /** Todo lo que la ficha necesita, ya en los tipos que consumen los componentes. */
@@ -64,6 +67,12 @@ export interface FichaLeida {
   economiaCliente: EconomiaDeCliente | null
   /** `null` = la lectura falló. «No pude leerlos» nunca se dibuja como «no tiene ninguno». */
   papeles: PapelesDelCliente | null
+  /**
+   * LO COBRADO POR TRABAJO (`public.obra_cuenta`), con la MISMA conversión que usa `/clientes`
+   * (`armarCobradoPorObra`). Con una conversión propia acá, las dos pantallas del módulo volverían
+   * a poder decir números distintos sobre la misma obra.
+   */
+  cobradoPorObra: CobroPorObra | null
 }
 
 interface FichaCruda {
@@ -82,13 +91,14 @@ interface FichaCruda {
   actividad_cliente: Record<string, unknown> | null
   certificados: unknown[]
   presupuestos: unknown[]
+  cobrado_por_obra: unknown[]
 }
 
 function nadaLeido(error: string | null): FichaLeida {
   return {
     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
-    papeles: null,
+    papeles: null, cobradoPorObra: null,
   }
 }
 
@@ -137,5 +147,8 @@ export async function leerFichaDeUnaConsulta(
     economia: armarEconomiaDeObras(j.economia_obras ?? []),
     economiaCliente: j.economia_cliente ? armarEconomiaDeCliente(j.economia_cliente) : null,
     papeles: agruparPapeles((j.papeles ?? []) as PapelCrudo[]),
+    // `disponible: true` no es un supuesto: `obra_cuenta` reparte el cobro por obra por
+    // construcción (sale de `cobranza_imputacion`), así que una respuesta exitosa lo prueba.
+    cobradoPorObra: armarCobradoPorObra(j.cobrado_por_obra ?? [], true),
   }
 }

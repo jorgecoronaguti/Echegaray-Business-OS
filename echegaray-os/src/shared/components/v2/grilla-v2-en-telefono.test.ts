@@ -41,19 +41,35 @@ const UTIL_TELEFONO = 350
 /** El `gap:14px` que el patrón v2 fija para toda fila; el padding lateral lo pone la sección. */
 const GEOMETRIA = { gap: 14, padding: 0 }
 
-/** Las grillas que dibujan una fila con nombre y no llevan la caja de scroll del canon. */
-const GRILLAS = [
+/**
+ * Las grillas que dibujan una fila con nombre y no llevan la caja de scroll del canon.
+ *
+ * `junto` SON LOS ARCHIVOS EN LOS QUE VIVE EL RESTO DE LA MISMA TABLA. La cartera de clientes se
+ * partió el 10/09/2026 —la grilla en `TablaClientes`, las celdas de plata en `CeldasDeCartera`—
+ * cuando pasó de cinco columnas a ocho y el archivo se iba a 600 líneas. La regla mide una TABLA,
+ * no un archivo: si mirara sólo el fuente de la grilla, acusaría de no retirar celdas a una tabla
+ * que las retira en el archivo de al lado, y la forma más fácil de callarla sería sacarla de esta
+ * lista.
+ */
+const GRILLAS: { ruta: string; junto?: string[] }[] = [
   // La cartera de clientes: hasta el 09/09/2026 esta grilla vivía en `CarteraHome`, la segunda
   // pantalla de la sección. Se unificaron en `TablaClientes` y `CarteraHome` se eliminó; la grilla
   // —siete columnas y sus dos cortes— es la misma que esta regla venía midiendo.
-  'src/features/clientes/components/TablaClientes.tsx',
+  {
+    ruta: 'src/features/clientes/components/TablaClientes.tsx',
+    junto: ['src/features/clientes/components/CeldasDeCartera.tsx'],
+  },
   // COMPRAS entra el 06/09/2026, cuando deja el canon de agosto. Es la grilla más ancha del OS:
   // las OCHO columnas del canvas son todas inelásticas —los `minmax(150px,…)` declaran piso— y
   // suman 826px más 98 de `gap`. Mientras vivió dentro de `TarjetaTabla` eso lo tapaba la caja de
   // scroll del canon; sin caja, a 390px la fila se corta contra el borde y `body` lleva
   // `overflow-x: clip`, así que no aparece ni una barra que lo delate.
-  'src/features/administracion/components/TablaComprasSheet.tsx',
+  { ruta: 'src/features/administracion/components/TablaComprasSheet.tsx' },
 ]
+
+/** El fuente de una tabla ENTERA: su grilla y, si se partió, los archivos donde vive el resto. */
+const fuenteDe = (g: { ruta: string; junto?: string[] }) =>
+  [g.ruta, ...(g.junto ?? [])].map(codigo).join('\n')
 
 /** El fuente SIN comentarios: este repo explica en prosa lo que retiró, y una prosa correcta no
  *  puede poner roja una regla. Mismo helper que `canon/grilla-en-telefono.test.ts`. */
@@ -76,8 +92,8 @@ function plantillas(src: string): Map<string, string> {
 }
 
 test('las tres grillas del v2 declaran su variante de teléfono y esa variante ENTRA en 390px', () => {
-  for (const ruta of GRILLAS) {
-    const declaradas = plantillas(codigo(ruta))
+  for (const { ruta, junto } of GRILLAS) {
+    const declaradas = plantillas(fuenteDe({ ruta, junto }))
     const angosta = declaradas.get('max-[767px]:')
     assert.ok(
       angosta,
@@ -96,8 +112,8 @@ test('las tres grillas del v2 declaran su variante de teléfono y esa variante E
 test('la variante ancha de esas grillas NO entra en un teléfono: el defecto existe de verdad', () => {
   // Sin esto la regla se pondría verde por vacía el día que alguien cambie las columnas anchas por
   // unas que ya entren: estaría midiendo una grilla que no es la que se cree que mide.
-  for (const ruta of GRILLAS) {
-    const ancha = plantillas(codigo(ruta)).get('')
+  for (const { ruta, junto } of GRILLAS) {
+    const ancha = plantillas(fuenteDe({ ruta, junto })).get('')
     assert.ok(ancha, `${ruta} dejó de declarar su grilla de escritorio`)
     const ancho = anchoMinimoDeGrilla(ancha, GEOMETRIA)
     assert.ok(
@@ -172,8 +188,9 @@ test('toda variante con menos columnas retira las celdas sobrantes por clase', (
   // sobrante cae en una segunda fila implícita y la tabla se dibuja al doble de alto, desalineada.
   // Una variante que sólo ANGOSTA una columna (`330px` -> `150px`) no retira ninguna celda y no
   // entra en esta cuenta; la que declara MENOS pistas, sí.
-  for (const ruta of GRILLAS) {
-    const src = codigo(ruta)
+  for (const g of GRILLAS) {
+    const { ruta } = g
+    const src = fuenteDe(g)
     const anchas = cortesDe(src)[0]?.pistas ?? 0
     assert.ok(anchas >= 3, `${ruta}: la grilla ancha quedó con ${anchas} columnas`)
     assert.deepEqual(celdasQueFaltan(src, ruta), [])
@@ -217,8 +234,9 @@ test('ningún adorno de la celda del nombre le gana al nombre en el teléfono', 
   // —que sí es elástico— absorbe todo el faltante. Medido a 390x844: «Galpón 9» se dibujaba «Galp…»
   // en `/clientes` con 36px de los 164 útiles. Un adorno no puede ganarle a lo que identifica la
   // fila, así que se suelta con el resto.
-  for (const ruta of ['src/features/clientes/components/TablaClientes.tsx', ...GRILLAS]) {
-    const src = codigo(ruta)
+  for (const g of GRILLAS) {
+    const { ruta } = g
+    const src = fuenteDe(g)
     if (!/porcentajeCanon|avance/.test(src)) continue
     const linea = src.split('\n').find((l) => /width: 80|width: 96/.test(l) && /flexShrink: 0/.test(l))
     if (!linea) continue
@@ -238,8 +256,9 @@ test('lo que se suelta por media query no fija su `display` inline', () => {
   // media query, así que `style={{ display: 'flex' }}` anula `max-[767px]:hidden` y la celda sigue
   // ocupando su ancho. En la cartera eso era la barra de avance: 96px inelásticos que se comían el
   // nombre de la obra aun con la media query escrita.
-  for (const ruta of GRILLAS) {
-    const src = codigo(ruta)
+  for (const g of GRILLAS) {
+    const { ruta } = g
+    const src = fuenteDe(g)
     for (const linea of src.split('\n')) {
       if (!/\bSUELTA_[A-Z]+\b/.test(linea)) continue
       if (/^\s*(\/\*|\*|const SUELTA_)/.test(linea)) continue

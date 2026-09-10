@@ -25,7 +25,7 @@
 //
 // Lee el ARCHIVO de migración, no la base. Una función editada a mano en producción se le escapa —
 // para eso está `aplicar-migracion.mjs --estado`, que delata los archivos que cambiaron después de
-// aplicarse. Y no juzga las VISTAS: si `obra_cobranza` cambiara de criterio, es correcto que la RPC
+// aplicarse. Y no juzga las VISTAS: si `obra_cuenta` cambiara de criterio, es correcto que la RPC
 // lo siga, porque es su consumidor.
 
 import test from 'node:test'
@@ -43,17 +43,16 @@ const RAIZ = fileURLToPath(new URL('../../../', import.meta.url))
  */
 const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
   {
-    archivo: 'supabase/migrations/20260911T0010_pantalla_clientes_una_consulta.sql',
+    archivo: 'supabase/migrations/20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql',
     funcion: 'pantalla_clientes',
     lee: [
       'perfiles',              // quién mira: decide qué columnas se dibujan
       'cliente_panel',         // el maestro (ya SIN economía desde 20260910T2110)
       'obra_panel',            // las obras y su avance
-      'obra_cobranza',         // canónica de lo cobrado POR OBRA (percibido, neto)
       'certificados',          // las fechas del circuito certificar → facturar → cobrar
       'cliente_orden',         // los papeles del cliente (OC, OP, retenciones, facturas)
       'obra_economia_cartera', // canónica del PRECIO de una obra
-      'obra_cuenta',           // canónica de contratado/cobrado/por cobrar/vencido POR OBRA
+      'obra_cuenta',           // la fila de la pestaña OBRAS: cobrado, por cobrar, vencido, próximo
       'cliente_documento',     // quién tiene el contrato CARGADO (un papel, no un monto)
       'cliente_economia',      // canónica de lo contratado/cobrado DEL CLIENTE
     ],
@@ -71,7 +70,11 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
     ],
   },
   {
-    archivo: 'supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql',
+    // LAS DOS VIVEN EN EL MISMO ARCHIVO desde 20260911T0040: las de 0010/0030 ya estaban aplicadas
+    // y un archivo de la cadena que cambia después de aplicarse rompe el ledger, así que se
+    // reemplazaron con `create or replace`. Auditar la versión VIEJA sería auditar lo que ya no
+    // corre — por eso el barrido apunta a 0040 y no a los archivos originales.
+    archivo: 'supabase/migrations/20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql',
     funcion: 'pantalla_cliente',
     lee: [
       'cliente_panel',          // la ficha, y el slug → cliente_id
@@ -79,6 +82,7 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
       'cliente_contacto',
       'obra_panel',             // sus obras (y el recorte de los certificados)
       'obra_economia_cartera',  // canónica del PRECIO de una obra
+      'obra_cuenta',            // lo cobrado por trabajo, la misma vista que /clientes
       'cliente_economia',       // canónica de lo contratado/cobrado DEL CLIENTE
       'cliente_orden',          // los papeles
       'cliente_documento',      // los vínculos a Drive
@@ -111,15 +115,28 @@ function relacionesQueLee(sql: string): Set<string> {
   return encontradas
 }
 
-/** El cuerpo de la función, sin los comentarios `--` que explican por qué está. */
-function cuerpoSinComentarios(sql: string): string {
-  return sql.split('\n').filter((l) => !l.trimStart().startsWith('--')).join('\n')
+/**
+ * EL CUERPO DE UNA FUNCIÓN, sin los comentarios `--` que explican por qué está.
+ *
+ * Se recorta a SU función y no al archivo entero: desde 20260911T0040 dos RPC conviven en la misma
+ * migración, y auditar el archivo completo daría la UNIÓN de lo que leen las dos —o sea, permitiría
+ * que `pantalla_clientes()` leyera `drive_index` sólo porque la ficha lo declara—. Un permiso que
+ * se contagia entre funciones no es un permiso.
+ */
+function cuerpoDe(sql: string, funcion: string): string {
+  const abre = new RegExp(`create or replace function public\\.${funcion}\\s*\\(`, 'i')
+  const i = sql.search(abre)
+  if (i < 0) return ''
+  const j = sql.indexOf('$$;', i)
+  return sql.slice(i, j < 0 ? sql.length : j)
+    .split('\n').filter((l) => !l.trimStart().startsWith('--')).join('\n')
 }
 
 for (const rpc of RPC_DE_PANTALLA) {
-  const sql = cuerpoSinComentarios(readFileSync(RAIZ + rpc.archivo, 'utf8'))
+  const sql = cuerpoDe(readFileSync(RAIZ + rpc.archivo, 'utf8'), rpc.funcion)
 
   test(`${rpc.funcion}() sólo lee las relaciones que tiene declaradas`, () => {
+    assert.ok(sql.length > 0, `no encontré el cuerpo de ${rpc.funcion} en ${rpc.archivo}`)
     const lee = relacionesQueLee(sql)
     assert.ok(lee.size > 0, 'el barrido no encontró ninguna relación: el patrón dejó de mirar')
     const deMas = [...lee].filter((r) => !rpc.lee.includes(r))
