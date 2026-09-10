@@ -15,6 +15,22 @@ const raizTurbopack = process.env.NEXT_TURBOPACK_ROOT
 
 const nextConfig: NextConfig = {
   ...(raizTurbopack ? { turbopack: { root: raizTurbopack } } : {}),
+  // ═══ POR QUÉ EL QA POR NAVEGADOR NO PODÍA PROBAR NINGÚN CLIC (medido el 10/09/2026) ═══
+  //
+  // `next dev` bloquea por defecto los recursos de desarrollo pedidos desde un host que no sea
+  // `localhost`, y Playwright en esta VM navega a `http://127.0.0.1:<puerto>`. El servidor escribe
+  // «Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "127.0.0.1"», el
+  // bundle del cliente nunca termina de cargar y LA PÁGINA NO HIDRATA: medido, cero nodos con
+  // `__reactFiber$` en `/login`, `/administracion/personas` y `/clientes`.
+  //
+  // El modo de falla es el peor: la captura sale perfecta —el HTML del servidor está entero— y
+  // cualquier prueba de interacción falla o, peor, pasa por el motivo equivocado. Un clic sobre un
+  // `<button>` que corta el evento cae en el `<Link>` que lo contiene y el navegador navega a otro
+  // lado; el test culpa al componente.
+  //
+  // SÓLO AFECTA A `next dev`. En Vercel y en `next build` esta clave no hace nada. Los dos nombres
+  // porque los scripts de captura del repo usan los dos indistintamente.
+  allowedDevOrigins: ['127.0.0.1', 'localhost'],
   // Activa el MCP server en /_next/mcp (Next.js 16+)
   experimental: {
     mcpServer: true,
