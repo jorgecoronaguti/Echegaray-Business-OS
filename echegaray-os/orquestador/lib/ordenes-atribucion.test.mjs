@@ -38,7 +38,6 @@ const OBRAS = [
 
 test('el certificado de retención de Messina es una retención, no la orden de pago que acompaña', () => {
   const r = clasificarAdjunto({
-    asunto: 'ORDEN DE PAGO Nro 0000000004865',
     nombreArchivo: 'O_P_0000000004865_G00002208.pdf',
     textoPdf: 'CERTIFICADO DE RETENCION Impuesto a las Ganancias ORDEN DE PAGO Nro.: 0000000004865',
   })
@@ -49,7 +48,6 @@ test('la orden de pago que LISTA sus retenciones sigue siendo una orden de pago'
   // El error simétrico, y el más caro: si la palabra «retención» suelta clasificara, TODAS las OP
   // pasarían a retención y la cartera se quedaría sin ningún pago.
   const r = clasificarAdjunto({
-    asunto: 'ORDEN DE PAGO: 5156',
     nombreArchivo: '0000000005156.pdf',
     textoPdf: 'IMPUTACION ORDEN DE PAGO Nro.: 0000000005156 Retenciones Ganancias 145.000,00 Neto a pagar 39.325.000,00',
   })
@@ -64,7 +62,10 @@ test('el certificado se identifica por SU número, no por el de la orden que aco
 test('ARCOR emite archivos sin ninguna palabra, y aun así se clasifican', () => {
   assert.equal(clasificarAdjunto({ nombreArchivo: '6A_50123456.PDF' }).tipo, 'orden_compra')
   assert.equal(clasificarAdjunto({ nombreArchivo: '00001_5000123_OP.PDF' }).tipo, 'orden_pago')
-  assert.equal(clasificarAdjunto({ asunto: 'GENERACION OC' }).tipo, 'orden_compra')
+  // Y EL ASUNTO NO CLASIFICA A NADIE. «GENERACION OC» es el título del mail con que ARCOR manda la
+  // orden, la firma pegada, el pliego y la planilla: hasta el 10/09/2026 los cuatro entraban como
+  // orden de compra, y así se contaron 148 órdenes donde hay 40.
+  assert.equal(clasificarAdjunto({ nombreArchivo: 'image001.png', textoPdf: '' }).tipo, 'otro')
 })
 
 // ── DE QUIÉN ES ─────────────────────────────────────────────────────────────────────────────────
@@ -177,6 +178,23 @@ test('la fecha de la orden es 11/08/2026 y no 2086: la ingesta usa la MISMA defi
   assert.equal(d.numero, '00002-00002173')
   assert.equal(d.importe, 78650000, 'el locale del documento es US: leerlo en es_AR daba $ 78,65')
   assert.equal(d.obra.id, 'o-azufre')
+})
+
+test('el pliego que viaja en el mail «GENERACION OC» NO se guarda como orden de compra', () => {
+  // El defecto entero, de punta a punta: el remitente es de ARCOR y el asunto dice «GENERACION OC»,
+  // así que las dos señales que decidían el tipo apuntan a orden de compra. El papel es un pliego de
+  // licitación —lo que ARCOR manda para que COTICEMOS, meses antes de que exista ninguna orden—.
+  // Así entraron 108 de las 148 filas que la ficha del cliente contaba como órdenes.
+  const d = documentoDeAdjunto({
+    from: 'Compras ARCOR <compras@arcor.com>',
+    asunto: 'RE: [241120-000139] CAPEX - GENERACION OC - REQ. 22638535 - PROV. 26080',
+    cuerpo: 'Buen día, adjunto el pliego para la generación de la orden de compra.',
+    nombreArchivo: 'PLIEGO CHATARRA.pdf',
+    textoPdf: 'PLIEGO DE ESPECIFICACIONES TÉCNICAS — RETIRO DE CHATARRA — PLANTA SAN JUAN',
+    clientes: CLIENTES_BD,
+  })
+  assert.equal(d.ok, false, 'el asunto del mail decidía por el adjunto')
+  assert.match(d.motivo, /no es orden/)
 })
 
 test('un adjunto que no es ninguna de las tres cosas se descarta CON motivo', () => {

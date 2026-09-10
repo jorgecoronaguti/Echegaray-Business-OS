@@ -73,36 +73,58 @@ export function dominioDe(from) {
 // que la palabra «retención» suelta no alcanza y clasificarla por ella daría vuelta el error: todas
 // las OP pasarían a ser retenciones. Se exige el rótulo del certificado, el régimen, o la marca
 // `_G<número>` del nombre con que el sistema de Messina los emite.
+const ROTULO_NUM = String.raw`\s*[:#-]?\s*(?:n[°ºro.]*\s*)?[:#-]?\s*(?:\d{1,5}\s*-\s*)?\d{3,}`
+
 const REGLAS_TIPO = Object.freeze([
   { tipo: 'retencion', re: /_g\d{5,}(?:\.[a-z0-9]+)?$/, fuentes: ['nombre'] },
-  { tipo: 'retencion', re: /(?:certificado|constancia|comprobante)\s+(?:de\s+)?retencion|\bsicore\b|regimen de retencion|retenciones? sufridas?/ },
-  { tipo: 'orden_pago', re: /orden(?:es)? de pago|\bo\/p\b|notificacion de pago|payment order/ },
-  { tipo: 'orden_compra', re: /orden(?:es)? de compra|\bo\/c\b|purchase order|purchase_order|generacion oc/ },
+  // EL RÓTULO DEL CERTIFICADO, NO LA PALABRA. MEDIDO el 10/09/2026 sobre los 386 papeles guardados:
+  // las 154 retenciones lo traen en su encabezado y ninguna de las 53 órdenes de pago lo trae en
+  // ninguna parte. `SICORE`, en cambio, aparece EN EL DETALLE de toda orden de pago de Messina
+  // («retenciones imp.gcias a 3° SICORE») — clasificarla por esa palabra convertía cuatro pagos en
+  // certificados y dejaba la cartera sin el pago. Como señal sólo vale en el nombre del archivo.
+  { tipo: 'retencion', re: /(?:certificado|constancia|comprobante)\s+(?:de\s+)?retencion|regimen de retencion/ },
+  { tipo: 'retencion', re: /\bsicore\b|retenciones? sufridas?/, fuentes: ['nombre'] },
+  { tipo: 'orden_pago', re: new RegExp(`(?:orden(?:es)? de pago|\\bo\\/p\\b|notificacion de pago|payment order)${ROTULO_NUM}`) },
+  { tipo: 'orden_compra', re: new RegExp(`(?:orden(?:es)? de compra|pedido de compra|\\bo\\/c\\b|purchase[ _]order)${ROTULO_NUM}`) },
   // Los dos nombres de archivo con los que ARCOR emite. No traen ninguna palabra: «6A_50123456.PDF»
   // es una orden de compra y «00001_5000123_OP.PDF» una orden de pago, y sin esto quedaban en
-  // `otro` aunque el asunto del mail lo dijera en otro idioma.
-  { tipo: 'orden_compra', re: /^6a_\d{6,}\.pdf$/, fuentes: ['nombre'] },
+  // `otro` aunque el asunto del mail lo dijera en otro idioma. `6D_` es la misma serie que `6A_`:
+  // de las 39 órdenes de ARCOR que hoy están en la base, cuatro llegaron con esa letra.
+  { tipo: 'orden_compra', re: /^6[ad]_\d{6,}\.pdf$/, fuentes: ['nombre'] },
   { tipo: 'orden_pago', re: /^\d{4,6}_\d{3,}_op\.pdf$/, fuentes: ['nombre'] },
-  { tipo: 'orden_pago', re: /\bop[\s._#:-]{0,2}\d{2,}/ },
-  { tipo: 'orden_compra', re: /\boc[\s._#:-]{0,2}\d{2,}/ },
+  // LA SIGLA SUELTA SÓLO VALE EN EL NOMBRE DEL ARCHIVO. Así archivamos nosotros («OC 53215971.PDF»,
+  // «OC_32_0000200002097.pdf»), y es una declaración de quien archiva. Adentro del texto de un
+  // pliego la misma sigla aparece citando la orden que todavía no existe.
+  { tipo: 'orden_pago', re: /\bop[\s._#:-]{0,2}\d{2,}/, fuentes: ['nombre'] },
+  { tipo: 'orden_compra', re: /\boc[\s._#:-]{0,2}\d{2,}/, fuentes: ['nombre'] },
 ])
-
 /**
- * Clasifica UN adjunto. Devuelve { tipo, señal } donde señal dice qué texto lo decidió.
+ * Clasifica UN adjunto. Devuelve { tipo, señal } donde señal dice qué lo decidió: `nombre` o `pdf`.
  * `otro` es una respuesta legítima: un adjunto que llegó en el mismo mail y no es ninguna de las
- * dos cosas (el plano, la factura) no se fuerza a una categoría para que la tabla quede llena.
+ * tres cosas (el plano, el pliego, la planilla de cotización) no se fuerza a una categoría para que
+ * la tabla quede llena.
  *
- * Una regla puede acotar de qué FUENTES acepta evidencia. Las que miran la forma del nombre de
- * archivo lo hacen: `_G00002208` dentro del texto de un PDF cualquiera no prueba nada.
+ * ═══ EL PAPEL DICE QUÉ ES; EL MAIL QUE LO TRAJO, NO ═══
+ *
+ * MEDIDO el 10/09/2026 sobre `cliente_orden`: 108 de las 148 filas de ARCOR con
+ * `tipo = 'orden_compra'` eran pliegos, planillas de cotización, planos, `image001.png` y dos
+ * `Requisitos_Ingreso.zip`. Ninguna trae número y ninguna es una orden. Entraron porque el ASUNTO
+ * del mail decía «GENERACION OC» o el cuerpo nombraba la orden, y esa señal se le aplicó a TODOS
+ * los adjuntos del mensaje. La pantalla de Clientes contaba «148 OC · $524.163.838» donde hay
+ * «40 · $449.246.223».
+ *
+ * De qué CLIENTE es un papel lo puede decir quien lo mandó —eso vive en `ordenes-atribucion.mjs`—.
+ * QUÉ papel es sólo lo puede decir el papel: el nombre de archivo, que lo pone el sistema del
+ * emisor, y su propio texto. Por eso esta función ya no recibe el asunto ni el cuerpo: no es que
+ * los ignore, es que no los puede preguntar.
+ *
+ * El nombre del archivo va antes que el PDF porque el emisor escribe ahí su declaración más limpia
+ * (`6A_53049655.PDF`), mientras que el texto del PDF mezcla lo propio con lo citado.
  */
-export function clasificarAdjunto({ asunto = '', nombreArchivo = '', cuerpo = '', textoPdf = '' } = {}) {
-  // El nombre del archivo y el asunto pesan más que el cuerpo: el cuerpo de un reenvío arrastra
-  // toda la conversación anterior y ahí aparece cualquier palabra.
+export function clasificarAdjunto({ nombreArchivo = '', textoPdf = '' } = {}) {
   const fuentes = [
     ['nombre', norm(nombreArchivo)],
-    ['asunto', norm(asunto)],
-    ['pdf', norm(textoPdf).slice(0, 1200)],
-    ['cuerpo', norm(cuerpo).slice(0, 1200)],
+    ['pdf', norm(textoPdf).slice(0, 1500)],
   ]
   for (const regla of REGLAS_TIPO) {
     for (const [fuente, texto] of fuentes) {
@@ -144,8 +166,15 @@ export function extraerNumero(texto) {
   // El primer grupo alternativo admite el ESPACIO adentro del número («OC 02- 00002162»): así lo
   // parte el PDF de nuestra propia factura, y comparar sin él daba dos órdenes donde hay una.
   const NUM = '(\\d{1,5}\\s*-\\s*\\d{3,10}|\\d{3,})'
+  // ═══ «PEDIDO DE COMPRA NRO.» ES COMO SE ROTULA UNA ORDEN DE COMPRA DE ARCOR ═══
+  //
+  // MEDIDO el 10/09/2026: `OC 53215971.PDF` quedó guardada con `numero = null` y ningún cruce la
+  // veía, aunque su primera página dice «Pedido de Compra Nro. 53215971 6A». El número se leía sólo
+  // del nombre del archivo (`6A_53215971.PDF`), y ese archivo llegó renombrado a mano. Las 39
+  // hermanas que sí traen el nombre del emisor lo rotulan igual: la etiqueta estaba en los 40 PDF
+  // desde el principio.
   const patrones = [
-    new RegExp(`orden\\s+de\\s+(?:compra|pago)\\s*(?:n[°ºor.]*\\s*)?[:#]?\\s*${NUM}`, 'i'),
+    new RegExp(`(?:orden|pedido)\\s+de\\s+(?:compra|pago)\\s*(?:n[°ºor.]*\\s*)?[:#]?\\s*${NUM}`, 'i'),
     new RegExp(`\\bo\\/[cp]\\s*(?:n[°ºor.]*\\s*)?[:#]?\\s*${NUM}`, 'i'),
     new RegExp(`\\b(?:oc|op)\\s*(?:n[°ºor.]*\\s*)?[:#-]?\\s*${NUM}`, 'i'),
   ]
