@@ -207,7 +207,11 @@ async function main() {
   // La herencia mira las filas nuevas Y las que ya están: la OC que le da la obra a una orden de
   // pago puede haberse bajado la semana pasada. `heredarObras` es la MISMA función que usa
   // `reatribuir-ordenes-clientes.mjs` — una definición de «esta OP es de esta obra».
-  heredarObras([...yaEnBase.map((r) => ({ ...r, citadas: [], texto: '' })), ...nuevos], { obras, nombreClientePorId: nombreCliente })
+  // Las filas ya guardadas entran SIN releer su PDF (eso es trabajo de `reatribuir`), pero sí con
+  // su comprobante: el número de una factura ES su comprobante («A-1-225»), y es la clave con la que
+  // una orden de pago recién bajada encuentra la obra de la factura que paga.
+  const previas = yaEnBase.map((r) => ({ ...r, citadas: [], texto: '', comprobante: r.tipo === 'factura' ? r.numero : null }))
+  heredarObras([...previas, ...nuevos], { obras, nombreClientePorId: nombreCliente })
 
   // ── 4. LA TABLA ───────────────────────────────────────────────────────────────────────────────
   console.log(`\nadjuntos leídos: ${leidos} · candidatos: ${filas.length} · nuevos: ${nuevos.length} · ya estaban: ${repetidos.length} · descartados: ${descartes.length} · sin alta: ${sinAlta.length}\n`)
