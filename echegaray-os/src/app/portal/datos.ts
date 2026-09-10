@@ -110,52 +110,9 @@ async function accesoDeVistaPrevia(clienteId: string): Promise<AccesoDelPortal |
   }
 }
 
-/** Una obra del alcance, con el cliente al que pertenece. */
-export type ObraAlcanzada = ObraDelPortal & { clienteId: string; clienteNombre: string; cerrada: boolean }
-
-/**
- * LAS OBRAS DEL CLIENTE, PARA DOCUMENTOS Y TERMINADAS.
- *
- * ═══ LO QUE ESTA FUNCIÓN NO PUEDE HACER, DICHO ACÁ ═══
- *
- * Estas dos pantallas se apoyan en `public.obras` (uuid), y `cliente_acceso.obras` guarda ids de
- * `public.obra_canonica` (texto) — son DOS registros de obra distintos, con distinta granularidad:
- * `public.obras` tiene «MAMPOSTERÍA» donde `obra_canonica` tiene «Galpones, Mampostería, Cancha de
- * Padel». No existe mapeo entre ellos y fabricarlo sería inventar el dato.
- *
- * Por eso, cuando el acceso está ACOTADO a un subconjunto de obras (`obras` no es `null`), esta
- * función devuelve `[]`: no se puede afirmar cuál de las obras de `public.obras` corresponde a las
- * autorizadas, y mostrarlas todas filtraría documentos de obras que ese contacto no tiene. Falla
- * cerrado. El cronograma —que sí vive en `obra_canonica`— no tiene esta limitación.
- */
-export async function obrasDelCliente(acceso: AccesoDelPortal): Promise<ObraAlcanzada[]> {
-  // `alcanzaLaObra(obras, null)` es true sólo con `obras = null`: es la misma regla probada, no un
-  // `if (obras !== null)` suelto que mañana se cambie en un lugar y no en el otro.
-  if (!alcanzaLaObra(acceso.obras, null)) return []
-
-  const { data } = await createAdminClient()
-    .from('obras')
-    .select('id, nombre, estado')
-    .eq('cliente_id', acceso.clienteId)
-
-  const obras = ((data ?? []) as { id: string; nombre: string; estado: string }[]).map((o) => ({
-    id: String(o.id),
-    nombre: String(o.nombre),
-    clienteId: acceso.clienteId,
-    clienteNombre: acceso.clienteNombre,
-    cerrada: String(o.estado) === 'cerrada',
-  }))
-
-  // LAS CERRADAS VAN AL FINAL. La primera de la lista es la que abre el portal, y abrir por una obra
-  // terminada le muestra al cliente algo que ya pagó. Las terminadas tienen su propia pantalla.
-  return obras.sort(
-    (a, b) => Number(a.cerrada) - Number(b.cerrada) || a.nombre.localeCompare(b.nombre, 'es'),
-  )
-}
-
-/** La obra elegida por la URL, acotada SIEMPRE a las que este acceso alcanza. */
-export function obraElegida<T extends { id: string }>(obras: T[], pedida: string | undefined): T | null {
-  const halla = pedida ? obras.find((o) => o.id === pedida) : null
-  // Una obra pedida que no está en el alcance no da error ni pantalla vacía: cae en la primera suya.
-  return halla ?? obras[0] ?? null
-}
+// `obrasDelCliente` y `obraElegida` SE FUERON (10/09/2026). Leían `public.obras` —el registro viejo,
+// con otra granularidad y sin mapeo con `obra_canonica`— y fallaban cerrado devolviendo `[]` cuando
+// el acceso estaba acotado, porque no había forma de decir qué obra de una tabla es cuál de la otra.
+// Las tres pantallas que las usaban leen `obra_canonica` a través de `obrasParaElInicio`, que aplica
+// el alcance obra por obra y con test. Un lector del registro viejo que ya no usa nadie es la puerta
+// por la que vuelve la segunda definición de «obra terminada».

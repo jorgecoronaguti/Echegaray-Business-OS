@@ -114,6 +114,10 @@ export const plataOculta = (grupos = []) => grupos.reduce((s, g) => s + g.total,
  *   termina en ROLLBACK, en vez de tener que escribir en la base productiva para probar el efecto.
  */
 export async function guardarPagoDelSync(p, { query }) {
+  // CON QUÉ VISIBILIDAD NACE — `NACE_VISIBLE_AL_CLIENTE` salvo que quien proyecta sepa que esta fila
+  // es el espejo en pesos de una que ya se publicó en dólares. Ver `esEspejoEnPesos`: el mismo cobro
+  // publicado dos veces le decía a Quattropani que había pagado seis veces en vez de tres.
+  const nace = p.nace_visible ?? NACE_VISIBLE_AL_CLIENTE
   return await query(
     `insert into public.esquema_pago
        (cliente_id, cobranza_fila, huella_comprobante, huella_monto, concepto, fecha, monto,
@@ -131,7 +135,7 @@ export async function guardarPagoDelSync(p, { query }) {
            sincronizado_en = now(), actualizado_at = now()
      where public.esquema_pago.origen = 'sync_cobranzas'`,
     [p.cliente_id, p.cobranza_fila, p.huella_comprobante, p.huella_monto, p.concepto, p.fecha,
-      p.monto, p.estado, p.medio, p.orden ?? 0, NACE_VISIBLE_AL_CLIENTE],
+      p.monto, p.estado, p.medio, p.orden ?? 0, nace],
   )
 }
 

@@ -232,6 +232,31 @@
         }
       ],
       "excepciones": []
+    },
+    {
+      "concepto": "obra_terminada",
+      "canonica": "public.obra_canonica.estado = 'cerrada' · el predicado, en src/app/portal/obrasDelCliente.ts (`esObraAnterior`)",
+      "propietario": "src/features/obras/services/actions.ts — el formulario de la obra es quien declara que terminó",
+      "criterio": "Una obra está TERMINADA cuando el registro de obras lo dice. NO se deriva de que no le queden pagos por cobrar (eso es estar AL DÍA: ME - PISOS 120 M² está activa y cobrada) ni de `public.obras.estado`, que es el registro viejo, con otra granularidad y sin mapeo con `obra_canonica`. Una obra terminada CON saldo pendiente sigue mostrándose en el listado principal del portal, rotulada «obra terminada · saldo pendiente»: es plata que el cliente debe y no puede caer en la sección de trabajo anterior.",
+      "ventana": "puntual: es el estado de hoy, no una ventana de tiempo. El corte `clientes.portal_cobros_desde` es otra cosa y no se mezcla.",
+      "confianza": "D · conocimiento interno validado: el estado lo declara el dueño en el formulario de la obra",
+      "prohibidas": [
+        {
+          "patron": "from\\('obras'\\)[^;]*estado",
+          "porque": "`public.obras` es el registro VIEJO de obras (uuid, otra granularidad: tiene «MAMPOSTERÍA» donde `obra_canonica` tiene «Galpones, Mampostería, Cancha de Padel») y no hay mapeo entre los dos. La pantalla /portal/terminadas preguntaba ahí y le contestaba «0 obras» a Messina, que tiene SEIS obras cerradas — y lo mismo a La Estrella (3) y ARCOR (1)."
+        },
+        {
+          "patron": "terminadaEsAnterior",
+          "porque": "La regla del 27/08/2026 —«una obra sin pagos pendientes es una obra anterior»— era la SEGUNDA definición: dejaba BSA - Adicional (cerrada, con $7.228.782 por cobrar) como obra en curso y mandaba ME - PISOS 120 M² (activa, cobrada al día) a «trabajo anterior que ya nos pagó». La reemplaza `anterioresPorObraTerminada`, que pide las dos condiciones: cerrada Y al día."
+        }
+      ],
+      "excepciones": [
+        {
+          "archivo": "src/features/reportes/services/generadores.ts",
+          "porque": "Lee `public.obras` con `estado = 'activa'` para el reporte semanal de producción. Es el registro viejo y está mal, pero migrarlo es del hito que unifica los dos registros de obra, no de éste.",
+          "hasta": "H1-obras"
+        }
+      ]
     }
   ]
 }
