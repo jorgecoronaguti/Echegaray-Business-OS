@@ -39,6 +39,7 @@ import {
 } from './liquidacionDeAusencias.ts'
 import { horasEsperadasDeDias, jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { diasDeLaQuincenaSinDomingos, type Quincena } from './quincena.ts'
+import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
 
 /** Los tres cuadros de la pestaña. Cada uno se cierra por su cuenta. */
 export type GrupoLiquidacion = 'obreros' | 'oficina' | 'final'
@@ -206,7 +207,16 @@ export interface LineaLiquidada {
   /** No hay tarifa cargada para esa persona: la fila lo dice y no inventa $ 0. */
   sinTarifa: boolean
   /**
-   * LA MITAD BLANCA DEL ACUERDO 50/50, que NO es «por banco». `null` cuando no hay acuerdo 50/50.
+   * EL NETO QUE LIQUIDÓ EL ESTUDIO. `null` = no hay recibo para esta quincena.
+   *
+   * Viaja porque `porBanco` NO es el recibo: es el recibo GIRADO. Cuando el extracto todavía no
+   * muestra el lote, `porBanco` vale 0 y la pantalla escribía «recibo $ 0» sobre una persona que sí
+   * tiene recibo (auditoría del 10/09/2026).
+   */
+  reciboNeto: number | null
+  /**
+   * LA MITAD BLANCA DEL ACUERDO 50/50, que NO es «por banco». `null` cuando no hay acuerdo 50/50
+   * que publicar — hoy, Oficina y las finales sin recibo (ver `liquidacionAcuerdo.ts`).
    *
    * Es lo ACORDADO; `porBanco` es lo LIQUIDADO por el estudio y girado por el banco. Los dos se
    * publican al lado justamente para que la diferencia se vea: el 31/08/2026 el cuadro calculaba
@@ -267,7 +277,11 @@ export function liquidarLinea(
     // una tarifa de la modalidad equivocada; ahora falta la que ESTA línea cobra. La gente de
     // Oficina tiene valor hora NULL por definición y NO está sin tarifa: tiene un neto mensual.
     sinTarifa: faltaLaTarifa(modalidad, valorHora, netoMensual),
-    ...repartoComoCampos(cobra, modalidad),
+    // LAS FINALES REPARTEN CONTRA LA MITAD BLANCA DEL RECIBO, que es de donde salió COBRA
+    // (`mitadBlanca × 2`). Partir ese COBRA al medio otra vez daría el mismo número por un camino
+    // que no es el de la fuente, y dejaría de coincidir el día que el recibo no sea la mitad justa.
+    ...repartoComoCampos(cobra, modalidad, e.mitadBlanca ?? null),
+    reciboNeto: e.reciboNeto,
     reciboSinGiro: e.reciboNeto != null && !e.giroEnElLote,
     origenTarifa: e.tarifa?.origen ?? null,
     esJefe: e.esJefe === true,
@@ -290,60 +304,10 @@ export function faltaLaTarifa(
   return false
 }
 
-/**
- * EL ACUERDO 50/50 — LA MITAD BLANCA Y LA MITAD EN EFECTIVO DE LO QUE COBRA.
- *
- * El dueño (10/09/2026): «el acuerdo con todos los empleados es 50% en blanco y 50% en efectivo, no
- * me lo está mostrando actualmente».
- *
- * ═══ ES EL ACUERDO, NO EL REPARTO REAL DEL PAGO ═══
- *
- * `porBanco` y `enEfectivo` NO salen de acá y no se tocan: salen del recibo del estudio y del
- * extracto (`nomina-banco-recibo.mjs`, orden del 31/08/2026 — «por banco va lo q dice recibo y en
- * efectivo se completa todo hasta llegar al numero»). Calcular el banco como el 50% es exactamente
- * el defecto que ese archivo corrigió. Acá se publica lo ACORDADO para poder comparar: si el recibo
- * dice otra cosa, la diferencia termina en efectivo y ahora se ve en vez de deducirse.
- *
- * ═══ A QUIÉN NO SE LE APLICA, Y POR QUÉ NO SE DECIDE ACÁ ═══
- *
- *   mensual (Oficina)  el recibo del 01/09 de Maldonado/Nievas fue $1.326.667,64 sobre $1.800.000,
- *                      que no es la mitad. Si el acuerdo de Oficina es 50/50 o es otra cosa es una
- *                      PREGUNTA ABIERTA al dueño: hasta que la conteste, `null` y «—» en pantalla.
- *                      Escribir la mitad sería inventar un acuerdo que nadie confirmó.
- *   ninguna (finales)  el cuadro de liquidaciones finales es el grupo de subcontratistas de Gerson
- *                      Castro (dueño, 31/08/2026: «son todos subcontratistas»), y a un
- *                      subcontratista el 50/50 no le corresponde: no es personal en relación de
- *                      dependencia. `null`.
- */
-export function repartoDelAcuerdo(
-  cobra: number | null, modalidad: ModalidadDeLiquidacion,
-): { blanco: number | null; efectivo: number | null } {
-  if (cobra == null || modalidad !== 'hora') return { blanco: null, efectivo: null }
-  const blanco = redondear2(cobra / 2)
-  // La otra mitad se calcula por RESTA para que las dos den exactamente COBRA: con un importe impar
-  // dos divisiones redondeadas por separado dejan un centavo colgando en la persona equivocada.
-  return { blanco, efectivo: redondear2(cobra - blanco) }
-}
-
-/**
- * CUÁNTO SE APARTA EL GIRO REAL DE LA MITAD BLANCA ACORDADA. `null` = no hay nada que comparar.
- *
- * Es el número que el cuadro de Pagos pinta al lado de POR BANCO. No corrige nada —el recibo manda—:
- * lo hace visible, porque esa diferencia es exactamente lo que termina saliendo en efectivo y hasta
- * hoy había que deducirla restando dos columnas a ojo. Un peso de tolerancia porque las mitades se
- * redondean a centavos y un desvío de centavos no es una diferencia, es aritmética.
- */
-export function desvioDelAcuerdo(
-  l: Pick<LineaLiquidada, 'porBanco' | 'blancoAcuerdo' | 'reciboSinGiro'>,
-): number | null {
-  if (l.blancoAcuerdo == null) return null
-  if (l.porBanco <= 0 && !l.reciboSinGiro) return null
-  const d = redondear2(l.porBanco - l.blancoAcuerdo)
-  return Math.abs(d) > 1 ? d : null
-}
-
-const repartoComoCampos = (cobra: number | null, modalidad: ModalidadDeLiquidacion) => {
-  const r = repartoDelAcuerdo(cobra, modalidad)
+const repartoComoCampos = (
+  cobra: number | null, modalidad: ModalidadDeLiquidacion, mitadBlanca: number | null,
+) => {
+  const r = repartoDelAcuerdo(cobra, modalidad, mitadBlanca)
   return { blancoAcuerdo: r.blanco, efectivoAcuerdo: r.efectivo }
 }
 

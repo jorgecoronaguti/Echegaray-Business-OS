@@ -23,7 +23,7 @@ import type {
   CeldaDeGrilla, EstadoDeFila, FilaDeGrilla, ResumenDeGrilla,
 } from '../../services/grillaHorasQuincena'
 import type { ProyeccionDeFila, ProyeccionDeQuincena } from '../../services/proyeccionDeMasa'
-import { repartoDelAcuerdo } from '../../services/liquidacionQuincena'
+import { repartoDelAcuerdo } from '../../services/liquidacionAcuerdo'
 import { ALTO_LIQ } from './solapas/tabla'
 import { agruparPorRolOrganizacional } from '../../services/vocabularioPersona'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
@@ -74,7 +74,10 @@ function Celda({ celda }: { celda: CeldaDeGrilla }) {
 }
 
 /**
- * «A PAGAR EST.» — LO QUE VA A COSTAR ESTA PERSONA SI CUMPLE LOS DÍAS QUE FALTAN.
+ * «COBRA EST.» — LO QUE VA A COBRAR ESTA PERSONA SI CUMPLE LOS DÍAS QUE FALTAN.
+ *
+ * Es COBRA, el mismo de la solapa Pagos: BRUTO DE BOLSILLO, antes de restar adelanto y ya
+ * transferido, y sin cargas sociales (eso es «costo real», otra columna y otra pantalla).
  *
  * ES UNA ESTIMACIÓN Y EL RÓTULO LO DICE. El `title` publica de dónde sale —horas cargadas, horas
  * por cumplir y la tarifa— porque un importe sin origen a la vista no se puede discutir con nadie.
@@ -292,7 +295,10 @@ export function GrillaHorasQuincena({
             ))}
             <div style={{ textAlign: 'right' }}>Carg.</div>
             <div style={{ textAlign: 'right' }}>Esper.</div>
-            <div style={{ textAlign: 'right' }}>A pagar est.</div>
+            {/* «COBRA EST.», NO «A PAGAR»: es el COBRA proyectado, y lo que se entrega en mano sale
+                de restarle adelanto y ya transferido (eso lo publica Pagos). Un rótulo que promete
+                el total y muestra el bruto es la clase de número que después nadie puede explicar. */}
+            <div style={{ textAlign: 'right' }}>Cobra est.</div>
             <div style={{ textAlign: 'right' }}>Estado</div>
           </div>
 
@@ -330,7 +336,7 @@ export function GrillaHorasQuincena({
             {/* EL TOTAL DE LA COLUMNA NO INCLUYE A QUIEN NO TIENE TARIFA, y la primera celda de
                 esta misma fila ya publica cuántos son («N sin retribución»). */}
             <div style={{ textAlign: 'right' }} title={proyeccion
-              ? `Masa salarial estimada · ${proyeccion.sinTarifa} sin tarifa fuera del total`
+              ? `COBRA estimado de la quincena · ${proyeccion.sinTarifa} sin tarifa fuera del total`
               : undefined}>
               {proyeccion ? pesos(proyeccion.masaProyectada) : ''}
             </div>
@@ -365,10 +371,16 @@ function BloqueProyeccion({ p }: { p: ProyeccionDeQuincena }) {
         fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)', fontSize: '10px',
         letterSpacing: '.06em', color: V.tenue, textTransform: 'uppercase',
       }}>Proyección</div>
-      <Resumen rotulo="Masa salarial est." valor={pesos(p.masaProyectada)} />
+      {/* «BOLSILLO» PORQUE NO SON CARGAS SOCIALES: es la suma de los COBRA, el mismo concepto que
+          la columna BOLSILLO de «Costo a la obra». El costo real de esas horas es mayor. */}
+      <Resumen rotulo="Masa salarial est. (bolsillo)" valor={pesos(p.masaProyectada)} />
       <div data-testid="proyeccion-desglose" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <Renglon rotulo="obreros" valor={pesos(p.obreros)} />
-        <Renglon rotulo="oficina" valor={pesos(p.oficina)} />
+        {/* EL TOTAL NO ES QUINCENAL DEL TODO, Y ESO NO SE PUEDE ESCONDER: el neto de Oficina es
+            MENSUAL y aparece entero en las dos quincenas del mes. La decisión de partirlo o no es
+            del dueño (`desgloseDeQuincena`); mientras tanto, se dice. */}
+        <Renglon rotulo="oficina" valor={pesos(p.oficina)}
+          nota="neto mensual, entero en cada quincena" />
         <Renglon rotulo="ya cargado" valor={pesos(p.masaCargada)} />
         <Renglon rotulo="por cumplir" valor={pesos(p.masaPorCumplir)} />
         {/* EL ACUERDO 50/50 SOBRE LO PROYECTADO. Oficina suma al total y NO al reparto: su recibo
@@ -388,16 +400,21 @@ function BloqueProyeccion({ p }: { p: ProyeccionDeQuincena }) {
 }
 
 /** El renglón chico del panel: 11 px tenue, el mismo que ya usan el detalle del filtro y el porqué. */
-function Renglon({ rotulo, valor, alerta = false }: {
+function Renglon({ rotulo, valor, alerta = false, nota }: {
   rotulo: string; valor: string; alerta?: boolean
+  /** La aclaración va DEBAJO y en el mismo tono: al lado del rótulo no entra en 230 px. */
+  nota?: string
 }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8,
-      fontSize: '11px', color: alerta ? V.warn : V.apagado,
-    }}>
-      <span>{rotulo}</span>
-      <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: alerta ? 500 : 400 }}>{valor}</span>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8,
+        fontSize: '11px', color: alerta ? V.warn : V.apagado,
+      }}>
+        <span>{rotulo}</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: alerta ? 500 : 400 }}>{valor}</span>
+      </div>
+      {nota && <span style={{ fontSize: '11px', color: V.tenue, lineHeight: 1.4 }}>{nota}</span>}
     </div>
   )
 }

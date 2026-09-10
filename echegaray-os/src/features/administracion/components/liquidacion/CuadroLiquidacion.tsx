@@ -3,7 +3,8 @@
 import { useState, useTransition } from 'react'
 import { InlineEdit } from '@/shared/components/ds/InlineEdit'
 import { V } from '@/shared/components/v2/patron'
-import { desvioDelAcuerdo, type TotalesDeCuadro } from '../../services/liquidacionQuincena'
+import type { TotalesDeCuadro } from '../../services/liquidacionQuincena'
+import { desvioDelAcuerdo } from '../../services/liquidacionAcuerdo'
 import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
 import type { CuadroConOverrides } from '../../services/liquidacionQuincenaService'
 import {
@@ -257,8 +258,12 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
       <Celda title={acuerdo}>{pesos(linea.efectivoAcuerdo)}</Celda>
       {celda('adelanto', linea.adelanto, pesos)}
       {celda('yaTransferido', linea.yaTransferido, pesos)}
+      {/* EL TÍTULO DICE EL RECIBO, NO LO GIRADO: `porBanco` vale 0 mientras el extracto no muestre
+          el lote, y así el aviso decía «recibo $ 0» sobre alguien que sí tenía recibo. */}
       <Celda title={desvio == null ? undefined
-        : `recibo ${pesos(linea.porBanco)} · acuerdo ${pesos(linea.blancoAcuerdo)} · diferencia `
+        : `recibo ${linea.reciboNeto == null ? 'sin recibo' : pesos(linea.reciboNeto)}`
+          + `${linea.reciboSinGiro ? ' · sin giro en el extracto' : ''}`
+          + ` · acuerdo ${pesos(linea.blancoAcuerdo)} · diferencia `
           + `${pesos(Math.abs(desvio))} ${desvio < 0 ? 'que sale en efectivo' : 'girada de más'}`}
         tono={desvio == null ? undefined : V.warn}>
         <Editable

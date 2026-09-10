@@ -61,13 +61,26 @@ export interface SeccionDePersonal<T> {
   lineas: T[]
 }
 
+/** El rol que se ESPERA en cada cuadro de pago. Oficina son los jefes de obra; obreros, obreros. */
+const ROL_DEL_CUADRO: Partial<Record<GrupoLiquidacion, 'jefes' | 'obreros'>> = {
+  oficina: 'jefes',
+  obreros: 'obreros',
+}
+
 /**
  * LAS SECCIONES DE UN CUADRO, CON EL RÓTULO QUE CORRESPONDE.
  *
- *   todas las líneas del mismo rol  →  el rótulo de Personal («Jefes de obra · 2», «Obreros · 15»)
- *   roles mezclados                 →  el nombre del cuadro, porque el rol NO describe a esa lista
- *   liquidaciones finales           →  el nombre del cuadro: son subcontratistas y gente que se fue
- *                                      (dueño, 31/08/2026), no «obreros» del plantel
+ *   el rol del cuadro es el esperado  →  el rótulo de Personal («Jefes de obra · 2», «Obreros · 15»)
+ *   cualquier otro caso               →  el nombre del cuadro, porque el rol NO describe a esa lista
+ *   liquidaciones finales             →  el nombre del cuadro: son subcontratistas y gente que se
+ *                                        fue (dueño, 31/08/2026), no «obreros» del plantel
+ *
+ * ═══ LA CLAVE ES DEL CUADRO Y DEL ROL, NO DEL ROL SOLO ═══
+ *
+ * Un empleado de Oficina que no es jefe de obra hacía que el cuadro «Oficina · mensual» devolviera
+ * `clave: 'obreros'` — la misma que el cuadro de obreros. Dos secciones con la misma clave son una
+ * `key` de React repetida, dos `data-testid="seccion-obreros"` y el título «Oficina» perdido
+ * (auditoría del 10/09/2026). La clave se arma con los dos datos que la hacen única.
  *
  * El orden interno es siempre el de Personal, esté o no partido en dos: partir la lista es una
  * decisión de rótulo, ordenarla no.
@@ -81,8 +94,12 @@ export function seccionesDePersonal<T>(
 ): SeccionDePersonal<T>[] {
   const ordenadas = ordenarComoPersonal(lineas, nombreDe, esJefeDe)
   if (ordenadas.length === 0) return []
-  if (grupo === 'final') return [{ clave: 'final', rotulo: titulo, lineas: ordenadas }]
   const grupos = agruparPorRolOrganizacional(ordenadas, esJefeDe)
-  if (grupos.length !== 1) return [{ clave: grupo, rotulo: titulo, lineas: ordenadas }]
-  return [{ clave: grupos[0].clave, rotulo: grupos[0].rotulo, lineas: grupos[0].integrantes }]
+  const rol = grupos.length === 1 ? grupos[0].clave : 'mixto'
+  const coincide = grupos.length === 1 && ROL_DEL_CUADRO[grupo] === rol
+  return [{
+    clave: `${grupo}-${rol}`,
+    rotulo: coincide ? grupos[0].rotulo : titulo,
+    lineas: ordenadas,
+  }]
 }

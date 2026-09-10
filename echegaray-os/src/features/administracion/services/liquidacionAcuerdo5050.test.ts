@@ -17,9 +17,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  desvioDelAcuerdo, liquidarLinea, repartoDelAcuerdo, totalesDeCuadro,
-  type EntradaDeLinea, type TarifaVigente,
+  liquidarLinea, totalesDeCuadro, type EntradaDeLinea, type TarifaVigente,
 } from './liquidacionQuincena.ts'
+import { desvioDelAcuerdo, repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
 import { aplicarOverrides } from './liquidacionOverrides.ts'
 
 const TARIFA: TarifaVigente = {
@@ -42,10 +42,12 @@ test('SIN COBRA NO HAY MITADES: null, nunca $ 0', () => {
   assert.deepEqual(repartoDelAcuerdo(null, 'hora'), { blanco: null, efectivo: null })
 })
 
-test('OFICINA Y SUBCONTRATISTAS NO LLEVAN 50/50: null, y la pantalla escribe «—»', () => {
+test('OFICINA NO LLEVA 50/50, Y UNA FINAL SIN RECIBO TAMPOCO: null y «—» en pantalla', () => {
   // EL DEFECTO QUE ATRAPA: escribirle a Oficina una mitad que nadie acordó. El recibo del 01/09 de
   // Maldonado/Nievas fue $1.326.667,64 sobre $1.800.000 — 73,7 %, no 50 %.
   assert.deepEqual(repartoDelAcuerdo(1800000, 'mensual'), { blanco: null, efectivo: null })
+  // Los subcontratistas de Gerson Castro están en el cuadro `final` sin recibo final: sin mitad
+  // blanca no hay reparto que publicar.
   assert.deepEqual(repartoDelAcuerdo(1800000, 'ninguna'), { blanco: null, efectivo: null })
   const oficina = liquidarLinea({
     ...base, personaId: 'p2', nombre: 'NIEVAS', horas: null,
@@ -54,6 +56,20 @@ test('OFICINA Y SUBCONTRATISTAS NO LLEVAN 50/50: null, y la pantalla escribe «�
   assert.equal(oficina.cobra, 1800000)
   assert.equal(oficina.blancoAcuerdo, null)
   assert.equal(oficina.efectivoAcuerdo, null)
+})
+
+test('UNA LIQUIDACIÓN FINAL REPARTE CONTRA LA MITAD BLANCA DEL RECIBO, NO CONTRA COBRA/2', () => {
+  // LA CONTRADICCIÓN QUE ESTO CIERRA (auditoría 10/09/2026): COBRA de una final se calcula como
+  // `mitadBlanca × 2` —o sea, YA asume el 50/50— y el reparto publicaba `null`, afirmando lo
+  // contrario que el importe de al lado. La mitad blanca es la del RECIBO, que es la fuente.
+  const l = liquidarLinea({
+    ...base, personaId: 'p9', nombre: 'CASTRO GALVAN GERSON', horas: null, tarifa: null,
+    reciboNeto: 300000, mitadBlanca: 300000,
+  }, 'final')
+  assert.equal(l.cobra, 600000)
+  assert.equal(l.blancoAcuerdo, 300000)
+  assert.equal(l.efectivoAcuerdo, 300000)
+  assert.equal((l.blancoAcuerdo ?? 0) + (l.efectivoAcuerdo ?? 0), l.cobra)
 })
 
 test('LA LÍNEA DEL OBRERO PUBLICA LAS DOS MITADES Y NO CAMBIA LA CADENA REAL DE PAGO', () => {

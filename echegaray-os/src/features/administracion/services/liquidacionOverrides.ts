@@ -28,7 +28,8 @@
 // le doy nada por banco» es una afirmación— y por eso el override viaja como `number | null` y la
 // ausencia como la falta de la clave, nunca como 0.
 
-import { repartoDelAcuerdo, type GrupoLiquidacion, type LineaLiquidada } from './liquidacionQuincena.ts'
+import type { GrupoLiquidacion, LineaLiquidada } from './liquidacionQuincena.ts'
+import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
 
 /** Las celdas que se pueden pisar a mano. El nombre NO está: es la única que el dueño dejó afuera. */
 export const CAMPOS_EDITABLES = [

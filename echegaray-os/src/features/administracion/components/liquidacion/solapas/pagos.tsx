@@ -2,9 +2,9 @@ import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
 import {
-  desvioDelAcuerdo, tarjetaDeQuincena, totalesDeCuadro,
-  type LineaLiquidada, type TotalesDeCuadro,
+  tarjetaDeQuincena, totalesDeCuadro, type LineaLiquidada, type TotalesDeCuadro,
 } from '../../../services/liquidacionQuincena'
+import { desvioDelAcuerdo } from '../../../services/liquidacionAcuerdo'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
 import { pesos } from '../BloqueLiquidacion'
 import { seccionesDePersonal, type SeccionDePersonal } from '../../../services/ordenDePersonal'
@@ -186,6 +186,8 @@ function Tabla({ secciones, totales }: {
               // a ojo para verlo.
               desvio={desvioDelAcuerdo(l)}
               blanco={l.blancoAcuerdo}
+              recibo={l.reciboNeto}
+              sinGiro={l.reciboSinGiro}
             />
             <Celda valor={l.enEfectivo} medio />
             <Celda valor={l.total} />
@@ -244,11 +246,19 @@ function Celda({ valor, medio = false, apagada = false }: {
  * la diferencia que la pantalla tiene que enseñar entre «esto lo decidís vos» y «esto es una
  * cuenta». El `<input>` real lo monta la grilla editable.
  */
-function Escribible({ valor, ancho, desvio = null, blanco = null }: {
+function Escribible({ valor, ancho, desvio = null, blanco = null, recibo = null, sinGiro = false }: {
   valor: number | null; ancho: number; desvio?: number | null; blanco?: number | null
+  /** El neto que liquidó el estudio. NO es lo girado: `porBanco` vale 0 hasta que el lote aparece. */
+  recibo?: number | null
+  sinGiro?: boolean
 }) {
+  // EL TÍTULO DICE EL RECIBO, NO LO GIRADO. Decía «recibo $ 0» sobre gente que sí tiene recibo,
+  // porque leía `porBanco` —que es el recibo YA GIRADO— (auditoría 10/09/2026). Cuando el extracto
+  // todavía no muestra el lote, eso se escribe con todas las letras en vez de publicarse como cero.
   const titulo = desvio == null || blanco == null ? undefined
-    : `recibo ${pesos(valor ?? 0)} · acuerdo ${pesos(blanco)} · diferencia ${pesos(Math.abs(desvio))}`
+    : `recibo ${recibo == null ? 'sin recibo' : pesos(recibo)}`
+      + `${sinGiro ? ' · sin giro en el extracto' : ''}`
+      + ` · acuerdo ${pesos(blanco)} · diferencia ${pesos(Math.abs(desvio))}`
       + ` ${desvio < 0 ? 'que sale en efectivo' : 'girada de más'}`
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end' }} title={titulo}>

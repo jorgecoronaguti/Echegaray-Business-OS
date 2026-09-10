@@ -78,12 +78,29 @@ test('EL RÓTULO DEL CUADRO ES EL DE PERSONAL CUANDO TODAS SUS LÍNEAS SON DE ES
     'Obreros · 2')
 })
 
+test('UN EMPLEADO DE OFICINA QUE NO ES JEFE NO CHOCA CON EL CUADRO DE OBREROS', () => {
+  // EL DEFECTO QUE ATRAPA (auditoría 10/09/2026): la sección salía con `clave: 'obreros'` —la misma
+  // que el cuadro de obreros—, así que React recibía dos `key` iguales, había dos
+  // `data-testid="seccion-obreros"` y el título «Oficina · mensual» desaparecía de la pantalla.
+  const oficina: P[] = [{ nombre: 'Perez Administrativa', esJefe: false }]
+  const obreros: P[] = [{ nombre: 'Aguero Cristian', esJefe: false }]
+  const sOficina = seccionesDePersonal('oficina', 'Oficina · mensual', oficina, nombreDe, esJefeDe)
+  const sObreros = seccionesDePersonal('obreros', 'Obreros · quincenal', obreros, nombreDe, esJefeDe)
+  assert.notEqual(sOficina[0].clave, sObreros[0].clave)
+  assert.equal(sOficina[0].clave, 'oficina-obreros')
+  assert.equal(sObreros[0].clave, 'obreros-obreros')
+  // Y el rótulo del cuadro de Oficina sigue diciendo de qué cuadro es: «Obreros · 1» ahí sería falso.
+  assert.equal(sOficina[0].rotulo, 'Oficina · mensual')
+  assert.equal(sObreros[0].rotulo, 'Obrero · 1', 'singular con uno solo: la regla ya vivía en vocabularioPersona')
+})
+
 test('EL NOMBRE DEL CUADRO MANDA CUANDO EL ROL NO DESCRIBE A LA LISTA', () => {
   // Liquidaciones finales: subcontratistas de Gerson Castro y gente que se fue. Rotularlos
   // «Obreros · 2» afirmaría que son del plantel.
   const finales: P[] = [{ nombre: 'Castro Galvan Gerson', esJefe: false }, { nombre: 'Avila Alejandro', esJefe: false }]
   const s = seccionesDePersonal('final', 'Liquidaciones finales', finales, nombreDe, esJefeDe)
   assert.equal(s[0].rotulo, 'Liquidaciones finales')
+  assert.equal(s[0].clave, 'final-obreros')
   assert.deepEqual(s[0].lineas.map(nombreDe), ['Avila Alejandro', 'Castro Galvan Gerson'])
 
   // Un cuadro con los dos roles mezclados tampoco puede llevar el rótulo de uno solo.
