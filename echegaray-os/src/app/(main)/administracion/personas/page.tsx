@@ -67,7 +67,7 @@ import {
 import { getPresenciaDelDia } from '@/features/administracion/services/presenciaDelDiaService'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
 import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
-import { modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
+import { hrefDeAsistencia, modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
 import { puedeCambiarObraActual } from '@/features/administracion/services/planDeObraActual'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion, liquidaSueldos, veEconomia } from '@/features/auth/types/areas'
@@ -99,25 +99,10 @@ function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): st
 const hrefAsistencia = (quincena?: string): string =>
   `${RUTA}?vista=asistencia${quincena ? `&quincena=${quincena}` : ''}`
 
-/**
- * UN ENLACE DENTRO DE ASISTENCIA, CONSERVANDO LO QUE YA ESTABA PUESTO — misma convención que
- * `hrefSolapa`: un `undefined` en `cambios` BORRA ese parámetro, y con eso se apaga un filtro con
- * el mismo enlace que lo prendió.
- *
- * Cambiar de quincena no puede perder la obra que se está mirando, ni al revés: los dos son la
- * misma grilla vista con otro recorte. Sin esto, el filtro por obra duraba hasta el primer clic en
- * «‹ anterior» y volvía a aparecer la empresa entera sin que nadie lo pidiera.
- */
-function hrefAsistenciaCon(base: Busqueda, cambios: Record<string, string | undefined>): string {
-  const actual: Record<string, string | undefined> = {
-    quincena: base.quincena, q: base.q, modo: base.modo, obra: base.obra,
-  }
-  const params = new URLSearchParams({ vista: 'asistencia' })
-  for (const [k, v] of Object.entries({ ...actual, ...cambios })) {
-    if (v) params.set(k, v)
-  }
-  return `${RUTA}?${params.toString()}`
-}
+/** Un enlace DENTRO de Asistencia, conservando quincena, texto, modo y obra — ver
+ *  `hrefDeAsistencia`, que es donde vive la regla y donde está su test. */
+const hrefAsistenciaCon = (base: Busqueda, cambios: Record<string, string | undefined>): string =>
+  hrefDeAsistencia(RUTA, base, cambios)
 
 /** La solapa Liquidación, con la misma convención de quincena que Asistencia: cualquier día de la
  *  ventana sirve y el bloque la resuelve. */
@@ -371,7 +356,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               // LA OBRA NO VUELVE CON EL ENLACE. En modo día `?obra=` es el ID de la obra que se
               // está cargando y la grilla recorta por el RÓTULO del chip: arrastrarlo devolvería
               // una quincena vacía con un id crudo en el cartel. La vuelta es a la quincena entera.
-              hrefQuincena={`${hrefAsistenciaCon(sp, { obra: undefined, modo: 'quincena' })}`}
+              hrefQuincena={hrefAsistenciaCon(sp, { obra: undefined, modo: 'quincena' })}
             />
           ) : (
             <div style={{ padding: '10px 20px 24px' }}>

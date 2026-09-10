@@ -59,3 +59,41 @@ export function modoDeAsistencia(
   if (modoPedido === 'quincena' || modoPedido === 'dia') return modoPedido
   return pareceTelefono(chUaMobile, userAgent) ? 'dia' : 'quincena'
 }
+
+/** Lo que la solapa Asistencia lleva puesto y no puede perder al moverse dentro de sí misma. */
+export interface EstadoAsistencia {
+  quincena?: string
+  q?: string
+  modo?: string
+  /** El recorte por obra: el RÓTULO del chip en la grilla, el id o el nombre en la carga del día. */
+  obra?: string
+}
+
+/**
+ * UN ENLACE DENTRO DE LA SOLAPA ASISTENCIA, CONSERVANDO LO QUE YA ESTABA PUESTO.
+ *
+ * Misma convención que `hrefSolapa` en Liquidación: un `undefined` en `cambios` BORRA ese
+ * parámetro, y con eso se apaga un filtro con el mismo enlace que lo prendió.
+ *
+ * ═══ EL DEFECTO QUE ESTO EVITA ═══
+ *
+ * Los enlaces de esta solapa se armaban con `hrefAsistencia(quincena)`, que escribe la URL desde
+ * cero. Con un filtro por obra puesto, tocar «‹ anterior» devolvía la empresa entera sin que nadie
+ * lo pidiera —y lo mismo el buscador—: el recorte duraba hasta el primer clic. Cada parámetro que
+ * se agregue a la vista tiene que entrar acá, o vuelve a caerse en el mismo lugar.
+ */
+export function hrefDeAsistencia(
+  ruta: string,
+  base: EstadoAsistencia,
+  cambios: Record<string, string | undefined> = {},
+): string {
+  const actual: Record<string, string | undefined> = {
+    quincena: base.quincena, q: base.q, modo: base.modo, obra: base.obra,
+  }
+  const params = new URLSearchParams({ vista: 'asistencia' })
+  for (const [clave, valor] of Object.entries({ ...actual, ...cambios })) {
+    // UN VALOR VACÍO NO ES UN PARÁMETRO. `?q=` en la URL no filtra nada y ensucia lo que se comparte.
+    if (valor) params.set(clave, valor)
+  }
+  return `${ruta}?${params.toString()}`
+}
