@@ -52,6 +52,36 @@
  */
 export const MARCADOR_CONTRATO = /(?:\$\s*|s\/?\s*(?:total|contrato)\s+)(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)/i
 
+/**
+ * UNA CUENTA ANOTADA AL PASO NO ES UN CONTRATO — Y ESCRIBE UN `$` IGUAL DE VÁLIDO.
+ *
+ * EL DEFECTO QUE ARREGLA (10/09/2026). Alguien agregó al final de la H78 de Quattropani la cuenta con
+ * la que estimó la certificación del día:
+ *
+ *   "Resto 50% s/ contrato U$S 63.000 + IVA — certificación quincenal 1/9 -  ($1503,6*USD3500)"
+ *
+ * Ese "$1503,6" es el TIPO DE CAMBIO del día, no plata: es el primer factor de una multiplicación. El
+ * marcador lo leyó como contrato en pesos, el camino "OC en pesos" le ganó al de dólares y la obra se
+ * publicó CONTRATADA EN $1.504 — con un margen de −$39,1 M en OBRAS y en /clientes. El defecto no dio
+ * ni un error: dio un número chiquito y creíble, que es la peor clase de defecto de este repo.
+ *
+ * POR QUÉ SE BORRA LA EXPRESIÓN ENTERA Y NO SE "IGNORA EL NÚMERO". Un lookahead que rechace el número
+ * seguido de `*` no alcanza: el motor de regex retrocede y se queda con "1503" —el prefijo que NO
+ * está pegado al asterisco— y publica un contrato de $1.503. La única forma robusta es sacar del
+ * texto la MULTIPLICACIÓN COMPLETA antes de buscar marcadores; lo que queda afuera de la cuenta se
+ * sigue leyendo igual.
+ *
+ * EL COSTO, DECLARADO: si alguien escribiera un contrato real dentro de una multiplicación
+ * ("s/ contrato $ 95.000.000 x 2 obras"), dejaría de leerse y la obra caería a su suma viva. Es la
+ * misma dirección de error que eligió todo este módulo: un contrato que falta se ve; uno inventado, no.
+ */
+const CUENTA_ESCRITA = /(?:U\$S|US\$|USD|\$)?\s*\d[\d.,]*\s*[*\u00d7x]\s*(?:U\$S|US\$|USD|\$)?\s*\d[\d.,]*/gi
+
+/** El texto de la Orden de Compra sin las cuentas anotadas al paso. Ver `CUENTA_ESCRITA`. */
+export function sinCuentas(texto) {
+  return String(texto ?? '').replace(CUENTA_ESCRITA, ' ')
+}
+
 /** El precio de la obra cuando la fila lo distingue de su saldo. Ver `contratoDeclarado`. */
 export const MARCADOR_PRECIO = /precio\s+(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)/i
 
@@ -73,8 +103,9 @@ export function contratoDeclarado(texto) {
   // ES EL ÚNICO RENGLÓN DE COBRANZAS QUE USA LA PALABRA (verificado el 07/09 sobre las 100 filas del
   // archivo vivo), y por eso el marcador exige un número PEGADO a ella: "ACTUALIZACIÓN DE PRECIOS"
   // no declara nada y no puede engancharse.
-  const precio = MARCADOR_PRECIO.exec(String(texto ?? ''))
-  const m = precio ?? MARCADOR_CONTRATO.exec(String(texto ?? ''))
+  const limpio = sinCuentas(texto)
+  const precio = MARCADOR_PRECIO.exec(limpio)
+  const m = precio ?? MARCADOR_CONTRATO.exec(limpio)
   if (!m) return null
   // es-AR: el punto separa miles y la coma es el decimal. Al revés da 47,59 en vez de 47.590.272.
   const n = Number(m[1].replace(/\./g, '').replace(',', '.'))
@@ -101,7 +132,10 @@ export const MARCADOR_CONTRATO_USD = /(?:U\$S|US\$|USD)\s*(\d{1,3}(?:\.\d{3})+(?
  * @returns {number|null} el monto en USD, o null si esa fila no declara ninguno
  */
 export function contratoUsdDeclarado(texto) {
-  const m = MARCADOR_CONTRATO_USD.exec(String(texto ?? ''))
+  // Mismo saneo que en pesos: el "USD3500" de la cuenta de la H78 es el importe de UNA certificación,
+  // no el contrato. Sin sacar la multiplicación, una fila que sólo tuviera la cuenta declararía un
+  // contrato de U$S 3.500.
+  const m = MARCADOR_CONTRATO_USD.exec(sinCuentas(texto))
   if (!m) return null
   const n = Number(m[1].replace(/\./g, '').replace(',', '.'))
   return Number.isFinite(n) && n > 0 ? n : null
@@ -340,4 +374,28 @@ export function contratoDeObra(filas = [], cols = {}, obra = {}, desde = 1) {
     distintos,
     partido: distintos.length > 1,
   }
+}
+
+/**
+ * CUÁL DE LOS DOS CONTRATOS MANDA CUANDO LA OBRA DECLARA PESOS Y DÓLARES — UNA SOLA VEZ.
+ *
+ * La regla vive acá y no en cada consumidor porque son DOS: la columna D de la pestaña OBRAS
+ * (`contratado()` en obras-grilla, que publica la fórmula) y `contratadoEnPesos` (que persiste el
+ * número en `obra_economia_sheet` para /clientes). Escrita dos veces, el día que una cambie la
+ * pantalla y la pestaña dirían distinto de la misma obra — que es lo que REALIDAD ÚNICA prohíbe.
+ *
+ * EL CRITERIO, Y POR QUÉ ES SEGURO: un contrato en pesos NUNCA puede ser menor que su propia cifra en
+ * dólares, porque el tipo de cambio es mayor que uno. Si el "pesos" leído es más chico que el "USD"
+ * leído, ese pesos NO es un contrato: es un número de otra cosa que se coló con un `$` adelante —el
+ * tipo de cambio anotado en la H78 de Quattropani, sin ir más lejos. Ante esa contradicción manda el
+ * dólar, que es la moneda en la que ESE contrato está escrito.
+ *
+ * Es una segunda línea de defensa, no la primera: la primera es `sinCuentas`. Se ponen las dos porque
+ * la anotación que rompió esto la escribe una persona en una celda libre, y la próxima va a estar
+ * redactada de otra forma.
+ */
+export function prefiereContratoUsd(contrato, contratoUsd) {
+  if (!Number.isFinite(contratoUsd) || contratoUsd <= 0) return false
+  if (!Number.isFinite(contrato) || contrato <= 0) return true
+  return contrato < contratoUsd
 }

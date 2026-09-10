@@ -135,7 +135,7 @@
 import { VACIO } from './preservar-anotaciones.mjs'
 import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
 import { esProyectable } from './obras-datos.mjs'
-import { sumaConUSD } from './cobranzas-contrato.mjs'
+import { sumaConUSD, prefiereContratoUsd } from './cobranzas-contrato.mjs'
 // «Certificado» dejo de ser una COLUMNA el 07/09/2026 (dos cuadros, decision del dueno): la formula
 // sigue viva en obras-certificado.mjs porque la usa el calculo de hitos del calendario de cobros.
 // EL CONTRATO DE LA RÉPLICA `_OBRAS_RAW` VIVE EN UN SOLO LADO: nombre de la pestaña, letras de
@@ -715,6 +715,10 @@ const venta = (cob, cliente, extra = {}) => `=${sumaCobranzas(cob, 'neto', clien
  * qué obras cayeron en este camino y con qué filas, para que se pueda desmentir mirando Cobranzas.
  */
 function contratado(o, cob, dela) {
+  // Cuando la fila declara las dos monedas y el peso es MÁS CHICO que el dólar, el peso no era un
+  // contrato: manda el dólar. La regla vive en `prefiereContratoUsd`, compartida con la réplica que
+  // alimenta /clientes — dos copias publicarían la misma obra distinto en la pestaña y en la pantalla.
+  if (prefiereContratoUsd(o.contrato, o.contratoUsd)) return `=${o.contratoUsd}*${RANGO_TC}`
   if (o.contrato) return o.contrato
   if (o.contratoUsd) return `=${o.contratoUsd}*${RANGO_TC}`
   return venta(cob, o.cliente, dela)
@@ -800,7 +804,13 @@ export function contratoMalPublicado(bloques = [], publicadoFormula = []) {
     // publica como fórmula viva se ve idéntico a uno correcto y publicaría media obra en silencio:
     // ése es exactamente el defecto que el dueño rechazó el 07/09.
     const enD = String(publicadoFormula[b.fProt - 1]?.[3] ?? '').trim()
-    if (b.contrato) {
+    // El mismo desempate que `contratado()`: si el control no lo replicara, una obra que se publica
+    // bien (en dólares) se reportaría como mal publicada, y el escritor abortaría por estar sano.
+    if (prefiereContratoUsd(b.contrato, b.contratoUsd)) {
+      if (!enD.startsWith(`=${b.contratoUsd}*`)) {
+        malas.push(`${b.clave}: contrato U$S ${b.contratoUsd} y la D quedo "${enD.slice(0, 60)}"`)
+      }
+    } else if (b.contrato) {
       if (Number(enD) !== Number(b.contrato)) {
         malas.push(`${b.clave}: contrato $${b.contrato.toLocaleString('es-AR')} y la D quedo "${enD}"`)
       }

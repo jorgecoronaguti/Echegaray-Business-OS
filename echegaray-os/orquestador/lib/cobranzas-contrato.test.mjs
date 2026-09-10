@@ -8,7 +8,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   contratoDeclarado, contratoDeObra, filasDeObra, normalizarMoneda, monedasDesconocidas, saldoDeObra,
-  sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO,
+  sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO, contratoUsdDeclarado, sinCuentas, prefiereContratoUsd,
 } from './cobranzas-contrato.mjs'
 import { FILAS, COLUMNAS, comoFilas, DESDE } from './cobranzas-fixture.mjs'
 
@@ -233,4 +233,56 @@ test('CANCELAR cuenta como cerrada: una venta que dejó de existir no es plata p
   const cols = { cliente: 0, concepto: 1, oc: 2, estado: 3 }
   const filas = [['SF', 'Obra X', '', 'Cobrado'], ['SF', 'Obra X', '', 'CANCELAR']]
   assert.equal(saldoDeObra(filas, cols, { variantes: ['SF'], needle: 'Obra X' }, 5).cobrada, true)
+})
+
+// ═══ LA CUENTA ANOTADA AL PASO — H78 DE QUATTROPANI, 10/09/2026 ═══
+
+/** El texto LITERAL de la celda H78 el día que la obra se publicó contratada en $1.504. */
+const H78 = 'Resto 50% s/ contrato U$S 63.000 + IVA — certificación quincenal 1/9 -  ($1503,6*USD3500)'
+
+test('el TIPO DE CAMBIO anotado en una cuenta NO es el contrato de la obra (H78, defecto real)', () => {
+  // Sin el saneo, `$1503,6` se leía como contrato en pesos, le ganaba al camino U$S×TC y Quattropani
+  // salía contratada en $1.504 con margen −$39,1 M en OBRAS y en /clientes. Este test es ESE número.
+  assert.equal(contratoDeclarado(H78), null, 'la cuenta no declara ningún contrato en pesos')
+  assert.equal(contratoUsdDeclarado(H78), 63_000, 'el contrato de la fila sigue siendo U$S 63.000')
+})
+
+test('no alcanza con rechazar el número pegado al asterisco: el prefijo tampoco es un contrato', () => {
+  // Un lookahead `(?!\s*[*×x])` deja que el motor retroceda y capture "1503" — un contrato de $1.503
+  // en vez de uno de $1.504. Este test existe para que ese arreglo a medias dé rojo.
+  assert.equal(contratoDeclarado('($1503,6*USD3500)'), null)
+  assert.equal(contratoDeclarado('cert. 1/9 $1.512,262 x U$S 3.500'), null)
+  assert.equal(contratoDeclarado('$ 1503,6 × 3500'), null)
+})
+
+test('la fila que SÓLO tiene la cuenta no declara un contrato en dólares de U$S 3.500', () => {
+  assert.equal(contratoUsdDeclarado('certificación 1/9 - ($1503,6*USD3500)'), null)
+})
+
+test('sacar la cuenta NO desarma el resto del texto: el contrato en pesos se sigue leyendo', () => {
+  // La contracara del test de arriba: el saneo tiene que ser quirúrgico. Si se comiera la fila entera,
+  // las 22 filas que declaran contrato quedarían en null y el saldo pendiente desaparecería.
+  assert.equal(contratoDeclarado('Anticipo 50% $95.000.000 s/ contrato — certificación 1/9 ($1503,6*USD3500)'),
+    95_000_000)
+  assert.equal(contratoDeclarado('Resto 50% s/ contrato 97.650.000 — certificación quincenal 1/9'), 97_650_000)
+  assert.equal(contratoDeclarado('Anticipo inicio obra 50% $ 47.590.272 Cotización n°'), 47_590_272)
+  assert.equal(sinCuentas('OC 02-00002097').trim(), 'OC 02-00002097', 'un número de OC no es una cuenta')
+})
+
+test('contratoDeObra sobre la fila de Quattropani devuelve el dólar y NINGÚN peso', () => {
+  const cols = { cliente: 0, concepto: 1, oc: 2 }
+  const c = contratoDeObra([['Quattropani', 'Certificación 1/9', H78]], cols,
+    { variantes: ['Quattropani'], unica: true }, 78)
+  assert.equal(c.contrato, null)
+  assert.equal(c.contratoUsd, 63_000)
+})
+
+test('un contrato en pesos MENOR que su cifra en dólares es imposible: manda el dólar', () => {
+  // Segunda línea de defensa, para la próxima anotación redactada de otra forma. El tipo de cambio es
+  // mayor que uno, así que $1.504 nunca puede ser el mismo contrato que U$S 63.000.
+  assert.equal(prefiereContratoUsd(1503.6, 63_000), true)
+  assert.equal(prefiereContratoUsd(null, 63_000), true)
+  assert.equal(prefiereContratoUsd(47_590_272, 63_000), false, 'el contrato en pesos real le sigue ganando')
+  assert.equal(prefiereContratoUsd(95_000_000, null), false)
+  assert.equal(prefiereContratoUsd(null, null), false)
 })
