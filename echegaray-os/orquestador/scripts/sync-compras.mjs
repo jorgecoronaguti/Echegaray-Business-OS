@@ -34,6 +34,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool, withTx } from '../lib/db.mjs'
 import { CASHFLOW_ID } from '../lib/cash-briefing.mjs'
 import { PRIMERA_FILA, claveDeCompra, contratoDeColumnas, filaACompra } from '../lib/compras-fila.mjs'
+import { planDeReconciliacion } from '../lib/comprobantes/reconciliar-adjuntos.mjs'
 
 const DRY = process.argv.includes('--dry')
 
@@ -148,6 +149,38 @@ async function escribirCostosObra(db, compras) {
   return conObra.length
 }
 
+/**
+ * EL PAPEL VUELVE A SU FILA, EN LA MISMA TRANSACCIÓN QUE REESCRIBE EL ESPEJO (10/09/2026).
+ *
+ * La clave de una compra no es estable: es `c:<cuit>|<numero>` cuando la fila trae CUIT y
+ * `p:<proveedor>|<numero>` cuando no. La columna «CUIT (OS)» la resuelve el directorio de
+ * proveedores, así que la MISMA fila cambia de clave sin que nadie la toque y el adjunto vinculado
+ * ayer queda huérfano hoy — la compra sale «sin comprobante» con el archivo guardado. Medidos el
+ * 10/09 sobre la base viva: 5 de 194.
+ *
+ * Reconciliar acá y no en la pantalla es lo que impide que el vínculo envejezca: se recalcula junto
+ * con lo único que lo hace envejecer. La regla («el número y el tipo coinciden siempre; la identidad
+ * se afloja sólo si el proveedor la confirma») vive en `clave-conciliada.mjs` y no se reimplementa.
+ * Un adjunto que no empata con exactamente UNA fila se deja como está y se cuenta.
+ */
+async function reconciliarAdjuntos(db, compras) {
+  const { rows: adjuntos } = await db.query(
+    'select id, compra_clave, fila_compras, vinculado_por, lectura from public.compra_adjunto')
+  const plan = planDeReconciliacion(adjuntos, compras)
+  for (const r of plan.refrescar) {
+    await db.query('update public.compra_adjunto set fila_compras=$2 where id=$1', [r.id, r.fila])
+  }
+  for (const r of plan.reasignar) {
+    // `match_numero` y no `registro`: la identidad se resolvió por CÁLCULO, no porque el bot lo
+    // haya visto. La pantalla muestra esa diferencia y tiene que poder seguir mostrándola.
+    await db.query(
+      `update public.compra_adjunto
+          set compra_clave=$2, fila_compras=$3, vinculado_por='match_numero', confianza=0.9, vinculado_at=now()
+        where id=$1 and vinculado_por <> 'match_manual'`, [r.id, r.clave, r.fila])
+  }
+  return plan
+}
+
 async function main() {
   const compras = await leerPestana()
   const { rows: [previo] } = await query('select count(*)::int n from public.compra_sheet')
@@ -170,6 +203,7 @@ async function main() {
   // (08/09/2026, 15:13: `duplicate key value violates unique constraint "compra_sheet_pkey"` con el
   // espejo íntegro). `withTx` entrega el cliente y las dos escrituras viajan con él.
   let enCostos = 0
+  let plan = null
   try {
     enCostos = await withTx(async (db) => {
       // ═══ DOS CORRIDAS NO SE PISAN (08/09/2026) ═══
@@ -183,7 +217,9 @@ async function main() {
       // el commit o el rollback: no hay forma de dejarlo tomado.
       await db.query("select pg_advisory_xact_lock(hashtext('sync-compras'))")
       await escribirEspejo(db, compras)
-      return escribirCostosObra(db, compras)
+      const n = await escribirCostosObra(db, compras)
+      plan = await reconciliarAdjuntos(db, compras)
+      return n
     })
   } catch (e) {
     console.error('sync falló, ROLLBACK:', e.message)
@@ -199,6 +235,11 @@ async function main() {
 
   console.log(`espejo: ${compras.length} filas de Compras → compra_sheet (${conClave} con clave, ${anuladas} anuladas)`)
   console.log(`costos_obra: ${enCostos} con obra asignada`)
+  if (plan) {
+    console.log(`adjuntos: ${plan.reasignar.length} reconciliados · ${plan.refrescar.length} renglón al día · `
+      + `${plan.colgados.length} sin fila que sea ese comprobante · ${plan.sinClave} sin clave (a asignar a mano)`)
+    for (const c of plan.colgados.slice(0, 10)) console.log(`  colgado: ${c.compra_clave} — ${c.motivo}`)
+  }
   await closePool()
 }
 main().catch(async (e) => { console.error('sync-compras falló:', e.message); await closePool().catch(() => {}); process.exit(1) })

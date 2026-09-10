@@ -27,7 +27,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   separarComprasDeObra, type Corte, type MotivoFuera,
 } from './comprasDeObra.ts'
-import { ordenarPorCarga } from './comprasSheet.ts'
+import { ordenarPorCarga, papelesDeCadaFila } from './comprasSheet.ts'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -102,9 +102,10 @@ const COLUMNAS_ADJUNTO = [
 /**
  * LA PESTAÑA ENTERA CON SUS PAPELES.
  *
- * El cruce se hace por CLAVE y, si el adjunto no la tiene, por FILA — en ese orden. La clave es
- * estable; la fila es una posición que se mueve al insertar un renglón arriba. Usar la fila primero
- * colgaría el papel de la factura equivocada el día que el dueño inserte una línea.
+ * El cruce se hace SÓLO POR CLAVE (`papelesDeCadaFila`). El número de renglón nunca vincula: es una
+ * posición que se mueve al insertar una línea arriba, y usarlo de respaldo ya colgó el comprobante
+ * de otro CUIT en la fila 932 (10/09/2026). Que la clave del papel y la de la fila sean la misma es
+ * responsabilidad del sync, que las vuelve a conciliar cada vez que reescribe el espejo.
  */
 export interface ListadoCompras {
   /** SÓLO las compras de obra: civil, mantenimiento y estructura. */
@@ -132,19 +133,7 @@ export async function getComprasSheet(supabase: SupabaseClient): Promise<Service
   // principal; el papel es el respaldo. Si la tabla de adjuntos falla, se muestran las compras sin
   // papel — y como `tiene_adjunto` queda en false, el chip «sin comprobante» lo va a gritar.
   const papeles = (adjuntos.data ?? []) as unknown as Adjunto[]
-  const porClave = new Map<string, Adjunto[]>()
-  const porFila = new Map<number, Adjunto[]>()
-  for (const a of papeles) {
-    if (a.compra_clave) {
-      const l = porClave.get(a.compra_clave) ?? []; l.push(a); porClave.set(a.compra_clave, l)
-    } else if (a.fila_compras != null) {
-      const l = porFila.get(a.fila_compras) ?? []; l.push(a); porFila.set(a.fila_compras, l)
-    }
-  }
-  const leidas = ((compras.data ?? []) as unknown as CompraSheet[]).map((c) => {
-    const suyos = (c.clave ? porClave.get(c.clave) : null) ?? porFila.get(c.fila) ?? []
-    return { ...c, adjuntos: suyos, tiene_adjunto: suyos.length > 0 }
-  })
+  const leidas = papelesDeCadaFila((compras.data ?? []) as unknown as CompraSheet[], papeles)
   // EL CORTE SE HACE ACÁ, EN EL SERVIDOR, Y NO EN LA CONSULTA.
   //
   // Podría escribirse como un `.not('unidad_negocio', 'in', ...)` y ahorrar el viaje de 152 filas,
