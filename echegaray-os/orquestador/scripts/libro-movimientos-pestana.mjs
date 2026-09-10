@@ -34,7 +34,10 @@ import {
   deTarjetaSinFactura, deImpuestosCalendario, deCartera,
   deJornalesQuincenas, deOficina, deDireccion, comprasPagadasConCheque,
   deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
+  RUBRO_GREMIALES,
 } from '../lib/libro-extractores.mjs'
+import { pagosGremialesDelBanco, explicarPago } from '../lib/cargas-pagos-banco.mjs'
+import { PESTAÑA as RAW_UOCRA } from './uocra-raw-pestana.mjs'
 import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
 import { deEstructura, diaTipicoDeEstructura, PESTANA_ESTRUCTURA } from '../lib/libro-extractores-estructura.mjs'
 // ═══ LOS MATERIALES PREVISTOS SALEN DEL CUADRO 5 DE LA PESTAÑA `OBRAS` (24/08/2026) ═══
@@ -161,6 +164,12 @@ async function extraerDeLasFuentes(google, corte) {
     opcional(NOMBRES_CARGAS.fechas), opcional(NOMBRES_CARGAS.f931), opcional(NOMBRES_CARGAS.gremiales),
     opcional(NOMBRES_CARGAS.declarado), opcional(NOMBRES_CARGAS.gremialesDeclarado),
   ])
+  // ═══ LA BOLETA, PARA SABER QUÉ PAGÓ CADA DÉBITO GREMIAL (10/09/2026) ═══
+  //
+  // El extracto dice cuánto salió y a qué CUIT; lo que ese débito CANCELA sale de la boleta. Sin la
+  // réplica no hay apareo posible y la única consecuencia es que los gremiales vuelven a decidirse
+  // sólo por Compras — el estado de ayer. Por eso es lectura opcional, como las cinco de arriba.
+  const boletasUocra = await opcional(`'${RAW_UOCRA}'!A1:J`)
 
   // El registro de cheques se ubica por el DATO (FISICO/ECHEQ), no por una fila fija.
   const reg = ubicarRegistro(cheques.map((f) => [f?.[0]]))
@@ -223,19 +232,41 @@ async function extraerDeLasFuentes(google, corte) {
   // Y EL DECLARADO LE GANA A LA PROYECCIÓN (08/09): el F931 ya presentado entra por su importe de DDJJ,
   // COMPROMETIDO, salvo que Compras lo tenga pagado o un plan lo financie. Ver `obligacionDeclarada`.
   const enCompras = cargasEnCompras(compras)
+  // ═══ Y EL PAGO GREMIAL LO PRUEBA EL BANCO, NO LA PLANILLA (10/09/2026) ═══
+  //
+  // El dueño prohibió cargar los gremiales en Compras. Desde acá la fuente de «pagada» es el débito:
+  // se aparea contra la boleta en `cargas-pagos-banco.mjs` y se consume del MISMO `usados` que el
+  // resto de los cruces — un débito respalda a una sola obligación.
+  const pagosBanco = pagosGremialesDelBanco({
+    debitos: extracto.debitos, boletas: boletasUocra ?? [], usados: extracto.usados,
+  })
+  for (const a of pagosBanco.avisos) console.warn(`  ⚠ ${a}`)
+  const porPeriodo = new Map([...pagosBanco.porPeriodo].map(([p, v]) => [`${p}·${RUBRO_GREMIALES}`, v]))
+  for (const [, v] of pagosBanco.porPeriodo) console.log(`  gremiales pagados por el banco · ${explicarPago(v)}`)
+  const cubiertosPorBanco = new Set()
   const cargas = deCargasSociales(
     {
       fechas: fechasCargas, f931: f931Cargas, gremiales: gremialesCargas,
       declarado: declaradoCargas, gremialesDeclarado: gremialesDeclarados,
     },
-    corte, { mesesPagados: enCompras.mesesPagados, mesesFinanciados: enCompras.financiados, aviso: (m) => console.warn(`  · ${m}`) },
+    corte, {
+      mesesPagados: enCompras.mesesPagados,
+      mesesFinanciados: enCompras.financiados,
+      aviso: (m) => console.warn(`  · ${m}`),
+      pagosDelBanco: porPeriodo,
+      anotarCubierto: (c) => cubiertosPorBanco.add(c),
+    },
   )
   const declarados = cargas.filter((m) => / · declarado /.test(String(m.origen?.fila ?? '')))
   if (declarados.length) {
     console.log(`  cargas sociales: ${declarados.length} obligación(es) DECLARADA(s) sin pagar en Compras → `
       + declarados.map((m) => `${m.concepto} ${pesos(m.importe)} el ${isoDeSerial(m.fecha)}`).join(' · '))
   }
+  // EL MES QUE EL BANCO APAGÓ SIGUE CUBIERTO. `mesesCubiertos` mira los movimientos EMITIDOS, y una
+  // obligación pagada no emite ninguno: sin esta unión, las filas planas de Compras de ese mes
+  // volverían a entrar encima de la plata que ya salió de la cuenta.
   const cargasCubiertas = mesesCubiertos(cargas)
+  for (const c of cubiertosPorBanco) cargasCubiertas.add(c)
   const swap = reemplazadasPorLaCadena(enCompras, cargasCubiertas)
   console.log(`  cargas sociales: la cadena publica ${cargas.length} movimiento(s) en ${cargasCubiertas.size} mes(es) `
     + `y reemplaza ${swap.length} fila(s) previstas de Compras por ${pesos(swap.reduce((a, x) => a + x.total, 0))}`)

@@ -160,6 +160,8 @@ test('ningún archivo del generador de cargas pasa de 500 líneas', () => {
   const archivos = [
     '../scripts/cargas-sociales-pestana.mjs', './cargas-grilla.mjs', './cargas-bloques.mjs',
     './cargas-piel.mjs', './cargas-planes.mjs', './cargas-cadena.mjs', './libro-extractores-cargas.mjs',
+    // Entró el 10/09 con el apareo contra el banco: es parte de la cadena y le toca el mismo techo.
+    './cargas-pagos-banco.mjs',
   ]
   for (const a of archivos) {
     const n = readFileSync(new URL(a, import.meta.url), 'utf8').split('\n').length

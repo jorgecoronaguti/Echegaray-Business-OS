@@ -234,6 +234,30 @@
       "excepciones": []
     },
     {
+      "concepto": "gremial_pagada",
+      "canonica": "public.banco_movimientos (réplica _BANCO_RAW del Flujo de Caja), apareado contra la boleta de _UOCRA_DDJJ_RAW por orquestador/lib/cargas-pagos-banco.mjs",
+      "propietario": "orquestador/lib/cargas-pagos-banco.mjs — el apareo; orquestador/scripts/importar-banco.mjs — el dato del extracto; orquestador/scripts/uocra-raw-pestana.mjs — la boleta declarada",
+      "criterio": "Una obligación gremial (UOCRA, Fondo de Cese) está PAGADA cuando un débito de la cuenta la cancela: el Fondo de Cese por el período que el banco escribe en el concepto («Acreditacion fondo desempleo 082026») y UOCRA por importe contra el «Total determinado» de la boleta —un débito dentro de $1, o el único subconjunto de DEBIN libres que suma exacto—. Se cubre hasta lo declarado y NUNCA más: el resto sigue siendo obligación viva. Compras «Pagado» quedó como fuente SECUNDARIA, para el histórico enero–agosto 2026, cuando los gremiales todavía se cargaban ahí. Precedencia: banco > Compras pagado > boleta declarada > proyección de la cadena.",
+      "ventana": "por período DEVENGADO (`YYYY-MM`), que es como nombra la obligación la cadena de Cargas Sociales — no por el mes en que salió la plata",
+      "confianza": "C · patrón probable: el canal DEBIN y el rótulo del lote de Fondo de Cese están medidos sobre el extracto real de 2026 (dos boletas apareadas al centavo), pero un CUIT cobrador (30-70774398-7) sigue sin confirmar y IERIC/FODECO no tienen apareo posible — ver SIN_APAREO",
+      "prohibidas": [
+        {
+          "patron": "mesesPagados",
+          "porque": "Es «la gremial está pagada porque alguien marcó Pagado en Compras». El dueño prohibió cargar gremiales en Compras el 10/09/2026 («tienen pestañas especiales donde esto tiene que quedar registrado»), y ese mismo día la boleta de UOCRA de agosto se pagó por DEBIN ($994.941,26): sin fila en Compras, el egreso ya debitado seguía proyectado como futuro y el cash flow lo contaba dos veces. La marca de la planilla es lo que alguien declaró sobre el hecho; el hecho es el débito."
+        }
+      ],
+      "excepciones": [
+        {
+          "archivo": "orquestador/lib/libro-extractores-cargas.mjs",
+          "porque": "Es donde vive la precedencia: recibe las dos fuentes y decide cuál manda. Compras sigue entrando como SECUNDARIA porque es lo único que cubre enero–agosto 2026, cuando los gremiales sí se cargaban ahí."
+        },
+        {
+          "archivo": "orquestador/scripts/libro-movimientos-pestana.mjs",
+          "porque": "El único llamador del pipeline: arma las dos fuentes (Compras y el apareo del banco) y se las pasa a la cadena. Un consumidor NUEVO de la marca de Compras no puede aparecer sin declararse acá."
+        }
+      ]
+    },
+    {
       "concepto": "carpeta_de_drive",
       "canonica": "src/features/documentos/services/carpetaDeEntidad.ts · FUENTE_DE_CARPETA — obra: public.obra_canonica.drive_carpeta_id · cliente: public.clientes.drive_carpeta_id · persona: public.persona_legajo.drive_folder_id · proveedor: NINGUNA (no existen carpetas de proveedor en Drive)",
       "propietario": "quien edita la ficha (el campo «Carpeta Drive» de la obra y del cliente) · orquestador/scripts/legajos-sincronizar.mjs para la persona",

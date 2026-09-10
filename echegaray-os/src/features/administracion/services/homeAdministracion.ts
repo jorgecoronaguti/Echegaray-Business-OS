@@ -323,7 +323,7 @@ const SENALES: {
     clave: 'correcciones', de: (c) => c.correcciones,
     singular: 'corrección de asistencia sin resolver', plural: 'correcciones de asistencia sin resolver',
     bloquea: 'Las HH del legajo quedan mal',
-    donde: 'Asistencia', accion: 'Revisar',
+    donde: 'Horas', accion: 'Revisar',
     href: '/administracion/asistencia', tono: 'warn', icono: 'tiempo',
   },
 ]

@@ -61,7 +61,7 @@ test.describe('Liquidación · Administración → Personal', () => {
     await expect(page.getByTestId('cuadro-obreros')).toHaveCount(0)
   })
 
-  test('la solapa Asistencia sigue en pie para el jefe de obra', async ({ page }) => {
+  test('la solapa Horas (asistencia) sigue en pie para el jefe de obra', async ({ page }) => {
     // El corte no puede llevarse puesto lo que el jefe SÍ tiene que hacer acá: cargar la quincena.
     await entrarComo(page, JEFE.email, JEFE.password)
     await page.goto('/administracion/personas?vista=asistencia&quincena=2026-09-01')
