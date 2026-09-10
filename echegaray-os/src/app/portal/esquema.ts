@@ -402,3 +402,24 @@ function netoDelPago(p: { neto?: number | null; monto?: number | null; iva?: num
   if (p.monto == null) return 0
   return p.iva != null ? p.monto - p.iva : p.monto
 }
+
+/**
+ * DE QUIÉN ES ESE CONTRATO — el pie de la cifra, y la razón de que exista este texto.
+ *
+ * ═══ TRES NÚMEROS DISTINTOS SE LLAMABAN «CONTRATO» (10/09/2026) ═══
+ *
+ * El mismo cliente leía «$31,85 M contrato» en el esquema de pago de la ficha, «$156.174.253
+ * contratado» en `/clientes`, y «CONTRATO $12.692.935 + IVA de 3 obras» en su portal. Los dos
+ * primeros eran un defecto de fuente y están arreglados. El tercero NO es el mismo concepto y no
+ * hay que fusionarlo: es la suma de lo contratado de las obras EN CURSO QUE TIENEN CRONOGRAMA
+ * PUBLICADO —lo único contra lo que el pie de esa pantalla puede comparar sus pagos— y se mide en
+ * la moneda en que se firmó cada una.
+ *
+ * Lo que no se puede es seguir llamándolo «contrato» a secas. Un número que se llama igual que
+ * otro y vale un orden de magnitud menos no es un dato: es una discusión.
+ */
+export function alcanceDelContrato({ obras, sinContrato }: { obras: number; sinContrato: number }): string {
+  const base = `de ${obras === 1 ? '1 obra' : `${obras} obras`} con cronograma publicado`
+  if (!sinContrato) return base
+  return `${base} · ${sinContrato === 1 ? '1 obra sin contrato cargado' : `${sinContrato} obras sin contrato cargado`}`
+}

@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  corto, estadoDePago, proximoPago, resumenDeCobro, loQueSigue, pesos, diaMes, ROTULO_ESTADO, type Pago,
+  corto, estadoDePago, proximoPago, resumenDeCobro, loQueSigue, pesos, diaMes, ROTULO_ESTADO,
+  marcaDeFila, rotuloDelCronograma, type Pago,
 } from './cronograma.ts'
 
 const HOY = '2026-08-26'
@@ -225,4 +226,46 @@ test('una línea que es toda IVA no suma al neto cobrado', () => {
   assert.equal(r.netoPagado, 0)
   assert.equal(r.ivaPagado, 6_510_000)
   assert.equal(r.pagado, 6_510_000, 'el cobro sigue estando: lo que cambia es cómo se reparte')
+})
+
+// ═══ EL «PRÓXIMO» NO PUEDE TAPAR AL «VENCIDO» (10/09/2026) ═══
+//
+// Producción, portal de Messina: «Cobro · Pilón · 28/08 · próximo», trece días después de su fecha.
+// La regla de fechas estaba bien; la fila se rotulaba «próximo» por ser el próximo pago y con eso
+// perdía la única palabra que decía que estaba en mora.
+
+test('el pago vencido se sigue llamando vencido aunque sea el próximo que hay que pagar', () => {
+  const vencido = p({ id: 'pilon', fechaPrevista: '2026-08-28' })
+  assert.equal(estadoDePago(vencido, '2026-09-10'), 'vencido')
+  assert.equal(marcaDeFila('vencido', true), 'vencido', 'ser el próximo no lo pone al día')
+  assert.equal(ROTULO_ESTADO[marcaDeFila('vencido', true)], 'vencido')
+})
+
+test('lo que todavía no venció y es lo próximo SÍ se marca «próximo»', () => {
+  assert.equal(marcaDeFila('programado', true), 'proximo')
+  assert.equal(marcaDeFila('programado', false), 'programado')
+  assert.equal(marcaDeFila('pagado', true), 'pagado', 'un pago hecho no es «lo próximo»')
+})
+
+// ═══ EL ENCABEZADO CUENTA LO QUE SE VE ═══
+//
+// Decía «13 pagos · 7 obras» arriba de 10 filas, 4 pastillas de obra y un pie de 10.
+
+test('el encabezado cuenta los pagos en curso y las obras que ofrecen las pastillas', () => {
+  assert.equal(
+    rotuloDelCronograma({ enCurso: 10, anteriores: 3, obras: 4, obraNombre: null }),
+    '10 pagos · 4 obras · +3 de obras anteriores',
+  )
+})
+
+test('sin obras anteriores no se agrega nada, y con una obra sola no se escribe «1 obra»', () => {
+  assert.equal(rotuloDelCronograma({ enCurso: 4, anteriores: 0, obras: 1, obraNombre: null }), '4 pagos')
+  assert.equal(rotuloDelCronograma({ enCurso: 1, anteriores: 0, obras: 1, obraNombre: null }), '1 pago')
+})
+
+test('con una obra elegida se la nombra: la pantalla habla de esa y de nada más', () => {
+  assert.equal(
+    rotuloDelCronograma({ enCurso: 2, anteriores: 0, obras: 4, obraNombre: 'ME - BSA' }),
+    '2 pagos · ME - BSA',
+  )
 })
