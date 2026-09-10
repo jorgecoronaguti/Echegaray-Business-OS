@@ -204,3 +204,16 @@ test('con una sola OC la celda dice CUÁL, no cuántas', () => {
   assert.match(src, /totalOC\.n === 1 \? \(deLaObra\?\.oc\[0\]\?\.numeroCorto \?\? null\) : null/)
   assert.match(src, /numero=\{unicaOC\}/)
 })
+
+test('la celda de cobro de la obra no dibuja NADA mientras la base no pueda repartir', () => {
+  const src = codigo()
+  assert.match(src, /if \(!disponible\) return <span className=\{SOLO_ANCHO\} data-testid=\{testid\} data-cobro="sin-imputacion" \/>/)
+  assert.match(src, /disponible=\{o\.cobroDisponible\}/, 'la fila de la obra tiene que pasarlo')
+  // La fila del CLIENTE no entra en la regla: su importe sale de `cliente_economia` y no depende de
+  // que se pueda repartir nada. Si alguien le pasa `disponible`, la columna se apaga entera.
+  const delCliente = src.slice(
+    src.lastIndexOf('<Cobrado', src.indexOf('testid="cobro-cliente"')),
+    src.indexOf('/>', src.indexOf('testid="cobro-cliente"')) + 2,
+  )
+  assert.doesNotMatch(delCliente, /disponible=/)
+})

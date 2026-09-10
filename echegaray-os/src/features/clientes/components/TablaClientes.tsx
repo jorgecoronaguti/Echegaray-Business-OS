@@ -130,7 +130,7 @@ const VACIO: PapelesDelCliente = {
  * OS es el grafito, que es además con lo que esta misma tabla dibuja el avance de la obra. Dos
  * barras con dos colores en la misma fila serían dos vocabularios.
  */
-function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'obra', tam, obrasSinPrecio = null, imputacion = null }: {
+function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'obra', tam, obrasSinPrecio = null, imputacion = null, disponible = true }: {
   cobrado: number | null
   contratado: number | null
   /**
@@ -147,8 +147,19 @@ function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'o
   ambito?: 'obra' | 'cliente'
   tam: string
   obrasSinPrecio?: number | null
+  /** ¿La base puede contestar esta pregunta para una obra? Ver `CobroPorObra`. La fila del CLIENTE
+   *  nace en `true`: su importe sale de `cliente_economia` y no depende de repartir nada. */
+  disponible?: boolean
 }) {
   if (!veEconomia) return <span className={SOLO_ANCHO} />
+  // ═══ TODO O NADA (dueño, 10/09/2026 16:25: «uno con barra de progreso y otros no») ═══
+  //
+  // Mientras la base no pueda repartir el cobro por obra —`obra_cobranza.imputacion` sin aplicar—
+  // NINGUNA fila de obra publica cobro. Hoy la única que tenía barra era Quattropani, y no porque
+  // se supiera más de esa obra: es que su etiqueta de Cobranzas coincide con el id de su única
+  // obra. Una sola barra en una columna vacía no se lee como «la base sólo sabe de ésta», se lee
+  // como que las otras no cobraron. Ni siquiera un «—»: no hay pregunta que la base pueda contestar.
+  if (!disponible) return <span className={SOLO_ANCHO} data-testid={testid} data-cobro="sin-imputacion" />
   if (imputacion === 'cliente') {
     return (
       <span
@@ -468,6 +479,7 @@ export function TablaClientes({
                       puede calcular cuando hay contratado. */}
                   <Cobrado
                     cobrado={o.cobrado} contratado={o.contratado} medible imputacion={o.imputacion}
+                    disponible={o.cobroDisponible}
                     veEconomia={veEconomia} testid="cobro-obra" tam="11.5px"
                   />
                 </Link>
