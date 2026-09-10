@@ -42,6 +42,9 @@ export interface ArchivoIndexado {
   size_bytes: number | null
   modified_time: string | null
   nombre_norm: string | null
+  ausente_en_drive: boolean
+  trashed: boolean
+  web_view_link: string | null
 }
 
 // ═══ LOS ARCHIVOS NO SE COPIAN: SE VINCULAN ═══
@@ -49,12 +52,35 @@ export interface ArchivoIndexado {
 // `obras.md` §1g, textual. La única forma de abrir un documento es su URL de Drive, construida con
 // el `drive_file_id` que el indexador ya guardó. El OS no guarda el archivo, no lo sirve y no lo
 // duplica: si mañana alguien lo mueve de carpeta en Drive, este enlace sigue siendo el bueno.
-export const enlaceDrive = (driveFileId: string) => `https://drive.google.com/file/d/${driveFileId}/view`
+//
+// DESDE EL 10/09/2026 EL ÍNDICE SÍ GUARDA `webViewLink`, y cuando está, GANA. La URL derivada del
+// id vale para My Drive; para un archivo de una unidad compartida Drive devuelve otra, y la
+// derivada manda a un 404 que se lee como un problema de permisos. Se sigue derivando cuando la
+// columna está en null: son las 4.232 filas indexadas antes de que la columna existiera.
+export const enlaceDrive = (driveFileId: string, webViewLink?: string | null) =>
+  webViewLink?.trim() || `https://drive.google.com/file/d/${driveFileId}/view`
+
+/**
+ * LA MARCA DE LA FILA, cuando el archivo no está donde la fila dice.
+ *
+ * Dos hechos distintos y ninguno es «borrado»: `ausente` es «el indexador miró la carpeta entera y
+ * no estaba», `en la papelera` es «Drive lo tiene, marcado para borrar». La ausencia gana cuando se
+ * dan las dos, porque es la más fuerte: de un archivo que no se vio no se sabe si sigue en la
+ * papelera. `null` es el caso normal y no dibuja nada.
+ */
+export function marcaDeArchivo(
+  d: { ausente_en_drive?: boolean; trashed?: boolean },
+): 'ausente en Drive' | 'en la papelera' | null {
+  if (d.ausente_en_drive) return 'ausente en Drive'
+  if (d.trashed) return 'en la papelera'
+  return null
+}
 
 // ═══ DESCARGAR Y PREVISUALIZAR SON DOS URL DE DRIVE, NO UNA INTEGRACIÓN ═══
 //
-// `drive_index` NO guarda `webContentLink` ni `webViewLink` —sus columnas son id, nombre, ruta,
-// mime, tamaño y fechas—, así que las dos direcciones se DERIVAN del id. Son las direcciones
+// `drive_index` no guardaba `webContentLink` ni `webViewLink`, así que las dos direcciones se
+// DERIVAN del id (`webViewLink` llegó el 10/09 y lo usa `enlaceDrive`; la descarga sigue derivada:
+// `webContentLink` no se pide). Son las direcciones
 // públicas y estables de Drive: el OS no sirve el archivo, no lo copia y no lo proxya. Quien las
 // abre las abre con SU sesión de Google, y por eso los permisos siguen siendo los de Drive: si no
 // tiene acceso, Google se lo dice. Eso es lo correcto, no una falla.

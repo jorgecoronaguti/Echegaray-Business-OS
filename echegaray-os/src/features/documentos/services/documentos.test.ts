@@ -7,7 +7,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   carpetaDe, conVinculos, enlaceDescarga, enlaceDrive, enlacePreview, estadoVigencia, etiquetaLegajo,
-  hayVencimientos, IDS_POR_PARTE, migajaDe, partirIds, pesoLegible, resumirListado, unirPartes,
+  hayVencimientos, IDS_POR_PARTE, marcaDeArchivo, migajaDe, partirIds, pesoLegible, resumirListado, unirPartes,
   type ArchivoIndexado, type VinculoCliente, type VinculoLegajo, type VinculoObra,
 } from './documentos.ts'
 
@@ -15,6 +15,7 @@ import {
 const doc = (vence: string | null, id = Math.random().toString(36)) => ({
   drive_file_id: id, name: 'x.pdf', path: null, tipo: 'pdf', mime_type: null, size_bytes: null,
   modified_time: null, nombre_norm: 'x', vinculos: [], vence,
+  ausente_en_drive: false, trashed: false, web_view_link: null,
 })
 
 const archivo = (p: Partial<ArchivoIndexado> = {}): ArchivoIndexado => ({
@@ -23,7 +24,8 @@ const archivo = (p: Partial<ArchivoIndexado> = {}): ArchivoIndexado => ({
   path: 'administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/PUENTE DE PLAYA/EPP.pdf',
   tipo: 'pdf', mime_type: 'application/pdf', size_bytes: 1766658,
   modified_time: '2024-03-20T15:04:19.005+00:00',
-  nombre_norm: 'epp quiroga y bazan', ...p,
+  nombre_norm: 'epp quiroga y bazan',
+  ausente_en_drive: false, trashed: false, web_view_link: null, ...p,
 })
 
 test('un documento sin vencimiento cargado NO está vigente: no se sabe', () => {
@@ -93,6 +95,31 @@ test('el archivo se ABRE en Drive: el OS no lo copia ni lo sirve', () => {
     enlaceDrive('17P0Zrixdwa091srh-p4LXD30Mv8qS6sG'),
     'https://drive.google.com/file/d/17P0Zrixdwa091srh-p4LXD30Mv8qS6sG/view',
   )
+})
+
+test('el enlace que dio Drive le GANA al derivado del id', () => {
+  // EL DEFECTO QUE ATRAPA: un archivo de una unidad compartida no vive en
+  // `drive.google.com/file/d/<id>/view`. La URL derivada abre un 404 que se lee como un problema
+  // de permisos, y el archivo estaba ahí.
+  assert.equal(
+    enlaceDrive('f1', 'https://docs.google.com/spreadsheets/d/f1/edit?usp=drivesdk'),
+    'https://docs.google.com/spreadsheets/d/f1/edit?usp=drivesdk',
+  )
+  // Las 4.232 filas indexadas antes de que la columna existiera siguen derivando.
+  assert.equal(enlaceDrive('f1', null), 'https://drive.google.com/file/d/f1/view')
+  assert.equal(enlaceDrive('f1', '   '), 'https://drive.google.com/file/d/f1/view')
+})
+
+test('el archivo que el índice ya no ve se MARCA en la fila, no se esconde', () => {
+  // EL DEFECTO QUE ATRAPA (10/09/2026): hasta hoy el indexador BORRABA la fila y el archivo
+  // desaparecía de la pantalla sin dejar rastro — indistinguible de uno que nunca existió.
+  assert.equal(marcaDeArchivo({ ausente_en_drive: true, trashed: false }), 'ausente en Drive')
+  assert.equal(marcaDeArchivo({ ausente_en_drive: false, trashed: true }), 'en la papelera')
+  // Las dos juntas: gana la ausencia. De un archivo que no se vio no se sabe si sigue en la
+  // papelera; afirmar lo más débil sería afirmar de más.
+  assert.equal(marcaDeArchivo({ ausente_en_drive: true, trashed: true }), 'ausente en Drive')
+  assert.equal(marcaDeArchivo({ ausente_en_drive: false, trashed: false }), null)
+  assert.equal(marcaDeArchivo({}), null, 'sin dato no se afirma una ausencia')
 })
 
 // ── DESCARGAR Y PREVISUALIZAR ──────────────────────────────────────────────────────────────────

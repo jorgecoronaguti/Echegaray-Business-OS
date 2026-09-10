@@ -34,7 +34,7 @@ import Link from 'next/link'
 import { IconoDocumento, IconoFoto, IconoPresupuesto } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, RotuloCol, V } from '@/shared/components/v2/patron'
 import { diaMes } from '@/shared/components/canon/formato'
-import { estadoVigencia, migajaDe } from '../services/documentos'
+import { estadoVigencia, marcaDeArchivo, migajaDe } from '../services/documentos'
 import { categoriaDe, ETIQUETA_CATEGORIA } from '../services/categorias'
 import type { Documento } from '../types'
 
@@ -80,6 +80,10 @@ export function TablaDocumentos({
         // `fecha_vencimiento`. Para el resto, la ausencia de fecha no es un pendiente — es que ese
         // archivo no vence, y escribirle «sin fecha» inventaría un control que no le corresponde.
         const enLegajo = d.vinculos.some((v) => v.legajoId !== null)
+        // EL ARCHIVO QUE YA NO ESTÁ NO DESAPARECE DE LA LISTA. El índice dejó de borrar el 10/09:
+        // la fila se queda con su ruta y sus vínculos y lo dice acá, en tenue. Sacarla sería
+        // repetir el defecto que se acaba de arreglar, pero en la pantalla.
+        const marca = marcaDeArchivo(d)
         return (
           <Link
             key={d.drive_file_id}
@@ -113,6 +117,11 @@ export function TablaDocumentos({
               <span data-testid="categoria-documento" style={{ fontSize: '10.5px', color: V.lupa, flexShrink: 0 }}>
                 {ETIQUETA_CATEGORIA[categoria]}
               </span>
+              {marca && (
+                <span data-testid="marca-archivo" style={{ fontSize: '10.5px', color: V.tenue, flexShrink: 0 }}>
+                  · {marca}
+                </span>
+              )}
             </span>
 
             {/* SIN VÍNCULO NO ES UN ERROR: 2 de cada 3 archivos del Drive no cuelgan de ninguna

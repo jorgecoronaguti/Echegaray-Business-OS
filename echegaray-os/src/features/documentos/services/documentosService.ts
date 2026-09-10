@@ -27,7 +27,17 @@ import { esCategoria, patronesAnteriores, patronesDe, type ClaveCategoria, type 
 // `nombre_norm` viaja porque es el campo que CLASIFICA: la etiqueta de categoría de cada fila se
 // calcula con el mismo texto contra el que filtró Postgres. Normalizar el nombre otra vez en el
 // navegador dejaría al chip y a la fila discutiendo sobre el mismo archivo.
-const COLUMNAS = 'drive_file_id, name, path, tipo, mime_type, size_bytes, modified_time, nombre_norm'
+//
+// `ausente_en_drive`, `trashed` y `web_view_link` llegaron con la migración
+// 20260910T1930_drive_index_ausente_md5.sql: ESTA PANTALLA NO CARGA SIN ELLA. Es a propósito —
+// PostgREST contesta 42703 y se ve el error— en vez de omitirlas y mostrar 4.232 archivos como si
+// todos siguieran en su lugar. Se aplica la migración ANTES de desplegar.
+//
+// LAS DOS CONSTANTES SE UNEN CON UN TEMPLATE LITERAL Y `as const` A PROPÓSITO: supabase-js DEDUCE
+// el tipo de la fila parseando esta cadena, y una concatenación con `+` la degrada a `string` —
+// ahí el tipo de `data` pasa a ser `GenericStringError` y el cast del panel deja de compilar.
+const COLUMNAS_INDICE = 'drive_file_id, name, path, tipo, mime_type, size_bytes, modified_time, nombre_norm' as const
+const COLUMNAS = `${COLUMNAS_INDICE}, ausente_en_drive, trashed, web_view_link` as const
 
 /**
  * Filas por página. La pantalla pide una más con «Cargar más» y la consulta trae `TOPE × páginas`.

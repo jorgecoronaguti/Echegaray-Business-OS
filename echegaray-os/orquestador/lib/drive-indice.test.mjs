@@ -5,13 +5,15 @@
 //   1. que la fila que se guarda tenga la MISMA forma comparable que va a tener la consulta
 //      (si no, el buscador no encuentra nada y el índice parece lleno);
 //   2. que una fila sin cambios no se reescriba (2.465 UPDATEs cada 6 h por nada);
-//   3. que un recorrido parcial NO borre — el único error irreversible de todo el módulo.
+//   3. que un recorrido parcial NO afirme una ausencia — y que NADA se borre nunca, que era
+//      el único error irreversible de todo el módulo.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import {
-  FOLDER, RAIZ_ADMINISTRACION, PISO_BORRADO,
-  tipoLegible, emailDeOwners, raicesDesdeEnv, filaIndice, decidirEscritura, planDeBorrado,
-  RAIZ_ARCHIVO_FISCAL,
+  FOLDER, RAIZ_ADMINISTRACION, CAMPOS_DRIVE,
+  tipoLegible, emailDeOwners, raicesDesdeEnv, filaIndice, decidirEscritura, planDeAusencia,
+  porQueLaRaizNoSirve, RAIZ_ARCHIVO_FISCAL,
 } from './drive-indice.mjs'
 import { tokenizar } from './drive-busqueda/normalizar.mjs'
 
@@ -122,42 +124,155 @@ test('recalcular la misma entrada da el mismo hash (o el incremental no sirve)',
   assert.equal(fila().hash, fila().hash)
 })
 
-// ── 3. El borrado, que es el error irreversible ──────────────────────────────
+// ── 3. La ausencia, que reemplazó al borrado ────────────────────────────────
+//
+// EL DEFECTO QUE ESTOS TESTS ATRAPAN (10/09/2026): el índice BORRABA lo que no veía. El piso
+// del 70% cubría el fallo grosero y no el real —UNA carpeta con 403 y doscientas filas
+// buenas que se van para siempre—. Ahora se marca, y sólo lo que faltó donde alguien sí pudo
+// mirar. Si alguien revierte esto, cae toda esta sección.
 
-const previos = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
+/** El índice tal como está guardado: lo que importa de cada fila es de qué carpeta cuelga. */
+const enCarpeta = (id, parent, ausente = false) =>
+  ({ drive_file_id: id, parent_id: parent, ausente_en_drive: ausente })
 
-test('lo que desapareció de Drive se saca del índice', () => {
-  const plan = planDeBorrado({ vistos: new Set(previos.filter((x) => x !== 'j')), enBase: previos, corridaCompleta: true })
-  assert.deepEqual(plan.borrar, ['j'])
+test('un recorrido parcial NO marca ausentes de la carpeta que no se pudo leer', () => {
+  // `cA` se listó entera; `cB` devolvió 403 y no se listó. Sus archivos no se vieron
+  // NINGUNO de los dos, y la diferencia entre ellos es todo: de `a2` se sabe que no está,
+  // de `b1` y `b2` no se sabe nada.
+  const indiceActual = [
+    enCarpeta('a1', 'cA'), enCarpeta('a2', 'cA'),
+    enCarpeta('b1', 'cB'), enCarpeta('b2', 'cB'),
+  ]
+  const plan = planDeAusencia({
+    indiceActual,
+    vistos: new Set(['a1']),
+    carpetasListadasEnteras: new Set(['cA']),
+  })
+  assert.deepEqual(plan.marcar, ['a2'])
+  assert.equal(plan.intactas, 2, 'los dos de la carpeta ilegible quedan como estaban')
+  assert.deepEqual(plan.revivir, [])
 })
 
-test('una corrida que no terminó NO borra nada', () => {
-  const plan = planDeBorrado({ vistos: new Set(['a']), enBase: previos, corridaCompleta: false })
-  assert.deepEqual(plan.borrar, [])
-  assert.match(plan.motivo, /no terminó/)
+test('el archivo que desaparece de una carpeta listada entera se MARCA, no se borra', () => {
+  const plan = planDeAusencia({
+    indiceActual: [enCarpeta('f1', 'c1'), enCarpeta('f2', 'c1')],
+    vistos: new Set(['f1']),
+    carpetasListadasEnteras: new Set(['c1']),
+  })
+  assert.deepEqual(plan.marcar, ['f2'])
+  assert.match(plan.motivo, /NADA SE BORRA/)
 })
 
-test('un solo error de lectura bloquea el borrado entero', () => {
-  // Una carpeta ilegible no dice "está vacía", dice "no sé qué hay adentro".
-  const plan = planDeBorrado({ vistos: new Set(previos.slice(0, 9)), enBase: previos, corridaCompleta: true, errores: 1 })
-  assert.deepEqual(plan.borrar, [])
-  assert.match(plan.motivo, /error/)
+test('el archivo que reaparece se revive y conserva su fila', () => {
+  const plan = planDeAusencia({
+    indiceActual: [enCarpeta('f1', 'c1', true), enCarpeta('f2', 'c1', true)],
+    vistos: new Set(['f1']),
+    carpetasListadasEnteras: new Set(['c1']),
+  })
+  assert.deepEqual(plan.revivir, ['f1'], 'volvió a verse: deja de estar ausente')
+  // `f2` sigue sin verse pero YA estaba marcada: no se vuelve a tocar, o `ausente_desde`
+  // diría "hace seis horas" para siempre y nunca se podría contestar desde cuándo falta.
+  assert.deepEqual(plan.marcar, [])
 })
 
-test('una corrida que vio la mitad del índice se considera parcial y no borra', () => {
-  const plan = planDeBorrado({ vistos: new Set(previos.slice(0, 5)), enBase: previos, corridaCompleta: true })
-  assert.deepEqual(plan.borrar, [])
-  assert.match(plan.motivo, /parcial/)
-  assert.ok(PISO_BORRADO > 0.5 && PISO_BORRADO < 1)
+test('el plan NO PUEDE borrar: no existe la palabra', () => {
+  // La guarda contra la regresión: si alguien vuelve a poner un `borrar` en el plan o un
+  // `delete from drive_index` en el script, esto se pone rojo.
+  const plan = planDeAusencia({
+    indiceActual: [enCarpeta('f1', 'c1')],
+    vistos: new Set(),
+    carpetasListadasEnteras: new Set(['c1']),
+  })
+  assert.deepEqual(Object.keys(plan).sort(), ['intactas', 'marcar', 'motivo', 'revivir'])
+  assert.equal(plan.borrar, undefined)
+  const lib = fs.readFileSync(new URL('./drive-indice.mjs', import.meta.url), 'utf8')
+  assert.ok(!/export function planDeBorrado/.test(lib),
+    'planDeBorrado no puede volver a existir (la mención en el comentario cuenta la historia, no la exporta)')
+  const script = fs.readFileSync(new URL('../../scripts/indexar-drive.mjs', import.meta.url), 'utf8')
+  assert.ok(!/delete\s+from\s+public\.drive_index/i.test(script),
+    'el indexador no puede borrar filas del catálogo')
 })
 
-test('sin nada previo (índice vacío) no divide por cero ni borra', () => {
-  const plan = planDeBorrado({ vistos: new Set(['a']), enBase: [], corridaCompleta: true })
-  assert.deepEqual(plan.borrar, [])
+test('una raíz sin recorrer no arrastra a sus archivos: sin carpeta listada no se marca nada', () => {
+  const indiceActual = [enCarpeta('f1', 'c1'), enCarpeta('raiz', null)]
+  const plan = planDeAusencia({ indiceActual, vistos: new Set(), carpetasListadasEnteras: new Set() })
+  assert.deepEqual(plan.marcar, [])
+  assert.equal(plan.intactas, 2, 'la raíz nunca se marca: nadie listó a su padre')
 })
 
-test('si no faltó ninguno, no hay borrado', () => {
-  assert.deepEqual(planDeBorrado({ vistos: new Set(previos), enBase: previos, corridaCompleta: true }).borrar, [])
+test('marcar es idempotente: correr dos veces con la misma foto no agrega nada', () => {
+  const args = {
+    indiceActual: [enCarpeta('f1', 'c1'), enCarpeta('f2', 'c1')],
+    vistos: new Set(['f1']),
+    carpetasListadasEnteras: new Set(['c1']),
+  }
+  assert.deepEqual(planDeAusencia(args).marcar, ['f2'])
+  const yaMarcada = {
+    ...args,
+    indiceActual: [enCarpeta('f1', 'c1'), enCarpeta('f2', 'c1', true)],
+  }
+  assert.deepEqual(planDeAusencia(yaMarcada).marcar, [])
+})
+
+test('sin argumentos no explota ni afirma nada', () => {
+  const plan = planDeAusencia()
+  assert.deepEqual(plan.marcar, [])
+  assert.deepEqual(plan.revivir, [])
+})
+
+// ── 3 bis. La papelera y el contenido ───────────────────────────────────────
+
+test('md5 y trashed llegan a la fila normalizada', () => {
+  const f = filaIndice(
+    archivo({ md5Checksum: 'd41d8cd98f00b204e9800998ecf8427e', trashed: true, webViewLink: 'https://drive.google.com/file/d/f1/view' }),
+    { path: 'administracion/x' })
+  assert.equal(f.md5, 'd41d8cd98f00b204e9800998ecf8427e')
+  assert.equal(f.trashed, true)
+  assert.equal(f.web_view_link, 'https://drive.google.com/file/d/f1/view')
+  // Y se le piden a Drive: una columna que el fetch no trae se llena de null en silencio.
+  for (const c of ['md5Checksum', 'trashed', 'webViewLink']) {
+    assert.ok(CAMPOS_DRIVE.includes(c), `CAMPOS_DRIVE no pide ${c}`)
+  }
+})
+
+test('un Doc nativo no tiene md5 y eso NO se rellena con nada', () => {
+  const f = filaIndice(archivo({ mimeType: 'application/vnd.google-apps.document' }), { path: 'administracion/x' })
+  assert.equal(f.md5, null, 'un md5 inventado es peor que ninguno: una comparación lo creería')
+  assert.equal(f.trashed, false, 'sin dato, un archivo NO está en la papelera')
+  assert.equal(f.web_view_link, null)
+})
+
+test('el md5 distinto reescribe la fila aunque los metadatos digan que no cambió nada', () => {
+  // El hash es de metadatos: una restauración de versión o una escritura por API pueden
+  // dejar `modifiedTime` quieto sobre bytes distintos, y ahí el hash dice "igual".
+  const f = filaIndice(archivo({ md5Checksum: 'bbb' }), { path: 'administracion/x' })
+  const previa = new Map([[f.drive_file_id, { hash: f.hash, owner_email: f.owner_email, md5: 'aaa', trashed: false }]])
+  assert.equal(decidirEscritura(f, previa), 'actualizar')
+  const igual = new Map([[f.drive_file_id, { hash: f.hash, owner_email: f.owner_email, md5: 'bbb', trashed: false }]])
+  assert.equal(decidirEscritura(f, igual), 'omitir')
+})
+
+test('el md5 faltante se rellena una vez (backfill de las 4.232 filas viejas) y el trashed desconocido no dispara nada', () => {
+  const f = filaIndice(archivo({ md5Checksum: 'bbb' }), { path: 'administracion/x' })
+  assert.equal(decidirEscritura(f, new Map([[f.drive_file_id, { hash: f.hash, owner_email: f.owner_email, md5: null }]])), 'actualizar')
+  // `trashed` ausente en lo guardado NO es `false`: es "no se sabe", y no puede provocar
+  // 4.232 UPDATEs la primera vez que corra el código nuevo.
+  const sinMd5 = filaIndice(archivo(), { path: 'administracion/x' })
+  assert.equal(decidirEscritura(sinMd5, new Map([[sinMd5.drive_file_id, { hash: sinMd5.hash, owner_email: sinMd5.owner_email }]])), 'omitir')
+})
+
+test('mandar un archivo a la papelera reescribe su fila', () => {
+  const f = filaIndice(archivo({ trashed: true }), { path: 'administracion/x' })
+  assert.equal(decidirEscritura(f, new Map([[f.drive_file_id, { hash: f.hash, owner_email: f.owner_email, trashed: false }]])), 'actualizar')
+})
+
+test('una raíz en la papelera ABORTA la corrida, no la convierte en un vaciado', () => {
+  // Drive devuelve la carpeta por id y la lista vacía SIN error: con el plan de ausencia,
+  // eso marcaría ausente el data room entero.
+  assert.match(porQueLaRaizNoSirve({ trashed: true, mimeType: FOLDER }), /PAPELERA/)
+  assert.match(porQueLaRaizNoSirve(null), /no existe|acceso/)
+  assert.match(porQueLaRaizNoSirve({ mimeType: 'application/pdf' }), /no es una carpeta/)
+  assert.equal(porQueLaRaizNoSirve({ trashed: false, mimeType: FOLDER }), null)
 })
 
 // ── 4. Multi-raíz ────────────────────────────────────────────────────────────
