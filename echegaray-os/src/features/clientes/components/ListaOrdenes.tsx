@@ -14,8 +14,12 @@ import { V } from '@/shared/components/v2/patron'
 import { pesos } from '@/shared/components/canon/formato'
 import { numeroCorto, type OrdenDetallada } from '../services/ordenesCliente'
 
+// `retencion` es el certificado de retención impositiva que el cliente manda junto con el pago.
+// Se nombra por lo que es: llamarlo «Documento» escondía que la OP 4865 tenía dos filas, y llamarlo
+// «Orden de pago» —como estaba— decía que nos pagaron dos veces.
 const TIPO: Record<string, string> = {
-  orden_compra: 'Orden de compra', orden_pago: 'Orden de pago', factura: 'Factura', otro: 'Documento',
+  orden_compra: 'Orden de compra', orden_pago: 'Orden de pago', retencion: 'Certificado de retención',
+  factura: 'Factura', otro: 'Documento',
 }
 
 /**

@@ -1,10 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  clasificarAdjunto, claveDocumento, clienteDelMail, dominioDe, extensionDe,
-  extraerFecha, extraerImporte, extraerNumero, facturaPropiaDe, formatoNumerico, mapaDeCitas,
-  resolverObraDeTexto, TIPOS, tokensDeObra,
+  clasificarAdjunto, claveDocumento, dominioDe, extensionDe,
+  extraerFecha, extraerImporte, extraerNumero, formatoNumerico, resolverObraDeTexto, tokensDeObra,
 } from './ordenes-cliente.mjs'
+import { facturaPropiaDe, mapaDeCitas, TIPOS } from './ordenes-identidad.mjs'
 
 // Las obras REALES de Messina y San Francisco, tal como están en obra_canonica el 09/09/2026.
 // Se clavan acá porque el defecto que estos tests atrapan es de AMBIGÜEDAD ENTRE ELLAS: dos playones
@@ -17,29 +17,8 @@ const OBRAS_MESSINA = [
   { id: 'o5', nombre: 'ME - BSA' },
 ]
 
-test('el dominio del remitente prueba el cliente', () => {
-  assert.equal(dominioDe('Isabel Villanueva <ivillanueva@juanmessina.com.ar>'), 'juanmessina.com.ar')
-  const c = clienteDelMail({ from: 'Isabel <ivillanueva@juanmessina.com.ar>', asunto: 'OC' })
-  assert.deepEqual({ clave: c.clave, via: c.via }, { clave: 'messina', via: 'remitente' })
-})
-
-test('un reenvío interno se atribuye por el texto, y queda MARCADO como deducido', () => {
-  // Es el caso mayoritario: rodrigo@ecsas.com.ar reenvía la notificación de Messina. Si esto se
-  // atribuyera por remitente, todas las órdenes serían «de ECSAS» y no habría ninguna del cliente.
-  const c = clienteDelMail({ from: 'Rodrigo Echegaray <rodrigo@ecsas.com.ar>', asunto: 'Fwd: Construccion de Playon de Azufre', cuerpo: 'Juan Messina S.A.' })
-  assert.equal(c.clave, 'messina')
-  assert.equal(c.via, 'texto', 'un reenvío NO puede figurar como probado por el remitente')
-})
-
-test('un tercero identificado que NOMBRA a un cliente no se vuelve ese cliente', () => {
-  // El defecto: un proveedor escribe «para la obra de Messina» y su remito termina archivado como
-  // documento de Messina. El texto sólo decide cuando el remitente es de casa o desconocido.
-  assert.equal(clienteDelMail({ from: 'ventas@arcor.com', cuerpo: 'para la obra de Messina' }).clave, 'arcor')
-})
-
-test('sin ninguna marca de cliente el mail queda SIN cliente, no adivinado', () => {
-  assert.equal(clienteDelMail({ from: 'rodrigo@ecsas.com.ar', asunto: 'Fwd: Recibo de Starlink' }), null)
-})
+// LOS CUATRO TESTS DE «DE QUIÉN ES ESTE MAIL» VIVEN AHORA EN `ordenes-atribucion.test.mjs`,
+// junto a la función que los responde.
 
 test('una notificación de pago que CITA la OC se clasifica como pago, no como compra', () => {
   // El defecto real: «Notificación de orden de pago O/P 0000000005156» cuyo cuerpo lista la orden de
@@ -149,11 +128,11 @@ test('la extensión del objeto no se inventa', () => {
 // Todos los textos de acá están COPIADOS de los PDF reales del bucket `obras-documentos` (leídos el
 // 10/09/2026 con `orquestador/lib/ingesta/pdf.mjs`). Un texto inventado prueba la expresión regular
 // contra sí misma; éstos prueban contra el papel que manda Messina.
+import { extraerFechaDeOrden, fechaImposible } from './ordenes-cliente.mjs'
 import {
-  agruparPorNumero, comprobantePropio, comprobantesCitados, extraerFechaDeOrden, fechaImposible,
-  mapaDeEvidencia, numeroCanonico, numeroCorto,
-  obraPorReferencia, ocsCitadas,
-} from './ordenes-cliente.mjs'
+  agruparPorNumero, comprobantePropio, comprobantesCitados, mapaDeEvidencia, numeroCanonico,
+  numeroCorto, obraPorReferencia, ocsCitadas,
+} from './ordenes-identidad.mjs'
 
 test('«Nro.» también trae número: la orden de pago quedaba sin identidad', () => {
   const pdf = 'IMPUTACION ORDEN DE PAGO Nro.: 0000000004865 Fecha de emisión: 28/07/2026'
@@ -240,6 +219,15 @@ test('el número corto hereda, salvo que signifique dos obras', () => {
   ])
   assert.equal(ambiguo.get('2173'), undefined)
   assert.equal(ambiguo.get('2-2173'), 'obra-a')
+})
+
+test('la fecha de la orden no depende de en qué orden el PDF derramó el encabezado', () => {
+  // El MISMO texto de OC_32_0000200002173.pdf con el encabezado al revés — que es como lo derrama
+  // el mismo emisor con otra plantilla. Antes devolvía null: la primera fecha caía fuera de la
+  // ventana y la función se rendía sin mirar el resto del papel.
+  const alReves = 'ORDEN DE COMPRA Manufacturas Químicas Juan Messina S.A. Sede Timbrado 01 '
+    + 'Fecha Inicio Act. 22-08-86 Orden de compra Nº: 00002-00002173 Mendoza - 11 /08 /2026'
+  assert.equal(extraerFechaDeOrden(alReves), '2026-08-11')
 })
 
 test('la fecha de la orden no es «Fecha Inicio Act. 22-08-86»', () => {
