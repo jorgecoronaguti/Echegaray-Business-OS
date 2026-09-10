@@ -4,6 +4,7 @@ import type { ClientePanel } from '@/features/clientes/types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   armarCartera, certificacionDe, diaRelativo, getCobradoPorObra, hoyEnLaEmpresa,
+  olvidarFormaDeObraCobranza,
   type FilaCertificado, type ObraDeCartera,
 } from './homeCartera.ts'
 import type { EconomiaDeCliente } from '@/features/clientes/services/economiaCliente'
@@ -338,6 +339,7 @@ function baseConLasDos(
 
 test('la barra de la obra divide el cobrado NETO, nunca el bruto con IVA', async () => {
   const pedidas: string[] = []
+  olvidarFormaDeObraCobranza()
   const cobrado = await getCobradoPorObra(baseConLasDos(
     [{ obra_id: 'quattropani', cobrado: 102_606_668.76, cobrado_neto: 84_697_934.83 }],
     pedidas,
@@ -362,6 +364,7 @@ test('la barra de la obra divide el cobrado NETO, nunca el bruto con IVA', async
 
 test('sin la columna `imputacion` la lectura NO se cae: se vuelve a pedir sin ella', async () => {
   const pedidas: string[] = []
+  olvidarFormaDeObraCobranza()
   const cobrado = await getCobradoPorObra(baseConLasDos(
     [{ obra_id: 'quattropani', cobrado_neto: 84_697_934.83 }], pedidas,
   ))
@@ -373,6 +376,7 @@ test('sin la columna `imputacion` la lectura NO se cae: se vuelve a pedir sin el
 
 test('con la columna aplicada, la imputación llega tal cual y sin segundo viaje', async () => {
   const pedidas: string[] = []
+  olvidarFormaDeObraCobranza()
   const cobrado = await getCobradoPorObra(baseConLasDos(
     [
       { obra_id: 'messina-playon-azufre', cobrado_neto: 32_500_000, imputacion: 'oc' },
@@ -389,6 +393,7 @@ test('con la columna aplicada, la imputación llega tal cual y sin segundo viaje
 test('un valor de imputación que el OS no conoce se descarta, no se dibuja', async () => {
   // Si mañana la vista publica un cuarto valor, la fila NO puede dibujar una palabra que nadie
   // definió: se trata como «no se sabe» hasta que alguien la agregue acá a propósito.
+  olvidarFormaDeObraCobranza()
   const cobrado = await getCobradoPorObra(baseConLasDos(
     [{ obra_id: 'o1', cobrado_neto: 1, imputacion: 'certificado' }], [],
     ['obra_id', 'cobrado', 'cobrado_neto', 'imputacion'],
@@ -397,10 +402,50 @@ test('un valor de imputación que el OS no conoce se descarta, no se dibuja', as
 })
 
 test('sin cobranzas cobradas la obra NO entra al mapa: un hueco no es un cero', async () => {
+  olvidarFormaDeObraCobranza()
   const cobrado = await getCobradoPorObra(baseConLasDos(
     [{ obra_id: 'messina-bsa', cobrado: null, cobrado_neto: null }], [],
   ))
   assert.equal(cobrado?.has('messina-bsa'), false, 'una barra en 0 % afirmaría que se midió')
+})
+
+// ═══ EL SONDEO NO SE PAGA UNA VEZ POR PANTALLA ═══
+//
+// EL DEFECTO QUE ATRAPA: medido el 10/09/2026, `obra_cobranza.imputacion` NO existe en la base. El
+// `select` tolerante convertía eso en DOS viajes seriales a `obra_cobranza` en CADA render de
+// `/clientes` —el primero entero para cobrar un 42703—, y el viaje de más no cuesta la red: cuesta
+// el arranque en frío de otra conexión del pool. Si alguien saca el memo, este test se pone rojo
+// diciendo cuántos viajes se pagaron de más.
+
+test('con la columna ausente, la SEGUNDA pantalla ya no vuelve a sondear el esquema', async () => {
+  olvidarFormaDeObraCobranza()
+  const primera: string[] = []
+  await getCobradoPorObra(baseConLasDos([{ obra_id: 'o1', cobrado_neto: 1 }], primera))
+  assert.equal(primera.length, 2, 'la primera sí sondea: es la que descubre que la columna no está')
+
+  const segunda: string[] = []
+  await getCobradoPorObra(baseConLasDos([{ obra_id: 'o1', cobrado_neto: 1 }], segunda))
+  assert.equal(
+    segunda.length, 1,
+    `la segunda pantalla pagó ${segunda.length} viajes a obra_cobranza: el sondeo se recuerda`,
+  )
+  assert.ok(!segunda[0].includes('imputacion'), 'y va derecho a las columnas que existen')
+})
+
+test('el memo NO apaga la columna cuando la migración está aplicada', async () => {
+  // La promesa del `select` tolerante es que la barra encienda sola. Un memo que recordara «no
+  // existe» para siempre la dejaría apagada después de aplicar la migración, que es peor que el
+  // viaje de más. Con la columna viva no se memoriza nada y el segundo llamado la sigue trayendo.
+  olvidarFormaDeObraCobranza()
+  const conColumna = ['obra_id', 'cobrado', 'cobrado_neto', 'imputacion']
+  const primera: string[] = []
+  await getCobradoPorObra(baseConLasDos([{ obra_id: 'o1', cobrado_neto: 1, imputacion: 'oc' }], primera, conColumna))
+  const segunda: string[] = []
+  const cobrado = await getCobradoPorObra(
+    baseConLasDos([{ obra_id: 'o1', cobrado_neto: 1, imputacion: 'oc' }], segunda, conColumna))
+  assert.equal(primera.length, 1)
+  assert.equal(segunda.length, 1, 'con la columna viva nunca hay reintento')
+  assert.equal(cobrado?.get('o1')?.imputacion, 'oc', 'y la imputación sigue llegando')
 })
 
 // ═══ LOS CONTEOS QUE LA FILA ESCRIBE ═══

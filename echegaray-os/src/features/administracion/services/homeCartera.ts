@@ -201,10 +201,31 @@ export async function getCobradoPorObra(
   // NO ES UN «por las dudas» ni un patrón para copiar: es el ÚNICO caso del módulo, y sólo se
   // tolera la AUSENCIA de una columna nueva. Cualquier otro error —permiso, red, RLS— sigue
   // devolviendo `null`, que es «no pude leer» y no «no hay cobros».
-  const conImputacion = await supabase.from('obra_cobranza').select('obra_id, cobrado_neto, imputacion')
-  const { data, error } = conImputacion.error?.code === COLUMNA_INEXISTENTE
-    ? await supabase.from('obra_cobranza').select('obra_id, cobrado_neto')
-    : conImputacion
+  //
+  // ═══ EL SONDEO SE PAGA UNA VEZ, NO UNA POR PANTALLA (10/09/2026) ═══
+  //
+  // Medido: `imputacion` NO existe en la base hoy, así que el reintento no era la excepción, era el
+  // camino normal — CADA render de `/clientes` gastaba DOS viajes seriales a `obra_cobranza`, el
+  // primero entero para recibir un 42703. Y el segundo viaje no se paga en red: se paga en el
+  // ARRANQUE EN FRÍO de otra conexión del pool (~800 ms de carga de catálogo; ver el bloque de
+  // `SIN_LA_COLUMNA`), que es de dónde salían los segundos de esta pantalla.
+  //
+  // Lo que se recuerda es la FORMA DEL ESQUEMA, nunca un dato del negocio: los importes se leen
+  // frescos en cada request y no hay caché entre requests que pueda mostrarle al dueño una cifra
+  // vencida. Con TTL corto para que el día que la migración se aplique la barra encienda sola —que
+  // es la promesa que este `select` tolerante vino a cumplir—, sin esperar un redeploy.
+  const sondear = !SIN_LA_COLUMNA.hasta || Date.now() > SIN_LA_COLUMNA.hasta
+  const conImputacion = sondear
+    ? await supabase.from('obra_cobranza').select('obra_id, cobrado_neto, imputacion')
+    : null
+  if (sondear) {
+    SIN_LA_COLUMNA.hasta = conImputacion?.error?.code === COLUMNA_INEXISTENTE
+      ? Date.now() + VENTANA_DEL_SONDEO_MS
+      : null
+  }
+  const { data, error } = conImputacion && conImputacion.error?.code !== COLUMNA_INEXISTENTE
+    ? conImputacion
+    : await supabase.from('obra_cobranza').select('obra_id, cobrado_neto')
   if (error) return null
   const por = new Map<string, CobroDeObra>()
   for (const f of (data ?? []) as { obra_id: string; cobrado_neto: number | null; imputacion?: string | null }[]) {
@@ -222,6 +243,26 @@ export async function getCobradoPorObra(
 
 /** El código de PostgREST/Postgres para «esa columna no existe». */
 const COLUMNA_INEXISTENTE = '42703'
+
+/**
+ * HASTA CUÁNDO SE DA POR SABIDO QUE `imputacion` NO EXISTE.
+ *
+ * 30 s: el mismo techo que el repo le pone a cualquier revalidación explícita. Suficiente para que
+ * una pantalla no pague el sondeo cien veces, y corto para que aplicar la migración se note sola.
+ */
+const VENTANA_DEL_SONDEO_MS = 30_000
+const SIN_LA_COLUMNA: { hasta: number | null } = { hasta: null }
+
+/**
+ * Vuelve a sondear el esquema en el próximo llamado.
+ *
+ * Existe para los TESTS: sin esto, el memo por proceso hace que el segundo test del archivo mida el
+ * estado que dejó el primero, y un test que depende del orden en que corren los demás no prueba
+ * nada. En producción no lo llama nadie — el TTL alcanza.
+ */
+export function olvidarFormaDeObraCobranza(): void {
+  SIN_LA_COLUMNA.hasta = null
+}
 
 const IMPUTACIONES = ['oc', 'alias', 'cliente'] as const
 function esImputacion(v: unknown): v is Imputacion {

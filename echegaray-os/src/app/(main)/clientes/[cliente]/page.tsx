@@ -121,14 +121,24 @@ export default async function ClientePage({ params, searchParams }: {
   const q = await searchParams
 
   const supabase = await createClient()
-  const { data: cliente, error } = await getCliente(supabase, slug)
+  // ═══ EL PERFIL NO ESPERA AL CLIENTE (10/09/2026) ═══
+  //
+  // Eran dos `await` encadenados y no dependen entre sí: quién sos no se deduce de qué ficha
+  // abriste. Cada viaje que sale solo puede caer en una conexión FRÍA del pool, y un backend frío
+  // paga ~800 ms cargando el catálogo de vistas y policies antes de planificar nada (medido). Dos
+  // olas seriales son dos arranques en frío que no se solapan; una sola ola, uno.
+  const [clienteRes, perfilRes] = await Promise.all([
+    getCliente(supabase, slug),
+    getPerfilActual(supabase),
+  ])
+  const { data: cliente, error } = clienteRes
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas: confundirlas escondió un defecto de permisos
   // detrás de un «página no encontrada» durante horas.
   if (error) return <EstadoError mensaje={error} que="la ficha del cliente" />
   if (!cliente) notFound()
 
   const id = cliente.cliente_id
-  const rol = (await getPerfilActual(supabase)).data?.rol ?? null
+  const rol = perfilRes.data?.rol ?? null
   const puedeEditar = esAdministracion(rol)
   // EL PRECIO NO ES DE TODOS: el jefe de obra no ve contratado. Decide la RLS; acá sólo se deja de
   // dibujar la métrica, para no mostrarle un rótulo económico vacío y que parezca un error.
@@ -165,24 +175,40 @@ export default async function ClientePage({ params, searchParams }: {
   // escrito en el presupuesto ataría la ficha a la grafía del texto.
   const presupuestos = lector.leer(cartera, []).filter((p) => p.cliente_id === id)
 
-  const [cuenta, certificados] = solapa === 'cuenta' && veEconomia
-    ? await Promise.all([getCuentaCorriente(supabase, id), getCertificados(supabase, id)])
-    : [{ data: null, error: null }, { data: [], error: null }]
-  const esquema = solapa === 'esquema' && veEconomia
-    ? await getEsquemaCliente(supabase, id)
-    : { data: null, error: null }
+  // ═══ LO DE LA SOLAPA SALE EN UNA SOLA OLA (10/09/2026) ═══
+  //
+  // Eran CUATRO `await` seguidos —cuenta, esquema, accesos, documentos— y ninguno depende del
+  // anterior: sólo miran `solapa` y `id`, que ya están resueltos. Como la solapa activa es una
+  // sola, la mayoría devolvía su valor de reposo sin viajar, pero Documentos pagaba dos olas
+  // encadenadas (`getArchivosDeEntidad` y después `getDocumentosSubidos`) por nada. Con una ola
+  // sola, la ficha tarda lo que su lectura más lenta y no la suma de todas.
+  const [
+    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos,
+  ] = await Promise.all([
+    solapa === 'cuenta' && veEconomia
+      ? Promise.all([getCuentaCorriente(supabase, id), getCertificados(supabase, id)])
+      : Promise.resolve<[Awaited<ReturnType<typeof getCuentaCorriente>>, Awaited<ReturnType<typeof getCertificados>>]>(
+          [{ data: null, error: null }, { data: [], error: null }]),
+    solapa === 'esquema' && veEconomia
+      ? getEsquemaCliente(supabase, id)
+      : Promise.resolve({ data: null, error: null }),
+    solapa === 'accesos' && veEconomia
+      ? Promise.all([getAccesos(supabase, id), getActividadPortal(supabase, id)])
+      : Promise.resolve<[Awaited<ReturnType<typeof getAccesos>>, Awaited<ReturnType<typeof getActividadPortal>>]>(
+          [{ data: [], error: null }, { data: [], error: null }]),
+    // LO QUE HAY EN LA CARPETA DEL CLIENTE EN DRIVE (`PRESUPUESTOS - CLIENTES/<CLIENTE>`). El bloque
+    // de arriba lista los archivos VINCULADOS; éste, lo que está en la carpeta aunque nadie lo haya
+    // vinculado — que es la mitad de los papeles de un cliente nuevo.
+    solapa === 'documentos' ? getArchivosDeEntidad(supabase, 'cliente', id) : Promise.resolve(null),
+    // Lo que Administración sube desde la ficha del cliente: la factura, la OC, el contrato firmado.
+    solapa === 'documentos' ? getDocumentosSubidos(supabase, 'cliente', id) : Promise.resolve(null),
+  ])
+  const [cuenta, certificados] = cuentaYCertificados
+  const esquema = esquemaRes
   const pagosDelEsquema = esquema.data?.pagos ?? []
   const sinPublicar = cambiosSinPublicar(pagosDelEsquema)
-  const [accesos, actividadPortal] = solapa === 'accesos' && veEconomia
-    ? await Promise.all([getAccesos(supabase, id), getActividadPortal(supabase, id)])
-    : [{ data: [], error: null }, { data: [], error: null }]
+  const [accesos, actividadPortal] = accesosYActividad
   const portal = resumenAccesos(lector.leer(accesos, []))
-  // LO QUE HAY EN LA CARPETA DEL CLIENTE EN DRIVE (`PRESUPUESTOS - CLIENTES/<CLIENTE>`). El bloque
-  // de arriba lista los archivos VINCULADOS; éste, lo que está en la carpeta aunque nadie lo haya
-  // vinculado — que es la mitad de los papeles de un cliente nuevo.
-  const archivosDrive = solapa === 'documentos' ? await getArchivosDeEntidad(supabase, 'cliente', id) : null
-  // Lo que Administración sube desde la ficha del cliente: la factura, la OC, el contrato firmado.
-  const subidos = solapa === 'documentos' ? await getDocumentosSubidos(supabase, 'cliente', id) : null
 
   const todas = lector.leer(obras, [])
   const cerradas = todas.filter((o) => o.estado === 'cerrada')
