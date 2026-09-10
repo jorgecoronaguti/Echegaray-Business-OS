@@ -196,8 +196,9 @@ export interface PagoEsquema {
 /** Lo que devuelve `getEsquemaCliente`: los pagos y el contrato contra el que se controlan. */
 export interface EsquemaCliente {
   cliente_id: string
-  /** Lo contratado, sumado de las obras del cliente (`cliente_panel.contratado`). `null` = sin
-   *  contrato cargado, y entonces «falta asignar» no se puede afirmar. */
+  /** Lo contratado de las obras EN CURSO, de `cliente_economia.contratado_en_curso` — la vista, no
+   *  una suma de esta capa. `null` = ninguna tiene precio en OBRAS o no se pudo leer, y entonces
+   *  «falta asignar $X» no se puede afirmar porque no se sabe contra qué. */
   contrato_total: number | null
   pagos: PagoEsquema[]
 }

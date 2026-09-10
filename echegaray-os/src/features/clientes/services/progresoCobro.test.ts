@@ -52,3 +52,33 @@ test('el título dice las dos plata y, si existe, el facturado APARTE', () => {
   )
   assert.match(tituloDeCobro({ cobrado: 1, contratado: null }), /no hay contra qué medir/)
 })
+
+// ═══ LA BARRA DEL CLIENTE NO ES LA DE LA OBRA (H1, 10/09/2026) ═══
+//
+// En la fila del CLIENTE los dos números son acumulados y del cliente entero: el cobro sale de
+// `cliente_economia.cobrado_neto_total` porque `cobranzas` lo anota contra el cliente y no contra
+// la obra. Si el título no dijera de qué universo habla, el % del cliente se leería como el de su
+// obra en marcha, y son cosas distintas.
+
+test('el título del cliente dice que es de TODAS sus obras y que el cobro es neto', () => {
+  const t = tituloDeCobro({ cobrado: 90_579_117, contratado: 156_174_253, ambito: 'cliente' })
+  assert.match(t, /sin IVA/)
+  assert.match(t, /todas sus obras/)
+  // Y NO dice «de esta obra», que es lo que decía antes de tener ámbito.
+  assert.doesNotMatch(t, /esta obra/)
+})
+
+test('sin cobranzas del cliente no se dice «esta obra», que sería falso', () => {
+  const t = tituloDeCobro({ cobrado: null, contratado: 156_174_253, ambito: 'cliente' })
+  assert.match(t, /Sin cobranzas registradas para este cliente/)
+  assert.doesNotMatch(t, /esta obra/)
+  // NO ES «no cobró nada»: es que ninguna fila quedó atada a su ficha.
+  assert.match(t, /No es que no haya cobrado/)
+})
+
+test('el ámbito por defecto sigue siendo la obra: ninguna llamada vieja cambia de frase', () => {
+  assert.equal(
+    tituloDeCobro({ cobrado: null, contratado: 1000 }),
+    tituloDeCobro({ cobrado: null, contratado: 1000, ambito: 'obra' }),
+  )
+})
