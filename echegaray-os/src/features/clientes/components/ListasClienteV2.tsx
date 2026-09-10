@@ -34,7 +34,9 @@ import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from 
 import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import type { ObraPanel } from '@/features/obras/types'
-import { SIN_PRECIO_EN_OBRAS, margenPct, pctTexto, type EconomiaDeObra } from '../services/economiaObras'
+import {
+  SIN_PRECIO_EN_OBRAS, margenDeLaFila, margenPct, pctTexto, type EconomiaDeObra,
+} from '../services/economiaObras'
 import type { PapelesDelCliente } from '../services/papelesCliente'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 
@@ -189,7 +191,19 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
         // la lista decía $156,1 M. Una obra sin precio en OBRAS lo dice; no se rellena con otra cosa.
         const e = economia?.get(o.obra_id) ?? null
         const contratado = e?.contratado ?? null
-        const margen = e?.margen ?? null
+        // LA MISMA REGLA QUE USABA LA CARTERA, Y NO UNA LECTURA CRUDA. `e.margen` es lo que OBRAS
+        // publica, pero cuando la vista NO lo trae hay que derivarlo con la fórmula que el rótulo
+        // declara —contratado − MO − materiales— y devolver `null` si falta un sumando. Escrito acá
+        // a mano, la ficha publicaba «—» donde la lista mostraba un número, y el día que OBRAS deje
+        // de publicar el margen las dos pantallas dirían cosas distintas del mismo cliente. La
+        // cartera de `/clientes` retiró su columna Margen el 10/09/2026 y ésta quedó como la ÚNICA
+        // consumidora de la regla: por eso la llama, en vez de dejarla sin dueño.
+        const margen = margenDeLaFila({
+          margenPublicado: e?.margen ?? null,
+          contratado,
+          costoMo: e?.costo_mo ?? null,
+          costoMateriales: e?.costo_materiales ?? null,
+        })
         // UNA OBRA CERRADA SIN PRECIO NO BLOQUEA NADA. El filo ámbar y el «sin precio en OBRAS»
         // existen para que alguien cargue el monto de una obra que se está ejecutando; sobre una
         // obra terminada hace dos años son una alarma que nadie puede apagar — y en el grupo

@@ -213,18 +213,38 @@ test('la economía de OBRAS manda por obra, y el total del cliente sale de la vi
     economiaCliente: new Map([['c1', ecCliente({ cliente_id: 'c1', contratado_en_curso: 100, contratado: 100 })]]),
   })
   assert.equal(c.enCurso[0].contratado, 100)
-  assert.equal(c.enCurso[0].margen, 30)
-  assert.equal(c.enCurso[0].margenPct, 30)
+  assert.equal(c.enCurso[0].costoMo, 60)
+  assert.equal(c.enCurso[0].costoMateriales, 10)
   // SIN FILA EN `obra_economia_cartera` NO HAY RESPALDO (H1): `obra_panel.monto_contratado` —el
   // campo del formulario— era la segunda definición del precio y se retiró de la lectura entera.
   assert.equal(c.enCurso[1].contratado, null)
-  assert.equal(c.enCurso[1].margen, null)
-  // El total del cliente NO lo suma esta función: lo dice `cliente_economia`. Que acá haya dos
-  // obras y sólo una con precio se sigue diciendo con `economiaParcial`.
+  assert.equal(c.enCurso[1].costoMo, null)
+  // El total del cliente NO lo suma esta función: lo dice `cliente_economia`.
   assert.equal(c.contratado, 100)
   assert.equal(c.costoMo, 60)
-  assert.equal(c.margen, 30)
-  assert.equal(c.economiaParcial, true)
+})
+
+// ═══ EL MARGEN SE FUE DE LA CARTERA (dueño, 10/09/2026 15:33) ═══
+//
+// «Quitá esa columna Margen, no es útil». Con la columna se fue el CÁLCULO: mientras
+// `armarCartera` siguiera devolviendo `margen` y `margenPct`, la próxima pantalla que dibujara la
+// fila los iba a encontrar servidos y la columna volvería sin que nadie la decida. La regla del
+// margen —`margenDeLaFila`— sigue viva y con dueño: la ficha del cliente, que sí lo muestra por
+// obra, la llama en vez de leer `e.margen` a mano como hacía hasta hoy.
+
+test('la fila de la cartera ya no calcula ningún margen', () => {
+  const [c] = armarCartera({
+    clientes: [cliente({ cliente_id: 'c1' })],
+    obras: [obra({ obra_id: 'o1' })],
+    cobrado: new Map(), certificados: [],
+    economia: new Map([eco('o1', 100, { costo_mo: 60, costo_materiales: 10, margen: 30 })]),
+  })
+  assert.equal('margen' in c, false, 'la fila del cliente volvió a traer el margen servido')
+  assert.equal('margenPct' in c, false)
+  assert.equal('economiaParcial' in c, false)
+  assert.equal('margen' in c.enCurso[0], false, 'la fila de la obra volvió a traer el margen servido')
+  // Y lo que sí tiene que seguir trayendo, porque una compra es COSTO y lo ve todo rol interno.
+  assert.equal(c.enCurso[0].costoMo, 60)
 })
 
 // ═══ MESSINA, EL CASO QUE ORIGINÓ EL HITO (medido contra la base el 10/09/2026) ═══

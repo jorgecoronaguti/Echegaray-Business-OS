@@ -147,3 +147,25 @@ test('el «·» de un total incompleto lleva su explicación', () => {
   assert.match(total, /title=\{total\.parcial \? PARCIAL : undefined\}/)
   assert.match(total, /const PARCIAL = /)
 })
+
+// ═══ LA COLUMNA MARGEN SE FUE (dueño, 10/09/2026 15:33) ═══
+//
+// «Quitá esa columna Margen, no es útil». El margen es una pregunta de la OBRA —contra su costo
+// real, su avance y su certificación— y acá se dibujaba contra un contratado que en cuatro de las
+// cinco filas de Messina no era un precio sino la suma viva de Cobranzas.
+
+test('la tabla no dibuja el margen ni su porcentaje', () => {
+  const src = codigo()
+  assert.doesNotMatch(src, />\{veEconomia \? 'Margen' : ''\}</)
+  assert.doesNotMatch(src, /pctTexto|margenPct/, 'el % del margen se fue con la columna')
+  assert.doesNotMatch(src, /data-testid="margen"/)
+  // Los COSTOS se quedan: una compra es costo, no precio, y la ve todo rol interno.
+  assert.match(src, /celda\(mo, 'costo-mo'\)/)
+  assert.match(src, /celda\(mat, 'costo-materiales'\)/)
+})
+
+test('la grilla perdió exactamente una columna, no dos', () => {
+  // Siete columnas: Cliente · Obras · OC·OP · Contratado · Costo MO · Costo mat. · Cobrado. Si el
+  // literal y las celdas se desincronizan, la tabla se corre entera y nadie lo ve en un typecheck.
+  assert.match(codigo(), /grid-cols-\[minmax\(0,1\.9fr\)_116px_156px_150px_124px_124px_150px\]/)
+})

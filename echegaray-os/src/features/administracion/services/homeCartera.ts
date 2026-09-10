@@ -34,9 +34,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ClientePanel } from '@/features/clientes/types'
-import {
-  margenDeLaFila, margenPct, sumaConHuecos, type EconomiaDeObra,
-} from '../../clientes/services/economiaObras.ts'
+import { sumaConHuecos, type EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
 import type { EconomiaDeCliente } from '../../clientes/services/economiaCliente.ts'
 
 /** Una obra `activa`, tal como la lee la cartera. Es un subconjunto de `obra_panel`. */
@@ -70,8 +68,6 @@ export interface ObraEnCurso {
   origenContratado: string | null
   costoMo: number | null
   costoMateriales: number | null
-  margen: number | null
-  margenPct: number | null
   certificacion: EstadoCertificacion
   /** El último parte de la obra, `YYYY-MM-DD`. `null` = ninguno registrado. */
   /** LO COBRADO DE ESTA OBRA, percibido y SIN IVA (`obra_cobranza.cobrado_neto`) — el único
@@ -121,10 +117,6 @@ export interface ClienteEnCartera {
   contratadoTotal: number | null
   costoMo: number | null
   costoMateriales: number | null
-  margen: number | null
-  margenPct: number | null
-  /** `true` cuando alguna obra en curso no tiene precio en OBRAS: el total suma sólo las que sí. */
-  economiaParcial: boolean
   /**
    * LO COBRADO DEL CLIENTE, ACUMULADO Y SIN IVA (`cliente_economia.cobrado_neto_total`).
    *
@@ -337,13 +329,6 @@ export function armarCartera({
       // sumaba las obras cerradas de Messina. Sin precio en OBRAS, la fila lo dice.
       const e = economia?.get(o.obra_id) ?? null
       const contratado = e?.contratado ?? null
-      // UNA sola definición del margen, y `null` cuando falta un sumando: ver `margenDeLaFila`.
-      const margen = margenDeLaFila({
-        margenPublicado: e?.margen ?? null,
-        contratado,
-        costoMo: e?.costo_mo ?? null,
-        costoMateriales: e?.costo_materiales ?? null,
-      })
       return {
         obra_id: o.obra_id,
         nombre: o.nombre,
@@ -353,8 +338,6 @@ export function armarCartera({
         origenContratado: e?.origen ?? null,
         costoMo: e?.costo_mo ?? null,
         costoMateriales: e?.costo_materiales ?? null,
-        margen,
-        margenPct: margenPct(margen, contratado),
         certificacion: certificacionDe(certificados, o.obra_id),
         cobrado: cobrado?.get(o.obra_id) ?? null,
       }
@@ -369,12 +352,6 @@ export function armarCartera({
     const ec = economiaCliente?.get(c.cliente_id) ?? null
     const tMo = sumaConHuecos(enCurso.map((o) => o.costoMo))
     const tMat = sumaConHuecos(enCurso.map((o) => o.costoMateriales))
-    const tMargen = sumaConHuecos(enCurso.map((o) => o.margen))
-    // `economiaParcial` sigue mirando las filas: es «alguna obra en curso no tiene precio», un hecho
-    // de las obras dibujadas, no del total. La vista lo publica como `n_obras_sin_precio` y las dos
-    // cuentas tienen que coincidir; se prefiere la de las filas porque es la que se está mostrando.
-    const contratadoParcial = sumaConHuecos(enCurso.map((o) => o.contratado)).parcial
-
     // «TIENE CONTRATO» ES UN PAPEL, NO UN MONTO (09/09/2026). Antes esta fila derivaba
     // «sin contrato» de `contratado === null`, que es el hueco de PRECIO de OBRAS: por eso el mismo
     // cliente aparecía con $156.174.253 contratado en una pantalla y «sin contrato» en la otra.
@@ -392,9 +369,6 @@ export function armarCartera({
       contratadoTotal: ec?.contratado ?? null,
       costoMo: tMo.total,
       costoMateriales: tMat.total,
-      margen: tMargen.total,
-      margenPct: margenPct(tMargen.total, ec?.contratado_en_curso ?? null),
-      economiaParcial: contratadoParcial || tMargen.parcial,
       cobrado: ec?.cobrado_neto_total ?? null,
       pendienteContractual: ec?.pendiente_contractual ?? null,
       enCurso,

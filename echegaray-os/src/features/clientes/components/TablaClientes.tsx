@@ -20,6 +20,11 @@
 //   5 · «—» EN TODA LA COLUMNA COBRADO. Era una barra de porcentaje y el porcentaje casi nunca se
 //       podía calcular. Ahora la celda publica el IMPORTE —que es un hecho de Cobranzas— y agrega la
 //       barra sólo cuando el denominador existe y cubre todas las obras del cliente.
+//   7 · LA COLUMNA MARGEN SE FUE (dueño, 10/09/2026 15:33: «quitá esa columna Margen, no es
+//       útil»). El margen es una pregunta de la OBRA —contra su costo real, su avance y su
+//       certificación— y acá se dibujaba contra un contratado que en cuatro de las cinco filas de
+//       Messina ni siquiera era un precio. Vive en el módulo Obras. Con ella se van los dos
+//       porcentajes que colgaban de la cifra.
 //   6 · UN CONTRATADO QUE NO ES UN PRECIO SE DICE. `origen = suma-viva` significa que OBRAS no tiene
 //       precio y el número es la suma viva de Cobranzas; sube cada vez que se factura. ME - BSA
 //       publica $14.120.243 por ese camino contra 5 OC por $49.886.583 c/IVA. La fila lo señala; la
@@ -27,7 +32,7 @@
 //
 // ═══ CADA COLUMNA, SU FUENTE (y no hay una segunda) ═══
 //
-//   Contratado · Costo MO · Costo mat. · Margen → `obra_economia_cartera` = la pestaña OBRAS del
+//   Contratado · Costo MO · Costo mat. → `obra_economia_cartera` = la pestaña OBRAS del
 //     Flujo de Caja, por obra. El total del CLIENTE lo suma la base en `public.cliente_economia`.
 //   Cobrado → `cliente_economia.cobrado_neto_total` (cliente) y `obra_cobranza.cobrado_neto` (obra).
 //     SIN IVA los dos, porque lo contratado tampoco lo lleva.
@@ -49,15 +54,13 @@ import type { ClienteEnCartera, ObraEnCurso } from '@/features/administracion/se
 import { frasesDeObras } from '@/features/clientes/services/cartera'
 import { progresoDeCobro, tituloDeCobro } from '@/features/clientes/services/progresoCobro'
 import type { PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
-import {
-  ORIGEN_SUMA_VIVA, SIN_PRECIO_EN_OBRAS, pctTexto,
-} from '@/features/clientes/services/economiaObras'
+import { ORIGEN_SUMA_VIVA, SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
 import { AbrirOrdenes } from './AbrirOrdenes'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 
 /** `25v2:154`. Literales porque Tailwind no compila una clase armada en runtime. */
 const COLS
-  = 'grid-cols-[minmax(0,1.9fr)_116px_156px_150px_124px_124px_150px_150px]'
+  = 'grid-cols-[minmax(0,1.9fr)_116px_156px_150px_124px_124px_150px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.9fr)_116px_150px]'
   + ' max-[767px]:grid-cols-[minmax(0,1.9fr)_150px]'
 /**
@@ -244,9 +247,6 @@ export function TablaClientes({
           <RotuloCol derecha titulo="Materiales proyectados, según la pestaña OBRAS">Costo mat.</RotuloCol>
         </span>
         <span className={`grid ${SOLO_ANCHO}`}>
-          <RotuloCol derecha titulo="Contratado − costo MO − costo materiales">{veEconomia ? 'Margen' : ''}</RotuloCol>
-        </span>
-        <span className={`grid ${SOLO_ANCHO}`}>
           {/* SIN PERMISO ECONÓMICO, EL RÓTULO TAMPOCO: una columna «COBRADO» con la celda vacía en
               todas las filas se lee como un dato que se rompió, no como uno que no corresponde. */}
           <RotuloCol derecha titulo={AYUDA_COBRO}>{veEconomia ? 'Cobrado' : ''}</RotuloCol>
@@ -340,11 +340,7 @@ export function TablaClientes({
                       : pesos(c.contratado))
                   : ''}
               </span>
-              <Economia
-                mo={c.costoMo} mat={c.costoMateriales} margen={c.margen} pct={c.margenPct}
-                veEconomia={veEconomia} parcial={c.economiaParcial} tam="12px"
-                sinUniverso={c.enCurso.length === 0}
-              />
+              <Costos mo={c.costoMo} mat={c.costoMateriales} tam="12px" sinUniverso={c.enCurso.length === 0} />
               {/* EL DENOMINADOR DEL CLIENTE ES `contratadoTotal`, NO la columna de al lado. La
                   columna dice lo contratado EN CURSO —cierra con las filas de obra de abajo— y el
                   cobro del cliente es acumulado: `cobranzas` lo anota contra el cliente y no contra
@@ -420,10 +416,7 @@ export function TablaClientes({
                   </span>
 
                   <ContratadoDeObra o={o} veEconomia={veEconomia} />
-                  <Economia
-                    mo={o.costoMo} mat={o.costoMateriales} margen={o.margen} pct={o.margenPct}
-                    veEconomia={veEconomia} parcial={false} tam="11.5px"
-                  />
+                  <Costos mo={o.costoMo} mat={o.costoMateriales} tam="11.5px" />
                   {/* EN LA OBRA LOS DOS NÚMEROS SON DE LA MISMA OBRA: el porcentaje siempre se
                       puede calcular cuando hay contratado. */}
                   <Cobrado
@@ -466,26 +459,26 @@ export function TablaClientes({
 }
 
 /**
- * LAS TRES CELDAS DE OBRAS: Costo MO · Costo mat. · Margen ($ y %).
+ * LAS DOS CELDAS DE COSTO: Costo MO · Costo mat.
  *
- * Los costos los ve todo rol interno —una compra es COSTO, no precio (19/08)—; el margen es plata de
- * venta y se dibuja sólo con `veEconomia`. La vista ya devuelve NULL al jefe de obra: acá se deja de
- * ofrecer la celda, que no es la cerradura sino no ofrecer lo que la base va a negar.
+ * Eran TRES. El margen se retiró el 10/09/2026 por orden del dueño («quitá esa columna Margen, no
+ * es útil»): es una pregunta de la OBRA —contra su costo real, su avance y su certificación—, y acá
+ * se dibujaba contra un contratado que en cuatro de las cinco filas de Messina ni siquiera era un
+ * precio, sino la suma viva de Cobranzas. Con él se fue el porcentaje que colgaba de la cifra, que
+ * es el mismo que llegó a decir «2.603.726 %».
+ *
+ * Los costos los ve todo rol interno: una compra es COSTO, no precio (19/08). Por eso estas dos
+ * celdas no preguntan por `veEconomia`, igual que `obra_panel.costo_real`.
  *
  * «—» ES «OBRAS NO TIENE EL DATO», NO CERO. Un cero acá diría que la obra no gastó nada.
  *
- * Y CUANDO NO HAY NADA QUE SUMAR, TAMPOCO HAY «—». Las tres celdas suman las obras EN CURSO del
+ * Y CUANDO NO HAY NADA QUE SUMAR, TAMPOCO HAY «—». Las dos celdas suman las obras EN CURSO del
  * cliente: si no tiene ninguna, no falta un dato — no hay universo. ARCOR y La Estrella dibujaban
  * cuatro guiones cada una, y «guiones por todos lados» fue textual del dueño. Su columna «Obras»
  * ya dice «1 cerrada»: la celda vacía se lee contra esa frase, no contra un hueco.
- *
- * EL % PUEDE FALTAR AUNQUE EL $ ESTÉ (`margenPct` devuelve `null` fuera de rango): un margen sobre
- * el contratado no puede pasar de 100 %, y cuando pasa —o cuando cae por debajo de −1000 %— los dos
- * números no son de la misma obra. Es el «2.603.726 %» que el dueño vio el 10/09/2026.
  */
-function Economia({ mo, mat, margen, pct, veEconomia, parcial, tam, sinUniverso = false }: {
-  mo: number | null; mat: number | null; margen: number | null; pct: number | null
-  veEconomia: boolean; parcial: boolean; tam: string
+function Costos({ mo, mat, tam, sinUniverso = false }: {
+  mo: number | null; mat: number | null; tam: string
   /** `true` = no hay obras en curso que sumar. No es un dato que falta: no hay pregunta. */
   sinUniverso?: boolean
 }) {
@@ -497,21 +490,5 @@ function Economia({ mo, mat, margen, pct, veEconomia, parcial, tam, sinUniverso 
       {v === null ? (sinUniverso ? '' : '—') : pesos(v)}
     </span>
   )
-  return (
-    <>
-      {celda(mo, 'costo-mo')}
-      {celda(mat, 'costo-materiales')}
-      <span
-        className={`font-mono tabular-nums ${SOLO_ANCHO}`} data-testid="margen"
-        title={parcial ? 'Suma sólo las obras con precio en OBRAS' : undefined}
-        style={{ fontSize: tam, textAlign: 'right', color: margen === null ? V.lupa : margen < 0 ? V.warn : V.tinta }}
-      >
-        {veEconomia
-          ? (margen === null
-              ? (sinUniverso ? '' : '—')
-              : <>{pesos(margen)}<span className="tabular-nums" style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}>{pctTexto(pct)}{parcial ? ' ·' : ''}</span></>)
-          : ''}
-      </span>
-    </>
-  )
+  return <>{celda(mo, 'costo-mo')}{celda(mat, 'costo-materiales')}</>
 }
