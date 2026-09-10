@@ -7,7 +7,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  contratoDeclarado, contratoDeObra, filasDeObra, normalizarMoneda, monedasDesconocidas, saldoDeObra,
+  contratoDeclarado, contratoDeObra, enElAnio, filasDeObra, normalizarMoneda, monedasDesconocidas, saldoDeObra,
   sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO, contratoUsdDeclarado, sinCuentas, prefiereContratoUsd, valuarFilaCobranza,
   RANGO_COBRANZAS, IDX_MONEDA_COBRANZAS, COL_MONEDA_COBRANZAS, indiceDeColumna,
 } from './cobranzas-contrato.mjs'
@@ -332,4 +332,41 @@ test('el rango que replica Cobranzas LLEGA hasta la columna de la moneda: A5:R n
   assert.ok(RANGO_COBRANZAS.includes(`A5:${COL_MONEDA_COBRANZAS}`), `el rango es ${RANGO_COBRANZAS}`)
   const hasta = /A5:([A-Z]+)/.exec(RANGO_COBRANZAS)[1]
   assert.ok(indiceDeColumna(hasta) >= IDX_MONEDA_COBRANZAS, 'el rango no puede quedarse corto de la moneda')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA IMPUTACIÓN CANÓNICA MANDA SOBRE EL `needle`, Y LA VENTANA DEL AÑO ACOTA LAS DOS
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('con `imputadas`, ni el cliente ni el needle filtran nada: la imputación ya resolvió las dos cosas', () => {
+  // LA FILA 46 DE MESSINA, TEXTUAL: pertenece a BSA por su orden 00002-00001984 y no dice «BSA» en
+  // ninguna columna. El `needle` la dejaba afuera del contratado mientras el cobrado la incluía.
+  const cols = { cliente: 0, concepto: 1, oc: 2 }
+  const filas = [
+    ['MESSINA', 'PLANTA DE BSA - ADICIONAL', '00002-00001985'],
+    ['MESSINA', 'ACTUALIZACION DE PRECIOS OC 02-00000279 - 50%', '00002-00001984'],
+    ['MESSINA', 'Playon Azufre', 'Anticipo 50% Blanco $65.000.000'],
+  ]
+  assert.deepEqual(filasDeObra(filas, cols, { variantes: ['MESSINA'], needle: 'BSA' }), [0],
+    'el needle sólo ve la fila que escribe «BSA»')
+  assert.deepEqual(filasDeObra(filas, cols, { imputadas: [0, 1] }), [0, 1])
+  // La imputación no vuelve a mirar el cliente: si lo hiciera, sería una segunda regla encima.
+  assert.deepEqual(filasDeObra(filas, cols, { imputadas: [2], variantes: ['OTRO'], needle: 'BSA' }), [2])
+  // Un índice que no existe en la lectura no puede colarse.
+  assert.deepEqual(filasDeObra(filas, cols, { imputadas: [0, 99] }), [0])
+})
+
+test('la ventana del año acota los dos caminos, y una fecha ilegible NO saca la fila', () => {
+  const cols = { cliente: 0, concepto: 1, oc: 2, fechaVenta: 3 }
+  const filas = [
+    ['SF', 'Certificado 2', '', '2025-12-15'],
+    ['SF', 'Certificado 3', '', '2026-03-01'],
+    ['SF', 'Certificado 4', '', 46023],   // serial de Sheets = 01/01/2026
+    ['SF', 'Certificado 5', '', ''],      // sin fecha legible
+  ]
+  assert.deepEqual(filasDeObra(filas, cols, { imputadas: [0, 1, 2, 3], anio: 2026 }), [1, 2, 3])
+  assert.deepEqual(filasDeObra(filas, cols, { variantes: ['SF'], needle: 'Certificado', anio: 2026 }), [1, 2, 3])
+  assert.deepEqual(filasDeObra(filas, cols, { imputadas: [0, 1, 2, 3] }), [0, 1, 2, 3])
+  assert.equal(enElAnio(45000, 2023), true)
+  assert.equal(enElAnio('2025-12-15', 2026), false)
 })
