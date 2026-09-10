@@ -343,3 +343,76 @@ export function agruparPorNumero(filas) {
   }
   return salida
 }
+
+/**
+ * EL MAPA CONTRA EL QUE SE HEREDA: clave → obra, armado sólo con los documentos que YA tienen obra.
+ *
+ * Cada documento entra por su número canónico («2-2173») y, si es una factura nuestra, por su
+ * comprobante («A-1-225»). Y entra TAMBIÉN por su número corto («2173»), porque el papel se cita
+ * como se habla: la OC 2256 dice «ADICIONAL OC 2173, CONSTRUCCION DEL TERCER MURO» y sin la clave
+ * corta esa cita se leía como «no está en el OS» — un motivo falso, que es peor que no atribuir.
+ *
+ * LA CLAVE CORTA SE CAE SOLA CUANDO ES AMBIGUA: si dos órdenes de puntos de venta distintos
+ * terminan en el mismo número y apuntan a obras distintas, «2173» deja de significar algo y se
+ * borra. Heredar por una clave ambigua es exactamente la adivinanza que esto no hace.
+ */
+export function mapaDeEvidencia(docs) {
+  const mapa = new Map()
+  const cortas = new Map()
+  for (const d of docs ?? []) {
+    if (!d.obra_id) continue
+    const canon = numeroCanonico(d.numero)
+    if (canon) {
+      mapa.set(canon, d.obra_id)
+      const corta = canon.split('-').pop()
+      if (corta !== canon) cortas.set(corta, cortas.has(corta) && cortas.get(corta) !== d.obra_id ? null : d.obra_id)
+    }
+    if (d.comprobante) mapa.set(d.comprobante, d.obra_id)
+  }
+  for (const [corta, obraId] of cortas) if (obraId && !mapa.has(corta)) mapa.set(corta, obraId)
+  return mapa
+}
+
+/**
+ * LA FECHA DE LA ORDEN, que no es la primera fecha del papel.
+ *
+ * MEDIDO el 10/09/2026 contra las cinco OC del bucket: las cinco quedaron fechadas «22/08/86». El
+ * encabezado de Messina trae «Fecha Inicio Act. 22-08-86» —cuándo abrió la empresa— antes que la
+ * fecha de la orden, que además viene con espacios adentro («Mendoza - 11 /08 /2026»). La primera
+ * fecha que encontraba `extraerFecha` era la del año 1986 leído como 2086.
+ *
+ * Por eso se busca por ETIQUETA primero y sólo después a ciegas, y toda fecha fuera de una ventana
+ * razonable se descarta: un documento administrativo de esta empresa no es de 2086 ni de 1986.
+ */
+export function extraerFechaDeOrden(texto, { hoy = new Date() } = {}) {
+  const t = String(texto ?? '')
+  const FECHA = String.raw`(\d{1,2}\s*[/-]\s*\d{1,2}\s*[/-]\s*\d{2,4})`
+  const etiquetadas = [
+    new RegExp(String.raw`fecha\s+de\s+emisi[oó]n\s*:?\s*${FECHA}`, 'i'),
+    new RegExp(String.raw`orden\s+de\s+(?:compra|pago)[^\n]{0,60}?-\s*${FECHA}`, 'i'),
+    new RegExp(String.raw`\bfecha\s*:?\s*${FECHA}`, 'i'),
+  ]
+  const candidatas = []
+  for (const re of etiquetadas) {
+    const m = t.match(re)
+    if (m) candidatas.push(m[1])
+  }
+  candidatas.push(t)
+  const anio = hoy.getFullYear()
+  for (const c of candidatas) {
+    const iso = extraerFecha(String(c).replace(/\s*([/-])\s*/g, '$1'))
+    if (!iso) continue
+    const a = Number(iso.slice(0, 4))
+    if (a >= 2015 && a <= anio + 1) return iso
+  }
+  return null
+}
+
+/** `true` cuando la fecha guardada no puede ser de este documento: fuera de la ventana razonable.
+ *  Es lo único que el re-atribuidor tiene derecho a PISAR — no corrige lo que una persona eligió,
+ *  corrige lo que un parser leyó mal y quedó escrito como si fuera un hecho. */
+export function fechaImposible(fecha, { hoy = new Date() } = {}) {
+  if (!fecha) return false
+  const a = Number(String(fecha).slice(0, 4))
+  return !Number.isFinite(a) || a < 2015 || a > hoy.getFullYear() + 1
+}

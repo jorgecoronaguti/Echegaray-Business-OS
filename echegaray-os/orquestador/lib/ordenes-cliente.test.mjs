@@ -149,7 +149,8 @@ test('la extensión del objeto no se inventa', () => {
 // 10/09/2026 con `orquestador/lib/ingesta/pdf.mjs`). Un texto inventado prueba la expresión regular
 // contra sí misma; éstos prueban contra el papel que manda Messina.
 import {
-  agruparPorNumero, comprobantePropio, comprobantesCitados, numeroCanonico, numeroCorto,
+  agruparPorNumero, comprobantePropio, comprobantesCitados, extraerFechaDeOrden, fechaImposible,
+  mapaDeEvidencia, numeroCanonico, numeroCorto,
   obraPorReferencia, ocsCitadas,
 } from './ordenes-cliente.mjs'
 
@@ -218,4 +219,38 @@ test('la OC 2162 es UNA orden aunque haya llegado en dos mails', () => {
   // Dos documentos sin número NO son el mismo documento: agruparlos por su falta sería el peor
   // de los inventos.
   assert.deepEqual(grupos.slice(2).map((g) => g.filas.length), [1, 1])
+})
+
+test('el número corto hereda, salvo que signifique dos obras', () => {
+  const mapa = mapaDeEvidencia([
+    { numero: '00002-00002173', obra_id: 'messina-playon-azufre' },
+    { numero: '00001-00000225', comprobante: 'A-1-225', obra_id: 'limpieza-de-escombros' },
+    { numero: null, obra_id: 'x' },
+  ])
+  // «ADICIONAL OC 2173» es una cita real de la OC 2256: sin la clave corta el motivo impreso era
+  // «no está en el OS», que es falso.
+  assert.equal(mapa.get('2173'), 'messina-playon-azufre')
+  assert.equal(mapa.get('2-2173'), 'messina-playon-azufre')
+  assert.equal(mapa.get('A-1-225'), 'limpieza-de-escombros')
+  // Dos puntos de venta que terminan igual y van a obras distintas: «2173» deja de significar algo.
+  const ambiguo = mapaDeEvidencia([
+    { numero: '00002-00002173', obra_id: 'obra-a' },
+    { numero: '00003-00002173', obra_id: 'obra-b' },
+  ])
+  assert.equal(ambiguo.get('2173'), undefined)
+  assert.equal(ambiguo.get('2-2173'), 'obra-a')
+})
+
+test('la fecha de la orden no es «Fecha Inicio Act. 22-08-86»', () => {
+  // Texto real de OC_32_0000200002173.pdf. Las cinco OC de Messina quedaron fechadas 22/08/86.
+  const oc = 'Orden de compra Nº: 00002-00002173 Mendoza - 11 /08 /2026 ORDEN DE COMPRA Manufacturas '
+    + 'Químicas Juan Messina S.A. ... Sede Timbrado 01 S.Central Fecha Inicio Act. 22-08-86 Proveedor'
+  assert.equal(extraerFecha(oc), '2086-08-22')          // el defecto, tal cual estaba
+  assert.equal(extraerFechaDeOrden(oc), '2026-08-11')   // corregido
+  const op = 'IMPUTACION ORDEN DE PAGO Nro.: 0000000004865 Fecha de emisión: 28/07/2026 30-71630464-3'
+  assert.equal(extraerFechaDeOrden(op), '2026-07-28')
+  assert.equal(extraerFechaDeOrden('sin ninguna fecha'), null)
+  assert.equal(fechaImposible('2086-08-22'), true)
+  assert.equal(fechaImposible('2026-08-11'), false)
+  assert.equal(fechaImposible(null), false)
 })
