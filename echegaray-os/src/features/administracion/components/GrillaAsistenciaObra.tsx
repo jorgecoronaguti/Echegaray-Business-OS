@@ -8,11 +8,13 @@ import { hs, leerHoras } from '../services/jornadaPorObra'
 import type { CeldaObra, FilaQuincena } from '../services/quincenaPorObra'
 import { SIN_OBRA, totalDeLaQuincena } from '../services/quincenaPorObra'
 import { agruparPorRolOrganizacional } from '../services/vocabularioPersona'
-import { guardarJornada } from '../services/jornadaPorObraActions'
+import { corregirJornada, guardarJornada } from '../services/jornadaPorObraActions'
 import { cambiarObraActual } from '../services/obraActualActions'
 import { PlanDeObraPanel } from './PlanDeObraPanel'
 import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJornada'
-import { CeldaDia, type EntradaCeldaDia } from '@/shared/components/ds'
+import { CeldaDia, type EntradaCeldaDia, type ResultadoInline } from '@/shared/components/ds'
+import { EditorCeldaAsistencia } from './asistencia/EditorCeldaAsistencia'
+import type { CorreccionDeCelda } from '../services/edicionDeCelda'
 
 // 02 · LA QUINCENA, POR OBRA. La misma jornada que el jefe carga en el teléfono, a la distancia de
 // Administración: una fila por par (persona, obra) y una columna por día del período que se paga.
@@ -168,6 +170,12 @@ export function GrillaAsistenciaObra({
   // que abrir EN ESE DÍA: abrir en otro es pedirle a quien tocó el viernes que lo busque de nuevo,
   // y ya pasó que se corrigiera el día equivocado por eso.
   const [diaFoco, setDiaFoco] = useState<string | null>(null)
+  // ═══ QUÉ CASILLERO ESTÁ ABIERTO EN EDICIÓN (dueño, 10/09/2026) ═══
+  //
+  // *«no me sirve no poder editar las horas desde ahí mismo, en el casillero de las horas»*. Uno
+  // solo a la vez y guardado por `persona·fecha`: dos editores abiertos sobre la misma fila
+  // escribirían el mismo día desde dos lugares y el último en cerrar ganaría sin que nadie lo vea.
+  const [editandoCelda, setEditandoCelda] = useState<string | null>(null)
   // EL ACUSE ES POR PERSONA Y ES LO QUE DIJO LA BASE, no lo que se pidió: la acción devuelve el
   // texto ya armado con los nombres de las dos obras.
   const [acuses, setAcuses] = useState<Record<string, { texto: string; error: boolean }>>({})
@@ -281,6 +289,20 @@ export function GrillaAsistenciaObra({
       const aviso = r.aviso
       if (aviso) setAcuses((a) => ({ ...a, [claveFila]: { texto: aviso, error: false } }))
     })
+  }
+
+  // LO QUE ESCRIBE EL EDITOR DE LA CELDA. La MISMA acción que el panel —`corregirJornada`, con su
+  // rastro en `registro_hh_correccion` y su `auth.uid()`—: una segunda puerta de escritura para la
+  // grilla sería una segunda definición de qué se puede corregir, y el día que se toque una la otra
+  // seguiría dejando pasar lo que la primera ya prohíbe.
+  const corregirDesdeCelda = async (fila: FilaQuincena, c: CorreccionDeCelda): Promise<ResultadoInline> => {
+    const r = await corregirJornada({ ...c, persona_id: fila.persona.id, hasta: null, asignar: false })
+    if (!r.ok) return { ok: false, error: r.error }
+    // LO GUARDADO SE LEE DE LA BASE, no del formulario: el casillero tiene que mostrar el EFECTO.
+    // Sin esto la celda seguiría dibujando la licencia que se acaba de sacar.
+    setAcuses((a) => ({ ...a, [fila.clave]: { texto: r.mensaje, error: false } }))
+    router.refresh()
+    return { ok: true }
   }
 
   // ═══ EL PANEL NO SE DESMONTA CUANDO LA FILA DESAPARECE ═══
@@ -573,14 +595,21 @@ export function GrillaAsistenciaObra({
                       puedeCorregir ? (
                         <button
                           type="button"
-                          data-testid="celda-abrir-panel"
+                          data-testid="celda-abrir-editor"
                           data-estado={celda.estado}
                           title={`${tituloDe(celda) ?? ''}${tituloDe(celda) ? ' · ' : ''}Tocá para corregir este día`.trim()}
                           aria-label={`Corregir el ${celda.fecha} de ${fila.persona.nombre}`}
+                          // UN DÍA REPARTIDO ENTRE DOS OBRAS NO SE EDITA EN LÍNEA y sigue yendo al
+                          // panel: escribir un número acá obligaría a elegir en silencio a cuál de
+                          // las dos se le imputa, que es mover costo de mano de obra sin decisión.
                           onClick={() => {
-                            setCopia(fila)
-                            setDiaFoco(celda.fecha)
-                            setCorrigiendo(fila.clave)
+                            if (repartido) {
+                              setCopia(fila)
+                              setDiaFoco(celda.fecha)
+                              setCorrigiendo(fila.clave)
+                              return
+                            }
+                            setEditandoCelda(editandoCelda === k ? null : k)
                           }}
                           className="font-mono tabular-nums"
                           style={{
@@ -607,6 +636,49 @@ export function GrillaAsistenciaObra({
                       )
                     )}
                     </CeldaDia>
+                    {/* ═══ EL DISPARADOR DE LAS CELDAS QUE SÍ SE TIPEAN ═══
+                        Tipear el número sigue siendo el gesto de todos los días y no se toca: el
+                        chevrón sólo agrega la otra mitad —QUÉ fue ese día—, que hasta hoy obligaba a
+                        abrir el panel. Va SUPERPUESTO dentro de los mismos 42 px: una columna más
+                        ancha por quince días es lo que no entra en un teléfono de 390 px. */}
+                    {editable && puedeCorregir && (
+                      <button
+                        type="button"
+                        data-testid="celda-abrir-editor"
+                        data-estado={celda.estado}
+                        aria-label={`Cambiar el estado del ${celda.fecha} de ${fila.persona.nombre}`}
+                        title="Cambiar el estado de este día"
+                        onClick={() => setEditandoCelda(editandoCelda === k ? null : k)}
+                        style={{
+                          position: 'absolute', right: -2, top: 6, width: 12, height: 16,
+                          background: 'transparent', border: 'none', padding: 0, lineHeight: 1,
+                          fontSize: '9px', color: V.tenue, cursor: 'pointer',
+                        }}
+                      >
+                        ▾
+                      </button>
+                    )}
+                    {puedeCorregir && !repartido && editandoCelda === k && (
+                      <EditorCeldaAsistencia
+                        celda={celda}
+                        persona={fila.persona.nombre}
+                        fecha={celda.fecha}
+                        hoy={hoy}
+                        rotuloDia={diaCorto(celda.fecha)}
+                        obraOrigen={celda.tramos.length === 1 ? celda.tramos[0].obra_id : null}
+                        obraDestino={celda.tramos.length === 1
+                          ? celda.tramos[0].obra_id
+                          : fila.obraPorDefecto?.id ?? null}
+                        guardar={(c) => corregirDesdeCelda(fila, c)}
+                        cerrar={() => setEditandoCelda(null)}
+                        abrirPanel={() => {
+                          setEditandoCelda(null)
+                          setCopia(fila)
+                          setDiaFoco(celda.fecha)
+                          setCorrigiendo(fila.clave)
+                        }}
+                      />
+                    )}
                     {repartido && (
                       <span data-testid="celda-repartida" title={`${celda.tramos.length} obras ese día`}
                         style={{
