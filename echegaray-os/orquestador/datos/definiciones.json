@@ -320,6 +320,10 @@
         {
           "patron": "needle:\\s*[A-Za-z_]+\\.ventaTexto",
           "porque": "Seleccionar las filas de una obra buscando el NOMBRE de la obra dentro del Concepto o de la Orden de Compra es una SEGUNDA regla de imputación, y da distinto: la fila 46 de Messina («ACTUALIZACION DE PRECIOS OC 02-00000279», $3.583.956 netos) es de BSA por su orden 00002-00001984 y no dice «BSA» en ninguna columna. Con el needle, el contratado de BSA salía $14.120.243,40 y el cobrado —que ya usaba la imputación— incluía esa fila: la misma obra medida sobre dos universos. Lo que LEE usa `filasDeObra(..., { imputadas })`; el needle queda sólo para los tres generadores de Sheets, que emiten criterios de SUMIFS y no pueden consultar Postgres."
+        },
+        {
+          "patron": "cobrado=\\{[a-z]\\.cobradoNeto\\}",
+          "porque": "LA COLUMNA «COBRADO» DE LA PESTAÑA OBRAS ES EL TOTAL CON IVA (obra_cuenta.cobrado_total). Hasta el 10/09/2026 la cartera de clientes dibujaba el NETO bajo el mismo rótulo y el dueño, cruzando la pantalla contra el Sheet, no encontró coincidencia en NINGUNA de las nueve obras. El neto se sigue leyendo —es el único comparable contra un contrato neto— pero es una RESTA, no la columna: quien lo dibuje ahí vuelve a publicar dos números distintos del mismo hecho."
         }
       ],
       "excepciones": [
@@ -348,6 +352,10 @@
         {
           "patron": "from\\('obra_egreso_proyectado'\\)",
           "porque": "Sumar la explosión del presupuesto en una pantalla es una SEGUNDA definición del costo proyectado: la primera la hace `obra_economia_sheet` con las mismas reglas que la columna D de OBRAS (qué filas cuentan, cómo se valúa el dólar, qué estado excluye la venta). Dos sumas de las mismas filas se separan en cuanto una aprende algo, y nadie se entera porque las dos dan un número plausible."
+        },
+        {
+          "patron": "select\\([^)]*costo_(mo|materiales)",
+          "porque": "EL COSTO DE UNA OBRA ES DEL ERP (dueño, 10/09/2026 17:15: «Administración es un CRM y Obra un ERP: todo lo pertinente a datos de clientes va en CRM, no mezcles cosas con obras»). Una pantalla que vuelve a pedirle los dos costos a PostgREST los tiene servidos, y una columna servida vuelve sola: pasó con Margen y volvió a pasar con «MO ppto. · Mat. ppto.» en /clientes. El costo presupuestado se consume donde se DECIDE sobre él —el módulo Obras y costo-hora—, y esas lecturas van por obra_economia_cartera entera o por costoLecturas.ts, no por un select puntual desde una pantalla."
         }
       ],
       "excepciones": [

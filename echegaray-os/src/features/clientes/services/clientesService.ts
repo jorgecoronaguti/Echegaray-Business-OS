@@ -69,7 +69,9 @@ export async function getObrasPorCliente(
 ): Promise<Map<string, ObraDePanel[]>> {
   const { data } = await supabase
     .from('obra_panel')
-    .select('obra_id, nombre, cliente_id, estado, avance_pct')
+    // SIN `avance_pct`: el avance físico es del ERP y el CRM dejó de dibujarlo el 10/09/2026. Lo
+    // que se deja de pedir no se puede volver a colar en una celda.
+    .select('obra_id, nombre, cliente_id, estado')
     .order('orden', { ascending: true })
     .order('nombre', { ascending: true })
   const por = new Map<string, ObraDePanel[]>()
@@ -82,8 +84,6 @@ export async function getObrasPorCliente(
         obra_id: o.obra_id as string,
         nombre: o.nombre as string,
         estado: o.estado as string,
-        // NULL NO ES 0. Una obra sin avance sincronizado no avanzó cero por ciento: no se sabe.
-        avance_pct: (o.avance_pct as number | null) ?? null,
       },
     ])
   }

@@ -242,6 +242,15 @@ export default async function ClientePage({ params, searchParams }: {
    *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
   const hrefTrabajo = (obraId: string) => url({ trabajo: obraId })
 
+  // ═══ EL CONTRATO EN DÓLARES DEL CLIENTE ═══
+  //
+  // Σ de lo que sus obras tienen contratado en U$S. `null` = ninguna lo tiene, y entonces la
+  // ausencia de órdenes de compra es lo que parece: no hay ningún papel.
+  const contratoUsd = todas.reduce<number | null>((a, o) => {
+    const usd = economia?.get(o.obra_id)?.contratado_usd ?? null
+    return usd == null ? a : (a ?? 0) + usd
+  }, null)
+
   /** La misma dirección con un parámetro cambiado. Los demás se preservan. */
   const url = (cambio: Partial<Record<keyof Query, string | null>>) => {
     const p = new URLSearchParams(
@@ -285,7 +294,13 @@ export default async function ClientePage({ params, searchParams }: {
       // Muro tiene una OC de $12.100.000 contra $10.000.000 contratados, que es el mismo número.
       rotulo: `OC recibidas c/IVA${papeles ? ` (${papeles.totalOC.n})` : ''}`,
       valor: papeles?.totalOC.importe != null ? money(papeles.totalOC.importe) : null,
-      falta: papeles === null ? 'no pude leerlas' : 'ninguna',
+      // ═══ «NINGUNA» NO ERA LA VERDAD DE QUATTROPANI (dueño, 10/09/2026 18:10) ═══
+      //
+      // Su trabajo no se encargó con una orden de compra: se encargó con un CONTRATO en dólares.
+      // «OC recibidas c/IVA (0) · ninguna» se lee como un papel que falta, y no falta ninguno.
+      falta: papeles === null
+        ? 'no pude leerlas'
+        : contratoUsd != null ? `contrato U$S ${Math.round(contratoUsd).toLocaleString('es-AR')} · sin OC` : 'ninguna',
     },
     {
       // «RECIBIDAS», NO «COBRADAS»: una orden de pago es la instrucción del cliente a su banco. Que
@@ -638,14 +653,16 @@ export default async function ClientePage({ params, searchParams }: {
                 <div style={{ marginTop: 22 }}>
                   <RotuloPanel>Portal del cliente</RotuloPanel>
                 </div>
-                {/* EL RESUMEN DEL PORTAL SÓLO SE AFIRMA CUANDO SE LEYÓ. Fuera de la cara «Acceso al
-                    portal» no se consulta, y un «0 habilitados» ahí diría que nadie de afuera puede
-                    entrar — que es exactamente la conclusión que hace que nadie revise. */}
-                <p style={{ fontSize: '12px', color: V.tenue, padding: '7px 0' }} data-testid="resumen-portal">
-                  {solapa === 'accesos'
-                    ? `${portal.habilitados} ${portal.habilitados === 1 ? 'acceso habilitado' : 'accesos habilitados'}`
-                    : 'Se lee al abrir la cara.'}
-                </p>
+                {/* EL RESUMEN SÓLO SE AFIRMA CUANDO SE LEYÓ, Y CUANDO NO, NO SE ESCRIBE NADA.
+                    Decía «Se lee al abrir la cara», que es un placeholder: le explica al dueño una
+                    decisión interna del renderizado en el lugar donde esperaba un dato (10/09/2026
+                    18:10). Un «0 habilitados» tampoco se puede escribir sin haber leído: diría que
+                    nadie de afuera puede entrar, que es la conclusión que hace que nadie revise. */}
+                {solapa === 'accesos' && (
+                  <p style={{ fontSize: '12px', color: V.tenue, padding: '7px 0' }} data-testid="resumen-portal">
+                    {portal.habilitados} {portal.habilitados === 1 ? 'acceso habilitado' : 'accesos habilitados'}
+                  </p>
+                )}
                 <a
                   href={url({ vista: 'accesos' })} data-testid="gestionar-accesos"
                   style={{ display: 'inline-block', fontSize: '12.5px', fontWeight: 500, color: V.tinta, marginTop: 4 }}
@@ -662,6 +679,7 @@ export default async function ClientePage({ params, searchParams }: {
           titulo={nombreDeObra.get(trabajoAbierto) ?? trabajoAbierto}
           ordenes={ordenesDelTrabajo}
           de="de este trabajo"
+          verEnObras={`/obras/${trabajoAbierto}`}
           veEconomia={veEconomia}
           cerrarHref={url({ trabajo: null })}
         />

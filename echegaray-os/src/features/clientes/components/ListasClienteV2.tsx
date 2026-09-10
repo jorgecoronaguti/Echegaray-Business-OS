@@ -104,11 +104,14 @@ const PALABRA_ESTADO: Record<string, string> = {
 // ficha a 1440px de viewport es 1068 (el costado se lleva 300+53): la tabla se salía de su columna
 // por 60px aun con los cortes andando. Con `minmax(0,X)` la pista cede cuando no hay lugar en vez
 // de desbordar; el único piso que se defiende es el del nombre, que es lo que identifica la fila.
+// LA PISTA DEL COBRADO MIDE 150 Y NO 80. Heredó los 80px que eran del AVANCE —«94 %» entra en 80,
+// «$ 107.877.339» no— y el dueño vio «$107.877.3…» y «COBRADO C…» cortados en la ficha de
+// Quattropani (captura de producción, 10/09/2026 18:10). Una cifra truncada es una cifra falsa.
 const COLS_OBRAS
-  = 'gap-[20px] grid-cols-[minmax(200px,1.8fr)_minmax(0,110px)_minmax(0,80px)_minmax(0,150px)_minmax(0,150px)_minmax(0,150px)_minmax(0,28px)]'
+  = 'gap-[20px] grid-cols-[minmax(180px,1.6fr)_minmax(0,100px)_minmax(0,150px)_minmax(0,150px)_minmax(0,140px)_minmax(0,130px)_minmax(0,28px)]'
   // Por debajo de 1200px se suelta la OP: la pregunta que sobrevive en una pantalla angosta es qué
   // se le vendió (contratado), qué se cobró y con qué papel (OC).
-  + ' max-[1199px]:gap-[14px] max-[1199px]:grid-cols-[minmax(0,1.5fr)_minmax(0,90px)_90px_minmax(0,120px)_minmax(0,130px)_28px]'
+  + ' max-[1199px]:gap-[14px] max-[1199px]:grid-cols-[minmax(0,1.4fr)_minmax(0,90px)_140px_minmax(0,130px)_minmax(0,130px)_28px]'
   // A 390px no entran cinco columnas sin estrangular el nombre: quedan OBRA · ESTADO · CONTRATADO.
   + ' max-[559px]:gap-[10px] max-[559px]:grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
 

@@ -337,6 +337,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 titulo={tituloPanel}
                 ordenes={ordenesDelPanel}
                 de={obraPedida ? 'de este trabajo' : 'del cliente'}
+                verEnObras={obraPedida ? `/obras/${obraPedida}` : null}
                 veEconomia={veEconomia}
                 cerrarHref={armarHref(sp, { ordenes: undefined })}
               />

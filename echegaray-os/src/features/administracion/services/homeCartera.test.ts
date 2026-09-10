@@ -48,7 +48,7 @@ const eco = (obraId: string, contratado: number | null, extra: Partial<EconomiaD
 /** Una fila de `public.cliente_economia`, que es de donde salen los totales del cliente. */
 const ecCliente = (p: Partial<EconomiaDeCliente> & { cliente_id: string }): EconomiaDeCliente => ({
   contratado: null, contratado_en_curso: null, n_obras_en_curso: 0, n_obras_cerradas: 0,
-  n_obras_con_precio: 0, n_obras_sin_precio: 0, costo_real: null, facturado_90d: null,
+  n_obras_con_precio: 0, n_obras_sin_precio: 0, facturado_90d: null,
   cobrado_90d: null, cobrado_total: null, cobrado_neto_total: null, saldo: null, vencido: null,
   por_vencer: null, pendiente_contractual: null, ...p,
 })

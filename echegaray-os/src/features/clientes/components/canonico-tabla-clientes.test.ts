@@ -118,18 +118,17 @@ test('cada trabajo dibuja los números de SUS órdenes de compra, y el detalle s
 
 test('la celda de OC publica la ventana del contratado y no suma el histórico', () => {
   const src = codigo()
-  assert.match(src, /o\.ocCivaVentana == null \? '' : pesos\(o\.ocCivaVentana\)/)
-  assert.match(src, /data-testid="oc-historico"/)
-  assert.match(src, /\+ \{pesos\(historico\)\} histórico/)
+  assert.match(src, /pesos\(o\.ocCivaVentana\)/)
+  // EL HISTÓRICO NO SE DIBUJA: era el segundo renglón que el dueño llamó confuso. Se dice entero en
+  // el `title`, y sobre todo NO se suma al total de la ventana.
+  assert.match(src, /son órdenes de otros años/)
   assert.doesNotMatch(src, /ocCivaVentana \+ .*ocCivaHistorico/, 'los dos totales no se suman')
 })
 
-test('un trabajo con contrato y sin OC lo dice, en vez de dejar la celda vacía', () => {
-  // Quattropani no tiene orden de compra: tiene un contrato en dólares. Una celda vacía en una
-  // columna de papeles se lee como «se perdió el papel».
-  const src = codigo()
-  assert.match(src, /Contrato \{dolares\(o\.contratadoUsd\)\}/)
-  assert.match(src, />sin OC</)
+test('un trabajo sin OC lo dice, en vez de dejar la celda vacía', () => {
+  // Quattropani no tiene orden de compra: tiene un contrato en dólares, que se lee en la columna
+  // Contratado. Una celda vacía en una columna de papeles se lee como «se perdió el papel».
+  assert.match(codigo(), /n === 0\n\s+\? 'sin OC'/)
 })
 
 test('la moneda del contrato se dice: U$S arriba y su valuación de hoy debajo', () => {
@@ -157,11 +156,13 @@ test('la fila no vuelve a marcar en ámbar lo que la pantalla ya no explica', ()
   assert.doesNotMatch(src, /sin teléfono|sin jefe|sin medir|sin certificar/)
 })
 
-test('el rótulo de la columna de papeles dice que llevan IVA', () => {
+test('los rótulos de las dos columnas de papeles dicen que llevan IVA', () => {
   // El Adicional Tercer Muro: OC $12.100.000 contra $10.000.000 contratados = el mismo número ×1,21.
   // Sin el «c/IVA» en el rótulo, las dos columnas vecinas invitan a una resta que da $2.100.000 de
   // nada. La unidad va en el RÓTULO y no sólo en el `title`: si no, hay que pasar el mouse.
-  assert.match(codigo(), /OC · OP c\/IVA/)
+  const src = codigo()
+  assert.match(src, />OC c\/IVA</)
+  assert.match(src, />OP c\/IVA</)
 })
 
 test('«sin obra en curso» dejó de escribirse en la celda de plata', () => {
@@ -223,14 +224,23 @@ test('la tabla no dibuja el margen ni su porcentaje', () => {
   assert.doesNotMatch(src, /data-testid="margen"/)
 })
 
-test('la grilla declara las ocho columnas del CRM, y ninguna de costo', () => {
-  // Cliente · Trabajos · OC·OP · Contratado · Cobrado · Por cobrar · ▲ Vencido · Próx. cobro. Si el
-  // literal y las celdas se desincronizan, la tabla se corre entera y nadie lo ve en un typecheck.
+// ═══ SEIS COLUMNAS, Y NI UNA MÁS (dueño, 10/09/2026 18:12) ═══
+//
+// «Columnas que no solicité… te había pedido columnas determinadas.» Las que pidió a lo largo del
+// día son estas seis, en este orden. Este caso es el que impide que vuelva a crecer.
+
+test('la grilla declara las seis columnas que el dueño pidió, y ninguna más', () => {
   const src = codigo()
-  assert.match(src, /grid-cols-\[minmax\(0,1\.6fr\)_100px_140px_132px_152px_126px_122px_112px\]/)
-  for (const rotulo of ['Trabajos', 'OC · OP c/IVA', 'Contratado', 'Cobrado c/IVA', 'Por cobrar',
-    '▲ Vencido', 'Próx. cobro']) {
+  assert.match(src, /grid-cols-\[minmax\(0,1\.7fr\)_150px_140px_120px_150px_150px\]/)
+  for (const rotulo of ['>Cliente<', '>Obras<', '>OC c/IVA<', '>OP c/IVA<', "'Contratado'",
+    'Cobrado c/IVA']) {
     assert.ok(src.includes(rotulo), `falta la columna «${rotulo}»`)
+  }
+  // Se miran los RÓTULOS dibujados, no el fuente entero: el archivo explica en prosa qué columnas
+  // sacó y por qué, y una prosa correcta no puede poner roja la regla que describe.
+  const rotulos = src.slice(src.indexOf('<RotuloCol>Cliente</RotuloCol>'), src.indexOf('{clientes.map('))
+  for (const prohibida of ['Por cobrar', 'Vencido', 'Próx. cobro', 'ppto.', 'Margen', 'Últ. mov.']) {
+    assert.ok(!rotulos.includes(prohibida), `volvió una columna que el dueño no pidió: «${prohibida}»`)
   }
 })
 
@@ -260,9 +270,17 @@ test('los números de las OC siguen debajo del nombre, con su PDF', () => {
   assert.match(src, /<OrdenesDeLaObra ordenes=\{ocDeLaObra\} veEconomia=\{veEconomia\} \/>/)
 })
 
-test('la celda de cobro de la obra no dibuja NADA mientras la base no pueda repartir', () => {
+// ═══ UN SOLO TRATAMIENTO PARA EL HUECO (dueño, 10/09/2026 18:10) ═══
+//
+// La columna tenía TRES formas de decir «acá no hay número»: «—», la celda en blanco y la frase
+// «cobro sin obra asignada» en tipografía de texto dentro de una columna de plata. Ahora hay una
+// sola y el MOTIVO —que es lo que cambia— vive en el `title`.
+
+test('la celda de cobro dice el hueco de UNA sola forma, y el motivo va en el `title`', () => {
   const src = codigo()
-  assert.match(src, /if \(!disponible\) return <span className=\{SOLO_TABLET\} data-testid=\{testid\} data-cobro="sin-imputacion" \/>/)
+  assert.match(src, /const sinDato = !disponible \|\| imputacion === 'cliente' \|\| cobrado === null/)
+  assert.match(src, /\{sinDato \? '—' : pesos\(cobrado\)\}/)
+  assert.match(src, /const porQueNoHay =/, 'sin el motivo, el «—» es un hueco mudo')
   assert.match(src, /disponible=\{o\.cobroDisponible\}/, 'la fila de la obra tiene que pasarlo')
   // La fila del CLIENTE no entra en la regla: su importe sale de `cliente_economia` y no depende de
   // que se pueda repartir nada. Si alguien le pasa `disponible`, la columna se apaga entera.
@@ -327,10 +345,10 @@ test('la atribución DEDUCIDA se declara: la barra sale, pero el `title` dice qu
   assert.match(src, /imputacion === 'unica-obra'/)
   assert.match(src, /ÚNICO en curso: no hay entre qué repartirlo/)
   assert.match(src, /data-imputacion=\{imputacion \?\? undefined\}/, 'sin esto no es auditable desde afuera')
-  // Y NO entra por la puerta de «cobro sin obra asignada», que es la de dos o más candidatas.
-  const corte = src.indexOf("if (imputacion === 'cliente')")
-  assert.ok(corte > src.indexOf("imputacion === 'unica-obra'") - 4000)
-  assert.match(src.slice(corte, corte + 200), /cobro sin trabajo asignado|data-cobro="sin-obra-asignada"/)
+  // Y NO entra por la puerta del hueco, que es la de dos o más candidatas: con `unica-obra` la
+  // celda dibuja el importe y la barra, y lo que se declara es que el número se DEDUJO.
+  assert.match(src, /imputacion === 'cliente' \|\| cobrado === null/)
+  assert.doesNotMatch(src, /sinDato = [^\n]*'unica-obra'/)
 })
 
 // ═══ EL RÓTULO QUE MENTÍA (auditoría independiente, 10/09/2026) ═══
@@ -365,12 +383,14 @@ test('la fila del trabajo abre el detalle del CRM, no la ficha del ERP', () => {
   assert.doesNotMatch(fila, /href=\{`\/obras\//, 'la fila entera no puede saltar al ERP')
 })
 
-test('el puente al ERP existe, es secundario y está nombrado', () => {
+test('la lista NO repite el enlace al ERP debajo de cada obra', () => {
+  // Colgaba de cada fila y repetía en toda la pantalla un enlace al módulo del que el dueño mandó
+  // separar éste (10/09/2026 18:12). El puente sigue existiendo UNA vez, adentro del detalle.
   const src = codigo()
-  assert.match(src, /testid="ver-en-obras"/)
-  assert.match(src, /Ver en Obras →/)
-  // Y es un botón, no un ancla: un `<a>` dentro del `<a>` de la fila es HTML inválido.
-  assert.match(src, /<AbrirOrdenes\n\s+href=\{`\/obras\/\$\{o\.obra_id\}`\}/)
+  assert.doesNotMatch(src, /Ver en Obras →/)
+  const panel = readFileSync(fileURLToPath(new URL('./PanelOrdenes.tsx', import.meta.url)), 'utf8')
+  assert.match(panel, /Ver esta obra en el módulo Obras →/)
+  assert.match(panel, /data-testid="ver-en-obras"/)
 })
 
 test('el avance físico de la obra no se dibuja en el CRM', () => {
@@ -385,27 +405,21 @@ test('el avance físico de la obra no se dibuja en el CRM', () => {
 // re-tipea cada vez que el cobro se posterga y está condenado a cero por construcción—. La pestaña
 // OBRAS usa emisión + 30 días. Dos relojes en la misma columna son dos definiciones.
 
-test('el saldo se publica por trabajo y la fila del cliente lo deja vacío a propósito', () => {
+test('el saldo, el vencido y el próximo cobro NO son columnas de esta lista', () => {
+  // La capacidad no se perdió: `obra_cuenta` los publica y `getCobradoPorObra` los lee. Lo que no
+  // pueden es estar acá, porque el dueño pidió seis columnas y éstas no son ninguna de ellas.
   const src = codigo()
-  assert.match(src, /valor=\{o\.porCobrar\}/)
-  assert.match(src, /valor=\{o\.vencido\}/)
-  assert.match(src, /proximo=\{o\.proximo\}/)
-  assert.doesNotMatch(src, /valor=\{c\.vencido\}|valor=\{c\.saldo\}|c\.porVencer/)
-  assert.match(src, /data-testid="vencido-cliente" \/>/, 'la celda existe y va vacía: la grilla no se corre')
-})
-
-test('una columna que la base no publica se dibuja vacía, nunca en cero', () => {
-  // `obra_cobranza` todavía no tiene `vencido` ni `proximo_cobro`. Un «$ 0» ahí afirmaría que no
-  // hay mora, que es justo la conclusión que hace que nadie revise.
-  const src = codigo()
-  assert.match(src, /valor === null \? '' :/)
-  assert.match(src, /data-vacia=\{valor === null \? '' : undefined\}/)
+  assert.doesNotMatch(src, /valor=\{o\.porCobrar\}|valor=\{o\.vencido\}|proximo=\{o\.proximo\}/)
+  assert.doesNotMatch(src, /CifraDeCobranza|ProximoCobro/)
 })
 
 test('el cobro sin repartir se dibuja en la fila del CLIENTE y en ninguna otra', () => {
   const src = codigo()
-  assert.match(src, /data-testid="cobro-sin-obra"/)
+  // «s/obra» DEJÓ DE SER UN RENGLÓN DIBUJADO (10/09/2026 18:10): ARCOR mostraba «$42.326.347» y
+  // debajo «$42.326.347 s/trabajo», el mismo número dos veces. Se dice en el `title`.
+  assert.doesNotMatch(src, /data-testid="cobro-sin-obra"/)
   assert.match(src, /sinObra=\{c\.cobradoSinObra\}/)
+  assert.match(src, /repartió entre sus obras/)
   // La fila de la OBRA no lo pasa: su cobro es el suyo, y un «sin asignar» ahí no significaría nada.
   const deLaObra = src.slice(
     src.lastIndexOf('<Cobrado', src.indexOf('testid="cobro-obra"')),

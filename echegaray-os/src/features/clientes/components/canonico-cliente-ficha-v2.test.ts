@@ -133,9 +133,14 @@ test('el costo real no se dibuja en la ficha del cliente', () => {
   assert.doesNotMatch(codigoListas(), /costo_real/)
 })
 
-test('el resumen del portal no se afirma cuando no se leyó', () => {
-  assert.match(codigoPagina(), /solapa === 'accesos'/)
-  assert.match(codigoPagina(), /Se lee al abrir la cara/)
+test('el resumen del portal no se afirma cuando no se leyó, y tampoco pone un placeholder', () => {
+  // Decía «Se lee al abrir la cara», que le explica al dueño una decisión interna del renderizado
+  // justo donde esperaba un dato (10/09/2026 18:10). Ahora, fuera de esa cara, no se escribe nada:
+  // el verbo «Gestionar accesos →» es la puerta, y no afirma ningún número.
+  const src = codigoPagina()
+  assert.match(src, /\{solapa === 'accesos' && \(/)
+  assert.doesNotMatch(src, /Se lee al abrir la cara/)
+  assert.match(src, /Gestionar accesos →/)
 })
 
 

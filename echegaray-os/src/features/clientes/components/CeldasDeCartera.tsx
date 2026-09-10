@@ -17,18 +17,13 @@ import { ORIGEN_OC_CLIENTE, ORIGEN_SUMA_VIVA, SIN_PRECIO_EN_OBRAS } from '@/feat
 // píxeles inelásticos. Y siempre en px: una variante con otra unidad apaga TODOS los cortes del
 // repositorio (ver `cortes-por-ancho-llegan-al-css.test.ts`).
 
-/** Los papeles y el próximo cobro: lo primero que se suelta. */
-export const SOLO_XL = 'max-[1399px]:hidden'
-/** El saldo —por cobrar y vencido—: se suelta cuando ya no entra sin apretar el nombre. */
-export const SOLO_ANCHO = 'max-[1199px]:hidden'
-/** En 390px sólo entran quién es y cuánto se le contrató. */
+/** El detalle económico: OC, OP y lo cobrado. `25v2:154`. */
+export const SOLO_ANCHO = 'max-[1249px]:hidden'
+/** «Obras»: en 350px sólo entran quién es y cuánto se le contrató. */
 export const SOLO_TABLET = 'max-[767px]:hidden'
 
 /** El tono de los divisores y la pista de las barras. */
 export const TONO = { divisorObra: '#F3F2EE', pista: '#EDECE8', textoObra: '#3A3A38' } as const
-
-export const AYUDA_PROXIMO = 'La próxima cobranza esperada de este trabajo, con su medio de cobro '
-  + '(Cobranzas). Es una PREVISIÓN: la prueba de que entró es el extracto del banco.'
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // LO COBRADO — el importe siempre, y la barra sólo cuando el denominador existe
@@ -76,41 +71,41 @@ export function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambi
    */
   sinObra?: number | null
 }) {
-  if (!veEconomia) return <span className={SOLO_TABLET} />
-  // ═══ TODO O NADA (dueño, 10/09/2026 16:25: «uno con barra de progreso y otros no») ═══
+  if (!veEconomia) return <span className={SOLO_ANCHO} />
+  // ═══ UN SOLO TRATAMIENTO PARA EL HUECO (dueño, 10/09/2026 18:10) ═══
   //
-  // Mientras la base no pueda repartir el cobro por obra —`obra_cobranza.imputacion` sin aplicar—
-  // NINGUNA fila de trabajo publica cobro. La única que tenía barra era Quattropani, y no porque se
-  // supiera más de ella: su etiqueta de Cobranzas coincide con el id de su única obra. Una sola
-  // barra en una columna vacía se lee como que las otras no cobraron.
-  if (!disponible) return <span className={SOLO_TABLET} data-testid={testid} data-cobro="sin-imputacion" />
-  if (imputacion === 'cliente') {
-    return (
-      <span
-        className={`flex items-center justify-end ${SOLO_TABLET}`}
-        data-testid={testid} data-cobro="sin-obra-asignada"
-        title={'Cobranzas registra este cobro contra el CLIENTE y la vista no pudo repartirlo a un '
-          + 'trabajo: el importe está en la fila del cliente, arriba. No es «no cobró».'}
-        style={{ fontSize: '10.5px', color: V.tenue, textAlign: 'right' }}
-      >
-        cobro sin trabajo asignado
-      </span>
-    )
-  }
+  // La columna tenía TRES formas de decir «acá no hay número»: un «—», una celda en blanco y la
+  // frase «cobro sin trabajo asignado» en tipografía de texto dentro de una columna de plata. El
+  // dueño las vio en la misma pantalla. Ahora hay una sola —el «—»— y el MOTIVO, que es lo que
+  // cambia de un caso a otro, vive en el `title`.
+  const sinDato = !disponible || imputacion === 'cliente' || cobrado === null
+  const porQueNoHay = !disponible
+    ? 'La base todavía no puede repartir el cobro por obra: no hay pregunta que contestar acá.'
+    : imputacion === 'cliente'
+      ? 'Cobranzas registra este cobro contra el CLIENTE y no se pudo repartir a una obra: el '
+        + 'importe está en la fila del cliente, arriba. NO es «no cobró».'
+      : 'Ninguna cobranza imputada a esta obra. NO es cobrado $ 0: es que no hay ninguna fila de '
+        + 'Cobranzas atada a ella.'
   // EL DENOMINADOR SE LLEVA A LA ESPECIE DEL NUMERADOR: lo cobrado es bruto y lo contratado neto.
-  const p = medible ? progresoDeCobroBruto(cobrado, contratado) : null
+  const p = medible && !sinDato ? progresoDeCobroBruto(cobrado, contratado) : null
   // LA DEDUCCIÓN SE DECLARA. `unica-obra` es la única imputación que NO sale de la base: la deriva
   // `armarCartera` porque el cliente tiene un solo trabajo en curso y no hay entre qué repartir.
   const titulo = (imputacion === 'unica-obra'
     ? 'Cobranzas registra este cobro contra el CLIENTE, y se le atribuye a este trabajo por ser el '
       + 'ÚNICO en curso: no hay entre qué repartirlo. Es una deducción, no una imputación por OC. — '
     : '')
+    + (sinDato ? `${porQueNoHay} ` : '')
     + tituloDeCobro({ cobrado, contratado: contratado === null ? null : contratado * IVA_GENERAL, ambito, obrasSinPrecio })
     // ═══ POR QUÉ EL DENOMINADOR NO ES EL NÚMERO DE LA COLUMNA DE AL LADO ═══
     //
     // Quattropani: cobrado $107.877.339 al lado de un contratado de $95.303.124. Puestos así, el
     // cobro parece exceder el contrato en $12,6 M, y no lo excede: uno lleva IVA y el otro no. El
     // `title` escribe la cuenta entera para que nadie la haga a ojo.
+    + (sinObra !== null
+        ? ` — ${pesos(sinObra)} de ese cobro Cobranzas lo anota contra el CLIENTE y todavía no se `
+          + 'repartió entre sus obras. NO es deuda: es lo contrario, y por eso el porcentaje de cada '
+          + 'obra de abajo es más bajo que el de esta fila'
+        : '')
     + (contratado === null
         ? ''
         : ` — la fracción compara el cobro CON IVA contra el contrato llevado a la misma especie `
@@ -118,31 +113,21 @@ export function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambi
           + 'neto y lo cobrado no, y restarlos directo da una diferencia que no existe')
   return (
     <span
-      className={`flex flex-col items-end justify-center ${SOLO_TABLET}`}
+      className={`flex flex-col items-end justify-center ${SOLO_ANCHO}`}
       data-testid={testid} data-cobro={p ? String(p.pct) : 'sin-porcentaje'}
       data-imputacion={imputacion ?? undefined} title={titulo}
       style={{ gap: 2, textAlign: 'right' }}
     >
-      {/* «—» ES «NINGUNA COBRANZA IMPUTADA», NO CERO: el `title` dice cuál de las dos. */}
+      {/* «—» ES «ACÁ NO HAY NÚMERO», NUNCA CERO: el `title` dice cuál de los tres motivos es. */}
       <span
         className="font-mono tabular-nums" data-testid={`${testid}-importe`}
-        style={{ fontSize: tam, color: cobrado === null ? V.lupa : V.tinta }}
+        style={{ fontSize: tam, color: sinDato ? V.lupa : V.tinta }}
       >
-        {cobrado === null ? '—' : pesos(cobrado)}
+        {sinDato ? '—' : pesos(cobrado)}
       </span>
-      {/* «s/trabajo» ES UNA UNIDAD, NO UNA FRASE, y por eso va en la familia de la cifra. La
-          explicación entera, en el `title`. */}
-      {sinObra !== null && (
-        <span
-          className="font-mono tabular-nums" data-testid="cobro-sin-obra"
-          title={'Cobrado que Cobranzas anota contra el CLIENTE y no contra un trabajo, así que '
-            + 'todavía no se repartió. NO es deuda: es lo contrario. Por eso el porcentaje de cada '
-            + 'trabajo de abajo es más bajo que el del cliente.'}
-          style={{ fontSize: '10.5px', color: V.tenue }}
-        >
-          {pesos(sinObra)} s/trabajo
-        </span>
-      )}
+      {/* «s/obra» DEJÓ DE SER UN RENGLÓN DIBUJADO (dueño, 10/09/2026 18:12: «columnas que no
+          solicité… confusa»). Lo que no se repartió sigue dicho, y en el único lugar donde el OS
+          pone la trazabilidad de un número: el `title` de la celda. */}
       {p && (
         <span className="flex items-center justify-end" style={{ gap: 6 }}>
           <span style={{ display: 'flex', height: 4, width: 52, borderRadius: 2, background: TONO.pista, flexShrink: 0 }}>
@@ -166,54 +151,14 @@ export function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambi
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// EL SALDO DEL TRABAJO — por cobrar, vencido, y cuándo entra
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/**
- * UNA CIFRA DE COBRANZAS. VACÍA CUANDO LA VISTA NO PUBLICA LA COLUMNA, y nunca un cero.
- *
- * `obra_cobranza` todavía no publica `vencido` ni `proximo_cobro` (la migración que las agrega está
- * en curso). Un «$ 0» en Vencido afirmaría que este cliente no debe nada atrasado, que es
- * exactamente la conclusión que hace que nadie revise. Un hueco no se rellena.
- */
-export function CifraDeCobranza({ valor, tam, alarma = false, testid, clase }: {
-  valor: number | null; tam: string; alarma?: boolean; testid: string; clase: string
-}) {
-  return (
-    <span
-      className={`font-mono tabular-nums ${clase}`} data-testid={testid}
-      data-vacia={valor === null ? '' : undefined}
-      style={{
-        fontSize: tam, textAlign: 'right',
-        color: valor === null ? V.lupa : alarma ? V.warn : V.tintaSuave,
-      }}
-    >
-      {valor === null ? '' : `${alarma ? '▲ ' : ''}${pesos(valor)}`}
-    </span>
-  )
-}
-
-/** `29/09 · Transferencia`. La fecha en mono —se compara de arriba abajo— y el medio en texto. */
-export function ProximoCobro({ proximo, clase }: {
-  proximo: { fecha: string | null; medio: string | null } | null
-  clase: string
-}) {
-  if (!proximo?.fecha && !proximo?.medio) return <span className={clase} data-testid="proximo-cobro" />
-  const dia = proximo.fecha ? proximo.fecha.slice(8, 10) + '/' + proximo.fecha.slice(5, 7) : null
-  return (
-    <span
-      className={`flex flex-col items-end justify-center ${clase}`} data-testid="proximo-cobro"
-      title={AYUDA_PROXIMO} style={{ gap: 1, textAlign: 'right' }}
-    >
-      {dia && <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.tintaSuave }}>{dia}</span>}
-      {proximo.medio && (
-        <span className="truncate" style={{ fontSize: '10.5px', color: V.tenue }}>{proximo.medio}</span>
-      )}
-    </span>
-  )
-}
-
+// ═══ «POR COBRAR», «▲ VENCIDO» Y «PRÓX. COBRO» SE FUERON (dueño, 10/09/2026 18:12) ═══
+//
+// «Sección cliente todo mal, inentendible, con columnas que no solicité… te había pedido columnas
+// determinadas.» Las tres columnas venían de traducir la pestaña OBRAS entera a la pantalla, y la
+// pestaña es del ERP: acá alcanzan las seis que el dueño pidió a lo largo del día —CLIENTE, OBRAS,
+// OC, OP, CONTRATADO, COBRADO—. La CAPACIDAD no se perdió: `obra_cuenta` las publica y
+// `getCobradoPorObra` las lee, así que el día que se pidan es una celda, no una entrega.
+//
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // LO CONTRATADO DE UN TRABAJO — con la marca de cuando no es un precio
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -257,6 +202,10 @@ export function ContratadoDeObra({ o, veEconomia }: { o: ObraEnCurso; veEconomia
         + 'los días y el contrato no.'
       : null,
     viva ? AYUDA_SUMA_VIVA : null,
+    porOC && o.referencia
+      ? `${o.referencia}: OBRAS no declara precio para este trabajo, pero la orden de compra del `
+        + 'cliente lo respalda. Es un papel verificable, no una suma que sube al facturar.'
+      : null,
     o.nota,
   ].filter(Boolean).join(' — ')
   if (!veEconomia) return <span data-testid="contratado-obra" />
@@ -289,11 +238,9 @@ export function ContratadoDeObra({ o, veEconomia }: { o: ObraEnCurso; veEconomia
           ≈ {pesos(o.contratado)}
         </span>
       )}
-      {o.contratadoUsd == null && porOC && o.referencia && (
-        <span data-testid="contratado-referencia" style={{ fontSize: '10.5px', color: V.tenue }}>
-          {o.referencia}
-        </span>
-      )}
+      {/* «SEGÚN OC 2256» VA EN EL `title` Y NO DIBUJADO (dueño, 10/09/2026 18:12). Es la
+          trazabilidad del número, no una segunda cifra: escrita al lado, mete texto en una columna
+          de plata y vuelve la fila ilegible. */}
     </span>
   )
 }
@@ -319,7 +266,6 @@ export function ContratadoDeObra({ o, veEconomia }: { o: ObraEnCurso; veEconomia
 export function OrdenesDelTrabajo({ o, veEconomia, clase }: {
   o: ObraEnCurso; veEconomia: boolean; clase: string
 }) {
-  if (!veEconomia) return <span className={clase} data-testid="oc-trabajo" />
   const n = o.ocNVentana ?? 0
   const historico = o.ocCivaHistorico != null && o.ocCivaHistorico > 0 ? o.ocCivaHistorico : null
   const titulo = [
@@ -330,36 +276,17 @@ export function OrdenesDelTrabajo({ o, veEconomia, clase }: {
       + 'fusionada— y por eso no se suman acá.' : null,
     o.nota,
   ].filter(Boolean).join(' ')
-  if (n === 0) {
-    return (
-      <span
-        className={`flex flex-col items-end justify-center ${clase}`} data-testid="oc-trabajo"
-        title={titulo} style={{ gap: 1, textAlign: 'right' }}
-      >
-        {o.contratadoUsd != null
-          ? (
-              <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.apagado }}>
-                Contrato {dolares(o.contratadoUsd)}
-              </span>
-            )
-          : null}
-        <span style={{ fontSize: '10.5px', color: V.tenue }}>sin OC</span>
-      </span>
-    )
-  }
+  // UNA SOLA LÍNEA Y UNA SOLA TIPOGRAFÍA: «$ 12.100.000 · 1 OC». El histórico de la obra fusionada
+  // NO se dibuja —era el segundo renglón que el dueño llamó confuso— y vive en el `title`.
   return (
     <span
-      className={`flex flex-col items-end justify-center ${clase}`} data-testid="oc-trabajo"
-      title={titulo} style={{ gap: 1, textAlign: 'right' }}
+      className={`flex items-center justify-end font-mono tabular-nums ${clase}`}
+      data-testid="oc-trabajo" title={titulo}
+      style={{ fontSize: '11.5px', color: n === 0 ? V.tenue : V.tinta, textAlign: 'right' }}
     >
-      <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.tinta }}>
-        {o.ocCivaVentana == null ? '' : pesos(o.ocCivaVentana)}{' '}{n} OC
-      </span>
-      {historico && (
-        <span className="font-mono tabular-nums" data-testid="oc-historico" style={{ fontSize: '10.5px', color: V.tenue }}>
-          + {pesos(historico)} histórico
-        </span>
-      )}
+      {n === 0
+        ? 'sin OC'
+        : `${veEconomia && o.ocCivaVentana != null ? `${pesos(o.ocCivaVentana)} · ` : ''}${n} OC`}
     </span>
   )
 }

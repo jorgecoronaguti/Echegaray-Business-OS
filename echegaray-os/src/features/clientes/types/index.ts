@@ -56,8 +56,9 @@ export interface ObraDePanel {
   obra_id: string
   nombre: string
   estado: string
-  /** `null` = sin avance sincronizado. NO es 0 %. */
-  avance_pct: number | null
+  // SIN `avance_pct` desde el 10/09/2026: el avance físico es del ERP y el CRM dejó de dibujarlo
+  // («Administración es un CRM y Obra un ERP»). El campo no se deja «por si acaso»: servido, la
+  // próxima celda lo encuentra a mano — así volvieron el margen y las columnas de presupuesto.
 }
 
 /** Una persona del OS que puede quedar como responsable interno de un cliente. */

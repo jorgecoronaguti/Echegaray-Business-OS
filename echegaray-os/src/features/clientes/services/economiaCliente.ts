@@ -19,6 +19,13 @@
 // secas a propósito: dos caras sumando lo mismo con ventanas distintas es el conflicto #2 del
 // inventario, y un nombre sin ventana es cómo se cuela.
 
+// ═══ EL COSTO REAL SE DEJÓ DE PEDIR (10/09/2026, orden del dueño) ═══
+//
+// La vista lo sigue publicando —es legítimo y el módulo Obras lo consume—, pero el CRM no lo lee:
+// «Administración es un CRM y Obra un ERP: no mezcles cosas con obras». Lo que se deja de pedir no
+// se puede volver a colar en una celda, que es como volvieron el margen y las dos columnas de
+// presupuesto. Ver `clientes-no-lee-el-erp.test.ts`.
+
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { aNumero } from './economiaObras.ts'
 
@@ -33,8 +40,6 @@ export interface EconomiaDeCliente {
   n_obras_cerradas: number
   n_obras_con_precio: number
   n_obras_sin_precio: number
-  /** Σ de `obra_panel.costo_real`. Vivía en `cliente_panel.costo_real`, que se retiró. */
-  costo_real: number | null
   /** VENTANA de 90 días. Provisorio hasta D2. */
   facturado_90d: number | null
   /** VENTANA de 90 días. Provisorio hasta D2. */
@@ -52,7 +57,7 @@ export interface EconomiaDeCliente {
 
 const COLUMNAS =
   'cliente_id, contratado, contratado_en_curso, n_obras_en_curso, n_obras_cerradas,'
-  + ' n_obras_con_precio, n_obras_sin_precio, costo_real, facturado_90d, cobrado_90d,'
+  + ' n_obras_con_precio, n_obras_sin_precio, facturado_90d, cobrado_90d,'
   + ' cobrado_total, cobrado_neto_total, saldo, vencido, por_vencer, pendiente_contractual'
 
 /** PostgREST devuelve los `numeric` como texto y los `int` como número. Los conteos son 0 de
@@ -68,7 +73,6 @@ function fila(f: Record<string, unknown>): EconomiaDeCliente {
     n_obras_cerradas: entero('n_obras_cerradas'),
     n_obras_con_precio: entero('n_obras_con_precio'),
     n_obras_sin_precio: entero('n_obras_sin_precio'),
-    costo_real: n('costo_real'),
     facturado_90d: n('facturado_90d'),
     cobrado_90d: n('cobrado_90d'),
     cobrado_total: n('cobrado_total'),
