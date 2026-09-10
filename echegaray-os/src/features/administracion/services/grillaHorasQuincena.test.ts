@@ -73,7 +73,9 @@ test('EL CIERRE ESTÁ TRABADO MIENTRAS HAYA PENDIENTES, Y DICE POR QUÉ', () => 
   assert.equal(r.puedeCerrar, false)
   assert.match(r.porQueNo, /1 ausencia\(s\) sin motivo/)
   assert.match(r.porQueNo, /1 sin retribución cargada/)
-  assert.equal(r.esperadas, 97)
+  // EL PIE SUMA PERSONAS: dos personas × 97 h. Este assert decía 97 —las de UNA— al lado de las
+  // cargadas de las dos, y es lo que el dueño leyó como «Cargadas 206 · Esperadas 97».
+  assert.equal(r.esperadas, 194)
   assert.equal(r.personas, 2)
   // Un día sin ninguna hora publica `null`, no 0: nadie cargó no es «trabajaron cero».
   assert.equal(r.porDia[5], null)

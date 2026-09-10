@@ -102,9 +102,14 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
     },
     {
       rotulo: 'Quién',
-      // EL CORTE OBRERO/OFICINA YA EXISTE EN EL LEGAJO: es `modalidad_liquidacion` (README §1). No
-      // se inventa un campo nuevo. La modalidad que no tiene a nadie se OFRECE IGUAL con «sin
-      // cargar» al lado —el mockup la dibuja así—: esconderla haría creer que el corte no existe.
+      // EL CORTE OBRERO/OFICINA SALE DE LA MODALIDAD QUE LIQUIDA, no de `modalidad_liquidacion`.
+      //
+      // Ese campo del legajo está vacío en las diecisiete personas de la base real, y con él el
+      // filtro publicaba «Modalidad hora 1 · Modalidad mensual sin cargar» sobre quince obreros por
+      // hora y dos de Oficina por mes (captura del dueño, 10/09/2026). La modalidad la decide
+      // ahora la tarifa vigente por `modalidadDe`, que es la MISMA función que arma los cuadros de
+      // la liquidación. La modalidad que no tiene a nadie se OFRECE IGUAL con «sin cargar» al lado
+      // —el mockup la dibuja así—: esconderla haría creer que el corte no existe.
       opciones: [
         {
           texto: 'Todo el plantel',

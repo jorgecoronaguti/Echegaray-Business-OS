@@ -21,7 +21,10 @@ import {
 } from './liquidacionDeAusencias.ts'
 import { jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { diasDeLaQuincenaSinDomingos, type Quincena } from './quincena.ts'
-import { horasEsperadasDeQuincena, type PresenciaDeQuincena, type RegistroDeQuincena } from './liquidacionQuincena.ts'
+import {
+  faltaLaTarifa, horasEsperadasDeQuincena,
+  type ModalidadDeLiquidacion, type PresenciaDeQuincena, type RegistroDeQuincena,
+} from './liquidacionQuincena.ts'
 
 /** Una persona del plantel, con lo único que la grilla necesita saber de su legajo. */
 export interface PersonaDeGrilla {
@@ -29,9 +32,20 @@ export interface PersonaDeGrilla {
   nombre: string
   /** `null` es «sin retribución cargada», que NO es cero (R1): la fila queda pendiente. */
   valorHora: number | null
+  /** El neto mensual acordado de Oficina. XOR con `valorHora`: nunca los dos (CHECK de la base). */
+  netoMensual?: number | null
   convenio: string | null
-  /** `hora` o `mensual` del legajo. `null` es «sin cargar»: es el corte obrero/oficina del handoff. */
-  modalidad?: string | null
+  /**
+   * CÓMO SE LE PAGA A ESTA PERSONA — el mismo `modalidadDe(grupo)` que usa la liquidación, no el
+   * campo `modalidad_liquidacion` del legajo.
+   *
+   * Ese campo está VACÍO en las diecisiete personas de la base real, así que el filtro «Quién»
+   * publicaba «Modalidad hora 1 · Modalidad mensual sin cargar» sobre un plantel de quince obreros
+   * por hora y dos de Oficina por mes. El corte obrero/oficina ya existe y lo decide la tarifa
+   * vigente (`armarCuadros`): quien tiene neto mensual es Oficina. Una segunda definición del
+   * mismo corte da dos respuestas y se cree la última que alguien miró.
+   */
+  modalidad?: ModalidadDeLiquidacion | null
 }
 
 /** Lo que se dibuja en una celda. `horas` viaja para el `tabular-nums`; `texto` para la A y la L. */
@@ -92,9 +106,11 @@ function celdaDelDia(
  * «tarifa» le gana a «al día». La licencia es informativa: explica por qué las horas cargadas son
  * menos que las esperadas sin que nadie tenga que hacer nada.
  */
-function estadoDeFila(f: Omit<FilaDeGrilla, 'estado'>, valorHora: number | null): EstadoDeFila {
+function estadoDeFila(f: Omit<FilaDeGrilla, 'estado'>, p: PersonaDeGrilla): EstadoDeFila {
   if (f.diasSinMotivo > 0) return 'motivo'
-  if (valorHora == null) return 'tarifa'
+  // LA TARIFA QUE FALTA ES LA DE SU MODALIDAD, y quién lo decide es `faltaLaTarifa` — la misma
+  // función que el cierre. Sin modalidad conocida se exige el valor hora, que es el caso de siempre.
+  if (faltaLaTarifa(p.modalidad ?? 'hora', p.valorHora, p.netoMensual ?? null)) return 'tarifa'
   if (f.diasSinCargar > 0) return 'sin-cargar'
   if (f.horasDeLicencia > 0) return 'licencia'
   return 'al-dia'
@@ -133,7 +149,7 @@ export function filasDeGrilla(d: DatosDeGrilla): FilaDeGrilla[] {
         && (jornadaPorDefecto(c.fecha) ?? 0) > 0).length,
       horasDeLicencia: r2(celdas.filter((c) => c.marca === 'licencia').reduce((s, c) => s + (c.horas ?? 0), 0)),
     }
-    return { ...base, estado: estadoDeFila(base, p.valorHora) }
+    return { ...base, estado: estadoDeFila(base, p) }
   })
 }
 
@@ -172,7 +188,13 @@ export function resumenDeGrilla(
   return {
     dias,
     cargadas: r2(filas.reduce((s, f) => s + f.cargadas, 0)),
-    esperadas: horasEsperadasDeQuincena(quincena),
+    // ═══ EL PIE SUMA PERSONAS, LAS DOS COLUMNAS ═══
+    //
+    // Era `horasEsperadasDeQuincena(quincena)`: las 97 h que espera UNA persona, escritas al lado
+    // de las horas cargadas por DIECISIETE. El dueño lo leyó como «Cargadas 206 · Esperadas 97» y
+    // el porcentaje que sugería —212 %— no significaba nada. Se suma por fila para que el
+    // numerador y el denominador cuenten la misma población; la fila sigue publicando las suyas.
+    esperadas: r2(filas.reduce((s, f) => s + f.esperadas, 0)),
     porDia,
     personas: filas.length,
     sinRetribucion,

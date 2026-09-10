@@ -252,8 +252,15 @@ export function liquidarLinea(
   }
 }
 
-/** ¿Le falta a esta línea la tarifa que su modalidad exige? R1: NULL nunca es cero. */
-function faltaLaTarifa(
+/**
+ * ¿Le falta a esta línea la tarifa que su modalidad exige? R1: NULL nunca es cero.
+ *
+ * SE EXPORTA porque la grilla de la solapa «Horas» tiene que decidir lo MISMO. Hasta el 10/09/2026
+ * marcaba «sin retribución» a toda fila con `valorHora == null`, y publicaba a los dos jefes de
+ * obra de Oficina —que cobran un neto mensual acordado— como pendientes de una tarifa que nadie
+ * les va a cargar nunca. El cierre ya lo había corregido; la grilla tenía su propia copia.
+ */
+export function faltaLaTarifa(
   modalidad: ModalidadDeLiquidacion, valorHora: number | null, netoMensual: number | null,
 ): boolean {
   if (modalidad === 'hora') return valorHora == null
