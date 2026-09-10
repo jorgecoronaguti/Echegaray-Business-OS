@@ -43,6 +43,26 @@ import { diasDeLaQuincenaSinDomingos, type Quincena } from './quincena.ts'
 /** Los tres cuadros de la pestaña. Cada uno se cierra por su cuenta. */
 export type GrupoLiquidacion = 'obreros' | 'oficina' | 'final'
 
+/**
+ * CÓMO SE LE PAGA A ESTA LÍNEA, que es lo mismo que decir QUÉ TARIFA HAY QUE EXIGIRLE.
+ *
+ *   hora     el valor hora de `persona_tarifa`. Sin él no hay COBRA: null, nunca cero.
+ *   mensual  el neto mensual de `persona_tarifa`. Oficina cobra un neto acordado por definición,
+ *            así que su valor hora es NULL SIEMPRE — y eso no es «sin tarifa», es otra tarifa.
+ *   ninguna  la liquidación final no sale de una tarifa: sale del recibo del estudio × 2.
+ */
+export type ModalidadDeLiquidacion = 'hora' | 'mensual' | 'ninguna'
+
+/**
+ * La modalidad la impone el CUADRO, no la tarifa que haya cargada. Derivarla de la tarifa haría que
+ * a quien no tiene ninguna no se le pueda exigir ninguna: el caso que el cierre existe para frenar.
+ */
+export function modalidadDe(grupo: GrupoLiquidacion): ModalidadDeLiquidacion {
+  if (grupo === 'oficina') return 'mensual'
+  if (grupo === 'final') return 'ninguna'
+  return 'hora'
+}
+
 /** Una fila de `registros_hh` de la ventana. `horas` viaja como texto desde PostgREST. */
 export interface RegistroDeQuincena extends RegistroLiquidable {
   fecha: string
@@ -164,6 +184,10 @@ export interface LineaLiquidada {
   nombre: string
   horas: number | null
   valorHora: number | null
+  /** El neto mensual acordado (Oficina). XOR con `valorHora`: nunca los dos. */
+  netoMensual: number | null
+  /** Qué tarifa exige esta línea. La pantalla de cierre la lee para saber qué le falta. */
+  modalidad: ModalidadDeLiquidacion
   /** `null` = falta un dato para poder decirlo. NUNCA cero por defecto. */
   cobra: number | null
   adelanto: number
@@ -195,6 +219,8 @@ export function liquidarLinea(
   efectivoRedondeado: number | null = null,
 ): LineaLiquidada {
   const valorHora = e.tarifa?.valorHora ?? null
+  const netoMensual = e.tarifa?.netoMensual ?? null
+  const modalidad = modalidadDe(grupo)
   const cobra = cobraDe(e, grupo, valorHora)
   // EL RECIBO SIN GIRO NO ES «POR BANCO». Que el estudio haya liquidado $215.564 no dice que el
   // banco los haya movido: hasta que el lote aparece en el extracto, esa plata sigue por pagar y
@@ -208,6 +234,8 @@ export function liquidarLinea(
     nombre: e.nombre,
     horas: e.horas,
     valorHora,
+    netoMensual,
+    modalidad,
     cobra,
     adelanto: redondear2(e.adelanto),
     yaTransferido: redondear2(e.yaTransferido),
@@ -215,10 +243,22 @@ export function liquidarLinea(
     enEfectivo,
     total: enEfectivo == null ? null : redondear2(porBanco + enEfectivo),
     efectivoRedondeado,
-    sinTarifa: grupo !== 'final' && e.tarifa == null,
+    // «SIN TARIFA» ES POR MODALIDAD. Antes era `tarifa == null`, y eso dejaba pasar como cargada
+    // una tarifa de la modalidad equivocada; ahora falta la que ESTA línea cobra. La gente de
+    // Oficina tiene valor hora NULL por definición y NO está sin tarifa: tiene un neto mensual.
+    sinTarifa: faltaLaTarifa(modalidad, valorHora, netoMensual),
     reciboSinGiro: e.reciboNeto != null && !e.giroEnElLote,
     origenTarifa: e.tarifa?.origen ?? null,
   }
+}
+
+/** ¿Le falta a esta línea la tarifa que su modalidad exige? R1: NULL nunca es cero. */
+function faltaLaTarifa(
+  modalidad: ModalidadDeLiquidacion, valorHora: number | null, netoMensual: number | null,
+): boolean {
+  if (modalidad === 'hora') return valorHora == null
+  if (modalidad === 'mensual') return netoMensual == null
+  return false
 }
 
 /** COBRA, según el cuadro. Cada grupo cobra por una razón distinta y ninguna es la del otro. */

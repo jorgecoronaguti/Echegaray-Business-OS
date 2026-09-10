@@ -5,6 +5,7 @@ import {
   armarCuadros, girosDe, periodoDeRecibo,
   type DatosDeCuadros, type FilaAdelanto, type FilaTarifa, type PersonaDeLiquidacion,
 } from './liquidacionCuadros.ts'
+import { estadoDeCierre } from './liquidacionCierre.ts'
 
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN:
 //
@@ -144,4 +145,47 @@ test('el redondeo guardado viaja a la línea y no toca el efectivo calculado', (
   assert.equal(l.cobra, 692984)
   assert.equal(l.enEfectivo, 692984)
   assert.equal(l.efectivoRedondeado, 412000)
+})
+
+// ═══ LA QUINCENA REAL TIENE OFICINA, Y CON OFICINA EL CIERRE NO SE HABILITABA ═══
+//
+// Este test recorre la cadena entera —personas + tarifas + horas → `armarCuadros` →
+// `estadoDeCierre`— porque el defecto no se veía en ninguna de las dos puntas por separado: los
+// cuadros armaban bien la línea de Oficina (COBRA = el neto) y el cierre la rechazaba igual por no
+// tener valor hora. Si se revierte el arreglo, esto se pone rojo.
+
+const mensual = (persona_id: string, neto_mensual: number): FilaTarifa =>
+  ({ persona_id, desde: '2026-09-01', valor_hora: null, neto_mensual, origen: 'acuerdo con el dueño' })
+
+test('con una persona de Oficina (neto mensual) la quincena PUEDE cerrar', () => {
+  const cuadros = armarCuadros(base({
+    personas: [persona('p1', 'Aguero Cristian', '20'), persona('o1', 'Maldonado Ana Laura', '27')],
+    tarifas: [porHora('p1', 5250), mensual('o1', 1800000)],
+    horas: new Map([['p1', { horas: 96, presentesSinHoras: 0 }]]),
+  }))
+  const oficina = cuadros.find((c) => c.grupo === 'oficina')!
+  assert.equal(oficina.lineas.length, 1)
+  assert.equal(oficina.lineas[0].valorHora, null, 'Oficina no tiene valor hora: cobra un neto')
+  assert.equal(oficina.lineas[0].netoMensual, 1800000)
+  assert.equal(oficina.lineas[0].sinTarifa, false, 'un neto mensual cargado ES una tarifa')
+
+  const e = estadoDeCierre(cuadros.flatMap((c) => c.lineas))
+  assert.equal(e.puedeCerrar, true, e.pendientes.map((x) => x.texto).join(' · '))
+  assert.equal(e.personas, 2)
+  assert.equal(e.totalSellado, 2304000)
+})
+
+test('la misma persona de Oficina SIN tarifa cargada bloquea el cierre por «sin tarifa»', () => {
+  const cuadros = armarCuadros(base({
+    personas: [persona('p1', 'Aguero Cristian', '20'), persona('o1', 'Maldonado Ana Laura', '27')],
+    tarifas: [porHora('p1', 5250)],
+    horas: new Map([
+      ['p1', { horas: 96, presentesSinHoras: 0 }],
+      ['o1', { horas: 90, presentesSinHoras: 0 }],
+    ]),
+  }))
+  const e = estadoDeCierre(cuadros.flatMap((c) => c.lineas))
+  assert.equal(e.puedeCerrar, false)
+  assert.equal(e.pendientes[0].clave, 'sin-tarifa')
+  assert.match(e.pendientes[0].texto, /Maldonado Ana Laura/)
 })

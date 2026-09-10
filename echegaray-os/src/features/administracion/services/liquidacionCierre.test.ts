@@ -19,9 +19,17 @@ import {
 //     el silencio.
 
 const linea = (p: Partial<LineaParaCerrar>): LineaParaCerrar => ({
-  personaId: 'p1', nombre: 'Aguero Cristian', horas: 96, valorHora: 5250, cobra: 504000,
+  personaId: 'p1', nombre: 'Aguero Cristian', horas: 96, valorHora: 5250, netoMensual: null,
+  modalidad: 'hora', cobra: 504000,
   porBanco: 215565, enEfectivo: 188435, total: 404000, sinTarifa: false, reciboSinGiro: false,
   ...p,
+})
+
+/** Una fila de Oficina: neto mensual acordado, sin horas y con valor hora NULL por definición. */
+const oficina = (p: Partial<LineaParaCerrar> = {}): LineaParaCerrar => linea({
+  personaId: 'o1', nombre: 'Maldonado Ana Laura', horas: null, valorHora: null,
+  netoMensual: 1800000, modalidad: 'mensual', cobra: 1800000,
+  porBanco: 0, enEfectivo: 1800000, total: 1800000, sinTarifa: false, ...p,
 })
 
 test('no se puede cerrar con una línea sin tarifa, y el botón dice quién', () => {
@@ -158,4 +166,51 @@ test('pantalla 11 · sin línea sellada no se completa con el cálculo de hoy', 
   assert.equal(filas[0].cobra, null, 'publicar un cobra recalculado diría que se pagó algo que nadie selló')
   assert.equal(filas[0].total, null)
   assert.equal(filas[0].comparacion, 'sin dato')
+})
+
+// ═══ EL DEFECTO 6: EL CIERRE NO SE HABILITABA NUNCA CON EL PLANTEL REAL ═══
+//
+// `estadoDeCierre` contaba como pendiente a toda línea con `valorHora == null`, y la gente de
+// Oficina cobra un neto MENSUAL: su valor hora es NULL siempre. Con Oficina en la quincena —o sea,
+// siempre— el botón «Cerrar y sellar» quedaba gris para todo el plantel. Si se revierte el arreglo,
+// el primero de estos tres tests se pone rojo.
+
+test('OFICINA CON NETO MENSUAL NO ES «SIN TARIFA»: la quincena con obreros y oficina cierra', () => {
+  const e = estadoDeCierre([linea({}), oficina()])
+  assert.equal(e.puedeCerrar, true, 'un neto mensual cargado es una tarifa, no un hueco')
+  assert.deepEqual(e.pendientes, [])
+  assert.equal(e.liquidadas, 2)
+  assert.equal(e.totalSellado, 2204000)
+})
+
+test('la MISMA persona de oficina sin neto y sin valor hora SÍ queda pendiente «sin tarifa»', () => {
+  const e = estadoDeCierre([
+    linea({}),
+    oficina({ netoMensual: null, cobra: null, enEfectivo: null, total: null }),
+  ])
+  assert.equal(e.puedeCerrar, false)
+  assert.equal(e.pendientes[0].clave, 'sin-tarifa')
+  assert.match(e.pendientes[0].texto, /Maldonado Ana Laura/)
+  assert.equal(e.liquidadas, 1)
+})
+
+test('un obrero (modalidad hora) sin valor hora sigue bloqueando: R1 no se relajó', () => {
+  const e = estadoDeCierre([oficina(), linea({ personaId: 'p9', nombre: 'Alaniz', valorHora: null })])
+  assert.equal(e.puedeCerrar, false)
+  assert.equal(e.pendientes[0].clave, 'sin-tarifa')
+  assert.match(e.pendientes[0].texto, /Alaniz/)
+})
+
+test('oficina se sella con valor_hora NULL: el neto ya está en «cobra», no se inventa un $/h', () => {
+  const { selladas, sinSellar } = sellarLineas(
+    [oficina()],
+    [{ personaId: 'o1', categoria: 'Administrativa', convenio: 'Fuera de convenio' }],
+    '2026-09-10T12:00:00.000Z',
+  )
+  assert.deepEqual(sinSellar, [], 'una línea mensual NO queda sin sellar')
+  assert.deepEqual(selladas[0], {
+    persona_id: 'o1', horas: null, valor_hora: null,
+    categoria_sellada: 'Administrativa', convenio_sellado: 'Fuera de convenio',
+    sellado_en: '2026-09-10T12:00:00.000Z',
+  })
 })

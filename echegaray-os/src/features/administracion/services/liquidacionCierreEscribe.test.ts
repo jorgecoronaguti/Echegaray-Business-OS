@@ -117,7 +117,8 @@ test('EL AVISO DE LA REAPERTURA SE CALCULA SIN ESCRIBIR (R6)', () => {
 // ═══ LO QUE SÍ SE EJECUTA: la misma lista que ve la pantalla ═══
 
 const linea = (p: Partial<LineaParaCerrar> = {}): LineaParaCerrar => ({
-  personaId: 'p1', nombre: 'Zogbe Fabian', horas: 97, valorHora: 3650, cobra: 354050,
+  personaId: 'p1', nombre: 'Zogbe Fabian', horas: 97, valorHora: 3650, netoMensual: null,
+  modalidad: 'hora', cobra: 354050,
   porBanco: 0, enEfectivo: 354050, total: 354050, sinTarifa: false, reciboSinGiro: false, ...p,
 })
 
