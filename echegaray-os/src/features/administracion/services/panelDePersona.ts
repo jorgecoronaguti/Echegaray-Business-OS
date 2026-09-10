@@ -204,6 +204,22 @@ export interface MesDeHH {
 const MES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 /**
+ * LA VENTANA QUE `hhPorMes` NECESITA — el 1º del mes más viejo que va a dibujar.
+ *
+ * Está acá al lado y no en el servicio que lee: la ventana que se le pide a la base y los meses que
+ * se dibujan son la MISMA decisión, y cuando viven en dos archivos se separan. Es el defecto que ya
+ * costó una pantalla el 10/09/2026 —la ventana ancha se pedía «diez quincenas atrás» y el gráfico
+ * dibujaba «los últimos cinco meses calendario»: dos criterios distintos para el mismo eje— y la
+ * consecuencia era pedirle a la base medio mes de filas que nadie miraba.
+ *
+ * Devuelve sólo el `desde`: el `hasta` es el mismo `hasta` que recibe `hhPorMes`.
+ */
+export function desdeDeHHPorMes(hasta: string, cuantos = 5): string {
+  const d = new Date(Date.UTC(Number(hasta.slice(0, 4)), Number(hasta.slice(5, 7)) - 1 - (cuantos - 1), 1))
+  return `${d.getUTCFullYear()}-${dosDigitos(d.getUTCMonth() + 1)}-01`
+}
+
+/**
  * HH POR MES — los últimos `cuantos` meses, del más viejo al más nuevo.
  *
  * Un mes sin ninguna hora cargada devuelve `null` y el panel escribe «sin cargar». Un 0 diría que
