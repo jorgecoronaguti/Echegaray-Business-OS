@@ -64,6 +64,11 @@ export const V = {
   /** Hover de fila. `22v2:69`. */
   hover: '#F2F1ED',
 
+  /**
+   * Estado positivo REAL: al día, conciliado, consumo dentro del presupuesto. Nunca decorativo.
+   * README §2 del handoff de Liquidación; `liqhs v2:499` (consumo 31 %).
+   */
+  pos: '#067647',
   /** Lo que bloquea: la cifra, el filo y el dato que falta. `22v2:70`, `:415`. */
   warn: '#B54708',
   /** Un comprobante sin obra imputada. `22v2:442`. */

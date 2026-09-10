@@ -12,7 +12,9 @@
 // devuelve su error.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Alicuota, ConceptoCosto, HorasDeObra, PersonaProyectable } from './costoHora.ts'
+import type {
+  Alicuota, ConceptoCosto, HorasDeObra, PersonaDeEscalera, PersonaProyectable,
+} from './costoHora.ts'
 import type { Quincena } from './quincena.ts'
 
 export interface Falla { que: string; error: string }
@@ -92,11 +94,15 @@ export interface HorasYObras {
 export async function getHorasPorObra(
   supabase: SupabaseClient, q: Quincena, tarifas: ReadonlyMap<string, number>,
 ): Promise<HorasYObras> {
-  const [hh, obras, oep] = await Promise.all([
+  const [hh, obras, canonicas, oep] = await Promise.all([
     supabase.from('registros_hh')
       .select('obra_id, obra_canonica_id, persona_id, horas')
       .gte('fecha', q.desde).lte('fecha', q.hasta),
     supabase.from('obras').select('id, nombre'),
+    // EL NOMBRE CANÓNICO GANA AL SLUG. `obra_canonica_id` es un slug estable ('san-francisco') y
+    // hasta hoy se publicaba crudo cuando la obra no estaba en `obras`: la pantalla mandaba a la
+    // reunión con un identificador de base en vez del nombre con el que la obra se factura.
+    supabase.from('obra_canonica').select('id, nombre'),
     supabase.from('obra_egreso_proyectado')
       .select('obra_canonica_id, obra_rotulo, monto').eq('tipo', 'mano_de_obra'),
   ])
@@ -107,6 +113,11 @@ export async function getHorasPorObra(
 
   const nombreDeObra = new Map<string, string>()
   for (const o of obras.data ?? []) nombreDeObra.set(String(o.id), String(o.nombre ?? ''))
+  const nombreCanonico = new Map<string, string>()
+  for (const o of canonicas.data ?? []) {
+    const nombre = String(o.nombre ?? '').trim()
+    if (nombre) nombreCanonico.set(String(o.id), nombre)
+  }
 
   const presupuesto = new Map<string, number>()
   const rotuloCanonico = new Map<string, string>()
@@ -118,16 +129,20 @@ export async function getHorasPorObra(
     if (!rotuloCanonico.has(clave)) rotuloCanonico.set(clave, String(f.obra_rotulo ?? clave))
   }
 
-  const acc = new Map<string, { horas: number; bolsillo: number; completo: boolean; sinTarifa: Set<string>; rotulo: string }>()
+  const acc = new Map<string, { horas: number; bolsillo: number; completo: boolean; sinTarifa: Set<string>; gente: Set<string>; rotulo: string }>()
   for (const f of hh.data ?? []) {
     const clave = f.obra_canonica_id == null ? '' : String(f.obra_canonica_id)
     const horas = numero(f.horas) ?? 0
     const rotulo = clave === ''
-      ? 'sin obra imputada'
-      : nombreDeObra.get(String(f.obra_id)) ?? rotuloCanonico.get(clave) ?? clave
-    const a = acc.get(clave) ?? { horas: 0, bolsillo: 0, completo: true, sinTarifa: new Set<string>(), rotulo }
+      ? 'Sin obra imputada'
+      : nombreDeObra.get(String(f.obra_id))
+        ?? nombreCanonico.get(clave)
+        ?? rotuloCanonico.get(clave)
+        ?? clave
+    const a = acc.get(clave) ?? { horas: 0, bolsillo: 0, completo: true, sinTarifa: new Set<string>(), gente: new Set<string>(), rotulo }
     a.horas += horas
     const persona = f.persona_id == null ? null : String(f.persona_id)
+    if (persona) a.gente.add(persona)
     const vh = persona == null ? undefined : tarifas.get(persona)
     if (vh == null) { a.completo = false; if (persona) a.sinTarifa.add(persona) } else { a.bolsillo += vh * horas }
     acc.set(clave, a)
@@ -138,6 +153,7 @@ export async function getHorasPorObra(
       obraId: clave === '' ? null : clave,
       rotulo: a.rotulo,
       horas: a.horas,
+      gente: a.gente.size,
       bolsillo: a.completo ? a.bolsillo : null,
       sinTarifa: a.sinTarifa.size,
     }))
@@ -210,4 +226,27 @@ export async function getJornalesDelSheet(
     },
     error: null,
   }
+}
+
+/**
+ * EL PLANTEL CON SU CATEGORÍA Y SU $/h, para la escalera de la pantalla 5.
+ *
+ * Mismo corte que `getPersonasProyectables` y por la misma razón: `en_la_empresa`. Una escalera
+ * armada sobre los 46 sin egreso cargado publicaría categorías que hoy no se pagan.
+ */
+export async function getPlantelParaEscalera(
+  supabase: SupabaseClient, tarifas: ReadonlyMap<string, number>,
+): Promise<{ personas: PersonaDeEscalera[]; error: Falla | null }> {
+  const r = await supabase.from('persona_directorio').select('id, categoria, en_la_empresa')
+  if (r.error) {
+    return { personas: [], error: sinTabla(r.error) ? null : { que: 'el plantel', error: r.error.message } }
+  }
+  const personas = (r.data ?? [])
+    .filter((p) => p.en_la_empresa !== false)
+    .map((p): PersonaDeEscalera => ({
+      personaId: String(p.id),
+      categoria: p.categoria == null ? null : String(p.categoria),
+      valorHora: tarifas.get(String(p.id)) ?? null,
+    }))
+  return { personas, error: null }
 }

@@ -90,9 +90,9 @@ test('la proporción declarada se acota a [0,1]: fuera de rango no infla el cost
 
 test('pantalla 6 · sin mano de obra presupuestada el consumo es null, no 0 %', () => {
   const horas: HorasDeObra[] = [
-    { obraId: 'quattropani', rotulo: 'SALÓN COMERCIAL', horas: 319, bolsillo: 1_600_000, sinTarifa: 0 },
-    { obraId: 'le-comedor', rotulo: 'COMEDOR', horas: 45, bolsillo: 200_000, sinTarifa: 0 },
-    { obraId: null, rotulo: 'sin obra imputada', horas: 60.8, bolsillo: null, sinTarifa: 2 },
+    { obraId: 'quattropani', rotulo: 'SALÓN COMERCIAL', horas: 319, gente: 6, bolsillo: 1_600_000, sinTarifa: 0 },
+    { obraId: 'le-comedor', rotulo: 'COMEDOR', horas: 45, gente: 1, bolsillo: 200_000, sinTarifa: 0 },
+    { obraId: null, rotulo: 'Sin obra imputada', horas: 60.8, gente: 2, bolsillo: null, sinTarifa: 2 },
   ]
   const m = multiplicadorDeCosto(alicuotasVigentes(CINCO, '2026-09-09')).valor
   const l = lineasDeObra(horas, new Map([['quattropani', 38_802_169]]), m)
@@ -105,7 +105,7 @@ test('pantalla 6 · sin mano de obra presupuestada el consumo es null, no 0 %', 
 
 test('pantalla 6 · sin multiplicador ninguna obra publica costo', () => {
   const l = lineasDeObra(
-    [{ obraId: 'x', rotulo: 'X', horas: 10, bolsillo: 50_000, sinTarifa: 0 }],
+    [{ obraId: 'x', rotulo: 'X', horas: 10, gente: 1, bolsillo: 50_000, sinTarifa: 0 }],
     new Map([['x', 1_000_000]]), null,
   )
   assert.equal(l[0].costoReal, null)

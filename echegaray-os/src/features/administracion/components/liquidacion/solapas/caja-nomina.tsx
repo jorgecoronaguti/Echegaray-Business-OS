@@ -83,7 +83,10 @@ export async function SolapaCajaNomina({ quincena }: { quincena: Quincena; hoy?:
           una fuente congelada explica casi todas las diferencias, y sin la fecha se leería como un
           error del cálculo. */}
       <h4 style={{ ...titulo, fontSize: '13px' }}>Contra la línea Jornales del Flujo de Caja</h4>
-      <table style={{ ...tabla, maxWidth: 720, marginBottom: 24 }}>
+      {/* A 390 px UNA TABLA NO SE ENCOGE POR DEBAJO DE SU ANCHO MÍNIMO: empuja la página entera y
+          la fila de total queda fuera de pantalla. El scroller la deja rodar dentro de su caja. */}
+      <div className="overflow-x-auto" style={{ marginBottom: 24 }}>
+      <table style={{ ...tabla, minWidth: 420, maxWidth: 720 }}>
         <tbody>
           <Renglon testid="cf-os" rotulo="Este módulo (horas cargadas)" valor={pesos(totalPropio || null)} />
           <Renglon testid="cf-sheet" rotulo={`Sheet · línea Jornales${delSheet ? ` (${delSheet.estado})` : ''}`}
@@ -97,9 +100,11 @@ export async function SolapaCajaNomina({ quincena }: { quincena: Quincena; hoy?:
           )}
         </tbody>
       </table>
+      </div>
 
       <h4 style={{ ...titulo, fontSize: '13px' }}>Las próximas quincenas · piso proyectado</h4>
-      <table style={{ ...tabla, maxWidth: 900 }}>
+      <div className="overflow-x-auto">
+      <table style={{ ...tabla, minWidth: 560, maxWidth: 900 }}>
         <thead>
           <tr>
             {['Quincena', 'Personas', 'Horas esperadas', 'Bolsillo', 'Costo real'].map((c, i) => (
@@ -131,6 +136,7 @@ export async function SolapaCajaNomina({ quincena }: { quincena: Quincena; hoy?:
           </tr>
         </tbody>
       </table>
+      </div>
     </section>
   )
 }

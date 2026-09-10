@@ -3,12 +3,14 @@
 // EL CIERRE QUE ESCRIBE — R6, del núcleo probado a la base.
 //
 //   cerrarQuincenaAction      sella cada línea y recién después marca la cabecera.
-//   previsualizarReapertura   qué cambiaría si se reabre. NO escribe nada.
-//   confirmarReapertura       la firma primero, la apertura después.
 //
-// `sellarLineas`, `avisoDeReapertura` y `validarMotivoDeReapertura` viven en `liquidacionCierre.ts`
-// y se prueban sin base. Acá no hay una segunda definición de ninguna de las tres: esto es el
-// cableado a Supabase y el orden en que la base acepta las escrituras.
+// `sellarLineas` vive en `liquidacionCierre.ts` y se prueba sin base. Acá no hay una segunda
+// definición: esto es el cableado a Supabase y el orden en que la base acepta las escrituras.
+//
+// REABRIR NO ESTÁ ACÁ. Vive en `reabrirQuincena` (liquidacionActions.ts) con su pantalla
+// `ReabrirQuincena.tsx`: muestra la diferencia calculada ANTES de guardar y escribe la firma antes
+// de abrir. Dos acciones que devuelven una quincena cerrada al estado editable serían dos verdades
+// sobre plata que ya se pagó.
 //
 // ═══ LA LISTA QUE BLOQUEA ES LA MISMA QUE MUESTRA LA PANTALLA ═══
 //
@@ -39,8 +41,8 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion } from './liquidacionPermiso'
 import { getLiquidacionDeLaQuincena } from './liquidacionQuincenaService'
 import {
-  avisoDeReapertura, estadoDeCierre, sellarLineas, validarMotivoDeReapertura,
-  type AvisoDeReapertura, type LegajoAlCerrar, type LineaParaCerrar, type LineaSellada,
+  estadoDeCierre, sellarLineas,
+  type LegajoAlCerrar, type LineaParaCerrar, type LineaSellada,
 } from './liquidacionCierre'
 import type { Quincena } from './quincena'
 
@@ -52,14 +54,8 @@ const quincenaSchema = z.object({
   hasta: z.string().regex(ISO, 'Quincena inválida'),
 })
 
-const reaperturaSchema = quincenaSchema.extend({ motivo: z.string().max(500) })
-
 export type ResultadoCierre =
   | { ok: true; mensaje: string; selladas: number }
-  | { ok: false; error: string }
-
-export type ResultadoAviso =
-  | { ok: true; aviso: AvisoDeReapertura }
   | { ok: false; error: string }
 
 type Cliente = SupabaseClient
@@ -231,99 +227,4 @@ async function marcarCerrada(
   if (!fila) return { error: 'La base no marcó el cierre (permiso). Las líneas quedaron selladas.' }
   if (fila.estado !== 'cerrada') return { error: `La base dejó la quincena en «${fila.estado}».` }
   return null
-}
-
-/** Lo sellado en la base, que es contra lo que se compara la tarifa vigente. */
-async function lineasSelladas(supabase: Cliente, q: Quincena): Promise<{
-  filas: { personaId: string; valorHoraSellado: number | null; cobraSellado: number | null }[]
-  ids: string[]
-}> {
-  const { data } = await supabase.from('liquidacion_quincena')
-    .select('id, liquidacion_linea(persona_id, valor_hora, cobra)')
-    .eq('desde', q.desde).eq('hasta', q.hasta).eq('estado', 'cerrada')
-  type Cab = { id: string; liquidacion_linea: { persona_id: string; valor_hora: number | string | null; cobra: number | string | null }[] | null }
-  const cabs = (data ?? []) as Cab[]
-  return {
-    ids: cabs.map((c) => c.id),
-    filas: cabs.flatMap((c) => (c.liquidacion_linea ?? []).map((l) => ({
-      personaId: l.persona_id,
-      valorHoraSellado: l.valor_hora == null ? null : Number(l.valor_hora),
-      cobraSellado: l.cobra == null ? null : Number(l.cobra),
-    }))),
-  }
-}
-
-/**
- * QUÉ PASARÍA SI SE REABRE. Lee y no escribe: es el aviso que R6 pide ANTES de guardar.
- *
- * Las horas y el $/h de hoy salen de la misma lectura que la pantalla; lo sellado, de la base.
- */
-export async function previsualizarReapertura(entrada: unknown): Promise<ResultadoAviso> {
-  const parsed = quincenaSchema.safeParse(entrada)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const q: Quincena = parsed.data
-
-  const supabase = await createClient()
-  const paso = await puerta(supabase)
-  if ('error' in paso) return { ok: false, error: paso.error }
-
-  const { filas } = await lineasSelladas(supabase, q)
-  if (filas.length === 0) return { ok: false, error: 'Esa quincena no está cerrada: no hay nada que reabrir.' }
-
-  const lectura = await getLiquidacionDeLaQuincena(supabase, q)
-  if (lectura.errores.length > 0) {
-    return { ok: false, error: `No pude leer ${lectura.errores.map((e) => e.que).join(', ')}: no calculo la diferencia.` }
-  }
-  const vigentes = new Map(lectura.cuadros.flatMap((c) => c.lineas).map((l) => [l.personaId, l]))
-  const entradas = filas.map((f) => ({
-    personaId: f.personaId,
-    nombre: vigentes.get(f.personaId)?.nombre ?? f.personaId,
-    horas: vigentes.get(f.personaId)?.horas ?? null,
-    valorHoraSellado: f.valorHoraSellado,
-    cobraSellado: f.cobraSellado,
-  }))
-  const aviso = avisoDeReapertura(entradas, (id) => vigentes.get(id)?.valorHora ?? null)
-  return { ok: true, aviso }
-}
-
-/**
- * REABRIR. La firma se escribe PRIMERO: una quincena que vuelve a abrirse sin fila de reapertura es
- * un descierre anónimo, y la diferencia aparecería en la caja sin que nadie pueda decir de dónde
- * salió. El sello NO se borra — es el registro de lo que se pagó hasta que el próximo cierre lo
- * reescriba.
- */
-export async function confirmarReapertura(entrada: unknown): Promise<ResultadoCierre> {
-  const parsed = reaperturaSchema.safeParse(entrada)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const validado = validarMotivoDeReapertura(parsed.data.motivo)
-  if (!validado.ok) return { ok: false, error: validado.error }
-  const q: Quincena = { desde: parsed.data.desde, hasta: parsed.data.hasta }
-
-  const supabase = await createClient()
-  const paso = await puerta(supabase)
-  if ('error' in paso) return { ok: false, error: paso.error }
-
-  const { ids } = await lineasSelladas(supabase, q)
-  if (ids.length === 0) return { ok: false, error: 'Esa quincena no está cerrada: no hay nada que reabrir.' }
-
-  for (const id of ids) {
-    const firma = await supabase.from('liquidacion_reapertura')
-      .insert({ liquidacion_id: id, motivo: validado.motivo, autor: paso.perfilId })
-      .select('id, motivo, reabierta_en')
-    if (firma.error) return { ok: false, error: firma.error.message }
-    if ((firma.data ?? []).length === 0) {
-      return { ok: false, error: 'La base no guardó el motivo: NO reabrí la quincena.' }
-    }
-    const abierta = await supabase.from('liquidacion_quincena')
-      .update({ estado: 'abierta', cerrada_en: null, cerrada_por: null })
-      .eq('id', id).select('id, estado')
-    if (abierta.error) return { ok: false, error: abierta.error.message }
-    const fila = (abierta.data ?? [])[0] as { estado: string } | undefined
-    if (!fila || fila.estado !== 'abierta') {
-      return { ok: false, error: 'La base no abrió la quincena (permiso). El motivo quedó registrado.' }
-    }
-  }
-
-  revalidatePath(RUTA)
-  return { ok: true, selladas: 0, mensaje: 'Quincena reabierta. El motivo quedó con autor y fecha.' }
 }

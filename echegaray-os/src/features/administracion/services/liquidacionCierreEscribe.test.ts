@@ -15,6 +15,8 @@ import { estadoDeCierre, validarMotivoDeReapertura, type LineaParaCerrar } from 
 // contra las funciones puras que la acción usa: son las mismas que dibujan la pantalla.
 
 const FUENTE = readFileSync(new URL('./liquidacionCierreActions.ts', import.meta.url), 'utf8')
+// Reabrir vive en la otra acción y NO se duplica: la firma antes de abrir se prueba donde está.
+const REABRE = readFileSync(new URL('./liquidacionActions.ts', import.meta.url), 'utf8')
 
 const cuerpoDe = (nombre: string): string => {
   const i = FUENTE.indexOf(`export async function ${nombre}(`)
@@ -31,7 +33,7 @@ const antes = (cuerpo: string, a: string, b: string, porque: string): void => {
   assert.ok(ia < ib, porque)
 }
 
-for (const accion of ['cerrarQuincenaAction', 'previsualizarReapertura', 'confirmarReapertura']) {
+for (const accion of ['cerrarQuincenaAction']) {
   test(`${accion} PREGUNTA EL ROL ANTES DE TOCAR LA BASE`, () => {
     const cuerpo = cuerpoDe(accion)
     assert.match(cuerpo, /const paso = await puerta\(supabase\)/)
@@ -71,7 +73,9 @@ test('CERRAR NO SELLA CON PENDIENTES, Y LOS DICE', () => {
 })
 
 test('REABRIR ESCRIBE LA FIRMA ANTES DE ABRIR', () => {
-  const cuerpo = cuerpoDe('confirmarReapertura')
+  const i = REABRE.indexOf('export async function reabrirQuincena(')
+  assert.ok(i > 0, 'no encontré reabrirQuincena')
+  const cuerpo = REABRE.slice(i, i + REABRE.slice(i).indexOf('\n}\n'))
   // EL DEFECTO QUE ATRAPA: abrir primero y registrar después. Si el insert del motivo falla, la
   // quincena ya quedó abierta y el descierre es anónimo: la diferencia aparece en la caja y nadie
   // puede decir de dónde salió.
@@ -79,7 +83,10 @@ test('REABRIR ESCRIBE LA FIRMA ANTES DE ABRIR', () => {
     'el motivo se guarda antes de abrir')
   antes(cuerpo, 'validarMotivoDeReapertura', "from('liquidacion_reapertura')",
     'el motivo se valida antes de insertarlo')
-  assert.match(cuerpo, /if \(\(firma\.data \?\? \[\]\)\.length === 0\)/, 'se lee el efecto del insert')
+  assert.match(cuerpo, /rastro\.error \|\| !rastro\.data/, 'se lee el efecto del insert del motivo')
+  // Y la quincena abierta deja de decir quién la cerró: «cerrada por X» sobre una quincena ABIERTA
+  // es una firma que ya no firma nada.
+  assert.match(cuerpo, /cerrada_por: null/)
 })
 
 test('CADA ESCRITURA ACUSA LEYENDO EL EFECTO, no el 204', () => {
@@ -92,8 +99,14 @@ test('CADA ESCRITURA ACUSA LEYENDO EL EFECTO, no el 204', () => {
   }
 })
 
-test('PREVISUALIZAR NO ESCRIBE NADA: es el aviso de ANTES de guardar (R6)', () => {
-  const cuerpo = cuerpoDe('previsualizarReapertura')
+test('EL AVISO DE LA REAPERTURA SE CALCULA SIN ESCRIBIR (R6)', () => {
+  // El aviso lo arma la solapa con `avisoDeReapertura` (núcleo puro) ANTES de ofrecer el botón:
+  // el defecto que atrapa es reabrir para poder mostrar la diferencia, que es el orden inverso al
+  // que pidió el dueño («avisa la diferencia ANTES de guardar»).
+  const solapa = readFileSync(
+    new URL('../components/liquidacion/solapas/cierre.tsx', import.meta.url), 'utf8')
+  assert.match(solapa, /avisoDeReapertura\(/)
+  const cuerpo = solapa
   // EL DEFECTO QUE ATRAPA: reabrir para poder mostrar la diferencia. El dueño lo pidió al revés:
   // «recalcula con la retribución vigente y avisa la diferencia ANTES de guardar».
   for (const escritura of ['.update(', '.insert(', '.upsert(', '.delete(']) {

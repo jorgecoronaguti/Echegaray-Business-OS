@@ -147,6 +147,76 @@ export function costoDeHora(bolsillo: number | null, mult: number | null): numbe
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// PANTALLA 5 · LA ESCALERA BOLSILLO → COSTO, POR CATEGORÍA
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Una persona del plantel con lo único que la escalera necesita saber de ella. */
+export interface PersonaDeEscalera {
+  personaId: string
+  categoria: string | null
+  valorHora: number | null
+}
+
+export interface FilaDeCategoria {
+  categoria: string
+  /** `null` = la persona no tiene categoría cargada. La fila existe igual: son horas que se pagan. */
+  sinCategoria: boolean
+  gente: number
+  /**
+   * El $/h de la categoría, SÓLO cuando las personas que la integran comparten uno.
+   *
+   * Con dos valores distintos queda `null` y `valores` dice cuántos son. Un promedio inventaría un
+   * bolsillo que nadie cobra, y la columna «costo real» lo multiplicaría por 1,5 antes de mandarlo
+   * a una obra: el error entra al presupuesto amplificado.
+   */
+  bolsillo: number | null
+  /** Los $/h distintos observados en la categoría, ordenados. Vacío = nadie tiene tarifa. */
+  valores: number[]
+  costoReal: number | null
+}
+
+/**
+ * LA ESCALERA DEL MOCKUP (§5): una fila por categoría, bolsillo → costo real.
+ *
+ * ═══ POR QUÉ NO SE PROMEDIA ═══
+ *
+ * El mockup dibuja UN bolsillo por categoría porque en el ejemplo del dueño todos los ayudantes
+ * cobran lo mismo. En la base eso no está garantizado. Promediar publicaría un $/h que nadie cobra;
+ * elegir el primero escondería a los demás. La fila dice cuántos valores distintos hay y no publica
+ * costo hasta que alguien los unifique — que es el trabajo real que destraba la columna.
+ */
+export function escaleraDeCategorias(
+  personas: readonly PersonaDeEscalera[], mult: number | null,
+): FilaDeCategoria[] {
+  const grupos = new Map<string, { rotulo: string; sinCategoria: boolean; gente: number; valores: Set<number> }>()
+  for (const p of personas) {
+    const rotulo = (p.categoria ?? '').trim()
+    const clave = rotulo === '' ? '\u0000sin' : rotulo.toLocaleLowerCase('es')
+    const g = grupos.get(clave)
+      ?? { rotulo: rotulo === '' ? 'sin categoría cargada' : rotulo, sinCategoria: rotulo === '', gente: 0, valores: new Set<number>() }
+    g.gente += 1
+    if (p.valorHora != null && Number.isFinite(p.valorHora)) g.valores.add(p.valorHora)
+    grupos.set(clave, g)
+  }
+  return [...grupos.values()]
+    .map((g) => {
+      const valores = [...g.valores].sort((a, b) => b - a)
+      const bolsillo = valores.length === 1 ? valores[0] : null
+      return {
+        categoria: g.rotulo,
+        sinCategoria: g.sinCategoria,
+        gente: g.gente,
+        bolsillo,
+        valores,
+        costoReal: costoDeHora(bolsillo, mult),
+      }
+    })
+    // DE MAYOR A MENOR BOLSILLO, como el mockup: oficial especializado arriba, ayudante abajo. Las
+    // que no tienen un $/h publicable van al final, donde se leen como pendientes y no como piso.
+    .sort((a, b) => (b.bolsillo ?? -1) - (a.bolsillo ?? -1))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // PANTALLA 6 · LA QUINCENA CARGADA A LA OBRA
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -155,6 +225,8 @@ export interface HorasDeObra {
   obraId: string | null
   rotulo: string
   horas: number
+  /** Cuántas personas distintas cargaron horas a esa obra. Columna «Gente» del mockup (pantalla 6). */
+  gente: number
   /** `null` si alguna de las personas que trabajó ahí no tiene tarifa: el total sería incompleto. */
   bolsillo: number | null
   /** Cuántas personas de esa obra no tienen $/h cargado. */
