@@ -35,6 +35,7 @@ import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, withTx, closePool } from '../lib/db.mjs'
 import { NOMBRES_VISTA } from '../lib/cash-flow-meses.mjs'
+import { DESDE_CAJA } from '../lib/caja-anexo-nombres.mjs'
 import { LIBRO } from '../lib/libro-sumas.mjs'
 import {
   libroDesdeLaPestana, filasDeMovimiento, filasDePeriodo, filasDeAsimetria,
@@ -81,6 +82,23 @@ async function saldosDelMensual(google) {
   // exactamente los meses que cubre la pestaña, incluso el 1° de enero del año que viene.
   const anio = Number.isFinite(serials[0]) ? fechaDeSerial(serials[0]).getUTCFullYear() : null
   return { saldos, anio }
+}
+
+/**
+ * LA FECHA DEL SALDO DECLARADO — el ancla, leída del MISMO rango con nombre que cita la hoja.
+ *
+ * No es un dato decorativo de esta corrida: decide en qué período cae el VENCIDO. La hoja lo resuelve
+ * con `CAJA_FECHA_SALDO` adentro de cada SUMPRODUCT (ver `condicionAncla`), así que si acá se leyera
+ * de otro lado —o se supusiera hoy— la base y el cuadro repartirían el mismo libro de dos maneras.
+ *
+ * `null` cuando el nombre no existe todavía, y eso NO es una degradación silenciosa: el generador de
+ * las vistas también pasa `ancla: null` cuando el rango falta (`refsDeCaja` en cash-flow-vistas.mjs),
+ * así que las dos materializaciones siguen coincidiendo — las dos vuelven al criterio histórico.
+ */
+async function anclaDeCaja(google) {
+  const v = (await google.readSheetValues(ID, DESDE_CAJA.fecha, { render: 'UNFORMATTED_VALUE' })
+    .catch(() => null))?.[0]?.[0]
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
 }
 
 /** El rectángulo del libro, leído entero con el RESULTADO de las fórmulas vivas. */
@@ -196,14 +214,19 @@ async function main() {
   }
 
   const { saldos, anio } = await saldosDelMensual(google)
+  const ancla = await anclaDeCaja(google)
+  if (ancla === null) {
+    console.log(`  ⚠ ${DESDE_CAJA.fecha} no devuelve un número: el vencido queda en la ventana de su fecha, `
+      + 'igual que en las dos vistas cuando les falta el ancla.')
+  }
   const ejercicio = anio ?? Number(process.env.ORQ_CF_ANIO || 2026)
   if (!anio) console.log(`  ⚠ ${NOMBRES_VISTA.meses} no existe todavía: uso el ejercicio ${ejercicio} y los saldos van NULL.`)
 
   const movimientos = filasDeMovimiento(libro)
   const firma = firmaDelLibro(movimientos)
   const resumen = resumenDeCorrida(libro)
-  const meses = filasDePeriodo(libro, { granularidad: 'mes', anio: ejercicio, saldos })
-  const semanas = filasDePeriodo(libro, { granularidad: 'semana', anio: ejercicio })
+  const meses = filasDePeriodo(libro, { granularidad: 'mes', anio: ejercicio, saldos, ancla })
+  const semanas = filasDePeriodo(libro, { granularidad: 'semana', anio: ejercicio, ancla })
   const asimetria = filasDeAsimetria(meses)
   const corte = Math.max(...libro.map((m) => m.fecha))
 
