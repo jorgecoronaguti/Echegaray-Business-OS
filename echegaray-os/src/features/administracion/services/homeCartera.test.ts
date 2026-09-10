@@ -244,8 +244,14 @@ test('la economía de OBRAS manda por obra, y el total del cliente sale de la vi
 //
 // Cinco obras en curso con precio en OBRAS por $156.174.253,16 y cinco cerradas cuyo
 // `obra_panel.monto_contratado` —el campo del formulario— suma $31.846.475,65. La lista mostraba lo
-// primero, el panel lateral y el esquema de pago lo segundo, y la ficha una tercera suma. Los
-// números de acá son los reales.
+// primero, el panel lateral y el esquema de pago lo segundo, y la ficha una tercera suma.
+//
+// LOS $156.174.253,16 SON MEDIDOS. El total y el cobrado de abajo son valores de PRUEBA elegidos
+// distintos entre sí a propósito: lo que este test fija es que la fila publica lo que dice la vista
+// y no una suma propia, no cuánto vale hoy cada columna. (Contra la base de hoy `contratado` y
+// `contratado_en_curso` dan lo mismo, porque las cinco obras cerradas de Messina no tienen fila en
+// `obra_economia_sheet`: OBRAS no las publica. Clavar esa coincidencia haría un test que se rompe
+// el día que alguien cierre una obra que sí tiene precio.)
 
 const MESSINA_EN_CURSO: [string, number][] = [
   ['messina-adicional-tercer-muro', 10_000_000],
@@ -271,6 +277,7 @@ test('Messina: la fila del cliente publica lo que dice la vista, no la suma del 
       n_obras_cerradas: 5,
       cobrado_neto_total: 90_579_117.31,
       pendiente_contractual: 97_441_611.5,
+      // (los tres últimos son de prueba: ver el bloque de arriba)
     })]]),
   })
   assert.equal(Math.round(c.contratado ?? 0), 156_174_253)

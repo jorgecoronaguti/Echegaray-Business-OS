@@ -28,6 +28,12 @@ const CON_RLS = [
   // pendiente de cada cliente leyendo `cobranzas` a través de `cliente_cuenta_corriente`. Sin
   // invoker, la policy `cobranzas_select` (Administración) dejaría de valer y la cartera entera
   // —lo que cada cliente debe— quedaría legible para cualquier autenticado.
+  //
+  // ESTE TEST DA ROJO —«esta vista no existe en la base»— HASTA QUE SE APLIQUE
+  // `supabase/migrations/20260910T2110_cliente_economia.sql`, y ese rojo es la señal, no un
+  // defecto: el hito escribió la migración y NO la aplicó (lo hace la sesión principal, con el
+  // dueño mirando). Mientras tanto la web dice «sin precio en OBRAS» en la columna del cliente,
+  // que es lo único cierto: no hay ningún dato leído.
   'cliente_economia', 'cliente_cuenta_corriente',
   'imputacion_pendiente', 'proveedor_nombre_pendiente',
   // MÓDULO PERSONAL / HH (19/08/2026). Las tres se apoyan en el RLS de sus tablas:
