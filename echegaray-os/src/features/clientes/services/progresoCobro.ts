@@ -143,7 +143,17 @@ export function tituloDeCobro(
   const base = deCliente
     ? `cobrado ${money(cobrado)} sin IVA de ${money(contratado)} contratado en todas sus obras`
     : `cobrado ${money(cobrado)} de ${money(contratado)} contratado`
-  const exceso = p?.exceso != null ? ` · ${money(p.exceso)} por encima de lo contratado` : ''
+  // ═══ COBRAR MÁS QUE EL CONTRATO NO ES UN ERROR, Y SE EXPLICA (10/09/2026 · Quattropani) ═══
+  //
+  // El Salón Comercial cobró $107.877.339 contra un contrato de U$S 63.000 (≈$95,3 M neto, ≈$115,3 M
+  // con IVA). Lo que entró de más son ventas facturadas FUERA del contrato —materiales, adicionales—
+  // que Cobranzas registra contra la misma obra. La fila no lo pinta de ámbar: el ámbar de este OS
+  // significa problema, y esto es plata cobrada.
+  const exceso = p?.exceso != null
+    ? ` · ${money(p.exceso)} por encima de lo contratado: son ventas facturadas fuera del contrato `
+      + '(adicionales o materiales) que Cobranzas anota contra el mismo trabajo. No es un error ni '
+      + 'un cobro de más'
+    : ''
   const fact = facturado != null ? ` · facturado ${money(facturado)} (devengado)` : ''
   return `${base}${exceso}${fact}`
 }

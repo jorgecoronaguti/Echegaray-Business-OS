@@ -62,6 +62,7 @@ import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
 import { getEconomiaDeObras, SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
 import { getEconomiaDeCliente } from '@/features/clientes/services/economiaCliente'
 import { getCobradoPorObra } from '@/features/administracion/services/homeCartera'
+import { cuentaDeTrabajos } from '@/features/clientes/services/cuentaDeTrabajos'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
 import { getOrdenesDe, ordenesPorClienteYObra } from '@/features/clientes/services/ordenesCliente'
 import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
@@ -329,6 +330,24 @@ export default async function ClientePage({ params, searchParams }: {
     ? await getOrdenesDe(supabase, { clienteId: id, obraId: trabajoAbierto })
     : null
 
+  // LOS CUATRO NÚMEROS DE LA CUENTA, SUMADOS DE SUS TRABAJOS (misma fuente que `/clientes`).
+  const cuentaTrabajos = cuentaDeTrabajos(
+    todas.map((o) => ({ obra_id: o.obra_id, contratado: economia?.get(o.obra_id)?.contratado ?? null })),
+    cobradoPorObra,
+  )
+  const cifrasDeLaCuenta: CifraDeFicha[] = [
+    { rotulo: 'Contratado', valor: cuentaTrabajos.contratado != null ? money(cuentaTrabajos.contratado) : null, falta: SIN_PRECIO_EN_OBRAS },
+    { rotulo: 'Cobrado c/IVA', valor: cuentaTrabajos.cobrado != null ? money(cuentaTrabajos.cobrado) : null, falta: 'sin cobranzas imputadas' },
+    { rotulo: 'Por cobrar', valor: cuentaTrabajos.porCobrar != null ? money(cuentaTrabajos.porCobrar) : null, falta: 'sin pendientes' },
+    // EL ÁMBAR ES PARA LO QUE RECLAMA TRABAJO: una mora vencida lo es. Y cuando no se pudo medir,
+    // la cifra dice que no se midió — nunca «$ 0», que se leería como «no debe nada».
+    {
+      rotulo: '▲ Vencido',
+      valor: cuentaTrabajos.vencido != null ? money(cuentaTrabajos.vencido) : null,
+      falta: 'no medido', tono: cuentaTrabajos.vencido ? 'warn' : undefined,
+    },
+  ]
+
   const vencido = lector.leer(cuenta, null)?.vencido ?? null
   const tasa = tasaDeConversion(presupuestos)
 
@@ -409,6 +428,14 @@ export default async function ClientePage({ params, searchParams }: {
 
       {solapa === 'cuenta' && veEconomia && (
         <div style={{ padding: '18px 20px 24px' }}>
+          {/* ═══ LOS CUATRO NÚMEROS DE LA PESTAÑA OBRAS, ARRIBA DE TODO (10/09/2026) ═══
+
+              Son los MISMOS que la fila del trabajo en `/clientes`, sumados con la misma aritmética
+              que el pie de esa pestaña y sobre la misma fuente (`obra_cuenta`). Existen porque la
+              cuenta corriente de abajo mide el vencido con OTRO reloj —`fecha_cobro < hoy`, que se
+              re-tipea cada vez que el cobro se posterga— y el mismo cliente tenía dos moras según
+              la cara que se abriera. Acá arriba está la de OBRAS, con su rótulo. */}
+          <CifrasDeFicha testid="cuenta-de-trabajos" cifras={cifrasDeLaCuenta} />
           <CuentaCorriente
             cuenta={lector.leer(cuenta, null)}
             documentos={lector.leer(certificados, [])}

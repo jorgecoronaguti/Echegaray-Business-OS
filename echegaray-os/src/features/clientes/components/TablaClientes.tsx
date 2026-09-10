@@ -58,8 +58,8 @@ import { frasesDeObras } from '@/features/clientes/services/cartera'
 import { SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
 import type { PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
 import {
-  AYUDA_PROXIMO, CifraDeCobranza, Cobrado, ContratadoDeObra, ProximoCobro, SOLO_ANCHO, SOLO_TABLET,
-  SOLO_XL, TONO,
+  AYUDA_PROXIMO, CifraDeCobranza, Cobrado, ContratadoDeObra, OrdenesDelTrabajo, ProximoCobro,
+  SOLO_ANCHO, SOLO_TABLET, SOLO_XL, TONO,
 } from './CeldasDeCartera'
 import { AbrirOrdenes } from './AbrirOrdenes'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
@@ -261,10 +261,6 @@ export function TablaClientes({
 
             {c.enCurso.map((o) => {
               const deLaObra = papelesDe(c.cliente_id).porObra.get(o.obra_id)
-              const totalOC = deLaObra?.totalOC ?? SIN_PAPELES
-              // EL NÚMERO DE LA OC ES DATO DE PRIMERA CLASE CUANDO HAY UNA SOLA. «OC 2173» dice
-              // cuál papel encargó el trabajo; «1 OC» sólo dice que hay uno.
-              const unicaOC = totalOC.n === 1 ? (deLaObra?.oc[0]?.numeroCorto ?? null) : null
               const ocDeLaObra = deLaObra?.oc ?? []
               return (
                 /* ═══ EL TRABAJO SE ABRE EN EL CRM, NO EN EL ERP (10/09/2026) ═══
@@ -321,19 +317,15 @@ export function TablaClientes({
                       columna que su cliente, y desaparece con la columna. */}
                   <span className={SOLO_TABLET} />
 
+                  {/* ═══ EL TOTAL DE OC SALE DE `obra_economia_cartera`, NO DE LOS PAPELES ═══
+
+                      Los NÚMEROS de las OC —los que abren su PDF— siguen saliendo de
+                      `cliente_orden`, debajo del nombre. El TOTAL, en cambio, es el de la vista:
+                      trae partido lo del año que acota el contratado y lo histórico de una obra
+                      fusionada, que sumados publicaban «$ 49.886.583 · 5 OC» en BSA contra un
+                      contratado de $17,7 M. Y ya no es un botón: la fila entera abre el detalle. */}
                   <span className={`flex items-center justify-end ${SOLO_XL}`} data-testid="papeles-obra">
-                    {totalOC.n === 0
-                      ? null
-                      : (
-                          <AbrirOrdenes
-                            href={hrefOrdenes(o.obra_id)}
-                            titulo={AYUDA_OC}
-                            etiqueta={`Ver las ${totalOC.n} órdenes de compra de ${o.nombre}`}
-                            testid="abrir-ordenes-obra"
-                          >
-                            <TotalDePapeles total={totalOC} sigla="OC" tam="11.5px" testid="total-oc-obra" veEconomia={veEconomia} numero={unicaOC} />
-                          </AbrirOrdenes>
-                        )}
+                    <OrdenesDelTrabajo o={o} veEconomia={veEconomia} clase="" />
                   </span>
 
                   <ContratadoDeObra o={o} veEconomia={veEconomia} />

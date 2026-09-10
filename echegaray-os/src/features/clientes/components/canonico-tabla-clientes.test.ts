@@ -100,15 +100,51 @@ test('la fila del cliente no vuelve a leer el campo del formulario de la obra', 
 // solo, ME - BSA muestra «5 OC» y ningún número, y el número es lo que se busca —es lo que el
 // cliente cita en su orden de pago y en su factura—.
 
-test('cada obra dibuja los números de SUS órdenes de compra, y el total sigue abriendo el detalle', () => {
+test('cada trabajo dibuja los números de SUS órdenes de compra, y el detalle se abre desde la fila', () => {
   const src = codigo()
   assert.match(src, /<OrdenesDeLaObra ordenes=\{ocDeLaObra\}/, 'los números no se dibujan')
   // La fila crece a dos líneas SOLO cuando hay números: si no, el hueco se ve como un error.
   assert.match(src, /ocDeLaObra\.length \? ALTO_V2\.hijaConOrdenes : ALTO_V2\.hija/)
-  // Y el total de la obra SÍ tiene que seguir abriendo su detalle: los números de la línea son las
-  // cuatro primeras, el panel las tiene todas con su archivo y su atribución.
-  assert.match(src, /AbrirOrdenes/)
-  assert.match(src, /testid="abrir-ordenes-obra"/)
+  // EL BOTÓN DE LA CELDA SE FUE porque la FILA ENTERA abre el detalle: dos puertas al mismo panel,
+  // una encima de la otra, eran dos zonas de clic para lo mismo.
+  assert.match(src, /href=\{hrefOrdenes\(o\.obra_id\)\}/)
+})
+
+// ═══ EL TOTAL DE OC ES EL DE LA VENTANA, Y EL HISTÓRICO SE NOMBRA APARTE ═══
+//
+// BSA absorbió `bsa-planta` con tres OC de 2024 por $38.321.214: la celda sumaba todo y publicaba
+// «$ 49.886.583 · 5 OC» al lado de un contratado de $17,7 M. Son dos años distintos comparados sin
+// avisar.
+
+test('la celda de OC publica la ventana del contratado y no suma el histórico', () => {
+  const src = codigo()
+  assert.match(src, /o\.ocCivaVentana == null \? '' : pesos\(o\.ocCivaVentana\)/)
+  assert.match(src, /data-testid="oc-historico"/)
+  assert.match(src, /\+ \{pesos\(historico\)\} histórico/)
+  assert.doesNotMatch(src, /ocCivaVentana \+ .*ocCivaHistorico/, 'los dos totales no se suman')
+})
+
+test('un trabajo con contrato y sin OC lo dice, en vez de dejar la celda vacía', () => {
+  // Quattropani no tiene orden de compra: tiene un contrato en dólares. Una celda vacía en una
+  // columna de papeles se lee como «se perdió el papel».
+  const src = codigo()
+  assert.match(src, /Contrato \{dolares\(o\.contratadoUsd\)\}/)
+  assert.match(src, />sin OC</)
+})
+
+test('la moneda del contrato se dice: U$S arriba y su valuación de hoy debajo', () => {
+  const src = codigo()
+  assert.match(src, /o\.contratadoUsd != null\n\s+\? dolares\(o\.contratadoUsd\)/)
+  assert.match(src, /data-testid="contratado-en-pesos"/)
+  assert.match(src, /≈ \{pesos\(o\.contratado\)\}/)
+  // Y el TC con el que se valuó, en el `title`: sin eso el número en pesos cambia solo y nada lo dice.
+  assert.match(src, /valuado al tipo de cambio de hoy/)
+})
+
+test('cobrar más que el contrato NO se pinta de alarma, se explica', () => {
+  const src = codigo()
+  assert.doesNotMatch(src, /p\.excede \? V\.warn/, 'el ámbar de este OS significa problema, y esto es plata cobrada')
+  assert.doesNotMatch(src, /\{p\.pct\} %<\/span>\s*\)\s*: null/)
 })
 
 test('la fila no vuelve a marcar en ámbar lo que la pantalla ya no explica', () => {
@@ -216,12 +252,12 @@ test('una obra cuyo cobro no se pudo repartir lo DICE, y no dibuja un importe aj
   assert.doesNotMatch(delCliente, /imputacion=/)
 })
 
-test('con una sola OC la celda dice CUÁL, no cuántas', () => {
-  // «1 OC» cuenta; «OC 2173» identifica. Con dos o más se vuelve al conteo: enumerarlas en la celda
-  // es volver a los rótulos que el dueño mandó sacar.
+test('los números de las OC siguen debajo del nombre, con su PDF', () => {
+  // «1 OC» cuenta; «OC 2173» identifica, y es lo que el cliente cita en su orden de pago. El número
+  // vive en la línea de abajo del nombre —de `cliente_orden`, con su archivo— y el TOTAL en su
+  // columna, que sale de la vista. Dos fuentes, dos preguntas, y ninguna pisa a la otra.
   const src = codigo()
-  assert.match(src, /totalOC\.n === 1 \? \(deLaObra\?\.oc\[0\]\?\.numeroCorto \?\? null\) : null/)
-  assert.match(src, /numero=\{unicaOC\}/)
+  assert.match(src, /<OrdenesDeLaObra ordenes=\{ocDeLaObra\} veEconomia=\{veEconomia\} \/>/)
 })
 
 test('la celda de cobro de la obra no dibuja NADA mientras la base no pueda repartir', () => {
@@ -258,14 +294,14 @@ test('el sufijo de unidad va en la familia de la cifra, no en la del texto', () 
 test('«suma de Cobranzas» dejó de ser un segundo renglón: es la marca «·» y el `title`', () => {
   const src = codigo()
   assert.doesNotMatch(src, /suma de Cobranzas\s*\n\s*<\/span>/, 'volvió como texto dibujado')
-  assert.match(src, /viva && o\.contratado !== null \? ' ·' : ''/)
+  assert.match(src, /viva && o\.contratado !== null && o\.contratadoUsd == null \? ' ·' : ''/)
   assert.match(src, /AYUDA_SUMA_VIVA/, 'la frase entera tiene que seguir estando en el `title`')
 })
 
 test('una frase no se dibuja en monoespaciado, y una cifra sí', () => {
   const src = codigo()
   assert.match(src, /c\.contratado === null \? '' : 'font-mono tabular-nums'/)
-  assert.match(src, /o\.contratado === null \? '' : 'font-mono tabular-nums'/)
+  assert.match(src, /o\.contratado === null && o\.contratadoUsd === null \? '' : 'font-mono tabular-nums'/)
   // Y la celda de «Obras» es una frase entera: nunca mono.
   const obras = src.slice(src.indexOf('data-testid="obras-cliente"') - 260, src.indexOf('data-testid="obras-cliente"') + 260)
   assert.doesNotMatch(obras, /font-mono/)
