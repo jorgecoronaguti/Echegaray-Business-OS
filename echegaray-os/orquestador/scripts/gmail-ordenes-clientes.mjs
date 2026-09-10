@@ -228,9 +228,9 @@ async function main() {
         // neutro y la orden estar adentro—, pero una imagen o una planilla que además no clasifica
         // por nombre ni por asunto no justifica traer megas de una casilla de cinco años.
         const esPdf = /pdf/i.test(a.mime ?? '') || /\.pdf$/i.test(a.nombre ?? '')
-        const previo = clasificarAdjunto({ asunto: m.subject, nombreArchivo: a.nombre, cuerpo })
+        const previo = clasificarAdjunto({ nombreArchivo: a.nombre })
         if (!esPdf && previo.tipo === 'otro') {
-          leido.adjuntos.push({ ...a, saltado: `no es PDF y no clasifica por nombre/asunto (${a.mime || '?'})` })
+          leido.adjuntos.push({ ...a, saltado: `no es PDF y su nombre no lo declara orden (${a.mime || '?'})` })
           continue
         }
         await pausa()
