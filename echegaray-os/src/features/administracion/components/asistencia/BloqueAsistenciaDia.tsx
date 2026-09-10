@@ -2,7 +2,7 @@ import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPor
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Aviso, Vacio } from '@/shared/components/ds'
-import { hs } from '../../services/jornadaPorObra'
+import { hs, obraElegidaDe } from '../../services/jornadaPorObra'
 import { correrDia, rotuloDelDia } from '../../services/diaDeJornada'
 import { getCandidatosParaTraer, getJornadaDelDia, getObrasParaJornada } from '../../services/jornadaPorObraService'
 import { puedeCambiarObraActual } from '../../services/planDeObraActual'
@@ -53,9 +53,9 @@ export async function BloqueAsistenciaDia({ obraPedida, dia, hrefDe, hrefQuincen
     )
   }
 
-  const obraId = obraPedida && obras.data.some((o) => o.id === obraPedida)
-    ? obraPedida
-    : obras.data.length === 1 ? obras.data[0].id : null
+  // POR ID O POR NOMBRE — ver `obraElegidaDe`. El chip de la grilla de quincena manda el RÓTULO de
+  // la obra, y venir del filtro por obra no puede perder la obra en el camino.
+  const obraId = obraElegidaDe(obras.data, obraPedida)
 
   if (!obraId) {
     return (

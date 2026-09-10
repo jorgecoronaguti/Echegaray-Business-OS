@@ -588,6 +588,34 @@ export function personasPorObra(filas: FilaQuincena[]): { rotulo: string; person
     .sort((a, b) => b.personas - a.personas || a.rotulo.localeCompare(b.rotulo, 'es'))
 }
 
+/**
+ * EL VALOR DE `?obra=` QUE PIDE LAS FILAS SIN OBRA ACTIVA.
+ *
+ * El rótulo real es «Sin obra activa» y viaja en la URL; se usa un token corto y estable porque el
+ * rótulo es una frase que puede cambiar de redacción, y una URL compartida por mensaje no puede
+ * quedar muerta porque alguien reescribió un cartel.
+ */
+export const OBRA_SIN = 'sin-obra'
+
+/**
+ * EL RECORTE POR OBRA — el filtro que pidió el dueño el 10/09/2026.
+ *
+ * Recorta POR RÓTULO, exactamente el mismo texto que publica `personasPorObra` en el chip: si el
+ * chip dice «MAMPOSTERÍA (cerrada)» y el filtro buscara el nombre pelado de la obra, el chip
+ * prometería un recorte que no ocurre. Un rótulo que no existe devuelve vacío —y la pantalla lo
+ * dice— en lugar de devolver todo: un filtro que al no encontrar nada muestra la lista entera hace
+ * creer que esa obra tiene a toda la empresa.
+ *
+ * SE APLICA SOBRE LA GRILLA YA ARMADA, nunca sobre los registros crudos: la misma regla que el
+ * buscador de texto. Filtrar antes sacaría a una persona de las celdas de sus compañeros.
+ */
+export function filtrarPorObra(filas: FilaQuincena[], obra?: string | null): FilaQuincena[] {
+  const pedido = obra?.trim()
+  if (!pedido) return filas
+  const rotulo = pedido === OBRA_SIN ? SIN_OBRA : pedido
+  return filas.filter((f) => f.rotuloObra === rotulo)
+}
+
 /** «1 día sin marcar» — el ámbar del encabezado. Cuenta DÍAS distintos, no celdas. */
 export function diasSinMarcar(filas: FilaQuincena[]): number {
   return new Set(filas.flatMap((f) => f.reclama)).size

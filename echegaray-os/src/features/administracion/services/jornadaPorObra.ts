@@ -228,6 +228,35 @@ export function leerHoras(bruto: string): { horas: number | null; error: string 
  *  `leerHoras` la acepta, así que lo que se muestra es exactamente lo que se puede volver a tipear. */
 export const hs = (n: number): string => n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
 
+/**
+ * QUÉ OBRA PIDE `?obra=` — el id, o el NOMBRE tal como lo escribe el chip de la grilla.
+ *
+ * La solapa Asistencia tiene dos vistas de la misma cosa: la grilla de quincena, que recorta por el
+ * RÓTULO de la obra (es lo que ve el que mira, y lo que dicen los chips), y la carga del día, que
+ * trabaja con el id. Si `?obra=` significara una cosa en una vista y otra en la otra, pasar de la
+ * grilla filtrada a la carga del día perdería la obra en silencio: el parámetro llegaría intacto y
+ * la pantalla mostraría otra cosa. Acá se acepta la dos formas y el parámetro pasa a significar UNA
+ * sola: «la obra elegida».
+ *
+ * `null` cuando no se puede decidir sin inventar —ninguna coincide, o no se pidió ninguna y hay más
+ * de una para elegir—. Con una sola obra visible no hay elección que hacer y se devuelve ésa.
+ */
+export function obraElegidaDe<T extends { id: string; nombre: string }>(
+  obras: T[], pedida: string | undefined | null,
+): string | null {
+  const busca = pedida?.trim()
+  if (busca) {
+    // EL ID PRIMERO. Un id es único; dos obras pueden compartir nombre y ahí la primera es una
+    // adivinanza, pero es la misma que ya hace la lista al ordenar por nombre.
+    const obra = obras.find((o) => o.id === busca) ?? obras.find((o) => o.nombre === busca)
+    if (obra) return obra.id
+    // LO QUE NO COINCIDE NO CAE EN UNA OBRA CUALQUIERA. «Sin obra activa» o una obra cerrada no son
+    // cargables: la pantalla vuelve a la lista y que elija una persona.
+    return null
+  }
+  return obras.length === 1 ? obras[0].id : null
+}
+
 /** Lo que sobra de la jornada pactada. No dice «extra al 50%»: el recargo lo elige quien liquida. */
 export function sobreLaJornada(horas: number, jornada: number): number {
   return horas > jornada ? redondear(horas - jornada) : 0

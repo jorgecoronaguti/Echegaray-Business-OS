@@ -99,6 +99,26 @@ function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): st
 const hrefAsistencia = (quincena?: string): string =>
   `${RUTA}?vista=asistencia${quincena ? `&quincena=${quincena}` : ''}`
 
+/**
+ * UN ENLACE DENTRO DE ASISTENCIA, CONSERVANDO LO QUE YA ESTABA PUESTO — misma convención que
+ * `hrefSolapa`: un `undefined` en `cambios` BORRA ese parámetro, y con eso se apaga un filtro con
+ * el mismo enlace que lo prendió.
+ *
+ * Cambiar de quincena no puede perder la obra que se está mirando, ni al revés: los dos son la
+ * misma grilla vista con otro recorte. Sin esto, el filtro por obra duraba hasta el primer clic en
+ * «‹ anterior» y volvía a aparecer la empresa entera sin que nadie lo pidiera.
+ */
+function hrefAsistenciaCon(base: Busqueda, cambios: Record<string, string | undefined>): string {
+  const actual: Record<string, string | undefined> = {
+    quincena: base.quincena, q: base.q, modo: base.modo, obra: base.obra,
+  }
+  const params = new URLSearchParams({ vista: 'asistencia' })
+  for (const [k, v] of Object.entries({ ...actual, ...cambios })) {
+    if (v) params.set(k, v)
+  }
+  return `${RUTA}?${params.toString()}`
+}
+
 /** La solapa Liquidación, con la misma convención de quincena que Asistencia: cualquier día de la
  *  ventana sirve y el bloque la resuelve. */
 const hrefLiquidacion = (quincena?: string): string =>
@@ -334,7 +354,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               accion: RUTA,
               q: sp.q,
               placeholder: 'Buscar persona',
-              oculto: { vista: 'asistencia', quincena: sp.quincena },
+              // LA OBRA VIAJA CON EL BUSCADOR. Sin este campo, escribir un nombre borraba el
+              // recorte por obra: el formulario manda sólo lo que declara.
+              oculto: { vista: 'asistencia', quincena: sp.quincena, obra: sp.obra },
               testid: 'buscar-persona',
             } : undefined}
           />
@@ -346,12 +368,17 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               // FORZAR LA GRILLA, NO SÓLO MOSTRARLA. Sin `modo=quincena` este enlace volvería a
               // caer en la adivinanza y en el teléfono devolvería la misma pantalla de la que se
               // quiso salir — el mismo lazo que ya dejó `/campo/asistencia` girando sobre sí.
-              hrefQuincena={`${hrefAsistencia(sp.quincena)}&modo=quincena`}
+              // LA OBRA NO VUELVE CON EL ENLACE. En modo día `?obra=` es el ID de la obra que se
+              // está cargando y la grilla recorta por el RÓTULO del chip: arrastrarlo devolvería
+              // una quincena vacía con un id crudo en el cartel. La vuelta es a la quincena entera.
+              hrefQuincena={`${hrefAsistenciaCon(sp, { obra: undefined, modo: 'quincena' })}`}
             />
           ) : (
             <div style={{ padding: '10px 20px 24px' }}>
               <BloqueAsistenciaQuincena
-                quincenaPedida={sp.quincena} hoy={hoy} q={sp.q} hrefDe={hrefAsistencia}
+                quincenaPedida={sp.quincena} hoy={hoy} q={sp.q} obra={sp.obra}
+                hrefDe={(quincena) => hrefAsistenciaCon(sp, { quincena })}
+                hrefObra={(obra) => hrefAsistenciaCon(sp, { obra })}
                 // ESTA PANTALLA YA ES DE ADMINISTRACIÓN: quien llega acá pasó el portero del área.
                 // El `true` no es un permiso, es la afirmación de dónde vive el botón; la policy de
                 // `registros_hh` y la de `obra_asignacion` son las que rechazan de verdad.
@@ -366,7 +393,12 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               <p className="mt-4 text-center md:hidden">
                 <Link
                   prefetch={false}
-                  href={hrefDia({ dia: sp.dia })}
+                  // LA OBRA ELEGIDA VIAJA AL MODO DÍA. Va el RÓTULO, y del otro lado
+                  // `BloqueAsistenciaDia` resuelve tanto por id como por nombre de obra: así el
+                  // parámetro significa lo mismo en las dos vistas. Un rótulo que no es una obra
+                  // cargable —«Sin obra activa», una cerrada— cae en la lista de obras, que es la
+                  // respuesta correcta: a eso no se le puede cargar el día.
+                  href={hrefDia({ obra: sp.obra, dia: sp.dia })}
                   data-testid="ver-carga-del-dia"
                   className="inline-flex min-h-[44px] items-center px-2 text-[12.5px] text-muted underline hover:text-ink"
                 >
