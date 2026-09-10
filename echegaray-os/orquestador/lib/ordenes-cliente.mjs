@@ -116,14 +116,19 @@ export function clasificarAdjunto({ asunto = '', nombreArchivo = '', cuerpo = ''
 /** Número de la orden: lo que sigue a la etiqueta. null si el texto no lo trae. */
 export function extraerNumero(texto) {
   const t = String(texto ?? '')
+  // `n[°ºor.]*` incluye la r de «Nro.»: la orden de pago de Messina se rotula «ORDEN DE PAGO Nro.:
+  // 0000000004865» y sin esa letra el PDF que trae el número quedaba sin número.
+  // El primer grupo alternativo admite el ESPACIO adentro del número («OC 02- 00002162»): así lo
+  // parte el PDF de nuestra propia factura, y comparar sin él daba dos órdenes donde hay una.
+  const NUM = '(\\d{1,5}\\s*-\\s*\\d{3,10}|\\d{3,})'
   const patrones = [
-    /orden\s+de\s+(?:compra|pago)\s*(?:n[°ºo.]*\s*)?[:#]?\s*([0-9][0-9._/-]{3,})/i,
-    /\bo\/[cp]\s*(?:n[°ºo.]*\s*)?[:#]?\s*([0-9][0-9._/-]{3,})/i,
-    /\b(?:oc|op)\s*[:#-]?\s*([0-9]{3,}[0-9._/-]*)/i,
+    new RegExp(`orden\\s+de\\s+(?:compra|pago)\\s*(?:n[°ºor.]*\\s*)?[:#]?\\s*${NUM}`, 'i'),
+    new RegExp(`\\bo\\/[cp]\\s*(?:n[°ºor.]*\\s*)?[:#]?\\s*${NUM}`, 'i'),
+    new RegExp(`\\b(?:oc|op)\\s*(?:n[°ºor.]*\\s*)?[:#-]?\\s*${NUM}`, 'i'),
   ]
   for (const re of patrones) {
     const m = t.match(re)
-    if (m) return m[1].replace(/[._/-]+$/, '')
+    if (m) return m[1].replace(/\s+/g, '').replace(/[._/-]+$/, '')
   }
   return null
 }
@@ -223,4 +228,191 @@ export function claveDocumento({ messageId, nombreArchivo, tamanoBytes }) {
 export function extensionDe(nombreArchivo) {
   const m = String(nombreArchivo ?? '').match(/\.([a-z0-9]{1,8})$/i)
   return m ? m[1].toLowerCase() : 'bin'
+}
+
+// ── IDENTIDAD DE LA ORDEN: EL NÚMERO CANÓNICO ───────────────────────────────────────────────────
+//
+// El mismo número de orden se escribe de tres formas según quién lo teclee: Messina emite
+// «00002-00002162», su propia notificación de pago cita «OC 02- 00002162» (con el espacio adentro)
+// y la factura que le mandamos dice «OC: 02-00002097». Comparar los tres como cadenas da tres
+// órdenes distintas, y por eso la OC 2162 entró dos veces en `cliente_orden`: llegó en dos mails.
+//
+// El canónico tira los ceros a la izquierda de cada tramo y se queda con los dígitos: «2-2162».
+// No sirve para mostrar —eso es `numeroCorto`— sino para decir «esto ya lo tengo».
+export function numeroCanonico(numero) {
+  const tramos = String(numero ?? '').match(/\d+/g)
+  if (!tramos) return null
+  const limpios = tramos.map((t) => t.replace(/^0+/, '') || '0').filter((t) => t !== '0')
+  return limpios.length ? limpios.join('-') : null
+}
+
+/** Lo que se DIBUJA: el último tramo sin ceros. «00002-00002162» → «2162». La fila de una obra
+ *  tiene 80px para esto y «00002-00002162» los gasta sin decir nada que el 2162 no diga. */
+export function numeroCorto(numero) {
+  const canon = numeroCanonico(numero)
+  return canon ? canon.split('-').pop() : null
+}
+
+/** Todos los números de OC que este texto CITA, en canónico y sin repetir. Es lo que convierte una
+ *  factura nuestra («Limpieza de Escombros Embolsado OC 02- 00002162») en evidencia de qué obra es
+ *  esa OC, y lo que deja a una orden de pago colgada de la OC que paga. */
+export function ocsCitadas(texto) {
+  const t = String(texto ?? '')
+  const salida = new Set()
+  for (const m of t.matchAll(/\bo\/?c\s*(?:n[°ºo.]*)?\s*[:#-]?\s*(\d{1,5}\s*-\s*\d{3,10}|\d{4,10})/gi)) {
+    const canon = numeroCanonico(m[1])
+    if (canon) salida.add(canon)
+  }
+  return [...salida]
+}
+
+/**
+ * El comprobante que este PDF ES (una factura nuestra) o los que CITA (una orden de pago).
+ *
+ * Messina no cita la OC en su orden de pago: cita la FACTURA («FAC A0000100000225»). La cadena
+ * completa es entonces OP → factura → OC → obra, y sin este eslabón la OP se queda sin obra aunque
+ * la evidencia esté escrita. Devuelve claves «A-1-225».
+ */
+export function comprobantesCitados(texto) {
+  const salida = new Set()
+  for (const m of String(texto ?? '').matchAll(/\bfac\.?\s*([abcm])\s*(\d{4,5})(\d{8})\b/gi)) {
+    salida.add(`${m[1].toUpperCase()}-${Number(m[2])}-${Number(m[3])}`)
+  }
+  return [...salida]
+}
+
+/** El comprobante que este PDF es, leído de su propio encabezado. null si no es una factura. */
+export function comprobantePropio(texto) {
+  const t = String(texto ?? '')
+  const letra = t.match(/factura\s+([abcm])\b/i)
+  const nro = t.match(/comp\.?\s*n(?:ro|°|º)\.?:?\s*(\d{4,5})\s+(\d{6,8})/i)
+  if (!letra || !nro) return null
+  return `${letra[1].toUpperCase()}-${Number(nro[1])}-${Number(nro[2])}`
+}
+
+// ── ATRIBUIR SIN ADIVINAR ───────────────────────────────────────────────────────────────────────
+
+/**
+ * A qué obra pertenece un documento que no la nombra, según los DEMÁS documentos ya atribuidos.
+ *
+ * `citadas` son las claves que este documento cita (números de OC canónicos o comprobantes) y
+ * `obraPorClave` el mapa que arman los documentos que sí tienen obra. Devuelve
+ * `{ obraId, porque }` o `{ obraId: null, porque }` — el motivo se escribe SIEMPRE, también cuando
+ * no se pudo: una lista de nueve órdenes sin obra y sin motivo no le sirve a nadie para decidir.
+ *
+ * DOS OBRAS DISTINTAS ⇒ NADA. Una orden de pago que cancela tres facturas de tres obras no
+ * pertenece a una de las tres: repartirla sería inventar. Queda a nivel cliente y se dice por qué.
+ */
+export function obraPorReferencia(citadas, obraPorClave) {
+  const halladas = new Map()
+  const sinRastro = []
+  for (const c of citadas ?? []) {
+    const obra = obraPorClave.get(c)
+    if (obra) halladas.set(obra, [...(halladas.get(obra) ?? []), c])
+    else sinRastro.push(c)
+  }
+  if (!citadas?.length) return { obraId: null, porque: 'el PDF no cita ninguna OC ni comprobante' }
+  if (halladas.size === 1) {
+    const [obraId, claves] = [...halladas.entries()][0]
+    return { obraId, porque: `hereda la obra de ${claves.join(', ')}` }
+  }
+  if (halladas.size > 1) {
+    return { obraId: null, porque: `cita ${citadas.join(', ')} y caen en ${halladas.size} obras distintas` }
+  }
+  return { obraId: null, porque: `cita ${sinRastro.join(', ')}, que no está en el OS` }
+}
+
+/**
+ * UNA SOLA FILA POR ORDEN. Agrupa por (tipo, número canónico) y devuelve un grupo por orden real,
+ * con todas sus filas adentro: la OC 2162 llegó dos veces —la orden que emitió Messina y la
+ * factura nuestra que la cita— y son dos papeles de UNA orden, no dos órdenes.
+ *
+ * Las filas SIN número no se agrupan entre sí: dos documentos sin número no son el mismo documento,
+ * y unirlos por «ninguno de los dos tiene número» sería el peor de los inventos.
+ */
+export function agruparPorNumero(filas) {
+  const grupos = new Map()
+  const salida = []
+  for (const f of filas ?? []) {
+    const canon = numeroCanonico(f.numero)
+    const clave = canon ? `${f.tipo}::${canon}` : null
+    if (clave && grupos.has(clave)) { grupos.get(clave).filas.push(f); continue }
+    const g = { clave: clave ?? `sola::${f.id}`, tipo: f.tipo, numero: f.numero, filas: [f] }
+    if (clave) grupos.set(clave, g)
+    salida.push(g)
+  }
+  return salida
+}
+
+/**
+ * EL MAPA CONTRA EL QUE SE HEREDA: clave → obra, armado sólo con los documentos que YA tienen obra.
+ *
+ * Cada documento entra por su número canónico («2-2173») y, si es una factura nuestra, por su
+ * comprobante («A-1-225»). Y entra TAMBIÉN por su número corto («2173»), porque el papel se cita
+ * como se habla: la OC 2256 dice «ADICIONAL OC 2173, CONSTRUCCION DEL TERCER MURO» y sin la clave
+ * corta esa cita se leía como «no está en el OS» — un motivo falso, que es peor que no atribuir.
+ *
+ * LA CLAVE CORTA SE CAE SOLA CUANDO ES AMBIGUA: si dos órdenes de puntos de venta distintos
+ * terminan en el mismo número y apuntan a obras distintas, «2173» deja de significar algo y se
+ * borra. Heredar por una clave ambigua es exactamente la adivinanza que esto no hace.
+ */
+export function mapaDeEvidencia(docs) {
+  const mapa = new Map()
+  const cortas = new Map()
+  for (const d of docs ?? []) {
+    if (!d.obra_id) continue
+    const canon = numeroCanonico(d.numero)
+    if (canon) {
+      mapa.set(canon, d.obra_id)
+      const corta = canon.split('-').pop()
+      if (corta !== canon) cortas.set(corta, cortas.has(corta) && cortas.get(corta) !== d.obra_id ? null : d.obra_id)
+    }
+    if (d.comprobante) mapa.set(d.comprobante, d.obra_id)
+  }
+  for (const [corta, obraId] of cortas) if (obraId && !mapa.has(corta)) mapa.set(corta, obraId)
+  return mapa
+}
+
+/**
+ * LA FECHA DE LA ORDEN, que no es la primera fecha del papel.
+ *
+ * MEDIDO el 10/09/2026 contra las cinco OC del bucket: las cinco quedaron fechadas «22/08/86». El
+ * encabezado de Messina trae «Fecha Inicio Act. 22-08-86» —cuándo abrió la empresa— antes que la
+ * fecha de la orden, que además viene con espacios adentro («Mendoza - 11 /08 /2026»). La primera
+ * fecha que encontraba `extraerFecha` era la del año 1986 leído como 2086.
+ *
+ * Por eso se busca por ETIQUETA primero y sólo después a ciegas, y toda fecha fuera de una ventana
+ * razonable se descarta: un documento administrativo de esta empresa no es de 2086 ni de 1986.
+ */
+export function extraerFechaDeOrden(texto, { hoy = new Date() } = {}) {
+  const t = String(texto ?? '')
+  const FECHA = String.raw`(\d{1,2}\s*[/-]\s*\d{1,2}\s*[/-]\s*\d{2,4})`
+  const etiquetadas = [
+    new RegExp(String.raw`fecha\s+de\s+emisi[oó]n\s*:?\s*${FECHA}`, 'i'),
+    new RegExp(String.raw`orden\s+de\s+(?:compra|pago)[^\n]{0,60}?-\s*${FECHA}`, 'i'),
+    new RegExp(String.raw`\bfecha\s*:?\s*${FECHA}`, 'i'),
+  ]
+  const candidatas = []
+  for (const re of etiquetadas) {
+    const m = t.match(re)
+    if (m) candidatas.push(m[1])
+  }
+  candidatas.push(t)
+  const anio = hoy.getFullYear()
+  for (const c of candidatas) {
+    const iso = extraerFecha(String(c).replace(/\s*([/-])\s*/g, '$1'))
+    if (!iso) continue
+    const a = Number(iso.slice(0, 4))
+    if (a >= 2015 && a <= anio + 1) return iso
+  }
+  return null
+}
+
+/** `true` cuando la fecha guardada no puede ser de este documento: fuera de la ventana razonable.
+ *  Es lo único que el re-atribuidor tiene derecho a PISAR — no corrige lo que una persona eligió,
+ *  corrige lo que un parser leyó mal y quedó escrito como si fuera un hecho. */
+export function fechaImposible(fecha, { hoy = new Date() } = {}) {
+  if (!fecha) return false
+  const a = Number(String(fecha).slice(0, 4))
+  return !Number.isFinite(a) || a < 2015 || a > hoy.getFullYear() + 1
 }

@@ -41,32 +41,27 @@ import { Estado } from '@/shared/components/ds'
 import { IconoCliente, IconoObra } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { diaRelativo, type ClienteEnCartera } from '@/features/administracion/services/homeCartera'
-import { rotuloChip, type OrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
+import { ordenesParaFila, sinFilaPropia, type OrdenBreve, type OrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
 import { chipsDeObra, SIN_PRECIO, type Chip } from '@/features/clientes/services/chipsCartera'
 import { BotonOrdenes } from './BotonOrdenes'
 import { pctTexto } from '@/features/clientes/services/economiaObras'
 
-// ── LOS CHIPS DE ÓRDENES ────────────────────────────────────────────────────────────────────────
+// ── LOS NÚMEROS DE LAS ÓRDENES ──────────────────────────────────────────────────────────────────
 //
-// «OC ·3» al lado del nombre de la obra: las órdenes de compra y de pago que el cliente mandó por
-// mail y el OS bajó a `cliente_orden`. Versalita apagada y SIN fondo de color, como el resto de los
-// adornos de esta fila: un chip con fondo compite con el filo ámbar de «esto bloquea», que es lo
-// único de esta pantalla que tiene derecho a gritar.
+// «OC 2162 · 05/08» al lado del nombre de la obra, y no «OC ·1». El dueño lo pidió así el
+// 10/09/2026: identificar la orden con su obra a simple vista. Quién las agrupa y cuántas entran lo
+// decide `ordenesParaFila`, que es puro y está probado; acá no se decide nada, se dibuja.
 //
-// NO SON UN ENLACE. La fila entera ya es un `<Link>` a la obra y un `<a>` adentro de otro `<a>` es
-// HTML inválido: React lo renderiza igual y el navegador lo desarma, dejando la fila con zonas que
-// navegan a cualquier lado. El detalle vive en la ficha de la obra; acá el chip informa cuántas hay.
-function Chips({ compra, pago, href }: { compra: number; pago: number; href: string }) {
-  const rotulos = [rotuloChip('OC', compra), rotuloChip('OP', pago)].filter((r) => r !== null)
+// NO SON UN ENLACE. La fila entera ya es un `<Link>` y un `<a>` adentro de otro `<a>` es HTML
+// inválido: el navegador lo desarma y la fila queda con zonas que navegan a cualquier lado.
+function Chips({ ordenes, href, titulo, max }: {
+  ordenes: OrdenBreve[] | undefined; href: string; titulo?: string; max?: number
+}) {
+  const { visibles, resto } = ordenesParaFila(ordenes, max === undefined ? {} : { max })
   return (
     <BotonOrdenes
-      rotulos={rotulos}
-      href={href}
-      className={ADORNO_ANCHO}
-      estilo={{
-        fontSize: '10.5px', letterSpacing: '0.06em', textTransform: 'uppercase',
-        color: V.apagado, flexShrink: 0, whiteSpace: 'nowrap',
-      }}
+      grupos={visibles} resto={resto} href={href} className={ADORNO_ANCHO} color={V.apagado}
+      titulo={titulo}
     />
   )
 }
@@ -112,7 +107,7 @@ export function TablaClientes({
   veEconomia: boolean
   /** `true` = la lectura de obras falló. Ninguna fila puede decir «ninguna en ejecución». */
   obrasNoLeidas: boolean
-  /** obra_id → cuántas OC y cuántas OP le cuelgan. Vacío = ninguna, o la lectura falló (`ordenes.fallo`). */
+  /** Las órdenes de la cartera, por obra y por cliente. Vacío = ninguna, o la lectura falló. */
   ordenes: OrdenesDeLaCartera
   /** Adónde lleva el chip: la clave es el `obra_id`, o `cliente:<id>` para lo no atribuido a obra. */
   hrefOrdenes: (clave: string) => string
@@ -179,14 +174,22 @@ export function TablaClientes({
                 <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
                   <IconoCliente className="h-[15px] w-[15px]" />
                 </span>
-                <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta }}>
+                {/* `minWidth: 96` NO es decorativo: con los números de las órdenes al lado, «Messina»
+                    se dibujaba «M» (medido a 1440 el 10/09/2026). El nombre no se estrangula nunca —
+                    lo que se recorta es el adorno, y para eso los números tienen su propio `+N`. */}
+                <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta, minWidth: 96 }}>
                   {c.nombre}
                 </span>
                 {/* LO QUE NO SE PUDO ATRIBUIR A UNA OBRA cuelga del CLIENTE y se ve acá. Esconderlo
                     hasta saber la obra sería perderlo: son las órdenes que alguien tiene que asignar. */}
+                {/* LO QUE NO TIENE FILA PROPIA DEBAJO cuelga del CLIENTE y se ve acá: lo que no se
+                    pudo atribuir a ninguna obra, y lo que cuelga de una obra que esta pantalla no
+                    dibuja porque está cerrada. Esconderlo sería perderlo. */}
                 <Chips
-                  {...(ordenes.sinObraPorCliente.get(c.cliente_id) ?? { compra: 0, pago: 0 })}
+                  ordenes={sinFilaPropia(ordenes.porCliente.get(c.cliente_id), c.enCurso.map((o) => o.obra_id))}
                   href={hrefOrdenes(`cliente:${c.cliente_id}`)}
+                  titulo="Órdenes del cliente sin obra en ejecución debajo"
+                  max={2}
                 />
                 <ChipsFalta chips={faltantes} testid="aviso-datos" />
               </span>
@@ -232,10 +235,11 @@ export function TablaClientes({
                   <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
                     <IconoObra className="h-[13px] w-[13px]" />
                   </span>
-                  <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra }}>{o.nombre}</span>
+                  <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
                   <Chips
-                    {...(ordenes.porObra.get(o.obra_id) ?? { compra: 0, pago: 0 })}
+                    ordenes={ordenes.porObra.get(o.obra_id)}
                     href={hrefOrdenes(o.obra_id)}
+                    titulo="Órdenes de compra y de pago que el cliente mandó por mail para esta obra"
                   />
                   {/* SIN PRECIO · SIN MEDIR · SIN JEFE · el punto del circuito de certificación.
                       Cada uno con su fuente en el `title`; los cuatro salen de `chipsDeObra`. */}
