@@ -30,6 +30,8 @@
 // lo correcto es que los dos escritores lean el MISMO. Escribirlo de nuevo en el otro script deja
 // otra vez dos definiciones, que es exactamente lo que produjo este defecto.
 
+import { estadoAGuardar } from './cobranzas-a-cliente.mjs'
+
 /**
  * CON QUÉ VISIBILIDAD NACE UNA FILA QUE EL SYNC TRAE DEL SHEET.
  *
@@ -128,6 +130,49 @@ export async function guardarPagoDelSync(p, { query }) {
      where public.esquema_pago.origen = 'sync_cobranzas'`,
     [p.cliente_id, p.cobranza_fila, p.huella_comprobante, p.huella_monto, p.concepto, p.fecha,
       p.monto, p.estado, p.medio, p.orden ?? 0, NACE_VISIBLE_AL_CLIENTE],
+  )
+}
+
+/**
+ * EL UPSERT DEL CERTIFICADO — el documento que el cliente ve en la ficha y en el portal.
+ *
+ * Vive acá y no en el script por la misma razón que `guardarPagoDelSync`: es la regla de qué pisa y
+ * qué respeta una corrida del sync, y desde el script no se puede probar sin escribir en la base
+ * productiva.
+ *
+ * QUÉ CAMBIÓ EL 10/09/2026 Y POR QUÉ. El `do update` no tocaba `estado`. La factura 01-00000225 de
+ * Messina está `Cobrado` en Cobranzas desde el 03/09 y el certificado seguía `emitido`: la ficha
+ * pedía «Enviar recordatorio» por $6.060.479 ya cobrados. El estado del COBRO lo declara el Sheet y
+ * ahora se refresca; el de APROBACIÓN —lo que el cliente contestó del documento— se respeta. Quién
+ * gana en cada caso lo decide `estadoAGuardar`, que es puro y tiene test.
+ *
+ * `observacion` sigue sin tocarse: es texto que escribió el cliente y el Sheet no lo conoce.
+ *
+ * El estado guardado se lee ANTES del insert en vez de resolverse con un `case` en SQL para que la
+ * regla exista una sola vez —en JavaScript, probada— y no dos, una de ellas escondida en el
+ * `on conflict`.
+ */
+export async function guardarCertificadoDelSync(c, { query }) {
+  // Sin `cobranza_fila` no hay conflicto posible (el índice único es parcial): la fila es nueva y el
+  // estado proyectado es el que corresponde.
+  const previo = c.cobranza_fila == null
+    ? null
+    : await query('select estado from public.certificado_cliente where cobranza_fila = $1',
+      [c.cobranza_fila]).then((r) => r.rows[0]?.estado ?? null)
+  const estado = estadoAGuardar(c.estado, previo)
+  return await query(
+    `insert into public.certificado_cliente
+       (cliente_id, numero, factura, monto, emitido_at, vence, estado, cobranza_fila,
+        huella_comprobante, huella_monto, origen, sincronizado_en)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'sync_cobranzas',now())
+     on conflict (cobranza_fila) where cobranza_fila is not null do update
+       set numero = excluded.numero, factura = excluded.factura, monto = excluded.monto,
+           emitido_at = excluded.emitido_at, vence = excluded.vence, estado = excluded.estado,
+           huella_comprobante = excluded.huella_comprobante, huella_monto = excluded.huella_monto,
+           sincronizado_en = now(), actualizado_at = now()
+     where public.certificado_cliente.origen = 'sync_cobranzas'`,
+    [c.cliente_id, c.numero, c.factura, c.monto, c.emitido_at, c.vence, estado, c.cobranza_fila,
+      c.huella_comprobante, c.huella_monto],
   )
 }
 

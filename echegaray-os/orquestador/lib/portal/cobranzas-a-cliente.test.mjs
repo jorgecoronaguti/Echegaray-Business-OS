@@ -5,7 +5,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   filaSheetDe, normalizarTexto, resolverCliente, certificacionDeConcepto, clasificar,
-  estadoDePago, estadoDeCertificado, apto_para_portal, proyectar,
+  estadoDePago, estadoDeCertificado, apto_para_portal, proyectar, estadoAGuardar,
 } from './cobranzas-a-cliente.mjs'
 
 const ARCOR = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -186,4 +186,44 @@ test('echeq cuenta como cheque: es el mismo instrumento y salda la obligación, 
       estado: 'Cobrado', fecha_cobro: '2026-05-01', forma_cobro: 'Echeq' },
   ], INDICE, HOY)
   assert.equal(r.pagos[0].medio, 'cheque')
+})
+
+// ═══ EL COBRO DEL SHEET TIENE QUE LLEGAR AL CERTIFICADO (10/09/2026) ═══
+//
+// Medido en producción: la fila 83 de Cobranzas (FA 01-00000225 de Messina) dice `Cobrado` desde el
+// 03/09 y `certificado_cliente` la tenía `emitido`, porque el `on conflict` del sync no actualizaba
+// `estado`. La ficha ofrecía «Enviar recordatorio» sobre $6.060.479 ya percibidos.
+
+test('una factura que Cobranzas tiene COBRADA nunca se queda en «emitido»', () => {
+  const fila = {
+    sheet_id: '83', categoria: 'B', factura: 'FA', numero_comprobante: '01-00000225',
+    obra_cliente: 'MESSINA', concepto: 'Limpieza de Escombros - Embolsado',
+    monto_neto: 5008660.65, total_bruto: 5961829.95, estado: 'Cobrado',
+    fecha_emision: '2026-08-06', fecha_cobro: '2026-09-03',
+  }
+  // Se arma con la función de producción: un certificado fabricado a mano probaría otra cosa.
+  const { certificados } = proyectar([fila], INDICE, new Date('2026-09-10T12:00:00Z'))
+  assert.equal(certificados.length, 1)
+  assert.equal(certificados[0].estado, 'cobrado')
+  // Y lo que el sync escribe sobre la fila que ya existía como «emitido» es «cobrado», no «emitido».
+  assert.equal(estadoAGuardar(certificados[0].estado, 'emitido'), 'cobrado')
+  assert.equal(estadoAGuardar(certificados[0].estado, 'vencido'), 'cobrado')
+})
+
+test('el cobro gana incluso sobre un documento observado: si entró la plata, la discusión terminó', () => {
+  assert.equal(estadoAGuardar('cobrado', 'en_disputa'), 'cobrado')
+  assert.equal(estadoAGuardar('cobrado', 'observado'), 'cobrado')
+})
+
+test('la APROBACIÓN del cliente no la pisa el sync — el Sheet no la conoce', () => {
+  for (const suyo of ['en_revision', 'aprobado', 'observado', 'en_disputa']) {
+    assert.equal(estadoAGuardar('emitido', suyo), suyo, `${suyo} lo puso el cliente en el portal`)
+    assert.equal(estadoAGuardar('vencido', suyo), suyo)
+  }
+})
+
+test('los estados que declara el Sheet SÍ se refrescan entre corridas', () => {
+  assert.equal(estadoAGuardar('vencido', 'emitido'), 'vencido', 'venció: el reclamo es real')
+  assert.equal(estadoAGuardar('emitido', 'vencido'), 'emitido', 'le corrieron la fecha en la columna Q')
+  assert.equal(estadoAGuardar('emitido', null), 'emitido', 'fila nueva: no hay nada que respetar')
 })
