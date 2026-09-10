@@ -9,6 +9,7 @@ import {
 } from '../../../services/liquidacionCierre'
 import { getValorHoraVigente } from '../../../services/costoLecturas'
 import { ReabrirQuincena, type VentanaDeReapertura } from './ReabrirQuincena'
+import { BotonCerrar } from './AccionesDeCierre'
 import { pesos } from '../BloqueLiquidacion'
 import { ALTO_LIQ } from './tabla'
 
@@ -90,7 +91,7 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
 
       {cerrada
         ? <Cerrada filas={filasCerradas} cerradaEn={cerradaEn} aviso={aviso} ventanas={ventanas} puedeCerrar={puedeCerrar} />
-        : <Abierta estado={estado} puedeCerrar={puedeCerrar} />}
+        : <Abierta estado={estado} puedeCerrar={puedeCerrar} quincena={quincena} />}
     </div>
   )
 }
@@ -187,8 +188,8 @@ const CONGELA = [
   'las cuatro celdas escritas', 'el costo cargado a cada obra',
 ]
 
-function Abierta({ estado, puedeCerrar }: {
-  estado: ReturnType<typeof estadoDeCierre>; puedeCerrar: boolean
+function Abierta({ estado, puedeCerrar, quincena }: {
+  estado: ReturnType<typeof estadoDeCierre>; puedeCerrar: boolean; quincena: Quincena
 }) {
   const bloqueado = !estado.puedeCerrar || !puedeCerrar
   return (
@@ -215,28 +216,18 @@ function Abierta({ estado, puedeCerrar }: {
           ))}
         </div>
       )}
-      <button
-        type="button"
-        data-testid="cierre-boton"
-        disabled={bloqueado}
-        style={{
-          height: 32, padding: '0 16px', borderRadius: 6, border: 'none',
-          background: bloqueado ? V.lineaFuerte : V.marca,
-          color: bloqueado ? V.apagado : V.grafito,
-          fontSize: '12.5px', fontWeight: 600, cursor: bloqueado ? 'not-allowed' : 'pointer',
-        }}
-      >
-        Cerrar y sellar
-      </button>
-      {bloqueado && (
-        <span data-testid="cierre-porque-no" style={{ fontSize: '11.5px', color: V.apagado, marginLeft: 12 }}>
-          {!puedeCerrar
-            ? 'Cerrar una quincena es de Dirección y Administración.'
-            : estado.pendientes.length
-              ? `${estado.pendientes.length} pendiente(s) arriba: sellar una línea incompleta la vuelve indistinguible de una correcta.`
-              : 'No hay ninguna línea que cerrar.'}
-        </span>
-      )}
+      {/* EL BOTÓN ESCRIBE. `disabled` es el cartel; la cerradura la vuelve a poner
+          `cerrarQuincenaAction` (rol, pendientes releídos y el orden sellar→cerrar), porque una
+          server action se invoca con lo que viaja en el HTML sin abrir jamás la pantalla. */}
+      <BotonCerrar
+        quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
+        bloqueado={bloqueado}
+        porque={!puedeCerrar
+          ? 'Cerrar una quincena es de Dirección y Administración.'
+          : estado.pendientes.length
+            ? `${estado.pendientes.length} pendiente(s) arriba: sellar una línea incompleta la vuelve indistinguible de una correcta.`
+            : 'No hay ninguna línea que cerrar.'}
+      />
     </div>
   )
 }

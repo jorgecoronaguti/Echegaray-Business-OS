@@ -231,7 +231,7 @@ export async function reabrirQuincena(entrada: unknown): Promise<ResultadoLiquid
   }
 
   const abierta = await admin.from('liquidacion_quincena')
-    .update({ estado: 'abierta', cerrada_en: null })
+    .update({ estado: 'abierta', cerrada_en: null, cerrada_por: null })
     .eq('id', (cab as { id: string }).id).select('id, estado')
   if (abierta.error) return { ok: false, error: abierta.error.message }
   if ((abierta.data ?? []).length === 0) {
