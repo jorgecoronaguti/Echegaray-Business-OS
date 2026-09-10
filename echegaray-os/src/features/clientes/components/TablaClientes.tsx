@@ -14,9 +14,12 @@
 //   3 · LAS OC LLEVAN IVA Y LO CONTRATADO NO. El Adicional Tercer Muro tiene una OC de $12.100.000
 //       contra $10.000.000 contratados: son el mismo número × 1,21. Estaban en columnas vecinas sin
 //       una palabra que lo dijera. El rótulo ahora es «OC · OP c/IVA» y no se restan entre sí.
-//   4 · LOS NÚMEROS DE LAS OC SE FUERON DE DEBAJO DEL NOMBRE. «OC 1984 · 18/06 · $4.336.587  OC
-//       1985 · … +2» en monoespaciado competía con las siete columnas de la derecha. El total de la
-//       celda ya dice cuánto; tocarlo abre el panel con el detalle, sin salir de la lista.
+//   4 · LOS NÚMEROS DE LAS OC VOLVIERON, EN TIPOGRAFÍA NORMAL (dueño, 10/09/2026 16:20: «esta
+//       pantalla sigue sin mostrar el nº de OC»). Los saqué a la mañana porque colgaban del nombre
+//       en monoespaciado y mezclaban OC con OP; el error fue sacarlos en vez de arreglarlos: con el
+//       total solo, ME - BSA muestra «5 OC» y ningún número, y el número es lo que se busca —es lo
+//       que el cliente cita en su OP y en su factura—. Ahora: sólo OC, tipografía normal, una
+//       línea, «+N» recién desde la quinta, y cada una abre su PDF. Ver `OrdenesDeLaObra`.
 //   5 · «—» EN TODA LA COLUMNA COBRADO. Era una barra de porcentaje y el porcentaje casi nunca se
 //       podía calcular. Ahora la celda publica el IMPORTE —que es un hecho de Cobranzas— y agrega la
 //       barra sólo cuando el denominador existe y cubre todas las obras del cliente.
@@ -56,6 +59,7 @@ import { progresoDeCobro, tituloDeCobro } from '@/features/clientes/services/pro
 import type { PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
 import { ORIGEN_SUMA_VIVA, SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
 import { AbrirOrdenes } from './AbrirOrdenes'
+import { OrdenesDeLaObra } from './OrdenesDeLaObra'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 
 /** `25v2:154`. Literales porque Tailwind no compila una clase armada en runtime. */
@@ -382,6 +386,10 @@ export function TablaClientes({
               // identifica nada. Con dos o más se cuenta y el número se lee en el panel — enumerar
               // tres números en la celda es volver a los rótulos que el dueño mandó sacar.
               const unicaOC = totalOC.n === 1 ? (deLaObra?.oc[0]?.numeroCorto ?? null) : null
+              // ¿HAY NÚMEROS QUE DIBUJAR? Decide el alto de la fila —una línea o dos— y no puede
+              // deducirse dentro del `<span>`: el alto vive en el `<Link>`, que es el contenedor de
+              // la grilla.
+              const ocDeLaObra = deLaObra?.oc ?? []
               return (
                 <Link
                   key={o.obra_id}
@@ -392,12 +400,21 @@ export function TablaClientes({
                   className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-[#FAFAF8]`}
                   // `minHeight` Y NO `height`: la celda de cobro lleva dos renglones y a 390px el
                   // nombre puede partir. Con `height` clavado el segundo renglón queda cortado.
-                  style={{ minHeight: ALTO_V2.hija, borderBottom: `1px solid ${TONO.divisorObra}` }}
+                  data-ordenes={ocDeLaObra.length ? '' : undefined}
+                  // `minHeight` Y NO `height`: a 390px los números se apilan y la fila tiene que
+                  // poder crecer. Con `height` clavado el segundo renglón queda cortado por abajo.
+                  style={{
+                    minHeight: ocDeLaObra.length ? ALTO_V2.hijaConOrdenes : ALTO_V2.hija,
+                    borderBottom: `1px solid ${TONO.divisorObra}`,
+                  }}
                 >
+                  {/* DOS LÍNEAS: el nombre arriba, sus OC abajo. El `overflow: hidden` se queda —lo
+                      que no entre se corta en el borde de SU celda y nunca invade la de al lado. */}
                   <span style={{
-                    display: 'flex', alignItems: 'center', gap: 9,
+                    display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
                     minWidth: 0, overflow: 'hidden', paddingLeft: 14,
                   }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
                     <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
                       <IconoObra className="h-[13px] w-[13px]" />
                     </span>
@@ -416,6 +433,11 @@ export function TablaClientes({
                         </span>
                       </>
                     )}
+                  </span>
+                    {/* LA SEGUNDA LÍNEA: LAS OC DE ESTA OBRA, con su número, su día y su importe, y
+                        cada una abriendo su PDF. La sangría las alinea bajo el nombre — 13px de
+                        icono + 9 de aire. NINGUNA ORDEN DE PAGO: la OP no se imputa a la obra. */}
+                    <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} />
                   </span>
 
                   {/* La celda vacía de «Obras»: existe para que la obra caiga en la MISMA columna

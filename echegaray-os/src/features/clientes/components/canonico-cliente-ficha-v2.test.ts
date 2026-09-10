@@ -311,6 +311,11 @@ test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el
   // el costo REAL y no contra un contratado que en cuatro de las cinco obras de Messina es la suma
   // viva de Cobranzas.
   assert.ok(!src.includes('>Margen<'), 'el rótulo Margen volvió a la ficha del cliente')
+  // ═══ Y LOS NÚMEROS DE LAS OC ESTÁN, DEBAJO DEL NOMBRE (dueño, 10/09/2026 16:20) ═══
+  // «Adentro de cada cliente también». Mismo componente que la lista de `/clientes`: dos rótulos
+  // parecidos del mismo papel se separan en cuanto uno aprende algo — ya pasó con las dos tablas
+  // de cartera que decían distinto del mismo cliente.
+  assert.match(src, /<OrdenesDeLaObra ordenes=\{papelesDeLaObra\?\.oc \?\? \[\]\}/)
   assert.doesNotMatch(src, /margen-obra-cliente|margenPct|pctTexto|margenDeLaFila/)
   // OP se suelta por debajo de 1200px; OC no, porque es la pregunta que el dueño hace primero.
   assert.match(src, /SOLO_ANCHO_ECO[^\n]*<RotuloCol derecha>OP c\/IVA<\/RotuloCol>/,

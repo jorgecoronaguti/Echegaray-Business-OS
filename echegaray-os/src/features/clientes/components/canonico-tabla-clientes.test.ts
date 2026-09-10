@@ -70,11 +70,20 @@ test('la fila del cliente no vuelve a leer el campo del formulario de la obra', 
 
 // ═══ LO QUE EL DUEÑO MANDÓ SACAR (10/09/2026) ═══
 
-test('las OC no vuelven a colgar del nombre de la obra', () => {
+// ═══ LOS NÚMEROS DE LAS OC, DEBAJO DEL NOMBRE (dueño, 10/09/2026 16:20) ═══
+//
+// «Esta pantalla sigue sin mostrar el nº de OC». A la mañana los retiré porque colgaban del nombre
+// en monoespaciado y mezclaban OC con OP; el error fue sacarlos en vez de arreglarlos: con el total
+// solo, ME - BSA muestra «5 OC» y ningún número, y el número es lo que se busca —es lo que el
+// cliente cita en su orden de pago y en su factura—.
+
+test('cada obra dibuja los números de SUS órdenes de compra, y el total sigue abriendo el detalle', () => {
   const src = codigo()
-  assert.doesNotMatch(src, /BotonOrdenes|rotuloDe\(/, 'los rótulos «OC 2256 · 02/09 · $…» se retiraron')
-  // Y el total de la obra SÍ tiene que seguir abriendo su detalle: sacar el ruido no puede ser
-  // sacar el acceso.
+  assert.match(src, /<OrdenesDeLaObra ordenes=\{ocDeLaObra\}/, 'los números no se dibujan')
+  // La fila crece a dos líneas SOLO cuando hay números: si no, el hueco se ve como un error.
+  assert.match(src, /ocDeLaObra\.length \? ALTO_V2\.hijaConOrdenes : ALTO_V2\.hija/)
+  // Y el total de la obra SÍ tiene que seguir abriendo su detalle: los números de la línea son las
+  // cuatro primeras, el panel las tiene todas con su archivo y su atribución.
   assert.match(src, /AbrirOrdenes/)
   assert.match(src, /testid="abrir-ordenes-obra"/)
 })

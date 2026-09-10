@@ -337,3 +337,43 @@ export function hrefDelPapel(
 ): string {
   return driveFileId ? urlDriveDelPapel(driveFileId) : `/api/clientes/orden/${archivoId}`
 }
+
+// ═══ EL RÓTULO DE UNA OC EN LA FILA DE LA OBRA (10/09/2026 16:20) ═══
+//
+// Vive acá y no en el componente por una razón mecánica y una de fondo: `node --test` no
+// importa un `.tsx`, así que una regla escrita en el componente no se puede probar sin montar
+// una pantalla; y porque QUÉ se afirma de un papel lo decide este archivo, que es el que sabe
+// qué es una orden. El componente dibuja.
+
+/** CUÁNTAS ENTRAN ANTES DEL «+N». La quinta es la que empieza a empujar (dueño, 10/09/2026). */
+export const MAX_OC_EN_FILA = 4
+
+/**
+ * EL RÓTULO DE UNA OC: «OC 1984 · 18/06 · $4.336.587».
+ *
+ * Puro y exportado para poder probarlo sin pantalla — es la regla que decide qué se afirma de cada
+ * papel, y hay tres cosas que no puede hacer:
+ *
+ *   · INVENTAR UNA FECHA. Sin fecha se omite el tramo; nunca un guión que parezca un dato.
+ *   · INVENTAR UN NÚMERO. Sin número se escribe «s/n», que es lo único cierto.
+ *   · PUBLICAR EL IMPORTE SIN PERMISO. El importe de una OC ES el precio de venta de la obra: el
+ *     jefe de obra y el campo ven QUÉ orden hay, no cuánto se cobra por ella. Por eso `veEconomia`
+ *     es un parámetro obligatorio y no un `?? true`: un olvido tiene que dejar la pantalla pobre.
+ */
+export function rotuloDeOC(o: Orden, veEconomia: boolean): string {
+  const partes = [`OC ${o.numeroCorto ?? 's/n'}`]
+  const dm = diaMes(o.fecha)
+  if (dm) partes.push(dm)
+  if (veEconomia && o.importe !== null) {
+    const n = Math.round(o.importe).toLocaleString('es-AR')
+    partes.push(o.moneda === 'USD' ? `U$S ${n}` : `$${n}`)
+  }
+  return partes.join(' · ')
+}
+
+/** «2026-06-18» → «18/06». Sin año: todas las órdenes de la cartera son del ejercicio en curso y
+ *  el año repetido veinte veces en la misma línea no distingue ninguna. El año está en el panel. */
+function diaMes(fecha: string | null): string | null {
+  const m = String(fecha ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/)
+  return m ? `${m[3]}/${m[2]}` : null
+}
