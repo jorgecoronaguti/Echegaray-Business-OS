@@ -131,8 +131,8 @@ function vacioDe(estado: CeldaObra['estado']): { texto: string; color: string } 
 }
 
 export function GrillaAsistenciaObra({
-  filas, dias, etiquetas, titulos, columnasTenues, totalesDia, total, jornadaPorObra, obras,
-  puedeCorregir, puedeCambiarObra, hoy,
+  filas, dias, etiquetas, titulos, columnasTenues, totalesDia, total, rotuloTotal, jornadaPorObra,
+  obras, puedeCorregir, puedeCambiarObra, hoy,
 }: {
   filas: FilaQuincena[]
   dias: string[]
@@ -145,6 +145,13 @@ export function GrillaAsistenciaObra({
   totalesDia: (number | null)[]
   /** `null` cuando nadie declaró una hora. Un `0` afirmaría que la empresa trabajó cero. */
   total: number | null
+  /**
+   * QUÉ MIDE EL PIE, DICHO EN EL PIE. Por defecto «Total de la quincena» —la empresa entera—; con
+   * el filtro por obra puesto, quien lo manda escribe «Total · <obra>», porque ahí el número dejó
+   * de ser el de la quincena. Un total que cambia de población sin cambiar de cartel es el error
+   * caro de esta pantalla: se lee como el total de todos y es el de cinco personas.
+   */
+  rotuloTotal?: string
   jornadaPorObra: Record<string, number>
   /** Las obras a las que se puede mover un día. Vienen del servidor con el RLS ya aplicado. */
   obras: ObraElegible[]
@@ -764,7 +771,10 @@ export function GrillaAsistenciaObra({
           ))}
 
           <tr style={{ borderTop: `1px solid ${V.lineaFuerte}` }} data-testid="total-quincena">
-            <td colSpan={2} style={{ padding: '8px 8px 8px 0', color: V.apagado }}>Total de la quincena</td>
+            <td colSpan={2} style={{ padding: '8px 8px 8px 0', color: V.apagado }}
+              data-testid="total-quincena-rotulo">
+              {rotuloTotal ?? 'Total de la quincena'}
+            </td>
             {totalesDia.map((t, i) => (
               <td key={dias[i]} style={{
                 padding: '8px 2px', textAlign: 'center', fontVariantNumeric: 'tabular-nums',

@@ -98,12 +98,23 @@ export async function BloqueAsistenciaQuincena({
   const pedida = obra?.trim() ?? ''
   const elegida = pedida === SIN_OBRA ? OBRA_SIN : pedida
   const rotuloElegido = elegida === OBRA_SIN ? SIN_OBRA : elegida
-  // LOS CHIPS, LOS TOTALES POR DÍA, EL TOTAL Y EL RECLAMO SON DE LA QUINCENA ENTERA (`todas`), no
-  // de lo que sobrevive al buscador ni al chip de obra: un total que cambia al escribir deja de ser
-  // el total de la quincena. Los SUBTOTALES POR GRUPO —Jefes/Obreros— los calcula la grilla sobre
-  // las filas que recibe, así que ésos sí son los del recorte: el subtotal contesta «lo que estoy
-  // viendo» y el pie contesta «la quincena».
-  const totales = totalesPorDia(todas, dias)
+  // ═══ QUÉ MIDE CADA NÚMERO DE LA PANTALLA (decisión del dueño, 10/09/2026) ═══
+  //
+  // LOS CHIPS Y «DÍAS SIN CARGAR» SON SIEMPRE DE LA QUINCENA ENTERA (`todas`). Un chip que al
+  // activarse pone a los demás en cero deja de ser un filtro, y el reclamo de días sin cargar es de
+  // la empresa: esconderlo detrás de un recorte lo haría desaparecer justo cuando se está mirando
+  // otra obra.
+  //
+  // EL PIE —totales por día y total— SIGUE AL FILTRO POR OBRA Y NO AL BUSCADOR. Con una obra
+  // elegida el número que se necesita es el de esa obra, y el rótulo lo dice («Total · <obra>»): un
+  // total que cambia de población sin cambiar de cartel se lee como el de todos. El texto de `q`
+  // NO lo mueve —escribir tres letras no es elegir una población— y por eso el pie mira
+  // `paraElPie`, que recorta por obra sobre `todas` y deja el buscador afuera.
+  //
+  // LOS SUBTOTALES POR GRUPO —Jefes/Obreros— los calcula la grilla sobre las filas que recibe: ésos
+  // contestan siempre «lo que estoy viendo».
+  const paraElPie = filtrarPorObra(todas, obra)
+  const totales = totalesPorDia(paraElPie, dias)
   const chips = personasPorObra(todas)
   const sinMarcar = diasSinMarcar(todas)
   // LAS OBRAS A LAS QUE SE PUEDE MOVER UN DÍA: las activas que la sesión ve. La jornada de cada una
@@ -154,7 +165,10 @@ export async function BloqueAsistenciaQuincena({
           titulos={dias.map(nombreDia)}
           columnasTenues={dias.map((d) => tenues.has(d))}
           totalesDia={totales}
-          total={totalDeLaQuincena(todas)}
+          total={totalDeLaQuincena(paraElPie)}
+          rotuloTotal={elegida
+            ? `Total · ${elegida === OBRA_SIN ? 'sin obra' : rotuloElegido}`
+            : undefined}
           jornadaPorObra={jornadaPorObra}
           obras={obras.map((o) => ({ id: o.id, nombre: o.nombre }))}
           puedeCorregir={puedeCorregir}
