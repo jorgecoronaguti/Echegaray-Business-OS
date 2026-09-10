@@ -76,6 +76,7 @@ import { TabOperacion } from '@/features/obras/components/TabOperacion'
 import { getOperacionObra, subDeLaUrl, type SubOperacion } from '@/features/obras/services/operacionService'
 import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getOrdenesDeObra } from '@/features/clientes/services/ordenesCliente'
+import { bloqueDeOrdenesDeLaObra } from '@/features/obras/services/ordenesDeLaObra'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
@@ -198,7 +199,10 @@ export default async function ObraPage({
     // al bucket— y hasta hoy sólo se veían desde `/clientes`: quien abría la ficha de la obra no
     // tenía forma de saber que la OC que la encargó estaba en el OS. La cerradura es la RLS de la
     // tabla, no esta lectura.
-    vista === 'documentos' ? getOrdenesDeObra(supabase, obraId) : null,
+    // Desde el 10/09 también en RESUMEN: la ficha de la obra muestra su OC arriba, junto al
+    // cliente. Es LA MISMA lectura, no una segunda — pedido del dueño: «no veo el número de OC,
+    // no sé dónde está la OC ni su número una vez que entro a la obra».
+    vista === 'documentos' || vista === 'resumen' ? getOrdenesDeObra(supabase, obraId) : null,
     // LO QUE HAY EN LA CARPETA DE DRIVE DE ESTA OBRA. Es distinto de `getDocumentos`: eso son los
     // papeles que alguien VINCULÓ, esto es lo que ESTÁ en la carpeta —vinculado o no—. Un plano
     // subido ayer aparece acá sin que nadie lo ate. Sale del catálogo `drive_index`, nunca de Drive
@@ -274,6 +278,13 @@ export default async function ObraPage({
   // hijas se habían quedado con una banda grafito propia que parecía otra aplicación.
   // `archivada` se sigue calculando acá porque el bloque de archivar del Resumen lo necesita.
   const archivada = obra.estado === 'cerrada'
+  // LAS ÓRDENES DEL CLIENTE, YA LISTAS PARA DIBUJAR. La regla —qué es OC, qué es OP, qué es un
+  // certificado de retención, y qué se escribe cuando no hay ninguna— vive en una función pura
+  // probada; acá sólo se le pasa lo que trajo la consulta. `enNegro` va sin pasar a propósito: la
+  // categoría B/N de `cobranzas` todavía no la puede leer la web (ver `ordenesDeLaObra.ts`).
+  const ordenesDeLaObra = vista === 'resumen'
+    ? bloqueDeOrdenesDeLaObra(ordenesRes, { obraId })
+    : null
 
   return (
     // EL WORKSPACE NO USA `PageShell`: su encabezado es el de una ENTIDAD —volver, nombre, campos
@@ -367,6 +378,7 @@ export default async function ObraPage({
           obra={obra}
           plan={plan}
           personasDeHoy={personasDeHoy}
+          ordenes={ordenesDeLaObra}
           economia={economia}
           abiertas={abiertas}
           obraId={obraId}
