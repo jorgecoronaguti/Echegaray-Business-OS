@@ -23,7 +23,7 @@ import { INSTRUMENTOS, formulasInstrumento } from '../lib/cash-flow-lineas.mjs'
 import { FILA_DATO0, FILA_FIN } from '../lib/cheques-emitidos-geometria.mjs'
 import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
-import { planDeMarcado, motivoDeAborto } from '../lib/marcado-columna.mjs'
+import { planDeMarcado, motivoDeAborto, accionDeMarcado, avisoDeCandado } from '../lib/marcado-columna.mjs'
 import { ALERTA, mismaMarca } from '../lib/glifos.mjs'
 import { resolverLote, anotarIdentidad, drenarTrazas } from '../lib/ml/identidad-lote.mjs'
 
@@ -450,8 +450,10 @@ async function main() {
  * escrito fila por fila y el total lo hace el Sheet. Por eso ahora también se marca la TARJETA:
  * antes sólo se marcaban los cheques y la mitad del número no tenía dónde apoyarse.
  */
-export async function marcarInstrumentos(google, datos, resp) {
+export async function marcarInstrumentos(google, datos, resp, { forzar = FORZAR, esBloqueada = null } = {}) {
   const hojas = await google.getSheetMeta(ID)
+  const bloqueada = esBloqueada
+    ?? (await import('../lib/pestana-bloqueada.mjs')).estaBloqueada.bind(null, {}, ID)
   const objetivo = [
     { ...INSTRUMENTOS.cheques, pestaña: datos.pestanaCheques, items: datos.cheques, hasta: datos.filasCh, inferidos: resp.cheques.inferidos },
     { ...INSTRUMENTOS.tarjeta, items: datos.tarjeta, hasta: datos.filasTj, inferidos: resp.tarjeta.inferidos },
@@ -460,6 +462,30 @@ export async function marcarInstrumentos(google, datos, resp) {
     const hoja = hojas.find((h) => h.title === o.pestaña)
     if (!hoja) { console.log(`⚠ no encontré la pestaña ${o.pestaña}: no marco nada`); continue }
     const COL = o.colMarca // índice 0-based de la columna de marcas
+
+    // ═══ DE QUIÉN ES LA PESTAÑA SE PREGUNTA PRIMERO (10/09/2026) ═══
+    //
+    // Estaba al final, después de leer la columna y armar el plan — y con la pestaña candada porque
+    // «el dueño edita», sus ediciones caían en la columna de marcas, `planDeMarcado` las contaba como
+    // contenido ajeno y ABORTABA. El aborto es un throw: el paso salía con código 1 y el timer entero
+    // fallaba en cada corrida. Una pestaña candada no tiene contenido ajeno: es toda del dueño.
+    const candada = await bloqueada(o.pestaña).catch(() => false)
+    const accion = accionDeMarcado({ candada, forzar })
+    if (accion === 'saltar') {
+      // La frescura sale del propio rótulo de la columna, que es lo único que dice de cuándo es el
+      // diagnóstico que quedó a la vista. Es UNA celda: no se lee la columna de una pestaña que no
+      // se va a tocar.
+      const rot = await google.readSheetValues(ID, `${o.pestaña}!${letra(COL)}${o.filaCab}`).catch(() => [])
+      const congeladas = o.items.filter((i) => marcaDe(i.comprobante, datos.enCompras, o.inferidos.has(i.fila)))
+      for (const l of avisoDeCandado({
+        pestana: o.pestaña,
+        columna: letra(COL),
+        rotulo: rot?.[0]?.[0] ?? '',
+        congeladas: congeladas.length,
+        monto: congeladas.reduce((a, i) => a + (Number(i.monto) || 0), 0),
+      })) console.log(l)
+      continue
+    }
     // Escribir en una columna sin mirar TODA su altura ya me costó pisar el desglose de retenciones
     // de Cobranzas. Se lee entera antes de tocarla — pero lo que se decide con esa lectura es FILA
     // POR FILA (ver lib/marcado-columna.mjs), no todo-o-nada.
@@ -490,18 +516,8 @@ export async function marcarInstrumentos(google, datos, resp) {
     avisarSalteadas(o, plan, letra(COL))
     if (!plan.tramos.length) { console.log(`${o.pestaña}: no quedó ninguna fila propia para marcar en ${letra(COL)}`); continue }
 
-    // ═══ EL CANDADO: SE MIRA, SE AVISA, Y SÓLO SE DESTRABA SI EL DUEÑO LO PIDIÓ ═══
-    // Sin `--forzar-candado` el script informaba «114/114 marcados» y el portón descartaba la
-    // escritura: un éxito declarado que no existía. Ahora, o se escribe de verdad, o se dice que no.
-    const { estaBloqueada } = await import('../lib/pestana-bloqueada.mjs')
-    const candada = await estaBloqueada({}, ID, o.pestaña).catch(() => false)
-    if (candada && !FORZAR) {
-      console.log(`🔒 "${o.pestaña}" está bajo tu control (candado): NO escribo las marcas.`)
-      console.log(`   ${plan.tramos.reduce((a, t) => a + t.valores.length, 0)} fila(s) quedan sin diagnóstico en la columna ${letra(COL)}.`)
-      console.log('   Para estamparlas igual: --forzar-candado (deja snapshot, escribe sólo esa columna y vuelve a candar).')
-      continue
-    }
-    if (candada && FORZAR) {
+    // ═══ FORZAR: LA INTENCIÓN EXPLÍCITA DEL DUEÑO, CON SNAPSHOT Y RE-CANDADO ═══
+    if (accion === 'forzar') {
       const { query } = await import('../lib/db.mjs')
       const { desbloquear, bloquear } = await import('../lib/pestana-bloqueada.mjs')
       const { tomarSnapshot } = await import('../lib/sheet-snapshot.mjs')
@@ -522,7 +538,7 @@ export async function marcarInstrumentos(google, datos, resp) {
       console.log(`${o.pestaña}: marcas estampadas forzando el candado`)
       continue
     }
-    await estampar(google, hoja, o, plan, marcas.length, { forzar: FORZAR })
+    await estampar(google, hoja, o, plan, marcas.length, { forzar })
     // Se cuenta lo ESCRITO, no lo que se quiso escribir: con filas salteadas los dos números difieren
     // y el que importa es el que quedó en la pestaña.
     const puestas = plan.tramos.flatMap((t) => t.valores).filter((m) => m[0])
