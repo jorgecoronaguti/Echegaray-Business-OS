@@ -123,6 +123,11 @@ esté abierta, el nombre lleva la ventana.
 «cobrado» contaba como cobro en una vista y como deuda en la otra) y en la fecha futura. Se adoptó
 el que **no afirma plata que todavía no entró**, y vive en `public.es_cobrada()`.
 
+**La réplica cruda no se lee desde una pantalla.** `public.cobranzas` es la copia de la pestaña: sin
+RLS y sin grant para `authenticated`. La app lee las vistas que ya deciden qué está cobrado y quién
+puede verlo — `cliente_cobranza` fila por fila, `obra_cuenta` y `cliente_economia` agregadas—; el
+orquestador la lee por SQL directo con la clave de servicio, que es otra puerta.
+
 ### Lo prohibido
 
 - `from\('certificado_cliente'\)[^;]*estado` — esa columna guarda **dos** cosas: dónde está el cobro
@@ -134,6 +139,9 @@ el que **no afirma plata que todavía no entró**, y vive en `public.es_cobrada(
   `public.cobranzas`: quien lo hace no ve `cliente_id`, no ve la valuación de moneda (la columna
   Moneda es la **AA** y estos rangos llegan hasta la R o la Q) y vuelve a decidir por su cuenta qué
   está cobrado. La fila 62 de Quattropani, U$S 15.400, entraba como $15.400.
+
+- `from\('cobranzas'\)` — pedirle la réplica cruda a PostgREST desde una pantalla. Falla por falta
+  de grant, y el arreglo tentador —agregarle el grant— expondría la tabla entera sin RLS.
 
 ### Las excepciones
 
@@ -338,7 +346,7 @@ no prueba que no esté en Drive.
 
 | | |
 |---|---|
-| **Fuente primaria** | public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra) · public.obra_cuenta (la fila entera de la pestaña OBRAS: contratado, cobrado total y neto, por cobrar, vencido y próximo cobro) |
+| **Fuente primaria** | public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra) · public.obra_cuenta (la fila entera de la pestaña OBRAS: contratado, cobrado total y neto, por cobrar, vencido y próximo cobro) · public.cliente_cobranza (la fila de la pestaña Cobranzas atada a su cliente y a su obra, para la solapa Cobranzas de la ficha) |
 | **Propietario** | `public.cobranza_imputacion` — la cadena OC → `cliente_orden` → obra · `public.obra_alias.en_texto_libre` — el diccionario de los textos que nombran una obra |
 | **Criterio** | Tres pasos **en este orden**: (1) la **orden de compra** que declara la columna H (`cobranzas.orden_compra`), buscada por número canónico en `cliente_orden` del **mismo** cliente; (2) el **texto** de `concepto`/`orden_compra` que nombra una obra del cliente, sólo contra alias marcados `en_texto_libre`; (3) la **obra bolsa** del cliente, marcada `imputacion = 'cliente'`, que significa «no se pudo». Dos obras candidatas ⇒ ninguna. |
 | **Ventana** | Acumulado, el mismo de `cobrado`. La imputación no tiene ventana: es de la fila, no del período. |

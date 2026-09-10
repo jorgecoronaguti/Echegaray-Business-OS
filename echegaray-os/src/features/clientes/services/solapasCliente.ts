@@ -19,17 +19,24 @@
 //
 // «Actividad» sube a cara propia: en el v2 el costado guarda lo que IDENTIFICA al cliente
 // —identidad, contactos, portal— y la historia de la relación es contenido, no identidad.
+// «COBRANZAS» ES LA ENTRADA PRINCIPAL DE LA PLATA (dueño, 10/09/2026 18:20): «necesito una sección
+// exclusiva por cliente con todo lo que involucre cobranzas». Va PRIMERA de las económicas y antes
+// que «Cuenta corriente», que es su resumen agregado, y que «Esquema de pago», que es lo que el
+// cliente ve en el portal. Las tres se quedan: la cuenta registra cobros de certificados y el
+// esquema publica el cronograma, dos capacidades que esta cara no reemplaza.
 export const SOLAPAS = [
-  'obras', 'presupuestos', 'documentos', 'actividad', 'cuenta', 'esquema', 'accesos',
+  'obras', 'cobranzas', 'presupuestos', 'documentos', 'actividad', 'cuenta', 'esquema', 'accesos',
 ] as const
 export type Solapa = (typeof SOLAPAS)[number]
 
 /** Las caras que se dibujan A SANGRE: sus mockups (28, 31, 32) usan la columna derecha para su
  *  propio panel, así que no conviven con el aside de identidad de la ficha 26. */
-export const A_SANGRE: readonly Solapa[] = ['cuenta', 'esquema', 'accesos']
+// COBRANZAS VA A SANGRE: son nueve columnas de plata y el costado de identidad le comería 300px,
+// que es justo lo que hace que una tabla densa deje de leerse.
+export const A_SANGRE: readonly Solapa[] = ['cobranzas', 'cuenta', 'esquema', 'accesos']
 
 /** Las que sólo ve quien tiene permiso económico. */
-export const ECONOMICAS: readonly Solapa[] = ['presupuestos', 'cuenta', 'esquema', 'accesos']
+export const ECONOMICAS: readonly Solapa[] = ['cobranzas', 'presupuestos', 'cuenta', 'esquema', 'accesos']
 
 /** Una solapa que no existe abre Obras: un enlace viejo o tipeado a mano no puede dejar la ficha en
  *  blanco. `vista` es el nombre de hoy y `solapa` el de ayer — se acepta el que llegue. Y
@@ -49,6 +56,7 @@ export interface SolapaVisible {
 
 /** Los rótulos SON los del mockup, palabra por palabra: «Cuenta corriente», no «Cuenta». */
 const LABEL: Record<Solapa, string> = {
+  cobranzas: 'Cobranzas',
   // «TRABAJOS» Y NO «OBRAS» (dueño, 10/09/2026 17:15): «Administración es un CRM y Obra un ERP».
   // Lo que el CRM lista son los TRABAJOS que el cliente encargó —con su OC, su facturación y su
   // cobro—; la obra como unidad de ejecución, con su plan y su costo, vive en el ERP. La CLAVE de
@@ -62,14 +70,18 @@ const LABEL: Record<Solapa, string> = {
   accesos: 'Acceso al portal',
 }
 
-export function solapasDeCliente({ veEconomia, obras, presupuestos, documentos }: {
+export function solapasDeCliente({ veEconomia, obras, presupuestos, documentos, cobranzas = null }: {
   veEconomia: boolean
   obras: number
   presupuestos: number
   documentos: number
+  /** Cuántas filas de la pestaña Cobranzas tiene el cliente. `null` = no se pudieron leer, y
+   *  entonces NO se escribe un cero: diría que no tiene ninguna. */
+  cobranzas?: number | null
 }): SolapaVisible[] {
   const cuentas: Record<Solapa, number | null> = {
-    obras, presupuestos, documentos, actividad: null, cuenta: null, esquema: null, accesos: null,
+    obras, cobranzas, presupuestos, documentos, actividad: null, cuenta: null, esquema: null,
+    accesos: null,
   }
   return SOLAPAS
     .filter((s) => veEconomia || !ECONOMICAS.includes(s))

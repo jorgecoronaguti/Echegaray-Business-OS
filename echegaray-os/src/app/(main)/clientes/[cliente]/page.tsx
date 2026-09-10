@@ -62,6 +62,10 @@ import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
 import { getEconomiaDeObras, SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
 import { getEconomiaDeCliente } from '@/features/clientes/services/economiaCliente'
 import { getCobradoPorObra } from '@/features/administracion/services/homeCartera'
+import {
+  esRecorteCobranza, getCobranzasDelCliente, type FilaCobranza,
+} from '@/features/clientes/services/cobranzasCliente'
+import { SolapaCobranzas } from '@/features/clientes/components/cobranzas/SolapaCobranzas'
 import { cuentaDeTrabajos } from '@/features/clientes/services/cuentaDeTrabajos'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
 import { getOrdenesDe, ordenesPorClienteYObra } from '@/features/clientes/services/ordenesCliente'
@@ -123,6 +127,9 @@ type Query = {
    * abre en el panel lateral de esta misma ficha, con la MISMA lectura que usa `/clientes`.
    */
   trabajo?: string
+  /** El recorte de la solapa Cobranzas: `todo` · `pendiente` · `cobrado` · `b` · `n`. Viaja en la
+   *  URL como todo filtro del OS: se comparte por chat y vuelve con el botón de atrás. */
+  cob?: string
 }
 
 export default async function ClientePage({ params, searchParams }: {
@@ -199,7 +206,7 @@ export default async function ClientePage({ params, searchParams }: {
   // encadenadas (`getArchivosDeEntidad` y después `getDocumentosSubidos`) por nada. Con una ola
   // sola, la ficha tarda lo que su lectura más lenta y no la suma de todas.
   const [
-    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos,
+    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos, cobranzas,
   ] = await Promise.all([
     solapa === 'cuenta' && veEconomia
       ? Promise.all([getCuentaCorriente(supabase, id), getCertificados(supabase, id)])
@@ -218,6 +225,11 @@ export default async function ClientePage({ params, searchParams }: {
     solapa === 'documentos' ? getArchivosDeEntidad(supabase, 'cliente', id) : Promise.resolve(null),
     // Lo que Administración sube desde la ficha del cliente: la factura, la OC, el contrato firmado.
     solapa === 'documentos' ? getDocumentosSubidos(supabase, 'cliente', id) : Promise.resolve(null),
+    // LA PESTAÑA COBRANZAS DEL CLIENTE, fila por fila (`public.cliente_cobranza`). Se lee sólo en
+    // su cara: son todas las filas del cliente y no hace falta pagarlas en las otras siete.
+    solapa === 'cobranzas' && veEconomia
+      ? getCobranzasDelCliente(supabase, id)
+      : Promise.resolve<FilaCobranza[] | null>([]),
   ])
   const [cuenta, certificados] = cuentaYCertificados
   const esquema = esquemaRes
@@ -237,6 +249,17 @@ export default async function ClientePage({ params, searchParams }: {
   // pantallas pueden volver a discrepar sin que nadie lo note. Si la vista no se pudo leer, la
   // cifra dice qué falta; no se rellena con otra cuenta.
   const contratadoEnCurso = economiaCliente?.contratado_en_curso ?? null
+
+  const recorteCobranza = esRecorteCobranza(q.cob) ? q.cob : 'todo'
+  /** El recorte de Cobranzas en la URL. Función declarada y no arrow en el JSX: una arrow creada en
+   *  un Server Component y pasada como prop revienta en producción con React #419. */
+  const hrefRecorteCobranza = (r: string) => url({ cob: r === 'todo' ? null : r })
+
+  /** Las OC de cada obra, para el encabezado de cada grupo de Cobranzas. Sale de los MISMOS papeles
+   *  que ya trajo la ficha: ninguna consulta nueva. */
+  const ordenesPorObra = new Map(
+    (papeles ? [...papeles.porObra.entries()] : []).map(([obraId, r]) => [obraId, r.oc]),
+  )
 
   /** El detalle del trabajo, DENTRO del CRM. Es una función y no una arrow creada en el JSX: una
    *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
@@ -430,6 +453,7 @@ export default async function ClientePage({ params, searchParams }: {
           obras: todas.length,
           presupuestos: presupuestos.length,
           documentos: lector.leer(documentos, []).length + nPapeles,
+          cobranzas: cobranzas?.length ?? null,
         }).map((s) => ({
           clave: s.clave,
           titulo: s.label,
@@ -440,6 +464,18 @@ export default async function ClientePage({ params, searchParams }: {
           href: url({ vista: s.clave === 'obras' ? null : s.clave, nueva: null }),
         }))}
       />
+
+      {solapa === 'cobranzas' && veEconomia && (
+        <SolapaCobranzas
+          filas={cobranzas}
+          obras={todas.map((o) => ({ obra_id: o.obra_id, nombre: o.nombre }))}
+          obrasConOC={ordenesPorObra}
+          contratado={contratadoEnCurso}
+          contratadoUsd={contratoUsd}
+          recorte={recorteCobranza}
+          hrefRecorte={hrefRecorteCobranza}
+        />
+      )}
 
       {solapa === 'cuenta' && veEconomia && (
         <div style={{ padding: '18px 20px 24px' }}>
