@@ -44,6 +44,20 @@ export interface Documento {
   vinculos: Vinculo[]
   /** Sólo lo trae `documentacion_legajo`. Hoy es `null` en las 847 filas: nadie lo cargó todavía. */
   vence: string | null
+  /**
+   * EL INDEXADOR NO LO VIO EN LA ÚLTIMA CORRIDA QUE PUDO LISTAR ENTERA SU CARPETA.
+   *
+   * Desde el 10/09/2026 el índice NO borra lo que deja de ver: marca. La fila sigue acá con su
+   * ruta y sus vínculos, y la pantalla lo dice — un archivo que desaparece de la lista sin
+   * explicación es indistinguible de un archivo que nunca existió.
+   */
+  ausente_en_drive: boolean
+  /** Está en la papelera de Drive. Es un hecho DISTINTO de la ausencia: existe, se puede
+   *  recuperar, y por eso se muestra con su marca en vez de esconderse. */
+  trashed: boolean
+  /** El enlace que Drive dice que abre este archivo. `null` en las filas indexadas antes de que
+   *  la columna existiera: ahí se deriva del id, como se hacía siempre. */
+  web_view_link: string | null
 }
 
 /** Una carpeta raíz de Drive, tal como la indexó el catálogo. No es una taxonomía inventada. */
