@@ -55,7 +55,7 @@ export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = nul
   }
   if (!veEconomia) {
     return (
-      <span className="tabular-nums" data-testid={testid} style={{ fontSize: tam, color: V.tenue }}>
+      <span className="font-mono tabular-nums" data-testid={testid} style={{ fontSize: tam, color: V.tenue }}>
         {rotulo}
       </span>
     )
@@ -63,7 +63,11 @@ export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = nul
   return (
     <span className="font-mono tabular-nums" data-testid={testid} style={{ fontSize: tam, color: V.apagado }}>
       {total.importe === null ? 'sin importe' : pesos(total.importe)}
+      {/* EL SUFIJO ES PARTE DE LA CIFRA Y VA EN SU MISMA FAMILIA. «$ 233.366.292» en mono y
+          «16 OC» en la tipografía del texto son dos tipografías en UNA celda, que es la mezcla que
+          el dueño marcó el 10/09/2026 («hay mezcla de diseño»). */}
       <span
+        className="font-mono tabular-nums"
         style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}
         title={total.parcial ? PARCIAL : undefined}
       >

@@ -311,27 +311,17 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                       : <>{guardados.length} cliente{guardados.length === 1 ? '' : 's'} archivado{guardados.length === 1 ? '' : 's'} fuera de esta lista. <Link href={armarHref(sp, { archivados: '1' })} data-testid="ver-archivados" style={{ color: V.tinta, textDecoration: 'underline' }}>Verlos</Link>. </>}
                   </span>
                 )}
-                {/* ═══ POR QUÉ LA BARRA DE COBRO NO SALE EN CASI NINGUNA OBRA ═══
+                {/* ═══ EL PÁRRAFO DEL PIE SE FUE ENTERO (10/09/2026) ═══
 
-                    El dueño pidió una barra de cobro POR OBRA y la pantalla la dibuja sólo en
-                    Quattropani. No es un defecto de esta tabla: `cobranzas.obra_cliente` guarda una
-                    etiqueta de CLIENTE —«MESSINA», «IMOTOR/San Francisco/JAVI SANCHEZ»— y
-                    `obra_alias` la resuelve a una obra sólo cuando esa etiqueta nombra una obra.
-                    Medido el 10/09/2026: las 96 filas de Cobranzas cobradas caen en TRES obra_id.
+                    Decía «el cliente es la relación empresarial y la obra la unidad operativa… esto
+                    no es un embudo comercial». Explicaba el modelo de datos a alguien que ya lo está
+                    mirando dibujado: la fila del cliente con sus obras colgando dice eso mismo sin
+                    una palabra. La skill de diseño lo prohíbe con nombre —«no párrafos explicativos
+                    permanentes»— y el dueño lo marcó dos veces. Lo que haya que explicar de un
+                    número vive en el `title` de su columna.
 
-                    Se dice UNA vez, acá, y no un «sin imputar» debajo de cada celda: el motivo es
-                    el mismo para todas las filas y repetirlo nueve veces es la clase de aclaración
-                    que el dueño mandó sacar. Lo que falta no es código: es que Cobranzas diga de
-                    qué OBRA es cada cobro. */}
-                {veEconomia && (
-                  <span data-testid="nota-cobro-por-obra">
-                    Cobranzas registra el cobro contra el CLIENTE, no contra la obra: por eso la
-                    columna Cobrado tiene número en la fila del cliente y «—» en casi todas las
-                    obras. Un «—» ahí no es «no cobró»: es que ese cobro no está imputado a una obra.{' '}
-                  </span>
-                )}
-                El cliente es la relación empresarial y la obra la unidad operativa: un cliente puede
-                tener varias obras. Esto no es un embudo comercial — no hay leads ni etapa de venta.
+                    Lo que NO es un párrafo y se queda: la puerta de vuelta a los archivados, que es
+                    un verbo con su número. */}
               </NotaBloque>
             </div>
 

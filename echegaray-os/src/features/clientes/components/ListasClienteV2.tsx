@@ -255,13 +255,17 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
             {avance.texto}
           </span>
 
+          {/* MONO CUANDO ES UNA CIFRA, TIPOGRAFÍA DE TEXTO CUANDO ES UNA FRASE. «sin precio en
+              OBRAS» monoespaciado se lee como la salida de una terminal y al lado de una columna de
+              plata parecía otro dato numérico. La celda tiene UNA tipografía por vez y la elige lo
+              que hay adentro (dueño, 10/09/2026: «hay mezcla de diseño»). */}
           {veEconomia
             ? (
                 <span
-                  className="font-mono tabular-nums truncate"
+                  className={`truncate ${contratado == null ? '' : 'font-mono tabular-nums'}`}
                   data-testid="contratado-obra-cliente"
                   style={{
-                    fontSize: '12px', textAlign: 'right',
+                    fontSize: contratado == null && !cerrada ? '11.5px' : '12px', textAlign: 'right',
                     color: contratado == null ? (cerrada ? V.tenue : V.warn) : V.tinta,
                   }}
                 >

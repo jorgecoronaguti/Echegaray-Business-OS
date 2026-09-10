@@ -117,24 +117,23 @@ test('«sin obra en curso» dejó de escribirse en la celda de plata', () => {
 
 // ═══ CUÁNTAS OBRAS TIENE — la frase, probada sin pantalla ═══
 
-test('«11 obras» con 5 filas debajo se reemplaza por el desglose que las explica', () => {
-  assert.deepEqual(
-    frasesDeObras({ obras: 11, nEnCurso: 5, nCerradas: 6 }), ['5 en curso', '6 cerradas'],
-    'el 11 y el 5 eran los dos ciertos y ninguno explicaba al otro',
-  )
-  assert.deepEqual(frasesDeObras({ obras: 1, nEnCurso: 0, nCerradas: 1 }), ['1 cerrada'])
-  assert.deepEqual(frasesDeObras({ obras: 3, nEnCurso: 0, nCerradas: 3 }), ['3 cerradas'])
-  assert.deepEqual(frasesDeObras({ obras: 1, nEnCurso: 1, nCerradas: 0 }), ['1 en curso'])
-  assert.deepEqual(frasesDeObras({ obras: 0, nEnCurso: 0, nCerradas: 0 }), ['sin obras'])
+test('«11 obras» con 5 filas debajo se reemplaza por el desglose que las explica, EN UNA LÍNEA', () => {
+  // UNA cadena y no dos: dibujarlas en dos renglones de 12 y 10,5px metía dos escalas en una celda
+  // —«hay mezcla de diseño», dueño 10/09/2026— y sugería que el segundo número era menos cierto.
+  assert.equal(frasesDeObras({ obras: 11, nEnCurso: 5, nCerradas: 6 }), '5 en curso · 6 cerradas')
+  assert.equal(frasesDeObras({ obras: 1, nEnCurso: 0, nCerradas: 1 }), '1 cerrada')
+  assert.equal(frasesDeObras({ obras: 3, nEnCurso: 0, nCerradas: 3 }), '3 cerradas')
+  assert.equal(frasesDeObras({ obras: 1, nEnCurso: 1, nCerradas: 0 }), '1 en curso')
+  assert.equal(frasesDeObras({ obras: 0, nEnCurso: 0, nCerradas: 0 }), 'sin obras')
 })
 
 test('sin leer la vista NO se escribe «0 en curso»: se dice el total y se dice que es total', () => {
   // Es el caso del jefe de obra, a quien `cliente_economia` le devuelve cero filas por `ve_economia()`.
-  assert.deepEqual(
-    frasesDeObras({ obras: 11, nEnCurso: null, nCerradas: null }), ['11 en total'],
+  assert.equal(
+    frasesDeObras({ obras: 11, nEnCurso: null, nCerradas: null }), '11 en total',
     'un control que no pudo mirar no puede afirmar que no hay ninguna en curso',
   )
-  assert.deepEqual(frasesDeObras({ obras: 0, nEnCurso: null, nCerradas: null }), ['sin obras'])
+  assert.equal(frasesDeObras({ obras: 0, nEnCurso: null, nCerradas: null }), 'sin obras')
 })
 
 test('un cliente sin obras en curso no dibuja cuatro guiones: no hay universo que sumar', () => {
@@ -216,4 +215,50 @@ test('la celda de cobro de la obra no dibuja NADA mientras la base no pueda repa
     src.indexOf('/>', src.indexOf('testid="cobro-cliente"')) + 2,
   )
   assert.doesNotMatch(delCliente, /disponible=/)
+})
+
+// ═══ UNA CELDA, UNA TIPOGRAFÍA (dueño, 10/09/2026 16:25: «hay mezcla de diseño») ═══
+//
+// La regla del módulo Administración —la de Personal y Proveedores— es: la CIFRA va en mono
+// tabular con su sufijo de unidad en la misma familia; una FRASE va en la tipografía del texto.
+// Nunca las dos en la misma celda. Lo que estaba mal, en la misma fila:
+//
+//   «$ 10.000.000» en mono con «suma de Cobranzas» en texto debajo → dos familias y dos escalas.
+//   «$ 233.366.292» en mono con «16 OC» en texto al lado          → dos familias.
+//   «5 en curso» a 12px con «6 cerradas» a 10,5px debajo          → dos escalas.
+//   «sin precio en OBRAS» en mono                                 → una frase con cara de terminal.
+
+test('el sufijo de unidad va en la familia de la cifra, no en la del texto', () => {
+  const total = readFileSync(fileURLToPath(new URL('./TotalDePapeles.tsx', import.meta.url)), 'utf8')
+  // Los tres renglones que dibuja —con permiso, sin permiso y el sufijo— tienen que ser mono.
+  assert.equal((total.match(/font-mono tabular-nums/g) ?? []).length, 3, '«16 OC» quedó en otra familia')
+  assert.doesNotMatch(total, /className="tabular-nums"/, 'tabular sin mono es la familia del texto')
+})
+
+test('«suma de Cobranzas» dejó de ser un segundo renglón: es la marca «·» y el `title`', () => {
+  const src = codigo()
+  assert.doesNotMatch(src, /suma de Cobranzas\s*\n\s*<\/span>/, 'volvió como texto dibujado')
+  assert.match(src, /viva && o\.contratado !== null \? ' ·' : ''/)
+  assert.match(src, /AYUDA_SUMA_VIVA/, 'la frase entera tiene que seguir estando en el `title`')
+})
+
+test('una frase no se dibuja en monoespaciado, y una cifra sí', () => {
+  const src = codigo()
+  assert.match(src, /c\.contratado === null \? '' : 'font-mono tabular-nums'/)
+  assert.match(src, /o\.contratado === null \? '' : 'font-mono tabular-nums'/)
+  // Y la celda de «Obras» es una frase entera: nunca mono.
+  const obras = src.slice(src.indexOf('data-testid="obras-cliente"') - 260, src.indexOf('data-testid="obras-cliente"') + 260)
+  assert.doesNotMatch(obras, /font-mono/)
+})
+
+test('el pie de la tabla no explica nada con un párrafo', () => {
+  const pagina = readFileSync(
+    fileURLToPath(new URL('../../../app/(main)/clientes/page.tsx', import.meta.url)), 'utf8',
+  )
+  // La skill de diseño lo prohíbe con nombre: «no párrafos explicativos permanentes». Lo que haya
+  // que explicar de un número vive en el `title` de su columna.
+  assert.doesNotMatch(pagina, /Cobranzas registra el cobro contra el CLIENTE/)
+  assert.doesNotMatch(pagina, /no hay leads ni etapa de venta/)
+  // Lo que NO es un párrafo y se queda: la puerta de vuelta a los archivados, un verbo con número.
+  assert.match(pagina, /pie-archivados/)
 })

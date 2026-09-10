@@ -92,8 +92,10 @@ const AYUDA_CONTRATADO = 'Lo que la pestaña OBRAS del Flujo de Caja publica por
   + 'Es precio contratado, no facturado.'
 
 const AYUDA_COBRO = 'Lo cobrado SIN IVA, criterio PERCIBIDO (pestaña Cobranzas: sólo lo que ya '
-  + 'entró). Nunca mezcla con lo facturado, que es devengado. La barra aparece cuando hay contra '
-  + 'qué medirlo.'
+  + 'entró). Nunca mezcla con lo facturado, que es devengado. La barra con el porcentaje aparece '
+  + 'cuando hay contra qué medirlo. — LAS FILAS DE OBRA VAN VACÍAS mientras Cobranzas registre el '
+  + 'cobro contra el CLIENTE y no contra la obra: es todo o nada, porque una sola obra con barra en '
+  + 'una columna vacía se lee como que las demás no cobraron.'
 
 const AYUDA_OBRAS = 'Cuántas obras tiene, separadas en las que están en ejecución y las cerradas '
   + '(cliente_economia). Debajo del cliente sólo cuelgan las que están EN CURSO.'
@@ -193,7 +195,7 @@ function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'o
           <span style={{ display: 'flex', height: 4, width: 52, borderRadius: 2, background: TONO.pista, flexShrink: 0 }}>
             <span style={{ width: `${p.pct}%`, background: p.excede ? V.warn : V.grafito, borderRadius: 2 }} />
           </span>
-          <span className="tabular-nums" style={{ fontSize: '10.5px', color: V.tenue, flexShrink: 0 }}>
+          <span className="font-mono tabular-nums" style={{ fontSize: '10.5px', color: V.tenue, flexShrink: 0 }}>
             {p.pct} %
           </span>
         </span>
@@ -214,26 +216,25 @@ function ContratadoDeObra({ o, veEconomia }: { o: ObraEnCurso; veEconomia: boole
   const viva = o.origenContratado === ORIGEN_SUMA_VIVA
   return (
     <span
-      className="flex flex-col justify-center"
+      className="flex items-center justify-end"
       data-testid="contratado-obra"
       data-origen={o.origenContratado ?? undefined}
       title={viva ? AYUDA_SUMA_VIVA : undefined}
       style={{ textAlign: 'right', gap: 1 }}
     >
+      {/* LA SEÑAL ES LA MISMA MARCA QUE YA USA LA TABLA PARA «este total no es lo que parece»: el
+          «·» del total parcial de papeles. Decía «suma de Cobranzas» en un segundo renglón de 10px
+          sin monoespaciar, debajo de una cifra monoespaciada: dos tipografías y dos escalas en UNA
+          celda, que es la mezcla que el dueño marcó el 10/09/2026. La frase entera vive en el
+          `title`, que es donde el OS pone la trazabilidad de un número. */}
       <span
-        className="font-mono tabular-nums"
+        className={o.contratado === null ? '' : 'font-mono tabular-nums'}
+        data-testid="contratado-suma-viva-marca"
         style={{ fontSize: '11.5px', color: o.contratado === null ? V.warn : V.apagado }}
       >
         {veEconomia ? (o.contratado === null ? SIN_PRECIO_EN_OBRAS : pesos(o.contratado)) : ''}
+        {veEconomia && viva && o.contratado !== null ? ' ·' : ''}
       </span>
-      {/* LA SEÑAL, SOBRIA Y SÓLO DONDE APLICA. No es una advertencia —no hay nada roto en la
-          pantalla— sino la etiqueta de qué clase de número es. Sin ella, «$ 14.120.243» al lado de
-          «$ 49.886.583 · 5 OC» parece una resta que a nadie le cierra. */}
-      {veEconomia && viva && (
-        <span data-testid="contratado-suma-viva" style={{ fontSize: '10px', color: V.tenue }}>
-          suma de Cobranzas
-        </span>
-      )}
     </span>
   )
 }
@@ -322,18 +323,17 @@ export function TablaClientes({
                 </span>
               </span>
 
-              {/* CUÁNTAS OBRAS TIENE, DICHO UNA SOLA VEZ. Es una FRASE, no una cifra alineada: por
-                  eso no va en monoespaciado — el mono se reserva para lo que se compara de arriba
-                  abajo, que en esta tabla es plata. */}
+              {/* CUÁNTAS OBRAS TIENE, EN UNA LÍNEA Y EN UNA ESCALA. Es una FRASE, no una cifra
+                  alineada: la celda entera va en la tipografía del texto — el mono se reserva para
+                  lo que se compara de arriba abajo, que en esta tabla es plata. Y una sola talla:
+                  en dos renglones de 12 y 10,5px el segundo número parecía menos cierto que el
+                  primero, y son los dos igual de ciertos. */}
               <span
-                className={`flex flex-col items-end justify-center ${SOLO_TABLET}`}
-                data-testid="obras-cliente" style={{ gap: 1, textAlign: 'right' }}
+                className={`truncate ${SOLO_TABLET}`}
+                data-testid="obras-cliente"
+                style={{ fontSize: '12px', color: V.apagado, textAlign: 'right' }}
               >
-                {frasesDeObras(c).map((f, i) => (
-                  <span key={f} style={{ fontSize: i === 0 ? '12px' : '10.5px', color: i === 0 ? V.apagado : V.tenue }}>
-                    {f}
-                  </span>
-                ))}
+                {frasesDeObras(c)}
               </span>
 
               {/* LOS PAPELES DEL CLIENTE, EN DOS RENGLONES Y NUNCA EN EL MISMO RÓTULO: lo que
@@ -356,8 +356,10 @@ export function TablaClientes({
                   MISMO que ya dice la columna «Obras» dos celdas a la izquierda: tres frases para
                   un hecho es lo que el dueño marcó en la fila de ARCOR. Acá va «—» y el `title`
                   distingue las dos ausencias, que no son iguales. */}
+              {/* MONO CUANDO ES UNA CIFRA, TIPOGRAFÍA DE TEXTO CUANDO ES UNA FRASE. Una celda,
+                  una tipografía por vez, y la elige lo que hay adentro. */}
               <span
-                className="font-mono tabular-nums"
+                className={c.contratado === null ? '' : 'font-mono tabular-nums'}
                 data-testid="contratado"
                 title={c.contratado !== null
                   ? undefined
@@ -365,7 +367,7 @@ export function TablaClientes({
                     ? 'Ninguna de sus obras en curso tiene precio en la pestaña OBRAS'
                     : 'No tiene obras en curso: no hay contrato vigente que sumar'}
                 style={{
-                  fontSize: '12px', textAlign: 'right',
+                  fontSize: c.contratado === null ? '11.5px' : '12px', textAlign: 'right',
                   color: c.contratado !== null ? V.tinta : c.enCurso.length ? V.warn : V.tenue,
                 }}
               >
@@ -439,7 +441,7 @@ export function TablaClientes({
                         <span className={`flex ${ADORNO_ANCHO}`} style={{ height: 4, width: 80, borderRadius: 2, background: TONO.pista, flexShrink: 0, marginLeft: 2 }}>
                           <span style={{ width: `${Math.min(100, Math.max(0, o.avance))}%`, background: V.grafito, borderRadius: 2 }} />
                         </span>
-                        <span className={`tabular-nums ${ADORNO_ANCHO}`} style={{ fontSize: '10.5px', color: V.tenue, flexShrink: 0 }}>
+                        <span className={`font-mono tabular-nums ${ADORNO_ANCHO}`} style={{ fontSize: '10.5px', color: V.tenue, flexShrink: 0 }}>
                           {porcentajeCanon(o.avance, 0)}
                         </span>
                       </>
