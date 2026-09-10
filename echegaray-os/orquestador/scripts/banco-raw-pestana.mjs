@@ -29,6 +29,7 @@ import * as BANCO from '../lib/banco-santander.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { completarCadenaDelDia } from '../lib/banco-cadena-saldos.mjs'
+import { explicacionPendientes } from '../lib/banco-acreditacion.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { query } from '../lib/db.mjs'
 
@@ -57,7 +58,10 @@ export function fila(m) {
     String(m.fecha ?? ''),
     String(m.concepto ?? ''),
     Number(m.importe) || 0,
-    Number(m.saldo) || 0,
+    // UN SALDO QUE NO EXISTE VA VACÍO, NO EN CERO. Un depósito retenido 48 hs no tiene saldo corrido:
+    // escribir 0 publicaría "la cuenta quedó en cero" y, peor, `formulaUltimoSaldo` —que busca el
+    // último número distinto de 0— lo trataría como dato. El 0 no es vacío.
+    m.saldo == null ? '' : Number(m.saldo),
     entra ? 'entra' : 'sale',
     // LA NATURALEZA SE ESCRIBE PARA TODOS, TAMBIÉN PARA LO QUE SALE (21/07).
     //
@@ -70,6 +74,38 @@ export function fila(m) {
     // pestaña donde debería estar registrado, y ahora el Sheet lo puede preguntar solo.
     BANCO.clasificarMovimiento(m.concepto ?? ''),
   ]
+}
+
+/**
+ * LO QUE EL BANCO LISTA Y NO ACREDITÓ, DICHO EN LA NOTA DE LA PESTAÑA.
+ *
+ * Va en la nota que ya existe (fila 2), no en una fila ni una columna nuevas: el archivo es
+ * minimalista y una explicación que necesita su propio cuadro no se lee. Y desaparece sola cuando no
+ * hay nada retenido — un aviso que sigue puesto después de resuelto enseña a no leer la pestaña.
+ */
+export function notaRetencion(retenidos = [], diferenciaSinExplicar = 0) {
+  const partes = []
+  if (retenidos.length) {
+    partes.push(`${explicacionPendientes(retenidos)}: NO está en el saldo del banco y por eso su celda `
+      + 'de "Saldo después" va vacía.')
+  }
+  if (Math.abs(Number(diferenciaSinExplicar) || 0) >= 1) {
+    const $ = Math.abs(Number(diferenciaSinExplicar)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    partes.push(`El último saldo es el DECLARADO por el banco; la cadena de los movimientos del día `
+      + `difiere $${$} y esa diferencia todavía no está explicada.`)
+  }
+  return partes.length ? ` ${partes.join(' ')}` : ''
+}
+
+/** ¿La base ya tiene la marca de retención? La réplica corre desde producción, que puede ir por
+ *  delante de la migración: sin esto la pestaña quedaría vacía por una columna que falta. */
+async function tieneMarcaDeRetencion() {
+  try {
+    const { rows } = await query(
+      `select 1 from information_schema.columns where table_schema = 'public'
+        and table_name = 'banco_movimientos' and column_name = 'acreditacion_pendiente'`)
+    return rows.length > 0
+  } catch { return false }
 }
 
 async function main() {
@@ -90,11 +126,18 @@ async function main() {
   // (sin saldo), para que el último saldo de la réplica sea el DECLARADO por el banco y CAJA muestre
   // lo que hay hoy, no el último saldo corrido del detalle.
   let movs = null
+  let retenidos = []
+  let diferenciaSinExplicar = 0
   try {
+    // LA MARCA DE RETENCIÓN SE TRAE, y un retenido NO se manda al final por no tener saldo: su fecha se
+    // conoce, lo que no se conoce es su saldo. El ORDER BY manda al final sólo a los movimientos del
+    // día que todavía esperan que la cadena los complete (ver la lección del 19/08 más abajo).
+    const conMarca = await tieneMarcaDeRetencion()
+    const marca = conMarca ? 'acreditacion_pendiente' : 'false as acreditacion_pendiente'
     const { rows } = await query(
-      `select fecha, concepto, importe, saldo_despues as saldo
+      `select fecha, concepto, importe, saldo_despues as saldo, ${marca}
          from public.banco_movimientos
-        order by (saldo_despues is null), fecha, id`,
+        order by (saldo_despues is null and ${conMarca ? 'not acreditacion_pendiente' : 'true'}), fecha, id`,
     )
     if (rows.length) {
       movs = rows.map((r) => ({
@@ -102,6 +145,7 @@ async function main() {
         concepto: r.concepto,
         importe: Number(r.importe),
         saldo: r.saldo == null ? undefined : Number(r.saldo),
+        acreditacionPendiente: r.acreditacion_pendiente === true,
       }))
       console.log(`fuente: public.banco_movimientos — ${movs.length} movimiento(s)`)
 
@@ -126,24 +170,52 @@ async function main() {
         const { rows: d } = await query(
           `select fecha, saldo from public.banco_saldo_declarado order by fecha desc limit 1`,
         )
-        if (d.length) declarado = { fecha: String(d[0].fecha).slice(0, 10), saldo: Number(d[0].saldo) }
+        if (d.length) {
+          const f = d[0].fecha instanceof Date ? d[0].fecha.toISOString().slice(0, 10) : String(d[0].fecha).slice(0, 10)
+          declarado = { fecha: f, saldo: Number(d[0].saldo) }
+        }
       } catch { /* sin saldo declarado la cadena se completa igual y no se puede contrastar */ }
 
-      const cadena = completarCadenaDelDia(movs, declarado?.saldo ?? null)
+      // ═══ UN SALDO DECLARADO VIEJO NO CONTRASTA NADA — Y PISARÍA EL DE HOY ═══
+      //
+      // La cadena termina en el movimiento más nuevo. Si el pie más nuevo de la tabla es de otra fecha
+      // —el 19/08 mientras el extracto llega al 10/09— compararlos da una diferencia inventada, y
+      // "preferir el declarado" publicaría el saldo del 19/08 como el saldo de hoy. Se contrasta sólo
+      // cuando el pie es del MISMO día que el último movimiento; si no, se dice que no se puede.
+      const ultimaFecha = movs.reduce((mx, m) => (String(m.fecha) > mx ? String(m.fecha) : mx), '')
+      const delDia = declarado && declarado.fecha === ultimaFecha ? declarado : null
+      if (declarado && !delDia) {
+        console.warn(`⚠ el saldo declarado más nuevo es del ${declarado.fecha} y el extracto llega al ${ultimaFecha}: `
+          + 'no puedo contrastar la cadena del día. Importá el extracto de hoy con importar-banco.mjs '
+          + '(guarda la línea "Saldo al DD/MM/AAAA").')
+      }
+      const cadena = completarCadenaDelDia(movs, delDia?.saldo ?? null)
       movs = cadena.filas
+      retenidos = movs.filter((m) => m.acreditacionPendiente)
       if (cadena.completados) {
-        const ultimo = movs.at(-1)?.saldo
+        const ultimo = movs.filter((m) => m.saldo != null).at(-1)?.saldo
         console.log(`saldo corrido completado en ${cadena.completados} movimiento(s) del día → `
           + `$${Math.round(ultimo).toLocaleString('es-AR')}`)
-        if (cadena.cierra === true) {
-          console.log(`✓ coincide al peso con el saldo que declara el banco al ${declarado.fecha}`)
-        } else if (cadena.cierra === false) {
-          console.warn(`⚠ NO coincide con el saldo declarado ($${Math.round(declarado.saldo).toLocaleString('es-AR')} `
-            + `al ${declarado.fecha}): difiere $${Math.round(cadena.diferencia).toLocaleString('es-AR')}. `
-            + 'Falta un movimiento del día o hay uno cargado dos veces.')
-        } else {
-          console.warn('⚠ no hay saldo declarado con qué contrastar la cadena del día')
-        }
+      }
+      if (retenidos.length) {
+        console.log(`· ${explicacionPendientes(retenidos)} — fuera de la cadena, con la celda de saldo VACÍA`)
+      }
+      if (cadena.cierra === true) {
+        console.log(`✓ coincide al peso con el saldo que declara el banco al ${delDia.fecha}`)
+      } else if (cadena.cierra === false) {
+        // SE PUBLICA EL DECLARADO IGUAL (`completarCadenaDelDia` ya pisó la última fila calculada): es
+        // el dato del banco. Lo que no puede pasar es que la diferencia quede muda — el 10/09 el
+        // aviso existía, no impedía publicar, y nadie lo leyó porque la tabla del declarado ni se
+        // poblaba. Ahora la diferencia también viaja a la nota de la pestaña.
+        diferenciaSinExplicar = cadena.diferencia
+        console.warn(`⚠ la cadena del día NO coincide con el saldo declarado `
+          + `($${Math.round(delDia.saldo).toLocaleString('es-AR')} al ${delDia.fecha}): difiere `
+          + `$${Math.round(cadena.diferencia).toLocaleString('es-AR')}. Publico el DECLARADO por el banco `
+          + '(es el dato real) y dejo la diferencia escrita en la pestaña. Falta un movimiento del día, '
+          + 'hay uno cargado dos veces, o hay un depósito retenido que el OS no reconoce.')
+      } else if (movs.some((m) => m.saldo == null && !m.acreditacionPendiente)) {
+        console.warn('⚠ no hay saldo declarado con qué contrastar la cadena del día '
+          + '(corré importar-banco.mjs con el extracto completo: guarda la línea "Saldo al DD/MM/AAAA")')
       }
     }
   } catch (e) {
@@ -186,7 +258,7 @@ async function main() {
   // —título, nota, encabezados y datos— y se FUSIONA con lo que hay. Ver lib/preservar-anotaciones.mjs.
   const gridRaw = [
     [`_BANCO_RAW — extracto del ${BANCO.CUENTA?.banco ?? 'Santander'} ${BANCO.CUENTA?.numero ?? ''} · corte del banco ${corteData} · réplica del ${corte}`],
-    [`${datos.length} movimientos. NO se carga a mano: la reescribe el agente desde la réplica del extracto. Existe para que los números de CAJA que hoy salen del banco sean FÓRMULAS y no valores calculados afuera y pegados. La columna "Naturaleza" NO está en el extracto: la deduce el OS —un depósito de efectivo y un cobro son las dos cosas un ingreso para el banco, y sólo una es plata nueva—.`],
+    [`${datos.length} movimientos.${notaRetencion(retenidos, diferenciaSinExplicar)} NO se carga a mano: la reescribe el agente desde la réplica del extracto. Existe para que los números de CAJA que hoy salen del banco sean FÓRMULAS y no valores calculados afuera y pegados. La columna "Naturaleza" NO está en el extracto: la deduce el OS —un depósito de efectivo y un cobro son las dos cosas un ingreso para el banco, y sólo una es plata nueva—.`],
     COLUMNAS.map(([n]) => n),
     ...datos,
   ]
@@ -223,8 +295,12 @@ async function main() {
   // VERIFICACIÓN: el saldo de la última fila del extracto tiene que ser el que declara el banco.
   const v = await google.readSheetValues(ID, `${PESTAÑA}!${COL.saldo}${FILA0}:${COL.saldo}${FILA0 + datos.length}`)
   const escritas = v.filter((f) => String(f?.[0] ?? '').trim()).length
-  console.log(`${PESTAÑA}: ${datos.length} movimientos · ${escritas} escritos`)
-  if (escritas !== datos.length) { console.log('  ⚠ no coinciden'); process.exitCode = 1 }
+  // LOS RETENIDOS NO CUENTAN: su celda de saldo va vacía A PROPÓSITO. Exigirlas llenas convertiría el
+  // arreglo en un rojo permanente, que es la forma más rápida de que se lo revierta.
+  const conSaldo = datos.filter((f) => f[3] !== '').length
+  console.log(`${PESTAÑA}: ${datos.length} movimientos · ${escritas} con saldo escrito`
+    + (retenidos.length ? ` · ${retenidos.length} retenido(s) sin saldo` : ''))
+  if (escritas !== conSaldo) { console.log('  ⚠ no coinciden'); process.exitCode = 1 }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
