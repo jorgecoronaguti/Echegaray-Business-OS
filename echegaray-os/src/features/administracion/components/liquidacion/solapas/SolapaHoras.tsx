@@ -17,6 +17,7 @@ import { createClient } from '@/lib/supabase/server'
 import { filasDeGrilla, resumenDeGrilla, type FilaDeGrilla } from '../../../services/grillaHorasQuincena'
 import { getDatosDeLaSolapaHoras } from '../../../services/grillaHorasQuincenaService'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
+import { proyeccionDeQuincena } from '../../../services/proyeccionDeMasa'
 import { alicuotasVigentes, multiplicadorDeCosto } from '../../../services/costoHora'
 import { getAlicuotas } from '../../../services/costoLecturas'
 import type { LineaDeLaPersona } from '../PanelDePersona'
@@ -72,6 +73,10 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
   })
   // EL RESUMEN Y EL BOTÓN MIRAN EL PLANTEL ENTERO, no el recorte: ver §
   const resumen = resumenDeGrilla(quincena, todas)
+  // LA MASA SALARIAL ESTIMADA SE CALCULA SOBRE EL PLANTEL ENTERO, por el mismo motivo que el
+  // resumen: es la plata de la QUINCENA. La columna de cada fila sale de este mismo cálculo, así
+  // que el número de la persona y el del total no pueden separarse.
+  const proyeccion = proyeccionDeQuincena(todas, datos.personas, hoy)
 
   const convenioDe = new Map(datos.personas.map((p) => [p.id, p.convenio]))
   const modalidadDe = new Map(datos.personas.map((p) => [p.id, p.modalidad ?? null]))
@@ -170,6 +175,7 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
         hoy={hoy}
         filas={visibles}
         resumen={resumen}
+        proyeccion={proyeccion}
         filtros={filtros}
         personas={datos.porPersona}
         correcciones={datos.correcciones}

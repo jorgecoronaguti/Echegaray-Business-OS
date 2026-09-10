@@ -24,6 +24,7 @@ import {
 } from './liquidacionCuadros.ts'
 import { horasDeQuincena, type PresenciaDeQuincena, type RegistroDeQuincena } from './liquidacionQuincena.ts'
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
+import { esJefeDeObra } from './vocabularioPersona.ts'
 import {
   aplicarOverrides, camposGuardables, sinOverrides,
   type CampoEditable, type LineaConOverrides, type OverridesDeLinea,
@@ -83,7 +84,11 @@ export async function getLiquidacionDeLaQuincena(
 ): Promise<LiquidacionDeLaQuincena> {
   const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, anterior] =
     await Promise.all([
-      supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa'),
+      // `puesto` VIAJA CON EL PLANTEL para que las pantallas de Liquidación ordenen y rotulen como
+      // el resto de Personal (dueño, 10/09/2026). Es la misma columna y la misma función
+      // (`esJefeDeObra`) que ya usan Plantel, Asistencia y la grilla de Horas: si cada pantalla
+      // decidiera por su cuenta quién es jefe, habría tantas respuestas como pantallas.
+      supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, puesto'),
       // El CUIL es la llave del recibo y del giro. Vive en `persona_legajo`, que lleva su portero
       // adentro: es el único camino de la web a ese campo (ver `personasService.ts`).
       supabase.from('persona_legajo').select('id, cuil'),
@@ -124,12 +129,14 @@ export async function getLiquidacionDeLaQuincena(
     ((legajo.data ?? []) as { id: string; cuil: string | null }[]).map((r) => [r.id, r.cuil]),
   )
   const personas: PersonaDeLiquidacion[] =
-    ((directorio.data ?? []) as { id: string; nombre_completo: string; en_la_empresa: boolean }[])
+    ((directorio.data ?? []) as
+      { id: string; nombre_completo: string; en_la_empresa: boolean; puesto: string | null }[])
       .map((r) => ({
         id: r.id,
         nombre: r.nombre_completo,
         cuil: cuilPorPersona.get(r.id) ?? null,
         enLaEmpresa: r.en_la_empresa !== false,
+        esJefe: esJefeDeObra(r.puesto),
       }))
 
   const { estados, redondeos, overrides } = leerGuardadas(guardadas.data)

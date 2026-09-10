@@ -13,11 +13,12 @@ import { GrillaHorasQuincena, type FiltroDeGrilla } from './GrillaHorasQuincena'
 import { PanelDePersona, type LineaDeLaPersona, type PersonaAbierta } from './PanelDePersona'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import type { FilaDeGrilla, ResumenDeGrilla } from '../../services/grillaHorasQuincena'
+import type { ProyeccionDeQuincena } from '../../services/proyeccionDeMasa'
 import type { CorreccionDeDia } from '../../services/panelDePersona'
 
 export function HorasConPersona({
-  titulo, jornadaTexto, habilesTexto, hoy, filas, resumen, filtros, accion, personas, correcciones,
-  cerrada, quincena, lineas, camposEditables, multiplicador,
+  titulo, jornadaTexto, habilesTexto, hoy, filas, resumen, proyeccion, filtros, accion, personas,
+  correcciones, cerrada, quincena, lineas, camposEditables, multiplicador,
 }: {
   titulo: string
   jornadaTexto: string
@@ -25,6 +26,8 @@ export function HorasConPersona({
   hoy?: string
   filas: FilaDeGrilla[]
   resumen: ResumenDeGrilla
+  /** La masa salarial estimada del PLANTEL ENTERO, calculada en el servidor como el resumen. */
+  proyeccion?: ProyeccionDeQuincena
   filtros: FiltroDeGrilla[]
   accion?: React.ReactNode
   /** El legajo y los días de cada persona, ya leídos con la quincena. */
@@ -50,6 +53,7 @@ export function HorasConPersona({
         hoy={hoy}
         filas={filas}
         resumen={resumen}
+        proyeccion={proyeccion}
         filtros={filtros}
         accion={accion}
         abierta={abierta}

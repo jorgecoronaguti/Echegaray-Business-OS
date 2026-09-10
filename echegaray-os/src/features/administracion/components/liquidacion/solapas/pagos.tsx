@@ -4,8 +4,11 @@ import { quincenaDe, rotuloQuincena, type Quincena } from '../../../services/qui
 import {
   tarjetaDeQuincena, totalesDeCuadro, type LineaLiquidada, type TotalesDeCuadro,
 } from '../../../services/liquidacionQuincena'
+import { desvioDelAcuerdo } from '../../../services/liquidacionAcuerdo'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
 import { pesos } from '../BloqueLiquidacion'
+import { seccionesDePersonal, type SeccionDePersonal } from '../../../services/ordenDePersonal'
+import { RotuloDeGrupo } from '../../RotuloDeGrupo'
 import { SolapaCajaNomina } from './caja-nomina'
 import { ALTO_LIQ } from './tabla'
 
@@ -34,6 +37,15 @@ export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: st
   const totales = cuadros.map((c) => totalesDeCuadro(c.lineas))
   const tarjeta = tarjetaDeQuincena(totales)
   const lineas = cuadros.flatMap((c) => c.lineas)
+  // ═══ EL MISMO ORDEN Y LOS MISMOS RÓTULOS QUE PLANTEL, ASISTENCIA Y HORAS ═══
+  //
+  // Dueño, 10/09/2026: «te pedí uniformidad en las pantallas; acá estoy en la sección y es distinto
+  // a las demás». Los cuadros de pago se conservan —son la definición de POR QUÉ cobra cada uno— y
+  // salen en el orden del módulo (Oficina/jefes arriba), cada uno con el rótulo de su rol. Antes
+  // esta tabla era una lista plana: quince obreros alfabéticos y los dos jefes de Oficina al final,
+  // sin nada que dijera por qué estaban ahí.
+  const secciones = cuadros.flatMap((c) =>
+    seccionesDePersonal(c.grupo, c.titulo, c.lineas, (l) => l.nombre, (l) => l.esJefe))
   // EL TOTAL DE LA TABLA ES EL DE TODAS LAS LÍNEAS QUE SE VEN, no la suma de los cuadros: los
   // grupos se dibujan juntos, así que el pie tiene que cerrar contra lo que está arriba.
   const totalPlantel = totalesDeCuadro(lineas)
@@ -47,7 +59,7 @@ export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: st
         overflow: 'hidden',
       }}>
         <Encabezado quincena={quincena} tarjeta={tarjeta} cerrada={cerrada} />
-        <Tabla lineas={lineas} totales={totalPlantel} />
+        <Tabla secciones={secciones} totales={totalPlantel} />
         <div style={{ height: 20 }} />
       </div>
       {/* PANTALLA 9 · CAJA DE NÓMINA VIVE ACÁ, no en una solapa propia: el mockup lista CINCO
@@ -101,9 +113,19 @@ function Encabezado({ quincena, tarjeta, cerrada }: {
   )
 }
 
-/** Las diez columnas del mockup, en píxeles medidos (línea 396). El orden es el de R5. */
-const COLUMNAS = 'minmax(220px,1fr) 46px 60px 92px 84px 94px 92px 96px 96px 96px'
-const ROTULOS = ['Persona', 'Horas', '$/h', 'Cobra', 'Adelanto', 'Ya transf.', 'Por banco', 'Efectivo', 'Total', 'Efect. red.']
+/**
+ * Las columnas del mockup (línea 396), en píxeles medidos. El orden es el de R5.
+ *
+ * ═══ LAS DOS DEL ACUERDO 50/50 VAN PEGADAS A COBRA ═══
+ *
+ * El dueño (10/09/2026): «el acuerdo con todos los empleados es 50% en blanco y 50% en efectivo, no
+ * me lo está mostrando actualmente». Son un derivado de COBRA y NO se escriben: entran antes de
+ * ADELANTO, que es donde arranca la cadena de pago real. Con ellas el ancho mínimo pasa de 940 a
+ * 1.144 px — dos columnas de 92 con su gap—; la tabla ya se recorre en horizontal.
+ */
+const COLUMNAS = 'minmax(220px,1fr) 46px 60px 92px 92px 92px 84px 94px 92px 96px 96px 96px'
+const ROTULOS = ['Persona', 'Horas', '$/h', 'Cobra', 'Blanco 50%', 'Efectivo 50%', 'Adelanto',
+  'Ya transf.', 'Por banco', 'Efectivo', 'Total', 'Efect. red.']
 const MONO = 'var(--font-mono, "IBM Plex Mono", monospace)'
 
 const fila = (alto: number): React.CSSProperties => ({
@@ -112,10 +134,13 @@ const fila = (alto: number): React.CSSProperties => ({
   fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
 })
 
-function Tabla({ lineas, totales }: { lineas: readonly LineaLiquidada[]; totales: TotalesDeCuadro }) {
+function Tabla({ secciones, totales }: {
+  secciones: readonly SeccionDePersonal<LineaLiquidada>[]
+  totales: TotalesDeCuadro
+}) {
   return (
     <div className="overflow-x-auto" style={{ padding: '16px 20px 0' }}>
-      <div data-testid="pagos-tabla" style={{ minWidth: 940, display: 'flex', flexDirection: 'column' }}>
+      <div data-testid="pagos-tabla" style={{ minWidth: 1144, display: 'flex', flexDirection: 'column' }}>
         <div style={{
           display: 'grid', gridTemplateColumns: COLUMNAS, gap: 10, height: ALTO_LIQ.encabezadoAncho, alignItems: 'end',
           borderBottom: `1px solid ${V.linea}`, paddingBottom: 9, fontFamily: MONO,
@@ -126,7 +151,13 @@ function Tabla({ lineas, totales }: { lineas: readonly LineaLiquidada[]; totales
           ))}
         </div>
 
-        {lineas.map((l) => (
+        {secciones.map((sec, iSec) => (
+          <div key={sec.clave} data-testid={`seccion-${sec.clave}`}>
+            {/* CON UNA SOLA SECCIÓN TAMBIÉN VA EL RÓTULO: en Pagos siempre hay al menos dos roles
+                (Oficina y Obreros) y omitirlo en el caso raro de uno solo haría que la pantalla se
+                viera distinta según qué quincena se mire. */}
+            <RotuloDeGrupo texto={sec.rotulo} primero={iSec === 0} />
+            {sec.lineas.map((l) => (
           <div key={l.personaId} style={fila(58)}>
             <div style={{ color: V.tinta }}>
               {l.nombre}
@@ -139,12 +170,30 @@ function Tabla({ lineas, totales }: { lineas: readonly LineaLiquidada[]; totales
             <Celda valor={l.horas} />
             <Celda valor={l.valorHora} apagada />
             <Celda valor={l.cobra} medio />
+            {/* LO ACORDADO, NO LO LIQUIDADO. «—» donde no hay acuerdo 50/50: Oficina cobra un neto
+                mensual cuyo recibo del 01/09 no fue la mitad, y el cuadro `final` son
+                subcontratistas. Inventarles una mitad sería acordar por ellos. */}
+            <Celda valor={l.blancoAcuerdo} apagada />
+            <Celda valor={l.efectivoAcuerdo} apagada />
             <Escribible valor={l.adelanto} ancho={76} />
             <Escribible valor={l.yaTransferido} ancho={86} />
-            <Escribible valor={l.porBanco} ancho={84} />
+            <Escribible
+              valor={l.porBanco}
+              ancho={84}
+              // EL DESVÍO ENTRE EL RECIBO Y LA MITAD ACORDADA ES LO QUE TERMINA EN EFECTIVO. Se
+              // señala acá porque es donde el número deja de ser la mitad. No corrige nada: el
+              // recibo manda (orden del 31/08/2026), pero hasta hoy había que restar dos columnas
+              // a ojo para verlo.
+              desvio={desvioDelAcuerdo(l)}
+              blanco={l.blancoAcuerdo}
+              recibo={l.reciboNeto}
+              sinGiro={l.reciboSinGiro}
+            />
             <Celda valor={l.enEfectivo} medio />
             <Celda valor={l.total} />
             <Escribible valor={l.efectivoRedondeado} ancho={88} />
+          </div>
+            ))}
           </div>
         ))}
 
@@ -157,10 +206,14 @@ function Tabla({ lineas, totales }: { lineas: readonly LineaLiquidada[]; totales
           <div>
             {totales.personas} persona{totales.personas === 1 ? '' : 's'}
             {totales.sinTarifa > 0 && ` · ${totales.sinTarifa} sin retribución`}
+            {totales.sinReparto > 0 && ` · ${totales.sinReparto} sin acuerdo 50/50`}
           </div>
           <Celda valor={totales.horas} />
           <div />
           <Celda valor={totales.cobra} />
+          {/* LAS MITADES NO SUMAN A QUIEN NO TIENE ACUERDO, y la línea de abajo dice cuántos son. */}
+          <Celda valor={totales.blancoAcuerdo} />
+          <Celda valor={totales.efectivoAcuerdo} />
           <Celda valor={totales.adelanto} />
           <Celda valor={totales.yaTransferido} />
           <Celda valor={totales.porBanco} />
@@ -193,13 +246,28 @@ function Celda({ valor, medio = false, apagada = false }: {
  * la diferencia que la pantalla tiene que enseñar entre «esto lo decidís vos» y «esto es una
  * cuenta». El `<input>` real lo monta la grilla editable.
  */
-function Escribible({ valor, ancho }: { valor: number | null; ancho: number }) {
+function Escribible({ valor, ancho, desvio = null, blanco = null, recibo = null, sinGiro = false }: {
+  valor: number | null; ancho: number; desvio?: number | null; blanco?: number | null
+  /** El neto que liquidó el estudio. NO es lo girado: `porBanco` vale 0 hasta que el lote aparece. */
+  recibo?: number | null
+  sinGiro?: boolean
+}) {
+  // EL TÍTULO DICE EL RECIBO, NO LO GIRADO. Decía «recibo $ 0» sobre gente que sí tiene recibo,
+  // porque leía `porBanco` —que es el recibo YA GIRADO— (auditoría 10/09/2026). Cuando el extracto
+  // todavía no muestra el lote, eso se escribe con todas las letras en vez de publicarse como cero.
+  const titulo = desvio == null || blanco == null ? undefined
+    : `recibo ${recibo == null ? 'sin recibo' : pesos(recibo)}`
+      + `${sinGiro ? ' · sin giro en el extracto' : ''}`
+      + ` · acuerdo ${pesos(blanco)} · diferencia ${pesos(Math.abs(desvio))}`
+      + ` ${desvio < 0 ? 'que sale en efectivo' : 'girada de más'}`
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }} title={titulo}>
       <span style={{
         width: ancho, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         border: `1px solid ${V.lineaFuerte}`, borderRadius: 4, padding: '0 4px',
-        color: valor == null || valor === 0 ? V.lineaFuerte : V.tinta,
+        // EL DESVÍO CONTRA EL ACUERDO SE VE, no se deduce: tono de alerta y el detalle en el title.
+        color: desvio != null ? V.warn
+          : (valor == null || valor === 0 ? V.lineaFuerte : V.tinta),
       }}>
         {valor == null || valor === 0 ? '—' : pesos(valor)}
       </span>

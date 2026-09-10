@@ -19,6 +19,8 @@ import type { ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
 export interface LineaParaCerrar {
   personaId: string
   nombre: string
+  /** Jefe de obra según `esJefeDeObra(puesto)`. Opcional: viaja para AGRUPAR, no decide plata. */
+  esJefe?: boolean
   horas: number | null
   valorHora: number | null
   /** El neto mensual acordado (Oficina). XOR con `valorHora`, como en `persona_tarifa`. */
