@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  areasDeAdministracion, atencionNoLeida, chipsDeAtencion, cuenta,
+  areasDeAdministracion, armarConteosDeAtencion, atencionNoLeida, chipsDeAtencion, cuenta,
   senalesDeTrabajo, senalesVivas,
   type ConteosAtencion, type ConteosHome,
 } from './homeAdministracion.ts'
@@ -148,3 +148,44 @@ test('el jefe de obra ve los cuatro destinos de la v4', () => {
   }
 })
 
+
+// ═══ LA CAMPANITA EN UN VIAJE — «no pude mirar» sigue siendo un estado ═════════════════════════
+//
+// Con seis consultas, cada señal podía fallar sola y quedar en `null`. Con una, o llega el JSON o
+// no llega. Lo que NO puede pasar es que una clave ausente se lea como cero: una campanita apagada
+// se ve idéntica a un área sin pendientes, y ése es el estado que se pierde siempre.
+
+test('armarConteosDeAtencion cuenta con el mismo predicado de la pantalla de Compras', () => {
+  const conteos = armarConteosDeAtencion({
+    proveedores_cuit: [{ cuit: '20-1-3' }, { cuit: null }, { cuit: '' }],
+    compras: [
+      { imputacion: 'sin_identificar', tiene_posible_duplicado: false, estado_control: 'sin_revisar' },
+      { imputacion: 'sin_resolver', tiene_posible_duplicado: false, estado_control: 'sin_revisar' },
+      { imputacion: 'obra', tiene_posible_duplicado: true, estado_control: 'sin_revisar' },
+      // Un parecido YA REVISADO no es trabajo pendiente: si contara, el número nunca bajaría.
+      { imputacion: 'obra', tiene_posible_duplicado: true, estado_control: 'en_revision' },
+    ],
+    nombres_sin_resolver: 2,
+    pendientes: 0,
+    correcciones: 7,
+  })
+  // La cadena vacía también es «sin CUIT»: la decisión está escrita una vez y es `!p.cuit`.
+  assert.equal(conteos.proveedoresSinCuit, 2)
+  assert.equal(conteos.comprasSinImputar, 1)
+  assert.equal(conteos.comprasSinResolver, 1)
+  assert.equal(conteos.comprasDuplicadas, 1)
+  assert.equal(conteos.nombresSinResolver, 2)
+  // CERO ES CERO cuando la base lo dijo. Sólo la ausencia es «no sé».
+  assert.equal(conteos.pendientes, 0)
+  assert.equal(conteos.correcciones, 7)
+})
+
+test('un JSON que no llegó es «no pude mirar», nunca cero', () => {
+  const conteos = armarConteosDeAtencion(null)
+  assert.deepEqual(conteos, {
+    proveedoresSinCuit: null, nombresSinResolver: null, comprasSinImputar: null,
+    comprasSinResolver: null, comprasDuplicadas: null, pendientes: null, correcciones: null,
+  })
+  // Y eso tiene que llegar hasta el desplegable: `atencionNoLeida` es quien lo dice con letras.
+  assert.equal(atencionNoLeida(conteos), true)
+})

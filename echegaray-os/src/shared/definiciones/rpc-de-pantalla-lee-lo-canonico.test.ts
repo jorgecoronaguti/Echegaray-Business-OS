@@ -57,6 +57,18 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
       'cliente_economia',      // canónica de lo contratado/cobrado DEL CLIENTE
     ],
   },
+  {
+    archivo: 'supabase/migrations/20260911T0020_campanita_una_consulta.sql',
+    funcion: 'campanita_atencion',
+    lee: [
+      'perfiles',                       // decide qué chips existen para este rol
+      'proveedores',                    // los CUIT: quién cuenta «sin CUIT» es TypeScript
+      'comprobante_compra',             // las tres columnas de PREDICADO, sin filtrar
+      'proveedor_nombre_pendiente',
+      'imputacion_pendiente',
+      'correccion_asistencia_bandeja',
+    ],
+  },
 ]
 
 /** Fuentes retiradas: si alguna aparece en el cuerpo de una RPC, volvió una definición muerta. */

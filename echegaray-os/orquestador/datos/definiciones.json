@@ -26,6 +26,21 @@
           "cliente_economia"
         ],
         "porque": "El costo dominante de la pantalla era el arranque en frío por CONEXIÓN (~800 ms de catálogo la primera vez que un backend ve las vistas anidadas del OS), pagado hasta diez veces porque cada consulta paralela puede caer en un backend distinto del pool. Un viaje, un backend, un arranque."
+      },
+      {
+        "funcion": "public.campanita_atencion()",
+        "pantalla": "la campanita del header — TODAS las pantallas",
+        "migracion": "supabase/migrations/20260911T0020_campanita_una_consulta.sql",
+        "reemplaza": "6 consultas de PostgREST por navegación (el perfil más las cinco señales)",
+        "consume": [
+          "perfiles",
+          "proveedores",
+          "comprobante_compra",
+          "proveedor_nombre_pendiente",
+          "imputacion_pendiente",
+          "correccion_asistencia_bandeja"
+        ],
+        "porque": "La campanita vive en todas las pantallas: sus viajes no son el costo de una pantalla sino un impuesto por navegación que le disputaba el pool de PostgREST al render. Transporta las filas crudas y NO cuenta: los cuatro números de Compras los sigue decidiendo PREDICADO en comprasEstado.ts, que está escrito una sola vez y lo usan tres consumidores."
       }
     ]
   },

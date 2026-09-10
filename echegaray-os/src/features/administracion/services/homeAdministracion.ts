@@ -179,33 +179,43 @@ export async function getConteosHome(supabase: SupabaseClient): Promise<ConteosL
 }
 
 /**
- * SÓLO LO QUE ENCIENDE LA CAMPANITA — las siete señales, sin las cinco de navegación.
+ * LAS FILAS DE `campanita_atencion()` YA LEÍDAS → los siete números.
  *
- * La campanita del header vive en TODAS las pantallas del OS. Colgarla de los once números le
- * sumaría a cada carga cinco lecturas que nadie mira: cuántos clientes hay no cambia si algo pide
- * trabajo. Las que quedan son EXACTAMENTE las del libro mayor, así que la campanita y la entrada de
- * Administración no pueden decir números distintos.
+ * ═══ CUENTA ACÁ, NO EN SQL, Y ES DELIBERADO ═══
+ *
+ * Los cuatro números de Compras salen de `PREDICADO` (`comprasEstado.ts`), escrito UNA vez y usado
+ * por tres consumidores: la lista de la pantalla 24, su conteo contra la base y este conteo en
+ * memoria. Escribir ese predicado otra vez adentro de la función SQL sería la cuarta copia —y la
+ * primera que nadie compara—: el número de la campanita y las filas de la pantalla empezarían a
+ * discrepar sin que nada diera error. La RPC transporta las mismas filas que ya viajaban; quien
+ * decide qué es «sin imputar» sigue siendo `cumpleFiltro`.
+ *
+ * Un `null` en cualquier clave —o un JSON que no llegó— es «no pude mirar», nunca cero.
  */
-export async function getConteosDeAtencion(supabase: SupabaseClient): Promise<ConteosAtencion> {
-  const [proveedores, nombresSinResolver, compras, pendientes, correcciones] = await Promise.all([
-    filas<{ cuit: string | null }>(supabase.from('proveedores').select('cuit').eq('activo', true)),
-    cuenta(supabase.from('proveedor_nombre_pendiente').select('*', head)),
-    filas<FilaCompra>(
-      supabase.from('comprobante_compra').select('imputacion, tiene_posible_duplicado, estado_control'),
-    ),
-    cuenta(supabase.from('imputacion_pendiente').select('*', head)),
-    cuenta(supabase.from('correccion_asistencia_bandeja').select('*', head).eq('estado', 'pendiente')),
-  ])
+export function armarConteosDeAtencion(json: unknown): ConteosAtencion {
+  const j = (json ?? {}) as Record<string, unknown>
+  const proveedores = Array.isArray(j.proveedores_cuit)
+    ? (j.proveedores_cuit as { cuit: string | null }[]) : null
+  const compras = Array.isArray(j.compras) ? (j.compras as FilaCompra[]) : null
+  // `count(*)` de Postgres es `bigint` y viaja como número en JSON; `null` sólo si no vino la
+  // clave, que es lo mismo que no haber podido mirar.
+  const cardinal = (k: string) => (typeof j[k] === 'number' ? (j[k] as number) : null)
   return {
     proveedoresSinCuit: proveedores === null ? null : proveedores.filter((p) => !p.cuit).length,
-    nombresSinResolver,
+    nombresSinResolver: cardinal('nombres_sin_resolver'),
     comprasSinImputar: contar(compras, 'sin-imputar'),
     comprasSinResolver: contar(compras, 'sin-resolver'),
     comprasDuplicadas: contar(compras, 'duplicados'),
-    pendientes,
-    correcciones,
+    pendientes: cardinal('pendientes'),
+    correcciones: cardinal('correcciones'),
   }
 }
+
+// LA CAMPANITA YA NO TIENE SU PROPIA TANDA DE CONSULTAS (10/09/2026). `getConteosDeAtencion` hacía
+// cinco lecturas en paralelo y vivía en TODAS las pantallas del OS: seis viajes por navegación —con
+// el perfil— que le disputaban el pool de PostgREST al render que el usuario estaba esperando. Las
+// mismas filas llegan ahora en una sola llamada a `public.campanita_atencion()`, y quien las cuenta
+// es `armarConteosDeAtencion`, acá arriba, con el mismo `PREDICADO` de siempre.
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // LA BARRA DE DESTINOS — lo puro, para poder probarlo sin base
