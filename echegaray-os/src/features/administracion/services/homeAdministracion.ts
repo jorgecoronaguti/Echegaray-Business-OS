@@ -179,33 +179,41 @@ export async function getConteosHome(supabase: SupabaseClient): Promise<ConteosL
 }
 
 /**
- * LAS FILAS DE `campanita_atencion()` YA LEÍDAS → los siete números.
+ * LOS SIETE NÚMEROS DE `campanita_atencion()`, YA CONTADOS EN LA BASE.
  *
- * ═══ CUENTA ACÁ, NO EN SQL, Y ES DELIBERADO ═══
+ * ═══ POR QUÉ DEJÓ DE CONTAR ACÁ (10/09/2026, medido) ═══
  *
- * Los cuatro números de Compras salen de `PREDICADO` (`comprasEstado.ts`), escrito UNA vez y usado
- * por tres consumidores: la lista de la pantalla 24, su conteo contra la base y este conteo en
- * memoria. Escribir ese predicado otra vez adentro de la función SQL sería la cuarta copia —y la
- * primera que nadie compara—: el número de la campanita y las filas de la pantalla empezarían a
- * discrepar sin que nada diera error. La RPC transporta las mismas filas que ya viajaban; quien
- * decide qué es «sin imputar» sigue siendo `cumpleFiltro`.
+ * Hasta 20260911T0020 la RPC transportaba las filas crudas —737 comprobantes y 41 proveedores— y el
+ * conteo pasaba por `cumpleFiltro`, para que `PREDICADO` fuera la única definición de cada KPI. El
+ * argumento era bueno y el precio, medido sobre la base real, era éste: 76 KB de payload y 248.056
+ * bloques del buffer pool POR NAVEGACIÓN, porque la campanita vive en todas las pantallas del OS. En
+ * pg_stat_statements era el mayor consumidor: 34 llamadas, 3.064 ms de media, 14,8 s de máximo.
+ *
+ * Ahora los cuenta `public.comprobante_cumple_filtro()` (20260911T0130), que es el lado SQL del
+ * MISMO `PREDICADO`. Eso son dos implementaciones de una regla, y la casa ya sabe cómo se sostienen
+ * sin separarse: exactamente como `cobranza_imputacion` (SQL) y `cobranza-obra.mjs` (JS) desde el
+ * 10/09 — con un test que las compara sobre los datos REALES, no confiando en que nadie las toque.
+ * Ese test es `orquestador/lib/campanita-rpc.pg.test.mjs`: recorre los seis filtros sobre los 737
+ * comprobantes de la base y exige que los dos lados devuelvan el mismo número.
+ *
+ * `cumpleFiltro` NO quedó sin consumidores vivos: lo sigue usando `getConteosHome` para los cuatro
+ * números de `/administracion`, y `aplicarFiltro` —la otra cara del mismo `PREDICADO`— es el que
+ * decide qué filas ve la lista de la pantalla 24. El test compara la campanita contra ellos.
  *
  * Un `null` en cualquier clave —o un JSON que no llegó— es «no pude mirar», nunca cero.
  */
 export function armarConteosDeAtencion(json: unknown): ConteosAtencion {
   const j = (json ?? {}) as Record<string, unknown>
-  const proveedores = Array.isArray(j.proveedores_cuit)
-    ? (j.proveedores_cuit as { cuit: string | null }[]) : null
-  const compras = Array.isArray(j.compras) ? (j.compras as FilaCompra[]) : null
   // `count(*)` de Postgres es `bigint` y viaja como número en JSON; `null` sólo si no vino la
-  // clave, que es lo mismo que no haber podido mirar.
-  const cardinal = (k: string) => (typeof j[k] === 'number' ? (j[k] as number) : null)
+  // clave, que es lo mismo que no haber podido mirar. `Number.isFinite` y no `typeof number`: un
+  // `NaN` es un número que no cuenta nada, y publicarlo dibujaría una campanita con «NaN» adentro.
+  const cardinal = (k: string) => (typeof j[k] === 'number' && Number.isFinite(j[k]) ? (j[k] as number) : null)
   return {
-    proveedoresSinCuit: proveedores === null ? null : proveedores.filter((p) => !p.cuit).length,
+    proveedoresSinCuit: cardinal('proveedores_sin_cuit'),
     nombresSinResolver: cardinal('nombres_sin_resolver'),
-    comprasSinImputar: contar(compras, 'sin-imputar'),
-    comprasSinResolver: contar(compras, 'sin-resolver'),
-    comprasDuplicadas: contar(compras, 'duplicados'),
+    comprasSinImputar: cardinal('compras_sin_imputar'),
+    comprasSinResolver: cardinal('compras_sin_resolver'),
+    comprasDuplicadas: cardinal('compras_duplicadas'),
     pendientes: cardinal('pendientes'),
     correcciones: cardinal('correcciones'),
   }
@@ -213,9 +221,10 @@ export function armarConteosDeAtencion(json: unknown): ConteosAtencion {
 
 // LA CAMPANITA YA NO TIENE SU PROPIA TANDA DE CONSULTAS (10/09/2026). `getConteosDeAtencion` hacía
 // cinco lecturas en paralelo y vivía en TODAS las pantallas del OS: seis viajes por navegación —con
-// el perfil— que le disputaban el pool de PostgREST al render que el usuario estaba esperando. Las
-// mismas filas llegan ahora en una sola llamada a `public.campanita_atencion()`, y quien las cuenta
-// es `armarConteosDeAtencion`, acá arriba, con el mismo `PREDICADO` de siempre.
+// el perfil— que le disputaban el pool de PostgREST al render que el usuario estaba esperando. Los
+// siete números llegan ahora en una sola llamada a `public.campanita_atencion()`, y ya contados: el
+// primer intento transportaba las filas para que `PREDICADO` siguiera siendo la única definición, y
+// eso costaba 76 KB y 248.056 bloques por navegación (ver `armarConteosDeAtencion`).
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // LA BARRA DE DESTINOS — lo puro, para poder probarlo sin base
