@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-09 19:45 (hora local −03) · main `9f3dc33e` = origin; producción (Sheet) `39ee6dc9`; Vercel con el push_
+_actualizado: 2026-09-10 08:55 (hora local −03) · main `ffa50844` = origin = producción (Sheet); Vercel con el push_
 
 ## 1. OBJETIVO GENERAL
 
@@ -111,6 +111,22 @@ worktree. **Antes de buscar nada: `.claude/MAPA.md`.**
   gremiales declarados desde `_UOCRA_DDJJ_RAW` (se aplica al Sheet en la corrida de las 20:50: verificar «no repongo» y PDF
   de Cargas Sociales). Pipeline 18:50: las tres pestañas rediseñadas ✓, auditor de diseño ✓, sólo `cheques-cobertura-sheet` ✗
   (preexistente).
+- **10/09 mañana, mergeado y desplegado**: cierre de quincena que sella (T1850) + habilitable con Oficina; Liquidación Horas
+  lee `registros_hh` por la misma función paginada que Asistencia (PostgREST cortaba en 1.000 filas sin error; licencia en
+  dos tablas) — 1.019 h = 1.019 h; Asistencia: «quitar» el presente (RLS del retiro, T1200 + T1830 uuid→text), «sin
+  novedad» para liberar un día futuro, edición de horas/estado en el casillero; Compras web: cruce del papel por clave
+  exacta (nunca por renglón), reconciliación dentro del sync, papel por las dos claves c:/p:, 160/196 del canal con
+  papel, fila 942 Axion vinculada a mano; Clientes: OC/OP con número·fecha·importe por obra (herencia OP→OC→obra,
+  fechas 2086 corregidas, importes US, facturas propias como `factura` T1210), órdenes en la ficha de obra; Cash Flow:
+  puente $120,4M→$62,0M cerrado al peso (memoria `cash-flow-cierre-120-a-62-puente`), $2,6M de cheques emitidos
+  proyectados de sep sin atribuir. Migraciones aplicadas hoy: T1850, 20260910T1200, T1830, T1210.
+- **Decisiones del dueño pendientes**: fila 932 Lliteras (CUIT leído ≠ Sheet); 15 papeles sueltos (`respaldos/2026-09-10-
+  papeles-sueltos-clasificados.txt`, 5 con fila candidata) y 30 filas de Compras a corregir; CUITs AC SAT SRL / DATA 2000 SA;
+  obras duplicadas en `obra_canonica` (BSA - Planta / ME - BSA, Pisos 120m2 / ME - PISOS…); OC 2256 ¿Tercer Muro?; OC 2173
+  vale $78.650.000 según el PDF; 5 OP de Messina a nivel cliente; Oficina mensual contada en las dos quincenas; botones
+  «Copiar día anterior» / «Jornada completa» (qué obra); contadores de la barra nivel 2; 8 ausencias sin motivo y 16 días sin
+  cargar traban el cierre de la 1ª de septiembre; regresión visual: chips «sin medir/sin jefe» recortados en filas con dos
+  órdenes con importe.
 - **Agentes en curso al cerrar**: Liquidación 7/8/12 (Convenios, Recibos, Productividad); fidelidad UX/UI contra el
   mockup (worktree en /home/jorge/echegaray-os/worktrees/wt-fidelidad); Clientes en UNA pantalla + panel/descarga de OC/OP;
   Gmail → transferencias por proveedor; Cargas Sociales `CARGAS_MES_*` 12/12. Ramas feat/* sin mergear se listan con
