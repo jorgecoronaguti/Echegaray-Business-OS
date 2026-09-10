@@ -28,7 +28,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { deduplicar, separarInternas, sumar } from '../lib/libro-movimientos.mjs'
+import { deduplicar, separarInternas, sumar, plataColapsada } from '../lib/libro-movimientos.mjs'
 import {
   deCompras, deCobranzas, deChequesEmitidos, deBancoCargos,
   deTarjetaSinFactura, deImpuestosCalendario, debitosDeImpuestoAlCheque, deCartera,
@@ -563,6 +563,22 @@ async function main() {
   console.log(`  ${'— deduplicado'.padEnd(18)} ${String(consolidado.length).padStart(4)} · ${colapsos.length} colapso(s) declarado(s) · internas ${internas.length} (neto ${pesos(netoInterno)})`)
   if (netoInterno !== 0) {
     console.log(`  ⚠ EL NETO INTERNO NO DA CERO: falta un lado de alguna transferencia interna — la caja consolidada está corrida en ${pesos(netoInterno)}.`)
+  }
+  // ═══ EL COLAPSO SE PUBLICA CON SU PLATA (10/09/2026) ═══
+  //
+  // Se imprimían los OCHO primeros colapsos, sin un peso y sin `⚠`: los $6.732.878 de las quince
+  // filas de Compras que chocan por (CUIT · comprobante · signo) no llegaban a ninguna celda de
+  // ningún cash flow y nadie lo veía en la corrida. El `⚠` es lo que el pipeline levanta de la
+  // salida, así que sin él el hallazgo no existe para el que lee el resumen.
+  const colapsada = plataColapsada(colapsos)
+  if (colapsada.total > 0) {
+    console.warn(`  ⚠ ${colapsos.length} colapso(s) de deduplicación dejaron ${pesos(colapsada.total)} FUERA del libro: `
+      + 'la misma clave (CUIT · comprobante · signo, o el número del cheque) llegó más de una vez.')
+    for (const o of colapsada.porOrigen) {
+      console.warn(`      ${o.pestana}: ${pesos(o.monto)} · fila(s) ${o.filas.join(', ')}`)
+    }
+    console.warn('      NO se suman solas: pueden ser dos tramos de la misma factura (sumarlas es lo correcto) o la '
+      + 'misma factura cargada dos veces (sumarlas inventaría plata). Lo decide quien cargó la fila.')
   }
   for (const c of colapsos.slice(0, 8)) {
     console.log(`    · colapsó ${c.clave.slice(0, 44)} — se queda ${c.se_queda.pestana}:${c.se_queda.fila}, cae ${c.se_descarta.pestana}:${c.se_descarta.fila}`)
