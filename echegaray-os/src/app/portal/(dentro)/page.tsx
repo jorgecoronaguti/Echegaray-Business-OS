@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../sesion'
 import { accesoDelPortal } from '../datos'
 import { obrasParaElInicio, type ObraDelInicio } from './datosObra'
+import { partirEnCursoYAnteriores } from '../obrasDelCliente'
 import { Vacio } from '../Piezas'
 import { IconoInicio, IconoFlecha } from '../iconos'
 
@@ -22,6 +23,13 @@ import { IconoInicio, IconoFlecha } from '../iconos'
 //
 // LO QUE NO SE INVENTA: una obra sin fecha de inicio cargada no dice cuándo empezó, y una sin estado
 // no se rotula «en ejecución» por descarte. Ausencia se escribe como ausencia.
+//
+// ═══ LO TERMINADO VA EN SU PROPIO GRUPO (10/09/2026) ═══
+//
+// Messina tiene cinco obras vivas y seis cerradas, entre ellas un registro viejo llamado «Messina»,
+// con el nombre del cliente. En una sola lista se leen como once frentes abiertos. Ninguna se
+// esconde y ningún nombre se toca —son registros reales y el nombre lo decide el dueño—: cambian de
+// grupo, que es lo único que el dato sostiene.
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +40,7 @@ export default async function Inicio() {
   if (!acceso) redirect('/portal/login')
 
   const obras = await obrasParaElInicio(acceso)
+  const { enCurso, anteriores } = partirEnCursoYAnteriores(obras)
 
   return (
     <section className="flex flex-col">
@@ -46,18 +55,35 @@ export default async function Inicio() {
       </p>
 
       <h2 className="mt-11 text-[11px] tracking-[.09em] text-faint">
-        {obras.length === 1 ? 'SU OBRA' : 'SUS OBRAS'}
+        {enCurso.length === 1 ? 'SU OBRA' : 'SUS OBRAS'}
       </h2>
 
       {obras.length === 0 ? (
         <div className="mt-4">
           <Vacio>Todavía no tenemos ninguna obra asociada a su acceso. Escribinos y lo resolvemos.</Vacio>
         </div>
+      ) : enCurso.length === 0 ? (
+        <div className="mt-4">
+          <Vacio>No tenemos ninguna obra suya en ejecución en este momento.</Vacio>
+        </div>
       ) : (
         <ul className="mt-1">
-          {obras.map((o) => <FilaObra key={o.id} obra={o} />)}
+          {enCurso.map((o) => <FilaObra key={o.id} obra={o} />)}
         </ul>
       )}
+
+      {/* LO TERMINADO NO SE ESCONDE: es trabajo que el cliente pagó y tiene derecho a encontrar.
+          Va en gris y abajo, como los pagos de obras anteriores en la pantalla de Pagos. */}
+      {anteriores.length ? (
+        <>
+          <h2 className="mt-10 text-[11px] tracking-[.09em] text-faint">
+            {anteriores.length === 1 ? 'OBRA ANTERIOR' : 'OBRAS ANTERIORES'}
+          </h2>
+          <ul className="mt-1 opacity-60">
+            {anteriores.map((o) => <FilaObra key={o.id} obra={o} />)}
+          </ul>
+        </>
+      ) : null}
 
       <Link
         href="/portal/pagos"

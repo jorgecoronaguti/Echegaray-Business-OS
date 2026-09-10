@@ -5,6 +5,7 @@ import { obrasParaElInicio } from '../datosObra'
 import { haceCuanto } from '../../documentos'
 import { papelesVisibles, vistaDeObra, hayAlgoQueMostrar, type Papel, type VistaDeObra } from '../../papeles'
 import { papelesDelCliente, corridasDelEspejo, type CorridaDelEspejo } from './datos'
+import { ambitosDelEspejo, corridaMasFresca } from '../../obrasDelCliente'
 import { Rubro, Vacio } from '../../Piezas'
 import { IconoCarpeta, IconoFactura, IconoDescarga, IconoCheck, IconoClip } from '../../iconos'
 
@@ -41,8 +42,14 @@ export default async function Documentos() {
 
   const [obras, todos] = await Promise.all([obrasParaElInicio(acceso), papelesDelCliente(acceso.clienteId)])
   const visibles = papelesVisibles(todos, acceso)
+  // ═══ LOS PAPELES DE UNA OBRA FUSIONADA SIGUEN SIENDO SUYOS (10/09/2026) ═══
+  //
+  // El espejo grabó la corrida con el id que la obra tenía ese día: `obra:bsa-planta`. Después
+  // «BSA - Planta» se fusionó en «ME - BSA», sus once documentos se repuntaron, y esta pantalla
+  // decía «Todavía no sincronizamos los papeles de esta obra» arriba de once papeles publicados,
+  // porque preguntaba por un ámbito que no existe. Se preguntan los dos.
   const corridas = await corridasDelEspejo([
-    ...obras.map((o) => `obra:${o.id}`),
+    ...obras.flatMap(ambitosDelEspejo),
     `cliente:${acceso.clienteId}`,
   ])
 
@@ -67,7 +74,7 @@ export default async function Documentos() {
           nombre={o.nombre}
           conTitulo={conTitulo}
           papeles={visibles.filter((p) => p.obraId === o.id)}
-          corrida={corridas.get(`obra:${o.id}`) ?? null}
+          corrida={corridaMasFresca(corridas, ambitosDelEspejo(o))}
           obraId={o.id}
         />
       ))}
