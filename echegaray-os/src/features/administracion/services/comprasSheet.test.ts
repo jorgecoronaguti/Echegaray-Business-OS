@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  claseDeAdjunto, clavesRecienCargadas, conteosDe, ESTADO, esEstructura, filtroDe, ordenarPorCarga,
+  claseDeAdjunto, clavesRecienCargadas, papelesDeCadaFila, conteosDe, ESTADO, esEstructura, filtroDe, ordenarPorCarga,
   pasa, pastillaDe, porOrdenDeCarga, RECIEN_CARGADAS, recorteDeLista,
   TOPE_EN_PANTALLA, totalesDe,
   type Filtrable,
@@ -290,4 +290,44 @@ test('el chip cuenta lo suyo y no rompe la cuenta de los otros', () => {
 
 test('«recién cargados» es una llave válida de la URL', () => {
   assert.equal(filtroDe('recienCargadas'), 'recienCargadas')
+})
+
+// ═══ EL RENGLÓN NUNCA VINCULA (10/09/2026) ═══
+const papel = (compra_clave: string | null, nombre: string) => ({ compra_clave, nombre })
+
+test('papelesDeCadaFila cuelga el papel de la fila cuya clave coincide', () => {
+  const r = papelesDeCadaFila(
+    [{ fila: 931, clave: 'c:30691865386|0035-00005853' }],
+    [papel('c:30691865386|0035-00005853', 'ticket.jpg')],
+  )
+  assert.equal(r[0].tiene_adjunto, true)
+  assert.equal(r[0].adjuntos[0].nombre, 'ticket.jpg')
+})
+
+// EL CASO REAL DE LA FILA 932: la compra es de Lliteras (CUIT 30708390557) y el único papel con ese
+// renglón fue leído con CUIT 20349213347. El atajo por número de fila se lo mostraba igual, con cara
+// de hecho. Si el atajo vuelve, este test se pone rojo.
+test('papelesDeCadaFila NO muestra el papel de otro CUIT aunque comparta el renglón', () => {
+  const r = papelesDeCadaFila(
+    [{ fila: 932, clave: 'c:30708390557|0003-00000967' }],
+    [{ ...papel('c:20349213347|0003-00000967', 'otro.jpg'), fila_compras: 932 }],
+  )
+  assert.equal(r[0].tiene_adjunto, false)
+  assert.deepEqual(r[0].adjuntos, [])
+})
+
+test('papelesDeCadaFila: un adjunto sin clave no se cuelga de ninguna fila', () => {
+  const r = papelesDeCadaFila(
+    [{ fila: 800, clave: 'p:dipot|0003-00002145' }],
+    [{ ...papel(null, 'suelto.pdf'), fila_compras: 800 }],
+  )
+  assert.equal(r[0].tiene_adjunto, false)
+})
+
+test('papelesDeCadaFila: una fila sin clave no se lleva el papel de nadie', () => {
+  const r = papelesDeCadaFila(
+    [{ fila: 700, clave: null }],
+    [{ ...papel('c:30708390557|0003-00000967', 'x.jpg'), fila_compras: 700 }],
+  )
+  assert.equal(r[0].tiene_adjunto, false)
 })

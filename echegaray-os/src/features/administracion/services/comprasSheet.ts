@@ -279,3 +279,40 @@ export function recorteDeLista<T extends { fila: number }>(
   const corte = Math.max(tope, donde + 1)
   return { enPantalla: filas.slice(0, corte), ocultas: filas.length - corte }
 }
+
+/**
+ * EL PAPEL DE CADA FILA — SÓLO POR CLAVE. Puro.
+ *
+ * ═══ EL DEFECTO QUE ESTO SACA (10/09/2026, reportado por el dueño) ═══
+ *
+ * Acá había un atajo: si la clave de la fila no encontraba ningún adjunto, se buscaba POR NÚMERO DE
+ * RENGLÓN (`porFila.get(c.fila)`). Ese atajo es exactamente lo que la migración de `compra_adjunto`
+ * prohíbe en su propio comentario —«`fila_compras` se guarda como pista de la última posición
+ * conocida, NUNCA como vínculo»— porque el ID de la pestaña es `=ROW()-4` y una fila insertada
+ * arriba corre todos los renglones de abajo.
+ *
+ * Medido sobre la base viva antes del arreglo: 5 filas recibían su papel únicamente por ese atajo, y
+ * en una de ellas —la fila 932, Lliteras, CUIT 30708390557— el papel colgado era un comprobante
+ * leído con CUIT 20349213347. La pantalla mostraba, con cara de hecho, el comprobante de otro.
+ *
+ * La conciliación de claves (`c:<cuit>|…` contra `p:<proveedor>|…` del mismo comprobante) NO se hace
+ * acá: se hace una sola vez, en el sync, contra el espejo recién escrito
+ * (`orquestador/lib/comprobantes/reconciliar-adjuntos.mjs`). Dos definiciones de «este papel es de
+ * esta compra» serían dos verdades, y la pantalla no es el lugar donde se decide una identidad.
+ */
+export function papelesDeCadaFila<
+  F extends { fila: number; clave: string | null },
+  A extends { compra_clave: string | null },
+>(filas: F[], adjuntos: A[]): (F & { adjuntos: A[]; tiene_adjunto: boolean })[] {
+  const porClave = new Map<string, A[]>()
+  for (const a of adjuntos) {
+    if (!a.compra_clave) continue
+    const l = porClave.get(a.compra_clave) ?? []
+    l.push(a)
+    porClave.set(a.compra_clave, l)
+  }
+  return filas.map((c) => {
+    const suyos = (c.clave ? porClave.get(c.clave) : null) ?? []
+    return { ...c, adjuntos: suyos, tiene_adjunto: suyos.length > 0 }
+  })
+}
