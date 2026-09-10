@@ -356,16 +356,34 @@ function llamar(n, args, ev) {
     //
     // Rangos de distinto largo son ERROR, igual que en Sheets y que en SUMIFS de acá arriba: un
     // modelo que «hace lo que puede» deja pasar una fórmula que en el archivo real da #N/A.
+    // ═══ UN CRITERIO QUE ES UN RANGO CONTESTA UN RANGO (10/09/2026) ═══
+    //
+    // `COUNTIFS(G5:G400;G5:G400; M5:M400;M5:M400; …)>1` es EL idioma con el que este repo pregunta
+    // «¿esta fila tiene otra idéntica?» (lib/cobranzas-duplicado.mjs), y Sheets lo resuelve fila por
+    // fila devolviendo un vector. Sin esta rama el criterio-array caía en `cumpleCriterio(valor,
+    // [396 celdas])`, que compara contra un `String(array)` y da 0 en todas: el detector de cobros
+    // indistinguibles —el que decide si `_CAJA_ANEXO` le resta $10M al efectivo— era literalmente
+    // imposible de evaluar en frío, y por eso su defecto vivió en el archivo sin que ningún test
+    // pudiera verlo.
     case 'COUNTIFS': {
       if (v.length < 2 || v.length % 2 !== 0) throw new ErrorHoja('#N/A — COUNTIFS necesita pares rango;criterio')
       const base = plano([v[0]])
-      let sel = base.map((_, i) => i)
-      for (let k = 0; k + 1 < v.length; k += 2) {
-        const rango = plano([v[k]])
-        if (rango.length !== base.length) throw new ErrorHoja('#N/A — rangos de distinto largo')
-        sel = sel.filter((i) => cumpleCriterio(rango[i], v[k + 1]))
+      const contar = (critDe) => {
+        let sel = base.map((_, i) => i)
+        for (let k = 0; k + 1 < v.length; k += 2) {
+          const rango = plano([v[k]])
+          if (rango.length !== base.length) throw new ErrorHoja('#N/A — rangos de distinto largo')
+          const c = critDe(k)
+          sel = sel.filter((i) => cumpleCriterio(rango[i], c))
+        }
+        return sel.length
       }
-      return sel.length
+      const largoCrit = v.reduce((n, x, k) => (k % 2 === 1 && Array.isArray(x) ? Math.max(n, x.length) : n), 0)
+      if (!largoCrit) return contar((k) => v[k + 1])
+      if (v.some((x, k) => k % 2 === 1 && Array.isArray(x) && x.length !== largoCrit)) {
+        throw new ErrorHoja('#N/A — criterios de distinto largo')
+      }
+      return Array.from({ length: largoCrit }, (_, j) => contar((k) => (Array.isArray(v[k + 1]) ? v[k + 1][j] : v[k + 1])))
     }
     // SUMIF(rango; criterio; [rangoSuma]) — sin el tercero suma el propio rango filtrado.
     case 'SUMIF': {
