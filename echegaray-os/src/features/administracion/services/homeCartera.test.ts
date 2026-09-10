@@ -39,7 +39,10 @@ const obra = (p: Partial<ObraDeCartera> & { obra_id: string }): ObraDeCartera =>
 /** Lo que publica `obra_economia_cartera` para una obra. Es la ÚNICA fuente del precio por obra. */
 const eco = (obraId: string, contratado: number | null, extra: Partial<EconomiaDeObra> = {}):
 [string, EconomiaDeObra] => [obraId, {
-  obra_canonica_id: obraId, contratado, origen: contratado === null ? null : 'oc-pesos', ...extra,
+  obra_canonica_id: obraId, contratado, contratado_usd: null, tipo_cambio: null,
+  origen: contratado === null ? null : 'oc-pesos', referencia: null, nota: null,
+  oc_civa_ventana: null, oc_civa_historico: null, oc_n_ventana: null, oc_n_historico: null,
+  ...extra,
 }]
 
 /** Una fila de `public.cliente_economia`, que es de donde salen los totales del cliente. */
@@ -323,132 +326,89 @@ test('Messina: la fila del cliente publica lo que dice la vista, no la suma del 
 // lleva IVA y el denominador no, y eso se dice en vez de esconderse cambiando el numerador.
 
 /**
- * Un Supabase de mentira que devuelve las DOS columnas: la buena y la que ya engañó una vez.
+ * UN SUPABASE DE MENTIRA SOBRE `public.obra_cuenta`.
  *
- * `columnasQueExisten` es lo que la BASE tiene hoy: pedir una que no está devuelve 42703, igual que
- * PostgREST. Es lo que hace probable el `select` tolerante de `imputacion` — con la migración sin
- * aplicar y con ella aplicada, sin tocar el código entre las dos corridas.
+ * Guarda de qué TABLA y con qué columnas se preguntó: la fuente es parte de la regla desde el
+ * 10/09/2026 —`obra_cuenta` publica el cobro con IVA y `obra_cobranza` el neto— y una lectura que
+ * cambia de vista cambia el número sin cambiar una sola cuenta.
  */
-function baseConLasDos(
-  filas: Record<string, unknown>[], recordar: string[],
-  columnasQueExisten = ['obra_id', 'cobrado', 'cobrado_neto', 'por_cobrar_proyectado'],
-) {
+function baseDeCuenta(filas: Record<string, unknown>[], recordar: string[] = [], tablas: string[] = []) {
   return {
-    from: () => ({
-      select: (columnas: string) => {
-        recordar.push(columnas)
-        const pedidas = columnas.split(',').map((c) => c.trim())
-        const falta = pedidas.find((c) => !columnasQueExisten.includes(c))
-        if (falta) {
-          return Promise.resolve({ data: null, error: { code: '42703', message: `column ${falta} does not exist` } })
-        }
-        // Sólo devuelve lo que se pidió, igual que PostgREST: pedir `cobrado` no puede traer el neto.
-        return Promise.resolve({
-          data: filas.map((f) => Object.fromEntries(pedidas.map((c) => [c, f[c] ?? null]))),
-          error: null,
-        })
-      },
-    }),
+    from: (tabla: string) => {
+      tablas.push(tabla)
+      return {
+        select: (columnas: string) => {
+          recordar.push(columnas)
+          const pedidas = columnas.split(',').map((c) => c.trim())
+          return Promise.resolve({
+            data: filas.map((f) => Object.fromEntries(pedidas.map((c) => [c, f[c] ?? null]))),
+            error: null,
+          })
+        },
+      }
+    },
   } as unknown as SupabaseClient
 }
 
-// ═══ LAS DOS ESPECIES DEL COBRO SE LEEN, Y CADA UNA TIENE SU TRABAJO (10/09/2026) ═══
-//
-// La COLUMNA es el TOTAL con IVA, porque es lo que publica la pestaña OBRAS y es contra esa pestaña
-// que el dueño lee esta pantalla. El NETO se sigue leyendo porque es el único comparable contra lo
-// contratado —que no lleva IVA— y sin él una resta mezclaría dos magnitudes. Que la lectura traiga
-// las dos es lo que impide que la próxima pantalla elija la que tenga a mano.
-
-test('la lectura trae el cobrado en sus dos especies: el total y el neto', async () => {
+test('el cobro se lee de `obra_cuenta` — la fila de la pestaña OBRAS, no `obra_cobranza`', async () => {
+  const tablas: string[] = []
   const pedidas: string[] = []
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [{ obra_id: 'quattropani', cobrado: 102_606_668.76, cobrado_neto: 84_697_934.83 }],
-    pedidas,
+  const cobrado = await getCobradoPorObra(baseDeCuenta(
+    [{
+      obra_id: 'quattropani', cobrado_total: 107_877_339, cobrado_neto: 89_154_825,
+      por_cobrar: 52_357_048, vencido: null, proximo_cobro_fecha: '2026-09-25',
+      proximo_cobro_medio: 'Transferencia', imputacion: 'alias',
+    }],
+    pedidas, tablas,
   ))
-  assert.ok(pedidas[0].includes('cobrado_neto'), `pidió «${pedidas[0]}»: sin el neto no hay qué restar`)
-  assert.ok(pedidas[0].includes('vencido'), 'y se pide vencido: la columna ▲ de OBRAS')
-  assert.ok(pedidas[0].includes('proximo_cobro'), 'y el próximo cobro, que es la última columna de OBRAS')
-  assert.equal(
-    cobrado?.por.get('quattropani')?.total, 102_606_668.76,
-    'la columna «Cobrado» de OBRAS es el TOTAL con IVA: dibujar el neto fue el defecto del 10/09',
-  )
-  assert.equal(cobrado?.por.get('quattropani')?.neto, 84_697_934.83)
+  assert.deepEqual(tablas, ['obra_cuenta'],
+    '`obra_cobranza` publica el cobro NETO: leerla de ahí es el defecto que el dueño vio contra el Sheet')
+  for (const columna of ['cobrado_total', 'cobrado_neto', 'por_cobrar', 'vencido',
+    'proximo_cobro_fecha', 'proximo_cobro_medio', 'imputacion']) {
+    assert.ok(pedidas[0].includes(columna), `no se pidió \`${columna}\`: la fila no puede dibujarla`)
+  }
+  const q = cobrado?.por.get('quattropani')
+  assert.equal(q?.total, 107_877_339, 'la columna «Cobrado» de OBRAS es el TOTAL con IVA')
+  assert.equal(q?.neto, 89_154_825, 'y el neto se sigue leyendo: es lo comparable contra el contrato')
+  assert.equal(q?.porCobrar, 52_357_048)
+  assert.equal(q?.vencido, null, 'lo que la vista no publica NO se inventa: vacío, nunca cero')
+  assert.deepEqual(q?.proximo, { fecha: '2026-09-25', medio: 'Transferencia' })
+  assert.equal(q?.imputacion, 'alias')
 })
 
-// ═══ EL `select` TOLERANTE DE `imputacion` ═══
-//
-// La columna la agrega la migración que reparte el cobro por obra (la OC de la columna H de
-// Cobranzas atada a `cliente_orden.obra_id`). El código la pide SIEMPRE: el día que la migración se
-// aplique, la barra por obra enciende sola y sin tocar una línea. Mientras no exista, PostgREST
-// devuelve 42703 y hay que volver a pedir sin ella — si no, la lectura falla entera y la columna
-// Cobrado se apaga para todo el mundo.
-//
-// LOS DOS MUNDOS SE PRUEBAN CON EL MISMO CÓDIGO, que es lo único que prueba que la migración va a
-// encender la barra sin una segunda entrega.
-
-test('sin la columna `imputacion` la lectura NO se cae: se vuelve a pedir sin ella', async () => {
-  const pedidas: string[] = []
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [{ obra_id: 'quattropani', cobrado_neto: 84_697_934.83 }], pedidas,
+test('una obra sin ninguna fila de Cobranzas NO entra al mapa: un hueco no es un cero', async () => {
+  const cobrado = await getCobradoPorObra(baseDeCuenta(
+    [{ obra_id: 'messina-bsa', cobrado_total: null, cobrado_neto: null, por_cobrar: null }],
   ))
-  assert.ok(pedidas[0].includes('imputacion'), 'se pide primero CON la columna, para que encienda sola')
-  assert.equal(pedidas.length, 3, 'baja los dos escalones: sin vencido primero, sin imputación después')
-  assert.equal(cobrado?.por.get('quattropani')?.neto, 84_697_934.83)
-  assert.equal(cobrado?.por.get('quattropani')?.imputacion, null, 'la columna no existe: no se inventa')
+  assert.equal(cobrado?.por.has('messina-bsa'), false, 'una barra en 0 % afirmaría que se midió')
 })
 
-// ═══ LOS ESCALONES: LAS COLUMNAS NUEVAS NO LLEGAN TODAS JUNTAS ═══
-//
-// `imputacion` la trae una migración y `vencido`/`proximo_cobro` otra. Con un solo reintento «todo o
-// nada», el estado intermedio —imputación aplicada, vencido todavía no— caía hasta la forma más
-// vieja y apagaba la columna Cobrado de TODAS las obras: un dato que la base ya tenía, perdido por
-// la forma de pedirlo. Este test es el que se pone rojo si alguien vuelve al reintento único.
-
-test('con imputación pero sin vencido, la imputación NO se pierde por el camino', async () => {
-  const pedidas: string[] = []
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [{ obra_id: 'messina-bsa', cobrado: 4_848_135, cobrado_neto: 4_006_723, imputacion: 'oc' }],
-    pedidas,
-    ['obra_id', 'cobrado', 'cobrado_neto', 'por_cobrar_proyectado', 'imputacion'],
+test('una obra que todavía no cobró pero TIENE por cobrar sí entra', async () => {
+  // ME - ADICIONAL TERCER MURO: cobrado «—» y $12.100.000 por cobrar. Si el mapa la descartara por
+  // no tener cobro, su saldo y su vencimiento desaparecerían de la pantalla.
+  const cobrado = await getCobradoPorObra(baseDeCuenta(
+    [{ obra_id: 'messina-adicional-tercer-muro', cobrado_total: null, por_cobrar: 12_100_000 }],
   ))
-  assert.equal(pedidas.length, 2, 'baja UN escalón, no dos')
-  assert.equal(cobrado?.por.get('messina-bsa')?.imputacion, 'oc')
-  assert.equal(cobrado?.disponible, true, 'la base sí sabe repartir: la barra tiene que encender')
-  assert.equal(cobrado?.por.get('messina-bsa')?.vencido, null, 'lo que la vista no publica, no se inventa')
-})
-
-test('con la columna aplicada, la imputación llega tal cual y sin segundo viaje', async () => {
-  const pedidas: string[] = []
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [
-      { obra_id: 'messina-playon-azufre', cobrado_neto: 32_500_000, imputacion: 'oc' },
-      { obra_id: 'messina', cobrado_neto: 2_330_000, imputacion: 'cliente' },
-    ],
-    pedidas,
-    ['obra_id', 'cobrado', 'cobrado_neto', 'por_cobrar_proyectado', 'vencido', 'proximo_cobro',
-      'proximo_medio', 'imputacion'],
-  ))
-  assert.equal(pedidas.length, 1, 'con la columna viva no hay reintento')
-  assert.equal(cobrado?.por.get('messina-playon-azufre')?.imputacion, 'oc')
-  assert.equal(cobrado?.por.get('messina')?.imputacion, 'cliente')
+  assert.equal(cobrado?.por.get('messina-adicional-tercer-muro')?.porCobrar, 12_100_000)
+  assert.equal(cobrado?.por.get('messina-adicional-tercer-muro')?.total, null)
 })
 
 test('un valor de imputación que el OS no conoce se descarta, no se dibuja', async () => {
   // Si mañana la vista publica un cuarto valor, la fila NO puede dibujar una palabra que nadie
   // definió: se trata como «no se sabe» hasta que alguien la agregue acá a propósito.
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [{ obra_id: 'o1', cobrado_neto: 1, imputacion: 'certificado' }], [],
-    ['obra_id', 'cobrado', 'cobrado_neto', 'por_cobrar_proyectado', 'vencido', 'proximo_cobro',
-      'proximo_medio', 'imputacion'],
+  const cobrado = await getCobradoPorObra(baseDeCuenta(
+    [{ obra_id: 'o1', cobrado_total: 1, imputacion: 'certificado' }],
   ))
   assert.equal(cobrado?.por.get('o1')?.imputacion, null)
 })
 
-test('sin cobranzas cobradas la obra NO entra al mapa: un hueco no es un cero', async () => {
-  const cobrado = await getCobradoPorObra(baseConLasDos(
-    [{ obra_id: 'messina-bsa', cobrado: null, cobrado_neto: null }], [],
-  ))
-  assert.equal(cobrado?.por.has('messina-bsa'), false, 'una barra en 0 % afirmaría que se midió')
+test('si la lectura falla, es `null` y no un mapa vacío', async () => {
+  // «No pude leer» y «no hay cobros» son dos cosas distintas: con un mapa vacío la pantalla diría
+  // que nadie cobró nada.
+  const rota = {
+    from: () => ({ select: () => Promise.resolve({ data: null, error: { code: '42501' } }) }),
+  } as unknown as SupabaseClient
+  assert.equal(await getCobradoPorObra(rota), null)
 })
 
 // ═══ LOS CONTEOS QUE LA FILA ESCRIBE ═══
@@ -612,7 +572,9 @@ test('la regla NO toca una imputación que la base sí pudo hacer', () => {
 
 test('sin cobro, la única obra no se inventa una atribución', () => {
   const sinNada = atribuirAlaUnicaObra([{
-    obra_id: 'o1', nombre: 'O', avance: null, jefe: null, contratado: 100, origenContratado: 'oc-pesos',
+    obra_id: 'o1', nombre: 'O', avance: null, jefe: null, contratado: 100, contratadoUsd: null,
+    tipoCambio: null, origenContratado: 'oc-pesos', referencia: null, nota: null,
+    ocCivaVentana: null, ocCivaHistorico: null, ocNVentana: null, ocNHistorico: null,
     certificacion: { texto: 'sin certificar', reclama: false },
     cobradoTotal: null, cobradoNeto: null, porCobrar: null, vencido: null, proximo: null,
     imputacion: 'cliente', cobroDisponible: true,

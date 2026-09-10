@@ -20,22 +20,61 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface EconomiaDeObra {
   obra_canonica_id: string
+  /** En PESOS. Cuando el contrato es en dólares, es la valuación al tipo de cambio VIVO. */
   contratado: number | null
+  /**
+   * LA MONEDA DEL CONTRATO SE DICE, NO SE ESCONDE (dueño, 10/09/2026 · Quattropani).
+   *
+   * El Salón Comercial se contrató en U$S 63.000. La pantalla publicaba sólo los pesos y el número
+   * cambiaba solo de un día para otro sin que nada lo explicara. `contratado_usd` es el contrato y
+   * `contratado` su valuación de HOY: se dibujan los dos, con el tipo de cambio en el `title`.
+   */
+  contratado_usd: number | null
+  /** El TC con el que se valuó. `null` = el contrato es en pesos y no hubo que valuar nada. */
+  tipo_cambio: number | null
   /**
    * POR QUÉ CAMINO SALIÓ EL CONTRATADO (`obra_economia_cartera.origen`). No es metadato: cambia lo
    * que el número SIGNIFICA, y hasta el 10/09/2026 la pantalla los dibujaba todos iguales.
    *
    *   `oc-pesos` · `oc-usd-x-tc`  hay un PRECIO en la columna de contrato de OBRAS.
+   *   `oc-cliente`                OBRAS no lo declara, pero las ÓRDENES DE COMPRA que mandó el
+   *                               cliente suman lo mismo (±$1): hay un papel que respalda el número
+   *                               y `referencia` dice cuál. NO es una suma viva.
    *   `suma-viva`                 OBRAS no tiene precio: es la suma de lo que Cobranzas registró
    *                               como venta hasta hoy. Sube cada vez que se factura, y por eso no
    *                               se puede leer como «lo que vale la obra».
    *   `null`                      no hay ninguno de los dos.
    */
   origen: string | null
+  /** El papel que respalda el contratado: «según OC 2256». `null` = no lo respalda ninguno. */
+  referencia: string | null
+  /**
+   * LA DISCREPANCIA DECLARADA contra las OC cargadas: «OC $X c/IVA ($Y neto) vs Cobranzas $Z».
+   * Se publica cuando la obra TIENE órdenes y no cierran. Una diferencia escrita se resuelve; una
+   * que sólo existe entre dos pantallas, no.
+   */
+  nota: string | null
+  /**
+   * LOS DOS TOTALES DE ÓRDENES DE COMPRA, CON IVA, Y POR QUÉ SON DOS.
+   *
+   * `oc_civa_ventana` es lo que emitió el cliente DENTRO del año que acota el contratado;
+   * `oc_civa_historico`, lo de otros años — típicamente las órdenes que entraron con una obra
+   * fusionada. NO SE SUMAN: BSA absorbió `bsa-planta` y con ella tres OC de 2024 por $38.321.214,
+   * y el panel mostraba «OC · OP c/IVA $49.886.583» al lado de un contratado de $17,7 M.
+   */
+  oc_civa_ventana: number | null
+  oc_civa_historico: number | null
+  oc_n_ventana: number | null
+  oc_n_historico: number | null
 }
 
 /** El `origen` que dice «esto NO es un precio contratado, es lo vendido hasta hoy». */
 export const ORIGEN_SUMA_VIVA = 'suma-viva'
+
+/** El `origen` que dice «no lo declara OBRAS, pero hay una ORDEN DE COMPRA que lo respalda». Es un
+ *  papel del cliente, no una suma que sube sola: la fila lo dice con la `referencia` («según OC
+ *  2256») en vez de con la marca de suma viva. */
+export const ORIGEN_OC_CLIENTE = 'oc-cliente'
 
 export const SIN_PRECIO_EN_OBRAS = 'sin precio en OBRAS'
 
@@ -49,14 +88,22 @@ export async function getEconomiaDeObras(
 ): Promise<Map<string, EconomiaDeObra> | null> {
   const { data, error } = await supabase
     .from('obra_economia_cartera')
-    .select('obra_canonica_id, contratado, origen')
+    .select('obra_canonica_id, contratado, contratado_usd, tipo_cambio, origen, referencia, nota, oc_civa_ventana, oc_civa_historico, oc_n_ventana, oc_n_historico')
   if (error) return null
   const m = new Map<string, EconomiaDeObra>()
   for (const f of (data ?? []) as Record<string, unknown>[]) {
     m.set(String(f.obra_canonica_id), {
       obra_canonica_id: String(f.obra_canonica_id),
       contratado: aNumero(f.contratado),
+      contratado_usd: aNumero(f.contratado_usd),
+      tipo_cambio: aNumero(f.tipo_cambio),
       origen: f.origen == null ? null : String(f.origen),
+      referencia: f.referencia == null ? null : String(f.referencia),
+      nota: f.nota == null ? null : String(f.nota),
+      oc_civa_ventana: aNumero(f.oc_civa_ventana),
+      oc_civa_historico: aNumero(f.oc_civa_historico),
+      oc_n_ventana: aNumero(f.oc_n_ventana),
+      oc_n_historico: aNumero(f.oc_n_historico),
     })
   }
   return m
@@ -82,16 +129,10 @@ export function aNumero(v: unknown): number | null {
 // tienen sus propios tests allá. Dejar acá una función que nadie llama sería verde que no cuida
 // nada, y peor: la próxima pantalla la encontraría servida y la columna volvería sola.
 
-// ═══ `sumaConHuecos` Y `pctTexto` SE RETIRARON CON SU ÚLTIMO CONSUMIDOR (10/09/2026) ═══
+// ═══ `sumaConHuecos`, `pctTexto` Y `margenDeLaFila` SE RETIRARON CON SU ÚLTIMO CONSUMIDOR ═══
 //
-// `sumaConHuecos` sólo sumaba las dos columnas de costo de la cartera (MO ppto. · Mat. ppto.), que
-// se fueron con la orden del dueño de sacar el ERP del CRM; `pctTexto` ya había quedado sin llamador
-// cuando se retiró Margen. Una función exportada que nadie llama no es inofensiva: es la pieza
-// servida que hace que la columna vuelva sin que nadie la decida — pasó con el margen.
-
-// ═══ `margenDeLaFila` TAMBIÉN SE FUE (10/09/2026) ═══
-//
-// Era la última función de este módulo que restaba costos contra el contratado. Se retiró con las
-// dos lecturas de costo: una regla sin consumidor es verde que no cuida nada, y servida como estaba
-// era la invitación a que la columna volviera. El margen se mide en `features/obras`, contra el
-// costo REAL y el forecast, y tiene sus tests allá.
+// Las tres restaban o sumaban COSTOS contra el contratado, y el costo salió del CRM el 10/09/2026
+// por orden del dueño. Una función exportada que nadie llama no es inofensiva: es la pieza servida
+// que hace que la columna vuelva sin que nadie la decida — pasó con el margen. El margen de una
+// obra vive en `features/obras` (`obra_economia`, `planVsReal`), medido contra el costo REAL, y
+// tiene sus tests allá.

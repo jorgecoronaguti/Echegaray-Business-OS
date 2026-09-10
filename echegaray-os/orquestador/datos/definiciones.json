@@ -303,9 +303,9 @@
     },
     {
       "concepto": "cobro_por_obra",
-      "canonica": "public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra)",
+      "canonica": "public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra) · public.obra_cuenta (la fila entera de la pestaña OBRAS: contratado, cobrado total y neto, por cobrar, vencido y próximo cobro)",
       "propietario": "public.cobranza_imputacion — la cadena OC → cliente_orden → obra; public.obra_alias.en_texto_libre — el diccionario de los textos que nombran una obra",
-      "criterio": "A qué OBRA pertenece una fila de Cobranzas se decide en tres pasos y en ese orden: (1) la orden de compra que declara la columna H (`cobranzas.orden_compra`), buscada por número CANÓNICO en `cliente_orden` del MISMO cliente — es el único eslabón documental; (2) el texto de `concepto`/`orden_compra` que NOMBRA una obra del cliente, sólo contra alias marcados `obra_alias.en_texto_libre`; (3) la obra bolsa del cliente, marcada `imputacion = 'cliente'`, que significa «no se pudo» y NO autoriza a dibujar una barra de cobro por obra. Dos obras candidatas ⇒ ninguna. El papel le gana al texto: la fila 94 de Messina nombra el Playón de Azufre y pertenece al Adicional Tercer Muro según su OC 00002-00002256. La imputación reparte plata ENTRE OBRAS DE UN MISMO CLIENTE y nunca entre clientes.",
+      "criterio": "A qué OBRA pertenece una fila de Cobranzas se decide en tres pasos y en ese orden: (1) la orden de compra que declara la columna H (`cobranzas.orden_compra`), buscada por número CANÓNICO en `cliente_orden` del MISMO cliente — es el único eslabón documental; (2) el texto de `concepto`/`orden_compra` que NOMBRA una obra del cliente, sólo contra alias marcados `obra_alias.en_texto_libre`; (3) la obra bolsa del cliente, marcada `imputacion = 'cliente'`, que significa «no se pudo» y NO autoriza a dibujar una barra de cobro por obra. Dos obras candidatas ⇒ ninguna. El papel le gana al texto: la fila 94 de Messina nombra el Playón de Azufre y pertenece al Adicional Tercer Muro según su OC 00002-00002256. La imputación reparte plata ENTRE OBRAS DE UN MISMO CLIENTE y nunca entre clientes. CONSUMIDORES DEL LADO DEL ORQUESTADOR: orquestador/lib/cobranzas-contrato.mjs (`filasDeObra`, con el selector `imputadas`), orquestador/lib/obras-economia.mjs y orquestador/scripts/obras-economia-sync.mjs, que persiste el contratado de cada obra. El diccionario lo arma orquestador/lib/cobranza-obra-diccionario.mjs leyendo las tablas base — la vista lleva ve_economia() y desde la conexión de servicio devolvería cero filas sin dar error.",
       "ventana": "acumulado, el mismo de `cobrado`. La imputación no tiene ventana: es de la fila, no del período.",
       "confianza": "D · conocimiento interno validado: la cadena se apoya en los papeles ya cargados en `cliente_orden` y los alias nuevos salen cada uno de una fila real de Cobranzas, citada en `obra_alias.ejemplo_raw`",
       "prohibidas": [
@@ -316,9 +316,26 @@
         {
           "patron": "obra_alias[^\\n]*(concepto|orden_compra)",
           "porque": "Cruzar el diccionario de alias contra el texto libre de una cobranza fuera de `cobranza_imputacion` es una SEGUNDA regla de imputación: sin el recorte por cliente y sin la marca `en_texto_libre`, el alias «san francisco» se lleva «Saldo obras San Francisco — cuota 1 de 4» —$ 47,6 M de todas las obras— a una sola obra."
+        },
+        {
+          "patron": "needle:\\s*[A-Za-z_]+\\.ventaTexto",
+          "porque": "Seleccionar las filas de una obra buscando el NOMBRE de la obra dentro del Concepto o de la Orden de Compra es una SEGUNDA regla de imputación, y da distinto: la fila 46 de Messina («ACTUALIZACION DE PRECIOS OC 02-00000279», $3.583.956 netos) es de BSA por su orden 00002-00001984 y no dice «BSA» en ninguna columna. Con el needle, el contratado de BSA salía $14.120.243,40 y el cobrado —que ya usaba la imputación— incluía esa fila: la misma obra medida sobre dos universos. Lo que LEE usa `filasDeObra(..., { imputadas })`; el needle queda sólo para los tres generadores de Sheets, que emiten criterios de SUMIFS y no pueden consultar Postgres."
         }
       ],
-      "excepciones": []
+      "excepciones": [
+        {
+          "archivo": "orquestador/lib/obras-grilla.mjs",
+          "porque": "ARMA LA FÓRMULA de la pestaña OBRAS. La celda D es un SUMIFS que Sheets evalúa sobre la propia hoja: no hay forma de que consulte cobranza_imputacion. Es el ÚNICO lugar donde el needle es la definición correcta, porque acá el needle ES el criterio que se publica."
+        },
+        {
+          "archivo": "orquestador/scripts/obras-pestana.mjs",
+          "porque": "Lee el contrato declarado en Cobranzas para la MISMA pestaña y con el MISMO universo que la fórmula que escribe: si leyera con la imputación y publicara con el needle, el número de la celda y el control que lo verifica mirarían filas distintas."
+        },
+        {
+          "archivo": "orquestador/lib/calendario-hitos.mjs",
+          "porque": "Genera la pestaña «Calendario de Cobros», que tiene el mismo límite: sus celdas son fórmulas sobre la hoja. Marca el ⚠ de «el cobro cae después del fin de obra» sobre el mismo universo que la venta de esa obra EN LA PESTAÑA."
+        }
+      ]
     },
     {
       "concepto": "costo_de_obra",

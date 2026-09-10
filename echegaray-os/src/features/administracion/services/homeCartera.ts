@@ -60,6 +60,23 @@ export interface ObraEnCurso {
   jefe: string | null
   /** Lo que OBRAS publica: contratado de la OC de Cobranzas. `null` = «sin precio en OBRAS». */
   contratado: number | null
+  /** El contrato en DÓLARES, cuando lo es. La fila publica los dos: la moneda del contrato y su
+   *  valuación de hoy. Quattropani se contrató en U$S 63.000 y la pantalla mostraba sólo los pesos,
+   *  que cambian solos cada día sin que nada lo explique. */
+  contratadoUsd: number | null
+  /** El TC con el que se valuó ese contrato. `null` = contrato en pesos. */
+  tipoCambio: number | null
+  /** El papel que respalda el contratado: «según OC 2256». `null` = no lo respalda ninguno. */
+  referencia: string | null
+  /** La discrepancia declarada contra las OC cargadas. Va al `title`, nunca dibujada al lado. */
+  nota: string | null
+  /** LAS OC DEL TRABAJO, CON IVA, DENTRO DE LA VENTANA DEL AÑO que acota el contratado, y las de
+   *  otros años aparte. NO SE SUMAN: BSA absorbió `bsa-planta` con tres OC de 2024 por $38,3 M y la
+   *  celda mostraba $49.886.583 al lado de un contratado de $17,7 M. */
+  ocCivaVentana: number | null
+  ocCivaHistorico: number | null
+  ocNVentana: number | null
+  ocNHistorico: number | null
   /**
    * DE QUÉ CAMINO SALIÓ ESE NÚMERO (`obra_economia_cartera.origen`). `suma-viva` NO es un precio
    * contratado: es lo que Cobranzas lleva registrado como venta, y la fila tiene que decirlo — ME -
@@ -231,82 +248,53 @@ export async function getObrasDeLaCartera(
 export async function getCobradoPorObra(
   supabase: SupabaseClient,
 ): Promise<CobroPorObra | null> {
-  // ═══ EL `select` ES TOLERANTE A PROPÓSITO, Y ES LO ÚNICO QUE LO ES ═══
+  // ═══ SE LEE `obra_cuenta` Y NO `obra_cobranza` (10/09/2026, migración 20260910T2356) ═══
   //
-  // `imputacion` la agrega la migración que reparte el cobro por obra (OC de la columna H de
-  // Cobranzas → `cliente_orden.obra_id`). Se pide primero CON la columna: el día que la migración
-  // se aplique, la barra por obra enciende sola y sin tocar código. Mientras no exista, PostgREST
-  // devuelve 42703 y se vuelve a pedir sin ella.
+  // `obra_cuenta` ES la fila de la pestaña OBRAS traducida a Postgres: contrato, cobro con IVA,
+  // saldo, vencido con el reloj de la emisión + 30 días, y el próximo cobro con su medio — los
+  // mismos criterios que `orquestador/scripts/obras-pestana.mjs`, y probados contra el Sheet en
+  // `obra-cuenta.pg.test.mjs`. `obra_cobranza` sigue viva y sirve para otra pregunta (lo cobrado y
+  // lo por cobrar de una obra, sin ventana de año); mezclarlas era cómo la pantalla terminaba
+  // publicando el neto donde el Sheet publica el bruto.
   //
-  // NO ES UN «por las dudas» ni un patrón para copiar: es el ÚNICO caso del módulo, y sólo se
-  // tolera la AUSENCIA de una columna nueva. Cualquier otro error —permiso, red, RLS— sigue
-  // devolviendo `null`, que es «no pude leer» y no «no hay cobros».
-  // ═══ SE BAJA UN ESCALÓN POR VEZ, Y NO DOS ═══
-  //
-  // Las columnas nuevas no llegan todas juntas: `imputacion` la trae una migración y
-  // `vencido`/`proximo_cobro` otra. Con un solo reintento «todo o nada», el día que existiera
-  // `imputacion` pero no `vencido` la lectura caería hasta la forma más vieja y APAGARÍA la columna
-  // Cobrado de todas las obras — un dato que la base ya tiene, perdido por la forma de pedirlo.
-  type Leido = { data: unknown; error: { code?: string } | null }
-  let leido: Leido = { data: null, error: null }
-  let escalon = 0
-  for (; escalon < ESCALONES_COBRO.length; escalon++) {
-    leido = await supabase.from('obra_cobranza').select(ESCALONES_COBRO[escalon]) as unknown as Leido
-    if (leido.error?.code !== COLUMNA_INEXISTENTE) break
-  }
-  const { data, error } = leido
+  // NO HAY `select` TOLERANTE ACÁ. Las columnas nacen todas juntas con la vista: si la lectura
+  // falla, es «no pude leer» —y se devuelve `null`, que la pantalla dice con palabras— y no un
+  // hueco que se dibuje como cero.
+  const { data, error } = await supabase
+    .from('obra_cuenta')
+    .select('obra_id, cobrado_total, cobrado_neto, por_cobrar, vencido, proximo_cobro_fecha, proximo_cobro_medio, imputacion')
   if (error) return null
-  // «Puede repartir» = la vista publica `imputacion`, o sea que no hizo falta bajar hasta el último
-  // escalón, que es el único sin esa columna.
-  const disponible = escalon < ESCALONES_COBRO.length - 1
   const por = new Map<string, CobroDeObra>()
   for (const f of (data ?? []) as unknown as FilaCobro[]) {
-    // NULL cuando la obra tiene filas de Cobranzas pero ninguna cobrada. Eso NO es cero cobrado: es
-    // que todavía no entró nada, y la barra lo dibuja como 0 sólo si la obra aparece con un número.
-    // Un null no se guarda: el mapa dice quién tiene cobro, no quién no.
-    if (f.cobrado_neto == null && f.por_cobrar_proyectado == null) continue
+    // UNA OBRA SIN NINGUNA FILA DE COBRANZAS NO ENTRA AL MAPA. Eso NO es cero cobrado: es que no
+    // hay nada anotado contra ella, y la celda lo dice quedándose vacía.
+    if (f.cobrado_total == null && f.cobrado_neto == null && f.por_cobrar == null) continue
     por.set(f.obra_id, {
-      total: numero(f.cobrado),
+      total: numero(f.cobrado_total),
       neto: numero(f.cobrado_neto),
-      porCobrar: numero(f.por_cobrar_proyectado),
+      porCobrar: numero(f.por_cobrar),
       vencido: numero(f.vencido),
-      proximo: f.proximo_cobro || f.proximo_medio
-        ? { fecha: f.proximo_cobro ?? null, medio: f.proximo_medio?.trim() || null }
+      proximo: f.proximo_cobro_fecha || f.proximo_cobro_medio
+        ? { fecha: f.proximo_cobro_fecha ?? null, medio: f.proximo_cobro_medio?.trim() || null }
         : null,
       imputacion: esImputacion(f.imputacion) ? f.imputacion : null,
     })
   }
-  return { por, disponible }
+  // LA VISTA REPARTE POR OBRA POR CONSTRUCCIÓN: sale de `cobranza_imputacion`, que ata cada fila de
+  // Cobranzas a su obra. Si se pudo leer, la base sabe repartir — la regla de «todo o nada» sigue
+  // siendo la misma y ahora su respuesta es sí.
+  return { por, disponible: true }
 }
 
-/** El código de PostgREST/Postgres para «esa columna no existe». */
-const COLUMNA_INEXISTENTE = '42703'
-
-/**
- * LO QUE SE LE PIDE A `obra_cobranza`, Y LO QUE SE LE PEDÍA ANTES.
- *
- * `imputacion`, `vencido`, `proximo_cobro` y `proximo_medio` las agrega la migración que reparte el
- * cobro por obra y que traduce a Postgres el criterio de vencido del generador de la pestaña OBRAS
- * (emisión + 30 días, `orquestador/lib/cobranzas-vencido.mjs`). Se piden PRIMERO: el día que la
- * vista las publique, las columnas del CRM encienden solas y sin tocar código. Mientras no existan,
- * PostgREST devuelve 42703 y se vuelve a pedir la forma vieja — y las celdas quedan VACÍAS, que es
- * lo único cierto: un 0 en «Vencido» afirmaría que no hay mora.
- */
-const ESCALONES_COBRO = [
-  'obra_id, cobrado, cobrado_neto, por_cobrar_proyectado, vencido, proximo_cobro, proximo_medio, imputacion',
-  'obra_id, cobrado, cobrado_neto, por_cobrar_proyectado, imputacion',
-  'obra_id, cobrado, cobrado_neto, por_cobrar_proyectado',
-] as const
-
-/** La fila cruda. Todo opcional salvo la clave: la forma vieja no trae la mitad de los campos. */
+/** La fila cruda de `public.obra_cuenta`. `numeric` llega como texto y `null` se queda `null`. */
 interface FilaCobro {
   obra_id: string
-  cobrado?: unknown
+  cobrado_total?: unknown
   cobrado_neto?: unknown
-  por_cobrar_proyectado?: unknown
+  por_cobrar?: unknown
   vencido?: unknown
-  proximo_cobro?: string | null
-  proximo_medio?: string | null
+  proximo_cobro_fecha?: string | null
+  proximo_cobro_medio?: string | null
   imputacion?: unknown
 }
 
@@ -588,7 +576,15 @@ export function armarCartera({
         avance: o.avance_pct,
         jefe: o.jefe_obra?.trim() || null,
         contratado,
+        contratadoUsd: e?.contratado_usd ?? null,
+        tipoCambio: e?.tipo_cambio ?? null,
         origenContratado: e?.origen ?? null,
+        referencia: e?.referencia ?? null,
+        nota: e?.nota ?? null,
+        ocCivaVentana: e?.oc_civa_ventana ?? null,
+        ocCivaHistorico: e?.oc_civa_historico ?? null,
+        ocNVentana: e?.oc_n_ventana ?? null,
+        ocNHistorico: e?.oc_n_historico ?? null,
         certificacion: certificacionDe(certificados, o.obra_id),
         // TODO O NADA: sin `imputacion` en la base, la fila de la obra no publica cobro. Se corta
         // ACÁ y no en el componente —dos pantallas podrían dibujar la misma fila— y así el control

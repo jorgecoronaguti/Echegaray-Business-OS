@@ -338,11 +338,11 @@ no prueba que no esté en Drive.
 
 | | |
 |---|---|
-| **Fuente primaria** | public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra) |
+| **Fuente primaria** | public.cobranza_imputacion (fila por fila) · public.obra_cobranza.cobrado / por_cobrar_proyectado (agregado por obra) · public.obra_cuenta (la fila entera de la pestaña OBRAS: contratado, cobrado total y neto, por cobrar, vencido y próximo cobro) |
 | **Propietario** | `public.cobranza_imputacion` — la cadena OC → `cliente_orden` → obra · `public.obra_alias.en_texto_libre` — el diccionario de los textos que nombran una obra |
 | **Criterio** | Tres pasos **en este orden**: (1) la **orden de compra** que declara la columna H (`cobranzas.orden_compra`), buscada por número canónico en `cliente_orden` del **mismo** cliente; (2) el **texto** de `concepto`/`orden_compra` que nombra una obra del cliente, sólo contra alias marcados `en_texto_libre`; (3) la **obra bolsa** del cliente, marcada `imputacion = 'cliente'`, que significa «no se pudo». Dos obras candidatas ⇒ ninguna. |
 | **Ventana** | Acumulado, el mismo de `cobrado`. La imputación no tiene ventana: es de la fila, no del período. |
-| **Consumidores** | barra de cobro por obra de `/clientes`, ficha de obra, `obra_economia` |
+| **Consumidores** | barra de cobro por obra de `/clientes`, ficha de obra, `obra_economia`; del lado del orquestador `cobranzas-contrato.filasDeObra({ imputadas })`, `obras-economia.mjs` y `obras-economia-sync.mjs` |
 | **Confianza** | **D** · la cadena se apoya en los papeles ya cargados en `cliente_orden`, y cada alias nuevo sale de una fila real de Cobranzas citada en `obra_alias.ejemplo_raw` |
 | **Última decisión del dueño** | 10/09/2026: reclamó ver el cobro **por obra**; hasta ese día no existía en la base. |
 
@@ -370,12 +370,29 @@ las 17 filas de ARCOR tienen su OC escrita en H, pero las obras de ARCOR no est�
   cobranza fuera de `cobranza_imputacion` es una **segunda** regla de imputación: sin el recorte por
   cliente y sin la marca `en_texto_libre`, el alias `san francisco` se lleva «Saldo obras San
   Francisco — cuota 1 de 4» —$ 47,6 M de **todas** las obras— a una sola.
+- `needle:\s*[A-Za-z_]+\.ventaTexto` — seleccionar las filas de una obra buscando su **nombre**
+  dentro del Concepto o de la Orden de Compra. La fila 46 de Messina («ACTUALIZACION DE PRECIOS OC
+  02-00000279», $ 3.583.956 netos) es de BSA por su orden `00002-00001984` y no dice «BSA» en
+  ninguna columna: con el needle el contratado de BSA salía **$ 14.120.243,40** y el cobrado —que ya
+  usaba la imputación— **la incluía**. Lo que lee usa `filasDeObra(..., { imputadas })`.
 
 ### Las excepciones
 
-Ninguna. Las dos prohibiciones son cables trampa: hoy no matchean ningún archivo, y ése es el
-estado que tienen que conservar.
+Las tres son **generadores de pestañas de Google Sheets**, y ninguna es discrecional: la celda que
+escriben es un `SUMIFS` que Sheets evalúa sobre la propia hoja, así que **no puede consultar
+Postgres**. Ahí el needle no es una segunda definición: es el criterio que se publica.
 
+| Archivo | Por qué |
+|---|---|
+| `orquestador/lib/obras-grilla.mjs` | Arma la fórmula de la columna D de OBRAS. Es el único lugar donde el needle **es** el criterio publicado. |
+| `orquestador/scripts/obras-pestana.mjs` | Lee el contrato declarado con el MISMO universo que la fórmula que escribe: leer con la imputación y publicar con el needle dejaría la celda y su control mirando filas distintas. |
+| `orquestador/lib/calendario-hitos.mjs` | Genera «Calendario de Cobros», con el mismo límite de la hoja. |
+
+**La consecuencia, medida y aceptada:** hasta que el generador del Sheet deje de seleccionar por
+texto, la pestaña OBRAS y `/clientes` van a decir distinto de **BSA** —contratado $ 14.120.243,40
+contra $ 17.704.199,40, por cobrar $ 12.157.138,26 contra $ 16.493.725,02—. La diferencia es
+exactamente la fila 46 y está clavada en `orquestador/lib/obra-cuenta.pg.test.mjs`: si algún día se
+emparejan, ese test avisa.
 ---
 
 ## `costo_de_obra`

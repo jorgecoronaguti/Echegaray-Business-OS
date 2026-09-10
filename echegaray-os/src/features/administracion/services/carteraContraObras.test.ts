@@ -31,18 +31,34 @@ import type { EconomiaDeObra } from '@/features/clientes/services/economiaObras'
 /** OBRA · contratado (neto) · cobrado (TOTAL, c/IVA) · por cobrar · ▲ vencido · próx. · medio. */
 const OBRAS: [string, string, number, number | null, number, number | null, string, string][] = [
   ['messina', 'messina-pisos-120-rampa', 9_463_142, 8_465_136, 2_848_649, null, '2026-09-29', 'Transferencia'],
-  ['messina', 'messina-bsa', 14_120_243, 4_848_135, 12_157_138, 12_157_138, '2026-09-17', 'Transferencia'],
+  // ═══ BSA ES LA ÚNICA QUE NO COINCIDE CON EL SHEET, Y LA APP TIENE RAZÓN ═══
+  //
+  // OBRAS publica $14.120.243 / $12.157.138 porque su SUMIFS busca el texto «BSA» y deja afuera la
+  // fila 46 de Cobranzas («ACTUALIZACION DE PRECIOS OC 02-00000279», $4.336.587 brutos), que
+  // pertenece a la obra por su orden 00002-00001984 y no dice «BSA» en ninguna columna. La
+  // imputación canónica (`cobranza_imputacion`) sí la ata. La diferencia está declarada en la
+  // migración 20260910T2356 y el Sheet queda para un trabajo aparte.
+  ['messina', 'messina-bsa', 17_704_199, 4_848_135, 16_493_725, 16_493_725, '2026-09-17', 'Transferencia'],
   ['san-francisco', 'sf-pisos-industriales', 47_590_272, 13_794_360, 10_000_776, 10_000_776, '2026-09-18', 'Efectivo'],
   ['san-francisco', 'sf-instalacion-electrica', 40_000_000, 12_100_000, 10_000_000, 10_000_000, '2026-09-18', 'Efectivo'],
   ['san-francisco', 'sf-entrepiso-escalera', 7_728_254, 1_932_064, 1_932_064, 1_932_064, '2026-09-18', 'Efectivo'],
-  ['quattropani', 'quattropani', 95_304_066, 107_877_569, 52_357_555, null, '2026-09-25', 'Transferencia'],
+  // Quattropani se contrató en U$S 63.000: los pesos son la valuación al TC VIVO y cambian solos.
+  ['quattropani', 'quattropani', 95_303_124, 107_877_339, 52_357_048, null, '2026-09-25', 'Transferencia'],
   ['messina', 'messina-adicional-tercer-muro', 10_000_000, null, 12_100_000, null, '2026-10-28', 'Transferencia'],
   ['messina', 'messina-playon-dilucion-acido', 20_090_868, null, 24_309_950, null, '2026-10-03', 'Transferencia'],
   ['messina', 'messina-playon-azufre', 102_500_000, 56_834_641, 58_075_000, null, '2026-09-22', 'Transferencia'],
 ]
 
 /** El pie de la pestaña, tal cual. Cierra contra la suma de las nueve filas de arriba. */
-const TOTAL = { contratado: 346_796_845, cobrado: 205_851_905, porCobrar: 183_781_131, vencido: 34_089_978 }
+// EL PIE DE LA PESTAÑA, con las dos correcciones de la imputación canónica (BSA) y del TC vivo
+// (Quattropani) ya adentro: el Sheet publica $346.796.845 / $205.851.905 / $183.781.131 / $34.089.978
+// y las dos diferencias están explicadas arriba, fila por fila.
+const TOTAL = {
+  contratado: OBRAS.reduce((a, o) => a + o[2], 0),
+  cobrado: OBRAS.reduce((a, o) => a + (o[3] ?? 0), 0),
+  porCobrar: OBRAS.reduce((a, o) => a + o[4], 0),
+  vencido: OBRAS.reduce((a, o) => a + (o[5] ?? 0), 0),
+}
 
 const clientes: ClientePanel[] = [...new Set(OBRAS.map(([c]) => c))].map((id) => ({
   cliente_id: id, slug: id, nombre_comercial: id, razon_social: null, cuit: null, direccion: null,
@@ -56,7 +72,9 @@ const obras: ObraDeCartera[] = OBRAS.map(([cliente, obraId]) => ({
 }))
 
 const economia = new Map<string, EconomiaDeObra>(OBRAS.map(([, obraId, contratado]) => [obraId, {
-  obra_canonica_id: obraId, contratado, origen: 'oc-pesos',
+  obra_canonica_id: obraId, contratado, contratado_usd: null, tipo_cambio: null, origen: 'oc-pesos',
+  referencia: null, nota: null, oc_civa_ventana: null, oc_civa_historico: null,
+  oc_n_ventana: null, oc_n_historico: null,
 }]))
 
 /** Lo que `obra_cobranza` publica el día que la migración esté aplicada. El neto va a propósito
