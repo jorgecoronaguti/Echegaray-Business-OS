@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { InlineEdit } from '@/shared/components/ds/InlineEdit'
 import { V } from '@/shared/components/v2/patron'
-import type { TotalesDeCuadro } from '../../services/liquidacionQuincena'
+import { desvioDelAcuerdo, type TotalesDeCuadro } from '../../services/liquidacionQuincena'
 import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
 import type { CuadroConOverrides } from '../../services/liquidacionQuincenaService'
 import {
@@ -41,9 +41,15 @@ import {
 // alguien en nada con la misma cara con la que muestra un importe correcto, y la plata se entrega en
 // mano: nadie la reclama después.
 
+// ═══ LAS DOS COLUMNAS DEL ACUERDO 50/50 VAN PEGADAS A COBRA, Y NO SE EDITAN ═══
+//
+// El dueño (10/09/2026): «el acuerdo con todos los empleados es 50% en blanco y 50% en efectivo, no
+// me lo está mostrando actualmente». Son un DERIVADO de COBRA (`repartoDelAcuerdo`), no una celda de
+// la liquidación: editarlas sería acordar otra cosa desde una pantalla. Van antes de ADELANTO
+// porque pertenecen al acuerdo, no a la cadena de pago —que empieza justamente ahí—.
 const COLUMNAS = [
-  'Persona', 'Horas', '$/h', 'COBRA', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO',
-  'TOTAL A PAGAR', 'EFECTIVO redondeado',
+  'Persona', 'Horas', '$/h', 'COBRA', 'BLANCO 50%', 'EFECTIVO 50%', 'ADELANTO', 'YA TRANSFERIDO',
+  'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR', 'EFECTIVO redondeado',
 ] as const
 
 const pesos = (n: number | null): string =>
@@ -97,6 +103,7 @@ export function CuadroLiquidacion({
           {cuadro.lineas.length} persona{cuadro.lineas.length === 1 ? '' : 's'}
           {totales.sinTarifa > 0 && ` · ${totales.sinTarifa} sin tarifa`}
           {totales.reciboSinGiro > 0 && ` · ${totales.reciboSinGiro} con recibo sin giro`}
+          {totales.sinReparto > 0 && ` · ${totales.sinReparto} sin acuerdo 50/50`}
         </span>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {estado === 'cerrada' ? (
@@ -154,6 +161,13 @@ export function CuadroLiquidacion({
             <Celda fuerte>{numero(totales.horas)}</Celda>
             <Celda />
             <Celda fuerte>{pesos(totales.cobra)}</Celda>
+            {/* LAS DOS MITADES DEL ACUERDO NO INCLUYEN A QUIEN NO LO TIENE, y el subtítulo del
+                cuadro publica cuántos son. Sumarlos como 0 daría mitades que parecen completas. */}
+            <Celda fuerte title={totales.sinReparto > 0
+              ? `${totales.sinReparto} línea(s) sin acuerdo 50/50, fuera de esta suma` : undefined}>
+              {pesos(totales.blancoAcuerdo)}
+            </Celda>
+            <Celda fuerte>{pesos(totales.efectivoAcuerdo)}</Celda>
             <Celda fuerte>{pesos(totales.adelanto)}</Celda>
             <Celda fuerte>{pesos(totales.yaTransferido)}</Celda>
             <Celda fuerte>{pesos(totales.porBanco)}</Celda>
@@ -181,6 +195,14 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
   bloqueada: boolean
   camposEditables: readonly CampoEditable[]
 }) {
+  const acuerdo = linea.blancoAcuerdo == null
+    ? 'Sin acuerdo 50/50: Oficina y subcontratistas cobran otra cosa'
+    : 'Acuerdo 50/50 sobre COBRA — no es lo que giró el banco'
+  // EL DESVÍO ENTRE EL RECIBO Y EL ACUERDO ES LO QUE TERMINA SALIENDO EN EFECTIVO. Se pinta en la
+  // celda de POR BANCO porque es ahí donde el número deja de ser la mitad, y hasta hoy había que
+  // deducirlo restando dos columnas a ojo.
+  const desvio = desvioDelAcuerdo(linea)
+
   const celda = (campo: CampoEditable, valor: number | null, formato: (n: number | null) => string) => (
     <Celda>
       <Editable
@@ -229,9 +251,27 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
         />
       </Celda>
       {celda('cobra', linea.cobra, pesos)}
+      {/* LO ACORDADO, NO LO LIQUIDADO. Sólo lectura y «—» cuando no hay acuerdo 50/50 (Oficina y
+          los subcontratistas del cuadro `final`). */}
+      <Celda title={acuerdo}>{pesos(linea.blancoAcuerdo)}</Celda>
+      <Celda title={acuerdo}>{pesos(linea.efectivoAcuerdo)}</Celda>
       {celda('adelanto', linea.adelanto, pesos)}
       {celda('yaTransferido', linea.yaTransferido, pesos)}
-      {celda('porBanco', linea.porBanco, pesos)}
+      <Celda title={desvio == null ? undefined
+        : `recibo ${pesos(linea.porBanco)} · acuerdo ${pesos(linea.blancoAcuerdo)} · diferencia `
+          + `${pesos(Math.abs(desvio))} ${desvio < 0 ? 'que sale en efectivo' : 'girada de más'}`}
+        tono={desvio == null ? undefined : V.warn}>
+        <Editable
+          campo="porBanco"
+          valor={linea.porBanco}
+          formato={pesos}
+          manual={linea.manual.porBanco}
+          personaId={linea.personaId}
+          quincena={quincena}
+          grupo={grupo}
+          soloLectura={bloqueada || !camposEditables.includes('porBanco')}
+        />
+      </Celda>
       {celda('enEfectivo', linea.enEfectivo, pesos)}
       {celda('total', linea.total, pesos)}
       <Celda>
@@ -395,15 +435,15 @@ function Redondeo({ personaId, valor, quincena, grupo, bloqueada }: {
   )
 }
 
-function Celda({ children, izquierda = false, fuerte = false, title }: {
-  children?: React.ReactNode; izquierda?: boolean; fuerte?: boolean; title?: string
+function Celda({ children, izquierda = false, fuerte = false, title, tono }: {
+  children?: React.ReactNode; izquierda?: boolean; fuerte?: boolean; title?: string; tono?: string
 }) {
   return (
     <td title={title} style={{
       textAlign: izquierda ? 'left' : 'right',
       fontSize: '12.5px',
       fontWeight: fuerte ? 600 : 400,
-      color: fuerte ? V.tinta : V.tintaSuave,
+      color: tono ?? (fuerte ? V.tinta : V.tintaSuave),
       padding: '9px 8px',
       whiteSpace: 'nowrap',
     }}>{children}</td>

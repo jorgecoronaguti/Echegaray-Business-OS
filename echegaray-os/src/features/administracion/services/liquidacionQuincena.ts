@@ -315,6 +315,23 @@ export function repartoDelAcuerdo(
   return { blanco, efectivo: redondear2(cobra - blanco) }
 }
 
+/**
+ * CUÁNTO SE APARTA EL GIRO REAL DE LA MITAD BLANCA ACORDADA. `null` = no hay nada que comparar.
+ *
+ * Es el número que el cuadro de Pagos pinta al lado de POR BANCO. No corrige nada —el recibo manda—:
+ * lo hace visible, porque esa diferencia es exactamente lo que termina saliendo en efectivo y hasta
+ * hoy había que deducirla restando dos columnas a ojo. Un peso de tolerancia porque las mitades se
+ * redondean a centavos y un desvío de centavos no es una diferencia, es aritmética.
+ */
+export function desvioDelAcuerdo(
+  l: Pick<LineaLiquidada, 'porBanco' | 'blancoAcuerdo' | 'reciboSinGiro'>,
+): number | null {
+  if (l.blancoAcuerdo == null) return null
+  if (l.porBanco <= 0 && !l.reciboSinGiro) return null
+  const d = redondear2(l.porBanco - l.blancoAcuerdo)
+  return Math.abs(d) > 1 ? d : null
+}
+
 const repartoComoCampos = (cobra: number | null, modalidad: ModalidadDeLiquidacion) => {
   const r = repartoDelAcuerdo(cobra, modalidad)
   return { blancoAcuerdo: r.blanco, efectivoAcuerdo: r.efectivo }

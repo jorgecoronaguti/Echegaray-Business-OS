@@ -17,7 +17,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  liquidarLinea, repartoDelAcuerdo, totalesDeCuadro,
+  desvioDelAcuerdo, liquidarLinea, repartoDelAcuerdo, totalesDeCuadro,
   type EntradaDeLinea, type TarifaVigente,
 } from './liquidacionQuincena.ts'
 import { aplicarOverrides } from './liquidacionOverrides.ts'
@@ -67,6 +67,17 @@ test('LA LÍNEA DEL OBRERO PUBLICA LAS DOS MITADES Y NO CAMBIA LA CADENA REAL DE
   assert.notEqual(l.porBanco, l.blancoAcuerdo)
   assert.equal(l.enEfectivo, 384435.38)
   assert.equal(l.total, 600000)
+})
+
+test('EL DESVÍO CONTRA EL ACUERDO SE PUBLICA, Y LOS CENTAVOS NO SON UN DESVÍO', () => {
+  const l = liquidarLinea({ ...base, reciboNeto: 215564.62, giroEnElLote: true }, 'obreros')
+  assert.equal(desvioDelAcuerdo(l), -84435.38, 'lo que el recibo gira de menos termina en efectivo')
+  // Sin recibo no hay nada que comparar: POR BANCO es 0 porque nadie giró, no porque haya desvío.
+  assert.equal(desvioDelAcuerdo(liquidarLinea(base, 'obreros')), null)
+  // Oficina no tiene mitad acordada, así que tampoco tiene desvío contra ella.
+  assert.equal(desvioDelAcuerdo({ porBanco: 1326667.64, blancoAcuerdo: null, reciboSinGiro: false }), null)
+  // Un centavo de redondeo no es una diferencia.
+  assert.equal(desvioDelAcuerdo({ porBanco: 300000.5, blancoAcuerdo: 300000, reciboSinGiro: false }), null)
 })
 
 test('PISAR COBRA A MANO MUEVE LAS DOS MITADES: son mitades de lo que se va a pagar', () => {
