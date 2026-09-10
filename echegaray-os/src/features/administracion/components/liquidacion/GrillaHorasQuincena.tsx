@@ -22,11 +22,15 @@ import { V } from '@/shared/components/v2/patron'
 import type {
   CeldaDeGrilla, EstadoDeFila, FilaDeGrilla, ResumenDeGrilla,
 } from '../../services/grillaHorasQuincena'
+import type { ProyeccionDeFila, ProyeccionDeQuincena } from '../../services/proyeccionDeMasa'
+import { repartoDelAcuerdo } from '../../services/liquidacionQuincena'
 import { ALTO_LIQ } from './solapas/tabla'
 import { agruparPorRolOrganizacional } from '../../services/vocabularioPersona'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
 
-const COLUMNAS = 'minmax(230px,1fr) repeat(13,30px) 50px 56px 58px'
+// LA COLUMNA DEL IMPORTE ESTIMADO ENTRA ENTRE «Esper.» Y «Estado», y por eso el ancho mínimo de la
+// grilla sube de 760 a 856: un «$ 1.234.567» de 96 px no se puede achicar sin partir el número.
+const COLUMNAS = 'minmax(230px,1fr) repeat(13,30px) 50px 56px 96px 58px'
 
 const DIAS_CORTOS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'] as const
 
@@ -37,6 +41,9 @@ function rotuloDia(fecha: string): string {
 }
 
 const numero = (n: number): string => n.toLocaleString('es-AR', { maximumFractionDigits: 1 })
+
+/** Pesos sin centavos: esta pantalla estima una masa salarial, no cuenta monedas. */
+const pesos = (n: number): string => `$ ${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
 
 const ESTADOS: Record<EstadoDeFila, { texto: string; color: string }> = {
   'al-dia': { texto: 'al día', color: '#067647' },
@@ -66,8 +73,34 @@ function Celda({ celda }: { celda: CeldaDeGrilla }) {
   return <div style={{ textAlign: 'center' }}>{numero(celda.horas ?? 0)}</div>
 }
 
-function Fila({ fila, abrir, abierta }: {
+/**
+ * «A PAGAR EST.» — LO QUE VA A COSTAR ESTA PERSONA SI CUMPLE LOS DÍAS QUE FALTAN.
+ *
+ * ES UNA ESTIMACIÓN Y EL RÓTULO LO DICE. El `title` publica de dónde sale —horas cargadas, horas
+ * por cumplir y la tarifa— porque un importe sin origen a la vista no se puede discutir con nadie.
+ * Sin tarifa cargada NO escribe $ 0: escribe «sin tarifa», que es lo que hay que resolver.
+ */
+function ImporteEstimado({ p }: { p?: ProyeccionDeFila }) {
+  if (!p) return <div />
+  if (p.importeProyectado == null) {
+    return (
+      <div style={{ textAlign: 'right', fontSize: '11px', color: V.tenue }} title="Sin tarifa cargada: no se puede estimar">
+        sin tarifa
+      </div>
+    )
+  }
+  const r = repartoDelAcuerdo(p.importeProyectado, p.modalidad)
+  const detalle = p.modalidad === 'mensual'
+    ? 'Neto mensual acordado · sin reparto 50/50'
+    : `${numero(p.horasCargadas)} h cargadas + ${numero(p.horasPorCumplir)} h por cumplir`
+      + `${p.valorHora == null ? '' : ` × ${pesos(p.valorHora)}`}`
+      + `${r.blanco == null ? '' : ` · blanco est. ${pesos(r.blanco)} · efectivo est. ${pesos(r.efectivo ?? 0)}`}`
+  return <div style={{ textAlign: 'right' }} title={`Estimado · ${detalle}`}>{pesos(p.importeProyectado)}</div>
+}
+
+function Fila({ fila, proyeccion, abrir, abierta }: {
   fila: FilaDeGrilla
+  proyeccion?: ProyeccionDeFila
   /** Abrir la persona NO NAVEGA (handoff v2 §4): el panel se despliega al costado. */
   abrir?: (personaId: string) => void
   abierta?: boolean
@@ -95,6 +128,7 @@ function Fila({ fila, abrir, abierta }: {
       {fila.celdas.map((c) => <Celda key={c.fecha} celda={c} />)}
       <div style={{ textAlign: 'right', fontWeight: 600 }}>{numero(fila.cargadas)}</div>
       <div style={{ textAlign: 'right', color: V.apagado }}>{numero(fila.esperadas)}</div>
+      <ImporteEstimado p={proyeccion} />
       <div style={{ textAlign: 'right', fontSize: '11px', color: estado.color }}>
         {/* «18 lic.» — el mockup publica las HORAS de licencia delante del rótulo: «lic.» sola no
             dice cuánto no se va a pagar. */}
@@ -157,7 +191,7 @@ function FilaFiltro({ href, style, children }: {
 }
 
 export function GrillaHorasQuincena({
-  titulo, jornadaTexto, habilesTexto, hoy, filas, resumen, filtros, accion, abrir, abierta,
+  titulo, jornadaTexto, habilesTexto, hoy, filas, resumen, proyeccion, filtros, accion, abrir, abierta,
 }: {
   /** «1 al 15 de septiembre». */
   titulo: string
@@ -169,6 +203,14 @@ export function GrillaHorasQuincena({
   hoy?: string
   filas: readonly FilaDeGrilla[]
   resumen: ResumenDeGrilla
+  /**
+   * LA MASA SALARIAL ESTIMADA — del PLANTEL ENTERO, igual que `resumen`.
+   *
+   * El bloque del panel mira todo el plantel y la columna mira la fila: es el mismo criterio con el
+   * que ya conviven «Cargadas» (que se recorta) y `puedeCerrar` (que no). Un total que cambiara con
+   * el filtro no sería la masa salarial de la quincena, sería la del recorte que alguien dejó puesto.
+   */
+  proyeccion?: ProyeccionDeQuincena
   filtros: readonly FiltroDeGrilla[]
   /** El botón de cierre. Se dibuja siempre; lo habilita `resumen.puedeCerrar`. */
   accion?: React.ReactNode
@@ -191,6 +233,7 @@ export function GrillaHorasQuincena({
         }}>
         {filtros.map((f) => <Filtro key={f.rotulo} filtro={f} />)}
         <div style={{ marginTop: 'auto', padding: 15, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {proyeccion && <BloqueProyeccion p={proyeccion} />}
           <Resumen rotulo="Cargadas" valor={numero(resumen.cargadas)} />
           <Resumen rotulo="Esperadas" valor={numero(resumen.esperadas)} />
           {accion ?? (
@@ -230,7 +273,7 @@ export function GrillaHorasQuincena({
         {/* EL ANCHO REAL DE LA GRILLA SE RECORRE, no se aplasta: trece columnas de 30 px más el
             nombre no entran en 390 y encogerlas dejaría celdas ilegibles. */}
         <div className="overflow-x-auto" style={{ padding: '0 20px' }}>
-        <div style={{ minWidth: 760, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ minWidth: 856, display: 'flex', flexDirection: 'column' }}>
           <div data-testid="encabezado-columnas" style={{
             display: 'grid', gridTemplateColumns: COLUMNAS, gap: 6, height: ALTO_LIQ.encabezadoAncho, alignItems: 'end',
             borderBottom: `1px solid ${V.linea}`, paddingBottom: 9,
@@ -249,6 +292,7 @@ export function GrillaHorasQuincena({
             ))}
             <div style={{ textAlign: 'right' }}>Carg.</div>
             <div style={{ textAlign: 'right' }}>Esper.</div>
+            <div style={{ textAlign: 'right' }}>A pagar est.</div>
             <div style={{ textAlign: 'right' }}>Estado</div>
           </div>
 
@@ -259,7 +303,13 @@ export function GrillaHorasQuincena({
             <div key={g.clave} data-testid={`grupo-${g.clave}`}>
               {grupos.length > 1 && <RotuloDeGrupo texto={g.rotulo} primero={iGrupo === 0} />}
               {g.integrantes.map((f) => (
-                <Fila key={f.personaId} fila={f} abrir={abrir} abierta={f.personaId === abierta} />
+                <Fila
+                  key={f.personaId}
+                  fila={f}
+                  proyeccion={proyeccion?.porPersona[f.personaId]}
+                  abrir={abrir}
+                  abierta={f.personaId === abierta}
+                />
               ))}
             </div>
           ))}
@@ -277,6 +327,13 @@ export function GrillaHorasQuincena({
             ))}
             <div style={{ textAlign: 'right' }}>{numero(resumen.cargadas)}</div>
             <div style={{ textAlign: 'right' }}>{numero(resumen.esperadas)}</div>
+            {/* EL TOTAL DE LA COLUMNA NO INCLUYE A QUIEN NO TIENE TARIFA, y la primera celda de
+                esta misma fila ya publica cuántos son («N sin retribución»). */}
+            <div style={{ textAlign: 'right' }} title={proyeccion
+              ? `Masa salarial estimada · ${proyeccion.sinTarifa} sin tarifa fuera del total`
+              : undefined}>
+              {proyeccion ? pesos(proyeccion.masaProyectada) : ''}
+            </div>
             <div />
           </div>
         </div>
@@ -288,6 +345,59 @@ export function GrillaHorasQuincena({
           <strong style={{ color: V.lineaFuerte }}>·</strong> sin horas cargadas
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * LA PREVISIBILIDAD QUE PIDIÓ EL DUEÑO, EN CUATRO RENGLONES.
+ *
+ * «necesito tener previsibilidad» (10/09/2026). El total es una ESTIMACIÓN y la frase de abajo dice
+ * bajo qué supuesto: si cumplen la jornada los días que faltan. Se desglosa en obreros / oficina
+ * porque son dos naturalezas distintas —la oficina cobra un neto MENSUAL que no depende de esta
+ * quincena— y en ya cargado / por cumplir porque eso es lo que separa el hecho de la proyección.
+ */
+function BloqueProyeccion({ p }: { p: ProyeccionDeQuincena }) {
+  const r = repartoDelAcuerdo(p.obreros, 'hora')
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{
+        fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)', fontSize: '10px',
+        letterSpacing: '.06em', color: V.tenue, textTransform: 'uppercase',
+      }}>Proyección</div>
+      <Resumen rotulo="Masa salarial est." valor={pesos(p.masaProyectada)} />
+      <div data-testid="proyeccion-desglose" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <Renglon rotulo="obreros" valor={pesos(p.obreros)} />
+        <Renglon rotulo="oficina" valor={pesos(p.oficina)} />
+        <Renglon rotulo="ya cargado" valor={pesos(p.masaCargada)} />
+        <Renglon rotulo="por cumplir" valor={pesos(p.masaPorCumplir)} />
+        {/* EL ACUERDO 50/50 SOBRE LO PROYECTADO. Oficina suma al total y NO al reparto: su recibo
+            del 01/09 no fue la mitad y qué acuerdo rige ahí lo tiene que decir el dueño. */}
+        <Renglon rotulo="blanco est." valor={pesos(r.blanco ?? 0)} />
+        <Renglon rotulo="efectivo est." valor={pesos(r.efectivo ?? 0)} />
+        {p.sinTarifa > 0 && (
+          <Renglon rotulo="sin tarifa" valor={String(p.sinTarifa)} alerta />
+        )}
+      </div>
+      <div style={{ fontSize: '11px', color: V.tenue, lineHeight: 1.5 }}>
+        Est.: si cumplen la jornada los días que faltan.
+        {p.oficina > 0 && ' Oficina sin reparto 50/50.'}
+      </div>
+    </div>
+  )
+}
+
+/** El renglón chico del panel: 11 px tenue, el mismo que ya usan el detalle del filtro y el porqué. */
+function Renglon({ rotulo, valor, alerta = false }: {
+  rotulo: string; valor: string; alerta?: boolean
+}) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8,
+      fontSize: '11px', color: alerta ? V.warn : V.apagado,
+    }}>
+      <span>{rotulo}</span>
+      <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: alerta ? 500 : 400 }}>{valor}</span>
     </div>
   )
 }
