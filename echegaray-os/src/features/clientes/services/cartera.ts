@@ -72,7 +72,11 @@ export function totalesCartera(clientes: FilaCartera[]): {
 // ═══ CUÁNTAS OBRAS TIENE UN CLIENTE, DICHO UNA SOLA VEZ ═══════════════════════════════════════
 
 /**
- * «5 en curso · 6 cerradas», y NUNCA un total que no cuadre con las filas de abajo.
+ * «5 en curso · 6 cerradas», UNA LÍNEA, y NUNCA un total que no cuadre con las filas de abajo.
+ *
+ * Devuelve UN texto y no dos: dibujarlo en dos renglones de 12 y 10,5px metía dos escalas en una
+ * celda —«hay mezcla de diseño», dueño 10/09/2026— y sugería que el segundo número era menos
+ * cierto que el primero. Son los dos igual de ciertos y dicen la misma cosa partida en dos.
  *
  * Messina decía «11 obras» con cinco filas colgando: el 11 es cierto y el 5 también, y ninguno de
  * los dos explicaba al otro. Cuando la vista no se pudo leer —`null`— se cae al total, que es lo
@@ -80,12 +84,12 @@ export function totalesCartera(clientes: FilaCartera[]): {
  */
 export function frasesDeObras(
   { obras, nEnCurso, nCerradas }: { obras: number; nEnCurso: number | null; nCerradas: number | null },
-): string[] {
+): string {
   if (nEnCurso === null || nCerradas === null) {
-    return [obras ? `${obras} en total` : 'sin obras']
+    return obras ? `${obras} en total` : 'sin obras'
   }
   const partes: string[] = []
   if (nEnCurso > 0) partes.push(`${nEnCurso} en curso`)
   if (nCerradas > 0) partes.push(`${nCerradas} ${nCerradas === 1 ? 'cerrada' : 'cerradas'}`)
-  return partes.length ? partes : ['sin obras']
+  return partes.length ? partes.join(' · ') : 'sin obras'
 }

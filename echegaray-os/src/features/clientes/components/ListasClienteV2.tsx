@@ -37,6 +37,7 @@ import type { ObraPanel } from '@/features/obras/types'
 import { SIN_PRECIO_EN_OBRAS, type EconomiaDeObra } from '../services/economiaObras'
 import type { PapelesDelCliente } from '../services/papelesCliente'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
+import { OrdenesDeLaObra } from './OrdenesDeLaObra'
 
 /**
  * EL ESTADO SE DICE CON LA PALABRA Y SU TINTA, sin punto de color.
@@ -199,18 +200,30 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
           key={o.obra_id} href={`/obras/${o.obra_id}`} prefetch={false} data-testid="fila-obra-cliente"
           className={`grid items-center ${CAJA_CONTENIDO} ${COLS_OBRAS} ${AIRE_DERECHO} hover:bg-[#F2F1ED]`}
           style={{
-            height: ALTO_V2.cara, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
+            // `minHeight`: con las OC debajo del nombre la fila tiene DOS líneas, y a 390px los
+            // números se apilan. Con `height` clavado el segundo renglón queda cortado por abajo.
+            minHeight: papelesDeLaObra?.oc.length ? ALTO_V2.cara + 14 : ALTO_V2.cara,
+            paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
             // Una obra sin monto contratado bloquea: no se puede decir qué se le facturó al cliente.
             boxShadow: veEconomia && contratado == null && !cerrada ? FILO_BLOQUEA : 'none',
           }}
         >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-            <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
-              <IconoObra className="h-[15px] w-[15px]" />
+          {/* EL NOMBRE, Y DEBAJO LOS NÚMEROS DE SUS OC (dueño, 10/09/2026 16:20). Mismo componente
+              que la lista de `/clientes`: dos rótulos parecidos del mismo papel se separan en
+              cuanto uno aprende algo, y ya pasó una vez con las dos tablas de cartera. */}
+          <span style={{
+            display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
+            minWidth: 0, overflow: 'hidden',
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+              <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
+                <IconoObra className="h-[15px] w-[15px]" />
+              </span>
+              <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
+                {o.nombre}
+              </span>
             </span>
-            <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
-              {o.nombre}
-            </span>
+            <OrdenesDeLaObra ordenes={papelesDeLaObra?.oc ?? []} veEconomia={veEconomia} sangria={24} />
           </span>
 
           {/* `overflow: hidden` se queda aunque el avance ya no viva acá: es la defensa barata
@@ -242,13 +255,17 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
             {avance.texto}
           </span>
 
+          {/* MONO CUANDO ES UNA CIFRA, TIPOGRAFÍA DE TEXTO CUANDO ES UNA FRASE. «sin precio en
+              OBRAS» monoespaciado se lee como la salida de una terminal y al lado de una columna de
+              plata parecía otro dato numérico. La celda tiene UNA tipografía por vez y la elige lo
+              que hay adentro (dueño, 10/09/2026: «hay mezcla de diseño»). */}
           {veEconomia
             ? (
                 <span
-                  className="font-mono tabular-nums truncate"
+                  className={`truncate ${contratado == null ? '' : 'font-mono tabular-nums'}`}
                   data-testid="contratado-obra-cliente"
                   style={{
-                    fontSize: '12px', textAlign: 'right',
+                    fontSize: contratado == null && !cerrada ? '11.5px' : '12px', textAlign: 'right',
                     color: contratado == null ? (cerrada ? V.tenue : V.warn) : V.tinta,
                   }}
                 >

@@ -14,9 +14,12 @@
 //   3 · LAS OC LLEVAN IVA Y LO CONTRATADO NO. El Adicional Tercer Muro tiene una OC de $12.100.000
 //       contra $10.000.000 contratados: son el mismo número × 1,21. Estaban en columnas vecinas sin
 //       una palabra que lo dijera. El rótulo ahora es «OC · OP c/IVA» y no se restan entre sí.
-//   4 · LOS NÚMEROS DE LAS OC SE FUERON DE DEBAJO DEL NOMBRE. «OC 1984 · 18/06 · $4.336.587  OC
-//       1985 · … +2» en monoespaciado competía con las siete columnas de la derecha. El total de la
-//       celda ya dice cuánto; tocarlo abre el panel con el detalle, sin salir de la lista.
+//   4 · LOS NÚMEROS DE LAS OC VOLVIERON, EN TIPOGRAFÍA NORMAL (dueño, 10/09/2026 16:20: «esta
+//       pantalla sigue sin mostrar el nº de OC»). Los saqué a la mañana porque colgaban del nombre
+//       en monoespaciado y mezclaban OC con OP; el error fue sacarlos en vez de arreglarlos: con el
+//       total solo, ME - BSA muestra «5 OC» y ningún número, y el número es lo que se busca —es lo
+//       que el cliente cita en su OP y en su factura—. Ahora: sólo OC, tipografía normal, una
+//       línea, «+N» recién desde la quinta, y cada una abre su PDF. Ver `OrdenesDeLaObra`.
 //   5 · «—» EN TODA LA COLUMNA COBRADO. Era una barra de porcentaje y el porcentaje casi nunca se
 //       podía calcular. Ahora la celda publica el IMPORTE —que es un hecho de Cobranzas— y agrega la
 //       barra sólo cuando el denominador existe y cubre todas las obras del cliente.
@@ -56,6 +59,7 @@ import { progresoDeCobro, tituloDeCobro } from '@/features/clientes/services/pro
 import type { PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
 import { ORIGEN_SUMA_VIVA, SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
 import { AbrirOrdenes } from './AbrirOrdenes'
+import { OrdenesDeLaObra } from './OrdenesDeLaObra'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 
 /** `25v2:154`. Literales porque Tailwind no compila una clase armada en runtime. */
@@ -88,8 +92,10 @@ const AYUDA_CONTRATADO = 'Lo que la pestaña OBRAS del Flujo de Caja publica por
   + 'Es precio contratado, no facturado.'
 
 const AYUDA_COBRO = 'Lo cobrado SIN IVA, criterio PERCIBIDO (pestaña Cobranzas: sólo lo que ya '
-  + 'entró). Nunca mezcla con lo facturado, que es devengado. La barra aparece cuando hay contra '
-  + 'qué medirlo.'
+  + 'entró). Nunca mezcla con lo facturado, que es devengado. La barra con el porcentaje aparece '
+  + 'cuando hay contra qué medirlo. — LAS FILAS DE OBRA VAN VACÍAS mientras Cobranzas registre el '
+  + 'cobro contra el CLIENTE y no contra la obra: es todo o nada, porque una sola obra con barra en '
+  + 'una columna vacía se lee como que las demás no cobraron.'
 
 const AYUDA_OBRAS = 'Cuántas obras tiene, separadas en las que están en ejecución y las cerradas '
   + '(cliente_economia). Debajo del cliente sólo cuelgan las que están EN CURSO.'
@@ -126,7 +132,7 @@ const VACIO: PapelesDelCliente = {
  * OS es el grafito, que es además con lo que esta misma tabla dibuja el avance de la obra. Dos
  * barras con dos colores en la misma fila serían dos vocabularios.
  */
-function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'obra', tam, obrasSinPrecio = null, imputacion = null }: {
+function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'obra', tam, obrasSinPrecio = null, imputacion = null, disponible = true }: {
   cobrado: number | null
   contratado: number | null
   /**
@@ -143,8 +149,19 @@ function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'o
   ambito?: 'obra' | 'cliente'
   tam: string
   obrasSinPrecio?: number | null
+  /** ¿La base puede contestar esta pregunta para una obra? Ver `CobroPorObra`. La fila del CLIENTE
+   *  nace en `true`: su importe sale de `cliente_economia` y no depende de repartir nada. */
+  disponible?: boolean
 }) {
   if (!veEconomia) return <span className={SOLO_ANCHO} />
+  // ═══ TODO O NADA (dueño, 10/09/2026 16:25: «uno con barra de progreso y otros no») ═══
+  //
+  // Mientras la base no pueda repartir el cobro por obra —`obra_cobranza.imputacion` sin aplicar—
+  // NINGUNA fila de obra publica cobro. Hoy la única que tenía barra era Quattropani, y no porque
+  // se supiera más de esa obra: es que su etiqueta de Cobranzas coincide con el id de su única
+  // obra. Una sola barra en una columna vacía no se lee como «la base sólo sabe de ésta», se lee
+  // como que las otras no cobraron. Ni siquiera un «—»: no hay pregunta que la base pueda contestar.
+  if (!disponible) return <span className={SOLO_ANCHO} data-testid={testid} data-cobro="sin-imputacion" />
   if (imputacion === 'cliente') {
     return (
       <span
@@ -178,7 +195,7 @@ function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'o
           <span style={{ display: 'flex', height: 4, width: 52, borderRadius: 2, background: TONO.pista, flexShrink: 0 }}>
             <span style={{ width: `${p.pct}%`, background: p.excede ? V.warn : V.grafito, borderRadius: 2 }} />
           </span>
-          <span className="tabular-nums" style={{ fontSize: '10.5px', color: V.tenue, flexShrink: 0 }}>
+          <span className="font-mono tabular-nums" style={{ fontSize: '10.5px', color: V.tenue, flexShrink: 0 }}>
             {p.pct} %
           </span>
         </span>
@@ -199,26 +216,25 @@ function ContratadoDeObra({ o, veEconomia }: { o: ObraEnCurso; veEconomia: boole
   const viva = o.origenContratado === ORIGEN_SUMA_VIVA
   return (
     <span
-      className="flex flex-col justify-center"
+      className="flex items-center justify-end"
       data-testid="contratado-obra"
       data-origen={o.origenContratado ?? undefined}
       title={viva ? AYUDA_SUMA_VIVA : undefined}
       style={{ textAlign: 'right', gap: 1 }}
     >
+      {/* LA SEÑAL ES LA MISMA MARCA QUE YA USA LA TABLA PARA «este total no es lo que parece»: el
+          «·» del total parcial de papeles. Decía «suma de Cobranzas» en un segundo renglón de 10px
+          sin monoespaciar, debajo de una cifra monoespaciada: dos tipografías y dos escalas en UNA
+          celda, que es la mezcla que el dueño marcó el 10/09/2026. La frase entera vive en el
+          `title`, que es donde el OS pone la trazabilidad de un número. */}
       <span
-        className="font-mono tabular-nums"
+        className={o.contratado === null ? '' : 'font-mono tabular-nums'}
+        data-testid="contratado-suma-viva-marca"
         style={{ fontSize: '11.5px', color: o.contratado === null ? V.warn : V.apagado }}
       >
         {veEconomia ? (o.contratado === null ? SIN_PRECIO_EN_OBRAS : pesos(o.contratado)) : ''}
+        {veEconomia && viva && o.contratado !== null ? ' ·' : ''}
       </span>
-      {/* LA SEÑAL, SOBRIA Y SÓLO DONDE APLICA. No es una advertencia —no hay nada roto en la
-          pantalla— sino la etiqueta de qué clase de número es. Sin ella, «$ 14.120.243» al lado de
-          «$ 49.886.583 · 5 OC» parece una resta que a nadie le cierra. */}
-      {veEconomia && viva && (
-        <span data-testid="contratado-suma-viva" style={{ fontSize: '10px', color: V.tenue }}>
-          suma de Cobranzas
-        </span>
-      )}
     </span>
   )
 }
@@ -307,18 +323,17 @@ export function TablaClientes({
                 </span>
               </span>
 
-              {/* CUÁNTAS OBRAS TIENE, DICHO UNA SOLA VEZ. Es una FRASE, no una cifra alineada: por
-                  eso no va en monoespaciado — el mono se reserva para lo que se compara de arriba
-                  abajo, que en esta tabla es plata. */}
+              {/* CUÁNTAS OBRAS TIENE, EN UNA LÍNEA Y EN UNA ESCALA. Es una FRASE, no una cifra
+                  alineada: la celda entera va en la tipografía del texto — el mono se reserva para
+                  lo que se compara de arriba abajo, que en esta tabla es plata. Y una sola talla:
+                  en dos renglones de 12 y 10,5px el segundo número parecía menos cierto que el
+                  primero, y son los dos igual de ciertos. */}
               <span
-                className={`flex flex-col items-end justify-center ${SOLO_TABLET}`}
-                data-testid="obras-cliente" style={{ gap: 1, textAlign: 'right' }}
+                className={`truncate ${SOLO_TABLET}`}
+                data-testid="obras-cliente"
+                style={{ fontSize: '12px', color: V.apagado, textAlign: 'right' }}
               >
-                {frasesDeObras(c).map((f, i) => (
-                  <span key={f} style={{ fontSize: i === 0 ? '12px' : '10.5px', color: i === 0 ? V.apagado : V.tenue }}>
-                    {f}
-                  </span>
-                ))}
+                {frasesDeObras(c)}
               </span>
 
               {/* LOS PAPELES DEL CLIENTE, EN DOS RENGLONES Y NUNCA EN EL MISMO RÓTULO: lo que
@@ -341,8 +356,10 @@ export function TablaClientes({
                   MISMO que ya dice la columna «Obras» dos celdas a la izquierda: tres frases para
                   un hecho es lo que el dueño marcó en la fila de ARCOR. Acá va «—» y el `title`
                   distingue las dos ausencias, que no son iguales. */}
+              {/* MONO CUANDO ES UNA CIFRA, TIPOGRAFÍA DE TEXTO CUANDO ES UNA FRASE. Una celda,
+                  una tipografía por vez, y la elige lo que hay adentro. */}
               <span
-                className="font-mono tabular-nums"
+                className={c.contratado === null ? '' : 'font-mono tabular-nums'}
                 data-testid="contratado"
                 title={c.contratado !== null
                   ? undefined
@@ -350,7 +367,7 @@ export function TablaClientes({
                     ? 'Ninguna de sus obras en curso tiene precio en la pestaña OBRAS'
                     : 'No tiene obras en curso: no hay contrato vigente que sumar'}
                 style={{
-                  fontSize: '12px', textAlign: 'right',
+                  fontSize: c.contratado === null ? '11.5px' : '12px', textAlign: 'right',
                   color: c.contratado !== null ? V.tinta : c.enCurso.length ? V.warn : V.tenue,
                 }}
               >
@@ -382,6 +399,10 @@ export function TablaClientes({
               // identifica nada. Con dos o más se cuenta y el número se lee en el panel — enumerar
               // tres números en la celda es volver a los rótulos que el dueño mandó sacar.
               const unicaOC = totalOC.n === 1 ? (deLaObra?.oc[0]?.numeroCorto ?? null) : null
+              // ¿HAY NÚMEROS QUE DIBUJAR? Decide el alto de la fila —una línea o dos— y no puede
+              // deducirse dentro del `<span>`: el alto vive en el `<Link>`, que es el contenedor de
+              // la grilla.
+              const ocDeLaObra = deLaObra?.oc ?? []
               return (
                 <Link
                   key={o.obra_id}
@@ -392,12 +413,21 @@ export function TablaClientes({
                   className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-[#FAFAF8]`}
                   // `minHeight` Y NO `height`: la celda de cobro lleva dos renglones y a 390px el
                   // nombre puede partir. Con `height` clavado el segundo renglón queda cortado.
-                  style={{ minHeight: ALTO_V2.hija, borderBottom: `1px solid ${TONO.divisorObra}` }}
+                  data-ordenes={ocDeLaObra.length ? '' : undefined}
+                  // `minHeight` Y NO `height`: a 390px los números se apilan y la fila tiene que
+                  // poder crecer. Con `height` clavado el segundo renglón queda cortado por abajo.
+                  style={{
+                    minHeight: ocDeLaObra.length ? ALTO_V2.hijaConOrdenes : ALTO_V2.hija,
+                    borderBottom: `1px solid ${TONO.divisorObra}`,
+                  }}
                 >
+                  {/* DOS LÍNEAS: el nombre arriba, sus OC abajo. El `overflow: hidden` se queda —lo
+                      que no entre se corta en el borde de SU celda y nunca invade la de al lado. */}
                   <span style={{
-                    display: 'flex', alignItems: 'center', gap: 9,
+                    display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
                     minWidth: 0, overflow: 'hidden', paddingLeft: 14,
                   }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
                     <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
                       <IconoObra className="h-[13px] w-[13px]" />
                     </span>
@@ -411,11 +441,16 @@ export function TablaClientes({
                         <span className={`flex ${ADORNO_ANCHO}`} style={{ height: 4, width: 80, borderRadius: 2, background: TONO.pista, flexShrink: 0, marginLeft: 2 }}>
                           <span style={{ width: `${Math.min(100, Math.max(0, o.avance))}%`, background: V.grafito, borderRadius: 2 }} />
                         </span>
-                        <span className={`tabular-nums ${ADORNO_ANCHO}`} style={{ fontSize: '10.5px', color: V.tenue, flexShrink: 0 }}>
+                        <span className={`font-mono tabular-nums ${ADORNO_ANCHO}`} style={{ fontSize: '10.5px', color: V.tenue, flexShrink: 0 }}>
                           {porcentajeCanon(o.avance, 0)}
                         </span>
                       </>
                     )}
+                  </span>
+                    {/* LA SEGUNDA LÍNEA: LAS OC DE ESTA OBRA, con su número, su día y su importe, y
+                        cada una abriendo su PDF. La sangría las alinea bajo el nombre — 13px de
+                        icono + 9 de aire. NINGUNA ORDEN DE PAGO: la OP no se imputa a la obra. */}
+                    <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} />
                   </span>
 
                   {/* La celda vacía de «Obras»: existe para que la obra caiga en la MISMA columna
@@ -446,6 +481,7 @@ export function TablaClientes({
                       puede calcular cuando hay contratado. */}
                   <Cobrado
                     cobrado={o.cobrado} contratado={o.contratado} medible imputacion={o.imputacion}
+                    disponible={o.cobroDisponible}
                     veEconomia={veEconomia} testid="cobro-obra" tam="11.5px"
                   />
                 </Link>

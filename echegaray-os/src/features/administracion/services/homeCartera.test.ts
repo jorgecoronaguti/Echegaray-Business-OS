@@ -20,6 +20,9 @@ const cliente = (p: Partial<ClientePanel> & { cliente_id: string }): ClientePane
   n_contactos: 0, n_documentos: 0, ...p,
 })
 
+/** Ninguna cobranza imputada Y la base todavía no sabe repartir: el caso de hoy en producción. */
+const SIN_COBRO = { por: new Map(), disponible: false }
+
 const obra = (p: Partial<ObraDeCartera> & { obra_id: string }): ObraDeCartera => ({
   nombre: p.obra_id, cliente_id: 'c1', avance_pct: 50, jefe_obra: 'S. Ledesma', ...p,
 })
@@ -43,7 +46,7 @@ test('la obra cuelga de SU cliente, y de ninguno más', () => {
   const filas = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' }), cliente({ cliente_id: 'c2' })],
     obras: [obra({ obra_id: 'o1', cliente_id: 'c1' }), obra({ obra_id: 'o2', cliente_id: 'c2' })],
-    cobrado: new Map(), certificados: [],
+    cobrado: SIN_COBRO, certificados: [],
   })
   assert.deepEqual(filas.map((c) => c.enCurso.map((o) => o.obra_id)), [['o1'], ['o2']])
 })
@@ -52,7 +55,7 @@ test('una obra sin cliente no se cuelga de nadie ni se pierde de vista en otro l
   const filas = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'huerfana', cliente_id: null })],
-    cobrado: new Map(), certificados: [],
+    cobrado: SIN_COBRO, certificados: [],
   })
   assert.deepEqual(filas[0].enCurso, [])
 })
@@ -63,7 +66,7 @@ test('`avance_pct` NULL NO es 0 %, y sin precio en OBRAS el contratado no es $ 0
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1', cuit: '30-1-2', telefono: '2645551234' })],
     obras: [obra({ obra_id: 'o1', avance_pct: null, jefe_obra: null })],
-    cobrado: new Map(), certificados: [], contratos: new Set(['c1']),
+    cobrado: SIN_COBRO, certificados: [], contratos: new Set(['c1']),
   })
   assert.equal(c.enCurso[0].avance, null)
   assert.equal(c.enCurso[0].contratado, null)
@@ -75,7 +78,7 @@ test('«sin contrato» sale de los DOCUMENTOS y no del monto: son dos conceptos'
   // publica OBRAS; el contrato es un papel en la ficha. Acá se prueban las cuatro combinaciones que
   // importan — con plata y sin papel, y sin plata y con papel.
   const completo = cliente({ cliente_id: 'c1', cuit: '30-1-2', telefono: '2645551234' })
-  const base = { clientes: [completo], cobrado: new Map(), certificados: [] }
+  const base = { clientes: [completo], cobrado: SIN_COBRO, certificados: [] }
   const conPlata = armarCartera({
     ...base,
     obras: [obra({ obra_id: 'o1' })],
@@ -142,7 +145,7 @@ test('lo cobrado de la OBRA cuelga de su obra; lo del CLIENTE lo dice `cliente_e
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'o1' }), obra({ obra_id: 'o2' })],
-    cobrado: new Map([['o1', { cobrado: 500_000, imputacion: 'oc' as const }]]),
+    cobrado: { por: new Map([['o1', { cobrado: 500_000, imputacion: 'oc' as const }]]), disponible: true },
     certificados: [],
     economia: new Map([eco('o1', 1_000_000), eco('o2', 2_000_000)]),
     economiaCliente: new Map([['c1', ecCliente({
@@ -174,7 +177,7 @@ test('sin `cliente_economia` legible, el cliente NO cae a sumar sus obras: dice 
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'o1' }), obra({ obra_id: 'o2' })],
-    cobrado: new Map([['o1', { cobrado: 500_000, imputacion: 'oc' as const }]]),
+    cobrado: { por: new Map([['o1', { cobrado: 500_000, imputacion: 'oc' as const }]]), disponible: true },
     certificados: [],
     economia: new Map([eco('o1', 1_000_000), eco('o2', 2_000_000)]),
     economiaCliente: null,
@@ -209,7 +212,7 @@ test('la economía de OBRAS manda por obra, y el total del cliente sale de la vi
   ]
   const economia = new Map([eco('o1', 100, { costo_mo: 60, costo_materiales: 10, margen: 30 })])
   const [c] = armarCartera({
-    clientes, obras, cobrado: new Map(), certificados: [], economia,
+    clientes, obras, cobrado: SIN_COBRO, certificados: [], economia,
     economiaCliente: new Map([['c1', ecCliente({ cliente_id: 'c1', contratado_en_curso: 100, contratado: 100 })]]),
   })
   assert.equal(c.enCurso[0].contratado, 100)
@@ -236,7 +239,7 @@ test('la fila de la cartera ya no calcula ningún margen', () => {
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'o1' })],
-    cobrado: new Map(), certificados: [],
+    cobrado: SIN_COBRO, certificados: [],
     economia: new Map([eco('o1', 100, { costo_mo: 60, costo_materiales: 10, margen: 30 })]),
   })
   assert.equal('margen' in c, false, 'la fila del cliente volvió a traer el margen servido')
@@ -273,7 +276,7 @@ test('Messina: la fila del cliente publica lo que dice la vista, no la suma del 
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'messina', n_obras: 10 })],
     obras: enCurso,
-    cobrado: new Map(),
+    cobrado: SIN_COBRO,
     certificados: [],
     economia: new Map(MESSINA_EN_CURSO.map(([id, monto]) => eco(id, monto))),
     economiaCliente: new Map([['messina', ecCliente({
@@ -344,7 +347,7 @@ test('la barra de la obra divide el cobrado NETO, nunca el bruto con IVA', async
   ))
   assert.ok(pedidas[0].includes('cobrado_neto'), `pidió «${pedidas[0]}»: sin el neto no hay qué dividir`)
   assert.equal(
-    cobrado?.get('quattropani')?.cobrado, 84_697_934.83,
+    cobrado?.por.get('quattropani')?.cobrado, 84_697_934.83,
     'el bruto ($102.606.669) sobre un contratado neto da «100 % cobrado» y el resto es IVA',
   )
 })
@@ -367,8 +370,8 @@ test('sin la columna `imputacion` la lectura NO se cae: se vuelve a pedir sin el
   ))
   assert.ok(pedidas[0].includes('imputacion'), 'se pide primero CON la columna, para que encienda sola')
   assert.equal(pedidas.length, 2, 'y se reintenta una sola vez, sin ella')
-  assert.equal(cobrado?.get('quattropani')?.cobrado, 84_697_934.83)
-  assert.equal(cobrado?.get('quattropani')?.imputacion, null, 'la columna no existe: no se inventa')
+  assert.equal(cobrado?.por.get('quattropani')?.cobrado, 84_697_934.83)
+  assert.equal(cobrado?.por.get('quattropani')?.imputacion, null, 'la columna no existe: no se inventa')
 })
 
 test('con la columna aplicada, la imputación llega tal cual y sin segundo viaje', async () => {
@@ -382,8 +385,8 @@ test('con la columna aplicada, la imputación llega tal cual y sin segundo viaje
     ['obra_id', 'cobrado', 'cobrado_neto', 'imputacion'],
   ))
   assert.equal(pedidas.length, 1, 'con la columna viva no hay reintento')
-  assert.equal(cobrado?.get('messina-playon-azufre')?.imputacion, 'oc')
-  assert.equal(cobrado?.get('messina')?.imputacion, 'cliente')
+  assert.equal(cobrado?.por.get('messina-playon-azufre')?.imputacion, 'oc')
+  assert.equal(cobrado?.por.get('messina')?.imputacion, 'cliente')
 })
 
 test('un valor de imputación que el OS no conoce se descarta, no se dibuja', async () => {
@@ -393,14 +396,14 @@ test('un valor de imputación que el OS no conoce se descarta, no se dibuja', as
     [{ obra_id: 'o1', cobrado_neto: 1, imputacion: 'certificado' }], [],
     ['obra_id', 'cobrado', 'cobrado_neto', 'imputacion'],
   ))
-  assert.equal(cobrado?.get('o1')?.imputacion, null)
+  assert.equal(cobrado?.por.get('o1')?.imputacion, null)
 })
 
 test('sin cobranzas cobradas la obra NO entra al mapa: un hueco no es un cero', async () => {
   const cobrado = await getCobradoPorObra(baseConLasDos(
     [{ obra_id: 'messina-bsa', cobrado: null, cobrado_neto: null }], [],
   ))
-  assert.equal(cobrado?.has('messina-bsa'), false, 'una barra en 0 % afirmaría que se midió')
+  assert.equal(cobrado?.por.has('messina-bsa'), false, 'una barra en 0 % afirmaría que se midió')
 })
 
 // ═══ LOS CONTEOS QUE LA FILA ESCRIBE ═══
@@ -410,7 +413,7 @@ test('la fila trae el desglose en curso / cerradas, y no lo inventa cuando no lo
   const [conVista] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1', n_obras: 11 })],
     obras: [obra({ obra_id: 'o1' })],
-    cobrado: new Map(), certificados: [],
+    cobrado: SIN_COBRO, certificados: [],
     economiaCliente: new Map([['c1', ecCliente({
       cliente_id: 'c1', n_obras_en_curso: 5, n_obras_cerradas: 6, n_obras_sin_precio: 6,
     })]]),
@@ -422,7 +425,7 @@ test('la fila trae el desglose en curso / cerradas, y no lo inventa cuando no lo
 
   const [sinVista] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1', n_obras: 11 })],
-    obras: [obra({ obra_id: 'o1' })], cobrado: new Map(), certificados: [],
+    obras: [obra({ obra_id: 'o1' })], cobrado: SIN_COBRO, certificados: [],
   })
   assert.equal(sinVista.nEnCurso, null, 'no se leyó la vista: no se escribe «0 en curso»')
   assert.equal(sinVista.nCerradas, null)
@@ -433,8 +436,73 @@ test('la obra lleva de qué camino salió su contratado: «suma-viva» no es un 
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'messina-bsa' })],
-    cobrado: new Map(), certificados: [],
+    cobrado: SIN_COBRO, certificados: [],
     economia: new Map([eco('messina-bsa', 14_120_243.4, { origen: 'suma-viva' })]),
   })
   assert.equal(c.enCurso[0].origenContratado, 'suma-viva')
+})
+
+// ═══ TODO O NADA EN LA COLUMNA COBRADO DE LAS FILAS DE OBRA ═══
+//
+// «Uno con barra de progreso y otros no» (dueño, 10/09/2026 16:25, sobre producción). La única fila
+// de obra con barra era Quattropani — y no porque se supiera más de esa obra: su etiqueta en
+// Cobranzas («Quattropani - Melisa García SAS») resuelve por `obra_alias` al id `quattropani`, que
+// da la casualidad de ser también su ÚNICA obra. Messina y San Francisco no tienen esa suerte y
+// quedaban en «—».
+//
+// Una sola barra en una columna vacía no se lee como «la base sólo sabe de ésta»: se lee como que
+// las otras no cobraron. Publicar el único caso que la casualidad resuelve es peor que no publicar
+// ninguno.
+//
+// SI SE REVIERTE, ESTE TEST SE PONE ROJO: la obra vuelve a traer su cobro con la columna ausente.
+
+test('sin la columna `imputacion`, NINGUNA fila de obra publica cobro — ni la afortunada', () => {
+  const [c] = armarCartera({
+    clientes: [cliente({ cliente_id: 'quattropani' })],
+    obras: [obra({ obra_id: 'quattropani', cliente_id: 'quattropani' })],
+    // La base SÍ tiene el número —la etiqueta del cliente coincide con el id de la obra— pero
+    // TODAVÍA no sabe repartir: `disponible: false`.
+    cobrado: { por: new Map([['quattropani', { cobrado: 89_968_804.78, imputacion: null }]]), disponible: false },
+    certificados: [],
+    economia: new Map([eco('quattropani', 95_270_932.26)]),
+  })
+  assert.equal(c.enCurso[0].cobrado, null, 'la fila de la obra no puede publicar el cobro afortunado')
+  assert.equal(c.enCurso[0].imputacion, null)
+  assert.equal(c.enCurso[0].cobroDisponible, false, 'y la celda tiene que saber que no hay pregunta')
+})
+
+test('con la columna aplicada, TODAS las que tienen imputación publican', () => {
+  const [c] = armarCartera({
+    clientes: [cliente({ cliente_id: 'messina' })],
+    obras: [
+      obra({ obra_id: 'messina-playon-azufre', cliente_id: 'messina' }),
+      obra({ obra_id: 'messina-bsa', cliente_id: 'messina' }),
+    ],
+    cobrado: {
+      por: new Map([
+        ['messina-playon-azufre', { cobrado: 32_500_000, imputacion: 'oc' as const }],
+        ['messina-bsa', { cobrado: 4_073_021.7, imputacion: 'cliente' as const }],
+      ]),
+      disponible: true,
+    },
+    certificados: [],
+    economia: new Map([eco('messina-playon-azufre', 102_500_000), eco('messina-bsa', 14_120_243.4)]),
+  })
+  assert.equal(c.enCurso[0].cobrado, 32_500_000)
+  assert.equal(c.enCurso[0].imputacion, 'oc')
+  assert.equal(c.enCurso[0].cobroDisponible, true)
+  // La `cliente` trae su número pero la fila lo dice con palabras y no dibuja barra: eso lo decide
+  // el componente, y lo prueba `canonico-tabla-clientes`.
+  assert.equal(c.enCurso[1].imputacion, 'cliente')
+})
+
+test('si la lectura del cobro FALLÓ, tampoco se puede afirmar que la base sabe repartir', () => {
+  const [c] = armarCartera({
+    clientes: [cliente({ cliente_id: 'c1' })],
+    obras: [obra({ obra_id: 'o1' })],
+    cobrado: null,
+    certificados: [],
+    economia: new Map([eco('o1', 100)]),
+  })
+  assert.equal(c.enCurso[0].cobroDisponible, false, 'un control que no pudo mirar no habilita nada')
 })
