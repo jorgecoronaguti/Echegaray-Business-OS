@@ -285,16 +285,29 @@ export function esOperador(criterio) {
  */
 export function indicesCompletos(filas = [], hasta = new Date()) {
   const meses = []
+  const crudos = new Map()
   let sinFuente = 0
   for (const f of filas) {
-    const m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/.exec(String(f?.[0] ?? '').trim())
+    const crudo = String(f?.[0] ?? '').trim()
+    // DD/MM/AAAA, que es como se lee TODO en este archivo (es-AR). No es un detalle del parser: es la
+    // convención con la que Google interpretó la celda cuando alguien la escribió, así que leerla al
+    // revés acá daría un mes distinto del que el Sheet tiene guardado.
+    const m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/.exec(crudo)
     if (!m) continue
     const a = Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3])
-    meses.push(new Date(a, Number(m[2]) - 1, 1))
+    const d = new Date(a, Number(m[2]) - 1, 1)
+    meses.push(d)
+    crudos.set(+d, crudo)
     if (!String(f?.[3] ?? '').trim()) sinFuente++
   }
-  if (!meses.length) return { meses: 0, sinFuente: 0, cubreHasta: null, alcanza: false }
+  if (!meses.length) return { meses: 0, sinFuente: 0, cubreHasta: null, alcanza: false, ultimoCrudo: null }
   const ultimo = new Date(Math.max(...meses.map((d) => +d)))
   const meta = new Date(hasta.getFullYear(), hasta.getMonth(), 1)
-  return { meses: meses.length, sinFuente, cubreHasta: ultimo, alcanza: +ultimo >= +meta }
+  // ═══ EL HALLAZGO VIAJA CON LA CELDA QUE LO PRODUJO (10/09/2026) ═══
+  //
+  // El aviso decía «la tabla llega hasta enero de 2026» y se leyó dos veces como un error de ESTE
+  // control («lee las fechas al revés»). No lo era: las celdas A74:A77 valían 9, 10, 11 y 12 de enero
+  // porque el generador las escribía en mes/día/año contra un archivo es-AR. Un hallazgo que no
+  // muestra el dato crudo se discute contra el mensajero; con la celda a la vista, no hay discusión.
+  return { meses: meses.length, sinFuente, cubreHasta: ultimo, alcanza: +ultimo >= +meta, ultimoCrudo: crudos.get(+ultimo) ?? null }
 }

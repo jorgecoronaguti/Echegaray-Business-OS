@@ -146,7 +146,12 @@ async function main() {
     if (i.sinFuente) { mal(`${i.sinFuente} índice(s) sin fuente declarada`); anotar('sin_inventar', 'índice sin fuente', `${i.sinFuente} filas`) }
     else ok(`${i.meses} meses de índice, todos con fuente`)
     const hasta = i.cubreHasta ? i.cubreHasta.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }) : '—'
-    if (!i.alcanza) { mal(`la tabla llega hasta ${hasta}: los meses posteriores proyectan a peso constante`); anotar('inflacion', 'tabla de índices corta', hasta) }
+    if (!i.alcanza) {
+      // LA CELDA CRUDA VA EN EL AVISO: sin ella, «llega hasta enero» se lee como un error del lector.
+      const crudo = i.ultimoCrudo ? ` (la última celda dice "${i.ultimoCrudo}")` : ''
+      mal(`la tabla llega hasta ${hasta}${crudo}: los meses posteriores proyectan a peso constante`)
+      anotar('inflacion', 'tabla de índices corta', `${hasta}${crudo}`)
+    }
     else ok(`la tabla cubre hasta ${hasta}`)
   }
 

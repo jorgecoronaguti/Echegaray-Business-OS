@@ -157,15 +157,29 @@ export const PESTANAS = [
       que: 'cuántos comprobantes del libro de IVA encontró el OS en Compras — por N° de comprobante, o por proveedor + importe cuando el N° no está cargado. Es el resultado de un cruce que el Sheet no puede rehacer' },
   ] },
   { titulo: 'Materiales', congeladas: 3, hastaFila: 60, cols: 18 },
-  // LA COLUMNA C DE CAJA ES, POR DEFINICIÓN, DATO DE ORIGEN: "Saldo en moneda de origen" sale del
-  // extracto del banco, del arqueo de caja o de la réplica de la tarjeta. Son los quince números que
-  // el censo contaba como violación de la regla — y la regla dice justo lo contrario: el dato de
-  // origen SÍ se pega, y se declara. Acá se declara.
+  // LA COLUMNA DEL DATO DE ORIGEN DE CAJA ES LA **B**, Y ANTES ERA LA C (10/09/2026).
+  //
+  // El amparo se escribió cuando la columna C se llamaba "Saldo en moneda de origen". El rediseño la
+  // corrió: hoy la C es "Saldo en pesos" —fórmula en las ocho filas del cuadro— y el dato que carga
+  // una persona vive en la B, "Importe en origen". La declaración se quedó apuntando a la columna
+  // vieja, así que amparaba una columna que ya no lo necesita y dejaba sin amparo la que sí.
+  //
+  // MEDIDO CELDA POR CELDA contra la última firma de la pestaña (`public.sheet_tab_firma`, 10/09
+  // 20:02), que es lo que lib/origen-declarado.mjs exige antes de declarar nada: de las ocho filas
+  // del cuadro 1, B7 (efectivo ARS), B9 (saldo del extracto), B13 (valores en cartera) y B14
+  // (posteriores al corte) son FÓRMULA, y las cuatro que quedan son las que el censo contaba como
+  // violación — B8 arqueo de dólares (0), B10 saldo de la cuenta USD (507,53), B11 y B12 las dos
+  // posiciones de Balanz. Ninguna se puede calcular en el archivo: no existe en ningún otro lado.
+  //
+  // Es exactamente lo que la otra auditoría del mismo OS ya afirmaba —`CON_ORIGEN.CAJA` en
+  // lib/reglas-de-oro.mjs: «la única pestaña donde una persona carga el saldo»—, con tope de 12 en
+  // `TOPE_PEGADOS`. Dos controles del mismo archivo decían cosas opuestas sobre las mismas cuatro
+  // celdas; el que estaba mal era el que miraba la columna equivocada.
   // Y SU GRILLA TIENE UN PISO QUE NO SE NEGOCIA (09/09/2026): los cuatro gráficos cuelgan de filas-ancla
   // muy por debajo de donde termina el texto de la columna A, y el editor VIVO de Google sube el último
   // bloque encima del anterior si la hoja no tiene filas por debajo. El recorte de acá la dejaba en
   // 19+40 = 59 y rompía la pestaña cada corrida. El piso lo dice `altoMinimoDeCaja`, no un número acá.
-  { titulo: 'CAJA', congeladas: 0, hastaFila: 120, cols: 12, pisoDeGraficos: true, origen: [{ col: 'C', que: 'extracto del banco, arqueo de caja o réplica de la tarjeta — cada fila declara el suyo en la columna "Origen del dato"' }] },
+  { titulo: 'CAJA', congeladas: 0, hastaFila: 120, cols: 12, pisoDeGraficos: true, origen: [{ col: 'B', que: '"Importe en origen" del cuadro 1: el arqueo de caja, el saldo de la cuenta en dólares y las dos posiciones de Balanz los carga una persona — no existen en ningún otro lado del archivo. Las filas que SÍ se pueden calcular (efectivo en pesos, saldo del extracto, valores en cartera, posteriores al corte) son fórmula y siguen siéndolo' }] },
   { titulo: 'Cash Flow Semanal', congeladas: 3, hastaFila: 90, cols: 60 },
   { titulo: 'Cash Flow Mensual', congeladas: 3, hastaFila: 90, cols: 20 },
   // LAS DOS QUE FALTABAN (13/08). Nacieron con piel propia y nunca se anotaron acá, así que el censo
@@ -188,6 +202,24 @@ export const PESTANAS = [
   //     bloqueado por la fusión del cuadro 5 (ver lib/materiales-fusion.mjs).
   //
   // Los 7 de C33:C39 dejaron de contarse el 05/09: la celda pasa a sumar `_OBRAS_RAW`.
+  //
+  // ═══ HOY SON CUATRO, EN OTRO LADO, Y SIGUEN SIN DECLARARSE (10/09/2026) ═══
+  //
+  // El layout volvió a moverse y el censo cuenta `D12`, `D13`, `D14` y `D18` — la columna
+  // «Contratado» del cuadro 2, en las cuatro obras cuyo contrato NO se puede calcular. Las otras
+  // cinco filas de esa misma columna sí son fórmula (`SUMIFS` sobre Cobranzas, o
+  // `=63000*TIPO_CAMBIO_USD` en Quattropani), así que el hallazgo no es la columna: son esas cuatro.
+  //
+  // LA AUDITORÍA DEL 10/09 LOS DIO POR FALSO POSITIVO Y NO LO SON. Su argumento fue que «otro auditor
+  // del mismo OS los declara con origen declarado»; medido en la corrida de ese día,
+  // `auditar-reglas-de-oro` dice de OBRAS «⚠ SIN CLASE — nadie declaró qué es: ningún control la
+  // mira». No hay dos controles contradiciéndose: hay uno que la mira y otro que no la clasificó.
+  //
+  // Y NO SE DECLARAN, por la misma razón que E45:E61: el número no lo tipea el dueño — lo EXTRAE
+  // `lib/cobranzas-contrato.mjs` del texto de la orden de compra y `contratado()` lo estampa
+  // (lib/obras-grilla.mjs). Su fuente en el OS ya existe (`obra_canonica.monto_contratado`) y el
+  // camino correcto es que la celda pase a citarla, no que el aviso se apague. Mientras las obras
+  // que faltan no estén dadas de alta —lo firma el dueño— el hallazgo se queda contado.
   { titulo: 'OBRAS', congeladas: 2, hastaFila: 98, cols: 9, propio: true },
   { titulo: 'Calendario de Cobros', congeladas: 4, hastaFila: 110, cols: 17, propio: true },
   // LAS DOS QUE FALTABAN (31/08). Mismo defecto que OBRAS y Calendario en agosto: nacieron después
