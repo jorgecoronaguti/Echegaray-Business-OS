@@ -24,7 +24,6 @@ test('una notificación de pago que CITA la OC se clasifica como pago, no como c
   // El defecto real: «Notificación de orden de pago O/P 0000000005156» cuyo cuerpo lista la orden de
   // compra que está pagando. Clasificarla como OC duplicaría la compra en la ficha del cliente.
   const r = clasificarAdjunto({
-    asunto: 'Fwd: Notificación de orden de pago O/P 0000000005156',
     nombreArchivo: 'OP5156.pdf',
     textoPdf: 'ORDEN DE PAGO 5156 — cancela ORDEN DE COMPRA 2173',
   })
@@ -32,14 +31,69 @@ test('una notificación de pago que CITA la OC se clasifica como pago, no como c
 })
 
 test('la sigla suelta no clasifica sin un número al lado', () => {
-  // «OC» aparece dentro de palabras y de códigos. Sin el dígito, cualquier mail con la palabra
-  // «choque» o un asunto en mayúsculas se volvía una orden de compra.
-  assert.equal(clasificarAdjunto({ asunto: 'Reunion OC del jueves', nombreArchivo: 'acta.pdf' }).tipo, 'otro')
+  // «OC» aparece dentro de palabras y de códigos. Sin el dígito, cualquier archivo con la palabra
+  // «ocupación» se volvía una orden de compra.
+  assert.equal(clasificarAdjunto({ nombreArchivo: 'acta.pdf' }).tipo, 'otro')
   assert.equal(clasificarAdjunto({ nombreArchivo: 'OC-00002173.pdf' }).tipo, 'orden_compra')
 })
 
+// ── EL PAPEL DICE QUÉ ES; EL MAIL QUE LO TRAJO, NO ──────────────────────────────────────────────
+//
+// Los cuatro tests de acá abajo son el defecto MEDIDO el 10/09/2026: 108 de las 148 filas de ARCOR
+// guardadas como `orden_compra` no eran órdenes. Los nombres y los textos son literales de esas
+// filas y de las 40 órdenes verdaderas — con ejemplos inventados el test pasa siempre.
+
+test('el asunto del mail NO puede convertir un adjunto en orden de compra', () => {
+  // El mail de ARCOR se titula «CAPEX - GENERACION OC - REQ. 22638535» y viaja con la firma pegada
+  // del remitente, el pliego y la planilla de cotización. Los tres entraron como orden de compra.
+  // El asunto y el cuerpo VIAJAN en la llamada a propósito: la función tiene que poder recibirlos y
+  // no mirarlos. Si un día vuelven a ser una fuente, estos cinco papeles vuelven a ser órdenes.
+  for (const nombre of ['image001.png', 'Requisitos_Ingreso.zip', 'PLIEGO CHATARRA.pdf',
+    'Planilla para cotizar - Licitación 22739898.xlsx', 'ARSJ Puente de Playa - Plano.pdf']) {
+    const r = clasificarAdjunto({
+      nombreArchivo: nombre,
+      asunto: 'RE: [241120-000139] CAPEX - GENERACION OC - REQ. 22638535 - PROV. 26080',
+      cuerpo: 'Buen día, adjunto lo necesario para la orden de compra 53067392.',
+    })
+    assert.equal(r.tipo, 'otro', nombre)
+  }
+})
+
+test('CITAR una orden de compra no es serlo: el rótulo va con su número', () => {
+  // `PG Contratistas.pdf` son las condiciones generales de ARCOR y `ARP 3312` la carátula de
+  // ingeniería de un proyecto. Los dos nombran la orden de compra; ninguno es una orden de compra.
+  assert.equal(clasificarAdjunto({
+    nombreArchivo: 'PG Contratistas.pdf',
+    textoPdf: 'servicio ofrecido según las pautas definidas en un contrato o una orden de compra, en forma regular',
+  }).tipo, 'otro')
+  assert.equal(clasificarAdjunto({
+    nombreArchivo: 'ARP 3312 Cocheras Playa de Estacionamieto 03.09.2025.pdf',
+    textoPdf: 'ARCOR SAIC INGENIERIA Proyecto: COCHERAS Nº de proyecto: 3312 Orden de compra : Nº 6D_53077545 / 6D_53077547',
+  }).tipo, 'otro')
+})
+
+test('las dos series con que ARCOR emite sus órdenes, y el rótulo del PDF', () => {
+  // `6D_` es la misma serie que `6A_`: la regla sólo miraba la A y cuatro órdenes reales de cocheras
+  // quedaban fuera. Y `OC 53215971.PDF` llegó renombrada a mano: su tipo lo salva el rótulo del PDF.
+  assert.equal(clasificarAdjunto({ nombreArchivo: '6D_53077545.PDF' }).tipo, 'orden_compra')
+  assert.equal(clasificarAdjunto({
+    nombreArchivo: 'documento.pdf',
+    textoPdf: 'IMPORTANTE: solo reconoceremos las condiciones que figuran en este pedido de compra. Pedido de Compra Nro. 53215971 6A 08/09/25',
+  }).tipo, 'orden_compra')
+})
+
+test('SICORE en el detalle de una orden de pago no la convierte en retención', () => {
+  // El error simétrico y más caro: las cuatro órdenes de pago de Messina listan «retenciones
+  // imp.gcias a 3° SICORE» en su cuadro de valores. Clasificarlas por esa palabra deja la cartera
+  // sin ningún pago cobrado.
+  assert.equal(clasificarAdjunto({
+    nombreArchivo: '0000000005146.pdf',
+    textoPdf: 'IMPUTACION ORDEN DE PAGO Nro.: 0000000005146 Fecha de emisión: 03/09/2026 ... 1.504.896,20 248.878,26 RETENCIONES IMP.GCIAS A 3º SICORE 15.079.296,20 ECHEQS EN CARTERA',
+  }).tipo, 'orden_pago')
+})
+
 test('el plano que viaja en el mismo mail queda como otro', () => {
-  assert.equal(clasificarAdjunto({ asunto: 'Orden de compra playón', nombreArchivo: 'plano-estructura.pdf', textoPdf: 'ESCALA 1:100' }).senal, 'asunto')
+  assert.equal(clasificarAdjunto({ nombreArchivo: 'plano-estructura.pdf', textoPdf: 'ESCALA 1:100' }).tipo, 'otro')
   assert.equal(clasificarAdjunto({ nombreArchivo: 'plano.pdf', textoPdf: 'ESCALA 1:100' }).tipo, 'otro')
 })
 
@@ -49,6 +103,9 @@ test('número, fecha e importe salen del PDF, y valen null cuando no están', ()
   assert.equal(extraerFecha(t), '2026-09-01')
   assert.deepEqual(extraerImporte(t), { importe: 12345678.90, moneda: 'ARS' })
   assert.equal(extraerNumero('Adjunto la orden firmada'), null)
+  // ARCOR rotula «Pedido de Compra», no «Orden de Compra»: `OC 53215971.PDF` quedó con número null
+  // y ningún cruce la veía, aunque la etiqueta estaba en la primera página del PDF.
+  assert.equal(extraerNumero('Pedido de Compra Nro. 53215971 6A 08/09/25 779.091,00'), '53215971')
   assert.equal(extraerFecha('sin fecha'), null)
   assert.deepEqual(extraerImporte('CUIT 30712345678 tel 2644123456'), { importe: null, moneda: null })
 })

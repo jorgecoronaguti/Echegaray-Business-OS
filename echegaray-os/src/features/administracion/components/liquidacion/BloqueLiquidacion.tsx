@@ -79,7 +79,7 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
       {!conFilas ? (
         <Vacio>
           Nadie tiene horas cargadas ni tarifa vigente en esta quincena. Las horas se cargan en la
-          solapa <Link href={hrefDe(quincena.desde).replace('liquidacion', 'asistencia')} className="underline">Asistencia</Link>.
+          solapa <Link href={hrefDe(quincena.desde).replace('liquidacion', 'asistencia')} className="underline">Horas</Link>.
         </Vacio>
       ) : (
         <>

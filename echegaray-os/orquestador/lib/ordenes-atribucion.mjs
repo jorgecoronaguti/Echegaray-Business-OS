@@ -411,7 +411,11 @@ export function documentoDeAdjunto({
   from = '', asunto = '', cuerpo = '', nombreArchivo = '', textoPdf = '',
   clientes = [], obras = [], hoy = new Date(),
 } = {}) {
-  const { tipo, senal } = clasificarAdjunto({ asunto, nombreArchivo, cuerpo, textoPdf })
+  // QUÉ PAPEL ES lo dice el papel (nombre + PDF); DE QUIÉN ES lo puede decir el mail. El asunto y
+  // el cuerpo siguen llegando acá porque atribuyen el CLIENTE y la OBRA, pero ya no pueden decidir
+  // el tipo: el mismo asunto «GENERACION OC» convertía en orden de compra al plano, al pliego y a
+  // la firma pegada del remitente.
+  const { tipo, senal } = clasificarAdjunto({ nombreArchivo, textoPdf })
   if (tipo === 'otro') return { ok: false, motivo: 'no es orden de compra, de pago ni retención' }
 
   const cli = clienteDelDocumento({ from, asunto, cuerpo, nombreArchivo, textoPdf, clientes })

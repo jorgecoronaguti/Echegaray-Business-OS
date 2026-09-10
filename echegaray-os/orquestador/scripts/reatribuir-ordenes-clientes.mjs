@@ -32,12 +32,13 @@ import { query } from '../lib/db.mjs'
 import { leerPdf } from '../lib/ingesta/pdf.mjs'
 import { loadEnvLocalInto } from '../../scripts/lib/env-file.mjs'
 import {
-  clasificarAdjunto, extraerImporte, extraerNumero, extraerFechaDeOrden, fechaImposible,
-  numeroDeRetencion,
+  clasificarAdjunto, comprobanteDelNombre, extraerImporte, extraerNumero, extraerFechaDeOrden,
+  fechaImposible, numeroDeRetencion,
 } from '../lib/ordenes-cliente.mjs'
 import {
   comprobantePropio, comprobantesCitados, facturaPropiaDe, numeroCanonico, ocsCitadas,
 } from '../lib/ordenes-identidad.mjs'
+import { CUIT_ECSAS } from '../lib/transferencias-proveedores.mjs'
 import { heredarObras } from '../lib/ordenes-atribucion.mjs'
 
 loadEnvLocalInto(process.env, process.env.ORDENES_ENV_FILE ?? path.join(APP_DIR, '.env.local'))
@@ -89,16 +90,33 @@ async function main() {
     // dos filas cada una: la segunda es el certificado que Messina manda con el pago, guardado como
     // `orden_pago` con el número de la orden. Se reclasifica y se le devuelve SU número, que es lo
     // único que impide que dos papeles distintos compartan identidad.
-    const ret = manual || fac ? null : clasificarAdjunto({ nombreArchivo: r.nombre_archivo, asunto: r.asunto ?? '', textoPdf: texto })
-    const esRetencion = ret?.tipo === 'retencion'
+    // Y SI NO SE DEJA LEER EL ENCABEZADO, EL NOMBRE PUEDE PROBAR LO MISMO: `30716304643_201_…pdf`
+    // lleva nuestro CUIT adelante porque el comprobante lo emitimos nosotros. `facturaPropiaDe` sólo
+    // reconoce «FACTURA A» y no la factura de crédito electrónica MiPyME.
+    const propio = manual || fac ? null : comprobanteDelNombre(r.nombre_archivo, CUIT_ECSAS)
+    const clase = manual || fac || propio ? null : clasificarAdjunto({ nombreArchivo: r.nombre_archivo, textoPdf: texto })
+    const esRetencion = clase?.tipo === 'retencion'
+    // ═══ UN PAPEL QUE NO SE DECLARA ORDEN Y NUNCA TUVO NÚMERO NO ES UNA ORDEN ═══
+    //
+    // MEDIDO el 10/09/2026: 108 de las 148 filas de ARCOR con `tipo = 'orden_compra'` son pliegos,
+    // planillas de cotización, planos, `image001.png` y dos `Requisitos_Ingreso.zip`. Ninguna trae
+    // número: entraron porque el ASUNTO del mail decía «GENERACION OC» y esa señal se aplicó a todos
+    // los adjuntos. La ficha del cliente contaba «148 OC · $524.163.838» donde hay 40 · $449.246.223.
+    //
+    // La degradación exige LAS DOS cosas —que el papel no se declare orden Y que nunca haya tenido
+    // número— porque un PDF protegido o corrupto se lee vacío y se vería igual que un pliego. Una
+    // orden real llegó siempre con su número, sea del nombre que le puso el emisor o de su texto:
+    // sin esa segunda condición, un PDF ilegible bastaría para borrar una orden de la cartera.
+    const degradar = clase?.tipo === 'otro' && !r.numero
     // EL IMPORTE SE RECALCULA SIEMPRE, no sólo cuando falta: el guardado se leyó con el locale
     // equivocado («78,650,000.00» → $ 78,65) y está mal escrito, no ausente.
     const { importe, moneda } = extraerImporte(texto)
     docs.push({
       ...r,
       texto,
-      tipo: fac?.tipo ?? (esRetencion ? 'retencion' : r.tipo),
+      tipo: fac?.tipo ?? (propio ? 'factura' : (esRetencion ? 'retencion' : (degradar ? 'otro' : r.tipo))),
       numero: fac?.numero
+        ?? propio
         ?? (esRetencion ? (numeroDeRetencion({ nombreArchivo: r.nombre_archivo, textoPdf: texto }) ?? r.numero) : (r.numero ?? extraerNumero(texto))),
       cita: fac?.cita ?? r.cita ?? null,
       importe: manual || importe === null ? (r.importe === null ? null : Number(r.importe)) : importe,
@@ -141,7 +159,26 @@ async function main() {
     console.log(`${fmt(d.nombre_archivo, 34)} ${fmt(d.tipo, 13)} ${fmt(d.numero, 16)} ${fmt(d.fecha, 11)} ${String(imp).padStart(16)} ${fmt(nombreObra.get(d.obra_id) ?? '— nivel cliente', 30)} ${d.porque ?? ''}`)
   }
 
-  if (!APLICAR) { console.log(`\nENSAYO — ${cambia.length} filas cambiarían. Nada se escribió. Con --aplicar.`); return }
+  // EL ENSAYO MUESTRA EL CAMPO Y SUS DOS VALORES, no un total. «152 filas cambiarían» no deja
+  // decidir si el criterio es el correcto: el 10/09/2026 esas 152 eran 108 pliegos degradados a
+  // `otro` y 44 números que el parser recién aprendió a leer, y las dos cosas se veían igual.
+  if (!APLICAR) {
+    for (const d of cambia) {
+      const a = antesDe.get(d.id)
+      const campos = []
+      if (d.tipo !== a.tipo) campos.push(`tipo ${a.tipo}→${d.tipo}`)
+      if (d.numero !== a.numero) campos.push(`n° ${a.numero ?? '—'}→${d.numero ?? '—'}`)
+      if (d.fecha !== fechaISO(a.fecha)) campos.push(`fecha ${fechaISO(a.fecha) ?? '—'}→${d.fecha ?? '—'}`)
+      if (d.obra_id !== a.obra_id) campos.push(`obra ${a.obra_id ?? '—'}→${d.obra_id ?? '—'}`)
+      if ((d.importe === null) !== (a.importe === null) || (d.importe !== null && Math.abs(d.importe - Number(a.importe)) > 0.005)) {
+        campos.push(`importe ${a.importe ?? '—'}→${d.importe ?? '—'}`)
+      }
+      if (d.cita !== a.cita) campos.push(`cita ${a.cita ?? '—'}→${d.cita ?? '—'}`)
+      console.log(`  ~ ${fmt(d.nombre_archivo, 40)} ${campos.join(' · ')}`)
+    }
+    console.log(`\nENSAYO — ${cambia.length} filas cambiarían. Nada se escribió. Con --aplicar.`)
+    return
+  }
 
   let escritas = 0
   for (const d of cambia) {

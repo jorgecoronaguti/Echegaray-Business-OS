@@ -77,6 +77,9 @@ export { deJornalesQuincenas, deOficina, deDireccion } from './libro-extractores
 // que la nómina: es una fuente con reglas propias, y el que la lee tiene que poder probarla en frío.
 export {
   deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
+  // El rubro se re-exporta desde el 10/09: el script arma con él la clave `período·rubro` de los
+  // pagos del banco, y tipearlo de nuevo sería una segunda definición de la misma taxonomía.
+  RUBRO_GREMIALES,
 } from './libro-extractores-cargas.mjs'
 // Se re-exportan para no romper a quien ya los importaba de acá; su casa es el módulo de Compras.
 export { pendienteDeCompra, comprasPagadasConCheque, NOMBRES_COMPRAS } from './libro-extractores-compras.mjs'

@@ -491,3 +491,74 @@ test('la serie de gremiales se declara con SUS DOS partes: 12/12 celdas o el aud
   const cubre = (i) => [G_DECL, GREMIALES].some((p) => typeof p[i] === 'number' && p[i] !== 0)
   for (let i = 0; i < 12; i++) assert.ok(cubre(i), `el mes ${i + 1} no tiene fuente en ninguna de las dos partes`)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL BANCO LE GANA A TODO (10/09/2026) — el pago gremial dejó de ser una marca en Compras
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Los números son los reales: la boleta de UOCRA de 08/2026 declara $994.941,26 de Total determinado
+// y $1.379.455,92 de Fondo de Cese devengado; el banco debitó $994.941,26 por DEBIN el 10/09 y
+// depositó $1.160.400 de fondo de desempleo el mismo día. La obligación sale de la caja el 10/09,
+// que es la fecha que publica la propia pestaña para el devengado de agosto.
+
+/** Los doce meses con la boleta de agosto declarada, que es el mes del defecto. */
+const GREM_DECL = [NADA, NADA, NADA, NADA, NADA, NADA, NADA, 2374397.18, NADA, NADA, NADA, NADA]
+const CLAVE_AGO = `2026-08·${RUBRO_GREMIALES}`
+const pagoBanco = (cubierto) => new Map([[CLAVE_AGO, { cubierto, fecha: S('2026-09-10') }]])
+const gremialesDe = (ms) => ms.filter((m) => m.rubro === RUBRO_GREMIALES && m.fecha === S('2026-09-10'))
+
+test('SIN el débito del banco, agosto sigue publicándose como obligación por la boleta entera', () => {
+  const ms = deCargasSociales(
+    { fechas: FECHAS, f931: F931, gremiales: GREMIALES, gremialesDeclarado: GREM_DECL }, CORTE)
+  const [g] = gremialesDe(ms)
+  assert.equal(g.importe, 2374397.18)
+  assert.equal(g.estado, 'COMPROMETIDO')
+})
+
+test('CON el débito, la boleta cubierta entera NO se emite: ya salió del saldo', () => {
+  const avisos = []
+  const cubiertos = new Set()
+  const ms = deCargasSociales(
+    { fechas: FECHAS, f931: F931, gremiales: GREMIALES, gremialesDeclarado: GREM_DECL }, CORTE,
+    { pagosDelBanco: pagoBanco(2374397.18), anotarCubierto: (c) => cubiertos.add(c), aviso: (a) => avisos.push(a) })
+  assert.deepEqual(gremialesDe(ms), [], 'seguir emitiéndola es contarla dos veces: banco y proyección')
+  assert.ok(avisos.some((a) => a.includes('lo pagó EL BANCO')), 'un mes que desaparece sin decir por qué no es auditable')
+  assert.deepEqual([...cubiertos], [`2026-09·${RUBRO_GREMIALES}`],
+    'el mes de CAJA tiene que quedar anotado: sin eso vuelven a entrar las filas planas de Compras')
+  assert.ok(ms.some((m) => m.rubro === RUBRO_CARGAS && m.fecha === S('2026-09-10')),
+    'el F931 del mismo mes no se toca: el banco pagó los gremiales, no la DDJJ de ARCA')
+})
+
+test('el pago PARCIAL emite el resto, no apaga el mes ni publica la boleta entera', () => {
+  const ms = deCargasSociales(
+    { fechas: FECHAS, f931: F931, gremiales: GREMIALES, gremialesDeclarado: GREM_DECL }, CORTE,
+    { pagosDelBanco: pagoBanco(994941.26 + 1160400) })
+  const [g] = gremialesDe(ms)
+  assert.equal(g.importe, 219055.92, 'el Fondo de Cese declarado que ninguna acreditación respalda')
+  assert.match(g.concepto, /resto tras el banco/, 'un importe que no es el de la boleta tiene que decir por qué')
+})
+
+test('un pago del banco por OTRO período no toca agosto', () => {
+  const ms = deCargasSociales(
+    { fechas: FECHAS, f931: F931, gremiales: GREMIALES, gremialesDeclarado: GREM_DECL }, CORTE,
+    { pagosDelBanco: new Map([[`2026-07·${RUBRO_GREMIALES}`, { cubierto: 2374397.18, fecha: S('2026-08-27') }]]) })
+  assert.equal(gremialesDe(ms)[0].importe, 2374397.18)
+})
+
+test('el mes que el banco apagó sigue cubierto: las filas planas de Compras no vuelven a entrar', () => {
+  // Las dos filas PROYECTADAS de septiembre que el dueño tiene cargadas en Compras ($800.000 el 10/09
+  // y $700.000 el 17/09). Si el mes deja de estar cubierto, entran encima de la plata que ya salió.
+  const comprasSep = [[], [], ENC,
+    filaCompras({ prov: 'FCL', total: 800000, estado: 'Proyectado', rubro: RUBRO_GREMIALES, fecha: S('2026-09-10') }),
+    filaCompras({ prov: 'SINDICATOS', total: 700000, estado: 'Proyectado', rubro: RUBRO_GREMIALES, fecha: S('2026-09-17') }),
+  ]
+  const cubiertos = new Set()
+  const cadena = deCargasSociales(
+    { fechas: FECHAS, f931: F931, gremiales: GREMIALES, gremialesDeclarado: GREM_DECL }, CORTE,
+    { pagosDelBanco: pagoBanco(2374397.18), anotarCubierto: (c) => cubiertos.add(c) })
+  const cargasCubiertas = mesesCubiertos(cadena)
+  for (const c of cubiertos) cargasCubiertas.add(c)
+  const libro = deCompras(comprasSep, CORTE, { cargasCubiertas })
+  assert.deepEqual(libro.filter((m) => m.rubro === RUBRO_GREMIALES).map((m) => m.importe), [],
+    'volvieron a entrar $1.500.000 de gremiales planos sobre un mes que el banco ya pagó')
+})

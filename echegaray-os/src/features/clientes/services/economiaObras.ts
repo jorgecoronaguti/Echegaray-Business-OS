@@ -16,7 +16,21 @@ export interface EconomiaDeObra {
   costo_mo: number | null
   costo_materiales: number | null
   margen: number | null
+  /**
+   * POR QUÉ CAMINO SALIÓ EL CONTRATADO (`obra_economia_cartera.origen`). No es metadato: cambia lo
+   * que el número SIGNIFICA, y hasta el 10/09/2026 la pantalla los dibujaba todos iguales.
+   *
+   *   `oc-pesos` · `oc-usd-x-tc`  hay un PRECIO en la columna de contrato de OBRAS.
+   *   `suma-viva`                 OBRAS no tiene precio: es la suma de lo que Cobranzas registró
+   *                               como venta hasta hoy. Sube cada vez que se factura, y por eso no
+   *                               se puede leer como «lo que vale la obra».
+   *   `null`                      no hay ninguno de los dos.
+   */
+  origen: string | null
 }
+
+/** El `origen` que dice «esto NO es un precio contratado, es lo vendido hasta hoy». */
+export const ORIGEN_SUMA_VIVA = 'suma-viva'
 
 export const SIN_PRECIO_EN_OBRAS = 'sin precio en OBRAS'
 
@@ -30,7 +44,7 @@ export async function getEconomiaDeObras(
 ): Promise<Map<string, EconomiaDeObra> | null> {
   const { data, error } = await supabase
     .from('obra_economia_cartera')
-    .select('obra_canonica_id, contratado, costo_mo, costo_materiales, margen')
+    .select('obra_canonica_id, contratado, costo_mo, costo_materiales, margen, origen')
   if (error) return null
   const m = new Map<string, EconomiaDeObra>()
   for (const f of (data ?? []) as Record<string, unknown>[]) {
@@ -40,6 +54,7 @@ export async function getEconomiaDeObras(
       costo_mo: aNumero(f.costo_mo),
       costo_materiales: aNumero(f.costo_materiales),
       margen: aNumero(f.margen),
+      origen: f.origen == null ? null : String(f.origen),
     })
   }
   return m
@@ -52,10 +67,34 @@ export function aNumero(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-/** El margen en % del contratado. Sin contratado (o contratado 0) no hay porcentaje. */
+/**
+ * EL TECHO ARITMÉTICO DEL MARGEN SOBRE EL CONTRATADO.
+ *
+ * `margen = contratado − MO − materiales` y ningún costo es negativo, así que el cociente no puede
+ * pasar de 100 %. Si pasa, los dos números NO son de la misma obra —o el denominador no es un
+ * precio— y el porcentaje deja de medir nada.
+ */
+export const MARGEN_PCT_MAX = 100
+/**
+ * EL PISO. Por debajo, el contratado es menos de la décima parte del costo: el $ ya dice todo lo que
+ * hay que saber y el % sólo agrega ruido con seis dígitos.
+ *
+ * Es el defecto que el dueño vio el 10/09/2026: Quattropani salía «$ -39.149.629 · 2.603.726 %»
+ * porque OBRAS publicaba $1.504 de contratado (un dólar leído como peso). El $ negativo era la
+ * noticia; el porcentaje era una cifra que sólo podía confundir.
+ */
+export const MARGEN_PCT_MIN = -1000
+
+/**
+ * El margen en % del contratado. Sin contratado (o contratado 0) no hay porcentaje — y tampoco lo
+ * hay cuando el resultado cae fuera de `[MARGEN_PCT_MIN, MARGEN_PCT_MAX]`: un porcentaje imposible
+ * no es un dato con ruido, es la prueba de que el denominador no corresponde.
+ */
 export function margenPct(margen: number | null, contratado: number | null): number | null {
   if (margen === null || contratado === null || contratado <= 0) return null
-  return (margen / contratado) * 100
+  const p = (margen / contratado) * 100
+  if (!Number.isFinite(p) || p > MARGEN_PCT_MAX || p < MARGEN_PCT_MIN) return null
+  return p
 }
 
 /**
@@ -73,4 +112,33 @@ export function sumaConHuecos(valores: (number | null)[]): { total: number | nul
 export function pctTexto(p: number | null): string | null {
   if (p === null) return null
   return `${p.toLocaleString('es-AR', { maximumFractionDigits: 0 })} %`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// EL MARGEN DE UNA FILA — vivía en `chipsCartera.ts`, que se retiró el 10/09/2026 junto con los
+// chips «sin CUIT · sin teléfono · sin contrato» que el dueño mandó sacar de la pantalla. La
+// regla del margen no era un chip: es economía de la obra, y su casa es este archivo — que además
+// era el otro que declaraba `sin precio en OBRAS`, la misma frase escrita dos veces.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * EL MARGEN DE LA FILA. UNA definición, y `null` cuando no se puede afirmar.
+ *
+ * Manda lo que OBRAS publica (`obra_economia_cartera.margen`): es el número que el dueño mira en el
+ * Sheet, y recalcularlo acá sería una segunda versión del mismo concepto. Sólo si la vista NO lo
+ * trae se deriva, y con la MISMA fórmula que el rótulo de la columna declara —contratado − MO −
+ * materiales—, que es lo que hace que las dos no puedan divergir.
+ *
+ * SI FALTA CUALQUIERA DE LOS TRES, EL RESULTADO ES `null`. Tratar un hueco como cero publicaría el
+ * margen entero como ganancia el día que el costo de materiales no esté cargado.
+ */
+export function margenDeLaFila(e: {
+  margenPublicado: number | null
+  contratado: number | null
+  costoMo: number | null
+  costoMateriales: number | null
+}): number | null {
+  if (e.margenPublicado !== null) return e.margenPublicado
+  if (e.contratado === null || e.costoMo === null || e.costoMateriales === null) return null
+  return e.contratado - e.costoMo - e.costoMateriales
 }
