@@ -7,10 +7,13 @@ import { A_SANGRE, solapaDe, solapasDeCliente } from './solapasCliente.ts'
 
 const CUENTAS = { obras: 3, presupuestos: 2, documentos: 18 }
 
+// EL RÓTULO DE LA PRIMERA CARA CAMBIÓ A «TRABAJOS» (10/09/2026) y su CLAVE no: los enlaces con
+// `?vista=obras` que ya circulan tienen que seguir abriendo la misma cara.
+
 test('las siete caras del mockup, con los rótulos del mockup', () => {
   const s = solapasDeCliente({ veEconomia: true, ...CUENTAS })
   assert.deepEqual(s.map((x) => x.label), [
-    'Obras', 'Presupuestos', 'Documentos', 'Actividad',
+    'Trabajos', 'Presupuestos', 'Documentos', 'Actividad',
     'Cuenta corriente', 'Esquema de pago', 'Acceso al portal',
   ])
   // Sólo cuentan las tres que el canónico 26 numera. Un «0» al lado de «Cuenta corriente» se

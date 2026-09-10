@@ -229,10 +229,10 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
             subtitulo: [
               `${visibles.length} ${visibles.length === 1 ? 'cliente' : 'clientes'}`,
               obras === null
-                ? 'no pude leer las obras'
-                : `${obrasEnCurso} ${obrasEnCurso === 1 ? 'obra' : 'obras'} en ejecución`,
-              // «EN CURSO» NO ES ADORNO: es la suma de la columna Contratado, que sólo mira las
-              // obras `activa`. Sin la aclaración se lee como el contrato histórico del cliente.
+                ? 'no pude leer sus trabajos'
+                : `${obrasEnCurso} ${obrasEnCurso === 1 ? 'trabajo' : 'trabajos'} en curso`,
+              // «EN CURSO» NO ES ADORNO: es la suma de la columna Contratado, que sólo mira los
+              // trabajos en marcha. Sin la aclaración se lee como el contrato histórico del cliente.
               veEconomia
                 ? (contratadoTotal === null
                     ? 'sin precios en OBRAS'
@@ -269,10 +269,13 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
             <div className="min-w-0 flex-1">
               <FiltrosSuaves
                 testid="filtro-cartera"
-                conteo={{ n: visibles.length, total: base.length }}
+                // EL CONTEO LLEVA SU SUSTANTIVO. «5/5» solo es una cifra sin rótulo —la regla del
+                // dueño que este módulo ya aplicó al «Clientes 5» de la cabecera—: dos números
+                // pegados a un total de plata no dicen de qué están hablando.
+                conteo={{ n: visibles.length, total: base.length, sustantivo: 'clientes' }}
                 opciones={[
                   { clave: 'todo', etiqueta: 'Todos', href: armarHref(sp, { vista: undefined, c: undefined }), activo: vista === 'todo' },
-                  { clave: 'activos', etiqueta: 'Con obra activa', href: armarHref(sp, { vista: 'activos', c: undefined }), activo: vista === 'activos' },
+                  { clave: 'activos', etiqueta: 'Con trabajo en curso', href: armarHref(sp, { vista: 'activos', c: undefined }), activo: vista === 'activos' },
                 ]}
               />
 
@@ -333,6 +336,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
               <PanelOrdenes
                 titulo={tituloPanel}
                 ordenes={ordenesDelPanel}
+                de={obraPedida ? 'de este trabajo' : 'del cliente'}
                 veEconomia={veEconomia}
                 cerrarHref={armarHref(sp, { ordenes: undefined })}
               />

@@ -61,8 +61,10 @@ import { getCertificados, getCuentaCorriente } from '@/features/clientes/service
 import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
 import { getEconomiaDeObras, SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
 import { getEconomiaDeCliente } from '@/features/clientes/services/economiaCliente'
+import { getCobradoPorObra } from '@/features/administracion/services/homeCartera'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
-import { ordenesPorClienteYObra } from '@/features/clientes/services/ordenesCliente'
+import { getOrdenesDe, ordenesPorClienteYObra } from '@/features/clientes/services/ordenesCliente'
+import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
 import { PapelesPorTipo } from '@/features/clientes/components/PapelesPorTipo'
 import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
 import { editarPagoDelEsquema, publicarEsquema } from '@/features/clientes/services/esquemaActions'
@@ -111,6 +113,15 @@ type Query = {
   /** Abre el alta de obra, que en el v2 es la acción primaria de la cabecera y no un `details`
    *  escondido arriba de la tabla. */
   nueva?: string
+  /**
+   * EL DETALLE DE UN TRABAJO, DENTRO DEL CRM (`?trabajo=<obra_id>`).
+   *
+   * Hasta el 10/09/2026 la fila del trabajo saltaba a `/obras/<id>`: un clic y el dueño estaba en
+   * el ERP —que él mismo describe como descuidado— sin haber pedido irse. Lo que el CRM sí puede
+   * contestar de un trabajo son sus papeles: qué OC lo encargó y qué OP pagó el cliente. Eso se
+   * abre en el panel lateral de esta misma ficha, con la MISMA lectura que usa `/clientes`.
+   */
+  trabajo?: string
 }
 
 export default async function ClientePage({ params, searchParams }: {
@@ -145,7 +156,7 @@ export default async function ClientePage({ params, searchParams }: {
   const veEconomia = puedeVerEconomia(rol)
 
   const [responsables, contactos, obras, linea, documentos, cartera, economia, papeles,
-    economiaCliente] = await Promise.all([
+    economiaCliente, cobradoPorObra] = await Promise.all([
     puedeEditar ? getResponsables(supabase) : Promise.resolve({ data: [], error: null }),
     getContactos(supabase, id),
     getObrasDelCliente(supabase, id),
@@ -161,6 +172,10 @@ export default async function ClientePage({ params, searchParams }: {
     // LO CONTRATADO DEL CLIENTE, SUMADO POR LA BASE (`public.cliente_economia`). La cabecera ya no
     // suma las obras acá: era la cuarta de las cinco definiciones que este hito borra.
     veEconomia ? getEconomiaDeCliente(supabase, id) : Promise.resolve(null),
+    // LO COBRADO POR TRABAJO, de la MISMA función que lee `/clientes` (`obra_cobranza`). Sin esto,
+    // la ficha no podía decir si un trabajo cobró y había que salir a la cuenta corriente; y con
+    // una lectura propia, las dos pantallas del módulo volverían a poder decir números distintos.
+    veEconomia ? getCobradoPorObra(supabase) : Promise.resolve(null),
   ])
   // Estas lecturas se leían con `?? []`: si la de obras fallaba, la ficha decía que el cliente no
   // tiene obras. Sobre un cliente eso es una afirmación comercial sacada de un fallo de la base.
@@ -222,6 +237,10 @@ export default async function ClientePage({ params, searchParams }: {
   // cifra dice qué falta; no se rellena con otra cuenta.
   const contratadoEnCurso = economiaCliente?.contratado_en_curso ?? null
 
+  /** El detalle del trabajo, DENTRO del CRM. Es una función y no una arrow creada en el JSX: una
+   *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
+  const hrefTrabajo = (obraId: string) => url({ trabajo: obraId })
+
   /** La misma dirección con un parámetro cambiado. Los demás se preservan. */
   const url = (cambio: Partial<Record<keyof Query, string | null>>) => {
     const p = new URLSearchParams(
@@ -246,14 +265,16 @@ export default async function ClientePage({ params, searchParams }: {
   // eso es mezclar ventanas incompatibles. Tampoco «Pendiente»: no tiene fuente, y la resta de dos
   // universos distintos sería un número inventado. El saldo real vive en Cuenta corriente.
   const cifras: CifraDeFicha[] = [
-    { rotulo: 'Obras', valor: todas.length || null, falta: 'ninguna cargada' },
+    // «TRABAJOS» Y NO «OBRAS»: el CRM habla de lo que el cliente encargó. La obra como unidad de
+    // ejecución —con su plan, su avance y su costo— vive en el ERP.
+    { rotulo: 'Trabajos', valor: todas.length || null, falta: 'ninguno cargado' },
     ...(veEconomia
       ? [{
           rotulo: 'Contratado en curso',
           // NADIE CARGÓ EL MONTO ≠ CONTRATADO $ 0. Con obras en curso sin monto, la cifra lo dice
           // en vez de publicar un cero que se leería como «trabajamos gratis».
           valor: contratadoEnCurso !== null ? money(contratadoEnCurso) : null,
-          falta: enCurso.length ? SIN_PRECIO_EN_OBRAS : 'sin obra en curso',
+          falta: enCurso.length ? SIN_PRECIO_EN_OBRAS : 'sin trabajo en curso',
         } as CifraDeFicha]
       : []),
     {
@@ -298,6 +319,16 @@ export default async function ClientePage({ params, searchParams }: {
   const nPapeles = papeles ? papeles.oc.length + papeles.op.length + papeles.retenciones.length
     + papeles.facturas.length + papeles.otros.length : 0
 
+  // ═══ EL PANEL DEL TRABAJO ═══
+  //
+  // La clave tiene que ser un trabajo DE ESTE CLIENTE: una URL tipeada a mano no puede pedir los
+  // papeles de la obra de otro. `getOrdenesDe` además vuelve a pasar por la RLS, así que esto no es
+  // la cerradura — es no hacerle la pregunta.
+  const trabajoAbierto = q.trabajo && todas.some((o) => o.obra_id === q.trabajo) ? q.trabajo : null
+  const ordenesDelTrabajo = trabajoAbierto
+    ? await getOrdenesDe(supabase, { clienteId: id, obraId: trabajoAbierto })
+    : null
+
   const vencido = lector.leer(cuenta, null)?.vencido ?? null
   const tasa = tasaDeConversion(presupuestos)
 
@@ -333,7 +364,7 @@ export default async function ClientePage({ params, searchParams }: {
                   href={url({ vista: 'obras', nueva: q.nueva === 'obra' ? null : 'obra' })}
                   testid="nueva-obra" icono={<IconoCrear className="h-[14px] w-[14px]" />}
                 >
-                  Nueva obra
+                  Nuevo trabajo
                 </AccionPrimaria>
               </>
             )
@@ -424,7 +455,10 @@ export default async function ClientePage({ params, searchParams }: {
               <>
                 {q.nueva === 'obra' && puedeEditar && (
                   <div style={{ borderBottom: `1px solid ${V.linea}`, paddingBottom: 14, marginBottom: 4 }} data-testid="alta-obra">
-                    <FormAccion accion={crearObra} testid="form-obra" enviar="Crear obra" limpiarAlOk mensajeOk="Obra creada.">
+                    {/* EL VERBO DICE «TRABAJO» Y LO QUE CREA SIGUE SIENDO UNA OBRA, con su id y su
+                        ficha en el ERP. No es un eufemismo: es el mismo registro llamado como lo
+                        nombra quien lo encarga. El formulario es el del módulo Obras, sin copia. */}
+                    <FormAccion accion={crearObra} testid="form-obra" enviar="Crear trabajo" limpiarAlOk mensajeOk="Trabajo creado. Queda registrado como obra en el módulo Obras.">
                       {/* La obra nace COLGADA DE ESTE CLIENTE. Hasta que existió `cliente_id`, las
                           tres obras de La Estrella eran tres cadenas de texto iguales por casualidad. */}
                       <input type="hidden" name="cliente_id" value={id} />
@@ -438,9 +472,11 @@ export default async function ClientePage({ params, searchParams }: {
                   veEconomia={veEconomia}
                   economia={economia}
                   papeles={papeles}
+                  cobrado={cobradoPorObra}
+                  hrefTrabajo={hrefTrabajo}
                   vacio={cerradas.length === 0
-                    ? 'Este cliente no tiene ninguna obra. Se crea desde arriba, colgada de este cliente.'
-                    : 'Ninguna obra en ejecución. Las cerradas están abajo.'}
+                    ? 'Este cliente no tiene ningún trabajo. Se crea desde arriba, colgado de este cliente.'
+                    : 'Ningún trabajo en curso. Los terminados están abajo.'}
                 />
 
                 {/* LAS CERRADAS SE VEN SIEMPRE (DISENO-FICHA-CLIENTE-v3 · §3.1). Estaban detrás de
@@ -454,17 +490,20 @@ export default async function ClientePage({ params, searchParams }: {
                     veEconomia={veEconomia}
                     economia={economia}
                     papeles={papeles}
-                    titulo={`Cerradas · ${cerradas.length}`}
+                    cobrado={cobradoPorObra}
+                    hrefTrabajo={hrefTrabajo}
+                    titulo={`Terminados · ${cerradas.length}`}
                     vacio=""
                   />
                 )}
 
-                <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, maxWidth: 720 }} data-testid="pie-archivadas-cliente">
-                  El contratado y el avance salen de la obra: acá no se calcula nada propio. Las
-                  columnas OC y OP son OTRA fuente —los PDF que mandó el cliente, no la pestaña
-                  OBRAS—: que no coincidan no es un error de esta pantalla. El costo real no se
-                  dibuja en la ficha del cliente: vive en la obra, que es donde se decide.
-                </p>
+                {/* ═══ EL PÁRRAFO DEL PIE SE FUE (10/09/2026) ═══
+
+                    Explicaba de dónde salen el contratado, las OC y el costo. La skill de diseño lo
+                    prohíbe con nombre —«no párrafos explicativos permanentes»— y el dueño lo marcó
+                    dos veces. Lo que había que explicar de cada columna vive en su `title`, que es
+                    donde el OS pone la trazabilidad de un número. Y el costo ya no se nombra
+                    siquiera: salió del CRM entero. */}
               </>
             )}
 
@@ -590,6 +629,15 @@ export default async function ClientePage({ params, searchParams }: {
             )}
           </CostadoDeFicha>
         </CuerpoDeFicha>
+      )}
+      {trabajoAbierto && (
+        <PanelOrdenes
+          titulo={nombreDeObra.get(trabajoAbierto) ?? trabajoAbierto}
+          ordenes={ordenesDelTrabajo}
+          de="de este trabajo"
+          veEconomia={veEconomia}
+          cerrarHref={url({ trabajo: null })}
+        />
       )}
     </PantallaV2>
   )

@@ -49,7 +49,11 @@ export interface SolapaVisible {
 
 /** Los rótulos SON los del mockup, palabra por palabra: «Cuenta corriente», no «Cuenta». */
 const LABEL: Record<Solapa, string> = {
-  obras: 'Obras',
+  // «TRABAJOS» Y NO «OBRAS» (dueño, 10/09/2026 17:15): «Administración es un CRM y Obra un ERP».
+  // Lo que el CRM lista son los TRABAJOS que el cliente encargó —con su OC, su facturación y su
+  // cobro—; la obra como unidad de ejecución, con su plan y su costo, vive en el ERP. La CLAVE de
+  // la solapa sigue siendo `obras` a propósito: cambiarla rompería los enlaces ya compartidos.
+  obras: 'Trabajos',
   presupuestos: 'Presupuestos',
   documentos: 'Documentos',
   actividad: 'Actividad',

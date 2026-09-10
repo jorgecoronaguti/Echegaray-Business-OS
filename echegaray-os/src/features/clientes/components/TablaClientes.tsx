@@ -267,13 +267,13 @@ export function TablaClientes({
               const unicaOC = totalOC.n === 1 ? (deLaObra?.oc[0]?.numeroCorto ?? null) : null
               const ocDeLaObra = deLaObra?.oc ?? []
               return (
+                /* ═══ EL TRABAJO SE ABRE EN EL CRM, NO EN EL ERP (10/09/2026) ═══
+
+                   Iba a `/obras/<id>`: un clic en la fila y el dueño estaba en el módulo Obras, que
+                   es otro sistema y —dicho por él— está descuidado. El detalle del trabajo que el
+                   CRM sí puede contestar —sus OC, sus OP, con su PDF— vive en el panel lateral de
+                   esta misma pantalla. El ERP queda en un enlace nombrado. */
                 <Link
-                  // ═══ EL TRABAJO SE ABRE EN EL CRM, NO EN EL ERP (10/09/2026) ═══
-                  //
-                  // Iba a `/obras/<id>`: un clic en la fila y el dueño estaba en el módulo Obras,
-                  // que es otro sistema y —dicho por él— está descuidado. El detalle del trabajo
-                  // que el CRM sí puede contestar —sus OC, sus OP, con su PDF— vive en el panel
-                  // lateral de esta misma pantalla. El ERP queda en un enlace nombrado.
                   key={o.obra_id}
                   href={hrefOrdenes(o.obra_id)}
                   prefetch={false}

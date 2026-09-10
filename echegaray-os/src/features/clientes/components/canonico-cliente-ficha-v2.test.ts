@@ -68,7 +68,7 @@ test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
   // la ausencia dejó de ser «sin monto cargado» y pasó a decir DÓNDE falta el dato. El literal se
   // afirma por la constante y no copiado: mientras vivió escrito dos veces —acá y en el servicio—
   // cambiarlo en un lado dejaba la otra copia sin corregir, que es como este test se puso rojo.
-  assert.match(codigoPagina(), /falta: enCurso\.length \? SIN_PRECIO_EN_OBRAS : 'sin obra en curso'/)
+  assert.match(codigoPagina(), /falta: enCurso\.length \? SIN_PRECIO_EN_OBRAS : 'sin trabajo en curso'/)
   assert.ok(SIN_PRECIO_EN_OBRAS.length > 0, 'el servicio dejó de exportar la frase de la ausencia')
   // Y NADIE LA VUELVE A ESCRIBIR A MANO: dos copias del mismo literal es cómo nace una que no
   // recibe la corrección de la otra.
@@ -85,18 +85,35 @@ test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
   assert.doesNotMatch(codigoListas(), /o\.monto_contratado/)
 })
 
-test('una obra sin cronograma no tiene 0 % de avance: lo dice con palabras que ENTRAN', () => {
-  // Las tres ramas de `avanceDeObra`, y las dos ausencias distintas: sin cronograma no hay contra
-  // qué medir; con cronograma y sin carga, falta que alguien mida. Las frases son cortas a
-  // propósito: «sin avance cargado» se cortaba en «sin avance car…» dentro de la pista de 90px
-  // (medido en la captura del 05/09/2026), y una ausencia truncada no dice nada.
+// ═══ EL AVANCE FÍSICO SALIÓ DE LA FICHA DEL CLIENTE (dueño, 10/09/2026 17:15) ═══
+//
+// «Administración es un CRM y Obra un ERP: no mezcles cosas con obras.» Cuánto lleva ejecutado un
+// trabajo se mide contra el cronograma y se decide con el jefe de obra: es la pregunta del ERP. En
+// su pista va lo COBRADO, que es la relación con el cliente y lo que esta ficha no tenía.
+
+test('la ficha no dibuja el avance de obra, y en su lugar publica lo cobrado', () => {
   const src = codigoListas()
-  assert.match(src, /o\.avance_pct != null/)
-  assert.match(src, /'sin medir'/)
-  assert.match(src, /'sin cronograma'/)
-  for (const frase of ['sin medir', 'sin cronograma']) {
-    assert.ok(frase.length <= 14, `«${frase}» no entra en la pista de 90 px`)
-  }
+  assert.doesNotMatch(src, /avance_pct|avanceDeObra|'sin cronograma'/,
+    'el avance volvió al CRM: se mide contra el plan, y el plan vive en el ERP')
+  assert.match(src, /<RotuloCol derecha>Cobrado c\/IVA<\/RotuloCol>/)
+  // VACÍO NO ES CERO: mientras Cobranzas anote el cobro contra el cliente, la celda calla.
+  assert.match(src, /cobrado\?\.disponible && cobrado\.por\.get\(o\.obra_id\)\?\.total != null/)
+})
+
+test('el trabajo se abre en el CRM y el ERP queda en un enlace nombrado', () => {
+  const src = codigoListas()
+  assert.match(src, /href=\{hrefTrabajo \? hrefTrabajo\(o\.obra_id\) : `\/obras\/\$\{o\.obra_id\}`\}/)
+  assert.match(src, /testid="ver-en-obras-ficha"/)
+  assert.match(src, /Ver en Obras →/)
+  // Y la página tiene que pasarle el destino: sin eso la fila cae al ERP por el respaldo.
+  assert.match(codigoPagina(), /hrefTrabajo=\{hrefTrabajo\}/)
+  assert.match(codigoPagina(), /const hrefTrabajo = \(obraId: string\) => url\(\{ trabajo: obraId \}\)/)
+})
+
+test('el detalle del trabajo se lee sólo si es de ESTE cliente', () => {
+  // Una URL tipeada a mano no puede pedir los papeles de la obra de otro. No es la cerradura —la
+  // RLS decide— es no hacerle la pregunta.
+  assert.match(codigoPagina(), /todas\.some\(\(o\) => o\.obra_id === q\.trabajo\)/)
 })
 
 test('un presupuesto sin cascada cerrada no vale $ 0', () => {
@@ -254,8 +271,10 @@ function plantillasDeObras(): Map<string, string[]> {
 /** Los hijos DIRECTOS del encabezado de Obras: una celda por columna, en el orden en que se dibujan. */
 function celdasDelEncabezado(): string[] {
   const src = codigoListas()
-  const desde = src.indexOf('<RotuloCol>Obra</RotuloCol>')
-  assert.ok(desde > 0, 'no se pudo encontrar el encabezado de Obras')
+  // «Trabajo» desde el 10/09/2026: el CRM lista lo que el cliente encargó, no la unidad de
+  // ejecución del ERP.
+  const desde = src.indexOf('<RotuloCol>Trabajo</RotuloCol>')
+  assert.ok(desde > 0, 'no se pudo encontrar el encabezado de Trabajos')
   const hasta = src.indexOf('</div>', desde)
   return src.slice(desde, hasta).split('\n')
     .map((l) => l.trim())
@@ -292,7 +311,7 @@ test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el
   const src = codigoListas()
   // AVANCE tiene pista propia desde 560 — nunca vuelve adentro de ESTADO — y la economía de OBRAS
   // sólo aparece con ancho de escritorio.
-  assert.match(src, /<RotuloCol derecha>Avance<\/RotuloCol>/)
+  assert.match(src, /<RotuloCol derecha>Cobrado c\/IVA<\/RotuloCol>/)
   // ═══ COSTO MO Y COSTO MAT. SALIERON DE ESTA TABLA (10/09/2026, DISENO-FICHA-CLIENTE-v3 §3.1) ═══
   //
   // Este archivo ya declaraba que la ficha del cliente es la cara COMERCIAL de la relación y que el
@@ -331,21 +350,21 @@ test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el
   assert.ok(!/<RotuloCol derecha>OC<\/RotuloCol>/.test(src), 'el rótulo «OC» volvió sin decir el IVA')
   // Ni Obra ni Contratado llevan clase de escondido: son las dos que no se negocian.
   const celdas = celdasDelEncabezado()
-  for (const fija of ['Obra', 'Contratado']) {
+  for (const fija of ['Trabajo', 'Contratado']) {
     const celda = celdas.find((c) => c.includes(`>${fija}<`))
     assert.ok(celda, `el encabezado dejó de tener la columna ${fija}`)
     assert.doesNotMatch(celda, /SOLO_ANCHO/, `${fija} se soltó en el teléfono: la fila deja de decir qué y por cuánto`)
   }
-  // El jefe de obra ocupaba el lugar de AVANCE. El handoff no lo trae: se lee en la obra.
+  // El jefe de obra ocupaba el lugar donde hoy va COBRADO. No vuelve: se lee en la obra.
   assert.doesNotMatch(src, /jefe_obra/, 'volvió la columna de jefe de obra donde va el avance')
 })
 
 test('el avance NO vuelve a meterse dentro de la celda de estado', () => {
   const src = readFileSync(join(DIR, 'ListasClienteV2.tsx'), 'utf8')
-  // La celda ENTERA: sus atributos Y sus hijos. Recortarla en `{o.estado}` dejaba fuera justo lo
+  // La celda ENTERA: sus atributos Y sus hijos. Recortarla en el estado dejaba fuera justo lo
   // que hay que vigilar —lo que se dibuja DENTRO de la celda—, y el control no podía dar rojo.
   const desde = src.indexOf('data-testid="estado-obra-cliente"')
-  const celda = src.slice(desde, src.indexOf('</span>', src.indexOf('{o.estado}', desde)))
+  const celda = src.slice(desde, src.indexOf('</span>', src.indexOf('PALABRA_ESTADO[o.estado]', desde)))
   assert.ok(desde > 0 && celda.length > 0 && celda.length < 400, 'no se pudo aislar la celda de estado')
   assert.doesNotMatch(celda, /avance/,
     'el avance volvió a la celda de estado: a 390 px se superpone con el contratado')
