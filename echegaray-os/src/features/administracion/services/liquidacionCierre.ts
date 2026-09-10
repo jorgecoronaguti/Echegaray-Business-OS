@@ -13,12 +13,18 @@
 // sello la vuelve indistinguible de una correcta. El botón se deshabilita Y DICE POR QUÉ: un botón
 // gris sin explicación manda a la persona a adivinar cuál de las 17 filas lo está trabando.
 
+import type { ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
+
 /** Lo mínimo que el cierre necesita saber de una línea. Es un subconjunto de `LineaLiquidada`. */
 export interface LineaParaCerrar {
   personaId: string
   nombre: string
   horas: number | null
   valorHora: number | null
+  /** El neto mensual acordado (Oficina). XOR con `valorHora`, como en `persona_tarifa`. */
+  netoMensual: number | null
+  /** Qué tarifa exige esta línea: es lo que decide cuál de las dos se reclama como faltante. */
+  modalidad: ModalidadDeLiquidacion
   cobra: number | null
   porBanco: number
   enEfectivo: number | null
@@ -27,6 +33,24 @@ export interface LineaParaCerrar {
   reciboSinGiro: boolean
   /** Horas de la quincena que ningún registro imputó a una obra. Van a Estructura. */
   horasSinObra?: number
+}
+
+/**
+ * LA TARIFA QUE FALTA ES LA DE SU MODALIDAD, NO SIEMPRE EL VALOR HORA.
+ *
+ * ═══ EL DEFECTO QUE ESTA FUNCIÓN EXISTE PARA IMPEDIR ═══
+ *
+ * El cierre contaba como pendiente a toda línea con `valorHora == null`, y la gente de Oficina
+ * cobra un neto mensual POR DEFINICIÓN: su valor hora es NULL siempre. Con el plantel real —que
+ * tiene Oficina— el botón «Cerrar y sellar» no se habilitaba nunca, y el módulo entero no podía
+ * cerrar una sola quincena. R1 (NULL nunca es cero) sigue en pie: lo que cambia es CUÁL null
+ * bloquea. Un neto mensual cargado no es «sin tarifa».
+ */
+function faltaLaTarifa(l: LineaParaCerrar): boolean {
+  if (l.sinTarifa) return true
+  if (l.modalidad === 'hora') return l.valorHora == null
+  if (l.modalidad === 'mensual') return l.netoMensual == null
+  return false
 }
 
 export interface Pendiente {
@@ -55,7 +79,7 @@ const redondear2 = (n: number): number => Math.round(n * 100) / 100
  */
 export function estadoDeCierre(lineas: readonly LineaParaCerrar[]): EstadoDeCierre {
   const pendientes: Pendiente[] = []
-  const sinTarifa = lineas.filter((l) => l.sinTarifa || l.valorHora == null)
+  const sinTarifa = lineas.filter(faltaLaTarifa)
   const sinCobra = lineas.filter((l) => !l.sinTarifa && l.cobra == null)
   const noCierra = lineas.filter((l) => (
     l.cobra != null && l.enEfectivo != null && l.total != null
@@ -102,7 +126,8 @@ export interface LegajoAlCerrar {
 export interface LineaSellada {
   persona_id: string
   horas: number | null
-  valor_hora: number
+  /** `null` SÓLO cuando la línea no se liquida por hora (Oficina, liquidación final). Ver abajo. */
+  valor_hora: number | null
   categoria_sellada: string | null
   convenio_sellado: string | null
   sellado_en: string
@@ -111,10 +136,18 @@ export interface LineaSellada {
 /**
  * EL SELLO, LÍNEA POR LÍNEA.
  *
- * Una línea sin valor hora NO se sella: se devuelve en `sinSellar`. El CHECK de la base
- * (`liquidacion_linea_sellado_coherente`) rechazaría un sello sin fecha, pero nada impediría sellar
- * un `valor_hora` NULL — y una línea sellada en NULL dice «se liquidó sin tarifa», que es una
- * afirmación falsa sobre plata que se entregó en mano.
+ * Una línea que se liquida POR HORA y no tiene valor hora NO se sella: se devuelve en `sinSellar`.
+ * El CHECK de la base (`liquidacion_linea_sellado_coherente`) rechazaría un sello sin fecha, pero
+ * nada impediría sellar un `valor_hora` NULL — y en una línea por hora ese NULL diría «se liquidó
+ * sin tarifa», que es una afirmación falsa sobre plata que se entregó en mano.
+ *
+ * ═══ OFICINA SE SELLA CON `valor_hora` EN NULL, Y ES LO CORRECTO ═══
+ *
+ * `liquidacion_linea` no tiene columna de neto mensual: el neto acordado de Oficina ya queda
+ * escrito en `cobra` de la línea (lo escribe `escribirFoto`), que es exactamente lo que se pagó.
+ * Inventar un valor hora dividiendo el neto por las horas del mes sería fabricar un dato que nadie
+ * acordó y que la pantalla 11 después compararía contra la tarifa vigente. Lo que se congela de
+ * Oficina es categoría, convenio y `sellado_en`; el importe, en `cobra`.
  */
 export function sellarLineas(
   lineas: readonly LineaParaCerrar[], legajos: readonly LegajoAlCerrar[], selladoEn: string,
@@ -123,12 +156,12 @@ export function sellarLineas(
   const selladas: LineaSellada[] = []
   const sinSellar: string[] = []
   for (const l of lineas) {
-    if (l.valorHora == null) { sinSellar.push(l.nombre); continue }
+    if (l.modalidad === 'hora' && l.valorHora == null) { sinSellar.push(l.nombre); continue }
     const legajo = porPersona.get(l.personaId)
     selladas.push({
       persona_id: l.personaId,
       horas: l.horas,
-      valor_hora: l.valorHora,
+      valor_hora: l.modalidad === 'hora' ? l.valorHora : null,
       categoria_sellada: legajo?.categoria ?? null,
       convenio_sellado: legajo?.convenio ?? null,
       sellado_en: selladoEn,
