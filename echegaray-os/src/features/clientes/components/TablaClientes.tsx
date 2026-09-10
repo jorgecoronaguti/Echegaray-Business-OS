@@ -40,40 +40,71 @@ import { pesos, porcentajeCanon } from '@/shared/components/canon/formato'
 import { IconoCliente, IconoObra } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { diaRelativo, type ClienteEnCartera } from '@/features/administracion/services/homeCartera'
-import { ordenesParaFila, sinFilaPropia, type OrdenBreve, type OrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
+import { rotuloDe } from '@/features/clientes/services/ordenesCliente'
+import type { Orden, PapelesDelCliente, Total } from '@/features/clientes/services/papelesCliente'
 import { SIN_PRECIO } from '@/features/clientes/services/chipsCartera'
 import { BotonOrdenes } from './BotonOrdenes'
 import { pctTexto } from '@/features/clientes/services/economiaObras'
 
 // ── LOS NÚMEROS DE LAS ÓRDENES ──────────────────────────────────────────────────────────────────
 //
-// «OC 2162 · 05/08» al lado del nombre de la obra, y no «OC ·1». El dueño lo pidió así el
-// 10/09/2026: identificar la orden con su obra a simple vista. Quién las agrupa y cuántas entran lo
-// decide `ordenesParaFila`, que es puro y está probado; acá no se decide nada, se dibuja.
+// «OC 2256 · 02/09 · $12.100.000» DEBAJO del nombre de la obra, y sólo órdenes de COMPRA: la orden
+// de pago no se imputa a la fila de la obra (dueño, 10/09/2026 — mezclarlas en el mismo renglón fue
+// lo que hizo ilegible la versión anterior). Lo que hay para cobrar se resume en la fila del
+// cliente, en su propia columna.
+//
+// QUIÉN AGRUPA: `papelesCliente.agruparPapeles`, que es puro y está probado contra los 44 papeles
+// reales de Messina. Acá no se decide nada, se dibuja.
 //
 // NO SON UN ENLACE. La fila entera ya es un `<Link>` y un `<a>` adentro de otro `<a>` es HTML
 // inválido: el navegador lo desarma y la fila queda con zonas que navegan a cualquier lado.
 //
 // EL IMPORTE VIAJA EN EL RÓTULO Y SÓLO CON `veEconomia`: «OC 2173 · 11/08 · $78.650.000» es el
-// precio de venta de esa obra. Al jefe de obra y al campo les llega el mismo rótulo sin el importe
-// —qué orden hay, no cuánto se cobra—, y quien lo decide es esta pantalla, que ya sabe el rol.
-function Chips({ ordenes, href, titulo, max, veEconomia, className = ADORNO_ANCHO }: {
-  ordenes: OrdenBreve[] | undefined; href: string; titulo?: string; max?: number; veEconomia: boolean
-  /** Al lado del nombre se sueltan por ancho (`ADORNO_ANCHO`); en su propia línea NO se sueltan. */
-  className?: string
+// precio de venta de esa obra. Al jefe de obra y al campo les llega el mismo rótulo sin el importe.
+
+/** TODAS si son tres o menos; si no, LAS TRES MÁS RECIENTES y «+N». Nunca se esconde en silencio. */
+const MAX_OC_EN_FILA = 3
+
+function OrdenesDeLaObra({ ordenes, href, veEconomia }: {
+  ordenes: Orden[]; href: string; veEconomia: boolean
 }) {
-  const { visibles, resto } = ordenesParaFila(ordenes, { ...(max === undefined ? {} : { max }), veEconomia })
+  const visibles = ordenes.slice(0, MAX_OC_EN_FILA)
   return (
     <BotonOrdenes
-      grupos={visibles} resto={resto} href={href} className={className} color={V.apagado}
-      titulo={titulo}
+      rotulos={visibles.map((o) => ({ clave: o.clave, texto: rotuloDe(o, { veEconomia }) }))}
+      resto={Math.max(0, ordenes.length - visibles.length)}
+      href={href}
+      className="pl-[22px]"
+      color={V.apagado}
+      titulo="Órdenes de compra que el cliente mandó por mail para esta obra"
     />
+  )
+}
+
+/**
+ * EL TOTAL DE UNA COLUMNA DE PAPELES: «$90.750.000 · 2 OC».
+ *
+ * `null` no es cero: una orden sin importe cargado no es una orden por $ 0, y cuando alguna del
+ * grupo no lo tiene el total lleva «·» para decir que suma sólo las que sí (misma marca que el
+ * margen parcial de esta tabla).
+ */
+function TotalDePapeles({ total, sigla, tam, testid }: {
+  total: Total; sigla: 'OC' | 'OP'; tam: string; testid: string
+}) {
+  if (!total.n) return null
+  return (
+    <span className="font-mono tabular-nums" data-testid={testid} style={{ fontSize: tam, color: V.apagado }}>
+      {total.importe === null ? 'sin importe' : pesos(total.importe)}
+      <span style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}>
+        {total.n} {sigla}{total.parcial ? ' ·' : ''}
+      </span>
+    </span>
   )
 }
 
 /** `25v2:154`. Literales porque Tailwind no compila una clase armada en runtime. */
 const COLS
-  = 'grid-cols-[minmax(0,1.9fr)_110px_150px_130px_130px_150px_96px]'
+  = 'grid-cols-[minmax(0,1.9fr)_110px_160px_150px_130px_130px_150px_96px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.9fr)_110px_150px]'
   + ' max-[767px]:grid-cols-[minmax(0,1.9fr)_150px]'
 /**
@@ -98,11 +129,19 @@ const SOLO_TABLET = 'max-[767px]:hidden'
  */
 const ADORNO_ANCHO = 'max-[1023px]:hidden'
 
+/** Un cliente del que no llegó ningún papel. Es una constante y no un objeto nuevo por fila: la
+ *  tabla dibuja decenas de filas y ninguna necesita su propio vacío. */
+const SIN_PAPELES: Total = { n: 0, importe: null, parcial: false }
+const VACIO: PapelesDelCliente = {
+  oc: [], op: [], facturas: [], retenciones: [], otros: [],
+  porObra: new Map(), sinObra: { oc: [], op: [] }, totalOC: SIN_PAPELES, totalOP: SIN_PAPELES,
+}
+
 /** Los tonos que el v2 usa en esta pantalla y el vocabulario todavía no tenía nombrados. */
 const TONO = { divisorObra: '#F3F2EE', pista: '#EDECE8', textoObra: '#3A3A38' } as const
 
 export function TablaClientes({
-  clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, ordenes, hrefOrdenes, hoy, limpiarHref, vacio,
+  clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, papeles, hrefOrdenes, hoy, limpiarHref, vacio,
 }: {
   clientes: ClienteEnCartera[]
   seleccionado?: string
@@ -112,8 +151,8 @@ export function TablaClientes({
   veEconomia: boolean
   /** `true` = la lectura de obras falló. Ninguna fila puede decir «ninguna en ejecución». */
   obrasNoLeidas: boolean
-  /** Las órdenes de la cartera, por obra y por cliente. Vacío = ninguna, o la lectura falló. */
-  ordenes: OrdenesDeLaCartera
+  /** Los papeles de la cartera, ya agrupados, por cliente. Vacío = ninguno, o la lectura falló. */
+  papeles: Map<string, PapelesDelCliente>
   /** Adónde lleva el chip: la clave es el `obra_id`, o `cliente:<id>` para lo no atribuido a obra. */
   hrefOrdenes: (clave: string) => string
   /** El día de hoy en la hora de la empresa. Viene del servidor: el reloj del navegador es de quien mira. */
@@ -122,6 +161,11 @@ export function TablaClientes({
   /** Qué se escribe cuando el recorte no deja a nadie. */
   vacio: string
 }) {
+  /** Los papeles de un cliente, o el conjunto vacío. `undefined` sería «no tiene ninguno», que es
+   *  lo mismo que el vacío para dibujar: quien distingue «no pude leerlos» es la página. */
+  const papelesDe = (clienteId: string): PapelesDelCliente =>
+    papeles.get(clienteId) ?? VACIO
+
   return (
     <div data-testid="clientes-tabla">
       <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
@@ -130,6 +174,14 @@ export function TablaClientes({
         {/* CONTRATADO ES LO QUE PUBLICA OBRAS (la OC de Cobranzas), no lo facturado ni el campo del
             formulario de la obra. El `title` lleva la fuente: un rótulo de una palabra no puede
             cargar solo con decir de qué está hablando. */}
+        {/* LAS ÓRDENES SON OTRA FUENTE QUE CONTRATADO, y las dos se ven. Una diferencia entre el
+            total de OC y lo contratado NO es un error de esta pantalla: son la pestaña OBRAS y los
+            PDF que mandó el cliente, y cuál manda lo decide quien mira, no la tabla. */}
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloCol derecha titulo="Órdenes de compra y de pago que el cliente mandó por mail (cliente_orden). No es lo contratado en OBRAS: son dos fuentes distintas y se ven las dos.">
+            OC · OP
+          </RotuloCol>
+        </span>
         <RotuloCol derecha titulo="Lo que la pestaña OBRAS del Flujo de Caja publica por obra. Es precio contratado, no facturado">
           {veEconomia ? 'Contratado' : ''}
         </RotuloCol>
@@ -183,18 +235,10 @@ export function TablaClientes({
                 <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta, minWidth: 96 }}>
                   {c.nombre}
                 </span>
-                {/* LO QUE NO SE PUDO ATRIBUIR A UNA OBRA cuelga del CLIENTE y se ve acá. Esconderlo
-                    hasta saber la obra sería perderlo: son las órdenes que alguien tiene que asignar. */}
-                {/* LO QUE NO TIENE FILA PROPIA DEBAJO cuelga del CLIENTE y se ve acá: lo que no se
-                    pudo atribuir a ninguna obra, y lo que cuelga de una obra que esta pantalla no
-                    dibuja porque está cerrada. Esconderlo sería perderlo. */}
-                <Chips
-                  ordenes={sinFilaPropia(ordenes.porCliente.get(c.cliente_id), c.enCurso.map((o) => o.obra_id))}
-                  href={hrefOrdenes(`cliente:${c.cliente_id}`)}
-                  titulo="Órdenes del cliente sin obra en ejecución debajo"
-                  max={2}
-                  veEconomia={veEconomia}
-                />
+                {/* SIN NÚMEROS AL LADO DEL NOMBRE. Ahí estaban «OP 5146 · 03/09 · $15.328.174 ·
+                    OC 2162 · +8» —OC y OP en el mismo rótulo— y era lo que el dueño no podía leer;
+                    además estrangulaban el nombre. Lo del cliente se cuenta en su columna, y cuál
+                    es cada papel se lee en su ficha. */}
               </span>
 
               <span
@@ -204,6 +248,19 @@ export function TablaClientes({
                 {/* CERO OBRAS SE ESCRIBE CON PALABRAS: «0 obras» y «nadie le cargó ninguna» se leen
                     igual, y son cosas distintas. */}
                 {c.obras ? `${c.obras} ${c.obras === 1 ? 'obra' : 'obras'}` : 'sin obras'}
+              </span>
+
+              {/* LOS PAPELES DEL CLIENTE, EN DOS RENGLONES Y NUNCA EN EL MISMO RÓTULO: lo que
+                  encargó (OC) y lo que ordenó pagar (OP). Incluye las órdenes de sus obras
+                  CERRADAS, que esta tabla no dibuja como fila: si contaran sólo las visibles,
+                  cerrar una obra haría desaparecer papeles que existen. */}
+              <span
+                className={`flex flex-col items-end justify-center ${SOLO_ANCHO}`}
+                data-testid="papeles-cliente"
+                style={{ gap: 2, textAlign: 'right' }}
+              >
+                <TotalDePapeles total={papelesDe(c.cliente_id).totalOC} sigla="OC" tam="12px" testid="total-oc-cliente" />
+                <TotalDePapeles total={papelesDe(c.cliente_id).totalOP} sigla="OP" tam="11.5px" testid="total-op-cliente" />
               </span>
 
               {/* «SIN PRECIO EN OBRAS» Y NO «SIN CONTRATO»: acá falta el MONTO en la pestaña OBRAS.
@@ -229,7 +286,9 @@ export function TablaClientes({
               // no puede deducirse dentro del `<span>`: el alto vive en el `<Link>`, que es el
               // contenedor de la grilla. Se pregunta por lo que HAY, y `ordenesParaFila` decide
               // después cuáles entran y cuántas van al «+N».
-              const conOrdenes = (ordenes.porObra.get(o.obra_id)?.length ?? 0) > 0
+              const deLaObra = papelesDe(c.cliente_id).porObra.get(o.obra_id)
+              const ocDeLaObra = deLaObra?.oc ?? []
+              const conOrdenes = ocDeLaObra.length > 0
               return (
               <Link
                 key={o.obra_id}
@@ -286,26 +345,35 @@ export function TablaClientes({
                           </>
                         )}
                   </span>
-                  {/* LA SEGUNDA LÍNEA: los papeles. DOS RÓTULOS Y «+N» a partir del tercero — se
-                      muestran los MÁS RECIENTES (`ordenesParaFila` ordena por fecha) y lo que queda
-                      afuera se anuncia, nunca se esconde en silencio. Acá NO llevan `ADORNO_ANCHO`:
+                  {/* LA SEGUNDA LÍNEA: LAS ÓRDENES DE COMPRA DE ESTA OBRA, en 12px legible.
+                      Todas si son tres o menos; si no, las tres más recientes y «+N» —lo que queda
+                      afuera se anuncia, nunca se esconde en silencio—. Acá no llevan `ADORNO_ANCHO`:
                       tienen su renglón propio, así que en el teléfono no le disputan nada al nombre
-                      y se apilan (lo decide `BotonOrdenes` con su media query). La sangría los
-                      alinea bajo el nombre — 13px de icono + 9 de aire. */}
+                      y se apilan. La sangría las alinea bajo el nombre — 13px de icono + 9 de aire.
+                      NINGUNA ORDEN DE PAGO: la OP no se imputa a la obra en esta pantalla. */}
                   {conOrdenes && (
-                    <Chips
-                      ordenes={ordenes.porObra.get(o.obra_id)}
+                    <OrdenesDeLaObra
+                      ordenes={ocDeLaObra}
                       href={hrefOrdenes(o.obra_id)}
-                      titulo="Órdenes de compra y de pago que el cliente mandó por mail para esta obra"
                       veEconomia={veEconomia}
-                      max={2}
-                      className="pl-[22px]"
                     />
                   )}
                 </span>
+
                 {/* La celda vacía de «Obras»: existe para que la obra caiga en la MISMA columna
                     que su cliente, y desaparece con la columna. */}
                 <span className={SOLO_TABLET} />
+                {/* EL TOTAL DE LAS OC DE ESTA OBRA, al lado de lo contratado. Que no coincidan no es
+                    un error: son la pestaña OBRAS y los PDF del cliente, y se ven las dos. */}
+                <span
+                  className={`flex items-center justify-end ${SOLO_ANCHO}`}
+                  data-testid="papeles-obra"
+                  style={{ textAlign: 'right' }}
+                >
+                  <TotalDePapeles
+                    total={deLaObra?.totalOC ?? SIN_PAPELES} sigla="OC" tam="11.5px" testid="total-oc-obra"
+                  />
+                </span>
                 <span
                   className="font-mono tabular-nums"
                   data-testid="contratado-obra"

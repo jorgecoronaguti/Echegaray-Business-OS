@@ -50,7 +50,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
 import { getClientes, getObrasPorCliente } from '@/features/clientes/services/clientesService'
 import { esVistaCartera, separarArchivados } from '@/features/clientes/services/cartera'
-import { getOrdenesDe, getOrdenesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
+import { getOrdenesDe, getPapelesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
 import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
 import { crearCliente } from '@/features/clientes/services/actions'
@@ -94,7 +94,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const vista = esVistaCartera(sp.vista) ? sp.vista : 'todo'
 
   const supabase = await createClient()
-  const [lectura, perfil, obras, partes, certificados, todasLasObras, ordenes, economia, contratos]
+  const [lectura, perfil, obras, partes, certificados, todasLasObras, papeles, economia, contratos]
     = await Promise.all([
     getClientes(supabase),
     getPerfilActual(supabase),
@@ -104,10 +104,12 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
     // El panel muestra TODAS las obras del cliente, no sólo las activas. Una consulta más para toda
     // la cartera, no una por cliente abierto.
     getObrasPorCliente(supabase),
-    // LAS ÓRDENES DEL CLIENTE (OC/OP bajadas de Gmail). Una sola consulta para toda la cartera: una
-    // por obra sería una cascada de decenas. La RLS de `cliente_orden` ya recorta por rol —el jefe
-    // de obra sólo ve la suya—, así que acá no se vuelve a filtrar.
-    getOrdenesDeLaCartera(supabase),
+    // LOS PAPELES DEL CLIENTE (OC, OP, retenciones y facturas bajadas de Gmail), YA AGRUPADOS por
+    // `papelesCliente` — la misma función que usa la ficha, para que las dos pantallas no puedan
+    // decir números distintos. Una sola consulta para toda la cartera: una por obra sería una
+    // cascada de decenas. La RLS de `cliente_orden` ya recorta por rol —el jefe de obra sólo ve la
+    // suya—, así que acá no se vuelve a filtrar.
+    getPapelesDeLaCartera(supabase),
     // LO QUE OBRAS PUBLICA POR OBRA: contratado, costo MO, materiales y margen. Es la fuente del
     // dinero de esta tabla y la única — el campo del formulario de la obra queda de respaldo.
     getEconomiaDeObras(supabase),
@@ -256,7 +258,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
 
               <TablaClientes
                 clientes={visibles}
-                ordenes={ordenes}
+                papeles={papeles.porCliente}
                 seleccionado={seleccionado?.cliente_id}
                 // ═══ LA FILA ABRE LA FICHA, NO EL PANEL (26/08/2026) ═══
                 //

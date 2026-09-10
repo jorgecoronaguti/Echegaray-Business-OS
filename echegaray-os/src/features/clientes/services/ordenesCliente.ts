@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { agruparPapeles, type Orden, type PapelCrudo, type PapelesDelCliente } from './papelesCliente.ts'
 
 // LAS ÓRDENES DEL CLIENTE, PARA LA PANTALLA — cuántas OC y cuántas OP cuelgan de cada obra.
 //
@@ -38,7 +39,10 @@ export type OrdenesDeLaCartera = {
 export async function getOrdenesDeLaCartera(supabase: SupabaseClient): Promise<OrdenesDeLaCartera> {
   const { data, error } = await supabase
     .from('cliente_orden')
-    .select('id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda')
+    // `cita` y `nombre_archivo` NO son adorno: sin el nombre no se puede distinguir un comprobante
+    // de retención —que lleva el número de SU orden de pago— de una orden de pago, y el total
+    // cobrado de la cartera se duplicaría. La clasificación vive en `papelesCliente.clasePapel`.
+    .select('id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo')
     .is('eliminado_en', null)
 
   const porObra = new Map<string, OrdenBreve[]>()
@@ -117,55 +121,66 @@ export function rotuloOrden(
   return partes.join(' · ')
 }
 
-/** Una orden, con todos los papeles que la prueban. Un grupo = un rótulo en la fila. */
-export type GrupoOrden = { clave: string; rotulo: string; ids: string[]; fecha: string | null }
-
 /**
- * LO QUE ENTRA EN LA FILA. Agrupa por (tipo, número canónico) —la OC 2162 llegó en dos mails y es
- * UNA orden—, ordena por fecha descendente y devuelve las `max` más recientes más cuántas quedaron.
+ * EL RÓTULO DE UNA ORDEN YA AGRUPADA: «OC 2256 · 02/09 · $12.100.000».
  *
- * Las que no tienen número NO se agrupan entre sí: dos papeles sin número no son el mismo papel.
+ * `Orden` viene de `papelesCliente` —que es quien decide qué es una orden y cuántas hay—; acá sólo
+ * se escribe. Es la MISMA función que arma el rótulo de la lista y el de la ficha: dos formatos
+ * parecidos se separan en cuanto uno aprende algo.
  */
-export function ordenesParaFila(
-  ordenes: OrdenBreve[] | undefined,
-  { max = 3, veEconomia = false }: { max?: number; veEconomia?: boolean } = {},
-): { visibles: GrupoOrden[]; resto: number } {
-  const porClave = new Map<string, GrupoOrden>()
-  const grupos: GrupoOrden[] = []
-  // LA FACTURA NUESTRA NO SE DIBUJA COMO ORDEN. Es evidencia de la obra —cita la OC y describe el
-  // trabajo— pero no la emitió el cliente: mostrarla acá decía que Messina mandó el doble de
-  // órdenes de las que mandó. Vive en el panel, con su cita.
-  for (const o of (ordenes ?? []).filter((x) => x.tipo === 'orden_compra' || x.tipo === 'orden_pago')) {
-    const canon = canonico(o.numero)
-    const clave = canon ? `${o.tipo}::${canon}` : `sola::${o.id}`
-    const ya = canon ? porClave.get(clave) : undefined
-    if (ya) {
-      ya.ids.push(o.id)
-      // La fecha del grupo es la MÁS VIEJA de sus papeles: la orden se emitió una vez, y la copia
-      // que llegó después no la vuelve más nueva.
-      if (o.fecha && (!ya.fecha || o.fecha < ya.fecha)) { ya.fecha = o.fecha; ya.rotulo = rotuloOrden(o, { veEconomia }) }
-      continue
-    }
-    const g: GrupoOrden = { clave, rotulo: rotuloOrden(o, { veEconomia }), ids: [o.id], fecha: o.fecha }
-    if (canon) porClave.set(clave, g)
-    grupos.push(g)
-  }
-  // Las más nuevas primero y las sin fecha al final: una orden sin fecha no es la más vieja.
-  grupos.sort((a, b) => (b.fecha ?? '').localeCompare(a.fecha ?? ''))
-  return { visibles: grupos.slice(0, max), resto: Math.max(0, grupos.length - max) }
+export function rotuloDe(o: Orden, { veEconomia = false }: { veEconomia?: boolean } = {}): string {
+  return rotuloOrden(
+    {
+      tipo: o.clase === 'oc' ? 'orden_compra' : 'orden_pago',
+      numero: o.numeroCanonico,
+      fecha: o.fecha,
+      importe: o.importe,
+      moneda: o.moneda,
+    },
+    { veEconomia },
+  )
 }
 
 /**
- * LAS DEL CLIENTE QUE NO TIENEN FILA PROPIA DEBAJO: las que no se pudieron atribuir a ninguna obra
- * (`obra_id` null) y las que cuelgan de una obra que esta pantalla NO dibuja.
+ * LOS PAPELES DE TODA LA CARTERA, AGRUPADOS POR CLIENTE.
  *
- * El segundo caso no es teórico: `/clientes` lista sólo las obras `activa` (`homeCartera:132`), y
- * ocho de las once órdenes de Messina con obra cuelgan de obras CERRADAS. Mostrarlas sólo bajo su
- * obra sería esconderlas; decir que el cliente no tiene ninguna sería mentir.
+ * Una sola consulta y una sola agrupación: la lista dibuja decenas de obras y una lectura por obra
+ * sería una cascada. La RLS de `cliente_orden` ya recorta por rol.
  */
-export function sinFilaPropia(delCliente: OrdenBreve[] | undefined, obrasVisibles: string[]): OrdenBreve[] {
-  const visibles = new Set(obrasVisibles)
-  return (delCliente ?? []).filter((o) => !o.obra_id || !visibles.has(o.obra_id))
+export async function getPapelesDeLaCartera(
+  supabase: SupabaseClient,
+): Promise<{ porCliente: Map<string, PapelesDelCliente>; fallo: boolean }> {
+  const { data, error } = await supabase
+    .from('cliente_orden')
+    .select('id, cliente_id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo')
+    .is('eliminado_en', null)
+
+  const crudos = new Map<string, PapelCrudo[]>()
+  if (error || !data) return { porCliente: new Map(), fallo: Boolean(error) }
+  for (const fila of data as (PapelCrudo & { cliente_id: string })[]) {
+    const { cliente_id: clienteId, ...papel } = fila
+    crudos.set(clienteId, [...(crudos.get(clienteId) ?? []), papel])
+  }
+  const porCliente = new Map<string, PapelesDelCliente>()
+  for (const [clienteId, papeles] of crudos) porCliente.set(clienteId, agruparPapeles(papeles))
+  return { porCliente, fallo: false }
+}
+
+/**
+ * LOS PAPELES DE UN CLIENTE, POR OBRA Y A NIVEL CLIENTE — lo que dibuja la ficha.
+ *
+ * `null` = la lectura falló. «No pude leerlos» nunca se dibuja como «no hay ninguno».
+ */
+export async function ordenesPorClienteYObra(
+  supabase: SupabaseClient, clienteId: string,
+): Promise<PapelesDelCliente | null> {
+  const { data, error } = await supabase
+    .from('cliente_orden')
+    .select('id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, atribucion')
+    .eq('cliente_id', clienteId)
+    .is('eliminado_en', null)
+  if (error) return null
+  return agruparPapeles((data ?? []) as PapelCrudo[])
 }
 
 // ── EL DETALLE, PARA EL PANEL ───────────────────────────────────────────────────────────────────
