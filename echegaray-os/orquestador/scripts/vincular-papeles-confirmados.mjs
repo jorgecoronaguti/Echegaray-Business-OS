@@ -28,6 +28,11 @@ export const DECISIONES = [
   { clave: 'c:30549581710|00016-00029784', fila: 818, nota: 'Axion Servicentro — mismo número 0016-00029784, la fila volvió sin CUIT' },
   { clave: 'c:30561078927|0012-00050057', fila: 812, nota: 'Rodamientos Cuyo — mismo número, la fila volvió sin CUIT' },
   { clave: 'c:23284752589|0002-00004725', fila: 814, nota: 'Ruviño Matías Esteban — mismo número, la fila volvió sin CUIT' },
+  // NO ES UN GASTO SIN CARGAR: ES EL MISMO, ANOTADO CON EL NOMBRE COMERCIAL. La fila 783 dice «RSV»
+  // y el papel dice «A.C.SAT S.R.L.»; coinciden número (0011-00087469), fecha (03/08/2026) e importe
+  // ($67.797,51), y el mail del dueño («Factura RSV» de avisos.rsvonline.com.ar) confirma que RSV
+  // Online es A.C.SAT. Cargarlo habría duplicado $67.797,51 de gasto.
+  { clave: 'c:30719656944|0011-00087469', fila: 783, nota: 'A.C.SAT = RSV Online — mismo número, fecha e importe que la fila 783' },
 ]
 
 async function main() {
