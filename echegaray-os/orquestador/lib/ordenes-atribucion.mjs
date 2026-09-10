@@ -243,18 +243,34 @@ export function hashDocumento(bytes) {
 export function deduplicar(candidatos, { yaEnBase = [] } = {}) {
   const porHash = new Map()
   const porOrden = new Map()
+  const porAdjunto = new Map()
   const clave = (f) => {
     const canon = numeroCanonico(f.numero)
     return canon ? `${f.cliente_id ?? '?'}::${f.tipo}::${canon}` : null
   }
+  // La MISMA clave que hace única la base (`cliente_orden_gmail_unica_idx`). Se comprueba también
+  // acá porque la base rechaza DESPUÉS de subir el objeto al bucket: sin esto, cada corrida sube un
+  // archivo, come el 23505 y lo borra. Y sobre todo, porque es la única clave que reconoce un
+  // documento ya guardado cuyo TIPO cambió: los doce certificados de retención están en la tabla
+  // como `otro` y con el número de la orden, así que ni el hash (nunca se calculó) ni el número
+  // canónico los encuentran.
+  const adjunto = (f) => (f.message_id && f.nombre_archivo && f.tamano_bytes
+    ? `${f.message_id}::${norm(f.nombre_archivo)}::${f.tamano_bytes}` : null)
   for (const f of yaEnBase) {
     if (f.hash_sha256) porHash.set(f.hash_sha256, f)
     const k = clave(f)
     if (k) porOrden.set(k, f)
+    const a = adjunto(f)
+    if (a) porAdjunto.set(a, f)
   }
   const nuevos = []
   const repetidos = []
   for (const f of candidatos ?? []) {
+    const yaAdjunto = adjunto(f) ? porAdjunto.get(adjunto(f)) : null
+    if (yaAdjunto) {
+      repetidos.push({ fila: f, porque: `ya guardado desde el mismo mensaje («${yaAdjunto.nombre_archivo}», hoy como ${yaAdjunto.tipo})` })
+      continue
+    }
     const yaHash = f.hash_sha256 ? porHash.get(f.hash_sha256) : null
     if (yaHash) {
       repetidos.push({ fila: f, porque: `mismos bytes que «${yaHash.nombre_archivo ?? 'una fila ya guardada'}»` })
@@ -268,6 +284,8 @@ export function deduplicar(candidatos, { yaEnBase = [] } = {}) {
     }
     if (f.hash_sha256) porHash.set(f.hash_sha256, f)
     if (k) porOrden.set(k, f)
+    const a = adjunto(f)
+    if (a) porAdjunto.set(a, f)
     nuevos.push(f)
   }
   return { nuevos, repetidos }

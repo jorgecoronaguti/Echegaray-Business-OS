@@ -360,3 +360,15 @@ test('la fecha que el propio papel dice no se pisa con la del certificado', () =
   assert.equal(fecharOrdenesDePagoPorSuRetencion(docs).rellenadas, 0)
   assert.equal(docs[0].fecha, '2024-09-25')
 })
+
+test('un adjunto ya guardado no vuelve a entrar aunque hoy se clasifique distinto', () => {
+  // Los doce certificados de retención están en la tabla como `otro` y con el número de la ORDEN.
+  // Con el tipo y el número nuevos no coinciden por ninguna de las otras dos claves, y su hash
+  // nunca se calculó: sin esta tercera clave, cada corrida los volvería a subir.
+  const { nuevos, repetidos } = deduplicar(
+    [{ message_id: 'm7', nombre_archivo: 'O_P_0000000000730_G00000347.pdf', tamano_bytes: 41234, hash_sha256: hashDocumento(Buffer.from('x')), cliente_id: 'cli-messina', tipo: 'retencion', numero: 'G00000347' }],
+    { yaEnBase: [{ message_id: 'm7', nombre_archivo: 'O_P_0000000000730_G00000347.pdf', tamano_bytes: 41234, hash_sha256: null, cliente_id: 'cli-messina', tipo: 'otro', numero: '0000000000730' }] },
+  )
+  assert.equal(nuevos.length, 0)
+  assert.match(repetidos[0].porque, /mismo mensaje/)
+})

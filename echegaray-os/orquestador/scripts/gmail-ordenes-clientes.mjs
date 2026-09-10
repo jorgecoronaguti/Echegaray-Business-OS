@@ -285,6 +285,7 @@ async function main() {
     avisar('  El ensayo sigue: lo único que pierde es poder comparar el hash contra lo ya guardado.')
   }
   const columnas = ['id', 'cliente_id', 'obra_id', 'tipo', 'numero', 'nombre_archivo', 'cita',
+    'message_id', 'tamano_bytes',
     ...NUEVAS.filter((c) => hay.has(c))]
   const { rows: yaEnBase } = await query(
     `select ${columnas.join(', ')} from public.cliente_orden where eliminado_en is null`)
