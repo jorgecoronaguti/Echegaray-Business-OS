@@ -32,9 +32,12 @@ import { query } from '../lib/db.mjs'
 import { leerPdf } from '../lib/ingesta/pdf.mjs'
 import { loadEnvLocalInto } from '../../scripts/lib/env-file.mjs'
 import {
-  clasificarAdjunto, comprobantePropio, comprobantesCitados, extraerImporte, extraerNumero,
-  extraerFechaDeOrden, facturaPropiaDe, fechaImposible, numeroCanonico, numeroDeRetencion, ocsCitadas,
+  clasificarAdjunto, extraerImporte, extraerNumero, extraerFechaDeOrden, fechaImposible,
+  numeroDeRetencion,
 } from '../lib/ordenes-cliente.mjs'
+import {
+  comprobantePropio, comprobantesCitados, facturaPropiaDe, numeroCanonico, ocsCitadas,
+} from '../lib/ordenes-identidad.mjs'
 import { heredarObras } from '../lib/ordenes-atribucion.mjs'
 
 loadEnvLocalInto(process.env, process.env.ORDENES_ENV_FILE ?? path.join(APP_DIR, '.env.local'))

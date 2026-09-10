@@ -2,9 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   clasificarAdjunto, claveDocumento, dominioDe, extensionDe,
-  extraerFecha, extraerImporte, extraerNumero, facturaPropiaDe, formatoNumerico, mapaDeCitas,
-  resolverObraDeTexto, TIPOS, tokensDeObra,
+  extraerFecha, extraerImporte, extraerNumero, formatoNumerico, resolverObraDeTexto, tokensDeObra,
 } from './ordenes-cliente.mjs'
+import { facturaPropiaDe, mapaDeCitas, TIPOS } from './ordenes-identidad.mjs'
 
 // Las obras REALES de Messina y San Francisco, tal como están en obra_canonica el 09/09/2026.
 // Se clavan acá porque el defecto que estos tests atrapan es de AMBIGÜEDAD ENTRE ELLAS: dos playones
@@ -128,11 +128,11 @@ test('la extensión del objeto no se inventa', () => {
 // Todos los textos de acá están COPIADOS de los PDF reales del bucket `obras-documentos` (leídos el
 // 10/09/2026 con `orquestador/lib/ingesta/pdf.mjs`). Un texto inventado prueba la expresión regular
 // contra sí misma; éstos prueban contra el papel que manda Messina.
+import { extraerFechaDeOrden, fechaImposible } from './ordenes-cliente.mjs'
 import {
-  agruparPorNumero, comprobantePropio, comprobantesCitados, extraerFechaDeOrden, fechaImposible,
-  mapaDeEvidencia, numeroCanonico, numeroCorto,
-  obraPorReferencia, ocsCitadas,
-} from './ordenes-cliente.mjs'
+  agruparPorNumero, comprobantePropio, comprobantesCitados, mapaDeEvidencia, numeroCanonico,
+  numeroCorto, obraPorReferencia, ocsCitadas,
+} from './ordenes-identidad.mjs'
 
 test('«Nro.» también trae número: la orden de pago quedaba sin identidad', () => {
   const pdf = 'IMPUTACION ORDEN DE PAGO Nro.: 0000000004865 Fecha de emisión: 28/07/2026'

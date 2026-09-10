@@ -23,12 +23,14 @@ import { createHash } from 'node:crypto'
 import { extraer as cuitsDelTexto } from './cuit.mjs'
 import { CUIT_ECSAS } from './transferencias-proveedores.mjs'
 import {
-  agruparPorNumero, clasificarAdjunto, comprobantePropio, comprobantesCitados, dominioDe, extraerFechaDeOrden,
-  extraerImporte, extraerNumero, facturaPropiaDe, mapaDeCitas, mapaDeEvidencia, norm,
-  comprobanteDelNombre, numeroCanonico, numeroDeNombreArchivo, numeroDeRetencion,
-  obraPorReferencia, ocsCitadas, ordenDePagoDeLaRetencion,
+  clasificarAdjunto, comprobanteDelNombre, dominioDe, extraerFechaDeOrden, extraerImporte,
+  extraerNumero, norm, numeroDeNombreArchivo, numeroDeRetencion, ordenDePagoDeLaRetencion,
   resolverObraDeTexto,
 } from './ordenes-cliente.mjs'
+import {
+  agruparPorNumero, comprobantePropio, comprobantesCitados, facturaPropiaDe, mapaDeCitas,
+  mapaDeEvidencia, numeroCanonico, obraPorReferencia, ocsCitadas,
+} from './ordenes-identidad.mjs'
 
 // ── QUIÉN ES CLIENTE, Y POR QUÉ NO ALCANZA EL DOMINIO ───────────────────────────────────────────
 //
