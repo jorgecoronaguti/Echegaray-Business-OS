@@ -80,3 +80,77 @@ formatos nativos de Google`.
 4. **La papelera entra a las búsquedas del chat.** `drive-busqueda` lee `drive_index` y todavía no
    filtra `trashed`. Hoy no cambia nada (0 archivos en papelera bajo las raíces), pero el día que
    haya uno va a aparecer en un resultado sin decir que está en la papelera.
+
+---
+
+## Estado del H2 (10/09/2026)
+
+**El H2 del plan decía: `carpeta_entidad` + `documento_entidad` sembradas + `carpeta_sin_entidad`.
+Se hizo la mitad que resuelve el problema, y NO se crearon esas dos tablas. El porqué está abajo.**
+
+Lo construido, en `feat/puente-drive-h2`:
+
+- `src/features/documentos/services/carpetaDeEntidad.ts` — la ÚNICA definición de cuál es la carpeta
+  de una entidad (`FUENTE_DE_CARPETA`) y de su estado: `sin_declarar` · `no_indexada` ·
+  `en_papelera` · `ausente` · `no_se_pudo_leer` · `ok`. Puro, con 15 tests.
+- `src/features/documentos/services/carpetaDeEntidadService.ts` — la lectura: resuelve la carpeta y
+  lista sus descendientes desde `drive_index` (nunca Drive en vivo). `alcanceDeLectura(rol)` dice si
+  la lista puede estar recortada por la RLS.
+- `src/features/documentos/components/ArchivosDeDrive.tsx` — el bloque, montado en las cuatro fichas
+  (obra, persona, cliente, proveedor), con nombre, subcarpeta, fecha, tamaño y enlace.
+- `orquestador/scripts/censo-carpetas-drive.mjs` + `orquestador/lib/censo-carpetas.mjs` — el censo,
+  que importa la regla de la app en vez de copiarla.
+- `orquestador/datos/definiciones.json` + `DEFINICIONES.md` — `carpeta_de_drive` como concepto
+  registrado, con `obras.drive_carpeta_id` y `personas.drive_folder_id` prohibidas.
+- `supabase/migrations/20260910T2210_drive_index_carpeta_de_obra.sql` — **ESCRITA, NO APLICADA.**
+
+### Por qué NO se crearon `carpeta_entidad` ni `documento_entidad`
+
+`carpeta_entidad` sería, hoy, una copia de tres columnas que YA declaran la carpeta
+(`obra_canonica.drive_carpeta_id`, `clientes.drive_carpeta_id`, `personas.drive_folder_id`) más una
+cuarta fila vacía para proveedores. Una tabla espejo de una columna existente es la segunda
+definición del mismo concepto — exactamente lo que el `CLAUDE.md` raíz prohíbe— y no se puede
+sembrar sin decidir antes dónde vive la carpeta de un proveedor, que es una decisión abierta del
+dueño en este mismo documento. Se registró el concepto en su lugar: la fuente es única, está
+declarada y hay un test que pone rojo si alguien lee otra.
+
+`documento_entidad` materializaría un vínculo que hoy se deriva de la jerarquía de carpetas sin
+ambigüedad, y su valor real aparece cuando haya vínculos que NO salgan de la carpeta (un archivo
+suelto atado a mano, un papel que llega por Gmail). Materializarlo antes obliga a un timer que lo
+mantenga sincronizado con `drive_index` y a resolver los seis casos ambiguos ya conocidos (dos obras
+que comparten carpeta, cliente y obra que comparten carpeta) sin nadie que los decida.
+
+**Consecuencia declarada:** el H3 (subir a Drive) necesita `carpeta_entidad` para los proveedores.
+No se puede empezar sin la decisión de dónde va esa carpeta.
+
+### El censo, medido contra la base (10/09/2026)
+
+| | con carpeta | sin carpeta |
+|---|---|---|
+| Obras (`obra_canonica`) | 11 | 15, de las cuales **13 reales** (2 son de prueba E2E) |
+| Clientes | 4 | 1 — Javier Sánchez / San Francisco / IMOTOR |
+| Personas | 74 | 6, **todas cuentas de prueba**: el legajo real está cubierto entero |
+| Proveedores | — | 41; **la columna no existe** |
+
+`bsa-planta` y `bsa-adicional` apuntan a la MISMA carpeta. Y la obra `quattropani` comparte carpeta
+con su cliente: para esa obra, «la carpeta de la obra» y «la del cliente» son el mismo lugar.
+
+**La fusión de obras del 10/09 no arrastró la carpeta.** `bsa-planta` (fusionada en `messina-bsa`)
+tiene carpeta con 49 archivos; `messina-bsa`, la que queda viva, no tiene ninguna. Lo mismo con
+`pisos-120m2` → `messina-pisos-120-rampa`.
+
+### Lo que el H2 deja abierto
+
+1. **El jefe de obra ve la lista recortada.** La policy de `drive_index` es
+   `ve_economia() OR drive_file_id IN (drive_file_ids_vinculados())`, y esa función no conoce las
+   carpetas: sólo `documentacion_legajo`, `obra_documento` (32 filas para 26 obras) y
+   `cliente_documento`. La ficha lo DICE en vez de disimularlo. La migración
+   `20260910T2210_drive_index_carpeta_de_obra.sql` agrega el cuarto origen; está escrita, medida
+   (28,8 ms el peor caso) y **sin aplicar**, así que su corrección funcional está sin verificar.
+2. **El portal del cliente resuelve la carpeta contra `public.obras`** y la ficha contra
+   `obra_canonica`: la carpeta que ve el cliente puede no ser la que ve el equipo. Declarado como
+   excepción en `DEFINICIONES.md`, con efecto hacia afuera.
+3. **En la ficha de persona el bloque repite lo que ya muestra el legajo.** `legajos-sincronizar`
+   espeja la carpeta entera en `documentacion_legajo`, así que las dos listas dicen casi lo mismo.
+   Para persona el bloque agrega poco; para obra, cliente y proveedor agrega todo.
+4. **La vuelta app→Drive sigue sin empezar** (H3, H4, H5). Nada de lo de este hito escribe en Drive.
