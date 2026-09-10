@@ -92,8 +92,15 @@ export async function getEconomiaDeClientes(
 ): Promise<Map<string, EconomiaDeCliente> | null> {
   const { data, error } = await supabase.from('cliente_economia').select(COLUMNAS)
   if (error) return null
+  return armarEconomiaDeClientes(data ?? [])
+}
+
+/** Las filas de `cliente_economia` ya leídas → el mapa por cliente. Separada de la consulta porque
+ *  las mismas filas llegan por dos transportes: PostgREST y la RPC de la pantalla. Lo contratado
+ *  del cliente tuvo CINCO definiciones en tres semanas; no va a tener dos conversiones. */
+export function armarEconomiaDeClientes(filas: unknown[]): Map<string, EconomiaDeCliente> {
   const m = new Map<string, EconomiaDeCliente>()
-  for (const f of (data ?? []) as unknown as Record<string, unknown>[]) {
+  for (const f of filas as Record<string, unknown>[]) {
     const e = fila(f)
     m.set(e.cliente_id, e)
   }

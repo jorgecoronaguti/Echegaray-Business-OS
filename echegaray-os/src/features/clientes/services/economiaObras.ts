@@ -46,8 +46,16 @@ export async function getEconomiaDeObras(
     .from('obra_economia_cartera')
     .select('obra_canonica_id, contratado, costo_mo, costo_materiales, margen, origen')
   if (error) return null
+  return armarEconomiaDeObras(data ?? [])
+}
+
+/** Las filas de `obra_economia_cartera` ya leídas → el mapa por obra. Separada de la consulta
+ *  porque las mismas filas llegan por dos transportes: PostgREST y la RPC de la pantalla. Una
+ *  conversión, dos transportes: si hubiera dos, la misma obra podría publicar dos precios. */
+export function armarEconomiaDeObras(filas: unknown[]): Map<string, EconomiaDeObra> {
   const m = new Map<string, EconomiaDeObra>()
-  for (const f of (data ?? []) as Record<string, unknown>[]) {
+  for (const fila of filas) {
+    const f = fila as Record<string, unknown>
     m.set(String(f.obra_canonica_id), {
       obra_canonica_id: String(f.obra_canonica_id),
       contratado: aNumero(f.contratado),

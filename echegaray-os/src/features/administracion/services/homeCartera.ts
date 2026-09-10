@@ -225,8 +225,21 @@ export async function getCobradoPorObra(
     ? conImputacion
     : await supabase.from('obra_cobranza').select('obra_id, cobrado_neto')
   if (error) return null
+  return armarCobradoPorObra(data ?? [], disponible)
+}
+
+/**
+ * Las filas de `obra_cobranza` ya leídas → el mapa por obra.
+ *
+ * Separada de la consulta porque las mismas filas llegan por dos transportes: PostgREST y la RPC
+ * de la pantalla. Que el reparto por obra esté DISPONIBLE es un hecho del transporte, no de las
+ * filas: por PostgREST se deduce de que el `select` con `imputacion` no haya devuelto 42703; por la
+ * RPC, de que la función —que nombra la columna en su cuerpo— haya podido correr. Por eso entra
+ * como parámetro en vez de adivinarse acá.
+ */
+export function armarCobradoPorObra(filas: unknown[], disponible: boolean): CobroPorObra {
   const por = new Map<string, CobroDeObra>()
-  for (const f of (data ?? []) as { obra_id: string; cobrado_neto: number | null; imputacion?: string | null }[]) {
+  for (const f of filas as { obra_id: string; cobrado_neto: number | null; imputacion?: string | null }[]) {
     // NULL cuando la obra tiene filas de Cobranzas pero ninguna cobrada. Eso NO es cero cobrado: es
     // que todavía no entró nada, y la barra lo dibuja como 0 sólo si la obra aparece con un número.
     // Un null no se guarda: el mapa dice quién tiene cobro, no quién no.

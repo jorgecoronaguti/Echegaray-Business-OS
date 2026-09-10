@@ -12,27 +12,9 @@ import type {
   ClientePanel, Contacto, DocumentoCliente, FuentesActividad, LineaDeTiempo, NotaCliente,
   ObraDePanel, Responsable,
 } from '../types'
+import { armarClientes, armarObrasPorCliente, normalizar } from './clientesFilas.ts'
 import { avisoDeNotasPendiente, faltaLaTablaDeNotas } from './notaPendiente'
 import { construirLineaDeTiempo } from './timeline'
-
-/**
- * `select *` sobre una vista que todavía no tenga los campos de la relación NO FALLA: simplemente no
- * trae la clave, y `undefined` colado en un tipo que promete `string | null` hace que la pantalla
- * decida por comparación contra null y muestre cualquier cosa. Se normaliza acá, una vez, en el
- * borde: adentro del módulo el contrato se cumple, venga la vista vieja o la nueva.
- */
-function normalizar(row: Record<string, unknown>): ClientePanel {
-  const t = (k: string) => (row[k] == null ? null : String(row[k]))
-  return {
-    ...(row as unknown as ClientePanel),
-    direccion: t('direccion'),
-    telefono: t('telefono'),
-    email: t('email'),
-    responsable_id: t('responsable_id'),
-    responsable_nombre: t('responsable_nombre'),
-    razon_social: t('razon_social'),
-  }
-}
 
 /**
  * La cartera COMPLETA: activos y archivados, en una sola lectura.
@@ -48,8 +30,10 @@ export async function getClientes(supabase: SupabaseClient): Promise<ServiceResu
     .order('n_obras_activas', { ascending: false })
     .order('nombre_comercial', { ascending: true })
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []).map((r) => normalizar(r as Record<string, unknown>)), error: null }
+  return { data: armarClientes(data ?? []), error: null }
 }
+
+
 
 /**
  * TODAS las obras de TODOS los clientes, en UNA consulta, para el panel lateral del canónico 00.
@@ -72,23 +56,10 @@ export async function getObrasPorCliente(
     .select('obra_id, nombre, cliente_id, estado, avance_pct')
     .order('orden', { ascending: true })
     .order('nombre', { ascending: true })
-  const por = new Map<string, ObraDePanel[]>()
-  for (const o of data ?? []) {
-    const cliente = o.cliente_id as string | null
-    if (!cliente) continue
-    por.set(cliente, [
-      ...(por.get(cliente) ?? []),
-      {
-        obra_id: o.obra_id as string,
-        nombre: o.nombre as string,
-        estado: o.estado as string,
-        // NULL NO ES 0. Una obra sin avance sincronizado no avanzó cero por ciento: no se sabe.
-        avance_pct: (o.avance_pct as number | null) ?? null,
-      },
-    ])
-  }
-  return por
+  return armarObrasPorCliente(data ?? [])
 }
+
+
 
 export async function getCliente(supabase: SupabaseClient, slug: string): Promise<ServiceResultOpcional<ClientePanel>> {
   const { data, error } = await supabase.from('cliente_panel').select('*').eq('slug', slug).maybeSingle()
