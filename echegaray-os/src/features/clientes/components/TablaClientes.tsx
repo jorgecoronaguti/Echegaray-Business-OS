@@ -35,7 +35,7 @@
 //
 // ═══ CADA COLUMNA, SU FUENTE (y no hay una segunda) ═══
 //
-//   Contratado · Costo MO · Costo mat. → `obra_economia_cartera` = la pestaña OBRAS del
+//   Contratado · MO ppto. · Mat. ppto. → `obra_economia_cartera` = la pestaña OBRAS del
 //     Flujo de Caja, por obra. El total del CLIENTE lo suma la base en `public.cliente_economia`.
 //   Cobrado → `cliente_economia.cobrado_neto_total` (cliente) y `obra_cobranza.cobrado_neto` (obra).
 //     SIN IVA los dos, porque lo contratado tampoco lo lleva.
@@ -97,6 +97,14 @@ const AYUDA_COBRO = 'Lo cobrado SIN IVA, criterio PERCIBIDO (pestaña Cobranzas:
   + 'cobro contra el CLIENTE y no contra la obra: es todo o nada, porque una sola obra con barra en '
   + 'una columna vacía se lee como que las demás no cobraron.'
 
+const AYUDA_MO = 'Mano de obra con cargas PRESUPUESTADA: la explosión del presupuesto de la obra '
+  + '(obra_egreso_proyectado), que es lo que publica la pestaña OBRAS del Flujo de Caja. NO es lo '
+  + 'gastado: el costo real sale de los comprobantes imputados y hoy está en cero en 8 de 9 obras.'
+
+const AYUDA_MAT = 'Materiales PRESUPUESTADOS: la explosión del presupuesto de la obra '
+  + '(obra_egreso_proyectado), que es lo que publica la pestaña OBRAS del Flujo de Caja. NO es lo '
+  + 'comprado: el costo real sale de los comprobantes imputados.'
+
 const AYUDA_OBRAS = 'Cuántas obras tiene, separadas en las que están en ejecución y las cerradas '
   + '(cliente_economia). Debajo del cliente sólo cuelgan las que están EN CURSO.'
 
@@ -132,7 +140,7 @@ const VACIO: PapelesDelCliente = {
  * OS es el grafito, que es además con lo que esta misma tabla dibuja el avance de la obra. Dos
  * barras con dos colores en la misma fila serían dos vocabularios.
  */
-function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'obra', tam, obrasSinPrecio = null, imputacion = null, disponible = true }: {
+function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'obra', tam, obrasSinPrecio = null, imputacion = null, disponible = true, sinObra = null }: {
   cobrado: number | null
   contratado: number | null
   /**
@@ -152,6 +160,15 @@ function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'o
   /** ¿La base puede contestar esta pregunta para una obra? Ver `CobroPorObra`. La fila del CLIENTE
    *  nace en `true`: su importe sale de `cliente_economia` y no depende de repartir nada. */
   disponible?: boolean
+  /**
+   * CUÁNTO DE LO COBRADO NO LLEGÓ A NINGUNA OBRA. Sólo en la fila del CLIENTE, y sólo si hay algo.
+   *
+   * Sin este renglón, San Francisco muestra tres obras al 25–29 % mientras el cliente lleva el
+   * 50 %, y la diferencia se lee como plata que falta cobrar. Son $47.659.263 ya cobrados que
+   * Cobranzas anotó contra el cliente —cuatro filas «Saldo obras… cuota n/4»— y que todavía no se
+   * repartieron. Es lo contrario de una deuda.
+   */
+  sinObra?: number | null
 }) {
   if (!veEconomia) return <span className={SOLO_ANCHO} />
   // ═══ TODO O NADA (dueño, 10/09/2026 16:25: «uno con barra de progreso y otros no») ═══
@@ -198,6 +215,20 @@ function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambito = 'o
       >
         {cobrado === null ? '—' : pesos(cobrado)}
       </span>
+      {/* «s/obra» ES UNA UNIDAD, NO UNA FRASE, y por eso va en la familia de la cifra: es el mismo
+          «s/n» que este módulo ya usa para una orden sin número. La explicación entera, en el
+          `title`: lo que hay que explicar de un número no se dibuja permanentemente al lado. */}
+      {sinObra !== null && (
+        <span
+          className="font-mono tabular-nums" data-testid="cobro-sin-obra"
+          title={'Cobrado que Cobranzas anota contra el CLIENTE y no contra una obra, así que '
+            + 'todavía no se repartió. NO es deuda: es lo contrario. Por eso el porcentaje de cada '
+            + 'obra de abajo es más bajo que el del cliente.'}
+          style={{ fontSize: '10.5px', color: V.tenue }}
+        >
+          {pesos(sinObra)} s/obra
+        </span>
+      )}
       {p && (
         <span className="flex items-center justify-end" style={{ gap: 6 }}>
           <span style={{ display: 'flex', height: 4, width: 52, borderRadius: 2, background: TONO.pista, flexShrink: 0 }}>
@@ -284,11 +315,19 @@ export function TablaClientes({
           <RotuloCol derecha titulo={AYUDA_OC}>OC · OP c/IVA</RotuloCol>
         </span>
         <RotuloCol derecha titulo={AYUDA_CONTRATADO}>{veEconomia ? 'Contratado' : ''}</RotuloCol>
+        {/* ═══ «COSTO MO» MENTÍA (auditoría independiente, 10/09/2026) ═══
+
+            Estas dos columnas NO son el costo real de la obra: son la explosión del PRESUPUESTO
+            —`public.obra_egreso_proyectado`, sumado por `obra_economia_sheet`— que es lo que la
+            pestaña OBRAS del Flujo de Caja publica. El costo real vive en `obra_panel.costo_real` y
+            está en CERO en 8 de las 9 obras, porque casi ningún comprobante está imputado todavía.
+            Un rótulo que dice «Costo» al lado de un contratado invita a restar y a leer margen real
+            donde hay margen proyectado. Ver `docs/engineering/DEFINICIONES.md · costo_de_obra`. */}
         <span className={`grid ${SOLO_ANCHO}`}>
-          <RotuloCol derecha titulo="Mano de obra con cargas proyectada, según la pestaña OBRAS">Costo MO</RotuloCol>
+          <RotuloCol derecha titulo={AYUDA_MO}>MO ppto.</RotuloCol>
         </span>
         <span className={`grid ${SOLO_ANCHO}`}>
-          <RotuloCol derecha titulo="Materiales proyectados, según la pestaña OBRAS">Costo mat.</RotuloCol>
+          <RotuloCol derecha titulo={AYUDA_MAT}>Mat. ppto.</RotuloCol>
         </span>
         <span className={`grid ${SOLO_ANCHO}`}>
           {/* SIN PERMISO ECONÓMICO, EL RÓTULO TAMPOCO: una columna «COBRADO» con la celda vacía en
@@ -395,6 +434,7 @@ export function TablaClientes({
                 cobrado={c.cobrado} contratado={c.contratadoTotal}
                 medible={c.obrasSinPrecio === 0}
                 obrasSinPrecio={c.obrasSinPrecio}
+                sinObra={c.cobradoSinObra}
                 veEconomia={veEconomia} testid="cobro-cliente" ambito="cliente" tam="12px"
               />
             </Link>
@@ -528,7 +568,11 @@ export function TablaClientes({
 }
 
 /**
- * LAS DOS CELDAS DE COSTO: Costo MO · Costo mat.
+ * LAS DOS CELDAS DE PRESUPUESTO: MO ppto. · Mat. ppto.
+ *
+ * NO SON EL COSTO REAL, y el rótulo lo dice desde el 10/09/2026: son la explosión del presupuesto
+ * (`obra_egreso_proyectado`) que publica la pestaña OBRAS. El costo real está en
+ * `obra_panel.costo_real` y hoy es CERO en 8 de las 9 obras.
  *
  * Eran TRES. El margen se retiró el 10/09/2026 por orden del dueño («quitá esa columna Margen, no
  * es útil»): es una pregunta de la OBRA —contra su costo real, su avance y su certificación—, y acá

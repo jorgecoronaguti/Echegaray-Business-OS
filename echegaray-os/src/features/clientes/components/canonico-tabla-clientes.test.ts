@@ -276,3 +276,37 @@ test('la atribución DEDUCIDA se declara: la barra sale, pero el `title` dice qu
   assert.ok(corte > src.indexOf("imputacion === 'unica-obra'") - 4000)
   assert.match(src.slice(corte, corte + 200), /cobro sin obra asignada|data-cobro="sin-obra-asignada"/)
 })
+
+// ═══ EL RÓTULO QUE MENTÍA (auditoría independiente, 10/09/2026) ═══
+//
+// «Costo MO» y «Costo mat.» NO son el costo real: son la explosión del PRESUPUESTO
+// (`obra_egreso_proyectado`, sumada por `obra_economia_sheet`). El real vive en
+// `obra_panel.costo_real` y está en CERO en 8 de las 9 obras. Un «Costo» al lado de un
+// «Contratado» invita a restar y a leer margen REAL donde hay margen proyectado.
+
+test('las columnas de costo dicen que son presupuesto', () => {
+  const src = codigo()
+  assert.match(src, />MO ppto\.</)
+  assert.match(src, />Mat\. ppto\.</)
+  assert.ok(!src.includes('>Costo MO<'), 'el rótulo que mentía volvió')
+  assert.ok(!src.includes('>Costo mat.<'))
+  // Y el `title` tiene que decir POR QUÉ, con el hecho medido: sin eso, «ppto.» es una abreviatura
+  // que nadie sabe leer.
+  assert.match(src, /AYUDA_MO/)
+  assert.match(src, /obra_egreso_proyectado/)
+  // La frase parte en dos literales por el ancho de línea: se busca la parte que no se corta.
+  assert.match(src, /el costo real sale de los comprobantes imputados/,
+    'el `title` tiene que decir que NO es lo gastado, y de dónde sale lo que sí lo es')
+})
+
+test('el cobro sin repartir se dibuja en la fila del CLIENTE y en ninguna otra', () => {
+  const src = codigo()
+  assert.match(src, /data-testid="cobro-sin-obra"/)
+  assert.match(src, /sinObra=\{c\.cobradoSinObra\}/)
+  // La fila de la OBRA no lo pasa: su cobro es el suyo, y un «sin asignar» ahí no significaría nada.
+  const deLaObra = src.slice(
+    src.lastIndexOf('<Cobrado', src.indexOf('testid="cobro-obra"')),
+    src.indexOf('/>', src.indexOf('testid="cobro-obra"')) + 2,
+  )
+  assert.doesNotMatch(deLaObra, /sinObra=/)
+})
