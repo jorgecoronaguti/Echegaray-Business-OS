@@ -5,6 +5,8 @@ import {
   armarCartera, certificacionDe, diaRelativo, hoyEnLaEmpresa,
   type FilaCertificado, type ObraDeCartera,
 } from './homeCartera.ts'
+import type { EconomiaDeCliente } from '@/features/clientes/services/economiaCliente'
+import type { EconomiaDeObra } from '@/features/clientes/services/economiaObras'
 
 // LA CARTERA DE LA ENTRADA. Lo que estas pruebas impiden: que un `null` se dibuje como cero, que
 // una lectura fallida se dibuje como «no hay», y que la obra cuelgue del cliente equivocado.
@@ -13,13 +15,26 @@ const cliente = (p: Partial<ClientePanel> & { cliente_id: string }): ClientePane
   slug: p.cliente_id, nombre_comercial: 'Cliente', razon_social: null, cuit: '30-1-2',
   direccion: null, telefono: null, email: null, responsable_id: null, responsable_nombre: null,
   drive_carpeta_id: null, activo: true, notas: null, n_obras: 1, n_obras_activas: 1,
-  contratado: 1_000_000, costo_real: null, restricciones_abiertas: 0, avance_sincronizado_en: null,
+  restricciones_abiertas: 0, avance_sincronizado_en: null,
   n_contactos: 0, n_documentos: 0, ...p,
 })
 
 const obra = (p: Partial<ObraDeCartera> & { obra_id: string }): ObraDeCartera => ({
-  nombre: p.obra_id, cliente_id: 'c1', avance_pct: 50, jefe_obra: 'S. Ledesma',
-  monto_contratado: 500_000, ...p,
+  nombre: p.obra_id, cliente_id: 'c1', avance_pct: 50, jefe_obra: 'S. Ledesma', ...p,
+})
+
+/** Lo que publica `obra_economia_cartera` para una obra. Es la ÚNICA fuente del precio por obra. */
+const eco = (obraId: string, contratado: number | null, extra: Partial<EconomiaDeObra> = {}):
+[string, EconomiaDeObra] => [obraId, {
+  obra_canonica_id: obraId, contratado, costo_mo: null, costo_materiales: null, margen: null, ...extra,
+}]
+
+/** Una fila de `public.cliente_economia`, que es de donde salen los totales del cliente. */
+const ecCliente = (p: Partial<EconomiaDeCliente> & { cliente_id: string }): EconomiaDeCliente => ({
+  contratado: null, contratado_en_curso: null, n_obras_en_curso: 0, n_obras_cerradas: 0,
+  n_obras_con_precio: 0, n_obras_sin_precio: 0, costo_real: null, facturado_90d: null,
+  cobrado_90d: null, cobrado_total: null, cobrado_neto_total: null, saldo: null, vencido: null,
+  por_vencer: null, pendiente_contractual: null, ...p,
 })
 
 test('la obra cuelga de SU cliente, y de ninguno más', () => {
@@ -40,12 +55,12 @@ test('una obra sin cliente no se cuelga de nadie ni se pierde de vista en otro l
   assert.deepEqual(filas[0].enCurso, [])
 })
 
-test('`avance_pct` NULL NO es 0 %, y `monto_contratado` NULL no es $ 0', () => {
+test('`avance_pct` NULL NO es 0 %, y sin precio en OBRAS el contratado no es $ 0', () => {
   // Una obra sin avance sincronizado no avanzó cero por ciento: no se sabe. Y una obra sin contrato
   // cargado no se contrató en cero — eso ES trabajo pendiente y la fila tiene que decirlo.
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1', cuit: '30-1-2', telefono: '2645551234' })],
-    obras: [obra({ obra_id: 'o1', avance_pct: null, monto_contratado: null, jefe_obra: null })],
+    obras: [obra({ obra_id: 'o1', avance_pct: null, jefe_obra: null })],
     cobrado: new Map(), certificados: [], contratos: new Set(['c1']),
   })
   assert.equal(c.enCurso[0].avance, null)
@@ -59,7 +74,7 @@ test('`avance_pct` NULL NO es 0 %, y `monto_contratado` NULL no es $ 0', () => {
 test('sin CUIT el cliente lo dice en su chip, y eso SÍ lo mete en «datos faltantes»', () => {
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1', cuit: null })],
-    obras: [obra({ obra_id: 'o1', monto_contratado: null })],
+    obras: [obra({ obra_id: 'o1' })],
     cobrado: new Map(), certificados: [], contratos: new Set(['c1']),
   })
   assert.deepEqual(c.chips.map((x) => x.clave), ['sin-cuit', 'sin-telefono'])
@@ -75,7 +90,9 @@ test('«sin contrato» sale de los DOCUMENTOS y no del monto: son dos conceptos'
   const base = { clientes: [completo], cobrado: new Map(), certificados: [] }
   const conPlata = armarCartera({
     ...base,
-    obras: [obra({ obra_id: 'o1', monto_contratado: 156_174_253 })],
+    obras: [obra({ obra_id: 'o1' })],
+    economia: new Map([eco('o1', 156_174_253)]),
+    economiaCliente: new Map([['c1', ecCliente({ cliente_id: 'c1', contratado_en_curso: 156_174_253 })]]),
     contratos: new Set<string>(),
   })[0]
   assert.equal(conPlata.contratado, 156_174_253)
@@ -83,7 +100,7 @@ test('«sin contrato» sale de los DOCUMENTOS y no del monto: son dos conceptos'
 
   const sinPlata = armarCartera({
     ...base,
-    obras: [obra({ obra_id: 'o1', monto_contratado: null })],
+    obras: [obra({ obra_id: 'o1' })],
     contratos: new Set(['c1']),
   })[0]
   assert.equal(sinPlata.contratado, null, 'sin precio en OBRAS: NUNCA cero')
@@ -134,34 +151,51 @@ test('el estado es la fecha MÁS AVANZADA que existe, y no se inventa un vencimi
 // `ultimoMovimiento` y `ultimoParte` del modelo: nadie más los dibujaba, y un campo que ninguna
 // pantalla muestra es una lectura que se paga sin que nadie la mire.
 
-test('lo cobrado cuelga de SU obra, y el total del cliente suma las MISMAS obras que contratado', () => {
+test('lo cobrado de la OBRA cuelga de su obra; lo del CLIENTE lo dice `cliente_economia`', () => {
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
     obras: [obra({ obra_id: 'o1' }), obra({ obra_id: 'o2' })],
     cobrado: new Map([['o1', 500_000]]),
     certificados: [],
-    economia: new Map([
-      ['o1', { obra_canonica_id: 'o1', obra_clave: 'o1', contratado: 1_000_000, costo_mo: null, costo_materiales: null, margen: null }],
-      ['o2', { obra_canonica_id: 'o2', obra_clave: 'o2', contratado: 2_000_000, costo_mo: null, costo_materiales: null, margen: null }],
-    ]),
+    economia: new Map([eco('o1', 1_000_000), eco('o2', 2_000_000)]),
+    economiaCliente: new Map([['c1', ecCliente({
+      cliente_id: 'c1', contratado: 4_000_000, contratado_en_curso: 3_000_000,
+      cobrado_neto_total: 900_000, pendiente_contractual: 3_100_000,
+    })]]),
   })
   assert.equal(c.enCurso[0].cobrado, 500_000)
   // LA OBRA SIN COBRANZA IMPUTADA NO COBRÓ CERO: no se sabe, y por eso es `null` y no 0. Hoy
   // Cobranzas anota el cobro contra el CLIENTE, así que casi todas las obras están en este caso.
   assert.equal(c.enCurso[1].cobrado, null)
-  // El total del cliente suma lo que hay, y el denominador de la barra es el contratado de las
-  // mismas obras en ejecución: dos universos distintos no hacen un porcentaje.
-  assert.equal(c.cobrado, 500_000)
-  assert.equal(c.contratado, 3_000_000)
+  // EL COBRADO DEL CLIENTE NO ES LA SUMA DE SUS OBRAS (10/09/2026). Era $500.000 —lo único
+  // imputado— cuando el cliente cobró $900.000: `cobranzas` ata el cobro al cliente, no a la obra,
+  // así que sumar las filas de obra subregistra el cobro y no lo dice.
+  assert.equal(c.cobrado, 900_000)
+  // Y su denominador es el contratado de TODAS sus obras, no el de las que están en curso: los dos
+  // números de la barra tienen que ser del mismo universo.
+  assert.equal(c.contratadoTotal, 4_000_000)
+  assert.equal(c.contratado, 3_000_000, 'la COLUMNA sigue siendo lo contratado en curso')
+  assert.equal(c.pendienteContractual, 3_100_000)
 })
 
-test('sin ninguna cobranza imputada, el cobrado del cliente es null y no cero', () => {
+test('sin `cliente_economia` legible, el cliente NO cae a sumar sus obras: dice «—»', () => {
+  // ═══ EL DEFECTO QUE ESTE TEST IMPIDE (H1) ═══
+  //
+  // Cada vez que una cara no pudo leer la fuente canónica y «se arregló» sumando las filas que
+  // tenía a mano, nació otra definición: así llegaron a ser cinco. Si la vista no se pudo leer, la
+  // columna dice que no sabe. Las obras de abajo siguen mostrando SU precio, que es otra pregunta.
   const [c] = armarCartera({
     clientes: [cliente({ cliente_id: 'c1' })],
-    obras: [obra({ obra_id: 'o1' })], cobrado: new Map(), certificados: [],
+    obras: [obra({ obra_id: 'o1' }), obra({ obra_id: 'o2' })],
+    cobrado: new Map([['o1', 500_000]]),
+    certificados: [],
+    economia: new Map([eco('o1', 1_000_000), eco('o2', 2_000_000)]),
+    economiaCliente: null,
   })
+  assert.equal(c.contratado, null)
+  assert.equal(c.contratadoTotal, null)
   assert.equal(c.cobrado, null)
-  assert.equal(c.enCurso[0].cobrado, null)
+  assert.equal(c.enCurso[0].contratado, 1_000_000, 'el precio POR OBRA sigue siendo el de OBRAS')
 })
 
 test('`diaRelativo` escribe hoy, ayer y el día/mes con dos dígitos', () => {
@@ -180,25 +214,70 @@ test('«hoy» es el día de San Juan, no el del proceso', () => {
   assert.equal(hoyEnLaEmpresa(new Date('2026-08-25T12:00:00Z')), '2026-08-25')
 })
 
-test('la economía de OBRAS manda: contratado, MO, materiales y margen por obra, y el cliente suma sus obras en curso', () => {
-  const clientes = [{ cliente_id: 'c1', slug: 'x', nombre_comercial: 'X', n_obras: 2, contratado: 999_999_999, cuit: '1', telefono: '1' }] as never
+test('la economía de OBRAS manda por obra, y el total del cliente sale de la vista', () => {
+  const clientes = [{ cliente_id: 'c1', slug: 'x', nombre_comercial: 'X', n_obras: 2, cuit: '1', telefono: '1' }] as never
   const obras = [
-    { obra_id: 'o1', nombre: 'A', cliente_id: 'c1', avance_pct: null, jefe_obra: null, monto_contratado: null },
-    { obra_id: 'o2', nombre: 'B', cliente_id: 'c1', avance_pct: null, jefe_obra: null, monto_contratado: 5 },
+    { obra_id: 'o1', nombre: 'A', cliente_id: 'c1', avance_pct: null, jefe_obra: null },
+    { obra_id: 'o2', nombre: 'B', cliente_id: 'c1', avance_pct: null, jefe_obra: null },
   ]
-  const economia = new Map([
-    ['o1', { obra_canonica_id: 'o1', contratado: 100, costo_mo: 60, costo_materiales: 10, margen: 30 }],
-  ])
-  const [c] = armarCartera({ clientes, obras, cobrado: new Map(), certificados: [], economia })
+  const economia = new Map([eco('o1', 100, { costo_mo: 60, costo_materiales: 10, margen: 30 })])
+  const [c] = armarCartera({
+    clientes, obras, cobrado: new Map(), certificados: [], economia,
+    economiaCliente: new Map([['c1', ecCliente({ cliente_id: 'c1', contratado_en_curso: 100, contratado: 100 })]]),
+  })
   assert.equal(c.enCurso[0].contratado, 100)
   assert.equal(c.enCurso[0].margen, 30)
   assert.equal(c.enCurso[0].margenPct, 30)
-  // Sin fila en OBRAS cae al formulario, y sin costos no hay margen.
-  assert.equal(c.enCurso[1].contratado, 5)
+  // SIN FILA EN `obra_economia_cartera` NO HAY RESPALDO (H1): `obra_panel.monto_contratado` —el
+  // campo del formulario— era la segunda definición del precio y se retiró de la lectura entera.
+  assert.equal(c.enCurso[1].contratado, null)
   assert.equal(c.enCurso[1].margen, null)
-  // El total del cliente NO es `cliente_panel.contratado` (sumaba las cerradas): es la suma de sus obras en curso.
-  assert.equal(c.contratado, 105)
+  // El total del cliente NO lo suma esta función: lo dice `cliente_economia`. Que acá haya dos
+  // obras y sólo una con precio se sigue diciendo con `economiaParcial`.
+  assert.equal(c.contratado, 100)
   assert.equal(c.costoMo, 60)
   assert.equal(c.margen, 30)
   assert.equal(c.economiaParcial, true)
+})
+
+// ═══ MESSINA, EL CASO QUE ORIGINÓ EL HITO (medido contra la base el 10/09/2026) ═══
+//
+// Cinco obras en curso con precio en OBRAS por $156.174.253,16 y cinco cerradas cuyo
+// `obra_panel.monto_contratado` —el campo del formulario— suma $31.846.475,65. La lista mostraba lo
+// primero, el panel lateral y el esquema de pago lo segundo, y la ficha una tercera suma. Los
+// números de acá son los reales.
+
+const MESSINA_EN_CURSO: [string, number][] = [
+  ['messina-adicional-tercer-muro', 10_000_000],
+  ['messina-bsa', 14_120_243.4],
+  ['messina-pisos-120-rampa', 9_463_141.93],
+  ['messina-playon-azufre', 102_500_000],
+  ['messina-playon-dilucion-acido', 20_090_867.83],
+]
+
+test('Messina: la fila del cliente publica lo que dice la vista, no la suma del formulario', () => {
+  const enCurso = MESSINA_EN_CURSO.map(([id]) => obra({ obra_id: id, cliente_id: 'messina' }))
+  const [c] = armarCartera({
+    clientes: [cliente({ cliente_id: 'messina', n_obras: 10 })],
+    obras: enCurso,
+    cobrado: new Map(),
+    certificados: [],
+    economia: new Map(MESSINA_EN_CURSO.map(([id, monto]) => eco(id, monto))),
+    economiaCliente: new Map([['messina', ecCliente({
+      cliente_id: 'messina',
+      contratado: 188_020_728.81,
+      contratado_en_curso: 156_174_253.16,
+      n_obras_en_curso: 5,
+      n_obras_cerradas: 5,
+      cobrado_neto_total: 90_579_117.31,
+      pendiente_contractual: 97_441_611.5,
+    })]]),
+  })
+  assert.equal(Math.round(c.contratado ?? 0), 156_174_253)
+  // $31.846.475 era lo que publicaba el panel lateral: la suma de las CINCO CERRADAS, las únicas
+  // con el formulario cargado. Ninguna cara puede volver a decir eso.
+  assert.notEqual(Math.round(c.contratado ?? 0), 31_846_476)
+  assert.equal(Math.round(c.contratadoTotal ?? 0), 188_020_729)
+  assert.equal(Math.round(c.cobrado ?? 0), 90_579_117)
+  assert.equal(Math.round(c.pendienteContractual ?? 0), 97_441_612)
 })

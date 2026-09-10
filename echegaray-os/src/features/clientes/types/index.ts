@@ -5,9 +5,10 @@
 // atiende (responsable interno), qué papeles hay (documentos de Drive) y qué pasó (actividad).
 //
 // FRONTERA, la misma que la de Obras: el cliente NO administra Cobranzas, Certificación ni
-// Contabilidad. Consolida lo que otras fuentes ya calculan —el costo y el contratado vienen sumados
-// de `obra_panel`— y no guarda ni un número propio. Por eso `cliente_panel` no tiene un avance de
-// cliente: promediar obras de tamaños distintos daría un número que no significa nada.
+// Contabilidad. Consolida lo que otras fuentes ya calculan y no guarda ni un número propio. Por eso
+// `cliente_panel` no tiene un avance de cliente: promediar obras de tamaños distintos daría un
+// número que no significa nada. Y desde el 10/09/2026 tampoco tiene la PLATA: lo contratado, lo
+// cobrado y lo pendiente son `public.cliente_economia`, una sola vez y para las cinco caras.
 //
 // Y NO ES UN EMBUDO COMERCIAL. No hay leads, ni oportunidades, ni etapas de venta, ni pipeline: son
 // los clientes reales de la empresa. Está prohibido explícitamente y no es un olvido.
@@ -34,9 +35,10 @@ export interface ClientePanel {
   notas: string | null
   n_obras: number
   n_obras_activas: number
-  /** Suma de lo contratado de sus obras. Null mientras ninguna lo tenga cargado. */
-  contratado: number | null
-  costo_real: number | null
+  // `contratado` Y `costo_real` SE FUERON (10/09/2026, PRP-REALIDAD-UNICA H1). Sumaban
+  // `obra_panel.monto_contratado` y `obra_panel.costo_real`; el primero era una SEGUNDA definición
+  // del contratado del cliente —el campo del formulario que nadie carga— y el segundo se mudó junto
+  // con él. Los dos viven en `public.cliente_economia` (`services/economiaCliente.ts`).
   restricciones_abiertas: number
   avance_sincronizado_en: string | null
   n_contactos: number

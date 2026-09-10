@@ -24,6 +24,11 @@ const CON_RLS = [
   // ECONOMÍA HONESTA (22/08): la vista del margen corre con los permisos de quien pregunta — un
   // `create or replace` que le borre el invoker le mostraría los márgenes a cualquier autenticado.
   'obra_economia',
+  // REALIDAD ÚNICA H1 (10/09/2026): `cliente_economia` publica contratado, facturado, cobrado y
+  // pendiente de cada cliente leyendo `cobranzas` a través de `cliente_cuenta_corriente`. Sin
+  // invoker, la policy `cobranzas_select` (Administración) dejaría de valer y la cartera entera
+  // —lo que cada cliente debe— quedaría legible para cualquier autenticado.
+  'cliente_economia', 'cliente_cuenta_corriente',
   'imputacion_pendiente', 'proveedor_nombre_pendiente',
   // MÓDULO PERSONAL / HH (19/08/2026). Las tres se apoyan en el RLS de sus tablas:
   //  · `persona_directorio` hereda el de `personas` — por eso el listado es de Administración sola.

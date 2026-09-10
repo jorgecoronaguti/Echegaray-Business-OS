@@ -53,6 +53,7 @@ import { esVistaCartera, separarArchivados } from '@/features/clientes/services/
 import { getOrdenesDe, getPapelesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
 import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
 import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
+import { getEconomiaDeClientes } from '@/features/clientes/services/economiaCliente'
 import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
 import { PanelCliente } from '@/features/clientes/components/PanelCliente'
@@ -94,7 +95,8 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const vista = esVistaCartera(sp.vista) ? sp.vista : 'todo'
 
   const supabase = await createClient()
-  const [lectura, perfil, obras, cobrado, certificados, todasLasObras, papeles, economia, contratos]
+  const [lectura, perfil, obras, cobrado, certificados, todasLasObras, papeles, economia, contratos,
+    economiaCliente]
     = await Promise.all([
     getClientes(supabase),
     getPerfilActual(supabase),
@@ -118,6 +120,11 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
     // QUIÉN TIENE EL CONTRATO CARGADO. Es un papel (`cliente_documento.rol = 'contrato'`), no un
     // monto: por eso es una lectura aparte y no se deduce de que haya precio.
     getContratosDeLaCartera(supabase),
+    // LO CONTRATADO Y LO COBRADO **DEL CLIENTE**, sumado por la base (`public.cliente_economia`).
+    // Es la fuente única del PRP de realidad única: la fila del cliente ya no suma las de abajo, y
+    // el panel lateral dejó de leer `cliente_panel.contratado` —el campo del formulario— que decía
+    // $31,8 M de Messina mientras esta misma tabla decía $156,1 M.
+    getEconomiaDeClientes(supabase),
   ])
 
   const rol = perfil.data?.rol ?? null
@@ -139,7 +146,9 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
 
   const { activos, archivados: guardados } = separarArchivados(lectura.data ?? [])
   const base = conArchivados ? [...activos, ...guardados] : activos
-  const cartera = armarCartera({ clientes: base, obras, cobrado, certificados, economia, contratos })
+  const cartera = armarCartera({
+    clientes: base, obras, cobrado, certificados, economia, contratos, economiaCliente,
+  })
   // ═══ EL RECORTE SALE DE LA MISMA FILA QUE SE DIBUJA ═══
   //
   // `recortarCartera` decidía «Datos faltantes» con `cliente_panel.contratado === null`, que es la
@@ -318,6 +327,10 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 veEconomia={veEconomia}
                 puedeEditar={puedeEditar}
                 cerrarHref={armarHref(sp, { c: undefined })}
+                // LOS DOS NÚMEROS DE PLATA DEL PANEL SALEN DE LA MISMA VISTA QUE LA FILA. Antes
+                // venían dentro de `cliente_panel` y eran otra suma: el panel decía «$31.846.475»
+                // y la fila de al lado «$156.174.253» del mismo cliente.
+                economia={economiaCliente?.get(seleccionado.cliente_id) ?? null}
               />
             )}
           </div>

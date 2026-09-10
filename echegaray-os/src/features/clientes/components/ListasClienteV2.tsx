@@ -182,9 +182,12 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, pap
 
       {obras.map((o) => {
         const avance = avanceDeObra(o)
-        // EL PRECIO ES EL DE OBRAS (la OC de Cobranzas); el del formulario, de respaldo.
+        // EL PRECIO ES EL DE OBRAS (la OC de Cobranzas) Y NADA MÁS (H1, 10/09/2026). El respaldo
+        // `obra_panel.monto_contratado` —el campo del formulario— se retiró: era la segunda
+        // definición del contratado, la que sumaba $31,8 M de Messina en el panel lateral mientras
+        // la lista decía $156,1 M. Una obra sin precio en OBRAS lo dice; no se rellena con otra cosa.
         const e = economia?.get(o.obra_id) ?? null
-        const contratado = e?.contratado ?? o.monto_contratado ?? null
+        const contratado = e?.contratado ?? null
         const margen = e?.margen ?? null
         // UNA OBRA CERRADA SIN PRECIO NO BLOQUEA NADA. El filo ámbar y el «sin precio en OBRAS»
         // existen para que alguien cargue el monto de una obra que se está ejecutando; sobre una

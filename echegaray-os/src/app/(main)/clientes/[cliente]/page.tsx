@@ -55,9 +55,8 @@ import { AccesosPortal } from '@/features/clientes/components/accesos/AccesosPor
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorrienteService'
 import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
-import {
-  getEconomiaDeObras, SIN_PRECIO_EN_OBRAS, sumaConHuecos,
-} from '@/features/clientes/services/economiaObras'
+import { getEconomiaDeObras, SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
+import { getEconomiaDeCliente } from '@/features/clientes/services/economiaCliente'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
 import { ordenesPorClienteYObra } from '@/features/clientes/services/ordenesCliente'
 import { PapelesPorTipo } from '@/features/clientes/components/PapelesPorTipo'
@@ -131,7 +130,8 @@ export default async function ClientePage({ params, searchParams }: {
   // dibujar la métrica, para no mostrarle un rótulo económico vacío y que parezca un error.
   const veEconomia = puedeVerEconomia(rol)
 
-  const [responsables, contactos, obras, linea, documentos, cartera, economia, papeles] = await Promise.all([
+  const [responsables, contactos, obras, linea, documentos, cartera, economia, papeles,
+    economiaCliente] = await Promise.all([
     puedeEditar ? getResponsables(supabase) : Promise.resolve({ data: [], error: null }),
     getContactos(supabase, id),
     getObrasDelCliente(supabase, id),
@@ -144,6 +144,9 @@ export default async function ClientePage({ params, searchParams }: {
     // por la MISMA función pura que usa `/clientes`. `null` = la lectura falló, y eso no se dibuja
     // como «no tiene ninguno».
     ordenesPorClienteYObra(supabase, id),
+    // LO CONTRATADO DEL CLIENTE, SUMADO POR LA BASE (`public.cliente_economia`). La cabecera ya no
+    // suma las obras acá: era la cuarta de las cinco definiciones que este hito borra.
+    veEconomia ? getEconomiaDeCliente(supabase, id) : Promise.resolve(null),
   ])
   // Estas lecturas se leían con `?? []`: si la de obras fallaba, la ficha decía que el cliente no
   // tiene obras. Sobre un cliente eso es una afirmación comercial sacada de un fallo de la base.
@@ -174,10 +177,14 @@ export default async function ClientePage({ params, searchParams }: {
   const todas = lector.leer(obras, [])
   const cerradas = todas.filter((o) => o.estado === 'cerrada')
   const enCurso = todas.filter((o) => o.estado === 'activa')
-  // EL PRECIO ES EL DE OBRAS (la OC de Cobranzas); el del formulario, de respaldo.
-  const contratadoEnCurso = sumaConHuecos(
-    enCurso.map((o) => economia?.get(o.obra_id)?.contratado ?? o.monto_contratado ?? null),
-  )
+  // ═══ LO CONTRATADO EN CURSO LO DICE `cliente_economia`, NO ESTA PÁGINA (H1, 10/09/2026) ═══
+  //
+  // Era `sumaConHuecos` sobre las obras con FALLBACK a `obra_panel.monto_contratado`. El fallback se
+  // fue con la suma: el campo del formulario es la otra definición del contratado —la que sumaba
+  // sólo las obras cerradas de Messina— y mientras siga siendo el respaldo de alguna cara, dos
+  // pantallas pueden volver a discrepar sin que nadie lo note. Si la vista no se pudo leer, la
+  // cifra dice qué falta; no se rellena con otra cuenta.
+  const contratadoEnCurso = economiaCliente?.contratado_en_curso ?? null
 
   /** La misma dirección con un parámetro cambiado. Los demás se preservan. */
   const url = (cambio: Partial<Record<keyof Query, string | null>>) => {
@@ -209,7 +216,7 @@ export default async function ClientePage({ params, searchParams }: {
           rotulo: 'Contratado en curso',
           // NADIE CARGÓ EL MONTO ≠ CONTRATADO $ 0. Con obras en curso sin monto, la cifra lo dice
           // en vez de publicar un cero que se leería como «trabajamos gratis».
-          valor: contratadoEnCurso.total !== null ? money(contratadoEnCurso.total) : null,
+          valor: contratadoEnCurso !== null ? money(contratadoEnCurso) : null,
           falta: enCurso.length ? SIN_PRECIO_EN_OBRAS : 'sin obra en curso',
         } as CifraDeFicha]
       : []),

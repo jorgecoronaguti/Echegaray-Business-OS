@@ -229,17 +229,51 @@ export function motivoSinObra(mi: MiObra | null): string | null {
 }
 
 /**
+ * LO CONTRATADO DEL CLIENTE LOGUEADO — `public.cliente_economia_para_portal()`.
+ *
+ * ═══ POR QUÉ UNA FUNCIÓN Y NO LA VISTA (H1, 10/09/2026) ═══
+ *
+ * `cliente_economia` lleva `where ve_economia()` y lee `cobranzas`, que es de Administración: el rol
+ * `cliente` no la puede leer, y NO se le abre. La función es `security definer`, no recibe
+ * parámetros y resuelve el cliente por `cliente_de_sesion()`, así que un cliente no puede pedir el
+ * contrato de otro ni equivocándose. Adentro llama a `contratado_de_cliente()`, la MISMA que usa la
+ * vista interna: hasta hoy el portal era la quinta definición de «contratado» y no sumaba nada.
+ *
+ * `null` = no hay acceso vigente o la migración todavía no está aplicada. Nunca cero.
+ */
+export async function getContratoDelCliente(): Promise<
+  { contratado: number | null; contratado_en_curso: number | null } | null
+> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('cliente_economia_para_portal')
+  if (error) return null
+  const f = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null | undefined
+  if (!f) return null
+  const num = (v: unknown) => (v == null || v === '' ? null : Number(v))
+  return {
+    contratado: num(f.contratado),
+    contratado_en_curso: num(f.contratado_en_curso),
+  }
+}
+
+/**
  * EL CONTRATO ARMADO CON LOS CERTIFICADOS que la pantalla ya tiene.
  *
- * Se calcula acá y no en la base porque los insumos son exactamente las filas que se dibujan abajo:
- * si saliera de otra consulta, la barra podría no cerrar contra la tabla. `reglas/contrato.ts`
+ * Cobrado, certificado sin cobrar y fondo de reparo salen de las filas que se dibujan abajo: si
+ * salieran de otra consulta, la barra podría no cerrar contra la tabla. `reglas/contrato.ts`
  * reparte los cuatro tramos; esta función sólo suma los insumos.
+ *
+ * `contratado` ENTRA COMO PARÁMETRO y no se lee acá: la función es pura y se prueba sin base. Lo
+ * trae `getContratoDelCliente()`. En `null` la barra no se dibuja, que es lo que corresponde
+ * mientras no haya denominador — nunca una barra vacía, que afirmaría 0 % cobrado.
  */
-export function contratoDeCertificados(certificados: CertificadoPortal[]): ContratoPortal {
+export function contratoDeCertificados(
+  certificados: CertificadoPortal[],
+  contratado: number | null = null,
+): ContratoPortal {
   const suma = (fs: CertificadoPortal[]) => fs.reduce((s, c) => s + (c.monto ?? 0), 0)
   return {
-    // Sin `obra_panel` no hay contratado que leer para esta sesión: la barra no se dibuja.
-    monto: null,
+    monto: contratado,
     retencion_pct: null,
     cobrado: suma(certificados.filter((c) => c.estado === 'cobrado')),
     certificado_sin_cobrar: suma(certificados.filter((c) => c.estado !== 'cobrado')),

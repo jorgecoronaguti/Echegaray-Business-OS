@@ -26,6 +26,9 @@
 // CADA COLUMNA, SU FUENTE (y no hay una segunda):
 //   Contratado · Costo MO · Costo mat. · Margen → `obra_economia_cartera` = la pestaña OBRAS del
 //     Flujo de Caja, persistida por `obras-economia-sync.mjs`. Nunca el campo del formulario.
+//   Contratado y Cobrado DE LA FILA DEL CLIENTE → `public.cliente_economia` (PRP-REALIDAD-UNICA H1,
+//     10/09/2026). No se suman acá ni en `armarCartera`: la suma la hace la base, una vez, para que
+//     la lista, la ficha, el panel, el esquema de pago y el portal no puedan decir cuatro números.
 //   Últ. mov. → el último parte (`obra_ejecucion`) o la fecha más avanzada de sus certificados.
 //   Chips del cliente → `cliente_panel` (CUIT, teléfono) y `cliente_documento.rol` (contrato).
 //   Chips de la obra → OBRAS (precio), `obra_panel` (avance, jefe) y `certificados`.
@@ -128,12 +131,14 @@ const AYUDA_COBRO = 'Lo cobrado de esta obra sobre lo contratado, criterio PERCI
  * `progresoDeCobro` devuelve `null` cuando falta el contratado o el cobrado, y entonces la celda
  * dice «—» con el motivo en el `title`. Una barra vacía afirmaría que se midió y dio cero.
  */
-function BarraDeCobro({ cobrado, contratado, veEconomia, testid }: {
+function BarraDeCobro({ cobrado, contratado, veEconomia, testid, ambito = 'obra' }: {
   cobrado: number | null; contratado: number | null; veEconomia: boolean; testid: string
+  /** Qué universo son los dos números. Ver `tituloDeCobro`: el del cliente es acumulado y neto. */
+  ambito?: 'obra' | 'cliente'
 }) {
   if (!veEconomia) return <span className={SOLO_ANCHO} />
   const p = progresoDeCobro(cobrado, contratado)
-  const titulo = tituloDeCobro({ cobrado, contratado })
+  const titulo = tituloDeCobro({ cobrado, contratado, ambito })
   if (!p) {
     return (
       <span
@@ -320,7 +325,16 @@ export function TablaClientes({
                 mo={c.costoMo} mat={c.costoMateriales} margen={c.margen} pct={c.margenPct}
                 veEconomia={veEconomia} parcial={c.economiaParcial} tam="12px"
               />
-              <BarraDeCobro cobrado={c.cobrado} contratado={c.contratado} veEconomia={veEconomia} testid="cobro-cliente" />
+              {/* EL DENOMINADOR DEL CLIENTE ES `contratadoTotal`, NO la columna de al lado. La columna
+                  dice lo contratado EN CURSO —cierra con las filas de obra de abajo— y el cobro del
+                  cliente es acumulado: `cobranzas` lo anota contra el cliente y no contra la obra,
+                  así que dividirlo por el contrato de las obras en marcha daría más de 100 % en
+                  cuanto una obra se cierre. Los dos números de la barra son del mismo universo y el
+                  `title` lo dice con palabras. */}
+              <BarraDeCobro
+                cobrado={c.cobrado} contratado={c.contratadoTotal}
+                veEconomia={veEconomia} testid="cobro-cliente" ambito="cliente"
+              />
             </Link>
 
             {c.enCurso.map((o) => {

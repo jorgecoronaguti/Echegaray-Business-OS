@@ -32,6 +32,8 @@ import { IconoBloqueo, IconoCerrar, IconoCrear, IconoEditar } from '@/shared/com
 import { PanelFilo, RotuloPanel, V } from '@/shared/components/v2/patron'
 import { archivarCliente } from '../services/actions'
 import type { ClientePanel, ObraDePanel } from '../types'
+import type { EconomiaDeCliente } from '../services/economiaCliente'
+import { SIN_PRECIO_EN_OBRAS } from '../services/economiaObras'
 
 /** `25v2:229`. Verde = terminada; azul = en ejecución. Nunca sólo el color: el % va al lado. */
 const PUNTO = { fin: '#067647', curso: '#175CD3', otro: V.lupa } as const
@@ -51,7 +53,7 @@ const ATAJO: CSSProperties = {
 const CHEVRON: CSSProperties = { color: V.tenue, fontSize: '12px' }
 
 export function PanelCliente({
-  c, obras, veEconomia, cerrarHref, puedeEditar,
+  c, obras, veEconomia, cerrarHref, puedeEditar, economia = null,
 }: {
   c: ClientePanel
   /** TODAS sus obras, no sólo las activas: el panel muestra la relación completa. */
@@ -60,11 +62,24 @@ export function PanelCliente({
   cerrarHref: string
   /** El nivel Obras entra al detalle pero no administra el maestro: sin esto, sin verbos. */
   puedeEditar: boolean
+  /**
+   * LA PLATA DEL CLIENTE, DE `public.cliente_economia` Y DE NINGÚN OTRO LADO (H1, 10/09/2026).
+   *
+   * Hasta hoy salía de `cliente_panel.contratado` / `.costo_real`, que sumaban
+   * `obra_panel.monto_contratado` —el campo del formulario de la obra, que nadie carga—: en Messina
+   * este panel decía $31.846.475 (las cinco obras CERRADAS, las únicas con el formulario completo)
+   * al lado de una fila que decía $156.174.253. Las dos columnas se retiraron de la vista.
+   *
+   * `null` = no se pudo leer, o el rol no ve economía. Nunca se rellena con cero.
+   */
+  economia?: EconomiaDeCliente | null
 }) {
   const faltan = [
     !c.cuit?.trim() && 'el CUIT',
     !c.telefono?.trim() && 'el teléfono',
-    c.contratado === null && 'el contrato de sus obras',
+    // «El contrato de sus obras» es el PRECIO en OBRAS, no el papel: se pregunta por lo contratado
+    // en curso, que es lo que el panel muestra dos bloques más abajo.
+    economia?.contratado_en_curso == null && 'el contrato de sus obras',
   ].filter((x): x is string => typeof x === 'string')
 
   return (
@@ -120,15 +135,20 @@ export function PanelCliente({
         <Dato k="Email" falta={!c.email}>{c.email ?? 'sin cargar'}</Dato>
         <Dato k="Domicilio" falta={!c.direccion}>{c.direccion ?? 'sin cargar'}</Dato>
         {veEconomia && (
-          <Dato k="Contratado" falta={c.contratado === null} mono>
-            {c.contratado === null ? 'sin contrato' : pesos(c.contratado)}
+          // «CONTRATADO EN CURSO» Y NO «CONTRATADO» A SECAS: es el mismo número y el mismo rótulo
+          // que la columna de la lista y que la cabecera de la ficha. El acumulado de todas sus
+          // obras es otro número y no se dibuja acá para no tener dos «Contratado» en la pantalla.
+          <Dato k="Contratado en curso" falta={economia?.contratado_en_curso == null} mono>
+            {economia?.contratado_en_curso == null
+              ? SIN_PRECIO_EN_OBRAS
+              : pesos(economia.contratado_en_curso)}
           </Dato>
         )}
         {veEconomia && (
           // COSTO REAL no está en el mockup y no se saca: es el otro lado de lo contratado y ya
           // viene en la misma lectura. Sacarlo sería perder un dato para parecerse más a un dibujo.
-          <Dato k="Costo real" falta={c.costo_real === null} mono>
-            {c.costo_real === null ? 'sin costo imputado' : pesos(c.costo_real)}
+          <Dato k="Costo real" falta={economia?.costo_real == null} mono>
+            {economia?.costo_real == null ? 'sin costo imputado' : pesos(economia.costo_real)}
           </Dato>
         )}
       </div>

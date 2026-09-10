@@ -5,9 +5,11 @@
 //
 // ═══ LAS DOS FUENTES, Y POR QUÉ SON LAS QUE SON ═══
 //
-//   COBRADO      `public.obra_cobranza` — la réplica viva de la pestaña Cobranzas, filtrada por
-//                `estado = 'cobrado'` Y `fecha_cobro <= hoy`. Es criterio PERCIBIDO: lo que entró.
-//                NUNCA se mezcla con facturado, que es devengado y vive en otra pregunta.
+//   COBRADO      `public.obra_cobranza` en la fila de la OBRA y `public.cliente_economia` en la del
+//                CLIENTE. Las dos deciden qué está cobrado con el MISMO predicado —la función SQL
+//                `public.es_cobrada(estado, fecha_cobro)`, desde el 10/09/2026— así que no pueden
+//                discrepar. Es criterio PERCIBIDO: lo que entró. NUNCA se mezcla con facturado, que
+//                es devengado y vive en otra pregunta.
 //   CONTRATADO   `obra_economia_cartera` — la MISMA fuente que la columna «Contratado» de esta
 //                tabla. Si la barra usara otro denominador, la fila diría dos verdades del mismo
 //                número, que es el defecto que ya costó `CarteraHome`.
@@ -61,22 +63,44 @@ function money(v: number): string {
  *
  * `facturado` entra sólo si existe. Es DEVENGADO y por eso va al final y nombrado: la barra mide
  * percibido, y las dos ventanas no se suman ni se restan.
+ *
+ * ═══ EL ÁMBITO NO ES COSMÉTICO: DICE DE QUÉ UNIVERSO SON LOS DOS NÚMEROS ═══
+ *
+ * En la fila de una OBRA los dos salen de esa obra (`obra_cobranza` / `obra_economia_cartera`). En
+ * la del CLIENTE los dos son del cliente entero y ACUMULADOS —`cliente_economia.cobrado_neto_total`
+ * sobre `cliente_economia.contratado`, todas sus obras no fusionadas—, porque `cobranzas` anota el
+ * cobro contra el CLIENTE y no contra la obra: una fracción con el cobro de todas las obras arriba y
+ * el contrato de las en curso abajo no sería un porcentaje de nada. La frase lo dice para que nadie
+ * lea el % del cliente como si fuera el de su obra en marcha.
  */
 export function tituloDeCobro(
-  { cobrado, contratado, facturado = null }:
-  { cobrado: number | null; contratado: number | null; facturado?: number | null },
+  { cobrado, contratado, facturado = null, ambito = 'obra' }:
+  {
+    cobrado: number | null
+    contratado: number | null
+    facturado?: number | null
+    ambito?: 'obra' | 'cliente'
+  },
 ): string {
+  const deCliente = ambito === 'cliente'
   if (contratado == null) {
-    return 'Sin precio en OBRAS: no hay contra qué medir el cobro. No es 0 % cobrado.'
+    return deCliente
+      ? 'Ninguna de sus obras tiene precio en OBRAS: no hay contra qué medir el cobro. No es 0 % cobrado.'
+      : 'Sin precio en OBRAS: no hay contra qué medir el cobro. No es 0 % cobrado.'
   }
   if (cobrado == null) {
     // NO ES «NO COBRÓ NADA». Cobranzas anota la fila contra el cliente o la unidad de negocio, no
     // contra la obra: mientras eso sea así, esta obra no tiene cobro IMPUTADO, que es otra cosa.
-    return `Sin cobranzas imputadas a esta obra (contratado ${money(contratado)}). `
-      + 'No significa que no se haya cobrado: Cobranzas registra el cobro por cliente, no por obra.'
+    return deCliente
+      ? `Sin cobranzas registradas para este cliente (contratado ${money(contratado)}). `
+        + 'No es que no haya cobrado: es que ninguna fila de Cobranzas quedó atada a su ficha.'
+      : `Sin cobranzas imputadas a esta obra (contratado ${money(contratado)}). `
+        + 'No significa que no se haya cobrado: Cobranzas registra el cobro por cliente, no por obra.'
   }
   const p = progresoDeCobro(cobrado, contratado)
-  const base = `cobrado ${money(cobrado)} de ${money(contratado)} contratado`
+  const base = deCliente
+    ? `cobrado ${money(cobrado)} sin IVA de ${money(contratado)} contratado en todas sus obras`
+    : `cobrado ${money(cobrado)} de ${money(contratado)} contratado`
   const exceso = p?.exceso != null ? ` · ${money(p.exceso)} por encima de lo contratado` : ''
   const fact = facturado != null ? ` · facturado ${money(facturado)} (devengado)` : ''
   return `${base}${exceso}${fact}`

@@ -37,6 +37,7 @@ import type { ClientePanel } from '@/features/clientes/types'
 import { avisoDeDatos } from '../../clientes/services/cartera.ts'
 import { chipsDeCliente, leFaltaUnDato, margenDeLaFila, type Chip } from '../../clientes/services/chipsCartera.ts'
 import { margenPct, sumaConHuecos, type EconomiaDeObra } from '../../clientes/services/economiaObras.ts'
+import type { EconomiaDeCliente } from '../../clientes/services/economiaCliente.ts'
 
 /** Una obra `activa`, tal como la lee la cartera. Es un subconjunto de `obra_panel`. */
 export interface ObraDeCartera {
@@ -45,7 +46,6 @@ export interface ObraDeCartera {
   cliente_id: string | null
   avance_pct: number | null
   jefe_obra: string | null
-  monto_contratado: number | null
 }
 
 /** El certificado más avanzado de una obra, ya resuelto a una frase. */
@@ -98,17 +98,34 @@ export interface ClienteEnCartera {
    */
   faltaUnDato: boolean
   obras: number
-  /** Suma de lo que OBRAS publica para sus obras en ejecución. `null` = ninguna con precio. */
+  /**
+   * LO CONTRATADO DE SUS OBRAS EN CURSO, de `cliente_economia.contratado_en_curso` — la vista, no
+   * una suma hecha acá. `null` = ninguna obra en curso tiene precio en OBRAS, o no se pudo leer.
+   */
   contratado: number | null
+  /** Lo contratado de TODAS sus obras no fusionadas (`cliente_economia.contratado`), incluidas las
+   *  cerradas. Es el denominador de la barra de cobro: lo cobrado del cliente no distingue obra. */
+  contratadoTotal: number | null
   costoMo: number | null
   costoMateriales: number | null
   margen: number | null
   margenPct: number | null
   /** `true` cuando alguna obra en curso no tiene precio en OBRAS: el total suma sólo las que sí. */
   economiaParcial: boolean
-  /** Lo cobrado de LAS MISMAS obras que suma `contratado` — las que están en ejecución. Sumar
-   *  sobre otro conjunto haría una fracción de dos universos distintos. */
+  /**
+   * LO COBRADO DEL CLIENTE, ACUMULADO Y SIN IVA (`cliente_economia.cobrado_neto_total`).
+   *
+   * NO es la suma de `obra_cobranza` de sus obras en curso, que es lo que era hasta el 10/09/2026 y
+   * daba `null` en TODAS las filas: `cobranzas.obra_cliente` guarda una etiqueta de CLIENTE, no de
+   * obra, así que casi ninguna cobranza llega a una obra. El cobro del cliente sí existe y sale de
+   * `cliente_id`.
+   *
+   * SIN IVA porque lo contratado tampoco lo lleva: restar o dividir bruto contra neto daría clientes
+   * que cobraron más de lo que contrataron.
+   */
   cobrado: number | null
+  /** `contratado (todas) − cobrado neto`. `null` si falta cualquiera de los dos. */
+  pendienteContractual: number | null
   enCurso: ObraEnCurso[]
 }
 
@@ -129,9 +146,13 @@ export interface ClienteEnCartera {
 export async function getObrasDeLaCartera(
   supabase: SupabaseClient,
 ): Promise<ObraDeCartera[] | null> {
+  // SIN `monto_contratado` (H1, 10/09/2026). El precio de la obra sale de `obra_economia_cartera` y
+  // de ninguna otra parte: mientras esta consulta lo siguiera trayendo, iba a volver a usarse como
+  // respaldo y las dos definiciones seguirían vivas. Lo que se deja de pedir no se puede volver a
+  // colar.
   const { data, error } = await supabase
     .from('obra_panel')
-    .select('obra_id, nombre, cliente_id, avance_pct, jefe_obra, monto_contratado')
+    .select('obra_id, nombre, cliente_id, avance_pct, jefe_obra')
     .eq('estado', 'activa')
     .order('orden', { ascending: true })
     .order('nombre', { ascending: true })
@@ -263,7 +284,7 @@ export function hoyEnLaEmpresa(ahora: Date = new Date()): string {
  * decir de qué está hablando.
  */
 export function armarCartera({
-  clientes, obras, cobrado, certificados, economia = null, contratos = null,
+  clientes, obras, cobrado, certificados, economia = null, contratos = null, economiaCliente = null,
 }: {
   clientes: ClientePanel[]
   obras: ObraDeCartera[] | null
@@ -274,6 +295,13 @@ export function armarCartera({
   economia?: Map<string, EconomiaDeObra> | null
   /** Los clientes con un documento `contrato` cargado. `null` = no se pudo leer. */
   contratos?: Set<string> | null
+  /**
+   * LA ECONOMÍA DEL CLIENTE (`public.cliente_economia`): contratado, cobrado y pendiente, sumados
+   * por la base. `null` = no se pudo leer o el rol no ve economía, y entonces las columnas del
+   * cliente dicen «—»: NO se cae a sumar las filas acá, que es la segunda definición que este hito
+   * vino a borrar.
+   */
+  economiaCliente?: Map<string, EconomiaDeCliente> | null
 }): ClienteEnCartera[] {
   const porCliente = new Map<string, ObraDeCartera[]>()
   for (const o of obras ?? []) {
@@ -283,10 +311,11 @@ export function armarCartera({
 
   return clientes.map((c) => {
     const enCurso: ObraEnCurso[] = (porCliente.get(c.cliente_id) ?? []).map((o) => {
-      // EL PRECIO ES EL DE OBRAS (la OC de Cobranzas), no el campo del formulario que nadie carga.
-      // Si OBRAS no lo tiene, cae al del formulario; si tampoco, «sin precio en OBRAS».
+      // EL PRECIO ES EL DE OBRAS (la OC de Cobranzas) Y NO TIENE RESPALDO. El del formulario
+      // (`obra_panel.monto_contratado`) se retiró el 10/09/2026: era la otra definición, la que
+      // sumaba las obras cerradas de Messina. Sin precio en OBRAS, la fila lo dice.
       const e = economia?.get(o.obra_id) ?? null
-      const contratado = e?.contratado ?? o.monto_contratado
+      const contratado = e?.contratado ?? null
       // UNA sola definición del margen, y `null` cuando falta un sumando: ver `margenDeLaFila`.
       const margen = margenDeLaFila({
         margenPublicado: e?.margen ?? null,
@@ -308,17 +337,21 @@ export function armarCartera({
         cobrado: cobrado?.get(o.obra_id) ?? null,
       }
     })
-    // LOS TOTALES DEL CLIENTE SON LA SUMA DE SUS OBRAS EN EJECUCIÓN, no `cliente_panel.contratado`
-    // (que sumaba las cerradas y publicaba $204M en San Francisco al lado de obras «sin contrato»).
-    const tContratado = sumaConHuecos(enCurso.map((o) => o.contratado))
+    // ═══ LO CONTRATADO Y LO COBRADO DEL CLIENTE LOS DICE LA VISTA, NO ESTA FUNCIÓN ═══
+    //
+    // Hasta el 10/09/2026 `contratado` era `sumaConHuecos` de las filas de obra y `cobrado` la suma
+    // de `obra_cobranza` de esas mismas obras. Las dos sumas eran correctas y ninguna era la
+    // definición: el panel lateral sumaba otra cosa, el esquema de pago otra y el portal no sumaba
+    // nada. `cliente_economia` es la única, y acá sólo se lee — si no se pudo leer, las columnas
+    // dicen «—» en vez de caer a una segunda cuenta que nadie más hace igual.
+    const ec = economiaCliente?.get(c.cliente_id) ?? null
     const tMo = sumaConHuecos(enCurso.map((o) => o.costoMo))
     const tMat = sumaConHuecos(enCurso.map((o) => o.costoMateriales))
     const tMargen = sumaConHuecos(enCurso.map((o) => o.margen))
-
-    // EL COBRADO DEL CLIENTE SE SUMA SOBRE LAS MISMAS OBRAS QUE `contratado`: las en ejecución. Un
-    // cobro de 2024 de una obra cerrada dividido por lo contratado de las que están en curso no es
-    // un porcentaje de nada.
-    const tCobrado = sumaConHuecos(enCurso.map((o) => o.cobrado))
+    // `economiaParcial` sigue mirando las filas: es «alguna obra en curso no tiene precio», un hecho
+    // de las obras dibujadas, no del total. La vista lo publica como `n_obras_sin_precio` y las dos
+    // cuentas tienen que coincidir; se prefiere la de las filas porque es la que se está mostrando.
+    const contratadoParcial = sumaConHuecos(enCurso.map((o) => o.contratado)).parcial
 
     // «TIENE CONTRATO» ES UN PAPEL, NO UN MONTO (09/09/2026). Antes esta fila derivaba
     // «sin contrato» de `contratado === null`, que es el hueco de PRECIO de OBRAS: por eso el mismo
@@ -333,13 +366,15 @@ export function armarCartera({
       chips: chipsDeCliente({ cuit: c.cuit, telefono: c.telefono, tieneContrato }),
       faltaUnDato: leFaltaUnDato({ cuit: c.cuit, telefono: c.telefono, tieneContrato }),
       obras: c.n_obras,
-      contratado: tContratado.total,
+      contratado: ec?.contratado_en_curso ?? null,
+      contratadoTotal: ec?.contratado ?? null,
       costoMo: tMo.total,
       costoMateriales: tMat.total,
       margen: tMargen.total,
-      margenPct: margenPct(tMargen.total, tContratado.total),
-      economiaParcial: tContratado.parcial || tMargen.parcial,
-      cobrado: tCobrado.total,
+      margenPct: margenPct(tMargen.total, ec?.contratado_en_curso ?? null),
+      economiaParcial: contratadoParcial || tMargen.parcial,
+      cobrado: ec?.cobrado_neto_total ?? null,
+      pendienteContractual: ec?.pendiente_contractual ?? null,
       enCurso,
     }
   })

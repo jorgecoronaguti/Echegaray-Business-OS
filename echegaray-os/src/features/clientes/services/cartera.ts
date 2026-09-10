@@ -39,6 +39,12 @@ export interface FilaCartera {
   cuit: string | null
   telefono: string | null
   n_obras_activas: number
+  /**
+   * Lo contratado del cliente. Desde el 10/09/2026 sale de `cliente_economia` y NO de
+   * `cliente_panel.contratado`, que era la suma del campo del formulario de la obra y se retiró de
+   * la vista (PRP-REALIDAD-UNICA H1). `avisoDeDatos` no lo mira —sólo el CUIT—, por eso su
+   * parámetro es un `Pick`: la etiqueta de la fila se puede decidir sin leer la economía.
+   */
   contratado: number | null
 }
 
@@ -49,7 +55,7 @@ export interface FilaCartera {
  * facturar ni cruzar contra ARCA. La razón social, el teléfono o la dirección faltantes son
  * incomodidades; el CUIT faltante frena el cobro. Medido el 24/08: 3 de los 5 clientes no lo tienen.
  */
-export function avisoDeDatos(c: FilaCartera): string | null {
+export function avisoDeDatos(c: Pick<FilaCartera, 'cuit'>): string | null {
   return c.cuit?.trim() ? null : 'Sin CUIT: no se le puede facturar'
 }
 

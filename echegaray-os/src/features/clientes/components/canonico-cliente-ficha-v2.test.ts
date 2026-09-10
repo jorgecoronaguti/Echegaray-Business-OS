@@ -74,8 +74,15 @@ test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
   // recibe la corrección de la otra.
   assert.doesNotMatch(codigoPagina(), new RegExp(`'${SIN_PRECIO_EN_OBRAS}'`))
   assert.doesNotMatch(codigoListas(), new RegExp(`'${SIN_PRECIO_EN_OBRAS}'`))
-  // LO QUE NO PUEDE VOLVER: publicar un cero por una ausencia. La cifra sólo se dibuja con total.
-  assert.match(codigoPagina(), /valor: contratadoEnCurso\.total !== null \? money\(contratadoEnCurso\.total\) : null/)
+  // LO QUE NO PUEDE VOLVER: publicar un cero por una ausencia. La cifra sólo se dibuja con número.
+  assert.match(codigoPagina(), /valor: contratadoEnCurso !== null \? money\(contratadoEnCurso\) : null/)
+  // Y LA CIFRA SALE DE LA VISTA, NO DE UNA SUMA DE ESTA PÁGINA (H1, 10/09/2026). Mientras la ficha
+  // sumó sus propias obras hubo cuatro definiciones de «contratado del cliente» —una por pantalla—
+  // y el panel lateral publicaba $31,8 M al lado de la lista que decía $156,1 M.
+  assert.match(codigoPagina(), /contratadoEnCurso = economiaCliente\?\.contratado_en_curso/)
+  // EL RESPALDO AL CAMPO DEL FORMULARIO NO VUELVE: era la otra definición.
+  assert.doesNotMatch(codigoPagina(), /monto_contratado/)
+  assert.doesNotMatch(codigoListas(), /o\.monto_contratado/)
 })
 
 test('una obra sin cronograma no tiene 0 % de avance: lo dice con palabras que ENTRAN', () => {
