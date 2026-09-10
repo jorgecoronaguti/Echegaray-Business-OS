@@ -21,6 +21,24 @@ import { query } from './db.mjs'
 /** Las vistas que se apoyan en el RLS de sus tablas. Si se agrega una, va acá. */
 const CON_RLS = [
   'obra_panel', 'obra_plan_vs_real', 'obra_avance', 'cliente_panel',
+  // ═══ `obra_costo_real` (10/09/2026) ═══
+  //
+  // Nunca tuvo la opción, y tiene `grant select` propio para `authenticated`: publica `costo_real`,
+  // `n_comprobantes` y `costo_mano_de_obra` leyendo `costos_obra`, cuya policy es de Administración.
+  // Sin invoker esos tres números salteaban esa policy dos veces —pedida directa y a través del
+  // `left join` de `obra_panel`—, así que arreglar sólo la de arriba dejaba la fuga abierta abajo
+  // con este test en verde.
+  //
+  // `obra_panel` está en esta lista desde el principio y el 10/09 la perdió: `20260910T1900` la
+  // rehízo con `create or replace view` sin repetir la opción. Medido como perfil `campo`:
+  // 24 obras sin invoker contra 1 con invoker.
+  //
+  // LAS DOS DAN ROJO HASTA QUE SE APLIQUE
+  // `supabase/migrations/20260911T0100_obra_panel_vuelve_a_correr_con_el_rls_de_quien_pregunta.sql`.
+  // Ese rojo es la señal: el agente escribe la migración, el dueño la aplica. El EFECTO —cuántas
+  // filas ve cada rol— lo prueba `rls-obra-no-por-fila.pg.test.mjs`, que aplica las dos migraciones
+  // dentro de su propia transacción y las deshace.
+  'obra_costo_real',
   // ECONOMÍA HONESTA (22/08): la vista del margen corre con los permisos de quien pregunta — un
   // `create or replace` que le borre el invoker le mostraría los márgenes a cualquier autenticado.
   'obra_economia',
