@@ -13,7 +13,7 @@
 // que suma `obra_egreso_proyectado`, y se resuelve con las MISMAS reglas que la columna D de OBRAS
 // (`contratado()` en obras-grilla.mjs): OC en pesos > U$S × TC > suma viva de sus filas.
 
-import { filasDeObra, normalizarMoneda } from './cobranzas-contrato.mjs'
+import { filasDeObra, normalizarMoneda, prefiereContratoUsd } from './cobranzas-contrato.mjs'
 
 /** Lo que Cobranzas escribe en Estado para una fila que NO es venta (mismo criterio que OBRAS). */
 export const NO_VENTA = 'CANCELAR'
@@ -59,12 +59,15 @@ export function ventaViva(filas = [], cols = {}, selector = {}, tc = null) {
  * @returns {{contratado:number|null, contratadoUsd:number|null, origen:string|null}}
  */
 export function contratadoEnPesos(c = {}, tc = null) {
-  if (Number.isFinite(c.contrato) && c.contrato > 0) {
-    return { contratado: c.contrato, contratadoUsd: null, origen: ORIGEN.ocPesos }
-  }
-  if (Number.isFinite(c.contratoUsd) && c.contratoUsd > 0) {
+  // EL DÓLAR LE GANA AL PESO CUANDO EL PESO ES MÁS CHICO QUE EL DÓLAR (ver `prefiereContratoUsd`):
+  // es imposible, y significa que el "pesos" leído no era un contrato. Quattropani se publicaba
+  // contratada en $1.504 por ese camino.
+  if (prefiereContratoUsd(c.contrato, c.contratoUsd)) {
     if (!Number.isFinite(tc) || tc <= 0) return { contratado: null, contratadoUsd: c.contratoUsd, origen: ORIGEN.sinDato }
     return { contratado: c.contratoUsd * tc, contratadoUsd: c.contratoUsd, origen: ORIGEN.ocUsd }
+  }
+  if (Number.isFinite(c.contrato) && c.contrato > 0) {
+    return { contratado: c.contrato, contratadoUsd: null, origen: ORIGEN.ocPesos }
   }
   if (Number.isFinite(c.ventaViva) && c.ventaViva > 0) {
     return { contratado: c.ventaViva, contratadoUsd: null, origen: ORIGEN.sumaViva }

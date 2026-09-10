@@ -196,11 +196,23 @@ export function apto_para_portal(fila) {
   return String(fila?.categoria ?? '').trim().toUpperCase() !== 'N'
 }
 
-/** La huella con la que el worker verifica que la fila del Sheet sigue siendo la que era. */
+/**
+ * La huella con la que el worker verifica que la fila del Sheet sigue siendo la que era.
+ *
+ * EL MONTO DE LA HUELLA ES EL NATIVO, NO EL VALUADO (10/09/2026). `verificarHuella` compara este
+ * número contra la celda **J del Sheet**, que está escrita en la moneda de la fila. Desde que
+ * `sync-cobranzas` valúa los dólares, `monto_neto` de la réplica está en pesos: usarlo acá haría que
+ * la fila 62 de Quattropani (U$S 15.400) nunca coincidiera con su propia celda y el bisturí
+ * rechazara todo cambio sobre ella con «huella_distinta». Falla cerrada —no rompe nada— pero deja
+ * muerto el circuito del portal para las filas en dólares.
+ *
+ * `monto_neto_origen` sale de la migración 20260910T1500; mientras no esté aplicada, no hay nativo
+ * guardado y la huella cae al valuado — la degradación es exactamente esa fila y está dicha.
+ */
 export function huellaDe(fila) {
   return {
     huella_comprobante: String(fila?.numero_comprobante ?? '').trim() || null,
-    huella_monto: fila?.monto_neto ?? null,
+    huella_monto: fila?.monto_neto_origen ?? fila?.monto_neto ?? null,
   }
 }
 

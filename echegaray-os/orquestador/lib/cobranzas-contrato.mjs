@@ -52,6 +52,36 @@
  */
 export const MARCADOR_CONTRATO = /(?:\$\s*|s\/?\s*(?:total|contrato)\s+)(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)/i
 
+/**
+ * UNA CUENTA ANOTADA AL PASO NO ES UN CONTRATO — Y ESCRIBE UN `$` IGUAL DE VÁLIDO.
+ *
+ * EL DEFECTO QUE ARREGLA (10/09/2026). Alguien agregó al final de la H78 de Quattropani la cuenta con
+ * la que estimó la certificación del día:
+ *
+ *   "Resto 50% s/ contrato U$S 63.000 + IVA — certificación quincenal 1/9 -  ($1503,6*USD3500)"
+ *
+ * Ese "$1503,6" es el TIPO DE CAMBIO del día, no plata: es el primer factor de una multiplicación. El
+ * marcador lo leyó como contrato en pesos, el camino "OC en pesos" le ganó al de dólares y la obra se
+ * publicó CONTRATADA EN $1.504 — con un margen de −$39,1 M en OBRAS y en /clientes. El defecto no dio
+ * ni un error: dio un número chiquito y creíble, que es la peor clase de defecto de este repo.
+ *
+ * POR QUÉ SE BORRA LA EXPRESIÓN ENTERA Y NO SE "IGNORA EL NÚMERO". Un lookahead que rechace el número
+ * seguido de `*` no alcanza: el motor de regex retrocede y se queda con "1503" —el prefijo que NO
+ * está pegado al asterisco— y publica un contrato de $1.503. La única forma robusta es sacar del
+ * texto la MULTIPLICACIÓN COMPLETA antes de buscar marcadores; lo que queda afuera de la cuenta se
+ * sigue leyendo igual.
+ *
+ * EL COSTO, DECLARADO: si alguien escribiera un contrato real dentro de una multiplicación
+ * ("s/ contrato $ 95.000.000 x 2 obras"), dejaría de leerse y la obra caería a su suma viva. Es la
+ * misma dirección de error que eligió todo este módulo: un contrato que falta se ve; uno inventado, no.
+ */
+const CUENTA_ESCRITA = /(?:U\$S|US\$|USD|\$)?\s*\d[\d.,]*\s*[*\u00d7x]\s*(?:U\$S|US\$|USD|\$)?\s*\d[\d.,]*/gi
+
+/** El texto de la Orden de Compra sin las cuentas anotadas al paso. Ver `CUENTA_ESCRITA`. */
+export function sinCuentas(texto) {
+  return String(texto ?? '').replace(CUENTA_ESCRITA, ' ')
+}
+
 /** El precio de la obra cuando la fila lo distingue de su saldo. Ver `contratoDeclarado`. */
 export const MARCADOR_PRECIO = /precio\s+(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)/i
 
@@ -73,8 +103,9 @@ export function contratoDeclarado(texto) {
   // ES EL ÚNICO RENGLÓN DE COBRANZAS QUE USA LA PALABRA (verificado el 07/09 sobre las 100 filas del
   // archivo vivo), y por eso el marcador exige un número PEGADO a ella: "ACTUALIZACIÓN DE PRECIOS"
   // no declara nada y no puede engancharse.
-  const precio = MARCADOR_PRECIO.exec(String(texto ?? ''))
-  const m = precio ?? MARCADOR_CONTRATO.exec(String(texto ?? ''))
+  const limpio = sinCuentas(texto)
+  const precio = MARCADOR_PRECIO.exec(limpio)
+  const m = precio ?? MARCADOR_CONTRATO.exec(limpio)
   if (!m) return null
   // es-AR: el punto separa miles y la coma es el decimal. Al revés da 47,59 en vez de 47.590.272.
   const n = Number(m[1].replace(/\./g, '').replace(',', '.'))
@@ -101,7 +132,10 @@ export const MARCADOR_CONTRATO_USD = /(?:U\$S|US\$|USD)\s*(\d{1,3}(?:\.\d{3})+(?
  * @returns {number|null} el monto en USD, o null si esa fila no declara ninguno
  */
 export function contratoUsdDeclarado(texto) {
-  const m = MARCADOR_CONTRATO_USD.exec(String(texto ?? ''))
+  // Mismo saneo que en pesos: el "USD3500" de la cuenta de la H78 es el importe de UNA certificación,
+  // no el contrato. Sin sacar la multiplicación, una fila que sólo tuviera la cuenta declararía un
+  // contrato de U$S 3.500.
+  const m = MARCADOR_CONTRATO_USD.exec(sinCuentas(texto))
   if (!m) return null
   const n = Number(m[1].replace(/\./g, '').replace(',', '.'))
   return Number.isFinite(n) && n > 0 ? n : null
@@ -138,6 +172,23 @@ export function normalizarMoneda(valor) {
  * `COL_VALOR_BANCO` para la BB. Verificado contra el archivo vivo el 13/08/2026.
  */
 export const COL_MONEDA_COBRANZAS = 'AA'
+
+/** La letra de columna del Sheet, como índice 0-based dentro de una fila leída desde la A. */
+export const indiceDeColumna = (letra) =>
+  String(letra).toUpperCase().split('').reduce((a, c) => a * 26 + (c.charCodeAt(0) - 64), 0) - 1
+
+/** Índice 0-based de la columna "Moneda" dentro de una fila leída desde la A. */
+export const IDX_MONEDA_COBRANZAS = indiceDeColumna(COL_MONEDA_COBRANZAS)
+
+/**
+ * EL RANGO QUE HAY QUE LEER PARA REPLICAR COBRANZAS — DERIVADO DE LA COLUMNA DE LA MONEDA.
+ *
+ * `sync-cobranzas.mjs` lo tenía escrito a mano como `A5:R5000` y por eso la moneda no llegaba nunca:
+ * la R es la 18 y la moneda es la 27. Un rango a mano y una columna declarada aparte son dos verdades
+ * que se separan sin avisar — el modo de falla no es un error, es una fila en dólares sumada como
+ * pesos. Acá el rango NO PUEDE quedarse corto: sale de la misma constante.
+ */
+export const RANGO_COBRANZAS = `Cobranzas!A5:${COL_MONEDA_COBRANZAS}5000`
 
 /**
  * LA FORMA DE COBRO, TRADUCIDA AL INSTRUMENTO. PURA.
@@ -189,6 +240,39 @@ export function valuarEnPesos(importe, celdaMoneda, tc = null) {
     return { moneda, motivo: `está en ${MONEDA_USD} y no tengo tipo de cambio (leí ${JSON.stringify(tc)})` }
   }
   return { moneda, tipoCambio: tc, pesos: importe * tc }
+}
+
+/**
+ * LOS IMPORTES DE UNA FILA DE COBRANZAS, TODOS VALUADOS EN PESOS DE UNA SOLA VEZ.
+ *
+ * EL DEFECTO QUE ARREGLA (10/09/2026). `sync-cobranzas.mjs` leía `A5:R` — hasta la columna 18— y la
+ * columna "Moneda" es la AA. La fila 62 de Quattropani dice `U$S 15.400` y entraba a
+ * `public.cobranzas` como **$15.400**: el cobrado de su cuenta corriente daba $23.273.434 de menos
+ * que el Sheet, y nadie podía verlo, porque un 15.400 en una columna de pesos no se ve mal. Es el
+ * MISMO defecto que se arregló en la pestaña el 13/08 —ahí Obras!D14 valuaba y el Cash Flow no—,
+ * reaparecido en la réplica de Postgres por el lado del rango leído.
+ *
+ * LOS CUATRO IMPORTES DE LA FILA SON DE LA MISMA MONEDA: neto, IVA, retenciones y total bruto
+ * describen UN comprobante. Valuar uno solo dejaría una fila donde el total no es la suma de sus
+ * partes — un cuadre roto que después nadie sabe de dónde salió.
+ *
+ * NO CONVIERTE A MEDIAS: si la moneda no se entiende o falta el tipo de cambio, devuelve `motivo` y
+ * NINGÚN importe. El llamador tiene que abortar nombrando la fila, nunca grabar el número nativo.
+ *
+ * @param {Record<string, any>} importes los importes tal como los escribe la fila, en SU moneda
+ * @param {any} celdaMoneda la celda de la columna "Moneda" (AA)
+ * @param {number|null} tc el tipo de cambio en uso, o null
+ * @returns {{moneda:string|null, tipoCambio?:number, importes?:Record<string,number|null>, motivo?:string}}
+ */
+export function valuarFilaCobranza(importes = {}, celdaMoneda = '', tc = null) {
+  const cabeza = valuarEnPesos(1, celdaMoneda, tc)
+  if (cabeza.motivo) return { moneda: cabeza.moneda, motivo: cabeza.motivo }
+  const factor = cabeza.tipoCambio
+  const out = {}
+  for (const [k, v] of Object.entries(importes)) {
+    out[k] = Number.isFinite(v) ? v * factor : null
+  }
+  return { moneda: cabeza.moneda, tipoCambio: factor, importes: out }
 }
 
 /**
@@ -340,4 +424,28 @@ export function contratoDeObra(filas = [], cols = {}, obra = {}, desde = 1) {
     distintos,
     partido: distintos.length > 1,
   }
+}
+
+/**
+ * CUÁL DE LOS DOS CONTRATOS MANDA CUANDO LA OBRA DECLARA PESOS Y DÓLARES — UNA SOLA VEZ.
+ *
+ * La regla vive acá y no en cada consumidor porque son DOS: la columna D de la pestaña OBRAS
+ * (`contratado()` en obras-grilla, que publica la fórmula) y `contratadoEnPesos` (que persiste el
+ * número en `obra_economia_sheet` para /clientes). Escrita dos veces, el día que una cambie la
+ * pantalla y la pestaña dirían distinto de la misma obra — que es lo que REALIDAD ÚNICA prohíbe.
+ *
+ * EL CRITERIO, Y POR QUÉ ES SEGURO: un contrato en pesos NUNCA puede ser menor que su propia cifra en
+ * dólares, porque el tipo de cambio es mayor que uno. Si el "pesos" leído es más chico que el "USD"
+ * leído, ese pesos NO es un contrato: es un número de otra cosa que se coló con un `$` adelante —el
+ * tipo de cambio anotado en la H78 de Quattropani, sin ir más lejos. Ante esa contradicción manda el
+ * dólar, que es la moneda en la que ESE contrato está escrito.
+ *
+ * Es una segunda línea de defensa, no la primera: la primera es `sinCuentas`. Se ponen las dos porque
+ * la anotación que rompió esto la escribe una persona en una celda libre, y la próxima va a estar
+ * redactada de otra forma.
+ */
+export function prefiereContratoUsd(contrato, contratoUsd) {
+  if (!Number.isFinite(contratoUsd) || contratoUsd <= 0) return false
+  if (!Number.isFinite(contrato) || contrato <= 0) return true
+  return contrato < contratoUsd
 }

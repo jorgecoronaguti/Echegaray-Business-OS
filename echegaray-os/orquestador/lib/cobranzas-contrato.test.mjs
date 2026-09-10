@@ -8,7 +8,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   contratoDeclarado, contratoDeObra, filasDeObra, normalizarMoneda, monedasDesconocidas, saldoDeObra,
-  sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO,
+  sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO, contratoUsdDeclarado, sinCuentas, prefiereContratoUsd, valuarFilaCobranza,
+  RANGO_COBRANZAS, IDX_MONEDA_COBRANZAS, COL_MONEDA_COBRANZAS, indiceDeColumna,
 } from './cobranzas-contrato.mjs'
 import { FILAS, COLUMNAS, comoFilas, DESDE } from './cobranzas-fixture.mjs'
 
@@ -233,4 +234,102 @@ test('CANCELAR cuenta como cerrada: una venta que dejó de existir no es plata p
   const cols = { cliente: 0, concepto: 1, oc: 2, estado: 3 }
   const filas = [['SF', 'Obra X', '', 'Cobrado'], ['SF', 'Obra X', '', 'CANCELAR']]
   assert.equal(saldoDeObra(filas, cols, { variantes: ['SF'], needle: 'Obra X' }, 5).cobrada, true)
+})
+
+// ═══ LA CUENTA ANOTADA AL PASO — H78 DE QUATTROPANI, 10/09/2026 ═══
+
+/** El texto LITERAL de la celda H78 el día que la obra se publicó contratada en $1.504. */
+const H78 = 'Resto 50% s/ contrato U$S 63.000 + IVA — certificación quincenal 1/9 -  ($1503,6*USD3500)'
+
+test('el TIPO DE CAMBIO anotado en una cuenta NO es el contrato de la obra (H78, defecto real)', () => {
+  // Sin el saneo, `$1503,6` se leía como contrato en pesos, le ganaba al camino U$S×TC y Quattropani
+  // salía contratada en $1.504 con margen −$39,1 M en OBRAS y en /clientes. Este test es ESE número.
+  assert.equal(contratoDeclarado(H78), null, 'la cuenta no declara ningún contrato en pesos')
+  assert.equal(contratoUsdDeclarado(H78), 63_000, 'el contrato de la fila sigue siendo U$S 63.000')
+})
+
+test('no alcanza con rechazar el número pegado al asterisco: el prefijo tampoco es un contrato', () => {
+  // Un lookahead `(?!\s*[*×x])` deja que el motor retroceda y capture "1503" — un contrato de $1.503
+  // en vez de uno de $1.504. Este test existe para que ese arreglo a medias dé rojo.
+  assert.equal(contratoDeclarado('($1503,6*USD3500)'), null)
+  assert.equal(contratoDeclarado('cert. 1/9 $1.512,262 x U$S 3.500'), null)
+  assert.equal(contratoDeclarado('$ 1503,6 × 3500'), null)
+})
+
+test('la fila que SÓLO tiene la cuenta no declara un contrato en dólares de U$S 3.500', () => {
+  assert.equal(contratoUsdDeclarado('certificación 1/9 - ($1503,6*USD3500)'), null)
+})
+
+test('sacar la cuenta NO desarma el resto del texto: el contrato en pesos se sigue leyendo', () => {
+  // La contracara del test de arriba: el saneo tiene que ser quirúrgico. Si se comiera la fila entera,
+  // las 22 filas que declaran contrato quedarían en null y el saldo pendiente desaparecería.
+  assert.equal(contratoDeclarado('Anticipo 50% $95.000.000 s/ contrato — certificación 1/9 ($1503,6*USD3500)'),
+    95_000_000)
+  assert.equal(contratoDeclarado('Resto 50% s/ contrato 97.650.000 — certificación quincenal 1/9'), 97_650_000)
+  assert.equal(contratoDeclarado('Anticipo inicio obra 50% $ 47.590.272 Cotización n°'), 47_590_272)
+  assert.equal(sinCuentas('OC 02-00002097').trim(), 'OC 02-00002097', 'un número de OC no es una cuenta')
+})
+
+test('contratoDeObra sobre la fila de Quattropani devuelve el dólar y NINGÚN peso', () => {
+  const cols = { cliente: 0, concepto: 1, oc: 2 }
+  const c = contratoDeObra([['Quattropani', 'Certificación 1/9', H78]], cols,
+    { variantes: ['Quattropani'], unica: true }, 78)
+  assert.equal(c.contrato, null)
+  assert.equal(c.contratoUsd, 63_000)
+})
+
+test('un contrato en pesos MENOR que su cifra en dólares es imposible: manda el dólar', () => {
+  // Segunda línea de defensa, para la próxima anotación redactada de otra forma. El tipo de cambio es
+  // mayor que uno, así que $1.504 nunca puede ser el mismo contrato que U$S 63.000.
+  assert.equal(prefiereContratoUsd(1503.6, 63_000), true)
+  assert.equal(prefiereContratoUsd(null, 63_000), true)
+  assert.equal(prefiereContratoUsd(47_590_272, 63_000), false, 'el contrato en pesos real le sigue ganando')
+  assert.equal(prefiereContratoUsd(95_000_000, null), false)
+  assert.equal(prefiereContratoUsd(null, null), false)
+})
+
+// ═══ LA RÉPLICA DE COBRANZAS Y LA COLUMNA AA — DEFECTO DEL 10/09/2026 ═══
+
+test('la fila en U$S entra a la réplica valuada, no con el número desnudo (fila 62, Quattropani)', () => {
+  // `sync-cobranzas.mjs` leía `A5:R` y la columna "Moneda" es la AA: los U$S 15.400 de la fila 62 se
+  // guardaban como $15.400 y el cobrado de la cuenta corriente daba $23.273.434 de menos.
+  const v = valuarFilaCobranza(
+    { monto_neto: 15_400, iva: null, retenciones: null, total_bruto: 15_400 }, 'USD', 1512.262)
+  assert.equal(v.moneda, 'USD')
+  assert.equal(v.tipoCambio, 1512.262)
+  assert.equal(v.importes.total_bruto, 15_400 * 1512.262)
+  assert.ok(v.importes.total_bruto > 23_000_000, 'son veintitrés millones de pesos, no quince mil')
+  assert.equal(v.importes.iva, null, 'lo que no tiene importe sigue sin tenerlo: null no es cero')
+})
+
+test('la fila en pesos no se toca, y el tipo de cambio queda declarado en 1', () => {
+  const v = valuarFilaCobranza({ monto_neto: 8_601_753, total_bruto: 10_408_121 }, '', 1512.262)
+  assert.deepEqual(v, { moneda: 'ARS', tipoCambio: 1, importes: { monto_neto: 8_601_753, total_bruto: 10_408_121 } })
+})
+
+test('los cuatro importes de la fila se valúan JUNTOS: un total que no es la suma de sus partes es un cuadre roto', () => {
+  const v = valuarFilaCobranza({ monto_neto: 100, iva: 21, retenciones: 1, total_bruto: 120 }, 'U$S', 1000)
+  assert.deepEqual(v.importes, { monto_neto: 100_000, iva: 21_000, retenciones: 1_000, total_bruto: 120_000 })
+  assert.equal(v.importes.monto_neto + v.importes.iva - v.importes.retenciones, v.importes.total_bruto)
+})
+
+test('sin tipo de cambio, o con una moneda que no se entiende, NO se devuelve ningún importe', () => {
+  // Grabar el número nativo cuando no se puede valuar es exactamente el defecto que esto arregla.
+  const sinTc = valuarFilaCobranza({ total_bruto: 15_400 }, 'USD', null)
+  assert.equal(sinTc.importes, undefined)
+  assert.match(sinTc.motivo, /tipo de cambio/)
+  const rara = valuarFilaCobranza({ total_bruto: 100 }, 'EUR', 1512.262)
+  assert.equal(rara.moneda, null)
+  assert.equal(rara.importes, undefined)
+})
+
+test('el rango que replica Cobranzas LLEGA hasta la columna de la moneda: A5:R nunca la leía', () => {
+  // Éste es el defecto entero, en una línea: la R es la columna 18 y la moneda es la 27. Mientras el
+  // rango se escribía a mano, la columna declarada y la columna leída eran dos verdades distintas.
+  assert.equal(IDX_MONEDA_COBRANZAS, 26)
+  assert.equal(indiceDeColumna('A'), 0)
+  assert.equal(indiceDeColumna('R'), 17, 'hasta donde llegaba el rango viejo')
+  assert.ok(RANGO_COBRANZAS.includes(`A5:${COL_MONEDA_COBRANZAS}`), `el rango es ${RANGO_COBRANZAS}`)
+  const hasta = /A5:([A-Z]+)/.exec(RANGO_COBRANZAS)[1]
+  assert.ok(indiceDeColumna(hasta) >= IDX_MONEDA_COBRANZAS, 'el rango no puede quedarse corto de la moneda')
 })

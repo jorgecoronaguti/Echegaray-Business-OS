@@ -241,3 +241,38 @@ test('la fila que no se pudo releer se denuncia, no se da por buena', () => {
   assert.ok(malas.length >= 1, 'sin relectura no hay verificación: tiene que denunciar')
   assert.ok(malas.every((m) => m.startsWith('messina-playon-azufre:')), 'y decir de qué obra habla')
 })
+
+test('LA CUENTA ANOTADA EN LA OC NO BAJA EL CONTRATO DE QUATTROPANI A $1.504 — cadena completa', () => {
+  // EL DEFECTO REAL, verificado contra el Sheet vivo el 10/09/2026: la obra se publicó CONTRATADA EN
+  // $1.504, con margen −$39,1 M, en la pestaña OBRAS y en /clientes.
+  //
+  // LA FOTO ES DEL 13/08 Y AHÍ QUATTROPANI DECLARABA PESOS ("s/ contrato 97.650.000"). La redacción
+  // de HOY —dólares, y la cuenta del día pegada al final— se inyecta sobre la foto y se dice: lo que
+  // se prueba es la CADENA (extractor → grilla → celda D evaluada), no la foto.
+  const H78 = 'Resto 50% s/ contrato U$S 63.000 + IVA — certificación quincenal 1/9 -  ($1503,6*USD3500)'
+  const anotada = comoFilas().map((r) => {
+    if (!String(r[COLS.oc]).startsWith('Resto 50% s/ contrato 97.650.000')) return r
+    const f = [...r]
+    f[COLS.oc] = String(r[COLS.oc]).endsWith('1/9') ? H78 : String(r[COLS.oc]).replace('97.650.000', 'U$S 63.000')
+    return f
+  })
+  assert.ok(anotada.some((r) => String(r[COLS.oc]) === H78), 'la fila con la anotación está puesta')
+
+  const q = OBRAS_FUTURAS.find((o) => o.clave === 'quattropani-salon-comercial')
+  const c = contratoDeObra(anotada, COLS, { variantes: [q.cliente], needle: q.ventaTexto, unica: true }, DESDE)
+  assert.equal(c.contrato, null, 'el tipo de cambio anotado no es un contrato en pesos')
+  assert.equal(c.contratoUsd, 63_000)
+
+  const g2 = grillaObras({ obras: OBRAS_FUTURAS.map((o) => (o.clave === 'quattropani-salon-comercial'
+    ? { ...o, contrato: c.contrato, contratoUsd: c.contratoUsd }
+    : { ...o, contrato: contratos.get(o.clave) })) })
+  const b = g2.bloques.find((x) => x.clave === 'quattropani-salon-comercial')
+  const publicado = evaluarFormula(g2.filas[b.fProt - 1][3], {
+    hoja: hojaDeGrilla(g2.filas), hojas: { Cobranzas: comoHoja() }, nombres: { TIPO_CAMBIO_USD: TC }, hoy: HOY,
+  })
+  assert.equal(redondo(publicado), redondo(63_000 * TC))
+  assert.ok(publicado > 90_000_000, `la obra vale noventa y pico de millones y publicó ${publicado}`)
+  // Y el control de publicación tiene que estar de acuerdo con la celda que el generador emitió: si
+  // no, el escritor abortaría por publicar bien.
+  assert.deepEqual(contratoMalPublicado([b], g2.filas), [])
+})

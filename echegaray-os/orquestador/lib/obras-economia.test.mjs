@@ -62,3 +62,19 @@ test('la fila que se persiste: plazo de la obra, costos y margen, y el origen de
   const g = filaEconomia({ clave: 'x' }, { contrato: 10 }, {}, {})
   assert.equal(g.costo_mo, null); assert.equal(g.margen, null); assert.equal(g.contratado, 10)
 })
+
+test('QUATTROPANI: un contrato en pesos MÁS CHICO que el mismo contrato en dólares no es un contrato', () => {
+  // El 10/09/2026 la H78 traía el tipo de cambio anotado ("$1503,6*USD3500") y el camino "OC en pesos"
+  // le ganaba al de dólares: la obra se publicó contratada en $1.504 y con margen −$39,1 M. Con el
+  // desempate, vuelve a U$S 63.000 × TC.
+  const r = contratadoEnPesos({ contrato: 1503.6, contratoUsd: 63_000, ventaViva: 132_304_456 }, 1512.262)
+  assert.deepEqual(r, { contratado: 63_000 * 1512.262, contratadoUsd: 63_000, origen: ORIGEN.ocUsd })
+  assert.ok(r.contratado > 95_000_000, 'el contratado de Quattropani está en los $95 M, no en los $1.504')
+})
+
+test('el desempate NO le saca el contrato en pesos a las obras que lo declaran de verdad', () => {
+  // Pisos Industriales declara $47.590.272 y ninguna cifra en dólares; Playón, $102.500.000 partido.
+  assert.equal(contratadoEnPesos({ contrato: 47_590_272, contratoUsd: null }, 1512.262).origen, ORIGEN.ocPesos)
+  // Y una obra que declarara las dos con el peso coherente (U$S 63.000 ≈ $95 M) sigue mandando el peso.
+  assert.equal(contratadoEnPesos({ contrato: 95_272_506, contratoUsd: 63_000 }, 1512.262).origen, ORIGEN.ocPesos)
+})
