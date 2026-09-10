@@ -10,6 +10,7 @@ import { ENTRA, SALE } from './libro-movimientos.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 import { INSTRUMENTOS } from './cash-flow-lineas.mjs'
 import { serialDe, isoDeSerial } from './libro-extractores-fechas.mjs'
+import { ROTULO as ROTULO_IMPUESTO_CHEQUE } from './impuesto-cheque.mjs'
 
 // ── Compras: título, agrupador, encabezado, datos ─────────────────────────────────────────────────
 // Los nombres del encabezado REAL de la fila 3 del archivo, verificados el 05/08.
@@ -434,6 +435,10 @@ const impuestos = () => {
   filas[17] = ['⇒ IVA a pagar en efectivo', 1000, 0, '', 3000] // enero, febrero(0), marzo(vacío), abril
   filas[17][12] = 5000 // diciembre = columna M = índice 12
   filas[18] = ['⇒ IIBB a pagar en el mes', 200]
+  // La fila del impuesto al cheque es parte del contrato desde el 10/09/2026 y el extractor rompe sin
+  // ella (ver libro-impuesto-cheque.test.mjs, que sí la ejercita). Acá va VACÍA a propósito: estos dos
+  // tests fijan el calendario de IVA/IIBB y un mes sin importe no es un movimiento.
+  filas[19] = [ROTULO_IMPUESTO_CHEQUE]
   return filas
 }
 
@@ -447,7 +452,7 @@ test('IMPUESTOS: el vencimiento sale del calendario REAL, no de "fin de mes + 20
   //
   // El test no se "ajustó para que pase": se reescribió porque el contrato cambió a propósito, y
   // ahora fija el contrato NUEVO, que es más fuerte (IVA e IIBB vencen días distintos).
-  const ms = deImpuestosCalendario(impuestos(), { filaIva: 18, filaIibb: 19 }, 2026, serialDe(2026, 8, 5))
+  const ms = deImpuestosCalendario(impuestos(), { filaIva: 18, filaIibb: 19, filaCheque: 20 }, 2026, serialDe(2026, 8, 5))
   const enero = ms.find((m) => /IVA.*01\/2026/.test(m.concepto))
   assert.equal(isoDeSerial(enero.fecha), '2026-02-19', 'IVA ene-26, terminación 2-3, verificado contra ARCA')
   // EL IIBB NO VENCE EL MISMO DÍA QUE EL IVA, y con el +20 vencían los dos el 20. El día 16 de IIBB
@@ -463,7 +468,7 @@ test('IMPUESTOS: el vencimiento sale del calendario REAL, no de "fin de mes + 20
 })
 
 test('IMPUESTOS: un mes en cero no es un movimiento, y los doce meses no colapsan en uno', () => {
-  const ms = deImpuestosCalendario(impuestos(), { filaIva: 18, filaIibb: 19 }, 2026, null)
+  const ms = deImpuestosCalendario(impuestos(), { filaIva: 18, filaIibb: 19, filaCheque: 20 }, 2026, null)
   assert.equal(ms.length, 4, 'IVA enero, abril y diciembre + IIBB enero')
   // Los doce meses viven en la MISMA fila: sin la celda en la clave, la dedup los deja en uno.
   assert.equal(new Set(ms.map((m) => m.clave)).size, 4)

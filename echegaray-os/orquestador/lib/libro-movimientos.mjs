@@ -200,6 +200,40 @@ export function deduplicar(movimientos = []) {
 }
 
 /**
+ * NÚCLEO PURO: CUÁNTA PLATA SE QUEDÓ AFUERA AL DEDUPLICAR, Y DE QUÉ FILAS.
+ *
+ * ═══ POR QUÉ HACE FALTA (auditoría del 10/09/2026: $6.732.878) ═══
+ *
+ * `deduplicar` ya devolvía sus colapsos y la corrida imprimía los OCHO primeros, sin un peso y sin
+ * un `⚠`. Medido contra el archivo vivo: quince filas de Compras chocan por la clave
+ * (CUIT · comprobante · signo) y $6.732.878 no llegan a ninguna celda de ningún Cash Flow. Un
+ * colapso que no dice cuánta plata se llevó es indistinguible de uno que no se llevó nada, y ésa es
+ * exactamente la forma en que este archivo pierde dinero sin dar un solo error.
+ *
+ * NO SE ARREGLA SOLO, Y ESO ES DELIBERADO. La misma clave chocando puede ser una factura pagada en
+ * dos tramos (Industrias Castelar: $2.000.000 en efectivo + $3.240.300 en echeq — sumarlas es lo
+ * correcto) o la misma factura cargada dos veces (Diesel Rodríguez: $679.999 y $680.000 — sumarlas
+ * inventaría plata). Cuál es cuál lo sabe quien cargó la fila. El OS mide, nombra las filas y espera.
+ *
+ * @param {Array} colapsos los que devuelve `deduplicar`
+ * @returns {{total:number, porOrigen:Array<{pestana:string, filas:Array, monto:number}>}}
+ */
+export function plataColapsada(colapsos = []) {
+  const m = new Map()
+  let total = 0
+  for (const c of colapsos) {
+    const monto = Math.abs(Number(c?.importe) || 0)
+    total += monto
+    const pestana = String(c?.se_descarta?.pestana ?? '(sin origen)')
+    const a = m.get(pestana) ?? { pestana, filas: [], monto: 0 }
+    a.filas.push(c?.se_descarta?.fila ?? '?')
+    a.monto += monto
+    m.set(pestana, a)
+  }
+  return { total, porOrigen: [...m.values()].sort((a, b) => b.monto - a.monto) }
+}
+
+/**
  * NÚCLEO PURO: LAS TRANSFERENCIAS INTERNAS SON NEUTRAS PARA LA CAJA CONSOLIDADA.
  *
  * Mover plata del banco al cajón no cambia cuánta plata hay. Contarla una vez —porque uno de los dos

@@ -568,6 +568,12 @@ export const PASOS_RETIRADOS = Object.freeze([
   Object.freeze({
     script: 'proveedores-materiales-pestana.mjs',
     desde: '2026-08-14',
+    // LAS PESTAÑAS QUE ESTE RETIRO DEJÓ SIN DUEÑO, DECLARADAS. Las lee `pestanasSinDuenoActivo`, que
+    // las descarta en cuanto un paso vivo las declara: «Materiales» salió sola el 09/09 al entrar
+    // `materiales-pestana.mjs` a PASOS. «Proveedores» NO va acá: seis pasos vivos la rehacen (son
+    // dueños de un bloque, por eso declaran [] y no la pestaña); lo que este freno le cuesta está en
+    // `cuesta`, que es media pestaña, no la pestaña.
+    dejoSinDueno: ['Materiales'],
     // MEDIDO en dos corridas seguidas de hoy, con los mismos datos:
     //   · "Proveedores" pasó de 249 a 265 filas;
     //   · el bloque de control de ARCA cayó en la fila 131 en una corrida y en la 148 en la
@@ -662,6 +668,26 @@ export const PASOS_RETIRADOS = Object.freeze([
 
 /** ¿Este script está frenado a propósito? */
 export function estaRetirado(script) { return PASOS_RETIRADOS.some((p) => p.script === script) }
+
+/**
+ * QUÉ PESTAÑAS QUEDARON SIN GENERADOR PORQUE EL SUYO SE RETIRÓ — deducido, no tipeado.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (auditoría del 10/09/2026) ═══
+ *
+ * `auditar-coherencia-pestanas.mjs` deducía esta lista con un REGEX sobre el nombre del script
+ * retirado (`/materiales/i` → «Materiales»). El 09/09 «Materiales» recuperó dueño —`materiales-pestana.mjs`,
+ * que está en `PASOS` y la declara— y el regex siguió dando positivo: el control publicaba
+ * SIN_GENERADOR sobre una pestaña que se rehace en cada corrida, y de paso dejaba de mirarle la
+ * frescura. Un falso positivo en un control de frescura es peor que un hueco: enseña a ignorarlo.
+ *
+ * Acá la respuesta sale del REGISTRO: una pestaña que un paso retirado escribía queda sin dueño sólo
+ * mientras NINGÚN paso vivo la declare. El día que alguien la adopta, desaparece sola de esta lista;
+ * el día que ese paso se retira, vuelve. No hay lista que mantener.
+ */
+export function pestanasSinDuenoActivo(pasos = PASOS, retirados = PASOS_RETIRADOS) {
+  const vivas = new Set(pasos.flatMap(([, , pestanas = []]) => pestanas))
+  return new Set(retirados.flatMap((p) => p.dejoSinDueno ?? []).filter((t) => !vivas.has(t)))
+}
 
 // PASOS DE PRESENTACIÓN Y AUDITORÍA — su salida ≠0 es un DEFECTO A LA VISTA, no un fallo de datos.
 //

@@ -179,17 +179,38 @@ export function cuadreContraElLibro(pestana, publicados = new Map(), propios = {
   return fuera
 }
 
-/** Agrupa renglones por una clave y suma su importe. PURA. */
+/**
+ * Agrupa renglones por una clave y suma su importe. PURA.
+ *
+ * ═══ LAS FILAS VAN TODAS (10/09/2026) ═══
+ *
+ * Guardaba las primeras 12 y seguía contando el resto: el hallazgo se publicaba como «15 fila(s),
+ * $6.732.878 · filas 76, 130, … 675» con DOCE números. Quien va a corregirlo abre esas doce, las
+ * arregla, y las otras tres siguen ahí — y el control vuelve a decir 15 sin que nadie entienda por
+ * qué. Una lista recortada en silencio es peor que un total: parece completa. El recorte, si hace
+ * falta, lo decide quien IMPRIME y lo dice en voz alta (`listaDeFilas`).
+ */
 function agrupar(renglones, clave) {
   const m = new Map()
   for (const r of renglones) {
     const k = clave(r)
     const a = m.get(k) ?? { clave: k, n: 0, monto: 0, filas: [] }
     a.n++; a.monto += r.importe ?? r.monto ?? 0
-    if (a.filas.length < 12) a.filas.push(r.fila)
+    a.filas.push(r.fila)
     m.set(k, a)
   }
   return [...m.values()].sort((a, b) => b.monto - a.monto)
+}
+
+/**
+ * NÚCLEO PURO: las filas de un hallazgo, listas para imprimir. Si no entran, LO DICE.
+ *
+ * @param {number[]} filas
+ * @param {number} tope cuántas se listan antes de resumir
+ */
+export function listaDeFilas(filas = [], tope = 40) {
+  if (filas.length <= tope) return filas.join(', ')
+  return `${filas.slice(0, tope).join(', ')} … y ${filas.length - tope} más`
 }
 
 /**

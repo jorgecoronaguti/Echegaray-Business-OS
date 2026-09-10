@@ -52,8 +52,14 @@ test('EL FACTOR ACUMULADO ES UNA FÓRMULA ENCADENADA, no un número calculado en
   assert.equal(b[0][2], 1, 'el primer mes es la base: vale 1')
   assert.equal(b[1][2], '=$C$74*(1+$B75)')
   assert.equal(b[2][2], '=$C$75*(1+$B76)')
-  // Y las fechas van como texto es-AR de primer día de mes, que es lo que la columna A ya tenía.
-  assert.equal(b[0][0], '8/1/2026')
+  // ═══ ESTE TEST CEMENTABA EL DEFECTO, Y SU COMENTARIO DECÍA LO CONTRARIO (10/09/2026) ═══
+  //
+  // Decía «las fechas van como texto es-AR de primer día de mes» y exigía `'8/1/2026'` para el
+  // período 2026-08 — que en es-AR es el 8 DE ENERO, no el 1 de agosto. El Sheet lo guardó así: las
+  // cuatro filas del bloque valen 46031..46034 (9 a 12 de enero) y las proyecciones de septiembre a
+  // diciembre no encuentran su factor. Un test que afirma la forma equivocada con la palabra correcta
+  // al lado es peor que no tenerlo: hace falta leer el valor, no el comentario.
+  assert.equal(b[0][0], '1/8/2026', 'DÍA/MES/AÑO: el 1 de agosto, no el 8 de enero')
 })
 
 test('LA FECHA DE LECTURA VA EN LA CELDA: un REM de hace 40 días no puede leerse igual que uno de ayer', () => {

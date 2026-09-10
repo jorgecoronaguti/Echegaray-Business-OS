@@ -16,8 +16,8 @@
 // Sheet, nada escribe: se prueba con un assert de string y el defecto se ve sin abrir el archivo.
 
 import { rango } from './compras-columnas.mjs'
-import { terminoLibro } from './libro-sumas.mjs'
-import { ALICUOTA as ALICUOTA_25413 } from './impuesto-cheque.mjs'
+import { terminoLibro, rangoLibro, LIBRO } from './libro-sumas.mjs'
+import { ALICUOTA as ALICUOTA_25413, NATURALEZA_BANCO, MARCA as MARCA_25413 } from './impuesto-cheque.mjs'
 import { ALERTA } from './glifos.mjs'
 
 /** El rubro de Compras donde vive el cuadro de amortización del prendario. Contrato con Compras. */
@@ -145,17 +145,31 @@ export const formulaIibbDeterminado = (celdaBase, celdaAlicuota) =>
 // movimiento proyectado del mes es lo que el Libro ya tiene cargado y comprometido, entra más sale.
 // Y la fila vive DENTRO del total, que es donde tiene que estar un impuesto que se paga.
 
-/** NÚCLEO PURO: el impuesto de la Ley 25.413 de un mes, sobre el movimiento proyectado del Libro. */
+/**
+ * NÚCLEO PURO: el impuesto de la Ley 25.413 de un mes, sobre el movimiento proyectado del Libro.
+ *
+ * ═══ LA LÍNEA NO SE PUEDE COBRAR IMPUESTO A SÍ MISMA (10/09/2026) ═══
+ *
+ * Desde que el Libro emite el impuesto al cheque de los meses que el extracto no cubre —para que
+ * llegue a los dos cash flow, que antes no lo tenían en ninguna línea— esta fórmula lo vería como un
+ * movimiento más y le aplicaría el 1,2%. Cada corrida del pipeline lo agrandaría un poco: converge,
+ * pero es una proyección que se alimenta de su propio resultado, la misma familia de defecto que el
+ * doble conteo del ancla viva contra el libro-foto. Se excluyen del BASE las filas del Libro que SON
+ * impuesto al cheque —las del extracto y las proyectadas—, que además es lo correcto: el impuesto no
+ * se tributa sobre su propio débito.
+ */
 export function formulaImpuestoChequeProyectado(anio, m) {
   const v = { desde: `DATE(${anio};${m};1)`, hasta: `EOMONTH(DATE(${anio};${m};1);0)+1` }
-  const movimiento = terminoLibro({ ...v, medida: 'magnitud' })
+  // (1-ISNUMBER) y no NOT(): NOT no se expande sobre un array dentro de SUMPRODUCT.
+  const sinSiMismo = `(1-ISNUMBER(SEARCH("${MARCA_25413}";${rangoLibro(LIBRO.col.concepto)})))`
+  const movimiento = terminoLibro({ ...v, medida: 'magnitud', extra: [sinSiMismo] })
   return `=(${movimiento})*${ALICUOTA_25413}*2`
 }
 
 /** NÚCLEO PURO: lo que el banco YA debitó por Ley 25.413 en el mes, del extracto. */
 export function formulaImpuestoChequeReal(hoja, anio, m) {
   return `=SUMPRODUCT((YEAR(${hoja}!$A$4:$A)=${anio})*(MONTH(${hoja}!$A$4:$A)=${m})`
-    + `*ISNUMBER(SEARCH("Impuesto al cheque";${hoja}!$F$4:$F))*-IF(ISNUMBER(${hoja}!$C$4:$C);${hoja}!$C$4:$C;0))`
+    + `*ISNUMBER(SEARCH("${NATURALEZA_BANCO}";${hoja}!$F$4:$F))*-IF(ISNUMBER(${hoja}!$C$4:$C);${hoja}!$C$4:$C;0))`
 }
 
 /**

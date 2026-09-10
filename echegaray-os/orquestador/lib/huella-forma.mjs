@@ -486,8 +486,26 @@ export function editadaPorElDueno(hoy, sellado) {
     // estructura: si el dueño cambió la fórmula, ahí se ve. Y si tocó únicamente el final, el
     // esqueleto del tramo guardado es idéntico y no se afirma nada — que es la misma prudencia que
     // el resto de la función: NO declarar edición sin evidencia.
-    const izq = b.length >= LARGO_FORMA ? a.slice(0, b.length) : a
-    return esqueleto(izq) !== esqueleto(b)
+    //
+    // ═══ EL TOPE SE MIDE SOBRE EL CRUDO, PORQUE SOBRE EL CRUDO SE CORTÓ (10/09/2026) ═══
+    //
+    // Decía `b.length >= LARGO_FORMA` con `b` YA NORMALIZADO, y normalizar ACORTA: `normalizarFormula`
+    // le saca las comillas a cada `'Cheques Emitidos'!` y colapsa los espacios. O sea que un sello
+    // cortado en 300 caracteres podía llegar acá midiendo 280 y la guarda no se encendía: se comparaba
+    // la fórmula ENTERA contra su propio prefijo y salía «editada» sin que nadie hubiera tocado nada.
+    //
+    // MEDIDO EN `CAJA!H15` (auditoría del 10/09): a las 14:50 el OS la reescribió («es una fórmula que
+    // sigo escribiendo en esta columna») y selló su valor; a las 16:50, con el MISMO contenido en la
+    // celda, la declaró «la editaste vos, la respeto». Ese es el defecto entero: no cambió el archivo,
+    // cambió que ahora existía un sello — y el sello, por largo, no se podía comparar consigo mismo.
+    // Una celda calculada congelada por un falso positivo no se descongela sola nunca.
+    //
+    // Y LA COMPARACIÓN ES POR PREFIJO, no por recorte a `b.length`: el corte del sello puede caer en
+    // medio de un número o del nombre de una pestaña, y ahí `slice` compara dos pedazos distintos de
+    // la misma cosa. `startsWith` sobre los esqueletos dice lo único que el sello puede sostener: lo
+    // que guardé es el principio de lo que hay. Si difiere, la diferencia es real.
+    if (String(sellado ?? '').length >= LARGO_FORMA) return !esqueleto(a).startsWith(esqueleto(b))
+    return esqueleto(a) !== esqueleto(b)
   }
   if (esFormula(a) || esFormula(b)) return true
   const na = numeroDe(hoy); const nb = numeroDe(sellado)

@@ -109,3 +109,55 @@ export function motivoDeAborto(plan, { columna: letraCol, pestaña } = {}) {
   return `me niego a escribir: la columna ${letraCol} de ${pestaña} tiene ${plan.aborto.ajenas} fila(s) con contenido que no reconozco `
     + `sobre ${plan.aborto.ventana} del registro — eso ya no es una celda contaminada, es que la columna cambió de dueño. ${muestra}`
 }
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// CUANDO LA PESTAÑA ES DEL DUEÑO: NO SE MIRA, NO SE ESCRIBE, Y SE DICE HASTA CUÁNDO VALE LO QUE HAY
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ═══ EL DEFECTO QUE ESTO CIERRA (auditoría del 10/09/2026) ═══
+//
+// «Cheques Emitidos» quedó candada el 10/09 13:23 con el motivo «el dueño edita», y el candado hace
+// exactamente lo que promete: la pestaña no se toca. Pero `cheques-cobertura-sheet.mjs` MIRABA la
+// columna igual, armaba el plan, encontraba las ediciones del dueño en su propia columna de marcas y
+// abortaba — y el aborto es un `throw`, así que el paso salía con código 1 y el TIMER ENTERO fallaba
+// en cada corrida. Un candado que rompe el pipeline es un candado que alguien va a querer sacar.
+//
+// El orden correcto es el único orden posible: primero se pregunta de quién es la pestaña, y recién
+// después se decide qué hacer con su contenido. Una pestaña candada no tiene «contenido ajeno»: es
+// TODA ajena, por decisión escrita.
+//
+// Y NO SE SALE EN SILENCIO. Lo que queda congelado es un DIAGNÓSTICO —qué cheque tiene su factura
+// cargada y cuál no—, y un diagnóstico sin fecha se lee como si fuera de hoy. Por eso el aviso
+// declara la frescura que trae el propio rótulo de la columna («Estado en el OS · al …»): lo que se
+// ve en la pestaña es de ESE día, no de esta corrida.
+
+/** La acción que corresponde según de quién es la pestaña. PURA. */
+export function accionDeMarcado({ candada = false, forzar = false } = {}) {
+  if (!candada) return 'escribir'
+  return forzar ? 'forzar' : 'saltar'
+}
+
+/** NÚCLEO PURO: la fecha que declara el rótulo «Estado en el OS · al DD/MM/AAAA», o null. */
+export function frescuraDelRotulo(rotulo) {
+  const m = /al\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/.exec(String(rotulo ?? ''))
+  return m ? m[1] : null
+}
+
+/**
+ * NÚCLEO PURO: las líneas del aviso ⏸. Devuelve texto, no imprime: así se puede probar.
+ *
+ * Sin fecha en el rótulo NO se inventa una ni se calla: se dice que no se puede saber de cuándo es
+ * lo que está a la vista, que es el estado real. Un «al 10/09» falso sería peor que el hueco.
+ */
+export function avisoDeCandado({ pestana, columna, rotulo, congeladas = 0, monto = 0 } = {}) {
+  const fecha = frescuraDelRotulo(rotulo)
+  const $ = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
+  return [
+    `⏸ "${pestana}" está bajo tu control (candado): no la miro ni la escribo.`,
+    `   ${congeladas} fila(s) por ${$(monto)} se quedan con el diagnóstico de la columna ${columna} `
+      + (fecha
+        ? `tal como quedó el ${fecha}: lo que se ve NO es de esta corrida.`
+        : 'que haya hoy — el rótulo no dice de cuándo es, así que NO puedo declarar su frescura.'),
+    '   Para estamparlas igual: --forzar-candado (deja snapshot, escribe sólo esa columna y vuelve a candar).',
+  ]
+}
