@@ -1,6 +1,0 @@
-const { query } = await import('/home/jorge/echegaray-os/worktrees/wt-ordenes/echegaray-os/orquestador/lib/db.mjs')
-const { rows: cols } = await query(`select column_name from information_schema.columns where table_name='obra_canonica' order by ordinal_position`)
-console.log(cols.map(c=>c.column_name).join(','))
-const { rows } = await query(`select * from public.obra_canonica where cliente_id is not null order by nombre`)
-for (const r of rows) console.log([r.id,r.nombre,r.estado,r.en_ejecucion,r.fuente,r.origen].join(' | '))
-process.exit(0)
