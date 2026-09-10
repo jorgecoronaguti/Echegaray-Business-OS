@@ -200,18 +200,29 @@ function mensajeBot({ periodo, fechaPago, entran, afuera, nombreArchivo, val }) 
     + ` · orden de pago ${ordenDePago(periodo)}**`,
     `· Afuera: **$ ${pesos(afuera.reduce((a, p) => a + p.importe, 0))}** (${afuera.length} en EFECTIVO según el estudio).`,
     '',
-    '**Qué cambió respecto del que te mandé antes**',
-    '· El anterior lo había vuelto a escribir con una librería de planillas y **le faltaban las 5'
-    + ' imágenes, los 5 dibujos, `docProps/custom.xml` y las 5 validaciones de datos** de la hoja'
-    + ' Pagos, y le sobraba un `xl/metadata.xml`. Éste es el archivo de junio/julio con las filas'
-    + ' cambiadas: todo lo demás quedó byte por byte igual.',
-    '· Los **nombres** ahora son los que escribe el banco («MALDONADO BATISTA EMILIANO»,'
-    + ' «PETINA RODRIGUEZ JAIRO E.»), no los del estudio contable.',
-    `· Las **cuentas** salen del lote que el banco debitó el 18/08 y las verifiqué carácter por`
-    + ` carácter: las ${entran.length} son idénticas.`,
+    '**Tenías razón: el anterior no era el archivo del banco.** Qué le faltaba',
+    '· Tenía **26 de las 42 partes** del archivo original: le faltaban las 5 imágenes, los 5'
+    + ' dibujos, los 4 comentarios, `docProps/custom.xml`, y le sobraban 9 piezas inventadas.',
+    '· Perdía las **5 reglas de validación** de la hoja Pagos (las listas «T/E/A/R» y «CUIT/CUIL»).',
+    '· Escribía los textos como `t="str"`, que en Excel significa *resultado de una fórmula* y no'
+    + ' texto: **el CBU se guardaba con el tipo equivocado**.',
+    '· Reescribía todos los índices de formato y achicaba la hoja de 391 filas a 22.',
     '',
+    '**Éste** es el archivo de junio/julio con las filas cambiadas y nada más: las otras 41 partes'
+    + ' quedaron byte por byte iguales, incluidas las imágenes y las validaciones.',
+    `· Los **nombres** ahora son los que escribe el banco, no los del estudio.`,
+    `· Las **cuentas** salen del lote que el banco debitó el 18/08: las ${entran.length} coinciden carácter por carácter.`,
     `· Validación estructural contra la plantilla: **${val.ok ? 'sin diferencias' : `${val.errores.length} diferencia(s)`}**.`,
-    '· El `.txt` del FUR queda descartado hasta que el banco dé el número de acuerdo. No lo mando.',
+    '',
+    '| Trabajador | CUIL | Cuenta | Importe |',
+    '|---|---|---|---|',
+    ...entran.map((p) => `| ${p.nombre} | ${p.cuil} | ••••${p.cuenta.slice(-4)} | $ ${pesos(p.importe)} |`),
+    `| **TOTAL ${entran.length}** | | | **$ ${pesos(total)}** |`,
+    '',
+    '**Afuera del archivo** (el estudio los liquida en EFECTIVO): '
+    + afuera.map((p) => `${p.nombre} $ ${pesos(p.importe)}`).join(' · '),
+    '',
+    '· El `.txt` del FUR queda **descartado** hasta que el banco dé el número de acuerdo. No lo mando.',
   ]
   return l.join('\n')
 }
