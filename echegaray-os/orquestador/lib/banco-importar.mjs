@@ -29,6 +29,7 @@
 // lo nuevo con lo que ya estaba, porque un extracto nuevo puede arrancar a mitad de la serie.
 
 import { norm as normConcepto, conceptoCompatible } from './banco-conceptos.mjs'
+import { esAcreditacionPendiente, cerrarDia } from './banco-acreditacion.mjs'
 
 /** ¿El concepto de estos dos movimientos es el mismo? Se pregunta una sola vez, acá. */
 const cotejaConcepto = (a, b) => conceptoCompatible(a?.concepto, b?.concepto) !== null
@@ -92,6 +93,40 @@ export function campos(linea) {
 const ES_RUIDO = /^(fecha\b|saldo (inicial|final|anterior|al\b)|[úu]ltimos movimientos|movimientos|cuenta|per[ií]odo|total\b|p[áa]gina|banco santander|consolidado|=+$|-+$)/i
 
 /**
+ * EL PIE DEL EXTRACTO NO ES RUIDO: ES LA ÚNICA FUENTE INDEPENDIENTE DEL SALDO (10/09/2026).
+ *
+ * `Saldo al 10/09/2026 3.584.941,27` caía en `ES_RUIDO` y se tiraba. Era lo único con qué contrastar
+ * la cadena reconstruida de los "Movimientos del Día" — y el día que la cadena dio $42.157.467,50
+ * contra $3.584.941,27 declarados, nadie tenía el segundo número para darse cuenta. Un control que se
+ * verifica contra el dato que él mismo produce no es un control.
+ *
+ * Sigue sin ser un movimiento (no entra a `movimientos`): sale por su propia puerta, con su tipo.
+ * `al`/`final` son el CIERRE del período —lo que el banco dice que hay—; `inicial`/`anterior` son la
+ * apertura y NO se persisten como saldo del día: guardarlos ahí publicaría el saldo del principio.
+ *
+ * @returns {{tipo:string, fecha:string|null, saldo:number, cierre:boolean, texto:string}|null}
+ */
+export function parsearSaldoDeclarado(linea, anio = new Date().getFullYear()) {
+  const cruda = String(linea ?? '').trim()
+  const m = /^saldo\s+(al|final|inicial|anterior)\b\s*[:;]?\s*(.*)$/i.exec(cruda)
+  if (!m) return null
+  const tipo = m[1].toLowerCase()
+  const resto = m[2].replace(/^[:;\s]+/, '')
+  // La fecha primero, y se SACA del texto: si no, "2026" se lee como un importe plausible.
+  const mf = /(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/.exec(resto)
+  const f = mf ? fecha(mf[1], anio) : null
+  const tokens = (mf ? resto.replace(mf[1], ' ') : resto).split(/[\s;]+/).filter(Boolean)
+  let saldo = null
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    if (!esNumeroPuro(tokens[i])) continue
+    saldo = importe(tokens[i])
+    break
+  }
+  if (saldo === null) return null
+  return { tipo, fecha: f, saldo, cierre: tipo === 'al' || tipo === 'final', texto: cruda }
+}
+
+/**
  * NÚCLEO PURO: lee un extracto pegado o exportado y devuelve movimientos y rechazos.
  *
  * @param {string} texto  el extracto tal cual, con sus saltos de línea
@@ -144,6 +179,26 @@ export function normalizarReferencia(v) {
   return s === '' ? null : s
 }
 
+/**
+ * De todos los pies que trajo el archivo, EL QUE DICE CUÁNTO HAY AL CIERRE.
+ *
+ * Un extracto puede traer varios ("Saldo anterior" arriba, "Saldo al DD/MM" abajo, y uno por bloque si
+ * el archivo tiene más de una cuenta). Se elige el de CIERRE más nuevo. Si dos cierres de la MISMA
+ * fecha declaran importes distintos, el archivo se contradice: se marca `conflicto` y el llamador lo
+ * dice en vez de elegir uno en silencio.
+ *
+ * @param {{tipo:string, fecha:string|null, saldo:number, cierre:boolean}[]} saldos
+ */
+export function saldoDeCierre(saldos = []) {
+  const cierres = saldos.filter((s) => s?.cierre)
+  if (!cierres.length) return null
+  const conFecha = cierres.filter((s) => s.fecha).sort((a, b) => a.fecha.localeCompare(b.fecha))
+  const elegido = conFecha.length ? conFecha[conFecha.length - 1] : cierres[cierres.length - 1]
+  const mismos = cierres.filter((s) => s.fecha === elegido.fecha)
+  const conflicto = mismos.some((s) => Math.abs(Number(s.saldo) - Number(elegido.saldo)) > 0.005)
+  return { ...elegido, conflicto }
+}
+
 /** El primer campo de la línea. Sirve para ver si la línea ABRE una fila (arranca con una fecha). */
 function empiezaConFecha(linea) {
   const primero = linea.includes(';') ? linea.split(';')[0].trim() : (campos(linea)[0] ?? '')
@@ -176,6 +231,7 @@ function cierraFila(linea) {
 export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {}) {
   const movimientos = []
   const rechazos = []
+  const saldosDeclarados = []
   const lineas = String(texto ?? '').split('\n')
   let cols = null // mapeo posicional, si apareció un encabezado del CSV del banco
 
@@ -185,6 +241,8 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
     // Un encabezado del CSV del banco fija el mapeo de columnas y no es un movimiento en sí.
     const cab = encabezadoCsvBanco(cruda)
     if (cab) { cols = cab; continue }
+    const pie = parsearSaldoDeclarado(cruda, anio)
+    if (pie) { saldosDeclarados.push(pie); continue }
     if (ES_RUIDO.test(cruda)) continue
 
     // ── RE-UNIR UNA FILA ENVUELTA POR UN SALTO DE LÍNEA ──
@@ -265,20 +323,34 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
     if (conFecha.length > 1 && conFecha[0].fecha > conFecha[conFecha.length - 1].fecha) movimientos.reverse()
   }
 
+  // LA MARCA DE RETENCIÓN SE PONE ANTES DEL BACK-FILL, Y MIRANDO EL SALDO QUE TRAJO EL BANCO.
+  // Después del back-fill toda fila tiene saldo y la pregunta "¿el banco le puso saldo?" ya no se
+  // puede contestar. Ver lib/banco-acreditacion.mjs.
+  for (const m of movimientos) m.acreditacionPendiente = esAcreditacionPendiente(m)
+
   // BACK-FILL DEL SALDO INTRADÍA. Las filas de "Movimientos del Día" (los cheques debitados HOY) vienen
   // sin saldo declarado, pero su saldo corrido se DEDUCE de la cadena: saldo anterior + importe. No es
   // inventar un número —es el mismo que el banco imprime en "Saldo al DD/MM"—. Sin esto, CAJA toma el
   // último saldo POSTEADO (el de ayer) e ignora los débitos de hoy: el saldo queda inflado. Sólo se
   // completa cuando hay un saldo previo con qué encadenar; si arranca en null, se respeta el null.
+  //
+  // ═══ UN DEPÓSITO RETENIDO NO ENTRA A LA CADENA (10/09/2026) ═══
+  //
+  // El 10/09 la cadena llegó a $42.157.467,50 y el banco declaraba $3.584.941,27: los $38.572.526,23
+  // de diferencia eran dos depósitos de eCheq listados ese día y retenidos 48 hs. La identidad
+  // saldo(n)=saldo(n−1)+importe(n) contesta "cuánto se movió"; CAJA pregunta "cuánto HAY". Un depósito
+  // que el banco no acreditó no mueve el saldo disponible: ni recibe saldo (queda null hasta que un
+  // extracto posterior lo traiga acreditado) ni arrastra su importe a los movimientos siguientes.
   let corrido = null
   for (const m of movimientos) {
+    if (m.acreditacionPendiente) continue
     if (m.saldo != null) { corrido = Number(m.saldo); continue }
     if (corrido == null) continue
     corrido = Number((corrido + Number(m.importe)).toFixed(2))
     m.saldo = corrido
   }
 
-  return { movimientos, rechazos }
+  return { movimientos, rechazos, saldosDeclarados }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -412,6 +484,10 @@ export function verificarCadena(movs = [], saldoInicial = null, tolerancia = 0.0
     // es tan inútil como uno que lo tapa: no se sabe cuánto mirar.
     //
     // Sin saldo declarado no hay nada que comparar, pero SÍ hay que arrastrar el importe.
+    // Un depósito RETENIDO no mueve la plata disponible: no arrastra (ver banco-acreditacion.mjs).
+    // Sin esta línea la cadena "no cerraría" contra el saldo declarado por un motivo que el banco ya
+    // explicó — y un control que grita sin razón se deja de mirar.
+    if (m.acreditacionPendiente) continue
     if (m.saldo == null) {
       if (anterior != null) anterior += Number(m.importe)
       continue
@@ -436,9 +512,13 @@ export function verificarCadena(movs = [], saldoInicial = null, tolerancia = 0.0
  * @param {{anio?:number, saldoInicial?:number|null}} opts
  */
 export function dryRun(texto, { anio, saldoInicial = null } = {}) {
-  const { movimientos, rechazos } = parsearExtracto(texto, anio != null ? { anio } : {})
+  const { movimientos, rechazos, saldosDeclarados } = parsearExtracto(texto, anio != null ? { anio } : {})
   const cadena = verificarCadena(movimientos, saldoInicial)
-  return { movimientos, rechazos, cadena }
+  // EL CIERRE DEL DÍA VA EN EL DRY-RUN, no sólo en la importación: mirar un extracto ANTES de cargarlo
+  // sirve justamente para ver si lo que la cadena reconstruye coincide con lo que el banco declara.
+  const pie = saldoDeCierre(saldosDeclarados)
+  const cierre = cerrarDia(movimientos, pie?.saldo ?? null)
+  return { movimientos, rechazos, cadena, saldosDeclarados, pie, cierre }
 }
 
 // ── CLI DE DRY-RUN (sin red ni base) ────────────────────────────────────────────────────────────
@@ -469,6 +549,23 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv.includes('--
     console.log(`\nRECHAZOS: ${rechazos.length}`)
     for (const r of rechazos) console.log(`  línea ${r.linea}: ${r.motivo} — ${r.texto}`)
   }
+  const { pie, cierre } = dryRun(texto, { saldoInicial })
+  if (pie) {
+    console.log(`\nSALDO DECLARADO AL PIE: ${fmt(pie.saldo)} (${pie.fecha ?? 'sin fecha en la línea'}) — "${pie.texto}"`)
+    if (pie.conflicto) console.log('  ⚠ el archivo trae dos cierres de la misma fecha con importes distintos')
+  } else {
+    console.log('\nSALDO DECLARADO AL PIE: no vino en el archivo')
+  }
+  if (cierre.pendientes.length) {
+    console.log(`\nRETENIDOS (no acreditados, no entran a la cadena): ${cierre.pendientes.length} por ${fmt(cierre.retenido)}`)
+    for (const m of cierre.pendientes) console.log(`  ${m.fecha}  ${fmt(m.importe).padStart(18)}  ${m.concepto.slice(0, 60)}`)
+  }
+  if (cierre.saldoDeclarado != null) {
+    console.log(`\nCIERRE DEL DÍA: calculado ${fmt(cierre.saldoCalculado)} vs declarado ${fmt(cierre.saldoDeclarado)}`
+      + ` → ${cierre.cierra ? 'CIERRA ✓' : `NO CIERRA (dif ${fmt(cierre.diferencia)})`}`)
+    if (cierre.hallazgo) console.log(`  ⚠ ${cierre.hallazgo}`)
+  }
+
   console.log(`\nCADENA DE SALDOS: ${cadena.ok ? 'CIERRA ✓' : `NO CIERRA — ${cadena.cortes.length} corte(s)`}`)
   for (const c of cadena.cortes) {
     console.log(`  ${c.fecha} ${c.concepto.slice(0, 40)}: esperado ${fmt(c.esperado)} vs declarado ${fmt(c.declarado)} (dif ${fmt(c.diferencia)})`)

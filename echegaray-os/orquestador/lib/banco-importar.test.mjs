@@ -67,6 +67,10 @@ test('lee un extracto pegado, con su saldo corrido', () => {
     // Un pegado no trae la columna Referencia del CSV: el campo existe y vale null. Se declara en el
     // objeto —y no se omite— porque quien deduplica pregunta por él en TODOS los movimientos.
     referencia: null,
+    // Mismo criterio para la retención de 48 hs: TODO movimiento la declara, aunque sea false. Un
+    // `undefined` silencioso mandaría al back-fill por el camino equivocado sin avisar.
+    // Ver lib/banco-acreditacion.mjs y lib/banco-acreditacion.test.mjs.
+    acreditacionPendiente: false,
   })
 })
 
