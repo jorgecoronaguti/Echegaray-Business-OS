@@ -28,7 +28,7 @@
 // le doy nada por banco» es una afirmación— y por eso el override viaja como `number | null` y la
 // ausencia como la falta de la clave, nunca como 0.
 
-import type { GrupoLiquidacion, LineaLiquidada } from './liquidacionQuincena.ts'
+import { repartoDelAcuerdo, type GrupoLiquidacion, type LineaLiquidada } from './liquidacionQuincena.ts'
 
 /** Las celdas que se pueden pisar a mano. El nombre NO está: es la única que el dueño dejó afuera. */
 export const CAMPOS_EDITABLES = [
@@ -84,6 +84,9 @@ export function aplicarOverrides(
   const enEfectivo = puesto('enEfectivo') ?? enEfectivoCalc
   const totalCalc = enEfectivo == null ? null : redondear2(porBanco + enEfectivo)
   const total = puesto('total') ?? totalCalc
+  // EL ACUERDO 50/50 SE REHACE SOBRE EL COBRA FINAL, no sobre el calculado: si alguien pisó COBRA a
+  // mano, las dos mitades que se muestran tienen que ser mitades de LO QUE SE VA A PAGAR.
+  const acuerdo = repartoDelAcuerdo(cobra, base.modalidad)
 
   return {
     ...base,
@@ -94,6 +97,8 @@ export function aplicarOverrides(
     porBanco,
     enEfectivo,
     total,
+    blancoAcuerdo: acuerdo.blanco,
+    efectivoAcuerdo: acuerdo.efectivo,
     // PISAR COBRA A MANO RESUELVE «SIN TARIFA». La fila deja de estar pendiente porque alguien
     // decidió el importe; seguir diciendo «sin tarifa» mandaría a buscar una tarifa que ya no
     // hace falta para pagar esta quincena.

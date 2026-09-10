@@ -199,6 +199,17 @@ export interface LineaLiquidada {
   /** No hay tarifa cargada para esa persona: la fila lo dice y no inventa $ 0. */
   sinTarifa: boolean
   /**
+   * LA MITAD BLANCA DEL ACUERDO 50/50, que NO es «por banco». `null` cuando no hay acuerdo 50/50.
+   *
+   * Es lo ACORDADO; `porBanco` es lo LIQUIDADO por el estudio y girado por el banco. Los dos se
+   * publican al lado justamente para que la diferencia se vea: el 31/08/2026 el cuadro calculaba
+   * POR BANCO como el 50% y el recibo de Aguero decía $215.564,62 sobre $294.000 acordados —
+   * $78.435 que iban a terminar en efectivo y el cuadro mandaba al banco.
+   */
+  blancoAcuerdo: number | null
+  /** La mitad en efectivo del acuerdo 50/50. `null` cuando no hay acuerdo 50/50. */
+  efectivoAcuerdo: number | null
+  /**
    * HAY RECIBO Y EL EXTRACTO NO MUESTRA EL GIRO. No es «por banco»: un recibo es lo que el estudio
    * liquidó, no la prueba de que la plata salió. Se muestra aparte para que alguien lo mire.
    */
@@ -247,6 +258,7 @@ export function liquidarLinea(
     // una tarifa de la modalidad equivocada; ahora falta la que ESTA línea cobra. La gente de
     // Oficina tiene valor hora NULL por definición y NO está sin tarifa: tiene un neto mensual.
     sinTarifa: faltaLaTarifa(modalidad, valorHora, netoMensual),
+    ...repartoComoCampos(cobra, modalidad),
     reciboSinGiro: e.reciboNeto != null && !e.giroEnElLote,
     origenTarifa: e.tarifa?.origen ?? null,
   }
@@ -266,6 +278,46 @@ export function faltaLaTarifa(
   if (modalidad === 'hora') return valorHora == null
   if (modalidad === 'mensual') return netoMensual == null
   return false
+}
+
+/**
+ * EL ACUERDO 50/50 — LA MITAD BLANCA Y LA MITAD EN EFECTIVO DE LO QUE COBRA.
+ *
+ * El dueño (10/09/2026): «el acuerdo con todos los empleados es 50% en blanco y 50% en efectivo, no
+ * me lo está mostrando actualmente».
+ *
+ * ═══ ES EL ACUERDO, NO EL REPARTO REAL DEL PAGO ═══
+ *
+ * `porBanco` y `enEfectivo` NO salen de acá y no se tocan: salen del recibo del estudio y del
+ * extracto (`nomina-banco-recibo.mjs`, orden del 31/08/2026 — «por banco va lo q dice recibo y en
+ * efectivo se completa todo hasta llegar al numero»). Calcular el banco como el 50% es exactamente
+ * el defecto que ese archivo corrigió. Acá se publica lo ACORDADO para poder comparar: si el recibo
+ * dice otra cosa, la diferencia termina en efectivo y ahora se ve en vez de deducirse.
+ *
+ * ═══ A QUIÉN NO SE LE APLICA, Y POR QUÉ NO SE DECIDE ACÁ ═══
+ *
+ *   mensual (Oficina)  el recibo del 01/09 de Maldonado/Nievas fue $1.326.667,64 sobre $1.800.000,
+ *                      que no es la mitad. Si el acuerdo de Oficina es 50/50 o es otra cosa es una
+ *                      PREGUNTA ABIERTA al dueño: hasta que la conteste, `null` y «—» en pantalla.
+ *                      Escribir la mitad sería inventar un acuerdo que nadie confirmó.
+ *   ninguna (finales)  el cuadro de liquidaciones finales es el grupo de subcontratistas de Gerson
+ *                      Castro (dueño, 31/08/2026: «son todos subcontratistas»), y a un
+ *                      subcontratista el 50/50 no le corresponde: no es personal en relación de
+ *                      dependencia. `null`.
+ */
+export function repartoDelAcuerdo(
+  cobra: number | null, modalidad: ModalidadDeLiquidacion,
+): { blanco: number | null; efectivo: number | null } {
+  if (cobra == null || modalidad !== 'hora') return { blanco: null, efectivo: null }
+  const blanco = redondear2(cobra / 2)
+  // La otra mitad se calcula por RESTA para que las dos den exactamente COBRA: con un importe impar
+  // dos divisiones redondeadas por separado dejan un centavo colgando en la persona equivocada.
+  return { blanco, efectivo: redondear2(cobra - blanco) }
+}
+
+const repartoComoCampos = (cobra: number | null, modalidad: ModalidadDeLiquidacion) => {
+  const r = repartoDelAcuerdo(cobra, modalidad)
+  return { blancoAcuerdo: r.blanco, efectivoAcuerdo: r.efectivo }
 }
 
 /** COBRA, según el cuadro. Cada grupo cobra por una razón distinta y ninguna es la del otro. */
@@ -295,6 +347,11 @@ export interface TotalesDeCuadro {
   porBanco: number
   enEfectivo: number
   total: number
+  /** Las dos mitades ACORDADAS del cuadro. Sólo suman las líneas que tienen acuerdo 50/50. */
+  blancoAcuerdo: number
+  efectivoAcuerdo: number
+  /** Cuántas líneas no llevan reparto 50/50 (Oficina y subcontratistas): no suman y se dicen. */
+  sinReparto: number
   /** Cuántas líneas no se pudieron liquidar. El total de arriba NO las incluye, y hay que decirlo. */
   sinTarifa: number
   /** Cuántas tienen recibo sin giro confirmado en el extracto. */
@@ -312,11 +369,15 @@ export function totalesDeCuadro(lineas: readonly LineaLiquidada[]): TotalesDeCua
   const t: TotalesDeCuadro = {
     personas: lineas.length,
     horas: 0, cobra: 0, adelanto: 0, yaTransferido: 0, porBanco: 0, enEfectivo: 0, total: 0,
-    sinTarifa: 0, reciboSinGiro: 0,
+    blancoAcuerdo: 0, efectivoAcuerdo: 0, sinReparto: 0, sinTarifa: 0, reciboSinGiro: 0,
   }
   for (const l of lineas) {
     if (l.sinTarifa || l.cobra == null) t.sinTarifa++
     if (l.reciboSinGiro) t.reciboSinGiro++
+    // NULL NO SUMA COMO 0, TAMPOCO ACÁ: una línea sin acuerdo 50/50 se cuenta aparte para que el
+    // pie pueda escribir «2 sin reparto» en vez de publicar dos mitades que le faltan personas.
+    if (l.blancoAcuerdo == null) t.sinReparto++
+    else { t.blancoAcuerdo += l.blancoAcuerdo; t.efectivoAcuerdo += l.efectivoAcuerdo ?? 0 }
     t.horas += numero(l.horas)
     if (l.cobra == null) continue
     t.cobra += l.cobra
@@ -326,7 +387,8 @@ export function totalesDeCuadro(lineas: readonly LineaLiquidada[]): TotalesDeCua
     t.enEfectivo += numero(l.enEfectivo)
     t.total += numero(l.total)
   }
-  for (const k of ['horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total'] as const) {
+  for (const k of ['horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total',
+    'blancoAcuerdo', 'efectivoAcuerdo'] as const) {
     t[k] = redondear2(t[k])
   }
   return t
