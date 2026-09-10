@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-10 ~18:40 (hora local −03) · main = producción_canonica encima) · producción = main_
+_actualizado: 2026-09-10 ~19:35 (hora local −03) · main = producción_canonica encima) · producción = main_
 
 ## 1. OBJETIVO GENERAL
 
@@ -99,11 +99,20 @@ costos/ERP en Clientes; columnas pedidas para /clientes: Cliente+trabajos con OC
 c/IVA, barra admin). 18:20: sección «Cobranzas» por cliente en la ficha con toda la pestaña organizada por trabajo y OC.
 18:25: «prohibido dejar de trabajar» → ciclo ScheduleWakeup activo.
 
-**P0 — agentes en curso**: CRM (aae481787c02027d6: 6 columnas + sección Cobranzas por cliente) · Liquidación (adb93720f5af09744:
-edición rota, panel derecho, persona de prueba ZZ-E2E en producción, 27 s) · Flujo de Caja defectos del OS (a228ef22ba2d5673b:
-E74 vs BA39, impuesto al cheque, cheques-cobertura vs candado, Proveedores firma, Compras claves repetidas, 2 falsos positivos,
-CAJA!H15, cheques emitidos fuera del CF, $9 M entre cierres, CAJA!C3 rango cableado, Cobranzas M62 U$S) · medición de tiempos en
-producción tras el deploy (background).
+**Publicado 18:40–19:35**: Clientes CRM final (73f950b0: 6 columnas — Cliente+trabajos con OC · Obras · OC · OP · Contratado ·
+Cobrado total c/IVA con barra —, sección «Cobranzas» por cliente agrupada por trabajo, vista `cliente_cobranza` `20260910T2359`,
+Quattropani U$S, sin ERP; la solapa Cobranzas es la única lectura fuera de la RPC `pantalla_cliente()`) · RLS obra_panel
+(`20260911T0100/0110`: `security_invoker` recuperado — rol campo veía 24 obras —, porteros como initplan, costos_obra 698→67 ms) ·
+campanita (`20260911T0120/0130`: `comprobante_cumple_filtro()` predicado compartido SQL≡TS, RPC devuelve conteos: 559 ms/76 KB →
+98 ms/0,25 KB) · solapa Horas de Liquidación payload 903→211 KB · fixes del pipeline (E74 vs BA39, impuesto al cheque, candado
+cheques ⏸, Proveedores firma, Compras colapsos, Parámetros inflación mm/dd → dd/mm, CAJA!H15, CAJA!C3, f136) · VENCIDO en la
+columna ancla (`condicionAncla`, CFM!M50 == CFS!BB50 esperado en la corrida de las 20:50). Tiempos 18:53 (sesión real):
+/clientes 1,5 s · ficha Messina 2,8 s · obra dilución 1,7 s · obra BSA 6,3 s · Personal 1,6 s.
+**P0 — agentes en curso**: Liquidación (adb93720f5af09744: edición rota, panel derecho, ZZ-E2E, 27 s) · captura de Clientes/Cobranzas
+en producción tras el deploy (background) y descripción por subagente (mis lecturas de PNG están bloqueadas en este contexto).
+**Verificar en la corrida de las 20:50**: `_CAJA_ANEXO!E74` = 0 (y «Efectivo sin explicar» +$10 M) · CFM «· Impuestos» + impuesto al
+cheque · `Parámetros!A74:A77` = 46266/46296/46327/46357 · Proveedores firma · `CAJA!H15` mismo veredicto · CFM!M50 == CFS!BB50 ·
+log: ⏸ Cheques Emitidos, colapsos con plata.
 **P1 — del dueño**: Bases tanque SO2 fila 31 $6.700.000 sin respaldo · OC 53239036 50 % sin facturar ($3.977.130 c/IVA) · OC
 53376178 +$893.210 vs Sheet (facturar por la OC: FCE 201, vale en ECUP, vto 20/11) · F68 Q 08/09→12/09 · OP 5146 $38.462 · OC
 2135 pedir a Isabel Villanueva · nov/dic sin materiales proyectados (−$54,6 M) · dic cobros 43 % de nómina · 9 «Pagado» de
