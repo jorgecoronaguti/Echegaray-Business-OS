@@ -120,13 +120,16 @@ export const ALTO_V2 = {
   /** La obra colgada de su cliente — más chica que la madre, no igual. `v4B:97`. */
   hija: 38,
   /**
-   * LA MISMA OBRA CUANDO ADEMÁS LLEVA SUS ÓRDENES DEBAJO DEL NOMBRE. Derivado, no dibujado: la
-   * hija más el renglón de los números (10,5px ⇒ caja de 14px, y 2 de aire entre las dos líneas).
-   * Los números de la orden NO caben al lado del nombre sin comerse los chips de lo que falta —
-   * medido a 1440 el 10/09/2026 con «ME - PLAYÓN DE AZUFRE» y sus dos OC—, y estrangular la celda
-   * de al lado no es una opción: Contratado es plata.
+   * LA MISMA OBRA CUANDO ADEMÁS LLEVA SUS ÓRDENES DE COMPRA DEBAJO DEL NOMBRE. Derivado, no
+   * dibujado: la hija más el renglón de los números (12px ⇒ caja de 16px, y 2 de aire entre las
+   * dos líneas). Eran 54 con los números en 10,5px; el dueño no los podía leer («quiero que se
+   * vean las OC») y el cuerpo subió a 12.
+   *
+   * Los números NO caben al lado del nombre —medido a 1440 el 10/09/2026 con «ME - PLAYÓN DE
+   * AZUFRE» y sus dos OC—, y estrangular la celda de al lado no es una opción: Contratado es plata.
+   * Va como `minHeight`: con tres órdenes que se apilen en una pantalla angosta, la fila crece.
    */
-  hijaConOrdenes: 54,
+  hijaConOrdenes: 56,
   /** La cabeza de un bloque que se despliega — no un renglón de lista. `21v2:99`. */
   cabezaBloque: 44,
   /** Cabecera de columnas. Universal en los seis canvas. `v4A:81`, `v4B:88`. */

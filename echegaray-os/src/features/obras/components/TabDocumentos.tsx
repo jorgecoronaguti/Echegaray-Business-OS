@@ -57,7 +57,8 @@ import {
 import { requiereAtencion, ultimosCambios } from '../services/documentosPaneles'
 import { CeldaCategoriaDocumento } from './CeldaCategoriaDocumento'
 import { PanelDocumentos } from './PanelDocumentos'
-import { ListaOrdenes } from '@/features/clientes/components/ListaOrdenes'
+import { PapelesPorTipo } from '@/features/clientes/components/PapelesPorTipo'
+import { agruparPapeles } from '@/features/clientes/services/papelesCliente'
 import type { OrdenDetallada } from '@/features/clientes/services/ordenesCliente'
 import { fecha as fmtFecha } from './formato'
 
@@ -230,6 +231,13 @@ export function TabDocumentos({
   clasificar?: (driveFileId: string, categoria: string) => Promise<ResultadoAccion>
 }) {
   const asignar = actividades.length > 0 ? asignarActividad : undefined
+  // `obra_id` va en null a propósito: la consulta ya filtró por esta obra y la columna no se
+  // dibuja. Lo que sí importa de la agrupación acá es que el certificado de retención quede colgado
+  // de su orden de pago y no se cuente como una orden más.
+  const papelesDelCliente = useMemo(
+    () => (ordenes === null ? null : agruparPapeles(ordenes.map((o) => ({ ...o, obra_id: null })))),
+    [ordenes],
+  )
   const [query, setQuery] = useState('')
   const [chip, setChip] = useState<string | null>(null)
   const [plegados, setPlegados] = useState<ReadonlySet<string>>(new Set())
@@ -263,11 +271,22 @@ export function TabDocumentos({
           que todavía no tienen orden bajada sería ruido en todas ellas. */}
       {(ordenes === null || ordenes.length > 0) && (
         <section data-testid="ordenes-de-la-obra" className="flex flex-col">
-          <span className="text-[13px] font-semibold text-ink">Órdenes del cliente</span>
-          <span className="text-[12px] text-muted">
-            Bajadas del mail. La factura que las cita queda al lado como evidencia.
+          <span className="text-[13px] font-semibold text-ink">Papeles del cliente</span>
+          <span className="mb-2 text-[12px] text-muted">
+            Bajados del mail, agrupados por tipo. El comprobante de retención lleva el número de SU
+            orden de pago: no es una orden más.
           </span>
-          <ListaOrdenes ordenes={ordenes} veEconomia={veEconomia} />
+          {/* AGRUPADOS POR LA MISMA FUNCIÓN PURA QUE LA FICHA DEL CLIENTE. Antes era una lista
+              plana donde el certificado de retención salía como «Documento N° 0000000005146» justo
+              debajo de «Orden de pago N° 0000000005146» y parecía un duplicado. La columna «Obra»
+              no se dibuja: acá todos los papeles son de ESTA obra y repetiría el nombre en cada
+              renglón. */}
+          <PapelesPorTipo
+            papeles={papelesDelCliente}
+            veEconomia={veEconomia}
+            mostrarObra={false}
+            nombreDeObra={(id) => id}
+          />
         </section>
       )}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">

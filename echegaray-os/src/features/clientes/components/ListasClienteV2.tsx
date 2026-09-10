@@ -35,6 +35,8 @@ import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import type { ObraPanel } from '@/features/obras/types'
 import { SIN_PRECIO_EN_OBRAS, margenPct, pctTexto, type EconomiaDeObra } from '../services/economiaObras'
+import type { PapelesDelCliente } from '../services/papelesCliente'
+import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 
 /**
  * EL ESTADO SE DICE CON LA PALABRA Y SU TINTA, sin punto de color.
@@ -87,12 +89,12 @@ const COLOR_ESTADO_OBRA: Record<string, string> = {
 // por 60px aun con los cortes andando. Con `minmax(0,X)` la pista cede cuando no hay lugar en vez
 // de desbordar; el único piso que se defiende es el del nombre, que es lo que identifica la fila.
 const COLS_OBRAS
-  = 'gap-[20px] grid-cols-[minmax(200px,1.8fr)_minmax(0,110px)_minmax(0,80px)_minmax(0,150px)_minmax(0,130px)_minmax(0,130px)_minmax(0,160px)_minmax(0,28px)]'
-  // Por debajo de 1200px no hay ancho para la economía de OBRAS —Costo MO · Costo mat. · Margen—:
-  // se suelta el detalle, nunca el nombre ni el contratado.
+  = 'gap-[20px] grid-cols-[minmax(200px,1.8fr)_minmax(0,110px)_minmax(0,80px)_minmax(0,150px)_minmax(0,150px)_minmax(0,150px)_minmax(0,140px)_minmax(0,28px)]'
+  // Por debajo de 1200px se sueltan OP y MARGEN —lo que se cobró y lo que queda—: la pregunta que
+  // sobrevive en una pantalla angosta es qué se le vendió (contratado) y con qué papel (OC).
   // 90px y no 72 para el avance: «sin cronograma» a 11,5px mide 84px y en 72 se cortaba en «sin
   // cronogr…» (medido en la captura de 900px). La pista del handoff ya son 90.
-  + ' max-[1199px]:gap-[14px] max-[1199px]:grid-cols-[minmax(0,1.5fr)_minmax(0,90px)_90px_minmax(0,120px)_28px]'
+  + ' max-[1199px]:gap-[14px] max-[1199px]:grid-cols-[minmax(0,1.5fr)_minmax(0,90px)_90px_minmax(0,120px)_minmax(0,130px)_28px]'
   // A 390px no entran cinco columnas sin estrangular el nombre: quedan OBRA · ESTADO · CONTRATADO.
   + ' max-[559px]:gap-[10px] max-[559px]:grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
 
@@ -105,6 +107,14 @@ const SOLO_ANCHO = 'max-[559px]:hidden'
 // EL RESPIRO DE LA DERECHA A 390px. En la pantalla ancha lo da la pista de 28px del menú; cuando esa
 // pista se esconde, el importe queda pegado al borde y se lee como si estuviera cortado.
 const AIRE_DERECHO = 'max-[559px]:pr-4'
+
+/** QUÉ SON LAS DOS COLUMNAS NUEVAS, para el que pasa el mouse. Dos rótulos de dos letras no pueden
+ *  cargar solos con decir de qué están hablando — y lo que tienen que decir es sobre todo que NO
+ *  son la misma fuente que Contratado. */
+const AYUDA_OC = 'Órdenes de compra que el cliente mandó por esta obra (los PDF de su mail). Es otra '
+  + 'fuente que Contratado, que sale de la pestaña OBRAS: que no coincidan no es un error.'
+const AYUDA_OP = 'Órdenes de pago del cliente imputadas a esta obra. Una OP no prueba el cobro: '
+  + 'eso lo prueba el extracto del banco.'
 
 /** La sangría del handoff (`dc.html:113`, `padding-left:16px`), que reemplaza los 13 del v2. */
 const SANGRIA = 16
@@ -128,8 +138,14 @@ function avanceDeObra(o: ObraPanel): { texto: string; medido: boolean; ayuda: st
 }
 
 /** OBRA · ESTADO · AVANCE · CONTRATADO · [acciones]. `dc.html:113-135`. */
-export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null }: {
+export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null, papeles = null, titulo }: {
   obras: ObraPanel[]
+  /** Los papeles del cliente ya agrupados. `null` = no se pudieron leer o no hay ninguno; en los
+   *  dos casos la celda queda vacía, y quien dice «no pude leerlos» es la página. */
+  papeles?: PapelesDelCliente | null
+  /** El rótulo del grupo, cuando esta tabla dibuja un tramo y no la lista entera («Cerradas · 6»).
+   *  Sin él no se dibuja encabezado de grupo: la tabla es la lista. */
+  titulo?: string
   /** El jefe de obra no ve el precio de venta. Lo decide la RLS; acá se deja de dibujar la columna. */
   veEconomia: boolean
   vacio: string
@@ -138,13 +154,22 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null }: {
 }) {
   return (
     <div data-testid="obras-del-cliente">
+      {/* EL RÓTULO DEL GRUPO. Las obras CERRADAS se listan siempre, debajo de las que están en
+          ejecución, porque son la historia de lo que se le vendió a este cliente: «ME - BASES
+          TANQUE SO2» tiene su OC 1864, su OP 4865 y sus dos facturas, y hasta hoy vivía detrás de
+          `?archivadas=1` —o sea, invisible—. Cerrada no es archivada. */}
+      {titulo && (
+        <p data-testid="titulo-grupo-obras" style={{ fontSize: '11px', letterSpacing: '0.06em', textTransform: 'uppercase', color: V.tenue, padding: '18px 0 2px', paddingLeft: SANGRIA }}>
+          {titulo}
+        </p>
+      )}
       <div className={`grid ${COLS_OBRAS} ${AIRE_DERECHO}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
         <RotuloCol>Obra</RotuloCol>
         <RotuloCol>Estado</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Avance</RotuloCol></span>
         <RotuloCol derecha>Contratado</RotuloCol>
-        <span className={`grid ${SOLO_ANCHO_ECO}`}><RotuloCol derecha>Costo MO</RotuloCol></span>
-        <span className={`grid ${SOLO_ANCHO_ECO}`}><RotuloCol derecha>Costo mat.</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_OC}><RotuloCol derecha>OC</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO_ECO}`} title={AYUDA_OP}><RotuloCol derecha>OP</RotuloCol></span>
         <span className={`grid ${SOLO_ANCHO_ECO}`}><RotuloCol derecha>{veEconomia ? 'Margen' : ''}</RotuloCol></span>
         <span className={SOLO_ANCHO} />
       </div>
@@ -161,12 +186,6 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null }: {
         const e = economia?.get(o.obra_id) ?? null
         const contratado = e?.contratado ?? o.monto_contratado ?? null
         const margen = e?.margen ?? null
-        const eco = (v: number | null, testid: string) => (
-          <span className={`font-mono tabular-nums truncate ${SOLO_ANCHO_ECO}`} data-testid={testid}
-            style={{ fontSize: '12px', color: v == null ? V.tenue : V.tintaSuave, textAlign: 'right' }}>
-            {v == null ? '—' : plata(v)}
-          </span>
-        )
         return (
         <Link
           key={o.obra_id} href={`/obras/${o.obra_id}`} prefetch={false} data-testid="fila-obra-cliente"
@@ -235,8 +254,17 @@ export function ObrasDelCliente({ obras, veEconomia, vacio, economia = null }: {
                 </span>
               )}
 
-          {eco(e?.costo_mo ?? null, 'costo-mo-obra-cliente')}
-          {eco(e?.costo_materiales ?? null, 'costo-materiales-obra-cliente')}
+          {/* OC Y OP DE ESTA OBRA, en el lugar donde estaban Costo MO y Costo mat. Este archivo ya
+              declaraba que la ficha del cliente es la cara COMERCIAL de la relación y que el costo
+              vive en la obra: con las dos columnas de costo puestas no había ancho para las dos que
+              contestan la pregunta comercial —con qué papel nos lo encargó y qué ordenó pagar—.
+              El costo real sigue estando en la obra, que es donde se decide sobre él. */}
+          <span className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid="oc-obra-cliente">
+            <TotalDePapeles total={papeles?.porObra.get(o.obra_id)?.totalOC ?? SIN_PAPELES} sigla="OC" tam="12px" veEconomia={veEconomia} />
+          </span>
+          <span className={`flex items-center justify-end ${SOLO_ANCHO_ECO}`} data-testid="op-obra-cliente">
+            <TotalDePapeles total={papeles?.porObra.get(o.obra_id)?.totalOP ?? SIN_PAPELES} sigla="OP" tam="12px" veEconomia={veEconomia} />
+          </span>
           <span className={`font-mono tabular-nums truncate ${SOLO_ANCHO_ECO}`} data-testid="margen-obra-cliente"
             style={{ fontSize: '12px', color: margen == null ? V.tenue : margen < 0 ? V.warn : V.tinta, textAlign: 'right' }}>
             {veEconomia

@@ -27,7 +27,6 @@
 // FRONTERA: el cliente CONSOLIDA, no administra. El contratado y el avance salen de `obra_panel` —o
 // sea, de Compras y de Cotización—. Acá no se calcula ni se guarda un número propio.
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
@@ -60,6 +59,8 @@ import {
   getEconomiaDeObras, SIN_PRECIO_EN_OBRAS, sumaConHuecos,
 } from '@/features/clientes/services/economiaObras'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
+import { ordenesPorClienteYObra } from '@/features/clientes/services/ordenesCliente'
+import { PapelesPorTipo } from '@/features/clientes/components/PapelesPorTipo'
 import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
 import { editarPagoDelEsquema, publicarEsquema } from '@/features/clientes/services/esquemaActions'
 import {
@@ -89,6 +90,9 @@ export const dynamic = 'force-dynamic'
 const VE_CONTRACTUALES = ['direccion', 'administracion']
 
 type Query = {
+  /** `archivadas` fue el interruptor de «ver las obras cerradas». Se lee y se ignora: desde el
+   *  10/09/2026 las cerradas se listan SIEMPRE en su propio grupo, así que un enlace viejo con el
+   *  parámetro puesto muestra exactamente lo mismo que uno sin él. */
   contacto?: string; editar?: string; archivadas?: string; actividad?: string; documentos?: string
   vista?: string
   /** Qué fila tiene su línea de acciones abierta. UNA a la vez, porque es un parámetro y no una
@@ -127,7 +131,7 @@ export default async function ClientePage({ params, searchParams }: {
   // dibujar la métrica, para no mostrarle un rótulo económico vacío y que parezca un error.
   const veEconomia = puedeVerEconomia(rol)
 
-  const [responsables, contactos, obras, linea, documentos, cartera, economia] = await Promise.all([
+  const [responsables, contactos, obras, linea, documentos, cartera, economia, papeles] = await Promise.all([
     puedeEditar ? getResponsables(supabase) : Promise.resolve({ data: [], error: null }),
     getContactos(supabase, id),
     getObrasDelCliente(supabase, id),
@@ -136,6 +140,10 @@ export default async function ClientePage({ params, searchParams }: {
     veEconomia ? getCartera(supabase) : Promise.resolve({ data: [], error: null }),
     // Lo que OBRAS publica por obra (contratado, MO, materiales, margen), desde Postgres.
     getEconomiaDeObras(supabase),
+    // LOS PAPELES DEL CLIENTE —OC, OP, certificados de retención y nuestras facturas—, agrupados
+    // por la MISMA función pura que usa `/clientes`. `null` = la lectura falló, y eso no se dibuja
+    // como «no tiene ninguno».
+    ordenesPorClienteYObra(supabase, id),
   ])
   // Estas lecturas se leían con `?? []`: si la de obras fallaba, la ficha decía que el cliente no
   // tiene obras. Sobre un cliente eso es una afirmación comercial sacada de un fallo de la base.
@@ -163,7 +171,6 @@ export default async function ClientePage({ params, searchParams }: {
     : [{ data: [], error: null }, { data: [], error: null }]
   const portal = resumenAccesos(lector.leer(accesos, []))
 
-  const conArchivadas = q.archivadas === '1'
   const todas = lector.leer(obras, [])
   const cerradas = todas.filter((o) => o.estado === 'cerrada')
   const enCurso = todas.filter((o) => o.estado === 'activa')
@@ -184,6 +191,17 @@ export default async function ClientePage({ params, searchParams }: {
     return `/clientes/${slug}${s ? `?${s}` : ''}`
   }
 
+  // ═══ LAS CUATRO CIFRAS (DISENO-FICHA-CLIENTE-v3 · §2.3) ═══
+  //
+  // Salieron «Contactos» y «Documentos»: los dos son conteos que ya se publican donde viven —el
+  // costado dice cuántos contactos hay, la solapa dice cuántos papeles— y un dato dos veces es la
+  // forma más barata de que dos partes de la pantalla empiecen a decir distinto.
+  //
+  // Entraron OC y OP, que es lo que no se veía en ningún lado. NO se publica «Facturado» ni
+  // «Cobrado» aunque la fuente exista (`cliente_cuenta_corriente`): su ventana son 90 días y
+  // Contratado y OC son acumulados desde 2024 — puestos en la misma línea invitan a restarlos, y
+  // eso es mezclar ventanas incompatibles. Tampoco «Pendiente»: no tiene fuente, y la resta de dos
+  // universos distintos sería un número inventado. El saldo real vive en Cuenta corriente.
   const cifras: CifraDeFicha[] = [
     { rotulo: 'Obras', valor: todas.length || null, falta: 'ninguna cargada' },
     ...(veEconomia
@@ -195,8 +213,18 @@ export default async function ClientePage({ params, searchParams }: {
           falta: enCurso.length ? SIN_PRECIO_EN_OBRAS : 'sin obra en curso',
         } as CifraDeFicha]
       : []),
-    { rotulo: 'Contactos', valor: lector.leer(contactos, []).length || null, falta: 'ninguno' },
-    { rotulo: 'Documentos', valor: lector.leer(documentos, []).length || null, falta: 'ninguno' },
+    {
+      rotulo: `OC recibidas${papeles ? ` (${papeles.totalOC.n})` : ''}`,
+      valor: papeles?.totalOC.importe != null ? money(papeles.totalOC.importe) : null,
+      falta: papeles === null ? 'no pude leerlas' : 'ninguna',
+    },
+    {
+      // «RECIBIDAS», NO «COBRADAS»: una orden de pago es la instrucción del cliente a su banco. Que
+      // el dinero entró lo prueba el extracto, no el PDF de un tercero.
+      rotulo: `OP recibidas${papeles ? ` (${papeles.totalOP.n})` : ''}`,
+      valor: papeles?.totalOP.importe != null ? money(papeles.totalOP.importe) : null,
+      falta: papeles === null ? 'no pude leerlas' : 'ninguna',
+    },
   ]
 
   const filasPresupuesto: PresupuestoDeFicha[] = presupuestos.map((p) => ({
@@ -214,6 +242,14 @@ export default async function ClientePage({ params, searchParams }: {
         ? { texto: 'Convertir en obra', href: `/presupuestos/${p.id}/convertir` }
         : undefined,
   }))
+
+  // El nombre de cada obra por su clave: sin esto la columna «Obra» de los papeles dibujaría una
+  // clave de URL («messina-bases-tanque-so2») en vez del nombre que el dueño reconoce.
+  const nombreDeObra = new Map(todas.map((o) => [o.obra_id, o.nombre]))
+  // LA CUENTA DE LA SOLAPA SON TODOS LOS PAPELES, no sólo los de Drive: desde hoy la cara los
+  // muestra a los dos, y un número que cuenta la mitad de lo que se ve es un número que miente.
+  const nPapeles = papeles ? papeles.oc.length + papeles.op.length + papeles.retenciones.length
+    + papeles.facturas.length + papeles.otros.length : 0
 
   const vencido = lector.leer(cuenta, null)?.vencido ?? null
   const tasa = tasaDeConversion(presupuestos)
@@ -281,7 +317,7 @@ export default async function ClientePage({ params, searchParams }: {
           veEconomia,
           obras: todas.length,
           presupuestos: presupuestos.length,
-          documentos: lector.leer(documentos, []).length,
+          documentos: lector.leer(documentos, []).length + nPapeles,
         }).map((s) => ({
           clave: s.clave,
           titulo: s.label,
@@ -351,31 +387,36 @@ export default async function ClientePage({ params, searchParams }: {
                 )}
 
                 <ObrasDelCliente
-                  obras={conArchivadas ? todas : todas.filter((o) => o.estado !== 'cerrada')}
+                  obras={enCurso}
                   veEconomia={veEconomia}
                   economia={economia}
+                  papeles={papeles}
                   vacio={cerradas.length === 0
                     ? 'Este cliente no tiene ninguna obra. Se crea desde arriba, colgada de este cliente.'
-                    : 'Todas las obras de este cliente están archivadas.'}
+                    : 'Ninguna obra en ejecución. Las cerradas están abajo.'}
                 />
 
-                {/* La puerta de vuelta: archivar no puede parecerse a borrar. */}
+                {/* LAS CERRADAS SE VEN SIEMPRE (DISENO-FICHA-CLIENTE-v3 · §3.1). Estaban detrás de
+                    `?archivadas=1`, y por eso «ME - BASES TANQUE SO2» —cerrada, con su OC 1864, su
+                    OP 4865 y sus dos facturas— no aparecía en ningún lado de la ficha. Una obra
+                    cerrada con papeles no es una obra archivada: es la historia de lo que se le
+                    vendió a este cliente, y es la mitad de la respuesta a «¿qué le facturamos?». */}
+                {cerradas.length > 0 && (
+                  <ObrasDelCliente
+                    obras={cerradas}
+                    veEconomia={veEconomia}
+                    economia={economia}
+                    papeles={papeles}
+                    titulo={`Cerradas · ${cerradas.length}`}
+                    vacio=""
+                  />
+                )}
+
                 <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, maxWidth: 720 }} data-testid="pie-archivadas-cliente">
-                  {cerradas.length > 0 && (conArchivadas
-                    ? (
-                        <>
-                          Se muestran también {cerradas.length} obra{cerradas.length === 1 ? '' : 's'} archivada{cerradas.length === 1 ? '' : 's'}.{' '}
-                          <Link prefetch={false} href={url({ archivadas: null })} style={{ color: V.tinta, fontWeight: 500 }}>Ocultarlas</Link>.{' '}
-                        </>
-                      )
-                    : (
-                        <>
-                          {cerradas.length} obra{cerradas.length === 1 ? '' : 's'} archivada{cerradas.length === 1 ? '' : 's'} fuera de esta lista.{' '}
-                          <Link prefetch={false} href={url({ archivadas: '1' })} style={{ color: V.tinta, fontWeight: 500 }} data-testid="ver-archivadas-cliente">Verlas</Link>.{' '}
-                        </>
-                      ))}
-                  El contratado y el avance salen de la obra: acá no se calcula nada propio. El costo
-                  real no se dibuja en la ficha del cliente — vive en la obra, que es donde se decide.
+                  El contratado y el avance salen de la obra: acá no se calcula nada propio. Las
+                  columnas OC y OP son OTRA fuente —los PDF que mandó el cliente, no la pestaña
+                  OBRAS—: que no coincidan no es un error de esta pantalla. El costo real no se
+                  dibuja en la ficha del cliente: vive en la obra, que es donde se decide.
                 </p>
               </>
             )}
@@ -398,6 +439,18 @@ export default async function ClientePage({ params, searchParams }: {
             )}
 
             {solapa === 'documentos' && (
+              <>
+                {/* LOS PAPELES DEL CLIENTE, POR TIPO, ARRIBA DEL ÍNDICE DE DRIVE. No son un archivo
+                    más de la carpeta: son los documentos que encargan y pagan el trabajo, y viven
+                    en el OS (bucket privado), no en Drive. */}
+                <PapelesPorTipo
+                  papeles={papeles}
+                  veEconomia={veEconomia}
+                  nombreDeObra={(obraId) => nombreDeObra.get(obraId) ?? obraId}
+                />
+                <p style={{ fontSize: '11px', letterSpacing: '.06em', textTransform: 'uppercase', color: V.tenue, padding: '6px 0 4px' }}>
+                  Documentos de Drive · {lector.leer(documentos, []).length}
+                </p>
               <BloqueDocumentos
                 menuAbierto={q.accDoc ?? null}
                 urlMenuDe={(d) => url({ accDoc: d })}
@@ -411,6 +464,7 @@ export default async function ClientePage({ params, searchParams }: {
                 urlTodo={url({ documentos: 'todo' })}
                 urlPoco={url({ documentos: null })}
               />
+              </>
             )}
 
             {solapa === 'actividad' && (

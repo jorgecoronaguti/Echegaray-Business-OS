@@ -41,9 +41,10 @@ import { IconoCliente, IconoObra } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { diaRelativo, type ClienteEnCartera } from '@/features/administracion/services/homeCartera'
 import { rotuloDe } from '@/features/clientes/services/ordenesCliente'
-import type { Orden, PapelesDelCliente, Total } from '@/features/clientes/services/papelesCliente'
+import type { Orden, PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
 import { SIN_PRECIO } from '@/features/clientes/services/chipsCartera'
 import { BotonOrdenes } from './BotonOrdenes'
+import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 import { pctTexto } from '@/features/clientes/services/economiaObras'
 
 // ── LOS NÚMEROS DE LAS ÓRDENES ──────────────────────────────────────────────────────────────────
@@ -81,27 +82,6 @@ function OrdenesDeLaObra({ ordenes, href, veEconomia }: {
   )
 }
 
-/**
- * EL TOTAL DE UNA COLUMNA DE PAPELES: «$90.750.000 · 2 OC».
- *
- * `null` no es cero: una orden sin importe cargado no es una orden por $ 0, y cuando alguna del
- * grupo no lo tiene el total lleva «·» para decir que suma sólo las que sí (misma marca que el
- * margen parcial de esta tabla).
- */
-function TotalDePapeles({ total, sigla, tam, testid }: {
-  total: Total; sigla: 'OC' | 'OP'; tam: string; testid: string
-}) {
-  if (!total.n) return null
-  return (
-    <span className="font-mono tabular-nums" data-testid={testid} style={{ fontSize: tam, color: V.apagado }}>
-      {total.importe === null ? 'sin importe' : pesos(total.importe)}
-      <span style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}>
-        {total.n} {sigla}{total.parcial ? ' ·' : ''}
-      </span>
-    </span>
-  )
-}
-
 /** `25v2:154`. Literales porque Tailwind no compila una clase armada en runtime. */
 const COLS
   = 'grid-cols-[minmax(0,1.9fr)_110px_160px_150px_130px_130px_150px_96px]'
@@ -131,7 +111,6 @@ const ADORNO_ANCHO = 'max-[1023px]:hidden'
 
 /** Un cliente del que no llegó ningún papel. Es una constante y no un objeto nuevo por fila: la
  *  tabla dibuja decenas de filas y ninguna necesita su propio vacío. */
-const SIN_PAPELES: Total = { n: 0, importe: null, parcial: false }
 const VACIO: PapelesDelCliente = {
   oc: [], op: [], facturas: [], retenciones: [], otros: [],
   porObra: new Map(), sinObra: { oc: [], op: [] }, totalOC: SIN_PAPELES, totalOP: SIN_PAPELES,
@@ -259,8 +238,8 @@ export function TablaClientes({
                 data-testid="papeles-cliente"
                 style={{ gap: 2, textAlign: 'right' }}
               >
-                <TotalDePapeles total={papelesDe(c.cliente_id).totalOC} sigla="OC" tam="12px" testid="total-oc-cliente" />
-                <TotalDePapeles total={papelesDe(c.cliente_id).totalOP} sigla="OP" tam="11.5px" testid="total-op-cliente" />
+                <TotalDePapeles total={papelesDe(c.cliente_id).totalOC} sigla="OC" tam="12px" testid="total-oc-cliente" veEconomia={veEconomia} />
+                <TotalDePapeles total={papelesDe(c.cliente_id).totalOP} sigla="OP" tam="11.5px" testid="total-op-cliente" veEconomia={veEconomia} />
               </span>
 
               {/* «SIN PRECIO EN OBRAS» Y NO «SIN CONTRATO»: acá falta el MONTO en la pestaña OBRAS.
@@ -371,7 +350,7 @@ export function TablaClientes({
                   style={{ textAlign: 'right' }}
                 >
                   <TotalDePapeles
-                    total={deLaObra?.totalOC ?? SIN_PAPELES} sigla="OC" tam="11.5px" testid="total-oc-obra"
+                    total={deLaObra?.totalOC ?? SIN_PAPELES} sigla="OC" tam="11.5px" testid="total-oc-obra" veEconomia={veEconomia}
                   />
                 </span>
                 <span

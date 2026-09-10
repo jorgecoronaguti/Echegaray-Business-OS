@@ -13,17 +13,30 @@
 import { V } from '@/shared/components/v2/patron'
 import { pesos } from '@/shared/components/canon/formato'
 import { numeroCorto, type OrdenDetallada } from '../services/ordenesCliente'
+import { esRetencion } from '../services/papelesCliente'
 
 const TIPO: Record<string, string> = {
   orden_compra: 'Orden de compra', orden_pago: 'Orden de pago', factura: 'Factura', otro: 'Documento',
 }
 
 /**
- * EL TÍTULO DE UN PAPEL. Una factura nuestra NO se anuncia como «Orden de compra N° 2162» —ése es
- * el número de la orden que factura, no el suyo—: se anuncia como «Factura 225 · cita OC 2162».
- * Es evidencia de la obra, y la cita es justamente lo que la vuelve evidencia.
+ * EL TÍTULO DE UN PAPEL.
+ *
+ * UN COMPROBANTE DE RETENCIÓN SE ANUNCIA CON SU ORDEN DE PAGO (10/09/2026). Salía como «Documento
+ * N° 0000000005146 · sin importe» JUSTO DEBAJO de «Orden de pago N° 0000000005146» —el mismo
+ * número dos veces, como si fuera un duplicado—. Lleva el número de SU orden porque pertenece a
+ * ella, y eso es lo que hay que decir. No se le pone el nombre de un impuesto: el PDF dice
+ * «Comprobante de Retención» y «Código de Régimen: 78», pero no nombra el tributo (verificado
+ * abriendo el archivo); escribir «Ganancias» sería fabricar un dato fiscal.
+ *
+ * Una factura nuestra NO se anuncia como «Orden de compra N° 2162» —ése es el número de la orden
+ * que factura, no el suyo—: se anuncia como «Factura 225 · cita OC 2162». Es evidencia de la obra,
+ * y la cita es justamente lo que la vuelve evidencia.
  */
-export function tituloDeOrden(o: Pick<OrdenDetallada, 'tipo' | 'numero' | 'cita'>): string {
+export function tituloDeOrden(
+  o: Pick<OrdenDetallada, 'tipo' | 'numero' | 'cita'> & { nombre_archivo?: string | null },
+): string {
+  if (esRetencion(o.nombre_archivo)) return `Retención · OP ${numeroCorto(o.numero) ?? 's/n'}`
   const clase = TIPO[o.tipo] ?? o.tipo
   if (o.tipo !== 'factura') return `${clase} ${o.numero ? `N° ${o.numero}` : 'sin número'}`
   const cita = o.cita ? ` · cita OC ${o.cita.split('-').pop()}` : ''

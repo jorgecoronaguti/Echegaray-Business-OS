@@ -286,13 +286,20 @@ test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el
   // AVANCE tiene pista propia desde 560 — nunca vuelve adentro de ESTADO — y la economía de OBRAS
   // sólo aparece con ancho de escritorio.
   assert.match(src, /<RotuloCol derecha>Avance<\/RotuloCol>/)
+  // ═══ COSTO MO Y COSTO MAT. SALIERON DE ESTA TABLA (10/09/2026, DISENO-FICHA-CLIENTE-v3 §3.1) ═══
+  //
+  // Este archivo ya declaraba que la ficha del cliente es la cara COMERCIAL de la relación y que el
+  // costo vive en la obra; con las dos columnas de costo puestas no había ancho para las dos que
+  // contestan la pregunta comercial —con qué papel nos lo encargó (OC) y qué ordenó pagar (OP)—.
+  // Si alguien las devuelve, este caso lo dice.
   for (const rotulo of ['Costo MO', 'Costo mat.']) {
-    assert.match(
-      src,
-      new RegExp(`SOLO_ANCHO_ECO[^\n]*<RotuloCol derecha>${rotulo.replace('.', '\\.')}</RotuloCol>`),
-      `«${rotulo}» tiene que soltarse por debajo de 1200px: es detalle, no identidad`,
-    )
+    assert.ok(!src.includes(`>${rotulo}<`), `«${rotulo}» es COSTO: vive en la obra, no en el cliente`)
   }
+  // OP se suelta por debajo de 1200px; OC no, porque es la pregunta que el dueño hace primero.
+  assert.match(src, /SOLO_ANCHO_ECO[^\n]*<RotuloCol derecha>OP<\/RotuloCol>/,
+    '«OP» tiene que soltarse por debajo de 1200px: en una pantalla angosta sobrevive lo que se vendió')
+  assert.match(src, /SOLO_ANCHO}`} title=\{AYUDA_OC\}><RotuloCol derecha>OC<\/RotuloCol>/,
+    '«OC» no puede esconderse antes que el detalle: es lo que el dueño pidió ver')
   // Ni Obra ni Contratado llevan clase de escondido: son las dos que no se negocian.
   const celdas = celdasDelEncabezado()
   for (const fija of ['Obra', 'Contratado']) {
