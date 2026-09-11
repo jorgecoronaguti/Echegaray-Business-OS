@@ -5,7 +5,7 @@
 // La grilla es una cosa —qué columnas hay y cuándo se sueltan— y qué dice cada celda cuando el dato
 // falta es otra: partidas, las dos se leen enteras.
 
-import { pesos } from '@/shared/components/canon/formato'
+import { pesos, millones } from '@/shared/components/canon/formato'
 import { V } from '@/shared/components/v2/patron'
 import type { Imputacion, ObraEnCurso } from '@/features/administracion/services/homeCartera'
 import { IVA_GENERAL, progresoDeCobroBruto, tituloDeCobro } from '@/features/clientes/services/progresoCobro'
@@ -87,7 +87,16 @@ export function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambi
       : 'Ninguna cobranza imputada a esta obra. NO es cobrado $ 0: es que no hay ninguna fila de '
         + 'Cobranzas atada a ella.'
   // EL DENOMINADOR SE LLEVA A LA ESPECIE DEL NUMERADOR: lo cobrado es bruto y lo contratado neto.
-  const p = medible && !sinDato ? progresoDeCobroBruto(cobrado, contratado) : null
+  // ═══ UNA SOLA BARRA, Y ES LA DEL TRABAJO (dueño, 11/09/2026: «me está mostrando dos barras de
+  //     progreso sin respetar lo que marca el diseño») ═══
+  // La fila del CLIENTE dibujaba una segunda barra cuando ninguna de sus obras quedaba sin precio:
+  // Quattropani —una obra— salía con dos barras iguales y Messina con una. El cobro del cliente es
+  // la bolsa entera y se publica como cifra; la fracción sólo tiene sentido trabajo por trabajo.
+  const p = ambito === 'obra' && medible && !sinDato ? progresoDeCobroBruto(cobrado, contratado) : null
+  // LA BASE DEL PORCENTAJE SE ESCRIBE: «$107,9 M cobrado» al lado de «$95,3 M contratado» con una
+  // barra al 94 % es una contradicción a la vista —107 no es el 94 % de 95—. El denominador es el
+  // contrato llevado a la especie del cobro (× 1,21) y se dice ahí mismo, en la escala de millones.
+  const base = p && contratado !== null ? millones(contratado * IVA_GENERAL) : null
   // LA DEDUCCIÓN SE DECLARA. `unica-obra` es la única imputación que NO sale de la base: la deriva
   // `armarCartera` porque el cliente tiene un solo trabajo en curso y no hay entre qué repartir.
   const titulo = (imputacion === 'unica-obra'
@@ -106,7 +115,7 @@ export function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambi
           + 'repartió entre sus obras. NO es deuda: es lo contrario, y por eso el porcentaje de cada '
           + 'obra de abajo es más bajo que el de esta fila'
         : '')
-    + (contratado === null
+    + (contratado === null || ambito !== 'obra'
         ? ''
         : ` — la fracción compara el cobro CON IVA contra el contrato llevado a la misma especie `
           + `(${pesos(contratado)} × 1,21 = ${pesos(contratado * IVA_GENERAL)}): lo contratado es `
@@ -130,7 +139,7 @@ export function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambi
           pone la trazabilidad de un número: el `title` de la celda. */}
       {p && (
         <span className="flex items-center justify-end" style={{ gap: 6 }}>
-          <span style={{ display: 'flex', height: 4, width: 52, borderRadius: 2, background: TONO.pista, flexShrink: 0 }}>
+          <span style={{ display: 'flex', height: 4, width: 40, borderRadius: 2, background: TONO.pista, flexShrink: 0 }}>
             {/* EL RELLENO ES SIEMPRE GRAFITO, TAMBIÉN CUANDO EXCEDE (10/09/2026). El ámbar de este
                 OS significa PROBLEMA —«rojo/naranja sólo para problemas», regla del dueño— y haber
                 cobrado más que el contrato es plata que entró: son adicionales facturados fuera del
@@ -143,7 +152,7 @@ export function Cobrado({ cobrado, contratado, medible, veEconomia, testid, ambi
             className="font-mono tabular-nums" data-excede={p.excede ? '' : undefined}
             style={{ fontSize: '10.5px', color: V.tenue, flexShrink: 0 }}
           >
-            {p.pct} %{p.excede ? ' +' : ''}
+            {p.excede ? `> ${base}` : `${p.pct} % de ${base}`}
           </span>
         </span>
       )}

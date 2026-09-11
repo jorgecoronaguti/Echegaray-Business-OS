@@ -298,7 +298,7 @@ export function TablaClientes({
                   <span className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid="op-obra">
                     <TotalDePapeles
                       total={deLaObra?.totalOP ?? SIN_PAPELES} sigla="OP" tam="11.5px"
-                      testid="total-op-obra" veEconomia={veEconomia}
+                      testid="total-op-obra" veEconomia={veEconomia} apilado
                       numero={deLaObra?.totalOP.n === 1 ? deLaObra.op[0]?.numeroCorto ?? null : null}
                     />
                   </span>

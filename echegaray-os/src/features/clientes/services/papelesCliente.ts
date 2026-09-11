@@ -371,9 +371,13 @@ export function rotuloDeOC(o: Orden, veEconomia: boolean): string {
   return partes.join(' · ')
 }
 
-/** «2026-06-18» → «18/06». Sin año: todas las órdenes de la cartera son del ejercicio en curso y
- *  el año repetido veinte veces en la misma línea no distingue ninguna. El año está en el panel. */
-function diaMes(fecha: string | null): string | null {
+/** «2026-06-18» → «18/06»; «2025-12-16» → «16/12/25». El año se calla SÓLO cuando es el del
+ *  ejercicio en curso: repetirlo veinte veces en una línea no distingue ninguna orden. Pero una OC
+ *  de otro año sin su año se lee como futura —BSA mostraba «OC 495 · 16/12» de 2025 al lado de un
+ *  «2 OC» que no la contaba, y el dueño lo leyó como un error de lectura (11/09/2026)—. */
+function diaMes(fecha: string | null, hoy: Date = new Date()): string | null {
   const m = String(fecha ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/)
-  return m ? `${m[3]}/${m[2]}` : null
+  if (!m) return null
+  const anio = m[1] === String(hoy.getFullYear()) ? '' : `/${m[1].slice(2)}`
+  return `${m[3]}/${m[2]}${anio}`
 }
