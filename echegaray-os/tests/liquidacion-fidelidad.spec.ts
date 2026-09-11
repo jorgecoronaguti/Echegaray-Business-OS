@@ -119,6 +119,15 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
 
     // LO QUE SÍ SE DECIDE, ARRIBA Y ENTERO. El período vigente con su estado, los otros períodos a
     // los que se puede saltar, y el subtítulo con cuánto de la quincena pasó.
+    // ═══ NINGUNA FUENTE FALLÓ ═══ (repuesto el 11/09/2026 por la auditoría)
+    //
+    // Una grilla en cero porque la RLS rechazó una consulta es INDISTINGUIBLE de una quincena sin
+    // cargar. `SolapaHoras` lo dice con `horas-error`, y con sesión de dirección no puede haber
+    // ninguno: si aparece, el número que se está mirando no es el de la empresa. El control vivía
+    // en `liquidacion-quincena.spec.ts` apuntando a `liquidacion-error`, que es del cuadro fósil;
+    // acá apunta al aviso que la pantalla dibuja hoy.
+    await expect(page.getByTestId('horas-error')).toHaveCount(0)
+
     const cabeceraQuincena = page.getByTestId('cabecera-quincena')
     await expect(cabeceraQuincena).toBeVisible()
     await expect(cabeceraQuincena).toContainText('quincena')
@@ -211,6 +220,19 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     for (const t of ['Adelanto', 'Ya transferido', 'Por banco', 'En efectivo', 'Efectivo redondeado']) {
       await expect(cadena).toContainText(t)
     }
+    // ═══ LA CELDA DEL DUEÑO ES EDITABLE ═══ (repuesto el 11/09/2026 por la auditoría)
+    //
+    // «EFECTIVO redondeado» es la columna que el dueño escribe a mano y que pisa el cálculo. El
+    // caso que lo afirmaba apuntaba al cuadro fósil (`input[aria-label="Efectivo redondeado"]`
+    // dentro de `cuadro-obreros`) y al retirarlo quedó sin reemplazo: durante unas horas NADA probó
+    // que se pudiera editar. Vive en el panel de la persona, con la quincena abierta.
+    //
+    // NO SE ESCRIBE: se comprueba que el control está y no está bloqueado. Tipear acá dejaría una
+    // fila en una quincena real.
+    const redondeo = cadena.getByTestId('panel-celda-efectivoRedondeado')
+    await expect(redondeo).toBeVisible()
+    await expect(redondeo).toBeEnabled()
+
     // EL DÍA ABIERTO (pantalla 3): encabezado, columnas y fila de total.
     const dias = page.getByTestId('dias-de-la-persona')
     await expect(dias).toContainText('Cargó')
@@ -402,8 +424,14 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     }
     // Y EL PANEL DE LA PERSONA, que es el que apila el legajo debajo.
     await abrir(page, 'horas')
-    await page.locator('[data-testid^="fila-"]').first().click()
-    await expect(page.getByTestId('panel-persona')).toBeVisible()
+    // EL TERCER CLIC, CON EL MISMO REINTENTO QUE LOS OTROS DOS. Se había parcheado en dos de los
+    // tres lugares y éste quedó dando rojo intermitente cuando corre junto a otro spec sobre el
+    // mismo `next dev` — lo levantó la auditoría del 11/09/2026. El porqué, en
+    // `liquidacion-editar-en-celda.spec.ts`.
+    await expect(async () => {
+      await page.locator('[data-testid^="fila-"]').first().click()
+      await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 5_000 })
+    }).toPass({ timeout: 60_000 })
     await page.screenshot({ path: `${SALIDA}/app-390-persona.png`, fullPage: true })
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
   })

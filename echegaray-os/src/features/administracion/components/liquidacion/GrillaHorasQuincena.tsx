@@ -184,8 +184,6 @@ export interface PendienteDeGrilla {
 export interface PeriodoDeGrilla {
   texto: string
   activo: boolean
-  /** «abierta» / «cerrada» — sólo el vigente lo lleva. */
-  estado?: string
   href: string
 }
 
@@ -262,8 +260,10 @@ function Pendientes({ pendientes, hrefSinRecorte }: {
       columnGap: 16, rowGap: 6, borderBottom: `1px solid ${V.linea}`, fontSize: '12px',
     }}>
       <span style={MONO}>Pendiente</span>
-      {visibles.map((p) => (
-        <Link key={p.href} href={p.href} prefetch={false} data-testid={`pendiente-${p.cuantos}`}
+      {visibles.map((p, i) => (
+        // EL TESTID NO SE INDEXA CON UN DATO VIVO: `pendiente-${cuantos}` daba dos nodos con el
+        // mismo testid en cuanto dos pendientes empataban en número. Va la posición, que es estable.
+        <Link key={p.href} href={p.href} prefetch={false} data-testid={`pendiente-${i}`}
           style={{
             color: p.cuantos > 0 ? V.warn : V.apagado,
             fontWeight: p.activo ? 600 : 400,
@@ -467,6 +467,12 @@ function LineaDeMasa({ p }: { p: ProyeccionDeQuincena }) {
       <strong style={{ color: V.tinta, fontWeight: 600 }}>{pesos(p.masaProyectada)}</strong>
       {' · '}blanco {pesos(r.blanco ?? 0)}
       {' · '}efectivo {pesos(r.efectivo ?? 0)}
+      {/* ═══ LA LÍNEA TIENE QUE CERRAR A LA VISTA ═══ (11/09/2026, auditoría)
+          Blanco + efectivo daban $8.111.692 contra un total de $11.711.691: faltaban los $3,6 M de
+          Oficina, que suma al total y NO entra en el reparto 50/50, y la conciliación había quedado
+          escondida en el `title`. Dos sumandos que no dan el total, en la pantalla que liquida, son
+          peor que la columna que se sacó: quien mira tiene que poder sumar lo que ve. */}
+      {p.oficina > 0 && <>{' · '}oficina {pesos(p.oficina)}</>}
       {/* SIN TARIFA NO ENTRA EN EL TOTAL Y POR ESO SE DICE ACÁ MISMO: un total que se calla a quién
           dejó afuera se lee como la quincena entera. */}
       {p.sinTarifa > 0 && (

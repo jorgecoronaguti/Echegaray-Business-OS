@@ -27,7 +27,9 @@ import { ADMIN, JEFE } from './util/identidades'
 //      dibuja únicamente cuando la solapa «Pagos» no tiene componente propio. Desde que se registró
 //      `SolapaPagos` esa rama no se ejecuta nunca, así que el test esperaba para siempre un nodo que
 //      no puede aparecer. La cadena de pago se mudó a la solapa «Pagos» (`pagos-tabla`) y la celda
-//      editable del dueño al panel de la persona (`panel-celda-efectivoRedondeado`): se mide ahí.
+//      editable del dueño al panel de la persona: la afirma `liquidacion-fidelidad.spec.ts` sobre
+//      `panel-celda-efectivoRedondeado`, y el aviso «no pude leer» que este archivo exigía en cero
+//      (`liquidacion-error`, también del cuadro fósil) lo afirma allá como `horas-error`.
 //      `BloqueLiquidacion` y `CuadroLiquidacion` quedan como capa fósil —nadie los alcanza— y su
 //      retiro es un trabajo aparte: `pagos.tsx` y `cierre.tsx` todavía importan `pesos` de ahí.
 //
@@ -59,8 +61,9 @@ test.describe('Liquidación · Administración → Personal', () => {
     await expect(page.getByTestId('pagos-total')).toBeVisible()
 
     // LA TABLA TIENE SECCIONES Y SU FILA DE TOTAL. Una tabla vacía con sesión de dirección sería el
-    // síntoma de un permiso faltante, no de una quincena en blanco — que es lo que estos casos
-    // existen para distinguir.
+    // síntoma de un permiso faltante, no de una quincena en blanco. La distinción explícita —el
+    // aviso «no pude leer» en cero— la hace `liquidacion-fidelidad.spec.ts` sobre `horas-error`:
+    // `solapas/pagos.tsx` ni siquiera recibe `errores`, así que acá no hay nada que afirmar.
     await expect(page.getByTestId('pagos-tabla')).toBeVisible()
     expect(await page.locator('[data-testid^="seccion-"]').count()).toBeGreaterThan(0)
     await expect(page.getByTestId('pagos-total-fila')).toBeVisible()

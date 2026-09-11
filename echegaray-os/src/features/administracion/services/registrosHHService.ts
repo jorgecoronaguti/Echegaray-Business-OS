@@ -64,19 +64,24 @@ export async function leerRegistrosHH(
     const pagina = (data ?? []) as unknown[]
     if (pagina.length === 0) return { data: filas, error: null }
     filas.push(...pagina)
-    // ═══ UNA PÁGINA CORTA YA ES LA ÚLTIMA: NO SE PAGA UN VIAJE PARA CONFIRMARLO ═══
+    // ═══ EL VIAJE DE CIERRE SE PAGA, Y SE PAGA A PROPÓSITO (11/09/2026) ═══
     //
-    // PostgREST devuelve como mucho `PAGINA` filas —es el mismo `db-max-rows` que obliga a paginar—,
-    // así que un lote más chico que `PAGINA` sólo puede significar que la ventana se terminó.
-    // Cortando sólo en `length === 0` la lectura siempre hacía un viaje de más, el que trae cero
-    // filas. Medido en esta pantalla el 11/09/2026: la solapa «Horas» hacía 24 consultas por carga
-    // y cuatro eran de `registros_hh`; tres traían datos y la cuarta, nada. En el navegador ese
-    // viaje son ~95 ms, pero en producción cada conexión nueva de PostgREST cuesta ~800 ms en frío,
-    // y esto es una cadena SERIAL: el viaje vacío se paga entero y se paga siempre.
+    // Se probó cortar en cuanto un lote viene más chico que `PAGINA` —un viaje serial menos por
+    // ventana— y se revirtió por dos razones, en este orden:
     //
-    // VA DESPUÉS DEL TOPE, NO ANTES. Escrito al revés, una ventana de 50.100 filas termina en una
-    // página corta y sale por acá con `error: null`: el control que existe para no devolver una
-    // ventana incompleta quedaría esquivado por el atajo que ahorra un viaje.
+    //  1 · ES FRÁGIL. `db-max-rows` vive en la configuración de Supabase y desde el código no se
+    //      puede leer (`current_setting('pgrst.db_max_rows', true)` da null). Si fuese MENOR que
+    //      `PAGINA`, todas las páginas vendrían «cortas» y la lectura devolvería la primera con
+    //      `error: null`. Medido con un tope simulado de 500: 500 filas de 2.400, sin un error. Es
+    //      exactamente el truncamiento silencioso que este archivo existe para impedir, reintroducido
+    //      por la optimización. El test de abajo lo deja clavado.
+    //  2 · NO RENDÍA NADA. Medido sobre la pantalla real el 11/09: las tres ventanas de
+    //      `registros_hh` de la solapa «Horas» entran holgadas en una página, así que nunca se veía
+    //      una página llena y el atajo no llegaba a activarse. Ahorro real: cero consultas.
+    //
+    // Una optimización que no se puede probar barata y que debilita el control no se queda «por las
+    // dudas». Si algún día una ventana pasa de las mil filas, el lugar de la mejora es pedir menos
+    // ventana, no adivinar dónde termina.
     if (filas.length > TOPE) {
       return {
         data: null,
@@ -84,6 +89,5 @@ export async function leerRegistrosHH(
           + 'la pantalla no puede afirmar que los tiene todos.',
       }
     }
-    if (pagina.length < PAGINA) return { data: filas, error: null }
   }
 }

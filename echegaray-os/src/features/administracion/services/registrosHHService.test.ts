@@ -70,20 +70,21 @@ test('LA VENTANA ANCHA NO SE CORTA EN 1.000: las filas de la quincena llegan', a
   const deLaQuincena = filas.filter((f) => f.fecha >= '2026-09-01' && f.fecha <= '2026-09-15')
   assert.equal(deLaQuincena.length, 1000)
   assert.equal(deLaQuincena.reduce((s, f) => s + f.horas, 0), 9000)
-  // 2.400 filas son tres páginas: 1.000, 1.000 y 400. La tercera ya viene corta y dice sola que se
-  // terminó; pedir una cuarta para ver un cero es un viaje serial que en producción cuesta ~800 ms.
-  assert.equal(viajes(), 3, 'la página corta cierra la lectura: no se pide una vacía para confirmar')
+  // 2.400 filas son 1.000 + 1.000 + 400 y el viaje vacío que cierra: cuatro. El de cierre se paga a
+  // propósito — el porqué, en el comentario de `leerRegistrosHH`.
+  assert.equal(viajes(), 4)
 })
 
-test('LA VENTANA CORTA SE LEE EN UN SOLO VIAJE, no en dos ni en veinte', async () => {
+test('LA VENTANA CORTA SE CIERRA CON EL VIAJE VACÍO, y eso es lo correcto', async () => {
   const { sb, viajes } = supabaseCapada(filasFalsas().slice(0, 120))
   const { data } = await leerRegistrosHH(sb, {
     desde: '2026-04-16', hasta: '2026-09-15', columnas: COLS,
   })
   assert.equal((data ?? []).length, 120)
-  // Hasta el 11/09/2026 esto valía 2: el segundo viaje traía cero filas y sólo servía para
-  // confirmar lo que el primero ya había dicho al devolver 120 de un tope de 1.000.
-  assert.equal(viajes(), 1, 'una página incompleta ya dice que no hay más')
+  // SON DOS Y ESTÁ BIEN. 120 filas en la primera página no distinguen «se terminó la ventana» de
+  // «el tope real del servidor es 120»: cortar ahí sería adivinar el `db-max-rows` que el código no
+  // puede leer. El viaje vacío es el precio de no adivinar.
+  assert.equal(viajes(), 2)
 })
 
 // ═══ EL ATAJO NO PUEDE SALTEAR EL CONTROL ═══
@@ -93,6 +94,29 @@ test('LA VENTANA CORTA SE LEE EN UN SOLO VIAJE, no en dos ni en veinte', async (
 // para no devolver una ventana incompleta queda esquivado justo en el caso para el que se escribió.
 // Mutación corrida (11/09/2026): moviendo `if (pagina.length < PAGINA)` arriba del tope, este test
 // cae en `assert.equal(data, null)` con «Expected values to be strictly equal».
+// ═══ EL TOPE REAL NO SE SUPONE: SI FUERA MENOR QUE `PAGINA`, CORTAR A CIEGAS TRUNCA ═══
+//
+// Lo encontró la auditoría del 11/09/2026. La primera versión del atajo cortaba en cuanto un lote
+// venía más chico que `PAGINA`. Si `db-max-rows` fuese 500 —vive en la configuración de Supabase y
+// desde el código no se puede leer: `current_setting('pgrst.db_max_rows', true)` da null— TODAS las
+// páginas vendrían cortas y la lectura devolvía 500 filas de 2.400 con `error: null`. O sea: el
+// atajo que ahorraba 95 ms reintroducía exactamente el truncamiento silencioso que este archivo
+// existe para impedir.
+//
+// Este test queda como candado: mete un tope de 500 y exige las 2.400 filas. Mutación corrida el
+// 11/09/2026 — agregando `if (pagina.length < PAGINA) return { data: filas, error: null }` después
+// del tope, cae con `500 !== 2400`. Es lo que impide que la optimización vuelva por descuido.
+test('CON UN TOPE REAL MENOR QUE `PAGINA` NO SE PIERDE NI UNA FILA', async () => {
+  const { sb, viajes } = supabaseCapada(filasFalsas(), 500)
+  const { data, error } = await leerRegistrosHH(sb, {
+    desde: '2026-04-16', hasta: '2026-09-15', columnas: COLS,
+  })
+  assert.equal(error, null)
+  assert.equal((data ?? []).length, 2400, 'cortar por «página corta» sin conocer el tope trunca')
+  // 2.400 en páginas de 500 son cuatro llenas, una de 400 y la vacía de cierre.
+  assert.equal(viajes(), 6)
+})
+
 test('UNA VENTANA QUE NO ENTRA EN EL TOPE FALLA, no devuelve la mitad', async () => {
   const muchas: FilaFalsa[] = []
   for (let i = 0; i < 50_100; i++) {
