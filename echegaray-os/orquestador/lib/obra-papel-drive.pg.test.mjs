@@ -29,7 +29,22 @@ const RAIZ = 'administracion/PRESUPUESTOS - CLIENTES'
 /** La OC del adicional, guardada DENTRO de la carpeta de su obra mayor. */
 const OC_DEL_ADICIONAL = '15QUCmWc1KGfcQqiX-UPo3VDklfNEjqjz'
 
-const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
+
+// ═══ ESTE TEST NO CORRE SOLO, Y ES UNA DECISIÓN DE PRODUCCIÓN (11/09/2026) ═══
+//
+// Aplica migraciones adentro de una transacción. El ROLLBACK deshace los objetos, pero el DDL YA
+// DISPARÓ `pgrst_ddl_watch`: cada `create` manda a PostgREST a recargar el esquema, y cada recarga
+// frena ~1,5 s a TODO el que esté usando la app. El 11/09 hubo 148 recargas en un día y el dueño vio
+// la app trabada; buena parte salió de correr estos tests una y otra vez contra la base REAL.
+//
+// Por eso pide `ORQ_PG_DDL=1` explícito: la evidencia que da sigue estando disponible cuando hace
+// falta —antes de aplicar una migración, o auditando un cambio del modelo— y deja de pagarse sin
+// que nadie lo haya pedido.
+//
+//     ORQ_PG_DDL=1 node --test orquestador/lib/obra-papel-drive.pg.test.mjs
+const DDL_PERMITIDO = process.env.ORQ_PG_DDL === '1'
+const hayBase = DDL_PERMITIDO
+  && await getPool().query('select 1').then(() => true).catch(() => false)
 
 test('los papeles de cada obra salen de una sola vista y ninguno cae en la obra equivocada', { skip: !hayBase }, async (t) => {
   const c = await getPool().connect()
@@ -44,8 +59,14 @@ test('los papeles de cada obra salen de una sola vista y ninguno cae en la obra 
     const carpeta = async (ruta, obraId, fuente) => {
       const f = (await q('select drive_file_id from public.drive_index where path = $1 and is_folder', [ruta]))[0]
       assert.ok(f, `la carpeta «${ruta}» no está en drive_index: el índice cambió`)
+      // IDEMPOTENTE: desde que el dueño corrió el script con `--aplicar`, estos tres vínculos YA
+      // están en la base. El test tiene que medir lo mismo antes y después de esa corrida — si
+      // dependiera de que la tabla esté vacía, se pondría rojo por el éxito del script.
       await q(`insert into public.obra_carpeta_drive (drive_folder_id, obra_id, ruta, fuente)
-               values ($1, $2, $3, $4)`, [f.drive_file_id, obraId, ruta, fuente])
+               values ($1, $2, $3, $4)
+               on conflict (drive_folder_id) do update
+                  set obra_id = excluded.obra_id, ruta = excluded.ruta, fuente = excluded.fuente`,
+        [f.drive_file_id, obraId, ruta, fuente])
     }
     await carpeta(`${RAIZ}/JAVIER SANCHEZ`, 'san-francisco', 'obra_canonica.drive_carpeta_id')
     await carpeta(`${RAIZ}/JAVIER SANCHEZ/Entrepiso`, 'entrepiso-y-escalera', 'obra_canonica.drive_carpeta_id')

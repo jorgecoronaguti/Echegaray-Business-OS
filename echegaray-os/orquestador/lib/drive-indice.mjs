@@ -48,10 +48,26 @@ export const RAIZ_ADMINISTRACION = '1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs'
  */
 export const RAIZ_ARCHIVO_FISCAL = '1-7RmmzQeJA2g2O7GqZi4o_WQtiTQLc7l'
 
+/**
+ * LOS INFORMES DE HIGIENE Y SEGURIDAD (11/09/2026).
+ *
+ * `Reportes de gestión HyS` es una carpeta NUEVA en la raíz del data room, con una subcarpeta por
+ * obra. No está adentro de `administracion`, así que el índice no la veía: la ficha del cliente
+ * mostraba los papeles de cada obra SIN un solo informe de HyS —y son los que exige el pliego de
+ * SSMA de un cliente como ARCOR para poder trabajar en planta—.
+ *
+ * VA EN EL CÓDIGO Y NO EN `worker.env`, por lo mismo que `archivo-fiscal`: `ORQ_DRIVE_INDEX_ROOTS`
+ * REEMPLAZA la lista entera, así que poner ahí sólo esta carpeta apagaría las otras dos y el índice
+ * del data room quedaría congelado sin que nada avise. Ese modo de falla ya costó 19 días de
+ * `archivo-fiscal` congelado.
+ */
+export const RAIZ_REPORTES_HYS = '1ECkqlSV30-FNSYecdEp-A-0zV4Y8MSaT'
+
 /** Las raíces que se indexan cuando nadie configuró nada. */
 export const RAICES_POR_DEFECTO = Object.freeze([
   { id: RAIZ_ADMINISTRACION, rotulo: 'administracion' },
   { id: RAIZ_ARCHIVO_FISCAL, rotulo: 'archivo-fiscal' },
+  { id: RAIZ_REPORTES_HYS, rotulo: 'reportes-hys' },
 ])
 
 /**

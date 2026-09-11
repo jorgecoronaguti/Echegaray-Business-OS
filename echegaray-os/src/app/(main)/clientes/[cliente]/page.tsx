@@ -38,13 +38,14 @@ import {
   clasificarDocumentoCliente, desvincularDocumentoCliente, vincularCarpetaCliente, vincularDocumentoCliente,
 } from '@/features/clientes/services/actionsDocumentos'
 import { crearObra } from '@/features/obras/services/actions'
-import { recortarPorEstado } from '@/features/clientes/services/obrasAdicionales'
+import { jerarquiaDeObras, recortarPorEstado } from '@/features/clientes/services/obrasAdicionales'
+import { CaraDeDocumentos } from '@/features/clientes/components/CaraDeDocumentos'
+import { armarCaraDocumentos } from '@/features/clientes/services/caraDocumentos'
 import { BloqueActividad } from '@/features/clientes/components/BloqueActividad'
 import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
 import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
 import { getDocumentosSubidos } from '@/features/documentos/services/documentosSubidosService'
-import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
 import { DocumentosSubidos } from '@/features/documentos/components/DocumentosSubidos'
 import { BloqueInformacion } from '@/features/clientes/components/BloqueInformacion'
 import {
@@ -66,7 +67,6 @@ import { getAccesos, getActividadPortal } from '@/features/clientes/services/acc
 import { getOrdenesDe, getOrdenesDelCliente } from '@/features/clientes/services/ordenesCliente'
 import { OrdenesDelCliente } from '@/features/clientes/components/OrdenesDelCliente'
 import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
-import { PapelesPorTipo } from '@/features/clientes/components/PapelesPorTipo'
 import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
 import { editarPagoDelEsquema, publicarEsquema } from '@/features/clientes/services/esquemaActions'
 import {
@@ -252,7 +252,16 @@ export default async function ClientePage({ params, searchParams }: {
   // «Terminados» y su madre quedaba arriba sin el subnivel que el dueño pidió. Manda el estado de la
   // madre para elegir el grupo; la palabra de la columna Estado sigue siendo la del hijo.
   const cerradas = recortarPorEstado(todas, 'cerrada')
-  const enCurso = recortarPorEstado(todas, 'activa')
+  const enCursoConAdicionales = recortarPorEstado(todas, 'activa')
+  // ═══ LO QUE SE DIBUJA JUNTO NO ES LO QUE SE SUMA ═══
+  //
+  // `enCursoConAdicionales` es el GRUPO de la tabla: el adicional viaja con su madre aunque esté
+  // terminado. `enCurso` es el universo ECONÓMICO —las obras que de verdad están en ejecución— y es
+  // el que suma la cifra de arriba. Medido el 11/09/2026 con las dos mezcladas: «BSA - Adicional»
+  // (cerrada, sin precio) entraba al grupo de su madre y volvía `null` el «Contratado en curso» de
+  // Messina, que pasó de $ 159.758.209 a «sin precio en OBRAS». Mover una fila de grupo no puede
+  // cambiar una cifra de plata.
+  const enCurso = todas.filter((o) => o.estado === 'activa')
   // ═══ LO CONTRATADO EN CURSO LO DICE `cliente_economia`, NO ESTA PÁGINA (H1, 10/09/2026) ═══
   //
   // Era `sumaConHuecos` sobre las obras con FALLBACK a `obra_panel.monto_contratado`. El fallback se
@@ -273,6 +282,24 @@ export default async function ClientePage({ params, searchParams }: {
   const contratadoEnCurso = basesEnCurso.length && basesEnCurso.every((v): v is number => v !== null)
     ? basesEnCurso.reduce((a, v) => a + v, 0)
     : null
+
+  // ═══ LA CARA DOCUMENTOS, ARMADA UNA VEZ ═══
+  //
+  // `armarCaraDocumentos` cruza las cuatro fuentes que ya viajaron —los papeles de Drive por obra,
+  // los papeles del OS, los vínculos manuales y el índice de la carpeta del cliente— y garantiza que
+  // ningún archivo se dibuje dos veces. El total que devuelve ES el número de la solapa: si contara
+  // otra cosa, el N de arriba y las filas de abajo dirían cosas distintas sobre el mismo cliente.
+  const cara = armarCaraDocumentos({
+    filas: jerarquiaDeObras(todas).map((f) => ({
+      obra_id: f.obra.obra_id, nombre: f.obra.nombre, nivel: f.nivel,
+      esAdicional: f.esAdicional, huerfano: f.huerfano,
+    })),
+    papelesObra: ficha.papelesObra,
+    papelesCliente: papeles,
+    documentos: lector.leer(documentos, []),
+    archivosDelCliente: archivosDrive?.archivos ?? [],
+    carpetas: ficha.carpetasObra,
+  })
 
   /** El detalle del trabajo, DENTRO del CRM. Es una función y no una arrow creada en el JSX: una
    *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
@@ -377,10 +404,12 @@ export default async function ClientePage({ params, searchParams }: {
   // El nombre de cada obra por su clave: sin esto la columna «Obra» de los papeles dibujaría una
   // clave de URL («messina-bases-tanque-so2») en vez del nombre que el dueño reconoce.
   const nombreDeObra = new Map(todas.map((o) => [o.obra_id, o.nombre]))
-  // LA CUENTA DE LA SOLAPA SON TODOS LOS PAPELES, no sólo los de Drive: desde hoy la cara los
-  // muestra a los dos, y un número que cuenta la mitad de lo que se ve es un número que miente.
-  const nPapeles = papeles ? papeles.oc.length + papeles.op.length + papeles.retenciones.length
-    + papeles.facturas.length + papeles.otros.length : 0
+  // ═══ `nPapeles` SE FUE (11/09/2026 17:50) ═══
+  //
+  // Sumaba los papeles del OS al `count(cliente_documento)` de la RPC, y las dos partes contaban
+  // cosas que la cara ya no dibuja así: los papeles del OS que además están en Drive se contaban
+  // DOS veces y los 226 archivos de las carpetas de obra, ninguna. El número de la solapa lo dice
+  // ahora `cara.total`, que es literalmente lo que se dibuja.
 
   // ═══ EL PANEL DEL TRABAJO ═══
   //
@@ -479,7 +508,14 @@ export default async function ClientePage({ params, searchParams }: {
           // LA CUENTA SALE DE LA RPC, NO DEL `.length`: `documentos` viaja vacío fuera de las caras
           // Documentos y Actividad (20260911T1200), así que contar el array escribiría un cero
           // sobre un cliente que tiene 208 papeles.
-          documentos: ficha.nDocumentos + nPapeles,
+          // EL N DE LA SOLAPA ES LO QUE SE DIBUJA ADENTRO (dueño, 11/09/2026): decía
+          // `count(cliente_documento)`, que en San Francisco era 0 con 63 archivos abajo. Ahora lo
+          // cuenta la RPC sobre las MISMAS cuatro fuentes que dibuja `armarCaraDocumentos`, y los dos
+          // números se comparan sobre los cinco clientes reales en
+          // `orquestador/lib/cara-documentos.pg.test.mjs`. Sale de la RPC y no de `cara.total` porque
+          // la barra de solapas se dibuja en las NUEVE caras y los papeles de obra sólo viajan en
+          // ésta: con `cara.total`, el mismo cliente mostraría un número distinto en cada solapa.
+          documentos: ficha.nDocumentos,
           cobranzas: cobranzas?.length ?? null,
           ordenes: ordenesDelCliente?.length ?? null,
         }).map((s) => ({
@@ -574,7 +610,7 @@ export default async function ClientePage({ params, searchParams }: {
                 )}
 
                 <ObrasDelCliente
-                  obras={enCurso}
+                  obras={enCursoConAdicionales}
                   veEconomia={veEconomia}
                   economia={economia}
                   papeles={papeles}
@@ -636,42 +672,53 @@ export default async function ClientePage({ params, searchParams }: {
 
             {solapa === 'documentos' && (
               <>
-                {/* LOS PAPELES DEL CLIENTE, POR TIPO, ARRIBA DEL ÍNDICE DE DRIVE. No son un archivo
-                    más de la carpeta: son los documentos que encargan y pagan el trabajo, y viven
-                    en el OS (bucket privado), no en Drive. */}
-                <PapelesPorTipo
-                  papeles={papeles}
-                  veEconomia={veEconomia}
-                  nombreDeObra={(obraId) => nombreDeObra.get(obraId) ?? obraId}
+                {/* ═══ UNA SOLA JERARQUÍA (dueño, 11/09/2026 17:50) ═══
+
+                    «El CRM dice documentos de drive (0) y está pésimo eso» · «no se entiende nada
+                    realmente la UX de esa sección documentos».
+
+                    Eran CINCO bloques de primer nivel con el mismo peso visual —papeles por tipo,
+                    «Documentos de Drive · N», vínculos manuales, documentos subidos y el índice de
+                    la carpeta— y el mismo PDF podía estar en tres. Ahora es un árbol: trabajo →
+                    adicional → categoría → archivo, y al final sólo lo que quedó afuera de alguna
+                    obra. Qué se dibuja y qué se descarta lo decide `armarCaraDocumentos`, que es
+                    puro y tiene sus tests; acá sólo se le pasan las listas que ya trajo la RPC. */}
+                <CaraDeDocumentos
+                  cara={cara}
+                  truncado={archivosDrive?.truncado ?? false}
+                  carpetaDelClienteHref={cliente.drive_carpeta_id
+                    ? `https://drive.google.com/drive/folders/${cliente.drive_carpeta_id}`
+                    : null}
+                  vinculados={cara.vinculados.length > 0
+                    ? (
+                        <div style={{ paddingLeft: 16, paddingTop: 14 }} data-testid="papeles-vinculados">
+                          <p style={{ fontSize: '11px', letterSpacing: '.06em', textTransform: 'uppercase', color: V.tenue, padding: '6px 0 2px' }}>
+                            Vinculados a mano · {cara.vinculados.length}
+                          </p>
+                          <BloqueDocumentos
+                            menuAbierto={q.accDoc ?? null}
+                            urlMenuDe={(d) => url({ accDoc: d })}
+                            documentos={cara.vinculados}
+                            carpetaDriveId={cliente.drive_carpeta_id}
+                            vincular={vincularDocumentoCliente.bind(null, id)}
+                            clasificar={(f) => clasificarDocumentoCliente.bind(null, id, f)}
+                            desvincular={desvincularDocumentoCliente.bind(null, id)}
+                            puedeEditar={puedeEditar}
+                            todo={q.documentos === 'todo'}
+                            urlTodo={url({ documentos: 'todo' })}
+                            urlPoco={url({ documentos: null })}
+                          />
+                        </div>
+                      )
+                    : null}
+                  extra={subidos && subidos.filas.length > 0
+                    ? (
+                        <div style={{ marginTop: 24 }}>
+                          <DocumentosSubidos datos={subidos} tipo="cliente" entidadId={id} testid="cliente-documentos-subidos" />
+                        </div>
+                      )
+                    : null}
                 />
-                <p style={{ fontSize: '11px', letterSpacing: '.06em', textTransform: 'uppercase', color: V.tenue, padding: '6px 0 4px' }}>
-                  Documentos de Drive · {lector.leer(documentos, []).length}
-                </p>
-              <BloqueDocumentos
-                menuAbierto={q.accDoc ?? null}
-                urlMenuDe={(d) => url({ accDoc: d })}
-                documentos={lector.leer(documentos, [])}
-                carpetaDriveId={cliente.drive_carpeta_id}
-                vincular={vincularDocumentoCliente.bind(null, id)}
-                clasificar={(f) => clasificarDocumentoCliente.bind(null, id, f)}
-                desvincular={desvincularDocumentoCliente.bind(null, id)}
-                puedeEditar={puedeEditar}
-                todo={q.documentos === 'todo'}
-                urlTodo={url({ documentos: 'todo' })}
-                urlPoco={url({ documentos: null })}
-              />
-              {subidos && (
-                <div style={{ marginTop: 32 }}>
-                  <DocumentosSubidos datos={subidos} tipo="cliente" entidadId={id} testid="cliente-documentos-subidos" />
-                </div>
-              )}
-              {archivosDrive && (
-                <div style={{ marginTop: 32 }}>
-                  <ArchivosDeDrive
-                    datos={archivosDrive} tipo="cliente" rol={rol} testid="cliente-archivos-drive"
-                  />
-                </div>
-              )}
               </>
             )}
 

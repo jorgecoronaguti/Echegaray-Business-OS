@@ -17,12 +17,19 @@ import { millones } from '@/shared/components/canon/formato'
 import { SIN_PRECIO_EN_OBRAS } from '../services/economiaObras'
 import type { Consolidado } from '../services/obrasAdicionales'
 
-/** «+ $ 10,0 M · 1 adicional = $ 112,5 M», o qué falta para poder decirlo. */
+/**
+ * «+1 adicional · $ 112,5 M», o qué falta para poder decirlo.
+ *
+ * CORTA, PORQUE LA PISTA MIDE 150px. Medido en el navegador el 11/09/2026: la primera versión
+ * escribía «+ $ 10,0 M · 1 adicional = $ 112,5 M» (34 caracteres) y el renglón se salía de su
+ * columna por encima del cobrado de la izquierda. El desglose completo —cuánto es lo propio y
+ * cuánto el adicional— vive en el `title`, que es donde va la trazabilidad bajo demanda.
+ */
 export function frase(c: Consolidado): string | null {
   if (!c.n) return null
-  const cuantos = `${c.n} adicional${c.n > 1 ? 'es' : ''}`
-  if (c.total === null || c.adicionales === null) return `+ ${cuantos} sin precio`
-  return `+ ${millones(c.adicionales)} · ${cuantos} = ${millones(c.total)}`
+  const cuantos = `+${c.n} adicional${c.n > 1 ? 'es' : ''}`
+  if (c.total === null || c.adicionales === null) return `${cuantos} sin precio`
+  return `${cuantos} · ${millones(c.total)}`
 }
 
 export function ContratadoDeLaFicha({ contratado, cerrada, consolidado }: {
@@ -34,11 +41,15 @@ export function ContratadoDeLaFicha({ contratado, cerrada, consolidado }: {
   const linea = frase(consolidado)
   return (
     <span
-      className="grid justify-items-end"
+      className="grid justify-items-end overflow-hidden"
+      style={{ minWidth: 0 }}
       data-testid="contratado-obra-cliente"
       data-adicionales={consolidado.n || undefined}
       title={consolidado.n
-        ? `Este trabajo tiene ${consolidado.n} adicional(es) con su propia OC. Arriba va SÓLO lo suyo —para que la columna siga sumando el contratado del cliente— y debajo el consolidado.`
+        ? `Este trabajo tiene ${consolidado.n} adicional(es) con su propia OC. Arriba va SÓLO lo suyo `
+          + `(${consolidado.propio === null ? 'sin precio' : plata(consolidado.propio)}) para que la columna siga sumando el contratado del cliente; `
+          + `debajo, el consolidado con sus adicionales`
+          + `${consolidado.adicionales === null ? ` (no se puede: ${consolidado.sinPrecio} sin precio)` : ` (+ ${plata(consolidado.adicionales)})`}.`
         : undefined}
     >
       <span

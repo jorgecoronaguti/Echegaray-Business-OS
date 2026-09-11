@@ -493,3 +493,47 @@ test('sin permiso económico la celda del importe dice el literal del zip, y NAD
       `la rama sin permiso dibuja \`${filtrado}\`: se rebajó el filtro, no se cambió la palabra`)
   }
 })
+
+// ═══ MOVER UNA FILA DE GRUPO NO PUEDE CAMBIAR UNA CIFRA DE PLATA (11/09/2026) ═══
+//
+// EL DEFECTO QUE ATRAPA, medido en el navegador: cuando el adicional pasó a viajar al grupo de su
+// obra mayor, «BSA - Adicional» —cerrada y sin precio— entró al grupo «en curso» de Messina y la
+// regla de «o suma completa o nada» volvió `null` el CONTRATADO EN CURSO: la cifra pasó de
+// $ 159.758.209 a «sin precio en OBRAS» sin que ninguna obra hubiera cambiado de precio.
+//
+// La separación es la que arregla eso: `enCursoConAdicionales` es el GRUPO que se dibuja y `enCurso`
+// el universo ECONÓMICO que se suma. Si alguien vuelve a sumar el grupo, esto se pone rojo.
+test('la cifra del cliente suma las obras EN EJECUCIÓN, no el grupo que se dibuja', () => {
+  const src = codigoPagina()
+  assert.match(src, /const enCurso = todas\.filter\(\(o\) => o\.estado === 'activa'\)/,
+    'el universo económico dejó de ser «las obras activas»')
+  assert.match(src, /obras=\{enCursoConAdicionales\}/,
+    'la tabla dejó de recibir el grupo con los adicionales, o el grupo volvió a ser el que se suma')
+  assert.match(src, /basesEnCurso = enCurso\.map\(\(o\) => baseContractualDe\(economia\?\.get\(o\.obra_id\)\)\)/)
+})
+
+// ═══ LA CARA DOCUMENTOS ES UNA JERARQUÍA, NO CINCO BLOQUES (dueño, 11/09/2026 17:50) ═══
+//
+// «El CRM dice documentos de drive (0) y está pésimo eso, arreglar» · «no se entiende nada realmente
+// la UX de esa sección documentos». Eran cinco bloques de primer nivel con el mismo peso visual y el
+// mismo PDF podía estar en tres. Lo que estos dos tests atrapan es la vuelta atrás: que el rótulo
+// «Documentos de Drive · N» —el que decía 0 con 226 archivos abajo— vuelva a escribirse, y que el
+// número de la solapa vuelva a contar una cosa distinta de la que se dibuja.
+test('la cara Documentos no vuelve a escribir «Documentos de Drive»', () => {
+  const src = codigoPagina()
+  assert.doesNotMatch(src, /Documentos de Drive/,
+    'volvió el rótulo que publicaba un conteo que no era el de lo que se ve')
+  assert.doesNotMatch(src, /<PapelesPorTipo/,
+    'los papeles del OS volvieron a su propio bloque: van ADENTRO de la obra a la que pertenecen')
+  assert.doesNotMatch(src, /<ArchivosDeDrive/,
+    'volvió el índice completo de la carpeta del cliente como bloque de primer nivel')
+  assert.match(src, /<CaraDeDocumentos/)
+})
+
+test('el N de la solapa es lo que se dibuja adentro, no un conteo aparte', () => {
+  const src = codigoPagina()
+  assert.match(src, /documentos: ficha\.nDocumentos/,
+    'el contador de la solapa dejó de salir de la RPC, que lo cuenta sobre las mismas cuatro fuentes')
+  assert.doesNotMatch(src, /ficha\.nDocumentos \+ nPapeles/,
+    'volvió la suma que contaba dos veces los papeles con PDF y ninguna vez los de las obras')
+})
