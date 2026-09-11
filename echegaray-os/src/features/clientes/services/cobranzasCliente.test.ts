@@ -8,8 +8,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agruparCobranzas, comprobanteDe, estadoDe, proximoCobro, recortar, totalesDeCobranzas,
-  type FilaCobranza,
+  agruparCobranzas, comprobanteDe, COLUMNA_INEXISTENTE, esRenglonDeIva, estadoDe, getCobranzasDelCliente,
+  ordenarPorCobro, ordenDeLaFila,
+  partirEnSecciones, proximoCobro, recortar, seccionDe, totalDeFilas, totalesDeCobranzas,
+  totalPorCircuito, vencidoDeFilas, type FilaCobranza,
 } from './cobranzasCliente.ts'
 import { COBRANZAS_MESSINA, COBRANZAS_QUATTROPANI } from './cobranzasReales.fixture.ts'
 
@@ -141,4 +143,139 @@ test('el estado de una fila es UNO, y el peor manda', () => {
   assert.equal(estadoDe({ ...base, esta_cobrada: false, esta_vencida: false, esta_cancelada: false }), 'pendiente')
   // Una fila anulada NO puede leerse como cobrada aunque la réplica traiga la marca puesta.
   assert.equal(estadoDe({ ...base, esta_cobrada: true, esta_cancelada: true }), 'anulado')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL REDISEÑO DEL 11/09/2026 — las reglas que hacen que la pantalla se pueda entender
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('las tres secciones parten la pestaña: ninguna fila se duplica ni se pierde', () => {
+  for (const filas of [COBRANZAS_MESSINA, COBRANZAS_QUATTROPANI]) {
+    const s = partirEnSecciones(filas)
+    assert.equal(s.porCobrar.length + s.cobrado.length + s.anuladas.length, filas.length)
+    const ids = new Set([...s.porCobrar, ...s.cobrado, ...s.anuladas].map((f) => f.cobranza_id))
+    assert.equal(ids.size, filas.length, 'una fila cayó en dos secciones')
+  }
+})
+
+test('una fila anulada nunca entra en «cobrado», aunque la réplica la traiga cobrada', () => {
+  const f: FilaCobranza = { ...COBRANZAS_MESSINA[0], esta_cancelada: true, esta_cobrada: true }
+  assert.equal(seccionDe(f), 'anulada')
+  assert.equal(partirEnSecciones([f]).cobrado.length, 0)
+})
+
+test('EL TOTAL DE UN BLOQUE ES LA SUMA DE SUS RENGLONES VISIBLES — el defecto que el dueño marcó', () => {
+  // «facturado $78,0 M» arriba de renglones que sumaban $114,9 M. Pasaba porque el encabezado
+  // mezclaba denominadores. Ahora el total de una sección es, por construcción, `totalDeFilas`.
+  for (const filas of [COBRANZAS_MESSINA, COBRANZAS_QUATTROPANI]) {
+    const s = partirEnSecciones(filas)
+    const t = totalesDeCobranzas(filas)
+    assert.equal(Math.round(totalDeFilas(s.porCobrar) ?? 0), Math.round(t.pendiente ?? 0))
+    assert.equal(Math.round(totalDeFilas(s.cobrado) ?? 0), Math.round(t.cobrado ?? 0))
+    // Y los dos circuitos de un bloque suman el bloque entero: B + N = total, sin resto.
+    for (const bloque of [s.porCobrar, s.cobrado]) {
+      const { b, n } = totalPorCircuito(bloque)
+      assert.equal(Math.round((b ?? 0) + (n ?? 0)), Math.round(totalDeFilas(bloque) ?? 0))
+    }
+    // Lo vencido vive dentro de lo que falta cobrar y en ningún otro lado.
+    assert.equal(Math.round(vencidoDeFilas(s.porCobrar) ?? 0), Math.round(t.vencido ?? 0))
+    assert.equal(vencidoDeFilas(s.cobrado), null, 'una fila cobrada no puede estar vencida')
+  }
+})
+
+test('un bloque sin ninguna fila que aporte da null, nunca cero', () => {
+  assert.equal(totalDeFilas([]), null)
+  assert.deepEqual(totalPorCircuito([]), { b: null, n: null })
+  assert.equal(vencidoDeFilas([]), null)
+})
+
+test('la agenda ordena por fecha de cobro y deja sin fecha al final en los dos sentidos', () => {
+  const base = COBRANZAS_MESSINA[0]
+  const filas: FilaCobranza[] = [
+    { ...base, cobranza_id: 'c', fecha_cobro: '2026-10-09' },
+    { ...base, cobranza_id: 'sin', fecha_cobro: null },
+    { ...base, cobranza_id: 'a', fecha_cobro: '2026-09-22' },
+  ]
+  assert.deepEqual(ordenarPorCobro(filas, 'asc').map((f) => f.cobranza_id), ['a', 'c', 'sin'])
+  assert.deepEqual(ordenarPorCobro(filas, 'desc').map((f) => f.cobranza_id), ['c', 'a', 'sin'])
+  // Y no muta el arreglo que recibe: la lista de la pantalla se dibuja dos veces por sección.
+  assert.equal(filas[0].cobranza_id, 'c')
+})
+
+test('la columna ORDEN DE COMPRA se parte en número y condición comercial', () => {
+  assert.deepEqual(ordenDeLaFila('00002-00000279'), { oc: '279', condicion: null })
+  assert.deepEqual(ordenDeLaFila('00002-00002226 · cta. cte. 15 días'),
+    { oc: '2226', condicion: 'cta. cte. 15 días' })
+  assert.deepEqual(
+    ordenDeLaFila('Resto 50% s/ total 65.000.000 — certificación quincenal 1/2 · OC 00002-00002173'),
+    { oc: '2173', condicion: 'Resto 50% s/ total 65.000.000 — certificación quincenal 1/2' },
+  )
+  // SIN NÚMERO: el texto entero es la condición y NO se tira. «Cargar OC» es trabajo pendiente.
+  assert.deepEqual(ordenDeLaFila('Anticipo inicio de obra 50% Negro. Cargar OC'),
+    { oc: null, condicion: 'Anticipo inicio de obra 50% Negro. Cargar OC' })
+  assert.deepEqual(
+    ordenDeLaFila('Resto 50% s/ contrato U$S 63.000 + IVA — certificación quincenal 1/9 -  ($1503,6*USD3500)'),
+    { oc: null, condicion: 'Resto 50% s/ contrato U$S 63.000 + IVA — certificación quincenal 1/9 - ($1503,6*USD3500)' },
+  )
+  assert.deepEqual(ordenDeLaFila(null), { oc: null, condicion: null })
+  assert.deepEqual(ordenDeLaFila('   '), { oc: null, condicion: null })
+})
+
+test('cada fila real del fixture conserva su información: o número, o condición, o las dos', () => {
+  // LA REGLA QUE IMPIDE QUE EL PARSER SE COMA UN DATO: ningún campo no vacío puede quedar en nada.
+  for (const f of [...COBRANZAS_MESSINA, ...COBRANZAS_QUATTROPANI]) {
+    const crudo = (f.orden_compra ?? '').trim()
+    if (!crudo) continue
+    const { oc, condicion } = ordenDeLaFila(crudo)
+    assert.ok(oc || condicion, `«${crudo}» se perdió entera`)
+  }
+})
+
+test('un renglón que es el IVA de otra factura se reconoce, y una venta no', () => {
+  assert.ok(esRenglonDeIva('IVA de Factura 220'))
+  assert.ok(esRenglonDeIva('IVA de FC A 0001-00000230 (cert. avance USD 3.500)'))
+  assert.ok(!esRenglonDeIva('Salón Comercial - Certificación 2/9'))
+  assert.ok(!esRenglonDeIva('IVA'))
+  assert.ok(!esRenglonDeIva(null))
+})
+
+// ═══ LA LECTURA NO SE CAE POR UNA COLUMNA QUE TODAVÍA NO EXISTE ═══
+
+/** Un `supabase` de mentira que responde distinto según las columnas que le pidan. */
+function supabaseFalso(respuestas: { columnas: string; resultado: unknown }[]) {
+  const pedidos: string[] = []
+  const cliente = {
+    from() { return cliente },
+    select(columnas: string) { pedidos.push(columnas); return cliente },
+    eq() { return cliente },
+    order() {
+      const pedida = pedidos[pedidos.length - 1]
+      const r = respuestas.find((x) => pedida.includes(x.columnas))
+      return Promise.resolve(r ? r.resultado : { data: null, error: { code: 'otro' } })
+    },
+  }
+  return { cliente, pedidos }
+}
+
+test('si la vista no tiene las columnas del respaldo, se reintenta sin ellas', async () => {
+  // Medido el 11/09/2026: con la migración 20260911T0920 sin aplicar, la solapa entera de un
+  // cliente con 24 cobranzas se dibujaba como «no pude leer las cobranzas».
+  const fila = { ...COBRANZAS_MESSINA[0] }
+  const { cliente, pedidos } = supabaseFalso([
+    { columnas: 'respaldo_drive_id', resultado: { data: null, error: { code: COLUMNA_INEXISTENTE } } },
+    { columnas: 'forma_cobro', resultado: { data: [fila], error: null } },
+  ])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const filas = await getCobranzasDelCliente(cliente as any, 'messina')
+  assert.equal(filas?.length, 1)
+  assert.equal(pedidos.length, 2, 'tiene que haber reintentado exactamente una vez')
+  assert.ok(!pedidos[1].includes('respaldo_drive_id'))
+})
+
+test('un fallo que NO es una columna faltante sigue devolviendo null, no una lista vacía', () => {
+  const { cliente } = supabaseFalso([
+    { columnas: 'cobranza_id', resultado: { data: null, error: { code: '42501' } } },
+  ])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return getCobranzasDelCliente(cliente as any, 'messina').then((r) => assert.equal(r, null))
 })

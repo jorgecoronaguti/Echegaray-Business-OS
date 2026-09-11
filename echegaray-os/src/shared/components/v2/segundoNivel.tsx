@@ -248,6 +248,13 @@ export interface CifraDeFicha {
   valor: string | number | null
   falta?: string
   tono?: 'warn' | 'neg' | 'pos'
+  /**
+   * LA DEFINICIÓN DE LA CIFRA, bajo demanda. Un rótulo de una o dos palabras —«Facturado (B)»,
+   * «Por cobrar»— no puede cargar solo con decir qué suma y en qué criterio; y la regla del módulo
+   * prohíbe clavar el párrafo debajo del número. Va al `title`, que es donde el OS pone la
+   * trazabilidad. Opcional: la tira la usan nueve fichas y ninguna se toca desde acá.
+   */
+  titulo?: string
 }
 
 const TONO_CIFRA = { warn: V.warn, neg: V.neg, pos: '#067647' } as const
@@ -272,7 +279,7 @@ export function CifrasDeFicha({ cifras, testid = 'cifras-ficha' }: {
       }}
     >
       {cifras.map((c) => (
-        <div key={c.rotulo} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div key={c.rotulo} title={c.titulo} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span
             style={{
               fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em',
