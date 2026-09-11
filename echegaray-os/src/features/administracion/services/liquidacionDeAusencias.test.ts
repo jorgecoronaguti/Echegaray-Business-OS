@@ -117,3 +117,47 @@ test('una licencia con motivo que paga se liquida con la cifra guardada', () => 
 test('un día sin nada cargado vale cero horas', () => {
   assert.equal(horasLiquidablesDelDia([]), 0)
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// UN DÍA NO TRABAJADO VALE UN DÍA, NO LA SUMA DE LAS FILAS QUE LO DECLARAN (R4)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ ESTO PUEDE PASAR EN LA BASE REAL, medido el 11/09/2026: el índice único
+// `registros_hh_persona_unico` es sobre (obra_canonica_id, persona_id, fecha, actividad, tipo_hora,
+// improductiva, causa_desvio) y en Postgres dos NULL no chocan. Las ausencias y las licencias son,
+// por definición, las filas que NO llevan obra — siete de la 1ª quincena de septiembre de 2026 están
+// en esa condición—, así que son exactamente las que la base deja insertar dos veces.
+//
+// Con el `reduce` que sumaba, dos licencias «accidente» de 9 h liquidaban 18 h de un solo día.
+
+test('DOS DECLARACIONES DEL MISMO DÍA NO SE SUMAN: nadie está ausente dos veces', () => {
+  const dia = [
+    { tipo_hora: 'licencia', horas: '9', notas: 'accidente' },
+    { tipo_hora: 'licencia', horas: '9', notas: 'accidente' },
+  ]
+  // EL DEFECTO QUE ATRAPA: 18. Un día de nueve horas pagado dos veces.
+  assert.equal(horasLiquidablesDelDia(dia), 9)
+})
+
+test('ENTRE DOS DECLARACIONES GANA LA QUE RECONOCE MÁS HORAS', () => {
+  // Quedarse con la primera o con la menor le pagaría de menos a alguien por un duplicado que no
+  // creó él. La corrección hacia arriba es la que alguien escribió a propósito.
+  assert.equal(horasLiquidablesDelDia([
+    { tipo_hora: 'licencia', horas: '4', notas: 'enfermedad' },
+    { tipo_hora: 'licencia', horas: '9', notas: 'enfermedad' },
+  ]), 9)
+  // Y una declaración que no paga sigue valiendo 0 aunque tenga horas guardadas al lado.
+  assert.equal(horasLiquidablesDelDia([
+    { tipo_hora: 'ausencia', horas: '9', notas: 'falta' },
+    { tipo_hora: 'ausencia', horas: '9', notas: null },
+  ]), 0)
+})
+
+test('LO TRABAJADO SIGUE SUMANDO ENTRE OBRAS: el control puede decir sí', () => {
+  // Si «no suma nunca» fuera la regla, la persona que repartió el día entre dos obras cobraría la
+  // mitad. Este test es el que impide que el arreglo de arriba se coma el caso legítimo.
+  assert.equal(horasLiquidablesDelDia([
+    { tipo_hora: 'normal', horas: '5', notas: null },
+    { tipo_hora: 'normal', horas: '3.8', notas: null },
+  ]), 8.8)
+})

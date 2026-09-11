@@ -21,6 +21,12 @@ import { interpretarCarga, FORMA } from './horas-extra.mjs'
 
 export const FUENTE = 'sheet:jornales'
 export const HORAS_MAX_DIA = 24
+/**
+ * EL PROMEDIO VIEJO. NO se usa para decidir horas: quedó como referencia del dato histórico que ya
+ * está escrito en `registros_hh` con este número (las ausencias importadas antes del 11/09/2026).
+ * La jornada que rige hoy es la del DÍA —9 de lunes a jueves, 8 los viernes— y vive en
+ * `src/features/administracion/services/jornadaPorDefecto.ts`, una sola vez.
+ */
 export const JORNADA_DEFAULT = 8.8
 const UUID_CERO = '00000000-0000-0000-0000-000000000000'
 
@@ -77,13 +83,20 @@ export function marcasDeGrid(grid, { pestana, anio } = {}) {
 
 /**
  * Qué dice una celda diaria en términos de `registros_hh.tipo_hora`.
- *   0        → ausencia (horas = jornada de la obra; la base exige horas > 0, igual que la web)
+ *   0        → ausencia de 0 HORAS. Un día que la planilla marca con 0 no se paga, y la planilla lo
+ *              cuenta igual: la columna «Hs» de Obreros 26 suma 9+9+0+8+12+9+9+9 = 65 para Alaniz en
+ *              la 1ª de septiembre de 2026, no 73,8. Hasta hoy esta rama escribía la JORNADA de la
+ *              obra —8,8 h, el promedio que el dueño mandó borrar el 08/09/2026— porque
+ *              `registros_hh_horas_check` exigía `horas > 0`. La migración
+ *              `20260908T2400_ausencia_cero_horas` lo permite y el CHECK vigente en producción hoy
+ *              es `horas > 0 OR (tipo_hora IN ('ausencia','licencia') AND horas = 0)`: el 8,8 dejó
+ *              de ser obligatorio y era lo único que lo sostenía.
  *   n        → normal n
  *   =a+b     → normal a + extra b (el recargo no está declarado: se dice en `detalle`)
  *   =a+c*k   → normal a + extra c, con k=1,5 → extra_50 · k=2 → extra_100 · otro k → extra_50 y se declara
  *   otra cosa → null: la celda no se traduce y quien llama la reporta.
  */
-export function partesDeCelda(celda, { jornada = JORNADA_DEFAULT, licencia = false } = {}) {
+export function partesDeCelda(celda, { licencia = false } = {}) {
   const c = interpretarCarga(celda)
   if (c.forma === FORMA.VACIA) return []
   if (c.forma === FORMA.TEXTO || c.forma === FORMA.ERROR) return null
@@ -92,7 +105,10 @@ export function partesDeCelda(celda, { jornada = JORNADA_DEFAULT, licencia = fal
     if (!(c.total > 0)) return null
     return [{ tipo_hora: licencia ? 'licencia' : 'normal', horas: c.total, detalle: `fórmula no descompuesta ${c.formula_original}` }]
   }
-  if (c.total === 0) return [{ tipo_hora: 'ausencia', horas: jornada, detalle: null }]
+  // CERO ES CERO. No se reemplaza por la jornada: ni la liquidación la paga (`motivoPaga(null)` es
+  // falso) ni la planilla la suma, así que escribir 8,8 sólo conseguía que el número guardado
+  // contradijera a las dos fuentes que lo explican.
+  if (c.total === 0) return [{ tipo_hora: 'ausencia', horas: 0, detalle: null }]
   if (licencia) return [{ tipo_hora: 'licencia', horas: c.total, detalle: null }]
   const out = []
   if (c.normales > 0) out.push({ tipo_hora: 'normal', horas: c.normales, detalle: null })
@@ -216,7 +232,11 @@ const notaNoTrabajado = (parte, m) => (parte.tipo_hora === 'licencia' && /enferm
  * para que el dueño decida: personas sin legajo (con días), obras sin resolver (con horas), celdas
  * que no son horas. Las filas del mismo (persona, fecha, obra, tipo) se funden sumando horas.
  */
-export function planDeRegistros(marcas, { personas, resolver, asignaciones = [], jornadaPorObra = new Map() }) {
+// `jornadaPorObra` YA NO SE RECIBE. Lo usaba la rama del 0 para escribir la jornada de la obra en una
+// ausencia; ahora el 0 vale 0 y nada más necesita una jornada de referencia. El script sigue
+// pasándolo y no molesta (una propiedad de más en el objeto de opciones se ignora); se saca de la
+// firma para que nadie crea que todavía decide algo.
+export function planDeRegistros(marcas, { personas, resolver, asignaciones = [] }) {
   const indice = indicePersonas(personas)
   const cachePersona = new Map()
   const ultimaObra = new Map()
@@ -231,8 +251,10 @@ export function planDeRegistros(marcas, { personas, resolver, asignaciones = [],
     const licencia = esLicencia(m)
     const contexto = { asignacion: asignacionVigente(asignaciones, pid, m.fecha), ultima: ultimaObra.get(pid) ?? null }
     const res = resolver(licencia ? { cliente: '', obra: '' } : { cliente: m.cliente, obra: m.obra }, contexto)
-    const jornada = jornadaPorObra.get(res.obra_id) ?? JORNADA_DEFAULT
-    const partes = partesDeCelda(m.celda, { jornada, licencia })
+    // LA JORNADA DE LA OBRA YA NO DECIDE NADA ACÁ: la usaba sólo la rama del 0, que ahora escribe 0
+    // horas. `jornadaPorObra` se conserva en la firma porque es el catálogo que el script ya lee y
+    // porque el día que haga falta una jornada de referencia va a salir de ahí y no de un promedio.
+    const partes = partesDeCelda(m.celda, { licencia })
     if (partes === null) { falta.celdas.push({ ...sinCelda(m), valor: m.celda.formula ?? m.celda.valor_crudo }); continue }
     if (partes.length === 0) continue
     if (!res.obra_id) { acumularObra(falta.obras, m, emp.persona, partes); continue }

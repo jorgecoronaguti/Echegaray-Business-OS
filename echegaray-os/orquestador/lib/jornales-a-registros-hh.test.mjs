@@ -69,8 +69,22 @@ test('marcasDeGrid: una marca por celda ESCRITA; la vacía no existe; el bloque 
   assert.equal(r.hallazgos[0].tipo, FALTA.BLOQUE_DESCARTADO)
 })
 
-test('partesDeCelda: 0 es ausencia con la jornada de la obra; n es normal; las fórmulas separan extras', () => {
-  assert.deepEqual(partesDeCelda({ escrita: true, valor_crudo: '0', horas: 0 }, { jornada: 8.8 }), [{ tipo_hora: 'ausencia', horas: 8.8, detalle: null }])
+// EL 0 DE LA PLANILLA SON CERO HORAS, Y LA PLANILLA LO CUENTA ASÍ.
+//
+// Cotejo de «Obreros 26», 1ª quincena de septiembre de 2026, contra la columna «Hs» que la propia
+// planilla suma (leída el 11/09/2026): Alaniz tiene 9 · 9 · 0 · 8 · 12 · 9 · 9 · 9 y la planilla
+// escribe 65. Con la regla vieja —el 0 se escribía como la jornada de la obra, 8,8 h— la base
+// guardaba 73,8 para el mismo día. No se pagaba (la liquidación re-valoriza por motivo y un motivo
+// vacío no paga), pero el número guardado contradecía a la planilla y a la liquidación, y era
+// exactamente el «8,8» que el dueño mandó borrar el 08/09/2026.
+//
+// El 8,8 existía porque `registros_hh_horas_check` exigía `horas > 0`. La migración
+// `20260908T2400_ausencia_cero_horas` ya lo permite; el CHECK vigente en producción al 11/09/2026 es
+// `horas > 0 OR (tipo_hora IN ('ausencia','licencia') AND horas = 0)`.
+test('partesDeCelda: 0 es una ausencia de CERO horas; n es normal; las fórmulas separan extras', () => {
+  assert.deepEqual(partesDeCelda({ escrita: true, valor_crudo: '0', horas: 0 }), [{ tipo_hora: 'ausencia', horas: 0, detalle: null }])
+  // Y no hay forma de pedirle que vuelva a inventar la jornada: la opción ya no existe.
+  assert.deepEqual(partesDeCelda({ escrita: true, valor_crudo: '0', horas: 0 }, { jornada: 8.8 }), [{ tipo_hora: 'ausencia', horas: 0, detalle: null }])
   assert.deepEqual(partesDeCelda({ escrita: true, valor_crudo: '9', horas: 9 }), [{ tipo_hora: 'normal', horas: 9, detalle: null }])
   const coef = partesDeCelda({ escrita: true, formula: '=4+3*1,5', valor_crudo: '8,5' })
   assert.deepEqual(coef.map((p) => [p.tipo_hora, p.horas]), [['normal', 4], ['extra_50', 3]])
@@ -133,7 +147,9 @@ test('planDeRegistros: filas por persona × día × obra × tipo; lo que no se t
   const aguero = filas.filter((f) => f.persona_id === 'p-aguero').sort((a, b) => a.fecha.localeCompare(b.fecha) || a.tipo_hora.localeCompare(b.tipo_hora))
   assert.deepEqual(aguero.map((f) => [f.fecha, f.tipo_hora, f.horas, f.obra_canonica_id]), [
     ['2026-05-04', 'normal', 9, 'sf-mamposteria'], ['2026-05-05', 'normal', 9, 'sf-mamposteria'],
-    ['2026-05-06', 'ausencia', 9, 'sf-mamposteria'],
+    // EL 0 DE LA PLANILLA VALE 0, aunque la obra tenga jornada 9 cargada: `jornadaPorObra` ya no
+    // decide horas de una ausencia. Antes acá decía 9 y en producción escribía 8,8.
+    ['2026-05-06', 'ausencia', 0, 'sf-mamposteria'],
     ['2026-05-07', 'extra_50', 3, 'sf-mamposteria'], ['2026-05-07', 'licencia', 8, 'sf-mamposteria'], ['2026-05-07', 'normal', 4, 'sf-mamposteria'],
   ])
   const lic = aguero.find((f) => f.tipo_hora === 'licencia')
@@ -142,7 +158,10 @@ test('planDeRegistros: filas por persona × día × obra × tipo; lo que no se t
   assert.equal(aguero.find((f) => f.tipo_hora === 'ausencia').notas, null)
   assert.match(aguero[0].notas, /^JORNALES Obreros 26 f4 · JAVIER SANCHEZ · Mamposteria$/)
   assert.match(aguero.find((f) => f.tipo_hora === 'extra_50').notas, /=4\+3\*1,5/)
-  assert.ok(filas.every((f) => f.fuente_legacy === FUENTE && f.horas > 0))
+  // HORAS > 0 EN TODO LO QUE SE TRABAJÓ, Y 0 SÓLO DONDE LA PLANILLA ESCRIBIÓ 0. El CHECK de la base
+  // dice lo mismo: `horas > 0 OR (tipo_hora IN ('ausencia','licencia') AND horas = 0)`.
+  assert.ok(filas.every((f) => f.fuente_legacy === FUENTE))
+  assert.ok(filas.every((f) => f.horas > 0 || (f.tipo_hora === 'ausencia' && f.horas === 0)))
   assert.deepEqual(falta.personas.map((p) => [p.nombre, p.n_dias, p.horas]), [['Pablo Ramos', 4, 36]])
   assert.deepEqual(falta.obras.map((o) => [o.cliente, o.obra, o.horas, o.personas]), [['GAMA', 'GAMA', 36, ['QUIROGA SEBASTIAN ADOLFO']]])
   assert.equal(filas.filter((f) => f.persona_id === 'p-ochoa').length, 3, 'la celda vacía no genera fila')
