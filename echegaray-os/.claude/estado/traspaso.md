@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-10 ~19:35 (hora local −03) · main = producción_canonica encima) · producción = main_
+_actualizado: 2026-09-11 ~08:50 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -59,85 +59,52 @@ ensayo, `--aplicar`). Playwright anda sin root con las libs del scratchpad (`lib
 
 ## 4. ESTADO ACTUAL (10/09 17:05)
 
-- **Publicado hoy** (todo en main y producción; migraciones aplicadas): RU H1 (`cliente_economia`, `es_cobrada()`,
-  registro `definiciones.json` + test canónico) · solapa «Horas» · Clientes v4 (sin Margen, cobro neto, OC listadas
-  bajo cada obra con PDF, barra por obra TODO O NADA leyendo `obra_cobranza.imputacion`, sin párrafos, una tipografía)
-  · **cobro por obra** (`20260910T2330`: vista `cobranza_imputacion` + `obra_cobranza.imputacion` 'oc'|'alias'|'cliente',
-  alias nuevos en `obra_alias` con `en_texto_libre`; `20260910T2350` GRANT SELECT obra_canonica → authenticated: sin él
-  PostgREST daba 42501 y la columna Cobrado se apagaba) · OC en la ficha de obra (`OrdenesDeLaObra`) · portal 5 clientes
-  (`vivo.ts` lee `cobranzas` en vivo por `cobranza_fila`; «obra terminada» = `obra_canonica.estado`; Terminadas rehabilitada;
-  saludo; datos.sql aplicado; sync-esquema encadenado al servicio cobranzas-sync — nunca tuvo timer) · puente Drive H2
-  (`ArchivosDeDrive` en 4 fichas, `entidad_documento` + subida al bucket con cola a Drive `drive_estado`, `20260910T2210/2320`)
-  · clasificador OC (`20260910T2300` drive_file_id; ARCOR 148→40 OC; 107 `otro` sin importe) · cargas gremiales pagadas
-  desde el banco (`cargas-pagos-banco.mjs`) · perf tramo 1 (ficha cliente en una ola; `20260910T2340` RLS drive_index OR→CASE).
-- **Datos**: Cobranzas escrita por orden del dueño (Messina efectivo N 34/69/102; Quattropani 78/101 FA 230 + IVA; ARCOR 17 filas
-  H uniforme, I conceptos de OC, E facturas, O/Q 51/52/59 Pendiente 24/11, W refs; W51/52/59 OC 53376178) · Quattropani portal:
-  esquema fila 78 vinculada, IVA 101 publicada, FA 230 visible en Facturas · Drive: FC 230 Quattropani, nota Rodrigo Messina
-  (`14-oxfzzm6EHyObGysr8xjNJfDtBHyx2Z`), OC 2097 Messina, 40 OC ARCOR, comprobante UOCRA · `clientes.drive_carpeta_id` ARCOR y
-  San Francisco; `messina-bsa`/`messina-pisos-120-rampa` heredaron carpeta · `esquema_pago` Quattropani 61/63 ocultas, SF 94/95 obra.
-- **Rendimiento (medido 16:30–16:55, sesión real)**: /clientes ~10 s, /clientes/messina 10,6 s, /obras/<slug> 8–12 s, Personal 1 s.
-  Causa medida: arranque en frío del catálogo por CONEXIÓN (~800 ms planning), multiplicado por consultas paralelas y funciones
-  Vercel nuevas; Supabase con incidente «Unresponsive Projects» todo el día (fix global 19:41Z). Solución de fondo pendiente:
-  UNA consulta/RPC por pantalla; `getNovedades` dispara 7 consultas post-hidratación en toda ruta.
-- Pipeline Flujo de Caja en rojo por 3 auditores de presentación (preexistente). `orq:test` 19–21 rojos preexistentes
-  (incluye `obra_panel` sin security_invoker → mirar).
+- ## 4. ESTADO ACTUAL (11/09 08:50)
+
+- **Producción** (Vercel + Supabase): main = último merge de `fix/crm-barra-unica` (solapa Órdenes, obra_contrato, desglose de 8 obras). La tabla de Clientes v5 (cinco columnas) está commiteada en la rama, en auditoría, SIN publicar todavía.
+- **Supabase**: incidente «Unresponsive Projects» (major) hoy 06:19Z→monitoreo; a las 08:2x producción medía /clientes 23 s y a las 08:40 2,2 s. La RPC `pantalla_clientes()` tarda 0,2–1,3 s desde la VM. La lentitud intermitente es del proveedor, no del código.
+- **Pipeline Flujo de Caja**: el libro `_MOVIMIENTOS` no corría desde 10/09 17:01 (`chequesPorCompras is not defined`, commit b316b907); corregido en dcd4a3f8 y en producción 08:05. Corrida 08:50 pendiente de verificar (agente consistencia).
+- **Sheet Cobranzas**: verificado 07:56 celda por celda; nada pisado (Messina 34/69/102, Quattropani 78/101, ARCOR 51/52/59).
+- **Base canónica nueva**: `public.obra_contrato` (migración 20260911T0900) + datos de 8 obras (0910): Quattropani MO U$S 63.000 + materiales $44.110.169,31 (contrato docx 1glixkTWr5HDDKdzsniqoBJLZias5DLn9); 7 obras Messina/SF 100 % MO con cita de la cotización; BSA sin desglose (no se inventa). `cobranza_comprobante` (0920, en rama, SIN aplicar) ata la nota de Rodrigo a las filas 34/69/102.
 
 ## 5. TRABAJO DE ESTA SESIÓN
 
-Ver §4. Reclamos del dueño resueltos con evidencia: Clientes (fuente única, OC por obra, barra por obra), portal, ARCOR, UOCRA,
-Quattropani FC 230, Messina nota/cuadre (sin duplicaciones; +$8,95 M en negro de Bases tanque SO2 sin papel), cash flow cierre.
+Ver §4. Agentes en curso al cierre: auditor de la cartera v5 · Liquidación (rama fix/liquidacion-editable-y-panel, retomado) · consistencia Flujo de Fondos (informe 10/09 18:35 → resolver) · extracto bancario 13/07–10/09 (/tmp/claude-1001/banco-1109/descargaUltimosMovimientos-47.csv) · UX solapa Cobranzas (rama feat/cobranzas-cliente-ux, nace de fix/crm-barra-unica).
 
 ## 6. PENDIENTES REALES
 
-**Publicado además desde las 17:05**: lector OBRAS/Cobranzas por obra (`20260910T2355/2356`: `obra_economia_cartera.origen
-'oc-cliente'`+`referencia`+`nota`+`oc_civa_ventana/historico`, TC vivo en `public.tipo_cambio`, vista `public.obra_cuenta` =
-columnas de OBRAS por obra: cobrado_total/neto, por_cobrar, vencido, próximo cobro) · Clientes CRM v1 (d436d522) · RPC una
-consulta por pantalla (`20260911T0010/0020/0030/0040`: `pantalla_clientes()`, `campanita_atencion()`, `pantalla_cliente()`;
-/clientes 16→3 viajes, ficha 24→3) · OC en ficha de obra · portal 5 clientes · cargas gremiales desde banco · Drive H2.
-**Decisión del dueño 17:15**: Administración = CRM (clientes/personal/proveedores/compras), Obras = ERP descuidado; nada de
-costos/ERP en Clientes; columnas pedidas para /clientes: Cliente+trabajos con OC · Obras · OC · OP · Contratado · Cobrado (total
-c/IVA, barra admin). 18:20: sección «Cobranzas» por cliente en la ficha con toda la pestaña organizada por trabajo y OC.
-18:25: «prohibido dejar de trabajar» → ciclo ScheduleWakeup activo.
+**P0 (agentes en curso)**
+- Cartera v5: veredicto del auditor → merge `fix/crm-barra-unica` → aplicar 20260911T0920 desde main → push → pull producción → captura en producción.
+- Liquidación: merge y publicación (panel derecho, edición, ZZ-E2E fuera, <4 s).
+- Consistencia Flujo de Fondos: pares 21 (cheques $8,2 M), 5, 22, 23; verificar corrida 08:50 (libro ✓, «· Impuestos», f136); post al dueño.
+- Extracto bancario: importar, cruces, marcas DEBITADO con --forzar-candado sólo con débito visible; post al dueño.
+- Solapa Cobranzas UX: rehacer por completo (pedido 11/09 08:45).
 
-**Publicado 18:40–19:35**: Clientes CRM final (73f950b0: 6 columnas — Cliente+trabajos con OC · Obras · OC · OP · Contratado ·
-Cobrado total c/IVA con barra —, sección «Cobranzas» por cliente agrupada por trabajo, vista `cliente_cobranza` `20260910T2359`,
-Quattropani U$S, sin ERP; la solapa Cobranzas es la única lectura fuera de la RPC `pantalla_cliente()`) · RLS obra_panel
-(`20260911T0100/0110`: `security_invoker` recuperado — rol campo veía 24 obras —, porteros como initplan, costos_obra 698→67 ms) ·
-campanita (`20260911T0120/0130`: `comprobante_cumple_filtro()` predicado compartido SQL≡TS, RPC devuelve conteos: 559 ms/76 KB →
-98 ms/0,25 KB) · solapa Horas de Liquidación payload 903→211 KB · fixes del pipeline (E74 vs BA39, impuesto al cheque, candado
-cheques ⏸, Proveedores firma, Compras colapsos, Parámetros inflación mm/dd → dd/mm, CAJA!H15, CAJA!C3, f136) · VENCIDO en la
-columna ancla (`condicionAncla`, CFM!M50 == CFS!BB50 esperado en la corrida de las 20:50). Tiempos 18:53 (sesión real):
-/clientes 1,5 s · ficha Messina 2,8 s · obra dilución 1,7 s · obra BSA 6,3 s · Personal 1,6 s.
-**P0 — agentes en curso**: Liquidación (adb93720f5af09744: edición rota, panel derecho, ZZ-E2E, 27 s) · captura de Clientes/Cobranzas
-en producción tras el deploy (background) y descripción por subagente (mis lecturas de PNG están bloqueadas en este contexto).
-**Verificar en la corrida de las 20:50**: `_CAJA_ANEXO!E74` = 0 (y «Efectivo sin explicar» +$10 M) · CFM «· Impuestos» + impuesto al
-cheque · `Parámetros!A74:A77` = 46266/46296/46327/46357 · Proveedores firma · `CAJA!H15` mismo veredicto · CFM!M50 == CFS!BB50 ·
-log: ⏸ Cheques Emitidos, colapsos con plata.
-**P1 — del dueño**: Bases tanque SO2 fila 31 $6.700.000 sin respaldo · OC 53239036 50 % sin facturar ($3.977.130 c/IVA) · OC
-53376178 +$893.210 vs Sheet (facturar por la OC: FCE 201, vale en ECUP, vto 20/11) · F68 Q 08/09→12/09 · OP 5146 $38.462 · OC
-2135 pedir a Isabel Villanueva · nov/dic sin materiales proyectados (−$54,6 M) · dic cobros 43 % de nómina · 9 «Pagado» de
-Compras que son cheques sin debitar · 4 Compras sin fecha de caja · accesos al portal Messina/La Estrella/ARCOR · SF 17 filas N en
-portal vs `apto_para_portal` · Terminadas rehabilitada · obras ARCOR a dar de alta · `force-dynamic` en Clientes/Obras (frescura
-vs velocidad) · repartir «Saldo obras San Francisco» $47,6 M.
-**P2**: `/obras/[obra]` 15 viajes y `obra_panel select *` 17 s · `campanita_atencion` 520 ms/76 KB · OBRAS pierde la fila 46 de
-BSA (SUMIFS por needle) · `getPerfilActual` en layout · consumidor cola app→Drive (H3) · `certificado_cliente.estado` (H4) ·
-`estadoDePago()` vs `es_cobrada()` · sync-esquema `orden` · `cliente-cartera.test.mjs` rojo desde 648691cb · `obra_panel` sin
-security_invoker · pipeline auditores de presentación.
+**P1 (decisiones del dueño, listar por bot cuando cierre lo anterior)**
+- Bases tanque SO2 fila 31 $6.700.000 sin respaldo · F68 Q 08/09→12/09 (+$102.474) · OC 2135 pedir a Isabel Villanueva · Compras 9 «Pagado» con cheque sin debitar · Jornales!M26 «Pagado el 01/07/2026» · Nómina liquidada al 09/09 · accesos portal Messina/La Estrella/ARCOR · obras ARCOR a dar de alta · Saldo obras San Francisco $47,6 M a repartir · BSA sin desglose MO/materiales · Dilución de ácido «solo MO» es inferencia (confirmar con Rodrigo) · contrato Quattropani cláusula 2 dice 48,2 M en letras y 44.110.169,31 en número · materiales Quattropani: cobrado 36,45 M de 44,11 M (falta 7,66 M o se pagó por otra vía).
+
+**P2**
+- `ver.mjs` de /tmp/claude-1001/cobranzas-1009 lee dump-completo.json (15:29 del 10/09): usar dump-final.json (dump.mjs escribe ahí). Casi causó una falsa alarma.
+- Agentes pisaron `q.mjs` del scratchpad: usar `qq-privado.mjs` y no dar esa ruta a agentes.
+- Balanz chromium (pid 940034) sigue vivo; el dueño pidió cerrarlo; kill falló ayer.
+- Archivos sueltos de un agente en main: `scratchpad-tmp-fetch.mjs`, `scratchpad-tmp-list.mjs` (borrar).
+- hydration warning en /clientes del dev server del worktree (verificar en producción).
 
 ## 7. ESTADO GIT
 
-- `main` = origin/main = producción. Worktrees vivos: `wt-crm`, `wt-liq`, `wt-fc-audit` (agentes activos); `wt-clientes-v4`,
-  `wt-drive-h2` (mergeados, eliminar).
-- Migraciones: todas las de main aplicadas (última `20260911T0040`).
+- main: 1f8f13f0 + merges de hoy (dcd4a3f8 libro; 362b2b28 solapa Órdenes; de587ff5/0910 obra_contrato).
+- `fix/crm-barra-unica` (wt-crm): 161800f1 cartera v5 · a908fdc6 cobranza_comprobante — en auditoría.
+- `fix/liquidacion-editable-y-panel` (wt-liq): agente retomado.
+- `feat/cobranzas-cliente-ux` (wt-cob): recién nace.
+- Worktrees viejos de sesiones anteriores: decenas en .claude/worktrees (higiene pendiente).
 
 ## 8. PRÓXIMO PASO
 
-Publicar CRM 6 columnas + sección Cobranzas → captura → dueño. Publicar Liquidación. Aplicar/mergear fixes del pipeline y
-verificar en la corrida siguiente. Medir tiempos tras cada deploy.
+1. Recibir el veredicto del auditor de la cartera; corregir; merge; `aplicar-migracion.mjs supabase/migrations/20260911T0920_*.sql --aplicar` desde main; push; pull producción; captura de producción.
+2. Cerrar los cuatro agentes restantes con evidencia y publicar; después, UN mensaje al dueño por bot con lo publicado y la lista P1.
+3. ScheduleWakeup activo mientras haya agentes corriendo (orden del dueño: no dejar de trabajar).
 
-## 9. REGLA PARA NUEVAS SESIONES
-
-1) Leer este archivo · 2) `git status --short --branch` · 3) verificar HEAD · 4) recibir la tarea ·
+Leer este archivo · 2) `git status --short --branch` · 3) verificar HEAD · 4) recibir la tarea ·
 5) inspeccionar SOLO los archivos necesarios (MAPA.md primero) · 6) cambio mínimo correcto ·
 7) tests dirigidos (suite completa sólo en hitos) · 8) actualizar este handoff al cerrar.
 
