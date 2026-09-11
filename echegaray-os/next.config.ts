@@ -56,8 +56,9 @@ const nextConfig: NextConfig = {
     //   las 4 VUELTAS a una pantalla ya vista ·     4 ·············· 0
     //   las 4 vueltas, tiempo total ···········  2.248 ms ······· 385 ms
     //
-    // Las dos «primeras» visitas también bajaron (3→1 y 2→1): con reuso en cero, el propio router
-    // volvía a pedir lo que acababa de traer.
+    // Las dos «primeras» visitas también bajaron (3→1 y 2→1). Observado en n=1 por celda y SIN
+    // explicar: no se sabe qué dispara esos pedidos de más, así que no se cuenta como parte del
+    // arreglo. Lo que sí está establecido es la fila de las vueltas.
     //
     // ═══ 60 SEGUNDOS: QUÉ SE GANA Y QUÉ SE ACEPTA ═══
     //

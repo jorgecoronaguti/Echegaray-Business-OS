@@ -98,8 +98,8 @@ export function PantallaEsqueleto({ children }: { children: React.ReactNode }) {
 // navegación (NO de las listas: ahí está medido que cuesta decenas de renders) y medir ANTES el costo
 // en pasadas por el middleware. No se hizo acá porque no se midió.
 export function SeccionEsqueleto({
-  cols, filas = 8, anchoTitulo = 'w-36', vistas = 2,
-}: { cols: number; filas?: number; anchoTitulo?: string; vistas?: number }) {
+  cols, filas = 8, anchoTitulo = 'w-36', vistas = 2, banda = true,
+}: { cols: number; filas?: number; anchoTitulo?: string; vistas?: number; banda?: boolean }) {
   return (
     // LA GEOMETRÍA ES LA DEL `Marco` DEL CANON, NO LA DEL `PageShell` (corrección del 11/09/2026).
     //
@@ -113,8 +113,10 @@ export function SeccionEsqueleto({
       data-testid="esqueleto-carga" aria-busy="true" aria-live="polite"
       style={{ minHeight: '100vh', background: '#F7F7F5', display: 'flex', flexDirection: 'column' }}
     >
-      {/* La banda de áreas, a sangre y con el filo inferior que apoya en el header. */}
-      <div className="h-[37px] border-b border-line bg-surface" />
+      {/* La banda de áreas, a sangre y con el filo inferior que apoya en el header. `banda={false}`
+          es para las pantallas de NIVEL 1 —Presupuestos—, que no llevan barra de área de nivel 2:
+          reservarle el alto dibujaría una franja que después no aparece. */}
+      {banda && <div className="h-[37px] border-b border-line bg-surface" />}
       <div style={{ padding: '20px 20px 0' }}>
         <Linea className={`h-5 ${anchoTitulo}`} />
       </div>

@@ -1,12 +1,12 @@
-import { PantallaEsqueleto, EncabezadoEsqueleto, TablaEsqueleto } from '@/shared/components/carga'
+import { SeccionEsqueleto } from '@/shared/components/carga'
 
-// PRESUPUESTOS — nivel 1, así que NO lleva la banda de áreas de Administración (ver
-// `presupuestos/layout.tsx`): título y cartera, nada más.
+// PRESUPUESTOS — la cartera, sin los datos.
+//
+// SIN BANDA DE ÁREA: es una solapa de NIVEL 1 (ver `presupuestos/layout.tsx`), así que no lleva la
+// barra de Administración. Pero SÍ lleva la geometría del `Marco` del canon —`minHeight: 100vh`,
+// fondo #F7F7F5, tabla a sangre con 20px de costado—, que es la que usa la pantalla real: con el
+// ancho de lectura del `PageShell` el esqueleto dibujaba una tabla más angosta y centrada, y el
+// contenido saltaba al llegar.
 export default function Cargando() {
-  return (
-    <PantallaEsqueleto>
-      <EncabezadoEsqueleto ancho="w-40" />
-      <TablaEsqueleto cols={5} filas={7} />
-    </PantallaEsqueleto>
-  )
+  return <SeccionEsqueleto cols={5} filas={7} anchoTitulo="w-40" vistas={2} banda={false} />
 }
