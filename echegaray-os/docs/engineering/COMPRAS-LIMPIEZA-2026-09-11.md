@@ -168,3 +168,94 @@ está tipeado). CAJA y `sync-compras` suman Compras sin mirar X, por eso el cero
 | Impuestos (planes ARCA viejos + Colegio Ing.) | SÍ (`rubro-caja.mjs:156`) | Impuestos y Financieros sólo emite IVA/IIBB/Ley 25.413 (`libro-extractores.mjs:573-605`) | NO CONTEMPLADO |
 | Financiero (prendario) | SÍ (`rubro-caja.mjs:162`) | `deBancoCargos` sólo cargos sin factura (`libro-extractores.mjs:365`); Impuestos y Financieros lo LEE de Compras (`impuestos-pestana.mjs:181`) | NO CONTEMPLADO — eliminar borra $11,5M pasados + $3,85M futuros |
 | Nómina · SAC | SÍ (`rubro-caja.mjs:85`) | ninguna (`cash-flow-lineas.mjs:885` lo lee del libro) | NO CONTEMPLADO — $7,37M pasados + $8,5M dic |
+
+---
+
+## Simulación sin Compras — 11/09/2026, 20:15 (rama `feat/libro-fuentes-propias`)
+
+**Qué es.** `node orquestador/scripts/libro-simular-sin-compras.mjs` arma el libro DOS VECES sobre las
+mismas lecturas —tal cual, y con las 81 filas que el vaciado anula marcadas `ELIMINADO`, que es lo que
+el bisturí escribe de verdad— y publica la diferencia. Es **sólo lectura** (`READONLY_SCOPES`): no
+toca el Sheet. La salida literal de la última corrida:
+
+```
+SIMULACIÓN SIN COMPRAS — corte 2026-09-11 · sólo lectura
+  filas de Compras que el vaciado anula: 81 (unidades: Financiero 12 · Impuestos 63 · Estructura 6)
+  libro TAL CUAL: 1297 movimiento(s) · neto $37.027.766
+  libro VACIADO : 1251 movimiento(s) · neto $58.607.160
+  el extracto de _BANCO_RAW empieza el 2026-05-28: lo anterior NO lo puede reponer ninguna fuente bancaria
+
+  LOS RUBROS QUE LA ORDEN PONE EN RIESGO — «pierde» es egreso que el cuadro deja de ver
+  RUBRO                                 NETO con extracto   PIERDE antes           GANA
+  ✓ Financiero                                    -$2.895     $6.386.983         $9.189
+  ✓ Nómina · Cargas sociales                           $0    $25.074.484    $19.268.224
+  ✓ Nómina · Gremiales                           -$27.240     $6.931.596     $8.875.981
+  ✓ Nómina · SAC                              -$4.699.908             $0    $10.460.216
+  ✗ Impuestos                                    $240.000       $783.684             $0
+  ✗ Deuda previsional (planes de pago)         $4.989.751     $5.561.029             $0
+
+  LO QUE HAY QUE EXPLICAR (rubro crítico que pierde plata con el extracto disponible)
+    2026-06 Nómina · SAC                        REAL         $5.760.309
+    2026-09 Deuda previsional (planes de pago)  FUTURO       $2.494.876
+    2026-10 Deuda previsional (planes de pago)  FUTURO       $2.494.876
+    2026-06 Nómina · Gremiales                  REAL         $1.625.001
+    2026-07 Nómina · Gremiales                  REAL         $1.598.088
+    2026-08 Nómina · Gremiales                  REAL         $1.235.787
+    2026-08 Impuestos                           REAL           $240.000
+    2026-10 Financiero                          FUTURO           $2.098
+    2026-11 Financiero                          FUTURO           $2.098
+    2026-12 Financiero                          FUTURO           $2.098
+
+  LAS PRÓXIMAS 8 SEMANAS (neto de caja)
+  SEMANA DEL             ACTUAL          VACIADO       DIFERENCIA
+  2026-09-07        $42.914.365      $42.914.365               $0
+  2026-09-14        $49.497.368      $51.992.244       $2.494.876
+  2026-09-21        $25.065.382      $25.065.382               $0
+  2026-09-28        $10.980.252      $10.980.252               $0
+  2026-10-05        $12.205.343      $12.207.441           $2.098
+  2026-10-12        -$5.142.052      -$2.647.176       $2.494.876
+  2026-10-19        -$4.639.445      -$4.639.445               $0
+  2026-10-26        $21.843.097      $21.843.097               $0
+
+  ✗ DENTRO de la ventana del extracto el vaciado todavía le saca plata a: Impuestos $240.000 · Deuda previsional (planes de pago) $4.989.751
+  ⚠ ANTES del 2026-05-28 el vaciado se lleva $44.737.776 que NINGUNA fuente puede reponer: el extracto no llega a esas fechas. Las dos salidas son importar el extracto de enero a mayo (scripts/importar-banco.mjs) o NO vaciar las filas anteriores a junio.
+```
+
+### Cómo se lee, y el error que hay que no cometer
+
+Los egresos viven en el libro con `signo: -1`. En un rubro de egreso **un delta POSITIVO es plata que
+el cuadro PIERDE** y un negativo es cobertura nueva. Por eso el SAC de diciembre aparece como
+−$7.978.905: es la línea que no existía y ahora existe. El criterio se juzga sobre el **neto del rubro
+dentro de la ventana del extracto**.
+
+### Veredicto rubro por rubro
+
+| Rubro | Neto con extracto | Estado |
+|---|---|---|
+| Financiero | −$2.895 | ✓ cierra. El prendario REAL sale del extracto y el futuro de `datos/prestamo-prendario.json` con el importe del último débito real |
+| Nómina · Cargas sociales | $0 | ✓ cierra. El F931 se aparea al centavo contra la DDJJ declarada y el mes pagado apaga la cadena |
+| Nómina · Gremiales | −$27.240 | ✓ cierra. Se reusa el apareo de `cargas-pagos-banco.mjs`, que ya existía y sólo restaba la obligación |
+| Nómina · SAC | −$4.699.908 | ✓ cierra y MEJORA: aparece el medio aguinaldo de diciembre ($7.978.905) que antes no estaba en ninguna celda |
+| Impuestos | **$240.000** | ✗ el Colegio de Ingenieros de agosto. `banco-santander.mjs` no tiene ninguna regla que lo reconozca: sin naturaleza no hay apareo y adivinar por el texto sería fabricar |
+| Deuda previsional | **$4.989.751** | ✗ las dos cuotas PENDIENTES de Compras (sep y oct). Es el hueco declarado PLAN SIN CRONOGRAMA: el OS conoce tres importes de cuota observados y no sabe cuántas faltan |
+
+### Los dos límites que decide el dueño, no el código
+
+1. **`_BANCO_RAW` empieza el 28/05/2026.** El vaciado se lleva **$44.737.776** de pagos anteriores que
+   ninguna fuente bancaria puede reponer, porque el extracto no llega a esas fechas. Peor que perder el
+   importe: en cargas sociales la cadena vuelve a emitir esos meses como deuda VENCIDA ($19.268.224),
+   así que el cuadro diría que se debe plata que se pagó en marzo. **Dos salidas: importar el extracto
+   de enero a mayo (`scripts/importar-banco.mjs`) o no vaciar las filas anteriores a junio.**
+2. **El SAC de junio ($5.760.309) sólo tiene $2.481.312 de respaldo bancario identificable.** El resto
+   salió dentro de lotes de haberes que las quincenas reclaman, y `haberes-conciliacion.mjs` ya dejó
+   escrito que el extracto no puede separar un SAC de una liquidación final. Se reporta, no se imputa.
+
+### Lo que la simulación encontró de MI propio trabajo
+
+- La cuota de junio del prendario se contaba **dos veces**: Compras decía $1.275.317 y el banco debitó
+  $1.284.505,37 (0,7 %, porque el préstamo ajusta). El dedupe por importe exacto no los reconocía como
+  el mismo hecho. Se agregó una banda relativa del 2 % **sólo** donde el instrumento garantiza una
+  obligación por mes (prendario y F931), con el mismo mes calendario exigido — sin eso, la fila de
+  agosto explicaba también la cuota de septiembre, que está a 31 días.
+- Los planes de ARCA son **tres** importes recurrentes ($1.034.931,85 · $473.767,08 · $2.494.875,65),
+  no uno: con un solo importe se reponía una cuota de tres.

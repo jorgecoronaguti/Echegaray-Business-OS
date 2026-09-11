@@ -78,6 +78,18 @@ test('CON LA FILA EN COMPRAS NO SE EMITE: durante la transición el REAL sale de
   assert.match(r.avisos.join(' '), /ya lo lleva Compras f4/)
 })
 
+test('UNA FILA DE COMPRAS EXPLICA UN SOLO DÉBITO: el 07/08 y el 07/09 están a 31 días', () => {
+  // Con la banda relativa y la ventana de 31 días, la fila de agosto explicaba también la cuota de
+  // septiembre (0,08 % de diferencia) y ese débito no entraba por ninguna puerta: una cuota perdida.
+  const compras = [[], [], ENC,
+    fila({ prov: 'Santander', total: 1281778.17, estado: 'Pagado', rubro: RUBRO_FINANCIERO, fecha: S('2026-08-07') }),
+  ]
+  const r = deBancoObligaciones({ debitos: DEBITOS, compras, planes })
+  const fin = r.movimientos.filter((m) => m.rubro === RUBRO_FINANCIERO)
+  assert.equal(fin.length, 1)
+  assert.equal(fin[0].fecha, S('2026-09-07'), 'la cuota de septiembre tiene que entrar igual')
+})
+
 test('una fila de Compras ANULADA no tapa el débito: su plata quedó vacante', () => {
   const compras = [[], [], ENC,
     fila({ prov: 'Santander', total: 1281778.17, estado: 'ELIMINADO', rubro: RUBRO_FINANCIERO, fecha: S('2026-08-07') }),
@@ -286,6 +298,42 @@ test('explicadoPorCompras: el mismo importe en otro rubro NO explica el débito'
   const o = [{ fila: 9, rubro: RUBRO_CARGAS, fecha: S('2026-08-07'), total: 1281778.17, pagada: true }]
   assert.equal(explicadoPorCompras(d, RUBRO_FINANCIERO, o), null)
   assert.equal(explicadoPorCompras(d, RUBRO_CARGAS, o)?.fila, 9)
+})
+
+test('LA FILA TIPEADA CON UN IMPORTE VIEJO SIGUE SIENDO EL MISMO PAGO — el doble conteo de junio', () => {
+  // Medido por la simulación el 11/09/2026: Compras decía $1.275.317 y el banco debitó $1.284.505,37
+  // (0,7 % de diferencia, porque el préstamo ajusta y el importe se tipeó de una cuota anterior). Con
+  // tolerancia de un peso el libro emitía los DOS y contaba $1,28 M dos veces en junio.
+  const d = debito('2026-06-08', PRENDARIO, 1284505.37, NAT.prendario, 61)
+  const compras = [[], [], ENC,
+    fila({ prov: 'Santander', total: 1275317, estado: 'Pagado', rubro: RUBRO_FINANCIERO, fecha: S('2026-06-07') }),
+  ]
+  const r = deBancoObligaciones({ debitos: [d], compras, planes })
+  assert.deepEqual(r.movimientos, [], 'el débito y la fila son el mismo pago: sólo puede entrar uno')
+  assert.match(r.avisos.join(' '), /ya lo lleva Compras f4/)
+  // Y la banda no es infinita: una diferencia del 10 % no es un redondeo, es otro pago.
+  const otro = [[], [], ENC,
+    fila({ prov: 'Santander', total: 1150000, estado: 'Pagado', rubro: RUBRO_FINANCIERO, fecha: S('2026-06-07') }),
+  ]
+  assert.equal(deBancoObligaciones({ debitos: [d], compras: otro, planes }).movimientos.length, 1)
+})
+
+test('la banda relativa NO se aplica a los gremiales: cuatro organismos comparten el mes', () => {
+  // Con una banda del 2 % sobre $1.000.000, el pago de UOCRA podría quedar tapado por la fila de
+  // FODECO del mismo mes. Ahí la identidad es el importe al peso.
+  const d = debito('2026-09-10', 'Debin 30503049097', 994941.26, NAT.transferencias, 565)
+  const pagosGremiales = {
+    porPeriodo: new Map([['2026-08', {
+      periodo: '2026-08',
+      detalle: [{ organismo: 'UOCRA', cubierto: 994941.26, fecha: S('2026-09-10'), filas: [565] }],
+    }]]),
+  }
+  const compras = [[], [], ENC,
+    fila({ prov: 'FODECO', total: 984000, estado: 'Pagado', rubro: RUBRO_GREMIALES, fecha: S('2026-09-10') }),
+  ]
+  const r = deBancoObligaciones({ debitos: [d], compras, pagosGremiales, planes })
+  assert.equal(r.movimientos.filter((m) => m.rubro === RUBRO_GREMIALES).length, 1,
+    'la fila de FODECO está a 1,1 % y NO es el pago de UOCRA')
 })
 
 test('explicadoPorCompras: fuera de la ventana de 31 días tampoco explica', () => {

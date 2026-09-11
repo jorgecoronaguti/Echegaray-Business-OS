@@ -245,9 +245,18 @@ async function main() {
     for (const m of relevantes) console.log(`    ${m.replace(/^\s*⚠\s*/, '').slice(0, 200)}`)
   }
 
+  // LO QUE HAY QUE EXPLICAR LÍNEA POR LÍNEA: un rubro crítico que pierde plata DENTRO de la ventana del
+  // extracto. Es la lista corta que el dueño necesita para decidir, y va siempre — no detrás de un flag.
+  const aExplicar = difs.filter((d) => CRITICOS.includes(d.rubro) && d.conExtracto && d.pierde > 1)
+  if (aExplicar.length) {
+    console.log('\n  LO QUE HAY QUE EXPLICAR (rubro crítico que pierde plata con el extracto disponible)')
+    for (const d of aExplicar) {
+      console.log(`    ${d.mes} ${d.rubro.slice(0, 34).padEnd(35)} ${d.ventana.padEnd(7)} ${pesos(d.pierde).padStart(15)}`)
+    }
+  }
   if (DETALLE && difs.length) {
-    console.log('\n  DETALLE rubro × mes (las 14 más grandes; «−» = el cuadro GANA cobertura)')
-    for (const d of difs.slice(0, 14)) {
+    console.log('\n  DETALLE rubro × mes (las 12 más grandes; «−» = el cuadro GANA cobertura)')
+    for (const d of difs.slice(0, 12)) {
       console.log(`    ${d.mes} ${d.conExtracto ? 'banco' : 'ANTES'} ${d.rubro.slice(0, 30).padEnd(31)} `
         + `${d.ventana.padEnd(7)} ${pesos(d.delta).padStart(15)}`)
     }

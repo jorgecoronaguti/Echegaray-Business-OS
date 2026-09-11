@@ -135,11 +135,37 @@ export function obligacionesDeCompras(filas = [], rubros = []) {
  * F931 puede decir «ARCA», «AFIP» o «931 agosto», y el concepto del extracto dice
  * «Imp.afip 2686 5827», así que compararlos descartaría pares verdaderos.
  */
-export function explicadoPorCompras(debito, rubro, obligaciones = [], { ventana = VENTANA_COMPRAS } = {}) {
+export function explicadoPorCompras(debito, rubro, obligaciones = [],
+  { ventana = VENTANA_COMPRAS, relativa = 0, usadas = null } = {}) {
+  const tolerancia = Math.max(TOLERANCIA_APAREO, debito.importe * relativa)
   return obligaciones.find((o) => o.rubro === rubro
-    && Math.abs(o.total - debito.importe) <= TOLERANCIA_APAREO
-    && dentroDe(o.fecha, debito.fecha, ventana)) ?? null
+    && !usadas?.has(o.fila)
+    && Math.abs(o.total - debito.importe) <= tolerancia
+    // ═══ CON BANDA RELATIVA SE EXIGE EL MISMO MES, Y NO ES UNA PRECAUCIÓN DE MÁS ═══
+    //
+    // El prendario se debita el 7: el del 07/08 y el del 07/09 están a 31 días, que es exactamente la
+    // ventana, y sus importes se separan 0,08 %. Sin esta condición la fila de agosto de Compras
+    // explicaba LOS DOS débitos y el de septiembre no entraba por ningún lado. Una cuota mensual tiene
+    // fecha de caja en SU mes; la banda ancha sirve para el importe tipeado, no para la fecha.
+    && (relativa > 0 ? mesDeSerial(o.fecha) === mesDeSerial(debito.fecha) : dentroDe(o.fecha, debito.fecha, ventana))) ?? null
 }
+
+/**
+ * CUÁNTO PUEDE DIFERIR LA FILA TIPEADA DEL DÉBITO REAL Y SEGUIR SIENDO EL MISMO PAGO.
+ *
+ * ═══ EL DOBLE CONTEO QUE LA SIMULACIÓN ENCONTRÓ (11/09/2026) ═══
+ *
+ * La cuota de junio del prendario: Compras f?? dice $1.275.317 y `_BANCO_RAW` f61 debitó
+ * $1.284.505,37. Son $9.188 de diferencia —0,7%— porque el importe de la planilla se tipeó con el
+ * valor de una cuota anterior y el préstamo ajusta. Con la tolerancia de UN PESO, el dedupe no los
+ * reconoció como el mismo hecho y el libro emitió los dos: **$1,28 M contados dos veces en junio**.
+ *
+ * 2 % es la banda medida con margen (la diferencia real es 0,7 % y las cuotas consecutivas se separan
+ * menos del 0,5 %), y se aplica SÓLO donde el instrumento garantiza que hay UNA obligación por mes:
+ * la cuota del préstamo y el F931. Para los gremiales sigue siendo el peso exacto, porque en un mismo
+ * mes hay cuatro organismos distintos y una banda relativa podría tapar a UOCRA con el pago de FODECO.
+ */
+export const TOLERANCIA_RELATIVA_CUOTA = 0.02
 
 /** Un movimiento REAL nacido de un débito del extracto. La referencia del banco es su identidad. */
 function movDeDebito(d, { rubro, concepto, contraparte }) {
@@ -233,10 +259,15 @@ export function deBancoObligaciones({
   const movimientos = []
   const obligaciones = obligacionesDeCompras(compras,
     [RUBRO_FINANCIERO, RUBRO_CARGAS, RUBRO_GREMIALES, RUBRO_PLANES])
+  // UNA FILA DE COMPRAS EXPLICA UN SOLO DÉBITO. Es la misma regla que `usados` aplica del lado del
+  // banco y por el mismo motivo: sin ella, la fila de una cuota podría «llevar» también la del mes
+  // siguiente, y ese débito no entraría por ninguna puerta.
+  const usadasDeCompras = new Set()
   /** Emite si —y sólo si— Compras no lleva ya esa obligación. Devuelve true si emitió. */
-  const emitirSiLibre = (d, { rubro, concepto, contraparte }) => {
-    const ya = explicadoPorCompras(d, rubro, obligaciones)
+  const emitirSiLibre = (d, { rubro, concepto, contraparte, relativa = 0 }) => {
+    const ya = explicadoPorCompras(d, rubro, obligaciones, { relativa, usadas: usadasDeCompras })
     if (ya) {
+      usadasDeCompras.add(ya.fila)
       avisos.push(`libro-extractores-banco-obligaciones: el débito de ${pesos(d.importe)} del `
         + `${isoDeSerial(d.fecha)} (_BANCO_RAW f${d.fila}) ya lo lleva Compras f${ya.fila} `
         + `(${ya.pagada ? 'pagada' : 'pendiente'}) — no lo emito: mientras la fila exista, el REAL sale de Compras.`)
@@ -254,6 +285,8 @@ export function deBancoObligaciones({
       rubro: RUBRO_FINANCIERO,
       concepto: `Cuota préstamo prendario · ${isoDeSerial(d.fecha).slice(0, 7)}`,
       contraparte: 'Banco Santander · préstamo prendario',
+      // Una cuota por mes: si Compras tiene una fila de Financiero parecida en el mes, es ÉSTA.
+      relativa: TOLERANCIA_RELATIVA_CUOTA,
     })
   }
 
@@ -294,7 +327,9 @@ export function deBancoObligaciones({
     const p = f931.porPeriodo.get(e.devengado)
     // EL DEDUPE SE DECIDE POR PERÍODO, NO POR DÉBITO: el F931 puede salir en dos VEP y la fila de
     // Compras es una sola. Si Compras lleva el mes, no se emite NINGUNO de los dos débitos.
-    const ya = e.elegidos.map((d) => explicadoPorCompras(d, RUBRO_CARGAS, obligaciones)).find(Boolean)
+    const ya = e.elegidos
+      .map((d) => explicadoPorCompras(d, RUBRO_CARGAS, obligaciones, { relativa: TOLERANCIA_RELATIVA_CUOTA }))
+      .find(Boolean)
     if (ya) {
       avisos.push(`libro-extractores-banco-obligaciones: el F931 de ${e.devengado} ya lo lleva `
         + `Compras f${ya.fila} — no lo emito, y la cadena sigue decidiendo por Compras.`)
