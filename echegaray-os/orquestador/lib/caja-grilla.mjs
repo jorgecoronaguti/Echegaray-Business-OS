@@ -54,10 +54,13 @@ import { CUENTAS, RANGO_TC } from './caja-disponibilidades.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { rotuloAlDia } from './fecha-de-frescura.mjs'
 import {
-  formulaFrescuraCaja, formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte,
+  formulaFrescuraCaja, formulaNetaPosterior, formulaFechaCorte,
   formulaCobrosUsdEfectivoPosteriores, celdaFechaDelEfectivo,
 } from './caja-posterior-al-corte.mjs'
 import { formulaCartera } from './cartera-cheques.mjs'
+// EL SALDO DEL BANCO NETO DE LO RETENIDO. Una sola definición, compartida con el control del anexo
+// que mide el hueco contra el declarado: dos copias darían dos saldos del mismo banco.
+import { formulaSaldoDisponibleBanco } from './banco-detalle-declarado.mjs'
 import { inciertoHasta } from './caja-anexo-controles.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { tarjetas, NO_REAL } from './caja-tarjetas.mjs'
@@ -247,7 +250,16 @@ export function grilla(cargado, refs) {
       : celdaFechaDelEfectivo(ANEXO.conteoArsDia, ANEXO.ultimoEfectivoDia))
     if (c.arqueo === DESDE_CAJA.arqueoArsFecha) fArqArs = f
     if (c.arqueo === DESDE_CAJA.arqueoUsdFecha) fArqUsd = f
-    const origen = c.banco === 'saldoPesos' && refs.bancoRaw ? formulaUltimoSaldo(refs.bancoRaw)
+    // ═══ EL SALDO DEL BANCO QUE CAJA PUEDE GASTAR ES EL DECLARADO MENOS LO RETENIDO (11/09/2026) ═══
+    //
+    // Era `formulaUltimoSaldo` pelado — el último saldo corrido de la réplica, que es el que el banco
+    // DECLARA e incluye los depósitos que todavía no acreditó. Medido ese día: declarado
+    // $41.561.209,16, retenido $38.572.526,23, disponible real $2.988.682,93. CAJA publicaba los
+    // $41,5M enteros como «CAJA DISPONIBLE», y como el cierre de los dos Cash Flow se ancla en la caja
+    // de hoy, el cierre del 31/12 saltó de $61,3M a $91,9M de una corrida a la otra sin que hubiera
+    // entrado un peso nuevo. Regla de oro del dueño: el Cash Flow es PERCIBIDO — un eCheq retenido 48
+    // hs no paga un cheque mañana. La definición vive UNA vez, en `formulaSaldoDisponibleBanco`.
+    const origen = c.banco === 'saldoPesos' && refs.bancoRaw ? formulaSaldoDisponibleBanco({ hoja: refs.bancoRaw })
       : c.banco === 'cartera' ? formulaCartera()
         : c.banco ? saldoDeBanco(c)
           : c.arqueo ? conteo('saldo')

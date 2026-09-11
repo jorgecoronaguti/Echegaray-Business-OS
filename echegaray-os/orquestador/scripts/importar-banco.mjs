@@ -129,11 +129,42 @@ async function insertar(movs, origen) {
  * Si no cierra, no se escribe el saldo: se publica el declarado (que es el dato del banco) y la
  * diferencia sale como HALLAZGO. Nunca en silencio.
  */
+/**
+ * LAS DOS MARCAS DE RETENCIÓN, QUE NO DEPENDEN DEL PIE DEL EXTRACTO.
+ *
+ * Marcar lo que el banco lista y no acreditó, y APAGAR la marca de lo que ya acreditó. Las dos salen
+ * del `saldo` que trae cada movimiento del CSV, así que corren con pie o sin pie — y tienen que
+ * correr con las dos, porque sin esto la marca era de ida y no de vuelta.
+ *
+ * @returns {Promise<{marcados:number, acreditados:number}>}
+ */
+async function marcasDeRetencion(movimientos) {
+  const marcados = await marcarAcreditacionPendiente({ query }, movimientos)
+  const acreditados = await acreditarPendientes({ query }, movimientos)
+  if (marcados) console.log(`   ✓ ${marcados} depósito(s) marcados como no acreditados`)
+  if (acreditados) console.log(`   ✓ ${acreditados} depósito(s) que el banco ya acreditó: saldo copiado del extracto`)
+  return { marcados, acreditados }
+}
+
 async function cerrarElDia(movimientos, saldosDeclarados, origen) {
   const pie = saldoDeCierre(saldosDeclarados ?? [])
   if (!pie) {
     console.log('\n⚠ el archivo no trae la línea "Saldo al DD/MM/AAAA": no puedo contrastar la cadena '
       + 'del día contra el banco. Bajá el extracto completo (el CSV del homebanking la incluye al pie).')
+    // ═══ PERO LAS MARCAS DE RETENCIÓN SE ACTUALIZAN IGUAL (11/09/2026) ═══
+    //
+    // Acá había un `return` pelado, y era una trampa de un solo sentido: un depósito se marcaba
+    // retenido con el extracto que lo traía sin acreditar, y el extracto siguiente —si venía sin el
+    // pie— NO podía apagarle la marca. La plata quedaba fuera de CAJA para siempre y sólo la
+    // desbloqueaba bajar de nuevo el extracto completo, que es justo lo que nadie sabe que hay que
+    // hacer. Medido el 11/09 con $38.572.526,23 retenidos.
+    //
+    // Ni `marcarAcreditacionPendiente` ni `acreditarPendientes` necesitan el pie: trabajan sobre el
+    // `saldo` que trae cada movimiento del propio CSV. El pie sólo hace falta para CONTRASTAR la
+    // cadena y para reescribirla, y eso es lo único que se saltea.
+    // `--dry` no escribe: el mismo respeto que tiene el camino con pie, dos líneas más abajo.
+    if (DRY) console.log('   — dry: no toqué las marcas de retención')
+    else await marcasDeRetencion(movimientos)
     return
   }
   if (pie.conflicto) console.log('⚠ el archivo trae dos cierres de la misma fecha con importes distintos')
@@ -149,10 +180,7 @@ async function cerrarElDia(movimientos, saldosDeclarados, origen) {
 
   const guardado = await guardarSaldoDeclarado({ query }, pie, origen)
   if (guardado) console.log(`   ✓ banco_saldo_declarado: ${$(guardado.saldo)} al ${guardado.fecha} (leído de vuelta de la tabla)`)
-  const marcados = await marcarAcreditacionPendiente({ query }, movimientos)
-  const acreditados = await acreditarPendientes({ query }, movimientos)
-  if (marcados) console.log(`   ✓ ${marcados} depósito(s) marcados como no acreditados`)
-  if (acreditados) console.log(`   ✓ ${acreditados} depósito(s) que el banco ya acreditó: saldo copiado del extracto`)
+  await marcasDeRetencion(movimientos)
   if (pie.fecha) {
     const r = await recalcularSaldosDelDia({ query }, pie.fecha, pie.saldo)
     if (r.aplicado) console.log(`   ✓ cadena del ${pie.fecha} rehecha en la base: ${r.actualizadas} fila(s) corregidas`)
