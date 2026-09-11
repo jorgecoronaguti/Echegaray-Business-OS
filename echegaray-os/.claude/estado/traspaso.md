@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-11 ~08:50 (hora local −03) · main = producción_
+_actualizado: 2026-09-11 ~09:45 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -61,7 +61,7 @@ ensayo, `--aplicar`). Playwright anda sin root con las libs del scratchpad (`lib
 
 - ## 4. ESTADO ACTUAL (11/09 08:50)
 
-- **Producción** (Vercel + Supabase): main = último merge de `fix/crm-barra-unica` (solapa Órdenes, obra_contrato, desglose de 8 obras). La tabla de Clientes v5 (cinco columnas) está commiteada en la rama, en auditoría, SIN publicar todavía.
+- **Producción** (Vercel + Supabase): main 1fe49942 = cartera de cinco columnas (Cliente · Contratado · Materiales · Mano de obra · Avance de cobro), contrato desglosado (obra_contrato, migraciones 0900/0910/0930/0940 aplicadas), respaldo de cobranzas (0920), solapa Órdenes. Verificado en producción 09:40: Quattropani $ 139.413.923 y 65 % en lista, ficha y panel; 3 respaldos con enlace en Cobranzas de Messina; Órdenes con 9 grupos. Dos auditorías previas rechazaron y se corrigieron sus 12 hallazgos; la firma final queda pendiente de una tercera lectura sobre producción.
 - **Supabase**: incidente «Unresponsive Projects» (major) hoy 06:19Z→monitoreo; a las 08:2x producción medía /clientes 23 s y a las 08:40 2,2 s. La RPC `pantalla_clientes()` tarda 0,2–1,3 s desde la VM. La lentitud intermitente es del proveedor, no del código.
 - **Pipeline Flujo de Caja**: el libro `_MOVIMIENTOS` no corría desde 10/09 17:01 (`chequesPorCompras is not defined`, commit b316b907); corregido en dcd4a3f8 y en producción 08:05. Corrida 08:50 pendiente de verificar (agente consistencia).
 - **Sheet Cobranzas**: verificado 07:56 celda por celda; nada pisado (Messina 34/69/102, Quattropani 78/101, ARCOR 51/52/59).
@@ -74,10 +74,10 @@ Ver §4. Agentes en curso al cierre: auditor de la cartera v5 · Liquidación (r
 ## 6. PENDIENTES REALES
 
 **P0 (agentes en curso)**
-- Cartera v5: veredicto del auditor → merge `fix/crm-barra-unica` → aplicar 20260911T0920 desde main → push → pull producción → captura en producción.
+- Cartera v5: PUBLICADA 09:35. Falta: auditor sobre producción (tercera pasada) y limpiar el worktree wt-crm.
 - Liquidación: merge y publicación (panel derecho, edición, ZZ-E2E fuera, <4 s).
 - Consistencia Flujo de Fondos: pares 21 (cheques $8,2 M), 5, 22, 23; verificar corrida 08:50 (libro ✓, «· Impuestos», f136); post al dueño.
-- Extracto bancario: importar, cruces, marcas DEBITADO con --forzar-candado sólo con débito visible; post al dueño.
+- Extracto bancario: HECHO (4 movimientos nuevos, saldo coincide, ECHEQ 308 marcado DEBITADO, ref 88958840 excluida por decisión). Pendiente del dueño: e-cheq $38,5 M del 10/09 ¿disponibles?; `public.cheques` con corte 08/09; clasificación CUIL-padrón vs proveedor. Defecto sin corregir: `cerrarElDia()` en importar-banco.mjs no llama acreditarPendientes() sin el pie «Saldo al…».
 - Solapa Cobranzas UX: rehacer por completo (pedido 11/09 08:45).
 
 **P1 (decisiones del dueño, listar por bot cuando cierre lo anterior)**
