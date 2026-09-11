@@ -19,7 +19,8 @@
 // Todo lo de acá es PURO: devuelve texto de fórmulas en locale es-AR. No lee el Sheet, no escribe.
 
 import { seccion, total as rotuloTotal } from './patron-pestana.mjs'
-import { formulaLibro, terminoLibro } from './libro-sumas.mjs'
+import { formulaLibro, terminoLibro, rangoLibro, LIBRO } from './libro-sumas.mjs'
+import { ALERTA } from './glifos.mjs'
 import { RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
 import { cm } from './cargas-grilla.mjs'
 
@@ -47,7 +48,19 @@ export const ORGANISMOS_GREMIALES = Object.freeze([
 // 11/09/2026. Los llamadores pueden seguir pasándolo —no molesta— pero que no figure acá es la señal de
 // que nadie lo usa: un parámetro que nadie lee es la primera mentira de una firma.
 export function bloquePagado(G, { anio, fArtDecl = 0, fDeclTot = 0 }) {
-  G.push([seccion(2, 'Pagado')])
+  // ═══ EL SELLO DE FRESCURA DEL LIBRO, EN LA MISMA FILA DEL TÍTULO (auditoría de cierre, 11/09/2026) ═══
+  //
+  // Este bloque dejó de leer Compras y pasó a colgar de `_MOVIMIENTOS`: si el generador del libro
+  // aborta, estas celdas publican el libro VIEJO y nada en la pantalla lo dice. Esta celda lo dice.
+  //
+  // VA EN LA FILA DE LA SECCIÓN Y NO EN UNA FILA PROPIA, y no es estética: una fila nueva corre todas
+  // las de abajo, y la pestaña tiene rangos con nombre y referencias entre bloques atados a esas
+  // posiciones — agregarla puso 13 tests en rojo de una sola vez, que es exactamente la advertencia.
+  //
+  // NO PRUEBA LA HORA DE LA CORRIDA, y se declara: prueba hasta qué día llega el dato que se suma. Es
+  // la diferencia entre un cuadro que se ve viejo —y se puede decidir— y uno que se lee como de hoy.
+  G.push([seccion(2, 'Pagado'),
+    `=IFERROR("libro al "&TEXT(MAX(IF(${rangoLibro(LIBRO.col.estado)}="REAL";${rangoLibro(LIBRO.col.fecha)}));"dd/mm");"${ALERTA} sin libro")`])
   G.cabecera()
   // LAS COLUMNAS DE COMPRAS SE RESUELVEN POR SU ENCABEZADO. Éste es el bloque que estaba en #VALUE!
   // desde que una columna de Compras se movió y la referencia por letra quedó en #REF!.

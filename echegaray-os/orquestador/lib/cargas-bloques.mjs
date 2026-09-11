@@ -321,9 +321,17 @@ export function bloquePlanes(G, { ps, C }) {
   // Compras se vacíen, esta celda va a dar $0 — no porque se haya roto, sino porque el OS NO TIENE el
   // cronograma de los planes («Mis Facilidades» de ARCA) y no proyecta cuotas futuras. La leyenda lo
   // dice, y `cash-flow-cobertura.mjs` declara el hueco (PLAN SIN CRONOGRAMA) en cada corrida del libro.
+  // ═══ EL PLAN SIN CRONOGRAMA SE DICE EN LA PESTAÑA, NO SÓLO EN EL LOG (auditoría, 11/09/2026) ═══
+  //
+  // Esta fila va a dar $0 el día que se vacíen las cuotas de Compras, y un $0 sin explicación se lee
+  // como «no debo nada»: debe $4.989.751 que el OS no puede proyectar porque no conoce el cronograma.
+  // El aviso viaja en la celda C de ESTA MISMA fila —no en una fila nueva, que correría todas las de
+  // abajo y sus rangos con nombre— y es CONDICIONAL: el día que «Mis Facilidades» entre a
+  // `datos/planes-arca.json` y la celda tenga cuotas, desaparece solo.
   const fSinPagar = G.push([ROTULOS_CARGAS.planesSinPagar,
     formulaLibro({ rubros: [RUBRO_PLANES], estados: ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'], signo: -1, medida: 'magnitud' }),
-    ...Array(11).fill(VACIO), VACIO,
+    `=IF(${formulaLibro({ rubros: [RUBRO_PLANES], estados: ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'], signo: -1, medida: 'magnitud' }).slice(1)}>0;"";"${ALERTA} sin cronograma de «Mis Facilidades»: las cuotas que faltan no se proyectan")`,
+    ...Array(10).fill(VACIO), VACIO,
     `Libro \`_MOVIMIENTOS\`, rubro "${RUBRO_PLANES}" que todavía no es REAL — incluidas las vencidas sin pagar y las de otros años, que esta tabla no llega a mostrar. Si da $0 con cuotas vivas, falta el cronograma del plan: hay que traer «Mis Facilidades» de ARCA a orquestador/datos/planes-arca.json.`])
   const fCtrl = G.push([rotuloTotal('Control contra Compras'), `=SUMIF(Compras!$${C.rubro}$4:$${C.rubro};"${RUBRO_PLANES}";${rango(C.total)})`,
     ...Array(11).fill(VACIO), VACIO, 'El total del rubro en Compras, calculado por otro camino.'])

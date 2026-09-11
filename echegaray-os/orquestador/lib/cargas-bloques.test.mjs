@@ -232,3 +232,19 @@ test('las «Cuotas sin pagar» miden lo que NO es REAL, no lo que la planilla no
   assert.match(celda, /\$H\$2:\$H="COMPROMETIDO"/)
   assert.ok(!/"REAL"/.test(celda), 'una cuota pagada no es una cuota sin pagar')
 })
+
+test('EL SELLO DE FRESCURA Y EL AVISO DE PLAN SIN CRONOGRAMA no corren ninguna fila', () => {
+  // Los dos nacieron de la auditoría del 11/09/2026 y los dos viajan en una fila QUE YA EXISTÍA: una
+  // fila nueva corre todo lo de abajo y la pestaña tiene rangos con nombre atados a esas posiciones
+  // (probado: agregarla puso 13 tests en rojo). Si alguien los mueve a su propia fila, esto lo caza.
+  const { G, pag, planes } = armar()
+  // El rótulo de sección lleva su numeral y su glifo: se busca por «Pagado» dentro del texto.
+  const seccion = G.filas.find((f) => /pagado/i.test(String(f?.[0] ?? '')) && String(f?.[1] ?? '').startsWith('='))
+  assert.match(String(seccion[1]), /_MOVIMIENTOS!\$H\$2:\$H="REAL"/, 'el sello lee el libro, no una fecha pegada')
+  assert.match(String(seccion[1]), /TEXT\(MAX\(/, 'muestra el último día con dato, no la hora de la corrida')
+  const sinPagar = G.filas[planes.fSinPagar - 1]
+  assert.match(String(sinPagar[2]), /sin cronograma de «Mis Facilidades»/)
+  assert.match(String(sinPagar[2]), /^=IF\(/, 'el aviso se apaga solo cuando la celda tenga cuotas')
+  assert.equal(sinPagar.length, G.filas[pag.filaPag.F931 - 1].length,
+    'la fila del aviso tiene el mismo ancho que el resto: un ancho distinto desalinea la grilla')
+})
