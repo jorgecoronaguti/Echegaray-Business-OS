@@ -40,6 +40,7 @@
 
 import { movimiento, SALE, estadoContraCorte } from './libro-movimientos.mjs'
 import { isoDeSerial } from './libro-extractores-fechas.mjs'
+import { cubiertoDelBanco } from './cargas-pagos-banco.mjs'
 import { columnasDeCompras, estaPagada } from './libro-extractores-compras.mjs'
 import { total as rotuloTotal } from './patron-pestana.mjs'
 import { fila as rangoFila } from './rangos-con-nombre.mjs'
@@ -311,7 +312,8 @@ export const TOLERANCIA_BANCO = 1
  * @returns {{importe:number, parcial:boolean}|null}
  */
 function netoDelBanco(o, banco, { mes, rubro, devengado, aviso, anotarCubierto }) {
-  const cubierto = num(banco?.cubierto)
+  // IERIC/FODECO descuentan sólo a la PROYECTADA: la declarada no los trae (ver cubiertoDelBanco).
+  const cubierto = cubiertoDelBanco(banco, o.estado)
   if (!cubierto || cubierto <= 0) return { importe: o.importe, parcial: false }
   const resto = Math.round((o.importe - cubierto) * 100) / 100
   if (resto <= TOLERANCIA_BANCO) {

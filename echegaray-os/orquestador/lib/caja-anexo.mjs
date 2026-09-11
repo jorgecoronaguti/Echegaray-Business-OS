@@ -30,7 +30,7 @@ import {
   formulaFechaUltimoEfectivo,
 } from './caja-posterior-al-corte.mjs'
 import { anclaDeSalida } from './caja-ancla-por-instante.mjs'
-import { filaHuecoDelExtracto } from './banco-detalle-declarado.mjs'
+import { filaHuecoDelExtracto, filaRetenidoPorElBanco } from './banco-detalle-declarado.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import {
   bloqueLiquidez, bloqueConciliacion, bloqueVencido, bloqueTrazabilidad, bloqueCalendarioCiego,
@@ -326,6 +326,14 @@ function bloqueMovimientos(h) {
   // NO SE RESTA DE NADA. CAJA sigue mostrando el saldo del banco: un hueco declarado es información;
   // uno "corregido" por el OS sería un dato inventado. Ver lib/banco-detalle-declarado.mjs.
   push(filaHuecoDelExtracto())
+
+  // ═══ Y CUÁNTO DE ESE SALDO EL BANCO TODAVÍA NO ACREDITÓ (11/09/2026) ═══
+  //
+  // Ésta sí SE RESTA: `caja-grilla` toma el saldo del banco neto de lo retenido, con la misma
+  // expresión. Va acá arriba porque es lo primero que hay que saber antes de leer un solo número del
+  // bloque — el 11/09 fueron $38.572.526,23 de eCheq depositados el 10/09 y retenidos 48 hs, y sin
+  // esta línea CAJA los publicaba como disponibles y el cierre del 31/12 saltó $30 M.
+  push(filaRetenidoPorElBanco())
 
   // LA FECHA VA GUARDADA CON ISNUMBER: `=CAJA_BANCO_CORTE` sobre una celda vacía devuelve 0, y el 0 con
   // formato de fecha se dibuja "30/12/1899". Es el defecto `fecha_cero` que el auditor de pantalla

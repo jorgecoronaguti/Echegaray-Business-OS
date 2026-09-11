@@ -23,6 +23,7 @@ import {
   type HorasPorPersona, type PersonaDeLiquidacion,
 } from './liquidacionCuadros.ts'
 import { horasDeQuincena, type PresenciaDeQuincena, type RegistroDeQuincena } from './liquidacionQuincena.ts'
+import { leerRegistrosHH } from './registrosHHService.ts'
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 import {
@@ -94,9 +95,22 @@ export async function getLiquidacionDeLaQuincena(
       supabase.from('persona_legajo').select('id, cuil'),
       supabase.from('persona_tarifa')
         .select('persona_id, desde, valor_hora, neto_mensual, origen').lte('desde', q.hasta),
-      supabase.from('registros_hh')
-        .select('persona_id, fecha, horas, tipo_hora, notas')
-        .gte('fecha', q.desde).lte('fecha', q.hasta).not('persona_id', 'is', null),
+      // ═══ EL CAMINO DEL DINERO TAMBIÉN SE PAGINA ═══ (11/09/2026, auditoría de cierre)
+      //
+      // Esta consulta estaba escrita a mano y SIN `.range()`: PostgREST corta en `db-max-rows`
+      // (1.000 en esta base) y devuelve 200 con `error: null`. Es el defecto exacto que
+      // `registrosHHService.ts` existe para impedir, y estaba en la función que calcula lo que se le
+      // paga a cada uno. Hoy no muerde —17 personas × 13 días son ~220 filas— pero con el plantel
+      // completo y los partes partidos por obra se cruza el tope, y la grilla y el importe dirían
+      // cosas distintas sin un solo error a la vista.
+      //
+      // La cabecera de `registrosHHService.ts` ya afirmaba que Asistencia y Liquidación leen «la
+      // misma ventana y el mismo filtro POR ESTA FUNCIÓN». Era verdad para las horas de la grilla y
+      // falsa para la plata. Ahora es verdad para las dos.
+      leerRegistrosHH(supabase, {
+        desde: q.desde, hasta: q.hasta,
+        columnas: 'persona_id, fecha, horas, tipo_hora, notas',
+      }),
       supabase.from('asistencia_dia')
         .select('persona_id, fecha, estado, motivo').gte('fecha', q.desde).lte('fecha', q.hasta),
       supabase.from('nomina_recibo_neto').select('cuil, periodo, neto, fecha_pago'),
@@ -118,7 +132,9 @@ export async function getLiquidacionDeLaQuincena(
   anotar('el plantel', directorio.error)
   anotar('los CUIL del legajo', legajo.error)
   anotar('las tarifas', tarifas.error)
-  anotar('las horas de la quincena', registros.error)
+  // `leerRegistrosHH` devuelve el error ya en texto: no trae `code` porque un tope alcanzado no es
+  // un error de PostgREST, es una lectura que no puede afirmar que tiene todo.
+  anotar('las horas de la quincena', registros.error ? { message: registros.error } : null)
   anotar('la presencia declarada', presencias.error)
   anotar('los recibos del estudio', recibos.error)
   anotar('los giros del extracto', adelantos.error)
