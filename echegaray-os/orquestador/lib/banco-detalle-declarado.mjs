@@ -77,6 +77,29 @@ export function expresionRetenido({ importe = DEP.importe, saldo = COL_SALDO } =
 }
 
 /**
+ * LA MISMA REGLA, DEL LADO DE JAVASCRIPT: ¿esta fila de `_BANCO_RAW` es plata listada y no acreditada?
+ *
+ * ═══ POR QUÉ VIVE ACÁ Y NO EN EL EXTRACTOR QUE LA USA (11/09/2026) ═══
+ *
+ * Son dos caras de UNA definición —la celda de saldo vacía— y tienen que estar pegadas: la fórmula de
+ * arriba es la que CAJA usa para no publicar esa plata como disponible, y este predicado es el que el
+ * Libro usa para emitirla como ingreso proyectado a la fecha en que el banco la acredita. El día que
+ * la marca cambie de forma (una columna nueva, un rótulo) hay que cambiar las dos, y una al lado de la
+ * otra eso es imposible de olvidar. Escritas en archivos distintos, CAJA restaría y el Libro no
+ * emitiría: $38.572.526,23 que desaparecen del cierre proyectado, que es el defecto del 11/09 a las 12:50.
+ *
+ * EL SALDO VACÍO ES LA MARCA, Y EL CERO NO. `banco-raw-pestana.mjs` escribe vacío a propósito para las
+ * filas retenidas —«un saldo que no existe va vacío, no en cero»— y un 0 sería un saldo real de cero.
+ *
+ * @param {{importe:unknown, saldo:unknown}} fila los dos valores de la réplica, sin formatear
+ * @returns {boolean}
+ */
+export function esRetenida({ importe, saldo } = {}) {
+  const vacio = saldo === '' || saldo === null || saldo === undefined
+  return vacio && typeof importe === 'number' && Number.isFinite(importe) && importe !== 0
+}
+
+/**
  * NÚCLEO PURO: el saldo del banco que CAJA puede gastar — el DECLARADO menos lo retenido.
  *
  * `formulaUltimoSaldo` devuelve el último saldo corrido de la réplica, que es el que el banco declara
