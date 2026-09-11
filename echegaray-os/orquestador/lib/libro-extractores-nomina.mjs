@@ -380,3 +380,33 @@ export function deOficina(bloque = {}, corte = null, { aviso = avisoPorDefecto, 
 export function deDireccion(bloque = {}, corte = null, { aviso = avisoPorDefecto, extracto = null } = {}) {
   return deBloqueMensual(bloque, corte, { bloque: 'Dirección', aviso, extracto })
 }
+
+/**
+ * NÚCLEO PURO: LA REMUNERACIÓN MENSUAL DE LA NÓMINA, mes por mes — la base del SAC.
+ *
+ * ═══ POR QUÉ RECIBE MOVIMIENTOS Y NO RANGOS (11/09/2026) ═══
+ *
+ * El medio aguinaldo es *el 50 % de la mayor remuneración mensual devengada en el semestre*, así que
+ * necesita la misma serie de nómina que este archivo ya publica: las quincenas reales, las
+ * proyectadas, Oficina y Dirección. Podría leer los rangos otra vez, y sería una SEGUNDA definición
+ * de «cuánto paga de nómina la empresa en un mes» que se separa de la primera el día que un bloque
+ * cambie de rango. Recibe los movimientos YA EMITIDOS: la definición queda una sola, y cualquier
+ * corrección de la proyección de jornales llega sola al SAC.
+ *
+ * Los dos rubros son los que esta pestaña es dueña de emitir. Un movimiento de otro rubro no es
+ * remuneración (las cargas sociales no se devengan sobre sí mismas) y no entra.
+ *
+ * @param {Array} movimientos el libro (o la parte de nómina de él)
+ * @param {(serial:number)=>string} mesDe serial → 'YYYY-MM'
+ * @returns {Map<string, number>} mes → lo que la nómina paga ese mes
+ */
+export function remuneracionMensualDeLaNomina(movimientos = [], mesDe) {
+  const out = new Map()
+  for (const m of movimientos ?? []) {
+    if (m?.rubro !== RUBRO_JORNALES && m?.rubro !== RUBRO_ADMINISTRACION) continue
+    const mes = mesDe(m.fecha)
+    if (!mes) continue
+    out.set(mes, Math.round(((out.get(mes) ?? 0) + Math.abs(Number(m.importe) || 0)) * 100) / 100)
+  }
+  return out
+}
