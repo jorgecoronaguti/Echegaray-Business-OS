@@ -589,6 +589,27 @@ export function personasPorObra(filas: FilaQuincena[]): { rotulo: string; person
 }
 
 /**
+ * LOS CHIPS QUE SE DIBUJAN, CON EL ELEGIDO SIEMPRE ADENTRO.
+ *
+ * Dueño, 11/09/2026: «le pongo el filtro a obra y no se puede sacar después». Reproducido: con una
+ * obra elegida se cambia de quincena, la obra no tiene gente en la quincena nueva, y los chips se
+ * arman con la población de ESA quincena — así que el chip elegido no existe, ningún chip queda
+ * marcado activo (tampoco «Todas») y la grilla aparece vacía sin ninguna señal de qué la recorta.
+ * El filtro seguía puesto en la URL y no había nada que tocar para sacarlo.
+ *
+ * Un filtro activo se dibuja SIEMPRE, con 0 si no alcanza a nadie: es el chip marcado, y su clic lo
+ * apaga. `elegida` es el token ya normalizado (`OBRA_SIN` para las filas sin obra).
+ */
+export function chipsConElegida(
+  chips: { rotulo: string; personas: number }[], elegida: string,
+): { rotulo: string; personas: number }[] {
+  if (!elegida) return chips
+  const rotulo = elegida === OBRA_SIN ? SIN_OBRA : elegida
+  if (chips.some((c) => c.rotulo === rotulo)) return chips
+  return [...chips, { rotulo, personas: 0 }]
+}
+
+/**
  * EL VALOR DE `?obra=` QUE PIDE LAS FILAS SIN OBRA ACTIVA.
  *
  * El rótulo real es «Sin obra activa» y viaja en la URL; se usa un token corto y estable porque el

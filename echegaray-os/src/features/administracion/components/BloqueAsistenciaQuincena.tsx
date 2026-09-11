@@ -9,7 +9,7 @@ import {
 } from '../services/quincena'
 import { getQuincenaPorObra } from '../services/jornadaPorObraService'
 import {
-  armarQuincenaPorObra, diasSinMarcar, filtrarPorObra, OBRA_SIN, personasPorObra, SIN_OBRA,
+  armarQuincenaPorObra, chipsConElegida, diasSinMarcar, filtrarPorObra, OBRA_SIN, personasPorObra, SIN_OBRA,
   totalDeLaQuincena, totalesPorDia,
 } from '../services/quincenaPorObra'
 import { GrillaAsistenciaObra } from './GrillaAsistenciaObra'
@@ -115,7 +115,9 @@ export async function BloqueAsistenciaQuincena({
   // contestan siempre «lo que estoy viendo».
   const paraElPie = filtrarPorObra(todas, obra)
   const totales = totalesPorDia(paraElPie, dias)
-  const chips = personasPorObra(todas)
+  // EL ELEGIDO SIEMPRE ESTÁ ENTRE LOS CHIPS, aunque en esta quincena no alcance a nadie: si no, el
+  // filtro queda puesto sin ningún chip activo y no hay qué apretar para sacarlo (dueño, 11/09/2026).
+  const chips = chipsConElegida(personasPorObra(todas), elegida)
   const sinMarcar = diasSinMarcar(todas)
   // LAS OBRAS A LAS QUE SE PUEDE MOVER UN DÍA: las activas que la sesión ve. La jornada de cada una
   // viaja junta —es lo que vale una ausencia— y sale del mismo viaje, no de dos.
