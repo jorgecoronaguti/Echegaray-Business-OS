@@ -255,8 +255,12 @@ export default async function ClientePage({ params, searchParams }: {
   // LA MISMA BASE QUE LA CARTERA (auditor, 11/09/2026): mano de obra + materiales cuando el papel
   // desglosa (`obra_contrato`), si no el precio de OBRAS. `cliente_economia.contratado_en_curso`
   // sólo conoce OBRAS y publicaba $ 95,3 M de Quattropani contra $ 139,4 M en la lista.
-  const basesEnCurso = enCurso.map((o) => baseContractualDe(economia?.get(o.obra_id))).filter((v): v is number => v !== null)
-  const contratadoEnCurso = basesEnCurso.length ? basesEnCurso.reduce((a, v) => a + v, 0) : null
+  // O SUMA COMPLETA, O NADA (auditor final, 11/09/2026): la lista pone «—» cuando un trabajo no
+  // tiene base; la ficha no puede publicar una parcial como total.
+  const basesEnCurso = enCurso.map((o) => baseContractualDe(economia?.get(o.obra_id)))
+  const contratadoEnCurso = basesEnCurso.length && basesEnCurso.every((v): v is number => v !== null)
+    ? basesEnCurso.reduce((a, v) => a + v, 0)
+    : null
 
   /** El detalle del trabajo, DENTRO del CRM. Es una función y no una arrow creada en el JSX: una
    *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
