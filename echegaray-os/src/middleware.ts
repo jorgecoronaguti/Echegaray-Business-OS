@@ -7,19 +7,59 @@ import {
 } from '@/features/obras/services/vistaRecordada'
 import { destinoPorRol } from '@/features/portal/types'
 import { trazar } from '@/lib/supabase/traza'
+import { TOPE_MS_MIDDLEWARE, esFallaDeBackend, fetchConTope } from '@/lib/supabase/fetch-con-tope'
 import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from '@/lib/auth/rol-cache'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
 // puede quedar con un token vencido en Server Components y verse "deslogueado" sin
 // haber cerrado sesión. Patrón estándar de @supabase/ssr para Next.js App Router.
+/**
+ * ═══ SI SUPABASE NO CONTESTA, LA APP LO DICE EN SEGUNDOS (11/09/2026) ═══
+ *
+ * El incidente «Unresponsive Projects» dejó Auth y REST mudos durante minutos. Este middleware corre
+ * en TODA petición y esperaba sin tope: Vercel cortaba la función a los 25 s y el dueño veía
+ * «504 MIDDLEWARE_INVOCATION_TIMEOUT» en cada pantalla, sin saber si era su conexión, Vercel o la
+ * base. Ahora cada llamada a Supabase tiene tope (`fetchConTope`) y una falla del backend contesta
+ * 503 con una página que dice QUÉ no responde y que no es culpa del que mira. Las rutas públicas
+ * (login, estáticos) siguen pasando: no dependen de Supabase para dibujarse.
+ */
 export async function middleware(request: NextRequest) {
+  try {
+    return await middlewareConBackend(request)
+  } catch (e) {
+    if (!esFallaDeBackend(e)) throw e
+    if (esRutaPublica(request.nextUrl.pathname)) return NextResponse.next({ request })
+    return sinBackend(request)
+  }
+}
+
+function sinBackend(request: NextRequest): NextResponse {
+  const quiereHtml = (request.headers.get('accept') ?? '').includes('text/html') && !request.headers.has('rsc')
+  const cuerpo = quiereHtml
+    ? `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Sin respuesta de la base</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="refresh" content="20">
+<style>body{font-family:system-ui,sans-serif;background:#FAFAF8;color:#1c1c1a;display:grid;place-items:center;min-height:100vh;margin:0}
+main{max-width:520px;padding:32px;border:1px solid #E5E4DF;border-radius:12px;background:#fff}h1{font-size:18px;margin:0 0 12px}p{margin:8px 0;line-height:1.45;font-size:14px}small{color:#6b6b68}</style></head>
+<body><main><h1>La base de datos no responde</h1>
+<p>Supabase, donde viven los datos del OS, no contestó en ${Math.round(TOPE_MS_MIDDLEWARE / 1000)} segundos. No es tu conexión ni la aplicación: es el proveedor.</p>
+<p>Esta página se vuelve a intentar sola cada 20 segundos. El estado del proveedor está en <a href="https://status.supabase.com">status.supabase.com</a>.</p>
+<small>Echegaray Business OS · ${new Date().toISOString()}</small></main></body></html>`
+    : 'Supabase no responde'
+  return new NextResponse(cuerpo, {
+    status: 503,
+    headers: { 'content-type': quiereHtml ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8', 'retry-after': '20', 'cache-control': 'no-store' },
+  })
+}
+
+async function middlewareConBackend(request: NextRequest) {
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      global: { fetch: trazar() },
+      // TODA llamada a Supabase desde acá tiene tope: sin él, el middleware es el primero en colgarse.
+      global: { fetch: fetchConTope(TOPE_MS_MIDDLEWARE, trazar() ?? fetch) },
       cookies: {
         getAll() {
           return request.cookies.getAll()
