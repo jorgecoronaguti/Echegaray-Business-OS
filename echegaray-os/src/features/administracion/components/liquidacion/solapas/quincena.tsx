@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
 import { getDatosDeLaSolapaHoras } from '../../../services/grillaHorasQuincenaService'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
-import { getEspejoDeLaPlanilla } from '../../../services/espejoDeJornalesService'
 import {
   diasConHorasDe, diasDelEspejo, filasDelEspejo, totalesDelEspejo, type FilaDelEspejo,
 } from '../../../services/espejoDeJornales'
@@ -55,11 +54,14 @@ const RECORTES: { clave: GrupoLiquidacion | 'todos'; texto: string }[] = [
 export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }: PropsDeSolapa) {
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? (quincenaPedida as string) : hoy)
   const supabase = await createClient()
-  const [datos, liquidacion, espejo] = await Promise.all([
+  const [datos, liquidacion] = await Promise.all([
     getDatosDeLaSolapaHoras(supabase, quincena),
     getLiquidacionDeLaQuincena(supabase, quincena),
-    getEspejoDeLaPlanilla(supabase, quincena),
   ])
+  // EL ESPEJO VIENE CON LA LIQUIDACIÓN, no de una lectura propia: es la misma función que ya lo usa
+  // para meter los adelantos de la planilla en la cadena de pago. Leerlo dos veces daría dos fotos
+  // de la planilla y un chip que coteja contra una y una celda que cobra según la otra.
+  const espejo = liquidacion.espejo
 
   const lineas: Record<string, { grupo: GrupoLiquidacion; linea: LineaConOverrides }> = {}
   const tituloDe = new Map<GrupoLiquidacion, string>()
@@ -79,6 +81,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
     lineas,
     cuadrosCerrados,
     horasDeLaPlanilla: espejo.horasPorPersona,
+    diasDeLaPlanilla: espejo.diasPorPersona,
     hayEspejo: espejo.hay,
     hoy,
   })
@@ -109,12 +112,11 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
 
   return (
     <div data-testid="vista-quincena">
-      {[...datos.errores, ...liquidacion.errores, ...(espejo.error ? [{ que: 'el espejo de JORNALES', error: espejo.error }] : [])]
-        .map((e) => (
-          <div key={e.que} style={{ padding: '0 0 10px' }}>
-            <Aviso tono="neg" testid="quincena-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
-          </div>
-        ))}
+      {[...datos.errores, ...liquidacion.errores].map((e) => (
+        <div key={e.que} style={{ padding: '0 0 10px' }}>
+          <Aviso tono="neg" testid="quincena-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
+        </div>
+      ))}
       <FiltrosDelEspejo periodos={periodos} grupos={grupos} />
       <GrillaEspejoQuincena
         dias={dias}

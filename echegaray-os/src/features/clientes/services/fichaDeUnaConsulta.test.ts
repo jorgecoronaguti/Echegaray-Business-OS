@@ -49,8 +49,18 @@ test('la página resuelve la solapa ANTES de leer, y se la pasa', () => {
 test('la barra de solapas cuenta con n_documentos y no con el largo de la lista recortada', () => {
   assert.match(lector, /nDocumentos:\s*j\.n_documentos\s*\?\?\s*0/,
     'el lector dejó de transportar n_documentos')
-  assert.match(pagina, /documentos:\s*ficha\.nDocumentos\s*\+\s*nPapeles/,
+  // `+ nPapeles` SE FUE EL 11/09/2026 17:50. Sumaba los papeles del OS al conteo de la RPC y contaba
+  // DOS VECES los que además están en Drive; y la RPC contaba sólo los vínculos manuales, que en San
+  // Francisco son cero con 63 archivos abajo — «Documentos · 0», que es lo que el dueño mandó
+  // arreglar. Ahora el número sale entero de `n_documentos` (20260911T2200 lo cuenta sobre las
+  // MISMAS cuatro fuentes que dibuja la cara) y lo compara con TypeScript
+  // `orquestador/lib/cara-documentos.pg.test.mjs`. Lo que este test sigue cuidando es lo de siempre:
+  // que la barra NO cuente el largo de un array recortado.
+  assert.match(pagina, /documentos:\s*ficha\.nDocumentos\b/,
     'la barra volvió a contar el array: escribiría «Documentos · 0» en las siete caras recortadas')
+  assert.doesNotMatch(pagina, /documentos:\s*cara\.total/,
+    'la barra volvió a contar lo que dibuja ESTA cara: el mismo cliente mostraría un número distinto '
+    + 'en cada solapa, porque los papeles de obra sólo viajan en Documentos')
   // Y AL REVÉS: que no quede ningún `.length` de `documentos` alimentando ese conteo.
   assert.doesNotMatch(pagina, /documentos:\s*lector\.leer\(documentos,\s*\[\]\)\.length/,
     'volvió el conteo por `.length` sobre una lista que no siempre viaja')

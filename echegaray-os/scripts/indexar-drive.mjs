@@ -360,6 +360,19 @@ for (const raiz of raices) {
 }
 
 const { marcadas, revividas } = await marcarAusencias(enBase)
+
+// ═══ Y SE REHACE EL REPARTO DE PAPELES POR OBRA ═══
+//
+// `public.obra_papel` es el cruce ya resuelto entre estos archivos y las obras (20260911T2300). El
+// índice acaba de cambiar: si no se refresca acá, la ficha del cliente muestra el reparto de hace
+// seis horas —un archivo subido hoy no existe para la pantalla— y nadie se entera, porque una lista
+// desactualizada se ve igual que una lista correcta.
+const { rows: [{ f: hayRefresco }] } = await pool.query(
+  `select to_regprocedure('public.refrescar_obra_papel()') f`)
+if (hayRefresco) {
+  const { rows: [{ n }] } = await pool.query('select public.refrescar_obra_papel() n')
+  console.log(`· papeles por obra refrescados: ${n}`)
+}
 const tot = (await pool.query('select count(*)::int n from public.drive_index')).rows[0].n
 const seg = ((Date.now() - T0) / 1000).toFixed(1)
 console.log(

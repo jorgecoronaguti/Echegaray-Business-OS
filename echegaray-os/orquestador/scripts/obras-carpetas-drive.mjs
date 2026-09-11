@@ -187,4 +187,17 @@ for (const v of vinculos) {
   escritos += r.length
 }
 console.log(`\nESCRITOS ${escritos} de ${vinculos.length} (los que faltan son vínculos manuales, que no se pisan)`)
+
+// ═══ Y SE REFRESCA LA TABLA DE PAPELES ═══
+//
+// `public.obra_papel` es el cruce ya resuelto entre los archivos de Drive y las obras: vincular una
+// carpeta sin refrescarla deja la ficha del cliente mostrando el reparto VIEJO hasta la próxima
+// corrida del indexador, que es hasta seis horas de una pantalla que miente sin avisar.
+const conTabla = (await q(`select to_regprocedure('public.refrescar_obra_papel()') f`))[0].f
+if (conTabla) {
+  const n = (await q('select public.refrescar_obra_papel() n'))[0].n
+  console.log(`PAPELES REFRESCADOS: ${n} archivos repartidos entre las obras`)
+} else {
+  console.log('NO se refrescó public.obra_papel: falta aplicar la migración 20260911T2300')
+}
 await pool.end()

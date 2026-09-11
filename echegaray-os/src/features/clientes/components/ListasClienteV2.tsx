@@ -277,7 +277,9 @@ export function ObrasDelCliente({
           style={{
             // `minHeight`: con las OC debajo del nombre la fila tiene DOS líneas, y a 390px los
             // números se apilan. Con `height` clavado el segundo renglón queda cortado por abajo.
-            minHeight: papelesDeLaObra?.oc.length ? ALTO_V2.cara + 14 : ALTO_V2.cara,
+            // EL SEGUNDO RENGLÓN SUMA ALTO, venga de las OC o del consolidado de los adicionales: con
+            // el alto de una línea, el renglón de abajo se dibuja sobre la fila siguiente.
+            minHeight: papelesDeLaObra?.oc.length || fila.hijos.length ? ALTO_V2.cara + 14 : ALTO_V2.cara,
             // UN PASO DE 24px (grid de 8) PARA EL ADICIONAL: es lo único que dice «cuelga de la fila
             // de arriba» sin agregar un nivel de navegación ni una tarjeta.
             paddingLeft: fila.nivel ? SANGRIA + 24 : SANGRIA,

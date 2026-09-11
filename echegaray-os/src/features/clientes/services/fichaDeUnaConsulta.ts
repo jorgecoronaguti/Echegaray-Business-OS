@@ -50,6 +50,7 @@ import {
   armarCobradoPorObra, type CobroPorObra,
 } from '../../administracion/services/homeCartera.ts'
 import { armarPresupuestos } from '@/features/presupuestos/services/presupuestosService'
+import { papelesPorObra, type PapelDeObra, type PapelesDeUnaObra } from './papelesDeObra.ts'
 
 /** Todo lo que la ficha necesita, ya en los tipos que consumen los componentes. */
 export interface FichaLeida {
@@ -92,6 +93,22 @@ export interface FichaLeida {
    * pantalla dibuja «—» en ese caso y deja la celda VACÍA en el primero.
    */
   horasPorObra: Map<string, HorasDeObra> | null
+  /**
+   * LOS PAPELES DE DRIVE DE CADA OBRA, ya agrupados por categoría (dueño, 11/09/2026: «no encuentro
+   * las cotizaciones, los documentos… que han conformado todas las obras»).
+   *
+   * VIENE VACÍO fuera de la cara Documentos, que es la única que los dibuja: son 226 filas en la
+   * cartera entera. Una obra con entrada y `total: 0` es «no tiene papeles»; una obra SIN entrada no
+   * tiene carpeta vinculada, y la pantalla lo dice distinto.
+   */
+  papelesObra: Map<string, PapelesDeUnaObra>
+  /**
+   * obra_id → el enlace de su carpeta de Drive. Sin entrada = no tiene ninguna vinculada, que NO es
+   * lo mismo que no tener papeles. El enlace se arma con el id de la carpeta y no se pide a Drive:
+   * `obra_carpeta_drive` guarda el id, y una consulta más por obra para traer una URL previsible es
+   * un viaje que no compra nada.
+   */
+  carpetasObra: Map<string, string>
 }
 
 interface FichaCruda {
@@ -113,6 +130,8 @@ interface FichaCruda {
   presupuestos: unknown[]
   cobrado_por_obra: unknown[]
   hh_obra: unknown[] | null
+  papeles_obra: unknown[]
+  carpetas_obra: { obra_id: string; drive_folder_id: string }[]
 }
 
 function nadaLeido(error: string | null): FichaLeida {
@@ -120,6 +139,8 @@ function nadaLeido(error: string | null): FichaLeida {
     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
     papeles: null, cobradoPorObra: null, nDocumentos: 0, horasPorObra: null,
+    papeles: null, cobradoPorObra: null, nDocumentos: 0, papelesObra: new Map(),
+    carpetasObra: new Map(),
   }
 }
 
@@ -183,5 +204,16 @@ export async function leerFichaDeUnaConsulta(
     // no las puede ver enteras— y convertirlo en una lista vacía escribiría «esta obra no tiene
     // horas» sobre una obra con 12.525.
     horasPorObra: armarHorasPorObra(j.hh_obra ?? null),
+    // LA COTIZACIÓN ACEPTADA NO SE DEDUCE DEL NOMBRE: la dice `obra_contrato`, que es el papel que
+    // el OS ya leyó para escribir el precio, y viaja en `economia_obras.contrato_fuente_drive_id`.
+    // «FINAL», «APROBADA» y «v2» conviven en la misma carpeta y ninguna de las tres palabras prueba
+    // nada.
+    papelesObra: papelesPorObra((j.papeles_obra ?? []) as PapelDeObra[], {
+      obrasConCarpeta: new Set((j.carpetas_obra ?? []).map((c) => c.obra_id)),
+      aceptadas: new Set(((j.economia_obras ?? []) as { contrato_fuente_drive_id?: string | null }[])
+        .map((e) => e.contrato_fuente_drive_id).filter((x): x is string => !!x)),
+    }),
+    carpetasObra: new Map((j.carpetas_obra ?? []).map((c) =>
+      [c.obra_id, `https://drive.google.com/drive/folders/${c.drive_folder_id}`])),
   }
 }

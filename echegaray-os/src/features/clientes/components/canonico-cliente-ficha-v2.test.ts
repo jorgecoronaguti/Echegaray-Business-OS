@@ -352,18 +352,21 @@ test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el
   // de cartera que decían distinto del mismo cliente.
   assert.match(src, /<OrdenesDeLaObra ordenes=\{papelesDeLaObra\?\.oc \?\? \[\]\}/)
   assert.doesNotMatch(src, /margen-obra-cliente|margenPct|pctTexto|margenDeLaFila/)
-  // OP se suelta por debajo de 1200px; OC no, porque es la pregunta que el dueño hace primero.
-  assert.match(src, /SOLO_ANCHO_ECO[^\n]*<RotuloCol derecha>OP c\/IVA<\/RotuloCol>/,
-    '«OP» tiene que soltarse por debajo de 1200px: en una pantalla angosta sobrevive lo que se vendió')
-  assert.match(src, /SOLO_ANCHO}`} title=\{AYUDA_OC\}><RotuloCol derecha>OC c\/IVA<\/RotuloCol>/,
-    '«OC» no puede esconderse antes que el detalle: es lo que el dueño pidió ver')
-  // ═══ EL «c/IVA» ES PARTE DEL RÓTULO, NO DEL `title` (10/09/2026) ═══
+  // ═══ LAS COLUMNAS «OC c/IVA» Y «OP c/IVA» SE FUERON DE ESTA TABLA (dueño, 11/09/2026 18:42) ═══
   //
-  // El importe de una OC es el TOTAL del PDF y «Contratado», dos columnas a la izquierda, es NETO:
-  // el Adicional Tercer Muro tiene una OC de $12.100.000 contra $10.000.000 contratados, que es el
-  // mismo número ×1,21. Un rótulo que calla la unidad obliga a pasar el mouse para saber si las dos
-  // columnas vecinas se pueden restar — y en un PDF impreso no hay mouse.
-  assert.ok(!/<RotuloCol derecha>OC<\/RotuloCol>/.test(src), 'el rótulo «OC» volvió sin decir el IVA')
+  // «Esas columnas OC/OP quitarlas de todo el CRM porque deben estar en la sección Órdenes, que
+  // tiene que ser órdenes de compra y de pago.» Los importes no se borraron: se leen enteros en esa
+  // solapa, con tipo, número, fecha, importe y obra. Lo que se fue es el TOTAL repetido en una celda
+  // de 140px, y en su lugar va el acumulado de HH. Los NÚMEROS de las OC siguen pegados al nombre
+  // (arriba), que es lo que el dueño pidió el 10/09 y volvió a pedir el 11/09 18:45.
+  for (const rotulo of ['OC c/IVA', 'OP c/IVA']) {
+    assert.ok(!src.includes(`>${rotulo}<`),
+      `«${rotulo}» volvió a la tabla de trabajos: su casa es la solapa Órdenes de compra y de pago`)
+  }
+  assert.doesNotMatch(src, /data-testid="oc-obra-cliente"|data-testid="op-obra-cliente"/,
+    'volvieron las celdas con el total de OC/OP en la fila de la obra')
+  assert.doesNotMatch(src, /TotalDePapeles/,
+    'el total de papeles se dibuja en la solapa Órdenes; acá repetía la mitad de cada papel')
   // Ni Obra ni Contratado llevan clase de escondido: son las dos que no se negocian.
   const celdas = celdasDelEncabezado()
   for (const fija of ['Trabajo', 'Contratado']) {
@@ -494,33 +497,77 @@ test('sin permiso económico la celda del importe dice el literal del zip, y NAD
   }
 })
 
+// ═══ MOVER UNA FILA DE GRUPO NO PUEDE CAMBIAR UNA CIFRA DE PLATA (11/09/2026) ═══
+//
+// EL DEFECTO QUE ATRAPA, medido en el navegador: cuando el adicional pasó a viajar al grupo de su
+// obra mayor, «BSA - Adicional» —cerrada y sin precio— entró al grupo «en curso» de Messina y la
+// regla de «o suma completa o nada» volvió `null` el CONTRATADO EN CURSO: la cifra pasó de
+// $ 159.758.209 a «sin precio en OBRAS» sin que ninguna obra hubiera cambiado de precio.
+//
+// La separación es la que arregla eso: `enCursoConAdicionales` es el GRUPO que se dibuja y `enCurso`
+// el universo ECONÓMICO que se suma. Si alguien vuelve a sumar el grupo, esto se pone rojo.
+test('la cifra del cliente suma las obras EN EJECUCIÓN, no el grupo que se dibuja', () => {
+  const src = codigoPagina()
+  assert.match(src, /const enCurso = todas\.filter\(\(o\) => o\.estado === 'activa'\)/,
+    'el universo económico dejó de ser «las obras activas»')
+  assert.match(src, /obras=\{enCursoConAdicionales\}/,
+    'la tabla dejó de recibir el grupo con los adicionales, o el grupo volvió a ser el que se suma')
+  assert.match(src, /basesEnCurso = enCurso\.map\(\(o\) => baseContractualDe\(economia\?\.get\(o\.obra_id\)\)\)/)
+})
+
+// ═══ LA CARA DOCUMENTOS ES UNA JERARQUÍA, NO CINCO BLOQUES (dueño, 11/09/2026 17:50) ═══
+//
+// «El CRM dice documentos de drive (0) y está pésimo eso, arreglar» · «no se entiende nada realmente
+// la UX de esa sección documentos». Eran cinco bloques de primer nivel con el mismo peso visual y el
+// mismo PDF podía estar en tres. Lo que estos dos tests atrapan es la vuelta atrás: que el rótulo
+// «Documentos de Drive · N» —el que decía 0 con 226 archivos abajo— vuelva a escribirse, y que el
+// número de la solapa vuelva a contar una cosa distinta de la que se dibuja.
+test('la cara Documentos no vuelve a escribir «Documentos de Drive»', () => {
+  const src = codigoPagina()
+  assert.doesNotMatch(src, /Documentos de Drive/,
+    'volvió el rótulo que publicaba un conteo que no era el de lo que se ve')
+  assert.doesNotMatch(src, /<PapelesPorTipo/,
+    'los papeles del OS volvieron a su propio bloque: van ADENTRO de la obra a la que pertenecen')
+  assert.doesNotMatch(src, /<ArchivosDeDrive/,
+    'volvió el índice completo de la carpeta del cliente como bloque de primer nivel')
+  assert.match(src, /<CaraDeDocumentos/)
+})
+
+test('el N de la solapa es lo que se dibuja adentro, no un conteo aparte', () => {
+  const src = codigoPagina()
+  assert.match(src, /documentos: ficha\.nDocumentos/,
+    'el contador de la solapa dejó de salir de la RPC, que lo cuenta sobre las mismas cuatro fuentes')
+  assert.doesNotMatch(src, /ficha\.nDocumentos \+ nPapeles/,
+    'volvió la suma que contaba dos veces los papeles con PDF y ninguna vez los de las obras')
+})
+
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // INICIO Y HH — LAS DOS COLUMNAS QUE EL CRM NO TENÍA (dueño, 11/09/2026)
 //
-// «Necesito saber las hs que se van sumando en cada obra dentro de cada cliente» y «no tengo idea de
-// cuándo empezó cada obra en el CRM, no sé cuánto llevan hs totales, un desastre».
+// «Necesito saber las hs que se van sumando en cada obra dentro de cada cliente» · «no tengo idea de
+// cuándo empezó cada obra en el CRM, no sé cuánto llevan hs totales, un desastre» · «el acumulado HH
+// por cliente por obra, lo quiero exhibido en una columna al lado de OC/OP».
 //
-// LO QUE ESTOS CASOS VIGILAN, Y NO PUEDE VIGILAR `horasDeObra.test.ts`: que las celdas sigan
-// DELEGANDO en ese módulo. El día que alguien escriba el formato adentro de la celda —un
-// `toLocaleString` ahí mismo, un `?? 0`—, los tests del módulo seguirían verdes y la pantalla
-// publicaría un cero por una ausencia. La regla del OS es la misma de siempre: una definición, un
-// lugar.
+// LO QUE ESTOS CASOS VIGILAN, Y NO PUEDEN VIGILAR `horasDeObra.test.ts` NI LA CAPTURA: que las
+// celdas sigan DELEGANDO en ese módulo. El día que alguien escriba el formato adentro de la celda
+// —un `toLocaleString` ahí mismo, un `?? 0`—, los tests del módulo seguirían verdes y la pantalla
+// publicaría un cero por una ausencia.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-test('la tabla de trabajos dibuja INICIO y HH, y las suelta con el detalle a 1199px', () => {
+test('la tabla de trabajos dibuja INICIO y HH, y cada una se suelta con su pista', () => {
   const celdas = celdasDelEncabezado()
   const i = celdas.findIndex((c) => c.includes('>Inicio<'))
   const h = celdas.findIndex((c) => c.includes('>HH<'))
   assert.ok(i > 0, 'se fue la columna Inicio: el CRM no puede decir cuándo arrancó el trabajo')
-  assert.ok(h === i + 1, 'HH tiene que ir inmediatamente a la derecha de Inicio')
-  // Detrás del ESTADO y delante del dinero: la fila se lee «qué · cómo va · desde cuándo · cuánto
-  // esfuerzo lleva · cuánta plata es». Y ninguna columna existente se movió.
-  assert.ok(celdas.findIndex((c) => c.includes('>Estado<')) < i)
-  assert.ok(celdas.findIndex((c) => c.includes('Cobrado neto')) > h)
-  for (const [rotulo, pos] of [['Inicio', i], ['HH', h]] as [string, number][]) {
-    assert.match(celdas[pos], /SOLO_ANCHO_ECO/,
-      `${rotulo} tiene que esconderse en el mismo corte en que su pista desaparece`)
-  }
+  assert.ok(h > 0, 'se fue la columna HH: es lo que el dueño pidió ver')
+  // EL ORDEN QUE PIDIÓ EL DUEÑO: el inicio detrás del estado —qué, cómo va, desde cuándo— y las HH
+  // EN EL LUGAR DE LAS OC, a la derecha del contratado.
+  assert.ok(celdas.findIndex((c) => c.includes('>Estado<')) < i, 'Inicio va detrás del estado')
+  assert.ok(celdas.findIndex((c) => c.includes('>Contratado<')) < h,
+    'las HH van donde estaban las OC: a la derecha del contratado')
+  // INICIO se suelta a 1199 con su pista; HH sobrevive hasta el teléfono, donde se va con el resto.
+  assert.match(celdas[i], /SOLO_ANCHO_ECO/, 'Inicio tiene que esconderse donde desaparece su pista')
+  assert.match(celdas[h], /SOLO_ANCHO}/, 'HH se suelta sólo en el teléfono, con el cobrado')
 })
 
 test('las dos celdas nuevas no formatean nada por su cuenta: delegan en horasDeObra', () => {
@@ -545,17 +592,32 @@ test('las dos celdas nuevas no formatean nada por su cuenta: delegan en horasDeO
 })
 
 test('«no puedo leer las horas» se dibuja VACÍO, y «no tiene ninguna» se dibuja «—»', () => {
-  // Son dos hechos opuestos y hasta hoy la única forma de confundirlos era dibujarlos igual. La
-  // RPC manda `null` cuando la cara no las transporta o cuando el rol no las ve enteras (la RLS de
+  // Son dos hechos opuestos y la única forma de confundirlos es dibujarlos igual. La RPC manda
+  // `null` cuando la cara no las transporta o cuando el rol no las ve enteras (la RLS de
   // `registros_hh` le muestra SÓLO SUS horas: media suma parece una suma), y «—» lo escribe
   // `textoHH` cuando la base contestó que no hay ninguna.
   const src = codigoListas()
   for (const testid of ['hh-obra-cliente', 'inicio-obra-cliente']) {
     const desde = src.indexOf(`data-testid="${testid}"`)
     const celda = src.slice(desde, src.indexOf('</span>', desde))
-    assert.match(celda, /horas === null \? ''/,
+    assert.match(celda, /horas === null \?/,
       `${testid} tiene que callar cuando no se pudieron leer, en vez de afirmar una ausencia`)
   }
+})
+
+test('el número de HH abre el desglose, y no es un <a> adentro del <a> de la fila', () => {
+  const listas = codigoListas()
+  assert.match(listas, /<CeldaHH/, 'la celda de HH dejó de poder abrir el desglose')
+  // SIN COMENTARIOS: el archivo EXPLICA por qué no es un `<Link>`, y esa frase hacía que el control
+  // se pusiera rojo contra su propia documentación.
+  const celda = sinComentarios(readFileSync(join(DIR, 'CeldaHH.tsx'), 'utf8'))
+  // UN `<a>` ADENTRO DE OTRO `<a>` ES HTML INVÁLIDO: el navegador desarma el anidado y la fila queda
+  // con zonas que navegan a cualquier lado. Es la misma razón por la que `OrdenesDeLaObra` usa
+  // `<button>`, y la que hace que este control tenga que cortar el evento.
+  assert.doesNotMatch(celda, /<Link|<a\s/, 'la celda de HH volvió a ser un ancla dentro de la fila')
+  assert.match(celda, /e\.preventDefault\(\); e\.stopPropagation\(\)/,
+    'sin cortar el evento, tocar el número navega TAMBIÉN al detalle del trabajo')
+  assert.match(celda, /if \(!href\)/, 'sin horas no puede haber puerta a una pantalla vacía')
 })
 
 test('las horas llegan a las dos tablas de la ficha: en curso y terminados', () => {

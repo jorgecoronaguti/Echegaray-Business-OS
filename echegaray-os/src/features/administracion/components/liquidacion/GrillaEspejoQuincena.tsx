@@ -30,10 +30,10 @@
 import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
-import { CeldaEditable, CeldaRedondeo, Manual } from './CeldasDeLiquidacion'
+import { CeldaEditable, CeldaRedondeo, MarcaDeOrigen } from './CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from './formato'
 import { ALTO_LIQ, MONO } from './solapas/tabla'
-import type { CampoEditable } from '../../services/liquidacionOverrides'
+import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
 import type { CeldaDelEspejo, FilaDelEspejo, TotalesDelEspejo } from '../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../services/horasDeLaCeldaActions'
 
@@ -153,15 +153,15 @@ function Fila({ fila, columnas, quincena, camposEditables }: {
       {/* HORAS Y $/h NO SE EDITAN ACÁ, Y NO ES UN OLVIDO. Las horas son la SUMA de los días que están
           a la izquierda: un campo que las pise dejaría la fila contradiciendo sus propias celdas. El
           $/h se escribe en la solapa Pagos, que es donde vive `persona_tarifa` con su `desde`. */}
-      <Leida valor={l.horas} formato={nHoras} manual={l.manual.horas} />
+      <Leida valor={l.horas} formato={nHoras} origen={l.origen.horas} />
       <Leida valor={l.valorHora ?? l.netoMensual} apagada
         titulo={l.netoMensual != null ? 'Neto mensual acordado' : (l.origenTarifa ?? undefined)} />
-      <Leida valor={l.cobra} medio manual={l.manual.cobra} />
+      <Leida valor={l.cobra} medio origen={l.origen.cobra} titulo={tituloDeOrigen(l, 'cobra')} />
       <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={78} />
       <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={80} />
       <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={80} />
-      <Leida valor={l.enEfectivo} medio manual={l.manual.enEfectivo} />
-      <Leida valor={l.total} manual={l.manual.total} />
+      <Leida valor={l.enEfectivo} medio origen={l.origen.enEfectivo} titulo={tituloDeOrigen(l, 'enEfectivo')} />
+      <Leida valor={l.total} origen={l.origen.total} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={88} />
@@ -223,13 +223,24 @@ function CeldaDeDia({ celda, personaId, nombre }: {
   )
 }
 
+/** El `title` de la marca cuando JORNALES y la cuenta de la app no dicen lo mismo. */
+function tituloDeOrigen(linea: LineaConOverrides, campo: CampoEditable): string | undefined {
+  const d = linea.discrepancia[campo]
+  if (!d) return undefined
+  // LAS DOS CIFRAS, NO UNA. Gana JORNALES —es la decisión del que paga— pero el derivado no
+  // desaparece: si el extracto vio un giro que la planilla no tiene, alguien tiene que enterarse.
+  return `La planilla dice ${pesos(d.jornales)} y la app calculó ${pesos(d.calculado)} `
+    + `(recibos y extracto). Manda la planilla; la diferencia es ${pesos(Math.abs(d.jornales - d.calculado))}.`
+}
+
 /** Una celda calculada. `null` se dibuja «—»: falta el dato, no es cero (R1). */
-function Leida({ valor, medio = false, apagada = false, formato = pesos, manual = false, titulo }: {
+function Leida({ valor, medio = false, apagada = false, formato = pesos, origen = 'calculado', titulo }: {
   valor: number | null
   medio?: boolean
   apagada?: boolean
   formato?: (n: number | null) => string
-  manual?: boolean
+  /** De dónde salió. `jornales` se marca en azul, no con el ámbar de «manual». */
+  origen?: 'calculado' | 'jornales' | 'manual'
   titulo?: string
 }) {
   return (
@@ -238,7 +249,7 @@ function Leida({ valor, medio = false, apagada = false, formato = pesos, manual 
       color: valor == null ? V.tenue : (apagada ? V.apagado : V.tinta),
       fontWeight: medio ? 500 : undefined,
     }}>
-      {formato(valor)}{manual && <Manual compacta />}
+      {formato(valor)}<MarcaDeOrigen origen={origen} compacta titulo={titulo} />
     </div>
   )
 }
@@ -267,6 +278,8 @@ function Escribible({ campo, fila, quincena, camposEditables, ancho }: {
           unidad="pesos"
           ceroEsVacio
           manual={fila.linea.manual[campo]}
+          origen={fila.linea.origen[campo]}
+          tituloDeOrigen={tituloDeOrigen(fila.linea, campo)}
           personaId={fila.personaId}
           quincena={quincena}
           grupo={fila.grupo}
@@ -297,7 +310,21 @@ function ChipDeCotejo({ fila }: { fila: FilaDelEspejo }) {
         style={{ ...estilo, color: V.tenue, background: '#F4F3EF' }}>sin espejo</span>
     )
   }
+  // CON ESPEJO LEÍDO PERO SIN NINGÚN DÍA DE ESTA PERSONA, la planilla no habla de ella: los dos jefes
+  // de Oficina, cuya pestaña no tiene bloque de septiembre. «Difiere 80 h» sería mentir sobre una
+  // comparación que no se puede hacer.
+  if (c.diasComparados === 0) {
+    return (
+      <span data-testid={`cotejo-${fila.personaId}`}
+        title="La planilla no tiene ningún día cargado de esta persona en esta quincena."
+        style={{ ...estilo, color: V.tenue, background: '#F4F3EF' }}>no está en la planilla</span>
+    )
+  }
+  // EL TÍTULO DICE SOBRE QUÉ SE COMPARÓ. Sin eso, «coincide» sobre ocho de trece días se lee como
+  // «la quincena entera está bien», y faltan cinco días que nadie cargó todavía.
   const titulo = `La planilla dice ${nHoras(c.horasEnLaPlanilla)} h · la base tiene ${nHoras(c.horasEnLaBase)} h`
+    + ` · comparado sobre ${c.diasComparados} día${c.diasComparados === 1 ? '' : 's'} cargado${c.diasComparados === 1 ? '' : 's'}`
+    + (c.diasSinComparar > 0 ? ` (${c.diasSinComparar} sin cargar en la planilla, no se comparan)` : '')
   if (c.estado === 'coincide') {
     return (
       <span data-testid={`cotejo-${fila.personaId}`} title={titulo}

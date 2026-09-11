@@ -79,19 +79,52 @@ export interface VentanaDeQuincena {
  * `title` sigue explicando, y la fila deja de mentir sobre qué columna es cuál.
  */
 export function Manual({ compacta = false }: { compacta?: boolean }) {
+  return <MarcaDeOrigen origen="manual" compacta={compacta} />
+}
+
+/**
+ * DE DÓNDE SALIÓ ESTE NÚMERO — un punto de color y, si hay lugar, la palabra.
+ *
+ * ═══ POR QUÉ «JORNALES» NO SE DIBUJA COMO «MANUAL» (dueño, 11/09/2026) ═══
+ *
+ * Desde que el espejo trae los adelantos de la planilla, una celda puede tener tres orígenes y los
+ * tres significan cosas distintas a la hora de corregir:
+ *
+ *   calculado  la cuenta de la app. Se corrige cambiando el dato de origen.
+ *   JORNALES   lo escribió el dueño en la planilla. Se corrige EN LA PLANILLA — o acá, y entonces
+ *              pasa a manual y la planilla deja de mandarlo.
+ *   manual     alguien lo escribió acá. Manda sobre los dos.
+ *
+ * Pintar JORNALES con el punto ámbar de «manual» haría creer que alguien lo tecleó en la app, y el
+ * que fuera a corregirlo buscaría en el lugar equivocado. El azul es el mismo de la «L» de licencia
+ * en la grilla: «esto viene de otra fuente», no «esto lo decidiste vos».
+ */
+export function MarcaDeOrigen({ origen, compacta = false, titulo }: {
+  origen: 'calculado' | 'jornales' | 'manual'
+  compacta?: boolean
+  /** Lo que explica el número. En JORNALES, la diferencia contra lo que calculó la app. */
+  titulo?: string
+}) {
+  if (origen === 'calculado') return null
+  const esManual = origen === 'manual'
   return (
-    <span data-testid="marca-manual" title="Escrito a mano: manda sobre el cálculo"
+    <span
+      data-testid={esManual ? 'marca-manual' : 'marca-jornales'}
+      title={titulo ?? (esManual
+        ? 'Escrito a mano: manda sobre el cálculo'
+        : 'Lo dice la planilla JORNALES. Escribirlo acá lo vuelve manual y la planilla deja de mandarlo.')}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         marginLeft: compacta ? 3 : 6, flex: 'none',
       }}>
       <span aria-hidden style={{
-        width: 6, height: 6, borderRadius: '50%', background: V.marca, display: 'inline-block',
+        width: 6, height: 6, borderRadius: '50%',
+        background: esManual ? V.marca : '#175CD3', display: 'inline-block',
       }} />
       {!compacta && (
         <span style={{
           fontSize: '9.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: V.tenue,
-        }}>manual</span>
+        }}>{esManual ? 'manual' : 'jornales'}</span>
       )}
     </span>
   )
@@ -105,8 +138,8 @@ export function Manual({ compacta = false }: { compacta?: boolean }) {
  * a NULL: convertirlo a 0 fabricaría un dato y liquidaría a alguien en cero.
  */
 export function CeldaEditable({
-  campo, valor, unidad, ceroEsVacio = false, manual, personaId, quincena, grupo, soloLectura,
-  ancho = 'w-24', marcaCompacta = false,
+  campo, valor, unidad, ceroEsVacio = false, manual, origen, tituloDeOrigen, personaId, quincena,
+  grupo, soloLectura, ancho = 'w-24', marcaCompacta = false,
 }: {
   campo: CampoEditable
   valor: number | null
@@ -115,6 +148,10 @@ export function CeldaEditable({
   /** Dibujar el 0 como «—». Lo pide Pagos; el cuadro clásico muestra «$0». */
   ceroEsVacio?: boolean
   manual: boolean
+  /** De dónde salió el número. Sin esto, JORNALES se dibujaría como si lo hubiera tecleado alguien. */
+  origen?: 'calculado' | 'jornales' | 'manual'
+  /** El `title` de la marca. Lo usa Pagos para publicar la diferencia contra el extracto. */
+  tituloDeOrigen?: string
   personaId: string
   quincena: VentanaDeQuincena
   grupo: string
@@ -125,8 +162,11 @@ export function CeldaEditable({
   marcaCompacta?: boolean
 }) {
   const formato = escribirComo(unidad, ceroEsVacio)
+  // `origen` manda cuando viaja; `manual` sigue siendo el contrato viejo para los llamadores que
+  // todavía no lo pasan. Los dos conviven UNA versión: quien no lo pase dibuja lo de siempre.
+  const marca = origen ?? (manual ? 'manual' : 'calculado')
   if (soloLectura) {
-    return <>{formato(valor)}{manual && <Manual compacta={marcaCompacta} />}</>
+    return <>{formato(valor)}<MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} /></>
   }
   return (
     <span style={{
@@ -149,7 +189,7 @@ export function CeldaEditable({
           return r.ok ? { ok: true } : { ok: false, error: r.error }
         }}
       />
-      {manual && <Manual compacta={marcaCompacta} />}
+      <MarcaDeOrigen origen={marca} compacta={marcaCompacta} titulo={tituloDeOrigen} />
     </span>
   )
 }

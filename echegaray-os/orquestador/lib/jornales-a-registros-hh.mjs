@@ -322,6 +322,104 @@ export function isoDe(f) {
  * existente se actualiza de obra en vez de dejar dos (la vieja y la nueva, sumando doble). Lo que no
  * tiene a dónde moverse queda declarado obsoleto — y queda: nunca se borra desde acá.
  */
+/**
+ * ¿ESA FILA LA ESCRIBIÓ LA WEB? `web:presencia-defecto`, `web:asistencia-obra`,
+ * `web:ausencia-de-la-persona`, `web:correccion-ausencia`, `web:correccion-horas`, `web:grilla-quincena`.
+ *
+ * Se pregunta por el PREFIJO y no por una lista cerrada: cada pantalla nueva estrena su marca, y una
+ * lista escrita a mano dejaría de conocerla en silencio — la fila nueva pasaría a ser «de otra
+ * fuente» y JORNALES dejaría de mandar sobre ella sin que nadie se entere.
+ */
+export const esDeLaWeb = (fuente) => typeof fuente === 'string' && fuente.startsWith('web:')
+
+/** El rastro que queda en `notas` cuando la planilla pisa una fila de la web. */
+export const rastroDePisada = (e, hoy) =>
+  `pisó ${e.fuente_legacy} ${Number(e.horas ?? 0)}h el ${hoy}`
+
+/**
+ * LA PLANILLA MANDA SOBRE LA WEB — y sobre nada más.
+ *
+ * ═══ EL DEFECTO, MEDIDO EN PRODUCCIÓN EL 11/09/2026 ═══
+ *
+ * El dueño: *«la carga de hs se está cruzando con lo que hace cada uno asignado a cada día»* y
+ * *«liquidación de hs no sirve si no me lo dejás con la carga de información que cuenta sheet
+ * jornales»*. En la 1ª quincena de septiembre, `registros_hh` decía:
+ *
+ *   01 al 07/09   `sheet:jornales` manda (586 h)
+ *   08/09         `web:asistencia-obra` 17 filas · 155 h   ← la planilla NO entra
+ *   09/09         `web:presencia-defecto` 14 · 126 h  +  asistencia-obra 3 · 27 h
+ *   10/09         presencia-defecto 13 · 124 h
+ *   11/09         presencia-defecto 15 · 120 h
+ *
+ * `separarConflictos` trata a CUALQUIER fila de otra fuente como intocable, así que desde el día en
+ * que alguien tocó la app, la planilla dejó de poder corregir ese día. Lo que la pantalla mostraba
+ * era la jornada automática por asignación, no lo que el dueño cargó — y de ahí salían las 8 h de
+ * más por persona (15 × 8 = 120 h, el 11/09 exacto).
+ *
+ * ═══ LA REGLA, Y SU LÍMITE ═══
+ *
+ * Donde la planilla TIENE la celda cargada, gana la planilla: la fila de la web se ACTUALIZA EN SU
+ * LUGAR —mismo id, así no se pierde ninguna referencia— con las horas, el tipo, la obra resuelta y
+ * `fuente_legacy = 'sheet:jornales'`, y en `notas` queda qué pisó. Donde la planilla NO dice nada
+ * (hoy, o un día que él todavía no cargó), la fila de la web se queda intacta: la app sigue siendo
+ * la que carga el día en curso.
+ *
+ * ═══ LO QUE NO SE PISA, Y POR QUÉ ═══
+ *
+ *  · Una fila de fuente DESCONOCIDA (ni `web:` ni `sheet:jornales`). No sé quién la escribió ni con
+ *    qué autoridad: se declara y se deja.
+ *  · Un día MIXTO —una fila de la web y otra de fuente desconocida—: pisar la mitad dejaría el día
+ *    contando dos veces. Se declara entero y no se toca.
+ *  · Un día donde la planilla produce N filas y la web tiene M ≠ N. Emparejarlas obligaría a elegir
+ *    en silencio cuál pisa a cuál, y el sobrante quedaría sumando al lado. Se declara.
+ */
+export function pisarLoDeLaWeb(filas, existentes = [], { hoy } = {}) {
+  const porDia = new Map()
+  for (const e of existentes) {
+    const dia = `${e.persona_id}|${isoDe(e.fecha)}`
+    if (!porDia.has(dia)) porDia.set(dia, [])
+    porDia.get(dia).push(e)
+  }
+  const planillaPorDia = new Map()
+  for (const f of filas) {
+    const dia = `${f.persona_id}|${f.fecha}`
+    if (!planillaPorDia.has(dia)) planillaPorDia.set(dia, [])
+    planillaPorDia.get(dia).push(f)
+  }
+
+  const pisar = []
+  const intocables = []
+  const pisadas = new Set()
+  for (const [dia, nuestras] of planillaPorDia) {
+    const suyas = (porDia.get(dia) ?? []).filter((e) => e.fuente_legacy !== FUENTE)
+    if (suyas.length === 0) continue
+    const web = suyas.filter((e) => esDeLaWeb(e.fuente_legacy))
+    if (web.length !== suyas.length) {
+      intocables.push({ dia, existentes: suyas, porque: 'día mixto: hay filas que no escribió la web' })
+      continue
+    }
+    if (web.length !== nuestras.length) {
+      intocables.push({
+        dia,
+        existentes: suyas,
+        porque: `la planilla trae ${nuestras.length} fila(s) y la web tiene ${web.length}: no elijo cuál pisa a cuál`,
+      })
+      continue
+    }
+    // EMPAREJAR POR `tipo_hora` PRIMERO. Con un día de normal + extra, aparear por orden de llegada
+    // convertiría las extras en normales y al revés — y las extras se pagan con recargo.
+    const libres = [...web]
+    for (const f of [...nuestras].sort((a, b) => a.tipo_hora.localeCompare(b.tipo_hora))) {
+      let i = libres.findIndex((e) => e.tipo_hora === f.tipo_hora)
+      if (i < 0) i = 0
+      const e = libres.splice(i, 1)[0]
+      pisar.push({ id: e.id, existente: e, fila: f, rastro: rastroDePisada(e, hoy ?? isoDe(new Date())) })
+      pisadas.add(f)
+    }
+  }
+  return { pisar, intocables, pisadas }
+}
+
 export function separarConflictos(filas, existentes = []) {
   const ajenas = new Map()
   const propias = new Map()
@@ -351,6 +449,30 @@ export function separarConflictos(filas, existentes = []) {
   const movidas = new Set(mover.map((m) => m.fila))
   return { escribir: escribir.filter((f) => !movidas.has(f)), conflictos, obsoletas, mover }
 }
+
+/**
+ * PISA UNA FILA DE LA WEB CON LO QUE DICE LA PLANILLA — en su lugar, sin duplicar ni borrar.
+ *
+ * El `where fuente_legacy like 'web:%'` es la cerradura: si entre el plan y la escritura alguien
+ * cambió esa fila de fuente, el UPDATE no toca nada y el `returning` vacío lo delata. La evidencia
+ * es del efecto, no del intento.
+ *
+ * `notas` NO se pisa: se le AGREGA el rastro. Lo que la planilla dice del día —el motivo de una
+ * licencia, por ejemplo— y lo que esa fila pisó son dos cosas y las dos tienen que quedar.
+ *
+ * LOS CASTS SON OBLIGATORIOS. Sin ellos Postgres no puede inferir el tipo de un parámetro que sólo
+ * aparece dentro de `concat_ws`/`nullif` y contesta 42P18 «could not determine data type of
+ * parameter». Lo cazó la primera corrida con `--aplicar`: la transacción entera no entró — que es
+ * exactamente lo que tiene que pasar, y por eso no se perdió nada.
+ */
+export const SQL_PISAR_WEB = `
+update public.registros_hh
+   set horas = $2::numeric, tipo_hora = $3::text, obra_canonica_id = $4::text,
+       fuente_legacy = '${FUENTE}',
+       notas = nullif(concat_ws(' · ', nullif($5::text, ''), $6::text), ''),
+       actualizado_en = now()
+ where id = $1 and fuente_legacy like 'web:%'
+returning id`
 
 /** Mueve una fila propia de obra (y actualiza horas y notas). Sólo toca filas `sheet:jornales`. */
 export const SQL_MOVER = `

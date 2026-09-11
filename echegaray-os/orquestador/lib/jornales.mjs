@@ -5,7 +5,44 @@
 export const JORNALES_ID = '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk'
 // Columna de TOTAL PAGADO por persona, por pestaña (índice 0-based). Distintas porque el layout
 // difiere entre obreros y oficina. Verificado contra el total que la propia planilla calcula.
-export const TOTAL_COL = { 'Obreros 26': 26 /* AA */, 'Oficina 26': 25 /* Z */ }
+/**
+ * ═══ LA COLUMNA DEL TOTAL NO ES UNA CONSTANTE: SE LEE DEL ENCABEZADO (11/09/2026) ═══
+ *
+ * `TOTAL_COL` decía `{ 'Obreros 26': 26 }` — AA. Medido con una sonda de sólo lectura sobre el
+ * archivo vivo, la fila 1 de esa pestaña dice hoy:
+ *
+ *   V DIAS/HORAS · W $ HORA · X BANCO · Y ADELANTO BANCO/EMBARGOS · Z ADELANTO EFECTIVO ·
+ *   AA TOTAL EFECTIVO · AB TOTAL SEMANA
+ *
+ * O sea que AA es **TOTAL EFECTIVO** —lo que sale en mano DESPUÉS de descontar el banco y los
+ * adelantos— y el total de la quincena es AB. El tool contesta «cuánto le pagamos a los empleados
+ * la quincena pasada»: con AA devolvía sólo la parte en efectivo, y en la 2ª de agosto el banco se
+ * llevó $2.934.498 que no estaban en la respuesta.
+ *
+ * Se resuelve POR RÓTULO y no se arregla la constante, porque el archivo puede correrse otra vez: un
+ * índice escrito a mano vuelve a quedar viejo en silencio y nadie se entera hasta que el número está
+ * en una conversación. Si el rótulo no aparece, NO se adivina: se devuelve `null` y quien llama lo
+ * dice.
+ */
+export const RE_TOTAL_SEMANA = /^total\s*semana\b/i
+
+/** Índice 0-based de la columna «TOTAL SEMANA», buscándola en las primeras filas. `null` si no está. */
+export function columnaDeTotalSemana(values, { filas = 3 } = {}) {
+  for (let i = 0; i < Math.min(filas, values.length); i++) {
+    const fila = values[i] || []
+    for (let j = 0; j < fila.length; j++) {
+      if (RE_TOTAL_SEMANA.test(String(fila[j] ?? '').trim())) return j
+    }
+  }
+  return null
+}
+
+/**
+ * EL ÍNDICE QUE USABA EL TOOL HASTA EL 11/09/2026. Se conserva SÓLO para que el diff de esa fecha se
+ * pueda leer y para el test que prueba que ya no se usa. NO es la fuente: la fuente es el encabezado.
+ */
+export const TOTAL_COL_HISTORICO = { 'Obreros 26': 26 /* AA · TOTAL EFECTIVO */, 'Oficina 26': 25 /* Z · TOTAL SEMANA */ }
+export const TOTAL_COL = TOTAL_COL_HISTORICO
 
 const FECHA = /^\d{1,2}\/\d{1,2}$/
 /** "D/M" → clave ordenable M*100+D (una quincena no cruza fin de año en un bloque). */

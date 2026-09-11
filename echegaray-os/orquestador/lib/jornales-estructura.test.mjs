@@ -195,3 +195,77 @@ test('trabajadoresDeBloque falla claro si no hay columna de nombre', () => {
     /no se pudo resolver la columna de nombre/,
   )
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// UN RÓTULO DE CIERRE NO CIERRA UNA FILA QUE TIENE NOMBRE (11/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La fila 124 de «Oficina 26» es la de JUAN PABLO NIEVAS: nombre en B, 46 h en U, $416.300 en Z, y
+// la palabra «BANCO» suelta en AD —parte de un cuadrito de resumen que vive a la derecha—.
+// `RE_CIERRE` la leía como el fin del bloque, así que Nievas no existía para ningún consumidor de
+// `trabajadoresDeBloque`, incluido el importador que carga `registros_hh`. Le pasaba en 8 de las 15
+// quincenas de Oficina del año.
+//
+// LA MUTACIÓN QUE PONE ESTO ROJO: volver a `if (RE_CIERRE.test(texto)) break` sin mirar el nombre.
+
+const celdaDe = (v) => (v == null ? null : { valor: v, numero: typeof v === 'number' ? v : null, formula: null, derivada: false })
+
+/** La fila real de Nievas, medida con una sonda de sólo lectura sobre el archivo vivo. */
+function gridOficinaConNievas() {
+  const fila1 = ['x', 'OBRERO', 'Fecha de Alta', 'DIAS TRABAJADOS', null, null, null,
+    null, null, null, null, null, null, null, null, null, null, null,
+    'u', null, 'DIAS / HORAS', '$ HORA', 'BANCO', 'ADELANTO', 'TOTAL RECIBO', 'TOTAL SEMANA', 'OBRA']
+  const enc = []
+  for (let j = 0; j < 4; j++) enc[j] = null
+  const isos = ['3/8', '4/8', '5/8', '6/8']
+  isos.forEach((t, k) => { enc[4 + k] = { valor: t, numero: 46231 + k, formula: null, derivada: false } })
+  const maldonado = []
+  maldonado[0] = celdaDe('1'); maldonado[1] = celdaDe('Emi Maldonado')
+  for (let k = 0; k < 4; k++) maldonado[4 + k] = celdaDe(9)
+  maldonado[20] = celdaDe(36); maldonado[25] = celdaDe('$398.200')
+  const nievas = []
+  nievas[0] = celdaDe('4'); nievas[1] = celdaDe('Juan Pablo Nievas')
+  for (let k = 0; k < 4; k++) nievas[4 + k] = celdaDe(9)
+  nievas[20] = celdaDe(36); nievas[25] = celdaDe('$416.300')
+  // ← LA PALABRA QUE CERRABA EL BLOQUE, en AD (29), lejos de todo lo suyo.
+  nievas[29] = celdaDe('BANCO')
+  return {
+    titulo: 'Oficina 26',
+    filas: [fila1.map(celdaDe), enc, maldonado, nievas, []],
+    merges: [], offset: { fila: 0, col: 0 },
+  }
+}
+
+test('UN «BANCO» SUELTO EN OTRA COLUMNA NO SACA A LA PERSONA DEL BLOQUE', () => {
+  const g = gridOficinaConNievas()
+  const [b] = detectarBloques(g, { anio: 2026 })
+  const t = trabajadoresDeBloque(g, b)
+  assert.deepEqual(t.map((x) => x.nombre_original), ['Emi Maldonado', 'Juan Pablo Nievas'])
+})
+
+test('EL ENCABEZADO DEL BLOQUE SIGUIENTE CORTA: una quincena no se lleva a la gente de la otra', () => {
+  // Es la red que reemplaza lo que `RE_CIERRE` hacía de más. Sin ella, aflojar el corte dejaría que
+  // el recorrido pasara de largo el cuadro de referencia y siguiera hasta el bloque de abajo.
+  const g = gridOficinaConNievas()
+  const enc2 = []
+  ;['1/9', '2/9', '3/9'].forEach((t, k) => { enc2[4 + k] = { valor: t, numero: 46260 + k, formula: null, derivada: false } })
+  const otro = []
+  otro[0] = celdaDe('1'); otro[1] = celdaDe('Alguien De Septiembre'); otro[4] = celdaDe(9)
+  g.filas.push(enc2, otro)
+  const [b] = detectarBloques(g, { anio: 2026 })
+  const nombres = trabajadoresDeBloque(g, b).map((x) => x.nombre_original)
+  assert.ok(!nombres.includes('Alguien De Septiembre'), 'el bloque de agosto no se lleva a septiembre')
+  assert.equal(nombres.length, 2)
+})
+
+test('UNA FILA SIN NOMBRE CON UN RÓTULO DE CIERRE SIGUE CERRANDO', () => {
+  const g = gridOficinaConNievas()
+  const cierre = []
+  cierre[29] = celdaDe('CAJA')
+  const despues = []
+  despues[0] = celdaDe('9'); despues[1] = celdaDe('No Deberia Entrar'); despues[4] = celdaDe(9)
+  g.filas.splice(4, 0, cierre, despues)
+  const [b] = detectarBloques(g, { anio: 2026 })
+  const nombres = trabajadoresDeBloque(g, b).map((x) => x.nombre_original)
+  assert.deepEqual(nombres, ['Emi Maldonado', 'Juan Pablo Nievas'])
+})

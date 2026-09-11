@@ -13,7 +13,7 @@ import fs from 'node:fs'
 import {
   FOLDER, RAIZ_ADMINISTRACION, CAMPOS_DRIVE,
   tipoLegible, emailDeOwners, raicesDesdeEnv, filaIndice, decidirEscritura, planDeAusencia,
-  porQueLaRaizNoSirve, RAIZ_ARCHIVO_FISCAL,
+  porQueLaRaizNoSirve, RAIZ_ARCHIVO_FISCAL, RAIZ_REPORTES_HYS,
 } from './drive-indice.mjs'
 import { tokenizar } from './drive-busqueda/normalizar.mjs'
 
@@ -282,10 +282,14 @@ test('una raíz en la papelera ABORTA la corrida, no la convierte en un vaciado'
 // `ORQ_DRIVE_INDEX_ROOTS` en `worker.env`, esa carpeta se indexó UNA vez —el 19/08, a mano— y
 // después quedó congelada: el F931 de agosto se subió el 05/09 y el OS siguió diciendo que la
 // última declaración era la de julio. Si alguien vuelve a dejar una sola raíz acá, esto grita.
-test('sin configuración se indexan las DOS raíces: administracion y archivo-fiscal', () => {
+// Y DESDE EL 11/09/2026, LA TERCERA: `Reportes de gestión HyS`, la carpeta nueva de la raíz del data
+// room con una subcarpeta por obra. Entró al código y no a `ORQ_DRIVE_INDEX_ROOTS` porque esa
+// variable REEMPLAZA la lista: puesta con una sola carpeta, apaga las otras dos en silencio.
+test('sin configuración se indexan las TRES raíces: administracion, archivo-fiscal y los reportes de HyS', () => {
   const esperado = [
     { id: RAIZ_ADMINISTRACION, rotulo: 'administracion' },
     { id: RAIZ_ARCHIVO_FISCAL, rotulo: 'archivo-fiscal' },
+    { id: RAIZ_REPORTES_HYS, rotulo: 'reportes-hys' },
   ]
   assert.deepEqual(raicesDesdeEnv({}), esperado)
   assert.deepEqual(raicesDesdeEnv({ ORQ_DRIVE_INDEX_ROOTS: '   ' }), esperado)

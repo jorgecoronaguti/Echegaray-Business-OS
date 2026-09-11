@@ -114,8 +114,14 @@ export function HorasConPersona({
       {/* `scrollMarginTop` DEJA PASAR LA BARRA PEGAJOSA. Con 12 px el nombre de la persona —lo
           primero que hay que leer— quedaba medio tapado por la barra de navegación, que mide unos
           44 px y no se va con el scroll. 72 px la despejan con aire. */}
+      {/* `key={abierta}` REMONTA EL PANEL AL CAMBIAR DE PERSONA. Sin la clave, React reutiliza el
+          mismo árbol para la persona siguiente y cada celda editable conserva su estado: el número
+          tecleado para Ochoa aparecía en la celda de Castillo cuando las dos tenían el mismo valor
+          guardado (8 h, adelanto vacío), porque `InlineEdit` sólo descarta lo pendiente cuando el
+          valor del servidor CAMBIA. El dueño lo vio el 11/09/2026: «si cambiás de persona la hora
+          se cambia». La identidad del panel es la persona, y eso se declara con la clave. */}
       {datos && (
-        <div ref={panelRef} style={{ scrollMarginTop: 72 }}>
+        <div key={abierta} ref={panelRef} style={{ scrollMarginTop: 72 }}>
         <PanelDePersona
           persona={{ ...datos, cargadas: fila?.cargadas ?? 0 }}
           fila={fila}
