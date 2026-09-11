@@ -60,3 +60,77 @@ export function PantallaEsqueleto({ children }: { children: React.ReactNode }) {
     </div>
   )
 }
+
+// ═══ EL ESQUELETO DE UNA SECCIÓN DE ÁREA (11/09/2026) ═══
+//
+// Las secciones raíz de Administración —Clientes, Personal, Proveedores, Compras— dibujan SIEMPRE la
+// misma estructura, y en este orden: la barra de áreas de nivel 2 (`NavAdministracion`, que cada
+// página renderiza como primer hijo de su `PageShell`), el título, la fila de vistas con el buscador
+// (`CabeceraSeccion`) y la tabla.
+//
+// POR QUÉ IMPORTA QUE EL ESQUELETO TENGA ESA FORMA Y NO DOS BLOQUES GRISES. El fallback del grupo
+// `(main)` dibuja un rectángulo de 96px y otro de 224px: cuando llega el contenido real, la barra de
+// áreas aparece donde no había nada y todo lo de abajo salta. Con la banda y la fila de vistas
+// reservadas, lo que llega ocupa el lugar que ya estaba marcado.
+//
+// LA BANDA DE ÁREAS NO SE DIBUJA DE VERDAD ACÁ, y no puede: `NavAdministracion` es asíncrona —lee el
+// rol para saber qué secciones mostrar— y un `loading.tsx` que espera una consulta deja de ser lo
+// que se pinta al instante. Se reserva su alto (37px: el de `BarraAreas`) y nada más.
+//
+// ═══ HASTA DÓNDE LLEGA ESTO, MEDIDO Y NO SUPUESTO (11/09/2026) ═══
+//
+// ESTE ESQUELETO NO APARECE AL HACER CLIC. Comprobado contra el build de producción en local, con la
+// respuesta RSC retrasada 6 s a propósito y contextos de navegador nuevos para que no hubiera caché:
+// al hacer clic en un enlace de la barra de áreas NO se monta ningún `loading.tsx` —ni éste ni el
+// genérico del grupo `(main)`—; el router deja la pantalla anterior tal cual hasta que llega el
+// payload. La causa es `prefetch={false}` en esas barras: sin precarga el router no tiene el árbol de
+// la ruta y no sabe qué frontera de carga montar (Next 16 sólo precarga hasta el `loading.tsx` más
+// cercano cuando el destino es dinámico, que es justo lo que aquí está apagado).
+//
+// DÓNDE SÍ SE VE: en la carga completa del documento —entrar por la URL, recargar, volver del login—,
+// que llega por streaming y saca primero el marco y este esqueleto.
+//
+// LO QUE CUBRE LA NAVEGACIÓN POR CLIC ES `IndicadorNavegacion`: barra fina arriba y, a los 500 ms, el
+// cartel «Cargando…». Medido en producción sobre 20 navegaciones reales, aparece entre 34 y 536 ms
+// SIEMPRE. O sea que la pantalla no se queda muda; se queda con el contenido viejo.
+//
+// SI ALGÚN DÍA SE QUIERE EL ESQUELETO AL CLIC, el cambio es sacar `prefetch={false}` de las barras de
+// navegación (NO de las listas: ahí está medido que cuesta decenas de renders) y medir ANTES el costo
+// en pasadas por el middleware. No se hizo acá porque no se midió.
+export function SeccionEsqueleto({
+  cols, filas = 8, anchoTitulo = 'w-36', vistas = 2, banda = true,
+}: { cols: number; filas?: number; anchoTitulo?: string; vistas?: number; banda?: boolean }) {
+  return (
+    // LA GEOMETRÍA ES LA DEL `Marco` DEL CANON, NO LA DEL `PageShell` (corrección del 11/09/2026).
+    //
+    // La primera versión envolvía el contenido en `mx-auto max-w-[1400px] px-4 py-7`, que es el
+    // shell de las pantallas viejas. Las secciones de área NO usan ese shell: su `Marco` es
+    // `minHeight: 100vh` + fondo `#F7F7F5` y la lista llega hasta el borde, con 20px de costado
+    // puestos por cada bloque. Con el ancho de lectura del shell, el esqueleto dibujaba una tabla
+    // más angosta y centrada que la real, y al llegar el contenido la tabla saltaba de ancho y de
+    // posición — exactamente el salto que este componente existe para evitar.
+    <div
+      data-testid="esqueleto-carga" aria-busy="true" aria-live="polite"
+      style={{ minHeight: '100vh', background: '#F7F7F5', display: 'flex', flexDirection: 'column' }}
+    >
+      {/* La banda de áreas, a sangre y con el filo inferior que apoya en el header. `banda={false}`
+          es para las pantallas de NIVEL 1 —Presupuestos—, que no llevan barra de área de nivel 2:
+          reservarle el alto dibujaría una franja que después no aparece. */}
+      {banda && <div className="h-[37px] border-b border-line bg-surface" />}
+      <div style={{ padding: '20px 20px 0' }}>
+        <Linea className={`h-5 ${anchoTitulo}`} />
+      </div>
+      {/* La fila de vistas y el buscador: chips a la izquierda, caja de búsqueda a la derecha. */}
+      <div style={{ padding: '16px 20px' }} className="flex items-center gap-3">
+        {Array.from({ length: vistas }, (_, i) => (
+          <Bloque key={i} className="h-6 w-28 motion-safe:animate-pulse" />
+        ))}
+        <Bloque className="ml-auto h-7 w-56 motion-safe:animate-pulse" />
+      </div>
+      <div style={{ padding: '0 20px 20px' }}>
+        <TablaEsqueleto cols={cols} filas={filas} />
+      </div>
+      <span className="sr-only">Cargando…</span>
+    </div>
+  )
+}
