@@ -81,10 +81,9 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
     // y un archivo de la cadena que cambia después de aplicarse rompe el ledger, así que se
     // reemplazaron con `create or replace`. Auditar la versión VIEJA sería auditar lo que ya no
     // corre — por eso el barrido apunta a 0040 y no a los archivos originales.
-    // Y desde 20260911T2000, `pantalla_cliente` también vive ahí: es la que transporta el padre a la
-    // ficha. Las dos RPC conviven en ese archivo igual que convivían en 1030/1200, y `cuerpoDe()`
-    // las separa por función.
-    archivo: 'supabase/migrations/20260911T2000_obra_adicional_cuelga_de_su_obra_mayor.sql',
+    // `pantalla_cliente` se redefinió dos veces el 11/09: 2000 le agregó el padre de cada obra y
+    // 2100 los papeles de Drive de cada obra. La ÚLTIMA es la que corre, y es la que se audita.
+    archivo: 'supabase/migrations/20260911T2100_los_papeles_de_una_obra_tienen_su_carpeta.sql',
     funcion: 'pantalla_cliente',
     lee: [
       'cliente_panel',          // la ficha, y el slug → cliente_id
@@ -101,6 +100,8 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
       'clientes',               // las fechas de alta/edición, que cliente_panel no publica
       'certificados',
       'cotizacion_cascada',     // los presupuestos vigentes del cliente
+      'obra_papel_drive',       // canónica de QUÉ ARCHIVO de Drive es de qué obra (20260911T2100)
+      'obra_carpeta_drive',     // qué obras tienen carpeta vinculada: «vacío» ≠ «sin vincular»
     ],
   },
 ]
