@@ -40,6 +40,11 @@ import { pagosGremialesDelBanco, explicarPago } from '../lib/cargas-pagos-banco.
 import { leerBoletasIeric } from '../lib/cargas-boletas-ieric.mjs'
 import { PESTAÑA as RAW_UOCRA } from './uocra-raw-pestana.mjs'
 import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
+// ═══ LO QUE EL BANCO LISTÓ Y NO ACREDITÓ TODAVÍA VA A ENTRAR (11/09/2026) ═══
+//
+// CAJA dejó de publicarlo como disponible esta mañana —bien— y nadie lo proyectó como ingreso: el
+// cierre del Mensual bajó $38,8 M. El percibido tiene dos lados. Ver el módulo.
+import { deDepositosRetenidos } from '../lib/libro-extractores-retenidos.mjs'
 import { deEstructura, diaTipicoDeEstructura, PESTANA_ESTRUCTURA } from '../lib/libro-extractores-estructura.mjs'
 // ═══ LOS MATERIALES PREVISTOS SALEN DEL CUADRO 5 DE LA PESTAÑA `OBRAS` (24/08/2026) ═══
 //
@@ -443,10 +448,7 @@ async function extraerDeLasFuentes(google, corte) {
       + 'la fórmula viva de la columna H no las va a autopromover hasta la corrida siguiente.')
   }
 
-  return {
-    colEstadoCompras,
-    colsVivas,
-    fuentes: {
+  const fuentes = {
       Compras: deCompras(compras, corte, { cruce, cargasCubiertas }),
       // La provisión de los servicios recurrentes (Movistar, seguros, honorarios): lo esperado del
       // mes menos lo ya materializado en Compras. Sin esto, el mes en curso no debía ningún
@@ -491,7 +493,22 @@ async function extraerDeLasFuentes(google, corte) {
         corte, { extracto }),
       Dirección: deDireccion({ pago: R.DIRECCION_PAGO, pagado: R.DIRECCION_PAGADO, proyectado: R.DIRECCION_PROYECTADO },
         corte, { extracto }),
-    },
+  }
+  // ═══ LOS DEPÓSITOS RETENIDOS VAN DESPUÉS DE COBRANZAS Y DE LA CARTERA, Y NO ES CASUAL ═══
+  //
+  // El mismo eCheq puede estar ya en el libro por Cobranzas (marcado cobrado) o por `_CHEQUES_RAW` (si
+  // sigue en cartera). El extractor recibe esos ingresos YA EMITIDOS y no emite el que alguno de los
+  // dos reclame: es el defecto que este rubro ya tuvo con el eCheq de LA ESTRELLA, contado dos veces.
+  const retenidos = deDepositosRetenidos(banco, {
+    ingresosDelLibro: [...fuentes.Cobranzas, ...fuentes._CHEQUES_RAW],
+  })
+  for (const a of retenidos.avisos) console.warn(`  ⚠ ${a}`)
+  fuentes['_BANCO_RAW · retenidos'] = retenidos.movimientos
+
+  return {
+    colEstadoCompras,
+    colsVivas,
+    fuentes,
     excluidos,
     corteBanco: extracto.corte,
     // Los débitos crudos viajan al orquestador: el respaldo de cheques contra el banco corre sobre
