@@ -78,7 +78,9 @@ export function InlineEdit({
   etiqueta: string
   testid?: string
   ancho?: string
-  alineado?: 'left' | 'right'
+  /** `center` lo pide la grilla de Liquidación → Horas: su columna de día está centrada y un campo
+   *  alineado a la izquierda dentro de 42 px corre el número respecto de las celdas de al lado. */
+  alineado?: 'left' | 'right' | 'center'
 }) {
   const original = valor === null ? '' : String(valor)
   // UNA FECHA SE LEE EN es-AR Y SE EDITA EN ISO. El `<input type=date>` exige AAAA-MM-DD, pero
@@ -157,7 +159,8 @@ export function InlineEdit({
           title={enVuelo ? 'Guardado. La pantalla termina de actualizarse en unos segundos.' : undefined}
           onClick={() => { setEditando(true); setError(null); requestAnimationFrame(() => ref.current?.select()) }}
           className={`${ancho} rounded-control border border-transparent px-1.5 py-0.5 text-left hover:border-line-strong ${
-            alineado === 'right' ? 'text-right font-mono tabular-nums' : ''
+            alineado === 'right' ? 'text-right font-mono tabular-nums'
+              : alineado === 'center' ? 'text-center font-mono tabular-nums' : ''
           } ${vigente === '' ? 'text-faint' : 'text-ink'} ${
             enVuelo ? 'underline decoration-dotted decoration-warn underline-offset-4' : ''
           } text-[12.5px]`}
@@ -190,7 +193,7 @@ export function InlineEdit({
           // es guardarla.
           if (e.key === 'Escape') { e.preventDefault(); setBorrador(vigente); setEditando(false) }
         }}
-        className={`${CAMPO} ${ancho} !h-7 !px-1.5 !text-[12.5px] ${alineado === 'right' ? 'text-right font-mono tabular-nums' : ''}`}
+        className={`${CAMPO} ${ancho} !h-7 !px-1.5 !text-[12.5px] ${alineado === 'right' ? 'text-right font-mono tabular-nums' : alineado === 'center' ? 'text-center font-mono tabular-nums' : ''}`}
       />
       {error && <span className="text-[11px] text-neg" data-testid={testid ? `${testid}-error` : undefined}>{error}</span>}
     </span>

@@ -50,6 +50,35 @@ export function residuosEnElPlantel(filas, ahora) {
   })
 }
 
+/**
+ * ═══ LA PERSONA NO ESTÁ, PERO SUS HORAS SÍ (auditoría 11/09/2026) ═══
+ *
+ * La guarda miraba SÓLO `personas`, y con eso decía «limpio» mientras `registros_hh` conservaba
+ * 8 h del 19/08 de «ZZ-E2E hh-imputacion» imputadas a la obra Quattropani. `persona_directorio`
+ * filtra a las de prueba, así que la fila no se veía en el plantel — pero los lectores de
+ * `registros_hh` (productividad, HH por obra, costo) NO filtran `es_prueba` y esas horas sumaban en
+ * números que el dueño mira. Regla de oro 1: nunca fabricar datos.
+ *
+ * Marcar la persona como prueba no alcanza: hay que borrar lo que cargó. Esto lo detecta.
+ *
+ * `filas` son las horas cruzadas con la persona: `{ id, persona_es_prueba, fecha, horas, obra }`.
+ */
+export function horasDePersonasDePrueba(filas) {
+  return (filas ?? []).filter((f) => f.persona_es_prueba === true)
+}
+
+/** La queja de las horas: dice cuántas, de qué obra salen y cómo se van. */
+export function quejaDeHoras(horas) {
+  const total = horas.reduce((n, h) => n + Number(h.horas ?? 0), 0)
+  const obras = [...new Set(horas.map((h) => h.obra ?? 'sin obra'))].join(' · ')
+  return `${horas.length} registro(s) de horas de personas de prueba siguen en \`registros_hh\`: `
+    + `${total} h imputadas a ${obras}. Los lectores de HH no filtran \`es_prueba\`, así que suman `
+    + 'en productividad y en el costo por obra. Se borran con '
+    + '`delete from registros_hh h using personas p where p.id = h.persona_id and p.es_prueba is true` '
+    + '(antes, sus filas de `registro_hh_correccion`); y la prueba que las creó tiene que borrarlas '
+    + 'en su `afterAll`.'
+}
+
 /** El mensaje del rojo: qué se encontró y qué hacer, sin mandar a leer otro archivo. */
 export function quejaDeResiduos(residuos) {
   const cuales = residuos.map((r) => `${r.nombre_completo} (${r.id})`).join(' · ')
