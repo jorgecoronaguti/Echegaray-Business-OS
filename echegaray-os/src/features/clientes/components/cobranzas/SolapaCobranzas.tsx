@@ -129,17 +129,22 @@ export function SolapaCobranzas({
   const proximo = proximoCobro(visibles)
   const { porCobrar, cobrado, anuladas } = partirEnSecciones(visibles)
   const RECORTADO: Record<string, string> = { pendiente: 'por cobrar', cobrado: 'cobrado', b: 'B', n: 'N' }
-  const sufijo = RECORTADO[recorte] ? ` · ${RECORTADO[recorte]}` : ''
+  /** El recorte pegado al rótulo — salvo cuando el rótulo YA lo dice: «Por cobrar · por cobrar»
+   *  no agrega información, agrega ruido. */
+  const conRecorte = (rotulo: string) => {
+    const r = RECORTADO[recorte]
+    return !r || rotulo.toLowerCase().startsWith(r.toLowerCase()) ? rotulo : `${rotulo} · ${r}`
+  }
 
   const cifras: CifraDeFicha[] = [
     // LAS TRES PRIMERAS SON LA RESPUESTA A «¿cuánto me debe hoy y cuándo entra lo próximo?».
-    cifra(`Por cobrar${sufijo}`, total.pendiente, 'nada pendiente', AYUDA_POR_COBRAR),
-    cifra(`Vencido${sufijo}`, total.vencido, 'nada vencido', AYUDA_VENCIDO, 'warn'),
+    cifra(conRecorte('Por cobrar'), total.pendiente, 'nada pendiente', AYUDA_POR_COBRAR),
+    cifra(conRecorte('Vencido'), total.vencido, 'nada vencido', AYUDA_VENCIDO, 'warn'),
     {
       // EL MEDIO VA EN EL RÓTULO Y NO EN EL VALOR: el valor es cifra —mono tabular— y el medio es
       // una palabra. Mezclarlos en una celda es exactamente lo que la regla del módulo prohíbe.
       // Sin medio único en el día, el rótulo NO elige uno: ver `proximoCobro`.
-      rotulo: proximo?.medio ? `Próximo cobro · ${proximo.medio}` : `Próximo cobro${sufijo}`,
+      rotulo: proximo?.medio ? `Próximo cobro · ${proximo.medio}` : conRecorte('Próximo cobro'),
       valor: proximo
         ? `${dia(proximo.fecha)}${proximo.importe != null ? ` · ${pesos(proximo.importe)}` : ''}`
         : null,
@@ -155,8 +160,8 @@ export function SolapaCobranzas({
       falta: 'sin precio en OBRAS',
       titulo: AYUDA_CONTRATADO,
     },
-    cifra(`Facturado (B)${sufijo}`, total.facturado, 'ninguna fila B', AYUDA_FACTURADO),
-    cifra(`Cobrado c/IVA${sufijo}`, total.cobrado, 'nada cobrado todavía', AYUDA_COBRADO),
+    cifra(conRecorte('Facturado (B)'), total.facturado, 'ninguna fila B', AYUDA_FACTURADO),
+    cifra(conRecorte('Cobrado c/IVA'), total.cobrado, 'nada cobrado todavía', AYUDA_COBRADO),
   ]
 
   return (
