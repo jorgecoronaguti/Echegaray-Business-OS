@@ -49,15 +49,17 @@ test('la ventana del mes es SEMIABIERTA: un gasto del último día no cae en dos
 // LA REGLA QUE SE UNIFICÓ — y que este test impide volver a partir en dos
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('el MES EN CURSO no se trata ni como cerrado ni como futuro', () => {
+test('DOS ventanas: el mes cerrado muestra el real; el ABIERTO, el mayor entre real y proyección', () => {
   const v = armar(CRITERIO.subrubro).visible[7]
   // Cerrado → el real, pelado. Es lo que pasó, aunque sea cero.
   assert.match(v, new RegExp(`IF\\(I\\$5<${MES_EN_CURSO.replace(/[()+-]/g, (c) => `\\${c}`)}`), v)
-  // En curso → el MAYOR entre el real cargado y la proyección. Sin esto, Movistar —que factura el
-  // 25— mostraba «—» veinticinco días por mes y el cuadro EMPEORABA su pronóstico al llegar la
-  // primera factura parcial. Es el defecto que Recurrentes ya había corregido y Estructura no.
-  assert.ok(v.includes('MAX('), 'el mes en curso perdió el MAX: vuelve el defecto del 13/08')
-  // Futuro → la proyección.
+  // ABIERTO (el que corre y los que vienen) → el MAYOR entre el real cargado y la proyección. Sin
+  // esto, Movistar —que factura el 25— mostraba «—» veinticinco días por mes y el cuadro EMPEORABA su
+  // pronóstico al llegar la primera factura parcial (13/08); y un real ya cargado en un mes FUTURO
+  // hacía publicar una proyección NEGATIVA (11/09: `Estructura!O16`, −$763.364,80). Una sola regla
+  // para los dos: ver estructura-proyeccion-no-negativa.test.mjs, que la evalúa en números.
+  assert.ok(v.includes('MAX('), 'el mes abierto perdió el MAX: vuelven los defectos del 13/08 y del 11/09')
+  assert.ok(!/IF\([A-Z]+\$\d+=EOMONTH/.test(v), 'el mes en curso ya no es una ventana aparte del futuro')
   assert.ok(v.includes('Parámetros!'), 'la proyección se ajusta por la inflación de Parámetros')
 })
 

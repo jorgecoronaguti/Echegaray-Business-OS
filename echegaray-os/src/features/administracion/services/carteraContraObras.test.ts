@@ -75,6 +75,9 @@ const economia = new Map<string, EconomiaDeObra>(OBRAS.map(([, obraId, contratad
   obra_canonica_id: obraId, contratado, contratado_usd: null, tipo_cambio: null, origen: 'oc-pesos',
   referencia: null, nota: null, oc_civa_ventana: null, oc_civa_historico: null,
   oc_n_ventana: null, oc_n_historico: null,
+  contrato_mano_obra: null, contrato_mano_obra_usd: null, contrato_materiales: null,
+  contrato_materiales_usd: null, contrato_total: null, contrato_fuente: null,
+  contrato_fuente_drive_id: null, contrato_fuente_nombre: null, contrato_cita: null, contrato_nota: null,
 }]))
 
 /** Lo que `obra_cobranza` publica el día que la migración esté aplicada. El neto va a propósito

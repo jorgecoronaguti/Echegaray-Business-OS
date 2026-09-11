@@ -34,13 +34,13 @@ haya desaparecido de verdad.
 
 | | |
 |---|---|
-| **Fuente primaria** | public.cliente_economia.contratado (cliente) · public.obra_economia_cartera.contratado (obra) |
+| **Fuente primaria** | public.cliente_economia.contratado (cliente) · public.obra_economia_cartera.contratado (obra) · public.obra_economia_cartera.contrato_total (obra, cuando public.obra_contrato desglosa mano de obra y materiales: manda sobre `contratado` en las pantallas de Clientes) |
 | **Propietario** | `orquestador/scripts/obras-economia-sync.mjs`, paso del pipeline del Flujo de Caja |
 | **Criterio** | Lo que la pestaña OBRAS publica por obra —OC de Cobranzas en pesos > U$S × TC > suma viva de sus filas—, sumado por cliente sobre sus obras **no fusionadas**. Es venta **neta**, sin IVA. |
 | **Ventana** | Acumulado. `contratado_en_curso` recorta a las obras `activa`. |
 | **Consumidores** | `/clientes` (lista y panel lateral), ficha del cliente, esquema de pago (pantalla 32), portal (vía `cliente_economia_para_portal()`), ficha de obra |
 | **Confianza** | **D** · conocimiento interno validado |
-| **Última decisión del dueño** | 08/09/2026: «en la pestaña OBRAS están los montos contratados y los valores de costeo; agregarlos en Clientes». Pendiente: **D1** del PRP (qué es contratado con OC parciales y adicionales). |
+| **Última decisión del dueño** | 11/09/2026: «monto contratado, materiales, mano de obra y avance de cobro»; el desglose se lee de contrato/OC/presupuesto y vive en `obra_contrato`. 08/09/2026: «en la pestaña OBRAS están los montos contratados y los valores de costeo; agregarlos en Clientes». Pendiente: **D1** del PRP (qué es contratado con OC parciales y adicionales). |
 
 **NULL nunca es 0.** Una obra sin precio en OBRAS no vale cero: no se sabe. La pantalla escribe
 «sin precio en OBRAS».
@@ -56,6 +56,10 @@ haya desaparecido de verdad.
   discrepar.
 - `from\('obra_canonica'\)[^;]*monto_contratado` — la misma columna, leída de la tabla.
 - `contratado_de_obra\(` — la función que lee ese campo. Sigue viva porque `obra_panel` la usa.
+- `from\('obra_contrato'\)` — la tabla del desglose (11/09/2026) se lee SÓLO a través de
+  `obra_economia_cartera` (`contrato_*`), que la valúa en pesos con el mismo dólar que `contratado`
+  y aplica `ve_economia()`. Leerla directo publicaría dólares sin valuar al lado de pesos y una
+  tercera versión del contratado.
 
 ### Las excepciones
 

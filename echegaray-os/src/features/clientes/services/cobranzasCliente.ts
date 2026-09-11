@@ -42,9 +42,17 @@ export interface FilaCobranza {
   esta_vencida: boolean
   fecha_cobro: string | null
   forma_cobro: string | null
+  /**
+   * EL PAPEL QUE RESPALDA LA FILA cuando no hay factura (`cobranza_comprobante`, 11/09/2026): la
+   * nota firmada de Rodrigo por los tres cobros en efectivo de Messina. Opcionales porque la vista
+   * los publica sólo desde esa migración y una fila sin respaldo los trae en `null`.
+   */
+  respaldo_drive_id?: string | null
+  respaldo_titulo?: string | null
+  respaldo_nota?: string | null
 }
 
-const COLUMNAS = 'cobranza_id, obra_id, imputacion, fila, categoria, fecha_emision, factura, numero_comprobante, concepto, orden_compra, monto_neto, iva, retenciones, total_bruto, estado, esta_cobrada, esta_cancelada, esta_vencida, fecha_cobro, forma_cobro'
+const COLUMNAS = 'cobranza_id, obra_id, imputacion, fila, categoria, fecha_emision, factura, numero_comprobante, concepto, orden_compra, monto_neto, iva, retenciones, total_bruto, estado, esta_cobrada, esta_cancelada, esta_vencida, fecha_cobro, forma_cobro, respaldo_drive_id, respaldo_titulo, respaldo_nota'
 
 /**
  * TODAS LAS FILAS DEL CLIENTE, EN UNA CONSULTA.

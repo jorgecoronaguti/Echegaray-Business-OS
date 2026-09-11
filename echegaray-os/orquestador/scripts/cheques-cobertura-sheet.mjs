@@ -23,7 +23,7 @@ import { INSTRUMENTOS, formulasInstrumento } from '../lib/cash-flow-lineas.mjs'
 import { FILA_DATO0, FILA_FIN } from '../lib/cheques-emitidos-geometria.mjs'
 import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
-import { planDeMarcado, motivoDeAborto, accionDeMarcado, avisoDeCandado } from '../lib/marcado-columna.mjs'
+import { planDeMarcado, motivoDeAborto, accionDeMarcado, avisoDeCandado, sellosViejos } from '../lib/marcado-columna.mjs'
 import { ALERTA, mismaMarca } from '../lib/glifos.mjs'
 import { resolverLote, anotarIdentidad, drenarTrazas } from '../lib/ml/identidad-lote.mjs'
 
@@ -528,7 +528,7 @@ export async function marcarInstrumentos(google, datos, resp, { forzar = FORZAR,
       console.log(`  📸 snapshot → ${snap ?? 'NO SE PUDO — se escribe igual porque lo pediste, pero sin red'}`)
       await desbloquear({ query }, ID, o.pestaña)
       try {
-        await estampar(google, hoja, o, plan, marcas.length, { forzar: true })
+        await estampar(google, hoja, o, plan, marcas.length, { forzar: true, columna: zona })
       } finally {
         // SIEMPRE se vuelve a candar, falle o no la escritura: dejar la pestaña abierta por un error
         // sería quitarle una protección que el dueño puso, aprovechando una excepción.
@@ -538,7 +538,7 @@ export async function marcarInstrumentos(google, datos, resp, { forzar = FORZAR,
       console.log(`${o.pestaña}: marcas estampadas forzando el candado`)
       continue
     }
-    await estampar(google, hoja, o, plan, marcas.length, { forzar })
+    await estampar(google, hoja, o, plan, marcas.length, { forzar, columna: zona })
     // Se cuenta lo ESCRITO, no lo que se quiso escribir: con filas salteadas los dos números difieren
     // y el que importa es el que quedó en la pestaña.
     const puestas = plan.tramos.flatMap((t) => t.valores).filter((m) => m[0])
@@ -555,7 +555,7 @@ export async function marcarInstrumentos(google, datos, resp, { forzar = FORZAR,
  * cambió de forma: repintarla es el defecto de "escritura salteada que sigue formateando", el que
  * dejó CAJA con una fila de pagos formateada como fecha.
  */
-async function estampar(google, hoja, o, plan, alto, { forzar = false } = {}) {
+async function estampar(google, hoja, o, plan, alto, { forzar = false, columna = [] } = {}) {
   const COL = o.colMarca
   const letraCol = letra(COL)
   // ACÁ LA FECHA DE LA CORRIDA ES LA CORRECTA, Y ES LA EXCEPCIÓN A LA REGLA (03/08).
@@ -565,8 +565,20 @@ async function estampar(google, hoja, o, plan, alto, { forzar = false } = {}) {
   // nunca. Una fórmula acá diría "al 03/08" sobre marcas del 24/07 — frescura FALSA, que es peor
   // que el texto honesto. El estampado es el dato correcto: cuándo miró el OS.
   const hoy = new Date().toLocaleDateString('es-AR')
+  // ═══ Y LOS SELLOS QUE ESTE MISMO SCRIPT DEJÓ EN LAS FILAS QUE YA NO SON SU CABECERA (11/09/2026) ═══
+  //
+  // «Tarjeta de Credito» mostraba «Estado en el OS · al 24/7/2026» —48 días— con el sello de HOY ya
+  // estampado en L31: los que se veían eran los fósiles de L2 y L23, los dos «al 24/7/2026» (el de L2
+  // es del tiempo en que `filaCab` valía 2; el de L23 no se pudo rastrear, y la regla no lo necesita).
+  // La guarda de borrado del generador de la pestaña no los puede tocar (un texto con fecha viva no
+  // está en el registro de rótulos y no tiene forma de generador), así que los saca el que los
+  // escribió. Ver `sellosViejos` en lib/marcado-columna.mjs; es idempotente y sólo mira ARRIBA de
+  // `filaCab`, porque debajo viven las marcas fila por fila.
+  const fosiles = sellosViejos(columna, o.filaCab)
+  for (const f of fosiles) console.log(`  ⚠ ${o.pestaña}!${letraCol}${f}: sello viejo del OS ("${String((Array.isArray(columna[f - 1]) ? columna[f - 1][0] : columna[f - 1]) ?? '').trim()}") — se vacía; el vigente es ${letraCol}${o.filaCab}`)
   await google.batchUpdateValues(ID, [
     { range: `${o.pestaña}!${letraCol}${o.filaCab}`, values: [[`Estado en el OS · al ${hoy}`]] },
+    ...fosiles.map((f) => ({ range: `${o.pestaña}!${letraCol}${f}`, values: [['']] })),
     ...plan.tramos.map((t) => ({
       range: `${o.pestaña}!${letraCol}${t.fila}:${letraCol}${t.fila + t.valores.length - 1}`,
       values: t.valores,

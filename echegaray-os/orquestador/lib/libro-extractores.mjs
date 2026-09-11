@@ -202,10 +202,32 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
       (m) => aviso(`libro-extractores(Compras) fila ${i + 1}: ${m}`)))
     // ═══ EL CHEQUE VIVO PARTE LA FILA EN DOS (06/08) ═══
     //
-    // El cruce sólo actúa donde la fila iba a salir como REAL: es ahí donde el compromiso desaparece
-    // de las tres vistas de proyección. Si ya es COMPROMETIDO o PROYECTADO, la escalera la ve igual y
-    // partirla no agregaría nada — sí agregaría una diferencia de criterio entre dos casos gemelos.
-    const enCheques = estadoBase === 'REAL' ? cruce?.porCompra?.get(i + 1) : null
+    // El cruce actúa en TODA fila pagada con un cheque vivo, no sólo en la que iba a salir REAL.
+    //
+    // ═══ LA PUERTA ERA LA MISMA Y EL RUBRO NO — MEDIDO EL 11/09/2026 ═══
+    //
+    // La condición era `estadoBase === 'REAL'`, razonando que a un COMPROMETIDO «la escalera lo ve
+    // igual». La escalera sí; la LÍNEA del cuadro no. `deChequesEmitidos` saca de su puerta a todo
+    // cheque cruzado —sin mirar el estado de la factura—, así que la fila pagada con cheque y fecha
+    // de caja POSTERIOR al corte salía entera con el rubro de la factura («Materiales Civil»,
+    // «Estructura») y el cheque desaparecía del rubro «Cheques emitidos». Dos casos gemelos —el
+    // mismo cheque vivo cubriendo la misma factura— caían en líneas distintas del cash flow según
+    // si la fecha de caja de la factura ya había pasado o no: la diferencia de criterio que el
+    // comentario anterior decía estar evitando, al revés.
+    //
+    // Medido contra el archivo vivo: la auditoría de consistencia del 10/09 contó $7.147.930 como
+    // «cheques emitidos que no llegan a ningún Cash Flow» —Machuca f138+f139 ($2.560.965, Compras
+    // f858), Femenia f140 ($3.823.600, Compras f908) y MARIANA SA f141 ($763.364,80, Compras
+    // f639)— y la plata SÍ estaba: en la línea de materiales y en la de estructura. `Cheques
+    // Emitidos!B23` no podía cerrar contra la línea del cuadro ni con los dos números bien.
+    //
+    // REGLA DEL DUEÑO (02/09/2026), la misma que ya gobierna `cuotasEnCheque`: en el plan de caja la
+    // naturaleza de esta plata es «cheque a cubrir tal día», y su fecha es la del CHEQUE, no la de
+    // caja de la factura. No hay doble conteo posible: `enVuelo` se resta de `debe` y el resto de la
+    // fila sale por su rubro propio. Y `cruce.porCompra` sólo contiene filas PAGADAS —el lado de
+    // Compras lo arma `comprasPagadasConCheque`, que exige `estaPagada`—, así que quitar la guarda
+    // de estado no puede alcanzar a una fila «Pendiente» que ya viaja como PROYECTADO.
+    const enCheques = cruce?.porCompra?.get(i + 1)
     const enVuelo = Math.min(debe, enCheques?.vivo ?? 0)
     if (enVuelo > 0) {
       out.push(...cuotasEnCheque(base, enCheques.cuotas, corte, { fila: i + 1, comprobante: txt(f[c.comprobante]) }))

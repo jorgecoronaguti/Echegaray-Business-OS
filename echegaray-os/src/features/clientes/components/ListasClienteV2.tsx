@@ -37,6 +37,7 @@ import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import type { ObraPanel } from '@/features/obras/types'
 import { SIN_PRECIO_EN_OBRAS, type EconomiaDeObra } from '../services/economiaObras'
+import { baseContractualDe } from '@/features/clientes/services/economiaObras'
 import type { PapelesDelCliente } from '../services/papelesCliente'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
@@ -210,7 +211,8 @@ export function ObrasDelCliente({
         // definición del contratado, la que sumaba $31,8 M de Messina en el panel lateral mientras
         // la lista decía $156,1 M. Una obra sin precio en OBRAS lo dice; no se rellena con otra cosa.
         const e = economia?.get(o.obra_id) ?? null
-        const contratado = e?.contratado ?? null
+        // La misma base que la cartera y el KPI de arriba (auditor, 11/09/2026).
+        const contratado = baseContractualDe(e)
         // UNA OBRA CERRADA SIN PRECIO NO BLOQUEA NADA. El filo ámbar y el «sin precio en OBRAS»
         // existen para que alguien cargue el monto de una obra que se está ejecutando; sobre una
         // obra terminada hace dos años son una alarma que nadie puede apagar — y en el grupo

@@ -83,6 +83,25 @@ export interface ObraEnCurso {
    * BSA publica $14.120.243 por ese camino mientras el cliente mandó 5 OC por $49.886.583 c/IVA.
    */
   origenContratado: string | null
+  /**
+   * ═══ EL CONTRATO DESGLOSADO (dueño, 11/09/2026: «monto contratado, materiales, mano de obra y
+   *     avance de cobro con barra de progreso») ═══
+   *
+   * De `obra_economia_cartera` ← `public.obra_contrato`: los dos componentes valuados en pesos de
+   * hoy, su importe en dólares cuando el papel los fija en dólares, y el TOTAL contractual contra el
+   * que se mide el cobro. `null` = el papel no desglosa; nunca 0. `contratoFuente` dice qué papel
+   * fue (contrato / oc / presupuesto) y `contratoCita` el renglón textual.
+   */
+  manoObra: number | null
+  manoObraUsd: number | null
+  materiales: number | null
+  materialesUsd: number | null
+  contratoTotal: number | null
+  contratoFuente: string | null
+  contratoFuenteDriveId: string | null
+  contratoFuenteNombre: string | null
+  contratoCita: string | null
+  contratoNota: string | null
   certificacion: EstadoCertificacion
   /**
    * ═══ LAS CUATRO COLUMNAS DE LA PESTAÑA OBRAS, EN LA FILA DEL TRABAJO (10/09/2026) ═══
@@ -594,6 +613,16 @@ export function armarCartera({
         contratadoUsd: e?.contratado_usd ?? null,
         tipoCambio: e?.tipo_cambio ?? null,
         origenContratado: e?.origen ?? null,
+        manoObra: e?.contrato_mano_obra ?? null,
+        manoObraUsd: e?.contrato_mano_obra_usd ?? null,
+        materiales: e?.contrato_materiales ?? null,
+        materialesUsd: e?.contrato_materiales_usd ?? null,
+        contratoTotal: e?.contrato_total ?? null,
+        contratoFuente: e?.contrato_fuente ?? null,
+        contratoFuenteDriveId: e?.contrato_fuente_drive_id ?? null,
+        contratoFuenteNombre: e?.contrato_fuente_nombre ?? null,
+        contratoCita: e?.contrato_cita ?? null,
+        contratoNota: e?.contrato_nota ?? null,
         referencia: e?.referencia ?? null,
         nota: e?.nota ?? null,
         ocCivaVentana: e?.oc_civa_ventana ?? null,
