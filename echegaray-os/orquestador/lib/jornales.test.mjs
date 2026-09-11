@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Test de la lib jornales (extractor de la última quincena sobre la planilla de bloques apilados).
-import { parseMonto, filasDeBloque, ultimaQuincena } from './jornales.mjs'
+import {
+  parseMonto, filasDeBloque, ultimaQuincena, columnaDeTotalSemana, TOTAL_COL_HISTORICO,
+} from './jornales.mjs'
 
 let ok = 0, fail = 0
 const check = (n, c) => { if (c) ok++; else { fail++; console.error(`FALLA: ${n}`) } }
@@ -44,3 +46,35 @@ check('desde/hasta por min/max, no primera/última', q2.desde === '6/7' && q2.ha
 
 console.log(`\njornales.test: ${ok} OK, ${fail} FALLA`)
 process.exit(fail ? 1 : 0)
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA COLUMNA DEL TOTAL SE LEE DEL ENCABEZADO, NO DE UNA CONSTANTE (11/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `TOTAL_COL['Obreros 26'] = 26` es AA, y AA es «TOTAL EFECTIVO»: lo que sale en mano DESPUÉS de
+// descontar el banco y los adelantos. El total de la quincena es AB, «TOTAL SEMANA». El tool contesta
+// «cuánto le pagamos a los empleados la quincena pasada»: con AA se comía lo girado por banco —
+// $2.934.498 en la 2ª de agosto de 2026.
+//
+// LA MUTACIÓN QUE PONE ESTO ROJO: volver a pasarle `TOTAL_COL[tab]` a `ultimaQuincena`.
+
+const ENC_OBREROS = ['x', 'OBRERO', 'Fecha de Ingreso', null, 'DIAS TRABAJADOS',
+  null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+  'DIAS / HORAS', '$ HORA', 'BANCO', 'ADELANTO BANCO / EMBARGOS', 'ADELANTO EFECTIVO',
+  'TOTAL EFECTIVO', 'TOTAL SEMANA', 'CLIENTE', 'OBRA']
+const ENC_OFICINA = ['x', 'OBRERO', 'Fecha de Alta', 'DIAS TRABAJADOS',
+  null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+  'u', null, 'DIAS / HORAS', '$ HORA', 'BANCO', 'ADELANTO', 'TOTAL RECIBO', 'TOTAL SEMANA', 'OBRA']
+
+check('«Obreros 26»: TOTAL SEMANA es AB (27), no AA (26 = TOTAL EFECTIVO)',
+  columnaDeTotalSemana([ENC_OBREROS]) === 27)
+check('y no coincide con el índice histórico, que es el defecto',
+  columnaDeTotalSemana([ENC_OBREROS]) !== TOTAL_COL_HISTORICO['Obreros 26'])
+check('«Oficina 26»: TOTAL SEMANA es Z (25), que SÍ era el índice histórico',
+  columnaDeTotalSemana([ENC_OFICINA]) === 25)
+check('«TOTAL EFECTIVO» y «TOTAL RECIBO» NO son «TOTAL SEMANA»',
+  columnaDeTotalSemana([['TOTAL EFECTIVO', 'TOTAL RECIBO']]) === null)
+check('sin el rótulo se devuelve null: no se adivina una letra',
+  columnaDeTotalSemana([['a', 'b', 'c']]) === null)
+check('el rótulo se busca en las primeras filas, no sólo en la 1',
+  columnaDeTotalSemana([[], [], ['x', 'TOTAL SEMANA']]) === 1)

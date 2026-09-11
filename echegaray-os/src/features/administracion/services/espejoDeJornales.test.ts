@@ -27,6 +27,7 @@ const base = (extra: Partial<DatosDelEspejo> = {}): DatosDelEspejo => ({
   lineas: { p1: { grupo: 'obreros', linea: linea(0) } },
   cuadrosCerrados: new Set(),
   horasDeLaPlanilla: new Map([['p1', 0]]),
+  diasDeLaPlanilla: new Map(),
   hayEspejo: true,
   hoy: '2026-09-15',
   ...extra,
@@ -168,4 +169,61 @@ test('SIN LÍNEA DE PAGO LA PERSONA NO SE DIBUJA: media fila se lee como una liq
     ],
   }))
   assert.deepEqual(filas.map((f) => f.personaId), ['p1'])
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL COTEJO SE HACE SOBRE LOS DÍAS QUE LA PLANILLA TIENE (11/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Medido en producción: al mediodía la planilla tenía OCHO días cargados de los trece de la
+// quincena. El cotejo comparaba la ventana entera, así que las quince personas daban «difiere 8 h»
+// —el día de hoy, que la app carga sola y el dueño todavía no escribió— y un chip permanentemente
+// en rojo deja de leerse. Restringido a los ocho días, catorce de quince dieron EXACTO.
+//
+// LA MUTACIÓN QUE PONE ESTO ROJO: volver a sumar toda la ventana de `registros_hh`.
+
+test('LOS DÍAS QUE LA PLANILLA NO TIENE NO ENTRAN EN LA COMPARACIÓN', () => {
+  // La planilla habla del 1 y del 2. El 3 lo cargó la app sola. Comparar los tres daría «difiere 8».
+  const [fila] = filasDelEspejo(base({
+    registros: [
+      { persona_id: 'p1', id: 'r1', fecha: '2026-09-01', tipo_hora: 'normal', horas: 9 },
+      { persona_id: 'p1', id: 'r2', fecha: '2026-09-02', tipo_hora: 'normal', horas: 9 },
+      { persona_id: 'p1', id: 'r3', fecha: '2026-09-03', tipo_hora: 'normal', horas: 8 },
+    ],
+    horasDeLaPlanilla: new Map([['p1', 18]]),
+    diasDeLaPlanilla: new Map([['p1', new Set(['2026-09-01', '2026-09-02'])]]),
+  }))
+  assert.equal(fila.cotejo.estado, 'coincide')
+  assert.equal(fila.cotejo.horasEnLaBase, 18, 'las 8 h del día que la planilla no tiene NO suman')
+  assert.equal(fila.cotejo.diasComparados, 2)
+  assert.equal(fila.cotejo.diasSinComparar, 11, 'y la pantalla puede decir cuántos quedaron afuera')
+})
+
+test('UNA DIFERENCIA DENTRO DE LOS DÍAS CARGADOS SÍ ES UNA DIFERENCIA', () => {
+  // EL CASO REAL: Gonzalez Tobares Juan Guillermo tiene dos días con DOS filas de la web cada uno,
+  // que el importador declara intocables porque no puede elegir cuál pisa a cuál. Ese chip rojo es
+  // un dato, no ruido — y es el único de los quince.
+  const [fila] = filasDelEspejo(base({
+    registros: [
+      { persona_id: 'p1', id: 'r1', fecha: '2026-09-01', tipo_hora: 'normal', horas: 9 },
+      { persona_id: 'p1', id: 'r2', fecha: '2026-09-01', tipo_hora: 'normal', horas: 9 },
+    ],
+    horasDeLaPlanilla: new Map([['p1', 9]]),
+    diasDeLaPlanilla: new Map([['p1', new Set(['2026-09-01'])]]),
+  }))
+  assert.equal(fila.cotejo.estado, 'difiere')
+  assert.equal(fila.cotejo.diferencia, 9)
+  assert.equal(fila.cotejo.diasComparados, 1)
+})
+
+test('CON ESPEJO PERO SIN DÍAS DE ESA PERSONA, NO SE COMPARA CONTRA CERO', () => {
+  // Los dos jefes de Oficina: su pestaña no tiene bloque de septiembre. La planilla no habla de
+  // ellos, y «difiere 80 h» sería mentir sobre una comparación que no se puede hacer.
+  const [fila] = filasDelEspejo(base({
+    registros: [{ persona_id: 'p1', id: 'r1', fecha: '2026-09-01', tipo_hora: 'normal', horas: 9 }],
+    horasDeLaPlanilla: new Map(),
+    diasDeLaPlanilla: new Map(),
+  }))
+  assert.equal(fila.cotejo.diasComparados, 0)
+  assert.equal(fila.cotejo.diasSinComparar, 13)
 })

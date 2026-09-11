@@ -37,6 +37,21 @@ export interface EspejoDeLaPlanilla {
    * `aplicarOverrides`, que aplica la precedencia manual > JORNALES > calculado.
    */
   cadenaPorPersona: Map<string, CadenaDeJornales>
+  /**
+   * QUÉ DÍAS TIENE CARGADOS LA PLANILLA PARA CADA PERSONA.
+   *
+   * ═══ SIN ESTO EL CHIP DICE «DIFIERE» SIEMPRE (medido el 11/09/2026) ═══
+   *
+   * El cotejo comparaba las horas de TODA la ventana de `registros_hh` contra el total de la
+   * planilla. Pero la planilla es un documento que se va llenando: al 11/09 tenía ocho días cargados
+   * de los trece de la quincena. Comparar quince días de base contra ocho de planilla da «difiere 8
+   * h» para las quince personas —el día de hoy, que la app cargó sola y él todavía no— y un chip que
+   * está siempre en rojo deja de leerse.
+   *
+   * Se compara SOBRE LOS DÍAS QUE LA PLANILLA DICE TENER. Los que no dice, no los afirma, y no se
+   * puede diferir contra una afirmación que nadie hizo.
+   */
+  diasPorPersona: Map<string, Set<string>>
   /** Cuándo se leyó el Sheet por última vez, en ISO. `null` cuando no hay espejo. */
   leidoEn: string | null
   /** Las pestañas y los bloques que cubren esta quincena, para que el sello diga de dónde sale. */
@@ -47,8 +62,8 @@ export interface EspejoDeLaPlanilla {
 }
 
 const VACIO: EspejoDeLaPlanilla = {
-  hay: false, horasPorPersona: new Map(), cadenaPorPersona: new Map(), leidoEn: null,
-  bloques: [], sinPersona: [], error: null,
+  hay: false, horasPorPersona: new Map(), cadenaPorPersona: new Map(), diasPorPersona: new Map(),
+  leidoEn: null, bloques: [], sinPersona: [], error: null,
 }
 
 /**
@@ -76,6 +91,7 @@ interface FilaDelEspejoEnLaBase {
   persona_id: string | null
   nombre_planilla: string
   horas: number | string | null
+  horas_por_dia: Record<string, number | null> | null
   cobra: number | string | null
   adelanto: number | string | null
   ya_transferido: number | string | null
@@ -116,7 +132,7 @@ export async function getEspejoDeLaPlanilla(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<EspejoDeLaPlanilla> {
   const { data, error } = await supabase.from('jornales_bloque_persona')
-    .select('pestana, bloque_fila1, persona_id, nombre_planilla, horas, '
+    .select('pestana, bloque_fila1, persona_id, nombre_planilla, horas, horas_por_dia, '
       + 'cobra, adelanto, ya_transferido, por_banco, en_efectivo, leido_en')
     .eq('quincena_desde', q.desde).eq('quincena_hasta', q.hasta)
   if (error) {
@@ -127,6 +143,7 @@ export async function getEspejoDeLaPlanilla(
 
   const horasPorPersona = new Map<string, number>()
   const cadenaPorPersona = new Map<string, CadenaDeJornales>()
+  const diasPorPersona = new Map<string, Set<string>>()
   const sinPersona: string[] = []
   const bloques = new Map<string, { pestana: string; filaBloque: number; personas: number }>()
   let leidoEn: string | null = null
@@ -142,6 +159,11 @@ export async function getEspejoDeLaPlanilla(
     // sola publicaría una diferencia que la planilla no tiene.
     const h = num(f.horas)
     horasPorPersona.set(f.persona_id, (horasPorPersona.get(f.persona_id) ?? 0) + (h ?? 0))
+    // LOS DÍAS QUE LA PLANILLA TIENE ESCRITOS. Una celda VACÍA no genera clave en `horas_por_dia`, así
+    // que este conjunto es exactamente «de qué días habla la planilla» — ni uno más.
+    const dias = diasPorPersona.get(f.persona_id) ?? new Set<string>()
+    for (const d of Object.keys(f.horas_por_dia ?? {})) dias.add(d)
+    diasPorPersona.set(f.persona_id, dias)
     const previa = cadenaPorPersona.get(f.persona_id) ?? {}
     cadenaPorPersona.set(f.persona_id, {
       cobra: sumar(previa.cobra, num(f.cobra)),
@@ -155,6 +177,7 @@ export async function getEspejoDeLaPlanilla(
     hay: true,
     horasPorPersona,
     cadenaPorPersona,
+    diasPorPersona,
     leidoEn,
     bloques: [...bloques.values()],
     sinPersona: [...new Set(sinPersona)],
