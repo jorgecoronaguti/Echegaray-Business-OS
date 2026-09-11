@@ -118,6 +118,12 @@ cuota de una herramienta de desarrollo, y el control de arriba lo caza.
   por `config` es sólo lectura y devuelve 403.
 - **Nunca escribir en el Sheet desde un worktree** — ya borró una pestaña entera.
 - **Nunca correr el pipeline "para probar"** — ya borró trabajo tres veces.
+- **Un proceso `active` puede estar muerto.** `pg` no trae timeouts: sobre un socket medio abierto
+  un `await` no se cumple NI se rechaza, y `try/catch` no lo salva. El worker de comunicación quedó
+  23 h colgado así (10/09/2026) con `Restart=always` puesto, porque nunca murió. La regla es morir y
+  renacer: `orquestador/lib/conexion-perdida.mjs` (`esConexionPerdida` + `crearLatido`, salida 75) y
+  `docs/engineering/INCIDENTE-2026-09-10-WORKER-COLGADO-23H.md`. Un proceso de larga duración que
+  toca la base sin latido es un cuelgue esperando turno.
 - **Un arrow o un `onClick` como prop en un Server Component** compila el typecheck y tumba la página
   en producción (React #419). Sólo `npm run build` lo atrapa.
 - **`count: 'exact'` con RLS** recorre la tabla evaluando la policy fila por fila. Y una policy con
