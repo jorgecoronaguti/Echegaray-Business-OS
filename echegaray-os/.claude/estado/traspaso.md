@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-11 ~11:15 (hora local −03) · main = producción_
+_actualizado: 2026-09-11 ~11:35 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -71,7 +71,7 @@ ensayo, `--aplicar`). Playwright anda sin root con las libs del scratchpad (`lib
 
 11:00–11:10: la VM llegó a carga 27–31 con cuatro agentes en paralelo (eslint ., tests, 3 next dev): se cayó el websocket del bot y Mattermost (corre en esta VM, puerto 8065), el guardia del pipeline de las 10:50 falló por ETIMEDOUT («No ejecuté un solo generador», próxima 12:50) y la sesión murió dos veces. Se mataron los procesos; carga 1. REGLA NUEVA (memoria vm-saturada-por-agentes-tumba-el-chat): un agente pesado a la vez, nice 19, lint/tests dirigidos, dev server efímero.
 
-Orden de reanudación (de a uno): 1) Liquidación/Horas (wt-liq, 2 commits, a2969937 sin verificar contra la base) → 2) solapa Cobranzas UX (wt-cob, 5 commits, auditada, falta merge/capturas) → 3) velocidad frontend (wt-perf, 3 commits: router reusa pantalla + esqueletos; falta build, auditor, medición después) → 4) backend/DB (wt-db, 4 commits: RPC una vista por viaje; falta auditor, migraciones desde main, medición). Consistencia/caja publicada (c981af53); verificar en la corrida 12:50: CAJA!A3 ~40,9 M, CFM!M50 ~53,3 M, CFS!BB50 == M50, Estructura!O16 0, Tarjeta!L2/L23 vacías, _CAJA_ANEXO «⏳ Retenido» 38.572.526,23; luego post al dueño.
+Orden de reanudación (de a uno): 1) Liquidación/Horas (wt-liq, en curso, agente único con navegador) → 2) solapa Cobranzas UX: PUBLICADA e9ae7a1a (falta captura en producción) → 3) velocidad frontend (wt-perf, reanudado tras DB) → 4) backend/DB: PUBLICADO 28fe9041 (migración 1030 aplicada; guarda rpc-una-pasada.pg.test.mjs verde en vivo: pantalla_clientes ≤ 13.500 buffers, campanita ≤ 400). Consistencia/caja publicada (c981af53); verificar en la corrida 12:50.
 
 ## 6. PENDIENTES REALES
 
