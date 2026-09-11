@@ -24,11 +24,19 @@
 //    dato — el error que ya costó un contrato de $0 en este repo.
 // 6. **`null` no se dibuja como `0` ni como `—`**: se dibuja el texto de ausencia que pasa el que
 //    llama (`falta`), en `faint`, y sigue siendo tocable.
+// 7. **LO GUARDADO NO DESAPARECE MIENTRAS EL SERVIDOR VUELVE.** La prop sigue trayendo el valor
+//    viejo hasta que `revalidatePath` termina de rehacer la pantalla —en Liquidación, entre diez y
+//    veinte segundos—, y hasta el 10/09/2026 la celda volvía a dibujarlo: quien editaba veía su
+//    número desaparecer y concluía, con razón, que no se podía editar. La regla de quién gana está
+//    en `inlineEdit.ts`, pura y probada.
 //
 // El id de la fila NUNCA viaja en el formulario: la acción llega ya atada con `.bind(null, id)`.
 
 import { useRef, useState } from 'react'
 import { CAMPO } from './Controles'
+import {
+  alConfirmarGuardado, alLlegarDelServidor, hayQueGuardar, valorVigente, type EstadoInline,
+} from './inlineEdit'
 
 export type ResultadoInline = { ok: true } | { ok: false; error: string }
 
@@ -76,9 +84,9 @@ export function InlineEdit({
   // UNA FECHA SE LEE EN es-AR Y SE EDITA EN ISO. El `<input type=date>` exige AAAA-MM-DD, pero
   // mostrar la celda así obliga a leer al revés una fecha en una pantalla donde todas las demás
   // dicen DD/MM/AAAA — y una columna con dos formatos de fecha es una columna que se lee mal.
-  const paraLeer = tipo === 'fecha' && original
-    ? `${original.slice(8, 10)}/${original.slice(5, 7)}/${original.slice(0, 4)}`
-    : original
+  const enISO = (v: string) => (tipo === 'fecha' && v
+    ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}`
+    : v)
   const [borrador, setBorrador] = useState(original)
   const [editando, setEditando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -89,19 +97,29 @@ export function InlineEdit({
   // está escribiendo: pisarle el texto a mitad de una corrección es perder su trabajo—. Se ajusta
   // DURANTE el render y no en un efecto: con el efecto, la celda se dibuja un fotograma con el
   // valor viejo y se corrige después, que es el parpadeo que hace dudar de si guardó.
-  const [ultimoLeido, setUltimoLeido] = useState(original)
-  if (!editando && original !== ultimoLeido) {
-    setUltimoLeido(original)
-    setBorrador(original)
+  const [estado, setEstado] = useState<EstadoInline>({ delServidor: original, pendiente: null })
+  if (!editando && original !== estado.delServidor) {
+    const siguiente = alLlegarDelServidor(estado, original)
+    setEstado(siguiente)
+    setBorrador(valorVigente(siguiente))
   }
 
+  // LO QUE LA CELDA DIBUJA: lo confirmado por la acción hasta que el servidor lo repita (regla 7).
+  const vigente = valorVigente(estado)
+  const enVuelo = estado.pendiente != null
+
   async function confirmar(v: string) {
-    if (v === original) { setEditando(false); return }
+    if (!hayQueGuardar(estado, v)) { setEditando(false); return }
     setGuardando(true)
     const r = await guardar(v)
     setGuardando(false)
     setEditando(false)
-    setError(r.ok ? null : r.error)
+    if (r.ok) {
+      setEstado(alConfirmarGuardado(estado, v))
+      setError(null)
+    } else {
+      setError(r.error)
+    }
   }
 
   if (tipo === 'seleccion') {
@@ -131,14 +149,22 @@ export function InlineEdit({
           type="button"
           data-testid={testid}
           aria-label={etiqueta}
+          // MIENTRAS EL SERVIDOR NO CONFIRME, LA CELDA LO DICE SIN MOVER NADA: `aria-busy` para
+          // quien navega con lector y un subrayado punteado para quien mira. Un cartel «guardando…»
+          // debajo empujaría la fila y la tabla entera bailaría en cada corrección.
+          aria-busy={enVuelo || guardando}
+          data-pendiente={enVuelo ? '1' : undefined}
+          title={enVuelo ? 'Guardado. La pantalla termina de actualizarse en unos segundos.' : undefined}
           onClick={() => { setEditando(true); setError(null); requestAnimationFrame(() => ref.current?.select()) }}
           className={`${ancho} rounded-control border border-transparent px-1.5 py-0.5 text-left hover:border-line-strong ${
             alineado === 'right' ? 'text-right font-mono tabular-nums' : ''
-          } ${valor === null ? 'text-faint' : 'text-ink'} text-[12.5px]`}
+          } ${vigente === '' ? 'text-faint' : 'text-ink'} ${
+            enVuelo ? 'underline decoration-dotted decoration-warn underline-offset-4' : ''
+          } text-[12.5px]`}
         >
-          {valor === null
+          {vigente === ''
             ? falta
-            : `${mostrar ? mostrar(valor) : paraLeer}${sufijo ? ` ${sufijo}` : ''}`}
+            : `${mostrar ? mostrar(vigente) : enISO(vigente)}${sufijo ? ` ${sufijo}` : ''}`}
         </button>
         {error && <span className="text-[11px] text-neg" data-testid={testid ? `${testid}-error` : undefined}>{error}</span>}
       </span>
@@ -162,7 +188,7 @@ export function InlineEdit({
           if (e.key === 'Enter') { e.preventDefault(); void confirmar(borrador) }
           // ESCAPE DEVUELVE EL ORIGINAL. Sin esto, la única salida de una edición empezada por error
           // es guardarla.
-          if (e.key === 'Escape') { e.preventDefault(); setBorrador(original); setEditando(false) }
+          if (e.key === 'Escape') { e.preventDefault(); setBorrador(vigente); setEditando(false) }
         }}
         className={`${CAMPO} ${ancho} !h-7 !px-1.5 !text-[12.5px] ${alineado === 'right' ? 'text-right font-mono tabular-nums' : ''}`}
       />
