@@ -50,6 +50,11 @@ import { leerDatos } from '../lib/datos-propios.mjs'
 import { leerBoletasIeric } from '../lib/cargas-boletas-ieric.mjs'
 import { PESTAÑA as RAW_UOCRA } from './uocra-raw-pestana.mjs'
 import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
+// ═══ LO QUE EL BANCO LISTÓ Y NO ACREDITÓ TODAVÍA VA A ENTRAR (11/09/2026) ═══
+//
+// CAJA dejó de publicarlo como disponible esta mañana —bien— y nadie lo proyectó como ingreso: el
+// cierre del Mensual bajó $38,8 M. El percibido tiene dos lados. Ver el módulo.
+import { deDepositosRetenidos } from '../lib/libro-extractores-retenidos.mjs'
 import { deEstructura, diaTipicoDeEstructura, PESTANA_ESTRUCTURA } from '../lib/libro-extractores-estructura.mjs'
 // ═══ LOS MATERIALES PREVISTOS SALEN DEL CUADRO 5 DE LA PESTAÑA `OBRAS` (24/08/2026) ═══
 //
@@ -530,6 +535,16 @@ export async function extraerDeLasFuentes(google, corte) {
       '_BANCO_RAW · obligaciones': delBanco.movimientos,
       [PESTANA_PRENDARIO]: prendario.movimientos,
   }
+  // ═══ LOS DEPÓSITOS RETENIDOS VAN DESPUÉS DE COBRANZAS Y DE LA CARTERA, Y NO ES CASUAL ═══
+  //
+  // El mismo eCheq puede estar ya en el libro por Cobranzas (marcado cobrado) o por `_CHEQUES_RAW` (si
+  // sigue en cartera). El extractor recibe esos ingresos YA EMITIDOS y no emite el que alguno de los
+  // dos reclame: es el defecto que este rubro ya tuvo con el eCheq de LA ESTRELLA, contado dos veces.
+  const retenidos = deDepositosRetenidos(banco, {
+    ingresosDelLibro: [...fuentes.Cobranzas, ...fuentes._CHEQUES_RAW],
+  })
+  for (const a of retenidos.avisos) console.warn(`  ⚠ ${a}`)
+  fuentes['_BANCO_RAW · retenidos'] = retenidos.movimientos
   // ═══ EL SAC VA DESPUÉS DE LA NÓMINA, Y EL ORDEN NO ES UN DETALLE ═══
   //
   // Su parte REAL son los lotes de haberes que NINGUNA quincena reclamó, y «ninguna quincena» se sabe

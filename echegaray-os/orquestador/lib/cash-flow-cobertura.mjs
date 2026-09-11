@@ -64,7 +64,11 @@ export const DUENOS = [
   {
     rubro: 'Valores en cartera', dueno: '_CHEQUES_RAW', horizonte: HORIZONTE.cargado,
     porque: 'Es la cartera de cheques de terceros en custodia, cada uno con su fecha de pago. Después '
-      + 'del último vencimiento no hay nada que proyectar: los valores futuros todavía no existen.',
+      + 'del último vencimiento no hay nada que proyectar: los valores futuros todavía no existen. '
+      + 'Desde el 11/09/2026 esta línea tiene una SEGUNDA fuente para el tramo más corto: los eCheq ya '
+      + 'DEPOSITADOS que el banco retiene 48 hs (`_BANCO_RAW` con la celda de saldo vacía). No se '
+      + 'superponen: si el valor sigue en la cartera o la cobranza ya está marcada cobrada, el depósito '
+      + 'no se emite. Ver lib/libro-extractores-retenidos.mjs.',
   },
   // ── EGRESOS ─────────────────────────────────────────────────────────────────────────────────────
   {

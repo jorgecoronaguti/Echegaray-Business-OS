@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-11 ~14:50 (hora local −03) · main = producción_
+_actualizado: 2026-09-11 ~15:55 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -61,62 +61,70 @@ el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
 
 ## 4. ESTADO ACTUAL
 
-- **Producción sana** (verificado 14:37): web responde, Mattermost 200, bot ws/worker activos, carga 0,2.
-- **Clientes/CRM**: cartera de cinco columnas con contrato desglosado desde los papeles
-  (`public.obra_contrato` → `obra_economia_cartera.contrato_*`), UNA barra por obra, avance neto/neto,
-  solapa Órdenes (OC bajo cada obra, OP bajo cada cliente), solapa Cobranzas rediseñada, respaldos de
-  cobranza atados por `(cliente_id, sheet_id)`. Migraciones 0900–1200 del 11/09 aplicadas.
-- **Personal/Liquidación**: celda de Horas editable en línea, panel rehecho, paginación; blur sin test.
-- **Flujo de Caja**: caja verificada tras la corrida 12:17 (CAJA!A3 40.948.755; CFM!M50 53.134.890 =
-  CFS!BB50; e-cheq retenidos $38,57 M fuera de disponible). Corrida programada 12:50: success (54/66,
-  las 12 ✗ son presentación conocida). Extracto bancario e IERIC/FODECO 08-2026 cargados.
-- **Capa ML/HF**: e5-small en producción (indexado documental); reranker cableado al bot pero 0 trazas
-  en 90 días; whisper bajó a CANDIDATO (sin consumidor). Nada más de HF hecho.
-- **Deuda conocida**: `orq:test` con 11 archivos rojos en main; `tc_vigente()` no grita si
-  `tipo_cambio` se congela; 36 worktrees `agent-*` viejos en `.claude/worktrees` (higiene).
+- **Producción**: web responde; pipeline 14:50 success (23 min); prod checkout = main (d4ee0d23+).
+- **HF CERRADO (§6/§7 del mandato)**: `docs/engineering/HF-INCORPORADO-VS-RECHAZADO-2026-09-11.md` +
+  evidencia cruda en `docs/engineering/evidencia/hf-2026-09-11/`. Tres herramientas del Hub medidas
+  contra problemas reales y RECHAZADAS (Qwen3-Coder calidad · GLM-4.7-Flash operación 504 · Qwen3-VL
+  fabricación); candado `lib/ml/registro.test.mjs`. Local confirmado por medición (e5 8 ms vs 5 s
+  remoto; router 404 para embeddings). Incidente declarado: captura con clientes reales fue a novita
+  sin adapter. Decisión del dueño pendiente: plan PRO de HF sin consumidor.
+- **Compras · limpieza por concepto (orden 11/09)**: análisis en `docs/engineering/COMPRAS-LIMPIEZA-2026-09-11.md`.
+  No hay doble conteo; cinco grupos ($94,1 M REAL + $17,3 M FUTURO) entran al Cash Flow SOLO por
+  Compras. **Batch 1 APLICADO** (39 filas nómina + f475/f477, $126,8 M a cero, X=ELIMINADO) con
+  `scripts/compras-marcar-eliminado.mjs` (huella por fila, idempotente, escribe 0 y no vacío porque la
+  guarda anti-borrado conserva la celda vaciada); respaldos en `orquestador/datos/respaldos/`.
+  Efecto colateral medido: `obra_costo_real.costo_mano_de_obra` pierde $8,3 M (La Estrella 3,3 ·
+  Galpones 4,0 · Messina 1,0) porque el sync espeja Compras a `costos_obra` área personas — la MO por
+  obra debe salir de JORNALES, no de Compras (gap previo, ahora visible).
+- **Hito 2 EN CURSO** (agente en `/home/jorge/echegaray-os/worktrees/wt-compras`, rama
+  `feat/libro-fuentes-propias`): extractores propios del libro — `deBancoObligaciones` (REAL desde
+  `_BANCO_RAW`: prendario, gremiales, AFIP apareado F931/plan, DGR; dedupe contra Compras por
+  `usados`), `dePrendario` FUTURO (`datos/prestamo-prendario.json`), `deSac` (proyectado jun/dic +
+  real por ventana), planes ARCA sólo apareo REAL (`datos/planes-arca.json`, sin cronograma), y
+  `scripts/libro-simular-sin-compras.mjs` (prueba ejecutable: diff rubro×mes ≤ $1 al anular Compras).
+  **Batch 2** (74 filas Impuestos/Financiero + 6 SAC) se aplica SOLO cuando la simulación dé ≤ $1 y
+  una corrida del pipeline lo confirme; los planes pendientes f698/f699 quedan hasta tener Mis
+  Facilidades.
+- **Tarjeta L2/L23**: siguen con el sello viejo tras la corrida 14:50. `tarjeta-pestana` corrió y NO
+  imprimió «se vacían» → `textosDeSellosViejos` no detectó los fósiles (fe197722 no dispara). P1.
+- **Deuda conocida**: `orq:test` 11 archivos rojos en main; `tc_vigente()` sin canario; ~100
+  worktrees viejos en `.claude/worktrees` (higiene); `pgrep -f` se encuentra a sí mismo (usar `pgrep -x`
+  o `systemctl is-active`).
 
-## 5. TRABAJO DE ESTA SESIÓN (11/09)
+## 5. TRABAJO DE ESTA SESIÓN (11/09 tarde)
 
-Publicado en main: cartera CRM v5 + contrato desglosado + Órdenes (81b60e37/df9e2cf5), Cobranzas UX
-(e9ae7a1a), Liquidación/Horas (8c239766), middleware con tope (a739f450), router cache
-`staleTimes.dynamic 60` (83c01119: 4 vueltas 35 s → 0,39 s), DB RPC una pasada + CTE materialized
-(28fe9041) y ficha por solapa (13fd3944, migración 1200), libro `_MOVIMIENTOS` (dcd4a3f8), caja
-e-cheq retenidos (c981af53), consistencia Sheet (817bb501), sello viejo Tarjeta (fe197722), IERIC
-(c8ddc0f5), registro ML whisper→candidato (6bf7d56d). Tests dirigidos por frente; suite ML 166/166.
-Decisiones: Maldonado ref 88958840 es devolución (omitir); un agente pesado a la vez en la VM.
+396e9c07 HF §6/§7 cerrados · d3cb3c71/338b799d/337aa54c bisturí ELIMINADO (3 correcciones medidas
+contra el Sheet real) · d4ee0d23 respaldos batch 1 · hito 2 en rama.
 
 ## 6. PENDIENTES REALES
 
-**P0** — ninguno bloqueante. Verificar en la próxima corrida del pipeline (:50) que Tarjeta!L2 y L23
-quedaron vacías (fe197722 entró después de la corrida 12:50).
+**P0** — cerrar hito 2: revisar diff del agente, tests dirigidos, simulación ≤ $1, merge, deploy
+(pull prod fuera de corrida), esperar corrida :50, verificar libro/CFM/CFS, aplicar batch 2 con el
+bisturí (lista = grupo A + SAC del JSON de candidatas, menos f698/f699), verificar en la corrida
+siguiente que CFM!M50 y CFS!BB50 no bajan por rubro.
 
 **P1**
-- `pantalla_obra()` RPC para /obras/[obra] (15 viajes, 2–30 s) y /presupuestos (0,6–56 s).
-- Personal/Horas: ~25 consultas por render → deduplicar; test del blur de la celda.
-- Cargas Sociales «2 · PAGADO» sigue leyendo Compras (0 desde septiembre).
-- `orq:test`: 11 archivos rojos en main. Canario de `tipo_cambio`.
-- HF §6/§7 del mandato: herramientas del Hub para construir ECSAS probadas sobre problemas reales
-  (adoptar sólo si superan lo existente) e impacto local vs Inference Providers. Un agente lo arrancó
-  al cierre en la rama `feat/hf-herramientas` (sin commits; worktree en el scratchpad → `git worktree
-  prune`). Entregable exigido: `docs/engineering/HF-INCORPORADO-VS-RECHAZADO-2026-09-11.md`.
+- Pedido del dueño 11/09 ~15:50: «usar todas las skills de HF para optimizar app.ecsas.com.ar».
+  Posición dada: sólo lo que ganó midiendo tiene consumidor real en la web — buscador de Documentos
+  (e5 + reranker), ruteo/clasificación de XSAS en `/xsas` sin Claude (latencia y tokens), selección
+  de contexto para Claude. Baseline primero (latencia XSAS web, p50/p95; búsqueda documentos).
+- MO por obra desde JORNALES → `costos_obra` (origen propio), para que `obra_costo_real` no dependa
+  de Compras.
+- `pantalla_obra()` RPC; Personal/Horas 25 consultas; Cargas Sociales «2 · PAGADO» lee Compras;
+  Tarjeta fósiles; `orq:test` rojos; canario `tipo_cambio`.
 
-**P2** — UX por flujo/mobile/XSAS en contexto de pantalla (mandato P2). Decisiones del dueño a
-listar por bot: Bases tanque SO2 $6,7 M sin respaldo · F68 · OC 2135 · Compras «Pagado» con cheques
-sin debitar · Jornales!M26 · e-cheq $38,57 M ¿disponibles? · `public.cheques` corte 08/09 · BSA sin
-desglose MO/materiales · Dilución de ácido «solo MO» es inferencia.
+**P2** — UX por flujo/mobile/XSAS en contexto; decisiones del dueño a listar por bot (ver versión
+anterior del traspaso en git: cb013e20).
 
 ## 7. ESTADO GIT
 
-- rama: `main` = `origin/main` · HEAD 6bf7d56d (`fix(ml): whisper baja a candidato`).
-- working tree: limpio salvo este handoff.
-- producción: main desplegado (Vercel) · migraciones hasta 20260911T1200 aplicadas y verificadas.
-- rama abierta: `feat/hf-herramientas` en 6bf7d56d, sin commits propios.
+- rama: `main` = `origin/main` · HEAD d4ee0d23 · working tree: limpio salvo este handoff.
+- rama abierta: `feat/libro-fuentes-propias` (worktree `/home/jorge/echegaray-os/worktrees/wt-compras`).
+- producción: main desplegado; migraciones hasta 20260911T1200.
 
 ## 8. PRÓXIMO PASO
 
-Continuar el hito (b): crear `pantalla_obra(p_slug)` como RPC única para `/obras/[obra]` (patrón de
-`pantalla_cliente` en `supabase/migrations/20260911T1200_*.sql`), medir antes/después en producción,
-aplicar la migración desde main antes del push.
+Cerrar el hito 2 y aplicar el batch 2 (P0 de arriba). Después, baseline de XSAS web para el pedido HF.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
