@@ -94,8 +94,11 @@ export function HorasConPersona({
         abierta={abierta}
         abrir={(id) => setAbierta(id === abierta ? null : id)}
       />
+      {/* `scrollMarginTop` DEJA PASAR LA BARRA PEGAJOSA. Con 12 px el nombre de la persona —lo
+          primero que hay que leer— quedaba medio tapado por la barra de navegación, que mide unos
+          44 px y no se va con el scroll. 72 px la despejan con aire. */}
       {datos && (
-        <div ref={panelRef} style={{ scrollMarginTop: 12 }}>
+        <div ref={panelRef} style={{ scrollMarginTop: 72 }}>
         <PanelDePersona
           persona={{ ...datos, cargadas: fila?.cargadas ?? 0 }}
           fila={fila}

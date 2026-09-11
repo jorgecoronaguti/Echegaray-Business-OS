@@ -139,8 +139,9 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
 
     // CARGADAS Y ESPERADAS VIVEN EN EL PIE DE LA TABLA, debajo de sus propias columnas: en el panel
     // estaban por segunda vez, a 150 px de la columna que ya las publicaba.
-    await expect(page.getByTestId('encabezado-columnas')).toContainText('CARG.')
-    await expect(page.getByTestId('encabezado-columnas')).toContainText('ESPER.')
+    // Sin distinguir mayúsculas: los rótulos van en versalitas por CSS y el DOM dice «Carg.».
+    await expect(page.getByTestId('encabezado-columnas')).toContainText(/carg\./i)
+    await expect(page.getByTestId('encabezado-columnas')).toContainText(/esper\./i)
     await expect(page.getByTestId('total-grilla')).toBeVisible()
   })
 
@@ -162,7 +163,9 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     // del estado de la base y no del código.
 
     // EL CORTE OBRERO/OFICINA LO HACE LA TABLA CON SUS DOS GRUPOS, no un filtro que lo repita.
-    await expect(cuadro).toContainText('JEFES DE OBRA')
+    // La caja va en versalitas por CSS (`text-transform`), así que el texto del DOM es «Jefes de
+    // obra»: se compara sin distinguir mayúsculas para no medir la hoja de estilos.
+    await expect(cuadro).toContainText(/jefes de obra/i)
     await expect(cuadro).not.toContainText('Modalidad hora')
   })
 
@@ -170,8 +173,12 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     await abrir(page, 'horas')
     const url = page.url()
     const fila = page.locator('[data-testid^="fila-"]').first()
-    await fila.click()
-    await expect(page.getByTestId('panel-persona')).toBeVisible()
+    // SE REINTENTA EL CLIC: un clic anterior a la hidratación se pierde sin dejar rastro y el panel
+    // no abre nunca. El porqué completo, en `liquidacion-editar-en-celda.spec.ts`.
+    await expect(async () => {
+      await fila.click()
+      await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 5_000 })
+    }).toPass({ timeout: 60_000 })
     // ABRIR UNA PERSONA NO NAVEGA (handoff §4): la URL no se movió.
     expect(page.url(), 'abrir una persona no navega').toBe(url)
     await page.screenshot({ path: `${SALIDA}/app-2-persona.png`, fullPage: true })
@@ -185,6 +192,9 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     const alto = page.viewportSize()!.height
     expect(caja!.y, 'el panel de la persona queda a la vista al abrirlo').toBeLessThan(alto)
     expect(caja!.y + 80, 'su encabezado queda a la vista, no sólo el borde').toBeLessThan(alto)
+    // Y NO DEBAJO DE LA BARRA PEGAJOSA: sin `scroll-margin-top` el nombre de la persona quedaba
+    // medio tapado por los 44 px de la barra de navegación, que no se va con el scroll.
+    expect(caja!.y, 'el nombre no queda tapado por la barra de navegación').toBeGreaterThan(44)
 
     const metricas = page.getByTestId('metricas-persona')
     await expect(metricas).toBeVisible()

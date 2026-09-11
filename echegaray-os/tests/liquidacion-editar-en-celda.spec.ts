@@ -102,8 +102,20 @@ test('corregir las horas de un día se ve en la celda antes de que el servidor c
   // `.first()` ya le escribió una licencia a un empleado real en este repo.
   const fila = page.locator(`[data-testid="fila-${PERSONA}"]`)
   await expect(fila, 'la persona de prueba tiene que estar en la grilla').toBeVisible({ timeout: 60_000 })
-  await fila.click()
-  await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 30_000 })
+  // ═══ UN CLIC ANTES DE LA HIDRATACIÓN NO ABRE NADA, Y NO DEJA RASTRO ═══
+  //
+  // 11/09/2026, corriendo este spec junto a `liquidacion-fidelidad` con dos workers sobre un solo
+  // `next dev`: la fila existía, el clic salía, y `panel-persona` no aparecía nunca. No era un dato
+  // faltante —`porPersona` y las filas se arman del MISMO `directorioFilas`, no pueden diferir—:
+  // era el clic cayendo sobre el HTML del servidor antes de que React enganchara su `onClick`. El
+  // manejador se pierde y la pantalla no dice nada, que es la queja del dueño vista desde adentro.
+  //
+  // Se reintenta en vez de esperar más: `toBeVisible` con un timeout más largo espera un panel que
+  // ya nunca va a abrirse, porque el clic que lo abría se perdió.
+  await expect(async () => {
+    await fila.click()
+    await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 5_000 })
+  }).toPass({ timeout: 60_000 })
 
   const suyos = await sb.from('registros_hh').select('id').eq('persona_id', PERSONA)
   const registroId = ((suyos.data ?? []) as { id: string }[])[0]?.id
