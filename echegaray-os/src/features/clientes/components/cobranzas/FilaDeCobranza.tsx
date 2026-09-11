@@ -15,6 +15,7 @@
 import { pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, CAJA_CONTENIDO, V } from '@/shared/components/v2/patron'
 import { comprobanteDe, estadoDe, type FilaCobranza } from '../../services/cobranzasCliente'
+import { urlDriveDelPapel } from '../../services/papelesCliente'
 
 /** FECHA · COMPROBANTE · CONCEPTO · NETO · IVA · TOTAL · ESTADO · COBRO · MEDIO. */
 export const COLS_COBRANZA
@@ -74,8 +75,21 @@ export function FilaDeCobranza({ f }: { f: FilaCobranza }) {
       </span>
       {/* EL COMPROBANTE ES UN RÓTULO, NO UNA CIFRA: «FA 230» se lee, no se compara de arriba abajo.
           Una fila `N` no tiene comprobante y lo dice con su letra, que es el dato. */}
-      <span className={`truncate ${SOLO_ANCHO_COB}`} style={{ fontSize: '11.5px', color: comprobante ? V.tintaSuave : V.tenue }}>
-        {comprobante ?? (f.categoria === 'N' ? 'sin comprobante' : '—')}
+      {/* UNA FILA N SIN FACTURA PUEDE TENER RESPALDO (11/09/2026): la nota firmada por Rodrigo por
+          los tres cobros en efectivo de Messina. Se dibuja como enlace al papel en Drive, con la
+          nota en el `title`; «sin comprobante» queda para la fila que de verdad no tiene nada. */}
+      <span className={`truncate ${SOLO_ANCHO_COB}`} style={{ fontSize: '11.5px', color: comprobante || f.respaldo_drive_id ? V.tintaSuave : V.tenue }}>
+        {comprobante ?? (f.respaldo_drive_id
+          ? (
+            <a
+              href={urlDriveDelPapel(f.respaldo_drive_id)} target="_blank" rel="noopener noreferrer"
+              data-testid="respaldo-cobranza" title={f.respaldo_nota ?? f.respaldo_titulo ?? 'Abrir el papel en Drive'}
+              className="hover:underline" style={{ color: V.tintaSuave }}
+            >
+              {f.respaldo_titulo ?? 'respaldo'} ↗
+            </a>
+          )
+          : (f.categoria === 'N' ? 'sin comprobante' : '—'))}
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, overflow: 'hidden' }}>
         <span className="truncate" style={{ fontSize: '12px', color: tinta }}>
