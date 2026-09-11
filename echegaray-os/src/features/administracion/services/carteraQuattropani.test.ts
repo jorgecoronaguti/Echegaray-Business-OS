@@ -23,7 +23,7 @@ import assert from 'node:assert/strict'
 import type { ClientePanel } from '@/features/clientes/types'
 import { armarCartera, type CobroDeObra } from './homeCartera.ts'
 import type { EconomiaDeObra } from '@/features/clientes/services/economiaObras'
-import { IVA_GENERAL, progresoDeCobroBruto } from '../../clientes/services/progresoCobro.ts'
+import { progresoDeCobro } from '../../clientes/services/progresoCobro.ts'
 
 const OBRA = 'quattropani'
 const CONTRATO_USD = 63_000
@@ -50,6 +50,9 @@ const economia = new Map<string, EconomiaDeObra>([[OBRA, {
   nota: null,
   // NINGUNA ORDEN DE COMPRA: el trabajo se encargó por contrato. No es un papel que falte.
   oc_civa_ventana: null, oc_civa_historico: null, oc_n_ventana: 0, oc_n_historico: 0,
+  contrato_mano_obra: null, contrato_mano_obra_usd: null, contrato_materiales: null,
+  contrato_materiales_usd: null, contrato_total: null, contrato_fuente: null,
+  contrato_fuente_drive_id: null, contrato_fuente_nombre: null, contrato_cita: null, contrato_nota: null,
 }]])
 
 const cobro = new Map<string, CobroDeObra>([[OBRA, {
@@ -91,12 +94,16 @@ test('las cuatro columnas de cobro son las de la pestaña OBRAS, con IVA donde c
   assert.deepEqual(trabajo.proximo, { fecha: '2026-09-25', medio: 'Transferencia' })
 })
 
-test('el cobro NO excede el contrato: la diferencia de $12,6 M es el IVA, no plata de más', () => {
-  const p = progresoDeCobroBruto(COBRADO_TOTAL, CONTRATADO)
-  assert.equal(p?.pct, 94, 'cobrado c/IVA sobre contratado × 1,21')
-  assert.equal(p?.excede, false, 'contra el contrato NETO daría 113 % y una alarma que no existe')
-  // Y la cuenta que lo prueba, escrita: $95.303.124 × 1,21 = $115.316.780 > $107.877.339.
-  assert.ok(CONTRATADO * IVA_GENERAL > COBRADO_TOTAL)
+test('el cobro se mide NETO contra el contrato NETO completo: 65 %, no 94 ni 113', () => {
+  // 11/09/2026: el contrato de Quattropani es mano de obra U$S 63.000 + fondo de materiales de
+  // $ 44.110.169,31 (`obra_contrato`). El cobro neto (`obra_cuenta.cobrado_neto`) incluye los
+  // materiales cobrados, así que la base es el total del contrato y no la mano de obra sola.
+  const COBRADO_NETO = 89_968_327
+  const MATERIALES = 44_110_169.31
+  const p = progresoDeCobro(COBRADO_NETO, CONTRATADO + MATERIALES)
+  assert.equal(p?.pct, 65)
+  assert.equal(p?.excede, false, 'contra la mano de obra sola daría 94 % o 113 % según el IVA: las dos mentían')
+  assert.ok(COBRADO_TOTAL > CONTRATADO, 'el total c/IVA supera la mano de obra neta y por eso el número viejo confundía')
 })
 
 test('el cobro anotado contra el CLIENTE se le atribuye: es su único trabajo en curso', () => {

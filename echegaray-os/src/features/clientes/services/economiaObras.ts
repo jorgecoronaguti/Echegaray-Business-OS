@@ -66,6 +66,22 @@ export interface EconomiaDeObra {
   oc_civa_historico: number | null
   oc_n_ventana: number | null
   oc_n_historico: number | null
+  /**
+   * EL DESGLOSE DEL CONTRATO (`public.obra_contrato`, 11/09/2026), valuado en pesos de hoy con el
+   * mismo dólar que `contratado`. `null` = el papel no desglosa ese componente; nunca 0. Y
+   * `contrato_total` es mano de obra + materiales cuando hay desglose: es contra ESO que se mide el
+   * cobro — Quattropani cobraba materiales y mano de obra y la barra medía sólo la mano de obra.
+   */
+  contrato_mano_obra: number | null
+  contrato_mano_obra_usd: number | null
+  contrato_materiales: number | null
+  contrato_materiales_usd: number | null
+  contrato_total: number | null
+  contrato_fuente: string | null
+  contrato_fuente_drive_id: string | null
+  contrato_fuente_nombre: string | null
+  contrato_cita: string | null
+  contrato_nota: string | null
 }
 
 /** El `origen` que dice «esto NO es un precio contratado, es lo vendido hasta hoy». */
@@ -88,7 +104,7 @@ export async function getEconomiaDeObras(
 ): Promise<Map<string, EconomiaDeObra> | null> {
   const { data, error } = await supabase
     .from('obra_economia_cartera')
-    .select('obra_canonica_id, contratado, contratado_usd, tipo_cambio, origen, referencia, nota, oc_civa_ventana, oc_civa_historico, oc_n_ventana, oc_n_historico')
+    .select('obra_canonica_id, contratado, contratado_usd, tipo_cambio, origen, referencia, nota, oc_civa_ventana, oc_civa_historico, oc_n_ventana, oc_n_historico, contrato_mano_obra, contrato_mano_obra_usd, contrato_materiales, contrato_materiales_usd, contrato_total, contrato_fuente, contrato_fuente_drive_id, contrato_fuente_nombre, contrato_cita, contrato_nota')
   if (error) return null
   return armarEconomiaDeObras(data ?? [])
 }
@@ -112,12 +128,35 @@ export function armarEconomiaDeObras(filas: unknown[]): Map<string, EconomiaDeOb
       oc_civa_historico: aNumero(f.oc_civa_historico),
       oc_n_ventana: aNumero(f.oc_n_ventana),
       oc_n_historico: aNumero(f.oc_n_historico),
+      contrato_mano_obra: aNumero(f.contrato_mano_obra),
+      contrato_mano_obra_usd: aNumero(f.contrato_mano_obra_usd),
+      contrato_materiales: aNumero(f.contrato_materiales),
+      contrato_materiales_usd: aNumero(f.contrato_materiales_usd),
+      contrato_total: aNumero(f.contrato_total),
+      contrato_fuente: texto(f.contrato_fuente),
+      contrato_fuente_drive_id: texto(f.contrato_fuente_drive_id),
+      contrato_fuente_nombre: texto(f.contrato_fuente_nombre),
+      contrato_cita: texto(f.contrato_cita),
+      contrato_nota: texto(f.contrato_nota),
     })
   }
   return m
 }
 
 /** PostgREST devuelve `numeric` como texto. `null` se queda `null`: nunca se vuelve 0. */
+const texto = (v: unknown): string | null => (v == null || v === '' ? null : String(v))
+
+/**
+ * LA BASE CONTRACTUAL DE UNA OBRA DESDE LA VISTA — la misma regla que `baseDelContrato` para la
+ * fila ya armada. Existe para que la ficha del cliente (KPI «Contratado en curso», tabla de
+ * Trabajos) y el subtítulo de la cartera publiquen EL MISMO número que la columna: el auditor del
+ * 11/09/2026 encontró tres versiones de «contratado» en el mismo módulo, $ 44,1 M aparte.
+ */
+export function baseContractualDe(e: Pick<EconomiaDeObra, 'contrato_total' | 'contratado'> | null | undefined): number | null {
+  if (!e) return null
+  return e.contrato_total !== null && e.contrato_total > 0 ? e.contrato_total : e.contratado
+}
+
 export function aNumero(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null
   const n = Number(v)
