@@ -3,7 +3,32 @@
 // 13 columnas de día × el plantel, con las horas esperadas por la JORNADA REAL (9 h de lunes a
 // jueves, 8 los viernes) y no por un promedio. Las medidas salen del mockup
 // `design/Liquidación de horas v2.dc.html`, que manda sobre el texto del README: fila 52–58 px,
-// encabezado de columna 36 px alineado abajo, control 26 px, botón 30 px, filtros a la DERECHA.
+// encabezado de columna 36 px alineado abajo, control 26 px, botón 30 px.
+//
+// ═══ EL PANEL DE LA DERECHA SE FUE, Y LO PIDIÓ EL DUEÑO (10/09/2026) ═══
+//
+// *«qué es la información que refleja la sección de la derecha, pésima UX, no sirve así»*. El
+// mockup dibuja los filtros a la derecha y hasta hoy eso mandaba; una queja del dueño sobre la
+// pantalla real le gana a un lienzo, y el propio README del handoff dice que el zip manda en lo
+// COSMÉTICO. Esto no era cosmético: eran 230 px permanentes ocupados por cosas que no se deciden.
+//
+// Lo que había, y qué se hizo con cada cosa:
+//
+//   PERÍODO      DECIDE → subió a la cabecera, en línea y sin cortar el rótulo («1ª quincena de
+//                septiemb…» era el mismo texto que ahora entra entero).
+//   QUIÉN        Modalidad hora / mensual repetía el corte que la tabla YA hace con sus dos grupos
+//                («JEFES DE OBRA · 2», «OBREROS · 15») → se fue.
+//   CONVENIO     no se actúa sobre él, y el rótulo salía cortado («UOCRA — Ley 22.250 (const…»);
+//                el convenio de cada persona está en su panel → pasó al `title` del pie.
+//   PENDIENTE    ES lo accionable → quedó, arriba de la tabla, con el recorte a un clic y con cómo
+//                quitarlo cuando está puesto.
+//   PROYECCIÓN   seis renglones y dos párrafos para un total que la columna «Cobra est.» YA suma en
+//                el pie → una línea con blanco y efectivo, y el desglose en el `title`.
+//   Cargadas /   estaban dos veces en la misma pantalla: el pie de la tabla las publica en su
+//   Esperadas    columna → se fueron del panel.
+//
+// «No párrafos explicativos permanentes» y «no tarjetas por cada dato» son dos de las 25 reglas del
+// dueño, y el panel violaba las dos.
 //
 // ═══ ES PRESENTACIONAL A PROPÓSITO ═══
 //
@@ -141,63 +166,130 @@ function Fila({ fila, proyeccion, abrir, abierta }: {
   )
 }
 
-export interface FiltroDeGrilla {
-  rotulo: string
-  /** `href` convierte la opción en un recorte navegable; sin él es una etiqueta y no promete nada. */
-  opciones: { texto: string; detalle: string; activa?: boolean; alerta?: boolean; href?: string }[]
+/**
+ * UN RECORTE QUE SE PUEDE ACCIONAR — nunca una etiqueta que sólo cuenta.
+ *
+ * `href` es obligatorio a propósito: la versión anterior admitía opciones sin destino y la mitad
+ * del panel eran números que no llevaban a ninguna parte. Si no hay adónde ir, no es un recorte.
+ */
+export interface PendienteDeGrilla {
+  /** «9 ausencias sin motivo» — el número ADENTRO del texto, que es como se lee en voz alta. */
+  texto: string
+  cuantos: number
+  activo: boolean
+  href: string
 }
 
-function Filtro({ filtro }: { filtro: FiltroDeGrilla }) {
+/** El período elegible. La ventana entera, sin cortar: el rótulo es el contrato de lo que se mira. */
+export interface PeriodoDeGrilla {
+  texto: string
+  activo: boolean
+  href: string
+}
+
+const MONO: React.CSSProperties = {
+  fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)', fontSize: '10px',
+  letterSpacing: '.06em', textTransform: 'uppercase', color: V.tenue,
+}
+
+/**
+ * LA CABECERA: qué quincena se mira, cuánto pasó de ella, a cuál se puede saltar y el botón de
+ * cierre. Todo lo que se DECIDE en esta pantalla y no está en una fila, en 8 px de ritmo.
+ */
+function Cabecera({ titulo, estado, subtitulo, periodos, accion }: {
+  titulo: string
+  estado?: string
+  subtitulo: string
+  periodos: readonly PeriodoDeGrilla[]
+  accion?: React.ReactNode
+}) {
   return (
     <div style={{
-      padding: '15px 15px 13px', display: 'flex', flexDirection: 'column', gap: 8,
-      borderBottom: `1px solid ${V.linea}`,
-    }}>
+      padding: '16px 20px', display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+      columnGap: 16, rowGap: 8, borderBottom: `1px solid ${V.linea}`,
+    }} data-testid="cabecera-quincena">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <div style={{ fontSize: '14.5px', fontWeight: 600 }}>{titulo}</div>
+          {estado && <div style={{ fontSize: '11.5px', color: V.tenue }}>{estado}</div>}
+        </div>
+        <div style={{ fontSize: '11.5px', color: V.apagado }} data-testid="grilla-subtitulo">
+          {subtitulo}
+        </div>
+      </div>
+      {/* LOS OTROS PERÍODOS, A LA DERECHA Y EN LÍNEA. Sin `overflow:hidden`: el rótulo cortado
+          («1ª quincena de septiemb…») era el motivo por el que había que adivinar qué se miraba. */}
+      {/* EN EL TELÉFONO ESTA FILA SE PARTE, NO EMPUJA LA PÁGINA. Dos rótulos de quincena y el botón
+          suman 500 px: sin `wrap` la pantalla entera se desplaza de costado y deja de cumplir la
+          regla que `tests/shell-dos-areas.spec.ts` mide. Lo que se recorre es la TABLA, nunca la
+          pantalla. */}
       <div style={{
-        fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)', fontSize: '10px',
-        letterSpacing: '.06em', color: V.tenue, textTransform: 'uppercase',
-      }}>{filtro.rotulo}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, fontSize: '12.5px' }}>
-        {filtro.opciones.map((o) => (
-          <FilaFiltro key={o.texto} href={o.href} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-            height: 29, padding: '0 9px', margin: '0 -9px', borderRadius: 6,
-            background: o.activa ? '#FFFFFF' : 'transparent',
-            boxShadow: o.activa ? `inset 3px 0 0 ${V.marca}` : undefined,
-            fontWeight: o.activa ? 500 : 400,
-            color: o.activa ? V.tinta : V.apagado,
-          }}>
-            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.texto}</span>
-            <span style={{
-              fontSize: '11px', fontVariantNumeric: 'tabular-nums',
-              color: o.alerta ? V.warn : V.tenue, fontWeight: o.alerta ? 500 : 400,
-            }}>{o.detalle}</span>
-          </FilaFiltro>
+        marginLeft: 'auto', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8,
+      }} data-testid="periodos">
+        {periodos.filter((p) => !p.activo).map((p) => (
+          <Link key={p.href} href={p.href} prefetch={false} style={{
+            height: 26, padding: '0 10px', display: 'inline-flex', alignItems: 'center',
+            border: `1px solid ${V.linea}`, borderRadius: 6, background: '#FFFFFF',
+            fontSize: '11.5px', color: V.apagado, textDecoration: 'none', whiteSpace: 'nowrap',
+          }}>{p.texto}</Link>
         ))}
+        {accion}
       </div>
     </div>
   )
 }
 
-/** La misma caja para la opción navegable y la que no lo es: dos formas darían dos alturas. */
-function FilaFiltro({ href, style, children }: {
-  href?: string
-  style: React.CSSProperties
-  children: React.ReactNode
+/**
+ * LO QUE FALTA HACER ANTES DE CERRAR — y sólo eso.
+ *
+ * Se dibuja cuando hay algo pendiente o cuando hay un recorte puesto. Sin nada de eso la banda
+ * DESAPARECE: una fila que dice «0, 0, 0» ocupa el mismo espacio que una que avisa, y enseña a no
+ * mirarla. Con el recorte puesto aparece cómo quitarlo, que es lo que faltaba cuando los filtros
+ * vivían en una columna que se leía de arriba abajo.
+ */
+function Pendientes({ pendientes, hrefSinRecorte }: {
+  pendientes: readonly PendienteDeGrilla[]
+  hrefSinRecorte: string
 }) {
-  if (!href) return <div style={style}>{children}</div>
+  const visibles = pendientes.filter((p) => p.cuantos > 0 || p.activo)
+  if (visibles.length === 0) return null
+  const hayRecorte = pendientes.some((p) => p.activo)
   return (
-    <Link href={href} prefetch={false} style={{ ...style, textDecoration: 'none', color: style.color }}>
-      {children}
-    </Link>
+    <div data-testid="pendientes" style={{
+      padding: '10px 20px', display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+      columnGap: 16, rowGap: 6, borderBottom: `1px solid ${V.linea}`, fontSize: '12px',
+    }}>
+      <span style={MONO}>Pendiente</span>
+      {visibles.map((p, i) => (
+        // EL TESTID NO SE INDEXA CON UN DATO VIVO: `pendiente-${cuantos}` daba dos nodos con el
+        // mismo testid en cuanto dos pendientes empataban en número. Va la posición, que es estable.
+        <Link key={p.href} href={p.href} prefetch={false} data-testid={`pendiente-${i}`}
+          style={{
+            color: p.cuantos > 0 ? V.warn : V.apagado,
+            fontWeight: p.activo ? 600 : 400,
+            textDecoration: p.activo ? 'none' : 'underline',
+            textUnderlineOffset: 3,
+            textDecorationColor: V.lineaFuerte,
+          }}>{p.texto}{p.activo ? '' : ' ›'}</Link>
+      ))}
+      {hayRecorte && (
+        <Link href={hrefSinRecorte} prefetch={false} data-testid="quitar-recorte"
+          style={{ marginLeft: 'auto', fontSize: '11.5px', color: V.apagado }}>
+          Ver el plantel entero
+        </Link>
+      )}
+    </div>
   )
 }
 
 export function GrillaHorasQuincena({
-  titulo, jornadaTexto, habilesTexto, hoy, filas, resumen, proyeccion, filtros, accion, abrir, abierta,
+  titulo, estado, jornadaTexto, habilesTexto, hoy, filas, resumen, proyeccion,
+  periodos, pendientes, hrefSinRecorte, convenios, accion, abrir, abierta,
 }: {
-  /** «1 al 15 de septiembre». */
+  /** «1ª quincena de septiembre · 1 al 15». */
   titulo: string
+  /** «abierta» / «cerrada». Va al lado del título: es el estado de LO QUE SE ESTÁ MIRANDO. */
+  estado?: string
   /** «9 h L a J · 8 h los viernes» — el prop del mockup, para poder validar R2 contra el dato real. */
   jornadaTexto: string
   /** «7 de 11 hábiles transcurridos» — cuánto de la quincena ya pasó. */
@@ -214,7 +306,14 @@ export function GrillaHorasQuincena({
    * el filtro no sería la masa salarial de la quincena, sería la del recorte que alguien dejó puesto.
    */
   proyeccion?: ProyeccionDeQuincena
-  filtros: readonly FiltroDeGrilla[]
+  /** La quincena en curso y las anteriores. La vigente no se dibuja: ya está en el título. */
+  periodos: readonly PeriodoDeGrilla[]
+  /** Lo que traba el cierre, cada uno con el recorte que lo muestra. */
+  pendientes: readonly PendienteDeGrilla[]
+  /** Adónde se vuelve cuando hay un recorte puesto. */
+  hrefSinRecorte: string
+  /** «UOCRA — Ley 22.250 · 14 · …» para el `title` del pie: se consulta, no se decide. */
+  convenios?: string
   /** El botón de cierre. Se dibuja siempre; lo habilita `resumen.puedeCerrar`. */
   accion?: React.ReactNode
   /** Sin `abrir`, la grilla sigue siendo lo que era: una tabla que no responde al clic. */
@@ -222,57 +321,24 @@ export function GrillaHorasQuincena({
   abierta?: string | null
 }) {
   return (
-    // EN EL TELÉFONO LOS FILTROS VAN ABAJO Y LA GRILLA SE DESLIZA. El mockup está dibujado a
-    // 1240-1440 px; a 390 la columna de 230 px se le come la mitad al cuadro y las trece columnas de
-    // día quedan cortadas sin forma de llegar a ellas. Es la misma salida que ya usa la grilla de
-    // Asistencia: apilar y dejar que el ancho real se recorra.
-    <div className="flex flex-col-reverse items-stretch lg:flex-row-reverse">
-
-      <aside
-        className="w-full border-t lg:w-[230px] lg:flex-none lg:border-l lg:border-t-0"
-        style={{
-          borderColor: V.lineaFuerte, background: '#FAFAF8',
-          display: 'flex', flexDirection: 'column',
-        }}>
-        {filtros.map((f) => <Filtro key={f.rotulo} filtro={f} />)}
-        <div style={{ marginTop: 'auto', padding: 15, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {proyeccion && <BloqueProyeccion p={proyeccion} />}
-          <Resumen rotulo="Cargadas" valor={numero(resumen.cargadas)} />
-          <Resumen rotulo="Esperadas" valor={numero(resumen.esperadas)} />
-          {accion ?? (
-            <button
-              type="button"
-              disabled={!resumen.puedeCerrar}
-              data-testid="cerrar-quincena"
-              style={{
-                height: 30, border: 0, borderRadius: 6,
-                background: resumen.puedeCerrar ? V.marca : '#EDECE8',
-                color: resumen.puedeCerrar ? V.grafito : V.tenue,
-                fontSize: '12px', fontWeight: 600,
-                cursor: resumen.puedeCerrar ? 'pointer' : 'not-allowed',
-              }}
-            >Cerrar quincena</button>
-          )}
-          {/* EL PORQUÉ, SIEMPRE AL LADO DEL BOTÓN GRIS. */}
-          {!resumen.puedeCerrar && (
-            <div data-testid="por-que-no" style={{ fontSize: '11px', color: V.apagado, lineHeight: 1.5 }}>
-              {resumen.porQueNo}
-            </div>
-          )}
-        </div>
-      </aside>
+    // UNA SOLA COLUMNA: la tabla ES la pantalla. Sin los 230 px del panel, las trece columnas de día
+    // más el nombre entran enteras a 1240 px y a 390 se recorre sólo la tabla, no la pantalla.
+    //
+    // EL ANCHO ÚTIL TIENE TECHO Y ES UNO SOLO para la cabecera, los pendientes, la tabla y el pie:
+    // 1.120 px es lo que medía el cuadro cuando el panel de 230 px estaba puesto. Sin el techo, el
+    // botón de cierre y la masa salarial se iban al filo del monitor mientras la tabla terminaba
+    // 300 px antes, y nada quedaba alineado con nada.
+    <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 1120 }}>
+      <Cabecera
+        titulo={titulo}
+        estado={estado}
+        subtitulo={habilesTexto ? `${habilesTexto} · ${jornadaTexto}` : jornadaTexto}
+        periodos={periodos}
+        accion={accion}
+      />
+      <Pendientes pendientes={pendientes} hrefSinRecorte={hrefSinRecorte} />
 
       <div className="min-w-0 flex-1" style={{ display: 'flex', flexDirection: 'column' }}>
-        <div style={{
-          padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 16,
-          borderBottom: `1px solid ${V.linea}`,
-        }}>
-          <div style={{ fontSize: '14.5px', fontWeight: 600 }}>{titulo}</div>
-          <div style={{ fontSize: '11.5px', color: V.apagado }} data-testid="grilla-subtitulo">
-            {habilesTexto ? `${habilesTexto} · ${jornadaTexto}` : jornadaTexto}
-          </div>
-        </div>
-
         {/* EL ANCHO REAL DE LA GRILLA SE RECORRE, no se aplasta: trece columnas de 30 px más el
             nombre no entran en 390 y encogerlas dejaría celdas ilegibles. */}
         <div className="overflow-x-auto" style={{ padding: '0 20px' }}>
@@ -328,8 +394,13 @@ export function GrillaHorasQuincena({
               {resumen.sinRetribucion > 0 && ` · ${resumen.sinRetribucion} sin retribución`}
             </div>
             {resumen.porDia.map((n, i) => (
-              // NULL NO ES CERO: un día que nadie cargó queda vacío, no en 0.
-              <div key={resumen.dias[i]} style={{ textAlign: 'center' }}>{n == null ? '' : numero(n)}</div>
+              // NULL NO ES CERO, Y «SIN VALOR» SE ESCRIBE DE UNA SOLA FORMA EN TODA LA TABLA: el
+              // mismo «·» gris que la celda del día, que la leyenda del pie ya explica. Hasta el
+              // 10/09 la celda decía «·» y el pie dejaba el hueco en blanco: dos símbolos para la
+              // misma ausencia en la misma columna, y el de abajo indistinguible de un 0 borrado.
+              <div key={resumen.dias[i]} style={{ textAlign: 'center', color: n == null ? V.lineaFuerte : undefined }}>
+                {n == null ? '·' : numero(n)}
+              </div>
             ))}
             <div style={{ textAlign: 'right' }}>{numero(resumen.cargadas)}</div>
             <div style={{ textAlign: 'right' }}>{numero(resumen.esperadas)}</div>
@@ -345,10 +416,16 @@ export function GrillaHorasQuincena({
         </div>
         </div>
 
-        <div style={{ padding: '12px 20px 20px', fontSize: '11px', color: V.apagado }}>
-          <strong style={{ color: V.neg, fontWeight: 600 }}>A</strong> ausencia ·{' '}
-          <strong style={{ color: '#175CD3', fontWeight: 600 }}>L</strong> licencia ·{' '}
-          <strong style={{ color: V.lineaFuerte }}>·</strong> sin horas cargadas
+        <div style={{
+          padding: '12px 20px 20px', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline',
+          columnGap: 16, rowGap: 6, fontSize: '11px', color: V.apagado,
+        }}>
+          <span title={convenios}>
+            <strong style={{ color: V.neg, fontWeight: 600 }}>A</strong> ausencia ·{' '}
+            <strong style={{ color: '#175CD3', fontWeight: 600 }}>L</strong> licencia ·{' '}
+            <strong style={{ color: V.lineaFuerte }}>·</strong> sin horas cargadas
+          </span>
+          {proyeccion && <LineaDeMasa p={proyeccion} />}
         </div>
       </div>
     </div>
@@ -356,74 +433,53 @@ export function GrillaHorasQuincena({
 }
 
 /**
- * LA PREVISIBILIDAD QUE PIDIÓ EL DUEÑO, EN CUATRO RENGLONES.
+ * LA PREVISIBILIDAD QUE PIDIÓ EL DUEÑO, EN UNA LÍNEA.
  *
- * «necesito tener previsibilidad» (10/09/2026). El total es una ESTIMACIÓN y la frase de abajo dice
- * bajo qué supuesto: si cumplen la jornada los días que faltan. Se desglosa en obreros / oficina
- * porque son dos naturalezas distintas —la oficina cobra un neto MENSUAL que no depende de esta
- * quincena— y en ya cargado / por cumplir porque eso es lo que separa el hecho de la proyección.
+ * «necesito tener previsibilidad» (10/09/2026) — y el mismo día, sobre el panel que la publicaba en
+ * seis renglones y dos párrafos: «pésima UX, no sirve así». Las dos cosas son verdad: el número hace
+ * falta, la columna de la derecha no.
+ *
+ * Queda lo que se usa para decidir —cuánto sale la quincena y cómo se parte en blanco y efectivo— y
+ * el resto pasa al `title`: obreros, oficina, ya cargado, por cumplir, y el supuesto («si cumplen
+ * la jornada los días que faltan»). El total NO se repite: es el mismo que ya suma la columna
+ * «Cobra est.» en el pie de la tabla, y por eso va acá abajo y no arriba.
+ *
+ * «BOLSILLO» PORQUE NO SON CARGAS SOCIALES: es la suma de los COBRA, el mismo concepto que la
+ * columna BOLSILLO de «Costo a la obra». El costo real de esas horas es mayor.
  */
-function BloqueProyeccion({ p }: { p: ProyeccionDeQuincena }) {
+function LineaDeMasa({ p }: { p: ProyeccionDeQuincena }) {
   const r = repartoDelAcuerdo(p.obreros, 'hora')
+  const detalle = [
+    `Obreros ${pesos(p.obreros)}`,
+    // EL TOTAL NO ES QUINCENAL DEL TODO, Y ESO NO SE PUEDE ESCONDER: el neto de Oficina es MENSUAL
+    // y aparece entero en las dos quincenas del mes.
+    `oficina ${pesos(p.oficina)} (neto mensual, entero en cada quincena)`,
+    `ya cargado ${pesos(p.masaCargada)}`,
+    `por cumplir ${pesos(p.masaPorCumplir)}`,
+    'Est.: si cumplen la jornada los días que faltan.',
+    // EL ACUERDO 50/50 SOBRE LO PROYECTADO. Oficina suma al total y NO al reparto.
+    p.oficina > 0 ? 'Oficina sin reparto 50/50.' : null,
+  ].filter(Boolean).join(' · ')
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{
-        fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)', fontSize: '10px',
-        letterSpacing: '.06em', color: V.tenue, textTransform: 'uppercase',
-      }}>Proyección</div>
-      {/* «BOLSILLO» PORQUE NO SON CARGAS SOCIALES: es la suma de los COBRA, el mismo concepto que
-          la columna BOLSILLO de «Costo a la obra». El costo real de esas horas es mayor. */}
-      <Resumen rotulo="Masa salarial est. (bolsillo)" valor={pesos(p.masaProyectada)} />
-      <div data-testid="proyeccion-desglose" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <Renglon rotulo="obreros" valor={pesos(p.obreros)} />
-        {/* EL TOTAL NO ES QUINCENAL DEL TODO, Y ESO NO SE PUEDE ESCONDER: el neto de Oficina es
-            MENSUAL y aparece entero en las dos quincenas del mes. La decisión de partirlo o no es
-            del dueño (`desgloseDeQuincena`); mientras tanto, se dice. */}
-        <Renglon rotulo="oficina" valor={pesos(p.oficina)}
-          nota="neto mensual, entero en cada quincena" />
-        <Renglon rotulo="ya cargado" valor={pesos(p.masaCargada)} />
-        <Renglon rotulo="por cumplir" valor={pesos(p.masaPorCumplir)} />
-        {/* EL ACUERDO 50/50 SOBRE LO PROYECTADO. Oficina suma al total y NO al reparto: su recibo
-            del 01/09 no fue la mitad y qué acuerdo rige ahí lo tiene que decir el dueño. */}
-        <Renglon rotulo="blanco est." valor={pesos(r.blanco ?? 0)} />
-        <Renglon rotulo="efectivo est." valor={pesos(r.efectivo ?? 0)} />
-        {p.sinTarifa > 0 && (
-          <Renglon rotulo="sin tarifa" valor={String(p.sinTarifa)} alerta />
-        )}
-      </div>
-      <div style={{ fontSize: '11px', color: V.tenue, lineHeight: 1.5 }}>
-        Est.: si cumplen la jornada los días que faltan.
-        {p.oficina > 0 && ' Oficina sin reparto 50/50.'}
-      </div>
-    </div>
-  )
-}
-
-/** El renglón chico del panel: 11 px tenue, el mismo que ya usan el detalle del filtro y el porqué. */
-function Renglon({ rotulo, valor, alerta = false, nota }: {
-  rotulo: string; valor: string; alerta?: boolean
-  /** La aclaración va DEBAJO y en el mismo tono: al lado del rótulo no entra en 230 px. */
-  nota?: string
-}) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{
-        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8,
-        fontSize: '11px', color: alerta ? V.warn : V.apagado,
-      }}>
-        <span>{rotulo}</span>
-        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: alerta ? 500 : 400 }}>{valor}</span>
-      </div>
-      {nota && <span style={{ fontSize: '11px', color: V.tenue, lineHeight: 1.4 }}>{nota}</span>}
-    </div>
-  )
-}
-
-function Resumen({ rotulo, valor }: { rotulo: string; valor: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', fontSize: '12.5px' }}>
-      <span style={{ color: V.apagado }}>{rotulo}</span>
-      <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{valor}</span>
-    </div>
+    <span data-testid="linea-masa" title={detalle}
+      style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>
+      Masa salarial est. (bolsillo){' '}
+      <strong style={{ color: V.tinta, fontWeight: 600 }}>{pesos(p.masaProyectada)}</strong>
+      {' · '}blanco {pesos(r.blanco ?? 0)}
+      {' · '}efectivo {pesos(r.efectivo ?? 0)}
+      {/* ═══ LA LÍNEA TIENE QUE CERRAR A LA VISTA ═══ (11/09/2026, auditoría)
+          Blanco + efectivo daban $8.111.692 contra un total de $11.711.691: faltaban los $3,6 M de
+          Oficina, que suma al total y NO entra en el reparto 50/50, y la conciliación había quedado
+          escondida en el `title`. Dos sumandos que no dan el total, en la pantalla que liquida, son
+          peor que la columna que se sacó: quien mira tiene que poder sumar lo que ve. */}
+      {p.oficina > 0 && <>{' · '}oficina {pesos(p.oficina)}</>}
+      {/* SIN TARIFA NO ENTRA EN EL TOTAL Y POR ESO SE DICE ACÁ MISMO: un total que se calla a quién
+          dejó afuera se lee como la quincena entera. */}
+      {p.sinTarifa > 0 && (
+        <span style={{ color: V.warn, fontWeight: 500 }}>
+          {' · '}{p.sinTarifa} sin tarifa, fuera del total
+        </span>
+      )}
+    </span>
   )
 }

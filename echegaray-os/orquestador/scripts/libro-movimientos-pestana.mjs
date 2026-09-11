@@ -37,6 +37,7 @@ import {
   RUBRO_GREMIALES,
 } from '../lib/libro-extractores.mjs'
 import { pagosGremialesDelBanco, explicarPago } from '../lib/cargas-pagos-banco.mjs'
+import { leerBoletasIeric } from '../lib/cargas-boletas-ieric.mjs'
 import { PESTAÑA as RAW_UOCRA } from './uocra-raw-pestana.mjs'
 import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
 import { deEstructura, diaTipicoDeEstructura, PESTANA_ESTRUCTURA } from '../lib/libro-extractores-estructura.mjs'
@@ -171,6 +172,9 @@ async function extraerDeLasFuentes(google, corte) {
   // réplica no hay apareo posible y la única consecuencia es que los gremiales vuelven a decidirse
   // sólo por Compras — el estado de ayer. Por eso es lectura opcional, como las cinco de arriba.
   const boletasUocra = await opcional(`'${RAW_UOCRA}'!A1:J`)
+  // Y LAS DE IERIC/FODECO SE LEEN DEL PDF EN DRIVE (11/09/2026): no tienen réplica en el Sheet porque el
+  // declarado de la pestaña no las incluye; ver lib/cargas-boletas-ieric.mjs. Sin base o sin Drive → [] y aviso.
+  const boletasIeric = await leerBoletasIeric({ query, google, aviso: (m) => console.warn(`  ⚠ ${m}`) })
 
   // El registro de cheques se ubica por el DATO (FISICO/ECHEQ), no por una fila fija.
   const reg = ubicarRegistro(cheques.map((f) => [f?.[0]]))
@@ -246,7 +250,7 @@ async function extraerDeLasFuentes(google, corte) {
   // se aparea contra la boleta en `cargas-pagos-banco.mjs` y se consume del MISMO `usados` que el
   // resto de los cruces — un débito respalda a una sola obligación.
   const pagosBanco = pagosGremialesDelBanco({
-    debitos: extracto.debitos, boletas: boletasUocra ?? [], usados: extracto.usados,
+    debitos: extracto.debitos, boletas: boletasUocra ?? [], boletasIeric, usados: extracto.usados,
   })
   for (const a of pagosBanco.avisos) console.warn(`  ⚠ ${a}`)
   const porPeriodo = new Map([...pagosBanco.porPeriodo].map(([p, v]) => [`${p}·${RUBRO_GREMIALES}`, v]))
