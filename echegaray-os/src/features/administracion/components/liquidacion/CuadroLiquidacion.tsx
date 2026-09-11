@@ -1,15 +1,16 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { InlineEdit } from '@/shared/components/ds/InlineEdit'
 import { V } from '@/shared/components/v2/patron'
 import type { TotalesDeCuadro } from '../../services/liquidacionQuincena'
 import { desvioDelAcuerdo } from '../../services/liquidacionAcuerdo'
 import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
 import type { CuadroConOverrides } from '../../services/liquidacionQuincenaService'
-import {
-  cerrarQuincena, guardarCeldaLiquidacion, guardarEfectivoRedondeado, guardarValorHora,
-} from '../../services/liquidacionActions'
+import { cerrarQuincena } from '../../services/liquidacionActions'
+// LAS CELDAS ESCRIBIBLES VIVEN EN UN MÓDULO PROPIO: la solapa Pagos del handoff v2 usa las MISMAS.
+// Dos copias serían dos definiciones de «qué pasa cuando alguien corrige un adelanto».
+import { CeldaEditable, CeldaRedondeo, CeldaValorHora } from './CeldasDeLiquidacion'
+import { pesos } from './formato'
 
 // UN CUADRO DE LA LIQUIDACIÓN. Las mismas ocho columnas en los tres.
 //
@@ -52,9 +53,6 @@ const COLUMNAS = [
   'Persona', 'Horas', '$/h', 'COBRA', 'BLANCO 50%', 'EFECTIVO 50%', 'ADELANTO', 'YA TRANSFERIDO',
   'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR', 'EFECTIVO redondeado',
 ] as const
-
-const pesos = (n: number | null): string =>
-  n == null ? '—' : `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
 
 const numero = (n: number | null): string =>
   n == null ? '—' : Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })
@@ -206,7 +204,7 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
 
   const celda = (campo: CampoEditable, valor: number | null, formato: (n: number | null) => string) => (
     <Celda>
-      <Editable
+      <CeldaEditable
         campo={campo}
         valor={valor}
         formato={formato}
@@ -239,7 +237,7 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
       <Celda>
         {/* EL $/HORA NO VIVE EN LA LÍNEA: vive en `persona_tarifa`, que es de la persona y no de
             esta quincena. Escribirlo acá escribe una tarifa vigente desde hoy. */}
-        <ValorHora
+        <CeldaValorHora
           valor={linea.valorHora}
           origen={linea.origenTarifa}
           personaId={linea.personaId}
@@ -266,7 +264,7 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
           + ` · acuerdo ${pesos(linea.blancoAcuerdo)} · diferencia `
           + `${pesos(Math.abs(desvio))} ${desvio < 0 ? 'que sale en efectivo' : 'girada de más'}`}
         tono={desvio == null ? undefined : V.warn}>
-        <Editable
+        <CeldaEditable
           campo="porBanco"
           valor={linea.porBanco}
           formato={pesos}
@@ -280,7 +278,7 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
       {celda('enEfectivo', linea.enEfectivo, pesos)}
       {celda('total', linea.total, pesos)}
       <Celda>
-        <Redondeo
+        <CeldaRedondeo
           personaId={linea.personaId}
           valor={linea.efectivoRedondeado}
           quincena={quincena}
@@ -289,154 +287,6 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
         />
       </Celda>
     </tr>
-  )
-}
-
-/** LA MARCA DE LO ESCRITO A MANO. Un punto y una palabra: ni fondo de color ni negrita. */
-function Manual() {
-  return (
-    <span data-testid="marca-manual" title="Escrito a mano: manda sobre el cálculo"
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 6 }}>
-      <span aria-hidden style={{
-        width: 6, height: 6, borderRadius: '50%', background: V.marca, display: 'inline-block',
-      }} />
-      <span style={{
-        fontSize: '9.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: V.tenue,
-      }}>manual</span>
-    </span>
-  )
-}
-
-/**
- * UNA CELDA DE LA LÍNEA. Guarda al salir del campo y acusa el error del servidor sin perder lo
- * escrito (contrato de `InlineEdit`).
- *
- * VACÍO BORRA EL OVERRIDE. `InlineEdit` manda `''` cuando se borra el campo, y la acción lo traduce
- * a NULL: convertirlo a 0 fabricaría un dato y liquidaría a alguien en cero.
- */
-function Editable({ campo, valor, formato, manual, personaId, quincena, grupo, soloLectura }: {
-  campo: CampoEditable
-  valor: number | null
-  formato: (n: number | null) => string
-  manual: boolean
-  personaId: string
-  quincena: { desde: string; hasta: string }
-  grupo: string
-  soloLectura: boolean
-}) {
-  if (soloLectura) {
-    return <>{formato(valor)}{manual && <Manual />}</>
-  }
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-      <InlineEdit
-        valor={valor}
-        tipo="numero"
-        alineado="right"
-        ancho="w-24"
-        falta="—"
-        etiqueta={`${campo} de ${personaId}`}
-        testid={`celda-${campo}-${personaId}`}
-        mostrar={(v) => formato(Number(v))}
-        guardar={async (v) => {
-          const r = await guardarCeldaLiquidacion({
-            ...quincena, grupo, persona_id: personaId, campo, valor: v.trim(),
-          })
-          return r.ok ? { ok: true } : { ok: false, error: r.error }
-        }}
-      />
-      {manual && <Manual />}
-    </span>
-  )
-}
-
-/**
- * EL $/HORA. Escribe `persona_tarifa` con `desde` = hoy, no la línea de esta quincena.
- *
- * SIN HISTORIAL POR TECLEO: el handoff dice que la retribución no lo tiene y que lo que conserva el
- * pasado es el sellado al cerrar. Vaciar la celda borra la tarifa de hoy y vuelve a mandar la
- * anterior — así un error de tipeo no queda como un aumento.
- */
-function ValorHora({ valor, origen, personaId, quincena, grupo, soloLectura }: {
-  valor: number | null
-  origen: string | null
-  personaId: string
-  quincena: { desde: string; hasta: string }
-  grupo: string
-  soloLectura: boolean
-}) {
-  if (soloLectura) return <span title={origen ?? undefined}>{pesos(valor)}</span>
-
-  return (
-    <span title={origen ?? undefined} style={{ display: 'inline-flex', justifyContent: 'flex-end' }}>
-      <InlineEdit
-        valor={valor}
-        tipo="numero"
-        alineado="right"
-        ancho="w-20"
-        falta="sin tarifa"
-        etiqueta={`valor hora de ${personaId}`}
-        testid={`celda-valorHora-${personaId}`}
-        mostrar={(v) => pesos(Number(v))}
-        guardar={async (v) => {
-          const r = await guardarValorHora({
-            ...quincena, grupo, persona_id: personaId, valor: v.trim(),
-          })
-          return r.ok ? { ok: true } : { ok: false, error: r.error }
-        }}
-      />
-    </span>
-  )
-}
-
-/**
- * LA CELDA DEL DUEÑO. Guarda al perder el foco y no recarga la pantalla.
- *
- * VACÍO BORRA EL REDONDEO, NO ESCRIBE CERO: cero significaría «no le doy nada en mano», que es una
- * afirmación distinta de «todavía no lo escribí».
- */
-function Redondeo({ personaId, valor, quincena, grupo, bloqueada }: {
-  personaId: string
-  valor: number | null
-  quincena: { desde: string; hasta: string }
-  grupo: string
-  bloqueada: boolean
-}) {
-  const [texto, setTexto] = useState(valor == null ? '' : String(valor))
-  const [error, setError] = useState<string | null>(null)
-  const [guardando, empezar] = useTransition()
-
-  if (bloqueada) return <>{pesos(valor)}</>
-
-  const guardar = () => {
-    const limpio = texto.trim().replace(/[$.\s]/g, '').replace(',', '.')
-    if (limpio === (valor == null ? '' : String(valor))) return
-    empezar(async () => {
-      const r = await guardarEfectivoRedondeado({
-        ...quincena, grupo, persona_id: personaId, importe: limpio,
-      })
-      setError(r.ok ? null : r.error)
-    })
-  }
-
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <input
-        value={texto}
-        onChange={(e) => setTexto(e.target.value)}
-        onBlur={guardar}
-        disabled={guardando}
-        inputMode="decimal"
-        aria-label="Efectivo redondeado"
-        data-testid={`redondeo-${personaId}`}
-        style={{
-          width: 96, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px',
-          border: `1px solid ${error ? V.neg : V.linea}`, borderRadius: 4,
-          background: '#FFFFFF', color: V.tinta, fontVariantNumeric: 'tabular-nums',
-        }}
-      />
-      {error && <span style={{ fontSize: '10.5px', color: V.neg }}>{error}</span>}
-    </span>
   )
 }
 

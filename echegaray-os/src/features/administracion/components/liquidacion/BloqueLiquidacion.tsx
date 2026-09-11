@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Aviso, Vacio } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
+import { pesos } from './formato'
 import { createClient } from '@/lib/supabase/server'
 import {
   correrQuincena, esFechaISO, quincenaDe, rotuloQuincena,
@@ -211,5 +212,8 @@ function Cifra({ rotulo, valor, testid, fuerte = false }: {
   )
 }
 
-export const pesos = (n: number | null): string =>
-  n == null ? '—' : `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+// EL FORMATO VIVE EN `formato.ts` Y SE RE-EXPORTA DESDE ACÁ. Las celdas editables son de cliente y
+// este archivo es de servidor: un módulo `'use client'` no puede prestarle una función a un
+// componente de servidor. Se re-exporta en vez de mudar el import de cada llamador porque `pesos`
+// desde «el bloque de liquidación» es el camino que el resto del módulo ya conoce.
+export { pesos } from './formato'

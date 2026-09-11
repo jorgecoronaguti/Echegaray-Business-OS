@@ -56,6 +56,13 @@ export function ordenarCuadros<T extends { grupo: GrupoLiquidacion }>(cuadros: r
 
 export interface SeccionDePersonal<T> {
   clave: string
+  /**
+   * EL CUADRO DEL QUE SALIÓ LA SECCIÓN. Viaja porque Pagos dibuja los tres cuadros como una sola
+   * tabla y cada celda que se escribe tiene que decirle al servidor a QUÉ cuadro pertenece: la
+   * cabecera de `liquidacion_quincena` es por (desde, hasta, grupo). Deducirlo del rótulo sería
+   * adivinar —«Obreros · 15» es el rótulo de Personal, no el nombre del cuadro—.
+   */
+  grupo: GrupoLiquidacion
   /** Lo que se dibuja con `RotuloDeGrupo`: el mismo texto que Plantel y Asistencia. */
   rotulo: string
   lineas: T[]
@@ -99,6 +106,7 @@ export function seccionesDePersonal<T>(
   const coincide = grupos.length === 1 && ROL_DEL_CUADRO[grupo] === rol
   return [{
     clave: `${grupo}-${rol}`,
+    grupo,
     rotulo: coincide ? grupos[0].rotulo : titulo,
     lineas: ordenadas,
   }]

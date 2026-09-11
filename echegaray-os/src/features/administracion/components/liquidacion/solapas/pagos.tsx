@@ -1,12 +1,14 @@
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
-import {
-  tarjetaDeQuincena, totalesDeCuadro, type LineaLiquidada, type TotalesDeCuadro,
-} from '../../../services/liquidacionQuincena'
+import { tarjetaDeQuincena, totalesDeCuadro, type TotalesDeCuadro } from '../../../services/liquidacionQuincena'
+import type { CampoEditable, LineaConOverrides } from '../../../services/liquidacionOverrides'
 import { desvioDelAcuerdo } from '../../../services/liquidacionAcuerdo'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
-import { pesos } from '../BloqueLiquidacion'
+import { horas as nHoras, pesos } from '../formato'
+// LAS MISMAS CELDAS QUE EL CUADRO CLÁSICO. Copiarlas habría dado dos definiciones de «corregir un
+// adelanto»; acá se importan las únicas que existen.
+import { CeldaEditable, CeldaRedondeo, Manual } from '../CeldasDeLiquidacion'
 import { seccionesDePersonal, type SeccionDePersonal } from '../../../services/ordenDePersonal'
 import { RotuloDeGrupo } from '../../RotuloDeGrupo'
 import { SolapaCajaNomina } from './caja-nomina'
@@ -24,6 +26,20 @@ import { ALTO_LIQ } from './tabla'
 // canal sale cada peso y cuánto tiene que haber en el sobre. Los totales de abajo son de BANCO y
 // EFECTIVO, no de horas.
 //
+// ═══ LAS CUATRO CELDAS SE ESCRIBEN DE VERDAD (dueño, 11/09/2026) ═══
+//
+// Textual: *«no tengo celdas editables»*. Esta solapa dibujaba ADELANTO, YA TRANSFERIDO, POR BANCO y
+// EFECT. RED. con el marco del control y un comentario que decía que «el `<input>` real lo monta la
+// grilla editable». No existía esa grilla: la pantalla enseñaba cuáles celdas decide una persona y
+// no dejaba escribir ninguna, así que la cadena de pago se seguía haciendo en el Sheet. Ahora son el
+// mismo `CeldaEditable` / `CeldaRedondeo` que el cuadro clásico, con la misma acción, la misma marca
+// «manual» y el mismo acuse de error.
+//
+// ═══ LAS HORAS NO LLEVAN SIGNO DE PESOS ═══
+//
+// `Celda` formateaba TODA columna con `pesos`, así que HORAS publicaba «$80» sobre 80 horas. Un peso
+// y una hora no son la misma unidad; el formato de cada una vive en `formato.ts`.
+//
 // ═══ EL RECIBO SIN GIRO NO CUENTA COMO BANCO (R7) ═══
 //
 // Que el estudio haya liquidado un neto no dice que el banco lo haya movido. Hasta que el lote
@@ -33,7 +49,7 @@ import { ALTO_LIQ } from './tabla'
 export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: string; hoy: string }) {
   const quincena = quincenaDe(quincenaPedida && /^\d{4}-\d{2}-\d{2}$/.test(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const { cuadros, sinActividad, estados } = await getLiquidacionDeLaQuincena(supabase, quincena)
+  const { cuadros, sinActividad, estados, camposEditables } = await getLiquidacionDeLaQuincena(supabase, quincena)
   const totales = cuadros.map((c) => totalesDeCuadro(c.lineas))
   const tarjeta = tarjetaDeQuincena(totales)
   const lineas = cuadros.flatMap((c) => c.lineas)
@@ -59,7 +75,16 @@ export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: st
         overflow: 'hidden',
       }}>
         <Encabezado quincena={quincena} tarjeta={tarjeta} cerrada={cerrada} />
-        <Tabla secciones={secciones} totales={totalPlantel} />
+        <Tabla
+          secciones={secciones}
+          totales={totalPlantel}
+          quincena={quincena}
+          camposEditables={camposEditables}
+          // UNA QUINCENA CERRADA ES UNA FOTO (R6) y se decide POR CUADRO, no por la pantalla: cerrar
+          // Oficina no sella a los obreros. La pantalla es la puerta; el servidor relee el estado.
+          cerradas={new Set(Object.entries(estados)
+            .filter(([, e]) => e.estado === 'cerrada').map(([g]) => g))}
+        />
         <div style={{ height: 20 }} />
       </div>
       {/* PANTALLA 9 · CAJA DE NÓMINA VIVE ACÁ, no en una solapa propia: el mockup lista CINCO
@@ -134,9 +159,14 @@ const fila = (alto: number): React.CSSProperties => ({
   fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
 })
 
-function Tabla({ secciones, totales }: {
-  secciones: readonly SeccionDePersonal<LineaLiquidada>[]
+function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
+  secciones: readonly SeccionDePersonal<LineaConOverrides>[]
   totales: TotalesDeCuadro
+  quincena: Quincena
+  /** Las celdas que la BASE puede guardar hoy. El resto se dibuja de sólo lectura. */
+  camposEditables: readonly CampoEditable[]
+  /** Los grupos con la quincena cerrada. Sus celdas no se editan. */
+  cerradas: ReadonlySet<string>
 }) {
   return (
     <div className="overflow-x-auto" style={{ padding: '16px 20px 0' }}>
@@ -167,31 +197,47 @@ function Tabla({ secciones, totales }: {
                 </span>
               )}
             </div>
-            <Celda valor={l.horas} />
+            {/* HORAS SIN SIGNO DE PESOS: son horas. El `$/h` sí es plata. */}
+            <Celda valor={l.horas} formato={nHoras} manual={l.manual.horas} />
             <Celda valor={l.valorHora} apagada />
-            <Celda valor={l.cobra} medio />
+            <Celda valor={l.cobra} medio manual={l.manual.cobra} />
             {/* LO ACORDADO, NO LO LIQUIDADO. «—» donde no hay acuerdo 50/50: Oficina cobra un neto
                 mensual cuyo recibo del 01/09 no fue la mitad, y el cuadro `final` son
                 subcontratistas. Inventarles una mitad sería acordar por ellos. */}
             <Celda valor={l.blancoAcuerdo} apagada />
             <Celda valor={l.efectivoAcuerdo} apagada />
-            <Escribible valor={l.adelanto} ancho={76} />
-            <Escribible valor={l.yaTransferido} ancho={86} />
+            <Escribible campo="adelanto" linea={l} seccion={sec} quincena={quincena}
+              camposEditables={camposEditables} cerradas={cerradas} ancho={76} />
+            <Escribible campo="yaTransferido" linea={l} seccion={sec} quincena={quincena}
+              camposEditables={camposEditables} cerradas={cerradas} ancho={86} />
             <Escribible
-              valor={l.porBanco}
+              campo="porBanco"
+              linea={l}
+              seccion={sec}
+              quincena={quincena}
+              camposEditables={camposEditables}
+              cerradas={cerradas}
               ancho={84}
               // EL DESVÍO ENTRE EL RECIBO Y LA MITAD ACORDADA ES LO QUE TERMINA EN EFECTIVO. Se
               // señala acá porque es donde el número deja de ser la mitad. No corrige nada: el
               // recibo manda (orden del 31/08/2026), pero hasta hoy había que restar dos columnas
               // a ojo para verlo.
               desvio={desvioDelAcuerdo(l)}
-              blanco={l.blancoAcuerdo}
-              recibo={l.reciboNeto}
-              sinGiro={l.reciboSinGiro}
             />
-            <Celda valor={l.enEfectivo} medio />
-            <Celda valor={l.total} />
-            <Escribible valor={l.efectivoRedondeado} ancho={88} />
+            <Celda valor={l.enEfectivo} medio manual={l.manual.enEfectivo} />
+            <Celda valor={l.total} manual={l.manual.total} />
+            {/* EFECT. RED. ES LA COLUMNA DEL DUEÑO: los billetes que entrega en mano. No se calcula
+                y no participa de ninguna cuenta — por eso tiene su propia celda y su propia acción. */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <CeldaRedondeo
+                personaId={l.personaId}
+                valor={l.efectivoRedondeado}
+                quincena={quincena}
+                grupo={sec.grupo}
+                bloqueada={cerradas.has(sec.grupo)}
+                ancho={88}
+              />
+            </div>
           </div>
             ))}
           </div>
@@ -208,7 +254,8 @@ function Tabla({ secciones, totales }: {
             {totales.sinTarifa > 0 && ` · ${totales.sinTarifa} sin retribución`}
             {totales.sinReparto > 0 && ` · ${totales.sinReparto} sin acuerdo 50/50`}
           </div>
-          <Celda valor={totales.horas} />
+          {/* EL PIE SUMA HORAS, NO PESOS. Decía «$1.188» sobre 1.188 horas del plantel. */}
+          <Celda valor={totales.horas} formato={nHoras} />
           <div />
           <Celda valor={totales.cobra} />
           {/* LAS MITADES NO SUMAN A QUIEN NO TIENE ACUERDO, y la línea de abajo dice cuántos son. */}
@@ -226,9 +273,18 @@ function Tabla({ secciones, totales }: {
   )
 }
 
-/** Una celda calculada. `null` se dibuja «—»: falta el dato, no es cero (R1). */
-function Celda({ valor, medio = false, apagada = false }: {
+/**
+ * UNA CELDA CALCULADA. `null` se dibuja «—»: falta el dato, no es cero (R1).
+ *
+ * `formato` existe porque esta tabla tiene dos unidades: pesos y HORAS. Hasta el 11/09/2026 todas
+ * pasaban por `pesos` y la columna de horas publicaba «$80». Y `manual` porque un eslabón que alguien
+ * pisó a mano deja de ser una cuenta aunque la columna siga siendo calculada: sin la marca, COBRA o
+ * EN EFECTIVO escritos por el dueño se leían igual que los derivados (R8).
+ */
+function Celda({ valor, medio = false, apagada = false, formato = pesos, manual = false }: {
   valor: number | null; medio?: boolean; apagada?: boolean
+  formato?: (n: number | null) => string
+  manual?: boolean
 }) {
   return (
     <div style={{
@@ -236,40 +292,67 @@ function Celda({ valor, medio = false, apagada = false }: {
       color: valor == null ? V.tenue : (apagada ? V.apagado : V.tinta),
       fontWeight: medio ? 500 : undefined,
     }}>
-      {valor == null ? '—' : pesos(valor)}
+      {formato(valor)}{manual && <Manual />}
     </div>
   )
 }
 
 /**
- * Una celda que se escribe. Se dibuja con el marco del control aunque acá sea de sólo lectura: es
- * la diferencia que la pantalla tiene que enseñar entre «esto lo decidís vos» y «esto es una
- * cuenta». El `<input>` real lo monta la grilla editable.
+ * UNA CELDA QUE SE ESCRIBE — y que ahora se escribe de verdad.
+ *
+ * ═══ EL MARCO SIGUE, EL `<span>` MUDO SE FUE ═══
+ *
+ * El marco de control es lo que la pantalla tiene que enseñar: «esto lo decidís vos» frente a «esto
+ * es una cuenta». Lo que faltaba adentro era el campo. Va `CeldaEditable`, que es el mismo del cuadro
+ * clásico: guarda al salir del campo, muestra el error del servidor sin perder lo escrito y marca
+ * «manual» lo pisado. Sólo se dibuja de lectura cuando la quincena de ESE cuadro está cerrada (R6) o
+ * cuando la base todavía no tiene la columna `*_manual` de esa celda.
+ *
+ * EL TÍTULO DICE EL RECIBO, NO LO GIRADO. Decía «recibo $ 0» sobre gente que sí tiene recibo, porque
+ * leía `porBanco` —que es el recibo YA GIRADO— (auditoría 10/09/2026). Cuando el extracto todavía no
+ * muestra el lote, eso se escribe con todas las letras en vez de publicarse como cero.
  */
-function Escribible({ valor, ancho, desvio = null, blanco = null, recibo = null, sinGiro = false }: {
-  valor: number | null; ancho: number; desvio?: number | null; blanco?: number | null
-  /** El neto que liquidó el estudio. NO es lo girado: `porBanco` vale 0 hasta que el lote aparece. */
-  recibo?: number | null
-  sinGiro?: boolean
+function Escribible({ campo, linea, seccion, quincena, camposEditables, cerradas, ancho, desvio = null }: {
+  campo: CampoEditable
+  linea: LineaConOverrides
+  seccion: SeccionDePersonal<LineaConOverrides>
+  quincena: Quincena
+  camposEditables: readonly CampoEditable[]
+  cerradas: ReadonlySet<string>
+  ancho: number
+  desvio?: number | null
 }) {
-  // EL TÍTULO DICE EL RECIBO, NO LO GIRADO. Decía «recibo $ 0» sobre gente que sí tiene recibo,
-  // porque leía `porBanco` —que es el recibo YA GIRADO— (auditoría 10/09/2026). Cuando el extracto
-  // todavía no muestra el lote, eso se escribe con todas las letras en vez de publicarse como cero.
-  const titulo = desvio == null || blanco == null ? undefined
-    : `recibo ${recibo == null ? 'sin recibo' : pesos(recibo)}`
-      + `${sinGiro ? ' · sin giro en el extracto' : ''}`
-      + ` · acuerdo ${pesos(blanco)} · diferencia ${pesos(Math.abs(desvio))}`
+  const valor = linea[campo]
+  const titulo = desvio == null || linea.blancoAcuerdo == null ? undefined
+    : `recibo ${linea.reciboNeto == null ? 'sin recibo' : pesos(linea.reciboNeto)}`
+      + `${linea.reciboSinGiro ? ' · sin giro en el extracto' : ''}`
+      + ` · acuerdo ${pesos(linea.blancoAcuerdo)} · diferencia ${pesos(Math.abs(desvio))}`
       + ` ${desvio < 0 ? 'que sale en efectivo' : 'girada de más'}`
+  const cerrada = cerradas.has(seccion.grupo)
+  const soloLectura = cerrada || !camposEditables.includes(campo)
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end' }} title={titulo}>
       <span style={{
-        width: ancho, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+        minWidth: ancho, minHeight: 26, display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         border: `1px solid ${V.lineaFuerte}`, borderRadius: 4, padding: '0 4px',
         // EL DESVÍO CONTRA EL ACUERDO SE VE, no se deduce: tono de alerta y el detalle en el title.
         color: desvio != null ? V.warn
           : (valor == null || valor === 0 ? V.lineaFuerte : V.tinta),
       }}>
-        {valor == null || valor === 0 ? '—' : pesos(valor)}
+        <CeldaEditable
+          campo={campo}
+          valor={valor}
+          // CERO SE DIBUJA «—» PERO NO ES «—»: es lo que la cadena calculó o lo que alguien escribió.
+          // El guion es para que la vista no se llene de «$0» en columnas que casi siempre están
+          // vacías; al entrar al campo, `InlineEdit` muestra el número crudo.
+          formato={(n) => (n == null || n === 0 ? '—' : pesos(n))}
+          manual={linea.manual[campo]}
+          personaId={linea.personaId}
+          quincena={quincena}
+          grupo={seccion.grupo}
+          soloLectura={soloLectura}
+          ancho="w-20"
+        />
       </span>
     </div>
   )
