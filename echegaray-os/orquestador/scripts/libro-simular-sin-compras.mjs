@@ -34,6 +34,8 @@ import { columnasDeCompras } from '../lib/libro-extractores-compras.mjs'
 import { resolverColumnas } from '../lib/compras-columnas.mjs'
 import { RUBRO_SAC } from '../lib/libro-extractores-sac.mjs'
 import { isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
+import { pathToFileURL } from 'node:url'
+import { realpathSync } from 'node:fs'
 // LOS BLOQUES DE LAS PESTAÑAS LEEN EL LIBRO DESDE EL 11/09/2026, así que lo que van a mostrar se puede
 // calcular acá con el MISMO filtro que escribe su fórmula. Las constantes se importan, no se tipean:
 // una lista de contrapartes copiada daría un control que no mide lo que la celda va a decir.
@@ -119,6 +121,16 @@ function clienteCacheado(google, cache, transformarCompras = null) {
   return d
 }
 
+/**
+ * EL CÓDIGO DE SALIDA DISTINGUE «NO PUDE MEDIR» DE «MEDÍ Y DA MAL».
+ *
+ * 2 = falta un insumo y la simulación no llegó a medir nada (hoy: el tipo de cambio, sin el cual los
+ * cobros en dólares no se pueden valuar y el libro aborta). 1 = midió y algún rubro crítico pierde
+ * plata. Con un solo código, quien automatice esto no puede distinguir «el informe dice que falta
+ * trabajo» de «el informe no existe».
+ */
+export const SALIDA_ERROR = (e) => (/tipo de cambio/i.test(String(e?.message ?? e)) ? 2 : 1)
+
 /** El serial de HOY, igual que el generador del libro: el corte para vencidos. */
 const hoySerial = () => Math.floor((Date.now() - Date.UTC(1899, 11, 30)) / 86400000)
 
@@ -164,7 +176,7 @@ export function netoPorSemana(libro = [], desde, cuantas = 8) {
  * anterior a la primera fila de `_BANCO_RAW` no lo puede reponer ninguna fuente bancaria, y mezclarlo
  * con el resto esconde qué se puede arreglar y qué necesita una decisión del dueño.
  */
-function diferencias(a, b, desdeExtracto) {
+export function diferencias(a, b, desdeExtracto) {
   const claves = new Set([...a.keys(), ...b.keys()])
   const out = []
   for (const k of claves) {
@@ -184,7 +196,7 @@ function diferencias(a, b, desdeExtracto) {
 }
 
 /** Suma un campo de las diferencias que pasan el filtro. PURO. */
-const sumarDif = (difs, filtro, campo = 'delta') =>
+export const sumarDif = (difs, filtro, campo = 'delta') =>
   Math.round(difs.filter(filtro).reduce((a, d) => a + d[campo], 0) * 100) / 100
 
 async function main() {
@@ -328,7 +340,7 @@ const neto = (libro) => libro.reduce((a, m) => a + m.signo * m.importe, 0)
  * estado REAL, `false` = todavía no salió). No se puede reusar el constructor de fórmulas porque eso
  * devuelve texto para el Sheet; lo que se comparte es el FILTRO, que viaja en el mismo objeto.
  */
-function comoCelda(libro, f) {
+export function comoCelda(libro, f) {
   const orgs = new Set(ORGANISMOS_GREMIALES.flatMap(([, c]) => c))
   let total = 0
   for (const m of libro) {
@@ -344,4 +356,14 @@ function comoCelda(libro, f) {
   return Math.round(total * 100) / 100
 }
 
-main().catch((e) => { console.error(e.message ?? e); process.exit(1) })
+// ═══ `main()` SÓLO COMO CLI (auditoría de cierre, 11/09/2026) ═══
+//
+// Este archivo EXPORTA funciones puras —`diferencias`, `comoCelda`, `netoPorSemana`,
+// `comprasComoQuedaria`— que son justamente lo que decide el ✓/✗ del informe, así que tienen que poder
+// probarse en frío. Sin esta guarda, importarlas para testearlas corría la simulación entera contra el
+// Sheet vivo: dos corridas completas de lecturas cada vez que alguien ejecuta el test.
+//
+// `realpathSync` por el mismo motivo que en el generador del libro: el checkout de producción se alcanza
+// por una ruta con enlaces y `import.meta.url` viene siempre resuelta.
+const esCLI = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
+if (esCLI) main().catch((e) => { console.error(e.message ?? e); process.exit(SALIDA_ERROR(e)) })
