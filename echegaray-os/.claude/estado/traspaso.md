@@ -74,9 +74,10 @@ Ver §4. Agentes en curso al cierre: auditor de la cartera v5 · Liquidación (r
 ## 6. PENDIENTES REALES
 
 **P0 (agentes en curso)**
+- Backend/DB Pareto (perf/base-de-datos, wt-db): baseline pg_stat_statements + traza por pantalla; índices, RPC por pantalla (/obras/[obra], /obras, personas, proveedores, compras), select *, RLS costosa. Mandato integral del dueño guardado en memoria (mandato-optimizacion-integral-1109).
 - Velocidad de navegación (perf/navegacion, wt-perf): medir recorrido completo en producción cuando Supabase vuelva; loading.tsx/streaming, staleTimes, dedupe perfil, una RPC por pantalla.
 - Caja: depósitos pendientes de acreditación ($38,57 M del 10/09) no son disponibles → agente consistencia corrige saldo Santander = declarado − pendientes, y `cerrarElDia()` de importar-banco.mjs; el cierre CFM 91,9 M debe volver a ~53,3 M. Post del puente al dueño: 8sctp1uekib9zxqyn4qezsebne.
-- IERIC/FODECO 11/09: dos comprobantes $13.794,56 (trx 889015905659 y 493817674210) en /tmp/claude-1001/ieric-1109 → Drive archivo-fiscal/2026/IERIC + Cargas Sociales; agente en curso.
+- IERIC/FODECO 08-2026: HECHO (c8ddc0f5). PDFs en Drive archivo-fiscal/2026/IERIC (1fg1q9D5tUZNeQRzegeTFcd35cG7MBSN0, 1XwCE7A3036pZJLK3BfjthyjZRNM15rQ2) + drive_index; apareo bancario IERIC/FODECO por boleta (cargas-boletas-ieric.mjs) listo para el próximo extracto. Pendiente hito: cuadro «2 · PAGADO» de Cargas Sociales sigue leyendo Compras (0 desde septiembre); lectura de boletas +40 s por corrida (cachear en Postgres si molesta).
 - Cartera v5: PUBLICADA y verificada; tercera auditoría (sobre producción) en curso; worktree wt-crm eliminado.
 - Liquidación: merge y publicación (panel derecho, edición, ZZ-E2E fuera, <4 s).
 - Consistencia Flujo de Fondos: 5 fixes publicados (817bb501: cuotas en cheque con rubro «Cheques emitidos», Estructura proyectado ≥ 0, sello Tarjeta L2/L23, impuesto al cheque y f136 ya en el libro). Pendiente: verificar corrida 10:50, post al dueño con el PUENTE 61,3 M → 91 M del cierre CFM (pedido 09:25) — sospecha: e-cheq $38,57 M del 10/09 contados como caja disponible.
