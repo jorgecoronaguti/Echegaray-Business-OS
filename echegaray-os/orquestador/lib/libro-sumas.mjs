@@ -62,6 +62,7 @@ const grupoIgual = (col, valores) =>
  * @param {string[]} [f.origenes] OR de pestañas de origen (columna N)
  * @param {string[]} [f.instrumentos] OR de instrumentos
  * @param {string[]} [f.clientes] OR de clientes CANÓNICOS (columna Q, la que escribe libro-clientes)
+ * @param {string[]} [f.contrapartes] OR de contrapartes EXACTAS (columna J) — ver la nota de abajo
  * @param {string}  [f.obra] una obra exacta
  * @param {string[]} [f.extra] condiciones ya formadas y entre paréntesis, para lo que no es una
  *   igualdad sobre una columna del libro (ver `COBRANZA_FACTURADA`)
@@ -81,6 +82,19 @@ export function terminoLibro(f = {}) {
   // es el PROVEEDOR, así que filtrarla por "LA ESTRELLA" devolvería cero para siempre sin dar error.
   // Quién es el cliente de cada fila lo decide `libro-clientes.mjs`, una sola vez, al armar el libro.
   if (f.clientes?.length) cond.push(grupoIgual(LIBRO.col.cliente, f.clientes))
+  // ═══ LA CONTRAPARTE SE FILTRA CUANDO EL RUBRO NO ALCANZA (11/09/2026) ═══
+  //
+  // Nació para dos casos reales, los dos de la misma forma: un rubro del cuadro que contiene VARIAS
+  // obligaciones distintas y una pestaña que las muestra por separado.
+  //   · `Financiero` lleva la cuota del préstamo prendario Y los cargos del banco (impuesto al cheque,
+  //     comisiones). «Impuestos y Financieros» publica la CUOTA, no la suma.
+  //   · `Nómina · Gremiales` lleva FCL, UOCRA, IERIC y FODECO, y «Cargas Sociales» tiene una fila por
+  //     organismo.
+  // Es una igualdad exacta contra la columna J, y por eso el que la use tiene que pasar TODOS los
+  // nombres con los que ese acreedor aparece: el libro lo llama «Fondo de Cese» cuando el pago lo
+  // prueba el banco y con el nombre del proveedor cuando la fila viene de Compras. Un nombre que falta
+  // no da error — devuelve de menos, que es el modo de falla que hay que vigilar con un control.
+  if (f.contrapartes?.length) cond.push(grupoIgual(LIBRO.col.contraparte, f.contrapartes))
   if (f.obra) cond.push(`(${R(LIBRO.col.obra)}="${f.obra}")`)
   // Condiciones que no se pueden expresar como igualdad sobre una columna del libro —hoy: si el
   // cobro lleva factura, que vive en Cobranzas y no acá. Van al final, ya entre paréntesis.

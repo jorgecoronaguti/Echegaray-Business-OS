@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  RUBRO_PRENDARIO, formulaCuotaPrendario, formulaPrendarioPendiente,
+  RUBRO_PRENDARIO, formulaCuotaPrendario, formulaPrendarioPendiente, CONTRAPARTES_PRENDARIO,
   formulaAlicuotaIibbVigente, formulaIibbDeterminado,
   formulaImpuestoChequeProyectado, formulaImpuestoCheque,
   formulaVentana, formulaDeudaPendiente,
@@ -15,12 +15,35 @@ const HOY = '2026-08-06'
 
 // ══ PRENDARIO — EL DEFECTO A ══════════════════════════════════════════════════════════════════════
 
-test('la cuota del prendario sale del cuadro de amortización de Compras, mes por mes', () => {
-  const f = formulaCuotaPrendario(C, 2026, 9)
-  assert.equal(f, '=SUMIFS(Compras!$O$4:$O;Compras!$AB$4:$AB;"Financiero";'
-    + 'Compras!$Q$4:$Q;">="&DATE(2026;9;1);Compras!$Q$4:$Q;"<="&EOMONTH(DATE(2026;9;1);0))')
+test('LA CUOTA DEL PRENDARIO SALE DEL LIBRO, NO DE COMPRAS — la mudanza del 11/09/2026', () => {
+  // El dueño ordenó vaciar de Compras todo lo que no sea Civil/Estructura/Mantenimiento. Con la fuente
+  // vieja, el día que esas filas se marquen ELIMINADO esta celda daba CERO sin un solo error. Si
+  // alguien la devuelve a Compras, este test se pone rojo.
+  const f = formulaCuotaPrendario(2026, 9)
+  assert.ok(!/Compras!/.test(f), `la cuota no puede depender de Compras: ${f}`)
+  assert.match(f, /_MOVIMIENTOS!\$F\$2:\$F="Financiero"/)
+  assert.match(f, /_MOVIMIENTOS!\$J\$2:\$J="Banco Santander · préstamo prendario"/,
+    'el rubro Financiero lleva además los cargos del banco: sin la contraparte, la cuota los incluye')
+  assert.match(f, /DATE\(2026;9;1\)/)
   // Cada mes tiene SU ventana: dos meses distintos no pueden dar la misma fórmula.
-  assert.notEqual(formulaCuotaPrendario(C, 2026, 9), formulaCuotaPrendario(C, 2026, 10))
+  assert.notEqual(formulaCuotaPrendario(2026, 9), formulaCuotaPrendario(2026, 10))
+})
+
+test('LA LISTA DE CONTRAPARTES LLEVA EL NOMBRE DE COMPRAS, y NO el de los cargos del banco', () => {
+  // Medido el 11/09/2026: las 12 filas del rubro «Financiero» de Compras tienen proveedor «Banco». Sin
+  // ese nombre, durante la transición la celda mostraba $4.913.937 de cuota anual contra $13.885.882.
+  assert.ok(CONTRAPARTES_PRENDARIO.includes('Banco'))
+  assert.ok(CONTRAPARTES_PRENDARIO.includes('Banco Santander · préstamo prendario'))
+  // Y «Banco Santander» a secas NO: es la contraparte del impuesto al cheque y de las comisiones, que
+  // viven en el mismo rubro. Incluirla sumaría los cargos del banco dentro de la cuota del préstamo.
+  assert.ok(!CONTRAPARTES_PRENDARIO.includes('Banco Santander'),
+    'la cuota del préstamo no puede incluir el impuesto al cheque')
+})
+
+test('la ventana del mes NO pierde la cuota del último día', () => {
+  // `ventana()` devuelve el ÚLTIMO día del mes y `terminoLibro` excluye el `hasta`: sin el +1, una
+  // cuota con fecha 30 o 31 quedaba afuera de su propio mes y de todos los demás.
+  assert.match(formulaCuotaPrendario(2026, 9), /<EOMONTH\(DATE\(2026;9;1\);0\)\+1/)
 })
 
 test('PROHIBIDO: la cuota del prendario NO puede salir del extracto — el SUMIF global está muerto', () => {
@@ -30,7 +53,7 @@ test('PROHIBIDO: la cuota del prendario NO puede salir del extracto — el SUMIF
   // cuántos meses de banco se hayan importado: con dos débitos adentro declaraba $2.567.315,91 de
   // cuota donde la cuota es $1.282.810,54. Cinco meses de eso son $6,4M de salida financiera falsa.
   for (const m of [8, 9, 10, 11, 12]) {
-    const f = formulaCuotaPrendario(C, 2026, m)
+    const f = formulaCuotaPrendario(2026, m)
     assert.ok(!/_BANCO_RAW/.test(f), `mes ${m}: la cuota no puede leer el extracto`)
     assert.ok(!/SUMIF\(/.test(f), `mes ${m}: SUMIF sin condición de fecha barre el archivo entero`)
     assert.ok(!/Préstamo prendario/.test(f), `mes ${m}: la naturaleza bancaria no identifica una cuota`)
@@ -41,9 +64,13 @@ test('PROHIBIDO: la cuota del prendario NO puede salir del extracto — el SUMIF
 test('la deuda pendiente del prendario es SÓLO lo futuro — el defecto B', () => {
   // Las doce cuotas cargadas suman $15.359.163 y siete YA se pagaron. "Pendiente" son las cinco que
   // faltan: $6.414.055. La versión anterior sumaba el rubro entero sin condición de fecha.
-  const f = formulaPrendarioPendiente(C)
-  assert.equal(f, '=SUMIFS(Compras!$O$4:$O;Compras!$AB$4:$AB;"Financiero";Compras!$Q$4:$Q;">"&TODAY())')
-  assert.ok(/">"&/.test(f), 'sin condición de fecha, "pendiente" es el total histórico')
+  const f = formulaPrendarioPendiente()
+  assert.ok(!/Compras!/.test(f), `la deuda pendiente tampoco puede depender de Compras: ${f}`)
+  assert.match(f, /\(_MOVIMIENTOS!\$A\$2:\$A>=TODAY\(\)\)/, 'sin condición de fecha, "pendiente" es el total histórico')
+  // Y ADEMÁS NO REAL: una cuota con fecha pasada que el banco nunca debitó sigue debiéndose, y la
+  // fecha sola no puede contestar eso. El libro sí.
+  assert.match(f, /\$H\$2:\$H="COMPROMETIDO"/)
+  assert.ok(!/\$H\$2:\$H="REAL"/.test(f), 'un pago hecho no es deuda pendiente')
 })
 
 test('EL CORTE DE "PENDIENTE" LO EVALÚA LA PLANILLA: ni un serial tipeado', () => {
@@ -54,9 +81,9 @@ test('EL CORTE DE "PENDIENTE" LO EVALÚA LA PLANILLA: ni un serial tipeado', () 
   // Desde el 09/09 sólo queda el prendario: la fórmula de los planes se retiró porque «Cargas
   // Sociales» ya publicaba el mismo saldo por HECHO («la planilla no marcó Pagado»), y dos
   // definiciones de la misma deuda es lo que el dueño mandó unificar. Ver `impuestos-cuadro.mjs`.
-  const f = formulaPrendarioPendiente(C)
-  assert.match(f, /">"&TODAY\(\)/, 'el corte tiene que ser vivo')
-  assert.ok(!/">"&\d+/.test(f), `hay un serial tipeado: ${f}`)
+  const f = formulaPrendarioPendiente()
+  assert.match(f, /TODAY\(\)/, 'el corte tiene que ser vivo')
+  assert.ok(!/>=?\d{5}/.test(f), `hay un serial tipeado: ${f}`)
   // Y el serial del día de hoy no puede aparecer por ninguna otra vía.
   assert.ok(!f.includes(String(serialDe(HOY))), 'el serial del día de la corrida no va en la fórmula')
 })

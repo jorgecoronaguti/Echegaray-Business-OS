@@ -171,7 +171,7 @@ está tipeado). CAJA y `sync-compras` suman Compras sin mirar X, por eso el cero
 
 ---
 
-## Simulación sin Compras — 11/09/2026, 20:15 (rama `feat/libro-fuentes-propias`)
+## Simulación sin Compras — 11/09/2026, 21:40 (rama `feat/libro-fuentes-propias`)
 
 **Qué es.** `node orquestador/scripts/libro-simular-sin-compras.mjs` arma el libro DOS VECES sobre las
 mismas lecturas —tal cual, y con las 81 filas que el vaciado anula marcadas `ELIMINADO`, que es lo que
@@ -181,8 +181,8 @@ toca el Sheet. La salida literal de la última corrida:
 ```
 SIMULACIÓN SIN COMPRAS — corte 2026-09-11 · sólo lectura
   filas de Compras que el vaciado anula: 81 (unidades: Financiero 12 · Impuestos 63 · Estructura 6)
-  libro TAL CUAL: 1297 movimiento(s) · neto $37.027.766
-  libro VACIADO : 1251 movimiento(s) · neto $58.607.160
+  libro TAL CUAL: 1297 movimiento(s) · neto $37.026.460
+  libro VACIADO : 1251 movimiento(s) · neto $58.605.855
   el extracto de _BANCO_RAW empieza el 2026-05-28: lo anterior NO lo puede reponer ninguna fuente bancaria
 
   LOS RUBROS QUE LA ORDEN PONE EN RIESGO — «pierde» es egreso que el cuadro deja de ver
@@ -206,15 +206,28 @@ SIMULACIÓN SIN COMPRAS — corte 2026-09-11 · sólo lectura
     2026-11 Financiero                          FUTURO           $2.098
     2026-12 Financiero                          FUTURO           $2.098
 
+  QUÉ VAN A MOSTRAR LOS BLOQUES QUE DEJARON DE LEER COMPRAS (año completo)
+  BLOQUE · FILA                                           ACTUAL         VACIADO          DIF
+  Cargas Soc. §2 · F931                              $50.616.496     $25.542.012 -$25.074.484  
+  Cargas Soc. §2 · Deuda previsional en cuotas       $11.547.069      $5.986.041  -$5.561.028  
+  Cargas Soc. §2 · FCL                                $9.184.177      $1.813.121  -$7.371.056  
+  Cargas Soc. §2 · UOCRA                              $1.606.613      $2.256.553     $649.940  
+  Cargas Soc. §2 · IERIC                                      $0         $28.284      $28.284  
+  Cargas Soc. §2 · FODECO                                     $0              $0           $0 ✓
+  Cargas Soc. §2 · CONTROL sin clasificar             $4.697.639              $0  -$4.697.639 ✓
+  Cargas Soc. §4 · Cuotas sin pagar                   $4.989.751              $0  -$4.989.751  
+  Impuestos §5 · Prendario cuota (año)               $15.356.033      $8.971.945  -$6.384.088  
+  Impuestos §5 · Prendario por vencer                 $3.848.432      $3.842.138      -$6.293  
+
   LAS PRÓXIMAS 8 SEMANAS (neto de caja)
   SEMANA DEL             ACTUAL          VACIADO       DIFERENCIA
   2026-09-07        $42.914.365      $42.914.365               $0
   2026-09-14        $49.497.368      $51.992.244       $2.494.876
-  2026-09-21        $25.065.382      $25.065.382               $0
+  2026-09-21        $25.065.252      $25.065.252               $0
   2026-09-28        $10.980.252      $10.980.252               $0
-  2026-10-05        $12.205.343      $12.207.441           $2.098
-  2026-10-12        -$5.142.052      -$2.647.176       $2.494.876
-  2026-10-19        -$4.639.445      -$4.639.445               $0
+  2026-10-05        $12.205.214      $12.207.312           $2.098
+  2026-10-12        -$5.142.050      -$2.647.174       $2.494.876
+  2026-10-19        -$4.639.551      -$4.639.551               $0
   2026-10-26        $21.843.097      $21.843.097               $0
 
   ✗ DENTRO de la ventana del extracto el vaciado todavía le saca plata a: Impuestos $240.000 · Deuda previsional (planes de pago) $4.989.751
@@ -259,3 +272,29 @@ dentro de la ventana del extracto**.
   agosto explicaba también la cuota de septiembre, que está a 31 días.
 - Los planes de ARCA son **tres** importes recurrentes ($1.034.931,85 · $473.767,08 · $2.494.875,65),
   no uno: con un solo importe se reponía una cuota de tres.
+
+### Fase 7 · los bloques de las pestañas dejaron de leer Compras
+
+`Cargas Sociales` §2 PAGADO (F931, deuda previsional en cuotas, FCL/UOCRA/IERIC/FODECO), sus «Cuotas
+sin pagar» y la deuda financiera de `Impuestos y Financieros` (cuota del prendario y cuotas por
+vencer) leían Compras por `SUMIFS`. Ahora leen `_MOVIMIENTOS` con `terminoLibro`, así que **«pagado»
+dejó de ser lo que alguien marcó en una columna y pasó a ser lo que el banco muestra**. Ninguna celda
+lleva un número suelto: todas siguen siendo fórmulas, y la leyenda de cada fila declara su origen.
+
+Dos cosas que la sección «QUÉ VAN A MOSTRAR LOS BLOQUES» encontró antes de que el dueño las viera:
+
+1. **El nombre del acreedor.** Las 12 filas del rubro `Financiero` de Compras tienen proveedor
+   «Banco», y sin ese nombre en la lista de contrapartes la celda de la cuota mostraba $4.913.937 de
+   cuota anual contra $15.356.033 reales. «Banco Santander» a secas NO entra: es la contraparte del
+   impuesto al cheque y de las comisiones, que viven en el mismo rubro.
+2. **Hay $4.697.639 de pagos gremiales que hoy no se pueden atribuir a un organismo.** Compras los
+   registra con el proveedor «SINDICATOS» (21 filas), que mezcla UOCRA, IERIC y FODECO. No se inventa
+   el reparto: la fila de control nueva —«Control · gremiales sin clasificar», que tiene que dar $0—
+   los muestra con su plata. Después del vaciado da $0, porque el apareo del banco sí dice qué
+   organismo cobró cada débito.
+
+El bloque de RÉPLICA de los planes (`lib/cargas-planes.mjs`, que lee `public.costos_obra` con origen
+`compras_sheet`) **no se mudó, y no tiene a dónde**: el OS no conoce el cronograma de los planes, y
+ese espejo no guarda el estado de la fila, así que no puede distinguir una cuota anulada de una viva.
+Cuando Compras se vacíe, ese cuadro queda en blanco y `CARGAS_MES_PLANES` en $0 — declarado acá y
+declarado en cada corrida del libro por `cash-flow-cobertura.mjs` (PLAN SIN CRONOGRAMA).

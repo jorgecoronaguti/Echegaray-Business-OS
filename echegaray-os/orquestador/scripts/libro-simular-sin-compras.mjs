@@ -34,6 +34,12 @@ import { columnasDeCompras } from '../lib/libro-extractores-compras.mjs'
 import { resolverColumnas } from '../lib/compras-columnas.mjs'
 import { RUBRO_SAC } from '../lib/libro-extractores-sac.mjs'
 import { isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
+// LOS BLOQUES DE LAS PESTAÑAS LEEN EL LIBRO DESDE EL 11/09/2026, así que lo que van a mostrar se puede
+// calcular acá con el MISMO filtro que escribe su fórmula. Las constantes se importan, no se tipean:
+// una lista de contrapartes copiada daría un control que no mide lo que la celda va a decir.
+import { CONTRAPARTES_PRENDARIO } from '../lib/impuestos-cuadro.mjs'
+import { ORGANISMOS_GREMIALES } from '../lib/cargas-bloque-pagado.mjs'
+import { RUBRO_CARGAS, RUBRO_GREMIALES, RUBRO_PLANES } from '../lib/libro-extractores-cargas.mjs'
 
 const DETALLE = process.argv.includes('--detalle')
 /** `--avisos` imprime lo que los extractores nuevos DECIDIERON en el escenario vaciado. Es la única
@@ -262,6 +268,33 @@ async function main() {
     }
   }
 
+  // ═══ QUÉ VAN A MOSTRAR LOS BLOQUES DE LAS PESTAÑAS (Fase 7) ═══
+  //
+  // «Cargas Sociales» §2 PAGADO, sus cuotas sin pagar y la deuda financiera de «Impuestos y
+  // Financieros» leían Compras por SUMIFS y ahora leen `_MOVIMIENTOS`. Lo que cada celda va a decir se
+  // calcula acá con el MISMO filtro que escribe su fórmula: si el vaciado le saca plata a un bloque, se
+  // ve antes de vaciar. No se simulan fórmulas de Sheets —no se pueden evaluar sin escribir el archivo—
+  // sino el dato que esas fórmulas van a sumar, que es lo que cambia.
+  console.log('\n  QUÉ VAN A MOSTRAR LOS BLOQUES QUE DEJARON DE LEER COMPRAS (año completo)')
+  console.log(`  ${'BLOQUE · FILA'.padEnd(46)} ${'ACTUAL'.padStart(15)} ${'VACIADO'.padStart(15)} ${'DIF'.padStart(12)}`)
+  const bloques = [
+    ['Cargas Soc. §2 · F931', { rubros: [RUBRO_CARGAS], real: true }],
+    ['Cargas Soc. §2 · Deuda previsional en cuotas', { rubros: [RUBRO_PLANES], real: true }],
+    ...ORGANISMOS_GREMIALES.map(([r, contrapartes]) =>
+      [`Cargas Soc. §2 · ${r}`, { rubros: [RUBRO_GREMIALES], contrapartes, real: true }]),
+    ['Cargas Soc. §2 · CONTROL sin clasificar', { rubros: [RUBRO_GREMIALES], real: true, menosOrganismos: true }],
+    ['Cargas Soc. §4 · Cuotas sin pagar', { rubros: [RUBRO_PLANES], real: false }],
+    ['Impuestos §5 · Prendario cuota (año)', { rubros: ['Financiero'], contrapartes: CONTRAPARTES_PRENDARIO }],
+    ['Impuestos §5 · Prendario por vencer', { rubros: ['Financiero'], contrapartes: CONTRAPARTES_PRENDARIO, real: false, desde: corte }],
+  ]
+  for (const [nombre, f] of bloques) {
+    const a = comoCelda(A.consolidado, f)
+    const b = comoCelda(B.consolidado, f)
+    const dif = Math.round((b - a) * 100) / 100
+    const marca = /CONTROL/.test(nombre) ? (Math.abs(b) <= 1 ? ' ✓' : ' ✗') : (Math.abs(dif) <= 1 ? ' ✓' : '  ')
+    console.log(`  ${nombre.padEnd(46)} ${pesos(a).padStart(15)} ${pesos(b).padStart(15)} ${pesos(dif).padStart(12)}${marca}`)
+  }
+
   const sa = netoPorSemana(A.consolidado, corte)
   const sb = netoPorSemana(B.consolidado, corte)
   console.log('\n  LAS PRÓXIMAS 8 SEMANAS (neto de caja)')
@@ -287,5 +320,28 @@ async function main() {
 }
 
 const neto = (libro) => libro.reduce((a, m) => a + m.signo * m.importe, 0)
+
+/**
+ * NÚCLEO PURO: lo que va a sumar una celda que lee el libro con ese filtro.
+ *
+ * Es la contracara en JavaScript de `terminoLibro`: mismos campos, misma semántica (`real: true` =
+ * estado REAL, `false` = todavía no salió). No se puede reusar el constructor de fórmulas porque eso
+ * devuelve texto para el Sheet; lo que se comparte es el FILTRO, que viaja en el mismo objeto.
+ */
+function comoCelda(libro, f) {
+  const orgs = new Set(ORGANISMOS_GREMIALES.flatMap(([, c]) => c))
+  let total = 0
+  for (const m of libro) {
+    if (f.rubros && !f.rubros.includes(m.rubro)) continue
+    if (f.contrapartes && !f.contrapartes.includes(m.contraparte)) continue
+    if (f.real === true && m.estado !== 'REAL') continue
+    if (f.real === false && m.estado === 'REAL') continue
+    if (f.desde && m.fecha < f.desde) continue
+    // El control del desglose: el rubro entero MENOS lo que las cuatro filas por organismo se llevan.
+    if (f.menosOrganismos && orgs.has(m.contraparte)) continue
+    total += Math.abs(m.importe)
+  }
+  return Math.round(total * 100) / 100
+}
 
 main().catch((e) => { console.error(e.message ?? e); process.exit(1) })

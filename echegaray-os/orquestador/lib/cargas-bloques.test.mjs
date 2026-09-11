@@ -160,6 +160,8 @@ test('ningún archivo del generador de cargas pasa de 500 líneas', () => {
   const archivos = [
     '../scripts/cargas-sociales-pestana.mjs', './cargas-grilla.mjs', './cargas-bloques.mjs',
     './cargas-piel.mjs', './cargas-planes.mjs', './cargas-cadena.mjs', './libro-extractores-cargas.mjs',
+    // Salió de cargas-bloques el 11/09 por este mismo techo, y le toca igual.
+    './cargas-bloque-pagado.mjs',
     // Entró el 10/09 con el apareo contra el banco: es parte de la cadena y le toca el mismo techo.
     './cargas-pagos-banco.mjs',
   ]
