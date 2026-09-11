@@ -55,7 +55,7 @@ import { AccesosPortal } from '@/features/clientes/components/accesos/AccesosPor
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorrienteService'
 import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
-import { SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
+import { SIN_PRECIO_EN_OBRAS, baseContractualDe } from '@/features/clientes/services/economiaObras'
 import {
   esRecorteCobranza, getCobranzasDelCliente, type FilaCobranza,
 } from '@/features/clientes/services/cobranzasCliente'
@@ -253,7 +253,11 @@ export default async function ClientePage({ params, searchParams }: {
   // sólo las obras cerradas de Messina— y mientras siga siendo el respaldo de alguna cara, dos
   // pantallas pueden volver a discrepar sin que nadie lo note. Si la vista no se pudo leer, la
   // cifra dice qué falta; no se rellena con otra cuenta.
-  const contratadoEnCurso = economiaCliente?.contratado_en_curso ?? null
+  // LA MISMA BASE QUE LA CARTERA (auditor, 11/09/2026): mano de obra + materiales cuando el papel
+  // desglosa (`obra_contrato`), si no el precio de OBRAS. `cliente_economia.contratado_en_curso`
+  // sólo conoce OBRAS y publicaba $ 95,3 M de Quattropani contra $ 139,4 M en la lista.
+  const basesEnCurso = enCurso.map((o) => baseContractualDe(economia?.get(o.obra_id))).filter((v): v is number => v !== null)
+  const contratadoEnCurso = basesEnCurso.length ? basesEnCurso.reduce((a, v) => a + v, 0) : null
 
   /** El detalle del trabajo, DENTRO del CRM. Es una función y no una arrow creada en el JSX: una
    *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
@@ -375,7 +379,7 @@ export default async function ClientePage({ params, searchParams }: {
 
   // LOS CUATRO NÚMEROS DE LA CUENTA, SUMADOS DE SUS TRABAJOS (misma fuente que `/clientes`).
   const cuentaTrabajos = cuentaDeTrabajos(
-    todas.map((o) => ({ obra_id: o.obra_id, contratado: economia?.get(o.obra_id)?.contratado ?? null })),
+    todas.map((o) => ({ obra_id: o.obra_id, contratado: baseContractualDe(economia?.get(o.obra_id)) })),
     cobradoPorObra,
   )
   const cifrasDeLaCuenta: CifraDeFicha[] = [

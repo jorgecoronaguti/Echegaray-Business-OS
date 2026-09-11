@@ -81,6 +81,7 @@ export interface EconomiaDeObra {
   contrato_fuente_drive_id: string | null
   contrato_fuente_nombre: string | null
   contrato_cita: string | null
+  contrato_nota: string | null
 }
 
 /** El `origen` que dice «esto NO es un precio contratado, es lo vendido hasta hoy». */
@@ -103,7 +104,7 @@ export async function getEconomiaDeObras(
 ): Promise<Map<string, EconomiaDeObra> | null> {
   const { data, error } = await supabase
     .from('obra_economia_cartera')
-    .select('obra_canonica_id, contratado, contratado_usd, tipo_cambio, origen, referencia, nota, oc_civa_ventana, oc_civa_historico, oc_n_ventana, oc_n_historico, contrato_mano_obra, contrato_mano_obra_usd, contrato_materiales, contrato_materiales_usd, contrato_total, contrato_fuente, contrato_fuente_drive_id, contrato_fuente_nombre, contrato_cita')
+    .select('obra_canonica_id, contratado, contratado_usd, tipo_cambio, origen, referencia, nota, oc_civa_ventana, oc_civa_historico, oc_n_ventana, oc_n_historico, contrato_mano_obra, contrato_mano_obra_usd, contrato_materiales, contrato_materiales_usd, contrato_total, contrato_fuente, contrato_fuente_drive_id, contrato_fuente_nombre, contrato_cita, contrato_nota')
   if (error) return null
   return armarEconomiaDeObras(data ?? [])
 }
@@ -136,6 +137,7 @@ export function armarEconomiaDeObras(filas: unknown[]): Map<string, EconomiaDeOb
       contrato_fuente_drive_id: texto(f.contrato_fuente_drive_id),
       contrato_fuente_nombre: texto(f.contrato_fuente_nombre),
       contrato_cita: texto(f.contrato_cita),
+      contrato_nota: texto(f.contrato_nota),
     })
   }
   return m
@@ -143,6 +145,17 @@ export function armarEconomiaDeObras(filas: unknown[]): Map<string, EconomiaDeOb
 
 /** PostgREST devuelve `numeric` como texto. `null` se queda `null`: nunca se vuelve 0. */
 const texto = (v: unknown): string | null => (v == null || v === '' ? null : String(v))
+
+/**
+ * LA BASE CONTRACTUAL DE UNA OBRA DESDE LA VISTA — la misma regla que `baseDelContrato` para la
+ * fila ya armada. Existe para que la ficha del cliente (KPI «Contratado en curso», tabla de
+ * Trabajos) y el subtítulo de la cartera publiquen EL MISMO número que la columna: el auditor del
+ * 11/09/2026 encontró tres versiones de «contratado» en el mismo módulo, $ 44,1 M aparte.
+ */
+export function baseContractualDe(e: Pick<EconomiaDeObra, 'contrato_total' | 'contratado'> | null | undefined): number | null {
+  if (!e) return null
+  return e.contrato_total !== null && e.contrato_total > 0 ? e.contrato_total : e.contratado
+}
 
 export function aNumero(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null

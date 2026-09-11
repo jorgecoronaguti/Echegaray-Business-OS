@@ -50,6 +50,7 @@ import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/aut
 import { esVistaCartera, separarArchivados } from '@/features/clientes/services/cartera'
 import { getOrdenesDe } from '@/features/clientes/services/ordenesCliente'
 import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
+import { baseDelContrato, sumaDeObras } from '@/features/clientes/services/contratoDeObra'
 import { leerCarteraDeUnaConsulta } from '@/features/administracion/services/carteraDeUnaConsulta'
 import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
@@ -145,10 +146,10 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
     .filter(enElRecorte)
     .filter((c) => contieneEnAlguno([c.nombre, razonDe(base, c.cliente_id)], sp.q ?? ''))
   const obrasEnCurso = visibles.reduce((a, c) => a + c.enCurso.length, 0)
-  const conMonto = visibles.filter((c) => c.contratado !== null)
-  const contratadoTotal = conMonto.length
-    ? conMonto.reduce((a, c) => a + (c.contratado ?? 0), 0)
-    : null
+  // LA MISMA BASE QUE LA COLUMNA (auditor, 11/09/2026): el subtítulo decía $ 350,4 M y la columna
+  // sumaba $ 394,5 M — los $ 44,1 M de materiales de Quattropani que `cliente_economia` no conoce.
+  const bases = visibles.map((c) => sumaDeObras(c.enCurso, baseDelContrato).total).filter((v): v is number => v !== null)
+  const contratadoTotal = bases.length ? bases.reduce((a, v) => a + v, 0) : null
 
   // ═══ EL PANEL DE ÓRDENES (`?ordenes=<obra_id>` o `?ordenes=cliente:<id>`) ═══
   //

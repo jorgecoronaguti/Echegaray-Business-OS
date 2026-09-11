@@ -11,18 +11,23 @@ const FUENTE: Record<string, string> = {
 }
 
 /** El papel que respalda el desglose, en una frase para el `title`. */
-export function fraseDeFuente(o: Pick<ObraEnCurso, 'contratoFuente' | 'contratoFuenteNombre' | 'contratoCita'>): string {
+export function fraseDeFuente(o: Pick<ObraEnCurso, 'contratoFuente' | 'contratoFuenteNombre' | 'contratoCita' | 'contratoNota'>): string {
   if (!o.contratoFuente) return 'Ningún papel cargado separa mano de obra y materiales para este trabajo.'
   const papel = FUENTE[o.contratoFuente] ?? o.contratoFuente
   return `Según ${papel}${o.contratoFuenteNombre ? ` («${o.contratoFuenteNombre}»)` : ''}`
     + (o.contratoCita ? `: ${o.contratoCita}` : '.')
+    // LA NOTA VIAJA ENTERA: si la fila se cargó como INFERENCIA (Dilución de ácido, 11/09/2026), la
+    // pantalla lo dice con la misma firmeza con que dice la cita. Regla de oro 2.
+    + (o.contratoNota ? ` — ${o.contratoNota}` : '')
 }
 
 /** LA BASE CONTRA LA QUE SE MIDE EL COBRO: el total del contrato cuando hay desglose; si no, el
  *  precio único que publica OBRAS. Nunca la mano de obra sola cuando el cliente también paga
  *  materiales — ése fue el 94 % de Quattropani (11/09/2026). */
 export function baseDelContrato(o: Pick<ObraEnCurso, 'contratoTotal' | 'contratado'>): number | null {
-  return o.contratoTotal ?? o.contratado
+  // UN TOTAL DE CERO NO ES UNA BASE: sale cuando el papel sólo dijo «materiales: no incluye» y no
+  // fijó la mano de obra. Ahí manda el precio de OBRAS; publicar «$ 0» tapaba ese precio (auditor).
+  return o.contratoTotal !== null && o.contratoTotal > 0 ? o.contratoTotal : o.contratado
 }
 
 /**

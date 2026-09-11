@@ -76,10 +76,14 @@ test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
   assert.doesNotMatch(codigoListas(), new RegExp(`'${SIN_PRECIO_EN_OBRAS}'`))
   // LO QUE NO PUEDE VOLVER: publicar un cero por una ausencia. La cifra sólo se dibuja con número.
   assert.match(codigoPagina(), /valor: contratadoEnCurso !== null \? money\(contratadoEnCurso\) : null/)
-  // Y LA CIFRA SALE DE LA VISTA, NO DE UNA SUMA DE ESTA PÁGINA (H1, 10/09/2026). Mientras la ficha
-  // sumó sus propias obras hubo cuatro definiciones de «contratado del cliente» —una por pantalla—
-  // y el panel lateral publicaba $31,8 M al lado de la lista que decía $156,1 M.
-  assert.match(codigoPagina(), /contratadoEnCurso = economiaCliente\?\.contratado_en_curso/)
+  // Y LA CIFRA SALE DE LA MISMA REGLA QUE LA CARTERA (auditor, 11/09/2026). Hasta hoy leía
+  // `cliente_economia.contratado_en_curso`, que sólo conoce el precio de OBRAS, y publicaba
+  // $ 95,3 M de Quattropani mientras la lista decía $ 139,4 M (con los materiales del contrato).
+  // La regla es UNA función —`baseContractualDe`, sobre `obra_economia_cartera`— y las dos
+  // pantallas la llaman; una suma escrita a mano acá sería la cuarta definición que ya se pagó.
+  assert.match(codigoPagina(), /basesEnCurso = enCurso\.map\(\(o\) => baseContractualDe\(economia\?\.get\(o\.obra_id\)\)\)/)
+  assert.doesNotMatch(codigoPagina(), /economiaCliente\?\.contratado_en_curso/)
+  assert.match(codigoListas(), /const contratado = baseContractualDe\(e\)/)
   // EL RESPALDO AL CAMPO DEL FORMULARIO NO VUELVE: era la otra definición.
   assert.doesNotMatch(codigoPagina(), /monto_contratado/)
   assert.doesNotMatch(codigoListas(), /o\.monto_contratado/)

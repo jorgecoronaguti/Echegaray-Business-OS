@@ -65,7 +65,7 @@ export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px' }: { o: Obr
   }
   const usd = o.manoObraUsd ?? o.contratadoUsd
   const secundaria = usd !== null
-    ? `${dolares(usd)}${(o.materiales ?? 0) > 0 ? ` + ${millones(o.materiales)}` : ''}`
+    ? `${dolares(usd)}${(o.materiales ?? 0) > 0 ? ` + ${pesos(o.materiales)}` : ''}`
     : null
   return (
     <Cifra
