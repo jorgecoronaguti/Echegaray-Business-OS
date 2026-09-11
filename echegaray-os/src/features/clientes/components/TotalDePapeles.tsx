@@ -25,7 +25,7 @@ const PARCIAL = 'El total suma SÓLO las órdenes cuyo PDF declara un importe. A
 /** Un total en cero papeles: constante, para no crear un objeto por fila. */
 export const SIN_PAPELES: Total = { n: 0, importe: null, parcial: false }
 
-export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = null, veEconomia = false, numero = null }: {
+export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = null, veEconomia = false, numero = null, apilado = false }: {
   total: Total
   sigla: 'OC' | 'OP'
   tam?: string
@@ -44,6 +44,12 @@ export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = nul
    *  hay y nada más: qué papel existe es operativo, cuánto se cobra por él no. Nace en `false` —un
    *  olvido tiene que dejar la pantalla pobre, no abierta. */
   veEconomia?: boolean
+  /**
+   * LA CIFRA ARRIBA Y EL RÓTULO DEBAJO. En la celda de 120px de la OP del trabajo, «$ 4.300.876 OP
+   * 4807» en un renglón se partía donde el navegador quería —«$ 4.300.876 OP» / «4807»— y se leía
+   * como un número roto (dueño, 11/09/2026). Apilado, cada línea es una cosa entera.
+   */
+  apilado?: boolean
 }) {
   // «OC 2173» con una sola; «5 OC» con varias. Se calcula UNA vez: los dos caminos de abajo —con y
   // sin permiso económico— tienen que decir lo mismo.
@@ -61,14 +67,19 @@ export function TotalDePapeles({ total, sigla, tam = '12px', testid, vacio = nul
     )
   }
   return (
-    <span className="font-mono tabular-nums" data-testid={testid} style={{ fontSize: tam, color: V.apagado }}>
+    <span
+      className="font-mono tabular-nums" data-testid={testid}
+      style={apilado
+        ? { fontSize: tam, color: V.apagado, display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, whiteSpace: 'nowrap' }
+        : { fontSize: tam, color: V.apagado, whiteSpace: 'nowrap' }}
+    >
       {total.importe === null ? 'sin importe' : pesos(total.importe)}
       {/* EL SUFIJO ES PARTE DE LA CIFRA Y VA EN SU MISMA FAMILIA. «$ 233.366.292» en mono y
           «16 OC» en la tipografía del texto son dos tipografías en UNA celda, que es la mezcla que
           el dueño marcó el 10/09/2026 («hay mezcla de diseño»). */}
       <span
         className="font-mono tabular-nums"
-        style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}
+        style={{ color: V.tenue, marginLeft: apilado ? 0 : 6, fontSize: '10.5px' }}
         title={total.parcial ? PARCIAL : undefined}
       >
         {rotulo}{total.parcial ? ' ·' : ''}
