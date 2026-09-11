@@ -21,7 +21,7 @@ import { getPool } from './db.mjs'
 
 const MIGRACION = readFileSync(join(
   import.meta.dirname, '..', '..', 'supabase', 'migrations',
-  '20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql'), 'utf8')
+  '20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql'), 'utf8')
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
