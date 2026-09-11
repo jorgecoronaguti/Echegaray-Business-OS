@@ -37,8 +37,14 @@
 -- ═══ `p_solapa` ES UN RECORTE, NO UN PERMISO ═══
 --
 -- Quien decide qué puede ver cada rol sigue siendo la RLS (`security invoker`, `ve_economia()`
--- adentro de las vistas). `p_solapa` sólo dice qué va a DIBUJAR la página; un valor cualquiera —o
--- `null`, que es lo que manda un consumidor viejo— devuelve la ficha entera, como antes.
+-- adentro de las vistas). `p_solapa` sólo dice qué va a DIBUJAR la página.
+--
+-- `null` —lo que manda un consumidor viejo— devuelve la ficha ENTERA, como antes. Cualquier otro
+-- valor que no sea una de las nueve caras recibe el MÍNIMO, no la ficha entera: es fail-CLOSED a
+-- propósito, porque el peor caso de una cara pobre es que falte una lista, y el peor caso de la
+-- ficha entera son 199 KB por cada clic. `solapaDe()` normaliza antes de llamar, así que hoy no
+-- puede pasar; el contrato queda escrito para el día que otro consumidor llame directo, y hay un
+-- test que lo clava.
 
 CREATE OR REPLACE FUNCTION public.pantalla_cliente(p_slug text, p_solapa text)
  RETURNS jsonb
@@ -253,7 +259,8 @@ comment on function public.pantalla_cliente(text, text) is
   'Actividad. `n_documentos` viaja SIEMPRE, porque la barra de solapas cuenta en las nueve caras. '
   '`papeles` no se recorta: los totales de OC y OP de la cabecera los define agruparPapeles() en '
   'TypeScript y reproducirlos acá sería una segunda definición. p_solapa es un RECORTE DE DIBUJO, '
-  'nunca un permiso: quien recorta por rol es la RLS, que no cambia.';
+  'nunca un permiso: quien recorta por rol es la RLS, que no cambia. p_solapa = null devuelve la '
+  'ficha entera; cualquier valor que no sea una de las nueve caras recibe el mínimo (fail-closed).';
 
 comment on function public.pantalla_cliente(text) is
   'La puerta vieja de un argumento: delega en pantalla_cliente(p_slug, null), que devuelve la ficha '

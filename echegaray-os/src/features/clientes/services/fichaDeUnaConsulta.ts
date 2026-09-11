@@ -124,8 +124,11 @@ export async function leerFichaDeUnaConsulta(
 ): Promise<FichaLeida> {
   // `p_solapa` NO ES UN PERMISO, ES UN RECORTE DE DIBUJO: dice qué va a pintar esta cara para no
   // transportar lo que ninguna otra mira. Quien recorta por rol sigue siendo la RLS adentro de las
-  // vistas, y por eso la firma acepta cualquier texto: un valor desconocido devuelve la ficha
-  // entera, que es lo que hacía antes.
+  // vistas.
+  //
+  // LA FIRMA ACEPTA CUALQUIER TEXTO Y UN VALOR DESCONOCIDO RECIBE EL MÍNIMO, no la ficha entera
+  // (fail-closed, verificado por el auditor de cierre el 11/09/2026). `solapaDe()` ya normaliza a
+  // una de las nueve caras antes de llegar acá, así que en esta pantalla no puede pasar.
   const { data, error } = await supabase.rpc('pantalla_cliente', { p_slug: slug, p_solapa: solapa })
   if (error) return nadaLeido(error.message)
   const j = (data ?? {}) as FichaCruda

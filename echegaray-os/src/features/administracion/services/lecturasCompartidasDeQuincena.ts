@@ -31,6 +31,18 @@
 //
 // `cache()` de React no memoriza fuera de un request, y ése es el modo de fallo BUENO: sin scope de
 // React esto se comporta exactamente como el código que reemplaza, nunca compartiendo de más.
+//
+// ═══ DOS LÍMITES, DECLARADOS (auditoría de cierre, 11/09/2026) ═══
+//
+//   · EL CLIENTE NO ENTRA EN LA CLAVE. Hay UNO por request, así que hoy no muerde; un futuro
+//     llamador que use `service_role` en el mismo request recibiría lo que leyó el cliente del
+//     usuario. El día que eso exista, la clave tiene que incluir de qué cliente sale la lectura.
+//   · NINGUNA DE LAS DOS PAGINA. `registrosHHService.ts` existe porque PostgREST corta en
+//     `db-max-rows` (1.000 filas) sin avisar. Acá no se agregó `.range()` a propósito: medido el
+//     11/09/2026, `asistencia_dia` tiene 54 filas en el mes más cargado de toda la base y el
+//     padrón de `persona_legajo` son decenas — paginar costaría el viaje de cierre de cada página,
+//     que es exactamente el viaje que este archivo vino a sacar. Si alguna de las dos se acerca al
+//     millar, la paginación entra ACÁ y no en cada pantalla.
 
 import { cache } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'

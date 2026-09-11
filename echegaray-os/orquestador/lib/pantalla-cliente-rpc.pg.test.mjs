@@ -151,25 +151,67 @@ test('pantalla_cliente() devuelve lo mismo que las quince lecturas', { skip: !ha
       // Lo que sólo dibujan Documentos y Actividad, y lo que sólo dibuja Actividad.
       const SOLO_DOC = ['documentos', 'drive']
       const SOLO_ACT = ['notas', 'autores', 'certificados']
-      for (const cara of ['obras', 'cobranzas', 'presupuestos', 'cuenta', 'esquema', 'accesos', 'ordenes']) {
+      const RECORTADAS = { obras: [...SOLO_DOC, ...SOLO_ACT], ordenes: [...SOLO_DOC, ...SOLO_ACT],
+        cobranzas: [...SOLO_DOC, ...SOLO_ACT], presupuestos: [...SOLO_DOC, ...SOLO_ACT],
+        cuenta: [...SOLO_DOC, ...SOLO_ACT], esquema: [...SOLO_DOC, ...SOLO_ACT],
+        accesos: [...SOLO_DOC, ...SOLO_ACT], documentos: SOLO_ACT, actividad: [] }
+
+      // LAS NUEVE CARAS, INCLUIDAS LAS DOS QUE RECIBEN TODO. Auditor de cierre (11/09/2026): el
+      // bucle recorría siete, y mutar la migración para vaciar `papeles` SÓLO en la cara Documentos
+      // dejaba el guardián verde — la cabecera habría escrito «OC recibidas c/IVA (0)» sobre un
+      // cliente con 333 papeles. Una cara que no se compara es una cara sin control.
+      for (const [cara, recortadas] of Object.entries(RECORTADAS)) {
         const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
         for (const k of SIEMPRE) {
           assert.deepEqual(j[k], entera[k], `la cara «${cara}» cambió «${k}», que se dibuja en las nueve`)
         }
-        for (const k of [...SOLO_DOC, ...SOLO_ACT]) {
+        for (const k of recortadas) {
           assert.deepEqual(j[k], [], `la cara «${cara}» todavía transporta «${k}»`)
         }
-        assert.equal(j.actividad_cliente, null, `la cara «${cara}» todavía transporta actividad_cliente`)
-      }
-      for (const cara of ['documentos', 'actividad']) {
-        const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
-        for (const k of SOLO_DOC) {
+        // Lo que NO está recortado en esta cara tiene que llegar igual que en la ficha entera.
+        for (const k of [...SOLO_DOC, ...SOLO_ACT].filter((x) => !recortadas.includes(x))) {
           assert.deepEqual(canonico(j[k]), canonico(entera[k]), `la cara «${cara}» no recibió «${k}»`)
         }
+        const esperado = cara === 'actividad' ? entera.actividad_cliente : null
+        assert.deepEqual(j.actividad_cliente, esperado,
+          `la cara «${cara}» no transporta actividad_cliente como corresponde`)
       }
-      const act = (await q(`select public.pantalla_cliente($1, 'actividad') j`, [slug]))[0].j
-      for (const k of SOLO_ACT) assert.deepEqual(act[k], entera[k], `Actividad no recibió «${k}»`)
-      assert.deepEqual(act.actividad_cliente, entera.actividad_cliente)
+    });
+
+    // ═══ LO QUE ESTE CONTROL NO PUEDE PROBAR HOY, DICHO EN VOZ ALTA ═══
+    //
+    // Auditor de cierre (11/09/2026): `cliente_nota` y `certificados` tienen CERO filas en toda la
+    // base, así que los asserts sobre `notas`, `autores` y `certificados` comparan `[]` contra `[]`
+    // y quedan verdes aunque se les saque el recorte. El control existe y es correcto; hoy no
+    // muerde. Esta prueba no arregla eso —no se fabrican filas en producción— pero lo DECLARA: el
+    // día que se cargue la primera nota o el primer certificado, deja de estar en blanco y el
+    // bucle de arriba empieza a cuidarlo de verdad. Un límite callado es un control que se cree.
+    await t.test('declara cuáles de las claves recortadas todavía no tienen datos que mirar', async () => {
+      const entera = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
+      const enBlanco = ['notas', 'autores', 'certificados'].filter((k) => entera[k].length === 0)
+      if (enBlanco.length) {
+        t.diagnostic(`SIN PROBAR (cero filas en la base): ${enBlanco.join(', ')} — el recorte de la `
+          + 'cara Actividad no se puede poner en rojo hasta que exista la primera fila')
+      }
+      // Al menos UNA de las seis claves recortadas tiene que tener datos, o el control entero es
+      // decorativo. `drive` y `documentos` los tienen (208 en arcor) y son los que sostienen la
+      // prueba mientras las otras tres estén vacías.
+      assert.ok(entera.drive.length > 0 && entera.documentos.length > 0,
+        'ninguna clave recortada tiene filas: el recorte no se puede probar con este cliente')
+    });
+
+    // FAIL-CLOSED, NO FAIL-OPEN. Un `p_solapa` que no es ninguna de las nueve recibe el MÍNIMO, no
+    // la ficha entera: si algún día un consumidor manda un valor viejo, el peor caso es una cara
+    // pobre y nunca 199 KB de más. `solapaDe()` ya normaliza antes de llamar, así que hoy no puede
+    // pasar — esto clava el contrato para el día que otro consumidor llame directo.
+    await t.test('una solapa desconocida recibe el mínimo, no la ficha entera', async () => {
+      const raro = (await q(`select public.pantalla_cliente($1, 'no-existe-esta-cara') j`, [slug]))[0].j
+      const obras = (await q(`select public.pantalla_cliente($1, 'obras') j`, [slug]))[0].j
+      assert.deepEqual(raro.drive, [])
+      assert.deepEqual(raro.documentos, [])
+      assert.equal(raro.actividad_cliente, null)
+      assert.equal(Number(raro.n_documentos), Number(obras.n_documentos))
+      assert.deepEqual(canonico(raro.papeles), canonico(obras.papeles))
     });
 
     // LA CUENTA NO PUEDE MENTIR CUANDO LAS FILAS NO VIAJAN: es lo único que sostiene el «Documentos
