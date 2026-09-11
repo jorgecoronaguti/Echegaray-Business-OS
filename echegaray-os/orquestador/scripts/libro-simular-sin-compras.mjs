@@ -34,6 +34,8 @@ import { columnasDeCompras } from '../lib/libro-extractores-compras.mjs'
 import { resolverColumnas } from '../lib/compras-columnas.mjs'
 import { RUBRO_SAC } from '../lib/libro-extractores-sac.mjs'
 import { isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
+import { RANGO_TC, tipoCambioDeCelda } from '../lib/tipo-cambio.mjs'
+import { query } from '../lib/db.mjs'
 import { pathToFileURL } from 'node:url'
 import { realpathSync } from 'node:fs'
 // LOS BLOQUES DE LAS PESTAÑAS LEEN EL LIBRO DESDE EL 11/09/2026, así que lo que van a mostrar se puede
@@ -110,15 +112,37 @@ export function comprasComoQuedaria(filas = []) {
  * Se decora por prototipo (`Object.create`) y no por spread para no copiar el objeto entero: el
  * cliente real tiene decenas de métodos y lo único que cambia acá es la puerta de lectura.
  */
-function clienteCacheado(google, cache, transformarCompras = null) {
+function clienteCacheado(google, cache, { transformarCompras = null, tcDeRespaldo = null } = {}) {
   const d = Object.create(google)
   d.readSheetValues = async (fileId, rango, opts = {}) => {
     const clave = `${fileId}|${rango}|${opts.render ?? ''}`
     if (!cache.has(clave)) cache.set(clave, await google.readSheetValues(fileId, rango, opts))
     const filas = cache.get(clave)
+    // ═══ EL TIPO DE CAMBIO SE DEGRADA A LA BASE, COMO EN PRODUCCIÓN (auditoría, 11/09/2026) ═══
+    //
+    // La simulación abortaba con «Cobranzas fila 62 está en USD y no tengo tipo de cambio»: el rango
+    // `TIPO_CAMBIO_USD` sale de `IFERROR(GOOGLEFINANCE(...);"")` y devuelve vacío cuando la cotización
+    // no responde. El informe no se podía reproducir por un dato que NO es el objeto de la medición.
+    //
+    // La misma degradación que ya usa producción: `public.tc_vigente()`, que devuelve el último
+    // `TIPO_CAMBIO_USD` que `obras-economia-sync.mjs` persistió leyendo ESE MISMO rango. No es otra
+    // fuente: es la misma, con memoria. Y si no hay ninguna de las dos, el libro aborta igual y el
+    // script sale con código 2 diciendo que no pudo medir.
+    if (rango === RANGO_TC && tcDeRespaldo && tipoCambioDeCelda(filas) === null) return [[tcDeRespaldo]]
     return transformarCompras && /^Compras!/.test(rango) ? transformarCompras(filas) : filas
   }
   return d
+}
+
+/** El tipo de cambio persistido que producción usa cuando el Sheet no contesta. `null` si tampoco está. */
+async function tcVigenteDeLaBase() {
+  try {
+    const r = await query('select public.tc_vigente() as tc')
+    const tc = Number(r.rows?.[0]?.tc)
+    return Number.isFinite(tc) && tc > 0 ? tc : null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -215,14 +239,17 @@ async function main() {
   console.warn = (...a) => { capturados.push(a.join(' ')) }
   let A; let B; let info
   try {
-    const fuentesA = await extraerDeLasFuentes(clienteCacheado(google, cache), corte)
+    const tcDeRespaldo = await tcVigenteDeLaBase()
+    const fuentesA = await extraerDeLasFuentes(clienteCacheado(google, cache, { tcDeRespaldo }), corte)
     // Los débitos viajan con el libro A porque de ellos sale la VENTANA DEL EXTRACTO, que es lo que
     // separa lo que una fuente bancaria puede reponer de lo que no.
     A = { ...consolidar(fuentesA.fuentes, { ...fuentesA, log: silencio }), debitos: fuentesA.debitosBanco }
     const compras = cache.get(`${ID}|Compras!A1:AN|UNFORMATTED_VALUE`)
     info = comprasComoQuedaria(compras ?? [])
     const despues = await extraerDeLasFuentes(
-      clienteCacheado(google, cache, (filas) => comprasComoQuedaria(filas).filas), corte)
+      clienteCacheado(google, cache, {
+        tcDeRespaldo, transformarCompras: (filas) => comprasComoQuedaria(filas).filas,
+      }), corte)
     B = consolidar(despues.fuentes, { ...despues, log: silencio })
   } finally {
     console.log = original
