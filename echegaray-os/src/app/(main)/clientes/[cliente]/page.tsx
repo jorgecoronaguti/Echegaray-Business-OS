@@ -38,7 +38,8 @@ import {
   clasificarDocumentoCliente, desvincularDocumentoCliente, vincularCarpetaCliente, vincularDocumentoCliente,
 } from '@/features/clientes/services/actionsDocumentos'
 import { crearObra } from '@/features/obras/services/actions'
-import { recortarPorEstado } from '@/features/clientes/services/obrasAdicionales'
+import { jerarquiaDeObras, recortarPorEstado } from '@/features/clientes/services/obrasAdicionales'
+import { PapelesDeLaObra } from '@/features/clientes/components/PapelesDeLaObra'
 import { BloqueActividad } from '@/features/clientes/components/BloqueActividad'
 import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
@@ -252,7 +253,16 @@ export default async function ClientePage({ params, searchParams }: {
   // «Terminados» y su madre quedaba arriba sin el subnivel que el dueño pidió. Manda el estado de la
   // madre para elegir el grupo; la palabra de la columna Estado sigue siendo la del hijo.
   const cerradas = recortarPorEstado(todas, 'cerrada')
-  const enCurso = recortarPorEstado(todas, 'activa')
+  const enCursoConAdicionales = recortarPorEstado(todas, 'activa')
+  // ═══ LO QUE SE DIBUJA JUNTO NO ES LO QUE SE SUMA ═══
+  //
+  // `enCursoConAdicionales` es el GRUPO de la tabla: el adicional viaja con su madre aunque esté
+  // terminado. `enCurso` es el universo ECONÓMICO —las obras que de verdad están en ejecución— y es
+  // el que suma la cifra de arriba. Medido el 11/09/2026 con las dos mezcladas: «BSA - Adicional»
+  // (cerrada, sin precio) entraba al grupo de su madre y volvía `null` el «Contratado en curso» de
+  // Messina, que pasó de $ 159.758.209 a «sin precio en OBRAS». Mover una fila de grupo no puede
+  // cambiar una cifra de plata.
+  const enCurso = todas.filter((o) => o.estado === 'activa')
   // ═══ LO CONTRATADO EN CURSO LO DICE `cliente_economia`, NO ESTA PÁGINA (H1, 10/09/2026) ═══
   //
   // Era `sumaConHuecos` sobre las obras con FALLBACK a `obra_panel.monto_contratado`. El fallback se
@@ -574,7 +584,7 @@ export default async function ClientePage({ params, searchParams }: {
                 )}
 
                 <ObrasDelCliente
-                  obras={enCurso}
+                  obras={enCursoConAdicionales}
                   veEconomia={veEconomia}
                   economia={economia}
                   papeles={papeles}
@@ -644,7 +654,22 @@ export default async function ClientePage({ params, searchParams }: {
                   veEconomia={veEconomia}
                   nombreDeObra={(obraId) => nombreDeObra.get(obraId) ?? obraId}
                 />
-                <p style={{ fontSize: '11px', letterSpacing: '.06em', textTransform: 'uppercase', color: V.tenue, padding: '6px 0 4px' }}>
+                {/* LOS PAPELES QUE CONFORMARON CADA OBRA (dueño, 11/09/2026). Van ARRIBA del índice
+                    de Drive del cliente porque contestan la pregunta que trajo el pedido —«no
+                    encuentro las cotizaciones… de todas las obras»—: el índice de abajo es la
+                    carpeta del CLIENTE, plana, y es lo que ya había. El orden es el del árbol: el
+                    adicional debajo de su obra mayor, con la MISMA función que la lista de Trabajos. */}
+                <PapelesDeLaObra
+                  filas={jerarquiaDeObras(todas).map((f) => ({
+                    obra_id: f.obra.obra_id,
+                    nombre: f.obra.nombre,
+                    nivel: f.nivel,
+                    esAdicional: f.esAdicional,
+                    huerfano: f.huerfano,
+                    papeles: ficha.papelesObra.get(f.obra.obra_id) ?? null,
+                  }))}
+                />
+                <p style={{ fontSize: '11px', letterSpacing: '.06em', textTransform: 'uppercase', color: V.tenue, padding: '18px 0 4px' }}>
                   Documentos de Drive · {lector.leer(documentos, []).length}
                 </p>
               <BloqueDocumentos

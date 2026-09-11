@@ -25,9 +25,16 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getPool } from './db.mjs'
 
-const MIGRACION = readFileSync(join(
-  import.meta.dirname, '..', '..', 'supabase', 'migrations',
-  '20260911T2000_obra_adicional_cuelga_de_su_obra_mayor.sql'), 'utf8')
+const migracion = (n) => readFileSync(join(
+  import.meta.dirname, '..', '..', 'supabase', 'migrations', n), 'utf8')
+const MIGRACION = migracion('20260911T2000_obra_adicional_cuelga_de_su_obra_mayor.sql')
+// ═══ LA CADENA, NO EL ESLABÓN (11/09/2026, después de aplicar) ═══
+//
+// 20260911T2100 redefine `pantalla_cliente` SOBRE la versión de 2000. Aplicar 2000 sola contra una
+// base que ya tiene las dos la haría RETROCEDER, y el payload perdería `papeles_obra` y
+// `carpetas_obra`: el test daría rojo por bajar una versión, no por un defecto. Se aplican las dos,
+// en orden, que es lo que corre de verdad.
+const LOS_PAPELES = migracion('20260911T2100_los_papeles_de_una_obra_tienen_su_carpeta.sql')
 
 /** Las dos relaciones que el documento de evidencia puede probar. */
 const ESPERADAS = [
@@ -54,6 +61,7 @@ test('la migración del adicional deja el modelo usable y no toca ningún númer
       (await q(`select public.pantalla_cliente('messina', 'obras')::text t`))[0].t)
 
     await c.query(MIGRACION)
+    await c.query(LOS_PAPELES)
 
     await t.test('las dos relaciones quedan escritas, y ninguna otra obra se vuelve adicional', async () => {
       const filas = await q(
@@ -117,8 +125,11 @@ test('la migración del adicional deja el modelo usable y no toca ningún númer
       const comoConjunto = (v) => Object.fromEntries(Object.entries(v).map(([k, x]) => [
         k, Array.isArray(x) ? x.map((f) => JSON.stringify(f)).sort() : x,
       ]))
-      assert.deepEqual(comoConjunto(sinPadre(clientesDespues)), comoConjunto(clientesAntes))
-      assert.deepEqual(comoConjunto(sinPadre(fichaDespues)), comoConjunto(fichaAntes))
+      // SE LE SACA A LOS DOS LADOS, y es lo que hace que el control siga midiendo después de que el
+      // dueño aplicó la migración: desde entonces el «antes» ya trae `obra_padre_id` en null, y
+      // limpiar sólo el «después» daría rojo por una clave que los dos tienen.
+      assert.deepEqual(comoConjunto(sinPadre(clientesDespues)), comoConjunto(sinPadre(clientesAntes)))
+      assert.deepEqual(comoConjunto(sinPadre(fichaDespues)), comoConjunto(sinPadre(fichaAntes)))
 
       // Y la clave nueva LLEGA: las tres listas que la dibujan la traen.
       const muro = (l) => l.find((o) => (o.obra_id ?? o.obra_canonica_id) === 'messina-adicional-tercer-muro')

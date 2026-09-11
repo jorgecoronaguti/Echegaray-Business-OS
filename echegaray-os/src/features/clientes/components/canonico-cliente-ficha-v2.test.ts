@@ -493,3 +493,21 @@ test('sin permiso económico la celda del importe dice el literal del zip, y NAD
       `la rama sin permiso dibuja \`${filtrado}\`: se rebajó el filtro, no se cambió la palabra`)
   }
 })
+
+// ═══ MOVER UNA FILA DE GRUPO NO PUEDE CAMBIAR UNA CIFRA DE PLATA (11/09/2026) ═══
+//
+// EL DEFECTO QUE ATRAPA, medido en el navegador: cuando el adicional pasó a viajar al grupo de su
+// obra mayor, «BSA - Adicional» —cerrada y sin precio— entró al grupo «en curso» de Messina y la
+// regla de «o suma completa o nada» volvió `null` el CONTRATADO EN CURSO: la cifra pasó de
+// $ 159.758.209 a «sin precio en OBRAS» sin que ninguna obra hubiera cambiado de precio.
+//
+// La separación es la que arregla eso: `enCursoConAdicionales` es el GRUPO que se dibuja y `enCurso`
+// el universo ECONÓMICO que se suma. Si alguien vuelve a sumar el grupo, esto se pone rojo.
+test('la cifra del cliente suma las obras EN EJECUCIÓN, no el grupo que se dibuja', () => {
+  const src = codigoPagina()
+  assert.match(src, /const enCurso = todas\.filter\(\(o\) => o\.estado === 'activa'\)/,
+    'el universo económico dejó de ser «las obras activas»')
+  assert.match(src, /obras=\{enCursoConAdicionales\}/,
+    'la tabla dejó de recibir el grupo con los adicionales, o el grupo volvió a ser el que se suma')
+  assert.match(src, /basesEnCurso = enCurso\.map\(\(o\) => baseContractualDe\(economia\?\.get\(o\.obra_id\)\)\)/)
+})
