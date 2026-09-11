@@ -404,7 +404,9 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     // equivocado, escondiendo si el filtro anda o no.
     //
     // Y se mide DENTRO del bloque de obras (19/08/2026). Con el record en una sola pantalla, la
-    // ACTIVIDAD del mismo cliente publica «Alta de la obra: <nombre>» como enlace: buscar el enlace
+    // ACTIVIDAD del mismo cliente publica su evento de alta o de inicio —«Inicio de obra: <nombre>»
+    // cuando tiene horas cargadas, «Alta en el sistema: <nombre>» cuando no (20260911T2400)— como
+    // enlace a la obra: buscar el enlace
     // en toda la página lo encontraría ahí y daría rojo diciendo que la obra sigue en la lista
     // cuando no está. El bloque es el que tiene que contestar por su propia lista.
     await page.goto(`/clientes/${cli.slug}`)

@@ -127,6 +127,8 @@ export function armarFuentesActividad(fuentes: {
   notas: NotaCliente[]
   notasNoDisponibles: string | null
   certificados: unknown[]
+  /** obra_id → primera fecha con horas. De `hh_obra`; sin ella, la obra sólo tiene su alta. */
+  inicioConHoras?: Map<string, string | null>
 }): FuentesActividad {
   const obras = fuentes.obras as Record<string, unknown>[]
   const nombrePorObra = new Map(obras.map((o) => [o.obra_id as string, o.nombre as string]))
@@ -148,6 +150,7 @@ export function armarFuentesActividad(fuentes: {
       creada_en: (o.creada_en as string) ?? null,
       fecha_inicio_real: (o.fecha_inicio_real as string) ?? null,
       fecha_fin_real: (o.fecha_fin_real as string) ?? null,
+      inicio_con_horas: fuentes.inicioConHoras?.get(o.obra_id as string) ?? null,
     })),
     documentos: (fuentes.documentos as Record<string, unknown>[]).map((d) => ({
       drive_file_id: d.drive_file_id as string,

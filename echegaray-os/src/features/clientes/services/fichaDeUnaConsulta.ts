@@ -139,8 +139,7 @@ function nadaLeido(error: string | null): FichaLeida {
     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
     papeles: null, cobradoPorObra: null, nDocumentos: 0, horasPorObra: null,
-    papeles: null, cobradoPorObra: null, nDocumentos: 0, papelesObra: new Map(),
-    carpetasObra: new Map(),
+    papelesObra: new Map(), carpetasObra: new Map(),
   }
 }
 
@@ -167,6 +166,10 @@ export async function leerFichaDeUnaConsulta(
   if (!j.cliente) return nadaLeido(null)
 
   const notas = armarNotasCliente(j.notas ?? [], j.autores ?? [])
+  // UNA SOLA CONVERSIÓN PARA LAS DOS CARAS: la tabla de Obras dibuja la columna HH y la línea de
+  // tiempo fecha el INICIO de cada obra con la primera hora cargada (ver `timeline.ts`: cinco obras
+  // de Messina comparten el instante de alta y no nacieron el mismo día).
+  const horasPorObra = armarHorasPorObra(j.hh_obra ?? null)
   return {
     // LA MISMA `normalizar` que aplica `getCliente`: sin ella, una vista que todavía no publique un
     // campo deja `undefined` colado en un tipo que promete `string | null`, y la pantalla decide por
@@ -191,6 +194,11 @@ export async function leerFichaDeUnaConsulta(
         // prueba. El aviso de «migración pendiente» ya no puede corresponder por este camino.
         notasNoDisponibles: null,
         certificados: j.certificados ?? [],
+        // EL INICIO PROBADO DE CADA OBRA. Sin esta clave —cara que no la transporta o rol que no la
+        // ve— la línea de tiempo vuelve a fechar la obra con su alta en el sistema, que es lo que
+        // estaba roto: no se inventa nada, se pierde precisión y el evento lo dice.
+        inicioConHoras: new Map([...(horasPorObra ?? new Map())]
+          .map(([obraId, h]) => [obraId, h.inicioReal])),
       }))
       : null,
     presupuestos: armarPresupuestos(j.presupuestos ?? []),
@@ -203,7 +211,7 @@ export async function leerFichaDeUnaConsulta(
     // `?? null` Y NO `?? []`: la RPC devuelve `null` a propósito —cara que no las dibuja, o rol que
     // no las puede ver enteras— y convertirlo en una lista vacía escribiría «esta obra no tiene
     // horas» sobre una obra con 12.525.
-    horasPorObra: armarHorasPorObra(j.hh_obra ?? null),
+    horasPorObra,
     // LA COTIZACIÓN ACEPTADA NO SE DEDUCE DEL NOMBRE: la dice `obra_contrato`, que es el papel que
     // el OS ya leyó para escribir el precio, y viaja en `economia_obras.contrato_fuente_drive_id`.
     // «FINAL», «APROBADA» y «v2» conviven en la misma carpeta y ninguna de las tres palabras prueba

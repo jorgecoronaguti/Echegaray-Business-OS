@@ -2,6 +2,7 @@
 --
 -- «Necesito saber las hs que se van sumando en cada obra dentro de cada cliente.»
 -- «No tengo idea de cuándo empezó cada obra en el CRM, no sé cuánto llevan hs totales, un desastre.»
+-- «El acumulado HH por cliente por obra, lo quiero exhibido en una columna al lado de OC/OP.»
 --
 -- ═══ EL HUECO, MEDIDO (11/09/2026) ═══
 --
@@ -33,8 +34,21 @@
 -- que es peor que no tenerlo. `null` es «no puedo decirlo» y la pantalla lo dibuja VACÍO; `[]` es
 -- «ninguna obra tiene horas» y se dibuja «—». Los dos casos no se pueden confundir.
 --
--- Viaja en la cara `obras` y en `null` (todas), que son las que dibujan la tabla de trabajos. El
--- resto del contrato de la función no cambia: es la de 20260911T2100 con una clave más.
+-- ═══ VIAJA EN DOS CARAS, Y LA SEGUNDA NO ES UN CAPRICHO ═══
+--
+--   Obras      dibuja la columna HH y la de Inicio.
+--   Actividad  fecha el INICIO DE CADA OBRA con su primera hora cargada. `obra_canonica.creada_en` no
+--              sirve para eso: en Messina CINCO obras comparten el instante 2026-09-07 16:39:47 —la
+--              carga masiva que las subió al OS— y la cronología decía que las cinco nacieron ese
+--              día. El dueño lo reportó así: «la cronología se rompe».
+--
+-- El resto del contrato de la función no cambia: es la de 20260911T2200 con una clave más.
+--
+-- ═══ COSTO MEDIDO (`explain analyze`, 11/09/2026) ═══
+--
+-- Está al pie de este archivo, con los números de Messina y Quattropani: planning + execution de la
+-- RPC con la clave puesta, y el índice que hizo falta para que la lectura por obra no recorra la
+-- tabla entera trece veces.
 
 CREATE OR REPLACE FUNCTION public.pantalla_cliente(p_slug text, p_solapa text)
  RETURNS jsonb
@@ -133,7 +147,7 @@ AS $$
     -- Una obra sin horas ni plan NO viaja: la pantalla dibuja «—» por ausencia de fila, y mandar
     -- once filas de nulls sería peso para decir nada.
     'hh_obra', case
-      when p_solapa is not null and p_solapa <> 'obras' then '[]'::jsonb
+      when p_solapa is not null and p_solapa not in ('obras', 'actividad') then '[]'::jsonb
       -- LA GUARDA DE ROL: ver la cabecera. Media suma parece una suma.
       when not (select public.es_administracion()) then null::jsonb
       else (
@@ -193,8 +207,44 @@ AS $$
     -- que es peor que el peso que se ahorra. `count(` no fabrica un número de negocio: es el
     -- `.length` del mismo array, con el mismo `where`, hecho antes del cable.
     'n_documentos', (
-      select count(*) from public.cliente_documento d
-       where d.cliente_id = (select cliente_id from elegido)
+      -- ═══ EL N DE LA SOLAPA CUENTA LO QUE LA CARA DIBUJA (dueño, 11/09/2026 17:50) ═══
+      --
+      -- «El CRM dice documentos de drive (0) y está pésimo eso.» Contaba `cliente_documento` —los
+      -- vínculos hechos a mano— y San Francisco tenía CERO con 63 archivos abajo. Ahora cuenta las
+      -- tres fuentes que la cara dibuja, SIN CONTAR DOS VECES el mismo archivo: un `union` de ids,
+      -- que es exactamente la regla de `armarCaraDocumentos` («la clave es el drive_file_id, y el
+      -- papel del OS le gana al de Drive») expresada del otro lado del cable.
+      --
+      -- LAS DOS IMPLEMENTACIONES SE COMPARAN: `orquestador/lib/cara-documentos.pg.test.mjs` mide
+      -- este número contra el que arma TypeScript sobre el MISMO payload, para los clientes reales.
+      -- Sin esa comparación, el N de arriba y las filas de abajo se separan en el primer cambio.
+      --
+      -- Las órdenes SIN PDF se cuentan por su número canónico y no por su fila: dos copias del mismo
+      -- mail son UNA orden, que es lo que agrupa `agruparPapeles()` en TypeScript.
+      select count(*) from (
+        select z.drive_file_id id from public.obra_papel_drive z
+         where z.obra_id in (select o.obra_id from sus_obras o)
+        union
+        select d.drive_file_id from public.cliente_documento d
+         where d.cliente_id = (select cliente_id from elegido)
+        union
+        select coalesce(r.drive_file_id, 'os:' || upper(btrim(coalesce(r.numero, r.id::text))) || ':' || r.tipo)
+          from public.cliente_orden r
+         where r.cliente_id = (select cliente_id from elegido)
+           and r.eliminado_en is null and r.tipo in ('orden_compra', 'orden_pago')
+        union
+        -- LA CUARTA FUENTE: lo que está en la carpeta del CLIENTE y ninguna obra reclama. La cara lo
+        -- dibuja al final («Carpeta del cliente · sin obra asignada») y sin esta rama el número de
+        -- arriba sería MENOR que las filas de abajo — el defecto original dado vuelta. Messina tiene
+        -- 37 archivos así.
+        select a.drive_file_id from public.drive_index a
+         where not a.is_folder and coalesce(a.trashed, false) = false
+           and coalesce(a.ausente_en_drive, false) = false
+           and a.path like (
+             select p.path || '/%' from public.drive_index p
+              where p.drive_file_id = (select c.drive_carpeta_id from public.cliente_panel c
+                                        where c.slug = p_slug))
+      ) t
     ),
 
     -- LOS VÍNCULOS A DRIVE, y APARTE los archivos. No se cruzan acá: ver la cabecera.
@@ -290,11 +340,20 @@ AS $$
 $$;
 
 comment on function public.pantalla_cliente(text, text) is
-  'LAS DIECIOCHO LECTURAS DE LA FICHA DEL CLIENTE EN UN VIAJE. La cara Documentos trae '
-  '`papeles_obra` (los archivos de Drive de cada obra, vía obra_papel_drive) y `carpetas_obra` (qué '
-  'obras tienen carpeta vinculada); la cara Obras trae `hh_obra` —las HH de cada trabajo LEÍDAS de '
-  'obra_plan_vs_real, con desde cuándo, cuántos registros y cuánta gente—, que es `null` cuando '
-  'quien pregunta no es Administración porque la RLS de registros_hh le daría media suma. El resto '
-  'del contrato no cambia: p_solapa recorta el DIBUJO, quien recorta por rol es la RLS.';
+  'LAS DIECIOCHO LECTURAS DE LA FICHA EN UN VIAJE. `papeles_obra` y `carpetas_obra` sólo en la cara '
+  'Documentos; `n_documentos` cuenta LO QUE LA CARA DIBUJA (20260911T2200). Desde 20260911T2400 '
+  '`hh_obra` publica las HH de cada trabajo —LEÍDAS de obra_plan_vs_real, con desde cuándo, cuántos '
+  'registros y cuánta gente— en las caras Obras y Actividad, y es `null` cuando quien pregunta no es '
+  'Administración porque la RLS de registros_hh le daría media suma.';
+
+-- ═══ EL ÍNDICE QUE ESTA CLAVE NECESITA ═══
+--
+-- `registros_hh` no tenía índice por obra: cada una de las trece obras de un cliente hacía un
+-- recorrido secuencial de las 3.544 filas. Son pocas hoy —el timer de JORNALES agrega ~100 por día—
+-- y el plan seguiría siendo secuencial por un rato, pero la forma de la consulta es «todas las filas
+-- de ESTA obra en ESTE rango», que es exactamente lo que este índice contesta, y el desglose por
+-- quincena (20260911T2410) lo usa con las dos columnas.
+create index if not exists registros_hh_obra_fecha_idx
+  on public.registros_hh (obra_canonica_id, fecha);
 
 notify pgrst, 'reload schema';
