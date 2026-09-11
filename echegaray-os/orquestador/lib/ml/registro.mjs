@@ -130,9 +130,15 @@ export const MODELOS = Object.freeze({
     ejecucion: 'hf-cloud',
     proveedor: 'huggingface',
     licencia: 'Apache-2.0 (openai/whisper-large-v3)',
-    estado: ESTADO.PRODUCCION,
+    // 11/09/2026: baja de PRODUCCION a CANDIDATO. El consumidor declarado no existe: ningun modulo fuera
+    // de lib/ml/ importa voz.mjs y el bot de Mattermost no rutea mensajes de audio. Cero trazas en 90
+    // dias. La regla del dueño (mandato 11/09) es que produccion exige un caller real verificable; una
+    // capacidad medida y sin quien la llame es un candidato, no un producto. Vuelve a produccion el dia
+    // que el bot reciba un audio, lo pase por aca y el parte propuesto quede en la base.
+    estado: ESTADO.CANDIDATO,
     dataset: 'ecsas-whisper-eval · 6 audios de Common Voice en espanol con transcripcion humana',
-    consumidor: 'lib/ml/voz.mjs → interpretarParte() → propuesta de parte de obra',
+    consumidor: null,
+    consumidorPrevisto: 'bot @os: mensaje de voz → transcribe → interpretarParte() → propuesta de parte de obra (NO cableado al 11/09/2026)',
     medido: { fecha: '2026-09-05', wer: 0.037, msPorAudio: 1454, costoUsd: 0, rssMb: 0 },
     porQue: 'WER 3,7% en espanol con 1.454 ms por audio y costo cero dentro del plan PRO. El camino LOCAL esta implementado y probado —el modelo carga en 1,3 s y la interpretacion del parte acierta el ejemplo real completo— pero NO puede recibir un archivo: `transformers.js` en Node exige Float32 a 16 kHz y esta VM no tiene ffmpeg, ni numpy, ni ningun decodificador de MP3 u Opus. Un mensaje de voz de Mattermost llega en Opus. El endpoint de HF acepta el archivo tal cual, asi que un bloqueo de infraestructura se convirtio en una llamada de red.',
     reingreso: 'para volver al local hace falta un decodificador en la VM (ffmpeg o uno wasm). El banco `voz-benchmark.mjs` lo mide sin cambiar una linea el dia que exista.',
@@ -166,7 +172,12 @@ export const MODELOS = Object.freeze({
     licencia: 'MIT (base BAAI/bge-reranker-base)',
     estado: ESTADO.PRODUCCION,
     dataset: 'ecsas-rag-eval v1 @dbbbf312a04a · 150 preguntas de 678',
-    consumidor: 'lib/ml/recuperar.mjs → drive-busqueda',
+    consumidor: 'lib/ml/recuperar.mjs → drive-busqueda → capacidad drive-buscar del bot @os',
+    // 11/09/2026: el caller existe y esta cableado, pero en 90 dias no dejo UNA traza: nadie hizo una
+    // busqueda semantica por el bot. Se queda en produccion porque la cadena usuario→bot→buscar→rerank
+    // es real y esta medida; lo que falta es uso, y eso se mira en ml-tablero, no se esconde cambiando
+    // el estado. Si al 11/10/2026 sigue en cero, baja a CANDIDATO y la busqueda queda sin reranker.
+    usoReal: { medidoEl: '2026-09-11', trazas90d: 0 },
     medido: {
       fecha: '2026-09-05', pesosMb: 279, rssMb: 714, msPorConsulta: 1439,
       sinReranker: { top1: 0.467, recall5: 0.627, mrr: 0.536 },
