@@ -21,8 +21,10 @@ test('la baja gana aunque el nombre diga otra cosa, y el alta no se confunde con
   assert.equal(categoriaDeArchivo('Gordillo Baja.pdf'), 'baja')
   assert.equal(categoriaDeArchivo('Telegrama Santander.pdf'), 'baja')
   assert.equal(categoriaDeArchivo('Alta - Aballay Alejandro.pdf'), 'alta_temprana')
-  // «SALINAS» y «PALACIOS» contienen letras de ALTA/EPP pero no son la palabra.
-  assert.equal(categoriaDeArchivo('HM - SALINAS.pdf'), 'examen_medico')
+  // «SALINAS» y «PALACIOS» contienen letras de ALTA/EPP pero no son la palabra. Y «HM» es la
+  // libreta del IERIC (hoja móvil del Fondo de Cese), no el examen médico: verificado el 11/09/2026
+  // sobre los archivos reales de Ochoa y Castillo.
+  assert.equal(categoriaDeArchivo('HM - SALINAS.pdf'), 'libreta_fondo_cese')
   assert.equal(categoriaDeArchivo('DNI - Palacios.pdf'), 'dni')
 })
 
