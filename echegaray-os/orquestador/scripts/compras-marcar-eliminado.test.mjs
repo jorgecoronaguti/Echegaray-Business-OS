@@ -24,7 +24,7 @@ test('marca por huella: la fila declarada corrida se encuentra igual, y la repet
   const pedidas = [
     { fila: 4, id: 1, fecha: '2026-01-10', proveedor: 'Sueldos', cliente: 'Administracion', total: 4500000 },
     { fila: 9, id: 2, fecha: '2026-01-10', proveedor: 'DUPEC', cliente: 'BSA', total: 1210 },       // declarada mal: está en f5
-    { fila: 6, id: 3, fecha: '2026-01-10', proveedor: 'ARCA', cliente: 'F931', total: 0 },
+    { fila: 6, id: 3, fecha: '2026-01-10', proveedor: 'ARCA', cliente: 'F931', total: 4859763 }, // ya en cero: se reconoce sin el importe
     { fila: 7, id: 4, fecha: '2026-01-10', proveedor: 'Sueldos', cliente: 'Obras', total: 100 },   // f7 coincide por fila declarada
     { fila: 20, id: 4, fecha: '2026-01-10', proveedor: 'Sueldos', cliente: 'Obras', total: 100 },  // sin fila válida y huella doble
     { fila: 4, id: 1, fecha: '2026-01-10', proveedor: 'Sueldos', cliente: 'Administracion', total: 4500001 }, // importe distinto

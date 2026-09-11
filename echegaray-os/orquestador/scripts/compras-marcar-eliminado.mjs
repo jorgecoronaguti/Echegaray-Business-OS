@@ -55,6 +55,15 @@ export function huella(f = []) {
 }
 const mismaHuella = (a, b) => a.id === (Number(b.id) || null) && a.fecha === iso(b.fecha) && a.proveedor === norm(b.proveedor)
   && a.cliente === norm(b.cliente) && cent(a.total) === cent(b.total)
+// Una fila que YA quedó marcada tiene el importe en cero, así que su huella ya no trae el importe
+// pedido: se la reconoce por el resto de la huella más la marca. Sin esto el bisturí no es
+// idempotente —la segunda corrida ve 28 «problemas» y se niega a terminar las 11 que faltaban—.
+const yaMarcada = (f, b) => {
+  const a = huella(f)
+  return norm(f[COL.estado]).toUpperCase() === MARCA && cent(a.total) === 0 && a.id === (Number(b.id) || null)
+    && a.fecha === iso(b.fecha) && a.proveedor === norm(b.proveedor) && a.cliente === norm(b.cliente)
+}
+const coincide = (f, b) => mismaHuella(huella(f), b) || yaMarcada(f, b)
 
 /**
  * NÚCLEO PURO: qué celdas escribir por cada fila pedida.
@@ -70,8 +79,8 @@ export function planDeEliminacion(valores = [], formulas = [], fila0 = FILA0, pe
   for (const p of pedidas) {
     // Primero la fila declarada; si su huella no coincide, se busca la huella en toda la pestaña.
     let idx = p.fila - fila0
-    if (!(idx >= 0 && idx < valores.length && mismaHuella(huella(valores[idx]), p))) {
-      const hits = valores.map((f, i) => (mismaHuella(huella(f), p) ? i : -1)).filter((i) => i >= 0)
+    if (!(idx >= 0 && idx < valores.length && coincide(valores[idx], p))) {
+      const hits = valores.map((f, i) => (coincide(f, p) ? i : -1)).filter((i) => i >= 0)
       if (hits.length !== 1) { problemas.push({ ...p, cuantas: hits.length, motivo: hits.length ? 'huella repetida' : 'la fila declarada no coincide y la huella no está' }); continue }
       idx = hits[0]
     }
