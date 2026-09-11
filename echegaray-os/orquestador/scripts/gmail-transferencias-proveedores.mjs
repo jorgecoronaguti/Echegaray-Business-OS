@@ -59,14 +59,23 @@ const TOPE_BYTES = 20 * 1024 * 1024
 const CONSULTA_ADJUNTOS = 'has:attachment'
 const CONSULTA_CUERPO = '-has:attachment (transferencia OR comprobante OR "comprobante de pago")'
 
-const token = await accessTokenFor(CUENTA)
-const api = async (url, intento = 0) => {
+// EL TOKEN SE RENUEVA SOLO. Un access token de Google vive una hora y la casilla de Rodrigo tiene
+// más de una hora de lectura: el 11/09/2026 la corrida murió con `Gmail 401` a los 70 minutos, con
+// todo lo descargado y nada escrito. Ante un 401 se pide un token nuevo con el refresh_token y se
+// reintenta UNA vez; si el segundo también es 401, el refresh_token está revocado y ahí sí se corta.
+let token = await accessTokenFor(CUENTA)
+const api = async (url, intento = 0, renovado = false) => {
   const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  if (r.status === 401 && !renovado) {
+    token = await accessTokenFor(CUENTA)
+    if (!token) throw new Error(`Gmail 401 y no pude renovar el token de ${CUENTA}: hay que volver a autorizar la casilla`)
+    return api(url, intento, true)
+  }
   // Gmail contesta 429/403 por ritmo, no por permiso, cuando se le piden cientos de adjuntos
   // seguidos. Reintentar con espera es la diferencia entre «no había comprobantes» y «me cortaron».
   if ((r.status === 429 || r.status === 403 || r.status >= 500) && intento < 4) {
     await new Promise((s) => setTimeout(s, [800, 2000, 5000, 12000][intento]))
-    return api(url, intento + 1)
+    return api(url, intento + 1, renovado)
   }
   if (!r.ok) throw new Error(`Gmail ${r.status} en ${url.slice(0, 90)}: ${(await r.text()).slice(0, 200)}`)
   return r.json()
