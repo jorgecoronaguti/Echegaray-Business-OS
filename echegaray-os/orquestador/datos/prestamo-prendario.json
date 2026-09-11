@@ -1,0 +1,14 @@
+{
+  "_que_es": "EL CUADRO DE MARCHA DEL PRÉSTAMO PRENDARIO FORD — fuente propia del rubro Financiero.",
+  "_por_que_existe": "Hasta el 11/09/2026 la cuota del prendario entraba al Cash Flow SÓLO por filas tipeadas a mano en la pestaña Compras (SUMIFS en impuestos-cuadro.mjs). El dueño ordenó vaciar de Compras todo lo que no sea Civil/Estructura/Mantenimiento: sin este archivo, la cuota desaparece del plan. El REAL sale del extracto (naturaleza «Préstamo prendario»); este archivo es el CRONOGRAMA, que el banco no publica por adelantado.",
+  "_lo_que_NO_tiene_y_por_que": "El importe de la cuota futura NO está acá y no se va a escribir: es variable (UVA/tasa) y los tres débitos medidos de 2026 son distintos entre sí (−1.275.316,65 en enero · −1.281.778,17 el 07/08 · −1.282.810,54 en septiembre). Escribir un número fijo sería fabricar un dato. La proyección usa el ÚLTIMO DÉBITO REAL leído del extracto en cada corrida.",
+  "cuenta": "0179-039101464204",
+  "concepto_en_el_extracto": "Prestamos prendarios - 0179-039101464204",
+  "naturaleza_en_banco_raw": "Préstamo prendario",
+  "dia_de_debito": 7,
+  "_dia_de_debito_fuente": "vencimientos-fiscales.mjs:131-135 y los tres débitos medidos de 2026.",
+  "primera_cuota_del_anio": { "numero": 15, "periodo": "2026-01" },
+  "ultima_cuota": { "numero": 26, "periodo": "2026-12" },
+  "_cuotas_fuente": "Orden del dueño 11/09/2026: cuotas 15 a 26, la última en diciembre de 2026.",
+  "contraparte": "Banco Santander · préstamo prendario"
+}

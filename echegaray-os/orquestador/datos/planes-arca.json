@@ -1,0 +1,14 @@
+{
+  "_que_es": "LOS PLANES DE FACILIDADES DE PAGO DE ARCA — lo que el OS sabe de ellos, y lo que NO sabe.",
+  "_por_que_existe": "Las cuotas de los planes entraban al libro SÓLO por filas tipeadas en Compras (rubro «Deuda previsional (planes de pago)»). Con Compras vaciada, el libro pierde la línea. Este archivo alcanza para APAREAR el débito real de ARCA contra la cuota conocida; NO alcanza para proyectar las cuotas que faltan.",
+  "_lo_que_falta_y_quien_lo_trae": "EL CRONOGRAMA. «Mis Facilidades» de ARCA publica, por plan, cuántas cuotas quedan y el importe de cada una. Hasta que el dueño lo traiga, `cuotas_restantes` es null y el libro NO proyecta ninguna cuota futura: proyectar con un importe repetido sería presentar una estimación como hecho.",
+  "dia_de_vencimiento": 16,
+  "_dia_fuente": "Las cuotas W303094 salen el 16 de cada mes (libro-extractores-cargas.mjs, PLANES_F931). `fechaDeCajaDeCompra` corrige la fecha cuando el 16 cae fin de semana.",
+  "cuota_conocida": 2494876,
+  "_cuota_conocida_fuente": "Filas 698 y 699 de la pestaña Compras al 11/09/2026: cuota pendiente de $2.494.876. Es UN importe observado, no el importe de todas las cuotas.",
+  "planes": [
+    { "nombre": "Plan F931 W303094", "periodo_financiado": "2026-06", "cuotas_restantes": null },
+    { "nombre": "Deuda previsional dic-25", "periodo_financiado": "2025-12", "cuotas_restantes": null },
+    { "nombre": "Deuda previsional ene-26", "periodo_financiado": "2026-01", "cuotas_restantes": null }
+  ]
+}
