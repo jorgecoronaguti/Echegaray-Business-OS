@@ -22,6 +22,7 @@
 // fabricarla.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { CadenaDeJornales } from './liquidacionOverrides.ts'
 import type { Quincena } from './quincena.ts'
 
 export interface EspejoDeLaPlanilla {
@@ -29,6 +30,13 @@ export interface EspejoDeLaPlanilla {
   hay: boolean
   /** Horas que el bloque declara por persona en esta ventana. */
   horasPorPersona: Map<string, number>
+  /**
+   * LA CADENA DE PAGO QUE EL DUEÑO ESCRIBIÓ EN LA PLANILLA, por persona.
+   *
+   * Es lo que reclamó el 11/09/2026 («todo lo referente a adelantos de plata no está»). La consume
+   * `aplicarOverrides`, que aplica la precedencia manual > JORNALES > calculado.
+   */
+  cadenaPorPersona: Map<string, CadenaDeJornales>
   /** Cuándo se leyó el Sheet por última vez, en ISO. `null` cuando no hay espejo. */
   leidoEn: string | null
   /** Las pestañas y los bloques que cubren esta quincena, para que el sello diga de dónde sale. */
@@ -39,7 +47,8 @@ export interface EspejoDeLaPlanilla {
 }
 
 const VACIO: EspejoDeLaPlanilla = {
-  hay: false, horasPorPersona: new Map(), leidoEn: null, bloques: [], sinPersona: [], error: null,
+  hay: false, horasPorPersona: new Map(), cadenaPorPersona: new Map(), leidoEn: null,
+  bloques: [], sinPersona: [], error: null,
 }
 
 /**
@@ -67,7 +76,32 @@ interface FilaDelEspejoEnLaBase {
   persona_id: string | null
   nombre_planilla: string
   horas: number | string | null
+  cobra: number | string | null
+  adelanto: number | string | null
+  ya_transferido: number | string | null
+  por_banco: number | string | null
+  en_efectivo: number | string | null
   leido_en: string
+}
+
+/** `null` de la base se conserva como `null`: una columna sin rótulo no es un cero. */
+const num = (v: number | string | null): number | null => {
+  if (v == null) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * SUMAR DOS FILAS DE LA MISMA PERSONA sin convertir los NULL en ceros.
+ *
+ * Una persona puede estar en dos bloques de la misma quincena (dos obras, o una fila en Obreros y
+ * otra en Oficina) y la planilla suma las dos. Pero si NINGUNA de las dos dice nada, el resultado
+ * tiene que seguir siendo `null` y no 0 — un 0 pisaría lo que la app calculó.
+ */
+const sumar = (a: number | null | undefined, b: number | null): number | null => {
+  if (a == null) return b
+  if (b == null) return a
+  return a + b
 }
 
 /**
@@ -82,15 +116,17 @@ export async function getEspejoDeLaPlanilla(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<EspejoDeLaPlanilla> {
   const { data, error } = await supabase.from('jornales_bloque_persona')
-    .select('pestana, bloque_fila1, persona_id, nombre_planilla, horas, leido_en')
+    .select('pestana, bloque_fila1, persona_id, nombre_planilla, horas, '
+      + 'cobra, adelanto, ya_transferido, por_banco, en_efectivo, leido_en')
     .eq('quincena_desde', q.desde).eq('quincena_hasta', q.hasta)
   if (error) {
     return sinTabla(error) ? VACIO : { ...VACIO, error: error.message }
   }
-  const filas = (data ?? []) as FilaDelEspejoEnLaBase[]
+  const filas = (data ?? []) as unknown as FilaDelEspejoEnLaBase[]
   if (filas.length === 0) return VACIO
 
   const horasPorPersona = new Map<string, number>()
+  const cadenaPorPersona = new Map<string, CadenaDeJornales>()
   const sinPersona: string[] = []
   const bloques = new Map<string, { pestana: string; filaBloque: number; personas: number }>()
   let leidoEn: string | null = null
@@ -104,12 +140,21 @@ export async function getEspejoDeLaPlanilla(
     // UNA PERSONA PUEDE ESTAR EN DOS BLOQUES de la misma quincena (dos obras en «Obreros 26», o una
     // fila en Obreros y otra en Oficina). La planilla suma las dos y acá también: quedarse con una
     // sola publicaría una diferencia que la planilla no tiene.
-    const n = Number(f.horas)
-    horasPorPersona.set(f.persona_id, (horasPorPersona.get(f.persona_id) ?? 0) + (Number.isFinite(n) ? n : 0))
+    const h = num(f.horas)
+    horasPorPersona.set(f.persona_id, (horasPorPersona.get(f.persona_id) ?? 0) + (h ?? 0))
+    const previa = cadenaPorPersona.get(f.persona_id) ?? {}
+    cadenaPorPersona.set(f.persona_id, {
+      cobra: sumar(previa.cobra, num(f.cobra)),
+      adelanto: sumar(previa.adelanto, num(f.adelanto)),
+      yaTransferido: sumar(previa.yaTransferido, num(f.ya_transferido)),
+      porBanco: sumar(previa.porBanco, num(f.por_banco)),
+      enEfectivo: sumar(previa.enEfectivo, num(f.en_efectivo)),
+    })
   }
   return {
     hay: true,
     horasPorPersona,
+    cadenaPorPersona,
     leidoEn,
     bloques: [...bloques.values()],
     sinPersona: [...new Set(sinPersona)],

@@ -93,15 +93,33 @@ test('UNA SOLA DEFINICIÓN DE LAS CELDAS: Pagos y el cuadro clásico importan la
   assert.match(PAGOS, /from '\.\.\/CeldasDeLiquidacion'/)
   assert.match(fuente('../CuadroLiquidacion.tsx'), /from '\.\/CeldasDeLiquidacion'/)
   assert.match(CELDAS, /^'use client'/)
-  // Y la marca de lo escrito a mano vive ahí, una vez.
+  // Y la marca del ORIGEN vive ahí, una vez. Desde el 11/09/2026 no es sólo «manual»: una celda puede
+  // venir de la planilla JORNALES, y las dos se dibujan distinto a propósito.
+  assert.equal((CELDAS.match(/export function MarcaDeOrigen\(/g) ?? []).length, 1)
   assert.equal((CELDAS.match(/export function Manual\(/g) ?? []).length, 1)
 })
 
 test('LO PISADO A MANO SE VE TAMBIÉN EN LAS COLUMNAS CALCULADAS (R8)', () => {
   // COBRA, EN EFECTIVO y TOTAL son cuentas, pero el dueño las puede pisar. Sin la marca, un importe
   // escrito por él se lee igual que un derivado y después nadie lo puede explicar frente al recibo.
+  //
+  // DESDE EL 11/09/2026 LA MARCA ES `origen`, NO `manual`: una celda puede venir de la planilla
+  // JORNALES, y pintarla con el ámbar de «manual» mandaría a corregirla al lugar equivocado. La
+  // afirmación que el test protege es la MISMA —ninguna de estas cuatro columnas se dibuja muda— y
+  // ahora cubre tres estados en vez de dos.
   for (const campo of ['cobra', 'enEfectivo', 'total', 'horas']) {
-    assert.match(PAGOS, new RegExp(`manual=\\{l\\.manual\\.${campo}\\}`),
-      `${campo} tiene que publicar su marca «manual»`)
+    assert.match(PAGOS, new RegExp(`origen=\\{l\\.origen\\.${campo}\\}`),
+      `${campo} tiene que publicar de dónde salió`)
   }
+  // Y la celda escribible también: es la que el dueño teclea encima de lo que dice la planilla.
+  assert.match(PAGOS, /origen=\{linea\.origen\[campo\]\}/)
+})
+
+test('LA DISCREPANCIA CONTRA EL EXTRACTO NO SE ESCONDE', () => {
+  // Gana JORNALES —es la decisión de quien paga— pero si el extracto vio un giro que la planilla no
+  // tiene, alguien tiene que enterarse ANTES de armar el sobre. La mutación que pone esto rojo es
+  // borrar el `title` y quedarse sólo con el número que gana.
+  assert.match(PAGOS, /function tituloDeOrigen/)
+  assert.match(PAGOS, /linea\.discrepancia\[campo\]/)
+  assert.match(PAGOS, /Manda la planilla/)
 })

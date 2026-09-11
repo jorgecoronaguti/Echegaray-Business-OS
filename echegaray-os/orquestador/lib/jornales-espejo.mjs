@@ -36,7 +36,7 @@
 // SÓLO LEE. Este módulo no escribe nada en ningún lado.
 
 import {
-  detectarBloques, trabajadoresDeBloque, leerCeldaDiaria, parseHoras, filaSheet,
+  detectarBloques, trabajadoresDeBloque, leerCeldaDiaria, filaSheet,
 } from './jornales-estructura.mjs'
 import { emparejarPersona, indicePersonas, FALTA } from './jornales-a-registros-hh.mjs'
 
