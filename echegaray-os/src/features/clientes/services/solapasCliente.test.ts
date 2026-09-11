@@ -10,16 +10,19 @@ const CUENTAS = { obras: 3, presupuestos: 2, documentos: 18 }
 // EL RÓTULO DE LA PRIMERA CARA CAMBIÓ A «TRABAJOS» (10/09/2026) y su CLAVE no: los enlaces con
 // `?vista=obras` que ya circulan tienen que seguir abriendo la misma cara.
 
-test('las ocho caras, con los rótulos del mockup y «Cobranzas» primera de las económicas', () => {
+// «ÓRDENES» ES LA SEGUNDA CARA (dueño, 11/09/2026): las OC y las OP del cliente, en su sección,
+// después de sacarlas de las columnas de la cartera.
+
+test('las nueve caras, con los rótulos del mockup y «Órdenes» al lado de «Trabajos»', () => {
   const s = solapasDeCliente({ veEconomia: true, ...CUENTAS })
   assert.deepEqual(s.map((x) => x.label), [
-    'Trabajos', 'Cobranzas', 'Presupuestos', 'Documentos', 'Actividad',
+    'Trabajos', 'Órdenes', 'Cobranzas', 'Presupuestos', 'Documentos', 'Actividad',
     'Cuenta corriente', 'Esquema de pago', 'Acceso al portal',
   ])
   // Sólo cuentan las tres que el canónico 26 numera. Un «0» al lado de «Cuenta corriente» se
   // leería como saldo cero, que es una afirmación económica; y la actividad se recorta, así que
   // contarla diría que el cliente tuvo tres movimientos cuando tuvo cuarenta.
-  assert.deepEqual(s.map((x) => x.cuenta), [3, null, 2, 18, null, null, null, null])
+  assert.deepEqual(s.map((x) => x.cuenta), [3, null, null, 2, 18, null, null, null, null])
 })
 
 test('sin permiso económico no se ofrecen las cuatro caras económicas', () => {

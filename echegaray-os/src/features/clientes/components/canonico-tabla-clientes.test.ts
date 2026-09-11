@@ -427,3 +427,20 @@ test('el cobro sin repartir se dibuja en la fila del CLIENTE y en ninguna otra',
   )
   assert.doesNotMatch(deLaObra, /sinObra=/)
 })
+
+// ═══ UNA SOLA BARRA POR TRABAJO, Y CON SU BASE ESCRITA (dueño, 11/09/2026) ═══
+//
+// «Me está mostrando dos barras de progreso sin respetar lo que marca el diseño»: la fila del
+// cliente dibujaba barra cuando ninguna obra quedaba sin precio (Quattropani) y no cuando alguna sí
+// (Messina). Y «$ 107,9 M» cobrado contra «$ 95,3 M» contratado con un 94 % al lado se lee como una
+// lectura errada, porque la base (× 1,21) no se veía.
+
+test('la barra es sólo de la fila del trabajo, y el porcentaje dice contra qué mide', () => {
+  const src = codigo()
+  assert.match(src, /const p = ambito === 'obra' && medible && !sinDato \? progresoDeCobroBruto/)
+  assert.match(src, /millones\(contratado \* IVA_GENERAL\)/, 'la base del porcentaje se escribe en millones')
+  assert.match(src, /\$\{p\.pct\} % de \$\{base\}/)
+  assert.doesNotMatch(src, /\{p\.pct\} %\{p\.excede \? ' \+' : ''\}/, 'el «+» mudo se fue: cuando excede se dice la base superada')
+  // La OP del trabajo va apilada: la cifra y su rótulo en dos líneas enteras, nunca partidas.
+  assert.match(src, /testid="total-op-obra" veEconomia=\{veEconomia\} apilado/)
+})

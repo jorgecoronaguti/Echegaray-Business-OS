@@ -62,7 +62,8 @@ import {
 import { SolapaCobranzas } from '@/features/clientes/components/cobranzas/SolapaCobranzas'
 import { cuentaDeTrabajos } from '@/features/clientes/services/cuentaDeTrabajos'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
-import { getOrdenesDe } from '@/features/clientes/services/ordenesCliente'
+import { getOrdenesDe, getOrdenesDelCliente } from '@/features/clientes/services/ordenesCliente'
+import { OrdenesDelCliente } from '@/features/clientes/components/OrdenesDelCliente'
 import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
 import { PapelesPorTipo } from '@/features/clientes/components/PapelesPorTipo'
 import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
@@ -200,7 +201,7 @@ export default async function ClientePage({ params, searchParams }: {
   // encadenadas (`getArchivosDeEntidad` y después `getDocumentosSubidos`) por nada. Con una ola
   // sola, la ficha tarda lo que su lectura más lenta y no la suma de todas.
   const [
-    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos, cobranzas,
+    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos, cobranzas, ordenesDelCliente,
   ] = await Promise.all([
     solapa === 'cuenta' && veEconomia
       ? Promise.all([getCuentaCorriente(supabase, id), getCertificados(supabase, id)])
@@ -230,6 +231,10 @@ export default async function ClientePage({ params, searchParams }: {
       // `null` FUERA DE SU CARA, y no `[]`: un cero al lado de la solapa diría que este cliente no
       // tiene ninguna cobranza, y lo que pasa es que no se leyó.
       : Promise.resolve<FilaCobranza[] | null>(null),
+    // LAS OC Y LAS OP DEL CLIENTE, EN SU SOLAPA (dueño, 11/09/2026). Sólo en su cara.
+    solapa === 'ordenes' && veEconomia
+      ? getOrdenesDelCliente(supabase, id)
+      : Promise.resolve<Awaited<ReturnType<typeof getOrdenesDelCliente>>>(null),
   ])
   const [cuenta, certificados] = cuentaYCertificados
   const esquema = esquemaRes
@@ -454,6 +459,7 @@ export default async function ClientePage({ params, searchParams }: {
           presupuestos: presupuestos.length,
           documentos: lector.leer(documentos, []).length + nPapeles,
           cobranzas: cobranzas?.length ?? null,
+          ordenes: ordenesDelCliente?.length ?? null,
         }).map((s) => ({
           clave: s.clave,
           titulo: s.label,
@@ -600,6 +606,10 @@ export default async function ClientePage({ params, searchParams }: {
                   presupuesto, con su cascada al lado, que es donde se puede auditar.
                 </p>
               </>
+            )}
+
+            {solapa === 'ordenes' && veEconomia && (
+              <OrdenesDelCliente ordenes={ordenesDelCliente} nombreDeObra={nombreDeObra} veEconomia={veEconomia} />
             )}
 
             {solapa === 'documentos' && (

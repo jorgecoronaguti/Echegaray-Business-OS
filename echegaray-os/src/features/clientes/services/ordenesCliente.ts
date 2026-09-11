@@ -151,6 +151,9 @@ export async function ordenesPorClienteYObra(
 
 export interface OrdenDetallada {
   id: string
+  /** El trabajo al que se atribuyó; `null` = ninguno (una OP paga facturas, no obras). Sólo lo
+   *  trae la lectura del cliente entero; las lecturas por obra ya lo saben. */
+  obra_id?: string | null
   tipo: string
   numero: string | null
   fecha: string | null
@@ -201,6 +204,20 @@ export async function getOrdenesDe(
  * NO SE VUELVE A FILTRAR POR ROL: la policy de `cliente_orden` ya recorta (el jefe de obra ve la
  * suya). Filtrar dos veces esconde el día que una de las dos reglas cambie.
  */
+/** TODAS LAS ÓRDENES DEL CLIENTE, CON SU TRABAJO: la solapa «Órdenes» de la ficha las agrupa. */
+export async function getOrdenesDelCliente(
+  supabase: SupabaseClient, clienteId: string,
+): Promise<OrdenDetallada[] | null> {
+  const { data, error } = await supabase
+    .from('cliente_orden')
+    .select('id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, emisor, atribucion, drive_file_id')
+    .eq('cliente_id', clienteId)
+    .is('eliminado_en', null)
+    .order('fecha', { ascending: false, nullsFirst: false })
+  if (error) return null
+  return (data ?? []) as OrdenDetallada[]
+}
+
 export async function getOrdenesDeObra(
   supabase: SupabaseClient, obraId: string,
 ): Promise<OrdenDetallada[] | null> {

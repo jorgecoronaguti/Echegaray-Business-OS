@@ -25,7 +25,7 @@
 // cliente ve en el portal. Las tres se quedan: la cuenta registra cobros de certificados y el
 // esquema publica el cronograma, dos capacidades que esta cara no reemplaza.
 export const SOLAPAS = [
-  'obras', 'cobranzas', 'presupuestos', 'documentos', 'actividad', 'cuenta', 'esquema', 'accesos',
+  'obras', 'ordenes', 'cobranzas', 'presupuestos', 'documentos', 'actividad', 'cuenta', 'esquema', 'accesos',
 ] as const
 export type Solapa = (typeof SOLAPAS)[number]
 
@@ -36,7 +36,7 @@ export type Solapa = (typeof SOLAPAS)[number]
 export const A_SANGRE: readonly Solapa[] = ['cobranzas', 'cuenta', 'esquema', 'accesos']
 
 /** Las que sólo ve quien tiene permiso económico. */
-export const ECONOMICAS: readonly Solapa[] = ['cobranzas', 'presupuestos', 'cuenta', 'esquema', 'accesos']
+export const ECONOMICAS: readonly Solapa[] = ['ordenes', 'cobranzas', 'presupuestos', 'cuenta', 'esquema', 'accesos']
 
 /** Una solapa que no existe abre Obras: un enlace viejo o tipeado a mano no puede dejar la ficha en
  *  blanco. `vista` es el nombre de hoy y `solapa` el de ayer — se acepta el que llegue. Y
@@ -62,6 +62,9 @@ const LABEL: Record<Solapa, string> = {
   // cobro—; la obra como unidad de ejecución, con su plan y su costo, vive en el ERP. La CLAVE de
   // la solapa sigue siendo `obras` a propósito: cambiarla rompería los enlaces ya compartidos.
   obras: 'Trabajos',
+  // LAS OC Y LAS OP DEL CLIENTE, EN SU SECCIÓN (dueño, 11/09/2026): salieron de las columnas de la
+  // cartera y viven acá, agrupadas por trabajo y con su PDF.
+  ordenes: 'Órdenes',
   presupuestos: 'Presupuestos',
   documentos: 'Documentos',
   actividad: 'Actividad',
@@ -70,9 +73,11 @@ const LABEL: Record<Solapa, string> = {
   accesos: 'Acceso al portal',
 }
 
-export function solapasDeCliente({ veEconomia, obras, presupuestos, documentos, cobranzas = null }: {
+export function solapasDeCliente({ veEconomia, obras, presupuestos, documentos, cobranzas = null, ordenes = null }: {
   veEconomia: boolean
   obras: number
+  /** Cuántas OC y OP tiene; `null` fuera de su cara, que no se leyó. */
+  ordenes?: number | null
   presupuestos: number
   documentos: number
   /** Cuántas filas de la pestaña Cobranzas tiene el cliente. `null` = no se pudieron leer, y
@@ -80,7 +85,7 @@ export function solapasDeCliente({ veEconomia, obras, presupuestos, documentos, 
   cobranzas?: number | null
 }): SolapaVisible[] {
   const cuentas: Record<Solapa, number | null> = {
-    obras, cobranzas, presupuestos, documentos, actividad: null, cuenta: null, esquema: null,
+    obras, ordenes, cobranzas, presupuestos, documentos, actividad: null, cuenta: null, esquema: null,
     accesos: null,
   }
   return SOLAPAS
