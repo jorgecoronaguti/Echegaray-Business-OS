@@ -43,7 +43,11 @@ const RAIZ = fileURLToPath(new URL('../../../', import.meta.url))
  */
 const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
   {
-    archivo: 'supabase/migrations/20260911T1030_una_vista_cara_se_recorre_una_vez_por_viaje.sql',
+    // 20260911T2000 es la ÚLTIMA definición de `pantalla_clientes`: agregó `obra_padre_id` a las dos
+    // listas de obras y a la economía para que la cartera pueda dibujar el adicional debajo de su
+    // obra mayor. Apuntar al archivo viejo sería auditar una versión que ya no corre — el mismo
+    // motivo por el que 0010/0030 dejaron de ser el objetivo cuando 0040 las reemplazó.
+    archivo: 'supabase/migrations/20260911T2000_obra_adicional_cuelga_de_su_obra_mayor.sql',
     funcion: 'pantalla_clientes',
     lee: [
       'perfiles',              // quién mira: decide qué columnas se dibujan
@@ -77,7 +81,10 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
     // y un archivo de la cadena que cambia después de aplicarse rompe el ledger, así que se
     // reemplazaron con `create or replace`. Auditar la versión VIEJA sería auditar lo que ya no
     // corre — por eso el barrido apunta a 0040 y no a los archivos originales.
-    archivo: 'supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql',
+    // Y desde 20260911T2000, `pantalla_cliente` también vive ahí: es la que transporta el padre a la
+    // ficha. Las dos RPC conviven en ese archivo igual que convivían en 1030/1200, y `cuerpoDe()`
+    // las separa por función.
+    archivo: 'supabase/migrations/20260911T2000_obra_adicional_cuelga_de_su_obra_mayor.sql',
     funcion: 'pantalla_cliente',
     lee: [
       'cliente_panel',          // la ficha, y el slug → cliente_id
