@@ -15,7 +15,7 @@
 // una persona (fuente `manual`) no la pisa ninguna corrida.
 
 import { getPool } from '../lib/db.mjs'
-import { vincularCarpetas, FUENTES } from '../lib/obras-carpetas-drive.mjs'
+import { vincularCarpetas } from '../lib/obras-carpetas-drive.mjs'
 
 const args = process.argv.slice(2)
 const APLICAR = args.includes('--aplicar')
