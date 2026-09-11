@@ -131,6 +131,19 @@ async function main() {
       + ` ${$(r.yaTransferido).padStart(12)} ${$(r.porBanco).padStart(12)} ${$(r.enEfectivo).padStart(12)}`
       + ` ${String(r.conAdelanto).padStart(6)}`)
   }
+  if (DETALLE) {
+    // FILA POR FILA — es la evidencia que se pega al cierre: qué dice la planilla de cada persona,
+    // antes de que nada lo toque. Sin esto, el ensayo publica totales y hay que creerle.
+    console.log('\n  DETALLE POR PERSONA')
+    console.log('  QUINCENA      PERSONA                        horas        cobra     adelanto   ya transf.       banco     efectivo')
+    for (const f of filas) {
+      console.log(`  ${f.quincena_desde.slice(5)}..${f.quincena_hasta.slice(5)} ${f.nombre_planilla.padEnd(28).slice(0, 28)}`
+        + ` ${n(f.horas).padStart(6)} ${$(f.cobra).padStart(12)} ${$(f.adelanto).padStart(12)}`
+        + ` ${$(f.ya_transferido).padStart(12)} ${$(f.por_banco).padStart(11)} ${$(f.en_efectivo).padStart(12)}`
+        + `${f.persona_id ? '' : '  ← sin persona'}`)
+    }
+  }
+
   console.log(`\n  SIN PERSONA EN EL PADRÓN (viajan igual, no se crea a nadie): ${sinPersona.length}`)
   for (const s of sinPersona.slice(0, DETALLE ? 500 : 15)) {
     console.log(`    ${s.pestana} f${s.fila1} «${s.nombre}» ${s.estado}${s.candidatos.length ? ` · candidatos: ${s.candidatos.join(' / ')}` : ''}`)
