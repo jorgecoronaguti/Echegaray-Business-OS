@@ -135,6 +135,9 @@ export default async function ClientePage({ params, searchParams }: {
   const q = await searchParams
 
   const supabase = await createClient()
+  // QUÉ CARA SE VA A DIBUJAR — se resuelve ANTES de leer, porque desde 20260911T1200 la RPC trae
+  // sólo lo que esa cara pinta. Depende únicamente de la URL, así que adelantarla no espera nada.
+  const solapa = solapaDe(q.vista, q.solapa)
   // ═══ UN VIAJE, NO QUINCE (10/09/2026) ═══
   //
   // Eran TRES olas encadenadas: la ficha y el perfil; después nueve lecturas en paralelo —de las
@@ -147,7 +150,7 @@ export default async function ClientePage({ params, searchParams }: {
   // mismas filas en un viaje, y las dos dependencias de la tercera ola pasan a ser subconsultas.
   //
   // Los cruces en memoria NO se movieron a SQL: ver `fichaDeUnaConsulta.ts`.
-  const ficha = await leerFichaDeUnaConsulta(supabase, slug)
+  const ficha = await leerFichaDeUnaConsulta(supabase, slug, solapa)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas: confundirlas escondió un defecto de permisos
   // detrás de un «página no encontrada» durante horas.
   if (ficha.error) return <EstadoError mensaje={ficha.error} que="la ficha del cliente" />
@@ -183,7 +186,6 @@ export default async function ClientePage({ params, searchParams }: {
   // sola, el que la agregue no tiene que reinventar la distinción.
   const lector = crearLector()
 
-  const solapa = solapaDe(q.vista, q.solapa)
   // EL DÍA DE HOY LO DECIDE EL SERVIDOR, EN EL HUSO DE LA EMPRESA. Si «vencido» lo calculara el
   // navegador, un jefe con el reloj corrido vería una mora distinta sobre el mismo cliente.
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
@@ -464,7 +466,10 @@ export default async function ClientePage({ params, searchParams }: {
           veEconomia,
           obras: todas.length,
           presupuestos: presupuestos.length,
-          documentos: lector.leer(documentos, []).length + nPapeles,
+          // LA CUENTA SALE DE LA RPC, NO DEL `.length`: `documentos` viaja vacío fuera de las caras
+          // Documentos y Actividad (20260911T1200), así que contar el array escribiría un cero
+          // sobre un cliente que tiene 208 papeles.
+          documentos: ficha.nDocumentos + nPapeles,
           cobranzas: cobranzas?.length ?? null,
           ordenes: ordenesDelCliente?.length ?? null,
         }).map((s) => ({

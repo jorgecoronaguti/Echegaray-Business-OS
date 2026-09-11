@@ -39,14 +39,21 @@ export function trazar(): typeof fetch | undefined {
   return async (entrada: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const t0 = Date.now()
     const url = typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url
+    let bytes = -1
     try {
-      return await fetch(entrada, init)
+      const r = await fetch(entrada, init)
+      // CUÁNTO PESA LA RESPUESTA, QUE ES LA MITAD DEL PROBLEMA. Contar viajes no alcanza: una
+      // pantalla puede hacer UN viaje y traer 130 KB para dibujar una dirección. Se cuenta sobre un
+      // `clone()` para no consumir el cuerpo que el llamador todavía no leyó; el clon sólo existe
+      // con la traza encendida, que nunca es producción.
+      try { bytes = (await r.clone().arrayBuffer()).byteLength } catch { bytes = -1 }
+      return r
     } finally {
       const ms = Date.now() - t0
       // Una línea por viaje, con el instante de arranque: el que la lee después la reparte por
       // pantalla usando la ventana de tiempo de cada navegación. `console.log` y no
       // `process.stdout`: el middleware puede correr en el runtime Edge, donde `process` no existe.
-      console.log(`PERFQ\t${t0}\t${ms}\t${init?.method ?? 'GET'}\t${resumirUrl(url)}`)
+      console.log(`PERFQ\t${t0}\t${ms}\t${bytes}\t${init?.method ?? 'GET'}\t${resumirUrl(url)}`)
     }
   }
 }

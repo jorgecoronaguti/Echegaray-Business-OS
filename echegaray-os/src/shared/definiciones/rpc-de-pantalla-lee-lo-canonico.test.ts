@@ -77,7 +77,7 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
     // y un archivo de la cadena que cambia después de aplicarse rompe el ledger, así que se
     // reemplazaron con `create or replace`. Auditar la versión VIEJA sería auditar lo que ya no
     // corre — por eso el barrido apunta a 0040 y no a los archivos originales.
-    archivo: 'supabase/migrations/20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql',
+    archivo: 'supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql',
     funcion: 'pantalla_cliente',
     lee: [
       'cliente_panel',          // la ficha, y el slug → cliente_id

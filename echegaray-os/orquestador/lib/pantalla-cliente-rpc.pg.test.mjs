@@ -21,7 +21,7 @@ import { getPool } from './db.mjs'
 
 const MIGRACION = readFileSync(join(
   import.meta.dirname, '..', '..', 'supabase', 'migrations',
-  '20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql'), 'utf8')
+  '20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql'), 'utf8')
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
@@ -136,6 +136,105 @@ test('pantalla_cliente() devuelve lo mismo que las quince lecturas', { skip: !ha
       assert.deepEqual(vacio.papeles, [])
       assert.equal(vacio.economia_cliente, null)
     })
+
+    // ═══ EL RECORTE POR CARA (20260911T1200) ═══
+    //
+    // Lo que este bloque atrapa: que `p_solapa` deje de ser un RECORTE y se vuelva un cambio de
+    // dato. Un recorte que además alterara lo que sí viaja sería peor que el peso que ahorra —la
+    // cabecera y el costado se dibujan igual en las nueve caras—, y un recorte que no recortara
+    // nada sería una firma nueva sin efecto.
+    await t.test('la cara pedida recorta lo que no dibuja, y NADA más', async () => {
+      const entera = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
+      // Lo que la cabecera y el costado necesitan en TODAS las caras tiene que venir idéntico.
+      const SIEMPRE = ['cliente', 'perfil', 'responsables', 'contactos', 'obras', 'economia_obras',
+        'cobrado_por_obra', 'economia_cliente', 'papeles', 'presupuestos', 'n_documentos']
+      // Lo que sólo dibujan Documentos y Actividad, y lo que sólo dibuja Actividad.
+      const SOLO_DOC = ['documentos', 'drive']
+      const SOLO_ACT = ['notas', 'autores', 'certificados']
+      const RECORTADAS = { obras: [...SOLO_DOC, ...SOLO_ACT], ordenes: [...SOLO_DOC, ...SOLO_ACT],
+        cobranzas: [...SOLO_DOC, ...SOLO_ACT], presupuestos: [...SOLO_DOC, ...SOLO_ACT],
+        cuenta: [...SOLO_DOC, ...SOLO_ACT], esquema: [...SOLO_DOC, ...SOLO_ACT],
+        accesos: [...SOLO_DOC, ...SOLO_ACT], documentos: SOLO_ACT, actividad: [] }
+
+      // LAS NUEVE CARAS, INCLUIDAS LAS DOS QUE RECIBEN TODO. Auditor de cierre (11/09/2026): el
+      // bucle recorría siete, y mutar la migración para vaciar `papeles` SÓLO en la cara Documentos
+      // dejaba el guardián verde — la cabecera habría escrito «OC recibidas c/IVA (0)» sobre un
+      // cliente con 333 papeles. Una cara que no se compara es una cara sin control.
+      for (const [cara, recortadas] of Object.entries(RECORTADAS)) {
+        const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
+        for (const k of SIEMPRE) {
+          assert.deepEqual(j[k], entera[k], `la cara «${cara}» cambió «${k}», que se dibuja en las nueve`)
+        }
+        for (const k of recortadas) {
+          assert.deepEqual(j[k], [], `la cara «${cara}» todavía transporta «${k}»`)
+        }
+        // Lo que NO está recortado en esta cara tiene que llegar igual que en la ficha entera.
+        for (const k of [...SOLO_DOC, ...SOLO_ACT].filter((x) => !recortadas.includes(x))) {
+          assert.deepEqual(canonico(j[k]), canonico(entera[k]), `la cara «${cara}» no recibió «${k}»`)
+        }
+        const esperado = cara === 'actividad' ? entera.actividad_cliente : null
+        assert.deepEqual(j.actividad_cliente, esperado,
+          `la cara «${cara}» no transporta actividad_cliente como corresponde`)
+      }
+    });
+
+    // ═══ LO QUE ESTE CONTROL NO PUEDE PROBAR HOY, DICHO EN VOZ ALTA ═══
+    //
+    // Auditor de cierre (11/09/2026): `cliente_nota` y `certificados` tienen CERO filas en toda la
+    // base, así que los asserts sobre `notas`, `autores` y `certificados` comparan `[]` contra `[]`
+    // y quedan verdes aunque se les saque el recorte. El control existe y es correcto; hoy no
+    // muerde. Esta prueba no arregla eso —no se fabrican filas en producción— pero lo DECLARA: el
+    // día que se cargue la primera nota o el primer certificado, deja de estar en blanco y el
+    // bucle de arriba empieza a cuidarlo de verdad. Un límite callado es un control que se cree.
+    await t.test('declara cuáles de las claves recortadas todavía no tienen datos que mirar', async () => {
+      const entera = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
+      const enBlanco = ['notas', 'autores', 'certificados'].filter((k) => entera[k].length === 0)
+      if (enBlanco.length) {
+        t.diagnostic(`SIN PROBAR (cero filas en la base): ${enBlanco.join(', ')} — el recorte de la `
+          + 'cara Actividad no se puede poner en rojo hasta que exista la primera fila')
+      }
+      // Al menos UNA de las seis claves recortadas tiene que tener datos, o el control entero es
+      // decorativo. `drive` y `documentos` los tienen (208 en arcor) y son los que sostienen la
+      // prueba mientras las otras tres estén vacías.
+      assert.ok(entera.drive.length > 0 && entera.documentos.length > 0,
+        'ninguna clave recortada tiene filas: el recorte no se puede probar con este cliente')
+    });
+
+    // FAIL-CLOSED, NO FAIL-OPEN. Un `p_solapa` que no es ninguna de las nueve recibe el MÍNIMO, no
+    // la ficha entera: si algún día un consumidor manda un valor viejo, el peor caso es una cara
+    // pobre y nunca 199 KB de más. `solapaDe()` ya normaliza antes de llamar, así que hoy no puede
+    // pasar — esto clava el contrato para el día que otro consumidor llame directo.
+    await t.test('una solapa desconocida recibe el mínimo, no la ficha entera', async () => {
+      const raro = (await q(`select public.pantalla_cliente($1, 'no-existe-esta-cara') j`, [slug]))[0].j
+      const obras = (await q(`select public.pantalla_cliente($1, 'obras') j`, [slug]))[0].j
+      assert.deepEqual(raro.drive, [])
+      assert.deepEqual(raro.documentos, [])
+      assert.equal(raro.actividad_cliente, null)
+      assert.equal(Number(raro.n_documentos), Number(obras.n_documentos))
+      assert.deepEqual(canonico(raro.papeles), canonico(obras.papeles))
+    });
+
+    // LA CUENTA NO PUEDE MENTIR CUANDO LAS FILAS NO VIAJAN: es lo único que sostiene el «Documentos
+    // · N» de la barra en las siete caras que ya no reciben la lista.
+    await t.test('n_documentos cuenta lo mismo que la lista que reemplaza', async () => {
+      const entera = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
+      assert.ok(entera.documentos.length > 0, 'este cliente no tiene vínculos: la cuenta no se pudo probar')
+      assert.equal(Number(entera.n_documentos), entera.documentos.length)
+      for (const cara of ['obras', 'documentos']) {
+        const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
+        assert.equal(Number(j.n_documentos), entera.documentos.length,
+          `«${cara}» perdió la cuenta de documentos`)
+      }
+    });
+
+    // LA PUERTA VIEJA SIGUE ABIERTA mientras Vercel despliega: si esta firma desapareciera, la
+    // ficha se caería en la ventana entre aplicar la migración y terminar el deploy.
+    await t.test('la firma de un argumento sigue devolviendo la ficha entera', async () => {
+      const uno = (await q('select public.pantalla_cliente($1) j', [slug]))[0].j
+      const dos = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
+      assert.equal(canonico(uno.documentos).length, canonico(dos.documentos).length)
+      assert.equal(uno.cliente.slug, slug)
+    });
 
     await t.test('un rol sin economía no recibe la economía del cliente', async () => {
       const jefe = (await q(`select id from perfiles where rol='jefe_obra' and es_prueba = false limit 1`))[0]
