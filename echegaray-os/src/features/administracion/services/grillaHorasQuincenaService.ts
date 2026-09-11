@@ -43,6 +43,7 @@ import type { PresenciaDeQuincena, RegistroDeQuincena } from './liquidacionQuinc
 import { modalidadDe, type ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
 import { correrQuincena, type Quincena } from './quincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
+import { leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 
 export interface DatosDePersona {
@@ -163,11 +164,13 @@ export async function getDatosDeLaSolapaHoras(
         hasta: diaAnterior(q.desde),
         columnas: 'persona_id, fecha, horas',
       }),
-      supabase.from('asistencia_dia').select('persona_id, fecha, estado, motivo')
-        .gte('fecha', q.desde).lte('fecha', q.hasta),
+      // POR LA PUERTA COMPARTIDA: `getLiquidacionDeLaQuincena()` pide EXACTAMENTE esta consulta en
+      // el mismo `Promise.all` de `SolapaHoras.tsx`. Eran dos viajes idénticos por render.
+      leerPresenciasDeLaQuincena(supabase, q.desde, q.hasta),
       // El CUIL ya viene con el legajo; esta lectura queda para el día que el portero de la vista
-      // deje afuera a alguien que igual tiene adelantos.
-      supabase.from('persona_legajo').select('id, cuil'),
+      // deje afuera a alguien que igual tiene adelantos. Por la puerta compartida, por lo mismo
+      // que las presencias: Liquidación pide estas dos columnas en el mismo render.
+      leerCuilesDelLegajo(supabase),
       supabase.from('nomina_adelanto').select('cuil, importe')
         .gte('fecha', q.desde).lte('fecha', q.hasta),
       supabase.from('liquidacion_quincena').select('estado').eq('desde', q.desde).eq('hasta', q.hasta),

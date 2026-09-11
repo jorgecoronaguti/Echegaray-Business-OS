@@ -24,6 +24,7 @@ import {
 } from './liquidacionCuadros.ts'
 import { horasDeQuincena, type PresenciaDeQuincena, type RegistroDeQuincena } from './liquidacionQuincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
+import { leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 import {
@@ -92,7 +93,9 @@ export async function getLiquidacionDeLaQuincena(
       supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, puesto'),
       // El CUIL es la llave del recibo y del giro. Vive en `persona_legajo`, que lleva su portero
       // adentro: es el único camino de la web a ese campo (ver `personasService.ts`).
-      supabase.from('persona_legajo').select('id, cuil'),
+      // POR LA PUERTA COMPARTIDA (`lecturasCompartidasDeQuincena.ts`): la solapa Horas pide estas
+      // dos columnas en el MISMO `Promise.all`, y eran dos viajes idénticos por render.
+      leerCuilesDelLegajo(supabase),
       supabase.from('persona_tarifa')
         .select('persona_id, desde, valor_hora, neto_mensual, origen').lte('desde', q.hasta),
       // ═══ EL CAMINO DEL DINERO TAMBIÉN SE PAGINA ═══ (11/09/2026, auditoría de cierre)
@@ -111,8 +114,7 @@ export async function getLiquidacionDeLaQuincena(
         desde: q.desde, hasta: q.hasta,
         columnas: 'persona_id, fecha, horas, tipo_hora, notas',
       }),
-      supabase.from('asistencia_dia')
-        .select('persona_id, fecha, estado, motivo').gte('fecha', q.desde).lte('fecha', q.hasta),
+      leerPresenciasDeLaQuincena(supabase, q.desde, q.hasta),
       supabase.from('nomina_recibo_neto').select('cuil, periodo, neto, fecha_pago'),
       supabase.from('nomina_adelanto').select('cuil, fecha, importe, concepto')
         .gte('fecha', q.desde).lte('fecha', q.hasta),
