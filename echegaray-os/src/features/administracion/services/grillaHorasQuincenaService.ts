@@ -65,7 +65,12 @@ export interface DatosDePersona {
 
 export interface DatosDeLaSolapaHoras {
   personas: PersonaDeGrilla[]
-  registros: (RegistroDeQuincena & { persona_id: string })[]
+  /**
+   * `id` VIAJA DECLARADO, no «de hecho». La lectura ya lo pedía (línea 156) y el tipo no lo decía, así
+   * que la vista «Quincena» —que escribe sobre el registro del día— tenía que adivinar que estaba ahí.
+   * Un `id` que existe en el JSON y no en el tipo es una escritura esperando ir a ciegas.
+   */
+  registros: (RegistroDeQuincena & { persona_id: string; id: string })[]
   presencias: (PresenciaDeQuincena & { persona_id: string })[]
   porPersona: Record<string, DatosDePersona>
   correcciones: Record<string, CorreccionDeDia[]>
@@ -254,6 +259,10 @@ export async function getDatosDeLaSolapaHoras(
     registros: filasHH
       .filter((f) => f.fecha >= q.desde && f.fecha <= q.hasta)
       .map((f) => ({
+        // EL `id` VIAJA: es la fila sobre la que la vista «Quincena» escribe cuando se corrige un
+        // día. La lectura ya lo pedía y el mapeo lo tiraba, así que la grilla tenía el número a la
+        // vista y ninguna forma de decir a qué registro pertenecía.
+        id: f.id,
         persona_id: f.persona_id, fecha: f.fecha, horas: numeroONulo(f.horas) ?? 0,
         tipo_hora: f.tipo_hora ?? 'normal', notas: f.notas,
       })),

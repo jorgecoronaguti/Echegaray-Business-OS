@@ -79,9 +79,9 @@ const RUTA = '/administracion/personas'
 type Busqueda = {
   q?: string; f?: string; nueva?: string; vista?: string; quincena?: string; modo?: string
   obra?: string; dia?: string
-  /** Las seis solapas de Liquidación (`solapas/index.ts`). Default `horas`. */
-  /** El único recorte de Liquidación: qué pendiente se está mirando (`SolapaHoras`). */
-  solapa?: string; pendiente?: string
+  /** Las siete solapas de Liquidación (`solapas/index.ts`). Default `quincena`. */
+  /** Los recortes de Liquidación: qué pendiente se mira (`SolapaHoras`) y qué grupo (`SolapaQuincena`). */
+  solapa?: string; pendiente?: string; grupo?: string
 }
 
 function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): string {
@@ -120,7 +120,7 @@ const hrefLiquidacion = (quincena?: string): string =>
  */
 function hrefSolapa(base: Busqueda, cambios: Record<string, string | undefined>): string {
   const actual: Record<string, string | undefined> = {
-    solapa: base.solapa, quincena: base.quincena, pendiente: base.pendiente,
+    solapa: base.solapa, quincena: base.quincena, pendiente: base.pendiente, grupo: base.grupo,
   }
   const params = new URLSearchParams({ vista: 'liquidacion' })
   for (const [k, v] of Object.entries({ ...actual, ...cambios })) {
@@ -299,7 +299,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 <Contenido
                   quincenaPedida={sp.quincena}
                   hoy={hoy}
-                  parametros={{ pendiente: sp.pendiente }}
+                  parametros={{ pendiente: sp.pendiente, grupo: sp.grupo }}
                   hrefDe={(cambios) => hrefSolapa(sp, cambios)}
                 />
               ) : (
