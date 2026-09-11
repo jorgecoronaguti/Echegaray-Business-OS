@@ -15,7 +15,6 @@
 // Todo lo de acá es PURO y devuelve texto de fórmula en locale es-AR (separador `;`). Nada lee el
 // Sheet, nada escribe: se prueba con un assert de string y el defecto se ve sin abrir el archivo.
 
-import { rango } from './compras-columnas.mjs'
 import { terminoLibro, rangoLibro, LIBRO } from './libro-sumas.mjs'
 import { ALICUOTA as ALICUOTA_25413, NATURALEZA_BANCO, MARCA as MARCA_25413 } from './impuesto-cheque.mjs'
 import { ALERTA } from './glifos.mjs'
@@ -41,11 +40,60 @@ export const ventana = (anio, m) => ({
 // llega un mes nuevo de banco, porque suma un débito más. Es una fórmula cuyo resultado depende de
 // cuánto extracto se haya importado. Eso no es un importe: es un accidente.
 
-/** NÚCLEO PURO: la cuota del prendario del mes m, del cuadro de amortización de Compras. */
-export function formulaCuotaPrendario(C, anio, m) {
+/**
+ * LA CONTRAPARTE CON LA QUE EL LIBRO NOMBRA LA CUOTA DEL PRÉSTAMO.
+ *
+ * Son DOS nombres y los dos hacen falta mientras dure la transición: el libro escribe el primero
+ * cuando el pago lo prueba el extracto o lo proyecta `datos/prestamo-prendario.json`, y el segundo
+ * —el proveedor tipeado en Compras— mientras la fila siga viva en la planilla. El que falte un nombre
+ * no da error: devuelve de menos. Por eso la fila de control de abajo resta contra el rubro entero.
+ */
+export const CONTRAPARTES_PRENDARIO = Object.freeze([
+  // Lo que escribe el libro cuando el pago lo prueba el extracto o lo proyecta el archivo de datos.
+  'Banco Santander · préstamo prendario',
+  // Y el proveedor tal cual está tipeado en las 12 filas del rubro «Financiero» de Compras, medido el
+  // 11/09/2026. Sin este nombre la celda mostraba $4.913.937 de cuota anual contra $13.885.882 reales:
+  // la simulación lo midió antes de que el dueño lo viera.
+  'Banco',
+])
+
+// ═══ «Banco Santander» A SECAS NO ESTÁ EN LA LISTA, Y ES A PROPÓSITO ═══
+//
+// Es la contraparte que `deBancoCargos` le pone al impuesto al cheque, a las comisiones y a los
+// intereses del descubierto — todos rubro «Financiero». Incluirla haría que la fila «cuota del
+// préstamo» sumara los cargos del banco, que es exactamente lo que el filtro por contraparte vino a
+// separar. Son dos plata distintas en el mismo rubro.
+
+/**
+ * NÚCLEO PURO: la cuota del prendario del mes m.
+ *
+ * ═══ LA FUENTE CAMBIÓ DE COMPRAS AL LIBRO (11/09/2026, orden del dueño) ═══
+ *
+ * Hasta hoy esto era un `SUMIFS` sobre la pestaña Compras, por «Fecha prevista de pago». El dueño
+ * ordenó vaciar de Compras todo lo que no sea Civil/Estructura/Mantenimiento: el día que se marquen
+ * esas filas, esta celda —que es la que publica la cuota del préstamo— daba CERO sin un solo error.
+ *
+ * Ahora lee `_MOVIMIENTOS`, donde la cuota vive una sola vez: el REAL sale del débito del extracto
+ * (naturaleza «Préstamo prendario») y el futuro de `datos/prestamo-prendario.json` con el importe del
+ * último débito real. Mientras la fila siga en Compras, el libro la toma de ahí y NO del banco (el
+ * dedupe transicional de `libro-extractores-banco-obligaciones.mjs`), así que esta celda da el mismo
+ * número antes y después del vaciado — que es lo que la simulación mide.
+ *
+ * SIGUE SIENDO CIERTO LO QUE DECÍA EL COMENTARIO VIEJO: la cuota no puede salir de un `SUMIF` sobre el
+ * extracto entero, porque esa suma crece cada vez que se importa un mes más de banco. Lo que se suma
+ * acá es la ventana del MES, con el rubro y la contraparte, no el extracto completo.
+ */
+export function formulaCuotaPrendario(anio, m) {
   const v = ventana(anio, m)
-  return `=SUMIFS(${rango(C.total)};${rango(C.rubro)};"${RUBRO_PRENDARIO}";`
-    + `${rango(C.fechaPrev)};">="&${v.desde};${rango(C.fechaPrev)};"<="&${v.hasta})`
+  return `=${terminoLibro({
+    rubros: [RUBRO_PRENDARIO],
+    contrapartes: CONTRAPARTES_PRENDARIO,
+    desde: v.desde,
+    // `hasta` es EXCLUYENTE en `terminoLibro` y `ventana` devuelve el ÚLTIMO día del mes: se suma 1
+    // para no perder la cuota que caiga el 30 o el 31. Con `<=` del SUMIFS viejo esto no existía.
+    hasta: `${v.hasta}+1`,
+    medida: 'magnitud',
+  })}`
 }
 
 /**
@@ -75,8 +123,18 @@ export const CORTE_VIVO = 'TODAY()'
  * "Pendiente" quiere decir pendiente. La versión anterior sumaba el rubro entero —las doce cuotas,
  * las pagadas incluidas— y el hero lo publicaba como deuda. Un saldo que sólo crece no es un saldo.
  */
-export function formulaPrendarioPendiente(C) {
-  return `=SUMIFS(${rango(C.total)};${rango(C.rubro)};"${RUBRO_PRENDARIO}";${rango(C.fechaPrev)};">"&${CORTE_VIVO})`
+export function formulaPrendarioPendiente() {
+  // MISMA MUDANZA QUE LA CUOTA (11/09/2026): la fuente es el libro. Y «pendiente» dejó de medirse sólo
+  // por fecha: se pide ADEMÁS que el movimiento no sea REAL. Las dos condiciones dicen cosas distintas
+  // —una cuota con fecha futura siempre está por vencer, pero una con fecha pasada y sin débito sigue
+  // debiéndose— y el libro es el único lugar donde las dos se pueden preguntar juntas.
+  return `=${terminoLibro({
+    rubros: [RUBRO_PRENDARIO],
+    contrapartes: CONTRAPARTES_PRENDARIO,
+    estados: ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'],
+    desde: CORTE_VIVO,
+    medida: 'magnitud',
+  })}`
 }
 
 // ═══ `formulaPlanesPendiente` SE RETIRÓ (09/09/2026) ═══

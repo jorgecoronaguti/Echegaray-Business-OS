@@ -160,6 +160,8 @@ test('ningún archivo del generador de cargas pasa de 500 líneas', () => {
   const archivos = [
     '../scripts/cargas-sociales-pestana.mjs', './cargas-grilla.mjs', './cargas-bloques.mjs',
     './cargas-piel.mjs', './cargas-planes.mjs', './cargas-cadena.mjs', './libro-extractores-cargas.mjs',
+    // Salió de cargas-bloques el 11/09 por este mismo techo, y le toca igual.
+    './cargas-bloque-pagado.mjs',
     // Entró el 10/09 con el apareo contra el banco: es parte de la cadena y le toca el mismo techo.
     './cargas-pagos-banco.mjs',
   ]
@@ -188,4 +190,61 @@ test('el total declarado de un mes SIN DDJJ dice la ausencia, no suma cero', () 
   assert.equal(fila[12], SIN_DDJJ, 'diciembre tampoco')
   // Y no es un número disfrazado: nada que pueda entrar en una aritmética.
   assert.equal(Number.isFinite(Number(SIN_DDJJ)), false)
+})
+
+test('EL BLOQUE PAGADO NO PUEDE REFERENCIAR COMPRAS — la mudanza al Libro del 11/09/2026', () => {
+  // El dueño ordenó vaciar de Compras todo lo que no sea Civil/Estructura/Mantenimiento. Mientras estas
+  // celdas leyeran Compras, la sección que contesta «¿cuánto salió efectivamente de la caja?» se iba a
+  // CERO sin dar un solo error el día del vaciado. Si alguien las devuelve a Compras, esto se pone rojo.
+  const { G, pag } = armar()
+  const filasDelBloque = [pag.filaPag.F931, pag.filaPag.plan, pag.filaPag.FCL, pag.filaPag.UOCRA,
+    pag.filaPag.IERIC, pag.filaPag.FODECO]
+  for (const f of filasDelBloque) {
+    // B..M son los doce meses; la N es el total de la fila (`SUM($B:$M`) y no lee ninguna fuente.
+    const celdas = G.filas[f - 1].slice(1, 13).filter((c) => typeof c === 'string' && c.startsWith('='))
+    assert.equal(celdas.length, 12, `la fila ${f} tiene que traer los doce meses con fórmula`)
+    for (const c of celdas) {
+      assert.ok(!/Compras!/.test(c), `fila ${f}: volvió a leer Compras — ${c.slice(0, 90)}`)
+      assert.ok(/_MOVIMIENTOS!/.test(c), `fila ${f}: no lee el Libro — ${c.slice(0, 90)}`)
+      assert.ok(/\$H\$2:\$H="REAL"/.test(c), `fila ${f}: "pagado" tiene que ser estado REAL`)
+    }
+  }
+})
+
+test('las cuatro filas de gremiales se reparten el rubro por CONTRAPARTE, con su control', () => {
+  const { G, pag } = armar()
+  const celda = (f) => String(G.filas[f - 1][1])
+  assert.match(celda(pag.filaPag.FCL), /\$J\$2:\$J="Fondo de Cese"/)
+  assert.match(celda(pag.filaPag.FCL), /\$J\$2:\$J="FCL"/,
+    'el mismo acreedor se llama distinto según quién probó el pago: los dos nombres hacen falta')
+  assert.match(celda(pag.filaPag.UOCRA), /\$J\$2:\$J="UOCRA"/)
+  // El control resta el rubro ENTERO contra la suma de las cuatro: un organismo cuyo nombre el
+  // desglose no conoce aparece acá en vez de desaparecer. Medido el 11/09: $4.697.639 («SINDICATOS»).
+  const ctrl = G.filas.find((f) => String(f[0]).includes('gremiales sin clasificar'))
+  assert.ok(ctrl, 'sin el control, una contraparte desconocida se pierde en silencio')
+  assert.match(String(ctrl[1]), /^=SUMPRODUCT.*-\(/)
+})
+
+test('las «Cuotas sin pagar» miden lo que NO es REAL, no lo que la planilla no marcó', () => {
+  const { G, planes } = armar()
+  const celda = String(G.filas[planes.fSinPagar - 1][1])
+  assert.ok(!/Compras!/.test(celda), `volvió a leer Compras: ${celda.slice(0, 90)}`)
+  assert.match(celda, /\$H\$2:\$H="COMPROMETIDO"/)
+  assert.ok(!/"REAL"/.test(celda), 'una cuota pagada no es una cuota sin pagar')
+})
+
+test('EL SELLO DE FRESCURA Y EL AVISO DE PLAN SIN CRONOGRAMA no corren ninguna fila', () => {
+  // Los dos nacieron de la auditoría del 11/09/2026 y los dos viajan en una fila QUE YA EXISTÍA: una
+  // fila nueva corre todo lo de abajo y la pestaña tiene rangos con nombre atados a esas posiciones
+  // (probado: agregarla puso 13 tests en rojo). Si alguien los mueve a su propia fila, esto lo caza.
+  const { G, pag, planes } = armar()
+  // El rótulo de sección lleva su numeral y su glifo: se busca por «Pagado» dentro del texto.
+  const seccion = G.filas.find((f) => /pagado/i.test(String(f?.[0] ?? '')) && String(f?.[1] ?? '').startsWith('='))
+  assert.match(String(seccion[1]), /_MOVIMIENTOS!\$H\$2:\$H="REAL"/, 'el sello lee el libro, no una fecha pegada')
+  assert.match(String(seccion[1]), /TEXT\(MAX\(/, 'muestra el último día con dato, no la hora de la corrida')
+  const sinPagar = G.filas[planes.fSinPagar - 1]
+  assert.match(String(sinPagar[2]), /sin cronograma de «Mis Facilidades»/)
+  assert.match(String(sinPagar[2]), /^=IF\(/, 'el aviso se apaga solo cuando la celda tenga cuotas')
+  assert.equal(sinPagar.length, G.filas[pag.filaPag.F931 - 1].length,
+    'la fila del aviso tiene el mismo ancho que el resto: un ancho distinto desalinea la grilla')
 })

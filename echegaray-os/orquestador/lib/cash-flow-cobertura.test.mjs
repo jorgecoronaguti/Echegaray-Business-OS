@@ -118,12 +118,33 @@ test('lo que NO debe llegar a diciembre no se reporta como hueco — pedirle má
 })
 
 test('el hueco DECLARADO sigue apareciendo en cada corrida hasta que tenga fuente', () => {
-  // El medio aguinaldo de diciembre: estacional, hoy sólo entra si alguien lo tipea. No se rellena
-  // con un promedio mensual —lo repartiría en doce meses donde sale en uno— pero tampoco se calla.
-  const sac = huecosDeCobertura(libroCompleto(), CTX).find((a) => a.rubro === 'Nómina · SAC')
-  assert.ok(sac, 'un hueco declarado que deja de reportarse es un hueco olvidado')
-  assert.equal(sac.nivel, 'DECLARADO')
-  assert.match(sac.texto, /ESTACIONAL/)
+  // ERA EL SAC hasta el 11/09/2026, y se cerró (ver el test de abajo). El hueco que queda abierto es
+  // el cronograma de los planes de ARCA: el OS conoce UNA cuota y no sabe cuántas faltan. No se
+  // rellena repitiendo ese importe —sería una estimación presentada como hecho— pero tampoco se calla.
+  const plan = huecosDeCobertura(libroCompleto(), CTX).find((a) => a.rubro === 'Deuda previsional (planes de pago)')
+  assert.ok(plan, 'un hueco declarado que deja de reportarse es un hueco olvidado')
+  assert.equal(plan.nivel, 'DECLARADO')
+  assert.match(plan.texto, /PLAN SIN CRONOGRAMA/)
+  assert.match(plan.texto, /Mis Facilidades/, 'un hueco sin decir quién lo cierra no se cierra nunca')
+})
+
+test('EL SAC YA TIENE FUENTE: cuelga de la nómina y no de una fila tipeada en Compras', () => {
+  // El hueco declarado el 13/08 decía «necesita que la planilla de nómina lo devengue», y eso es
+  // exactamente lo que pasó: `libro-extractores-sac.mjs` lo deriva de la serie de nómina. Si alguien
+  // vuelve a poner a Compras como dueño de esta línea, este test se pone rojo.
+  const sac = duenoDe('Nómina · SAC')
+  assert.equal(sac.dueno, 'Jornales por Quincena')
+  assert.notEqual(sac.horizonte, HORIZONTE.sin)
+  assert.ok(!huecosDeCobertura(libroCompleto(), CTX).some((a) => a.rubro === 'Nómina · SAC'))
+})
+
+test('el prendario y el SAC declaran una fuente que el mapa suma — si no, es doble conteo o hueco', () => {
+  // Las dos líneas dejaron de salir de Compras el 11/09/2026 y sus fuentes nuevas son un archivo de
+  // datos del OS y la planilla de nómina. `problemasDeRol` grita cualquier origen sin rol declarado.
+  assert.equal(duenoDe('Financiero').dueno, 'prestamo-prendario.json')
+  assert.equal(problemasDeRol([mov('Financiero', 10, { pestana: 'prestamo-prendario.json' })]).length, 0)
+  assert.equal(problemasDeRol([mov('Nómina · SAC', 12, { pestana: 'Jornales por Quincena' })]).length, 0)
+  assert.equal(problemasDeRol([mov('Nómina · Gremiales', 9, { pestana: '_BANCO_RAW' })]).length, 0)
 })
 
 // ══ 3 · ANTI-DOBLE-CONTEO: los roles, medidos contra el libro real ════════════════════════════════

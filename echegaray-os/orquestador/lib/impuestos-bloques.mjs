@@ -381,13 +381,15 @@ export function bloqueOtros(G, { anio, C }) {
 // 5 · DEUDA FINANCIERA — LO QUE FALTA PAGAR (los defectos A y B, muertos)
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-export function bloqueDeudaFinanciera(G, { anio, C }) {
+// `C` (las columnas de Compras) dejó de ser un parámetro el 11/09/2026: las dos fórmulas de este bloque
+// leen el Libro. El llamador puede seguir pasándolo; que no figure acá es la señal de que nadie lo lee.
+export function bloqueDeudaFinanciera(G, { anio }) {
   G.push([seccion(5, 'Deuda financiera')])
   G.cabecera()
   const d0 = G.n() + 1
   const fCuota = G.mensual('Prendario Ford XLS · Santander — cuota',
-    (m) => formulaCuotaPrendario(C, anio, m),
-    'Compras, rubro "Financiero": el cuadro de amortización del banco, cuota por cuota, por su fecha prevista de pago (el banco debita el día 7). NO sale del extracto: un SUMIF sobre el extracto crece cada vez que se importa un mes más de banco, y así declaraba $2.567.316 de cuota donde la cuota es $1.282.811.')
+    (m) => formulaCuotaPrendario(anio, m),
+    'Libro `_MOVIMIENTOS`, rubro "Financiero" y contraparte del préstamo: el débito real cuando el extracto lo muestra, y la cuota proyectada con el importe del último débito cuando todavía no llegó. Dejó de leer Compras el 11/09/2026 —esas filas se vacían— y sigue siendo por MES: un SUMIF sobre el extracto entero crece cada vez que se importa un mes más de banco, y así declaraba $2.567.316 de cuota donde la cuota es $1.282.811.')
   // ═══ LA FILA MENSUAL «PLANES PREVISIONALES F931» SE RETIRÓ (09/09/2026) ═══
   //
   // El dueño: *«siguen duplicando cosas Cargas Sociales e Impuestos y Financieros»*. Era, mes por
@@ -417,8 +419,8 @@ export function bloqueDeudaFinanciera(G, { anio, C }) {
   // EL «·» DE SUB-ÍTEM SE FUE CON LA PROSA (09/09/2026): no cuelga de la fila de arriba —es un
   // SALDO, no la cuota del mes— y el sangrado lo hacía pasar por un desglose de la serie mensual.
   const fPrendPend = G.lista('Prendario · cuotas por vencer',
-    [formulaPrendarioPendiente(C)],
-    'Compras, rubro "Financiero", SÓLO las cuotas con fecha prevista posterior a HOY (el corte lo evalúa la planilla, no la corrida). Es un saldo, no una serie: por eso va fuera de la grilla mensual.')
+    [formulaPrendarioPendiente()],
+    'Libro `_MOVIMIENTOS`, rubro "Financiero" y contraparte del préstamo: las cuotas que NO están pagadas y vencen desde HOY (el corte lo evalúa la planilla, no la corrida). Una cuota con fecha pasada que el banco nunca debitó sigue debiéndose, y eso la fecha sola no lo puede contestar. Es un saldo, no una serie: por eso va fuera de la grilla mensual.')
   // ═══ Y LA TERCERA DEFINICIÓN DE «LO QUE FALTA PAGAR DE LOS PLANES» TAMBIÉN SE FUE ═══
   //
   // Era el renglón `   · planes F931 — cuotas que todavía no vencieron  $4.989.751`, medido por

@@ -37,6 +37,16 @@ import {
   RUBRO_GREMIALES,
 } from '../lib/libro-extractores.mjs'
 import { pagosGremialesDelBanco, explicarPago } from '../lib/cargas-pagos-banco.mjs'
+// ═══ LAS OBLIGACIONES QUE DEJARON DE TENER FILA EN COMPRAS (11/09/2026) ═══
+//
+// El dueño vacía de Compras todo lo que no sea Civil/Estructura/Mantenimiento. El F931 pagado, los
+// gremiales pagados, las cuotas de planes de ARCA y la cuota del prendario entraban SÓLO por esas
+// filas: el REAL pasa a salir del extracto y el FUTURO de su fuente propia. Ver el módulo.
+import {
+  deBancoObligaciones, dePrendarioFuturo, PESTANA_PRENDARIO,
+} from '../lib/libro-extractores-banco-obligaciones.mjs'
+import { deSac } from '../lib/libro-extractores-sac.mjs'
+import { leerDatos } from '../lib/datos-propios.mjs'
 import { leerBoletasIeric } from '../lib/cargas-boletas-ieric.mjs'
 import { PESTAÑA as RAW_UOCRA } from './uocra-raw-pestana.mjs'
 import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
@@ -81,6 +91,8 @@ import { leerTipoCambio, RANGO_TC } from '../lib/tipo-cambio.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 // EL PLAN DE EGRESOS DE OBRA VIVE EN POSTGRES DESDE EL 07/09/2026 (ver el bloque que lo lee).
 import { query } from '../lib/db.mjs'
+import { pathToFileURL } from 'node:url'
+import { realpathSync } from 'node:fs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = '_MOVIMIENTOS'
@@ -111,7 +123,7 @@ const NOMBRES_NOMINA = [
  * extractores; acá sólo se resuelve DÓNDE está cada cosa —y se rompe si no está—.
  * @returns {Promise<Record<string, Array>>} los movimientos por fuente, sin deduplicar
  */
-async function extraerDeLasFuentes(google, corte) {
+export async function extraerDeLasFuentes(google, corte) {
   // ── LAS FUENTES, LEÍDAS SIN FORMATEAR: una fecha es un número o no es una fecha ─────────────────
   const leer = (r) => google.readSheetValues(ID, r, { render: 'UNFORMATTED_VALUE' }).catch((e) => {
     throw new Error(`no pude leer ${r}: ${e.message}. Sin la fuente no hay libro — no escribo uno a medias.`)
@@ -261,6 +273,23 @@ async function extraerDeLasFuentes(google, corte) {
   const porPeriodo = new Map([...pagosBanco.porPeriodo].map(([p, v]) => [`${p}·${RUBRO_GREMIALES}`, v]))
   for (const [, v] of pagosBanco.porPeriodo) console.log(`  gremiales pagados por el banco · ${explicarPago(v)}`)
   const cubiertosPorBanco = new Set()
+  // ═══ EL F931 PAGADO TAMBIÉN LO PRUEBA EL BANCO, NO SÓLO COMPRAS (11/09/2026) ═══
+  //
+  // Va ACÁ —antes de la cadena— porque su resultado es una ENTRADA de la cadena: `pagosF931` viaja en
+  // el mismo `pagosDelBanco` que ya usan los gremiales, con la clave `${devengado}·${rubro}`. Sin eso,
+  // el mes que el banco pagó y que ya no tiene fila en Compras volvería a salir como COMPROMETIDO
+  // encima de la plata que salió de la cuenta. Comparte el MISMO `usados`: un débito respalda a uno.
+  const delBanco = deBancoObligaciones({
+    debitos: extracto.debitos,
+    usados: extracto.usados,
+    compras,
+    declaradoF931: declaradoCargas,
+    fechasCargas,
+    pagosGremiales: pagosBanco,
+    planes: await leerDatos('planes-arca.json', (m) => console.warn(`  ⚠ ${m}`)),
+  })
+  for (const a of delBanco.avisos) console.warn(`  ⚠ ${a}`)
+  for (const [clave, v] of delBanco.pagosF931) porPeriodo.set(clave, v)
   const cargas = deCargasSociales(
     {
       fechas: fechasCargas, f931: f931Cargas, gremiales: gremialesCargas,
@@ -448,6 +477,13 @@ async function extraerDeLasFuentes(google, corte) {
       + 'la fórmula viva de la columna H no las va a autopromover hasta la corrida siguiente.')
   }
 
+  const prendario = dePrendarioFuturo({
+    debitos: extracto.debitos,
+    plan: await leerDatos('prestamo-prendario.json', (m) => console.warn(`  ⚠ ${m}`)),
+    compras,
+  })
+  for (const a of prendario.avisos) console.log(`  · ${a}`)
+
   const fuentes = {
       Compras: deCompras(compras, corte, { cruce, cargasCubiertas }),
       // La provisión de los servicios recurrentes (Movistar, seguros, honorarios): lo esperado del
@@ -493,6 +529,11 @@ async function extraerDeLasFuentes(google, corte) {
         corte, { extracto }),
       Dirección: deDireccion({ pago: R.DIRECCION_PAGO, pagado: R.DIRECCION_PAGADO, proyectado: R.DIRECCION_PROYECTADO },
         corte, { extracto }),
+      // LAS OBLIGACIONES QUE EL EXTRACTO PRUEBA Y COMPRAS YA NO LLEVA (prendario, gremiales, F931 y la
+      // cuota de plan). No emite nada cuya fila siga viva en Compras: durante la transición el REAL
+      // sale de Compras, y cuando la fila se marca ELIMINADO sale de acá. Nunca de las dos.
+      '_BANCO_RAW · obligaciones': delBanco.movimientos,
+      [PESTANA_PRENDARIO]: prendario.movimientos,
   }
   // ═══ LOS DEPÓSITOS RETENIDOS VAN DESPUÉS DE COBRANZAS Y DE LA CARTERA, Y NO ES CASUAL ═══
   //
@@ -504,6 +545,21 @@ async function extraerDeLasFuentes(google, corte) {
   })
   for (const a of retenidos.avisos) console.warn(`  ⚠ ${a}`)
   fuentes['_BANCO_RAW · retenidos'] = retenidos.movimientos
+  // ═══ EL SAC VA DESPUÉS DE LA NÓMINA, Y EL ORDEN NO ES UN DETALLE ═══
+  //
+  // Su parte REAL son los lotes de haberes que NINGUNA quincena reclamó, y «ninguna quincena» se sabe
+  // mirando `extracto.usados`, que lo llenan `deJornalesQuincenas`, `deOficina` y `deDireccion` al
+  // evaluarse las claves de arriba. Calculado antes, el SAC se llevaría lotes que son quincenas.
+  const sac = deSac({
+    debitos: extracto.debitos,
+    usados: extracto.usados,
+    nomina: [...fuentes.Jornales, ...fuentes.Oficina, ...fuentes.Dirección],
+    compras,
+    corte,
+    anio: anioDelLibro,
+  })
+  for (const a of sac.avisos) console.warn(`  ⚠ ${a}`)
+  fuentes['Nómina · SAC'] = sac.movimientos
 
   return {
     colEstadoCompras,
@@ -535,33 +591,42 @@ async function extraerDeLasFuentes(google, corte) {
  * que sobró del banco sin obligación que lo explique — una plata que cambia de estado sin que nadie
  * diga cuánta es indistinguible de un error.
  */
-function cruceBanco(libro, debitos, corteBanco, usados) {
+function cruceBanco(libro, debitos, corteBanco, usados, log = console.log) {
   const desdeExtracto = debitos.reduce((a, d) => (a === null || d.fecha < a ? d.fecha : a), null)
   const r = cruzarLibroContraBanco(libro, debitos, { corte: corteBanco, desdeExtracto, usados })
-  for (const aviso of r.avisos) console.log(`  ⚠ ${aviso}`)
+  for (const aviso of r.avisos) log(`  ⚠ ${aviso}`)
   let retirado = 0
   r.veredictos.forEach((v, i) => {
     if (v.veredicto !== VEREDICTO_CRUCE.banco) return
     retirado += libro[i].importe
-    console.log(`  ✓ ${libro[i].concepto?.slice(0, 46)} ${pesos(libro[i].importe)}: ${v.motivo} `
+    log(`  ✓ ${libro[i].concepto?.slice(0, 46)} ${pesos(libro[i].importe)}: ${v.motivo} `
       + `— pasa a REAL (_BANCO_RAW f${v.filas.join(', f')})`)
   })
   const gritan = [...r.veredictos.values()].filter((v) => GRITAN_CRUCE.includes(v.veredicto))
-  if (retirado) console.log(`  → el extracto retira ${pesos(retirado)} de deuda que ya estaba pagada`)
-  if (gritan.length) console.log(`  → ${gritan.length} obligación(es) que ninguna fuente prueba (ver deuda-evidencia-pago.mjs)`)
+  if (retirado) log(`  → el extracto retira ${pesos(retirado)} de deuda que ya estaba pagada`)
+  if (gritan.length) log(`  → ${gritan.length} obligación(es) que ninguna fuente prueba (ver deuda-evidencia-pago.mjs)`)
   for (const s of r.sobrantes) {
-    console.log(`  ⚠ el banco pagó ${pesos(s.sobrante)} de ${s.naturaleza} el serial ${s.fecha} que NINGUNA `
+    log(`  ⚠ el banco pagó ${pesos(s.sobrante)} de ${s.naturaleza} el serial ${s.fecha} que NINGUNA `
       + `obligación del libro explica (_BANCO_RAW f${s.fila}) — falta cargar ese concepto`)
   }
   return r
 }
 
-async function main() {
-  const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const corte = hoySerial()
-  const {
-    fuentes: porFuente, excluidos, corteBanco, debitosBanco, usadosBanco, colEstadoCompras, colsVivas, chequesPorCompras,
-  } = await extraerDeLasFuentes(google, corte)
+/**
+ * DE LAS FUENTES AL LIBRO CONSOLIDADO: los tres pasos que corren sobre el libro ENTERO, en su orden.
+ *
+ * ═══ POR QUÉ ES UNA FUNCIÓN Y NO EL CUERPO DE `main()` (11/09/2026) ═══
+ *
+ * `libro-simular-sin-compras.mjs` necesita armar el libro dos veces (tal cual y sin las filas que el
+ * dueño va a vaciar) y compararlos. Si copiara estos tres pasos, la simulación mediría un libro
+ * parecido al real pero no el real: el respaldo de cheques y el cruce contra el extracto son
+ * justamente los que cambian estados, y un orden distinto da otro número. Acá hay UNA definición del
+ * orden, y las dos corridas pasan por ella.
+ *
+ * `log` existe para que la simulación no imprima las trescientas líneas de evidencia del cruce: la
+ * decisión es la misma, lo único que cambia es si se narra.
+ */
+export function consolidar(porFuente, { debitosBanco, corteBanco, usadosBanco, log = () => {} }) {
   let todos = Object.values(porFuente).flat()
   // ═══ EL EXTRACTO CORRIGE LOS CHEQUES QUE LAS PESTAÑAS TODAVÍA DAN POR VIVOS (06/08) ═══
   //
@@ -569,10 +634,10 @@ async function main() {
   // contando como COMPROMETIDOS ($500.000 de Diesel, refs 314/315 del 24/07). La regla, su porqué y
   // sus guardas viven en lib/libro-respaldo-banco.mjs (`chequesCubiertosPorBanco`).
   const respaldo = chequesCubiertosPorBanco(todos, debitosBanco)
-  for (const aviso of respaldo.avisos) console.log(`  ⚠ ${aviso}`)
+  for (const aviso of respaldo.avisos) log(`  ⚠ ${aviso}`)
   respaldo.cubiertos.forEach((d, i) => {
     const m = todos[i]
-    console.log(`  ✓ cheque ${pesos(m.importe)} (${m.concepto?.slice(0, 40)}) ya debitado: `
+    log(`  ✓ cheque ${pesos(m.importe)} (${m.concepto?.slice(0, 40)}) ya debitado: `
       + `pasa a REAL al serial ${d.fecha} (débito _BANCO_RAW f${d.fila})`)
     todos[i] = { ...m, estado: 'REAL', fecha: d.fecha }
   })
@@ -582,9 +647,19 @@ async function main() {
   // impuestos y el financiero decidían "pagado" por lo que dijera su pestaña de origen. Cuando nadie
   // marcó la pestaña, la plata figuraba debiéndose aunque el banco la hubiera pagado once días antes
   // — el F931 de julio ($7.074.772) con el pago de ARCA del 11/08 ya debitado. Ver lib/libro-cruce-banco.mjs.
-  todos = aplicarCruce(todos, cruceBanco(todos, debitosBanco, corteBanco, usadosBanco))
+  todos = aplicarCruce(todos, cruceBanco(todos, debitosBanco, corteBanco, usadosBanco, log))
   const { libro: dedup, colapsos } = deduplicar(todos)
-  const { consolidado, internas, netoInterno } = separarInternas(dedup)
+  return { ...separarInternas(dedup), colapsos }
+}
+
+async function main() {
+  const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  const corte = hoySerial()
+  const {
+    fuentes: porFuente, excluidos, corteBanco, debitosBanco, usadosBanco, colEstadoCompras, colsVivas, chequesPorCompras,
+  } = await extraerDeLasFuentes(google, corte)
+  const { consolidado, internas, netoInterno, colapsos } = consolidar(porFuente,
+    { debitosBanco, corteBanco, usadosBanco, log: console.log })
 
   console.log(`LIBRO CANÓNICO — corte ${new Date().toLocaleDateString('es-AR')} · extracto hasta el serial ${corteBanco}`)
   for (const [fuente, ms] of Object.entries(porFuente)) {
@@ -774,4 +849,13 @@ async function escribirYVerificar(google, consolidado, colEstadoCompras = null, 
 
 const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
 
-main().catch((e) => { console.error(e.message ?? e); process.exit(1) })
+// ═══ `main()` CORRE SÓLO COMO CLI, Y ESA GUARDA NO ES COSMÉTICA (11/09/2026) ═══
+//
+// `extraerDeLasFuentes` se exporta para que `libro-simular-sin-compras.mjs` arme el libro desde las
+// MISMAS lecturas en vez de escribir una segunda copia que se desincroniza. Sin la guarda, importar
+// este archivo ESCRIBIRÍA la pestaña `_MOVIMIENTOS` del Sheet real — ya pasó el 10/09 con un script
+// del pipeline y reescribió `_MOVIMIENTOS` entera. Se compara con `realpathSync` porque el checkout de
+// producción se alcanza por una ruta con enlaces y `import.meta.url` viene siempre resuelta: sin eso,
+// el timer correría sin ejecutar nada y el libro se congelaría en silencio.
+const esCLI = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
+if (esCLI) main().catch((e) => { console.error(e.message ?? e); process.exit(1) })

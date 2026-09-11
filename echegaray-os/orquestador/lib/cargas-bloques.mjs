@@ -25,6 +25,9 @@
 
 import { seccion, total as rotuloTotal } from './patron-pestana.mjs'
 import { rango } from './compras-columnas.mjs'
+// LAS SUMAS SOBRE EL LIBRO: desde el 11/09/2026 lo PAGADO y las cuotas sin pagar salen de
+// `_MOVIMIENTOS` y no de Compras, que el dueño está vaciando. Una sola definición de «qué salió».
+import { formulaLibro } from './libro-sumas.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { celdaF931, celdaCabecera, PESTAÑA as RAW } from '../scripts/f931-sheet.mjs'
 import { celdaUocra, COL as COL_UOCRA, PESTAÑA as RAW_UOCRA } from '../scripts/uocra-raw-pestana.mjs'
@@ -32,10 +35,14 @@ import {
   CONCEPTOS_CADENA, RANGO_DIA_PAGO_F931, RANGO_PROPORCION_PRIMER_ANIO,
   proyeccionDeConcepto, jornalesDelMes,
 } from './cargas-cadena.mjs'
-import { ROTULOS_CARGAS, NOMBRES_CARGAS, RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
+import { ROTULOS_CARGAS, NOMBRES_CARGAS, RUBRO_PLANES, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
 import { MES, cm, REALES, MESES_REALES, SIN_DDJJ } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
+// EL BLOQUE «PAGADO» SE MUDÓ A SU PROPIO ARCHIVO el 11/09/2026 (el techo de 500 líneas, y una fuente
+// distinta: lee el Libro). Se RE-EXPORTA para que sus tres llamadores sigan pidiéndolo acá: el
+// generador no tiene por qué saber en qué archivo vive cada bloque.
+export { bloquePagado } from './cargas-bloque-pagado.mjs'
 // `vacaciones-construccion.mjs` y `jornada-uocra.mjs` ya NO se importan acá: eran de la sección 6,
 // que se retiró. Los dos módulos siguen existiendo con sus tests y hoy no tienen consumidor — la
 // provisión de vacaciones y el Fondo de Cese devengado son DEVENGADO, y esta pestaña es percibida.
@@ -110,111 +117,6 @@ export function bloqueDeclarado(G, { anio, periodos, conceptos, periodosUocra = 
   return { filaDecl, fDeclTot, fEmp, fRem, fGremDecl }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 2 · PAGADO — ¿cuánto salió efectivamente de la caja?
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
-  G.push([seccion(2, 'Pagado')])
-  G.cabecera()
-  // LAS COLUMNAS DE COMPRAS SE RESUELVEN POR SU ENCABEZADO. Éste es el bloque que estaba en #VALUE!
-  // desde que una columna de Compras se movió y la referencia por letra quedó en #REF!.
-  // PAGADO ES PAGADO: LO QUE LA PLANILLA MARCÓ, Y SÓLO HASTA HOY.
-  //
-  // EL DEFECTO QUE ESTO CORRIGE (23/07). Compras tiene cargados los pagos PREVISTOS de los meses que
-  // vienen, con su fecha de caja futura. Sin el tope de hoy, la sección "¿cuánto salió efectivamente
-  // de la caja?" mostraba $9.000.000 en julio, $8.000.000 en agosto y $6.500.000 de septiembre a
-  // diciembre —números redondos, o sea presupuestados— y el total del año daba $103,7M contra
-  // $44,8M declarados. Un cuadro de lo pagado que incluye lo que todavía no se pagó no es un error
-  // de presentación: es un número que se usa para decidir y está mal. Lo previsto se contrasta en la
-  // sección 5, donde corresponde, contra la proyección propia.
-  //
-  // ═══ Y EL TOPE DE HOY NO ALCANZABA: UNA FECHA VENCIDA NO ES UN PAGO (17/08/2026) ═══
-  //
-  // El corte de arriba resuelve el FUTURO. No resuelve la fila de este mes cuya fecha prevista ya
-  // pasó y que nadie marcó — y ésa es justo la que se mira. Medido en el Sheet vivo al 17/08, esta
-  // fila publicaba **$10.494.876 de F931 "salido de la caja" en agosto contra $0 realmente pagados**:
-  //
-  //   · Compras f469 — $8.000.000, ARCA, fecha de caja 10/08, estado «Proyectado». Es el número
-  //     redondo tipeado que `libro-extractores-cargas.mjs` denuncia como previsión en su cabecera.
-  //   · Compras f725 — $2.494.876, cuota del plan W303094, 16/08, estado «Pendiente» y rubro
-  //     «Deuda previsional (planes de pago)», pero con "F931" en Cliente/Asignación.
-  //
-  // El daño no quedaba acá: el hero saca REAL de esta fila y COMPROMETIDO por diferencia, así que
-  // inflaba lo pagado ~$10,5M y desinflaba en lo mismo la deuda que se usa para decidir; y la
-  // sección 3 llegó a declarar $10.494.876 de sobrepago que no existe.
-  //
-  // LA PESTAÑA YA SABÍA CÓMO SE PREGUNTA. Doce filas más arriba el hero de planes mide por HECHO
-  // (`"<>Pagado"` sobre la columna del cargador). Convivían dos definiciones de "pagado" en la misma
-  // pestaña, la de arriba correcta y la de abajo por fecha. Ahora es una sola, y es la del cargador
-  // —la misma que `estaPagada` usa en el libro—, así que la pestaña y el Libro Canónico no pueden
-  // discrepar sobre qué salió.
-  //
-  // EL RUBRO ACOTA ADEMÁS DEL CLIENTE. "F931" en Cliente/Asignación no dice de qué obligación se
-  // trata: la cuota de un plan de pago de un F931 viejo también lo lleva. Sin el rubro, esos pesos
-  // sumaban en la fila del F931 Y otra vez en la fila del plan, dentro del mismo cuadro. Los textos
-  // salen de la taxonomía única (`rubro-caja.mjs` vía `libro-extractores-cargas.mjs`): escritos a
-  // mano acá, el día que la taxonomía cambie este filtro devuelve cero sin dar un solo error.
-  const mes = (m) => `">="&DATE(${anio};${m};1);${rango(C.fecha)};"<="&MIN(EOMONTH(DATE(${anio};${m};1);0);TODAY())`
-  const salio = `${rango(C.estado)};"Pagado"`
-  const pagado = (param, rubro) => (m) => `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};`
-    + `'Parámetros'!$A$${param};${rango(C.rubro)};"${rubro}";${salio};${rango(C.fecha)};${mes(m)});0)`
-  const p0 = G.n() + 1
-  const filaPag = {}
-  filaPag.F931 = G.mensual('F931', pagado(35, RUBRO_CARGAS),
-    `Compras · "F931" en Cliente/Asignación con rubro "${RUBRO_CARGAS}", marcado Pagado, por fecha de caja (col. ${C.fecha}).`)
-  // El plan conserva su criterio propio (cliente + detalle): es la fila que distingue la cuota
-  // financiada del F931 corriente, y su rubro ya la separa del de arriba. Lo que sí gana es el
-  // estado — una cuota con vencimiento pasado y sin marcar no salió de la caja.
-  filaPag.plan = G.mensual('Deuda previsional en cuotas', (m) =>
-    `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$41;${rango(C.detalle)};`
-    + `'Parámetros'!$B$41;${salio};${rango(C.fecha)};${mes(m)});0)`,
-  'Compras · plan de pago marcado Pagado, por fecha de caja.')
-  ;[['FCL', 36], ['UOCRA', 37], ['IERIC', 38], ['FODECO', 39]].forEach(([r, p]) => {
-    filaPag[r] = G.mensual(r, pagado(p, RUBRO_GREMIALES),
-      `Compras · "${r}" en Cliente/Asignación con rubro "${RUBRO_GREMIALES}", marcado Pagado, por fecha de caja.`)
-  })
-  const p1 = G.n()
-  const fPagTot = G.mensual(rotuloTotal('Total pagado'), (m) => `=SUM(${cm(m)}${p0}:${cm(m)}${p1})`, 'Suma de los conceptos de arriba.')
-  // ═══ EL ESLABÓN ART — DESGLOSE, NO UNA SEGUNDA OBLIGACIÓN (06/08) ═══
-  //
-  // La auditoría: la pestaña declara $10,8M de ART en la sección 1 y no tiene fila de pago, así que no
-  // podía contestar si la ART se paga. La respuesta estaba en el dato y hubo que ir a buscarla:
-  //
-  //   · `_F931_RAW` trae el código 312 "L.R.T. — ART" leído del MISMO PDF que los códigos 301/302/
-  //     351/352/028, con el mismo período, la misma dotación y la misma remuneración declarada. No es
-  //     un comprobante aparte: es un renglón de la propia DDJJ.
-  //   · Y el pago lo confirma por otro camino: el F931 que Compras registra en el mes m es, al peso,
-  //     el Total declarado del mes m−1 —feb/mar/abr/may/jun 2026, cuatro meses consecutivos exactos—
-  //     y ese total INCLUYE el 312. Si la ART se pagara aparte, cada pago vendría corto entre $1,3M y
-  //     $2,2M todos los meses. No viene corto.
-  //
-  // Entonces la ART NO suma una segunda vez: sumarla duplicaría $10,8M en el año y —lo grave— la
-  // duplicación entraría a la serie que el Libro Canónico lee. Esta fila va DEBAJO del total y FUERA
-  // del rango que el total suma: es la parte de un número que ya está arriba, no un número nuevo.
-  //
-  // Se prorratea en vez de copiar el declarado porque un pago PARCIAL (los hubo: enero 2026 se pagó a
-  // medias y el resto se financió en un plan) tiene adentro la parte proporcional de ART, no la
-  // entera. Con el pago completo el prorrateo da exactamente el 312 declarado.
-  let fArtPag = 0
-  if (fArtDecl && fDeclTot) {
-    // EL RÓTULO DEJÓ DE EXPLICAR (09/09): decía «ART · ya incluida en el F931, no se paga aparte».
-    // Que no se pague aparte lo dice su POSICIÓN —debajo del total y fuera del rango que ese total
-    // suma—; el renglón sólo tiene que nombrar lo que muestra.
-    // Y EL «·» TAMBIÉN SE FUE (09/09): decía `· ART (dentro del F931)`. El paréntesis volvía a
-    // explicar lo mismo que el rótulo viejo, y el sub-ítem sugería que la fila cuelga de la de
-    // arriba cuando lo que dice es dónde NO está sumada. Eso lo dice su posición: debajo del total y
-    // fuera del rango que ese total suma. Es una fila normal y se llama ART.
-    fArtPag = G.mensual('ART',
-      (m) => `=IFERROR(${cm(m)}${filaPag.F931}*${cm(m - 1)}${fArtDecl}/${cm(m - 1)}${fDeclTot};0)`,
-      'El código 312 de la DDJJ del mes anterior, en la proporción del F931 que efectivamente se pagó.',
-      // Desde febrero: el F931 que sale en enero es la DDJJ de diciembre del año anterior, que esta
-      // grilla no tiene. Inventarle una proporción sería fabricar el dato que falta.
-      { meses: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] })
-  }
-  G.push()
-  return { filaPag, fPagTot, fArtPag }
-}
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // 3 · PROYECCIÓN Y SALIDA DE CAJA
@@ -415,10 +317,22 @@ export function bloquePlanes(G, { ps, C }) {
   // El criterio es de HECHO y no de posición: lo que falta pagar es lo que la planilla no marcó
   // «Pagado», venza cuando venza. Con `> MONTH(TODAY())` el mes en curso se perdía entero — al 06/08
   // dejaba afuera $2.968.643 de cuotas de agosto, una con vencimiento el 16.
+  // LA MISMA MUDANZA QUE EL BLOQUE PAGADO, y con una consecuencia que hay que leer: cuando las filas de
+  // Compras se vacíen, esta celda va a dar $0 — no porque se haya roto, sino porque el OS NO TIENE el
+  // cronograma de los planes («Mis Facilidades» de ARCA) y no proyecta cuotas futuras. La leyenda lo
+  // dice, y `cash-flow-cobertura.mjs` declara el hueco (PLAN SIN CRONOGRAMA) en cada corrida del libro.
+  // ═══ EL PLAN SIN CRONOGRAMA SE DICE EN LA PESTAÑA, NO SÓLO EN EL LOG (auditoría, 11/09/2026) ═══
+  //
+  // Esta fila va a dar $0 el día que se vacíen las cuotas de Compras, y un $0 sin explicación se lee
+  // como «no debo nada»: debe $4.989.751 que el OS no puede proyectar porque no conoce el cronograma.
+  // El aviso viaja en la celda C de ESTA MISMA fila —no en una fila nueva, que correría todas las de
+  // abajo y sus rangos con nombre— y es CONDICIONAL: el día que «Mis Facilidades» entre a
+  // `datos/planes-arca.json` y la celda tenga cuotas, desaparece solo.
   const fSinPagar = G.push([ROTULOS_CARGAS.planesSinPagar,
-    `=SUMIFS(${rango(C.total)};Compras!$${C.rubro}$4:$${C.rubro};"${RUBRO_PLANES}";${rango(C.estado)};"<>Pagado")`,
-    ...Array(11).fill(VACIO), VACIO,
-    `Compras · rubro "${RUBRO_PLANES}", todas las cuotas que la planilla NO marcó "Pagado" — incluidas las vencidas sin pagar y las de otros años, que esta tabla no llega a mostrar.`])
+    formulaLibro({ rubros: [RUBRO_PLANES], estados: ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'], signo: -1, medida: 'magnitud' }),
+    `=IF(${formulaLibro({ rubros: [RUBRO_PLANES], estados: ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'], signo: -1, medida: 'magnitud' }).slice(1)}>0;"";"${ALERTA} sin cronograma de «Mis Facilidades»: las cuotas que faltan no se proyectan")`,
+    ...Array(10).fill(VACIO), VACIO,
+    `Libro \`_MOVIMIENTOS\`, rubro "${RUBRO_PLANES}" que todavía no es REAL — incluidas las vencidas sin pagar y las de otros años, que esta tabla no llega a mostrar. Si da $0 con cuotas vivas, falta el cronograma del plan: hay que traer «Mis Facilidades» de ARCA a orquestador/datos/planes-arca.json.`])
   const fCtrl = G.push([rotuloTotal('Control contra Compras'), `=SUMIF(Compras!$${C.rubro}$4:$${C.rubro};"${RUBRO_PLANES}";${rango(C.total)})`,
     ...Array(11).fill(VACIO), VACIO, 'El total del rubro en Compras, calculado por otro camino.'])
   // EL CONTROL COMPARA LO MISMO CONTRA LO MISMO. La primera versión restaba "cuotas del año" MÁS

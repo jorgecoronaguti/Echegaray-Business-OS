@@ -1,0 +1,29 @@
+{
+  "_que_es": "LOS PLANES DE FACILIDADES DE PAGO DE ARCA — lo que el OS sabe de ellos, y lo que NO sabe.",
+  "_por_que_existe": "Las cuotas de los planes entraban al libro SÓLO por filas tipeadas en Compras (rubro «Deuda previsional (planes de pago)»). Con Compras vaciada, el libro pierde la línea. Este archivo alcanza para APAREAR el débito real de ARCA contra una cuota conocida; NO alcanza para proyectar las cuotas que faltan.",
+  "_lo_que_falta_y_quien_lo_trae": "EL CRONOGRAMA. «Mis Facilidades» de ARCA publica, por plan, cuántas cuotas quedan y el importe de cada una. Hasta que el dueño lo traiga, `cuotas_restantes` es null y el libro NO proyecta ninguna cuota futura: repetir un importe observado hasta diciembre sería presentar una estimación como hecho.",
+  "dia_de_vencimiento": 16,
+  "_dia_fuente": "Las cuotas W303094 salen el 16 de cada mes (libro-extractores-cargas.mjs, PLANES_F931) y los débitos automáticos del extracto caen el 16 (f75/f76 el 16/06, f217/f218 el 16/07) o el primer hábil siguiente (f409/f410 el 18/08). `fechaDeCajaDeCompra` corrige la fecha cuando el 16 cae fin de semana.",
+  "cuotas_observadas": [
+    {
+      "importe": 1034931.85,
+      "donde": "_BANCO_RAW f75 (16/06/2026) y f217 (16/07/2026), «Debito automatico - Afip -30716304643»; la misma cifra en Compras f389, f402, f417 como cuota pagada desde febrero.",
+      "nota": "Cuota fija mensual. NO aparece en agosto: ese mes el débito automático fue $2.494.875,65."
+    },
+    {
+      "importe": 473767.08,
+      "donde": "_BANCO_RAW f76 (16/06), f218 (16/07) y f410 (18/08); en Compras desde marzo (f403, f418).",
+      "nota": "Segunda cuota fija mensual, de un plan distinto."
+    },
+    {
+      "importe": 2494875.65,
+      "donde": "_BANCO_RAW f409 (18/08/2026). En Compras aparece como cuota PENDIENTE de $2.494.876.",
+      "nota": "Apareció en agosto en lugar de la de $1.034.931,85. Puede ser una refinanciación o la suma de dos cuotas: el OS no puede decidirlo sin «Mis Facilidades»."
+    }
+  ],
+  "planes": [
+    { "nombre": "Plan F931 W303094", "periodo_financiado": "2026-06", "cuotas_restantes": null },
+    { "nombre": "Deuda previsional dic-25", "periodo_financiado": "2025-12", "cuotas_restantes": null },
+    { "nombre": "Deuda previsional ene-26", "periodo_financiado": "2026-01", "cuotas_restantes": null }
+  ]
+}

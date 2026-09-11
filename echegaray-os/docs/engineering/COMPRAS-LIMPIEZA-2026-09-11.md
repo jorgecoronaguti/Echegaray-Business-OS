@@ -168,3 +168,180 @@ está tipeado). CAJA y `sync-compras` suman Compras sin mirar X, por eso el cero
 | Impuestos (planes ARCA viejos + Colegio Ing.) | SÍ (`rubro-caja.mjs:156`) | Impuestos y Financieros sólo emite IVA/IIBB/Ley 25.413 (`libro-extractores.mjs:573-605`) | NO CONTEMPLADO |
 | Financiero (prendario) | SÍ (`rubro-caja.mjs:162`) | `deBancoCargos` sólo cargos sin factura (`libro-extractores.mjs:365`); Impuestos y Financieros lo LEE de Compras (`impuestos-pestana.mjs:181`) | NO CONTEMPLADO — eliminar borra $11,5M pasados + $3,85M futuros |
 | Nómina · SAC | SÍ (`rubro-caja.mjs:85`) | ninguna (`cash-flow-lineas.mjs:885` lo lee del libro) | NO CONTEMPLADO — $7,37M pasados + $8,5M dic |
+
+---
+
+## Simulación sin Compras — 11/09/2026, 23:05 · reescrita tras la auditoría de cierre
+
+**Cómo se reproduce** (sólo lectura, `READONLY_SCOPES`; no toca el Sheet):
+
+```bash
+L=orquestador/datos/respaldos/compras-batch2-2026-09-11.json
+node orquestador/scripts/libro-simular-sin-compras.mjs --lista $L
+node orquestador/scripts/libro-simular-sin-compras.mjs --lista $L --desde 2026-06-01
+```
+
+Arma el libro DOS VECES sobre las mismas lecturas —tal cual, y con las filas de la lista marcadas como
+las marca el bisturí: `X=ELIMINADO` **y** neto/IVA/total/pagado en CERO— y publica la diferencia. El
+cero no es cosmético: CAJA y `sync-compras` suman Compras sin mirar la X.
+
+**El conjunto es una LISTA, no un regex.** `compras-batch2-2026-09-11.json` tiene las **78 filas**
+($111.470.439) del encargo, cada una con su huella (id de la A, proveedor, importe), verificada fila por
+fila antes de anularla. El regex de unidad medía 81 y el documento decía 80: tres conjuntos distintos
+para la misma orden.
+
+**Cómo se lee el signo.** Los egresos viven con `signo: -1`: en un rubro de egreso un delta POSITIVO es
+plata que el cuadro PIERDE. El ✓ exige que **cada celda REAL** dentro de la ventana del extracto quede
+≤ $1 — no el neto del rubro, que compensaba un REAL de junio con un PROYECTADO de diciembre.
+
+### Corrida 1 · las 78 filas
+
+```
+SIMULACIÓN SIN COMPRAS — corte 2026-09-11 · sólo lectura
+  conjunto: lista compras-batch2-2026-09-11.json
+  filas anuladas (X=ELIMINADO + neto/IVA/total/pagado en 0): 78 (unidades: Financiero 12 · Impuestos 60 · Estructura 6)
+  libro TAL CUAL: 1301 movimiento(s) · neto $36.387.141
+  libro VACIADO : 1255 movimiento(s) · neto $57.966.535
+  el extracto de _BANCO_RAW empieza el 2026-05-28: lo anterior NO lo puede reponer ninguna fuente bancaria
+
+  LOS RUBROS QUE LA ORDEN PONE EN RIESGO — ✓ = ninguna celda REAL pierde con el extracto
+  RUBRO                                 REAL pierde   PROY pierde   antes 28/05          GANA
+  ✓ Financiero                                   $0        $6.293    $6.386.983        $9.189
+  ✓ Nómina · Cargas sociales                     $0            $0   $25.074.484   $19.268.224
+  ✗ Nómina · Gremiales                   $4.458.876            $0    $6.931.596    $8.875.981
+  ✗ Nómina · SAC                         $5.760.309            $0            $0   $10.460.216
+  ✗ Impuestos                              $240.000            $0      $783.684            $0
+  ✓ Deuda previsional (planes de pag             $0    $4.989.751    $5.561.029            $0
+
+  LO QUE HAY QUE EXPLICAR (rubro crítico que pierde plata con el extracto disponible)
+    2026-06 Nómina · SAC                        REAL         $5.760.309
+    2026-09 Deuda previsional (planes de pago)  FUTURO       $2.494.876
+    2026-10 Deuda previsional (planes de pago)  FUTURO       $2.494.876
+    2026-06 Nómina · Gremiales                  REAL         $1.625.001
+    2026-07 Nómina · Gremiales                  REAL         $1.598.088
+    2026-08 Nómina · Gremiales                  REAL         $1.235.787
+    2026-08 Impuestos                           REAL           $240.000
+    2026-10 Financiero                          FUTURO           $2.098
+    2026-11 Financiero                          FUTURO           $2.098
+    2026-12 Financiero                          FUTURO           $2.098
+
+  QUÉ VAN A MOSTRAR LOS BLOQUES QUE DEJARON DE LEER COMPRAS (año completo)
+  BLOQUE · FILA                                           ACTUAL         VACIADO          DIF
+  Cargas Soc. §2 · F931                              $50.616.496     $25.542.012 -$25.074.484  
+  Cargas Soc. §2 · Deuda previsional en cuotas       $11.547.069      $5.986.041  -$5.561.028  
+  Cargas Soc. §2 · FCL                                $9.184.177      $1.813.121  -$7.371.056  
+  Cargas Soc. §2 · UOCRA                              $1.606.613      $2.256.553     $649.940  
+  Cargas Soc. §2 · IERIC                                      $0         $28.284      $28.284  
+  Cargas Soc. §2 · FODECO                                     $0              $0           $0 ✓
+  Cargas Soc. §2 · CONTROL sin clasificar             $4.697.639              $0  -$4.697.639 ✓
+  Cargas Soc. §4 · Cuotas sin pagar                   $4.989.751              $0  -$4.989.751  
+  Impuestos §5 · Prendario cuota (año)               $15.356.033      $8.971.945  -$6.384.088  
+  Impuestos §5 · Prendario por vencer                 $3.848.432      $3.842.138      -$6.293  
+
+  EFECTO FUERA DEL LIBRO (lo que lee Compras directo, sin mirar la X)
+  CAJA · egresos de Compras últimos 90 días         $188.146.300    $149.801.708 -$38.344.592
+  CAJA · pagado en efectivo (monto pagado)          $137.370.205    $131.153.903  -$6.216.302
+  sync-compras · filas con importe que se espejan            $903            $825         -$78
+
+  LAS PRÓXIMAS 8 SEMANAS (neto de caja)
+  SEMANA DEL             ACTUAL          VACIADO       DIFERENCIA
+  2026-09-07        $42.929.842      $42.929.842               $0
+  2026-09-14        $48.841.394      $51.336.270       $2.494.876
+  2026-09-21        $25.065.369      $25.065.369               $0
+  2026-09-28        $10.980.252      $10.980.252               $0
+  2026-10-05        $16.001.300      $16.003.398           $2.098
+  2026-10-12        -$8.938.021      -$6.443.145       $2.494.876
+  2026-10-19        -$4.639.455      -$4.639.455               $0
+  2026-10-26        $21.843.097      $21.843.097               $0
+
+  ✗ DENTRO de la ventana del extracto el vaciado todavía le saca plata a: Nómina · Gremiales $4.458.876 REAL · Nómina · SAC $5.760.309 REAL · Impuestos $240.000 REAL
+  ⚠ ANTES del 2026-05-28 el vaciado se lleva $44.737.776 que NINGUNA fuente puede reponer: el extracto no llega a esas fechas. Las dos salidas son importar el extracto de enero a mayo (scripts/importar-banco.mjs) o NO vaciar las filas anteriores a junio.
+```
+
+### Corrida 2 · sólo lo que el extracto puede reponer (`--desde 2026-06-01`)
+
+```
+SIMULACIÓN SIN COMPRAS — corte 2026-09-11 · sólo lectura
+  conjunto: lista compras-batch2-2026-09-11.json · sólo fecha de caja ≥ 2026-06-01
+  filas anuladas (X=ELIMINADO + neto/IVA/total/pagado en 0): 37 · 41 fuera del recorte de fecha (unidades: Financiero 7 · Impuestos 24 · Estructura 6)
+  libro TAL CUAL: 1301 movimiento(s) · neto $36.387.141
+  libro VACIADO : 1289 movimiento(s) · neto $36.886.848
+  el extracto de _BANCO_RAW empieza el 2026-05-28: lo anterior NO lo puede reponer ninguna fuente bancaria
+
+  LOS RUBROS QUE LA ORDEN PONE EN RIESGO — ✓ = ninguna celda REAL pierde con el extracto
+  RUBRO                                 REAL pierde   PROY pierde   antes 28/05          GANA
+  ✓ Financiero                                   $0        $6.293            $0        $9.189
+  ✓ Nómina · Cargas sociales                     $0            $0            $0            $0
+  ✗ Nómina · Gremiales                   $4.458.876            $0            $0    $4.486.116
+  ✗ Nómina · SAC                         $5.760.309            $0            $0   $10.460.216
+  ✗ Impuestos                              $240.000            $0            $0            $0
+  ✓ Deuda previsional (planes de pag             $0    $4.989.751            $0            $0
+
+  LO QUE HAY QUE EXPLICAR (rubro crítico que pierde plata con el extracto disponible)
+    2026-06 Nómina · SAC                        REAL         $5.760.309
+    2026-09 Deuda previsional (planes de pago)  FUTURO       $2.494.876
+    2026-10 Deuda previsional (planes de pago)  FUTURO       $2.494.876
+    2026-06 Nómina · Gremiales                  REAL         $1.625.001
+    2026-07 Nómina · Gremiales                  REAL         $1.598.088
+    2026-08 Nómina · Gremiales                  REAL         $1.235.787
+    2026-08 Impuestos                           REAL           $240.000
+    2026-10 Financiero                          FUTURO           $2.098
+    2026-11 Financiero                          FUTURO           $2.098
+    2026-12 Financiero                          FUTURO           $2.098
+
+  QUÉ VAN A MOSTRAR LOS BLOQUES QUE DEJARON DE LEER COMPRAS (año completo)
+  BLOQUE · FILA                                           ACTUAL         VACIADO          DIF
+  Cargas Soc. §2 · F931                              $50.616.496     $50.616.496           $0 ✓
+  Cargas Soc. §2 · Deuda previsional en cuotas       $11.547.069     $11.547.069           $0 ✓
+  Cargas Soc. §2 · FCL                                $9.184.177      $6.361.581  -$2.822.596  
+  Cargas Soc. §2 · UOCRA                              $1.606.613      $2.256.553     $649.940  
+  Cargas Soc. §2 · IERIC                                      $0         $28.284      $28.284  
+  Cargas Soc. §2 · FODECO                                     $0              $0           $0 ✓
+  Cargas Soc. §2 · CONTROL sin clasificar             $4.697.639      $2.383.135  -$2.314.504 ✗
+  Cargas Soc. §4 · Cuotas sin pagar                   $4.989.751              $0  -$4.989.751  
+  Impuestos §5 · Prendario cuota (año)               $15.356.033     $15.358.929       $2.895  
+  Impuestos §5 · Prendario por vencer                 $3.848.432      $3.842.138      -$6.293  
+
+  EFECTO FUERA DEL LIBRO (lo que lee Compras directo, sin mirar la X)
+  CAJA · egresos de Compras últimos 90 días         $188.146.300    $149.801.708 -$38.344.592
+  CAJA · pagado en efectivo (monto pagado)          $137.370.205    $131.153.903  -$6.216.302
+  sync-compras · filas con importe que se espejan            $903            $866         -$37
+
+  LAS PRÓXIMAS 8 SEMANAS (neto de caja)
+  SEMANA DEL             ACTUAL          VACIADO       DIFERENCIA
+  2026-09-07        $42.929.842      $42.929.842               $0
+  2026-09-14        $48.841.394      $51.336.270       $2.494.876
+  2026-09-21        $25.065.369      $25.065.369               $0
+  2026-09-28        $10.980.252      $10.980.252               $0
+  2026-10-05        $16.001.300      $16.003.398           $2.098
+  2026-10-12        -$8.938.021      -$6.443.145       $2.494.876
+  2026-10-19        -$4.639.455      -$4.639.455               $0
+  2026-10-26        $21.843.097      $21.843.097               $0
+
+  ✗ DENTRO de la ventana del extracto el vaciado todavía le saca plata a: Nómina · Gremiales $4.458.876 REAL · Nómina · SAC $5.760.309 REAL · Impuestos $240.000 REAL
+```
+
+### Veredicto
+
+Con el criterio por celda, **tres rubros pierden plata REAL y el vaciado no está listo para ellos**:
+
+| Rubro | Pierde REAL | Por qué, y qué lo cierra |
+|---|---|---|
+| Nómina · Gremiales | $4.458.876 (jun–ago) | `pagosGremialesDelBanco` sólo aparea el período que tiene su BOLETA leída (UOCRA en `_UOCRA_DDJJ_RAW`, IERIC/FODECO en Drive). Los meses sin boleta no tienen con qué cruzar el débito. Lo cierra subir las boletas faltantes a `archivo-fiscal/AAAA/IERIC` — el aviso de cada corrida las nombra |
+| Nómina · SAC | $5.760.309 (junio) | El aguinaldo salió dentro de lotes de haberes que las quincenas reclaman, y `haberes-conciliacion.mjs` ya dejó escrito que el extracto no puede separar un SAC de una liquidación final. Sólo $2.481.312 tienen respaldo identificable |
+| Impuestos | $240.000 (agosto) | Colegio de Ingenieros: `banco-santander.mjs` no tiene ninguna regla que lo reconozca. Sin naturaleza no hay apareo y adivinar por el texto sería fabricar |
+
+Y **dos límites que decide el dueño, no el código**:
+
+1. **`_BANCO_RAW` empieza el 28/05/2026.** Vaciando las 78 filas se van **$44.737.776** de pagos
+   anteriores que ninguna fuente bancaria puede reponer. Con `--desde 2026-06-01` esa columna baja a
+   **$0** en los seis rubros: vaciar sólo desde junio es seguro en todo lo que el extracto alcanza.
+2. **Los planes de ARCA no tienen cronograma**: $4.989.751 de cuotas PROYECTADAS que el OS no puede
+   reponer hasta que llegue «Mis Facilidades» a `datos/planes-arca.json`. Desde esta corrida la propia
+   pestaña lo dice en la fila de «Cuotas sin pagar», con un aviso que se apaga solo.
+
+### Efecto fuera del libro (lo que el informe anterior no medía)
+
+CAJA pierde **$38.344.592** de egresos de los últimos 90 días y **$6.216.302** de pagado en efectivo;
+`sync-compras` deja de espejar **78 filas** (897 → 819). Son consumidores que leen Compras directo
+—`caja-anexo-controles.mjs`, `direccion-retiros.mjs`— y no miran la X.

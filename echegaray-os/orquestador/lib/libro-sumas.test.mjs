@@ -86,3 +86,19 @@ test('formulaLibro es el término con su =, sin nada más', () => {
   assert.ok(f.startsWith('=SUMPRODUCT('))
   assert.equal(f.slice(1), terminoLibro({ signo: -1 }))
 })
+
+test('LA CONTRAPARTE ACOTA LO QUE EL RUBRO NO PUEDE: la cuota del prendario no es todo Financiero', () => {
+  // `Financiero` lleva la cuota del préstamo Y los cargos del banco. La pestaña publica la CUOTA.
+  const t = terminoLibro({ rubros: ['Financiero'], contrapartes: ['Banco Santander · préstamo prendario'] })
+  assert.match(t, /\(_MOVIMIENTOS!\$J\$2:\$J="Banco Santander · préstamo prendario"\)/)
+  assert.match(t, /\(_MOVIMIENTOS!\$F\$2:\$F="Financiero"\)/)
+})
+
+test('varias contrapartes son un OR: el mismo acreedor se llama distinto según quién probó el pago', () => {
+  const t = terminoLibro({ rubros: ['Nómina · Gremiales'], contrapartes: ['Fondo de Cese', 'FCL'] })
+  assert.match(t, /\(\(_MOVIMIENTOS!\$J\$2:\$J="Fondo de Cese"\)\+\(_MOVIMIENTOS!\$J\$2:\$J="FCL"\)\)/)
+})
+
+test('sin contrapartes la fórmula no cambia — el filtro es opcional y no deja rastro', () => {
+  assert.equal(terminoLibro({ rubros: ['Financiero'] }), terminoLibro({ rubros: ['Financiero'], contrapartes: [] }))
+})

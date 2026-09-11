@@ -209,9 +209,13 @@ const cuitPorVerificar = (elegidos) => COBRADORES_UOCRA
  * Dos formas y en este orden, las dos medidas contra casos reales (ver la cabecera). Ninguna de las
  * dos elige «el más parecido»: o coincide dentro del peso de redondeo, o la combinación es única.
  *
+ * SE EXPORTA DESDE EL 11/09/2026 porque `libro-extractores-banco-obligaciones.mjs` aparea el F931
+ * declarado contra los débitos de ARCA con ESTE criterio. Escrito dos veces serían dos definiciones de
+ * «qué débito paga esta obligación», y la que se corrija primero dejaría a la otra pagando de más.
+ *
  * @returns {{elegidos:Array, motivo:string}|null}
  */
-function aparearImporte(candidatos, objetivo, usados) {
+export function aparearImporte(candidatos, objetivo, usados) {
   const libres = candidatos.filter((d) => !usados.has(d.fila))
   if (!libres.length || !(objetivo > 0)) return null
   const uno = libres.find((d) => Math.abs(d.importe - objetivo) <= TOLERANCIA_APAREO)
