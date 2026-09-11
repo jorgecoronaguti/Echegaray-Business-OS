@@ -26,7 +26,7 @@ import { JORNALES_SPREADSHEET_ID } from '../lib/tools/jornales-asistencia.mjs'
 import { fechaOperativaSanJuan } from '../comunicacion/asistencia-ui.mjs'
 import {
   FUENTE, marcasDeGrid, planDeRegistros, resolutorDeObra, separarConflictos, resumir, columnasParaUpsert,
-  SQL_UPSERT, SQL_MOVER, mapaDeRotulos, normAlias, separarAnticipadas,
+  SQL_UPSERT, SQL_MOVER, SQL_PISAR_WEB, mapaDeRotulos, normAlias, separarAnticipadas, pisarLoDeLaWeb,
 } from '../lib/jornales-a-registros-hh.mjs'
 
 const arg = (n, d = null) => { const i = process.argv.indexOf(`--${n}`); return i > 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : d }
@@ -40,6 +40,8 @@ const PESTANAS_POR_ANIO = { 2026: ['Obreros 26', 'Oficina 26'], 2025: ['JORNALES
 const PESTANAS = arg('pestanas') ? arg('pestanas').split(',').map((s) => s.trim()) : (PESTANAS_POR_ANIO[ANIO] ?? [])
 const RANGO = process.env.GOOGLE_JORNALES_RANGO_COMPLETO || 'A1:BB2600'
 const h = (x) => Number(x ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 1 })
+/** `fecha` viene de `pg` como Date o como texto según el driver: se normaliza para imprimirla. */
+const isoDeFecha = (f) => (f instanceof Date ? f.toISOString().slice(0, 10) : String(f).slice(0, 10))
 
 async function catalogos() {
   const [personas, alias, canonicas, clienteAlias, asignaciones] = await Promise.all([
@@ -132,13 +134,29 @@ function imprimirFoto(titulo, antes, despues) {
   }
 }
 
-async function aplicar(escribir, mover) {
+async function aplicar(escribir, mover, pisar) {
   const cols = columnasParaUpsert(escribir)
   return withTx(async (tx) => {
     let movidas = 0
     for (const m of mover) movidas += (await tx.query(SQL_MOVER, [m.id, m.fila.obra_canonica_id, m.fila.horas, m.fila.notas])).rowCount
+    // ═══ PRIMERO SE PISA, DESPUÉS SE INSERTA ═══
+    //
+    // Las filas que se pisan cambian de obra y de tipo, o sea que se MUEVEN dentro del índice único.
+    // Si el UPSERT corriera antes, insertaría la fila de la planilla en esa misma clave y el UPDATE
+    // de después chocaría contra ella: quedaría la nueva y la vieja de la web viva al lado, sumando.
+    let pisadas = 0
+    for (const x of pisar) {
+      const r = await tx.query(SQL_PISAR_WEB, [
+        x.id, x.fila.horas, x.fila.tipo_hora, x.fila.obra_canonica_id, x.fila.notas ?? '', x.rastro,
+      ])
+      pisadas += r.rowCount
+    }
     const { rows } = await tx.query(SQL_UPSERT, cols)
-    return { insertadas: rows.filter((r) => r.insertada).length, actualizadas: rows.filter((r) => !r.insertada).length, movidas }
+    return {
+      insertadas: rows.filter((r) => r.insertada).length,
+      actualizadas: rows.filter((r) => !r.insertada).length,
+      movidas, pisadas, pedidas: pisar.length,
+    }
   })
 }
 
@@ -154,15 +172,40 @@ async function main() {
   console.log(`  hasta ${HASTA} (hoy en San Juan salvo --hasta): ${anticipadas.length} filas ANTICIPADAS en la planilla quedan afuera (${h(anticipadas.reduce((a, f) => a + f.horas, 0))} h)`)
   const fechas = filas.map((f) => f.fecha).sort()
   const existentes = fechas.length ? await existentesEntre(fechas[0], fechas[fechas.length - 1]) : []
-  const { escribir, conflictos, obsoletas, mover } = separarConflictos(filas, existentes)
+  // ═══ LA PLANILLA MANDA SOBRE LA WEB (dueño, 11/09/2026) ═══
+  //
+  // Antes, CUALQUIER fila de otra fuente hacía intocable el día: desde el momento en que alguien
+  // tocó la app, la planilla dejaba de poder corregirlo. Ahora las filas `web:*` de un día que la
+  // planilla SÍ trae se actualizan en su lugar, con rastro. El porqué completo y el límite, en
+  // `pisarLoDeLaWeb`. Lo que no es web sigue intocable y se declara.
+  const { pisar, intocables, pisadas } = pisarLoDeLaWeb(filas, existentes, { hoy: HASTA })
+  const sinPisadas = filas.filter((f) => !pisadas.has(f))
+  const yaNoChocan = existentes.filter((e) => !pisar.some((x) => x.id === e.id))
+  const { escribir, conflictos, obsoletas, mover } = separarConflictos(sinPisadas, yaNoChocan)
   imprimirResumen({ leidas, hallazgos, marcas, filas, falta, conflictos, obsoletas, mover, nombreObra: cat.nombreObra })
+  console.log(`\n  A PISAR · filas de la WEB sobre días que la planilla SÍ trae (se actualizan en su lugar): ${pisar.length}`)
+  for (const x of pisar.slice(0, DETALLE ? 500 : 25)) {
+    console.log(`    ${x.existente.persona_id} ${isoDeFecha(x.existente.fecha)} ${x.existente.fuente_legacy}`
+      + ` ${h(x.existente.horas)}h ${x.existente.tipo_hora} → ${h(x.fila.horas)}h ${x.fila.tipo_hora} ${x.fila.obra_canonica_id ?? '(sin obra)'}`)
+  }
+  console.log(`  INTOCABLES · días que la planilla trae y NO se pisan (fuente ajena o N≠M): ${intocables.length}`)
+  for (const x of intocables.slice(0, DETALLE ? 500 : 25)) {
+    console.log(`    ${x.dia}  ${x.porque}  [${[...new Set(x.existentes.map((e) => e.fuente_legacy))].join(', ')}]`)
+  }
   console.log(`\n  A ESCRIBIR: ${escribir.length} filas · ${h(escribir.filter((f) => f.tipo_hora !== 'ausencia' && f.tipo_hora !== 'licencia').reduce((a, f) => a + f.horas, 0))} h trabajadas`)
   if (!APLICAR) { console.log('\nENSAYO: no se escribió nada. Con --aplicar se escribe y se relee.'); return }
 
   const antes = await foto()
-  const res = await aplicar(escribir, mover)
+  const res = await aplicar(escribir, mover, pisar)
   const despues = await foto()
-  console.log(`\n  ESCRITO: ${res.insertadas} insertadas · ${res.actualizadas} actualizadas · ${res.movidas} movidas de obra (transacción confirmada)`)
+  console.log(`\n  ESCRITO: ${res.insertadas} insertadas · ${res.actualizadas} actualizadas · ${res.movidas} movidas de obra`
+    + ` · ${res.pisadas}/${res.pedidas} pisadas sobre la web (transacción confirmada)`)
+  // LA EVIDENCIA ES DEL EFECTO: si la base pisó menos de las pedidas, alguien cambió esas filas de
+  // fuente entre el plan y la escritura y el UPDATE no las tocó. No se calla.
+  if (res.pisadas !== res.pedidas) {
+    console.error(`  ! ${res.pedidas - res.pisadas} filas NO se pudieron pisar: dejaron de ser \`web:*\` entre el plan y la escritura.`)
+    process.exitCode = 1
+  }
   const { rows: [chk] } = await query(`select count(*)::int filas, sum(horas) horas from public.registros_hh where fuente_legacy = $1`, [FUENTE])
   console.log(`  RELEÍDO de la base: ${chk.filas} filas ${FUENTE} · ${h(chk.horas)} h (plan: ${escribir.length + mover.length} filas propias)`)
   imprimirFoto('registros_hh por MES · antes → después', antes.mes, despues.mes)

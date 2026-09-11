@@ -252,6 +252,17 @@ export function detectarBloques(grid, { anio, minFechas = 3, filaRotulos = 0 } =
   return bloques
 }
 
+/**
+ * ¿Esta fila abre OTRO bloque? Tres o más celdas de fecha DD/MM, la misma condición que usa
+ * `detectarBloques`. Se pregunta por la forma y no por el índice para no depender del orden en que
+ * se detectaron los bloques.
+ */
+function esEncabezadoDeBloque(fila) {
+  let fechas = 0
+  for (const c of fila) if (RE_FECHA.test(valor(c))) fechas++
+  return fechas >= 3
+}
+
 /** ¿Esta fila es la de totales del bloque? Sin nombre y con ≥3 columnas de fecha
  *  ocupadas por fórmulas. Es lo que cierra el bloque sin depender de una fila fija. */
 function esFilaTotales(grid, i, bloque, colNombre) {
@@ -276,8 +287,26 @@ export function trabajadoresDeBloque(grid, bloque, { hastaFila } = {}) {
     const fila = filas[i] || []
     const texto = fila.map((c) => valor(c)).join(' ')
     if (esFilaTotales(grid, i, bloque, cols.nombre)) break
-    if (RE_CIERRE.test(texto)) break
     const nombre = valor(celda(grid, i, cols.nombre))
+    // ═══ UN RÓTULO DE CIERRE NO CIERRA UNA FILA QUE TIENE NOMBRE (11/09/2026) ═══
+    //
+    // `RE_CIERRE` busca UOCRA|BANCO|TOTAL SEMANA|CAJA… en el texto ENTERO de la fila, para cortar en
+    // los cuadros de referencia que van debajo del bloque. Pero la fila 124 de «Oficina 26» es la de
+    // JUAN PABLO NIEVAS —su nombre en B, 46 h en U, $416.300 en Z— y además tiene la palabra «BANCO»
+    // suelta en AD, que es parte de un cuadrito de resumen que vive a la derecha. El bloque cerraba
+    // en él: Nievas NO EXISTÍA para ningún consumidor de esta función, incluido el importador que
+    // carga `registros_hh`. Le pasaba en 8 de las 15 quincenas de Oficina del año.
+    //
+    // Una fila con nombre de persona es una persona. Los cuadros de referencia que esto tiene que
+    // cortar (UOCRA, Oficial, Ayudante…) siguen cortando: o no tienen nombre, o su «nombre» lo caza
+    // `RE_NO_TRABAJADOR` unas líneas más abajo.
+    if (!nombre && RE_CIERRE.test(texto)) break
+    // ═══ Y EL ENCABEZADO DEL BLOQUE SIGUIENTE CORTA SIEMPRE ═══
+    //
+    // Es la red que reemplaza lo que `RE_CIERRE` hacía de más. Sin ella, aflojar el corte de arriba
+    // dejaría que el recorrido pasara de largo el cuadro de referencia y se llevara a las personas
+    // del bloque de abajo como si fueran de éste — una quincena cobrando las horas de la siguiente.
+    if (esEncabezadoDeBloque(fila)) break
     if (nombre.length <= 2) continue
     if (RE_NO_TRABAJADOR.test(nombre)) continue
     // Una fila rotulada «TOTALES» CIERRA el bloque: lo que venga después ya no son personas de
