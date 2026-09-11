@@ -17,7 +17,8 @@ import { crearAutenticadorEndpoint } from './auth-endpoint.mjs'
 import { crearManejadorXsas } from './xsas-http.mjs'
 import { atender } from '../lib/xsas-gateway.mjs'
 import { conPresupuesto } from '../lib/ia/fusible.mjs'
-import { query } from '../lib/db.mjs'
+import { alPerderLaConexion, query } from '../lib/db.mjs'
+import { crearLatido } from '../lib/conexion-perdida.mjs'
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { operadorPara, getTokenFor } from '../lib/google-oauth.mjs'
 import { loadConfig } from '../lib/config.mjs'
@@ -136,6 +137,16 @@ async function main() {
     const r = await conPresupuesto({ señal: acWebhook.signal }, () =>
       manejar({ method: req.method, headers: req.headers, rawBody, ip: ipReal(req) }))
     responder(res, r.status, r.body)
+  })
+
+  // CONEXIÓN PERDIDA: mismo pool, mismo agujero que tuvo el worker el 10/09/2026. Esta puerta
+  // contesta HTTP sin tocar la base en varios caminos, así que podía quedarse devolviendo 200
+  // con la base muerta. Un cliente ocioso caído ⇒ salida 75 ⇒ systemd reinicia (`Restart=always`).
+  // Sin latido por tiempo: un servidor HTTP ocioso es legítimo. Ver `lib/conexion-perdida.mjs`.
+  const latido = crearLatido({ toleranciaMs: 600_000, salir: (c) => process.exit(c), log, nombre: 'xsas-gateway' })
+  alPerderLaConexion((err, { corte }) => {
+    if (corte) latido.fatalSiEsConexionPerdida(err, 'pool')
+    else log.error?.('pool: error inesperado (no es corte de conexión)', { error: String(err?.message ?? err) })
   })
 
   const cerrar = (s) => { log.info('shutdown', { señal: s }); server.close(() => process.exit(0)) }

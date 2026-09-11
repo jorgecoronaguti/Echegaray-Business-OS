@@ -143,6 +143,11 @@ export interface RegistroLiquidable {
  * LAS HORAS QUE SE LIQUIDAN DE UN DÍA DE UNA PERSONA. Una sola definición, la misma en la grilla,
  * en los totales, en la ficha y en la cronología.
  *
+ * ═══ LO TRABAJADO SUMA ENTRE FILAS; LO DECLARADO NO ═══
+ *
+ * Dos obras el mismo día suman (5 + 3,8 = 8,8). Dos DECLARACIONES el mismo día no: nadie está
+ * ausente dos veces. Ver el comentario largo adentro de la función.
+ *
  * ═══ LO TRABAJADO GANA, Y LA AUSENCIA NO SE SUMA AL LADO ═══
  *
  * Es la regla contra el doble conteo. Un día con 8 hs cargadas en una obra y una «A» declarada esa
@@ -158,10 +163,26 @@ export interface RegistroLiquidable {
  */
 export function horasLiquidablesDelDia(registros: readonly RegistroLiquidable[]): number {
   const trabajadas = registros.filter((r) => esTrabajada(r.tipo_hora))
+  // LO TRABAJADO SÍ SUMA ENTRE FILAS: cinco horas en una obra y tres con ochenta en otra son ocho con
+  // ochenta del mismo día (`quincenaPorObra.test.ts`), y una extra se suma a su jornada normal.
   if (trabajadas.length > 0) return trabajadas.reduce((s, r) => s + numero(r.horas), 0)
-  return registros
+  // ═══ UN DÍA NO TRABAJADO VALE UN DÍA, NO LA SUMA DE LAS FILAS QUE LO DECLARAN ═══
+  //
+  // Nadie puede estar ausente dos veces el mismo día. Acá esto era un `reduce` que SUMABA, y con dos
+  // filas de licencia «accidente» de 9 h —dos caminos que declararon lo mismo, o la misma
+  // declaración escrita dos veces— el día se liquidaba en 18 h. No es hipotético: el índice único
+  // `registros_hh_persona_unico` incluye `obra_canonica_id` como columna común, y en Postgres dos
+  // NULL no chocan, así que las ausencias y licencias SIN OBRA —que son las que por definición no la
+  // tienen— son exactamente las filas que la base deja duplicar. Medido el 11/09/2026: 7 filas de la
+  // quincena están en esa condición.
+  //
+  // Se toma el MÁXIMO y no el primero: entre dos declaraciones del mismo día gana la que reconoce
+  // más horas, que es la que alguien corrigió hacia arriba. Quedarse con la menor le pagaría de menos
+  // a alguien por un duplicado que él no creó.
+  const declaradas = registros
     .filter((r) => r.tipo_hora === 'ausencia' || r.tipo_hora === 'licencia')
-    .reduce((s, r) => s + (motivoPaga(r.notas) ? numero(r.horas) : 0), 0)
+    .map((r) => (motivoPaga(r.notas) ? numero(r.horas) : 0))
+  return declaradas.length === 0 ? 0 : Math.max(...declaradas)
 }
 
 /** ¿Ese día tiene horas trabajadas cargadas? Es lo que convierte la «A» + horas en un dato

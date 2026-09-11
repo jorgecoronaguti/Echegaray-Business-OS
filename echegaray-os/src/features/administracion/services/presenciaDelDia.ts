@@ -322,12 +322,44 @@ export function personasSinHoras(guardadas: readonly PresenciaGuardada[]): Set<s
  *  que nadie miró de una que alguien cargó — y por eso es lo único que este código puede borrar. */
 export const FUENTE_HORAS_POR_DEFECTO = 'web:presencia-defecto'
 
+/**
+ * EL ORIGEN DE UNA FILA QUE UNA PERSONA CORRIGIÓ A MANO.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (medido en producción el 11/09/2026) ═══
+ *
+ * El 10/09 a las 11:41 este camino escribió 9 h a las dos personas de apellido Quiroga, y a las
+ * 22:08 alguien las corrigió a 13 h desde la planilla. La fila quedó con `horas = 13` y
+ * `fuente_legacy = 'web:presencia-defecto'`: ningún camino de edición cambiaba el origen, aunque el
+ * comentario de más arriba lo afirmara y el borrado de abajo se apoyara en eso. Consecuencia
+ * concreta: si después alguien declaraba a esa persona ausente, `planDeHorasPorDefecto` leía «esto
+ * lo escribió un defecto, nadie lo miró» y BORRABA las 13 h que el dueño había tecleado, sin avisar.
+ */
+export const FUENTE_CORRECCION_HORAS = 'web:correccion-horas'
+
 /** Una fila de `registros_hh` de ese día, mirada sólo por lo que decide el plan. */
 export interface HoraDelDia {
   id: string
   persona_id: string
   tipo_hora: string
   fuente_legacy: string | null
+  /**
+   * QUIÉN LA TOCÓ DESPUÉS. El trigger `set_actualizado_en` lo escribe con `auth.uid()` en CADA
+   * update, así que una fila con autor es una fila que una persona modificó — sin importar por qué
+   * camino ni si ese camino se acordó de cambiarle el origen. Es la evidencia que protege a las
+   * filas que YA están en la base con el origen equivocado: marcarlas de nuevo a mano no es opción.
+   */
+  actualizado_por?: string | null
+}
+
+/**
+ * ¿ESTA FILA ES UNA JORNADA POR DEFECTO QUE NADIE MIRÓ? Es lo único que este código puede borrar.
+ *
+ * Dos condiciones, y las dos hacen falta: que la haya escrito este camino Y que nadie la haya
+ * tocado después. Con sólo la primera, una corrección a mano sobre una fila por defecto se borraba
+ * como si fuera una sugerencia automática.
+ */
+export function esDefectoQueNadieMiro(h: HoraDelDia): boolean {
+  return h.fuente_legacy === FUENTE_HORAS_POR_DEFECTO && h.actualizado_por == null
 }
 
 /** Lo que se inserta. `notas` va nula a propósito: el motivo es de la ausencia, no de la jornada. */
@@ -399,7 +431,7 @@ export function planDeHorasPorDefecto({ presencias, horasExistentes, fecha, obra
     }
     // AUSENTE O LICENCIA. La ausencia en sí la escribe el camino que ya existe (`corregirJornada` /
     // la carga de horas): acá sólo se retira la jornada que este mismo defecto había puesto.
-    const manuales = suyas.filter((h) => h.fuente_legacy !== FUENTE_HORAS_POR_DEFECTO && esTrabajada(h.tipo_hora))
+    const manuales = suyas.filter((h) => !esDefectoQueNadieMiro(h) && esTrabajada(h.tipo_hora))
     if (manuales.length > 0) {
       // NO SE BORRA NADA CUANDO HAY TRABAJO CARGADO A MANO — ni siquiera la fila por defecto que
       // pueda convivir con él. Alguien afirmó que esa persona trabajó y otro que no vino: borrar
@@ -407,7 +439,7 @@ export function planDeHorasPorDefecto({ presencias, horasExistentes, fecha, obra
       conflictos.push(m.persona_id)
       continue
     }
-    for (const h of suyas) if (h.fuente_legacy === FUENTE_HORAS_POR_DEFECTO) borrar.push(h.id)
+    for (const h of suyas) if (esDefectoQueNadieMiro(h)) borrar.push(h.id)
   }
 
   return { insertar, borrar, conflictos, jornada }

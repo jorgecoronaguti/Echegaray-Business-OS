@@ -180,7 +180,9 @@ async function aplicarHorasPorDefecto(
 ): Promise<{ mensaje: string | null; escribio: boolean }> {
   const personaIds = marcas.map((m) => m.persona_id)
   const existentes = await supabase
-    .from('registros_hh').select('id, persona_id, tipo_hora, fuente_legacy')
+    // `actualizado_por` VIAJA PORQUE DECIDE EL BORRADO: una fila por defecto que una persona
+    // corrigió no es una sugerencia automática, y `esDefectoQueNadieMiro` la necesita para decir no.
+    .from('registros_hh').select('id, persona_id, tipo_hora, fuente_legacy, actualizado_por')
     .eq('fecha', fecha).in('persona_id', personaIds)
   if (existentes.error) return { mensaje: noSePudo(existentes.error.message), escribio: false }
 

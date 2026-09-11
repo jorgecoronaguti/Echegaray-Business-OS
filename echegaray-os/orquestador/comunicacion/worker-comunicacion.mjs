@@ -10,6 +10,12 @@
 // nada. Sin loop agresivo: duerme entre ticks y hace backoff si está ocioso.
 // Shutdown limpio ante SIGTERM/SIGINT.
 //
+// MUERE Y RENACE: ante una conexión perdida este proceso NO reintenta ni reconecta — loguea
+// y sale con 75 para que systemd lo levante limpio. Y si deja de completar ticks sin decir
+// por qué, el LATIDO lo mata igual. Las dos cosas salieron del incidente del 10/09/2026, que
+// lo dejó 23 horas colgado, `active` y con un comprobante del dueño esperando en el inbox:
+// `docs/engineering/INCIDENTE-2026-09-10-WORKER-COLGADO-23H.md`.
+//
 // Uso (staging / entorno de prueba, NO producción sin autorización):
 //   DATABASE_URL=… MM_INCOMING_SECRET=… MM_BOT_TOKEN=… node orquestador/comunicacion/worker-comunicacion.mjs
 import { crearConector } from './conector.mjs'
@@ -17,7 +23,8 @@ import { crearLog } from '../../../communication-service/src/index.mjs'
 import { SesionesPostgres, crearVencedorPeriodico, VENCER_INTERVALO_MS_DEFAULT } from './asistencia-sesion.mjs'
 import { crearEntregador, ENTREGA_INTERVALO_MS_DEFAULT } from './asistente/entrega-recordatorios.mjs'
 import { crearVigiaDeFajosMudos, VIGIA_INTERVALO_MS_DEFAULT } from './comprobantes/vigia-mudos.mjs'
-import { query, withTx } from '../lib/db.mjs'
+import { alPerderLaConexion, query, withTx } from '../lib/db.mjs'
+import { crearLatido, esConexionPerdida, SALIDA_CONEXION_PERDIDA } from '../lib/conexion-perdida.mjs'
 
 const IDLE_MS = Number(process.env.COMM_WORKER_IDLE_MS ?? 2000)
 const BUSY_MS = Number(process.env.COMM_WORKER_BUSY_MS ?? 200)
@@ -30,6 +37,13 @@ const RECORDATORIOS_MS = Number(process.env.COMM_WORKER_RECORDATORIOS_MS ?? ENTR
 // Ver `comprobantes/vigia-mudos.mjs`: un fajo mudo no tiene error, ni dead-letter, ni fila — es
 // invisible para todos los controles a la vez, y adentro hay plata sin registrar.
 const MUDOS_MS = Number(process.env.COMM_WORKER_MUDOS_MS ?? VIGIA_INTERVALO_MS_DEFAULT)
+// EL LATIDO — cuánto silencio se tolera antes de salir con error y dejar que systemd
+// reinicie. Incidente del 10/09/2026: este worker quedó 23 h colgado en un `await` que
+// nunca se resolvió (Supabase reinició, el socket quedó medio abierto y `pg` no tenía
+// timeouts). No se recupera una conexión: se muere y se renace. Ver `lib/conexion-perdida.mjs`.
+// Default: 5 barridos de sesiones (5 min). Nunca por debajo de 3 intervalos, porque un tick
+// legítimo puede tardar (el espejo de Compras, una carga de comprobantes).
+const LATIDO_MS = Number(process.env.COMM_WORKER_LATIDO_MS ?? Math.max(5 * VENCER_MS, 180_000))
 
 const log = crearLog()
 let parar = false
@@ -53,6 +67,41 @@ async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos) {
   const outbox = await con.procesarOutbox({ lote: 20 })
   const trabajo = inbox.intentados + wf.intentados + outbox.intentados
   return { trabajo, inbox, wf, outbox }
+}
+
+/** EL BUCLE, separado de `main()` para poder probarlo con un tick que NO VUELVE — que es
+ *  exactamente la forma que tuvo el incidente. Antes de este cambio no había nada que
+ *  probar: el `while` vivía dentro de `main()`, que abre el pool real y el cliente de
+ *  Mattermost, y el cuelgue sólo se podía observar en producción a las 23 horas. */
+export async function correrBucle({
+  tick, latido, log: reg = log, dormir = sleep, debeParar = () => parar,
+  idleMs = IDLE_MS, busyMs = BUSY_MS, maxIdleMs = MAX_IDLE_MS,
+} = {}) {
+  let espera = idleMs
+  while (!debeParar() && !latido?.muerto) {
+    let r
+    try {
+      r = await tick()
+    } catch (e) {
+      // Una conexión perdida NO se reintenta: el cliente ya no existe y el pool puede estar
+      // entero en ese estado. Se sale con código ≠ 0 y systemd levanta un proceso limpio.
+      if (latido?.fatalSiEsConexionPerdida(e, 'tick')) return { salida: SALIDA_CONEXION_PERDIDA }
+      reg?.error?.('tick falló (se reintenta el próximo ciclo)', { error: String(e?.message ?? e) })
+      await dormir(Math.min(espera, maxIdleMs))
+      espera = Math.min(espera * 2, maxIdleMs)
+      continue
+    }
+    // El latido se toca DESPUÉS del tick completo: mide trabajo terminado, no empezado.
+    latido?.tocar()
+    if (r.trabajo > 0) {
+      espera = busyMs // hubo trabajo: seguí pronto
+      reg?.info?.('tick con trabajo', r)
+    } else {
+      espera = Math.min(Math.round(espera * 1.5), maxIdleMs) // ocioso: backoff suave
+    }
+    await dormir(espera)
+  }
+  return { salida: 0 }
 }
 
 async function main() {
@@ -89,30 +138,42 @@ async function main() {
     }),
     intervaloMs: MUDOS_MS, log,
   })
-  log.info('worker-comunicacion arrancado', { vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS, fajos_mudos_ms: MUDOS_MS })
+  // El latido: si pasan LATIDO_MS sin un tick completo, el proceso sale con error. Es la
+  // única red que cubre un cuelgue cuya causa no conocemos todavía — no necesita clasificar
+  // nada, sólo notar el silencio. Va armado ANTES del primer tick.
+  const latido = crearLatido({
+    toleranciaMs: LATIDO_MS, salir: (c) => process.exit(c), log, nombre: 'worker-comunicacion',
+  })
+  latido.armar()
+  // Y el otro agujero: un cliente OCIOSO del pool que se muere no tiene ningún `await`
+  // esperándolo, así que su error sólo aparece como evento del pool. Acá se escucha.
+  alPerderLaConexion((err, { corte }) => {
+    if (corte) latido.fatalSiEsConexionPerdida(err, 'pool')
+    else log.error('pool: error inesperado (no es corte de conexión)', { error: String(err?.message ?? err) })
+  })
+  log.info('worker-comunicacion arrancado', {
+    vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS, fajos_mudos_ms: MUDOS_MS,
+    latido_ms: latido.toleranciaMs,
+  })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); parar = true })
 
-  let espera = IDLE_MS
-  while (!parar) {
-    let r
-    try {
-      r = await tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos)
-    } catch (e) {
-      log.error('tick falló (se reintenta el próximo ciclo)', { error: String(e?.message ?? e) })
-      await sleep(Math.min(espera, MAX_IDLE_MS))
-      espera = Math.min(espera * 2, MAX_IDLE_MS)
-      continue
-    }
-    if (r.trabajo > 0) {
-      espera = BUSY_MS // hubo trabajo: seguí pronto
-      log.info('tick con trabajo', r)
-    } else {
-      espera = Math.min(Math.round(espera * 1.5), MAX_IDLE_MS) // ocioso: backoff suave
-    }
-    await sleep(espera)
-  }
+  const { salida } = await correrBucle({
+    tick: () => tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos), latido,
+  })
+  if (salida !== 0) return // el latido ya hizo process.exit con su log
+  latido.desarmar()
   log.info('worker-comunicacion detenido limpio', {})
   process.exit(0)
 }
 
-main().catch((e) => { console.error(e); process.exit(1) })
+// Guarda de import: sin esto, `import` de este archivo en un test ARRANCA el worker contra
+// la base real. Ya pasó con los scripts del pipeline (memoria: «importar un script ejecuta
+// main()»), y el consumidor WS de al lado ya se protegía así.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => {
+    // Si lo que voltea el arranque es la conexión, el código de salida lo dice: 75 es
+    // «volvé a intentar», 1 es «está mal configurado y reiniciar no lo va a arreglar».
+    console.error(e)
+    process.exit(esConexionPerdida(e) ? SALIDA_CONEXION_PERDIDA : 1)
+  })
+}

@@ -29,6 +29,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { jornadaPorDefecto } from './jornadaPorDefecto'
 import { tipoDeMotivo } from './motivoDeAusencia'
+import { FUENTE_CORRECCION_HORAS } from './presenciaDelDia'
 import {
   acuseDe, acuseDeBorrado, avisoSinAsignacion, cambiaDeObra, correccionSchema, envioSchema, motivoDe,
   personasQueEstrenanDia, personasSinAsignacionVigente, planDeBorrado, planDeGuardado,
@@ -222,7 +223,13 @@ async function escribirPlan(
     // EL TIPO VIAJA EN EL UPDATE. Antes sólo iba `horas`, así que corregir una jornada a «no vino»
     // dejaba la fila en `normal` con las horas de la ausencia: el día contaba como trabajado.
     const { data, error } = await supabase.from('registros_hh')
-      .update({ horas: marca.horas, tipo_hora: tipo, notas: motivoDe(marca) })
+      // EL ORIGEN VIAJA EN EL UPDATE, por lo mismo que el tipo: una fila corregida a mano dejó de
+      // ser lo que la escribió. Sin esto, una jornada por defecto editada acá seguía marcada
+      // `web:presencia-defecto` y el camino de presencia la borraba sin avisar (medido 11/09/2026).
+      .update({
+        horas: marca.horas, tipo_hora: tipo, notas: motivoDe(marca),
+        fuente_legacy: FUENTE_CORRECCION_HORAS,
+      })
       .eq('id', id).eq('obra_canonica_id', obraId).select('id')
     if (error) return { escrito: null, error: traducirEscritura(error) }
     escrito.actualizadas += (data ?? []).length

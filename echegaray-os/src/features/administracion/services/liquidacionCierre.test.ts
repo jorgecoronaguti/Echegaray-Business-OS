@@ -214,3 +214,44 @@ test('oficina se sella con valor_hora NULL: el neto ya está en «cobra», no se
     sellado_en: '2026-09-10T12:00:00.000Z',
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// UNA AUSENCIA SIN MOTIVO TRABA EL SELLO — la misma traba que la grilla de Horas
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO, visto en la pantalla real el 11/09/2026 sobre la 1ª quincena de septiembre:
+//
+//   solapa Horas   →  «PENDIENTE · 9 ausencias sin motivo ›»  y  «Cerrar quincena» GRIS
+//   solapa Cierre  →  «Cerrar y sellar» AMARILLO Y ACTIVO
+//
+// La misma quincena, la misma acción, dos criterios — y el que sella era el permisivo. `estadoDeCierre`
+// sólo miraba tarifas, importes y que la cadena cerrara; las ausencias sin motivo las contaba nada más
+// que la grilla.
+//
+// No es cosmético: sin motivo el día vale 0 h (R4). El día que alguien le ponga el motivo, ese día
+// puede pasar a valer la jornada entera. Sellar antes congela el 0 y manda la corrección al camino de
+// «reabrir con motivo escrito», que existe para los errores y no para lo que ya se sabía que faltaba.
+
+test('LAS AUSENCIAS SIN MOTIVO TRABAN EL CIERRE Y SE NOMBRAN', () => {
+  const completa = [linea({ personaId: 'p1', nombre: 'A', cobra: 100, porBanco: 0, enEfectivo: 100, total: 100 })]
+  // Sin la traba, esta quincena cierra: no le falta ni una tarifa ni un importe.
+  assert.equal(estadoDeCierre(completa).puedeCerrar, true)
+  // EL DEFECTO QUE ATRAPA: con nueve ausencias sin motivo seguía diciendo que sí.
+  const con = estadoDeCierre(completa, { diasSinMotivo: 9 })
+  assert.equal(con.puedeCerrar, false)
+  const p = con.pendientes.find((x) => x.clave === 'sin-motivo')
+  assert.ok(p, 'el pendiente tiene que tener nombre propio, no ser un botón gris sin explicación')
+  assert.equal(p.cuantas, 9)
+  assert.match(p.texto, /9 ausencia/)
+})
+
+test('CERO AUSENCIAS SIN MOTIVO NO INVENTA UN PENDIENTE', () => {
+  // El control tiene que poder decir SÍ: si trabara siempre, nadie podría cerrar nunca y el botón
+  // gris dejaría de significar algo.
+  const completa = [linea({ personaId: 'p1', nombre: 'A', cobra: 100, porBanco: 0, enEfectivo: 100, total: 100 })]
+  for (const carga of [{}, { diasSinMotivo: 0 }]) {
+    const e = estadoDeCierre(completa, carga)
+    assert.equal(e.puedeCerrar, true)
+    assert.equal(e.pendientes.filter((x) => x.clave === 'sin-motivo').length, 0)
+  }
+})

@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   acuseDeHorasPorDefecto, acusePresencia, avisoSinMarcar, casillasDePresencia, estadoSegunMotivo,
-  FUENTE_HORAS_POR_DEFECTO, horasSegunPresencia, loQueViajaPresencia, marcarTodosPresentes,
+  esDefectoQueNadieMiro, FUENTE_CORRECCION_HORAS, FUENTE_HORAS_POR_DEFECTO,
+  horasSegunPresencia, loQueViajaPresencia, marcarTodosPresentes,
   personasAMarcar, personasSinHoras, planDeHorasPorDefecto, planDePresencia, resumenPresencia,
   sumarPersonasNuevasPresencia,
 } from './presenciaDelDia.ts'
@@ -344,4 +345,67 @@ test('el acuse nombra el conflicto en vez de esconderlo', () => {
   const texto = acuseDeHorasPorDefecto({ insertadas: 0, borradas: 1, conflictos: 1 }) ?? ''
   assert.match(texto, /se quitaron las horas por defecto de 1 persona/)
   assert.match(texto, /1 persona con horas cargadas a mano/)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// UNA CORRECCIÓN A MANO SOBRE UNA JORNADA POR DEFECTO NO SE BORRA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL CASO ES REAL, medido en `registros_hh` de producción el 11/09/2026:
+//
+//   2026-09-10 11:41:33  QUIROGA ALEXANDER SEBASTIAN   9 h  web:presencia-defecto  (insert)
+//   2026-09-10 22:08:05  la misma fila                13 h  web:presencia-defecto  (update, con autor)
+//
+// Las 13 h las tecleó una persona —la planilla de la quincena dice 13 en ese día y `actualizado_por`
+// tiene el usuario— y la fila siguió declarándose «jornada por defecto». El comentario de
+// `presenciaDelDiaActions` afirmaba que «editarla le cambia el origen»: ningún camino lo hacía.
+//
+// LA MUTACIÓN QUE LO PONE ROJO: devolver `esDefectoQueNadieMiro` a `h.fuente_legacy === FUENTE`.
+
+test('UNA FILA POR DEFECTO QUE ALGUIEN CORRIGIÓ NO ES UN DEFECTO QUE NADIE MIRÓ', () => {
+  const sinTocar = {
+    id: 'r1', persona_id: 'quiroga', tipo_hora: 'normal',
+    fuente_legacy: FUENTE_HORAS_POR_DEFECTO, actualizado_por: null,
+  }
+  const corregida = { ...sinTocar, id: 'r2', actualizado_por: '1acc5001-0000-0000-0000-000000000000' }
+  assert.equal(esDefectoQueNadieMiro(sinTocar), true)
+  assert.equal(esDefectoQueNadieMiro(corregida), false, 'tiene autor: la tocó una persona')
+  // Y el origen nuevo también la protege, que es lo que pasa de acá en adelante.
+  assert.equal(
+    esDefectoQueNadieMiro({ ...sinTocar, fuente_legacy: FUENTE_CORRECCION_HORAS }), false,
+  )
+})
+
+test('DECLARAR AUSENTE NO BORRA LAS 13 H QUE EL DUEÑO TECLEÓ (caso Quiroga, 10/09/2026)', () => {
+  const corregida = {
+    id: 'r-13h', persona_id: 'quiroga', tipo_hora: 'normal',
+    fuente_legacy: FUENTE_HORAS_POR_DEFECTO,
+    actualizado_por: '1acc5001-0000-0000-0000-000000000000',
+  }
+  const plan = planDeHorasPorDefecto({
+    presencias: [{ persona_id: 'quiroga', estado: 'ausente', motivo: 'falta' }],
+    horasExistentes: [corregida],
+    fecha: '2026-09-10',
+    obra: 'obra-1',
+  })
+  // EL DEFECTO QUE ATRAPA: `borrar: ['r-13h']`. Trece horas de alguien desaparecían sin un aviso.
+  assert.deepEqual(plan.borrar, [])
+  // No se elige quién tenía razón: se nombra el conflicto para que lo resuelva quien tiene el dato.
+  assert.deepEqual(plan.conflictos, ['quiroga'])
+})
+
+test('LA JORNADA POR DEFECTO QUE NADIE TOCÓ SÍ SE RETIRA AL DECLARAR AUSENTE', () => {
+  // El control tiene que poder decir SÍ: si no, «no borra nunca» pasaría el test anterior siendo una
+  // constante, y la jornada de alguien que no vino quedaría cargada a la obra para siempre.
+  const plan = planDeHorasPorDefecto({
+    presencias: [{ persona_id: 'aguero', estado: 'ausente', motivo: 'falta' }],
+    horasExistentes: [{
+      id: 'r-9h', persona_id: 'aguero', tipo_hora: 'normal',
+      fuente_legacy: FUENTE_HORAS_POR_DEFECTO, actualizado_por: null,
+    }],
+    fecha: '2026-09-10',
+    obra: 'obra-1',
+  })
+  assert.deepEqual(plan.borrar, ['r-9h'])
+  assert.deepEqual(plan.conflictos, [])
 })

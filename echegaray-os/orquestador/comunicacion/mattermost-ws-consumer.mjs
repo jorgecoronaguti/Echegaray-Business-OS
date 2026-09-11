@@ -24,7 +24,8 @@ import { crearConector } from './conector.mjs'
 import { crearLog } from '../../../communication-service/src/index.mjs'
 import { canalesDeArea } from '../lib/canal-de-area.mjs'
 import { mattermostDelOs } from '../lib/mattermost-os.mjs'
-import { query } from '../lib/db.mjs'
+import { alPerderLaConexion, query } from '../lib/db.mjs'
+import { crearLatido } from '../lib/conexion-perdida.mjs'
 import { nombresDelBot } from './identidad-bot.mjs'
 
 const PLATAFORMA = 'mattermost'
@@ -416,6 +417,19 @@ async function main() {
   // No bloquea el arranque — avisa. Ver `verificarCanalesDeIngesta`.
   verificarCanalesDeIngesta({ mattermost: mattermostDelOs({ log }), canales: canalesDeAdjuntos(), botUserId, log })
     .catch((e) => log.warn?.('ws: la verificación de canales falló', { detalle: String(e?.message ?? e).slice(0, 160) }))
+
+  // CONEXIÓN PERDIDA: este proceso comparte el pool de `lib/db.mjs` con el worker, y por lo
+  // tanto compartía el agujero del 10/09/2026. Acá no hay bucle que vigilar (es puro evento
+  // del socket), pero sí el cliente OCIOSO del pool que se muere sin que nadie lo espere: si
+  // eso pasa, `con.recibir()` deja de escribir en el inbox y los mensajes se pierden en
+  // silencio mientras el socket sigue conectado. Se sale con 75 y systemd levanta limpio.
+  // No hay latido por tiempo a propósito: un día sin mensajes es normal en este proceso, así
+  // que el silencio no prueba nada. Ver `lib/conexion-perdida.mjs`.
+  const latido = crearLatido({ toleranciaMs: 600_000, salir: (c) => process.exit(c), log, nombre: 'mattermost-ws-consumer' })
+  alPerderLaConexion((err, { corte }) => {
+    if (corte) latido.fatalSiEsConexionPerdida(err, 'pool')
+    else log.error?.('pool: error inesperado (no es corte de conexión)', { error: String(err?.message ?? err) })
+  })
 
   const consumidor = crearConsumidorWS({ con, wsUrl, token, botUserId, botUsernames, log, port: { query } })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); consumidor.cerrar(); process.exit(0) })
