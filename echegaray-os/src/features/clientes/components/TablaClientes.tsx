@@ -42,6 +42,8 @@ import {
   AvanceDeCobro, ComponenteDelContrato, ContratadoDelTrabajo, baseDelContrato, sumaDeObras,
 } from './CeldasDeContrato'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
+import { MarcaAdicional } from './MarcaAdicional'
+import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
 
 /**
  * LAS CINCO COLUMNAS (11/09/2026). Literales porque Tailwind no compila una clase armada en
@@ -184,8 +186,16 @@ export function TablaClientes({
                 <><span /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_TABLET} /></>
               )}
             </Link>
-            {c.enCurso.map((o) => {
+            {/* EL ADICIONAL VA DEBAJO DE SU OBRA MAYOR (dueño, 11/09/2026). La relación la decide
+                `obra_canonica.obra_padre_id`; el orden y los dos niveles, `jerarquiaDeObras`, que es
+                la MISMA función que usa la ficha del cliente. Mientras la migración 20260911T2000 no
+                esté aplicada, ninguna obra trae padre y esto dibuja la lista de siempre. */}
+            {jerarquiaDeObras(c.enCurso).map((fila) => {
+              const o = fila.obra
               const ocDeLaObra = papelesDe(c.cliente_id).porObra.get(o.obra_id)?.oc ?? []
+              // Lo suyo + sus adicionales. La celda dibuja SU número (la columna tiene que seguir
+              // sumando el total del cliente) y declara el consolidado en la línea de abajo.
+              const consolidado = consolidar(fila, baseDelContrato)
               return (
                 <Link
                   key={o.obra_id}
@@ -203,17 +213,21 @@ export function TablaClientes({
                   {/* DOS LÍNEAS: el nombre arriba, sus OC abajo, cada una abriendo su PDF. */}
                   <span style={{
                     display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
-                    minWidth: 0, overflow: 'hidden', paddingLeft: 14,
+                    // UN PASO DE 24px (grid de 8) SOBRE LA SANGRÍA DE LA OBRA. Es el único recurso
+                    // que dice «esto cuelga de lo de arriba» sin agregar un tercer nivel de
+                    // navegación ni una tarjeta por dato.
+                    minWidth: 0, overflow: 'hidden', paddingLeft: fila.nivel ? 38 : 14,
                   }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
                       <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
                         <IconoObra className="h-[13px] w-[13px]" />
                       </span>
                       <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
+                      {fila.esAdicional && <MarcaAdicional huerfano={fila.huerfano} />}
                     </span>
                     <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} />
                   </span>
-                  <ContratadoDelTrabajo o={o} veEconomia={veEconomia} />
+                  <ContratadoDelTrabajo o={o} veEconomia={veEconomia} consolidado={consolidado} />
                   <ComponenteDelContrato o={o} cual="materiales" veEconomia={veEconomia} />
                   <ComponenteDelContrato o={o} cual="manoObra" veEconomia={veEconomia} />
                   <AvanceDeCobro o={o} veEconomia={veEconomia} />

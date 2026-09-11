@@ -27,6 +27,7 @@ import type { ObraEnCurso } from '@/features/administracion/services/homeCartera
 import { baseDelContrato, cobradoParaLaBarra, fraseDeFuente } from '../services/contratoDeObra'
 import { ORIGEN_SUMA_VIVA } from '../services/economiaObras'
 import { progresoDeCobro } from '../services/progresoCobro'
+import type { Consolidado } from '../services/obrasAdicionales'
 
 export { baseDelContrato, fraseDeFuente, sumaDeObras } from '../services/contratoDeObra'
 import { SOLO_ANCHO, SOLO_TABLET, TONO } from './CeldasDeCartera'
@@ -55,7 +56,37 @@ function Cifra({ principal, secundaria, tam, titulo, testid, apagado = false }: 
 }
 
 /** LO CONTRATADO DE UN TRABAJO: el total del contrato, con la moneda del papel debajo. */
-export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px' }: { o: ObraEnCurso; veEconomia: boolean; tam?: string }) {
+/**
+ * ═══ EL CONSOLIDADO SE DECLARA, NO REEMPLAZA AL NÚMERO DE LA FILA ═══
+ *
+ * Dueño (11/09/2026): la obra mayor tiene que mostrar el total con sus adicionales. La tentación es
+ * poner $112,5 M en la columna del Playón de Azufre — y ahí la columna deja de poder sumarse: el
+ * adicional estaría contado en la madre Y otra vez en su propia fila, y el total del cliente
+ * (`cliente_economia`, la misma cifra que publica la pestaña OBRAS) dejaría de cerrar contra las
+ * filas que se ven. Es el defecto que `sumaSinDobleConteo` mide.
+ *
+ * Entonces: ARRIBA lo propio —lo que se suma— y DEBAJO el consolidado con su desglose, en la línea
+ * secundaria que esta celda ya tiene. Una línea corta, no un párrafo: «+ $ 10,0 M · 1 adicional =
+ * $ 112,5 M».
+ *
+ * CUANDO UN ADICIONAL NO TIENE PRECIO no hay consolidado: la línea dice cuántos faltan. Un total al
+ * que le falta un componente se lee como un hecho y es más chico que la realidad.
+ */
+function lineaDelConsolidado(c: Consolidado): string | null {
+  if (!c.n) return null
+  const cuantos = `${c.n} adicional${c.n > 1 ? 'es' : ''}`
+  if (c.total === null || c.adicionales === null) return `+ ${cuantos} sin precio`
+  return `+ ${millones(c.adicionales)} · ${cuantos} = ${millones(c.total)}`
+}
+
+export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px', consolidado }: {
+  o: ObraEnCurso
+  veEconomia: boolean
+  tam?: string
+  /** Lo suyo + sus adicionales, ya resuelto por `consolidar()`. Ausente = la fila no es una obra
+   *  mayor con adicionales y la celda se dibuja como siempre. */
+  consolidado?: Consolidado
+}) {
   if (!veEconomia) return <span />
   const base = baseDelContrato(o)
   if (base === null) {
@@ -72,9 +103,13 @@ export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px' }: { o: Obr
   // llevar la misma tinta que un contrato firmado.
   const viva = o.contratoTotal === null && o.origenContratado === ORIGEN_SUMA_VIVA
   const marca = viva || o.nota ? ' ·' : ''
-  const secundaria = usd !== null
+  // EL CONSOLIDADO LE GANA LA LÍNEA AL DÓLAR, y es una decisión: las dos cosas no entran en una
+  // línea de 11px sin truncarse, y con adicionales colgando la pregunta de la fila es «cuánto es todo
+  // esto». La moneda del contrato no se pierde: sigue entera en el `title`.
+  const adicionales = consolidado ? lineaDelConsolidado(consolidado) : null
+  const secundaria = adicionales ?? (usd !== null
     ? `${dolares(usd)}${(o.materiales ?? 0) > 0 ? ` + ${pesos(o.materiales)}` : ''}`
-    : null
+    : null)
   const origen = o.contratoTotal !== null
     ? 'Mano de obra + materiales según el papel, en pesos de hoy. '
     : viva
@@ -85,6 +120,10 @@ export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px' }: { o: Obr
       <Cifra
         testid="contratado-obra" tam={tam} principal={`${pesos(base) ?? ''}${marca}`} secundaria={secundaria}
         titulo={origen
+          + (consolidado?.n
+            ? `Este trabajo tiene ${consolidado.n} adicional(es) colgado(s), con su propia OC: arriba va SÓLO lo suyo —para que la columna siga sumando el total del cliente— y debajo el consolidado. `
+            : '')
+          + (usd !== null ? `Contrato en dólares: ${dolares(usd)}. ` : '')
           + (usd !== null && o.tipoCambio ? `Los dólares se valúan al tipo de cambio de hoy (${Math.round(o.tipoCambio).toLocaleString('es-AR')}). ` : '')
           + (o.nota ? `Discrepancia declarada por la vista: ${o.nota}. ` : '')
           + fraseDeFuente(o)}

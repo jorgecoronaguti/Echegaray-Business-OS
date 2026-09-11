@@ -147,30 +147,11 @@ export function consolidar<T>(fila: FilaDeObra<T>, base: (o: T) => number | null
   return { propio, adicionales, total, n: fila.hijos.length, sinPrecio }
 }
 
-/**
- * LA SUMA DE LA LISTA, SIN CONTAR NINGUNA OBRA DOS VECES.
- *
- * Es la cuenta que se rompe sola cuando la obra mayor empieza a publicar el consolidado: sumar la
- * columna tal como se ve daría madre+adicional EN LA MADRE y otra vez el adicional en su propia
- * fila. Acá cada obra entra UNA vez, por su `propio`.
- *
- * `total` en `null` = a alguna obra le falta la base, y entonces no hay total que publicar (la ficha
- * escribe qué falta en vez de una suma parcial disfrazada de total).
- *
- * SE SUMA `f.obra` Y NUNCA `f.hijos`: cada obra de la entrada sale como UNA fila de la jerarquía —el
- * adicional tiene la suya, en nivel 1—, así que recorrer también los `hijos` de la madre contaría el
- * adicional dos veces. Así estaba escrita la primera versión de esta función y el test la puso roja
- * por $10.000.000 sobre Messina.
- */
-export function sumaSinDobleConteo<T>(
-  filas: FilaDeObra<T>[], base: (o: T) => number | null,
-): { total: number | null; faltan: number } {
-  const valores = filas.map((f) => base(f.obra))
-  const faltan = valores.filter((v) => v === null).length
-  return {
-    total: valores.length && faltan === 0
-      ? valores.reduce((a: number, v) => a + (v as number), 0)
-      : null,
-    faltan,
-  }
-}
+// ═══ LA SUMA DE LA COLUMNA NO VIVE ACÁ, Y ES A PROPÓSITO ═══
+//
+// La tentación era exportar un `sumaSinDobleConteo`. No hace falta: `jerarquiaDeObras` devuelve UNA
+// fila por obra —el adicional es una fila más, en nivel 1— así que sumar la columna tal como se
+// dibuja ya cuenta cada trabajo una vez. Lo que hay que no hacer es sumar los CONSOLIDADOS, y eso lo
+// prueba `obrasAdicionales.test.ts` sobre las obras reales de Messina: daría $142,59 M contra los
+// $132,59 M que publican `cliente_economia` y la pestaña OBRAS. Una función más sería una segunda
+// definición de una suma que el repo ya hace en un lugar.

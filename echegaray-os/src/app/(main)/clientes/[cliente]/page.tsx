@@ -38,6 +38,7 @@ import {
   clasificarDocumentoCliente, desvincularDocumentoCliente, vincularCarpetaCliente, vincularDocumentoCliente,
 } from '@/features/clientes/services/actionsDocumentos'
 import { crearObra } from '@/features/obras/services/actions'
+import { recortarPorEstado } from '@/features/clientes/services/obrasAdicionales'
 import { BloqueActividad } from '@/features/clientes/components/BloqueActividad'
 import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
@@ -245,8 +246,13 @@ export default async function ClientePage({ params, searchParams }: {
   const portal = resumenAccesos(lector.leer(accesos, []))
 
   const todas = lector.leer(obras, [])
-  const cerradas = todas.filter((o) => o.estado === 'cerrada')
-  const enCurso = todas.filter((o) => o.estado === 'activa')
+  // ═══ EL ADICIONAL VIAJA AL GRUPO DE SU OBRA MAYOR (dueño, 11/09/2026) ═══
+  //
+  // Recortado obra por obra, `bsa-adicional` —cerrada, con su madre `messina-bsa` activa— caía en
+  // «Terminados» y su madre quedaba arriba sin el subnivel que el dueño pidió. Manda el estado de la
+  // madre para elegir el grupo; la palabra de la columna Estado sigue siendo la del hijo.
+  const cerradas = recortarPorEstado(todas, 'cerrada')
+  const enCurso = recortarPorEstado(todas, 'activa')
   // ═══ LO CONTRATADO EN CURSO LO DICE `cliente_economia`, NO ESTA PÁGINA (H1, 10/09/2026) ═══
   //
   // Era `sumaConHuecos` sobre las obras con FALLBACK a `obra_panel.monto_contratado`. El fallback se
@@ -259,6 +265,10 @@ export default async function ClientePage({ params, searchParams }: {
   // sólo conoce OBRAS y publicaba $ 95,3 M de Quattropani contra $ 139,4 M en la lista.
   // O SUMA COMPLETA, O NADA (auditor final, 11/09/2026): la lista pone «—» cuando un trabajo no
   // tiene base; la ficha no puede publicar una parcial como total.
+  // CADA TRABAJO UNA VEZ: `enCurso` es PLANO —el adicional es una fila más, no un hijo adentro de la
+  // madre—, y por eso esta suma no puede contar dos veces lo que la obra mayor consolida en su celda.
+  // Si alguien la reescribe sobre los consolidados, sobre Messina daría $142,59 M contra los
+  // $132,59 M de `cliente_economia` y de la pestaña OBRAS (`obrasAdicionales.test.ts`).
   const basesEnCurso = enCurso.map((o) => baseContractualDe(economia?.get(o.obra_id)))
   const contratadoEnCurso = basesEnCurso.length && basesEnCurso.every((v): v is number => v !== null)
     ? basesEnCurso.reduce((a, v) => a + v, 0)

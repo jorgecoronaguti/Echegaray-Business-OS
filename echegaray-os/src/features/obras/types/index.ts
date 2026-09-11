@@ -25,6 +25,14 @@ export const ETAPA_LABEL: Record<Etapa, string> = {
 export interface ObraPanel {
   obra_id: string
   nombre: string
+  /**
+   * LA OBRA MAYOR DE LA QUE ESTE TRABAJO ES UN ADICIONAL (`obra_canonica.obra_padre_id`).
+   *
+   * OPCIONAL a propósito: la columna entra con la migración 20260911T2000 y entre que se aplica y
+   * que termina el deploy hay una ventana en la que la RPC todavía no la manda. Sin el `?`, esa
+   * ventana es una pantalla en error; con él, es una lista sin subniveles — lo que ya se veía ayer.
+   */
+  obra_padre_id?: string | null
   /** El cliente al que pertenece. La obra cuelga del cliente: es la jerarquía del módulo. */
   cliente_id: string | null
   cliente_slug: string | null

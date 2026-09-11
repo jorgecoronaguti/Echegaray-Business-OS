@@ -35,8 +35,11 @@ import Link from 'next/link'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
+import { ContratadoDeLaFicha } from './CeldaContratadoFicha'
+import { MarcaAdicional } from './MarcaAdicional'
+import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
 import type { ObraPanel } from '@/features/obras/types'
-import { SIN_PRECIO_EN_OBRAS, type EconomiaDeObra } from '../services/economiaObras'
+import type { EconomiaDeObra } from '../services/economiaObras'
 import { baseContractualDe } from '@/features/clientes/services/economiaObras'
 import type { PapelesDelCliente } from '../services/papelesCliente'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
@@ -205,7 +208,12 @@ export function ObrasDelCliente({
         </p>
       )}
 
-      {obras.map((o) => {
+      {/* EL ADICIONAL SE DIBUJA DEBAJO DE SU OBRA MAYOR (dueño, 11/09/2026), con sangría y rótulo.
+          La relación la decide `obra_canonica.obra_padre_id` y el orden `jerarquiaDeObras` —la MISMA
+          función que usa la cartera de `/clientes`—. Sin la migración 20260911T2000 aplicada ninguna
+          obra trae padre y esto dibuja la lista de siempre. */}
+      {jerarquiaDeObras(obras).map((fila) => {
+        const o = fila.obra
         // EL PRECIO ES EL DE OBRAS (la OC de Cobranzas) Y NADA MÁS (H1, 10/09/2026). El respaldo
         // `obra_panel.monto_contratado` —el campo del formulario— se retiró: era la segunda
         // definición del contratado, la que sumaba $31,8 M de Messina en el panel lateral mientras
@@ -231,7 +239,10 @@ export function ObrasDelCliente({
             // `minHeight`: con las OC debajo del nombre la fila tiene DOS líneas, y a 390px los
             // números se apilan. Con `height` clavado el segundo renglón queda cortado por abajo.
             minHeight: papelesDeLaObra?.oc.length ? ALTO_V2.cara + 14 : ALTO_V2.cara,
-            paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
+            // UN PASO DE 24px (grid de 8) PARA EL ADICIONAL: es lo único que dice «cuelga de la fila
+            // de arriba» sin agregar un nivel de navegación ni una tarjeta.
+            paddingLeft: fila.nivel ? SANGRIA + 24 : SANGRIA,
+            borderBottom: `1px solid ${V.lineaFila}`,
             // Una obra sin monto contratado bloquea: no se puede decir qué se le facturó al cliente.
             boxShadow: veEconomia && contratado == null && !cerrada ? FILO_BLOQUEA : 'none',
           }}
@@ -250,6 +261,7 @@ export function ObrasDelCliente({
               <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
                 {o.nombre}
               </span>
+              {fila.esAdicional && <MarcaAdicional huerfano={fila.huerfano} />}
               {/* ═══ «VER EN OBRAS» NO CUELGA DE CADA FILA (dueño, 10/09/2026 18:12) ═══
 
                   Repetía el enlace al ERP tantas veces como trabajos tiene el cliente, y el módulo
@@ -301,18 +313,7 @@ export function ObrasDelCliente({
               plata parecía otro dato numérico. La celda tiene UNA tipografía por vez y la elige lo
               que hay adentro (dueño, 10/09/2026: «hay mezcla de diseño»). */}
           {veEconomia
-            ? (
-                <span
-                  className={`truncate ${contratado == null ? '' : 'font-mono tabular-nums'}`}
-                  data-testid="contratado-obra-cliente"
-                  style={{
-                    fontSize: contratado == null && !cerrada ? '11.5px' : '12px', textAlign: 'right',
-                    color: contratado == null ? (cerrada ? V.tenue : V.warn) : V.tinta,
-                  }}
-                >
-                  {contratado == null ? (cerrada ? '—' : SIN_PRECIO_EN_OBRAS) : plata(contratado)}
-                </span>
-              )
+            ? <ContratadoDeLaFicha contratado={contratado} cerrada={cerrada} consolidado={consolidar(fila, (h) => baseContractualDe(economia?.get(h.obra_id)))} />
             : (
                 <span
                   data-testid="contratado-sin-permiso"

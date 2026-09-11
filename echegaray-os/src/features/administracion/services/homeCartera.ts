@@ -44,6 +44,8 @@ export interface ObraDeCartera {
   cliente_id: string | null
   avance_pct: number | null
   jefe_obra: string | null
+  /** La obra mayor de la que es adicional. Opcional: ver `ObraPanel.obra_padre_id`. */
+  obra_padre_id?: string | null
 }
 
 /** El certificado más avanzado de una obra, ya resuelto a una frase. */
@@ -135,6 +137,16 @@ export interface ObraEnCurso {
   /** ¿La base puede repartir el cobro por obra? `false` = la columna `imputacion` no existe todavía
    *  y esta celda NO dibuja nada. Ver `CobroPorObra`: es todo o nada. */
   cobroDisponible: boolean
+  /**
+   * LA OBRA MAYOR DE LA QUE ESTE TRABAJO ES UN ADICIONAL (dueño, 11/09/2026).
+   *
+   * La fila se dibuja con sangría debajo de su madre y con el rótulo «adicional», y su OC sigue
+   * siendo la suya. `null`/ausente = no es adicional de ninguna. La relación la decide
+   * `obra_canonica.obra_padre_id`, nunca el nombre del trabajo: «ME - ADICIONAL TERCER MURO» lo dice
+   * y «BSA - Adicional» también, pero de CUÁL es adicional sólo lo sabe la evidencia —la cotización
+   * en Drive y la fila de Cobranzas— que la migración 20260911T2000 dejó escrita.
+   */
+  obra_padre_id?: string | null
 }
 
 export interface ClienteEnCartera {
@@ -643,6 +655,10 @@ export function armarCartera({
         proximo: cobrado?.por.get(o.obra_id)?.proximo ?? null,
         imputacion: cobroDisponible ? cobrado?.por.get(o.obra_id)?.imputacion ?? null : null,
         cobroDisponible,
+        // `obra_padre_id` y no `obraPadreId`: en esta interfaz los IDENTIFICADORES ya van en snake
+        // (`obra_id`), y con el mismo nombre que en la base una sola función —`jerarquiaDeObras`—
+        // sirve a la cartera y a la ficha. Dos nombres para el mismo campo obligarían a dos.
+        obra_padre_id: o.obra_padre_id ?? null,
       }
     })
     // UN CLIENTE CON UNA SOLA OBRA EN CURSO NO TIENE ENTRE QUÉ REPARTIR: ver `atribuirAlaUnicaObra`.

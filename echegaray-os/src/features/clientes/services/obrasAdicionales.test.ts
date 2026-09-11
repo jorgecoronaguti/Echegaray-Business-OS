@@ -1,8 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  consolidar, jerarquiaDeObras, recortarPorEstado, sumaSinDobleConteo,
-} from './obrasAdicionales.ts'
+import { consolidar, jerarquiaDeObras, recortarPorEstado } from './obrasAdicionales.ts'
+
+/** La columna tal como se dibuja: UNA fila por obra. Es lo que suma la ficha (`basesEnCurso`). */
+const sumaDeLaColumna = (filas: { obra: { precio: number | null } }[]) => {
+  const valores = filas.map((f) => f.obra.precio)
+  const faltan = valores.filter((v) => v === null).length
+  return { total: faltan ? null : valores.reduce((a: number, v) => a + (v as number), 0), faltan }
+}
 
 // LOS DATOS SON LOS REALES DE MESSINA (11/09/2026), no un caso de laboratorio: el adicional del
 // tercer muro ($10.000.000, OC 2256) cuelga del Playón de Azufre ($102.500.000, OC 2173), y
@@ -99,7 +104,7 @@ test('la suma de la lista cuenta cada obra UNA vez, aunque la madre publique el 
   // adicional contado dos veces— y el total del cliente deja de cerrar contra `cliente_economia` y
   // contra la pestaña OBRAS, que es como el dueño lee esta pantalla.
   const filas = jerarquiaDeObras([PLAYON, MURO, DILUCION])
-  const { total, faltan } = sumaSinDobleConteo(filas, precio)
+  const { total, faltan } = sumaDeLaColumna(filas)
   assert.equal(faltan, 0)
   assert.equal(total, 132_590_868)
   assert.equal(total, 102_500_000 + 10_000_000 + 20_090_868)
@@ -111,7 +116,7 @@ test('la suma de la lista cuenta cada obra UNA vez, aunque la madre publique el 
 
 test('sin una sola base, no hay total: se dice qué falta en vez de una suma parcial', () => {
   const filas = jerarquiaDeObras([BSA, BSA_ADIC, PLAYON, MURO])
-  const { total, faltan } = sumaSinDobleConteo(filas, precio)
+  const { total, faltan } = sumaDeLaColumna(filas)
   assert.equal(total, null)
   assert.equal(faltan, 1)
 })

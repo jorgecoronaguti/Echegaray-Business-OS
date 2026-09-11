@@ -108,7 +108,8 @@ test('la migración del adicional deja el modelo usable y no toca ningún númer
       // desaparece, el conjunto deja de ser el mismo.
       const sinPadre = (v) => JSON.parse(JSON.stringify(v), (k, x) => {
         if (x && typeof x === 'object' && !Array.isArray(x) && 'obra_padre_id' in x) {
-          const { obra_padre_id: _, ...resto } = x
+          const resto = { ...x }
+          delete resto.obra_padre_id
           return resto
         }
         return x
