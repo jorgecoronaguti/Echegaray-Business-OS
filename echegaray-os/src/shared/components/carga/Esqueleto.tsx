@@ -76,6 +76,27 @@ export function PantallaEsqueleto({ children }: { children: React.ReactNode }) {
 // LA BANDA DE ÁREAS NO SE DIBUJA DE VERDAD ACÁ, y no puede: `NavAdministracion` es asíncrona —lee el
 // rol para saber qué secciones mostrar— y un `loading.tsx` que espera una consulta deja de ser lo
 // que se pinta al instante. Se reserva su alto (37px: el de `BarraAreas`) y nada más.
+//
+// ═══ HASTA DÓNDE LLEGA ESTO, MEDIDO Y NO SUPUESTO (11/09/2026) ═══
+//
+// ESTE ESQUELETO NO APARECE AL HACER CLIC. Comprobado contra el build de producción en local, con la
+// respuesta RSC retrasada 6 s a propósito y contextos de navegador nuevos para que no hubiera caché:
+// al hacer clic en un enlace de la barra de áreas NO se monta ningún `loading.tsx` —ni éste ni el
+// genérico del grupo `(main)`—; el router deja la pantalla anterior tal cual hasta que llega el
+// payload. La causa es `prefetch={false}` en esas barras: sin precarga el router no tiene el árbol de
+// la ruta y no sabe qué frontera de carga montar (Next 16 sólo precarga hasta el `loading.tsx` más
+// cercano cuando el destino es dinámico, que es justo lo que aquí está apagado).
+//
+// DÓNDE SÍ SE VE: en la carga completa del documento —entrar por la URL, recargar, volver del login—,
+// que llega por streaming y saca primero el marco y este esqueleto.
+//
+// LO QUE CUBRE LA NAVEGACIÓN POR CLIC ES `IndicadorNavegacion`: barra fina arriba y, a los 500 ms, el
+// cartel «Cargando…». Medido en producción sobre 20 navegaciones reales, aparece entre 34 y 536 ms
+// SIEMPRE. O sea que la pantalla no se queda muda; se queda con el contenido viejo.
+//
+// SI ALGÚN DÍA SE QUIERE EL ESQUELETO AL CLIC, el cambio es sacar `prefetch={false}` de las barras de
+// navegación (NO de las listas: ahí está medido que cuesta decenas de renders) y medir ANTES el costo
+// en pasadas por el middleware. No se hizo acá porque no se midió.
 export function SeccionEsqueleto({
   cols, filas = 8, anchoTitulo = 'w-36', vistas = 2,
 }: { cols: number; filas?: number; anchoTitulo?: string; vistas?: number }) {
