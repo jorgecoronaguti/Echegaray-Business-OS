@@ -76,11 +76,35 @@ export function celdasDelAnio({ fila, criterio, col, letra }) {
     // año daba $120,8M contra $33M reales.
     const inflacion = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
     const proy = `IF($${letra(nmeses)}${f}<${MIN_MESES};0;$${letra(prom)}${f}*${inflacion})`
-    // LAS TRES VENTANAS, Y EL MES EN CURSO NO ES NINGUNA DE LAS OTRAS DOS. Un mes cerrado muestra lo
-    // que pasó, aunque sea cero. Uno futuro, la proyección. El que corre, el MAYOR de los dos: el
-    // gasto ya cargado no puede bajar el pronóstico del propio mes — el cuadro empeoraba su
-    // pronóstico justo cuando llegaba más información.
-    visible.push(`=IF(${mes}<${MES_EN_CURSO};${ca}${f};IF(${mes}=${MES_EN_CURSO};MAX(${ca}${f};${proy});${proy}))`)
+    // DOS VENTANAS: el mes CERRADO muestra lo que pasó, aunque sea cero. El mes ABIERTO —el que corre
+    // y los que vienen— muestra el MAYOR entre lo ya cargado y la proyección: el gasto ya cargado no
+    // puede bajar el pronóstico del propio mes.
+    //
+    // ═══ EL MES FUTURO TAMBIÉN, Y UNA PROYECCIÓN NEGATIVA LO PROBÓ (11/09/2026) ═══
+    //
+    // El mes futuro mostraba `proy` a secas, ignorando lo ya cargado. `Estructura!O16` («Ropa y
+    // seguridad») publicaba una proyección de **−$763.364,80**: la columna `Proyectado` es
+    // `Total 2026 − Total real`, `Total real` suma las doce AUXILIARES y `Total 2026` las doce
+    // visibles, así que un real de octubre ($763.364,80, Compras f639 · MARIANA SA) con una visible
+    // en 0 —el sub-rubro no llega a `MIN_MESES` y su proyección es cero— salía por la resta con el
+    // signo al revés. Una proyección negativa no existe: es plata que se resta del gasto propio del
+    // año sin que nadie la haya devuelto.
+    //
+    // `MAX` sobre el mes futuro lo cierra por construcción: `Total 2026 ≥ Total real` siempre, y
+    // `Proyectado ≥ 0` siempre. El cash flow no cambia: `deEstructura` emite
+    // `MAX(0; visible − real)`, que con `visible = MAX(real; proy)` da el mismo `MAX(0; proy − real)`
+    // que daba antes — la corrección es de la pestaña, y ahora las dos usan la misma definición.
+    //
+    // ⚠ LO QUE ESTE CAMBIO DEJA LATENTE EN UN GENERADOR RETIRADO (auditoría del 11/09, límite L5).
+    // `expresionProyeccionMes` (cash-flow-lineas.mjs) lee estas celdas con
+    // `INDEX(Estructura!$B$f:$M$f;1;MONTH(mes))` para la línea de estructura del cuadro, y la usa
+    // `scripts/cash-flow-rehacer.mjs`, que NO corre en el pipeline —lo reemplazó
+    // `scripts/cash-flow-vistas.mjs`, que lee `_MOVIMIENTOS`—. Si alguien revive ese generador, su
+    // línea de estructura va a leer un total que ahora incluye reales FUTUROS; y `TOTAL ESTRUCTURA`
+    // incluye «Equipos y rodados (inversión)», que esa línea excluye de su lado real y muestra
+    // aparte, así que una compra de rodados con fecha de caja futura se contaría DOS veces. Hoy vale
+    // $0 (oct/nov/dic de esa fila están en cero). Revivir ese generador exige releer esto primero.
+    visible.push(`=IF(${mes}<${MES_EN_CURSO};${ca}${f};MAX(${ca}${f};${proy}))`)
   }
   return { aux, visible }
 }

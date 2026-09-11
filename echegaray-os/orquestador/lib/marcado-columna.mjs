@@ -161,3 +161,50 @@ export function avisoDeCandado({ pestana, columna, rotulo, congeladas = 0, monto
     '   Para estamparlas igual: --forzar-candado (deja snapshot, escribe sólo esa columna y vuelve a candar).',
   ]
 }
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA CAPA FÓSIL DEL PROPIO SELLO
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ═══ EL DEFECTO MEDIDO EL 11/09/2026 SOBRE EL ARCHIVO VIVO ═══
+//
+// «Tarjeta de Credito» mostraba «Estado en el OS · al 24/7/2026» — 48 días de atraso— y la auditoría
+// de consistencia lo anotó como «el sello de la pestaña no se actualiza». No era eso: el sello de HOY
+// estaba estampado, en `L31`, y decía «al 11/9/2026». Los que se veían eran DOS FÓSILES, en `L2` y
+// `L23`, los dos fechados «al 24/7/2026». El de `L2` se explica: hasta el 04/08
+// `INSTRUMENTOS.tarjeta.filaCab` valía 2 y el sello se estampaba ahí. El de `L23` NO lo pude probar
+// —`BANDA` fue 52 y después 31, nunca 23— y no hace falta: la regla no depende de la historia de
+// cada fósil sino de una sola cosa, que la fila no sea la cabecera de HOY.
+//
+// POR QUÉ NO SE BORRABAN SOLOS. El generador de la pestaña (`tarjeta-pestana.mjs`) sí es dueño de la
+// columna L de su banda, pero la guarda de borrado sólo vacía lo que puede PROBAR del OS
+// (`residuo-propio.mjs`): un texto que arranca con «Estado en el OS» no tiene forma de generador y no
+// está en el registro de rótulos —su fecha cambia en cada corrida, así que nunca coincide—. Bien
+// conservado, entonces: el fósil quedaba blindado con el mismo blindaje que protege lo del dueño.
+//
+// POR QUÉ LO LIMPIA EL QUE LO ESCRIBE, Y NO EL GENERADOR DE LA PESTAÑA. Porque el generador corre
+// DESPUÉS (`tarjeta-pestana.mjs` está más abajo en el pipeline que `cheques-cobertura-sheet.mjs`):
+// ensanchar su guarda para que reconozca el sello le habría dado permiso para borrar el sello FRESCO
+// de esta misma corrida. La basura la saca el que la generó, en su propia columna, y sólo la de las
+// filas que ya no son la suya.
+
+/** Con qué texto abre el sello que el OS estampa arriba de su columna de marcas. */
+export const SELLO_OS = 'Estado en el OS'
+
+/**
+ * NÚCLEO PURO: en qué filas de la columna de marcas quedó un sello VIEJO del OS.
+ *
+ * Devuelve filas base 1, siempre distintas de `filaCab` —la de esta corrida no se toca— y siempre
+ * ARRIBA de ella: por debajo de `filaCab` viven las marcas fila por fila, y una marca no es un sello.
+ *
+ * @param {Array} columna la columna releída en el destino (filas desde la 1), como la devuelve la API
+ * @param {number} filaCab la fila donde este sello se estampa HOY
+ * @returns {number[]} las filas a vaciar, en orden
+ */
+export function sellosViejos(columna = [], filaCab = 0) {
+  const filas = []
+  for (let i = 0; i < columna.length && i + 1 < filaCab; i++) {
+    if (textoDe(columna[i]).startsWith(SELLO_OS)) filas.push(i + 1)
+  }
+  return filas
+}

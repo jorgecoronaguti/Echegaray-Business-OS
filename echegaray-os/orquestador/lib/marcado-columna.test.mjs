@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { planDeMarcado, excedeElLimite, motivoDeAborto, LIMITES_AJENAS } from './marcado-columna.mjs'
+import { planDeMarcado, excedeElLimite, motivoDeAborto, LIMITES_AJENAS, sellosViejos } from './marcado-columna.mjs'
 
 const MIO = '✓ su factura está en Compras'
 const esMio = (t) => t === MIO || t.startsWith('Estado en el OS')
@@ -91,4 +91,47 @@ test('el umbral es el declarado y no una fracción escondida', () => {
   assert.equal(excedeElLimite(6, 106, LIMITES_AJENAS), true)
   assert.equal(excedeElLimite(1, 4, LIMITES_AJENAS), false)
   assert.equal(excedeElLimite(2, 10, LIMITES_AJENAS), true)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL SELLO FÓSIL — «Estado en el OS · al 24/7/2026» a la vista 48 días después
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Caso real, «Tarjeta de Credito» el 11/09/2026: el sello de HOY estaba en L31 («al 11/9/2026») y a la
+// vista se leía «al 24/7/2026», que eran los fósiles de L2 y L23 —de cuando `filaCab` valía 2 y 23—.
+
+test('encuentra los sellos viejos ARRIBA de la cabecera de hoy, y no el de hoy', () => {
+  const col = []
+  col[1] = ['Estado en el OS · al 24/7/2026']   // L2, fósil
+  col[22] = ['Estado en el OS · al 24/7/2026']  // L23, fósil
+  col[30] = ['Estado en el OS · al 11/9/2026']  // L31, el de esta corrida
+  assert.deepEqual(sellosViejos(col, 31), [2, 23])
+})
+
+test('la cabecera de hoy NUNCA está en la lista, ni siquiera si la columna se leyó más larga', () => {
+  const col = Array.from({ length: 40 }, () => [''])
+  col[30] = ['Estado en el OS · al 11/9/2026']
+  assert.deepEqual(sellosViejos(col, 31), [], 'vaciar el sello de la corrida es el defecto opuesto')
+})
+
+test('una MARCA de fila no es un sello: lo de abajo de la cabecera no se toca', () => {
+  const col = []
+  col[31] = ['✓ su factura está en Compras']
+  col[32] = ['▲ FALTA la factura en Compras']
+  col[33] = ['Estado en el OS · al 1/1/2026'] // abajo de filaCab: no es su territorio
+  assert.deepEqual(sellosViejos(col, 31), [])
+})
+
+test('lo del dueño arriba de la cabecera se queda: sólo se vacía lo que abre con el sello', () => {
+  const col = []
+  col[1] = ['Visa 3319 · Santander · resumen 202120']
+  col[5] = ['ojo con esta cuota']
+  col[9] = ['Estado en el OS · al 4/9/2026']
+  assert.deepEqual(sellosViejos(col, 26), [10])
+})
+
+test('sin columna leída no se propone vaciar nada', () => {
+  assert.deepEqual(sellosViejos([], 31), [])
+  assert.deepEqual(sellosViejos(undefined, 31), [])
+  assert.deepEqual(sellosViejos([['Estado en el OS · al 1/1/2026']], 0), [], 'sin cabecera no hay arriba')
 })
