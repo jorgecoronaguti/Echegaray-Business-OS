@@ -257,13 +257,92 @@ test('cada cuota es un movimiento distinto: la clave no puede colapsar las tres'
   assert.equal(new Set(r.movimientos.map((m) => m.clave)).size, r.movimientos.length)
 })
 
-test('si Compras ya tiene la cuota pendiente de ese mes, no se proyecta encima', () => {
+test('si Compras ya tiene la cuota de ese mes, no se proyecta encima — PENDIENTE o PAGADA', () => {
   const compras = [[], [], ENC,
     fila({ prov: 'Santander', total: 1290000, estado: 'Pendiente', rubro: RUBRO_FINANCIERO, fecha: S('2026-11-07') }),
   ]
   const r = dePrendarioFuturo({ debitos: DEBITOS, plan: PLAN, compras })
   assert.deepEqual(r.movimientos.map((m) => m.fecha), [S('2026-10-07'), S('2026-12-07')])
-  assert.match(r.avisos.join(' '), /2026-11 ya está pendiente en Compras f4/)
+  assert.match(r.avisos.join(' '), /2026-11 ya está en Compras f4 .*pendiente/)
+})
+
+test('UNA CUOTA YA MARCADA «Pagado» TAMPOCO SE PROYECTA — el doble conteo del auditor', () => {
+  // Mirar sólo las PENDIENTES hacía que la cuota de octubre, ya pagada y cargada, se proyectara encima
+  // de su propio pago: tres cuotas emitidas con octubre contada dos veces. Lo que decide es que la
+  // obligación EXISTA en Compras, no en qué estado la dejó la planilla.
+  const compras = [[], [], ENC,
+    fila({ prov: 'Santander', total: 1282000, estado: 'Pagado', rubro: RUBRO_FINANCIERO, fecha: S('2026-10-07') }),
+  ]
+  const r = dePrendarioFuturo({ debitos: DEBITOS, plan: PLAN, compras })
+  assert.deepEqual(r.movimientos.map((m) => m.fecha), [S('2026-11-07'), S('2026-12-07')])
+  assert.match(r.avisos.join(' '), /2026-10 ya está en Compras f4 .*pagada/)
+})
+
+test('UNA NOTA DE CRÉDITO NEGATIVA NO EXPLICA UN DÉBITO — ni tapa la proyección', () => {
+  // Se comparaba con `Math.abs`: una nota de crédito de −$1.284.505 «explicaba» el débito de
+  // +$1.284.505, el REAL del banco no se emitía y la nota seguía restando. Doble daño, un solo signo.
+  const d = debito('2026-06-08', PRENDARIO, 1284505.37, NAT.prendario, 61)
+  const compras = [[], [], ENC,
+    fila({ prov: 'Santander', total: -1284505.37, estado: 'Pagado', rubro: RUBRO_FINANCIERO, fecha: S('2026-06-07') }),
+  ]
+  assert.equal(explicadoPorCompras(d, RUBRO_FINANCIERO,
+    obligacionesDeCompras(compras, [RUBRO_FINANCIERO]), { relativa: 0.02, mismoMes: true }), null)
+  assert.equal(deBancoObligaciones({ debitos: [d], compras, planes }).movimientos.length, 1,
+    'el débito tiene que entrar igual: su pago no lo explica una devolución')
+  // Y del lado del futuro: una nota de crédito en el mes no ocupa el lugar de la cuota.
+  const cred = [[], [], ENC,
+    fila({ prov: 'Santander', total: -500000, estado: 'Pagado', rubro: RUBRO_FINANCIERO, fecha: S('2026-11-07') }),
+  ]
+  assert.equal(dePrendarioFuturo({ debitos: DEBITOS, plan: PLAN, compras: cred }).movimientos.length, 3)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEDUPE, PROBADO CONTRA LAS DOS MUTACIONES QUE EL AUDITOR ENCONTRÓ SIN COBERTURA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('M1 · LA CUOTA DE PLAN DE UN MES NO PUEDE SER EXPLICADA POR LA FILA DE OTRO MES', () => {
+  // EL CASO EXACTO QUE MIDIÓ EL AUDITOR: f697 (16/08, Pagado) y f698 (16/09, Pendiente) llevan el MISMO
+  // importe al centavo y están a 31 días — justo la ventana. Con sólo f698 viva en Compras, el débito
+  // del 16/08 quedaba «explicado» por la fila de septiembre (agosto se suprimía) y el de septiembre
+  // entraba como REAL mientras la fila de Compras seguía COMPROMETIDA: el mismo peso dos veces.
+  const compras = [[], [], ENC,
+    fila({ prov: 'ARCA', total: 2494876, estado: 'Pendiente', rubro: RUBRO_PLANES, fecha: S('2026-09-16') }),
+  ]
+  const r = deBancoObligaciones({
+    debitos: [
+      debito('2026-08-16', 'Debito automatico - Afip', 2494876, NAT.afip, 697),
+      debito('2026-09-16', 'Debito automatico - Afip', 2494876, NAT.afip, 698),
+    ],
+    compras,
+    planes,
+  })
+  const p = r.movimientos.filter((m) => m.rubro === RUBRO_PLANES)
+  assert.equal(p.length, 1, 'agosto tiene que entrar: su débito no lo explica la fila de septiembre')
+  assert.equal(p[0].fecha, S('2026-08-16'))
+  assert.match(r.avisos.join(' '), /ya lo lleva Compras f4/)
+})
+
+test('M3 · UNA FILA DE COMPRAS EXPLICA UN SOLO DÉBITO, y vale para gremiales y para el F931', () => {
+  // Sin consumir la fila, UNA fila de Compras «llevaba» los pagos de DOS meses y el segundo débito no
+  // entraba por ninguna puerta. El auditor probó que quitar `usadas` no ponía ningún test en rojo.
+  const pagosGremiales = {
+    porPeriodo: new Map([
+      ['2026-07', { periodo: '2026-07', detalle: [{ organismo: 'UOCRA', cubierto: 500000, fecha: S('2026-08-10'), filas: [800] }] }],
+      ['2026-08', { periodo: '2026-08', detalle: [{ organismo: 'UOCRA', cubierto: 500000, fecha: S('2026-09-10'), filas: [801] }] }],
+    ]),
+  }
+  const compras = [[], [], ENC,
+    fila({ prov: 'UOCRA', total: 500000, estado: 'Pagado', rubro: RUBRO_GREMIALES, fecha: S('2026-08-20') }),
+  ]
+  const r = deBancoObligaciones({
+    debitos: [
+      debito('2026-08-10', 'Debin 30503049097', 500000, NAT.transferencias, 800),
+      debito('2026-09-10', 'Debin 30503049097', 500000, NAT.transferencias, 801),
+    ],
+    compras, pagosGremiales, planes,
+  })
+  assert.equal(r.movimientos.filter((m) => m.rubro === RUBRO_GREMIALES).length, 1,
+    'la única fila de Compras explica UN pago; el otro mes tiene que entrar por el banco')
 })
 
 test('SIN débito real en el extracto NO se proyecta nada: el importe no se inventa', () => {

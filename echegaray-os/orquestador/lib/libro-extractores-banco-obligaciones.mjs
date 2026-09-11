@@ -123,7 +123,9 @@ export function obligacionesDeCompras(filas = [], rubros = []) {
     const fecha = num(f[c.fechaCaja])
     const total = num(f[c.importe])
     if (fecha === null || !total) continue
-    out.push({ fila: i + 1, rubro, fecha, total: Math.abs(total), pagada: estaPagada(f[c.estado]) })
+    // EL TOTAL CONSERVA SU SIGNO. Con `Math.abs` una nota de crédito se volvía indistinguible de la
+    // factura que corrige, y `explicadoPorCompras` la aceptaba como explicación de un débito.
+    out.push({ fila: i + 1, rubro, fecha, total, pagada: estaPagada(f[c.estado]) })
   }
   return out
 }
@@ -136,18 +138,32 @@ export function obligacionesDeCompras(filas = [], rubros = []) {
  * «Imp.afip 2686 5827», así que compararlos descartaría pares verdaderos.
  */
 export function explicadoPorCompras(debito, rubro, obligaciones = [],
-  { ventana = VENTANA_COMPRAS, relativa = 0, usadas = null } = {}) {
+  { ventana = VENTANA_COMPRAS, relativa = 0, mismoMes = false, usadas = null } = {}) {
   const tolerancia = Math.max(TOLERANCIA_APAREO, debito.importe * relativa)
   return obligaciones.find((o) => o.rubro === rubro
+    // UNA FILA EXPLICA UN SOLO DÉBITO. Sin esto, la fila de una cuota «lleva» también la del mes
+    // siguiente y ese débito no entra por ninguna puerta. Lo exige TODO llamador: ver `usadasDeCompras`.
     && !usadas?.has(o.fila)
-    && Math.abs(o.total - debito.importe) <= tolerancia
-    // ═══ CON BANDA RELATIVA SE EXIGE EL MISMO MES, Y NO ES UNA PRECAUCIÓN DE MÁS ═══
+    // ═══ UNA FILA NEGATIVA NUNCA EXPLICA UN DÉBITO (auditoría de cierre, 11/09/2026) ═══
     //
-    // El prendario se debita el 7: el del 07/08 y el del 07/09 están a 31 días, que es exactamente la
-    // ventana, y sus importes se separan 0,08 %. Sin esta condición la fila de agosto de Compras
-    // explicaba LOS DOS débitos y el de septiembre no entraba por ningún lado. Una cuota mensual tiene
-    // fecha de caja en SU mes; la banda ancha sirve para el importe tipeado, no para la fecha.
-    && (relativa > 0 ? mesDeSerial(o.fecha) === mesDeSerial(debito.fecha) : dentroDe(o.fecha, debito.fecha, ventana))) ?? null
+    // Se comparaba con `Math.abs`, así que una nota de crédito de −$1.284.505 «explicaba» el débito de
+    // +$1.284.505 y el REAL del banco no se emitía: el cuadro perdía la cuota y, peor, la nota de
+    // crédito seguía restando. Un egreso de caja lo explica otro egreso, nunca su devolución.
+    && o.total > 0
+    && Math.abs(o.total - debito.importe) <= tolerancia
+    // ═══ LA VENTANA DE DÍAS NO SIRVE PARA UNA OBLIGACIÓN MENSUAL ═══
+    //
+    // El prendario se debita el 7 y el plan de ARCA el 16: el del 07/08 y el del 07/09 están a 31 días
+    // —exactamente la ventana— con importes que se separan 0,08 %. La fila de agosto explicaba LOS DOS
+    // débitos y el de septiembre no entraba por ningún lado. Peor con los planes, cuyo importe es
+    // IDÉNTICO al centavo mes a mes: el auditor midió f697 (16/08 Pagado) y f698 (16/09 Pendiente)
+    // tapando el débito del mes ajeno, y septiembre quedaba COMPROMETIDO por Compras y REAL por banco.
+    //
+    // `mismoMes` se pide EXPLÍCITAMENTE y ya no se deduce de `relativa > 0`: eran dos decisiones
+    // distintas atadas a un flag, y las cuotas de plan necesitaban la segunda sin la primera.
+    && (mismoMes
+      ? mesDeSerial(o.fecha) === mesDeSerial(debito.fecha)
+      : dentroDe(o.fecha, debito.fecha, ventana))) ?? null
 }
 
 /**
@@ -264,8 +280,8 @@ export function deBancoObligaciones({
   // siguiente, y ese débito no entraría por ninguna puerta.
   const usadasDeCompras = new Set()
   /** Emite si —y sólo si— Compras no lleva ya esa obligación. Devuelve true si emitió. */
-  const emitirSiLibre = (d, { rubro, concepto, contraparte, relativa = 0 }) => {
-    const ya = explicadoPorCompras(d, rubro, obligaciones, { relativa, usadas: usadasDeCompras })
+  const emitirSiLibre = (d, { rubro, concepto, contraparte, relativa = 0, mismoMes = false }) => {
+    const ya = explicadoPorCompras(d, rubro, obligaciones, { relativa, mismoMes, usadas: usadasDeCompras })
     if (ya) {
       usadasDeCompras.add(ya.fila)
       avisos.push(`libro-extractores-banco-obligaciones: el débito de ${pesos(d.importe)} del `
@@ -287,6 +303,7 @@ export function deBancoObligaciones({
       contraparte: 'Banco Santander · préstamo prendario',
       // Una cuota por mes: si Compras tiene una fila de Financiero parecida en el mes, es ÉSTA.
       relativa: TOLERANCIA_RELATIVA_CUOTA,
+      mismoMes: true,
     })
   }
 
@@ -302,8 +319,9 @@ export function deBancoObligaciones({
       for (const fila of det.filas ?? []) {
         const d = debitos.find((x) => x.fila === fila)
         if (!d) continue
-        const ya = explicadoPorCompras(d, RUBRO_GREMIALES, obligaciones)
+        const ya = explicadoPorCompras(d, RUBRO_GREMIALES, obligaciones, { usadas: usadasDeCompras })
         if (ya) {
+          usadasDeCompras.add(ya.fila)
           avisos.push(`libro-extractores-banco-obligaciones: el pago de ${det.organismo} de ${p.periodo} `
             + `(${pesos(d.importe)}, f${d.fila}) ya lo lleva Compras f${ya.fila} — no lo emito.`)
           continue
@@ -328,9 +346,11 @@ export function deBancoObligaciones({
     // EL DEDUPE SE DECIDE POR PERÍODO, NO POR DÉBITO: el F931 puede salir en dos VEP y la fila de
     // Compras es una sola. Si Compras lleva el mes, no se emite NINGUNO de los dos débitos.
     const ya = e.elegidos
-      .map((d) => explicadoPorCompras(d, RUBRO_CARGAS, obligaciones, { relativa: TOLERANCIA_RELATIVA_CUOTA }))
+      .map((d) => explicadoPorCompras(d, RUBRO_CARGAS, obligaciones,
+        { relativa: TOLERANCIA_RELATIVA_CUOTA, mismoMes: true, usadas: usadasDeCompras }))
       .find(Boolean)
     if (ya) {
+      usadasDeCompras.add(ya.fila)
       avisos.push(`libro-extractores-banco-obligaciones: el F931 de ${e.devengado} ya lo lleva `
         + `Compras f${ya.fila} — no lo emito, y la cadena sigue decidiendo por Compras.`)
       continue
@@ -362,6 +382,10 @@ export function deBancoObligaciones({
         rubro: RUBRO_PLANES,
         concepto: `Cuota plan de facilidades ARCA · ${isoDeSerial(d.fecha).slice(0, 7)}`,
         contraparte: 'ARCA',
+        // UNA CUOTA POR MES, y acá importa más que en el prendario: el importe de la cuota es IDÉNTICO
+        // al centavo mes a mes, así que con la ventana de días la fila de un mes tapaba el débito del
+        // otro. Medido por el auditor: f697 (16/08) y f698 (16/09) a 31 días exactos.
+        mismoMes: true,
       })
     }
   }
@@ -441,11 +465,16 @@ export function dePrendarioFuturo({ debitos = [], plan = null, compras = [] } = 
   while (anio < anioFin || (anio === anioFin && mes <= mesFin)) {
     const fecha = serialDe(anio, mes, plan.dia_de_debito)
     const periodo = `${anio}-${String(mes).padStart(2, '0')}`
+    // PAGADA O PENDIENTE, LAS DOS OCUPAN EL LUGAR (auditoría de cierre, 11/09/2026). Mirar sólo las
+    // pendientes hacía que una cuota que el dueño ya marcó «Pagado» se proyectara ENCIMA de su propio
+    // pago: con la fila de octubre pagada se emitían tres cuotas, octubre contada dos veces. Lo que
+    // decide es que la obligación EXISTA en Compras, no en qué estado la dejó la planilla — que es lo
+    // que el docstring de este módulo declara desde la primera versión.
     const ya = obligaciones.find((o) => o.rubro === RUBRO_FINANCIERO
-      && !o.pagada && mesDeSerial(o.fecha) === periodo)
+      && o.total > 0 && mesDeSerial(o.fecha) === periodo)
     if (ya) {
       avisos.push(`libro-extractores-banco-obligaciones: la cuota del prendario de ${periodo} ya está `
-        + `pendiente en Compras f${ya.fila} (${pesos(ya.total)}) — no la proyecto.`)
+        + `en Compras f${ya.fila} (${pesos(ya.total)}, ${ya.pagada ? 'pagada' : 'pendiente'}) — no la proyecto.`)
     } else {
       movimientos.push(movimiento({
         fecha,
