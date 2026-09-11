@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { planDeMarcado, excedeElLimite, motivoDeAborto, LIMITES_AJENAS, sellosViejos } from './marcado-columna.mjs'
+import { planDeMarcado, excedeElLimite, motivoDeAborto, LIMITES_AJENAS, sellosViejos, textosDeSellosViejos } from './marcado-columna.mjs'
 
 const MIO = '✓ su factura está en Compras'
 const esMio = (t) => t === MIO || t.startsWith('Estado en el OS')
@@ -134,4 +134,10 @@ test('sin columna leída no se propone vaciar nada', () => {
   assert.deepEqual(sellosViejos([], 31), [])
   assert.deepEqual(sellosViejos(undefined, 31), [])
   assert.deepEqual(sellosViejos([['Estado en el OS · al 1/1/2026']], 0), [], 'sin cabecera no hay arriba')
+})
+
+test('los textos de los sellos viejos viajan tal cual, para que el dueño de la banda los declare suyos', () => {
+  const col = ['x', 'Estado en el OS · al 24/7/2026', '', 'nada', ...Array(18).fill(''), 'Estado en el OS · al 24/7/2026', ...Array(7).fill(''), 'Estado en el OS · al 11/9/2026']
+  assert.deepEqual(textosDeSellosViejos(col, 31), ['Estado en el OS · al 24/7/2026', 'Estado en el OS · al 24/7/2026'])
+  assert.deepEqual(textosDeSellosViejos([], 31), [])
 })

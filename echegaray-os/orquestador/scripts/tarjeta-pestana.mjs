@@ -38,6 +38,7 @@ import { conEdicionesRespetadas, guardarRegistro, autoRespetarReescritura, leerR
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { RETIRADOS } from '../lib/tarjeta-banda.mjs'
 import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'
+import { textosDeSellosViejos } from '../lib/marcado-columna.mjs'
 // La huella por celda. Este generador escribe con `batchUpdateValues` y no pasa por el portón de
 // lib/preservar-anotaciones.mjs, así que la engancha él mismo: lo que el dueño vacía no vuelve.
 import { conHuellaFueraDelPorton } from '../lib/huella-celda.mjs'
@@ -237,7 +238,13 @@ async function main() {
   // que esos textos los escribió el OS se pierde — y el residuo queda blindado con el mismo blindaje
   // que protege el trabajo del dueño. La lista está en `tarjeta-banda.mjs`, con su commit.
   const { mios } = await leerRegistro(ID, PESTANA).catch(() => ({ mios: [] }))
-  const propios = [...new Set([...mios, ...RETIRADOS])]
+  // Y LOS SELLOS VIEJOS DEL OS EN LA COLUMNA L («Estado en el OS · al 24/7/2026» en L2/L23): los
+  // estampó cheques-cobertura-sheet.mjs, este generador no los tiene en su registro y por eso los
+  // reponía después de que aquél los vaciara (11/09/2026). Se declaran propios con su texto exacto;
+  // el vigente vive en la fila del título (BANDA) y sellosViejos sólo mira arriba de ella.
+  const fosiles = enFormula ? textosDeSellosViejos(enFormula.map((f) => f?.[COLS - 1]), BANDA) : []
+  if (fosiles.length) console.log(`  · ${fosiles.length} sello(s) viejo(s) del OS en la banda se vacían: ${fosiles.join(' · ')}`)
+  const propios = [...new Set([...mios, ...RETIRADOS, ...fosiles])]
 
   await google.batchUpdateValues(ID, [{ range: `${PESTANA}!A1`, values: aEscribir }], { vaciarPropio: { mios: propios } })
   // Después de escribir, nunca antes: la huella es evidencia del efecto, no de la intención.

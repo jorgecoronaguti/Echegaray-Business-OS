@@ -208,3 +208,17 @@ export function sellosViejos(columna = [], filaCab = 0) {
   }
   return filas
 }
+
+/**
+ * NÚCLEO PURO: los TEXTOS de esos sellos viejos, para que el generador dueño de la banda los declare
+ * suyos (`vaciarPropio.mios`) y `no-borrar` le permita vaciarlos.
+ *
+ * 11/09/2026: `cheques-cobertura-sheet.mjs` vaciaba L2/L23 de «Tarjeta de Credito» y 29 segundos
+ * después `tarjeta-pestana.mjs` los REPONÍA: la banda relee el destino, no puede probar que ese
+ * texto sea del OS (lo escribió otro script y no está en su registro de rótulos) y lo conserva como
+ * si fuera del dueño. Es la trampa de la «celda vaciada falsa por forma»: el que corre último gana.
+ * Con los textos exactos en `mios`, la celda es probadamente propia y se vacía.
+ */
+export function textosDeSellosViejos(columna = [], filaCab = 0) {
+  return sellosViejos(columna, filaCab).map((f) => textoDe(columna[f - 1]))
+}
