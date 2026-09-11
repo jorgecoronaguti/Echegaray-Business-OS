@@ -492,6 +492,11 @@ async function extraerDeLasFuentes(google, corte) {
     // ver qué débitos están reclamados: con un Set nuevo, el lote de haberes que ya pagó una quincena
     // podría además "pagar" una obligación de otra naturaleza. Un débito respalda a UNO solo.
     usadosBanco: extracto.usados,
+    // LA LISTA VIAJA CON EL RESTO: se declara acá adentro y `main()` la publica. El 10/09 a las
+    // 18:34 quedó declarada y no devuelta, `main()` la nombró igual, y el libro murió con
+    // «chequesPorCompras is not defined» ANTES de escribir: tres corridas (19:01, 21:02, 07:00)
+    // dejaron CAJA y los dos Cash Flow leyendo el libro de las 17:01.
+    chequesPorCompras,
   }
 }
 
@@ -527,7 +532,9 @@ function cruceBanco(libro, debitos, corteBanco, usados) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const corte = hoySerial()
-  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco, usadosBanco, colEstadoCompras, colsVivas } = await extraerDeLasFuentes(google, corte)
+  const {
+    fuentes: porFuente, excluidos, corteBanco, debitosBanco, usadosBanco, colEstadoCompras, colsVivas, chequesPorCompras,
+  } = await extraerDeLasFuentes(google, corte)
   let todos = Object.values(porFuente).flat()
   // ═══ EL EXTRACTO CORRIGE LOS CHEQUES QUE LAS PESTAÑAS TODAVÍA DAN POR VIVOS (06/08) ═══
   //
