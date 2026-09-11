@@ -15,6 +15,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Alicuota, ConceptoCosto, HorasDeObra, PersonaDeEscalera, PersonaProyectable,
 } from './costoHora.ts'
+import { esTrabajada } from '../../obras/services/tipoHora.ts'
+import { leerRegistrosHH } from './registrosHHService.ts'
 import type { Quincena } from './quincena.ts'
 
 export interface Falla { que: string; error: string }
@@ -28,6 +30,15 @@ const numero = (v: unknown): number | null => {
 /** Postgres 42P01: la migración todavía no se aplicó. Se trata como «vacío», no como pantalla rota. */
 const sinTabla = (e: { code?: string; message: string }): boolean =>
   e.code === '42P01' || /does not exist/i.test(e.message)
+
+/** Una fila de `registros_hh` mirada por el costo a la obra. `horas` viaja como texto (numeric). */
+export interface FilaDeObra {
+  obra_id: unknown
+  obra_canonica_id: unknown
+  persona_id: unknown
+  horas: unknown
+  tipo_hora: unknown
+}
 
 export interface DatosDeCosto {
   alicuotas: Alicuota[]
@@ -95,9 +106,16 @@ export async function getHorasPorObra(
   supabase: SupabaseClient, q: Quincena, tarifas: ReadonlyMap<string, number>,
 ): Promise<HorasYObras> {
   const [hh, obras, canonicas, oep] = await Promise.all([
-    supabase.from('registros_hh')
-      .select('obra_id, obra_canonica_id, persona_id, horas')
-      .gte('fecha', q.desde).lte('fecha', q.hasta),
+    // ═══ POR LA MISMA PUERTA QUE EL RESTO DEL MÓDULO ═══
+    //
+    // Esta consulta estaba escrita a mano y sin `.range()`: PostgREST corta en `db-max-rows` y
+    // devuelve 200 con `error: null`. Es el defecto que `registrosHHService.ts` existe para impedir
+    // y que el 11/09/2026 se cerró en la lectura de la plata; acá seguía abierto, en la lectura que
+    // le carga el costo a cada obra.
+    leerRegistrosHH(supabase, {
+      desde: q.desde, hasta: q.hasta,
+      columnas: 'obra_id, obra_canonica_id, persona_id, fecha, horas, tipo_hora',
+    }),
     supabase.from('obras').select('id, nombre'),
     // EL NOMBRE CANÓNICO GANA AL SLUG. `obra_canonica_id` es un slug estable ('san-francisco') y
     // hasta hoy se publicaba crudo cuando la obra no estaba en `obras`: la pantalla mandaba a la
@@ -108,7 +126,9 @@ export async function getHorasPorObra(
   ])
 
   const errores: Falla[] = []
-  if (hh.error && !sinTabla(hh.error)) errores.push({ que: 'las horas de la quincena', error: hh.error.message })
+  // `leerRegistrosHH` devuelve el error ya en texto: un tope alcanzado no es un error de PostgREST,
+  // es una lectura que no puede afirmar que tiene todo.
+  if (hh.error) errores.push({ que: 'las horas de la quincena', error: hh.error })
   if (oep.error && !sinTabla(oep.error)) errores.push({ que: 'la mano de obra presupuestada', error: oep.error.message })
 
   const nombreDeObra = new Map<string, string>()
@@ -129,17 +149,61 @@ export async function getHorasPorObra(
     if (!rotuloCanonico.has(clave)) rotuloCanonico.set(clave, String(f.obra_rotulo ?? clave))
   }
 
-  const acc = new Map<string, { horas: number; bolsillo: number; completo: boolean; sinTarifa: Set<string>; gente: Set<string>; rotulo: string }>()
-  for (const f of hh.data ?? []) {
+  const obras_ = repartirHorasPorObra((hh.data ?? []) as FilaDeObra[], tarifas, (f) => {
+    const clave = f.obra_canonica_id == null ? '' : String(f.obra_canonica_id)
+    if (clave === '') return 'Sin obra imputada'
+    return nombreDeObra.get(String(f.obra_id))
+      ?? nombreCanonico.get(clave)
+      ?? rotuloCanonico.get(clave)
+      ?? clave
+  })
+
+  return { obras: obras_, presupuesto, errores }
+}
+
+/**
+ * LAS HORAS DE LA VENTANA REPARTIDAS POR OBRA. Pura: la regla se prueba sin base.
+ *
+ * ═══ A UNA OBRA SE LE CARGAN LAS HORAS TRABAJADAS, NO LAS DECLARADAS ═══
+ *
+ * EL DEFECTO, medido en la pantalla real el 11/09/2026: «Costo a la obra» publicaba 1.385,4 HH para
+ * la 1ª quincena de septiembre y «Productividad» —la tabla de abajo, en la MISMA solapa— 1.227,0.
+ * Las dos cuentan las horas de la misma ventana. La diferencia, 158,4 h, eran ausencias y licencias:
+ * filas que la consulta sumaba porque no miraba el `tipo_hora`.
+ *
+ * Ninguna de las dos se le carga a una obra. Una ausencia sin motivo no se paga (R4) y no produjo
+ * nada; una licencia que SÍ se paga es un costo de la empresa, no de la obra donde esa persona
+ * hubiera estado — imputarla infla el costo de mano de obra contra el que se mide el presupuesto,
+ * que es exactamente lo que esta pantalla existe para calcular. El propio CHECK de la base lo dice:
+ * `obra_canonica_id is not null OR tipo_hora in ('ausencia','licencia')`; son las filas que por
+ * definición no llevan obra, y acá terminaban todas juntas en «Sin obra imputada».
+ *
+ * `esTrabajada` es la misma definición que ya usan Productividad y `horasLiquidablesDelDia`. Lo
+ * trabajado SÍ suma entre filas: el día repartido entre dos obras es una hora de cada una, y ése es
+ * justamente el reparto que esta tabla publica.
+ *
+ * ═══ EL BOLSILLO DE UNA OBRA CON ALGUIEN SIN TARIFA ES NULL, NO UN PARCIAL ═══
+ *
+ * R1. Sumar sólo a los que sí tienen tarifa daría un costo que parece completo y le falta gente; se
+ * cuenta cuántos son para que la pantalla pueda escribir «1 sin tarifa».
+ */
+export function repartirHorasPorObra(
+  filas: readonly FilaDeObra[],
+  tarifas: ReadonlyMap<string, number>,
+  rotuloDe: (f: FilaDeObra) => string,
+): HorasDeObra[] {
+  const acc = new Map<string, {
+    horas: number; bolsillo: number; completo: boolean
+    sinTarifa: Set<string>; gente: Set<string>; rotulo: string
+  }>()
+  for (const f of filas) {
+    if (!esTrabajada(String(f.tipo_hora))) continue
     const clave = f.obra_canonica_id == null ? '' : String(f.obra_canonica_id)
     const horas = numero(f.horas) ?? 0
-    const rotulo = clave === ''
-      ? 'Sin obra imputada'
-      : nombreDeObra.get(String(f.obra_id))
-        ?? nombreCanonico.get(clave)
-        ?? rotuloCanonico.get(clave)
-        ?? clave
-    const a = acc.get(clave) ?? { horas: 0, bolsillo: 0, completo: true, sinTarifa: new Set<string>(), gente: new Set<string>(), rotulo }
+    const a = acc.get(clave) ?? {
+      horas: 0, bolsillo: 0, completo: true,
+      sinTarifa: new Set<string>(), gente: new Set<string>(), rotulo: rotuloDe(f),
+    }
     a.horas += horas
     const persona = f.persona_id == null ? null : String(f.persona_id)
     if (persona) a.gente.add(persona)
@@ -147,19 +211,16 @@ export async function getHorasPorObra(
     if (vh == null) { a.completo = false; if (persona) a.sinTarifa.add(persona) } else { a.bolsillo += vh * horas }
     acc.set(clave, a)
   }
-
-  const obrasSalida: HorasDeObra[] = [...acc.entries()]
+  return [...acc.entries()]
     .map(([clave, a]) => ({
       obraId: clave === '' ? null : clave,
       rotulo: a.rotulo,
-      horas: a.horas,
+      horas: Math.round(a.horas * 100) / 100,
       gente: a.gente.size,
-      bolsillo: a.completo ? a.bolsillo : null,
+      bolsillo: a.completo ? Math.round(a.bolsillo * 100) / 100 : null,
       sinTarifa: a.sinTarifa.size,
     }))
     .sort((x, y) => y.horas - x.horas)
-
-  return { obras: obrasSalida, presupuesto, errores }
 }
 
 /**
