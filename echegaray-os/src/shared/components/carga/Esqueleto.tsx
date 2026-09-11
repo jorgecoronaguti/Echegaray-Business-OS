@@ -60,3 +60,41 @@ export function PantallaEsqueleto({ children }: { children: React.ReactNode }) {
     </div>
   )
 }
+
+// ═══ EL ESQUELETO DE UNA SECCIÓN DE ÁREA (11/09/2026) ═══
+//
+// Las secciones raíz de Administración —Clientes, Personal, Proveedores, Compras— dibujan SIEMPRE la
+// misma estructura, y en este orden: la barra de áreas de nivel 2 (`NavAdministracion`, que cada
+// página renderiza como primer hijo de su `PageShell`), el título, la fila de vistas con el buscador
+// (`CabeceraSeccion`) y la tabla.
+//
+// POR QUÉ IMPORTA QUE EL ESQUELETO TENGA ESA FORMA Y NO DOS BLOQUES GRISES. El fallback del grupo
+// `(main)` dibuja un rectángulo de 96px y otro de 224px: cuando llega el contenido real, la barra de
+// áreas aparece donde no había nada y todo lo de abajo salta. Con la banda y la fila de vistas
+// reservadas, lo que llega ocupa el lugar que ya estaba marcado.
+//
+// LA BANDA DE ÁREAS NO SE DIBUJA DE VERDAD ACÁ, y no puede: `NavAdministracion` es asíncrona —lee el
+// rol para saber qué secciones mostrar— y un `loading.tsx` que espera una consulta deja de ser lo
+// que se pinta al instante. Se reserva su alto (37px: el de `BarraAreas`) y nada más.
+export function SeccionEsqueleto({
+  cols, filas = 8, anchoTitulo = 'w-36', vistas = 2,
+}: { cols: number; filas?: number; anchoTitulo?: string; vistas?: number }) {
+  return (
+    <div data-testid="esqueleto-carga" aria-busy="true" aria-live="polite">
+      {/* La banda de áreas, a sangre y con el filo inferior que apoya en el header. */}
+      <div className="h-[37px] border-b border-line bg-surface" />
+      <div className="mx-auto max-w-[1400px] px-4 py-7 sm:px-6">
+        <Linea className={`h-5 ${anchoTitulo}`} />
+        {/* La fila de vistas y el buscador: chips a la izquierda, caja de búsqueda a la derecha. */}
+        <div className="mt-5 mb-5 flex items-center gap-3">
+          {Array.from({ length: vistas }, (_, i) => (
+            <Bloque key={i} className="h-6 w-28 motion-safe:animate-pulse" />
+          ))}
+          <Bloque className="ml-auto h-7 w-56 motion-safe:animate-pulse" />
+        </div>
+        <TablaEsqueleto cols={cols} filas={filas} />
+      </div>
+      <span className="sr-only">Cargando…</span>
+    </div>
+  )
+}
