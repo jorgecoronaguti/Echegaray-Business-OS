@@ -171,7 +171,10 @@ export function avisoDeCandado({ pestana, columna, rotulo, congeladas = 0, monto
 // «Tarjeta de Credito» mostraba «Estado en el OS · al 24/7/2026» — 48 días de atraso— y la auditoría
 // de consistencia lo anotó como «el sello de la pestaña no se actualiza». No era eso: el sello de HOY
 // estaba estampado, en `L31`, y decía «al 11/9/2026». Los que se veían eran DOS FÓSILES, en `L2` y
-// `L23`, de cuando `INSTRUMENTOS.tarjeta.filaCab` valía 2 (corregido el 04/08) y 23.
+// `L23`, los dos fechados «al 24/7/2026». El de `L2` se explica: hasta el 04/08
+// `INSTRUMENTOS.tarjeta.filaCab` valía 2 y el sello se estampaba ahí. El de `L23` NO lo pude probar
+// —`BANDA` fue 52 y después 31, nunca 23— y no hace falta: la regla no depende de la historia de
+// cada fósil sino de una sola cosa, que la fila no sea la cabecera de HOY.
 //
 // POR QUÉ NO SE BORRABAN SOLOS. El generador de la pestaña (`tarjeta-pestana.mjs`) sí es dueño de la
 // columna L de su banda, pero la guarda de borrado sólo vacía lo que puede PROBAR del OS

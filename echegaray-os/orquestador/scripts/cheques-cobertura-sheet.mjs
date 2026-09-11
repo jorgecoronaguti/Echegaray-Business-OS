@@ -568,7 +568,8 @@ async function estampar(google, hoja, o, plan, alto, { forzar = false, columna =
   // ═══ Y LOS SELLOS QUE ESTE MISMO SCRIPT DEJÓ EN LAS FILAS QUE YA NO SON SU CABECERA (11/09/2026) ═══
   //
   // «Tarjeta de Credito» mostraba «Estado en el OS · al 24/7/2026» —48 días— con el sello de HOY ya
-  // estampado en L31: los que se veían eran los fósiles de L2 y L23, de cuando `filaCab` valía 2 y 23.
+  // estampado en L31: los que se veían eran los fósiles de L2 y L23, los dos «al 24/7/2026» (el de L2
+  // es del tiempo en que `filaCab` valía 2; el de L23 no se pudo rastrear, y la regla no lo necesita).
   // La guarda de borrado del generador de la pestaña no los puede tocar (un texto con fecha viva no
   // está en el registro de rótulos y no tiene forma de generador), así que los saca el que los
   // escribió. Ver `sellosViejos` en lib/marcado-columna.mjs; es idempotente y sólo mira ARRIBA de
