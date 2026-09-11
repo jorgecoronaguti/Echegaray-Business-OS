@@ -22,9 +22,11 @@
 --
 -- ═══ LO MEDIDO, CON LA MÉTRICA QUE NO MIENTE ═══
 --
--- La VM estaba saturada (la suite completa corriendo en paralelo contra la misma base), así que los
--- ms absolutos no sirven para comparar. `shared hit` —buffers accedidos— SÍ: no depende de la carga.
--- Midiendo la candidata PRIMERO, para que el calentamiento de caché no la favorezca:
+-- La métrica primaria es `shared hit` —buffers accedidos— y no los ms: no depende de la carga de la
+-- VM, que durante parte de la jornada estuvo saturada por la suite completa corriendo contra esta
+-- misma base. Y se midió DOS VECES con la candidata PRIMERO, para que el calentamiento de caché no
+-- la favorezca: una con la VM cargada y otra con la VM libre. Los cuatro números dieron lo mismo,
+-- que es la razón por la que se pueden escribir acá:
 --
 --   | RPC                    | buffers antes | buffers después | ms mínimo antes | después |
 --   |------------------------|---------------|-----------------|-----------------|---------|
