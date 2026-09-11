@@ -30,7 +30,7 @@ test('marca por huella: la fila declarada corrida se encuentra igual, y la repet
     { fila: 4, id: 1, fecha: '2026-01-10', proveedor: 'Sueldos', cliente: 'Administracion', total: 4500001 }, // importe distinto
   ]
   const { aEscribir, yaEstaban, problemas } = planDeEliminacion(V, F, 4, pedidas)
-  assert.deepEqual(aEscribir.map((e) => [e.fila, e.oEsFormula]), [[4, false], [5, true], [7, false]])
+  assert.deepEqual(aEscribir.map((e) => [e.fila, e.oEsFormula, e.nTieneNumero]), [[4, false, false], [5, true, true], [7, false, false]])
   assert.deepEqual(yaEstaban.map((y) => y.fila), [6])
   assert.deepEqual(problemas.map((p) => [p.fila, p.cuantas]), [[20, 2], [4, 0]])
   assert.equal(aEscribir[1].antes.O, '=N5+M5', 'el respaldo guarda la fórmula, no el valor')
@@ -42,10 +42,13 @@ test('X=ELIMINADO con importe distinto de cero NO cuenta como ya marcada: se vue
   assert.equal(yaEstaban.length, 0); assert.equal(aEscribir.length, 1)
 })
 
-test('las requests: X siempre; O→0 si es número, M/N vacíos si O es fórmula; nada más', () => {
+test('las requests: X siempre; O→0 si es número, M→0 (y N→0 si tenía número) si O es fórmula; nunca una celda vacía', () => {
   const cols = (req) => req.map((r) => [r.updateCells.range.startColumnIndex, r.updateCells.rows[0].values[0].userEnteredValue ?? null])
   assert.deepEqual(cols(requestsDe({ fila: 4, oEsFormula: false }, 7)), [[COL.estado, { stringValue: MARCA }], [COL.total, { numberValue: 0 }]])
-  assert.deepEqual(cols(requestsDe({ fila: 5, oEsFormula: true }, 7)), [[COL.estado, { stringValue: MARCA }], [COL.neto, null], [COL.iva, null]])
+  assert.deepEqual(cols(requestsDe({ fila: 5, oEsFormula: true, nTieneNumero: false }, 7)), [[COL.estado, { stringValue: MARCA }], [COL.neto, { numberValue: 0 }]])
+  assert.deepEqual(cols(requestsDe({ fila: 5, oEsFormula: true, nTieneNumero: true }, 7)), [[COL.estado, { stringValue: MARCA }], [COL.neto, { numberValue: 0 }], [COL.iva, { numberValue: 0 }]])
+  // La guarda anti-borrado descarta una celda vaciada sobre un valor: ninguna request puede ir vacía.
+  for (const r of requestsDe({ fila: 5, oEsFormula: true, nTieneNumero: true }, 7)) assert.ok(r.updateCells.rows[0].values[0].userEnteredValue, 'request vacía')
   for (const r of requestsDe({ fila: 5, oEsFormula: true }, 7)) {
     assert.equal(r.updateCells.range.startRowIndex, 4); assert.equal(r.updateCells.range.endRowIndex, 5)
     assert.ok(r.updateCells.range.startColumnIndex < 24, 'nunca toca AB en adelante')

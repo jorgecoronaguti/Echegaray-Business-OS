@@ -15,8 +15,12 @@
 // a secas: marcar la fila equivocada borra plata de una compra real, que es el único error que esta
 // pestaña no perdona.
 //
-// CÓMO ESCRIBE. X ← «ELIMINADO». El importe: si O es fórmula (=N+M, las filas del cargador) se vacían
-// M y N y O cae a 0 sola; si O es un número tipeado (las filas viejas de nómina) se escribe 0 en O.
+// CÓMO ESCRIBE. X ← «ELIMINADO». El importe: si O es fórmula (=N+M o =M, las filas del cargador y
+// las de nómina de junio) se escribe 0 en M (y en N si tenía un número) y O cae a 0 sola; si O es un
+// número tipeado (las filas viejas de nómina) se escribe 0 en O. Se escribe 0 y no vacío a propósito:
+// la guarda anti-borrado del cliente de Google descarta una celda que se vacía sobre un valor (medido
+// el 11/09: 11 filas quedaron con X=ELIMINADO y el importe intacto). El 0 es además la marca del
+// dueño (f612: M=0, N y O fórmula).
 // Nunca toca AB/AC/AD/AE/AF/AJ–AN (ARRAYFORMULA), ni Q (vencimientos reales pegados), ni K.
 // Antes de escribir respalda los valores previos de M, N, O, T y X en `--respaldo` (JSON), para que
 // la orden sea reversible. Después relee y verifica que el archivo diga lo que escribió.
@@ -77,8 +81,9 @@ export function planDeEliminacion(valores = [], formulas = [], fila0 = FILA0, pe
     const totalCero = cent(v[COL.total]) === 0
     if (estado.toUpperCase() === MARCA && totalCero) { yaEstaban.push({ ...p, fila }); continue }
     const oEsFormula = esFormula(fm[COL.total])
+    const nTieneNumero = !esFormula(fm[COL.iva]) && norm(fm[COL.iva]) !== '' && cent(fm[COL.iva]) !== 0
     aEscribir.push({
-      ...p, fila, oEsFormula,
+      ...p, fila, oEsFormula, nTieneNumero,
       antes: { M: v[COL.neto] ?? '', N: v[COL.iva] ?? '', O: fm[COL.total] ?? '', T: fm[COL.pagado] ?? '', X: fm[COL.estado] ?? '' },
     })
   }
@@ -93,8 +98,11 @@ export function requestsDe(e, sheetId) {
     fields: 'userEnteredValue',
   } })
   const req = [celda(COL.estado, { stringValue: MARCA })]
-  if (e.oEsFormula) req.push(celda(COL.neto, null), celda(COL.iva, null))
-  else req.push(celda(COL.total, { numberValue: 0 }))
+  if (!e.oEsFormula) req.push(celda(COL.total, { numberValue: 0 }))
+  else {
+    req.push(celda(COL.neto, { numberValue: 0 }))
+    if (e.nTieneNumero) req.push(celda(COL.iva, { numberValue: 0 }))
+  }
   return req
 }
 
@@ -120,7 +128,7 @@ async function main() {
   console.log(`«${PESTANA}» · ${pedidas.length} fila(s) pedidas · ${aEscribir.length} a marcar · ${yaEstaban.length} ya marcadas · ${problemas.length} con problema`)
   for (const p of problemas) console.error(`  ✖ fila ${p.fila} · ${p.proveedor} ${p.fecha} ${plata(p.total)}: ${p.motivo} (${p.cuantas})`)
   for (const y of yaEstaban) console.log(`  ✋ fila ${y.fila} ya está ${MARCA} en cero`)
-  for (const e of aEscribir) console.log(`  ✎ fila ${e.fila} · ${e.proveedor} · ${e.cliente} · ${e.fecha} · ${plata(e.total)} · X "${e.antes.X}" → ${MARCA} · ${e.oEsFormula ? 'M/N → vacío' : 'O → 0'}`)
+  for (const e of aEscribir) console.log(`  ✎ fila ${e.fila} · ${e.proveedor} · ${e.cliente} · ${e.fecha} · ${plata(e.total)} · X "${e.antes.X}" → ${MARCA} · ${e.oEsFormula ? (e.nTieneNumero ? 'M y N → 0' : 'M → 0') : 'O → 0'}`)
   if (problemas.length) { console.error('\n✖ una fila sin huella única no se escribe. No toqué nada.'); process.exit(1) }
   if (!aEscribir.length) { console.log('\n✓ no hay nada que escribir.'); return }
   const total = aEscribir.reduce((s, e) => s + e.total, 0)
