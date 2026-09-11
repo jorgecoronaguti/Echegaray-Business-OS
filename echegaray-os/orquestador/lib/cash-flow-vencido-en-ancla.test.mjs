@@ -208,3 +208,44 @@ test('la partición por estado sigue siendo exacta: nada quedó sin medida', () 
   const libro = MOVIMIENTOS.reduce((s, m) => s + m.importe, 0)
   assert.equal(Math.round(total), Math.round(libro), 'las cuatro medidas del ejercicio son el libro entero')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA GUARDA · POR QUÉ ESTO NO SE ARREGLA EN LOS CUADROS (11/09/2026, segunda reincidencia)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El 11/09 la misma clase volvió con otro monto: `CFS!BB50` cerraba $263.813,91 más alto que
+// `CFM!M50` por una cuota de tarjeta del 02/09 emitida **COMPROMETIDO** en vez de VENCIDO
+// (`deTarjetaSinFactura` estampaba el estado a mano, sin pasar por `estadoContraCorte`).
+//
+// `condicionAncla` filtra por la ETIQUETA de estado, no por la fecha contra el ancla. Así que el
+// rescate de arriba NO alcanza a un pendiente con fecha pasada que se llame COMPROMETIDO: para los
+// cuadros es plata futura, y su columna es anterior a la del ancla, que no publica saldo.
+//
+// Este test NO pide que los cuadros lo rescaten: **fija que no lo hacen**, para que quede escrito
+// dónde está la frontera. El invariante «todo pendiente con fecha < ancla nace VENCIDO» se sostiene en
+// el ORIGEN, y ahí vive su test: `pendiente-con-fecha-pasada-vence.test.mjs`. Si alguien vuelve a
+// estampar un estado a mano en un extractor, ése se pone rojo — no éste.
+
+test('LA FRONTERA: un COMPROMETIDO con fecha anterior al ancla NO lo rescata el cuadro', () => {
+  const libro = [
+    // La cuota real del 02/09: semana anterior a la del ancla (07/09), y etiquetada COMPROMETIDO.
+    { fecha: serial('2026-09-02'), signo: -1, importe: 263_813.91, estado: 'COMPROMETIDO', rubro: 'Cheques y tarjeta sin factura cargada' },
+    { fecha: serial('2026-10-02'), signo: -1, importe: 263_813.91, estado: 'COMPROMETIDO', rubro: 'Cheques y tarjeta sin factura cargada' },
+  ]
+  const w = ventanas('semana', { anio: ANIO })
+  const anclaIx = w.findIndex((v) => serialDeFecha(v.desde) <= CORTE && CORTE < serialDeFecha(v.hasta))
+  // Con `ancla`, el gemelo JS de la columna del ancla se lleva los VENCIDOS. Un COMPROMETIDO no.
+  const enElAncla = medidasDeVentana(libro, serialDeFecha(w[anclaIx].desde), serialDeFecha(w[anclaIx].hasta), { ancla: CORTE })
+  assert.equal(Math.round(enElAncla.egreso_proyectado), 0,
+    'el COMPROMETIDO del 02/09 no entra en la columna del ancla: por eso tiene que nacer VENCIDO')
+  // Y su propia semana es anterior a la del ancla, así que ahí tampoco alimenta la cadena de saldos.
+  const suIx = w.findIndex((v) => serialDeFecha(v.desde) <= libro[0].fecha && libro[0].fecha < serialDeFecha(v.hasta))
+  assert.ok(suIx < anclaIx, 'la semana del 02/09 está antes de la del ancla: no publica saldo')
+  // El contraste que prueba que la frontera es la ETIQUETA y no la fecha: el mismo movimiento,
+  // mismo día, mismo importe, etiquetado VENCIDO, SÍ entra.
+  const comoVencido = medidasDeVentana(
+    libro.map((m, i) => (i === 0 ? { ...m, estado: 'VENCIDO' } : m)),
+    serialDeFecha(w[anclaIx].desde), serialDeFecha(w[anclaIx].hasta), { ancla: CORTE })
+  assert.equal(Math.round(comoVencido.egreso_proyectado), 263_814,
+    'con la etiqueta correcta el mismo peso entra entero: la corrección es de origen, no de cuadro')
+})

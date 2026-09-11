@@ -43,14 +43,53 @@ export function expresionDetalle({ importe = DEP.importe, saldo = COL_SALDO } = 
   const D = rango(saldo)
   // ═══ LO QUE EL BANCO NO ACREDITÓ NO ENTRA AL DETALLE (10/09/2026) ═══
   //
-  // Un depósito de eCheq retenido 48 hs está LISTADO —tiene fecha, concepto e importe— y no está en el
-  // saldo del banco. Sumarlo dejaba esta línea denunciando un hueco de $38.572.526,23 que no existe: la
+  // Un depósito de eCheq retenido 48 hs está LISTADO —tiene fecha, concepto e importe— y no está
+  // disponible. Sumarlo dejaba esta línea denunciando un hueco de $38.572.526,23 que no existe: la
   // alarma más rápida de silenciar es la que grita cuando todo está bien.
   //
-  // La marca en la pestaña es la CELDA DE SALDO VACÍA: la escribe así `banco-raw-pestana.mjs` para las
-  // filas retenidas, y es la misma condición con la que CAJA las saltea. No hace falta una columna
-  // nueva ni un número escrito: `SUMIFS` sobre la columna del saldo alcanza.
-  return `(INDEX(${D};1)-INDEX(${C};1))+SUM(${C})-SUMIFS(${C};${D};"")`
+  // La resta sale de `expresionRetenido`, que es la MISMA definición que ahora usa CAJA para no
+  // publicarlo como disponible. Escrita dos veces, el día que la marca cambie de forma una de las dos
+  // seguiría sumándolo y la otra no, y el archivo tendría dos saldos del mismo banco.
+  return `(INDEX(${D};1)-INDEX(${C};1))+SUM(${C})-${expresionRetenido({ importe, saldo })}`
+}
+
+/**
+ * NÚCLEO PURO, Y LA ÚNICA DEFINICIÓN: cuánto de `_BANCO_RAW` es plata que el banco LISTÓ y NO ACREDITÓ.
+ *
+ * ═══ POR QUÉ EXISTE Y QUÉ DECIDE (11/09/2026) ═══
+ *
+ * Regla de oro del dueño: el Cash Flow es PERCIBIDO. Un eCheq depositado y retenido 48 hs no es plata
+ * disponible hasta que el banco lo acredita — no se puede pagar un cheque con él mañana. El 11/09 CAJA
+ * publicaba $79.521.755,29 de «CAJA DISPONIBLE» con **$38.572.526,23** adentro que el propio
+ * `_BANCO_RAW` declaraba pendientes de acreditación, y como el cierre de los dos Cash Flow se ancla en
+ * la caja de hoy, ese ancla se llevó el cierre del 31/12 de $61,3 M a $91,9 M de una corrida a la otra.
+ *
+ * LA MARCA EN LA PESTAÑA ES LA CELDA DE SALDO VACÍA. La escribe así `banco-raw-pestana.mjs` para las
+ * filas retenidas —«un saldo que no existe va vacío, no en cero»— y `marcarAcreditacionPendiente` la
+ * sostiene en la base. No hace falta una columna nueva ni un número escrito a mano: cuando el banco
+ * acredita, el extracto siguiente trae el saldo corrido, `acreditarPendientes` lo copia, la celda deja
+ * de estar vacía y **el saldo vuelve a incluirlo sin que nadie toque nada**.
+ *
+ * Las filas vacías de abajo del rango no molestan: su importe es vacío y `SUMIFS` suma 0.
+ */
+export function expresionRetenido({ importe = DEP.importe, saldo = COL_SALDO } = {}) {
+  return `SUMIFS(${rango(importe)};${rango(saldo)};"")`
+}
+
+/**
+ * NÚCLEO PURO: el saldo del banco que CAJA puede gastar — el DECLARADO menos lo retenido.
+ *
+ * `formulaUltimoSaldo` devuelve el último saldo corrido de la réplica, que es el que el banco declara
+ * (`banco-raw-pestana` lo pisa sobre la última fila cuando la cadena del día no cierra). Ese número
+ * INCLUYE los depósitos retenidos —medido: declarado $41.561.209,16, retenido $38.572.526,23,
+ * disponible real $2.988.682,93— así que la resta no es una precaución: es la diferencia entre lo que
+ * se puede pagar y lo que no.
+ *
+ * @returns {string} fórmula con `=`, separador es-AR
+ */
+export function formulaSaldoDisponibleBanco({ hoja = DEP.hoja, saldo = COL_SALDO, desde = DEP.desde, importe = DEP.importe } = {}) {
+  const declarado = formulaUltimoSaldo(hoja, saldo, desde).slice(1)
+  return `=${declarado}-${expresionRetenido({ importe, saldo })}`
 }
 
 /**
@@ -58,10 +97,18 @@ export function expresionDetalle({ importe = DEP.importe, saldo = COL_SALDO } = 
  * cargados (o sobra un egreso); negativo = al revés.
  */
 export function expresionDiferencia(opts = {}) {
-  // `formulaUltimoSaldo` es la MISMA que usa CAJA para el saldo del banco: si un día cambia la forma
-  // de tomar "el último", este control cambia con ella en vez de quedar midiendo contra otra cosa.
-  const declarado = formulaUltimoSaldo(DEP.hoja, opts.saldo ?? COL_SALDO, DEP.desde).slice(1)
-  return `${declarado}-(${expresionDetalle(opts)})`
+  // ═══ LOS DOS LADOS TIENEN QUE EXCLUIR LO RETENIDO, O EL CONTROL MIDE PERAS CONTRA MANZANAS ═══
+  //
+  // Medido el 11/09/2026: el detalle ya restaba lo retenido (arriba) y el declarado NO, así que esta
+  // línea publicaba **$38.572.526,23** de hueco y lo rotulaba «el faltante es anterior al 28/5/2026,
+  // y no hay extracto para cerrarlo» — una causa falsa para una plata que estaba perfectamente
+  // identificada dos filas más arriba. Ese número fue el que el dueño vio y no pudo explicar.
+  //
+  // `formulaSaldoDisponibleBanco` es la MISMA expresión que ahora consume CAJA: si un día cambia la
+  // forma de tomar «el último» o la marca de retención, este control cambia con ella en vez de quedar
+  // midiendo contra otra cosa. Con los dos lados netos, el hueco que queda es el hueco de verdad.
+  const disponible = formulaSaldoDisponibleBanco({ saldo: opts.saldo ?? COL_SALDO, importe: opts.importe ?? DEP.importe }).slice(1)
+  return `${disponible}-(${expresionDetalle(opts)})`
 }
 
 /**
@@ -88,5 +135,34 @@ export function filaHuecoDelExtracto(tolerancia = 1) {
     'Saldo declarado por el banco − (saldo inicial + suma de los movimientos de _BANCO_RAW, sin los depósitos que el banco todavía no acreditó: los que van con la celda de saldo vacía). '
     + 'NO se resta de ninguna disponibilidad: CAJA muestra el saldo del banco, que es el dato real. '
     + 'Mide hasta dónde llega el detalle que el archivo puede reconstruir. Detalle por movimiento: auditar-saldo-banco.mjs.',
+  ]
+}
+
+/**
+ * La fila del anexo que dice CUÁNTO retuvo el banco. Mismo ancho que las demás del bloque A1.
+ *
+ * ═══ POR QUÉ SE PUBLICA, SI YA SE RESTA (11/09/2026) ═══
+ *
+ * Porque una plata que desaparece de CAJA sin que nadie diga cuánta es indistinguible de un error. El
+ * 11/09 pasó al revés —$38.572.526,23 sumados sin decir que estaban retenidos— y el dueño vio el
+ * cierre del año saltar $30 M sin una línea que lo explicara. Se resta Y se dice, con el número.
+ *
+ * EL RÓTULO ES UNA FÓRMULA: cuando el banco acredita, el extracto siguiente trae el saldo corrido,
+ * `acreditarPendientes` lo copia, la celda de saldo deja de estar vacía y esta línea se apaga sola —
+ * sin que nadie toque nada. Un aviso que sigue puesto después de resuelto enseña a no leer la pestaña.
+ */
+export function filaRetenidoPorElBanco(tolerancia = 1) {
+  const ret = expresionRetenido()
+  const D = rango(COL_SALDO)
+  const rotulo = `=IF(ROUND(${ret};2)<${tolerancia};"✓ El banco no tiene depósitos sin acreditar";`
+    + `"⏳ Retenido por el banco — depósitos listados y todavía NO acreditados: FUERA de CAJA hasta que los acredite")`
+  return [
+    rotulo, 'ARS', `=IF(ROUND(${ret};2)<${tolerancia};"";ROUND(${ret};2))`, '', '',
+    // La fecha del depósito retenido más NUEVO: es la que dice desde cuándo se está esperando.
+    `=IF(ROUND(${ret};2)<${tolerancia};"";MAXIFS(${rango(DEP.fecha)};${D};""))`,
+    'Suma de los movimientos de _BANCO_RAW con la celda "Saldo después" VACÍA — la marca con la que el '
+    + 'banco los lista sin acreditar. SE RESTA del saldo de «Santander · cta cte ARS» de CAJA: un eCheq '
+    + 'retenido 48 hs no paga un cheque mañana (Cash Flow percibido). Vuelve solo cuando el extracto '
+    + 'siguiente trae su saldo corrido.',
   ]
 }
