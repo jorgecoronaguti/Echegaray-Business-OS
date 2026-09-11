@@ -58,11 +58,15 @@ const REGLAS = [
   [/\bBAJA\b|\bTELEGRAMA\b|\bRENUNCIA\b|\bDESPIDO\b|\bACUSE\b/, 'baja'],
   [/\bALTA\b|\bFWEB\b|\bF\.?885\b|\bIERIC\b/, 'alta_temprana'],
   [/\bDNI\b|\bDOCUMENTO\b|\bFRENTE\b|\bDORSO\b/, 'dni'],
-  [/\bHM\b|\bMEDIC/, 'examen_medico'],
+  // «HM» NO es el examen médico: es la libreta del IERIC (Hoja Móvil del Fondo de Cese). Medido el
+  // 11/09/2026 sobre los legajos de Ochoa y Castillo: sus «HM.pdf» son la libreta N° 000006096468 y
+  // 000006096693, y el sync los retipaba como examen médico en cada corrida. La regla del OS ya lo
+  // decía («el nombre del archivo miente: HM es la libreta del IERIC»); faltaba que el código la leyera.
+  [/\bMEDIC/, 'examen_medico'],
   [/\bEPP\b|PROTECCION/, 'epp'],
   [/CAPACITA/, 'capacitacion'],
   [/\bRECIBO\b|LIQUIDACION|\bSUELDO\b|\bLOTE\b/, 'recibo_sueldo'],
-  [/FONDO DE CESE|\bAFON\b|\bFCL\b/, 'libreta_fondo_cese'],
+  [/FONDO DE CESE|\bAFON\b|\bFCL\b|\bHM\b/, 'libreta_fondo_cese'],
   [/\bCUIL\b/, 'cuil'],
   [/\bART\b|ASEGURADORA/, 'art'],
   [/\bCONTRATO\b/, 'contrato'],

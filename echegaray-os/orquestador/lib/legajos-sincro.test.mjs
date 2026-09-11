@@ -21,8 +21,10 @@ test('la baja gana aunque el nombre diga otra cosa, y el alta no se confunde con
   assert.equal(categoriaDeArchivo('Gordillo Baja.pdf'), 'baja')
   assert.equal(categoriaDeArchivo('Telegrama Santander.pdf'), 'baja')
   assert.equal(categoriaDeArchivo('Alta - Aballay Alejandro.pdf'), 'alta_temprana')
-  // «SALINAS» y «PALACIOS» contienen letras de ALTA/EPP pero no son la palabra.
-  assert.equal(categoriaDeArchivo('HM - SALINAS.pdf'), 'examen_medico')
+  // «SALINAS» y «PALACIOS» contienen letras de ALTA/EPP pero no son la palabra. Y «HM» es la
+  // libreta del IERIC (hoja móvil del Fondo de Cese), no el examen médico: verificado el 11/09/2026
+  // sobre los archivos reales de Ochoa y Castillo.
+  assert.equal(categoriaDeArchivo('HM - SALINAS.pdf'), 'libreta_fondo_cese')
   assert.equal(categoriaDeArchivo('DNI - Palacios.pdf'), 'dni')
 })
 
@@ -188,4 +190,10 @@ test('sólo ACTIVOS e INACTIVOS contienen legajos: lo demás de la raíz no es u
     '9. ADMINISTRACION (no es legajo)', '3. A REVISAR', '']) {
     assert.equal(esBucketDeLegajos(n), false, n)
   }
+})
+
+test('«HM» es la libreta del IERIC, no el examen médico (11/09/2026: Ochoa y Castillo)', () => {
+  assert.equal(categoriaDeArchivo('HM - OCHOA EDUARDO.pdf'), 'libreta_fondo_cese')
+  assert.equal(categoriaDeArchivo('HM.pdf'), 'libreta_fondo_cese')
+  assert.equal(categoriaDeArchivo('Examen medico preocupacional.pdf'), 'examen_medico')
 })
