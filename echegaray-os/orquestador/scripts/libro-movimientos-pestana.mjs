@@ -458,10 +458,16 @@ async function extraerDeLasFuentes(google, corte) {
       Estructura: gastosEstructura.movimientos,
       'Cargas Sociales': cargas,
       Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos, tipoCambio }),
-      'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce, aviso: (x) => chequesPorCompras.push(x) }),
-      'Tarjeta de Credito': deTarjetaSinFactura(tarjeta, { pagos: pagosTarjeta }),
+      // ═══ LOS TRES RECIBEN `corte` DESDE EL 11/09/2026, Y NO ES UN PARÁMETRO DE MÁS ═══
+      //
+      // Estampaban 'COMPROMETIDO' a mano, sin pasar por `estadoContraCorte`. Un pendiente con fecha ya
+      // pasada tiene que nacer VENCIDO: el Semanal ancla su arrastre en la semana del corte de caja, y
+      // una columna anterior no publica saldo — el movimiento se pierde para siempre. Medido: $263.813,91
+      // de diferencia entre `CFS!BB50` y `CFM!M50` por la cuota 2 de Pintureria Cordoba, vencida el 02/09.
+      'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce, corte, aviso: (x) => chequesPorCompras.push(x) }),
+      'Tarjeta de Credito': deTarjetaSinFactura(tarjeta, { pagos: pagosTarjeta, corte }),
       _BANCO_RAW: cargosBanco,
-      _CHEQUES_RAW: deCartera(carteraRaw),
+      _CHEQUES_RAW: deCartera(carteraRaw, { corte }),
       // El impuesto al cheque proyectado entra NETO de lo que el banco ya debitó en el mes: esos
       // débitos ya están en el Libro por `_BANCO_RAW`, y sumarlos dos veces sería el defecto del día.
       'Impuestos y Financieros': deImpuestosCalendario(impuestos, filasCal, anioDelLibro, corte,
