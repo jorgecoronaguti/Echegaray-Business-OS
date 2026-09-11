@@ -1,0 +1,8 @@
+const t0 = Date.now()
+const { embeberVarios, estado } = await import(process.argv[2] + '/orquestador/lib/ml/embeddings.mjs')
+const t1 = Date.now()
+const v = await embeberVarios(['Factura de DUBOS por hierro del 8', 'Cheque emitido a Maldonado', 'Pago UOCRA septiembre'])
+const t2 = Date.now()
+const v2 = await embeberVarios(['Segunda tanda: cobro La Estrella'])
+const t3 = Date.now()
+console.log(JSON.stringify({ importMs: t1-t0, cargaYPrimerEmbedMs: t2-t1, segundoEmbedMs: t3-t2, dims: v[0]?.length, n: v.length, rssMB: Math.round(process.memoryUsage().rss/1048576), estado: estado() }))

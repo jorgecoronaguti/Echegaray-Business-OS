@@ -1,0 +1,55 @@
+{"modelo":"Qwen/Qwen3-VL-30B-A3B-Instruct","status":200,"ms":12790,"usage":{"prompt_tokens":1900,"completion_tokens":1352,"total_tokens":3252,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0,"cache_write_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"text_tokens":198,"image_tokens":1702,"video_tokens":0},"completion_tokens_details":{"audio_tokens":0,"reasoning_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0,"text_tokens":1352,"image_tokens":0,"video_tokens":0}},"costo":null,"provider":"novita"}
+
+Claro, aquí tienes una revisión concreta de la pantalla "Clientes" desde el punto de vista de accesibilidad (WCAG 2.2 AA) y UX, con hallazgos específicos, ubicación precisa y acciones concretas.
+
+---
+
+### **(1) Problemas de accesibilidad visibles**
+
+**Hallazgo 1: Contraste insuficiente en texto de estado**
+- **Dónde:** En la columna "ÚLT. MOV." (último movimiento), en las celdas que contienen el texto "sin movimientos".
+- **Problema:** El texto "sin movimientos" está en gris muy claro (código hex: #A0A0A0) sobre fondo blanco. El contraste es inferior a 3:1, lo que no cumple con el requisito WCAG 2.2 AA para texto no importante.
+- **Cambio:** Cambiar el color del texto a un gris oscuro (por ejemplo, #606060) o negro (#000) para alcanzar un contraste mínimo de 4.5:1.
+
+**Hallazgo 2: Foco visual ausente en elementos interactivos**
+- **Dónde:** En los botones de acción dentro de cada fila de cliente (por ejemplo, el icono de flecha hacia arriba junto a "OP 5156 · 08/09").
+- **Problema:** No hay un indicador de foco visible (como un borde o sombra) cuando se navega por el tabulador. Esto hace imposible para usuarios que no usan ratón saber qué elemento está seleccionado.
+- **Cambio:** Añadir un estilo de foco (por ejemplo, `outline: 2px solid #007BFF;`) a todos los elementos interactivos (links, botones, inputs) para que sean claramente identificables mediante teclado.
+
+**Hallazgo 3: Etiquetas de columnas no asociadas al contenido**
+- **Dónde:** Las etiquetas de las columnas ("OBRAS", "CONTRATADO", etc.) son solo texto plano en la parte superior de la tabla.
+- **Problema:** No están correctamente asociadas a sus respectivas columnas mediante atributos `scope` o `aria-labelledby`, lo que dificulta su comprensión para lectores de pantalla.
+- **Cambio:** Añadir `scope="col"` a las etiquetas de las cabeceras de columna (`<th>`) y asegurar que cada celda de datos (`<td>`) esté correctamente vinculada a su cabecera correspondiente mediante `aria-describedby` si es necesario.
+
+---
+
+### **(2) Problemas de UX**
+
+**Hallazgo 4: Densidad excesiva y falta de separación visual**
+- **Dónde:** En la fila de cliente "Messina", donde se muestra una lista de obras con múltiples campos (OP, fecha, monto) en una sola celda.
+- **Problema:** La información está densamente apilada sin suficiente espacio vertical o visualización de jerarquía. Es difícil distinguir rápidamente entre diferentes obras o datos dentro de una misma celda.
+- **Cambio:** Reducir la densidad aplicando más espaciado vertical entre filas y considerar desglosar esta celda en múltiples líneas o usar una estructura de tarjeta para cada obra individual.
+
+**Hallazgo 5: Columna "MARGEN" mal interpretada por el usuario**
+- **Dónde:** En la columna "MARGEN", donde se muestran valores como "$ 88.885.620 57 %".
+- **Problema:** La combinación de un valor monetario y un porcentaje en una misma celda es ambigua. No está claro si el porcentaje es del margen sobre el costo, o si es un dato adicional. Además, el formato de moneda es inconsistente (algunos usan `$`, otros no).
+- **Cambio:** Separar el valor monetario y el porcentaje en dos columnas distintas, o usar una única columna con un formato claro como "Margen: $88.885.620 (57%)". Establecer un formato consistente para todas las columnas de dinero.
+
+**Hallazgo 6: Estado vacío confuso**
+- **Dónde:** En la fila "La Estrella", donde aparece el texto "ninguna obra en ejecución".
+- **Problema:** Este mensaje está en una fila de cliente, lo que puede llevar a pensar que "La Estrella" tiene obras pero no están en ejecución. Sin embargo, el texto en la parte inferior indica que "no hay lead ni etapa de venta", lo que sugiere que el cliente no está activo. La información está mal posicionada.
+- **Cambio:** Mover el mensaje "ninguna obra en ejecución" a un área de estado vacío centralizada debajo de la tabla (como un placeholder). Si el cliente no tiene obras, mostrarlo en una fila específica con un diseño de estado vacío claro.
+
+---
+
+### **(3) Lo que está bien y no hay que tocar**
+
+**Hallazgo 7: Jerarquía visual clara en la cabecera**
+- **Dónde:** En la barra de navegación superior y en el título "Clientes".
+- **Problema:** Ninguno.
+- **Qué está bien:** El uso de tipografía y tamaño de fuente adecuados para el título principal y los subtítulos (como "9 obras en ejecución") crea una jerarquía visual clara. El texto es legible y el diseño es coherente.
+
+**Hallazgo 8: Acciones claras y consistentes**
+- **Dónde:** En el botón "+ Nuevo cliente" y en los iconos de flecha en las filas de clientes.
+- **Problema:** Ninguno.
+- **Qué está bien:** El botón de acción principal es visible y su función es evidente. Los iconos de flecha (que probablemente abren detalles) son consistentes en todo el listado, lo que facilita la navegación.

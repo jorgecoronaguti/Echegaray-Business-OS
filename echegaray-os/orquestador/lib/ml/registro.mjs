@@ -256,6 +256,82 @@ export const MODELOS = Object.freeze({
     bloqueado: 'obedeció una inyección de prompt destructiva en 1 de 2 corridas del 05/09/2026',
   },
 
+  // ═══ HERRAMIENTAS PARA CONSTRUIR EL OS — §6 del mandato del 11/09/2026 ═══
+  //
+  // No son capacidades del producto: son candidatos a reemplazar o asistir a Claude Code en el
+  // trabajo de construir ECSAS (revisar un diff, auditar una captura). Se midieron contra DOS
+  // problemas reales del repo con baseline conocido:
+  //   (a) el diff del commit 8c8c7d99 (435 líneas, 12.550 tokens) contra los TRES hallazgos que el
+  //       auditor de cierre —Claude— encontró y se corrigieron en 30f1ff28;
+  //   (b) la captura real de la pantalla Clientes (1600×1084) contra la revisión que Claude Code
+  //       hizo de la misma imagen antes de leer la del modelo.
+  // Evidencia completa: docs/engineering/HF-INCORPORADO-VS-RECHAZADO-2026-09-11.md.
+  // Ninguno fue por el adapter del OS a propósito: el adapter registra trazas en Postgres y un
+  // experimento no escribe en Supabase. Misma URL, mismo cuerpo, mismo token.
+  'herramienta.revision-codigo.qwen3-coder': {
+    capacidad: 'revisionDeCodigo',
+    modelo: 'Qwen/Qwen3-Coder-30B-A3B-Instruct',
+    revision: 'b2cff646eb4b (sha del Hub el 11/09/2026; el router no clava commit por request)',
+    ejecucion: 'hf-cloud',
+    proveedor: 'scaleway (vía router de Hugging Face; único proveedor con precio publicado)',
+    licencia: 'Apache-2.0',
+    contexto: 262144,
+    estado: ESTADO.RECHAZADO,
+    dataset: 'diff real 8c8c7d99 contra los 3 hallazgos del auditor corregidos en 30f1ff28',
+    medido: {
+      fecha: '2026-09-11', ms: 11029, tokensEntrada: 12550, tokensSalida: 1227,
+      usdEstimado: 0.004, usdPorMillon: { in: 0.228, out: 0.912 },
+      hallazgos: { pedidos: 6, exactos: 0, parciales: 1, invertidos: 2, ruido: 3 },
+    },
+    porQue: 'RECHAZADO POR CALIDAD, no por costo ni velocidad: contesta en 11 s por $0,004 y eso es imbatible. Pero de los tres defectos reales del diff no encontró NINGUNO exacto. Uno parcial: dijo que el test «no puede dar rojo por falta de datos» sin ubicar las claves con cero filas ni las dos caras que el guardián no recorría. Y dos INVERTIDOS: afirmó que un `p_solapa` desconocido devuelve la ficha entera (fail-open) — es lo que decían los comentarios equivocados, y el defecto real era exactamente que el código hace lo contrario. Se creyó el comentario en vez de leer el SQL. Un revisor que confirma el comentario falso no reduce trabajo: lo multiplica, porque el humano tiene que refutarlo.',
+    limite: 'un solo proveedor con precio (scaleway); featherless sin precio publicado. Un modelo con un proveedor es un punto único de falla.',
+    reingreso: 'volver a medir con un diff más chico (< 4.000 tokens) y con los tests .pg ejecutables a la vista, o cuando aparezca un caso donde Claude Code no pueda revisar (contexto agotado). El banco es este mismo prompt y este mismo diff.',
+  },
+
+  'herramienta.revision-codigo.glm-4.7-flash': {
+    capacidad: 'revisionDeCodigo',
+    modelo: 'zai-org/GLM-4.7-Flash',
+    revision: '7dd20894a642 (sha del Hub el 11/09/2026)',
+    ejecucion: 'hf-cloud',
+    proveedor: 'novita · deepinfra · zai-org · featherless (router de Hugging Face)',
+    licencia: 'MIT',
+    estado: ESTADO.RECHAZADO,
+    dataset: 'diff real 8c8c7d99 contra los 3 hallazgos del auditor corregidos en 30f1ff28',
+    medido: {
+      fecha: '2026-09-11', motivo: 'operacion',
+      // Cuatro intentos sobre el MISMO prompt (12.088-12.550 tokens de entrada). Ninguno devolvió
+      // una sola línea de revisión.
+      intentos: [
+        { proveedor: 'hf-router (por defecto)', maxTokens: 2500, status: 504, ms: 120315, salida: 'vacía' },
+        { proveedor: 'novita', maxTokens: 2500, status: 200, ms: 78465, salida: 'vacía: los 2.500 tokens de salida fueron reasoning_tokens, content = ""' },
+        { proveedor: 'novita', maxTokens: 8000, status: 504, ms: 120423, salida: 'vacía' },
+        { proveedor: 'deepinfra', maxTokens: 8000, status: 504, ms: 120321, salida: 'vacía' },
+      ],
+      usdEstimado: 0,
+    },
+    porQue: 'RECHAZADO POR OPERACIÓN, con la calidad sin medir porque nunca contestó. El router corta a los 120 s y el modelo, en modo pensante, gasta ese tiempo razonando: con tope 2.500 devolvió contenido vacío (todo reasoning), con tope 8.000 dos proveedores distintos dieron 504 a los 120 s. Cuatro intentos, cero líneas de revisión. Una herramienta que frena dos minutos una revisión y no entrega nada es peor que no tenerla.',
+    limite: 'el router de Hugging Face responde 504 a los ~120 s sin importar el proveedor; un modelo con razonamiento largo no entra en esa ventana con un diff de 12k tokens.',
+    reingreso: 'sólo si el router permite apagar el modo pensante por request (p. ej. `thinking: {type: "disabled"}` aceptado por el proveedor) o con un diff < 4.000 tokens. Mismo prompt (docs/engineering/evidencia/hf-2026-09-11/prompt-diff.txt), mismos tres hallazgos.',
+  },
+
+  'herramienta.ux-captura.qwen3-vl': {
+    capacidad: 'revisionVisualDePantalla',
+    modelo: 'Qwen/Qwen3-VL-30B-A3B-Instruct',
+    revision: '9c4b90e1e4ba (sha del Hub el 11/09/2026)',
+    ejecucion: 'hf-cloud',
+    proveedor: 'novita (router de Hugging Face); también deepinfra',
+    licencia: 'Apache-2.0',
+    estado: ESTADO.RECHAZADO,
+    dataset: 'captura real clientes.png (1600×1084, 116 KB) de app.ecsas.com.ar · pantalla Clientes',
+    medido: {
+      fecha: '2026-09-11', ms: 12790, tokensEntrada: 1900, tokensImagen: 1702, tokensSalida: 1352,
+      usdEstimado: 0.0011, usdPorMillon: { in: 0.15, out: 0.6 },
+      hallazgos: { pedidos: 8, coincidenConBaseline: 1, unicosCorrectos: 0, fabricados: 4, omitidosVisibles: 4 },
+    },
+    porQue: 'RECHAZADO POR FABRICACIÓN. Coincidió con Claude en UN hallazgo (el gris de «sin movimientos» contrasta poco) y le puso un hex «#A0A0A0» que no se puede leer de una captura: precisión inventada, justo lo que el prompt le pidió no hacer. Inventó un «icono de flecha hacia arriba» que no existe, afirmó que «algunas columnas de dinero no usan $» (todas lo usan), juzgó el foco de teclado desde una imagen estática y malinterpretó la nota al pie. Y NO vio los cuatro defectos más visibles: el margen de Quattropani «$ -39.149.629 · -2.603.726 %» partido en dos renglones y absurdo, el botón flotante «N» pisando la nota al pie, «sin movimientos» quebrado en dos líneas y la inconsistencia 9 obras / 10 obras / 5 filas. Una revisión que omite lo evidente y agrega lo falso cuesta más de verificar que hacerla.',
+    reingreso: 'volver a medir si aparece un VLM con puntería sobre UI (no fotografía natural) o con una captura recortada a un solo componente, donde el ruido baja. Mismo prompt, misma captura.',
+  },
+
   'razonamiento': {
     capacidad: 'escalateToClaude',
     modelo: 'lib/ia/capacidad.mjs',

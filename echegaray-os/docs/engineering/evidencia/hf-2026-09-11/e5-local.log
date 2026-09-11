@@ -1,0 +1,24 @@
+{"importMs":9,"cargaYPrimerEmbedMs":2058,"segundoEmbedMs":8,"dims":384,"n":3,"rssMB":500,"estado":{"modelo":"Xenova/multilingual-e5-small","dimensiones":384,"cargado":true,"enCache":4,"cacheDir":"/home/jorge/echegaray-os/app/echegaray-os/orquestador/datos/modelos/"}}
+	Command being timed: "node /tmp/claude-1001/-home-jorge-echegaray-os-app-echegaray-os/966126ab-b4a8-47f9-82bb-99e26c6c9ee0/scratchpad/mide-e5.mjs /home/jorge/echegaray-os/app/echegaray-os"
+	User time (seconds): 3.01
+	System time (seconds): 0.80
+	Percent of CPU this job got: 151%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:02.53
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 614016
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 15
+	Minor (reclaiming a frame) page faults: 187163
+	Voluntary context switches: 5040
+	Involuntary context switches: 456
+	Swaps: 0
+	File system inputs: 334880
+	File system outputs: 0
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

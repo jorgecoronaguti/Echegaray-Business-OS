@@ -1,0 +1,637 @@
+Sos revisor de código senior de un repo Next.js + Supabase (Postgres, RLS, PostgREST). Abajo va el diff completo de un commit de rendimiento: una RPC de Postgres `pantalla_cliente` que ahora recibe `p_solapa` y devuelve sólo lo que esa solapa dibuja, más un memo por request en el lector TypeScript y un test .pg que compara la ficha recortada contra la entera.
+
+Tu tarea: encontrar los defectos REALES de corrección y de verificación (tests que no pueden dar rojo, comentarios que contradicen el código, ramas no cubiertas, fail-open vs fail-closed mal descripto, límites no declarados). No listes estilo ni nits. Máximo 6 hallazgos, ordenados por gravedad, cada uno con: archivo, qué está mal, por qué importa, cómo lo probarías. Respondé en español.
+
+=== DIFF ===
+8c8c7d99 perf(clientes): la ficha trae lo que su cara dibuja, no las nueve
+
+ echegaray-os/orquestador/datos/definiciones.json   |   5 +-
+ .../lib/pantalla-cliente-rpc.pg.test.mjs           |  59 ++++-
+ echegaray-os/scripts/perf/repartir-consultas.mjs   |  21 +-
+ .../src/app/(main)/clientes/[cliente]/page.tsx     |  11 +-
+ .../clientes/services/fichaDeUnaConsulta.test.ts   |  57 +++++
+ .../clientes/services/fichaDeUnaConsulta.ts        |  21 +-
+ echegaray-os/src/lib/supabase/traza.ts             |  11 +-
+ .../rpc-de-pantalla-lee-lo-canonico.test.ts        |   2 +-
+ ...icha_del_cliente_trae_lo_que_su_cara_dibuja.sql | 268 +++++++++++++++++++++
+ 9 files changed, 435 insertions(+), 20 deletions(-)
+diff --git a/echegaray-os/orquestador/datos/definiciones.json b/echegaray-os/orquestador/datos/definiciones.json
+index 098382b7..d785ae4b 100644
+--- a/echegaray-os/orquestador/datos/definiciones.json
++++ b/echegaray-os/orquestador/datos/definiciones.json
+@@ -49,10 +49,11 @@
+         }
+       },
+       {
+-        "funcion": "public.pantalla_cliente(text)",
++        "funcion": "public.pantalla_cliente(text, text)",
+         "pantalla": "/clientes/[cliente]",
+-        "migracion": "supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql y, la que DE VERDAD corre, por 20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql)",
++        "migracion": "supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql por 20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql y, la que DE VERDAD corre, por 20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql, que agrega p_solapa y devuelve sólo lo que esa cara dibuja)",
+         "reemplaza": "15 consultas de PostgREST en TRES olas encadenadas",
++        "recorta_por_cara": "p_solapa es un RECORTE DE DIBUJO, no un permiso: `drive` y `documentos` (94 KB de 199 en el cliente más pesado) viajan sólo en Documentos y Actividad; `notas`, `autores`, `certificados` y `actividad_cliente`, sólo en Actividad; `n_documentos` viaja siempre porque la barra de solapas cuenta en las nueve caras. `papeles` NO se recorta: los totales de OC y OP los define agruparPapeles() en TypeScript. Quien recorta por rol sigue siendo la RLS.",
+         "consume": [
+           "cliente_panel",
+           "perfiles",
+diff --git a/echegaray-os/orquestador/lib/pantalla-cliente-rpc.pg.test.mjs b/echegaray-os/orquestador/lib/pantalla-cliente-rpc.pg.test.mjs
+index fa153525..f47d87a6 100644
+--- a/echegaray-os/orquestador/lib/pantalla-cliente-rpc.pg.test.mjs
++++ b/echegaray-os/orquestador/lib/pantalla-cliente-rpc.pg.test.mjs
+@@ -21,7 +21,7 @@ import { getPool } from './db.mjs'
+ 
+ const MIGRACION = readFileSync(join(
+   import.meta.dirname, '..', '..', 'supabase', 'migrations',
+-  '20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql'), 'utf8')
++  '20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql'), 'utf8')
+ 
+ const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
+ 
+@@ -137,6 +137,63 @@ test('pantalla_cliente() devuelve lo mismo que las quince lecturas', { skip: !ha
+       assert.equal(vacio.economia_cliente, null)
+     })
+ 
++    // ═══ EL RECORTE POR CARA (20260911T1200) ═══
++    //
++    // Lo que este bloque atrapa: que `p_solapa` deje de ser un RECORTE y se vuelva un cambio de
++    // dato. Un recorte que además alterara lo que sí viaja sería peor que el peso que ahorra —la
++    // cabecera y el costado se dibujan igual en las nueve caras—, y un recorte que no recortara
++    // nada sería una firma nueva sin efecto.
++    await t.test('la cara pedida recorta lo que no dibuja, y NADA más', async () => {
++      const entera = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
++      // Lo que la cabecera y el costado necesitan en TODAS las caras tiene que venir idéntico.
++      const SIEMPRE = ['cliente', 'perfil', 'responsables', 'contactos', 'obras', 'economia_obras',
++        'cobrado_por_obra', 'economia_cliente', 'papeles', 'presupuestos', 'n_documentos']
++      // Lo que sólo dibujan Documentos y Actividad, y lo que sólo dibuja Actividad.
++      const SOLO_DOC = ['documentos', 'drive']
++      const SOLO_ACT = ['notas', 'autores', 'certificados']
++      for (const cara of ['obras', 'cobranzas', 'presupuestos', 'cuenta', 'esquema', 'accesos', 'ordenes']) {
++        const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
++        for (const k of SIEMPRE) {
++          assert.deepEqual(j[k], entera[k], `la cara «${cara}» cambió «${k}», que se dibuja en las nueve`)
++        }
++        for (const k of [...SOLO_DOC, ...SOLO_ACT]) {
++          assert.deepEqual(j[k], [], `la cara «${cara}» todavía transporta «${k}»`)
++        }
++        assert.equal(j.actividad_cliente, null, `la cara «${cara}» todavía transporta actividad_cliente`)
++      }
++      for (const cara of ['documentos', 'actividad']) {
++        const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
++        for (const k of SOLO_DOC) {
++          assert.deepEqual(canonico(j[k]), canonico(entera[k]), `la cara «${cara}» no recibió «${k}»`)
++        }
++      }
++      const act = (await q(`select public.pantalla_cliente($1, 'actividad') j`, [slug]))[0].j
++      for (const k of SOLO_ACT) assert.deepEqual(act[k], entera[k], `Actividad no recibió «${k}»`)
++      assert.deepEqual(act.actividad_cliente, entera.actividad_cliente)
++    });
++
++    // LA CUENTA NO PUEDE MENTIR CUANDO LAS FILAS NO VIAJAN: es lo único que sostiene el «Documentos
++    // · N» de la barra en las siete caras que ya no reciben la lista.
++    await t.test('n_documentos cuenta lo mismo que la lista que reemplaza', async () => {
++      const entera = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
++      assert.ok(entera.documentos.length > 0, 'este cliente no tiene vínculos: la cuenta no se pudo probar')
++      assert.equal(Number(entera.n_documentos), entera.documentos.length)
++      for (const cara of ['obras', 'documentos']) {
++        const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
++        assert.equal(Number(j.n_documentos), entera.documentos.length,
++          `«${cara}» perdió la cuenta de documentos`)
++      }
++    });
++
++    // LA PUERTA VIEJA SIGUE ABIERTA mientras Vercel despliega: si esta firma desapareciera, la
++    // ficha se caería en la ventana entre aplicar la migración y terminar el deploy.
++    await t.test('la firma de un argumento sigue devolviendo la ficha entera', async () => {
++      const uno = (await q('select public.pantalla_cliente($1) j', [slug]))[0].j
++      const dos = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
++      assert.equal(canonico(uno.documentos).length, canonico(dos.documentos).length)
++      assert.equal(uno.cliente.slug, slug)
++    });
++
+     await t.test('un rol sin economía no recibe la economía del cliente', async () => {
+       const jefe = (await q(`select id from perfiles where rol='jefe_obra' and es_prueba = false limit 1`))[0]
+       if (!jefe) return t.diagnostic('no hay perfil de jefe de obra en la base: el portero no se pudo probar')
+diff --git a/echegaray-os/scripts/perf/repartir-consultas.mjs b/echegaray-os/scripts/perf/repartir-consultas.mjs
+index 8355ed35..290f2fd0 100644
+--- a/echegaray-os/scripts/perf/repartir-consultas.mjs
++++ b/echegaray-os/scripts/perf/repartir-consultas.mjs
+@@ -7,25 +7,30 @@ const vs = readFileSync(ventanas, 'utf8').trim().split('\n').map((l) => {
+ const qs = []
+ for (const l of readFileSync(logSrv, 'utf8').split('\n')) {
+   if (!l.startsWith('PERFQ\t')) continue
+-  const [, t0, ms, , resumen] = l.split('\t')
+-  qs.push({ t0: +t0, ms: +ms, resumen })
++  // `PERFQ \t t0 \t ms \t bytes \t método \t resumen`. `bytes` se agregó el 11/09/2026: contar
++  // viajes no alcanza cuando el problema es que UN viaje trae 130 KB para dibujar una dirección.
++  const [, t0, ms, bytes, , resumen] = l.split('\t')
++  qs.push({ t0: +t0, ms: +ms, bytes: +bytes, resumen })
+ }
+ const med = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
+ const porRuta = new Map()
+ for (const v of vs) {
+   const dentro = qs.filter((q) => q.t0 >= v.d && q.t0 <= v.h)
+-  const e = porRuta.get(v.ruta) ?? { visitas: 0, viajes: [], detalle: new Map() }
++  const e = porRuta.get(v.ruta) ?? { visitas: 0, viajes: [], bytes: [], detalle: new Map() }
+   e.visitas++; e.viajes.push(dentro.length)
+   for (const q of dentro) {
+-    const l = e.detalle.get(q.resumen) ?? []; l.push(q.ms); e.detalle.set(q.resumen, l)
++    const l = e.detalle.get(q.resumen) ?? []; l.push(q); e.detalle.set(q.resumen, l)
+   }
++  e.bytes.push(dentro.reduce((a, q) => a + Math.max(0, q.bytes), 0))
+   porRuta.set(v.ruta, e)
+ }
+ for (const [ruta, e] of porRuta) {
+-  console.log(`\n${ruta}  visitas=${e.visitas}  viajes(mediana)=${med(e.viajes)}`)
+-  const orden = [...e.detalle].map(([k, l]) => [k, l.length / e.visitas, med(l), Math.max(...l)])
++  const kb = (b) => (b / 1024).toFixed(1)
++  console.log(`\n${ruta}  visitas=${e.visitas}  viajes(mediana)=${med(e.viajes)}  KB(mediana)=${kb(med(e.bytes))}`)
++  const orden = [...e.detalle]
++    .map(([k, l]) => [k, l.length / e.visitas, med(l.map((q) => q.ms)), Math.max(...l.map((q) => q.ms)), med(l.map((q) => q.bytes))])
+     .sort((a, b) => b[2] - a[2])
+-  for (const [k, n, m, mx] of orden) {
+-    console.log(`    ${n.toFixed(1).padStart(4)}×  ${String(m).padStart(6)} ms (máx ${String(mx).padStart(6)})  ${k}`)
++  for (const [k, n, m, mx, b] of orden) {
++    console.log(`    ${n.toFixed(1).padStart(4)}×  ${String(m).padStart(6)} ms (máx ${String(mx).padStart(6)})  ${kb(b).padStart(8)} KB  ${k}`)
+   }
+ }
+diff --git a/echegaray-os/src/app/(main)/clientes/[cliente]/page.tsx b/echegaray-os/src/app/(main)/clientes/[cliente]/page.tsx
+index 6822d514..2e6b5201 100644
+--- a/echegaray-os/src/app/(main)/clientes/[cliente]/page.tsx
++++ b/echegaray-os/src/app/(main)/clientes/[cliente]/page.tsx
+@@ -135,6 +135,9 @@ export default async function ClientePage({ params, searchParams }: {
+   const q = await searchParams
+ 
+   const supabase = await createClient()
++  // QUÉ CARA SE VA A DIBUJAR — se resuelve ANTES de leer, porque desde 20260911T1200 la RPC trae
++  // sólo lo que esa cara pinta. Depende únicamente de la URL, así que adelantarla no espera nada.
++  const solapa = solapaDe(q.vista, q.solapa)
+   // ═══ UN VIAJE, NO QUINCE (10/09/2026) ═══
+   //
+   // Eran TRES olas encadenadas: la ficha y el perfil; después nueve lecturas en paralelo —de las
+@@ -147,7 +150,7 @@ export default async function ClientePage({ params, searchParams }: {
+   // mismas filas en un viaje, y las dos dependencias de la tercera ola pasan a ser subconsultas.
+   //
+   // Los cruces en memoria NO se movieron a SQL: ver `fichaDeUnaConsulta.ts`.
+-  const ficha = await leerFichaDeUnaConsulta(supabase, slug)
++  const ficha = await leerFichaDeUnaConsulta(supabase, slug, solapa)
+   // NO EXISTE y NO PUEDO LEER son dos cosas distintas: confundirlas escondió un defecto de permisos
+   // detrás de un «página no encontrada» durante horas.
+   if (ficha.error) return <EstadoError mensaje={ficha.error} que="la ficha del cliente" />
+@@ -183,7 +186,6 @@ export default async function ClientePage({ params, searchParams }: {
+   // sola, el que la agregue no tiene que reinventar la distinción.
+   const lector = crearLector()
+ 
+-  const solapa = solapaDe(q.vista, q.solapa)
+   // EL DÍA DE HOY LO DECIDE EL SERVIDOR, EN EL HUSO DE LA EMPRESA. Si «vencido» lo calculara el
+   // navegador, un jefe con el reloj corrido vería una mora distinta sobre el mismo cliente.
+   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+@@ -464,7 +466,10 @@ export default async function ClientePage({ params, searchParams }: {
+           veEconomia,
+           obras: todas.length,
+           presupuestos: presupuestos.length,
+-          documentos: lector.leer(documentos, []).length + nPapeles,
++          // LA CUENTA SALE DE LA RPC, NO DEL `.length`: `documentos` viaja vacío fuera de las caras
++          // Documentos y Actividad (20260911T1200), así que contar el array escribiría un cero
++          // sobre un cliente que tiene 208 papeles.
++          documentos: ficha.nDocumentos + nPapeles,
+           cobranzas: cobranzas?.length ?? null,
+           ordenes: ordenesDelCliente?.length ?? null,
+         }).map((s) => ({
+diff --git a/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.test.ts b/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.test.ts
+new file mode 100644
+index 00000000..a44bebbe
+--- /dev/null
++++ b/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.test.ts
+@@ -0,0 +1,57 @@
++// LA FICHA PIDE LA CARA QUE VA A DIBUJAR, Y NO CUENTA CON LO QUE YA NO LE MANDAN.
++//
++// ═══ QUÉ DEFECTO ATRAPA ═══
++//
++// Desde 20260911T1200 `pantalla_cliente()` recorta: `documentos` y `drive` viajan sólo en las caras
++// Documentos y Actividad (94 KB de 199 en el cliente más pesado). Ese recorte tiene DOS mitades en
++// TypeScript y las dos se rompen en silencio:
++//
++//   1 · si la página deja de mandar `p_solapa`, la RPC vuelve a traer la ficha entera y el ahorro
++//       desaparece sin que nada falle — el defecto más caro, porque se ve exactamente igual;
++//   2 · si el conteo de la barra vuelve a salir del `.length` de `documentos`, las siete caras que
++//       ya no reciben la lista escribirían «Documentos · 0» sobre un cliente con 208 papeles, que
++//       es un dato FALSO a cambio de ancho de banda.
++//
++// ═══ POR QUÉ LEE EL ARCHIVO Y NO LLAMA A LA FUNCIÓN ═══
++//
++// `fichaDeUnaConsulta.ts` importa por alias (`@/features/presupuestos/…`) y `node --test` —que es
++// el runner que produce la evidencia de cierre acá— no resuelve el alias: importarla tira
++// ERR_MODULE_NOT_FOUND antes de correr nada. Un control que no se puede correr no es un control.
++// Se lee el TEXTO, que es lo que hace el test hermano de las RPC
++// (`src/shared/definiciones/rpc-de-pantalla-lee-lo-canonico.test.ts`). Lo que este barrido NO puede
++// ver es si el valor que viaja es el correcto: eso lo mide contra la base real
++// `orquestador/lib/pantalla-cliente-rpc.pg.test.mjs`.
++
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { readFileSync } from 'node:fs'
++import { fileURLToPath } from 'node:url'
++
++const RAIZ = fileURLToPath(new URL('../../../../', import.meta.url))
++const lector = readFileSync(RAIZ + 'src/features/clientes/services/fichaDeUnaConsulta.ts', 'utf8')
++const pagina = readFileSync(RAIZ + 'src/app/(main)/clientes/[cliente]/page.tsx', 'utf8')
++
++test('la lectura de la ficha le manda a la RPC la cara que se va a dibujar', () => {
++  assert.match(lector, /supabase\.rpc\('pantalla_cliente',\s*\{\s*p_slug:\s*slug,\s*p_solapa:\s*solapa\s*\}\)/,
++    'la RPC dejó de recibir p_solapa: vuelve a viajar la ficha entera en las nueve caras')
++  assert.match(lector, /solapa:\s*string/, 'la firma dejó de pedir la solapa')
++})
++
++test('la página resuelve la solapa ANTES de leer, y se la pasa', () => {
++  const iSolapa = pagina.indexOf('const solapa = solapaDe(')
++  const iLectura = pagina.indexOf('leerFichaDeUnaConsulta(supabase, slug')
++  assert.ok(iSolapa > 0, 'la página no resuelve la solapa')
++  assert.ok(iLectura > 0, 'la página no lee la ficha')
++  assert.ok(iSolapa < iLectura, 'la solapa se resuelve DESPUÉS de leer: la RPC no puede recortar')
++  assert.match(pagina, /leerFichaDeUnaConsulta\(supabase,\s*slug,\s*solapa\)/)
++})
++
++test('la barra de solapas cuenta con n_documentos y no con el largo de la lista recortada', () => {
++  assert.match(lector, /nDocumentos:\s*j\.n_documentos\s*\?\?\s*0/,
++    'el lector dejó de transportar n_documentos')
++  assert.match(pagina, /documentos:\s*ficha\.nDocumentos\s*\+\s*nPapeles/,
++    'la barra volvió a contar el array: escribiría «Documentos · 0» en las siete caras recortadas')
++  // Y AL REVÉS: que no quede ningún `.length` de `documentos` alimentando ese conteo.
++  assert.doesNotMatch(pagina, /documentos:\s*lector\.leer\(documentos,\s*\[\]\)\.length/,
++    'volvió el conteo por `.length` sobre una lista que no siempre viaja')
++})
+diff --git a/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.ts b/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.ts
+index 40a1ad1b..4671d805 100644
+--- a/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.ts
++++ b/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.ts
+@@ -67,6 +67,15 @@ export interface FichaLeida {
+   economiaCliente: EconomiaDeCliente | null
+   /** `null` = la lectura falló. «No pude leerlos» nunca se dibuja como «no tiene ninguno». */
+   papeles: PapelesDelCliente | null
++  /**
++   * CUÁNTOS VÍNCULOS A DRIVE TIENE EL CLIENTE, en las nueve caras.
++   *
++   * `documentos` viene VACÍO fuera de las caras Documentos y Actividad (94 KB de 199 que las otras
++   * siete pagaban para nada, 20260911T1200), así que su `.length` ya no puede contar. La barra de
++   * solapas usa ESTE número, que la RPC cuenta con el mismo `where` que las filas: sin él, recortar
++   * el peso escribiría «Documentos · 0» sobre un cliente con 208 papeles.
++   */
++  nDocumentos: number
+   /**
+    * LO COBRADO POR TRABAJO (`public.obra_cuenta`), con la MISMA conversión que usa `/clientes`
+    * (`armarCobradoPorObra`). Con una conversión propia acá, las dos pantallas del módulo volverían
+@@ -77,6 +86,7 @@ export interface FichaLeida {
+ 
+ interface FichaCruda {
+   cliente: Record<string, unknown> | null
++  n_documentos: number | null
+   perfil: Perfil | null
+   responsables: Responsable[]
+   contactos: Contacto[]
+@@ -98,7 +108,7 @@ function nadaLeido(error: string | null): FichaLeida {
+   return {
+     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
+     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
+-    papeles: null, cobradoPorObra: null,
++    papeles: null, cobradoPorObra: null, nDocumentos: 0,
+   }
+ }
+ 
+@@ -110,9 +120,13 @@ function nadaLeido(error: string | null): FichaLeida {
+  * permisos detrás de un «página no encontrada» durante horas, y por eso siguen separados.
+  */
+ export async function leerFichaDeUnaConsulta(
+-  supabase: SupabaseClient, slug: string,
++  supabase: SupabaseClient, slug: string, solapa: string,
+ ): Promise<FichaLeida> {
+-  const { data, error } = await supabase.rpc('pantalla_cliente', { p_slug: slug })
++  // `p_solapa` NO ES UN PERMISO, ES UN RECORTE DE DIBUJO: dice qué va a pintar esta cara para no
++  // transportar lo que ninguna otra mira. Quien recorta por rol sigue siendo la RLS adentro de las
++  // vistas, y por eso la firma acepta cualquier texto: un valor desconocido devuelve la ficha
++  // entera, que es lo que hacía antes.
++  const { data, error } = await supabase.rpc('pantalla_cliente', { p_slug: slug, p_solapa: solapa })
+   if (error) return nadaLeido(error.message)
+   const j = (data ?? {}) as FichaCruda
+   if (!j.cliente) return nadaLeido(null)
+@@ -124,6 +138,7 @@ export async function leerFichaDeUnaConsulta(
+     // comparación contra null y muestra cualquier cosa.
+     cliente: normalizar(j.cliente),
+     error: null,
++    nDocumentos: j.n_documentos ?? 0,
+     perfil: j.perfil ?? null,
+     responsables: j.responsables ?? [],
+     contactos: j.contactos ?? [],
+diff --git a/echegaray-os/src/lib/supabase/traza.ts b/echegaray-os/src/lib/supabase/traza.ts
+index 6752ed66..7e01887a 100644
+--- a/echegaray-os/src/lib/supabase/traza.ts
++++ b/echegaray-os/src/lib/supabase/traza.ts
+@@ -39,14 +39,21 @@ export function trazar(): typeof fetch | undefined {
+   return async (entrada: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+     const t0 = Date.now()
+     const url = typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url
++    let bytes = -1
+     try {
+-      return await fetch(entrada, init)
++      const r = await fetch(entrada, init)
++      // CUÁNTO PESA LA RESPUESTA, QUE ES LA MITAD DEL PROBLEMA. Contar viajes no alcanza: una
++      // pantalla puede hacer UN viaje y traer 130 KB para dibujar una dirección. Se cuenta sobre un
++      // `clone()` para no consumir el cuerpo que el llamador todavía no leyó; el clon sólo existe
++      // con la traza encendida, que nunca es producción.
++      try { bytes = (await r.clone().arrayBuffer()).byteLength } catch { bytes = -1 }
++      return r
+     } finally {
+       const ms = Date.now() - t0
+       // Una línea por viaje, con el instante de arranque: el que la lee después la reparte por
+       // pantalla usando la ventana de tiempo de cada navegación. `console.log` y no
+       // `process.stdout`: el middleware puede correr en el runtime Edge, donde `process` no existe.
+-      console.log(`PERFQ\t${t0}\t${ms}\t${init?.method ?? 'GET'}\t${resumirUrl(url)}`)
++      console.log(`PERFQ\t${t0}\t${ms}\t${bytes}\t${init?.method ?? 'GET'}\t${resumirUrl(url)}`)
+     }
+   }
+ }
+diff --git a/echegaray-os/src/shared/definiciones/rpc-de-pantalla-lee-lo-canonico.test.ts b/echegaray-os/src/shared/definiciones/rpc-de-pantalla-lee-lo-canonico.test.ts
+index 73d9e65a..cb4a4bfb 100644
+--- a/echegaray-os/src/shared/definiciones/rpc-de-pantalla-lee-lo-canonico.test.ts
++++ b/echegaray-os/src/shared/definiciones/rpc-de-pantalla-lee-lo-canonico.test.ts
+@@ -77,7 +77,7 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
+     // y un archivo de la cadena que cambia después de aplicarse rompe el ledger, así que se
+     // reemplazaron con `create or replace`. Auditar la versión VIEJA sería auditar lo que ya no
+     // corre — por eso el barrido apunta a 0040 y no a los archivos originales.
+-    archivo: 'supabase/migrations/20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql',
++    archivo: 'supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql',
+     funcion: 'pantalla_cliente',
+     lee: [
+       'cliente_panel',          // la ficha, y el slug → cliente_id
+diff --git a/echegaray-os/supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql b/echegaray-os/supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql
+new file mode 100644
+index 00000000..8093a079
+--- /dev/null
++++ b/echegaray-os/supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql
+@@ -0,0 +1,268 @@
++-- ═══ LA FICHA DEL CLIENTE TRAE LO QUE SU CARA DIBUJA, NO LAS NUEVE ═══════════════════════════════
++--
++-- ═══ EL PROBLEMA, MEDIDO (11/09/2026, `PERF_TRAZA=1` sobre `/clientes/arcor`) ═══
++--
++-- `pantalla_cliente()` devuelve 199.202 bytes. El desglose del jsonb dice dónde están:
++--
++--     papeles      94.020 B (333 filas)
++--     drive        64.048 B (208 filas)
++--     documentos   30.142 B (208 filas)
++--     todo lo demás 11.000 B
++--
++-- `drive` + `documentos` son 94 KB —el 47 % del payload— y sólo los DIBUJAN dos de las nueve caras:
++-- Documentos (la lista de archivos vinculados) y Actividad (la línea de tiempo los usa como
++-- eventos). Las otras siete los transportan para nada, y como la ficha vuelve a pedir la RPC
++-- ENTERA en cada cambio de solapa, ese peso se paga una vez por clic.
++--
++-- Lo mismo, más chico, con `notas`, `autores`, `certificados` y `actividad_cliente`: los cuatro
++-- existen sólo para construir la línea de tiempo de la cara Actividad.
++--
++-- ═══ LO QUE NO SE RECORTA, Y POR QUÉ ═══
++--
++-- `papeles` (94 KB) SE QUEDA EN LAS NUEVE CARAS. La cabecera escribe «OC recibidas c/IVA (n) $…» y
++-- «OP recibidas c/IVA (n) $…» en todas, y esos dos totales NO son un `sum()` de la tabla: salen de
++-- `agruparPapeles()`, que antes de sumar agrupa las copias del mismo papel por número canónico
++-- (una OC que llegó en dos mails es UNA orden), descarta los comprobantes de retención por el
++-- nombre del archivo y distingue «nadie cargó el importe» de «cero». Reproducir esa regla en SQL
++-- para ahorrar 94 KB sería tener dos definiciones de lo que el cliente encargó — exactamente lo que
++-- `rpc-de-pantalla-lee-lo-canonico.test.ts` prohíbe. El peso se paga; la regla no se duplica.
++--
++-- ═══ LA CUENTA SE QUEDA AUNQUE LAS FILAS SE VAYAN ═══
++--
++-- La barra de solapas escribe «Documentos · N» en las nueve caras. Recortar las filas sin traer la
++-- cuenta convertiría ese N en un cero, que afirma que el cliente no tiene ningún papel — un dato
++-- falso a cambio de ancho de banda. Por eso entra `n_documentos`, un `count(*)` con el MISMO
++-- `where` que las filas: no es un número nuevo, es el `.length` calculado del otro lado del cable.
++--
++-- ═══ `p_solapa` ES UN RECORTE, NO UN PERMISO ═══
++--
++-- Quien decide qué puede ver cada rol sigue siendo la RLS (`security invoker`, `ve_economia()`
++-- adentro de las vistas). `p_solapa` sólo dice qué va a DIBUJAR la página; un valor cualquiera —o
++-- `null`, que es lo que manda un consumidor viejo— devuelve la ficha entera, como antes.
++
++CREATE OR REPLACE FUNCTION public.pantalla_cliente(p_slug text, p_solapa text)
++ RETURNS jsonb
++ LANGUAGE sql
++ STABLE
++ SET search_path TO 'public'
++AS $function$
++  with elegido as (
++    select c.cliente_id from public.cliente_panel c where c.slug = p_slug
++  ),
++  -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de
++  -- los certificados. Sin el CTE, la misma vista se recorrería tres veces en el mismo viaje.
++  sus_obras as (
++    select o.* from public.obra_panel o
++     where o.cliente_id = (select cliente_id from elegido)
++  )
++  select jsonb_build_object(
++
++    -- LA FICHA. `null` = no existe o no la puedo ver; la pantalla ya distingue eso de un error.
++    'cliente', (select to_jsonb(c) from public.cliente_panel c where c.slug = p_slug),
++
++    'perfil', (
++      select jsonb_build_object('id', p.id, 'rol', p.rol, 'nombre', p.nombre,
++                                'created_at', p.created_at, 'updated_at', p.updated_at)
++        from public.perfiles p
++       where p.id = (select auth.uid())
++    ),
++
++    -- LOS RESPONSABLES POSIBLES, sin las identidades de prueba: nombrar responsable a una cuenta de
++    -- QA es una decisión de negocio tomada por accidente. Se filtra por `es_prueba`, no por texto.
++    'responsables', (
++      select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'nombre', p.nombre, 'rol', p.rol)
++                                order by p.nombre), '[]'::jsonb)
++        from public.perfiles p where p.es_prueba = false
++    ),
++
++    'contactos', (
++      select coalesce(jsonb_agg(to_jsonb(k)), '[]'::jsonb)
++        from public.cliente_contacto k
++       where k.cliente_id = (select cliente_id from elegido)
++    ),
++
++    'obras', (select coalesce(jsonb_agg(to_jsonb(o)), '[]'::jsonb) from sus_obras o),
++
++    -- LO QUE OBRAS PUBLICA POR OBRA. Sin recortar por cliente: la ficha usa el mapa completo, igual
++    -- que la cartera, y recortarlo acá sería una regla nueva que nadie pidió.
++    'economia_obras', (
++      select coalesce(jsonb_agg(
++               jsonb_build_object('obra_canonica_id', e.obra_canonica_id, 'contratado', e.contratado,
++                                  -- EL CONTRATO EN SU MONEDA Y EL DÓLAR CON QUE SE VALUÓ: Quattropani
++                                  -- se firmó en U$S y el peso equivalente cambia solo de un día para
++                                  -- otro. Los dos viajan; la pantalla decide cuál muestra.
++                                  'contratado_usd', e.contratado_usd, 'tipo_cambio', e.tipo_cambio,
++                                  'origen', e.origen, 'referencia', e.referencia, 'nota', e.nota,
++                                  -- LOS DOS TOTALES DE OC NO SE SUMAN: `ventana` es lo que el cliente
++                                  -- emitió dentro del año que acota el contratado e `historico` lo de
++                                  -- otros años, que en una obra fusionada son órdenes viejas.
++                                  'oc_civa_ventana', e.oc_civa_ventana,
++                                  'oc_civa_historico', e.oc_civa_historico,
++                                  'oc_n_ventana', e.oc_n_ventana,
++                                  'oc_n_historico', e.oc_n_historico,
++                                  'contrato_mano_obra', e.contrato_mano_obra,
++                                  'contrato_mano_obra_usd', e.contrato_mano_obra_usd,
++                                  'contrato_materiales', e.contrato_materiales,
++                                  'contrato_materiales_usd', e.contrato_materiales_usd,
++                                  'contrato_total', e.contrato_total,
++                                  'contrato_fuente', e.contrato_fuente,
++                                  'contrato_fuente_drive_id', e.contrato_fuente_drive_id,
++                                  'contrato_fuente_nombre', e.contrato_fuente_nombre,
++                                  'contrato_cita', e.contrato_cita,
++                                  'contrato_nota', e.contrato_nota)), '[]'::jsonb)
++        from public.obra_economia_cartera e
++    ),
++
++    -- LO COBRADO POR TRABAJO — la MISMA vista y las MISMAS ocho columnas que `/clientes`. La ficha
++    -- del CRM lo necesita para decir si un trabajo cobró; con una lectura propia, las dos pantallas
++    -- del módulo volverían a poder decir números distintos sobre la misma obra.
++    'cobrado_por_obra', (
++      select coalesce(jsonb_agg(jsonb_build_object(
++               'obra_id', u.obra_id, 'cobrado_total', u.cobrado_total,
++               'cobrado_neto', u.cobrado_neto, 'por_cobrar', u.por_cobrar, 'vencido', u.vencido,
++               'proximo_cobro_fecha', u.proximo_cobro_fecha,
++               'proximo_cobro_medio', u.proximo_cobro_medio,
++               'imputacion', u.imputacion)), '[]'::jsonb)
++        from public.obra_cuenta u
++       where u.cliente_id = (select cliente_id from elegido)
++    ),
++
++    -- LO CONTRATADO Y LO COBRADO DEL CLIENTE, sumado por la base. `null` cuando el rol no ve
++    -- economía (`ve_economia()` adentro de la vista) o cuando el cliente no tiene fila.
++    'economia_cliente', (
++      select jsonb_build_object(
++               'cliente_id', x.cliente_id, 'contratado', x.contratado,
++               'contratado_en_curso', x.contratado_en_curso, 'n_obras_en_curso', x.n_obras_en_curso,
++               'n_obras_cerradas', x.n_obras_cerradas, 'n_obras_con_precio', x.n_obras_con_precio,
++               'n_obras_sin_precio', x.n_obras_sin_precio, 'costo_real', x.costo_real,
++               'facturado_90d', x.facturado_90d, 'cobrado_90d', x.cobrado_90d,
++               'cobrado_total', x.cobrado_total, 'cobrado_neto_total', x.cobrado_neto_total,
++               'saldo', x.saldo, 'vencido', x.vencido, 'por_vencer', x.por_vencer,
++               'pendiente_contractual', x.pendiente_contractual)
++        from public.cliente_economia x
++       where x.cliente_id = (select cliente_id from elegido)
++    ),
++
++    -- LOS PAPELES DEL CLIENTE, con `atribucion`: la ficha muestra CÓMO se ató cada uno a su obra.
++    'papeles', (
++      select coalesce(jsonb_agg(jsonb_build_object(
++               'id', r.id, 'obra_id', r.obra_id, 'tipo', r.tipo, 'numero', r.numero,
++               'fecha', r.fecha, 'importe', r.importe, 'moneda', r.moneda, 'cita', r.cita,
++               'nombre_archivo', r.nombre_archivo, 'atribucion', r.atribucion,
++               'drive_file_id', r.drive_file_id)), '[]'::jsonb)
++        from public.cliente_orden r
++       where r.cliente_id = (select cliente_id from elegido)
++         and r.eliminado_en is null
++    ),
++
++    -- CUÁNTOS VÍNCULOS A DRIVE TIENE, SIEMPRE. La barra de solapas escribe «Documentos · N» en
++    -- las nueve caras, y sin esta cuenta recortar las filas convertiría ese N en un cero falso —
++    -- que es peor que el peso que se ahorra. `count(` no fabrica un número de negocio: es el
++    -- `.length` del mismo array, con el mismo `where`, hecho antes del cable.
++    'n_documentos', (
++      select count(*) from public.cliente_documento d
++       where d.cliente_id = (select cliente_id from elegido)
++    ),
++
++    -- LOS VÍNCULOS A DRIVE, y APARTE los archivos. No se cruzan acá: ver la cabecera.
++    'documentos', case when p_solapa is null or p_solapa in ('documentos', 'actividad') then (
++      select coalesce(jsonb_agg(jsonb_build_object(
++               'drive_file_id', d.drive_file_id, 'rol', d.rol, 'origen', d.origen,
++               'creado_en', d.creado_en)), '[]'::jsonb)
++        from public.cliente_documento d
++       where d.cliente_id = (select cliente_id from elegido)
++    ) else '[]'::jsonb end,
++    -- LA TERCERA OLA QUE DEJA DE SER UNA OLA: esto esperaba a que volvieran los ids de arriba.
++    'drive', case when p_solapa is null or p_solapa in ('documentos', 'actividad') then (
++      select coalesce(jsonb_agg(jsonb_build_object(
++               'drive_file_id', a.drive_file_id, 'name', a.name, 'path', a.path,
++               'mime_type', a.mime_type, 'modified_time', a.modified_time)), '[]'::jsonb)
++        from public.drive_index a
++       where a.drive_file_id in (
++               select d.drive_file_id from public.cliente_documento d
++                where d.cliente_id = (select cliente_id from elegido))
++    ) else '[]'::jsonb end,
++
++    -- LAS NOTAS Y SUS AUTORES, por separado: una nota cuyo perfil ya no está queda SIN FIRMA, que
++    -- es la verdad, en lugar de perderse. Ese cruce lo hace TypeScript y sigue siendo uno solo.
++    'notas', case when p_solapa is null or p_solapa = 'actividad' then (
++      select coalesce(jsonb_agg(jsonb_build_object(
++               'id', n.id, 'texto', n.texto, 'autor_id', n.autor_id, 'creado_en', n.creado_en)
++               order by n.creado_en desc), '[]'::jsonb)
++        from public.cliente_nota n
++       where n.cliente_id = (select cliente_id from elegido)
++    ) else '[]'::jsonb end,
++    'autores', case when p_solapa is null or p_solapa = 'actividad' then (
++      select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'nombre', p.nombre)), '[]'::jsonb)
++        from public.perfiles p
++       where p.id in (
++               select n.autor_id from public.cliente_nota n
++                where n.cliente_id = (select cliente_id from elegido) and n.autor_id is not null)
++    ) else '[]'::jsonb end,
++
++    -- LAS FECHAS DEL CLIENTE PARA LA ACTIVIDAD salen de `clientes`, no de `cliente_panel`: la vista
++    -- no las publica, y agregarlas ahí sería una migración para una solapa que no la necesita.
++    'actividad_cliente', case when p_solapa is null or p_solapa = 'actividad' then (
++      select jsonb_build_object('nombre_comercial', c.nombre_comercial,
++                                'created_at', c.created_at, 'updated_at', c.updated_at)
++        from public.clientes c where c.id = (select cliente_id from elegido)
++    ) else null::jsonb end,
++
++    -- LOS CERTIFICADOS DE SUS OBRAS — la otra lectura que esperaba a la ola anterior.
++    'certificados', case when p_solapa is null or p_solapa = 'actividad' then (
++      select coalesce(jsonb_agg(jsonb_build_object(
++               'id', t.id, 'numero', t.numero, 'obra_canonica_id', t.obra_canonica_id,
++               'fecha_certificacion', t.fecha_certificacion, 'monto_certificado', t.monto_certificado,
++               'fecha_facturacion', t.fecha_facturacion, 'monto_facturado', t.monto_facturado,
++               'fecha_cobranza', t.fecha_cobranza, 'monto_cobrado', t.monto_cobrado)), '[]'::jsonb)
++        from public.certificados t
++       where t.obra_canonica_id in (select o.obra_id from sus_obras o)
++    ) else '[]'::jsonb end,
++
++    -- LOS PRESUPUESTOS DE ESTE CLIENTE. La aplicación traía TODA la cartera vigente y descartaba en
++    -- memoria; el filtro es el mismo predicado (`cliente_id`), sólo que antes del cable.
++    'presupuestos', (
++      select coalesce(jsonb_agg(to_jsonb(z) order by z.fecha_cotizacion desc), '[]'::jsonb)
++        from public.cotizacion_cascada z
++       where z.vigente = true and z.cliente_id = (select cliente_id from elegido)
++    )
++  )
++$function$
++;
++
++-- ═══ LA DE UN ARGUMENTO NO SE RETIRA: SE VUELVE LA MISMA CON `p_solapa` EN NULL ═══
++--
++-- Entre que la migración se aplica y que Vercel termina de desplegar hay una ventana de minutos en
++-- la que el código VIVO todavía llama `pantalla_cliente(p_slug)`. Borrar esa firma —o ponerle un
++-- DEFAULT, que la vuelve ambigua— deja la ficha del cliente en error justo en esa ventana. Las dos
++-- conviven, y la vieja delega: una sola definición del cuerpo, dos puertas.
++create or replace function public.pantalla_cliente(p_slug text)
++returns jsonb
++language sql
++stable
++security invoker
++set search_path to 'public'
++as $delega$
++  select public.pantalla_cliente(p_slug, null::text)
++$delega$;
++
++comment on function public.pantalla_cliente(text, text) is
++  'LAS QUINCE LECTURAS DE LA FICHA DEL CLIENTE EN UN VIAJE, y desde 20260911T1200 sólo las que la '
++  'cara pedida dibuja: `drive` y `documentos` (94 KB de 199 en el cliente más pesado) viajan en '
++  'Documentos y Actividad; `notas`, `autores`, `certificados` y `actividad_cliente`, sólo en '
++  'Actividad. `n_documentos` viaja SIEMPRE, porque la barra de solapas cuenta en las nueve caras. '
++  '`papeles` no se recorta: los totales de OC y OP de la cabecera los define agruparPapeles() en '
++  'TypeScript y reproducirlos acá sería una segunda definición. p_solapa es un RECORTE DE DIBUJO, '
++  'nunca un permiso: quien recorta por rol es la RLS, que no cambia.';
++
++comment on function public.pantalla_cliente(text) is
++  'La puerta vieja de un argumento: delega en pantalla_cliente(p_slug, null), que devuelve la ficha '
++  'entera. Existe para que el código ya desplegado no se caiga en la ventana entre aplicar la '
++  'migración y terminar el deploy.';
++
++revoke all on function public.pantalla_cliente(text, text) from public;
++revoke all on function public.pantalla_cliente(text) from public;
++grant execute on function public.pantalla_cliente(text, text) to authenticated, service_role;
++grant execute on function public.pantalla_cliente(text) to authenticated, service_role;
++
++notify pgrst, 'reload schema';

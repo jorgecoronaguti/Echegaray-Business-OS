@@ -1,0 +1,24 @@
+{"msCarga":3019,"cargaTotalMs":3155,"primerReordenMs":32,"segundoReordenMs":21,"top":{"0":"F","1":"a","2":"c","3":"t","4":"u","5":"r","6":"a","7":" ","8":"9","9":"1","10":"2","11":" ","12":"d","13":"e","14":" ","15":"D","16":"U","17":"P","18":"E","19":"C","20":" ","21":"p","22":"o","23":"r","24":" ","25":"h","26":"i","27":"e","28":"r","29":"r","30":"o","puntaje":-9.309568405151367},"rssMB":722}
+	Command being timed: "node /tmp/claude-1001/-home-jorge-echegaray-os-app-echegaray-os/966126ab-b4a8-47f9-82bb-99e26c6c9ee0/scratchpad/mide-reranker.mjs /home/jorge/echegaray-os/app/echegaray-os"
+	User time (seconds): 4.47
+	System time (seconds): 1.38
+	Percent of CPU this job got: 141%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:04.15
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 960344
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 322900
+	Voluntary context switches: 10141
+	Involuntary context switches: 1379
+	Swaps: 0
+	File system inputs: 542952
+	File system outputs: 0
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

@@ -1,0 +1,8 @@
+const t0 = Date.now()
+const { cargarReranker, reordenar } = await import(process.argv[2] + '/orquestador/lib/ml/reranker.mjs')
+const m = await cargarReranker('bge-base'); const t1 = Date.now()
+const r = await reordenar('bge-base', '¿cuánto le debemos a DUBOS?', ['Factura 912 de DUPEC por hierro', 'Pago UOCRA septiembre', 'Cheque emitido a Maldonado'])
+const t2 = Date.now()
+const r2 = await reordenar('bge-base', '¿qué cobró La Estrella?', ['Recibo La Estrella 08/09', 'Nómina quincena', 'OC 2256 Playón'])
+const t3 = Date.now()
+console.log(JSON.stringify({ msCarga: m.msCarga, cargaTotalMs: t1-t0, primerReordenMs: t2-t1, segundoReordenMs: t3-t2, top: r[0]?.texto ?? r[0], rssMB: Math.round(process.memoryUsage().rss/1048576) }))

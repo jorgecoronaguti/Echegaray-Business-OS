@@ -1,0 +1,184 @@
+30f1ff28 fix(perf): los tres hallazgos del auditor de cierre
+1 · EL GUARDIÁN NO MIRABA DOS DE LAS NUEVE CARAS. El bucle de claves «de siempre» recorría siete;
+las caras Documentos y Actividad sólo se comparaban por lo que reciben de más. El auditor mutó la
+migración para vaciar `papeles` SÓLO en Documentos y el test quedó VERDE — el efecto real habría
+sido «OC recibidas c/IVA (0) · ninguna» sobre un cliente con 333 papeles. Ahora el bucle recorre las
+nueve, cada una con la lista exacta de lo que le toca recortar, y comprueba también que lo NO
+recortado llega idéntico. Remutado: la mutación del auditor da rojo.
+
+2 · TRES CLAVES RECORTADAS NO PUEDEN DAR ROJO, Y AHORA LO DICEN. `cliente_nota` y `certificados`
+tienen CERO filas en toda la base, así que los asserts sobre `notas`, `autores` y `certificados`
+comparan `[]` contra `[]` y quedan verdes aunque se les saque el recorte. No se fabrican filas en
+producción: el test lo DECLARA con `t.diagnostic` y exige que al menos una clave recortada tenga
+datos (`drive`/`documentos`, 208 en arcor), para que el control no pueda volverse decorativo entero.
+
+3 · DOS COMENTARIOS AFIRMABAN LO CONTRARIO DEL CÓDIGO. Decían que un `p_solapa` desconocido devuelve
+la ficha entera; medido, devuelve el MÍNIMO (95,1 KB, `drive` y `documentos` vacíos). El código es
+fail-CLOSED y está bien que lo sea —el peor caso de una cara pobre es una lista que falta; el de la
+ficha entera son 199 KB por clic—: se corrige el texto de la migración, del `comment on function` y
+del lector, y se agrega el test que clava el contrato.
+
+Además, los dos límites del memo por request quedan escritos donde vive el memo: el cliente de
+Supabase no entra en la clave (hoy hay uno solo por request) y ninguna de las dos lecturas pagina
+—`asistencia_dia` tiene 54 filas en el mes más cargado de toda la base, medido hoy, contra el tope
+de 1.000 de PostgREST—.
+
+11 tests de la RPC, typecheck y eslint de lo tocado, verdes.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+
+diff --git a/echegaray-os/orquestador/lib/pantalla-cliente-rpc.pg.test.mjs b/echegaray-os/orquestador/lib/pantalla-cliente-rpc.pg.test.mjs
+index f47d87a6..4dfdf42e 100644
+--- a/echegaray-os/orquestador/lib/pantalla-cliente-rpc.pg.test.mjs
++++ b/echegaray-os/orquestador/lib/pantalla-cliente-rpc.pg.test.mjs
+@@ -151,25 +151,67 @@ test('pantalla_cliente() devuelve lo mismo que las quince lecturas', { skip: !ha
+       // Lo que sólo dibujan Documentos y Actividad, y lo que sólo dibuja Actividad.
+       const SOLO_DOC = ['documentos', 'drive']
+       const SOLO_ACT = ['notas', 'autores', 'certificados']
+-      for (const cara of ['obras', 'cobranzas', 'presupuestos', 'cuenta', 'esquema', 'accesos', 'ordenes']) {
++      const RECORTADAS = { obras: [...SOLO_DOC, ...SOLO_ACT], ordenes: [...SOLO_DOC, ...SOLO_ACT],
++        cobranzas: [...SOLO_DOC, ...SOLO_ACT], presupuestos: [...SOLO_DOC, ...SOLO_ACT],
++        cuenta: [...SOLO_DOC, ...SOLO_ACT], esquema: [...SOLO_DOC, ...SOLO_ACT],
++        accesos: [...SOLO_DOC, ...SOLO_ACT], documentos: SOLO_ACT, actividad: [] }
++
++      // LAS NUEVE CARAS, INCLUIDAS LAS DOS QUE RECIBEN TODO. Auditor de cierre (11/09/2026): el
++      // bucle recorría siete, y mutar la migración para vaciar `papeles` SÓLO en la cara Documentos
++      // dejaba el guardián verde — la cabecera habría escrito «OC recibidas c/IVA (0)» sobre un
++      // cliente con 333 papeles. Una cara que no se compara es una cara sin control.
++      for (const [cara, recortadas] of Object.entries(RECORTADAS)) {
+         const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
+         for (const k of SIEMPRE) {
+           assert.deepEqual(j[k], entera[k], `la cara «${cara}» cambió «${k}», que se dibuja en las nueve`)
+         }
+-        for (const k of [...SOLO_DOC, ...SOLO_ACT]) {
++        for (const k of recortadas) {
+           assert.deepEqual(j[k], [], `la cara «${cara}» todavía transporta «${k}»`)
+         }
+-        assert.equal(j.actividad_cliente, null, `la cara «${cara}» todavía transporta actividad_cliente`)
+-      }
+-      for (const cara of ['documentos', 'actividad']) {
+-        const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
+-        for (const k of SOLO_DOC) {
++        // Lo que NO está recortado en esta cara tiene que llegar igual que en la ficha entera.
++        for (const k of [...SOLO_DOC, ...SOLO_ACT].filter((x) => !recortadas.includes(x))) {
+           assert.deepEqual(canonico(j[k]), canonico(entera[k]), `la cara «${cara}» no recibió «${k}»`)
+         }
++        const esperado = cara === 'actividad' ? entera.actividad_cliente : null
++        assert.deepEqual(j.actividad_cliente, esperado,
++          `la cara «${cara}» no transporta actividad_cliente como corresponde`)
+       }
+-      const act = (await q(`select public.pantalla_cliente($1, 'actividad') j`, [slug]))[0].j
+-      for (const k of SOLO_ACT) assert.deepEqual(act[k], entera[k], `Actividad no recibió «${k}»`)
+-      assert.deepEqual(act.actividad_cliente, entera.actividad_cliente)
++    });
++
++    // ═══ LO QUE ESTE CONTROL NO PUEDE PROBAR HOY, DICHO EN VOZ ALTA ═══
++    //
++    // Auditor de cierre (11/09/2026): `cliente_nota` y `certificados` tienen CERO filas en toda la
++    // base, así que los asserts sobre `notas`, `autores` y `certificados` comparan `[]` contra `[]`
++    // y quedan verdes aunque se les saque el recorte. El control existe y es correcto; hoy no
++    // muerde. Esta prueba no arregla eso —no se fabrican filas en producción— pero lo DECLARA: el
++    // día que se cargue la primera nota o el primer certificado, deja de estar en blanco y el
++    // bucle de arriba empieza a cuidarlo de verdad. Un límite callado es un control que se cree.
++    await t.test('declara cuáles de las claves recortadas todavía no tienen datos que mirar', async () => {
++      const entera = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
++      const enBlanco = ['notas', 'autores', 'certificados'].filter((k) => entera[k].length === 0)
++      if (enBlanco.length) {
++        t.diagnostic(`SIN PROBAR (cero filas en la base): ${enBlanco.join(', ')} — el recorte de la `
++          + 'cara Actividad no se puede poner en rojo hasta que exista la primera fila')
++      }
++      // Al menos UNA de las seis claves recortadas tiene que tener datos, o el control entero es
++      // decorativo. `drive` y `documentos` los tienen (208 en arcor) y son los que sostienen la
++      // prueba mientras las otras tres estén vacías.
++      assert.ok(entera.drive.length > 0 && entera.documentos.length > 0,
++        'ninguna clave recortada tiene filas: el recorte no se puede probar con este cliente')
++    });
++
++    // FAIL-CLOSED, NO FAIL-OPEN. Un `p_solapa` que no es ninguna de las nueve recibe el MÍNIMO, no
++    // la ficha entera: si algún día un consumidor manda un valor viejo, el peor caso es una cara
++    // pobre y nunca 199 KB de más. `solapaDe()` ya normaliza antes de llamar, así que hoy no puede
++    // pasar — esto clava el contrato para el día que otro consumidor llame directo.
++    await t.test('una solapa desconocida recibe el mínimo, no la ficha entera', async () => {
++      const raro = (await q(`select public.pantalla_cliente($1, 'no-existe-esta-cara') j`, [slug]))[0].j
++      const obras = (await q(`select public.pantalla_cliente($1, 'obras') j`, [slug]))[0].j
++      assert.deepEqual(raro.drive, [])
++      assert.deepEqual(raro.documentos, [])
++      assert.equal(raro.actividad_cliente, null)
++      assert.equal(Number(raro.n_documentos), Number(obras.n_documentos))
++      assert.deepEqual(canonico(raro.papeles), canonico(obras.papeles))
+     });
+ 
+     // LA CUENTA NO PUEDE MENTIR CUANDO LAS FILAS NO VIAJAN: es lo único que sostiene el «Documentos
+diff --git a/echegaray-os/src/features/administracion/services/lecturasCompartidasDeQuincena.ts b/echegaray-os/src/features/administracion/services/lecturasCompartidasDeQuincena.ts
+index 0a95e1d1..46dfabf4 100644
+--- a/echegaray-os/src/features/administracion/services/lecturasCompartidasDeQuincena.ts
++++ b/echegaray-os/src/features/administracion/services/lecturasCompartidasDeQuincena.ts
+@@ -31,6 +31,18 @@
+ //
+ // `cache()` de React no memoriza fuera de un request, y ése es el modo de fallo BUENO: sin scope de
+ // React esto se comporta exactamente como el código que reemplaza, nunca compartiendo de más.
++//
++// ═══ DOS LÍMITES, DECLARADOS (auditoría de cierre, 11/09/2026) ═══
++//
++//   · EL CLIENTE NO ENTRA EN LA CLAVE. Hay UNO por request, así que hoy no muerde; un futuro
++//     llamador que use `service_role` en el mismo request recibiría lo que leyó el cliente del
++//     usuario. El día que eso exista, la clave tiene que incluir de qué cliente sale la lectura.
++//   · NINGUNA DE LAS DOS PAGINA. `registrosHHService.ts` existe porque PostgREST corta en
++//     `db-max-rows` (1.000 filas) sin avisar. Acá no se agregó `.range()` a propósito: medido el
++//     11/09/2026, `asistencia_dia` tiene 54 filas en el mes más cargado de toda la base y el
++//     padrón de `persona_legajo` son decenas — paginar costaría el viaje de cierre de cada página,
++//     que es exactamente el viaje que este archivo vino a sacar. Si alguna de las dos se acerca al
++//     millar, la paginación entra ACÁ y no en cada pantalla.
+ 
+ import { cache } from 'react'
+ import type { SupabaseClient } from '@supabase/supabase-js'
+diff --git a/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.ts b/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.ts
+index 4671d805..afbf2b05 100644
+--- a/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.ts
++++ b/echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.ts
+@@ -124,8 +124,11 @@ export async function leerFichaDeUnaConsulta(
+ ): Promise<FichaLeida> {
+   // `p_solapa` NO ES UN PERMISO, ES UN RECORTE DE DIBUJO: dice qué va a pintar esta cara para no
+   // transportar lo que ninguna otra mira. Quien recorta por rol sigue siendo la RLS adentro de las
+-  // vistas, y por eso la firma acepta cualquier texto: un valor desconocido devuelve la ficha
+-  // entera, que es lo que hacía antes.
++  // vistas.
++  //
++  // LA FIRMA ACEPTA CUALQUIER TEXTO Y UN VALOR DESCONOCIDO RECIBE EL MÍNIMO, no la ficha entera
++  // (fail-closed, verificado por el auditor de cierre el 11/09/2026). `solapaDe()` ya normaliza a
++  // una de las nueve caras antes de llegar acá, así que en esta pantalla no puede pasar.
+   const { data, error } = await supabase.rpc('pantalla_cliente', { p_slug: slug, p_solapa: solapa })
+   if (error) return nadaLeido(error.message)
+   const j = (data ?? {}) as FichaCruda
+diff --git a/echegaray-os/supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql b/echegaray-os/supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql
+index 8093a079..2246e3e1 100644
+--- a/echegaray-os/supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql
++++ b/echegaray-os/supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql
+@@ -37,8 +37,14 @@
+ -- ═══ `p_solapa` ES UN RECORTE, NO UN PERMISO ═══
+ --
+ -- Quien decide qué puede ver cada rol sigue siendo la RLS (`security invoker`, `ve_economia()`
+--- adentro de las vistas). `p_solapa` sólo dice qué va a DIBUJAR la página; un valor cualquiera —o
+--- `null`, que es lo que manda un consumidor viejo— devuelve la ficha entera, como antes.
++-- adentro de las vistas). `p_solapa` sólo dice qué va a DIBUJAR la página.
++--
++-- `null` —lo que manda un consumidor viejo— devuelve la ficha ENTERA, como antes. Cualquier otro
++-- valor que no sea una de las nueve caras recibe el MÍNIMO, no la ficha entera: es fail-CLOSED a
++-- propósito, porque el peor caso de una cara pobre es que falte una lista, y el peor caso de la
++-- ficha entera son 199 KB por cada clic. `solapaDe()` normaliza antes de llamar, así que hoy no
++-- puede pasar; el contrato queda escrito para el día que otro consumidor llame directo, y hay un
++-- test que lo clava.
+ 
+ CREATE OR REPLACE FUNCTION public.pantalla_cliente(p_slug text, p_solapa text)
+  RETURNS jsonb
+@@ -253,7 +259,8 @@ comment on function public.pantalla_cliente(text, text) is
+   'Actividad. `n_documentos` viaja SIEMPRE, porque la barra de solapas cuenta en las nueve caras. '
+   '`papeles` no se recorta: los totales de OC y OP de la cabecera los define agruparPapeles() en '
+   'TypeScript y reproducirlos acá sería una segunda definición. p_solapa es un RECORTE DE DIBUJO, '
+-  'nunca un permiso: quien recorta por rol es la RLS, que no cambia.';
++  'nunca un permiso: quien recorta por rol es la RLS, que no cambia. p_solapa = null devuelve la '
++  'ficha entera; cualquier valor que no sea una de las nueve caras recibe el mínimo (fail-closed).';
+ 
+ comment on function public.pantalla_cliente(text) is
+   'La puerta vieja de un argumento: delega en pantalla_cliente(p_slug, null), que devuelve la ficha '

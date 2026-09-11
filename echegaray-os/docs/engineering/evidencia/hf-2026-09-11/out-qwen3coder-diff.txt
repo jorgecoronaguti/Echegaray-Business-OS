@@ -1,0 +1,47 @@
+{"modelo":"Qwen/Qwen3-Coder-30B-A3B-Instruct","status":200,"ms":11029,"usage":{"prompt_tokens":12550,"total_tokens":13777,"completion_tokens":1227,"prompt_tokens_details":null},"costo":null,"provider":"scaleway"}
+
+### 1. **Defecto de verificación: Test que no puede dar rojo por falta de datos de prueba**
+**Archivo:** `echegaray-os/orquestador/lib/pantalla-cliente-rpc.pg.test.mjs`  
+**Qué está mal:** El test `la cara pedida recorta lo que no dibuja, y NADA más` no verifica que los datos recortados sean realmente distintos de los de la ficha entera en casos donde se espera recorte. Solo comprueba que ciertos campos estén vacíos o iguales, pero no asegura que los datos que sí se envían sean los correctos según la cara solicitada.  
+**Por qué importa:** Si la RPC devuelve datos incorrectos o incompletos al recortar, el test no lo detectará si no hay clientes con datos suficientes para probar todos los casos.  
+**Cómo probarlo:** Agregar un cliente de prueba con datos específicos (ej. varios documentos, notas, etc.) y verificar que `p_solapa = 'documentos'` devuelva solo `documentos` y `drive`, y que `p_solapa = 'actividad'` devuelva `notas`, `autores`, `certificados` y `actividad_cliente`.
+
+---
+
+### 2. **Defecto de corrección: Falta de validación explícita de `p_solapa` en la RPC**
+**Archivo:** `echegaray-os/supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql`  
+**Qué está mal:** La función `pantalla_cliente` acepta cualquier valor de `p_solapa`, pero no valida que sea uno de los valores permitidos. Esto podría permitir que se pase un valor inválido y se devuelva la ficha completa, sin recorte.  
+**Por qué importa:** Si se permite un valor no válido, se pierde el beneficio del recorte y se vuelve a enviar información innecesaria.  
+**Cómo probarlo:** Probar con una llamada a `pantalla_cliente(slug, 'caras_invalida')` y verificar que devuelva la ficha entera, no solo los datos de la cara solicitada.
+
+---
+
+### 3. **Defecto de verificación: Test de firma antigua no cubre el comportamiento nuevo**
+**Archivo:** `echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.test.ts`  
+**Qué está mal:** El test `la página resuelve la solapa ANTES de leer, y se la pasa` no verifica que la solapa sea resuelta correctamente antes de la llamada a la RPC, ni que el valor sea pasado correctamente.  
+**Por qué importa:** Si el orden de ejecución cambia o se omite el paso de pasar `solapa`, el recorte no funcionará.  
+**Cómo probarlo:** Simular una ejecución donde `solapa` se resuelva después de la llamada a la RPC y verificar que el test falle.
+
+---
+
+### 4. **Defecto de corrección: Falta de manejo de `null` explícito en `n_documentos`**
+**Archivo:** `echegaray-os/src/features/clientes/services/fichaDeUnaConsulta.ts`  
+**Qué está mal:** En la línea `nDocumentos: j.n_documentos ?? 0`, se asume que `n_documentos` siempre será un número o `null`, pero no se verifica que sea un número válido.  
+**Por qué importa:** Si `n_documentos` llega como `undefined` o un tipo no numérico, podría causar errores en el frontend.  
+**Cómo probarlo:** Mockear una respuesta de la RPC donde `n_documentos` sea `undefined` o un string y verificar que el sistema maneje correctamente el valor.
+
+---
+
+### 5. **Defecto de verificación: Test de compatibilidad no cubre todos los casos de firma**
+**Archivo:** `echegaray-os/orquestador/lib/pantalla-cliente-rpc.pg.test.mjs`  
+**Qué está mal:** El test `la firma de un argumento sigue devolviendo la ficha entera` solo compara dos llamadas, pero no verifica que la firma original y la nueva devuelvan estructuras idénticas en todos los aspectos relevantes.  
+**Por qué importa:** Si hay cambios sutiles en la estructura de datos, el test no lo detectará.  
+**Cómo probarlo:** Comparar estructuras completas de ambos resultados, incluyendo tipos y valores de todos los campos, no solo algunos.
+
+---
+
+### 6. **Defecto de corrección: Falta de manejo de `fail-open` en el recorte**
+**Archivo:** `echegaray-os/supabase/migrations/20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql`  
+**Qué está mal:** La condición `case when p_solapa is null or p_solapa in (...)` permite que si `p_solapa` no es válido o es `null`, se devuelva toda la ficha. Esto es un `fail-open` (permite acceso cuando debería denegarse).  
+**Por qué importa:** Si se introduce un valor inválido o se omite el parámetro, se expone información sensible.  
+**Cómo probarlo:** Llamar a la RPC con `p_solapa` inválido y verificar que se devuelva la ficha completa, lo cual es un fallo de seguridad.
