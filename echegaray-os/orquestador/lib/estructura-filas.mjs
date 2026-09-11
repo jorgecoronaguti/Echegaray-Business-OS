@@ -94,6 +94,16 @@ export function celdasDelAnio({ fila, criterio, col, letra }) {
     // `Proyectado ≥ 0` siempre. El cash flow no cambia: `deEstructura` emite
     // `MAX(0; visible − real)`, que con `visible = MAX(real; proy)` da el mismo `MAX(0; proy − real)`
     // que daba antes — la corrección es de la pestaña, y ahora las dos usan la misma definición.
+    //
+    // ⚠ LO QUE ESTE CAMBIO DEJA LATENTE EN UN GENERADOR RETIRADO (auditoría del 11/09, límite L5).
+    // `expresionProyeccionMes` (cash-flow-lineas.mjs) lee estas celdas con
+    // `INDEX(Estructura!$B$f:$M$f;1;MONTH(mes))` para la línea de estructura del cuadro, y la usa
+    // `scripts/cash-flow-rehacer.mjs`, que NO corre en el pipeline —lo reemplazó
+    // `scripts/cash-flow-vistas.mjs`, que lee `_MOVIMIENTOS`—. Si alguien revive ese generador, su
+    // línea de estructura va a leer un total que ahora incluye reales FUTUROS; y `TOTAL ESTRUCTURA`
+    // incluye «Equipos y rodados (inversión)», que esa línea excluye de su lado real y muestra
+    // aparte, así que una compra de rodados con fecha de caja futura se contaría DOS veces. Hoy vale
+    // $0 (oct/nov/dic de esa fila están en cero). Revivir ese generador exige releer esto primero.
     visible.push(`=IF(${mes}<${MES_EN_CURSO};${ca}${f};MAX(${ca}${f};${proy}))`)
   }
   return { aux, visible }
