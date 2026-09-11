@@ -4,7 +4,15 @@
 // partir de una sola tanda de lecturas, y le pasa todo a la parte de cliente, que sólo decide qué
 // fila está abierta.
 //
-// ═══ LOS FILTROS RECORTAN, NO RECALCULAN LO ESPERADO ═══
+// ═══ EL ÚNICO RECORTE QUE QUEDA ES EL PENDIENTE, Y ES PORQUE ES EL ÚNICO ACCIONABLE ═══
+//
+// Había cuatro grupos de filtros en una columna de 230 px. Tres no se decidían: «Todo el plantel /
+// Modalidad hora / Modalidad mensual» repetía el corte que la tabla ya hace con sus dos grupos, y
+// «Convenio» era un conteo con el rótulo cortado sobre el que nadie actúa. El que sí se usa —«9
+// ausencias sin motivo», «8 días sin cargar»— es lo que traba el cierre, y ahora vive arriba de la
+// tabla, donde se lee antes de bajar la vista. El porqué completo, en `GrillaHorasQuincena.tsx`.
+//
+// ═══ EL RECORTE RECORTA, NO RECALCULA LO ESPERADO ═══
 //
 // «Cargadas» sí cambia con el recorte —son las horas de las filas que se ven—, pero «Esperadas» es
 // de la QUINCENA y no del recorte. Y `puedeCerrar` mira el plantel entero: cerrar con una ausencia
@@ -24,12 +32,31 @@ import type { LineaDeLaPersona } from '../PanelDePersona'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
 import type { PropsDeSolapa } from './index'
 import { HorasConPersona } from '../HorasConPersona'
-import type { FiltroDeGrilla } from '../GrillaHorasQuincena'
+import type { PendienteDeGrilla, PeriodoDeGrilla } from '../GrillaHorasQuincena'
 
-const PENDIENTES: Record<string, { texto: string; toca: (f: FilaDeGrilla) => boolean }> = {
-  motivo: { texto: 'Ausencias sin motivo', toca: (f) => f.diasSinMotivo > 0 },
-  tarifa: { texto: 'Sin retribución', toca: (f) => f.estado === 'tarifa' },
-  'sin-cargar': { texto: 'Días sin cargar', toca: (f) => f.diasSinCargar > 0 },
+/**
+ * LO QUE TRABA EL CIERRE, EN EL ORDEN EN QUE SE RESUELVE.
+ *
+ * `texto` lleva el número ADENTRO —«9 ausencias sin motivo»— porque así se dice en voz alta y así se
+ * lee de un vistazo. El rótulo con el conteo pegado a la derecha del panel obligaba a leer dos
+ * cosas separadas por 150 px de nada.
+ */
+const PENDIENTES: Record<string, {
+  texto: (n: number) => string
+  toca: (f: FilaDeGrilla) => boolean
+}> = {
+  motivo: {
+    texto: (n) => `${n} ausencia${n === 1 ? '' : 's'} sin motivo`,
+    toca: (f) => f.diasSinMotivo > 0,
+  },
+  'sin-cargar': {
+    texto: (n) => `${n} día${n === 1 ? '' : 's'} sin cargar`,
+    toca: (f) => f.diasSinCargar > 0,
+  },
+  tarifa: {
+    texto: (n) => `${n} sin retribución`,
+    toca: (f) => f.estado === 'tarifa',
+  },
 }
 
 export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: PropsDeSolapa) {
@@ -38,11 +65,7 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? (quincenaPedida as string) : hoy)
   // Los recortes de ESTA solapa. `pendiente` y `convenio` viajan en la URL porque son un recorte
   // del trabajo que falta, y eso se comparte por link con quien lo tiene que resolver.
-  const recorte = {
-    convenio: parametros.convenio,
-    pendiente: parametros.pendiente,
-    modalidad: parametros.modalidad,
-  }
+  const recorte = { pendiente: parametros.pendiente }
   const hrefCierre = hrefDe({ solapa: 'cierre' })
   const supabase = await createClient()
   // LA CADENA DE PAGO DE LA PERSONA ES LA MISMA FILA DEL CUADRO DE PAGOS, no una copia: el dueño
@@ -78,85 +101,36 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
   // que el número de la persona y el del total no pueden separarse.
   const proyeccion = proyeccionDeQuincena(todas, datos.personas, hoy)
 
-  const convenioDe = new Map(datos.personas.map((p) => [p.id, p.convenio]))
-  const modalidadDe = new Map(datos.personas.map((p) => [p.id, p.modalidad ?? null]))
-  const visibles = todas.filter((f) => {
-    if (recorte.convenio && (convenioDe.get(f.personaId) ?? 'sin convenio') !== recorte.convenio) return false
-    if (recorte.modalidad && modalidadDe.get(f.personaId) !== recorte.modalidad) return false
-    if (recorte.pendiente && !(PENDIENTES[recorte.pendiente]?.toca(f) ?? true)) return false
-    return true
-  })
+  const visibles = recorte.pendiente
+    ? todas.filter((f) => PENDIENTES[recorte.pendiente as string]?.toca(f) ?? true)
+    : todas
 
+  // EL CONVENIO NO SE DECIDE ACÁ, PERO SE CONSULTA: el reparto entero viaja al `title` del pie de
+  // la tabla. Era una lista de tres renglones fija en la pantalla para contestar una pregunta que
+  // se hace una vez por mes, y el rótulo ni siquiera entraba («UOCRA — Ley 22.250 (const…»).
   const convenios = new Map<string, number>()
   for (const p of datos.personas) convenios.set(p.convenio ?? 'sin convenio', (convenios.get(p.convenio ?? 'sin convenio') ?? 0) + 1)
+  const conveniosTexto = [...convenios].map(([c, n]) => `${c}: ${n}`).join(' · ')
 
-  const filtros: FiltroDeGrilla[] = [
-    {
-      rotulo: 'Período',
-      // LA ACTUAL Y LAS DOS ANTERIORES. La siguiente no se ofrece: no hay horas cargadas de una
-      // quincena que todavía no empezó, y un período vacío se lee como un error de la pantalla.
-      opciones: [0, -1, -2].map((n) => {
-        const q = correrQuincena(quincena, n)
-        return {
-          texto: rotuloQuincena(q),
-          detalle: q.desde === quincena.desde ? (datos.cerrada ? 'cerrada' : 'abierta') : '',
-          activa: q.desde === quincena.desde,
-          href: hrefDe({ quincena: q.desde }),
-        }
-      }),
-    },
-    {
-      rotulo: 'Quién',
-      // EL CORTE OBRERO/OFICINA SALE DE LA MODALIDAD QUE LIQUIDA, no de `modalidad_liquidacion`.
-      //
-      // Ese campo del legajo está vacío en las diecisiete personas de la base real, y con él el
-      // filtro publicaba «Modalidad hora 1 · Modalidad mensual sin cargar» sobre quince obreros por
-      // hora y dos de Oficina por mes (captura del dueño, 10/09/2026). La modalidad la decide
-      // ahora la tarifa vigente por `modalidadDe`, que es la MISMA función que arma los cuadros de
-      // la liquidación. La modalidad que no tiene a nadie se OFRECE IGUAL con «sin cargar» al lado
-      // —el mockup la dibuja así—: esconderla haría creer que el corte no existe.
-      opciones: [
-        {
-          texto: 'Todo el plantel',
-          detalle: String(datos.personas.length),
-          activa: !recorte.convenio && !recorte.pendiente && !recorte.modalidad,
-          href: hrefDe({ convenio: undefined, pendiente: undefined, modalidad: undefined }),
-        },
-        ...['hora', 'mensual'].map((m) => {
-          const n = datos.personas.filter((p) => (p.modalidad ?? null) === m).length
-          return {
-            texto: `Modalidad ${m}`,
-            detalle: n === 0 ? 'sin cargar' : String(n),
-            activa: recorte.modalidad === m,
-            href: n === 0 ? undefined : hrefDe({ modalidad: recorte.modalidad === m ? undefined : m }),
-          }
-        }),
-      ],
-    },
-    {
-      rotulo: 'Convenio',
-      opciones: [...convenios].map(([c, n]) => ({
-        texto: c,
-        detalle: String(n),
-        activa: recorte.convenio === c,
-        href: hrefDe({ convenio: recorte.convenio === c ? undefined : c }),
-      })),
-    },
-    {
-      rotulo: 'Pendiente',
-      opciones: [
-        { clave: 'motivo', n: resumen.diasSinMotivo },
-        { clave: 'tarifa', n: resumen.sinRetribucion },
-        { clave: 'sin-cargar', n: resumen.diasSinCargar },
-      ].map(({ clave, n }) => ({
-        texto: PENDIENTES[clave].texto,
-        detalle: String(n),
-        alerta: n > 0,
-        activa: recorte.pendiente === clave,
-        href: hrefDe({ pendiente: recorte.pendiente === clave ? undefined : clave }),
-      })),
-    },
-  ]
+  const periodos: PeriodoDeGrilla[] = [0, -1, -2].map((n) => {
+    const q = correrQuincena(quincena, n)
+    return {
+      texto: rotuloQuincena(q),
+      activo: q.desde === quincena.desde,
+      href: hrefDe({ quincena: q.desde }),
+    }
+  })
+
+  const pendientes: PendienteDeGrilla[] = [
+    { clave: 'motivo', n: resumen.diasSinMotivo },
+    { clave: 'sin-cargar', n: resumen.diasSinCargar },
+    { clave: 'tarifa', n: resumen.sinRetribucion },
+  ].map(({ clave, n }) => ({
+    texto: PENDIENTES[clave].texto(n),
+    cuantos: n,
+    activo: recorte.pendiente === clave,
+    href: hrefDe({ pendiente: recorte.pendiente === clave ? undefined : clave }),
+  }))
 
   return (
     // EL CONTENIDO NO COMPARTE `data-testid` CON SU PESTAÑA. `BarraSolapas` ya publica
@@ -170,13 +144,17 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
       ))}
       <HorasConPersona
         titulo={rotuloQuincena(quincena)}
+        estado={datos.cerrada ? 'cerrada' : 'abierta'}
         jornadaTexto="9 h de lunes a jueves · 8 h los viernes"
         habilesTexto={habilesTranscurridos(resumen.dias, hoy)}
         hoy={hoy}
         filas={visibles}
         resumen={resumen}
         proyeccion={proyeccion}
-        filtros={filtros}
+        periodos={periodos}
+        pendientes={pendientes}
+        hrefSinRecorte={hrefDe({ pendiente: undefined })}
+        convenios={conveniosTexto}
         personas={datos.porPersona}
         correcciones={datos.correcciones}
         cerrada={datos.cerrada}
@@ -184,7 +162,7 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
         lineas={lineas}
         camposEditables={liquidacion.camposEditables}
         multiplicador={multiplicador}
-        accion={<BotonCierre puede={resumen.puedeCerrar} href={hrefCierre} />}
+        accion={<BotonCierre puede={resumen.puedeCerrar} porQueNo={resumen.porQueNo} href={hrefCierre} />}
       />
     </div>
   )
@@ -210,17 +188,24 @@ function habilesTranscurridos(dias: readonly string[], hoy: string): string {
 
 /**
  * EL BOTÓN DE CIERRE ES UNA PUERTA, NO LA ACCIÓN. Cerrar lo implementa la solapa «Cierre»: acá sólo
- * se enlaza, y mientras haya pendientes ni siquiera es un enlace — es un botón apagado con el
- * porqué debajo (que lo escribe `resumenDeGrilla`).
+ * se enlaza, y mientras haya pendientes ni siquiera es un enlace — es un botón apagado.
+ *
+ * ═══ EL PORQUÉ PASÓ AL `title`, Y LO QUE LO REEMPLAZA ES MEJOR ═══
+ *
+ * Debajo del botón había un párrafo: «Antes de cerrar: 9 ausencia(s) sin motivo · 1 sin retribución
+ * cargada · 8 día(s) sin cargar». Decía lo mismo que la banda de pendientes de arriba —que además
+ * es accionable, porque cada una lleva a las filas que la producen— y era uno de los párrafos
+ * permanentes que el dueño prohíbe. El texto no se perdió: está en el `title` del botón gris, que es
+ * exactamente donde se lo va a buscar.
  */
-function BotonCierre({ puede, href }: { puede: boolean; href: string }) {
+function BotonCierre({ puede, porQueNo, href }: { puede: boolean; porQueNo?: string; href: string }) {
   const estilo = {
     height: 30, borderRadius: 6, border: 0, display: 'flex', alignItems: 'center',
-    justifyContent: 'center', fontSize: '12px', fontWeight: 600,
+    justifyContent: 'center', padding: '0 12px', fontSize: '12px', fontWeight: 600,
   } as const
   if (!puede) {
     return (
-      <button type="button" disabled data-testid="cerrar-quincena"
+      <button type="button" disabled data-testid="cerrar-quincena" title={porQueNo}
         style={{ ...estilo, background: '#EDECE8', color: V.tenue, cursor: 'not-allowed' }}>
         Cerrar quincena
       </button>

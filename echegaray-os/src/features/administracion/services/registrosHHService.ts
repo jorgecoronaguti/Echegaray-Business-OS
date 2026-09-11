@@ -64,6 +64,19 @@ export async function leerRegistrosHH(
     const pagina = (data ?? []) as unknown[]
     if (pagina.length === 0) return { data: filas, error: null }
     filas.push(...pagina)
+    // ═══ UNA PÁGINA CORTA YA ES LA ÚLTIMA: NO SE PAGA UN VIAJE PARA CONFIRMARLO ═══
+    //
+    // PostgREST devuelve como mucho `PAGINA` filas —es el mismo `db-max-rows` que obliga a paginar—,
+    // así que un lote más chico que `PAGINA` sólo puede significar que la ventana se terminó.
+    // Cortando sólo en `length === 0` la lectura siempre hacía un viaje de más, el que trae cero
+    // filas. Medido en esta pantalla el 11/09/2026: la solapa «Horas» hacía 24 consultas por carga
+    // y cuatro eran de `registros_hh`; tres traían datos y la cuarta, nada. En el navegador ese
+    // viaje son ~95 ms, pero en producción cada conexión nueva de PostgREST cuesta ~800 ms en frío,
+    // y esto es una cadena SERIAL: el viaje vacío se paga entero y se paga siempre.
+    //
+    // VA DESPUÉS DEL TOPE, NO ANTES. Escrito al revés, una ventana de 50.100 filas termina en una
+    // página corta y sale por acá con `error: null`: el control que existe para no devolver una
+    // ventana incompleta quedaría esquivado por el atajo que ahorra un viaje.
     if (filas.length > TOPE) {
       return {
         data: null,
@@ -71,5 +84,6 @@ export async function leerRegistrosHH(
           + 'la pantalla no puede afirmar que los tiene todos.',
       }
     }
+    if (pagina.length < PAGINA) return { data: filas, error: null }
   }
 }
