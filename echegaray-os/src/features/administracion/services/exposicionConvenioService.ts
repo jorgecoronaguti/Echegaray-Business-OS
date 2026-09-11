@@ -26,6 +26,7 @@ import {
 import { horasEsperadasDeQuincena } from './liquidacionQuincena.ts'
 import { tarifaVigenteAl } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
+import { sinIdentidadesDePrueba } from './identidadDePrueba.ts'
 
 /** Una fila de la escala del CCT que el OS ya tiene cargada, lista para prellenar el formulario. */
 export interface SugerenciaDeEscala {
@@ -100,7 +101,16 @@ export async function getExposicionDeLaQuincena(
   }))
 
   const horasEsperadas = horasEsperadasDeQuincena(q)
-  const personas = personasDelPlantel(legajo.data, tarifas.data, q)
+  // LAS IDENTIDADES DE PRUEBA NO SON PERSONAL. `persona_legajo` no filtra `es_prueba` (se creó el
+  // 19/08 para otra cosa), así que «[PRUEBA E2E] QA Campo» contaba como uno de los «sin piso» de este
+  // cuadro — un conteo de exposición al convenio UOCRA con una persona inventada adentro.
+  const personas = personasDelPlantel(
+    sinIdentidadesDePrueba(
+      (legajo.data ?? []) as { nombre_completo?: string | null; email?: string | null }[],
+      (r) => ({ nombre: r.nombre_completo, email: r.email }),
+    ),
+    tarifas.data, q,
+  )
   const lineas = personas
     .map((p) => exponerAlPiso(p, escalas, q.hasta, horasEsperadas))
     // LOS QUE ESTÁN BAJO EL PISO PRIMERO, y entre ellos el más caro de regularizar: es el orden en

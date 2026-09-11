@@ -21,6 +21,14 @@
 //
 // El contador «N sin actividad esta quincena» existe para que sacar gente de la vista no sea lo
 // mismo que perderla. Una lista que se acorta en silencio es indistinguible de una que se rompió.
+//
+// ═══ Y LO QUE EXISTE PARA PROBAR NO ENTRA EN NINGUNA DE LAS DOS LISTAS ═══
+//
+// Una identidad de prueba no está «sin actividad»: no es una persona. Contarla ahí haría que el
+// enlace «17 sin actividad» llevara a una lista con una cuenta de Playwright adentro. Se descarta
+// antes de partir, con el único criterio del repo (`identidadDePrueba.ts`).
+
+import { sinIdentidadesDePrueba } from './identidadDePrueba.ts'
 
 export interface PersonaDelPlantel {
   id: string
@@ -53,9 +61,10 @@ export function plantelDeLaQuincena<P extends PersonaDelPlantel>(
   const activa = (id: string): boolean =>
     e.conLineaEnLaAnterior.has(id) || e.conHoras.has(id)
     || e.conAsistencia.has(id) || e.conTarifaNueva.has(id)
+  const reales = sinIdentidadesDePrueba(personas, (p) => ({ nombre: p.nombre }))
   return {
-    activas: personas.filter((p) => activa(p.id)),
-    sinActividad: personas.filter((p) => !activa(p.id)),
+    activas: reales.filter((p) => activa(p.id)),
+    sinActividad: reales.filter((p) => !activa(p.id)),
   }
 }
 

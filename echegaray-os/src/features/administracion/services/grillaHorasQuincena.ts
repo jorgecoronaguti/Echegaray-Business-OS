@@ -88,8 +88,15 @@ const porNombre = (a: PersonaDeGrilla, b: PersonaDeGrilla) => a.nombre.localeCom
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 
-/** UNA CELDA. La precedencia es la misma de `horasDeQuincena`: lo trabajado gana a lo declarado. */
-function celdaDelDia(
+/**
+ * UNA CELDA. La precedencia es la misma de `horasDeQuincena`: lo trabajado gana a lo declarado.
+ *
+ * SE EXPORTA porque la vista «Quincena» —el espejo de la planilla JORNALES— dibuja una columna más
+ * (el domingo con horas, que la quincena de liquidación no considera) y necesita la MISMA celda. Una
+ * segunda copia de esta precedencia daría dos respuestas a «¿qué dice este día?», y la que el dueño
+ * mira es la que esté en la pantalla que abrió.
+ */
+export function celdaDelDia(
   fecha: string,
   registros: readonly RegistroDeQuincena[],
   presencia: PresenciaDeQuincena | undefined,

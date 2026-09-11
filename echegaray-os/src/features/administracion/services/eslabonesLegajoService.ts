@@ -23,6 +23,7 @@ import { tarifaVigenteAl } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 import { ordenarComoPersonal } from './ordenDePersonal.ts'
+import { sinIdentidadesDePrueba } from './identidadDePrueba.ts'
 
 /** El estado del recibo del estudio en Documentos del legajo. */
 export type ChipRecibo = 'cargado' | 'solicitado'
@@ -118,8 +119,15 @@ export async function getEslabonesDeLaQuincena(
   anotar('el extracto bancario', banco.error)
 
   const hayExtracto = (banco.count ?? 0) > 0
+  // LAS IDENTIDADES DE PRUEBA NO SON PERSONAL. `persona_legajo` no filtra `es_prueba`, así que
+  // «[PRUEBA E2E] QA Campo» salía en la lista de recibos como un empleado más al que le falta el
+  // recibo del estudio. Ver `identidadDePrueba.ts`.
+  const delPlantel = sinIdentidadesDePrueba(
+    (legajo.data ?? []) as { nombre_completo?: string | null; email?: string | null }[],
+    (r) => ({ nombre: r.nombre_completo, email: r.email }),
+  )
   const personas = armarPersonas(
-    q, legajo.data, tarifas.data, recibos.data, adelantos.data, estudio.data, hayExtracto, directorio.data,
+    q, delPlantel, tarifas.data, recibos.data, adelantos.data, estudio.data, hayExtracto, directorio.data,
   )
 
   return {
