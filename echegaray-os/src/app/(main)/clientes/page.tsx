@@ -46,21 +46,17 @@
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
-import { getClientes, getObrasPorCliente } from '@/features/clientes/services/clientesService'
 import { esVistaCartera, separarArchivados } from '@/features/clientes/services/cartera'
-import { getOrdenesDe, getPapelesDeLaCartera } from '@/features/clientes/services/ordenesCliente'
+import { getOrdenesDe } from '@/features/clientes/services/ordenesCliente'
 import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
-import { getEconomiaDeObras } from '@/features/clientes/services/economiaObras'
-import { getEconomiaDeClientes } from '@/features/clientes/services/economiaCliente'
+import { leerCarteraDeUnaConsulta } from '@/features/administracion/services/carteraDeUnaConsulta'
 import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
 import { PanelCliente } from '@/features/clientes/components/PanelCliente'
 import { TablaClientes } from '@/features/clientes/components/TablaClientes'
 import {
-  armarCartera, getCertificadosDeLaCartera, getCobradoPorObra, getContratosDeLaCartera,
-  getObrasDeLaCartera,
+  armarCartera,
 } from '@/features/administracion/services/homeCartera'
 import { pesos } from '@/shared/components/canon/formato'
 import { Aviso } from '@/shared/components/ds'
@@ -95,56 +91,40 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const vista = esVistaCartera(sp.vista) ? sp.vista : 'todo'
 
   const supabase = await createClient()
-  const [lectura, perfil, obras, cobrado, certificados, todasLasObras, papeles, economia, contratos,
-    economiaCliente]
-    = await Promise.all([
-    getClientes(supabase),
-    getPerfilActual(supabase),
-    getObrasDeLaCartera(supabase),
-    // LO COBRADO POR OBRA (percibido), para la barra de progreso. La vista lleva `ve_economia()`:
-    // al jefe de obra le devuelve cero filas, y la pantalla además no le dibuja la celda.
-    getCobradoPorObra(supabase),
-    getCertificadosDeLaCartera(supabase),
-    // El panel muestra TODAS las obras del cliente, no sólo las activas. Una consulta más para toda
-    // la cartera, no una por cliente abierto.
-    getObrasPorCliente(supabase),
-    // LOS PAPELES DEL CLIENTE (OC, OP, retenciones y facturas bajadas de Gmail), YA AGRUPADOS por
-    // `papelesCliente` — la misma función que usa la ficha, para que las dos pantallas no puedan
-    // decir números distintos. Una sola consulta para toda la cartera: una por obra sería una
-    // cascada de decenas. La RLS de `cliente_orden` ya recorta por rol —el jefe de obra sólo ve la
-    // suya—, así que acá no se vuelve a filtrar.
-    getPapelesDeLaCartera(supabase),
-    // LO QUE OBRAS PUBLICA POR OBRA: contratado, costo MO, materiales y margen. Es la fuente del
-    // dinero de esta tabla y la única — el campo del formulario de la obra queda de respaldo.
-    getEconomiaDeObras(supabase),
-    // QUIÉN TIENE EL CONTRATO CARGADO. Es un papel (`cliente_documento.rol = 'contrato'`), no un
-    // monto: por eso es una lectura aparte y no se deduce de que haya precio.
-    getContratosDeLaCartera(supabase),
-    // LO CONTRATADO Y LO COBRADO **DEL CLIENTE**, sumado por la base (`public.cliente_economia`).
-    // Es la fuente única del PRP de realidad única: la fila del cliente ya no suma las de abajo, y
-    // el panel lateral dejó de leer `cliente_panel.contratado` —el campo del formulario— que decía
-    // $31,8 M de Messina mientras esta misma tabla decía $156,1 M.
-    getEconomiaDeClientes(supabase),
-  ])
+  // ═══ UN VIAJE, NO DIEZ (10/09/2026) ═══
+  //
+  // Eran diez consultas en una ola: clientes, perfil, obras activas, cobrado por obra,
+  // certificados, todas las obras, papeles, economía de obras, contratos y economía de clientes. El
+  // costo dominante no era ninguna de ellas sino el ARRANQUE EN FRÍO POR CONEXIÓN —~800 ms de
+  // catálogo la primera vez que un backend ve las vistas anidadas del OS—, pagado hasta diez veces
+  // porque cada consulta paralela puede caer en un backend distinto del pool. `pantalla_clientes()`
+  // trae exactamente las mismas filas en un solo viaje: un backend, un arranque.
+  //
+  // La RPC no define nada: la convierten las mismas funciones de siempre y las filas las sigue
+  // armando `armarCartera`. Ver `carteraDeUnaConsulta.ts`.
+  const {
+    clientes: filasDeClientes, error: errorDeLectura, perfil, obras, cobrado, certificados,
+    todasLasObras, papeles, economia, contratos, economiaCliente,
+  } = await leerCarteraDeUnaConsulta(supabase)
 
-  const rol = perfil.data?.rol ?? null
+  const rol = perfil?.rol ?? null
   // LA CARTERA ES DE ADMINISTRACIÓN. El nivel Obras entra al detalle —necesita saber con quién habla
   // en la obra que ejecuta— pero no administra el maestro. No es la cerradura: la RLS rechaza la
   // escritura igual. Es no ofrecer un botón que la base va a rechazar.
   const puedeEditar = esAdministracion(rol)
   const veEconomia = puedeVerEconomia(rol)
 
-  if (lectura.error) {
+  if (errorDeLectura) {
     return (
       <Marco>
         <div style={{ padding: '24px 20px' }}>
-          <Aviso tono="neg" titulo="No pude leer los clientes">{lectura.error}</Aviso>
+          <Aviso tono="neg" titulo="No pude leer los clientes">{errorDeLectura}</Aviso>
         </div>
       </Marco>
     )
   }
 
-  const { activos, archivados: guardados } = separarArchivados(lectura.data ?? [])
+  const { activos, archivados: guardados } = separarArchivados(filasDeClientes ?? [])
   const base = conArchivados ? [...activos, ...guardados] : activos
   const cartera = armarCartera({
     clientes: base, obras, cobrado, certificados, economia, contratos, economiaCliente,
@@ -337,6 +317,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 titulo={tituloPanel}
                 ordenes={ordenesDelPanel}
                 de={obraPedida ? 'de este trabajo' : 'del cliente'}
+                verEnObras={obraPedida ? `/obras/${obraPedida}` : null}
                 veEconomia={veEconomia}
                 cerrarHref={armarHref(sp, { ordenes: undefined })}
               />

@@ -28,10 +28,10 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { deduplicar, separarInternas, sumar } from '../lib/libro-movimientos.mjs'
+import { deduplicar, separarInternas, sumar, plataColapsada } from '../lib/libro-movimientos.mjs'
 import {
   deCompras, deCobranzas, deChequesEmitidos, deBancoCargos,
-  deTarjetaSinFactura, deImpuestosCalendario, deCartera,
+  deTarjetaSinFactura, deImpuestosCalendario, debitosDeImpuestoAlCheque, deCartera,
   deJornalesQuincenas, deOficina, deDireccion, comprasPagadasConCheque,
   deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
   RUBRO_GREMIALES,
@@ -66,6 +66,7 @@ import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosP
 // reclamó otro. Ver lib/libro-cruce-banco.mjs.
 import { cruzarLibroContraBanco, aplicarCruce, VEREDICTO_CRUCE, GRITAN_CRUCE } from '../lib/libro-cruce-banco.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
+import { ROTULO as ROTULO_IMPUESTO_CHEQUE } from '../lib/impuesto-cheque.mjs'
 import { coberturaPorRubro, huecosDeCobertura, problemasDeRol, verificarCobertura } from '../lib/cash-flow-cobertura.mjs'
 import { fechaDeSerial, isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
 import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, exigirColumnasNeteo, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
@@ -179,9 +180,16 @@ async function extraerDeLasFuentes(google, corte) {
   // impuestos-pestana.mjs (por eso el contrato se importa y no se copia: el 30/07 se renombró de un
   // solo lado razonando sobre el número de fila y los dos cash flow quedaron sin poder regenerarse).
   const filaDeRotulo = (rot) => impuestos.findIndex((f) => String(f?.[0] ?? '').trim() === rot) + 1 || null
-  const filasCal = { filaIva: filaDeRotulo(total(ROTULOS_CALENDARIO.iva)), filaIibb: filaDeRotulo(total(ROTULOS_CALENDARIO.iibb)) }
-  if (!filasCal.filaIva || !filasCal.filaIibb) {
-    throw new Error(`no encontré "${total(ROTULOS_CALENDARIO.iva)}" / "${total(ROTULOS_CALENDARIO.iibb)}" en `
+  // La del impuesto al cheque se ubica igual, y por la misma razón: su rótulo lo define
+  // lib/impuesto-cheque.mjs y lo escribe impuestos-bloques.mjs importándolo.
+  const filasCal = {
+    filaIva: filaDeRotulo(total(ROTULOS_CALENDARIO.iva)),
+    filaIibb: filaDeRotulo(total(ROTULOS_CALENDARIO.iibb)),
+    filaCheque: filaDeRotulo(ROTULO_IMPUESTO_CHEQUE),
+  }
+  if (!filasCal.filaIva || !filasCal.filaIibb || !filasCal.filaCheque) {
+    throw new Error(`no encontré "${total(ROTULOS_CALENDARIO.iva)}" / "${total(ROTULOS_CALENDARIO.iibb)}" / `
+      + `"${ROTULO_IMPUESTO_CHEQUE}" en `
       + `${CALENDARIO_IMPUESTOS.pestaña}. Una referencia a una fila muerta devuelve $0 sin un solo error: no extraigo.`)
   }
 
@@ -414,6 +422,16 @@ async function extraerDeLasFuentes(google, corte) {
       + 'quedan FUERA del flujo — una compra de equipo es una decisión, no una necesidad de caja que se repite.')
   }
 
+  // Los cargos del banco se calculan UNA vez: los consume el libro y, además, el neteo del impuesto
+  // al cheque proyectado necesita saber exactamente cuánto de ese impuesto ya entró por esta puerta.
+  // Los cheques vivos que NO salen por su propia puerta porque el cruce dice que su factura ya los
+  // lleva. Se juntan para publicarlos: sin la lista, un cheque que salió por Compras y uno que no
+  // salió por ningún lado se ven igual desde afuera — la auditoría del 10/09 midió $8,2M sin poder
+  // separarlos.
+  const chequesPorCompras = []
+  const cargosBanco = deBancoCargos(banco, { fila0: 4 })
+  const anioDelLibro = new Date().getFullYear()
+
   const decorados = estadosDecorados(compras)
   if (decorados.length) {
     console.warn(`  ⚠ ${decorados.length} fila(s) de Compras dicen "Pagado" con decoración `
@@ -440,11 +458,14 @@ async function extraerDeLasFuentes(google, corte) {
       Estructura: gastosEstructura.movimientos,
       'Cargas Sociales': cargas,
       Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos, tipoCambio }),
-      'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
+      'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce, aviso: (x) => chequesPorCompras.push(x) }),
       'Tarjeta de Credito': deTarjetaSinFactura(tarjeta, { pagos: pagosTarjeta }),
-      _BANCO_RAW: deBancoCargos(banco, { fila0: 4 }),
+      _BANCO_RAW: cargosBanco,
       _CHEQUES_RAW: deCartera(carteraRaw),
-      'Impuestos y Financieros': deImpuestosCalendario(impuestos, filasCal, new Date().getFullYear(), corte),
+      // El impuesto al cheque proyectado entra NETO de lo que el banco ya debitó en el mes: esos
+      // débitos ya están en el Libro por `_BANCO_RAW`, y sumarlos dos veces sería el defecto del día.
+      'Impuestos y Financieros': deImpuestosCalendario(impuestos, filasCal, anioDelLibro, corte,
+        { yaDebitado: debitosDeImpuestoAlCheque(cargosBanco, anioDelLibro) }),
       // EL EXTRACTO TAMBIÉN ES TESTIGO DE LAS QUINCENAS (16/08). Con la columna "Pagado el"
       // desalineada, ocho quincenas entraban impagas y CAJA publicaba $70.431.250 de deuda que no
       // existía. `JORNALES_REAL_BANCO` es la parte que sale por transferencia: es lo único que el
@@ -471,6 +492,11 @@ async function extraerDeLasFuentes(google, corte) {
     // ver qué débitos están reclamados: con un Set nuevo, el lote de haberes que ya pagó una quincena
     // podría además "pagar" una obligación de otra naturaleza. Un débito respalda a UNO solo.
     usadosBanco: extracto.usados,
+    // LA LISTA VIAJA CON EL RESTO: se declara acá adentro y `main()` la publica. El 10/09 a las
+    // 18:34 quedó declarada y no devuelta, `main()` la nombró igual, y el libro murió con
+    // «chequesPorCompras is not defined» ANTES de escribir: tres corridas (19:01, 21:02, 07:00)
+    // dejaron CAJA y los dos Cash Flow leyendo el libro de las 17:01.
+    chequesPorCompras,
   }
 }
 
@@ -506,7 +532,9 @@ function cruceBanco(libro, debitos, corteBanco, usados) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const corte = hoySerial()
-  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco, usadosBanco, colEstadoCompras, colsVivas } = await extraerDeLasFuentes(google, corte)
+  const {
+    fuentes: porFuente, excluidos, corteBanco, debitosBanco, usadosBanco, colEstadoCompras, colsVivas, chequesPorCompras,
+  } = await extraerDeLasFuentes(google, corte)
   let todos = Object.values(porFuente).flat()
   // ═══ EL EXTRACTO CORRIGE LOS CHEQUES QUE LAS PESTAÑAS TODAVÍA DAN POR VIVOS (06/08) ═══
   //
@@ -547,6 +575,31 @@ async function main() {
   console.log(`  ${'— deduplicado'.padEnd(18)} ${String(consolidado.length).padStart(4)} · ${colapsos.length} colapso(s) declarado(s) · internas ${internas.length} (neto ${pesos(netoInterno)})`)
   if (netoInterno !== 0) {
     console.log(`  ⚠ EL NETO INTERNO NO DA CERO: falta un lado de alguna transferencia interna — la caja consolidada está corrida en ${pesos(netoInterno)}.`)
+  }
+  // ═══ EL COLAPSO SE PUBLICA CON SU PLATA (10/09/2026) ═══
+  //
+  // Se imprimían los OCHO primeros colapsos, sin un peso y sin `⚠`: los $6.732.878 de las quince
+  // filas de Compras que chocan por (CUIT · comprobante · signo) no llegaban a ninguna celda de
+  // ningún cash flow y nadie lo veía en la corrida. El `⚠` es lo que el pipeline levanta de la
+  // salida, así que sin él el hallazgo no existe para el que lee el resumen.
+  if (chequesPorCompras.length) {
+    const t = chequesPorCompras.reduce((a, x) => a + x.importe, 0)
+    console.log(`  ↪ ${chequesPorCompras.length} cheque(s) vivo(s) por ${pesos(t)} NO salen por «Cheques Emitidos»: `
+      + 'su factura ya los lleva por Compras (cuotas comprometidas). No es un hueco — es la otra puerta:')
+    for (const x of chequesPorCompras) {
+      console.log(`      f${x.fila} ${String(x.proveedor).slice(0, 24).padEnd(26)} ${pesos(x.importe).padStart(14)} `
+        + `→ Compras f${x.comprasQueLoCubren.join(', f')} (${x.confianza ?? 'sin confianza declarada'})`)
+    }
+  }
+  const colapsada = plataColapsada(colapsos)
+  if (colapsada.total > 0) {
+    console.warn(`  ⚠ ${colapsos.length} colapso(s) de deduplicación dejaron ${pesos(colapsada.total)} FUERA del libro: `
+      + 'la misma clave (CUIT · comprobante · signo, o el número del cheque) llegó más de una vez.')
+    for (const o of colapsada.porOrigen) {
+      console.warn(`      ${o.pestana}: ${pesos(o.monto)} · fila(s) ${o.filas.join(', ')}`)
+    }
+    console.warn('      NO se suman solas: pueden ser dos tramos de la misma factura (sumarlas es lo correcto) o la '
+      + 'misma factura cargada dos veces (sumarlas inventaría plata). Lo decide quien cargó la fila.')
   }
   for (const c of colapsos.slice(0, 8)) {
     console.log(`    · colapsó ${c.clave.slice(0, 44)} — se queda ${c.se_queda.pestana}:${c.se_queda.fila}, cae ${c.se_descarta.pestana}:${c.se_descarta.fila}`)

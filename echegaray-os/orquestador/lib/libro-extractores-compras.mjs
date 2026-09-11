@@ -224,6 +224,20 @@ export function comprasPagadasConCheque(filas = []) {
     if (!estaPagada(f[c.estado])) continue
     const instrumento = instrumentoDePago(txt(f[c.tipoPago]))
     if (instrumento !== 'cheque' && instrumento !== 'echeq') continue
+    // ═══ UNA FILA SIN FECHA DE CAJA NO PUEDE CUBRIR A NINGÚN CHEQUE (10/09/2026) ═══
+    //
+    // `deCompras` SALTEA la fila que no tiene fecha de caja —«sin importe o sin fecha de caja no hay
+    // movimiento»— así que esa fila no emite ni su REAL ni sus cuotas. Pero el cruce sí la tomaba, y
+    // `deChequesEmitidos` saca de su propia puerta a todo cheque cruzado: el cheque salía del libro
+    // por una puerta que del otro lado no existe. Medido en la auditoría de consistencia del 10/09:
+    // $425.936 del cheque f136 de Alumetal, cuya factura es `Compras!f848` y no tiene fecha de caja.
+    // Ni una celda de ningún cash flow los tenía.
+    //
+    // Se filtra ACÁ y no en el otro extractor porque acá se arma el lado de Compras del cruce: una
+    // fila que no puede llevar la plata no es una candidata, y dejarla entrar hace que el cruce
+    // AFIRME una cobertura que no ocurre. El hueco de la fila sin fecha lo sigue reportando
+    // `auditar-cobertura-cash-flow` con su número de fila, que es de quien la cargó.
+    if (num(f[c.fechaCaja]) === null) continue
     out.push({
       fila: i + 1, proveedor: txt(f[c.proveedor]), comprobante: txt(f[c.comprobante]),
       total, fecha: num(f[c.fechaCaja]), instrumento, rubro: txt(f[c.rubro]),

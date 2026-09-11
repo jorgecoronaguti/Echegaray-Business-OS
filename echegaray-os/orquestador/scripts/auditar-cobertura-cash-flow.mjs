@@ -32,7 +32,7 @@ import { grillaMeses } from '../lib/cash-flow-meses.mjs'
 import { RUBROS_EGRESO } from '../lib/cash-flow-rubros.mjs'
 import {
   CENSADAS, EXCLUSIONES_COBRANZAS, EXCLUSIONES_COMPRAS, SIN_CENSO_DE_FILA,
-  censoDeCobranzas, censoDeCompras, coberturaDeFuente, cuadreContraElLibro, filasCubiertas,
+  censoDeCobranzas, censoDeCompras, coberturaDeFuente, cuadreContraElLibro, filasCubiertas, listaDeFilas,
   fueraDeLaVentana, marcarEndosos, medidasDesdeElLibro, origenesSinDeclarar, resumenDeCobertura,
   ventanaDelEjercicio,
 } from '../lib/cobertura-archivo.mjs'
@@ -151,7 +151,7 @@ function informe(r, movs) {
       + ` · excluido con motivo ${peso(f.declarado)} · HUECO ${peso(f.hueco)}`)
     for (const d of f.porMotivoDeclarado) console.log(`      ○ ${d.clave} — ${d.n} fila(s), ${peso(d.monto)}`)
     for (const h of f.porMotivoHueco) {
-      console.log(`      ▲ ${h.clave} — ${h.n} fila(s), ${peso(h.monto)} · filas ${h.filas.join(', ')}`)
+      console.log(`      ▲ ${h.clave} — ${h.n} fila(s), ${peso(h.monto)} · filas ${listaDeFilas(h.filas)}`)
     }
     if (DETALLE) for (const h of f.huecos) console.log(`         f${h.fila} ${peso(h.monto)} ${h.proveedor ?? h.cliente ?? ''}`)
   }

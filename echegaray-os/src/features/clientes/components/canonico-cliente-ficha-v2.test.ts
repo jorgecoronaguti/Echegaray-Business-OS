@@ -100,11 +100,12 @@ test('la ficha no dibuja el avance de obra, y en su lugar publica lo cobrado', (
   assert.match(src, /cobrado\?\.disponible && cobrado\.por\.get\(o\.obra_id\)\?\.total != null/)
 })
 
-test('el trabajo se abre en el CRM y el ERP queda en un enlace nombrado', () => {
+test('el trabajo se abre en el CRM y el ERP no se repite debajo de cada fila', () => {
   const src = codigoListas()
   assert.match(src, /href=\{hrefTrabajo \? hrefTrabajo\(o\.obra_id\) : `\/obras\/\$\{o\.obra_id\}`\}/)
-  assert.match(src, /testid="ver-en-obras-ficha"/)
-  assert.match(src, /Ver en Obras →/)
+  // El enlace al ERP colgaba de CADA trabajo y nombraba el módulo del que hay que separarse en toda
+  // la pantalla (dueño, 10/09/2026 18:12). Existe UNA vez: dentro del detalle del trabajo.
+  assert.doesNotMatch(src, /Ver en Obras →/)
   // Y la página tiene que pasarle el destino: sin eso la fila cae al ERP por el respaldo.
   assert.match(codigoPagina(), /hrefTrabajo=\{hrefTrabajo\}/)
   assert.match(codigoPagina(), /const hrefTrabajo = \(obraId: string\) => url\(\{ trabajo: obraId \}\)/)
@@ -133,9 +134,14 @@ test('el costo real no se dibuja en la ficha del cliente', () => {
   assert.doesNotMatch(codigoListas(), /costo_real/)
 })
 
-test('el resumen del portal no se afirma cuando no se leyó', () => {
-  assert.match(codigoPagina(), /solapa === 'accesos'/)
-  assert.match(codigoPagina(), /Se lee al abrir la cara/)
+test('el resumen del portal no se afirma cuando no se leyó, y tampoco pone un placeholder', () => {
+  // Decía «Se lee al abrir la cara», que le explica al dueño una decisión interna del renderizado
+  // justo donde esperaba un dato (10/09/2026 18:10). Ahora, fuera de esa cara, no se escribe nada:
+  // el verbo «Gestionar accesos →» es la puerta, y no afirma ningún número.
+  const src = codigoPagina()
+  assert.match(src, /\{solapa === 'accesos' && \(/)
+  assert.doesNotMatch(src, /Se lee al abrir la cara/)
+  assert.match(src, /Gestionar accesos →/)
 })
 
 

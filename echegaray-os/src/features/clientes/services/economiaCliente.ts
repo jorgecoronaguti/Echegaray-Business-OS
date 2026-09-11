@@ -19,6 +19,13 @@
 // secas a propósito: dos caras sumando lo mismo con ventanas distintas es el conflicto #2 del
 // inventario, y un nombre sin ventana es cómo se cuela.
 
+// ═══ EL COSTO REAL SE DEJÓ DE PEDIR (10/09/2026, orden del dueño) ═══
+//
+// La vista lo sigue publicando —es legítimo y el módulo Obras lo consume—, pero el CRM no lo lee:
+// «Administración es un CRM y Obra un ERP: no mezcles cosas con obras». Lo que se deja de pedir no
+// se puede volver a colar en una celda, que es como volvieron el margen y las dos columnas de
+// presupuesto. Ver `clientes-no-lee-el-erp.test.ts`.
+
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { aNumero } from './economiaObras.ts'
 
@@ -33,8 +40,6 @@ export interface EconomiaDeCliente {
   n_obras_cerradas: number
   n_obras_con_precio: number
   n_obras_sin_precio: number
-  /** Σ de `obra_panel.costo_real`. Vivía en `cliente_panel.costo_real`, que se retiró. */
-  costo_real: number | null
   /** VENTANA de 90 días. Provisorio hasta D2. */
   facturado_90d: number | null
   /** VENTANA de 90 días. Provisorio hasta D2. */
@@ -52,12 +57,15 @@ export interface EconomiaDeCliente {
 
 const COLUMNAS =
   'cliente_id, contratado, contratado_en_curso, n_obras_en_curso, n_obras_cerradas,'
-  + ' n_obras_con_precio, n_obras_sin_precio, costo_real, facturado_90d, cobrado_90d,'
+  + ' n_obras_con_precio, n_obras_sin_precio, facturado_90d, cobrado_90d,'
   + ' cobrado_total, cobrado_neto_total, saldo, vencido, por_vencer, pendiente_contractual'
 
 /** PostgREST devuelve los `numeric` como texto y los `int` como número. Los conteos son 0 de
  *  verdad cuando la vista los publica; nunca se inventan. */
-function fila(f: Record<string, unknown>): EconomiaDeCliente {
+/** UNA fila de `cliente_economia` → el tipo de la pantalla. Exportada porque la ficha la recibe
+ *  por la RPC `pantalla_cliente()` y no puede tener su propia conversión: lo contratado del cliente
+ *  tuvo cinco definiciones en tres semanas. */
+export function armarEconomiaDeCliente(f: Record<string, unknown>): EconomiaDeCliente {
   const n = (k: string) => aNumero(f[k])
   const entero = (k: string) => Number(f[k] ?? 0)
   return {
@@ -68,7 +76,6 @@ function fila(f: Record<string, unknown>): EconomiaDeCliente {
     n_obras_cerradas: entero('n_obras_cerradas'),
     n_obras_con_precio: entero('n_obras_con_precio'),
     n_obras_sin_precio: entero('n_obras_sin_precio'),
-    costo_real: n('costo_real'),
     facturado_90d: n('facturado_90d'),
     cobrado_90d: n('cobrado_90d'),
     cobrado_total: n('cobrado_total'),
@@ -92,9 +99,16 @@ export async function getEconomiaDeClientes(
 ): Promise<Map<string, EconomiaDeCliente> | null> {
   const { data, error } = await supabase.from('cliente_economia').select(COLUMNAS)
   if (error) return null
+  return armarEconomiaDeClientes(data ?? [])
+}
+
+/** Las filas de `cliente_economia` ya leídas → el mapa por cliente. Separada de la consulta porque
+ *  las mismas filas llegan por dos transportes: PostgREST y la RPC de la pantalla. Lo contratado
+ *  del cliente tuvo CINCO definiciones en tres semanas; no va a tener dos conversiones. */
+export function armarEconomiaDeClientes(filas: unknown[]): Map<string, EconomiaDeCliente> {
   const m = new Map<string, EconomiaDeCliente>()
-  for (const f of (data ?? []) as unknown as Record<string, unknown>[]) {
-    const e = fila(f)
+  for (const f of filas as Record<string, unknown>[]) {
+    const e = armarEconomiaDeCliente(f)
     m.set(e.cliente_id, e)
   }
   return m
@@ -108,5 +122,5 @@ export async function getEconomiaDeCliente(
   const { data, error } = await supabase
     .from('cliente_economia').select(COLUMNAS).eq('cliente_id', clienteId).maybeSingle()
   if (error || !data) return null
-  return fila(data as unknown as Record<string, unknown>)
+  return armarEconomiaDeCliente(data as unknown as Record<string, unknown>)
 }

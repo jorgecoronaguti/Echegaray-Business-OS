@@ -255,8 +255,12 @@ function columnaDeSemana(poner, meta, j, { refSaldo, refFecha, n }) {
     desde, hasta, refSaldo, refFecha, anterior: j === 0 ? null : celda(col - 1, f.saldoFinal),
   }))
   // Cada medida trae su subtotal Y su apertura por rubro, de la misma función que usa el mensual.
+  // EL VENCIDO NO VA EN LA VENTANA DE SU FECHA SINO EN LA COLUMNA DEL ANCLA (10/09/2026). Acá es donde
+  // se veía: el único VENCIDO del libro caía en la semana del 01/09, que es anterior al ancla del 07/09
+  // y por lo tanto está fuera de la cadena de saldos — el cierre semanal perdía $9.000.000 que el
+  // mensual sí mostraba. La regla vive en `condicionAncla`; acá sólo se le pasa la fecha del corte.
   for (const c of medidasDeLaMatriz()) {
-    for (const linea of formulasDeMedida(meta.tipo, c.clave, { col, desde, hasta })) poner(linea.fila, col, linea.formula)
+    for (const linea of formulasDeMedida(meta.tipo, c.clave, { col, desde, hasta, ancla: refFecha })) poner(linea.fila, col, linea.formula)
   }
   poner(f.resultado, col,
     `=N(${celda(col, f.ingresoReal)})+N(${celda(col, f.ingresoProyectado)})`
@@ -269,7 +273,7 @@ function columnaDeSemana(poner, meta, j, { refSaldo, refFecha, n }) {
   // La sección POR CLIENTE va DESPUÉS del saldo: cuelga de los subtotales de arriba y su residuo los
   // resta. Escribirla antes no rompería nada —Sheets resuelve el orden solo— pero acá el orden de
   // escritura es el orden de lectura, y así el que audita sigue la dependencia de arriba hacia abajo.
-  for (const linea of formulasPorCliente(meta.tipo, { col, desde, hasta })) poner(linea.fila, col, linea.formula)
+  for (const linea of formulasPorCliente(meta.tipo, { col, desde, hasta, ancla: refFecha })) poner(linea.fila, col, linea.formula)
 }
 
 /**

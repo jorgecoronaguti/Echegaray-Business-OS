@@ -381,8 +381,11 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
     : '')
   // Subtotal + apertura por rubro, de la misma función que usa el semanal: las dos vistas no pueden
   // definir distinto qué es "Materiales Civil" porque no hay dos definiciones.
+  // El vencido sale de la ventana de todas las columnas y entra entero en la del ancla (10/09/2026,
+  // `condicionAncla`). Acá el defecto no se veía —el ancla del 07/09 y el vencido del 01/09 caen en el
+  // mismo mes— y por eso las dos vistas discrepaban: la mensual lo sumaba y la semanal lo perdía.
   for (const c of medidasDeLaMatriz()) {
-    for (const linea of formulasDeMedida(meta.tipo, c.clave, { col, desde, hasta })) poner(linea.fila, col, linea.formula)
+    for (const linea of formulasDeMedida(meta.tipo, c.clave, { col, desde, hasta, ancla: refFecha })) poner(linea.fila, col, linea.formula)
   }
   poner(f.resultado, col,
     `=N(${celda(col, f.ingresoReal)})+N(${celda(col, f.ingresoProyectado)})`
@@ -394,7 +397,7 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
 
   // La sección POR CLIENTE cuelga de los subtotales de arriba (su residuo los resta), así que se
   // escribe después: el orden de escritura es el orden en que se audita la dependencia.
-  for (const linea of formulasPorCliente(meta.tipo, { col, desde, hasta })) poner(linea.fila, col, linea.formula)
+  for (const linea of formulasPorCliente(meta.tipo, { col, desde, hasta, ancla: refFecha })) poner(linea.fila, col, linea.formula)
 
   poner(f.variacionPresupuesto, col, formulaVariacionPresupuesto(cab, celda(col, f.resultado)))
   poner(f.variacionMesAnterior, col, j === 0

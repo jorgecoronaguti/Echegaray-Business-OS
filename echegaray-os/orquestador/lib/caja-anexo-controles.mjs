@@ -18,7 +18,9 @@ import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, 
 import { terminoLibro } from './libro-sumas.mjs'
 import { DESDE_CAJA, ANEXO } from './caja-anexo-nombres.mjs'
 import { formulaEgresoDiario } from './egreso-diario.mjs'
-import { esIndistinguible } from './cobranzas-duplicado.mjs'
+import { esIndistinguible, factorSinYaRevisados } from './cobranzas-duplicado.mjs'
+// El veredicto escrito del dueño manda también acá: ver el término `fDup` de A7.
+import { CONTROLES, decisionesDe } from './decisiones-hallazgos.mjs'
 import * as CONC from './conciliacion-por-naturaleza.mjs'
 import { MARCAS, expresionTieneNumero } from './cheques-cobertura.mjs'
 import { formulaChequesSinFactura } from './cash-flow-lineas.mjs'
@@ -204,7 +206,7 @@ export function bloqueVencido(h) {
  * ($173.434.381) contra dieciséis días de depósitos ($9.960.000) y publicaba $161.749.381 "sin
  * explicar": un número inventado por el método, que es exactamente lo que la regla de oro #3 prohíbe.
  */
-export function bloqueTrazabilidad(h) {
+export function bloqueTrazabilidad(h, { yaRevisados = decisionesDe(CONTROLES.cobroDuplicado) } = {}) {
   const { push } = h
   // ═══ LA VENTANA FOSILIZADA ERA EL DEFECTO (dictamen 07/08) ═══
   //
@@ -225,8 +227,20 @@ export function bloqueTrazabilidad(h) {
   // ⚠ Mismo ID y mismo importe más de una vez. Caso real del 17/07: San Francisco pagó $16.200.000 en
   // efectivo y quedó cargado dos veces —una al cobrarlo y otra al depositarlo—. Un depósito NO es un
   // cobro. Se divide por dos porque las dos filas del par suman.
+  //
+  // ═══ LO QUE EL DUEÑO YA REVISÓ NO SE RESTA (10/09/2026) ═══
+  //
+  // El par de LA ESTRELLA del 13/06 (filas 39 y 40, $10.000.000 cada una) tiene decisión escrita del
+  // dueño —«no es duplicado»— desde el 13/08, y la pestaña Cobranzas ya la respeta en su marca por
+  // fila. Este término no la miraba y le seguía sacando $10.000.000 al efectivo explicado en cada
+  // corrida: el mismo hallazgo, liberado en una pestaña y cobrado en la otra. Una edición del dueño
+  // es la verdad definitiva, y un registro de decisiones que sólo vale para el renglón donde se
+  // escribió no es un registro: es una nota.
+  //
+  // NO SE APAGA EL CONTROL, SE EXCLUYE ESE GRUPO. Cualquier otro par indistinguible sigue restando.
   const fDup = push(['  · de eso, cargado DOS VECES con el mismo ID', '', '', '',
-    `=SUMPRODUCT(${CONEF}*(${INDIST_COB})*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))/2`,
+    `=SUMPRODUCT(${CONEF}*(${INDIST_COB})${factorSinYaRevisados(yaRevisados, 'Cobranzas', 5, 400)}`
+    + '*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))/2',
     '', ''])
   // EL DETALLE NO VA EN LA COLUMNA DEL DINERO: es una tira larga y el ojo que recorre una columna de
   // números se choca con un párrafo. Va en la columna del rótulo, que ya tiene overflow.

@@ -222,6 +222,31 @@ async function main() {
   }
   const errores = (leido ?? []).flat().filter((c) => /#(REF|NAME|VALUE|DIV|N\/A|ERROR|¿NOMBRE)/i.test(String(c ?? '')))
   console.log(errores.length ? `\n✗✗ ${errores.length} celda(s) con error: ${errores.join(' · ')}` : '\n✓ sin #ERROR en el bloque')
+
+  // ═══ EL QUE ESCRIBE ÚLTIMO, SELLA (10/09/2026) ═══
+  //
+  // «Proveedores» la rehacen SEIS scripts —los títulos, las dos dinámicas, la concentración, el
+  // respaldo fiscal, las notas y este encabezado— y ninguno declara la pestaña como suya, porque cada
+  // uno es dueño de un BLOQUE. El precio de eso apareció en la auditoría del 10/09: NADIE estampaba
+  // `sheet_tab_firma`, y el control de coherencia la reportaba «ATRASADA hace 81 h» cuando en realidad
+  // se había reescrito ocho minutos antes. Un control que grita sobre una pestaña sana es exactamente
+  // como muere un control: se deja de leer.
+  //
+  // Sella ÉSTE porque es el último de los seis en el pipeline (ver flujo-caja-pasos.mjs: «el
+  // encabezado, ÚLTIMO»). La firma que queda registrada es la de la pestaña tal como quedó después de
+  // los seis, que es lo que el control tiene que mirar. Sellar en uno de los del medio registraría una
+  // foto que ya no existe.
+  try {
+    const { sellarFirma } = await import('../lib/firma-tab.mjs')
+    const r = await sellarFirma(google, ID, PESTAÑA)
+    console.log(r.sellada
+      ? `  🔏 firma de "${PESTAÑA}" estampada (${r.filas} filas): el control de frescura ya puede verla`
+      : `  ⚠ no pude sellar la firma de "${PESTAÑA}": ${r.motivo}`)
+  } catch (e) {
+    // Sin sello la pestaña se sigue rehaciendo, pero el control vuelve a decir que está atrasada. Se
+    // avisa fuerte: un sello que falla en silencio es el defecto que este bloque vino a cerrar.
+    console.warn(`  ⚠ no pude sellar la firma de "${PESTAÑA}" (${e.message}) — el control de coherencia la va a seguir dando ATRASADA sin estarlo.`)
+  }
 }
 
 main().catch((e) => { console.error(e.message ?? e); process.exit(1) })

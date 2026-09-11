@@ -24,8 +24,8 @@ import type { CampoEditable, LineaConOverrides } from '../../services/liquidacio
 import type { FilaDeGrilla } from '../../services/grillaHorasQuincena'
 import { ALTO_LIQ } from './solapas/tabla'
 import {
-  diasDelPanel, hhPorMes,
-  type CorreccionDeDia, type DiaDelPanel, type RegistroDelPanel,
+  diasDelPanel,
+  type CorreccionDeDia, type DiaDelPanel, type MesDeHH, type RegistroDelPanel,
 } from '../../services/panelDePersona'
 
 /** La línea de esta persona en el cuadro de Pagos, con su grupo: es la MISMA fila, no una copia. */
@@ -43,7 +43,10 @@ export interface PersonaAbierta {
   legajo: { rotulo: string; valor: string | null; mono?: boolean }[]
   laboral: { rotulo: string; valor: string | null; mono?: boolean }[]
   asignacion: { rotulo: string; valor: string | null; mono?: boolean }[]
-  filasHH: { fecha: string; horas: number | null }[]
+  /** LOS CINCO MESES YA SUMADOS. Acá llegaban las FILAS de cinco meses de las diecisiete personas
+   *  —2.069 filas por carga— para agruparlas en el navegador y dibujar cinco barras. La suma la hace
+   *  `hhPorMes` en el servidor, la misma función que se llamaba acá: no hay una segunda definición. */
+  mesesHH: MesDeHH[]
   registrosDeLaQuincena: RegistroDelPanel[]
   adelanto: number | null
   cargadas: number
@@ -308,7 +311,7 @@ export function PanelDePersona({
     // QUINCENA CERRADA → SÓLO LECTURA (R6). La acción vuelve a comprobarlo en el servidor.
     { editable: !cerrada },
   )
-  const meses = hhPorMes(persona.filasHH, quincena.hasta)
+  const meses = persona.mesesHH
   return (
     // EN EL TELÉFONO EL LEGAJO VA DEBAJO. Con la columna de 300 px fija, a 390 px la cadena de pago
     // quedaba en cuarenta píxeles de ancho y el texto salía en vertical, letra por letra.

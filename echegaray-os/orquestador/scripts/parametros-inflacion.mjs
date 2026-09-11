@@ -82,7 +82,28 @@ export function ubicarBloque(filas = []) {
   return { encontrado: true, filaTitulo: i + 1, filaDatos, desplazado: filaDatos !== FILA_DATOS, largoPrevio }
 }
 
-const ar = (iso) => `${Number(iso.slice(5, 7))}/1/${iso.slice(0, 4)}`
+/**
+ * EL PRIMER DÍA DEL PERÍODO, EN LA CONVENCIÓN DEL ARCHIVO: **DÍA/MES/AÑO**.
+ *
+ * ═══ EL DEFECTO, MEDIDO EL 10/09/2026 ═══
+ *
+ * Decía `${mes}/1/${año}` — mes primero, al estilo norteamericano. El Sheet está en es-AR, así que
+ * Google lo leyó como DÍA primero y los cuatro meses del bloque quedaron guardados como cuatro días
+ * de ENERO. Verificado contra `sheet_tab_firma`: A74:A77 valen 46031, 46032, 46033, 46034, que son
+ * el 9, 10, 11 y 12 de enero de 2026 — no septiembre, octubre, noviembre y diciembre.
+ *
+ * NO ERA COSMÉTICO. Las tres proyecciones que ajustan por inflación hacen
+ * `MATCH(EOMONTH(mes;0); EOMONTH(Parámetros!$A$74:$A$90;0);0)` adentro de un `IFERROR(…;1)`: con los
+ * cuatro períodos caídos en enero, ningún mes de septiembre a diciembre encuentra su fila y el factor
+ * cae en **1**. O sea que «Estructura ajusta por inflación en 144 fórmulas» era cierto como forma y
+ * falso como efecto: el archivo proyectaba a peso constante y ningún control lo veía, porque el único
+ * que lo dijo —`auditar-reglas-de-oro`, «la tabla llega hasta enero»— se leyó como un error suyo.
+ *
+ * Es la trampa que el repositorio ya tiene escrita para las FÓRMULAS («una fórmula por API va en
+ * locale») y que nadie había aplicado a los VALORES. Un valor con forma de fecha lo parsea Google con
+ * el locale del archivo, igual que si lo tipearan a mano.
+ */
+export const ar = (iso) => `1/${Number(iso.slice(5, 7))}/${iso.slice(0, 4)}`
 
 /**
  * NÚCLEO PURO: las filas del bloque, desde lo que dice la base.

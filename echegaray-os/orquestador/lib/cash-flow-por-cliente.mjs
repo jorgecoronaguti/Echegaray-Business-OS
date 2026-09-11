@@ -94,14 +94,17 @@ export const filaTituloPorCliente = (tipo) => filaDeConcepto(tipo, CLAVE_TITULO_
  *
  * @returns {Array<{fila:number, formula:string}>} la cabecera primero, después sus cuatro medidas
  */
-export function formulasDeCliente(tipo, nombre, { col, desde, hasta }) {
+export function formulasDeCliente(tipo, nombre, { col, desde, hasta, ancla = null }) {
   const bloques = bloquesDeCliente(tipo)
   const b = bloques.find((x) => x.nombre === nombre)
   if (!b) throw new Error(`la vista "${tipo}" no tiene el bloque del cliente "${nombre}"`)
   const listados = bloques.filter((x) => !x.residuo)
   const medidas = b.medidas.map((m) => {
     if (!b.residuo) {
-      const terminos = terminosDeMedida(medidaDe(m.clave), desde, hasta)
+      // El `ancla` viaja con el resto: si la fila del cliente no sacara el vencido de la ventana igual
+      // que el tronco, el residuo —que se despeja restando estas celdas del subtotal— absorbería la
+      // diferencia y "Otros y sin asignar" saldría movido, con todas las filas cerrando entre sí.
+      const terminos = terminosDeMedida(medidaDe(m.clave), desde, hasta, { ancla })
         .map((t) => ({ ...t, filtro: { ...t.filtro, clientes: [nombre] } }))
       return { fila: m.fila, formula: `=${expresionDeTerminos(terminos)}` }
     }
@@ -115,6 +118,6 @@ export function formulasDeCliente(tipo, nombre, { col, desde, hasta }) {
 }
 
 /** Todas las fórmulas de la sección en una columna. PURA. Es lo que llaman las dos vistas. */
-export function formulasPorCliente(tipo, { col, desde, hasta }) {
-  return bloquesDeCliente(tipo).flatMap((b) => formulasDeCliente(tipo, b.nombre, { col, desde, hasta }))
+export function formulasPorCliente(tipo, { col, desde, hasta, ancla = null }) {
+  return bloquesDeCliente(tipo).flatMap((b) => formulasDeCliente(tipo, b.nombre, { col, desde, hasta, ancla }))
 }

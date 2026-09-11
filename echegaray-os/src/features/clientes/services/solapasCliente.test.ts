@@ -10,16 +10,16 @@ const CUENTAS = { obras: 3, presupuestos: 2, documentos: 18 }
 // EL RÓTULO DE LA PRIMERA CARA CAMBIÓ A «TRABAJOS» (10/09/2026) y su CLAVE no: los enlaces con
 // `?vista=obras` que ya circulan tienen que seguir abriendo la misma cara.
 
-test('las siete caras del mockup, con los rótulos del mockup', () => {
+test('las ocho caras, con los rótulos del mockup y «Cobranzas» primera de las económicas', () => {
   const s = solapasDeCliente({ veEconomia: true, ...CUENTAS })
   assert.deepEqual(s.map((x) => x.label), [
-    'Trabajos', 'Presupuestos', 'Documentos', 'Actividad',
+    'Trabajos', 'Cobranzas', 'Presupuestos', 'Documentos', 'Actividad',
     'Cuenta corriente', 'Esquema de pago', 'Acceso al portal',
   ])
   // Sólo cuentan las tres que el canónico 26 numera. Un «0» al lado de «Cuenta corriente» se
   // leería como saldo cero, que es una afirmación económica; y la actividad se recorta, así que
   // contarla diría que el cliente tuvo tres movimientos cuando tuvo cuarenta.
-  assert.deepEqual(s.map((x) => x.cuenta), [3, 2, 18, null, null, null, null])
+  assert.deepEqual(s.map((x) => x.cuenta), [3, null, 2, 18, null, null, null, null])
 })
 
 test('sin permiso económico no se ofrecen las cuatro caras económicas', () => {
@@ -44,7 +44,7 @@ test('un enlace viejo con ?solapa= sigue abriendo su cara', () => {
 test('las tres caras nuevas van a sangre y las viejas no', () => {
   // Si alguien suma una cara a `A_SANGRE` sin darle su propio panel, la ficha pierde el aside de
   // identidad y no se entera nadie hasta abrirla.
-  assert.deepEqual([...A_SANGRE], ['cuenta', 'esquema', 'accesos'])
+  assert.deepEqual([...A_SANGRE], ['cobranzas', 'cuenta', 'esquema', 'accesos'])
   for (const vieja of ['obras', 'presupuestos', 'documentos', 'actividad'] as const) {
     assert.equal(A_SANGRE.includes(vieja), false, `${vieja} no puede ir a sangre`)
   }

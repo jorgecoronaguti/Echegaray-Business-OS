@@ -125,3 +125,48 @@ export function gruposIndistinguibles(filas = []) {
     }))
     .sort((a, b) => b.enJuego - a.enJuego)
 }
+
+/**
+ * NÚCLEO PURO: la condición «esta fila pertenece al GRUPO que el dueño ya revisó».
+ *
+ * ═══ POR QUÉ NO ALCANZA CON `esCobroYaRevisado` (10/09/2026) ═══
+ *
+ * La marca de la pestaña Cobranzas libera UNA fila —la 39, la que el dueño nombró— y eso está bien
+ * para una anotación al costado del renglón. Pero `_CAJA_ANEXO` no marca filas: RESTA PLATA. Su
+ * término «de eso, cargado DOS VECES» suma el grupo entero y lo divide por dos, así que liberar sólo
+ * la 39 dejaba la mitad puesta: seguía sacándole $5.000.000 al efectivo explicado después de que el
+ * dueño escribiera «no es duplicado». La decisión del dueño es sobre el HALLAZGO —el par— y el
+ * hallazgo es el grupo; media resta es tan falsa como la entera.
+ *
+ * LA PERTENENCIA SE MIDE CONTRA LA FILA REVISADA, NO CONTRA EL TEXTO DE LA DECISIÓN. El grupo son
+ * las filas cuya identidad dura coincide con la de la fila que el dueño miró, leída con `INDEX` de
+ * la propia pestaña. Si mañana hay otro par del mismo cliente por el mismo importe en OTRO día, no
+ * entra: cambia la fecha y deja de ser el mismo grupo. Comparar sólo cliente+importe habría
+ * silenciado un duplicado real, que es el lado peligroso para equivocarse.
+ *
+ * Y EL ANCLA SIGUE SIENDO LA FORMA DECLARADA: si la fila 39 dejó de ser LA ESTRELLA por $10.000.000
+ * —porque alguien insertó un renglón arriba— el ancla da 0, no libera nada y la resta vuelve sola.
+ */
+export function esDelGrupoYaRevisado(forma = {}, pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+  const r = (col) => `${pestana}!$${col}$${f0}:$${col}$${f1}`
+  const i = Number(forma.fila) - f0 + 1
+  const en = (col) => `INDEX(${r(col)};${i})`
+  const cli = String(forma.cliente ?? '').replace(/"/g, '""')
+  const ancla = `(${en(CLAVE.cliente)}="${cli}")*(${en(CLAVE.monto)}=${Number(forma.importe)})`
+  const mismoGrupo = Object.values(CLAVE).map((c) => `(${r(c)}=${en(c)})`).join('*')
+  return `${ancla}*${mismoGrupo}`
+}
+
+/**
+ * NÚCLEO PURO: el factor que saca de una suma los grupos que el dueño ya revisó.
+ *
+ * Devuelve `''` cuando no hay ninguna decisión vigente — así la fórmula queda idéntica a la de antes
+ * y el registro vacío no cambia un solo número. Se multiplica, no se resta: quien lo usa no tiene que
+ * saber cómo está armada la suma.
+ */
+export function factorSinYaRevisados(decisiones = [], pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+  const grupos = decisiones
+    .filter((d) => Number(d?.forma?.fila) >= f0 && Number(d?.forma?.fila) <= f1)
+    .map((d) => esDelGrupoYaRevisado(d.forma, pestana, f0, f1))
+  return grupos.length ? `*((${grupos.join(')+(')})=0)` : ''
+}

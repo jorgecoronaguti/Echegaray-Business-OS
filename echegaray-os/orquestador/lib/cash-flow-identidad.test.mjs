@@ -37,7 +37,38 @@ function sinVentana(formula) {
       s = s.slice(0, i) + s.slice(j + 1)
     }
   }
-  return s
+  return sinFactorDeAncla(s)
+}
+
+/**
+ * Y SACA EL FACTOR DE LA COLUMNA DEL ANCLA, que es la ventana escrita de otra forma.
+ *
+ * El término del vencido va multiplicado por `((desde<=CAJA_FECHA_SALDO)*(hasta>CAJA_FECHA_SALDO))`
+ * — "esta columna es la del presente" (`condicionAncla`, 10/09/2026). Sus dos bordes son los MISMOS
+ * `desde`/`hasta` de la ventana, así que difiere entre las dos vistas por el único motivo que este
+ * test admite que difieran: la granularidad. Se quita por eso y sólo por eso.
+ *
+ * ESTO NO CIEGA AL TEST: si una vista pasara el ancla y la otra no, el término del vencido no
+ * existiría en una de las dos y el grupo de estados sería distinto (`PROYECTADO+COMPROMETIDO` contra
+ * `PROYECTADO+VENCIDO+COMPROMETIDO`). Eso sigue saliendo rojo, que es lo que hay que atrapar.
+ */
+function sinFactorDeAncla(formula) {
+  let s = String(formula)
+  const marca = '>CAJA_FECHA_SALDO))*'
+  for (;;) {
+    const i = s.indexOf(marca)
+    if (i < 0) return s
+    const fin = i + marca.length
+    // Desde el paréntesis que cierra el factor, hacia atrás hasta el que lo abre: el borde de la
+    // ventana del mes lleva paréntesis adentro (EOMONTH(...)), así que contarlos es obligatorio.
+    let prof = 0
+    let j = fin - 2
+    for (; j >= 0; j--) {
+      if (s[j] === ')') prof++
+      else if (s[j] === '(') { prof--; if (prof === 0) break }
+    }
+    s = s.slice(0, j) + s.slice(fin)
+  }
 }
 
 const diasDelMes = (anio, mes) => {

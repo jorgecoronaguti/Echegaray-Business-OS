@@ -235,7 +235,14 @@ export function tarjetas(ref) {
   const f0 = Number.isFinite(ref.fronteraCompras) ? ref.fronteraCompras + 1 : null
   let nuevas = null
   if (f0) {
-    const colC = (c) => `Compras!$${c}$${f0}:$${c}$${f0 + 500}`
+    // ═══ RANGO ABIERTO, NO UNA VENTANA DE 500 FILAS (10/09/2026) ═══
+    //
+    // Decía `$X$f0:$X$f0+500`. El día que Compras crezca más de 500 filas por encima de la frontera
+    // del libro, este término deja de ver las pendientes nuevas y la tarjeta baja sin dar un solo
+    // error — el mismo modo de falla que ya cortó Cobranzas en la fila 200 y que la regla del
+    // repositorio nombra: «el número que decide sale de la fuente con rango abierto». La cota no
+    // protegía de nada: el filtro es «Pendiente» + fecha, no la posición.
+    const colC = (c) => `Compras!$${c}$${f0}:$${c}`
     // La fecha de caja (AD) puede venir como texto dd/mm/yyyy o como serial: el mismo doble camino
     // que ya usa el anexo de caja (DATEVALUE para el texto, N() para el serial).
     const fechaCaja = `IFERROR(DATEVALUE(${colC('AD')}&"");N(${colC('AD')}))`

@@ -28,8 +28,8 @@
 // afirma nada — el desplegable dice en qué estado está.
 
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual } from '@/features/auth/services/authService'
-import { chipsDeAtencion, getConteosDeAtencion, atencionNoLeida, type ChipAtencion } from './homeAdministracion'
+import type { Rol } from '@/features/auth/types'
+import { armarConteosDeAtencion, chipsDeAtencion, atencionNoLeida, type ChipAtencion } from './homeAdministracion'
 
 export type Novedades =
   | { ok: true; chips: ChipAtencion[]; noLeida: boolean }
@@ -38,14 +38,23 @@ export type Novedades =
 export async function getNovedades(): Promise<Novedades> {
   try {
     const supabase = await createClient()
-    // EL ROL PRIMERO, PORQUE DECIDE QUÉ CHIPS EXISTEN: `chipsDeAtencion` descarta los que llevan a
-    // una pantalla que este rol no puede abrir. Sin eso, un jefe de obra vería «14 proveedores sin
-    // CUIT» y el clic terminaría en un redirect mudo.
-    const [perfil, conteos] = await Promise.all([
-      getPerfilActual(supabase),
-      getConteosDeAtencion(supabase),
-    ])
-    const rol = perfil.data?.rol ?? null
+    // ═══ UN VIAJE, NO SEIS (10/09/2026) ═══
+    //
+    // La campanita se dibuja en TODAS las pantallas, así que sus lecturas no eran el costo de una
+    // pantalla sino un impuesto por navegación: el perfil más las cinco señales, seis viajes que
+    // llegaban justo encima de la ola del render y le disputaban el pool de PostgREST a la pantalla
+    // que el usuario está mirando. Medido con `PERF_TRAZA=1` en la ola de `/obras`, con veinte
+    // consultas simultáneas: `proveedores` 4.125 ms y `comprobante_compra` 6.388 ms — no son caras,
+    // llegaron cuando ya no quedaba backend caliente libre.
+    //
+    // El rol viene en el mismo JSON. Antes salía de `getPerfilActual`, que en el render del
+    // `page.tsx` está memorizado por request pero acá NO: esto es una server action aparte, con su
+    // propio request, así que era un viaje entero.
+    const { data, error } = await supabase.rpc('campanita_atencion')
+    if (error) return { ok: false, error: error.message }
+    const j = (data ?? {}) as { perfil?: { rol?: Rol | null } | null }
+    const conteos = armarConteosDeAtencion(data)
+    const rol = j.perfil?.rol ?? null
     return { ok: true, chips: chipsDeAtencion(conteos, rol), noLeida: atencionNoLeida(conteos) }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'No pude leer las novedades.' }
