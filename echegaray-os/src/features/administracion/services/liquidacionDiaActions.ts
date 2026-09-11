@@ -25,6 +25,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion } from './liquidacionPermiso'
+import { FUENTE_CORRECCION_HORAS } from './presenciaDelDia'
 import { quincenaDe } from './quincena'
 
 const RUTA = '/administracion/personas'
@@ -98,7 +99,16 @@ export async function corregirHorasDelDia(registroId: string, valor: string): Pr
   // error devuelve 204 y cero filas — y un «guardado» sobre una escritura que no ocurrió es la
   // trampa que este repo ya pagó.
   const guardado = await supabase.from('registros_hh')
-    .update({ horas: despues, actualizado_por: autor, actualizado_en: new Date().toISOString() })
+    .update({
+      horas: despues,
+      actualizado_por: autor,
+      actualizado_en: new Date().toISOString(),
+      // EL ORIGEN DEJA DE MENTIR. Una fila que venía de `web:presencia-defecto` y que una persona
+      // corrigió seguía declarándose «jornada por defecto», y `planDeHorasPorDefecto` la borraba
+      // después como si nadie la hubiera mirado: así desaparecían las 13 h que el dueño tecleó el
+      // 10/09/2026 sobre los dos Quiroga. El que corrige se queda con la fila.
+      fuente_legacy: FUENTE_CORRECCION_HORAS,
+    })
     .eq('id', fila.id).select('id, horas').maybeSingle()
   if (guardado.error) return { ok: false, error: guardado.error.message }
   if (!guardado.data) return { ok: false, error: 'No pude guardar el día: la base no devolvió la fila.' }
