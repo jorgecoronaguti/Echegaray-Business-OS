@@ -310,7 +310,21 @@ function ChipDeCotejo({ fila }: { fila: FilaDelEspejo }) {
         style={{ ...estilo, color: V.tenue, background: '#F4F3EF' }}>sin espejo</span>
     )
   }
+  // CON ESPEJO LEÍDO PERO SIN NINGÚN DÍA DE ESTA PERSONA, la planilla no habla de ella: los dos jefes
+  // de Oficina, cuya pestaña no tiene bloque de septiembre. «Difiere 80 h» sería mentir sobre una
+  // comparación que no se puede hacer.
+  if (c.diasComparados === 0) {
+    return (
+      <span data-testid={`cotejo-${fila.personaId}`}
+        title="La planilla no tiene ningún día cargado de esta persona en esta quincena."
+        style={{ ...estilo, color: V.tenue, background: '#F4F3EF' }}>no está en la planilla</span>
+    )
+  }
+  // EL TÍTULO DICE SOBRE QUÉ SE COMPARÓ. Sin eso, «coincide» sobre ocho de trece días se lee como
+  // «la quincena entera está bien», y faltan cinco días que nadie cargó todavía.
   const titulo = `La planilla dice ${nHoras(c.horasEnLaPlanilla)} h · la base tiene ${nHoras(c.horasEnLaBase)} h`
+    + ` · comparado sobre ${c.diasComparados} día${c.diasComparados === 1 ? '' : 's'} cargado${c.diasComparados === 1 ? '' : 's'}`
+    + (c.diasSinComparar > 0 ? ` (${c.diasSinComparar} sin cargar en la planilla, no se comparan)` : '')
   if (c.estado === 'coincide') {
     return (
       <span data-testid={`cotejo-${fila.personaId}`} title={titulo}

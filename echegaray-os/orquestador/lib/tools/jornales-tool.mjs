@@ -2,7 +2,7 @@
 // Lee la planilla JORNALES real y usa la lib jornales (extractor verificado). Devuelve el número
 // EXACTO por pestaña con las fechas de la quincena de cada una, para que el modelo NO tenga que
 // escanear la planilla desordenada (antes: 10+ lecturas + web_search → número MAL). Solo lectura.
-import { JORNALES_ID, TOTAL_COL, ultimaQuincena } from '../jornales.mjs'
+import { JORNALES_ID, TOTAL_COL, columnaDeTotalSemana, ultimaQuincena } from '../jornales.mjs'
 
 export function jornalesTools(google) {
   return {
@@ -19,8 +19,17 @@ export function jornalesTools(google) {
           const out = {}
           for (const tab of Object.keys(TOTAL_COL)) {
             const values = await google.readSheetValues(JORNALES_ID, `${tab}!A1:AH990`).catch(() => [])
-            const q = ultimaQuincena(values, TOTAL_COL[tab])
-            out[tab] = q ? { quincena: `${q.desde} al ${q.hasta}`, personas: q.personas, total: q.total } : { error: 'sin datos legibles' }
+            // LA COLUMNA SE LEE DEL ENCABEZADO, NO DE UNA CONSTANTE (11/09/2026). `TOTAL_COL` decía
+            // AA para «Obreros 26», que hoy es «TOTAL EFECTIVO» y no «TOTAL SEMANA»: el tool contestaba
+            // lo que sale en mano y se comía lo girado por banco ($2.934.498 en la 2ª de agosto).
+            // Si el rótulo no está, NO se cae en la constante vieja: se dice.
+            const col = columnaDeTotalSemana(values)
+            if (col == null) {
+              out[tab] = { error: 'no encontré la columna «TOTAL SEMANA» en el encabezado de la pestaña' }
+              continue
+            }
+            const q = ultimaQuincena(values, col)
+            out[tab] = q ? { quincena: `${q.desde} al ${q.hasta}`, personas: q.personas, total: q.total, columna_total: col } : { error: 'sin datos legibles' }
           }
           const tabs = Object.entries(out).filter(([, v]) => v && v.total != null)
           const total_general = tabs.reduce((s, [, v]) => s + (v.total || 0), 0)

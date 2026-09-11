@@ -60,7 +60,12 @@ export interface Cotejo {
   /** Horas de la base − horas del bloque de la planilla. `null` cuando no hay con qué comparar. */
   diferencia: number | null
   horasEnLaPlanilla: number | null
+  /** Horas de `registros_hh` EN LOS DÍAS QUE LA PLANILLA DICE TENER. Ver `cotejoConLaPlanilla`. */
   horasEnLaBase: number
+  /** Cuántos días de la quincena tiene escritos la planilla. El resto no se compara. */
+  diasComparados: number
+  /** Cuántos días de la ventana quedaron fuera de la comparación porque la planilla no los tiene. */
+  diasSinComparar: number
 }
 
 /**
@@ -71,9 +76,15 @@ export interface Cotejo {
  * dejaría de abrir la planilla creyendo que alguien comparó. La tolerancia es de una centésima de
  * hora, que es el redondeo de la propia base (`numeric`), no un margen de criterio.
  */
-export function cotejoConLaPlanilla(horasEnLaBase: number, horasEnLaPlanilla: number | null): Cotejo {
+export function cotejoConLaPlanilla(
+  horasEnLaBase: number, horasEnLaPlanilla: number | null,
+  { diasComparados = 0, diasSinComparar = 0 } = {},
+): Cotejo {
   if (horasEnLaPlanilla == null) {
-    return { estado: 'sin-espejo', diferencia: null, horasEnLaPlanilla: null, horasEnLaBase: r2(horasEnLaBase) }
+    return {
+      estado: 'sin-espejo', diferencia: null, horasEnLaPlanilla: null,
+      horasEnLaBase: r2(horasEnLaBase), diasComparados, diasSinComparar,
+    }
   }
   const diferencia = r2(horasEnLaBase - horasEnLaPlanilla)
   return {
@@ -81,6 +92,8 @@ export function cotejoConLaPlanilla(horasEnLaBase: number, horasEnLaPlanilla: nu
     diferencia,
     horasEnLaPlanilla: r2(horasEnLaPlanilla),
     horasEnLaBase: r2(horasEnLaBase),
+    diasComparados,
+    diasSinComparar,
   }
 }
 
@@ -123,6 +136,8 @@ export interface DatosDelEspejo {
   cuadrosCerrados: ReadonlySet<string>
   /** Horas que el bloque de la planilla declara para cada persona en esta ventana. */
   horasDeLaPlanilla: ReadonlyMap<string, number>
+  /** De qué días habla la planilla, por persona. El cotejo se hace SÓLO sobre ellos. */
+  diasDeLaPlanilla: ReadonlyMap<string, ReadonlySet<string>>
   /** `true` cuando se pudo leer el espejo de la planilla. `false` deja todos los chips en `sin-espejo`. */
   hayEspejo: boolean
   hoy: string
@@ -152,10 +167,7 @@ export function filasDelEspejo(d: DatosDelEspejo): FilaDelEspejo[] {
       linea,
       cerrada,
       celdas: dias.map((f) => celdaDelEspejo(f, suyos, pres.get(f), cerrada)),
-      cotejo: cotejoConLaPlanilla(
-        horasCrudasDe(suyos),
-        d.hayEspejo ? (d.horasDeLaPlanilla.get(p.id) ?? 0) : null,
-      ),
+      cotejo: cotejar(d, p.id, suyos, dias),
     }
   })
 }
@@ -163,6 +175,39 @@ export function filasDelEspejo(d: DatosDelEspejo): FilaDelEspejo[] {
 /** La suma de las celdas del día, tal cual están guardadas. Es lo que la columna «Hs» de la planilla suma. */
 function horasCrudasDe(registros: readonly RegistroDeQuincena[]): number {
   return r2(registros.reduce((s, r) => s + (Number(r.horas) || 0), 0))
+}
+
+/**
+ * EL COTEJO SE HACE SOBRE LOS DÍAS QUE LA PLANILLA DICE TENER, Y NO SOBRE LA VENTANA ENTERA.
+ *
+ * ═══ EL DEFECTO, MEDIDO EL 11/09/2026 ═══
+ *
+ * La planilla es un documento que se va llenando: al mediodía tenía ocho días cargados de los trece
+ * de la quincena. Comparar las quince personas sobre los quince días daba «difiere 8 h» para las
+ * quince —el día de hoy, que la app cargó sola y el dueño todavía no— y un chip que está siempre en
+ * rojo deja de leerse. De los días que la planilla NO tiene, la planilla no afirma nada: no se puede
+ * diferir contra una afirmación que nadie hizo.
+ *
+ * Restringido a los ocho días, catorce de las quince personas dieron EXACTO. La que no —Gonzalez
+ * Tobares Juan Guillermo— difiere de verdad: tiene dos días con dos filas de la web cada uno, que el
+ * importador declara intocables porque no puede elegir cuál pisa a cuál. Ese chip rojo es un dato.
+ */
+function cotejar(
+  d: DatosDelEspejo, personaId: string,
+  registros: readonly RegistroDeQuincena[], diasDeLaVista: readonly string[],
+): Cotejo {
+  const dias = d.diasDeLaPlanilla.get(personaId)
+  if (!d.hayEspejo || !dias || dias.size === 0) {
+    return cotejoConLaPlanilla(horasCrudasDe(registros), d.hayEspejo ? (d.horasDeLaPlanilla.get(personaId) ?? 0) : null, {
+      diasComparados: 0,
+      diasSinComparar: diasDeLaVista.length,
+    })
+  }
+  const enLosDias = registros.filter((r) => dias.has(r.fecha))
+  return cotejoConLaPlanilla(horasCrudasDe(enLosDias), d.horasDeLaPlanilla.get(personaId) ?? 0, {
+    diasComparados: dias.size,
+    diasSinComparar: diasDeLaVista.filter((f) => !dias.has(f)).length,
+  })
 }
 
 /**

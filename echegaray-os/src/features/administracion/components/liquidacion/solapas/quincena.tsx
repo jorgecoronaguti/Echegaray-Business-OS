@@ -81,6 +81,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
     lineas,
     cuadrosCerrados,
     horasDeLaPlanilla: espejo.horasPorPersona,
+    diasDeLaPlanilla: espejo.diasPorPersona,
     hayEspejo: espejo.hay,
     hoy,
   })
