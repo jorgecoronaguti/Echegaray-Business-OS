@@ -29,7 +29,22 @@ const RAIZ = 'administracion/PRESUPUESTOS - CLIENTES'
 /** La OC del adicional, guardada DENTRO de la carpeta de su obra mayor. */
 const OC_DEL_ADICIONAL = '15QUCmWc1KGfcQqiX-UPo3VDklfNEjqjz'
 
-const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
+
+// ═══ ESTE TEST NO CORRE SOLO, Y ES UNA DECISIÓN DE PRODUCCIÓN (11/09/2026) ═══
+//
+// Aplica migraciones adentro de una transacción. El ROLLBACK deshace los objetos, pero el DDL YA
+// DISPARÓ `pgrst_ddl_watch`: cada `create` manda a PostgREST a recargar el esquema, y cada recarga
+// frena ~1,5 s a TODO el que esté usando la app. El 11/09 hubo 148 recargas en un día y el dueño vio
+// la app trabada; buena parte salió de correr estos tests una y otra vez contra la base REAL.
+//
+// Por eso pide `ORQ_PG_DDL=1` explícito: la evidencia que da sigue estando disponible cuando hace
+// falta —antes de aplicar una migración, o auditando un cambio del modelo— y deja de pagarse sin
+// que nadie lo haya pedido.
+//
+//     ORQ_PG_DDL=1 node --test orquestador/lib/obra-papel-drive.pg.test.mjs
+const DDL_PERMITIDO = process.env.ORQ_PG_DDL === '1'
+const hayBase = DDL_PERMITIDO
+  && await getPool().query('select 1').then(() => true).catch(() => false)
 
 test('los papeles de cada obra salen de una sola vista y ninguno cae en la obra equivocada', { skip: !hayBase }, async (t) => {
   const c = await getPool().connect()

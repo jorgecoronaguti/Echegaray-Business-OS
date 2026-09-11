@@ -81,9 +81,10 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
     // y un archivo de la cadena que cambia después de aplicarse rompe el ledger, así que se
     // reemplazaron con `create or replace`. Auditar la versión VIEJA sería auditar lo que ya no
     // corre — por eso el barrido apunta a 0040 y no a los archivos originales.
-    // `pantalla_cliente` se redefinió dos veces el 11/09: 2000 le agregó el padre de cada obra y
-    // 2100 los papeles de Drive de cada obra. La ÚLTIMA es la que corre, y es la que se audita.
-    archivo: 'supabase/migrations/20260911T2100_los_papeles_de_una_obra_tienen_su_carpeta.sql',
+    // `pantalla_cliente` se redefinió tres veces el 11/09: 2000 le agregó el padre de cada obra,
+    // 2100 los papeles de Drive de cada obra y 2200 el contador que cuenta lo que la cara dibuja. La
+    // ÚLTIMA es la que corre, y es la que se audita.
+    archivo: 'supabase/migrations/20260911T2200_el_contador_de_documentos_cuenta_lo_que_se_dibuja.sql',
     funcion: 'pantalla_cliente',
     lee: [
       'cliente_panel',          // la ficha, y el slug → cliente_id

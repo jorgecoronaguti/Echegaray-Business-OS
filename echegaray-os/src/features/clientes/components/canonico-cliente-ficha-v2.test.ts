@@ -511,3 +511,29 @@ test('la cifra del cliente suma las obras EN EJECUCIÓN, no el grupo que se dibu
     'la tabla dejó de recibir el grupo con los adicionales, o el grupo volvió a ser el que se suma')
   assert.match(src, /basesEnCurso = enCurso\.map\(\(o\) => baseContractualDe\(economia\?\.get\(o\.obra_id\)\)\)/)
 })
+
+// ═══ LA CARA DOCUMENTOS ES UNA JERARQUÍA, NO CINCO BLOQUES (dueño, 11/09/2026 17:50) ═══
+//
+// «El CRM dice documentos de drive (0) y está pésimo eso, arreglar» · «no se entiende nada realmente
+// la UX de esa sección documentos». Eran cinco bloques de primer nivel con el mismo peso visual y el
+// mismo PDF podía estar en tres. Lo que estos dos tests atrapan es la vuelta atrás: que el rótulo
+// «Documentos de Drive · N» —el que decía 0 con 226 archivos abajo— vuelva a escribirse, y que el
+// número de la solapa vuelva a contar una cosa distinta de la que se dibuja.
+test('la cara Documentos no vuelve a escribir «Documentos de Drive»', () => {
+  const src = codigoPagina()
+  assert.doesNotMatch(src, /Documentos de Drive/,
+    'volvió el rótulo que publicaba un conteo que no era el de lo que se ve')
+  assert.doesNotMatch(src, /<PapelesPorTipo/,
+    'los papeles del OS volvieron a su propio bloque: van ADENTRO de la obra a la que pertenecen')
+  assert.doesNotMatch(src, /<ArchivosDeDrive/,
+    'volvió el índice completo de la carpeta del cliente como bloque de primer nivel')
+  assert.match(src, /<CaraDeDocumentos/)
+})
+
+test('el N de la solapa es lo que se dibuja adentro, no un conteo aparte', () => {
+  const src = codigoPagina()
+  assert.match(src, /documentos: ficha\.nDocumentos/,
+    'el contador de la solapa dejó de salir de la RPC, que lo cuenta sobre las mismas cuatro fuentes')
+  assert.doesNotMatch(src, /ficha\.nDocumentos \+ nPapeles/,
+    'volvió la suma que contaba dos veces los papeles con PDF y ninguna vez los de las obras')
+})

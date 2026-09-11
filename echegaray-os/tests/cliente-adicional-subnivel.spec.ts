@@ -95,17 +95,48 @@ test('la cara Documentos muestra los papeles de cada obra, y el adicional debajo
   const sinCarpeta = page.locator('[data-testid="obra-sin-carpeta"]')
   if (await sinCarpeta.count() > 0) await expect(sinCarpeta.first()).toContainText('sin carpeta vinculada')
 
-  // Los archivos aparecen al desplegar su categoría, no antes: 106 papeles abiertos son un listado
-  // de Drive, que es de lo que esta pantalla saca al dueño.
-  const primera = page.locator('[data-testid="categoria-de-papeles"]').first()
-  expect(await page.locator('[data-testid="papel-de-obra"]').first().isVisible()).toBe(false)
+  // CADA TRABAJO COLAPSADO: 226 papeles abiertos son un listado de Drive, que es de lo que esta
+  // pantalla saca al dueño. Se abre uno y recién ahí aparecen sus categorías y sus archivos.
+  expect(await page.locator('[data-testid="categoria-de-papeles"]').first().isVisible()).toBe(false)
+  const conPapeles = page.locator('[data-testid="papeles-obra"]:has([data-testid="categoria-de-papeles"])').first()
+  await conPapeles.locator('summary').first().click()
+  const primera = conPapeles.locator('[data-testid="categoria-de-papeles"]').first()
+  await expect(primera).toBeVisible()
+  expect(await conPapeles.locator('[data-testid="papel-de-obra"]').first().isVisible()).toBe(false)
   await primera.locator('summary').click()
-  await expect(page.locator('[data-testid="papel-de-obra"]').first()).toBeVisible()
+  await expect(conPapeles.locator('[data-testid="papel-de-obra"]').first()).toBeVisible()
+
+  // ═══ NINGÚN ARCHIVO SE DIBUJA DOS VECES EN TODA LA CARA ═══
+  //
+  // Es la afirmación que el rediseño tiene que sostener: el mismo PDF llega por la carpeta de la
+  // obra Y como OC del cliente. Se abre TODO y se cuentan las claves.
+  await page.evaluate(() => {
+    document.querySelectorAll('details').forEach((d) => d.setAttribute('open', ''))
+  })
+  const claves = await page.locator('[data-testid="papel-de-obra"]').evaluateAll(
+    (els) => els.map((e) => e.getAttribute('data-clave')))
+  expect(claves.length).toBeGreaterThan(0)
+  expect(new Set(claves).size, 'un archivo se dibuja dos veces en la cara Documentos').toBe(claves.length)
+  // EL N DE LA SOLAPA NO SE MIDE ACÁ, y es deliberado: lo cuenta la RPC (20260911T2200) y hasta que
+  // el dueño la aplique el navegador muestra el contador viejo. Un aserto que da rojo por una
+  // migración pendiente no distingue «está roto» de «falta aplicar». La paridad entre ese número y
+  // lo que se dibuja se mide donde SÍ se puede, contra el payload real y sobre los cinco clientes:
+  // `orquestador/lib/cara-documentos.pg.test.mjs`.
 
   // LA CAPTURA ES DEL VIEWPORT, NO DE LA PÁGINA ENTERA. Con `fullPage` la cara Documentos de
   // Messina mide 10.612px de alto —abajo siguen las OC, las OP y el índice de Drive del cliente,
   // 166 archivos— y el bloque que hay que mirar queda del tamaño de un sello. Se desplaza hasta él
   // y se fotografía lo que ve una persona.
+  // La captura del ESTADO DE TRABAJO: todo desplegado muestra el árbol entero, que es lo que hay
+  // que poder auditar. La de arriba ya midió que por defecto está colapsado.
   await page.locator('[data-testid="papeles-por-obra"]').scrollIntoViewIfNeeded()
   await page.screenshot({ path: 'tests/capturas/cliente-papeles-por-obra-1280.png' })
+
+  // Y A 400 px, que es donde una cara con cuatro niveles se rompe si se rompe.
+  await page.setViewportSize({ width: 400, height: 900 })
+  await page.locator('[data-testid="papeles-por-obra"]').scrollIntoViewIfNeeded()
+  const desborde = await page.evaluate(() =>
+    document.documentElement.scrollWidth - window.innerWidth)
+  expect(desborde, 'la cara Documentos se va de costado en un teléfono').toBeLessThanOrEqual(0)
+  await page.screenshot({ path: 'tests/capturas/cliente-papeles-por-obra-400.png' })
 })

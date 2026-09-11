@@ -92,6 +92,13 @@ export interface FichaLeida {
    * tiene carpeta vinculada, y la pantalla lo dice distinto.
    */
   papelesObra: Map<string, PapelesDeUnaObra>
+  /**
+   * obra_id → el enlace de su carpeta de Drive. Sin entrada = no tiene ninguna vinculada, que NO es
+   * lo mismo que no tener papeles. El enlace se arma con el id de la carpeta y no se pide a Drive:
+   * `obra_carpeta_drive` guarda el id, y una consulta más por obra para traer una URL previsible es
+   * un viaje que no compra nada.
+   */
+  carpetasObra: Map<string, string>
 }
 
 interface FichaCruda {
@@ -113,7 +120,7 @@ interface FichaCruda {
   presupuestos: unknown[]
   cobrado_por_obra: unknown[]
   papeles_obra: unknown[]
-  carpetas_obra: { obra_id: string }[]
+  carpetas_obra: { obra_id: string; drive_folder_id: string }[]
 }
 
 function nadaLeido(error: string | null): FichaLeida {
@@ -121,6 +128,7 @@ function nadaLeido(error: string | null): FichaLeida {
     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
     papeles: null, cobradoPorObra: null, nDocumentos: 0, papelesObra: new Map(),
+    carpetasObra: new Map(),
   }
 }
 
@@ -189,5 +197,7 @@ export async function leerFichaDeUnaConsulta(
       aceptadas: new Set(((j.economia_obras ?? []) as { contrato_fuente_drive_id?: string | null }[])
         .map((e) => e.contrato_fuente_drive_id).filter((x): x is string => !!x)),
     }),
+    carpetasObra: new Map((j.carpetas_obra ?? []).map((c) =>
+      [c.obra_id, `https://drive.google.com/drive/folders/${c.drive_folder_id}`])),
   }
 }

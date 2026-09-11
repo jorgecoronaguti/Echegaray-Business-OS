@@ -106,10 +106,17 @@ export function versionDe(nombre: string): number | null {
   return m ? Number(m[1]) : null
 }
 
+/** Un papel con su clasificación ya resuelta: lo que dibuja la cara Documentos. */
+export type PapelClasificado = PapelDeObra & {
+  categoria: Categoria
+  porque: string | null
+  aceptada: boolean
+}
+
 export interface GrupoDeCategoria {
   clave: Categoria
   rotulo: string
-  papeles: (PapelDeObra & { porque: string | null; aceptada: boolean })[]
+  papeles: PapelClasificado[]
 }
 
 export interface PapelesDeUnaObra {
