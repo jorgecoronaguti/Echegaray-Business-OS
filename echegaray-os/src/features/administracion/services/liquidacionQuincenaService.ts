@@ -23,6 +23,7 @@ import {
   type HorasPorPersona, type PersonaDeLiquidacion,
 } from './liquidacionCuadros.ts'
 import { horasDeQuincena, type PresenciaDeQuincena, type RegistroDeQuincena } from './liquidacionQuincena.ts'
+import { diasSinMotivoDeLaQuincena } from './grillaHorasQuincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
 import { leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
@@ -54,6 +55,14 @@ export interface LiquidacionDeLaQuincena {
    */
   camposEditables: CampoEditable[]
   estados: Record<string, EstadoDeLaQuincena>
+  /**
+   * CUÁNTAS AUSENCIAS DECLARADAS SIN MOTIVO tiene la quincena. Viaja para que la pantalla de
+   * Cierre pueda trabar el sello con la MISMA traba que la grilla de Horas publica: hasta el
+   * 11/09/2026 «Horas» dejaba el botón gris con «9 ausencias sin motivo» y «Cierre» lo dibujaba
+   * activo sobre la misma quincena. Se calcula con los registros y las presencias que esta
+   * función ya leyó — ni una consulta más — y con la definición de `celdaDelDia`, que es la única.
+   */
+  diasSinMotivo: number
   /** Cada fuente que no se pudo leer, con su mensaje. Vacío = se leyó todo. */
   errores: { que: string; error: string }[]
   /**
@@ -199,6 +208,11 @@ export async function getLiquidacionDeLaQuincena(
     })),
     camposEditables,
     estados,
+    diasSinMotivo: diasSinMotivoDeLaQuincena(
+      q,
+      (registros.data ?? []) as (RegistroDeQuincena & { persona_id: string })[],
+      (presencias.data ?? []) as (PresenciaDeQuincena & { persona_id: string })[],
+    ),
     errores,
   }
 }

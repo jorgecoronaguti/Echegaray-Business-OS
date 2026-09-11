@@ -79,8 +79,29 @@ const redondear2 = (n: number): number => Math.round(n * 100) / 100
  * El recibo sin giro NO bloquea (R7: es un estado legítimo, la plata sale en efectivo), pero se
  * informa igual: es lo que alguien tiene que ir a mirar al extracto.
  */
-export function estadoDeCierre(lineas: readonly LineaParaCerrar[]): EstadoDeCierre {
+export function estadoDeCierre(
+  lineas: readonly LineaParaCerrar[],
+  carga: { diasSinMotivo?: number } = {},
+): EstadoDeCierre {
   const pendientes: Pendiente[] = []
+  // ═══ UNA AUSENCIA SIN MOTIVO TRABA EL SELLO, Y HASTA HOY SÓLO TRABABA EN «HORAS» ═══
+  //
+  // La grilla dejaba el botón gris con «9 ausencias sin motivo»; esta pantalla lo dibujaba amarillo
+  // y activo sobre la misma quincena, porque acá sólo se miraban tarifas e importes. Dos criterios
+  // para la misma acción, y el que sella era el permisivo.
+  //
+  // No es cosmético: sin motivo el día vale 0 h (R4), y el día que alguien le ponga el motivo puede
+  // pasar a valer la jornada entera. Sellar antes congela el 0 y manda la corrección al camino de
+  // «reabrir con motivo escrito», que existe para los errores, no para lo que ya se sabía que
+  // faltaba. El conteo lo calcula `diasSinMotivoDeLaQuincena` con la definición de `celdaDelDia`.
+  const sinMotivo = carga.diasSinMotivo ?? 0
+  if (sinMotivo > 0) {
+    pendientes.push({
+      clave: 'sin-motivo',
+      cuantas: sinMotivo,
+      texto: `${sinMotivo} ausencia(s) declaradas sin motivo: sin motivo el día vale 0 h, y sellarlo congela ese 0. Poneles el motivo en la solapa Horas.`,
+    })
+  }
   const sinTarifa = lineas.filter(faltaLaTarifa)
   const sinCobra = lineas.filter((l) => !l.sinTarifa && l.cobra == null)
   const noCierra = lineas.filter((l) => (

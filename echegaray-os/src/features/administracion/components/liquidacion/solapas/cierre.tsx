@@ -45,7 +45,7 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
 }) {
   const quincena = quincenaDe(quincenaPedida && /^\d{4}-\d{2}-\d{2}$/.test(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const [{ cuadros, estados }, faltante, sellado, { porPersona: vigenteHoy }] = await Promise.all([
+  const [{ cuadros, estados, diasSinMotivo }, faltante, sellado, { porPersona: vigenteHoy }] = await Promise.all([
     getLiquidacionDeLaQuincena(supabase, quincena),
     leerFaltante(supabase, quincena),
     leerSellado(supabase, quincena),
@@ -54,7 +54,9 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
     getValorHoraVigente(supabase, hoy),
   ])
   const lineas: LineaParaCerrar[] = cuadros.flatMap((c) => c.lineas)
-  const estado = estadoDeCierre(lineas)
+  // LA MISMA TRABA QUE LA GRILLA DE HORAS. Sin esto, «Cierre» sellaba una quincena que «Horas»
+  // declaraba no cerrable — dos pantallas del módulo contestando distinto la misma pregunta.
+  const estado = estadoDeCierre(lineas, { diasSinMotivo })
   const cerrada = Object.values(estados).some((e) => e.estado === 'cerrada')
   const cerradaEn = Object.values(estados).find((e) => e.cerradaEn)?.cerradaEn ?? null
   const totalHoras = cuadros.map((c) => totalesDeCuadro(c.lineas)).reduce((a, t) => a + t.horas, 0)

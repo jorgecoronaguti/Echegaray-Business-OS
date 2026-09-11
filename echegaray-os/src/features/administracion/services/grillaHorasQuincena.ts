@@ -187,6 +187,40 @@ export function filasDeGrilla(d: DatosDeGrilla): FilaDeGrilla[] {
   })
 }
 
+/**
+ * CUÁNTOS DÍAS DE LA QUINCENA TIENEN UNA AUSENCIA DECLARADA SIN MOTIVO.
+ *
+ * ═══ POR QUÉ ESTO EXISTE, Y POR QUÉ ACÁ ═══
+ *
+ * La solapa «Horas» publica «9 ausencias sin motivo» y deja el botón de cierre gris; la solapa
+ * «Cierre» dibujaba el botón amarillo y activo sobre la MISMA quincena, porque `estadoDeCierre` sólo
+ * miraba tarifas e importes. Dos pantallas del mismo módulo, la misma acción, dos criterios — y la
+ * que sella es la permisiva.
+ *
+ * La consecuencia no es cosmética: una ausencia sin motivo vale 0 h (R4), y el día que alguien le
+ * ponga el motivo puede pasar a valer la jornada entera. Sellar antes congela el 0 y deja la
+ * corrección del lado de «reabrir con motivo escrito».
+ *
+ * Vive en este archivo y no en `liquidacionCierre.ts` porque la definición de «sin motivo» es la de
+ * `celdaDelDia` —la misma que pinta la celda en rojo— y una segunda copia daría dos respuestas a la
+ * misma pregunta. Es puro: no lee la base, recibe lo que la liquidación YA leyó.
+ */
+export function diasSinMotivoDeLaQuincena(
+  q: Quincena,
+  registros: readonly (RegistroDeQuincena & { persona_id: string })[],
+  presencias: readonly (PresenciaDeQuincena & { persona_id: string })[],
+): number {
+  const dias = diasDeLaQuincenaSinDomingos(q)
+  const ids = new Set([...registros.map((r) => r.persona_id), ...presencias.map((p) => p.persona_id)])
+  let total = 0
+  for (const id of ids) {
+    const suyos = registros.filter((r) => r.persona_id === id)
+    const pres = new Map(presencias.filter((p) => p.persona_id === id).map((p) => [p.fecha, p]))
+    for (const f of dias) if (celdaDelDia(f, suyos, pres.get(f)).sinMotivo) total++
+  }
+  return total
+}
+
 export interface ResumenDeGrilla {
   dias: string[]
   cargadas: number
