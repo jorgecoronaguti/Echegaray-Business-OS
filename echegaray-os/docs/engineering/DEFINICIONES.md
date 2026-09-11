@@ -56,6 +56,10 @@ haya desaparecido de verdad.
   discrepar.
 - `from\('obra_canonica'\)[^;]*monto_contratado` — la misma columna, leída de la tabla.
 - `contratado_de_obra\(` — la función que lee ese campo. Sigue viva porque `obra_panel` la usa.
+- `from\('obra_contrato'\)` — la tabla del desglose (11/09/2026) se lee SÓLO a través de
+  `obra_economia_cartera` (`contrato_*`), que la valúa en pesos con el mismo dólar que `contratado`
+  y aplica `ve_economia()`. Leerla directo publicaría dólares sin valuar al lado de pesos y una
+  tercera versión del contratado.
 
 ### Las excepciones
 
