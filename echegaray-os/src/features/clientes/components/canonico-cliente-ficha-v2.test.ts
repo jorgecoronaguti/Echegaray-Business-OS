@@ -327,7 +327,7 @@ test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el
   const src = codigoListas()
   // AVANCE tiene pista propia desde 560 — nunca vuelve adentro de ESTADO — y la economía de OBRAS
   // sólo aparece con ancho de escritorio.
-  assert.match(src, /<RotuloCol derecha>Cobrado c\/IVA<\/RotuloCol>/)
+  assert.match(src, /<RotuloCol derecha>Cobrado neto<\/RotuloCol>/)
   // ═══ COSTO MO Y COSTO MAT. SALIERON DE ESTA TABLA (10/09/2026, DISENO-FICHA-CLIENTE-v3 §3.1) ═══
   //
   // Este archivo ya declaraba que la ficha del cliente es la cara COMERCIAL de la relación y que el
