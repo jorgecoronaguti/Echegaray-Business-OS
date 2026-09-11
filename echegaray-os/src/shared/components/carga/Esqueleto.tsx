@@ -101,18 +101,31 @@ export function SeccionEsqueleto({
   cols, filas = 8, anchoTitulo = 'w-36', vistas = 2,
 }: { cols: number; filas?: number; anchoTitulo?: string; vistas?: number }) {
   return (
-    <div data-testid="esqueleto-carga" aria-busy="true" aria-live="polite">
+    // LA GEOMETRÍA ES LA DEL `Marco` DEL CANON, NO LA DEL `PageShell` (corrección del 11/09/2026).
+    //
+    // La primera versión envolvía el contenido en `mx-auto max-w-[1400px] px-4 py-7`, que es el
+    // shell de las pantallas viejas. Las secciones de área NO usan ese shell: su `Marco` es
+    // `minHeight: 100vh` + fondo `#F7F7F5` y la lista llega hasta el borde, con 20px de costado
+    // puestos por cada bloque. Con el ancho de lectura del shell, el esqueleto dibujaba una tabla
+    // más angosta y centrada que la real, y al llegar el contenido la tabla saltaba de ancho y de
+    // posición — exactamente el salto que este componente existe para evitar.
+    <div
+      data-testid="esqueleto-carga" aria-busy="true" aria-live="polite"
+      style={{ minHeight: '100vh', background: '#F7F7F5', display: 'flex', flexDirection: 'column' }}
+    >
       {/* La banda de áreas, a sangre y con el filo inferior que apoya en el header. */}
       <div className="h-[37px] border-b border-line bg-surface" />
-      <div className="mx-auto max-w-[1400px] px-4 py-7 sm:px-6">
+      <div style={{ padding: '20px 20px 0' }}>
         <Linea className={`h-5 ${anchoTitulo}`} />
-        {/* La fila de vistas y el buscador: chips a la izquierda, caja de búsqueda a la derecha. */}
-        <div className="mt-5 mb-5 flex items-center gap-3">
-          {Array.from({ length: vistas }, (_, i) => (
-            <Bloque key={i} className="h-6 w-28 motion-safe:animate-pulse" />
-          ))}
-          <Bloque className="ml-auto h-7 w-56 motion-safe:animate-pulse" />
-        </div>
+      </div>
+      {/* La fila de vistas y el buscador: chips a la izquierda, caja de búsqueda a la derecha. */}
+      <div style={{ padding: '16px 20px' }} className="flex items-center gap-3">
+        {Array.from({ length: vistas }, (_, i) => (
+          <Bloque key={i} className="h-6 w-28 motion-safe:animate-pulse" />
+        ))}
+        <Bloque className="ml-auto h-7 w-56 motion-safe:animate-pulse" />
+      </div>
+      <div style={{ padding: '0 20px 20px' }}>
         <TablaEsqueleto cols={cols} filas={filas} />
       </div>
       <span className="sr-only">Cargando…</span>

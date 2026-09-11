@@ -28,12 +28,46 @@ import { fileURLToPath } from 'node:url'
 //     real, y nada más.
 const RAIZ = fileURLToPath(new URL('../../../../', import.meta.url))
 
-/** El valor de una clave numérica dentro del bloque `staleTimes` de `next.config.ts`. */
+/**
+ * EL BLOQUE `{...}` QUE ARRANCA EN `desde`, con sus llaves balanceadas.
+ *
+ * Hace falta balancear y no cortar en el primer `}`: `experimental` contiene objetos anidados
+ * —`staleTimes` es uno—, y una expresión regular perezosa cierra el bloque en el lugar equivocado.
+ */
+function bloqueDesde(fuente: string, desde: number): string | null {
+  const abre = fuente.indexOf('{', desde)
+  if (abre < 0) return null
+  let llaves = 0
+  for (let i = abre; i < fuente.length; i++) {
+    if (fuente[i] === '{') llaves++
+    else if (fuente[i] === '}' && --llaves === 0) return fuente.slice(abre + 1, i)
+  }
+  return null
+}
+
+/**
+ * El valor de una clave numérica de `staleTimes`, **exigiendo que `staleTimes` esté DENTRO de
+ * `experimental`**.
+ *
+ * ═══ POR QUÉ ESTÁ ANCLADO, Y NO ES UN DETALLE (11/09/2026) ═══
+ *
+ * La primera versión de este test buscaba `staleTimes` en cualquier parte del archivo. Con eso,
+ * mover la clave a la raíz de `NextConfig` —que es el error natural, porque en Next 16 varias
+ * opciones SÍ subieron de `experimental` a la raíz— dejaba el test en VERDE y la opción sin ningún
+ * efecto: el schema de Next la descarta como `unrecognized_keys` y sólo imprime una advertencia que
+ * nadie mira. O sea: un control que no puede distinguir la configuración que funciona de la que no.
+ */
 function staleTime(clave: 'dynamic' | 'static'): number | null {
   const fuente = readFileSync(RAIZ + 'next.config.ts', 'utf8')
-  const bloque = fuente.match(/staleTimes\s*:\s*\{([^}]*)\}/)
-  if (!bloque) return null
-  const valor = bloque[1].match(new RegExp(`${clave}\\s*:\\s*(\\d+)`))
+  const experimental = fuente.search(/\bexperimental\s*:/)
+  if (experimental < 0) return null
+  const dentro = bloqueDesde(fuente, experimental)
+  if (dentro === null) return null
+  const donde = dentro.search(/\bstaleTimes\s*:/)
+  if (donde < 0) return null
+  const bloque = bloqueDesde(dentro, donde)
+  if (bloque === null) return null
+  const valor = bloque.match(new RegExp(`\\b${clave}\\s*:\\s*(\\d+)`))
   return valor ? Number(valor[1]) : null
 }
 
@@ -41,7 +75,8 @@ test('el router reusa la pantalla que se acaba de ver (staleTimes.dynamic > 0)',
   const dinamico = staleTime('dynamic')
   assert.notEqual(
     dinamico, null,
-    'next.config.ts no declara experimental.staleTimes.dynamic: con el default de Next (0 s) el Client '
+    'next.config.ts no declara experimental.staleTimes.dynamic DENTRO de experimental: con el default de '
+    + 'Next (0 s) el Client '
     + 'Router Cache no reusa NADA entre rutas dinámicas, y todas las de este OS lo son. Volver a la '
     + 'pantalla anterior vuelve a ser un render de servidor completo — el «renderiza todo siempre que me '
     + 'muevo de sección en sección» del 11/09/2026.',

@@ -37,30 +37,50 @@ const nextConfig: NextConfig = {
     // ═══ POR QUÉ MOVERSE DE SECCIÓN EN SECCIÓN VOLVÍA A RENDERIZAR TODO (11/09/2026) ═══
     //
     // El dueño, textual: *«app.ecsas.com.ar está muy lenta, parece que renderiza todo siempre que me
-    // muevo de sección en sección»*. Es literal, y no era una impresión: el Client Router Cache de
-    // Next guarda el payload RSC de cada pantalla visitada, y desde Next 15 su tiempo de reuso por
-    // defecto para rutas dinámicas es CERO segundos (`staleTimes.dynamic: 0`, comprobado en el
-    // fuente del tag v16.2.10: `config-shared.ts` `defaultConfig.experimental`). En este OS TODAS las
-    // rutas son dinámicas —86 archivos con `force-dynamic`—, así que volver a Clientes después de
-    // pasar por Obras no reusaba nada: era otro render de servidor completo, con sus consultas a São
-    // Paulo y su pasada por el middleware.
+    // muevo de sección en sección»*. Es literal: el Client Router Cache de Next guarda el payload RSC
+    // de cada pantalla visitada, y desde Next 15 su tiempo de reuso por defecto para rutas dinámicas
+    // es CERO segundos (`staleTimes.dynamic: 0`, comprobado en el fuente del tag v16.2.10,
+    // `config-shared.ts` → `defaultConfig.experimental`). En este OS TODAS las rutas son dinámicas —86
+    // archivos con `force-dynamic`—, así que volver a Clientes después de pasar por Personal no
+    // reusaba nada: otro render de servidor completo, con sus consultas a São Paulo y su pasada por el
+    // middleware.
     //
-    // Ir y volver entre dos secciones costaba, medido en pantallas, cuatro renders donde alcanzaban
-    // dos.
+    // MEDIDO A/B, EN EL MISMO ENTORNO Y CON UNA SOLA VARIABLE: dos builds de producción idénticos
+    // salvo esta clave, servidos por `next start` en la misma máquina, la misma sesión y el mismo
+    // recorrido (`/tmp/claude-1001/perf-1109/vuelta2.cjs`, seis saltos entre dos secciones). Se
+    // cuentan sólo los pedidos RSC DEL DESTINO: al aterrizar, algunos componentes piden su propia ruta
+    // y ese pedido no lo causó el clic.
     //
-    // ═══ 60 SEGUNDOS, Y POR QUÉ ESE NÚMERO NO ES UN CACHÉ DE DATOS ═══
+    //                                          dynamic: 0     dynamic: 60
+    //   los 6 saltos, renders de servidor ······    9 ·············· 2
+    //   las 4 VUELTAS a una pantalla ya vista ·     4 ·············· 0
+    //   las 4 vueltas, tiempo total ···········  2.248 ms ······· 385 ms
     //
-    // Esto NO cachea datos económicos: cachea el payload de UNA pantalla que la persona acaba de
-    // ver, en SU navegador, durante un minuto, y muere al recargar. La ventana sale del uso real: el
-    // dueño rebota entre dos secciones en segundos, no en horas. Más corto no llega a cubrir el
-    // rebote; mucho más largo empieza a mostrar como fresco un número que envejeció.
+    // Las dos «primeras» visitas también bajaron (3→1 y 2→1): con reuso en cero, el propio router
+    // volvía a pedir lo que acababa de traer.
     //
-    // Y NO SOBREVIVE A UNA ESCRITURA: las 73 Server Actions del OS que guardan algo llaman a
-    // `revalidatePath`/`revalidateTag`, y eso invalida el Router Cache del cliente además del caché
-    // del servidor. O sea: lo que se reusa es una pantalla que nadie modificó.
+    // ═══ 60 SEGUNDOS: QUÉ SE GANA Y QUÉ SE ACEPTA ═══
     //
-    // `static: 300` es el default de Next y se escribe para que se vea que se decidió mirarlo — el
-    // schema de Next además rechaza cualquier valor menor a 30.
+    // Esto NO es un caché de datos del servidor: es el payload de UNA pantalla que esta persona acaba
+    // de ver, en SU navegador, y muere al recargar.
+    //
+    // LO QUE SE ACEPTA, SIN adornarlo: si OTRO actor —el bot, un timer, un worker, otra persona—
+    // cambia el dato mientras tanto, volver a esa pantalla dentro de los 60 s muestra el estado
+    // anterior. Una escritura hecha DESDE el navegador no tiene ese problema: las Server Actions del
+    // OS llaman `revalidatePath`/`revalidateTag`, y eso —igual que entrar y salir de la sesión—
+    // invalida el caché entero. `router.refresh()` (30 usos, entre ellos el auto-refresh de `/os`)
+    // tampoco lo lee.
+    //
+    // Y EL RIESGO NO ES NUEVO: el botón atrás/adelante del navegador ya servía la pantalla anterior
+    // ignorando este tiempo (`bfcache.js` de Next). Lo que cambia es que ahora también lo hace el clic
+    // en la barra, durante un minuto.
+    //
+    // POR QUÉ UN MINUTO Y NO MÁS: la ventana sale del uso real —el dueño rebota entre dos secciones en
+    // segundos—, y `router-cache.test.ts` fija los dos bordes, porque los dos son defectos: 0 es el de
+    // hoy, y un número grande es el de mañana, peor, porque no se siente lento sino rápido y viejo.
+    //
+    // `static: 300` es el default de Next y se escribe para que se vea que se decidió mirarlo — su
+    // schema además rechaza cualquier valor menor a 30.
     staleTimes: {
       dynamic: 60,
       static: 300,
