@@ -148,8 +148,12 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const obrasEnCurso = visibles.reduce((a, c) => a + c.enCurso.length, 0)
   // LA MISMA BASE QUE LA COLUMNA (auditor, 11/09/2026): el subtítulo decía $ 350,4 M y la columna
   // sumaba $ 394,5 M — los $ 44,1 M de materiales de Quattropani que `cliente_economia` no conoce.
-  const bases = visibles.map((c) => sumaDeObras(c.enCurso, baseDelContrato).total).filter((v): v is number => v !== null)
+  // Y LA MISMA REGLA DEL HUECO QUE LA FILA: si algún trabajo no tiene base, la suma es incompleta
+  // y se dice; una suma parcial publicada como total es el defecto que el auditor marcó dos veces.
+  const sumas = visibles.map((c) => sumaDeObras(c.enCurso, baseDelContrato))
+  const bases = sumas.map((s) => s.total).filter((v): v is number => v !== null)
   const contratadoTotal = bases.length ? bases.reduce((a, v) => a + v, 0) : null
+  const trabajosSinBase = sumas.reduce((a, s) => a + s.faltan, 0)
 
   // ═══ EL PANEL DE ÓRDENES (`?ordenes=<obra_id>` o `?ordenes=cliente:<id>`) ═══
   //
@@ -217,7 +221,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
               veEconomia
                 ? (contratadoTotal === null
                     ? 'sin precios en OBRAS'
-                    : `${pesos(contratadoTotal)} contratado en curso`)
+                    : `${pesos(contratadoTotal)} contratado en curso${trabajosSinBase ? ` · suma incompleta: ${trabajosSinBase} sin precio` : ''}`)
                 : null,
             ].filter(Boolean).join(' · '),
           }]}
@@ -335,6 +339,12 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 // venían dentro de `cliente_panel` y eran otra suma: el panel decía «$31.846.475»
                 // y la fila de al lado «$156.174.253» del mismo cliente.
                 economia={economiaCliente?.get(seleccionado.cliente_id) ?? null}
+                contratadoEnCurso={(() => {
+                  const fila = cartera.find((x) => x.cliente_id === seleccionado.cliente_id)
+                  if (!fila) return null
+                  const s = sumaDeObras(fila.enCurso, baseDelContrato)
+                  return s.faltan ? null : s.total
+                })()}
               />
             )}
           </div>

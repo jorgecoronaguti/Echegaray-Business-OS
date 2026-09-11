@@ -97,6 +97,18 @@ test('la suma del cliente declara cuántos trabajos no tienen el dato', () => {
   assert.deepEqual(sumaDeObras([obra({ obra_id: 'b' })], baseDelContrato), { total: null, faltan: 1 })
 })
 
+test('el subtítulo de /clientes y el panel lateral suman la MISMA base que la columna', () => {
+  // Auditor 11/09/2026: tres superficies del módulo publicaban tres «contratado en curso» distintos
+  // ($ 350,4 M / $ 394,5 M / $ 95,3 M). La regla es una función y las tres la llaman.
+  const pagina = leer('../../../app/(main)/clientes/page.tsx')
+  assert.match(pagina, /sumaDeObras\(c\.enCurso, baseDelContrato\)/)
+  assert.doesNotMatch(pagina, /c\.contratado !== null|\(c\.contratado \?\? 0\)/, 'nadie vuelve a sumar cliente_economia.contratado_en_curso')
+  assert.match(pagina, /trabajosSinBase \? ` · suma incompleta/)
+  assert.match(pagina, /contratadoEnCurso=\{\(\(\) => \{[\s\S]*?sumaDeObras\(fila\.enCurso, baseDelContrato\)/)
+  const panel = leer('./PanelCliente.tsx')
+  assert.doesNotMatch(panel, /economia\?\.contratado_en_curso/, 'el panel dejó de leer cliente_economia para el contratado')
+})
+
 test('el jefe de obra no ve una sola cifra', () => {
   const src = tabla()
   assert.match(src, /veEconomia \? 'Contratado' : ''/)

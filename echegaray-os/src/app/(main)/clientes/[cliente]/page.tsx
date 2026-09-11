@@ -173,7 +173,6 @@ export default async function ClientePage({ params, searchParams }: {
   const cartera = { data: veEconomia ? ficha.presupuestos : [], error: null }
   const economia = ficha.economia
   const papeles = ficha.papeles
-  const economiaCliente = veEconomia ? ficha.economiaCliente : null
   // LO COBRADO POR TRABAJO, de la MISMA conversión que usa `/clientes` (`armarCobradoPorObra` sobre
   // `public.obra_cuenta`). Sin esto la ficha no puede decir si un trabajo cobró; y con una lectura
   // propia, las dos pantallas del módulo volverían a poder decir números distintos.

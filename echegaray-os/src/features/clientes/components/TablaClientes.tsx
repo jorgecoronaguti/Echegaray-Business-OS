@@ -87,7 +87,7 @@ function CifraDeCliente({ valor, faltan, testid, clase = '', titulo, queFalta }:
   return (
     <span className={`flex items-center justify-end font-mono tabular-nums ${clase}`} data-testid={testid}
       data-estado={!completa ? 'incompleta' : valor === 0 ? 'no-incluye' : 'suma'}
-      title={completa ? titulo : `${titulo} No se publica la suma: ${faltan} trabajo(s) ${queFalta}.`}
+      title={completa || !faltan ? titulo : `${titulo} No se publica la suma: ${faltan} trabajo(s) ${queFalta}.`}
       style={{ fontSize: '12px', color: completa ? V.tinta : V.lupa, textAlign: 'right' }}>
       {!completa ? '—' : valor === 0 ? <span style={{ color: V.apagado, fontFamily: 'inherit' }}>no incluye</span> : pesos(valor)}
     </span>

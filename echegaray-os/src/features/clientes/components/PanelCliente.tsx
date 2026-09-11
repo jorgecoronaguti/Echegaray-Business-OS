@@ -53,8 +53,14 @@ const ATAJO: CSSProperties = {
 const CHEVRON: CSSProperties = { color: V.tenue, fontSize: '12px' }
 
 export function PanelCliente({
-  c, obras, veEconomia, cerrarHref, puedeEditar, economia = null,
+  c, obras, veEconomia, cerrarHref, puedeEditar, economia = null, contratadoEnCurso = null,
 }: {
+  /**
+   * LO CONTRATADO EN CURSO, DE LA MISMA REGLA QUE LA FILA DE AL LADO (auditor, 11/09/2026): la suma
+   * de `baseDelContrato` de sus trabajos en curso, completa o nada. `cliente_economia` sólo conoce
+   * el precio de OBRAS y el panel decía $ 95,3 M de Quattropani con la fila en $ 139,4 M detrás.
+   */
+  contratadoEnCurso?: number | null
   c: ClientePanel
   /** TODAS sus obras, no sólo las activas: el panel muestra la relación completa. */
   obras: ObraDePanel[]
@@ -79,7 +85,7 @@ export function PanelCliente({
     !c.telefono?.trim() && 'el teléfono',
     // «El contrato de sus obras» es el PRECIO en OBRAS, no el papel: se pregunta por lo contratado
     // en curso, que es lo que el panel muestra dos bloques más abajo.
-    economia?.contratado_en_curso == null && 'el contrato de sus obras',
+    contratadoEnCurso == null && 'el contrato de sus obras',
   ].filter((x): x is string => typeof x === 'string')
 
   return (
@@ -138,10 +144,8 @@ export function PanelCliente({
           // «CONTRATADO EN CURSO» Y NO «CONTRATADO» A SECAS: es el mismo número y el mismo rótulo
           // que la columna de la lista y que la cabecera de la ficha. El acumulado de todas sus
           // obras es otro número y no se dibuja acá para no tener dos «Contratado» en la pantalla.
-          <Dato k="Contratado en curso" falta={economia?.contratado_en_curso == null} mono>
-            {economia?.contratado_en_curso == null
-              ? SIN_PRECIO_EN_OBRAS
-              : pesos(economia.contratado_en_curso)}
+          <Dato k="Contratado en curso" falta={contratadoEnCurso == null} mono>
+            {contratadoEnCurso == null ? SIN_PRECIO_EN_OBRAS : pesos(contratadoEnCurso)}
           </Dato>
         )}
         {/* ═══ «COSTO REAL» SE FUE DEL PANEL (dueño, 10/09/2026 17:15) ═══
