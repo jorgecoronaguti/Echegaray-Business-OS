@@ -313,12 +313,16 @@ export function deBancoObligaciones({
     pagosF931.set(`${e.devengado}·${RUBRO_CARGAS}`, { ...p, fueraDelDeclarado: 0 })
   }
 
-  // LA CUOTA DE PLAN: el único importe que el OS conoce. Sin cronograma no se proyecta nada (Fase 4).
-  const cuota = num(planes?.cuota_conocida)
-  if (cuota) {
+  // ═══ LAS CUOTAS DE PLAN: SE RECONOCEN POR LOS IMPORTES OBSERVADOS, NO POR UNO SOLO ═══
+  //
+  // Medido en el extracto el 11/09/2026: los planes se debitan SOLOS el 16 (o el primer hábil
+  // siguiente) y son tres importes recurrentes —$1.034.931,85 · $473.767,08 · $2.494.875,65—, no uno.
+  // Con un único importe en el archivo se reponía una cuota de tres y el cuadro perdía $9 M de REAL.
+  // Cada importe viaja en el JSON con DÓNDE se observó: es evidencia, no un parámetro.
+  for (const cuota of cuotasDeLosPlanes(planes)) {
     for (const d of afip) {
       if (usados.has(d.fila)) continue
-      if (Math.abs(d.importe - cuota) > TOLERANCIA_APAREO) continue
+      if (Math.abs(d.importe - cuota.importe) > TOLERANCIA_APAREO) continue
       emitirSiLibre(d, {
         rubro: RUBRO_PLANES,
         concepto: `Cuota plan de facilidades ARCA · ${isoDeSerial(d.fecha).slice(0, 7)}`,
@@ -344,6 +348,17 @@ export function deBancoObligaciones({
   }
 
   return { movimientos, pagosF931, avisos }
+}
+
+/**
+ * NÚCLEO PURO: los importes de cuota que el OS vio de verdad. Lista vacía si no hay archivo.
+ *
+ * Devolver `[]` es una respuesta: sin importes observados no se reconoce ninguna cuota y el libro
+ * pierde la línea del plan — visible en el control de cobertura, que la declara SIN_PROYECCION.
+ * Inventar un importe «razonable» sería lo único peor.
+ */
+export function cuotasDeLosPlanes(planes) {
+  return (planes?.cuotas_observadas ?? []).filter((c) => num(c?.importe))
 }
 
 /**

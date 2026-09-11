@@ -55,8 +55,22 @@ export const RUBRO_SAC = 'Nómina · SAC'
  * del 15, que se paga alrededor del 17. Medido contra los lotes de 2026.
  */
 export const CUOTAS_SAC = Object.freeze([
-  Object.freeze({ semestre: 1, vence: [6, 30], ventana: [[6, 20], [7, 5]], meses: [1, 2, 3, 4, 5, 6] }),
-  Object.freeze({ semestre: 2, vence: [12, 18], ventana: [[12, 15], [12, 31]], meses: [7, 8, 9, 10, 11, 12] }),
+  Object.freeze({
+    semestre: 1, vence: [6, 30], ventana: [[6, 20], [7, 5]], meses: [1, 2, 3, 4, 5, 6],
+    // ═══ `atribucion` NO ES `meses`, Y CONFUNDIRLOS COSTÓ UNA MEDICIÓN (11/09/2026) ═══
+    //
+    // `meses` son los meses que se DEVENGAN (sobre los que se busca la mejor remuneración).
+    // `atribucion` es la ventana de FECHA DE CAJA en la que una fila de Compras que dice «SAC» puede
+    // pertenecer a este semestre — y es más ancha, porque el aguinaldo de junio se paga el 30/06 pero
+    // también el 3 de julio. Con `meses` como criterio, la fila pagada en julio se atribuía al SEGUNDO
+    // semestre y bloqueaba la proyección de diciembre: medido en la simulación, $7,98 M que aparecían
+    // y desaparecían según el mes en que alguien cargó la fila.
+    atribucion: [[6, 1], [8, 15]],
+  }),
+  Object.freeze({
+    semestre: 2, vence: [12, 18], ventana: [[12, 15], [12, 31]], meses: [7, 8, 9, 10, 11, 12],
+    atribucion: [[11, 15], [12, 31]],
+  }),
 ])
 
 /** La proporción del mejor mes del semestre. Es la ley, no un parámetro: no se configura. */
@@ -91,8 +105,9 @@ export function deSac({ debitos = [], usados = new Set(), nomina = [], compras =
     // La fila de Compras que tipea el SAC no tiene por qué coincidir con lo que el banco pagó ni con
     // lo que la ley da: es el número que alguien estimó. Lo único que se puede afirmar es que esa
     // fila YA representa el aguinaldo de su semestre, y que emitir otro al lado lo duplicaría.
-    const ya = enCompras.filter((o) => c.meses.includes(Number(isoDeSerial(o.fecha).slice(5, 7)))
-      && Number(isoDeSerial(o.fecha).slice(0, 4)) === año)
+    const desdeAtrib = serialDe(año, c.atribucion[0][0], c.atribucion[0][1])
+    const hastaAtrib = serialDe(año, c.atribucion[1][0], c.atribucion[1][1])
+    const ya = enCompras.filter((o) => o.fecha >= desdeAtrib && o.fecha <= hastaAtrib)
     if (ya.length) {
       avisos.push(`libro-extractores-sac: el SAC del semestre ${c.semestre} ya está en Compras `
         + `(${ya.map((o) => `f${o.fila} ${pesos(o.total)}`).join(', ')}) — no emito: mientras esa fila `

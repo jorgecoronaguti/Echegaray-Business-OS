@@ -44,7 +44,14 @@ const fila = ({ prov, total, estado, rubro, fecha }) => {
   return f
 }
 const COMPRAS_VACIA = [[], [], ENC]
-const planes = { cuota_conocida: 2494876 }
+// Los tres importes de cuota observados en el extracto el 11/09/2026, con la forma del archivo real.
+const planes = {
+  cuotas_observadas: [
+    { importe: 1034931.85, donde: '_BANCO_RAW f75' },
+    { importe: 473767.08, donde: '_BANCO_RAW f76' },
+    { importe: 2494876, donde: 'Compras f698' },
+  ],
+}
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // EL PRENDARIO REAL
@@ -175,14 +182,24 @@ test('el gremial que Compras todavía lleva no se emite', () => {
   assert.equal(r.movimientos.filter((m) => m.rubro === RUBRO_GREMIALES).length, 0)
 })
 
-test('la cuota de plan de ARCA se reconoce por su importe conocido', () => {
+test('LAS TRES cuotas de plan se reconocen, no sólo una — con una sola se perdían $9 M de REAL', () => {
   const r = deBancoObligaciones({
     debitos: DEBITOS, compras: COMPRAS_VACIA, declaradoF931: DECLARADO, fechasCargas: FECHAS_CARGAS, planes,
   })
   const p = r.movimientos.filter((m) => m.rubro === RUBRO_PLANES)
-  assert.equal(p.length, 1)
+  assert.equal(p.length, 1, 'de los débitos de este fixture sólo uno coincide con una cuota observada')
   assert.equal(p[0].importe, 2494876)
   assert.equal(p[0].estado, 'REAL')
+  // Y con los tres débitos automáticos del extracto real, los tres se reponen.
+  const tres = deBancoObligaciones({
+    debitos: [
+      debito('2026-06-16', 'Debito automatico - Afip', 1034931.85, NAT.afip, 75),
+      debito('2026-06-16', 'Debito automatico - Afip', 473767.08, NAT.afip, 76),
+      debito('2026-08-18', 'Debito automatico - Afip', 2494875.65, NAT.afip, 409),
+    ],
+    compras: COMPRAS_VACIA, planes,
+  })
+  assert.equal(tres.movimientos.filter((m) => m.rubro === RUBRO_PLANES).length, 3)
 })
 
 test('SIN el archivo de planes no se inventa ninguna cuota', () => {

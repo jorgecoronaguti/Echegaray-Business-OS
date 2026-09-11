@@ -97,18 +97,27 @@ export const DUENOS = [
   {
     rubro: 'Nómina · Cargas sociales', dueno: 'Cargas Sociales', horizonte: HORIZONTE.diciembre,
     porque: 'La cadena F931 proyecta las cargas desde los jornales. Cuelga de la línea de arriba: si '
-      + 'los jornales llegan a diciembre y las cargas no, se rompió la cadena.',
+      + 'los jornales llegan a diciembre y las cargas no, se rompió la cadena. El PAGO ya no lo prueba '
+      + 'Compras sino el débito de ARCA apareado al centavo contra la DDJJ declarada '
+      + '(libro-extractores-banco-obligaciones.mjs, 11/09/2026): el mes que el banco pagó la cadena '
+      + 'no lo vuelve a emitir.',
   },
   {
     rubro: 'Nómina · Gremiales', dueno: 'Cargas Sociales', horizonte: HORIZONTE.diciembre,
-    porque: 'Misma cadena que las cargas: UOCRA e IERIC se devengan con cada quincena liquidada.',
+    porque: 'Misma cadena que las cargas: UOCRA e IERIC se devengan con cada quincena liquidada. El '
+      + 'pago lo prueba el banco —el dueño prohibió cargarlos en Compras— y desde el 11/09/2026 ese '
+      + 'pago además EXISTE como movimiento REAL de la línea: antes sólo restaba la obligación, así '
+      + 'que la plata salía del saldo y no aparecía en ningún renglón del cuadro.',
   },
   {
-    rubro: 'Nómina · SAC', dueno: 'Compras', horizonte: HORIZONTE.sin,
-    porque: 'HUECO DECLARADO: el aguinaldo es ESTACIONAL (junio y diciembre), no una serie mensual. '
-      + 'Hoy sólo entra si alguien lo tipea en Compras, así que el medio aguinaldo de diciembre puede '
-      + 'no estar en el cuadro. Proyectarlo con un promedio mensual sería peor que no tenerlo: lo '
-      + 'repartiría en doce meses donde sale en uno. Necesita que la planilla de nómina lo devengue.',
+    // EL HUECO SE CERRÓ EL 11/09/2026 (ver lib/libro-extractores-sac.mjs). Decía «hoy sólo entra si
+    // alguien lo tipea en Compras»: con Compras vaciada por orden del dueño eso dejaba la línea sin
+    // ningún emisor. Ahora cuelga de la nómina, que es lo que el propio hueco pedía.
+    rubro: 'Nómina · SAC', dueno: 'Jornales por Quincena', horizonte: HORIZONTE.cargado,
+    porque: 'El aguinaldo es ESTACIONAL —30/06 y 18/12— y se deriva de la serie de nómina: 50% del '
+      + 'mejor mes de remuneración del semestre. Exigirle los doce meses reportaría como hueco una '
+      + 'línea correcta: sale en dos meses del año y en los otros diez vale cero. El semestre ya '
+      + 'vencido sin respaldo bancario NO se emite, y eso se avisa en cada corrida.',
   },
   {
     rubro: 'Impuestos', dueno: 'Impuestos y Financieros', horizonte: HORIZONTE.diciembre,
@@ -127,14 +136,25 @@ export const DUENOS = [
       + 'materializado. Movistar y los seguros se pagan todos los meses, haya obra o no.',
   },
   {
-    rubro: 'Financiero', dueno: 'Compras', horizonte: HORIZONTE.cargado,
-    porque: 'Cuotas del prendario y cargos del banco ya conocidos. El costo del descubierto futuro '
-      + 'depende del saldo proyectado y lo calcula el motor de liquidez, no esta línea.',
+    // EL DUEÑO DEJÓ DE SER COMPRAS EL 11/09/2026: la cuota del prendario entraba por filas tipeadas y
+    // el cronograma ahora vive en `orquestador/datos/prestamo-prendario.json`. El REAL lo prueba el
+    // extracto (naturaleza «Préstamo prendario»); este archivo sólo aporta el calendario.
+    rubro: 'Financiero', dueno: 'prestamo-prendario.json', horizonte: HORIZONTE.cargado,
+    porque: 'Las cuotas del prendario llegan hasta la 26 (diciembre de 2026) y ahí el préstamo '
+      + 'termina: después no hay nada que proyectar, y exigir enero sería cobrarle una cuota que ya '
+      + 'pagó. Los cargos del banco entran por _BANCO_RAW y el costo del descubierto futuro lo '
+      + 'calcula el motor de liquidez, no esta línea.',
   },
   {
-    rubro: 'Deuda previsional (planes de pago)', dueno: 'Compras', horizonte: HORIZONTE.cargado,
-    porque: 'Las cuotas de los planes de ARCA tienen fecha fija y se cargan por adelantado. Se corta '
-      + 'cuando se termina el plan, que es lo correcto.',
+    // ERA «HASTA_LO_CARGADO» CON DUEÑO COMPRAS, y eso dejó de ser cierto el 11/09/2026: las cuotas se
+    // cargaban a mano en Compras y esas filas se van. El débito de ARCA que paga una cuota lo reconoce
+    // `libro-extractores-banco-obligaciones.mjs` por el importe conocido, así que el REAL tiene fuente;
+    // el FUTURO no, y el hueco se declara en vez de taparse con una cuota repetida.
+    rubro: 'Deuda previsional (planes de pago)', dueno: '_BANCO_RAW', horizonte: HORIZONTE.sin,
+    porque: 'HUECO DECLARADO — PLAN SIN CRONOGRAMA: el OS conoce UNA cuota ($2.494.876, vista en '
+      + 'Compras) y no sabe cuántas faltan de cada uno de los tres planes. Repetir ese importe hasta '
+      + 'diciembre sería presentar una estimación como hecho. Se cierra cuando el dueño traiga el '
+      + 'detalle de «Mis Facilidades» de ARCA, plan por plan, a `datos/planes-arca.json`.',
   },
   {
     rubro: 'Cheques emitidos', dueno: 'Cheques Emitidos', horizonte: HORIZONTE.cargado,
@@ -217,6 +237,14 @@ export const MAPA = [
   {
     pestania: '_BANCO_RAW', rol: 'FUENTE', concepto: 'Financiero (cargos e impuestos del banco)',
     nota: 'El extracto es testigo de lo que las pestañas todavía no saben. Sus cargos no están en Compras: si no entraran por acá, no entrarían por ningún lado.',
+  },
+  {
+    // NO ES UNA PESTAÑA: es el archivo de datos del OS que declara el cronograma del préstamo. Entra al
+    // mapa porque el libro trae plata con ese `origen.pestana` y `problemasDeRol` —con razón— grita
+    // cualquier fuente sin rol declarado. El importe de cada cuota NO está ahí: es el último débito
+    // real que el extracto muestra, así que el archivo aporta calendario y el banco aporta monto.
+    pestania: 'prestamo-prendario.json', rol: 'FUENTE', concepto: 'Financiero (cuotas futuras del prendario)',
+    nota: 'Cuotas 15 a 26, la última en diciembre de 2026, el día 7. Si Compras todavía tiene la cuota de ese mes como pendiente, no se proyecta: el REAL sale de Compras mientras la fila exista.',
   },
   {
     pestania: '_CHEQUES_RAW', rol: 'FUENTE', concepto: 'Valores en cartera',
