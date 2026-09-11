@@ -232,3 +232,11 @@
     min-width: var(--canon-ancho, 0px);
   }
 }
+
+/* ═══ EL CAMPO DE HORAS DE LA GRILLA NO LLEVA FLECHITAS ═══
+   Un `<input type=number>` de 42 px perdía 7 px con el spinner del navegador y el dígito que se
+   estaba editando no se veía (auditoría 11/09/2026). Además, dos flechas de ±1 hora al lado de un
+   dato de liquidación son un cambio de plata a un clic sin querer. */
+.sin-spinner::-webkit-outer-spin-button,
+.sin-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.sin-spinner { -moz-appearance: textfield; appearance: textfield; }

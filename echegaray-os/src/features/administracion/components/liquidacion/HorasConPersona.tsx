@@ -8,10 +8,11 @@
 //
 // LA GRILLA SIGUE SIN LEER NADA: recibe filas y resumen calculados en el servidor.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   GrillaHorasQuincena, type PendienteDeGrilla, type PeriodoDeGrilla,
 } from './GrillaHorasQuincena'
+import { claveDeCelda, indiceDeEdicion } from '../../services/edicionDeGrillaHoras'
 import { PanelDePersona, type LineaDeLaPersona, type PersonaAbierta } from './PanelDePersona'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import type { FilaDeGrilla, ResumenDeGrilla } from '../../services/grillaHorasQuincena'
@@ -69,6 +70,19 @@ export function HorasConPersona({
   //
   // `block: 'start'` y no `center`: el encabezado del panel —el nombre y «Cerrar»— tiene que quedar
   // arriba de todo, que es de donde se lee hacia abajo.
+  // QUÉ CELDA SE CORRIGE EN LÍNEA. La regla vive en `edicionDeGrillaHoras.ts`, pura y con tests:
+  // adentro de este archivo `node --test` no la alcanzaba, y una regla que decide sobre qué fila de
+  // la base se escribe no puede ser una condición suelta en un JSX (auditoría 11/09/2026).
+  //
+  // No hace falta una lectura nueva: los días de cada persona YA viajan en `personas` —es lo que
+  // dibuja el panel— con su `id` y su fecha. Si el panel deja de dejar editar un día, la celda de la
+  // grilla deja de dejarlo en el mismo momento y por la misma razón.
+  const indice = useMemo(() => indiceDeEdicion(personas, { cerrada }), [personas, cerrada])
+  const edicionDe = useMemo(
+    () => (personaId: string, fecha: string) => indice.get(claveDeCelda(personaId, fecha)) ?? null,
+    [indice],
+  )
+
   const panelRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (!abierta) return
@@ -93,6 +107,9 @@ export function HorasConPersona({
         accion={accion}
         abierta={abierta}
         abrir={(id) => setAbierta(id === abierta ? null : id)}
+        // LA QUINCENA CERRADA YA LA APAGA `indiceDeEdicion`, que devuelve el índice vacío: no se
+        // decide dos veces. La acción además lo rebota contra la base.
+        edicionDe={edicionDe}
       />
       {/* `scrollMarginTop` DEJA PASAR LA BARRA PEGAJOSA. Con 12 px el nombre de la persona —lo
           primero que hay que leer— quedaba medio tapado por la barra de navegación, que mide unos

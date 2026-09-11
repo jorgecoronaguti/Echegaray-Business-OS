@@ -52,6 +52,10 @@ import { repartoDelAcuerdo } from '../../services/liquidacionAcuerdo'
 import { ALTO_LIQ } from './solapas/tabla'
 import { agruparPorRolOrganizacional } from '../../services/vocabularioPersona'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
+import { InlineEdit } from '@/shared/components/ds'
+import { corregirHorasDelDia } from '../../services/liquidacionDiaActions'
+// LA REGLA DE QUÉ SE EDITA NO ES DE LA GRILLA: la grilla dibuja lo que la regla decide.
+import type { EdicionDeCelda } from '../../services/edicionDeGrillaHoras'
 
 // LA COLUMNA DEL IMPORTE ESTIMADO ENTRA ENTRE «Esper.» Y «Estado», y por eso el ancho mínimo de la
 // grilla sube de 760 a 856: un «$ 1.234.567» de 96 px no se puede achicar sin partir el número.
@@ -84,8 +88,37 @@ const filaGrid = (alto: number): React.CSSProperties => ({
   fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
 })
 
-/** La celda de un día. `·` gris es «nadie cargó»; NO es una falta (R3 del handoff). */
-function Celda({ celda }: { celda: CeldaDeGrilla }) {
+/**
+ * ═══ LA CELDA DE LA GRILLA SE EDITA DONDE SE LEE (dueño, 11/09/2026) ═══
+ *
+ * Textual: *«tenés que permitirme editar en cada celda de ahí de la sección Horas del módulo
+ * Personal, no sé por qué me quitaste esa opción»*. Hasta hoy esta grilla era de sólo lectura
+ * entera: para corregir un 9 había que hacer clic en la persona, esperar el panel y buscar el día
+ * en la lista de abajo. El número estaba a la vista y no se podía tocar.
+ *
+ * Ahora la celda con UN registro es el mismo `InlineEdit` que ya usa el panel, con la MISMA acción
+ * (`corregirHorasDelDia`), que es la que verifica el efecto contra la base y deja el rastro de quién
+ * corrigió. Dos definiciones de «corregir un día» serían dos historiales.
+ *
+ * ═══ LAS QUE NO SE EDITAN EN LÍNEA, Y POR QUÉ ═══
+ *
+ *   SIN CARGAR   no hay registro que corregir: crear uno exige decir a QUÉ OBRA se le imputa, y
+ *                elegirla en silencio mueve costo de mano de obra. Va al panel, que lo pregunta.
+ *   AUSENCIA ·   el número de esas celdas no son horas trabajadas: escribir encima significaría
+ *   LICENCIA     «en realidad trabajó» y «corregile las horas reconocidas» a la vez. Es la misma
+ *                regla que ya rige en la grilla de Horas (`GrillaAsistenciaObra`), y no se
+ *                contradice acá.
+ *   DÍA CON DOS   un solo campo tendría que elegir en silencio a CUÁL de los dos registros se le
+ *   REGISTROS     imputa la corrección. No es «dos obras» —la auditoría del 11/09/2026 midió los dos
+ *                 casos reales de la grilla y son `licencia + normal` de la MISMA obra—: es que hay
+ *                 más de una fila candidata y el que corrige tiene que ver cuál elige. El panel las
+ *                 muestra separadas, cada una con su celda.
+ *
+ * Ninguna de esas queda muerta: siguen abriendo el panel en esa persona, que es donde el caso se
+ * resuelve. Lo que cambia es que el caso FÁCIL —corregir un número que ya existe— dejó de costar
+ * tres clics y una búsqueda.
+ */
+function Celda({ celda, edicion }: { celda: CeldaDeGrilla; edicion?: EdicionDeCelda | null }) {
   if (celda.marca === 'sin-cargar') {
     return <div style={{ textAlign: 'center', color: V.lineaFuerte }}>·</div>
   }
@@ -95,7 +128,46 @@ function Celda({ celda }: { celda: CeldaDeGrilla }) {
   if (celda.marca === 'licencia') {
     return <div style={{ textAlign: 'center', color: '#175CD3' }}>L</div>
   }
-  return <div style={{ textAlign: 'center' }}>{numero(celda.horas ?? 0)}</div>
+  if (!edicion) {
+    return <div style={{ textAlign: 'center' }}>{numero(celda.horas ?? 0)}</div>
+  }
+  return (
+    // ═══ EL CLIC EN LA CELDA EDITA; EL CLIC EN EL NOMBRE ABRE LA PERSONA ═══
+    //
+    // Frenar la propagación es obligatorio: la fila entera es un botón que despliega el panel, y sin
+    // esto tocar una celda para escribir abriría el panel debajo del campo.
+    //
+    // LO QUE ESO CAMBIÓ, Y SE DECIDE ACÁ (auditoría 11/09/2026): la franja de días dejó de ser un
+    // camino al panel. Antes CUALQUIER punto de la fila lo abría; ahora los días editables abren su
+    // campo, que es lo que el dueño pidió —«permitirme editar en cada celda»—, y el panel se abre
+    // desde el NOMBRE, desde los totales y desde las celdas que no se editan (`·`, `A`, `L`), que
+    // siguen siendo fila. No queda ninguna celda muerta: se verificó el inventario completo de la
+    // grilla, 221 celdas, y todas editan o abren el panel.
+    //
+    // No se puede tener las dos cosas en el mismo punto: un clic que abre un campo Y despliega un
+    // panel de 900 px debajo mueve el campo de lugar mientras se escribe.
+    <div
+      style={{ display: 'flex', justifyContent: 'center' }}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      {/* EL ANCHO ES 56 Y NO 42, Y SIN FLECHITAS. Con `w-[42px]` el `<input type=number>` medía
+          28 px útiles contra 35 de contenido: el spinner del navegador se comía el dígito y se
+          editaba A CIEGAS —el DOM decía «9» y la pantalla mostraba sólo el cursor y dos flechas de
+          ±1 hora sobre datos de liquidación—. Lo cazó la auditoría del 11/09/2026 sobre la captura
+          de cierre. `sin-spinner` está en `globals.css` y apaga el control en Chrome y Firefox. */}
+      <InlineEdit
+        valor={celda.horas ?? null}
+        tipo="numero"
+        falta="·"
+        ancho="w-[56px] sin-spinner"
+        alineado="center"
+        etiqueta={`Horas del ${celda.fecha}`}
+        testid={`grilla-hh-${edicion.registroId}`}
+        guardar={corregirHorasDelDia.bind(null, edicion.registroId)}
+      />
+    </div>
+  )
 }
 
 /**
@@ -126,12 +198,14 @@ function ImporteEstimado({ p }: { p?: ProyeccionDeFila }) {
   return <div style={{ textAlign: 'right' }} title={`Estimado · ${detalle}`}>{pesos(p.importeProyectado)}</div>
 }
 
-function Fila({ fila, proyeccion, abrir, abierta }: {
+function Fila({ fila, proyeccion, abrir, abierta, edicionDe }: {
   fila: FilaDeGrilla
   proyeccion?: ProyeccionDeFila
   /** Abrir la persona NO NAVEGA (handoff v2 §4): el panel se despliega al costado. */
   abrir?: (personaId: string) => void
   abierta?: boolean
+  /** Qué celda de esta fila se puede corregir en línea. Sin esto la grilla es la de antes. */
+  edicionDe?: (personaId: string, fecha: string) => EdicionDeCelda | null
 }) {
   const estado = ESTADOS[fila.estado]
   return (
@@ -153,7 +227,9 @@ function Fila({ fila, proyeccion, abrir, abierta }: {
       onClick={abrir ? () => abrir(fila.personaId) : undefined}
     >
       <div>{fila.nombre}</div>
-      {fila.celdas.map((c) => <Celda key={c.fecha} celda={c} />)}
+      {fila.celdas.map((c) => (
+        <Celda key={c.fecha} celda={c} edicion={edicionDe?.(fila.personaId, c.fecha) ?? null} />
+      ))}
       <div style={{ textAlign: 'right', fontWeight: 600 }}>{numero(fila.cargadas)}</div>
       <div style={{ textAlign: 'right', color: V.apagado }}>{numero(fila.esperadas)}</div>
       <ImporteEstimado p={proyeccion} />
@@ -284,7 +360,7 @@ function Pendientes({ pendientes, hrefSinRecorte }: {
 
 export function GrillaHorasQuincena({
   titulo, estado, jornadaTexto, habilesTexto, hoy, filas, resumen, proyeccion,
-  periodos, pendientes, hrefSinRecorte, convenios, accion, abrir, abierta,
+  periodos, pendientes, hrefSinRecorte, convenios, accion, abrir, abierta, edicionDe,
 }: {
   /** «1ª quincena de septiembre · 1 al 15». */
   titulo: string
@@ -316,6 +392,8 @@ export function GrillaHorasQuincena({
   convenios?: string
   /** El botón de cierre. Se dibuja siempre; lo habilita `resumen.puedeCerrar`. */
   accion?: React.ReactNode
+  /** Qué celda se corrige en línea. Sin esto la grilla es de sólo lectura, como hasta el 11/09. */
+  edicionDe?: (personaId: string, fecha: string) => EdicionDeCelda | null
   /** Sin `abrir`, la grilla sigue siendo lo que era: una tabla que no responde al clic. */
   abrir?: (personaId: string) => void
   abierta?: string | null
@@ -381,6 +459,7 @@ export function GrillaHorasQuincena({
                   proyeccion={proyeccion?.porPersona[f.personaId]}
                   abrir={abrir}
                   abierta={f.personaId === abierta}
+                  edicionDe={edicionDe}
                 />
               ))}
             </div>

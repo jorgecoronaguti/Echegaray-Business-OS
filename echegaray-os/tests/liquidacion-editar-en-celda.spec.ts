@@ -87,9 +87,23 @@ async function limpiar(): Promise<void> {
   await sb.from('obra_canonica').delete().eq('id', OBRA)
 }
 
-test.describe.configure({ mode: 'serial' })
-test.beforeAll(preparar)
-test.afterAll(limpiar)
+// EL PRIMER `goto` DE LA PANTALLA LA COMPILA. En dev con webpack eso pasa de 30 s y el rojo no
+// señala un defecto: señala que el servidor estaba frío. Es el mismo motivo —y el mismo número— que
+// `liquidacion-fidelidad.spec.ts` documenta para sus casos.
+test.describe.configure({ mode: 'serial', timeout: 180_000 })
+// LOS HOOKS NO HEREDAN EL TIMEOUT DEL `configure`, Y ACÁ ESCRIBEN EN LA BASE REAL. Con 30 s, un
+// `insert` en `registros_hh` que tarda —la base dio «canceling statement due to statement timeout»
+// el 11/09/2026— deja el spec en rojo sin que nada del producto esté mal, y peor: `afterAll`
+// también se corta y la persona de prueba queda VISIBLE en el plantel. Se extienden los dos, y el
+// de limpieza más que el de alta: no dejar basura pesa más que fallar rápido.
+test.beforeAll(async () => {
+  test.setTimeout(120_000)
+  await preparar()
+})
+test.afterAll(async () => {
+  test.setTimeout(180_000)
+  await limpiar()
+})
 
 test('corregir las horas de un día se ve en la celda antes de que el servidor conteste, y queda en la base', async ({ page }) => {
   const sb = servicio()
@@ -147,4 +161,59 @@ test('corregir las horas de un día se ve en la celda antes de que el servidor c
   expect(Number(rastro.data?.[0]?.horas_antes)).toBe(ANTES)
   expect(Number(rastro.data?.[0]?.horas_despues)).toBe(DESPUES)
   expect(rastro.data?.[0]?.autor, 'el autor de la corrección no puede ser nulo').not.toBeNull()
+})
+
+// ═══ LA CELDA DE LA GRILLA, SIN ABRIR EL PANEL (dueño, 11/09/2026) ═══
+//
+// Textual: *«tenés que permitirme editar en cada celda de ahí de la sección Horas del módulo
+// Personal, no sé por qué me quitaste esa opción»*. Hasta hoy esta grilla era de sólo lectura
+// entera: el número estaba a la vista y para corregirlo había que hacer clic en la persona, esperar
+// el panel y buscar el día en la lista de abajo.
+//
+// Este caso NO abre el panel a propósito: si lo abriera estaría midiendo el camino que ya prueba el
+// test de arriba. Escribe sobre la celda de la grilla y después lee `registros_hh` del destino.
+test('corregir las horas desde la celda de la GRILLA, sin abrir el panel, queda en la base', async ({ page }) => {
+  const sb = servicio()
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=liquidacion&solapa=horas')
+  await expect(page.getByTestId('vista-horas')).toBeVisible({ timeout: 60_000 })
+
+  const suyos = await sb.from('registros_hh').select('id, horas').eq('persona_id', PERSONA)
+  const registro = ((suyos.data ?? []) as { id: string; horas: number }[])[0]
+  expect(registro?.id, 'la prueba tiene que haber cargado su día').toBeTruthy()
+  const desde = Number(registro.horas)
+  const hasta = desde === 7 ? 5 : 7
+
+  // LA CELDA VIVE EN LA FILA, NO EN EL PANEL. `grilla-hh-` la distingue de la `hh-` del panel: son
+  // dos lugares distintos que escriben con la MISMA acción, y el testid tiene que decir cuál se tocó.
+  const celda = page.getByTestId(`grilla-hh-${registro.id}`)
+  await expect(celda, 'la celda de la grilla tiene que ser editable').toBeVisible({ timeout: 60_000 })
+  // EL PANEL NO SE ABRIÓ, y no puede abrirse al tocar la celda: la fila entera es un botón que lo
+  // despliega, así que sin frenar el clic el campo quedaba debajo de un panel que aparece y se va.
+  await expect(page.getByTestId('panel-persona')).toHaveCount(0)
+
+  // Mismo reintento que arriba: un clic anterior a la hidratación no abre el campo y no deja rastro.
+  await expect(async () => {
+    await celda.click()
+    await expect(page.getByTestId(`grilla-hh-${registro.id}-campo`)).toBeVisible({ timeout: 5_000 })
+  }).toPass({ timeout: 60_000 })
+  await expect(page.getByTestId('panel-persona'), 'escribir en la celda no abre el panel').toHaveCount(0)
+
+  await page.getByTestId(`grilla-hh-${registro.id}-campo`).fill(String(hasta))
+  await page.getByTestId(`grilla-hh-${registro.id}-campo`).press('Enter')
+
+  await expect(celda).toHaveText(String(hasta), { timeout: 60_000 })
+  await expect(page.getByTestId(`grilla-hh-${registro.id}-error`)).toHaveCount(0)
+
+  // EL EFECTO EN EL DESTINO. Es lo único que prueba que se guardó.
+  await expect.poll(async () => {
+    const { data } = await sb.from('registros_hh').select('horas').eq('id', registro.id).maybeSingle()
+    return Number((data as { horas: number } | null)?.horas ?? -1)
+  }, { timeout: 30_000 }).toBe(hasta)
+
+  // Y RECARGANDO: lo que se ve después de volver a pedir la pantalla sale de la base, no del estado
+  // optimista que quedó en el navegador. Es el paso que el dueño hace y que ningún caso medía.
+  await page.reload()
+  await expect(page.getByTestId(`grilla-hh-${registro.id}`)).toHaveText(String(hasta), { timeout: 60_000 })
 })

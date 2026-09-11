@@ -7,7 +7,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { query } from './db.mjs'
-import { esNombreDePrueba, quejaDeResiduos, residuosEnElPlantel } from './personas-de-prueba.mjs'
+import {
+  esNombreDePrueba, horasDePersonasDePrueba, quejaDeHoras, quejaDeResiduos, residuosEnElPlantel,
+} from './personas-de-prueba.mjs'
 
 const SIN_BASE = !process.env.DATABASE_URL
 const AHORA = Date.parse('2026-09-10T18:00:00Z')
@@ -53,6 +55,34 @@ test('la queja dice qué fila y qué hacer, sin mandar a leer otro archivo', () 
   const q = quejaDeResiduos([{ id: 'abc', nombre_completo: 'ZZ-E2E hh-imputacion' }])
   assert.match(q, /ZZ-E2E hh-imputacion \(abc\)/)
   assert.match(q, /es_prueba = true/)
+})
+
+test('LAS HORAS DE UNA PERSONA DE PRUEBA SE DETECTAN, aunque la persona esté escondida', () => {
+  // El residuo real del 11/09/2026: la persona marcada `es_prueba` (invisible en el plantel) y sus
+  // 8 h del 19/08 vivas en `registros_hh`, imputadas a Quattropani.
+  const filas = [
+    { id: 'r1', persona_es_prueba: true, fecha: '2026-08-19', horas: 8, obra: 'Quattropani' },
+    { id: 'r2', persona_es_prueba: false, fecha: '2026-08-19', horas: 9, obra: 'Quattropani' },
+  ]
+  const malas = horasDePersonasDePrueba(filas)
+  assert.equal(malas.length, 1)
+  assert.equal(malas[0].id, 'r1')
+  const q = quejaDeHoras(malas)
+  assert.match(q, /8 h imputadas a Quattropani/)
+  assert.match(q, /delete from registros_hh/)
+})
+
+test('SIN HORAS DE PRUEBA no hay queja', () => {
+  assert.deepEqual(horasDePersonasDePrueba([{ id: 'r2', persona_es_prueba: false, horas: 9 }]), [])
+})
+
+test('NINGUNA hora de persona de prueba está hoy en la base real', { skip: SIN_BASE }, async () => {
+  const { rows } = await query(`
+    select h.id, p.es_prueba as persona_es_prueba, h.fecha, h.horas, h.obra_canonica_id as obra
+      from public.registros_hh h join public.personas p on p.id = h.persona_id
+     where p.es_prueba is true`)
+  const malas = horasDePersonasDePrueba(rows)
+  assert.deepEqual(malas, [], malas.length === 0 ? '' : quejaDeHoras(malas))
 })
 
 test('NINGUNA persona de prueba está hoy en el plantel real', { skip: SIN_BASE }, async () => {
