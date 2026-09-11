@@ -52,7 +52,7 @@ test.describe('Liquidación · Administración → Personal', () => {
     await expect(page.getByTestId('vistas-personal')).toContainText('Liquidación')
     // `solapa-pagos` NO SIRVE DE ANCLA: `BarraSolapas` publica ese mismo testid en la pestaña, así
     // que resuelve a dos nodos. Es la trampa que la solapa «Horas» ya había pagado renombrando su
-    // contenido a `vista-horas`; «Pagos» todavía la comparte. Se ancla en `pagos-tabla`, que es
+    // contenido a `vista-horas`; «Pagos` hizo lo mismo con `vista-pagos` el 11/09/2026. Se ancla en `pagos-tabla`, que es
     // único y además es el contenido, no la pestaña que lleva a él.
 
     // LAS TRES CIFRAS DE ARRIBA: las dos primeras dan la tercera.

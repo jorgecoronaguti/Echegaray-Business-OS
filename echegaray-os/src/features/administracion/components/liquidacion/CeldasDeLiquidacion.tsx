@@ -33,7 +33,34 @@ import type { CampoEditable } from '../../services/liquidacionOverrides'
 import {
   guardarCeldaLiquidacion, guardarEfectivoRedondeado, guardarValorHora,
 } from '../../services/liquidacionActions'
-import { pesos } from './formato'
+import { horas, pesos } from './formato'
+
+/**
+ * LA UNIDAD DE LA CELDA, NO SU FORMATEADOR.
+ *
+ * ═══ POR QUÉ NO SE RECIBE UNA FUNCIÓN (medido en el navegador, 11/09/2026) ═══
+ *
+ * `CeldaEditable` recibía `formato: (n) => string`. Desde `CuadroLiquidacion` —que es un componente
+ * de cliente— eso funciona. Desde la solapa Pagos —que es de SERVIDOR— rompe la pantalla entera:
+ *
+ *   Functions cannot be passed directly to Client Components unless you explicitly expose it
+ *   by marking it with "use server".
+ *
+ * No lo veía ningún test de código fuente ni el typecheck: lo vio el primer `goto` del E2E, con la
+ * pantalla en «No se pudo cargar el legajo de personas». Una unidad es un dato y cruza la frontera;
+ * una función no. Además obliga a que las dos pantallas escriban el mismo número igual, que es lo
+ * que `formato.ts` existe para garantizar.
+ */
+export type UnidadDeCelda = 'pesos' | 'horas'
+
+const escribirComo = (unidad: UnidadDeCelda, ceroEsVacio: boolean) => (n: number | null): string => {
+  if (n == null) return '—'
+  // CERO SE DIBUJA «—» SÓLO DONDE SE PIDE: en Pagos, para que la tabla no se llene de «$0» en
+  // columnas que casi siempre están vacías. Al entrar al campo, `InlineEdit` muestra el crudo, así
+  // que un 0 escrito a mano —que SÍ es una afirmación— no se pierde ni se confunde con NULL.
+  if (ceroEsVacio && n === 0) return '—'
+  return unidad === 'horas' ? horas(n) : pesos(n)
+}
 
 /** La ventana de la quincena que viaja con cada escritura. */
 export interface VentanaDeQuincena {
@@ -41,17 +68,31 @@ export interface VentanaDeQuincena {
   hasta: string
 }
 
-/** LA MARCA DE LO ESCRITO A MANO. Un punto y una palabra: ni fondo de color ni negrita. */
-export function Manual() {
+/**
+ * LA MARCA DE LO ESCRITO A MANO. Un punto y una palabra: ni fondo de color ni negrita.
+ *
+ * ═══ EN PAGOS VA SÓLO EL PUNTO ═══
+ *
+ * Las columnas de esa tabla son de 84 a 96 px y están fijadas por la grilla. La palabra «MANUAL» son
+ * ~56 px más, y en la captura del E2E del 11/09/2026 el importe se montaba sobre la columna de al
+ * lado: un número de plata pisando a otro número de plata. El punto ámbar se sigue viendo, el
+ * `title` sigue explicando, y la fila deja de mentir sobre qué columna es cuál.
+ */
+export function Manual({ compacta = false }: { compacta?: boolean }) {
   return (
     <span data-testid="marca-manual" title="Escrito a mano: manda sobre el cálculo"
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 6 }}>
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        marginLeft: compacta ? 3 : 6, flex: 'none',
+      }}>
       <span aria-hidden style={{
         width: 6, height: 6, borderRadius: '50%', background: V.marca, display: 'inline-block',
       }} />
-      <span style={{
-        fontSize: '9.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: V.tenue,
-      }}>manual</span>
+      {!compacta && (
+        <span style={{
+          fontSize: '9.5px', letterSpacing: '.08em', textTransform: 'uppercase', color: V.tenue,
+        }}>manual</span>
+      )}
     </span>
   )
 }
@@ -64,11 +105,15 @@ export function Manual() {
  * a NULL: convertirlo a 0 fabricaría un dato y liquidaría a alguien en cero.
  */
 export function CeldaEditable({
-  campo, valor, formato, manual, personaId, quincena, grupo, soloLectura, ancho = 'w-24',
+  campo, valor, unidad, ceroEsVacio = false, manual, personaId, quincena, grupo, soloLectura,
+  ancho = 'w-24', marcaCompacta = false,
 }: {
   campo: CampoEditable
   valor: number | null
-  formato: (n: number | null) => string
+  /** Pesos u horas. NO una función: un componente de servidor no puede pasarle una a uno de cliente. */
+  unidad: UnidadDeCelda
+  /** Dibujar el 0 como «—». Lo pide Pagos; el cuadro clásico muestra «$0». */
+  ceroEsVacio?: boolean
   manual: boolean
   personaId: string
   quincena: VentanaDeQuincena
@@ -76,12 +121,18 @@ export function CeldaEditable({
   soloLectura: boolean
   /** La clase de ancho de Tailwind. Pagos tiene columnas más angostas que el cuadro clásico. */
   ancho?: string
+  /** Sólo el punto, sin la palabra: las columnas de Pagos no tienen los 56 px que ocupa. */
+  marcaCompacta?: boolean
 }) {
+  const formato = escribirComo(unidad, ceroEsVacio)
   if (soloLectura) {
-    return <>{formato(valor)}{manual && <Manual />}</>
+    return <>{formato(valor)}{manual && <Manual compacta={marcaCompacta} />}</>
   }
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
+      minWidth: 0, maxWidth: '100%',
+    }}>
       <InlineEdit
         valor={valor}
         tipo="numero"
@@ -98,7 +149,7 @@ export function CeldaEditable({
           return r.ok ? { ok: true } : { ok: false, error: r.error }
         }}
       />
-      {manual && <Manual />}
+      {manual && <Manual compacta={marcaCompacta} />}
     </span>
   )
 }

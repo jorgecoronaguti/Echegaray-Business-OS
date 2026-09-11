@@ -58,6 +58,27 @@ test('LA COLUMNA DE HORAS Y EL PIE USAN EL FORMATO DE HORAS', () => {
   assert.match(PAGOS, /<Celda valor=\{totales\.horas\} formato=\{nHoras\}/)
 })
 
+test('NINGUNA FUNCIÓN CRUZA DE PAGOS A UNA CELDA DE CLIENTE', () => {
+  // EL DEFECTO QUE ATRAPA, y que ni el typecheck ni el resto de estos tests vieron: `pagos.tsx` es un
+  // componente de SERVIDOR y le pasaba `formato={(n) => …}` a `CeldaEditable`, que es de cliente.
+  // React corta con «Functions cannot be passed directly to Client Components» y la pantalla entera
+  // queda en «No se pudo cargar el legajo de personas». Lo encontró el primer `goto` del E2E.
+  // Ahora cruza una UNIDAD, que es un dato.
+  assert.match(PAGOS, /unidad="pesos"/)
+  assert.doesNotMatch(PAGOS, /formato=\{\(n\)/)
+  assert.match(CELDAS, /unidad: UnidadDeCelda/)
+  // Y la celda del cuadro clásico también: una sola forma de decirlo en las dos pantallas.
+  assert.match(fuente('../CuadroLiquidacion.tsx'), /unidad: UnidadDeCelda/)
+})
+
+test('EL CONTENIDO DE PAGOS NO COMPARTE `data-testid` CON SU PESTAÑA', () => {
+  // `BarraSolapas` publica `solapa-<clave>` en la PESTAÑA. El contenido usaba el mismo, así que el
+  // ancla resolvía primero al nodo de la barra móvil —que está oculto— y un test sin nada roto
+  // fallaba por timeout. «Horas» ya usaba `vista-horas`.
+  assert.match(PAGOS, /data-testid="vista-pagos"/)
+  assert.doesNotMatch(PAGOS, /data-testid="solapa-pagos"/)
+})
+
 test('LA QUINCENA CERRADA NO SE EDITA, Y SE DECIDE POR CUADRO (R6)', () => {
   // EL DEFECTO QUE ATRAPA: un solo booleano «la quincena está cerrada» para los tres cuadros.
   // Cerrar Oficina no sella a los obreros, y al revés congelaría quince filas que siguen abiertas.
@@ -73,7 +94,7 @@ test('UNA SOLA DEFINICIÓN DE LAS CELDAS: Pagos y el cuadro clásico importan la
   assert.match(fuente('../CuadroLiquidacion.tsx'), /from '\.\/CeldasDeLiquidacion'/)
   assert.match(CELDAS, /^'use client'/)
   // Y la marca de lo escrito a mano vive ahí, una vez.
-  assert.equal((CELDAS.match(/export function Manual\(\)/g) ?? []).length, 1)
+  assert.equal((CELDAS.match(/export function Manual\(/g) ?? []).length, 1)
 })
 
 test('LO PISADO A MANO SE VE TAMBIÉN EN LAS COLUMNAS CALCULADAS (R8)', () => {

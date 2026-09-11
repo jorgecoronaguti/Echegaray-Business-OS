@@ -9,7 +9,9 @@ import type { CuadroConOverrides } from '../../services/liquidacionQuincenaServi
 import { cerrarQuincena } from '../../services/liquidacionActions'
 // LAS CELDAS ESCRIBIBLES VIVEN EN UN MÓDULO PROPIO: la solapa Pagos del handoff v2 usa las MISMAS.
 // Dos copias serían dos definiciones de «qué pasa cuando alguien corrige un adelanto».
-import { CeldaEditable, CeldaRedondeo, CeldaValorHora } from './CeldasDeLiquidacion'
+import {
+  CeldaEditable, CeldaRedondeo, CeldaValorHora, type UnidadDeCelda,
+} from './CeldasDeLiquidacion'
 import { pesos } from './formato'
 
 // UN CUADRO DE LA LIQUIDACIÓN. Las mismas ocho columnas en los tres.
@@ -202,12 +204,12 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
   // deducirlo restando dos columnas a ojo.
   const desvio = desvioDelAcuerdo(linea)
 
-  const celda = (campo: CampoEditable, valor: number | null, formato: (n: number | null) => string) => (
+  const celda = (campo: CampoEditable, valor: number | null, unidad: UnidadDeCelda) => (
     <Celda>
       <CeldaEditable
         campo={campo}
         valor={valor}
-        formato={formato}
+        unidad={unidad}
         manual={linea.manual[campo]}
         personaId={linea.personaId}
         quincena={quincena}
@@ -233,7 +235,7 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
           </span>
         )}
       </Celda>
-      {celda('horas', linea.horas, numero)}
+      {celda('horas', linea.horas, 'horas')}
       <Celda>
         {/* EL $/HORA NO VIVE EN LA LÍNEA: vive en `persona_tarifa`, que es de la persona y no de
             esta quincena. Escribirlo acá escribe una tarifa vigente desde hoy. */}
@@ -249,13 +251,13 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
           soloLectura={bloqueada || grupo !== 'obreros'}
         />
       </Celda>
-      {celda('cobra', linea.cobra, pesos)}
+      {celda('cobra', linea.cobra, 'pesos')}
       {/* LO ACORDADO, NO LO LIQUIDADO. Sólo lectura y «—» cuando no hay acuerdo 50/50 (Oficina y
           los subcontratistas del cuadro `final`). */}
       <Celda title={acuerdo}>{pesos(linea.blancoAcuerdo)}</Celda>
       <Celda title={acuerdo}>{pesos(linea.efectivoAcuerdo)}</Celda>
-      {celda('adelanto', linea.adelanto, pesos)}
-      {celda('yaTransferido', linea.yaTransferido, pesos)}
+      {celda('adelanto', linea.adelanto, 'pesos')}
+      {celda('yaTransferido', linea.yaTransferido, 'pesos')}
       {/* EL TÍTULO DICE EL RECIBO, NO LO GIRADO: `porBanco` vale 0 mientras el extracto no muestre
           el lote, y así el aviso decía «recibo $ 0» sobre alguien que sí tenía recibo. */}
       <Celda title={desvio == null ? undefined
@@ -267,7 +269,7 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
         <CeldaEditable
           campo="porBanco"
           valor={linea.porBanco}
-          formato={pesos}
+          unidad="pesos"
           manual={linea.manual.porBanco}
           personaId={linea.personaId}
           quincena={quincena}
@@ -275,8 +277,8 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
           soloLectura={bloqueada || !camposEditables.includes('porBanco')}
         />
       </Celda>
-      {celda('enEfectivo', linea.enEfectivo, pesos)}
-      {celda('total', linea.total, pesos)}
+      {celda('enEfectivo', linea.enEfectivo, 'pesos')}
+      {celda('total', linea.total, 'pesos')}
       <Celda>
         <CeldaRedondeo
           personaId={linea.personaId}

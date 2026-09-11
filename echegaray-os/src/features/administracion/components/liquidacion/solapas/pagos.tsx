@@ -68,7 +68,11 @@ export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: st
   const cerrada = Object.values(estados).some((e) => e.estado === 'cerrada')
 
   return (
-    <div data-testid="solapa-pagos">
+    // `vista-pagos` Y NO `solapa-pagos`: `BarraSolapas` publica `solapa-<clave>` en la PESTAÑA, así
+    // que el mismo testid apuntaba a dos elementos —la pestaña y el contenido— y el que resolvía
+    // primero era el de la barra móvil, que está oculto. Un ancla que resuelve a un nodo invisible
+    // hace fallar por timeout a un test que no tiene nada roto. «Horas» ya usaba `vista-horas`.
+    <div data-testid="vista-pagos">
       {/* UN SOLO CUADRO: encabezado, tabla y total comparten filo. */}
       <div style={{
         background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 10,
@@ -333,7 +337,10 @@ function Escribible({ campo, linea, seccion, quincena, camposEditables, cerradas
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end' }} title={titulo}>
       <span style={{
-        minWidth: ancho, minHeight: 26, display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+        width: ancho, minHeight: 26, display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+        // LA COLUMNA DE LA GRILLA ES FIJA: si el marco crece con su contenido, el importe se monta
+        // sobre el número de al lado. Se vio en la captura del E2E del 11/09/2026.
+        maxWidth: '100%', overflow: 'hidden',
         border: `1px solid ${V.lineaFuerte}`, borderRadius: 4, padding: '0 4px',
         // EL DESVÍO CONTRA EL ACUERDO SE VE, no se deduce: tono de alerta y el detalle en el title.
         color: desvio != null ? V.warn
@@ -342,16 +349,21 @@ function Escribible({ campo, linea, seccion, quincena, camposEditables, cerradas
         <CeldaEditable
           campo={campo}
           valor={valor}
+          // LA UNIDAD, NO UNA FUNCIÓN: esta solapa es un componente de SERVIDOR y una función no
+          // cruza a un componente de cliente («Functions cannot be passed directly to Client
+          // Components»). Rompía la pantalla entera, y sólo lo vio el navegador.
+          unidad="pesos"
           // CERO SE DIBUJA «—» PERO NO ES «—»: es lo que la cadena calculó o lo que alguien escribió.
           // El guion es para que la vista no se llene de «$0» en columnas que casi siempre están
           // vacías; al entrar al campo, `InlineEdit` muestra el número crudo.
-          formato={(n) => (n == null || n === 0 ? '—' : pesos(n))}
+          ceroEsVacio
           manual={linea.manual[campo]}
           personaId={linea.personaId}
           quincena={quincena}
           grupo={seccion.grupo}
           soloLectura={soloLectura}
           ancho="w-20"
+          marcaCompacta
         />
       </span>
     </div>
