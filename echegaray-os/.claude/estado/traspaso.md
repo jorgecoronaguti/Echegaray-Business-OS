@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-11 ~09:45 (hora local −03) · main = producción_
+_actualizado: 2026-09-11 ~09:30 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -74,9 +74,10 @@ Ver §4. Agentes en curso al cierre: auditor de la cartera v5 · Liquidación (r
 ## 6. PENDIENTES REALES
 
 **P0 (agentes en curso)**
-- Cartera v5: PUBLICADA 09:35. Falta: auditor sobre producción (tercera pasada) y limpiar el worktree wt-crm.
+- IERIC/FODECO 11/09: dos comprobantes $13.794,56 (trx 889015905659 y 493817674210) en /tmp/claude-1001/ieric-1109 → Drive archivo-fiscal/2026/IERIC + Cargas Sociales; agente en curso.
+- Cartera v5: PUBLICADA y verificada; tercera auditoría (sobre producción) en curso; worktree wt-crm eliminado.
 - Liquidación: merge y publicación (panel derecho, edición, ZZ-E2E fuera, <4 s).
-- Consistencia Flujo de Fondos: pares 21 (cheques $8,2 M), 5, 22, 23; verificar corrida 08:50 (libro ✓, «· Impuestos», f136); post al dueño.
+- Consistencia Flujo de Fondos: 5 fixes publicados (817bb501: cuotas en cheque con rubro «Cheques emitidos», Estructura proyectado ≥ 0, sello Tarjeta L2/L23, impuesto al cheque y f136 ya en el libro). Pendiente: verificar corrida 10:50, post al dueño con el PUENTE 61,3 M → 91 M del cierre CFM (pedido 09:25) — sospecha: e-cheq $38,57 M del 10/09 contados como caja disponible.
 - Extracto bancario: HECHO (4 movimientos nuevos, saldo coincide, ECHEQ 308 marcado DEBITADO, ref 88958840 excluida por decisión). Pendiente del dueño: e-cheq $38,5 M del 10/09 ¿disponibles?; `public.cheques` con corte 08/09; clasificación CUIL-padrón vs proveedor. Defecto sin corregir: `cerrarElDia()` en importar-banco.mjs no llama acreditarPendientes() sin el pie «Saldo al…».
 - Solapa Cobranzas UX: rehacer por completo (pedido 11/09 08:45).
 
