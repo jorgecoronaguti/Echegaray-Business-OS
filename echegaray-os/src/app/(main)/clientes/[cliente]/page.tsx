@@ -579,6 +579,7 @@ export default async function ClientePage({ params, searchParams }: {
                   economia={economia}
                   papeles={papeles}
                   cobrado={cobradoPorObra}
+                  horas={ficha.horasPorObra}
                   hrefTrabajo={hrefTrabajo}
                   vacio={cerradas.length === 0
                     ? 'Este cliente no tiene ningún trabajo. Se crea desde arriba, colgado de este cliente.'
@@ -597,6 +598,9 @@ export default async function ClientePage({ params, searchParams }: {
                     economia={economia}
                     papeles={papeles}
                     cobrado={cobradoPorObra}
+                    // LAS TERMINADAS TAMBIÉN LLEVAN SUS HORAS: son la historia de lo que costó cada
+                    // trabajo, y es la mitad de lo que sirve para cotizar el próximo.
+                    horas={ficha.horasPorObra}
                     hrefTrabajo={hrefTrabajo}
                     titulo={`Terminados · ${cerradas.length}`}
                     vacio=""

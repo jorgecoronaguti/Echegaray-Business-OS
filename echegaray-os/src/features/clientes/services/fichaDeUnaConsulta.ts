@@ -44,6 +44,7 @@ import {
 import { construirLineaDeTiempo } from './timeline.ts'
 import { agruparPapeles, type PapelCrudo, type PapelesDelCliente } from './papelesCliente.ts'
 import { armarEconomiaDeObras, type EconomiaDeObra } from './economiaObras.ts'
+import { armarHorasPorObra, type HorasDeObra } from './horasDeObra.ts'
 import { armarEconomiaDeCliente, type EconomiaDeCliente } from './economiaCliente.ts'
 import {
   armarCobradoPorObra, type CobroPorObra,
@@ -82,6 +83,15 @@ export interface FichaLeida {
    * a poder decir números distintos sobre la misma obra.
    */
   cobradoPorObra: CobroPorObra | null
+  /**
+   * LAS HORAS DE CADA TRABAJO (`hh_obra`, desde 20260911T2300).
+   *
+   * `null` = no puedo decirlo: o la cara no las transporta —viajan en Obras, que es la única que las
+   * dibuja— o quien pregunta no es Administración y la RLS de `registros_hh` le daría sólo sus
+   * propias horas. Un `Map` vacío es «ninguna obra tiene horas cargadas», que es otra cosa: la
+   * pantalla dibuja «—» en ese caso y deja la celda VACÍA en el primero.
+   */
+  horasPorObra: Map<string, HorasDeObra> | null
 }
 
 interface FichaCruda {
@@ -102,13 +112,14 @@ interface FichaCruda {
   certificados: unknown[]
   presupuestos: unknown[]
   cobrado_por_obra: unknown[]
+  hh_obra: unknown[] | null
 }
 
 function nadaLeido(error: string | null): FichaLeida {
   return {
     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
-    papeles: null, cobradoPorObra: null, nDocumentos: 0,
+    papeles: null, cobradoPorObra: null, nDocumentos: 0, horasPorObra: null,
   }
 }
 
@@ -168,5 +179,9 @@ export async function leerFichaDeUnaConsulta(
     // `disponible: true` no es un supuesto: `obra_cuenta` reparte el cobro por obra por
     // construcción (sale de `cobranza_imputacion`), así que una respuesta exitosa lo prueba.
     cobradoPorObra: armarCobradoPorObra(j.cobrado_por_obra ?? [], true),
+    // `?? null` Y NO `?? []`: la RPC devuelve `null` a propósito —cara que no las dibuja, o rol que
+    // no las puede ver enteras— y convertirlo en una lista vacía escribiría «esta obra no tiene
+    // horas» sobre una obra con 12.525.
+    horasPorObra: armarHorasPorObra(j.hh_obra ?? null),
   }
 }

@@ -493,3 +493,73 @@ test('sin permiso económico la celda del importe dice el literal del zip, y NAD
       `la rama sin permiso dibuja \`${filtrado}\`: se rebajó el filtro, no se cambió la palabra`)
   }
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// INICIO Y HH — LAS DOS COLUMNAS QUE EL CRM NO TENÍA (dueño, 11/09/2026)
+//
+// «Necesito saber las hs que se van sumando en cada obra dentro de cada cliente» y «no tengo idea de
+// cuándo empezó cada obra en el CRM, no sé cuánto llevan hs totales, un desastre».
+//
+// LO QUE ESTOS CASOS VIGILAN, Y NO PUEDE VIGILAR `horasDeObra.test.ts`: que las celdas sigan
+// DELEGANDO en ese módulo. El día que alguien escriba el formato adentro de la celda —un
+// `toLocaleString` ahí mismo, un `?? 0`—, los tests del módulo seguirían verdes y la pantalla
+// publicaría un cero por una ausencia. La regla del OS es la misma de siempre: una definición, un
+// lugar.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('la tabla de trabajos dibuja INICIO y HH, y las suelta con el detalle a 1199px', () => {
+  const celdas = celdasDelEncabezado()
+  const i = celdas.findIndex((c) => c.includes('>Inicio<'))
+  const h = celdas.findIndex((c) => c.includes('>HH<'))
+  assert.ok(i > 0, 'se fue la columna Inicio: el CRM no puede decir cuándo arrancó el trabajo')
+  assert.ok(h === i + 1, 'HH tiene que ir inmediatamente a la derecha de Inicio')
+  // Detrás del ESTADO y delante del dinero: la fila se lee «qué · cómo va · desde cuándo · cuánto
+  // esfuerzo lleva · cuánta plata es». Y ninguna columna existente se movió.
+  assert.ok(celdas.findIndex((c) => c.includes('>Estado<')) < i)
+  assert.ok(celdas.findIndex((c) => c.includes('Cobrado neto')) > h)
+  for (const [rotulo, pos] of [['Inicio', i], ['HH', h]] as [string, number][]) {
+    assert.match(celdas[pos], /SOLO_ANCHO_ECO/,
+      `${rotulo} tiene que esconderse en el mismo corte en que su pista desaparece`)
+  }
+})
+
+test('las dos celdas nuevas no formatean nada por su cuenta: delegan en horasDeObra', () => {
+  const src = codigoListas()
+  const celda = (testid: string) => {
+    const desde = src.indexOf(`data-testid="${testid}"`)
+    assert.ok(desde > 0, `no está la celda ${testid}`)
+    return src.slice(desde, src.indexOf('</span>', desde))
+  }
+  const hh = celda('hh-obra-cliente')
+  assert.match(hh, /textoHH\(hhDeLaObra\)/, 'la celda de HH dejó de leer el texto de su módulo')
+  assert.match(hh, /tituloHH\(hhDeLaObra\)/)
+  // EL NÚMERO SALE DE LA OBRA DE LA FILA, NUNCA CONSOLIDADO: un adicional publica SUS horas y su
+  // obra mayor no las suma — el jornal se cargó contra una sola de las dos y sumarlo haría que el
+  // mismo día de trabajo apareciera dos veces en la misma tabla.
+  assert.match(src, /const hhDeLaObra = horas\?\.get\(o\.obra_id\) \?\? null/)
+  assert.doesNotMatch(hh, /consolidar/, 'las HH de un adicional no se suman a su obra mayor')
+  for (const celdaNueva of [hh, celda('inicio-obra-cliente')]) {
+    assert.doesNotMatch(celdaNueva, /toLocaleString|\?\? 0|Math\.round/,
+      'el formato y los huecos los decide horasDeObra.ts, con sus tests')
+  }
+})
+
+test('«no puedo leer las horas» se dibuja VACÍO, y «no tiene ninguna» se dibuja «—»', () => {
+  // Son dos hechos opuestos y hasta hoy la única forma de confundirlos era dibujarlos igual. La
+  // RPC manda `null` cuando la cara no las transporta o cuando el rol no las ve enteras (la RLS de
+  // `registros_hh` le muestra SÓLO SUS horas: media suma parece una suma), y «—» lo escribe
+  // `textoHH` cuando la base contestó que no hay ninguna.
+  const src = codigoListas()
+  for (const testid of ['hh-obra-cliente', 'inicio-obra-cliente']) {
+    const desde = src.indexOf(`data-testid="${testid}"`)
+    const celda = src.slice(desde, src.indexOf('</span>', desde))
+    assert.match(celda, /horas === null \? ''/,
+      `${testid} tiene que callar cuando no se pudieron leer, en vez de afirmar una ausencia`)
+  }
+})
+
+test('las horas llegan a las dos tablas de la ficha: en curso y terminados', () => {
+  const src = codigoPagina()
+  assert.equal((src.match(/horas=\{ficha\.horasPorObra\}/g) ?? []).length, 2,
+    'los trabajos terminados también llevan sus horas: son la historia de lo que costó cada uno')
+})
