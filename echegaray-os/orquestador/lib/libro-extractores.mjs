@@ -285,7 +285,7 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
  * NO se toma en este archivo ni en el otro: se toma en `puertaDeCheque`, una sola vez, y los dos
  * extractores la leen. Sin `cruce`, este extractor se comporta exactamente como antes.
  */
-export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colMarca = INSTRUMENTOS.cheques.colMarca, cruce = null, aviso = null } = {}) {
+export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colMarca = INSTRUMENTOS.cheques.colMarca, cruce = null, aviso = null, corte = null } = {}) {
   const enc = filas[fila0 - 2] ?? [] // el encabezado del registro, una fila arriba del primer dato
   // El encabezado real del registro: "Nro" es el número
   // del cheque, "Monto" el importe, y hay DOS columnas de fecha de pago — "fecha de pago" (la fecha)
@@ -321,16 +321,20 @@ export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colM
       continue // cruzado: su plata sale por Compras (cuotas)
     }
     const esEcheq = /echeq/i.test(txt(f[c.tipo]))
+    // Sin fecha de pago cargada el cheque existe igual: cae al corte para que pese YA — un
+    // compromiso sin fecha no es un compromiso que no vence, es uno que puede vencer mañana.
+    const fechaPago = num(f[c.fechaPago]) ?? 0
     out.push(movimiento({
-      // Sin fecha de pago cargada el cheque existe igual: cae al corte para que pese YA — un
-      // compromiso sin fecha no es un compromiso que no vence, es uno que puede vencer mañana.
-      fecha: num(f[c.fechaPago]) ?? 0,
+      fecha: fechaPago,
       signo: SALE,
       importe,
       concepto: txt(f[c.proveedor]),
       contraparte: txt(f[c.proveedor]),
       rubro: 'Cheques emitidos',
-      estado: 'COMPROMETIDO',
+      // UN CHEQUE VIVO CON FECHA DE PAGO YA PASADA ES UN VENCIDO, no un COMPROMETIDO: si no, el
+      // Semanal lo pierde. Misma regla y mismo porqué que en `deTarjetaSinFactura` (11/09/2026).
+      // `estadoContraCorte` respeta el serial 0 —sin fecha no se puede vencer— por su propia guarda.
+      estado: estadoContraCorte('COMPROMETIDO', fechaPago, corte),
       instrumento: esEcheq ? 'echeq' : 'cheque',
       numeroCheque: txt(f[c.numero]),
       origen: { pestana: 'Cheques Emitidos', fila: i + 1 },
@@ -395,10 +399,25 @@ export function deBancoCargos(filas = [], { fila0 = 4 } = {}) {
  * SIN `pagos` NO CAMBIA NADA: el que no pasa el extracto obtiene el comportamiento de antes, que es
  * el correcto cuando no hay testigo.
  *
+ * ═══ EL PENDIENTE CON FECHA PASADA ES UN VENCIDO, Y ACÁ NO SE APLICABA (11/09/2026) ═══
+ *
+ * `estadoContraCorte` es la regla, escrita una sola vez en `lib/libro-movimientos.mjs`: «un
+ * PROYECTADO/COMPROMETIDO cuya fecha ya pasó y que nadie marcó como real es un VENCIDO». La aplican
+ * `deCompras` y los dos extractores de impuestos; estos tres estampaban `'COMPROMETIDO'` a mano.
+ *
+ * No es cosmético: el Semanal y el Mensual tratan al VENCIDO distinto del COMPROMETIDO. Un pendiente
+ * con fecha ANTERIOR al ancla del Semanal cae en una columna que no publica saldo (`AK8` = "" porque
+ * su semana terminó antes del corte de caja) y **se pierde para siempre**; el VENCIDO, en cambio, lo
+ * rescata `condicionAncla` y entra entero en la columna del ancla, en las dos vistas. Medido el 11/09:
+ * `CFS!BB50` cerraba $263.813,91 más alto que `CFM!M50`, y el movimiento era la cuota 2 del consumo de
+ * Pintureria Cordoba (`Tarjeta de Credito!f50`, vence el 02/09) emitida COMPROMETIDO con fecha pasada.
+ * Es la misma clase que los $9.000.000 del 10/09, con otra fuente.
+ *
  * @param {Array<Array>} filas la pestaña "Tarjeta de Credito" entera, UNFORMATTED_VALUE
- * @param {{filaCab?:number, pagos?:Array}} opciones `pagos` = los débitos de resumen del extracto
+ * @param {{filaCab?:number, pagos?:Array, corte?:number|null}} opciones `pagos` = los débitos de
+ *   resumen del extracto · `corte` = el serial de hoy, para que un pendiente con fecha pasada venza
  */
-export function deTarjetaSinFactura(filas = [], { filaCab = INSTRUMENTOS.tarjeta.filaCab, pagos = [] } = {}) {
+export function deTarjetaSinFactura(filas = [], { filaCab = INSTRUMENTOS.tarjeta.filaCab, pagos = [], corte = null } = {}) {
   const T = INSTRUMENTOS.tarjeta
   const iMonto = indiceDeColumna(T.colMonto)
   const iFecha = indiceDeColumna(T.colFecha)
@@ -424,7 +443,8 @@ export function deTarjetaSinFactura(filas = [], { filaCab = INSTRUMENTOS.tarjeta
       concepto: txt(f[indiceDeColumna(T.colComprobante)]) || 'Cuota de tarjeta sin factura',
       contraparte: 'Tarjeta de crédito',
       rubro: 'Cheques y tarjeta sin factura cargada',
-      estado: debitada ? 'REAL' : 'COMPROMETIDO',
+      // Ver el bloque «EL PENDIENTE CON FECHA PASADA ES UN VENCIDO» del encabezado de esta función.
+      estado: debitada ? 'REAL' : estadoContraCorte('COMPROMETIDO', fecha, corte),
       instrumento: 'tarjeta',
       origen: { pestana: T.pestaña, fila: i + 1 },
     }))
@@ -607,7 +627,7 @@ export function deImpuestosCalendario(filas = [], { filaIva, filaIibb, filaChequ
  * declara `cheque` salvo que el texto diga echeq, y la clave no depende de eso porque el signo ya
  * separa el 514 que me dieron del 514 que libré.
  */
-export function deCartera(filas = [], { fila0 = FILA0_RAW } = {}) {
+export function deCartera(filas = [], { fila0 = FILA0_RAW, corte = null } = {}) {
   const i = (letra) => indiceDeColumna(letra)
   const out = []
   for (let r = fila0 - 1; r < filas.length; r++) {
@@ -632,7 +652,9 @@ export function deCartera(filas = [], { fila0 = FILA0_RAW } = {}) {
       // decir a qué cliente pertenece el cheque ("Alimentos Del Sur SA" por LA ESTRELLA).
       cliente: clienteCanonico(txt(f[i(COL_RAW.obra)])) || txt(f[i(COL_RAW.librador)]),
       rubro: 'Valores en cartera',
-      estado: 'COMPROMETIDO',
+      // Un valor en cartera cuya fecha de acreditación ya pasó y que nadie marcó acreditado es un
+      // VENCIDO — del lado del INGRESO, pero el mismo agujero: ver `deTarjetaSinFactura` (11/09/2026).
+      estado: estadoContraCorte('COMPROMETIDO', fecha, corte),
       instrumento: /echeq/i.test(tipo) ? 'echeq' : 'cheque',
       numeroCheque: txt(f[i(COL_RAW.numero)]),
       origen: { pestana: PESTANA_RAW, fila: r + 1 },

@@ -267,6 +267,20 @@ function llamar(n, args, ev) {
     return num(c) !== 0 ? ev(args[1]) : ev(args[2] ?? { k: 'num', v: 0 })
   }
   if (n === 'IFERROR') { try { return ev(args[0]) } catch (e) { if (e instanceof ErrorHoja) return ev(args[1] ?? { k: 'num', v: 0 }) ; throw e } }
+  // ═══ ROW(rango) DEVUELVE LOS NÚMEROS DE FILA, NO LOS VALORES (11/09/2026) ═══
+  //
+  // Es la mitad del idioma con el que este repo busca «el último»:
+  // `INDEX(r;SUMPRODUCT(MAX(ISNUMBER(r)*(r<>0)*ROW(r))) - desde + 1)`. Lo escriben `formulaUltimoSaldo`
+  // y `formulaUltimaFecha`, o sea el saldo del banco que consume CAJA — y sin ROW ninguna fórmula que
+  // lo use se podía evaluar en frío: el saldo con el que se decide qué se paga era justo el que no
+  // tenía instrumento. Se resuelve ANTES de `args.map(ev)` porque necesita la REFERENCIA: una vez
+  // evaluado, el rango ya es una lista de valores y las filas se perdieron.
+  if (n === 'ROW') {
+    if (args.length !== 1 || args[0]?.k !== 'ref') {
+      throw new Error('evaluar-formula-sheet: ROW() sólo se soporta sobre una referencia (ROW(A4:A9))')
+    }
+    return ev.filasDeRango(args[0].v)
+  }
   // ═══ ISNUMBER ABSORBE EL ERROR DE SU ARGUMENTO, COMO EN SHEETS (29/08/2026) ═══
   //
   // `ISNUMBER(MATCH(x; rango; 0))` es EL idioma para preguntar «¿está en la lista?»: cuando no está,
@@ -537,6 +551,19 @@ export function evaluarFormula(formula, { hoja = {}, hojas = {}, nombres = {}, h
     const nombre = m[1] ?? m[2]
     if (!hojas[nombre]) throw new ErrorHoja(`#REF! — ${ref} vive en una pestaña que el test no modeló`)
     return lector(hojas[nombre], nombre)(m[3])
+  }
+  // LAS FILAS DE UN RANGO, para ROW(). Cierra los rangos abiertos con la MISMA última fila que usa
+  // `lector` —la del mapa de esa pestaña— así que `ROW(r)` y `ISNUMBER(r)` devuelven listas del mismo
+  // largo, que es lo único que hace que el SUMPRODUCT de «el último» dé el número correcto.
+  ev.filasDeRango = (ref) => {
+    const m = /^(?:'([^']+)'|([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_ ]*))!(.+)$/.exec(ref)
+    const nombre = m ? (m[1] ?? m[2]) : null
+    if (nombre && !hojas[nombre]) throw new ErrorHoja(`#REF! — ${ref} vive en una pestaña que el test no modeló`)
+    const mapa = nombre ? hojas[nombre] : hoja
+    const ultima = Object.keys(mapa).reduce((n, k) => Math.max(n, Number(/\d+$/.exec(k)?.[0] ?? 0)), 0)
+    const limpio = (m ? m[3] : ref).replace(/\$/g, '')
+    if (!limpio.includes(':')) return Number(/\d+$/.exec(limpio)?.[0] ?? 0)
+    return celdasDelRango(limpio, ultima).map((c) => Number(/\d+$/.exec(c)[0]))
   }
   return ev(parsear(tokenizar(formula)))
 }

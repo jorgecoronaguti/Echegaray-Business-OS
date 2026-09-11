@@ -14,6 +14,20 @@ import { entrar } from './util/obras-e2e'
 // se salga de la lista del README §2—. NO mide composición ni jerarquía: eso lo mira un humano
 // contra las capturas que este mismo spec deja en `test-results/liquidacion-fidelidad/`.
 //
+// ═══ DÓNDE EL MOCKUP DEJÓ DE MANDAR (11/09/2026) ═══
+//
+// El handoff §4 dibuja una columna de filtros de 230 px a la DERECHA y este spec la medía. El dueño
+// miró la pantalla real: *«qué es la información que refleja la sección de la derecha, pésima UX,
+// no sirve así»*. La regla de desempate del propio handoff es que el zip manda en lo COSMÉTICO, y
+// esto no lo era: eran 230 px permanentes con cuatro grupos de los que tres no se decidían
+// —«Todo el plantel / Modalidad hora / Modalidad mensual» repetía el corte que la tabla ya hace con
+// sus dos grupos, y «Convenio» era un conteo con el rótulo cortado—. Una queja del dueño sobre la
+// pantalla real le gana a un lienzo.
+//
+// Lo que este spec mide ahora en su lugar: que la columna NO esté, que lo que sí se decide
+// —período, pendientes, cierre— esté arriba y entero, y que ningún rótulo salga cortado. El resto
+// del contrato del mockup (alturas, paleta, microcopy, las otras cinco solapas) sigue igual.
+//
 // ═══ POR QUÉ RANGOS Y NO IGUALDADES ═══
 //
 // Porque el handoff §2 declara rangos («fila de tabla 52-58 px», «encabezado 30-36»), no valores
@@ -92,20 +106,52 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     const hb = (await boton.boundingBox())!.height
     expect(hb).toBeGreaterThanOrEqual(30)
     expect(hb).toBeLessThanOrEqual(32)
+    // EL PORQUÉ SIGUE AL LADO DEL BOTÓN GRIS, pero ya no como párrafo permanente: el párrafo decía
+    // lo mismo que la banda de pendientes de arriba —que además lleva a las filas que lo producen—
+    // y era uno de los que el dueño prohíbe. Ahora es el `title` del botón apagado.
     if (await boton.isDisabled().catch(() => false)) {
-      await expect(page.getByTestId('por-que-no')).toBeVisible()
+      expect(await boton.getAttribute('title'), 'el botón apagado dice por qué').toMatch(/Antes de cerrar/)
     }
 
-    // LOS FILTROS VAN A LA DERECHA, NO A LA IZQUIERDA (handoff §4). Se mide la posición real.
-    const panel = page.getByTestId('vista-horas').locator('aside').first()
-    const cuadro = await page.getByTestId('vista-horas').boundingBox()
-    const aside = await panel.boundingBox()
-    expect(aside!.x, 'el menú de filtros va a la derecha').toBeGreaterThan(cuadro!.x + cuadro!.width / 2)
+    // LA COLUMNA DE FILTROS DE LA DERECHA NO EXISTE MÁS. Es la afirmación literal de la queja del
+    // dueño, y se mide por ausencia para que reaparecer cueste un rojo y no una captura.
+    await expect(page.getByTestId('vista-horas').locator('aside')).toHaveCount(0)
 
-    // EL RESUMEN Y SU SUBTÍTULO: cargadas/esperadas y «N de M hábiles transcurridos».
-    await expect(panel).toContainText('Cargadas')
-    await expect(panel).toContainText('Esperadas')
+    // LO QUE SÍ SE DECIDE, ARRIBA Y ENTERO. El período vigente con su estado, los otros períodos a
+    // los que se puede saltar, y el subtítulo con cuánto de la quincena pasó.
+    // ═══ NINGUNA FUENTE FALLÓ ═══ (repuesto el 11/09/2026 por la auditoría)
+    //
+    // Una grilla en cero porque la RLS rechazó una consulta es INDISTINGUIBLE de una quincena sin
+    // cargar. `SolapaHoras` lo dice con `horas-error`, y con sesión de dirección no puede haber
+    // ninguno: si aparece, el número que se está mirando no es el de la empresa. El control vivía
+    // en `liquidacion-quincena.spec.ts` apuntando a `liquidacion-error`, que es del cuadro fósil;
+    // acá apunta al aviso que la pantalla dibuja hoy.
+    await expect(page.getByTestId('horas-error')).toHaveCount(0)
+
+    const cabeceraQuincena = page.getByTestId('cabecera-quincena')
+    await expect(cabeceraQuincena).toBeVisible()
+    await expect(cabeceraQuincena).toContainText('quincena')
+    await expect(page.getByTestId('periodos').locator('a')).not.toHaveCount(0)
     await expect(page.getByTestId('grilla-subtitulo')).toContainText('hábiles transcurridos')
+
+    // NINGÚN RÓTULO CORTADO. «1ª quincena de septiemb…» y «UOCRA — Ley 22.250 (const…» eran el
+    // síntoma que se veía a simple vista: se mide el desborde real de cada caja de la cabecera.
+    const cortados = await cabeceraQuincena.evaluate((raiz) => {
+      const malos: string[] = []
+      for (const n of raiz.querySelectorAll('*')) {
+        if (n.children.length > 0) continue
+        if (n.scrollWidth > n.clientWidth + 1) malos.push((n.textContent ?? '').slice(0, 40))
+      }
+      return malos
+    })
+    expect(cortados, 'rótulos cortados en la cabecera').toEqual([])
+
+    // CARGADAS Y ESPERADAS VIVEN EN EL PIE DE LA TABLA, debajo de sus propias columnas: en el panel
+    // estaban por segunda vez, a 150 px de la columna que ya las publicaba.
+    // Sin distinguir mayúsculas: los rótulos van en versalitas por CSS y el DOM dice «Carg.».
+    await expect(page.getByTestId('encabezado-columnas')).toContainText(/carg\./i)
+    await expect(page.getByTestId('encabezado-columnas')).toContainText(/esper\./i)
+    await expect(page.getByTestId('total-grilla')).toBeVisible()
   })
 
   test('Horas · el microcopy del mockup, sin sinónimos', async ({ page }) => {
@@ -114,21 +160,50 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     // LA LEYENDA DEL PIE, palabra por palabra: «·» es «sin horas cargadas» y NO una falta (R3).
     await expect(cuadro).toContainText('sin horas cargadas')
     await expect(cuadro).toContainText('9 h de lunes a jueves')
-    // Los cuatro pendientes con el nombre del mockup.
-    for (const t of ['Ausencias sin motivo', 'Sin retribución', 'Días sin cargar', 'Modalidad hora']) {
-      await expect(cuadro).toContainText(t)
-    }
+    // LO PENDIENTE, CON EL NÚMERO ADENTRO DEL TEXTO — «9 ausencias sin motivo», no «Ausencias sin
+    // motivo … 9» con 150 px de nada en el medio. Se mide con expresión regular porque el número es
+    // el dato vivo de la quincena y clavarlo pondría rojo un test cuando alguien cargue un día.
+    const pendientes = page.getByTestId('pendientes')
+    await expect(pendientes).toBeVisible()
+    await expect(pendientes).toContainText(/\d+ ausencias? sin motivo/)
+    await expect(pendientes).toContainText(/\d+ días? sin cargar/)
+    // «Sin retribución» NO se afirma: la banda esconde lo que vale cero a propósito —una fila que
+    // dice «0» ocupa lo mismo que una que avisa y enseña a no mirarla—, así que su presencia depende
+    // del estado de la base y no del código.
+
+    // EL CORTE OBRERO/OFICINA LO HACE LA TABLA CON SUS DOS GRUPOS, no un filtro que lo repita.
+    // La caja va en versalitas por CSS (`text-transform`), así que el texto del DOM es «Jefes de
+    // obra»: se compara sin distinguir mayúsculas para no medir la hoja de estilos.
+    await expect(cuadro).toContainText(/jefes de obra/i)
+    await expect(cuadro).not.toContainText('Modalidad hora')
   })
 
   test('Persona abierta · panel al costado SIN navegar, con las cuatro métricas', async ({ page }) => {
     await abrir(page, 'horas')
     const url = page.url()
     const fila = page.locator('[data-testid^="fila-"]').first()
-    await fila.click()
-    await expect(page.getByTestId('panel-persona')).toBeVisible()
+    // SE REINTENTA EL CLIC: un clic anterior a la hidratación se pierde sin dejar rastro y el panel
+    // no abre nunca. El porqué completo, en `liquidacion-editar-en-celda.spec.ts`.
+    await expect(async () => {
+      await fila.click()
+      await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 5_000 })
+    }).toPass({ timeout: 60_000 })
     // ABRIR UNA PERSONA NO NAVEGA (handoff §4): la URL no se movió.
     expect(page.url(), 'abrir una persona no navega').toBe(url)
     await page.screenshot({ path: `${SALIDA}/app-2-persona.png`, fullPage: true })
+
+    // ═══ ABRIR UNA PERSONA TIENE QUE VERSE ═══
+    //
+    // `toBeVisible()` no alcanza y por eso esto no se cazaba: Playwright da por visible un panel que
+    // está 1.100 px más abajo del viewport. Con diecisiete personas en la tabla, quien hacía clic en
+    // la primera no veía moverse nada. Se mide que el panel quede DENTRO de la pantalla.
+    const caja = await page.getByTestId('panel-persona').boundingBox()
+    const alto = page.viewportSize()!.height
+    expect(caja!.y, 'el panel de la persona queda a la vista al abrirlo').toBeLessThan(alto)
+    expect(caja!.y + 80, 'su encabezado queda a la vista, no sólo el borde').toBeLessThan(alto)
+    // Y NO DEBAJO DE LA BARRA PEGAJOSA: sin `scroll-margin-top` el nombre de la persona quedaba
+    // medio tapado por los 44 px de la barra de navegación, que no se va con el scroll.
+    expect(caja!.y, 'el nombre no queda tapado por la barra de navegación').toBeGreaterThan(44)
 
     const metricas = page.getByTestId('metricas-persona')
     await expect(metricas).toBeVisible()
@@ -145,6 +220,19 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     for (const t of ['Adelanto', 'Ya transferido', 'Por banco', 'En efectivo', 'Efectivo redondeado']) {
       await expect(cadena).toContainText(t)
     }
+    // ═══ LA CELDA DEL DUEÑO ES EDITABLE ═══ (repuesto el 11/09/2026 por la auditoría)
+    //
+    // «EFECTIVO redondeado» es la columna que el dueño escribe a mano y que pisa el cálculo. El
+    // caso que lo afirmaba apuntaba al cuadro fósil (`input[aria-label="Efectivo redondeado"]`
+    // dentro de `cuadro-obreros`) y al retirarlo quedó sin reemplazo: durante unas horas NADA probó
+    // que se pudiera editar. Vive en el panel de la persona, con la quincena abierta.
+    //
+    // NO SE ESCRIBE: se comprueba que el control está y no está bloqueado. Tipear acá dejaría una
+    // fila en una quincena real.
+    const redondeo = cadena.getByTestId('panel-celda-efectivoRedondeado')
+    await expect(redondeo).toBeVisible()
+    await expect(redondeo).toBeEnabled()
+
     // EL DÍA ABIERTO (pantalla 3): encabezado, columnas y fila de total.
     const dias = page.getByTestId('dias-de-la-persona')
     await expect(dias).toContainText('Cargó')
@@ -336,8 +424,14 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     }
     // Y EL PANEL DE LA PERSONA, que es el que apila el legajo debajo.
     await abrir(page, 'horas')
-    await page.locator('[data-testid^="fila-"]').first().click()
-    await expect(page.getByTestId('panel-persona')).toBeVisible()
+    // EL TERCER CLIC, CON EL MISMO REINTENTO QUE LOS OTROS DOS. Se había parcheado en dos de los
+    // tres lugares y éste quedó dando rojo intermitente cuando corre junto a otro spec sobre el
+    // mismo `next dev` — lo levantó la auditoría del 11/09/2026. El porqué, en
+    // `liquidacion-editar-en-celda.spec.ts`.
+    await expect(async () => {
+      await page.locator('[data-testid^="fila-"]').first().click()
+      await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 5_000 })
+    }).toPass({ timeout: 60_000 })
     await page.screenshot({ path: `${SALIDA}/app-390-persona.png`, fullPage: true })
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
   })

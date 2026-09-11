@@ -36,8 +36,14 @@ const MARCA = 'ZZ-E2E hh-imputacion'
 
 /** Crea una persona de prueba y una obra donde imputar; devuelve los ids y cómo limpiar. */
 async function escenario() {
+  // `es_prueba` DESDE EL INSERT, NO AL BORRAR (10/09/2026). Sin ella, la persona que este archivo
+  // crea entra a `persona_directorio` —que filtra `es_prueba is not true`— y de ahí a PLANTEL,
+  // ASISTENCIA y LIQUIDACIÓN. Una corrida que murió antes del `finally` el 07/09 dejó «ZZ-E2E
+  // hh-imputacion» entre los dieciséis obreros del dueño, sin tarifa y trabando el cierre de la
+  // quincena. La limpieza sigue estando; la marca es lo que hace que un corte no se vea.
   const { rows: [p] } = await query(
-    `insert into public.personas (nombre_completo) values ($1) returning id`, [MARCA])
+    `insert into public.personas (nombre_completo, es_prueba) values ($1, true) returning id`,
+    [MARCA])
   const { rows: [o] } = await query(
     `select id from public.obra_canonica order by orden limit 1`)
   // ═══ `limit 1` SIN `order by` ELIGE CUALQUIERA (21/08/2026) ═══

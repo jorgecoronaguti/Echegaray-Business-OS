@@ -37,6 +37,7 @@ import {
   RUBRO_GREMIALES,
 } from '../lib/libro-extractores.mjs'
 import { pagosGremialesDelBanco, explicarPago } from '../lib/cargas-pagos-banco.mjs'
+import { leerBoletasIeric } from '../lib/cargas-boletas-ieric.mjs'
 import { PESTAÑA as RAW_UOCRA } from './uocra-raw-pestana.mjs'
 import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
 import { deEstructura, diaTipicoDeEstructura, PESTANA_ESTRUCTURA } from '../lib/libro-extractores-estructura.mjs'
@@ -171,6 +172,9 @@ async function extraerDeLasFuentes(google, corte) {
   // réplica no hay apareo posible y la única consecuencia es que los gremiales vuelven a decidirse
   // sólo por Compras — el estado de ayer. Por eso es lectura opcional, como las cinco de arriba.
   const boletasUocra = await opcional(`'${RAW_UOCRA}'!A1:J`)
+  // Y LAS DE IERIC/FODECO SE LEEN DEL PDF EN DRIVE (11/09/2026): no tienen réplica en el Sheet porque el
+  // declarado de la pestaña no las incluye; ver lib/cargas-boletas-ieric.mjs. Sin base o sin Drive → [] y aviso.
+  const boletasIeric = await leerBoletasIeric({ query, google, aviso: (m) => console.warn(`  ⚠ ${m}`) })
 
   // El registro de cheques se ubica por el DATO (FISICO/ECHEQ), no por una fila fija.
   const reg = ubicarRegistro(cheques.map((f) => [f?.[0]]))
@@ -246,7 +250,7 @@ async function extraerDeLasFuentes(google, corte) {
   // se aparea contra la boleta en `cargas-pagos-banco.mjs` y se consume del MISMO `usados` que el
   // resto de los cruces — un débito respalda a una sola obligación.
   const pagosBanco = pagosGremialesDelBanco({
-    debitos: extracto.debitos, boletas: boletasUocra ?? [], usados: extracto.usados,
+    debitos: extracto.debitos, boletas: boletasUocra ?? [], boletasIeric, usados: extracto.usados,
   })
   for (const a of pagosBanco.avisos) console.warn(`  ⚠ ${a}`)
   const porPeriodo = new Map([...pagosBanco.porPeriodo].map(([p, v]) => [`${p}·${RUBRO_GREMIALES}`, v]))
@@ -458,10 +462,16 @@ async function extraerDeLasFuentes(google, corte) {
       Estructura: gastosEstructura.movimientos,
       'Cargas Sociales': cargas,
       Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos, tipoCambio }),
-      'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce, aviso: (x) => chequesPorCompras.push(x) }),
-      'Tarjeta de Credito': deTarjetaSinFactura(tarjeta, { pagos: pagosTarjeta }),
+      // ═══ LOS TRES RECIBEN `corte` DESDE EL 11/09/2026, Y NO ES UN PARÁMETRO DE MÁS ═══
+      //
+      // Estampaban 'COMPROMETIDO' a mano, sin pasar por `estadoContraCorte`. Un pendiente con fecha ya
+      // pasada tiene que nacer VENCIDO: el Semanal ancla su arrastre en la semana del corte de caja, y
+      // una columna anterior no publica saldo — el movimiento se pierde para siempre. Medido: $263.813,91
+      // de diferencia entre `CFS!BB50` y `CFM!M50` por la cuota 2 de Pintureria Cordoba, vencida el 02/09.
+      'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce, corte, aviso: (x) => chequesPorCompras.push(x) }),
+      'Tarjeta de Credito': deTarjetaSinFactura(tarjeta, { pagos: pagosTarjeta, corte }),
       _BANCO_RAW: cargosBanco,
-      _CHEQUES_RAW: deCartera(carteraRaw),
+      _CHEQUES_RAW: deCartera(carteraRaw, { corte }),
       // El impuesto al cheque proyectado entra NETO de lo que el banco ya debitó en el mes: esos
       // débitos ya están en el Libro por `_BANCO_RAW`, y sumarlos dos veces sería el defecto del día.
       'Impuestos y Financieros': deImpuestosCalendario(impuestos, filasCal, anioDelLibro, corte,
