@@ -41,10 +41,16 @@
 //   · EL LOTE SIN PERÍODO. El del 18/08 ($2.481.098,40, 35 acreditaciones) llegó con «desempleo
 //     000000»: el banco no dice de qué mes es y ninguna suma de devengados lo reproduce. NO se le
 //     atribuye período — se avisa. Adivinarlo taparía un mes que quizá siga impago.
-//   · IERIC Y FODECO. No están en la boleta de UOCRA (la DDJJ no los declara) y en el extracto
-//     aparecen como «Merpago*ieric» o «Pago de servicios - Ieric», por $13.191 a $47.670, sin
-//     período ni importe declarado contra el cual compararlos. Sin las dos puntas no hay apareo
-//     posible: siguen dependiendo de Compras. Está declarado en `SIN_APAREO`.
+//   · IERIC Y FODECO — CORREGIDO EL 11/09/2026. Este módulo nació diciendo que no tenían declarado
+//     contra el cual aparearse. Era falso: las boletas están en Drive (`archivo-fiscal/AAAA/IERIC/`,
+//     las lee `cargas-boletas-ieric.mjs`) y valen lo mismo las dos —el 1 % de la misma base—, y el
+//     banco las cobra por UN servicio de Pago Mis Cuentas («Ieric cont.1p» / «Merpago*ieric»): en el
+//     extracto son DOS débitos iguales el mismo día (31/07 2×$15.092,62 · 18/08 2×$13.191,19 ·
+//     11/09 2×$13.794,56). Se aparean POR PERÍODO contra las dos boletas: un débito para cada una,
+//     los dos o ninguno — con uno solo no se sabe cuál organismo cobró, y no se adivina. Y NO SE
+//     SUMAN A `cubierto`: la serie «Total declarado gremiales» de la pestaña no los incluye (ver
+//     `cargas-bloques.mjs`), así que viajan aparte en `fueraDelDeclarado` y el Libro los descuenta
+//     sólo cuando la obligación del mes es la PROYECCIÓN, que sí los trae adentro.
 //   · EL SEGUNDO CUIT. El DEBIN del 19/08 fue al CUIT 30-70774398-7, no al de UOCRA, y pagó al
 //     centavo el Total determinado de la boleta ORIGINAL de julio. Que sea un cobrador de la
 //     obligación gremial es INFERENCIA con evidencia (coincidencia exacta, mismo canal, misma
@@ -54,8 +60,9 @@
 // decisiones, que es lo que se puede probar en frío.
 
 import { combinacionUnica } from './jornales-testigos.mjs'
-import { isoDeSerial } from './libro-extractores-fechas.mjs'
+import { isoDeSerial, serialDe } from './libro-extractores-fechas.mjs'
 import { COL as COL_UOCRA, FILA0 as FILA0_UOCRA } from '../scripts/uocra-raw-pestana.mjs'
+import { boletasIericVigentes } from './cargas-boletas-ieric.mjs'
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const txt = (v) => String(v ?? '').trim()
@@ -105,13 +112,13 @@ export const RE_DEBIN = /debin/i
 /** «Acreditacion fondo desempleo 082026» — el período viene en el concepto, MMAAAA. */
 export const RE_FONDO_CESE = /fondo\s+desempleo\s+(\d{6})/i
 
-/** Los organismos gremiales que este módulo NO puede aparear, y por qué. Se declara para que el que
- *  lea el resultado sepa que la cobertura es parcial a propósito. */
-export const SIN_APAREO = Object.freeze({
-  IERIC: 'no se declara en la boleta de UOCRA y en el extracto llega sin período («Merpago*ieric», '
-    + '«Pago de servicios - Ieric»): no hay importe declarado contra el cual aparearlo. Sigue por Compras.',
-  FODECO: 'ídem IERIC, y además no se le encontró un solo débito propio en el extracto.',
-})
+/** Los organismos gremiales que este módulo NO puede aparear, y por qué. Desde el 11/09/2026 está
+ *  vacío: IERIC y FODECO se aparean contra sus boletas (ver la cabecera). Se conserva exportado para
+ *  que el que lo lea sepa que la cobertura se declara, aunque hoy sea completa. */
+export const SIN_APAREO = Object.freeze({})
+
+/** El débito de IERIC/FODECO: Pago Mis Cuentas escribe «Ieric cont.1p», la tarjeta «Merpago*ieric». */
+export const RE_IERIC = /ieric/i
 
 /** «082026» → «2026-08». Devuelve null si el banco no escribió un período real (el lote del 18/08
  *  llegó con «000000», que es el banco diciendo que no sabe). */
@@ -229,40 +236,52 @@ function aparearImporte(candidatos, objetivo, usados) {
  * y `libro-cruce-banco`: un débito respalda a UNA obligación. Sin eso, los $994.941,26 podrían pagar
  * a la vez la boleta de UOCRA y una factura de proveedor del mismo importe.
  *
- * @param {{debitos:Array, boletas:Array<Array>, usados:Set<number>}} entrada
+ * IERIC Y FODECO VIAJAN APARTE (11/09/2026). `boletasIeric` son las boletas leídas por
+ * `cargas-boletas-ieric.mjs`; lo que el banco pagó de ellas va en `fueraDelDeclarado`, no en
+ * `cubierto`, porque el declarado de la pestaña no las incluye — sumarlas ahí taparía Fondo de Cese
+ * sin respaldo (los $219.055,92 de agosto) con plata que pagó otra obligación.
+ *
+ * @param {{debitos:Array, boletas:Array<Array>, boletasIeric?:Array<object>, usados:Set<number>}} entrada
  * @returns {{porPeriodo:Map<string,object>, avisos:string[]}}
  */
-export function pagosGremialesDelBanco({ debitos = [], boletas = [], usados = new Set() } = {}) {
+export function pagosGremialesDelBanco({ debitos = [], boletas = [], boletasIeric = [], usados = new Set() } = {}) {
   const avisos = []
   const vigentes = boletasVigentes(boletas)
+  const ieric = boletasIericVigentes(boletasIeric)
   const { lotes, sinPeriodo } = lotesDeFondoDeCese(debitos)
   const candidatos = debitosDeUocra(debitos)
+  const candidatosIeric = debitosDeIeric(debitos)
   const porPeriodo = new Map()
 
-  for (const periodo of [...vigentes.keys()].sort()) {
+  for (const periodo of [...new Set([...vigentes.keys(), ...ieric.keys()])].sort()) {
     const b = vigentes.get(periodo)
     const detalle = []
     let cubierto = 0
     let fecha = null
 
-    const uocra = aparearUocra(b, candidatos, usados, avisos)
+    const uocra = b ? aparearUocra(b, candidatos, usados, avisos) : null
     if (uocra) { detalle.push(uocra); cubierto += uocra.cubierto; fecha = Math.max(fecha ?? 0, uocra.fecha) }
 
-    const fcl = aparearFondoDeCese(b, lotes.get(periodo), usados, avisos)
+    const fcl = b ? aparearFondoDeCese(b, lotes.get(periodo), usados, avisos) : null
     if (fcl) { detalle.push(fcl); cubierto += fcl.cubierto; fecha = Math.max(fecha ?? 0, fcl.fecha) }
 
+    const fuera = aparearIericFodeco(periodo, ieric.get(periodo), candidatosIeric, usados, avisos)
+    for (const f of fuera) { detalle.push(f); fecha = Math.max(fecha ?? 0, f.fecha) }
+
     if (!detalle.length) continue
-    const declarado = dosDecimales((b.totalDeterminado ?? 0) + (b.fondoCese ?? 0))
+    const declarado = dosDecimales((b?.totalDeterminado ?? 0) + (b?.fondoCese ?? 0))
     porPeriodo.set(periodo, {
       periodo,
       declarado,
       cubierto: dosDecimales(cubierto),
       resto: dosDecimales(declarado - cubierto),
+      fueraDelDeclarado: dosDecimales(fuera.reduce((a, f) => a + f.cubierto, 0)),
       fecha,
       filas: detalle.flatMap((d) => d.filas),
       detalle,
     })
   }
+  avisarIericSueltos(candidatosIeric, ieric, usados, avisos)
 
   for (const d of sinPeriodo) {
     avisos.push(`cargas-pagos-banco: el débito de Fondo de Cese de ${pesos(d.importe)} del `
@@ -315,6 +334,80 @@ function aparearFondoDeCese(b, lote, usados, avisos) {
     filas: lote.filas,
     motivo: `${lote.filas.length} acreditación(es) rotuladas «desempleo ${b.periodo.slice(5)}${b.periodo.slice(0, 4)}»`,
   }
+}
+
+/** Los débitos que pueden ser el pago de una boleta de IERIC o de FODECO, en orden de fecha y fila. */
+export function debitosDeIeric(debitos = []) {
+  return debitos.filter((d) => RE_IERIC.test(txt(d.concepto))).sort((a, b) => a.fecha - b.fecha || a.fila - b.fila)
+}
+
+/** El primer día del mes SIGUIENTE al período: la boleta de agosto no puede haberse pagado en agosto. */
+const primerDiaDespuesDe = (periodo) => {
+  const [a, m] = periodo.split('-').map(Number)
+  return m === 12 ? serialDe(a + 1, 1, 1) : serialDe(a, m + 1, 1)
+}
+
+/**
+ * La parte IERIC + FODECO de un período: UN débito libre para cada boleta, dentro del peso, posterior
+ * al período. Las dos o ninguna: los débitos son idénticos y el banco no dice cuál organismo cobró —
+ * con uno solo, elegir sería inventar qué boleta quedó impaga.
+ */
+function aparearIericFodeco(periodo, boleta, candidatos, usados, avisos) {
+  if (!boleta?.IERIC || !boleta?.FODECO) {
+    if (boleta) avisos.push(`cargas-pagos-banco: ${periodo} tiene la boleta de ${boleta.IERIC ? 'IERIC' : 'FODECO'} `
+      + 'pero no la del otro organismo en Drive — no apareo IERIC/FODECO hasta tener las dos.')
+    return []
+  }
+  const desde = primerDiaDespuesDe(periodo)
+  const libres = candidatos.filter((d) => !usados.has(d.fila) && d.fecha >= desde)
+  const dI = libres.find((d) => Math.abs(d.importe - boleta.IERIC.total) <= TOLERANCIA_APAREO)
+  const dF = libres.find((d) => d !== dI && Math.abs(d.importe - boleta.FODECO.total) <= TOLERANCIA_APAREO)
+  if (!dI || !dF) {
+    if (dI || dF) {
+      const d = dI ?? dF
+      avisos.push(`cargas-pagos-banco: ${periodo} · IERIC/FODECO — hay UN solo débito de ${pesos(d.importe)} el `
+        + `${isoDeSerial(d.fecha)} (_BANCO_RAW f${d.fila}) para dos boletas iguales: no sé cuál organismo cobró y no apareo ninguno.`)
+    }
+    return []
+  }
+  if (dI.fecha !== dF.fecha) {
+    avisos.push(`cargas-pagos-banco: ${periodo} · IERIC y FODECO se pagaron en días distintos `
+      + `(${isoDeSerial(dI.fecha)} y ${isoDeSerial(dF.fecha)}); se aparean igual, los importes coinciden con las boletas.`)
+  }
+  return [[ 'IERIC', dI, boleta.IERIC ], [ 'FODECO', dF, boleta.FODECO ]].map(([organismo, d, bo]) => {
+    usados.add(d.fila)
+    return {
+      organismo,
+      declarado: bo.total,
+      cubierto: Math.min(bo.total, d.importe),
+      fecha: d.fecha,
+      filas: [d.fila],
+      motivo: `débito de ${pesos(d.importe)} el ${isoDeSerial(d.fecha)} · boleta nº ${bo.boleta ?? '?'}`,
+    }
+  })
+}
+
+/** Los débitos a IERIC posteriores al primer período con boleta que ningún apareo consumió. */
+function avisarIericSueltos(candidatos, ieric, usados, avisos) {
+  const periodos = [...ieric.keys()].sort()
+  if (!periodos.length) return
+  const desde = primerDiaDespuesDe(periodos[0])
+  const sueltos = candidatos.filter((d) => !usados.has(d.fila) && d.fecha >= desde)
+  if (!sueltos.length) return
+  avisos.push(`cargas-pagos-banco: ${sueltos.length} débito(s) a IERIC sin boleta que los explique — `
+    + sueltos.map((d) => `${pesos(d.importe)} el ${isoDeSerial(d.fecha)} (f${d.fila})`).join(', ')
+    + '. Si es un período nuevo, falta subir sus dos boletas a archivo-fiscal/AAAA/IERIC.')
+}
+
+/**
+ * Cuánto de lo apareado descuenta la obligación del Libro para ese mes, según de dónde salió ella.
+ * DECLARADA (boleta de UOCRA): sólo UOCRA + Fondo de Cese, porque la serie declarada no trae IERIC ni
+ * FODECO. PROYECTADA: también IERIC/FODECO, porque la proyección de la pestaña sí los incluye.
+ */
+export function cubiertoDelBanco(banco, estado) {
+  const base = num(banco?.cubierto) ?? 0
+  const fuera = estado === 'PROYECTADO' ? (num(banco?.fueraDelDeclarado) ?? 0) : 0
+  return dosDecimales(base + fuera)
 }
 
 /**

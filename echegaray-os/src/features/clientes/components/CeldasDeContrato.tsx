@@ -25,6 +25,7 @@ import { millones, pesos } from '@/shared/components/canon/formato'
 import { V } from '@/shared/components/v2/patron'
 import type { ObraEnCurso } from '@/features/administracion/services/homeCartera'
 import { baseDelContrato, cobradoParaLaBarra, fraseDeFuente } from '../services/contratoDeObra'
+import { ORIGEN_SUMA_VIVA } from '../services/economiaObras'
 import { progresoDeCobro } from '../services/progresoCobro'
 
 export { baseDelContrato, fraseDeFuente, sumaDeObras } from '../services/contratoDeObra'
@@ -64,18 +65,31 @@ export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px' }: { o: Obr
     )
   }
   const usd = o.manoObraUsd ?? o.contratadoUsd
+  // ═══ LA SUMA VIVA SE MARCA Y LA DISCREPANCIA SE DICE (auditor final, 11/09/2026) ═══
+  // BSA: OBRAS no publica precio; el número es la SUMA VIVA de lo que Cobranzas registró como venta
+  // y sube al facturar. Y la vista declara «OC $11.565.369 c/IVA vs Cobranzas $17.704.199». Las dos
+  // cosas se dibujaban antes y se perdieron con la tabla nueva: un precio que no es precio no puede
+  // llevar la misma tinta que un contrato firmado.
+  const viva = o.contratoTotal === null && o.origenContratado === ORIGEN_SUMA_VIVA
+  const marca = viva || o.nota ? ' ·' : ''
   const secundaria = usd !== null
-    ? `${dolares(usd)}${(o.materiales ?? 0) > 0 ? ` + ${millones(o.materiales)}` : ''}`
+    ? `${dolares(usd)}${(o.materiales ?? 0) > 0 ? ` + ${pesos(o.materiales)}` : ''}`
     : null
+  const origen = o.contratoTotal !== null
+    ? 'Mano de obra + materiales según el papel, en pesos de hoy. '
+    : viva
+      ? 'OBRAS NO publica precio para este trabajo: el número es la SUMA VIVA de lo que Cobranzas lleva registrado como venta y sube cada vez que se factura. No es lo que el trabajo vale. '
+      : 'Precio que publica la pestaña OBRAS, neto. '
   return (
-    <Cifra
-      testid="contratado-obra" tam={tam} principal={pesos(base) ?? ''} secundaria={secundaria}
-      titulo={(o.contratoTotal !== null
-        ? 'Mano de obra + materiales según el papel, en pesos de hoy. '
-        : 'Precio que publica la pestaña OBRAS, neto. ')
-        + (usd !== null && o.tipoCambio ? `Los dólares se valúan al tipo de cambio de hoy (${Math.round(o.tipoCambio).toLocaleString('es-AR')}). ` : '')
-        + fraseDeFuente(o)}
-    />
+    <span data-origen={viva ? 'suma-viva' : undefined} data-nota={o.nota ? '' : undefined} className="grid">
+      <Cifra
+        testid="contratado-obra" tam={tam} principal={`${pesos(base) ?? ''}${marca}`} secundaria={secundaria}
+        titulo={origen
+          + (usd !== null && o.tipoCambio ? `Los dólares se valúan al tipo de cambio de hoy (${Math.round(o.tipoCambio).toLocaleString('es-AR')}). ` : '')
+          + (o.nota ? `Discrepancia declarada por la vista: ${o.nota}. ` : '')
+          + fraseDeFuente(o)}
+      />
+    </span>
   )
 }
 

@@ -562,3 +562,28 @@ test('el mes que el banco apagó sigue cubierto: las filas planas de Compras no 
   assert.deepEqual(libro.filter((m) => m.rubro === RUBRO_GREMIALES).map((m) => m.importe), [],
     'volvieron a entrar $1.500.000 de gremiales planos sobre un mes que el banco ya pagó')
 })
+
+// ═══ IERIC/FODECO PAGADOS POR EL BANCO (11/09/2026): descuentan sólo a la obligación PROYECTADA ═══
+//
+// La serie «Total declarado gremiales» (boleta de UOCRA + Fondo de Cese) no incluye IERIC ni FODECO;
+// la proyección de la pestaña sí. Restarles a la declarada los $27.589,12 pagados el 11/09 taparía
+// Fondo de Cese sin respaldo; no restárselos a la proyectada contaría dos veces lo que ya salió.
+
+test('IERIC/FODECO pagados NO tocan la obligación DECLARADA de agosto: la boleta de UOCRA no los trae', () => {
+  const ms = deCargasSociales(
+    { fechas: FECHAS, f931: F931, gremiales: GREMIALES, gremialesDeclarado: GREM_DECL }, CORTE,
+    { pagosDelBanco: new Map([[CLAVE_AGO, { cubierto: 0, fueraDelDeclarado: 27589.12, fecha: S('2026-09-11') }]]) })
+  const [g] = gremialesDe(ms)
+  assert.equal(g.importe, 2374397.18)
+  assert.equal(g.estado, 'COMPROMETIDO')
+})
+
+test('IERIC/FODECO pagados SÍ descuentan a la obligación PROYECTADA, que los incluye', () => {
+  const ms = deCargasSociales(
+    { fechas: FECHAS, f931: F931, gremiales: GREMIALES }, CORTE,
+    { pagosDelBanco: new Map([[CLAVE_AGO, { cubierto: 0, fueraDelDeclarado: 27589.12, fecha: S('2026-09-11') }]]) })
+  const [g] = gremialesDe(ms)
+  assert.equal(g.estado, 'PROYECTADO')
+  assert.equal(g.importe, 1446499 - 27589.12, 'la proyección menos lo que el banco ya pagó de IERIC y FODECO')
+  assert.match(g.concepto, /resto tras el banco/)
+})

@@ -69,18 +69,27 @@ const VACIO: PapelesDelCliente = {
 }
 
 /** Una cifra del cliente, alineada con las de sus trabajos. `null` → «—» con su motivo. */
-function CifraDeCliente({ valor, faltan, testid, clase = '', titulo }: {
+/**
+ * O SUMA COMPLETA, O «—» CON EL MOTIVO (auditor, 11/09/2026). Messina publicaba «$ 142.054.010 ·»
+ * de mano de obra con BSA sin desglosar: una suma parcial con un punto de 4 px se lee como total.
+ * «no incluye» sólo cuando TODOS sus trabajos lo dicen; un cliente no afirma lo que un papel de
+ * cinco no dice.
+ */
+function CifraDeCliente({ valor, faltan, testid, clase = '', titulo, queFalta }: {
   valor: number | null
   faltan: number
   testid: string
   clase?: string
   titulo: string
+  queFalta: string
 }) {
+  const completa = faltan === 0 && valor !== null
   return (
     <span className={`flex items-center justify-end font-mono tabular-nums ${clase}`} data-testid={testid}
-      title={valor === null ? titulo : faltan ? `${titulo} Suma parcial: ${faltan} trabajo(s) sin el dato.` : titulo}
-      style={{ fontSize: '12px', color: valor === null ? V.lupa : V.tinta, textAlign: 'right' }}>
-      {valor === null ? '—' : valor === 0 ? <span style={{ color: V.apagado, fontFamily: 'inherit' }}>no incluye</span> : pesos(valor)}{faltan && valor !== null ? <span style={{ color: V.tenue, marginLeft: 4 }}>·</span> : null}
+      data-estado={!completa ? 'incompleta' : valor === 0 ? 'no-incluye' : 'suma'}
+      title={completa || !faltan ? titulo : `${titulo} No se publica la suma: ${faltan} trabajo(s) ${queFalta}.`}
+      style={{ fontSize: '12px', color: completa ? V.tinta : V.lupa, textAlign: 'right' }}>
+      {!completa ? '—' : valor === 0 ? <span style={{ color: V.apagado, fontFamily: 'inherit' }}>no incluye</span> : pesos(valor)}
     </span>
   )
 }
@@ -156,12 +165,12 @@ export function TablaClientes({
               </span>
               {veEconomia ? (
                 <>
-                  <CifraDeCliente valor={contratado.total} faltan={contratado.faltan} testid="contratado"
+                  <CifraDeCliente valor={contratado.total} faltan={contratado.faltan} testid="contratado" queFalta="sin precio en OBRAS ni en un papel"
                     titulo={c.enCurso.length ? 'Suma del contrato de sus trabajos en curso, neto.' : 'No tiene trabajos en curso: no hay contrato vigente que sumar.'} />
-                  <CifraDeCliente valor={materiales.total} faltan={materiales.faltan} testid="materiales-cliente" clase={SOLO_ANCHO}
-                    titulo="Materiales fijados en los contratos de sus trabajos en curso." />
-                  <CifraDeCliente valor={manoObra.total} faltan={manoObra.faltan} testid="mano-obra-cliente" clase={SOLO_ANCHO}
-                    titulo="Mano de obra fijada en los contratos de sus trabajos en curso." />
+                  <CifraDeCliente valor={materiales.total} faltan={materiales.faltan} testid="materiales-cliente" clase={SOLO_ANCHO} queFalta="cuyo papel no separa materiales"
+                    titulo={c.enCurso.length ? 'Materiales fijados en los contratos de sus trabajos en curso.' : 'No tiene trabajos en curso.'} />
+                  <CifraDeCliente valor={manoObra.total} faltan={manoObra.faltan} testid="mano-obra-cliente" clase={SOLO_ANCHO} queFalta="cuyo papel no separa mano de obra"
+                    titulo={c.enCurso.length ? 'Mano de obra fijada en los contratos de sus trabajos en curso.' : 'No tiene trabajos en curso.'} />
                   {/* EL COBRO DEL CLIENTE ES UNA CIFRA, NO UNA BARRA: la barra mide un trabajo contra
                       su contrato; la bolsa del cliente junta cobros de trabajos cerrados y otros sin
                       repartir, y una segunda barra al lado de las de abajo es lo que el dueño marcó. */}

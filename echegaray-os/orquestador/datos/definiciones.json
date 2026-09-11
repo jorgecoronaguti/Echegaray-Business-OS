@@ -76,9 +76,9 @@
   "conceptos": [
     {
       "concepto": "contratado",
-      "canonica": "public.cliente_economia.contratado (cliente) · public.obra_economia_cartera.contratado (obra)",
+      "canonica": "public.cliente_economia.contratado (cliente) · public.obra_economia_cartera.contratado (obra) · public.obra_economia_cartera.contrato_total (obra, cuando public.obra_contrato desglosa mano de obra y materiales: manda sobre `contratado` en las pantallas de Clientes)",
       "propietario": "orquestador/scripts/obras-economia-sync.mjs",
-      "criterio": "Lo que la pestaña OBRAS del Flujo de Caja publica por obra (OC de Cobranzas en pesos > U$S x TC > suma viva de sus filas), sumado por cliente sobre sus obras NO FUSIONADAS. Es venta NETA, sin IVA. NULL —nunca 0— cuando OBRAS no tiene el dato.",
+      "criterio": "Lo que la pestaña OBRAS del Flujo de Caja publica por obra (OC de Cobranzas en pesos > U$S x TC > suma viva de sus filas), sumado por cliente sobre sus obras NO FUSIONADAS. Es venta NETA, sin IVA. NULL —nunca 0— cuando OBRAS no tiene el dato. Desde el 11/09/2026 el contrato desglosado vive en public.obra_contrato (una fila por obra, mano de obra y materiales en la moneda del papel, con drive_file_id y cita); la vista lo valúa con tc_vigente() y publica contrato_total, que es NULL —nunca 0— si un componente fijado no se puede valuar o si la suma da cero. En Clientes la base del contrato es contrato_total cuando existe y contratado si no (`baseDelContrato` / `baseContractualDe`).",
       "ventana": "acumulado; `contratado_en_curso` recorta a las obras con estado activa",
       "confianza": "D · conocimiento interno validado: el número lo publica el Sheet que el dueño edita y lo replica un sync del pipeline",
       "prohibidas": [
@@ -97,6 +97,10 @@
         {
           "patron": "contratado_de_obra\\(",
           "porque": "La función lee el campo del formulario con un portero adentro. Sigue viva porque `obra_panel` la usa; llamarla desde la aplicación sería saltear la canónica."
+        },
+        {
+          "patron": "from\\('obra_contrato'\\)",
+          "porque": "La tabla se lee SÓLO a través de public.obra_economia_cartera (contrato_* ), que la valúa en pesos con el mismo dólar que `contratado` y aplica el portero ve_economia(). Leerla directo publicaría dólares sin valuar al lado de pesos, y una tercera versión del contratado."
         }
       ],
       "excepciones": [

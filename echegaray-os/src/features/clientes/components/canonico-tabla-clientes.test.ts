@@ -24,7 +24,7 @@ const obra = (p: Partial<ObraEnCurso> & { obra_id: string }): ObraEnCurso => ({
   origenContratado: null, referencia: null, nota: null, ocCivaVentana: null, ocCivaHistorico: null,
   ocNVentana: null, ocNHistorico: null, manoObra: null, manoObraUsd: null, materiales: null,
   materialesUsd: null, contratoTotal: null, contratoFuente: null, contratoFuenteDriveId: null,
-  contratoFuenteNombre: null, contratoCita: null,
+  contratoFuenteNombre: null, contratoCita: null, contratoNota: null,
   certificacion: { texto: 'sin certificar', reclama: false }, cobradoTotal: null, cobradoNeto: null,
   porCobrar: null, vencido: null, proximo: null, imputacion: null, cobroDisponible: true, ...p,
 })
@@ -69,6 +69,9 @@ test('el avance mide NETO contra NETO, sobre el total del contrato, y dice cuán
   // Sin desglose, la base es el precio único de OBRAS.
   assert.equal(baseDelContrato(obra({ obra_id: 'bsa', contratado: 17_704_199 })), 17_704_199)
   assert.equal(baseDelContrato(obra({ obra_id: 'x' })), null)
+  // Un total de CERO (materiales «no incluye» y mano de obra sin fijar) no es una base: manda OBRAS.
+  assert.equal(baseDelContrato(obra({ obra_id: 'y', contratado: 10_000_000, contratoTotal: 0 })), 10_000_000)
+  assert.equal(baseDelContrato(obra({ obra_id: 'z', contratoTotal: 0 })), null)
 })
 
 test('un componente tiene tres estados y ninguno es un hueco mudo', () => {
@@ -83,12 +86,35 @@ test('la fuente del desglose se nombra: contrato, OC o presupuesto, con su rengl
   assert.match(fraseDeFuente(obra({ obra_id: 'q', contratoFuente: 'contrato', contratoFuenteNombre: 'CONTRATO.docx', contratoCita: 'U$S 63.000 + IVA' })),
     /Según el contrato firmado \(«CONTRATO\.docx»\): U\$S 63\.000 \+ IVA/)
   assert.match(fraseDeFuente(obra({ obra_id: 'b' })), /Ningún papel cargado separa/)
+  // La nota de la fila (una INFERENCIA declarada) llega entera al `title`.
+  assert.match(fraseDeFuente(obra({ obra_id: 'd', contratoFuente: 'presupuesto', contratoCita: 'SUB TOTAL 20.090.867,83', contratoNota: 'INFERENCIA: la cotización no dice «solo mano de obra»' })),
+    /— INFERENCIA: la cotización no dice/)
 })
 
 test('la suma del cliente declara cuántos trabajos no tienen el dato', () => {
   const s = sumaDeObras([obra({ obra_id: 'a', contratado: 10 }), obra({ obra_id: 'b' })], baseDelContrato)
   assert.deepEqual(s, { total: 10, faltan: 1 })
   assert.deepEqual(sumaDeObras([obra({ obra_id: 'b' })], baseDelContrato), { total: null, faltan: 1 })
+})
+
+test('el subtítulo de /clientes y el panel lateral suman la MISMA base que la columna', () => {
+  // Auditor 11/09/2026: tres superficies del módulo publicaban tres «contratado en curso» distintos
+  // ($ 350,4 M / $ 394,5 M / $ 95,3 M). La regla es una función y las tres la llaman.
+  const pagina = leer('../../../app/(main)/clientes/page.tsx')
+  assert.match(pagina, /sumaDeObras\(c\.enCurso, baseDelContrato\)/)
+  assert.doesNotMatch(pagina, /c\.contratado !== null|\(c\.contratado \?\? 0\)/, 'nadie vuelve a sumar cliente_economia.contratado_en_curso')
+  assert.match(pagina, /trabajosSinBase \? ` · suma incompleta/)
+  assert.match(pagina, /contratadoEnCurso=\{\(\(\) => \{[\s\S]*?sumaDeObras\(fila\.enCurso, baseDelContrato\)/)
+  const panel = leer('./PanelCliente.tsx')
+  assert.doesNotMatch(panel, /economia\?\.contratado_en_curso/, 'el panel dejó de leer cliente_economia para el contratado')
+})
+
+test('la suma viva se marca y la discrepancia declarada se dice (auditor final, 11/09/2026)', () => {
+  const src = celdas()
+  assert.match(src, /const viva = o\.contratoTotal === null && o\.origenContratado === ORIGEN_SUMA_VIVA/)
+  assert.match(src, /SUMA VIVA de lo que Cobranzas lleva registrado/)
+  assert.match(src, /Discrepancia declarada por la vista: \$\{o\.nota\}/)
+  assert.match(src, /data-origen=\{viva \? 'suma-viva' : undefined\}/)
 })
 
 test('el jefe de obra no ve una sola cifra', () => {

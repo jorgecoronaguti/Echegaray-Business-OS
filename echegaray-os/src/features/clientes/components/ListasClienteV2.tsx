@@ -37,6 +37,7 @@ import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import type { ObraPanel } from '@/features/obras/types'
 import { SIN_PRECIO_EN_OBRAS, type EconomiaDeObra } from '../services/economiaObras'
+import { baseContractualDe } from '@/features/clientes/services/economiaObras'
 import type { PapelesDelCliente } from '../services/papelesCliente'
 import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
@@ -137,8 +138,8 @@ const AYUDA_OP = 'Órdenes de pago del cliente imputadas a este trabajo. Una OP 
   + 'eso lo prueba el extracto del banco.'
 
 /** La MISMA columna «Cobrado» de la pestaña OBRAS y de `/clientes`: total, con IVA, percibido. */
-const AYUDA_COBRADO = 'Lo cobrado de este trabajo, CON IVA y criterio percibido '
-  + '(obra_cobranza.cobrado) — la misma columna «Cobrado» de la pestaña OBRAS del Flujo de Caja. '
+const AYUDA_COBRADO = 'Lo cobrado de este trabajo SIN IVA, criterio percibido (obra_cuenta.cobrado_neto), '
+  + 'comparable con el contrato neto de al lado; el porcentaje es el mismo avance de cobro que la lista de Clientes. '
   + 'Vacío no es cero: mientras Cobranzas anote el cobro contra el CLIENTE y no contra el trabajo, '
   + 'la base no puede decir cuánto entró por éste.'
 
@@ -161,7 +162,7 @@ export function ObrasDelCliente({
    * `/clientes`: mientras la base no pueda repartir el cobro, NINGUNA fila lo publica. Una sola
    * fila con número en una columna vacía no se lee como «la base sólo sabe de ésta».
    */
-  cobrado?: { por: Map<string, { total: number | null }>; disponible: boolean } | null
+  cobrado?: { por: Map<string, { total: number | null; neto?: number | null }>; disponible: boolean } | null
   /** Adónde va la fila: el detalle del trabajo DENTRO del CRM. Sin esto, al ERP — que es de donde
    *  el dueño mandó separar esta pantalla. */
   hrefTrabajo?: (obraId: string) => string
@@ -191,7 +192,7 @@ export function ObrasDelCliente({
       <div className={`grid ${COLS_OBRAS} ${AIRE_DERECHO}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
         <RotuloCol>Trabajo</RotuloCol>
         <RotuloCol>Estado</RotuloCol>
-        <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_COBRADO}><RotuloCol derecha>Cobrado c/IVA</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_COBRADO}><RotuloCol derecha>Cobrado neto</RotuloCol></span>
         <RotuloCol derecha>Contratado</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_OC}><RotuloCol derecha>OC c/IVA</RotuloCol></span>
         <span className={`grid ${SOLO_ANCHO_ECO}`} title={AYUDA_OP}><RotuloCol derecha>OP c/IVA</RotuloCol></span>
@@ -210,7 +211,8 @@ export function ObrasDelCliente({
         // definición del contratado, la que sumaba $31,8 M de Messina en el panel lateral mientras
         // la lista decía $156,1 M. Una obra sin precio en OBRAS lo dice; no se rellena con otra cosa.
         const e = economia?.get(o.obra_id) ?? null
-        const contratado = e?.contratado ?? null
+        // La misma base que la cartera y el KPI de arriba (auditor, 11/09/2026).
+        const contratado = baseContractualDe(e)
         // UNA OBRA CERRADA SIN PRECIO NO BLOQUEA NADA. El filo ámbar y el «sin precio en OBRAS»
         // existen para que alguien cargue el monto de una obra que se está ejecutando; sobre una
         // obra terminada hace dos años son una alarma que nadie puede apagar — y en el grupo
@@ -282,8 +284,15 @@ export function ObrasDelCliente({
             className={`truncate font-mono tabular-nums ${SOLO_ANCHO}`}
             style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
           >
-            {veEconomia && cobrado?.disponible && cobrado.por.get(o.obra_id)?.total != null
-              ? plata(cobrado.por.get(o.obra_id)?.total ?? 0)
+            {/* NETO CONTRA NETO, Y EL MISMO AVANCE QUE LA CARTERA (auditor final, 11/09/2026): al lado
+                de un contrato neto de $ 139,4 M, «$ 107,9 M c/IVA» hacía calcular 77 % a quien leía
+                la fila mientras la lista decía 65 %. */}
+            {veEconomia && cobrado?.disponible && cobrado.por.get(o.obra_id)?.neto != null
+              ? (() => {
+                  const neto = cobrado.por.get(o.obra_id)!.neto as number
+                  const pct = contratado ? Math.min(100, Math.round((neto / contratado) * 100)) : null
+                  return <>{plata(neto)}{pct !== null && <span style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}>{pct} %</span>}</>
+                })()
               : ''}
           </span>
 

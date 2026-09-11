@@ -101,6 +101,7 @@ export interface ObraEnCurso {
   contratoFuenteDriveId: string | null
   contratoFuenteNombre: string | null
   contratoCita: string | null
+  contratoNota: string | null
   certificacion: EstadoCertificacion
   /**
    * ═══ LAS CUATRO COLUMNAS DE LA PESTAÑA OBRAS, EN LA FILA DEL TRABAJO (10/09/2026) ═══
@@ -621,6 +622,7 @@ export function armarCartera({
         contratoFuenteDriveId: e?.contrato_fuente_drive_id ?? null,
         contratoFuenteNombre: e?.contrato_fuente_nombre ?? null,
         contratoCita: e?.contrato_cita ?? null,
+        contratoNota: e?.contrato_nota ?? null,
         referencia: e?.referencia ?? null,
         nota: e?.nota ?? null,
         ocCivaVentana: e?.oc_civa_ventana ?? null,

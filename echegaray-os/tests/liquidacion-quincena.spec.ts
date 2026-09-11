@@ -17,48 +17,76 @@ import { ADMIN, JEFE } from './util/identidades'
 //
 // NADA DE ESTO ESCRIBE: se abre, se lee y se cierra. La celda «EFECTIVO redondeado» no se toca — su
 // escritura la prueba la acción, y tipear acá dejaría una fila en una quincena real.
+//
+// ═══ ESTOS DOS CASOS MEDÍAN CÓDIGO MUERTO Y UNA DECISIÓN DEROGADA (11/09/2026) ═══
+//
+// Estaban en rojo sobre `main`, no por este trabajo: comprobado corriendo este mismo archivo contra
+// un worktree de `main` limpio, con los dos mismos fallos.
+//
+//  1 · `bloque-liquidacion` y sus tarjetas viven SÓLO en `BloqueLiquidacion.tsx`, que la pantalla
+//      dibuja únicamente cuando la solapa «Pagos» no tiene componente propio. Desde que se registró
+//      `SolapaPagos` esa rama no se ejecuta nunca, así que el test esperaba para siempre un nodo que
+//      no puede aparecer. La cadena de pago se mudó a la solapa «Pagos» (`pagos-tabla`) y la celda
+//      editable del dueño al panel de la persona: la afirma `liquidacion-fidelidad.spec.ts` sobre
+//      `panel-celda-efectivoRedondeado`, y el aviso «no pude leer» que este archivo exigía en cero
+//      (`liquidacion-error`, también del cuadro fósil) lo afirma allá como `horas-error`.
+//      `BloqueLiquidacion` y `CuadroLiquidacion` quedan como capa fósil —nadie los alcanza— y su
+//      retiro es un trabajo aparte: `pagos.tsx` y `cierre.tsx` todavía importan `pesos` de ahí.
+//
+//  2 · `liquidacion-sin-permiso` era el aviso amable que veía quien no liquida. El dueño lo derogó
+//      el 09/09/2026: sin nivel administrador la ruta NO EXISTE (`notFound()` en `personas/page.tsx`,
+//      antes de leer una sola fila). Un aviso confirma que el módulo está ahí y en qué URL. El test
+//      pedía justamente el aviso que la decisión mandó sacar —y `liquidacionSoloAdmin.test.ts` ya
+//      exige que no esté—, así que ahora se afirma lo que de verdad tiene que pasar: un 404.
 
 const RUTA = '/administracion/personas?vista=liquidacion&quincena=2026-09-01'
+/** La cadena de pago vive acá desde que «Pagos» tiene pantalla propia. */
+const RUTA_PAGOS = `${RUTA}&solapa=pagos`
 
 test.describe('Liquidación · Administración → Personal', () => {
-  test('dirección: la solapa está, la tarjeta cierra y los cuadros salen', async ({ page }) => {
+  test('dirección: la solapa está y la cadena de pago sale con su total', async ({ page }) => {
     await entrarComo(page, ADMIN.email, ADMIN.password)
-    await page.goto(RUTA)
+    await page.goto(RUTA_PAGOS)
 
     // LA SOLAPA EXISTE Y ESTÁ ACTIVA. Si `vistasDe` deja de agregarla, no hay forma de llegar.
     await expect(page.getByTestId('vistas-personal')).toContainText('Liquidación')
-    await expect(page.getByTestId('bloque-liquidacion')).toBeVisible()
+    // `solapa-pagos` NO SIRVE DE ANCLA: `BarraSolapas` publica ese mismo testid en la pestaña, así
+    // que resuelve a dos nodos. Es la trampa que la solapa «Horas» ya había pagado renombrando su
+    // contenido a `vista-horas`; «Pagos» todavía la comparte. Se ancla en `pagos-tabla`, que es
+    // único y además es el contenido, no la pestaña que lleva a él.
 
-    // LA TARJETA: las dos primeras dan la tercera. El aviso de que NO cierra no puede estar.
-    await expect(page.getByTestId('tarjeta-por-banco')).toBeVisible()
-    await expect(page.getByTestId('tarjeta-en-efectivo')).toBeVisible()
-    await expect(page.getByTestId('tarjeta-total')).toBeVisible()
-    await expect(page.getByTestId('tarjeta-no-cierra')).toHaveCount(0)
+    // LAS TRES CIFRAS DE ARRIBA: las dos primeras dan la tercera.
+    await expect(page.getByTestId('pagos-por-banco')).toBeVisible()
+    await expect(page.getByTestId('pagos-en-efectivo')).toBeVisible()
+    await expect(page.getByTestId('pagos-total')).toBeVisible()
 
-    // NINGUNA FUENTE FALLÓ. Un cuadro en cero porque la RLS rechazó la consulta es indistinguible
-    // de una quincena sin cargar, y el bloque lo dice con este aviso: acá no puede haber ninguno.
-    await expect(page.getByTestId('liquidacion-error')).toHaveCount(0)
-
-    // EL CUADRO DE OBREROS TIENE FILAS Y SU TOTAL. Un cuadro vacío con sesión de dirección sería
-    // el síntoma de un permiso faltante, no de una quincena en blanco.
-    await expect(page.getByTestId('cuadro-obreros')).toBeVisible()
-    await expect(page.getByTestId('total-obreros')).toBeVisible()
-    expect(await page.getByTestId('cuadro-obreros').getByTestId('fila-liquidacion').count())
-      .toBeGreaterThan(0)
-
-    // LA CELDA DEL DUEÑO ES EDITABLE. No se escribe: se comprueba que existe y no está bloqueada.
-    const redondeo = page.getByTestId('cuadro-obreros').locator('input[aria-label="Efectivo redondeado"]').first()
-    await expect(redondeo).toBeEnabled()
+    // LA TABLA TIENE SECCIONES Y SU FILA DE TOTAL. Una tabla vacía con sesión de dirección sería el
+    // síntoma de un permiso faltante, no de una quincena en blanco. La distinción explícita —el
+    // aviso «no pude leer» en cero— la hace `liquidacion-fidelidad.spec.ts` sobre `horas-error`:
+    // `solapas/pagos.tsx` ni siquiera recibe `errores`, así que acá no hay nada que afirmar.
+    await expect(page.getByTestId('pagos-tabla')).toBeVisible()
+    expect(await page.locator('[data-testid^="seccion-"]').count()).toBeGreaterThan(0)
+    await expect(page.getByTestId('pagos-total-fila')).toBeVisible()
   })
 
-  test('jefe de obra: no ve la solapa, y por URL directa tampoco ve el cuadro', async ({ page }) => {
+  test('jefe de obra: la ruta de Liquidación no existe para él', async ({ page }) => {
     await entrarComo(page, JEFE.email, JEFE.password)
+    // ═══ EL 404 NO SE MIDE CON EL STATUS DE LA RESPUESTA ═══
+    //
+    // Probado el 11/09/2026: `page.goto(RUTA).status()` devuelve 200. Con el App Router la respuesta
+    // empieza a transmitirse con el esqueleto de carga ANTES de que el componente llame a
+    // `notFound()`, y el código ya salió con el primer byte. Un test que mire el status da verde con
+    // la puerta abierta y rojo con la puerta cerrada: mide exactamente al revés.
+    //
+    // Lo que sí prueba que la puerta se cerró es la pantalla que queda: el 404 del sistema, y ni un
+    // rastro del módulo.
     await page.goto(RUTA)
+    await expect(page.getByTestId('estado-no-encontrado')).toBeVisible({ timeout: 30_000 })
 
-    await expect(page.getByTestId('vistas-personal')).not.toContainText('Liquidación')
-    await expect(page.getByTestId('liquidacion-sin-permiso')).toBeVisible()
-    await expect(page.getByTestId('bloque-liquidacion')).toHaveCount(0)
-    await expect(page.getByTestId('cuadro-obreros')).toHaveCount(0)
+    // Y NADA DEL MÓDULO QUEDA EN LA PÁGINA.
+    await expect(page.getByTestId('pagos-tabla')).toHaveCount(0)
+    await expect(page.getByTestId('vista-horas')).toHaveCount(0)
+    await expect(page.getByTestId('vistas-personal')).toHaveCount(0)
   })
 
   test('la solapa Horas (asistencia) sigue en pie para el jefe de obra', async ({ page }) => {

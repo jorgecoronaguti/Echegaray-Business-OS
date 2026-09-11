@@ -76,10 +76,19 @@ test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
   assert.doesNotMatch(codigoListas(), new RegExp(`'${SIN_PRECIO_EN_OBRAS}'`))
   // LO QUE NO PUEDE VOLVER: publicar un cero por una ausencia. La cifra sólo se dibuja con número.
   assert.match(codigoPagina(), /valor: contratadoEnCurso !== null \? money\(contratadoEnCurso\) : null/)
-  // Y LA CIFRA SALE DE LA VISTA, NO DE UNA SUMA DE ESTA PÁGINA (H1, 10/09/2026). Mientras la ficha
-  // sumó sus propias obras hubo cuatro definiciones de «contratado del cliente» —una por pantalla—
-  // y el panel lateral publicaba $31,8 M al lado de la lista que decía $156,1 M.
-  assert.match(codigoPagina(), /contratadoEnCurso = economiaCliente\?\.contratado_en_curso/)
+  // Y LA CIFRA SALE DE LA MISMA REGLA QUE LA CARTERA (auditor, 11/09/2026). Hasta hoy leía
+  // `cliente_economia.contratado_en_curso`, que sólo conoce el precio de OBRAS, y publicaba
+  // $ 95,3 M de Quattropani mientras la lista decía $ 139,4 M (con los materiales del contrato).
+  // La regla es UNA función —`baseContractualDe`, sobre `obra_economia_cartera`— y las dos
+  // pantallas la llaman; una suma escrita a mano acá sería la cuarta definición que ya se pagó.
+  assert.match(codigoPagina(), /basesEnCurso = enCurso\.map\(\(o\) => baseContractualDe\(economia\?\.get\(o\.obra_id\)\)\)/)
+  // O suma completa o nada: con un trabajo sin base, la ficha dice «sin precio», igual que la lista.
+  assert.match(codigoPagina(), /basesEnCurso\.every\(\(v\): v is number => v !== null\)/)
+  // Y la tabla de Trabajos compara NETO con neto y publica el avance, no el total con IVA.
+  assert.match(codigoListas(), /cobrado\.por\.get\(o\.obra_id\)\?\.neto != null/)
+  assert.match(codigoListas(), />Cobrado neto</)
+  assert.doesNotMatch(codigoPagina(), /economiaCliente\?\.contratado_en_curso/)
+  assert.match(codigoListas(), /const contratado = baseContractualDe\(e\)/)
   // EL RESPALDO AL CAMPO DEL FORMULARIO NO VUELVE: era la otra definición.
   assert.doesNotMatch(codigoPagina(), /monto_contratado/)
   assert.doesNotMatch(codigoListas(), /o\.monto_contratado/)
@@ -95,9 +104,10 @@ test('la ficha no dibuja el avance de obra, y en su lugar publica lo cobrado', (
   const src = codigoListas()
   assert.doesNotMatch(src, /avance_pct|avanceDeObra|'sin cronograma'/,
     'el avance volvió al CRM: se mide contra el plan, y el plan vive en el ERP')
-  assert.match(src, /<RotuloCol derecha>Cobrado c\/IVA<\/RotuloCol>/)
+  // NETO CONTRA NETO (auditor final, 11/09/2026): el contrato de al lado es neto; el cobro también.
+  assert.match(src, /<RotuloCol derecha>Cobrado neto<\/RotuloCol>/)
   // VACÍO NO ES CERO: mientras Cobranzas anote el cobro contra el cliente, la celda calla.
-  assert.match(src, /cobrado\?\.disponible && cobrado\.por\.get\(o\.obra_id\)\?\.total != null/)
+  assert.match(src, /cobrado\?\.disponible && cobrado\.por\.get\(o\.obra_id\)\?\.neto != null/)
 })
 
 test('el trabajo se abre en el CRM y el ERP no se repite debajo de cada fila', () => {
@@ -317,7 +327,7 @@ test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el
   const src = codigoListas()
   // AVANCE tiene pista propia desde 560 — nunca vuelve adentro de ESTADO — y la economía de OBRAS
   // sólo aparece con ancho de escritorio.
-  assert.match(src, /<RotuloCol derecha>Cobrado c\/IVA<\/RotuloCol>/)
+  assert.match(src, /<RotuloCol derecha>Cobrado neto<\/RotuloCol>/)
   // ═══ COSTO MO Y COSTO MAT. SALIERON DE ESTA TABLA (10/09/2026, DISENO-FICHA-CLIENTE-v3 §3.1) ═══
   //
   // Este archivo ya declaraba que la ficha del cliente es la cara COMERCIAL de la relación y que el

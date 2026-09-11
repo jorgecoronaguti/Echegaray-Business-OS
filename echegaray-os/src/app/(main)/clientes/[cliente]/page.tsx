@@ -55,7 +55,7 @@ import { AccesosPortal } from '@/features/clientes/components/accesos/AccesosPor
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorrienteService'
 import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
-import { SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
+import { SIN_PRECIO_EN_OBRAS, baseContractualDe } from '@/features/clientes/services/economiaObras'
 import {
   esRecorteCobranza, getCobranzasDelCliente, type FilaCobranza,
 } from '@/features/clientes/services/cobranzasCliente'
@@ -173,7 +173,6 @@ export default async function ClientePage({ params, searchParams }: {
   const cartera = { data: veEconomia ? ficha.presupuestos : [], error: null }
   const economia = ficha.economia
   const papeles = ficha.papeles
-  const economiaCliente = veEconomia ? ficha.economiaCliente : null
   // LO COBRADO POR TRABAJO, de la MISMA conversión que usa `/clientes` (`armarCobradoPorObra` sobre
   // `public.obra_cuenta`). Sin esto la ficha no puede decir si un trabajo cobró; y con una lectura
   // propia, las dos pantallas del módulo volverían a poder decir números distintos.
@@ -253,7 +252,15 @@ export default async function ClientePage({ params, searchParams }: {
   // sólo las obras cerradas de Messina— y mientras siga siendo el respaldo de alguna cara, dos
   // pantallas pueden volver a discrepar sin que nadie lo note. Si la vista no se pudo leer, la
   // cifra dice qué falta; no se rellena con otra cuenta.
-  const contratadoEnCurso = economiaCliente?.contratado_en_curso ?? null
+  // LA MISMA BASE QUE LA CARTERA (auditor, 11/09/2026): mano de obra + materiales cuando el papel
+  // desglosa (`obra_contrato`), si no el precio de OBRAS. `cliente_economia.contratado_en_curso`
+  // sólo conoce OBRAS y publicaba $ 95,3 M de Quattropani contra $ 139,4 M en la lista.
+  // O SUMA COMPLETA, O NADA (auditor final, 11/09/2026): la lista pone «—» cuando un trabajo no
+  // tiene base; la ficha no puede publicar una parcial como total.
+  const basesEnCurso = enCurso.map((o) => baseContractualDe(economia?.get(o.obra_id)))
+  const contratadoEnCurso = basesEnCurso.length && basesEnCurso.every((v): v is number => v !== null)
+    ? basesEnCurso.reduce((a, v) => a + v, 0)
+    : null
 
   /** El detalle del trabajo, DENTRO del CRM. Es una función y no una arrow creada en el JSX: una
    *  arrow pasada a un componente compila, pasa `build` y revienta con React #419. */
@@ -375,7 +382,7 @@ export default async function ClientePage({ params, searchParams }: {
 
   // LOS CUATRO NÚMEROS DE LA CUENTA, SUMADOS DE SUS TRABAJOS (misma fuente que `/clientes`).
   const cuentaTrabajos = cuentaDeTrabajos(
-    todas.map((o) => ({ obra_id: o.obra_id, contratado: economia?.get(o.obra_id)?.contratado ?? null })),
+    todas.map((o) => ({ obra_id: o.obra_id, contratado: baseContractualDe(economia?.get(o.obra_id)) })),
     cobradoPorObra,
   )
   const cifrasDeLaCuenta: CifraDeFicha[] = [
