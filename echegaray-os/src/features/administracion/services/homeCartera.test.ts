@@ -42,6 +42,9 @@ const eco = (obraId: string, contratado: number | null, extra: Partial<EconomiaD
   obra_canonica_id: obraId, contratado, contratado_usd: null, tipo_cambio: null,
   origen: contratado === null ? null : 'oc-pesos', referencia: null, nota: null,
   oc_civa_ventana: null, oc_civa_historico: null, oc_n_ventana: null, oc_n_historico: null,
+  contrato_mano_obra: null, contrato_mano_obra_usd: null, contrato_materiales: null,
+  contrato_materiales_usd: null, contrato_total: null, contrato_fuente: null,
+  contrato_fuente_drive_id: null, contrato_fuente_nombre: null, contrato_cita: null,
   ...extra,
 }]
 
@@ -575,6 +578,8 @@ test('sin cobro, la única obra no se inventa una atribución', () => {
     obra_id: 'o1', nombre: 'O', avance: null, jefe: null, contratado: 100, contratadoUsd: null,
     tipoCambio: null, origenContratado: 'oc-pesos', referencia: null, nota: null,
     ocCivaVentana: null, ocCivaHistorico: null, ocNVentana: null, ocNHistorico: null,
+    manoObra: null, manoObraUsd: null, materiales: null, materialesUsd: null, contratoTotal: null,
+    contratoFuente: null, contratoFuenteDriveId: null, contratoFuenteNombre: null, contratoCita: null,
     certificacion: { texto: 'sin certificar', reclama: false },
     cobradoTotal: null, cobradoNeto: null, porCobrar: null, vencido: null, proximo: null,
     imputacion: 'cliente', cobroDisponible: true,

@@ -50,6 +50,9 @@ const economia = new Map<string, EconomiaDeObra>([[OBRA, {
   nota: null,
   // NINGUNA ORDEN DE COMPRA: el trabajo se encargó por contrato. No es un papel que falte.
   oc_civa_ventana: null, oc_civa_historico: null, oc_n_ventana: 0, oc_n_historico: 0,
+  contrato_mano_obra: null, contrato_mano_obra_usd: null, contrato_materiales: null,
+  contrato_materiales_usd: null, contrato_total: null, contrato_fuente: null,
+  contrato_fuente_drive_id: null, contrato_fuente_nombre: null, contrato_cita: null,
 }]])
 
 const cobro = new Map<string, CobroDeObra>([[OBRA, {

@@ -1,104 +1,89 @@
-// 25 · CLIENTES — la cartera del CRM: el cliente, y las obras que le estamos ejecutando.
+// 25 · CLIENTES — la cartera del CRM: el cliente, y los trabajos que le estamos ejecutando.
 //
-// ═══ LAS SEIS COLUMNAS, Y NI UNA MÁS (dueño, 10/09/2026 18:12) ═══
+// ═══ LAS CINCO COLUMNAS QUE EL DUEÑO PIDIÓ (11/09/2026) ═══
 //
-// «Sección cliente todo mal, inentendible, con columnas que no solicité, información mal reflejada
-// y confusa; la cambiaste por completo, te había pedido columnas determinadas.»
+// «Mostrá OC como está ahora pero quitá esa columna; OP debe estar dentro de cada cliente como OC;
+// te pedí monto contratado, materiales, mano de obra y avance de cobro con barra de progreso».
 //
-//   CLIENTE       el nombre. Debajo cuelga cada obra en curso, con SUS órdenes de compra listadas
-//                 —«OC 2256 · 02/09 · $ 12.100.000»— y cada una abre su PDF.
-//   OBRAS         «5 en curso · 6 cerradas» (`cliente_economia`). Una línea, una escala.
-//   OC c/IVA      lo que el cliente encargó. En la obra, el total de la VENTANA que acota lo
-//                 contratado; lo de una obra fusionada de otro año se dice en el `title` y NO se
-//                 suma —BSA publicaba $ 49.886.583 al lado de un contratado de $ 17,7 M—.
-//   OP c/IVA      lo que ordenó pagar. Una OP no prueba el cobro: eso lo prueba el banco.
-//   CONTRATADO    neto, de `obra_economia_cartera`. Cuando el contrato es en dólares se dicen los
-//                 dos —«U$S 63.000» y «≈ $ 95,3 M»—: el número en pesos es una valuación al TC de
-//                 hoy y cambia solo. De dónde salió cuando no es un precio de OBRAS, en el `title`.
-//   COBRADO c/IVA `obra_cuenta.cobrado_total`, el MISMO número que la columna E de la pestaña
-//                 OBRAS, con su barra sobre lo contratado × 1,21. Sólo para quien ve economía.
+//   CLIENTE        el nombre. Debajo cuelga cada trabajo en curso, con SUS órdenes de compra
+//                  listadas —«OC 2256 · 02/09 · $ 12.100.000»— y cada una abre su PDF.
+//   CONTRATADO     el total del contrato, neto: mano de obra + materiales cuando el papel desglosa;
+//                  si no, el precio que publica OBRAS. En dólares se dice la moneda del papel.
+//   MATERIALES     lo que el contrato fija de materiales. «no incluye» cuando el papel dice que los
+//                  provee el cliente; «—» cuando ningún papel separa.
+//   MANO DE OBRA   ídem, mano de obra.
+//   AVANCE DE COBRO  la barra: cobrado NETO sobre el contrato NETO, y debajo cuánto entró y cuánto
+//                  falta. Es la única barra de la fila: la del cliente publicaba una segunda y el
+//                  dueño la marcó.
 //
-// LO QUE SE FUE, Y POR QUÉ: las dos columnas de presupuesto de costo —el costo es del ERP, y con
-// ellas se fue la lectura—; el margen; «Por cobrar», «▲ Vencido» y «Próx. cobro» —eran la pestaña
-// OBRAS
-// entera traducida a la pantalla—; el avance físico; y el renglón «s/obra», que ahora vive en el
-// `title` del cobro del cliente. Ninguna aclaración dibujada al lado de una cifra: lo que hay que
-// explicar de un número va en el `title` de su columna.
+// LO QUE SE FUE Y A DÓNDE: las columnas OC c/IVA y OP c/IVA. Sus totales y las órdenes de pago
+// viven en la ficha del cliente, solapa «Órdenes», agrupadas por trabajo. La columna «Obras» se
+// volvió una frase debajo del nombre.
 //
-// ═══ LA OBRA SE ABRE DENTRO DEL CRM ═══
+// ═══ EL TRABAJO SE ABRE DENTRO DEL CRM ═══
 //
-// La fila de la obra abría `/obras/<id>` y sacaba al dueño del CRM de un clic. Ahora abre el panel
-// lateral de este mismo módulo —sus OC, sus OP, con su PDF— y el ERP queda a un enlace SECUNDARIO
-// y nombrado, «Ver en Obras».
-//
-// LA COLUMNA «OBRAS» MIDE 150px Y NO 116: «5 en curso · 6 cerradas» a 12px necesita 129, y con 116
-// se publicaba «5 en curso · 6 ce…» —una frase cortada a mitad de palabra, que es peor que no
-// escribirla—. Medido sobre la captura de producción del 10/09/2026 18:10.
+// La fila de la obra abre el panel lateral de este mismo módulo —sus OC, sus OP, con su PDF— y el
+// ERP queda a un enlace SECUNDARIO y nombrado, «Ver en Obras», adentro del panel.
 //
 // ═══ EL NOMBRE NUNCA SE ESTRANGULA ═══
 //
-// Por debajo de 1250px se suelta el detalle económico —OC, OP y lo cobrado— y por debajo de 768px
-// queda quién es y por cuánto (`25v2:154`). Lo decide una media query y no `window.innerWidth`:
-// esta tabla se dibuja en el servidor.
+// Por debajo de 1250px se sueltan materiales y mano de obra; por debajo de 768px queda quién es y
+// por cuánto. Lo decide una media query y no `window.innerWidth`: esta tabla se dibuja en el servidor.
 
 import Link from 'next/link'
-import { pesos } from '@/shared/components/canon/formato'
+import { millones, pesos } from '@/shared/components/canon/formato'
 import { IconoCliente, IconoObra } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, RotuloCol, V } from '@/shared/components/v2/patron'
 import type { ClienteEnCartera } from '@/features/administracion/services/homeCartera'
 import { frasesDeObras } from '@/features/clientes/services/cartera'
-import { SIN_PRECIO_EN_OBRAS } from '@/features/clientes/services/economiaObras'
 import type { PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
+import { SOLO_ANCHO, SOLO_TABLET, TONO } from './CeldasDeCartera'
 import {
-  Cobrado, ContratadoDeObra, OrdenesDelTrabajo, SOLO_ANCHO, SOLO_TABLET, TONO,
-} from './CeldasDeCartera'
+  AvanceDeCobro, ComponenteDelContrato, ContratadoDelTrabajo, baseDelContrato, sumaDeObras,
+} from './CeldasDeContrato'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
-import { SIN_PAPELES, TotalDePapeles } from './TotalDePapeles'
 
 /**
- * LAS SEIS COLUMNAS QUE EL DUEÑO PIDIÓ, Y NI UNA MÁS (10/09/2026 18:12).
- *
- * CLIENTE · OBRAS · OC · OP · CONTRATADO · COBRADO. `25v2:154` para los cortes: por debajo de
- * 1250px se suelta el detalle económico —OC, OP y lo cobrado— y por debajo de 768px queda quién es
- * y por cuánto. Literales porque Tailwind no compila una clase armada en runtime, y en px porque
- * una variante con otra unidad apaga TODOS los cortes del repositorio.
+ * LAS CINCO COLUMNAS (11/09/2026). Literales porque Tailwind no compila una clase armada en
+ * runtime, y en px porque una variante con otra unidad apaga TODOS los cortes del repositorio.
  */
 const COLS
-  = 'grid-cols-[minmax(0,1.7fr)_150px_140px_120px_150px_150px]'
-  + ' max-[1249px]:grid-cols-[minmax(200px,1.7fr)_150px_150px]'
-  + ' max-[767px]:grid-cols-[minmax(0,1.9fr)_150px]'
+  = 'grid-cols-[minmax(0,2fr)_150px_130px_140px_210px]'
+  + ' max-[1249px]:grid-cols-[minmax(200px,2fr)_150px_210px]'
+  + ' max-[767px]:grid-cols-[minmax(0,2fr)_150px]'
 
-// ── LOS TEXTOS DE AYUDA, DECLARADOS UNA VEZ ─────────────────────────────────────────────────────
-//
-// Van en el `title` y no debajo del número: un número no lleva un párrafo permanente pegado, pero
-// tampoco puede quedarse sin decir de dónde sale.
+const AYUDA_CONTRATADO = 'El total del contrato, NETO: mano de obra + materiales cuando el papel '
+  + 'desglosa; si no, el precio que publica la pestaña OBRAS. Los dólares se valúan al tipo de '
+  + 'cambio de hoy.'
+const AYUDA_MATERIALES = 'Lo que el contrato fija de materiales. «no incluye» = el papel dice que los '
+  + 'provee el cliente. «—» = ningún papel separa materiales de mano de obra.'
+const AYUDA_MANO_OBRA = 'Lo que el contrato fija de mano de obra, neto, según el contrato, la OC o el '
+  + 'presupuesto que lo respalda (en el título de cada celda).'
+const AYUDA_AVANCE = 'Cobrado NETO (lo que entró, sin IVA, criterio percibido) sobre el contrato NETO. '
+  + 'Debajo, cuánto entró y cuánto falta. Nunca mezcla con lo facturado.'
 
-const AYUDA_OC = 'Órdenes de compra que el cliente mandó por este trabajo. EL IMPORTE ES EL TOTAL '
-  + 'DEL PDF, CON IVA — lo contratado es neto, así que los dos números no se restan ni se comparan '
-  + 'directo. En la fila del trabajo es el total de la VENTANA que acota lo contratado; el de una '
-  + 'obra fusionada de otro año se dice en el `title` de la celda y no se suma.'
-
-const AYUDA_OP = 'Órdenes de pago que el cliente emitió (cliente_orden), con IVA. Una OP no prueba '
-  + 'el cobro: eso lo prueba el extracto del banco.'
-
-const AYUDA_CONTRATADO = 'Lo que la pestaña OBRAS del Flujo de Caja publica por obra, SIN IVA. '
-  + 'Es precio contratado, no facturado.'
-
-const AYUDA_COBRO = 'Lo cobrado con IVA, criterio PERCIBIDO — la misma columna «Cobrado» de la '
-  + 'pestaña OBRAS del Flujo de Caja (obra_cobranza.cobrado). Nunca mezcla con lo facturado, que es '
-  + 'devengado. La barra compara contra lo contratado × 1,21, porque el contrato es neto y esto no: '
-  + 'sin ese ajuste el porcentaje mide dos magnitudes distintas.'
-
-const AYUDA_OBRAS = 'Cuántas obras tiene, separadas en las que están en ejecución y las cerradas '
-  + '(cliente_economia). Debajo del cliente cuelgan sólo las que están EN CURSO.'
-
-/** Un cliente del que no llegó ningún papel. Constante y no un objeto nuevo por fila. */
 const VACIO: PapelesDelCliente = {
   oc: [], op: [], facturas: [], retenciones: [], otros: [],
-  porObra: new Map(), sinObra: { oc: [], op: [] }, totalOC: SIN_PAPELES, totalOP: SIN_PAPELES,
+  porObra: new Map(), sinObra: { oc: [], op: [] }, totalOC: { n: 0, importe: null, parcial: false },
+  totalOP: { n: 0, importe: null, parcial: false },
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
+/** Una cifra del cliente, alineada con las de sus trabajos. `null` → «—» con su motivo. */
+function CifraDeCliente({ valor, faltan, testid, clase = '', titulo }: {
+  valor: number | null
+  faltan: number
+  testid: string
+  clase?: string
+  titulo: string
+}) {
+  return (
+    <span className={`flex items-center justify-end font-mono tabular-nums ${clase}`} data-testid={testid}
+      title={valor === null ? titulo : faltan ? `${titulo} Suma parcial: ${faltan} trabajo(s) sin el dato.` : titulo}
+      style={{ fontSize: '12px', color: valor === null ? V.lupa : V.tinta, textAlign: 'right' }}>
+      {valor === null ? '—' : valor === 0 ? <span style={{ color: V.apagado, fontFamily: 'inherit' }}>no incluye</span> : pesos(valor)}{faltan && valor !== null ? <span style={{ color: V.tenue, marginLeft: 4 }}>·</span> : null}
+    </span>
+  )
+}
 
 export function TablaClientes({
   clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, papeles, hrefOrdenes, limpiarHref, vacio,
@@ -111,7 +96,7 @@ export function TablaClientes({
   veEconomia: boolean
   /** `true` = la lectura de obras falló. Ninguna fila puede decir «ninguno en ejecución». */
   obrasNoLeidas: boolean
-  /** Los papeles de la cartera, ya agrupados, por cliente. Vacío = ninguno, o la lectura falló. */
+  /** Los papeles de la cartera, ya agrupados, por cliente: de acá salen las OC debajo de cada obra. */
   papeles: Map<string, PapelesDelCliente>
   /** El detalle del trabajo DENTRO del CRM: la clave es el `obra_id`. */
   hrefOrdenes: (clave: string) => string
@@ -119,35 +104,27 @@ export function TablaClientes({
   /** Qué se escribe cuando el recorte no deja a nadie. */
   vacio: string
 }) {
-  const papelesDe = (clienteId: string): PapelesDelCliente =>
-    papeles.get(clienteId) ?? VACIO
-
+  const papelesDe = (clienteId: string): PapelesDelCliente => papeles.get(clienteId) ?? VACIO
   return (
     <div data-testid="clientes-tabla">
       <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
         <RotuloCol>Cliente</RotuloCol>
-        <span className={`grid ${SOLO_TABLET}`}>
-          <RotuloCol derecha titulo={AYUDA_OBRAS}>Obras</RotuloCol>
-        </span>
-        {/* EL «c/IVA» VA EN EL RÓTULO Y NO EN EL `title`: un rótulo que calla la unidad obliga a
-            pasar el mouse para saber si dos columnas vecinas se pueden restar. */}
-        <span className={`grid ${SOLO_ANCHO}`}>
-          <RotuloCol derecha titulo={AYUDA_OC}>OC c/IVA</RotuloCol>
-        </span>
-        <span className={`grid ${SOLO_ANCHO}`}>
-          <RotuloCol derecha titulo={AYUDA_OP}>OP c/IVA</RotuloCol>
-        </span>
         <RotuloCol derecha titulo={AYUDA_CONTRATADO}>{veEconomia ? 'Contratado' : ''}</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}>
-          {/* SIN PERMISO ECONÓMICO, EL RÓTULO TAMPOCO: una columna «COBRADO» con la celda vacía en
-              todas las filas se lee como un dato que se rompió, no como uno que no corresponde. */}
-          <RotuloCol derecha titulo={AYUDA_COBRO}>{veEconomia ? 'Cobrado c/IVA' : ''}</RotuloCol>
+          <RotuloCol derecha titulo={AYUDA_MATERIALES}>{veEconomia ? 'Materiales' : ''}</RotuloCol>
+        </span>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          <RotuloCol derecha titulo={AYUDA_MANO_OBRA}>{veEconomia ? 'Mano de obra' : ''}</RotuloCol>
+        </span>
+        <span className={`grid ${SOLO_TABLET}`}>
+          <RotuloCol derecha titulo={AYUDA_AVANCE}>{veEconomia ? 'Avance de cobro' : ''}</RotuloCol>
         </span>
       </div>
-
       {clientes.map((c) => {
         const elegido = c.cliente_id === seleccionado
-        const suyos = papelesDe(c.cliente_id)
+        const contratado = sumaDeObras(c.enCurso, baseDelContrato)
+        const materiales = sumaDeObras(c.enCurso, (o) => o.materiales)
+        const manoObra = sumaDeObras(c.enCurso, (o) => o.manoObra)
         return (
           <div key={c.cliente_id}>
             <Link
@@ -158,10 +135,7 @@ export function TablaClientes({
               data-seleccionada={elegido ? '' : undefined}
               className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'}`}
               style={{
-                // 48 y no el alto de una lista común: esta fila es MAESTRA — debajo le cuelgan sus
-                // trabajos, y se lee como la madre del bloque y no como un renglón más (`v4B:92`).
                 minHeight: ALTO_V2.cliente,
-                // El divisor se afloja cuando abajo cuelgan trabajos: son el mismo bloque.
                 borderBottom: `1px solid ${c.enCurso.length ? TONO.divisorObra : V.lineaFila}`,
                 background: elegido ? V.seleccion : undefined,
               }}
@@ -170,76 +144,40 @@ export function TablaClientes({
                 <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
                   <IconoCliente className="h-[15px] w-[15px]" />
                 </span>
-                <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta, minWidth: 96 }}>
-                  {c.nombre}
+                <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: 1 }}>
+                  <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta, minWidth: 96 }}>
+                    {c.nombre}
+                  </span>
+                  {/* CUÁNTOS TRABAJOS TIENE, EN UNA FRASE debajo del nombre: dejó de ser columna. */}
+                  <span className="truncate" data-testid="obras-cliente" style={{ fontSize: '11px', color: V.apagado }}>
+                    {frasesDeObras(c)}
+                  </span>
                 </span>
               </span>
-
-              {/* CUÁNTOS TRABAJOS TIENE, EN UNA LÍNEA Y EN UNA ESCALA. Es una FRASE, no una cifra
-                  alineada: el mono se reserva para lo que se compara de arriba abajo, que en esta
-                  tabla es plata. */}
-              <span
-                className={`truncate ${SOLO_TABLET}`}
-                data-testid="obras-cliente"
-                style={{ fontSize: '12px', color: V.apagado, textAlign: 'right' }}
-              >
-                {frasesDeObras(c)}
-              </span>
-
-              {/* LO QUE ENCARGÓ (OC) Y LO QUE ORDENÓ PAGAR (OP), CADA UNO EN SU COLUMNA. Estaban
-                  apilados en una sola celda —dos escalas en un renglón— y el dueño lo marcó. Suman
-                  también las órdenes de sus trabajos TERMINADOS: si contaran sólo los visibles,
-                  cerrar un trabajo haría desaparecer papeles que existen. */}
-              <span className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid="papeles-cliente">
-                <TotalDePapeles total={suyos.totalOC} sigla="OC" tam="12px" testid="total-oc-cliente" veEconomia={veEconomia} />
-              </span>
-              <span className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid="papeles-op-cliente">
-                <TotalDePapeles total={suyos.totalOP} sigla="OP" tam="12px" testid="total-op-cliente" veEconomia={veEconomia} />
-              </span>
-
-              {/* LA CELDA DE PLATA NO OPINA SOBRE LOS TRABAJOS: eso ya lo dice la columna de al
-                  lado. Acá va la cifra —o nada— y el `title` distingue las dos ausencias. */}
-              <span
-                className={c.contratado === null ? '' : 'font-mono tabular-nums'}
-                data-testid="contratado"
-                title={c.contratado !== null
-                  ? undefined
-                  : c.enCurso.length
-                    ? 'Ninguna de sus obras en curso tiene precio en la pestaña OBRAS'
-                    : 'No tiene obras en curso: no hay contrato vigente que sumar'}
-                style={{
-                  fontSize: c.contratado === null ? '11.5px' : '12px', textAlign: 'right',
-                  color: c.contratado !== null ? V.tinta : c.enCurso.length ? V.warn : V.tenue,
-                }}
-              >
-                {veEconomia
-                  ? (c.contratado === null
-                      ? (c.enCurso.length ? SIN_PRECIO_EN_OBRAS : '')
-                      : pesos(c.contratado))
-                  : ''}
-              </span>
-              {/* EL DENOMINADOR DEL CLIENTE ES `contratadoTotal`, NO la columna de al lado: la
-                  columna dice lo contratado EN CURSO y el cobro del cliente es acumulado. Y el
-                  porcentaje sólo sale si NINGUNA de sus obras quedó sin precio. */}
-              <Cobrado
-                cobrado={c.cobradoTotal} contratado={c.contratadoTotal}
-                medible={c.obrasSinPrecio === 0}
-                obrasSinPrecio={c.obrasSinPrecio}
-                sinObra={c.cobradoSinObra}
-                veEconomia={veEconomia} testid="cobro-cliente" ambito="cliente" tam="12px"
-              />
+              {veEconomia ? (
+                <>
+                  <CifraDeCliente valor={contratado.total} faltan={contratado.faltan} testid="contratado"
+                    titulo={c.enCurso.length ? 'Suma del contrato de sus trabajos en curso, neto.' : 'No tiene trabajos en curso: no hay contrato vigente que sumar.'} />
+                  <CifraDeCliente valor={materiales.total} faltan={materiales.faltan} testid="materiales-cliente" clase={SOLO_ANCHO}
+                    titulo="Materiales fijados en los contratos de sus trabajos en curso." />
+                  <CifraDeCliente valor={manoObra.total} faltan={manoObra.faltan} testid="mano-obra-cliente" clase={SOLO_ANCHO}
+                    titulo="Mano de obra fijada en los contratos de sus trabajos en curso." />
+                  {/* EL COBRO DEL CLIENTE ES UNA CIFRA, NO UNA BARRA: la barra mide un trabajo contra
+                      su contrato; la bolsa del cliente junta cobros de trabajos cerrados y otros sin
+                      repartir, y una segunda barra al lado de las de abajo es lo que el dueño marcó. */}
+                  <span className={`flex items-center justify-end font-mono tabular-nums ${SOLO_TABLET}`} data-testid="cobro-cliente"
+                    title="Todo lo cobrado al cliente, NETO, criterio percibido (cliente_economia). Incluye trabajos terminados y cobros que Cobranzas no repartió a un trabajo."
+                    style={{ fontSize: '11.5px', color: V.apagado, textAlign: 'right' }}>
+                    {c.cobradoNeto === null ? '—' : `cobrado ${millones(c.cobradoNeto)}`}
+                  </span>
+                </>
+              ) : (
+                <><span /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_TABLET} /></>
+              )}
             </Link>
-
             {c.enCurso.map((o) => {
-              const deLaObra = papelesDe(c.cliente_id).porObra.get(o.obra_id)
-              const ocDeLaObra = deLaObra?.oc ?? []
+              const ocDeLaObra = papelesDe(c.cliente_id).porObra.get(o.obra_id)?.oc ?? []
               return (
-                /* ═══ EL TRABAJO SE ABRE EN EL CRM, NO EN EL ERP (10/09/2026) ═══
-
-                   Iba a `/obras/<id>`: un clic en la fila y el dueño estaba en el módulo Obras, que
-                   es otro sistema y —dicho por él— está descuidado. El detalle del trabajo que el
-                   CRM sí puede contestar —sus OC, sus OP, con su PDF— vive en el panel lateral de
-                   esta misma pantalla. El ERP queda en un enlace nombrado. */
                 <Link
                   key={o.obra_id}
                   href={hrefOrdenes(o.obra_id)}
@@ -248,15 +186,12 @@ export function TablaClientes({
                   data-testid="fila-obra"
                   className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-[#FAFAF8]`}
                   data-ordenes={ocDeLaObra.length ? '' : undefined}
-                  // `minHeight` Y NO `height`: la celda lleva dos renglones y a 390px el nombre
-                  // puede partir. Con `height` clavado el segundo renglón queda cortado.
                   style={{
                     minHeight: ocDeLaObra.length ? ALTO_V2.hijaConOrdenes : ALTO_V2.hija,
                     borderBottom: `1px solid ${TONO.divisorObra}`,
                   }}
                 >
-                  {/* DOS LÍNEAS: el nombre arriba, sus OC abajo. El `overflow: hidden` se queda —lo
-                      que no entre se corta en el borde de SU celda y nunca invade la de al lado. */}
+                  {/* DOS LÍNEAS: el nombre arriba, sus OC abajo, cada una abriendo su PDF. */}
                   <span style={{
                     display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
                     minWidth: 0, overflow: 'hidden', paddingLeft: 14,
@@ -266,58 +201,16 @@ export function TablaClientes({
                         <IconoObra className="h-[13px] w-[13px]" />
                       </span>
                       <span className="truncate" style={{ fontSize: '12px', color: TONO.textoObra, minWidth: 96 }}>{o.nombre}</span>
-                      {/* ═══ «VER EN OBRAS» SALIÓ DE LA LISTA (dueño, 10/09/2026 18:12) ═══
-
-                          Colgaba de CADA obra y repetía en toda la pantalla un enlace al ERP, que
-                          es de lo que el dueño mandó separar este módulo. El puente sigue
-                          existiendo, UNA vez y adentro del detalle del trabajo: quien quiera ir a
-                          la obra abre el panel y lo encuentra ahí. */}
                     </span>
-                    {/* LA SEGUNDA LÍNEA: LAS OC DE ESTE TRABAJO, con su número, su día y su
-                        importe, y cada una abriendo su PDF. NINGUNA ORDEN DE PAGO: la OP no se
-                        imputa al trabajo. */}
                     <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} />
                   </span>
-
-                  {/* La celda vacía de «Obras»: existe para que la obra caiga en la MISMA columna
-                      que su cliente, y desaparece con la columna. */}
-                  <span className={SOLO_TABLET} />
-
-                  {/* ═══ EL TOTAL DE OC SALE DE `obra_economia_cartera`, NO DE LOS PAPELES ═══
-
-                      Los NÚMEROS de las OC —los que abren su PDF— siguen saliendo de
-                      `cliente_orden`, debajo del nombre. El TOTAL, en cambio, es el de la vista:
-                      trae partido lo del año que acota el contratado y lo histórico de una obra
-                      fusionada, que sumados publicaban «$ 49.886.583 · 5 OC» en BSA contra un
-                      contratado de $17,7 M. Y ya no es un botón: la fila entera abre el detalle. */}
-                  <span className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid="papeles-obra">
-                    <OrdenesDelTrabajo o={o} veEconomia={veEconomia} clase="" />
-                  </span>
-                  {/* LA OP DEL TRABAJO SALE DE LOS PAPELES DEL CLIENTE (`cliente_orden`): una orden
-                      de pago no la publica OBRAS, y no prueba el cobro — eso lo prueba el banco. */}
-                  <span className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid="op-obra">
-                    <TotalDePapeles
-                      total={deLaObra?.totalOP ?? SIN_PAPELES} sigla="OP" tam="11.5px"
-                      testid="total-op-obra" veEconomia={veEconomia} apilado
-                      numero={deLaObra?.totalOP.n === 1 ? deLaObra.op[0]?.numeroCorto ?? null : null}
-                    />
-                  </span>
-
-                  <ContratadoDeObra o={o} veEconomia={veEconomia} />
-                  {/* EN EL TRABAJO LOS DOS NÚMEROS SON DEL MISMO TRABAJO: el porcentaje siempre se
-                      puede calcular cuando hay contratado. */}
-                  <Cobrado
-                    cobrado={o.cobradoTotal} contratado={o.contratado} medible imputacion={o.imputacion}
-                    disponible={o.cobroDisponible}
-                    veEconomia={veEconomia} testid="cobro-obra" tam="11.5px"
-                  />
+                  <ContratadoDelTrabajo o={o} veEconomia={veEconomia} />
+                  <ComponenteDelContrato o={o} cual="materiales" veEconomia={veEconomia} />
+                  <ComponenteDelContrato o={o} cual="manoObra" veEconomia={veEconomia} />
+                  <AvanceDeCobro o={o} veEconomia={veEconomia} />
                 </Link>
               )
             })}
-
-            {/* «NO PUDE LEERLAS» SÍ SE DIBUJA; «NO HAY» YA NO. Que el cliente no tenga obras en
-                ejecución lo dice su columna «Obras». Un control que no pudo mirar, en cambio, tiene
-                que gritarlo: nadie puede leer esa fila vacía como «no hay». */}
             {c.enCurso.length === 0 && obrasNoLeidas && (
               <div
                 className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS}`}
@@ -332,7 +225,6 @@ export function TablaClientes({
           </div>
         )
       })}
-
       {clientes.length === 0 && (
         <div style={{ padding: '24px 2px', fontSize: '12.5px', color: V.apagado }} data-testid="sin-resultados">
           {vacio}{' '}
