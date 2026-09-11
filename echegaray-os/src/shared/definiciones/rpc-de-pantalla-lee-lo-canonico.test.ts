@@ -43,7 +43,7 @@ const RAIZ = fileURLToPath(new URL('../../../', import.meta.url))
  */
 const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
   {
-    archivo: 'supabase/migrations/20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql',
+    archivo: 'supabase/migrations/20260911T1030_una_vista_cara_se_recorre_una_vez_por_viaje.sql',
     funcion: 'pantalla_clientes',
     lee: [
       'perfiles',              // quién mira: decide qué columnas se dibujan
@@ -61,7 +61,7 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
     // 20260911T0130 reemplazó a 20260911T0020: la campanita dejó de transportar 737 filas por
     // navegación y cuenta en la base con `comprobante_cumple_filtro()`, el lado SQL de PREDICADO.
     // Auditar la versión vieja sería auditar lo que ya no corre.
-    archivo: 'supabase/migrations/20260911T0130_la_campanita_cuenta_en_la_base.sql',
+    archivo: 'supabase/migrations/20260911T1030_una_vista_cara_se_recorre_una_vez_por_viaje.sql',
     funcion: 'campanita_atencion',
     lee: [
       'perfiles',                       // decide qué chips existen para este rol
@@ -77,7 +77,7 @@ const RPC_DE_PANTALLA: { archivo: string; funcion: string; lee: string[] }[] = [
     // y un archivo de la cadena que cambia después de aplicarse rompe el ledger, así que se
     // reemplazaron con `create or replace`. Auditar la versión VIEJA sería auditar lo que ya no
     // corre — por eso el barrido apunta a 0040 y no a los archivos originales.
-    archivo: 'supabase/migrations/20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql',
+    archivo: 'supabase/migrations/20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql',
     funcion: 'pantalla_cliente',
     lee: [
       'cliente_panel',          // la ficha, y el slug → cliente_id
