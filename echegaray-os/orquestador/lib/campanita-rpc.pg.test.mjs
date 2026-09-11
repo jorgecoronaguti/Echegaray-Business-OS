@@ -35,7 +35,7 @@ const migracion = (nombre) => readFileSync(join(
   import.meta.dirname, '..', '..', 'supabase', 'migrations', nombre), 'utf8')
 
 const EL_PARECIDO = migracion('20260911T0120_el_parecido_se_calcula_en_una_pasada.sql')
-const LA_CAMPANITA = migracion('20260911T0130_la_campanita_cuenta_en_la_base.sql')
+const LA_CAMPANITA = migracion('20260911T1030_una_vista_cara_se_recorre_una_vez_por_viaje.sql')
 
 /** El techo del payload. Medido después: 251 bytes. Antes: 76.366. */
 const TECHO_DE_PAYLOAD = 10_240

@@ -18,7 +18,10 @@
 -- los mismos, `comprobante_cumple_filtro()` sigue siendo el único criterio de los filtros de
 -- compras, y el jsonb que sale es IDÉNTICO BYTE A BYTE al de la versión anterior — medido, no
 -- supuesto: las dos versiones convivieron en una transacción y se comparó `JSON.stringify` de cada
--- una (evidencia en `/tmp/claude-1001/perf-db-1109/antes.md`).
+-- una. Lo replicó el auditor de cierre (11/09/2026) para los TRES roles —dirección 134.616 B,
+-- jefe_obra 27.855 B, campo 10.980 B— con RLS actuando: idénticas en los seis casos. La guarda
+-- permanente es `orquestador/lib/rpc-una-pasada.pg.test.mjs`, que mide los buffers en una
+-- transacción revertida y da rojo si vuelve la doble pasada.
 --
 -- ═══ LO MEDIDO, CON LA MÉTRICA QUE NO MIENTE ═══
 --
@@ -28,10 +31,13 @@
 -- la favorezca: una con la VM cargada y otra con la VM libre. Los cuatro números dieron lo mismo,
 -- que es la razón por la que se pueden escribir acá:
 --
---   | RPC                    | buffers antes | buffers después | ms mínimo antes | después |
---   |------------------------|---------------|-----------------|-----------------|---------|
---   | `pantalla_clientes()`  |        17.780 |      13.090     |          223 ms |  190 ms |
---   | `campanita_atencion()` |           417 |         353     |           45 ms |   41 ms |
+--   | RPC                    | buffers antes | buffers después | replicado por el auditor |
+--   |------------------------|---------------|-----------------|--------------------------|
+--   | `pantalla_clientes()`  |        17.780 |      13.090     | 17.777 → 13.087 (−26,4 %) |
+--   | `campanita_atencion()` |           417 |         353     | 417 → 353 (−15,3 %)       |
+--
+--   Los ms no se escriben: dependen de la carga de la VM y no replicaron (el auditor midió
+--   mediana 450 → 339 ms en pantalla_clientes con la viva primero). La métrica que manda es buffers.
 --
 -- ═══ POR QUÉ `MATERIALIZED` VA EXPLÍCITO ═══
 --
