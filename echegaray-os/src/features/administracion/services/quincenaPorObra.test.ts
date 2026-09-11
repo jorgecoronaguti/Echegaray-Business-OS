@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarQuincenaPorObra, diasSinMarcar, filtrarPorObra, OBRA_SIN, personasPorObra, SIN_OBRA,
+  armarQuincenaPorObra, chipsConElegida, diasSinMarcar, filtrarPorObra, OBRA_SIN, personasPorObra, SIN_OBRA,
   totalDeLaQuincena, totalesPorDia,
 } from './quincenaPorObra.ts'
 import type {
@@ -766,4 +766,22 @@ test('EL PIE DEL RECORTE ES EL DE LA OBRA, y el buscador no lo mueve', () => {
     'y el día sin horas EN ESA OBRA es «—», no el 6 que puso la otra')
   assert.equal(totalDeLaQuincena(filtrarPorObra(filas, OBRA_SIN)), null,
     'un recorte sin nadie no afirma cero horas')
+})
+
+// ═══ EL FILTRO ACTIVO SIEMPRE TIENE SU CHIP (dueño, 11/09/2026: «no se puede sacar») ═══
+test('con una obra elegida que no tiene gente en esta quincena, el chip igual se dibuja con 0', () => {
+  const chips = [{ rotulo: 'La Estrella', personas: 13 }, { rotulo: 'San Francisco', personas: 10 }]
+  assert.deepEqual(chipsConElegida(chips, 'ME - PLAYÓN DILUCIÓN DE ÁCIDO'), [
+    ...chips, { rotulo: 'ME - PLAYÓN DILUCIÓN DE ÁCIDO', personas: 0 },
+  ])
+})
+
+test('sin filtro, o con una obra que ya está entre los chips, la lista no cambia', () => {
+  const chips = [{ rotulo: 'La Estrella', personas: 13 }]
+  assert.deepEqual(chipsConElegida(chips, ''), chips)
+  assert.deepEqual(chipsConElegida(chips, 'La Estrella'), chips)
+})
+
+test('el token de «sin obra» se dibuja con el rótulo largo, que es el que comparan los chips', () => {
+  assert.deepEqual(chipsConElegida([], OBRA_SIN), [{ rotulo: SIN_OBRA, personas: 0 }])
 })
