@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-11 ~12:05 (hora local −03) · main = producción_
+_actualizado: 2026-09-11 ~12:50 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -71,7 +71,7 @@ ensayo, `--aplicar`). Playwright anda sin root con las libs del scratchpad (`lib
 
 11:00–11:10: la VM llegó a carga 27–31 con cuatro agentes en paralelo (eslint ., tests, 3 next dev): se cayó el websocket del bot y Mattermost (corre en esta VM, puerto 8065), el guardia del pipeline de las 10:50 falló por ETIMEDOUT («No ejecuté un solo generador», próxima 12:50) y la sesión murió dos veces. Se mataron los procesos; carga 1. REGLA NUEVA (memoria vm-saturada-por-agentes-tumba-el-chat): un agente pesado a la vez, nice 19, lint/tests dirigidos, dev server efímero.
 
-Frentes del 11/09 — TODOS PUBLICADOS: Liquidación/Horas 8c239766 · Cobranzas UX e9ae7a1a · DB (RPC una pasada, migración 1030) 28fe9041 · velocidad frontend (staleTimes 60 s: 4 vueltas de 4 renders/35,0 s a 0/0,39 s en producción; loading.tsx en 3 secciones) 83c01119 · middleware con tope a739f450 · caja/acreditación c981af53 · cartera 81b60e37/df9e2cf5 · IERIC c8ddc0f5 · libro dcd4a3f8. Falta sólo verificar la corrida 12:50 y el post de caja.
+Frentes del 11/09 — TODOS PUBLICADOS: Liquidación/Horas 8c239766 · Cobranzas UX e9ae7a1a · DB (RPC una pasada, migración 1030) 28fe9041 · velocidad frontend (staleTimes 60 s: 4 vueltas de 4 renders/35,0 s a 0/0,39 s en producción; loading.tsx en 3 secciones) 83c01119 · middleware con tope a739f450 · caja/acreditación c981af53 · cartera 81b60e37/df9e2cf5 · IERIC c8ddc0f5 · libro dcd4a3f8. Caja VERIFICADA tras la corrida manual 12:17–12:40: CAJA!A3 79,5 M → 40.948.755; Santander 41,56 M → 2.988.683 (declarado − retenido); «⏳ Retenido» 38.572.526,23; CFM!M50 91,9 M → 53.134.890 = CFS!BB50 al peso; Estructura!O16 0; CFM!N46 +7.147.930 y cierra con Cheques Emitidos!B23 a 3 centavos. Post al dueño yroxodw85jg98f3qxqqwcmypih. ABIERTO cosmético: Tarjeta!L2/L23 «al 24/7/2026» — tarjeta-pestana.mjs repone el sello viejo 29 s después de que cheques-cobertura lo vacía; el arreglo va en tarjeta-pestana.mjs (dueño del ancho; sellosViejos sólo arriba de filaCab).
 
 Siguientes hitos (P1, con número): (a) `pantalla_cliente(p_slug)` se vuelve a pagar entero en cada cambio de solapa (Cobranzas 2,8 s en frío, hasta 29 s bajo carga) → la solapa debe leer sólo su consulta o la RPC debe cachearse por request; (b) /obras/[obra] 15 viajes (2,2→30 s) y /presupuestos (0,6→56 s): varianza ×95 de la base → RPC por pantalla; (c) Personal/Horas ~25 consultas por render (persona_legajo ×3, liquidacion_quincena ×3) → deduplicar; (d) Cargas Sociales «2 · PAGADO» sigue leyendo Compras; (e) orq:test con 11 archivos rojos en main (frente propio); (f) canario de tipo_cambio; (g) blur de la celda de Horas sin test; (h) UX por flujo/mobile/XSAS-contexto/HF con consumidor real (mandato 11/09, P2–P3).
 
