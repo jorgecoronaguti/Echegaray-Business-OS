@@ -102,8 +102,14 @@ test('pisar COBRA resuelve «sin tarifa»: ya no hay nada pendiente que buscar',
 
 test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
   const r = sinOverrides(linea)
-  assert.deepEqual({ ...r, manual: undefined }, { ...linea, manual: undefined })
+  // `origen` y `discrepancia` se excluyen igual que `manual`: son las TRES marcas de procedencia, y
+  // lo que este test afirma es que los IMPORTES no cambian. Una quincena cerrada se dibuja con esta
+  // función y sus cifras son la foto del cierre.
+  const sinMarcas = { manual: undefined, origen: undefined, discrepancia: undefined }
+  assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
   assert.equal(Object.values(r.manual).some(Boolean), false)
+  assert.equal(Object.values(r.origen).every((o) => o === 'calculado'), true)
+  assert.deepEqual(r.discrepancia, {})
 })
 
 test('SÓLO SE GUARDA DONDE LA BASE PUEDE DECIR «VACÍO»', () => {

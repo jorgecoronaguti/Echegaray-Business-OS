@@ -8,7 +8,7 @@ import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincen
 import { horas as nHoras, pesos } from '../formato'
 // LAS MISMAS CELDAS QUE EL CUADRO CLÁSICO. Copiarlas habría dado dos definiciones de «corregir un
 // adelanto»; acá se importan las únicas que existen.
-import { CeldaEditable, CeldaRedondeo, Manual } from '../CeldasDeLiquidacion'
+import { CeldaEditable, CeldaRedondeo, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { seccionesDePersonal, type SeccionDePersonal } from '../../../services/ordenDePersonal'
 import { RotuloDeGrupo } from '../../RotuloDeGrupo'
 import { SolapaCajaNomina } from './caja-nomina'
@@ -202,9 +202,9 @@ function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
               )}
             </div>
             {/* HORAS SIN SIGNO DE PESOS: son horas. El `$/h` sí es plata. */}
-            <Celda valor={l.horas} formato={nHoras} manual={l.manual.horas} />
+            <Celda valor={l.horas} formato={nHoras} origen={l.origen.horas} />
             <Celda valor={l.valorHora} apagada />
-            <Celda valor={l.cobra} medio manual={l.manual.cobra} />
+            <Celda valor={l.cobra} medio origen={l.origen.cobra} titulo={tituloDeOrigen(l, 'cobra')} />
             {/* LO ACORDADO, NO LO LIQUIDADO. «—» donde no hay acuerdo 50/50: Oficina cobra un neto
                 mensual cuyo recibo del 01/09 no fue la mitad, y el cuadro `final` son
                 subcontratistas. Inventarles una mitad sería acordar por ellos. */}
@@ -228,8 +228,8 @@ function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
               // a ojo para verlo.
               desvio={desvioDelAcuerdo(l)}
             />
-            <Celda valor={l.enEfectivo} medio manual={l.manual.enEfectivo} />
-            <Celda valor={l.total} manual={l.manual.total} />
+            <Celda valor={l.enEfectivo} medio origen={l.origen.enEfectivo} titulo={tituloDeOrigen(l, 'enEfectivo')} />
+            <Celda valor={l.total} origen={l.origen.total} />
             {/* EFECT. RED. ES LA COLUMNA DEL DUEÑO: los billetes que entrega en mano. No se calcula
                 y no participa de ninguna cuenta — por eso tiene su propia celda y su propia acción. */}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -278,6 +278,19 @@ function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
 }
 
 /**
+ * EL `title` DE LA MARCA CUANDO JORNALES Y LA CUENTA DE LA APP NO DICEN LO MISMO.
+ *
+ * Gana JORNALES —es la decisión de quien paga— pero el derivado NO desaparece: si el extracto vio un
+ * giro que la planilla no tiene, o al revés, alguien tiene que enterarse antes de armar el sobre.
+ */
+function tituloDeOrigen(linea: LineaConOverrides, campo: CampoEditable): string | undefined {
+  const d = linea.discrepancia[campo]
+  if (!d) return undefined
+  return `La planilla dice ${pesos(d.jornales)} y la app calculó ${pesos(d.calculado)} `
+    + `(recibos y extracto). Manda la planilla; la diferencia es ${pesos(Math.abs(d.jornales - d.calculado))}.`
+}
+
+/**
  * UNA CELDA CALCULADA. `null` se dibuja «—»: falta el dato, no es cero (R1).
  *
  * `formato` existe porque esta tabla tiene dos unidades: pesos y HORAS. Hasta el 11/09/2026 todas
@@ -285,18 +298,20 @@ function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
  * pisó a mano deja de ser una cuenta aunque la columna siga siendo calculada: sin la marca, COBRA o
  * EN EFECTIVO escritos por el dueño se leían igual que los derivados (R8).
  */
-function Celda({ valor, medio = false, apagada = false, formato = pesos, manual = false }: {
+function Celda({ valor, medio = false, apagada = false, formato = pesos, origen = 'calculado', titulo }: {
   valor: number | null; medio?: boolean; apagada?: boolean
   formato?: (n: number | null) => string
-  manual?: boolean
+  /** De dónde salió (`liquidacionOverrides.ts`). `jornales` va en azul, no con el ámbar de manual. */
+  origen?: 'calculado' | 'jornales' | 'manual'
+  titulo?: string
 }) {
   return (
     <div style={{
       textAlign: 'right',
       color: valor == null ? V.tenue : (apagada ? V.apagado : V.tinta),
       fontWeight: medio ? 500 : undefined,
-    }}>
-      {formato(valor)}{manual && <Manual />}
+    }} title={titulo}>
+      {formato(valor)}<MarcaDeOrigen origen={origen} titulo={titulo} />
     </div>
   )
 }
@@ -358,6 +373,10 @@ function Escribible({ campo, linea, seccion, quincena, camposEditables, cerradas
           // vacías; al entrar al campo, `InlineEdit` muestra el número crudo.
           ceroEsVacio
           manual={linea.manual[campo]}
+          // DE DÓNDE SALE ESTA CELDA. Desde el 11/09/2026 puede venir de la planilla: pintarla con el
+          // ámbar de «manual» mandaría a corregirla al lugar equivocado.
+          origen={linea.origen[campo]}
+          tituloDeOrigen={tituloDeOrigen(linea, campo)}
           personaId={linea.personaId}
           quincena={quincena}
           grupo={seccion.grupo}

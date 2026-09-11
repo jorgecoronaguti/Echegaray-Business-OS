@@ -32,6 +32,7 @@ import {
   aplicarOverrides, camposGuardables, sinOverrides,
   type CampoEditable, type LineaConOverrides, type OverridesDeLinea,
 } from './liquidacionOverrides.ts'
+import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornalesService.ts'
 import type { Quincena } from './quincena.ts'
 
 /** Un cuadro con sus líneas ya pisadas por lo que el dueño escribió a mano. */
@@ -63,6 +64,11 @@ export interface LiquidacionDeLaQuincena {
    * función ya leyó — ni una consulta más — y con la definición de `celdaDelDia`, que es la única.
    */
   diasSinMotivo: number
+  /**
+   * EL ESPEJO DEL BLOQUE DE JORNALES. Viaja entero porque la pantalla lo necesita para el sello y
+   * los chips, y porque las cifras que ya entraron a la cadena tienen que poder explicarse.
+   */
+  espejo: EspejoDeLaPlanilla
   /** Cada fuente que no se pudo leer, con su mensaje. Vacío = se leyó todo. */
   errores: { que: string; error: string }[]
   /**
@@ -93,7 +99,7 @@ const sinTabla = (e: { code?: string; message: string }): boolean =>
 export async function getLiquidacionDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<LiquidacionDeLaQuincena> {
-  const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, anterior] =
+  const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, anterior, espejo] =
     await Promise.all([
       // `puesto` VIAJA CON EL PLANTEL para que las pantallas de Liquidación ordenen y rotulen como
       // el resto de Personal (dueño, 10/09/2026). Es la misma columna y la misma función
@@ -134,6 +140,13 @@ export async function getLiquidacionDeLaQuincena(
         .select('desde, hasta, liquidacion_linea(persona_id)')
         .eq('estado', 'cerrada').lt('hasta', q.desde)
         .order('hasta', { ascending: false }).limit(1),
+      // ═══ LA PLATA QUE EL DUEÑO ESCRIBE EN LA PLANILLA (11/09/2026) ═══
+      //
+      // Textual: *«todo lo referente a adelantos de plata no está»*. Se lee ACÁ y no en cada solapa
+      // porque ésta es la única función que arma la cadena de pago: las siete pantallas del módulo
+      // la consumen, y una segunda lectura sería una segunda respuesta a «cuánto le adelantaron».
+      // Tolera que la tabla no exista todavía: devuelve `hay: false` y la cadena queda como estaba.
+      getEspejoDeLaPlanilla(supabase, q),
     ])
 
   const errores: { que: string; error: string }[] = []
@@ -151,6 +164,7 @@ export async function getLiquidacionDeLaQuincena(
   anotar('los giros del extracto', adelantos.error)
   anotar('la liquidación guardada', guardadas.error)
   anotar('la quincena anterior', anterior.error)
+  anotar('el espejo de JORNALES', espejo.error ? { message: espejo.error } : null)
 
   const cuilPorPersona = new Map(
     ((legajo.data ?? []) as { id: string; cuil: string | null }[]).map((r) => [r.id, r.cuil]),
@@ -204,9 +218,14 @@ export async function getLiquidacionDeLaQuincena(
       ...c,
       lineas: estados[c.grupo]?.estado === 'cerrada'
         ? c.lineas.map(sinOverrides)
-        : c.lineas.map((l) => aplicarOverrides(l, overrides.get(l.personaId) ?? {}, c.grupo)),
+        // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
+        // vez y con sus diez tests. Acá sólo se le entrega la fuente.
+        : c.lineas.map((l) => aplicarOverrides(
+          l, overrides.get(l.personaId) ?? {}, c.grupo, espejo.cadenaPorPersona.get(l.personaId) ?? null,
+        )),
     })),
     camposEditables,
+    espejo,
     estados,
     diasSinMotivo: diasSinMotivoDeLaQuincena(
       q,
