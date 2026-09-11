@@ -10,7 +10,8 @@ import assert from 'node:assert/strict'
 import {
   agruparCobranzas, comprobanteDe, COLUMNA_INEXISTENTE, esRenglonDeIva, estadoDe, getCobranzasDelCliente,
   ordenarPorCobro, ordenDeLaFila,
-  partirEnSecciones, proximoCobro, recortar, seccionDe, totalDeFilas, totalesDeCobranzas,
+  filasSinImporte, partirEnSecciones, proximoCobro, recortar, seccionDe, totalDeFilas,
+  totalesDeCobranzas,
   totalPorCircuito, vencidoDeFilas, type FilaCobranza,
 } from './cobranzasCliente.ts'
 import { COBRANZAS_MESSINA, COBRANZAS_QUATTROPANI } from './cobranzasReales.fixture.ts'
@@ -229,6 +230,47 @@ test('cada fila real del fixture conserva su información: o número, o condici�
     const { oc, condicion } = ordenDeLaFila(crudo)
     assert.ok(oc || condicion, `«${crudo}» se perdió entera`)
   }
+})
+
+test('NINGÚN NÚMERO SE DECLARA «OC» SIN QUE EL CAMPO LO DIGA', () => {
+  // Los tres casos que el auditor le sacó al parser anterior (11/09/2026). Cada uno inventaba una
+  // orden de compra que no existe —regla de oro 1— y además se comía el token del renglón.
+  for (const crudo of ['Cert. 09-2026 a facturar', 'Segun Factura 0001-00000230', 'A cuenta 1-0000']) {
+    assert.deepEqual(ordenDeLaFila(crudo), { oc: null, condicion: crudo },
+      `«${crudo}» no tiene ninguna OC: el parser la fabricó`)
+  }
+  // Y lo que SÍ es una OC sigue reconociéndose por las tres formas legítimas.
+  assert.equal(ordenDeLaFila('00002-00002173').oc, '2173', 'el campo que ES el número')
+  assert.equal(ordenDeLaFila('00002-00002226 · cta. cte. 15 días').oc, '2226', 'el número y su condición')
+  assert.equal(ordenDeLaFila('Anticipo… OC 00002-00002173 (11/08/2026)').oc, '2173', 'marcada con OC')
+  assert.equal(ordenDeLaFila('OC 2162').oc, '2162', 'marcada con OC, en su forma corta')
+  // «Cargar OC» es trabajo pendiente, no una orden: no hay número y no se inventa ninguno.
+  assert.equal(ordenDeLaFila('Playon de Azufre. Cargar OC').oc, null)
+})
+
+test('el próximo cobro NO elige un medio cuando el día mezcla dos', () => {
+  // Messina cobra el 22/09 $19.662.500 por transferencia y $9.400.000 en efectivo: decir
+  // «$29.062.500 por transferencia» es falso por $9,4 M.
+  const base = { ...COBRANZAS_MESSINA[0], esta_cobrada: false, esta_cancelada: false }
+  const mezcla: FilaCobranza[] = [
+    { ...base, cobranza_id: 'a', fecha_cobro: '2026-09-22', total_bruto: 19_662_500, forma_cobro: 'Transferencia' },
+    { ...base, cobranza_id: 'b', fecha_cobro: '2026-09-22', total_bruto: 9_400_000, forma_cobro: 'Efectivo' },
+  ]
+  assert.deepEqual(proximoCobro(mezcla), { fecha: '2026-09-22', medio: null, importe: 29_062_500 })
+  // Con un solo medio en el día, se dice.
+  const uno = mezcla.map((f) => ({ ...f, forma_cobro: 'Transferencia' }))
+  assert.equal(proximoCobro(uno)?.medio, 'Transferencia')
+})
+
+test('una fila sin importe se cuenta aparte: el total no puede callar que la dejó afuera', () => {
+  const base = COBRANZAS_MESSINA[0]
+  const filas: FilaCobranza[] = [
+    { ...base, cobranza_id: 'a', total_bruto: 100 },
+    { ...base, cobranza_id: 'b', total_bruto: null },
+  ]
+  assert.equal(totalDeFilas(filas), 100)
+  assert.equal(filasSinImporte(filas), 1)
+  assert.equal(filasSinImporte([{ ...base, total_bruto: 5 }]), 0)
 })
 
 test('un renglón que es el IVA de otra factura se reconoce, y una venta no', () => {

@@ -153,9 +153,16 @@ export function proximoCobro(filas: readonly FilaCobranza[]): ProximoCobroDelCli
   // TODAS LAS DEL MISMO DÍA, no sólo una: el 18/09 San Francisco cobra tres cuotas distintas y
   // publicar la primera diría que ese día entra un tercio de lo que entra.
   const delDia = candidatas.filter((f) => f.fecha_cobro === primera.fecha_cobro)
+  // ═══ SI EL DÍA MEZCLA MEDIOS, NO HAY «EL MEDIO» (auditoría, 11/09/2026) ═══
+  //
+  // Messina cobra el 22/09 dos filas: $19.662.500 por transferencia y $9.400.000 en efectivo.
+  // Publicar el medio de la PRIMERA junto al importe de TODAS decía «$29.062.500 por
+  // transferencia», que es falso por $9,4 M. Con más de un medio en el día no se elige uno: se
+  // calla, y el importe —que sí es la suma del día— se sigue diciendo.
+  const medios = new Set(delDia.map((f) => f.forma_cobro?.trim()).filter(Boolean) as string[])
   return {
     fecha: primera.fecha_cobro,
-    medio: primera.forma_cobro?.trim() || null,
+    medio: medios.size === 1 ? [...medios][0] : null,
     importe: suma(delDia.map((f) => f.total_bruto)),
   }
 }
@@ -312,6 +319,17 @@ export function totalDeFilas(filas: readonly FilaCobranza[]): number | null {
 }
 
 /**
+ * CUÁNTAS FILAS QUEDARON FUERA DEL TOTAL POR NO TRAER IMPORTE (auditoría, 11/09/2026).
+ *
+ * `total_bruto` es nullable en `public.cobranzas`: una fila así se dibuja con «—» y `suma` la
+ * ignora. Que el encabezado no lo diga es el mismo defecto que se vino a matar —un total que no es
+ * la suma de lo que se ve—, sólo que silencioso. Se cuenta y se publica al lado del total.
+ */
+export function filasSinImporte(filas: readonly FilaCobranza[]): number {
+  return filas.filter((f) => f.total_bruto == null).length
+}
+
+/**
  * LOS DOS CIRCUITOS, SEPARADOS Y QUE CIERRAN: `b + n` es exactamente `totalDeFilas`.
  *
  * `B` = con comprobante (el circuito facturado, con IVA) · `N` = sin comprobante. Se dicen porque
@@ -344,7 +362,25 @@ export function vencidoDeFilas(filas: readonly FilaCobranza[]): number | null {
 // de cambio. Se separan: el número va a su columna —angosto, alineado, comparable— y la condición
 // va como segunda línea del concepto, en texto, legible entera.
 
-const PATRON_OC = /(?:\bOC\s*)?(\d{1,5}-\d{4,9})/i
+/**
+ * ═══ UN NÚMERO NO SE DECLARA «OC» SIN QUE EL CAMPO LO DIGA (auditoría, 11/09/2026) ═══
+ *
+ * La primera versión aceptaba cualquier `dígitos-dígitos` del campo libre, y con eso INVENTABA
+ * órdenes de compra en una columna rotulada OC — la regla de oro 1. Medido por el auditor:
+ *
+ *   «Cert. 09-2026 a facturar»     → OC «2026»   ← no existe
+ *   «Segun Factura 0001-00000230»  → OC «230»    ← es una factura
+ *   «A cuenta 1-0000»              → OC «1»      ← no es nada
+ *
+ * Ahora hay tres formas de que un número sea una OC, y ninguna es «se parece»:
+ *   1 · el campo ES el número y nada más;
+ *   2 · el campo EMPIEZA por el número y lo que sigue es la condición, separada;
+ *   3 · el campo lo MARCA con la palabra «OC».
+ * Todo lo demás es texto, se conserva entero como condición, y la columna OC dice «—».
+ */
+const SOLO_NUMERO = /^\d{1,5}-\d{4,9}$/
+const EMPIEZA_CON_NUMERO = /^(\d{1,5}-\d{4,9})\s*[·—–|,-]\s*([\s\S]+)$/
+const MARCADA_CON_OC = /\bOC\b\s*[nN]?[º°.:]?\s*((?:\d{1,5}-)?\d{3,9})/
 
 export interface OrdenDeFila {
   /** El número corto —«2226»—, o `null` cuando el campo no trae ninguno. */
@@ -363,10 +399,15 @@ const limpiar = (t: string) => t
 export function ordenDeLaFila(raw: string | null | undefined): OrdenDeFila {
   const texto = String(raw ?? '').trim()
   if (!texto) return { oc: null, condicion: null }
-  const m = PATRON_OC.exec(texto)
-  if (!m) return { oc: null, condicion: limpiar(texto) || null }
-  const resto = limpiar(texto.slice(0, m.index) + texto.slice(m.index + m[0].length))
-  return { oc: corto(m[1]), condicion: resto || null }
+  if (SOLO_NUMERO.test(texto)) return { oc: corto(texto), condicion: null }
+  const arranca = EMPIEZA_CON_NUMERO.exec(texto)
+  if (arranca) return { oc: corto(arranca[1]), condicion: limpiar(arranca[2]) || null }
+  const marcada = MARCADA_CON_OC.exec(texto)
+  if (marcada) {
+    const resto = limpiar(texto.slice(0, marcada.index) + texto.slice(marcada.index + marcada[0].length))
+    return { oc: corto(marcada[1]), condicion: resto || null }
+  }
+  return { oc: null, condicion: limpiar(texto) || null }
 }
 
 /**

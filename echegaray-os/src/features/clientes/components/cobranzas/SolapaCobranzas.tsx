@@ -28,7 +28,7 @@
 //
 // ═══ CÓMO ESTÁ ORGANIZADA AHORA, Y POR QUÉ ═══
 //
-// A · LA CABECERA CONTESTA LA PRIMERA PREGUNTA Y NADA MÁS: POR COBRAR · ▲ VENCIDO · PRÓXIMO COBRO
+// A · LA CABECERA CONTESTA LA PRIMERA PREGUNTA Y NADA MÁS: POR COBRAR · VENCIDO · PRÓXIMO COBRO
 //     (fecha, importe y el medio en el rótulo). Recién después —y ahí sí como marco, no como
 //     respuesta— vienen contratado, facturado y cobrado. Es una tira de valores con su rótulo
 //     chico arriba, no seis tarjetas: la jerarquía la dan el orden y el aire.
@@ -56,8 +56,8 @@ import { V } from '@/shared/components/v2/patron'
 import { CifrasDeFicha, type CifraDeFicha } from '@/shared/components/v2/segundoNivel'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import {
-  agruparCobranzas, ordenarPorCobro, partirEnSecciones, proximoCobro, recortar, totalDeFilas,
-  totalesDeCobranzas, totalPorCircuito, vencidoDeFilas,
+  agruparCobranzas, filasSinImporte, ordenarPorCobro, partirEnSecciones, proximoCobro, recortar,
+  totalDeFilas, totalesDeCobranzas, totalPorCircuito, vencidoDeFilas,
   type FilaCobranza, type RecorteCobranza,
 } from '../../services/cobranzasCliente'
 import type { Orden } from '../../services/papelesCliente'
@@ -71,8 +71,9 @@ const AYUDA_FACTURADO = 'Lo FACTURADO: las filas «B» de la pestaña, que son l
   + 'comprobante y por eso no suman acá: no se compara contra «cobrado», que sí las cuenta.'
 const AYUDA_COBRADO = 'Lo COBRADO, total con IVA. Criterio PERCIBIDO: sólo lo que ya entró, con el '
   + 'mismo predicado que la pestaña OBRAS y que la cuenta del cliente.'
-const AYUDA_POR_COBRAR = 'Lo que falta cobrar, con IVA: todas las filas que no están cobradas ni '
-  + 'anuladas, de los dos circuitos. Es la suma exacta de los renglones del bloque «Por cobrar».'
+const AYUDA_POR_COBRAR = 'Lo que falta cobrar, con IVA: las filas que no están cobradas ni '
+  + 'anuladas. Es la suma exacta de los renglones del bloque «Por cobrar» que se está viendo — con '
+  + 'un recorte puesto, mide el recorte, y el rótulo lo dice.'
 const AYUDA_VENCIDO = 'De lo que falta cobrar, lo que ya pasó su plazo: EMISIÓN + 30 días, el reloj '
   + 'de la pestaña OBRAS. No es «pasó la fecha de cobro», que se re-tipea cada vez que un cobro se '
   + 'posterga y está condenado a cero por construcción.'
@@ -117,19 +118,28 @@ export function SolapaCobranzas({
     )
   }
 
-  const total = totalesDeCobranzas(filas)
-  const proximo = proximoCobro(filas)
   const visibles = recortar(filas, recorte)
+  // ═══ LA CABECERA MIDE LO QUE SE ESTÁ VIENDO, NO OTRA COSA (auditoría, 11/09/2026) ═══
+  //
+  // Medía sobre `filas` mientras las bandas medían sobre el recorte: con `?cob=n` la cabecera decía
+  // POR COBRAR $114.916.324 arriba de una banda que decía $18.750.000. Dos rótulos iguales y dos
+  // números distintos en la misma pantalla es exactamente el defecto que esta pestaña vino a matar.
+  // El rótulo lleva el recorte pegado para que nadie tenga que deducir de qué población habla.
+  const total = totalesDeCobranzas(visibles)
+  const proximo = proximoCobro(visibles)
   const { porCobrar, cobrado, anuladas } = partirEnSecciones(visibles)
+  const RECORTADO: Record<string, string> = { pendiente: 'por cobrar', cobrado: 'cobrado', b: 'B', n: 'N' }
+  const sufijo = RECORTADO[recorte] ? ` · ${RECORTADO[recorte]}` : ''
 
   const cifras: CifraDeFicha[] = [
     // LAS TRES PRIMERAS SON LA RESPUESTA A «¿cuánto me debe hoy y cuándo entra lo próximo?».
-    cifra('Por cobrar', total.pendiente, 'nada pendiente', AYUDA_POR_COBRAR),
-    cifra('Vencido', total.vencido, 'nada vencido', AYUDA_VENCIDO, 'warn'),
+    cifra(`Por cobrar${sufijo}`, total.pendiente, 'nada pendiente', AYUDA_POR_COBRAR),
+    cifra(`Vencido${sufijo}`, total.vencido, 'nada vencido', AYUDA_VENCIDO, 'warn'),
     {
       // EL MEDIO VA EN EL RÓTULO Y NO EN EL VALOR: el valor es cifra —mono tabular— y el medio es
       // una palabra. Mezclarlos en una celda es exactamente lo que la regla del módulo prohíbe.
-      rotulo: proximo?.medio ? `Próximo cobro · ${proximo.medio}` : 'Próximo cobro',
+      // Sin medio único en el día, el rótulo NO elige uno: ver `proximoCobro`.
+      rotulo: proximo?.medio ? `Próximo cobro · ${proximo.medio}` : `Próximo cobro${sufijo}`,
       valor: proximo
         ? `${dia(proximo.fecha)}${proximo.importe != null ? ` · ${pesos(proximo.importe)}` : ''}`
         : null,
@@ -145,8 +155,8 @@ export function SolapaCobranzas({
       falta: 'sin precio en OBRAS',
       titulo: AYUDA_CONTRATADO,
     },
-    cifra('Facturado (B)', total.facturado, 'ninguna fila B', AYUDA_FACTURADO),
-    cifra('Cobrado c/IVA', total.cobrado, 'nada cobrado todavía', AYUDA_COBRADO),
+    cifra(`Facturado (B)${sufijo}`, total.facturado, 'ninguna fila B', AYUDA_FACTURADO),
+    cifra(`Cobrado c/IVA${sufijo}`, total.cobrado, 'nada cobrado todavía', AYUDA_COBRADO),
   ]
 
   return (
@@ -223,6 +233,7 @@ function Seccion({
   if (filas.length === 0) return null
   const grupos = agruparCobranzas(filas, obras)
   const vencido = vencidoDeFilas(filas)
+  const sinImporte = filasSinImporte(filas)
 
   const banda = (
     <span style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', width: '100%' }}>
@@ -236,6 +247,13 @@ function Seccion({
       {vencido != null && (
         <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.warn }} title={AYUDA_VENCIDO}>
           ▲ vencido {pesos(vencido)}
+        </span>
+      )}
+      {/* UNA FILA SIN IMPORTE NO SUMA, Y UN TOTAL QUE NO LO DICE VUELVE A SER UN TOTAL QUE NO
+          CIERRA — sólo que en silencio. `total_bruto` es nullable en la pestaña. */}
+      {sinImporte > 0 && (
+        <span className="font-mono tabular-nums" data-testid="sin-importe-seccion" style={{ fontSize: '11.5px', color: V.tenue }}>
+          +{sinImporte} sin importe
         </span>
       )}
       <span style={{ flex: 1 }} />
@@ -304,6 +322,7 @@ function GrupoDeTrabajo({ titulo, filas, ordenes, href, sinObra, conTotal }: {
   conTotal: boolean
 }) {
   const vencido = vencidoDeFilas(filas)
+  const sinImporte = filasSinImporte(filas)
   const { b, n } = totalPorCircuito(filas)
   return (
     <div data-testid="grupo-cobranzas" style={{ marginBottom: 20 }}>
@@ -346,12 +365,17 @@ function GrupoDeTrabajo({ titulo, filas, ordenes, href, sinObra, conTotal }: {
       {/* EL CORTE QUE CIERRA: vencido (subconjunto) y los dos circuitos, que suman el total de
           arriba sin resto. Sólo se dibuja cuando dice algo — un grupo de un solo circuito y sin
           nada vencido no necesita repetir su propio total en dos lugares. */}
-      {(vencido != null || (b != null && n != null)) && (
+      {(vencido != null || sinImporte > 0 || (b != null && n != null)) && (
         <div
           className="font-mono tabular-nums" data-testid="corte-grupo-cobranzas"
           style={{ display: 'flex', gap: 14, paddingBottom: 4, fontSize: '11px', color: V.tenue, flexWrap: 'wrap' }}
         >
           {vencido != null && <span title={AYUDA_VENCIDO} style={{ color: V.warn }}>▲ vencido {pesos(vencido)}</span>}
+          {sinImporte > 0 && (
+            <span data-testid="sin-importe-grupo" title="Filas de este trabajo que no traen importe en la pestaña: se ven, y no suman en el total de arriba.">
+              +{sinImporte} sin importe
+            </span>
+          )}
           {b != null && n != null && (
             <span title="Los dos circuitos de este bloque. Suman el total del trabajo sin resto.">
               B {pesos(b)} · N {pesos(n)}

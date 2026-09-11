@@ -81,11 +81,19 @@ export function EncabezadoDeColumnas() {
   )
 }
 
-/** El concepto en dos líneas, sin «…» a mitad de palabra. */
-const DOS_LINEAS = {
-  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const,
-  overflow: 'hidden', fontSize: '12px', lineHeight: 1.35,
-}
+/**
+ * EL CONCEPTO: dos líneas en escritorio, ENTERO EN EL TELÉFONO.
+ *
+ * El recorte a dos líneas es aceptable donde el `title` completa el texto al pasar el mouse. En
+ * táctil NO HAY `title`, y ahí un «…» esconde el dato para siempre — el auditor lo midió el
+ * 11/09/2026 sobre `quattropani-final-390.png`: el «…» se comía el tipo de cambio («a TC 1.550»).
+ * Abajo de 768px el clamp se suelta y la fila crece, que es lo que un teléfono puede hacer y una
+ * grilla de nueve columnas no.
+ */
+const CONCEPTO_CLAMP = 'line-clamp-2 max-[767px]:line-clamp-none'
+const CONCEPTO = { fontSize: '12px', lineHeight: 1.35 }
+/** La condición comercial: una línea con `title` en escritorio, entera en el teléfono. */
+const CONDICION_CLAMP = 'truncate max-[767px]:overflow-visible max-[767px]:whitespace-normal'
 
 export function FilaDeCobranza({ f }: { f: FilaCobranza }) {
   const estado = estadoDe(f)
@@ -151,7 +159,7 @@ export function FilaDeCobranza({ f }: { f: FilaCobranza }) {
         {f.categoria ?? '·'}
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-        <span style={{ ...DOS_LINEAS, color: tinta }} title={concepto}>
+        <span className={CONCEPTO_CLAMP} style={{ ...CONCEPTO, color: tinta }} title={concepto}>
           {/* UN RENGLÓN DE IVA CUELGA DE SU FACTURA. Es un cobro real con fecha propia —el IVA de
               la 220 entró el 19/08 y el neto el 31/07—, así que no se fusiona: se marca, para que
               nadie lo lea como una venta más. */}
@@ -162,7 +170,7 @@ export function FilaDeCobranza({ f }: { f: FilaCobranza }) {
             «certificación quincenal 3/9», «Cargar OC». Es dato del Sheet, no una explicación. */}
         {condicion && (
           <span
-            className="truncate" data-testid="condicion-cobranza" title={condicion}
+            className={CONDICION_CLAMP} data-testid="condicion-cobranza" title={condicion}
             style={{ fontSize: '10.5px', color: tenue }}
           >
             {condicion}
@@ -175,6 +183,9 @@ export function FilaDeCobranza({ f }: { f: FilaCobranza }) {
             {vencida ? '▲ ' : ''}{dia(f.fecha_cobro) ?? 's/fecha'}
           </span>
           <span className="font-mono">{f.categoria ?? '·'}</span>
+          {/* LA OC NO TIENE COLUMNA ABAJO DE 1200px: en el teléfono baja acá, porque «con OC si
+              corresponde» es parte del pedido y no puede depender del ancho de la pantalla. */}
+          {oc && <span className="font-mono tabular-nums">OC {oc}</span>}
           {f.forma_cobro?.trim() && <span>{f.forma_cobro.trim()}</span>}
         </span>
       </span>
