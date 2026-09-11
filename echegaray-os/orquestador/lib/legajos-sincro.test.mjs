@@ -189,3 +189,9 @@ test('sólo ACTIVOS e INACTIVOS contienen legajos: lo demás de la raíz no es u
     assert.equal(esBucketDeLegajos(n), false, n)
   }
 })
+
+test('«HM» es la libreta del IERIC, no el examen médico (11/09/2026: Ochoa y Castillo)', () => {
+  assert.equal(categoriaDeArchivo('HM - OCHOA EDUARDO.pdf'), 'libreta_fondo_cese')
+  assert.equal(categoriaDeArchivo('HM.pdf'), 'libreta_fondo_cese')
+  assert.equal(categoriaDeArchivo('Examen medico preocupacional.pdf'), 'examen_medico')
+})
