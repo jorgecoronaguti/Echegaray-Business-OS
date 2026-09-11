@@ -21,7 +21,7 @@ import { getPool } from './db.mjs'
 
 const MIGRACION = readFileSync(join(
   import.meta.dirname, '..', '..', 'supabase', 'migrations',
-  '20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql'), 'utf8')
+  '20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql'), 'utf8')
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
@@ -136,6 +136,63 @@ test('pantalla_cliente() devuelve lo mismo que las quince lecturas', { skip: !ha
       assert.deepEqual(vacio.papeles, [])
       assert.equal(vacio.economia_cliente, null)
     })
+
+    // ═══ EL RECORTE POR CARA (20260911T1200) ═══
+    //
+    // Lo que este bloque atrapa: que `p_solapa` deje de ser un RECORTE y se vuelva un cambio de
+    // dato. Un recorte que además alterara lo que sí viaja sería peor que el peso que ahorra —la
+    // cabecera y el costado se dibujan igual en las nueve caras—, y un recorte que no recortara
+    // nada sería una firma nueva sin efecto.
+    await t.test('la cara pedida recorta lo que no dibuja, y NADA más', async () => {
+      const entera = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
+      // Lo que la cabecera y el costado necesitan en TODAS las caras tiene que venir idéntico.
+      const SIEMPRE = ['cliente', 'perfil', 'responsables', 'contactos', 'obras', 'economia_obras',
+        'cobrado_por_obra', 'economia_cliente', 'papeles', 'presupuestos', 'n_documentos']
+      // Lo que sólo dibujan Documentos y Actividad, y lo que sólo dibuja Actividad.
+      const SOLO_DOC = ['documentos', 'drive']
+      const SOLO_ACT = ['notas', 'autores', 'certificados']
+      for (const cara of ['obras', 'cobranzas', 'presupuestos', 'cuenta', 'esquema', 'accesos', 'ordenes']) {
+        const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
+        for (const k of SIEMPRE) {
+          assert.deepEqual(j[k], entera[k], `la cara «${cara}» cambió «${k}», que se dibuja en las nueve`)
+        }
+        for (const k of [...SOLO_DOC, ...SOLO_ACT]) {
+          assert.deepEqual(j[k], [], `la cara «${cara}» todavía transporta «${k}»`)
+        }
+        assert.equal(j.actividad_cliente, null, `la cara «${cara}» todavía transporta actividad_cliente`)
+      }
+      for (const cara of ['documentos', 'actividad']) {
+        const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
+        for (const k of SOLO_DOC) {
+          assert.deepEqual(canonico(j[k]), canonico(entera[k]), `la cara «${cara}» no recibió «${k}»`)
+        }
+      }
+      const act = (await q(`select public.pantalla_cliente($1, 'actividad') j`, [slug]))[0].j
+      for (const k of SOLO_ACT) assert.deepEqual(act[k], entera[k], `Actividad no recibió «${k}»`)
+      assert.deepEqual(act.actividad_cliente, entera.actividad_cliente)
+    });
+
+    // LA CUENTA NO PUEDE MENTIR CUANDO LAS FILAS NO VIAJAN: es lo único que sostiene el «Documentos
+    // · N» de la barra en las siete caras que ya no reciben la lista.
+    await t.test('n_documentos cuenta lo mismo que la lista que reemplaza', async () => {
+      const entera = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
+      assert.ok(entera.documentos.length > 0, 'este cliente no tiene vínculos: la cuenta no se pudo probar')
+      assert.equal(Number(entera.n_documentos), entera.documentos.length)
+      for (const cara of ['obras', 'documentos']) {
+        const j = (await q('select public.pantalla_cliente($1, $2) j', [slug, cara]))[0].j
+        assert.equal(Number(j.n_documentos), entera.documentos.length,
+          `«${cara}» perdió la cuenta de documentos`)
+      }
+    });
+
+    // LA PUERTA VIEJA SIGUE ABIERTA mientras Vercel despliega: si esta firma desapareciera, la
+    // ficha se caería en la ventana entre aplicar la migración y terminar el deploy.
+    await t.test('la firma de un argumento sigue devolviendo la ficha entera', async () => {
+      const uno = (await q('select public.pantalla_cliente($1) j', [slug]))[0].j
+      const dos = (await q('select public.pantalla_cliente($1, null) j', [slug]))[0].j
+      assert.equal(canonico(uno.documentos).length, canonico(dos.documentos).length)
+      assert.equal(uno.cliente.slug, slug)
+    });
 
     await t.test('un rol sin economía no recibe la economía del cliente', async () => {
       const jefe = (await q(`select id from perfiles where rol='jefe_obra' and es_prueba = false limit 1`))[0]

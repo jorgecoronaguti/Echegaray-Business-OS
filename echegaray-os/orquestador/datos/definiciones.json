@@ -49,10 +49,11 @@
         }
       },
       {
-        "funcion": "public.pantalla_cliente(text)",
+        "funcion": "public.pantalla_cliente(text, text)",
         "pantalla": "/clientes/[cliente]",
-        "migracion": "supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql y, la que DE VERDAD corre, por 20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql)",
+        "migracion": "supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql por 20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql y, la que DE VERDAD corre, por 20260911T1200_la_ficha_del_cliente_trae_lo_que_su_cara_dibuja.sql, que agrega p_solapa y devuelve sólo lo que esa cara dibuja)",
         "reemplaza": "15 consultas de PostgREST en TRES olas encadenadas",
+        "recorta_por_cara": "p_solapa es un RECORTE DE DIBUJO, no un permiso: `drive` y `documentos` (94 KB de 199 en el cliente más pesado) viajan sólo en Documentos y Actividad; `notas`, `autores`, `certificados` y `actividad_cliente`, sólo en Actividad; `n_documentos` viaja siempre porque la barra de solapas cuenta en las nueve caras. `papeles` NO se recorta: los totales de OC y OP los define agruparPapeles() en TypeScript. Quien recorta por rol sigue siendo la RLS.",
         "consume": [
           "cliente_panel",
           "perfiles",

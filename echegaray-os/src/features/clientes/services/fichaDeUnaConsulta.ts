@@ -68,6 +68,15 @@ export interface FichaLeida {
   /** `null` = la lectura falló. «No pude leerlos» nunca se dibuja como «no tiene ninguno». */
   papeles: PapelesDelCliente | null
   /**
+   * CUÁNTOS VÍNCULOS A DRIVE TIENE EL CLIENTE, en las nueve caras.
+   *
+   * `documentos` viene VACÍO fuera de las caras Documentos y Actividad (94 KB de 199 que las otras
+   * siete pagaban para nada, 20260911T1200), así que su `.length` ya no puede contar. La barra de
+   * solapas usa ESTE número, que la RPC cuenta con el mismo `where` que las filas: sin él, recortar
+   * el peso escribiría «Documentos · 0» sobre un cliente con 208 papeles.
+   */
+  nDocumentos: number
+  /**
    * LO COBRADO POR TRABAJO (`public.obra_cuenta`), con la MISMA conversión que usa `/clientes`
    * (`armarCobradoPorObra`). Con una conversión propia acá, las dos pantallas del módulo volverían
    * a poder decir números distintos sobre la misma obra.
@@ -77,6 +86,7 @@ export interface FichaLeida {
 
 interface FichaCruda {
   cliente: Record<string, unknown> | null
+  n_documentos: number | null
   perfil: Perfil | null
   responsables: Responsable[]
   contactos: Contacto[]
@@ -98,7 +108,7 @@ function nadaLeido(error: string | null): FichaLeida {
   return {
     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
-    papeles: null, cobradoPorObra: null,
+    papeles: null, cobradoPorObra: null, nDocumentos: 0,
   }
 }
 
@@ -110,9 +120,13 @@ function nadaLeido(error: string | null): FichaLeida {
  * permisos detrás de un «página no encontrada» durante horas, y por eso siguen separados.
  */
 export async function leerFichaDeUnaConsulta(
-  supabase: SupabaseClient, slug: string,
+  supabase: SupabaseClient, slug: string, solapa: string,
 ): Promise<FichaLeida> {
-  const { data, error } = await supabase.rpc('pantalla_cliente', { p_slug: slug })
+  // `p_solapa` NO ES UN PERMISO, ES UN RECORTE DE DIBUJO: dice qué va a pintar esta cara para no
+  // transportar lo que ninguna otra mira. Quien recorta por rol sigue siendo la RLS adentro de las
+  // vistas, y por eso la firma acepta cualquier texto: un valor desconocido devuelve la ficha
+  // entera, que es lo que hacía antes.
+  const { data, error } = await supabase.rpc('pantalla_cliente', { p_slug: slug, p_solapa: solapa })
   if (error) return nadaLeido(error.message)
   const j = (data ?? {}) as FichaCruda
   if (!j.cliente) return nadaLeido(null)
@@ -124,6 +138,7 @@ export async function leerFichaDeUnaConsulta(
     // comparación contra null y muestra cualquier cosa.
     cliente: normalizar(j.cliente),
     error: null,
+    nDocumentos: j.n_documentos ?? 0,
     perfil: j.perfil ?? null,
     responsables: j.responsables ?? [],
     contactos: j.contactos ?? [],
