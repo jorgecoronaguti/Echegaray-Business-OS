@@ -336,6 +336,20 @@ export const FUENTE_HORAS_POR_DEFECTO = 'web:presencia-defecto'
  */
 export const FUENTE_CORRECCION_HORAS = 'web:correccion-horas'
 
+/**
+ * EL ORIGEN DE UNA FILA QUE NACIÓ EN LA CELDA DE LA VISTA «QUINCENA».
+ *
+ * Vive acá y no en la acción que la escribe porque esa acción es un `'use server'`, y un módulo
+ * `'use server'` SÓLO puede exportar funciones async: una constante exportada ahí no la caza el
+ * typecheck y tumba el build entero con «Only async functions are allowed to be exported in a "use
+ * server" file». Lo vio el primer `goto` del navegador, el 11/09/2026.
+ *
+ * NO es `web:correccion-horas`: esa marca es de una fila que alguien corrigió, y ésta es de una que
+ * alguien ESTRENÓ desde la grilla, con la obra deducida por `obraParaElDia`. Distinguirlas es lo que
+ * permite medir después cuántos jornales entraron por la pantalla en vez de por la planilla.
+ */
+export const FUENTE_GRILLA_QUINCENA = 'web:grilla-quincena'
+
 /** Una fila de `registros_hh` de ese día, mirada sólo por lo que decide el plan. */
 export interface HoraDelDia {
   id: string

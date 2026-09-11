@@ -40,6 +40,10 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion } from './liquidacionPermiso'
 import { corregirHorasDelDia } from './liquidacionDiaActions'
 import { declararPresencia } from './presenciaDelDiaService'
+// LA CONSTANTE NO PUEDE VIVIR EN ESTE ARCHIVO: un `'use server'` sólo exporta funciones async, y una
+// `export const` acá tumba el build con «Only async functions are allowed to be exported». El
+// typecheck no lo ve; lo vio el navegador (11/09/2026).
+import { FUENTE_GRILLA_QUINCENA } from './presenciaDelDia'
 import { declaracionesDeJornada } from './presenciaPorHoras'
 import { quincenaDe } from './quincena'
 import {
@@ -48,9 +52,6 @@ import {
 } from './obraDelDia'
 
 const RUTA = '/administracion/personas'
-
-/** La huella de las filas que nacen en la grilla de la vista «Quincena». */
-export const FUENTE_GRILLA_QUINCENA = 'web:grilla-quincena'
 
 export type ResultadoCelda = { ok: true; aviso?: string } | { ok: false; error: string }
 

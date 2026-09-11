@@ -42,9 +42,24 @@ const VACIO: EspejoDeLaPlanilla = {
   hay: false, horasPorPersona: new Map(), leidoEn: null, bloques: [], sinPersona: [], error: null,
 }
 
-/** 42P01 = la tabla todavía no existe. Se trata como «no hay espejo», no como error de pantalla. */
+/**
+ * LA TABLA TODAVÍA NO EXISTE. Se trata como «no hay espejo», no como error de pantalla.
+ *
+ * ═══ POSTGREST NO CONTESTA 42P01 (medido en el navegador, 11/09/2026) ═══
+ *
+ * Contra una tabla que no está, PostgREST no devuelve el código de Postgres: devuelve **PGRST205**
+ * con «Could not find the table 'public.jornales_bloque_persona' in the schema cache», porque ni
+ * siquiera llega a mandar la consulta — no la encuentra en su caché de esquema. La primera versión de
+ * esto miraba `42P01` y `/does not exist/`, así que la pantalla abrió con una banda roja de error
+ * sobre un estado que es el ESPERADO hasta que alguien aplique la migración.
+ *
+ * Y la diferencia importa: un error rojo dice «algo se rompió» y manda a revisar; «sin espejo» dice
+ * «esto todavía no se leyó» y manda a correr el script. Las dos frases piden cosas distintas.
+ */
 const sinTabla = (e: { code?: string; message: string }): boolean =>
-  e.code === '42P01' || /does not exist/i.test(e.message)
+  e.code === '42P01' || e.code === 'PGRST205'
+  || /does not exist/i.test(e.message)
+  || /could not find the table/i.test(e.message)
 
 interface FilaDelEspejoEnLaBase {
   pestana: string

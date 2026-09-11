@@ -48,7 +48,11 @@ function rotuloDia(fecha: string): string {
 /** Las columnas de la derecha, en el orden de R5. El ancho sale del número más largo que reciben. */
 const DERECHA = [
   { clave: 'horas', rotulo: 'Horas', px: 52 },
-  { clave: 'valorHora', rotulo: '$/h', px: 66 },
+  // 86 Y NO 66: en esta columna Oficina publica su NETO MENSUAL («$1.800.000»), que no es un valor
+  // hora y no entra en el ancho de uno. A 66 px se cortaba en «$1.800.00C» — un importe de sueldo
+  // recortado por un píxel, que es la clase de número que después nadie puede discutir contra el
+  // recibo. Lo vio la captura a 1280 del 11/09/2026.
+  { clave: 'valorHora', rotulo: '$/h · mensual', px: 86 },
   { clave: 'cobra', rotulo: 'Cobra', px: 94 },
   { clave: 'adelanto', rotulo: 'Adelanto', px: 86 },
   { clave: 'yaTransferido', rotulo: 'Ya transf.', px: 88 },
