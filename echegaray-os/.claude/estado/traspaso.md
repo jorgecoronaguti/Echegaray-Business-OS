@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-11 ~09:45 (hora local −03) · main = producción_
+_actualizado: 2026-09-11 ~11:35 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -69,7 +69,9 @@ ensayo, `--aplicar`). Playwright anda sin root con las libs del scratchpad (`lib
 
 ## 5. TRABAJO DE ESTA SESIÓN
 
-Ver §4. Agentes en curso al cierre: auditor de la cartera v5 · Liquidación (rama fix/liquidacion-editable-y-panel, retomado) · consistencia Flujo de Fondos (informe 10/09 18:35 → resolver) · extracto bancario 13/07–10/09 (/tmp/claude-1001/banco-1109/descargaUltimosMovimientos-47.csv) · UX solapa Cobranzas (rama feat/cobranzas-cliente-ux, nace de fix/crm-barra-unica).
+11:00–11:10: la VM llegó a carga 27–31 con cuatro agentes en paralelo (eslint ., tests, 3 next dev): se cayó el websocket del bot y Mattermost (corre en esta VM, puerto 8065), el guardia del pipeline de las 10:50 falló por ETIMEDOUT («No ejecuté un solo generador», próxima 12:50) y la sesión murió dos veces. Se mataron los procesos; carga 1. REGLA NUEVA (memoria vm-saturada-por-agentes-tumba-el-chat): un agente pesado a la vez, nice 19, lint/tests dirigidos, dev server efímero.
+
+Orden de reanudación (de a uno): 1) Liquidación/Horas (wt-liq, en curso, agente único con navegador) → 2) solapa Cobranzas UX: PUBLICADA e9ae7a1a (falta captura en producción) → 3) velocidad frontend (wt-perf, reanudado tras DB) → 4) backend/DB: PUBLICADO 28fe9041 (migración 1030 aplicada; guarda rpc-una-pasada.pg.test.mjs verde en vivo: pantalla_clientes ≤ 13.500 buffers, campanita ≤ 400). Consistencia/caja publicada (c981af53); verificar en la corrida 12:50.
 
 ## 6. PENDIENTES REALES
 

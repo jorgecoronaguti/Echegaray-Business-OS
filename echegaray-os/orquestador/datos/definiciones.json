@@ -12,7 +12,7 @@
       {
         "funcion": "public.pantalla_clientes()",
         "pantalla": "/clientes",
-        "migracion": "supabase/migrations/20260911T0010_pantalla_clientes_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql)",
+        "migracion": "supabase/migrations/20260911T0010_pantalla_clientes_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql, luego por 20260911T0900 y 20260911T0930_el_total_del_contrato_no_se_fabrica.sql, y desde el 11/09/2026 por 20260911T1030_una_vista_cara_se_recorre_una_vez_por_viaje.sql, que recorre obra_panel UNA vez en vez de dos)",
         "reemplaza": "10 consultas de PostgREST en una ola",
         "consume": [
           "perfiles",
@@ -25,12 +25,12 @@
           "cliente_documento",
           "cliente_economia"
         ],
-        "porque": "El costo dominante de la pantalla era el arranque en frío por CONEXIÓN (~800 ms de catálogo la primera vez que un backend ve las vistas anidadas del OS), pagado hasta diez veces porque cada consulta paralela puede caer en un backend distinto del pool. Un viaje, un backend, un arranque. Publica obra_cuenta tal cual la vista la calcula (cobrado bruto y neto, por cobrar, vencido, próximo cobro con su medio): la fila del trabajo NO resta esos números en la pantalla, que era la segunda definición de «lo que falta cobrar»."
+        "porque": "El costo dominante de la pantalla era el arranque en frío por CONEXIÓN (~800 ms de catálogo la primera vez que un backend ve las vistas anidadas del OS), pagado hasta diez veces porque cada consulta paralela puede caer en un backend distinto del pool. Un viaje, un backend, un arranque. Publica obra_cuenta tal cual la vista la calcula (cobrado bruto y neto, por cobrar, vencido, próximo cobro con su medio): la fila del trabajo NO resta esos números en la pantalla, que era la segunda definición de «lo que falta cobrar». — CORRECCIÓN MEDIDA 11/09/2026: el «arranque en frío por conexión de ~800 ms» estaba mal calibrado en las dos direcciones. Con el pooler entregando backends ya calientes NO se paga nada (conn 340 ms + 1ra consulta 141–276 ms, cuatro veces seguidas); y cuando el pooler tiene que arrancar un backend nuevo —después de un reinicio de la instancia, como el de Supabase de las 09:39 del 11/09— la primera llamada cuesta 18.087 ms, no 800. No es el caché de PLANES (discard plans no lo reproduce): es el relcache/syscache cargando las vistas anidadas, sus reglas de reescritura y las 474 policies. La conclusión de «un viaje, un backend» no cambia; su número sí. Y desde 20260911T1030_una_vista_cara_se_recorre_una_vez_por_viaje.sql el viaje recorre obra_panel una sola vez: 17.780 → 13.090 buffers (auditor: 17.777 → 13.087, tres roles, jsonb idéntico); los ms no se registran porque no replican con la VM cargada."
       },
       {
         "funcion": "public.campanita_atencion()",
         "pantalla": "la campanita del header — TODAS las pantallas",
-        "migracion": "supabase/migrations/20260911T0020_campanita_una_consulta.sql (reemplazada por 20260911T0130_la_campanita_cuenta_en_la_base.sql, que además cuenta en la base)",
+        "migracion": "supabase/migrations/20260911T0020_campanita_una_consulta.sql (reemplazada por 20260911T0130_la_campanita_cuenta_en_la_base.sql, que además cuenta en la base, y desde el 11/09/2026 por 20260911T1030_una_vista_cara_se_recorre_una_vez_por_viaje.sql, que recorre comprobante_compra UNA vez en vez de tres)",
         "reemplaza": "6 consultas de PostgREST por navegación (el perfil más las cinco señales), y desde 20260911T0130 también las 737 filas que viajaban para contarse en TypeScript",
         "consume": [
           "perfiles",
@@ -40,7 +40,7 @@
           "imputacion_pendiente",
           "correccion_asistencia_bandeja"
         ],
-        "porque": "La campanita vive en todas las pantallas: sus viajes no son el costo de una pantalla sino un impuesto por navegación que le disputaba el pool de PostgREST al render. Transportar las filas crudas para que PREDICADO siguiera siendo la única definición costaba 76.366 bytes y 248.056 bloques del buffer pool POR NAVEGACIÓN (34 llamadas, 3.064 ms de media y 14,8 s de máximo en pg_stat_statements el 10/09/2026: el mayor consumidor de la base). Desde 20260911T0130 devuelve los siete conteos —251 bytes, 417 bloques, 98 ms— y quien decide qué cuenta cada KPI es public.comprobante_cumple_filtro(), el lado SQL de PREDICADO. NO es una copia suelta: es el mismo trato que cobranza_imputacion (SQL) y cobranza-obra.mjs (JS), dos implementaciones de una regla atadas por un test que las compara sobre los datos reales — orquestador/lib/campanita-rpc.pg.test.mjs recorre los SEIS filtros sobre los 737 comprobantes y exige el mismo número, y un filtro desconocido levanta excepción en vez de devolver false.",
+        "porque": "La campanita vive en todas las pantallas: sus viajes no son el costo de una pantalla sino un impuesto por navegación que le disputaba el pool de PostgREST al render. Transportar las filas crudas para que PREDICADO siguiera siendo la única definición costaba 76.366 bytes y 248.056 bloques del buffer pool POR NAVEGACIÓN (34 llamadas, 3.064 ms de media y 14,8 s de máximo en pg_stat_statements el 10/09/2026: el mayor consumidor de la base). Desde 20260911T0130 devuelve los siete conteos —251 bytes, 417 bloques, 98 ms— y quien decide qué cuenta cada KPI es public.comprobante_cumple_filtro(), el lado SQL de PREDICADO. NO es una copia suelta: es el mismo trato que cobranza_imputacion (SQL) y cobranza-obra.mjs (JS), dos implementaciones de una regla atadas por un test que las compara sobre los datos reales — orquestador/lib/campanita-rpc.pg.test.mjs recorre los SEIS filtros sobre los 737 comprobantes y exige el mismo número, y un filtro desconocido levanta excepción en vez de devolver false. — DESDE 20260911T1030_una_vista_cara_se_recorre_una_vez_por_viaje.sql: los tres contadores de compras recorrían la vista TRES veces en la misma llamada. Un CTE materializado los deja en una: 417 → 353 bloques (auditor: igual), conteos idénticos. Eso deroga POR MEDICIÓN la advertencia de 20260911T0130 sobre contar en una sola pasada: la pasada de «duplicados» ya evaluaba el parecido de TODAS las filas —era su where—, así que el exists se pagaba igual y encima se pagaban dos recorridos más.",
         "predicado_compartido": {
           "sql": "public.comprobante_cumple_filtro(filtro, imputacion, tiene_posible_duplicado, estado_control) — 20260911T0130",
           "typescript": "PREDICADO / aplicarFiltro / cumpleFiltro — src/features/administracion/services/comprasEstado.ts",
@@ -51,7 +51,7 @@
       {
         "funcion": "public.pantalla_cliente(text)",
         "pantalla": "/clientes/[cliente]",
-        "migracion": "supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql)",
+        "migracion": "supabase/migrations/20260911T0030_pantalla_cliente_una_consulta.sql (reemplazada por 20260911T0040_las_rpc_de_pantalla_siguen_a_obra_cuenta.sql y, la que DE VERDAD corre, por 20260911T0940_la_ficha_del_cliente_recibe_el_desglose_del_contrato.sql)",
         "reemplaza": "15 consultas de PostgREST en TRES olas encadenadas",
         "consume": [
           "cliente_panel",
