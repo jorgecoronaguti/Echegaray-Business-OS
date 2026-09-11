@@ -182,10 +182,21 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     await abrir(page, 'horas')
     const url = page.url()
     const fila = page.locator('[data-testid^="fila-"]').first()
+    // ═══ SE CLICKEA EL NOMBRE, NO EL CENTRO DE LA FILA (11/09/2026) ═══
+    //
+    // Playwright clickea el CENTRO del elemento, y desde que los días se editan en línea el centro
+    // de la fila es una celda editable que frena la propagación: el clic abre el campo, no el panel.
+    // Este caso daba rojo y lo cazó la auditoría de cierre.
+    //
+    // El contrato nuevo, que es el que el dueño pidió («permitirme editar en cada celda»): el NOMBRE
+    // —y los totales, y las celdas que no se editan— abren la persona; los días editables abren su
+    // campo. No se puede tener las dos cosas en el mismo punto: un clic que abre un campo Y despliega
+    // un panel de 900 px debajo mueve el campo de lugar mientras se escribe.
+    const nombre = fila.locator('div').first()
     // SE REINTENTA EL CLIC: un clic anterior a la hidratación se pierde sin dejar rastro y el panel
     // no abre nunca. El porqué completo, en `liquidacion-editar-en-celda.spec.ts`.
     await expect(async () => {
-      await fila.click()
+      await nombre.click()
       await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 5_000 })
     }).toPass({ timeout: 60_000 })
     // ABRIR UNA PERSONA NO NAVEGA (handoff §4): la URL no se movió.
@@ -204,6 +215,17 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     // Y NO DEBAJO DE LA BARRA PEGAJOSA: sin `scroll-margin-top` el nombre de la persona quedaba
     // medio tapado por los 44 px de la barra de navegación, que no se va con el scroll.
     expect(caja!.y, 'el nombre no queda tapado por la barra de navegación').toBeGreaterThan(44)
+
+    // ═══ Y LA OTRA MITAD DEL CONTRATO: EL DÍA EDITA, NO ABRE ═══
+    //
+    // Se afirma por el lado positivo para que la decisión quede medida y no dependa de que alguien
+    // lea un comentario: tocar una celda de día abre SU campo y deja el panel como estaba.
+    const celdaDeDia = page.locator('[data-testid^="grilla-hh-"]').first()
+    if (await celdaDeDia.count() > 0) {
+      await celdaDeDia.click()
+      await expect(page.locator('[data-testid$="-campo"]').first()).toBeVisible({ timeout: 10_000 })
+      await page.keyboard.press('Escape')
+    }
 
     const metricas = page.getByTestId('metricas-persona')
     await expect(metricas).toBeVisible()
@@ -429,7 +451,7 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     // mismo `next dev` — lo levantó la auditoría del 11/09/2026. El porqué, en
     // `liquidacion-editar-en-celda.spec.ts`.
     await expect(async () => {
-      await page.locator('[data-testid^="fila-"]').first().click()
+      await page.locator('[data-testid^="fila-"]').first().locator('div').first().click()
       await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 5_000 })
     }).toPass({ timeout: 60_000 })
     await page.screenshot({ path: `${SALIDA}/app-390-persona.png`, fullPage: true })
@@ -438,6 +460,11 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
 
   test('Toda la vista · IBM Plex Sans para el texto y Mono para los rótulos de columna', async ({ page }) => {
     await abrir(page, 'horas')
+    // SE ESPERA LA GRILLA ANTES DE MEDIR. `abrir()` tolera que `networkidle` venza —en dev el socket
+    // de HMR no cierra nunca—, así que sin esto el `$$eval` puede salir mientras la pantalla todavía
+    // está montándose y cae con «Execution context was destroyed». Pasó el 11/09/2026 y el rojo no
+    // señalaba ninguna tipografía: señalaba que se midió antes de tiempo.
+    await expect(page.getByTestId('vista-horas')).toBeVisible({ timeout: 60_000 })
     const familias = await page.$$eval('main *', (nodos) => {
       const cuenta: Record<string, number> = {}
       for (const n of nodos) {

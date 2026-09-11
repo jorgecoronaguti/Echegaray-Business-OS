@@ -54,6 +54,8 @@ import { agruparPorRolOrganizacional } from '../../services/vocabularioPersona'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
 import { InlineEdit } from '@/shared/components/ds'
 import { corregirHorasDelDia } from '../../services/liquidacionDiaActions'
+// LA REGLA DE QUÉ SE EDITA NO ES DE LA GRILLA: la grilla dibuja lo que la regla decide.
+import type { EdicionDeCelda } from '../../services/edicionDeGrillaHoras'
 
 // LA COLUMNA DEL IMPORTE ESTIMADO ENTRA ENTRE «Esper.» Y «Estado», y por eso el ancho mínimo de la
 // grilla sube de 760 a 856: un «$ 1.234.567» de 96 px no se puede achicar sin partir el número.
@@ -87,18 +89,6 @@ const filaGrid = (alto: number): React.CSSProperties => ({
 })
 
 /**
- * QUÉ SE PUEDE EDITAR EN UNA CELDA DE ESTA GRILLA.
- *
- * `null` = no se edita en línea, y el porqué NO es «no se puede»: es que esa celda no tiene UN
- * registro al que imputarle el cambio. Lo resuelve `edicionDeCeldaDeGrilla`.
- */
-export interface EdicionDeCelda {
-  registroId: string
-  /** Adónde mandar a quien toca una celda que no se edita en línea. */
-  motivoSiNo?: never
-}
-
-/**
  * ═══ LA CELDA DE LA GRILLA SE EDITA DONDE SE LEE (dueño, 11/09/2026) ═══
  *
  * Textual: *«tenés que permitirme editar en cada celda de ahí de la sección Horas del módulo
@@ -118,8 +108,11 @@ export interface EdicionDeCelda {
  *   LICENCIA     «en realidad trabajó» y «corregile las horas reconocidas» a la vez. Es la misma
  *                regla que ya rige en la grilla de Horas (`GrillaAsistenciaObra`), y no se
  *                contradice acá.
- *   DÍA PARTIDO  dos registros el mismo día son dos obras: un solo campo tendría que adivinar a
- *                cuál. El panel los muestra separados, cada uno con su celda.
+ *   DÍA CON DOS   un solo campo tendría que elegir en silencio a CUÁL de los dos registros se le
+ *   REGISTROS     imputa la corrección. No es «dos obras» —la auditoría del 11/09/2026 midió los dos
+ *                 casos reales de la grilla y son `licencia + normal` de la MISMA obra—: es que hay
+ *                 más de una fila candidata y el que corrige tiene que ver cuál elige. El panel las
+ *                 muestra separadas, cada una con su celda.
  *
  * Ninguna de esas queda muerta: siguen abriendo el panel en esa persona, que es donde el caso se
  * resuelve. Lo que cambia es que el caso FÁCIL —corregir un número que ya existe— dejó de costar
@@ -139,18 +132,35 @@ function Celda({ celda, edicion }: { celda: CeldaDeGrilla; edicion?: EdicionDeCe
     return <div style={{ textAlign: 'center' }}>{numero(celda.horas ?? 0)}</div>
   }
   return (
-    // EL CLIC NO PUEDE BURBUJEAR: la fila entera abre el panel de la persona, así que sin frenarlo
-    // acá tocar una celda para escribir un número abriría y cerraría el panel debajo del campo.
+    // ═══ EL CLIC EN LA CELDA EDITA; EL CLIC EN EL NOMBRE ABRE LA PERSONA ═══
+    //
+    // Frenar la propagación es obligatorio: la fila entera es un botón que despliega el panel, y sin
+    // esto tocar una celda para escribir abriría el panel debajo del campo.
+    //
+    // LO QUE ESO CAMBIÓ, Y SE DECIDE ACÁ (auditoría 11/09/2026): la franja de días dejó de ser un
+    // camino al panel. Antes CUALQUIER punto de la fila lo abría; ahora los días editables abren su
+    // campo, que es lo que el dueño pidió —«permitirme editar en cada celda»—, y el panel se abre
+    // desde el NOMBRE, desde los totales y desde las celdas que no se editan (`·`, `A`, `L`), que
+    // siguen siendo fila. No queda ninguna celda muerta: se verificó el inventario completo de la
+    // grilla, 221 celdas, y todas editan o abren el panel.
+    //
+    // No se puede tener las dos cosas en el mismo punto: un clic que abre un campo Y despliega un
+    // panel de 900 px debajo mueve el campo de lugar mientras se escribe.
     <div
       style={{ display: 'flex', justifyContent: 'center' }}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
+      {/* EL ANCHO ES 56 Y NO 42, Y SIN FLECHITAS. Con `w-[42px]` el `<input type=number>` medía
+          28 px útiles contra 35 de contenido: el spinner del navegador se comía el dígito y se
+          editaba A CIEGAS —el DOM decía «9» y la pantalla mostraba sólo el cursor y dos flechas de
+          ±1 hora sobre datos de liquidación—. Lo cazó la auditoría del 11/09/2026 sobre la captura
+          de cierre. `sin-spinner` está en `globals.css` y apaga el control en Chrome y Firefox. */}
       <InlineEdit
         valor={celda.horas ?? null}
         tipo="numero"
         falta="·"
-        ancho="w-[42px]"
+        ancho="w-[56px] sin-spinner"
         alineado="center"
         etiqueta={`Horas del ${celda.fecha}`}
         testid={`grilla-hh-${edicion.registroId}`}
