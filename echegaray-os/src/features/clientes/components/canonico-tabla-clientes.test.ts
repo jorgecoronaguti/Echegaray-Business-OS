@@ -109,6 +109,14 @@ test('el subtítulo de /clientes y el panel lateral suman la MISMA base que la c
   assert.doesNotMatch(panel, /economia\?\.contratado_en_curso/, 'el panel dejó de leer cliente_economia para el contratado')
 })
 
+test('la suma viva se marca y la discrepancia declarada se dice (auditor final, 11/09/2026)', () => {
+  const src = celdas()
+  assert.match(src, /const viva = o\.contratoTotal === null && o\.origenContratado === ORIGEN_SUMA_VIVA/)
+  assert.match(src, /SUMA VIVA de lo que Cobranzas lleva registrado/)
+  assert.match(src, /Discrepancia declarada por la vista: \$\{o\.nota\}/)
+  assert.match(src, /data-origen=\{viva \? 'suma-viva' : undefined\}/)
+})
+
 test('el jefe de obra no ve una sola cifra', () => {
   const src = tabla()
   assert.match(src, /veEconomia \? 'Contratado' : ''/)
