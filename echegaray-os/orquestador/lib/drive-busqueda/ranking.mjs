@@ -378,6 +378,31 @@ function colapsarIndistinguibles(ordenados) {
   return salida
 }
 
+/**
+ * EL MISMO PARECIDO, PARA UNA LISTA QUE SE MIRA — lo que usa la pantalla `/documentos`.
+ *
+ * `rankear` hace tres cosas: puntúa, PODA lo que se parece poco al mejor y COLAPSA los
+ * indistinguibles. Las dos últimas existen porque el chat tiene que elegir UNO y ofrecer como
+ * alternativa sólo lo que compite de verdad. En una tabla son dañinas: la pantalla dice «se listan
+ * 100 de 1.147» con un total que cuenta Postgres, así que esconder filas que Postgres contó
+ * convierte ese cartel en una mentira, y colapsar dos archivos homónimos de dos carpetas distintas
+ * le saca al usuario justo el que buscaba.
+ *
+ * Así que la lista ordena con el MISMO `puntuar` del chat —misma definición de parecido, mismos
+ * pesos, mismo desempate por fecha— y no filtra ni colapsa nada. Si esto divergiera de `rankear`,
+ * el primer resultado del chat y el primero de la web dejarían de ser el mismo archivo.
+ *
+ * @param {object[]} filas
+ * @param {{frase:string, tokens:string[], tipo?:string|null}} consulta
+ * @param {{ahora?:number}} [opts]
+ */
+export function ordenarPorParecido(filas, consulta, opts = {}) {
+  return filas
+    .map((e) => { const { score, texto, senales } = puntuar(e, consulta, { ahora: opts.ahora }); return { ...e, score, texto, senales } })
+    .sort((a, b) => (b.score - a.score)
+      || String(b.modified_time ?? '').localeCompare(String(a.modified_time ?? '')))
+}
+
 /** Cuánto tiene que sacarle el primero al segundo para responder solo, y para no preguntar. */
 export const MARGEN = Object.freeze({ ALTA: 0.5, MEDIA: 0.15 })
 

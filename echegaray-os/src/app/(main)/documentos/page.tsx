@@ -229,6 +229,10 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
           <TablaDocumentos
             documentos={documentos}
             seleccionado={sp.d}
+            // CON QUÉ COINCIDIÓ CADA FILA. Son los tokens con los que filtró Postgres, no los que
+            // esta pantalla partiría por su cuenta: resaltar otra palabra que la que hizo entrar la
+            // fila sería inventar una explicación.
+            tokens={catalogo.data?.busqueda?.tokens ?? []}
             // `pv` se apaga al cambiar de documento: dejarlo prendido abriría el visor de un archivo
             // que nadie pidió ver, y para un PDF de 40 MB eso es una descarga que nadie pidió.
             // LOS ENLACES VIAJAN COMO DATOS, uno por documento: una función como prop no sobrevive a la

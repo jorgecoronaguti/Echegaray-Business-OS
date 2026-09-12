@@ -1,0 +1,347 @@
+{
+  "_que_es": "Las 30 consultas con las que se mide la búsqueda de documentos. Las usa orquestador/scripts/documentos-busqueda-baseline.mjs.",
+  "_como_se_armaron": [
+    "NO son preguntas inventadas con la respuesta que me gustaría. 6 salen de drive_busqueda_evento / drive_busqueda_uso: consultas que una persona escribió de verdad en el chat y el archivo que ACEPTÓ. Las otras 24 se derivan de archivos reales del data room (public.drive_index, 3.789 archivos al 12/09/2026): la pregunta usa las palabras con las que una persona pide ese papel, nunca el nombre del archivo copiado y pegado.",
+    "esperados es una LISTA porque a veces un documento está partido en dos páginas escaneadas o guardado en pdf y xlsm: para quien pregunta es el mismo papel, y acertar cualquiera es acertar.",
+    "Acierto = alguno de los esperados aparece en los 5 primeros resultados. Cinco y no uno porque la pantalla muestra una lista y el chat ofrece hasta 5 opciones: lo que se mide es si el documento aparece donde la persona lo va a ver.",
+    "SESGO DECLARADO: el conjunto sobre-representa el pedido por mes escrito con palabras («agosto de 2025») contra archivos nombrados con número («2025-08»). Son 9 de las 30 y NINGÚN motor los acierta hoy — ni el del chat ni el de la web. Quedan a propósito: son la medida de lo que falta, no relleno."
+  ],
+  "consultas": [
+    {
+      "id": 1,
+      "consulta": "flujo de caja",
+      "origen": "evento_real",
+      "nota": "El Sheet que la empresa opera todos los días. 3 aceptaciones en drive_busqueda_uso.",
+      "esperados": [
+        "1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8"
+      ],
+      "esperado_nombre": "Flujo de Caja - Cash Flow ECSAS",
+      "esperado_path": "administracion/Archivos GESTIÓN ECSAS/Flujo de Caja - Cash Flow ECSAS"
+    },
+    {
+      "id": 2,
+      "consulta": "flujo de fondos",
+      "origen": "evento_real",
+      "nota": "Sinónimo de negocio, no de diccionario: «flujo de fondos» y «flujo de caja» son el mismo concepto. Existe además «AÑO 2025/Flujo de Fondos.xlsx», sin tocar desde enero: es el caso que el pase de rescate del chat existe para resolver.",
+      "esperados": [
+        "1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8"
+      ],
+      "esperado_nombre": "Flujo de Caja - Cash Flow ECSAS",
+      "esperado_path": "administracion/Archivos GESTIÓN ECSAS/Flujo de Caja - Cash Flow ECSAS"
+    },
+    {
+      "id": 3,
+      "consulta": "vision traccion",
+      "origen": "evento_real",
+      "nota": "La consulta que originó el buscador: el archivo se llama «Vision / Tracción» y el texto literal no lo encuentra nunca.",
+      "esperados": [
+        "1k9vW-hadpL8Y3-T-nfO1x6WMXG4HUdUxafDPw7fCFnQ"
+      ],
+      "esperado_nombre": "Vision / Tracción",
+      "esperado_path": "administracion/Archivos GESTIÓN ECSAS/Estrategia/Vision / Tracción"
+    },
+    {
+      "id": 4,
+      "consulta": "avance de obra",
+      "origen": "evento_real",
+      "nota": "7 aceptaciones, el más usado del registro.",
+      "esperados": [
+        "1DEGGJTPKesNxDKL8GSupuiop-IRJHAri"
+      ],
+      "esperado_nombre": "Avances de Obra",
+      "esperado_path": "administracion/Archivos GESTIÓN ECSAS/Estrategia/Avances de Obra"
+    },
+    {
+      "id": 5,
+      "consulta": "control de gastos",
+      "origen": "evento_real",
+      "nota": "La persona eligió el de PRESUPUESTOS, no el HISTÓRICO de AÑO 2025.",
+      "esperados": [
+        "1v0Y8E0sN9WT_T9Uzvd9G5YsQzvcKjbiu"
+      ],
+      "esperado_nombre": "CONTROL DE GASTOS.xlsx",
+      "esperado_path": "administracion/PRESUPUESTOS - CLIENTES/CONTROL DE GASTOS.xlsx"
+    },
+    {
+      "id": 6,
+      "consulta": "el daily",
+      "origen": "evento_real",
+      "nota": "Aceptado con la consulta «archivo de daily».",
+      "esperados": [
+        "1oFxjK4fkBas9Mv_58gYFlG0qNitRZR4ypXUzNOD_aoY"
+      ],
+      "esperado_nombre": "Daily Meeting - Echegaray Construcciones",
+      "esperado_path": "administracion/Archivos GESTIÓN ECSAS/Daily Meeting - Echegaray Construcciones"
+    },
+    {
+      "id": 7,
+      "consulta": "dni de capelli",
+      "origen": "derivado",
+      "nota": "Dos palabras que están las dos en el archivo y nunca pegadas: «DNI - Capelli.pdf».",
+      "esperados": [
+        "1SwCQt2QKRgNANAfzz0INr-YlfJmo0A_I"
+      ],
+      "esperado_nombre": "DNI - Capelli.pdf",
+      "esperado_path": "administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/2. INACTIVOS (fuera de la nomina vigente)/CAPELLI CESAR/DNI - Capelli.pdf"
+    },
+    {
+      "id": 8,
+      "consulta": "la baja de jofre",
+      "origen": "derivado",
+      "nota": "El nombre es «BAJA 25-08-2026.pdf» y el apellido está en la carpeta.",
+      "esperados": [
+        "1lM9sBjtoVMdA5S3xqnvPWdhxrh_-0l5T"
+      ],
+      "esperado_nombre": "BAJA 25-08-2026.pdf",
+      "esperado_path": "administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/2. INACTIVOS (fuera de la nomina vigente)/JOFRE ISMAEL/BAJA 25-08-2026.pdf"
+    },
+    {
+      "id": 9,
+      "consulta": "el embargo de aguero",
+      "origen": "derivado",
+      "nota": "El oficio está escaneado en dos páginas (p1 y p2): para una persona es UN documento, así que cualquiera de las dos cuenta.",
+      "esperados": [
+        "1UzVYzarc5g8ZsnO-QCKdB2fbLZHbXaPO",
+        "1q61j2QoZzqNdn4MKRFIX-SKcVBQzUAcS"
+      ],
+      "esperado_nombre": "2026-07-24 Embargo judicial CP7-9378-16 DATA 2000 SA - oficio p1.jpg",
+      "esperado_path": "administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/1. ACTIVOS/AGUERO CRISTIAN/2026-07-24 Embargo judicial CP7-9378-16 DATA 2000 SA - oficio p1.jpg"
+    },
+    {
+      "id": 10,
+      "consulta": "lote del fondo de cese",
+      "origen": "derivado",
+      "nota": "El lote que Santander acreditó. «fondo»→caja por diccionario; el nombre dice «Fondo de ceses».",
+      "esperados": [
+        "1DgMIUn8O48MZ_02M7CuG4sFmtRNaMXhv"
+      ],
+      "esperado_nombre": "Lote_225982 Fondo de ceses .xlsx",
+      "esperado_path": "administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/9. ADMINISTRACION (no es legajo)/FONDO DE CESE/CUENTAS CREADAS/Lote_225982 Fondo de ceses .xlsx"
+    },
+    {
+      "id": 11,
+      "consulta": "recibo de sueldo de zogbe de agosto 2026",
+      "origen": "derivado",
+      "nota": "Pide el mes por su nombre y el archivo lo tiene como 08. Ver el límite declarado del baseline.",
+      "esperados": [
+        "1tTQPG_u8WsB3wDglyzaaMbAKwLqbPR4J"
+      ],
+      "esperado_nombre": "Recibo 2026-08 Q2 · ZOGBE RAMOS WALTER LEONARDO.pdf",
+      "esperado_path": "administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/1. ACTIVOS/ZOGBE LEONARDO/RECIBOS DE SUELDO/Recibo 2026-08 Q2 · ZOGBE RAMOS WALTER LEONARDO.pdf"
+    },
+    {
+      "id": 12,
+      "consulta": "recibo de quiroga de febrero 2025 segunda quincena",
+      "origen": "derivado",
+      "nota": "«segunda quincena» es Q2 y «febrero» es 02: dos vocabularios que el tokenizador no traduce.",
+      "esperados": [
+        "1oqv0hemZYlwtNvfRoav14gjXBZiOTl0n"
+      ],
+      "esperado_nombre": "Recibo 2025-02 Q2.pdf",
+      "esperado_path": "administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/1. ACTIVOS/QUIROGA ALEXANDER/RECIBOS DE SUELDO/Recibo 2025-02 Q2.pdf"
+    },
+    {
+      "id": 13,
+      "consulta": "alquiler del motocompresor de molina",
+      "origen": "derivado",
+      "nota": "El apellido está en el nombre y en la carpeta, el nombre de pila invertido.",
+      "esperados": [
+        "1mSooGDTaOyzZYvqYS_8Q8YpNNHWzMbtQ"
+      ],
+      "esperado_nombre": "ALQUILER MOTOCOMPRESOR 185Q - MOLINA ALEJANDRO.pdf",
+      "esperado_path": "administracion/PRESUPUESTOS - CLIENTES/ALEJANDRO MOLINA/ALQUILER MOTOCOMPRESOR 185Q - MOLINA ALEJANDRO.pdf"
+    },
+    {
+      "id": 14,
+      "consulta": "planilla de cotizacion de las cocheras de arcor",
+      "origen": "derivado",
+      "nota": "Tres archivos son la misma cotización (pdf, xls y la revisión 1.1): cualquiera responde la pregunta.",
+      "esperados": [
+        "1vtno3a_WZIE4kL_3QmMF0P6qIXT9HNZh",
+        "1puopD1IjAxbp80URglO0qPrZ27dDjIR3",
+        "1HNqrqx1stXpGsVAely8IUOABsK8dYnmz"
+      ],
+      "esperado_nombre": "ARSJ Planilla de cotización - Cocheras Playa de Estacionamiento REV F carina FINAL.pdf",
+      "esperado_path": "administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/COCHERAS/OFERTA ECONOMICA/ARCHIVOS VIEJOS/ARSJ Planilla de cotización - Cocheras Playa de Estacionamiento REV F carina FINAL.pdf"
+    },
+    {
+      "id": 15,
+      "consulta": "acta de inicio de la obra osse de ferrer",
+      "origen": "derivado",
+      "nota": "Cliente en la carpeta raíz, obra en la subcarpeta, documento en el nombre.",
+      "esperados": [
+        "1dTteLIDM94FxcrKUUe-Km3Oj7a5WAzCx"
+      ],
+      "esperado_nombre": "acta de inicio  de obra osse.pdf",
+      "esperado_path": "administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/OBRA OSSE/acta de inicio  de obra osse.pdf"
+    },
+    {
+      "id": 16,
+      "consulta": "computo de materiales de javier sanchez",
+      "origen": "derivado",
+      "nota": "El cliente sólo está en la carpeta.",
+      "esperados": [
+        "1fxkDaw-k2RafirSLXnIfNlqCKvOeezfZ"
+      ],
+      "esperado_nombre": "COMPUTO DE MATERIALES.xlsx",
+      "esperado_path": "administracion/PRESUPUESTOS - CLIENTES/JAVIER SANCHEZ/Archivos viejos/COMPUTO DE MATERIALES.xlsx"
+    },
+    {
+      "id": 17,
+      "consulta": "presupuesto de refaccion de galpones de saint gobain",
+      "origen": "derivado",
+      "nota": "El mismo presupuesto en pdf y en xlsm.",
+      "esperados": [
+        "15LHaZV6nsV6eUZIyGlQt5IVAFkKDxtao",
+        "1qaYNuHjG2h5Q7A7rYcTsr3Usxs1gG7Lj"
+      ],
+      "esperado_nombre": "PRESUPUESTO DE REFACCION CARAS EXTERNAS DE GALPONES.pdf",
+      "esperado_path": "administracion/PRESUPUESTOS - CLIENTES/SAINT GOBAIN/PRESUPUESTO DE REFACCION CARAS EXTERNAS DE GALPONES.pdf"
+    },
+    {
+      "id": 18,
+      "consulta": "el 931 de agosto de 2025",
+      "origen": "derivado",
+      "nota": "El mes por su nombre contra «2025-08».",
+      "esperados": [
+        "1Pz-rltYbNfNBdI6mN2m7sl8WirWB1Lm9"
+      ],
+      "esperado_nombre": "2025-08 F.931.pdf",
+      "esperado_path": "archivo-fiscal/2025/931/2025-08 F.931.pdf"
+    },
+    {
+      "id": 19,
+      "consulta": "la ddjj de iva de junio de 2023",
+      "origen": "derivado",
+      "nota": "El nombre del archivo es sólo el período: todo lo que lo identifica está en la ruta.",
+      "esperados": [
+        "1h2J82ohoAVYIIIuY-odLH2k9kOLS_fCd"
+      ],
+      "esperado_nombre": "06-2023.pdf",
+      "esperado_path": "archivo-fiscal/2023/IVA/DDJJ IVA/06-2023.pdf"
+    },
+    {
+      "id": 20,
+      "consulta": "el vep de marzo de 2024",
+      "origen": "derivado",
+      "nota": "Volante de pago del 931.",
+      "esperados": [
+        "1SltYLpXkaGrIfQkYr9B3aBJ3JxwpNbsz"
+      ],
+      "esperado_nombre": "2024-03 VEP.pdf",
+      "esperado_path": "archivo-fiscal/2024/931/2024-03 VEP.pdf"
+    },
+    {
+      "id": 21,
+      "consulta": "ddjj de iibb de junio de 2024",
+      "origen": "derivado",
+      "nota": "Mismo nombre de archivo que la DDJJ de IVA del mismo mes: sólo la ruta los distingue.",
+      "esperados": [
+        "16MnMh-I94SbI25Fe0FCuLtxz00ILXC-e"
+      ],
+      "esperado_nombre": "06-2024.pdf",
+      "esperado_path": "archivo-fiscal/2024/IIBB/DDJJ/06-2024.pdf"
+    },
+    {
+      "id": 22,
+      "consulta": "portal de iva de julio de 2024",
+      "origen": "derivado",
+      "nota": "El comprobante del Portal IVA, no la DDJJ.",
+      "esperados": [
+        "1AhNkSm_-yu3HdR2LdE-qglHRsHtASON3"
+      ],
+      "esperado_nombre": "07-2024.pdf",
+      "esperado_path": "archivo-fiscal/2024/IVA/PORTAL IVA/07-2024.pdf"
+    },
+    {
+      "id": 23,
+      "consulta": "vep parcial de junio de 2026",
+      "origen": "derivado",
+      "nota": "El paréntesis del nombre es lo que distingue el pago parcial.",
+      "esperados": [
+        "1QoQYLyYrpRv5mBoTuXG9ej1hHhShjUT6"
+      ],
+      "esperado_nombre": "2026-06 VEP (parcial).pdf",
+      "esperado_path": "archivo-fiscal/2026/931/2026-06 VEP (parcial).pdf"
+    },
+    {
+      "id": 24,
+      "consulta": "libro de sueldos de mayo de 2022",
+      "origen": "derivado",
+      "nota": "El archivo arranca con el CUIT: nadie lo pide así.",
+      "esperados": [
+        "17Apws3_uaCW_mT_vpEyOAwJRfL5a8TvD"
+      ],
+      "esperado_nombre": "30716304643-ECHEGARAY CONSTRUCCIONES SAS LIBRO 2022-05  - R.pdf",
+      "esperado_path": "libro-sueldos/2022/30716304643-ECHEGARAY CONSTRUCCIONES SAS LIBRO 2022-05  - R.pdf"
+    },
+    {
+      "id": 25,
+      "consulta": "libro de sueldos rubricado de marzo de 2023",
+      "origen": "derivado",
+      "nota": "«rubricado» sólo aparece en la carpeta RUBRICA.",
+      "esperados": [
+        "16unG6sH3kRi_X6CHrFbpnqNX4YBb1qEn"
+      ],
+      "esperado_nombre": "30716304643-ECHEGARAY CONSTRUCCIONES SAS LIBRO 2023-03 - R.pdf",
+      "esperado_path": "libro-sueldos/2023/RUBRICA/30716304643-ECHEGARAY CONSTRUCCIONES SAS LIBRO 2023-03 - R.pdf"
+    },
+    {
+      "id": 26,
+      "consulta": "control de gastos historico",
+      "origen": "derivado",
+      "nota": "La frase entera SÍ es subcadena del nombre: es el caso que la búsqueda vieja acertaba y que no se puede perder.",
+      "esperados": [
+        "1pSjb_xafrlSK_0SZn5fvVP0R_X1E4DV2"
+      ],
+      "esperado_nombre": "CONTROL DE GASTOS - HISTORICO.xlsx",
+      "esperado_path": "administracion/Archivos GESTIÓN ECSAS/AÑO 2025/CONTROL DE GASTOS - HISTORICO.xlsx"
+    },
+    {
+      "id": 27,
+      "consulta": "certificado pyme",
+      "origen": "derivado",
+      "nota": "Tres copias del mismo certificado. La frase entera NO es subcadena del nombre por el guion bajo: el caso que parecía fácil y fallaba.",
+      "esperados": [
+        "1P-4UCheCyJaR_9aHFrB8jvEHilK7SR_c",
+        "16UhqDXYKQdi-YsYzB8l9c8SFH4TEIdgb",
+        "1iNHpL_yGeW5DSMIF6LrrguGji2ZkXDPu"
+      ],
+      "esperado_nombre": "Copia de Certificado_pyme_30716304643.pdf",
+      "esperado_path": "administracion/Archivos GESTIÓN ECSAS/Contrato Social - Constitucion ECSAS/Copia de Certificado_pyme_30716304643.pdf"
+    },
+    {
+      "id": 28,
+      "consulta": "balance de ecsas 2024",
+      "origen": "derivado",
+      "nota": "El nombre arranca con «6)», que el texto literal no tolera.",
+      "esperados": [
+        "1sEshuKdCoSlmbYF9Eo4n3riJmC78gwf5"
+      ],
+      "esperado_nombre": "6) BALANCE ECSAS - 2024.pdf",
+      "esperado_path": "administracion/Archivos GESTIÓN ECSAS/Estrategia/RIG SGR/6) BALANCE ECSAS - 2024.pdf"
+    },
+    {
+      "id": 29,
+      "consulta": "certificado de cumplimiento fiscal",
+      "origen": "derivado",
+      "nota": "Coincidencia literal del nombre completo: el otro caso que no se puede perder.",
+      "esperados": [
+        "12JaZXiaT8W9t1nVegK0EsAo1qry1QDVo"
+      ],
+      "esperado_nombre": "CERTIFICADO DE CUMPLIMIENTO FISCAL.pdf",
+      "esperado_path": "administracion/Archivos GESTIÓN ECSAS/Registro Constructores/CERTIFICADO DE CUMPLIMIENTO FISCAL.pdf"
+    },
+    {
+      "id": 30,
+      "consulta": "reporte de actividades de agosto de la estrella",
+      "origen": "derivado",
+      "nota": "El mismo reporte existe para La Estrella y para San Francisco: la obra está SÓLO en la carpeta, así que quien no mire la ruta devuelve el de la otra obra.",
+      "esperados": [
+        "1WjZnfoyVLgoNdHaL-bu_O1Wzd2yyBYqZ"
+      ],
+      "esperado_nombre": "2026-08-31 ECHEGARAY_REPORTE ACTIVIDADES MASS Agosto.V003.pdf",
+      "esperado_path": "administracion/Reportes de gestión HyS/La Estrella/2026-08-31 ECHEGARAY_REPORTE ACTIVIDADES MASS Agosto.V003.pdf"
+    }
+  ]
+}
