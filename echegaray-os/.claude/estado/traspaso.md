@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-12 ~16:20 (hora local −03) · main = producción_
+_actualizado: 2026-09-12 ~16:45 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -61,7 +61,7 @@ el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
 
 ## 4. ESTADO ACTUAL (12/09 14:20)
 
-- **main = producción** en 4e3241d4 (c67a9182 CRM costos+cinco solapas T1000; c08ecfb9 vaciar celda borra el día; 5fec4772 ELIMINADO fuera de costos_obra; 69859bef/4e3241d4 alícuotas+tarifas y costo por tramo T1300 aplicada). Sesión reiniciada dos veces (noche 11/09 y 13:3x del 12/09):
+- **main = producción** en 9af95a26 (Cobranzas 400 px y portal 1280 verificados en build; c67a9182 CRM costos+cinco solapas T1000; c08ecfb9 vaciar celda borra el día; 5fec4772 ELIMINADO fuera de costos_obra; 69859bef/4e3241d4 alícuotas+tarifas y costo por tramo T1300 aplicada). Sesión reiniciada dos veces (noche 11/09 y 13:3x del 12/09):
   los agentes se reanudan con SendMessage a su id; los waiters de fondo mueren.
 - **INCIDENTE 12/09 13:55–14:14**: base de Supabase caída (db/rest/auth UNHEALTHY, pooler sano; 504
   a los 5 s). Reiniciada por Management API (`POST /v1/projects/<ref>/restart`); worker del bot y
@@ -101,8 +101,10 @@ el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
 
 ## 6. PENDIENTES REALES
 
-**P0** — cosmético Cobranzas 400/portal (agente a0f422e…) · decisiones del dueño (Tello 880–883,
-Gonzalez Tobares 02 y 10/09, Escudero, multiplicador 1,6713 y Oficina A/B) · re-medir performance mañana.
+**P0** — cuatro agentes en paralelo (16:45): QA prod cosmético + perf «despues4» (aaf2a16…); `obra_panel`
+sin N+1 → migración T1400 (ad91c5b…); suite `orq:test` verde + MAIL cortado (a717d90…); Documentos web
+con motor léxico (a012d7c…). Decisiones del dueño: Tello 880–883, Gonzalez Tobares 02 y 10/09,
+Escudero, multiplicador 1,6713, Oficina A/B.
 **P1** — `obra_panel` sin N+1 (DDL) · `pantalla_clientes()` 509 ms · Santander · Documentos web léxico ·
 sonda inbox · `proyeccion-convenio.test.mjs` rojo · higiene de worktrees viejos.
 **P2** — menú lateral Liquidación · Proveedores número esperado · plan PRO HF · extractos ene–may ·
@@ -110,7 +112,7 @@ Mis Facilidades ARCA · fin_real de actividades (Obras) · Safari/iOS del sticky
 
 ## 7. ESTADO GIT
 
-main = origin/main = 4e3241d4 · worktrees vivos: wt-crmfix (agente cosmético).
+main = origin/main = 9af95a26 · worktrees vivos: wt-panel, wt-suite, wt-docs (agentes).
 
 ## 8. PRÓXIMO PASO
 
