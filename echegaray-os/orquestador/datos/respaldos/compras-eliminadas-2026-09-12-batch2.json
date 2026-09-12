@@ -1,0 +1,490 @@
+{
+ "archivo": "1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8",
+ "pestana": "Compras",
+ "cuando": "2026-09-12T15:42:13.924Z",
+ "filas": [
+  {
+   "fila": 433,
+   "id": 429,
+   "fecha": "2026-06-07",
+   "proveedor": "Banco",
+   "cliente": "Credito Prendario",
+   "total": 1275316.65,
+   "unidad": "Financiero",
+   "rubroAC": "Financiero",
+   "estado": "Pagado",
+   "fechaCaja": "2026-06-07",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 1275316.65,
+    "T": "=O433",
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 435,
+   "id": 431,
+   "fecha": "2026-06-10",
+   "proveedor": "ARCA",
+   "cliente": "F931",
+   "total": 8974571.96,
+   "unidad": "Impuestos",
+   "rubroAC": "Nómina · Cargas sociales",
+   "estado": "Pagado",
+   "fechaCaja": "2026-06-10",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 8974571.96,
+    "T": "=O435",
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 443,
+   "id": 439,
+   "fecha": "2026-06-16",
+   "proveedor": "ARCA",
+   "cliente": "Plan de pago",
+   "total": 1034931.82,
+   "unidad": "Impuestos",
+   "rubroAC": "Deuda previsional (planes de pago)",
+   "estado": "Pagado",
+   "fechaCaja": "2026-06-16",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 1034931.82,
+    "T": "=O443",
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 444,
+   "id": 440,
+   "fecha": "2026-06-16",
+   "proveedor": "ARCA",
+   "cliente": "Plan de pago",
+   "total": 473767.08,
+   "unidad": "Impuestos",
+   "rubroAC": "Deuda previsional (planes de pago)",
+   "estado": "Pagado",
+   "fechaCaja": "2026-06-16",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 473767.08,
+    "T": "=O444",
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 456,
+   "id": 452,
+   "fecha": "2026-07-07",
+   "proveedor": "Banco",
+   "cliente": "Credito Prendario",
+   "total": 1282810.54,
+   "unidad": "Financiero",
+   "rubroAC": "Financiero",
+   "estado": "Pagado",
+   "fechaCaja": "2026-07-07",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 1282810.54,
+    "T": "=O456",
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 459,
+   "id": 455,
+   "fecha": "2026-07-29",
+   "proveedor": "SINDICATOS",
+   "cliente": "IERIC",
+   "total": 15092.62,
+   "unidad": "Impuestos",
+   "rubroAC": "Nómina · Gremiales",
+   "estado": "Pagado",
+   "fechaCaja": "2026-07-30",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 15092.62,
+    "T": "=O459",
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 461,
+   "id": 457,
+   "fecha": "2026-07-16",
+   "proveedor": "ARCA",
+   "cliente": "Plan de pago",
+   "total": 1034931.82,
+   "unidad": "Impuestos",
+   "rubroAC": "Deuda previsional (planes de pago)",
+   "estado": "Pagado",
+   "fechaCaja": "2026-07-16",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 1034931.82,
+    "T": 1034931.82,
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 462,
+   "id": 458,
+   "fecha": "2026-07-16",
+   "proveedor": "ARCA",
+   "cliente": "Plan de pago",
+   "total": 473767.08,
+   "unidad": "Impuestos",
+   "rubroAC": "Deuda previsional (planes de pago)",
+   "estado": "Pagado",
+   "fechaCaja": "2026-07-16",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 473767.08,
+    "T": 473767.08,
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 464,
+   "id": 460,
+   "fecha": "2026-08-07",
+   "proveedor": "Banco",
+   "cliente": "Credito Prendario",
+   "total": 1281778.38,
+   "unidad": "Financiero",
+   "rubroAC": "Financiero",
+   "estado": "Pagado",
+   "fechaCaja": "2026-08-07",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 1281778.38,
+    "T": 1281778.38,
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 466,
+   "id": 462,
+   "fecha": "2026-08-11",
+   "proveedor": "ARCA",
+   "cliente": "F931",
+   "total": 8235741.96,
+   "unidad": "Impuestos",
+   "rubroAC": "Nómina · Cargas sociales",
+   "estado": "Pagado",
+   "fechaCaja": "2026-08-11",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 8235741.96,
+    "T": "",
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 470,
+   "id": 466,
+   "fecha": "2026-08-10",
+   "proveedor": "SINDICATOS",
+   "cliente": "IERIC",
+   "total": 13191.19,
+   "unidad": "Impuestos",
+   "rubroAC": "Nómina · Gremiales",
+   "estado": "Pagado",
+   "fechaCaja": "2026-08-10",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 13191.19,
+    "T": 13191.19,
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 472,
+   "id": 468,
+   "fecha": "2026-08-16",
+   "proveedor": "ARCA",
+   "cliente": "Plan de pago",
+   "total": 473767.08,
+   "unidad": "Impuestos",
+   "rubroAC": "Deuda previsional (planes de pago)",
+   "estado": "Pagado",
+   "fechaCaja": "2026-08-16",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 473767.08,
+    "T": 473767.08,
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 473,
+   "id": 469,
+   "fecha": "2026-08-17",
+   "proveedor": "SINDICATOS",
+   "cliente": "UOCRA",
+   "total": 649940.06,
+   "unidad": "Impuestos",
+   "rubroAC": "Nómina · Gremiales",
+   "estado": "Pagado",
+   "fechaCaja": "2026-08-17",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 649940.06,
+    "T": 649940.06,
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 474,
+   "id": 470,
+   "fecha": "2026-09-07",
+   "proveedor": "Banco",
+   "cliente": "Credito Prendario",
+   "total": 1280712.77,
+   "unidad": "Financiero",
+   "rubroAC": "Financiero",
+   "estado": "Pagado",
+   "fechaCaja": "2026-09-07",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 1280712.77,
+    "T": 1280712.77,
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 476,
+   "id": 472,
+   "fecha": "2026-09-07",
+   "proveedor": "ARCA",
+   "cliente": "F931",
+   "total": 8331697.69,
+   "unidad": "Impuestos",
+   "rubroAC": "Nómina · Cargas sociales",
+   "estado": "Pagado",
+   "fechaCaja": "2026-09-07",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 8331697.69,
+    "T": "",
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 478,
+   "id": 474,
+   "fecha": "2026-10-07",
+   "proveedor": "Banco",
+   "cliente": "Credito Prendario",
+   "total": 1282810.54,
+   "unidad": "Financiero",
+   "rubroAC": "Financiero",
+   "estado": "Proyectado",
+   "fechaCaja": "2026-10-07",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 1282810.54,
+    "T": "",
+    "X": "Proyectado"
+   }
+  },
+  {
+   "fila": 479,
+   "id": 475,
+   "fecha": "2026-11-07",
+   "proveedor": "Banco",
+   "cliente": "Credito Prendario",
+   "total": 1282810.54,
+   "unidad": "Financiero",
+   "rubroAC": "Financiero",
+   "estado": "Proyectado",
+   "fechaCaja": "2026-11-07",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 1282810.54,
+    "T": "",
+    "X": "Proyectado"
+   }
+  },
+  {
+   "fila": 480,
+   "id": 476,
+   "fecha": "2026-12-07",
+   "proveedor": "Banco",
+   "cliente": "Credito Prendario",
+   "total": 1282810.54,
+   "unidad": "Financiero",
+   "rubroAC": "Financiero",
+   "estado": "Proyectado",
+   "fechaCaja": "2026-12-07",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 1282810.54,
+    "T": "",
+    "X": "Proyectado"
+   }
+  },
+  {
+   "fila": 481,
+   "id": 477,
+   "fecha": "2026-12-30",
+   "proveedor": "SAC",
+   "cliente": "Sueldos",
+   "total": 7000000,
+   "unidad": "Estructura",
+   "rubroAC": "Nómina · SAC",
+   "estado": "Proyectado",
+   "fechaCaja": "2026-12-30",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 7000000,
+    "T": "",
+    "X": "Proyectado"
+   }
+  },
+  {
+   "fila": 482,
+   "id": 478,
+   "fecha": "2026-12-30",
+   "proveedor": "SAC",
+   "cliente": "Administracion",
+   "total": 1500000,
+   "unidad": "Estructura",
+   "rubroAC": "Nómina · SAC",
+   "estado": "Proyectado",
+   "fechaCaja": "2026-12-30",
+   "oEsFormula": false,
+   "nTieneNumero": false,
+   "antes": {
+    "M": "",
+    "N": "",
+    "O": 1500000,
+    "T": "",
+    "X": "Proyectado"
+   }
+  },
+  {
+   "fila": 697,
+   "id": 693,
+   "fecha": "2026-08-16",
+   "proveedor": "ARCA",
+   "cliente": "F931",
+   "total": 2494875.65,
+   "unidad": "Impuestos",
+   "rubroAC": "Deuda previsional (planes de pago)",
+   "estado": "Pagado",
+   "fechaCaja": "2026-08-16",
+   "oEsFormula": true,
+   "nTieneNumero": false,
+   "antes": {
+    "M": 2494875.65,
+    "N": "",
+    "O": "=N697+M697",
+    "T": 2494875.65,
+    "X": "Pagado"
+   }
+  },
+  {
+   "fila": 698,
+   "id": 694,
+   "fecha": "2026-09-16",
+   "proveedor": "ARCA",
+   "cliente": "F931",
+   "total": 2494875.65,
+   "unidad": "Impuestos",
+   "rubroAC": "Deuda previsional (planes de pago)",
+   "estado": "Pendiente",
+   "fechaCaja": "2026-09-16",
+   "oEsFormula": true,
+   "nTieneNumero": false,
+   "antes": {
+    "M": 2494875.65,
+    "N": "",
+    "O": "=N698+M698",
+    "T": "=IF(F698=\"pago\";O698;0)",
+    "X": "=IF($E698=\"\";\"\";IF(ABS(N($T698)+N($W698)-N($O698))<1;\"Pagado\";IF(N($T698)+N($W698)<N($O698);\"Pendiente\";\"Revisar\")))"
+   }
+  },
+  {
+   "fila": 699,
+   "id": 695,
+   "fecha": "2026-10-16",
+   "proveedor": "ARCA",
+   "cliente": "F931",
+   "total": 2494875.65,
+   "unidad": "Impuestos",
+   "rubroAC": "Deuda previsional (planes de pago)",
+   "estado": "Pendiente",
+   "fechaCaja": "2026-10-16",
+   "oEsFormula": true,
+   "nTieneNumero": false,
+   "antes": {
+    "M": 2494875.65,
+    "N": "",
+    "O": "=N699+M699",
+    "T": "=IF(F699=\"pago\";O699;0)",
+    "X": "=IF($E699=\"\";\"\";IF(ABS(N($T699)+N($W699)-N($O699))<1;\"Pagado\";IF(N($T699)+N($W699)<N($O699);\"Pendiente\";\"Revisar\")))"
+   }
+  }
+ ]
+}
