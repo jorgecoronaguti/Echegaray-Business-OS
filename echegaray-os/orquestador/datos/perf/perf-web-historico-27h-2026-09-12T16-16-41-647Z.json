@@ -1,0 +1,435 @@
+{
+  "etiqueta": "historico-27h",
+  "fecha": "2026-09-12T16:16:41.647Z",
+  "base": "https://app.ecsas.com.ar",
+  "db": {
+    "ajustes": [
+      {
+        "name": "effective_cache_size",
+        "setting": "49152",
+        "unit": "8kB"
+      },
+      {
+        "name": "max_connections",
+        "setting": "60",
+        "unit": null
+      },
+      {
+        "name": "shared_buffers",
+        "setting": "28672",
+        "unit": "8kB"
+      },
+      {
+        "name": "work_mem",
+        "setting": "2184",
+        "unit": "kB"
+      }
+    ],
+    "desde": {
+      "stats_reset": "2026-09-11T16:46:11.136Z"
+    },
+    "porTotal": [
+      {
+        "id": "-7726440967385220442",
+        "consulta": "SELECT name FROM pg_timezone_names",
+        "llamadas": "537",
+        "total_ms": 415315,
+        "media_ms": 773.4,
+        "max_ms": 4697,
+        "filas": "642252"
+      },
+      {
+        "id": "-2573559940996683762",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_slug\", \"p_solapa\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_slug\" text, \"p_solapa\" text) LIM",
+        "llamadas": "88",
+        "total_ms": 415175,
+        "media_ms": 4717.9,
+        "max_ms": 19919,
+        "filas": "88"
+      },
+      {
+        "id": "-2090020102173588739",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"pantalla_clientes\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sca",
+        "llamadas": "129",
+        "total_ms": 268337,
+        "media_ms": 2080.1,
+        "max_ms": 18874,
+        "filas": "129"
+      },
+      {
+        "id": "-758112555512504409",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"campanita_atencion\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sc",
+        "llamadas": "214",
+        "total_ms": 234625,
+        "media_ms": 1096.4,
+        "max_ms": 17730,
+        "filas": "214"
+      },
+      {
+        "id": "-8856799461280935852",
+        "consulta": "WITH -- Recursively get the base types of domains base_types AS ( WITH RECURSIVE recurse AS ( SELECT oid, typbasetype, typnamespace AS base_namespace, COALESCE(NULLIF(typbasetype, $2), oid) AS base_type FROM pg_type UNIO",
+        "llamadas": "537",
+        "total_ms": 174295,
+        "media_ms": 324.6,
+        "max_ms": 4686,
+        "filas": "250222"
+      },
+      {
+        "id": "2393570249376375393",
+        "consulta": "select pg_column_size(public.pantalla_cliente($1,$2)) bytes",
+        "llamadas": "26",
+        "total_ms": 152917,
+        "media_ms": 5881.4,
+        "max_ms": 42662,
+        "filas": "26"
+      },
+      {
+        "id": "-6019717523838313193",
+        "consulta": "with recursive pks_fks as ( -- pk + fk referencing col select contype::text as contype, conname, array_length(conkey, $3) as ncol, conrelid as resorigtbl, col as resorigcol, ord from pg_constraint left join lateral unnes",
+        "llamadas": "537",
+        "total_ms": 114591,
+        "media_ms": 213.4,
+        "max_ms": 1630,
+        "filas": "640832"
+      },
+      {
+        "id": "3022532026411567170",
+        "consulta": "select public.hh_de_obra($1) j",
+        "llamadas": "37",
+        "total_ms": 91131,
+        "media_ms": 2463,
+        "max_ms": 36205,
+        "filas": "37"
+      },
+      {
+        "id": "1399165185092726198",
+        "consulta": "select public.pantalla_cliente($1,$2) j",
+        "llamadas": "45",
+        "total_ms": 72170,
+        "media_ms": 1603.8,
+        "max_ms": 15666,
+        "filas": "45"
+      },
+      {
+        "id": "-4621611077928726301",
+        "consulta": "select public.pantalla_cliente($1, $2)::text t",
+        "llamadas": "25",
+        "total_ms": 57246,
+        "media_ms": 2289.8,
+        "max_ms": 21694,
+        "filas": "25"
+      },
+      {
+        "id": "-7237014199706338802",
+        "consulta": "select id, state from orq.reap_expired_leases()",
+        "llamadas": "4713",
+        "total_ms": 48487,
+        "media_ms": 10.3,
+        "max_ms": 2878,
+        "filas": "0"
+      },
+      {
+        "id": "8053829356560055713",
+        "consulta": "select fila, col, forma, huella, valor, borrada_en, abandonada_en from public.sheet_huella_celda where file_id = $1 and pestana = $2 and fila between $3 and $4 and col between $5 and $6",
+        "llamadas": "481",
+        "total_ms": 39546,
+        "media_ms": 82.2,
+        "max_ms": 1815,
+        "filas": "90598"
+      },
+      {
+        "id": "6601813782447687189",
+        "consulta": "select * from orq.claim_task($1, $2, $3)",
+        "llamadas": "4717",
+        "total_ms": 28681,
+        "media_ms": 6.1,
+        "max_ms": 1652,
+        "filas": "4"
+      },
+      {
+        "id": "5299301975933694258",
+        "consulta": "WITH -- Recursively get the base types of domains base_types AS ( WITH RECURSIVE recurse AS ( SELECT oid, typbasetype, typnamespace AS base_namespace, COALESCE(NULLIF(typbasetype, $3), oid) AS base_type FROM pg_type UNIO",
+        "llamadas": "537",
+        "total_ms": 27348,
+        "media_ms": 50.9,
+        "max_ms": 1211,
+        "filas": "53946"
+      },
+      {
+        "id": "-6252238933361801012",
+        "consulta": "insert into public.costos_obra (obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto, importe, iva, total, fecha, fecha_pago, mes, referencia_externa, origen, sincronizado_en) values (",
+        "llamadas": "306",
+        "total_ms": 21988,
+        "media_ms": 71.9,
+        "max_ms": 201,
+        "filas": "122400"
+      },
+      {
+        "id": "-2073166519428774482",
+        "consulta": "DISCARD ALL",
+        "llamadas": "8507",
+        "total_ms": 19811,
+        "media_ms": 2.3,
+        "max_ms": 901,
+        "filas": "0"
+      },
+      {
+        "id": "1646154736492569079",
+        "consulta": "select items, filas from comunicacion.comprobante_fajos",
+        "llamadas": "153",
+        "total_ms": 16671,
+        "media_ms": 109,
+        "max_ms": 192,
+        "filas": "12505"
+      },
+      {
+        "id": "2343468104232349549",
+        "consulta": "select public.pantalla_cliente($1, $2)::text t",
+        "llamadas": "27",
+        "total_ms": 14193,
+        "media_ms": 525.7,
+        "max_ms": 2445,
+        "filas": "27"
+      },
+      {
+        "id": "3393632725691790249",
+        "consulta": "SELECT * FROM pgbouncer.get_auth($1)",
+        "llamadas": "5408",
+        "total_ms": 14082,
+        "media_ms": 2.6,
+        "max_ms": 1576,
+        "filas": "5408"
+      },
+      {
+        "id": "-774561278826579210",
+        "consulta": "explain (analyze, buffers, format text) select public.pantalla_cliente($1,$2)",
+        "llamadas": "1",
+        "total_ms": 13994,
+        "media_ms": 13993.7,
+        "max_ms": 13994,
+        "filas": "0"
+      }
+    ],
+    "porMedia": [
+      {
+        "id": "2393570249376375393",
+        "consulta": "select pg_column_size(public.pantalla_cliente($1,$2)) bytes",
+        "llamadas": "26",
+        "total_ms": 152917,
+        "media_ms": 5881.4,
+        "max_ms": 42662,
+        "filas": "26"
+      },
+      {
+        "id": "-2573559940996683762",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_slug\", \"p_solapa\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_slug\" text, \"p_solapa\" text) LIM",
+        "llamadas": "88",
+        "total_ms": 415175,
+        "media_ms": 4717.9,
+        "max_ms": 19919,
+        "filas": "88"
+      },
+      {
+        "id": "8903884145968032218",
+        "consulta": "select public.hh_de_obra($1) j",
+        "llamadas": "3",
+        "total_ms": 12160,
+        "media_ms": 4053.4,
+        "max_ms": 7640,
+        "filas": "3"
+      },
+      {
+        "id": "-7605032201401786629",
+        "consulta": "select length(public.pantalla_cliente($1,$2)::text)",
+        "llamadas": "4",
+        "total_ms": 11960,
+        "media_ms": 2990,
+        "max_ms": 9502,
+        "filas": "4"
+      },
+      {
+        "id": "3022532026411567170",
+        "consulta": "select public.hh_de_obra($1) j",
+        "llamadas": "37",
+        "total_ms": 91131,
+        "media_ms": 2463,
+        "max_ms": 36205,
+        "filas": "37"
+      },
+      {
+        "id": "-4621611077928726301",
+        "consulta": "select public.pantalla_cliente($1, $2)::text t",
+        "llamadas": "25",
+        "total_ms": 57246,
+        "media_ms": 2289.8,
+        "max_ms": 21694,
+        "filas": "25"
+      },
+      {
+        "id": "-2090020102173588739",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"pantalla_clientes\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sca",
+        "llamadas": "129",
+        "total_ms": 268337,
+        "media_ms": 2080.1,
+        "max_ms": 18874,
+        "filas": "129"
+      },
+      {
+        "id": "1399165185092726198",
+        "consulta": "select public.pantalla_cliente($1,$2) j",
+        "llamadas": "45",
+        "total_ms": 72170,
+        "media_ms": 1603.8,
+        "max_ms": 15666,
+        "filas": "45"
+      },
+      {
+        "id": "-6640949206218439858",
+        "consulta": "select s.created_at, (s.grid->$3->$4->>$2) m50 from orq.sheet_snapshots s where s.pestana=$1 order by created_at desc limit $5",
+        "llamadas": "4",
+        "total_ms": 4776,
+        "media_ms": 1194,
+        "max_ms": 1974,
+        "filas": "14"
+      },
+      {
+        "id": "1310008426317838357",
+        "consulta": "explain (analyze, format json) with elegido as ( select c.cliente_id from public.cliente_panel c where c.slug = $1 ), -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de -- los",
+        "llamadas": "7",
+        "total_ms": 8290,
+        "media_ms": 1184.2,
+        "max_ms": 3262,
+        "filas": "0"
+      },
+      {
+        "id": "-758112555512504409",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"campanita_atencion\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sc",
+        "llamadas": "214",
+        "total_ms": 234625,
+        "media_ms": 1096.4,
+        "max_ms": 17730,
+        "filas": "214"
+      },
+      {
+        "id": "-7726440967385220442",
+        "consulta": "SELECT name FROM pg_timezone_names",
+        "llamadas": "537",
+        "total_ms": 415315,
+        "media_ms": 773.4,
+        "max_ms": 4697,
+        "filas": "642252"
+      },
+      {
+        "id": "2471503385206243503",
+        "consulta": "select public.pantalla_clientes()::text t",
+        "llamadas": "14",
+        "total_ms": 10665,
+        "media_ms": 761.8,
+        "max_ms": 4909,
+        "filas": "14"
+      },
+      {
+        "id": "1487623820867528480",
+        "consulta": "-- ═══ EL N DE LA SOLAPA DOCUMENTOS CUENTA LO QUE SE DIBUJA (dueño, 11/09/2026 17:50) ══════════════ -- -- «El crm dice documentos de drive (0) y está pésimo eso. Arreglar.» -- -- Medido: `n_documentos` contaba `cliente_",
+        "llamadas": "4",
+        "total_ms": 3037,
+        "media_ms": 759.2,
+        "max_ms": 1455,
+        "filas": "0"
+      },
+      {
+        "id": "-233760409641286904",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"obra_plan_vs_real\".\"obra_id\", \"public\".\"obra_plan_vs_real\".\"inicio_plan\", \"public\".\"obra_plan_vs_real\".\"fin_plan\", \"public\".\"obra_plan_vs_real\".\"desvio_plazo_dias\", \"public\".\"obra_",
+        "llamadas": "3",
+        "total_ms": 2041,
+        "media_ms": 680.3,
+        "max_ms": 1616,
+        "filas": "3"
+      },
+      {
+        "id": "2343468104232349549",
+        "consulta": "select public.pantalla_cliente($1, $2)::text t",
+        "llamadas": "27",
+        "total_ms": 14193,
+        "media_ms": 525.7,
+        "max_ms": 2445,
+        "filas": "27"
+      },
+      {
+        "id": "3426564760040611848",
+        "consulta": "with a as ( select x.id, x.nombre, x.unidad, x.obra_id, x.seccion, x.actividad_padre_id, x.cotizacion_partida_id, x.analisis_id, -- ¿ESTA FILA ES TRABAJO? Un 'resumen' agrupa a otras y un 'hito' es una fecha. Se -- exige",
+        "llamadas": "4",
+        "total_ms": 1922,
+        "media_ms": 480.6,
+        "max_ms": 498,
+        "filas": "940"
+      },
+      {
+        "id": "410898825879940733",
+        "consulta": "-- ═══ CUÁNTAS HORAS LLEVA CADA OBRA, Y DESDE CUÁNDO (dueño, 11/09/2026) ═══════════════════════════ -- -- «Necesito saber las hs que se van sumando en cada obra dentro de cada cliente.» -- «No tengo idea de cuándo empez",
+        "llamadas": "3",
+        "total_ms": 1427,
+        "media_ms": 475.6,
+        "max_ms": 995,
+        "filas": "0"
+      },
+      {
+        "id": "374281247421264233",
+        "consulta": "-- La primera carga, para que la cara no quede vacía entre la migración y la próxima corrida. select public.refrescar_obra_papel()",
+        "llamadas": "5",
+        "total_ms": 2078,
+        "media_ms": 415.7,
+        "max_ms": 724,
+        "filas": "5"
+      },
+      {
+        "id": "7423428816113903449",
+        "consulta": "-- ═══ UN ADICIONAL CUELGA DE SU OBRA MAYOR (dueño, 11/09/2026) ═══════════════════════════════════ -- -- «Hay obras cuyo nombre indica que es \"adicional\" y quiero que estén a un subnivel que se vea -- debajo de la obra ",
+        "llamadas": "16",
+        "total_ms": 6446,
+        "media_ms": 402.9,
+        "max_ms": 5200,
+        "filas": "0"
+      }
+    ],
+    "tablas": [
+      {
+        "tabla": "registros_hh",
+        "recorridos": "891",
+        "filas_leidas": "3187892",
+        "por_indice": "276170",
+        "filas": "3614"
+      },
+      {
+        "tabla": "costos_obra",
+        "recorridos": "2813",
+        "filas_leidas": "2547138",
+        "por_indice": "2",
+        "filas": "893"
+      },
+      {
+        "tabla": "compra_sheet",
+        "recorridos": "194",
+        "filas_leidas": "185313",
+        "por_indice": "157",
+        "filas": "958"
+      },
+      {
+        "tabla": "documentacion_legajo",
+        "recorridos": "50",
+        "filas_leidas": "48011",
+        "por_indice": "3882",
+        "filas": "976"
+      },
+      {
+        "tabla": "caja_conteo_observado",
+        "recorridos": "16",
+        "filas_leidas": "10814",
+        "por_indice": "7918",
+        "filas": "682"
+      }
+    ]
+  },
+  "web": null,
+  "ventana": "histórica acumulada (no se reseteó)"
+}

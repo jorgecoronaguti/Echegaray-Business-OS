@@ -6,7 +6,10 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cuantasNovedades, estadoDeCampana, hayPunto, leyendaCampana } from './novedades.ts'
+import {
+  cuantasNovedades, edadDeLaLectura, estadoDeCampana, hayPunto, leyendaCampana, sirveLoGuardado,
+  type NovedadesGuardadas,
+} from './novedades.ts'
 import type { ChipAtencion } from './homeAdministracion.ts'
 
 const chip = (clave: string, numero: number): ChipAtencion => ({
@@ -45,4 +48,45 @@ test('si NINGUNA fuente se pudo leer, la campanita no dice «al día»', () => {
 test('el número es la suma de lo pendiente, no la cantidad de chips', () => {
   assert.equal(cuantasNovedades([chip('sin-cuit', 14), chip('duplicados', 1)]), 15)
   assert.equal(cuantasNovedades([]), 0)
+})
+
+// ═══ EL CACHÉ DE UN MINUTO, Y LO QUE NO PUEDE HACER (12/09/2026) ═══
+//
+// El defecto que atrapan: que la campanita reuse una lectura que no debía reusar. Las tres formas de
+// equivocarse son reusar un ERROR (repetir un minuto una ignorancia ya resuelta), reusar algo VIEJO
+// (un punto rojo que afirma un pendiente que ya se arregló), y tratar una edad NEGATIVA como si
+// fuera recién leída. Revertir `sirveLoGuardado` a un `edad < ttl` pelado pone rojo el caso del
+// reloj para atrás; sacarle el chequeo de `ok` pone rojo el del error.
+const guardadas = (en: number, chips: ChipAtencion[] = []) =>
+  ({ en, lectura: { ok: true as const, chips, noLeida: false } })
+
+test('una lectura del último minuto se reusa; una de hace más, no', () => {
+  const ahora = 1_000_000
+  assert.equal(sirveLoGuardado(guardadas(ahora - 59_000), ahora), true)
+  assert.equal(sirveLoGuardado(guardadas(ahora - 60_001), ahora), false)
+  assert.equal(sirveLoGuardado(guardadas(ahora), ahora), true)
+})
+
+test('un error NUNCA se reusa: la ignorancia no se cachea', () => {
+  const ahora = 1_000_000
+  const conError = { en: ahora, lectura: { ok: false, error: 'sin base' } }
+  assert.equal(sirveLoGuardado(conError as unknown as NovedadesGuardadas, ahora), false)
+})
+
+test('sin nada guardado, o con basura, se pide la lectura', () => {
+  assert.equal(sirveLoGuardado(null, 1_000_000), false)
+  assert.equal(sirveLoGuardado({ en: 'ayer' } as unknown as NovedadesGuardadas, 1_000_000), false)
+})
+
+test('un reloj que fue para atrás no vuelve fresquísima una lectura vieja', () => {
+  // La máquina estuvo suspendida y al despertar el reloj quedó detrás de cuando se guardó. Una edad
+  // negativa es DESCONOCIDA, no cero.
+  assert.equal(sirveLoGuardado(guardadas(2_000_000), 1_000_000), false)
+})
+
+test('la edad se declara en segundos, y no se declara si la lectura es de este instante', () => {
+  const ahora = 1_000_000
+  assert.equal(edadDeLaLectura(guardadas(ahora - 42_000), ahora), 'hace 42 s')
+  assert.equal(edadDeLaLectura(guardadas(ahora - 900), ahora), null)
+  assert.equal(edadDeLaLectura(null, ahora), null)
 })

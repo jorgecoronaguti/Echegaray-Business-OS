@@ -27,3 +27,22 @@ test('lo que NO está en la lista blanca sigue pidiendo sesión', () => {
     assert.equal(esRutaPublica(r), false, `${r} quedó pública sin que nadie lo decidiera`)
   }
 })
+
+// ═══ EL LATIDO TIENE QUE LLEGAR A LA BASE, NO AL LOGIN (12/09/2026) ═══
+//
+// `echegaray-mantener-caliente.timer` golpea `/api/salud` cada 4 minutos con `curl`, sin cookie. Si
+// esa ruta sale de la lista blanca, el middleware la responde con un 307 a `/login` y el timer sigue
+// dando 2xx para siempre mientras calienta exactamente nada: PostgREST no se toca. Es el modo de
+// falla más caro de todos —un control verde que no mide lo que dice medir— y no lo ve ni el
+// typecheck ni el build, porque un 307 no es un error de compilación.
+test('/api/salud se abre sin sesión, o el calentador calienta el login y nada más', () => {
+  assert.equal(esRutaPublica('/api/salud'), true)
+})
+
+test('abrir /api/salud no abrió /api entero', () => {
+  // La entrada es la ruta EXACTA. Con el prefijo `/api`, cualquier endpoint que alguien agregue
+  // mañana nacería público sin que nadie lo decida — el modo de fallar de una lista negra.
+  for (const r of ['/api', '/api/saludable', '/api/salud-interna', '/api/compras']) {
+    assert.equal(esRutaPublica(r), false, `${r} quedó pública sin que nadie lo decidiera`)
+  }
+})

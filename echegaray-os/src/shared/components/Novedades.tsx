@@ -21,19 +21,64 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { getNovedades } from '@/features/administracion/services/novedadesActions'
 import {
-  cuantasNovedades, estadoDeCampana, hayPunto, leyendaCampana, type LecturaNovedades,
+  cuantasNovedades, edadDeLaLectura, estadoDeCampana, hayPunto, leyendaCampana, sirveLoGuardado,
+  type LecturaNovedades, type NovedadesGuardadas,
 } from '@/features/administracion/services/novedades'
+
+// LA LECTURA DEL ÚLTIMO MINUTO SE REUSA — el porqué medido está en `services/novedades.ts`.
+// `sessionStorage` y no `localStorage`: muere con la pestaña, así que nunca sobrevive a un cambio de
+// usuario en la misma máquina.
+const LLAVE = 'echegaray:novedades'
+
+function leerGuardadas(): NovedadesGuardadas | null {
+  try {
+    const crudo = sessionStorage.getItem(LLAVE)
+    return crudo ? (JSON.parse(crudo) as NovedadesGuardadas) : null
+  } catch {
+    // Un JSON de una versión anterior del componente, o `sessionStorage` bloqueado por el navegador:
+    // se comporta como si no hubiera nada guardado y se pide la lectura. Nunca tira la campanita.
+    return null
+  }
+}
+
+function guardar(lectura: LecturaNovedades) {
+  // SÓLO SE GUARDA LO QUE SE PUDO LEER. Ver `sirveLoGuardado`: un error no se cachea.
+  if (!lectura?.ok) return
+  try {
+    sessionStorage.setItem(LLAVE, JSON.stringify({ en: Date.now(), lectura }))
+  } catch { /* modo privado con cuota cero: la campanita sigue andando, sin caché */ }
+}
 
 export function Novedades() {
   const [abierto, setAbierto] = useState(false)
   const [lectura, setLectura] = useState<LecturaNovedades>(null)
+  const [edad, setEdad] = useState<string | null>(null)
   const caja = useRef<HTMLDivElement>(null)
 
+  // UN SOLO EFECTO PARA LAS DOS PUERTAS, y el estado se fija SIEMPRE dentro de un `then` —nunca en
+  // el cuerpo del efecto—: un `setState` sincrónico acá encadena renders (lo marca
+  // `react-hooks/set-state-in-effect`) y además obligaría a tener dos caminos distintos según si
+  // había caché, que es justo donde se cuelan las diferencias de comportamiento.
+  //
+  //   al montar          → lo guardado si es del último minuto; si no, se pide.
+  //   al abrir el panel  → se pide SIEMPRE. Abrir es ir a actuar sobre el número, y ésa es toda la
+  //                        invalidación que este caché necesita: lo guardado gobierna el punto rojo,
+  //                        jamás una decisión.
   useEffect(() => {
     let vivo = true
-    getNovedades().then((r) => { if (vivo) setLectura(r) })
+    const ahora = Date.now()
+    const guardadas = leerGuardadas()
+    const fuente: Promise<{ lectura: LecturaNovedades; edad: string | null }> =
+      !abierto && sirveLoGuardado(guardadas, ahora)
+        ? Promise.resolve({ lectura: guardadas!.lectura, edad: edadDeLaLectura(guardadas, ahora) })
+        : getNovedades().then((r) => { guardar(r); return { lectura: r, edad: null } })
+    fuente.then(({ lectura: l, edad: e }) => {
+      if (!vivo) return
+      setLectura(l)
+      setEdad(e)
+    })
     return () => { vivo = false }
-  }, [])
+  }, [abierto])
 
   useEffect(() => {
     if (!abierto) return
@@ -90,6 +135,12 @@ export function Novedades() {
             <span className="text-[12px] font-semibold text-ink">Pide trabajo</span>
             {estado === 'con_novedades' && (
               <span className="font-mono text-[11px] tabular-nums text-faint">{total}</span>
+            )}
+            {/* LA EDAD SE DECLARA. Un número guardado que se muestra sin decir de cuándo es afirma
+                ser de ahora — eso es presentar una estimación como un hecho. Desaparece en cuanto
+                llega la lectura nueva que dispara el propio hecho de abrir este panel. */}
+            {edad && (
+              <span data-testid="novedades-edad" className="ml-auto text-[11px] text-faint">{edad}</span>
             )}
           </div>
           {texto ? (

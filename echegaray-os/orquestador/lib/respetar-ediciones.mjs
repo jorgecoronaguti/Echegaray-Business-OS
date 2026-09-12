@@ -31,6 +31,7 @@
 // Respetar un número pisado sería congelar un cuadro en un valor que dejó de actualizarse.
 
 import { query } from './db.mjs'
+import { asegurarRelacion } from './tabla-asegurada.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { podarProsa, sePoda } from './podar-prosa.mjs'
 
@@ -284,22 +285,33 @@ export function detectarEdiciones(mios = [], actual = [], generado = []) {
  * Un registro que sólo guardara lo primero perdería la decisión de la persona en cuanto el generador
  * dejara de escribir ese texto; uno que sólo guardara lo segundo nunca podría detectar el cambio.
  */
+// EL DDL NO CORRE EN CADA LECTURA (12/09/2026). Antes sí, y disparaba la recarga de esquema de
+// PostgREST: `create table if not exists` + dos `alter table` × 408 corridas en 27 horas. El porqué
+// medido, con los números, está en `tabla-asegurada.mjs`. El DDL es el mismo; lo que cambió es que
+// primero se PREGUNTA con un `select` al catálogo.
 async function asegurarTabla() {
-  await query(`
-    create table if not exists public.sheet_rotulos (
-      file_id    text not null,
-      pestana    text not null,
-      rotulo     text not null,
-      reemplazo  text,
-      escrito_en timestamptz not null default now(),
-      primary key (file_id, pestana, rotulo)
-    )`)
-  // Migración desde la primera versión, que guardaba por fila/columna: la posición no sirve —una
-  // pestaña que cambia de alto deja todo el registro apuntando a la celda equivocada, y así se
-  // "respetó" un importe pegado en el lugar de un título.
-  await query(`alter table public.sheet_rotulos add column if not exists rotulo text`)
-  await query(`alter table public.sheet_rotulos add column if not exists reemplazo text`)
-  await query(`delete from public.sheet_rotulos where rotulo is null`)
+  return asegurarRelacion({
+    query,
+    relacion: 'public.sheet_rotulos',
+    columnas: ['file_id', 'pestana', 'rotulo', 'reemplazo', 'escrito_en'],
+    crear: async () => {
+      await query(`
+        create table if not exists public.sheet_rotulos (
+          file_id    text not null,
+          pestana    text not null,
+          rotulo     text not null,
+          reemplazo  text,
+          escrito_en timestamptz not null default now(),
+          primary key (file_id, pestana, rotulo)
+        )`)
+      // Migración desde la primera versión, que guardaba por fila/columna: la posición no sirve —una
+      // pestaña que cambia de alto deja todo el registro apuntando a la celda equivocada, y así se
+      // "respetó" un importe pegado en el lugar de un título.
+      await query(`alter table public.sheet_rotulos add column if not exists rotulo text`)
+      await query(`alter table public.sheet_rotulos add column if not exists reemplazo text`)
+      await query(`delete from public.sheet_rotulos where rotulo is null`)
+    },
+  })
 }
 
 /** Lo que este generador escribió la última vez, y las ediciones ya detectadas. */

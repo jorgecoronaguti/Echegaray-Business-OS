@@ -145,6 +145,18 @@ export const RUTAS_PUBLICAS = [
   // portal entero, con certificados e importes— a cualquier anónimo. Lo único público es pedir el
   // link. (Los dos frentes agregaron esta misma entrada por su lado; quedó UNA.)
   '/portal/ingresar',
+  // ═══ EL LATIDO QUE MANTIENE LA CADENA CALIENTE (12/09/2026) ═══
+  //
+  // `/api/salud` la golpea un timer del sistema cada 4 minutos con `curl`, sin cookie ni token. Sin
+  // esta entrada el middleware la redirige a `/login` y el timer calienta… la pantalla de login y
+  // nada más: el 307 se resuelve antes de tocar PostgREST, que es justo lo que hay que mantener
+  // despierto.
+  //
+  // ABRIRLA NO ABRE UN DATO. La ruta no devuelve ni una fila: publica `{ok, ms}` y su consulta
+  // (`perfiles` con `head`) va con la clave ANÓNIMA, así que el RLS le niega todo igual que a
+  // cualquier visitante. Es la ruta exacta, no el prefijo `/api`: poner `/api` dejaría pública
+  // cualquier ruta que alguien agregue ahí mañana — el modo de fallar de una lista negra.
+  '/api/salud',
 ]
 export function esRutaPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
