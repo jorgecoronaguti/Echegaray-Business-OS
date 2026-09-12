@@ -174,11 +174,40 @@ test('el bucket de la documentación del legajo es PRIVADO y por carpeta de pers
        from pg_policy p join pg_class c on c.oid = p.polrelid
        join pg_namespace n on n.oid = c.relnamespace and n.nspname='storage'
       where c.relname='objects' and p.polname like 'documentos_legajo%'`)
-  assert.ok(pol.length >= 2, 'faltan las policies de Storage')
+  assert.ok(pol.length >= 3, 'faltan las policies de Storage')
+
+  // ═══ LA CARPETA ES SIEMPRE UNA IDENTIDAD DE LA SESIÓN, Y SON DOS (10/09/2026) ═══
+  //
+  // Este test exigía `mi_persona_id()` en TODAS las policies del bucket. `20260910T2320` agregó una
+  // tercera —`documentos_legajo_sube_administracion`— que ata la carpeta a `auth.uid()` con
+  // `es_administracion()` adentro, y lo dice en su comentario: la policy que ya existía «sirve para
+  // que alguien suba SU documento, no para que Administración cargue el DNI de otro». Las dos formas
+  // son legítimas y ninguna deja elegir la carpeta:
+  //
+  //   · `mi_persona_id()`                        → subo lo MÍO, a mi carpeta;
+  //   · `auth.uid()` + `es_administracion()`     → Administración carga lo de otro, a la suya.
+  //
+  // Lo que el test pasa a prohibir es lo que de verdad rompe el legajo: una policy que no ate la
+  // primera carpeta a una identidad de la sesión —ahí cualquiera escribe en la carpeta de cualquiera—
+  // y una LECTURA que deje de mirar `mi_persona_id()`, que es lo que impide leer el legajo ajeno.
+  const ATA_LA_CARPETA = /\(storage\.foldername\(name\)\)\[1\] = \(+\s*(?:select\s+)?(mi_persona_id\(\)|auth\.uid\(\))/i
   for (const x of pol) {
-    assert.match(String(x.usando ?? x.chequeo), /mi_persona_id\(\)/,
-      `${x.polname}: la carpeta dejó de ser la persona`)
+    const expr = String(x.usando ?? x.chequeo ?? '')
+    assert.match(expr, ATA_LA_CARPETA,
+      `${x.polname}: la carpeta no está atada a la identidad de la sesión — cualquiera escribiría en la de cualquiera`)
+    // Si la carpeta es el uid del que sube, la policy TIENE que ser de Administración: sin eso,
+    // cualquier autenticado abriría su propia carpeta en el bucket del legajo.
+    if (/auth\.uid\(\)/.test(expr) && !/mi_persona_id\(\)/.test(expr)) {
+      assert.match(expr, /es_administracion\(\)/,
+        `${x.polname}: carpeta por uid sin es_administracion(): cualquiera cargaría documentos de legajo`)
+    }
   }
+  const lee = pol.find((x) => x.polname.includes('lee'))
+  assert.ok(lee, 'se fue la policy de lectura del legajo')
+  assert.match(String(lee.usando), /mi_persona_id\(\)/,
+    'la lectura dejó de atarse a la persona: se podría leer el legajo ajeno')
+  assert.match(String(lee.usando), /es_administracion\(\)/,
+    'la lectura dejó de reconocer a Administración, que es quien arma el legajo')
 })
 
 // ── LA PRESENCIA QUE VE LA OBRA (20/08/2026) ────────────────────────────────────────────────────

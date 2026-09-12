@@ -165,6 +165,21 @@ test('estándar productivo, versiones y moneda — con las migraciones aplicadas
       await q(`insert into recurso_precio (recurso_id, costo, moneda, fecha_precio, fuente, vigente)
                values ($1, 4.5, 'USD', current_date, 'ZZ proveedor', true)`, [rUsd.id])
 
+      // ═══ «SIN TIPO DE CAMBIO» HAY QUE CONSTRUIRLO: YA NO ES EL ESTADO DEL MUNDO (12/09/2026) ═══
+      //
+      // El test afirmaba que `costo_base` venía NULL *porque la base no tenía ningún tipo de cambio*.
+      // Era cierto cuando se escribió y dejó de serlo: desde el 10/09 `obras-economia-sync` publica el
+      // TC del Sheet todos los días (1.509,3966 al 12/09), así que la vista convertía —bien— y el test
+      // se ponía rojo sin que ninguna regla se hubiera roto. Medido: 4,5 × 1.509,3966 = 6.792,2847.
+      //
+      // La regla que SÍ hay que probar es la del numerador: un precio en USD sin TC no se convierte a
+      // ciegas. Entonces el escenario se fabrica acá adentro —la transacción termina en rollback y no
+      // toca la base viva— en vez de depender de que nadie haya cargado la cotización de hoy.
+      const borrados = await q('delete from tipo_cambio where fecha <= current_date returning fecha')
+      assert.ok(borrados.length > 0,
+        'ya no hay ningún tipo de cambio cargado: este fixture dejó de construir nada y el test '
+        + 'volvió a medir el estado del mundo')
+
       const sinTc = await uno(`select * from recurso_costo where recurso_id=$1`, [rUsd.id])
       assert.equal(sinTc.moneda, 'USD')
       assert.equal(Number(sinTc.costo_origen), 4.5, 'el costo en su moneda tiene que verse igual')

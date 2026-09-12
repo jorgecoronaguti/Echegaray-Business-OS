@@ -30,6 +30,14 @@ const hayBase = await getPool().query('select 1').then(() => true).catch(() => f
 /**
  * LO QUE PUBLICA LA PESTAÑA OBRAS AL 10/09/2026 — copiado del archivo, no derivado de la base.
  * [cobrado_total, cobrado_neto, por_cobrar, vencido, próximo cobro, medio]. `null` es el guion.
+ *
+ * ═══ ESTO ES UNA FOTO, Y LAS FOTOS ENVEJECEN (aprendido el 12/09/2026) ═══
+ *
+ * Estas siete obras siguen dando el mismo número porque están cerradas o quietas. El día que una se
+ * mueva, el primer paso NO es tocar la vista: es preguntar si la MOVIÓ LA EMPRESA. Le pasó a
+ * Quattropani —entró una factura y se reescribió el plan de cuotas, $114.052 de diferencia en lo que
+ * falta cobrar— y ahí la foto se reemplazó por la regla (ver `QUATTROPANI_USD` más abajo). Una obra
+ * que cobra de verdad no se puede clavar al centavo; una obra cerrada sí, y por eso estas quedan.
  */
 const OBRAS = {
   'messina-pisos-120-rampa': [8_465_136.34, 7_108_886.54, 2_848_649.02, null, '2026-09-29', 'Transferencia'],
@@ -42,14 +50,27 @@ const OBRAS = {
 }
 
 /**
- * QUATTROPANI VA APARTE PORQUE SUS FILAS ESTÁN EN DÓLARES.
+ * QUATTROPANI NO SE COMPARA CONTRA LA FOTO: SE COMPARA CONTRA SUS PROPIAS FILAS.
  *
- * La pestaña las valúa con la fórmula viva (`TIPO_CAMBIO_USD` de la hoja) y la réplica de Postgres
- * con el tipo de cambio del último `sync-cobranzas`. Los dos números son correctos y no pueden ser
- * iguales al peso: al 10/09/2026 la diferencia es de $600 sobre $107,9 M. Clavarlos al centavo haría
- * un test que se pone rojo solo cada vez que se mueve el dólar — que es ruido, no control.
+ * ═══ POR QUÉ SE FUE EL NÚMERO CLAVADO (12/09/2026) ═══
+ *
+ * Decía `{ cobradoTotal: 107_877_569, porCobrar: 52_357_555, tolerancia: 20_000 }` — la foto de la
+ * pestaña al 10/09 con una tolerancia para «el ruido del dólar»— y se puso rojo por las DOS razones
+ * que esa forma no puede sobrevivir:
+ *
+ *   · EL DÓLAR. La única fila en USD son U$S 15.400. La pestaña los valúa con la fórmula viva y la
+ *     réplica con el TC del último `sync-cobranzas`: 1.512,756 el 10/09 contra 1.509,3966 el 12/09,
+ *     o sea $51.742 de diferencia sobre el mismo hecho. La tolerancia de $20.000 aguantaba tres
+ *     pesos de variación; el dólar se mueve más que eso cualquier martes.
+ *   · Y LA EMPRESA COBRA. `por_cobrar` pasó de $52.357.555 a $52.243.502,80 porque entró la factura
+ *     del 10/09 y el plan de cuotas se reescribió. Eso no es un defecto de la vista: es la obra
+ *     avanzando. Un test que clava lo que falta cobrar se pone rojo cada vez que el cliente paga.
+ *
+ * Lo que sí es una regla —y es la que este archivo existe para defender— es que la vista sume lo que
+ * dicen sus propias filas, con cada fila valuada a SU tipo de cambio. Eso se verifica contra
+ * `cobranzas` en la misma transacción, y no contra una foto que envejece sola.
  */
-const QUATTROPANI = { cobradoTotal: 107_877_569, porCobrar: 52_357_555, tolerancia: 20_000 }
+const QUATTROPANI_USD = { usd: 15_400, tc: 1_509.3966 }
 
 test('obra_cuenta publica lo mismo que la pestaña OBRAS', { skip: !hayBase }, async (t) => {
   const c = await getPool().connect()
@@ -108,17 +129,43 @@ test('obra_cuenta publica lo mismo que la pestaña OBRAS', { skip: !hayBase }, a
       assert.equal(num(filas.get('messina-playon-azufre').cobrado_neto), 50_659_641)
     })
 
-    await t.test('Quattropani coincide con la pestaña dentro del ruido del tipo de cambio', () => {
+    await t.test('Quattropani suma lo que dicen sus filas, cada una a SU tipo de cambio', async () => {
       const f = filas.get('quattropani')
-      for (const [rotulo, vivo, deObras] of [
-        ['cobrado', Number(f.cobrado_total), QUATTROPANI.cobradoTotal],
-        ['por cobrar', Number(f.por_cobrar), QUATTROPANI.porCobrar],
-      ]) {
-        assert.ok(Math.abs(vivo - deObras) < QUATTROPANI.tolerancia,
-          `Quattropani ${rotulo}: ${vivo} contra ${deObras} de OBRAS — más que el ruido del dólar`)
-      }
-      assert.equal(dia(f.proximo_cobro_fecha), '2026-09-25')
-      assert.equal(f.proximo_cobro_medio, 'Transferencia')
+      // Las mismas filas que la vista lee, agrupadas por moneda y por estado. No es una copia de la
+      // vista: es la aritmética que la vista promete, hecha sobre el dato crudo.
+      const suyas = await q(`
+        select cb.moneda,
+               public.es_cobrada(cb.estado, cb.fecha_cobro) as cobrada,
+               sum(cb.total_bruto) as ars,
+               sum(cb.total_bruto_origen) as origen,
+               min(cb.tipo_cambio) as tc_min, max(cb.tipo_cambio) as tc_max
+          from public.cobranzas cb
+          join public.cobranza_imputacion i on i.cobranza_id = cb.id
+         where i.obra_id = 'quattropani'
+         group by 1, 2`)
+      const tramo = (moneda, cobrada) => suyas.find((x) => x.moneda === moneda && x.cobrada === cobrada)
+
+      const usd = tramo('USD', true)
+      assert.ok(usd, 'Quattropani dejó de tener la fila en dólares: era lo que hacía especial a esta obra')
+      assert.equal(Number(usd.origen), QUATTROPANI_USD.usd, 'cambió el importe en dólares del contrato cobrado')
+      // LA FILA SE VALÚA A SU PROPIO TC, no a 1 (que sería publicar 15.400 pesos) ni a uno inventado.
+      assert.equal(Number(usd.ars), Math.round(Number(usd.origen) * Number(usd.tc_min) * 100) / 100,
+        'la valuación de la fila en USD no es su importe por su tipo de cambio')
+      assert.ok(Number(usd.tc_min) > 100,
+        `el TC guardado es ${usd.tc_min}: una fila en USD valuada a ~1 publica dólares como si fueran pesos`)
+
+      // Y EL TOTAL DE LA VISTA ES LA SUMA DE LOS TRAMOS, pesos y dólares valuados, sin nada en el medio.
+      const cobrado = suyas.filter((x) => x.cobrada).reduce((a, x) => a + Number(x.ars), 0)
+      const pendiente = suyas.filter((x) => !x.cobrada).reduce((a, x) => a + Number(x.ars), 0)
+      assert.equal(num(f.cobrado_total), num(cobrado), 'el cobrado de la vista no es la suma de sus filas cobradas')
+      assert.equal(num(f.por_cobrar), num(pendiente), 'lo que falta cobrar no es la suma de sus filas pendientes')
+      // Un cero acá sería un verde que no midió nada.
+      assert.ok(cobrado > 0 && pendiente > 0, 'Quattropani quedó sin filas cobradas o sin pendientes')
+
+      // El próximo cobro sigue siendo el de la primera cuota que no pasó, con su medio: eso no
+      // depende del dólar ni de cuánto se cobró.
+      assert.match(f.proximo_cobro_medio, /Transferencia/)
+      assert.ok(dia(f.proximo_cobro_fecha) >= '2026-09-01', 'el próximo cobro quedó en el pasado')
     })
 
     await t.test('BSA discrepa con la pestaña, y la diferencia es EXACTAMENTE la fila 46', () => {
