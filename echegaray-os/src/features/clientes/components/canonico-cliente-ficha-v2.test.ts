@@ -625,3 +625,37 @@ test('las horas llegan a las dos tablas de la ficha: en curso y terminados', () 
   assert.equal((src.match(/horas=\{ficha\.horasPorObra\}/g) ?? []).length, 2,
     'los trabajos terminados también llevan sus horas: son la historia de lo que costó cada uno')
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// OC Y OP NO SE LEEN EN NINGUNA OTRA PARTE DEL CRM (dueño, 11/09/2026 18:42)
+//
+// «Esas columnas OC/OP quitarlas de TODO el CRM porque deben estar en la sección Órdenes, que tiene
+// que ser órdenes de compra y de pago.» Ya no están en la tabla de trabajos (más arriba) ni en las
+// cifras del titular, que era su tercer lugar: ahí quedaban al lado de un contratado NETO invitando
+// a una resta que no significa nada, y eran una lectura MÁS de los mismos papeles.
+//
+// LO QUE ESTE PAR VIGILA es que el dato no se pierda al sacarlo: si el pie de la solapa se va, los
+// dos totales no quedan en ninguna parte del CRM, que es peor que tenerlos repetidos.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el titular de la ficha no publica los totales de OC ni de OP', () => {
+  const src = codigoPagina()
+  for (const rotulo of ['OC recibidas', 'OP recibidas']) {
+    assert.ok(!src.includes(rotulo),
+      `«${rotulo}» volvió a las cifras del titular: su casa es la solapa Órdenes de compra y de pago`)
+  }
+  // Y las dos que quedan son las que contestan «qué le vendimos»: ni conteos que ya viven en su
+  // lugar (contactos, documentos) ni ventanas incompatibles (facturado/cobrado a 90 días).
+  assert.match(src, /rotulo: 'Trabajos'/)
+  assert.match(src, /rotulo: 'Contratado en curso'/)
+})
+
+test('los dos totales viven en la solapa Órdenes, sumados de lo que esa cara dibuja', () => {
+  const src = sinComentarios(fuente('OrdenesDelCliente.tsx'))
+  assert.match(src, /data-testid="total-ordenes-cliente"/,
+    'sin el pie, los totales de OC y OP no quedan en ninguna parte del CRM')
+  // LA MISMA FUNCIÓN QUE LOS ENCABEZADOS DE CADA GRUPO: con una suma propia, el total de abajo y
+  // los parciales de arriba podrían decir distinto sobre los mismos papeles.
+  assert.match(src, /resumen\(ordenes, 'oc', veEconomia\)/)
+  assert.match(src, /resumen\(ordenes, 'op', veEconomia\)/)
+})

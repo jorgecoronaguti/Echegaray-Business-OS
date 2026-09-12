@@ -351,17 +351,22 @@ export default async function ClientePage({ params, searchParams }: {
     return `/clientes/${slug}${s ? `?${s}` : ''}`
   }
 
-  // ═══ LAS CUATRO CIFRAS (DISENO-FICHA-CLIENTE-v3 · §2.3) ═══
+  // ═══ LAS DOS CIFRAS (DISENO-FICHA-CLIENTE-v3 · §2.3, recortado el 11/09/2026) ═══
   //
-  // Salieron «Contactos» y «Documentos»: los dos son conteos que ya se publican donde viven —el
-  // costado dice cuántos contactos hay, la solapa dice cuántos papeles— y un dato dos veces es la
-  // forma más barata de que dos partes de la pantalla empiecen a decir distinto.
+  // Salieron «Contactos» y «Documentos»: son conteos que ya se publican donde viven —el costado dice
+  // cuántos contactos hay, la solapa dice cuántos papeles— y un dato dos veces es la forma más barata
+  // de que dos partes de la pantalla empiecen a decir distinto.
   //
-  // Entraron OC y OP, que es lo que no se veía en ningún lado. NO se publica «Facturado» ni
-  // «Cobrado» aunque la fuente exista (`cliente_cuenta_corriente`): su ventana son 90 días y
-  // Contratado y OC son acumulados desde 2024 — puestos en la misma línea invitan a restarlos, y
-  // eso es mezclar ventanas incompatibles. Tampoco «Pendiente»: no tiene fuente, y la resta de dos
-  // universos distintos sería un número inventado. El saldo real vive en Cuenta corriente.
+  // Y SALIERON «OC RECIBIDAS C/IVA» Y «OP RECIBIDAS C/IVA» (dueño, 11/09/2026 18:42): «esas columnas
+  // OC/OP quitarlas de TODO el CRM porque deben estar en la sección Órdenes». Los dos totales no se
+  // perdieron: viven en el pie de la solapa «Órdenes de compra y de pago», sumados de las MISMAS
+  // filas que esa cara dibuja. Acá arriba eran una tercera lectura de los mismos papeles, y estaban
+  // al lado de un contratado NETO invitando a una resta que no significa nada.
+  //
+  // NO se publica «Facturado» ni «Cobrado» aunque la fuente exista (`cliente_cuenta_corriente`): su
+  // ventana son 90 días y Contratado es un acumulado desde 2024 — puestos en la misma línea invitan a
+  // restarlos, y eso es mezclar ventanas incompatibles. Tampoco «Pendiente»: no tiene fuente, y la
+  // resta de dos universos distintos sería un número inventado. El saldo vive en Cuenta corriente.
   const cifras: CifraDeFicha[] = [
     // «TRABAJOS» Y NO «OBRAS»: el CRM habla de lo que el cliente encargó. La obra como unidad de
     // ejecución —con su plan, su avance y su costo— vive en el ERP.
@@ -375,28 +380,6 @@ export default async function ClientePage({ params, searchParams }: {
           falta: enCurso.length ? SIN_PRECIO_EN_OBRAS : 'sin trabajo en curso',
         } as CifraDeFicha]
       : []),
-    {
-      // «c/IVA» EN EL RÓTULO, IGUAL QUE EN LA LISTA (10/09/2026). El importe de una OC es el TOTAL
-      // del PDF —con IVA— y «Contratado en curso», tres cifras a la izquierda, es NETO. Puestas en
-      // la misma línea sin decirlo, invitan a una resta que no significa nada: el Adicional Tercer
-      // Muro tiene una OC de $12.100.000 contra $10.000.000 contratados, que es el mismo número.
-      rotulo: `OC recibidas c/IVA${papeles ? ` (${papeles.totalOC.n})` : ''}`,
-      valor: papeles?.totalOC.importe != null ? money(papeles.totalOC.importe) : null,
-      // ═══ «NINGUNA» NO ERA LA VERDAD DE QUATTROPANI (dueño, 10/09/2026 18:10) ═══
-      //
-      // Su trabajo no se encargó con una orden de compra: se encargó con un CONTRATO en dólares.
-      // «OC recibidas c/IVA (0) · ninguna» se lee como un papel que falta, y no falta ninguno.
-      falta: papeles === null
-        ? 'no pude leerlas'
-        : contratoUsd != null ? `contrato U$S ${Math.round(contratoUsd).toLocaleString('es-AR')} · sin OC` : 'ninguna',
-    },
-    {
-      // «RECIBIDAS», NO «COBRADAS»: una orden de pago es la instrucción del cliente a su banco. Que
-      // el dinero entró lo prueba el extracto, no el PDF de un tercero.
-      rotulo: `OP recibidas c/IVA${papeles ? ` (${papeles.totalOP.n})` : ''}`,
-      valor: papeles?.totalOP.importe != null ? money(papeles.totalOP.importe) : null,
-      falta: papeles === null ? 'no pude leerlas' : 'ninguna',
-    },
   ]
 
   const filasPresupuesto: PresupuestoDeFicha[] = presupuestos.map((p) => ({

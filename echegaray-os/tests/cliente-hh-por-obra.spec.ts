@@ -69,3 +69,29 @@ test('el desglose de una obra dibuja persona × día y cierra con el acumulado',
 
   await page.screenshot({ path: `tests/capturas/cliente-hh-desglose-${ANCHO}.png`, fullPage: false })
 })
+
+test('los totales de OC y OP se leen en su solapa, y ya no en el titular', async ({ page }) => {
+  test.setTimeout(180000)
+  await entrar(page)
+  await page.setViewportSize({ width: ANCHO, height: 1000 })
+  await page.goto('/clientes/messina')
+
+  // EL TITULAR NO LOS REPITE (dueño, 11/09/2026 18:42): al lado de un contratado NETO invitaban a
+  // una resta que no significa nada, y eran una tercera lectura de los mismos papeles.
+  const cifras = page.getByTestId('cifras-cliente')
+  await expect(cifras).toBeVisible({ timeout: 60000 })
+  await expect(cifras).not.toContainText('OC recibidas')
+  await expect(cifras).not.toContainText('OP recibidas')
+
+  // Y ESTÁN EN SU SOLAPA, que ahora dice en su nombre que contiene las dos.
+  await expect(page.getByTestId('vistas-cliente')).toContainText('Órdenes de compra y de pago')
+  await page.goto('/clientes/messina?vista=ordenes')
+  const pie = page.getByTestId('total-ordenes-cliente')
+  await expect(pie).toBeVisible({ timeout: 60000 })
+  // LA FORMA, NO EL IMPORTE: el bajador de Gmail trae órdenes nuevas y un número clavado se pondría
+  // rojo sin que ninguna regla se haya roto.
+  await expect(pie).toContainText(/\d+ OC · \$ ?[\d.]+/)
+  await expect(pie).toContainText(/\d+ OP · \$ ?[\d.]+/)
+
+  await page.screenshot({ path: `tests/capturas/cliente-ordenes-totales-${ANCHO}.png`, fullPage: false })
+})

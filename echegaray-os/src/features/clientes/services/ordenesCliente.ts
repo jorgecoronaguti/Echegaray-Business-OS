@@ -230,3 +230,47 @@ export async function getOrdenesDeObra(
   if (error) return null
   return (data ?? []) as OrdenDetallada[]
 }
+
+// ═══ EL RESUMEN DE UN GRUPO DE ÓRDENES — «3 OC · $ 12.100.000» ═══
+//
+// ═══ EL DEFECTO QUE ESTA FUNCIÓN ARREGLA AL MUDARSE (12/09/2026) ═══
+//
+// Vivía adentro de `OrdenesDelCliente.tsx` y comparaba `o.tipo === 'oc'`. En la base el tipo se
+// guarda `orden_compra` y `orden_pago` (56 y 53 filas al 12/09), así que la comparación NUNCA era
+// verdadera: los encabezados de cada trabajo en la solapa Órdenes venían saliendo VACÍOS desde que
+// se escribieron, y nadie lo vio porque un rótulo que no se dibuja no se parece a un error. Lo
+// encontró el pie de totales del cliente, que salió «sin OC sin OP» sobre 109 órdenes cargadas.
+//
+// Se muda a `services/` porque es una DECISIÓN sobre datos —qué cuenta como OC y qué hacer con un
+// PDF sin importe— y acá se puede probar sin navegador. Eso es lo que habría dado rojo antes.
+//
+// SIN IMPORTE NO SE SUMA CERO: un PDF que no declara el monto se cuenta en la cantidad y marca el
+// total como PARCIAL (el `·` del final). Un cero sería una orden de compra por cero pesos, que es
+// una afirmación falsa sobre un contrato.
+
+/** Cómo se guarda cada tipo en `cliente_orden`. La pantalla habla de OC y OP; la base, no. */
+const TIPO_EN_LA_BASE: Record<'oc' | 'op', string> = {
+  oc: 'orden_compra', op: 'orden_pago',
+}
+
+/**
+ * «3 OC · $ 12.100.000», o `null` cuando no hay ninguna de ese tipo —que es distinto de «$ 0»—.
+ *
+ * `formatoPlata` lo inyecta quien dibuja: esta función no elige cómo se escribe un peso. Sin permiso
+ * económico devuelve sólo la cuenta: el importe de una orden es precio de venta.
+ */
+export function resumenDeOrdenes(
+  ordenes: { tipo: string; importe: number | string | null }[],
+  tipo: 'oc' | 'op',
+  veEconomia: boolean,
+  formatoPlata: (n: number) => string | null,
+): string | null {
+  const del = ordenes.filter((o) => o.tipo === TIPO_EN_LA_BASE[tipo])
+  if (!del.length) return null
+  const sigla = tipo.toUpperCase()
+  if (!veEconomia) return `${del.length} ${sigla}`
+  const conImporte = del.filter((o) => o.importe !== null && o.importe !== '')
+  const total = conImporte.reduce((a, o) => a + Number(o.importe), 0)
+  const parcial = conImporte.length !== del.length ? ' ·' : ''
+  return `${del.length} ${sigla} · ${formatoPlata(total)}${parcial}`
+}
