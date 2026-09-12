@@ -72,23 +72,34 @@ export function AccesosPortal({
 
   const enEdicion = accesos.find((a) => a.id === editando) ?? null
 
+  // ═══ LA SUB-PANTALLA USA EL ANCHO DE LA FICHA, COMO LAS DEMÁS CARAS (12/09/2026) ═══
+  //
+  // Medido a 1280px antes del arreglo: `-mx-4 lg:-mx-10` sobre un marco que NO tiene padding lateral
+  // —el gutter de la ficha son los 20px de cada bloque— empujaba el documento a 1320px y se comía
+  // 40px de la primera columna (el rótulo «MAIL HABILITADO» salía cortado). Y con el mínimo de 958px
+  // la tabla no entraba al lado del panel de 392: `flex-wrap` bajaba el alta, y con la tabla vacía la
+  // pantalla quedaba en una columna angosta a la izquierda y el resto en blanco.
+  //
+  // Ahora es la MISMA grilla que Cobranzas: contenido + costado. El mínimo es 620px —lo que pide la
+  // variante elástica de seis pistas de `TablaAccesos`, no la rígida—, así que entra al lado del
+  // panel desde ~1100px de viewport; las pistas rígidas esperan a 1448 (ver `TablaAccesos`), que es
+  // donde esta columna mide los 974 que necesitan.
   return (
     <div
       data-testid="vista-accesos-portal"
-      className="-mx-4 lg:-mx-10"
       style={{
-        display: 'flex', alignItems: 'flex-start', gap: '36px', padding: '20px 24px 32px',
+        display: 'flex', alignItems: 'flex-start', gap: '36px', padding: '20px 20px 32px',
         flexWrap: 'wrap', background: C.lienzo,
       }}
     >
-      {/* 958px ES EL ANCHO QUE PIDE LA TABLA DEL HANDOFF, no un número redondo: es la suma de sus
-          seis pistas (230+150+120+140+150+28) más los cinco huecos de 28. Con el mínimo anterior de
-          600px, entre 1500 y 1860px de viewport el panel de alta se quedaba al lado y estrangulaba
-          la tabla a ~620px: las columnas se pisaban y el mail —que es la llave— se cortaba. Con el
-          mínimo real, `flex-wrap` baja el panel cuando no entran los dos, que es lo que el handoff
-          v4 dibuja: la lista a ancho completo y el alta debajo. */}
+      {/* 620px ES EL ANCHO QUE PIDE LA VARIANTE ELÁSTICA DE SEIS PISTAS —110+84+100+110+28 de pista
+          fija, 5×14 de hueco y el mail elástico—, no un número redondo. El mínimo anterior era 958,
+          que es lo que piden las pistas RÍGIDAS: con ése, a 1280 la tabla no entraba al lado del
+          panel, `flex-wrap` bajaba el alta y quedaba media pantalla en blanco. Las pistas rígidas
+          ahora esperan a 1448px de viewport, que es donde esta columna mide 980 y las contiene: el
+          quiebre y la aritmética están atados en `canonico-cliente-ficha-v2.test.ts`. */}
       <div style={{
-        flex: 1, minWidth: 'min(958px, 100%)', display: 'flex', flexDirection: 'column', gap: '26px',
+        flex: 1, minWidth: 'min(620px, 100%)', display: 'flex', flexDirection: 'column', gap: '26px',
       }}>
         {(aviso || error) && (
           <div

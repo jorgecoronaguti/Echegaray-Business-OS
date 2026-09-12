@@ -28,10 +28,15 @@ import { momentoCorto } from '../../services/cobranzaFormato'
 import { estaHabilitado, textoDeObras } from '../../services/reglasPortal'
 import type { AccesoPortal } from '../../types/cobranzas'
 
-// 230+150+120+140+150+28 + 5×28 = 958px útiles. La cara «Acceso al portal» se dibuja a sangre (sin
-// el costado de 353px), así que entra desde ~1100px de viewport: por encima, el panel de alta va al
-// lado; por debajo de 1386px el panel baja solo —`flex-wrap` ya estaba— y la tabla se queda con
-// todo el ancho. Debajo de 1100 se dibujan las mismas seis pistas, elásticas y con la mitad del aire.
+// 230+150+120+140+150+28 + 5×28 = 958px de pistas, más los 16 de sangría de la fila = 974 útiles.
+// LAS PISTAS RÍGIDAS EMPIEZAN DONDE LA COLUMNA LAS MIDE, y no antes: la sub-pantalla del portal
+// dibuja contenido + costado, así que la columna vale `viewport − 40 (gutter de la ficha) − 36
+// (hueco) − 392 (panel de alta)`. Para que entren 974 hace falta viewport ≥ 1442 → el quiebre es
+// 1448, el múltiplo de 8 que sigue. Decía 1100, y ahí la columna mide 632: la tabla desbordaba su
+// caja y `AccesosPortal` tenía que pedir 958 de mínimo, lo que a 1280 bajaba el panel de alta y
+// dejaba media pantalla en blanco (medido el 12/09/2026; con el quiebre en 1440 sobraban 2px, que
+// son exactamente la sangría que la cuenta no contaba).
+// Debajo de 1448 se dibujan las mismas seis pistas, elásticas y con la mitad del aire.
 // A 390px el mail no entra con cinco columnas al lado: debajo de 560px quedan MAIL · ESTADO · menú
 // —quién entra y si entra—, y el alcance, los permisos y el último ingreso se leen en la pantalla
 // ancha o abriendo el acceso. El mail nunca se esconde: ES la llave.
@@ -39,8 +44,8 @@ const COLS
   = 'gap-[10px] grid-cols-[minmax(0,1fr)_70px_28px]'
   + ' min-[560px]:gap-[14px]'
   + ' min-[560px]:grid-cols-[minmax(0,1.5fr)_minmax(0,110px)_84px_minmax(0,100px)_minmax(0,110px)_28px]'
-  + ' min-[1100px]:gap-[28px]'
-  + ' min-[1100px]:grid-cols-[minmax(230px,1.6fr)_150px_120px_140px_150px_28px]'
+  + ' min-[1448px]:gap-[28px]'
+  + ' min-[1448px]:grid-cols-[minmax(230px,1.6fr)_150px_120px_140px_150px_28px]'
 
 /** Lo que se esconde a 390px. Nunca el mail, el estado ni el menú. */
 const SOLO_ANCHO = 'max-[559px]:hidden'

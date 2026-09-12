@@ -491,10 +491,52 @@ test('las tres acciones del acceso viven en el menú de 28px, no dibujadas en la
   assert.match(acc, /acciones-acceso-abierto-/)
 })
 
-test('la columna de accesos declara el ancho que la tabla del handoff necesita', () => {
-  // Con el mínimo anterior de 600px, entre 1500 y 1860px de viewport el panel de alta se quedaba al
-  // lado y estrangulaba la tabla a ~620px contra los 958 que pide: las columnas se pisaban.
-  assert.match(sinComentarios(fuente('accesos/AccesosPortal.tsx')), /minWidth: 'min\(958px, 100%\)'/)
+// ═══ LAS PISTAS RÍGIDAS EMPIEZAN DONDE LA COLUMNA LAS MIDE (12/09/2026) ═══
+//
+// Defecto que atrapa: que la tabla de accesos pida pistas rígidas de 958px en un viewport donde su
+// columna no las tiene. Medido a 1280px: con el quiebre en 1100 la tabla exigía 958 en una columna
+// de 632, `AccesosPortal` tenía que declarar 958 de mínimo para que no se pisaran las columnas, y
+// con ese mínimo el panel de alta bajaba —`flex-wrap`— dejando la sub-pantalla en una columna
+// angosta a la izquierda y el resto en blanco.
+//
+// El aserto es la ARITMÉTICA, no el número: el quiebre tiene que ser ≥ que lo que la fila pide más
+// el costado, el hueco y el gutter. Si alguien vuelve a bajar el quiebre —o ensancha el panel— sin
+// rehacer la cuenta, esto se pone rojo.
+test('el quiebre de las pistas rígidas de accesos es un ancho donde la columna las contiene', () => {
+  const tabla = sinComentarios(fuente('accesos/TablaAccesos.tsx'))
+  const portal = sinComentarios(fuente('accesos/AccesosPortal.tsx'))
+
+  const rigidas = tabla.match(/min-\[(\d+)px\]:grid-cols-\[minmax\(230px,1\.6fr\)([^\]]+)\]/)
+  assert.ok(rigidas, 'se fueron las pistas rígidas del handoff o cambió su forma')
+  const quiebre = Number(rigidas[1])
+  // El hueco DEL MISMO quiebre: el de 560px es otro (14px) y mediría la variante elástica.
+  const hueco = Number(tabla.match(new RegExp(`min-\\[${quiebre}px\\]:gap-\\[(\\d+)px\\]`))?.[1])
+  // 230 de mail + las cinco pistas del handoff + los cinco huecos + LA SANGRÍA DE LA FILA. Los 16px
+  // de `paddingLeft` no son decoración: se suman al ancho que la grilla necesita, y olvidarlos dejó
+  // el quiebre 2px corto —la última pista se salía de su caja (medido a 1440: 974 contra 972).
+  const pistas = [230, ...rigidas[2].split('_').filter(Boolean).map((p) => Number(p.replace('px', '')))]
+  assert.equal(pistas.length, 6, 'la tabla dejó de tener seis pistas')
+  const sangria = Number(tabla.match(/paddingLeft: (\d+)/)?.[1])
+  const necesita = pistas.reduce((a, b) => a + b, 0) + 5 * hueco + sangria
+  assert.equal(necesita, 974, `la fila rígida ya no mide 974 sino ${necesita}`)
+
+  const costado = Number(portal.match(/width: '(\d+)px', flexShrink: 0/)?.[1])
+  const gapPortal = Number(portal.match(/gap: '(\d+)px', padding: '20px (\d+)px/)?.[1])
+  const gutter = Number(portal.match(/padding: '20px (\d+)px/)?.[1]) * 2
+  assert.ok(
+    quiebre >= necesita + costado + gapPortal + gutter,
+    `las pistas rígidas arrancan a ${quiebre}px y ahí la columna mide `
+    + `${quiebre - costado - gapPortal - gutter}px: no entran sus ${necesita}px`,
+  )
+
+  // Y EL MÍNIMO DE LA COLUMNA ES EL DE LA VARIANTE ELÁSTICA, no el de la rígida: es lo que deja al
+  // panel de alta AL LADO a 1280 en vez de mandarlo abajo con media pantalla en blanco.
+  const minimo = Number(portal.match(/minWidth: 'min\((\d+)px, 100%\)'/)?.[1])
+  assert.ok(minimo < necesita, `la columna sigue pidiendo ${minimo}px: el panel vuelve a bajar a 1280`)
+  assert.ok(
+    minimo + costado + gapPortal + gutter <= 1280,
+    `con ${minimo}px de mínimo los dos no entran a 1280: la sub-pantalla vuelve a la columna angosta`,
+  )
 })
 
 // ═══ LA COLUMNA DEL IMPORTE NO CAMBIA DE PREGUNTA SEGÚN QUIÉN MIRE (06/09/2026) ═══

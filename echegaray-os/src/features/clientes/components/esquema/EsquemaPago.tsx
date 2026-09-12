@@ -131,12 +131,16 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
   const total = totalEsquema(pagos)
   const sinFecha = pagos.filter((p) => !p.fecha)
 
+  // SIN MARGEN NEGATIVO Y CON EL GUTTER DE LA FICHA (20px): el marco de la ficha del cliente no
+  // tiene padding lateral —lo ponen sus bloques—, así que `-mx-4 lg:-mx-10` no compensaba nada:
+  // sacaba el bloque fuera de la pantalla y arrastraba la página de costado. Misma trampa que ya se
+  // pagó en `TabOperacion` y `ListaHoyEnObra`.
   return (
-    <div data-testid="vista-esquema-pago" className="-mx-4 lg:-mx-10" style={{ background: C.lienzo }}>
+    <div data-testid="vista-esquema-pago" style={{ background: C.lienzo }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 24px 0', flexWrap: 'wrap',
+        display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 20px 0', flexWrap: 'wrap',
       }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '9px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '9px', flexWrap: 'wrap', minWidth: 0 }}>
           <span style={{
             fontFamily: MONO, fontSize: '22px', fontWeight: 600, color: C.tinta,
             letterSpacing: '-.02em',
@@ -150,8 +154,15 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
           </span>
         </div>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: C.tintaSuave }}>
+        {/* LA LEYENDA Y EL CONMUTADOR ENVUELVEN. Juntos miden 191px que no se pueden achicar, y con
+            `marginLeft:auto` sin `wrap` se plantaban en la misma línea del total: a 400px el grupo
+            terminaba en x=481 y era el borde derecho del documento. Envolviendo, en el teléfono
+            bajan a su propia línea y a ancho completo siguen pegados a la derecha. */}
+        <div style={{
+          marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px',
+          flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', fontSize: '11.5px', color: C.tintaSuave }}>
             {LEYENDA.map((l, i) => (
               <span key={l.texto} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: i === 0 ? 0 : '8px' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: l.color }} />
@@ -164,7 +175,7 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
       </div>
 
       <div style={{
-        display: 'flex', alignItems: 'flex-start', gap: '20px', padding: '14px 24px 32px',
+        display: 'flex', alignItems: 'flex-start', gap: '20px', padding: '14px 20px 32px',
         flexWrap: 'wrap',
       }}>
         <div style={{ flex: 1, minWidth: 'min(660px, 100%)' }}>

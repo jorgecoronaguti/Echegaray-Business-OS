@@ -76,12 +76,17 @@ export function CuentaCorriente({ cuenta, documentos, hoy, registrarCobro }: {
     }
   })
 
+  // EL MARCO DE LA FICHA DEL CLIENTE NO TIENE PADDING LATERAL: su gutter son los 20px que pone cada
+  // bloque (`TituloDeFicha`, `SolapasDeFicha`, `CifrasDeFicha`, `CuerpoDeFicha`). Decía
+  // `-mx-4 lg:-mx-10` sobre ese marco —la misma trampa ya pagada en `TabOperacion` y
+  // `ListaHoyEnObra`—: a 400px el bloque arrancaba en −16 y la PÁGINA ENTERA se iba de costado, y a
+  // 1280 se salía 40px por lado y se comía la primera columna. A sangre acá es SIN margen negativo:
+  // el marco ya llega al borde.
   return (
     <div
       data-testid="vista-cuenta-corriente"
-      className="-mx-4 lg:-mx-10"
       style={{
-        display: 'flex', alignItems: 'flex-start', gap: '36px', padding: '20px 24px 32px',
+        display: 'flex', alignItems: 'flex-start', gap: '36px', padding: '20px 20px 32px',
         flexWrap: 'wrap', background: C.lienzo,
       }}
     >

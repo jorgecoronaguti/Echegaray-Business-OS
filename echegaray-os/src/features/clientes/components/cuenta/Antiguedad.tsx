@@ -95,7 +95,11 @@ export function Antiguedad({ cuenta, documentos, hoy, filtro, onFiltrar }: {
         })}
       </div>
 
-      <div style={{ display: 'flex', gap: '14px', marginTop: '9px' }}>
+      {/* LA LEYENDA ENVUELVE. Son cinco ítems de 74px mínimo más cuatro huecos de 14: 426px que en
+          la columna de 384 de un teléfono no entran, y sin `wrap` empujaban la página entera de
+          costado (medido a 400px: 426 contra 384). Envolver es lo que una leyenda puede hacer —no es
+          una tabla que se compare de arriba abajo—, y a ancho completo sigue siendo una sola fila. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', marginTop: '9px' }}>
         {bandas.map((b) => {
           const c = colorDe(b.clave, b.monto)
           const hay = b.monto > 0
