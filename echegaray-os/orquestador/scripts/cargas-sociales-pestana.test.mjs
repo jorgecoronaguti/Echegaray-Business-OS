@@ -77,12 +77,24 @@ import {
   A_VERIFICAR, RANGO_FCL_PRIMER_ANIO, RANGO_IERIC, RANGO_DIA_PAGO_F931, PARAMETROS_CARGAS,
   RANGO_PROPORCION_PRIMER_ANIO, parametrosDeCargas, divergenciaDePlantel,
 } from '../lib/cargas-cadena.mjs'
-import { rangosDeCargas, ROTULOS_CARGAS, NOMBRES_CARGAS } from '../lib/libro-extractores-cargas.mjs'
+import {
+  rangosDeCargas, ROTULOS_CARGAS, NOMBRES_CARGAS,
+  RUBRO_CARGAS as RUBRO_CARGAS_CS, RUBRO_PLANES as RUBRO_PLANES_CS, RUBRO_GREMIALES as RUBRO_GREMIALES_CS,
+} from '../lib/libro-extractores-cargas.mjs'
+// El bloque 2 dejó de leer Compras y lee el Libro Canónico: las columnas se nombran, no se tipean.
+import { LIBRO as LIBRO_CS, rangoLibro as rangoLibroCS } from '../lib/libro-sumas.mjs'
+// Los cuatro organismos y los nombres con los que el libro llama a cada uno. IMPORTADOS y no
+// copiados: una lista copiada acá mediría otra cosa que la celda el día que entre el quinto.
+import { ORGANISMOS_GREMIALES as ORGANISMOS_CS } from '../lib/cargas-bloque-pagado.mjs'
+import { ES_SECCION_NUM as ES_SECCION_NUM_CS } from '../lib/patron-pestana.mjs'
 import { SIN_DDJJ as SIN_DDJJ_CS } from '../lib/cargas-grilla.mjs'
 import { total as rotuloTotalCS } from '../lib/patron-pestana.mjs'
 import { verificarRangos as verificarRangosCS, explicarProblemas as explicarProblemasCS } from '../lib/rangos-con-nombre.mjs'
 import { auditarPatron as patronCS } from '../lib/patron-pestana.mjs'
-import { auditarDiseno } from '../lib/diseno-unificado.mjs'
+import { auditarDiseno, TOPE_PROSA as TOPE_PROSA_CS, CONECTORES as CONECTORES_CS } from '../lib/diseno-unificado.mjs'
+import { textoVisible as textoVisibleCS } from '../lib/patron-pestana.mjs'
+/** El mismo detector de explicaciones que usa el contrato de diseño: no una copia con otro criterio. */
+const RE_CONECTOR_CS = new RegExp(`\\b(${CONECTORES_CS.join('|')})\\b`, 'iu')
 import { VACIO as VACIO_CS } from '../lib/preservar-anotaciones.mjs'
 
 /** El ancho de la pestaña: la última columna es la de prosa, que el generador vacía a propósito. */
@@ -210,14 +222,23 @@ test('B8 · "POR PAGAR" INCLUYE EL MES EN CURSO — el criterio de posición per
   // —$473.767 con vencimiento el 16 y $2.494.876 de la financiación de junio, ninguna pagada— no
   // estaban en ningún lado. Con el criterio por HECHO (lo que la planilla no marcó "Pagado") el hero
   // da $7.958.394,73, que es exactamente lo que el Libro ya trae como compromiso.
+  // EL TESTIGO CAMBIÓ EL 11/09 (75646f7d) Y EL CRITERIO NO: lo que falta pagar es lo que NO se pagó,
+  // venza cuando venza. Antes se preguntaba `"<>Pagado"` a la columna del cargador en Compras; ahora
+  // se le pregunta al libro por los estados que no son REAL, que es la misma pregunta con el testigo
+  // que el dueño mandó usar cuando ordenó vaciar Compras. Lo que sigue prohibido es medir por fecha.
   const v = String(filaCS(/^⇒ Cuotas sin pagar/)[1])
   assert.doesNotMatch(v, /MONTH\(TODAY\(\)\)/,
     'volvió el criterio de posición: el mes en curso se pierde entero y con él la cuota que vence esta semana')
-  assert.match(v, /"<>Pagado"/, 'lo que falta pagar es lo que la planilla no marcó pagado, no lo que vence después')
-  assert.match(v, /Deuda previsional \(planes de pago\)/, 'tiene que filtrar por el rubro, no por el cliente')
-  // La columna del estado es la del cargador (Pagado/Pendiente), NO el semáforo con emoji: "<>Pagado"
-  // contra "✅ Pagado" no excluye nada y el hero mostraría el total del rubro, pagadas incluidas.
-  assert.match(v, new RegExp(`Compras!\\$${COLS.estado}\\$4`), 'la columna de estado tiene que ser la resuelta por rótulo')
+  assert.doesNotMatch(v, /TODAY\(\)/,
+    'lo que falta pagar no tiene tope de fecha: una cuota vencida sin pagar sigue siendo deuda')
+  for (const estado of ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO']) {
+    assert.match(v, reLibro(LIBRO_CS.col.estado, estado),
+      `falta el estado ${estado}: lo que falta pagar se mide por lo que el libro NO vio salir`)
+  }
+  assert.doesNotMatch(v, reLibro(LIBRO_CS.col.estado, 'REAL'), 'el saldo incluye cuotas ya pagadas')
+  assert.match(v, reLibro(LIBRO_CS.col.rubro, RUBRO_PLANES_CS), 'tiene que filtrar por el rubro, no por el cliente')
+  assert.doesNotMatch(v, new RegExp(`Compras!\\$${COLS.estado}\\$4`),
+    'volvió a preguntarle a la columna Estado de Compras, que el dueño mandó vaciar')
 })
 
 test('B11 · NINGÚN aviso ocupa una fila de la pestaña: los hallazgos salen por la corrida', () => {
@@ -304,8 +325,26 @@ test('los planes bajaron del titular a su cuadro, y sin la aclaración al lado',
   // que el número no puede sumarse a nada por accidente y la aclaración no tiene qué prevenir.
   const planes = filaCS(/^⇒ Cuotas sin pagar/)
   assert.ok(planes, 'se perdió lo que falta pagar de los planes')
-  assert.equal(String(planes[2] ?? ''), VACIO_CS, 'volvió una explicación al lado del importe')
   assert.ok(heroCS(/^⇒ Cuotas sin pagar/) > heroCS(/^4 · /i), 'tiene que estar dentro del cuadro de planes')
+  // ═══ LA CELDA DE AL LADO DEJÓ DE ESTAR VACÍA, Y ESTÁ DICHO POR QUÉ (11 y 12/09/2026) ═══
+  //
+  // Este test exigía `VACIO` en C. La auditoría de cierre del 11/09 puso ahí un aviso: esta fila va a
+  // dar $0 el día que se vacíen las cuotas de Compras, y un $0 sin marca se lee «no debo nada» cuando
+  // en realidad son $4.989.751 que el OS no puede proyectar porque no tiene el cronograma de «Mis
+  // Facilidades». Las dos reglas son ciertas y no se votan: lo que NO puede haber al lado del importe
+  // es una EXPLICACIÓN (dueño, 05/09); una marca condicional que dice qué le falta al número sí.
+  //
+  // Entonces el test cambia de forma en vez de aflojarse: C puede estar vacía o traer una marca, y si
+  // trae marca tiene que cumplir las tres condiciones que la distinguen de una aclaración.
+  const c = String(planes[2] ?? '')
+  if (c !== VACIO_CS) {
+    assert.match(c, /^=IF\(/, 'el aviso tiene que apagarse solo el día que la celda tenga cuotas')
+    const visible = textoVisibleCS(c.replace(/^=IF\(.*?;""?;/s, '').replace(/\)$/, ''))
+    assert.ok(visible.length <= TOPE_PROSA_CS,
+      `${visible.length} caracteres al lado del importe: eso es una aclaración, no una marca — «${visible}»`)
+    assert.doesNotMatch(visible, RE_CONECTOR_CS,
+      `el aviso argumenta en vez de nombrar lo que falta: «${visible}»`)
+  }
 })
 
 test('el control de integridad se declara para que la piel lo dibuje distinto', () => {
@@ -422,74 +461,136 @@ test('la cadena arranca en los jornales: la remuneración proyectada cuelga de s
 // (`<=TODAY()`), que resuelve los meses que vienen; no resuelve la fila de ESTE mes cuya fecha
 // prevista ya pasó y que nadie marcó. Una fecha vencida no es un pago: es una previsión atrasada.
 //
-// Y LA PROPIA PESTAÑA YA SABÍA CÓMO SE PREGUNTA. Doce filas más arriba, el hero de planes de pago
-// mide por HECHO (`"<>Pagado"` sobre la columna del cargador) y por eso da bien. Dos definiciones de
-// "pagado" en la misma pestaña: la de arriba correcta y la de abajo por fecha. La consecuencia se
-// propagaba al hero —REAL inflado ~$10,5M y COMPROMETIDO desinflado en lo mismo, porque sale por
-// diferencia— y a la sección 3, que llegó a declarar $10.494.876 de sobrepago inexistente.
+// ═══ EL TESTIGO CAMBIÓ EL 11/09/2026, Y ESTOS TESTS SEGUÍAN PREGUNTÁNDOLE AL ANTERIOR ═══
 //
-// LO QUE ESTOS TESTS NO HACEN, Y ES DELIBERADO: no leen la fila 25 para decidir nada. Un extractor
-// que retire deuda porque este cuadro dice "pagado" estaría validando el control contra la misma
-// información que lo produce (la fila sale de Compras, y la cadena existe para reemplazar a Compras).
-// El candado de ese lado vive en `lib/libro-extractores-cargas.test.mjs`.
+// Hasta el 11/09 «pagado» era lo que una persona marcó en la columna Estado de Compras, y estos tests
+// exigían exactamente eso: `Compras!$X$4` + `"Pagado"`. El dueño ordenó vaciar de Compras todo lo que
+// no sea Civil/Estructura/Mantenimiento (FASE 7, «terminar con la depuración y la ALOCACIÓN del
+// gasto»), así que el cuadro que contesta «¿cuánto salió efectivamente de la caja?» se habría ido a
+// CERO sin dar un solo error. El commit 75646f7d lo mudó al Libro Canónico: cada fila lee
+// `_MOVIMIENTOS` con estado REAL —el F931 apareado al centavo contra la DDJJ, el pago gremial contra
+// la boleta de su organismo, la cuota de plan contra su importe observado—, y mientras una fila siga
+// viva en Compras el libro la toma de ahí, así que las celdas dan el MISMO número antes y después.
+//
+// LOS DEFECTOS QUE ESTOS TESTS ATRAPAN SON LOS MISMOS; LO QUE CAMBIÓ ES CONTRA QUÉ SE PREGUNTAN:
+//
+//   · «no mirar sólo la fecha» ahora es «el estado tiene que ser REAL». Un movimiento REAL es, por
+//     definición del libro, plata que ya salió y que tiene respaldo; una previsión atrasada entra al
+//     libro como COMPROMETIDO o VENCIDO y no suma acá.
+//   · «el tope de HOY» se conserva igual, por si alguna fuente produjera un REAL con fecha futura.
+//   · «acotar por rubro» es la taxonomía única del libro (`rubro-caja.mjs`), y los cuatro organismos
+//     gremiales se separan por CONTRAPARTE porque comparten rubro.
+//
+// LO QUE ESTOS TESTS NO HACEN, Y ES DELIBERADO: no leen la fila del cuadro para decidir nada. Un
+// extractor que retire deuda porque este cuadro dice "pagado" estaría validando el control contra la
+// misma información que lo produce. El candado de ese lado vive en `libro-extractores-cargas.test.mjs`.
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-/** Las filas del bloque 2. `filaCS` devuelve la PRIMERA coincidencia y el bloque 2 va antes que el 4,
- *  donde FCL/UOCRA/IERIC/FODECO vuelven a aparecer como proyección. */
+/** Un texto como trozo de expresión regular: los rubros traen paréntesis y las columnas, `$`. */
+const esc = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** «esta celda filtra la columna X del libro por este valor», con la columna resuelta por su nombre. */
+const reLibro = (col, valor) => new RegExp(`${esc(rangoLibroCS(col))}="${esc(valor)}"`)
+
 const CONCEPTOS_PAGADOS = ['F931', 'Deuda previsional en cuotas', 'FCL', 'UOCRA', 'IERIC', 'FODECO']
 
-test('2 · PAGADO: una fila que la planilla NO marcó "Pagado" no salió de la caja', () => {
+/**
+ * UNA FILA DEL BLOQUE 2, BUSCADA DENTRO DE SU BLOQUE Y NO EN TODA LA PESTAÑA.
+ *
+ * `filaCS` devuelve la PRIMERA coincidencia de la pestaña entera y eso ya falló: desde que los
+ * gremiales tienen fuente declarada (543f969e) hay una fila «UOCRA» en el bloque 1 —doce columnas
+ * vacías, porque lo declarado de UOCRA vive en otra fila— y los cuatro tests de acá abajo medían ESA.
+ * Es el mismo defecto de anclar por posición que el repo ya pagó, y por eso la búsqueda se acota al
+ * tramo que va del título `2 · …` al título siguiente.
+ */
+function filaPagadaCS(rotulo) {
+  const i0 = gCS.filas.findIndex((f) => ES_SECCION_NUM_CS.test(String(f[0] ?? '')) && /^2 · /.test(String(f[0] ?? '')))
+  assert.ok(i0 >= 0, 'no encontré el bloque «2 · Pagado»')
+  const resto = gCS.filas.slice(i0 + 1)
+  const i1 = resto.findIndex((f) => ES_SECCION_NUM_CS.test(String(f[0] ?? '')))
+  const dentro = i1 >= 0 ? resto.slice(0, i1) : resto
+  const f = dentro.find((x) => String(x[0] ?? '') === rotulo)
+  assert.ok(f, `no encontré la fila «${rotulo}» DENTRO del bloque 2`)
+  return f
+}
+
+/** La celda de agosto (índice 8) de una fila del bloque 2: las doce se generan igual. */
+const agostoPagado = (rotulo) => String(filaPagadaCS(rotulo)[8] ?? '')
+
+test('2 · PAGADO: lo que no salió del banco no salió de la caja', () => {
   const sinEstado = []
   for (const rotulo of CONCEPTOS_PAGADOS) {
-    const f = filaCS(new RegExp(`^${rotulo}$`))
-    assert.ok(f, `no encontré la fila «${rotulo}» del bloque de lo pagado`)
-    // Se mira una columna cualquiera de la grilla mensual (ago = índice 8): las doce se generan igual.
-    const v = String(f[8] ?? '')
-    if (!new RegExp(`Compras!\\$${COLS.estado}\\$4`).test(v) || !/"Pagado"/.test(v)) sinEstado.push(`${rotulo}: ${v}`)
+    const v = agostoPagado(rotulo)
+    // El estado del LIBRO, por su columna declarada: `REAL` y sólo `REAL`. Si la celda no nombra el
+    // estado, está sumando por fecha —que es cómo publicó $10.494.876 de F931 "pagado" en agosto
+    // contra $0 realmente pagados (Compras f469 «Proyectado» y f725 «Pendiente», 17/08/2026)—.
+    if (!reLibro(LIBRO_CS.col.estado, 'REAL').test(v)) sinEstado.push(`${rotulo}: ${v}`)
+    // Y NINGÚN estado que no sea REAL: un COMPROMETIDO o un VENCIDO acá vuelven a publicar previsión.
+    for (const otro of ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO', 'PAGADO']) {
+      assert.doesNotMatch(v, new RegExp(`="${otro}"`), `«${rotulo}» suma ${otro} en el cuadro de lo pagado`)
+    }
   }
   assert.deepEqual(sinEstado, [],
-    'estas filas dicen "salió de la caja" mirando sólo la FECHA. Al 17/08 eso publicó $10.494.876 de '
-    + `F931 pagado en agosto contra $0 realmente pagados:\n${sinEstado.join('\n')}`)
+    `estas filas dicen "salió de la caja" sin exigir que el libro lo haya visto salir:\n${sinEstado.join('\n')}`)
 })
 
 test('2 · PAGADO: el tope de HOY se queda, pero ya no decide solo', () => {
-  // El arreglo del 23/07 sigue vigente y hace falta: una fila marcada "Pagado" con fecha de caja
-  // futura tampoco salió todavía. Los dos filtros son necesarios y ninguno reemplaza al otro.
+  // El arreglo del 23/07 sigue vigente y hace falta: si alguna fuente produjera un REAL con fecha de
+  // caja futura, el mes en curso lo mostraría como salido. Los dos filtros son necesarios.
   for (const rotulo of CONCEPTOS_PAGADOS) {
-    assert.match(String(filaCS(new RegExp(`^${rotulo}$`))[8]), /TODAY\(\)/,
+    assert.match(agostoPagado(rotulo), /TODAY\(\)/,
       `«${rotulo}» perdió el tope de hoy: lo previsto para diciembre volvería a contarse como pagado`)
   }
 })
 
 test('2 · PAGADO: la cuota de un plan no entra por la fila del F931', () => {
-  // Compras f725 tiene "F931" en Cliente/Asignación y rubro «Deuda previsional (planes de pago)».
-  // Con el criterio por cliente solo, sus $2.494.876 sumaban en la fila del F931 mientras la fila del
-  // plan los contaba aparte: el mismo peso, dos veces, dentro del mismo cuadro.
-  const f931 = String(filaCS(/^F931$/)[8])
-  assert.match(f931, new RegExp(`Compras!\\$${COLS.rubro}\\$4`),
-    'la fila del F931 no acota por rubro: una cuota de plan rotulada "F931" se cuenta como F931')
-  assert.match(f931, /Nómina · Cargas sociales/, 'el rubro tiene que ser el de la taxonomía única')
+  // El defecto original: Compras f725 tenía "F931" en Cliente/Asignación y rubro «Deuda previsional
+  // (planes de pago)», así que sus $2.494.876 sumaban en la fila del F931 mientras la fila del plan
+  // los contaba aparte — el mismo peso, dos veces, dentro del mismo cuadro. En el libro los separa el
+  // RUBRO, que es de la taxonomía única: los dos rubros tienen que ser distintos y cada fila el suyo.
+  const f931 = agostoPagado('F931')
+  const plan = agostoPagado('Deuda previsional en cuotas')
+  assert.notEqual(RUBRO_CARGAS_CS, RUBRO_PLANES_CS, 'si los dos rubros fueran el mismo, el cuadro contaría doble')
+  assert.match(f931, reLibro(LIBRO_CS.col.rubro, RUBRO_CARGAS_CS), 'la fila del F931 no acota por su rubro')
+  assert.doesNotMatch(f931, new RegExp(`="${esc(RUBRO_PLANES_CS)}"`), 'la fila del F931 se come las cuotas de los planes')
+  assert.match(plan, reLibro(LIBRO_CS.col.rubro, RUBRO_PLANES_CS), 'la fila del plan no acota por su rubro')
+  assert.doesNotMatch(plan, new RegExp(`="${esc(RUBRO_CARGAS_CS)}"`), 'la fila del plan se come el F931 corriente')
 })
 
-test('2 · PAGADO: los gremiales se acotan a SU rubro', () => {
-  for (const rotulo of ['FCL', 'UOCRA', 'IERIC', 'FODECO']) {
-    const v = String(filaCS(new RegExp(`^${rotulo}$`))[8])
-    assert.match(v, /Nómina · Gremiales/,
-      `«${rotulo}» no acota por rubro: cualquier fila con ese texto en Cliente/Asignación entra al cuadro`)
+test('2 · PAGADO: los cuatro gremiales comparten rubro y se separan por contraparte', () => {
+  // El rubro no alcanza: «Nómina · Gremiales» lleva cuatro organismos y la pestaña los muestra uno
+  // por uno. Sin el filtro por contraparte, las cuatro filas publicarían las cuatro el mismo total.
+  const vistos = new Set()
+  for (const [rotulo, contrapartes] of ORGANISMOS_CS) {
+    const v = agostoPagado(rotulo)
+    assert.match(v, reLibro(LIBRO_CS.col.rubro, RUBRO_GREMIALES_CS), `«${rotulo}» no acota por su rubro`)
+    for (const nombre of contrapartes) {
+      assert.match(v, reLibro(LIBRO_CS.col.contraparte, nombre),
+        `«${rotulo}» no nombra a «${nombre}»: el organismo que el libro llame así desaparece del cuadro`)
+    }
+    assert.ok(!vistos.has(v), `«${rotulo}» publica la misma celda que otro organismo: el desglose es decorativo`)
+    vistos.add(v)
   }
+  // Y EL CONTROL QUE CIERRA EL DESGLOSE: un nombre que falte no da error, da una fila de menos. La
+  // resta del rubro entero contra las cuatro filas tiene que existir, o el hueco es invisible.
+  assert.ok(filaCS(/^⇒ Control · gremiales sin clasificar/), 'se fue el control del desglose gremial')
 })
 
 test('UNA SOLA DEFINICIÓN DE "PAGADO" EN TODA LA PESTAÑA', () => {
-  // El defecto no fue una fórmula: fue que convivieran dos criterios para la misma palabra. Este test
-  // los ata. Si mañana alguien agrega un cuadro de "lo que salió" con un tercer criterio, se pone rojo.
+  // El defecto no fue una fórmula: fue que convivieran dos criterios para la misma palabra. Lo pagado
+  // es REAL en el libro y lo que falta pagar es lo MISMO libro, mismo rubro, estados que no son REAL.
+  // Las dos caras de una sola definición: ninguna de las dos mira la columna Estado de Compras.
   const sinPagar = String(filaCS(/^⇒ Cuotas sin pagar/)[1])
-  assert.match(sinPagar, new RegExp(`Compras!\\$${COLS.estado}\\$4`), 'el saldo de planes mide por estado')
+  assert.match(sinPagar, reLibro(LIBRO_CS.col.estado, 'COMPROMETIDO'), 'el saldo de planes dejó de medir en el libro')
+  assert.doesNotMatch(sinPagar, reLibro(LIBRO_CS.col.estado, 'REAL'), 'el saldo de planes incluye lo ya pagado')
   for (const rotulo of CONCEPTOS_PAGADOS) {
-    assert.match(String(filaCS(new RegExp(`^${rotulo}$`))[8]), new RegExp(`Compras!\\$${COLS.estado}\\$4`),
-      `«${rotulo}» mide "pagado" por un criterio distinto al del hero, en la misma pestaña`)
+    const v = agostoPagado(rotulo)
+    assert.match(v, reLibro(LIBRO_CS.col.estado, 'REAL'),
+      `«${rotulo}» mide "pagado" por un criterio distinto al del saldo, en la misma pestaña`)
+    assert.doesNotMatch(v, new RegExp(`Compras!\\$${COLS.estado}\\$4`),
+      `«${rotulo}» volvió a preguntarle a la columna Estado de Compras, que el dueño mandó vaciar`)
   }
 })
-
 // ═══ EL RANGO REAL SIGUE AL ÚLTIMO MES DECLARADO (27/08/2026, auditoría de la pestaña) ═══
 //
 // `REALES` estaba congelado en `$B$:$G$` —enero a junio— con julio ya presentado al lado. De ese
@@ -549,8 +650,29 @@ test('los meses sin DDJJ traen un NÚMERO, no «≈ $8.717.159 proy.»', () => {
 test('la proyección se declara para que la piel la pinte gris e itálica', () => {
   // Sin esta declaración el número proyectado se dibuja idéntico al declarado, que es exactamente
   // mezclar dos ventanas de tiempo — y la palabra «proy.» ya no está para avisarlo.
-  const fDecl = gCS.filas.findIndex((f) => String(f[0] ?? '').startsWith(ROTULOS_CARGAS.declarado)) + 1
-  assert.deepEqual(gCS.proyectadas, [{ fila: fDecl, meses: [7, 8, 9, 10, 11, 12] }])
+  //
+  // ═══ SON DOS FILAS DESDE EL 11/09/2026, Y NO ES UNA FILA QUE SE COLÓ (543f969e) ═══
+  //
+  // La línea «Nómina · Gremiales» no tenía fuente declarada en ninguna parte: el mes que va de la
+  // presentación de la boleta al pago caía a la fila PLANA de Compras y sep-26 publicaba $1.500.000
+  // redondos donde la cadena mide $1.649.741. `CARGAS_MES_GREMIALES_DECLARADO` es esa fila, y como
+  // toda fila que mezcla declarado con proyectado, tiene que declarar CUÁLES meses son proyección.
+  //
+  // Y LAS DOS FRONTERAS SON DISTINTAS A PROPÓSITO: las DDJJ se atrasan por separado —el F931 hasta
+  // agosto, la boleta de UOCRA hasta julio—, así que cada fila proyecta desde SU propio límite. Con
+  // una sola frontera, agosto quedaba sin declarado Y sin proyección, que es por donde entraba la
+  // fila plana. Acá el caso base no declara ni un mes de UOCRA, así que sus doce son proyección.
+  const fila = (rotulo) => gCS.filas.findIndex((f) => String(f[0] ?? '').startsWith(rotulo)) + 1
+  assert.deepEqual(gCS.proyectadas, [
+    { fila: fila(ROTULOS_CARGAS.declarado), meses: [7, 8, 9, 10, 11, 12] },
+    { fila: fila(ROTULOS_CARGAS.gremialesDeclarado), meses: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+  ])
+  // TODA fila declarada como proyección tiene que ser una fila de DECLARADO: si apareciera acá una
+  // fila de lo pagado, la piel pintaría de gris plata que ya salió del banco.
+  for (const { fila: f } of gCS.proyectadas) {
+    assert.match(String(gCS.filas[f - 1][0]), /^⇒ Total declarado/,
+      'se declaró como proyección una fila que no es un declarado: la piel la pintaría gris')
+  }
 })
 
 test('la fila «Total declarado» NO totaliza el año: sería declarado + proyectado en una cifra', () => {

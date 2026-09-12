@@ -328,9 +328,17 @@ export function bloquePlanes(G, { ps, C }) {
   // El aviso viaja en la celda C de ESTA MISMA fila —no en una fila nueva, que correría todas las de
   // abajo y sus rangos con nombre— y es CONDICIONAL: el día que «Mis Facilidades» entre a
   // `datos/planes-arca.json` y la celda tenga cuotas, desaparece solo.
+  //
+  // ES UNA MARCA, NO UNA EXPLICACIÓN (12/09/2026). Nació diciendo «▲ sin cronograma de «Mis
+  // Facilidades»: las cuotas que faltan no se proyectan» —76 caracteres— y eso es exactamente la
+  // aclaración que el dueño prohibió el 05/09: el contrato de diseño la mide en C59 y la llama prosa.
+  // El aviso se queda porque un $0 que significa «no puedo proyectar» tiene que decirlo en la
+  // pantalla; lo que se va es la oración que lo argumenta. Qué significa la marca lo dice la leyenda
+  // de la fila y lo repite `cash-flow-cobertura.mjs` en cada corrida, que es donde el contrato manda
+  // que viva una explicación.
   const fSinPagar = G.push([ROTULOS_CARGAS.planesSinPagar,
     formulaLibro({ rubros: [RUBRO_PLANES], estados: ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'], signo: -1, medida: 'magnitud' }),
-    `=IF(${formulaLibro({ rubros: [RUBRO_PLANES], estados: ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'], signo: -1, medida: 'magnitud' }).slice(1)}>0;"";"${ALERTA} sin cronograma de «Mis Facilidades»: las cuotas que faltan no se proyectan")`,
+    `=IF(${formulaLibro({ rubros: [RUBRO_PLANES], estados: ['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'], signo: -1, medida: 'magnitud' }).slice(1)}>0;"";"${ALERTA} sin cronograma de «Mis Facilidades»")`,
     ...Array(10).fill(VACIO), VACIO,
     `Libro \`_MOVIMIENTOS\`, rubro "${RUBRO_PLANES}" que todavía no es REAL — incluidas las vencidas sin pagar y las de otros años, que esta tabla no llega a mostrar. Si da $0 con cuotas vivas, falta el cronograma del plan: hay que traer «Mis Facilidades» de ARCA a orquestador/datos/planes-arca.json.`])
   const fCtrl = G.push([rotuloTotal('Control contra Compras'), `=SUMIF(Compras!$${C.rubro}$4:$${C.rubro};"${RUBRO_PLANES}";${rango(C.total)})`,
