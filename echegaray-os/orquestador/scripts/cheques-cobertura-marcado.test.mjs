@@ -54,13 +54,26 @@ const escenario = ({ sucias = [] } = {}) => {
   return { datos, resp, colM }
 }
 
-/** Corre el marcado capturando lo que grita por consola. */
+/**
+ * Corre el marcado capturando lo que grita por consola.
+ *
+ * ═══ EL CANDADO SE DECLARA EN EL FIXTURE (12/09/2026) ═══
+ *
+ * Estos cinco tests llamaban a `marcarInstrumentos` sin `esBloqueada`, y entonces la función se iba a
+ * preguntarle a la BASE de quién es la pestaña. «Cheques Emitidos» está candada de verdad desde el
+ * 10/09 13:23 («el dueño edita»), así que desde ese día el paso salía con ⏸ sin escribir nada y los
+ * cinco tests se pusieron rojos sin que una sola regla se hubiera roto: medían el estado del mundo,
+ * no la regla. Acá se declara SIN candado, que es el escenario del que hablan; que una pestaña candada
+ * no se toque lo prueba su propio test, con `esBloqueada: async () => true`.
+ */
 const correr = async (colM, datos, resp) => {
   const google = fakeGoogle(colM)
   const dicho = []
   const warn = console.warn; const log = console.log
   console.warn = (...a) => dicho.push(a.join(' ')); console.log = (...a) => dicho.push(a.join(' '))
-  try { await marcarInstrumentos(google, datos, resp) } finally { console.warn = warn; console.log = log }
+  try { await marcarInstrumentos(google, datos, resp, { esBloqueada: async () => false }) } finally {
+    console.warn = warn; console.log = log
+  }
   return { google, dicho: dicho.join('\n') }
 }
 
@@ -118,7 +131,7 @@ test('si la columna se llenó de contenido ajeno, ahí sí aborta y dice dónde 
   const { datos, resp, colM } = escenario({ sucias })
   const google = fakeGoogle(colM)
   await assert.rejects(
-    () => marcarInstrumentos(google, datos, resp),
+    () => marcarInstrumentos(google, datos, resp, { esBloqueada: async () => false }),
     (e) => /me niego a escribir/.test(e.message) && new RegExp(`M${FILA_DATO0}=`).test(e.message),
   )
   assert.equal(google.escrituras.length, 0, 'un aborto no puede haber escrito nada antes')
