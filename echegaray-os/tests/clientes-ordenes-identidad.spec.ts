@@ -75,13 +75,16 @@ test('la ficha del cliente muestra las OC por trabajo, y los TERMINADOS con sus 
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto('/clientes/messina')
 
-  // Las cuatro cifras de la cabecera: lo que le vendimos y los papeles que lo respaldan.
+  // ═══ LOS TOTALES DE OC Y OP SE FUERON DEL TITULAR (dueño, 11/09/2026 18:42) ═══
+  //
+  // «Esas columnas OC/OP quitarlas de TODO el CRM porque deben estar en la sección Órdenes.» En el
+  // titular quedaban al lado de un contratado NETO invitando a una resta que no significa nada, y
+  // eran una tercera lectura de los mismos papeles. No se perdieron: están en el pie de la solapa
+  // «Órdenes de compra y de pago», sumados de las MISMAS filas que esa cara dibuja.
   const cifras = page.getByTestId('cifras-cliente')
-  // «c/IVA» EN EL RÓTULO: el importe de una OC es el total del PDF y «Contratado en curso», tres
-  // cifras a la izquierda, es neto. Sin la unidad escrita, las dos invitan a una resta que no
-  // significa nada.
-  await expect(cifras).toContainText('OC recibidas c/IVA')
-  await expect(cifras).toContainText('OP recibidas c/IVA')
+  await expect(cifras).toBeVisible()
+  await expect(cifras).not.toContainText('OC recibidas')
+  await expect(cifras).not.toContainText('OP recibidas')
 
   // ═══ LAS COLUMNAS OC/OP SE FUERON DE LA TABLA (dueño, 11/09/2026 18:42) ═══
   //
@@ -117,6 +120,17 @@ test('la ficha del cliente muestra las OC por trabajo, y los TERMINADOS con sus 
   await expect(cerrada.getByTestId('ordenes-de-la-obra')).toBeVisible()
 
   await page.screenshot({ path: 'tests/capturas/cliente-obras-oc-1600.png', fullPage: false })
+
+  // ═══ Y EL ÚNICO LUGAR DONDE SE LEEN SUMADOS ═══
+  //
+  // Si el pie desaparece, los dos totales no quedan en ninguna parte del CRM — que es peor que
+  // tenerlos repetidos. Se afirma la FORMA («N OC · $…»), no el importe: el bajador de Gmail trae
+  // órdenes nuevas y un número clavado se pondría rojo sin que ninguna regla se rompa.
+  await page.goto('/clientes/messina?vista=ordenes')
+  const pie = page.getByTestId('total-ordenes-cliente')
+  await expect(pie).toBeVisible({ timeout: 30000 })
+  await expect(pie).toContainText(/\d+ OC · \$ ?[\d.]+/)
+  await expect(pie).toContainText(/\d+ OP · \$ ?[\d.]+/)
 })
 
 test('Documentos separa OC, OP, certificados de retención y facturas nuestras', async ({ page }) => {
