@@ -64,7 +64,12 @@ const LABEL: Record<Solapa, string> = {
   obras: 'Trabajos',
   // LAS OC Y LAS OP DEL CLIENTE, EN SU SECCIÓN (dueño, 11/09/2026): salieron de las columnas de la
   // cartera y viven acá, agrupadas por trabajo y con su PDF.
-  ordenes: 'Órdenes',
+  //
+  // EL RÓTULO DICE LAS DOS COSAS (dueño, 11/09/2026 18:42: «la sección Órdenes tiene que ser órdenes
+  // de compra y de pago»). «Órdenes» solo no distinguía lo que el cliente nos ENCARGA de lo que
+  // ORDENA PAGAR, y ése es justamente el lugar a donde se mandaron las dos columnas que se quitaron
+  // de la tabla de trabajos: el rótulo tiene que decir que las dos están acá.
+  ordenes: 'Órdenes de compra y de pago',
   presupuestos: 'Presupuestos',
   documentos: 'Documentos',
   actividad: 'Actividad',

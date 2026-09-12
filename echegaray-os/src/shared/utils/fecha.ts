@@ -49,6 +49,13 @@ export const diaMesAnioISO = (iso: string | null | undefined) =>
 export const diaMesISO = (iso: string | null | undefined) =>
   iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null
 
+/** «05/01/2026» — el año ENTERO, para un `title` donde la fecha se lee una vez y tiene que ser
+ *  inequívoca. Se corta del texto del ISO como `diaMesISO`: sin `Date` de por medio, un
+ *  `2026-01-05` no puede volverse 04/01 por el huso de Buenos Aires (−3 sobre la medianoche UTC).
+ *  Vacío → null, para que el llamador escriba la ausencia con sus palabras. */
+export const diaMesAnioCompletoISO = (iso: string | null | undefined) =>
+  iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : null
+
 const dosDigitos = (n: number) => String(n).padStart(2, '0')
 
 function comoFecha(iso: string | null | undefined): Date | null {

@@ -178,6 +178,14 @@ export interface FuentesActividad {
     creada_en: string | null
     fecha_inicio_real: string | null
     fecha_fin_real: string | null
+    /**
+     * LA PRIMERA FECHA CON HORAS CARGADAS — el único inicio de obra que está PROBADO.
+     *
+     * `creada_en` es cuándo se cargó la obra en el sistema, y en Messina CINCO obras comparten el
+     * mismo instante (2026-09-07 16:39:47) porque se cargaron juntas: la línea de tiempo decía que
+     * las cinco «nacieron» ese día, que es falso. Cuando esta fecha existe, manda.
+     */
+    inicio_con_horas?: string | null
   }[]
   documentos: {
     drive_file_id: string

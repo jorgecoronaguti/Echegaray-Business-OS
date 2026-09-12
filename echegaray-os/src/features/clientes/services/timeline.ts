@@ -19,14 +19,33 @@
 // · CADA edición de la ficha. La base guarda `updated_at`, que es la ÚLTIMA. Por eso el evento se
 //   llama «Última modificación» y no «Ficha editada»: decir «editada» en singular sugeriría que fue
 //   la única vez.
-// · Si una obra se CREÓ para este cliente o se VINCULÓ después. No hay columna que lo distinga, así
-//   que el evento dice «Alta de la obra», que es lo único que consta.
+// · Si una obra se CREÓ para este cliente o se VINCULÓ después. No hay columna que lo distinga.
+//
+// ═══ `creada_en` NO ES EL INICIO DE LA OBRA (dueño, 11/09/2026: «la cronología se rompe») ═══
+//
+// En Messina CINCO obras tienen el MISMO instante de alta —2026-09-07 16:39:47, la carga masiva que
+// las subió al OS— y la línea de tiempo las publicaba como «Alta de la obra» ese día. El dueño leía
+// que las cinco habían nacido el 07/09, cuando el Playón venía de julio.
+//
+// Desde hoy el evento de cada obra se decide por la EVIDENCIA:
+//
+//   primeras horas cargadas  →  «Inicio de obra», con esa fecha. Es lo único que prueba que alguien
+//                               estuvo trabajando, y el alta en el sistema pasa al detalle.
+//   sin horas                →  «Alta en el sistema», con `creada_en` y dicho con esas palabras.
+//                               NUNCA como inicio: cargar una obra no es empezarla.
 
 // NO FORMATEA NADA. Los importes salen como número y las fechas como vinieron: el peso con
 // separadores y la fecha en dd/mm/aa son decisiones de la pantalla. Una función pura que devuelve
 // '$1.500.000' ya no se puede sumar, comparar ni probar sin escribir el separador en el test.
 
 import type { EventoCliente, FuentesActividad, LineaDeTiempo } from '../types'
+
+/** «07/09» de un `timestamptz` o de un ISO, para el detalle de un evento. No formatea el resto: ver
+ *  la cabecera — los importes y las fechas de la PANTALLA los decide la pantalla. Esta fecha es
+ *  parte del TEXTO del evento, no una columna. */
+function diaMes(iso: string): string {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+}
 
 /** Sin fecha no hay evento. Devuelve la clave de orden, o null si el registro no la tiene. */
 function alOrden(iso: string | null | undefined): number | null {
@@ -92,20 +111,37 @@ function deLasObras(f: FuentesActividad, out: EventoCliente[]): number {
   let sin = 0
   for (const o of f.obras) {
     const href = `/obras/${o.obra_id}`
-    sin += agregar(out, o.creada_en, {
-      clave: `obra-alta-${o.obra_id}`,
-      tipo: 'obra_alta',
-      titulo: `Alta de la obra: ${o.nombre}`,
-      detalle: null,
-      href,
-      fuente: 'Obras',
-    })
-    // Inicio y fin REALES, no los planificados: un plan es una intención, no un hecho ocurrido.
-    if (o.fecha_inicio_real) {
-      sin += agregar(out, o.fecha_inicio_real, {
-        clave: `obra-inicio-${o.obra_id}`, tipo: 'obra_inicio',
-        titulo: `Arranque de obra: ${o.nombre}`, detalle: null, href, fuente: 'Obras',
+    // EL INICIO PROBADO GANA AL ALTA EN EL SISTEMA. Ver la cabecera: cinco obras cargadas en el
+    // mismo minuto no nacieron el mismo día.
+    if (o.inicio_con_horas) {
+      sin += agregar(out, o.inicio_con_horas, {
+        clave: `obra-inicio-${o.obra_id}`,
+        tipo: 'obra_inicio',
+        titulo: `Inicio de obra: ${o.nombre}`,
+        detalle: `según las primeras horas cargadas${
+          o.creada_en ? ` · alta en el sistema ${diaMes(o.creada_en)}` : ''}`,
+        href,
+        fuente: 'Obras',
       })
+    } else {
+      sin += agregar(out, o.creada_en, {
+        clave: `obra-alta-${o.obra_id}`,
+        tipo: 'obra_alta',
+        titulo: `Alta en el sistema: ${o.nombre}`,
+        // QUE NO TENGA HORAS ES PARTE DEL HECHO: sin ellas, el OS no sabe si la obra arrancó.
+        detalle: 'sin horas cargadas: el inicio no está probado',
+        href,
+        fuente: 'Obras',
+      })
+      // LA FECHA DECLARADA SÓLO CUANDO NO HAY HORAS: con horas sería un segundo «empezó» en la misma
+      // línea, y el declarado es una intención cargada a mano.
+      if (o.fecha_inicio_real) {
+        sin += agregar(out, o.fecha_inicio_real, {
+          clave: `obra-arranque-${o.obra_id}`, tipo: 'obra_inicio',
+          titulo: `Arranque declarado: ${o.nombre}`,
+          detalle: 'cargado a mano en la obra, sin horas que lo respalden', href, fuente: 'Obras',
+        })
+      }
     }
     if (o.fecha_fin_real) {
       sin += agregar(out, o.fecha_fin_real, {

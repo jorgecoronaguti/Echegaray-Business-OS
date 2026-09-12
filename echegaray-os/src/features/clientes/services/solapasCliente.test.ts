@@ -10,13 +10,15 @@ const CUENTAS = { obras: 3, presupuestos: 2, documentos: 18 }
 // EL RÓTULO DE LA PRIMERA CARA CAMBIÓ A «TRABAJOS» (10/09/2026) y su CLAVE no: los enlaces con
 // `?vista=obras` que ya circulan tienen que seguir abriendo la misma cara.
 
-// «ÓRDENES» ES LA SEGUNDA CARA (dueño, 11/09/2026): las OC y las OP del cliente, en su sección,
-// después de sacarlas de las columnas de la cartera.
+// «ÓRDENES DE COMPRA Y DE PAGO» ES LA SEGUNDA CARA (dueño, 11/09/2026): las OC y las OP del cliente,
+// en su sección, después de sacarlas de las columnas de la cartera. El rótulo NOMBRA LAS DOS a pedido
+// del dueño (18:42): es el lugar a donde se mandaron las dos columnas que se quitaron de la tabla de
+// trabajos, y «Órdenes» solo no distinguía lo que el cliente encarga de lo que ordena pagar.
 
-test('las nueve caras, con los rótulos del mockup y «Órdenes» al lado de «Trabajos»', () => {
+test('las nueve caras, con los rótulos del mockup y las órdenes al lado de «Trabajos»', () => {
   const s = solapasDeCliente({ veEconomia: true, ...CUENTAS })
   assert.deepEqual(s.map((x) => x.label), [
-    'Trabajos', 'Órdenes', 'Cobranzas', 'Presupuestos', 'Documentos', 'Actividad',
+    'Trabajos', 'Órdenes de compra y de pago', 'Cobranzas', 'Presupuestos', 'Documentos', 'Actividad',
     'Cuenta corriente', 'Esquema de pago', 'Acceso al portal',
   ])
   // Sólo cuentan las tres que el canónico 26 numera. Un «0» al lado de «Cuenta corriente» se

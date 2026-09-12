@@ -83,10 +83,19 @@ test('la ficha del cliente muestra las OC por trabajo, y los TERMINADOS con sus 
   await expect(cifras).toContainText('OC recibidas c/IVA')
   await expect(cifras).toContainText('OP recibidas c/IVA')
 
-  // ME - PLAYÓN DE AZUFRE: su OC y su OP, cada una en SU columna.
+  // ═══ LAS COLUMNAS OC/OP SE FUERON DE LA TABLA (dueño, 11/09/2026 18:42) ═══
+  //
+  // «Esas columnas OC/OP quitarlas de todo el CRM porque deben estar en la sección Órdenes.» Los
+  // NÚMEROS de las OC siguen pegados al nombre del trabajo —«OC 1984 · 18/06 · $4.336.587», el mismo
+  // componente que la lista de `/clientes`— y los TOTALES viven en la solapa «Órdenes de compra y de
+  // pago». En su lugar, la fila publica las HH acumuladas del trabajo.
   const activa = page.getByTestId('fila-obra-cliente').filter({ hasText: 'PLAYÓN DE AZUFRE' }).first()
-  await expect(activa.getByTestId('oc-obra-cliente')).toContainText('78.650.000')
-  await expect(activa.getByTestId('op-obra-cliente')).toContainText('39.325.000')
+  await expect(activa.getByTestId('oc-obra-cliente')).toHaveCount(0)
+  await expect(activa.getByTestId('op-obra-cliente')).toHaveCount(0)
+  await expect(activa.getByTestId('ordenes-de-la-obra')).toBeVisible()
+  // Y LA COLUMNA NUEVA DICE ALGO: o las horas, o «—» si esta obra no tiene ninguna cargada. Lo que
+  // no puede es estar vacía, que es «no pude leerlas» — y esta sesión es Administración.
+  await expect(activa.getByTestId('hh-obra-cliente')).toHaveText(/[\d.]+|—/)
 
   // ═══ LA OBRA CERRADA CON PAPELES SE VE (dueño: «adentro de cada cliente también») ═══
   //
@@ -102,10 +111,10 @@ test('la ficha del cliente muestra las OC por trabajo, y los TERMINADOS con sus 
   await expect(page.getByTestId('titulo-grupo-obras')).toContainText('Terminados')
   const cerrada = page.getByTestId('fila-obra-cliente').filter({ hasText: 'BASES TANQUE SO2' }).first()
   await expect(cerrada).toBeVisible()
-  // CON UNA SOLA, LA CELDA DICE CUÁL —«OP 4865»— y con varias las cuenta —«2 OC»—: las dos formas
-  // son correctas y el invariante es que publique un IMPORTE y una identificación, no cuál de las dos.
-  await expect(cerrada.getByTestId('oc-obra-cliente')).toHaveText(/\$ ?[\d.]+\s*(\d+ OC|OC [\d-]+)/)
-  await expect(cerrada.getByTestId('op-obra-cliente')).toHaveText(/\$ ?[\d.]+\s*(\d+ OP|OP [\d-]+)/)
+  // LOS IMPORTES DE SUS PAPELES YA NO ESTÁN EN LA FILA: se leen en «Órdenes de compra y de pago».
+  // Lo que la fila de una obra TERMINADA sigue teniendo que publicar es su identidad y sus papeles
+  // citados junto al nombre; si la obra cerrada volviera a esconderse, esto da rojo igual.
+  await expect(cerrada.getByTestId('ordenes-de-la-obra')).toBeVisible()
 
   await page.screenshot({ path: 'tests/capturas/cliente-obras-oc-1600.png', fullPage: false })
 })

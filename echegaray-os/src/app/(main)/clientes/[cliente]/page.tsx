@@ -76,6 +76,9 @@ import { resumenAccesos } from '@/features/clientes/services/reglasPortal'
 import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
 import { A_SANGRE, solapaDe, solapasDeCliente } from '@/features/clientes/services/solapasCliente'
 import { tasaDeConversion } from '@/features/clientes/services/tasaConversion'
+import { leerDesgloseHH } from '@/features/clientes/services/desgloseHH'
+import { DesgloseHH } from '@/features/clientes/components/DesgloseHH'
+import { PieHHDelCliente } from '@/features/clientes/components/PieHHDelCliente'
 import { Aviso } from '@/shared/components/ds'
 import { FormAccion } from '@/shared/components/ui'
 import { EstadoError } from '@/shared/components/estado'
@@ -126,6 +129,17 @@ type Query = {
    * abre en el panel lateral de esta misma ficha, con la MISMA lectura que usa `/clientes`.
    */
   trabajo?: string
+  /**
+   * EL DESGLOSE DE HORAS DE UN TRABAJO (`?hh=<obra_id>`), y `hhq` la quincena que dibuja.
+   *
+   * «Que de ahí me lleve a un desglose de la obra entera con las personas por día que participaron
+   * de las HH» (dueño, 11/09/2026 18:38). Va en la URL y no en un estado de cliente por la misma
+   * razón que el resto de los filtros del OS: se comparte por chat y vuelve con el botón de atrás.
+   * Reemplaza la cara Obras entera en vez de abrirse en un panel: la grilla persona × día necesita
+   * todo el ancho, y a 300px de panel lateral no se lee.
+   */
+  hh?: string
+  hhq?: string
 }
 
 export default async function ClientePage({ params, searchParams }: {
@@ -421,6 +435,35 @@ export default async function ClientePage({ params, searchParams }: {
     ? await getOrdenesDe(supabase, { clienteId: id, obraId: trabajoAbierto })
     : null
 
+  // ═══ EL DESGLOSE DE HORAS, SÓLO SI ESTÁ ABIERTO (dueño, 11/09/2026 18:38) ═══
+  //
+  // UN VIAJE MÁS, Y SÓLO CUANDO SE PIDE: no entra en `pantalla_cliente` porque es de UNA obra y
+  // viajaría en las nueve caras para nada. La obra tiene que ser DE ESTE CLIENTE —una URL tipeada a
+  // mano no pide el desglose de la obra de otro—; la cerradura sigue siendo la RLS adentro de la
+  // función, esto es no hacerle la pregunta.
+  const hhAbierta = q.hh && todas.some((o) => o.obra_id === q.hh) ? q.hh : null
+  const desglose = hhAbierta && solapa === 'obras'
+    ? await leerDesgloseHH(supabase, hhAbierta, q.hhq ?? null)
+    : { desglose: null, error: null }
+
+  /** Adónde lleva el número de HH de cada fila: su desglose, en esta misma ficha. */
+  const hrefDesgloseHH = (obraId: string) => url({ hh: obraId, hhq: null })
+  /** La misma obra, otra quincena. Función declarada y no arrow en el JSX (React #419). */
+  const hrefPeriodoHH = (desde: string) => url({ hh: hhAbierta, hhq: desde })
+
+  // ═══ EL ACUMULADO DE HH DEL CLIENTE (dueño, 11/09/2026 18:38) ═══
+  //
+  // «Un acumulado HH del CLIENTE (suma de sus obras).» Se suma de las MISMAS filas que dibuja la
+  // tabla y no se pide a la base: cada obra publica lo suyo y ninguna obra mayor suma las de sus
+  // adicionales, así que sumar las filas no cuenta dos veces el mismo jornal. `null` = no puedo
+  // leerlas (rol sin permiso), que no es «este cliente no tiene horas».
+  const hhDelCliente = ficha.horasPorObra == null
+    ? null
+    : todas.reduce<number | null>((a, o) => {
+      const x = ficha.horasPorObra?.get(o.obra_id)?.hhReal ?? null
+      return x == null ? a : (a ?? 0) + x
+    }, null)
+
   // LOS CUATRO NÚMEROS DE LA CUENTA, SUMADOS DE SUS TRABAJOS (misma fuente que `/clientes`).
   const cuentaTrabajos = cuentaDeTrabajos(
     todas.map((o) => ({ obra_id: o.obra_id, contratado: baseContractualDe(economia?.get(o.obra_id)) })),
@@ -609,12 +652,38 @@ export default async function ClientePage({ params, searchParams }: {
                   </div>
                 )}
 
+                {/* ═══ EL DESGLOSE REEMPLAZA LA LISTA, NO SE ABRE AL LADO (dueño, 11/09/2026 18:38) ═══
+
+                    La grilla persona × día tiene hasta 16 columnas de fechas: en el panel lateral de
+                    300px no se lee, y debajo de la tabla obligaría a recorrer toda la lista para
+                    llegar. Se vuelve con «‹ obras del cliente», que es un enlace y no el botón de
+                    atrás del navegador. */}
+                {desglose.error && <Aviso tono="neg">{`No pude leer el desglose de horas: ${desglose.error}`}</Aviso>}
+                {hhAbierta && desglose.desglose === null && !desglose.error && (
+                  <p data-testid="desglose-sin-permiso" style={{ fontSize: '12.5px', color: V.apagado }}>
+                    No puedo mostrar el desglose de horas de este trabajo. Las horas de la obra las ve
+                    Administración; tu rol sólo ve las propias.
+                  </p>
+                )}
+                {desglose.desglose && (
+                  <DesgloseHH
+                    d={desglose.desglose}
+                    totalHH={ficha.horasPorObra?.get(desglose.desglose.obra.obraId)?.hhReal ?? null}
+                    volverHref={url({ hh: null, hhq: null })}
+                    hrefPeriodo={hrefPeriodoHH}
+                  />
+                )}
+
+                {!hhAbierta && (
+                <>
                 <ObrasDelCliente
                   obras={enCursoConAdicionales}
                   veEconomia={veEconomia}
                   economia={economia}
                   papeles={papeles}
                   cobrado={cobradoPorObra}
+                  horas={ficha.horasPorObra}
+                  hrefDesgloseHH={hrefDesgloseHH}
                   hrefTrabajo={hrefTrabajo}
                   vacio={cerradas.length === 0
                     ? 'Este cliente no tiene ningún trabajo. Se crea desde arriba, colgado de este cliente.'
@@ -633,10 +702,21 @@ export default async function ClientePage({ params, searchParams }: {
                     economia={economia}
                     papeles={papeles}
                     cobrado={cobradoPorObra}
+                    // LAS TERMINADAS TAMBIÉN LLEVAN SUS HORAS: son la historia de lo que costó cada
+                    // trabajo, y es la mitad de lo que sirve para cotizar el próximo.
+                    horas={ficha.horasPorObra}
+                    hrefDesgloseHH={hrefDesgloseHH}
                     hrefTrabajo={hrefTrabajo}
                     titulo={`Terminados · ${cerradas.length}`}
                     vacio=""
                   />
+                )}
+
+                {/* EL ACUMULADO DEL CLIENTE, EN EL PIE DE LA TABLA. No va en la fila de cifras del
+                    titular: `hh_obra` viaja SÓLO en esta cara —es la única que las dibuja— y en las
+                    otras ocho la cifra tendría que decir «no las tengo», que se lee como un cero. */}
+                <PieHHDelCliente total={hhDelCliente} obras={todas.length} />
+                </>
                 )}
 
                 {/* ═══ EL PÁRRAFO DEL PIE SE FUE (10/09/2026) ═══

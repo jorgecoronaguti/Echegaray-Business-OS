@@ -44,6 +44,7 @@ import {
 import { construirLineaDeTiempo } from './timeline.ts'
 import { agruparPapeles, type PapelCrudo, type PapelesDelCliente } from './papelesCliente.ts'
 import { armarEconomiaDeObras, type EconomiaDeObra } from './economiaObras.ts'
+import { armarHorasPorObra, type HorasDeObra } from './horasDeObra.ts'
 import { armarEconomiaDeCliente, type EconomiaDeCliente } from './economiaCliente.ts'
 import {
   armarCobradoPorObra, type CobroPorObra,
@@ -84,6 +85,15 @@ export interface FichaLeida {
    */
   cobradoPorObra: CobroPorObra | null
   /**
+   * LAS HORAS DE CADA TRABAJO (`hh_obra`, desde 20260911T2300).
+   *
+   * `null` = no puedo decirlo: o la cara no las transporta —viajan en Obras, que es la única que las
+   * dibuja— o quien pregunta no es Administración y la RLS de `registros_hh` le daría sólo sus
+   * propias horas. Un `Map` vacío es «ninguna obra tiene horas cargadas», que es otra cosa: la
+   * pantalla dibuja «—» en ese caso y deja la celda VACÍA en el primero.
+   */
+  horasPorObra: Map<string, HorasDeObra> | null
+  /**
    * LOS PAPELES DE DRIVE DE CADA OBRA, ya agrupados por categoría (dueño, 11/09/2026: «no encuentro
    * las cotizaciones, los documentos… que han conformado todas las obras»).
    *
@@ -119,6 +129,7 @@ interface FichaCruda {
   certificados: unknown[]
   presupuestos: unknown[]
   cobrado_por_obra: unknown[]
+  hh_obra: unknown[] | null
   papeles_obra: unknown[]
   carpetas_obra: { obra_id: string; drive_folder_id: string }[]
 }
@@ -127,8 +138,8 @@ function nadaLeido(error: string | null): FichaLeida {
   return {
     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
-    papeles: null, cobradoPorObra: null, nDocumentos: 0, papelesObra: new Map(),
-    carpetasObra: new Map(),
+    papeles: null, cobradoPorObra: null, nDocumentos: 0, horasPorObra: null,
+    papelesObra: new Map(), carpetasObra: new Map(),
   }
 }
 
@@ -155,6 +166,10 @@ export async function leerFichaDeUnaConsulta(
   if (!j.cliente) return nadaLeido(null)
 
   const notas = armarNotasCliente(j.notas ?? [], j.autores ?? [])
+  // UNA SOLA CONVERSIÓN PARA LAS DOS CARAS: la tabla de Obras dibuja la columna HH y la línea de
+  // tiempo fecha el INICIO de cada obra con la primera hora cargada (ver `timeline.ts`: cinco obras
+  // de Messina comparten el instante de alta y no nacieron el mismo día).
+  const horasPorObra = armarHorasPorObra(j.hh_obra ?? null)
   return {
     // LA MISMA `normalizar` que aplica `getCliente`: sin ella, una vista que todavía no publique un
     // campo deja `undefined` colado en un tipo que promete `string | null`, y la pantalla decide por
@@ -179,6 +194,11 @@ export async function leerFichaDeUnaConsulta(
         // prueba. El aviso de «migración pendiente» ya no puede corresponder por este camino.
         notasNoDisponibles: null,
         certificados: j.certificados ?? [],
+        // EL INICIO PROBADO DE CADA OBRA. Sin esta clave —cara que no la transporta o rol que no la
+        // ve— la línea de tiempo vuelve a fechar la obra con su alta en el sistema, que es lo que
+        // estaba roto: no se inventa nada, se pierde precisión y el evento lo dice.
+        inicioConHoras: new Map([...(horasPorObra ?? new Map())]
+          .map(([obraId, h]) => [obraId, h.inicioReal])),
       }))
       : null,
     presupuestos: armarPresupuestos(j.presupuestos ?? []),
@@ -188,6 +208,10 @@ export async function leerFichaDeUnaConsulta(
     // `disponible: true` no es un supuesto: `obra_cuenta` reparte el cobro por obra por
     // construcción (sale de `cobranza_imputacion`), así que una respuesta exitosa lo prueba.
     cobradoPorObra: armarCobradoPorObra(j.cobrado_por_obra ?? [], true),
+    // `?? null` Y NO `?? []`: la RPC devuelve `null` a propósito —cara que no las dibuja, o rol que
+    // no las puede ver enteras— y convertirlo en una lista vacía escribiría «esta obra no tiene
+    // horas» sobre una obra con 12.525.
+    horasPorObra,
     // LA COTIZACIÓN ACEPTADA NO SE DEDUCE DEL NOMBRE: la dice `obra_contrato`, que es el papel que
     // el OS ya leyó para escribir el precio, y viaja en `economia_obras.contrato_fuente_drive_id`.
     // «FINAL», «APROBADA» y «v2» conviven en la misma carpeta y ninguna de las tres palabras prueba
