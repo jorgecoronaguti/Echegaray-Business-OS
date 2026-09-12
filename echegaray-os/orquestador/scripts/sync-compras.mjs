@@ -34,6 +34,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool, withTx } from '../lib/db.mjs'
 import { CASHFLOW_ID } from '../lib/cash-briefing.mjs'
 import { PRIMERA_FILA, claveDeCompra, contratoDeColumnas, filaACompra } from '../lib/compras-fila.mjs'
+import { esCostoDeObra } from '../lib/compras-costo-de-obra.mjs'
 import { planDeReconciliacion, proveedorPorArchivo } from '../lib/comprobantes/reconciliar-adjuntos.mjs'
 
 const DRY = process.argv.includes('--dry')
@@ -131,14 +132,14 @@ async function escribirEspejo(db, compras) {
  * ningún valor.
  */
 async function escribirCostosObra(db, compras) {
-  const conObra = compras.filter((c) => c.obra_texto && (c.total || c.importe))
+  const conObra = compras.filter(esCostoDeObra)
   await db.query("delete from public.costos_obra where origen='compras_sheet'")
   const cols = `obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto,
          importe, iva, total, fecha, fecha_pago, mes, referencia_externa, origen, sincronizado_en`
   const valores = (c) => [
     c.obra_texto, c.unidad_negocio, c.proveedor, c.modalidad, c.tipo, c.comprobante, c.categoria,
     [c.detalle_obra, c.concepto].filter(Boolean).join(' — ') || null,
-    c.importe || null, c.iva || null, c.total || c.importe,
+    c.importe || null, c.iva || null, c.total ?? c.importe,
     c.fecha, c.fecha_caja ?? c.fecha_prevista, c.mes,
     c.sheet_id === null ? String(c.fila) : String(c.sheet_id),
   ]
