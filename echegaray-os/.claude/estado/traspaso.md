@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-11 ~17:25 (hora local −03) · main = producción_
+_actualizado: 2026-09-12 ~12:45 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -59,77 +59,63 @@ desde un worktree. **VM 4 cores/7 GB compartida con Mattermost: un agente pesado
 19`, lint/tests dirigidos, `uptime` antes de algo pesado** (con 4 agentes la carga llegó a 31 y tumbó
 el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
 
-## 4. ESTADO ACTUAL (11/09 17:25)
+## 4. ESTADO ACTUAL (12/09 12:45)
 
-- **main = producción** en fd209523+ (Vercel Ready 16:44 con Liquidación; checkout prod fd209523; bot
-  worker/ws/gateway reiniciados 17:14 con el arreglo de conexión, `latido_ms` visible).
-- **HF §6/§7 cerrados** (396e9c07; doc + evidencia + candado). Plan PRO de HF: decisión del dueño.
-- **Compras**: batch 1 aplicado (39 filas nómina, $126,8 M a 0). **Hito libro fuentes propias
-  MERGEADO (fd209523)**, auditor FIRMA CON LÍMITES: de las 78 filas del batch 2
-  (`datos/respaldos/compras-batch2-2026-09-11.json`) sólo 23 se pueden vaciar hoy; excluir 41 con fecha
-  < 01/06 (extracto empieza 28/05), gremiales jun–ago f434 f437 f438 f445 f457 f460 f463 f465 f471,
-  SAC junio f452–f455, f836 Colegio. f481/f482 (SAC dic) sí. **Pendiente: aplicar batch 2 (23 filas)
-  con `compras-marcar-eliminado.mjs --lista` DESPUÉS de que la corrida 18:50 corra con fd209523 y
-  CFM/CFS no bajen.** Simulación reproducible: `scripts/libro-simular-sin-compras.mjs --lista … [--desde]`.
-- **Cash Flow Mensual**: tarjeta de cierre recuperada (16:50: $89.069.952; «Valores en cartera» sep
-  $38.572.526 = e-cheq retenidos, 0a11cb09). Corrida 16:50 salió exit 1 por aviso del libro «Oficina
-  renglón 8 PAGADO 814.500 y PROYECTADO 2.792.300 a la vez» (dato correcto, vale el pagado): revisar
-  en la 18:50.
-- **Liquidación de horas**: 7 arreglos en prod (f26638f2: Pagos editable real, horas sin $, doble
-  conteo, presencia-defecto, JORNALES 0 h, costo a la obra, cierre). Índice único
-  `registros_hh_persona_unico_v2` aplicado (sin CONCURRENTLY) y registrado. **JORNALES → registros_hh
-  corre cada hora** (`echegaray-jornales-registros.timer`, :20); importado 17:05 y corregido el alias
-  genérico «mamposteria» (borrado de obra_alias): «LA ESTRELLA · MAMPOSTERIA» vuelve a la-estrella.
-  50 días en conflicto planilla vs app (no se tocan; decisión del dueño: ¿JORNALES manda?).
-  **En curso**: vista «Quincena» espejo editable de JORNALES (agente, rama feat/liquidacion-espejo-jornales)
-  y QA visual de las 6 solapas en producción (agente).
-- **CRM Clientes**: Cobranzas/cartera en prod. **En curso** (rama feat/obras-adicionales): obras
-  «adicional» como subnivel de su obra mayor + bloque «Papeles» por obra (cotizaciones, contrato, OC,
-  planos, HyS) con tabla `obra_carpeta_drive`; migraciones 20260911T2000/2100 a aplicar desde main.
-- **Santander Ochoa/Castillo**: datos cargados al legajo, borrador `r3486391276892624298` en Gmail de
-  jorge@ listo para enviar; falta el modelo `archivo_modelo_alfa_74a1cd27d2.xlsx` (VM no llega a
-  santander.com.ar: pedirlo adjunto en el chat). Faltan tel/mail/estado civil de ambos y DNI de
-  Castillo: no existen en Drive ni Supabase.
-- **HyS**: 14 reportes MASS (22 archivos) en Drive `Reportes de gestión HyS/` (id 1ECkqlSV30-FNSYecdEp-A-0zV4Y8MSaT).
-- **Transferencias a proveedores**: importador diario 07:15 sólo jorge@ (6 comprobantes/4 prov.).
-  Corrida sobre rodrigo@ con `--aplicar` en curso (Monitor); si vuelve a fallar por cuota Gmail, repetir
-  con `ORQ_GMAIL_CUENTA=rodrigo@ecsas.com.ar` cuando no haya otro agente usando Gmail.
-- **Bot / comprobantes**: worker colgado 23 h (10/09 17:59 → 11/09 16:42); arreglado en 8f0b6df2.
-  Fajo 438fcb2a cargado (6 comprobantes, Compras f949–954).
-- **Baseline HF-web** (scratchpad `baseline-hf-web/`): Documentos web acierta 2/30 (ilike de la frase);
-  motor léxico del chat 19/30 → portarlo a la web es la ganancia; e5 cubre 12 % del data room.
-  XSAS web: 0 pedidos desde 03/09; gateway vivo y túnel coincide.
-- **Proveedores (Sheet)**: «Se le debe» = Compras!AL exacto ($15,33 M). Falta que el dueño diga
-  proveedor y número esperado.
-- **Deuda**: `orq:test` rojos en main (+ `proyeccion-convenio.test.mjs`); tc canario; `obra_costo_real`
-  MO por obra debe salir de JORNALES; sonda de antigüedad de `comunicacion.inbox`.
+- **main = producción** en 8e46ac8e (Vercel despliega solo; checkout prod se actualiza con
+  `produccion-al-dia.mjs` en cada timer). Sesión 11/09 se reinició a la noche: los agentes y los
+  waiters de fondo murieron; se reanudaron el 12/09 por SendMessage.
+- **Compras**: batch 1 (39 filas) y **batch 2 (23 filas seguras, $54,67 M) aplicados** con respaldo en
+  `datos/respaldos/compras-eliminadas-2026-09-12-batch2.json`. Los 55 restantes del batch 2 siguen
+  excluidos (fecha < 01/06, gremiales jun–ago, SAC junio, Colegio). Tarjeta de cierre CFM: 18:50 $88,9 M ·
+  20:50 $84,6 M · 12/09 10:50 $85,66 M. **Verificar corrida 12:50** (waiter) tras el batch 2.
+- **Tello / SF pisos**: 6 cuotas semanales pendientes cargadas (f956–961, 18/09→23/10, $5.984.000,
+  Cuenta Corriente, Q literal, X fórmula). CONFLICTO abierto: filas 880–883 (plan viejo $9,9 M, editadas
+  por el dueño, pendiente $6,88 M) NO tocadas — el dueño decide (a) marcar pagadas o (b) eliminar.
+- **Liquidación**: desplegado JORNALES manda sobre web:* (48 filas pisadas), Nievas +696 h, cotejo
+  sólo sobre días cargados, TOTAL SEMANA en el bot, espejo `jornales_bloque_persona` (T2200 aplicada,
+  ExecStartPost del timer :20), panel por persona remontado (key), filtro de obra con chip siempre.
+  Abierto: Gonzalez Tobares 02 y 10/09 (2 filas web c/u) — decisión del dueño; bloque 4 del agente
+  (E2E escritura de horas, QA-1 tres totales, QA-3 sticky/Retribución) en curso en wt-jornales.
+- **CRM**: Documentos rediseñado y desplegado (jerarquía obra→adicional→categoría→archivo; n_documentos
+  real; `obra_papel` materializada, T2200/T2300 aplicadas; 22 carpetas vinculadas, 226 papeles).
+  **En curso wt-hh** (feat/hh-por-obra-en-cliente, 1e46dcc2): columna Inicio + HH junto a Trabajo
+  con OC pegada al nombre, sin OC/OP en tablas, desglose persona×día (`hh_de_obra`), inicio real en la
+  cronología; migración `hh_obra` a aplicar UNA vez desde main; `hh_de_obra` medía 3 s media/36 s máx →
+  exigido < 300 ms con explain analyze.
+- **Rendimiento**: instancia chica; 148 recargas de esquema el 11/09 por DDL de tests .pg (ahora
+  `ORQ_PG_DDL=1` para correrlos). RPC ficha 60 ms caliente / 2,5 s fría. `campanita_atencion` (1,1 s media)
+  y `getNovedades()` (21 s en una muestra) son los próximos sospechosos.
+- **Transferencias**: importador renueva token ante 401 (f761ed4e). rodrigo@ corrida 11/09 19:48:
+  3 nuevos (MASS, DATA 2000, Robles), 5 ya estaban, 5 sin proveedor. Escudero Emiliano ($108.900,
+  CUIT 20-35853162-9) no existe como proveedor: decisión del dueño.
+- **Santander Ochoa/Castillo**: sin cambios (falta el modelo xlsx adjunto; faltan tel/mail/estado civil).
+- **Deuda**: cronograma de obra cerrada sigue «atrasado» (obra_actividad.fin_real nunca se escribe) —
+  módulo Obras, el dueño pidió no tocarlo ahora; MAIL cortado en panel Contacto; `orq:test` rojos;
+  Documentos web con motor léxico; MO por obra desde JORNALES.
 
-## 5. TRABAJO DE ESTA SESIÓN (11/09 tarde)
+## 5. TRABAJO DE ESTA SESIÓN (11/09 tarde → 12/09)
 
-396e9c07 HF · d3cb3c71/338b799d/337aa54c/d4ee0d23 bisturí+batch 1 · 0a11cb09 e-cheq retenidos ·
-c9446cf3/14d61774 HM=libreta IERIC · 94ceed37+f26638f2 Liquidación · 8f0b6df2 worker · fd209523 hito
-libro fuentes propias · timer jornales-registros · alias «mamposteria» borrado · migración T1800 aplicada.
+e8dd4695 espejo JORNALES + key panel · 42fe4025 filtro obra · 2dde4968/b157a277 JORNALES manda, Nievas,
+cotejo, TOTAL_COL · 18b5c782 Documentos CRM (T2200/T2300) · f761ed4e gmail token · 8e46ac8e batch 2.
 
 ## 6. PENDIENTES REALES
 
-**P0** — corrida 18:50 con fd209523: CFM!M50 y CFS!BB50 no bajan; libro sin aviso nuevo → aplicar batch 2
-(23 filas) → corrida 20:50 confirma. Cerrar agentes en curso: QA visual Liq → corregir bloqueantes;
-vista Quincena; CRM adicionales+papeles (aplicar migraciones desde main, correr script de carpetas).
-**P1** — Rodrigo transferencias; Santander modelo del banco; libro aviso Oficina; MO por obra desde
-JORNALES; Documentos web con motor léxico; `pantalla_obra()`; Cargas Sociales/Impuestos verificar en el
-Sheet escrito (límite 4 del auditor); sonda inbox; `proyeccion-convenio.test.mjs` rojo.
-**P2** — decisiones del dueño: ¿JORNALES manda sobre la app en días en conflicto? · menú lateral de
-Liquidación · Proveedores número esperado · plan PRO HF · extractos ene–may · Mis Facilidades ARCA.
+**P0** — corrida 12:50: CFM/CFS no bajan tras batch 2 · cerrar wt-hh (aplicar migración hh_obra, medir,
+desplegar) · cerrar bloque 4 Liquidación · decisiones del dueño: Tello 880–883, Gonzalez Tobares, Escudero.
+**P1** — campanita/getNovedades lentos · Santander modelo · MO por obra desde JORNALES · Documentos web
+léxico · sonda inbox · `proyeccion-convenio.test.mjs` rojo · limpiar worktrees viejos (`higiene-worktrees`).
+**P2** — menú lateral Liquidación · Proveedores número esperado · plan PRO HF · extractos ene–may ·
+Mis Facilidades ARCA · fin_real de actividades (Obras).
 
 ## 7. ESTADO GIT
 
-main = origin/main ≥ fd209523 · worktrees vivos: wt-compras (feat/libro-fuentes-propias, mergeada),
-wt-adic (feat/obras-adicionales, agente), wt-jornales (feat/liquidacion-espejo-jornales, agente).
+main = origin/main = 8e46ac8e · worktrees vivos: wt-hh (agente), wt-jornales (agente), wt-adic y
+wt-compras (mergeadas: borrar), wt-db2 (mergeada: borrar).
 
 ## 8. PRÓXIMO PASO
 
-Esperar 18:50 → verificar → batch 2 (23 filas) → 20:50 verificar. Desplegar lo que los agentes cierren
-con tests, bloque por bloque.
+Verificar 12:50 → recibir reportes de wt-hh y wt-jornales → aplicar migración hh_obra desde main → merge
++ push → capturas → reportar al dueño con las tres decisiones pendientes.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
