@@ -69,57 +69,70 @@ export async function getIdentidades(
   supabase: SupabaseClient,
   entidad = 'proveedor',
 ): Promise<{ data: Map<string, IdentidadResuelta>; error: string | null }> {
-  const { data, error } = await supabase
-    .from('ml_resolucion')
-    .select('id, valor_original, cuit_original, estado, entidad_id, entidad_id_correcta, ts')
-    .eq('entidad', entidad)
-    .order('ts', { ascending: false })
-    .limit(5000)
+  // ═══ UN SOLO VIAJE EN VEZ DE DOS RONDAS (12/09/2026) ═══
+  //
+  // Esto eran dos rondas seriales: `ml_resolucion` primero, y después `proveedores` +
+  // `ml_entidad_alias` filtrados por `.in('id', ids)` con los ids que salían de la primera. Medido con
+  // `PERF_TRAZA=1` sobre `/administracion/compras`, la segunda ronda arrancaba a los 481 ms —justo
+  // cuando la primera terminaba— y sumaba 123 ms más al documento. En la carga en frío ese viaje
+  // cuesta cerca de un segundo, porque es una conexión nueva a PostgREST.
+  //
+  // El `.in()` existía para no traer de más, y no traía casi nada de menos: el maestro tiene 36
+  // proveedores. Pedirlos todos son ~3 kB y no depende de la primera consulta, así que las tres van
+  // juntas y la pantalla deja de esperar dos veces. Los alias se piden por `entidad/fuente/verificado`
+  // igual que antes, sin el `in`.
+  //
+  // LO QUE SE ACEPTA: si algún día el padrón de proveedores fuera grande, traerlo entero para
+  // resolver unos pocos nombres deja de convenir y vuelve a tener sentido la ronda filtrada. A 36
+  // filas, esperar un viaje entero para ahorrar 3 kB es el peor de los dos negocios.
+  const [resoluciones, provsTodos, fiscalesTodos] = await Promise.all([
+    supabase
+      .from('ml_resolucion')
+      .select('id, valor_original, cuit_original, estado, entidad_id, entidad_id_correcta, ts')
+      .eq('entidad', entidad)
+      .order('ts', { ascending: false })
+      .limit(5000),
+    supabase.from('proveedores').select('id, nombre, razon_social'),
+    // LA RAZÓN SOCIAL VIVE EN LOS ALIAS DE ARCA. El maestro tiene `razon_social` y está vacía en
+    // los 36 proveedores; lo que sí existe es el nombre con el que ARCA los publica, cargado como
+    // alias verificado. Ahí es donde está escrito que «DUPEC» factura como «DUBOS UGARTE PEDRO
+    // LUIS RAUL» — que es exactamente lo que quien mira una compra necesita saber.
+    supabase.from('ml_entidad_alias').select('entidad_id, alias')
+      .eq('entidad', entidad).eq('fuente', 'arca').eq('verificado', true),
+  ])
+  const { data, error } = resoluciones
   if (error) return { data: new Map(), error: error.message }
 
   // La decisión VIGENTE de cada texto es la última escrita. Se recorre de la más nueva a la más
   // vieja y se queda con la primera de cada clave: sin esto, una corrección humana de ayer quedaría
   // tapada por la resolución automática de anteayer.
   const porClave = new Map<string, IdentidadResuelta>()
-  const ids = new Set<string>()
   for (const r of data ?? []) {
     const k = claveIdentidad(r.valor_original as string, r.cuit_original as string | null)
     if (porClave.has(k)) continue
-    const proveedorId = (r.entidad_id_correcta as string | null) ?? (r.entidad_id as string | null)
     porClave.set(k, {
       valorOriginal: r.valor_original as string,
       cuitOriginal: (r.cuit_original as string | null) ?? null,
       estado: r.estado as EstadoIdentidad,
-      proveedorId,
+      proveedorId: (r.entidad_id_correcta as string | null) ?? (r.entidad_id as string | null),
       proveedorNombre: null,
       razonSocial: null,
       resolucionId: Number(r.id),
     })
-    if (proveedorId) ids.add(proveedorId)
   }
 
-  if (ids.size) {
-    const [{ data: provs }, { data: fiscales }] = await Promise.all([
-      supabase.from('proveedores').select('id, nombre, razon_social').in('id', [...ids]),
-      // LA RAZÓN SOCIAL VIVE EN LOS ALIAS DE ARCA. El maestro tiene `razon_social` y está vacía en
-      // los 36 proveedores; lo que sí existe es el nombre con el que ARCA los publica, cargado como
-      // alias verificado. Ahí es donde está escrito que «DUPEC» factura como «DUBOS UGARTE PEDRO
-      // LUIS RAUL» — que es exactamente lo que quien mira una compra necesita saber.
-      supabase.from('ml_entidad_alias').select('entidad_id, alias')
-        .eq('entidad', entidad).eq('fuente', 'arca').eq('verificado', true).in('entidad_id', [...ids]),
-    ])
-    const nombres = new Map((provs ?? []).map((p) => [String(p.id), p.nombre as string]))
-    const declarada = new Map((provs ?? []).filter((p) => p.razon_social).map((p) => [String(p.id), p.razon_social as string]))
-    const deArca = new Map((fiscales ?? []).map((a) => [String(a.entidad_id), a.alias as string]))
-    for (const i of porClave.values()) {
-      if (!i.proveedorId) continue
-      i.proveedorNombre = nombres.get(i.proveedorId) ?? null
-      // La del maestro manda sobre la de ARCA: si alguien la escribió a mano, es una decisión.
-      const fiscal = declarada.get(i.proveedorId) ?? deArca.get(i.proveedorId) ?? null
-      // Sólo se guarda si DICE algo que el nombre no dice ya.
-      i.razonSocial = fiscal && fiscal.trim().toUpperCase() !== (i.proveedorNombre ?? '').trim().toUpperCase()
-        ? fiscal : null
-    }
+  const provs = provsTodos.data ?? []
+  const nombres = new Map(provs.map((p) => [String(p.id), p.nombre as string]))
+  const declarada = new Map(provs.filter((p) => p.razon_social).map((p) => [String(p.id), p.razon_social as string]))
+  const deArca = new Map((fiscalesTodos.data ?? []).map((a) => [String(a.entidad_id), a.alias as string]))
+  for (const i of porClave.values()) {
+    if (!i.proveedorId) continue
+    i.proveedorNombre = nombres.get(i.proveedorId) ?? null
+    // La del maestro manda sobre la de ARCA: si alguien la escribió a mano, es una decisión.
+    const fiscal = declarada.get(i.proveedorId) ?? deArca.get(i.proveedorId) ?? null
+    // Sólo se guarda si DICE algo que el nombre no dice ya.
+    i.razonSocial = fiscal && fiscal.trim().toUpperCase() !== (i.proveedorNombre ?? '').trim().toUpperCase()
+      ? fiscal : null
   }
 
   return { data: porClave, error: null }
