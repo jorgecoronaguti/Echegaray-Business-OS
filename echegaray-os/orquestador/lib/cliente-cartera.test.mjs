@@ -12,9 +12,28 @@
 // devuelven aparte —no se descartan— para que la lista pueda decir cuántos hay y ofrecerlos.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { separarArchivados } from '../../src/features/clientes/services/cartera.ts'
+import {
+  separarArchivados, totalesCartera, VISTAS_CARTERA, esVistaCartera,
+} from '../../src/features/clientes/services/cartera.ts'
+// El módulo entero, para poder afirmar lo que NO exporta: una función retirada por decisión del dueño
+// tiene que poder dejar rojo el día que alguien la escribe de nuevo.
+import * as cartera from '../../src/features/clientes/services/cartera.ts'
 
 const c = (nombre, activo) => ({ nombre, activo })
+
+/** Una fila de la cartera como la lee la pantalla. Sin CUIT ni contrato, que es el caso incómodo. */
+const cli = (nombre, p = {}) => ({
+  nombre, activo: true, cuit: null, telefono: '+54 351 512-3344',
+  n_obras_activas: 0, contratado: null, ...p,
+})
+
+const CARTERA = [
+  cli('La Estrella', { cuit: '30716490498', n_obras_activas: 2, contratado: 295886970 }),
+  cli('Messina', { cuit: '30620311703', n_obras_activas: 6, contratado: 36540482.65 }),
+  cli('Quattropani', { n_obras_activas: 0, contratado: 97650000 }),
+  cli('ARCOR', { n_obras_activas: 0, contratado: null }),
+  cli('San Francisco', { n_obras_activas: 4, contratado: 299679630 }),
+]
 
 test('el archivado sale de la lista y no desaparece: queda contado aparte', () => {
   const { activos, archivados } = separarArchivados([
@@ -48,72 +67,35 @@ test('el orden que traía la lectura se respeta en cada grupo', () => {
   assert.deepEqual(activos.map((x) => x.nombre), ['z', 'a', 'm'])
 })
 
-// ── LOS TRES RECORTES DE LA CARTERA (canónico 25, 23/08/2026) ──────────────────────────────────
+// ── EL PIE DE LA CARTERA, Y EL FILTRO QUE EL DUEÑO MANDÓ SACAR ─────────────────────────────────
 //
-// ═══ EL DEFECTO QUE ATRAPAN ═══
+// ═══ POR QUÉ ESTE ARCHIVO NO PODÍA NI IMPORTARSE (12/09/2026) ═══
 //
-// 1. UN CHIP QUE CUENTA DISTINTO DE LO QUE MUESTRA LA TABLA. El contador del recorte y el filtro
-//    tienen que salir de la MISMA función: dos criterios parecidos se desincronizan en cuanto uno
-//    de los dos cambia, y quien ve «Con obra activa 4» y una tabla de tres filas deja de creerle a
-//    la pantalla.
-// 2. «CONTRATADO $ 0» CUANDO NADIE CARGÓ NINGÚN CONTRATO. Medido el 24/08: ARCOR tiene el monto en
-//    null. Sumar con `?? 0` publica un cero que se lee como un hecho comercial y no lo es.
-// 3. «CON OBRA ACTIVA» CALCULADO SOBRE «NO CERRADA». Son criterios distintos: de las 17 obras hay
-//    12 `activa`, 1 `pausada` y 4 `cerrada`, y `cliente_panel.n_obras_activas` cuenta las 12. Con
-//    el otro criterio, Quattropani aparecería con obra activa y su propia fila diría 0.
-import { avisoDeDatos, recortarCartera, totalesCartera } from '../../src/features/clientes/services/cartera.ts'
+// Importaba `recortarCartera` y `avisoDeDatos`, que ya no existen: el commit e3bb12a0 (10/09) las
+// retiró por orden del dueño —*«ESTO ESTÁ CADA VEZ PEOR, NO ESTÁS USANDO TU SKILL DE UX»*— junto con
+// el chip «Datos faltantes», `faltaUnDatoQueFrena`, `senalesClientes` y el filo ámbar de la fila. El
+// motivo está escrito en ese commit: el filtro *«reintroducía las aclaraciones "sin teléfono / sin
+// contrato" que el dueño mandó sacar dos veces»*. El archivo entero fallaba con `SyntaxError`, así que
+// los seis tests que SÍ siguen valiendo —el archivado y el pie— tampoco corrían.
+//
+// Los tests del recorte no se «arreglan»: se retiran con su función, y en su lugar queda la AFIRMACIÓN
+// DE LA DECISIÓN. Una función borrada vuelve; una decisión sin test vuelve dos veces.
 
-// `telefono` entra en la ficha desde el porte `25 · Clientes v2` (25/08/2026): el recorte «Datos
-// faltantes» mira las TRES cosas que frenan el cobro —CUIT, teléfono y contrato—, que es
-// literalmente el `faltanDatos` del `.dc.html`. La ETIQUETA de la fila (`avisoDeDatos`) sigue
-// nombrando una sola, el CUIT: una fila con tres etiquetas ámbar deja de señalar nada.
-const cli = (nombre, p = {}) => ({
-  nombre, activo: true, cuit: null, telefono: '+54 351 512-3344',
-  n_obras_activas: 0, contratado: null, ...p,
-})
-
-const CARTERA = [
-  cli('La Estrella', { cuit: '30716490498', n_obras_activas: 2, contratado: 295886970 }),
-  cli('Messina', { cuit: '30620311703', n_obras_activas: 6, contratado: 36540482.65 }),
-  cli('Quattropani', { n_obras_activas: 0, contratado: 97650000 }),
-  cli('ARCOR', { n_obras_activas: 0, contratado: null }),
-  cli('San Francisco', { n_obras_activas: 4, contratado: 299679630 }),
-]
-
-test('«con obra activa» son las que el panel cuenta como activas, no las que no están cerradas', () => {
-  // Quattropani tiene UNA obra que no está cerrada —está pausada— y `n_obras_activas` en 0. Si el
-  // recorte mirara «no cerrada», este cliente entraría y su propia fila mostraría cero.
-  const activos = recortarCartera(CARTERA, 'activos').map((c) => c.nombre)
-  assert.deepEqual(activos, ['La Estrella', 'Messina', 'San Francisco'])
-})
-
-test('«datos faltantes» junta lo que frena el cobro, y el aviso dice qué se rompe sin el CUIT', () => {
-  // Quattropani y San Francisco no tienen CUIT; ARCOR tampoco, y además no tiene contrato cargado.
-  // La Estrella y Messina tienen las tres cosas, así que quedan afuera.
-  const sin = recortarCartera(CARTERA, 'sin-datos').map((c) => c.nombre)
-  assert.deepEqual(sin, ['Quattropani', 'ARCOR', 'San Francisco'])
-  // Y el recorte NO es la etiqueta: un cliente con CUIT pero sin contrato entra al recorte y no
-  // lleva etiqueta. Son dos decisiones distintas que comparten archivo.
-  const sinContrato = cli('y', { cuit: '30716490498', contratado: null })
-  assert.equal(recortarCartera([sinContrato], 'sin-datos').length, 1)
-  assert.equal(avisoDeDatos(sinContrato), null)
-  assert.equal(avisoDeDatos(cli('x')), 'Sin CUIT: no se le puede facturar')
-  assert.equal(avisoDeDatos(cli('x', { cuit: '30716490498' })), null)
-  // Un CUIT en blanco NO es un CUIT cargado: la columna es texto y acepta espacios.
-  assert.equal(avisoDeDatos(cli('x', { cuit: '   ' })), 'Sin CUIT: no se le puede facturar')
-})
-
-test('«todos» no recorta nada: el chip por defecto no puede esconder un cliente', () => {
-  assert.equal(recortarCartera(CARTERA, 'todo').length, CARTERA.length)
-})
-
-test('el contador del chip y la tabla salen de la misma función', () => {
-  // Ésta es la afirmación entera: lo que el chip cuenta ES lo que la tabla dibuja.
-  for (const vista of ['todo', 'activos', 'sin-datos']) {
-    const recorte = recortarCartera(CARTERA, vista)
-    assert.equal(recorte.length, recortarCartera(CARTERA, vista).length)
-    assert.ok(recorte.every((c) => CARTERA.includes(c)), 'el recorte inventó una fila')
+test('el recorte «datos faltantes» NO puede volver: el dueño lo mandó sacar tres veces', () => {
+  // Lo que se afirma es la ausencia, y se afirma sobre el módulo —no sobre una pantalla— porque es
+  // ahí donde la función volvería a nacer. Las vistas son DOS: todo y activos.
+  assert.deepEqual([...VISTAS_CARTERA], ['todo', 'activos'])
+  assert.ok(!esVistaCartera('sin-datos'), 'volvió el recorte de datos faltantes (e3bb12a0)')
+  for (const ido of ['recortarCartera', 'avisoDeDatos', 'faltaUnDatoQueFrena', 'senalesClientes']) {
+    assert.ok(!(ido in cartera), `${ido} volvió al módulo: el dueño lo mandó sacar el 10/09/2026`)
   }
+})
+
+test('una vista desconocida no se acepta en silencio: la URL no puede inventar un recorte', () => {
+  // `esVistaCartera` es el portero de un parámetro de la URL. Si aceptara cualquier cosa, el día que
+  // alguien escriba ?vista=activas —en plural— la lista mostraría todo y nadie vería el error.
+  assert.ok(esVistaCartera('todo') && esVistaCartera('activos'))
+  for (const mala of ['activas', 'SIN-DATOS', '', undefined]) assert.ok(!esVistaCartera(mala))
 })
 
 test('el total contratado ignora a quien no tiene monto, y no lo cuenta como cero', () => {

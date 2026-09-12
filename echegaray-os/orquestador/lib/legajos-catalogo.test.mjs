@@ -74,11 +74,27 @@ test('nadie con fecha de egreso sigue figurando en la empresa', { skip: SIN_BASE
   assert.equal(rows[0].n, 0)
 })
 
-test('el plantel es exactamente quien está en la empresa', { skip: SIN_BASE }, async () => {
+test('el plantel es exactamente quien está en la empresa, sin los registros de prueba', { skip: SIN_BASE }, async () => {
+  // ═══ EL CONTROL COMPARABA DOS COSAS DISTINTAS (12/09/2026) ═══
+  //
+  // Exigía que la vista tuviera las MISMAS filas que `personas where en_la_empresa`, y la vista tiene
+  // una condición más: esconde los registros `es_prueba` salvo que la sesión sea de prueba
+  // (`sesion_es_de_prueba()`). El día que entró `[PRUEBA E2E] QA Campo` —una persona de fixture, con
+  // `en_la_empresa` en true— el test se puso rojo en 17 contra 18 sin que nada estuviera mal: el
+  // plantel real son 17 y la diferencia era el maniquí del E2E. Ahora la comparación incluye la regla.
   const { rows } = await query(
     `select (select count(*) from persona_plantel)::int as vista,
-            (select count(*) from personas where en_la_empresa)::int as tabla`)
-  assert.equal(rows[0].vista, rows[0].tabla)
+            (select count(*) from personas where en_la_empresa and es_prueba is not true)::int as tabla,
+            (select count(*) from persona_plantel v join personas x using (id) where x.es_prueba)::int as colados,
+            (select count(*) from personas where en_la_empresa and es_prueba)::int as maniquies`)
+  const r = rows[0]
+  assert.equal(r.vista, r.tabla, 'la vista y la tabla dejaron de contar el mismo plantel')
+  // Y LA OTRA MITAD, que es la que puede decir que no: ningún registro de prueba se cuela en el
+  // plantel de una sesión real. Si alguien saca el filtro de la vista, hoy mismo se pone rojo.
+  assert.equal(r.colados, 0, 'un registro de prueba entró al plantel de una sesión real')
+  assert.ok(r.maniquies > 0,
+    'ya no hay ninguna persona `es_prueba` en la empresa: este control dejó de poder distinguir '
+    + 'la vista de la tabla y hay que darle un maniquí o medirlo de otra forma')
 })
 
 test('la categoría no se dice dos veces: ningún puesto repite una categoría del convenio', { skip: SIN_BASE }, async () => {

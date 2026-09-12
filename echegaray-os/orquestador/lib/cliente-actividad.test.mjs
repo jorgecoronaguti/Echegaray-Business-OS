@@ -88,6 +88,13 @@ test('una fecha ilegible se descarta igual que una ausente', () => {
 })
 
 test('la obra aporta alta, arranque y fin REALES — y nunca los planificados', () => {
+  // ═══ SIN HORAS, EL «EMPEZÓ» ES UN DECLARADO Y SE LLAMA DISTINTO (85ad2ddb) ═══
+  //
+  // El test esperaba `obra-inicio`. Ese evento dejó de salir de `fecha_inicio_real`: desde «la
+  // cronología de una obra no es cuándo se la cargó en el sistema», INICIO es el de las primeras horas
+  // cargadas —un hecho— y la fecha escrita a mano sale como `obra-arranque`, que dice que es un
+  // declarado sin horas que lo respalden. Son dos claves porque son dos grados de evidencia, y
+  // mezclarlas sería presentar una intención como un hecho.
   const r = construirLineaDeTiempo(vacio({
     obras: [{
       obra_id: 'le-comedor', nombre: 'Comedor',
@@ -95,8 +102,23 @@ test('la obra aporta alta, arranque y fin REALES — y nunca los planificados', 
       fecha_inicio_real: '2026-08-18', fecha_fin_real: null,
     }],
   }))
-  assert.deepEqual(claves(r), ['obra-inicio-le-comedor', 'obra-alta-le-comedor'])
+  assert.deepEqual(claves(r), ['obra-arranque-le-comedor', 'obra-alta-le-comedor'])
+  assert.match(r.eventos[0].detalle, /sin horas/, 'el arranque declarado tiene que decir que no está probado')
   assert.equal(r.eventos[0].href, '/obras/le-comedor', 'el evento lleva a la obra')
+})
+
+test('con horas cargadas el inicio es UN hecho, y el declarado NO se repite al lado', () => {
+  // El defecto que esto cierra: dos «empezó» en la misma línea de tiempo, uno probado y uno a mano,
+  // con dos fechas distintas y la misma jerarquía visual. El que manda es el de las horas.
+  const r = construirLineaDeTiempo(vacio({
+    obras: [{
+      obra_id: 'le-comedor', nombre: 'Comedor',
+      creada_en: '2026-08-17T21:25:14.704Z',
+      inicio_con_horas: '2026-08-20', fecha_inicio_real: '2026-08-18', fecha_fin_real: null,
+    }],
+  }))
+  assert.deepEqual(claves(r), ['obra-inicio-le-comedor'])
+  assert.match(r.eventos[0].detalle, /primeras horas cargadas/)
 })
 
 test('certificar, facturar y cobrar son TRES eventos con sus tres fechas', () => {
