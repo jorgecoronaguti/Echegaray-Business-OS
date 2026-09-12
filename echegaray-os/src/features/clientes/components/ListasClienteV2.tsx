@@ -2,34 +2,50 @@
 //
 // Obras y presupuestos, con la grilla LITERAL del handoff v4. Cada columna cita su ancho.
 //
-// ═══ EL AVANCE SE FUE, Y EN SU PISTA VA EL COBRO (dueño, 10/09/2026 17:15) ═══
+// ═══ LA TABLA CONTESTA «QUÉ SE ENCARGÓ Y QUÉ LLEVA GASTADO» (dueño, 12/09/2026) ═══
 //
-// «Administración es un CRM y Obra un ERP: todo lo pertinente a datos de clientes va en CRM, no
-// mezcles cosas con obras.» El avance físico —cuánto lleva ejecutado— es la pregunta del ERP: se
-// mide contra el cronograma y se decide con el jefe de obra. En su pista va ahora lo COBRADO, que
-// es la relación con el cliente y la columna que esta ficha no tenía: para saber si Messina había
-// pagado había que salir a la cuenta corriente.
+// «Necesito que cada obra tenga, así como las HH que lleva, los costos de obra aparejados: en una
+// columna que sume materiales gastados y mano de obra en otra; eso de estado que has puesto como
+// columna no me sirve.» Y a las 13:10: «incluso la columna de cobrado neto no me es un dato que
+// sirve verlo, porque para eso está la sección especial de cobranzas.»
 //
-// EL COBRADO ES EL TOTAL CON IVA, igual que la pestaña OBRAS del Flujo de Caja y que la lista de
-// `/clientes`. Tres caras del mismo hecho no pueden publicar tres números.
+// TRABAJO · INICIO · HH · MATERIALES · MANO DE OBRA · CONTRATADO. Seis columnas, una pregunta cada
+// una: qué es, desde cuándo, cuánto trabajo lleva, cuánto material se compró, cuánto costó la gente
+// y por cuánto se vendió.
 //
-// ═══ LO QUE NO SE DIBUJA, Y POR QUÉ ═══
+// ═══ LO QUE SE FUE, Y A DÓNDE ═══
 //
-//   COSTO REAL   la ficha del cliente es la cara COMERCIAL de la relación —qué se contrató y cómo
-//                va—; el costo vive en la obra, que es donde se decide sobre él.
-//   JEFE DE OBRA lo dibujaba la versión anterior en el lugar donde el handoff pone AVANCE. El
-//                handoff v4 no lo trae: quién la conduce se lee en la obra, y acá le robaba la
-//                columna al único dato que contesta «¿cómo va?».
-//   AVANCE       nunca es 0 % por falta de cronograma. Una obra sin plan no tiene avance, y lo dice
-//                con palabras.
-//   LA ETAPA     EN LA COLUMNA DEL IMPORTE. Hasta el 06/09/2026, un jefe de obra veía la ETAPA de la
-//                obra donde va CONTRATADO, y el rótulo mutaba de «Contratado» a «Etapa». Se leía
-//                como una tabla distinta según quién mirara, y contestaba una pregunta que nadie
-//                había hecho para tapar la que no puede contestar. El handoff decide otra cosa: la
-//                columna es siempre CONTRATADO y la celda dice `sin permiso` (`dc.html:112` para el
-//                rótulo fijo, `751/760/771/796/813/885/898/924` para el literal). El permiso NO
-//                cambia — el `monto_contratado` sigue cerrado por GRANT de columna, y esto sólo
-//                cambia la palabra con la que la pantalla admite que no lo tiene.
+//   ESTADO        el dueño lo sacó con nombre. Sigue DECIDIENDO la tabla —las obras se agrupan en
+//                 «en curso» y «Terminados · N», que es el estado leído una vez y dicho en el rótulo
+//                 del grupo— y `obra_canonica.estado` sigue viajando en la fila. Lo que se fue es la
+//                 columna que repetía en cada renglón lo que el encabezado del grupo ya dice.
+//   COBRADO NETO  a la solapa Cobranzas, que es su casa: ahí está el cobro con su imputación, su
+//                 vencido y su próximo cobro. Acá era una cifra sin su contexto al lado de una
+//                 columna de costo, invitando a restar dos cosas que no se restan.
+//   AVANCE        es del ERP: se mide contra el cronograma y se decide con el jefe de obra.
+//   MARGEN        «quitá esa columna Margen, no es útil» (10/09/2026). El margen de una obra se mide
+//                 contra su costo REAL y su forecast, en el módulo Obras.
+//
+// ═══ EL COSTO VUELVE, Y ESTA VEZ CON SU FUENTE DECLARADA ═══
+//
+// Hasta el 10/09/2026 esta tabla tenía «Costo MO» y «Costo mat.» y se retiraron con el argumento de
+// que la ficha del cliente es la cara COMERCIAL. El dueño decidió otra cosa el 12/09: el costo de lo
+// que le encargó cada cliente se lee acá. La diferencia con las columnas retiradas es de FUENTE y de
+// honestidad: MATERIALES sale de las MISMAS filas de Compras que el «costo real» de la ficha de la
+// obra (sin nómina, sin anuladas y sin subcontratos, y el `title` lo dice) y MANO DE OBRA se
+// valoriza con la MISMA regla que la solapa «Costo a la obra» de Liquidación. Ninguna de las dos
+// publica un número que no pueda explicar: cuando no se puede valorizar, lo dice con palabras.
+//
+// ═══ EL IMPORTE NO MUTA DE PREGUNTA SEGÚN QUIÉN MIRE ═══
+//
+//   LA ETAPA      EN LA COLUMNA DEL IMPORTE. Hasta el 06/09/2026, un jefe de obra veía la ETAPA de la
+//                 obra donde va CONTRATADO, y el rótulo mutaba de «Contratado» a «Etapa». Se leía
+//                 como una tabla distinta según quién mirara, y contestaba una pregunta que nadie
+//                 había hecho para tapar la que no puede contestar. El handoff decide otra cosa: la
+//                 columna es siempre CONTRATADO y la celda dice `sin permiso` (`dc.html:112` para el
+//                 rótulo fijo, `751/760/771/796/813/885/898/924` para el literal). El permiso NO
+//                 cambia — el `monto_contratado` sigue cerrado por GRANT de columna, y esto sólo
+//                 cambia la palabra con la que la pantalla admite que no lo tiene.
 
 import Link from 'next/link'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
@@ -39,6 +55,9 @@ import { ContratadoDeLaFicha } from './CeldaContratadoFicha'
 import { MarcaAdicional } from './MarcaAdicional'
 import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
 import { inicioDeObra, textoHH, tituloHH, type HorasDeObra } from '../services/horasDeObra'
+import {
+  textoManoObra, textoMateriales, tituloManoObra, tituloMateriales, type CostoDeObra,
+} from '../services/costosDeObra'
 import type { ObraPanel } from '@/features/obras/types'
 import type { EconomiaDeObra } from '../services/economiaObras'
 import { baseContractualDe } from '@/features/clientes/services/economiaObras'
@@ -46,91 +65,47 @@ import type { PapelesDelCliente } from '../services/papelesCliente'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
 import { CeldaHH } from './CeldaHH'
 
-/**
- * EL ESTADO SE DICE CON LA PALABRA Y SU TINTA, sin punto de color.
- *
- * El handoff colorea el texto (`dc.html:900`: en ejecución tinta plena, pausada ámbar, el resto
- * apagado) y no dibuja ningún bullet. El punto de 6px que había acá era una segunda señal para
- * decir lo mismo, y era uno de los cuatro hijos que no se encogían.
- */
-const COLOR_ESTADO_OBRA: Record<string, string> = {
-  activa: V.tinta, pausada: V.warn, cerrada: V.apagado,
-}
-
-/**
- * EL ESTADO, EN EL IDIOMA DEL CRM (10/09/2026).
- *
- * `obra_canonica.estado` es del ERP y dice `activa` / `cerrada`: una obra se abre y se cierra. Lo
- * que el cliente reconoce es otra cosa —su trabajo está en curso o terminado— y es lo único que
- * esta pantalla toma prestado del registro de obras. El VALOR de la base viaja igual en
- * `data-estado`: la palabra que se ve cambia, el hecho que se lee no.
- */
-const PALABRA_ESTADO: Record<string, string> = {
-  activa: 'en curso', cerrada: 'terminado', pausada: 'pausado',
-}
-
-// ═══ LA GRILLA ES LA DEL HANDOFF; EL BREAKPOINT SALE DE UNA CUENTA, NO DE UN GUSTO ═══
+// ═══ LA GRILLA: DOS ANCHOS Y UN SCROLLER, Y CADA NÚMERO SALE DE UNA CUENTA ═══
 //
-// `minmax(240px,1.8fr) 150px 90px 170px 28px` con `gap:28px` (`dc.html:113`) necesita
-// 240+150+90+170+28 + 4×28 = 790px de ancho ÚTIL. En esta pantalla el ancho útil es
-// `viewport − 393` (20+20 de `CuerpoDeFicha` y 300+24+1+28 del costado), así que la grilla exacta
-// entra a partir de 1183px de viewport. Por debajo se dibuja la misma lista con las pistas
-// elásticas y la mitad del aire: no se esconde ninguna columna porque ninguna es decorativa.
+// Seis columnas de contenido más la pista de 28px del menú. El nombre se lleva 2fr y tiene un piso de
+// 180px: es lo que identifica la fila, y con las pistas elásticas a 390px quedaba en 48px y se leía
+// «B..», «L..», «P..» (medido el 05/09/2026 sobre la captura).
 //
-// ═══ A 390px NO ALCANZA PARA CINCO COLUMNAS, Y EL NOMBRE NO SE NEGOCIA ═══
+// Las pistas fijas suman 64+72+112+112+148+28 = 536px; con el piso del nombre y seis `gap` de 16 la
+// demanda es 812px. El ancho útil de esta ficha es `viewport − 393` (20+20 de `CuerpoDeFicha` y
+// 300+24+1+28 del costado), así que a 1440px hay 1068px: entra con aire.
 //
-// Medido el 05/09/2026 sobre la captura: con las cinco pistas elásticas a 390px, el nombre de la
-// obra quedaba en 48px y se leía «B..», «L..», «P..». Una fila que no se puede identificar no sirve
-// para nada, aunque no desborde. Debajo de 560px se ESCONDE AVANCE —de las tres columnas de estado
-// es la que menos decide y la de texto más largo— y la fila queda en OBRA · ESTADO · CONTRATADO,
-// que es la pregunta de un teléfono: qué obras tiene y por cuánto.
+// ═══ A 400px NO SE ESCONDE NINGUNA COLUMNA: LA TABLA RUEDA DENTRO DE SU CAJA ═══
+//
+// Hasta hoy el teléfono se resolvía escondiendo pistas y quedaba OBRA · ESTADO · CONTRATADO. Con las
+// dos columnas de costo puestas, esconder sería esconder justo lo que el dueño pidió ver. La tabla
+// entera va en su propio `overflow-x` con un `min-width` que deja el nombre legible, que es el mismo
+// patrón que ya usa la solapa «Costo a la obra» de Liquidación («sin el scroller empujan la página
+// entera»). La página NO se desplaza de costado —eso lo mide `tests/shell-dos-areas.spec.ts`—: rueda
+// la tabla.
 //
 // ═══ LA PLANTILLA SIN PREFIJO ES LA ENTERA, Y ESO NO ES UN GUSTO (09/09/2026) ═══
 //
-// Hasta hoy esta grilla se escribía al revés que todas las demás del v2: la plantilla sin prefijo
-// era la del TELÉFONO —tres pistas— y los anchos se agregaban con dos variantes `min` de ancho.
-// Con ocho celdas dibujadas siempre, el estado por defecto de la tabla tenía CINCO CELDAS MÁS QUE
-// PISTAS. Y el estado por defecto no es una hipótesis: mientras los cortes por ancho no llegaron al
-// CSS emitido (`cortes-por-ancho-llegan-al-css.test.ts`) era el que corría en producción a 1440px.
-// Las cinco celdas sobrantes caían en filas implícitas y —como el encabezado y la fila llevan alto
-// FIJO (`ENCABEZADO.height`, `ALTO_V2.cara`)— se dibujaban encima de la fila de abajo: «CONTRATADO»
-// y «COSTO MAT.» quedaban tapados por el importe de la primera obra
-// (`qa-shots/verif-opacidad2-10-cliente-ficha.png`).
-//
-// Escrita de ancho entero hacia abajo, la degradación es segura: si una media query no llega, se
-// dibuja la tabla de escritorio —apretada, nunca superpuesta—, y cada variante de ancho con `hidden` retira su
-// celda EN EL MISMO CORTE en que su pista desaparece. Es además la forma en que ya están escritas
-// la cartera y Compras.
+// Con ocho celdas dibujadas siempre y una plantilla de tres pistas como estado por defecto, las
+// celdas sobrantes caían en filas implícitas y —como el encabezado y la fila llevan alto FIJO— se
+// dibujaban ENCIMA de la fila de abajo: «CONTRATADO» y «COSTO MAT.» quedaban tapados por el importe
+// de la primera obra (`qa-shots/verif-opacidad2-10-cliente-ficha.png`). Escrita de ancho entero
+// hacia abajo, el peor caso de una media query que no llega es una tabla apretada, nunca superpuesta.
 //
 // ═══ POR QUÉ `minmax(0,…)` Y NO ANCHOS FIJOS ═══
 //
-// Ocho pistas fijas suman 788px + 200 del nombre + 140 de `gap` = 1128, y el ancho útil de esta
-// ficha a 1440px de viewport es 1068 (el costado se lleva 300+53): la tabla se salía de su columna
-// por 60px aun con los cortes andando. Con `minmax(0,X)` la pista cede cuando no hay lugar en vez
-// de desbordar; el único piso que se defiende es el del nombre, que es lo que identifica la fila.
-// LA PISTA DEL COBRADO MIDE 150 Y NO 80. Heredó los 80px que eran del AVANCE —«94 %» entra en 80,
-// «$ 107.877.339» no— y el dueño vio «$107.877.3…» y «COBRADO C…» cortados en la ficha de
-// Quattropani (captura de producción, 10/09/2026 18:10). Una cifra truncada es una cifra falsa.
-// ═══ OC Y OP SALEN DE ESTA TABLA; EN SU LUGAR VAN INICIO Y HH (dueño, 11/09/2026 18:42) ═══
-//
-// «Esas columnas OC/OP quitarlas de todo el CRM porque deben estar en la sección Órdenes, que tiene
-// que ser órdenes de compra y de pago.» Los dos importes siguen existiendo —los mismos servicios,
-// los mismos papeles— y se leen ENTEROS en la solapa «Órdenes de compra y de pago», con tipo,
-// número, fecha, importe y obra. Acá quedaba la mitad de cada papel repetida en una celda de 140px.
-//
-// En ese lugar va lo que el CRM no sabía decir: «necesito saber las hs que se van sumando en cada
-// obra dentro de cada cliente» y «no tengo idea de cuándo empezó cada obra». La fila quedó en SIETE
-// pistas y el ancho dejó de estar al límite: 824px de demanda contra 1.068 útiles a 1440.
+// Con `minmax(0,X)` la pista cede cuando no hay lugar en vez de desbordar; el único piso que se
+// defiende es el del nombre. Las dos columnas de costo miden 112px porque «$154.248.233» —el
+// material de La Estrella, el mayor de la cartera— mide 86px en la mono de 12px: una cifra truncada
+// es una cifra falsa, y ya pasó con el cobrado en 80px (captura de producción, 10/09/2026 18:10).
 const COLS_OBRAS
-  // EL NOMBRE SE LLEVA 2fr Y EL ESTADO 84: «ME - PLAYÓN DILUCIÓN DE ÁCIDO» mide 195px a 12,5px y con
-  // 1,6fr quedaba cortado por SEIS píxeles a 1440 (medido en el navegador, 10/09/2026 18:50). Un
-  // nombre cortado es una fila que no se puede identificar.
-  = 'gap-[16px] grid-cols-[minmax(180px,2fr)_minmax(0,84px)_minmax(0,64px)_minmax(0,150px)_minmax(0,150px)_minmax(0,72px)_minmax(0,28px)]'
-  // Por debajo de 1200px se suelta el INICIO: de las dos nuevas es la que menos decide —cuándo
-  // arrancó no cambia lo que hay que hacer hoy— y las HH se quedan, que son lo que el dueño pidió ver.
-  + ' max-[1199px]:gap-[14px] max-[1199px]:grid-cols-[minmax(0,1.4fr)_minmax(0,90px)_140px_minmax(0,130px)_minmax(0,90px)_28px]'
-  // A 390px no entran cinco columnas sin estrangular el nombre: quedan OBRA · ESTADO · CONTRATADO.
-  + ' max-[559px]:gap-[10px] max-[559px]:grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
+  = 'gap-[16px] grid-cols-[minmax(180px,2fr)_minmax(0,64px)_minmax(0,72px)_minmax(0,112px)_minmax(0,112px)_minmax(0,148px)_minmax(0,28px)]'
+  // Por debajo de 1200px se suelta el INICIO: de las columnas nuevas es la que menos decide —cuándo
+  // arrancó no cambia lo que hay que hacer hoy— y el resto se queda, que es lo que el dueño pidió ver.
+  + ' max-[1199px]:gap-[12px] max-[1199px]:grid-cols-[minmax(0,1.4fr)_minmax(0,72px)_minmax(0,108px)_minmax(0,108px)_minmax(0,132px)_28px]'
+  // EL PISO DEL SCROLLER: 180 del nombre + 448 de pistas + 60 de gaps = 688. Por debajo de eso la
+  // tabla rueda; el nombre nunca baja de 180px.
+  + ' max-[559px]:min-w-[688px]'
 
 /** LA CELDA QUE SE SUELTA EN EL CORTE DE 1199, con su pista: el INICIO. El nombre viene de cuando
  *  acá se soltaba la economía de OBRAS (Costo MO, Costo mat., OP) y se conserva porque es el corte,
@@ -139,11 +114,12 @@ const COLS_OBRAS
  *  así que cada celda escondida acá tiene que corresponder a una pista que desaparece acá. */
 const SOLO_ANCHO_ECO = 'max-[1199px]:hidden'
 
-/** Lo que se esconde a 390px. Nunca el nombre ni el importe. */
+/** Lo que la tabla de PRESUPUESTOS esconde en el teléfono. Ya no lo usa la de Trabajos: ahí no se
+ *  esconde ninguna columna —son las que el dueño pidió ver— y la tabla rueda dentro de su caja. */
 const SOLO_ANCHO = 'max-[559px]:hidden'
 
-// EL RESPIRO DE LA DERECHA A 390px. En la pantalla ancha lo da la pista de 28px del menú; cuando esa
-// pista se esconde, el importe queda pegado al borde y se lee como si estuviera cortado.
+// EL RESPIRO DE LA DERECHA CUANDO LA TABLA RUEDA. En la pantalla ancha lo da la pista de 28px del
+// menú; dentro del scroller el importe queda pegado al borde y se lee como si estuviera cortado.
 const AIRE_DERECHO = 'max-[559px]:pr-4'
 
 /** DE DÓNDE SALE LA FECHA DE INICIO. Una columna de fechas en un CRM invita a creer que es la fecha
@@ -160,11 +136,21 @@ const AYUDA_HH = 'Horas hombre acumuladas imputadas a este trabajo (obra_plan_vs
   + 'cuentan: no son trabajo. Con plan cargado se escribe «real / plan». Vacío = no puedo leerlas; '
   + '«—» = ninguna hora cargada.'
 
-/** La MISMA columna «Cobrado» de la pestaña OBRAS y de `/clientes`: total, con IVA, percibido. */
-const AYUDA_COBRADO = 'Lo cobrado de este trabajo SIN IVA, criterio percibido (obra_cuenta.cobrado_neto), '
-  + 'comparable con el contrato neto de al lado; el porcentaje es el mismo avance de cobro que la lista de Clientes. '
-  + 'Vacío no es cero: mientras Cobranzas anote el cobro contra el CLIENTE y no contra el trabajo, '
-  + 'la base no puede decir cuánto entró por éste.'
+/** DE DÓNDE SALE CADA PESO DE MATERIALES. El `title` nombra la fuente y lo que NO entra: sin eso, la
+ *  diferencia contra el «costo real» de la ficha de la obra —que sí suma la nómina imputada— se lee
+ *  como un error de alguno de los dos números. El detalle por comprobante lo arma `costosDeObra.ts`. */
+const AYUDA_MATERIALES = 'Lo comprado e imputado a este trabajo en la pestaña Compras (las MISMAS '
+  + 'filas que el «costo real» de la ficha de la obra, puenteadas por obra_alias). No entran nómina, '
+  + 'cargas, ARCA ni financiero, ni las filas anuladas, ni el rubro «Subcontratos y mano de obra», '
+  + 'que se nombra aparte. «—» = ninguna compra imputada; vacío = no puedo leerlo.'
+
+/** LA MANO DE OBRA ES LA DE LIQUIDACIÓN, y el `title` lo dice con el nombre de la solapa: es la única
+ *  forma de que el día que los dos números se separen, alguien sepa dónde mirar. */
+const AYUDA_MANO_OBRA = 'Las horas propias de este trabajo valorizadas con la MISMA regla que la '
+  + 'solapa «Costo a la obra» de Liquidación: valor hora vigente de cada persona × horas × '
+  + 'multiplicador de cargas. «sin valorizar» = hay horas cargadas y falta el dato para convertirlas '
+  + 'en costo (las alícuotas, o la tarifa de alguien); ámbar = el número está incompleto y el detalle '
+  + 'dice cuánto falta. La mano de obra facturada por terceros NO está acá: va nombrada en Materiales.'
 
 /** La sangría del handoff (`dc.html:113`, `padding-left:16px`), que reemplaza los 13 del v2. */
 const SANGRIA = 16
@@ -175,18 +161,12 @@ const SANGRIA = 16
 // `features/obras`, donde el avance se mide contra el plan. Dejarla acá servida era la invitación a
 // que la columna volviera al CRM sin que nadie lo decidiera.
 
-/** TRABAJO · ESTADO · COBRADO · CONTRATADO · OC · OP · [acciones]. `dc.html:113-135`. */
+/** TRABAJO · INICIO · HH · MATERIALES · MANO DE OBRA · CONTRATADO · [acciones]. */
 export function ObrasDelCliente({
-  obras, veEconomia, vacio, economia = null, papeles = null, titulo, cobrado = null, hrefTrabajo,
-  horas = null, hrefDesgloseHH,
+  obras, veEconomia, vacio, economia = null, papeles = null, titulo, hrefTrabajo,
+  horas = null, costos = null, hrefDesgloseHH,
 }: {
   obras: ObraPanel[]
-  /**
-   * LO COBRADO POR TRABAJO (`obra_cobranza`), con la MISMA regla de «todo o nada» que la lista de
-   * `/clientes`: mientras la base no pueda repartir el cobro, NINGUNA fila lo publica. Una sola
-   * fila con número en una columna vacía no se lee como «la base sólo sabe de ésta».
-   */
-  cobrado?: { por: Map<string, { total: number | null; neto?: number | null }>; disponible: boolean } | null
   /** Adónde va la fila: el detalle del trabajo DENTRO del CRM. Sin esto, al ERP — que es de donde
    *  el dueño mandó separar esta pantalla. */
   hrefTrabajo?: (obraId: string) => string
@@ -207,13 +187,26 @@ export function ObrasDelCliente({
    * horas cargadas sí está en el Map y se dibuja «—»: las dos ausencias no se leen igual.
    */
   horas?: Map<string, HorasDeObra> | null
+  /**
+   * LO GASTADO EN CADA TRABAJO (`costo_obra` de `pantalla_cliente`). `null` = no puedo decirlo —la
+   * cara no lo transporta, o el rol no es Administración— y entonces las dos celdas quedan VACÍAS.
+   * Un trabajo SIN compras y SIN horas no está en el Map y se dibuja «—»: las dos ausencias no se
+   * leen igual, y confundirlas diría «esta obra no gastó nada» sobre una obra de $ 154 M.
+   */
+  costos?: Map<string, CostoDeObra> | null
   /** Adónde lleva el número de HH: el desglose persona × día DENTRO del CRM. Sin esta función el
    *  número se dibuja igual y no navega — una tabla que no puede explicar su número sigue siendo
    *  mejor que ninguna. */
   hrefDesgloseHH?: (obraId: string) => string
 }) {
   return (
-    <div data-testid="obras-del-cliente">
+    // ═══ A 400px LA TABLA RUEDA DENTRO DE SU CAJA, Y LA PÁGINA NO SE MUEVE ═══
+    //
+    // Seis columnas no entran en un teléfono y ninguna es decorativa: esconderlas sería esconder lo
+    // que el dueño pidió ver. Sin el scroller, la grilla empuja la página entera de costado y el
+    // control de `tests/shell-dos-areas.spec.ts` (`scrollWidth <= innerWidth`) se pone rojo. Es el
+    // mismo patrón de la solapa «Costo a la obra» de Liquidación.
+    <div data-testid="obras-del-cliente" className="max-[559px]:overflow-x-auto">
       {/* EL RÓTULO DEL GRUPO. Las obras CERRADAS se listan siempre, debajo de las que están en
           ejecución, porque son la historia de lo que se le vendió a este cliente: «ME - BASES
           TANQUE SO2» tiene su OC 1864, su OP 4865 y sus dos facturas, y hasta hoy vivía detrás de
@@ -225,14 +218,17 @@ export function ObrasDelCliente({
       )}
       <div className={`grid ${COLS_OBRAS} ${AIRE_DERECHO}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
         <RotuloCol>Trabajo</RotuloCol>
-        <RotuloCol>Estado</RotuloCol>
         <span className={`grid ${SOLO_ANCHO_ECO}`} title={AYUDA_INICIO}><RotuloCol>Inicio</RotuloCol></span>
-        <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_COBRADO}><RotuloCol derecha>Cobrado neto</RotuloCol></span>
+        <span className="grid" title={AYUDA_HH}><RotuloCol derecha>HH</RotuloCol></span>
+        {/* ═══ LAS DOS COLUMNAS DE COSTO (dueño, 12/09/2026) ═══
+
+            «Los costos de obra aparejados: en una columna que sume materiales gastados y mano de
+            obra en otra.» Van JUNTAS y antes del contratado: las dos son costo, y lo que se lee de
+            corrido es «esto me costó, por esto lo vendí». */}
+        <span className="grid" title={AYUDA_MATERIALES}><RotuloCol derecha>Materiales</RotuloCol></span>
+        <span className="grid" title={AYUDA_MANO_OBRA}><RotuloCol derecha>Mano de obra</RotuloCol></span>
         <RotuloCol derecha>Contratado</RotuloCol>
-        {/* LAS HH OCUPAN EL LUGAR QUE TENÍA «OC c/IVA» (dueño, 11/09/2026 18:38: «lo quiero exhibido
-            en una columna al lado de OC/OP»). */}
-        <span className={`grid ${SOLO_ANCHO}`} title={AYUDA_HH}><RotuloCol derecha>HH</RotuloCol></span>
-        <span className={SOLO_ANCHO} />
+        <span />
       </div>
 
       {obras.length === 0 && (
@@ -265,6 +261,12 @@ export function ObrasDelCliente({
         // EL PLAN SALE DE LA OBRA, que ya viaja en esta misma fila (`obra_panel.fecha_inicio_plan`):
         // no hace falta pedirlo y es la fecha que el módulo Obras publica como inicio planificado.
         const inicio = inicioDeObra(hhDeLaObra, o.fecha_inicio_plan)
+        // LO GASTADO EN ESTE TRABAJO. `costos === null` es «no puedo decirlo» y se distingue de «este
+        // trabajo no tiene nada imputado» en las celdas, no acá.
+        const costoDeLaObra = costos?.get(o.obra_id) ?? null
+        // EL TEXTO Y EL ÁMBAR LOS DECIDE `costosDeObra.ts`, con sus tests: la celda no sabe qué
+        // significa un hueco.
+        const manoObra = textoManoObra(costoDeLaObra)
         const cerrada = o.estado === 'cerrada'
         return (
         <Link
@@ -313,21 +315,6 @@ export function ObrasDelCliente({
             <OrdenesDeLaObra ordenes={papelesDeLaObra?.oc ?? []} veEconomia={veEconomia} sangria={24} />
           </span>
 
-          {/* `overflow: hidden` se queda aunque el avance ya no viva acá: es la defensa barata
-              contra el próximo hijo que no se pueda encoger. Lo que sacó el desborde de raíz fue
-              separar AVANCE en su propia pista. */}
-          <span
-            data-testid="estado-obra-cliente"
-            data-estado={o.estado}
-            className="truncate"
-            style={{
-              fontSize: '12px', color: COLOR_ESTADO_OBRA[o.estado] ?? V.apagado,
-              minWidth: 0, overflow: 'hidden',
-            }}
-          >
-            {PALABRA_ESTADO[o.estado] ?? o.estado}
-          </span>
-
           {/* ═══ INICIO Y HH — LO QUE EL CRM NO SABÍA DECIR (dueño, 11/09/2026) ═══
 
               La fecha es la PRIMERA con horas cargadas y las HH son las acumuladas del trabajo, las
@@ -346,25 +333,52 @@ export function ObrasDelCliente({
             {horas === null ? '' : inicio.texto}
           </span>
 
-          {/* COBRADO — VACÍO NO ES CERO. Mientras `obra_cobranza` no reparta el cobro por trabajo,
-              la celda calla: un «$ 0» diría que este trabajo no cobró nada, y lo que pasa es que
-              Cobranzas anota el cobro contra el cliente. Es todo o nada, igual que en `/clientes`. */}
+          {/* EL NÚMERO DE HH LLEVA AL DESGLOSE de quién cargó horas cada día (`?hh=<obra>`): «que de
+              ahí me lleve a un desglose de la obra entera con las personas por día que participaron
+              de las HH» (dueño, 11/09/2026 18:38). */}
+          <span className="flex items-center justify-end" data-testid="hh-obra-cliente">
+            {/* VACÍO NO ES «—»: sin permiso o en una cara que no las transporta, la celda calla. Un
+                «—» diría que nadie cargó horas, y la obra puede tener 12.525. */}
+            {horas === null ? null : (
+              <CeldaHH
+                texto={textoHH(hhDeLaObra)}
+                ayuda={tituloHH(hhDeLaObra) ?? AYUDA_HH}
+                href={hhDeLaObra?.hhReal != null && hrefDesgloseHH ? hrefDesgloseHH(o.obra_id) : null}
+              />
+            )}
+          </span>
+
+          {/* ═══ MATERIALES Y MANO DE OBRA (dueño, 12/09/2026) ═══
+
+              Las dos celdas DELEGAN en `services/costosDeObra.ts`, que es donde están los tests de
+              qué dice cada hueco: acá no se decide si un null es un cero. Y las dos callan —vacío,
+              no «—»— cuando `costos === null`: sin permiso o en una cara que no los transporta, un
+              «—» afirmaría que esta obra no gastó nada.
+
+              SÓLO QUIEN VE ECONOMÍA VE COSTO. Es la misma puerta que el contratado: un rol sin
+              economía no ve el precio de venta, y mucho menos el costo. */}
           <span
-            data-testid="cobrado-obra-cliente"
-            title={AYUDA_COBRADO}
-            className={`truncate font-mono tabular-nums ${SOLO_ANCHO}`}
+            data-testid="materiales-obra-cliente"
+            title={tituloMateriales(costoDeLaObra) ?? AYUDA_MATERIALES}
+            className="truncate font-mono tabular-nums"
             style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
           >
-            {/* NETO CONTRA NETO, Y EL MISMO AVANCE QUE LA CARTERA (auditor final, 11/09/2026): al lado
-                de un contrato neto de $ 139,4 M, «$ 107,9 M c/IVA» hacía calcular 77 % a quien leía
-                la fila mientras la lista decía 65 %. */}
-            {veEconomia && cobrado?.disponible && cobrado.por.get(o.obra_id)?.neto != null
-              ? (() => {
-                  const neto = cobrado.por.get(o.obra_id)!.neto as number
-                  const pct = contratado ? Math.min(100, Math.round((neto / contratado) * 100)) : null
-                  return <>{plata(neto)}{pct !== null && <span style={{ color: V.tenue, marginLeft: 6, fontSize: '10.5px' }}>{pct} %</span>}</>
-                })()
-              : ''}
+            {costos === null || !veEconomia ? '' : textoMateriales(costoDeLaObra)}
+          </span>
+
+          {/* ÁMBAR = RECLAMA TRABAJO, y acá el trabajo es cargar un dato que existe: las alícuotas de
+              costo o la tarifa de alguien. No es rojo —nada está mal— ni tinta plena, que diría que
+              el número está completo. */}
+          <span
+            data-testid="mano-obra-obra-cliente"
+            title={tituloManoObra(costoDeLaObra, hhDeLaObra?.inicioReal) ?? AYUDA_MANO_OBRA}
+            className={`truncate tabular-nums ${manoObra.texto.startsWith('$') ? 'font-mono' : ''}`}
+            style={{
+              fontSize: '12px', textAlign: 'right',
+              color: manoObra.parcial ? V.warn : V.tintaSuave,
+            }}
+          >
+            {costos === null || !veEconomia ? '' : manoObra.texto}
           </span>
 
           {/* MONO CUANDO ES UNA CIFRA, TIPOGRAFÍA DE TEXTO CUANDO ES UNA FRASE. «sin precio en
@@ -383,41 +397,11 @@ export function ObrasDelCliente({
                 </span>
               )}
 
-          {/* ═══ LAS HH, DONDE ESTABAN LOS TOTALES DE OC Y OP (dueño, 11/09/2026 18:38 y 18:42) ═══
-
-              «El acumulado HH por cliente por obra, lo quiero exhibido en una columna al lado de
-              OC/OP» y después «esas columnas OC/OP quitarlas de todo el CRM porque deben estar en la
-              sección Órdenes». Los números de las OC siguen en la columna Trabajo, pegados al
-              nombre —el MISMO componente que usa la lista de `/clientes`—; lo que se fue es la
-              celda que repetía su TOTAL.
-
-              EL NÚMERO LLEVA AL DESGLOSE de quién cargó horas cada día (`?hh=<obra>`), que es lo
-              que el dueño pidió: «que de ahí me lleve a un desglose de la obra entera con las
-              personas por día que participaron de las HH». */}
-          <span className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid="hh-obra-cliente">
-            {/* VACÍO NO ES «—»: sin permiso o en una cara que no las transporta, la celda calla. Un
-                «—» diría que nadie cargó horas, y la obra puede tener 12.525. */}
-            {horas === null ? null : (
-              <CeldaHH
-                texto={textoHH(hhDeLaObra)}
-                ayuda={tituloHH(hhDeLaObra) ?? AYUDA_HH}
-                href={hhDeLaObra?.hhReal != null && hrefDesgloseHH ? hrefDesgloseHH(o.obra_id) : null}
-              />
-            )}
-          </span>
-          {/* ═══ MARGEN FUERA (dueño, 10/09/2026: «quitá esa columna Margen, no es útil») ═══
-
-              Se retiró de `/clientes` a las 15:33 y de acá en el mismo día: es el MISMO concepto
-              sobre los mismos números, y dejarlo en una de las dos pantallas del módulo Clientes es
-              volver a tener dos verdades sobre el mismo cliente. El margen de una obra vive en el
-              módulo Obras —`features/obras`, con `obra_economia` y `planVsReal`, que lo miden
-              contra el costo REAL y el forecast—, no contra un contratado que en cuatro de las
-              cinco obras de Messina ni siquiera es un precio. */}
           {/* LA PISTA DE 28px EXISTE Y VA VACÍA. El handoff pone acá el menú de fila, pero en esta
               ficha no hay ninguna acción de fila cableada para una obra —ni quitar, ni archivar: se
               archiva desde la obra—. Dibujar un `···` que sólo repite el enlace de la fila sería
               inventar una capacidad; reservar la pista es lo que mantiene la grilla exacta. */}
-          <span aria-hidden className={SOLO_ANCHO} />
+          <span aria-hidden />
         </Link>
         )
       })}

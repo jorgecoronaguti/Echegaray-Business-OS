@@ -77,8 +77,9 @@ import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
 import { A_SANGRE, solapaDe, solapasDeCliente } from '@/features/clientes/services/solapasCliente'
 import { tasaDeConversion } from '@/features/clientes/services/tasaConversion'
 import { leerDesgloseHH } from '@/features/clientes/services/desgloseHH'
+import { totalesDelCliente } from '@/features/clientes/services/costosDeObra'
 import { DesgloseHH } from '@/features/clientes/components/DesgloseHH'
-import { PieHHDelCliente } from '@/features/clientes/components/PieHHDelCliente'
+import { PieDeLosTrabajos } from '@/features/clientes/components/PieDeLosTrabajos'
 import { Aviso } from '@/shared/components/ds'
 import { FormAccion } from '@/shared/components/ui'
 import { EstadoError } from '@/shared/components/estado'
@@ -447,6 +448,13 @@ export default async function ClientePage({ params, searchParams }: {
       return x == null ? a : (a ?? 0) + x
     }, null)
 
+  // ═══ LO GASTADO POR EL CLIENTE, SUMADO DE LAS MISMAS FILAS QUE LA TABLA (dueño, 12/09/2026) ═══
+  //
+  // La regla y los huecos los decide `costosDeObra.ts`, con sus tests: acá no se suma a mano. El pie
+  // declara si al total de mano de obra le faltan horas — un total parcial publicado liso se lee como
+  // el costo completo.
+  const costosDelCliente = totalesDelCliente(ficha.costosPorObra, todas.map((o) => o.obra_id))
+
   // LOS CUATRO NÚMEROS DE LA CUENTA, SUMADOS DE SUS TRABAJOS (misma fuente que `/clientes`).
   const cuentaTrabajos = cuentaDeTrabajos(
     todas.map((o) => ({ obra_id: o.obra_id, contratado: baseContractualDe(economia?.get(o.obra_id)) })),
@@ -664,8 +672,8 @@ export default async function ClientePage({ params, searchParams }: {
                   veEconomia={veEconomia}
                   economia={economia}
                   papeles={papeles}
-                  cobrado={cobradoPorObra}
                   horas={ficha.horasPorObra}
+                  costos={ficha.costosPorObra}
                   hrefDesgloseHH={hrefDesgloseHH}
                   hrefTrabajo={hrefTrabajo}
                   vacio={cerradas.length === 0
@@ -684,10 +692,10 @@ export default async function ClientePage({ params, searchParams }: {
                     veEconomia={veEconomia}
                     economia={economia}
                     papeles={papeles}
-                    cobrado={cobradoPorObra}
-                    // LAS TERMINADAS TAMBIÉN LLEVAN SUS HORAS: son la historia de lo que costó cada
-                    // trabajo, y es la mitad de lo que sirve para cotizar el próximo.
+                    // LAS TERMINADAS TAMBIÉN LLEVAN SUS HORAS Y SUS COSTOS: son la historia de lo
+                    // que costó cada trabajo, y es la mitad de lo que sirve para cotizar el próximo.
                     horas={ficha.horasPorObra}
+                    costos={ficha.costosPorObra}
                     hrefDesgloseHH={hrefDesgloseHH}
                     hrefTrabajo={hrefTrabajo}
                     titulo={`Terminados · ${cerradas.length}`}
@@ -698,7 +706,7 @@ export default async function ClientePage({ params, searchParams }: {
                 {/* EL ACUMULADO DEL CLIENTE, EN EL PIE DE LA TABLA. No va en la fila de cifras del
                     titular: `hh_obra` viaja SÓLO en esta cara —es la única que las dibuja— y en las
                     otras ocho la cifra tendría que decir «no las tengo», que se lee como un cero. */}
-                <PieHHDelCliente total={hhDelCliente} obras={todas.length} />
+                <PieDeLosTrabajos hh={hhDelCliente} obras={todas.length} costos={costosDelCliente} />
                 </>
                 )}
 

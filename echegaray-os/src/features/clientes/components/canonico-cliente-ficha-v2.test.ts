@@ -84,9 +84,16 @@ test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
   assert.match(codigoPagina(), /basesEnCurso = enCurso\.map\(\(o\) => baseContractualDe\(economia\?\.get\(o\.obra_id\)\)\)/)
   // O suma completa o nada: con un trabajo sin base, la ficha dice «sin precio», igual que la lista.
   assert.match(codigoPagina(), /basesEnCurso\.every\(\(v\): v is number => v !== null\)/)
-  // Y la tabla de Trabajos compara NETO con neto y publica el avance, no el total con IVA.
-  assert.match(codigoListas(), /cobrado\.por\.get\(o\.obra_id\)\?\.neto != null/)
-  assert.match(codigoListas(), />Cobrado neto</)
+  // ═══ LA COBRANZA SALIÓ DE LA TABLA DE TRABAJOS (dueño, 12/09/2026 13:10) ═══
+  //
+  // «Incluso la columna de cobrado neto no me es un dato que sirve verlo, porque para eso está la
+  // sección especial de cobranzas.» Lo que este par vigila es que no vuelva por la ventana: una cifra
+  // de cobro al lado de dos columnas de costo invita a una resta que no significa nada, y el cobro
+  // sin su imputación, su vencido y su próximo cobro al lado es media respuesta.
+  assert.doesNotMatch(codigoListas(), />Cobrado neto</,
+    'volvió la columna de cobranza a la tabla de trabajos: su casa es la solapa Cobranzas')
+  assert.doesNotMatch(codigoListas(), /cobrado\?\.disponible/,
+    'la tabla de trabajos volvió a leer la cobranza por obra')
   assert.doesNotMatch(codigoPagina(), /economiaCliente\?\.contratado_en_curso/)
   assert.match(codigoListas(), /const contratado = baseContractualDe\(e\)/)
   // EL RESPALDO AL CAMPO DEL FORMULARIO NO VUELVE: era la otra definición.
@@ -100,14 +107,17 @@ test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
 // trabajo se mide contra el cronograma y se decide con el jefe de obra: es la pregunta del ERP. En
 // su pista va lo COBRADO, que es la relación con el cliente y lo que esta ficha no tenía.
 
-test('la ficha no dibuja el avance de obra, y en su lugar publica lo cobrado', () => {
+test('la ficha no dibuja el avance de obra, y en su pista va el COSTO', () => {
   const src = codigoListas()
   assert.doesNotMatch(src, /avance_pct|avanceDeObra|'sin cronograma'/,
     'el avance volvió al CRM: se mide contra el plan, y el plan vive en el ERP')
-  // NETO CONTRA NETO (auditor final, 11/09/2026): el contrato de al lado es neto; el cobro también.
-  assert.match(src, /<RotuloCol derecha>Cobrado neto<\/RotuloCol>/)
-  // VACÍO NO ES CERO: mientras Cobranzas anote el cobro contra el cliente, la celda calla.
-  assert.match(src, /cobrado\?\.disponible && cobrado\.por\.get\(o\.obra_id\)\?\.neto != null/)
+  // LAS DOS COLUMNAS QUE EL DUEÑO PIDIÓ EL 12/09/2026, con su fuente declarada en el `title`.
+  assert.match(src, /<RotuloCol derecha>Materiales<\/RotuloCol>/)
+  assert.match(src, /<RotuloCol derecha>Mano de obra<\/RotuloCol>/)
+  // VACÍO NO ES CERO NI «—»: sin permiso o en una cara que no los transporta, las dos celdas callan.
+  // Un «—» afirmaría que este trabajo no gastó nada, y puede llevar $ 154 M.
+  assert.equal((src.match(/costos === null \|\| !veEconomia \? '' :/g) ?? []).length, 2,
+    'las celdas de costo tienen que callar cuando no se pudieron leer, y sólo verlas quien ve economía')
 })
 
 test('el trabajo se abre en el CRM y el ERP no se repite debajo de cada fila', () => {
@@ -297,12 +307,12 @@ function celdasDelEncabezado(): string[] {
     .filter((l) => l.startsWith('<RotuloCol') || l.startsWith('<span'))
 }
 
-test('Obras dibuja sus tres anchos, y cada ancho tiene tantas celdas como pistas', () => {
+test('Obras dibuja sus dos anchos, y cada ancho tiene tantas celdas como pistas', () => {
   const plantillas = plantillasDeObras()
   assert.deepEqual(
     [...plantillas.keys()].sort(),
-    ['', 'max-[1199px]:', 'max-[559px]:'],
-    'la grilla de Obras dejó de declarar sus tres anchos, o volvió a escribirse mobile-first',
+    ['', 'max-[1199px]:'],
+    'la grilla de Obras dejó de declarar sus dos anchos, o volvió a escribirse mobile-first',
   )
   const pistas = (corte: string) => (plantillas.get(corte) ?? []).length
 
@@ -316,36 +326,55 @@ test('Obras dibuja sus tres anchos, y cada ancho tiene tantas celdas como pistas
     'el encabezado de Obras no dibuja una celda por cada pista del ancho entero')
   assert.equal(celdas.length - escondidas('SOLO_ANCHO_ECO'), pistas('max-[1199px]:'),
     'las celdas que sobreviven a 1199px no son las pistas declaradas para ese ancho')
-  assert.equal(
-    celdas.length - escondidas('SOLO_ANCHO_ECO') - escondidas('SOLO_ANCHO}') - escondidas('SOLO_ANCHO`'),
-    pistas('max-[559px]:'),
-    'las celdas que sobreviven en el teléfono no son las pistas declaradas para el teléfono',
-  )
+  // Y LA ÚNICA CELDA QUE SE ESCONDE ES EL INICIO: las dos de costo y las HH son lo que el dueño
+  // pidió ver, y en el teléfono la tabla rueda en vez de soltarlas (caso siguiente).
+  assert.equal(escondidas('SOLO_ANCHO_ECO'), 1, 'se esconde más de una columna al angostar')
 })
 
-test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el detalle', () => {
+// ═══ A 400px NO SE ESCONDE NINGUNA COLUMNA: LA TABLA RUEDA EN SU CAJA (dueño, 12/09/2026) ═══
+//
+// QUÉ DEFECTO ATRAPA: que la tabla se lleve la PÁGINA de costado. Son seis columnas y ninguna es
+// decorativa —esconderlas sería esconder justo el costo que el dueño pidió—, así que la única salida
+// es el scroller propio. Sin él, `document.documentElement.scrollWidth > window.innerWidth` en 390px
+// y la página entera se mueve: lo mide `tests/shell-dos-areas.spec.ts`, y este caso lo mide en el
+// fuente para que el defecto se vea antes de abrir un navegador.
+
+test('en el teléfono la tabla de trabajos rueda dentro de su caja, y no empuja la página', () => {
   const src = codigoListas()
-  // AVANCE tiene pista propia desde 560 — nunca vuelve adentro de ESTADO — y la economía de OBRAS
-  // sólo aparece con ancho de escritorio.
-  assert.match(src, /<RotuloCol derecha>Cobrado neto<\/RotuloCol>/)
-  // ═══ COSTO MO Y COSTO MAT. SALIERON DE ESTA TABLA (10/09/2026, DISENO-FICHA-CLIENTE-v3 §3.1) ═══
+  assert.match(src, /data-testid="obras-del-cliente" className="max-\[559px\]:overflow-x-auto"/,
+    'la tabla de trabajos perdió su scroller: a 390px se lleva la página de costado')
+  // EL PISO DEL SCROLLER EXISTE Y DEJA EL NOMBRE LEGIBLE: sin `min-w`, el `overflow-x` no sirve de
+  // nada —la grilla se encoge igual— y el nombre vuelve a quedar en 48px («B..», «L..», «P..»).
+  const plantillas = plantillasDeObras()
+  const bloque = codigoListas().slice(codigoListas().indexOf('const COLS_OBRAS'))
+  assert.match(bloque.slice(0, bloque.indexOf('\n\n')), /max-\[559px\]:min-w-\[688px\]/,
+    'el scroller quedó sin piso: la grilla se encoge y el nombre deja de leerse')
+  assert.ok(plantillas.size === 2, 'el corte de 559 volvió a declarar su propia plantilla de pistas')
+})
+
+test('la tabla de trabajos no publica ni cobranza, ni estado, ni margen: publica costo', () => {
+  const src = codigoListas()
+  // ═══ LAS COLUMNAS QUE EL DUEÑO SACÓ, UNA POR UNA ═══
   //
-  // Este archivo ya declaraba que la ficha del cliente es la cara COMERCIAL de la relación y que el
-  // costo vive en la obra; con las dos columnas de costo puestas no había ancho para las dos que
-  // contestan la pregunta comercial —con qué papel nos lo encargó (OC) y qué ordenó pagar (OP)—.
-  // Si alguien las devuelve, este caso lo dice.
-  for (const rotulo of ['Costo MO', 'Costo mat.']) {
-    assert.ok(!src.includes(`>${rotulo}<`), `«${rotulo}» es COSTO: vive en la obra, no en el cliente`)
+  //   ESTADO        12/09/2026: «eso de estado que has puesto como columna no me sirve». Sigue
+  //                 agrupando («Terminados · N») y sigue viajando en la fila: lo que se fue es el
+  //                 renglón que repetía en cada fila lo que el encabezado del grupo ya dice.
+  //   COBRADO NETO  12/09/2026 13:10: su casa es la solapa Cobranzas.
+  //   MARGEN        10/09/2026: «quitá esa columna Margen, no es útil».
+  // «Estado» se busca en el ENCABEZADO DE TRABAJOS y no en el archivo: la tabla de Presupuestos
+  // tiene su propia columna Estado, que es legítima y no la tocó nadie.
+  const encabezado = celdasDelEncabezado()
+  assert.ok(!encabezado.some((c) => c.includes('>Estado<')),
+    '«Estado» volvió a la tabla de trabajos: el dueño la sacó con nombre el 12/09/2026')
+  for (const rotulo of ['Cobrado neto', 'Margen', 'Costo MO', 'Costo mat.']) {
+    assert.ok(!src.includes(`>${rotulo}<`), `«${rotulo}» volvió a la tabla de trabajos`)
   }
-  // ═══ Y MARGEN TAMPOCO (dueño, 10/09/2026: «quitá esa columna Margen, no es útil») ═══
-  //
-  // Se retiró de `/clientes` a las 15:33 y de acá en el mismo día: es el MISMO concepto sobre los
-  // mismos números, y dejarlo en una sola de las dos pantallas del módulo Clientes es volver a
-  // tener dos verdades del mismo cliente — que es el defecto que `CarteraHome` ya costó una vez.
-  // El margen de una obra vive en `features/obras` (`obra_economia`, `planVsReal`), medido contra
-  // el costo REAL y no contra un contratado que en cuatro de las cinco obras de Messina es la suma
-  // viva de Cobranzas.
-  assert.ok(!src.includes('>Margen<'), 'el rótulo Margen volvió a la ficha del cliente')
+  // LA CELDA DEL ESTADO TAMPOCO VUELVE POR LA PUERTA DE ATRÁS (sin rótulo, con tinta propia).
+  assert.doesNotMatch(src, /data-testid="estado-obra-cliente"|PALABRA_ESTADO|COLOR_ESTADO_OBRA/,
+    'volvió la celda de estado a la fila: el dueño la sacó con nombre el 12/09/2026')
+  // Y EL ESTADO SIGUE DECIDIENDO lo que tiene que decidir: el filo ámbar de una obra en ejecución
+  // sin precio, que sobre una obra terminada sería una alarma que nadie puede apagar.
+  assert.match(src, /const cerrada = o\.estado === 'cerrada'/)
   // ═══ Y LOS NÚMEROS DE LAS OC ESTÁN, DEBAJO DEL NOMBRE (dueño, 10/09/2026 16:20) ═══
   // «Adentro de cada cliente también». Mismo componente que la lista de `/clientes`: dos rótulos
   // parecidos del mismo papel se separan en cuanto uno aprende algo — ya pasó con las dos tablas
@@ -378,17 +407,18 @@ test('en el teléfono sobreviven la OBRA y el CONTRATADO; lo que se suelta es el
   assert.doesNotMatch(src, /jefe_obra/, 'volvió la columna de jefe de obra donde va el avance')
 })
 
-test('el avance NO vuelve a meterse dentro de la celda de estado', () => {
+test('la celda del nombre recorta, que es lo que impide el desborde de la fila', () => {
   const src = readFileSync(join(DIR, 'ListasClienteV2.tsx'), 'utf8')
-  // La celda ENTERA: sus atributos Y sus hijos. Recortarla en el estado dejaba fuera justo lo
-  // que hay que vigilar —lo que se dibuja DENTRO de la celda—, y el control no podía dar rojo.
-  const desde = src.indexOf('data-testid="estado-obra-cliente"')
-  const celda = src.slice(desde, src.indexOf('</span>', src.indexOf('PALABRA_ESTADO[o.estado]', desde)))
-  assert.ok(desde > 0 && celda.length > 0 && celda.length < 400, 'no se pudo aislar la celda de estado')
-  assert.doesNotMatch(celda, /avance/,
-    'el avance volvió a la celda de estado: a 390 px se superpone con el contratado')
-  assert.match(celda, /overflow: 'hidden'/,
-    'la celda de estado dejó de recortar')
+  // ESTE CASO NACIÓ VIGILANDO LA CELDA DE ESTADO («que el avance no vuelva adentro»). Esa celda se
+  // retiró el 12/09/2026 y el riesgo se mudó: el único hijo que puede no encogerse es el nombre con
+  // su icono, su marca de adicional y los números de sus OC debajo. Sin `overflow: hidden` y
+  // `minWidth: 0`, un nombre largo empuja las cinco columnas de la derecha fuera de la fila — que es
+  // exactamente el desborde que se pagó en `qa-shots/verif-opacidad2-10-cliente-ficha.png`.
+  const desde = src.indexOf('{/* EL NOMBRE, Y DEBAJO LOS NÚMEROS DE SUS OC')
+  assert.ok(desde > 0, 'no se pudo encontrar la celda del nombre')
+  const celda = src.slice(desde, src.indexOf('</span>', src.indexOf('{o.nombre}', desde)))
+  assert.match(celda, /minWidth: 0, overflow: 'hidden'/, 'la celda del nombre dejó de recortar')
+  assert.match(celda, /className="truncate"/, 'el nombre dejó de truncarse y empuja la fila')
 })
 
 test('el avance no se dibuja con una barra: el handoff pone el número y nada más', () => {
@@ -554,20 +584,56 @@ test('el N de la solapa es lo que se dibuja adentro, no un conteo aparte', () =>
 // publicaría un cero por una ausencia.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-test('la tabla de trabajos dibuja INICIO y HH, y cada una se suelta con su pista', () => {
+test('la tabla dibuja INICIO · HH · MATERIALES · MANO DE OBRA y después el CONTRATADO', () => {
   const celdas = celdasDelEncabezado()
   const i = celdas.findIndex((c) => c.includes('>Inicio<'))
   const h = celdas.findIndex((c) => c.includes('>HH<'))
+  const mat = celdas.findIndex((c) => c.includes('>Materiales<'))
+  const mo = celdas.findIndex((c) => c.includes('>Mano de obra<'))
+  const con = celdas.findIndex((c) => c.includes('>Contratado<'))
   assert.ok(i > 0, 'se fue la columna Inicio: el CRM no puede decir cuándo arrancó el trabajo')
-  assert.ok(h > 0, 'se fue la columna HH: es lo que el dueño pidió ver')
-  // EL ORDEN QUE PIDIÓ EL DUEÑO: el inicio detrás del estado —qué, cómo va, desde cuándo— y las HH
-  // EN EL LUGAR DE LAS OC, a la derecha del contratado.
-  assert.ok(celdas.findIndex((c) => c.includes('>Estado<')) < i, 'Inicio va detrás del estado')
-  assert.ok(celdas.findIndex((c) => c.includes('>Contratado<')) < h,
-    'las HH van donde estaban las OC: a la derecha del contratado')
-  // INICIO se suelta a 1199 con su pista; HH sobrevive hasta el teléfono, donde se va con el resto.
+  assert.ok(h > 0, 'se fue la columna HH: es lo que el dueño pidió ver el 11/09/2026')
+  assert.ok(mat > 0, 'se fue la columna Materiales: es lo que el dueño pidió ver el 12/09/2026')
+  assert.ok(mo > 0, 'se fue la columna Mano de obra: es lo que el dueño pidió ver el 12/09/2026')
+  // EL ORDEN SE LEE DE CORRIDO: qué es, desde cuándo, cuánto trabajo lleva, cuánto costó —material y
+  // gente, juntas porque las dos son costo— y recién al final por cuánto se vendió.
+  assert.ok(i < h && h < mat && mat < mo && mo < con,
+    'el orden dejó de ser Trabajo · Inicio · HH · Materiales · Mano de obra · Contratado')
+  // INICIO es la ÚNICA que se suelta al angostar; las dos de costo y las HH se quedan y la tabla
+  // rueda en el teléfono.
   assert.match(celdas[i], /SOLO_ANCHO_ECO/, 'Inicio tiene que esconderse donde desaparece su pista')
-  assert.match(celdas[h], /SOLO_ANCHO}/, 'HH se suelta sólo en el teléfono, con el cobrado')
+  for (const k of [h, mat, mo]) {
+    assert.doesNotMatch(celdas[k], /SOLO_ANCHO/,
+      'una columna que el dueño pidió ver se esconde al angostar en vez de rodar con la tabla')
+  }
+})
+
+test('las dos celdas de costo delegan en costosDeObra y no formatean nada por su cuenta', () => {
+  const src = codigoListas()
+  const celda = (testid: string) => {
+    const desde = src.indexOf(`data-testid="${testid}"`)
+    assert.ok(desde > 0, `no está la celda ${testid}`)
+    return src.slice(desde, src.indexOf('</span>', desde))
+  }
+  const mat = celda('materiales-obra-cliente')
+  assert.match(mat, /textoMateriales\(costoDeLaObra\)/, 'la celda de materiales dejó de leer su módulo')
+  assert.match(mat, /tituloMateriales\(costoDeLaObra\)/)
+  const mo = celda('mano-obra-obra-cliente')
+  assert.match(mo, /manoObra\.texto/, 'la celda de mano de obra dejó de leer su módulo')
+  assert.match(mo, /tituloManoObra\(costoDeLaObra, hhDeLaObra\?\.inicioReal\)/,
+    'el «desde» del title volvió a calcularse acá: es el MISMO inicio que publica hh_obra')
+  // EL ÁMBAR LO DECIDE EL MÓDULO, no la celda: es lo que distingue «$ 1,2 M completo» de «$ 1,2 M al
+  // que le faltan 372 horas», y la regla tiene sus tests en `costosDeObra.test.ts`.
+  assert.match(mo, /manoObra\.parcial \? V\.warn/)
+  for (const c of [mat, mo]) {
+    assert.doesNotMatch(c, /toLocaleString|\?\? 0|Math\.round/,
+      'el formato y los huecos los decide costosDeObra.ts, con sus tests')
+  }
+  // Y EL COSTO DE UN ADICIONAL ES EL SUYO: consolidarlo en la obra mayor contaría dos veces la misma
+  // compra y el mismo jornal, que es el defecto que `hh-obra-cliente` ya tiene prohibido.
+  assert.match(src, /const costoDeLaObra = costos\?\.get\(o\.obra_id\) \?\? null/)
+  assert.doesNotMatch(mat, /consolidar/)
+  assert.doesNotMatch(mo, /consolidar/)
 })
 
 test('las dos celdas nuevas no formatean nada por su cuenta: delegan en horasDeObra', () => {

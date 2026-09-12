@@ -45,6 +45,7 @@ import { construirLineaDeTiempo } from './timeline.ts'
 import { agruparPapeles, type PapelCrudo, type PapelesDelCliente } from './papelesCliente.ts'
 import { armarEconomiaDeObras, type EconomiaDeObra } from './economiaObras.ts'
 import { armarHorasPorObra, type HorasDeObra } from './horasDeObra.ts'
+import { armarCostosPorObra, type CostoDeObra } from './costosDeObra.ts'
 import { armarEconomiaDeCliente, type EconomiaDeCliente } from './economiaCliente.ts'
 import {
   armarCobradoPorObra, type CobroPorObra,
@@ -94,6 +95,14 @@ export interface FichaLeida {
    */
   horasPorObra: Map<string, HorasDeObra> | null
   /**
+   * LO GASTADO EN CADA TRABAJO (`costo_obra`, desde 20260912T1000).
+   *
+   * `null` = no puedo decirlo: la cara no lo transporta —viaja en Obras, la única que lo dibuja— o
+   * quien pregunta no es Administración. Un `Map` vacío es «ningún trabajo tiene nada imputado», que
+   * es otra cosa: la pantalla dibuja «—» en ese caso y deja las celdas VACÍAS en el primero.
+   */
+  costosPorObra: Map<string, CostoDeObra> | null
+  /**
    * LOS PAPELES DE DRIVE DE CADA OBRA, ya agrupados por categoría (dueño, 11/09/2026: «no encuentro
    * las cotizaciones, los documentos… que han conformado todas las obras»).
    *
@@ -130,6 +139,7 @@ interface FichaCruda {
   presupuestos: unknown[]
   cobrado_por_obra: unknown[]
   hh_obra: unknown[] | null
+  costo_obra: unknown[] | null
   papeles_obra: unknown[]
   carpetas_obra: { obra_id: string; drive_folder_id: string }[]
 }
@@ -138,7 +148,7 @@ function nadaLeido(error: string | null): FichaLeida {
   return {
     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
-    papeles: null, cobradoPorObra: null, nDocumentos: 0, horasPorObra: null,
+    papeles: null, cobradoPorObra: null, nDocumentos: 0, horasPorObra: null, costosPorObra: null,
     papelesObra: new Map(), carpetasObra: new Map(),
   }
 }
@@ -212,6 +222,9 @@ export async function leerFichaDeUnaConsulta(
     // no las puede ver enteras— y convertirlo en una lista vacía escribiría «esta obra no tiene
     // horas» sobre una obra con 12.525.
     horasPorObra,
+    // `?? null` Y NO `?? []`, por lo mismo que `hh_obra`: la RPC devuelve `null` a propósito y
+    // convertirlo en lista vacía escribiría «este trabajo no gastó nada» sobre una obra de $ 154 M.
+    costosPorObra: armarCostosPorObra(j.costo_obra ?? null),
     // LA COTIZACIÓN ACEPTADA NO SE DEDUCE DEL NOMBRE: la dice `obra_contrato`, que es el papel que
     // el OS ya leyó para escribir el precio, y viaja en `economia_obras.contrato_fuente_drive_id`.
     // «FINAL», «APROBADA» y «v2» conviven en la misma carpeta y ninguna de las tres palabras prueba
