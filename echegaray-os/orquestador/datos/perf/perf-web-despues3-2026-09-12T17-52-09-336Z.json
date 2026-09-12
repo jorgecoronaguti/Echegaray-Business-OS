@@ -1,0 +1,668 @@
+{
+  "etiqueta": "despues3",
+  "fecha": "2026-09-12T17:52:09.336Z",
+  "base": "https://app.ecsas.com.ar",
+  "db": {
+    "ajustes": [
+      {
+        "name": "effective_cache_size",
+        "setting": "49152",
+        "unit": "8kB"
+      },
+      {
+        "name": "max_connections",
+        "setting": "60",
+        "unit": null
+      },
+      {
+        "name": "shared_buffers",
+        "setting": "28672",
+        "unit": "8kB"
+      },
+      {
+        "name": "work_mem",
+        "setting": "2184",
+        "unit": "kB"
+      }
+    ],
+    "desde": {
+      "stats_reset": "2026-09-12T17:13:48.869Z"
+    },
+    "porTotal": [
+      {
+        "id": "-2090020102173588739",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"pantalla_clientes\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sca",
+        "llamadas": "21",
+        "total_ms": 78272,
+        "media_ms": 3727.2,
+        "max_ms": 14259,
+        "filas": "21"
+      },
+      {
+        "id": "-2573559940996683762",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_slug\", \"p_solapa\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_slug\" text, \"p_solapa\" text) LIM",
+        "llamadas": "11",
+        "total_ms": 55227,
+        "media_ms": 5020.6,
+        "max_ms": 17136,
+        "filas": "11"
+      },
+      {
+        "id": "-758112555512504409",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"campanita_atencion\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sc",
+        "llamadas": "21",
+        "total_ms": 21889,
+        "media_ms": 1042.3,
+        "max_ms": 6765,
+        "filas": "21"
+      },
+      {
+        "id": "-7237014199706338802",
+        "consulta": "select id, state from orq.reap_expired_leases()",
+        "llamadas": "148",
+        "total_ms": 5273,
+        "media_ms": 35.6,
+        "max_ms": 1007,
+        "filas": "0"
+      },
+      {
+        "id": "-8856799461280935852",
+        "consulta": "WITH -- Recursively get the base types of domains base_types AS ( WITH RECURSIVE recurse AS ( SELECT oid, typbasetype, typnamespace AS base_namespace, COALESCE(NULLIF(typbasetype, $2), oid) AS base_type FROM pg_type UNIO",
+        "llamadas": "3",
+        "total_ms": 4774,
+        "media_ms": 1591.2,
+        "max_ms": 3211,
+        "filas": "1401"
+      },
+      {
+        "id": "-7726440967385220442",
+        "consulta": "SELECT name FROM pg_timezone_names",
+        "llamadas": "3",
+        "total_ms": 4742,
+        "media_ms": 1580.5,
+        "max_ms": 2322,
+        "filas": "3588"
+      },
+      {
+        "id": "-3756086704745613533",
+        "consulta": "select public.pantalla_cliente($1,$2) j",
+        "llamadas": "9",
+        "total_ms": 3448,
+        "media_ms": 383.1,
+        "max_ms": 1053,
+        "filas": "9"
+      },
+      {
+        "id": "3393632725691790249",
+        "consulta": "SELECT * FROM pgbouncer.get_auth($1)",
+        "llamadas": "147",
+        "total_ms": 3041,
+        "media_ms": 20.7,
+        "max_ms": 1202,
+        "filas": "147"
+      },
+      {
+        "id": "-6019717523838313193",
+        "consulta": "with recursive pks_fks as ( -- pk + fk referencing col select contype::text as contype, conname, array_length(conkey, $3) as ncol, conrelid as resorigtbl, col as resorigcol, ord from pg_constraint left join lateral unnes",
+        "llamadas": "3",
+        "total_ms": 2721,
+        "media_ms": 907.2,
+        "max_ms": 1281,
+        "filas": "3612"
+      },
+      {
+        "id": "-6142167573905680706",
+        "consulta": "with elegido as ( select c.cliente_id from public.cliente_panel c where c.slug = $1::text ), -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de -- los certificados. Sin el CTE",
+        "llamadas": "18",
+        "total_ms": 2282,
+        "media_ms": 126.8,
+        "max_ms": 192,
+        "filas": "18"
+      },
+      {
+        "id": "7812557175277749247",
+        "consulta": "explain (analyze, format json) with elegido as ( select c.cliente_id from public.cliente_panel c where c.slug = $1::text ), -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de ",
+        "llamadas": "9",
+        "total_ms": 2236,
+        "media_ms": 248.4,
+        "max_ms": 331,
+        "filas": "0"
+      },
+      {
+        "id": "6601813782447687189",
+        "consulta": "select * from orq.claim_task($1, $2, $3)",
+        "llamadas": "148",
+        "total_ms": 2093,
+        "media_ms": 14.1,
+        "max_ms": 331,
+        "filas": "0"
+      },
+      {
+        "id": "-8951249513396346468",
+        "consulta": "with elegido as ( select c.cliente_id from public.cliente_panel c where c.slug = $1::text ), -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de -- los certificados. Sin el CTE",
+        "llamadas": "5",
+        "total_ms": 1332,
+        "media_ms": 266.4,
+        "max_ms": 669,
+        "filas": "5"
+      },
+      {
+        "id": "-6252238933361801012",
+        "consulta": "insert into public.costos_obra (obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto, importe, iva, total, fecha, fecha_pago, mes, referencia_externa, origen, sincronizado_en) values (",
+        "llamadas": "8",
+        "total_ms": 1230,
+        "media_ms": 153.7,
+        "max_ms": 553,
+        "filas": "3200"
+      },
+      {
+        "id": "-2073166519428774482",
+        "consulta": "DISCARD ALL",
+        "llamadas": "239",
+        "total_ms": 1132,
+        "media_ms": 4.7,
+        "max_ms": 166,
+        "filas": "0"
+      },
+      {
+        "id": "-8098828572351514125",
+        "consulta": "insert into public.herramientas (id_herramienta, nombre, ubicacion_actual, fecha, origen, sincronizado_en) values ($1,$2,$3,$4,$5, now()) on conflict (id_herramienta) do update set nombre=excluded.nombre, ubicacion_actua",
+        "llamadas": "1264",
+        "total_ms": 967,
+        "media_ms": 0.8,
+        "max_ms": 259,
+        "filas": "0"
+      },
+      {
+        "id": "5360251647081715348",
+        "consulta": "select set_config('search_path', $1, true), set_config($2, $3, true), set_config('role', $4, true), set_config('request.jwt.claims', $5, true), set_config('request.method', $6, true), set_config('request.path', $7, true)",
+        "llamadas": "609",
+        "total_ms": 897,
+        "media_ms": 1.5,
+        "max_ms": 57,
+        "filas": "609"
+      },
+      {
+        "id": "-8659137093687719789",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"cliente_cobranza\".\"cobranza_id\", \"public\".\"cliente_cobranza\".\"obra_id\", \"public\".\"cliente_cobranza\".\"imputacion\", \"public\".\"cliente_cobranza\".\"fila\", \"public\".\"cliente_cobranza\".\"c",
+        "llamadas": "3",
+        "total_ms": 846,
+        "media_ms": 282.1,
+        "max_ms": 725,
+        "filas": "3"
+      },
+      {
+        "id": "5299301975933694258",
+        "consulta": "WITH -- Recursively get the base types of domains base_types AS ( WITH RECURSIVE recurse AS ( SELECT oid, typbasetype, typnamespace AS base_namespace, COALESCE(NULLIF(typbasetype, $3), oid) AS base_type FROM pg_type UNIO",
+        "llamadas": "3",
+        "total_ms": 819,
+        "media_ms": 272.9,
+        "max_ms": 511,
+        "filas": "306"
+      },
+      {
+        "id": "7597019534991979386",
+        "consulta": "explain (analyze, format json) with elegido as ( select c.cliente_id from public.cliente_panel c where c.slug = $1::text ), -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de ",
+        "llamadas": "3",
+        "total_ms": 784,
+        "media_ms": 261.3,
+        "max_ms": 278,
+        "filas": "0"
+      }
+    ],
+    "porMedia": [
+      {
+        "id": "-2573559940996683762",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_slug\", \"p_solapa\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_slug\" text, \"p_solapa\" text) LIM",
+        "llamadas": "11",
+        "total_ms": 55227,
+        "media_ms": 5020.6,
+        "max_ms": 17136,
+        "filas": "11"
+      },
+      {
+        "id": "-2090020102173588739",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"pantalla_clientes\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sca",
+        "llamadas": "21",
+        "total_ms": 78272,
+        "media_ms": 3727.2,
+        "max_ms": 14259,
+        "filas": "21"
+      },
+      {
+        "id": "-8856799461280935852",
+        "consulta": "WITH -- Recursively get the base types of domains base_types AS ( WITH RECURSIVE recurse AS ( SELECT oid, typbasetype, typnamespace AS base_namespace, COALESCE(NULLIF(typbasetype, $2), oid) AS base_type FROM pg_type UNIO",
+        "llamadas": "3",
+        "total_ms": 4774,
+        "media_ms": 1591.2,
+        "max_ms": 3211,
+        "filas": "1401"
+      },
+      {
+        "id": "-7726440967385220442",
+        "consulta": "SELECT name FROM pg_timezone_names",
+        "llamadas": "3",
+        "total_ms": 4742,
+        "media_ms": 1580.5,
+        "max_ms": 2322,
+        "filas": "3588"
+      },
+      {
+        "id": "-758112555512504409",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"campanita_atencion\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sc",
+        "llamadas": "21",
+        "total_ms": 21889,
+        "media_ms": 1042.3,
+        "max_ms": 6765,
+        "filas": "21"
+      },
+      {
+        "id": "-6019717523838313193",
+        "consulta": "with recursive pks_fks as ( -- pk + fk referencing col select contype::text as contype, conname, array_length(conkey, $3) as ncol, conrelid as resorigtbl, col as resorigcol, ord from pg_constraint left join lateral unnes",
+        "llamadas": "3",
+        "total_ms": 2721,
+        "media_ms": 907.2,
+        "max_ms": 1281,
+        "filas": "3612"
+      },
+      {
+        "id": "-3756086704745613533",
+        "consulta": "select public.pantalla_cliente($1,$2) j",
+        "llamadas": "9",
+        "total_ms": 3448,
+        "media_ms": 383.1,
+        "max_ms": 1053,
+        "filas": "9"
+      },
+      {
+        "id": "-8659137093687719789",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"cliente_cobranza\".\"cobranza_id\", \"public\".\"cliente_cobranza\".\"obra_id\", \"public\".\"cliente_cobranza\".\"imputacion\", \"public\".\"cliente_cobranza\".\"fila\", \"public\".\"cliente_cobranza\".\"c",
+        "llamadas": "3",
+        "total_ms": 846,
+        "media_ms": 282.1,
+        "max_ms": 725,
+        "filas": "3"
+      },
+      {
+        "id": "5299301975933694258",
+        "consulta": "WITH -- Recursively get the base types of domains base_types AS ( WITH RECURSIVE recurse AS ( SELECT oid, typbasetype, typnamespace AS base_namespace, COALESCE(NULLIF(typbasetype, $3), oid) AS base_type FROM pg_type UNIO",
+        "llamadas": "3",
+        "total_ms": 819,
+        "media_ms": 272.9,
+        "max_ms": 511,
+        "filas": "306"
+      },
+      {
+        "id": "-8951249513396346468",
+        "consulta": "with elegido as ( select c.cliente_id from public.cliente_panel c where c.slug = $1::text ), -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de -- los certificados. Sin el CTE",
+        "llamadas": "5",
+        "total_ms": 1332,
+        "media_ms": 266.4,
+        "max_ms": 669,
+        "filas": "5"
+      },
+      {
+        "id": "7597019534991979386",
+        "consulta": "explain (analyze, format json) with elegido as ( select c.cliente_id from public.cliente_panel c where c.slug = $1::text ), -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de ",
+        "llamadas": "3",
+        "total_ms": 784,
+        "media_ms": 261.3,
+        "max_ms": 278,
+        "filas": "0"
+      },
+      {
+        "id": "7812557175277749247",
+        "consulta": "explain (analyze, format json) with elegido as ( select c.cliente_id from public.cliente_panel c where c.slug = $1::text ), -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de ",
+        "llamadas": "9",
+        "total_ms": 2236,
+        "media_ms": 248.4,
+        "max_ms": 331,
+        "filas": "0"
+      },
+      {
+        "id": "-2526602400348136752",
+        "consulta": "with elegido as ( select c.cliente_id from public.cliente_panel c where c.slug = $1::text ), -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de -- los certificados. Sin el CTE",
+        "llamadas": "3",
+        "total_ms": 469,
+        "media_ms": 156.3,
+        "max_ms": 182,
+        "filas": "3"
+      },
+      {
+        "id": "-6252238933361801012",
+        "consulta": "insert into public.costos_obra (obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto, importe, iva, total, fecha, fecha_pago, mes, referencia_externa, origen, sincronizado_en) values (",
+        "llamadas": "8",
+        "total_ms": 1230,
+        "media_ms": 153.7,
+        "max_ms": 553,
+        "filas": "3200"
+      },
+      {
+        "id": "-73205637583244872",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"finanzas_plan_vigente\".\"estado\", \"public\".\"finanzas_plan_vigente\".\"horizonte\", \"public\".\"finanzas_plan_vigente\".\"plan\", \"public\".\"finanzas_plan_vigente\".\"cambios\", \"public\".\"finanz",
+        "llamadas": "4",
+        "total_ms": 568,
+        "media_ms": 142,
+        "max_ms": 302,
+        "filas": "4"
+      },
+      {
+        "id": "-4113982879764659824",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"cliente_cuenta_corriente\".* FROM \"public\".\"cliente_cuenta_corriente\" WHERE \"public\".\"cliente_cuenta_corriente\".\"cliente_id\" = $1 LIMIT $2 OFFSET $3 ) SELECT $4::bigint AS total_res",
+        "llamadas": "3",
+        "total_ms": 393,
+        "media_ms": 131.1,
+        "max_ms": 382,
+        "filas": "3"
+      },
+      {
+        "id": "-6142167573905680706",
+        "consulta": "with elegido as ( select c.cliente_id from public.cliente_panel c where c.slug = $1::text ), -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de -- los certificados. Sin el CTE",
+        "llamadas": "18",
+        "total_ms": 2282,
+        "media_ms": 126.8,
+        "max_ms": 192,
+        "filas": "18"
+      },
+      {
+        "id": "4272184973515172242",
+        "consulta": "WITH pks_uniques_cols AS ( SELECT conrelid, array_agg(key order by key) as cols FROM pg_constraint, LATERAL unnest(conkey) AS _(key) WHERE contype IN ($1, $2) AND connamespace <> $3::regnamespace GROUP BY oid, conrelid )",
+        "llamadas": "3",
+        "total_ms": 369,
+        "media_ms": 122.9,
+        "max_ms": 181,
+        "filas": "1197"
+      },
+      {
+        "id": "1026616243264021585",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"drive_index\".\"drive_file_id\", \"public\".\"drive_index\".\"name\", \"public\".\"drive_index\".\"path\", \"public\".\"drive_index\".\"tipo\", \"public\".\"drive_index\".\"mime_type\", \"public\".\"drive_index",
+        "llamadas": "4",
+        "total_ms": 466,
+        "media_ms": 116.4,
+        "max_ms": 389,
+        "filas": "4"
+      },
+      {
+        "id": "1646154736492569079",
+        "consulta": "select items, filas from comunicacion.comprobante_fajos",
+        "llamadas": "4",
+        "total_ms": 391,
+        "media_ms": 97.7,
+        "max_ms": 155,
+        "filas": "328"
+      }
+    ],
+    "tablas": [
+      {
+        "tabla": "costos_obra",
+        "recorridos": "487",
+        "filas_leidas": "433999",
+        "por_indice": "0",
+        "filas": "893"
+      },
+      {
+        "tabla": "compra_sheet",
+        "recorridos": "25",
+        "filas_leidas": "23950",
+        "por_indice": "4",
+        "filas": "958"
+      }
+    ]
+  },
+  "web": {
+    "login": 2318,
+    "rutas": [
+      {
+        "ruta": "/obras",
+        "frio": {
+          "estado": 200,
+          "url": "/obras",
+          "doc": 1621,
+          "ttfb": 51,
+          "dcl": 1675,
+          "load": 1675,
+          "networkidle": 2178,
+          "jsBytes": 39483,
+          "jsArchivos": 13
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/obras",
+          "doc": 936,
+          "ttfb": 51,
+          "dcl": 991,
+          "load": 991,
+          "networkidle": 1493,
+          "jsBytes": 9025,
+          "jsArchivos": 13
+        }
+      },
+      {
+        "ruta": "/obras/gantt",
+        "frio": {
+          "estado": 200,
+          "url": "/obras/gantt",
+          "doc": 644,
+          "ttfb": 51,
+          "dcl": 700,
+          "load": 700,
+          "networkidle": 1199,
+          "jsBytes": 25941,
+          "jsArchivos": 13
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/obras/gantt",
+          "doc": 240,
+          "ttfb": 51,
+          "dcl": 296,
+          "load": 297,
+          "networkidle": 795,
+          "jsBytes": 9025,
+          "jsArchivos": 13
+        }
+      },
+      {
+        "ruta": "/clientes",
+        "frio": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 975,
+          "ttfb": 51,
+          "dcl": 1031,
+          "load": 1034,
+          "networkidle": 1689,
+          "jsBytes": 24407,
+          "jsArchivos": 15
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 549,
+          "ttfb": 51,
+          "dcl": 610,
+          "load": 610,
+          "networkidle": 1374,
+          "jsBytes": 9025,
+          "jsArchivos": 15
+        }
+      },
+      {
+        "ruta": "/administracion",
+        "frio": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 693,
+          "ttfb": 51,
+          "dcl": 749,
+          "load": 749,
+          "networkidle": 1589,
+          "jsBytes": 18049,
+          "jsArchivos": 29
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 1717,
+          "ttfb": 52,
+          "dcl": 1773,
+          "load": 1773,
+          "networkidle": 2586,
+          "jsBytes": 18049,
+          "jsArchivos": 29
+        }
+      },
+      {
+        "ruta": "/administracion/compras",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/compras",
+          "doc": 1280,
+          "ttfb": 51,
+          "dcl": 1369,
+          "load": 1370,
+          "networkidle": 2116,
+          "jsBytes": 327186,
+          "jsArchivos": 16
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/compras",
+          "doc": 589,
+          "ttfb": 51,
+          "dcl": 670,
+          "load": 671,
+          "networkidle": 1477,
+          "jsBytes": 9024,
+          "jsArchivos": 16
+        }
+      },
+      {
+        "ruta": "/administracion/asistencia",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/asistencia",
+          "doc": 363,
+          "ttfb": 51,
+          "dcl": 416,
+          "load": 416,
+          "networkidle": 921,
+          "jsBytes": 33505,
+          "jsArchivos": 14
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/asistencia",
+          "doc": 196,
+          "ttfb": 51,
+          "dcl": 249,
+          "load": 249,
+          "networkidle": 752,
+          "jsBytes": 9024,
+          "jsArchivos": 14
+        }
+      },
+      {
+        "ruta": "/administracion/proveedores",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/proveedores",
+          "doc": 667,
+          "ttfb": 51,
+          "dcl": 730,
+          "load": 731,
+          "networkidle": 1424,
+          "jsBytes": 50113,
+          "jsArchivos": 16
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/proveedores",
+          "doc": 210,
+          "ttfb": 51,
+          "dcl": 273,
+          "load": 273,
+          "networkidle": 1102,
+          "jsBytes": 9024,
+          "jsArchivos": 16
+        }
+      },
+      {
+        "ruta": "/administracion/personas",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/personas",
+          "doc": 418,
+          "ttfb": 51,
+          "dcl": 477,
+          "load": 477,
+          "networkidle": 1210,
+          "jsBytes": 110128,
+          "jsArchivos": 17
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/personas",
+          "doc": 518,
+          "ttfb": 51,
+          "dcl": 575,
+          "load": 575,
+          "networkidle": 1358,
+          "jsBytes": 9024,
+          "jsArchivos": 17
+        }
+      },
+      {
+        "ruta": "/documentos",
+        "frio": {
+          "estado": 200,
+          "url": "/documentos",
+          "doc": 728,
+          "ttfb": 51,
+          "dcl": 800,
+          "load": 800,
+          "networkidle": 1288,
+          "jsBytes": 26257,
+          "jsArchivos": 13
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/documentos",
+          "doc": 255,
+          "ttfb": 51,
+          "dcl": 332,
+          "load": 333,
+          "networkidle": 815,
+          "jsBytes": 9025,
+          "jsArchivos": 13
+        }
+      },
+      {
+        "ruta": "/calendario-financiero",
+        "frio": {
+          "estado": 200,
+          "url": "/calendario-financiero",
+          "doc": 741,
+          "ttfb": 51,
+          "dcl": 853,
+          "load": 855,
+          "networkidle": 1358,
+          "jsBytes": 67962,
+          "jsArchivos": 14
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/calendario-financiero",
+          "doc": 463,
+          "ttfb": 51,
+          "dcl": 587,
+          "load": 589,
+          "networkidle": 1037,
+          "jsBytes": 35140,
+          "jsArchivos": 14
+        }
+      }
+    ]
+  },
+  "ventana": "histórica acumulada (no se reseteó)"
+}

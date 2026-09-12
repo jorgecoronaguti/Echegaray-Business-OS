@@ -1,0 +1,653 @@
+{
+  "etiqueta": "despues",
+  "fecha": "2026-09-12T17:16:12.719Z",
+  "base": "https://app.ecsas.com.ar",
+  "db": {
+    "ajustes": [
+      {
+        "name": "effective_cache_size",
+        "setting": "49152",
+        "unit": "8kB"
+      },
+      {
+        "name": "max_connections",
+        "setting": "60",
+        "unit": null
+      },
+      {
+        "name": "shared_buffers",
+        "setting": "28672",
+        "unit": "8kB"
+      },
+      {
+        "name": "work_mem",
+        "setting": "2184",
+        "unit": "kB"
+      }
+    ],
+    "desde": {
+      "stats_reset": "2026-09-12T17:13:48.869Z"
+    },
+    "porTotal": [
+      {
+        "id": "-2090020102173588739",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"pantalla_clientes\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sca",
+        "llamadas": "6",
+        "total_ms": 7819,
+        "media_ms": 1303.1,
+        "max_ms": 2414,
+        "filas": "6"
+      },
+      {
+        "id": "-758112555512504409",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"campanita_atencion\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sc",
+        "llamadas": "6",
+        "total_ms": 6350,
+        "media_ms": 1058.3,
+        "max_ms": 5243,
+        "filas": "6"
+      },
+      {
+        "id": "-8856799461280935852",
+        "consulta": "WITH -- Recursively get the base types of domains base_types AS ( WITH RECURSIVE recurse AS ( SELECT oid, typbasetype, typnamespace AS base_namespace, COALESCE(NULLIF(typbasetype, $2), oid) AS base_type FROM pg_type UNIO",
+        "llamadas": "3",
+        "total_ms": 4774,
+        "media_ms": 1591.2,
+        "max_ms": 3211,
+        "filas": "1401"
+      },
+      {
+        "id": "-7726440967385220442",
+        "consulta": "SELECT name FROM pg_timezone_names",
+        "llamadas": "3",
+        "total_ms": 4742,
+        "media_ms": 1580.5,
+        "max_ms": 2322,
+        "filas": "3588"
+      },
+      {
+        "id": "-6019717523838313193",
+        "consulta": "with recursive pks_fks as ( -- pk + fk referencing col select contype::text as contype, conname, array_length(conkey, $3) as ncol, conrelid as resorigtbl, col as resorigcol, ord from pg_constraint left join lateral unnes",
+        "llamadas": "3",
+        "total_ms": 2721,
+        "media_ms": 907.2,
+        "max_ms": 1281,
+        "filas": "3612"
+      },
+      {
+        "id": "3393632725691790249",
+        "consulta": "SELECT * FROM pgbouncer.get_auth($1)",
+        "llamadas": "11",
+        "total_ms": 2564,
+        "media_ms": 233.1,
+        "max_ms": 1202,
+        "filas": "11"
+      },
+      {
+        "id": "-7237014199706338802",
+        "consulta": "select id, state from orq.reap_expired_leases()",
+        "llamadas": "12",
+        "total_ms": 1795,
+        "media_ms": 149.6,
+        "max_ms": 814,
+        "filas": "0"
+      },
+      {
+        "id": "5299301975933694258",
+        "consulta": "WITH -- Recursively get the base types of domains base_types AS ( WITH RECURSIVE recurse AS ( SELECT oid, typbasetype, typnamespace AS base_namespace, COALESCE(NULLIF(typbasetype, $3), oid) AS base_type FROM pg_type UNIO",
+        "llamadas": "3",
+        "total_ms": 819,
+        "media_ms": 272.9,
+        "max_ms": 511,
+        "filas": "306"
+      },
+      {
+        "id": "-2073166519428774482",
+        "consulta": "DISCARD ALL",
+        "llamadas": "18",
+        "total_ms": 541,
+        "media_ms": 30.1,
+        "max_ms": 166,
+        "filas": "0"
+      },
+      {
+        "id": "6601813782447687189",
+        "consulta": "select * from orq.claim_task($1, $2, $3)",
+        "llamadas": "12",
+        "total_ms": 502,
+        "media_ms": 41.8,
+        "max_ms": 203,
+        "filas": "0"
+      },
+      {
+        "id": "5360251647081715348",
+        "consulta": "select set_config('search_path', $1, true), set_config($2, $3, true), set_config('role', $4, true), set_config('request.jwt.claims', $5, true), set_config('request.method', $6, true), set_config('request.path', $7, true)",
+        "llamadas": "242",
+        "total_ms": 398,
+        "media_ms": 1.6,
+        "max_ms": 57,
+        "filas": "242"
+      },
+      {
+        "id": "4272184973515172242",
+        "consulta": "WITH pks_uniques_cols AS ( SELECT conrelid, array_agg(key order by key) as cols FROM pg_constraint, LATERAL unnest(conkey) AS _(key) WHERE contype IN ($1, $2) AND connamespace <> $3::regnamespace GROUP BY oid, conrelid )",
+        "llamadas": "3",
+        "total_ms": 369,
+        "media_ms": 122.9,
+        "max_ms": 181,
+        "filas": "1197"
+      },
+      {
+        "id": "-73205637583244872",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"finanzas_plan_vigente\".\"estado\", \"public\".\"finanzas_plan_vigente\".\"horizonte\", \"public\".\"finanzas_plan_vigente\".\"plan\", \"public\".\"finanzas_plan_vigente\".\"cambios\", \"public\".\"finanz",
+        "llamadas": "2",
+        "total_ms": 368,
+        "media_ms": 184,
+        "max_ms": 302,
+        "filas": "2"
+      },
+      {
+        "id": "-3025338681961122225",
+        "consulta": "WITH pgrst_source AS (DELETE FROM \"public\".\"obra_canonica\" WHERE \"public\".\"obra_canonica\".\"id\" = $1 RETURNING $2) SELECT $3 AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, $4",
+        "llamadas": "1",
+        "total_ms": 314,
+        "media_ms": 313.9,
+        "max_ms": 314,
+        "filas": "1"
+      },
+      {
+        "id": "-7985164436005677896",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"liquidacion_quincena\".\"desde\", \"public\".\"liquidacion_quincena\".\"hasta\", COALESCE( \"liquidacion_quincena_liquidacion_linea_1\".\"liquidacion_quincena_liquidacion_linea_1\", $7) AS \"liq",
+        "llamadas": "3",
+        "total_ms": 210,
+        "media_ms": 69.8,
+        "max_ms": 76,
+        "filas": "3"
+      },
+      {
+        "id": "-8098828572351514125",
+        "consulta": "insert into public.herramientas (id_herramienta, nombre, ubicacion_actual, fecha, origen, sincronizado_en) values ($1,$2,$3,$4,$5, now()) on conflict (id_herramienta) do update set nombre=excluded.nombre, ubicacion_actua",
+        "llamadas": "158",
+        "total_ms": 165,
+        "media_ms": 1,
+        "max_ms": 76,
+        "filas": "0"
+      },
+      {
+        "id": "-6252238933361801012",
+        "consulta": "insert into public.costos_obra (obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto, importe, iva, total, fecha, fecha_pago, mes, referencia_externa, origen, sincronizado_en) values (",
+        "llamadas": "2",
+        "total_ms": 154,
+        "media_ms": 77.2,
+        "max_ms": 113,
+        "filas": "800"
+      },
+      {
+        "id": "-8991713294077672168",
+        "consulta": "INSERT INTO \"sessions\" (\"aal\", \"created_at\", \"factor_id\", \"id\", \"ip\", \"not_after\", \"oauth_client_id\", \"refresh_token_counter\", \"refresh_token_hmac_key\", \"refreshed_at\", \"scopes\", \"tag\", \"updated_at\", \"user_agent\", \"user_",
+        "llamadas": "3",
+        "total_ms": 144,
+        "media_ms": 48.1,
+        "max_ms": 102,
+        "filas": "3"
+      },
+      {
+        "id": "-1842710215272399106",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"perfiles\".* FROM \"public\".\"perfiles\" WHERE \"public\".\"perfiles\".\"id\" = $1 LIMIT $2 OFFSET $3 ) SELECT $4::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, c",
+        "llamadas": "40",
+        "total_ms": 141,
+        "media_ms": 3.5,
+        "max_ms": 53,
+        "filas": "40"
+      },
+      {
+        "id": "8252208490155230552",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"persona_directorio\".* FROM \"public\".\"persona_directorio\" WHERE \"public\".\"persona_directorio\".\"en_la_empresa\" = $1 AND NOT \"public\".\"persona_directorio\".\"obra_actual_id\" IS NULL LIM",
+        "llamadas": "2",
+        "total_ms": 131,
+        "media_ms": 65.3,
+        "max_ms": 78,
+        "filas": "2"
+      }
+    ],
+    "porMedia": [
+      {
+        "id": "-8856799461280935852",
+        "consulta": "WITH -- Recursively get the base types of domains base_types AS ( WITH RECURSIVE recurse AS ( SELECT oid, typbasetype, typnamespace AS base_namespace, COALESCE(NULLIF(typbasetype, $2), oid) AS base_type FROM pg_type UNIO",
+        "llamadas": "3",
+        "total_ms": 4774,
+        "media_ms": 1591.2,
+        "max_ms": 3211,
+        "filas": "1401"
+      },
+      {
+        "id": "-7726440967385220442",
+        "consulta": "SELECT name FROM pg_timezone_names",
+        "llamadas": "3",
+        "total_ms": 4742,
+        "media_ms": 1580.5,
+        "max_ms": 2322,
+        "filas": "3588"
+      },
+      {
+        "id": "-2090020102173588739",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"pantalla_clientes\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sca",
+        "llamadas": "6",
+        "total_ms": 7819,
+        "media_ms": 1303.1,
+        "max_ms": 2414,
+        "filas": "6"
+      },
+      {
+        "id": "-758112555512504409",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"campanita_atencion\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sc",
+        "llamadas": "6",
+        "total_ms": 6350,
+        "media_ms": 1058.3,
+        "max_ms": 5243,
+        "filas": "6"
+      },
+      {
+        "id": "-6019717523838313193",
+        "consulta": "with recursive pks_fks as ( -- pk + fk referencing col select contype::text as contype, conname, array_length(conkey, $3) as ncol, conrelid as resorigtbl, col as resorigcol, ord from pg_constraint left join lateral unnes",
+        "llamadas": "3",
+        "total_ms": 2721,
+        "media_ms": 907.2,
+        "max_ms": 1281,
+        "filas": "3612"
+      },
+      {
+        "id": "5299301975933694258",
+        "consulta": "WITH -- Recursively get the base types of domains base_types AS ( WITH RECURSIVE recurse AS ( SELECT oid, typbasetype, typnamespace AS base_namespace, COALESCE(NULLIF(typbasetype, $3), oid) AS base_type FROM pg_type UNIO",
+        "llamadas": "3",
+        "total_ms": 819,
+        "media_ms": 272.9,
+        "max_ms": 511,
+        "filas": "306"
+      },
+      {
+        "id": "3393632725691790249",
+        "consulta": "SELECT * FROM pgbouncer.get_auth($1)",
+        "llamadas": "11",
+        "total_ms": 2564,
+        "media_ms": 233.1,
+        "max_ms": 1202,
+        "filas": "11"
+      },
+      {
+        "id": "-7237014199706338802",
+        "consulta": "select id, state from orq.reap_expired_leases()",
+        "llamadas": "12",
+        "total_ms": 1795,
+        "media_ms": 149.6,
+        "max_ms": 814,
+        "filas": "0"
+      },
+      {
+        "id": "4272184973515172242",
+        "consulta": "WITH pks_uniques_cols AS ( SELECT conrelid, array_agg(key order by key) as cols FROM pg_constraint, LATERAL unnest(conkey) AS _(key) WHERE contype IN ($1, $2) AND connamespace <> $3::regnamespace GROUP BY oid, conrelid )",
+        "llamadas": "3",
+        "total_ms": 369,
+        "media_ms": 122.9,
+        "max_ms": 181,
+        "filas": "1197"
+      },
+      {
+        "id": "-7985164436005677896",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"liquidacion_quincena\".\"desde\", \"public\".\"liquidacion_quincena\".\"hasta\", COALESCE( \"liquidacion_quincena_liquidacion_linea_1\".\"liquidacion_quincena_liquidacion_linea_1\", $7) AS \"liq",
+        "llamadas": "3",
+        "total_ms": 210,
+        "media_ms": 69.8,
+        "max_ms": 76,
+        "filas": "3"
+      },
+      {
+        "id": "-8991713294077672168",
+        "consulta": "INSERT INTO \"sessions\" (\"aal\", \"created_at\", \"factor_id\", \"id\", \"ip\", \"not_after\", \"oauth_client_id\", \"refresh_token_counter\", \"refresh_token_hmac_key\", \"refreshed_at\", \"scopes\", \"tag\", \"updated_at\", \"user_agent\", \"user_",
+        "llamadas": "3",
+        "total_ms": 144,
+        "media_ms": 48.1,
+        "max_ms": 102,
+        "filas": "3"
+      },
+      {
+        "id": "6601813782447687189",
+        "consulta": "select * from orq.claim_task($1, $2, $3)",
+        "llamadas": "12",
+        "total_ms": 502,
+        "media_ms": 41.8,
+        "max_ms": 203,
+        "filas": "0"
+      },
+      {
+        "id": "-2073166519428774482",
+        "consulta": "DISCARD ALL",
+        "llamadas": "18",
+        "total_ms": 541,
+        "media_ms": 30.1,
+        "max_ms": 166,
+        "filas": "0"
+      },
+      {
+        "id": "4802700420313954110",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"persona_directorio\".* FROM \"public\".\"persona_directorio\" WHERE \"public\".\"persona_directorio\".\"en_la_empresa\" = $1 LIMIT $2 OFFSET $3 ) , pgrst_source_count AS (SELECT $5 FROM \"publ",
+        "llamadas": "4",
+        "total_ms": 115,
+        "media_ms": 28.7,
+        "max_ms": 44,
+        "filas": "4"
+      },
+      {
+        "id": "-8270047473326192766",
+        "consulta": "select comunicacion.vencer_sesiones_asistencia() as n",
+        "llamadas": "3",
+        "total_ms": 86,
+        "media_ms": 28.6,
+        "max_ms": 44,
+        "filas": "3"
+      },
+      {
+        "id": "-5945916706620701072",
+        "consulta": "with all_relations as ( select reltype from pg_class where relkind in ($1,$2,$3,$4,$5) ), computed_rels as ( select (parse_ident(p.pronamespace::regnamespace::text))[$6] as schema, p.proname::text as name, arg_schema.nsp",
+        "llamadas": "3",
+        "total_ms": 82,
+        "media_ms": 27.4,
+        "max_ms": 74,
+        "filas": "0"
+      },
+      {
+        "id": "6831302621400150014",
+        "consulta": "INSERT INTO \"refresh_tokens\" (\"created_at\", \"instance_id\", \"parent\", \"revoked\", \"session_id\", \"token\", \"updated_at\", \"user_id\") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) returning id",
+        "llamadas": "3",
+        "total_ms": 78,
+        "media_ms": 26,
+        "max_ms": 44,
+        "filas": "3"
+      },
+      {
+        "id": "7899190504599315261",
+        "consulta": "with role_setting as ( select r.rolname, unnest(r.rolconfig) as setting from pg_auth_members m join pg_roles r on r.oid = m.roleid where member = current_user::regrole::oid ), kv_settings AS ( SELECT rolname, substr(sett",
+        "llamadas": "3",
+        "total_ms": 67,
+        "media_ms": 22.4,
+        "max_ms": 31,
+        "filas": "6"
+      },
+      {
+        "id": "2777961917010963016",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"nomina_recibo_neto\".\"cuil\", \"public\".\"nomina_recibo_neto\".\"periodo\", \"public\".\"nomina_recibo_neto\".\"neto\", \"public\".\"nomina_recibo_neto\".\"fecha_pago\" FROM \"public\".\"nomina_recibo_n",
+        "llamadas": "3",
+        "total_ms": 56,
+        "media_ms": 18.6,
+        "max_ms": 26,
+        "filas": "3"
+      },
+      {
+        "id": "7556385634988337390",
+        "consulta": "WITH pgrst_source AS ( SELECT \"public\".\"persona_tarifa\".\"persona_id\", \"public\".\"persona_tarifa\".\"desde\", \"public\".\"persona_tarifa\".\"valor_hora\", \"public\".\"persona_tarifa\".\"neto_mensual\", \"public\".\"persona_tarifa\".\"origen",
+        "llamadas": "3",
+        "total_ms": 36,
+        "media_ms": 11.9,
+        "max_ms": 23,
+        "filas": "3"
+      }
+    ],
+    "tablas": []
+  },
+  "web": {
+    "login": 2303,
+    "rutas": [
+      {
+        "ruta": "/obras",
+        "frio": {
+          "estado": 200,
+          "url": "/obras",
+          "doc": 467,
+          "ttfb": 51,
+          "dcl": 521,
+          "load": 521,
+          "networkidle": 1408,
+          "jsBytes": 39483,
+          "jsArchivos": 13
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/obras",
+          "doc": 737,
+          "ttfb": 51,
+          "dcl": 791,
+          "load": 791,
+          "networkidle": 1294,
+          "jsBytes": 9025,
+          "jsArchivos": 13
+        }
+      },
+      {
+        "ruta": "/obras/gantt",
+        "frio": {
+          "estado": 200,
+          "url": "/obras/gantt",
+          "doc": 467,
+          "ttfb": 51,
+          "dcl": 524,
+          "load": 524,
+          "networkidle": 1024,
+          "jsBytes": 25941,
+          "jsArchivos": 13
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/obras/gantt",
+          "doc": 554,
+          "ttfb": 51,
+          "dcl": 610,
+          "load": 610,
+          "networkidle": 1111,
+          "jsBytes": 9025,
+          "jsArchivos": 13
+        }
+      },
+      {
+        "ruta": "/clientes",
+        "frio": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 1493,
+          "ttfb": 51,
+          "dcl": 1550,
+          "load": 1550,
+          "networkidle": 2209,
+          "jsBytes": 55434,
+          "jsArchivos": 15
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 2839,
+          "ttfb": 51,
+          "dcl": 2897,
+          "load": 2899,
+          "networkidle": 3531,
+          "jsBytes": 9025,
+          "jsArchivos": 15
+        }
+      },
+      {
+        "ruta": "/administracion",
+        "frio": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 2140,
+          "ttfb": 51,
+          "dcl": 2196,
+          "load": 2196,
+          "networkidle": 3152,
+          "jsBytes": 18049,
+          "jsArchivos": 29
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 1765,
+          "ttfb": 54,
+          "dcl": 1825,
+          "load": 1828,
+          "networkidle": 2653,
+          "jsBytes": 18049,
+          "jsArchivos": 29
+        }
+      },
+      {
+        "ruta": "/administracion/compras",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/compras",
+          "doc": 1423,
+          "ttfb": 51,
+          "dcl": 1507,
+          "load": 1508,
+          "networkidle": 2259,
+          "jsBytes": 327186,
+          "jsArchivos": 16
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/compras",
+          "doc": 512,
+          "ttfb": 55,
+          "dcl": 600,
+          "load": 601,
+          "networkidle": 1502,
+          "jsBytes": 9024,
+          "jsArchivos": 16
+        }
+      },
+      {
+        "ruta": "/administracion/asistencia",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/asistencia",
+          "doc": 339,
+          "ttfb": 51,
+          "dcl": 393,
+          "load": 393,
+          "networkidle": 895,
+          "jsBytes": 33505,
+          "jsArchivos": 14
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/asistencia",
+          "doc": 1041,
+          "ttfb": 51,
+          "dcl": 1093,
+          "load": 1095,
+          "networkidle": 1597,
+          "jsBytes": 9024,
+          "jsArchivos": 14
+        }
+      },
+      {
+        "ruta": "/administracion/proveedores",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/proveedores",
+          "doc": 619,
+          "ttfb": 51,
+          "dcl": 684,
+          "load": 684,
+          "networkidle": 1440,
+          "jsBytes": 73968,
+          "jsArchivos": 16
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/proveedores",
+          "doc": 334,
+          "ttfb": 51,
+          "dcl": 393,
+          "load": 394,
+          "networkidle": 1124,
+          "jsBytes": 9024,
+          "jsArchivos": 16
+        }
+      },
+      {
+        "ruta": "/administracion/personas",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/personas",
+          "doc": 488,
+          "ttfb": 51,
+          "dcl": 544,
+          "load": 544,
+          "networkidle": 1439,
+          "jsBytes": 40142,
+          "jsArchivos": 17
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/personas",
+          "doc": 324,
+          "ttfb": 51,
+          "dcl": 383,
+          "load": 384,
+          "networkidle": 1090,
+          "jsBytes": 9024,
+          "jsArchivos": 17
+        }
+      },
+      {
+        "ruta": "/documentos",
+        "frio": {
+          "estado": 200,
+          "url": "/documentos",
+          "doc": 408,
+          "ttfb": 51,
+          "dcl": 497,
+          "load": 497,
+          "networkidle": 980,
+          "jsBytes": 26257,
+          "jsArchivos": 13
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/documentos",
+          "doc": 531,
+          "ttfb": 51,
+          "dcl": 600,
+          "load": 600,
+          "networkidle": 1089,
+          "jsBytes": 9025,
+          "jsArchivos": 13
+        }
+      },
+      {
+        "ruta": "/calendario-financiero",
+        "frio": {
+          "estado": 200,
+          "url": "/calendario-financiero",
+          "doc": 468,
+          "ttfb": 51,
+          "dcl": 574,
+          "load": 575,
+          "networkidle": 1075,
+          "jsBytes": 67962,
+          "jsArchivos": 14
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/calendario-financiero",
+          "doc": 645,
+          "ttfb": 51,
+          "dcl": 765,
+          "load": 766,
+          "networkidle": 1215,
+          "jsBytes": 35140,
+          "jsArchivos": 14
+        }
+      }
+    ]
+  },
+  "ventana": "histórica acumulada (no se reseteó)"
+}
