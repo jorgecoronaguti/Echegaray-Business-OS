@@ -39,7 +39,8 @@
 // transitivamente: sólo el normalizador y el ranking, que son funciones puras. Hay un test
 // que recorre el árbol de imports y falla si alguna vez aparece uno.
 
-import { plano, sinExtension, tokenizar, tipoPedido, cargarSinonimos } from './normalizar.mjs'
+import { sinExtension, tokenizar, cargarSinonimos } from './normalizar.mjs'
+import { ESCALERA, analizarConsulta, variantesDeFrase } from './escalera.mjs'
 import { rankear, resolver, rutaLegible, PESOS } from './ranking.mjs'
 import { crearRegistro, crearEstados, fuenteCoincide, SQL_FUENTES, SQL_ESTADOS } from './senales.mjs'
 import { buscarEnContenido } from './contenido.mjs'
@@ -264,54 +265,12 @@ export const registrarRechazo = (port, consultaNorm, driveFileId, usuario = '') 
 
 // ── Las etapas ───────────────────────────────────────────────────────────────
 
-const nombrePlano = (e) => plano(sinExtension(e.name))
-const todoPlano = (e) => `${nombrePlano(e)} ${plano(e.path ?? '')}`
-
-/** Las cinco, en orden, cada una más laxa que la anterior. Cada etapa es una función pura
- *  de (filas, consulta) → candidatos: se prueban solas y se leen de un vistazo. */
-export const ETAPAS = Object.freeze([
-  {
-    nombre: 'exacta',
-    filtrar: (filas, { frase }) => filas.filter((e) => plano(e.name) === frase),
-  },
-  {
-    nombre: 'normalizada',
-    filtrar: (filas, { frase, tokens }) => filas.filter((e) => {
-      if (nombrePlano(e) === frase) return true
-      const tn = tokenizar(e.name)
-      return tokens.length > 0 && tn.length === tokens.length && tokens.every((t) => tn.includes(t))
-    }),
-  },
-  {
-    nombre: 'parcial',
-    filtrar: (filas, { frase }) => (frase ? filas.filter((e) => nombrePlano(e).includes(frase)) : []),
-  },
-  {
-    nombre: 'todos_los_tokens',
-    filtrar: (filas, { tokens }) => (tokens.length
-      ? filas.filter((e) => { const t = todoPlano(e); return tokens.every((x) => t.includes(x)) })
-      : []),
-  },
-  {
-    nombre: 'alguna_palabra',
-    filtrar: (filas, { tokens }) => (tokens.length
-      ? filas.filter((e) => { const t = todoPlano(e); return tokens.some((x) => t.includes(x)) })
-      : []),
-  },
-])
-
-/** Lo que la persona escribió, convertido en lo que se va a buscar. */
-export function analizarConsulta(texto, { tipo = null } = {}) {
-  const tokens = tokenizar(texto)
-  return {
-    original: String(texto ?? ''),
-    frase: tokens.join(' '),
-    fraseCruda: plano(sinExtension(texto)),
-    tokens,
-    tipo: tipo && tipo !== 'cualquiera' ? tipo : tipoPedido(texto),
-    norm: tokens.join(' '),
-  }
-}
+/** Las cinco, en orden, cada una más laxa que la anterior. LA DEFINICIÓN ESTÁ EN `escalera.mjs`,
+ *  junto a la forma en que la web ejecuta el MISMO peldaño contra Postgres: si se toca una y no la
+ *  otra, las dos caras dejan de buscar igual. Acá se re-exporta con el nombre con el que este
+ *  pipeline siempre las llamó. */
+export const ETAPAS = ESCALERA
+export { analizarConsulta }
 
 /**
  * EL PASE DE RESCATE — un documento operativo no queda afuera por la etapa.
@@ -367,12 +326,12 @@ export async function buscar({
 
   // La frase se prueba primero como la escribió la persona y después ya tokenizada: "vision
   // traccion" y "vision/traccion" tienen que llegar al mismo lado.
-  const variantes = Array.from(new Set([consulta.fraseCruda, consulta.frase].filter(Boolean)))
+  const variantes = variantesDeFrase(consulta)
 
   for (const etapa of ETAPAS) {
     let candidatos = []
     for (const frase of variantes) {
-      candidatos = candidatos.concat(etapa.filtrar(filas, { ...consulta, frase }))
+      candidatos = candidatos.concat(etapa.enMemoria(filas, { ...consulta, frase }))
     }
     // Sin `tipo` el filtro no se aplica: pedir "el excel de estrategia" y no tener ninguno no
     // puede terminar en "no hay nada" si existe el documento.
