@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-12 ~12:45 (hora local −03) · main = producción_
+_actualizado: 2026-09-12 ~14:20 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -59,63 +59,59 @@ desde un worktree. **VM 4 cores/7 GB compartida con Mattermost: un agente pesado
 19`, lint/tests dirigidos, `uptime` antes de algo pesado** (con 4 agentes la carga llegó a 31 y tumbó
 el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
 
-## 4. ESTADO ACTUAL (12/09 12:45)
+## 4. ESTADO ACTUAL (12/09 14:20)
 
-- **main = producción** en 8e46ac8e (Vercel despliega solo; checkout prod se actualiza con
-  `produccion-al-dia.mjs` en cada timer). Sesión 11/09 se reinició a la noche: los agentes y los
-  waiters de fondo murieron; se reanudaron el 12/09 por SendMessage.
-- **Compras**: batch 1 (39 filas) y **batch 2 (23 filas seguras, $54,67 M) aplicados** con respaldo en
-  `datos/respaldos/compras-eliminadas-2026-09-12-batch2.json`. Los 55 restantes del batch 2 siguen
-  excluidos (fecha < 01/06, gremiales jun–ago, SAC junio, Colegio). Tarjeta de cierre CFM: 18:50 $88,9 M ·
-  20:50 $84,6 M · 12/09 10:50 $85,66 M. **Verificar corrida 12:50** (waiter) tras el batch 2.
-- **Tello / SF pisos**: 6 cuotas semanales pendientes cargadas (f956–961, 18/09→23/10, $5.984.000,
-  Cuenta Corriente, Q literal, X fórmula). CONFLICTO abierto: filas 880–883 (plan viejo $9,9 M, editadas
-  por el dueño, pendiente $6,88 M) NO tocadas — el dueño decide (a) marcar pagadas o (b) eliminar.
-- **Liquidación**: desplegado JORNALES manda sobre web:* (48 filas pisadas), Nievas +696 h, cotejo
-  sólo sobre días cargados, TOTAL SEMANA en el bot, espejo `jornales_bloque_persona` (T2200 aplicada,
-  ExecStartPost del timer :20), panel por persona remontado (key), filtro de obra con chip siempre.
-  Abierto: Gonzalez Tobares 02 y 10/09 (2 filas web c/u) — decisión del dueño; bloque 4 del agente
-  (E2E escritura de horas, QA-1 tres totales, QA-3 sticky/Retribución) en curso en wt-jornales.
-- **CRM**: Documentos rediseñado y desplegado (jerarquía obra→adicional→categoría→archivo; n_documentos
-  real; `obra_papel` materializada, T2200/T2300 aplicadas; 22 carpetas vinculadas, 226 papeles).
-  **En curso wt-hh** (feat/hh-por-obra-en-cliente, 1e46dcc2): columna Inicio + HH junto a Trabajo
-  con OC pegada al nombre, sin OC/OP en tablas, desglose persona×día (`hh_de_obra`), inicio real en la
-  cronología; migración `hh_obra` a aplicar UNA vez desde main; `hh_de_obra` medía 3 s media/36 s máx →
-  exigido < 300 ms con explain analyze.
-- **Rendimiento**: instancia chica; 148 recargas de esquema el 11/09 por DDL de tests .pg (ahora
-  `ORQ_PG_DDL=1` para correrlos). RPC ficha 60 ms caliente / 2,5 s fría. `campanita_atencion` (1,1 s media)
-  y `getNovedades()` (21 s en una muestra) son los próximos sospechosos.
-- **Transferencias**: importador renueva token ante 401 (f761ed4e). rodrigo@ corrida 11/09 19:48:
-  3 nuevos (MASS, DATA 2000, Robles), 5 ya estaban, 5 sin proveedor. Escudero Emiliano ($108.900,
-  CUIT 20-35853162-9) no existe como proveedor: decisión del dueño.
-- **Santander Ochoa/Castillo**: sin cambios (falta el modelo xlsx adjunto; faltan tel/mail/estado civil).
-- **Deuda**: cronograma de obra cerrada sigue «atrasado» (obra_actividad.fin_real nunca se escribe) —
-  módulo Obras, el dueño pidió no tocarlo ahora; MAIL cortado en panel Contacto; `orq:test` rojos;
-  Documentos web con motor léxico; MO por obra desde JORNALES.
+- **main = producción** en e0abd539. Sesión reiniciada dos veces (noche 11/09 y 13:3x del 12/09):
+  los agentes se reanudan con SendMessage a su id; los waiters de fondo mueren.
+- **INCIDENTE 12/09 13:55–14:14**: base de Supabase caída (db/rest/auth UNHEALTHY, pooler sano; 504
+  a los 5 s). Reiniciada por Management API (`POST /v1/projects/<ref>/restart`); worker del bot y
+  timers pausados y reanudados. Ver memoria `supabase-caido-reiniciar-por-management-api`.
+- **Performance** (rama perf mergeada e0abd539): el timer del Flujo de Caja disparaba DDL en cada
+  corrida → 537 recargas de esquema de PostgREST/día (gasto #1 de la base): ahora `tabla-asegurada.mjs`
+  consulta el catálogo. Campanita cacheada 60 s en el navegador. `/api/salud` + timer
+  `echegaray-mantener-caliente` (cada 4 min, instalado). Baseline «antes» en
+  `orquestador/datos/perf/perf-web-antes-*.json`; «después» corriendo (`perf-baseline-web.mjs
+  --etiqueta despues`). Hallazgo abierto: `obra_panel` agrega N+1 (`costos_obra` loops=24) →
+  reescribir la vista (DDL, área clientes/obras).
+- **Liquidación**: JORNALES manda salvo licencia/ausencia contra día trabajado (8d350008; Quiroga
+  Alexander restaurado 08–10/09 desde `asistencia_dia`). Columna fija a 390 px corregida (canal de
+  20 px) y regla «una cuenta de prueba ve personas de prueba» (T1200 aplicada). E2E de escritura de
+  horas contra producción: corriendo (tests/liquidacion-escribe-horas.spec.ts, E2E_BASE_URL).
+- **Compras**: batch 1 + batch 2 (23 filas) aplicados; CFM tras 12:50: $82,8 M. Tello 6 cuotas
+  cargadas (f956–961); CONFLICTO 880–883 ($6,88 M pendientes, editadas por el dueño) — decisión.
+- **CRM**: Documentos rediseñado; Inicio + HH junto a Trabajo, OC pegada al nombre, sin OC/OP (ni en
+  el titular), desglose persona×día, inicio real en cronología — todo en prod. **En curso wt-costos**
+  (agente aa1f474…): Materiales y Mano de obra (misma valorización que Liquidación), sin Estado ni
+  Cobrado neto; bloque 2: nueve solapas → cinco (cuenta corriente y esquema dentro de Cobranzas;
+  Actividad y Portal al costado). Migración a aplicar UNA vez desde main.
+- **Decisiones del dueño**: Tello 880–883 (pagadas o eliminar) · Gonzalez Tobares 02 y 10/09 (dos
+  filas web c/u) · Escudero Emiliano (¿proveedor CUIT 20-35853162-9?).
+- **Deuda**: cronograma de obra cerrada «atrasado» (fin_real nunca se escribe); MAIL cortado en
+  Contacto; `orq:test` rojos; Documentos web léxico; Santander modelo xlsx; MO por obra desde JORNALES
+  (parcial: mano de obra por obra en la ficha del cliente lo cubre).
 
-## 5. TRABAJO DE ESTA SESIÓN (11/09 tarde → 12/09)
+## 5. TRABAJO DE ESTA SESIÓN (12/09)
 
-e8dd4695 espejo JORNALES + key panel · 42fe4025 filtro obra · 2dde4968/b157a277 JORNALES manda, Nievas,
-cotejo, TOTAL_COL · 18b5c782 Documentos CRM (T2200/T2300) · f761ed4e gmail token · 8e46ac8e batch 2.
+8e46ac8e batch 2 · 58b83734/0d514f9e HH+Inicio+OC en ficha · abd24003 Liquidación bloque final ·
+8d350008 licencia no pisa trabajo · 887a56e9 identidad de prueba + sticky · e0abd539 performance.
 
 ## 6. PENDIENTES REALES
 
-**P0** — corrida 12:50: CFM/CFS no bajan tras batch 2 · cerrar wt-hh (aplicar migración hh_obra, medir,
-desplegar) · cerrar bloque 4 Liquidación · decisiones del dueño: Tello 880–883, Gonzalez Tobares, Escudero.
-**P1** — campanita/getNovedades lentos · Santander modelo · MO por obra desde JORNALES · Documentos web
-léxico · sonda inbox · `proyeccion-convenio.test.mjs` rojo · limpiar worktrees viejos (`higiene-worktrees`).
+**P0** — resultado E2E horas + baseline «después» (tarea b1sggl5eo) · cerrar wt-costos (bloque 1 y 2:
+aplicar migración, merge, QA) · decisiones del dueño.
+**P1** — `obra_panel` sin N+1 (DDL) · `pantalla_clientes()` 509 ms · Santander · Documentos web léxico ·
+sonda inbox · `proyeccion-convenio.test.mjs` rojo · higiene de worktrees viejos.
 **P2** — menú lateral Liquidación · Proveedores número esperado · plan PRO HF · extractos ene–may ·
-Mis Facilidades ARCA · fin_real de actividades (Obras).
+Mis Facilidades ARCA · fin_real de actividades (Obras) · Safari/iOS del sticky.
 
 ## 7. ESTADO GIT
 
-main = origin/main = 8e46ac8e · worktrees vivos: wt-hh (agente), wt-jornales (agente), wt-adic y
-wt-compras (mergeadas: borrar), wt-db2 (mergeada: borrar).
+main = origin/main = e0abd539 · worktrees vivos: wt-costos (agente), wt-liq y wt-perf (mergeadas:
+borrar).
 
 ## 8. PRÓXIMO PASO
 
-Verificar 12:50 → recibir reportes de wt-hh y wt-jornales → aplicar migración hh_obra desde main → merge
-+ push → capturas → reportar al dueño con las tres decisiones pendientes.
+Leer b1sggl5eo → reportar antes/después al dueño → cerrar wt-costos → traspaso.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
