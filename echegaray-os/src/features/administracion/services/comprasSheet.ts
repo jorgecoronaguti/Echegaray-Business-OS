@@ -316,3 +316,30 @@ export function papelesDeCadaFila<
     return { ...c, adjuntos: suyos, tiene_adjunto: suyos.length > 0 }
   })
 }
+
+/**
+ * LOS PAPELES QUE NO ENCONTRARON SU FILA — la sub-vista de trabajo de la pestaña.
+ *
+ * Cada uno de éstos es un gasto cuyo respaldo está guardado pero colgado de nada, y sólo una persona
+ * puede decir de cuál es.
+ *
+ * ═══ POR QUÉ ES UN FILTRO Y NO UNA CONSULTA (12/09/2026) ═══
+ *
+ * Era un viaje aparte a PostgREST: `compra_adjunto` con `compra_clave is null`. El problema es que
+ * `papelesDeCadaFila` ya recibe la tabla ENTERA de adjuntos —la pide `getComprasSheet` en el mismo
+ * `Promise.all`— y descarta justo estas filas. O sea que las 15 filas sueltas viajaban dos veces, en
+ * dos viajes, y el segundo costaba 158-204 ms medidos (y 277 ms en la carga en frío) para traer datos
+ * que ya estaban en el proceso.
+ *
+ * El orden —lo último subido arriba— lo fijaba el `order('subido_at', desc)` de esa consulta y ahora
+ * lo fija esta función: es la MISMA regla, escrita donde se puede probar sin base.
+ */
+export function papelesSinFila<A extends { compra_clave: string | null; subido_at?: string | null }>(
+  adjuntos: A[],
+): A[] {
+  return adjuntos
+    .filter((a) => !a.compra_clave)
+    // `subido_at` nulo va al final: un papel sin fecha de subida no puede encabezar «lo último que
+    // entró». `localeCompare` sobre el ISO de Postgres ordena bien porque es lexicográfico.
+    .sort((x, y) => (y.subido_at ?? '').localeCompare(x.subido_at ?? ''))
+}

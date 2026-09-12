@@ -27,7 +27,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   separarComprasDeObra, type Corte, type MotivoFuera,
 } from './comprasDeObra.ts'
-import { ordenarPorCarga, papelesDeCadaFila } from './comprasSheet.ts'
+import { ordenarPorCarga, papelesDeCadaFila, papelesSinFila } from './comprasSheet.ts'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -115,6 +115,9 @@ export interface ListadoCompras {
   fuera: Record<MotivoFuera, number>
   /** Las que entraron con un rubro no clasificado. Se muestran y se nombran. */
   dudosas: FilaConPapel[]
+  /** Los papeles guardados que no encontraron su fila. Salen de la MISMA lectura de
+   *  `compra_adjunto` que los papeles de las filas: ver `papelesSinFila`. */
+  sueltos: Adjunto[]
 }
 
 export async function getComprasSheet(supabase: SupabaseClient): Promise<ServiceResult<ListadoCompras>> {
@@ -155,19 +158,13 @@ export async function getComprasSheet(supabase: SupabaseClient): Promise<Service
       truncado: leidas.length >= TOPE,
       fuera: corte.fuera,
       dudosas: corte.dudosas,
+      // LOS SUELTOS SALEN DE `papeles`, que es la tabla entera que ya se trajo. Si la lectura de
+      // adjuntos falló, `papeles` es `[]` y acá no hay ninguno: lo MISMO que decía el viaje aparte
+      // cuando fallaba. Una lista vacía porque no se pudo leer se ve igual que «no hay sueltos», y
+      // esa ambigüedad ya existía — lo que no se puede es inventar filas.
+      sueltos: papelesSinFila(papeles),
     },
     error: null,
   }
 }
 
-/**
- * LOS PAPELES QUE NO ENCONTRARON SU FILA. Es la sub-vista de trabajo: cada uno de éstos es un gasto
- * cuyo respaldo está guardado pero colgado de nada, y sólo una persona puede decir de cuál es.
- */
-export async function getAdjuntosSueltos(supabase: SupabaseClient): Promise<ServiceResult<Adjunto[]>> {
-  const { data, error } = await supabase
-    .from('compra_adjunto').select(COLUMNAS_ADJUNTO)
-    .is('compra_clave', null).order('subido_at', { ascending: false }).limit(500)
-  if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as unknown as Adjunto[], error: null }
-}

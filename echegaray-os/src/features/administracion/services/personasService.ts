@@ -106,30 +106,71 @@ export async function getDirectorio(
 /**
  * CUÁNTAS PERSONAS HAY EN CADA CORTE — el contador de las pastillas del canónico 19.
  *
- * Son cuatro `count` sin filas. Se leen aparte del listado a propósito: el contador de un filtro
- * tiene que decir cuántas personas hay en ESE corte de la empresa, no cuántas de las que
- * sobrevivieron a la búsqueda que estoy tecleando. Un chip que baja de 18 a 2 mientras escribo
- * «Juan» no ayuda a decidir a dónde ir — que es lo único para lo que existe.
+ * Se leen aparte del listado a propósito: el contador de un filtro tiene que decir cuántas personas
+ * hay en ESE corte de la empresa, no cuántas de las que sobrevivieron a la búsqueda que estoy
+ * tecleando. Un chip que baja de 18 a 2 mientras escribo «Juan» no ayuda a decidir a dónde ir — que
+ * es lo único para lo que existe.
  *
- * `null` = no se pudo contar, y entonces la pastilla va sin número. Nunca 0: «Inactivos 0» afirma
- * que nadie egresó nunca.
+ * ═══ ERAN CUATRO VIAJES Y AHORA ES UNO (12/09/2026) ═══
+ *
+ * Eran cuatro `count` sin filas, uno por pastilla, en `Promise.all`. Lo que los hacía caros no era la
+ * consulta: medido con `explain (analyze)` sobre la base real, cada `count` ejecuta en **1,4 ms**. Lo
+ * caro es el VIAJE a PostgREST — 216, 224, 235 y 250 ms medidos con `PERF_TRAZA=1` contra el Supabase
+ * real, y entre 2,6 s y 5,0 s cada uno en la primera carga, cuando la conexión arranca en frío.
+ * Cuatro viajes de 1,4 ms de trabajo.
+ *
+ * Las cuatro cuentas salen de DOS columnas de las mismas filas, así que ahora se pide una vez y se
+ * cuenta acá. `persona_directorio` tiene 74 filas (17 en el plantel, 57 inactivos) y esas dos columnas
+ * pesan ~3 kB: traerlas cuesta menos que el viaje que se ahorra.
+ *
+ * LO QUE SE ACEPTA, DICHO: el día que el padrón tenga miles de filas esto manda N filas para devolver
+ * cuatro números, y entonces conviene una función en la base que las cuente de una (un solo viaje
+ * igual, sin las filas). El umbral es de orden de magnitud, no de decenas — a 74 filas un `count` por
+ * pastilla es pagar cuatro viajes para ahorrar 3 kB.
+ *
+ * Y SE ACEPTA QUE LAS CUATRO FALLAN JUNTAS: antes cada `count` podía fallar solo y apagaba SU
+ * pastilla. Ahora un error apaga las cuatro. La garantía que importa no cambia: `null` = no se pudo
+ * contar y la pastilla va sin número, NUNCA 0 — «Inactivos 0» afirma que nadie egresó nunca.
  */
 export async function getConteosDeFiltro(
   supabase: SupabaseClient,
 ): Promise<Record<FiltroPersonal, number | null>> {
-  const head = { count: 'exact' as const, head: true }
-  const cuenta = async (c: PromiseLike<{ count: number | null; error: unknown }>) => {
-    const { count, error } = await c
-    return error ? null : count ?? null
+  const { data, error } = await supabase
+    .from('persona_directorio').select('en_la_empresa, obra_actual_id')
+  if (error) return { plantel: null, en_obra: null, sin_asignar: null, inactivos: null }
+  return contarPorFiltro((data ?? []) as unknown as FilaDeConteo[])
+}
+
+/** Lo mínimo que hace falta para contar: quién sigue en la empresa y si tiene obra asignada. */
+export interface FilaDeConteo {
+  en_la_empresa: boolean | null
+  obra_actual_id: string | null
+}
+
+/**
+ * LAS CUATRO CUENTAS, SIN BASE. Función pura para que el criterio de cada pastilla se pueda probar
+ * contra casos que la base real hoy no tiene — y en particular el que más importa: una fila con
+ * `en_la_empresa` en NULL.
+ *
+ * `en_la_empresa` se compara contra `true` y contra `false`, nunca por verdad/falsedad: los `eq()` de
+ * PostgREST que esto reemplaza dejaban una fila NULL AFUERA de las dos pastillas, y contarla como
+ * inactiva acá habría cambiado un número de la pantalla sin que nadie lo decidiera.
+ */
+export function contarPorFiltro(filas: FilaDeConteo[]): Record<FiltroPersonal, number | null> {
+  let plantel = 0
+  let enObra = 0
+  let sinAsignar = 0
+  let inactivos = 0
+  for (const f of filas) {
+    if (f.en_la_empresa === true) {
+      plantel += 1
+      if (f.obra_actual_id === null || f.obra_actual_id === undefined) sinAsignar += 1
+      else enObra += 1
+    } else if (f.en_la_empresa === false) {
+      inactivos += 1
+    }
   }
-  const plantel = () => supabase.from('persona_directorio').select('*', head).eq('en_la_empresa', true)
-  const [todos, enObra, sinAsignar, inactivos] = await Promise.all([
-    cuenta(plantel()),
-    cuenta(plantel().not('obra_actual_id', 'is', null)),
-    cuenta(plantel().is('obra_actual_id', null)),
-    cuenta(supabase.from('persona_directorio').select('*', head).eq('en_la_empresa', false)),
-  ])
-  return { plantel: todos, en_obra: enObra, sin_asignar: sinAsignar, inactivos }
+  return { plantel, en_obra: enObra, sin_asignar: sinAsignar, inactivos }
 }
 
 export async function getPersona(supabase: SupabaseClient, id: string): Promise<ServiceResult<Persona | null>> {

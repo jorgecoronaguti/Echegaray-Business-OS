@@ -1,7 +1,7 @@
 import { createServerClient, type SetAllCookies } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { esRutaCampoPermitida, esRutaPublica, type Rol } from '@/features/auth/types'
-import { puedeVerRuta } from '@/features/auth/types/areas'
+import { entradaDeArea, puedeVerRuta } from '@/features/auth/types/areas'
 import {
   CLAVE_LIMPIAR, cookieDeVista, queryARestaurar,
 } from '@/features/obras/services/vistaRecordada'
@@ -165,6 +165,25 @@ async function middlewareConBackend(request: NextRequest) {
     if (perfil?.rol === 'campo' && !esRutaCampoPermitida(pathname)) {
       const url = request.nextUrl.clone()
       url.pathname = '/hoy'
+      return NextResponse.redirect(url)
+    }
+
+    // ── `/administracion` ES CLIENTES, Y SE RESUELVE ACÁ PARA QUE SEA UN 307 DE VERDAD.
+    //
+    // Va DESPUÉS de `destinoPorRol` y del corte de `campo`: el cliente tiene que terminar en el
+    // portal y el nivel campo en `/hoy`, no en Clientes. Y va ANTES de `puedeVerRuta`, que para esta
+    // ruta devuelve true para todos los roles de adentro — preguntarle primero no cambia a nadie.
+    //
+    // El porqué completo, con la medición del meta refresh de 1 s que esto reemplaza, en
+    // `features/auth/types/areas.ts · ENTRADA_DE_ADMINISTRACION`.
+    const entrada = entradaDeArea(pathname)
+    if (entrada) {
+      const url = request.nextUrl.clone()
+      url.pathname = entrada
+      // La query se descarta igual que la descartaba el `redirect()` del `page.tsx`: los criterios de
+      // `/administracion` no son los de `/clientes`, y arrastrarlos sería filtrar la pantalla de
+      // destino con parámetros que no entiende.
+      url.search = ''
       return NextResponse.redirect(url)
     }
     // ── EL NIVEL «OBRAS» NO ENTRA A LO DE ADMINISTRACIÓN (18/08/2026).

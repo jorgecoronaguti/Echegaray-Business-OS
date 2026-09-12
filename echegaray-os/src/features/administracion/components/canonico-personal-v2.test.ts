@@ -69,10 +69,19 @@ test('los recortes cuentan LA POBLACIÓN DEL CORTE, no lo que sobrevive a la bú
   const src = codigoPagina()
   assert.match(src, /getConteosDeFiltro\(supabase\)/)
   assert.doesNotMatch(src, /cuenta: personas\.length/)
-  // Y el que cuenta no puede inventar un 0 cuando la consulta falla: `FiltrosSuaves` no dibuja el
+  // Y EL QUE CUENTA NO PUEDE INVENTAR UN 0 CUANDO LA CONSULTA FALLA: `FiltrosSuaves` no dibuja el
   // número si viene `null`, y `getConteosDeFiltro` devuelve `null` —no 0— ante un error.
+  //
+  // ACÁ SE COMPRUEBA QUE LA RAMA DE ERROR EXISTE, NO CÓMO ESTÁ ESCRITA (12/09/2026). Esta línea decía
+  // `assert.match(servicio, /return error \? null : count \?\? null/)`, o sea clavaba la forma EXACTA
+  // de una expresión: el día que los cuatro `count` se juntaron en un viaje —medido, cada uno costaba
+  // 216-250 ms de red para 1,4 ms de consulta— este test se puso en rojo sin que la garantía se
+  // hubiera roto. La garantía de verdad se mide llamando al servicio con un cliente que falla, y eso
+  // vive en `services/viajes-por-pantalla.test.ts` («las pastillas van SIN número — nunca en cero»),
+  // que se comprobó en rojo revirtiendo el arreglo.
   const servicio = sinComentarios(fuente('../services/personasService.ts'))
-  assert.match(servicio, /return error \? null : count \?\? null/)
+  assert.match(servicio, /if \(error\) return \{[^}]*plantel: null/,
+    'getConteosDeFiltro se quedó sin rama de error: una lectura fallida podría dibujar «Inactivos 0»')
 })
 
 test('las tres señales retiradas siguen teniendo dónde leerse, una por una', () => {

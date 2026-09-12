@@ -88,7 +88,7 @@ import {
   type FiltroSheet,
 } from '@/features/administracion/services/comprasSheet'
 import {
-  getAdjuntosSueltos, getComprasSheet, TOPE as TOPE_SHEET,
+  getComprasSheet, TOPE as TOPE_SHEET,
 } from '@/features/administracion/services/comprasSheetService'
 import {
   getCompra, getCompras, getConteos, getObrasDelEmisor, getParecidos, TOPE,
@@ -146,7 +146,32 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
   const verTodo = sp.todo === '1'
 
   const supabase = await createClient()
-  const perfil = await getPerfilActual(supabase)
+
+  // ═══ EL ROL VIAJA CON LOS DATOS, NO ANTES (12/09/2026) ═══
+  //
+  // `await getPerfilActual()` estaba acá solo, y el `Promise.all` arrancaba cuando volvía: medido con
+  // `PERF_TRAZA=1`, los datos no salían hasta los 122 ms (110 de `perfiles` + el salto), y en la carga
+  // en frío ese viaje solo cuesta cerca de un segundo. Era una ronda entera de espera para leer un
+  // campo que el middleware ya leyó.
+  //
+  // PONERLO EN EL MISMO `Promise.all` NO ABRE NADA, y el motivo está escrito en el encabezado de esta
+  // pantalla: la policy de `comprobantes_arca` es `for select to authenticated using (true)`, así que
+  // este chequeo nunca fue la cerradura —es la PUERTA, para que nadie vea una pantalla que no le
+  // corresponde—. Y quien no es Administración no llega hasta acá: el middleware manda a `campo` a
+  // `/hoy` y a `cliente` al portal antes de que este archivo exista. Lo que se acepta, dicho: si algún
+  // día alguien que no es Administración alcanzara esta ruta, las lecturas se harían igual y se
+  // tirarían sin dibujarse. Cuestan cuatro viajes, no una filtración.
+  //
+  // La identidad de los proveedores viaja en el mismo viaje que el resto: es una lectura chica
+  // —una fila por TEXTO distinto, no por compra— y sin ella el panel no puede decir de quién es el
+  // gasto. Si falla, el Map queda vacío y la pantalla dice «sin identificar»: nunca inventa un
+  // proveedor porque no pudo leer.
+  const [perfil, listado, entradas, identidades] = await Promise.all([
+    getPerfilActual(supabase),
+    getComprasSheet(supabase),
+    getEntradas(supabase),
+    getIdentidades(supabase),
+  ])
   if (!esAdministracion(perfil.data?.rol ?? null)) {
     return (
       <Marco>
@@ -155,17 +180,6 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
       </Marco>
     )
   }
-
-  // La identidad de los proveedores viaja en el mismo viaje que el resto: es una lectura chica
-  // —una fila por TEXTO distinto, no por compra— y sin ella el panel no puede decir de quién es el
-  // gasto. Si falla, el Map queda vacío y la pantalla dice «sin identificar»: nunca inventa un
-  // proveedor porque no pudo leer.
-  const [listado, sueltos, entradas, identidades] = await Promise.all([
-    getComprasSheet(supabase),
-    getAdjuntosSueltos(supabase),
-    getEntradas(supabase),
-    getIdentidades(supabase),
-  ])
 
   if (listado.error || !listado.data) {
     return (
@@ -288,7 +302,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
       <div style={{ padding: '0 20px 20px' }}>
         {filtro === 'sueltos' ? (
           <div style={{ background: C.superficie, border: `1px solid ${C.linea}`, borderRadius: 10, overflow: 'hidden' }}>
-            <AdjuntosSueltos adjuntos={sueltos.data ?? []} />
+            <AdjuntosSueltos adjuntos={listado.data.sueltos} />
           </div>
         ) : (
           <>
@@ -304,7 +318,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                 {/* LOS RECORTES VIVEN SOBRE LA LISTA QUE RECORTAN (`v4A:208`), no en la cabecera:
                     con el panel abierto, un chip arriba del split gobierna visualmente los dos. */}
                 <FiltrosSheet
-                  conteos={conteos} activo={filtro} hrefDe={href} sueltos={sueltos.data?.length ?? 0}
+                  conteos={conteos} activo={filtro} hrefDe={href} sueltos={listado.data.sueltos.length}
                   conteo={{ n: recorte.enPantalla.length, total: todas.length }}
                 />
                 {/* LO QUE ENTRÓ POR EL CHAT TIENE QUE PODER ENCONTRARSE SIN SABER NADA MÁS. El
@@ -439,22 +453,15 @@ async function ControlArca({
   const q = sp.q?.trim() || undefined
 
   const supabase = await createClient()
-  const perfil = await getPerfilActual(supabase)
-  // LA PUERTA NO ES LA CERRADURA: la RLS de `comprobantes_arca` decide qué filas salen. Este `if`
-  // evita mostrarle la pantalla a quien no administra nada.
-  if (!esAdministracion(perfil.data?.rol ?? null)) {
-    return (
-      <Marco>
-        <NavAdministracion />
-        <div style={{ padding: '0 20px' }}><Aviso tono="info">Esta pantalla es de Administración.</Aviso></div>
-      </Marco>
-    )
-  }
 
-  // TODO EN UN VIAJE, panel incluido. `getCompra` esperaba a que terminara la lista para recién
+  // TODO EN UN VIAJE, panel y rol incluidos. `getCompra` esperaba a que terminara la lista para recién
   // ahí salir a buscar el comprobante abierto: cada clic en una fila pagaba dos idas a la base en
-  // serie (~2,2s medidos en el QA del 24/08). El panel no depende de la lista para nada.
-  const [listado, conteos, obras, abierta, entradas] = await Promise.all([
+  // serie (~2,2s medidos en el QA del 24/08). El panel no depende de la lista para nada. El rol entró
+  // acá el 12/09/2026 por el mismo motivo que en la pestaña Compras: era una ronda de espera entera
+  // —110 ms medidos en caliente, cerca de un segundo en frío— para leer un campo, y la RLS de
+  // `comprobantes_arca` es la que decide qué filas salen. Este `if` es la PUERTA, no la cerradura.
+  const [perfil, listado, conteos, obras, abierta, entradas] = await Promise.all([
+    getPerfilActual(supabase),
     getCompras(supabase, { q, filtro }),
     getConteos(supabase),
     getObrasCanonicas(supabase),
@@ -463,6 +470,16 @@ async function ControlArca({
     // rápido cambia: pedirla aparte pagaría una ida a la base por cada refresco del polling.
     getEntradas(supabase),
   ])
+
+  // Evita mostrarle la pantalla a quien no administra nada. Ver el comentario del `Promise.all`.
+  if (!esAdministracion(perfil.data?.rol ?? null)) {
+    return (
+      <Marco>
+        <NavAdministracion />
+        <div style={{ padding: '0 20px' }}><Aviso tono="info">Esta pantalla es de Administración.</Aviso></div>
+      </Marco>
+    )
+  }
 
   if (listado.error || !listado.data || conteos.error || !conteos.data) {
     return (
