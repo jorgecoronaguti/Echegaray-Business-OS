@@ -30,7 +30,7 @@ import {
   filasDeHoras, horasDeLaQuincena, type HorasDeLaQuincena,
 } from './horasDeLaQuincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
-import { leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
+import { laSesionEsDePrueba, leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
 import {
@@ -113,7 +113,7 @@ const sinTabla = (e: { code?: string; message: string }): boolean =>
 export async function getLiquidacionDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<LiquidacionDeLaQuincena> {
-  const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, anterior, espejo] =
+  const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, anterior, espejo, sesionDePrueba] =
     await Promise.all([
       // `puesto` VIAJA CON EL PLANTEL para que las pantallas de Liquidación ordenen y rotulen como
       // el resto de Personal (dueño, 10/09/2026). Es la misma columna y la misma función
@@ -161,6 +161,12 @@ export async function getLiquidacionDeLaQuincena(
       // la consumen, y una segunda lectura sería una segunda respuesta a «cuánto le adelantaron».
       // Tolera que la tabla no exista todavía: devuelve `hay: false` y la cadena queda como estaba.
       getEspejoDeLaPlanilla(supabase, q),
+      // ═══ UNA CUENTA DE PRUEBA VE A LAS PERSONAS DE PRUEBA (12/09/2026) ═══
+      //
+      // Viaja en la MISMA tanda: es una pregunta de sesión, no depende de ninguna otra lectura, y en
+      // serie sería un viaje más por carga de pantalla. Sin la migración aplicada devuelve `false` y
+      // la pantalla queda como estaba.
+      laSesionEsDePrueba(supabase),
     ])
 
   const errores: { que: string; error: string }[] = []
@@ -202,6 +208,9 @@ export async function getLiquidacionDeLaQuincena(
   // Dueño, 09/09/2026: «solo dejame en plantel quienes estén activos esta quincena y sacá a los que
   // no, cuidado con eso». El cuidado está acá: se FILTRA UNA LECTURA. Ni una escritura sobre
   // `personas`, ni `en_la_empresa`, ni bajas. Quien no aparece se devuelve en `sinActividad`.
+  // QUIÉN PREGUNTA DECIDE SI LAS IDENTIDADES DE PRUEBA ENTRAN. Se lee de la base —la misma función
+  // que filtra `persona_directorio`— y no se deduce del rol: una cuenta de prueba tiene rol de
+  // Dirección igual que el dueño.
   const { activas, sinActividad } = plantelDeLaQuincena(personas, {
     conLineaEnLaAnterior: idsDeLaAnterior(anterior.data),
     conHoras: new Set(((registros.data ?? []) as { persona_id: string }[]).map((r) => r.persona_id)),
@@ -210,7 +219,7 @@ export async function getLiquidacionDeLaQuincena(
       ((tarifas.data ?? []) as { persona_id: string; desde: string }[])
         .filter((t) => t.desde >= q.desde).map((t) => t.persona_id),
     ),
-  })
+  }, sesionDePrueba)
 
   const cuadros = armarCuadros({
       quincena: q,

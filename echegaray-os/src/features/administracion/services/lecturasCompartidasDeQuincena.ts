@@ -61,6 +61,7 @@ export type FilaCuil = { id: string; cuil: string | null }
 
 const memoPresencias = cache((): Map<string, Promise<Lectura<FilaPresencia>>> => new Map())
 const memoCuiles = cache((): Map<string, Promise<Lectura<FilaCuil>>> => new Map())
+const memoSesionDePrueba = cache((): Map<string, Promise<boolean>> => new Map())
 
 /**
  * LA PRESENCIA DECLARADA DE LA QUINCENA (`asistencia_dia`), una vez por request y por ventana.
@@ -90,5 +91,24 @@ export function leerCuilesDelLegajo(supabase: SupabaseClient): Promise<Lectura<F
   return recordar(memoCuiles(), 'persona_legajo(id,cuil)', async () => {
     const { data, error } = await supabase.from('persona_legajo').select('id, cuil')
     return { data: (data ?? null) as FilaCuil[] | null, error }
+  })
+}
+
+/**
+ * ¿QUIEN ABRIÓ LA PANTALLA ES UNA IDENTIDAD DE PRUEBA? Una vez por request.
+ *
+ * La contesta la BASE (`sesion_es_de_prueba()`, migración `20260912T1200`) y no el código, porque es
+ * la MISMA función que filtra `persona_directorio`, `persona_legajo` y `persona_plantel`: preguntarlo
+ * acá por otro camino —leer `perfiles` a mano— sería una segunda definición de quién es una cuenta de
+ * prueba, y el día que las dos no coincidan la pantalla mostraría una lista y la base otra.
+ *
+ * SIN LA MIGRACIÓN APLICADA la RPC no existe y esto devuelve `false`: exactamente el comportamiento
+ * de antes del cambio. Falla cerrado y en silencio a propósito —no es un error de pantalla— porque
+ * «no pude preguntar» y «no es una cuenta de prueba» llevan al mismo lado seguro: esconder.
+ */
+export function laSesionEsDePrueba(supabase: SupabaseClient): Promise<boolean> {
+  return recordar(memoSesionDePrueba(), 'sesion_es_de_prueba', async () => {
+    const { data, error } = await supabase.rpc('sesion_es_de_prueba')
+    return error ? false : data === true
   })
 }

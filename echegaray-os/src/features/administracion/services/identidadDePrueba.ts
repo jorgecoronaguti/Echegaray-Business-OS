@@ -27,6 +27,15 @@
 // crea. Un apellido real no puede empezar con `[PRUEBA` ni contener `E2E`.
 //
 // NO SE DA DE BAJA A NADIE. Los E2E necesitan esa identidad viva: lo que cambia es que no se publica.
+//
+// ═══ Y DESDE EL 12/09/2026, «NO SE PUBLICA» TIENE UN DESTINATARIO ═══
+//
+// «No se publica» era absoluto, y eso dejó a la suite sin poder probar por navegador que teclear una
+// celda de horas escribe en `registros_hh`: la única persona sobre la que un test puede escribir sin
+// mover el jornal de un obrero no aparecía en la pantalla donde se escribe. La regla pasó a mirar
+// también quién pregunta —`sePublicaA()`, y en la base `sesion_es_de_prueba()`— y el único que ve lo
+// que existe para probar es quien TAMBIÉN existe para probar. Una cuenta real no ve ninguna, que es
+// lo que se decidió el 11/09 y no cambia.
 
 /** Lo mínimo que hace falta para decidir. Cualquiera de los tres puede faltar. */
 export interface IdentidadPosible {
@@ -71,14 +80,38 @@ export function esIdentidadDePrueba(p: IdentidadPosible): boolean {
 }
 
 /**
- * LA LISTA SIN LAS IDENTIDADES DE PRUEBA.
+ * ¿ESTA FILA SE LE PUBLICA A ESTA SESIÓN?
+ *
+ * Es el MISMO predicado que la migración `20260912T1200` escribe en `persona_directorio`,
+ * `persona_legajo` y `persona_plantel`, en TypeScript:
+ *
+ *     se publica  ⇔  no es de prueba  ∨  quien pregunta es una cuenta de prueba
+ *
+ * ═══ POR QUÉ LA SESIÓN ENTRA ACÁ Y NO ALCANZA CON LA VISTA (12/09/2026) ═══
+ *
+ * Porque la base y el código filtran por motivos distintos y fallan por motivos distintos. La vista
+ * cubre a cualquiera que lea la base; este filtro cubre el rato en que la migración todavía no está
+ * aplicada. Si sólo cambiara la vista, la solapa Quincena seguiría escondiendo la identidad de
+ * prueba —la filtra `plantelDeLaQuincena`— y el E2E de escritura de horas seguiría siendo imposible:
+ * la pantalla no mostraría la única persona sobre la que un test puede escribir.
+ *
+ * `laSesionEsDePrueba` es `false` por defecto Y a propósito: quien no sabe quién pregunta esconde.
+ * Mostrar una cuenta de Playwright en una liquidación real es un defecto; esconder a una persona
+ * real es uno peor, pero el default seguro para ESTA pregunta es el de antes del cambio.
+ */
+export function sePublicaA(p: IdentidadPosible, laSesionEsDePrueba = false): boolean {
+  return !esIdentidadDePrueba(p) || laSesionEsDePrueba === true
+}
+
+/**
+ * LA LISTA SIN LAS IDENTIDADES DE PRUEBA — salvo que quien mira TAMBIÉN exista para probar.
  *
  * `lector` existe porque cada servicio nombra sus campos distinto (`nombre`, `nombre_completo`,
  * `persona`): obligar a una forma única habría hecho que tres llamadores armaran un objeto
  * intermedio, y el que se olvidara de un campo filtraría de menos sin que nada avisara.
  */
 export function sinIdentidadesDePrueba<T>(
-  items: readonly T[], lector: (item: T) => IdentidadPosible,
+  items: readonly T[], lector: (item: T) => IdentidadPosible, laSesionEsDePrueba = false,
 ): T[] {
-  return items.filter((i) => !esIdentidadDePrueba(lector(i)))
+  return items.filter((i) => sePublicaA(lector(i), laSesionEsDePrueba))
 }

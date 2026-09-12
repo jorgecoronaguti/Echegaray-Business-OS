@@ -6,7 +6,9 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { esIdentidadDePrueba, MAILS_DE_PRUEBA, sinIdentidadesDePrueba } from './identidadDePrueba.ts'
+import {
+  esIdentidadDePrueba, MAILS_DE_PRUEBA, sePublicaA, sinIdentidadesDePrueba,
+} from './identidadDePrueba.ts'
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 
 test('LA IDENTIDAD EXACTA QUE SALÍA EN PRODUCCIÓN', () => {
@@ -81,4 +83,71 @@ test('LOS MAILS DE PRUEBA SON LOS DE `tests/util/identidades.ts`, Y SON DOS PATR
   assert.equal(MAILS_DE_PRUEBA.length, 2)
   assert.ok(MAILS_DE_PRUEBA.some((re) => re.test('qa.campo@ecsas.com.ar')))
   assert.ok(MAILS_DE_PRUEBA.some((re) => re.test('jorge.o.corona+direccion-test-1@gmail.com')))
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// UNA CUENTA DE PRUEBA VE A LAS PERSONAS DE PRUEBA · UNA CUENTA REAL NO (12/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Es el predicado que la migración `20260912T1200` escribe en `persona_directorio`, `persona_legajo`
+// y `persona_plantel`. Acá se prueba la copia de TypeScript, que es la que gobierna la solapa
+// Quincena mientras la migración no esté aplicada.
+
+test('EL PREDICADO: de prueba sólo para quien también existe para probar', () => {
+  const qa = { nombre: '[PRUEBA E2E] QA Campo' }
+  const persona = { nombre: 'Maldonado Juan' }
+
+  // La cuenta REAL: sigue sin verla. Es el hallazgo del 11/09 y no se toca.
+  assert.equal(sePublicaA(qa, false), false)
+  // La cuenta de prueba: la ve. Sin esto, el E2E de escritura de horas es imposible.
+  assert.equal(sePublicaA(qa, true), true)
+
+  // ═══ LA MITAD QUE NADIE MIRA: la cuenta de prueba SIGUE VIENDO A LAS PERSONAS REALES ═══
+  //
+  // El defecto que atrapa es implementar «la sesión de prueba ve lo de prueba» como un filtro que
+  // INVIERTE la lista. Un E2E que corre contra un plantel de una sola fila daría verde igual, y la
+  // pantalla de esa cuenta sería una mentira sobre la empresa.
+  assert.equal(sePublicaA(persona, true), true)
+  assert.equal(sePublicaA(persona, false), true)
+})
+
+test('SIN SABER QUIÉN PREGUNTA SE ESCONDE: el default es el de antes del cambio', () => {
+  // Un llamador que no pasa el tercer argumento tiene que seguir filtrando. Si el default fuera
+  // `true`, agregar el parámetro habría destapado la cuenta de Playwright en las siete pantallas del
+  // módulo sin que ningún llamador cambiara una línea.
+  assert.equal(sePublicaA({ nombre: '[PRUEBA E2E] QA Campo' }), false)
+  const filas = [{ nombre_completo: 'Maldonado Juan' }, { nombre_completo: '[PRUEBA E2E] QA Campo' }]
+  assert.deepEqual(
+    sinIdentidadesDePrueba(filas, (f) => ({ nombre: f.nombre_completo })).map((f) => f.nombre_completo),
+    ['Maldonado Juan'],
+  )
+  assert.deepEqual(
+    sinIdentidadesDePrueba(filas, (f) => ({ nombre: f.nombre_completo }), true).map((f) => f.nombre_completo),
+    ['Maldonado Juan', '[PRUEBA E2E] QA Campo'],
+  )
+})
+
+test('EL PLANTEL DE LA QUINCENA SE LA DEVUELVE A UNA SESIÓN DE PRUEBA, CON SU ACTIVIDAD', () => {
+  // LA PANTALLA DONDE SE ESCRIBE. La celda `espejo-dia-<personaId>-<fecha>` sólo existe para quien
+  // está en `activas`: sin esto la identidad de prueba no tiene celda y no hay E2E de escritura.
+  const personas = [
+    { id: 'p1', nombre: 'Maldonado Juan' },
+    { id: 'p2', nombre: 'Quiroga Sebastián' },
+    { id: 'qa', nombre: '[PRUEBA E2E] QA Campo' },
+  ]
+  const evidencia = {
+    conLineaEnLaAnterior: new Set(['p1']),
+    conHoras: new Set(['qa']),
+    conAsistencia: new Set<string>(),
+    conTarifaNueva: new Set<string>(),
+  }
+  const deVerdad = plantelDeLaQuincena(personas, evidencia, false)
+  assert.deepEqual(deVerdad.activas.map((p) => p.id), ['p1'])
+  assert.deepEqual(deVerdad.sinActividad.map((p) => p.id), ['p2'])
+
+  const dePrueba = plantelDeLaQuincena(personas, evidencia, true)
+  // Entra por la MISMA puerta que todos —tiene horas cargadas en la quincena—, no por una excepción
+  // que la meta en la lista sin evidencia de actividad.
+  assert.deepEqual(dePrueba.activas.map((p) => p.id), ['p1', 'qa'])
+  assert.deepEqual(dePrueba.sinActividad.map((p) => p.id), ['p2'])
 })

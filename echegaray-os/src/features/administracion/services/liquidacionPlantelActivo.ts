@@ -27,6 +27,10 @@
 // Una identidad de prueba no está «sin actividad»: no es una persona. Contarla ahí haría que el
 // enlace «17 sin actividad» llevara a una lista con una cuenta de Playwright adentro. Se descarta
 // antes de partir, con el único criterio del repo (`identidadDePrueba.ts`).
+//
+// LA EXCEPCIÓN, DESDE EL 12/09/2026: una cuenta que TAMBIÉN existe para probar sí las ve. Es la
+// misma regla que la base aplica en `persona_directorio` (`sesion_es_de_prueba()`), y es lo que
+// permite que un E2E escriba una celda de horas sin tocar el jornal de una persona real.
 
 import { sinIdentidadesDePrueba } from './identidadDePrueba.ts'
 
@@ -56,12 +60,12 @@ export interface PlantelDeLaQuincena<P extends PersonaDelPlantel> {
  * PARTE EL PLANTEL EN DOS. Ni una escritura, y por eso se puede correr en cada carga de pantalla.
  */
 export function plantelDeLaQuincena<P extends PersonaDelPlantel>(
-  personas: readonly P[], e: EvidenciaDeActividad,
+  personas: readonly P[], e: EvidenciaDeActividad, laSesionEsDePrueba = false,
 ): PlantelDeLaQuincena<P> {
   const activa = (id: string): boolean =>
     e.conLineaEnLaAnterior.has(id) || e.conHoras.has(id)
     || e.conAsistencia.has(id) || e.conTarifaNueva.has(id)
-  const reales = sinIdentidadesDePrueba(personas, (p) => ({ nombre: p.nombre }))
+  const reales = sinIdentidadesDePrueba(personas, (p) => ({ nombre: p.nombre }), laSesionEsDePrueba)
   return {
     activas: reales.filter((p) => activa(p.id)),
     sinActividad: reales.filter((p) => !activa(p.id)),
