@@ -32,7 +32,7 @@ import { V } from '@/shared/components/v2/patron'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
 import { CeldaEditable, CeldaRedondeo, MarcaDeOrigen } from './CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from './formato'
-import { ALTO_LIQ, MONO } from './solapas/tabla'
+import { ALTO_LIQ, COLUMNA_FIJA, MARCO_SCROLL, MONO } from './solapas/tabla'
 import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
 import type { CeldaDelEspejo, FilaDelEspejo, TotalesDelEspejo } from '../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../services/horasDeLaCeldaActions'
@@ -100,7 +100,8 @@ export function GrillaEspejoQuincena({
       overflow: 'hidden',
     }}>
       {sello}
-      <div className="overflow-x-auto" style={{ padding: '14px 20px 0' }}>
+      {/* MARCO_SCROLL avisa que hay más a los lados; la primera columna se queda. Ver `tabla.tsx`. */}
+      <div style={{ ...MARCO_SCROLL, padding: '14px 20px 0' }}>
         <div data-testid="espejo-tabla" style={{ minWidth: ancho, display: 'flex', flexDirection: 'column' }}>
           <div data-testid="espejo-encabezado" style={{
             display: 'grid', gridTemplateColumns: columnas, gap: 6,
@@ -108,7 +109,7 @@ export function GrillaEspejoQuincena({
             borderBottom: `1px solid ${V.linea}`, fontFamily: MONO, fontSize: '9.5px',
             letterSpacing: '.04em', color: V.tenue, textTransform: 'uppercase',
           }}>
-            <div>Persona</div>
+            <div style={COLUMNA_FIJA}>Persona</div>
             {dias.map((f) => (
               <div key={f} style={{ textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>
             ))}
@@ -143,8 +144,7 @@ function Fila({ fila, columnas, quincena, camposEditables }: {
   const l = fila.linea
   return (
     <div data-testid={`espejo-fila-${fila.personaId}`} style={filaGrid(columnas, ALTO_LIQ.filaPersona)}>
-      <div style={{ color: V.tinta, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}
-        title={fila.nombre}>
+      <div style={{ ...COLUMNA_FIJA, color: V.tinta }} title={fila.nombre}>
         {fila.nombre}
       </div>
       {fila.celdas.map((c) => (
@@ -312,8 +312,9 @@ function ChipDeCotejo({ fila }: { fila: FilaDelEspejo }) {
   }
   // CON ESPEJO LEÍDO PERO SIN NINGÚN DÍA DE ESTA PERSONA, la planilla no habla de ella: los dos jefes
   // de Oficina, cuya pestaña no tiene bloque de septiembre. «Difiere 80 h» sería mentir sobre una
-  // comparación que no se puede hacer.
-  if (c.diasComparados === 0) {
+  // comparación que no se puede hacer — y el pie publicaba «3 filas difieren · 177,8 h» cuando la
+  // diferencia real de la quincena era 17,8 h de UNA persona.
+  if (c.estado === 'no-esta') {
     return (
       <span data-testid={`cotejo-${fila.personaId}`}
         title="La planilla no tiene ningún día cargado de esta persona en esta quincena."
@@ -349,7 +350,7 @@ function Total({ columnas, dias, totales }: {
       ...filaGrid(columnas, ALTO_LIQ.total), borderBottom: 'none',
       borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
     }}>
-      <div>{totales.personas} persona{totales.personas === 1 ? '' : 's'}</div>
+      <div style={COLUMNA_FIJA}>{totales.personas} persona{totales.personas === 1 ? '' : 's'}</div>
       {dias.map((f, i) => (
         <div key={f} style={{ textAlign: 'center', color: totales.porDia[i] == null ? V.tenue : V.tinta }}>
           {totales.porDia[i] == null ? '·' : nHoras(totales.porDia[i])}

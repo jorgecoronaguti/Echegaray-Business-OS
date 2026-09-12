@@ -46,7 +46,14 @@ const etiquetaDeMotivo = (clave: string | null | undefined): string => {
   return typeof m?.etiqueta === 'string' ? m.etiqueta : (clave?.trim() ?? '')
 }
 
-const COLS_RET = 'minmax(140px,1fr) 100px 150px'
+// ═══ «RETRIBUCIÓN» TRUNCABA LOS NOMBRES CON ANCHO DE SOBRA (QA visual, 11/09/2026, a 1440) ═══
+//
+// La columna era `minmax(140px,1fr)` y las otras dos fijas en 100 + 150. `1fr` reparte el espacio
+// LIBRE, pero este cuadro vive en un `flex` con otros dos y lo que le toca ronda los 420 px: al
+// nombre le quedaban ~150 y «GONZALEZ TOBARES JUAN GUILLERMO» necesita el doble. El piso sube a
+// 230 px —medido contra el nombre más largo del plantel— y el `title` garantiza que el nombre
+// completo se pueda leer aunque alguna vez vuelva a no entrar.
+const COLS_RET = 'minmax(230px,1fr) 100px 150px'
 const COLS_AUS = '86px minmax(110px,1fr) 150px'
 const COLS_LOTE = 'minmax(110px,1fr) 100px 110px'
 
@@ -76,7 +83,9 @@ export async function SolapaRecibos({ quincenaPedida, hoy }: {
       ))}
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 400 }}>
+        {/* 500 Y NO 400: con el piso de 400 el cuadro entraba tres veces en 1440 y la columna del
+            nombre quedaba por debajo de lo que un nombre real necesita. */}
+        <div style={{ flex: 1, minWidth: 500 }}>
           <Cuadro testid="cuadro-retribucion">
             <span style={{ fontSize: '12.5px', fontWeight: 600 }}>Retribución · bloque LABORAL</span>
             <Cuerpo>
@@ -226,8 +235,18 @@ function SubirRecibo() {
   )
 }
 
+/**
+ * EL NOMBRE, QUE NO SE PUEDE PERDER.
+ *
+ * Sigue recortando con «…» —dos renglones romperían el ritmo de 46 px de estas filas— pero ahora
+ * lleva `title`: un nombre truncado sin forma de leerlo entero es una fila que no se puede usar para
+ * buscar a nadie. El ancho de la columna lo arregla `COLS_RET`; esto es la red.
+ */
 const Nombre = ({ children }: { children: React.ReactNode }) => (
-  <span style={{ display: 'block', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+  <span
+    title={typeof children === 'string' ? children : undefined}
+    style={{ display: 'block', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+  >
     {children}
   </span>
 )
