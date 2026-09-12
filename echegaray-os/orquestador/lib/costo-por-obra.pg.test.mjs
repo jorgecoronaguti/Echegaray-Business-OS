@@ -47,7 +47,7 @@ import { repartirHorasPorObra } from '../../src/features/administracion/services
 
 const MIGRACION = readFileSync(join(
   import.meta.dirname, '..', '..', 'supabase', 'migrations',
-  '20260912T1000_los_costos_de_cada_obra_en_la_ficha_del_cliente.sql'), 'utf8')
+  '20260912T1300_el_costo_de_la_hora_se_resuelve_una_vez_por_tramo.sql'), 'utf8')
 
 const DDL_PERMITIDO = process.env.ORQ_PG_DDL === '1'
 const hayBase = DDL_PERMITIDO
@@ -81,6 +81,78 @@ test('lo gastado por obra: la ficha del cliente contra las fuentes', { skip: !ha
         'la valorización dejó de usar la función del multiplicador: es la regla de Liquidación')
       assert.ok(def.includes('when not (select public.es_administracion()) then null::jsonb'),
         'se fue la guarda de rol: un jefe de obra recibiría media suma de compras')
+    })
+
+    // ═══ EL DEFECTO PROPIO DE 20260912T1300: EL TRAMO MAL ELEGIDO ═══
+    //
+    // La clave dejó de llamar `multiplicador_de_costo` una vez por fila —una función con cláusula SET
+    // no se inlinea, y esa llamada costaba 838 de los 987 ms del bloque— y la llama una vez por
+    // `desde` DISTINTO, resolviendo después por rango. Es exacto porque el conjunto de alícuotas
+    // vigentes sólo cambia en esos días; pero un menor estricto donde va un menor-o-igual, o un
+    // `order by` al revés, elige el tramo de al lado y devuelve un número PLAUSIBLE y más barato.
+    //
+    // ═══ DOS INTENTOS QUE NO SERVÍAN, Y POR QUÉ (12/09/2026) ═══
+    //
+    //  1 · Comparar «la función por fila» contra «el rango» con las DOS formas escritas ACÁ. Verde
+    //      siempre: probaba que la idea es exacta, no que la función desplegada la aplique bien.
+    //      Mutar la migración no lo movía porque el test nunca leía su lateral.
+    //  2 · Agregarle las fechas de borde a esa comparación. Seguía verde por lo mismo.
+    //
+    // Lo que sí puede dar rojo es comparar el VALOR QUE LA CLAVE PUBLICA contra la referencia
+    // calculada llamando la función por fila. Y para que el borde exista —hoy la tabla tiene UN solo
+    // `desde`, 2026-01-01, y el primer registro de horas es del 05/01, así que ninguna fila cae justo
+    // sobre un tramo— el test FABRICA el borde: inserta un tramo que arranca en una fecha que sí
+    // tiene horas. Es legítimo porque pasa dentro de la transacción que se revierte, sobre filas
+    // reales, y construye exactamente la única condición que distingue lo correcto de lo incorrecto.
+    await t.test('mano_obra de la clave es la de llamar la función por fila, con un tramo en el borde', async () => {
+      const obra = await uno(`
+        select r.obra_canonica_id as obra_id, r.fecha::text as fecha, count(*)::int as filas
+          from public.registros_hh r
+         where ${TRABAJADA} and r.obra_canonica_id is not null
+         group by 1, 2 having count(*) >= 2
+         order by count(*) desc limit 1`)
+      assert.ok(obra, 'ninguna obra tiene dos registros de horas el mismo día: sin eso no hay borde que probar')
+
+      const cli = await uno(`select c.slug from public.clientes c
+                              join public.obra_canonica o on o.cliente_id = c.id
+                             where o.id = $1`, [obra.obra_id])
+      assert.ok(cli?.slug, 'la obra del borde no cuelga de un cliente con slug')
+
+      // EL TRAMO DEL BORDE: arranca EXACTAMENTE en un día con horas y con otro porcentaje, para que
+      // elegir el tramo de al lado dé un número distinto. `art` porque ya existe y el UNIQUE es
+      // (concepto, desde): esta fila no choca con la del 01/01.
+      await q(`insert into public.costo_hora_alicuota (concepto, desde, porcentaje, base, fuente)
+               values ('art', $1::date, 40, 'total', 'fila de prueba del borde — transacción revertida')`,
+        [obra.fecha])
+
+      // LA REFERENCIA: la misma cuenta de la clave pero llamando la función UNA VEZ POR FILA, que es
+      // la forma que 20260912T1000 tenía desplegada y la definición contra la que hay que cerrar.
+      const ref = await uno(`
+        select sum(r.horas * t.valor_hora * m.v)
+                 filter (where t.valor_hora is not null and m.v is not null) as mano_obra
+          from public.registros_hh r
+          left join lateral (select p.valor_hora from public.persona_tarifa p
+                              where p.persona_id = r.persona_id and p.desde <= r.fecha
+                              order by p.desde desc limit 1) t on true
+          left join lateral (select public.multiplicador_de_costo(r.fecha) as v) m on true
+         where ${TRABAJADA} and r.obra_canonica_id = $1`, [obra.obra_id])
+
+      const ficha = await uno(`
+        select (x.o ->> 'mano_obra')::numeric as mano_obra
+          from jsonb_array_elements(public.pantalla_cliente($1, 'obras') -> 'costo_obra') x(o)
+         where x.o ->> 'obra_id' = $2`, [cli.slug, obra.obra_id])
+      assert.ok(ficha, `la ficha de «${cli.slug}» no publicó la obra del borde`)
+
+      assert.equal(Number(ficha.mano_obra), Number(ref.mano_obra),
+        `con un tramo que arranca el ${obra.fecha} la clave publica ${ficha.mano_obra} y llamar la `
+        + `función por fila da ${ref.mano_obra}: el rango eligió otro tramo`)
+
+      // Y QUE EL BORDE HAYA CAMBIADO ALGO. Si el tramo insertado no mueve el multiplicador de ese
+      // día, la igualdad de arriba es verde por casualidad y no prueba nada.
+      const b = await uno(`select public.multiplicador_de_costo($1::date) as dentro,
+                                  public.multiplicador_de_costo($1::date - 1) as antes`, [obra.fecha])
+      assert.notEqual(Number(b.dentro), Number(b.antes),
+        'el tramo de prueba no movió el multiplicador: el control no puede dar rojo')
     })
 
     await t.test('el multiplicador de SQL es el de costoHora.ts, fecha por fecha', async () => {
