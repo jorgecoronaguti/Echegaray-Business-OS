@@ -95,6 +95,18 @@ export async function corregirHorasDelDia(registroId: string, valor: string): Pr
   const { data: sesion } = await supabase.auth.getUser()
   const autor = sesion.user?.id ?? null
 
+  // VACIAR LA CELDA BORRA EL DÍA. `horas` es NOT NULL en la base: escribir null era un error de la
+  // base disfrazado de «guardado» (el E2E del 12/09/2026 lo midió: la celda quedaba en 8). Y 0 no
+  // sirve: «no trabajó» y «todavía no lo cargué» son dos afirmaciones y sólo la primera se liquida.
+  // Vaciar es volver a «todavía no lo cargué»: la fila se va (y con ella su rastro, en cascada); si
+  // la planilla JORNALES tiene ese día, el importador horario la vuelve a crear desde la planilla.
+  if (despues === null) {
+    const borrado = await supabase.from('registros_hh').delete().eq('id', fila.id).select('id')
+    if (borrado.error) return { ok: false, error: borrado.error.message }
+    if (!borrado.data?.length) return { ok: false, error: 'No pude vaciar el día: la base no devolvió la fila.' }
+    return { ok: true }
+  }
+
   // `.select()` ENCADENADO: se acusa lo que la base DEVOLVIÓ. Un update que la policy rechaza sin
   // error devuelve 204 y cero filas — y un «guardado» sobre una escritura que no ocurrió es la
   // trampa que este repo ya pagó.

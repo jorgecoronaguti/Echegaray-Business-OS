@@ -238,7 +238,8 @@ test('teclear una celda de la quincena crea, corrige y vacía el jornal en `regi
   // ── 3 · VACIAR DEJA EL DÍA SIN HORAS, Y NO EN CERO ────────────────────────────────────────────
   //
   // «Todavía no lo cargué» y «no trabajó» son dos afirmaciones distintas y una de las dos se
-  // liquida. La fila sigue existiendo —es la que guarda el rastro— con `horas` en NULL.
+  // liquida. `horas` es NOT NULL en la base, así que vaciar BORRA la fila: el día vuelve a
+  // «todavía no lo cargué» (sin fila), nunca a 0 h.
   await expect(async () => {
     await celda.click()
     await expect(page.getByTestId(`${celdaId}-campo`)).toBeVisible({ timeout: 5_000 })
@@ -249,11 +250,11 @@ test('teclear una celda de la quincena crea, corrige y vacía el jornal en `regi
   await expect.poll(async () => {
     const f = await filaDelDia()
     return f === null ? 'sin fila' : f.horas
-  }, { timeout: 30_000 }).toBe(null)
+  }, { timeout: 30_000 }).toBe('sin fila')
 
   // Y RECARGANDO: lo que se ve después de volver a pedir la pantalla sale de la base, no del estado
   // optimista que quedó en el navegador. Es el paso que hace el dueño y el que ningún caso medía.
   await page.reload()
   await expect(page.getByTestId(celdaId)).toBeVisible({ timeout: 90_000 })
-  expect((await filaDelDia())?.horas ?? null, 'después de recargar el día sigue vacío').toBeNull()
+  expect(await filaDelDia(), 'después de recargar el día sigue sin fila').toBeNull()
 })
