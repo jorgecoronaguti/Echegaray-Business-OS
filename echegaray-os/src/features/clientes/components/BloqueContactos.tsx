@@ -73,12 +73,9 @@ export function BloqueContactos({
       {contactos.length === 0 ? (
         <Vacio>Este cliente no tiene contactos cargados. Se agregan acá.</Vacio>
       ) : (
-        <Tabla testid="tabla-contactos" minWidth={620}>
+        <Tabla testid="tabla-contactos" minWidth={240}>
           <THead>
-            <Th>Nombre</Th>
-            <Th className="w-[170px]">Rol</Th>
-            <Th className="w-[220px]">Mail</Th>
-            <Th className="w-[140px]">Teléfono</Th>
+            <Th>Contacto</Th>
             {puedeEditar && <Th className="w-[52px]" />}
           </THead>
           <tbody>
@@ -108,27 +105,52 @@ function FilaContacto({
   borrar: (contactoId: string) => Promise<ResultadoAccion>
   puedeEditar?: boolean
 }) {
-  const columnas = puedeEditar ? 5 : 4
+  const columnas = puedeEditar ? 2 : 1
   return (
     <>
       <Tr seleccionada={abierta || menu}>
-        <Td fuerte>{c.nombre}</Td>
-        <Td>{c.rol ?? <Nulo>sin rol declarado</Nulo>}</Td>
-        <Td>
-          {/* SIN MAIL NO SE LE PUEDE MANDAR NADA: ni la invitación al portal, ni el recordatorio
-              de cobranza. Va en ÁMBAR y no en el gris de las demás ausencias porque bloquea, que
-              es la definición de `warn` del sistema. */}
-          {c.email
-            ? <a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a>
-            : <span className="text-[12.5px] text-warn" data-testid="contacto-sin-mail">sin mail cargado</span>}
-        </Td>
-        <Td>
-          {c.telefono
-            ? <span className="font-mono text-[12.5px] tabular-nums">{c.telefono}</span>
-            : <Nulo>sin teléfono</Nulo>}
+        {/* ═══ UN CONTACTO POR RENGLÓN, NO CUATRO COLUMNAS (dueño, 12/09/2026) ═══
+
+            Eran cuatro columnas —nombre, rol, mail, teléfono— en una tabla de 620px de ancho mínimo,
+            y este bloque vive en el COSTADO de la ficha, que mide 300. La tabla se desplazaba adentro
+            del panel y lo que quedaba a la vista era «jmillan@juar…»: medido a 1280, el mail arranca
+            en x=1189 y termina en 1354, con el costado terminando en 1260. Un dato que exige arrastrar
+            una barra horizontal de 300px para leerse no está publicado.
+
+            Apilado, el mail entra entero en el ancho que hay. Se queda como TABLA —y no como una lista
+            suelta— porque la línea de acciones expande DENTRO de la fila (`colSpan`), que es la forma
+            que el handoff pide para poder mostrar el error de la base al lado de la acción. */}
+        <Td fuerte className="py-2">
+          <div className="flex flex-col gap-0.5" style={{ minWidth: 0 }}>
+            <span>{c.nombre}</span>
+            <span className="text-[12px] text-ink-soft">
+              {c.rol ?? <Nulo>sin rol declarado</Nulo>}
+              {' · '}
+              {c.telefono
+                ? <span className="font-mono tabular-nums">{c.telefono}</span>
+                : <Nulo>sin teléfono</Nulo>}
+            </span>
+            {/* SIN MAIL NO SE LE PUEDE MANDAR NADA: ni la invitación al portal, ni el recordatorio
+                de cobranza. Va en ÁMBAR y no en el gris de las demás ausencias porque bloquea, que
+                es la definición de `warn` del sistema.
+
+                `break-all` y no `truncate`: una dirección de correo no se abrevia. Cortarla por la
+                mitad de una palabra es feo y es legible; cortarla con puntos suspensivos la vuelve
+                inútil, que es de lo que se quejó el dueño. El `title` viaja igual para copiarla. */}
+            {c.email
+              ? (
+                  <a
+                    href={`mailto:${c.email}`} title={c.email}
+                    className="break-all text-[12px] hover:underline"
+                  >
+                    {c.email}
+                  </a>
+                )
+              : <span className="text-[12.5px] text-warn" data-testid="contacto-sin-mail">sin mail cargado</span>}
+          </div>
         </Td>
         {puedeEditar && (
-          <Td className="text-right">
+          <Td className="align-top text-right">
             <AbrirAcciones
               href={urlMenuDe(menu ? null : c.id)}
               abierto={menu}
