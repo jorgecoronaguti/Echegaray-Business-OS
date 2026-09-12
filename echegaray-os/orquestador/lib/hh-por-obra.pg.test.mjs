@@ -39,7 +39,15 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
   const q = async (sql, params) => (await c.query(sql, params)).rows
   const uno = async (sql, params) => (await q(sql, params))[0]
   try {
-    await c.query('begin')
+    // ═══ UNA SOLA FOTO PARA COMPARAR DOS LECTURAS (12/09/2026) ═══
+    //
+    // Cada obra se mide dos veces —lo que publica `pantalla_cliente` y la suma directa de
+    // `registros_hh`— en sentencias separadas. En `read committed` cada sentencia toma un snapshot
+    // nuevo, así que un commit ajeno en el medio hace que las dos lecturas hablen de mundos distintos:
+    // en la corrida completa del 12/09 dio «le-comedor: 2404,5 contra 2396,5», ocho horas que un test
+    // vecino cargó sobre la obra de prueba entre una consulta y la otra. Solo, el archivo pasa 6/6.
+    // Con `repeatable read` las dos lecturas ven la misma base y la diferencia vuelve a significar algo.
+    await c.query('begin isolation level repeatable read')
 
     // ── LA FUNCIÓN DESPLEGADA TIENE LA CLAVE ─────────────────────────────────────────────────────
     const def = (await uno(`select pg_get_functiondef('public.pantalla_cliente(text,text)'::regprocedure) d`)).d
