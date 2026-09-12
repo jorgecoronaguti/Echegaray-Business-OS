@@ -27,7 +27,7 @@
 // FRONTERA: el cliente CONSOLIDA, no administra. El contratado y el avance salen de `obra_panel` —o
 // sea, de Compras y de Cotización—. Acá no se calcula ni se guarda un número propio.
 
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
 import { leerFichaDeUnaConsulta } from '@/features/clientes/services/fichaDeUnaConsulta'
@@ -62,7 +62,6 @@ import {
   esRecorteCobranza, getCobranzasDelCliente, type FilaCobranza,
 } from '@/features/clientes/services/cobranzasCliente'
 import { SolapaCobranzas } from '@/features/clientes/components/cobranzas/SolapaCobranzas'
-import { cuentaDeTrabajos } from '@/features/clientes/services/cuentaDeTrabajos'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
 import { getOrdenesDe, getOrdenesDelCliente } from '@/features/clientes/services/ordenesCliente'
 import { OrdenesDelCliente } from '@/features/clientes/components/OrdenesDelCliente'
@@ -74,12 +73,13 @@ import {
 } from '@/features/clientes/services/accesosActions'
 import { resumenAccesos } from '@/features/clientes/services/reglasPortal'
 import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
-import { A_SANGRE, solapaDe, solapasDeCliente } from '@/features/clientes/services/solapasCliente'
+import { A_SANGRE, destinoDe, esCaraRetirada, solapaDe, solapasDeCliente } from '@/features/clientes/services/solapasCliente'
 import { tasaDeConversion } from '@/features/clientes/services/tasaConversion'
 import { leerDesgloseHH } from '@/features/clientes/services/desgloseHH'
 import { totalesDelCliente } from '@/features/clientes/services/costosDeObra'
 import { DesgloseHH } from '@/features/clientes/components/DesgloseHH'
 import { PieDeLosTrabajos } from '@/features/clientes/components/PieDeLosTrabajos'
+import { ActividadReciente } from '@/features/clientes/components/ActividadReciente'
 import { Aviso } from '@/shared/components/ds'
 import { FormAccion } from '@/shared/components/ui'
 import { EstadoError } from '@/shared/components/estado'
@@ -141,6 +141,16 @@ type Query = {
    */
   hh?: string
   hhq?: string
+  /**
+   * LA PANTALLA DEL PORTAL, COMO SUB-PANTALLA DE LA FICHA (`?portal=1`).
+   *
+   * Dejó de ser una SOLAPA el 12/09/2026 («el CRM admin en cada cliente tiene secciones inútiles y
+   * repetitivas»): quién entra al portal se CONSULTA mucho más de lo que se edita, así que el estado
+   * vive en el costado y la pantalla completa —la cascada de permisos, el alta de un mail, el
+   * registro de ingresos— se abre desde ahí. No se achicó a 300px: es un porte literal del handoff
+   * 31 y su tabla pide 958px medidos.
+   */
+  portal?: string
 }
 
 export default async function ClientePage({ params, searchParams }: {
@@ -150,10 +160,37 @@ export default async function ClientePage({ params, searchParams }: {
   const { cliente: slug } = await params
   const q = await searchParams
 
+  // ═══ UN ENLACE A UNA CARA RETIRADA NO CAE EN LA FICHA GENÉRICA (12/09/2026) ═══
+  //
+  // `?vista=cuenta|esquema|actividad|accesos` están compartidos por mail y en favoritos. Se redirige
+  // DE VERDAD —no se dibuja otra cosa con la dirección vieja puesta— para que lo que quede en la
+  // barra sea la dirección que existe hoy y el enlace deje de circular roto. El `#ancla` lleva al
+  // bloque exacto adentro de Cobranzas.
+  if (esCaraRetirada(q.vista, q.solapa)) {
+    const d = destinoDe(q.vista, q.solapa)
+    const p = new URLSearchParams(
+      Object.entries({
+        ...q, vista: d.solapa === 'obras' ? null : d.solapa, solapa: null,
+        ...(d.parametro ? { [d.parametro.clave]: d.parametro.valor } : {}),
+      }).filter(([, v]) => v != null && v !== '') as [string, string][],
+    )
+    const qs = p.toString()
+    redirect(`/clientes/${slug}${qs ? `?${qs}` : ''}${d.ancla ? `#${d.ancla}` : ''}`)
+  }
+
   const supabase = await createClient()
   // QUÉ CARA SE VA A DIBUJAR — se resuelve ANTES de leer, porque desde 20260911T1200 la RPC trae
   // sólo lo que esa cara pinta. Depende únicamente de la URL, así que adelantarla no espera nada.
   const solapa = solapaDe(q.vista, q.solapa)
+  // ═══ LA LÍNEA DE TIEMPO ENTERA PESA, Y SÓLO SE PIDE CUANDO SE ABRE ═══
+  //
+  // El costado dibuja los últimos hechos con las fuentes BARATAS —la ficha, los contactos, los
+  // trabajos, los certificados y las notas— que en la cara Trabajos no agregan ni un KB (medido el
+  // 12/09/2026: Messina 41 KB con y sin ellas). Los DOCUMENTOS son otra cosa: `documentos` + `drive`
+  // son 49 KB de los 90 de Messina, y arrastrarlos en la cara que todos abren es lo que
+  // 20260911T1200 acaba de sacar. Se piden con `p_solapa = 'actividad'` sólo cuando alguien abre la
+  // línea entera, y el bloque del costado DICE que su resumen no los incluye.
+  const caraDeLaRPC = q.actividad === 'todo' ? 'actividad' : solapa
   // ═══ UN VIAJE, NO QUINCE (10/09/2026) ═══
   //
   // Eran TRES olas encadenadas: la ficha y el perfil; después nueve lecturas en paralelo —de las
@@ -166,7 +203,7 @@ export default async function ClientePage({ params, searchParams }: {
   // mismas filas en un viaje, y las dos dependencias de la tercera ola pasan a ser subconsultas.
   //
   // Los cruces en memoria NO se movieron a SQL: ver `fichaDeUnaConsulta.ts`.
-  const ficha = await leerFichaDeUnaConsulta(supabase, slug, solapa)
+  const ficha = await leerFichaDeUnaConsulta(supabase, slug, caraDeLaRPC)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas: confundirlas escondió un defecto de permisos
   // detrás de un «página no encontrada» durante horas.
   if (ficha.error) return <EstadoError mensaje={ficha.error} que="la ficha del cliente" />
@@ -192,10 +229,13 @@ export default async function ClientePage({ params, searchParams }: {
   const cartera = { data: veEconomia ? ficha.presupuestos : [], error: null }
   const economia = ficha.economia
   const papeles = ficha.papeles
-  // LO COBRADO POR TRABAJO, de la MISMA conversión que usa `/clientes` (`armarCobradoPorObra` sobre
-  // `public.obra_cuenta`). Sin esto la ficha no puede decir si un trabajo cobró; y con una lectura
-  // propia, las dos pantallas del módulo volverían a poder decir números distintos.
-  const cobradoPorObra = veEconomia ? ficha.cobradoPorObra : null
+  // ═══ LO COBRADO POR TRABAJO YA NO SE DIBUJA EN ESTA FICHA (dueño, 12/09/2026 13:10) ═══
+  //
+  // «Incluso la columna de cobrado neto no me es un dato que sirve verlo, porque para eso está la
+  // sección especial de cobranzas.» Salió de la tabla de trabajos y, con la cuenta corriente adentro
+  // de Cobranzas, también de la fila de cifras que la abría. La clave `cobrado_por_obra` sigue
+  // viajando en la RPC —son trece filas— y `armarCobradoPorObra` la sigue convirtiendo: la usa
+  // `/clientes`, que es donde el cobro POR TRABAJO sí es la respuesta.
 
   // `crearLector` distingue «no pude leer» de «no hay». Se conserva aunque ahora la lectura sea una
   // sola: los componentes reciben la misma forma, y el día que alguna clave vuelva a poder fallar
@@ -205,7 +245,12 @@ export default async function ClientePage({ params, searchParams }: {
   // EL DÍA DE HOY LO DECIDE EL SERVIDOR, EN EL HUSO DE LA EMPRESA. Si «vencido» lo calculara el
   // navegador, un jefe con el reloj corrido vería una mora distinta sobre el mismo cliente.
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
-  const aSangre = A_SANGRE.includes(solapa)
+  // LA SUB-PANTALLA DEL PORTAL TAMBIÉN VA A SANGRE: es el handoff 31 entero, con su tabla de 958px
+  // y su panel de alta de 392px. Con el costado puesto no entra.
+  const portalAbierto = q.portal === '1' && veEconomia
+  /** La línea de tiempo COMPLETA, desplegada en la cara Trabajos. El costado dibuja los últimos ocho. */
+  const actividadTodo = q.actividad === 'todo'
+  const aSangre = A_SANGRE.includes(solapa) || portalAbierto
   // Los presupuestos DE ESTE CLIENTE. El corte se hace por `cliente_id`: filtrar por el nombre
   // escrito en el presupuesto ataría la ficha a la grafía del texto.
   const presupuestos = lector.leer(cartera, []).filter((p) => p.cliente_id === id)
@@ -220,15 +265,28 @@ export default async function ClientePage({ params, searchParams }: {
   const [
     cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos, cobranzas, ordenesDelCliente,
   ] = await Promise.all([
-    solapa === 'cuenta' && veEconomia
+    // LA CUENTA CORRIENTE Y SUS CERTIFICADOS SON UN BLOQUE DE COBRANZAS (12/09/2026): la misma plata
+    // resumida, en la misma cara donde está fila por fila.
+    solapa === 'cobranzas' && veEconomia
       ? Promise.all([getCuentaCorriente(supabase, id), getCertificados(supabase, id)])
       : Promise.resolve<[Awaited<ReturnType<typeof getCuentaCorriente>>, Awaited<ReturnType<typeof getCertificados>>]>(
           [{ data: null, error: null }, { data: [], error: null }]),
-    solapa === 'esquema' && veEconomia
+    // EL ESQUEMA DE PAGO, EN LA MISMA CARA Y ABAJO: es el CRONOGRAMA de esa plata, lo que el cliente
+    // ve en el portal. Su ancla es `#esquema-de-pago`, que es a donde caen los enlaces viejos.
+    solapa === 'cobranzas' && veEconomia
       ? getEsquemaCliente(supabase, id)
       : Promise.resolve({ data: null, error: null }),
-    solapa === 'accesos' && veEconomia
-      ? Promise.all([getAccesos(supabase, id), getActividadPortal(supabase, id)])
+    // ═══ LOS ACCESOS SE LEEN SIEMPRE QUE HAYA COSTADO; EL REGISTRO DE INGRESOS, SÓLO ADENTRO ═══
+    //
+    // El panel «Portal del cliente» del costado publica CUÁNTOS entran, y hasta hoy no lo decía en
+    // ninguna cara salvo la suya —escribía un placeholder—. `cliente_acceso` son unas pocas filas
+    // por cliente. `cliente_actividad_portal` es un libro que sólo crece (los últimos 50): ése se
+    // pide nada más que cuando se abre la pantalla.
+    veEconomia && (portalAbierto || !aSangre)
+      ? Promise.all([
+          getAccesos(supabase, id),
+          portalAbierto ? getActividadPortal(supabase, id) : Promise.resolve({ data: [], error: null }),
+        ])
       : Promise.resolve<[Awaited<ReturnType<typeof getAccesos>>, Awaited<ReturnType<typeof getActividadPortal>>]>(
           [{ data: [], error: null }, { data: [], error: null }]),
     // LO QUE HAY EN LA CARPETA DEL CLIENTE EN DRIVE (`PRESUPUESTOS - CLIENTES/<CLIENTE>`). El bloque
@@ -455,24 +513,14 @@ export default async function ClientePage({ params, searchParams }: {
   // el costo completo.
   const costosDelCliente = totalesDelCliente(ficha.costosPorObra, todas.map((o) => o.obra_id))
 
-  // LOS CUATRO NÚMEROS DE LA CUENTA, SUMADOS DE SUS TRABAJOS (misma fuente que `/clientes`).
-  const cuentaTrabajos = cuentaDeTrabajos(
-    todas.map((o) => ({ obra_id: o.obra_id, contratado: baseContractualDe(economia?.get(o.obra_id)) })),
-    cobradoPorObra,
-  )
-  const cifrasDeLaCuenta: CifraDeFicha[] = [
-    { rotulo: 'Contratado', valor: cuentaTrabajos.contratado != null ? money(cuentaTrabajos.contratado) : null, falta: SIN_PRECIO_EN_OBRAS },
-    { rotulo: 'Cobrado c/IVA', valor: cuentaTrabajos.cobrado != null ? money(cuentaTrabajos.cobrado) : null, falta: 'sin cobranzas imputadas' },
-    { rotulo: 'Por cobrar', valor: cuentaTrabajos.porCobrar != null ? money(cuentaTrabajos.porCobrar) : null, falta: 'sin pendientes' },
-    // EL ÁMBAR ES PARA LO QUE RECLAMA TRABAJO: una mora vencida lo es. Y cuando no se pudo medir,
-    // la cifra dice que no se midió — nunca «$ 0», que se leería como «no debe nada».
-    {
-      rotulo: '▲ Vencido',
-      valor: cuentaTrabajos.vencido != null ? money(cuentaTrabajos.vencido) : null,
-      falta: 'no medido', tono: cuentaTrabajos.vencido ? 'warn' : undefined,
-    },
-  ]
-
+  // ═══ LOS CUATRO NÚMEROS DE `obra_cuenta` SE RETIRARON (dueño, 12/09/2026 13:10) ═══
+  //
+  // Abrían la cara «Cuenta corriente» —Contratado · Cobrado c/IVA · Por cobrar · ▲ Vencido, sumados
+  // de los trabajos— y existían porque la tabla de abajo medía el vencido con otro reloj. Con la
+  // cuenta corriente adentro de Cobranzas, esa cara ya publica arriba las mismas cuatro preguntas
+  // desde las filas de la pestaña Cobranzas, y las dos filas juntas mostraban dos «Vencido»
+  // distintos a diez centímetros. `cuentaDeTrabajos` sigue existiendo y la usa `/clientes`, que es
+  // donde ese corte por trabajo sí es la respuesta.
   const vencido = lector.leer(cuenta, null)?.vencido ?? null
   const tasa = tasaDeConversion(presupuestos)
 
@@ -563,51 +611,73 @@ export default async function ClientePage({ params, searchParams }: {
         }))}
       />
 
+      {/* ═══ COBRANZAS ES LA CARA DE LA PLATA, Y AHORA ES UNA SOLA (dueño, 12/09/2026 13:10) ═══
+
+          «El CRM admin en cada cliente tiene secciones inútiles y repetitivas con datos que pueden
+          unificarse en menos secciones.» Eran TRES caras sobre el mismo dinero —Cobranzas fila por
+          fila, Cuenta corriente su resumen, Esquema de pago su cronograma— y para contestar «¿cuánto
+          me debe y cuándo entra?» había que recorrer las tres y volver.
+
+          EL ORDEN ES EL DE LA PREGUNTA: qué hay pendiente (las filas y su fila de cifras), cómo está
+          la cuenta (saldo, antigüedad, certificados) y cuándo entra (el cronograma).
+
+          NINGUNA CIFRA SE DIBUJA DOS VECES en esta cara: ver el comentario de cada bloque. */}
       {solapa === 'cobranzas' && veEconomia && (
-        <SolapaCobranzas
-          filas={cobranzas}
-          obras={todas.map((o) => ({ obra_id: o.obra_id, nombre: o.nombre }))}
-          obrasConOC={ordenesPorObra}
-          contratado={contratadoEnCurso}
-          contratadoUsd={contratoUsd}
-          recorte={recorteCobranza}
-          hrefRecorte={hrefRecorteCobranza}
-        />
-      )}
-
-      {solapa === 'cuenta' && veEconomia && (
-        <div style={{ padding: '18px 20px 24px' }}>
-          {/* ═══ LOS CUATRO NÚMEROS DE LA PESTAÑA OBRAS, ARRIBA DE TODO (10/09/2026) ═══
-
-              Son los MISMOS que la fila del trabajo en `/clientes`, sumados con la misma aritmética
-              que el pie de esa pestaña y sobre la misma fuente (`obra_cuenta`). Existen porque la
-              cuenta corriente de abajo mide el vencido con OTRO reloj —`fecha_cobro < hoy`, que se
-              re-tipea cada vez que el cobro se posterga— y el mismo cliente tenía dos moras según
-              la cara que se abriera. Acá arriba está la de OBRAS, con su rótulo. */}
-          <CifrasDeFicha testid="cuenta-de-trabajos" cifras={cifrasDeLaCuenta} />
-          <CuentaCorriente
-            cuenta={lector.leer(cuenta, null)}
-            documentos={lector.leer(certificados, [])}
-            hoy={hoy}
-            registrarCobro={registrarCobroDeCertificado}
+        <>
+          <SolapaCobranzas
+            filas={cobranzas}
+            obras={todas.map((o) => ({ obra_id: o.obra_id, nombre: o.nombre }))}
+            obrasConOC={ordenesPorObra}
+            contratado={contratadoEnCurso}
+            contratadoUsd={contratoUsd}
+            recorte={recorteCobranza}
+            hrefRecorte={hrefRecorteCobranza}
           />
-        </div>
+
+          {/* ═══ LAS CUATRO CIFRAS DE `obra_cuenta` NO VIAJAN ACÁ (12/09/2026) ═══
+
+              Cuando la cuenta corriente era una cara aparte, arriba se dibujaban Contratado ·
+              Cobrado · Por cobrar · Vencido leídos de `obra_cuenta`, porque la tabla de abajo mide
+              el vencido con OTRO reloj. Juntas en la misma cara, esas cuatro quedaban al lado de las
+              seis de `cifras-cobranzas` —que contestan lo mismo desde la pestaña Cobranzas— y el
+              dueño veía dos «Vencido» distintos a diez centímetros. La fila de cifras de esta cara es
+              UNA: la de arriba. */}
+          <div id="cuenta-corriente" style={{ scrollMarginTop: 90 }}>
+            <CuentaCorriente
+              cuenta={lector.leer(cuenta, null)}
+              documentos={lector.leer(certificados, [])}
+              hoy={hoy}
+              registrarCobro={registrarCobroDeCertificado}
+            />
+          </div>
+
+          <div id="esquema-de-pago" style={{ scrollMarginTop: 90 }}>
+            <EsquemaPago
+              esquema={lector.leer(esquema, null)}
+              hoy={hoy}
+              clienteId={id}
+              editarPago={editarPagoDelEsquema}
+              publicarEsquema={publicarEsquema}
+            />
+          </div>
+        </>
       )}
 
-      {solapa === 'esquema' && veEconomia && (
-        <div style={{ padding: '18px 20px 24px' }}>
-          <EsquemaPago
-            esquema={lector.leer(esquema, null)}
-            hoy={hoy}
-            clienteId={id}
-            editarPago={editarPagoDelEsquema}
-            publicarEsquema={publicarEsquema}
-          />
-        </div>
-      )}
+      {/* ═══ EL PORTAL, COMO SUB-PANTALLA Y NO COMO SOLAPA (dueño, 12/09/2026 13:10) ═══
 
-      {solapa === 'accesos' && veEconomia && (
-        <div style={{ padding: '18px 20px 24px' }}>
+          La pantalla es la misma de siempre —handoff 31, con su cascada de permisos, su alta de mail
+          y su registro de ingresos—: lo que cambió es cómo se llega. Se abre desde el panel «Portal
+          del cliente» del costado, que ahora publica CUÁNTOS entran sin necesidad de abrirla. */}
+      {portalAbierto && (
+        <div data-testid="sub-pantalla-portal">
+          <div style={{ padding: '14px 24px 0' }}>
+            <a
+              href={url({ portal: null })} data-testid="volver-de-portal"
+              style={{ fontSize: '12.5px', color: V.apagado }}
+            >
+              ‹ Volver a la ficha del cliente
+            </a>
+          </div>
           <AccesosPortal
             accesos={lector.leer(accesos, [])}
             actividad={lector.leer(actividadPortal, [])}
@@ -665,7 +735,31 @@ export default async function ClientePage({ params, searchParams }: {
                   />
                 )}
 
-                {!hhAbierta && (
+                {/* ═══ LA LÍNEA DE TIEMPO ENTERA REEMPLAZA LA LISTA, COMO EL DESGLOSE DE HH ═══
+
+                    «Actividad» dejó de ser una solapa el 12/09/2026: el costado publica los últimos
+                    hechos y acá se despliega la historia completa —con los documentos, que el resumen
+                    del costado no trae—. Se vuelve con un enlace, no con el botón de atrás. */}
+                {actividadTodo && (
+                  <div data-testid="actividad-completa">
+                    <p style={{ fontSize: '12.5px', paddingBottom: 10 }}>
+                      <a href={url({ actividad: null })} data-testid="volver-de-actividad" style={{ color: V.apagado }}>
+                        ‹ Volver a los trabajos
+                      </a>
+                    </p>
+                    <BloqueActividad
+                      linea={lector.leer(linea, { eventos: [], sinFecha: 0 })}
+                      puedeVerContractuales={VE_CONTRACTUALES.includes(rol ?? '')}
+                      puedeEscribir={puedeEditar}
+                      crearNota={crearNota.bind(null, id)}
+                      todo
+                      urlTodo={url({ actividad: 'todo' })}
+                      urlPoco={url({ actividad: null })}
+                    />
+                  </div>
+                )}
+
+                {!hhAbierta && !actividadTodo && (
                 <>
                 <ObrasDelCliente
                   obras={enCursoConAdicionales}
@@ -793,17 +887,6 @@ export default async function ClientePage({ params, searchParams }: {
               </>
             )}
 
-            {solapa === 'actividad' && (
-              <BloqueActividad
-                linea={lector.leer(linea, { eventos: [], sinFecha: 0 })}
-                puedeVerContractuales={VE_CONTRACTUALES.includes(rol ?? '')}
-                puedeEscribir={puedeEditar}
-                crearNota={crearNota.bind(null, id)}
-                todo={q.actividad === 'todo'}
-                urlTodo={url({ actividad: 'todo' })}
-                urlPoco={url({ actividad: null })}
-              />
-            )}
           </div>
 
           {/* EL COSTADO NO CAMBIA CON LA CARA: es lo que identifica al cliente y a quién llamar. */}
@@ -834,23 +917,50 @@ export default async function ClientePage({ params, searchParams }: {
               puedeEditar={puedeEditar}
             />
 
+            {/* ═══ LA ACTIVIDAD BAJÓ AL COSTADO (dueño, 12/09/2026 13:10) ═══
+
+                Era una de las nueve solapas. La historia de la relación se lee de reojo mientras se
+                mira otra cosa: acá está al lado de los trabajos, y la línea entera se abre sin
+                cambiar de cara. La nota nueva se escribe desde acá, que es donde se leyó lo que pasó. */}
+            <div style={{ marginTop: 22 }}>
+              <RotuloPanel>Actividad reciente</RotuloPanel>
+            </div>
+            <ActividadReciente
+              linea={lector.leer(linea, { eventos: [], sinFecha: 0 })}
+              puedeEscribir={puedeEditar}
+              crearNota={crearNota.bind(null, id)}
+              urlTodo={url({ actividad: 'todo' })}
+            />
+
             {veEconomia && (
               <>
                 <div style={{ marginTop: 22 }}>
                   <RotuloPanel>Portal del cliente</RotuloPanel>
                 </div>
-                {/* EL RESUMEN SÓLO SE AFIRMA CUANDO SE LEYÓ, Y CUANDO NO, NO SE ESCRIBE NADA.
-                    Decía «Se lee al abrir la cara», que es un placeholder: le explica al dueño una
+                {/* ═══ EL ESTADO SE PUBLICA SIEMPRE, NO SÓLO ADENTRO DE SU CARA (12/09/2026) ═══
+
+                    Decía «Se lee al abrir la cara» —un placeholder que le explica al dueño una
                     decisión interna del renderizado en el lugar donde esperaba un dato (10/09/2026
-                    18:10). Un «0 habilitados» tampoco se puede escribir sin haber leído: diría que
-                    nadie de afuera puede entrar, que es la conclusión que hace que nadie revise. */}
-                {solapa === 'accesos' && (
-                  <p style={{ fontSize: '12px', color: V.tenue, padding: '7px 0' }} data-testid="resumen-portal">
-                    {portal.habilitados} {portal.habilitados === 1 ? 'acceso habilitado' : 'accesos habilitados'}
-                  </p>
-                )}
+                    18:10)— y sólo se reemplazaba por el número ADENTRO de la cara que se fue. Ahora
+                    los accesos se leen en toda cara con costado, así que el número está acá: cuántos
+                    entran y cuántos todavía no ingresaron nunca, que es la pregunta que se hace sin
+                    querer editar nada. Un «0 habilitados» sin haber leído sigue prohibido: cuando la
+                    lectura falla, `lector` deja la lista vacía y el renglón dice que no se pudo. */}
+                {accesos.error
+                  ? (
+                    <p style={{ fontSize: '12px', color: V.warn, padding: '7px 0' }} data-testid="resumen-portal">
+                      No pude leer los accesos de este cliente.
+                    </p>
+                    )
+                  : (
+                    <p style={{ fontSize: '12px', color: V.tenue, padding: '7px 0' }} data-testid="resumen-portal">
+                      {portal.habilitados} {portal.habilitados === 1 ? 'acceso habilitado' : 'accesos habilitados'}
+                      {portal.sinIngresar > 0 && ` · ${portal.sinIngresar} sin ingresar nunca`}
+                      {portal.revocados > 0 && ` · ${portal.revocados} revocado${portal.revocados === 1 ? '' : 's'}`}
+                    </p>
+                    )}
                 <a
-                  href={url({ vista: 'accesos' })} data-testid="gestionar-accesos"
+                  href={url({ portal: '1' })} data-testid="gestionar-accesos"
                   style={{ display: 'inline-block', fontSize: '12.5px', fontWeight: 500, color: V.tinta, marginTop: 4 }}
                 >
                   Gestionar accesos →

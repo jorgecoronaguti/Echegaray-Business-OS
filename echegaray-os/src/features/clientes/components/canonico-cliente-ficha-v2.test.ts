@@ -154,16 +154,22 @@ test('el costo real no se dibuja en la ficha del cliente', () => {
   assert.doesNotMatch(codigoListas(), /costo_real/)
 })
 
-test('el resumen del portal no se afirma cuando no se leyó, y tampoco pone un placeholder', () => {
-  // Decía «Se lee al abrir la cara», que le explica al dueño una decisión interna del renderizado
-  // justo donde esperaba un dato (10/09/2026 18:10). Ahora, fuera de esa cara, no se escribe nada:
-  // el verbo «Gestionar accesos →» es la puerta, y no afirma ningún número.
+test('el costado publica CUÁNTOS entran al portal, y no un placeholder ni un cero sin leer', () => {
+  // ═══ LO QUE ESTE CASO VIGILA (10/09/2026 → 12/09/2026) ═══
+  //
+  // Decía «Se lee al abrir la cara»: un placeholder que le explica al dueño una decisión interna del
+  // renderizado justo donde esperaba un dato. Después el número existió SÓLO adentro de la cara
+  // «Acceso al portal» — que el 12/09 dejó de ser una solapa. Ahora los accesos se leen en toda cara
+  // con costado y el número está siempre; cuando la lectura FALLA, el renglón lo dice en vez de
+  // escribir «0 habilitados», que se leería como «nadie de afuera puede entrar».
   const src = codigoPagina()
-  assert.match(src, /\{solapa === 'accesos' && \(/)
   assert.doesNotMatch(src, /Se lee al abrir la cara/)
+  assert.match(src, /accesos\.error/, 'el resumen del portal volvió a afirmar sin mirar si pudo leer')
+  assert.match(src, /acceso habilitado' : 'accesos habilitados'/)
+  // Y LA PUERTA A LA PANTALLA COMPLETA, que ya no es una solapa: es `?portal=1`.
   assert.match(src, /Gestionar accesos →/)
+  assert.match(src, /href=\{url\(\{ portal: '1' \}\)\}/)
 })
-
 
 // ═══ ACCIONES DE FILA (handoff CRM / Administración v4) ═════════════════════════════════════════
 

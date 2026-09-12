@@ -58,6 +58,22 @@
 -- dibujar un $ 0 que se leería como «esta obra no tuvo mano de obra». Lo que falta para que se llene
 -- es DATO, no código: las cinco alícuotas de costo y las tarifas anteriores a septiembre.
 --
+-- ═══ LA ACTIVIDAD RECIENTE VIAJA TAMBIÉN EN LA CARA TRABAJOS (dueño, 12/09/2026 13:10) ═══
+--
+-- «El CRM admin en cada cliente tiene secciones inútiles y repetitivas con datos que pueden
+-- unificarse en menos secciones.» «Actividad» dejó de ser una de las nueve solapas y pasó al COSTADO
+-- de la ficha, que se dibuja en la cara Trabajos y en las otras tres con costado. Sus cuatro fuentes
+-- baratas —`notas`, `autores`, `actividad_cliente` y `certificados`— ahora viajan también con
+-- `p_solapa = 'obras'`.
+--
+-- LOS DOCUMENTOS NO: `documentos` + `drive` son 49 KB de los 90 que pesa la ficha de Messina (medido
+-- el 12/09/2026 contra la base real, con y sin ellos) y meterlos en la cara que todos abren es
+-- exactamente lo que 20260911T1200 acaba de sacar. La línea de tiempo COMPLETA —la que los incluye—
+-- se pide con `p_solapa = 'actividad'`, que sigue existiendo aunque ya no sea una solapa: la página
+-- se la pide sólo cuando alguien la abre, y el bloque del costado DECLARA que su resumen no los trae.
+--
+-- Las cuatro claves que se agregan a la cara Trabajos no le costaron ni un KB: 41 KB con y sin ellas.
+--
 -- ═══ LA GUARDA DE ROL ES LA DE `hh_obra`, MÁS UNA ═══
 --
 -- `costo_obra` es `null` para quien no es Administración: publica plata por obra y `costos_obra`
@@ -430,14 +446,14 @@ AS $$
 
     -- LAS NOTAS Y SUS AUTORES, por separado: una nota cuyo perfil ya no está queda SIN FIRMA, que
     -- es la verdad, en lugar de perderse. Ese cruce lo hace TypeScript y sigue siendo uno solo.
-    'notas', case when p_solapa is null or p_solapa = 'actividad' then (
+    'notas', case when p_solapa is null or p_solapa in ('obras', 'actividad') then (
       select coalesce(jsonb_agg(jsonb_build_object(
                'id', n.id, 'texto', n.texto, 'autor_id', n.autor_id, 'creado_en', n.creado_en)
                order by n.creado_en desc), '[]'::jsonb)
         from public.cliente_nota n
        where n.cliente_id = (select cliente_id from elegido)
     ) else '[]'::jsonb end,
-    'autores', case when p_solapa is null or p_solapa = 'actividad' then (
+    'autores', case when p_solapa is null or p_solapa in ('obras', 'actividad') then (
       select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'nombre', p.nombre)), '[]'::jsonb)
         from public.perfiles p
        where p.id in (
@@ -447,14 +463,14 @@ AS $$
 
     -- LAS FECHAS DEL CLIENTE PARA LA ACTIVIDAD salen de `clientes`, no de `cliente_panel`: la vista
     -- no las publica, y agregarlas ahí sería una migración para una solapa que no la necesita.
-    'actividad_cliente', case when p_solapa is null or p_solapa = 'actividad' then (
+    'actividad_cliente', case when p_solapa is null or p_solapa in ('obras', 'actividad') then (
       select jsonb_build_object('nombre_comercial', c.nombre_comercial,
                                 'created_at', c.created_at, 'updated_at', c.updated_at)
         from public.clientes c where c.id = (select cliente_id from elegido)
     ) else null::jsonb end,
 
     -- LOS CERTIFICADOS DE SUS OBRAS — la otra lectura que esperaba a la ola anterior.
-    'certificados', case when p_solapa is null or p_solapa = 'actividad' then (
+    'certificados', case when p_solapa is null or p_solapa in ('obras', 'actividad') then (
       select coalesce(jsonb_agg(jsonb_build_object(
                'id', t.id, 'numero', t.numero, 'obra_canonica_id', t.obra_canonica_id,
                'fecha_certificacion', t.fecha_certificacion, 'monto_certificado', t.monto_certificado,
