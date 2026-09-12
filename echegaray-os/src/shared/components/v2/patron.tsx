@@ -132,6 +132,20 @@ export const ALTO_V2 = {
   hijaConOrdenes: 56,
   /** La cabeza de un bloque que se despliega — no un renglón de lista. `21v2:99`. */
   cabezaBloque: 44,
+  /**
+   * EL RENGLÓN DE UN TRABAJO EN EL ÁRBOL DE PAPELES. No lo dibuja ningún canvas: la cara Documentos
+   * nació DESPUÉS del zip, por decisión del dueño (11/09/2026 17:50: «el crm dice documentos de
+   * drive (0) y está pésimo eso, arreglar» · «no se entiende nada realmente la UX de esa sección
+   * documentos»), y lo que contesta no es una lista de nivel 2 sino un árbol de tres niveles
+   * —trabajo → categoría → archivo— adentro de una cara de 400 px con 226 papeles detrás.
+   *
+   * Por eso es MÁS BAJO que la `hija` (38) y no igual: en el árbol el renglón de trabajo es la
+   * cabecera de un grupo plegado, no una fila de datos que haya que leer en columnas. A 44 u 8 filas
+   * de trabajo ya empujan los papeles abajo del pliegue y la cara vuelve a ser el listado de Drive
+   * del que el dueño se quiere ir. Está acá —y no escrito en `CaraDeDocumentos.tsx`— porque el
+   * número del ritmo lo tiene que poder cambiar UN archivo, que es la regla que el árbol rompía.
+   */
+  ramaDeTrabajo: 34,
   /** Cabecera de columnas. Universal en los seis canvas. `v4A:81`, `v4B:88`. */
   encabezado: 30,
 } as const

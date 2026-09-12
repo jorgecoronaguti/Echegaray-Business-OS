@@ -250,23 +250,112 @@ test('SIN ESCALA LA LÍNEA AVISA QUE LA BASE VOLVIÓ A LA TARIFA DE HOY: no camb
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 const RAIZ = new URL('../', import.meta.url)
+
+/**
+ * UNA SEGUNDA BASE ES CÓDIGO QUE LEE, NO UN COMENTARIO QUE EXPLICA.
+ *
+ * El 12/09/2026 este control se puso rojo sin que nadie hubiera tocado una fórmula:
+ * `scripts/jornales-pestana.mjs:2151` documenta en su JSDoc por qué NO califica los rangos del
+ * espejo —escribe `'_J_OBREROS'!$W$1:$W$2` dentro de la explicación— y el barrido leía el archivo
+ * crudo. Un control que confunde la documentación con el hecho hace dos daños a la vez: acusa a
+ * quien explicó bien, y enseña a no escribir el rango en el comentario. El rango en la prosa es
+ * justo lo que hay que poder escribir.
+ *
+ * Se quitan los bloques delimitados por barra-asterisco enteros y las líneas de `//`. El `//` se
+ * exige pegado al margen o precedido por un espacio, así que un `https://` y un `'_J_OBREROS'!$W`
+ * escritos dentro de un literal sobreviven.
+ */
+function sinComentarios(texto) {
+  return String(texto ?? '')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|\s)\/\/.*$/gm, '$1')
+}
+
 /** Todo el código fuente del orquestador, sin los tests: un test que se cite a sí mismo no prueba nada. */
 const fuentes = () => ['lib', 'scripts'].flatMap((dir) => {
   const base = new URL(`${dir}/`, RAIZ)
   return readdirSync(base)
     .filter((f) => f.endsWith('.mjs') && !f.endsWith('.test.mjs'))
-    .map((f) => ({ archivo: `orquestador/${dir}/${f}`, texto: readFileSync(new URL(f, base), 'utf8') }))
+    .map((f) => ({
+      archivo: `orquestador/${dir}/${f}`,
+      texto: sinComentarios(readFileSync(new URL(f, base), 'utf8')),
+    }))
+})
+
+test('EL BARRIDO MIRA CÓDIGO, NO PROSA — y sigue pudiendo decir que no', () => {
+  // Fixture propio: las dos formas de escribir el rango del espejo en una explicación, y la forma
+  // de LEERLO de verdad. Si `sinComentarios` se pasa de listo y borra código, la tercera cae.
+  const enBloque = "/**\n * los rangos del espejo (`'_J_OBREROS'!$W$1:$W$2`) quedan como están\n */\nexport const a = 1\n"
+  const enLinea = "// se lee R('W') del espejo, no acá\nexport const b = 2\n"
+  const codigoDeVerdad = "const W = R('W')\nconst r = `'_J_OBREROS'!$W$1:$W$2`\n"
+  const lee = (t) => /R\('W'\)|_J_OBREROS'!\$W/.test(sinComentarios(t))
+  assert.equal(lee(enBloque), false, 'el JSDoc que explica el rango no es una segunda base')
+  assert.equal(lee(enLinea), false, 'el comentario de una línea tampoco')
+  assert.equal(lee(codigoDeVerdad), true, 'SI ESTO ES FALSE EL CONTROL ES UNA CONSTANTE: ya no caza nada')
+  // Y el código que queda sigue siendo código: el stripper no puede comerse la línea de al lado.
+  assert.match(sinComentarios(enBloque), /export const a = 1/)
+  assert.match(sinComentarios(enLinea), /export const b = 2/)
+})
+
+/**
+ * LOS ARCHIVOS QUE SE APROPIAN DE LA Σ: la definen por su cuenta, o la nombran sin importarla.
+ *
+ * PURA y con su fixture abajo, porque un detector que sólo se corre contra el repo de hoy no puede
+ * demostrar que sabe decir que NO.
+ */
+function seApropianDeLaSigma(fuentes, definidor = 'orquestador/lib/proyeccion-convenio.mjs') {
+  return fuentes
+    .filter((f) => f.archivo !== definidor && f.texto.includes('formulaSigmaConAumento'))
+    .filter((f) => /export function formulaSigmaConAumento/.test(f.texto)
+      || !/from '\.{1,2}\/(?:lib\/)?proyeccion-convenio\.mjs'/.test(f.texto))
+    .map((f) => f.archivo)
+}
+
+test('EL DETECTOR DE LA Σ PUEDE DECIR QUE NO: segunda definición y uso sin import', () => {
+  const base = { archivo: 'orquestador/lib/proyeccion-convenio.mjs', texto: 'export function formulaSigmaConAumento() {}' }
+  const copia = { archivo: 'orquestador/lib/copion.mjs', texto: 'export function formulaSigmaConAumento() { return 1 }' }
+  const suelto = { archivo: 'orquestador/scripts/suelto.mjs', texto: 'const x = formulaSigmaConAumento(1, 2, 3)' }
+  const bueno = {
+    archivo: 'orquestador/scripts/bueno.mjs',
+    texto: "import { formulaSigmaConAumento } from '../lib/proyeccion-convenio.mjs'\nformulaSigmaConAumento(1,2,3)",
+  }
+  assert.deepEqual(seApropianDeLaSigma([base, copia, suelto, bueno]),
+    ['orquestador/lib/copion.mjs', 'orquestador/scripts/suelto.mjs'])
+  // Si el que importa bien también cayera, el control sería una alarma que suena siempre: inútil.
+  assert.deepEqual(seApropianDeLaSigma([base, bueno]), [])
 })
 
 test('LA BASE SE DEFINE EN UN SOLO ARCHIVO: dos definiciones son dos empresas distintas', () => {
   const todos = fuentes()
   assert.ok(todos.length > 100, `sólo leyó ${todos.length} archivos: el escaneo no está mirando el repo`)
-  // La Σ AL CONVENIO: el producto escalar de las columnas del bloque 1.1. Sólo lo arma el motor.
-  // El patrón se busca sobre las DOS formas en que puede aparecer escrito —con las filas interpoladas
-  // o ya resueltas— porque lo que importa no es cómo se arma la cadena sino que la arme un solo lugar.
-  const arman = todos.filter((f) => /SUMPRODUCT\(\$\{?B\}?;?|SUMPRODUCT\(\$B\$\d+:\$B\$\d+;\$F\$/.test(f.texto))
-  assert.deepEqual(arman.map((f) => f.archivo), ['orquestador/lib/proyeccion-convenio.mjs'],
+
+  // ═══ EL DETECTOR ERA UN FÓSIL, Y POR ESO ESTE CONTROL ESTABA APAGADO (12/09/2026) ═══
+  //
+  // Buscaba la forma de la fórmula: `SUMPRODUCT($B;$F)`. La Σ dejó de ser un producto escalar el
+  // 29/08 —el dueño rechazó valuar el plantel al convenio: hoy es «lo que se paga + lo que suma el
+  // aumento», dos celdas de la fila de total del cuadro 1.1—. Desde entonces el único
+  // `SUMPRODUCT($B;$F)` que quedaba en el repo era EL COMENTARIO de este mismo archivo que cuenta esa
+  // historia: el control se daba verde citándose a sí mismo, y una segunda definición de la Σ real le
+  // habría pasado por al lado sin que nadie se entere.
+  //
+  // NO SE REEMPLAZA POR LA FORMA NUEVA, Y ESO SE MIDIÓ. El esqueleto de hoy
+  // —`IF(N(#)=0;"";N(#)+N(#))`— es el idioma genérico de «sumá dos celdas si la primera no está
+  // vacía»: `cash-flow-meses.mjs:396` y `cash-flow-semanas.mjs:272` encadenan saldo inicial +
+  // resultado con exactamente esa forma y no tienen nada que ver con la masa salarial. Un detector
+  // así acusa a los inocentes, y un control que acusa a cualquiera se apaga a la semana.
+  //
+  // Lo que SÍ distingue una segunda base es el DUEÑO de la definición: la Σ la arma una función
+  // exportada por este archivo, y quien la necesita la importa. Eso es lo que se controla, con su
+  // fixture arriba para probar que sabe decir que no.
+  assert.deepEqual(seApropianDeLaSigma(todos), [],
     'alguien más arma la Σ del convenio: dos definiciones de la misma masa salarial')
+  const usan = todos.filter((f) => f.texto.includes('formulaSigmaConAumento')).map((f) => f.archivo)
+  assert.deepEqual(usan.sort(), [
+    'orquestador/lib/motor-salarial.mjs',      // el cuadro 1.1, que es el control
+    'orquestador/lib/proyeccion-convenio.mjs', // la definición
+    'orquestador/scripts/jornales-pestana.mjs', // el generador que la escribe
+  ], 'cambió quién usa la Σ: si es un consumidor nuevo, declaralo acá con para qué la usa')
+
   // Y la Σ PACTADA —columna W del espejo—: sólo la lee el bloque 1.1, que es el control, no la
   // proyección. Si aparece en otro generador, ahí hay una segunda base y nadie va a notar cuál manda.
   const pactada = todos.filter((f) => /R\('W'\)|_J_OBREROS'!\$W/.test(f.texto))

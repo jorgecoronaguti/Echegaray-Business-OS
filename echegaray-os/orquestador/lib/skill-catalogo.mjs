@@ -69,6 +69,12 @@ export const SKILL_AREA = {
   'crear-presentacion-google-slides': 'gestion_general',
   // Cómo el OS genera una imagen original. Misma naturaleza que la de Slides: transversal.
   'generar-imagen': 'gestion_general',
+  // El archivo mensual del Fondo de Cese para el banco. El dato es laboral y el procedimiento es
+  // administrativo-financiero: lo ejecuta quien paga (Administración), no quien define el régimen
+  // —eso es `derecho-laboral-construccion`—. Su propio frontmatter lo dice: «Administración y
+  // Finanzas · Personal». Va en el mapa porque su `metadata.type` (`procedimiento-ejecutable`) no
+  // es de los que se declaran solos, y sin área ninguna capacidad la rutea.
+  'fondo-de-cese-pago-simple-afon': 'administracion_finanzas',
 }
 
 // ── Skills que NO son de este OS ────────────────────────────────────────────────────────────

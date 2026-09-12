@@ -1,7 +1,7 @@
-// ¿A CUÁNTAS DE LAS 46 SKILLS LLEGA LA PUERTA? La respuesta honesta, fijada por un test.
+// ¿A CUÁNTAS DE LAS 47 SKILLS LLEGA LA PUERTA? La respuesta honesta, fijada por un test.
 //
-// La afirmación cómoda sería «las 46 están disponibles vía Gateway». No es cierta y no debe serlo:
-// trece de las cuarenta y seis gobiernan el trabajo de CLAUDE CODE —crear una skill, correr un
+// La afirmación cómoda sería «las 47 están disponibles vía Gateway». No es cierta y no debe serlo:
+// trece de las cuarenta y siete gobiernan el trabajo de CLAUDE CODE —crear una skill, correr un
 // backlog, cerrar la sesión— y rutear un pedido del negocio hacia ellas sería exactamente la
 // confusión que la separación Claude≠XSAS viene a evitar.
 //
@@ -49,10 +49,15 @@ test('las de Claude Code NO se rutean desde un pedido del negocio (Claude ≠ XS
   assert.deepEqual(coladas, [], `skills del builder cableadas al ruteo del negocio: ${coladas.join(', ')}`)
 })
 
-test('el número está fijado: 46 en disco, 33 de dominio alcanzables, 13 del builder', async () => {
+test('el número está fijado: 47 en disco, 34 de dominio alcanzables, 13 del builder', async () => {
+  // 46 → 47 EL 12/09/2026: entró `fondo-de-cese-pago-simple-afon` (commit 2b69cf45), que es de
+  // dominio —genera el Excel de Pago Simple que el dueño sube a Santander—, así que la que sube es
+  // la cuenta de ALCANZABLES (33 → 34) y el lado del builder no se mueve. El número se corrige acá
+  // y no se afloja el test: el día que una skill de dominio entre sin ruta, esto vuelve a ponerse
+  // rojo antes de que alguien descubra que existía y nadie la activaba.
   const catalogo = await leerCatalogoDeDisco({})
   const rutables = alcanzables(catalogo)
-  assert.equal(catalogo.length, 46)
+  assert.equal(catalogo.length, 47)
   assert.equal(catalogo.filter((f) => DEL_BUILDER.has(f.clave)).length, 13)
-  assert.equal(catalogo.filter((f) => rutables.has(f.clave)).length, 33)
+  assert.equal(catalogo.filter((f) => rutables.has(f.clave)).length, 34)
 })

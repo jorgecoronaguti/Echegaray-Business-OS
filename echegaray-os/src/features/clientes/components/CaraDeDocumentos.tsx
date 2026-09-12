@@ -30,7 +30,7 @@
 // explicaciones viven en el `title`, no en un párrafo permanente.
 
 import Link from 'next/link'
-import { V } from '@/shared/components/v2/patron'
+import { ALTO_V2, V } from '@/shared/components/v2/patron'
 import { IconoObra } from '@/shared/components/iconos'
 import { fechaCortaConAnio } from '@/shared/components/canon/formato'
 import { peso } from '../services/papelesDeObra'
@@ -172,7 +172,7 @@ export function CaraDeDocumentos({ cara, carpetaDelClienteHref, truncado = false
           style={{ paddingLeft: o.nivel ? SANGRIA + PASO_ADICIONAL : SANGRIA }}>
           <summary style={{
             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 9, minWidth: 0,
-            height: 34, borderBottom: `1px solid ${V.lineaFila}`,
+            height: ALTO_V2.ramaDeTrabajo, borderBottom: `1px solid ${V.lineaFila}`,
           }}>
             <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
               <IconoObra className="h-[15px] w-[15px]" />

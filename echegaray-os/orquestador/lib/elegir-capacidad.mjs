@@ -67,6 +67,15 @@ export const SKILL_KEYWORDS = {
   // los planos»), que es el mismo método con el que se sacaron las demás. `plano` a secas NO entra:
   // «el plano de seguridad» y «según el plano municipal» son otra cosa.
   'costos-presupuestacion': ['analiza los planos', 'analizá los planos', 'analizar los planos', 'analizame los planos', 'computa los planos', 'computá los planos', 'computar los planos', 'computo de los planos', 'cómputo de los planos', 'lee los planos', 'leé los planos', 'leer los planos', 'armame una cotizacion', 'armame una cotización', 'armar una cotizacion', 'armar una cotización', 'cotizacion desde los planos', 'cotización desde los planos', 'cotizar desde los planos'],
+  // Llegó a `main` el 12/09 con la skill nueva del Fondo de Cese y habría quedado huérfana igual que
+  // la de Slides. Mismo método: las frases son literales de su propia `description` («el archivo del
+  // FCL / del fondo de cese / AFON para el banco», el mail «BOLETAS UOCRA Y IERIC»), no de mi
+  // criterio. Van las FRASES y no `fondo de cese` a secas: preguntar cuánto se devenga de fondo de
+  // cese es una pregunta de régimen —`derecho-laboral-construccion`—, no un pedido del archivo.
+  'fondo-de-cese-pago-simple-afon': [
+    'pago simple', 'afon', 'archivo del fcl', 'archivo del fondo de cese', 'fcl para el banco',
+    'boletas uocra', 'depositar el fondo de cese', 'pagar el fondo de cese',
+  ],
   'generar-imagen': ['generar una imagen', 'genera una imagen', 'generá una imagen', 'hacer una imagen', 'hace una imagen', 'hacé una imagen', 'crear una imagen', 'crea una imagen', 'creá una imagen', 'render', 'ilustracion', 'ilustración', 'infografia', 'infografía', 'una portada para', 'imagen conceptual', 'concepto arquitectonico', 'concepto arquitectónico'],
 }
 

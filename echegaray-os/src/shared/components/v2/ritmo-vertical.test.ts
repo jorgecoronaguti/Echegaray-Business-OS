@@ -65,6 +65,21 @@ test('el alto de fila sale del canvas de SU pantalla, no de un promedio entre ca
   assert.ok(alto('cliente') > alto('hija'))
 })
 
+test('el árbol de papeles tiene SU renglón en el patrón, y es más bajo que la fila con hijas', () => {
+  // NO SALE DE UN CANVAS, y por eso se declara acá con su cita: la cara Documentos se rehízo por
+  // decisión del dueño (11/09/2026 17:50, «no se entiende nada realmente la UX de esa sección
+  // documentos») después del zip, y es un ÁRBOL plegado de tres niveles dentro de una cara de
+  // 400 px —no una lista de nivel 2—. Lo que el test defiende es la jerarquía, no el número suelto:
+  // el renglón que pliega un grupo se lee más compacto que la fila de datos que cuelga de él.
+  assert.equal(alto('ramaDeTrabajo'), 34)
+  assert.ok(alto('ramaDeTrabajo') < alto('hija'),
+    'la rama que pliega un grupo no puede ser más alta que la fila de datos')
+  // Y la cara lo PIDE: si vuelve a escribir su propio número, el barrido de más abajo se pone rojo.
+  const cara = readFileSync(
+    new URL('../../../features/clientes/components/CaraDeDocumentos.tsx', import.meta.url), 'utf8')
+  assert.match(cara, /height: ALTO_V2\.ramaDeTrabajo/)
+})
+
 test('el 52–54 del README NO es la fila de una lista: es la tabla de certificados de D1', () => {
   // El README dice «fila de tabla 52–54px de alto mínimo» y NINGUNO de los seis canvas lo dibuja.
   // No se promedia contra los 44/46/48: el 54 es `Lo que faltaba…:513` (`min-height:54px`, fila de
