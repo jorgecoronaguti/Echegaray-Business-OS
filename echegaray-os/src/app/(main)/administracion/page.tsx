@@ -26,8 +26,22 @@
 // lecturas más en la pantalla que ya hace nueve es pagar el aterrizaje de todos los días para
 // dibujar cuatro números que nadie pidió.
 
+// ═══ QUIÉN REDIRIGE DE VERDAD, DESDE EL 12/09/2026 ═══
+//
+// El middleware, y no esta función. Un `redirect()` acá llega TARDE: el layout de `(main)` ya empezó
+// a mandar el documento por streaming, Next no puede contestar un 307 con los encabezados afuera, y
+// se cae a `<meta http-equiv="refresh" content="1;url=/clientes">` — un segundo de pantalla quieta
+// más un documento entero de 20 kB que no dibuja nada. Medido: ver
+// `features/auth/types/areas.ts · ENTRADA_DE_ADMINISTRACION`, donde vive el destino y el porqué.
+//
+// ESTO SE QUEDA COMO RED, NO COMO SEGUNDA DEFINICIÓN: lee la MISMA constante que el middleware, así
+// que no hay dos lugares que puedan decir destinos distintos. Si el middleware alguna vez no corriera
+// —matcher roto, runtime caído—, el aterrizaje de dirección, administración y jefe de obra sigue
+// llegando a Clientes en vez de dar 404. Lento, pero no roto.
+
 import { redirect } from 'next/navigation'
+import { ENTRADA_DE_ADMINISTRACION } from '@/features/auth/types/areas'
 
 export default function AdministracionPage() {
-  redirect('/clientes')
+  redirect(ENTRADA_DE_ADMINISTRACION)
 }

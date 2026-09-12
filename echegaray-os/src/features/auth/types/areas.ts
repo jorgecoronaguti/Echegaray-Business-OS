@@ -94,6 +94,40 @@ export const AREA_HREF: Record<Area, string> = {
   obras: '/obras',
 }
 
+// ═══ A DÓNDE VA `/administracion`, Y POR QUÉ LA DECISIÓN VIVE ACÁ Y NO EN SU `page.tsx` ═══
+//
+// `/administracion` no dibuja nada desde el 09/09/2026: la entrada del área ES la sección Clientes
+// (ver el encabezado de `src/app/(main)/administracion/page.tsx`). Eso se resolvía con un
+// `redirect('/clientes')` dentro del Server Component, y ahí estaba el defecto medido el 12/09/2026.
+//
+// LO MEDIDO. `(main)/layout.tsx` es SÍNCRONO y cuelga el header de un `<Suspense>` a propósito: el
+// documento sale por streaming y el navegador pinta el marco antes de saber quién entró. Consecuencia
+// mecánica: cuando el `page.tsx` llama a `redirect()`, los encabezados YA se mandaron, así que Next
+// no puede contestar un 307 y se cae a su plan B — mete en el HTML
+// `<meta http-equiv="refresh" content="1;url=/clientes">`. Comprobado leyendo el documento real de
+// producción, y la traza de consultas lo muestra como un hueco de 1.046 ms entre el último viaje del
+// documento de `/administracion` y el primero de `/clientes`:
+//
+//   perfiles            0 →   93 ms     ← el documento de /administracion, que no dibuja nada
+//   (nada)             93 → 1139 ms     ← UN SEGUNDO de meta refresh
+//   pantalla_clientes 1139 → 1781 ms    ← el documento de /clientes, el que sí sirve
+//
+// O sea: un documento entero de 20 kB con sus 13 chunks de JavaScript y su hidratación, más un
+// segundo de pantalla quieta, para llegar a donde el usuario iba. El aterrizaje de ingreso de
+// dirección, administración y jefe de obra es ESTA ruta: se paga todos los días, en cada entrada.
+//
+// EL ARREGLO ES DE MOMENTO, NO DE DESTINO: la misma redirección, decidida en el middleware —que corre
+// ANTES de que exista un byte de respuesta— es un 307 de verdad. El `page.tsx` se queda como red: si
+// el middleware alguna vez no corriera, la ruta sigue llegando a Clientes en vez de dar 404. Las dos
+// capas leen ESTA constante, así que el destino está escrito una sola vez.
+export const ENTRADA_DE_ADMINISTRACION = '/clientes'
+
+/** La ruta a la que `/administracion` manda, o `null` si esta ruta no es la entrada del área. Se
+ *  compara el path EXACTO: `/administracion/compras` es una pantalla de verdad y no se toca. */
+export function entradaDeArea(pathname: string): string | null {
+  return pathname === AREA_HREF.administracion ? ENTRADA_DE_ADMINISTRACION : null
+}
+
 /**
  * ═══ LAS RUTAS QUE EL NIVEL «OBRAS» NO PUEDE ABRIR ═══
  *

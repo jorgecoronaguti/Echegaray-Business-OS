@@ -1,0 +1,675 @@
+{
+  "etiqueta": "despues4",
+  "fecha": "2026-09-12T20:15:43.087Z",
+  "base": "https://app.ecsas.com.ar",
+  "db": {
+    "ajustes": [
+      {
+        "name": "effective_cache_size",
+        "setting": "49152",
+        "unit": "8kB"
+      },
+      {
+        "name": "max_connections",
+        "setting": "60",
+        "unit": null
+      },
+      {
+        "name": "shared_buffers",
+        "setting": "28672",
+        "unit": "8kB"
+      },
+      {
+        "name": "work_mem",
+        "setting": "2184",
+        "unit": "kB"
+      }
+    ],
+    "desde": {
+      "stats_reset": "2026-09-12T17:13:48.869Z"
+    },
+    "porTotal": [
+      {
+        "id": "-3756086704745613533",
+        "consulta": "select public.pantalla_cliente($1, $2) j",
+        "llamadas": "93",
+        "total_ms": 733525,
+        "media_ms": 7887.4,
+        "max_ms": 76339,
+        "filas": "93"
+      },
+      {
+        "id": "1399165185092726198",
+        "consulta": "select public.pantalla_cliente($1, $2) j",
+        "llamadas": "55",
+        "total_ms": 600306,
+        "media_ms": 10914.7,
+        "max_ms": 108945,
+        "filas": "55"
+      },
+      {
+        "id": "1470557085188940761",
+        "consulta": "select public.pantalla_cliente($2,$1) j",
+        "llamadas": "58",
+        "total_ms": 494501,
+        "media_ms": 8525.9,
+        "max_ms": 110633,
+        "filas": "58"
+      },
+      {
+        "id": "-2573559940996683762",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_slug\", \"p_solapa\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_slug\" text, \"p_solapa\" text) LIM",
+        "llamadas": "86",
+        "total_ms": 403755,
+        "media_ms": 4694.8,
+        "max_ms": 19166,
+        "filas": "86"
+      },
+      {
+        "id": "1399165185092726198",
+        "consulta": "select public.pantalla_cliente($1,$2) j",
+        "llamadas": "65",
+        "total_ms": 286253,
+        "media_ms": 4403.9,
+        "max_ms": 77451,
+        "filas": "65"
+      },
+      {
+        "id": "-2090020102173588739",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"pantalla_clientes\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sca",
+        "llamadas": "72",
+        "total_ms": 284895,
+        "media_ms": 3956.9,
+        "max_ms": 14962,
+        "filas": "72"
+      },
+      {
+        "id": "6614257835024982138",
+        "consulta": "select public.pantalla_clientes() j",
+        "llamadas": "12",
+        "total_ms": 194190,
+        "media_ms": 16182.5,
+        "max_ms": 51311,
+        "filas": "12"
+      },
+      {
+        "id": "1308389424522121755",
+        "consulta": "select public.pantalla_cliente($1, $2) j",
+        "llamadas": "30",
+        "total_ms": 151352,
+        "media_ms": 5045.1,
+        "max_ms": 86042,
+        "filas": "30"
+      },
+      {
+        "id": "-6961730435606892420",
+        "consulta": "explain (analyze, buffers) -- LAS OBRAS, UNA SOLA VEZ (11/09/2026). `obras_activas` y `obras_todas` recorrían -- `public.obra_panel` —384 nodos de plan, la vista más cara del viaje— DOS veces en la misma -- llamada. Un C",
+        "llamadas": "2",
+        "total_ms": 121961,
+        "media_ms": 60980.3,
+        "max_ms": 67538,
+        "filas": "0"
+      },
+      {
+        "id": "-758112555512504409",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"campanita_atencion\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sc",
+        "llamadas": "78",
+        "total_ms": 119249,
+        "media_ms": 1528.8,
+        "max_ms": 7496,
+        "filas": "78"
+      },
+      {
+        "id": "-7237014199706338802",
+        "consulta": "select id, state from orq.reap_expired_leases()",
+        "llamadas": "675",
+        "total_ms": 111579,
+        "media_ms": 165.3,
+        "max_ms": 17211,
+        "filas": "0"
+      },
+      {
+        "id": "8806132325012881798",
+        "consulta": "select public.pantalla_cliente($1) j",
+        "llamadas": "9",
+        "total_ms": 98426,
+        "media_ms": 10936.3,
+        "max_ms": 59160,
+        "filas": "9"
+      },
+      {
+        "id": "-2073166519428774482",
+        "consulta": "DISCARD ALL",
+        "llamadas": "1534",
+        "total_ms": 94474,
+        "media_ms": 61.6,
+        "max_ms": 4549,
+        "filas": "0"
+      },
+      {
+        "id": "-6733166520337485031",
+        "consulta": "explain (analyze, format json) select public.pantalla_clientes()",
+        "llamadas": "3",
+        "total_ms": 81257,
+        "media_ms": 27085.6,
+        "max_ms": 78199,
+        "filas": "0"
+      },
+      {
+        "id": "-8303112865965748948",
+        "consulta": "select public.pantalla_cliente($1) j",
+        "llamadas": "3",
+        "total_ms": 76156,
+        "media_ms": 25385.4,
+        "max_ms": 75958,
+        "filas": "3"
+      },
+      {
+        "id": "-6415175986881008859",
+        "consulta": "explain (analyze, buffers, format json) select public.pantalla_clientes()",
+        "llamadas": "3",
+        "total_ms": 70968,
+        "media_ms": 23655.9,
+        "max_ms": 69754,
+        "filas": "0"
+      },
+      {
+        "id": "3393632725691790249",
+        "consulta": "SELECT * FROM pgbouncer.get_auth($1)",
+        "llamadas": "685",
+        "total_ms": 57045,
+        "media_ms": 83.3,
+        "max_ms": 13916,
+        "filas": "685"
+      },
+      {
+        "id": "6151618240210855334",
+        "consulta": "explain (analyze, format json) select public.pantalla_cliente($1,$2)",
+        "llamadas": "80",
+        "total_ms": 53572,
+        "media_ms": 669.7,
+        "max_ms": 7272,
+        "filas": "0"
+      },
+      {
+        "id": "8053829356560055713",
+        "consulta": "select fila, col, forma, huella, valor, borrada_en, abandonada_en from public.sheet_huella_celda where file_id = $1 and pestana = $2 and fila between $3 and $4 and col between $5 and $6",
+        "llamadas": "70",
+        "total_ms": 50170,
+        "media_ms": 716.7,
+        "max_ms": 16935,
+        "filas": "22243"
+      },
+      {
+        "id": "-5689807448849399193",
+        "consulta": "select pg_advisory_xact_lock($1)",
+        "llamadas": "64",
+        "total_ms": 48438,
+        "media_ms": 756.8,
+        "max_ms": 6899,
+        "filas": "64"
+      }
+    ],
+    "porMedia": [
+      {
+        "id": "-6733166520337485031",
+        "consulta": "explain (analyze, format json) select public.pantalla_clientes()",
+        "llamadas": "3",
+        "total_ms": 81257,
+        "media_ms": 27085.6,
+        "max_ms": 78199,
+        "filas": "0"
+      },
+      {
+        "id": "-8303112865965748948",
+        "consulta": "select public.pantalla_cliente($1) j",
+        "llamadas": "3",
+        "total_ms": 76156,
+        "media_ms": 25385.4,
+        "max_ms": 75958,
+        "filas": "3"
+      },
+      {
+        "id": "-6415175986881008859",
+        "consulta": "explain (analyze, buffers, format json) select public.pantalla_clientes()",
+        "llamadas": "3",
+        "total_ms": 70968,
+        "media_ms": 23655.9,
+        "max_ms": 69754,
+        "filas": "0"
+      },
+      {
+        "id": "6614257835024982138",
+        "consulta": "select public.pantalla_clientes() j",
+        "llamadas": "12",
+        "total_ms": 194190,
+        "media_ms": 16182.5,
+        "max_ms": 51311,
+        "filas": "12"
+      },
+      {
+        "id": "8806132325012881798",
+        "consulta": "select public.pantalla_cliente($1) j",
+        "llamadas": "9",
+        "total_ms": 98426,
+        "media_ms": 10936.3,
+        "max_ms": 59160,
+        "filas": "9"
+      },
+      {
+        "id": "1399165185092726198",
+        "consulta": "select public.pantalla_cliente($1, $2) j",
+        "llamadas": "55",
+        "total_ms": 600306,
+        "media_ms": 10914.7,
+        "max_ms": 108945,
+        "filas": "55"
+      },
+      {
+        "id": "1470557085188940761",
+        "consulta": "select public.pantalla_cliente($2,$1) j",
+        "llamadas": "58",
+        "total_ms": 494501,
+        "media_ms": 8525.9,
+        "max_ms": 110633,
+        "filas": "58"
+      },
+      {
+        "id": "-3756086704745613533",
+        "consulta": "select public.pantalla_cliente($1, $2) j",
+        "llamadas": "93",
+        "total_ms": 733525,
+        "media_ms": 7887.4,
+        "max_ms": 76339,
+        "filas": "93"
+      },
+      {
+        "id": "1308389424522121755",
+        "consulta": "select public.pantalla_cliente($1, $2) j",
+        "llamadas": "30",
+        "total_ms": 151352,
+        "media_ms": 5045.1,
+        "max_ms": 86042,
+        "filas": "30"
+      },
+      {
+        "id": "-2573559940996683762",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_slug\", \"p_solapa\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_slug\" text, \"p_solapa\" text) LIM",
+        "llamadas": "86",
+        "total_ms": 403755,
+        "media_ms": 4694.8,
+        "max_ms": 19166,
+        "filas": "86"
+      },
+      {
+        "id": "1399165185092726198",
+        "consulta": "select public.pantalla_cliente($1,$2) j",
+        "llamadas": "65",
+        "total_ms": 286253,
+        "media_ms": 4403.9,
+        "max_ms": 77451,
+        "filas": "65"
+      },
+      {
+        "id": "-2090020102173588739",
+        "consulta": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"pantalla_clientes\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_sca",
+        "llamadas": "72",
+        "total_ms": 284895,
+        "media_ms": 3956.9,
+        "max_ms": 14962,
+        "filas": "72"
+      },
+      {
+        "id": "-5793952315010248631",
+        "consulta": "update public.perfiles set rol=$2 where id=$1",
+        "llamadas": "12",
+        "total_ms": 42461,
+        "media_ms": 3538.4,
+        "max_ms": 14483,
+        "filas": "12"
+      },
+      {
+        "id": "4155380294557108430",
+        "consulta": "select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = $1 and c.relkind = $2 and pg_get_viewdef(c.oid, $3) ~ $4 order by 1",
+        "llamadas": "4",
+        "total_ms": 12115,
+        "media_ms": 3028.7,
+        "max_ms": 4644,
+        "filas": "0"
+      },
+      {
+        "id": "1156388483232317311",
+        "consulta": "update obra_actividad set analisis_id = $3, tarea_tipo_id = $2 where id = $1",
+        "llamadas": "3",
+        "total_ms": 8613,
+        "media_ms": 2870.9,
+        "max_ms": 8587,
+        "filas": "3"
+      },
+      {
+        "id": "6271108374166670900",
+        "consulta": "insert into cotizacion_partida (cotizacion_id, orden, descripcion, cantidad, unidad, hs_unitarias, costo_unitario, analisis_id) values ($1, $3, $4, $5, $6, $7, $8, $2) returning id",
+        "llamadas": "6",
+        "total_ms": 15488,
+        "media_ms": 2581.3,
+        "max_ms": 15441,
+        "filas": "6"
+      },
+      {
+        "id": "3022532026411567170",
+        "consulta": "select public.hh_de_obra($1) j",
+        "llamadas": "3",
+        "total_ms": 6774,
+        "media_ms": 2257.9,
+        "max_ms": 6667,
+        "filas": "3"
+      },
+      {
+        "id": "6614257835024982138",
+        "consulta": "select public.pantalla_clientes()",
+        "llamadas": "21",
+        "total_ms": 43308,
+        "media_ms": 2062.3,
+        "max_ms": 20958,
+        "filas": "21"
+      },
+      {
+        "id": "1557248194820988150",
+        "consulta": "select (x.o ->> $3)::numeric as mano_obra from jsonb_array_elements(public.pantalla_cliente($1, $4) -> $5) x(o) where x.o ->> $6 = $2",
+        "llamadas": "4",
+        "total_ms": 7088,
+        "media_ms": 1772.1,
+        "max_ms": 6312,
+        "filas": "4"
+      },
+      {
+        "id": "-6533609283159351025",
+        "consulta": "select * from public.obra_cuenta",
+        "llamadas": "3",
+        "total_ms": 5067,
+        "media_ms": 1689.2,
+        "max_ms": 4671,
+        "filas": "78"
+      }
+    ],
+    "tablas": [
+      {
+        "tabla": "costos_obra",
+        "recorridos": "4403",
+        "filas_leidas": "3884396",
+        "por_indice": "1",
+        "filas": "880"
+      },
+      {
+        "tabla": "compra_sheet",
+        "recorridos": "378",
+        "filas_leidas": "362124",
+        "por_indice": "30",
+        "filas": "958"
+      },
+      {
+        "tabla": "caja_conteo_observado",
+        "recorridos": "4",
+        "filas_leidas": "2728",
+        "por_indice": "5114",
+        "filas": "682"
+      }
+    ]
+  },
+  "web": {
+    "login": 2091,
+    "rutas": [
+      {
+        "ruta": "/obras",
+        "frio": {
+          "estado": 200,
+          "url": "/obras",
+          "doc": 932,
+          "ttfb": 51,
+          "dcl": 988,
+          "load": 988,
+          "networkidle": 1490,
+          "jsBytes": 39483,
+          "jsArchivos": 13
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/obras",
+          "doc": 453,
+          "ttfb": 51,
+          "dcl": 507,
+          "load": 507,
+          "networkidle": 1009,
+          "jsBytes": 9025,
+          "jsArchivos": 13
+        }
+      },
+      {
+        "ruta": "/obras/gantt",
+        "frio": {
+          "estado": 200,
+          "url": "/obras/gantt",
+          "doc": 276,
+          "ttfb": 51,
+          "dcl": 331,
+          "load": 331,
+          "networkidle": 831,
+          "jsBytes": 25941,
+          "jsArchivos": 13
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/obras/gantt",
+          "doc": 263,
+          "ttfb": 51,
+          "dcl": 319,
+          "load": 320,
+          "networkidle": 819,
+          "jsBytes": 9025,
+          "jsArchivos": 13
+        }
+      },
+      {
+        "ruta": "/clientes",
+        "frio": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 524,
+          "ttfb": 51,
+          "dcl": 582,
+          "load": 582,
+          "networkidle": 1400,
+          "jsBytes": 24407,
+          "jsArchivos": 15
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 772,
+          "ttfb": 51,
+          "dcl": 830,
+          "load": 834,
+          "networkidle": 1479,
+          "jsBytes": 9025,
+          "jsArchivos": 15
+        }
+      },
+      {
+        "ruta": "/administracion",
+        "frio": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 1893,
+          "ttfb": 52,
+          "dcl": 1952,
+          "load": 1952,
+          "networkidle": 2778,
+          "jsBytes": 18049,
+          "jsArchivos": 29
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 3096,
+          "ttfb": 51,
+          "dcl": 3154,
+          "load": 3154,
+          "networkidle": 3965,
+          "jsBytes": 18049,
+          "jsArchivos": 29
+        }
+      },
+      {
+        "ruta": "/administracion/compras",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/compras",
+          "doc": 2142,
+          "ttfb": 51,
+          "dcl": 2245,
+          "load": 2246,
+          "networkidle": 3118,
+          "jsBytes": 327186,
+          "jsArchivos": 16
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/compras",
+          "doc": 729,
+          "ttfb": 51,
+          "dcl": 821,
+          "load": 822,
+          "networkidle": 1534,
+          "jsBytes": 9024,
+          "jsArchivos": 16
+        }
+      },
+      {
+        "ruta": "/administracion/asistencia",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/asistencia",
+          "doc": 288,
+          "ttfb": 51,
+          "dcl": 341,
+          "load": 341,
+          "networkidle": 845,
+          "jsBytes": 33505,
+          "jsArchivos": 14
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/asistencia",
+          "doc": 470,
+          "ttfb": 51,
+          "dcl": 524,
+          "load": 524,
+          "networkidle": 1026,
+          "jsBytes": 9024,
+          "jsArchivos": 14
+        }
+      },
+      {
+        "ruta": "/administracion/proveedores",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/proveedores",
+          "doc": 604,
+          "ttfb": 51,
+          "dcl": 669,
+          "load": 669,
+          "networkidle": 1437,
+          "jsBytes": 32879,
+          "jsArchivos": 16
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/proveedores",
+          "doc": 451,
+          "ttfb": 51,
+          "dcl": 512,
+          "load": 512,
+          "networkidle": 1382,
+          "jsBytes": 9024,
+          "jsArchivos": 16
+        }
+      },
+      {
+        "ruta": "/administracion/personas",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/personas",
+          "doc": 1944,
+          "ttfb": 52,
+          "dcl": 2002,
+          "load": 2002,
+          "networkidle": 2932,
+          "jsBytes": 116121,
+          "jsArchivos": 17
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/personas",
+          "doc": 719,
+          "ttfb": 51,
+          "dcl": 774,
+          "load": 775,
+          "networkidle": 1466,
+          "jsBytes": 9024,
+          "jsArchivos": 17
+        }
+      },
+      {
+        "ruta": "/documentos",
+        "frio": {
+          "estado": 200,
+          "url": "/documentos",
+          "doc": 640,
+          "ttfb": 51,
+          "dcl": 719,
+          "load": 720,
+          "networkidle": 1207,
+          "jsBytes": 26257,
+          "jsArchivos": 13
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/documentos",
+          "doc": 305,
+          "ttfb": 51,
+          "dcl": 365,
+          "load": 365,
+          "networkidle": 862,
+          "jsBytes": 9025,
+          "jsArchivos": 13
+        }
+      },
+      {
+        "ruta": "/calendario-financiero",
+        "frio": {
+          "estado": 200,
+          "url": "/calendario-financiero",
+          "doc": 575,
+          "ttfb": 51,
+          "dcl": 714,
+          "load": 715,
+          "networkidle": 1218,
+          "jsBytes": 67962,
+          "jsArchivos": 14
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/calendario-financiero",
+          "doc": 465,
+          "ttfb": 51,
+          "dcl": 531,
+          "load": 533,
+          "networkidle": 1035,
+          "jsBytes": 35140,
+          "jsArchivos": 14
+        }
+      }
+    ]
+  },
+  "ventana": "histórica acumulada (no se reseteó)"
+}

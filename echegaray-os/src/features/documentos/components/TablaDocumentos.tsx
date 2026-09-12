@@ -35,6 +35,7 @@ import { IconoDocumento, IconoFoto, IconoPresupuesto } from '@/shared/components
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, RotuloCol, V } from '@/shared/components/v2/patron'
 import { diaMes } from '@/shared/components/canon/formato'
 import { estadoVigencia, marcaDeArchivo, migajaDe } from '../services/documentos'
+import { tramosResaltados } from '../services/resaltado'
 import { categoriaDe, ETIQUETA_CATEGORIA } from '../services/categorias'
 import type { Documento } from '../types'
 
@@ -44,6 +45,33 @@ const COLS
   + ' max-[1249px]:grid-cols-[minmax(230px,1.9fr)_minmax(0,1fr)_minmax(0,80px)]'
 const SOLO_ANCHO = 'max-[1249px]:hidden'
 
+/**
+ * LO QUE COINCIDIÓ, EN NEGRITA — y NADA MÁS.
+ *
+ * No hay fondo amarillo: el `#FDC900` del isotipo es marca, nunca estado ni fondo de algo con texto
+ * (`COLOR.md`). Y no hay un color nuevo: el énfasis del OS es uno solo. Lo que cambia es el PESO de
+ * la palabra que coincidió; el resto del nombre baja a texto secundario, así que la coincidencia se
+ * encuentra de un barrido sin agregar ni un pixel de alto a la fila.
+ */
+function Resaltado({ texto, tokens, color }: { texto: string | null; tokens: string[]; color: string }) {
+  const tramos = tramosResaltados(texto, tokens)
+  if (tramos.length <= 1) return <>{texto}</>
+  return (
+    <>
+      {tramos.map((t, i) => (
+        <span
+          // El índice alcanza como clave: los tramos son la partición de UN texto, en orden.
+          key={i}
+          data-testid={t.coincide ? 'coincidencia' : undefined}
+          style={t.coincide ? { fontWeight: 600 } : { color }}
+        >
+          {t.texto}
+        </span>
+      ))}
+    </>
+  )
+}
+
 /** UN TIPO = UN ICONO (`27v2:112`). El del §11, no uno redibujado. */
 const ICONO_TIPO: Record<string, (p: { className?: string }) => React.ReactElement> = {
   planilla: IconoPresupuesto,
@@ -51,10 +79,13 @@ const ICONO_TIPO: Record<string, (p: { className?: string }) => React.ReactEleme
 }
 
 export function TablaDocumentos({
-  documentos, seleccionado, hrefs, hoy, vacio,
+  documentos, seleccionado, hrefs, hoy, vacio, tokens = [],
 }: {
   documentos: Documento[]
   seleccionado?: string
+  /** Los tokens con los que Postgres filtró, para resaltar el fragmento que hizo entrar a la fila.
+   *  Vacío cuando nadie buscó nada: la lista se dibuja igual que siempre. */
+  tokens?: string[]
   /** Enlace por `drive_file_id`, calculado en el servidor: una función no cruza a este componente. */
   hrefs: Record<string, string>
   /** El día contra el que se mide la vigencia, en ISO. Se pasa: `new Date()` dentro de un
@@ -109,7 +140,7 @@ export function TablaDocumentos({
                 <Icono className="h-[15px] w-[15px]" />
               </span>
               <span data-testid="abrir-documento" className="truncate" style={{ fontSize: '12.5px', color: V.tinta }}>
-                {d.name}
+                <Resaltado texto={d.name} tokens={tokens} color={V.apagado} />
               </span>
               {/* LA CATEGORÍA, al lado del nombre y no en su propia columna. Se deriva de la ruta y
                   del nombre (`categorias.ts`); mostrarla acá es lo que permite AUDITAR el filtro de
@@ -138,7 +169,7 @@ export function TablaDocumentos({
               data-testid="ubicacion-documento"
               style={{ fontSize: '11.5px', color: V.tenue }}
             >
-              {migajaDe(d.path) ?? 'sin ruta'}
+              <Resaltado texto={migajaDe(d.path, 3, tokens) ?? 'sin ruta'} tokens={tokens} color={V.tenue} />
             </span>
 
             {/* TRES RESPUESTAS DISTINTAS, Y NINGUNA ES «VIGENTE»: la fecha, «sin fecha» (está en un

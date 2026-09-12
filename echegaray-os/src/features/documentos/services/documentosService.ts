@@ -9,11 +9,20 @@
 //
 // ═══ EL FILTRO SE HACE EN POSTGRES, NO EN EL NAVEGADOR ═══
 //
-// 3.123 archivos con su ruta son ~300 kB por apertura. La búsqueda va como `ilike` sobre `name` y
-// `path` —el mismo patrón que `getProveedores`— y el resultado se acota con un tope explícito que
-// la pantalla dice en voz alta. No se usa el motor de tokens de `drive-busqueda`: ese resuelve
-// lenguaje natural del chat (sinónimos, singulares, ranking aprendido) y acá el usuario está
-// filtrando una tabla que ve, donde «empieza con lo que tipeo» es lo que espera.
+// 3.789 archivos con su ruta son ~300 kB por apertura: el recorte lo hace Postgres y el resultado se
+// acota con un tope explícito que la pantalla dice en voz alta.
+//
+// ═══ Y LA BÚSQUEDA ES LA DEL CHAT, NO UNA PROPIA (12/09/2026) ═══
+//
+// Acá decía que el motor de tokens de `drive-busqueda` no servía para esta pantalla porque «el
+// usuario está filtrando una tabla que ve, donde empieza con lo que tipeo es lo que espera». Medido,
+// era falso: con `name ilike '%frase entera%'` esta pantalla acertaba 2 de 30 consultas reales y el
+// chat 21 de 30 sobre los mismos archivos («dni de capelli» no es una subcadena de «DNI -
+// Capelli.pdf»). Y el caso que esa decisión protegía —tipear un fragmento y ver la tabla filtrarse—
+// lo cubre el peldaño `parcial` de la escalera, que además ahora es insensible a acentos.
+//
+// La búsqueda vive en `orquestador/lib/drive-busqueda/escalera.mjs` y la ejecuta
+// `busquedaLexica.ts`: misma definición que el chat, un solo tokenizador, dos sustratos.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/administracion/types'
@@ -21,8 +30,15 @@ import type { CarpetaRaiz, Documento } from '../types'
 import {
   conVinculos, partirIds, unirPartes, ventanaVencimientos,
   type ArchivoIndexado, type VinculoCliente, type VinculoLegajo, type VinculoObra,
-} from './documentos'
-import { esCategoria, patronesAnteriores, patronesDe, type ClaveCategoria, type Patron } from './categorias'
+} from './documentos.ts'
+import { esCategoria, patronesAnteriores, patronesDe, type ClaveCategoria, type Patron } from './categorias.ts'
+// LAS EXTENSIONES `.ts` SON A PROPÓSITO (y `tsconfig` las permite: `allowImportingTsExtensions`).
+// `orquestador/scripts/documentos-busqueda-baseline.mjs` importa ESTE servicio con Node para medir
+// la búsqueda de la pantalla de verdad en vez de reimplementarla, y Node exige la extensión real.
+import {
+  analizar, conPeldano, ordenar, peldanos, VENTANA_RANKEO,
+  type ConsultaFiltrable, type Peldano,
+} from './busquedaLexica.ts'
 
 // `nombre_norm` viaja porque es el campo que CLASIFICA: la etiqueta de categoría de cada fila se
 // calcula con el mismo texto contra el que filtró Postgres. Normalizar el nombre otra vez en el
@@ -81,6 +97,16 @@ export interface Catalogo {
   documentos: Documento[]
   /** Cuántos hay en total con este filtro. Es lo que deja decir «se listan 200 de 1.147». */
   total: number
+  /**
+   * CON QUÉ COINCIDIÓ, cuando hubo búsqueda por texto.
+   *
+   * Viaja a la pantalla para que la fila pueda resaltar el fragmento que matcheó: un resultado que
+   * no dice por qué entró obliga a leer las cuatro columnas buscando la palabra a ojo, y cuando la
+   * coincidencia está en una carpeta intermedia no se ve en ningún lado. Son los tokens del ÚNICO
+   * tokenizador: la pantalla resalta exactamente lo que la base comparó, no su propia idea de lo
+   * que el usuario escribió.
+   */
+  busqueda: { peldano: string; tokens: string[] } | null
 }
 
 /**
@@ -129,11 +155,7 @@ function conFiltros(consulta: Consulta, filtro: FiltroDocumentos): Consulta {
   let c = consulta
   if (esCategoria(filtro.categoria)) c = conCategoria(c, filtro.categoria)
 
-  const q = filtro.q?.trim()
-  if (q) {
-    const seguro = q.replace(/[,()*]/g, ' ').trim()
-    if (seguro) c = c.or(`name.ilike.%${seguro}%,path.ilike.%${seguro}%`)
-  }
+  // `q` NO se aplica acá: es la escalera, y se prueba peldaño por peldaño (ver `getDocumentos`).
   // `carpeta` viene de la lista de carpetas reales del índice, pero llega por la URL: se escapa
   // igual que la búsqueda. Un `%` puesto a mano acá convertiría el filtro en «traé todo».
   const carpeta = filtro.carpeta?.trim().replace(/[,()*%]/g, '')
@@ -182,36 +204,74 @@ export async function getDocumentos(
     ids = listas.reduce((a, b) => { const s = new Set(b); return a.filter((x) => s.has(x)) })
     // CERO IDS ES CERO DOCUMENTOS, no «traé todo». Un `.in()` con la lista vacía es la clase de
     // filtro que se cae hacia el lado abierto y muestra 3.123 archivos donde no había ninguno.
-    if (ids.length === 0) return { data: { documentos: [], total: 0 }, error: null }
+    if (ids.length === 0) return { data: { documentos: [], total: 0, busqueda: null }, error: null }
   }
 
   const tope = TOPE * Math.min(Math.max(1, Math.trunc(filtro.paginas ?? 1)), PAGINAS_MAX)
-  const base = (): ConsultaOrdenable => (conFiltros(
-    supabase.from('drive_index').select(COLUMNAS, { count: 'exact' }).eq('is_folder', false) as unknown as Consulta,
-    filtro,
-  ) as ConsultaOrdenable).order('modified_time', { ascending: false, nullsFirst: false }).limit(tope)
+  const texto = filtro.q?.trim() ?? ''
+  const consulta = texto ? analizar(texto) : null
+  // Con búsqueda se trae la ventana de rankeo y se recorta DESPUÉS de ordenar por parecido: recortar
+  // antes dejaría la página con las 100 más nuevas de las que coinciden, no con las 100 que más se
+  // parecen a lo pedido.
+  const traer = consulta ? Math.max(tope, VENTANA_RANKEO) : tope
+  const base = (peldano: Peldano | null): ConsultaOrdenable => {
+    const conQ = conFiltros(
+      supabase.from('drive_index').select(COLUMNAS, { count: 'exact' }).eq('is_folder', false) as unknown as Consulta,
+      filtro,
+    )
+    const conEscalera = peldano
+      ? conPeldano(conQ as unknown as ConsultaFiltrable, peldano) as unknown as Consulta
+      : conQ
+    return (conEscalera as ConsultaOrdenable)
+      .order('modified_time', { ascending: false, nullsFirst: false }).limit(traer)
+  }
 
   // Sin recorte por ids es UNA consulta. Con recorte son tantas como partes: ver `partirIds`, que
   // explica por qué un `.in()` de 847 ids no filtra mal sino que devuelve 400.
-  const respuestas: RespuestaLista[] = ids === null
-    ? [await base()]
-    : await Promise.all(partirIds(ids).map((parte) => base().in('drive_file_id', parte)))
+  const correr = async (peldano: Peldano | null): Promise<RespuestaLista[]> => (ids === null
+    ? [await base(peldano)]
+    : Promise.all(partirIds(ids).map((parte) => base(peldano).in('drive_file_id', parte))))
+
+  // ═══ LA ESCALERA: SE BAJA HASTA EL PRIMER PELDAÑO QUE TRAE ALGO ═══
+  //
+  // Igual que en el chat, y por la misma razón: si el nombre exacto existe, lo que apenas comparte
+  // una palabra no compite. El peldaño se prueba CON los demás filtros puestos —categoría, carpeta,
+  // tipo, vencimiento, entidad—; probarlo suelto y filtrar después daría «no hay nada» cada vez que
+  // el mejor peldaño cae entero fuera del filtro que la persona eligió.
+  //
+  // Son hasta cuatro idas a Postgres en el peor caso, y el peor caso es el que antes no encontraba
+  // nada. Las dos primeras son por índice (`nombre_norm` btree, `tokens` GIN) y la de `ilike` recorre
+  // 3.789 filas, que para Postgres es ruido. Medido en el baseline: 4 peldaños, 96 ms.
+  let respuestas: RespuestaLista[] = []
+  let peldanoUsado: string | null = null
+  if (!consulta) {
+    respuestas = await correr(null)
+  } else {
+    for (const peldano of peldanos(consulta)) {
+      respuestas = await correr(peldano)
+      if (respuestas.some((r) => r.error)) break
+      if (respuestas.some((r) => (r.data?.length ?? 0) > 0)) { peldanoUsado = peldano.nombre; break }
+    }
+  }
 
   const fallo = respuestas.find((r) => r.error)
   if (fallo?.error) return { data: null, error: fallo.error.message }
 
-  const archivos = unirPartes(
+  const crudos = unirPartes(
     respuestas.map((r) => (r.data ?? []) as ArchivoIndexado[]),
-    tope,
+    traer,
   )
+  const archivos = (consulta ? ordenar(crudos, consulta) : crudos).slice(0, tope)
   // Las partes no comparten ningún id, así que los `count` son disjuntos y su suma es el total real.
-  const total = respuestas.reduce((s, r) => s + (r.count ?? 0), 0)
+  // Sin peldaño que traiga nada el total es 0 aunque la última respuesta haya contado otra cosa.
+  const total = peldanoUsado === null && consulta ? 0 : respuestas.reduce((s, r) => s + (r.count ?? 0), 0)
 
   const vinculos = await leerVinculos(supabase, archivos.map((a) => a.drive_file_id))
   return {
     data: {
       documentos: conVinculos(archivos, vinculos.legajos, vinculos.clientes, vinculos.obras),
       total,
+      busqueda: consulta && peldanoUsado ? { peldano: peldanoUsado, tokens: consulta.tokens } : null,
     },
     error: null,
   }

@@ -19,7 +19,20 @@
 // delete, así que ese `remove()` rebotaba en silencio y el objeto quedaba igual. Ahora cada archivo
 // corre su suerte y la pantalla dice cuál no entró y por qué.
 
-import { createClient } from '@/lib/supabase/client'
+// ═══ EL CLIENTE DE SUPABASE SE BAJA CUANDO SE SUBE UN ARCHIVO, NO AL ABRIR LA PANTALLA ═══
+//
+// Era un `import` normal, y por eso `@supabase/ssr` —con todo `supabase-js` adentro— entraba en el
+// primer bundle de `/administracion/compras`. Medido el 12/09/2026 sobre el build real: esa pantalla
+// bajaba 199 kB de JavaScript contra 124 kB de Personal y 33 kB de Proveedores, y la diferencia es el
+// chunk de 178 kB que contiene `GoTrueClient`. La pestaña Compras se abre todos los días para MIRAR
+// la lista; subir un comprobante es una acción ocasional, y hasta que alguien elige un archivo ese
+// código no ejecuta una sola línea.
+//
+// Con `await import()` el chunk se pide en el momento del primer clic de «Subir», cuando la persona
+// ya está esperando que algo pase. Lo que NO cambia es el orden de las cosas: el cliente se resuelve
+// antes de pedir el usuario, y un fallo de carga del chunk cae por el mismo camino que un fallo de
+// sesión. `import type` abajo no emite nada: es sólo para tipar `Cliente`.
+import type { createClient as tipoDelCliente } from '@/lib/supabase/client'
 import { registrarComprobantes } from './comprobanteEntradaActions.ts'
 import {
   enParalelo, repartirResultados, rutaDeComprobante, traducirError,
@@ -52,6 +65,7 @@ interface Subida {
 export async function subirLote(
   archivos: readonly ArchivoParaSubir[], alCambiar: AlCambiar,
 ): Promise<{ resultados: ResultadoDeArchivo[]; reparto: Reparto }> {
+  const { createClient } = await import('@/lib/supabase/client')
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return cerrar(archivos.map((a) => fallar(a, 'Tu sesión venció. Volvé a entrar y probá otra vez.', alCambiar)))
@@ -97,7 +111,7 @@ function fallar(item: ArchivoParaSubir, error: string, alCambiar: AlCambiar): Re
   return { id: item.id, nombre: item.archivo.name, ok: false, error }
 }
 
-type Cliente = ReturnType<typeof createClient>
+type Cliente = ReturnType<typeof tipoDelCliente>
 
 /** Un archivo al bucket. NUNCA rechaza: es el contrato de `enParalelo`. */
 async function subirUno(
