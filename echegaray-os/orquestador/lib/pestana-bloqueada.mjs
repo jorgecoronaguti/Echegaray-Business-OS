@@ -20,17 +20,29 @@
 // Es la fuente única del candado. La consultan el runner del timer (saltea el generador), el portón
 // de escritura `escribirPreservando` (se niega a escribir) y los escritores por rango sueltos.
 
-/** Asegura la tabla del candado. Idempotente; misma forma que la migración. */
+import { asegurarRelacion } from './tabla-asegurada.mjs'
+
+/** Asegura la tabla del candado. Idempotente; misma forma que la migración.
+ *
+ *  EL DDL SÓLO CORRE SI LA TABLA FALTA (12/09/2026). Este `asegurarTabla` se llamaba en las CINCO
+ *  puertas de abajo, una por pestaña del pipeline: 394 `create table if not exists` en 27 horas, y
+ *  cada uno despertaba la recarga de esquema de PostgREST. Los números medidos y el mecanismo, en
+ *  `tabla-asegurada.mjs`. */
 async function asegurarTabla(query) {
-  await query(`
-    create table if not exists public.sheet_pestanas_bloqueadas (
-      file_id      text        not null,
-      pestana      text        not null,
-      motivo       text,
-      bloqueada_por text,
-      bloqueada_en timestamptz not null default now(),
-      primary key (file_id, pestana)
-    )`)
+  return asegurarRelacion({
+    query,
+    relacion: 'public.sheet_pestanas_bloqueadas',
+    columnas: ['file_id', 'pestana', 'motivo', 'bloqueada_por', 'bloqueada_en'],
+    crear: () => query(`
+      create table if not exists public.sheet_pestanas_bloqueadas (
+        file_id      text        not null,
+        pestana      text        not null,
+        motivo       text,
+        bloqueada_por text,
+        bloqueada_en timestamptz not null default now(),
+        primary key (file_id, pestana)
+      )`),
+  })
 }
 
 /** El query real por defecto; se puede inyectar para tests (nunca tocan la base). */

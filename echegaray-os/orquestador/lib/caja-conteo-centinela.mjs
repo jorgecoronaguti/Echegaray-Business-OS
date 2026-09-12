@@ -60,6 +60,7 @@
 // Un conteo que no cruce el cero no dejaba ninguna huella, y ése es el agujero que se cierra.
 
 import { query } from './db.mjs'
+import { asegurarRelacion } from './tabla-asegurada.mjs'
 import { diaDe, fechaDeSerial, instanteDelSello } from './caja-ancla-por-instante.mjs'
 
 /** El conteo de pesos y el de dólares, con el nombre con el que viajan a la base. */
@@ -228,32 +229,44 @@ export function diaDelConteo(fila = {}) {
 // pagó: una migración commiteada no es una migración aplicada, y el mensaje de arranque con la tabla
 // ausente es idéntico al del arranque sano. El DDL de acá es el mismo que el del archivo.
 
+// Y EL DDL SÓLO CORRE SI FALTA ALGO (12/09/2026). `alter table … enable row level security` no tiene
+// forma `if not exists`: se ejecuta SIEMPRE y SIEMPRE dispara `NOTIFY pgrst, 'reload schema'`, así
+// que cada lectura del centinela le costaba a PostgREST una recarga de caché entera. Los números
+// medidos están en `tabla-asegurada.mjs`.
 async function asegurarTabla() {
-  await query(`
-    create table if not exists public.caja_conteo_observado (
-      file_id         text not null,
-      concepto        text not null,
-      valor           numeric not null,
-      visto_desde     timestamptz not null,
-      visto_hasta     timestamptz not null,
-      corridas        int not null default 1,
-      valor_previo    numeric,
-      previo_visto_en timestamptz,
-      primary key (file_id, concepto, visto_desde)
-    )`)
-  await query(`create index if not exists caja_conteo_observado_ultima
-    on public.caja_conteo_observado (file_id, concepto, visto_desde desc)`)
-  await query('alter table public.caja_conteo_observado enable row level security')
-  // Una tabla con RLS y sin policy no da error: devuelve cero filas, que es indistinguible de un cero
-  // real. Por eso la policy se asegura acá igual que la tabla.
-  await query(`do $$ begin
-      if not exists (select 1 from pg_policies where schemaname = 'public'
-                       and tablename = 'caja_conteo_observado'
-                       and policyname = 'caja_conteo_observado_service') then
-        create policy caja_conteo_observado_service on public.caja_conteo_observado
-          for all to service_role using (true) with check (true);
-      end if;
-    end $$`)
+  return asegurarRelacion({
+    query,
+    relacion: 'public.caja_conteo_observado',
+    columnas: ['file_id', 'concepto', 'valor', 'visto_desde', 'visto_hasta', 'corridas',
+      'valor_previo', 'previo_visto_en'],
+    crear: async () => {
+      await query(`
+        create table if not exists public.caja_conteo_observado (
+          file_id         text not null,
+          concepto        text not null,
+          valor           numeric not null,
+          visto_desde     timestamptz not null,
+          visto_hasta     timestamptz not null,
+          corridas        int not null default 1,
+          valor_previo    numeric,
+          previo_visto_en timestamptz,
+          primary key (file_id, concepto, visto_desde)
+        )`)
+      await query(`create index if not exists caja_conteo_observado_ultima
+        on public.caja_conteo_observado (file_id, concepto, visto_desde desc)`)
+      await query('alter table public.caja_conteo_observado enable row level security')
+      // Una tabla con RLS y sin policy no da error: devuelve cero filas, que es indistinguible de un
+      // cero real. Por eso la policy se asegura acá igual que la tabla.
+      await query(`do $$ begin
+          if not exists (select 1 from pg_policies where schemaname = 'public'
+                           and tablename = 'caja_conteo_observado'
+                           and policyname = 'caja_conteo_observado_service') then
+            create policy caja_conteo_observado_service on public.caja_conteo_observado
+              for all to service_role using (true) with check (true);
+          end if;
+        end $$`)
+    },
+  })
 }
 
 const aFila = (r) => (r ? {
