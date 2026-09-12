@@ -52,6 +52,15 @@ test('el contador de la solapa y lo que dibuja la cara cuentan lo mismo', { skip
   const q = async (sql, params) => (await c.query(sql, params)).rows
   try {
     await c.query('begin')
+    // ═══ EL MUTEX DEL DDL EN LA BASE COMPARTIDA (12/09/2026) ═══
+    //
+    // Este test aplica una migración DENTRO de la transacción, así que toma locks ACCESS EXCLUSIVE
+    // sobre las vistas que recrea. Los 16 tests que ya tomaban este mismo advisory lock se
+    // serializaban entre ellos y quedaban expuestos a los que NO lo tomaban: medido el 12/09 en la
+    // corrida completa, `rls-obra-no-por-fila` murió con «canceling statement due to lock timeout» y
+    // `vinculacion-estandar` con «statement timeout» aplicando T6100, las dos pasando solas. El lock
+    // se pide ANTES de cualquier otra cosa: quien hace DDL acá, primero toma el turno.
+    await c.query('select pg_advisory_xact_lock(20260822)')
     await c.query(CONTADOR)
 
     const clientes = await q('select slug from public.cliente_panel where slug is not null order by slug')

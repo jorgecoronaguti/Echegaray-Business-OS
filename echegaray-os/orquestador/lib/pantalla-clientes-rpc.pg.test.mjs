@@ -33,6 +33,52 @@ const MIGRACION = readFileSync(
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
 /**
+ * LO QUE LA CARTERA LEE DE `obra_economia_cartera`, DECLARADO UNA VEZ.
+ *
+ * ═══ POR QUÉ NO VA ESCRITO A MANO DENTRO DE LA CONSULTA (12/09/2026) ═══
+ *
+ * Estaba, y se desincronizó: el desglose del contrato (`contrato_total`, `contrato_mano_obra`,
+ * `contrato_cita`, … once claves nuevas del 11/09) entró a la RPC y esta copia quedó con las once
+ * viejas. El test no decía «falta declarar una clave»: escupía un diff de doscientas líneas con las
+ * cuatro obras enteras, que es la peor forma de dar una noticia simple. Ahora la lista vive en un solo
+ * lugar, la consulta se arma con ella, y los dos tests de abajo dicen exactamente qué clave sobra o
+ * falta — en la RPC y en la vista.
+ */
+const CLAVES_ECONOMIA_OBRAS = [
+  'obra_canonica_id', 'contratado', 'contratado_usd', 'tipo_cambio', 'origen', 'referencia', 'nota',
+  'oc_civa_ventana', 'oc_civa_historico', 'oc_n_ventana', 'oc_n_historico',
+  // El desglose del contrato (11/09/2026): qué parte es mano de obra, qué parte materiales, de qué
+  // papel salió y con qué cita. Es lo que hace auditable un «contratado» que no viene de una OC.
+  'contrato_mano_obra', 'contrato_mano_obra_usd', 'contrato_materiales', 'contrato_materiales_usd',
+  'contrato_total', 'contrato_fuente', 'contrato_fuente_drive_id', 'contrato_fuente_nombre',
+  'contrato_cita', 'contrato_nota',
+]
+
+/**
+ * LAS COLUMNAS DE LA VISTA QUE LA CARTERA **NO** PIDE, CON SU MOTIVO.
+ *
+ * Una columna que la vista publica y la RPC no lleva es, casi siempre, una columna que alguien se
+ * olvidó de enchufar: la pantalla muestra el campo vacío y nadie lo asocia a la RPC. Las de acá abajo
+ * son deliberadas, y tres de ellas son una ORDEN DEL DUEÑO.
+ */
+const FUERA_DE_LA_CARTERA = {
+  // Dueño, 10/09/2026: «Administración es un CRM y Obra un ERP: todo lo pertinente a datos de
+  // clientes va en CRM, no mezcles cosas con obras». El costo y el margen de una obra se deciden
+  // contra el avance y el certificado, y eso no se mira desde la ficha de un cliente. Si viajaran en
+  // la RPC, la próxima pantalla de Clientes los encontraría servidos y la columna volvería sola —
+  // que es exactamente lo que pasó con Margen. `clientes-no-lee-el-erp.test.ts` lo prohíbe del lado
+  // de la web; esto lo cierra del lado del dato.
+  costo_mo: 'es del ERP (orden del dueño 10/09/2026)',
+  costo_materiales: 'es del ERP (orden del dueño 10/09/2026)',
+  margen: 'es del ERP (orden del dueño 10/09/2026)',
+  obra_clave: 'la pantalla ata por `obra_canonica_id`; la clave textual es del Sheet',
+  leido_en: 'cuándo lo leyó el sync: es metadato del espejo, no un dato de la cartera',
+  obra_padre_id: 'la jerarquía de adicionales viaja en la lista de obras, no en su economía',
+  plazo_desde: 'los plazos los publica la lista de obras',
+  plazo_hasta: 'los plazos los publica la lista de obras',
+}
+
+/**
  * LAS DIEZ CONSULTAS DE HOY, escritas como las manda PostgREST.
  *
  * Cada una devuelve `jsonb` con la MISMA forma que la clave de la RPC, para poder compararlas con
@@ -84,12 +130,8 @@ const VIEJAS = {
       'cita', r.cita, 'nombre_archivo', r.nombre_archivo, 'drive_file_id', r.drive_file_id)), '[]'::jsonb)
     from public.cliente_orden r where r.eliminado_en is null`,
   economia_obras: `
-    select coalesce(jsonb_agg(jsonb_build_object(
-      'obra_canonica_id', e.obra_canonica_id, 'contratado', e.contratado,
-      'contratado_usd', e.contratado_usd, 'tipo_cambio', e.tipo_cambio,
-      'origen', e.origen, 'referencia', e.referencia, 'nota', e.nota,
-      'oc_civa_ventana', e.oc_civa_ventana, 'oc_civa_historico', e.oc_civa_historico,
-      'oc_n_ventana', e.oc_n_ventana, 'oc_n_historico', e.oc_n_historico)), '[]'::jsonb)
+    select coalesce(jsonb_agg(jsonb_build_object(${CLAVES_ECONOMIA_OBRAS
+      .map((k) => `'${k}', e.${k}`).join(', ')})), '[]'::jsonb)
     from public.obra_economia_cartera e`,
 
   contratos: `
@@ -112,7 +154,17 @@ test('pantalla_clientes() devuelve lo mismo que las diez consultas', { skip: !ha
   const c = await getPool().connect()
   const q = async (sql, params) => (await c.query(sql, params)).rows
   try {
-    await c.query('begin')
+    // ═══ UN SOLO SNAPSHOT PARA TODAS LAS COMPARACIONES (12/09/2026) ═══
+    //
+    // Este test compara DIEZ lecturas entre sí —la ficha entera contra cada una de las nueve caras— en
+    // sentencias separadas. En `read committed` cada sentencia toma un snapshot nuevo, así que un
+    // commit ajeno en el medio cambia el resultado: medido el 12/09 en la corrida completa, falló con
+    // «la cara actividad cambió economia_obras» y pasó sola, porque entre dos llamadas de un test que
+    // tardó 18 minutos cualquier otro test commiteó algo. `repeatable read` le da a toda la
+    // transacción UNA sola foto de la base, que es la única forma de que la comparación signifique
+    // algo. Y el mutex del DDL va primero: el snapshot se toma en la primera sentencia.
+    await c.query('begin isolation level repeatable read')
+    await c.query('select pg_advisory_xact_lock(20260822)')
     await c.query(MIGRACION)
 
     const direccion = (await q(`select id from perfiles where rol='direccion' and es_prueba = false limit 1`))[0]
@@ -132,6 +184,36 @@ test('pantalla_clientes() devuelve lo mismo que las diez consultas', { skip: !ha
         const viejo = (await q(sql))[0].coalesce
         assert.deepEqual(rpc[clave], viejo, `la clave «${clave}» de la RPC no coincide con su consulta`)
       }
+    })
+
+    // ═══ LOS DOS CONTROLES QUE AVISAN ANTES DEL DIFF DE DOSCIENTAS LÍNEAS ═══
+    //
+    // El `deepEqual` de arriba compara VALORES y por eso grita fuerte y tarde. Éstos comparan la FORMA
+    // —qué claves viajan— y por eso dicen en una línea qué hay que declarar. El primero mira la RPC
+    // contra la lista; el segundo, la VISTA contra la RPC, que es por donde entró el defecto del 11/09:
+    // la vista ganó once columnas y nadie dijo si la cartera las quería.
+    await t.test('la economía de cada obra viaja con las claves declaradas, ni una más ni una menos', () => {
+      const fila = rpc.economia_obras[0]
+      assert.ok(fila, 'la RPC no devolvió ninguna obra con economía: no hay forma que comparar')
+      const sobran = Object.keys(fila).filter((k) => !CLAVES_ECONOMIA_OBRAS.includes(k))
+      const faltan = CLAVES_ECONOMIA_OBRAS.filter((k) => !(k in fila))
+      assert.deepEqual(sobran, [], `la RPC publica claves que la cartera no declara: ${sobran.join(', ')}`)
+      assert.deepEqual(faltan, [], `la RPC dejó de publicar: ${faltan.join(', ')}`)
+    })
+
+    await t.test('ninguna columna nueva de la vista queda sin decidir: o viaja, o está declarada fuera', async () => {
+      const cols = (await q(
+        `select column_name from information_schema.columns
+          where table_schema='public' and table_name='obra_economia_cartera'`)).map((r) => r.column_name)
+      assert.ok(cols.length > 20, `sólo ${cols.length} columnas: el barrido no miró la vista`)
+      const sinDecidir = cols.filter((c) => !CLAVES_ECONOMIA_OBRAS.includes(c) && !(c in FUERA_DE_LA_CARTERA))
+      assert.deepEqual(sinDecidir, [],
+        `estas columnas de obra_economia_cartera no viajan en la RPC y nadie declaró por qué: ${sinDecidir.join(', ')}. `
+        + 'Agregalas a la RPC y a CLAVES_ECONOMIA_OBRAS, o a FUERA_DE_LA_CARTERA con el motivo.')
+      // Y al revés: una exclusión que ya no existe esconde el próximo caso real detrás de un permiso
+      // que nadie revisa.
+      const fantasmas = Object.keys(FUERA_DE_LA_CARTERA).filter((c) => !cols.includes(c))
+      assert.deepEqual(fantasmas, [], `estas exclusiones ya no existen en la vista: ${fantasmas.join(', ')}`)
     })
 
     await t.test('trae datos de verdad, no listas vacías', () => {

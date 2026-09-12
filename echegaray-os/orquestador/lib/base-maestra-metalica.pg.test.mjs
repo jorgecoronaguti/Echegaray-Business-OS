@@ -31,6 +31,15 @@ async function enEnsayo(fn) {
   const c = await getPool().connect()
   try {
     await c.query('begin')
+    // ═══ EL MUTEX DEL DDL EN LA BASE COMPARTIDA (12/09/2026) ═══
+    //
+    // Este test aplica una migración DENTRO de la transacción, así que toma locks ACCESS EXCLUSIVE
+    // sobre las vistas que recrea. Los 16 tests que ya tomaban este mismo advisory lock se
+    // serializaban entre ellos y quedaban expuestos a los que NO lo tomaban: medido el 12/09 en la
+    // corrida completa, `rls-obra-no-por-fila` murió con «canceling statement due to lock timeout» y
+    // `vinculacion-estandar` con «statement timeout» aplicando T6100, las dos pasando solas. El lock
+    // se pide ANTES de cualquier otra cosa: quien hace DDL acá, primero toma el turno.
+    await c.query('select pg_advisory_xact_lock(20260822)')
     await c.query(readFileSync(SQL, 'utf8'))
     return await fn(c)
   } finally {

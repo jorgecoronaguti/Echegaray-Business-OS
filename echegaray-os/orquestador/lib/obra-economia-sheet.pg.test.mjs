@@ -19,6 +19,15 @@ test('obra_economia: el jefe ve costos y no precio; dirección ve todo; la tabla
   const q = (sql, params) => c.query(sql, params).then((r) => r.rows)
   try {
     await c.query('begin')
+    // ═══ EL MUTEX DEL DDL EN LA BASE COMPARTIDA (12/09/2026) ═══
+    //
+    // Este test aplica una migración DENTRO de la transacción, así que toma locks ACCESS EXCLUSIVE
+    // sobre las vistas que recrea. Los 16 tests que ya tomaban este mismo advisory lock se
+    // serializaban entre ellos y quedaban expuestos a los que NO lo tomaban: medido el 12/09 en la
+    // corrida completa, `rls-obra-no-por-fila` murió con «canceling statement due to lock timeout» y
+    // `vinculacion-estandar` con «statement timeout» aplicando T6100, las dos pasando solas. El lock
+    // se pide ANTES de cualquier otra cosa: quien hace DDL acá, primero toma el turno.
+    await c.query('select pg_advisory_xact_lock(20260822)')
     const existe = (await q(`select to_regclass('public.obra_economia_sheet') t`))[0].t
     if (!existe) await c.query(await readFile(MIGRACION, 'utf8'))
     const OBRA = 'zz-eco-test'

@@ -70,6 +70,16 @@ export async function aplicarMigracionesDelCircuito(client, opciones = {}) {
   )
   if (centinela.rows[0].vista && centinela.rows[0].tabla) return []
 
+  // ═══ EL TURNO DEL DDL EN LA BASE COMPARTIDA (12/09/2026) ═══
+  //
+  // Acá abajo se recrean vistas y funciones, y eso toma locks ACCESS EXCLUSIVE. Los tests que ya
+  // tomaban `pg_advisory_xact_lock(20260822)` se serializaban entre ellos y quedaban a merced de los
+  // que no: medido en la corrida completa del 12/09, `vinculacion-estandar` murió con «statement
+  // timeout» aplicando T6100 y `rls-obra-no-por-fila` con «lock timeout», las dos pasando solas. El
+  // mutex va acá —en el único lugar que aplica estas migraciones— y no en cada test: así lo hereda
+  // también el que se escriba mañana.
+  await client.query('select pg_advisory_xact_lock(20260822)')
+
   const archivos = await archivosDelCircuito()
   const hasta = opciones.hasta ?? null
   const aplicados = []

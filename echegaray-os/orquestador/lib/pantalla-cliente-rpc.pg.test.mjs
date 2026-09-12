@@ -70,7 +70,17 @@ test('pantalla_cliente() devuelve lo mismo que las quince lecturas', { skip: !ha
   const c = await getPool().connect()
   const q = async (sql, params) => (await c.query(sql, params)).rows
   try {
-    await c.query('begin')
+    // ═══ UN SOLO SNAPSHOT PARA TODAS LAS COMPARACIONES (12/09/2026) ═══
+    //
+    // Este test compara DIEZ lecturas entre sí —la ficha entera contra cada una de las nueve caras— en
+    // sentencias separadas. En `read committed` cada sentencia toma un snapshot nuevo, así que un
+    // commit ajeno en el medio cambia el resultado: medido el 12/09 en la corrida completa, falló con
+    // «la cara actividad cambió economia_obras» y pasó sola, porque entre dos llamadas de un test que
+    // tardó 18 minutos cualquier otro test commiteó algo. `repeatable read` le da a toda la
+    // transacción UNA sola foto de la base, que es la única forma de que la comparación signifique
+    // algo. Y el mutex del DDL va primero: el snapshot se toma en la primera sentencia.
+    await c.query('begin isolation level repeatable read')
+    await c.query('select pg_advisory_xact_lock(20260822)')
     await c.query(MIGRACION)
 
     const direccion = (await q(`select id from perfiles where rol='direccion' and es_prueba = false limit 1`))[0]
