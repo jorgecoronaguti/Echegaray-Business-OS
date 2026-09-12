@@ -406,6 +406,22 @@ export function pisarLoDeLaWeb(filas, existentes = [], { hoy } = {}) {
       })
       continue
     }
+    // UNA LICENCIA O AUSENCIA DE LA PLANILLA NO BORRA UN DÍA TRABAJADO SEGÚN LA WEB. Pasó el
+    // 11/09/2026: Quiroga Alexander tenía la fila de septiembre rotulada «z. ENFERMEDAD» (arrastre de
+    // la quincena anterior) y 13 h el 10/09; la web lo tenía presente en Messina · Playón el 08, 09 y
+    // 10. La regla lo convirtió en licencia y el dueño perdió dónde había trabajado el martes. Una
+    // planilla que dice «no trabajó» contra una web que dice «trabajó en X» es un CONFLICTO: se
+    // conserva lo trabajado y se declara. Al revés (planilla trabajó, web ausencia) la planilla manda.
+    const planillaNoTrabajo = nuestras.every((f) => f.tipo_hora === 'licencia' || f.tipo_hora === 'ausencia')
+    const webTrabajo = web.filter((e) => e.tipo_hora !== 'licencia' && e.tipo_hora !== 'ausencia' && Number(e.horas ?? 0) > 0)
+    if (planillaNoTrabajo && webTrabajo.length > 0) {
+      intocables.push({
+        dia,
+        existentes: suyas,
+        porque: `la planilla dice ${nuestras[0].tipo_hora} y la web dice que trabajó ${webTrabajo.map((e) => `${Number(e.horas)}h en ${e.obra_canonica_id ?? 'sin obra'}`).join(' + ')}: se conserva lo trabajado`,
+      })
+      continue
+    }
     // EMPAREJAR POR `tipo_hora` PRIMERO. Con un día de normal + extra, aparear por orden de llegada
     // convertiría las extras en normales y al revés — y las extras se pagan con recargo.
     const libres = [...web]
