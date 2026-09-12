@@ -50,7 +50,10 @@ export function PieDeLosTrabajos({ hh, obras, costos }: {
 
       <span data-testid="materiales-del-cliente" title={AYUDA_MATERIALES} style={LINEA}>
         <Rotulo texto="Materiales" />
-        <Cifra texto={plata(costos.materiales)} />
+        {/* NO PUDE LEERLO NO ES «—». Con la clave sin llegar —cara que no la transporta, rol que no
+            la ve, migración sin aplicar— «—» afirmaría que ningún trabajo tiene una compra imputada,
+            que es exactamente lo contrario de no saberlo. Visto en la captura de Quattropani. */}
+        <Cifra texto={costos.legible ? plata(costos.materiales) : 'no puedo leerlos'} />
       </span>
 
       {/* LA MANO DE OBRA DICE SI EL TOTAL ESTÁ COMPLETO. Un total al que le faltan 12.500 horas
@@ -59,7 +62,9 @@ export function PieDeLosTrabajos({ hh, obras, costos }: {
       <span data-testid="mano-obra-del-cliente" title={tituloManoObra(costos)} style={LINEA}>
         <Rotulo texto="Mano de obra" />
         <Cifra
-          texto={costos.manoObra == null ? 'sin valorizar' : plata(costos.manoObra)}
+          texto={!costos.legible
+            ? 'no puedo leerla'
+            : costos.manoObra == null ? 'sin valorizar' : plata(costos.manoObra)}
           tono={costos.manoObraParcial ? V.warn : undefined}
         />
         {costos.manoObraParcial && costos.manoObra != null && (
@@ -71,6 +76,10 @@ export function PieDeLosTrabajos({ hh, obras, costos }: {
 }
 
 function tituloManoObra(c: TotalesDelCliente): string {
+  if (!c.legible) {
+    return 'No puedo leer el costo de la mano de obra de este cliente: lo ve Administración, y sólo '
+      + 'en la cara Trabajos.'
+  }
   const base = 'Suma de las horas propias valorizadas con la regla de la solapa «Costo a la obra» de '
     + 'Liquidación (valor hora vigente × horas × cargas).'
   if (!c.manoObraParcial) return base

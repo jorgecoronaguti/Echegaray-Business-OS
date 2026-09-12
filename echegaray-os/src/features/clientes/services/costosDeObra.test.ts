@@ -165,6 +165,17 @@ test('el pie suma las mismas filas que la tabla, y un total parcial lo declara',
   assert.equal(totalesDelCliente(m, ['a']).materiales, 100)
 })
 
+test('«no pude leerlos» y «no hay ninguno» son DOS hechos, y el pie los distingue', () => {
+  // ═══ EL DEFECTO, VISTO EN LA CAPTURA (Quattropani, 12/09/2026) ═══
+  //
+  // Con la clave sin llegar —la migración todavía no aplicada— las celdas de la tabla quedaban
+  // vacías (correcto) y el PIE de abajo escribía «MATERIALES —» y «MANO DE OBRA sin valorizar»: dos
+  // afirmaciones sobre datos que no había leído. «—» dice «ningún trabajo tiene una compra
+  // imputada» y Quattropani tiene 17 por $ 42,6 M.
+  assert.equal(totalesDelCliente(null, ['quattropani']).legible, false)
+  assert.equal(totalesDelCliente(armarCostosPorObra([QUATTROPANI])!, ['quattropani']).legible, true)
+})
+
 test('sin nada valorizado el pie dice null, no 0 — y sin costos tampoco', () => {
   const m = armarCostosPorObra([QUATTROPANI])!
   const t = totalesDelCliente(m, ['quattropani'])

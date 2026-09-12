@@ -203,6 +203,15 @@ function fmtHoras(n: number): string {
 
 /** El pie de la tabla: lo gastado por el cliente en todos sus trabajos. */
 export interface TotalesDelCliente {
+  /**
+   * `false` = NO SE PUDO LEER (la cara no transporta los costos, o el rol no es Administración).
+   *
+   * Sin este campo el pie decía «—» y «sin valorizar» —«ningún trabajo tiene compras» y «falta
+   * cargar un dato»— sobre un cliente del que no había leído NADA. Se vio en la captura de
+   * Quattropani del 12/09/2026 con la migración todavía sin aplicar: las celdas de la tabla estaban
+   * vacías, que es correcto, y el pie de abajo afirmaba dos cosas falsas.
+   */
+  legible: boolean
   /** Σ de lo imputado en Compras. `null` = ningún trabajo tiene una compra imputada. */
   materiales: number | null
   /** Σ de la mano de obra valorizada. `null` = no se pudo valorizar NINGUNA hora. */
@@ -228,7 +237,7 @@ export function totalesDelCliente(
   obraIds: readonly string[],
 ): TotalesDelCliente {
   const vacio: TotalesDelCliente = {
-    materiales: null, manoObra: null, manoObraParcial: false, horasSinValorizar: 0,
+    legible: false, materiales: null, manoObra: null, manoObraParcial: false, horasSinValorizar: 0,
   }
   if (!costos) return vacio
   let materiales: number | null = null
@@ -241,5 +250,7 @@ export function totalesDelCliente(
     if (c.manoObra != null) manoObra = (manoObra ?? 0) + c.manoObra
     horasSinValorizar += c.horasSinTarifa ?? 0
   }
-  return { materiales, manoObra, manoObraParcial: horasSinValorizar > 0, horasSinValorizar }
+  return {
+    legible: true, materiales, manoObra, manoObraParcial: horasSinValorizar > 0, horasSinValorizar,
+  }
 }
