@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-12 ~15:30 (hora local −03) · main = producción_
+_actualizado: 2026-09-12 ~16:20 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -61,7 +61,7 @@ el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
 
 ## 4. ESTADO ACTUAL (12/09 14:20)
 
-- **main = producción** en 5fec4772 (c67a9182 CRM costos+cinco solapas con T1000 aplicada; c08ecfb9 vaciar celda borra el día; 5fec4772 ELIMINADO fuera de costos_obra). Sesión reiniciada dos veces (noche 11/09 y 13:3x del 12/09):
+- **main = producción** en 4e3241d4 (c67a9182 CRM costos+cinco solapas T1000; c08ecfb9 vaciar celda borra el día; 5fec4772 ELIMINADO fuera de costos_obra; 69859bef/4e3241d4 alícuotas+tarifas y costo por tramo T1300 aplicada). Sesión reiniciada dos veces (noche 11/09 y 13:3x del 12/09):
   los agentes se reanudan con SendMessage a su id; los waiters de fondo mueren.
 - **INCIDENTE 12/09 13:55–14:14**: base de Supabase caída (db/rest/auth UNHEALTHY, pooler sano; 504
   a los 5 s). Reiniciada por Management API (`POST /v1/projects/<ref>/restart`); worker del bot y
@@ -81,9 +81,12 @@ el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
   cargadas (f956–961); CONFLICTO 880–883 ($6,88 M pendientes, editadas por el dueño) — decisión.
 - **CRM**: TODO en prod y verificado por QA (c67a9182): Trabajo+OC · Inicio · HH · Materiales · Mano
   de obra · Contratado; cinco solapas; Cobranzas con cuenta corriente + esquema; Actividad reciente y
-  Portal al costado; enlaces viejos redirigen. Mano de obra «sin valorizar» por DATOS: `costo_hora_alicuota`
-  0 filas y `persona_tarifa` sólo desde 01/09 → agente a88d55b… carga tarifas históricas desde
-  `liquidacion_linea.valor_hora` y alícuotas derivadas de pagos jun–ago (sólo DML). Cosmético en curso
+  Portal al costado; enlaces viejos redirigen. **Mano de obra valoriza**: 79 tramos de `persona_tarifa` desde `liquidacion_linea.valor_hora`
+  (ene–ago) + 5 alícuotas derivadas de F931/UOCRA ene–ago (multiplicador 1,6713, base total, fuente en
+  cada fila) → 13 obras $213,1 M, 86 % de horas. **Firma del dueño/estudio pendiente** (aportes 301/302 en
+  cargas; sindical+FICS en cargas). Sin valorizar 4.135 h: Oficina neto_mensual (3.017 h, decisión A/B en
+  la cabecera de T1300), 4 personas sin quincena cerrada, 109 h previas al primer tramo. Ficha
+  la-estrella 1,6 s → 0,42 s caliente (T1300); piso de la ficha sin costo_obra ≈ 320 ms. Cosmético en curso
   (agente): Cobranzas a 400 px desborda la página; `?portal=1` angosto a 1280.
 - **Decisiones del dueño**: Tello 880–883 (pagadas o eliminar) · Gonzalez Tobares 02 y 10/09 (dos
   filas web c/u) · Escudero Emiliano (¿proveedor CUIT 20-35853162-9?).
@@ -98,8 +101,8 @@ el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
 
 ## 6. PENDIENTES REALES
 
-**P0** — cerrar alícuotas/tarifas (agente a88d55b…) y el cosmético de Cobranzas 400/portal (agente) ·
-decisiones del dueño · re-medir performance mañana con 24 h de pg_stat_statements limpias.
+**P0** — cosmético Cobranzas 400/portal (agente a0f422e…) · decisiones del dueño (Tello 880–883,
+Gonzalez Tobares 02 y 10/09, Escudero, multiplicador 1,6713 y Oficina A/B) · re-medir performance mañana.
 **P1** — `obra_panel` sin N+1 (DDL) · `pantalla_clientes()` 509 ms · Santander · Documentos web léxico ·
 sonda inbox · `proyeccion-convenio.test.mjs` rojo · higiene de worktrees viejos.
 **P2** — menú lateral Liquidación · Proveedores número esperado · plan PRO HF · extractos ene–may ·
@@ -107,7 +110,7 @@ Mis Facilidades ARCA · fin_real de actividades (Obras) · Safari/iOS del sticky
 
 ## 7. ESTADO GIT
 
-main = origin/main = 5fec4772 · worktrees vivos: wt-alic (agente alícuotas), wt-crmfix (agente cosmético).
+main = origin/main = 4e3241d4 · worktrees vivos: wt-crmfix (agente cosmético).
 
 ## 8. PRÓXIMO PASO
 
