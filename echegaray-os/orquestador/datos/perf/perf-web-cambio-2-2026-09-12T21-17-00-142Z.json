@@ -1,0 +1,112 @@
+{
+  "etiqueta": "cambio-2",
+  "fecha": "2026-09-12T21:17:00.142Z",
+  "base": "http://127.0.0.1:3178",
+  "db": null,
+  "web": {
+    "login": 3645,
+    "rutas": [
+      {
+        "ruta": "/clientes",
+        "frio": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 1720,
+          "ttfb": 162,
+          "dcl": 1894,
+          "load": 1894,
+          "networkidle": 2476,
+          "jsBytes": 27121,
+          "jsArchivos": 22
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 558,
+          "ttfb": 33,
+          "dcl": 600,
+          "load": 601,
+          "networkidle": 1445,
+          "jsBytes": 21680,
+          "jsArchivos": 21
+        }
+      },
+      {
+        "ruta": "/administracion",
+        "frio": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 433,
+          "ttfb": 36,
+          "dcl": 473,
+          "load": 474,
+          "networkidle": 1222,
+          "jsBytes": 21680,
+          "jsArchivos": 21
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/clientes",
+          "doc": 701,
+          "ttfb": 30,
+          "dcl": 734,
+          "load": 734,
+          "networkidle": 1287,
+          "jsBytes": 21680,
+          "jsArchivos": 21
+        }
+      },
+      {
+        "ruta": "/administracion/compras",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/compras",
+          "doc": 521,
+          "ttfb": 44,
+          "dcl": 607,
+          "load": 608,
+          "networkidle": 1323,
+          "jsBytes": 57827,
+          "jsArchivos": 19
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/compras",
+          "doc": 451,
+          "ttfb": 27,
+          "dcl": 510,
+          "load": 512,
+          "networkidle": 1307,
+          "jsBytes": 54034,
+          "jsArchivos": 19
+        }
+      },
+      {
+        "ruta": "/administracion/personas",
+        "frio": {
+          "estado": 200,
+          "url": "/administracion/personas",
+          "doc": 275,
+          "ttfb": 56,
+          "dcl": 334,
+          "load": 334,
+          "networkidle": 940,
+          "jsBytes": 129428,
+          "jsArchivos": 20
+        },
+        "caliente": {
+          "estado": 200,
+          "url": "/administracion/personas",
+          "doc": 262,
+          "ttfb": 19,
+          "dcl": 284,
+          "load": 284,
+          "networkidle": 907,
+          "jsBytes": 123780,
+          "jsArchivos": 20
+        }
+      }
+    ]
+  },
+  "ventana": "histórica acumulada (no se reseteó)"
+}
