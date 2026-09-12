@@ -7,6 +7,7 @@
 import type {
   ClaseVinculo, Documento, EstadoVigencia, Vinculo,
 } from '../types'
+import { hayCoincidencia } from './resaltado.ts'
 
 /** Una fila de `documentacion_legajo` con la persona embebida por PostgREST. */
 export interface VinculoLegajo {
@@ -290,11 +291,24 @@ export function carpetaDe(path: string | null): string | null {
  * La ruta como migaja legible. Se recorta por el MEDIO —no por el final— porque el tramo que
  * ubica es el primero (el área) y el último (la carpeta que lo contiene); lo del medio es relleno.
  */
-export function migajaDe(path: string | null, maxTramos = 3): string | null {
+export function migajaDe(path: string | null, maxTramos = 3, tokens: string[] = []): string | null {
   const carpeta = carpetaDe(path)
   if (!carpeta) return null
   const tramos = carpeta.split('/').filter(Boolean)
   if (tramos.length <= maxTramos) return tramos.join(' / ')
+  // EL TRAMO QUE COINCIDIÓ CON LA BÚSQUEDA NO SE PUEDE ELIDIR.
+  //
+  // «dni de capelli» encuentra el archivo por la carpeta «CAPELLI CESAR», que en una ruta de seis
+  // tramos cae justo en el «…». La fila quedaba sin nada resaltado y sin forma de saber por qué
+  // estaba en la lista. Cuando el tramo que coincide es uno de los elididos, la migaja arranca en él
+  // y conserva la carpeta que contiene el archivo: sigue siendo el mismo presupuesto de tres tramos.
+  // EL MÁS PROFUNDO, NO EL PRIMERO. Buscando «dni de capelli», la carpeta raíz del legajo se llama
+  // «PERSONAL: ALTAS - BAJAS - HM - EPP - DNI» y coincide con «dni» antes que «CAPELLI CESAR»:
+  // mostraba el tramo genérico —que además es largo y se corta— en vez del que dice de quién es.
+  const i = tramos.findLastIndex((t) => hayCoincidencia(t, tokens))
+  // Los tramos que el recorte por defecto DEJA VER son el primero y los últimos `maxTramos - 2`:
+  // cualquier coincidencia entre medio es la que se perdía.
+  if (i > 0 && i < tramos.length - (maxTramos - 2)) return ['…', tramos[i], tramos[tramos.length - 1]].join(' / ')
   // El «…» ocupa uno de los tramos permitidos: recortar a 3 tiene que devolver 3, o el recorte
   // no acota nada y la migaja vuelve a empujar la tabla de costado.
   return [tramos[0], '…', ...tramos.slice(-(maxTramos - 2))].join(' / ')
