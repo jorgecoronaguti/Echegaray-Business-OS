@@ -22,8 +22,13 @@ import {
   armarCuadros, type CuadroDeLiquidacion, type FilaAdelanto, type FilaRecibo, type FilaTarifa,
   type HorasPorPersona, type PersonaDeLiquidacion,
 } from './liquidacionCuadros.ts'
-import { horasDeQuincena, type PresenciaDeQuincena, type RegistroDeQuincena } from './liquidacionQuincena.ts'
-import { diasSinMotivoDeLaQuincena } from './grillaHorasQuincena.ts'
+import {
+  horasDeQuincena, type ModalidadDeLiquidacion, type PresenciaDeQuincena, type RegistroDeQuincena,
+} from './liquidacionQuincena.ts'
+import { diasSinMotivoDeLaQuincena, filasDeGrilla } from './grillaHorasQuincena.ts'
+import {
+  filasDeHoras, horasDeLaQuincena, type HorasDeLaQuincena,
+} from './horasDeLaQuincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
 import { leerCuilesDelLegajo, leerPresenciasDeLaQuincena } from './lecturasCompartidasDeQuincena.ts'
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
@@ -69,6 +74,15 @@ export interface LiquidacionDeLaQuincena {
    * los chips, y porque las cifras que ya entraron a la cadena tienen que poder explicarse.
    */
   espejo: EspejoDeLaPlanilla
+  /**
+   * LOS TRES TOTALES DE HORAS, DE UNA SOLA CUENTA (QA visual, 11/09/2026).
+   *
+   * El módulo publicaba 1.289 en «Horas», 1.129 en «Pagos» y «Cierre» y 1.227 en «Costo a la obra»,
+   * bajo el mismo rótulo y en tres solapas seguidas. Los tres eran correctos y la única lectura
+   * posible era «uno está mal». Se calcula ACÁ porque esta función ya leyó los registros, las
+   * presencias y las tarifas: una segunda lectura en cada solapa sería un CUARTO número.
+   */
+  horas: HorasDeLaQuincena
   /** Cada fuente que no se pudo leer, con su mensaje. Vacío = se leyó todo. */
   errores: { que: string; error: string }[]
   /**
@@ -209,8 +223,30 @@ export async function getLiquidacionDeLaQuincena(
       redondeos,
   })
 
+  // LA GRILLA SE ARMA UNA VEZ Y SÓLO PARA SUMAR. `filasDeGrilla` es la definición de cuánto vale cada
+  // día —la misma que pinta la celda—, y la modalidad la decide el CUADRO en el que cayó cada
+  // persona, no el campo del legajo (que está vacío en las diecisiete de la base real).
+  const modalidadPorPersona = new Map<string, ModalidadDeLiquidacion>()
+  for (const c of cuadros) for (const l of c.lineas) modalidadPorPersona.set(l.personaId, l.modalidad)
+  const horas = horasDeLaQuincena(filasDeHoras(
+    filasDeGrilla({
+      quincena: q,
+      personas: activas.map((p) => ({
+        id: p.id, nombre: p.nombre, valorHora: null, convenio: null, esJefe: p.esJefe,
+      })),
+      registros: (registros.data ?? []) as (RegistroDeQuincena & { persona_id: string })[],
+      presencias: (presencias.data ?? []) as (PresenciaDeQuincena & { persona_id: string })[],
+      personaDeRegistro: (r) => (r as unknown as { persona_id: string }).persona_id,
+      personaDePresencia: (p) => (p as unknown as { persona_id: string }).persona_id,
+      // `hoy` sólo decide qué días cuentan como «sin cargar», que este total no usa.
+      hoy: q.hasta,
+    }),
+    (id) => modalidadPorPersona.get(id) ?? 'hora',
+  ))
+
   return {
     sinActividad: sinActividad.map((p) => ({ id: p.id, nombre: p.nombre })),
+    horas,
     // LA QUINCENA CERRADA NO SE PISA. Sus cifras son la foto del cierre y no admiten override: si
     // se aplicaran acá, una celda escrita después del cierre cambiaría el registro de lo que ya se
     // pagó, que es exactamente lo que cerrar existe para impedir.

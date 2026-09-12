@@ -3,6 +3,8 @@ import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { alicuotasVigentes, lineasDeObra, multiplicadorDeCosto, type LineaDeObra } from '../../../services/costoHora'
 import { getAlicuotas, getHorasPorObra, getValorHoraVigente } from '../../../services/costoLecturas'
+import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
+import { leyendaDeHoras } from '../../../services/horasDeLaQuincena'
 import { rotuloQuincena, type Quincena } from '../../../services/quincena'
 import { ALTO_LIQ } from './tabla'
 
@@ -55,6 +57,13 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
   const { alicuotas, errores } = await getAlicuotas(supabase)
   const { porPersona, error: errTarifa } = await getValorHoraVigente(supabase, quincena.hasta)
   const { obras, presupuesto, errores: errHoras } = await getHorasPorObra(supabase, quincena, porPersona)
+  // ═══ POR QUÉ ESTE TOTAL NO ES EL DE «HORAS» NI EL DE «PAGOS» (QA visual, 11/09/2026) ═══
+  //
+  // Acá decía 1.227, «Horas» 1.289 y «Pagos» 1.129, los tres bajo el mismo rótulo y en solapas
+  // seguidas. Los tres correctos: a una obra se le cargan las horas TRABAJADAS, y las licencias
+  // pagas —62 h— las paga la empresa. Cuesta una tanda de lecturas más y ése es el precio de que la
+  // resta esté escrita UNA vez: calcularla acá sería el cuarto número.
+  const { horas: horasQ } = await getLiquidacionDeLaQuincena(supabase, quincena)
 
   const m = multiplicadorDeCosto(alicuotasVigentes(alicuotas, quincena.hasta), 1)
   const lineas = lineasDeObra(obras, presupuesto, m.valor)
@@ -130,6 +139,14 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
           </div>
           <div style={{ height: 20 }} />
         </div>
+      )}
+
+      {/* LA RESTA CONTRA «HORAS», DICHA. Sin esto, 1.227 al lado de 1.289 en la solapa anterior se
+          lee como un error de alguna de las dos. */}
+      {leyendaDeHoras(horasQ, 'aObra') && (
+        <p data-testid="costo-obra-leyenda-horas" style={{ fontSize: '11px', color: V.apagado, margin: '10px 0 0' }}>
+          {leyendaDeHoras(horasQ, 'aObra')}.
+        </p>
       )}
 
       {lineas.length > conCosto.length && (

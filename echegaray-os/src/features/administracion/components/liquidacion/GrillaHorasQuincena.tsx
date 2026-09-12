@@ -49,7 +49,7 @@ import type {
 } from '../../services/grillaHorasQuincena'
 import type { ProyeccionDeFila, ProyeccionDeQuincena } from '../../services/proyeccionDeMasa'
 import { repartoDelAcuerdo } from '../../services/liquidacionAcuerdo'
-import { ALTO_LIQ } from './solapas/tabla'
+import { ALTO_LIQ, COLUMNA_FIJA, MARCO_SCROLL } from './solapas/tabla'
 import { agruparPorRolOrganizacional } from '../../services/vocabularioPersona'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
 import { InlineEdit } from '@/shared/components/ds'
@@ -226,7 +226,7 @@ function Fila({ fila, proyeccion, abrir, abierta, edicionDe }: {
       data-testid={`fila-${fila.personaId}`}
       onClick={abrir ? () => abrir(fila.personaId) : undefined}
     >
-      <div>{fila.nombre}</div>
+      <div style={{ ...COLUMNA_FIJA, background: abierta ? undefined : '#FFFFFF' }} title={fila.nombre}>{fila.nombre}</div>
       {fila.celdas.map((c) => (
         <Celda key={c.fecha} celda={c} edicion={edicionDe?.(fila.personaId, c.fecha) ?? null} />
       ))}
@@ -360,7 +360,7 @@ function Pendientes({ pendientes, hrefSinRecorte }: {
 
 export function GrillaHorasQuincena({
   titulo, estado, jornadaTexto, habilesTexto, hoy, filas, resumen, proyeccion,
-  periodos, pendientes, hrefSinRecorte, convenios, accion, abrir, abierta, edicionDe,
+  periodos, pendientes, hrefSinRecorte, convenios, restaDeHoras, accion, abrir, abierta, edicionDe,
 }: {
   /** «1ª quincena de septiembre · 1 al 15». */
   titulo: string
@@ -390,6 +390,14 @@ export function GrillaHorasQuincena({
   hrefSinRecorte: string
   /** «UOCRA — Ley 22.250 · 14 · …» para el `title` del pie: se consulta, no se decide. */
   convenios?: string
+  /**
+   * QUÉ RESTAN LAS OTRAS TRES SOLAPAS DE ESTE TOTAL (QA visual, 11/09/2026).
+   *
+   * Esta pantalla publica «CARG. 1.289» y las de al lado 1.129 y 1.227 bajo el mismo rótulo. Los
+   * tres son correctos y la única lectura posible era «uno está mal». Acá se dice de una vez qué se
+   * va a restar allá — sale de `horasDeLaQuincena`, la misma cuenta que consumen las cuatro.
+   */
+  restaDeHoras?: string
   /** El botón de cierre. Se dibuja siempre; lo habilita `resumen.puedeCerrar`. */
   accion?: React.ReactNode
   /** Qué celda se corrige en línea. Sin esto la grilla es de sólo lectura, como hasta el 11/09. */
@@ -419,7 +427,9 @@ export function GrillaHorasQuincena({
       <div className="min-w-0 flex-1" style={{ display: 'flex', flexDirection: 'column' }}>
         {/* EL ANCHO REAL DE LA GRILLA SE RECORRE, no se aplasta: trece columnas de 30 px más el
             nombre no entran en 390 y encogerlas dejaría celdas ilegibles. */}
-        <div className="overflow-x-auto" style={{ padding: '0 20px' }}>
+        {/* MARCO_SCROLL avisa que hay más a los lados y la columna del nombre se queda fija: a 400 px
+            el nombre salía de pantalla al primer arrastre y los números quedaban sin dueño. */}
+        <div style={{ ...MARCO_SCROLL, padding: '0 20px' }}>
         <div style={{ minWidth: 856, display: 'flex', flexDirection: 'column' }}>
           <div data-testid="encabezado-columnas" style={{
             display: 'grid', gridTemplateColumns: COLUMNAS, gap: 6, height: ALTO_LIQ.encabezadoAncho, alignItems: 'end',
@@ -427,7 +437,7 @@ export function GrillaHorasQuincena({
             fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)', fontSize: '9.5px',
             letterSpacing: '.03em', color: V.tenue, textTransform: 'uppercase',
           }}>
-            <div>Persona</div>
+            <div style={COLUMNA_FIJA}>Persona</div>
             {/* EL ENCABEZADO DEL DÍA DICE SI HAY ALGO ADENTRO. Mockup línea 145: el día que nadie
                 cargó va en gris de línea (#D7D5CF) y el día en curso en tinta plena. Un encabezado
                 todo del mismo gris obliga a bajar la vista para saber dónde está parado uno. */}
@@ -468,7 +478,7 @@ export function GrillaHorasQuincena({
           <div style={{
             ...filaGrid(56), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
           }} data-testid="total-grilla">
-            <div>
+            <div style={{ ...COLUMNA_FIJA, whiteSpace: 'normal' }}>
               {resumen.personas} persona{resumen.personas === 1 ? '' : 's'}
               {resumen.sinRetribucion > 0 && ` · ${resumen.sinRetribucion} sin retribución`}
             </div>
@@ -504,6 +514,11 @@ export function GrillaHorasQuincena({
             <strong style={{ color: '#175CD3', fontWeight: 600 }}>L</strong> licencia ·{' '}
             <strong style={{ color: V.lineaFuerte }}>·</strong> sin horas cargadas
           </span>
+          {restaDeHoras && (
+            <span data-testid="horas-resta" title="Por eso «Pagos», «Cierre» y «Costo a la obra» publican menos horas que esta pantalla.">
+              de estas horas, {restaDeHoras}
+            </span>
+          )}
           {proyeccion && <LineaDeMasa p={proyeccion} />}
         </div>
       </div>

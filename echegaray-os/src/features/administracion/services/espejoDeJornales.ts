@@ -53,7 +53,22 @@ export function diasConHorasDe(
   return out
 }
 
-export type EstadoDeCotejo = 'coincide' | 'difiere' | 'sin-espejo'
+/**
+ * LOS CUATRO ESTADOS, Y NINGUNO ES «MÁS O MENOS» OTRO.
+ *
+ *   coincide     la base dice lo mismo que la planilla, sobre los días que la planilla tiene.
+ *   difiere      dice otra cosa. Es un dato y hay que mirarlo.
+ *   no-esta      la planilla NO tiene a esta persona en esta quincena. No se pudo comparar.
+ *   sin-espejo   todavía no se leyó el bloque. Tampoco se pudo comparar, por otro motivo.
+ *
+ * ═══ POR QUÉ «no-esta» ES UN ESTADO Y NO UN «difiere» CONTRA CERO (medido, 12/09/2026) ═══
+ *
+ * Los dos jefes de Oficina tienen 80 h en la base y su pestaña no tiene bloque de septiembre. Con
+ * `difiere` el pie publicaba «3 filas difieren · 177,8 h», cuando la diferencia REAL de la quincena
+ * era 17,8 h de UNA persona. Los otros 160 h eran el sistema comparando contra una planilla que no
+ * habla de ellos — y un total inflado 10× manda a buscar un problema que no existe.
+ */
+export type EstadoDeCotejo = 'coincide' | 'difiere' | 'no-esta' | 'sin-espejo'
 
 export interface Cotejo {
   estado: EstadoDeCotejo
@@ -198,10 +213,14 @@ function cotejar(
 ): Cotejo {
   const dias = d.diasDeLaPlanilla.get(personaId)
   if (!d.hayEspejo || !dias || dias.size === 0) {
-    return cotejoConLaPlanilla(horasCrudasDe(registros), d.hayEspejo ? (d.horasDeLaPlanilla.get(personaId) ?? 0) : null, {
+    // NO SE PUDO COMPARAR, y hay dos motivos distintos: o no se leyó el bloque, o el bloque no tiene
+    // a esta persona. Ninguno de los dos es «difiere»: comparar contra cero inventaría una diferencia
+    // del tamaño de todo lo que esa persona trabajó.
+    const base = cotejoConLaPlanilla(horasCrudasDe(registros), null, {
       diasComparados: 0,
       diasSinComparar: diasDeLaVista.length,
     })
+    return { ...base, estado: d.hayEspejo ? 'no-esta' : 'sin-espejo' }
   }
   const enLosDias = registros.filter((r) => dias.has(r.fecha))
   return cotejoConLaPlanilla(horasCrudasDe(enLosDias), d.horasDeLaPlanilla.get(personaId) ?? 0, {
@@ -289,7 +308,9 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
   for (const f of filas) {
     const l = f.linea
     if (f.cotejo.estado === 'difiere') { t.difieren++; t.horasDeDiferencia += Math.abs(f.cotejo.diferencia ?? 0) }
-    if (f.cotejo.estado === 'sin-espejo') t.sinCotejar++
+    // LOS DOS ESTADOS QUE NO PUDIERON COMPARAR SE CUENTAN JUNTOS: para el pie, «no se comparó» es una
+    // sola cosa. El chip de la fila sí distingue por qué, que es donde la distinción sirve.
+    if (f.cotejo.estado === 'sin-espejo' || f.cotejo.estado === 'no-esta') t.sinCotejar++
     if (l.sinTarifa || l.cobra == null) { t.sinTarifa++; continue }
     t.horas += Number(l.horas) || 0
     t.cobra += l.cobra

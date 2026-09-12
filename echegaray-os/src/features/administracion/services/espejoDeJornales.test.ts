@@ -103,23 +103,35 @@ test('EL COTEJO COMPARA HORAS CRUDAS, NO LIQUIDABLES', () => {
     { persona_id: 'p1', id: 'r1', fecha: '2026-09-01', tipo_hora: 'normal', horas: 9 },
     { persona_id: 'p1', id: 'r2', fecha: '2026-09-02', tipo_hora: 'licencia', horas: 0, notas: 'enfermedad' },
   ]
-  const [coincide] = filasDelEspejo(base({ registros, horasDeLaPlanilla: new Map([['p1', 9]]) }))
+  const dias = new Map([['p1', new Set(['2026-09-01', '2026-09-02'])]])
+  const [coincide] = filasDelEspejo(base({ registros, horasDeLaPlanilla: new Map([['p1', 9]]), diasDeLaPlanilla: dias }))
   assert.equal(coincide.cotejo.estado, 'coincide')
   assert.equal(coincide.cotejo.diferencia, 0)
 
-  const [difiere] = filasDelEspejo(base({ registros, horasDeLaPlanilla: new Map([['p1', 17]]) }))
+  const [difiere] = filasDelEspejo(base({ registros, horasDeLaPlanilla: new Map([['p1', 17]]), diasDeLaPlanilla: dias }))
   assert.equal(difiere.cotejo.estado, 'difiere')
   assert.equal(difiere.cotejo.diferencia, -8, 'la base tiene 8 h menos que la planilla')
 })
 
-test('UNA PERSONA DE LA PLANILLA QUE NO ESTÁ EN EL ESPEJO VALE CERO, NO «SIN ESPEJO»', () => {
-  // Con espejo leído, la ausencia de una persona en la planilla es un dato: el bloque no la tiene.
+test('UNA PERSONA QUE EL BLOQUE NO TIENE NO «DIFIERE»: NO SE PUDO COMPARAR', () => {
+  // ═══ ESTE TEST AFIRMABA LO CONTRARIO, Y ESTABA MAL (medido el 12/09/2026) ═══
+  //
+  // Decía que con el espejo leído, la ausencia de una persona en el bloque valía 0 y por lo tanto
+  // «difiere». Con datos reales eso publicó «3 filas difieren · 177,8 h» en el pie, cuando la
+  // diferencia REAL de la quincena era 17,8 h de UNA persona: los otros 160 h eran los dos jefes de
+  // Oficina, cuya pestaña no tiene bloque de septiembre. El sistema comparaba contra una planilla que
+  // no habla de ellos, e inventaba una diferencia del tamaño de todo lo que trabajaron.
+  //
+  // Un total inflado diez veces manda a buscar un problema que no existe.
   const [fila] = filasDelEspejo(base({
     registros: [{ persona_id: 'p1', id: 'r1', fecha: '2026-09-01', tipo_hora: 'normal', horas: 9 }],
     horasDeLaPlanilla: new Map(),
+    diasDeLaPlanilla: new Map(),
   }))
-  assert.equal(fila.cotejo.estado, 'difiere')
-  assert.equal(fila.cotejo.horasEnLaPlanilla, 0)
+  assert.equal(fila.cotejo.estado, 'no-esta')
+  assert.equal(fila.cotejo.diferencia, null, 'no hay diferencia: no hubo comparación')
+  assert.equal(totalesDelEspejo([fila]).difieren, 0)
+  assert.equal(totalesDelEspejo([fila]).sinCotejar, 1)
 })
 
 test('EL PIE NO SUMA A QUIEN NO TIENE TARIFA, Y LO CUENTA', () => {
@@ -224,6 +236,7 @@ test('CON ESPEJO PERO SIN DÍAS DE ESA PERSONA, NO SE COMPARA CONTRA CERO', () =
     horasDeLaPlanilla: new Map(),
     diasDeLaPlanilla: new Map(),
   }))
+  assert.equal(fila.cotejo.estado, 'no-esta', 'y no «difiere 80 h»')
   assert.equal(fila.cotejo.diasComparados, 0)
   assert.equal(fila.cotejo.diasSinComparar, 13)
 })

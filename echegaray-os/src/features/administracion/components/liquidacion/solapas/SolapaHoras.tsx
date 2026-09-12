@@ -155,6 +155,10 @@ export async function SolapaHoras({ quincenaPedida, hoy, parametros, hrefDe }: P
         pendientes={pendientes}
         hrefSinRecorte={hrefDe({ pendiente: undefined })}
         convenios={conveniosTexto}
+        // LO QUE LAS OTRAS TRES SOLAPAS RESTAN DE ESTE NÚMERO. «Horas» publica el total (1.289) y es
+        // la única que no tiene nada que explicar de sí misma — pero es la pantalla desde la que el
+        // dueño salta a las otras, así que acá dice de una vez por qué allá va a ver menos.
+        restaDeHoras={liquidacion.horas.excluidas.map((e) => `${e.horas} h ${e.motivo}`).join(' · ')}
         personas={datos.porPersona}
         correcciones={datos.correcciones}
         cerrada={datos.cerrada}

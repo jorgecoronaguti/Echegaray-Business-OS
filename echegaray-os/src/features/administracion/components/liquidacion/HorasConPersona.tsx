@@ -21,7 +21,7 @@ import type { CorreccionDeDia } from '../../services/panelDePersona'
 
 export function HorasConPersona({
   titulo, estado, jornadaTexto, habilesTexto, hoy, filas, resumen, proyeccion, periodos,
-  pendientes, hrefSinRecorte, convenios, accion, personas,
+  pendientes, hrefSinRecorte, convenios, restaDeHoras, accion, personas,
   correcciones, cerrada, quincena, lineas, camposEditables, multiplicador,
 }: {
   titulo: string
@@ -37,6 +37,8 @@ export function HorasConPersona({
   pendientes: PendienteDeGrilla[]
   hrefSinRecorte: string
   convenios?: string
+  /** Qué restan las otras tres solapas de este total. Ver `GrillaHorasQuincena`. */
+  restaDeHoras?: string
   accion?: React.ReactNode
   /** El legajo y los días de cada persona, ya leídos con la quincena. */
   personas: Record<string, Omit<PersonaAbierta, 'cargadas'>>
@@ -104,6 +106,7 @@ export function HorasConPersona({
         pendientes={pendientes}
         hrefSinRecorte={hrefSinRecorte}
         convenios={convenios}
+        restaDeHoras={restaDeHoras}
         accion={accion}
         abierta={abierta}
         abrir={(id) => setAbierta(id === abierta ? null : id)}

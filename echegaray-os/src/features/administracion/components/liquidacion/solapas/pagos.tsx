@@ -5,6 +5,7 @@ import { tarjetaDeQuincena, totalesDeCuadro, type TotalesDeCuadro } from '../../
 import type { CampoEditable, LineaConOverrides } from '../../../services/liquidacionOverrides'
 import { desvioDelAcuerdo } from '../../../services/liquidacionAcuerdo'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
+import { leyendaDeHoras } from '../../../services/horasDeLaQuincena'
 import { horas as nHoras, pesos } from '../formato'
 // LAS MISMAS CELDAS QUE EL CUADRO CLÁSICO. Copiarlas habría dado dos definiciones de «corregir un
 // adelanto»; acá se importan las únicas que existen.
@@ -12,7 +13,7 @@ import { CeldaEditable, CeldaRedondeo, MarcaDeOrigen } from '../CeldasDeLiquidac
 import { seccionesDePersonal, type SeccionDePersonal } from '../../../services/ordenDePersonal'
 import { RotuloDeGrupo } from '../../RotuloDeGrupo'
 import { SolapaCajaNomina } from './caja-nomina'
-import { ALTO_LIQ } from './tabla'
+import { ALTO_LIQ, COLUMNA_FIJA, MARCO_SCROLL } from './tabla'
 
 // 4 · PAGOS · LA CADENA DE LA QUINCENA.
 //
@@ -49,7 +50,7 @@ import { ALTO_LIQ } from './tabla'
 export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: string; hoy: string }) {
   const quincena = quincenaDe(quincenaPedida && /^\d{4}-\d{2}-\d{2}$/.test(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const { cuadros, sinActividad, estados, camposEditables } = await getLiquidacionDeLaQuincena(supabase, quincena)
+  const { cuadros, sinActividad, estados, camposEditables, horas } = await getLiquidacionDeLaQuincena(supabase, quincena)
   const totales = cuadros.map((c) => totalesDeCuadro(c.lineas))
   const tarjeta = tarjetaDeQuincena(totales)
   const lineas = cuadros.flatMap((c) => c.lineas)
@@ -101,6 +102,16 @@ export async function SolapaPagos({ quincenaPedida, hoy }: { quincenaPedida?: st
       {sinActividad.length > 0 && (
         <p data-testid="pagos-sin-actividad" style={{ fontSize: '11.5px', color: V.apagado, margin: '10px 0 0' }}>
           {sinActividad.length} sin actividad esta quincena · no aparecen acá y no se dieron de baja.
+        </p>
+      )}
+      {/* ═══ POR QUÉ ESTE TOTAL NO ES EL DE LA SOLAPA DE AL LADO (QA visual, 11/09/2026) ═══
+          «Horas» publica 1.289 y acá dice 1.129. Los dos son correctos: la diferencia son los jefes
+          de Oficina, que cobran un neto mensual y no se liquidan por hora. Sin esta línea, la única
+          lectura posible es «uno de los dos está mal». Sale de `horasDeLaQuincena`, la misma cuenta
+          que consumen las otras tres solapas. */}
+      {leyendaDeHoras(horas, 'liquidables') && (
+        <p data-testid="pagos-leyenda-horas" style={{ fontSize: '11px', color: V.apagado, margin: '10px 0 0' }}>
+          {leyendaDeHoras(horas, 'liquidables')}.
         </p>
       )}
       <p style={{ fontSize: '11px', color: V.tenue, lineHeight: 1.6, margin: '12px 0 0' }}>
@@ -173,7 +184,7 @@ function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
   cerradas: ReadonlySet<string>
 }) {
   return (
-    <div className="overflow-x-auto" style={{ padding: '16px 20px 0' }}>
+    <div style={{ ...MARCO_SCROLL, padding: '16px 20px 0' }}>
       <div data-testid="pagos-tabla" style={{ minWidth: 1144, display: 'flex', flexDirection: 'column' }}>
         <div style={{
           display: 'grid', gridTemplateColumns: COLUMNAS, gap: 10, height: ALTO_LIQ.encabezadoAncho, alignItems: 'end',
@@ -181,7 +192,7 @@ function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
           fontSize: '9.5px', letterSpacing: '.04em', color: V.tenue, textTransform: 'uppercase',
         }}>
           {ROTULOS.map((c, i) => (
-            <div key={c} style={{ textAlign: i === 0 ? 'left' : 'right' }}>{c}</div>
+            <div key={c} style={i === 0 ? COLUMNA_FIJA : { textAlign: 'right' }}>{c}</div>
           ))}
         </div>
 
@@ -193,7 +204,7 @@ function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
             <RotuloDeGrupo texto={sec.rotulo} primero={iSec === 0} />
             {sec.lineas.map((l) => (
           <div key={l.personaId} style={fila(58)}>
-            <div style={{ color: V.tinta }}>
+            <div style={{ ...COLUMNA_FIJA, color: V.tinta, whiteSpace: 'normal' }} title={l.nombre}>
               {l.nombre}
               {l.reciboSinGiro && (
                 <span data-testid="pagos-recibo-sin-giro" style={{ display: 'block', fontSize: '10.5px', color: V.warn }}>
@@ -253,7 +264,7 @@ function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
         <div data-testid="pagos-total-fila" style={{
           ...fila(58), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
         }}>
-          <div>
+          <div style={{ ...COLUMNA_FIJA, whiteSpace: 'normal' }}>
             {totales.personas} persona{totales.personas === 1 ? '' : 's'}
             {totales.sinTarifa > 0 && ` · ${totales.sinTarifa} sin retribución`}
             {totales.sinReparto > 0 && ` · ${totales.sinReparto} sin acuerdo 50/50`}

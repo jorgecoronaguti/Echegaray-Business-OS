@@ -1,8 +1,9 @@
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
-import { totalesDeCuadro } from '../../../services/liquidacionQuincena'
+
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
+import { leyendaDeHoras } from '../../../services/horasDeLaQuincena'
 import {
   avisoDeReapertura, estadoDeCierre, filasDeQuincenaCerrada,
   type AvisoDeReapertura, type FilaDeQuincenaCerrada, type LineaParaCerrar, type SelloDeLinea,
@@ -45,7 +46,7 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
 }) {
   const quincena = quincenaDe(quincenaPedida && /^\d{4}-\d{2}-\d{2}$/.test(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const [{ cuadros, estados, diasSinMotivo }, faltante, sellado, { porPersona: vigenteHoy }] = await Promise.all([
+  const [{ cuadros, estados, diasSinMotivo, horas: horasQ }, faltante, sellado, { porPersona: vigenteHoy }] = await Promise.all([
     getLiquidacionDeLaQuincena(supabase, quincena),
     leerFaltante(supabase, quincena),
     leerSellado(supabase, quincena),
@@ -59,7 +60,13 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
   const estado = estadoDeCierre(lineas, { diasSinMotivo })
   const cerrada = Object.values(estados).some((e) => e.estado === 'cerrada')
   const cerradaEn = Object.values(estados).find((e) => e.cerradaEn)?.cerradaEn ?? null
-  const totalHoras = cuadros.map((c) => totalesDeCuadro(c.lineas)).reduce((a, t) => a + t.horas, 0)
+  // ═══ EL TOTAL DE HORAS SALE DE `horasDeLaQuincena`, NO DE UNA SUMA PROPIA ═══
+  //
+  // QA visual, 11/09/2026: esta pantalla decía 1.129 y «Horas» 1.289 bajo el mismo rótulo. Los dos
+  // correctos —la diferencia son los jefes de Oficina, que cobran un neto mensual— pero la única
+  // lectura posible era «uno está mal». Ahora las cuatro solapas leen el MISMO objeto y cada una
+  // publica la resta que explica su número.
+  const totalHoras = horasQ.liquidables
 
   // LAS FILAS DE LA PANTALLA 11 SON LAS SELLADAS, NO LAS RECALCULADAS. Lo que se pagó vive en
   // `liquidacion_linea`; recalcularlo al dibujar haría que cambiar una tarifa hoy reescribiera la
@@ -96,7 +103,7 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
         </span>
       </div>
 
-      <Resumen estado={estado} horas={totalHoras} faltante={faltante} />
+      <Resumen estado={estado} horas={totalHoras} leyenda={leyendaDeHoras(horasQ, 'liquidables')} faltante={faltante} />
 
       {cerrada
         ? <Cerrada filas={filasCerradas} esJefe={jefes} cerradaEn={cerradaEn} aviso={aviso} ventanas={ventanas} puedeCerrar={puedeCerrar} />
@@ -152,14 +159,16 @@ async function leerFaltante(
   return { monto, cuantas: Array.isArray(fila?.excluidas) ? fila.excluidas.length : 0 }
 }
 
-function Resumen({ estado, horas, faltante }: {
+function Resumen({ estado, horas, leyenda, faltante }: {
   estado: ReturnType<typeof estadoDeCierre>
   horas: number
+  /** Por qué este total no es el de «Horas». Vacía cuando no hay nada que restar. */
+  leyenda?: string
   faltante: FaltanteDeclarado | null
 }) {
   const filas: [string, string][] = [
     ['Personas que quedan liquidadas', `${estado.liquidadas} de ${estado.personas}`],
-    ['Horas de la quincena', horas.toLocaleString('es-AR')],
+    ['Horas de la quincena', horas.toLocaleString('es-AR') + (leyenda ? ` — ${leyenda}` : '')],
     ['Total a pagar sellado', pesos(estado.totalSellado)],
   ]
   return (

@@ -68,6 +68,59 @@ export const ALTO_LIQ = {
   filaTotalAlta: 56,
 } as const
 
+/**
+ * ═══ UNA TABLA QUE SE RECORRE EN HORIZONTAL, EN UN TELÉFONO (QA visual, 11/09/2026) ═══
+ *
+ * A 390-400 px, «Horas», «Pagos», «Convenios» y «Quincena» tienen scroll horizontal propio y NO lo
+ * dicen: la tabla se corta en el borde y no hay nada que sugiera que hay más. Y al arrastrar, el
+ * nombre de la persona se va con el resto, así que a los tres dedos de desplazamiento los números
+ * quedan sin dueño — que en una pantalla de sueldos es la peor forma de leer mal.
+ *
+ * Se resuelve con DOS cosas, y viven acá y no en cada solapa: cuatro tablas copiando el mismo truco
+ * derivan, y la quinta que alguien agregue no lo tendría.
+ */
+
+/**
+ * EL MARCO QUE PERMITE EL SCROLL Y AVISA QUE HAY MÁS.
+ *
+ * El degradado del borde es la única señal honesta: aparece porque el contenido excede y se va solo
+ * cuando entra. Una flechita fija mentiría en la pantalla ancha, donde no hay nada más a los lados.
+ *
+ * Es el truco de las sombras con `background-attachment`: las dos capas blancas van `local` —se
+ * mueven con el contenido— y las dos grises `scroll`, así que el navegador las tapa solo cuando la
+ * tabla llegó a su tope. Sin JS, sin listeners de scroll, y funciona con el dedo.
+ */
+export const MARCO_SCROLL: CSSProperties = {
+  overflowX: 'auto',
+  backgroundImage:
+    'linear-gradient(to right, #FFFFFF 30%, rgba(255,255,255,0)),'
+    + 'linear-gradient(to left, #FFFFFF 30%, rgba(255,255,255,0)),'
+    + 'linear-gradient(to right, rgba(48,48,47,.14), rgba(255,255,255,0)),'
+    + 'linear-gradient(to left, rgba(48,48,47,.14), rgba(255,255,255,0))',
+  backgroundPosition: 'left center, right center, left center, right center',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: '28px 100%, 28px 100%, 12px 100%, 12px 100%',
+  backgroundAttachment: 'local, local, scroll, scroll',
+}
+
+/**
+ * LA PRIMERA COLUMNA NO SE VA CON EL SCROLL.
+ *
+ * Es la del nombre. Un importe sin la persona al lado no se puede leer, y en una tabla de catorce
+ * columnas el nombre sale de pantalla al primer arrastre. El `background` opaco es obligatorio: sin
+ * él las celdas que pasan por debajo se ven a través.
+ */
+export const COLUMNA_FIJA: CSSProperties = {
+  position: 'sticky',
+  left: 0,
+  zIndex: 1,
+  background: '#FFFFFF',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
 /** El contenedor de un cuadro: radio 10, filo `line-2`, sin sombra y sin gradiente. `dc:525`. */
 export function Cuadro({ children, ancho, testid }: {
   children: ReactNode; ancho?: number | string; testid?: string
