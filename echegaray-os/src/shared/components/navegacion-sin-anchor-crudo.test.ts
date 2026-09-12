@@ -39,6 +39,23 @@ const PERMITIDOS: { archivo: string; porque: string }[] = [
   },
 ]
 
+/**
+ * UN COMENTARIO QUE NOMBRA EL DEFECTO NO ES EL DEFECTO (12/09/2026).
+ *
+ * Este barrido mira el fuente línea por línea, así que acusaba a cualquier comentario que escribiera
+ * la etiqueta — y pasó: al reemplazar el `<a href>` del botón «Volver a los trabajos» por `<Link>`,
+ * el comentario que explica POR QUÉ va con `<Link>` se convirtió en el nuevo culpable. Un control que
+ * no distingue la prosa del código enseña a no explicar, que es lo contrario de lo que pide el repo.
+ *
+ * Las líneas se VACÍAN en vez de borrarse para que el número de línea del informe siga siendo el del
+ * archivo: un culpable con la línea corrida es un culpable que no se encuentra.
+ */
+function sinComentarios(fuente: string): string {
+  return fuente
+    .replace(/\/\*[\s\S]*?\*\//g, (bloque) => bloque.replace(/[^\n]/g, ' '))
+    .replace(/(^|\s)\/\/.*$/gm, '$1')
+}
+
 function tsx(dir: string): string[] {
   const salida: string[] = []
   for (const nombre of readdirSync(dir)) {
@@ -49,13 +66,25 @@ function tsx(dir: string): string[] {
   return salida
 }
 
+test('el barrido mira código, no prosa — y sigue cazando el ancla de verdad', () => {
+  // LA MUTACIÓN, CORRIDA: si `sinComentarios` se pasara de listo y vaciara código, el control quedaría
+  // mudo y ningún test lo diría. Las tres líneas son las tres formas en que esto ya se equivocó.
+  const enBloque = '{/* va con <Link> y no con <a href={x}> porque tira el documento */}'
+  const enLinea = '// ojo: esto era <a href={x}> hasta ayer'
+  const deVerdad = '  <a href={url({ x: 1 })} data-testid="volver">‹ Volver</a>'
+  const acusa = (linea: string) => /<a\s+href/.test(sinComentarios(linea))
+  assert.equal(acusa(enBloque), false, 'un comentario que nombra la etiqueta no es un ancla')
+  assert.equal(acusa(enLinea), false, 'tampoco el de una línea')
+  assert.equal(acusa(deVerdad), true, 'SI ESTO ES FALSE EL CONTROL ES DECORATIVO: ya no caza nada')
+})
+
 test('ningún enlace interno se escribe como <a href>: eso recarga el documento entero', () => {
   const permitidos = new Set(PERMITIDOS.map((p) => join(RAIZ, p.archivo)))
   const culpables: string[] = []
 
   for (const archivo of tsx(join(RAIZ, 'app')).concat(tsx(join(RAIZ, 'features')), tsx(join(RAIZ, 'shared')))) {
     if (permitidos.has(archivo)) continue
-    const lineas = readFileSync(archivo, 'utf8').split('\n')
+    const lineas = sinComentarios(readFileSync(archivo, 'utf8')).split('\n')
     lineas.forEach((linea, i) => {
       if (!/<a\s+href/.test(linea)) return
       // Lo que sale de la app, se baja, abre otra pestaña o salta dentro de la misma página.

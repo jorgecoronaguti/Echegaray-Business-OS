@@ -27,6 +27,7 @@
 // FRONTERA: el cliente CONSOLIDA, no administra. El contratado y el avance salen de `obra_panel` —o
 // sea, de Compras y de Cotización—. Acá no se calcula ni se guarda un número propio.
 
+import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
@@ -743,9 +744,12 @@ export default async function ClientePage({ params, searchParams }: {
                 {actividadTodo && (
                   <div data-testid="actividad-completa">
                     <p style={{ fontSize: '12.5px', paddingBottom: 10 }}>
-                      <a href={url({ actividad: null })} data-testid="volver-de-actividad" style={{ color: V.apagado }}>
+                      {/* `<Link>` Y NO `<a href>`: un ancla cruda tira el documento y vuelve a pedir
+                          la ficha entera —nueve lecturas de servidor— para volver a la cara de al lado.
+                          Lo atrapa `navegacion-sin-anchor-crudo.test.ts`. */}
+                      <Link href={url({ actividad: null })} data-testid="volver-de-actividad" style={{ color: V.apagado }}>
                         ‹ Volver a los trabajos
-                      </a>
+                      </Link>
                     </p>
                     <BloqueActividad
                       linea={lector.leer(linea, { eventos: [], sinFecha: 0 })}

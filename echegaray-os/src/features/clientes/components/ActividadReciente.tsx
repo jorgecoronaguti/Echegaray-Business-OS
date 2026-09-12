@@ -58,7 +58,13 @@ export function ActividadReciente({ linea, puedeEscribir, crearNota, urlTodo }: 
                   style={{ fontSize: '12px', color: V.tintaSuave, minWidth: 0 }}
                   title={e.detalle ? `${e.titulo} — ${e.detalle}` : e.titulo}
                 >
-                  {e.href ? <Link href={e.href} className="hover:underline">{e.titulo}</Link> : e.titulo}
+                  {/* `prefetch={false}` PORQUE ESTA LISTA SE DIBUJA UNA VEZ POR HECHO: con el
+                      prefetch de Next, abrir la ficha dispara un render de servidor completo de
+                      CADA destino —y la ficha es `force-dynamic`, así que no se reusa al hacer
+                      clic—. Lo atrapa `prefetch-en-listas.test.ts`. */}
+                  {e.href
+                    ? <Link href={e.href} prefetch={false} className="hover:underline">{e.titulo}</Link>
+                    : e.titulo}
                 </span>
               </li>
             ))}

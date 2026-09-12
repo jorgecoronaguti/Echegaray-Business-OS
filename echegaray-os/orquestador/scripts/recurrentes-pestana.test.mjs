@@ -387,19 +387,46 @@ test('la fila de totales conserva su rótulo: es el ancla del rango', () => {
 // layout del bloque se movió. La pestaña ALINEA (140 de 152), así que el seguro de alineación no lo
 // ve, y `esCeldaDeEstructura` rescata sólo el `⇒`.
 
-test('los dos ⇒ de Recurrentes tienen TODOS sus insumos amparados por un bloque declarado', () => {
+/**
+ * LAS REFERENCIAS A OTRA PESTAÑA NO SON FILAS DE ESTA GRILLA.
+ *
+ * `_ARCA_RAW!$B$4:$B` no es «la fila 4 de Recurrentes»: es una réplica que vive en otro lado y que
+ * ningún bloque de esta pestaña puede amparar. Sin sacarlas, el control de abajo acusaría al tercer
+ * ⇒ de leer un insumo sin declarar cuando lo que lee está en otra hoja.
+ */
+const soloEstaPestana = (formula) => String(formula)
+  .replace(/(?:'[^']*'|[A-Za-z_][\w.]*)!\$?[A-Z]{1,2}\$?\d*(?::\$?[A-Z]{1,2}\$?\d*)?/g, ' ')
+
+test('los ⇒ de Recurrentes tienen TODOS sus insumos amparados por un bloque declarado', () => {
   assert.ok(g.indivisibles?.length, 'la grilla declara sus cuadros de control')
   const controles = g.filas
     .map((f, i) => ({ fila: i + 1, rotulo: String(f[0] ?? ''), formula: String(f[1] ?? '') }))
     .filter((x) => x.rotulo.startsWith('⇒') && x.formula.startsWith('='))
-  assert.equal(controles.length, 2, 'Recurrentes publica dos controles: la diferencia y la cobertura')
+  // ═══ SON TRES DESDE QUE SE AGREGÓ EL CRUCE CON ARCA, Y SE NOMBRAN ═══
+  //
+  // El número pelado («dos») no decía cuáles: pasó a tres y el test sólo podía informar `3 !== 2`. Lo
+  // que importa no es cuántos hay sino que CADA UNO sea un control de verdad —una fórmula, no un
+  // rótulo— y que sus insumos estén declarados. Se fija la lista: un ⇒ nuevo entra declarándose acá,
+  // y un ⇒ que desaparece se ve en el diff.
+  assert.deepEqual(controles.map((c) => c.rotulo), [
+    '⇒ Diferencia contra Compras',
+    '⇒ Cobertura fiscal de esta pestaña',
+    '⇒ Filas sin comprobante en ARCA',
+  ])
   for (const c of controles) {
-    const refs = [...c.formula.matchAll(/\$?[A-Z]{1,2}\$?(\d+)/g)].map((m) => Number(m[1]))
-    assert.ok(refs.length, `${c.rotulo} no referencia ninguna celda`)
+    const propias = soloEstaPestana(c.formula)
+    const refs = [...propias.matchAll(/\$?[A-Z]{1,2}\$?(\d+)/g)].map((m) => Number(m[1]))
+    // Un control que sólo lee otras pestañas no tiene insumo propio que amparar, y eso está bien: lo
+    // que no puede pasar es que lea una fila DE ACÁ que ningún bloque declare.
     for (const r of refs) {
       assert.ok(enBloqueIndivisible(r, g.indivisibles),
         `${c.rotulo} (fila ${c.fila}) lee la fila ${r} y ese insumo no está amparado por ningún bloque declarado`)
     }
+  }
+  // Y NINGUNO PUEDE QUEDARSE SIN INSUMOS: un ⇒ que no lee ni esta pestaña ni otra es una constante.
+  for (const c of controles) {
+    assert.match(c.formula, /[A-Z]{1,2}\$?\d+|COUNTIFS|SUMIFS/,
+      `${c.rotulo} no referencia ninguna celda: es una constante disfrazada de control`)
   }
 })
 

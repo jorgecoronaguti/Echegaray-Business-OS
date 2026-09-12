@@ -54,6 +54,17 @@ const NO_SON_GENERADORES = new Set([
   // `deleteDimension`, va por `spreadsheetBatchUpdate` y esta Regla 0 nunca lo cubrió. El script se
   // guarda solo: archiva primero, RELEE el archivo y compara conteo y suma, y recién ahí borra.
   'compras-retirar-canceladas.mjs',
+  // ═══ ESCRIBE EN LA COPIA QUE ACABA DE CREAR, NUNCA EN EL ARCHIVO REAL (12/09/2026) ═══
+  //
+  // `sheet-copia-prueba.mjs` hace `files.copy` del Flujo de Caja y siembra en ESA copia los valores de
+  // las réplicas `_…` que llegan por IMPORT* —que en una copia piden autorización y quedan en #REF!—
+  // para que calcule igual que el original. La pestaña que escribe nació hace un segundo y no tiene
+  // una sola celda de una persona adentro: no hay edición que respetar, y `conEdicionesRespetadas`
+  // sobre un archivo que se va a tirar es ceremonia.
+  //
+  // LA EXCEPCIÓN NO ES UNA PROMESA: el test de abajo la comprueba. Si alguna de sus escrituras de
+  // valores apuntara al archivo real, se pone rojo igual.
+  'sheet-copia-prueba.mjs',
 ])
 
 /**
@@ -72,6 +83,23 @@ test('la exención del retiro de Compras se verifica: sólo escribe valores en s
   assert.deepEqual(fuera, [],
     'este script está exento de la Regla 0 porque sólo escribe en `_COMPRAS_RETIRADAS`. '
     + `Estas escrituras van a otra parte: ${fuera.join(' | ')}`)
+})
+
+/**
+ * LA EXCEPCIÓN DE `sheet-copia-prueba.mjs`, VERIFICADA.
+ *
+ * Lo que la sostiene es que el primer argumento de TODA escritura de valores sea la copia recién
+ * creada y nunca el id del archivo real. El día que alguien le haga sembrar el original —que es el
+ * accidente que este repo ya pagó: «worktree Sheet borra la pestaña»— la exención cae.
+ */
+test('la exención de la copia de prueba se verifica: sólo escribe valores en la copia', () => {
+  const src = readFileSync(join(SCRIPTS, 'sheet-copia-prueba.mjs'), 'utf8')
+  const llamadas = [...src.matchAll(/\b(updateSheetValues|appendSheetValues|batchUpdateValues)\s*\(\s*([A-Za-z_$][\w$]*)/g)]
+  assert.ok(llamadas.length > 0, 'el script dejó de escribir valores: sacalo de NO_SON_GENERADORES')
+  const fuera = llamadas.map((m) => m[2]).filter((destino) => destino !== 'copia')
+  assert.deepEqual(fuera, [],
+    'este script está exento de la Regla 0 porque sólo escribe en la copia que acaba de crear. '
+    + `Estas escrituras apuntan a otro archivo: ${fuera.join(' | ')}`)
 })
 
 test('todo generador que escribe una pestaña decide explícitamente qué hace con las ediciones del dueño', () => {

@@ -21,7 +21,6 @@ const CONVERTIDAS = [
   // puede hacer contra Google). El canario apunta a donde vive el RÓTULO, que es lo que puede regresar;
   // el script sigue vigilado abajo por el test que prohíbe estampar la fecha de la corrida.
   'orquestador/lib/caja-grilla.mjs',
-  'orquestador/scripts/jornales-pestana.mjs',
   'orquestador/scripts/impuestos-pestana.mjs',
   'orquestador/scripts/cargas-sociales-pestana.mjs',
 ]
@@ -68,7 +67,35 @@ const sinComentarios = (src) => src
   .join('\n')
 
 /** Los que ESCRIBEN una pestaña convertida sin construir su rótulo: no pueden estampar la fecha igual. */
-const SOLO_ESCRITURA = ['orquestador/scripts/caja-pestana.mjs', 'orquestador/scripts/caja-anexo-pestana.mjs']
+const SOLO_ESCRITURA = [
+  'orquestador/scripts/caja-pestana.mjs', 'orquestador/scripts/caja-anexo-pestana.mjs',
+  // ═══ «JORNALES» BAJÓ ACÁ EL 12/09/2026: SU SUBTÍTULO YA NO TIENE FECHA (rediseño del 09/09) ═══
+  //
+  // Estaba en CONVERTIDAS, que exige construir el rótulo con la frescura del dato. El rediseño del
+  // 09/09 —«los diseños de todas las pestañas son distintos, tenés que mejorar y unificar», y después
+  // «sin subtítulo, sin explicación»— dejó la fila 2 en «Fuente: planilla JORNALES y escala UOCRA»: se
+  // fue el tramo «· al 08/09» porque era una fecha que envejecía en la celda. No hay rótulo vivo que
+  // exigir donde no hay fecha, y exigirlo obligaría a devolver el texto que el dueño mandó sacar — el
+  // mismo error que este archivo ya se hizo a sí mismo con «Cheques Emitidos» (nota del 06/08).
+  //
+  // LO QUE NO SE AFLOJA: sigue en el test que prohíbe estampar la fecha de la corrida, y la cobertura
+  // de la carga se declara igual, por `registrarSincronizacion` y por el log — que es lo que el
+  // rediseño puso en su lugar. El test de abajo lo exige.
+  'orquestador/scripts/jornales-pestana.mjs',
+]
+
+/**
+ * LA FRESCURA QUE SALE DEL SUBTÍTULO TIENE QUE SALIR POR OTRO LADO, O SE PERDIÓ.
+ *
+ * Sacar la fecha de la celda es una decisión de diseño; dejar de saber hasta qué día llega la carga es
+ * perder el control. `jornales-pestana.mjs` la declara en la corrida: si alguien saca eso también, la
+ * pestaña queda sin una sola forma de decir de cuándo es su dato.
+ */
+test('el que sacó la fecha del subtítulo la sigue declarando en la corrida', async () => {
+  const src = await leer('orquestador/scripts/jornales-pestana.mjs')
+  assert.match(src, /registrarSincronizacion\(/, 'JORNALES dejó de registrar hasta dónde llega su carga')
+  assert.match(src, /frescura JORNALES/, 'la corrida dejó de decir la cobertura de la planilla')
+})
 
 test('las pestañas convertidas NO estampan la fecha de la corrida en un rótulo "al …"', async () => {
   for (const f of [...CONVERTIDAS, ...SOLO_ESCRITURA]) {
@@ -106,11 +133,20 @@ test('las de fuentes mixtas declaran CADA fuente: un MAX le presta frescura a la
   }
 })
 
-test('ninguna pestaña nueva se cuela sin rótulo vivo: las tres que faltaban están cerradas', () => {
-  // Las cinco de esta tanda. Si alguien saca una de la lista para "simplificar", el canario se cae:
-  // una pestaña que deja de estar en el inventario deja de estar controlada.
+test('ninguna pestaña nueva se cuela sin control: las tres de la tanda siguen en el inventario', () => {
+  // Si alguien saca una de la lista para "simplificar", el canario se cae: una pestaña que deja de
+  // estar en el inventario deja de estar controlada. Lo que se exige es que esté VIGILADA, en una de
+  // las dos listas — no en una en particular:
+  //
+  //   · CONVERTIDAS      construye su rótulo con la frescura del dato, y se le exige el rótulo vivo;
+  //   · SOLO_ESCRITURA   no tiene fecha en el subtítulo, y se le exige no estampar la de la corrida.
+  //
+  // `jornales-pestana.mjs` pasó de la primera a la segunda el 12/09/2026 cuando el rediseño le sacó
+  // el tramo «· al 08/09» del subtítulo. El inventario no se afloja: cambia de lista, y el archivo
+  // sigue en los dos tests que lo miran (el de la fecha de la corrida y el de declararla en la corrida).
+  const vigiladas = [...CONVERTIDAS, ...SOLO_ESCRITURA]
   for (const f of ['impuestos-pestana.mjs', 'cargas-sociales-pestana.mjs', 'jornales-pestana.mjs']) {
-    assert.ok(CONVERTIDAS.some((c) => c.endsWith(f)), `${f} salió del inventario de convertidas`)
+    assert.ok(vigiladas.some((c) => c.endsWith(f)), `${f} salió del inventario de pestañas vigiladas`)
   }
 })
 
