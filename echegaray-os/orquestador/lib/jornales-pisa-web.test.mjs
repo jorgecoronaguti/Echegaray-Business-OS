@@ -71,14 +71,29 @@ test('LA CARGA DEL JEFE DESDE LA OBRA TAMBIÉN SE PISA', () => {
   assert.match(pisar[0].rastro, /pisó web:asistencia-obra 9h/)
 })
 
-test('UNA AUSENCIA DE LA PLANILLA PISA UNA PRESENCIA DE LA WEB, Y CAMBIA EL TIPO', () => {
-  // EL DEFECTO QUE ATRAPA: pisar sólo las horas y dejar `tipo_hora = 'normal'`. El día contaría como
-  // trabajado con 0 h — ni ausencia para el cierre, ni jornal para la obra.
-  const { pisar } = pisarLoDeLaWeb(
+test('UNA AUSENCIA DE LA PLANILLA NO PISA UNA PRESENCIA DE LA WEB: se declara (dueño, 12/09/2026)', () => {
+  // ANTES este test afirmaba lo contrario, y con esa regla Quiroga Alexander perdió el martes que
+  // había trabajado: la planilla arrastraba «z. ENFERMEDAD» y la web decía presente en Messina.
+  // «No trabajó» contra «trabajó en X» es un conflicto, no una corrección.
+  const { pisar, intocables } = pisarLoDeLaWeb(
     [dePlanilla({ horas: 0, tipo_hora: 'ausencia', obra_canonica_id: null })],
     [enLaBase({ horas: 8.8, tipo_hora: 'normal' })],
     { hoy: HOY },
   )
+  assert.equal(pisar.length, 0)
+  assert.equal(intocables.length, 1)
+  assert.match(intocables[0].porque, /la planilla dice ausencia y la web dice que trabajó 8.8h en obra-b/)
+})
+
+test('UNA AUSENCIA DE LA PLANILLA SÍ PISA UNA AUSENCIA DE LA WEB, Y EL TIPO QUEDA', () => {
+  // EL DEFECTO QUE ATRAPA: pisar sólo las horas y dejar `tipo_hora = 'normal'`. El día contaría como
+  // trabajado con 0 h — ni ausencia para el cierre, ni jornal para la obra.
+  const { pisar } = pisarLoDeLaWeb(
+    [dePlanilla({ horas: 0, tipo_hora: 'ausencia', obra_canonica_id: null })],
+    [enLaBase({ horas: 0, tipo_hora: 'ausencia', fuente_legacy: 'web:ausencia-de-la-persona' })],
+    { hoy: HOY },
+  )
+  assert.equal(pisar.length, 1)
   assert.equal(pisar[0].fila.tipo_hora, 'ausencia')
   assert.equal(pisar[0].fila.horas, 0)
   assert.equal(pisar[0].fila.obra_canonica_id, null, 'una ausencia no la paga ninguna obra')
@@ -165,4 +180,42 @@ test('EL RASTRO DICE QUÉ PISÓ Y CUÁNDO', () => {
     rastroDePisada({ fuente_legacy: 'web:presencia-defecto', horas: null }, '2026-09-11'),
     'pisó web:presencia-defecto 0h el 2026-09-11',
   )
+})
+
+// ═══ EL DÍA QUE EL DUEÑO PERDIÓ (12/09/2026): «z. ENFERMEDAD» arrastrada sobre días trabajados ═══
+test('UNA LICENCIA DE LA PLANILLA NO PISA UN DÍA QUE LA WEB DICE TRABAJADO: se declara y se conserva', () => {
+  const { pisar, intocables } = pisarLoDeLaWeb(
+    [dePlanilla({ tipo_hora: 'licencia', horas: 13, obra_canonica_id: 'san-francisco', notas: 'enfermedad' })],
+    [enLaBase({ fuente_legacy: 'web:asistencia-obra', horas: 9, obra_canonica_id: 'messina-playon-dilucion-acido' })],
+    { hoy: HOY },
+  )
+  assert.equal(pisar.length, 0, 'no se pisa')
+  assert.equal(intocables.length, 1)
+  assert.match(intocables[0].porque, /la planilla dice licencia y la web dice que trabajó 9h en messina-playon-dilucion-acido/)
+})
+
+test('UNA AUSENCIA DE LA PLANILLA TAMPOCO PISA LO TRABAJADO; pero SÍ pisa una ausencia de la web', () => {
+  const trabajado = pisarLoDeLaWeb(
+    [dePlanilla({ tipo_hora: 'ausencia', horas: 0 })],
+    [enLaBase({ fuente_legacy: 'web:presencia-defecto', horas: 9 })],
+    { hoy: HOY },
+  )
+  assert.equal(trabajado.pisar.length, 0)
+  assert.equal(trabajado.intocables.length, 1)
+  const ausente = pisarLoDeLaWeb(
+    [dePlanilla({ tipo_hora: 'ausencia', horas: 0 })],
+    [enLaBase({ fuente_legacy: 'web:ausencia-de-la-persona', horas: 0, tipo_hora: 'ausencia' })],
+    { hoy: HOY },
+  )
+  assert.equal(ausente.pisar.length, 1, 'ausencia contra ausencia: la planilla manda y actualiza en su lugar')
+})
+
+test('LA PLANILLA CON HORAS SIGUE MANDANDO sobre una ausencia de la web', () => {
+  const { pisar, intocables } = pisarLoDeLaWeb(
+    [dePlanilla({ horas: 9 })],
+    [enLaBase({ fuente_legacy: 'web:ausencia-de-la-persona', horas: 0, tipo_hora: 'ausencia' })],
+    { hoy: HOY },
+  )
+  assert.equal(intocables.length, 0)
+  assert.equal(pisar.length, 1)
 })
