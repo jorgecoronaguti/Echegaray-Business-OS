@@ -90,16 +90,32 @@ export const ALTO_LIQ = {
  * mueven con el contenido— y las dos grises `scroll`, así que el navegador las tapa solo cuando la
  * tabla llegó a su tope. Sin JS, sin listeners de scroll, y funciona con el dedo.
  */
+/**
+ * EL CANAL QUE LA TABLA DEJA A CADA LADO. Es el `padding` horizontal con el que las tres solapas
+ * llaman a `MARCO_SCROLL`, y `COLUMNA_FIJA` necesita SABERLO para taparlo (ver abajo). Estaba
+ * escrito tres veces como `padding: '0 20px'` y por eso el defecto se podía arreglar en una sola y
+ * seguir vivo en las otras dos.
+ */
+export const CANAL_SCROLL = 20
+
+/** El grafito de la marca, translúcido. Sale del token, no de un hex copiado. `patron.tsx`. */
+const filoGrafito = (alfa: number): string => `color-mix(in srgb, ${V.grafito} ${alfa}%, transparent)`
+
 export const MARCO_SCROLL: CSSProperties = {
   overflowX: 'auto',
   backgroundImage:
-    'linear-gradient(to right, #FFFFFF 30%, rgba(255,255,255,0)),'
-    + 'linear-gradient(to left, #FFFFFF 30%, rgba(255,255,255,0)),'
-    + 'linear-gradient(to right, rgba(48,48,47,.14), rgba(255,255,255,0)),'
-    + 'linear-gradient(to left, rgba(48,48,47,.14), rgba(255,255,255,0))',
+    `linear-gradient(to right, #FFFFFF 30%, rgba(255,255,255,0)),`
+    + `linear-gradient(to left, #FFFFFF 30%, rgba(255,255,255,0)),`
+    + `linear-gradient(to right, ${filoGrafito(28)}, rgba(255,255,255,0)),`
+    + `linear-gradient(to left, ${filoGrafito(28)}, rgba(255,255,255,0))`,
   backgroundPosition: 'left center, right center, left center, right center',
   backgroundRepeat: 'no-repeat',
-  backgroundSize: '28px 100%, 28px 100%, 12px 100%, 12px 100%',
+  // 16 px Y 28% DE GRAFITO, NO 12 px Y 14%. Medido en la captura de QA del 11/09 a 390 px: el filo
+  // anterior era indistinguible del borde del cuadro —nadie iba a deducir de él que había ocho
+  // columnas más a la derecha— y una señal que no se ve es una señal que no existe. 16 es el paso
+  // del grid de 8; 28% mantiene el gris del logo sin convertirlo en una sombra (regla «casi ninguna
+  // sombra»: esto no es relieve, es el borde del contenido que sigue).
+  backgroundSize: '28px 100%, 28px 100%, 16px 100%, 16px 100%',
   backgroundAttachment: 'local, local, scroll, scroll',
 }
 
@@ -112,14 +128,41 @@ export const MARCO_SCROLL: CSSProperties = {
  */
 export const COLUMNA_FIJA: CSSProperties = {
   position: 'sticky',
-  left: 0,
+  // ═══ `left: 0` DEJABA PASAR UNA COLUMNA DE DÍA POR DELANTE DEL NOMBRE (medido, 12/09/2026) ═══
+  //
+  // No era el apilado: con `zIndex: 1` la celda del nombre ya gana sobre sus hermanas. Era DÓNDE
+  // frena. El marco recorta su contenido en el borde del PADDING —la franja de 20 px sigue pintando
+  // lo que se desplaza— pero la celda pegajosa frena en el borde del CONTENIDO, 20 px más adentro.
+  // Quedaba un canal de 20 px donde se veía la columna del día y no el nombre. Medido con
+  // `elementFromPoint` a 390 px con `scrollLeft = 300`: a 2, 6, 12 y 18 px del borde el elemento de
+  // arriba era el `<button>` de un día; recién a 24 px aparecía el nombre. En Pagos pasaba lo mismo
+  // —asomaba un «—» en vez de un número, por eso no se había visto—: las tres grillas, un defecto.
+  //
+  // `left: -20` frena la celda 20 px antes, justo en el borde del recorte. El margen negativo y el
+  // padding del mismo tamaño hacen que su FONDO llegue hasta ahí sin mover una sola letra: el texto
+  // sigue empezando donde lo pone la grilla, y el canal queda tapado en blanco.
+  left: -CANAL_SCROLL,
+  marginLeft: -CANAL_SCROLL,
+  paddingLeft: CANAL_SCROLL,
   zIndex: 1,
+  // OPACO, SIEMPRE. Lo que pasa por debajo se ve a través de cualquier fondo con alfa — y una fila
+  // que se pinta distinta (la abierta) no puede resolverlo con `undefined`: tiene que decir SU
+  // color. `fondoDeColumnaFija()` es la única forma de pedirlo.
   background: '#FFFFFF',
   minWidth: 0,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
 }
+
+/**
+ * EL FONDO DE LA CELDA FIJA CUANDO LA FILA NO ES BLANCA.
+ *
+ * Existe para que no se pueda escribir `background: undefined`: eso deja la celda TRANSPARENTE y las
+ * columnas de día se leen a través del nombre —el mismo defecto de arriba, por la otra puerta—.
+ * Recibe el color de la fila y devuelve uno opaco, nunca nada.
+ */
+export const fondoDeColumnaFija = (colorDeLaFila?: string): string => colorDeLaFila ?? '#FFFFFF'
 
 /** El contenedor de un cuadro: radio 10, filo `line-2`, sin sombra y sin gradiente. `dc:525`. */
 export function Cuadro({ children, ancho, testid }: {

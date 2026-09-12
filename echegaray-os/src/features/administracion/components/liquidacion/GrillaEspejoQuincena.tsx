@@ -32,7 +32,7 @@ import { V } from '@/shared/components/v2/patron'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
 import { CeldaEditable, CeldaRedondeo, MarcaDeOrigen } from './CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from './formato'
-import { ALTO_LIQ, COLUMNA_FIJA, MARCO_SCROLL, MONO } from './solapas/tabla'
+import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO } from './solapas/tabla'
 import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
 import type { CeldaDelEspejo, FilaDelEspejo, TotalesDelEspejo } from '../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../services/horasDeLaCeldaActions'
@@ -101,7 +101,7 @@ export function GrillaEspejoQuincena({
     }}>
       {sello}
       {/* MARCO_SCROLL avisa que hay más a los lados; la primera columna se queda. Ver `tabla.tsx`. */}
-      <div style={{ ...MARCO_SCROLL, padding: '14px 20px 0' }}>
+      <div style={{ ...MARCO_SCROLL, padding: `14px ${CANAL_SCROLL}px 0` }}>
         <div data-testid="espejo-tabla" style={{ minWidth: ancho, display: 'flex', flexDirection: 'column' }}>
           <div data-testid="espejo-encabezado" style={{
             display: 'grid', gridTemplateColumns: columnas, gap: 6,

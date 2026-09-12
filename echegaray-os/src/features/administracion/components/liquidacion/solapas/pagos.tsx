@@ -13,7 +13,7 @@ import { CeldaEditable, CeldaRedondeo, MarcaDeOrigen } from '../CeldasDeLiquidac
 import { seccionesDePersonal, type SeccionDePersonal } from '../../../services/ordenDePersonal'
 import { RotuloDeGrupo } from '../../RotuloDeGrupo'
 import { SolapaCajaNomina } from './caja-nomina'
-import { ALTO_LIQ, COLUMNA_FIJA, MARCO_SCROLL } from './tabla'
+import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL } from './tabla'
 
 // 4 · PAGOS · LA CADENA DE LA QUINCENA.
 //
@@ -184,7 +184,7 @@ function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
   cerradas: ReadonlySet<string>
 }) {
   return (
-    <div style={{ ...MARCO_SCROLL, padding: '16px 20px 0' }}>
+    <div style={{ ...MARCO_SCROLL, padding: `16px ${CANAL_SCROLL}px 0` }}>
       <div data-testid="pagos-tabla" style={{ minWidth: 1144, display: 'flex', flexDirection: 'column' }}>
         <div style={{
           display: 'grid', gridTemplateColumns: COLUMNAS, gap: 10, height: ALTO_LIQ.encabezadoAncho, alignItems: 'end',

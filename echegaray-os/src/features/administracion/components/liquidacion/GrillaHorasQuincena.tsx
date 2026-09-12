@@ -49,7 +49,7 @@ import type {
 } from '../../services/grillaHorasQuincena'
 import type { ProyeccionDeFila, ProyeccionDeQuincena } from '../../services/proyeccionDeMasa'
 import { repartoDelAcuerdo } from '../../services/liquidacionAcuerdo'
-import { ALTO_LIQ, COLUMNA_FIJA, MARCO_SCROLL } from './solapas/tabla'
+import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, fondoDeColumnaFija } from './solapas/tabla'
 import { agruparPorRolOrganizacional } from '../../services/vocabularioPersona'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
 import { InlineEdit } from '@/shared/components/ds'
@@ -198,6 +198,10 @@ function ImporteEstimado({ p }: { p?: ProyeccionDeFila }) {
   return <div style={{ textAlign: 'right' }} title={`Estimado · ${detalle}`}>{pesos(p.importeProyectado)}</div>
 }
 
+/** El fondo de la fila abierta. Lo comparten la fila y su celda fija: si sólo lo tuviera una, la
+ *  otra se vería transparente al desplazar. `dc:176`. */
+const FONDO_ABIERTA = '#FAFAF8'
+
 function Fila({ fila, proyeccion, abrir, abierta, edicionDe }: {
   fila: FilaDeGrilla
   proyeccion?: ProyeccionDeFila
@@ -213,7 +217,7 @@ function Fila({ fila, proyeccion, abrir, abierta, edicionDe }: {
       style={{
         ...filaGrid(58),
         cursor: abrir ? 'pointer' : undefined,
-        background: abierta ? '#FAFAF8' : undefined,
+        background: abierta ? FONDO_ABIERTA : undefined,
         // LA BARRA AMARILLA DE 3 px MARCA LA FILA ABIERTA. Es la única marca de marca del cuadro.
         // El mockup (línea 176) la mete DENTRO del cuadro: 12 px de padding compensados con 12 px
         // de margen negativo, para que la barra quede pegada al filo y el nombre no se corra.
@@ -226,7 +230,11 @@ function Fila({ fila, proyeccion, abrir, abierta, edicionDe }: {
       data-testid={`fila-${fila.personaId}`}
       onClick={abrir ? () => abrir(fila.personaId) : undefined}
     >
-      <div style={{ ...COLUMNA_FIJA, background: abierta ? undefined : '#FFFFFF' }} title={fila.nombre}>{fila.nombre}</div>
+      {/* EL FONDO DE LA FILA ABIERTA, NO `undefined`: sin color la celda es TRANSPARENTE y las
+          columnas de día se leen A TRAVÉS del nombre al desplazar — el mismo defecto que arregla
+          `left: -CANAL_SCROLL`, entrando por la otra puerta. */}
+      <div style={{ ...COLUMNA_FIJA, background: fondoDeColumnaFija(abierta ? FONDO_ABIERTA : undefined) }}
+        title={fila.nombre}>{fila.nombre}</div>
       {fila.celdas.map((c) => (
         <Celda key={c.fecha} celda={c} edicion={edicionDe?.(fila.personaId, c.fecha) ?? null} />
       ))}
@@ -429,7 +437,7 @@ export function GrillaHorasQuincena({
             nombre no entran en 390 y encogerlas dejaría celdas ilegibles. */}
         {/* MARCO_SCROLL avisa que hay más a los lados y la columna del nombre se queda fija: a 400 px
             el nombre salía de pantalla al primer arrastre y los números quedaban sin dueño. */}
-        <div style={{ ...MARCO_SCROLL, padding: '0 20px' }}>
+        <div style={{ ...MARCO_SCROLL, padding: `0 ${CANAL_SCROLL}px` }}>
         <div style={{ minWidth: 856, display: 'flex', flexDirection: 'column' }}>
           <div data-testid="encabezado-columnas" style={{
             display: 'grid', gridTemplateColumns: COLUMNAS, gap: 6, height: ALTO_LIQ.encabezadoAncho, alignItems: 'end',
