@@ -107,6 +107,12 @@ test('obra_panel: agrega una sola vez y publica lo mismo', { skip: !hayBase }, a
     (await q(`explain (analyze, buffers) ${sql}`)).map((r) => r['QUERY PLAN']).join('\n')
   try {
     await c.query('begin')
+    // EL TURNO DEL DDL EN LA BASE COMPARTIDA: este test aplica su migración dentro de la transacción,
+    // así que toma ACCESS EXCLUSIVE sobre `obra_panel`. Sin pedir turno traba a los otros treinta y
+    // tantos `.pg.test.mjs` que sí lo piden — así murieron `rls-obra-no-por-fila` y
+    // `vinculacion-estandar` en la corrida del 12/09. La regla la fija `ddl-de-un-test-pide-turno`,
+    // que fue justamente quien encontró este archivo al integrarlo.
+    await c.query('select pg_advisory_xact_lock(20260822)')
 
     // COMO DIRECCIÓN, igual que la pantalla: `obra_panel` no es `security_invoker` pero sus hijas
     // filtran por `es_administracion()` / `ve_obra()`, así que leerla como `postgres` mediría otra
