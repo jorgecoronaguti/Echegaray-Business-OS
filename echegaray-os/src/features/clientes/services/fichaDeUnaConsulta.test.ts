@@ -43,7 +43,15 @@ test('la página resuelve la solapa ANTES de leer, y se la pasa', () => {
   assert.ok(iSolapa > 0, 'la página no resuelve la solapa')
   assert.ok(iLectura > 0, 'la página no lee la ficha')
   assert.ok(iSolapa < iLectura, 'la solapa se resuelve DESPUÉS de leer: la RPC no puede recortar')
-  assert.match(pagina, /leerFichaDeUnaConsulta\(supabase,\s*slug,\s*solapa\)/)
+  // ═══ LA CARA QUE SE LE PIDE A LA RPC NO SIEMPRE ES LA QUE SE DIBUJA (12/09/2026) ═══
+  //
+  // Desde que «Actividad» dejó de ser una solapa, la línea de tiempo COMPLETA se abre dentro de
+  // Trabajos con `?actividad=todo` — y necesita `documentos` + `drive`, que son 49 KB de los 90 que
+  // pesa Messina y que la cara Trabajos no arrastra. Se le pide a la RPC la cara `actividad` sólo
+  // cuando alguien la abre; el resto del tiempo, la que se dibuja.
+  assert.match(pagina, /const caraDeLaRPC = q\.actividad === 'todo' \? 'actividad' : solapa/,
+    'la cara que se le pide a la RPC dejó de decidirse en un lugar')
+  assert.match(pagina, /leerFichaDeUnaConsulta\(supabase,\s*slug,\s*caraDeLaRPC\)/)
 })
 
 test('la barra de solapas cuenta con n_documentos y no con el largo de la lista recortada', () => {

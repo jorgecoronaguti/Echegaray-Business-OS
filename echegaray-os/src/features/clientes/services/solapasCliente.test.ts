@@ -3,54 +3,87 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { A_SANGRE, solapaDe, solapasDeCliente } from './solapasCliente.ts'
+import {
+  A_SANGRE, CARAS_RETIRADAS, destinoDe, esCaraRetirada, solapaDe, solapasDeCliente,
+} from './solapasCliente.ts'
 
 const CUENTAS = { obras: 3, presupuestos: 2, documentos: 18 }
 
-// EL RÓTULO DE LA PRIMERA CARA CAMBIÓ A «TRABAJOS» (10/09/2026) y su CLAVE no: los enlaces con
-// `?vista=obras` que ya circulan tienen que seguir abriendo la misma cara.
+// ═══ NUEVE CARAS ERAN DEMASIADAS (dueño, 12/09/2026 13:10) ═══
+//
+// «El CRM admin en cada cliente tiene secciones inútiles y repetitivas con datos que pueden
+// unificarse en menos secciones.» Cuatro se fueron y NINGUNA capacidad se perdió: cuenta corriente y
+// esquema de pago son bloques de Cobranzas, la actividad vive en el costado y el portal se abre desde
+// el costado con `?portal=1`.
 
-// «ÓRDENES DE COMPRA Y DE PAGO» ES LA SEGUNDA CARA (dueño, 11/09/2026): las OC y las OP del cliente,
-// en su sección, después de sacarlas de las columnas de la cartera. El rótulo NOMBRA LAS DOS a pedido
-// del dueño (18:42): es el lugar a donde se mandaron las dos columnas que se quitaron de la tabla de
-// trabajos, y «Órdenes» solo no distinguía lo que el cliente encarga de lo que ordena pagar.
-
-test('las nueve caras, con los rótulos del mockup y las órdenes al lado de «Trabajos»', () => {
+test('las cinco caras, con los rótulos del mockup y las órdenes al lado de «Trabajos»', () => {
   const s = solapasDeCliente({ veEconomia: true, ...CUENTAS })
   assert.deepEqual(s.map((x) => x.label), [
-    'Trabajos', 'Órdenes de compra y de pago', 'Cobranzas', 'Presupuestos', 'Documentos', 'Actividad',
-    'Cuenta corriente', 'Esquema de pago', 'Acceso al portal',
+    'Trabajos', 'Órdenes de compra y de pago', 'Cobranzas', 'Presupuestos', 'Documentos',
   ])
-  // Sólo cuentan las tres que el canónico 26 numera. Un «0» al lado de «Cuenta corriente» se
-  // leería como saldo cero, que es una afirmación económica; y la actividad se recorta, así que
-  // contarla diría que el cliente tuvo tres movimientos cuando tuvo cuarenta.
-  assert.deepEqual(s.map((x) => x.cuenta), [3, null, null, 2, 18, null, null, null, null])
+  // Sólo cuentan las que el canónico 26 numera. Un «0» al lado de una cara económica se leería como
+  // una afirmación de plata.
+  assert.deepEqual(s.map((x) => x.cuenta), [3, null, null, 2, 18])
 })
 
-test('sin permiso económico no se ofrecen las cuatro caras económicas', () => {
-  // «Acceso al portal» es la más grave de las cuatro: desde ahí se habilita a alguien de AFUERA a
-  // ver montos y a aprobar certificados.
+test('sin permiso económico quedan las dos que no hablan de plata', () => {
   const s = solapasDeCliente({ veEconomia: false, ...CUENTAS })
-  assert.deepEqual(s.map((x) => x.clave), ['obras', 'documentos', 'actividad'])
+  assert.deepEqual(s.map((x) => x.clave), ['obras', 'documentos'])
 })
 
 test('un enlace viejo con ?solapa= sigue abriendo su cara', () => {
-  assert.equal(solapaDe('esquema', undefined), 'esquema')
-  assert.equal(solapaDe(undefined, 'cuenta'), 'cuenta')
+  assert.equal(solapaDe('cobranzas', undefined), 'cobranzas')
+  assert.equal(solapaDe(undefined, 'documentos'), 'documentos')
   // El nombre nuevo gana cuando llegan los dos.
-  assert.equal(solapaDe('accesos', 'cuenta'), 'accesos')
-  // Lo que no existe abre Obras en vez de dejar la ficha en blanco. Incluye `?vista=resumen`, que
+  assert.equal(solapaDe('ordenes', 'documentos'), 'ordenes')
+  // Lo que no existe abre Trabajos en vez de dejar la ficha en blanco. Incluye `?vista=resumen`, que
   // fue una cara real hasta el v2 y sigue circulando en enlaces compartidos.
   assert.equal(solapaDe('inventada', undefined), 'obras')
   assert.equal(solapaDe('resumen', undefined), 'obras')
   assert.equal(solapaDe(undefined, undefined), 'obras')
 })
 
-test('las tres caras nuevas van a sangre y las viejas no', () => {
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LOS ENLACES DE LAS CARAS RETIRADAS
+//
+// QUÉ DEFECTO ATRAPA: que `?vista=esquema` —compartido por mail y en favoritos— caiga en la ficha
+// genérica. No rompe la pantalla: abre Trabajos, que se parece bastante a «algo», y por eso nadie
+// reporta nada mientras el enlace deja de llevar a donde decía.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('cada cara retirada tiene un destino EXACTO, no la ficha genérica', () => {
+  assert.deepEqual(destinoDe('cuenta'), { solapa: 'cobranzas', ancla: 'cuenta-corriente', parametro: null })
+  assert.deepEqual(destinoDe('esquema'), { solapa: 'cobranzas', ancla: 'esquema-de-pago', parametro: null })
+  assert.deepEqual(destinoDe('actividad'),
+    { solapa: 'obras', ancla: null, parametro: { clave: 'actividad', valor: 'todo' } })
+  assert.deepEqual(destinoDe('accesos'),
+    { solapa: 'obras', ancla: null, parametro: { clave: 'portal', valor: '1' } })
+  // Y por el nombre viejo del parámetro, que es como están escritos los enlaces más viejos.
+  assert.equal(destinoDe(undefined, 'cuenta').ancla, 'cuenta-corriente')
+})
+
+test('las cuatro retiradas se redirigen, y una cara viva NO', () => {
+  // Redirigir de verdad es lo que saca la dirección vieja de la barra. Sin eso el enlace sigue
+  // circulando y volviendo a caer.
+  for (const vieja of CARAS_RETIRADAS) assert.equal(esCaraRetirada(vieja), true, vieja)
+  for (const viva of ['obras', 'ordenes', 'cobranzas', 'presupuestos', 'documentos', 'inventada']) {
+    assert.equal(esCaraRetirada(viva), false, viva)
+  }
+  assert.equal(esCaraRetirada(undefined), false)
+})
+
+test('ninguna cara retirada quedó también como solapa', () => {
+  // El defecto opuesto: dejar `cuenta` en la barra Y en el mapa de retiradas, con lo que la solapa
+  // se dibujaría y al tocarla redirigiría a otro lado.
+  const s = solapasDeCliente({ veEconomia: true, ...CUENTAS }).map((x) => x.clave as string)
+  for (const vieja of CARAS_RETIRADAS) assert.equal(s.includes(vieja), false, vieja)
+})
+
+test('sólo Cobranzas va a sangre: es la única cara que usa el ancho entero', () => {
   // Si alguien suma una cara a `A_SANGRE` sin darle su propio panel, la ficha pierde el aside de
-  // identidad y no se entera nadie hasta abrirla.
-  assert.deepEqual([...A_SANGRE], ['cobranzas', 'cuenta', 'esquema', 'accesos'])
-  for (const vieja of ['obras', 'presupuestos', 'documentos', 'actividad'] as const) {
-    assert.equal(A_SANGRE.includes(vieja), false, `${vieja} no puede ir a sangre`)
+  // identidad —y con él la actividad y el portal— y no se entera nadie hasta abrirla.
+  assert.deepEqual([...A_SANGRE], ['cobranzas'])
+  for (const conCostado of ['obras', 'ordenes', 'presupuestos', 'documentos'] as const) {
+    assert.equal(A_SANGRE.includes(conCostado), false, `${conCostado} no puede ir a sangre`)
   }
 })

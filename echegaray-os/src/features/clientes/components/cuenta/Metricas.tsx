@@ -54,16 +54,17 @@ export function Metricas({ cuenta }: { cuenta: CuentaCorriente | null }) {
       data-testid="metricas-cuenta"
       style={{ display: 'flex', alignItems: 'flex-start', gap: '42px', flexWrap: 'wrap' }}
     >
-      <Metrica rotulo="SALDO" valor={montoM(c?.saldo)} detalle={c?.saldo == null ? SIN_DATO : undefined} testid="metrica-saldo" />
-      <Metrica
-        rotulo="VENCIDO"
-        valor={montoM(c?.vencido)}
-        // El rojo es del NÚMERO, no del rótulo: `28:92`. Y sólo cuando hay algo vencido — un
-        // vencido en cero pintado de rojo entrena a no mirar el rojo.
-        color={c?.vencido ? C.neg : C.tinta}
-        detalle={c?.vencido == null ? SIN_DATO : undefined}
-        testid="metrica-vencido"
-      />
+      {/* ═══ SALDO Y VENCIDO NO SE DIBUJAN ACÁ (dueño, 12/09/2026 13:10) ═══
+
+          Mientras la cuenta corriente fue una CARA aparte, estas dos abrían el cuadro. Desde que es
+          un bloque DENTRO de Cobranzas, la misma cara ya publica arriba «Por cobrar» y «Vencido»
+          desde las filas de la pestaña Cobranzas — y las de acá salen de `cliente_cuenta_corriente`,
+          que mide el vencido con OTRO reloj (`fecha_cobro < hoy`, que se re-tipea cada vez que el
+          cobro se posterga). Dos «Vencido» distintos a diez centímetros no son dos datos: son la
+          pantalla contradiciéndose. La que manda en esta cara es la fila de arriba.
+
+          LO QUE ESTE BLOQUE SÍ APORTA Y NADIE MÁS DICE es cómo PAGA este cliente: cuánto tarda
+          (DSO) y qué proporción paga en término. */}
       <Metrica
         rotulo="DSO"
         valor={dso == null ? '—' : `${dso} d`}
