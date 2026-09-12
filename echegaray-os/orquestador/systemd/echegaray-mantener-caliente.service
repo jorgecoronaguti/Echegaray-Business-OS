@@ -1,0 +1,38 @@
+# MANTENER CALIENTE LA CADENA Next → PostgREST → pooler → Postgres.
+#
+# ═══ POR QUÉ EXISTE ═══
+#
+# Medido contra producción el 11/09/2026: `pantalla_cliente` con el backend FRÍO planifica 1,7 s y
+# lee 0,8 s; CALIENTE, 60 ms. Abrir una conexión nueva al pooler cuesta ~800 ms por sí sola. Esos
+# segundos no los paga una consulta lenta: los paga una cadena que estuvo quieta, y el que los paga
+# es siempre el primero que entra — el dueño, a la mañana.
+#
+# Dos golpes, por razones distintas:
+#   · `/api/salud`  despierta PostgREST, el pooler y los planes de Postgres (ver la ruta: no devuelve
+#                   un solo dato de la empresa, va con la clave anónima).
+#   · `/login`      despierta la instancia de Next y su bundle. Es la única pantalla que un `curl`
+#                   sin cookie puede pedir entera sin que el middleware la redirija.
+#
+# NO SE MIDE ACÁ. Este servicio calienta; lo que mide es `orquestador/scripts/perf-baseline-web.mjs`.
+# Un timer que además publicara un número tendría que validarse contra sí mismo.
+#
+# SIN `-f`: un 503 de `/api/salud` no tiene que pintar el timer en rojo ni disparar alertas. Si la
+# base está caída, quien lo dice es la sonda de salud, no el calentador.
+[Unit]
+Description=Echegaray OS - mantener caliente app.ecsas.com.ar (Next + PostgREST + pooler)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+ExecStart=/usr/bin/curl -s -o /dev/null -w "salud %%{http_code} %%{time_total}s\n" --max-time 30 https://app.ecsas.com.ar/api/salud
+ExecStart=/usr/bin/curl -s -o /dev/null -w "login %%{http_code} %%{time_total}s\n" --max-time 30 https://app.ecsas.com.ar/login
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=2min
+# Mattermost corre en esta misma VM y el chat del dueño es prioridad sobre un calentador.
+Nice=19
+
+[Install]
+WantedBy=default.target

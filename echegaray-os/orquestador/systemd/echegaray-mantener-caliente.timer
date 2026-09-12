@@ -1,0 +1,25 @@
+# CADA 4 MINUTOS, Y EL NÚMERO NO ES ARBITRARIO.
+#
+# Lo que se enfría y en cuánto:
+#   · el pool de PostgREST deja morir las conexiones ociosas en el orden de los minutos — de ahí los
+#     ~800 ms por conexión nueva que midió `db.mjs`;
+#   · la instancia serverless de Next se recicla por inactividad;
+#   · los planes y el caché de Postgres se van de los 224 MB de `shared_buffers` en cuanto otra cosa
+#     los desplaza.
+#
+# 4 minutos queda cómodamente por debajo de todos, y el costo es irrisorio: dos pedidos HTTP, ~360
+# por día, ninguno de los cuales lee un dato. Bajarlo a 1 minuto no calienta más nada y le suma
+# ruido al journal; subirlo a 15 deja la ventana abierta otra vez.
+#
+# `Persistent=false` A PROPÓSITO: un calentador que se perdió porque la VM estaba apagada no tiene
+# nada que recuperar. Ejecutar al arranque las corridas atrasadas sería calentar por el pasado.
+[Unit]
+Description=Echegaray OS - latido cada 4 min para que el frío no lo pague el dueño
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=4min
+Persistent=false
+
+[Install]
+WantedBy=timers.target
