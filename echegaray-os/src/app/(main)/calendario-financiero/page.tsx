@@ -16,12 +16,30 @@ export const dynamic = 'force-dynamic'
 // del motor. Si el número está mal, se arregla en el motor, nunca acá.
 export default async function Page() {
   const supabase = await createClient()
-  const { data, error, generadoEn } = await getCalendarioFinanciero(supabase)
-  // La estrategia financiera vigente — la protagonista del calendario. Ya la ensambló el motor y el
-  // sync la materializó; la Web sólo la lee. Si no hay fila todavía, se muestra el calendario solo.
-  const { data: estrategiaVigente } = await getEstrategiaFinanciera(supabase)
-  // El Plan de ejecución y el estado real de sus tareas — ya calculados por el motor, la Web sólo lee.
-  const { data: vigente } = await getPlanVigente(supabase)
+  // ═══ TRES LECTURAS INDEPENDIENTES IBAN EN FILA INDIA (12/09/2026) ═══
+  //
+  // El calendario, la estrategia vigente y el plan vigente no se necesitan entre sí: ninguna usa el
+  // resultado de otra. Estaban en tres `await` seguidos, así que la pantalla esperaba la suma de los
+  // tres viajes a PostgREST en vez del más largo. Medido contra producción el 12/09, esta ruta daba
+  // doc=1.092 ms en frío y 551 ms en caliente; el piso de un viaje desde Vercel a esta instancia son
+  // ~150 ms, y acá había tres puestos uno detrás del otro sin motivo.
+  //
+  // EL SEGUIMIENTO SIGUE APARTE Y DESPUÉS, porque sí depende: necesita el `correlation_id` que trae
+  // el plan vigente. Meterlo en el `Promise.all` exigiría adivinar ese id, y eso ya no sería
+  // paralelizar sino inventar.
+  const [
+    { data, error, generadoEn },
+    { data: estrategiaVigente },
+    { data: vigente },
+  ] = await Promise.all([
+    getCalendarioFinanciero(supabase),
+    // La estrategia financiera vigente — la protagonista del calendario. Ya la ensambló el motor y el
+    // sync la materializó; la Web sólo la lee. Si no hay fila todavía, se muestra el calendario solo.
+    getEstrategiaFinanciera(supabase),
+    // El Plan de ejecución — ya calculado por el motor, la Web sólo lee.
+    getPlanVigente(supabase),
+  ])
+  // El estado real de las tareas del plan. Cuelga del plan, así que va en un segundo tramo.
   const { data: seguimiento } = vigente?.correlation_id
     ? await getSeguimiento(supabase, vigente.correlation_id)
     : { data: [] }

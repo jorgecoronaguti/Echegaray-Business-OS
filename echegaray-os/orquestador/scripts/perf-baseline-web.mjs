@@ -130,7 +130,31 @@ function tiemposDelDocumento() {
   }
 }
 
+/**
+ * CUÁNTO JAVASCRIPT BAJÓ DE VERDAD ESTA PANTALLA.
+ *
+ * No es «First Load JS» del build: Next 16 dejó de imprimir esa columna, y además ese número es el
+ * del grafo estático, no el de lo que el navegador terminó pidiendo. Esto cuenta los cuerpos de las
+ * respuestas `script` que llegaron durante la navegación — el byte que el teléfono del dueño baja.
+ */
+function contadorDeJs(page) {
+  let bytes = 0
+  let archivos = 0
+  const oyente = async (respuesta) => {
+    if (respuesta.request().resourceType() !== 'script') return
+    archivos += 1
+    // `body()` puede fallar si la respuesta vino del caché o se canceló: ahí se usa el encabezado, y
+    // si tampoco está, no se inventa — se cuenta el archivo y no los bytes.
+    const declarado = Number(respuesta.headers()['content-length'] ?? 0)
+    if (declarado > 0) { bytes += declarado; return }
+    try { bytes += (await respuesta.body()).length } catch { /* del caché: ya estaba */ }
+  }
+  page.on('response', oyente)
+  return { fin: () => { page.off('response', oyente); return { jsBytes: bytes, jsArchivos: archivos } } }
+}
+
 async function unaPasada(page, base, ruta) {
+  const js = contadorDeJs(page)
   const arranque = Date.now()
   const r = await page.goto(base + ruta, { waitUntil: 'domcontentloaded', timeout: 180_000 })
   // `networkidle` se mide a reloj de pared desde el `goto`: es lo que tarda la pantalla en dejar de
@@ -147,7 +171,7 @@ async function unaPasada(page, base, ruta) {
   // ya se habían medido. Y además el dato que interesa es el del documento FINAL, el que el usuario
   // termina mirando, no el del 307 intermedio.
   const t = await page.evaluate(tiemposDelDocumento)
-  return { estado: r?.status() ?? 0, url: page.url().replace(base, ''), ...t, networkidle }
+  return { estado: r?.status() ?? 0, url: page.url().replace(base, ''), ...t, networkidle, ...js.fin() }
 }
 
 async function medirNavegador(base, rutas) {
@@ -170,7 +194,8 @@ async function medirNavegador(base, rutas) {
       const caliente = await unaPasada(page, base, ruta)
       filas.push({ ruta, frio, caliente })
       console.log(`  ${ruta.padEnd(34)} frío doc=${frio.doc}ms dcl=${frio.dcl}ms idle=${frio.networkidle}ms` +
-        `  ·  caliente doc=${caliente.doc}ms dcl=${caliente.dcl}ms idle=${caliente.networkidle}ms`)
+        `  ·  caliente doc=${caliente.doc}ms dcl=${caliente.dcl}ms idle=${caliente.networkidle}ms` +
+        `  ·  js=${Math.round(frio.jsBytes / 1024)}kB en ${frio.jsArchivos}`)
     }
     return { login, rutas: filas }
   } finally {
