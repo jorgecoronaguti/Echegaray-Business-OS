@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-12 ~16:45 (hora local −03) · main = producción_
+_actualizado: 2026-09-12 ~19:20 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -59,64 +59,65 @@ desde un worktree. **VM 4 cores/7 GB compartida con Mattermost: un agente pesado
 19`, lint/tests dirigidos, `uptime` antes de algo pesado** (con 4 agentes la carga llegó a 31 y tumbó
 el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
 
-## 4. ESTADO ACTUAL (12/09 14:20)
+## 4. ESTADO ACTUAL (12/09 19:20)
 
-- **main = producción** en 9af95a26 (Cobranzas 400 px y portal 1280 verificados en build; c67a9182 CRM costos+cinco solapas T1000; c08ecfb9 vaciar celda borra el día; 5fec4772 ELIMINADO fuera de costos_obra; 69859bef/4e3241d4 alícuotas+tarifas y costo por tramo T1300 aplicada). Sesión reiniciada dos veces (noche 11/09 y 13:3x del 12/09):
-  los agentes se reanudan con SendMessage a su id; los waiters de fondo mueren.
-- **INCIDENTE 12/09 13:55–14:14**: base de Supabase caída (db/rest/auth UNHEALTHY, pooler sano; 504
-  a los 5 s). Reiniciada por Management API (`POST /v1/projects/<ref>/restart`); worker del bot y
-  timers pausados y reanudados. Ver memoria `supabase-caido-reiniciar-por-management-api`.
-- **Performance** (rama perf mergeada e0abd539): el timer del Flujo de Caja disparaba DDL en cada
-  corrida → 537 recargas de esquema de PostgREST/día (gasto #1 de la base): ahora `tabla-asegurada.mjs`
-  consulta el catálogo. Campanita cacheada 60 s en el navegador. `/api/salud` + timer
-  `echegaray-mantener-caliente` (cada 4 min, instalado). Baseline «antes» en
-  `orquestador/datos/perf/perf-web-antes-*.json`; «después» corriendo (`perf-baseline-web.mjs
-  --etiqueta despues`). Hallazgo abierto: `obra_panel` agrega N+1 (`costos_obra` loops=24) →
-  reescribir la vista (DDL, área clientes/obras).
-- **Liquidación**: JORNALES manda salvo licencia/ausencia contra día trabajado (8d350008; Quiroga
-  Alexander restaurado 08–10/09 desde `asistencia_dia`). Columna fija a 390 px corregida y regla «una
-  cuenta de prueba ve personas de prueba» (T1200 aplicada). **E2E de escritura de horas VERDE en
-  producción** (crea/corrige/vacía leídos en registros_hh; vaciar borra la fila, c08ecfb9).
-- **Compras**: batch 1 + batch 2 (23 filas) aplicados; CFM tras 12:50: $82,8 M. Tello 6 cuotas
-  cargadas (f956–961); CONFLICTO 880–883 ($6,88 M pendientes, editadas por el dueño) — decisión.
-- **CRM**: TODO en prod y verificado por QA (c67a9182): Trabajo+OC · Inicio · HH · Materiales · Mano
-  de obra · Contratado; cinco solapas; Cobranzas con cuenta corriente + esquema; Actividad reciente y
-  Portal al costado; enlaces viejos redirigen. **Mano de obra valoriza**: 79 tramos de `persona_tarifa` desde `liquidacion_linea.valor_hora`
-  (ene–ago) + 5 alícuotas derivadas de F931/UOCRA ene–ago (multiplicador 1,6713, base total, fuente en
-  cada fila) → 13 obras $213,1 M, 86 % de horas. **Firma del dueño/estudio pendiente** (aportes 301/302 en
-  cargas; sindical+FICS en cargas). Sin valorizar 4.135 h: Oficina neto_mensual (3.017 h, decisión A/B en
-  la cabecera de T1300), 4 personas sin quincena cerrada, 109 h previas al primer tramo. Ficha
-  la-estrella 1,6 s → 0,42 s caliente (T1300); piso de la ficha sin costo_obra ≈ 320 ms. Cosmético en curso
-  (agente): Cobranzas a 400 px desborda la página; `?portal=1` angosto a 1280.
-- **Decisiones del dueño**: Tello 880–883 (pagadas o eliminar) · Gonzalez Tobares 02 y 10/09 (dos
-  filas web c/u) · Escudero Emiliano (¿proveedor CUIT 20-35853162-9?).
-- **Deuda**: cronograma de obra cerrada «atrasado» (fin_real nunca se escribe); MAIL cortado en
-  Contacto; `orq:test` rojos; Documentos web léxico; Santander modelo xlsx; MO por obra desde JORNALES
-  (parcial: mano de obra por obra en la ficha del cliente lo cubre).
+- **main = producción = 0fb6e5a5.** Migraciones del 12/09 aplicadas: T1000 (costos por obra), T1200
+  (identidad de prueba), T1300 (costo de la hora por tramo), T1400 (obra_panel + `security_invoker`
+  repuesto), T1600 (columnas comerciales cerradas). Timers vivos: jornales :20, flujo de caja cada
+  2 h, **mantener-caliente cada 4 min** (nuevo). Worker del bot y Work Fabric activos.
+- **`npm run orq:test` VERDE** (0 fallos; venía con 42). 8 eran código, 20 tests que afirmaban el
+  estado del mundo o chocaban por DDL sin turno, 14 reglas que el dueño cambió. Regla nueva:
+  `ddl-de-un-test-pide-turno.test.mjs`.
+- **CRM cliente terminado y verificado en prod**: cinco solapas; Trabajo+OC · Inicio · HH ·
+  Materiales · Mano de obra · Contratado; desglose persona×día; Documentos jerárquico; Cobranzas con
+  cuenta corriente y esquema; Actividad y Portal al costado; 400 px sin desborde; portal a ancho
+  completo; mail del contacto entero.
+- **Mano de obra valorizada**: 79 tramos de `persona_tarifa` (ene–ago, del valor hora sellado) + 5
+  alícuotas derivadas de F931/UOCRA → multiplicador **1,6713**; 13 obras **$213,1 M**, 86 % de horas.
+  **Falta la firma del dueño/estudio.** Sin valorizar 4.135 h (Oficina 3.017 h por `neto_mensual`:
+  decisión A/B en la cabecera de T1300; 4 personas sin quincena cerrada; 109 h previas al primer tramo).
+- **Liquidación**: JORNALES manda salvo licencia/ausencia contra día trabajado; E2E de escritura de
+  horas VERDE en producción (crea/corrige/vacía leído en `registros_hh`); columna fija a 390 px;
+  cuenta de prueba ve personas de prueba.
+- **Documentos web con motor léxico del chat**: aciertos **3/30 → 18/30** (chat sigue 19/30), una sola
+  definición y un solo tokenizador, resaltado del fragmento. Sin migración (el índice GIN ya existía).
+- **Performance**: DDL en caliente eliminado (537 recargas de esquema/día), campanita cacheada 60 s,
+  `/api/salud` + timer, `/administracion` sin meta-refresh de 1 s (3.578 → 792 ms local), compras 8→7
+  viajes en una ronda y 320→79 kB de JS, personas 10→7 viajes (867 → 428 ms). **Medición en producción
+  pendiente con la VM en silencio** (`perf-baseline-web.mjs --etiqueta final-limpia`). Aprendido: la
+  base ejecuta en 1–7 ms; lo que cuesta es el viaje — la palanca es menos viajes por pantalla.
+- **Compras**: batches 1 y 2 aplicados; Tello 6 cuotas (f956–961). Filas ELIMINADO fuera de
+  `costos_obra` (4 filas, $8,35 M, que ensuciaban tres obras).
+- **Incidente 13:55–14:14**: base caída (db UNHEALTHY), reiniciada por Management API. Memoria
+  `supabase-caido-reiniciar-por-management-api`.
 
-## 5. TRABAJO DE ESTA SESIÓN (12/09)
+## 5. DECISIONES DEL DUEÑO PENDIENTES (bloquean cierres)
 
-8e46ac8e batch 2 · 58b83734/0d514f9e HH+Inicio+OC en ficha · abd24003 Liquidación bloque final ·
-8d350008 licencia no pisa trabajo · 887a56e9 identidad de prueba + sticky · e0abd539 performance.
+1. **Tello filas 880–883** ($6,88 M pendientes del plan viejo, editadas a mano): ¿pagadas o eliminar?
+2. **Gonzalez Tobares 02 y 10/09**: dos filas web cada día contra una de la planilla; 17,8 h de diferencia.
+3. **Escudero Emiliano** ($108.900, CUIT 20-35853162-9): ¿alta como proveedor?
+4. **Multiplicador 1,6713** y su reparto de conceptos: firma del dueño o del estudio contable.
+5. **Oficina**: A) derivar $/h = neto mensual ÷ horas del mes · B) no cargar sus horas a la obra.
+6. **`contrato_monto`/`contrato_moneda`** de obras: ¿se cierran como `monto_contratado`?
 
 ## 6. PENDIENTES REALES
 
-**P0** — cuatro agentes en paralelo (16:45): QA prod cosmético + perf «despues4» (aaf2a16…); `obra_panel`
-sin N+1 → migración T1400 (ad91c5b…); suite `orq:test` verde + MAIL cortado (a717d90…); Documentos web
-con motor léxico (a012d7c…). Decisiones del dueño: Tello 880–883, Gonzalez Tobares 02 y 10/09,
-Escudero, multiplicador 1,6713, Oficina A/B.
-**P1** — `obra_panel` sin N+1 (DDL) · `pantalla_clientes()` 509 ms · Santander · Documentos web léxico ·
-sonda inbox · `proyeccion-convenio.test.mjs` rojo · higiene de worktrees viejos.
-**P2** — menú lateral Liquidación · Proveedores número esperado · plan PRO HF · extractos ene–may ·
-Mis Facilidades ARCA · fin_real de actividades (Obras) · Safari/iOS del sticky.
+**P0** — medición de performance en producción con la VM en silencio · auditoría de tercero sobre lo
+desplegado hoy (nadie ajeno firmó CRM, alícuotas ni suite).
+**P1** — `pantalla_cliente`/`pantalla_clientes` siguen siendo el techo (`obra_panel` se deriva 3 veces
+por llamada) · búsqueda: mes en palabras vs número (9 de 30 fallan en las dos caras) · Santander modelo
+xlsx · sonda de antigüedad de `comunicacion.inbox` · `vinculacion-estandar` reaplica migraciones (124 s).
+**P2** — menú lateral de Liquidación · Proveedores número esperado · plan PRO HF · extractos ene–may ·
+Mis Facilidades ARCA · `fin_real` de actividades (cronograma de obra cerrada sigue «atrasado») ·
+sticky en Safari/iOS.
 
 ## 7. ESTADO GIT
 
-main = origin/main = 9af95a26 · worktrees vivos: wt-panel, wt-suite, wt-docs (agentes).
+main = origin/main = 0fb6e5a5 · sin worktrees de agentes vivos.
 
 ## 8. PRÓXIMO PASO
 
-Leer b1sggl5eo → reportar antes/después al dueño → cerrar wt-costos → traspaso.
+Medición limpia → reportar al dueño → esperar sus seis decisiones → auditoría de tercero.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
