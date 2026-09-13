@@ -14,6 +14,9 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import type { ObraEnCurso } from '@/features/administracion/services/homeCartera'
 import { baseDelContrato, cobradoParaLaBarra, fraseDeFuente, sumaDeObras } from '../services/contratoDeObra.ts'
+import {
+  armarCostosPorObra, armarGastosSinObra, textoTotalManoObra, textoTotalMateriales, totalesDelCliente,
+} from '../services/costosDeObra.ts'
 
 const leer = (f: string) => readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8')
 const tabla = () => leer('./TablaClientes.tsx')
@@ -31,8 +34,9 @@ const obra = (p: Partial<ObraEnCurso> & { obra_id: string }): ObraEnCurso => ({
 
 test('las cinco columnas, en el orden del dueño, y ninguna de OC ni de OP', () => {
   const src = tabla()
-  const orden = ['Cliente', 'Contratado', 'Materiales', 'Mano de obra', 'Avance de cobro']
-    .map((r) => src.indexOf(`>${r}<`) === -1 ? src.indexOf(`'${r}'`) : src.indexOf(`>${r}<`))
+  const posicion = (r: string) =>
+    [`>${r}<`, `'${r}'`, `texto="${r}"`].map((p) => src.indexOf(p)).find((i) => i !== -1) ?? -1
+  const orden = ['Cliente', 'Contratado', 'Materiales', 'Mano de obra', 'Avance de cobro'].map(posicion)
   for (let i = 1; i < orden.length; i++) assert.ok(orden[i] > orden[i - 1] && orden[i - 1] >= 0, `columna ${i} fuera de orden`)
   assert.doesNotMatch(src, />OC c\/IVA</, 'la columna OC se fue: los totales viven en la ficha, solapa Órdenes')
   assert.doesNotMatch(src, />OP c\/IVA</)
@@ -74,12 +78,50 @@ test('el avance mide NETO contra NETO, sobre el total del contrato, y dice cuán
   assert.equal(baseDelContrato(obra({ obra_id: 'z', contratoTotal: 0 })), null)
 })
 
-test('un componente tiene tres estados y ninguno es un hueco mudo', () => {
-  const src = celdas()
-  assert.match(src, /data-estado="sin-desglose"[\s\S]*?El papel no separa/)
-  assert.match(src, /data-estado="no-incluye"[\s\S]*?no incluye/)
-  assert.match(src, /data-estado="fijado"/)
-  assert.doesNotMatch(src, /pesos\(0\)|'\$ 0'/, 'un 0 del papel se dice con palabras, no con «$ 0»')
+// ═══ MATERIALES Y MANO DE OBRA SON LO GASTADO A LA FECHA (dueño, 13/09/2026) ═══
+//
+// «Que muestren los costos hasta el momento sumados de cada una de cada obra de cada cliente, no lo
+// presupuestado.» Si alguien vuelve a dibujar el desglose del contrato en la cartera, esto da rojo.
+test('la cartera NO lee el desglose presupuestado: materiales y mano de obra salen de costo_obra', () => {
+  const src = tabla()
+  const costo = leer('./CeldasDeCosto.tsx')
+  for (const [nombre, fuente] of [['TablaClientes', src], ['CeldasDeContrato', celdas()], ['CeldasDeCosto', costo]] as const) {
+    assert.doesNotMatch(fuente, /\bo\.(materiales|manoObra|materialesUsd)\b/, `${nombre} volvió a leer lo contratado`)
+    assert.doesNotMatch(fuente, /<ComponenteDelContrato|function ComponenteDelContrato/,`${nombre} volvió a dibujar el componente del contrato`)
+  }
+  assert.doesNotMatch(src, /sumaDeObras\(c\.enCurso, \(o\) => o\.(materiales|manoObra)\)/)
+  // Las filas dibujan el costo del trabajo y el cliente su total, con la MISMA suma que la ficha.
+  assert.match(src, /<CostoDeLaObra costos=\{costos\} obraId=\{o\.obra_id\}/)
+  assert.match(src, /<CostoDelCliente costos=\{costos\} sinObra=\{gastosSinObra\} clienteId=\{c\.cliente_id\}/)
+  assert.match(costo, /totalesDelCliente\(costos, obraIds, sinObra\?\.get\(clienteId\) \?\? null\)/)
+  assert.match(costo, /textoManoObra\(c\)[\s\S]*textoMateriales\(c\)/)
+  // El rótulo dice «a la fecha», como la ficha.
+  assert.match(src, /<RotuloACorte texto="Materiales"/)
+  assert.match(src, /<RotuloACorte texto="Mano de obra"/)
+  const pagina = leer('../../../app/(main)/clientes/page.tsx')
+  assert.match(pagina, /costos=\{costosPorObra\}/)
+  assert.match(pagina, /gastosSinObra=\{gastosSinObra\}/)
+})
+
+test('el total del cliente: «no pude leer» calla, «no hay» dice «—», y lo sin obra entra', () => {
+  const costos = armarCostosPorObra([
+    { obra_id: 'a', materiales: 1000, mano_obra: 500, horas_valorizadas: 10, horas_sin_tarifa: 0 },
+    { obra_id: 'b', materiales: 200, mano_obra: null, horas_valorizadas: 0, horas_sin_tarifa: 8 },
+  ])
+  const sinObra = armarGastosSinObra([{ cliente_id: 'c', materiales: 300, subcontratos: null, n_comprobantes: 1 }])
+  const t = totalesDelCliente(costos, ['a', 'b'], sinObra?.get('c') ?? null)
+  assert.equal(t.materiales, 1500, 'Σ obras + sin obra')
+  assert.match(textoTotalMateriales(t), /1\.500/)
+  assert.equal(textoTotalManoObra(t).parcial, true, 'le faltan 8 h: ámbar')
+  assert.match(textoTotalManoObra(t).texto, /500/)
+  // No se pudo leer → vacío, NUNCA «—» ni «$ 0».
+  const ciego = totalesDelCliente(null, ['a'])
+  assert.equal(textoTotalMateriales(ciego), '')
+  assert.deepEqual(textoTotalManoObra(ciego), { texto: '', parcial: false })
+  // Se leyó y no hay nada → «—».
+  const nada = totalesDelCliente(new Map(), ['a'])
+  assert.equal(textoTotalMateriales(nada), '—')
+  assert.deepEqual(textoTotalManoObra(nada), { texto: '—', parcial: false })
 })
 
 test('la fuente del desglose se nombra: contrato, OC o presupuesto, con su renglón', () => {
@@ -121,5 +163,5 @@ test('el jefe de obra no ve una sola cifra', () => {
   const src = tabla()
   assert.match(src, /veEconomia \? 'Contratado' : ''/)
   assert.match(src, /veEconomia \? 'Avance de cobro' : ''/)
-  assert.match(celdas(), /if \(!veEconomia\) return <span className=\{SOLO_ANCHO\} \/>/)
+  assert.match(leer('./CeldasDeCosto.tsx'), /if \(!veEconomia\) return <><span className=\{SOLO_ANCHO\} \/><span className=\{SOLO_ANCHO\} \/><\/>/)
 })

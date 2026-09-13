@@ -323,6 +323,23 @@ export function tituloSinObra(g: GastoSinObra | null | undefined): string | null
 // EL PIE
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
+/**
+ * LA CELDA DE MATERIALES DE UN CLIENTE EN LA CARTERA. Vacío = no se pudo leer (misma regla que la
+ * celda de la obra); «—» = se leyó y no hay ninguna compra.
+ */
+export function textoTotalMateriales(t: TotalesDelCliente): string {
+  return t.legible ? plata(t.materiales) : ''
+}
+
+/** LA CELDA DE MANO DE OBRA DE UN CLIENTE: el total, «sin valorizar» o vacío, y si está incompleto. */
+export function textoTotalManoObra(t: TotalesDelCliente): CeldaManoObra {
+  if (!t.legible) return { texto: '', parcial: false }
+  if (t.manoObra == null) {
+    return t.horasSinValorizar > 0 ? { texto: 'sin valorizar', parcial: true } : { texto: '—', parcial: false }
+  }
+  return { texto: plata(t.manoObra), parcial: t.manoObraParcial }
+}
+
 /** El pie de la tabla: lo gastado por el cliente en todos sus trabajos. */
 export interface TotalesDelCliente {
   /**

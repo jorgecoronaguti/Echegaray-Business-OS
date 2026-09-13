@@ -43,6 +43,9 @@ import {
   armarEconomiaDeClientes, type EconomiaDeCliente,
 } from '../../clientes/services/economiaCliente.ts'
 import { armarPapelesDeLaCartera } from '../../clientes/services/ordenesCliente.ts'
+import {
+  armarCostosPorObra, armarGastosSinObra, type CostoDeObra, type GastoSinObra,
+} from '../../clientes/services/costosDeObra.ts'
 import type { PapelesDelCliente } from '../../clientes/services/papelesCliente.ts'
 import {
   armarCobradoPorObra, type CobroPorObra, type FilaCertificado, type ObraDeCartera,
@@ -70,6 +73,15 @@ export interface CarteraLeida {
   economia: Map<string, EconomiaDeObra> | null
   contratos: Set<string> | null
   economiaCliente: Map<string, EconomiaDeCliente> | null
+  /**
+   * LO GASTADO A LA FECHA EN CADA TRABAJO EN CURSO (`costo_obra`, 20260913T1550). Es lo que dibujan
+   * las columnas Materiales y Mano de obra desde el 13/09/2026 —«no lo presupuestado»—, convertido
+   * por la MISMA función que la ficha. `null` = no se pudo leer (rol que no es Administración, o RPC
+   * sin la clave): las celdas callan en vez de afirmar «—».
+   */
+  costosPorObra: Map<string, CostoDeObra> | null
+  /** Lo que Compras imputa al cliente sin nombrar obra (`costo_sin_obra`). `null` = no se pudo leer. */
+  gastosSinObra: Map<string, GastoSinObra> | null
 }
 
 /** La forma cruda que devuelve la RPC. Es JSON: nada garantiza los tipos, por eso se leen como
@@ -85,6 +97,9 @@ interface CarteraCruda {
   economia_obras: unknown[]
   contratos: string[]
   economia_clientes: unknown[]
+  /** Opcionales: `null` o ausentes cuando quien pregunta no es Administración. */
+  costo_obra?: unknown[] | null
+  costo_sin_obra?: unknown[] | null
 }
 
 /** Lo que se devuelve cuando el viaje falló: nada afirmado, ni una lista vacía que se lea como
@@ -93,7 +108,7 @@ function nadaLeido(error: string): CarteraLeida {
   return {
     clientes: null, error, perfil: null, obras: null, cobrado: null, certificados: null,
     todasLasObras: new Map(), papeles: { porCliente: new Map(), fallo: true },
-    economia: null, contratos: null, economiaCliente: null,
+    economia: null, contratos: null, economiaCliente: null, costosPorObra: null, gastosSinObra: null,
   }
 }
 
@@ -122,5 +137,8 @@ export async function leerCarteraDeUnaConsulta(supabase: SupabaseClient): Promis
     economia: armarEconomiaDeObras(j.economia_obras ?? []),
     contratos: new Set(j.contratos ?? []),
     economiaCliente: armarEconomiaDeClientes(j.economia_clientes ?? []),
+    // `?? null` y NO `?? []`: una clave ausente es «no pude leer», no «ningún trabajo gastó nada».
+    costosPorObra: armarCostosPorObra(j.costo_obra ?? null),
+    gastosSinObra: armarGastosSinObra(j.costo_sin_obra ?? null),
   }
 }

@@ -123,6 +123,26 @@ test('cada lista de la RPC aterriza donde la pantalla la espera', async () => {
   assert.ok(r.papeles.porCliente.get('c1'), 'los papeles del cliente no llegaron')
 })
 
+test('el costo a la fecha llega por obra y por cliente; sin la clave es «no pude», no «nada»', async () => {
+  const conCosto = baseQueCuenta({
+    data: {
+      ...CARTERA,
+      costo_obra: [{ obra_id: 'o1', materiales: 700, mano_obra: 300, horas_valorizadas: 5, horas_sin_tarifa: 0 }],
+      costo_sin_obra: [{ cliente_id: 'c1', materiales: 50, subcontratos: null, n_comprobantes: 1 }],
+    },
+    error: null,
+  })
+  const r = await leerCarteraDeUnaConsulta(conCosto.supabase)
+  assert.equal(r.costosPorObra?.get('o1')?.materiales, 700)
+  assert.equal(r.costosPorObra?.get('o1')?.manoObra, 300)
+  assert.equal(r.gastosSinObra?.get('c1')?.materiales, 50)
+  // Rol que no es Administración: la RPC manda `null` y la cartera NO lo convierte en un mapa vacío.
+  const ciego = baseQueCuenta({ data: { ...CARTERA, costo_obra: null, costo_sin_obra: null }, error: null })
+  const s = await leerCarteraDeUnaConsulta(ciego.supabase)
+  assert.equal(s.costosPorObra, null)
+  assert.equal(s.gastosSinObra, null)
+})
+
 test('un fallo de la RPC no se dibuja como una cartera vacía', async () => {
   const { supabase } = baseQueCuenta({ data: null, error: { message: 'permission denied' } })
   const r = await leerCarteraDeUnaConsulta(supabase)

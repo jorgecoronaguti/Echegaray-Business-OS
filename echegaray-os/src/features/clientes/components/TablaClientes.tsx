@@ -9,9 +9,10 @@
 //                  listadas —«OC 2256 · 02/09 · $ 12.100.000»— y cada una abre su PDF.
 //   CONTRATADO     el total del contrato, neto: mano de obra + materiales cuando el papel desglosa;
 //                  si no, el precio que publica OBRAS. En dólares se dice la moneda del papel.
-//   MATERIALES     lo que el contrato fija de materiales. «no incluye» cuando el papel dice que los
-//                  provee el cliente; «—» cuando ningún papel separa.
-//   MANO DE OBRA   ídem, mano de obra.
+//   MATERIALES     lo GASTADO A LA FECHA, no lo presupuestado (dueño, 13/09/2026): las compras
+//                  asignadas a cada trabajo; en el cliente, su suma más lo que no tiene obra.
+//   MANO DE OBRA   las horas propias valorizadas a la fecha, o «sin valorizar». Las dos salen de
+//                  `costo_obra` y las decide `costosDeObra.ts`, el mismo que la ficha.
 //   AVANCE DE COBRO  la barra: cobrado NETO sobre el contrato NETO, y debajo cuánto entró y cuánto
 //                  falta. Es la única barra de la fila: la del cliente publicaba una segunda y el
 //                  dueño la marcó.
@@ -38,9 +39,10 @@ import type { ClienteEnCartera } from '@/features/administracion/services/homeCa
 import { frasesDeObras } from '@/features/clientes/services/cartera'
 import type { PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
 import { SOLO_ANCHO, SOLO_TABLET, TONO } from './CeldasDeCartera'
-import {
-  AvanceDeCobro, ComponenteDelContrato, ContratadoDelTrabajo, baseDelContrato, sumaDeObras,
-} from './CeldasDeContrato'
+import { AvanceDeCobro, ContratadoDelTrabajo, baseDelContrato, sumaDeObras } from './CeldasDeContrato'
+import { CostoDeLaObra, CostoDelCliente } from './CeldasDeCosto'
+import { RotuloACorte } from './CostoALaFecha'
+import type { CostoDeObra, GastoSinObra } from '../services/costosDeObra'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
 import { MarcaAdicional } from './MarcaAdicional'
 import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
@@ -57,10 +59,10 @@ const COLS
 const AYUDA_CONTRATADO = 'El total del contrato, NETO: mano de obra + materiales cuando el papel '
   + 'desglosa; si no, el precio que publica la pestaña OBRAS. Los dólares se valúan al tipo de '
   + 'cambio de hoy.'
-const AYUDA_MATERIALES = 'Lo que el contrato fija de materiales. «no incluye» = el papel dice que los '
-  + 'provee el cliente. «—» = ningún papel separa materiales de mano de obra.'
-const AYUDA_MANO_OBRA = 'Lo que el contrato fija de mano de obra, neto, según el contrato, la OC o el '
-  + 'presupuesto que lo respalda (en el título de cada celda).'
+const AYUDA_MATERIALES = 'Lo comprado a la fecha para cada trabajo (Compras, columna K); en el cliente, '
+  + 'la suma más lo que no tiene obra asignada. No es lo presupuestado. «—» = ninguna compra.'
+const AYUDA_MANO_OBRA = 'Las horas propias valorizadas a la fecha (valor hora × horas × cargas). No es '
+  + 'lo presupuestado. «sin valorizar» = hay horas y falta la tarifa o las alícuotas.'
 const AYUDA_AVANCE = 'Cobrado NETO (lo que entró, sin IVA, criterio percibido) sobre el contrato NETO. '
   + 'Debajo, cuánto entró y cuánto falta. Nunca mezcla con lo facturado.'
 
@@ -98,8 +100,13 @@ function CifraDeCliente({ valor, faltan, testid, clase = '', titulo, queFalta }:
 
 export function TablaClientes({
   clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, papeles, hrefOrdenes, limpiarHref, vacio,
+  costos, gastosSinObra,
 }: {
   clientes: ClienteEnCartera[]
+  /** `costo_obra` por trabajo. `null` = no se pudo leer: las celdas callan, no dicen «—». */
+  costos: ReadonlyMap<string, CostoDeObra> | null
+  /** `costo_sin_obra` por cliente. Entra al total del cliente, nunca repartido entre sus obras. */
+  gastosSinObra: ReadonlyMap<string, GastoSinObra> | null
   seleccionado?: string
   /** Abre la ficha del cliente (o el panel, si no tiene slug). */
   hrefDe: (clienteId: string) => string
@@ -121,11 +128,12 @@ export function TablaClientes({
       <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
         <RotuloCol>Cliente</RotuloCol>
         <RotuloCol derecha titulo={AYUDA_CONTRATADO}>{veEconomia ? 'Contratado' : ''}</RotuloCol>
+        {/* «a la fecha» DEBAJO DEL NOMBRE, como en la ficha: el rótulo dice qué es el número. */}
         <span className={`grid ${SOLO_ANCHO}`}>
-          <RotuloCol derecha titulo={AYUDA_MATERIALES}>{veEconomia ? 'Materiales' : ''}</RotuloCol>
+          {veEconomia ? <RotuloACorte texto="Materiales" titulo={AYUDA_MATERIALES} /> : null}
         </span>
         <span className={`grid ${SOLO_ANCHO}`}>
-          <RotuloCol derecha titulo={AYUDA_MANO_OBRA}>{veEconomia ? 'Mano de obra' : ''}</RotuloCol>
+          {veEconomia ? <RotuloACorte texto="Mano de obra" titulo={AYUDA_MANO_OBRA} /> : null}
         </span>
         <span className={`grid ${SOLO_TABLET}`}>
           <RotuloCol derecha titulo={AYUDA_AVANCE}>{veEconomia ? 'Avance de cobro' : ''}</RotuloCol>
@@ -134,8 +142,6 @@ export function TablaClientes({
       {clientes.map((c) => {
         const elegido = c.cliente_id === seleccionado
         const contratado = sumaDeObras(c.enCurso, baseDelContrato)
-        const materiales = sumaDeObras(c.enCurso, (o) => o.materiales)
-        const manoObra = sumaDeObras(c.enCurso, (o) => o.manoObra)
         return (
           <div key={c.cliente_id}>
             <Link
@@ -169,10 +175,8 @@ export function TablaClientes({
                 <>
                   <CifraDeCliente valor={contratado.total} faltan={contratado.faltan} testid="contratado" queFalta="sin precio en OBRAS ni en un papel"
                     titulo={c.enCurso.length ? 'Suma del contrato de sus trabajos en curso, neto.' : 'No tiene trabajos en curso: no hay contrato vigente que sumar.'} />
-                  <CifraDeCliente valor={materiales.total} faltan={materiales.faltan} testid="materiales-cliente" clase={SOLO_ANCHO} queFalta="cuyo papel no separa materiales"
-                    titulo={c.enCurso.length ? 'Materiales fijados en los contratos de sus trabajos en curso.' : 'No tiene trabajos en curso.'} />
-                  <CifraDeCliente valor={manoObra.total} faltan={manoObra.faltan} testid="mano-obra-cliente" clase={SOLO_ANCHO} queFalta="cuyo papel no separa mano de obra"
-                    titulo={c.enCurso.length ? 'Mano de obra fijada en los contratos de sus trabajos en curso.' : 'No tiene trabajos en curso.'} />
+                  <CostoDelCliente costos={costos} sinObra={gastosSinObra} clienteId={c.cliente_id}
+                    obraIds={c.enCurso.map((o) => o.obra_id)} veEconomia={veEconomia} />
                   {/* EL COBRO DEL CLIENTE ES UNA CIFRA, NO UNA BARRA: la barra mide un trabajo contra
                       su contrato; la bolsa del cliente junta cobros de trabajos cerrados y otros sin
                       repartir, y una segunda barra al lado de las de abajo es lo que el dueño marcó. */}
@@ -228,8 +232,7 @@ export function TablaClientes({
                     <OrdenesDeLaObra ordenes={ocDeLaObra} veEconomia={veEconomia} />
                   </span>
                   <ContratadoDelTrabajo o={o} veEconomia={veEconomia} consolidado={consolidado} />
-                  <ComponenteDelContrato o={o} cual="materiales" veEconomia={veEconomia} />
-                  <ComponenteDelContrato o={o} cual="manoObra" veEconomia={veEconomia} />
+                  <CostoDeLaObra costos={costos} obraId={o.obra_id} veEconomia={veEconomia} />
                   <AvanceDeCobro o={o} veEconomia={veEconomia} />
                 </Link>
               )
