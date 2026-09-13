@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-13 ~19:45 (hora local −03) · main = producción_
+_actualizado: 2026-09-13 ~19:40 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -127,6 +127,15 @@ el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
   empleado 10/880/12 → 0; Dirección y md5 de la ficha idénticos). Escudero: comprobante 17105298
   cargado desde el adjunto del chat. En curso: caché de la ficha en la base (agente a891d3f…),
   Órdenes como registro (agente a54b228…), auditor bloque 5 en producción.
+
+- **APLICADO 13/09 noche**: Órdenes de compra y pago como registro (002cc797: OC con monto/facturado/
+  cobrado/saldo/estado, PDF como evidencia, OC unificada en Documentos). **Caché de la ficha del
+  cliente** (T1500, 51ba3d44): `pantalla_cliente`/`hh_de_obra` sirven desde `ficha_cliente_cache` a
+  Dirección real; cálculo en `*_en_vivo`; pg_cron job 39 cada minuto; medido como Jorge en conexión
+  nueva 61–280 ms, md5 igual al vivo. Toda migración de la ficha redefine `pantalla_cliente_en_vivo` y
+  vacía la caché. Auditor firmó con límites bloques 4 (seguridad re-verificada) y 5 (CRM en prod).
+  En curso: atribución de Compras a cada obra + columnas «a la fecha» + presupuesto dentro de la obra
+  (agente ae98994…, T1600 sobre `_en_vivo`).
 
 ## 6. PENDIENTES REALES
 
