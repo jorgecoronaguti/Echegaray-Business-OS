@@ -173,6 +173,32 @@ export function columnasDelPaso(paso: PasoQueGuarda, d: Record<string, unknown>)
  *    ANTES de convertir, porque `Number(null)` es 0 y eso confundiría «sin cargar» con «contrato de
  *    $0» — la distinción que este módulo entero existe para no perder.
  */
+export type MontoAnterior = { ok: true; antes: number | string | null } | { ok: false; error: string }
+
+/**
+ * EL MONTO DE ANTES, O POR QUÉ NO SE PUDO SABER — y las dos cosas NO son lo mismo (13/09/2026).
+ *
+ * `fijarMontoSiCambio` leía `obra_canonica.monto_contratado` con la sesión del usuario y descartaba
+ * el error. Desde `20260912T1600` esa columna está cerrada a `authenticated`: la lectura daba
+ * «permission denied», `data` venía null y el código lo tomaba como «no hay contrato cargado». Con
+ * eso `debeFijarMonto` decidía sobre un dato inventado:
+ *
+ *   · vaciar un contrato de $7,5 M → `(null, null)` → «sin cambio» → la orden se TIRABA sin aviso;
+ *   · guardar sin tocar el monto → `(null, 7500000)` → «cambió» → otra llamada al RPC y otra fila
+ *     de auditoría afirmando un cambio que nadie hizo.
+ *
+ * Un error de lectura no es un NULL: es no saber. Por eso esta función separa las dos respuestas y
+ * la acción devuelve el error en vez de decidir a ciegas. Recibe la respuesta cruda del RPC
+ * `contratado_de_obra` (security definer con `ve_economia()` adentro), que es la vía permitida.
+ */
+export function montoAnterior(lectura: { data: unknown; error: { message: string } | null }): MontoAnterior {
+  if (lectura.error) return { ok: false, error: lectura.error.message }
+  const d = lectura.data
+  if (d === null || d === undefined) return { ok: true, antes: null }
+  if (typeof d === 'number' || typeof d === 'string') return { ok: true, antes: d }
+  return { ok: false, error: 'la base devolvió un monto con una forma inesperada' }
+}
+
 export function debeFijarMonto(
   vinoElCampo: boolean, antes: number | string | null, ahora: number | null,
 ): boolean {
