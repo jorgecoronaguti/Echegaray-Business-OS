@@ -32,6 +32,8 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
 import { leerFichaDeUnaConsulta } from '@/features/clientes/services/fichaDeUnaConsulta'
+import { frescuraDeLaFicha } from '@/features/clientes/services/frescuraFicha'
+import { V } from '@/shared/components/v2/patron'
 import {
   archivarCliente, borrarContacto, crearContacto, crearNota, editarCliente, editarContacto,
 } from '@/features/clientes/services/actions'
@@ -213,6 +215,9 @@ export default async function ClientePage({ params, searchParams }: {
 
   const id = cliente.cliente_id
   const rol = ficha.perfil?.rol ?? null
+  // DE CUÁNDO SON LOS DATOS: la ficha de Dirección sale de una caché que se recalcula cada 5 minutos
+  // (20260913T1500). `null` = calculada en vivo para este pedido, y no se dibuja nada.
+  const frescura = frescuraDeLaFicha(ficha.calculadoEn, new Date())
   const puedeEditar = esAdministracion(rol)
   // EL PRECIO NO ES DE TODOS: el jefe de obra no ve contratado. Decide la RLS; acá sólo se deja de
   // dibujar la métrica, para no mostrarle un rótulo económico vacío y que parezca un error.
@@ -539,6 +544,11 @@ export default async function ClientePage({ params, searchParams }: {
               <PastillaFilo testid="pastilla-sin-publicar">
                 {sinPublicar} {sinPublicar === 1 ? 'cambio sin publicar' : 'cambios sin publicar'}
               </PastillaFilo>
+            )}
+            {frescura && (
+              <span data-testid="frescura-ficha" title="Se recalcula cada 5 minutos" style={{ fontSize: 12, color: V.tenue }}>
+                {frescura}
+              </span>
             )}
           </>
         }

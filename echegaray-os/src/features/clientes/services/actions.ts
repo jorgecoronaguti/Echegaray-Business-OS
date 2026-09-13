@@ -7,6 +7,8 @@
 // intenta, la base devuelve el error y acá se muestra — no se simula un éxito.
 
 import { revalidatePath } from 'next/cache'
+// Dirección lee la ficha de una caché en la base: lo que se escribe acá la invalida (20260913T1500).
+import { invalidarFichaCliente } from './invalidarFicha'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 // Qué hacer cuando la migración de la relación está en el repositorio y no en la base: el criterio
@@ -83,6 +85,7 @@ export async function crearCliente(form: FormData): Promise<Resultado> {
     ;({ data, error } = await supabase.from('clientes').insert(reducida).select('id').single())
   }
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, data!.id as string)
   revalidatePath('/clientes', 'layout')
   return { ok: true, id: data!.id as string }
 }
@@ -102,6 +105,7 @@ export async function editarCliente(clienteId: string, form: FormData): Promise<
     ;({ error } = await supabase.from('clientes').update(reducida).eq('id', clienteId))
   }
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, clienteId)
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
@@ -117,6 +121,7 @@ export async function archivarCliente(clienteId: string, activo: boolean): Promi
   const supabase = await createClient()
   const { error } = await supabase.from('clientes').update({ activo }).eq('id', clienteId)
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, clienteId)
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
@@ -148,6 +153,7 @@ export async function crearContacto(clienteId: string, form: FormData): Promise<
   const { error } = await supabase.from('cliente_contacto')
     .insert({ cliente_id: clienteId, ...aFilaContacto(parsed.data) })
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, clienteId)
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
@@ -167,6 +173,8 @@ export async function editarContacto(contactoId: string, form: FormData): Promis
   const { error } = await supabase.from('cliente_contacto')
     .update(aFilaContacto(parsed.data)).eq('id', contactoId)
   if (error) return { ok: false, error: error.message }
+  // Sin el cliente a mano: se invalidan todas antes que buscarlo con otro viaje.
+  await invalidarFichaCliente(supabase, null)
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
@@ -175,6 +183,7 @@ export async function borrarContacto(contactoId: string): Promise<Resultado> {
   const supabase = await createClient()
   const { error } = await supabase.from('cliente_contacto').delete().eq('id', contactoId)
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, null)
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
@@ -215,6 +224,7 @@ export async function crearNota(clienteId: string, form: FormData): Promise<Resu
   if (error) {
     return { ok: false, error: faltaLaTablaDeNotas(error) ? mensajeDeNotasPendiente() : error.message }
   }
+  await invalidarFichaCliente(supabase, clienteId)
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }

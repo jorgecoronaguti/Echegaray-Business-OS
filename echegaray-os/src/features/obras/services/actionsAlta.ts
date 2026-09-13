@@ -25,6 +25,8 @@
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+// La ficha del cliente se sirve de una caché en la base: una obra nueva la invalida (20260913T1500).
+import { invalidarFichaCliente } from '@/features/clientes/services/invalidarFicha'
 import { createClient } from '@/lib/supabase/server'
 import type { Resultado } from './actions'
 import {
@@ -63,6 +65,7 @@ export async function crearBorradorObra(form: FormData): Promise<Resultado> {
   })
   if (error) return { ok: false, error: error.message }
 
+  await invalidarFichaCliente(supabase, null)
   revalidatePath('/obras'); revalidatePath('/clientes', 'layout')
   redirect(urlPaso(id, 'responsable'))
 }

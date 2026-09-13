@@ -10,6 +10,9 @@
 // el estado de esa fila y muestra qué pasó de verdad — no un «guardado» que no prueba nada.
 
 import { revalidatePath } from 'next/cache'
+// Dirección lee la ficha de una caché en la base: un cobro la invalida. La entrada trae la fila de
+// Cobranzas y no el cliente, así que se invalidan todas (20260913T1500).
+import { invalidarFichaCliente } from './invalidarFicha'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { cobroSchema, type EntradaCobro, type EntradaEdicionPago } from './entradasCobranza'
@@ -69,6 +72,7 @@ export async function registrarCobro(entrada: EntradaCobro): Promise<ResultadoAc
   const { error } = await supabase.from('cobranza_cambio').insert(filas)
   if (error) return { ok: false, error: traducir(error.message) }
 
+  await invalidarFichaCliente(supabase, null)
   revalidatePath('/clientes')
   revalidatePath('/calendario-financiero')
   return { ok: true }
@@ -129,6 +133,7 @@ export async function editarPago(entrada: EntradaEdicionPago): Promise<Resultado
   })
   if (error) return { ok: false, error: traducir(error.message) }
 
+  await invalidarFichaCliente(supabase, null)
   revalidatePath('/clientes')
   return { ok: true }
 }

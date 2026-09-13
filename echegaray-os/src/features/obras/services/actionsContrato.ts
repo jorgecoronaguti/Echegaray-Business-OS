@@ -14,6 +14,8 @@
 // cuatro filas de `public.obras` están pausadas y no son la operación real.
 
 import { revalidatePath } from 'next/cache'
+// La ficha del cliente se sirve de una caché en la base: un certificado la invalida (20260913T1500).
+import { invalidarFichaCliente } from '@/features/clientes/services/invalidarFicha'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { Resultado } from './actions'
@@ -77,6 +79,7 @@ export async function crearCertificado(obraId: string, form: FormData): Promise<
     notas: d.notas || null,
   }).select('id').single()
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, null)
   revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes')
   return { ok: true, id: data.id as string }
 }
@@ -92,6 +95,7 @@ export async function borrarCertificado(obraId: string, certificadoId: string): 
   const { error } = await supabase.from('certificados')
     .delete().eq('id', certificadoId).eq('obra_canonica_id', obraId)
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, null)
   revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes')
   return { ok: true }
 }

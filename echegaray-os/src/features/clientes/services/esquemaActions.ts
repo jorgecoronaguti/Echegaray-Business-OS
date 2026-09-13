@@ -3,6 +3,8 @@
 // PANTALLA 32 — publicar el esquema al portal y ajustar lo que el cliente ve de cada pago.
 
 import { revalidatePath } from 'next/cache'
+// Dirección lee la ficha de una caché en la base: el esquema de pago la invalida (20260913T1500).
+import { invalidarFichaCliente } from './invalidarFicha'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
@@ -69,6 +71,7 @@ export async function ajustarPagoEsquema(entrada: EntradaAjustePago): Promise<Re
   const { error } = await supabase.from('esquema_pago').update(cambios).eq('id', v.esquemaPagoId)
   if (error) return { ok: false, error: error.message }
 
+  await invalidarFichaCliente(supabase, null)
   revalidatePath('/clientes')
   return { ok: true }
 }
@@ -121,6 +124,7 @@ export async function publicarEsquema(entrada: EntradaPublicacion): Promise<Resu
 
   const aviso = await encolarAvisoPublicacion(supabase, { clienteId, publicadoAt, visibles, pedidoPor: user.id })
 
+  await invalidarFichaCliente(supabase, clienteId)
   revalidatePath('/clientes')
   revalidatePath('/portal')
   // El esquema QUEDÓ publicado aunque el mail no salga: son dos hechos y se informan por separado.
