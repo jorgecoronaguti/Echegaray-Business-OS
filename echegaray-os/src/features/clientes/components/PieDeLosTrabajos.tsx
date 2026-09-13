@@ -16,14 +16,14 @@
 
 import { V } from '@/shared/components/v2/patron'
 import { hh as formatoHH, plata } from '@/shared/utils/format'
-import type { TotalesDelCliente } from '../services/costosDeObra'
+import { ROTULO_MANO_OBRA, ROTULO_MATERIALES, type TotalesDelCliente } from '../services/costosDeObra'
 
 const AYUDA_HH = 'Suma de las horas hombre de todos los trabajos de este cliente. Cada trabajo '
   + 'publica las suyas: un adicional no suma a su obra mayor, así que ninguna hora se cuenta dos veces.'
 
-const AYUDA_MATERIALES = 'Suma de lo comprado e imputado a los trabajos de este cliente (pestaña '
-  + 'Compras). Sin nómina, sin cargas, sin ARCA, sin financiero, sin filas anuladas y sin el rubro '
-  + '«Subcontratos y mano de obra».'
+const AYUDA_MATERIALES = 'Suma a la fecha de lo comprado para este cliente (pestaña Compras): lo '
+  + 'asignado a cada trabajo MÁS los gastos sin obra asignada. Sin nómina, cargas, ARCA, financiero, '
+  + 'filas anuladas ni compras con fecha futura.'
 
 /** Lo gastado y lo trabajado, sumado de las MISMAS filas que la tabla de arriba. */
 export function PieDeLosTrabajos({ hh, obras, costos }: {
@@ -49,18 +49,25 @@ export function PieDeLosTrabajos({ hh, obras, costos }: {
       </span>
 
       <span data-testid="materiales-del-cliente" title={AYUDA_MATERIALES} style={LINEA}>
-        <Rotulo texto="Materiales" />
+        <Rotulo texto={ROTULO_MATERIALES} />
         {/* NO PUDE LEERLO NO ES «—». Con la clave sin llegar —cara que no la transporta, rol que no
             la ve, migración sin aplicar— «—» afirmaría que ningún trabajo tiene una compra imputada,
             que es exactamente lo contrario de no saberlo. Visto en la captura de Quattropani. */}
         <Cifra texto={costos.legible ? plata(costos.materiales) : 'no puedo leerlos'} />
+        {/* EL TOTAL INCLUYE LO SIN OBRA, Y LO DICE: sin esta marca, la suma del pie no cerraría contra
+            las filas de arriba y la diferencia se leería como un error. */}
+        {costos.legible && costos.materialesSinObra != null && (
+          <span data-testid="materiales-sin-obra-en-pie" style={{ color: V.tenue }}>
+            {`incl. ${plata(costos.materialesSinObra)} sin obra`}
+          </span>
+        )}
       </span>
 
       {/* LA MANO DE OBRA DICE SI EL TOTAL ESTÁ COMPLETO. Un total al que le faltan 12.500 horas
           publicado liso se lee como el costo de la mano de obra del cliente; es el mismo defecto que
           la solapa «Costo a la obra» evita diciendo «N obras sin costo publicable». */}
       <span data-testid="mano-obra-del-cliente" title={tituloManoObra(costos)} style={LINEA}>
-        <Rotulo texto="Mano de obra" />
+        <Rotulo texto={ROTULO_MANO_OBRA} />
         <Cifra
           texto={!costos.legible
             ? 'no puedo leerla'

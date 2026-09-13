@@ -369,8 +369,13 @@ as $function$
                                   'oc_civa_historico', e.oc_civa_historico,
                                   'oc_n_ventana', e.oc_n_ventana,
                                   'oc_n_historico', e.oc_n_historico,
-                                  -- EL PRECIO del contrato y su papel. El desglose presupuestado (mano de
-                                  -- obra / materiales) ya no viaja al CRM (dueño, 13/09/2026).
+                                  -- EL DESGLOSE PRESUPUESTADO SIGUE VIAJANDO HASTA QUE LA CARTERA
+                                  -- (`TablaClientes`) deje de dibujarlo: sacarlo antes dejaría sus dos
+                                  -- columnas en «—». Se retira junto con ese cambio de pantalla.
+                                  'contrato_mano_obra', e.contrato_mano_obra,
+                                  'contrato_mano_obra_usd', e.contrato_mano_obra_usd,
+                                  'contrato_materiales', e.contrato_materiales,
+                                  'contrato_materiales_usd', e.contrato_materiales_usd,
                                   'contrato_total', e.contrato_total,
                                   'contrato_fuente', e.contrato_fuente,
                                   'contrato_fuente_drive_id', e.contrato_fuente_drive_id,

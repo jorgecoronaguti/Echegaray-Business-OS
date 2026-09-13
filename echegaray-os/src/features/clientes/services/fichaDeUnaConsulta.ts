@@ -45,7 +45,7 @@ import { construirLineaDeTiempo } from './timeline.ts'
 import { agruparPapeles, type PapelCrudo, type PapelesDelCliente } from './papelesCliente.ts'
 import { armarEconomiaDeObras, type EconomiaDeObra } from './economiaObras.ts'
 import { armarHorasPorObra, type HorasDeObra } from './horasDeObra.ts'
-import { armarCostosPorObra, type CostoDeObra } from './costosDeObra.ts'
+import { armarCostosPorObra, armarGastosSinObra, type CostoDeObra, type GastoSinObra } from './costosDeObra.ts'
 import { armarEconomiaDeCliente, type EconomiaDeCliente } from './economiaCliente.ts'
 import {
   armarCobradoPorObra, type CobroPorObra,
@@ -103,6 +103,11 @@ export interface FichaLeida {
    */
   costosPorObra: Map<string, CostoDeObra> | null
   /**
+   * LOS GASTOS DEL CLIENTE SIN OBRA ASIGNADA (`costo_sin_obra`, desde 20260913T1600). `null` = no se
+   * pudo leer (rol, cara, o la migración todavía no aplicada); un `Map` vacío = no hay ninguno.
+   */
+  gastosSinObra: Map<string, GastoSinObra> | null
+  /**
    * LOS PAPELES DE DRIVE DE CADA OBRA, ya agrupados por categoría (dueño, 11/09/2026: «no encuentro
    * las cotizaciones, los documentos… que han conformado todas las obras»).
    *
@@ -148,6 +153,8 @@ interface FichaCruda {
   cobrado_por_obra: unknown[]
   hh_obra: unknown[] | null
   costo_obra: unknown[] | null
+  /** Ausente (RPC anterior a 20260913T1600) o `null` (rol/cara) = no se pudo leer. */
+  costo_sin_obra?: unknown[] | null
   papeles_obra: unknown[]
   carpetas_obra: { obra_id: string; drive_folder_id: string }[]
 }
@@ -156,7 +163,7 @@ function nadaLeido(error: string | null): FichaLeida {
   return {
     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
-    papeles: null, cobradoPorObra: null, nDocumentos: 0, horasPorObra: null, costosPorObra: null,
+    papeles: null, cobradoPorObra: null, nDocumentos: 0, horasPorObra: null, costosPorObra: null, gastosSinObra: null,
     papelesObra: new Map(), carpetasObra: new Map(), calculadoEn: null,
   }
 }
@@ -233,6 +240,8 @@ export async function leerFichaDeUnaConsulta(
     // `?? null` Y NO `?? []`, por lo mismo que `hh_obra`: la RPC devuelve `null` a propósito y
     // convertirlo en lista vacía escribiría «este trabajo no gastó nada» sobre una obra de $ 154 M.
     costosPorObra: armarCostosPorObra(j.costo_obra ?? null),
+    // AUSENTE (T1600 sin aplicar) o `null` (rol/cara) = no se pudo leer: la fila sin obra calla.
+    gastosSinObra: armarGastosSinObra(j.costo_sin_obra ?? null),
     // LA COTIZACIÓN ACEPTADA NO SE DEDUCE DEL NOMBRE: la dice `obra_contrato`, que es el papel que
     // el OS ya leyó para escribir el precio, y viaja en `economia_obras.contrato_fuente_drive_id`.
     // «FINAL», «APROBADA» y «v2» conviven en la misma carpeta y ninguna de las tres palabras prueba

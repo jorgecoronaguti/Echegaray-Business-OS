@@ -1,9 +1,10 @@
-// LO QUE LLEVA GASTADO CADA TRABAJO, COMO LO DIBUJA LA FICHA DEL CLIENTE.
+// LO QUE LLEVA GASTADO CADA TRABAJO, COMO LO DIBUJA EL CRM.
 //
-// ═══ POR QUÉ EXISTE (dueño, 12/09/2026) ═══
+// ═══ POR QUÉ EXISTE (dueño, 12/09 y 13/09/2026) ═══
 //
 // «Necesito que cada obra tenga, así como las HH que lleva, los costos de obra aparejados: en una
-// columna que sume materiales gastados y mano de obra en otra.»
+// columna que sume materiales gastados y mano de obra en otra.» Y al día siguiente: «que muestren los
+// costos hasta el momento sumados de cada una de cada obra de cada cliente, no lo presupuestado».
 //
 // ═══ LA REGLA QUE ESTE ARCHIVO DEFIENDE ═══
 //
@@ -14,14 +15,13 @@
 //   · tiene horas y NO se pueden valorizar   → «sin valorizar»  (falta cargar alícuotas o tarifas)
 //   · se valorizó una parte                  → el importe en ámbar, y el `title` dice cuánto falta
 //
-// El tercero y el cuarto son lo que hay HOY: medido el 12/09/2026, `costo_hora_alicuota` está vacía
-// —sin una sola alícuota no hay multiplicador, y sin multiplicador la hora no tiene costo— y
-// `persona_tarifa` arranca el 01/09/2026 contra horas cargadas desde el 05/01/2026. Un $ 0 ahí se
-// leería como «esta obra no tuvo mano de obra» sobre una obra con 9.293 horas.
+// Y una quinta, que no es de una obra: lo que Compras le imputa al CLIENTE sin decir a cuál de sus
+// obras fue. Se publica en su propia fila, «Gastos del cliente sin obra asignada», y NUNCA se reparte.
 //
-// Los números NO se calculan acá: los trae `costo_obra` de `pantalla_cliente`, que lee las MISMAS
-// filas de Compras que `obra_costo_real` y valoriza las horas con la regla de la solapa «Costo a la
-// obra» de Liquidación. Este archivo convierte, da formato y decide qué dice cada hueco.
+// Los números NO se calculan acá: los trae `costo_obra` (función `costo_de_obras_a_la_fecha`,
+// 20260913T1550), que atribuye cada compra por la columna K y valoriza las horas con la regla de la
+// solapa «Costo a la obra» de Liquidación. Este archivo convierte, da formato y decide qué dice cada
+// hueco.
 
 // LAS RUTAS VAN RELATIVAS Y CON EXTENSIÓN: el alias `@/` lo resuelve el bundler, no `node --test`.
 import { plata } from '../../../shared/utils/format.ts'
@@ -31,7 +31,7 @@ import { fraseDeValorImplicito } from '../../administracion/services/costoHora.t
 /** Lo que la clave `costo_obra` publica por trabajo. */
 export interface CostoDeObra {
   obraId: string
-  /** Σ de las compras imputadas al trabajo, sin nómina, sin anuladas y sin subcontratos. */
+  /** Σ de las compras asignadas al trabajo a la fecha, sin nómina, sin anuladas y sin subcontratos. */
   materiales: number | null
   /** Mano de obra FACTURADA por terceros (rubro «Subcontratos y mano de obra»). No es material y no
    *  es la mano de obra propia: viaja aparte para que no desaparezca al excluirla. */
@@ -53,7 +53,16 @@ export interface CostoDeObra {
   puedeVerTarifas: boolean
   /** Los sueldos mensuales (Oficina) valorizados con valor hora implícito, uno por persona y mes. */
   implicitos?: ImplicitoDeObra[]
+  /** Compras asignadas a la obra con fecha POSTERIOR al corte: no son costo a la fecha, se nombran. */
+  comprometidoFuturo?: number | null
+  /** ISO `YYYY-MM-DD` del corte con el que la base sumó. `null` = RPC anterior a 20260913T1550. */
+  corte?: string | null
 }
+
+/** LOS RÓTULOS DICEN QUÉ ES EL NÚMERO (dueño, 13/09/2026): lo gastado hasta hoy, no lo presupuestado. */
+export const ROTULO_MATERIALES = 'Materiales a la fecha'
+export const ROTULO_MANO_OBRA = 'Mano de obra a la fecha'
+export const ROTULO_SIN_OBRA = 'Gastos del cliente sin obra asignada'
 
 /** Un sueldo mensual repartido: `netoMensual ÷ horasDelMes` por cada una de las `horas` en la obra. */
 export interface ImplicitoDeObra {
@@ -119,6 +128,8 @@ export function armarCostosPorObra(
       multiplicador: num(r.multiplicador),
       puedeVerTarifas: r.puede_ver_tarifas !== false,
       implicitos: implicitosDe(r.implicito),
+      comprometidoFuturo: num(r.comprometido_futuro),
+      corte: texto(r.corte)?.slice(0, 10) ?? null,
     })
   }
   return m
@@ -129,25 +140,31 @@ export function textoMateriales(c: CostoDeObra | null | undefined): string {
   return plata(c?.materiales ?? null)
 }
 
+/** «+ $ 1.200.000 comprometido a futuro», o nada. Lo que tiene fecha posterior al corte no se suma. */
+function fraseFuturo(v: number | null | undefined): string {
+  return v ? ` + ${plata(v)} comprometido a futuro, que no entra.` : ''
+}
+
+const aLaFecha = (corte: string | null | undefined): string =>
+  corte ? ` al ${diaMesISO(corte)}` : ' a la fecha'
+
 /** El detalle que respalda el importe de materiales. `null` cuando no hay nada que respaldar. */
 export function tituloMateriales(c: CostoDeObra | null | undefined): string | null {
-  if (!c || c.materiales == null) return null
+  if (!c || (c.materiales == null && !c.comprometidoFuturo)) return null
   const partes = [
-    'Compras imputadas a la obra',
+    `Compras asignadas a la obra${aLaFecha(c.corte)}, pagadas y pendientes (Compras, columna K)`,
     `${c.nComprobantes} ${c.nComprobantes === 1 ? 'comprobante' : 'comprobantes'}`,
     c.ultimoComprobante ? `último ${diaMesISO(c.ultimoComprobante)}` : null,
   ].filter((p) => p != null)
   // QUÉ NO ENTRA, DICHO EN LA CELDA: sin esta frase, la diferencia contra el «costo real» de la ficha
   // de la obra —que sí suma la nómina imputada— se lee como un error de alguno de los dos.
-  let t = `${partes.join(' · ')}. Materiales y servicios de obra: no entran nómina, cargas, ARCA `
-    + 'ni financiero.'
+  let t = `${partes.join(' · ')}. No entran nómina, cargas, ARCA ni financiero.`
   if (c.subcontratos != null) {
     // LOS SUBCONTRATOS NO DESAPARECEN AL EXCLUIRLOS. Son mano de obra facturada por un tercero: no
     // son material, y tampoco pueden sumarse a la columna de al lado, que son las horas PROPIAS.
-    t += ` Aparte, ${plata(c.subcontratos)} de subcontratos y mano de obra facturada, que no son `
-      + 'material ni salen de las horas propias.'
+    t += ` Aparte, ${plata(c.subcontratos)} de subcontratos y mano de obra facturada.`
   }
-  return t
+  return t + fraseFuturo(c.comprometidoFuturo)
 }
 
 /** Lo que dibuja la celda de mano de obra, con de dónde salió cada variante. */
@@ -206,7 +223,7 @@ export function tituloManoObra(
     return 'No puedo valorizar las horas de este trabajo: las tarifas y las alícuotas las lee '
       + 'Administración.'
   }
-  const desde = inicioISO ? ` · desde ${diaMesISO(inicioISO)}` : ''
+  const desde = `${inicioISO ? ` · desde ${diaMesISO(inicioISO)}` : ''}${c.corte ? ` hasta ${diaMesISO(c.corte)}` : ''}`
   const falta = faltaParaValorizar(c)
   if (c.manoObra == null) {
     const h = c.horasSinTarifa
@@ -241,6 +258,71 @@ function fmtHoras(n: number): string {
   return Math.round(n).toLocaleString('es-AR')
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LOS GASTOS DEL CLIENTE SIN OBRA ASIGNADA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Lo que `costo_sin_obra` publica por cliente. */
+export interface GastoSinObra {
+  clienteId: string
+  materiales: number | null
+  subcontratos: number | null
+  nComprobantes: number
+  comprometidoFuturo: number | null
+  /** Los detalles (columna K) más grandes: es lo que permite cargar el alias que falta. */
+  detalles: { detalle: string; total: number }[]
+  corte: string | null
+}
+
+/**
+ * `costo_sin_obra` → por cliente. `null` = NO SE PUDO LEER (rol, cara, o migración sin aplicar); un
+ * `Map` vacío = ningún cliente tiene gastos sin obra. Son dos hechos y la fila los dice distinto.
+ */
+export function armarGastosSinObra(filas: unknown[] | null | undefined): Map<string, GastoSinObra> | null {
+  if (filas == null) return null
+  const m = new Map<string, GastoSinObra>()
+  for (const f of filas) {
+    const r = f as Record<string, unknown>
+    const clienteId = texto(r.cliente_id)
+    if (!clienteId) continue
+    const detalles = Array.isArray(r.detalles)
+      ? r.detalles.flatMap((d) => {
+        const x = d as Record<string, unknown>
+        const t = num(x.total)
+        return texto(x.detalle) && t != null ? [{ detalle: texto(x.detalle) as string, total: t }] : []
+      })
+      : []
+    m.set(clienteId, {
+      clienteId, materiales: num(r.materiales), subcontratos: num(r.subcontratos),
+      nComprobantes: entero(r.n_comprobantes), comprometidoFuturo: num(r.comprometido_futuro),
+      detalles, corte: texto(r.corte)?.slice(0, 10) ?? null,
+    })
+  }
+  return m
+}
+
+/** La suma que la fila «sin obra asignada» publica: materiales + subcontratos, lo que la K no atribuyó. */
+export function importeSinObra(g: GastoSinObra | null | undefined): number | null {
+  if (!g || (g.materiales == null && g.subcontratos == null)) return null
+  return (g.materiales ?? 0) + (g.subcontratos ?? 0)
+}
+
+/** El `title` de la fila: por qué no tiene obra y cuáles son los detalles más grandes. */
+export function tituloSinObra(g: GastoSinObra | null | undefined): string | null {
+  if (!g) return null
+  const detalles = g.detalles.map((d) => `${d.detalle} ${plata(d.total)}`).join(' · ')
+  return `Compras de este cliente${aLaFecha(g.corte)} cuya columna K no nombra una de sus obras `
+    + `(${g.nComprobantes} ${g.nComprobantes === 1 ? 'comprobante' : 'comprobantes'}). No se reparten: `
+    + 'se asignan cargando el alias de la obra. '
+    + (detalles ? `Los más grandes: ${detalles}.` : '')
+    + (g.subcontratos ? ` Incluye ${plata(g.subcontratos)} de subcontratos.` : '')
+    + fraseFuturo(g.comprometidoFuturo)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PIE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
 /** El pie de la tabla: lo gastado por el cliente en todos sus trabajos. */
 export interface TotalesDelCliente {
   /**
@@ -252,8 +334,10 @@ export interface TotalesDelCliente {
    * vacías, que es correcto, y el pie de abajo afirmaba dos cosas falsas.
    */
   legible: boolean
-  /** Σ de lo imputado en Compras. `null` = ningún trabajo tiene una compra imputada. */
+  /** Σ de lo asignado en Compras a sus obras MÁS lo que quedó sin obra. `null` = ninguna compra. */
   materiales: number | null
+  /** La parte de `materiales` que es «sin obra asignada», para que el pie pueda decirlo. */
+  materialesSinObra: number | null
   /** Σ de la mano de obra valorizada. `null` = no se pudo valorizar NINGUNA hora. */
   manoObra: number | null
   /** `true` = hay horas que quedaron afuera del total de mano de obra. */
@@ -263,10 +347,12 @@ export interface TotalesDelCliente {
 }
 
 /**
- * LOS DOS TOTALES, SUMADOS DE LAS MISMAS FILAS QUE DIBUJA LA TABLA.
+ * LOS DOS TOTALES, SUMADOS DE LAS MISMAS FILAS QUE DIBUJA LA TABLA — incluida la fila sin obra.
  *
  * No se piden a la base por la razón de siempre: cada trabajo publica LO SUYO —un adicional no suma
- * a su obra mayor— así que sumar las filas no cuenta dos veces el mismo peso ni el mismo jornal.
+ * a su obra mayor— así que sumar las filas no cuenta dos veces el mismo peso ni el mismo jornal. Y
+ * la fila «sin obra asignada» ENTRA: sin ella el total del cliente sería más chico que lo que Compras
+ * le imputa, y la diferencia se leería como plata que no se gastó.
  *
  * UN TOTAL DE MANO DE OBRA AL QUE LE FALTAN HORAS LO DICE. Sumar lo valorizado y publicarlo liso
  * daría un total que parece completo: es el mismo defecto que la solapa «Costo a la obra» evita
@@ -275,9 +361,11 @@ export interface TotalesDelCliente {
 export function totalesDelCliente(
   costos: ReadonlyMap<string, CostoDeObra> | null | undefined,
   obraIds: readonly string[],
+  sinObra: GastoSinObra | null = null,
 ): TotalesDelCliente {
   const vacio: TotalesDelCliente = {
-    legible: false, materiales: null, manoObra: null, manoObraParcial: false, horasSinValorizar: 0,
+    legible: false, materiales: null, materialesSinObra: null, manoObra: null,
+    manoObraParcial: false, horasSinValorizar: 0,
   }
   if (!costos) return vacio
   let materiales: number | null = null
@@ -290,7 +378,10 @@ export function totalesDelCliente(
     if (c.manoObra != null) manoObra = (manoObra ?? 0) + c.manoObra
     horasSinValorizar += c.horasSinTarifa ?? 0
   }
+  const materialesSinObra = importeSinObra(sinObra)
+  if (materialesSinObra != null) materiales = (materiales ?? 0) + materialesSinObra
   return {
-    legible: true, materiales, manoObra, manoObraParcial: horasSinValorizar > 0, horasSinValorizar,
+    legible: true, materiales, materialesSinObra, manoObra,
+    manoObraParcial: horasSinValorizar > 0, horasSinValorizar,
   }
 }

@@ -84,6 +84,8 @@ import { leerDesgloseHH } from '@/features/clientes/services/desgloseHH'
 import { totalesDelCliente } from '@/features/clientes/services/costosDeObra'
 import { DesgloseHH } from '@/features/clientes/components/DesgloseHH'
 import { PieDeLosTrabajos } from '@/features/clientes/components/PieDeLosTrabajos'
+import { FilaGastosSinObra } from '@/features/clientes/components/CostoALaFecha'
+import { COLS_OBRAS } from '@/features/clientes/components/ListasClienteV2'
 import { ActividadReciente } from '@/features/clientes/components/ActividadReciente'
 import { Aviso } from '@/shared/components/ds'
 import { FormAccion } from '@/shared/components/ui'
@@ -536,7 +538,9 @@ export default async function ClientePage({ params, searchParams }: {
   // La regla y los huecos los decide `costosDeObra.ts`, con sus tests: acá no se suma a mano. El pie
   // declara si al total de mano de obra le faltan horas — un total parcial publicado liso se lee como
   // el costo completo.
-  const costosDelCliente = totalesDelCliente(ficha.costosPorObra, todas.map((o) => o.obra_id))
+  // LO SIN OBRA ASIGNADA ENTRA AL TOTAL: sin eso el pie no cierra contra lo que Compras le imputa.
+  const sinObraDelCliente = ficha.cliente ? ficha.gastosSinObra?.get(ficha.cliente.cliente_id) ?? null : null
+  const costosDelCliente = totalesDelCliente(ficha.costosPorObra, todas.map((o) => o.obra_id), sinObraDelCliente)
 
   // ═══ LOS CUATRO NÚMEROS DE `obra_cuenta` SE RETIRARON (dueño, 12/09/2026 13:10) ═══
   //
@@ -835,6 +839,8 @@ export default async function ClientePage({ params, searchParams }: {
                 {/* EL ACUMULADO DEL CLIENTE, EN EL PIE DE LA TABLA. No va en la fila de cifras del
                     titular: `hh_obra` viaja SÓLO en esta cara —es la única que las dibuja— y en las
                     otras ocho la cifra tendría que decir «no las tengo», que se lee como un cero. */}
+                {/* LO QUE COMPRAS LE IMPUTA AL CLIENTE SIN NOMBRAR UNA DE SUS OBRAS: una fila, nunca repartido. */}
+                <FilaGastosSinObra gasto={sinObraDelCliente} columnas={COLS_OBRAS} sangria={16} visible={veEconomia} />
                 <PieDeLosTrabajos hh={hhDelCliente} obras={todas.length} costos={costosDelCliente} />
                 </>
                 )}
