@@ -137,6 +137,15 @@ el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
   En curso: atribución de Compras a cada obra + columnas «a la fecha» + presupuesto dentro de la obra
   (agente ae98994…, T1600 sobre `_en_vivo`).
 
+**13/09 ~20:30 — costo a la fecha en PRODUCCIÓN (b0e67a84).** T1550 (`compra_obra_asignada`,
+`costo_de_obras_a_la_fecha`, `compras_sin_obra_de_clientes`) y T1600 (`pantalla_cliente_en_vivo`)
+aplicadas. `sync-compras` escribe la asignación por la K (fix 6e365a9c: pasaba el cliente de la tx
+como `query` → ROLLBACK). Identidad obras + sin obra = Compras por J: OK en los 5 clientes
+(`verificar-costo-a-la-fecha-como-direccion.mjs`). Cartera /clientes también a la fecha. QA visual de
+tercero lanzado. **Decisión del dueño:** 657/880 filas sin obra (Galpon 7, Mamposteria, Alumetal,
+Planta de BSA, Bases de Tanque…) → cargar `obra_alias` según diga. `obra_costo_real` (ficha de obra)
+sigue por J: difiere del CRM.
+
 ## 6. PENDIENTES REALES
 
 **P0** — medición de performance en producción con la VM en silencio · auditoría de tercero sobre lo
@@ -150,7 +159,7 @@ sticky en Safari/iOS.
 
 ## 7. ESTADO GIT
 
-main = origin/main = 0fb6e5a5 · sin worktrees de agentes vivos.
+main = origin/main = b0e67a84 · wt-costo y wt-cartera eliminados.
 
 ## 8. PRÓXIMO PASO
 
