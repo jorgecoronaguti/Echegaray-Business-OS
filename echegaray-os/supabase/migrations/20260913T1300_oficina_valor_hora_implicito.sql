@@ -41,11 +41,13 @@
 
 CREATE OR REPLACE FUNCTION public.pantalla_cliente(p_slug text, p_solapa text)
  RETURNS jsonb
- LANGUAGE sql
+ LANGUAGE plpgsql
  STABLE
  SET search_path TO 'public'
-AS $$
-  with elegido as (
+AS $function$
+begin
+  return (
+with elegido as (
     select c.cliente_id from public.cliente_panel c where c.slug = p_slug
   ),
   -- SUS OBRAS, UNA VEZ. Las usan tres claves: la lista de la ficha, la actividad y el recorte de
@@ -496,7 +498,9 @@ AS $$
        where z.vigente = true and z.cliente_id = (select cliente_id from elegido)
     )
   )
-$$;
+  );
+end
+$function$;
 
 comment on function public.pantalla_cliente(text, text) is
   'LAS VEINTE LECTURAS DE LA FICHA EN UN VIAJE. `papeles_obra` y `carpetas_obra` sólo en la cara '

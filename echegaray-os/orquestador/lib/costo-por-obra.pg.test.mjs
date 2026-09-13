@@ -47,10 +47,10 @@ import {
   horasTrabajadasPorPersona, repartirHorasPorObra, tarifasDeCosto,
 } from '../../src/features/administracion/services/costoLecturas.ts'
 
-// LA ÚLTIMA DEFINICIÓN DE LA FUNCIÓN. 20260913T1000 agregó el valor hora implícito de Oficina.
+// LA ÚLTIMA DEFINICIÓN DE LA FUNCIÓN. 20260913T1300 agregó el valor hora implícito de Oficina.
 const MIGRACION = readFileSync(join(
   import.meta.dirname, '..', '..', 'supabase', 'migrations',
-  '20260913T1000_oficina_valor_hora_implicito.sql'), 'utf8')
+  '20260913T1300_oficina_valor_hora_implicito.sql'), 'utf8')
 
 const DDL_PERMITIDO = process.env.ORQ_PG_DDL === '1'
 const hayBase = DDL_PERMITIDO
@@ -139,7 +139,7 @@ test('lo gastado por obra: la ficha del cliente contra las fuentes', { skip: !ha
 
       // LA REFERENCIA: la misma cuenta de la clave pero llamando la función UNA VEZ POR FILA, que es
       // la forma que 20260912T1000 tenía desplegada y la definición contra la que hay que cerrar.
-      // Desde 20260913T1000 la referencia también reparte el sueldo mensual, escrito de otra forma:
+      // Desde 20260913T1300 la referencia también reparte el sueldo mensual, escrito de otra forma:
       // el divisor sale de un subselect correlacionado, no del CTE de la función.
       const ref = await uno(`
         select sum(b.bolsillo * m.v)
