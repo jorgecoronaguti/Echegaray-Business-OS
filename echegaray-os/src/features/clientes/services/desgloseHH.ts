@@ -67,6 +67,11 @@ export interface DesgloseDeHoras {
   celdas: CeldaDia[]
   /** Lo cargado en la app sin respaldo en JORNALES (dueño, 13/09/2026). No está en nada de arriba. */
   sinRespaldo: SinRespaldo[]
+  /**
+   * CUÁNDO SE CALCULÓ (`cache_calculado_en`, desde 20260913T1500). `null` = en vivo para este pedido;
+   * con valor salió de `ficha_cliente_cache` y la pantalla dice de cuándo es.
+   */
+  calculadoEn: string | null
 }
 
 function num(v: unknown): number | null {
@@ -157,6 +162,7 @@ export function armarDesgloseHH(j: unknown): DesgloseDeHoras | null {
       }]
     }),
     sinRespaldo: armarSinRespaldo(r.sin_respaldo),
+    calculadoEn: texto(r.cache_calculado_en),
   }
 }
 

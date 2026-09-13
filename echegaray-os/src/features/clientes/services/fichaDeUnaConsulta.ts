@@ -118,9 +118,17 @@ export interface FichaLeida {
    * un viaje que no compra nada.
    */
   carpetasObra: Map<string, string>
+  /**
+   * CUÁNDO SE CALCULÓ LO QUE SE ESTÁ VIENDO (`cache_calculado_en`, desde 20260913T1500).
+   *
+   * `null` = se calculó en vivo para este pedido. Con valor, la ficha salió de `ficha_cliente_cache`
+   * y la pantalla tiene que decir de cuándo es (`frescuraDeLaFicha`).
+   */
+  calculadoEn: string | null
 }
 
 interface FichaCruda {
+  cache_calculado_en?: string | null
   cliente: Record<string, unknown> | null
   n_documentos: number | null
   perfil: Perfil | null
@@ -149,7 +157,7 @@ function nadaLeido(error: string | null): FichaLeida {
     cliente: null, error, perfil: null, responsables: [], contactos: [], obras: [],
     documentos: [], actividad: null, presupuestos: [], economia: null, economiaCliente: null,
     papeles: null, cobradoPorObra: null, nDocumentos: 0, horasPorObra: null, costosPorObra: null,
-    papelesObra: new Map(), carpetasObra: new Map(),
+    papelesObra: new Map(), carpetasObra: new Map(), calculadoEn: null,
   }
 }
 
@@ -236,5 +244,6 @@ export async function leerFichaDeUnaConsulta(
     }),
     carpetasObra: new Map((j.carpetas_obra ?? []).map((c) =>
       [c.obra_id, `https://drive.google.com/drive/folders/${c.drive_folder_id}`])),
+    calculadoEn: j.cache_calculado_en ?? null,
   }
 }

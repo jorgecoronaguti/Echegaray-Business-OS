@@ -17,6 +17,8 @@
 // formulario lo edita cualquiera desde el navegador y dejaría colgar documentos de otro cliente.
 
 import { revalidatePath } from 'next/cache'
+// Dirección lee la ficha de una caché en la base: un vínculo nuevo la invalida (20260913T1500).
+import { invalidarFichaCliente } from './invalidarFicha'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { parsearReferenciaDrive } from '@/features/obras/services/driveUrl'
@@ -53,6 +55,7 @@ export async function vincularDocumentoCliente(clienteId: string, form: FormData
       { onConflict: 'cliente_id,drive_file_id' },
     )
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, clienteId)
   revalidatePath('/clientes', 'layout')
   return { ok: true, id: ref.drive_file_id }
 }
@@ -73,6 +76,7 @@ export async function vincularCarpetaCliente(clienteId: string, form: FormData):
   const supabase = await createClient()
   const { error } = await supabase.from('clientes').update({ drive_carpeta_id: ref.drive_file_id }).eq('id', clienteId)
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, clienteId)
   revalidatePath('/clientes', 'layout')
   return { ok: true, id: ref.drive_file_id }
 }
@@ -93,6 +97,7 @@ export async function clasificarDocumentoCliente(
     .eq('cliente_id', clienteId)
     .eq('drive_file_id', driveFileId)
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, clienteId)
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
@@ -108,6 +113,7 @@ export async function desvincularDocumentoCliente(clienteId: string, driveFileId
   const { error } = await supabase.from('cliente_documento')
     .delete().eq('cliente_id', clienteId).eq('drive_file_id', driveFileId)
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, clienteId)
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }

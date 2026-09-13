@@ -28,6 +28,7 @@ import { V } from '@/shared/components/v2/patron'
 import { hh as formatoHH } from '@/shared/utils/format'
 import { diaMesISO } from '@/shared/utils/fecha'
 import { fraseSinRespaldo } from '@/features/clientes/services/hhDePlanilla'
+import { frescuraDeLaFicha } from '@/features/clientes/services/frescuraFicha'
 import {
   grillaDeHoras, periodoDeLaObra, textoDeCelda, type DesgloseDeHoras,
 } from '../services/desgloseHH'
@@ -51,6 +52,8 @@ export function DesgloseHH({ d, totalHH, volverHref, hrefPeriodo }: {
 }) {
   const g = grillaDeHoras(d)
   const ventana = d.periodos.find((p) => p.desde === d.ventana) ?? null
+  // `null` = calculado en vivo para este pedido: no se dibuja nada.
+  const frescura = frescuraDeLaFicha(d.calculadoEn, new Date())
 
   return (
     <div data-testid="desglose-hh">
@@ -79,6 +82,12 @@ export function DesgloseHH({ d, totalHH, volverHref, hrefPeriodo }: {
         <span data-testid="desglose-periodo" style={{ fontSize: '12px', color: V.apagado }}>
           {periodoDeLaObra(d)}
         </span>
+        {/* DE CUÁNDO SON LAS HORAS: el desglose de Dirección sale de una caché de 5 minutos. */}
+        {frescura && (
+          <span data-testid="desglose-frescura" title="Se recalcula cada 5 minutos" style={{ fontSize: '12px', color: V.tenue }}>
+            {frescura}
+          </span>
+        )}
         <span style={{ fontSize: '12px', color: V.tenue }}>
           {d.registros} {d.registros === 1 ? 'registro' : 'registros'} · {d.personas}{' '}
           {d.personas === 1 ? 'persona' : 'personas'}

@@ -13,6 +13,8 @@
 //    Lo que una persona corrigió le gana al tracker.
 
 import { revalidatePath } from 'next/cache'
+// La ficha del cliente se sirve de una caché en la base: escribir una obra la invalida (20260913T1500).
+import { invalidarFichaCliente } from '@/features/clientes/services/invalidarFicha'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { finNoAnteriorAlInicio } from './validacionFechas'
@@ -124,6 +126,7 @@ export async function crearObra(form: FormData): Promise<Resultado> {
   // el mensaje dice exactamente qué quedó afuera en vez de un «algo salió mal» sobre una obra que sí
   // se creó.
   const eMonto = await fijarMontoSiCambio(supabase, id, form, vacioANull(d.monto_contratado))
+  await invalidarFichaCliente(supabase, null)
   revalidatePath('/clientes', 'layout'); revalidatePath('/obras')
   if (eMonto) return { ok: true, id, mensaje: `Obra creada, pero el monto contratado no se guardó: ${eMonto}` }
   return { ok: true, id }
@@ -150,6 +153,7 @@ export async function editarObra(obraId: string, form: FormData): Promise<Result
   if (error) return { ok: false, error: error.message }
 
   const eMonto = await fijarMontoSiCambio(supabase, obraId, form, vacioANull(d.monto_contratado))
+  await invalidarFichaCliente(supabase, null)
   revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes', 'layout')
   if (eMonto) return { ok: false, error: eMonto }
   return { ok: true }
@@ -184,6 +188,7 @@ export async function archivarObra(obraId: string, archivar: boolean): Promise<R
   const { error } = await supabase.from('obra_canonica')
     .update({ estado: archivar ? 'cerrada' : 'activa' }).eq('id', obraId)
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, null)
   revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
@@ -281,6 +286,7 @@ export async function registrarAvance(obraId: string, actividadId: string, pct: 
     .update({ pct: Math.round(pct), editado_a_mano: true })
     .eq('id', actividadId).eq('obra_id', obraId)
   if (error) return { ok: false, error: error.message }
+  await invalidarFichaCliente(supabase, null)
   revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
