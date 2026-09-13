@@ -121,16 +121,24 @@ test('la ficha del cliente muestra las OC por trabajo, y los TERMINADOS con sus 
 
   await page.screenshot({ path: 'tests/capturas/cliente-obras-oc-1600.png', fullPage: false })
 
-  // ═══ Y EL ÚNICO LUGAR DONDE SE LEEN SUMADOS ═══
+  // ═══ LA SOLAPA ÓRDENES ES UN REGISTRO (dueño, 13/09/2026) ═══
   //
-  // Si el pie desaparece, los dos totales no quedan en ninguna parte del CRM — que es peor que
-  // tenerlos repetidos. Se afirma la FORMA («N OC · $…»), no el importe: el bajador de Gmail trae
-  // órdenes nuevas y un número clavado se pondría rojo sin que ninguna regla se rompa.
+  // Una fila por OC con su saldo y su estado, el PDF como ícono de evidencia, y el total del cliente
+  // al pie. Se afirma la FORMA, no importes: el bajador de Gmail trae órdenes nuevas y un número
+  // clavado se pondría rojo sin que ninguna regla se rompa. La OC 2173 sí se nombra: es la que el
+  // re-atribuidor cuelga de PLAYÓN DE AZUFRE y la que Cobranzas cita en tres filas.
   await page.goto('/clientes/messina?vista=ordenes')
-  const pie = page.getByTestId('total-ordenes-cliente')
-  await expect(pie).toBeVisible({ timeout: 30000 })
-  await expect(pie).toContainText(/\d+ OC · \$ ?[\d.]+/)
-  await expect(pie).toContainText(/\d+ OP · \$ ?[\d.]+/)
+  const registro = page.getByTestId('registro-ordenes')
+  await expect(registro).toBeVisible({ timeout: 30000 })
+  const oc2173 = page.locator('#oc-2-2173')
+  await expect(oc2173).toContainText('OC 2173')
+  await expect(oc2173.getByTestId('evidencia-orden')).toHaveCount(1)
+  await expect(oc2173.getByTestId('saldo-oc')).toHaveText(/\$ ?[\d.]+|—/)
+  await expect(page.getByTestId('total-oc-cliente')).toContainText(/\d+ OC/)
+  await expect(page.getByTestId('fila-op').first()).toBeVisible()
+  await expect(page.getByTestId('conciliacion-op')).toContainText(/\d+ OP sin cobro atado · \d+ cobros sin OP/)
+  // Ningún nombre de archivo como fila: eso era la lista de documentos.
+  await expect(registro).not.toContainText('.pdf')
 })
 
 test('Documentos separa OC, OP, certificados de retención y facturas nuestras', async ({ page }) => {

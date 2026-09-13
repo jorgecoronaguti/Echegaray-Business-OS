@@ -764,12 +764,28 @@ test('el titular de la ficha no publica los totales de OC ni de OP', () => {
   assert.match(src, /rotulo: 'Contratado en curso'/)
 })
 
-test('los dos totales viven en la solapa Órdenes, sumados de lo que esa cara dibuja', () => {
-  const src = sinComentarios(fuente('OrdenesDelCliente.tsx'))
-  assert.match(src, /data-testid="total-ordenes-cliente"/,
-    'sin el pie, los totales de OC y OP no quedan en ninguna parte del CRM')
-  // LA MISMA FUNCIÓN QUE LOS ENCABEZADOS DE CADA GRUPO: con una suma propia, el total de abajo y
-  // los parciales de arriba podrían decir distinto sobre los mismos papeles.
-  assert.match(src, /resumen\(ordenes, 'oc', veEconomia\)/)
-  assert.match(src, /resumen\(ordenes, 'op', veEconomia\)/)
+// ═══ LA SOLAPA ÓRDENES ES UN REGISTRO, NO UNA LISTA DE PDFs (dueño, 13/09/2026) ═══
+//
+// «Es como tirar documentos y archivos sin sentido alguno.» Lo que este par vigila es que la cara no
+// vuelva a ser eso: una fila por orden con su saldo, el PDF como evidencia de la fila, y ninguna
+// cifra calculada en el componente —la suma que vivía acá comparaba contra un tipo que la base no
+// guarda y los encabezados salieron vacíos durante días (12/09/2026)—.
+
+test('los totales de la solapa Órdenes salen del servicio del registro, no de una suma del componente', () => {
+  const src = sinComentarios(fuente('RegistroDeOrdenes.tsx'))
+  assert.match(src, /testid="total-oc-cliente"/,
+    'sin el pie, el total comprometido del cliente no queda en ninguna parte del CRM')
+  assert.match(src, /totalDeGrupos\(grupos\)/, 'el pie suma lo que se dibuja, con la regla de cada grupo')
+  assert.ok(!/\.reduce\(/.test(src), 'una suma en el componente es una segunda definición del total')
+  assert.equal(src.match(/#[0-9a-fA-F]{3,8}\b/g), null, 'ningún color suelto: salen de los tokens')
+})
+
+test('en el registro el PDF es un ícono de evidencia en la fila, no una fila', () => {
+  const src = sinComentarios(fuente('RegistroDeOrdenes.tsx'))
+  for (const col of ['Monto', 'Facturado', 'Cobrado', 'Por facturar', 'Estado']) {
+    assert.ok(src.includes(`>${col}</Rotulo>`), `falta la columna ${col}`)
+  }
+  assert.match(src, /data-testid="evidencia-orden"/)
+  assert.ok(!src.includes('nombre_archivo'), 'el nombre del archivo volvió a ser el protagonista de la fila')
+  assert.ok(!src.includes('ListaOrdenes'), 'la lista de PDFs volvió a la solapa')
 })

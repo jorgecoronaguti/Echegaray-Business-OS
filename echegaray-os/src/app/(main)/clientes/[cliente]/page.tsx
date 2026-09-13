@@ -66,8 +66,11 @@ import {
 } from '@/features/clientes/services/cobranzasCliente'
 import { SolapaCobranzas } from '@/features/clientes/components/cobranzas/SolapaCobranzas'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
-import { getOrdenesDe, getOrdenesDelCliente } from '@/features/clientes/services/ordenesCliente'
-import { OrdenesDelCliente } from '@/features/clientes/components/OrdenesDelCliente'
+import { getInsumosDelRegistro, getOrdenesDe } from '@/features/clientes/services/ordenesCliente'
+import { RegistroDeOrdenes } from '@/features/clientes/components/RegistroDeOrdenes'
+import {
+  agruparRegistro, armarRegistro, filtrarRegistro, leerFiltro, periodosDe,
+} from '@/features/clientes/services/registroOrdenes'
 import { PanelOrdenes } from '@/features/clientes/components/PanelOrdenes'
 import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
 import { editarPagoDelEsquema, publicarEsquema } from '@/features/clientes/services/esquemaActions'
@@ -124,6 +127,11 @@ type Query = {
   /** El recorte de la solapa Cobranzas: `todo` · `pendiente` · `cobrado` · `b` · `n`. Viaja en la
    *  URL como todo filtro del OS: se comparte por chat y vuelve con el botón de atrás. */
   cob?: string
+  /** Los filtros del registro de órdenes —trabajo, estado de la OC, año—. Entrada de usuario: los
+   *  valida `leerFiltro` con Zod y lo que no valida se ignora. */
+  oobra?: string
+  oestado?: string
+  operiodo?: string
   /**
    * EL DETALLE DE UN TRABAJO, DENTRO DEL CRM (`?trabajo=<obra_id>`).
    *
@@ -269,7 +277,7 @@ export default async function ClientePage({ params, searchParams }: {
   // encadenadas (`getArchivosDeEntidad` y después `getDocumentosSubidos`) por nada. Con una ola
   // sola, la ficha tarda lo que su lectura más lenta y no la suma de todas.
   const [
-    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos, cobranzas, ordenesDelCliente,
+    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos, cobranzas, insumosRegistro,
   ] = await Promise.all([
     // LA CUENTA CORRIENTE Y SUS CERTIFICADOS SON UN BLOQUE DE COBRANZAS (12/09/2026): la misma plata
     // resumida, en la misma cara donde está fila por fila.
@@ -312,10 +320,12 @@ export default async function ClientePage({ params, searchParams }: {
       // `null` FUERA DE SU CARA, y no `[]`: un cero al lado de la solapa diría que este cliente no
       // tiene ninguna cobranza, y lo que pasa es que no se leyó.
       : Promise.resolve<FilaCobranza[] | null>(null),
-    // LAS OC Y LAS OP DEL CLIENTE, EN SU SOLAPA (dueño, 11/09/2026). Sólo en su cara.
+    // EL REGISTRO DE ÓRDENES (dueño, 13/09/2026). Los papeles ya viajan en la RPC; acá va sólo lo
+    // que la RPC no trae —Cobranzas con la OC que declara cada fila, y qué órdenes son netas—, y
+    // sólo en su cara. Reemplaza la lectura entera de `cliente_orden` que hacía esta cara.
     solapa === 'ordenes' && veEconomia
-      ? getOrdenesDelCliente(supabase, id)
-      : Promise.resolve<Awaited<ReturnType<typeof getOrdenesDelCliente>>>(null),
+      ? getInsumosDelRegistro(supabase, id)
+      : Promise.resolve(null),
   ])
   const [cuenta, certificados] = cuentaYCertificados
   const esquema = esquemaRes
@@ -369,6 +379,8 @@ export default async function ClientePage({ params, searchParams }: {
   // ningún archivo se dibuje dos veces. El total que devuelve ES el número de la solapa: si contara
   // otra cosa, el N de arriba y las filas de abajo dirían cosas distintas sobre el mismo cliente.
   const cara = armarCaraDocumentos({
+    // Del PDF de una orden a su fila en el registro. Sin permiso económico no hay registro al que ir.
+    hrefRegistro: veEconomia ? `/clientes/${slug}?vista=ordenes` : null,
     filas: jerarquiaDeObras(todas).map((f) => ({
       obra_id: f.obra.obra_id, nombre: f.obra.nombre, nivel: f.nivel,
       esAdicional: f.esAdicional, huerfano: f.huerfano,
@@ -466,6 +478,14 @@ export default async function ClientePage({ params, searchParams }: {
   // El nombre de cada obra por su clave: sin esto la columna «Obra» de los papeles dibujaría una
   // clave de URL («messina-bases-tanque-so2») en vez del nombre que el dueño reconoce.
   const nombreDeObra = new Map(todas.map((o) => [o.obra_id, o.nombre]))
+
+  // EL REGISTRO DE ÓRDENES: se arma entero y se recorta después, porque el selector de trabajo
+  // tiene que seguir ofreciendo todos los trabajos aunque haya uno elegido.
+  const filtroOrdenes = leerFiltro(q)
+  const registro = insumosRegistro && papeles
+    ? armarRegistro({ papeles, cobranzas: insumosRegistro.cobranzas, netas: insumosRegistro.netas, hoy })
+    : null
+  const registroFiltrado = registro ? filtrarRegistro(registro, filtroOrdenes, todas) : null
   // ═══ `nPapeles` SE FUE (11/09/2026 17:50) ═══
   //
   // Sumaba los papeles del OS al `count(cliente_documento)` de la RPC, y las dos partes contaban
@@ -610,7 +630,9 @@ export default async function ClientePage({ params, searchParams }: {
           // ésta: con `cara.total`, el mismo cliente mostraría un número distinto en cada solapa.
           documentos: ficha.nDocumentos,
           cobranzas: cobranzas?.length ?? null,
-          ordenes: ordenesDelCliente?.length ?? null,
+          // EL N SON ÓRDENES, NO COPIAS NI RETENCIONES: sale de los papeles de la RPC, que viajan en
+          // las nueve caras, así que la solapa dice lo mismo desde cualquiera de ellas.
+          ordenes: papeles ? papeles.oc.length + papeles.op.length : null,
         }).map((s) => ({
           clave: s.clave,
           titulo: s.label,
@@ -846,7 +868,15 @@ export default async function ClientePage({ params, searchParams }: {
             )}
 
             {solapa === 'ordenes' && veEconomia && (
-              <OrdenesDelCliente ordenes={ordenesDelCliente} nombreDeObra={nombreDeObra} veEconomia={veEconomia} />
+              <RegistroDeOrdenes
+                registro={registroFiltrado}
+                grupos={registroFiltrado ? agruparRegistro(registroFiltrado, todas) : []}
+                todosLosGrupos={registro ? agruparRegistro(registro, todas) : []}
+                filtro={filtroOrdenes}
+                periodos={registro ? periodosDe(registro) : []}
+                accion={`/clientes/${slug}`}
+                nombreDeObra={nombreDeObra}
+              />
             )}
 
             {solapa === 'documentos' && (

@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { agruparPapeles, type PapelCrudo, type PapelesDelCliente } from './papelesCliente.ts'
+import { getCobranzasDelCliente } from './cobranzasCliente.ts'
+import type { CobranzaConOrden } from './registroOrdenes.ts'
 
 // LAS ÓRDENES DEL CLIENTE, PARA LA PANTALLA — cuántas OC y cuántas OP cuelgan de cada obra.
 //
@@ -204,18 +206,36 @@ export async function getOrdenesDe(
  * NO SE VUELVE A FILTRAR POR ROL: la policy de `cliente_orden` ya recorta (el jefe de obra ve la
  * suya). Filtrar dos veces esconde el día que una de las dos reglas cambie.
  */
-/** TODAS LAS ÓRDENES DEL CLIENTE, CON SU TRABAJO: la solapa «Órdenes» de la ficha las agrupa. */
-export async function getOrdenesDelCliente(
+/**
+ * LO QUE EL REGISTRO DE ÓRDENES NECESITA Y `pantalla_cliente()` NO TRAE — sólo en su cara.
+ *
+ * Los papeles ya viajan en la RPC. Faltan tres datos, y los tres son chicos (decenas de filas del
+ * mismo cliente), así que viajan juntos en una ola en lugar de la lectura entera de `cliente_orden`
+ * que hacía esta cara hasta el 13/09:
+ *   · las filas de Cobranzas (`cliente_cobranza`), con la MISMA lectura que la cara Cobranzas;
+ *   · qué OC declara cada fila (`cobranza_imputacion.orden_declarada`, resuelta por
+ *     `oc_declarada()` en SQL — no se re-parsea en TypeScript);
+ *   · qué órdenes vienen SIN IVA (`importe_es_neto`, ARCOR). Sólo los ids marcados.
+ *
+ * PENDIENTE DECLARADO: la RPC no se toca desde acá (otro trabajo la está cambiando). La clave que
+ * absorbería esto es `orden_declarada` en `cliente_cobranza` e `importe_es_neto` en `papeles`.
+ *
+ * `cobranzas: null` = no se pudo leer alguna de las dos: el registro no publica saldo.
+ */
+export async function getInsumosDelRegistro(
   supabase: SupabaseClient, clienteId: string,
-): Promise<OrdenDetallada[] | null> {
-  const { data, error } = await supabase
-    .from('cliente_orden')
-    .select('id, obra_id, tipo, numero, fecha, importe, moneda, cita, nombre_archivo, emisor, atribucion, drive_file_id')
-    .eq('cliente_id', clienteId)
-    .is('eliminado_en', null)
-    .order('fecha', { ascending: false, nullsFirst: false })
-  if (error) return null
-  return (data ?? []) as OrdenDetallada[]
+): Promise<{ cobranzas: CobranzaConOrden[] | null; netas: Set<string> }> {
+  const [filas, declaradas, netas] = await Promise.all([
+    getCobranzasDelCliente(supabase, clienteId),
+    supabase.from('cobranza_imputacion').select('cobranza_id, orden_declarada').eq('cliente_id', clienteId),
+    supabase.from('cliente_orden').select('id').eq('cliente_id', clienteId).eq('importe_es_neto', true)
+      .is('eliminado_en', null),
+  ])
+  const ids = new Set(((netas.data ?? []) as { id: string }[]).map((x) => x.id))
+  if (!filas || declaradas.error) return { cobranzas: null, netas: ids }
+  const orden = new Map(((declaradas.data ?? []) as { cobranza_id: string; orden_declarada: string | null }[])
+    .map((d) => [d.cobranza_id, d.orden_declarada]))
+  return { cobranzas: filas.map((f) => ({ ...f, orden_declarada: orden.get(f.cobranza_id) ?? null })), netas: ids }
 }
 
 export async function getOrdenesDeObra(
@@ -231,46 +251,9 @@ export async function getOrdenesDeObra(
   return (data ?? []) as OrdenDetallada[]
 }
 
-// ═══ EL RESUMEN DE UN GRUPO DE ÓRDENES — «3 OC · $ 12.100.000» ═══
+// ═══ LO QUE SE RETIRÓ EL 13/09/2026: `resumenDeOrdenes` ═══
 //
-// ═══ EL DEFECTO QUE ESTA FUNCIÓN ARREGLA AL MUDARSE (12/09/2026) ═══
-//
-// Vivía adentro de `OrdenesDelCliente.tsx` y comparaba `o.tipo === 'oc'`. En la base el tipo se
-// guarda `orden_compra` y `orden_pago` (56 y 53 filas al 12/09), así que la comparación NUNCA era
-// verdadera: los encabezados de cada trabajo en la solapa Órdenes venían saliendo VACÍOS desde que
-// se escribieron, y nadie lo vio porque un rótulo que no se dibuja no se parece a un error. Lo
-// encontró el pie de totales del cliente, que salió «sin OC sin OP» sobre 109 órdenes cargadas.
-//
-// Se muda a `services/` porque es una DECISIÓN sobre datos —qué cuenta como OC y qué hacer con un
-// PDF sin importe— y acá se puede probar sin navegador. Eso es lo que habría dado rojo antes.
-//
-// SIN IMPORTE NO SE SUMA CERO: un PDF que no declara el monto se cuenta en la cantidad y marca el
-// total como PARCIAL (el `·` del final). Un cero sería una orden de compra por cero pesos, que es
-// una afirmación falsa sobre un contrato.
-
-/** Cómo se guarda cada tipo en `cliente_orden`. La pantalla habla de OC y OP; la base, no. */
-const TIPO_EN_LA_BASE: Record<'oc' | 'op', string> = {
-  oc: 'orden_compra', op: 'orden_pago',
-}
-
-/**
- * «3 OC · $ 12.100.000», o `null` cuando no hay ninguna de ese tipo —que es distinto de «$ 0»—.
- *
- * `formatoPlata` lo inyecta quien dibuja: esta función no elige cómo se escribe un peso. Sin permiso
- * económico devuelve sólo la cuenta: el importe de una orden es precio de venta.
- */
-export function resumenDeOrdenes(
-  ordenes: { tipo: string; importe: number | string | null }[],
-  tipo: 'oc' | 'op',
-  veEconomia: boolean,
-  formatoPlata: (n: number) => string | null,
-): string | null {
-  const del = ordenes.filter((o) => o.tipo === TIPO_EN_LA_BASE[tipo])
-  if (!del.length) return null
-  const sigla = tipo.toUpperCase()
-  if (!veEconomia) return `${del.length} ${sigla}`
-  const conImporte = del.filter((o) => o.importe !== null && o.importe !== '')
-  const total = conImporte.reduce((a, o) => a + Number(o.importe), 0)
-  const parcial = conImporte.length !== del.length ? ' ·' : ''
-  return `${del.length} ${sigla} · ${formatoPlata(total)}${parcial}`
-}
+// Armaba «3 OC · $ 12.100.000» para los encabezados de la solapa Órdenes, que era una lista de PDFs.
+// La solapa pasó a ser un registro (`registroOrdenes.ts`) y sus totales salen de `totalDeOC`, que
+// además de contar suma facturado, cobrado y saldo sin mezclar neto con IVA. Dos sumas del mismo
+// conjunto en dos archivos es cómo un encabezado y un pie terminan diciendo cifras distintas.

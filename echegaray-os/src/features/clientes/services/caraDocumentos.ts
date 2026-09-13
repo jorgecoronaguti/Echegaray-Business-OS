@@ -26,7 +26,7 @@
 
 import type { DocumentoCliente } from '../types/index.ts'
 import type { PapelesDelCliente } from './papelesCliente.ts'
-import { hrefDelPapel, urlDriveDelPapel } from './papelesCliente.ts'
+import { anclaDeOrden, hrefDelPapel, urlDriveDelPapel } from './papelesCliente.ts'
 import {
   CATEGORIAS, categoriaDePapel, type Categoria, type PapelesDeUnaObra,
 } from './papelesDeObra.ts'
@@ -50,6 +50,9 @@ export interface ArchivoDeLaCara {
   aceptada: boolean
   /** Con qué evidencia se ató a la obra. */
   via: string | null
+  /** Sólo OC y OP: su fila en el registro de órdenes (`?vista=ordenes#oc-2-2173`). El PDF es la
+   *  evidencia; el registro es donde se lee su saldo. */
+  registro?: string | null
 }
 
 export interface GrupoDeLaCara {
@@ -99,9 +102,9 @@ function agrupar(archivos: ArchivoDeLaCara[]): GrupoDeLaCara[] {
 
 /** Un papel del OS —una OC, una OP— con la forma de la fila. */
 function deOrden(o: {
-  clave: string; numeroCorto: string | null; clase: 'oc' | 'op'; fecha: string | null
-  archivoId: string; driveFileId?: string | null
-}): ArchivoDeLaCara {
+  clave: string; numeroCorto: string | null; numeroCanonico: string | null; clase: 'oc' | 'op'
+  fecha: string | null; archivoId: string; driveFileId?: string | null
+}, hrefRegistro: string | null): ArchivoDeLaCara {
   // EL NOMBRE NO LLEVA LA FECHA: la fila tiene su propia columna de fecha, y repetirla adentro del
   // nombre es la mezcla de diseño que el dueño ya marcó una vez. Tampoco se importa el formateador
   // de `@/shared`: `node --test` no resuelve el alias y este archivo tiene que poder probarse solo.
@@ -117,6 +120,7 @@ function deOrden(o: {
     porque: `papel del OS: orden de ${o.clase === 'oc' ? 'compra' : 'pago'}`,
     aceptada: false,
     via: null,
+    registro: hrefRegistro ? `${hrefRegistro}#${anclaDeOrden(o)}` : null,
   }
 }
 
@@ -128,7 +132,7 @@ function deOrden(o: {
  * (`jerarquiaDeObras`), que es el mismo que dibuja la lista de Trabajos.
  */
 export function armarCaraDocumentos({
-  filas, papelesObra, papelesCliente, documentos, archivosDelCliente, carpetas,
+  filas, papelesObra, papelesCliente, documentos, archivosDelCliente, carpetas, hrefRegistro = null,
 }: {
   filas: { obra_id: string; nombre: string; nivel: 0 | 1; esAdicional: boolean; huerfano: boolean }[]
   papelesObra: Map<string, PapelesDeUnaObra>
@@ -140,6 +144,8 @@ export function armarCaraDocumentos({
   }[]
   /** obra_id → enlace de su carpeta en Drive. */
   carpetas: Map<string, string | null>
+  /** La dirección del registro de órdenes del cliente. `null` = quien mira no lo ve. */
+  hrefRegistro?: string | null
 }): CaraDocumentos {
   /** Todo lo ya dibujado, para que nada salga dos veces. */
   const dibujados = new Set<string>()
@@ -150,7 +156,7 @@ export function armarCaraDocumentos({
     // LOS PAPELES DEL OS PRIMERO: si el mismo PDF está también en la carpeta, gana éste, que trae el
     // número de la orden.
     for (const o of [...(resumen?.oc ?? []), ...(resumen?.op ?? [])]) {
-      const fila = deOrden(o)
+      const fila = deOrden(o, hrefRegistro)
       if (dibujados.has(fila.clave)) continue
       dibujados.add(fila.clave)
       if (o.driveFileId) dibujados.add(o.driveFileId)
@@ -193,7 +199,7 @@ export function armarCaraDocumentos({
   // esconderlo es cómo una OP de $15 M deja de existir para el que mira esta pantalla.
   const sueltos: ArchivoDeLaCara[] = []
   for (const o of [...(papelesCliente?.sinObra.oc ?? []), ...(papelesCliente?.sinObra.op ?? [])]) {
-    const fila = deOrden(o)
+    const fila = deOrden(o, hrefRegistro)
     if (dibujados.has(fila.clave)) continue
     dibujados.add(fila.clave)
     if (o.driveFileId) dibujados.add(o.driveFileId)
