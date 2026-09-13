@@ -22,7 +22,7 @@ import {
 
 /** Nº · FECHA · MONTO · FACTURADO · COBRADO · POR FACTURAR · ESTADO · PDF. */
 const COLS_OC = 'grid-cols-[88px_76px_repeat(4,minmax(0,1fr))_128px_24px]'
-  + ' max-[899px]:grid-cols-[88px_minmax(0,1fr)_minmax(0,1fr)_112px_24px]'
+  + ' max-[899px]:grid-cols-[88px_76px_minmax(0,1fr)_minmax(0,1fr)_112px_24px]'
   + ' max-[559px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_24px]'
 /** Nº · FECHA · TRABAJO · BRUTO · RETENCIÓN · NETO · PAGA · PDF. */
 const COLS_OP = 'grid-cols-[88px_76px_minmax(0,1.4fr)_repeat(3,minmax(0,1fr))_minmax(0,0.8fr)_24px]'
@@ -128,8 +128,10 @@ function FilaDeTotal({ t, rotulo, sangria, testid }: { t: TotalOC; rotulo: strin
     <div role="row" data-testid={testid} className={`grid items-center gap-[12px] ${COLS_OC}`}
       title={t.incompleto ? 'Total incompleto (·): alguna OC no tiene importe, está en U$S o mezcla neto con IVA.' : undefined}
       style={{ minHeight: 32, paddingLeft: sangria, borderBottom: `1px solid ${V.linea}` }}>
-      <span className="truncate" style={NOMBRE}>{rotulo}</span>
-      <span className={`${CELDA} ${TABLET}`} style={FECHA}>{t.n} OC</span>
+      {/* EL NOMBRE OCUPA Nº Y FECHA: en 88px «ME - BASES TANQUE SO2» se leía «ME - BASES T…». */}
+      <span className="col-span-2 truncate max-[559px]:col-span-1" style={NOMBRE} title={rotulo}>
+        {rotulo}<span className="font-mono tabular-nums" style={{ ...FECHA, fontWeight: 400, marginLeft: 8 }}>{t.n} OC</span>
+      </span>
       <span className={`${CELDA} ${TABLET}`} style={NUM_FUERTE}>{plata(t.importe)}</span>
       <span className={`${CELDA} ${ANCHO}`} style={NUM_FUERTE}>{plata(t.facturado)}</span>
       <span className={`${CELDA} ${ANCHO}`} style={NUM_FUERTE}>{plata(t.cobrado)}</span>
@@ -142,14 +144,22 @@ function FilaDeTotal({ t, rotulo, sangria, testid }: { t: TotalOC; rotulo: strin
 function SinImputar({ registro }: { registro: Registro }) {
   if (!registro.sinImputar.length) return null
   const filas = registro.sinImputar.map((r) => `F${r.fila ?? '?'}`).join(', ')
+  const n = registro.sinImputar.length
+  const importe = importeDeRenglones(registro.sinImputar)
   const sinPdf = registro.ocSinPapel.length ? ` · citan OC sin PDF: ${registro.ocSinPapel.join(', ')}` : ''
   return (
     <div role="row" data-testid="sin-imputar" className={`grid items-center gap-[12px] ${COLS_OC}`}
       title={`Filas B de Cobranzas que no citan una OC con PDF: ${filas}${sinPdf}`} style={FILA}>
-      <span className="truncate" style={{ fontSize: '12px', color: V.warn }}>Sin imputar</span>
-      <span className={`${CELDA} ${TABLET}`} style={FECHA}>{registro.sinImputar.length} filas</span>
+      <span className="col-span-2 truncate max-[559px]:col-span-1" style={{ fontSize: '12px', color: V.warn }}>
+        Sin imputar
+        <span className="font-mono tabular-nums" style={{ ...FECHA, marginLeft: 8 }}>
+          {n} {n === 1 ? 'fila' : 'filas'}
+        </span>
+        {/* En el teléfono la columna Facturado no está: el importe viaja con el rótulo. */}
+        <span className={`font-mono tabular-nums ${SOLO_TELEFONO}`} style={{ ...FECHA, marginLeft: 8 }}>{plata(importe)}</span>
+      </span>
       <span className={TABLET} />
-      <span className={`${CELDA} ${ANCHO}`} style={NUM}>{plata(importeDeRenglones(registro.sinImputar))}</span>
+      <span className={`${CELDA} ${ANCHO}`} style={NUM}>{plata(importe)}</span>
       <span className={ANCHO} /><span /><span className={TABLET} /><span />
     </div>
   )

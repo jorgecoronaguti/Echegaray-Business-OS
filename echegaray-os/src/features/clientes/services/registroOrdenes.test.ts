@@ -81,6 +81,14 @@ test('si Cobranzas no se pudo leer, ninguna OC dice «sin factura citada» ni pu
   assert.equal(r.cobranzasLeidas, false)
 })
 
+test('el saldo de una OC facturada exacta es cero, no «−0» por coma flotante (OC 2266)', () => {
+  const r = registro([oc('a', '2-2266', 24_309_950.07)], [
+    fila({ orden_declarada: '2-2266', total_bruto: 12_154_975.035 }),
+    fila({ orden_declarada: '2-2266', total_bruto: 12_154_975.035 + 1e-7 }),
+  ])
+  assert.ok(Object.is(r.oc[0].saldo, 0), `saldo = ${r.oc[0].saldo}`)
+})
+
 test('los estados, en sus bordes', () => {
   const e = (importe: number | null, facturado: number | null, moneda = 'ARS') => estadoDeOC({ importe, moneda, facturado })
   assert.equal(e(1000, 0), 'sin-facturar')

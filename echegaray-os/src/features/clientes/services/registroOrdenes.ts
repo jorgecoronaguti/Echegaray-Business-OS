@@ -131,6 +131,9 @@ export interface Registro {
   cobranzasLeidas: boolean
 }
 
+/** Redondea al centavo y normaliza −0: un saldo no puede ser «menos cero». */
+const alCentavo = (n: number): number => Math.round(n * 100) / 100 || 0
+
 const suma = (v: (number | null)[]): number | null => {
   const con = v.filter((x): x is number => x != null)
   return con.length ? con.reduce((a, b) => a + b, 0) : null
@@ -187,7 +190,9 @@ function filaOC(o: Orden, citan: FilaCobranza[] | null, neto: boolean, hoy: stri
     cobrado,
     aFacturar: suma(b.filter((r) => !r.emitida).map((r) => r.importe)),
     enN: suma(renglones.filter((r) => r.circuito === 'N').map((r) => r.importe)),
-    saldo: comparable && o.importe !== null && facturado !== null ? o.importe - facturado : null,
+    // AL CENTAVO: 24.309.950,07 − (Σ de dos facturas en coma flotante) daba −0,0000001 y la pantalla
+    // escribía «$ -0» (captura del 13/09/2026, OC 2266).
+    saldo: comparable && o.importe !== null && facturado !== null ? alCentavo(o.importe - facturado) : null,
     estado,
     renglones,
     pagadaPor: o.pagadaPor,
