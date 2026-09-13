@@ -100,3 +100,20 @@ test('lo que no llegó a ninguna obra se muestra, no se esconde', () => {
   assert.match(cara.sinObra[0].archivos[0].href, /^\/api\/clientes\/orden\//,
     'un papel sin PDF en Drive tiene que abrirse por el proxy del OS')
 })
+
+// ═══ DEL PDF DE UNA ORDEN A SU REGISTRO (dueño, 13/09/2026) ═══
+//
+// Documentos muestra la OC como evidencia y lleva a su fila del registro, donde se lee el saldo. El
+// ancla es la de `anclaDeOrden`, la misma que el registro pone en la fila: si cada cara armara la
+// suya, el enlace caería en la página sin llegar a la orden y nada daría error.
+test('la OC de Documentos lleva a su fila del registro, y sin permiso económico no lleva a ninguna parte', () => {
+  const papeles = papelesCliente({ porObra: new Map([['madre', {
+    oc: [orden('k', '2-2173', 'd1', 'madre')], op: [],
+    totalOC: { n: 1, importe: 100, parcial: false }, totalOP: { n: 0, importe: null, parcial: false },
+  }]]) })
+  const conPermiso = armar({ papelesCliente: papeles, hrefRegistro: '/clientes/messina?vista=ordenes' })
+  const oc = conPermiso.obras[0].grupos.flatMap((g) => g.archivos).find((a) => a.nombre === 'OC 2-2173')
+  assert.equal(oc?.registro, '/clientes/messina?vista=ordenes#oc-2-2173')
+  const sinPermiso = armar({ papelesCliente: papeles, hrefRegistro: null })
+  assert.equal(sinPermiso.obras[0].grupos.flatMap((g) => g.archivos)[0]?.registro, null)
+})

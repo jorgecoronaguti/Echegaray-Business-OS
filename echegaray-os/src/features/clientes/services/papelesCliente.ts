@@ -331,6 +331,17 @@ export function urlDriveDelPapel(driveFileId: string): string {
   return `https://drive.google.com/file/d/${driveFileId}/view`
 }
 
+/**
+ * EL ANCLA DE UNA ORDEN EN EL REGISTRO (`?vista=ordenes#oc-2-2173`).
+ *
+ * Una sola definición porque la escriben dos caras: el registro la pone como `id` de la fila y
+ * Documentos la usa para llevar del PDF a su registro. Si cada una armara la suya, el enlace
+ * caería en la página sin llegar a la fila y nadie lo notaría: un ancla rota no da error.
+ */
+export function anclaDeOrden(o: Pick<Orden, 'clase' | 'numeroCanonico' | 'archivoId'>): string {
+  return `${o.clase}-${o.numeroCanonico ?? `sn-${o.archivoId}`}`
+}
+
 /** Adónde va la fila de un papel: Drive si el PDF ya está subido, el proxy si todavía no. */
 export function hrefDelPapel(
   { driveFileId, archivoId }: { driveFileId: string | null | undefined; archivoId: string },
