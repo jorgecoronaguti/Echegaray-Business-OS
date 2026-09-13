@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-12 ~19:20 (hora local −03) · main = producción_
+_actualizado: 2026-09-13 ~19:10 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -91,14 +91,34 @@ el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
 - **Incidente 13:55–14:14**: base caída (db UNHEALTHY), reiniciada por Management API. Memoria
   `supabase-caido-reiniciar-por-management-api`.
 
-## 5. DECISIONES DEL DUEÑO PENDIENTES (bloquean cierres)
+## 5. CERRADO EL 13/09 (sin esperar al dueño) Y LO QUE SIGUE ABIERTO
 
-1. **Tello filas 880–883** ($6,88 M pendientes del plan viejo, editadas a mano): ¿pagadas o eliminar?
-2. **Gonzalez Tobares 02 y 10/09**: dos filas web cada día contra una de la planilla; 17,8 h de diferencia.
-3. **Escudero Emiliano** ($108.900, CUIT 20-35853162-9): ¿alta como proveedor?
-4. **Multiplicador 1,6713** y su reparto de conceptos: firma del dueño o del estudio contable.
-5. **Oficina**: A) derivar $/h = neto mensual ÷ horas del mes · B) no cargar sus horas a la obra.
-6. **`contrato_monto`/`contrato_moneda`** de obras: ¿se cierran como `monto_contratado`?
+- **Tello 880–883**: no había conflicto: plan viejo $9,9 M + plan nuevo $5,984 M = 3.610 m² × $4.400. El
+  texto de f956–961 decía «pagado $9.900.000» (error mío) → corregido a «menos el plan anterior».
+- **Gonzalez Tobares Juan G. 02 y 10/09**: planilla 9 h trabajadas + `asistencia_dia` presente → las dos
+  filas `licencia accidente` duplicadas se borraron (respaldo `datos/respaldos/registros-hh-gonzalez-tobares-licencias-2026-09-13.json`).
+- **Escudero Emiliano**: alta en `proveedores` (CUIT 20358531629, f7505e04); importador de jorge@ corriendo.
+- **Ficha del cliente lenta / «no carga»**: `pantalla_cliente` a plpgsql (20260913T1100, 35/35 md5 iguales).
+  Partirla por solapa se midió PEOR en frío (7,4 s vs 3,4 s) → descartado. Sigue 2–10 s en producción
+  con conexiones frías de Supavisor: próximo paso es materializar las vistas económicas pesadas.
+- **Auditoría de cierre**: Mano de obra, Compras, JORNALES y Suite FIRMA CON LÍMITES. **Multiplicador
+  1,6713 RECHAZADO** contra lo pagado en banco (F931 pagado 22,6 % menor; medido 1,554–1,581); probable
+  causa planes de pago ARCA ($11,55 M en la ventana) → falta «Mis Facilidades». Costo de obra usa
+  devengado (DDJJ), así que el número no es falso, pero NO se presenta como hecho. **Seguridad RECHAZO**:
+  32 vistas sin invoker (nómina, egresos, cartera, ART) visibles a empleados + `actions.ts:77` + tabla
+  `personas` con 6 `es_prueba` → agente abea02b… corrigiendo. El F931 de julio ($4,86 M, 20/07) falta en
+  `_MOVIMIENTOS`.
+- **Quattropani HH**: JORNALES tiene sólo Quiroga Sebastián (191 h) y Reta Ramón (187 h) desde el bloque
+  17/08; la app sumó 114 h `web:*` sin planilla (Maldonado 80 h). Regla nueva del dueño: HH de obra en el
+  CRM = sólo `sheet:jornales`; web aparte → agente ac6801d… (migración T1400, incluye Oficina).
+- **Órdenes de compra y pago**: el dueño la rechazó («tirar documentos sin sentido») → rehacer como
+  registro con estado y saldo, OC unificada en tres caras → agente a54b228….
+- **Proveedores (Sheet)**: no hay pagos huérfanos; la deuda «de más» era el plan de Tello (resuelto) y que
+  «Se le debe» incluye cuotas no vencidas. Conciliador de pagos en main (f2ec8fe6), sólo ensayo.
+- **Santander Ochoa/Castillo**: teléfono, mail y estado civil de ambos y DNI de Castillo NO existen en
+  ninguna fuente (IERIC, legajo, ARCA, F931, Postgres, Mattermost). El modelo del banco no se descarga
+  (Akamai corta desde la VM y desde WebFetch). Hay que pedírselos a los dos trabajadores.
+- **`contrato_monto`**: queda abierto: lo leen `xsas_obra`/`xsas_actividad` con invoker; cerrarlo rompe XSAS.
 
 ## 6. PENDIENTES REALES
 
