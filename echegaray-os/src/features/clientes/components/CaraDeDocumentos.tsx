@@ -52,13 +52,32 @@ const AYUDA_SIN_CARPETA = 'El OS no tiene ninguna carpeta de Drive vinculada a e
 
 const AYUDA_OS = 'Este papel vive en el OS (lo cargó el bot o la app), no en la carpeta de Drive.'
 
+/**
+ * UNA OC O UNA OP LLEVA A SU REGISTRO (dueño, 13/09/2026). El PDF es la evidencia; su saldo se lee en
+ * la solapa Órdenes. El enlace va AL LADO de la fila y no adentro: la fila entera ya es un enlace al
+ * PDF, y un `<a>` dentro de otro es HTML que el navegador desarma.
+ */
 function Archivo({ a }: { a: ArchivoDeLaCara }) {
+  if (!a.registro) return <FilaDeArchivo a={a} />
+  return (
+    <div className="flex items-stretch" style={{ borderBottom: `1px solid ${V.lineaFila}` }}>
+      <div className="min-w-0 flex-1"><FilaDeArchivo a={a} sinBorde /></div>
+      <Link href={a.registro} prefetch={false} data-testid="papel-a-registro"
+        title="Ver esta orden en el registro: monto, facturado, cobrado y saldo"
+        className="flex items-center hover:underline" style={{ fontSize: '11.5px', color: V.apagado, padding: '0 8px' }}>
+        registro
+      </Link>
+    </div>
+  )
+}
+
+function FilaDeArchivo({ a, sinBorde = false }: { a: ArchivoDeLaCara; sinBorde?: boolean }) {
   return (
     <Link
       href={a.href} target="_blank" rel="noopener noreferrer" data-testid="papel-de-obra"
       data-clave={a.clave}
       className={`grid ${COLS_ARCHIVO} items-center gap-[16px] hover:bg-[#F2F1ED]`}
-      style={{ height: 30, paddingLeft: 24, paddingRight: 8, borderBottom: `1px solid ${V.lineaFila}` }}
+      style={{ height: 30, paddingLeft: 24, paddingRight: 8, borderBottom: sinBorde ? undefined : `1px solid ${V.lineaFila}` }}
       title={[
         a.porque ? `Clasificado por ${a.porque}` : 'Sin marca en el nombre ni en la ruta: queda en «Otros».',
         a.via ? `Atado a la obra por: ${a.via}` : null,
