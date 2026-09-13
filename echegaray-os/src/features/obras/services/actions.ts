@@ -20,7 +20,7 @@ import { createClient } from '@/lib/supabase/server'
 import { finNoAnteriorAlInicio } from './validacionFechas'
 import { claveDeActividad } from './claves'
 import { haceCiclo } from './cronograma'
-import { debeFijarMonto } from './alta'
+import { debeFijarMonto, montoAnterior } from './alta'
 
 export type Resultado = { ok: true; id?: string; mensaje?: string } | { ok: false; error: string }
 
@@ -76,10 +76,12 @@ async function fijarMontoSiCambio(
   monto: number | null,
 ): Promise<string | null> {
   if (!form.has('monto_contratado')) return null
-  const { data: actual } = await supabase.from('obra_canonica')
-    .select('monto_contratado').eq('id', obraId).maybeSingle()
-  const antes = (actual?.monto_contratado ?? null) as number | string | null
-  if (!debeFijarMonto(true, antes, monto)) return null
+  // El monto de antes se pide a `contratado_de_obra()` y no a la tabla: la columna está cerrada a
+  // `authenticated` desde 20260912T1600 y leerla daba «permission denied» disfrazado de «sin
+  // contrato». Si la lectura falla, no se decide: se avisa. Ver `montoAnterior`.
+  const previo = montoAnterior(await supabase.rpc('contratado_de_obra', { p_obra: obraId }))
+  if (!previo.ok) return `no se pudo leer el monto contratado actual, así que no se tocó: ${previo.error}`
+  if (!debeFijarMonto(true, previo.antes, monto)) return null
 
   const { error } = await supabase.rpc('fijar_monto_contratado', { p_obra_id: obraId, p_monto: monto })
   return error ? error.message : null

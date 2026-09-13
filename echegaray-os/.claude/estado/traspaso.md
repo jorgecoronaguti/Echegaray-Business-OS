@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-13 ~19:10 (hora local −03) · main = producción_
+_actualizado: 2026-09-13 ~19:45 (hora local −03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -119,6 +119,14 @@ el chat). **Antes de buscar nada: `.claude/MAPA.md`.**
   ninguna fuente (IERIC, legajo, ARCA, F931, Postgres, Mattermost). El modelo del banco no se descarga
   (Akamai corta desde la VM y desde WebFetch). Hay que pedírselos a los dos trabajadores.
 - **`contrato_monto`**: queda abierto: lo leen `xsas_obra`/`xsas_actividad` con invoker; cerrarlo rompe XSAS.
+
+- **APLICADO 13/09 tarde**: T1400 (HH de obra en el CRM sólo `sheet:jornales`; web aparte en
+  `sin_respaldo`; Quattropani 378 h · 2 personas · inicio 17/08 verificado en la RPC como Dirección; SF
+  Pisos, Playón dilución e Instalación eléctrica quedan sin horas de planilla). T1200 (portero en 6 vistas
+  económicas + 6 tablas de origen + CBU de ART + `personas` sin `es_prueba` para cuentas reales;
+  empleado 10/880/12 → 0; Dirección y md5 de la ficha idénticos). Escudero: comprobante 17105298
+  cargado desde el adjunto del chat. En curso: caché de la ficha en la base (agente a891d3f…),
+  Órdenes como registro (agente a54b228…), auditor bloque 5 en producción.
 
 ## 6. PENDIENTES REALES
 
