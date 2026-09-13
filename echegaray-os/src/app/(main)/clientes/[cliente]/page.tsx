@@ -33,7 +33,6 @@ import { createClient } from '@/lib/supabase/server'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
 import { leerFichaDeUnaConsulta } from '@/features/clientes/services/fichaDeUnaConsulta'
 import { frescuraDeLaFicha } from '@/features/clientes/services/frescuraFicha'
-import { V } from '@/shared/components/v2/patron'
 import {
   archivarCliente, borrarContacto, crearContacto, crearNota, editarCliente, editarContacto,
 } from '@/features/clientes/services/actions'

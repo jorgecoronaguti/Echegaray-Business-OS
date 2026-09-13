@@ -1,73 +1,87 @@
--- ═══ LA FICHA DEL CLIENTE SE LEE DE UNA CACHÉ EN LA BASE (13/09/2026) ═══════════════════════════════
+-- ═══ LA FICHA DEL CLIENTE Y EL DESGLOSE DE HORAS SE LEEN DE UNA CACHÉ EN LA BASE (13/09/2026) ══════
 --
 -- ═══ EL PROBLEMA NO ES EJECUTAR: ES PLANIFICAR ═══
 --
 -- Medido en producción el 13/09/2026: `pantalla_cliente(p_slug, p_solapa)` EJECUTA en 130–400 ms con
 -- el plan caliente, pero en una conexión que nunca la vio PLANIFICA 2–10 s (10,5 s la primera llamada
--- como Dirección tras reemplazarla; 3,4 / 1,1 / 0,3 s en conexiones nuevas). Supavisor reparte los
--- pedidos entre backends, así que el plan frío se paga seguido, y bajo carga la ficha se corta contra
--- el `statement_timeout` de 8 s de `authenticator`.
+-- como Dirección tras reemplazarla; 3,4 / 1,1 / 0,3 s en conexiones nuevas). Aun en la MISMA conexión,
+-- las primeras llamadas replanifican (`plan_cache_mode = auto` usa planes a medida las primeras cinco
+-- veces): Quattropani/obras 2.905 → 2.007 → 989 ms. Supavisor reparte los pedidos entre backends, así
+-- que el plan frío se paga seguido. Con la base cargada, la primera carga de Quattropani se cortó a
+-- los 113 s y las siguientes tardaron 9,8 / 20,4 / 17,3 s; el desglose `hh_de_obra`, 13,2 s.
 --
 -- LO QUE SE PROBÓ Y NO SIRVIÓ: partir el cuerpo por solapa en ramas plpgsql. Cada rama sigue siendo
 -- una consulta que se planifica la primera vez que un backend la ve, y se midió PEOR (7,4 s en frío).
 --
 -- ═══ LA SALIDA: LA CONSULTA CARA NO CORRE EN EL PEDIDO ═══
 --
--- `ficha_cliente_cache` guarda el JSON por cliente × solapa. `pantalla_cliente` pasa a ser un
--- envoltorio chico: si quien pregunta es de la clase con la que se calculó la caché y la fila tiene
--- menos de 10 minutos, devuelve la fila (sin planificar el cuerpo grande: plpgsql planifica cada
--- sentencia recién cuando la ejecuta); si no, calcula en vivo como hasta hoy. El cuerpo de siempre
--- vive intacto en `pantalla_cliente_en_vivo`, tomado de `pg_get_functiondef` sobre la base viva
--- (la definición de `20260913T1400`), no de un archivo viejo.
+-- `ficha_cliente_cache` guarda el JSON por RPC × clave × solapa: `pantalla_cliente` por cliente y
+-- cara, y `hh_de_obra` por obra (sólo la ventana por defecto, `p_desde = null`, que es la que abre el
+-- clic). Las dos RPC pasan a ser envoltorios chicos en plpgsql: si quien pregunta es de la clase con
+-- la que se calculó la caché y la fila tiene menos de 10 minutos, devuelven la fila SIN planificar el
+-- cuerpo grande (plpgsql planifica cada sentencia recién cuando la ejecuta); si no, calculan en vivo
+-- como hasta hoy. Los cuerpos de siempre viven intactos en `pantalla_cliente_en_vivo` y
+-- `hh_de_obra_en_vivo`, copiados de las definiciones vivas (`20260913T1400`).
 --
 -- ═══ QUIÉN RECIBE LA CACHÉ, Y POR QUÉ NADIE MÁS ═══
 --
--- La RPC es SECURITY INVOKER: lo que ve cada uno lo recorta la RLS adentro de las vistas, y las
--- claves `hh_obra`/`costo_obra` dependen de `es_administracion()`. Un JSON calculado con los ojos
--- de Dirección NO puede servirse a otro rol. Por eso la fila guarda `rol_calculo` y sólo se entrega a
+-- Las dos RPC son SECURITY INVOKER: lo que ve cada uno lo recorta la RLS adentro de las vistas —desde
+-- `20260913T1200`, además, el portero `ve_economia()` de `obra_economia_cartera` y otras cinco—, y
+-- las claves de horas y costos dependen de `es_administracion()`. Un JSON calculado con los ojos de
+-- Dirección NO puede servirse a otro rol. Por eso la fila guarda `rol_calculo` y sólo se entrega a
 -- quien tiene EXACTAMENTE ese rol, sin sesión de prueba:
 --
 --   · jefe de obra y campo → siempre en vivo, con su RLS (lo mismo que hoy);
 --   · administración       → en vivo. Hoy `ve_economia()`, `es_administracion()` y
---     `liquida_sueldos()` tratan igual a los dos roles, pero hay trabajo en curso poniendo porteros
---     a las vistas económicas: si alguno llega a separar Dirección de Administración, servirle a
---     Administración lo calculado como Dirección le mostraría lo que su RLS le niega. Falla cerrado.
---     Medido el 13/09/2026: no hay ningún perfil con rol `administracion`.
+--     `liquida_sueldos()` tratan igual a los dos roles, pero si un portero futuro separa Dirección de
+--     Administración, servirle lo calculado como Dirección le mostraría lo que su RLS le niega. Falla
+--     cerrado. Medido el 13/09/2026: no hay ningún perfil con rol `administracion`.
 --   · identidades de prueba → en vivo: `sesion_es_de_prueba()` cambia lo que publican algunas vistas
 --     de personas, y una caché compartida no puede cargar esa diferencia.
 --
--- La clave `perfil` es de quien pregunta: no se guarda, se agrega en la lectura con la MISMA consulta
--- del cuerpo en vivo. El orden de claves de `jsonb` es canónico, así que la respuesta desde la caché
--- es byte a byte la del cálculo en vivo más `cache_calculado_en`, que la pantalla usa para decir de
--- cuándo son los datos.
+-- La clave `perfil` de `pantalla_cliente` es de quien pregunta: no se guarda, se agrega en la lectura
+-- con la MISMA consulta del cuerpo en vivo. El orden de claves de `jsonb` es canónico, así que la
+-- respuesta desde la caché es byte a byte la del cálculo en vivo más `cache_calculado_en`, que la
+-- pantalla usa para decir de cuándo son los datos.
 --
 -- ═══ CÓMO SE CALCULA SIN SER NADIE ═══
 --
 -- `refrescar_ficha_cliente_cache()` NO es SECURITY DEFINER, y es a propósito: correría como
--- `postgres`, que tiene BYPASSRLS, y el JSON saldría calculado SIN la RLS de Dirección. En su lugar
--- corre como quien la llama (pg_cron → `postgres`), fija los claims de un perfil REAL de Dirección
--- (el más antiguo que no es de prueba; no se inventa ninguna identidad) y hace `set local role
--- authenticated` alrededor de cada cálculo — exactamente lo que hace PostgREST con un usuario. Postgres
--- prohíbe `SET ROLE` adentro de una función SECURITY DEFINER: ésa es la otra razón.
+-- `postgres`, que tiene BYPASSRLS, y el JSON saldría calculado SIN la RLS de Dirección. Tampoco usa la
+-- escapatoria `auth.uid() is null` de los porteros: sin uid, `es_administracion()` es falso y las
+-- claves de horas y costos saldrían `null`. Corre como quien la llama (pg_cron → `postgres`), fija los
+-- claims de un perfil REAL de Dirección (el más antiguo que no es de prueba; no se inventa ninguna
+-- identidad) y hace `set local role authenticated` alrededor de cada cálculo — exactamente lo que hace
+-- PostgREST con un usuario. Postgres prohíbe `SET ROLE` adentro de una función SECURITY DEFINER: ésa
+-- es la otra razón.
 --
--- ═══ FRESCURA ═══
+-- ═══ FRESCURA Y CARGA ═══
 --
 --   · pg_cron cada minuto recalcula lo que FALTA o tiene más de 5 minutos. En régimen, las filas
 --     vencen juntas y el trabajo real es un lote cada 5 minutos; los minutos sin nada vencido no
---     tocan el cuerpo grande.
---   · cada corrida corta a los 90 s y deja el resto para el minuto siguiente: un lote pesado se
---     escalona solo en vez de pelear con la app por la instancia chica.
+--     tocan ningún cuerpo grande.
+--   · CADA CORRIDA ES UNA TRANSACCIÓN, y un `statement_timeout` no lo atrapa `exception when others`:
+--     aborta la corrida entera y se pierde lo calculado en ella. Por eso la corrida corta a los 40 s
+--     (lo que no entra queda para el minuto siguiente) y, fuera de lo que falta, elige AL AZAR: un
+--     orden fijo reintentaría primero, cada minuto, la misma combinación que no entra.
+--   · CEDE ANTE LA APP: con más de 8 backends activos la corrida no calcula nada. La instancia es chica
+--     (60 conexiones, 224 MB de shared_buffers) y un refresco que compite con quien está usando la
+--     pantalla empeora lo que vino a arreglar. El umbral es inicial, no medido bajo carga real.
 --   · un lote que se superpone con otro no corre (candado de transacción).
---   · las acciones del CRM que escriben llaman `invalidar_ficha_cliente_cache(cliente_id)`: la fila se
---     borra, el próximo pedido calcula en vivo y el cron la repone en menos de un minuto.
+--   · las acciones del CRM que escriben llaman `invalidar_ficha_cliente_cache(cliente_id)`: se borran
+--     sus filas (ficha y desglose de sus obras), el próximo pedido calcula en vivo y el cron las repone
+--     en menos de un minuto.
 --   · lo que escriben los sincronizadores (Sheet, bancos, ARCA) NO invalida: lo cubre el vencimiento,
 --     y la pantalla dice «datos de hace N min».
 --
--- La solapa `null` (la ficha entera) no se guarda: la página nunca la pide (siempre manda una cara), y
--- es la combinación más cara. Se sigue calculando en vivo.
+-- La solapa `null` (la ficha entera) no se guarda: la página nunca la pide y es la combinación más
+-- cara. Tampoco las otras ventanas del desglose (`p_desde` con fecha). Las dos siguen en vivo.
 
 create table if not exists public.ficha_cliente_cache (
-  slug          text        not null,
+  rpc           text        not null check (rpc in ('pantalla_cliente', 'hh_de_obra')),
+  -- El slug del cliente para `pantalla_cliente`, el id de la obra para `hh_de_obra`.
+  clave         text        not null,
+  -- La cara de `pantalla_cliente`; '' para `hh_de_obra`, que no tiene.
   solapa        text        not null,
   json          jsonb       not null,
   calculado_en  timestamptz not null,
@@ -75,7 +89,7 @@ create table if not exists public.ficha_cliente_cache (
   rol_calculo   text        not null,
   -- Cuánto tardó el cálculo, para medir el costo del refresco sin EXPLAIN.
   ms            integer,
-  primary key (slug, solapa)
+  primary key (rpc, clave, solapa)
 );
 
 -- RLS SIN POLICIES: nadie la lee por PostgREST. La lee `ficha_cliente_cache_leer`, que decide a quién.
@@ -83,14 +97,20 @@ alter table public.ficha_cliente_cache enable row level security;
 revoke all on table public.ficha_cliente_cache from anon, authenticated;
 
 comment on table public.ficha_cliente_cache is
-  'La ficha del cliente ya calculada, por cliente × solapa, con los ojos de `rol_calculo`. La escribe '
-  '`refrescar_ficha_cliente_cache()` (pg_cron, cada minuto lo vencido) y la lee `pantalla_cliente` a '
-  'través de `ficha_cliente_cache_leer`. Sin policies a propósito (20260913T1500).';
+  'La ficha del cliente (por cara) y el desglose de horas de cada obra, ya calculados con los ojos de '
+  '`rol_calculo`. La escribe `refrescar_ficha_cliente_cache()` (pg_cron, cada minuto lo vencido) y la '
+  'leen `pantalla_cliente` y `hh_de_obra` vía `ficha_cliente_cache_leer`. Sin policies (20260913T1500).';
 
--- ── EL CÁLCULO DE SIEMPRE, CON OTRO NOMBRE ───────────────────────────────────────────────────────────
+-- ── LOS CÁLCULOS DE SIEMPRE, CON OTRO NOMBRE ───────────────────────────────────────────────────────
 --
--- Copiado de `pg_get_functiondef('public.pantalla_cliente(text,text)')` sobre la base viva el 13/09/2026,
--- cambiando SÓLO el nombre. El test pg compara su md5 contra la RPC anterior para cada rol.
+-- Copiados de `pg_get_functiondef` sobre la base viva el 13/09/2026 (definiciones de 20260913T1400),
+-- cambiando SÓLO el nombre. El test pg compara sus respuestas contra las RPC anteriores, rol por rol.
+--
+-- UNA MIGRACIÓN QUE CAMBIE LO QUE CALCULA LA FICHA O EL DESGLOSE REDEFINE ESTAS DOS FUNCIONES, NO LOS
+-- ENVOLTORIOS, y vacía la caché (`delete from public.ficha_cliente_cache`) para no servir el cálculo
+-- viejo hasta diez minutos. Redefinir `pantalla_cliente` con el cuerpo entero borraría la caché en
+-- silencio: `src/features/clientes/services/fichaCache.test.ts` lo impide.
+
 CREATE OR REPLACE FUNCTION public.pantalla_cliente_en_vivo(p_slug text, p_solapa text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -580,20 +600,135 @@ with elegido as (
 end
 $function$;
 
+CREATE OR REPLACE FUNCTION public.hh_de_obra_en_vivo(p_obra text, p_desde date DEFAULT NULL::date)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  with la_obra as (
+    -- `obra_panel` es `security_invoker`: si el rol no puede ver la obra, acá no hay fila y la
+    -- función devuelve `null`. El permiso no se resuelve con un `if` en la aplicación.
+    select o.obra_id, o.nombre, o.cliente_id, o.cliente_slug, o.estado, o.fecha_inicio_plan
+      from public.obra_panel o where o.obra_id = p_obra
+  ),
+  filas as (
+    select r.fecha, r.persona_id, r.horas, r.tipo_hora,
+           r.tipo_hora in ('normal', 'extra_50', 'extra_100') as es_trabajo,
+           -- LA QUINCENA CALENDARIO (1–15 y 16–fin), que es con la que se liquidan los jornales.
+           case when extract(day from r.fecha) <= 15
+                then date_trunc('month', r.fecha)::date
+                else (date_trunc('month', r.fecha) + interval '15 days')::date end as quincena
+      from public.registros_hh r
+     where r.obra_canonica_id = p_obra
+       -- SÓLO LA PLANILLA (dueño, 13/09/2026): HH, personas, inicio, quincenas y celdas son las de
+       -- JORNALES. Lo cargado en la app sale aparte, en `sin_respaldo`.
+       and r.fuente_legacy = 'sheet:jornales'
+  ),
+  -- LA VENTANA QUE SE DIBUJA: la pedida, o la ÚLTIMA con trabajo cargado. Nunca la primera: lo que
+  -- se quiere ver al abrir es qué pasó esta quincena.
+  ventana as (
+    select coalesce(p_desde, (select max(f.quincena) from filas f where f.es_trabajo)) as desde
+  ),
+  celda as (
+    select f.persona_id, f.fecha,
+           sum(f.horas) filter (where f.es_trabajo)                 as horas,
+           count(*) filter (where f.tipo_hora = 'ausencia') > 0     as ausencia,
+           count(*) filter (where f.tipo_hora = 'licencia') > 0     as licencia
+      from filas f
+     where f.quincena = (select desde from ventana)
+     group by f.persona_id, f.fecha
+  )
+  select case
+    -- Media grilla parece una grilla: ver la cabecera.
+    when not (select public.es_administracion()) then null::jsonb
+    when not exists (select 1 from la_obra) then null::jsonb
+    else jsonb_build_object(
+      'obra', (select to_jsonb(x) from la_obra x),
+
+      'registros', (select count(*) from filas f where f.es_trabajo),
+      'personas', (select count(distinct f.persona_id) from filas f where f.es_trabajo),
+      'desde', (select min(f.fecha) from filas f where f.es_trabajo),
+      'hasta', (select max(f.fecha) from filas f where f.es_trabajo),
+      'ventana', (select desde from ventana),
+
+      -- LO QUE LA APP CARGÓ Y JORNALES NO TIENE, por persona y con sus días. No suma a nada de lo
+      -- de arriba; se publica para que no desaparezca en silencio.
+      'sin_respaldo', (
+        select coalesce(jsonb_agg(jsonb_build_object(
+                 'persona_id', s.persona_id, 'nombre', s.nombre, 'horas', s.horas, 'dias', s.dias)
+                 order by s.horas desc), '[]'::jsonb)
+          from (select x.persona_id,
+                       (select pe.nombre_completo from public.personas pe where pe.id = x.persona_id) as nombre,
+                       sum(x.horas) as horas,
+                       to_jsonb(array_agg(distinct x.fecha order by x.fecha)) as dias
+                  from public.registros_hh x
+                 where x.obra_canonica_id = p_obra
+                   and x.tipo_hora in ('normal', 'extra_50', 'extra_100')
+                   and x.fuente_legacy is distinct from 'sheet:jornales'
+                 group by x.persona_id) s
+      ),
+
+      -- TODAS LAS QUINCENAS CON SU TOTAL: el índice del desglose. Una quincena vacía de trabajo
+      -- pero con ausencias también aparece —tiene algo que contar— con `hh` en null.
+      'periodos', (
+        select coalesce(jsonb_agg(jsonb_build_object(
+                 'desde', p.quincena, 'hh', p.hh, 'dias', p.dias, 'registros', p.n)
+                 order by p.quincena), '[]'::jsonb)
+          from (select f.quincena,
+                       sum(f.horas) filter (where f.es_trabajo)              as hh,
+                       count(distinct f.fecha) filter (where f.es_trabajo)    as dias,
+                       count(*) filter (where f.es_trabajo)                   as n
+                  from filas f group by f.quincena) p
+      ),
+
+      -- EL ACUMULADO POR PERSONA DE TODA LA OBRA, no de la quincena: es la respuesta a «quién puso
+      -- las horas de esta obra». `nombre` en null = la fila no tiene persona (las 19 filas legacy de
+      -- JORNALES), y eso se dice, no se esconde.
+      'por_persona', (
+        select coalesce(jsonb_agg(jsonb_build_object(
+                 'persona_id', t.persona_id, 'nombre', t.nombre, 'hh', t.hh, 'dias', t.dias,
+                 'primera', t.primera, 'ultima', t.ultima) order by t.hh desc nulls last), '[]'::jsonb)
+          from (select f.persona_id,
+                       (select p.nombre_completo from public.personas p where p.id = f.persona_id) as nombre,
+                       sum(f.horas) filter (where f.es_trabajo)            as hh,
+                       count(distinct f.fecha) filter (where f.es_trabajo) as dias,
+                       min(f.fecha) filter (where f.es_trabajo)            as primera,
+                       max(f.fecha) filter (where f.es_trabajo)            as ultima
+                  from filas f group by f.persona_id) t
+      ),
+
+      -- LAS CELDAS DE LA VENTANA: una por persona y día, con las horas trabajadas y la marca de lo
+      -- que no es trabajo. Un día con 0 h y una ausencia NO es un día de 0 horas trabajadas: es un
+      -- día que la persona no estuvo, y la celda lo dice con una letra.
+      'celdas', (
+        select coalesce(jsonb_agg(jsonb_build_object(
+                 'persona_id', c.persona_id, 'fecha', c.fecha, 'horas', c.horas,
+                 'ausencia', c.ausencia, 'licencia', c.licencia)), '[]'::jsonb)
+          from celda c
+      )
+    )
+  end
+$function$;
+
 revoke all on function public.pantalla_cliente_en_vivo(text, text) from public, anon;
 grant execute on function public.pantalla_cliente_en_vivo(text, text) to authenticated;
+revoke all on function public.hh_de_obra_en_vivo(text, date) from public, anon;
+grant execute on function public.hh_de_obra_en_vivo(text, date) to authenticated;
 
 comment on function public.pantalla_cliente_en_vivo(text, text) is
-  'EL CÁLCULO DE LA FICHA, sin caché: el cuerpo de `pantalla_cliente` de 20260913T1400, tomado de '
-  '`pg_get_functiondef`. Lo llaman `pantalla_cliente` cuando no puede servir la caché y '
-  '`refrescar_ficha_cliente_cache` para llenarla (20260913T1500).';
+  'EL CÁLCULO DE LA FICHA, sin caché: el cuerpo de `pantalla_cliente` de 20260913T1400. Lo llaman '
+  '`pantalla_cliente` cuando no puede servir la caché y `refrescar_ficha_cliente_cache` (20260913T1500).';
+comment on function public.hh_de_obra_en_vivo(text, date) is
+  'EL DESGLOSE DE HORAS DE UNA OBRA, sin caché: el cuerpo de `hh_de_obra` de 20260913T1400. Lo llaman '
+  '`hh_de_obra` cuando no puede servir la caché y `refrescar_ficha_cliente_cache` (20260913T1500).';
 
 -- ── LA LECTURA ────────────────────────────────────────────────────────────────────────────────────
 --
 -- SECURITY DEFINER porque la tabla no tiene policies. Todo lo que decide si se entrega está en el
 -- `where`: vigencia, rol idéntico al del cálculo y sesión que no es de prueba. Cualquier otra cosa
--- devuelve `null` y `pantalla_cliente` calcula en vivo.
-create or replace function public.ficha_cliente_cache_leer(p_slug text, p_solapa text)
+-- devuelve `null` y la RPC calcula en vivo.
+create or replace function public.ficha_cliente_cache_leer(p_rpc text, p_clave text, p_solapa text)
 returns jsonb
 language sql
 stable
@@ -602,20 +737,22 @@ set search_path to 'public'
 as $function$
   select c.json || jsonb_build_object('cache_calculado_en', c.calculado_en)
     from public.ficha_cliente_cache c
-   where c.slug = p_slug
+   where c.rpc = p_rpc
+     and c.clave = p_clave
      and c.solapa = p_solapa
      and c.calculado_en > now() - interval '10 minutes'
      and c.rol_calculo = public.current_rol()
      and not public.sesion_es_de_prueba()
 $function$;
 
-revoke all on function public.ficha_cliente_cache_leer(text, text) from public, anon;
-grant execute on function public.ficha_cliente_cache_leer(text, text) to authenticated;
+revoke all on function public.ficha_cliente_cache_leer(text, text, text) from public, anon;
+grant execute on function public.ficha_cliente_cache_leer(text, text, text) to authenticated;
 
--- ── LA RPC DE LA PANTALLA ─────────────────────────────────────────────────────────────────────────
+-- ── LAS RPC DE LA PANTALLA ────────────────────────────────────────────────────────────────────────
 --
--- Misma firma, mismo `stable`, mismo `search_path`, y SIGUE SIENDO SECURITY INVOKER: el camino en
--- vivo tiene que ver lo que ve quien pregunta. `create or replace` conserva los GRANT.
+-- Mismas firmas, mismos defaults, mismo `stable`, mismo `search_path`, y SIGUEN SIENDO SECURITY
+-- INVOKER: el camino en vivo tiene que ver lo que ve quien pregunta. `create or replace` conserva los
+-- GRANT. Pasan a plpgsql para que la lectura de la caché no arrastre la planificación del cuerpo.
 create or replace function public.pantalla_cliente(p_slug text, p_solapa text)
 returns jsonb
 language plpgsql
@@ -626,7 +763,7 @@ declare
   v_cache jsonb;
 begin
   if p_solapa is not null then
-    v_cache := public.ficha_cliente_cache_leer(p_slug, p_solapa);
+    v_cache := public.ficha_cliente_cache_leer('pantalla_cliente', p_slug, p_solapa);
     if v_cache is not null then
       -- EL PERFIL ES DE QUIEN PREGUNTA, con la misma consulta que el cuerpo en vivo.
       return v_cache || jsonb_build_object('perfil', (
@@ -645,7 +782,32 @@ comment on function public.pantalla_cliente(text, text) is
   'LA FICHA DEL CLIENTE EN UN VIAJE. Desde 20260913T1500 lee `ficha_cliente_cache` cuando quien pregunta '
   'tiene el rol con que se calculó (Dirección), no es sesión de prueba y la fila tiene menos de 10 min '
   '—la respuesta trae `cache_calculado_en`—; si no, calcula en vivo (`pantalla_cliente_en_vivo`) con la '
-  'RLS de quien pregunta. La planificación en frío del cuerpo (2–10 s) dejó de pagarse en el pedido.';
+  'RLS de quien pregunta.';
+
+create or replace function public.hh_de_obra(p_obra text, p_desde date default null::date)
+returns jsonb
+language plpgsql
+stable
+set search_path to 'public'
+as $function$
+declare
+  v_cache jsonb;
+begin
+  -- SÓLO LA VENTANA POR DEFECTO: es la que abre el clic. Navegar a otra quincena calcula en vivo.
+  if p_desde is null then
+    v_cache := public.ficha_cliente_cache_leer('hh_de_obra', p_obra, '');
+    if v_cache is not null then
+      return v_cache;
+    end if;
+  end if;
+  return public.hh_de_obra_en_vivo(p_obra, p_desde);
+end
+$function$;
+
+comment on function public.hh_de_obra(text, date) is
+  'EL DESGLOSE DE HORAS DE UNA OBRA. Desde 20260913T1500, con `p_desde` null lee `ficha_cliente_cache` '
+  'bajo las mismas reglas que `pantalla_cliente` (trae `cache_calculado_en`); si no, calcula en vivo '
+  '(`hh_de_obra_en_vivo`): quincenas, personas y celdas SÓLO de la planilla JORNALES.';
 
 -- ── EL REFRESCO ───────────────────────────────────────────────────────────────────────────────────
 --
@@ -658,7 +820,8 @@ set search_path to 'public'
 as $function$
 declare
   v_uid     uuid;
-  v_slug    text;
+  v_rpc     text;
+  v_clave   text;
   v_solapa  text;
   v_json    jsonb;
   v_desde   timestamptz;
@@ -667,6 +830,13 @@ declare
 begin
   -- DOS LOTES A LA VEZ SON EL DOBLE DE CARGA PARA EL MISMO RESULTADO: el segundo no corre.
   if not pg_try_advisory_xact_lock(hashtext('public.refrescar_ficha_cliente_cache')) then
+    return 0;
+  end if;
+
+  -- CEDE ANTE LA APP (sólo el cron; un refresco pedido por cliente es deliberado).
+  if p_slug is null and (select count(*) from pg_stat_activity a
+                          where a.state = 'active' and a.backend_type = 'client backend'
+                            and a.pid <> pg_backend_pid()) > 8 then
     return 0;
   end if;
 
@@ -684,40 +854,57 @@ begin
   perform set_config('request.jwt.claims',
                      jsonb_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
 
-  -- Un cliente que ya no existe no deja su ficha servida.
+  -- Un cliente o una obra que ya no existen no dejan su caché servida.
   delete from public.ficha_cliente_cache c
-   where not exists (select 1 from public.clientes k where k.slug = c.slug);
+   where (c.rpc = 'pantalla_cliente' and not exists (select 1 from public.clientes k where k.slug = c.clave))
+      or (c.rpc = 'hh_de_obra' and not exists (select 1 from public.obra_canonica o where o.id = c.clave));
 
-  for v_slug, v_solapa in
-    select k.slug, s.solapa
-      from public.clientes k
-     cross join unnest(array['obras', 'ordenes', 'cobranzas', 'presupuestos', 'documentos', 'actividad'])
-             as s(solapa)
-      left join public.ficha_cliente_cache c on c.slug = k.slug and c.solapa = s.solapa
-     where (p_slug is null or k.slug = p_slug)
-       -- CON UN CLIENTE PEDIDO SE RECALCULA ENTERO; SIN CLIENTE, SÓLO LO QUE FALTA O VENCIÓ.
-       and (p_slug is not null or c.calculado_en is null
-            or c.calculado_en < clock_timestamp() - interval '5 minutes')
-     -- LO QUE FALTA PRIMERO: es lo que alguien acaba de invalidar escribiendo.
-     order by c.calculado_en nulls first, k.slug, s.solapa
+  for v_rpc, v_clave, v_solapa in
+    select x.rpc, x.clave, x.solapa
+      from (
+        select 'pantalla_cliente'::text as rpc, k.slug as clave, s.solapa
+          from public.clientes k
+         cross join unnest(array['obras', 'ordenes', 'cobranzas', 'presupuestos', 'documentos', 'actividad'])
+                 as s(solapa)
+         where p_slug is null or k.slug = p_slug
+        union all
+        -- LAS OBRAS QUE LA FICHA LISTA: las que cuelgan de un cliente.
+        select 'hh_de_obra', o.id, ''
+          from public.obra_canonica o
+          join public.clientes k on k.id = o.cliente_id
+         where p_slug is null or k.slug = p_slug
+      ) x
+      left join public.ficha_cliente_cache c
+        on c.rpc = x.rpc and c.clave = x.clave and c.solapa = x.solapa
+     -- CON UN CLIENTE PEDIDO SE RECALCULA ENTERO; SIN CLIENTE, SÓLO LO QUE FALTA O VENCIÓ.
+     where p_slug is not null or c.calculado_en is null
+        or c.calculado_en < clock_timestamp() - interval '5 minutes'
+     -- LO QUE FALTA PRIMERO (lo que alguien acaba de invalidar escribiendo); después, al azar.
+     order by (c.calculado_en is not null), random()
   loop
-    -- EL LOTE SE ESCALONA SOLO: lo que no entra en 90 s queda para el minuto siguiente.
-    exit when clock_timestamp() - v_inicio > interval '90 seconds';
+    -- EL LOTE SE ESCALONA SOLO: lo que no entra en 40 s queda para el minuto siguiente.
+    exit when p_slug is null and clock_timestamp() - v_inicio > interval '40 seconds';
     v_desde := clock_timestamp();
     begin
       set local role authenticated;
-      v_json := public.pantalla_cliente_en_vivo(v_slug, v_solapa);
+      if v_rpc = 'pantalla_cliente' then
+        v_json := public.pantalla_cliente_en_vivo(v_clave, v_solapa) - 'perfil';
+      else
+        v_json := public.hh_de_obra_en_vivo(v_clave, null);
+      end if;
       reset role;
     exception when others then
       -- UNA COMBINACIÓN QUE FALLA NO SE GUARDA NI TUMBA EL LOTE: su fila vieja vence y la pantalla
       -- calcula en vivo, que es lo que devolvería el error a quien de verdad pregunta.
-      raise warning 'ficha_cliente_cache: % / % no se pudo calcular: %', v_slug, v_solapa, sqlerrm;
+      raise warning 'ficha_cliente_cache: % % % no se pudo calcular: %', v_rpc, v_clave, v_solapa, sqlerrm;
       continue;
     end;
-    insert into public.ficha_cliente_cache as c (slug, solapa, json, calculado_en, rol_calculo, ms)
-    values (v_slug, v_solapa, v_json - 'perfil', v_desde, 'direccion',
+    -- `null` = Dirección no ve esa obra o no existe: no hay nada que servir, calcula en vivo.
+    continue when v_json is null;
+    insert into public.ficha_cliente_cache as c (rpc, clave, solapa, json, calculado_en, rol_calculo, ms)
+    values (v_rpc, v_clave, v_solapa, v_json, v_desde, 'direccion',
             (extract(epoch from clock_timestamp() - v_desde) * 1000)::integer)
-    on conflict (slug, solapa) do update
+    on conflict (rpc, clave, solapa) do update
        set json = excluded.json, calculado_en = excluded.calculado_en,
            rol_calculo = excluded.rol_calculo, ms = excluded.ms;
     v_n := v_n + 1;
@@ -731,7 +918,8 @@ revoke all on function public.refrescar_ficha_cliente_cache(text) from public, a
 comment on function public.refrescar_ficha_cliente_cache(text) is
   'Llena `ficha_cliente_cache` calculando como un perfil real de Dirección con `set local role '
   'authenticated` (no SECURITY DEFINER: `postgres` tiene BYPASSRLS). Sin argumento: lo que falta o '
-  'tiene más de 5 min, cortando a los 90 s. Con slug: ese cliente entero (20260913T1500).';
+  'tiene más de 5 min, cortando a los 40 s y cediendo con más de 8 backends activos. Con slug: ese '
+  'cliente entero, ficha y desglose de sus obras (20260913T1500).';
 
 -- ── LA INVALIDACIÓN ───────────────────────────────────────────────────────────────────────────────
 --
@@ -747,15 +935,18 @@ as $function$
   delete from public.ficha_cliente_cache c
    where public.es_administracion()
      and (p_cliente_id is null
-          or c.slug = (select k.slug from public.clientes k where k.id = p_cliente_id))
+          or (c.rpc = 'pantalla_cliente'
+              and c.clave = (select k.slug from public.clientes k where k.id = p_cliente_id))
+          or (c.rpc = 'hh_de_obra'
+              and c.clave in (select o.id from public.obra_canonica o where o.cliente_id = p_cliente_id)))
 $function$;
 
 revoke all on function public.invalidar_ficha_cliente_cache(uuid) from public, anon;
 grant execute on function public.invalidar_ficha_cliente_cache(uuid) to authenticated;
 
 comment on function public.invalidar_ficha_cliente_cache(uuid) is
-  'Borra la ficha cacheada de un cliente (o de todos con null) después de que el CRM escribe. El cron '
-  'la repone en menos de un minuto (20260913T1500).';
+  'Borra la ficha y el desglose cacheados de un cliente (o de todos con null) después de que el CRM '
+  'escribe. El cron los repone en menos de un minuto (20260913T1500).';
 
 -- ── EL CRON ───────────────────────────────────────────────────────────────────────────────────────
 do $$
