@@ -17,7 +17,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { debeFijarMonto, columnasDelPaso } from './alta.ts'
+import { debeFijarMonto, columnasDelPaso, montoAnterior } from './alta.ts'
 
 test('el campo ausente no es un campo vacío: no se toca el monto', () => {
   // `vinoElCampo = false` es el POST de quien no ve economía. Antes hay contrato cargado.
@@ -52,6 +52,36 @@ test('CERO NO ES NULL en ninguna dirección', () => {
   assert.equal(debeFijarMonto(true, null, 0), true)
   assert.equal(debeFijarMonto(true, 0, null), true)
   assert.equal(debeFijarMonto(true, 0, 0), false)
+})
+
+// ═══ LA LECTURA QUE FALLA NO ES UN CONTRATO VACÍO (13/09/2026) ═══
+//
+// Regresión de `20260912T1600`: la acción leía el monto de la tabla con la sesión del usuario, la
+// columna quedó cerrada, el «permission denied» se ignoraba y `antes` valía null. Si alguien vuelve
+// a tratar el error como null, los dos primeros tests se ponen rojos.
+test('un error al leer el monto de antes NO se convierte en «sin contrato»', () => {
+  const r = montoAnterior({ data: null, error: { message: 'permission denied for table obra_canonica' } })
+  assert.equal(r.ok, false)
+  assert.match(!r.ok ? r.error : '', /permission denied/)
+})
+
+test('los dos daños de la regresión: con el error como null se decidía al revés', () => {
+  // Lo que la base tiene: un contrato de $7,5 M. Lo que el código creía: null.
+  const real = montoAnterior({ data: '7500000', error: null })
+  assert.ok(real.ok)
+  const antes = real.ok ? real.antes : null
+  // Vaciar el contrato ES una orden: con el monto leído bien, se llama.
+  assert.equal(debeFijarMonto(true, antes, null), true)
+  assert.equal(debeFijarMonto(true, null, null), false, 'con el null inventado la orden se tiraba')
+  // Guardar sin tocar NO es un cambio: con el monto leído bien, no se llama.
+  assert.equal(debeFijarMonto(true, antes, 7500000), false)
+  assert.equal(debeFijarMonto(true, null, 7500000), true, 'con el null inventado se auditaba un cambio falso')
+})
+
+test('sin contrato cargado es null legítimo; una forma rara es error, no null', () => {
+  assert.deepEqual(montoAnterior({ data: null, error: null }), { ok: true, antes: null })
+  assert.deepEqual(montoAnterior({ data: 0, error: null }), { ok: true, antes: 0 })
+  assert.equal(montoAnterior({ data: { monto_contratado: 1 }, error: null }).ok, false)
 })
 
 test('el paso «contrato» ya no devuelve columna para el update', () => {
