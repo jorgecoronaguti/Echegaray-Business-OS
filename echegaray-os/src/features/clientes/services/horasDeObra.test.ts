@@ -76,7 +76,7 @@ test('con plan cargado se escribe real / plan, y sin real el hueco queda del lad
 test('el title respalda la cifra: desde cuándo, cuántos registros, cuánta gente y la última carga', () => {
   assert.equal(
     tituloHH(armarHorasPorObra([QUATTROPANI])?.get('quattropani')),
-    'desde 17/08 · 59 registros · 8 personas · última carga 11/09',
+    'según JORNALES · desde 17/08 · 59 registros · 8 personas · última carga 11/09',
   )
   // Singular de verdad, no «1 registros».
   assert.equal(
@@ -84,9 +84,29 @@ test('el title respalda la cifra: desde cuándo, cuántos registros, cuánta gen
       obraId: 'x', hhReal: 9, hhPlan: null, registros: 1, personas: 1,
       inicioReal: '2026-09-01', ultimaFecha: '2026-09-01',
     }),
-    'desde 01/09 · 1 registro · 1 persona · última carga 01/09',
+    'según JORNALES · desde 01/09 · 1 registro · 1 persona · última carga 01/09',
   )
   assert.equal(tituloHH(null), null, 'sin horas no hay nada que respaldar')
+})
+
+test('LO DE LA APP SIN RESPALDO EN JORNALES SE DICE APARTE, y no borra la cifra (dueño, 13/09/2026)', () => {
+  // EL DEFECTO: Quattropani sumaba 114 h de la app. Ahora no suman, pero tampoco pueden desaparecer.
+  const m = armarHorasPorObra([{
+    obra_id: 'quattropani', hh_real: 378, hh_plan: null, registros: 42, personas: 2,
+    inicio_real: '2026-08-17', ultima_fecha: '2026-09-10',
+    sin_respaldo: [{ persona_id: 'm', nombre: 'MALDONADO BATISTA', horas: 80, dias: ['2026-09-01', '2026-09-11'] }],
+  }, {
+    obra_id: 'pisos-industriales', hh_real: null, hh_plan: null, registros: 0, personas: 0,
+    inicio_real: null, ultima_fecha: null,
+    sin_respaldo: [{ persona_id: 'n', nombre: 'NIEVAS VILLEGAS', horas: 80, dias: ['2026-09-01'] }],
+  }])
+  const q = tituloHH(m?.get('quattropani')) ?? ''
+  assert.ok(q.startsWith('según JORNALES · desde 17/08 · 42 registros · 2 personas'), q)
+  assert.ok(q.includes('Aparte: 80 h cargadas en la app sin respaldo en JORNALES (MALDONADO BATISTA 80 h · 01/09, 11/09)'), q)
+  // UNA OBRA SÓLO CON CARGAS DE LA APP: «—» en la celda y el title dice por qué no es cero.
+  const p = m?.get('pisos-industriales')
+  assert.equal(textoHH(p), '—')
+  assert.equal(tituloHH(p), 'Sin horas en JORNALES. 80 h cargadas en la app sin respaldo en JORNALES (NIEVAS VILLEGAS 80 h · 01/09).')
 })
 
 test('el INICIO es la primera fecha con horas, y no se corre un día por el huso', () => {

@@ -153,7 +153,7 @@ export function costoDeHora(bolsillo: number | null, mult: number | null): numbe
 // «El costo de obra incluye a quien la dirige.» Maldonado Batista y Nievas Villegas son Oficina:
 // `persona_tarifa` les guarda `neto_mensual` y `valor_hora` NULL, y hasta acá sus horas en obra
 // salían todas «sin tarifa». La regla ES UNA SOLA y la aplican igual la clave `costo_obra` de
-// `pantalla_cliente` (SQL, 20260913T1300) y la solapa «Costo a la obra» (esta función):
+// `pantalla_cliente` (SQL, 20260913T1400) y la solapa «Costo a la obra» (esta función):
 //
 //   valor hora implícito del mes = neto mensual vigente al DÍA 1 del mes
 //                                  ÷ horas TRABAJADAS de la persona en ese mes calendario

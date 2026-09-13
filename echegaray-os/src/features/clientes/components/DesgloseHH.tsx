@@ -27,6 +27,7 @@ import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { hh as formatoHH } from '@/shared/utils/format'
 import { diaMesISO } from '@/shared/utils/fecha'
+import { fraseSinRespaldo } from '@/features/clientes/services/hhDePlanilla'
 import {
   grillaDeHoras, periodoDeLaObra, textoDeCelda, type DesgloseDeHoras,
 } from '../services/desgloseHH'
@@ -83,6 +84,14 @@ export function DesgloseHH({ d, totalHH, volverHref, hrefPeriodo }: {
           {d.personas === 1 ? 'persona' : 'personas'}
         </span>
       </div>
+
+      {/* LO DE LA APP SIN RESPALDO EN JORNALES, DICHO Y NO BORRADO (dueño, 13/09/2026): no suma a
+          nada de arriba, y sin esta línea desaparecería en silencio. */}
+      {fraseSinRespaldo(d.sinRespaldo) && (
+        <p data-testid="desglose-sin-respaldo" style={{ fontSize: '12px', color: V.warn, margin: '6px 0 0' }}>
+          {fraseSinRespaldo(d.sinRespaldo)}.
+        </p>
+      )}
 
       {/* LAS QUINCENAS, TODAS, CON SU TOTAL. Ninguna se esconde: se ve que existe y cuánto tiene,
           aunque la grilla dibuje una sola. */}

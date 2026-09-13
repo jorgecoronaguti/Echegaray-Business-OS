@@ -1,43 +1,45 @@
--- ═══ OFICINA SE CARGA A LA OBRA CON UN VALOR HORA IMPLÍCITO (13/09/2026) ═════════════════════════
+-- ═══ LAS HH DE UNA OBRA SON LAS DE JORNALES · OFICINA A VALOR HORA IMPLÍCITO (13/09/2026) ═════════
 --
--- DECISIÓN DEL DUEÑO, que cierra la opción A del hueco que `20260912T1300` dejó escrito al pie: «el
--- costo de obra incluye a quien la dirige». Maldonado Batista está asignado a Quattropani y Nievas
--- Villegas a SF Pisos Industriales; su `persona_tarifa` trae `neto_mensual` ($1.800.000 c/u, origen
--- `acuerdo:SUELDO_NETO_OFICINA`) y `valor_hora` NULL, así que sus horas en obra salían TODAS en
--- `horas_sin_tarifa`.
+-- DOS DECISIONES DEL DUEÑO, en una sola migración porque tocan el mismo bloque de `pantalla_cliente`.
+-- Se parte de las definiciones VIVAS (`pg_get_functiondef`): `pantalla_cliente` es plpgsql desde
+-- `20260913T1100` y este archivo lo conserva; copiar la versión sql de un archivo viejo revertiría
+-- el arreglo que destrabó la ficha.
 --
--- ═══ LA REGLA, UNA SOLA VEZ (y la misma en `valorHoraDeCosto` de `costoHora.ts`) ═══
+-- ═══ 1 · EN EL CRM, LAS HH REALES SON SÓLO LAS DE LA PLANILLA ═══
 --
---   valor hora implícito del mes = neto_mensual vigente al DÍA 1 del mes
---                                  ÷ horas TRABAJADAS de la persona en ese mes calendario
+-- «Están mal las HH de la obra Quattropani porque no leíste de JORNALES la quincena anterior, la
+-- fecha de inicio y exactamente las personas involucradas; rehacer y revisar en todas las obras.»
+-- JORNALES, celda por celda, tiene en Quattropani dos personas desde el bloque del 17/08; la ficha le
+-- sumaba 114 h de filas cargadas en la app (Maldonado 80 h `web:asistencia-obra`, cuatro
+-- `web:presencia-defecto` del 11/09, Agüero 2 h `web:obra`). Mismo patrón en pisos-industriales,
+-- messina-playon-dilucion-acido, entrepiso-y-escalera e instalacion-electrica.
 --
---   · el divisor son las horas `normal`/`extra_50`/`extra_100` de `registros_hh` en TODAS sus obras
---     —no las de la ficha—; licencia y ausencia no dividen.
---   · sin neto vigente o con divisor 0, la hora NO se valoriza: sigue en `horas_sin_tarifa`, nunca $ 0.
---   · después, el mismo multiplicador de costo que cualquier otra hora.
+-- Regla: `hh_obra` (HH, registros, personas, inicio, última carga), `hh_de_obra` (quincenas, personas,
+-- celdas) y `costo_obra.mano_obra` cuentan SÓLO `fuente_legacy = 'sheet:jornales'`. Lo demás NO se
+-- borra: viaja en `sin_respaldo` (persona, horas, días) y la pantalla lo dice aparte. `hh_plan` sigue
+-- saliendo de `obra_plan_vs_real`, que NO se toca: la usa el módulo Obras. Liquidación tampoco: ahí
+-- la app carga el día en curso a propósito, antes de que exista en la planilla.
 --
--- EFECTO COMPROBABLE: la mano de obra de esa persona en un mes, sumada sobre todas sus obras, es
--- `neto_mensual × multiplicador` sin residuo salvo redondeo. Con las horas de la jornada teórica como
--- divisor sobraría o faltaría un pedazo de sueldo que ninguna obra paga y nadie ve.
+-- ═══ 2 · OFICINA SE CARGA A LA OBRA CON UN VALOR HORA IMPLÍCITO ═══
 --
--- ═══ POR QUÉ EL NETO DEL DÍA 1 Y NO EL DE LA FECHA DEL REGISTRO ═══
+-- «El costo de obra incluye a quien la dirige.» Quien tiene `persona_tarifa.neto_mensual` y no
+-- `valor_hora` se valoriza a:
 --
--- La identidad del mes necesita UN neto por mes. Y el del día 1 y no el del último día porque un
--- tramo que empieza el 20 no puede valer para el 5: estirar un tramo hacia atrás afirma una tarifa
--- sin evidencia —el mismo criterio con que se dejaron afuera las 109 h de Sosa y Jofre—. Hoy el único
--- tramo mensual empieza el 01/09/2026, así que las horas de Oficina de enero a agosto SIGUEN sin
--- valorizar: no hay un neto cargado para esos meses, y extenderlo sería fabricarlo.
+--   neto_mensual vigente al DÍA 1 del mes ÷ horas TRABAJADAS de la planilla de esa persona en el mes
 --
--- ═══ QUÉ NO CAMBIA ═══
+-- en todas sus obras; sin neto o con divisor 0 no se valoriza (sigue en `horas_sin_tarifa`, nunca
+-- $ 0); después, el mismo multiplicador. La mano de obra de esa persona en el mes, sumada sobre sus
+-- obras, cierra en neto × multiplicador. El neto es el del día 1 porque el mes necesita UN neto, y un
+-- tramo que empieza el 20 no puede valer para el 5. La misma regla está en `valorHoraDeCosto`
+-- (`costoHora.ts`).
 --
--- Para quien cobra por hora, el cálculo es el mismo: la tarifa a la fecha del registro × el tramo de
--- costo. El bloque ahora agrega en dos pisos (persona×mes, después obra) y una suma de sumas numeric
--- es exacta. `personas_sin_tarifa` cuenta a quien no tiene NINGÚN valor hora de costo —antes contaba
--- `valor_hora is null`, que para Oficina era siempre—.
+-- HOY NO VALORIZA NINGUNA FILA, y es lo correcto: las horas de Maldonado y Nievas en la planilla son
+-- de enero a agosto (san-francisco y la-estrella) y su único neto rige desde el 01/09/2026; sus
+-- 80 h de septiembre en Quattropani y SF Pisos son `web:asistencia-obra`, sin respaldo en JORNALES.
+-- `liquidacion_linea` no tiene quincenas selladas de Oficina, así que no hay de dónde probar un neto
+-- anterior. La regla queda escrita para el primer mes que coincidan.
 --
--- `create or replace function` REEMPLAZA EL CUERPO COMPLETO: la función se copia ENTERA de
--- `20260912T1300`, clave por clave. Los porteros de esa migración no se repiten —no cambian— y
--- esta migración no toca ninguna vista.
+-- NO SE TOCA NINGUNA VISTA.
 
 CREATE OR REPLACE FUNCTION public.pantalla_cliente(p_slug text, p_solapa text)
  RETURNS jsonb
@@ -72,15 +74,15 @@ with elegido as (
   ),
   -- ═══ EL DIVISOR DEL SUELDO MENSUAL (dueño, 13/09/2026) ═══
   --
-  -- Las horas TRABAJADAS de cada persona con sueldo mensual, por mes calendario, en TODAS sus obras
-  -- —no sólo las de este cliente—: con las de la ficha, cada cliente le cargaría a sus obras el
-  -- sueldo entero y el mes se pagaría una vez por cliente. Licencia y ausencia no dividen, por lo
-  -- mismo que no se le cargan a una obra. Sólo las personas que alguna vez tuvieron `neto_mensual`:
-  -- hoy son dos y el CTE lee sus filas, no las de las 3.600 horas del plantel.
+  -- Las horas TRABAJADAS de la PLANILLA de cada persona con sueldo mensual, por mes calendario, en
+  -- TODAS sus obras —no sólo las de este cliente—: con las de la ficha, cada cliente le cargaría a sus
+  -- obras el sueldo entero. Es el mismo conjunto que se valoriza (`sheet:jornales`): con otro, el mes
+  -- no cerraría. Licencia y ausencia no dividen.
   horas_del_mes as (
     select r.persona_id, date_trunc('month', r.fecha)::date as mes, sum(r.horas) as horas
       from public.registros_hh r
      where r.tipo_hora in ('normal', 'extra_50', 'extra_100')
+       and r.fuente_legacy = 'sheet:jornales'
        and r.persona_id in (select p.persona_id from public.persona_tarifa p where p.neto_mensual is not null)
      group by 1, 2
   )
@@ -173,22 +175,45 @@ with elegido as (
         select coalesce(jsonb_agg(jsonb_build_object(
                  'obra_id', v.obra_id, 'hh_real', v.hh_real, 'hh_plan', v.hh_plan,
                  'registros', v.registros, 'personas', v.personas,
-                 'inicio_real', v.inicio_real, 'ultima_fecha', v.ultima_fecha)), '[]'::jsonb)
+                 'inicio_real', v.inicio_real, 'ultima_fecha', v.ultima_fecha,
+                 -- LO CARGADO EN LA APP QUE JORNALES NO RESPALDA: no suma, se dice aparte.
+                 'sin_respaldo', v.sin_respaldo)), '[]'::jsonb)
           from (
-            select w.obra_id, w.hh_real, w.hh_plan,
-                   r.registros, r.personas, r.inicio_real, r.ultima_fecha
+            -- ═══ LAS HH DE LA OBRA SON LAS DE JORNALES (dueño, 13/09/2026) ═══
+            --
+            -- `hh_plan` se sigue leyendo de `obra_plan_vs_real`. `hh_real`, registros, personas,
+            -- inicio y última carga salen SÓLO de las filas `sheet:jornales`: la vista suma también lo
+            -- cargado en la app, y en Quattropani eso eran 114 h y cinco personas que la planilla no
+            -- tiene. La vista no se toca —la usa el módulo Obras—; el CRM lee la planilla.
+            select w.obra_id, r.hh_real, w.hh_plan,
+                   r.registros, r.personas, r.inicio_real, r.ultima_fecha, s.sin_respaldo
               from public.obra_plan_vs_real w
               left join lateral (
-                select count(*)::int                        as registros,
+                select sum(x.horas)                         as hh_real,
+                       count(*)::int                        as registros,
                        count(distinct x.persona_id)::int    as personas,
                        min(x.fecha)                         as inicio_real,
                        max(x.fecha)                         as ultima_fecha
                   from public.registros_hh x
                  where x.obra_canonica_id = w.obra_id
-                   -- EL MISMO FILTRO DE LA VISTA, porque cuenta las filas que ella sumó.
-                   and x.tipo_hora in ('normal', 'extra_50', 'extra_100')) r on true
+                   and x.tipo_hora in ('normal', 'extra_50', 'extra_100')
+                   and x.fuente_legacy = 'sheet:jornales') r on true
+              -- LO QUE LA APP CARGÓ Y LA PLANILLA NO TIENE: persona, horas y días. Nunca se borra.
+              left join lateral (
+                select jsonb_agg(jsonb_build_object('persona_id', y.persona_id, 'nombre', y.nombre,
+                                                    'horas', y.horas, 'dias', y.dias)
+                                 order by y.horas desc) as sin_respaldo
+                  from (select x.persona_id,
+                               (select pe.nombre_completo from public.personas pe where pe.id = x.persona_id) as nombre,
+                               sum(x.horas) as horas,
+                               to_jsonb(array_agg(distinct x.fecha order by x.fecha)) as dias
+                          from public.registros_hh x
+                         where x.obra_canonica_id = w.obra_id
+                           and x.tipo_hora in ('normal', 'extra_50', 'extra_100')
+                           and x.fuente_legacy is distinct from 'sheet:jornales'
+                         group by x.persona_id) y) s on true
              where w.obra_id in (select o.obra_id from sus_obras o)
-               and (w.hh_real is not null or w.hh_plan is not null)
+               and (r.hh_real is not null or w.hh_plan is not null or s.sin_respaldo is not null)
           ) v
       )
     end,
@@ -326,6 +351,9 @@ with elegido as (
                        -- EL MISMO FILTRO DE TIPO DE HORA QUE `hh_obra` Y QUE LA SOLAPA: una ausencia no
                        -- se trabajó y una licencia la paga la empresa, no la obra.
                        and r.tipo_hora in ('normal', 'extra_50', 'extra_100')
+                       -- SÓLO LA PLANILLA (dueño, 13/09/2026): lo cargado en la app sin respaldo en
+                       -- JORNALES no le cuesta a la obra, igual que no le suma HH.
+                       and r.fuente_legacy = 'sheet:jornales'
                      group by 1, 2, 3, 4, 5) g
                  group by g.obra_id) h on h.obra_id = o.obra_id
              where k.n_comprobantes is not null
@@ -502,15 +530,127 @@ with elegido as (
 end
 $function$;
 
+CREATE OR REPLACE FUNCTION public.hh_de_obra(p_obra text, p_desde date DEFAULT NULL::date)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  with la_obra as (
+    -- `obra_panel` es `security_invoker`: si el rol no puede ver la obra, acá no hay fila y la
+    -- función devuelve `null`. El permiso no se resuelve con un `if` en la aplicación.
+    select o.obra_id, o.nombre, o.cliente_id, o.cliente_slug, o.estado, o.fecha_inicio_plan
+      from public.obra_panel o where o.obra_id = p_obra
+  ),
+  filas as (
+    select r.fecha, r.persona_id, r.horas, r.tipo_hora,
+           r.tipo_hora in ('normal', 'extra_50', 'extra_100') as es_trabajo,
+           -- LA QUINCENA CALENDARIO (1–15 y 16–fin), que es con la que se liquidan los jornales.
+           case when extract(day from r.fecha) <= 15
+                then date_trunc('month', r.fecha)::date
+                else (date_trunc('month', r.fecha) + interval '15 days')::date end as quincena
+      from public.registros_hh r
+     where r.obra_canonica_id = p_obra
+       -- SÓLO LA PLANILLA (dueño, 13/09/2026): HH, personas, inicio, quincenas y celdas son las de
+       -- JORNALES. Lo cargado en la app sale aparte, en `sin_respaldo`.
+       and r.fuente_legacy = 'sheet:jornales'
+  ),
+  -- LA VENTANA QUE SE DIBUJA: la pedida, o la ÚLTIMA con trabajo cargado. Nunca la primera: lo que
+  -- se quiere ver al abrir es qué pasó esta quincena.
+  ventana as (
+    select coalesce(p_desde, (select max(f.quincena) from filas f where f.es_trabajo)) as desde
+  ),
+  celda as (
+    select f.persona_id, f.fecha,
+           sum(f.horas) filter (where f.es_trabajo)                 as horas,
+           count(*) filter (where f.tipo_hora = 'ausencia') > 0     as ausencia,
+           count(*) filter (where f.tipo_hora = 'licencia') > 0     as licencia
+      from filas f
+     where f.quincena = (select desde from ventana)
+     group by f.persona_id, f.fecha
+  )
+  select case
+    -- Media grilla parece una grilla: ver la cabecera.
+    when not (select public.es_administracion()) then null::jsonb
+    when not exists (select 1 from la_obra) then null::jsonb
+    else jsonb_build_object(
+      'obra', (select to_jsonb(x) from la_obra x),
+
+      'registros', (select count(*) from filas f where f.es_trabajo),
+      'personas', (select count(distinct f.persona_id) from filas f where f.es_trabajo),
+      'desde', (select min(f.fecha) from filas f where f.es_trabajo),
+      'hasta', (select max(f.fecha) from filas f where f.es_trabajo),
+      'ventana', (select desde from ventana),
+
+      -- LO QUE LA APP CARGÓ Y JORNALES NO TIENE, por persona y con sus días. No suma a nada de lo
+      -- de arriba; se publica para que no desaparezca en silencio.
+      'sin_respaldo', (
+        select coalesce(jsonb_agg(jsonb_build_object(
+                 'persona_id', s.persona_id, 'nombre', s.nombre, 'horas', s.horas, 'dias', s.dias)
+                 order by s.horas desc), '[]'::jsonb)
+          from (select x.persona_id,
+                       (select pe.nombre_completo from public.personas pe where pe.id = x.persona_id) as nombre,
+                       sum(x.horas) as horas,
+                       to_jsonb(array_agg(distinct x.fecha order by x.fecha)) as dias
+                  from public.registros_hh x
+                 where x.obra_canonica_id = p_obra
+                   and x.tipo_hora in ('normal', 'extra_50', 'extra_100')
+                   and x.fuente_legacy is distinct from 'sheet:jornales'
+                 group by x.persona_id) s
+      ),
+
+      -- TODAS LAS QUINCENAS CON SU TOTAL: el índice del desglose. Una quincena vacía de trabajo
+      -- pero con ausencias también aparece —tiene algo que contar— con `hh` en null.
+      'periodos', (
+        select coalesce(jsonb_agg(jsonb_build_object(
+                 'desde', p.quincena, 'hh', p.hh, 'dias', p.dias, 'registros', p.n)
+                 order by p.quincena), '[]'::jsonb)
+          from (select f.quincena,
+                       sum(f.horas) filter (where f.es_trabajo)              as hh,
+                       count(distinct f.fecha) filter (where f.es_trabajo)    as dias,
+                       count(*) filter (where f.es_trabajo)                   as n
+                  from filas f group by f.quincena) p
+      ),
+
+      -- EL ACUMULADO POR PERSONA DE TODA LA OBRA, no de la quincena: es la respuesta a «quién puso
+      -- las horas de esta obra». `nombre` en null = la fila no tiene persona (las 19 filas legacy de
+      -- JORNALES), y eso se dice, no se esconde.
+      'por_persona', (
+        select coalesce(jsonb_agg(jsonb_build_object(
+                 'persona_id', t.persona_id, 'nombre', t.nombre, 'hh', t.hh, 'dias', t.dias,
+                 'primera', t.primera, 'ultima', t.ultima) order by t.hh desc nulls last), '[]'::jsonb)
+          from (select f.persona_id,
+                       (select p.nombre_completo from public.personas p where p.id = f.persona_id) as nombre,
+                       sum(f.horas) filter (where f.es_trabajo)            as hh,
+                       count(distinct f.fecha) filter (where f.es_trabajo) as dias,
+                       min(f.fecha) filter (where f.es_trabajo)            as primera,
+                       max(f.fecha) filter (where f.es_trabajo)            as ultima
+                  from filas f group by f.persona_id) t
+      ),
+
+      -- LAS CELDAS DE LA VENTANA: una por persona y día, con las horas trabajadas y la marca de lo
+      -- que no es trabajo. Un día con 0 h y una ausencia NO es un día de 0 horas trabajadas: es un
+      -- día que la persona no estuvo, y la celda lo dice con una letra.
+      'celdas', (
+        select coalesce(jsonb_agg(jsonb_build_object(
+                 'persona_id', c.persona_id, 'fecha', c.fecha, 'horas', c.horas,
+                 'ausencia', c.ausencia, 'licencia', c.licencia)), '[]'::jsonb)
+          from celda c
+      )
+    )
+  end
+$function$;
+
 comment on function public.pantalla_cliente(text, text) is
-  'LAS VEINTE LECTURAS DE LA FICHA EN UN VIAJE. `papeles_obra` y `carpetas_obra` sólo en la cara '
-  'Documentos; `n_documentos` cuenta LO QUE LA CARA DIBUJA (20260911T2200); `hh_obra` publica las HH '
-  'de cada trabajo leídas de obra_plan_vs_real (20260911T2400). Desde 20260912T1000 `costo_obra` '
-  'publica lo GASTADO por trabajo —materiales de Compras (las mismas filas de obra_costo_real, sin '
-  'nómina, sin anuladas y sin subcontratos) y mano de obra propia valorizada con la regla de la '
-  'solapa Costo a la obra— sólo en la cara Obras. Desde 20260913T1000 quien cobra `neto_mensual` se '
-  'valoriza a neto del mes ÷ horas trabajadas del mes, y `implicito` publica esa cuenta. Las dos '
-  'claves son `null` cuando quien pregunta no es Administración: la RLS le daría media suma, y media '
-  'suma parece una suma.';
+  'LAS VEINTE LECTURAS DE LA FICHA EN UN VIAJE (plpgsql desde 20260913T1100). Desde 20260913T1400 '
+  '`hh_obra` y `costo_obra.mano_obra` cuentan SÓLO filas sheet:jornales —lo cargado en la app viaja '
+  'aparte en `sin_respaldo`— y quien cobra neto_mensual se valoriza a neto del mes ÷ horas de la '
+  'planilla del mes (`implicito`). Las claves de costos y horas son `null` cuando quien pregunta no es '
+  'Administración: la RLS le daría media suma, y media suma parece una suma.';
+
+comment on function public.hh_de_obra(text, date) is
+  'EL DESGLOSE DE HORAS DE UNA OBRA: quincenas, personas y celdas SÓLO de la planilla JORNALES '
+  '(20260913T1400); lo cargado en la app sin respaldo viaja en `sin_respaldo`. `null` cuando quien '
+  'pregunta no es Administración o no puede ver la obra.';
 
 notify pgrst, 'reload schema';
