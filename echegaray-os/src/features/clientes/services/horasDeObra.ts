@@ -29,6 +29,7 @@
 // de este archivo cuelgan los tests que prueban cómo se dibuja cada hueco.
 import { hh } from '../../../shared/utils/format.ts'
 import { diaMesAnioCompletoISO, diaMesAnioISO, diaMesISO } from '../../../shared/utils/fecha.ts'
+import { armarSinRespaldo, fraseSinRespaldo, type SinRespaldo } from './hhDePlanilla.ts'
 
 /** Lo que la clave `hh_obra` de `pantalla_cliente` publica por trabajo. */
 export interface HorasDeObra {
@@ -42,6 +43,8 @@ export interface HorasDeObra {
   /** La PRIMERA fecha con horas: el único inicio que está probado. ISO `YYYY-MM-DD`. */
   inicioReal: string | null
   ultimaFecha: string | null
+  /** Lo cargado en la app que JORNALES no respalda. NO está en `hhReal`: se dice aparte. */
+  sinRespaldo?: SinRespaldo[]
 }
 
 /** Un `numeric` de Postgres puede llegar como texto; descartarlo dejaría la celda vacía con el dato. */
@@ -83,6 +86,7 @@ export function armarHorasPorObra(
       personas: entero(r.personas),
       inicioReal: texto(r.inicio_real)?.slice(0, 10) ?? null,
       ultimaFecha: texto(r.ultima_fecha)?.slice(0, 10) ?? null,
+      sinRespaldo: armarSinRespaldo(r.sin_respaldo),
     })
   }
   return m
@@ -104,14 +108,19 @@ export function textoHH(h: HorasDeObra | null | undefined): string {
 
 /** El detalle que respalda la cifra. `null` cuando no hay nada que respaldar. */
 export function tituloHH(h: HorasDeObra | null | undefined): string | null {
-  if (!h || h.hhReal == null) return null
+  if (!h) return null
+  // LO DE LA APP SE DICE AUNQUE LA PLANILLA NO TENGA NADA (dueño, 13/09/2026): una obra con sólo
+  // cargas de la app dibuja «—» y el title explica por qué no es cero.
+  const fuera = fraseSinRespaldo(h.sinRespaldo ?? [])
+  if (h.hhReal == null) return fuera ? `Sin horas en JORNALES. ${fuera}.` : null
   const partes = [
+    'según JORNALES',
     h.inicioReal ? `desde ${diaMesISO(h.inicioReal)}` : null,
     `${h.registros} ${h.registros === 1 ? 'registro' : 'registros'}`,
     `${h.personas} ${h.personas === 1 ? 'persona' : 'personas'}`,
     h.ultimaFecha ? `última carga ${diaMesISO(h.ultimaFecha)}` : null,
   ].filter((p) => p != null)
-  return partes.join(' · ')
+  return fuera ? `${partes.join(' · ')}. Aparte: ${fuera}.` : partes.join(' · ')
 }
 
 /** Lo que dibuja la columna INICIO, con de dónde salió cada variante. */

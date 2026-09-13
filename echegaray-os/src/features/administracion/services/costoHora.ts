@@ -147,6 +147,87 @@ export function costoDeHora(bolsillo: number | null, mult: number | null): numbe
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// EL VALOR HORA DE QUIEN COBRA UN SUELDO MENSUAL (decisión del dueño, 13/09/2026)
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// «El costo de obra incluye a quien la dirige.» Maldonado Batista y Nievas Villegas son Oficina:
+// `persona_tarifa` les guarda `neto_mensual` y `valor_hora` NULL, y hasta acá sus horas en obra
+// salían todas «sin tarifa». La regla ES UNA SOLA y la aplican igual la clave `costo_obra` de
+// `pantalla_cliente` (SQL, 20260913T1400) y la solapa «Costo a la obra» (esta función):
+//
+//   valor hora implícito del mes = neto mensual vigente al DÍA 1 del mes
+//                                  ÷ horas TRABAJADAS de la persona en ese mes calendario
+//
+// ═══ POR QUÉ EL DIVISOR SON LAS HORAS TRABAJADAS Y NO LA JORNADA ═══
+//
+// Con las horas trabajadas el sueldo del mes se reparte ENTERO entre las obras que lo recibieron:
+// Σ (horas en cada obra × valor implícito) = neto mensual, sin residuo. Con una jornada teórica
+// sobraría o faltaría un pedazo de sueldo que ninguna obra paga y que nadie ve. Licencias y
+// ausencias no suman al divisor por lo mismo que no se le cargan a una obra.
+//
+// ═══ POR QUÉ EL NETO DEL DÍA 1 Y NO EL DEL DÍA DEL REGISTRO ═══
+//
+// Porque la identidad del mes necesita UN solo neto por mes. Y el del día 1 y no el del fin de mes
+// porque un tramo que empieza el 20 no puede valer para el 5: estirar un tramo hacia atrás afirma
+// una tarifa sin evidencia. Un tramo a mitad de mes rige desde el mes siguiente.
+//
+// Sin neto vigente o sin horas en el mes NO HAY VALOR: la hora queda sin tarifa, nunca en $ 0.
+
+/** Un tramo de `persona_tarifa`. El CHECK de la base garantiza que viene UNA de las dos formas. */
+export interface TramoDeTarifa {
+  /** ISO `YYYY-MM-DD`. */
+  desde: string
+  valorHora: number | null
+  netoMensual: number | null
+}
+
+/** De dónde salió el valor hora: cargado por hora, o implícito de un sueldo mensual. */
+export interface ValorHoraDeCosto {
+  valor: number
+  implicito: { netoMensual: number; horasDelMes: number } | null
+}
+
+/** `YYYY-MM-01` del mes de una fecha ISO. */
+export const inicioDeMes = (fecha: string): string => `${fecha.slice(0, 7)}-01`
+
+/** El tramo de mayor `desde` que ya empezó. `null` = ninguno. */
+function tramoVigente(tramos: readonly TramoDeTarifa[], fecha: string): TramoDeTarifa | null {
+  let vig: TramoDeTarifa | null = null
+  for (const t of tramos) {
+    if (!esISO(t.desde) || t.desde > fecha) continue
+    if (!vig || t.desde > vig.desde) vig = t
+  }
+  return vig
+}
+
+/**
+ * EL VALOR HORA CON QUE SE VALORIZA UNA HORA DE `fecha` DE UNA PERSONA.
+ *
+ * El tramo vigente a la fecha manda, igual que el lateral de SQL: si trae `valor_hora`, es ése. Si
+ * no, se busca el neto mensual vigente al día 1 del mes y se divide por `horasDelMes` —las horas
+ * trabajadas de esa persona en el mes calendario, en TODAS sus obras—.
+ */
+export function valorHoraDeCosto(
+  tramos: readonly TramoDeTarifa[], fecha: string, horasDelMes: number,
+): ValorHoraDeCosto | null {
+  if (!esISO(fecha)) return null
+  const vig = tramoVigente(tramos, fecha)
+  if (vig?.valorHora != null && Number.isFinite(vig.valorHora)) return { valor: vig.valorHora, implicito: null }
+  const neto = tramoVigente(tramos, inicioDeMes(fecha))?.netoMensual
+  if (neto == null || !Number.isFinite(neto)) return null
+  // DIVISOR 0 NO ES «LA HORA NO CUESTA»: es que no hay contra qué repartir el sueldo.
+  if (!Number.isFinite(horasDelMes) || horasDelMes <= 0) return null
+  return { valor: neto / horasDelMes, implicito: { netoMensual: neto, horasDelMes } }
+}
+
+/** «valor hora implícito: neto mensual ÷ N h del mes», con los números. Lo usan las dos pantallas. */
+export function fraseDeValorImplicito(i: { netoMensual: number; horasDelMes: number }): string {
+  const h = i.horasDelMes.toLocaleString('es-AR', { maximumFractionDigits: 1 })
+  return `valor hora implícito: neto mensual ÷ ${h} h del mes `
+    + `($ ${Math.round(i.netoMensual).toLocaleString('es-AR')} ÷ ${h} h)`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // PANTALLA 5 · LA ESCALERA BOLSILLO → COSTO, POR CATEGORÍA
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -231,6 +312,8 @@ export interface HorasDeObra {
   bolsillo: number | null
   /** Cuántas personas de esa obra no tienen $/h cargado. */
   sinTarifa: number
+  /** Los sueldos mensuales valorizados con valor hora implícito en esta obra. Vacío = ninguno. */
+  implicitos?: { netoMensual: number; horasDelMes: number }[]
 }
 
 export interface LineaDeObra extends HorasDeObra {

@@ -22,6 +22,7 @@
 // días de trabajo sin rendimiento, que es la conclusión opuesta.
 
 import { diaMesAnioCompletoISO } from '../../../shared/utils/fecha.ts'
+import { armarSinRespaldo, type SinRespaldo } from './hhDePlanilla.ts'
 
 export interface CeldaDia {
   personaId: string | null
@@ -64,6 +65,8 @@ export interface DesgloseDeHoras {
   periodos: PeriodoHH[]
   porPersona: PersonaHH[]
   celdas: CeldaDia[]
+  /** Lo cargado en la app sin respaldo en JORNALES (dueño, 13/09/2026). No está en nada de arriba. */
+  sinRespaldo: SinRespaldo[]
 }
 
 function num(v: unknown): number | null {
@@ -153,6 +156,7 @@ export function armarDesgloseHH(j: unknown): DesgloseDeHoras | null {
         licencia: c.licencia === true,
       }]
     }),
+    sinRespaldo: armarSinRespaldo(r.sin_respaldo),
   }
 }
 

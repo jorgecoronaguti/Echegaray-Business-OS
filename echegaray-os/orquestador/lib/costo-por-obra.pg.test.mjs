@@ -43,11 +43,14 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getPool } from './db.mjs'
 import { alicuotasVigentes, multiplicadorDeCosto } from '../../src/features/administracion/services/costoHora.ts'
-import { repartirHorasPorObra } from '../../src/features/administracion/services/costoLecturas.ts'
+import {
+  horasTrabajadasPorPersona, repartirHorasPorObra, tarifasDeCosto,
+} from '../../src/features/administracion/services/costoLecturas.ts'
 
+// LA ÚLTIMA DEFINICIÓN DE LA FUNCIÓN. 20260913T1400 agregó la regla de la planilla y el valor hora implícito.
 const MIGRACION = readFileSync(join(
   import.meta.dirname, '..', '..', 'supabase', 'migrations',
-  '20260912T1300_el_costo_de_la_hora_se_resuelve_una_vez_por_tramo.sql'), 'utf8')
+  '20260913T1400_hh_de_obra_solo_planilla_y_oficina.sql'), 'utf8')
 
 const DDL_PERMITIDO = process.env.ORQ_PG_DDL === '1'
 const hayBase = DDL_PERMITIDO
@@ -136,13 +139,25 @@ test('lo gastado por obra: la ficha del cliente contra las fuentes', { skip: !ha
 
       // LA REFERENCIA: la misma cuenta de la clave pero llamando la función UNA VEZ POR FILA, que es
       // la forma que 20260912T1000 tenía desplegada y la definición contra la que hay que cerrar.
+      // Desde 20260913T1400 la referencia también reparte el sueldo mensual, escrito de otra forma:
+      // el divisor sale de un subselect correlacionado, no del CTE de la función.
       const ref = await uno(`
-        select sum(r.horas * t.valor_hora * m.v)
-                 filter (where t.valor_hora is not null and m.v is not null) as mano_obra
+        select sum(b.bolsillo * m.v)
+                 filter (where b.bolsillo is not null and m.v is not null) as mano_obra
           from public.registros_hh r
           left join lateral (select p.valor_hora from public.persona_tarifa p
                               where p.persona_id = r.persona_id and p.desde <= r.fecha
                               order by p.desde desc limit 1) t on true
+          left join lateral (select p.neto_mensual from public.persona_tarifa p
+                              where p.persona_id = r.persona_id
+                                and p.desde <= date_trunc('month', r.fecha)::date
+                              order by p.desde desc limit 1) n on true
+          cross join lateral (select case when t.valor_hora is not null then r.horas * t.valor_hora
+                                          else r.horas * n.neto_mensual / nullif((
+                                            select sum(z.horas) from public.registros_hh z
+                                             where z.persona_id = r.persona_id and z.${TRABAJADA}
+                                               and date_trunc('month', z.fecha) = date_trunc('month', r.fecha)), 0)
+                                     end as bolsillo) b
           left join lateral (select public.multiplicador_de_costo(r.fecha) as v) m on true
          where ${TRABAJADA} and r.obra_canonica_id = $1`, [obra.obra_id])
 
@@ -260,12 +275,19 @@ test('lo gastado por obra: la ficha del cliente contra las fuentes', { skip: !ha
       const dia = Number(v.hasta.slice(8, 10))
       const desde = dia <= 15 ? `${v.hasta.slice(0, 8)}01` : `${v.hasta.slice(0, 8)}16`
 
-      // EL CAMINO DE LA PANTALLA, con sus propias funciones y sus propias lecturas.
-      const tarifas = new Map()
-      for (const r of await q(`select persona_id, valor_hora from public.persona_tarifa
-                                where desde <= $1::date order by desde asc`, [v.hasta])) {
-        if (r.valor_hora != null) tarifas.set(String(r.persona_id), Number(r.valor_hora))
+      // EL CAMINO DE LA PANTALLA, con sus propias funciones: `tarifasDeCosto` sobre los tramos y las
+      // horas del MES calendario —el divisor del sueldo mensual—, no las de la quincena.
+      const tramos = new Map()
+      for (const r of await q(`select persona_id, desde::text, valor_hora, neto_mensual
+                                 from public.persona_tarifa where desde <= $1::date`, [v.hasta])) {
+        const p = String(r.persona_id)
+        tramos.set(p, [...(tramos.get(p) ?? []), {
+          desde: r.desde, valorHora: r.valor_hora == null ? null : Number(r.valor_hora),
+          netoMensual: r.neto_mensual == null ? null : Number(r.neto_mensual) }])
       }
+      const delMes = await q(`select persona_id, horas, tipo_hora from public.registros_hh
+                               where date_trunc('month', fecha) = date_trunc('month', $1::date)`, [v.hasta])
+      const { porPersona: tarifas } = tarifasDeCosto(tramos, v.hasta, horasTrabajadasPorPersona(delMes))
       const filas = await q(`select obra_id, obra_canonica_id, persona_id, horas, tipo_hora
                                from public.registros_hh where fecha between $1::date and $2::date`,
       [desde, v.hasta])
@@ -277,13 +299,21 @@ test('lo gastado por obra: la ficha del cliente contra las fuentes', { skip: !ha
       // LA MISMA VENTANA, POR EL CAMINO DE LA CLAVE: el cuerpo de la función recortado a la quincena.
       const deLaClave = await q(`
         select r.obra_canonica_id obra_id,
-               sum(r.horas * t.valor_hora * m.v) filter (where t.valor_hora is not null and m.v is not null)::float costo,
-               sum(r.horas)                      filter (where t.valor_hora is not null and m.v is not null)::float h_ok,
-               sum(r.horas)                      filter (where t.valor_hora is null or m.v is null)::float h_no
+               sum(b.vh * r.horas * m.v) filter (where b.vh is not null and m.v is not null)::float costo,
+               sum(r.horas)              filter (where b.vh is not null and m.v is not null)::float h_ok,
+               sum(r.horas)              filter (where b.vh is null or m.v is null)::float h_no
           from public.registros_hh r
           left join lateral (select p.valor_hora from public.persona_tarifa p
                               where p.persona_id = r.persona_id and p.desde <= r.fecha
                               order by p.desde desc limit 1) t on true
+          left join lateral (select p.neto_mensual from public.persona_tarifa p
+                              where p.persona_id = r.persona_id
+                                and p.desde <= date_trunc('month', r.fecha)::date
+                              order by p.desde desc limit 1) n on true
+          cross join lateral (select coalesce(t.valor_hora, n.neto_mensual / nullif((
+                                select sum(z.horas) from public.registros_hh z
+                                 where z.persona_id = r.persona_id and z.${TRABAJADA}
+                                   and date_trunc('month', z.fecha) = date_trunc('month', r.fecha)), 0)) vh) b
           left join lateral (select public.multiplicador_de_costo(r.fecha) v) m on true
          where r.fecha between $1::date and $2::date and r.${TRABAJADA}
          group by 1`, [desde, v.hasta])
@@ -307,6 +337,47 @@ test('lo gastado por obra: la ficha del cliente contra las fuentes', { skip: !ha
           // UN PARCIAL NO SE PUBLICA COMO COMPLETO: lo que no se pudo valorizar sale contado.
           assert.ok(f.h_no > 0,
             `«${f.obra_id}»: falta una tarifa o el multiplicador y la clave no declaró ninguna hora afuera`)
+        }
+      }
+    })
+
+    // ═══ EL SUELDO MENSUAL CIERRA EL MES (dueño, 13/09/2026) ═══
+    //
+    // Lo que publica la clave, sumado sobre TODOS los clientes, por persona y mes: las horas tienen
+    // que ser las trabajadas del mes (el divisor) y el bolsillo, el neto entero. Atrapa un divisor
+    // recortado a la ficha —cada cliente cargaría el sueldo entero— y uno que sume licencias.
+    await t.test('Oficina: Σ clientes de las horas implícitas = horas del mes, y el bolsillo = neto', async () => {
+      const acc = new Map()
+      for (const { slug } of clientes) {
+        const j = (await uno(`select public.pantalla_cliente($1,'obras') j`, [slug])).j
+        for (const f of j.costo_obra ?? []) {
+          for (const i of f.implicito ?? []) {
+            const k = `${i.persona_id}|${i.mes}`
+            const a = acc.get(k) ?? { horas: 0, neto: Number(i.neto_mensual), horasMes: Number(i.horas_mes) }
+            assert.equal(Number(i.horas_mes), a.horasMes, `${k}: dos obras publican divisores distintos`)
+            a.horas += Number(i.horas)
+            acc.set(k, a)
+          }
+        }
+      }
+      assert.ok(acc.size > 0, 'ninguna ficha publicó un sueldo mensual repartido: no probó nada')
+      for (const [k, a] of acc) {
+        const [persona, mes] = k.split('|')
+        const directo = await uno(`
+          select sum(horas)::float h,
+                 sum(horas) filter (where obra_canonica_id not in (
+                   select o.obra_id from public.obra_panel o where o.cliente_id is not null))::float fuera
+            from public.registros_hh
+           where persona_id = $1 and ${TRABAJADA} and date_trunc('month', fecha) = $2::date`, [persona, mes])
+        assert.ok(Math.abs(a.horasMes - directo.h) < 0.01,
+          `${k}: el divisor publicado es ${a.horasMes} h y las trabajadas del mes son ${directo.h}`)
+        // SÓLO CIERRA SI TODAS SUS OBRAS CUELGAN DE UN CLIENTE: si no, lo que falta se dice.
+        const cubiertas = a.horasMes - (directo.fuera ?? 0)
+        assert.ok(Math.abs(a.horas - cubiertas) < 0.01,
+          `${k}: las fichas reparten ${a.horas} h de ${cubiertas} h en obras con cliente`)
+        if (!directo.fuera) {
+          assert.ok(Math.abs((a.horas * a.neto) / a.horasMes - a.neto) < 0.01,
+            `${k}: el sueldo repartido no es el neto mensual`)
         }
       }
     })

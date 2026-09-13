@@ -1,8 +1,10 @@
 import { Aviso, Vacio } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
-import { alicuotasVigentes, lineasDeObra, multiplicadorDeCosto, type LineaDeObra } from '../../../services/costoHora'
-import { getAlicuotas, getHorasPorObra, getValorHoraVigente } from '../../../services/costoLecturas'
+import {
+  alicuotasVigentes, fraseDeValorImplicito, lineasDeObra, multiplicadorDeCosto, type LineaDeObra,
+} from '../../../services/costoHora'
+import { getAlicuotas, getHorasPorObra, getTarifasDeCosto } from '../../../services/costoLecturas'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
 import { leyendaDeHoras } from '../../../services/horasDeLaQuincena'
 import { rotuloQuincena, type Quincena } from '../../../services/quincena'
@@ -55,8 +57,10 @@ function colorDelConsumo(consumo: number): string {
 export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: string }) {
   const supabase = await createClient()
   const { alicuotas, errores } = await getAlicuotas(supabase)
-  const { porPersona, error: errTarifa } = await getValorHoraVigente(supabase, quincena.hasta)
-  const { obras, presupuesto, errores: errHoras } = await getHorasPorObra(supabase, quincena, porPersona)
+  // LAS TARIFAS DE COSTO, NO LAS DE BOLSILLO SOLAS: quien cobra un sueldo mensual (Oficina) entra con
+  // su valor hora implícito del mes. La regla es `valorHoraDeCosto`, la misma de la ficha del cliente.
+  const { porPersona, implicitos, errores: errTarifa } = await getTarifasDeCosto(supabase, quincena)
+  const { obras, presupuesto, errores: errHoras } = await getHorasPorObra(supabase, quincena, porPersona, implicitos)
   // ═══ POR QUÉ ESTE TOTAL NO ES EL DE «HORAS» NI EL DE «PAGOS» (QA visual, 11/09/2026) ═══
   //
   // Acá decía 1.227, «Horas» 1.289 y «Pagos» 1.129, los tres bajo el mismo rótulo y en solapas
@@ -67,7 +71,7 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
 
   const m = multiplicadorDeCosto(alicuotasVigentes(alicuotas, quincena.hasta), 1)
   const lineas = lineasDeObra(obras, presupuesto, m.valor)
-  const fallas = [...errores, ...errHoras, ...(errTarifa ? [errTarifa] : [])]
+  const fallas = [...errores, ...errHoras, ...errTarifa]
 
   const totalHoras = lineas.reduce((s, l) => s + l.horas, 0)
   const gente = lineas.reduce((s, l) => Math.max(s, l.gente), 0)
@@ -175,8 +179,10 @@ function FilaDeObra({ l }: { l: LineaDeObra }) {
       </div>
       <div style={{ textAlign: 'right', color: sinObra ? V.warn : V.tinta }}>{horas(l.horas)}</div>
       <div style={{ textAlign: 'right', color: V.apagado }}>{l.gente}</div>
-      <div style={{ textAlign: 'right' }}>{miles(l.bolsillo)}</div>
-      <div style={{ textAlign: 'right', fontWeight: 500, color: sinObra ? V.warn : V.tinta }}>{miles(l.costoReal)}</div>
+      {/* EL SUELDO MENSUAL REPARTIDO SE DICE EN LA CELDA: sin esto, el bolsillo de una obra con un jefe
+          de Oficina se leería como horas × una tarifa que nadie cargó. */}
+      <div style={{ textAlign: 'right' }} title={tituloImplicito(l)}>{miles(l.bolsillo)}</div>
+      <div style={{ textAlign: 'right', fontWeight: 500, color: sinObra ? V.warn : V.tinta }} title={tituloImplicito(l)}>{miles(l.costoReal)}</div>
       <div style={{ textAlign: 'right', color: V.tenue }}>
         {/* LA OBRA QUE NO EXISTE NO PUEDE TENER PRESUPUESTO: «—», no «sin cargar». */}
         {sinObra ? '—' : l.presupuesto == null
@@ -190,6 +196,13 @@ function FilaDeObra({ l }: { l: LineaDeObra }) {
       </div>
     </div>
   )
+}
+
+function tituloImplicito(l: LineaDeObra): string | undefined {
+  const i = l.implicitos ?? []
+  if (i.length === 0) return undefined
+  return `Incluye ${i.length} sueldo${i.length === 1 ? '' : 's'} mensual${i.length === 1 ? '' : 'es'} a `
+    + `${i.map(fraseDeValorImplicito).join('; ')}.`
 }
 
 function Cifra({ rotulo, valor, tono, testid }: { rotulo: string; valor: string; tono?: string; testid: string }) {

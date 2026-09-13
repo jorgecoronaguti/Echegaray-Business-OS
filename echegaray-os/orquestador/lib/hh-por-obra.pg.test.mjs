@@ -32,7 +32,14 @@ import { getPool } from './db.mjs'
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
-const FILTRO = "tipo_hora in ('normal', 'extra_50', 'extra_100')"
+// ═══ DESDE 20260913T1400 LAS HH DEL CRM SON LAS DE JORNALES (dueño, 13/09/2026) ═══
+//
+// `hh_obra` y `hh_de_obra` cuentan SÓLO `fuente_legacy = 'sheet:jornales'`; lo cargado en la app
+// viaja aparte en `sin_respaldo`. La suma directa de este test usa el MISMO filtro, y un caso nuevo
+// compara `sin_respaldo` contra las filas que el filtro dejó afuera: sin él, «no suma» podría ser
+// «se perdió».
+const FILTRO = "tipo_hora in ('normal', 'extra_50', 'extra_100') and fuente_legacy = 'sheet:jornales'"
+const FUERA = "tipo_hora in ('normal', 'extra_50', 'extra_100') and fuente_legacy is distinct from 'sheet:jornales'"
 
 test('las HH de la ficha del cliente son las de la cara canónica, obra por obra', { skip: !hayBase }, async (t) => {
   const c = await getPool().connect()
@@ -56,9 +63,10 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
     assert.ok(def.includes("'hh_obra'"),
       'la función desplegada no publica `hh_obra`: falta aplicar 20260911T2400 (o otra migración de '
       + 'pantalla_cliente se aplicó después y la borró)')
-    assert.ok(def.includes('obra_plan_vs_real'),
-      '`hh_obra` dejó de leer la cara canónica: si suma registros_hh por su cuenta, es una segunda '
-      + 'definición de HH real')
+    // `hh_plan` sigue saliendo de la vista; `hh_real` del CRM, de la planilla (20260913T1400).
+    assert.ok(def.includes('obra_plan_vs_real'), '`hh_obra` dejó de leer el plan de la cara canónica')
+    assert.ok(def.includes("x.fuente_legacy = 'sheet:jornales'"),
+      '`hh_obra` volvió a sumar lo cargado en la app: las HH del CRM son sólo las de JORNALES')
 
     // ── LA SESIÓN DE PRUEBA: DIRECCIÓN, que es quien usa el CRM ──────────────────────────────────
     const direccion = await uno(`select id from perfiles where rol='direccion' and es_prueba = false limit 1`)
@@ -87,6 +95,23 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
                 where o.cliente_id = (select cliente_id from public.cliente_panel where slug = $1))
            group by 1`, [slug])).map((r) => [r.id, r]))
 
+        // LO QUE EL FILTRO DEJÓ AFUERA, por obra y persona: tiene que viajar entero en `sin_respaldo`.
+        const fuera = await q(`
+          select r.obra_canonica_id id, r.persona_id::text persona, sum(r.horas)::float hh
+            from public.registros_hh r
+           where r.${FUERA}
+             and r.obra_canonica_id in (
+               select o.obra_id from public.obra_panel o
+                where o.cliente_id = (select cliente_id from public.cliente_panel where slug = $1))
+           group by 1, 2`, [slug])
+        for (const x of fuera) {
+          const fila = j.hh_obra.find((f) => f.obra_id === x.id)
+          assert.ok(fila, `«${x.id}» tiene ${x.hh} h cargadas en la app y la ficha no publica la obra`)
+          const s = (fila.sin_respaldo ?? []).find((y) => String(y.persona_id) === x.persona)
+          assert.ok(s && Math.abs(Number(s.horas) - x.hh) < 0.01,
+            `«${x.id}»: ${x.hh} h de la app de ${x.persona} no viajan en sin_respaldo — se perdieron`)
+        }
+
         for (const fila of j.hh_obra) {
           const d = directo.get(fila.obra_id)
           // Una obra puede venir por su `hh_plan` sin tener ni una hora: ahí `hh_real` es null.
@@ -102,7 +127,7 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
           assert.equal(fila.ultima_fecha, d.d1, `«${fila.obra_id}»: la última carga no es la última fecha`)
           conHoras += 1
         }
-        // Y NINGUNA OBRA CON HORAS SE QUEDA AFUERA: es el defecto opuesto y el más fácil de no ver.
+        // Y NINGUNA OBRA CON HORAS DE LA PLANILLA SE QUEDA AFUERA: el defecto opuesto y el más fácil de no ver.
         for (const id of directo.keys()) {
           assert.ok(j.hh_obra.some((f) => f.obra_id === id),
             `«${id}» tiene horas cargadas y la ficha de «${slug}» no las publica`)

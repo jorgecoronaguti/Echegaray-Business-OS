@@ -45,6 +45,23 @@ test('las filas de costo_obra se indexan por obra y conservan lo medido', () => 
   assert.equal(q?.multiplicador, null)
 })
 
+test('OFICINA: el title declara el valor hora implícito con sus números (decisión 13/09/2026)', () => {
+  // EL DEFECTO: sin la frase, las horas del jefe de obra se leen como horas × una tarifa cargada.
+  const m = armarCostosPorObra([{
+    ...QUATTROPANI, mano_obra: 2743200, horas_valorizadas: 90, horas_sin_tarifa: 0,
+    personas_sin_tarifa: 0, multiplicador: 1.524,
+    implicito: [{ persona_id: 'jefe', mes: '2026-09-01', neto_mensual: '1800000.00', horas_mes: '180', horas: 90 }],
+  }])
+  const c = m?.get('quattropani')
+  assert.deepEqual(c?.implicitos, [{ mes: '2026-09-01', netoMensual: 1800000, horasDelMes: 180, horas: 90 }])
+  const t = tituloManoObra(c, '2026-08-17') ?? ''
+  assert.ok(t.includes('valor hora implícito: neto mensual ÷ 180 h del mes'), t)
+  assert.ok(t.includes('09/26: 90 h'), t)
+  // Y SIN SUELDOS MENSUALES, LA FRASE NO APARECE: el control puede decir que no.
+  assert.ok(!(tituloManoObra(armarCostosPorObra([{ ...QUATTROPANI, mano_obra: 1, horas_valorizadas: 1,
+    horas_sin_tarifa: 0, multiplicador: 1.5 }])?.get('quattropani'), null) ?? '').includes('implícito'))
+})
+
 test('un numeric que llega como texto sigue siendo el número', () => {
   const m = armarCostosPorObra([{ ...QUATTROPANI, materiales: '42580345.01', n_comprobantes: '17' }])
   assert.equal(m?.get('quattropani')?.materiales, 42580345.01)

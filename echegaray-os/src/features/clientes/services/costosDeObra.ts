@@ -26,6 +26,7 @@
 // LAS RUTAS VAN RELATIVAS Y CON EXTENSIÓN: el alias `@/` lo resuelve el bundler, no `node --test`.
 import { plata } from '../../../shared/utils/format.ts'
 import { diaMesISO } from '../../../shared/utils/fecha.ts'
+import { fraseDeValorImplicito } from '../../administracion/services/costoHora.ts'
 
 /** Lo que la clave `costo_obra` publica por trabajo. */
 export interface CostoDeObra {
@@ -50,6 +51,29 @@ export interface CostoDeObra {
   /** `false` = la RLS de `persona_tarifa`/`costo_hora_alicuota` (`liquida_sueldos()`) no deja leer
    *  las tarifas. Es «no puedo», no «falta cargarlas», y la celda lo dibuja distinto. */
   puedeVerTarifas: boolean
+  /** Los sueldos mensuales (Oficina) valorizados con valor hora implícito, uno por persona y mes. */
+  implicitos?: ImplicitoDeObra[]
+}
+
+/** Un sueldo mensual repartido: `netoMensual ÷ horasDelMes` por cada una de las `horas` en la obra. */
+export interface ImplicitoDeObra {
+  /** `YYYY-MM-01`. */
+  mes: string
+  netoMensual: number
+  horasDelMes: number
+  horas: number
+}
+
+function implicitosDe(v: unknown): ImplicitoDeObra[] {
+  if (!Array.isArray(v)) return []
+  return v.flatMap((x): ImplicitoDeObra[] => {
+    const r = x as Record<string, unknown>
+    const netoMensual = num(r.neto_mensual)
+    const horasDelMes = num(r.horas_mes)
+    const mes = texto(r.mes)
+    if (netoMensual == null || horasDelMes == null || mes == null) return []
+    return [{ mes: mes.slice(0, 10), netoMensual, horasDelMes, horas: num(r.horas) ?? 0 }]
+  })
 }
 
 function num(v: unknown): number | null {
@@ -94,6 +118,7 @@ export function armarCostosPorObra(
       personasSinTarifa: entero(r.personas_sin_tarifa),
       multiplicador: num(r.multiplicador),
       puedeVerTarifas: r.puede_ver_tarifas !== false,
+      implicitos: implicitosDe(r.implicito),
     })
   }
   return m
@@ -191,10 +216,25 @@ export function tituloManoObra(
   const base = `${fmtHoras(c.horasValorizadas ?? 0)} h × tarifa vigente × cargas`
     + `${c.multiplicador == null ? '' : ` (×${c.multiplicador.toLocaleString('es-AR', { maximumFractionDigits: 3 })})`}`
     + desde
-  if ((c.horasSinTarifa ?? 0) === 0) return `${base}. Horas propias: los subcontratos van aparte.`
-  return `PARCIAL — ${base}. Quedan ${fmtHoras(c.horasSinTarifa ?? 0)} h sin valorizar: `
+  const oficina = fraseImplicitos(c.implicitos)
+  if ((c.horasSinTarifa ?? 0) === 0) return `${base}.${oficina} Horas propias: los subcontratos van aparte.`
+  return `PARCIAL — ${base}.${oficina} Quedan ${fmtHoras(c.horasSinTarifa ?? 0)} h sin valorizar: `
     + `${falta.join('; ')}.`
 }
+
+/**
+ * QUÉ PARTE DEL IMPORTE ES UN SUELDO MENSUAL REPARTIDO (decisión del dueño, 13/09/2026).
+ *
+ * Sin la frase, las horas del jefe de obra se leerían como horas × una tarifa que nadie cargó. La
+ * cuenta es la de `valorHoraDeCosto` en `costoHora.ts`: neto mensual ÷ horas trabajadas del mes.
+ */
+function fraseImplicitos(is: readonly ImplicitoDeObra[] | undefined): string {
+  if (!is || is.length === 0) return ''
+  const partes = is.map((i) => `${mesCorto(i.mes)}: ${fmtHoras(i.horas)} h a ${fraseDeValorImplicito(i)}`)
+  return ` Incluye sueldo mensual de Oficina — ${partes.join('; ')}.`
+}
+
+const mesCorto = (iso: string): string => `${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 
 /** Horas sin decimales, en es-AR. El formato de plata lo pone `plata`, que ya es el del repo. */
 function fmtHoras(n: number): string {
