@@ -28,6 +28,9 @@ export const PEDIDOS = [
   { nombre: 'Clavero Rogelio e Hijos S.H.', razon_social: 'CLAVERO ROGELIO E HIJOS SOC. DE HECHO', cuit: '30-54958171-0',
     fuente: 'dueño 10/09/2026 · comprobante 0014-00012010 (fila 942)',
     notas: 'Axion Servicentro del Valle — en Compras aparece como «AXION SERVICENTRO MEDIA AGUA».' },
+  { nombre: 'Escudero Emiliano', razon_social: 'ESCUDERO EMILIANO', cuit: '20-35853162-9',
+    fuente: 'dueño 11/09/2026 · comprobante de transferencia Santander $108.900 ref 000100000885 (CUIT del destinatario)',
+    notas: 'Servicio de traslado Depósito → galpón calle San Francisco (Compras fila 955).' },
 ]
 
 async function main() {
