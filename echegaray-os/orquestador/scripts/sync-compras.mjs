@@ -175,7 +175,7 @@ async function escribirCostosObra(db, compras) {
  * pesos sin asignación y la identidad «obras + sin obra = Compras del cliente» dejaría de cerrar.
  */
 async function escribirAsignacion(db, compras) {
-  const plan = planDeAsignacion(compras, asignadorDeCompras(await catalogosDeAsignacion(db)))
+  const plan = planDeAsignacion(compras, asignadorDeCompras(await catalogosDeAsignacion((t, p) => db.query(t, p))))
   await db.query('delete from public.compra_obra_asignada')
   const cols = 'referencia, fila, sheet_id, cliente, obra_id, via, porque, sincronizado_en'
   const valores = (p) => [p.referencia, p.fila, p.sheet_id, p.cliente, p.obra_id, p.via, p.porque]
