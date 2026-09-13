@@ -52,6 +52,7 @@ import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from 
 import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import { ContratadoDeLaFicha } from './CeldaContratadoFicha'
+import { ALaFecha } from './CostoALaFecha'
 import { MarcaAdicional } from './MarcaAdicional'
 import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
 import { inicioDeObra, textoHH, tituloHH, type HorasDeObra } from '../services/horasDeObra'
@@ -98,7 +99,7 @@ import { CeldaHH } from './CeldaHH'
 // defiende es el del nombre. Las dos columnas de costo miden 112px porque «$154.248.233» —el
 // material de La Estrella, el mayor de la cartera— mide 86px en la mono de 12px: una cifra truncada
 // es una cifra falsa, y ya pasó con el cobrado en 80px (captura de producción, 10/09/2026 18:10).
-const COLS_OBRAS
+export const COLS_OBRAS
   = 'gap-[16px] grid-cols-[minmax(180px,2fr)_minmax(0,64px)_minmax(0,72px)_minmax(0,112px)_minmax(0,112px)_minmax(0,148px)_minmax(0,28px)]'
   // Por debajo de 1200px se suelta el INICIO: de las columnas nuevas es la que menos decide —cuándo
   // arrancó no cambia lo que hay que hacer hoy— y el resto se queda, que es lo que el dueño pidió ver.
@@ -225,8 +226,10 @@ export function ObrasDelCliente({
             «Los costos de obra aparejados: en una columna que sume materiales gastados y mano de
             obra en otra.» Van JUNTAS y antes del contratado: las dos son costo, y lo que se lee de
             corrido es «esto me costó, por esto lo vendí». */}
-        <span className="grid" title={AYUDA_MATERIALES}><RotuloCol derecha>Materiales</RotuloCol></span>
-        <span className="grid" title={AYUDA_MANO_OBRA}><RotuloCol derecha>Mano de obra</RotuloCol></span>
+        {/* «A LA FECHA» DEBAJO DEL NOMBRE (dueño, 13/09/2026): lo gastado hasta hoy, no lo presupuestado.
+            Dos líneas y no «Materiales a la fecha» en una: en la pista de 112px se cortaba. */}
+        <span className="grid" title={AYUDA_MATERIALES}><RotuloCol derecha>Materiales</RotuloCol><ALaFecha /></span>
+        <span className="grid" title={AYUDA_MANO_OBRA}><RotuloCol derecha>Mano de obra</RotuloCol><ALaFecha /></span>
         <RotuloCol derecha>Contratado</RotuloCol>
         <span />
       </div>

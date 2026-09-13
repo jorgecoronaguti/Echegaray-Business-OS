@@ -86,10 +86,10 @@ test('materiales: el importe en es-AR sin decimales, y «—» cuando no hay nin
 
 test('el title de materiales dice qué entra, cuántos comprobantes y qué quedó aparte', () => {
   const t = tituloMateriales(armarCostosPorObra([QUATTROPANI])!.get('quattropani'))
-  assert.match(t!, /Compras imputadas a la obra · 17 comprobantes · último 09\/09/)
+  assert.match(t!, /Compras asignadas a la obra a la fecha, pagadas y pendientes \(Compras, columna K\) · 17 comprobantes · último 09\/09/)
   // LO QUE NO ENTRA, DICHO: sin esta frase la diferencia contra el «costo real» de la ficha de la
   // obra se lee como un error de uno de los dos números.
-  assert.match(t!, /no entran nómina, cargas, ARCA ni financiero/)
+  assert.match(t!, /No entran nómina, cargas, ARCA ni financiero/)
   // Y LOS SUBCONTRATOS QUEDAN NOMBRADOS: salieron de la columna, no del sistema.
   assert.match(t!, /\$47\.462 de subcontratos/)
   // Sin compras no hay nada que respaldar: el title no inventa una explicación.

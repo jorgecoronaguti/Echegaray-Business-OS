@@ -35,6 +35,7 @@ import { query, closePool, withTx } from '../lib/db.mjs'
 import { CASHFLOW_ID } from '../lib/cash-briefing.mjs'
 import { PRIMERA_FILA, claveDeCompra, contratoDeColumnas, filaACompra } from '../lib/compras-fila.mjs'
 import { esCostoDeObra } from '../lib/compras-costo-de-obra.mjs'
+import { asignadorDeCompras, catalogosDeAsignacion, planDeAsignacion, VIA } from '../lib/compras-obra-asignada.mjs'
 import { planDeReconciliacion, proveedorPorArchivo } from '../lib/comprobantes/reconciliar-adjuntos.mjs'
 
 const DRY = process.argv.includes('--dry')
@@ -164,6 +165,35 @@ async function escribirCostosObra(db, compras) {
  * se afloja sólo si el proveedor la confirma») vive en `clave-conciliada.mjs` y no se reimplementa.
  * Un adjunto que no empata con exactamente UNA fila se deja como está y se cuenta.
  */
+/**
+ * A QUÉ OBRA VA CADA COMPRA, EN LA MISMA TRANSACCIÓN QUE `costos_obra` (13/09/2026).
+ *
+ * `costos_obra` guarda la columna J (el cliente) y la ficha atribuía por ahí: las compras de SF -
+ * Pisos Industriales caían en la obra madre cerrada. La regla (`lib/compras-obra-asignada.mjs`) lee la
+ * K con el resolutor de JORNALES y deja `obra_id` null cuando no hay evidencia. Se reescribe junto con
+ * `costos_obra` porque sale del MISMO conjunto de filas: si una se escribiera y la otra no, habría
+ * pesos sin asignación y la identidad «obras + sin obra = Compras del cliente» dejaría de cerrar.
+ */
+async function escribirAsignacion(db, compras) {
+  const plan = planDeAsignacion(compras, asignadorDeCompras(await catalogosDeAsignacion(db)))
+  await db.query('delete from public.compra_obra_asignada')
+  const cols = 'referencia, fila, sheet_id, cliente, obra_id, via, porque, sincronizado_en'
+  const valores = (p) => [p.referencia, p.fila, p.sheet_id, p.cliente, p.obra_id, p.via, p.porque]
+  for (const grupo of lotes(plan, LOTE)) {
+    const { sql, params } = insertPorLote('public.compra_obra_asignada', cols, valores, grupo, ', now()')
+    await db.query(sql, params)
+  }
+  return plan
+}
+
+/** Una línea para el log: cuántas filas fueron a una obra y cuántas quedaron sin obra, con su plata. */
+function resumenDeAsignacion(plan) {
+  const cuenta = (via) => plan.filter((p) => p.via === via).length
+  const conObra = plan.filter((p) => p.obra_id).length
+  return `${plan.length} filas · ${conObra} con obra · ${cuenta(VIA.SIN_OBRA)} de un cliente sin obra asignada · `
+    + `${cuenta(VIA.NO_CLIENTE)} de estructura`
+}
+
 async function reconciliarAdjuntos(db, compras) {
   const { rows: adjuntos } = await db.query(
     'select id, origen_file_id, compra_clave, fila_compras, vinculado_por, lectura from public.compra_adjunto')
@@ -203,6 +233,8 @@ async function main() {
   if (DRY) {
     console.log(`[dry] ${compras.length} filas · ${conClave} con clave · ${anuladas} anuladas · `
       + `espejo actual ${previo.n}. No escribo nada.`)
+    const plan = planDeAsignacion(compras, asignadorDeCompras(await catalogosDeAsignacion(query)))
+    console.log(`[dry] asignación: ${resumenDeAsignacion(plan)}`)
     await closePool(); return
   }
 
@@ -212,6 +244,7 @@ async function main() {
   // espejo íntegro). `withTx` entrega el cliente y las dos escrituras viajan con él.
   let enCostos = 0
   let plan = null
+  let asignacion = null
   try {
     enCostos = await withTx(async (db) => {
       // ═══ DOS CORRIDAS NO SE PISAN (08/09/2026) ═══
@@ -226,6 +259,7 @@ async function main() {
       await db.query("select pg_advisory_xact_lock(hashtext('sync-compras'))")
       await escribirEspejo(db, compras)
       const n = await escribirCostosObra(db, compras)
+      asignacion = await escribirAsignacion(db, compras)
       plan = await reconciliarAdjuntos(db, compras)
       return n
     })
@@ -233,6 +267,7 @@ async function main() {
     console.error('sync falló, ROLLBACK:', e.message)
     await closePool(); process.exit(1)
   }
+  console.log(`compra_obra_asignada: ${resumenDeAsignacion(asignacion ?? [])}`)
 
   await query(
     `insert into public.integraciones (slug, nombre, estado, salud, ultimo_sync, notas)
