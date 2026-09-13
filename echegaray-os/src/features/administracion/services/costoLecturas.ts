@@ -13,8 +13,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
-  Alicuota, ConceptoCosto, HorasDeObra, PersonaDeEscalera, PersonaProyectable,
+  Alicuota, ConceptoCosto, HorasDeObra, PersonaDeEscalera, PersonaProyectable, TramoDeTarifa,
 } from './costoHora.ts'
+import { inicioDeMes, valorHoraDeCosto } from './costoHora.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
 import type { Quincena } from './quincena.ts'
@@ -90,6 +91,87 @@ export async function getValorHoraVigente(
   return { porPersona, error: null }
 }
 
+/** Un valor hora implícito, con los dos números que lo explican. */
+export interface Implicito { netoMensual: number; horasDelMes: number }
+
+/** Las horas TRABAJADAS de cada persona en las filas dadas. Licencia y ausencia no suman. */
+export function horasTrabajadasPorPersona(filas: readonly FilaDeObra[]): Map<string, number> {
+  const m = new Map<string, number>()
+  for (const f of filas) {
+    if (f.persona_id == null || !esTrabajada(String(f.tipo_hora))) continue
+    const p = String(f.persona_id)
+    m.set(p, (m.get(p) ?? 0) + (numero(f.horas) ?? 0))
+  }
+  return m
+}
+
+/**
+ * EL $/h DE CADA PERSONA PARA CARGARLE LA QUINCENA A LA OBRA. Pura.
+ *
+ * La regla es `valorHoraDeCosto` de `costoHora.ts`, la misma que la clave `costo_obra` en SQL: por
+ * hora si el tramo vigente la trae; si no, neto mensual ÷ horas trabajadas del mes. Una quincena
+ * cae entera dentro de un mes, así que alcanza con UN valor por persona.
+ */
+export function tarifasDeCosto(
+  tramos: ReadonlyMap<string, readonly TramoDeTarifa[]>, fecha: string,
+  horasDelMes: ReadonlyMap<string, number>,
+): { porPersona: Map<string, number>; implicitos: Map<string, Implicito> } {
+  const porPersona = new Map<string, number>()
+  const implicitos = new Map<string, Implicito>()
+  for (const [persona, ts] of tramos) {
+    const v = valorHoraDeCosto(ts, fecha, horasDelMes.get(persona) ?? 0)
+    if (!v) continue
+    porPersona.set(persona, v.valor)
+    if (v.implicito) implicitos.set(persona, v.implicito)
+  }
+  return { porPersona, implicitos }
+}
+
+/** Último día del mes de una fecha ISO. */
+const finDeMes = (fecha: string): string => {
+  const d = new Date(Date.UTC(Number(fecha.slice(0, 4)), Number(fecha.slice(5, 7)), 0))
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * LAS TARIFAS DE COSTO DE LA QUINCENA, con el valor implícito de quien cobra un sueldo mensual.
+ *
+ * El divisor son las horas del MES CALENDARIO entero y no las de la quincena: con las de la
+ * quincena, cada quincena le cargaría a las obras el sueldo del mes completo y el mes lo pagaría
+ * dos veces. Sólo se leen las horas del mes si alguien las necesita.
+ */
+export async function getTarifasDeCosto(
+  supabase: SupabaseClient, q: Quincena,
+): Promise<{ porPersona: Map<string, number>; implicitos: Map<string, Implicito>; errores: Falla[] }> {
+  const r = await supabase
+    .from('persona_tarifa')
+    .select('persona_id, desde, valor_hora, neto_mensual')
+    .lte('desde', q.hasta)
+  if (r.error) {
+    const errores = sinTabla(r.error) ? [] : [{ que: 'las tarifas', error: r.error.message }]
+    return { porPersona: new Map(), implicitos: new Map(), errores }
+  }
+  const tramos = new Map<string, TramoDeTarifa[]>()
+  for (const f of r.data ?? []) {
+    const p = String(f.persona_id)
+    tramos.set(p, [...(tramos.get(p) ?? []), {
+      desde: String(f.desde).slice(0, 10), valorHora: numero(f.valor_hora), netoMensual: numero(f.neto_mensual),
+    }])
+  }
+  const hayMensual = [...tramos.values()].some((ts) => ts.some((t) => t.netoMensual != null))
+  let horasDelMes = new Map<string, number>()
+  const errores: Falla[] = []
+  if (hayMensual) {
+    const hh = await leerRegistrosHH(supabase, {
+      desde: inicioDeMes(q.hasta), hasta: finDeMes(q.hasta), columnas: 'persona_id, horas, tipo_hora',
+    })
+    // SIN LAS HORAS DEL MES NO HAY DIVISOR: el sueldo mensual queda sin valorizar y se dice por qué.
+    if (hh.error) errores.push({ que: 'las horas del mes (divisor del sueldo mensual)', error: hh.error })
+    else horasDelMes = horasTrabajadasPorPersona((hh.data ?? []) as FilaDeObra[])
+  }
+  return { ...tarifasDeCosto(tramos, q.hasta, horasDelMes), errores }
+}
+
 export interface HorasYObras {
   obras: HorasDeObra[]
   presupuesto: Map<string, number>
@@ -104,6 +186,7 @@ export interface HorasYObras {
  */
 export async function getHorasPorObra(
   supabase: SupabaseClient, q: Quincena, tarifas: ReadonlyMap<string, number>,
+  implicitos?: ReadonlyMap<string, Implicito>,
 ): Promise<HorasYObras> {
   const [hh, obras, canonicas, oep] = await Promise.all([
     // ═══ POR LA MISMA PUERTA QUE EL RESTO DEL MÓDULO ═══
@@ -156,7 +239,7 @@ export async function getHorasPorObra(
       ?? nombreCanonico.get(clave)
       ?? rotuloCanonico.get(clave)
       ?? clave
-  })
+  }, implicitos)
 
   return { obras: obras_, presupuesto, errores }
 }
@@ -191,11 +274,14 @@ export function repartirHorasPorObra(
   filas: readonly FilaDeObra[],
   tarifas: ReadonlyMap<string, number>,
   rotuloDe: (f: FilaDeObra) => string,
+  implicitos?: ReadonlyMap<string, Implicito>,
 ): HorasDeObra[] {
   const acc = new Map<string, {
     horas: number; bolsillo: number; completo: boolean
     sinTarifa: Set<string>; gente: Set<string>; rotulo: string
   }>()
+  const conImplicito = (gente: Set<string>): Implicito[] =>
+    [...gente].flatMap((p) => { const i = implicitos?.get(p); return i ? [i] : [] })
   for (const f of filas) {
     if (!esTrabajada(String(f.tipo_hora))) continue
     const clave = f.obra_canonica_id == null ? '' : String(f.obra_canonica_id)
@@ -219,6 +305,7 @@ export function repartirHorasPorObra(
       gente: a.gente.size,
       bolsillo: a.completo ? Math.round(a.bolsillo * 100) / 100 : null,
       sinTarifa: a.sinTarifa.size,
+      implicitos: conImplicito(a.gente),
     }))
     .sort((x, y) => y.horas - x.horas)
 }
