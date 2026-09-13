@@ -105,7 +105,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   // armando `armarCartera`. Ver `carteraDeUnaConsulta.ts`.
   const {
     clientes: filasDeClientes, error: errorDeLectura, perfil, obras, cobrado, certificados,
-    todasLasObras, papeles, economia, contratos, economiaCliente,
+    todasLasObras, papeles, economia, contratos, economiaCliente, costosPorObra, gastosSinObra,
   } = await leerCarteraDeUnaConsulta(supabase)
 
   const rol = perfil?.rol ?? null
@@ -267,6 +267,9 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
               <TablaClientes
                 clientes={visibles}
                 papeles={papeles.porCliente}
+                // MATERIALES Y MANO DE OBRA A LA FECHA (dueño, 13/09/2026), no lo presupuestado.
+                costos={costosPorObra}
+                gastosSinObra={gastosSinObra}
                 seleccionado={seleccionado?.cliente_id}
                 // ═══ LA FILA ABRE LA FICHA, NO EL PANEL (26/08/2026) ═══
                 //

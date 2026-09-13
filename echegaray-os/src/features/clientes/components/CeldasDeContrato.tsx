@@ -30,7 +30,7 @@ import { progresoDeCobro } from '../services/progresoCobro'
 import type { Consolidado } from '../services/obrasAdicionales'
 
 export { baseDelContrato, fraseDeFuente, sumaDeObras } from '../services/contratoDeObra'
-import { SOLO_ANCHO, SOLO_TABLET, TONO } from './CeldasDeCartera'
+import { SOLO_TABLET, TONO } from './CeldasDeCartera'
 
 /** «U$S 63.000» — el contrato en su moneda. Sin centavos: un contrato redondo no lleva decimales. */
 export const dolares = (v: number) => `U$S ${Math.round(v).toLocaleString('es-AR')}`
@@ -107,9 +107,7 @@ export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px', consolidad
   // línea de 11px sin truncarse, y con adicionales colgando la pregunta de la fila es «cuánto es todo
   // esto». La moneda del contrato no se pierde: sigue entera en el `title`.
   const adicionales = consolidado ? lineaDelConsolidado(consolidado) : null
-  const secundaria = adicionales ?? (usd !== null
-    ? `${dolares(usd)}${(o.materiales ?? 0) > 0 ? ` + ${pesos(o.materiales)}` : ''}`
-    : null)
+  const secundaria = adicionales ?? (usd !== null ? dolares(usd) : null)
   const origen = o.contratoTotal !== null
     ? 'Mano de obra + materiales según el papel, en pesos de hoy. '
     : viva
@@ -132,43 +130,9 @@ export function ContratadoDelTrabajo({ o, veEconomia, tam = '11.5px', consolidad
   )
 }
 
-/** MATERIALES o MANO DE OBRA: el componente, en sus tres estados. */
-export function ComponenteDelContrato({ o, cual, veEconomia, tam = '11.5px' }: {
-  o: ObraEnCurso
-  cual: 'materiales' | 'manoObra'
-  veEconomia: boolean
-  tam?: string
-}) {
-  if (!veEconomia) return <span className={SOLO_ANCHO} />
-  const valor = cual === 'materiales' ? o.materiales : o.manoObra
-  const usd = cual === 'materiales' ? o.materialesUsd : o.manoObraUsd
-  const testid = cual === 'materiales' ? 'materiales-obra' : 'mano-obra-obra'
-  const rotulo = cual === 'materiales' ? 'los materiales' : 'la mano de obra'
-  if (valor === null) {
-    return (
-      <span className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid={testid} data-estado="sin-desglose"
-        title={`El papel no separa ${rotulo}: ${fraseDeFuente(o)}`}
-        style={{ fontSize: '11.5px', color: V.lupa }}>—</span>
-    )
-  }
-  if (valor === 0) {
-    return (
-      <span className={`flex items-center justify-end ${SOLO_ANCHO}`} data-testid={testid} data-estado="no-incluye"
-        title={`El precio no incluye ${rotulo}: los provee el cliente. ${fraseDeFuente(o)}`}
-        style={{ fontSize: '11.5px', color: V.apagado }}>no incluye</span>
-    )
-  }
-  return (
-    <span className={`grid ${SOLO_ANCHO}`} data-estado="fijado">
-      <Cifra
-        testid={testid} tam={tam}
-        principal={usd !== null ? dolares(usd) : (pesos(valor) ?? '')}
-        secundaria={usd !== null ? `≈ ${pesos(valor)}` : null}
-        titulo={fraseDeFuente(o)}
-      />
-    </span>
-  )
-}
+// EL DESGLOSE PRESUPUESTADO (materiales / mano de obra DEL CONTRATO) SE FUE DE LA CARTERA el
+// 13/09/2026: «no lo presupuestado». Esas dos columnas las dibuja `CeldasDeCosto.tsx` con el costo a
+// la fecha. `ObraEnCurso` conserva los campos porque otras lecturas los usan; la cartera no.
 
 /**
  * EL AVANCE DE COBRO DE UN TRABAJO — la única barra de la fila.
