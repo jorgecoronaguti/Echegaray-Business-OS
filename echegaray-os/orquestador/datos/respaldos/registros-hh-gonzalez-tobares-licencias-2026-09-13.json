@@ -1,0 +1,52 @@
+{
+ "motivo": "planilla JORNALES 9 h trabajadas (Cierre de Obra) y asistencia_dia presente en entrepiso-y-escalera los dos días; la fila licencia accidente convivía con la de 9 h normales (doble registro del día). Decisión del dueño 11/09: JORNALES manda.",
+ "filas": [
+  {
+   "id": "d84523de-12f4-4326-8d00-02050bb74cde",
+   "obra_id": null,
+   "trabajador_o_cuadrilla": null,
+   "categoria": null,
+   "fecha_inicio_semana": "2026-09-07T03:00:00.000Z",
+   "horas": "9.00",
+   "costo_real_id": null,
+   "fuente_legacy": "web:asistencia-obra",
+   "notas": "accidente",
+   "created_at": "2026-09-09T11:13:50.852Z",
+   "updated_at": "2026-09-09T11:13:50.852Z",
+   "creado_por": "4677f284-d873-4531-9c8f-cc3dab56ffd0",
+   "actualizado_por": null,
+   "actualizado_en": "2026-09-09T11:13:50.852Z",
+   "obra_canonica_id": null,
+   "persona_id": "a7af0d4d-d79d-4ee0-bb87-c636fc76a3e3",
+   "actividad_id": null,
+   "fecha": "2026-09-10T03:00:00.000Z",
+   "tipo_hora": "licencia",
+   "improductiva": false,
+   "causa_desvio": null
+  },
+  {
+   "id": "e3e23109-1310-484d-b0e8-ecc83cbeceb3",
+   "obra_id": null,
+   "trabajador_o_cuadrilla": null,
+   "categoria": null,
+   "fecha_inicio_semana": "2026-08-31T03:00:00.000Z",
+   "horas": "8.80",
+   "costo_real_id": null,
+   "fuente_legacy": "web:correccion-ausencia",
+   "notas": "accidente",
+   "created_at": "2026-09-08T19:25:18.490Z",
+   "updated_at": "2026-09-08T19:51:19.231Z",
+   "creado_por": "4677f284-d873-4531-9c8f-cc3dab56ffd0",
+   "actualizado_por": "4677f284-d873-4531-9c8f-cc3dab56ffd0",
+   "actualizado_en": "2026-09-08T19:51:19.231Z",
+   "obra_canonica_id": null,
+   "persona_id": "a7af0d4d-d79d-4ee0-bb87-c636fc76a3e3",
+   "actividad_id": null,
+   "fecha": "2026-09-02T03:00:00.000Z",
+   "tipo_hora": "licencia",
+   "improductiva": false,
+   "causa_desvio": null
+  }
+ ],
+ "correcciones": []
+}
