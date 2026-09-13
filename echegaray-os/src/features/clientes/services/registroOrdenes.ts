@@ -131,8 +131,11 @@ export interface Registro {
   cobranzasLeidas: boolean
 }
 
-/** Redondea al centavo y normaliza −0: un saldo no puede ser «menos cero». */
-const alCentavo = (n: number): number => Math.round(n * 100) / 100 || 0
+/**
+ * EL SALDO DENTRO DE LA TOLERANCIA ES CERO. La OC 2266 tiene centavos facturados de más: el estado
+ * ya decía «facturada total» (misma cifra) y el saldo decía «$ -0». Los dos tienen que decir lo mismo.
+ */
+const alCentavo = (n: number): number => (Math.abs(n) <= TOLERANCIA ? 0 : Math.round(n * 100) / 100)
 
 const suma = (v: (number | null)[]): number | null => {
   const con = v.filter((x): x is number => x != null)

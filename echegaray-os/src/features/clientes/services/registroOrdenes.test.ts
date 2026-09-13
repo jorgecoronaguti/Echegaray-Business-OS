@@ -87,6 +87,11 @@ test('el saldo de una OC facturada exacta es cero, no «−0» por coma flotante
     fila({ orden_declarada: '2-2266', total_bruto: 12_154_975.035 + 1e-7 }),
   ])
   assert.ok(Object.is(r.oc[0].saldo, 0), `saldo = ${r.oc[0].saldo}`)
+  // Centavos de más dentro de la tolerancia: el estado dice «facturada total», el saldo no puede
+  // decir «$ -0».
+  const centavos = registro([oc('b', '2-2267', 1000)], [fila({ orden_declarada: '2-2267', total_bruto: 1000.33 })])
+  assert.equal(centavos.oc[0].estado, 'facturada')
+  assert.ok(Object.is(centavos.oc[0].saldo, 0), `saldo = ${centavos.oc[0].saldo}`)
 })
 
 test('los estados, en sus bordes', () => {
