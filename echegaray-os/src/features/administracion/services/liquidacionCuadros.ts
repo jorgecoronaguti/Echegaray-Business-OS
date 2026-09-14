@@ -27,6 +27,7 @@
 // es lo que distingue «el banco pagó este recibo» de «el banco le adelantó plata»; la fecha sola
 // haría pasar por recibo pagado a cualquier transferencia del mismo día.
 
+import { cuilNormalizado, mismoCuil } from './cuil.ts'
 import {
   liquidarLinea, tarifaVigenteAl, type EntradaDeLinea, type GrupoLiquidacion, type LineaLiquidada,
   type TarifaVigente,
@@ -150,7 +151,8 @@ export function girosDe(
 ): { giroEnElLote: boolean; yaTransferido: number } {
   if (!cuil) return { giroEnElLote: false, yaTransferido: 0 }
   const suyos = adelantos.filter(
-    (a) => a.cuil === cuil && a.concepto === concepto && dentro(q, a.fecha),
+    // POR DÍGITOS: «20-38218815-3» y «20382188153» son la misma persona (`cuil.ts`).
+    (a) => mismoCuil(a.cuil, cuil) && a.concepto === concepto && dentro(q, a.fecha),
   )
   let giroEnElLote = false
   let yaTransferido = 0
@@ -179,7 +181,7 @@ function entradaDe(
   // jefes decía «—» con días de 9 h cargados, y la regla única de horas pide que Liquidación muestre el
   // mismo total que «Horas». Su COBRA sigue siendo el neto mensual (`cobraDe`): las horas no multiplican.
   const h = ctx.horas.get(p.id) ?? null
-  const recibo = ctx.recibos.find((r) => r.cuil === p.cuil && r.periodo === ctx.periodo) ?? null
+  const recibo = ctx.recibos.find((r) => mismoCuil(r.cuil, p.cuil) && r.periodo === ctx.periodo) ?? null
   const neto = recibo == null ? null : Number(recibo.neto)
   const { giroEnElLote, yaTransferido } = girosDe(ctx.quincena, ctx.adelantos, p.cuil, CONCEPTO_DEL_GIRO[grupo], neto)
   return {
@@ -214,7 +216,7 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
   const ctx: Contexto = { ...d, periodo: periodoDeRecibo(d.quincena) }
   const finales = new Set(
     d.recibos.filter((r) => r.periodo === 'FINAL' && dentro(d.quincena, r.fecha_pago))
-      .map((r) => r.cuil),
+      .map((r) => cuilNormalizado(r.cuil)),
   )
   const cuadros: Record<GrupoLiquidacion, LineaLiquidada[]> = { obreros: [], oficina: [], final: [] }
   let presentesSinHoras = 0
@@ -225,7 +227,8 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     presentesSinHoras += h?.presentesSinHoras ?? 0
     const redondeo = d.redondeos.get(p.id) ?? null
 
-    if (p.cuil && finales.has(p.cuil)) {
+    const cuilDeLaPersona = cuilNormalizado(p.cuil)
+    if (cuilDeLaPersona && finales.has(cuilDeLaPersona)) {
       cuadros.final.push(lineaFinal(ctx, p, redondeo))
       continue
     }
@@ -267,7 +270,7 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
 function lineaFinal(
   ctx: Contexto, p: PersonaDeLiquidacion, redondeo: number | null,
 ): LineaLiquidada {
-  const recibo = ctx.recibos.find((r) => r.cuil === p.cuil && r.periodo === 'FINAL') ?? null
+  const recibo = ctx.recibos.find((r) => mismoCuil(r.cuil, p.cuil) && r.periodo === 'FINAL') ?? null
   const mitadBlanca = recibo == null ? null : Number(recibo.neto)
   const { giroEnElLote, yaTransferido } = girosDe(
     ctx.quincena, ctx.adelantos, p.cuil, CONCEPTO_DEL_GIRO.final, mitadBlanca,

@@ -35,6 +35,7 @@
 // se leen ahora por `leerRegistrosHH`, la MISMA función que usa la solapa Asistencia: una fuente,
 // una paginación, y un error declarado si la ventana no entra.
 
+import { cuilNormalizado } from './cuil.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PersonaDeGrilla } from './grillaHorasQuincena.ts'
 import { desdeDeHHPorMes, hhPorMes } from './panelDePersona.ts'
@@ -225,7 +226,8 @@ export async function getDatosDeLaSolapaHoras(
     .map((r) => [r.id, r.cuil]))
   const adelantoDe = new Map<string, number>()
   for (const a of (adelantos.data ?? []) as { cuil: string | null; importe: unknown }[]) {
-    if (a.cuil) adelantoDe.set(a.cuil, (adelantoDe.get(a.cuil) ?? 0) + (numeroONulo(a.importe) ?? 0))
+    const clave = cuilNormalizado(a.cuil)
+    if (clave) adelantoDe.set(clave, (adelantoDe.get(clave) ?? 0) + (numeroONulo(a.importe) ?? 0))
   }
 
   // SIN CORTE POR `en_la_empresa`: quién entra en la quincena lo decide `plantelDeLaQuincena`, y
@@ -237,7 +239,7 @@ export async function getDatosDeLaSolapaHoras(
     const suyas = filasHH.filter((f) => f.persona_id === p.id)
     const cuil = cuilDe.get(p.id) ?? legajoDe.get(p.id)?.cuil ?? null
     porPersona[p.id] = armarPersona(p, legajoDe.get(p.id), tarifaDe.get(p.id)?.valorHora ?? null, suyas, q, nombres,
-      cuil ? (adelantoDe.get(cuil) ?? null) : null,
+      cuilNormalizado(cuil) ? (adelantoDe.get(cuilNormalizado(cuil) as string) ?? null) : null,
       // SIN LECTURA NO HAY GRÁFICO. `hhPorMes([])` devuelve cinco `null`, que el panel escribe «sin
       // cargar» — y eso es correcto sólo cuando la lectura SÍ se hizo. El error ya está anotado
       // arriba y la pantalla lo muestra; acá el gráfico queda como lo que es: sin dato.

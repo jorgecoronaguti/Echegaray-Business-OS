@@ -17,6 +17,7 @@
 // la diferencia entre las dos es toda la plata del cuadro. Cada lectura devuelve su error y la
 // pantalla lo muestra en vez de dibujar ceros.
 
+import { mismoCuil } from './cuil.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   armarCuadros, type CuadroDeLiquidacion, type FilaAdelanto, type FilaRecibo, type FilaTarifa,
@@ -238,7 +239,7 @@ export async function getLiquidacionDeLaQuincena(
     conHoras: new Set(((registros.data ?? []) as { persona_id: string }[]).map((r) => r.persona_id)),
     conLinea: new Set(overrides.keys()),
     conRecibo: new Set(exposicion.recibos.filter((r) => r.periodo === periodoDelPlantel)
-      .map((r) => r.personaId ?? personas.find((p) => p.cuil != null && p.cuil === r.cuil)?.id)
+      .map((r) => r.personaId ?? personas.find((p) => mismoCuil(p.cuil, r.cuil))?.id)
       .filter((x): x is string => !!x)),
     conJornales: new Set(espejo.cadenaPorPersona.keys()),
   }, sesionDePrueba)

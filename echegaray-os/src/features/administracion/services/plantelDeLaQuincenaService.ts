@@ -9,6 +9,7 @@
 // nombrar a una baja. `persona_directorio` publica a todos, con `fecha_ingreso` y `fecha_egreso`, y ya
 // saca `es_prueba` (salvo sesión de prueba). No se tocó ninguna política.
 
+import { cuilNormalizado } from './cuil.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { plantelDeLaQuincena, type ActividadDeLaQuincena, type PersonaDelPlantel } from './liquidacionPlantelActivo.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
@@ -63,13 +64,14 @@ export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quinc
   anotar('los recibos de sueldo', recibos.error)
   anotar('el espejo de JORNALES', jornales.error)
   const personaDeCuil = new Map(((cuiles.data ?? []) as { id: string; cuil: string | null }[])
-    .filter((c) => c.cuil).map((c) => [c.cuil as string, c.id]))
+    .map((c) => [cuilNormalizado(c.cuil), c.id] as const).filter((c): c is [string, string] => c[0] != null))
   const actividad: ActividadDeLaQuincena = {
     conHoras: new Set(((registros.data ?? []) as { persona_id: string | null }[]).map((r) => r.persona_id).filter((x): x is string => !!x)),
     conLinea: new Set(((lineas.data ?? []) as { liquidacion_linea: { persona_id: string }[] | null }[])
       .flatMap((c) => (c.liquidacion_linea ?? []).map((l) => l.persona_id))),
     conRecibo: new Set(((recibos.data ?? []) as { persona_id: string | null; cuil: string | null }[])
-      .map((r) => r.persona_id ?? (r.cuil ? personaDeCuil.get(r.cuil) : undefined)).filter((x): x is string => !!x)),
+      // `persona_id` MANDA; el CUIL es respaldo y va por dígitos.
+      .map((r) => r.persona_id ?? personaDeCuil.get(cuilNormalizado(r.cuil) ?? '')).filter((x): x is string => !!x)),
     conJornales: new Set(((jornales.data ?? []) as { persona_id: string | null }[]).map((r) => r.persona_id).filter((x): x is string => !!x)),
   }
   const personas = ((directorio.data ?? []) as Parameters<typeof personaDelDirectorio>[0][]).map(personaDelDirectorio)

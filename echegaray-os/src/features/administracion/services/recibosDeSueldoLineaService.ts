@@ -5,6 +5,7 @@
 // también Convenios se mudó acá, y la liquidación reusa lo que leyó la exposición: dos lecturas serían
 // dos fotos de los recibos en la misma pantalla.
 
+import { cuilNormalizado } from './cuil.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ReciboDeSueldo } from './sueldoBlancoNegro.ts'
 
@@ -36,7 +37,7 @@ export async function leerRecibosDeSueldo(
     hay: true,
     error: null,
     filas: filas.map((r) => ({
-      personaId: s(r.persona_id), cuil: s(r.cuil), periodo: String(r.periodo ?? ''), categoria: s(r.categoria),
+      personaId: s(r.persona_id), cuil: cuilNormalizado(s(r.cuil)), periodo: String(r.periodo ?? ''), categoria: s(r.categoria),
       valorHora: n(r.valor_hora), horasBlanco: n(r.horas_blanco), bruto: n(r.bruto), neto: n(r.neto),
       driveFileId: s(r.drive_file_id),
     })),

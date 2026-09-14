@@ -17,6 +17,7 @@
 // eso se cuenta primero si hay movimientos bancarios en la quincena: si no los hay, la columna dice
 // «sin extracto» y ninguna fila se marca sin giro.
 
+import { mismoCuil } from './cuil.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { CONCEPTO_DEL_GIRO, girosDe, periodoDeRecibo, type FilaAdelanto, type FilaRecibo } from './liquidacionCuadros.ts'
 import { tarifaVigenteAl } from './liquidacionQuincena.ts'
@@ -177,7 +178,7 @@ function armarPersonas(
       )
       const doc = delEstudio.get(p.id)
       const neto = p.cuil
-        ? (filasRecibo.find((r) => r.cuil === p.cuil && r.periodo === periodo)?.neto ?? null)
+        ? (filasRecibo.find((r) => mismoCuil(r.cuil, p.cuil) && r.periodo === periodo)?.neto ?? null)
         : null
       const reciboNeto = neto != null ? numero(neto) : (doc?.neto != null ? numero(doc.neto) : null)
       // SIN EXTRACTO NADIE SE MARCA SIN GIRO: no se puede afirmar lo que no se pudo mirar.
