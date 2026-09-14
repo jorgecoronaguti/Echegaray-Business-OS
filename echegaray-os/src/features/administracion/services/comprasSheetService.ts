@@ -94,7 +94,8 @@ const COLUMNAS = [
   'saldo_pendiente', 'cuit', 'anulada',
 ].join(', ')
 
-const COLUMNAS_ADJUNTO = [
+/** Exportada: la ficha del proveedor lee los papeles con ESTAS columnas, no con una lista propia. */
+export const COLUMNAS_ADJUNTO = [
   'id', 'compra_clave', 'fila_compras', 'storage_path', 'nombre', 'media_type', 'bytes',
   'origen', 'vinculado_por', 'confianza', 'subido_at',
 ].join(', ')
