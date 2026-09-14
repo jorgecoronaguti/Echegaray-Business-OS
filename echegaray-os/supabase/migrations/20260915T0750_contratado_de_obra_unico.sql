@@ -68,7 +68,7 @@ revoke all on function public.contratado_de_obra_fuente(text) from public, anon;
 grant execute on function public.contratado_de_obra_fuente(text) to authenticated, service_role;
 
 comment on function public.contratado_de_obra(text) is
-  'LA BASE CONTRACTUAL DE UNA OBRA (20260915T0700): contrato_total > 0 → contratado de OBRAS → '
+  'LA BASE CONTRACTUAL DE UNA OBRA (20260915T0750): contrato_total > 0 → contratado de OBRAS → '
   'formulario. La leen obra_panel.monto_contratado y obra_economia.venta_contratada.';
 
 notify pgrst, 'reload schema';

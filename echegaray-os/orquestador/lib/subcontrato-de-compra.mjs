@@ -31,6 +31,13 @@ const nombre = (v) => {
 }
 const num = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v))
 
+// ESTRUCTURA NUNCA ES COSTO DE OBRA (dueño, 14/09/2026): la unidad de negocio de Compras, y la columna
+// `destino` de feat/obra-por-fila cuando exista. El bloque SQL «REGLA ESTRUCTURA» dice lo mismo.
+const UNIDADES_ESTRUCTURA = new Set(['ESTRUCTURA', 'IMPUESTOS', 'FINANCIERO'])
+const DESTINOS_ESTRUCTURA = new Set(['ES-ADM', 'ES-TAL', 'IMP', 'FIN'])
+export const esDeEstructura = (f) =>
+  UNIDADES_ESTRUCTURA.has(String(f.unidad_negocio ?? '').trim().toUpperCase()) || DESTINOS_ESTRUCTURA.has(String(f.destino ?? '').trim())
+
 /** ¿El proveedor de la fila es un subcontratista declarado? */
 function declarado(fila, proveedores, alias) {
   const n = nombre(fila.proveedor)
@@ -52,10 +59,12 @@ export function motivoDeSubcontrato(fila, { proveedores = [], alias = [] } = {})
  * nómina). Lo posterior al corte no suma en ninguna de las dos: viaja en `comprometidoFuturo`.
  */
 export function costoDirectoDeCompras(filas, { proveedores = [], alias = [], corte = null } = {}) {
-  let materiales = null, subcontratos = null, comprometidoFuturo = null, nComprobantes = 0
+  let materiales = null, subcontratos = null, comprometidoFuturo = null, estructura = null, nComprobantes = 0
   const detalle = []
   for (const f of filas) {
     const total = num(f.total) ?? 0
+    // LO DE ESTRUCTURA SALE DE TODAS LAS COLUMNAS DE LA OBRA, y se cuenta aparte para que no se pierda.
+    if (esDeEstructura(f)) { estructura = (estructura ?? 0) + total; continue }
     if (corte != null && String(f.fecha ?? '').slice(0, 10) > corte) {
       comprometidoFuturo = (comprometidoFuturo ?? 0) + total
       continue
@@ -70,5 +79,5 @@ export function costoDirectoDeCompras(filas, { proveedores = [], alias = [], cor
     detalle.push({ proveedor: f.proveedor ?? null, comprobante: f.comprobante ?? null, fecha: f.fecha ?? null, total, motivo })
   }
   detalle.sort((a, b) => b.total - a.total)
-  return { materiales, subcontratos, comprometidoFuturo, nComprobantes, nSubcontratos: detalle.length, detalle }
+  return { materiales, subcontratos, comprometidoFuturo, estructura, nComprobantes, nSubcontratos: detalle.length, detalle }
 }

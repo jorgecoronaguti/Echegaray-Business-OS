@@ -40,7 +40,8 @@ const suma = (ls: readonly LineaDeCostoObra[], k: 'costo' | 'blanco' | 'negro'):
 export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: string }) {
   const supabase = await createClient()
   const { lineas, selladoEn, errores } = await getCostoObraQuincena(supabase, quincena)
-  const estructura = lineas.find((l) => l.obraId == null) ?? null
+  // ESTRUCTURA EN DOS LÍNEAS (Administración y Taller): ninguna es una obra.
+  const estructura = lineas.filter((l) => l.obraId == null)
   const sinDato = lineas.flatMap((l) => l.sinDato.map((s) => ({ ...s, obra: l.rotulo })))
   return (
     <section data-testid="solapa-costo-obra">
@@ -73,7 +74,7 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
 }
 
 function Cuadro({ quincena, lineas, estructura }: {
-  quincena: Quincena; lineas: LineaDeCostoObra[]; estructura: LineaDeCostoObra | null
+  quincena: Quincena; lineas: LineaDeCostoObra[]; estructura: LineaDeCostoObra[]
 }) {
   const obras = lineas.filter((l) => l.obraId != null)
   const gente = lineas.reduce((s, l) => Math.max(s, l.gente), 0)
@@ -83,7 +84,7 @@ function Cuadro({ quincena, lineas, estructura }: {
         <div style={{ fontSize: '14.5px', fontWeight: 600 }}>{rotuloQuincena(quincena)} · por obra</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}>
           <Cifra rotulo="A OBRA" valor={miles(suma(obras, 'costo'))} testid="total-a-obra" />
-          <Cifra rotulo="A ESTRUCTURA" valor={miles(estructura?.costo ?? null)} tono={V.warn} testid="total-a-estructura" />
+          <Cifra rotulo="A ESTRUCTURA" valor={miles(suma(estructura, 'costo'))} tono={V.warn} testid="total-a-estructura" />
         </div>
       </div>
       {/* A 390 px LAS OCHO COLUMNAS NO ENTRAN: ruedan dentro de su caja y la página no se desborda. */}
@@ -99,7 +100,7 @@ function Cuadro({ quincena, lineas, estructura }: {
             <div style={der}>MO presupuestada</div>
             <div style={der}>Consumido</div>
           </div>
-          {lineas.map((l) => <FilaDeObra key={l.obraId ?? 'estructura'} l={l} />)}
+          {lineas.map((l) => <FilaDeObra key={l.obraId ?? l.destino} l={l} />)}
           <div data-testid="total-obras" style={{ ...renglon, height: ALTO_LIQ.filaTotalAlta, alignItems: 'center', borderTop: `1px solid ${V.grafito}`, fontWeight: 600 }}>
             <div>{obras.length} obra{obras.length === 1 ? '' : 's'} · {gente} persona{gente === 1 ? '' : 's'}</div>
             <div style={der}>{horas(lineas.reduce((s, l) => s + l.horas, 0))}</div>

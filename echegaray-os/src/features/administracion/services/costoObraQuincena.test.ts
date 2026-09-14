@@ -40,8 +40,22 @@ test('por obra: suma lo valorizado, nombra al FALTA_DATO y deja Estructura al fi
   assert.equal(q.estimado, 640666)
   assert.deepEqual(q.sinDato.map((s) => [s.nombre, s.horas]), [['AGUERO', 60]])
   assert.ok(q.consumo != null && Math.abs(q.consumo - 21.24) < 0.01)
-  assert.equal(l[1].rotulo, 'Estructura (sin obra)')
+  assert.equal(l[1].rotulo, 'Estructura – Administración')
   assert.equal(l[1].presupuesto, null)
+})
+
+test('ESTRUCTURA se abre en Administración y Taller, y ninguna de las dos es una obra', () => {
+  const filas = filasDeCosto([
+    { obra_canonica_id: 'quattropani', persona_id: 'reta', horas: '9', costo_total: '100', costo_blanco: '60', costo_negro: '40', estado: 'real', destino: 'obra', origen: 'x' },
+    { obra_canonica_id: null, persona_id: 'jefe', horas: '0', costo_total: '900', costo_blanco: '500', costo_negro: '400', estado: 'real', destino: 'ES-ADM', origen: 'x' },
+    { obra_canonica_id: null, persona_id: 'mecanico', horas: '18', costo_total: '300', costo_blanco: '200', costo_negro: '100', estado: 'real', destino: 'ES-TAL', origen: 'x' },
+  ])
+  const l = lineasDeCostoObra(filas, new Map(), new Map(), new Map())
+  assert.deepEqual(l.map((x) => [x.obraId, x.destino, x.rotulo, x.costo]), [
+    ['quattropani', 'obra', 'quattropani', 100],
+    [null, 'ES-ADM', 'Estructura – Administración', 900],
+    [null, 'ES-TAL', 'Estructura – Taller', 300],
+  ])
 })
 
 test('una obra con sólo FALTA_DATO no publica costo: null, nunca 0', () => {

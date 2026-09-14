@@ -20,6 +20,8 @@ import { getManoDeObraPresupuestada, type Falla } from './costoLecturas.ts'
 export type { Falla }
 
 export type EstadoDeCosto = 'real' | 'estimado' | 'falta_dato'
+/** «obra» o Estructura: ES-ADM (Administración) · ES-TAL (Taller). Dueño, 14/09/2026. */
+export type DestinoDeCosto = 'obra' | 'ES-ADM' | 'ES-TAL'
 
 /** Una fila de `costo_mo_quincena`: persona × obra (null = Estructura). */
 export interface FilaDeCostoQuincena {
@@ -31,6 +33,7 @@ export interface FilaDeCostoQuincena {
   total: number | null
   estado: EstadoDeCosto
   origen: string
+  destino: DestinoDeCosto
   selladoEn: string | null
 }
 
@@ -38,6 +41,7 @@ export interface SinDato { personaId: string | null; nombre: string; horas: numb
 
 export interface LineaDeCostoObra {
   obraId: string | null
+  destino: DestinoDeCosto
   rotulo: string
   horas: number
   gente: number
@@ -67,8 +71,11 @@ export function filasDeCosto(data: unknown): FilaDeCostoQuincena[] {
     const r = x as Record<string, unknown>
     const estado = r.estado as EstadoDeCosto
     if (!ESTADOS.includes(estado)) return []
+    const obraId = texto(r.obra_canonica_id)
+    // SIN `destino` (RPC anterior): lo que no tiene obra es Estructura – Administración.
+    const destino: DestinoDeCosto = r.destino === 'ES-TAL' ? 'ES-TAL' : r.destino === 'ES-ADM' || obraId == null ? 'ES-ADM' : 'obra'
     return [{
-      obraId: texto(r.obra_canonica_id), personaId: texto(r.persona_id), horas: numero(r.horas) ?? 0,
+      obraId, destino, personaId: texto(r.persona_id), horas: numero(r.horas) ?? 0,
       blanco: numero(r.costo_blanco), negro: numero(r.costo_negro), total: numero(r.costo_total),
       estado, origen: texto(r.origen) ?? '', selladoEn: texto(r.sellado_en),
     }]
@@ -77,16 +84,22 @@ export function filasDeCosto(data: unknown): FilaDeCostoQuincena[] {
 
 const sumar = (a: number | null, b: number | null): number | null => (b == null ? a : (a ?? 0) + b)
 
-/** Agrupa por obra. Estructura (obra null) es una línea más, al final. Pura. */
+const ROTULO_ESTRUCTURA: Record<Exclude<DestinoDeCosto, 'obra'>, string> = {
+  'ES-ADM': 'Estructura – Administración', 'ES-TAL': 'Estructura – Taller',
+}
+const ORDEN: Record<DestinoDeCosto, number> = { obra: 0, 'ES-ADM': 1, 'ES-TAL': 2 }
+
+/** Agrupa por obra. Estructura va al final, en dos líneas: Administración y Taller. Pura. */
 export function lineasDeCostoObra(
   filas: readonly FilaDeCostoQuincena[], rotulos: ReadonlyMap<string, string>,
   nombres: ReadonlyMap<string, string>, presupuesto: ReadonlyMap<string, number>,
 ): LineaDeCostoObra[] {
   const acc = new Map<string, LineaDeCostoObra & { personas: Set<string> }>()
   for (const f of filas) {
-    const clave = f.obraId ?? ''
+    const clave = `${f.obraId ?? ''}|${f.destino}`
     const l = acc.get(clave) ?? {
-      obraId: f.obraId, rotulo: f.obraId == null ? 'Estructura (sin obra)' : rotulos.get(f.obraId) ?? f.obraId,
+      obraId: f.obraId, destino: f.destino,
+      rotulo: f.destino === 'obra' && f.obraId != null ? rotulos.get(f.obraId) ?? f.obraId : ROTULO_ESTRUCTURA[f.destino === 'ES-TAL' ? 'ES-TAL' : 'ES-ADM'],
       horas: 0, gente: 0, blanco: null, negro: null, costo: null, estimado: 0, sinDato: [],
       presupuesto: null, consumo: null, personas: new Set<string>(),
     }
@@ -108,7 +121,7 @@ export function lineasDeCostoObra(
       ...l, horas: Math.round(l.horas * 100) / 100, gente: personas.size, presupuesto: base,
       consumo: l.costo == null || base == null || base <= 0 ? null : (l.costo / base) * 100,
     }
-  }).sort((a, b) => (a.obraId == null ? 1 : b.obraId == null ? -1 : b.horas - a.horas))
+  }).sort((a, b) => ORDEN[a.destino] - ORDEN[b.destino] || b.horas - a.horas)
 }
 
 /** 42883 / PGRST202: la función no existe todavía en la base (migración sin aplicar). */

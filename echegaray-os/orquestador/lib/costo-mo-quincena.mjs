@@ -218,30 +218,55 @@ function esDelPlantel(x, q) {
 }
 
 const parte = (v, k) => (v == null ? null : v * k)
+const PUESTO_TALLER = /taller|mec[aáÁ]nic/i
 
-/** El costo de la persona repartido entre sus obras por horas. Sin horas, todo a Estructura. */
-function repartir(x, q) {
-  const obras = x.horas > 0 ? [...x.porObra.entries()].filter(([, h]) => h > 0) : [[null, 0]]
-  return obras.map(([obra, horas]) => {
+/**
+ * ESTRUCTURA (dueño, 14/09/2026): «obra», ES-ADM (Administración) o ES-TAL (Taller). Sin obra va a
+ * Administración, o a Taller si el puesto lo dice; una obra de tipo taller / estructura / administracion
+ * tampoco es una obra.
+ */
+export function destinoDe(obra, tipos, persona = {}) {
+  if (obra == null) return PUESTO_TALLER.test(String(persona.puesto ?? '')) ? 'ES-TAL' : 'ES-ADM'
+  const t = String(tipos.get(obra) ?? '').toLowerCase()
+  if (t === 'taller') return 'ES-TAL'
+  return t === 'estructura' || t === 'administracion' ? 'ES-ADM' : 'obra'
+}
+
+/** El costo de la persona repartido por horas entre sus obras y Estructura. Sin horas, todo a Estructura. */
+function repartir(x, q, tipos) {
+  const base = x.horas > 0 ? [...x.porObra.entries()].filter(([, h]) => h > 0) : [[null, 0]]
+  const acc = new Map()
+  for (const [obra, horas] of base) {
+    const destino = destinoDe(obra, tipos, x.persona)
+    const clave = `${destino === 'obra' ? obra : ''}|${destino}`
+    const a = acc.get(clave) ?? { obra: destino === 'obra' ? obra : null, destino, horas: 0 }
+    a.horas += horas
+    acc.set(clave, a)
+  }
+  return [...acc.values()].map(({ obra, destino, horas }) => {
     const k = x.horas > 0 ? horas / x.horas : 1
     return {
       quincena_desde: q.desde, quincena_hasta: q.hasta, obra_canonica_id: obra, persona_id: x.persona.id,
       horas, costo_blanco: parte(x.blanco, k), costo_negro: parte(x.negro, k), costo_total: parte(x.total, k),
-      estado: x.estado, origen: x.origen,
+      estado: x.estado, origen: x.origen, destino,
     }
   })
 }
 
-/** Las horas trabajadas sin persona (filas legacy): FALTA_DATO por obra, nunca se pierden. */
-function sinPersona(registros, q) {
-  const porObra = new Map()
+/** Las horas trabajadas sin persona (filas legacy): FALTA_DATO por obra o Estructura, nunca se pierden. */
+function sinPersona(registros, q, tipos) {
+  const acc = new Map()
   for (const f of registros) {
     if (f.persona_id != null || !TRABAJADAS.has(f.tipo_hora)) continue
-    porObra.set(f.obra_canonica_id, (porObra.get(f.obra_canonica_id) ?? 0) + (num(f.horas) ?? 0))
+    const destino = f.obra_canonica_id == null ? 'ES-ADM' : destinoDe(f.obra_canonica_id, tipos)
+    const obra = destino === 'obra' ? f.obra_canonica_id : null
+    const a = acc.get(`${obra ?? ''}|${destino}`) ?? { obra, destino, horas: 0 }
+    a.horas += num(f.horas) ?? 0
+    acc.set(`${obra ?? ''}|${destino}`, a)
   }
-  return [...porObra].map(([obra, horas]) => ({
+  return [...acc.values()].map(({ obra, destino, horas }) => ({
     quincena_desde: q.desde, quincena_hasta: q.hasta, obra_canonica_id: obra, persona_id: null, horas,
-    costo_blanco: null, costo_negro: null, costo_total: null, estado: 'falta_dato', origen: 'horas sin persona (FALTA_DATO)',
+    costo_blanco: null, costo_negro: null, costo_total: null, estado: 'falta_dato', origen: 'horas sin persona (FALTA_DATO)', destino,
   }))
 }
 
@@ -250,7 +275,8 @@ function sinPersona(registros, q) {
  * `quincena.desde` es día 1 o 16; `corte` deja afuera las horas posteriores (la SQL usa `current_date`).
  */
 export function costoManoDeObraDeLaQuincena(entrada) {
-  const e = { lineas: [], asignaciones: [], escalas: [], tarifas: [], recibos: [], registros: [], personas: [], ...entrada }
+  const e = { lineas: [], asignaciones: [], escalas: [], tarifas: [], recibos: [], registros: [], personas: [], obras: [], ...entrada }
+  const tipos = new Map(e.obras.map((o) => [o.id, o.tipo]))
   const q = { desde: iso(e.quincena.desde), hasta: iso(e.quincena.hasta) }
   const periodo = periodoDeQuincena(q)
   const corte = e.corte ?? q.hasta
@@ -259,6 +285,6 @@ export function costoManoDeObraDeLaQuincena(entrada) {
   const personas = [...e.personas]
   for (const f of e.registros) if (f.persona_id != null && !ids.has(f.persona_id)) { ids.add(f.persona_id); personas.push({ id: f.persona_id }) }
   const porPersona = personas.map((p) => costoDeLaPersona(p, e, periodo)).filter((x) => esDelPlantel(x, q))
-  const filas = [...porPersona.flatMap((x) => repartir(x, q)), ...sinPersona(e.registros, q)]
+  const filas = [...porPersona.flatMap((x) => repartir(x, q, tipos)), ...sinPersona(e.registros, q, tipos)]
   return { quincena: { ...q, periodo }, filas, personas: porPersona }
 }

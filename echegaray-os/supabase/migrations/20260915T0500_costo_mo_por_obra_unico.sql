@@ -52,8 +52,13 @@ create table if not exists public.costo_obra_quincena (
   costo_total     numeric,
   estado          text not null,
   origen          text not null,
+  -- «obra» o ESTRUCTURA: ES-ADM (Administración) · ES-TAL (Taller). «tenemos q considerar la unidad de
+  -- negocio estructura taller admin, al momento de asignar un gasto» (dueño, 14/09/2026).
+  destino         text not null default 'obra',
   sellado_en      timestamptz not null default now(),
   constraint costo_obra_quincena_estado check (estado in ('real', 'estimado', 'falta_dato')),
+  constraint costo_obra_quincena_destino check (
+    destino in ('obra', 'ES-ADM', 'ES-TAL') and (destino = 'obra') = (obra_canonica_id is not null)),
   constraint costo_obra_quincena_es_quincena check (
     extract(day from quincena_desde) in (1, 16) and quincena_hasta >= quincena_desde),
   -- UN FALTA_DATO NO TIENE TOTAL: un número ahí sería el «parcial» que esta migración elimina.
@@ -63,7 +68,7 @@ create table if not exists public.costo_obra_quincena (
 
 -- NULLS NOT DISTINCT: Estructura y las filas sin persona son NULL, y un único común no las restringiría.
 create unique index if not exists costo_obra_quincena_clave
-  on public.costo_obra_quincena (quincena_desde, obra_canonica_id, persona_id) nulls not distinct;
+  on public.costo_obra_quincena (quincena_desde, obra_canonica_id, persona_id, destino) nulls not distinct;
 create index if not exists costo_obra_quincena_obra
   on public.costo_obra_quincena (obra_canonica_id, quincena_desde);
 
@@ -100,7 +105,7 @@ grant all on public.costo_obra_quincena to service_role;
 create or replace function public.costo_mo_quincena_calculo(p_desde date, p_obras text[] default null)
  returns table (quincena_desde date, quincena_hasta date, obra_canonica_id text, persona_id uuid,
                 horas numeric, costo_blanco numeric, costo_negro numeric, costo_total numeric,
-                estado text, origen text)
+                estado text, origen text, destino text)
  language sql
  stable
  set search_path to 'public'
@@ -192,12 +197,14 @@ personas_q as (
   select p.id, regexp_replace(coalesce(p.cuil, ''), '\D', '', 'g') as cuil,
          btrim(regexp_replace(lower(translate(coalesce(p.convenio_colectivo, ''), 'ÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇáàäâãéèëêíìïîóòöôõúùüûñç', 'AAAAAEEEEIIIIOOOOOUUUUNCaaaaaeeeeiiiiooooouuuunc')), '[^a-z0-9]+', '_', 'g'), '_') as conv,
          btrim(regexp_replace(lower(translate(coalesce(p.categoria, ''), 'ÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇáàäâãéèëêíìïîóòöôõúùüûñç', 'AAAAAEEEEIIIIOOOOOUUUUNCaaaaaeeeeiiiiooooouuuunc')), '[^a-z0-9]+', '_', 'g'), '_') as cat,
-         p.fecha_ingreso, p.fecha_egreso
+         p.fecha_ingreso, p.fecha_egreso,
+         -- TALLER POR EL PUESTO: hoy sólo los jefes tienen puesto cargado, así que casi todo cae en ES-ADM.
+         coalesce(p.puesto, '') ~* '(taller|mec[aáÁ]nic)' as es_taller
     from public.personas p
    where coalesce(p.es_prueba, false) = false
 ),
 base as (
-  select p.id, q.desde, q.hasta, q.periodo,
+  select p.id, p.es_taller, q.desde, q.hasta, q.periodo,
          coalesce(hp.horas, 0) as horas, coalesce(hp.equivalentes, 0) as equivalentes,
          rc.id is not null as con_recibo, rc.horas_blanco as r_hb, rc.bruto as r_bruto, rc.neto as r_neto,
          rc.costo_total_empleador as r_cte,
@@ -297,23 +304,40 @@ personas_costo as (
     from costeado c
 ),
 -- EL REPARTO: por las horas de la persona en cada obra. Sin horas, entero a Estructura.
-repartido as (
+repartido_obra as (
   select pc.desde, pc.hasta, ho.obra, pc.id as persona, coalesce(ho.horas, 0)::numeric as horas_,
-         pc.c_blanco * k.k as blanco, pc.c_negro * k.k as negro, pc.c_total * k.k as total, pc.estado_, pc.origen_
+         pc.c_blanco * k.k as blanco, pc.c_negro * k.k as negro, pc.c_total * k.k as total, pc.estado_, pc.origen_,
+         -- ESTRUCTURA: sin obra → Administración (o Taller si el puesto lo dice); una obra de tipo taller /
+         -- estructura / administracion tampoco es una obra. Los jefes: lo que no tiene obra, a Administración.
+         case when ho.obra is null then case when pc.es_taller then 'ES-TAL' else 'ES-ADM' end
+              when lower(coalesce(oc.tipo, '')) = 'taller' then 'ES-TAL'
+              when lower(coalesce(oc.tipo, '')) in ('estructura', 'administracion') then 'ES-ADM'
+              else 'obra' end as destino_
     from personas_costo pc
     left join horas_obra ho on pc.horas > 0 and ho.persona_id = pc.id and ho.horas > 0
+    left join public.obra_canonica oc on oc.id = ho.obra
     cross join lateral (select case when pc.horas > 0 then ho.horas / pc.horas else 1 end as k) k
+),
+repartido as (
+  select r.desde, r.hasta, case when r.destino_ = 'obra' then r.obra end as obra, r.persona, sum(r.horas_) as horas_,
+         sum(r.blanco) as blanco, sum(r.negro) as negro, sum(r.total) as total, r.estado_, r.origen_, r.destino_
+    from repartido_obra r
+   group by r.desde, r.hasta, case when r.destino_ = 'obra' then r.obra end, r.persona, r.estado_, r.origen_, r.destino_
 ),
 -- LAS HORAS SIN PERSONA (filas legacy) NO SE PIERDEN: FALTA_DATO por obra.
 sin_persona as (
-  select q.desde, q.hasta, f.obra_canonica_id as obra, null::uuid as persona, sum(f.horas)::numeric as horas_,
-         null::numeric as blanco, null::numeric as negro, null::numeric as total,
-         'falta_dato'::text as estado_, 'horas sin persona (FALTA_DATO)'::text as origen_
+  select q.desde, q.hasta, case when d.destino = 'obra' then f.obra_canonica_id end as obra, null::uuid as persona,
+         sum(f.horas)::numeric as horas_, null::numeric as blanco, null::numeric as negro, null::numeric as total,
+         'falta_dato'::text as estado_, 'horas sin persona (FALTA_DATO)'::text as origen_, d.destino as destino_
     from filas f cross join q
+    left join public.obra_canonica oc on oc.id = f.obra_canonica_id
+    cross join lateral (select case when lower(coalesce(oc.tipo, '')) = 'taller' then 'ES-TAL'
+                                    when lower(coalesce(oc.tipo, '')) in ('estructura', 'administracion') then 'ES-ADM'
+                                    else 'obra' end as destino) d
    where f.persona_id is null and f.trabajada
-   group by q.desde, q.hasta, f.obra_canonica_id
+   group by q.desde, q.hasta, case when d.destino = 'obra' then f.obra_canonica_id end, d.destino
 )
-select t.desde, t.hasta, t.obra, t.persona, t.horas_, t.blanco, t.negro, t.total, t.estado_, t.origen_
+select t.desde, t.hasta, t.obra, t.persona, t.horas_, t.blanco, t.negro, t.total, t.estado_, t.origen_, t.destino_
   from (select * from repartido union all select * from sin_persona) t
  where p_obras is null or t.obra = any (p_obras)
  order by t.persona nulls last, t.obra nulls last
@@ -333,19 +357,19 @@ comment on function public.costo_mo_quincena_calculo(date, text[]) is
 create or replace function public.costo_mo_quincena(p_desde date, p_obras text[] default null)
  returns table (quincena_desde date, quincena_hasta date, obra_canonica_id text, persona_id uuid,
                 horas numeric, costo_blanco numeric, costo_negro numeric, costo_total numeric,
-                estado text, origen text, sellado_en timestamptz)
+                estado text, origen text, destino text, sellado_en timestamptz)
  language sql
  stable
  set search_path to 'public'
 as $function$
   select s.quincena_desde, s.quincena_hasta, s.obra_canonica_id, s.persona_id, s.horas, s.costo_blanco,
-         s.costo_negro, s.costo_total, s.estado, s.origen, s.sellado_en
+         s.costo_negro, s.costo_total, s.estado, s.origen, s.destino, s.sellado_en
     from public.costo_obra_quincena s
    where s.quincena_desde = p_desde
      and (p_obras is null or s.obra_canonica_id = any (p_obras))
   union all
   select c.quincena_desde, c.quincena_hasta, c.obra_canonica_id, c.persona_id, c.horas, c.costo_blanco,
-         c.costo_negro, c.costo_total, c.estado, c.origen, null::timestamptz
+         c.costo_negro, c.costo_total, c.estado, c.origen, c.destino, null::timestamptz
     from public.costo_mo_quincena_calculo(p_desde, p_obras) c
    where not exists (select 1 from public.costo_obra_quincena s where s.quincena_desde = p_desde)
 $function$;
@@ -373,9 +397,9 @@ begin
   delete from public.costo_obra_quincena where quincena_desde = p_desde;
   insert into public.costo_obra_quincena
          (quincena_desde, quincena_hasta, obra_canonica_id, persona_id, horas, costo_blanco, costo_negro,
-          costo_total, estado, origen, sellado_en)
+          costo_total, estado, origen, destino, sellado_en)
   select c.quincena_desde, c.quincena_hasta, c.obra_canonica_id, c.persona_id, c.horas, c.costo_blanco,
-         c.costo_negro, c.costo_total, c.estado, c.origen, now()
+         c.costo_negro, c.costo_total, c.estado, c.origen, c.destino, now()
     from public.costo_mo_quincena_calculo(p_desde, null) c;
   get diagnostics n = row_count;
   return n;

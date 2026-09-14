@@ -21,6 +21,15 @@
 -- No reclasifican `rubro_deducido`, el texto del concepto ni una cuenta de prueba: los dudosos se
 -- marcan en la ficha del proveedor. Espejo JS y tests: `orquestador/lib/subcontrato-de-compra.mjs`.
 --
+-- ═══ ESTRUCTURA NUNCA ES COSTO DE OBRA (dueño, 14/09/2026) ═══
+--
+-- «tenemos q considerar la unidad de negocio estructura taller admin, al momento de asignar un gasto». El
+-- bloque «REGLA ESTRUCTURA» saca de toda obra y de la fila sin obra lo que Compras marca como unidad de
+-- negocio Estructura (Administración, Taller), Impuestos o Financiero. Medido el 14/09: una sola fila entraba
+-- a una obra —Leandro Rojas, $350.000, unidad Estructura, en LE - OFICINA Y FÁBRICA DE PALITOS—. La columna
+-- `destino` (ES-ADM · ES-TAL · IMP · FIN) de feat/obra-por-fila se lee con `to_jsonb(fila) ->> 'destino'`:
+-- funciona antes y después de que esa migración agregue la columna.
+--
 -- ═══ LA INVARIANTE ═══
 --
 -- Reclasificar NO cambia materiales + subcontratos de ninguna obra: el importe cambia de columna. La
@@ -84,6 +93,10 @@ AS $function$
        and c.area is distinct from 'administracion_finanzas'
        and coalesce(s.anulada, false) = false
        and upper(trim(coalesce(s.estado, ''))) <> 'ELIMINADO'
+       -- REGLA ESTRUCTURA ▼
+       and upper(btrim(coalesce(c.unidad_negocio, ''))) not in ('ESTRUCTURA', 'IMPUESTOS', 'FINANCIERO')
+       and coalesce(to_jsonb(s) ->> 'destino', to_jsonb(c) ->> 'destino', '') not in ('ES-ADM', 'ES-TAL', 'IMP', 'FIN')
+       -- REGLA ESTRUCTURA ▲
      group by a.obra_id
   ),
   -- ── MANO DE OBRA: LA DEFINICIÓN ÚNICA (20260915T0500), QUINCENA POR QUINCENA ────────────────────
@@ -184,6 +197,10 @@ AS $function$
        and c.area is distinct from 'administracion_finanzas'
        and coalesce(s.anulada, false) = false
        and upper(trim(coalesce(s.estado, ''))) <> 'ELIMINADO'
+       -- REGLA ESTRUCTURA ▼
+       and upper(btrim(coalesce(c.unidad_negocio, ''))) not in ('ESTRUCTURA', 'IMPUESTOS', 'FINANCIERO')
+       and coalesce(to_jsonb(s) ->> 'destino', to_jsonb(c) ->> 'destino', '') not in ('ES-ADM', 'ES-TAL', 'IMP', 'FIN')
+       -- REGLA ESTRUCTURA ▲
   )
   select coalesce(jsonb_agg(jsonb_build_object(
            'cliente_id', t.cliente_id,

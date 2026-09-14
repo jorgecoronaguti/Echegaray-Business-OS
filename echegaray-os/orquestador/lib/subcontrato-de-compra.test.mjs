@@ -82,6 +82,33 @@ test('INVARIANTE: reclasificar no cambia materiales + subcontratos, sólo la col
   assert.equal(despues.comprometidoFuturo, 5_000)
 })
 
+test('ESTRUCTURA: Administración, Taller, Impuestos y Financiero no suman a ninguna columna de la obra', () => {
+  // «tenemos q considerar la unidad de negocio estructura taller admin, al momento de asignar un gasto».
+  const filas = [
+    fila({ proveedor: 'Corralon', familia_material: 'Cemento, cal y áridos', total: 100, unidad_negocio: 'Civil' }),
+    fila({ proveedor: 'Leandro Rojas', familia_material: 'Servicios de obra (baño, contenedor, agua)', total: 350_000, unidad_negocio: 'Estructura' }),
+    fila({ proveedor: 'PEDRO TELLO', familia_material: 'Hormigón y premoldeados', total: 7, unidad_negocio: ' ESTRUCTURA ' }),
+    fila({ proveedor: 'ARCA', total: 25_000, unidad_negocio: 'Impuestos' }),
+    fila({ proveedor: 'Banco', total: 9, unidad_negocio: 'Financiero' }),
+    fila({ proveedor: 'Repuestos', total: 11, unidad_negocio: 'Civil', destino: 'ES-TAL' }),
+  ]
+  const c = costoDirectoDeCompras(filas, CTX)
+  assert.equal(c.materiales, 100)
+  assert.equal(c.subcontratos, null, 'un subcontratista cargado a Estructura tampoco entra a la obra')
+  assert.equal(c.estructura, 350_000 + 7 + 25_000 + 9 + 11, 'lo de estructura se cuenta aparte, no se pierde')
+})
+
+test('SQL: la ficha por obra y la fila sin obra excluyen Estructura con el MISMO bloque, listo para `destino`', () => {
+  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0600_subcontratos_por_obra.sql'), 'utf8')
+  const bloques = [...sql.matchAll(/-- REGLA ESTRUCTURA ▼([\s\S]*?)-- REGLA ESTRUCTURA ▲/g)].map((m) => m[1].replace(/\s+/g, ' ').trim())
+  assert.equal(bloques.length, 2)
+  assert.equal(bloques[0], bloques[1])
+  assert.match(bloques[0], /upper\(btrim\(coalesce\(c\.unidad_negocio, ''\)\)\) not in \('ESTRUCTURA', 'IMPUESTOS', 'FINANCIERO'\)/)
+  // LA COLUMNA `destino` DE feat/obra-por-fila: se lee si existe, sin romper si todavía no.
+  assert.match(bloques[0], /to_jsonb\(s\) ->> 'destino'/)
+  assert.match(bloques[0], /'ES-ADM', 'ES-TAL', 'IMP', 'FIN'/)
+})
+
 test('SQL: la ficha por obra y la fila sin obra usan el MISMO bloque de la regla', () => {
   const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0600_subcontratos_por_obra.sql'), 'utf8')
   const bloques = [...sql.matchAll(/-- REGLA SUBCONTRATO ▼([\s\S]*?)-- REGLA SUBCONTRATO ▲/g)].map((m) => m[1].replace(/\s+/g, ' ').trim())

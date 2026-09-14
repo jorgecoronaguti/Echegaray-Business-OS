@@ -257,6 +257,46 @@ test('las personas de prueba no son plantel', () => {
   assert.equal(r.filas.length, 0)
 })
 
+// ═══ ESTRUCTURA — ADMINISTRACIÓN Y TALLER (dueño, 14/09/2026) ═══
+//
+// «tenemos q considerar la unidad de negocio estructura taller admin, al momento de asignar un gasto».
+// Lo que no es de una obra va a Estructura con su destino: nunca a una obra, nunca perdido.
+
+test('toda fila de obra lleva destino «obra»; lo sin obra va a Estructura – Administración', () => {
+  const r = calcular({
+    personas: [persona('zogbe'), JEFE],
+    registros: [...dias('zogbe', 'galpon-9', 3, 9), dia('zogbe', '2026-08-25', null, 9, 'licencia', 'vacaciones')],
+    tarifas: [tarifa('zogbe', 5000), TARIFA_JEFE],
+    recibos: [recibo('zogbe', 'Q2-08/2026', 18, 100000, 80000, 150000), RECIBO_JEFE],
+  })
+  assert.equal(deObra(r, 'zogbe', 'galpon-9').destino, 'obra')
+  assert.equal(deObra(r, 'zogbe', null)?.destino, 'ES-ADM', 'la licencia sin asignación es Estructura – Administración')
+  assert.equal(deObra(r, 'maldonado', null)?.destino, 'ES-ADM', 'el jefe sin horas en obra va a Administración')
+})
+
+test('las horas en una obra de TALLER van a Estructura – Taller, no a una obra', () => {
+  const r = calcular({
+    obras: [{ id: 'taller-propio', tipo: 'taller' }, { id: 'oficina-central', tipo: 'estructura' }],
+    personas: [persona('mecanico', { puesto: 'MECÁNICO' }), persona('reta')],
+    registros: [...dias('mecanico', 'taller-propio', 2, 9), ...dias('reta', 'oficina-central', 1, 9), ...dias('reta', 'quattropani', 1, 9, 20)],
+    tarifas: [tarifa('mecanico', 5000), tarifa('reta', 5000)],
+    recibos: [recibo('mecanico', 'Q2-08/2026', 18, 100000, 80000, 150000), recibo('reta', 'Q2-08/2026', 18, 100000, 80000, 150000)],
+  })
+  assert.deepEqual(filasDe(r, 'mecanico').map((f) => [f.obra_canonica_id, f.destino, f.horas]), [[null, 'ES-TAL', 18]])
+  assert.equal(deObra(r, 'reta', null)?.destino, 'ES-ADM')
+  assert.equal(deObra(r, 'reta', 'quattropani')?.horas, 9)
+  assert.ok(!r.filas.some((f) => f.obra_canonica_id === 'taller-propio' || f.obra_canonica_id === 'oficina-central'))
+})
+
+test('una persona de taller con recibo y sin horas va a Estructura – Taller', () => {
+  const r = calcular({
+    personas: [persona('quiroz', { puesto: 'Taller' })],
+    tarifas: [tarifa('quiroz', 5000)],
+    recibos: [recibo('quiroz', 'Q2-08/2026', 80, 300000, 240000, 422185)],
+  })
+  assert.deepEqual(r.filas.map((f) => [f.obra_canonica_id, f.destino]), [[null, 'ES-TAL']])
+})
+
 test('los motivos que pagan son los de la tabla del dueño, en JS y en SQL', () => {
   const ts = readFileSync(join(DIR, '../../src/features/administracion/services/liquidacionDeAusencias.ts'), 'utf8')
   const pagan = [...ts.matchAll(/\[MOTIVO\.(\w+)\]:\s*\{\s*paga:\s*true/g)].map((m) => MOTIVO[m[1]]).sort()
