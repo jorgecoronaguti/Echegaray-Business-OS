@@ -28,6 +28,7 @@
 // haría pasar por recibo pagado a cualquier transferencia del mismo día.
 
 import { cuilNormalizado, mismoCuil } from './cuil.ts'
+import { entraAlCuadro } from './liquidacionPlantelActivo.ts'
 import {
   liquidarLinea, tarifaVigenteAl, type EntradaDeLinea, type GrupoLiquidacion, type LineaLiquidada,
   type TarifaVigente,
@@ -239,7 +240,11 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     // SIN TARIFA POR HORA Y SIN MOVIMIENTO EN LA VENTANA NO ES UNA FILA. Listar al plantel entero
     // llenaría el cuadro de gente que no cobra esta quincena, y «sin tarifa» dejaría de señalar el
     // caso que hay que resolver antes de pagar.
-    if (!p.conActividad && vigente?.valorHora == null && (h == null || (h.horas === 0 && h.presentesSinHoras === 0))) continue
+    // EL MISMO CORTE QUE LA SOLAPA HORAS (`entraAlCuadro`): las dos pantallas muestran las mismas personas.
+    if (!entraAlCuadro({
+      conActividad: p.conActividad === true, tarifaVigente: vigente?.valorHora != null,
+      horas: h?.horas ?? 0, presenteSinHoras: (h?.presentesSinHoras ?? 0) > 0,
+    })) continue
     // SIN CORTE POR `en_la_empresa` (dueño, 14/09/2026): quién es de esta quincena ya lo decidió
     // `plantelDeLaQuincena`. Cortar acá por el estado de hoy sacaba de una quincena vieja a quien se fue después.
     cuadros.obreros.push(liquidarLinea(entradaDe(ctx, p, vigente, 'obreros'), 'obreros', redondeo))

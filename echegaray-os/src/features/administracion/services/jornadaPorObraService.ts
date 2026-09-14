@@ -10,7 +10,8 @@
 // una segunda definición del alcance que además no protege la llamada directa a PostgREST.
 
 import { marcaDeBaja, plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
-import { personaDelDirectorio } from './plantelDeLaQuincenaService.ts'
+import { leerPlantelDeLaQuincena, personaDelDirectorio } from './plantelDeLaQuincenaService.ts'
+import { quincenaDe } from './quincena.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAsignaciones } from '../../obras/services/personalService.ts'
 import type { AsignacionVigente, FilaJornada, OtraCargaDelDia } from './jornadaPorObra.ts'
@@ -165,6 +166,8 @@ export interface DatosQuincenaPorObra {
   /** El plantel de quien dejó registros SIN tener ninguna asignación. Sin esto no hay con qué
    *  nombrar su fila y la persona desaparece de la grilla — ver `personasDe`. */
   personas: Record<string, PersonaRotulo>
+  /** Los `persona_id` del plantel de la quincena (`plantelDeLaQuincena`): las únicas filas de la grilla. */
+  plantel: string[]
   noLaborables: string[]
   /** El catálogo por id: nombre real y cliente. Es lo que evita que la pantalla escriba un slug. */
   obras: Record<string, ObraRotulo>
@@ -189,7 +192,7 @@ export async function getNoLaborables(
 export async function getQuincenaPorObra(
   supabase: SupabaseClient, desde: string, hasta: string,
 ): Promise<{ data: DatosQuincenaPorObra | null; error: string | null }> {
-  const [asignaciones, registros, obras, noLaborables] = await Promise.all([
+  const [asignaciones, registros, obras, noLaborables, plantel] = await Promise.all([
     getAsignaciones(supabase),
     // `notas` viaja porque ahí está la CLAVE DEL MOTIVO (`enfermedad`, `falta`…): es lo que
     // convierte una casilla «L» muda en una que dice de qué licencia se trata.
@@ -208,8 +211,13 @@ export async function getQuincenaPorObra(
     }),
     supabase.from('obra_canonica').select('id, nombre, estado, cliente_texto'),
     getNoLaborables(supabase, desde, hasta),
+    // EL PLANTEL DE LA QUINCENA, LA MISMA LECTURA QUE LIQUIDACIÓN (QA, 14/09/2026): sin él las filas salían
+    // de las asignaciones reconstruidas y una quincena de marzo mostraba a quien ingresó en septiembre.
+    leerPlantelDeLaQuincena(supabase, quincenaDe(desde)),
   ])
   if (asignaciones.error) return { data: null, error: asignaciones.error }
+  // SIN PLANTEL NO SE DIBUJA UNA GRILLA ADIVINADA: se dice qué falló.
+  if (plantel.errores.length > 0) return { data: null, error: plantel.errores.map((e) => `${e.que}: ${e.error}`).join(' · ') }
   if (registros.error) return { data: null, error: registros.error }
   if (obras.error) return { data: null, error: obras.error.message }
 
@@ -296,7 +304,14 @@ export async function getQuincenaPorObra(
         tipo_hora: r.tipo_hora,
         notas: r.notas,
       })),
-      personas: await plantelDe(supabase, sinAsignacion, desde, hasta),
+      personas: {
+        ...Object.fromEntries(plantel.personas.map((p) => {
+          const baja = marcaDeBaja(p)?.texto ?? null
+          return [p.id, { nombre: p.nombre, nota: baja, baja }]
+        })),
+        ...(await plantelDe(supabase, sinAsignacion, desde, hasta)),
+      },
+      plantel: [...plantel.delCuadro],
       puestos: await puestosDe(supabase, [
         ...new Set([...vigentes.map((a) => a.persona_id), ...filasHH.map((r) => r.persona_id)]),
       ]),

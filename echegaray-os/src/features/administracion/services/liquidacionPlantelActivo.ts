@@ -109,6 +109,17 @@ export function plantelDeLaQuincena<P extends PersonaDelPlantel>(
   return { activas, sinActividad, conActividad }
 }
 
+/**
+ * ¿TIENE FILA EN EL CUADRO DE LA QUINCENA? El corte que `armarCuadros` hacía a mano, escrito una vez para que
+ * la solapa Horas muestre exactamente las mismas personas (QA, 14/09/2026). Alguien del plantel sin
+ * actividad, sin tarifa vigente, sin horas y sin presencia no cobra esta quincena: no es una fila.
+ */
+export function entraAlCuadro(e: {
+  conActividad: boolean; tarifaVigente: boolean; horas: number; presenteSinHoras: boolean
+}): boolean {
+  return e.conActividad || e.tarifaVigente || e.horas > 0 || e.presenteSinHoras
+}
+
 const dm = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 /**
