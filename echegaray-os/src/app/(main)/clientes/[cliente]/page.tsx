@@ -88,6 +88,8 @@ import { DesgloseHH } from '@/features/clientes/components/DesgloseHH'
 import { PieDeLosTrabajos } from '@/features/clientes/components/PieDeLosTrabajos'
 import { FilaGastosSinObra } from '@/features/clientes/components/CostoALaFecha'
 import { COLS_OBRAS } from '@/features/clientes/components/ListasClienteV2'
+import { codigosDeObra } from '@/shared/services/codigosDeObra'
+import { rotuloDeObra } from '@/shared/utils/obra'
 import { ActividadReciente } from '@/features/clientes/components/ActividadReciente'
 import { Aviso } from '@/shared/components/ds'
 import { FormAccion } from '@/shared/components/ui'
@@ -281,7 +283,7 @@ export default async function ClientePage({ params, searchParams }: {
   // encadenadas (`getArchivosDeEntidad` y después `getDocumentosSubidos`) por nada. Con una ola
   // sola, la ficha tarda lo que su lectura más lenta y no la suma de todas.
   const [
-    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos, cobranzas, insumosRegistro,
+    cuentaYCertificados, esquemaRes, accesosYActividad, archivosDrive, subidos, cobranzas, insumosRegistro, codigos,
   ] = await Promise.all([
     // LA CUENTA CORRIENTE Y SUS CERTIFICADOS SON UN BLOQUE DE COBRANZAS (12/09/2026): la misma plata
     // resumida, en la misma cara donde está fila por fila.
@@ -333,6 +335,8 @@ export default async function ClientePage({ params, searchParams }: {
     solapa === 'ordenes' && veEconomia
       ? getInsumosDelRegistro(supabase, id)
       : Promise.resolve(null),
+    // El código interno de las obras (`OB-0012`), en la misma ola: si falla, las obras van con el nombre solo.
+    codigosDeObra(supabase, null),
   ])
   const [cuenta, certificados] = cuentaYCertificados
   const esquema = esquemaRes
@@ -341,7 +345,9 @@ export default async function ClientePage({ params, searchParams }: {
   const [accesos, actividadPortal] = accesosYActividad
   const portal = resumenAccesos(lector.leer(accesos, []))
 
-  const todas = lector.leer(obras, [])
+  // «OB-0012 · NOMBRE» DESDE ACÁ: la lista de obras, los grupos por obra mayor y los nombres de las
+  // otras solapas salen de `todas`, así que el rótulo se arma una vez con el helper único.
+  const todas = lector.leer(obras, []).map((o) => ({ ...o, nombre: rotuloDeObra({ nombre: o.nombre, codigo: codigos.get(o.obra_id) }) }))
   // ═══ EL ADICIONAL VIAJA AL GRUPO DE SU OBRA MAYOR (dueño, 11/09/2026) ═══
   //
   // Recortado obra por obra, `bsa-adicional` —cerrada, con su madre `messina-bsa` activa— caía en

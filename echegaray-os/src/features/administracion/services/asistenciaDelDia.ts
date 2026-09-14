@@ -140,6 +140,9 @@ export interface AsistenciaDelDia extends ConteoDelDia {
   plantel: number
 }
 
+// El «código · nombre» lo arma sólo el helper único; `rotulo` decide qué texto usar sin nombre.
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
+
 const rotulo = (id: string | null, nombre: string | null): string =>
   nombre?.trim() || id || 'Sin obra imputada'
 
@@ -228,9 +231,11 @@ export function contar(gente: readonly PersonaDelDia[]): ConteoDelDia {
  * aparece igual: sus horas existen y alguien las tiene que poder ver.
  */
 export function asistenciaDelDia(
-  { esperados, registros, presencia = [] }: {
+  { esperados, registros, presencia = [], codigos = new Map() }: {
     esperados: Esperado[]
     registros: RegistroDelDia[]
+    /** `obra_id → código interno` (`OB-0012`). Vacío = el rótulo de cada grupo es el nombre solo. */
+    codigos?: ReadonlyMap<string, string>
     /** `asistencia_dia` del mismo día. Vacío = todavía nadie declaró nada, y la pantalla se
      *  comporta exactamente como antes del 08/09/2026. */
     presencia?: PresenciaGuardada[]
@@ -285,7 +290,10 @@ export function asistenciaDelDia(
   const nombreObra = new Map<string, { obraId: string | null; nombre: string }>()
   for (const f of filas) {
     const clave = f.obraId ?? '·sin-obra'
-    nombreObra.set(clave, { obraId: f.obraId, nombre: rotulo(f.obraId, f.obra) })
+    nombreObra.set(clave, {
+      obraId: f.obraId,
+      nombre: rotuloDeObra({ nombre: rotulo(f.obraId, f.obra), codigo: f.obraId ? codigos.get(f.obraId) : null }),
+    })
     const gente = porObra.get(clave) ?? []
     gente.push({
       personaId: f.personaId, nombre: f.nombre, categoria: f.categoria,

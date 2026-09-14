@@ -95,6 +95,7 @@ import {
 } from '@/features/administracion/services/comprasService'
 import { getEntradas } from '@/features/administracion/services/comprobanteEntradaService'
 import { claveIdentidad, getIdentidades } from '@/features/administracion/services/identidadProveedorService'
+import { nombresDeObra } from '@/features/clientes/services/nombresDeObra'
 
 export const dynamic = 'force-dynamic'
 
@@ -495,6 +496,9 @@ async function ControlArca({
   }
 
   const { filas, total, truncado } = listado.data
+  // «OB-0012 · NOMBRE» de la obra a la que llega cada compra (`nombresDeObra` usa `rotuloDeObra`).
+  // Arranca acá y se espera al dibujar: corre en paralelo con las lecturas del panel, sin otra ola.
+  const rotulosDeObra = nombresDeObra(supabase, filas.map((f) => f.obra_id))
   // Las dos lecturas del panel van juntas: son independientes entre sí y sólo ocurren con el panel
   // abierto. En serie agregaban un viaje de red a cada clic de la lista.
   const [parecidos, historialObras] = abierta
@@ -563,6 +567,7 @@ async function ControlArca({
         <div className="min-w-0 flex-1">
           <TablaCompras
             filas={filas}
+            rotulos={await rotulosDeObra}
             seleccionado={abierta?.id}
             hrefDe={(id) => url({ f: filtro, q, c: id })}
           />

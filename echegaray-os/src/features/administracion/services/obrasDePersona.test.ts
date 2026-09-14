@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  obrasTrabajadas, pareceSlug, rotuloDeObra, tramosProgramadosDe,
+  obrasTrabajadas, pareceSlug, rotuloDeObraTrabajada, tramosProgramadosDe,
 } from './obrasDePersona.ts'
 import type { ImputacionHH } from '../types/index.ts'
 
@@ -59,10 +59,12 @@ test('EL RÓTULO NUNCA ES UN SLUG: cae al CLIENTE', () => {
   assert.equal(pareceSlug('La Estrella Galpón 9'), false)
   assert.equal(pareceSlug('MAMPOSTERÍA'), false)
   // Sin catálogo se usa el nombre que viene con las horas; sin cliente tampoco se inventa nada.
-  assert.equal(rotuloDeObra('x', undefined, 'MAMPOSTERÍA'), 'MAMPOSTERÍA')
-  assert.equal(rotuloDeObra('x', { nombre: 'sf-mamposteria', cliente: null, estado: null }, null),
+  assert.equal(rotuloDeObraTrabajada('x', undefined, 'MAMPOSTERÍA'), 'MAMPOSTERÍA')
+  assert.equal(rotuloDeObraTrabajada('x', { nombre: 'sf-mamposteria', cliente: null, estado: null }, null),
     'sf-mamposteria', 'sin cliente se muestra lo que hay, nunca el id')
-  assert.equal(rotuloDeObra('x', undefined, null), 'obra sin nombre cargado')
+  assert.equal(rotuloDeObraTrabajada('x', undefined, null), 'obra sin nombre cargado')
+  assert.equal(rotuloDeObraTrabajada('x', { nombre: 'SF - MAMPOSTERÍA', codigo: 'OB-0023', cliente: 'San Francisco', estado: null }, null),
+    'OB-0023 · SF - MAMPOSTERÍA', 'con código, el rótulo lleva el código interno')
 })
 
 test('LAS CIFRAS DE CADA OBRA SON DÍAS DISTINTOS Y HORAS TRABAJADAS, no filas', () => {

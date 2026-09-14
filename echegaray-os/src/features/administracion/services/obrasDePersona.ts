@@ -27,6 +27,7 @@
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { tramosProgramados } from './planDeObraActual.ts'
 import type { ImputacionHH } from '../types/index.ts'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 export interface ObraTrabajada {
   /** `obra_canonica_id`. Es la clave y el destino del enlace. */
@@ -48,6 +49,8 @@ export interface ObraTrabajada {
 /** Lo que la base sabe de cada obra. La pantalla lo trae junto; acá no se lee nada. */
 export interface DatosDeObra {
   nombre: string | null
+  /** El código interno (`OB-0012`). Opcional: sin él, el rótulo es el nombre solo. */
+  codigo?: string | null
   cliente: string | null
   estado: string | null
 }
@@ -65,15 +68,22 @@ const redondear = (n: number): number => Math.round(n * 100) / 100
 export const pareceSlug = (v: string): boolean =>
   /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/.test(v.trim())
 
-/** El rótulo de una obra. Nunca un slug, nunca un uuid. */
-export function rotuloDeObra(id: string, datos: DatosDeObra | undefined, deLasHoras: string | null): string {
+/**
+ * El rótulo de una obra en la ficha de la persona. Nunca un slug, nunca un uuid.
+ *
+ * Se llamaba `rotuloDeObra` y armaba el texto por su cuenta; desde el código interno (14/09/2026) el
+ * «código · nombre» lo arma SÓLO `shared/utils/obra`. Acá queda lo propio de esta pantalla: qué texto
+ * usar cuando el nombre cargado es un slug.
+ */
+export function rotuloDeObraTrabajada(id: string, datos: DatosDeObra | undefined, deLasHoras: string | null): string {
   const nombre = (datos?.nombre ?? deLasHoras ?? '').trim()
   const cliente = (datos?.cliente ?? '').trim()
-  if (nombre && !pareceSlug(nombre)) return nombre
-  if (cliente) return cliente
+  const conCodigo = (texto: string) => rotuloDeObra({ nombre: texto, codigo: datos?.codigo })
+  if (nombre && !pareceSlug(nombre)) return conCodigo(nombre)
+  if (cliente) return conCodigo(cliente)
   // Sin nombre usable y sin cliente queda el nombre tal cual está cargado; y si no hay ni eso, se
   // dice que falta. El id NO se escribe: es plomería, no un rótulo.
-  return nombre || 'obra sin nombre cargado'
+  return nombre ? conCodigo(nombre) : 'obra sin nombre cargado'
 }
 
 const dia = (r: ImputacionHH): string | null => r.fecha?.slice(0, 10) ?? null
@@ -106,7 +116,7 @@ export function obrasTrabajadas(
     const datos = opciones.obras?.[id]
     lista.push({
       id,
-      nombre: rotuloDeObra(id, datos, trabajadas[0].obra_nombre),
+      nombre: rotuloDeObraTrabajada(id, datos, trabajadas[0].obra_nombre),
       // ESTADO DESCONOCIDO NO ES «CERRADA». Si la obra no vino en el catálogo —RLS, o se borró— no
       // se afirma nada: pintar «cerrada» sobre lo que no se pudo leer es inventar un hecho.
       activa: datos?.estado == null ? null : datos.estado === 'activa',
@@ -167,7 +177,7 @@ export function tramosProgramadosDe(
   const conNombre = asignaciones.map((a) => ({
     id: a.id,
     obra_id: a.obra_id,
-    nombre: rotuloDeObra(a.obra_id, obras[a.obra_id], a.obra_nombre),
+    nombre: rotuloDeObraTrabajada(a.obra_id, obras[a.obra_id], a.obra_nombre),
     desde: a.desde,
     hasta: a.hasta,
   }))
