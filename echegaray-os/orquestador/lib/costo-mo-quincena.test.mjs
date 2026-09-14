@@ -1,0 +1,269 @@
+// EL COSTO DE MANO DE OBRA DE UNA QUINCENA, POR OBRA Y PERSONA — el modelo del dueño (14/09/2026).
+//
+// ═══ QUÉ DEFECTOS ATRAPA ═══
+//
+// Cada caso es uno de los errores medidos en Quattropani 01–14/09 (el OS cargaba $6,15 M; el modelo
+// del dueño da ≈ $3,86 M). Si se revierte la regla, el caso se pone rojo:
+//
+//   · MULTIPLICADOR SOBRE EL TOTAL: 94 h × $/h × 1,671 da $922.650; el costo es el costo total
+//     empleador del recibo + el negro sin cargas = $885.244.
+//   · MES ENTERO DEL JEFE: el jefe cuesta MEDIO sueldo por quincena (900.000 − neto + costo empleador),
+//     y no depende de cuántas horas cargó en el mes hasta hoy.
+//   · LICENCIA A ESTRUCTURA: la licencia paga va a la obra asignada ese día.
+//   · SIN TARIFA EN «PARCIAL»: la persona queda FALTA_DATO con sus horas, nunca suma $0.
+//
+// Los números esperados están escritos a mano desde la regla del dueño, no leídos del módulo.
+
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { costoManoDeObraDeLaQuincena, MOTIVOS_QUE_PAGAN, periodoDeQuincena } from './costo-mo-quincena.mjs'
+import { MOTIVO } from './asistencia-motivos.mjs'
+
+const DIR = dirname(fileURLToPath(import.meta.url))
+const Q2_08 = { desde: '2026-08-16', hasta: '2026-08-31' }
+const Q1_09 = { desde: '2026-09-01', hasta: '2026-09-15' }
+const CONVENIO = 'UOCRA — Ley 22.250 (construcción)'
+const ESCALAS = [
+  { convenio: CONVENIO, categoria: 'Oficial', desde: '2026-07-01', valor_hora: 5817 },
+  { convenio: CONVENIO, categoria: 'Oficial', desde: '2026-08-01', valor_hora: 6348 },
+  { convenio: CONVENIO, categoria: 'Oficial Especializado', desde: '2026-08-01', valor_hora: 7420 },
+]
+
+const persona = (id, extra = {}) => ({
+  id, cuil: null, puesto: 'OFICIAL', categoria: 'oficial', convenio: CONVENIO,
+  fecha_ingreso: '2025-01-01', fecha_egreso: null, es_prueba: false, ...extra,
+})
+const dia = (persona_id, fecha, obra, horas, tipo_hora = 'normal', notas = null) =>
+  ({ persona_id, fecha, obra_canonica_id: obra, horas, tipo_hora, notas })
+/** `n` días seguidos de `horas` desde el día `d` de agosto. */
+const dias = (persona_id, obra, n, horas, d = 17) =>
+  Array.from({ length: n }, (_, i) => dia(persona_id, `2026-08-${String(d + i).padStart(2, '0')}`, obra, horas))
+const tarifa = (persona_id, valor_hora, desde = '2026-08-01', neto_mensual = null) =>
+  ({ persona_id, desde, valor_hora, neto_mensual })
+const recibo = (persona_id, periodo, horas_blanco, bruto, neto, costo_total_empleador) =>
+  ({ persona_id, cuil: null, periodo, horas_blanco, bruto, neto, costo_total_empleador })
+
+const calcular = (e) => costoManoDeObraDeLaQuincena({
+  quincena: Q2_08, personas: [], registros: [], tarifas: [], recibos: [], lineas: [], asignaciones: [],
+  escalas: ESCALAS, corte: '2026-12-31', ...e,
+})
+const cerca = (real, esperado, msg) =>
+  assert.ok(real != null && Math.abs(real - esperado) < 0.01, `${msg}: ${real} ≠ ${esperado}`)
+const filasDe = (r, id) => r.filas.filter((f) => f.persona_id === id)
+const deObra = (r, id, obra) => filasDe(r, id).find((f) => f.obra_canonica_id === obra)
+
+test('el período del recibo sale de la quincena', () => {
+  assert.equal(periodoDeQuincena(Q2_08), 'Q2-08/2026')
+  assert.equal(periodoDeQuincena(Q1_09), 'Q1-09/2026')
+})
+
+test('obrero CON recibo: costo total empleador + negro sin cargas, sin multiplicador', () => {
+  const r = calcular({
+    personas: [persona('reta')],
+    registros: [...dias('reta', 'quattropani', 10, 9), dia('reta', '2026-08-27', 'quattropani', 4)],
+    tarifas: [tarifa('reta', 5874)],
+    recibos: [recibo('reta', 'Q2-08/2026', 88, 558624, 460000, 850000)],
+  })
+  const [f] = filasDe(r, 'reta')
+  assert.equal(filasDe(r, 'reta').length, 1)
+  assert.equal(f.obra_canonica_id, 'quattropani')
+  assert.equal(f.horas, 94)
+  cerca(f.costo_blanco, 850000, 'blanco = costo_total_empleador del recibo')
+  cerca(f.costo_negro, 6 * 5874, 'negro = (94 − 88) × $/h negro')
+  cerca(f.costo_total, 885244, 'total')
+  assert.equal(f.estado, 'real')
+  // EL DEFECTO VIEJO: bolsillo × multiplicador promedio sobre TODO el $/h.
+  assert.ok(Math.abs(f.costo_total - 94 * 5874 * 1.671273) > 1000, 'volvió el multiplicador sobre el total')
+})
+
+test('obrero SIN recibo del período: mitad × piso × factor de SUS recibos, marcado estimado', () => {
+  const r = calcular({
+    personas: [persona('rosales')],
+    registros: dias('rosales', 'quattropani', 8, 10),
+    tarifas: [tarifa('rosales', 5874)],
+    recibos: [
+      recibo('rosales', 'Q1-08/2026', 80, 400000, 320000, 600000), // 1,50
+      recibo('rosales', 'Q2-07/2026', 80, 400000, 316000, 608000), // 1,52
+    ],
+  })
+  const [f] = filasDe(r, 'rosales')
+  cerca(f.costo_blanco, 40 * 6348 * 1.51, 'blanco estimado con la mediana de sus recibos')
+  cerca(f.costo_negro, 40 * 5874, 'negro = la otra mitad × $/h negro')
+  cerca(f.costo_total, 40 * 6348 * 1.51 + 40 * 5874, 'total')
+  assert.equal(f.estado, 'estimado')
+  assert.match(f.origen, /persona/)
+})
+
+test('sin recibos propios con costo empleador: la mediana del plantel', () => {
+  const r = calcular({
+    personas: [persona('nuevo'), persona('reta'), persona('rosales')],
+    registros: dias('nuevo', 'messina', 2, 10),
+    tarifas: [tarifa('nuevo', 5874), tarifa('reta', 5874), tarifa('rosales', 5874)],
+    recibos: [
+      recibo('reta', 'Q2-08/2026', 88, 558624, 460000, 850000), // 1,5216
+      recibo('rosales', 'Q1-08/2026', 80, 400000, 320000, 600000), // 1,50
+      recibo('rosales', 'Q2-07/2026', 80, 400000, 316000, 608000), // 1,52
+    ],
+  })
+  const [f] = filasDe(r, 'nuevo')
+  cerca(f.costo_blanco, 10 * 6348 * 1.52, 'factor = mediana del plantel (1,52)')
+  assert.equal(f.estado, 'estimado')
+  assert.match(f.origen, /plantel/)
+})
+
+const JEFE = persona('maldonado', { puesto: 'JEFE DE OBRA', categoria: 'oficial_especializado' })
+const TARIFA_JEFE = tarifa('maldonado', null, '2026-08-01', 1800000)
+const RECIBO_JEFE = recibo('maldonado', 'Q2-08/2026', 96, 842912, 663141.56, 1246545.43)
+
+test('jefe mensual CON recibo: costo empleador + (900.000 − neto), repartido por sus horas', () => {
+  const r = calcular({
+    personas: [JEFE],
+    registros: [
+      ...dias('maldonado', 'la-estrella', 4, 11),
+      ...dias('maldonado', 'san-francisco', 4, 9, 21), dia('maldonado', '2026-08-25', 'san-francisco', 10),
+    ],
+    tarifas: [TARIFA_JEFE],
+    recibos: [RECIBO_JEFE],
+  })
+  const total = 1246545.43 + (900000 - 663141.56)
+  cerca(filasDe(r, 'maldonado').reduce((s, f) => s + f.costo_total, 0), total, 'medio sueldo por quincena')
+  cerca(deObra(r, 'maldonado', 'la-estrella').costo_total, total * 44 / 90, 'La Estrella: 44 de 90 h')
+  cerca(deObra(r, 'maldonado', 'san-francisco').costo_total, total * 46 / 90, 'San Francisco: 46 de 90 h')
+  assert.ok(filasDe(r, 'maldonado').every((f) => f.estado === 'real'))
+})
+
+test('el costo del jefe NO depende de cuántas horas cargó: no es el mes entero a la fecha', () => {
+  const con = (registros) => calcular({ personas: [JEFE], registros, tarifas: [TARIFA_JEFE], recibos: [RECIBO_JEFE] })
+    .filas.reduce((s, f) => s + f.costo_total, 0)
+  const pocas = con([dia('maldonado', '2026-08-17', 'quattropani', 10)])
+  const muchas = con(dias('maldonado', 'quattropani', 10, 9))
+  cerca(pocas, 1483403.87, '10 h')
+  cerca(muchas, 1483403.87, '90 h')
+})
+
+test('jefe mensual SIN recibo: estimado con su factor y su cociente neto/bruto', () => {
+  const r = costoManoDeObraDeLaQuincena({
+    quincena: Q1_09, corte: '2026-09-14', escalas: ESCALAS, lineas: [], asignaciones: [],
+    personas: [JEFE],
+    registros: Array.from({ length: 9 }, (_, i) =>
+      dia('maldonado', `2026-09-${String(1 + i).padStart(2, '0')}`, 'quattropani', i === 8 ? 17 : 9)),
+    tarifas: [tarifa('maldonado', null, '2026-09-01', 1800000)],
+    recibos: [recibo('maldonado', 'Q1-08/2026', 92, 819168, 663526.08, 1211316.22), RECIBO_JEFE],
+  })
+  const [f] = r.filas
+  const bruto = (89 / 2) * 7420
+  const factor = (1211316.22 / 819168 + 1246545.43 / 842912) / 2
+  const cociente = (663526.08 / 819168 + 663141.56 / 842912) / 2
+  cerca(f.costo_blanco, bruto * factor, 'blanco estimado')
+  cerca(f.costo_negro, 900000 - bruto * cociente, 'negro = medio sueldo − neto estimado')
+  assert.equal(f.estado, 'estimado')
+})
+
+test('licencia paga a la obra ASIGNADA ese día (la asignación corta gana); sin asignación, a Estructura', () => {
+  const r = calcular({
+    personas: [persona('zogbe')],
+    registros: [
+      ...dias('zogbe', 'galpon-9', 3, 9),
+      dia('zogbe', '2026-08-19', null, 9, 'licencia', 'enfermedad'), // día trabajado: la licencia no suma
+      dia('zogbe', '2026-08-21', null, 9, 'licencia', 'enfermedad'), // → messina (tramo corto)
+      dia('zogbe', '2026-08-24', null, 9, 'ausencia', 'falta'), // no paga: 0 h
+      dia('zogbe', '2026-08-25', null, 9, 'licencia', 'vacaciones'), // sin tramo → Estructura
+    ],
+    asignaciones: [
+      { persona_id: 'zogbe', obra_id: 'galpon-9', desde: '2026-08-01', hasta: '2026-08-23' },
+      { persona_id: 'zogbe', obra_id: 'messina', desde: '2026-08-20', hasta: '2026-08-22' },
+    ],
+    tarifas: [tarifa('zogbe', 5000)],
+    recibos: [recibo('zogbe', 'Q2-08/2026', 40, 300000, 240000, 700000)],
+  })
+  const total = 700000 + 5 * 5000
+  assert.equal(deObra(r, 'zogbe', 'galpon-9').horas, 27)
+  assert.equal(deObra(r, 'zogbe', 'messina')?.horas, 9, 'la licencia del 21/08 va a la obra asignada')
+  assert.equal(deObra(r, 'zogbe', null)?.horas, 9, 'la del 25/08 no tiene obra: Estructura, no se pierde')
+  cerca(deObra(r, 'zogbe', 'messina').costo_total, total * 9 / 45, 'messina')
+  cerca(filasDe(r, 'zogbe').reduce((s, f) => s + f.costo_total, 0), total, 'el reparto no pierde plata')
+})
+
+test('la licencia con obra en la fila va a esa obra', () => {
+  const r = calcular({
+    personas: [persona('rios')],
+    registros: [dia('rios', '2026-08-17', 'messina', 9), dia('rios', '2026-08-18', 'quattropani', 9, 'licencia', 'lluvia')],
+    tarifas: [tarifa('rios', 5000)],
+    recibos: [recibo('rios', 'Q2-08/2026', 18, 100000, 80000, 150000)],
+  })
+  assert.equal(deObra(r, 'rios', 'quattropani')?.horas, 9)
+})
+
+test('persona en dos obras el mismo día: se suman y se reparte por horas', () => {
+  const r = calcular({
+    personas: [persona('petina')],
+    registros: [dia('petina', '2026-08-17', 'a', 5), dia('petina', '2026-08-17', 'b', 4), dia('petina', '2026-08-18', 'a', 9)],
+    tarifas: [tarifa('petina', 5000)],
+    recibos: [recibo('petina', 'Q2-08/2026', 18, 200000, 160000, 300000)],
+  })
+  cerca(deObra(r, 'petina', 'a').costo_total, 300000 * 14 / 18, 'a')
+  cerca(deObra(r, 'petina', 'b').costo_total, 300000 * 4 / 18, 'b')
+})
+
+test('sin tarifa: FALTA_DATO con sus horas; el total queda vacío, nunca $0', () => {
+  const r = calcular({
+    personas: [persona('aguero')],
+    registros: dias('aguero', 'quattropani', 6, 10),
+    recibos: [recibo('aguero', 'Q2-08/2026', 40, 250000, 200000, 400000)],
+  })
+  const [f] = filasDe(r, 'aguero')
+  assert.equal(f.estado, 'falta_dato')
+  assert.equal(f.horas, 60)
+  assert.equal(f.costo_total, null)
+  assert.equal(f.costo_negro, null)
+  cerca(f.costo_blanco, 400000, 'lo que sí se sabe se publica')
+})
+
+test('extras: el recargo de la planilla se paga en el negro', () => {
+  const r = calcular({
+    personas: [persona('gonzalez')],
+    registros: [dia('gonzalez', '2026-08-17', 'a', 9), dia('gonzalez', '2026-08-17', 'a', 3, 'extra_50', 'extras =9+3*1,5')],
+    tarifas: [tarifa('gonzalez', 5000)],
+    recibos: [recibo('gonzalez', 'Q2-08/2026', 9, 60000, 48000, 90000)],
+  })
+  cerca(r.filas[0].costo_negro, (3 + 1.5) * 5000, '3 h que el recibo no paga + 1,5 h de recargo')
+})
+
+test('recibo sin horas en la quincena: el costo va a Estructura, no desaparece', () => {
+  const r = calcular({
+    personas: [persona('avila')],
+    tarifas: [tarifa('avila', 5000)],
+    recibos: [recibo('avila', 'Q2-08/2026', 80, 160000, 130000, 225000)],
+  })
+  assert.deepEqual(r.filas.map((f) => [f.obra_canonica_id, f.horas, f.costo_total]), [[null, 0, 225000]])
+})
+
+test('las horas posteriores al corte no entran', () => {
+  const r = calcular({
+    corte: '2026-08-20',
+    personas: [persona('reta')],
+    registros: dias('reta', 'quattropani', 10, 9),
+    tarifas: [tarifa('reta', 5874)],
+    recibos: [recibo('reta', 'Q2-08/2026', 18, 100000, 80000, 150000)],
+  })
+  assert.equal(r.filas[0].horas, 36)
+})
+
+test('las personas de prueba no son plantel', () => {
+  const r = calcular({ personas: [persona('qa', { es_prueba: true })], registros: dias('qa', 'a', 2, 9), tarifas: [tarifa('qa', 1)] })
+  assert.equal(r.filas.length, 0)
+})
+
+test('los motivos que pagan son los de la tabla del dueño, en JS y en SQL', () => {
+  const ts = readFileSync(join(DIR, '../../src/features/administracion/services/liquidacionDeAusencias.ts'), 'utf8')
+  const pagan = [...ts.matchAll(/\[MOTIVO\.(\w+)\]:\s*\{\s*paga:\s*true/g)].map((m) => MOTIVO[m[1]]).sort()
+  assert.ok(pagan.length >= 9)
+  assert.deepEqual([...MOTIVOS_QUE_PAGAN].sort(), pagan)
+  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0500_costo_mo_por_obra_unico.sql'), 'utf8')
+  const lista = /btrim\(coalesce\(f\.notas, ''\)\) in \(([^)]+)\)/.exec(sql)
+  assert.ok(lista, 'la migración no lista los motivos que pagan')
+  assert.deepEqual(lista[1].split(',').map((s) => s.trim().replace(/'/g, '')).sort(), pagan)
+})
