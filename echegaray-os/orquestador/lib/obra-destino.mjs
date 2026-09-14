@@ -1,0 +1,142 @@
+// A DÓNDE VA CADA FILA DE COMPRAS Y COBRANZAS — la columna «Obra» (Compras AO · Cobranzas AB).
+//
+// ═══ POR QUÉ EXISTE (dueño, 14/09/2026) ═══
+//
+// Hasta hoy la obra de una compra se INFERÍA del texto de la columna K y la de un cobro del concepto
+// o la OC: 213 compras y 10 cobros de 2026 quedaban «probables» y nadie podía decir a cuál de las
+// obras del cliente iba la plata. El dueño autorizó una columna «Obra» con desplegable en las dos
+// pestañas: la obra viaja PEGADA A LA FILA, que es lo único estable (los ids de `public.cobranzas`
+// cambian en cada sync y el ID de Compras es `=ROW()-4`).
+//
+// ═══ QUÉ PUEDE DECIR LA CELDA ═══
+//
+//   «OB-0021 · ME - PLAYÓN DE AZUFRE»       → esa obra. Manda el CÓDIGO, que es inmutable: el nombre
+//                                              puede estar viejo y la fila sigue siendo de esa obra.
+//   «ES-ADM · Estructura – Administración»  → estructura, no costo de obra de nadie.
+//   «ES-TAL · Estructura – Taller»          → ídem.
+//   «Sin obra – LA ESTRELLA»                → del cliente, sin sub-obra: el dueño DECIDIÓ que no va a
+//                                              ninguna, que no es lo mismo que la celda vacía.
+//   vacía                                   → la fila no trae obra: sigue la inferencia de siempre.
+//   cualquier otra cosa                     → error nombrado. Nunca se adivina una obra por parecido.
+//
+// IMP y FIN NO existen (dueño, 14/09: «para todos esos tipos de gastos ya teníamos pestañas en todo el
+// sheet»): impuestos, cargas y financieros no van a Compras, así que no tienen destino acá.
+//
+// El rótulo de obra es el MISMO que el de la app (`src/shared/utils/obra.ts` · `rotuloDeObra`). El
+// test lee el .ts y falla si el separador cambia de un lado solo.
+
+import { normAlias } from './jornales-a-registros-hh.mjs'
+
+export const DESTINO = Object.freeze({ OBRA: 'obra', ADMIN: 'estructura_admin', TALLER: 'estructura_taller' })
+
+/** Los destinos que no son obras. Códigos cortos y estables: son lo que el sync parsea. */
+export const FIJOS = Object.freeze([
+  Object.freeze({ codigo: 'ES-ADM', destino: DESTINO.ADMIN, nombre: 'Estructura – Administración' }),
+  Object.freeze({ codigo: 'ES-TAL', destino: DESTINO.TALLER, nombre: 'Estructura – Taller' }),
+])
+
+const RE_CODIGO_OBRA = /^\s*((?:OB|ZZ)-\d{4,})(?![\w-])/i
+const RE_FIJO = /^\s*(ES-ADM|ES-TAL)(?![\w-])/i
+const RE_SIN_OBRA = /^\s*sin\s+obra\s*[–—-]\s*(.+?)\s*$/i
+
+/** Espejo de `rotuloDeObra` de la app. */
+export function rotuloDeObra({ nombre, codigo } = {}) {
+  const n = String(nombre ?? '').trim()
+  const c = String(codigo ?? '').trim()
+  if (!c) return n
+  if (!n) return c
+  return `${c} · ${n}`
+}
+
+export const rotuloSinObra = (cliente) => `Sin obra – ${cliente}`
+
+/** Lo que la celda DICE, sin catálogo. */
+export function leerCeldaObra(valor) {
+  const t = String(valor ?? '').trim()
+  if (!t) return { tipo: 'vacia' }
+  const cod = RE_CODIGO_OBRA.exec(t)
+  if (cod) return { tipo: 'codigo', codigo: cod[1].toUpperCase() }
+  const fijo = RE_FIJO.exec(t)
+  if (fijo) return { tipo: 'fijo', codigo: fijo[1].toUpperCase() }
+  const sin = RE_SIN_OBRA.exec(t)
+  if (sin) return { tipo: 'sin_obra', cliente: sin[1] }
+  return { tipo: 'invalida', texto: t }
+}
+
+/**
+ * El catálogo, armado UNA vez. `obras`: filas de `obra_canonica` (id, codigo, nombre, cliente_texto,
+ * fusionada_en) · `clienteAlias`: Map normAlias(rótulo) → cliente canónico — el MISMO mapa que usa
+ * `compras-obra-asignada.mjs`, así «cliente» significa lo mismo en la asignación y acá.
+ */
+export function catalogoDeDestinos({ obras = [], clienteAlias = new Map() } = {}) {
+  const clienteDe = (texto) => (normAlias(texto) ? clienteAlias.get(normAlias(texto)) ?? null : null)
+  const porId = new Map(obras.map((o) => [o.id, o]))
+  const porCodigo = new Map()
+  const vivasPorCliente = new Map()
+  for (const o of obras) {
+    const viva = porId.get(o.fusionada_en) ?? o
+    const cliente = clienteDe(viva.cliente_texto)
+    if (o.codigo) porCodigo.set(String(o.codigo).toUpperCase(), { obra_id: viva.id, cliente })
+    if (!o.fusionada_en && cliente) vivasPorCliente.set(cliente, [...(vivasPorCliente.get(cliente) ?? []), o])
+  }
+  const clientePorNombre = new Map([...clienteAlias.values()].map((c) => [normAlias(c), c]))
+  for (const [k, c] of clienteAlias) clientePorNombre.set(k, c)
+  return { obras, porCodigo, vivasPorCliente, clientePorNombre, clienteDe }
+}
+
+const vacio = { destino: null, obra_id: null, cliente: null, celda: null, error: null }
+
+/** La celda contra el catálogo: `{destino, obra_id, cliente, celda, error}`. */
+export function resolverCeldaObra(valor, cat) {
+  const leida = leerCeldaObra(valor)
+  if (leida.tipo === 'vacia') return { ...vacio }
+  const celda = String(valor).trim()
+  const falla = (error) => ({ ...vacio, celda, error })
+  if (leida.tipo === 'codigo') {
+    const o = cat.porCodigo.get(leida.codigo)
+    if (!o) return falla(`${leida.codigo} no es el código de ninguna obra`)
+    return { destino: DESTINO.OBRA, obra_id: o.obra_id, cliente: o.cliente, celda, error: null }
+  }
+  if (leida.tipo === 'fijo') {
+    const f = FIJOS.find((x) => x.codigo === leida.codigo)
+    return { destino: f.destino, obra_id: null, cliente: null, celda, error: null }
+  }
+  if (leida.tipo === 'sin_obra') {
+    const cliente = cat.clientePorNombre.get(normAlias(leida.cliente)) ?? null
+    if (!cliente) return falla(`«${leida.cliente}» no es un cliente conocido`)
+    return { destino: DESTINO.OBRA, obra_id: null, cliente, celda, error: null }
+  }
+  return falla(`«${celda.slice(0, 60)}» no es una obra del desplegable (se espera OB-####, ES-ADM, ES-TAL o «Sin obra – cliente»)`)
+}
+
+/**
+ * Las opciones del desplegable. Obras cerradas incluidas: las filas viejas son de obras cerradas.
+ * «Sin obra – X» sólo para el cliente con más de una obra viva: con una sola no hay nada que decidir.
+ */
+export function opcionesDeObra(cat) {
+  const fijas = FIJOS.map((f) => rotuloDeObra({ codigo: f.codigo, nombre: f.nombre }))
+  const obras = cat.obras
+    .filter((o) => !o.fusionada_en && /^OB-/i.test(String(o.codigo ?? '')))
+    .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)))
+    .map(rotuloDeObra)
+  const sinObra = [...cat.vivasPorCliente].filter(([, os]) => os.length > 1).map(([c]) => rotuloSinObra(c)).sort()
+  return [...fijas, ...obras, ...sinObra]
+}
+
+/**
+ * ¿La obra contradice la Unidad de Negocio de la fila? Devuelve el motivo o null. NO corrige: el
+ * dueño escribió las dos celdas y cuál de las dos está mal lo decide él.
+ */
+export function unidadIncoherente(unidad, destino) {
+  const u = String(unidad ?? '').trim()
+  if (!u || !destino) return null
+  const k = normAlias(u)
+  if (k === 'civil' || k === 'mantenimiento') {
+    return destino === DESTINO.OBRA ? null : `Unidad «${u}» lleva una obra y la columna Obra dice estructura`
+  }
+  if (k === 'estructura') {
+    return destino === DESTINO.OBRA ? `Unidad «${u}» no lleva obra y la columna Obra dice una` : null
+  }
+  if (k === 'impuestos' || k === 'financiero') return `Unidad «${u}» no va en Compras: corresponde a su pestaña`
+  return null
+}
