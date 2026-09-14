@@ -50,7 +50,7 @@ async function catalogos() {
     query('select alias, obra_id from public.obra_alias where obra_id is not null'),
     query('select id, nombre, cliente_texto, jornada_horas from public.obra_canonica'),
     query("select rotulo_clave, cliente_canonico from public.cliente_alias where fuente = 'JORNALES'"),
-    query("select persona_id, obra_id, to_char(desde, 'YYYY-MM-DD') desde, to_char(hasta, 'YYYY-MM-DD') hasta, notas, creado_en from public.obra_asignacion"),
+    query("select persona_id, obra_id, to_char(desde, 'YYYY-MM-DD') desde, to_char(hasta, 'YYYY-MM-DD') hasta, notas, creado_en from public.obra_asignacion_vigente"),
     query('select obra_id, cliente_slug from public.obra_panel where cliente_slug is not null'),
   ])
   // TODAS LAS QUE MUESTRA LA APP (dueño, 14/09/2026: «respetar lo que manda app.ecsas.com.ar»). El

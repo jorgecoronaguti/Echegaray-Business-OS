@@ -115,7 +115,8 @@ export function planDeAsignacion(filas = [], nueva) {
   const D = iso(nueva.desde)
   const finNueva = iso(nueva.hasta) ?? FIN
   for (const f of filas) {
-    if (f.obra_id === nueva.obra_id || esDePrueba(f)) continue
+    // UNA ANULADA NO CEDE NI SE AJUSTA: ya no cubre ningún día.
+    if (f.obra_id === nueva.obra_id || esDePrueba(f) || estaAnulada(f)) continue
     const t = tramoEfectivo(f)
     if (t.sinFecha || !solapan(t, { desde: D, hasta: finNueva })) continue
     const continua = (t.hasta ?? FIN) > finNueva
@@ -149,7 +150,8 @@ export function planDeAsignacion(filas = [], nueva) {
 /** Los días que cubren las filas de persona (app o dueño) de UNA persona, sin sus días sueltos. */
 function tramosDePersona(filas, personaId) {
   return filas
-    .filter((a) => a.persona_id === personaId && esDePersona(a) && !esUnDia(a))
+    // Una anulada no protege ningún día: la reconstrucción puede volver a cubrirlo.
+    .filter((a) => a.persona_id === personaId && esDePersona(a) && !esUnDia(a) && !estaAnulada(a))
     .map(tramoEfectivo)
     .filter((t) => !t.sinFecha)
     .map((t) => ({ desde: t.desde ?? '', hasta: t.hasta ?? FIN }))
@@ -191,7 +193,7 @@ export function cederAnteLaApp(tramos = [], existentes = []) {
  * `clase`: 'app-app' | 'app-reconstruida' | 'reconstruida-reconstruida' (dueño cuenta como app).
  */
 export function superposiciones(filas = []) {
-  const reales = filas.filter((a) => !esDePrueba(a))
+  const reales = filas.filter((a) => !esDePrueba(a) && !estaAnulada(a))
   const porPersona = new Map()
   for (const a of reales) {
     if (!porPersona.has(a.persona_id)) porPersona.set(a.persona_id, [])

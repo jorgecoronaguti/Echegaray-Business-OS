@@ -46,7 +46,10 @@ function baseFalsa(contenido: Contenido) {
   const toques: Toque[] = []
   const supabase: SupabasePlanLike = {
     from: (tabla: string) => {
-      const filas = (contenido as Record<string, Fila[] | number | undefined>)[tabla]
+      // LA LECTURA VA POR LA VISTA `obra_asignacion_vigente` (14/09/2026); acá la vista son las mismas
+      // filas cargadas para la tabla, que en estos casos no tienen anuladas.
+      const filas = (contenido as Record<string, Fila[] | number | undefined>)[
+        tabla === 'obra_asignacion_vigente' ? 'obra_asignacion' : tabla]
       const datos = Array.isArray(filas) ? filas : []
       const lectura = {
         eq: () => lectura,

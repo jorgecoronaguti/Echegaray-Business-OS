@@ -39,7 +39,8 @@ interface Toque { tabla: string; verbo: 'select' | 'rpc'; valores?: Fila }
 interface Contenido {
   persona_plantel?: Fila[]
   obra_canonica?: Fila[]
-  obra_asignacion?: Fila[]
+  /** Lo que devuelve la VISTA: las asignaciones sin las anuladas. La acción ya no lee la tabla. */
+  obra_asignacion_vigente?: Fila[]
   /** Lo que contesta la función SQL cuando aborta. */
   errorDeLaFuncion?: { message: string; code?: string }
 }
@@ -91,7 +92,7 @@ function baseCompleta(asignaciones: Fila[] = [], extra: Partial<Contenido> = {})
   return baseFalsa({
     persona_plantel: [{ id: PERSONA, nombre_completo: 'PÉREZ JUAN' }],
     obra_canonica: [{ id: 'salon-comercial', nombre: 'SALÓN COMERCIAL', estado: 'activa' }],
-    obra_asignacion: asignaciones,
+    obra_asignacion_vigente: asignaciones,
     ...extra,
   })
 }
@@ -135,7 +136,7 @@ test('sin perfil (rol null) tampoco se mueve a nadie de obra', async () => {
     )
     assert.equal(r.ok, false)
     assert.equal(r.ok === false && r.error, MENSAJE_PERMISO)
-    assert.deepEqual(toques.filter((t) => t.tabla === 'obra_asignacion' || t.verbo === 'rpc'), [])
+    assert.deepEqual(toques.filter((t) => t.tabla === 'obra_asignacion_vigente' || t.verbo === 'rpc'), [])
   }
 })
 
@@ -150,7 +151,7 @@ test('administración lee antes de escribir, escribe UNA vez con nota de quién,
   )
   assert.equal(r.ok, true, r.ok === false ? r.error : '')
   assert.equal(revalidada, PERSONA)
-  const lee = toques.findIndex((t) => t.tabla === 'obra_asignacion' && t.verbo === 'select')
+  const lee = toques.findIndex((t) => t.tabla === 'obra_asignacion_vigente' && t.verbo === 'select')
   const escribe = toques.findIndex((t) => t.verbo === 'rpc')
   assert.ok(lee >= 0 && lee < escribe, 'sin leer las vigentes el cierre no sabe a quién cerrar')
   assert.equal(llamadas(toques).length, 1)

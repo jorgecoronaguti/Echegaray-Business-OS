@@ -15,6 +15,8 @@
 // que salga rojo.
 
 /** Las filas de prueba (E2E, semillas ZZ) no son datos: nunca disparan un invariante. */
+import { estaAnulada } from '../cronologia-asignaciones.mjs'
+
 export const esDePrueba = (a) => /PRUEBA|ZZ-E2E/i.test(a.notas ?? '') || /^ZZ/i.test(a.obra_id ?? '')
 
 export const REGLAS = Object.freeze({
@@ -31,7 +33,9 @@ export const REGLAS = Object.freeze({
 export function revisarAsignaciones({ asignaciones = [], obras = [] } = {}) {
   const estado = new Map(obras.map((o) => [o.id, String(o.estado ?? '')]))
   const fin = new Map(obras.map((o) => [o.id, o.fecha_fin ? String(o.fecha_fin).slice(0, 10) : null]))
-  const filas = asignaciones.filter((a) => !esDePrueba(a))
+  // LAS ANULADAS NO CUENTAN (14/09/2026): la SQL ya lee por `obra_asignacion_vigente`, y la regla pura
+  // tampoco las cuenta si alguien le pasa la tabla entera.
+  const filas = asignaciones.filter((a) => !esDePrueba(a) && !estaAnulada(a))
   const vigentes = filas.filter((a) => a.hasta === null || a.hasta === undefined)
   const hallazgos = []
 
@@ -85,7 +89,7 @@ export const formatearHallazgos = (hallazgos = []) =>
 export const SQL_ASIGNACIONES = `
   select a.id, a.persona_id, p.nombre_completo as persona, a.obra_id,
          to_char(a.desde, 'YYYY-MM-DD') as desde, to_char(a.hasta, 'YYYY-MM-DD') as hasta, a.notas
-    from public.obra_asignacion a
+    from public.obra_asignacion_vigente a
     left join public.personas p on p.id = a.persona_id
    where coalesce(p.es_prueba, false) = false`
 // `fecha_fin_real` es la fecha de cierre de la obra; el invariante la lee como `fecha_fin`. No se

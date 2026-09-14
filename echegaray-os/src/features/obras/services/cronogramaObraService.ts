@@ -149,7 +149,7 @@ export async function getPersonasDisponibles(
   supabase: SupabaseClient, obraId: string,
 ): Promise<number | null> {
   const { data, error } = await supabase
-    .from('obra_asignacion').select('persona_id').eq('obra_id', obraId).is('hasta', null).limit(500)
+    .from('obra_asignacion_vigente').select('persona_id').eq('obra_id', obraId).is('hasta', null).limit(500)
   if (error || !data) return null
   const gente = new Set(data.map((a) => (a as { persona_id: string }).persona_id))
   return gente.size ? gente.size : null

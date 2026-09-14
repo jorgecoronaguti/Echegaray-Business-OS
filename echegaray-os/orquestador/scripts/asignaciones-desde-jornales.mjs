@@ -31,7 +31,7 @@ async function leer() {
     query(`select persona_id, fecha, obra_canonica_id as obra_id, horas, tipo_hora
            from registros_hh where fuente_legacy = $1 and persona_id is not null`, [FUENTE]),
     query(`select id, nombre_completo, en_la_empresa, fecha_egreso from personas`),
-    query(`select id, persona_id, obra_id, desde, hasta, notas, creado_en from obra_asignacion`),
+    query(`select id, persona_id, obra_id, desde, hasta, notas, creado_en from obra_asignacion_vigente`),
     query(`select id, nombre, estado, to_char(fecha_fin_real, 'YYYY-MM-DD') as fecha_fin from obra_canonica`),
   ])
   return { hh: hh.rows, personas: personas.rows, asig: asig.rows, obras: obras.rows }
@@ -101,7 +101,7 @@ async function main() {
   console.log(`\nINSERTADAS ${ids.length} filas.`)
 
   // ═══ RELECTURA: el efecto, no el intento ═══
-  const despues = await query(`select id, persona_id, obra_id, desde, hasta, notas from obra_asignacion`)
+  const despues = await query(`select id, persona_id, obra_id, desde, hasta, notas from obra_asignacion_vigente`)
   console.log(`== obra_asignacion DESPUÉS: ${JSON.stringify(conteoPorOrigen(despues.rows))}`)
   const webAntes = new Map(asig.filter((a) => !(a.notas ?? '').includes(MARCA_JORNALES)).map((a) => [a.id, `${f(a.desde)}|${f(a.hasta)}|${a.obra_id}`]))
   const tocadas = despues.rows.filter((a) => webAntes.has(a.id) && webAntes.get(a.id) !== `${f(a.desde)}|${f(a.hasta)}|${a.obra_id}`)
@@ -109,12 +109,12 @@ async function main() {
   console.log(`   asignaciones web modificadas: ${tocadas.length} · desaparecidas: ${perdidas.length}`)
   const dosVigentes = await query(`
     select p.nombre_completo n, array_agg(a.obra_id order by a.obra_id) obras
-    from obra_asignacion a join personas p on p.id = a.persona_id
+    from obra_asignacion_vigente a join personas p on p.id = a.persona_id
     where a.hasta is null and coalesce(a.notas,'') not like '%PRUEBA%' group by 1 having count(*) > 1 order by 1`)
   console.log(`   personas con más de una asignación vigente: ${dosVigentes.rowCount}${dosVigentes.rows.map((x) => `\n      ${x.n}: ${x.obras.join(', ')}`).join('')}`)
   const fijadasHoy = await query(`
-    select p.nombre_completo n, a.obra_id, (select array_agg(b.obra_id) from obra_asignacion b where b.persona_id=a.persona_id and b.hasta is null) vigentes
-    from obra_asignacion a join personas p on p.id=a.persona_id
+    select p.nombre_completo n, a.obra_id, (select array_agg(b.obra_id) from obra_asignacion_vigente b where b.persona_id=a.persona_id and b.hasta is null) vigentes
+    from obra_asignacion_vigente a join personas p on p.id=a.persona_id
     where a.desde >= '2026-09-01' and coalesce(a.notas,'') not like '%JORNALES%' and a.hasta is null order by 1`)
   console.log(`\n== FIJADAS POR EL DUEÑO (desde >= 2026-09-01, web): la obra vigente sigue siendo la suya`)
   for (const x of fijadasHoy.rows) console.log(`   ${x.n.padEnd(34)} web → ${x.obra_id.padEnd(22)} vigentes: ${x.vigentes.join(', ')} ${x.vigentes.length === 1 && x.vigentes[0] === x.obra_id ? 'OK' : 'REVISAR'}`)
@@ -123,7 +123,7 @@ async function main() {
   for (const buscada of FICHAS) {
     const p = personas.find((x) => x.nombre_completo.toUpperCase().startsWith(buscada))
     if (!p) { console.log(`   ${buscada}: no está en personas`); continue }
-    const fila = await query(`select obra_id, rol, desde, hasta, notas from obra_asignacion where persona_id=$1
+    const fila = await query(`select obra_id, rol, desde, hasta, notas from obra_asignacion_vigente where persona_id=$1
       order by hasta asc nulls first, desde desc nulls last`, [p.id])
     console.log(`\n${p.nombre_completo}${activos.has(p.id) ? '' : ' [inactivo]'}`)
     for (const a of fila.rows) console.log(`   ${a.obra_id.padEnd(26)} ${f(a.desde)} → ${a.hasta ? f(a.hasta) : 'VIGENTE   '} · ${a.rol} · ${(a.notas ?? '').includes(MARCA_JORNALES) ? 'JORNALES' : 'web'}`)

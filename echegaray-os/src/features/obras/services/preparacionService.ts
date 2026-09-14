@@ -44,7 +44,7 @@ export async function getPreparacion(
       .select('archivada, inicio_plan, fin_plan, inicio_base, fin_base, responsable_id, hh_plan')
       .eq('obra_id', obraId),
     supabase
-      .from('obra_asignacion')
+      .from('obra_asignacion_vigente')
       .select('id', { count: 'exact', head: true })
       .eq('obra_id', obraId),
   ])

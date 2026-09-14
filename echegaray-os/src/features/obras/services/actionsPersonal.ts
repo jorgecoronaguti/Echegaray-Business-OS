@@ -149,7 +149,7 @@ async function integrantesNuevos(
   if (errorIntegrantes) return { error: errorIntegrantes.message }
   const personas = (integrantes ?? []).map((f) => (f as { persona_id: string }).persona_id)
   if (personas.length === 0) return { error: 'La cuadrilla no tiene integrantes vigentes.' }
-  let consulta = supabase.from('obra_asignacion').select('persona_id')
+  let consulta = supabase.from('obra_asignacion_vigente').select('persona_id')
     .eq('obra_id', d.obra_id).in('persona_id', personas)
   consulta = actividad ? consulta.eq('actividad_id', actividad) : consulta.is('actividad_id', null)
   const { data: existentes, error: errorExistentes } = await consulta

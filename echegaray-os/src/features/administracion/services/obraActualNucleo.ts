@@ -220,7 +220,7 @@ type TramoCerrado = { id: string; obra_id: string; nombre: string; desde: string
 async function leerCerradasDesde(
   supabase: SupabaseLike, personaId: string, desde: string,
 ): Promise<{ data: TramoCerrado[]; error: string | null }> {
-  const { data, error } = await supabase.from('obra_asignacion')
+  const { data, error } = await supabase.from('obra_asignacion_vigente')
     .select('id, obra_id, desde, hasta').eq('persona_id', personaId).or(`hasta.gte.${desde}`)
   // UNA LECTURA QUE FALLA NO ES «NO TIENE NINGUNA»: seguir dejaría el pase viejo debajo del nuevo.
   if (error) return { data: [], error: `No pude leer sus asignaciones: ${error.message}` }
@@ -248,7 +248,7 @@ async function leerCerradasDesde(
 async function leerAbiertas(
   supabase: SupabaseLike, personaId: string,
 ): Promise<{ data: AsignacionAbierta[]; error: string | null }> {
-  const { data, error } = await supabase.from('obra_asignacion')
+  const { data, error } = await supabase.from('obra_asignacion_vigente')
     .select('id, obra_id, desde, hasta').eq('persona_id', personaId)
     .is('hasta', null)
   // UNA LECTURA QUE FALLA NO ES «NO TIENE NINGUNA». Seguir con la lista vacía abriría la obra nueva

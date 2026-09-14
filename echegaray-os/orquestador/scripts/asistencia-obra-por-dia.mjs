@@ -130,7 +130,7 @@ async function planAsignaciones(personas, obrasCerradas) {
     query(`select persona_id, to_char(fecha, 'YYYY-MM-DD') fecha, obra_canonica_id as obra_id, horas, tipo_hora
              from public.registros_hh where fuente_legacy = $1 and persona_id is not null`, [FUENTE_JORNALES]),
     // `creado_en` no sobra: es el comienzo efectivo de una fila de la web sin `desde` (regla b).
-    query('select id, persona_id, obra_id, desde, hasta, notas, creado_en from public.obra_asignacion'),
+    query('select id, persona_id, obra_id, desde, hasta, notas, creado_en from public.obra_asignacion_vigente'),
   ])
   const activos = new Set(personas.filter((p) => p.en_la_empresa && !p.fecha_egreso).map((p) => p.id))
   const { tramos, cerradas } = armarTramos(hh.rows, { hoy: HOY, activos, obrasCerradas })

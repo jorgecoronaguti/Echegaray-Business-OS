@@ -69,7 +69,7 @@ export async function getCuadrillas(
 export async function getAsignaciones(supabase: SupabaseClient, obraId?: string): Promise<ServiceResult<Asignacion[]>> {
   // SIN `obraId` DEVUELVE EL PLANTEL DE TODAS LAS OBRAS VISIBLES. Quién ve qué obra lo decide el RLS
   // de `obra_asignacion`, no este `if`.
-  const base = supabase.from('obra_asignacion')
+  const base = supabase.from('obra_asignacion_vigente')
     .select('id, obra_id, persona_id, rol, cuadrilla, cuadrilla_id, actividad_id, desde, hasta, ' +
       'notas, cuadrilla_rel:cuadrilla_id(nombre)')
   const { data, error } = await (obraId ? base.eq('obra_id', obraId) : base)
@@ -244,7 +244,7 @@ export async function getPersonasDeHoy(
 ): Promise<PersonasDeHoy> {
   const hoy = new Date().toISOString().slice(0, 10)
   const [a, p] = await Promise.all([
-    supabase.from('obra_asignacion').select('id', { count: 'exact', head: true })
+    supabase.from('obra_asignacion_vigente').select('id', { count: 'exact', head: true })
       .eq('obra_id', obraId).or(`hasta.is.null,hasta.gte.${hoy}`),
     supabase.from('presencia_del_dia').select('persona_id', { count: 'exact', head: true })
       .eq('obra_id', obraId).eq('fecha', hoy),

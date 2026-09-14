@@ -69,7 +69,7 @@ export interface DepsPlanDeObra {
 export async function leerTramosCon(
   supabase: SupabasePlanLike, personaId: string,
 ): Promise<{ data: TramoDeAsignacion[]; error: string | null }> {
-  const { data, error } = await supabase.from('obra_asignacion')
+  const { data, error } = await supabase.from('obra_asignacion_vigente')
     .select('id, obra_id, desde, hasta').eq('persona_id', personaId)
     .order('desde', { ascending: false })
   // UNA LECTURA QUE FALLA NO ES «NO TIENE NINGUNO». Seguir con la lista vacía haría que la

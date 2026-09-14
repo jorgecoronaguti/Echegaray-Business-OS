@@ -71,7 +71,7 @@ export const FUNCION_ASIGNAR = 'asignar_obra_con_cronologia'
 export async function planDeAlta(
   supabase: SupabaseAsignacion, personaId: string, alta: AltaDeAsignacion,
 ): Promise<{ plan: PlanDeAlta } | { error: string }> {
-  const lectura = await supabase.from('obra_asignacion')
+  const lectura = await supabase.from('obra_asignacion_vigente')
     .select('id, obra_id, desde, hasta, creado_en').eq('persona_id', personaId)
   // UNA LECTURA QUE FALLA NO ES «NO TIENE OTRAS OBRAS»: seguir la dejaría en dos obras.
   if (lectura.error) return { error: `No pude leer sus otras obras: ${lectura.error.message}. No se escribió nada.` }

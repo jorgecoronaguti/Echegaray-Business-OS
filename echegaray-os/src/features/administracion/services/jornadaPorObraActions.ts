@@ -52,6 +52,7 @@ import {
 import {
   declaracionDeCorreccion, declaracionesDeJornada, type MarcaConHoras,
 } from './presenciaPorHoras'
+import { altaDeLaCasilla } from './casillaDeAsignacion'
 
 export type ResultadoJornada =
   /** `aviso` va aparte del acuse para que la grilla lo muestre SIN mostrar «1 marca nueva» en cada
@@ -409,9 +410,8 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   // la persona quedaba guardada en dos obras desde ese día para siempre. Corregir un día es un día
   // suelto, y el día suelto no parte el tramo largo (`orquestador/lib/cronologia-asignaciones.mjs`).
   if (faltaEn && c.asignar) {
-    const alta = await supabase.from('obra_asignacion').insert({
-      obra_id: obraDestino, persona_id: c.persona_id, rol: 'integrante', desde: c.fecha, hasta: c.fecha,
-    })
+    const alta = await supabase.from('obra_asignacion')
+      .insert(altaDeLaCasilla({ obraId: obraDestino, personaId: c.persona_id, fecha: c.fecha }))
     if (alta.error) return { ok: false, error: `No pude asignarla: ${alta.error.message}` }
   }
 
@@ -567,7 +567,7 @@ async function faltaAsignacion(
   supabase: Awaited<ReturnType<typeof createClient>>,
   personaId: string, obraId: string, fecha: string,
 ): Promise<string | null> {
-  const { data, error } = await supabase.from('obra_asignacion')
+  const { data, error } = await supabase.from('obra_asignacion_vigente')
     .select('id, desde, hasta').eq('persona_id', personaId).eq('obra_id', obraId)
   // UNA LECTURA QUE FALLA NO ES «NO ESTÁ ASIGNADA». Frenar la corrección por un error de RLS
   // pondría a Administración a pelear con un aviso falso; el `insert` de abajo tiene su propia
@@ -592,7 +592,7 @@ async function personasSinAsignacion(
   obraId: string, personaIds: string[], fecha: string,
 ): Promise<string[]> {
   if (personaIds.length === 0) return []
-  const { data, error } = await supabase.from('obra_asignacion')
+  const { data, error } = await supabase.from('obra_asignacion_vigente')
     .select('persona_id, desde, hasta').eq('obra_id', obraId).in('persona_id', personaIds)
   // UNA LECTURA QUE FALLA NO ES «NO ESTÁ ASIGNADO». Avisar por un error de RLS pondría al jefe a
   // pelear con un aviso falso sobre una escritura que salió bien.

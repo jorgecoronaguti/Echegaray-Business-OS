@@ -74,7 +74,7 @@ async function obrasAsignadasVigentes(
   supabase: Supabase,
   personaId: string, fecha: string,
 ): Promise<string[]> {
-  const { data, error } = await supabase.from('obra_asignacion')
+  const { data, error } = await supabase.from('obra_asignacion_vigente')
     .select('obra_id, desde, hasta').eq('persona_id', personaId).order('desde', { ascending: false })
   if (error) return []
   return ((data ?? []) as { obra_id: string; desde: string | null; hasta: string | null }[])

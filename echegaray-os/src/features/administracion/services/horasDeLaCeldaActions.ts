@@ -134,7 +134,7 @@ async function pistasDeObra(
 ): Promise<{ asignaciones: AsignacionDeObra[]; dias: DiaYaImputado[] } | { error: string }> {
   const [asig, hh] = await Promise.all([
     // `creado_en` y `notas`: la carga posterior y la marca de anulada deciden entre tramos del mismo día.
-    supabase.from('obra_asignacion').select('obra_id, desde, hasta, creado_en, notas').eq('persona_id', personaId),
+    supabase.from('obra_asignacion_vigente').select('obra_id, desde, hasta, creado_en, notas').eq('persona_id', personaId),
     supabase.from('registros_hh').select('fecha, obra_canonica_id')
       .eq('persona_id', personaId).not('obra_canonica_id', 'is', null)
       .order('fecha', { ascending: false }).limit(400),

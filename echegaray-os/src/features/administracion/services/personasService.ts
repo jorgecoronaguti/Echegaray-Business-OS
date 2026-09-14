@@ -194,7 +194,7 @@ export async function getAsignacionesDe(
   personaId: string,
 ): Promise<ServiceResult<AsignacionDePersona[]>> {
   const { data, error } = await supabase
-    .from('obra_asignacion')
+    .from('obra_asignacion_vigente')
     .select('id, obra_id, rol, cuadrilla, cuadrilla_id, actividad_id, desde, hasta, notas, ' +
       'obra_canonica(nombre), obra_actividad(nombre), cuadrilla_rel:cuadrilla_id(nombre)')
     .eq('persona_id', personaId)

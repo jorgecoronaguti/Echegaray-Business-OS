@@ -417,7 +417,7 @@ export async function getObrasParaJornada(
     // 08/09: nueve obras, nueve «sin conteo». El fallback fue honesto (no dijo 0) y el dato no estaba.
     // `persona_id` VIAJA, y no es decorativo: sin él el conteo suma FILAS y la misma persona con
     // dos asignaciones vigentes el mismo día cuenta dos veces. Ver `asignadosPorObra`.
-    supabase.from('obra_asignacion').select('obra_id, persona_id, desde, hasta'),
+    supabase.from('obra_asignacion_vigente').select('obra_id, persona_id, desde, hasta'),
     puestosDe(supabase),
   ])
   if (obras.error) return { data: [], error: obras.error.message }
@@ -460,7 +460,7 @@ export async function getCandidatosParaTraer(
 ): Promise<{ data: CandidatoParaTraer[]; error: string | null }> {
   const [plantel, asignaciones, obras] = await Promise.all([
     supabase.from('persona_plantel').select('id, nombre_completo').order('nombre_completo'),
-    supabase.from('obra_asignacion').select('persona_id, obra_id, desde, hasta'),
+    supabase.from('obra_asignacion_vigente').select('persona_id, obra_id, desde, hasta'),
     supabase.from('obra_canonica').select('id, nombre'),
   ])
   if (plantel.error) return { data: [], error: `No pude leer el plantel: ${plantel.error.message}` }
