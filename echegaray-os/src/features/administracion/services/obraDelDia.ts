@@ -18,9 +18,12 @@
 //
 // ═══ Y CUANDO NO SE PUEDE DEDUCIR, NO SE ADIVINA ═══
 //
-// Dos asignaciones abiertas el mismo día son dos candidatas igual de válidas: elegir la primera
-// sería exactamente lo que esta función existe para no hacer. Se devuelve el motivo y la pantalla
-// manda al panel, que pregunta.
+// Varias asignaciones el mismo día se desempatan por la cronología del empleado, con la regla única de
+// `orquestador/lib/asignacion-del-dia.mjs` (la más corta; empatadas, la más reciente). Sólo el empate
+// total —dos candidatas igual de válidas— no se elige: se devuelve el motivo y la pantalla manda al
+// panel, que pregunta.
+
+import { obraDeLaAsignacionDelDia } from '../../../../orquestador/lib/asignacion-del-dia.mjs'
 
 /** Un tramo de `obra_asignacion`. `hasta` nulo es «sigue abierto». */
 export interface AsignacionDeObra {
@@ -65,9 +68,13 @@ export function obraParaElDia(
   asignaciones: readonly AsignacionDeObra[],
   diasYaImputados: readonly DiaYaImputado[],
 ): ObraDelDia {
-  const vigentes = [...new Set(asignaciones.filter((a) => cubre(a, fecha)).map((a) => a.obraId))]
-  if (vigentes.length === 1) return { ok: true, obraId: vigentes[0], porque: 'asignacion' }
-  if (vigentes.length > 1) return { ok: false, porque: 'varias-asignaciones' }
+  const vigentes = asignaciones.filter((a) => cubre(a, fecha))
+  if (vigentes.length > 0) {
+    // LA MISMA REGLA QUE EL IMPORTADOR: más corta, después más reciente. Empate total no se elige.
+    const tramos = vigentes.map((a) => ({ obra: a.obraId, desde: a.desde, hasta: a.hasta }))
+    const obraId = obraDeLaAsignacionDelDia(tramos, fecha) as string | null
+    return obraId ? { ok: true, obraId, porque: 'asignacion' } : { ok: false, porque: 'varias-asignaciones' }
+  }
 
   const antes = diasYaImputados.filter((d) => d.fecha <= fecha)
     .sort((a, b) => a.fecha.localeCompare(b.fecha))

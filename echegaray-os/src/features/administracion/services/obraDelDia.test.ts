@@ -25,18 +25,46 @@ test('UN TRAMO QUE YA CERRÓ NO CUBRE EL DÍA', () => {
   assert.deepEqual(r, { ok: true, obraId: 'actual', porque: 'ultima-obra' })
 })
 
-test('DOS ASIGNACIONES ABIERTAS EL MISMO DÍA NO SE DESEMPATAN SOLAS', () => {
-  // EL DEFECTO QUE ATRAPA: elegir la primera del array. Dos candidatas igual de válidas y una
-  // elección en silencio mueven costo de una obra a otra sin que nadie lo vea.
-  const r = obraParaElDia(
-    '2026-09-10',
-    [
-      { obraId: 'a', desde: '2026-09-01', hasta: null },
-      { obraId: 'b', desde: '2026-09-02', hasta: null },
-    ],
-    [{ fecha: '2026-09-09', obraId: 'a' }],
-  )
-  assert.deepEqual(r, { ok: false, porque: 'varias-asignaciones' })
+test('EMPATE TOTAL ENTRE DOS ASIGNACIONES NO SE DESEMPATA SOLO', () => {
+  // EL DEFECTO QUE ATRAPA: elegir la primera del array. Dos candidatas igual de válidas (misma
+  // duración, mismo inicio) y una elección en silencio mueven costo de una obra a otra.
+  const tramos = [
+    { obraId: 'a', desde: '2026-09-01', hasta: null },
+    { obraId: 'b', desde: '2026-09-01', hasta: null },
+  ]
+  const dias = [{ fecha: '2026-09-09', obraId: 'a' }]
+  assert.deepEqual(obraParaElDia('2026-09-10', tramos, dias), { ok: false, porque: 'varias-asignaciones' })
+  assert.deepEqual(obraParaElDia('2026-09-10', [...tramos].reverse(), dias), { ok: false, porque: 'varias-asignaciones' })
+})
+
+// LA CRONOLOGÍA DEL EMPLEADO (dueño, 14/09/2026). Mismos casos que `orquestador/lib/asignacion-del-dia.test.mjs`:
+// la regla es una sola y la importan las dos caras.
+test('RETA 09/09: EL DÍA SUELTO EN MESSINA GANA A QUATTROPANI ABIERTA', () => {
+  const tramos = [
+    { obraId: 'quattropani', desde: '2026-09-08', hasta: null },
+    { obraId: 'messina', desde: '2026-09-09', hasta: '2026-09-09' },
+  ]
+  assert.deepEqual(obraParaElDia('2026-09-09', tramos, []), { ok: true, obraId: 'messina', porque: 'asignacion' })
+  assert.deepEqual(obraParaElDia('2026-09-10', tramos, []), { ok: true, obraId: 'quattropani', porque: 'asignacion' })
+})
+
+test('ZOGBE: EL DÍA SUELTO DENTRO DE UN RANGO GANA, AUNQUE EL RANGO EMPIECE DESPUÉS', () => {
+  const tramos = [
+    { obraId: 'corta', desde: '2026-09-01', hasta: '2026-09-05' },
+    { obraId: 'galpon-9', desde: '2026-09-02', hasta: '2026-09-30' },
+    { obraId: 'la-estrella', desde: '2026-09-03', hasta: '2026-09-03' },
+  ]
+  assert.deepEqual(obraParaElDia('2026-09-03', tramos, []), { ok: true, obraId: 'la-estrella', porque: 'asignacion' })
+  assert.deepEqual(obraParaElDia('2026-09-04', tramos, []), { ok: true, obraId: 'corta', porque: 'asignacion' })
+})
+
+test('DOS ABIERTAS CON DISTINTO INICIO: LA MÁS RECIENTE, EN CUALQUIER ORDEN', () => {
+  const tramos = [
+    { obraId: 'a', desde: '2026-09-01', hasta: null },
+    { obraId: 'b', desde: '2026-09-02', hasta: null },
+  ]
+  assert.deepEqual(obraParaElDia('2026-09-10', tramos, []), { ok: true, obraId: 'b', porque: 'asignacion' })
+  assert.deepEqual(obraParaElDia('2026-09-10', [...tramos].reverse(), []), { ok: true, obraId: 'b', porque: 'asignacion' })
 })
 
 test('DOS TRAMOS DE LA MISMA OBRA NO SON UNA AMBIGÜEDAD', () => {

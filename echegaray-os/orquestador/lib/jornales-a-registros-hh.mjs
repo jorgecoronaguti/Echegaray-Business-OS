@@ -18,6 +18,7 @@
 //     «valores» son importes → se descartan por estructura (fechas duplicadas, horas > 24).
 import { detectarBloques, trabajadoresDeBloque, leerCeldaDiaria, letraColumna } from './jornales-estructura.mjs'
 import { interpretarCarga, FORMA } from './horas-extra.mjs'
+import { obraDeLaAsignacionDelDia } from './asignacion-del-dia.mjs'
 
 export const FUENTE = 'sheet:jornales'
 export const HORAS_MAX_DIA = 24
@@ -242,12 +243,15 @@ export function resolutorDeObra({ alias = new Map(), canonicas = [], clienteAlia
   }
 }
 
-/** Asignación vigente de la persona en la fecha: `desde`/`hasta` nulos valen como abiertos. */
+/**
+ * Asignación vigente de la persona en la fecha: `desde`/`hasta` nulos valen como abiertos. Si varias
+ * obras cubren el día, desempata la cronología del empleado (`asignacion-del-dia.mjs`, la misma regla
+ * que usa la grilla de la app); empate total → null.
+ */
 export function asignacionVigente(asignaciones = [], personaId, fecha) {
-  const v = asignaciones.filter((a) => a.persona_id === personaId
-    && (!a.desde || String(a.desde).slice(0, 10) <= fecha) && (!a.hasta || String(a.hasta).slice(0, 10) >= fecha))
-  const ids = [...new Set(v.map((a) => a.obra_id))]
-  return ids.length === 1 ? ids[0] : null
+  const tramos = asignaciones.filter((a) => a.persona_id === personaId)
+    .map((a) => ({ obra: a.obra_id, desde: a.desde, hasta: a.hasta }))
+  return obraDeLaAsignacionDelDia(tramos, fecha)
 }
 
 const esLicencia = (m) => /enfermedad|licencia|vacacion/i.test(`${m.cliente} ${m.obra}`)
@@ -269,7 +273,8 @@ const ORIGEN_EN_NOTA = {
  *  · «galpon 9 es la estrella»: si la planilla dice la obra GENERAL del cliente (la que se llama como
  *    él) y la asignación es otra obra del MISMO cliente, queda la de la planilla.
  *  · TODAS las asignaciones que muestra la app, también las «reconstruidas desde JORNALES» (dueño,
- *    14/09/2026: «respetar lo que manda app.ecsas.com.ar»). Dos obras el mismo día no deciden.
+ *    14/09/2026: «respetar lo que manda app.ecsas.com.ar»). Dos obras el mismo día: gana la
+ *    asignación más corta y, empatadas, la más reciente (`asignacionVigente`); empate total no decide.
  */
 export function obraPorAsignacionWeb(obraPlanilla, asignada, clienteDeObra = new Map()) {
   if (!asignada || !obraPlanilla || asignada === obraPlanilla) return null
