@@ -70,7 +70,9 @@ const DERECHA = [
   { clave: 'enEfectivo', rotulo: 'Efectivo', px: 90 },
   { clave: 'total', rotulo: 'Total', px: 94 },
   { clave: 'efectivoRedondeado', rotulo: 'Efect. red.', px: 96 },
-  { clave: 'planilla', rotulo: 'Planilla', px: 84 },
+  // 124 Y NO 84: el chip «no está en la planilla» mide ~110 px y a 84 se montaba sobre el campo del
+  // efectivo redondeado (captura a 1440 del 14/09/2026, filas de los dos jefes de Oficina).
+  { clave: 'planilla', rotulo: 'Planilla', px: 124 },
 ] as const
 
 const GAP = 8
