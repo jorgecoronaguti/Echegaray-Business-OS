@@ -1,11 +1,12 @@
-// LAS HH DEL CRM SON LAS DE JORNALES (dueño, 13/09/2026).
+// LAS HH DE OBRA DEL CRM SON TODAS LAS HORAS TRABAJADAS DE `registros_hh` (dueño, 14/09/2026).
 //
 // ═══ QUÉ DEFECTOS ATRAPA ═══
 //
-//  1 · QUE UNA FILA `web:*` SUME HH, PERSONAS O MUEVA EL INICIO. Es el defecto medido en Quattropani:
-//      114 h y cinco personas de la app que la planilla no tiene.
-//  2 · QUE LO DE LA APP SE BORRE EN SILENCIO. Tiene que salir aparte, con persona y días.
-//  3 · QUE UNA OBRA SÓLO CON FILAS DE LA APP DIGA «0 h». Es `null`.
+//  1 · QUE UNA FILA TRABAJADA DE LA APP NO SUME. Es el defecto medido en Quattropani 2026: la ficha
+//      daba 565 h y la tabla —y la solapa Horas— 644. `web:presencia-defecto` y `web:obra` cuentan.
+//  2 · QUE UNA AUSENCIA O LICENCIA SUME HORAS, venga de donde venga.
+//  3 · QUE UN DÍA EN DOS OBRAS SE CUENTE UNA SOLA VEZ: se suman, como en Horas.
+//  4 · QUE UNA OBRA SIN NINGUNA HORA TRABAJADA DIGA «0 h». Es `null`.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -16,104 +17,62 @@ const f = (o: Partial<FilaHH>): FilaHH => ({
   fuente: 'sheet:jornales', ...o,
 })
 
-// QUATTROPANI COMO ESTÁ EN LA BASE (recorte): dos personas de la planilla y cuatro cargas de la app.
+// QUATTROPANI COMO ESTÁ EN LA BASE (recorte): planilla, jefe, presencia completada por la app y web:obra.
 const QUATTROPANI: FilaHH[] = [
   f({}),
   f({ personaId: 'reta', nombre: 'RETA RAMON', fecha: '2026-08-18', horas: 8 }),
   f({ fecha: '2026-09-10', horas: 9, tipoHora: 'extra_50' }),
-  f({ personaId: 'maldonado', nombre: 'MALDONADO BATISTA', fecha: '2026-09-01', horas: 9, fuente: 'web:asistencia-obra' }),
-  f({ personaId: 'maldonado', nombre: 'MALDONADO BATISTA', fecha: '2026-09-02', horas: 9, fuente: 'web:asistencia-obra' }),
+  f({ personaId: 'maldonado', nombre: 'MALDONADO BATISTA', fecha: '2026-09-01', horas: 9, fuente: 'web:asistencia-obra', esJefe: true }),
   f({ personaId: 'reta', nombre: 'RETA RAMON', fecha: '2026-09-11', horas: 8, fuente: 'web:presencia-defecto' }),
   f({ personaId: 'aguero', nombre: 'AGUERO CRISTIAN', fecha: '2026-08-16', horas: 2, fuente: 'web:obra' }),
-  // UNA LICENCIA DE LA PLANILLA NO ES TRABAJO: no suma aunque venga de JORNALES.
+  // UNA LICENCIA NO ES TRABAJO: no suma aunque venga de JORNALES.
   f({ fecha: '2026-08-20', horas: 9, tipoHora: 'licencia' }),
 ]
 
-test('LA APP NO SUMA HH, NI PERSONAS, NI MUEVE EL INICIO', () => {
+test('LA PRESENCIA COMPLETADA POR LA APP Y web:obra SUMAN horas, personas, inicio y última carga', () => {
   const r = hhDeObraCRM(QUATTROPANI)
-  assert.equal(r.hh, 26)
-  assert.equal(r.personas, 2, 'las personas son las de la planilla')
-  // Agüero cargó el 16/08 desde la app: el inicio sigue siendo el primer día de la planilla.
-  assert.equal(r.inicio, '2026-08-17')
-  assert.equal(r.ultima, '2026-09-10', 'la presencia por defecto del 11/09 no es la última carga')
+  assert.equal(r.hh, 45, '26 de JORNALES + 9 del jefe + 8 de presencia-defecto + 2 de web:obra')
+  assert.equal(r.personas, 4)
+  assert.equal(r.inicio, '2026-08-16', 'Agüero cargó el 16/08 desde la app: ése es el primer día')
+  assert.equal(r.ultima, '2026-09-11', 'la presencia completada del 11/09 es la última carga')
+  assert.deepEqual(r.sinRespaldo, [], 'ninguna hora trabajada queda afuera')
+  assert.equal(fraseSinRespaldo(r.sinRespaldo), null)
 })
 
-test('LO DE LA APP NO SE BORRA: sale aparte, con persona y días', () => {
-  const r = hhDeObraCRM(QUATTROPANI)
-  assert.deepEqual(r.sinRespaldo.map((s) => [s.nombre, s.horas, s.dias]), [
-    ['MALDONADO BATISTA', 18, ['2026-09-01', '2026-09-02']],
-    ['RETA RAMON', 8, ['2026-09-11']],
-    ['AGUERO CRISTIAN', 2, ['2026-08-16']],
-  ])
-  assert.equal(fraseSinRespaldo(r.sinRespaldo),
-    '28 h cargadas en la app sin respaldo en JORNALES (MALDONADO BATISTA 18 h · 01/09, 02/09; '
-    + 'RETA RAMON 8 h · 11/09; AGUERO CRISTIAN 2 h · 16/08)')
+test('cada fuente de la app, por separado, cuenta; el jefe se distingue sólo en el origen', () => {
+  assert.deepEqual(origenesHH([
+    f({ fuente: 'web:presencia-defecto' }),
+    f({ fuente: 'web:obra' }),
+    f({ fuente: 'web:correccion-horas', tipoHora: 'extra_100' }),
+    f({ fuente: 'web:asistencia-obra', esJefe: false }),
+    f({ fuente: 'web:asistencia-obra', esJefe: true }),
+    f({ fuente: 'JORNALES' }),
+  ]), ['app', 'app', 'app', 'app', 'jefe_app', 'app'])
+  assert.equal(hhDeObraCRM([f({ fuente: 'web:presencia-defecto', horas: 8 })]).hh, 8)
 })
 
-test('UNA OBRA SÓLO CON CARGAS DE LA APP NO DICE 0 h', () => {
-  const r = hhDeObraCRM([f({ fuente: 'web:presencia-defecto' })])
-  assert.equal(r.hh, null)
+test('UNA AUSENCIA O UNA LICENCIA NO SUMA, de la app ni de la planilla', () => {
+  const filas = [
+    f({ fuente: 'web:presencia-defecto', tipoHora: 'ausencia', horas: 8 }),
+    f({ fuente: 'web:ausencia-de-la-persona', tipoHora: 'licencia', horas: 8 }),
+    f({ fuente: 'web:asistencia-obra', tipoHora: 'licencia', horas: 8, esJefe: true }),
+    f({ tipoHora: 'ausencia', horas: 0 }),
+  ]
+  // Las de JORNALES viajan (marcan la celda del desglose); las de la app no están en la vista.
+  assert.deepEqual(origenesHH(filas), [null, null, null, 'jornales'])
+  const r = hhDeObraCRM(filas)
+  assert.equal(r.hh, null, 'sin ninguna hora trabajada no hay «0 h»')
   assert.equal(r.personas, 0)
   assert.equal(r.inicio, null)
-  assert.equal(r.sinRespaldo.length, 1)
 })
 
-test('SIN NADA AFUERA NO HAY FRASE: el control puede decir que no', () => {
-  assert.equal(fraseSinRespaldo(hhDeObraCRM([f({})]).sinRespaldo), null)
-})
-
-// ═══ EL JEFE DE OBRA CUENTA (dueño, 13/09/2026) ═══
-//
-// Tres defectos, cada uno con su rojo:
-//  · QUE EL JEFE DEJE DE CONTAR: Maldonado 80 h de la app en Quattropani vuelve a «sin respaldo».
-//  · QUE UN OBRERO COMÚN CARGADO EN LA APP EMPIECE A CONTAR: la decisión es sobre el jefe.
-//  · QUE UN DÍA QUE JORNALES YA TIENE SE CUENTE DOS VECES: la planilla manda.
-const jefe = (o: Partial<FilaHH>): FilaHH => f({
-  personaId: 'maldonado', nombre: 'MALDONADO BATISTA', fuente: 'web:asistencia-obra', esJefe: true, ...o,
-})
-
-test('EL JEFE DE OBRA CARGADO EN LA APP CUENTA: horas, persona y última carga', () => {
+test('DOS OBRAS EL MISMO DÍA SE SUMAN, como en Horas', () => {
   const r = hhDeObraCRM([
-    f({}),
-    jefe({ fecha: '2026-09-01', horas: 9 }),
-    jefe({ fecha: '2026-09-11', horas: 8 }),
+    f({ personaId: 'reta', fecha: '2026-09-11', horas: 4, fuente: 'web:obra' }),
+    f({ personaId: 'reta', fecha: '2026-09-11', horas: 4, fuente: 'web:presencia-defecto' }),
   ])
-  assert.equal(r.hh, 26, 'las 17 h del jefe tienen que sumar a las 9 de JORNALES')
-  assert.equal(r.personas, 2)
-  assert.equal(r.ultima, '2026-09-11')
-  assert.deepEqual(r.sinRespaldo, [], 'el jefe ya no es «sin respaldo»')
-})
-
-test('UN OBRERO COMÚN CARGADO EN LA APP SIGUE SIN CONTAR, aunque trabaje el mismo día que el jefe', () => {
-  const r = hhDeObraCRM([
-    jefe({ fecha: '2026-09-01', horas: 9 }),
-    f({ personaId: 'reta', nombre: 'RETA', fecha: '2026-09-01', horas: 8, fuente: 'web:presencia-defecto' }),
-    // `esJefe: false` explícito: el corte es el puesto, no la fuente.
-    f({ personaId: 'x', nombre: 'X', fecha: '2026-09-01', horas: 8, fuente: 'web:asistencia-obra', esJefe: false }),
-  ])
-  assert.equal(r.hh, 9)
+  assert.equal(r.hh, 8)
   assert.equal(r.personas, 1)
-  assert.deepEqual(r.sinRespaldo.map((s) => s.personaId).sort(), ['reta', 'x'])
-})
-
-test('UN DÍA QUE JORNALES TIENE DEL JEFE NO SE CUENTA DOS VECES, ni aunque sea de otra obra', () => {
-  const filas = [
-    f({ personaId: 'maldonado', nombre: 'MALDONADO BATISTA', fecha: '2026-08-05', horas: 9 }),
-    jefe({ fecha: '2026-08-05', horas: 9 }),
-    // UNA AUSENCIA DE LA PLANILLA TAMBIÉN ES EL DÍA LIQUIDADO: la app no lo convierte en trabajo.
-    f({ personaId: 'maldonado', fecha: '2026-08-06', horas: 0, tipoHora: 'ausencia' }),
-    jefe({ fecha: '2026-08-06', horas: 9 }),
-  ]
-  assert.deepEqual(origenesHH(filas), ['jornales', null, 'jornales', null])
-  assert.equal(hhDeObraCRM(filas).hh, 9)
-})
-
-test('una fila del jefe que no es trabajo, o no viene de la web, no cuenta por ser del jefe', () => {
-  assert.deepEqual(origenesHH([
-    jefe({ tipoHora: 'licencia' }),
-    jefe({ fuente: 'manual' }),
-    jefe({ fecha: null }),
-  ]), [null, null, null])
 })
 
 test('lo que viaja de SQL se convierte, y un numeric como texto sigue siendo número', () => {

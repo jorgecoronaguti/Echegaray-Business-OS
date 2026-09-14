@@ -30,32 +30,41 @@ function funcion(nombre: string): string {
   assert.ok(i >= 0, `la migración no redefine ${nombre}`)
   return sql.slice(i, sql.indexOf('$function$;', i))
 }
+// DESDE 20260915T0200 LA VISTA ES OTRA (dueño, 14/09/2026: todas las horas trabajadas cuentan). Las
+// funciones siguen siendo las de 20260913T2300; la vista se prueba en la migración que la redefine.
+const sqlVista = readFileSync(
+  join(DIR, '../../../../supabase/migrations/20260915T0200_hh_de_obra_son_todas_las_horas_trabajadas.sql'), 'utf8')
+  .split('\n').map((l) => l.replace(/--.*$/, '')).join('\n')
 const vista = (() => {
-  const i = sql.indexOf('create or replace view public.hh_que_cuentan_en_obra')
+  const i = sqlVista.indexOf('create or replace view public.hh_que_cuentan_en_obra')
   assert.ok(i >= 0, 'falta la definición única')
-  return sql.slice(i, sql.indexOf(';', i))
+  return sqlVista.slice(i, sqlVista.indexOf(';', i))
 })()
 
-test('la vista es security_invoker: la RLS de registros_hh y personas es la de quien consulta', () => {
+test('la vista es security_invoker y conserva sus GRANT: la RLS es la de quien consulta', () => {
   assert.match(vista, /with \(security_invoker = true\)/)
+  assert.match(sqlVista, /grant select on public\.hh_que_cuentan_en_obra to authenticated, service_role;/)
+  assert.match(sqlVista, /revoke all on public\.hh_que_cuentan_en_obra from public, anon;/)
 })
 
-test('rama JORNALES: toda fila sheet:jornales, con su origen', () => {
-  assert.match(vista, /'jornales'::text as origen\s+from public\.registros_hh r\s+where r\.fuente_legacy = 'sheet:jornales'\s+union all/)
+test('las MISMAS columnas, en el mismo orden: create or replace view no admite otras', () => {
+  assert.match(vista, /select r\.id, r\.obra_canonica_id, r\.persona_id, r\.fecha, r\.horas, r\.tipo_hora, r\.fuente_legacy,\s+case/)
+  assert.match(vista, /end::text as origen\s+from public\.registros_hh r/)
 })
 
-test('rama JEFE: sólo web, sólo trabajo, sólo jefe de obra, sólo días sin JORNALES de esa persona', () => {
-  const jefe = vista.slice(vista.indexOf('union all'))
-  assert.match(jefe, /'jefe_app'::text as origen/)
-  assert.match(jefe, /r\.fuente_legacy like 'web:%'/)
-  assert.match(jefe, /r\.tipo_hora in \('normal', 'extra_50', 'extra_100'\)/)
-  // EL MISMO CORTE QUE `esJefeDeObra`: normalizado a `_` y los dos valores de PUESTOS_DE_JEFE.
-  assert.match(jefe, /join public\.personas p on p\.id = r\.persona_id/)
-  assert.match(jefe, /regexp_replace\(lower\(trim\(p\.puesto\)\), '\[\[:space:\]_-\]\+', '_', 'g'\) in \('jefe_de_obra', 'jefe_obra'\)/)
-  assert.match(jefe,
-    /not exists \(\s*select 1 from public\.registros_hh j\s+where j\.persona_id = r\.persona_id\s+and j\.fecha = r\.fecha\s+and j\.fuente_legacy = 'sheet:jornales'\)/)
-  // SIN obra en el `not exists`: un día liquidado en otra obra también es un día que manda JORNALES.
-  assert.doesNotMatch(jefe, /j\.obra_canonica_id/)
+test('cuenta TODA fila trabajada de cualquier fuente, y las ausencias sólo de JORNALES', () => {
+  assert.match(vista, /where r\.fuente_legacy = 'sheet:jornales'\s+or r\.tipo_hora in \('normal', 'extra_50', 'extra_100'\)/)
+  // EL DEFECTO: un filtro por fuente web o por puesto en el WHERE vuelve a dejar horas afuera.
+  const where = vista.slice(vista.lastIndexOf('where'))
+  assert.doesNotMatch(where, /web:|puesto|not exists/)
+  // LEFT join: una fila sin persona también es una hora de la tabla.
+  assert.match(vista, /left join public\.personas p on p\.id = r\.persona_id/)
+})
+
+test('el origen: jornales, jefe con el corte de esJefeDeObra, y app para el resto', () => {
+  assert.match(vista, /when r\.fuente_legacy = 'sheet:jornales' then 'jornales'/)
+  assert.match(vista, /when regexp_replace\(lower\(trim\(p\.puesto\)\), '\[\[:space:\]_-\]\+', '_', 'g'\) in \('jefe_de_obra', 'jefe_obra'\)\s+then 'jefe_app'/)
+  assert.match(vista, /else 'app'/)
 })
 
 test('las tres funciones leen la definición única y ninguna repite el filtro', () => {

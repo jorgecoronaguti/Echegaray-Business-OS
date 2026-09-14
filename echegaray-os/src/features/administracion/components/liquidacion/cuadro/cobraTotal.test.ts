@@ -15,26 +15,50 @@ const fuente = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf
 const GRILLA = fuente('../GrillaEspejoQuincena.tsx')
 const CELDAS = fuente('./CeldasBlancoNegro.tsx')
 
-test('EL ENCABEZADO: Persona · Horas · BLANCO (Hs, $/h cat., Neto) · NEGRO (Hs, $/h negro, Importe) · Total · descuentos · efectivo', () => {
+// CAMBIÓ EL 14/09/2026 (dueño: «pone las hs por dia adelante y todos los calculos monetarios al reves, quiero
+// q repliques la pestaña sheet jornales en liq hs»). El orden de «Obreros 26» de JORNALES, con blanco/negro
+// en el medio y sin «Cliente · Obra» («esa columna no te pedi en liq hs»). Lo que se sigue protegiendo:
+// el orden de lectura, las dos bandas rotuladas y que la fila dibuje en el mismo orden que el encabezado.
+const ORDEN_JORNALES = [
+  'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Hs', '$/h negro', 'Importe',
+  'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Efect. red.', 'Cobra total',
+]
+
+test('EL ENCABEZADO ES EL DE JORNALES: Persona · días · Horas · BLANCO · NEGRO · adelantos · total efectivo · total quincena', () => {
   const plata = GRILLA.slice(GRILLA.indexOf('const PLATA'), GRILLA.indexOf('const GAP'))
   const columnas = [...plata.matchAll(/clave: '([a-zA-Z]+)', rotulo: '([^']+)'(?:, px: \d+)?(?:, banda: '([a-z]+)')?/g)]
-    .map((m) => ({ clave: m[1], rotulo: m[2], banda: m[3] ?? null }))
-  assert.deepEqual(columnas.map((c) => c.clave),
-    ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'hsNegro', 'horaNegro', 'negro', 'total', 'adelanto', 'yaTransferido', 'enEfectivo', 'efectivoRedondeado'])
-  assert.deepEqual(columnas.filter((c) => c.banda === 'blanco').map((c) => c.rotulo), ['Hs', '$/h cat.', 'Neto (banco)'])
-  assert.deepEqual(columnas.filter((c) => c.banda === 'negro').map((c) => c.rotulo), ['Hs', '$/h negro ✎', 'Importe'])
-  // LAS DOS BANDAS ROTULADAS: sin ellas «Hs» dos veces no se puede leer.
+    .map((m) => ({ clave: m[1], rotulo: m[2].replace(' ✎', ''), banda: m[3] ?? null }))
+  assert.deepEqual(columnas.map((c) => c.rotulo), ORDEN_JORNALES, 'el orden exacto, sin Cliente · Obra')
+  assert.deepEqual(columnas.filter((c) => c.banda === 'blanco').map((c) => c.rotulo), ['Hs recibo', '$/h cat.', 'Banco'])
+  assert.deepEqual(columnas.filter((c) => c.banda === 'negro').map((c) => c.rotulo), ['Hs', '$/h negro', 'Importe'])
+  assert.ok(!/Cliente|Obra'/.test(plata), 'no vuelve la columna Cliente · Obra')
+  // LOS DÍAS ADELANTE: la plantilla pone los días antes que la plata, y el encabezado también.
+  assert.match(GRILLA, /`minmax\(200px,1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA\.map/,
+    'MUTACIÓN: la plata antes que los días')
+  assert.match(GRILLA, /gridColumn: 2 \+ dias\.length \+ i, gridRow: 2/)
   assert.match(GRILLA, /'Blanco · recibo'/)
-  assert.match(GRILLA, /banda\(inicioDe\('negro'\), 'Negro'/)
-  // Y LA FILA DIBUJA EN ESE ORDEN.
+  // Y LA FILA DIBUJA EN ESE ORDEN: días, horas, blanco, negro, adelantos, efectivo, redondeo, total.
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
-  const orden = ['<CeldaHorasPagas', '<CeldaHorasBlanco', '<CeldaHoraCategoria', '<CeldaNeto', '<CeldaHorasNegro', '<CeldaTarifa',
-    '<CeldaImporteNegro', '<CeldaTotal', 'campo="adelanto"', 'campo="yaTransferido"', '<CeldaEfectivoDelSueldo', '<CeldaRedondeo']
-    // `lastIndexOf`: el $/h aparece dos veces desde que el mensual tiene su celda propia (QA, 14/09/2026); la
-    // del obrero, en las bandas, es la última.
-    .map((s) => (s === '<CeldaTarifa' ? fila.lastIndexOf(s) : fila.indexOf(s)))
+  const orden = ['<CeldaDeDia', '<CeldaHorasPagas', '<CeldaHorasBlanco', '<CeldaHoraCategoria', '<CeldaNeto', '<CeldaHorasNegro',
+    '<CeldaImporteNegro', 'campo="yaTransferido"', 'campo="adelanto"', '<CeldaEfectivoDelSueldo', '<CeldaRedondeo', '<CeldaTotal']
+    .map((x) => fila.indexOf(x))
   assert.ok(orden.every((i) => i > 0), 'están todas las celdas')
   assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden pedido')
+})
+
+// «NECESITO Q EN ALGUNA COLUMNA DE LIQ HS ME DIGA CUANTO COBRA EN TOTAL» (dueño, 14/09/2026). MUTACIÓN: sacar el
+// rótulo o la columna fija a la derecha → rojo.
+test('«COBRA TOTAL» EN ENCABEZADO, PIE Y PANEL, Y FIJA A LA DERECHA', () => {
+  const PANEL = fuente('./PanelDeLaPersona.tsx')
+  assert.match(GRILLA, /clave: 'total', rotulo: 'Cobra total'/)
+  assert.match(GRILLA, /cifra\('Cobra total', totales\.cobra/)
+  assert.equal((PANEL.match(/rotulo="Cobra total"/g) ?? []).length, 2, 'las dos cadenas del panel')
+  assert.ok(!/Total quincena/.test(GRILLA + PANEL), 'no queda el rótulo viejo')
+  assert.match(GRILLA, /position: 'sticky', right: -CANAL_SCROLL/)
+  // LA MISMA COLUMNA FIJA EN EL ENCABEZADO, EN CADA FILA Y EN EL TOTAL.
+  assert.equal((GRILLA.match(/\.\.\.COLUMNA_COBRA/g) ?? []).length, 3)
+  const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
+  assert.match(fila, /style=\{\{ \.\.\.COLUMNA_COBRA[^}]*\}\}>\s*<CeldaTotal fila=\{fila\} \/>/)
 })
 
 test('LA FRASE NO QUEDA ESCRITA EN EL CUADRO, EL PIE, EL PANEL NI CAJA', () => {

@@ -39,18 +39,15 @@ const hayBase = await getPool().query('select 1').then(() => true).catch(() => f
 // compara `sin_respaldo` contra las filas que el filtro dejó afuera: sin él, «no suma» podría ser
 // «se perdió».
 //
-// ═══ DESDE 20260913T2300 CUENTA TAMBIÉN EL JEFE DE OBRA (dueño, 13/09/2026) ═══
+// ═══ DESDE 20260915T0200 CUENTA TODA HORA TRABAJADA (dueño, 14/09/2026) ═══
 //
-// Sus filas `web:*` de trabajo en días que JORNALES no tiene de esa persona. Las funciones leen la
-// vista `hh_que_cuentan_en_obra`; este test NO la lee: escribe la regla otra vez contra
-// `registros_hh` crudo —con otro corte de puesto, `upper(trim())`—, porque un control que se valida
-// contra la misma definición que produce el número no puede dar rojo.
+// «no son las mismas hs q se tienen q leer de la misma bd de supabase». Las funciones leen la vista
+// `hh_que_cuentan_en_obra`; este test NO la lee: la regla se escribe otra vez contra `registros_hh`
+// crudo y SIN mirar fuente ni puesto, que es exactamente lo que suma la solapa Horas. Un control que
+// se valida contra la misma definición que produce el número no puede dar rojo.
 const TRABAJO = "tipo_hora in ('normal', 'extra_50', 'extra_100')"
-const CUENTAN = `(select r.* from public.registros_hh r left join public.personas p on p.id = r.persona_id
-   where r.fuente_legacy = 'sheet:jornales'
-      or (r.fuente_legacy like 'web:%' and r.${TRABAJO} and upper(trim(p.puesto)) = 'JEFE DE OBRA'
-          and not exists (select 1 from public.registros_hh j where j.persona_id = r.persona_id
-                            and j.fecha = r.fecha and j.fuente_legacy = 'sheet:jornales')))`
+const CUENTAN = `(select r.* from public.registros_hh r
+   where r.fuente_legacy = 'sheet:jornales' or r.${TRABAJO})`
 const FUERA = `(select r.* from public.registros_hh r
    where r.${TRABAJO} and not exists (select 1 from ${CUENTAN} c where c.id = r.id))`
 
@@ -83,6 +80,9 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
     assert.ok(enVivo.includes('obra_plan_vs_real'), '`hh_obra` dejó de leer el plan de la cara canónica')
     assert.ok(enVivo.includes('public.hh_que_cuentan_en_obra') && !enVivo.includes("'sheet:jornales'"),
       '`hh_obra` no lee la definición única de horas que cuentan: falta aplicar 20260913T2300')
+    // LA VISTA DESPLEGADA ES LA DE 20260915T0200: con la vieja, «la ficha y la tabla no coinciden».
+    const vistaDef = (await uno(`select pg_get_viewdef('public.hh_que_cuentan_en_obra'::regclass) d`)).d
+    assert.ok(vistaDef.includes("'app'::text"), 'la vista desplegada no cuenta la app: falta aplicar 20260915T0200')
 
     // ── LA SESIÓN DE PRUEBA: DIRECCIÓN, que es quien usa el CRM ──────────────────────────────────
     const direccion = await uno(`select id from perfiles where rol='direccion' and es_prueba = false limit 1`)

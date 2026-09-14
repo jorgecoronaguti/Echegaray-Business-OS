@@ -76,7 +76,7 @@ test('con plan cargado se escribe real / plan, y sin real el hueco queda del lad
 test('el title respalda la cifra: desde cuándo, cuántos registros, cuánta gente y la última carga', () => {
   assert.equal(
     tituloHH(armarHorasPorObra([QUATTROPANI])?.get('quattropani')),
-    'según JORNALES · desde 17/08 · 59 registros · 8 personas · última carga 11/09',
+    'según JORNALES y la app · desde 17/08 · 59 registros · 8 personas · última carga 11/09',
   )
   // Singular de verdad, no «1 registros».
   assert.equal(
@@ -84,7 +84,7 @@ test('el title respalda la cifra: desde cuándo, cuántos registros, cuánta gen
       obraId: 'x', hhReal: 9, hhPlan: null, registros: 1, personas: 1,
       inicioReal: '2026-09-01', ultimaFecha: '2026-09-01',
     }),
-    'según JORNALES · desde 01/09 · 1 registro · 1 persona · última carga 01/09',
+    'según JORNALES y la app · desde 01/09 · 1 registro · 1 persona · última carga 01/09',
   )
   assert.equal(tituloHH(null), null, 'sin horas no hay nada que respaldar')
 })
@@ -101,7 +101,7 @@ test('LO DE LA APP SIN RESPALDO EN JORNALES SE DICE APARTE, y no borra la cifra 
     sin_respaldo: [{ persona_id: 'n', nombre: 'NIEVAS VILLEGAS', horas: 80, dias: ['2026-09-01'] }],
   }])
   const q = tituloHH(m?.get('quattropani')) ?? ''
-  assert.ok(q.startsWith('según JORNALES · desde 17/08 · 42 registros · 2 personas'), q)
+  assert.ok(q.startsWith('según JORNALES y la app · desde 17/08 · 42 registros · 2 personas'), q)
   assert.ok(q.includes('Aparte: 80 h cargadas en la app sin respaldo en JORNALES (MALDONADO BATISTA 80 h · 01/09, 11/09)'), q)
   // UNA OBRA SÓLO CON CARGAS DE LA APP: «—» en la celda y el title dice por qué no es cero.
   const p = m?.get('pisos-industriales')
@@ -118,9 +118,9 @@ test('LAS HORAS DEL JEFE DE OBRA SUMAN y el title dice cuántas salieron de la a
   assert.equal(q?.hhJefeApp, 80, 'un numeric como texto sigue siendo número')
   assert.equal(textoHH(q), '458')
   assert.equal(tituloHH(q),
-    'según JORNALES + 80 h de jefe de obra cargadas en la app · desde 17/08 · 47 registros · 3 personas · última carga 11/09')
+    'según JORNALES y la app (80 h de jefe de obra) · desde 17/08 · 47 registros · 3 personas · última carga 11/09')
   // SIN HORAS DEL JEFE, el title no cambia: la marca no aparece por las dudas.
-  assert.ok(tituloHH({ ...q!, hhJefeApp: 0 })?.startsWith('según JORNALES · desde'))
+  assert.ok(tituloHH({ ...q!, hhJefeApp: 0 })?.startsWith('según JORNALES y la app · desde'))
 })
 
 test('el INICIO es la primera fecha con horas, y no se corre un día por el huso', () => {

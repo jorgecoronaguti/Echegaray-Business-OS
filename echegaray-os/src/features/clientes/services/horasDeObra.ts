@@ -116,11 +116,12 @@ export function tituloHH(h: HorasDeObra | null | undefined): string | null {
   // cargas de la app dibuja «—» y el title explica por qué no es cero.
   const fuera = fraseSinRespaldo(h.sinRespaldo ?? [])
   if (h.hhReal == null) return fuera ? `Sin horas en JORNALES. ${fuera}.` : null
-  // EL JEFE DE OBRA SUMA (dueño, 13/09/2026), y el title dice cuánto salió de la app: «según
-  // JORNALES» a secas sería falso para las horas que la planilla no tiene.
+  // DESDE 20260915T0200 SUMA TODA HORA TRABAJADA de `registros_hh` (dueño, 14/09/2026): «según
+  // JORNALES» sería falso para la presencia completada por la app o un obrero cargado en la web. El
+  // jefe se sigue nombrando: es el único origen de la app que la ficha distingue.
   const jefe = h.hhJefeApp != null && h.hhJefeApp > 0 ? h.hhJefeApp : null
   const partes = [
-    jefe == null ? 'según JORNALES' : `según JORNALES + ${hh(jefe)} h de jefe de obra cargadas en la app`,
+    jefe == null ? 'según JORNALES y la app' : `según JORNALES y la app (${hh(jefe)} h de jefe de obra)`,
     h.inicioReal ? `desde ${diaMesISO(h.inicioReal)}` : null,
     `${h.registros} ${h.registros === 1 ? 'registro' : 'registros'}`,
     `${h.personas} ${h.personas === 1 ? 'persona' : 'personas'}`,

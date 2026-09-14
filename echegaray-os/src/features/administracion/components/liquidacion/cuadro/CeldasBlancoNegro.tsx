@@ -17,6 +17,8 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { MarcaDeOrigen } from '../CeldasDeLiquidacion'
+import { Escribible } from './CeldasDelEspejo'
+import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import { horas as nHoras, pesos } from '../formato'
 import { efectivoSuperado, estadoDelPago, tituloDeJornales } from './estadoDelPago'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
@@ -34,6 +36,8 @@ export const Est = () => (
 
 /** De dónde sale el blanco, en llano. Lo usan el `title` de la fila y el panel. */
 export function origenDelBlanco(s: SueldoBlancoNegro): string {
+  // EL NETO ESCRITO A MANO SE DICE PRIMERO: gana sobre el recibo y sobre el estimado.
+  if (s.origenNeto === 'manual') return `neto escrito a mano${s.estado === 'recibo' ? ' (hay recibo)' : ''}`
   if (s.estado === 'recibo') return 'recibo del estudio'
   if (s.origenNeto === 'nomina') return 'neto del recibo de nómina; horas del blanco estimadas (mitad)'
   if (s.origenNeto === 'estimado' && s.proporcion) return `mitad de las horas × $/h de su categoría; neto ${tituloDelNetoEstimado(s.proporcion)}`
@@ -52,18 +56,50 @@ function Celda({ s, valor, testid, titulo, children }: {
   )
 }
 
-export function CeldaHorasBlanco({ fila }: { fila: FilaDelEspejo }) {
+/** Lo que necesita una celda del blanco para escribirse. */
+export interface EdicionDelBlanco {
+  quincena: { desde: string; hasta: string }
+  camposEditables: readonly CampoEditable[]
+}
+
+/**
+ * ¿SE ESCRIBE ESTA CELDA DEL BLANCO? Quincena abierta, blanco + negro, y columna aplicada en la base (dueño,
+ * 14/09/2026: «dejame editable las h/recibo»). Cerrada: nada editable, como siempre.
+ */
+const seEscribe = (fila: FilaDelEspejo, campo: CampoEditable, e?: EdicionDelBlanco): e is EdicionDelBlanco =>
+  e != null && !fila.cerrada && fila.linea.sueldo != null && e.camposEditables.includes(campo)
+
+export function CeldaHorasBlanco({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const s = fila.linea.sueldo
+  if (seEscribe(fila, 'horasRecibo', edicion)) {
+    return (
+      <div data-testid={`hs-blanco-${fila.personaId}`} title={s ? origenDelBlanco(s) : undefined}>
+        <Escribible campo="horasRecibo" unidad="horas" fila={fila} quincena={edicion.quincena}
+          camposEditables={edicion.camposEditables} ancho={48} claseCampo="w-12" />
+      </div>
+    )
+  }
   return <Celda s={s} valor={nHoras(s?.horasBlanco ?? null)} testid={`hs-blanco-${fila.personaId}`} />
 }
 
 /**
  * $/H DE CATEGORÍA. Ámbar sólo si el $/h del RECIBO real está bajo el piso vigente de su categoría
  * (`marcaDeCategoria`, la misma comparación de Convenios). El estimado usa el piso: nunca marca.
+ * En la quincena abierta se escribe.
  */
-export function CeldaHoraCategoria({ fila }: { fila: FilaDelEspejo }) {
+export function CeldaHoraCategoria({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const s = fila.linea.sueldo
   const bajo = marcaDeCategoria(s)
+  if (seEscribe(fila, 'valorHoraRecibo', edicion)) {
+    return (
+      <div data-testid={`hora-categoria-${fila.personaId}`} data-bajo-el-piso={bajo ? '1' : undefined}
+        title={bajo ? `el recibo paga ${pesos(bajo.valorHora)}/h, el básico es ${pesos(bajo.piso)}/h` : undefined}
+        style={bajo ? { color: V.warn } : undefined}>
+        <Escribible campo="valorHoraRecibo" fila={fila} quincena={edicion.quincena}
+          camposEditables={edicion.camposEditables} ancho={88} claseCampo="w-20" />
+      </div>
+    )
+  }
   if (bajo) {
     return (
       <div data-testid={`hora-categoria-${fila.personaId}`} data-bajo-el-piso="1"
@@ -74,18 +110,37 @@ export function CeldaHoraCategoria({ fila }: { fila: FilaDelEspejo }) {
   return <Celda s={s} valor={pesos(s?.valorHoraCategoria ?? null)} testid={`hora-categoria-${fila.personaId}`} />
 }
 
-/** NETO (BANCO): el neto del recibo, o el estimado; lo escrito a mano gana y se marca. */
-export function CeldaNeto({ fila }: { fila: FilaDelEspejo }) {
+export const AVISO_NETO_NO_RECALCULADO = 'neto no recalculado: editá el neto si cambió el recibo'
+
+/** NETO (BANCO): el neto del recibo, o el estimado; lo escrito a mano gana y se marca. En la abierta se escribe. */
+export function CeldaNeto({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const l = fila.linea
   const s = l.sueldo
   const testid = `neto-${fila.personaId}`
+  // ÁMBAR: se corrigieron las horas o el $/h del recibo y el neto quedó el de antes.
+  const aviso = s?.netoNoRecalculado ? AVISO_NETO_NO_RECALCULADO : null
+  if (seEscribe(fila, 'porBanco', edicion)) {
+    return (
+      <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined}
+        title={[aviso, s ? origenDelBlanco(s) : null].filter(Boolean).join(' · ') || undefined}
+        style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, color: aviso ? V.warn : undefined }}>
+        {aviso && <span style={{ fontSize: '10px', color: V.warn }}>sin recalc.</span>}
+        <Escribible campo="porBanco" fila={fila} quincena={edicion.quincena}
+          camposEditables={edicion.camposEditables} ancho={112} claseCampo="w-24" />
+        {s?.driveFileId && (
+          <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
+            title="Abrir el recibo" style={{ fontSize: '10.5px', color: V.apagado }}>↗</a>
+        )}
+      </div>
+    )
+  }
   if (s && s.neto == null && !l.manual.porBanco) {
     return <div data-testid={testid} title={origenDelBlanco(s)} style={{ ...DERECHA, color: V.tenue }}>sin neto</div>
   }
   const estimado = s != null && s.origenNeto === 'estimado' && !l.manual.porBanco
   return (
-    <div data-testid={testid} title={s ? origenDelBlanco(s) : undefined}
-      style={{ ...DERECHA, ...(estimado ? ESTIMADO : { color: V.tinta }) }}>
+    <div data-testid={testid} title={[aviso, s ? origenDelBlanco(s) : null].filter(Boolean).join(' · ') || undefined}
+      style={{ ...DERECHA, ...(estimado ? ESTIMADO : { color: aviso ? V.warn : V.tinta }) }}>
       {pesos(l.porBanco)}{estimado && <Est />}
       <MarcaDeOrigen origen={l.origen.porBanco} compacta />
       {s?.driveFileId && (
