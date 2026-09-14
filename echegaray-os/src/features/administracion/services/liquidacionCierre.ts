@@ -55,10 +55,33 @@ function faltaLaTarifa(l: LineaParaCerrar): boolean {
   return false
 }
 
+export interface PersonaPendiente {
+  personaId: string
+  nombre: string
+  fechas: string[]
+}
+
 export interface Pendiente {
   clave: string
   texto: string
   cuantas: number
+  /** Quién y qué días, cuando el pendiente es de días. La pantalla enlaza cada nombre a su fila. */
+  personas?: PersonaPendiente[]
+}
+
+/** Los días de cada persona que alguien tiene que resolver. Lo arma `pendientesPorPersona`. */
+export interface DiasPendientesDePersona {
+  personaId: string
+  nombre: string
+  sinMotivo: readonly string[]
+  sinCargar: readonly string[]
+}
+
+export interface CargaDeCierre {
+  /** Sólo el conteo. Es lo que pasa quien no tiene las filas día por día. */
+  diasSinMotivo?: number
+  /** El detalle. Cuando viaja, los dos conteos salen de acá y aparece «sin cargar». */
+  porPersona?: readonly DiasPendientesDePersona[]
 }
 
 export interface EstadoDeCierre {
@@ -81,7 +104,7 @@ const redondear2 = (n: number): number => Math.round(n * 100) / 100
  */
 export function estadoDeCierre(
   lineas: readonly LineaParaCerrar[],
-  carga: { diasSinMotivo?: number } = {},
+  carga: CargaDeCierre = {},
 ): EstadoDeCierre {
   const pendientes: Pendiente[] = []
   // ═══ UNA AUSENCIA SIN MOTIVO TRABA EL SELLO, Y HASTA HOY SÓLO TRABABA EN «HORAS» ═══
@@ -94,14 +117,7 @@ export function estadoDeCierre(
   // pasar a valer la jornada entera. Sellar antes congela el 0 y manda la corrección al camino de
   // «reabrir con motivo escrito», que existe para los errores, no para lo que ya se sabía que
   // faltaba. El conteo lo calcula `diasSinMotivoDeLaQuincena` con la definición de `celdaDelDia`.
-  const sinMotivo = carga.diasSinMotivo ?? 0
-  if (sinMotivo > 0) {
-    pendientes.push({
-      clave: 'sin-motivo',
-      cuantas: sinMotivo,
-      texto: `${sinMotivo} ausencia(s) declaradas sin motivo: sin motivo el día vale 0 h, y sellarlo congela ese 0. Poneles el motivo en la solapa Horas.`,
-    })
-  }
+  pendientes.push(...pendientesDeDias(carga))
   const sinTarifa = lineas.filter(faltaLaTarifa)
   const sinCobra = lineas.filter((l) => !l.sinTarifa && l.cobra == null)
   const noCierra = lineas.filter((l) => (
@@ -137,6 +153,43 @@ export function estadoDeCierre(
     personas: lineas.length,
     totalSellado: redondear2(liquidables.reduce((a, l) => a + (l.total ?? 0), 0)),
   }
+}
+
+/**
+ * LOS PENDIENTES DE DÍAS: ausencias sin motivo y días sin cargar.
+ *
+ * ═══ «SIN CARGAR» TRABA, IGUAL QUE TRABABA EN «HORAS» (14/09/2026) ═══
+ *
+ * La grilla de Horas dejaba el botón gris con «8 días sin cargar» y esta función no los miraba. Al
+ * unificar «Más» la grilla se fue y los pendientes quedaron sólo acá: si «sin cargar» no trabara, la
+ * pantalla habría pasado a permitir sellar lo que antes no. Mismo motivo que la ausencia sin motivo:
+ * sellar congela 0 h en un día que alguien todavía tiene que escribir.
+ *
+ * Sin `porPersona` se conserva el comportamiento anterior (sólo el conteo de ausencias).
+ */
+function pendientesDeDias(carga: CargaDeCierre): Pendiente[] {
+  const conDetalle = carga.porPersona != null
+  const detalle = (k: 'sinMotivo' | 'sinCargar'): PersonaPendiente[] => (carga.porPersona ?? [])
+    .filter((p) => p[k].length > 0)
+    .map((p) => ({ personaId: p.personaId, nombre: p.nombre, fechas: [...p[k]] }))
+  const suma = (ps: readonly PersonaPendiente[]): number => ps.reduce((s, p) => s + p.fechas.length, 0)
+  const salida: Pendiente[] = []
+  const sinMotivo = detalle('sinMotivo')
+  const nMotivo = conDetalle ? suma(sinMotivo) : (carga.diasSinMotivo ?? 0)
+  if (nMotivo > 0) {
+    salida.push({
+      clave: 'sin-motivo',
+      cuantas: nMotivo,
+      texto: `${nMotivo} ausencia(s) sin motivo: sin motivo el día vale 0 h, y sellarlo congela ese 0.`,
+      ...(conDetalle ? { personas: sinMotivo } : {}),
+    })
+  }
+  const sinCargar = detalle('sinCargar')
+  const nCargar = suma(sinCargar)
+  if (nCargar > 0) {
+    salida.push({ clave: 'sin-cargar', cuantas: nCargar, texto: `${nCargar} día(s) sin cargar: sellarlos congela 0 h.`, personas: sinCargar })
+  }
+  return salida
 }
 
 /** Lo que la persona tiene HOY en el legajo, y que la quincena copia al sellar. */

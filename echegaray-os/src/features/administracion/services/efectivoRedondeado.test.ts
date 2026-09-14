@@ -46,13 +46,15 @@ test('lo mostrado: el guardado manda; sin guardado, el sugerido', () => {
   assert.deepEqual(efectivoMostrado({ efectivoRedondeado: null, enEfectivo: null }), { valor: null, sugerido: false, sugeridoAhora: null })
 })
 
-test('las tres pantallas usan la misma celda con el sugerido, y la celda decide con la regla pura', () => {
+// ERAN TRES PANTALLAS: `solapas/pagos.tsx` se borró el 14/09/2026 al unificar «Más» (repetía la fila de
+// la Quincena). Quedan dos, y las dos le pasan el efectivo a la misma celda.
+test('las pantallas usan la misma celda con el sugerido, y la celda decide con la regla pura', () => {
   const fuente = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8')
   const CELDAS = fuente('../components/liquidacion/CeldasDeLiquidacion.tsx')
   // EL DEFECTO QUE ATRAPA: la celda guardando lo que muestra sin preguntar si alguien lo tocó.
   assert.match(CELDAS, /const a = accionDelRedondeo\(\{ texto, guardado: valor, sugerido: mostrado\.sugeridoAhora \}\)/)
   assert.match(CELDAS, /sugerido: efectivo \$\{pesos\(enEfectivo\)\} redondeado a miles/)
-  for (const f of ['../components/liquidacion/GrillaEspejoQuincena.tsx', '../components/liquidacion/solapas/pagos.tsx', '../components/liquidacion/CuadroLiquidacion.tsx']) {
+  for (const f of ['../components/liquidacion/GrillaEspejoQuincena.tsx', '../components/liquidacion/CuadroLiquidacion.tsx']) {
     assert.match(fuente(f), /enEfectivo=\{(l|linea)\.enEfectivo\}/, `${f} le pasa el efectivo a la celda`)
   }
   assert.match(fuente('../components/liquidacion/GrillaEspejoQuincena.tsx'), /sumaDelRedondeo\(visibles\.map/)

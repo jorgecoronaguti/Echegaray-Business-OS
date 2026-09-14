@@ -38,6 +38,9 @@ import {
   type CampoEditable, type LineaConOverrides, type OverridesDeLinea,
 } from './liquidacionOverrides.ts'
 import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornalesService.ts'
+import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposicionConvenioService.ts'
+import { periodoDeRecibo } from './liquidacionCuadros.ts'
+import { entradaDeBlanco } from './sueldoBlancoNegro.ts'
 import type { Quincena } from './quincena.ts'
 
 /** Un cuadro con sus líneas ya pisadas por lo que el dueño escribió a mano. */
@@ -83,6 +86,15 @@ export interface LiquidacionDeLaQuincena {
    * presencias y las tarifas: una segunda lectura en cada solapa sería un CUARTO número.
    */
   horas: HorasDeLaQuincena
+  /**
+   * LA EXPOSICIÓN AL CONVENIO, LEÍDA UNA VEZ. De acá sale el $/h de categoría del blanco estimado
+   * (`exponerAlPiso` → `pisoVigente`, la misma de la solapa Convenios) y la Quincena la reusa para la
+   * marca del básico y el historial: una segunda lectura serían dos fotos de la escala.
+   * Sus errores van en `errores`.
+   */
+  exposicion: ExposicionDeLaQuincena
+  /** `false` mientras `recibo_sueldo_linea` no exista: el neto sale de `nomina_recibo_neto`. */
+  hayRecibosDeSueldo: boolean
   /** Cada fuente que no se pudo leer, con su mensaje. Vacío = se leyó todo. */
   errores: { que: string; error: string }[]
   /**
@@ -113,7 +125,8 @@ const sinTabla = (e: { code?: string; message: string }): boolean =>
 export async function getLiquidacionDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<LiquidacionDeLaQuincena> {
-  const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, anterior, espejo, sesionDePrueba] =
+  const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, anterior, espejo, sesionDePrueba,
+    exposicion] =
     await Promise.all([
       // `puesto` VIAJA CON EL PLANTEL para que las pantallas de Liquidación ordenen y rotulen como
       // el resto de Personal (dueño, 10/09/2026). Es la misma columna y la misma función
@@ -169,6 +182,9 @@ export async function getLiquidacionDeLaQuincena(
       // serie sería un viaje más por carga de pantalla. Sin la migración aplicada devuelve `false` y
       // la pantalla queda como estaba.
       laSesionEsDePrueba(supabase),
+      // ═══ BLANCO + NEGRO (dueño, 14/09/2026) ═══ La exposición trae el piso de la categoría y las
+      // líneas de recibo de sueldo (horas, $/h de categoría, bruto y neto): una sola lectura de cada una.
+      getExposicionDeLaQuincena(supabase, q),
     ])
 
   const errores: { que: string; error: string }[] = []
@@ -187,6 +203,9 @@ export async function getLiquidacionDeLaQuincena(
   anotar('la liquidación guardada', guardadas.error)
   anotar('la quincena anterior', anterior.error)
   anotar('el espejo de JORNALES', espejo.error ? { message: espejo.error } : null)
+  // LOS ERRORES DE LA EXPOSICIÓN INCLUYEN LOS DE LOS RECIBOS: sin la tabla es «sin recibo»; cualquier
+  // otro error se dice, porque fingir que no hay recibo estimaría el blanco de alguien que sí lo tiene.
+  errores.push(...exposicion.errores)
 
   const cuilPorPersona = new Map(
     ((legajo.data ?? []) as { id: string; cuil: string | null }[]).map((r) => [r.id, r.cuil]),
@@ -255,8 +274,20 @@ export async function getLiquidacionDeLaQuincena(
     (id) => modalidadPorPersona.get(id) ?? 'hora',
   ))
 
+  const periodo = periodoDeRecibo(q)
+  const pisoDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.piso?.valorHora ?? null]))
+  /** La entrada del blanco de un obrero. Oficina y finales no cobran por hora: fuera del modelo. */
+  const blancoDe = (grupo: string, l: { personaId: string; reciboNeto: number | null }) => grupo !== 'obreros'
+    ? null
+    : entradaDeBlanco({
+      personaId: l.personaId, cuil: cuilPorPersona.get(l.personaId) ?? null, periodo,
+      recibos: exposicion.recibos, pisoCategoria: pisoDe.get(l.personaId) ?? null, netoDeNomina: l.reciboNeto,
+    })
+
   return {
     sinActividad: sinActividad.map((p) => ({ id: p.id, nombre: p.nombre })),
+    exposicion,
+    hayRecibosDeSueldo: exposicion.hayRecibosDeSueldo,
     horas,
     // LA QUINCENA CERRADA NO SE PISA. Sus cifras son la foto del cierre y no admiten override: si
     // se aplicaran acá, una celda escrita después del cierre cambiaría el registro de lo que ya se
@@ -269,6 +300,7 @@ export async function getLiquidacionDeLaQuincena(
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.
         : c.lineas.map((l) => aplicarOverrides(
           l, overrides.get(l.personaId) ?? {}, c.grupo, espejo.cadenaPorPersona.get(l.personaId) ?? null,
+          blancoDe(c.grupo, l),
         )),
     })),
     camposEditables,
@@ -340,7 +372,9 @@ function horasPorPersona(
       filas.filter((f) => f.persona_id === id),
       decl.filter((d) => d.persona_id === id),
     )
-    porPersona.set(id, { horas: h.horas, presentesSinHoras: h.presentesSinHoras })
+    porPersona.set(id, {
+      horas: h.horas, horasEquivalentes: h.horasEquivalentes, extras: h.extras, presentesSinHoras: h.presentesSinHoras,
+    })
   }
   return porPersona
 }

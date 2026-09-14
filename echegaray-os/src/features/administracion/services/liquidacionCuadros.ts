@@ -69,6 +69,9 @@ export interface FilaAdelanto {
 /** Las horas ya calculadas por persona (`horasDeQuincena`). */
 export interface HorasPorPersona {
   horas: number
+  /** Con el coeficiente de extras. Ausente = iguales a `horas`. */
+  horasEquivalentes?: number
+  extras?: { coeficiente: number; horas: number }[]
   presentesSinHoras: number
 }
 
@@ -168,10 +171,10 @@ function entradaDe(
   ctx: Contexto, p: PersonaDeLiquidacion, tarifa: TarifaVigente | null,
   grupo: GrupoLiquidacion,
 ): EntradaDeLinea {
-  // OFICINA NO SE LIQUIDA POR HORAS. Maldonado y Nievas tienen asistencia cargada como todos, pero
-  // su sueldo es un neto mensual acordado: publicar «54 h» al lado de $1.800.000 invita a
-  // multiplicar y a discutir un número que no decide nada. La columna va vacía, que es lo cierto.
-  const h = grupo === 'oficina' ? null : (ctx.horas.get(p.id) ?? null)
+  // OFICINA NO SE LIQUIDA POR HORAS, PERO SUS HORAS SE VEN (QA, 14/09/2026). La columna Horas de los
+  // jefes decía «—» con días de 9 h cargados, y la regla única de horas pide que Liquidación muestre el
+  // mismo total que «Horas». Su COBRA sigue siendo el neto mensual (`cobraDe`): las horas no multiplican.
+  const h = ctx.horas.get(p.id) ?? null
   const recibo = ctx.recibos.find((r) => r.cuil === p.cuil && r.periodo === ctx.periodo) ?? null
   const neto = recibo == null ? null : Number(recibo.neto)
   const { giroEnElLote, yaTransferido } = girosDe(ctx.quincena, ctx.adelantos, p.cuil, CONCEPTO_DEL_GIRO[grupo], neto)
@@ -180,6 +183,8 @@ function entradaDe(
     nombre: p.nombre,
     esJefe: p.esJefe === true,
     horas: h == null ? null : h.horas,
+    horasEquivalentes: h == null ? null : (h.horasEquivalentes ?? h.horas),
+    extras: h?.extras ?? [],
     tarifa,
     // CERO CON SU MOTIVO ESCRITO AL LADO (`adelantoSinFuente`), no un cero mudo.
     adelanto: 0,

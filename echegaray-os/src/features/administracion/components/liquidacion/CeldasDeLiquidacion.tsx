@@ -253,7 +253,7 @@ export function CeldaValorHora({ valor, origen, personaId, quincena, grupo, solo
 export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, bloqueada, ancho = 96 }: {
   personaId: string
   valor: number | null
-  /** El efectivo de «Le falta pagar». De acá sale el sugerido. */
+  /** El efectivo de la fila (`enEfectivo`). De acá sale el sugerido. */
   enEfectivo: number | null
   quincena: VentanaDeQuincena
   grupo: string

@@ -2,18 +2,14 @@ import { Aviso } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
-import { getDatosDeLaSolapaHoras } from '../../../services/grillaHorasQuincenaService'
-import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
-import { getExposicionDeLaQuincena } from '../../../services/exposicionConvenioService'
-import {
-  diasConHorasDe, diasDelEspejo, filasDelEspejo, totalesDelEspejo, type FilaDelEspejo,
-} from '../../../services/espejoDeJornales'
+import { totalesDelEspejo, type FilaDelEspejo } from '../../../services/espejoDeJornales'
+import { leerCuadroDeLaQuincena } from '../../../services/cuadroDeLaQuincenaService'
+import { leerDetallesLaborales } from '../../../services/detalleLaboralService'
 import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDePersonal'
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
-import type { LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
 import { RECORTES, normalizar } from '../../../services/recorteDeLiquidacion'
-import { FiltrosDelEspejo, GrillaEspejoQuincena, type MarcaDePiso, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
+import { FiltrosDelEspejo, GrillaEspejoQuincena, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
 import { MONO } from './tabla'
 import type { PropsDeSolapa } from './index'
 
@@ -56,19 +52,20 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
   // LA EXPOSICIÓN AL CONVENIO ES LA DE LA SOLAPA «CONVENIOS», NO UNA CUENTA NUEVA. Dueño, 14/09/2026:
   // «ok» a que el cuadro marque a quién le falta llegar al básico UOCRA. El piso, la brecha y su
   // fuente salen de `exponerAlPiso`; acá sólo se indexan por persona.
-  const [datos, liquidacion, exposicion] = await Promise.all([
-    getDatosDeLaSolapaHoras(supabase, quincena),
-    getLiquidacionDeLaQuincena(supabase, quincena),
-    getExposicionDeLaQuincena(supabase, quincena),
-  ])
-  const bajoElPiso: Record<string, MarcaDePiso> = {}
-  for (const l of exposicion.lineas) {
-    if (!l.bajoElPiso || l.piso == null || l.brechaPct == null || l.diferenciaHora == null) continue
-    bajoElPiso[l.personaId] = {
-      brechaPct: l.brechaPct, diferenciaHora: l.diferenciaHora,
-      piso: l.piso.valorHora, desde: l.piso.desde, categoria: l.categoria ?? '',
-    }
-  }
+  // LAS FILAS LAS ARMA `leerCuadroDeLaQuincena`, la misma lectura que usan «Caja» y «Cierre»: así el
+  // pie de acá y el renglón de totales de allá no pueden separarse por un argumento copiado distinto.
+  //
+  // DESDE BLANCO + NEGRO (14/09/2026) LA EXPOSICIÓN VIENE CON LA LIQUIDACIÓN: el $/h de categoría del
+  // blanco estimado sale de ahí, y leerla otra vez acá serían dos fotos de la escala en el mismo render.
+  const cuadro = await leerCuadroDeLaQuincena(supabase, quincena, hoy)
+  const { datos, liquidacion, filas, dias, tituloDe, cuadrosCerrados } = cuadro
+  const exposicion = liquidacion.exposicion
+  // LO LABORAL DEL PANEL (costo cargado, legajo, HH por mes, esperadas/estado) sale del cuadro ya leído
+  // más las alícuotas: es lo que tenía la grilla de «Horas», que se retiró de «Más» el 14/09/2026.
+  const { detalles, errores: erroresDelDetalle } = await leerDetallesLaborales(supabase, cuadro, quincena)
+  // LA MARCA «BAJO EL BÁSICO» YA NO SE ARMA ACÁ (coordinador, 14/09/2026): comparaba el $/h NEGRO con el
+  // básico, y el blanco es lo que se paga a categoría. Ahora la dibuja la celda del $/h de categoría con
+  // `marcaDeCategoria` (recibo real contra el piso, la misma `compararConElPiso` de Convenios).
   // EL HISTORIAL DEL VALOR HORA SALE DE LA MISMA LECTURA QUE LA MARCA DEL BÁSICO (dueño, 14/09/2026:
   // «no tengo referencias de valores hs históricos»). Una lectura propia de `persona_tarifa` daría
   // un historial que no cierra con el «−N%» de la celda de al lado.
@@ -81,34 +78,9 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
       quincena.hasta,
     )
   }
-  // EL ESPEJO VIENE CON LA LIQUIDACIÓN, no de una lectura propia: es la misma función que ya lo usa
-  // para meter los adelantos de la planilla en la cadena de pago. Leerlo dos veces daría dos fotos
-  // de la planilla y un chip que coteja contra una y una celda que cobra según la otra.
+  // EL ESPEJO VIENE CON LA LIQUIDACIÓN, no de una lectura propia: es la misma foto de la planilla que
+  // ya entró a la cadena de pago.
   const espejo = liquidacion.espejo
-
-  const lineas: Record<string, { grupo: GrupoLiquidacion; linea: LineaConOverrides }> = {}
-  const tituloDe = new Map<GrupoLiquidacion, string>()
-  for (const cuadro of liquidacion.cuadros) {
-    tituloDe.set(cuadro.grupo, cuadro.titulo)
-    for (const linea of cuadro.lineas) lineas[linea.personaId] = { grupo: cuadro.grupo, linea }
-  }
-  const cuadrosCerrados = new Set(
-    Object.entries(liquidacion.estados).filter(([, e]) => e.estado === 'cerrada').map(([g]) => g),
-  )
-
-  const filas = filasDelEspejo({
-    quincena,
-    personas: datos.personas,
-    registros: datos.registros,
-    presencias: datos.presencias,
-    lineas,
-    cuadrosCerrados,
-    horasDeLaPlanilla: espejo.horasPorPersona,
-    diasDeLaPlanilla: espejo.diasPorPersona,
-    hayEspejo: espejo.hay,
-    hoy,
-  })
-  const dias = diasDelEspejo(quincena, diasConHorasDe(datos.registros))
 
   // EL RECORTE RECORTA LAS FILAS QUE SE VEN Y EL TOTAL QUE LAS ACOMPAÑA. Un pie que sumara el plantel
   // entero debajo de tres filas filtradas sería un total que no cierra con lo que está arriba.
@@ -138,8 +110,10 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
 
   return (
     <div data-testid="vista-quincena">
-      {[...datos.errores, ...liquidacion.errores, ...exposicion.errores].map((e) => (
-        <div key={e.que} style={{ padding: '0 0 10px' }}>
+      {/* LOS ERRORES DE LA EXPOSICIÓN YA VIENEN EN `liquidacion.errores`: sumarlos otra vez los dibujaba
+          dos veces con la misma clave. La clave lleva el índice: dos fuentes pueden fallar con el mismo rótulo. */}
+      {[...datos.errores, ...liquidacion.errores, ...erroresDelDetalle].map((e, i) => (
+        <div key={`${e.que}-${i}`} style={{ padding: '0 0 10px' }}>
           <Aviso tono="neg" testid="quincena-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
         </div>
       ))}
@@ -159,9 +133,9 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
         totales={totales}
         quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
         camposEditables={liquidacion.camposEditables}
-        bajoElPiso={bajoElPiso}
         historiales={historiales}
         historialCompleto={exposicion.errores.length === 0}
+        detalles={detalles}
         sello={
           <Sello
             titulo={rotuloQuincena(quincena)}

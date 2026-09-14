@@ -2,8 +2,11 @@ import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
 
-import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
-import { leyendaDeHoras } from '../../../services/horasDeLaQuincena'
+import { leerCuadroDeLaQuincena } from '../../../services/cuadroDeLaQuincenaService'
+import { totalesDelEspejo } from '../../../services/espejoDeJornales'
+import { pendientesPorPersona } from '../../../services/grillaHorasQuincena'
+import { PendientesDeCierre } from './PendientesDeCierre'
+import type { PropsDeSolapa } from './index'
 import {
   avisoDeReapertura, estadoDeCierre, filasDeQuincenaCerrada,
   type AvisoDeReapertura, type FilaDeQuincenaCerrada, type LineaParaCerrar, type SelloDeLinea,
@@ -39,34 +42,36 @@ interface FaltanteDeclarado {
   cuantas: number
 }
 
-export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
+export async function SolapaCierre({ quincenaPedida, hoy, hrefDe, puedeCerrar }: {
   quincenaPedida?: string
   hoy: string
+  hrefDe: PropsDeSolapa['hrefDe']
   puedeCerrar: boolean
 }) {
   const quincena = quincenaDe(quincenaPedida && /^\d{4}-\d{2}-\d{2}$/.test(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const [{ cuadros, estados, diasSinMotivo, horas: horasQ }, faltante, sellado, { porPersona: vigenteHoy }] = await Promise.all([
-    getLiquidacionDeLaQuincena(supabase, quincena),
+  const [cuadro, faltante, sellado, { porPersona: vigenteHoy }] = await Promise.all([
+    leerCuadroDeLaQuincena(supabase, quincena, hoy),
     leerFaltante(supabase, quincena),
     leerSellado(supabase, quincena),
     // LA TARIFA DE HOY, NO LA DE LA QUINCENA. La columna «$/h hoy» compara contra el legajo ACTUAL:
     // pedirla al último día de la quincena la haría comparar el sello contra sí mismo.
     getValorHoraVigente(supabase, hoy),
   ])
+  const { cuadros, estados } = cuadro.liquidacion
   const lineas: LineaParaCerrar[] = cuadros.flatMap((c) => c.lineas)
-  // LA MISMA TRABA QUE LA GRILLA DE HORAS. Sin esto, «Cierre» sellaba una quincena que «Horas»
-  // declaraba no cerrable — dos pantallas del módulo contestando distinto la misma pregunta.
-  const estado = estadoDeCierre(lineas, { diasSinMotivo })
+  // ═══ LOS PENDIENTES SALEN DE UNA SOLA FUNCIÓN (dueño, 14/09/2026) ═══
+  //
+  // «Horas» contaba con `resumenDeGrilla` y esta pantalla con `estadoDeCierre`: el botón podía estar
+  // gris en una y activo en la otra. La grilla de Horas se fue de «Más»; sus pendientes —ausencias sin
+  // motivo y días sin cargar, con nombre y fecha— entran acá, a la misma función que decide el botón.
+  const { grilla } = cuadro
+  const estado = estadoDeCierre(lineas, { porPersona: pendientesPorPersona(grilla, hoy) })
   const cerrada = Object.values(estados).some((e) => e.estado === 'cerrada')
   const cerradaEn = Object.values(estados).find((e) => e.cerradaEn)?.cerradaEn ?? null
-  // ═══ EL TOTAL DE HORAS SALE DE `horasDeLaQuincena`, NO DE UNA SUMA PROPIA ═══
-  //
-  // QA visual, 11/09/2026: esta pantalla decía 1.129 y «Horas» 1.289 bajo el mismo rótulo. Los dos
-  // correctos —la diferencia son los jefes de Oficina, que cobran un neto mensual— pero la única
-  // lectura posible era «uno está mal». Ahora las cuatro solapas leen el MISMO objeto y cada una
-  // publica la resta que explica su número.
-  const totalHoras = horasQ.liquidables
+  // HORAS Y FALTA PAGAR SON LOS DEL PIE DE LA QUINCENA: la misma suma sobre las mismas filas. Esta
+  // pantalla publicaba 1.129 (horas liquidables) y «Horas» 1.289 bajo el mismo rótulo.
+  const totales = totalesDelEspejo(cuadro.filas)
 
   // LAS FILAS DE LA PANTALLA 11 SON LAS SELLADAS, NO LAS RECALCULADAS. Lo que se pagó vive en
   // `liquidacion_linea`; recalcularlo al dibujar haría que cambiar una tarifa hoy reescribiera la
@@ -103,7 +108,9 @@ export async function SolapaCierre({ quincenaPedida, hoy, puedeCerrar }: {
         </span>
       </div>
 
-      <Resumen estado={estado} horas={totalHoras} leyenda={leyendaDeHoras(horasQ, 'liquidables')} faltante={faltante} />
+      {!cerrada && <PendientesDeCierre pendientes={estado.pendientes} hrefDe={hrefDe} />}
+
+      <Resumen estado={estado} totales={totales} faltante={faltante} />
 
       {cerrada
         ? <Cerrada filas={filasCerradas} esJefe={jefes} cerradaEn={cerradaEn} aviso={aviso} ventanas={ventanas} puedeCerrar={puedeCerrar} />
@@ -159,17 +166,16 @@ async function leerFaltante(
   return { monto, cuantas: Array.isArray(fila?.excluidas) ? fila.excluidas.length : 0 }
 }
 
-function Resumen({ estado, horas, leyenda, faltante }: {
+function Resumen({ estado, totales, faltante }: {
   estado: ReturnType<typeof estadoDeCierre>
-  horas: number
-  /** Por qué este total no es el de «Horas». Vacía cuando no hay nada que restar. */
-  leyenda?: string
+  /** Del pie de la Quincena (`totalesDelEspejo`), no una suma propia. */
+  totales: { horasPagas: number; total: number }
   faltante: FaltanteDeclarado | null
 }) {
   const filas: [string, string][] = [
     ['Personas que quedan liquidadas', `${estado.liquidadas} de ${estado.personas}`],
-    ['Horas de la quincena', horas.toLocaleString('es-AR') + (leyenda ? ` — ${leyenda}` : '')],
-    ['Total a pagar sellado', pesos(estado.totalSellado)],
+    ['Horas pagas', totales.horasPagas.toLocaleString('es-AR')],
+    ['Banco + efectivo', pesos(totales.total)],
   ]
   return (
     <div data-testid="cierre-resumen" style={{
@@ -215,25 +221,8 @@ function Abierta({ estado, puedeCerrar, quincena }: {
       <p style={{ fontSize: '12.5px', color: V.apagado, margin: '0 0 12px' }}>
         Cerrar congela {CONGELA.join(' · ')}. Reabrir pide motivo escrito y queda con autor y fecha.
       </p>
-      {/* ═══ EL PENDIENTE ES UN RENGLÓN, NO UNA CAJA DE COLOR ═══
-          El mockup (pantalla 10, línea 611) dibuja lo que traba el cierre como una fila más de la
-          lista, con el TEXTO en ámbar y nada de fondo. `Aviso tono="warn"` pinta una superficie
-          entera de `--os-warn-soft` (#FDF0E4), que además es un color que no está en la lista del
-          README §2 — y §2 prohíbe la superficie grande coloreada sin excepción. Con fondo, tres
-          pendientes convierten la pantalla de cierre en un semáforo y el botón deja de leerse. */}
-      {estado.pendientes.length > 0 && (
-        <div data-testid="cierre-pendientes" style={{ marginBottom: 16 }}>
-          {estado.pendientes.map((p) => (
-            <div key={p.clave} data-testid={`cierre-pendiente-${p.clave}`} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
-              minHeight: ALTO_LIQ.renglon, borderBottom: `1px solid ${V.linea}`, fontSize: '12.5px',
-              color: V.warn,
-            }}>
-              <span>{p.texto}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* LOS PENDIENTES VAN ARRIBA DEL RESUMEN (`PendientesDeCierre`), como renglones en ámbar sin
+          fondo: con una superficie de color, tres pendientes vuelven la pantalla un semáforo. */}
       {/* EL BOTÓN ESCRIBE. `disabled` es el cartel; la cerradura la vuelve a poner
           `cerrarQuincenaAction` (rol, pendientes releídos y el orden sellar→cerrar), porque una
           server action se invoca con lo que viaja en el HTML sin abrir jamás la pantalla. */}

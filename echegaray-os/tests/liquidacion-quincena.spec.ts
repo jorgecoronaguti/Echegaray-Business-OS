@@ -40,33 +40,34 @@ import { ADMIN, JEFE } from './util/identidades'
 //      exige que no esté—, así que ahora se afirma lo que de verdad tiene que pasar: un 404.
 
 const RUTA = '/administracion/personas?vista=liquidacion&quincena=2026-09-01'
-/** La cadena de pago vive acá desde que «Pagos» tiene pantalla propia. */
-const RUTA_PAGOS = `${RUTA}&solapa=pagos`
 
+// ═══ CAMBIÓ EL 14/09/2026: «PAGOS» SE RETIRÓ DE «MÁS» ═══
+//
+// La tabla de Pagos repetía la Quincena columna por columna. La cadena de pago con su total se afirma
+// ahora en el cuadro de la Quincena, y los tres totales en «Caja y proyección», que los suma con la
+// misma función que el pie. `?solapa=pagos` sigue funcionando: resuelve a «Caja».
 test.describe('Liquidación · Administración → Personal', () => {
   test('dirección: la solapa está y la cadena de pago sale con su total', async ({ page }) => {
     await entrarComo(page, ADMIN.email, ADMIN.password)
-    await page.goto(RUTA_PAGOS)
+    await page.goto(RUTA)
 
     // LA SOLAPA EXISTE Y ESTÁ ACTIVA. Si `vistasDe` deja de agregarla, no hay forma de llegar.
     await expect(page.getByTestId('vistas-personal')).toContainText('Liquidación')
-    // `solapa-pagos` NO SIRVE DE ANCLA: `BarraSolapas` publica ese mismo testid en la pestaña, así
-    // que resuelve a dos nodos. Es la trampa que la solapa «Horas» ya había pagado renombrando su
-    // contenido a `vista-horas`; «Pagos` hizo lo mismo con `vista-pagos` el 11/09/2026. Se ancla en `pagos-tabla`, que es
-    // único y además es el contenido, no la pestaña que lleva a él.
 
-    // LAS TRES CIFRAS DE ARRIBA: las dos primeras dan la tercera.
-    await expect(page.getByTestId('pagos-por-banco')).toBeVisible()
-    await expect(page.getByTestId('pagos-en-efectivo')).toBeVisible()
-    await expect(page.getByTestId('pagos-total')).toBeVisible()
+    // EL CUADRO TIENE SECCIONES Y SU FILA DE TOTAL. Un cuadro vacío con sesión de dirección sería el
+    // síntoma de un permiso faltante, no de una quincena en blanco; el aviso «no pude leer» tiene que
+    // estar en cero.
+    await expect(page.getByTestId('espejo-tabla')).toBeVisible({ timeout: 60_000 })
+    expect(await page.locator('[data-testid^="espejo-seccion-"]').count()).toBeGreaterThan(0)
+    await expect(page.getByTestId('espejo-total')).toBeVisible()
+    await expect(page.getByTestId('quincena-error')).toHaveCount(0)
 
-    // LA TABLA TIENE SECCIONES Y SU FILA DE TOTAL. Una tabla vacía con sesión de dirección sería el
-    // síntoma de un permiso faltante, no de una quincena en blanco. La distinción explícita —el
-    // aviso «no pude leer» en cero— la hace `liquidacion-fidelidad.spec.ts` sobre `horas-error`:
-    // `solapas/pagos.tsx` ni siquiera recibe `errores`, así que acá no hay nada que afirmar.
-    await expect(page.getByTestId('pagos-tabla')).toBeVisible()
-    expect(await page.locator('[data-testid^="seccion-"]').count()).toBeGreaterThan(0)
-    await expect(page.getByTestId('pagos-total-fila')).toBeVisible()
+    // LAS TRES CIFRAS: las dos primeras dan la tercera. La URL vieja lleva a la sección que las tiene.
+    await page.goto(`${RUTA}&solapa=pagos`)
+    await expect(page.getByTestId('solapa-caja-nomina')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId('por-banco')).toBeVisible()
+    await expect(page.getByTestId('efectivo-viernes')).toBeVisible()
+    await expect(page.getByTestId('total-quincena')).toBeVisible()
   })
 
   test('jefe de obra: la ruta de Liquidación no existe para él', async ({ page }) => {
@@ -84,8 +85,8 @@ test.describe('Liquidación · Administración → Personal', () => {
     await expect(page.getByTestId('estado-no-encontrado')).toBeVisible({ timeout: 30_000 })
 
     // Y NADA DEL MÓDULO QUEDA EN LA PÁGINA.
-    await expect(page.getByTestId('pagos-tabla')).toHaveCount(0)
-    await expect(page.getByTestId('vista-horas')).toHaveCount(0)
+    await expect(page.getByTestId('espejo-tabla')).toHaveCount(0)
+    await expect(page.getByTestId('solapa-caja-nomina')).toHaveCount(0)
     await expect(page.getByTestId('vistas-personal')).toHaveCount(0)
   })
 

@@ -11,7 +11,12 @@ import type { PropsDeSolapa } from './index'
 import { SolapaCostoHora } from './costo-hora'
 import { SolapaCostoObra } from './costo-obra'
 import { SolapaProductividad } from './productividad'
+import { SolapaConvenios } from './convenios'
 import { quincenaDe } from '../../../services/quincena'
+
+// EL CONVENIO VA DEBAJO DEL COSTO (dueño, 14/09/2026: «unificar conceptos en menos secciones»). Las dos
+// contestan cuánto cuesta la hora: una con cargas y obra, la otra contra el piso de la escala. El $/h
+// de su tabla es el de la Quincena: las dos lecturas usan `tarifaVigenteAl` al último día de la ventana.
 
 export async function SolapaCosto(props: PropsDeSolapa) {
   const quincena = quincenaDe(props.quincenaPedida ?? props.hoy)
@@ -23,6 +28,7 @@ export async function SolapaCosto(props: PropsDeSolapa) {
       {await SolapaCostoHora({ quincena, hoy: props.hoy })}
       {await SolapaCostoObra({ quincena, hoy: props.hoy })}
       {await SolapaProductividad({ quincenaPedida: props.quincenaPedida, hoy: props.hoy })}
+      {await SolapaConvenios({ quincenaPedida: props.quincenaPedida, hoy: props.hoy })}
     </div>
   )
 }

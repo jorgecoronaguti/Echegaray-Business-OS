@@ -1,20 +1,21 @@
 'use client'
 
-// EL PANEL DE LA PERSONA EN EL CUADRO DE LA QUINCENA — lo que no entra en la fila, sin perderlo.
+// EL PANEL DE LA PERSONA EN EL CUADRO DE LA QUINCENA — la misma cadena que la fila, con su origen.
 //
-// Dueño, 14/09/2026: *«no se entiende nada… no sé cuánto es el total que cobra cada persona»*. El
-// cuadro se quedó con lo que contesta «cuánto cobra y cómo se le paga»; lo demás se mudó acá, no se
-// borró: la cadena entera con sus descuentos editables, POR BANCO editable, el acuerdo 50/50, la
-// jornada automática sin confirmar, el cotejo con la planilla y el historial del valor hora.
+// Dueño, 14/09/2026: *«realmente no se entiende nada el cuadro de liq de hs, vamos a rehacer»*. El panel
+// repite la fila en vertical y dice DE DÓNDE sale cada eslabón: el blanco (recibo del estudio o
+// estimado), el negro (horas que el recibo no paga × $/h negro), el total, el adelanto, lo transferido y
+// el efectivo. Debajo, el historial del $/h y lo laboral que tenía «Horas».
+//
+// Oficina, liquidaciones finales y la quincena cerrada no tienen blanco + negro: muestran la cadena de
+// siempre (`CadenaSinModelo`), con el acuerdo 50/50 donde lo hay.
 //
 // ═══ DRAWER Y NO `PanelDePersona` ═══
 //
 // `PanelDePersona` se despliega DEBAJO de la grilla y empuja la fila que se está mirando fuera de la
 // pantalla. Éste flota encima (`Drawer`) y el cuadro no se mueve.
 //
-// ═══ NI UNA CUENTA NUEVA ═══
-//
-// Las cifras son las de la línea (`getLiquidacionDeLaQuincena`); el cierre, `cierreDeLaFila`.
+// Ni una cuenta nueva: las cifras son las de la línea; el cierre, `cierreDeLaFila`.
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
@@ -22,28 +23,35 @@ import { Drawer } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { horas as nHoras, pesos } from '../formato'
 import { Escribible, Leida } from './CeldasDelEspejo'
+import { origenDelBlanco, urlDelRecibo } from './CeldasBlancoNegro'
 import { HistorialDeTarifa } from './HistorialDeTarifa'
 import { rotuloCategoria } from './CeldaTarifa'
+import { tituloDeJornales } from './estadoDelPago'
 import { ALTO_LIQ } from '../solapas/tabla'
 import { cierreDeLaFila, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
+import type { DetalleLaboral } from '../../../services/detalleLaboral'
+import { DetalleLaboralDeLaPersona } from './DetalleLaboralDeLaPersona'
 
 const MONO = "'IBM Plex Mono', monospace"
 const corta = (iso: string | null): string =>
   iso == null ? 'sin cargar' : `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 
-export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, historialCompleto, onCerrar }: {
+interface PropsDeCadena {
   fila: FilaDelEspejo
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
+}
+
+export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, historialCompleto, detalle, onCerrar }: PropsDeCadena & {
   historial: readonly EntradaDeHistorial[]
   historialCompleto: boolean
+  /** Lo laboral que tenía la grilla de «Horas»: costo cargado, legajo, HH por mes, esperadas y estado. */
+  detalle?: DetalleLaboral
   onCerrar: () => void
 }) {
-  const l = fila.linea
-  const cierre = cierreDeLaFila(l)
-  const esHora = l.netoMensual == null
+  const jornales = tituloDeJornales(fila.linea)
   return (
     <Drawer
       titulo={fila.nombre}
@@ -54,55 +62,114 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
       pie={<Link href={`/administracion/personas/${fila.personaId}`} prefetch={false} style={{ fontSize: '12.5px', color: V.tinta }}>Ver el legajo completo</Link>}
     >
       <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <section data-testid="panel-cadena">
-          <Rotulo>Esta quincena</Rotulo>
-          <Renglon rotulo="Gana" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
-            <Leida valor={l.cobra} medio origen={l.origen.cobra} />
-          </Renglon>
-          <Renglon rotulo="− Adelanto">
-            <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={120} />
-          </Renglon>
-          <Renglon rotulo="− Ya transferido">
-            <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={120} />
-          </Renglon>
-          <Renglon rotulo="= Le falta pagar" fuerte
-            nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : undefined} alerta={cierre?.cierra === false}>
-            <Leida valor={l.total} medio origen={l.origen.total} />
-          </Renglon>
-          <Renglon rotulo="Por banco (blanco)" nota={l.reciboSinGiro ? 'recibo sin giro en el extracto' : undefined}>
-            <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={120} />
-          </Renglon>
-          <Renglon rotulo="En efectivo">
-            <Leida valor={l.enEfectivo} origen={l.origen.enEfectivo} />
-          </Renglon>
-          {l.blancoAcuerdo != null && (
-            <Renglon rotulo="Acuerdo 50/50" nota="lo acordado; el banco manda lo que dice el recibo">
-              <span style={{ fontSize: '12px', color: V.apagado }}>{`banco ${pesos(l.blancoAcuerdo)} · efectivo ${pesos(l.efectivoAcuerdo)}`}</span>
-            </Renglon>
-          )}
-          {l.reciboNeto != null && (
-            <Renglon rotulo="Recibo del estudio"><span>{pesos(l.reciboNeto)}</span></Renglon>
-          )}
-        </section>
+        {fila.linea.sueldo
+          ? <CadenaBlancoNegro fila={fila} quincena={quincena} camposEditables={camposEditables} />
+          : <CadenaSinModelo fila={fila} quincena={quincena} camposEditables={camposEditables} />}
 
-        {(fila.horasPorTipo.automaticas > 0 || fila.cotejo.estado === 'difiere') && (
+        {/* SIN AVISO DE «SIN HORAS CARGADAS / NO SE PAGAN»: desde el 14/09/2026 los días completados por
+            la app cuentan y se pagan (dueño). */}
+        {(fila.cotejo.estado === 'difiere' || jornales) && (
           <section style={{ fontSize: '12px', color: V.apagado, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {fila.horasPorTipo.automaticas > 0 && (
-              <div data-testid="panel-automaticas" style={{ color: V.warn }}>
-                {/* EN LLANO (dueño, 14/09/2026: «8a 9a no se q es eso»): las fechas, y que no se pagan. */}
-                {`${fila.celdas.filter((c) => c.marca !== 'horas' && c.automatica != null)
-                  .map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)}`).join(' y ')} sin horas cargadas (no se pagan)`}
-              </div>
-            )}
             {fila.cotejo.estado === 'difiere' && (
               <div>{`La planilla dice ${nHoras(fila.cotejo.horasEnLaPlanilla)} h y la base ${nHoras(fila.cotejo.horasEnLaBase)} h.`}</div>
             )}
+            {jornales && <div data-testid="panel-jornales">{jornales}</div>}
           </section>
         )}
 
         <HistorialDeTarifa entradas={historial} completo={historialCompleto} />
+
+        <DetalleLaboralDeLaPersona detalle={detalle} />
       </div>
     </Drawer>
+  )
+}
+
+/** BLANCO (con su origen) · NEGRO · TOTAL · − adelanto · − transferido · = efectivo. */
+function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
+  const l = fila.linea
+  const s = l.sueldo!
+  const cierre = cierreDeLaFila(l)
+  const est = s.estado === 'estimado'
+  return (
+    <section data-testid="panel-cadena">
+      <Rotulo>{`Blanco · ${s.estado === 'recibo' ? 'recibo' : 'estimado'}`}</Rotulo>
+      <Renglon rotulo="Horas del blanco" nota={origenDelBlanco(s)}>
+        <Leida valor={s.horasBlanco} unidad="horas" apagada={est} />
+      </Renglon>
+      <Renglon rotulo="$/h de categoría"><Leida valor={s.valorHoraCategoria} apagada={est} /></Renglon>
+      <Renglon rotulo="Bruto"><Leida valor={s.bruto} apagada={est} /></Renglon>
+      <Renglon rotulo="Neto (banco)" nota={s.driveFileId ? undefined : (s.neto == null ? 'sin neto' : undefined)}>
+        {s.driveFileId && (
+          <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid="panel-recibo-pdf"
+            style={{ fontSize: '11.5px', color: V.apagado, marginRight: 8 }}>recibo ↗</a>
+        )}
+        <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+
+      <div style={{ height: 16 }} />
+      <Rotulo>Negro</Rotulo>
+      <Renglon rotulo="Horas que el recibo no paga"
+        nota={s.reciboExcedeHoras ? 'el recibo paga más horas que las cargadas' : undefined} alerta={s.reciboExcedeHoras}>
+        <Leida valor={s.horasNegro} unidad="horas" />
+      </Renglon>
+      <Renglon rotulo="× $/h negro"><Leida valor={s.valorHoraNegro} /></Renglon>
+      <Renglon rotulo="Negro"><Leida valor={s.negro} medio /></Renglon>
+
+      <Renglon rotulo="Total" nota="neto + negro" fuerte>
+        <Leida valor={l.cobra} medio origen={l.origen.cobra} apagada={est} />
+      </Renglon>
+      <Renglon rotulo="− Adelanto">
+        <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="− Ya transferido">
+        <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="− Neto (banco)"><Leida valor={l.porBanco} /></Renglon>
+      <Renglon rotulo="= Efectivo" fuerte
+        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : undefined} alerta={cierre?.cierra === false}>
+        <Leida valor={l.enEfectivo} medio origen={l.origen.enEfectivo} />
+      </Renglon>
+    </section>
+  )
+}
+
+/** La cadena de siempre: Oficina, finales y la quincena cerrada (la foto sellada no se recalcula). */
+function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
+  const l = fila.linea
+  const cierre = cierreDeLaFila(l)
+  const esHora = l.netoMensual == null
+  return (
+    <section data-testid="panel-cadena">
+      <Rotulo>Esta quincena</Rotulo>
+      <Renglon rotulo="Total" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
+        <Leida valor={l.cobra} medio origen={l.origen.cobra} />
+      </Renglon>
+      <Renglon rotulo="− Adelanto">
+        <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="− Ya transferido">
+        <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="= Banco + efectivo" fuerte
+        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : undefined} alerta={cierre?.cierra === false}>
+        <Leida valor={l.total} medio origen={l.origen.total} />
+      </Renglon>
+      <Renglon rotulo="Neto (banco)" nota={l.reciboSinGiro ? 'recibo sin giro en el extracto' : undefined}>
+        <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="Efectivo">
+        <Leida valor={l.enEfectivo} origen={l.origen.enEfectivo} />
+      </Renglon>
+      {l.blancoAcuerdo != null && (
+        <Renglon rotulo="Acuerdo 50/50" nota="lo acordado; el banco manda lo que dice el recibo">
+          <span style={{ fontSize: '12px', color: V.apagado }}>{`banco ${pesos(l.blancoAcuerdo)} · efectivo ${pesos(l.efectivoAcuerdo)}`}</span>
+        </Renglon>
+      )}
+      {l.reciboNeto != null && (
+        <Renglon rotulo="Recibo del estudio"><span>{pesos(l.reciboNeto)}</span></Renglon>
+      )}
+    </section>
   )
 }
 
@@ -125,9 +192,9 @@ function Renglon({ rotulo, nota, fuerte = false, alerta = false, children }: {
     }}>
       <div>
         <div style={{ color: V.tinta }}>{rotulo}</div>
-        {nota && <div style={{ fontSize: '11px', fontWeight: 400, color: alerta ? V.neg : V.apagado }}>{nota}</div>}
+        {nota && <div style={{ fontSize: '11px', fontWeight: 400, color: alerta ? V.warn : V.apagado }}>{nota}</div>}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>{children}</div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>{children}</div>
     </div>
   )
 }

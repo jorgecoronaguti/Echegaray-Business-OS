@@ -34,7 +34,12 @@ export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
       {busqueda && (
         <form method="get" data-testid="espejo-buscar" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {Object.entries(busqueda.ocultos).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+          {/* `key` = LO BUSCADO (QA, 14/09/2026: «limpiar» y enseguida «Mensuales» dejaba el texto pegado y 0
+              personas). El campo no es controlado: en una navegación sin recarga React lo reusa y
+              `defaultValue` no se vuelve a aplicar, así que el texto viejo quedaba escrito y el siguiente
+              envío lo volvía a mandar. Con la clave, un valor distinto es otro campo. */}
           <input
+            key={busqueda.valor}
             type="search" name="buscar" defaultValue={busqueda.valor} placeholder="Buscar persona…"
             aria-label="Buscar persona"
             style={{
@@ -71,7 +76,9 @@ function Grupo({ rotulo, opciones, testid }: {
         {rotulo}
       </span>
       {opciones.map((o) => (
-        <Link key={o.href} href={o.href} prefetch={false} style={{
+        // LA CLAVE ES EL RÓTULO, NO EL ENLACE: dos opciones pueden apuntar al mismo lugar (Recibos las
+        // armaba todas con `#`) y React avisaba claves repetidas en cada carga (QA, 14/09/2026).
+        <Link key={o.texto} href={o.href} prefetch={false} style={{
           fontSize: '12px', textDecoration: 'none', padding: '4px 8px', borderRadius: 4,
           color: o.activo ? V.tinta : V.apagado,
           background: o.activo ? '#F1F0EC' : 'transparent',

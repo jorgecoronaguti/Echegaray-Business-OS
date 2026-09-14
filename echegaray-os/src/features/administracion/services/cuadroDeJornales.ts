@@ -12,7 +12,7 @@
 
 import { pisoVigente, type FilaEscala, type PisoDeConvenio } from './exposicionConvenio.ts'
 import { modalidadDe, type GrupoLiquidacion, type TarifaVigente } from './liquidacionQuincena.ts'
-import { esJornadaAutomatica, type RegistroLiquidable } from './liquidacionDeAusencias.ts'
+import type { RegistroLiquidable } from './liquidacionDeAusencias.ts'
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -20,13 +20,11 @@ export interface HorasPorTipo {
   normales: number
   extra50: number
   extra100: number
-  /** normales + extra50 + extra100: CANTIDADES trabajadas, sin coeficiente. Lo pagado es `linea.horas`. */
+  /** normales + extra50 + extra100: CANTIDADES trabajadas, sin coeficiente. Lo pagado es `linea.horasEquivalentes`. */
   total: number
-  /** Jornada `web:presencia-defecto` que nadie confirmó. Se muestra aparte y NO se paga. */
-  automaticas: number
 }
 
-export const SIN_HORAS: HorasPorTipo = { normales: 0, extra50: 0, extra100: 0, total: 0, automaticas: 0 }
+export const SIN_HORAS: HorasPorTipo = { normales: 0, extra50: 0, extra100: 0, total: 0 }
 
 /**
  * LAS CANTIDADES DE UNA PERSONA, POR TIPO.
@@ -36,18 +34,17 @@ export const SIN_HORAS: HorasPorTipo = { normales: 0, extra50: 0, extra100: 0, t
  * exactamente el defecto de Rosales (70 h en vez de 62).
  */
 export function horasPorTipo(registros: readonly RegistroLiquidable[]): HorasPorTipo {
-  let normales = 0, extra50 = 0, extra100 = 0, automaticas = 0
+  let normales = 0, extra50 = 0, extra100 = 0
   for (const r of registros) {
     const h = Number(r.horas)
     if (!Number.isFinite(h)) continue
-    if (esJornadaAutomatica(r)) { automaticas += h; continue }
     if (r.tipo_hora === 'normal') normales += h
     else if (r.tipo_hora === 'extra_50') extra50 += h
     else if (r.tipo_hora === 'extra_100') extra100 += h
   }
   return {
     normales: r2(normales), extra50: r2(extra50), extra100: r2(extra100),
-    total: r2(normales + extra50 + extra100), automaticas: r2(automaticas),
+    total: r2(normales + extra50 + extra100),
   }
 }
 
@@ -59,11 +56,10 @@ export function sumarHorasPorTipo(filas: readonly { horasPorTipo: HorasPorTipo }
     t.extra50 += f.horasPorTipo.extra50
     t.extra100 += f.horasPorTipo.extra100
     t.total += f.horasPorTipo.total
-    t.automaticas += f.horasPorTipo.automaticas
   }
   return {
     normales: r2(t.normales), extra50: r2(t.extra50), extra100: r2(t.extra100),
-    total: r2(t.total), automaticas: r2(t.automaticas),
+    total: r2(t.total),
   }
 }
 

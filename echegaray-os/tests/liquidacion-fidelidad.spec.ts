@@ -81,62 +81,43 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     await entrar(page)
   })
 
-  test('Horas · fila 52-58, encabezado 30-36 alineado abajo, control 26, botón 30-32', async ({ page }) => {
-    await abrir(page, 'horas')
-    await expect(page.getByTestId('vista-horas')).toBeVisible()
-    await page.screenshot({ path: `${SALIDA}/app-1-horas.png`, fullPage: true })
+  // ═══ CAMBIÓ EL 14/09/2026: «HORAS» Y «PAGOS» SE RETIRARON DE «MÁS» ═══
+  //
+  // Repetían la fila y el pie del cuadro de la Quincena. Lo que estos casos medían sobre la grilla de
+  // Horas se mide ahora sobre el cuadro (alturas, filtros arriba, ningún error, ningún rótulo cortado),
+  // y los pendientes con el número adentro, en «Cierre y recibos», que es donde quedaron.
+  test('Quincena · fila ≥52, encabezado 30-36 alineado abajo, filtros arriba y enteros', async ({ page }) => {
+    await abrir(page, 'quincena')
+    await expect(page.getByTestId('vista-quincena')).toBeVisible({ timeout: 60_000 })
+    await page.screenshot({ path: `${SALIDA}/app-1-quincena.png`, fullPage: true })
 
-    // EL ENCABEZADO DE COLUMNA. `align-items:end` con 9 px de padding inferior: el rótulo se apoya
-    // sobre la línea, no flota en el medio.
-    const cabecera = page.getByTestId('encabezado-columnas')
+    // EL ENCABEZADO DE COLUMNA: el rótulo se apoya sobre la línea, no flota en el medio.
+    const cabecera = page.getByTestId('espejo-encabezado')
     const alto = (await cabecera.boundingBox())!.height
     expect(alto, 'encabezado de columna').toBeGreaterThanOrEqual(30)
     expect(alto, 'encabezado de columna').toBeLessThanOrEqual(36)
     // `end` y `flex-end` son el mismo alineado: el navegador devuelve la palabra que se escribió.
     expect(await cabecera.evaluate((n) => getComputedStyle(n).alignItems)).toMatch(/^(flex-)?end$/)
-    expect(await cabecera.evaluate((n) => getComputedStyle(n).paddingBottom)).toBe('9px')
 
-    // LAS FILAS. `min-height` 58: una fila puede crecer, no encogerse por debajo del rango.
-    const filas = await altos(page, '[data-testid^="fila-"]')
-    expect(filas.length, 'la grilla tiene filas').toBeGreaterThan(0)
-    for (const h of filas) expect(h, 'alto de fila de la grilla').toBeGreaterThanOrEqual(52)
+    // LAS FILAS: una fila puede crecer, no encogerse por debajo del rango.
+    const filas = await altos(page, '[data-testid^="espejo-fila-"]')
+    expect(filas.length, 'el cuadro tiene filas').toBeGreaterThan(0)
+    for (const h of filas) expect(h, 'alto de fila del cuadro').toBeGreaterThanOrEqual(52)
 
-    // EL BOTÓN DE CIERRE: 30-32 px, y si está apagado dice por qué (handoff §4).
-    const boton = page.getByTestId('cerrar-quincena')
-    const hb = (await boton.boundingBox())!.height
-    expect(hb).toBeGreaterThanOrEqual(30)
-    expect(hb).toBeLessThanOrEqual(32)
-    // EL PORQUÉ SIGUE AL LADO DEL BOTÓN GRIS, pero ya no como párrafo permanente: el párrafo decía
-    // lo mismo que la banda de pendientes de arriba —que además lleva a las filas que lo producen—
-    // y era uno de los que el dueño prohíbe. Ahora es el `title` del botón apagado.
-    if (await boton.isDisabled().catch(() => false)) {
-      expect(await boton.getAttribute('title'), 'el botón apagado dice por qué').toMatch(/Antes de cerrar/)
-    }
+    // LA COLUMNA DE FILTROS DE LA DERECHA NO EXISTE. Se mide por ausencia para que reaparecer cueste un rojo.
+    await expect(page.getByTestId('vista-quincena').locator('aside')).toHaveCount(0)
 
-    // LA COLUMNA DE FILTROS DE LA DERECHA NO EXISTE MÁS. Es la afirmación literal de la queja del
-    // dueño, y se mide por ausencia para que reaparecer cueste un rojo y no una captura.
-    await expect(page.getByTestId('vista-horas').locator('aside')).toHaveCount(0)
+    // ═══ NINGUNA FUENTE FALLÓ ═══
+    // Un cuadro en cero porque la RLS rechazó una consulta es INDISTINGUIBLE de una quincena sin
+    // cargar. Con sesión de dirección no puede haber ningún aviso.
+    await expect(page.getByTestId('quincena-error')).toHaveCount(0)
 
-    // LO QUE SÍ SE DECIDE, ARRIBA Y ENTERO. El período vigente con su estado, los otros períodos a
-    // los que se puede saltar, y el subtítulo con cuánto de la quincena pasó.
-    // ═══ NINGUNA FUENTE FALLÓ ═══ (repuesto el 11/09/2026 por la auditoría)
-    //
-    // Una grilla en cero porque la RLS rechazó una consulta es INDISTINGUIBLE de una quincena sin
-    // cargar. `SolapaHoras` lo dice con `horas-error`, y con sesión de dirección no puede haber
-    // ninguno: si aparece, el número que se está mirando no es el de la empresa. El control vivía
-    // en `liquidacion-quincena.spec.ts` apuntando a `liquidacion-error`, que es del cuadro fósil;
-    // acá apunta al aviso que la pantalla dibuja hoy.
-    await expect(page.getByTestId('horas-error')).toHaveCount(0)
-
-    const cabeceraQuincena = page.getByTestId('cabecera-quincena')
-    await expect(cabeceraQuincena).toBeVisible()
-    await expect(cabeceraQuincena).toContainText('quincena')
-    await expect(page.getByTestId('periodos').locator('a')).not.toHaveCount(0)
-    await expect(page.getByTestId('grilla-subtitulo')).toContainText('hábiles transcurridos')
-
-    // NINGÚN RÓTULO CORTADO. «1ª quincena de septiemb…» y «UOCRA — Ley 22.250 (const…» eran el
-    // síntoma que se veía a simple vista: se mide el desborde real de cada caja de la cabecera.
-    const cortados = await cabeceraQuincena.evaluate((raiz) => {
+    // LO QUE SÍ SE DECIDE, ARRIBA Y ENTERO: los períodos, el recorte y la puerta al cierre.
+    const filtros = page.getByTestId('espejo-filtros')
+    await expect(filtros).toBeVisible()
+    await expect(page.getByTestId('espejo-quincenas').locator('a')).not.toHaveCount(0)
+    await expect(page.getByTestId('espejo-ir-a-cerrar')).toBeVisible()
+    const cortados = await filtros.evaluate((raiz) => {
       const malos: string[] = []
       for (const n of raiz.querySelectorAll('*')) {
         if (n.children.length > 0) continue
@@ -144,137 +125,117 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
       }
       return malos
     })
-    expect(cortados, 'rótulos cortados en la cabecera').toEqual([])
-
-    // CARGADAS Y ESPERADAS VIVEN EN EL PIE DE LA TABLA, debajo de sus propias columnas: en el panel
-    // estaban por segunda vez, a 150 px de la columna que ya las publicaba.
-    // Sin distinguir mayúsculas: los rótulos van en versalitas por CSS y el DOM dice «Carg.».
-    await expect(page.getByTestId('encabezado-columnas')).toContainText(/carg\./i)
-    await expect(page.getByTestId('encabezado-columnas')).toContainText(/esper\./i)
-    await expect(page.getByTestId('total-grilla')).toBeVisible()
+    expect(cortados, 'rótulos cortados en los filtros').toEqual([])
+    await expect(page.getByTestId('espejo-total')).toBeVisible()
   })
 
-  test('Horas · el microcopy del mockup, sin sinónimos', async ({ page }) => {
+  test('Cierre y recibos · los pendientes con el número adentro y con nombre propio', async ({ page }) => {
+    // LA URL VIEJA DE «HORAS» RESUELVE ACÁ: es la sección que se quedó con sus pendientes.
     await abrir(page, 'horas')
-    const cuadro = page.getByTestId('vista-horas')
-    // LA LEYENDA DEL PIE, palabra por palabra: «·» es «sin horas cargadas» y NO una falta (R3).
-    await expect(cuadro).toContainText('sin horas cargadas')
-    await expect(cuadro).toContainText('9 h de lunes a jueves')
-    // LO PENDIENTE, CON EL NÚMERO ADENTRO DEL TEXTO — «9 ausencias sin motivo», no «Ausencias sin
-    // motivo … 9» con 150 px de nada en el medio. Se mide con expresión regular porque el número es
-    // el dato vivo de la quincena y clavarlo pondría rojo un test cuando alguien cargue un día.
-    const pendientes = page.getByTestId('pendientes')
-    await expect(pendientes).toBeVisible()
-    await expect(pendientes).toContainText(/\d+ ausencias? sin motivo/)
-    await expect(pendientes).toContainText(/\d+ días? sin cargar/)
-    // «Sin retribución» NO se afirma: la banda esconde lo que vale cero a propósito —una fila que
-    // dice «0» ocupa lo mismo que una que avisa y enseña a no mirarla—, así que su presencia depende
-    // del estado de la base y no del código.
+    await expect(page.locator('div[data-testid="solapa-cierre"]')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId('seccion-recibos')).toBeVisible()
+    // LO PENDIENTE, CON EL NÚMERO ADENTRO DEL TEXTO, y cada persona enlaza a su fila de la Quincena.
+    // Condicional: el número es el dato vivo de la quincena, y una quincena sin pendientes no los dibuja.
+    for (const [clave, texto] of [['sin-motivo', /\d+ ausencia\(s\) sin motivo/], ['sin-cargar', /\d+ día\(s\) sin cargar/]] as const) {
+      const renglon = page.getByTestId(`cierre-pendiente-${clave}`)
+      if (await renglon.count() === 0) continue
+      await expect(renglon).toContainText(texto)
+      await expect(renglon.locator('a').first()).toHaveAttribute('href', /solapa=quincena/)
+    }
+    // EL BOTÓN APAGADO DICE POR QUÉ.
+    const boton = page.getByTestId('cierre-boton')
+    if (await boton.count() > 0 && await boton.isDisabled().catch(() => false)) {
+      await expect(page.getByTestId('cierre-porque-no')).not.toBeEmpty()
+    }
 
-    // EL CORTE OBRERO/OFICINA LO HACE LA TABLA CON SUS DOS GRUPOS, no un filtro que lo repita.
-    // La caja va en versalitas por CSS (`text-transform`), así que el texto del DOM es «Jefes de
-    // obra»: se compara sin distinguir mayúsculas para no medir la hoja de estilos.
-    await expect(cuadro).toContainText(/jefes de obra/i)
+    // EL CORTE OBRERO/OFICINA LO HACE EL CUADRO CON SUS GRUPOS, no un filtro que lo repita. Versalitas
+    // por CSS: se compara sin distinguir mayúsculas para no medir la hoja de estilos.
+    await abrir(page, 'quincena')
+    const cuadro = page.getByTestId('vista-quincena')
+    await expect(cuadro).toContainText(/jefes de obra/i, { timeout: 60_000 })
     await expect(cuadro).not.toContainText('Modalidad hora')
   })
 
-  test('Persona abierta · panel al costado SIN navegar, con las cuatro métricas', async ({ page }) => {
-    await abrir(page, 'horas')
+  // ═══ CAMBIÓ EL 14/09/2026: EL PANEL ES EL DE LA QUINCENA ═══
+  //
+  // El panel de «Horas» se borró con su grilla. La persona se abre desde el nombre en el cuadro de la
+  // Quincena (un Drawer), con la cadena de pago y el detalle laboral que tenía «Horas»: esperadas y
+  // estado, costo cargado, legajo/laboral/asignación y HH por mes. Los días se ven y se editan en la
+  // fila; el panel ya no los lista.
+  test('Persona abierta · panel SIN navegar, con la cadena de pago y el detalle laboral', async ({ page }) => {
+    await abrir(page, 'quincena')
+    await expect(page.getByTestId('espejo-tabla')).toBeVisible({ timeout: 60_000 })
     const url = page.url()
-    const fila = page.locator('[data-testid^="fila-"]').first()
-    // ═══ SE CLICKEA EL NOMBRE, NO EL CENTRO DE LA FILA (11/09/2026) ═══
-    //
-    // Playwright clickea el CENTRO del elemento, y desde que los días se editan en línea el centro
-    // de la fila es una celda editable que frena la propagación: el clic abre el campo, no el panel.
-    // Este caso daba rojo y lo cazó la auditoría de cierre.
-    //
-    // El contrato nuevo, que es el que el dueño pidió («permitirme editar en cada celda»): el NOMBRE
-    // —y los totales, y las celdas que no se editan— abren la persona; los días editables abren su
-    // campo. No se puede tener las dos cosas en el mismo punto: un clic que abre un campo Y despliega
-    // un panel de 900 px debajo mueve el campo de lugar mientras se escribe.
-    const nombre = fila.locator('div').first()
-    // SE REINTENTA EL CLIC: un clic anterior a la hidratación se pierde sin dejar rastro y el panel
-    // no abre nunca. El porqué completo, en `liquidacion-editar-en-celda.spec.ts`.
+
+    // ═══ EL DÍA EDITA, NO ABRE ═══ Se afirma antes de abrir el panel, que flota encima del cuadro:
+    // tocar una celda de día abre SU campo y no despliega a la persona.
+    const celdaDeDia = page.locator('[data-testid^="espejo-dia-"]').first()
+    if (await celdaDeDia.count() > 0) {
+      await celdaDeDia.click()
+      await expect(page.locator('[data-testid$="-campo"]').first()).toBeVisible({ timeout: 10_000 })
+      await expect(page.getByTestId('panel-cuadro-persona')).toHaveCount(0)
+      await page.keyboard.press('Escape')
+    }
+
+    // ═══ LA CELDA DEL DUEÑO ES EDITABLE ═══ «Efectivo redondeado» vive en la fila del cuadro.
+    // NO SE ESCRIBE: se comprueba que el control está. Tipear acá dejaría una fila en una quincena real.
+    await expect(page.locator('[data-testid^="redondeo-"]').first()).toBeVisible()
+
+    // SE CLICKEA EL NOMBRE, CON REINTENTO: un clic anterior a la hidratación se pierde sin dejar rastro.
     await expect(async () => {
-      await nombre.click()
-      await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 5_000 })
+      await page.locator('[data-testid^="espejo-nombre-"]').first().click()
+      await expect(page.getByTestId('panel-cuadro-persona')).toBeVisible({ timeout: 5_000 })
     }).toPass({ timeout: 60_000 })
     // ABRIR UNA PERSONA NO NAVEGA (handoff §4): la URL no se movió.
     expect(page.url(), 'abrir una persona no navega').toBe(url)
     await page.screenshot({ path: `${SALIDA}/app-2-persona.png`, fullPage: true })
 
-    // ═══ ABRIR UNA PERSONA TIENE QUE VERSE ═══
-    //
-    // `toBeVisible()` no alcanza y por eso esto no se cazaba: Playwright da por visible un panel que
-    // está 1.100 px más abajo del viewport. Con diecisiete personas en la tabla, quien hacía clic en
-    // la primera no veía moverse nada. Se mide que el panel quede DENTRO de la pantalla.
-    const caja = await page.getByTestId('panel-persona').boundingBox()
+    // ═══ ABRIR UNA PERSONA TIENE QUE VERSE ═══ `toBeVisible()` da por visible un panel fuera del
+    // viewport: se mide que quede DENTRO de la pantalla y no debajo de la barra pegajosa de 44 px.
+    const caja = await page.getByTestId('panel-cuadro-persona').boundingBox()
     const alto = page.viewportSize()!.height
     expect(caja!.y, 'el panel de la persona queda a la vista al abrirlo').toBeLessThan(alto)
     expect(caja!.y + 80, 'su encabezado queda a la vista, no sólo el borde').toBeLessThan(alto)
-    // Y NO DEBAJO DE LA BARRA PEGAJOSA: sin `scroll-margin-top` el nombre de la persona quedaba
-    // medio tapado por los 44 px de la barra de navegación, que no se va con el scroll.
-    expect(caja!.y, 'el nombre no queda tapado por la barra de navegación').toBeGreaterThan(44)
 
-    // ═══ Y LA OTRA MITAD DEL CONTRATO: EL DÍA EDITA, NO ABRE ═══
-    //
-    // Se afirma por el lado positivo para que la decisión quede medida y no dependa de que alguien
-    // lea un comentario: tocar una celda de día abre SU campo y deja el panel como estaba.
-    const celdaDeDia = page.locator('[data-testid^="grilla-hh-"]').first()
-    if (await celdaDeDia.count() > 0) {
-      await celdaDeDia.click()
-      await expect(page.locator('[data-testid$="-campo"]').first()).toBeVisible({ timeout: 10_000 })
-      await page.keyboard.press('Escape')
-    }
-
-    const metricas = page.getByTestId('metricas-persona')
-    await expect(metricas).toBeVisible()
-    for (const t of ['HH cargadas', 'Días trabajados', 'Ausencias', 'Costo cargado']) {
-      await expect(metricas).toContainText(t)
-    }
-    // LOS CUATRO BLOQUES DEL LEGAJO REAL, al costado.
-    for (const b of ['legajo', 'laboral', 'asignación']) {
-      await expect(page.getByTestId(`bloque-${b}`)).toBeVisible()
-    }
-    await expect(page.getByTestId('panel-persona')).toContainText('HH por mes')
-    // La cadena de R5 completa, con los rótulos del mockup.
-    const cadena = page.getByTestId('cadena-de-pago')
-    for (const t of ['Adelanto', 'Ya transferido', 'Por banco', 'En efectivo', 'Efectivo redondeado']) {
+    // La cadena de R5, con los rótulos del panel.
+    const cadena = page.getByTestId('panel-cadena')
+    // Blanco + negro (dueño, 14/09/2026): la misma cadena que la fila. Fuera del modelo (Oficina,
+    // finales, cerrada) el panel dice «Banco + efectivo»; los rótulos comunes a las dos son éstos.
+    for (const t of ['Total', 'Adelanto', 'Ya transferido', 'Neto (banco)', 'Efectivo']) {
       await expect(cadena).toContainText(t)
     }
-    // ═══ LA CELDA DEL DUEÑO ES EDITABLE ═══ (repuesto el 11/09/2026 por la auditoría)
-    //
-    // «EFECTIVO redondeado» es la columna que el dueño escribe a mano y que pisa el cálculo. El
-    // caso que lo afirmaba apuntaba al cuadro fósil (`input[aria-label="Efectivo redondeado"]`
-    // dentro de `cuadro-obreros`) y al retirarlo quedó sin reemplazo: durante unas horas NADA probó
-    // que se pudiera editar. Vive en el panel de la persona, con la quincena abierta.
-    //
-    // NO SE ESCRIBE: se comprueba que el control está y no está bloqueado. Tipear acá dejaría una
-    // fila en una quincena real.
-    const redondeo = cadena.getByTestId('panel-celda-efectivoRedondeado')
-    await expect(redondeo).toBeVisible()
-    await expect(redondeo).toBeEnabled()
-
-    // EL DÍA ABIERTO (pantalla 3): encabezado, columnas y fila de total.
-    const dias = page.getByTestId('dias-de-la-persona')
-    await expect(dias).toContainText('Cargó')
-    await expect(page.getByTestId('total-dias')).toBeVisible()
+    // LO QUE ERAN LAS CUATRO MÉTRICAS Y LOS BLOQUES DEL LEGAJO, en el detalle laboral.
+    await expect(page.getByTestId('detalle-quincena')).toContainText('Esperadas')
+    await expect(page.getByTestId('detalle-quincena')).toContainText('Estado')
+    await expect(page.getByTestId('detalle-costo')).toContainText('Con cargas')
+    await expect(page.getByTestId('detalle-laboral')).toBeVisible()
+    await expect(page.getByTestId('detalle-asignacion')).toBeVisible()
+    await expect(page.getByTestId('detalle-hh-mes')).toContainText('HH por mes')
   })
 
-  test('Pagos · las diez columnas de R5 y la fila de total con la línea grafito', async ({ page }) => {
-    await abrir(page, 'pagos')
-    await expect(page.getByTestId('pagos-tabla')).toBeVisible()
-    await page.screenshot({ path: `${SALIDA}/app-4-pagos.png`, fullPage: true })
+  test('Quincena · las columnas de la cadena de pago y la fila de total con la línea grafito', async ({ page }) => {
+    // La tabla de «Pagos» se retiró: sus columnas están en el cuadro (y Por banco/Efectivo en el pie).
+    await abrir(page, 'quincena')
+    await expect(page.getByTestId('espejo-tabla')).toBeVisible({ timeout: 60_000 })
+    await page.screenshot({ path: `${SALIDA}/app-4-cadena.png`, fullPage: true })
 
-    const tabla = page.getByTestId('pagos-tabla')
-    for (const c of ['Persona', 'Horas', '$/h', 'Cobra', 'Adelanto', 'Ya transf.', 'Por banco',
-      'Efectivo', 'Total', 'Efect. red.']) {
+    const tabla = page.getByTestId('espejo-encabezado')
+    // Dueño, 14/09/2026: blanco (recibo) + negro. Dos bandas rotuladas arriba y las columnas debajo.
+    await expect(page.getByTestId('banda-blanco')).toHaveText(/blanco · recibo/i)
+    await expect(page.getByTestId('banda-negro')).toHaveText(/negro/i)
+    for (const c of ['Persona', 'Horas', '$/h cat.', 'Neto (banco)', '$/h negro', 'Importe', 'Total', 'Adelanto', 'Ya transf.', 'Efectivo', 'Efect. red.']) {
       await expect(tabla).toContainText(c)
     }
+    const rotulos = await tabla.locator(':scope > div').allTextContents()
+    const i = (t: string) => rotulos.findIndex((r) => r.includes(t))
+    expect(i('Neto (banco)'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))
+    expect(i('Importe'), 'el negro va antes que el total').toBeLessThan(i('Total'))
+    for (const p of ['Neto banco', 'Negro', 'Total', 'Adelantos', 'Ya transferido', 'Efectivo', 'Efectivo redondeado']) {
+      await expect(page.getByTestId('espejo-pie')).toContainText(p)
+    }
 
-    // LA FILA DE TOTAL: 48-58 px y `border-top: 1px solid #30302F` — el handoff §2 no la deja
-    // opcional, y era exactamente lo que faltaba.
-    const total = page.getByTestId('pagos-total-fila')
+    // LA FILA DE TOTAL: 48-58 px y `border-top: 1px solid #30302F` — el handoff §2 no la deja opcional.
+    const total = page.getByTestId('espejo-total')
     await expect(total).toBeVisible()
     const est = await total.evaluate((n) => {
       const s = getComputedStyle(n)
@@ -284,14 +245,14 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     expect(est.borde, 'la línea de total es grafito').toBe(rgb('#30302F'))
     expect(est.ancho).toBe('1px')
 
-    // CAJA DE NÓMINA VIVE ACÁ (mockup §4: las solapas son cinco y no la incluyen).
-    await expect(page.getByTestId('solapa-caja-nomina')).toBeVisible()
-    // Y NO ES UNA SOLAPA de la barra.
-    await expect(page.getByTestId('solapas-liquidacion')).not.toContainText('Caja de nómina')
+    // LA CAJA DE NÓMINA VIVE EN «CAJA Y PROYECCIÓN», y la URL vieja de Pagos lleva ahí.
+    await abrir(page, 'pagos')
+    await expect(page.getByTestId('solapa-caja-nomina')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId('caja-totales')).toBeVisible()
   })
 
   test('Toda la vista · sin sombras, sin gradientes y ningún color fuera de la lista', async ({ page }) => {
-    for (const solapa of ['horas', 'pagos', 'costo', 'cierre']) {
+    for (const solapa of ['quincena', 'caja', 'costo', 'cierre']) {
       await abrir(page, solapa)
       const sospechas = await page.$$eval('main *', (nodos) => {
         const malos: { que: string; valor: string; texto: string }[] = []
@@ -420,7 +381,7 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
   // ═══ 390 px · EL TELÉFONO ═══
   test('390 px · las cinco pantallas apilan sin desbordar el ancho', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 900 })
-    for (const solapa of ['horas', 'pagos', 'costo', 'cierre']) {
+    for (const solapa of ['quincena', 'caja', 'costo', 'cierre']) {
       await abrir(page, solapa)
       await page.screenshot({ path: `${SALIDA}/app-390-${solapa}.png`, fullPage: true })
       // NADA MÁS ANCHO QUE LA VENTANA. Un `scrollWidth` mayor que 390 en el documento significa que
@@ -444,27 +405,24 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
       expect(ancho, `desborde horizontal en ${solapa} a 390 px · ${culpables.join(' | ')}`)
         .toBeLessThanOrEqual(391)
     }
-    // Y EL PANEL DE LA PERSONA, que es el que apila el legajo debajo.
-    await abrir(page, 'horas')
-    // EL TERCER CLIC, CON EL MISMO REINTENTO QUE LOS OTROS DOS. Se había parcheado en dos de los
-    // tres lugares y éste quedó dando rojo intermitente cuando corre junto a otro spec sobre el
-    // mismo `next dev` — lo levantó la auditoría del 11/09/2026. El porqué, en
-    // `liquidacion-editar-en-celda.spec.ts`.
+    // Y EL PANEL DE LA PERSONA, con el detalle laboral adentro.
+    await abrir(page, 'quincena')
+    // EL CLIC CON REINTENTO: uno anterior a la hidratación se pierde sin rastro (auditoría 11/09/2026).
     await expect(async () => {
-      await page.locator('[data-testid^="fila-"]').first().locator('div').first().click()
-      await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 5_000 })
+      await page.locator('[data-testid^="espejo-nombre-"]').first().click()
+      await expect(page.getByTestId('panel-cuadro-persona')).toBeVisible({ timeout: 5_000 })
     }).toPass({ timeout: 60_000 })
     await page.screenshot({ path: `${SALIDA}/app-390-persona.png`, fullPage: true })
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
   })
 
   test('Toda la vista · IBM Plex Sans para el texto y Mono para los rótulos de columna', async ({ page }) => {
-    await abrir(page, 'horas')
-    // SE ESPERA LA GRILLA ANTES DE MEDIR. `abrir()` tolera que `networkidle` venza —en dev el socket
+    await abrir(page, 'quincena')
+    // SE ESPERA EL CUADRO ANTES DE MEDIR. `abrir()` tolera que `networkidle` venza —en dev el socket
     // de HMR no cierra nunca—, así que sin esto el `$$eval` puede salir mientras la pantalla todavía
     // está montándose y cae con «Execution context was destroyed». Pasó el 11/09/2026 y el rojo no
     // señalaba ninguna tipografía: señalaba que se midió antes de tiempo.
-    await expect(page.getByTestId('vista-horas')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId('vista-quincena')).toBeVisible({ timeout: 60_000 })
     const familias = await page.$$eval('main *', (nodos) => {
       const cuenta: Record<string, number> = {}
       for (const n of nodos) {

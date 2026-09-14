@@ -30,6 +30,7 @@
 
 import type { GrupoLiquidacion, LineaLiquidada } from './liquidacionQuincena.ts'
 import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
+import { sueldoBlancoNegro, type EntradaDeBlanco, type SueldoBlancoNegro } from './sueldoBlancoNegro.ts'
 
 /** Las celdas que se pueden pisar a mano. El nombre NO está: es la única que el dueño dejó afuera. */
 export const CAMPOS_EDITABLES = [
@@ -41,6 +42,20 @@ export type CampoEditable = (typeof CAMPOS_EDITABLES)[number]
 /** Lo escrito a mano para una línea. Clave ausente o `null` = sin override. */
 export type OverridesDeLinea = Partial<Record<CampoEditable, number | null>>
 
+/**
+ * LO QUE LA PLANILLA DICE DE LAS HORAS Y EL COBRA DE UN OBRERO, cuando ya no manda.
+ *
+ * `difiere` = las horas o el cobra de JORNALES no son los del cuadro. La pantalla pone la marca sólo
+ * entonces, con «JORNALES: 75 h · $371.250» en el `title`.
+ */
+export interface ReferenciaDeJornales {
+  horas: number | null
+  cobra: number | null
+  porBanco: number | null
+  enEfectivo: number | null
+  difiere: boolean
+}
+
 export interface LineaConOverrides extends LineaLiquidada {
   /** Qué celdas de esta fila las escribió una persona. La pantalla las marca. */
   manual: Record<CampoEditable, boolean>
@@ -49,16 +64,24 @@ export interface LineaConOverrides extends LineaLiquidada {
    *
    *   manual     alguien la escribió en la app (`*_manual` no nulo). GANA SIEMPRE.
    *   jornales   la escribió el dueño en la planilla y la trajo el espejo.
-   *   calculado  la cuenta de la app sobre `nomina_adelanto` / `nomina_recibo_neto` + extracto.
+   *   calculado  la cuenta de la app sobre `registros_hh`, `nomina_adelanto`, `nomina_recibo_neto` + extracto.
    *
-   * ═══ POR QUÉ JORNALES LE GANA A LO CALCULADO ═══
+   * ═══ POR QUÉ JORNALES LE GANA A LO CALCULADO EN LA PLATA ENTREGADA ═══
    *
    * Dueño, 11/09/2026: *«todo lo referente a adelantos de plata no está»*. La planilla es donde él
    * decide los adelantos, y el derivado es una inferencia del OS sobre movimientos bancarios. Entre
-   * la decisión de quien paga y la inferencia de quien mira, manda la decisión — la misma regla que
-   * «edición manual = verdad definitiva», un escalón más abajo.
+   * la decisión de quien paga y la inferencia de quien mira, manda la decisión.
    *
-   * ═══ Y POR QUÉ LO MANUAL LE GANA A JORNALES ═══
+   * ═══ Y POR QUÉ NO LE GANA EN EL COBRA DE UN OBRERO (14/09/2026) ═══
+   *
+   * *«esta mal las hs q considera liq hs, parece q no estan leyendo del mismo cuadro de hs en
+   * supabase»*. El cobra de la planilla es SUS horas × $/h, y la planilla va atrasada respecto de la
+   * app: Quiroga Alexander, 01/09, 88 h en las celdas (el 11/09 corregido a mano en la web) y $371.250
+   * = 75 h en JORNALES. La regla vigente del dueño es «respetar lo que manda app.ecsas.com.ar». Por eso
+   * en obreros COBRA sale de las horas del cuadro y EN EFECTIVO de la resta; la planilla queda en
+   * `referenciaJornales`. Oficina y finales no cobran por hora y siguen como estaban.
+   *
+   * ═══ Y POR QUÉ LO MANUAL LE GANA A TODO ═══
    *
    * Porque lo manual es MÁS NUEVO por definición: es lo que alguien corrigió mirando esta pantalla,
    * ya sabiendo lo que dice la planilla. Si JORNALES pisara, la corrección desaparecería en la
@@ -70,12 +93,23 @@ export interface LineaConOverrides extends LineaLiquidada {
    * esconderla haría que un giro que el extracto ve y la planilla no —o al revés— desapareciera.
    */
   discrepancia: Partial<Record<CampoEditable, { jornales: number; calculado: number }>>
+  /** Obreros: lo que la planilla dice de horas, cobra, banco y efectivo, sin mandar. `null` sin espejo. */
+  referenciaJornales: ReferenciaDeJornales | null
+  /**
+   * BLANCO + NEGRO (dueño, 14/09/2026). `null` fuera del modelo: Oficina, finales, quincena cerrada, o
+   * un llamador que no le pasó la entrada del blanco. Con modelo, COBRA = `sueldo.total` y POR BANCO =
+   * `sueldo.neto`, salvo lo escrito a mano.
+   */
+  sueldo: SueldoBlancoNegro | null
+  /** Hay $/h y horas pero el blanco no tiene neto: el total no se puede afirmar. No es «sin tarifa». */
+  sinNeto: boolean
 }
 
 export type OrigenDeCelda = 'calculado' | 'jornales' | 'manual'
 
 /** Lo que el espejo del bloque de JORNALES dice de esta persona. `null` = la planilla no lo dice. */
 export interface CadenaDeJornales {
+  horas?: number | null
   cobra?: number | null
   adelanto?: number | null
   yaTransferido?: number | null
@@ -96,38 +130,45 @@ const TODO_CALCULADO: Record<CampoEditable, OrigenDeCelda> = {
 }
 
 /**
- * LAS CELDAS QUE JORNALES PUEDE APORTAR. `horas` y `total` NO están, y no es un olvido:
+ * LAS CELDAS QUE JORNALES PUEDE APORTAR, POR CUADRO. `horas` y `total` no están en ninguno:
  *
- *   HORAS  las de la app salen de `registros_hh` día por día, y el cotejo de la vista «Quincena»
- *          existe justamente para comparar las dos. Si JORNALES pisara las horas, el chip compararía
- *          la planilla contra la planilla y diría «coincide» siempre.
- *   TOTAL  es POR BANCO + EN EFECTIVO. Traerlo de la planilla dejaría una fila que no cierra
- *          consigo misma el día que uno de los dos sumandos venga de otro lado.
+ *   HORAS  salen de `registros_hh` día por día; son las celdas del cuadro.
+ *   TOTAL  es POR BANCO + EN EFECTIVO. Traerlo de la planilla dejaría una fila que no cierra.
+ *
+ * En OBREROS tampoco COBRA ni EN EFECTIVO (dueño, 14/09/2026): cobra = horas del cuadro × $/h, y el
+ * efectivo es la resta que hace cerrar la fila con ese cobra. Adelanto, ya transferido y por banco
+ * siguen con la precedencia manual > JORNALES > calculado.
  */
-const DE_JORNALES = ['cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo'] as const
+const DE_JORNALES_OBREROS = ['adelanto', 'yaTransferido', 'porBanco'] as const
+const DE_JORNALES_OTROS = ['cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo'] as const
+/**
+ * CON BLANCO + NEGRO, JORNALES TAMPOCO MANDA EL BANCO: por banco es el neto del recibo (dueño,
+ * 14/09/2026). La planilla queda en `referenciaJornales` con su cobra, banco y efectivo.
+ */
+const DE_JORNALES_MODELO = ['adelanto', 'yaTransferido'] as const
 
 /**
  * LA LÍNEA CALCULADA, CON LO ESCRITO A MANO ENCIMA Y LA CADENA REHECHA.
  *
- * `grupo` importa en un solo punto: COBRA se recalcula desde las horas SÓLO en obreros. Oficina
- * cobra un neto mensual y una liquidación final es la mitad blanca por dos — multiplicar sus horas
- * por una tarifa que no existe daría `null` y borraría el importe correcto de la pantalla.
+ * `grupo` importa en dos puntos: COBRA se recalcula desde las horas SÓLO en obreros (Oficina cobra un
+ * neto mensual y una final es la mitad blanca por dos), y sólo en obreros JORNALES deja de mandar
+ * sobre COBRA y EN EFECTIVO.
  */
 export function aplicarOverrides(
   base: LineaLiquidada, ov: OverridesDeLinea, grupo: GrupoLiquidacion,
   jornales: CadenaDeJornales | null = null,
+  /** La entrada del blanco. Sin ella la línea sigue el modelo anterior (horas × $/h). */
+  blanco: EntradaDeBlanco | null = null,
 ): LineaConOverrides {
   const manual = { ...SIN_MARCAS }
   const origen = { ...TODO_CALCULADO }
   const discrepancia: LineaConOverrides['discrepancia'] = {}
+  const conModelo = blanco != null && grupo === 'obreros'
+  const deJornales: readonly string[] = conModelo
+    ? DE_JORNALES_MODELO
+    : (grupo === 'obreros' ? DE_JORNALES_OBREROS : DE_JORNALES_OTROS)
 
-  /**
-   * LA PRECEDENCIA, EN UNA SOLA FUNCIÓN: manual > JORNALES > calculado.
-   *
-   * `calculado` llega como función y no como valor porque en varios eslabones depende de los de
-   * arriba, que a esta altura ya se resolvieron. Evaluarlo siempre costaría nada; pasarlo perezoso
-   * deja que el llamador escriba la cadena en el orden en que se lee.
-   */
+  /** LA PRECEDENCIA, EN UNA SOLA FUNCIÓN: manual > JORNALES (si el cuadro lo admite) > calculado. */
   const resolver = (campo: CampoEditable, calculado: number | null): number | null => {
     const v = ov[campo]
     if (v != null && Number.isFinite(v)) {
@@ -135,21 +176,21 @@ export function aplicarOverrides(
       origen[campo] = 'manual'
       return redondear2(v)
     }
-    if (!jornales || !(DE_JORNALES as readonly string[]).includes(campo)) return calculado
-    const j = jornales[campo as (typeof DE_JORNALES)[number]]
+    if (!jornales || !deJornales.includes(campo)) return calculado
+    const j = jornales[campo as keyof CadenaDeJornales]
     // NULL NO ES CERO, TAMPOCO ACÁ. Una columna que la planilla no rotula viaja NULL y no puede
     // borrar lo que la app calculó: «no hay columna» y «no le dieron nada» son cosas distintas.
     if (j == null || !Number.isFinite(j)) return calculado
     const jr = redondear2(j)
     origen[campo] = 'jornales'
-    // LA DIFERENCIA CONTRA EL DERIVADO SE DICE. El extracto puede ver un giro que la planilla no
-    // tiene, o al revés: gana JORNALES y la pantalla publica las dos cifras en el `title`.
+    // LA DIFERENCIA CONTRA EL DERIVADO SE DICE: gana JORNALES y la pantalla publica las dos cifras.
     if (calculado != null && redondear2(calculado) !== jr) {
       discrepancia[campo] = { jornales: jr, calculado: redondear2(calculado) }
     }
     return jr
   }
-  const puesto = (campo: CampoEditable): number | null => {
+  /** Horas y total no tienen fuente en JORNALES: o los escribió alguien, o se calculan. */
+  const puesto = (campo: 'horas' | 'total'): number | null => {
     const v = ov[campo]
     if (v == null || !Number.isFinite(v)) return null
     manual[campo] = true
@@ -158,52 +199,71 @@ export function aplicarOverrides(
   }
 
   const horas = puesto('horas') ?? base.horas
-  const cobraCalc = manual.horas && grupo === 'obreros'
-    ? (base.valorHora == null || horas == null ? null : redondear2(horas * base.valorHora))
-    : base.cobra
+  // UNAS HORAS ESCRITAS A MANO SON LAS QUE SE PAGAN: no traen extras aparte que reconstruir.
+  const horasEquivalentes = manual.horas ? horas : base.horasEquivalentes
+  // EL MODELO SE CALCULA SOBRE LAS HORAS QUE QUEDARON (manuales o de la app) Y EL $/H NEGRO VIGENTE.
+  const sueldo = conModelo ? sueldoBlancoNegro({ ...blanco!, horas, horasEquivalentes, valorHoraNegro: base.valorHora }) : null
+  const cobraCalc = sueldo
+    ? sueldo.total
+    : manual.horas && grupo === 'obreros'
+      ? (base.valorHora == null || horas == null ? null : redondear2(horas * base.valorHora))
+      : base.cobra
   const cobra = resolver('cobra', cobraCalc)
   const adelanto = resolver('adelanto', base.adelanto) ?? 0
   const yaTransferido = resolver('yaTransferido', base.yaTransferido) ?? 0
-  const porBanco = resolver('porBanco', base.porBanco) ?? 0
-  // LA CADENA SE REHACE SOBRE LO QUE QUEDÓ ARRIBA, venga de donde venga (R5). Un adelanto de
-  // JORNALES que no bajara EN EFECTIVO dejaría una fila que no cierra consigo misma — y el número
-  // que el dueño mira para armar el sobre es justamente ése.
+  // POR BANCO = NETO. Sin neto el banco no tiene cifra: 0 acá, y el total `null` saca la fila del pie.
+  const porBanco = resolver('porBanco', sueldo ? (sueldo.neto ?? 0) : base.porBanco) ?? 0
+  // LA CADENA SE REHACE SOBRE LO QUE QUEDÓ ARRIBA, venga de donde venga (R5).
   const enEfectivoCalc = cobra == null
     ? null
     : redondear2(cobra - adelanto - yaTransferido - porBanco)
   const enEfectivo = resolver('enEfectivo', enEfectivoCalc)
   const totalCalc = enEfectivo == null ? null : redondear2(porBanco + enEfectivo)
-  const total = puesto('total') ?? totalCalc
-  // EL ACUERDO 50/50 SE REHACE SOBRE EL COBRA FINAL, no sobre el calculado: si alguien pisó COBRA a
-  // mano, las dos mitades que se muestran tienen que ser mitades de LO QUE SE VA A PAGAR.
+  const total = (ov.total != null && Number.isFinite(ov.total) ? puesto('total') : null) ?? totalCalc
+  // EL ACUERDO 50/50 SE REHACE SOBRE EL COBRA FINAL: las mitades son de LO QUE SE VA A PAGAR.
   const acuerdo = repartoDelAcuerdo(cobra, base.modalidad)
 
   return {
     ...base,
-    horas,
-    cobra,
-    adelanto,
-    yaTransferido,
-    porBanco,
-    enEfectivo,
-    total,
+    horas, horasEquivalentes, extras: manual.horas ? [] : base.extras,
+    cobra, adelanto, yaTransferido, porBanco, enEfectivo, total,
     blancoAcuerdo: acuerdo.blanco,
     efectivoAcuerdo: acuerdo.efectivo,
-    // PISAR COBRA A MANO RESUELVE «SIN TARIFA». La fila deja de estar pendiente porque alguien
-    // decidió el importe; seguir diciendo «sin tarifa» mandaría a buscar una tarifa que ya no
-    // hace falta para pagar esta quincena.
     // PISAR COBRA RESUELVE «SIN TARIFA», venga de la app o de la planilla: en los dos casos alguien
     // decidió el importe y no hace falta buscar una tarifa para pagar esta quincena.
     sinTarifa: base.sinTarifa && origen.cobra === 'calculado',
     manual,
     origen,
     discrepancia,
+    referenciaJornales: grupo === 'obreros' ? referenciaDe(jornales, horas, cobra, conModelo) : null,
+    sueldo,
+    sinNeto: sueldo != null && sueldo.neto == null && !base.sinTarifa && origen.cobra === 'calculado',
   }
 }
 
-/** Ninguna celda pisada: la fila calculada, con las marcas en falso. Para cuadros sin líneas guardadas. */
+/**
+ * Lo que la planilla dice de un obrero, y si difiere del cuadro. Con blanco + negro sólo se comparan
+ * las HORAS: el cobra de la planilla es horas × $/h, otro concepto que el neto + negro, y una marca que
+ * difiere siempre deja de leerse.
+ */
+function referenciaDe(
+  j: CadenaDeJornales | null, horas: number | null, cobra: number | null, conModelo: boolean,
+): ReferenciaDeJornales | null {
+  if (!j) return null
+  const num = (v: number | null | undefined): number | null =>
+    v == null || !Number.isFinite(v) ? null : redondear2(v)
+  const r = { horas: num(j.horas), cobra: num(j.cobra), porBanco: num(j.porBanco), enEfectivo: num(j.enEfectivo) }
+  if (r.horas == null && r.cobra == null && r.enEfectivo == null && r.porBanco == null) return null
+  const distinto = (a: number | null, b: number | null) => a != null && b != null && a !== redondear2(b)
+  return { ...r, difiere: distinto(r.horas, horas) || (!conModelo && distinto(r.cobra, cobra)) }
+}
+
+/** Ninguna celda pisada: la fila calculada, con las marcas en falso. Para cuadros cerrados o sin líneas guardadas. */
 export function sinOverrides(base: LineaLiquidada): LineaConOverrides {
-  return { ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {} }
+  return {
+    ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
+    referenciaJornales: null, sueldo: null, sinNeto: false,
+  }
 }
 
 /** Nombre de columna en `liquidacion_linea` de cada celda editable. */

@@ -20,9 +20,12 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  exponerAlPiso, resumenDeExposicion,
+  exponerAlPiso, resumenDeExposicion, valorHoraAComparar,
   type FilaEscala, type LineaExposicion, type PersonaExpuesta, type ResumenExposicion,
 } from './exposicionConvenio.ts'
+import { leerRecibosDeSueldo } from './recibosDeSueldoLineaService.ts'
+import { ultimoReciboHasta, type ReciboDeSueldo } from './sueldoBlancoNegro.ts'
+import { periodoDeRecibo } from './liquidacionCuadros.ts'
 import { horasEsperadasDeQuincena } from './liquidacionQuincena.ts'
 import { tarifaVigenteAl, type TarifaVigente } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
@@ -52,6 +55,13 @@ export interface ExposicionDeLaQuincena {
    */
   tarifasPorPersona: Record<string, TarifaVigente[]>
   escalas: FilaEscala[]
+  /**
+   * LAS LÍNEAS DE RECIBO DE SUELDO, leídas una vez. Acá comparan el $/h del recibo contra el piso; la
+   * liquidación las reusa para el blanco y la mediana del neto estimado.
+   */
+  recibos: ReciboDeSueldo[]
+  /** `false` mientras `recibo_sueldo_linea` no exista. */
+  hayRecibosDeSueldo: boolean
   errores: { que: string; error: string }[]
 }
 
@@ -61,6 +71,7 @@ const sinTabla = (e: { code?: string; message: string }): boolean =>
 interface FilaLegajo {
   id: string
   nombre_completo: string
+  cuil: string | null
   convenio_colectivo: string | null
   categoria: string | null
   en_la_empresa: boolean | null
@@ -70,9 +81,9 @@ interface FilaLegajo {
 export async function getExposicionDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<ExposicionDeLaQuincena> {
-  const [legajo, tarifas, escala, cct] = await Promise.all([
+  const [legajo, tarifas, escala, cct, recibos] = await Promise.all([
     supabase.from('persona_legajo')
-      .select('id, nombre_completo, convenio_colectivo, categoria, en_la_empresa'),
+      .select('id, nombre_completo, cuil, convenio_colectivo, categoria, en_la_empresa'),
     supabase.from('persona_tarifa')
       .select('persona_id, desde, valor_hora, neto_mensual, origen').lte('desde', q.hasta),
     supabase.from('convenio_escala')
@@ -82,6 +93,8 @@ export async function getExposicionDeLaQuincena(
       .select('categoria, basico_hora, vigencia_desde, zona, cct, fuente')
       .eq('zona', 'A').lte('vigencia_desde', q.hasta)
       .order('vigencia_desde', { ascending: false }).limit(40),
+    // EL $/H DEL RECIBO ES EL QUE SE COMPARA CONTRA EL PISO (coordinador, 14/09/2026).
+    leerRecibosDeSueldo(supabase),
   ])
 
   const errores: { que: string; error: string }[] = []
@@ -99,6 +112,8 @@ export async function getExposicionDeLaQuincena(
   anotar('las retribuciones', tarifas.error)
   anotar('la escala de los convenios', escala.error)
   anotar('la escala del CCT que ya tiene el OS', cct.error)
+  // SIN LA TABLA NO HAY ERROR (`leerRecibosDeSueldo` lo resuelve); cualquier otro se dice.
+  anotar('los recibos de sueldo (blanco)', recibos.error ? { message: recibos.error } : null)
 
   const escalas: FilaEscala[] = ((escala.data ?? []) as {
     convenio: string; categoria: string; desde: string; valor_hora: number | string; fuente: string
@@ -116,7 +131,7 @@ export async function getExposicionDeLaQuincena(
       (legajo.data ?? []) as { nombre_completo?: string | null; email?: string | null }[],
       (r) => ({ nombre: r.nombre_completo, email: r.email }),
     ),
-    tarifas.data, q,
+    tarifas.data, q, recibos.filas,
   )
   const lineas = personas
     .map((p) => exponerAlPiso(p, escalas, q.hasta, horasEsperadas))
@@ -132,6 +147,8 @@ export async function getExposicionDeLaQuincena(
     sugerencia: sugerenciaDeEscala(cct.data),
     tarifasPorPersona: tarifasPorPersona(tarifas.data),
     escalas,
+    recibos: recibos.filas,
+    hayRecibosDeSueldo: recibos.hay,
     errores,
   }
 }
@@ -160,10 +177,14 @@ const ordenarPorUrgencia = (a: LineaExposicion, b: LineaExposicion): number => {
   return a.nombre.localeCompare(b.nombre, 'es')
 }
 
-/** El plantel vigente con su $/h de bolsillo. Los dados de baja no se liquidan y no se exponen. */
+/**
+ * El plantel vigente con el $/h que se compara: el de categoría de su último recibo quincenal hasta esta
+ * quincena, o el vigente de `persona_tarifa` si no tiene recibo. Los dados de baja no se exponen.
+ */
 function personasDelPlantel(
-  legajo: unknown, tarifas: unknown, q: Quincena,
+  legajo: unknown, tarifas: unknown, q: Quincena, recibos: readonly ReciboDeSueldo[],
 ): PersonaExpuesta[] {
+  const periodo = periodoDeRecibo(q)
   const filas = ((legajo ?? []) as FilaLegajo[]).filter((p) => p.en_la_empresa !== false)
   const todas = (tarifas ?? []) as {
     persona_id: string; desde: string; valor_hora: number | null; neto_mensual: number | null; origen: string
@@ -177,13 +198,16 @@ function personasDelPlantel(
       })),
       q.hasta,
     )
+    const recibo = ultimoReciboHasta(recibos, p.id, p.cuil ?? null, periodo)
+    const aComparar = valorHoraAComparar(recibo?.valorHora ?? null, vigente?.valorHora ?? null)
     return {
       personaId: p.id,
       nombre: p.nombre_completo,
       convenio: p.convenio_colectivo,
       categoria: p.categoria,
-      valorHora: vigente?.valorHora ?? null,
-      origenTarifa: vigente?.origen ?? null,
+      valorHora: aComparar.valorHora,
+      origenTarifa: aComparar.origen === 'recibo' ? `recibo ${recibo?.periodo}` : (vigente?.origen ?? null),
+      origenValorHora: aComparar.origen,
     }
   })
 }

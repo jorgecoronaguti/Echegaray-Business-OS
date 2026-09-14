@@ -73,15 +73,17 @@ function datosDeRosales(): DatosDelEspejo {
   }
 }
 
-test('la jornada automática de Rosales (11/09, 8 h) se ve aparte y no entra en las horas de la fila', () => {
+// CAMBIÓ EL 14/09/2026 (dueño: los días completados por la app CUENTAN EN LAS DOS PANTALLAS). Antes este
+// test afirmaba que la jornada automática de Rosales se veía aparte y no entraba en las horas; ahora
+// afirma lo contrario, y la invariante con «Horas» está en `horasIgualesEnLasDosPantallas.test.ts`.
+test('la jornada completada por la app (Rosales, 11/09, 8 h) entra en las horas de la fila y se ve con su número', () => {
   const r = filasDelEspejo(datosDeRosales()).find((f) => f.personaId === 'r')
   assert.ok(r)
-  assert.equal(r.horasPorTipo.normales, 62)
-  assert.equal(r.horasPorTipo.automaticas, 8)
+  assert.equal(r.horasPorTipo.normales, 70)
   const once = r.celdas.find((c) => c.fecha === '2026-09-11')
   assert.ok(once)
-  assert.notEqual(once.marca, 'horas')
-  assert.equal(once.automatica, 8)
+  assert.equal(once.marca, 'horas')
+  assert.equal(once.horas, 8)
 })
 
 test('el pie cierra: gana − adelantos − ya transferido = le falta pagar = banco + efectivo, y recorta con las filas', () => {

@@ -26,7 +26,7 @@ test('horasPorTipo separa normales, extra 50 y extra 100; ausencia y licencia no
     { tipo_hora: 'ausencia', horas: 9 },
     { tipo_hora: 'desconocido', horas: 4 },
   ])
-  assert.deepEqual(h, { normales: 17.8, extra50: 2, extra100: 3.5, total: 23.3, automaticas: 0 })
+  assert.deepEqual(h, { normales: 17.8, extra50: 2, extra100: 3.5, total: 23.3 })
 })
 
 test('pctDeAumento: un decimal, y null cuando no hay contra qué medir (nunca 0)', () => {
@@ -107,10 +107,10 @@ test('el espejo trae alta, categoría y horas por tipo; el total por tipo recort
   assert.ok(a)
   assert.equal(a.alta, '2024-03-11')
   assert.equal(a.categoria, 'oficial')
-  assert.deepEqual(a.horasPorTipo, { normales: 17, extra50: 2, extra100: 0, total: 19, automaticas: 0 })
+  assert.deepEqual(a.horasPorTipo, { normales: 17, extra50: 2, extra100: 0, total: 19 })
 
-  assert.deepEqual(totalesDelEspejo(filas).horasPorTipo, { normales: 26, extra50: 2, extra100: 4, total: 32, automaticas: 0 })
+  assert.deepEqual(totalesDelEspejo(filas).horasPorTipo, { normales: 26, extra50: 2, extra100: 4, total: 32 })
   // EL DEFECTO: un pie que suma el plantel entero debajo de una sola fila filtrada.
-  assert.deepEqual(totalesDelEspejo([a]).horasPorTipo, { normales: 17, extra50: 2, extra100: 0, total: 19, automaticas: 0 })
-  assert.deepEqual(sumarHorasPorTipo([]), { normales: 0, extra50: 0, extra100: 0, total: 0, automaticas: 0 })
+  assert.deepEqual(totalesDelEspejo([a]).horasPorTipo, { normales: 17, extra50: 2, extra100: 0, total: 19 })
+  assert.deepEqual(sumarHorasPorTipo([]), { normales: 0, extra50: 0, extra100: 0, total: 0 })
 })

@@ -1,7 +1,7 @@
 'use client'
 
-// LAS CELDAS DEL CUADRO DE LA QUINCENA: el día, el importe leído, el importe escribible y la cifra que
-// el dueño busca —cuánto le falta pagar a cada uno y cómo—. Escriben con las acciones que ya existían:
+// LAS CELDAS DEL CUADRO DE LA QUINCENA: el día, el importe leído, el importe escribible, cuánto cobra
+// cada uno en la quincena y cómo se le paga. Escriben con las acciones que ya existían:
 // `guardarHorasDeLaCelda` para el día y `CeldaEditable` para la plata.
 //
 // ═══ SIN CHIP DE PLANILLA (dueño, 14/09/2026) ═══
@@ -14,18 +14,18 @@ import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { CeldaEditable, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
-import { cierreDeLaFila } from '../../../services/cuadroDeJornales'
+import { referenciaDeJornales } from './estadoDelPago'
 import type { CampoEditable, LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
+import { tituloDeExtras } from '../../../services/liquidacionQuincena'
 
 /**
  * LA CELDA DE UN DÍA. Es la que reemplaza al Sheet: se teclea el número y se va.
  *
  *   VACÍA Y EDITABLE    `·` gris. NUNCA un 0: «todavía no lo cargué» y «no trabajó» son dos cosas.
- *   CON HORAS           las horas PAGAS del día (=4+3*1,5 se lee 8,5, como en la planilla).
- *   AUTOMÁTICA          jornada `web:presencia-defecto` que nadie confirmó: «8a» en gris, no se
- *                       paga. Escribir el número la confirma (el registro pasa a tener autor).
+ *   CON HORAS           las horas CARGADAS del día (=4+3*1,5 se lee 7; la plata paga 8,5).
+ *                       También el día que completó la app: cuenta y se paga (dueño, 14/09/2026).
  *   A / L               ausencia o licencia. No se edita en línea.
  *   NO EDITABLE         quincena cerrada, o dos registros ese día: elegir sería adivinar.
  */
@@ -38,20 +38,14 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
   if (celda.marca === 'licencia') {
     return <div title={`${celda.fecha} · licencia`} style={{ textAlign: 'center', color: '#175CD3' }}>L</div>
   }
-  // LA JORNADA AUTOMÁTICA SE VE COMO LO QUE ES PARA EL PAGO: UN DÍA SIN HORAS. Dueño, 14/09/2026:
-  // *«hay dias de cada persona … q dicen 8a 9a no se q es eso, esta mal, corregir»*. Eran las filas
-  // `web:presencia-defecto` del 11/09 y del 14/09, que nadie cargó y no se pagan. El «·» es el mismo
-  // de cualquier día vacío; lo que la app supuso queda en el `title`.
-  const automatica = celda.marca !== 'horas' && celda.automatica != null
-  const tituloAutomatica = automatica
-    ? `${celda.fecha} · sin horas cargadas; la app supone ${nHoras(celda.automatica)} h pero no se pagan hasta que se escriban`
-    : undefined
+  // UN DÍA COMPLETADO POR LA APP SE VE CON SU NÚMERO, COMO CUALQUIER DÍA (dueño, 14/09/2026): cuenta en
+  // «Horas» y se paga en Liquidación (`horasDelDia`). Ya no hay «·» ni aviso de «no se pagan».
   if (!celda.editable) {
     const porque = celda.registros > 1
       ? `${celda.registros} registros ese día: corregilo desde la solapa Horas`
       : 'la quincena está cerrada'
     return (
-      <div title={tituloAutomatica ?? `${celda.fecha} · ${porque}`} style={{
+      <div title={`${celda.fecha} · ${porque}`} style={{
         textAlign: 'center', color: celda.horas == null ? V.lineaFuerte : V.apagado,
       }}>
         {celda.horas == null ? '·' : nHoras(celda.horas)}
@@ -59,10 +53,7 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
     )
   }
   return (
-    <div
-      data-testid={automatica ? `espejo-automatica-${personaId}-${celda.fecha}` : undefined}
-      title={tituloAutomatica}
-      style={{ display: 'flex', justifyContent: 'center' }}>
+    <div style={{ display: 'flex', justifyContent: 'center' }}>
       {/* `w-[56px] sin-spinner`: con 42 px el spinner del navegador se come el dígito. */}
       <InlineEdit
         valor={celda.horas ?? null}
@@ -110,12 +101,14 @@ export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos',
 }
 
 /** Una celda que se escribe. Marco de control para que se vea cuál decide una persona y cuál no. */
-export function Escribible({ campo, fila, quincena, camposEditables, ancho }: {
+export function Escribible({ campo, fila, quincena, camposEditables, ancho, claseCampo = 'w-20' }: {
   campo: CampoEditable
   fila: FilaDelEspejo
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
   ancho: number
+  /** El ancho del campo de adentro. `w-20` corta «$142.748,87» con centavos: el panel pide más. */
+  claseCampo?: string
 }) {
   const valor = fila.linea[campo]
   const soloLectura = fila.cerrada || !camposEditables.includes(campo)
@@ -139,7 +132,7 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho }: {
           quincena={quincena}
           grupo={fila.grupo}
           soloLectura={soloLectura}
-          ancho="w-20"
+          ancho={claseCampo}
           marcaCompacta
         />
       </span>
@@ -148,46 +141,22 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho }: {
 }
 
 /**
- * LO QUE LE FALTA PAGAR A LA PERSONA EN ESTA QUINCENA — la cifra que el dueño no encontraba.
- *
- * Dueño, 14/09/2026: *«no sé cuánto es el total que cobra cada persona»*. Arriba el TOTAL, con peso;
- * abajo cómo se paga: banco (blanco) y efectivo, y «50/50» cuando rige el acuerdo. Si el total no sale
- * de gana − adelanto − ya transferido, o no es banco + efectivo, se pinta en rojo y dice por cuánto.
+ * LA MARCA DE LA CELDA: lo manual se marca siempre; si no, el punto de JORNALES sólo cuando la planilla
+ * dice otra cosa que el cuadro. No manda: el `title` dice qué dice la planilla (dueño, 14/09/2026).
  */
-export function CeldaLeFaltaPagar({ fila }: { fila: FilaDelEspejo }) {
+const marcaCon = (origen: 'calculado' | 'jornales' | 'manual', ref: { titulo: string } | null) =>
+  origen === 'calculado' && ref ? 'jornales' : origen
+
+/**
+ * HORAS: las horas cargadas, el mismo total de «Horas». Si la plata usa horas equivalentes (extras con
+ * recargo) el `title` lo aclara; y la referencia de JORNALES cuando difiere.
+ */
+export function CeldaHorasPagas({ fila }: { fila: FilaDelEspejo }) {
   const l = fila.linea
-  const cierre = cierreDeLaFila(l)
-  if (l.total == null) {
-    return (
-      <div data-testid={`le-falta-pagar-${fila.personaId}`} style={{ textAlign: 'right', color: V.tenue }}
-        title="Sin retribución cargada: no hay total que afirmar.">sin tarifa</div>
-    )
-  }
-  const noCierra = cierre?.cierra === false
-  // Hay acuerdo 50/50 pero el estudio todavía no liquidó: el banco no tiene cifra, no es «todo en efectivo».
-  const sinRecibo = l.porBanco === 0 && l.reciboNeto == null
+  const ref = referenciaDeJornales(l)
+  const titulo = [tituloDeExtras(l), ref?.titulo].filter(Boolean).join(' · ')
   return (
-    <div data-testid={`le-falta-pagar-${fila.personaId}`} style={{ textAlign: 'right', lineHeight: 1.25, overflow: 'hidden' }}
-      title={noCierra
-        ? `No cierra: gana ${pesos(l.cobra)} − adelanto ${pesos(l.adelanto)} − ya transferido ${pesos(l.yaTransferido)} no da ${pesos(l.total)} (diferencia ${pesos(cierre?.diferencia ?? null)}).`
-        : `Gana ${pesos(l.cobra)} − adelanto ${pesos(l.adelanto)} − ya transferido ${pesos(l.yaTransferido)} = banco ${pesos(l.porBanco)} + efectivo ${pesos(l.enEfectivo)}`}>
-      <div style={{ fontSize: '14px', fontWeight: 600, color: noCierra ? V.neg : V.tinta, whiteSpace: 'nowrap' }}>
-        {/* EL ACUERDO VA EN LA LÍNEA DEL TOTAL: en la del reparto se cortaba en «50/5C» a 168 px
-            (captura del 14/09/2026). «50/50» junto a «banco $0» se leía como «todo en efectivo»: sin
-            recibo del estudio el banco todavía no tiene cifra, y se dice. */}
-        {l.blancoAcuerdo != null && (
-          <span data-testid={`acuerdo-${fila.personaId}`}
-            style={{ fontSize: '10.5px', fontWeight: 400, color: V.apagado, marginRight: 8 }}
-            title={`Acuerdo 50/50: banco ${pesos(l.blancoAcuerdo)} · efectivo ${pesos(l.efectivoAcuerdo)}`
-              + (sinRecibo ? '. Todavía no hay recibo del estudio: el banco figura en $0 hasta que llegue.' : '')}>
-            {`50/50${sinRecibo ? ' sin recibo' : ''}`}
-          </span>
-        )}
-        {pesos(l.total)}<MarcaDeOrigen origen={l.origen.total} compacta />
-      </div>
-      <div style={{ fontSize: '11px', color: V.apagado, whiteSpace: 'nowrap' }}>
-        {`banco ${pesos(l.porBanco)} · efvo ${pesos(l.enEfectivo)}`}
-      </div>
-    </div>
+    <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
+      origen={marcaCon(l.origen.horas, ref)} titulo={titulo || undefined} />
   )
 }

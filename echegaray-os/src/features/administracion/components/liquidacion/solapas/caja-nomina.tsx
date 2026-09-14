@@ -3,63 +3,54 @@ import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { alicuotasVigentes, multiplicadorDeCosto, proyectarQuincena } from '../../../services/costoHora'
 import { getAlicuotas, getJornalesDelSheet, getPersonasProyectables, getValorHoraVigente } from '../../../services/costoLecturas'
-import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
-import { horasEsperadasDeQuincena, totalesDeCuadro } from '../../../services/liquidacionQuincena'
-import { correrQuincena, rotuloQuincena, type Quincena } from '../../../services/quincena'
+import { horasEsperadasDeQuincena } from '../../../services/liquidacionQuincena'
+import { leerCuadroDeLaQuincena } from '../../../services/cuadroDeLaQuincenaService'
+import { totalesDelEspejo } from '../../../services/espejoDeJornales'
+import { proyeccionDeQuincena } from '../../../services/proyeccionDeMasa'
+import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
+import { horas as nHoras, pesos } from '../formato'
 import { ALTO_LIQ } from './tabla'
+import type { PropsDeSolapa } from './index'
 
-// PANTALLA 9 · CAJA DE NÓMINA — cuánto efectivo hay que tener el viernes.
+// «CAJA Y PROYECCIÓN» — cuánta plata sale esta quincena, si el Flujo de Caja dice lo mismo, y cuánta
+// sale en las dos que vienen.
 //
-// ═══ EL NÚMERO DE HOY SALE DE LA MISMA FUENTE QUE EL CUADRO DE PAGOS ═══
+// ═══ EL RENGLÓN DE TOTALES ES EL PIE DE LA QUINCENA, NO OTRA SUMA ═══
 //
-// `EN EFECTIVO` se lee de `getLiquidacionDeLaQuincena`, no de una consulta propia. Dos consultas
-// que calculan «el efectivo de la quincena» son dos definiciones del mismo concepto, y tarde o
-// temprano dan distinto — que es exactamente lo que Realidad Única prohíbe.
+// Dueño, 14/09/2026: datos repetidos en «Más». Esta sección traía la tabla de Pagos entera —las
+// mismas columnas que la fila del cuadro— y banco/efectivo/total tres veces, sumados con
+// `totalesDeCuadro` mientras el pie de la Quincena sumaba con `totalesDelEspejo`. Ahora las filas las
+// arma `leerCuadroDeLaQuincena` y se suman con `totalesDelEspejo`, igual que el pie. La única
+// diferencia con el pie es a propósito: acá no aplican el recorte ni el buscador del cuadro.
 //
-// ═══ LA PROYECCIÓN ES UN PISO Y SE DICE ═══
+// ═══ LA PROYECCIÓN ES UN PISO Y EL AGUINALDO NO SE ESTIMA (§8) ═══
 //
-// Se proyecta con las horas ESPERADAS (9 h de lunes a jueves, 8 el viernes) por el $/h vigente de
-// cada persona en la empresa. No incluye horas extra, no incluye altas futuras y no incluye a
-// quien no tenga tarifa cargada: esos se cuentan aparte en vez de valer cero.
-//
-// ═══ EL AGUINALDO NO SE ESTIMA (§8) ═══
-//
-// Sin la mejor remuneración del semestre en la base, cualquier número sería un invento — y un
-// invento en la caja de nómina se convierte en un cheque que no entra.
+// Horas esperadas por el $/h vigente: sin extras, sin altas futuras, y quien no tiene tarifa se cuenta
+// aparte en vez de valer cero. Sin la mejor remuneración del semestre en la base, un aguinaldo sería
+// un invento en el número que decide cuánta plata se junta.
 
-const pesos = (n: number | null): string =>
-  n == null ? '—' : `$${Math.round(n).toLocaleString('es-AR')}`
-
-export async function SolapaCajaNomina({ quincena }: { quincena: Quincena; hoy?: string }) {
+export async function SolapaCaja({ quincenaPedida, hoy }: PropsDeSolapa) {
+  const quincena = quincenaDe(esFechaISO(quincenaPedida) ? (quincenaPedida as string) : hoy)
   const supabase = await createClient()
-  const [{ alicuotas, errores }, liq, jornales] = await Promise.all([
+  const [{ alicuotas, errores }, cuadro, jornales, { porPersona, error: errTarifa }] = await Promise.all([
     getAlicuotas(supabase),
-    getLiquidacionDeLaQuincena(supabase, quincena),
+    leerCuadroDeLaQuincena(supabase, quincena, hoy),
     getJornalesDelSheet(supabase, quincena),
+    getValorHoraVigente(supabase, quincena.hasta),
   ])
-  const { porPersona, error: errTarifa } = await getValorHoraVigente(supabase, quincena.hasta)
   const { personas, error: errPlantel } = await getPersonasProyectables(supabase, porPersona)
-
   const m = multiplicadorDeCosto(alicuotasVigentes(alicuotas, quincena.hasta), 1)
-  const totales = liq.cuadros.map((c) => totalesDeCuadro(c.lineas))
-  const efectivo = totales.reduce((s, t) => s + t.enEfectivo, 0)
-  const porBanco = totales.reduce((s, t) => s + t.porBanco, 0)
-  const sinTarifaHoy = totales.reduce((s, t) => s + t.sinTarifa, 0)
-
+  const totales = totalesDelEspejo(cuadro.filas)
+  // LA MASA EN CURSO ERA UN ÚNICO DE «HORAS»: lo ya cargado más lo que falta si se cumplen los días.
+  const enCurso = proyeccionDeQuincena(cuadro.grilla, cuadro.datos.personas, hoy)
   const siguientes = [1, 2].map((n) => {
     const q = correrQuincena(quincena, n)
     return { q, p: proyectarQuincena(personas, horasEsperadasDeQuincena(q), m.valor) }
   })
-
-  const fallas = [...errores, ...liq.errores, ...(errTarifa ? [errTarifa] : []), ...(errPlantel ? [errPlantel] : []), ...(jornales.error ? [jornales.error] : [])]
-  const delSheet = jornales.fila
-  const totalPropio = efectivo + porBanco
-  // UN ESPEJO SINCRONIZADO ANTES DE QUE LA QUINCENA EMPEZARA NO PROYECTA ESTA VENTANA, y restarle
-  // el cálculo daría una «diferencia» del tamaño del total entero. Medido el 09/09/2026: la fila
-  // del Sheet para el 1-15 de septiembre trae total 1,04 y `sincronizado_en` del 20/07 — es un
-  // residuo, no un pronóstico. Se muestra igual (con su fecha), pero no se resta.
-  const espejoUtil = delSheet?.sincronizadoEn != null && delSheet.sincronizadoEn >= quincena.desde
-  const difiere = espejoUtil && delSheet?.total != null && Math.abs(delSheet.total - totalPropio) > 1
+  const fallas = [
+    ...errores, ...cuadro.datos.errores, ...cuadro.liquidacion.errores,
+    ...(errTarifa ? [errTarifa] : []), ...(errPlantel ? [errPlantel] : []), ...(jornales.error ? [jornales.error] : []),
+  ]
 
   return (
     <section data-testid="solapa-caja-nomina">
@@ -68,81 +59,135 @@ export async function SolapaCajaNomina({ quincena }: { quincena: Quincena; hoy?:
           <Aviso tono="neg" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
         </div>
       ))}
-
-      <h3 style={titulo}>Caja de nómina</h3>
-      <p style={bajada}>{rotuloQuincena(quincena)} · lo que hay que tener en billetes el día de pago.</p>
-
-      <div style={{ display: 'flex', gap: 44, padding: '4px 0 22px', flexWrap: 'wrap' }}>
-        <Dato testid="efectivo-viernes" rotulo="Efectivo el día de pago" valor={pesos(efectivo || null)}
-          nota={sinTarifaHoy > 0 ? `${sinTarifaHoy} persona(s) sin tarifa no están en este número` : undefined} />
-        <Dato testid="por-banco" rotulo="Por banco" valor={pesos(porBanco || null)} />
-        <Dato testid="total-quincena" rotulo="Total de la quincena" valor={pesos(totalPropio || null)} />
-      </div>
-
-      {/* EL SHEET PROYECTA LA MISMA LÍNEA. Si difieren se muestran las dos con la fecha del espejo:
-          una fuente congelada explica casi todas las diferencias, y sin la fecha se leería como un
-          error del cálculo. */}
-      <h4 style={{ ...titulo, fontSize: '13px' }}>Contra la línea Jornales del Flujo de Caja</h4>
-      {/* A 390 px UNA TABLA NO SE ENCOGE POR DEBAJO DE SU ANCHO MÍNIMO: empuja la página entera y
-          la fila de total queda fuera de pantalla. El scroller la deja rodar dentro de su caja. */}
-      <div className="overflow-x-auto" style={{ marginBottom: 24 }}>
-      <table style={{ ...tabla, minWidth: 420, maxWidth: 720 }}>
-        <tbody>
-          <Renglon testid="cf-os" rotulo="Este módulo (horas cargadas)" valor={pesos(totalPropio || null)} />
-          <Renglon testid="cf-sheet" rotulo={`Sheet · línea Jornales${delSheet ? ` (${delSheet.estado})` : ''}`}
-            valor={delSheet?.total == null ? 'sin espejo' : pesos(delSheet.total)}
-            nota={delSheet?.sincronizadoEn
-              ? `espejo del ${delSheet.sincronizadoEn}${espejoUtil ? '' : ' — anterior a esta quincena: no la proyecta'}`
-              : 'no hay fila del Sheet para esta ventana'} />
-          {difiere && delSheet?.total != null && (
-            <Renglon testid="cf-diferencia" fuerte rotulo="Diferencia" valor={pesos(delSheet.total - totalPropio)}
-              nota="el Sheet completa los días que faltan con la jornada; este módulo sólo muestra lo cargado" />
-          )}
-        </tbody>
-      </table>
-      </div>
-
-      <h4 style={{ ...titulo, fontSize: '13px' }}>Las próximas quincenas · piso proyectado</h4>
-      <div className="overflow-x-auto">
-      <table style={{ ...tabla, minWidth: 560, maxWidth: 900 }}>
-        <thead>
-          <tr>
-            {['Quincena', 'Personas', 'Horas esperadas', 'Bolsillo', 'Costo estimado'].map((c, i) => (
-              <th key={c} style={{ ...th, textAlign: i === 0 ? 'left' : 'right' }}>{c}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {siguientes.map(({ q, p }) => (
-            <tr key={q.desde} data-testid="fila-proyeccion" style={{ borderBottom: `1px solid ${V.lineaFila}` }}>
-              <td style={{ ...celda, textAlign: 'left' }}>{rotuloQuincena(q)}</td>
-              <td style={celda}>
-                {personas.length - p.sinTarifa}
-                {p.sinTarifa > 0 && (
-                  <span style={{ marginLeft: 6, fontSize: '11.5px', color: V.warn }}>+{p.sinTarifa} sin tarifa</span>
-                )}
-              </td>
-              <td style={celda}>{p.horasEsperadas.toLocaleString('es-AR', { maximumFractionDigits: 1 })}</td>
-              <td style={celda}>{pesos(p.bolsillo || null)}</td>
-              <td style={{ ...celda, fontWeight: 600 }}>{pesos(p.costoReal)}</td>
-            </tr>
-          ))}
-          <tr data-testid="aguinaldo-sin-base">
-            <td style={{ ...celda, textAlign: 'left', color: V.tenue }}>Aguinaldo</td>
-            <td colSpan={4} style={{ ...celda, textAlign: 'left', color: V.tenue, fontSize: '11.5px' }}>
-              sin base — falta la mejor remuneración del semestre en la base. Estimarlo sería un
-              invento en un número que decide cuánta plata se junta.
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      </div>
+      <Totales quincena={quincena} totales={totales}
+        // CON BLANCO + NEGRO EL BANCO ES EL NETO, GIRADO O NO: el aviso «no cuenta como banco» sólo
+        // vale para quien sigue la cadena de siempre (Oficina, finales).
+        sinGiro={cuadro.filas.filter((f) => f.linea.reciboSinGiro && f.linea.sueldo == null).map((f) => f.nombre)}
+        sinActividad={cuadro.liquidacion.sinActividad.length} />
+      <Cotejo total={totales.total} quincena={quincena} delSheet={jornales.fila} />
+      <Proyeccion quincena={quincena} enCurso={enCurso} siguientes={siguientes} personas={personas.length} />
     </section>
   )
 }
 
-const titulo = { fontSize: '15px', fontWeight: 600, color: V.tinta, margin: '0 0 4px' }
-const bajada = { fontSize: '12.5px', color: V.apagado, margin: '0 0 12px', maxWidth: 760 }
+function Totales({ quincena, totales, sinGiro, sinActividad }: {
+  quincena: Quincena
+  totales: { porBanco: number; enEfectivo: number; total: number; sinTarifa: number; sinNeto: number }
+  sinGiro: readonly string[]
+  sinActividad: number
+}) {
+  const aviso = { fontSize: '12px', color: V.warn } as const
+  return (
+    <div data-testid="caja-totales" style={{
+      display: 'flex', alignItems: 'baseline', gap: 24, flexWrap: 'wrap', padding: '4px 0 12px', marginBottom: 22,
+      borderBottom: `1px solid ${V.linea}`, fontSize: '13px', fontVariantNumeric: 'tabular-nums',
+    }}>
+      <span style={{ fontSize: '14.5px', fontWeight: 600, color: V.tinta }}>{rotuloQuincena(quincena)}</span>
+      <Cifra testid="por-banco" rotulo="Por banco (lote)" valor={totales.porBanco} />
+      <Cifra testid="efectivo-viernes" rotulo="En efectivo (sobres)" valor={totales.enEfectivo} />
+      <Cifra testid="total-quincena" rotulo="Banco + efectivo" valor={totales.total} />
+      {totales.sinTarifa > 0 && <span style={aviso}>{`${totales.sinTarifa} sin retribución: no suman`}</span>}
+      {/* EL MISMO CONTEO QUE EL PIE DE LA QUINCENA: sin neto del blanco no hay total que sumar. */}
+      {totales.sinNeto > 0 && <span data-testid="caja-sin-neto" style={aviso}>{`${totales.sinNeto} sin neto: no suman`}</span>}
+      {/* R7 · UN RECIBO SIN GIRO NO CUENTA COMO BANCO: hasta que el lote aparece en el extracto, sale en efectivo. */}
+      {sinGiro.length > 0 && (
+        <span data-testid="pagos-recibo-sin-giro" style={aviso}>
+          {`recibo sin giro, no cuenta como banco: ${sinGiro.join(', ')}`}
+        </span>
+      )}
+      {sinActividad > 0 && (
+        <span data-testid="pagos-sin-actividad" style={{ fontSize: '12px', color: V.apagado }}>{`${sinActividad} sin actividad`}</span>
+      )}
+    </div>
+  )
+}
+
+function Cotejo({ total, quincena, delSheet }: {
+  total: number
+  quincena: Quincena
+  delSheet: Awaited<ReturnType<typeof getJornalesDelSheet>>['fila']
+}) {
+  // UN ESPEJO SINCRONIZADO ANTES DE QUE LA QUINCENA EMPEZARA NO LA PROYECTA: restarlo daría una
+  // «diferencia» del tamaño del total (medido 09/09/2026: total 1,04 sincronizado el 20/07). Se muestra
+  // con su fecha, pero no se resta.
+  const espejoUtil = delSheet?.sincronizadoEn != null && delSheet.sincronizadoEn >= quincena.desde
+  const difiere = espejoUtil && delSheet?.total != null && Math.abs(delSheet.total - total) > 1
+  return (
+    <>
+      <h4 style={titulo}>Contra la línea Jornales del Flujo de Caja</h4>
+      {/* A 390 px la tabla rueda dentro de su caja en vez de empujar la página. */}
+      <div className="overflow-x-auto" style={{ marginBottom: 24 }}>
+        <table style={{ ...tabla, minWidth: 420, maxWidth: 720 }}>
+          <tbody>
+            <Renglon testid="cf-os" rotulo="Este módulo (banco + efectivo)" valor={pesos(total || null)} />
+            <Renglon testid="cf-sheet" rotulo={`Sheet · línea Jornales${delSheet ? ` (${delSheet.estado})` : ''}`}
+              valor={delSheet?.total == null ? 'sin espejo' : pesos(delSheet.total)}
+              nota={delSheet?.sincronizadoEn
+                ? `espejo del ${delSheet.sincronizadoEn}${espejoUtil ? '' : ' — anterior a esta quincena: no la proyecta'}`
+                : 'no hay fila del Sheet para esta ventana'} />
+            {difiere && delSheet?.total != null && (
+              <Renglon testid="cf-diferencia" fuerte rotulo="Diferencia" valor={pesos(delSheet.total - total)}
+                nota="el Sheet completa con la jornada los días que faltan" />
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+function Proyeccion({ quincena, enCurso, siguientes, personas }: {
+  quincena: Quincena
+  enCurso: ReturnType<typeof proyeccionDeQuincena>
+  siguientes: { q: Quincena; p: ReturnType<typeof proyectarQuincena> }[]
+  personas: number
+}) {
+  const sinTarifa = (n: number) => n > 0 && <span style={{ marginLeft: 6, fontSize: '11.5px', color: V.warn }}>+{n} sin tarifa</span>
+  return (
+    <>
+      <h4 style={titulo}>Proyección · piso</h4>
+      <div className="overflow-x-auto">
+        <table style={{ ...tabla, minWidth: 560, maxWidth: 900 }}>
+          <thead>
+            <tr>
+              {['Quincena', 'Personas', 'Horas', 'Bolsillo', 'Costo estimado'].map((c, i) => (
+                <th key={c} style={{ ...th, textAlign: i === 0 ? 'left' : 'right' }}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr data-testid="caja-masa-en-curso" style={{ borderBottom: `1px solid ${V.lineaFila}` }}>
+              <td style={{ ...celda, textAlign: 'left' }}>{`${rotuloQuincena(quincena)} · en curso`}</td>
+              <td style={celda}>{enCurso.personas - enCurso.sinTarifa}{sinTarifa(enCurso.sinTarifa)}</td>
+              <td style={celda}>{nHoras(enCurso.horasProyectadas)}</td>
+              <td style={celda} title={`ya cargado ${pesos(enCurso.masaCargada)} · por cumplir ${pesos(enCurso.masaPorCumplir)}`}>
+                {pesos(enCurso.masaProyectada || null)}
+              </td>
+              <td style={{ ...celda, color: V.tenue }}>—</td>
+            </tr>
+            {siguientes.map(({ q, p }) => (
+              <tr key={q.desde} data-testid="fila-proyeccion" style={{ borderBottom: `1px solid ${V.lineaFila}` }}>
+                <td style={{ ...celda, textAlign: 'left' }}>{rotuloQuincena(q)}</td>
+                <td style={celda}>{personas - p.sinTarifa}{sinTarifa(p.sinTarifa)}</td>
+                <td style={celda}>{nHoras(p.horasEsperadas)}</td>
+                <td style={celda}>{pesos(p.bolsillo || null)}</td>
+                <td style={{ ...celda, fontWeight: 600 }}>{pesos(p.costoReal)}</td>
+              </tr>
+            ))}
+            <tr data-testid="aguinaldo-sin-base">
+              <td style={{ ...celda, textAlign: 'left', color: V.tenue }}>Aguinaldo</td>
+              <td colSpan={4} style={{ ...celda, textAlign: 'left', color: V.tenue, fontSize: '11.5px' }}>
+                sin base: falta la mejor remuneración del semestre
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+const titulo = { fontSize: '13px', fontWeight: 600, color: V.tinta, margin: '0 0 4px' }
 const tabla = { width: '100%', borderCollapse: 'collapse' as const, fontVariantNumeric: 'tabular-nums' as const }
 const th = {
   fontSize: '11px', fontWeight: 600, letterSpacing: '.06em', color: V.tenue, textTransform: 'uppercase' as const,
@@ -151,13 +196,12 @@ const th = {
 }
 const celda = { padding: '0 8px', height: ALTO_LIQ.fila, textAlign: 'right' as const, fontSize: '13px', whiteSpace: 'nowrap' as const }
 
-function Dato({ rotulo, valor, nota, testid }: { rotulo: string; valor: string; nota?: string; testid: string }) {
+function Cifra({ rotulo, valor, testid }: { rotulo: string; valor: number; testid: string }) {
   return (
-    <div data-testid={testid}>
-      <div style={{ fontSize: '11px', letterSpacing: '.06em', color: V.tenue, textTransform: 'uppercase' }}>{rotulo}</div>
-      <div style={{ fontSize: '21px', color: V.tinta, fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>{valor}</div>
-      {nota && <div style={{ fontSize: '11.5px', color: V.warn, marginTop: 2, maxWidth: 320 }}>{nota}</div>}
-    </div>
+    <span data-testid={testid}>
+      <span style={{ color: V.apagado }}>{`${rotulo} `}</span>
+      <strong style={{ color: V.tinta }}>{pesos(valor)}</strong>
+    </span>
   )
 }
 

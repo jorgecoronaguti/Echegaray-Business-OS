@@ -82,10 +82,49 @@ export interface PersonaExpuesta {
   convenio: string | null
   /** El texto del legajo (`personas.categoria`), tal cual. */
   categoria: string | null
-  /** $/h de bolsillo vigente (`persona_tarifa`). `null` = sin retribución cargada. */
+  /**
+   * EL $/H QUE SE COMPARA CONTRA EL PISO. Desde blanco + negro (14/09/2026) es el $/h de categoría del
+   * RECIBO; el vigente de `persona_tarifa` sólo si no hay recibo (`valorHoraAComparar`). `null` = nada.
+   */
   valorHora: number | null
   /** De dónde salió esa tarifa. */
   origenTarifa: string | null
+  /** 'recibo' o 'vigente'. Ausente en llamadores anteriores: se lee como 'vigente'. */
+  origenValorHora?: 'recibo' | 'vigente' | null
+}
+
+/** La comparación de un $/h contra el piso de su categoría. */
+export interface ComparacionConElPiso {
+  bajoElPiso: boolean
+  /** $/h que faltan para llegar al piso (negativo = por encima). */
+  diferenciaHora: number
+  /** Brecha contra el piso en %. Negativa = por debajo. */
+  brechaPct: number
+  valorHora: number
+  piso: number
+}
+
+/**
+ * LA ÚNICA COMPARACIÓN CONTRA EL PISO. La usan Convenios (`exponerAlPiso`) y la marca del cuadro de la
+ * quincena (`marcaDeCategoria`): una segunda cuenta daría dos respuestas a «¿paga bajo el básico?».
+ * `null` cuando falta el $/h o el piso: no se puede comparar, y eso no es «cumple».
+ */
+export function compararConElPiso(valorHora: number | null, piso: number | null): ComparacionConElPiso | null {
+  if (valorHora == null || piso == null || !Number.isFinite(valorHora) || !(piso > 0)) return null
+  const diferenciaHora = redondear2(piso - valorHora)
+  return {
+    bajoElPiso: diferenciaHora > 0, diferenciaHora, valorHora, piso,
+    brechaPct: redondear2(((valorHora - piso) / piso) * 100),
+  }
+}
+
+/** QUÉ $/H SE COMPARA: el del recibo; el vigente sólo sin recibo (coordinador, 14/09/2026). */
+export function valorHoraAComparar(
+  delRecibo: number | null, vigente: number | null,
+): { valorHora: number | null; origen: 'recibo' | 'vigente' | null } {
+  if (delRecibo != null && Number.isFinite(delRecibo)) return { valorHora: delRecibo, origen: 'recibo' }
+  if (vigente != null && Number.isFinite(vigente)) return { valorHora: vigente, origen: 'vigente' }
+  return { valorHora: null, origen: null }
 }
 
 export interface LineaExposicion extends PersonaExpuesta {
@@ -147,15 +186,15 @@ export function exponerAlPiso(
   // EL CONVENIO CON EL QUE SE COMPARÓ, no el del legajo: con el supuesto UOCRA el legajo dice null y el
   // motivo salía «la escala de null no está cargada».
   if (piso == null) return { ...base, porQueNoSeCompara: `sin piso: la escala de ${convenio} no está cargada` }
-  if (p.valorHora == null) return { ...base, porQueNoSeCompara: 'sin retribución cargada' }
+  const c = compararConElPiso(p.valorHora, piso.valorHora)
+  if (c == null) return { ...base, porQueNoSeCompara: 'sin retribución cargada' }
 
-  const diferenciaHora = redondear2(piso.valorHora - p.valorHora)
-  const bajoElPiso = diferenciaHora > 0
+  const { diferenciaHora, bajoElPiso } = c
   return {
     ...base,
     bajoElPiso,
     diferenciaHora,
-    brechaPct: redondear2(((p.valorHora - piso.valorHora) / piso.valorHora) * 100),
+    brechaPct: c.brechaPct,
     // SÓLO SE COTIZA LO QUE FALTA. Al que cobra por encima del piso no se le "devuelve" la
     // diferencia: un negativo acá restaría del total y abarataría el costo de regularizar al resto.
     regularizar: bajoElPiso ? redondear2(diferenciaHora * horasEsperadas) : 0,
