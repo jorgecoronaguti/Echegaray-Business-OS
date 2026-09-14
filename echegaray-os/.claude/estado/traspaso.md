@@ -176,6 +176,11 @@ en días sin JORNALES; la leen las 3 funciones. Verificado como Jorge: Quattropa
 (MO $7,08 M), Pisos Industriales 80 h / Nievas, La Estrella 9.311 sin cambio; ficha en vivo 0,36–0,44 s.
 `hh-por-obra.pg.test.mjs` corregido (miraba el envoltorio de caché; 73dcf610) → 6/6 verde contra prod.
 QA visual de tercero en curso (qa-jefe).
+**~22:50 — CERRADO con firma de tercero:** HH jefe de obra + desglose (qa-jefe FIRMA, escritorio) y
+columna persona fija en celular (49d24dd6, qa-movil FIRMA, 390 px). Personal→Horas FIRMA. Rendimiento
+post-resize FIRMA. Abierto sólo del lado del dueño: horas de jefes 08/08–31/08 · celda 11/06 = 70 h.
+Límites: no probado con rol Jefe de Obra/Campo; `obra_costo_real` (ficha de obra) sigue por J; cartera
+/clientes a 390 px oculta Materiales/MO.
 
 ## 6. PENDIENTES REALES
 
