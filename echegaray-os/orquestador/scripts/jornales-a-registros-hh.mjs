@@ -53,8 +53,10 @@ async function catalogos() {
     query("select persona_id, obra_id, to_char(desde, 'YYYY-MM-DD') desde, to_char(hasta, 'YYYY-MM-DD') hasta, notas from public.obra_asignacion"),
     query('select obra_id, cliente_slug from public.obra_panel where cliente_slug is not null'),
   ])
-  // LAS HECHAS A MANO: las «reconstruidas desde JORNALES» salen de la planilla y no la corrigen.
-  const hechasAMano = asignaciones.rows.filter((a) => !/historial reconstruido desde JORNALES/i.test(a.notas ?? '') && a.desde)
+  // TODAS LAS QUE MUESTRA LA APP (dueño, 14/09/2026: «respetar lo que manda app.ecsas.com.ar»). El
+  // primer corte dejaba afuera las «reconstruidas desde JORNALES» y Rosales quedaba en Mampostería del
+  // 01 al 07/09 cuando la app lo muestra en Quattropani. Sin fecha de inicio no hay día que decidir.
+  const hechasAMano = asignaciones.rows.filter((a) => a.desde)
   return {
     personas: personas.rows,
     asignacionesWeb: hechasAMano,
