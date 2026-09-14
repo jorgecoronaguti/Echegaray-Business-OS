@@ -95,7 +95,8 @@ async function cotejar(leidos) {
 
 async function escribir(filas) {
   const cols = ['persona_id', 'cuil', 'periodo', 'categoria', 'valor_hora', 'horas_normales', 'horas_feriado',
-    'horas_otras', 'horas_blanco', 'bruto', 'descuentos', 'neto', 'drive_file_id', 'fuente']
+    'horas_otras', 'horas_blanco', 'bruto', 'descuentos', 'neto', 'drive_file_id', 'fuente',
+    'contribuciones_empleador', 'costo_total_empleador', 'fondo_cese', 'art', 'contribucion_uocra']
   await withTx(async (c) => {
     for (const f of filas) {
       await c.query(
@@ -105,15 +106,37 @@ async function escribir(filas) {
     }
   })
   // La evidencia es lo leído en el destino, no el «insert» que no tiró error.
-  const { rows } = await query('select cuil, periodo, neto, horas_blanco from public.recibo_sueldo_linea where fuente = $1', [FUENTE])
+  const { rows } = await query(
+    'select cuil, periodo, neto, horas_blanco, costo_total_empleador from public.recibo_sueldo_linea where fuente = $1', [FUENTE])
   const enBase = new Map(rows.map((x) => [`${x.cuil}|${x.periodo}`, x]))
+  // null en la base tiene que seguir siendo null: un 0 escrito donde el recibo no trae costo es un dato falso.
+  const igual = (base, esperado) => (esperado == null ? base == null : base != null && Math.abs(Number(base) - esperado) <= 0.001)
   const mal = filas.filter((f) => {
     const b = enBase.get(`${f.cuil}|${f.periodo}`)
-    return !b || Math.abs(Number(b.neto) - f.neto) > 0.001 || Math.abs(Number(b.horas_blanco) - f.horas_blanco) > 0.001
+    return !b || !igual(b.neto, f.neto) || !igual(b.horas_blanco, f.horas_blanco) || !igual(b.costo_total_empleador, f.costo_total_empleador)
   })
   console.log(`\nRELECTURA: ${filas.length - mal.length}/${filas.length} filas coinciden en la base`)
   for (const f of mal) console.log(`  NO COINCIDE ${f.cuil} ${f.periodo}`)
   if (mal.length) process.exitCode = 1
+}
+
+/** Cuántos traen costo empleador, cuántos lo cierran y el factor costo total / bruto de la última quincena. */
+function informarCostoEmpleador(leidos, fallidos) {
+  const conCosto = leidos.filter((l) => l.fila.costo_total_empleador != null)
+  const rechazados = fallidos.filter((f) => /costo|contribuci/i.test(f.error))
+  const sinCosto = leidos.filter((l) => l.fila.costo_total_empleador == null)
+  const viejo = sinCosto.filter((l) => l.avisos.some((a) => /Contribuciones Patronales/.test(a))).length
+  console.log(`\nCOSTO EMPLEADOR: ${conCosto.length + rechazados.length} traen la sección · ${conCosto.length} cierran bruto + contribuciones = costo total (±$0,02) · ${rechazados.length} rechazados`)
+  console.log(`  sin costo (null): ${sinCosto.length} — ${viejo} sólo con «Contribuciones Patronales» del formato viejo, ${sinCosto.length - viejo} sin nada`)
+  for (const f of rechazados.slice(0, 5)) console.log(`  RECHAZADO ${f.doc.nombre} → ${f.error}`)
+  const q = conCosto.filter((l) => l.fila.periodo === 'Q2-08/2026' && l.fila.bruto > 0)
+    .map((l) => ({ nombre: l.doc.nombre_completo ?? l.doc.nombre, factor: l.fila.costo_total_empleador / l.fila.bruto }))
+    .sort((a, b) => a.factor - b.factor)
+  if (!q.length) return
+  const f3 = (x) => x.factor.toFixed(3)
+  const med = q.length % 2 ? q[(q.length - 1) / 2].factor : (q[q.length / 2 - 1].factor + q[q.length / 2].factor) / 2
+  console.log(`  factor costo total / bruto Q2-08/2026 (${q.length} personas): mín ${f3(q[0])} (${q[0].nombre}) · mediana ${med.toFixed(3)} · máx ${f3(q.at(-1))} (${q.at(-1).nombre})`)
+  for (const x of q.filter((p) => /ROSALES/.test(p.nombre))) console.log(`  factor ${x.nombre}: ${f3(x)}`)
 }
 
 function informar({ rows, leidos, fallidos, cot, duplicados, avisos }) {
@@ -127,6 +150,7 @@ function informar({ rows, leidos, fallidos, cot, duplicados, avisos }) {
   for (const d of duplicados) console.log(`  ${d}`)
   console.log(`\nAVISOS (${avisos.length}):`)
   for (const a of avisos) console.log(`  ${a}`)
+  informarCostoEmpleador(leidos, fallidos)
   const sinCat = leidos.filter((l) => !l.fila.categoria).length
   const sinVh = leidos.filter((l) => l.fila.valor_hora == null).length
   console.log(`\nSin categoría reconocida: ${sinCat} · sin valor hora (sin 0401): ${sinVh}`)

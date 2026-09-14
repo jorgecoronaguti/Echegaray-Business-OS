@@ -2,6 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parsearRecibo, concepto, cuilValido } from './recibo-sueldo-detalle.mjs'
 
+const SIN_COSTO = { contribuciones_empleador: null, costo_total_empleador: null, fondo_cese: null, art: null, contribucion_uocra: null }
+
 // Texto real de Rosales Q2-08/2026 (drive 1WS_y5W2Y_Tkwx9GMwQfdfCotz-3MC2D2), tal cual lo pasó el dueño.
 const ROSALES_Q2_08 = `8 2026 ROSALES DIEGO JOSE 26 317.400,00 6.348,00 20-35850878-3
 CATEGORÍA LABORAL SECCIÓN MODALIDAD DE CONTRATACION
@@ -65,7 +67,7 @@ test('Rosales Q2-08: el resultado exacto que pidió el dueño', () => {
   assert.deepEqual(r.fila, {
     cuil: '20358508783', periodo: 'Q2-08/2026', categoria: 'OFICIAL', valor_hora: 6348,
     horas_normales: 45, horas_feriado: 5, horas_otras: 0, horas_blanco: 50,
-    bruto: 317400, descuentos: 87159.88, neto: 230240.12,
+    bruto: 317400, descuentos: 87159.88, neto: 230240.12, ...SIN_COSTO,
   })
 })
 
@@ -86,7 +88,7 @@ test('primera quincena del formato duplicado: no suma dos veces la copia', () =>
   assert.deepEqual(r.fila, {
     cuil: '20291086021', periodo: 'Q1-03/2026', categoria: 'OFICIAL', valor_hora: 4679,
     horas_normales: 50, horas_feriado: 0, horas_otras: 0, horas_blanco: 50,
-    bruto: 233950, descuentos: 45105.56, neto: 188844.44,
+    bruto: 233950, descuentos: 45105.56, neto: 188844.44, ...SIN_COSTO,
   })
 })
 
@@ -184,4 +186,121 @@ test('otro concepto horario se suma a horas_otras; una unidad en días no', () =
   assert.equal(r.fila.horas_otras, 3)
   assert.equal(r.fila.horas_blanco, 53)
   assert.deepEqual(r.unidadesNoHorarias, ['2521 SAC PROPORCIONAL 7'])
+})
+
+// ═══ COSTO EMPLEADOR ═══
+
+// Texto real completo de Rosales Q2-08/2026 (1WS_y5W2Y_Tkwx9GMwQfdfCotz-3MC2D2) con la sección de costo
+// empleador, extraído con lineasDeItems. Incluye el cuadro final «Costo total empleador» en minúsculas.
+const ROSALES_Q2_08_COMPLETO = `ECHEGARAY CONSTRUCCIONES S.A.S.
+C.U.I.T.: 30-71630464-3
+8 2026 ROSALES DIEGO JOSE 26 6.348,00 317.400,00 20-35850878-3
+CATEGORÍA LABORAL SECCIÓN MODALIDAD DE CONTRATACION
+OFICIAL INGENIERIA Y PRODUCCION Personal de la Construcción L 22250
+OS SUP IND METALM RA ADMISTRACION CENTRAL, 31/08/2026 SEGUNDA QUINCENA 08/2026
+COSTO TOTAL EMPLEADOR $ 483.734,06
+CONCEPTO UNIDAD BASE MONTO
+5010 CONTRIBUCION JUBILACION $ 33.806,83
+5020 CONTRIBUCION LEY 19032 $ 4.990,98
+5030 CONTRIB ASIGN FAMILIARES $ 14.753,21
+5040 CONTRIBUCION FONDO DE EMPLEO $ 2.950,64
+5050 CONTRIBUCION OBRA SOCIAL $ 16.187,40
+5051 CONTRIBUCION OBRA SOCIAL (Art. 92 ter. LCT) $ 12.302,42
+5150 CONTRIBUCION ANSSAL $ 2.856,60
+5151 CONTRIBUCION ANSSAL (Art. 92 ter. LCT) $ 2.171,02
+5250 CONTRIBUCION PORCENTUAL ART $ 44.150,34
+5400 CONTRIB SEGURO DE VIDA OBLIG $ 424,62
+5485 CONT.FONDO DESEMPLEO UOCRA $ 25.392,00
+COSTO DERIVADO DE CCT
+5480 CONTRIBUCION EMPRESARIA UOCRA $ 6.348,00
+SUB TOTAL CONTRIBUCIONES EMPLEADOR $ 166.334,06
+SUELDO BRUTO $ 317.400,00
+CONCEPTO UNIDAD BASE MONTO
+REMUNERATIVO
+0401 BASICO HS NORMALES 45 $ 6.348,00 $ 285.660,00
+0425 ASISTENCIA PERFECTA (ART. 52 CCT) $ 57.132,00
+0426 AJUSTE COD.0425 (INASIST. Y/O TARD.) $ -57.132,00
+0431 HORAS FERIADO 5 $ 6.348,00 $ 31.740,00
+NO REMUNERATIVO
+DESCUENTOS
+4010 JUBILACION $ 34.914,00
+4020 LEY 19032 $ 9.522,00
+4050 OBRA SOCIAL $ 8.093,70
+4150 ANSSAL $ 1.428,30
+4170 APORTE ADICIONAL OS (Art.92 ter. LCT) $ 6.151,21
+4175 APORTE ADIC ANSSAL (ART. 92 Ter. LCT) $ 1.085,51
+4285 APORTE SOLIDARIO EXT.UOCRA $ 6.348,00
+4287 SEGURO DE VIDA UOCRA $ 19.617,16
+COMPOSICIÓN SALARIAL: Remunerativo: $ 317.400,00 No Remunerativo: $ 0,00 Descuentos: $ 87.159,88
+SUELDO NETO $ 230.240,12
+Detalle de la composición salarial Costo total empleador
+Total Costo Seg. Social $ 86.424,68 Total costo ART $ 44.150,34 Total costo Otros rubros $ 25.392,00`
+
+test('Rosales Q2-08 completo: costo empleador del recibo, y bruto/neto intactos', () => {
+  const r = parsearRecibo(ROSALES_Q2_08_COMPLETO)
+  assert.equal(r.ok, true, r.error)
+  assert.deepEqual(r.fila, {
+    cuil: '20358508783', periodo: 'Q2-08/2026', categoria: 'OFICIAL', valor_hora: 6348,
+    horas_normales: 45, horas_feriado: 5, horas_otras: 0, horas_blanco: 50,
+    bruto: 317400, descuentos: 87159.88, neto: 230240.12,
+    contribuciones_empleador: 166334.06, costo_total_empleador: 483734.06,
+    fondo_cese: 25392, art: 44150.34, contribucion_uocra: 6348,
+  })
+  assert.deepEqual(r.avisos, [])
+})
+
+test('invariante bruto + contribuciones = costo total: tolera $0,02, rechaza más', () => {
+  const dentro = parsearRecibo(ROSALES_Q2_08_COMPLETO.replace('EMPLEADOR $ 483.734,06', 'EMPLEADOR $ 483.734,08'))
+  assert.equal(dentro.ok, true, dentro.error)
+  const fuera = parsearRecibo(ROSALES_Q2_08_COMPLETO.replace('EMPLEADOR $ 483.734,06', 'EMPLEADOR $ 483.734,09'))
+  assert.equal(fuera.ok, false)
+  assert.match(fuera.error, /costo total empleador/)
+})
+
+test('un subtotal que no es la suma del detalle 5xxx: error (lo que haría leer un 4xxx como contribución)', () => {
+  const r = parsearRecibo(ROSALES_Q2_08_COMPLETO.replace('5400 CONTRIB SEGURO DE VIDA OBLIG $ 424,62\n', ''))
+  assert.equal(r.ok, false)
+  assert.match(r.error, /5xxx suman/)
+})
+
+test('sección a medias (costo total sin subtotal): error, no un costo completado', () => {
+  const r = parsearRecibo(ROSALES_Q2_08_COMPLETO.replace(/SUB TOTAL CONTRIBUCIONES EMPLEADOR.*$/m, ''))
+  assert.equal(r.ok, false)
+  assert.match(r.error, /incompleto/)
+})
+
+test('formato viejo: «Contribuciones Patronales» no se toma como costo empleador, y se lee una vez', () => {
+  const r = parsearRecibo(REDONDEO_Q2_05)
+  assert.equal(r.ok, true, r.error)
+  for (const k of Object.keys(SIN_COSTO)) assert.equal(r.fila[k], null, k)
+  assert.equal(r.avisos.length, 1)
+  assert.match(r.avisos[0], /Contribuciones Patronales: 246\.473,94»/)
+})
+
+// Recorte real de Maldonado Q1-01/2026 (1w5EqFMH7esXJ25l9C5YPmDucPuOdCFDW): no trae ninguna contribución.
+const MALDONADO_Q1_01 = `20-35923266-8 20-35923266-8
+CATEGORÍA CATEGORÍA
+OFICIAL ESPECIALIZADO OFICIAL ESPECIALIZADO
+PRIMERA QUINCENA 01/2026 PRIMERA QUINCENA 01/2026
+0401 BASICO HS NORMALES 76 408.348,00
+0401 BASICO HS NORMALES 76 408.348,00
+0425 ASISTENCIA PERFECTA (ART. 52 CCT) 81.669,60 0425 ASISTENCIA PERFECTA (ART. 52 CCT) 81.669,60
+0477 VACACIONES JORNAL 4 107.460,00 0477 VACACIONES JORNAL 4 107.460,00
+0490 BONO EXTRAORDINARIO NR 60.900,00 0490 BONO EXTRAORDINARIO NR 60.900,00
+4010 JUBILACION 65.722,54 4010 JUBILACION 65.722,54
+4020 LEY 19032 17.924,33 4020 LEY 19032 17.924,33
+4050 OBRA SOCIAL 16.788,63 4050 OBRA SOCIAL 16.788,63
+4150 ANSSAL 2.962,70 4150 ANSSAL 2.962,70
+597.477,60 60.900,00
+597.477,60 60.900,00 103.398,20 103.398,20
+LUGAR Y FECHA DE PAGO 554.979,40 554.979,40
+FORMA DE TOTAL NETO → FORMA DE
+5.373,00 6 5.373,00 6`
+
+test('recibo sin la sección: costo empleador null con aviso, nunca 0', () => {
+  const r = parsearRecibo(MALDONADO_Q1_01)
+  assert.equal(r.ok, true, r.error)
+  assert.equal(r.fila.neto, 554979.4)
+  for (const k of Object.keys(SIN_COSTO)) assert.equal(r.fila[k], null, k)
+  assert.deepEqual(r.avisos, ['sin costo empleador: el recibo no trae la sección (queda null)'])
 })
