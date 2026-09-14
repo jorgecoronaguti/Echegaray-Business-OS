@@ -122,7 +122,7 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
               <div style={{ textAlign: 'right' }}>HH</div>
               <div style={{ textAlign: 'right' }}>Gente</div>
               <div style={{ textAlign: 'right' }}>Bolsillo</div>
-              <div style={{ textAlign: 'right' }}>Costo real</div>
+              <div style={{ textAlign: 'right' }}>Costo estimado</div>
               <div style={{ textAlign: 'right' }}>MO presupuestada</div>
               <div style={{ textAlign: 'right' }}>Consumido</div>
             </div>

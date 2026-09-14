@@ -83,7 +83,7 @@ export async function SolapaCostoHora({ quincena, hoy }: { quincena: Quincena; h
         </div>
       ))}
 
-      <h3 style={titulo}>El costo real de una hora</h3>
+      <h3 style={titulo}>El costo estimado de una hora</h3>
       <p style={bajada}>
         El $/h de bolsillo no es lo que cuesta la hora; contra el presupuesto se compara este.
       </p>
@@ -160,7 +160,7 @@ export async function SolapaCostoHora({ quincena, hoy }: { quincena: Quincena; h
             <div data-testid="encabezado-categorias" style={{ ...renglon, height: 32, alignItems: 'end', paddingBottom: 8, borderBottom: `1px solid ${V.linea}`, ...rotuloColumna }}>
               <div>Categoría</div>
               <div style={{ textAlign: 'right' }}>Bolsillo</div>
-              <div style={{ textAlign: 'right' }}>Costo real</div>
+              <div style={{ textAlign: 'right' }}>Costo estimado</div>
               <div style={{ textAlign: 'right' }}>Multiplicador</div>
             </div>
             {escalera.length === 0 && (

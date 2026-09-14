@@ -149,7 +149,7 @@ function Metricas({ fila, habilesTexto, bolsillo, multiplicador }: {
         nota={fila.diasSinMotivo > 0 ? `${fila.diasSinMotivo} sin motivo` : (ausencias > 0 ? 'todas con motivo' : undefined)} />
       <Metrica rotulo="Costo cargado" valor={costo == null ? 'sin base' : pesos(costo)}
         nota={costo == null
-          ? 'faltan las alícuotas del costo real'
+          ? 'faltan las alícuotas del costo estimado'
           // ESTIMADO: el multiplicador de cargas no está validado contra banco (regla de oro 2).
           : `${pesos(bolsillo)} de bolsillo + cargas · estimado`} />
     </div>
