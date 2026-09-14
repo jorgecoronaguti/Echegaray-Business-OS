@@ -13,6 +13,7 @@ import {
   totalDeLaQuincena, totalesPorDia,
 } from '../services/quincenaPorObra'
 import { GrillaAsistenciaObra } from './GrillaAsistenciaObra'
+import { rotuloDeObra } from '@/shared/utils/obra'
 
 // LA SOLAPA «ASISTENCIA» DE PERSONAL — la QUINCENA, por obra.
 //
@@ -202,9 +203,9 @@ async function obrasElegibles(
   supabase: Awaited<ReturnType<typeof createClient>>,
 ): Promise<{ id: string; nombre: string; jornada: number }[]> {
   const { data } = await supabase
-    .from('obra_canonica').select('id, nombre, jornada_horas, estado').order('nombre')
+    .from('obra_canonica').select('id, nombre, codigo, jornada_horas, estado').order('nombre')
   return ((data ?? []) as {
-    id: string; nombre: string; jornada_horas: number | string | null; estado: string | null
+    id: string; nombre: string; codigo: string | null; jornada_horas: number | string | null; estado: string | null
   }[])
     // SÓLO LAS ACTIVAS SE OFRECEN COMO DESTINO. La acción lo rechaza igual —es la puerta— pero un
     // selector que ofrece 40 obras cerradas para que la acción las rebote una por una enseña que la
@@ -212,7 +213,9 @@ async function obrasElegibles(
     .filter((o) => o.estado === 'activa')
     .map((o) => {
       const h = Number(o.jornada_horas)
-      return { id: o.id, nombre: o.nombre, jornada: Number.isFinite(h) && h > 0 ? h : 0 }
+      // «OB-0012 · NOMBRE» desde acá: de esta lista salen el selector de la grilla, la columna OBRA
+      // y los chips de obra, así que el rótulo se arma una vez y no en cada lugar que lo dibuja.
+      return { id: o.id, nombre: rotuloDeObra(o), jornada: Number.isFinite(h) && h > 0 ? h : 0 }
     })
 }
 

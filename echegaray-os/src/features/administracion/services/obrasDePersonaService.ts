@@ -18,12 +18,12 @@ export async function getObrasDeLosRegistros(
   const unicos = [...new Set(ids.filter(Boolean))] as string[]
   if (unicos.length === 0) return {}
   const { data } = await supabase
-    .from('obra_canonica').select('id, nombre, cliente_texto, estado').in('id', unicos)
+    .from('obra_canonica').select('id, nombre, codigo, cliente_texto, estado').in('id', unicos)
   const mapa: Record<string, DatosDeObra> = {}
   for (const o of (data ?? []) as {
-    id: string; nombre: string | null; cliente_texto: string | null; estado: string | null
+    id: string; nombre: string | null; codigo: string | null; cliente_texto: string | null; estado: string | null
   }[]) {
-    mapa[o.id] = { nombre: o.nombre, cliente: o.cliente_texto, estado: o.estado }
+    mapa[o.id] = { nombre: o.nombre, codigo: o.codigo, cliente: o.cliente_texto, estado: o.estado }
   }
   return mapa
 }

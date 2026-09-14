@@ -15,6 +15,7 @@ import type { ImputacionHH, ServiceResult } from '../types'
 // `TipoHora` podría ir por alias —es `import type` y se borra al compilar— pero viaja junto para no
 // dejar dos formas de importar lo mismo en la misma línea.
 import { esTrabajada, porTipo, type TipoHora } from '../../obras/services/tipoHora.ts'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 /** Cuánto suma cada clave, y en cuántas imputaciones. Sirve para HH por obra y HH por actividad. */
 export interface TotalHH {
@@ -32,7 +33,7 @@ export async function getHHDePersona(
     .from('registros_hh')
     .select('id, fecha, fecha_inicio_semana, obra_canonica_id, actividad_id, horas, tipo_hora, ' +
       'notas, fuente_legacy, created_at, creado_por, actualizado_en, actualizado_por, ' +
-      'obra_actividad(nombre), obra_canonica(nombre)')
+      'obra_actividad(nombre), obra_canonica(nombre, codigo)')
     .eq('persona_id', personaId)
     .order('fecha', { ascending: false, nullsFirst: false })
   if (error) return { data: null, error: error.message }
@@ -40,7 +41,7 @@ export async function getHHDePersona(
   type Cruda = Omit<ImputacionHH, 'actividad_nombre' | 'obra_nombre' | 'creado_en' | 'cargo'
     | 'corregido_en' | 'corrigio'> & {
     obra_actividad: { nombre: string } | null
-    obra_canonica: { nombre: string } | null
+    obra_canonica: { nombre: string; codigo: string | null } | null
     created_at: string | null
     creado_por: string | null
     actualizado_en: string | null
@@ -58,7 +59,8 @@ export async function getHHDePersona(
       ...f,
       horas: Number(f.horas),
       actividad_nombre: f.obra_actividad?.nombre ?? null,
-      obra_nombre: f.obra_canonica?.nombre ?? null,
+      // «OB-0012 · NOMBRE»: de acá salen las horas por obra de la persona y su lista de obras.
+      obra_nombre: f.obra_canonica ? rotuloDeObra(f.obra_canonica) : null,
       creado_en: f.created_at,
       cargo: f.creado_por ? (nombres.get(f.creado_por) ?? null) : null,
       // UNA CORRECCIÓN SÓLO SE DECLARA SI OCURRIÓ. `actualizado_en` tiene `default now()`, así que
