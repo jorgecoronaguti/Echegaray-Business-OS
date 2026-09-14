@@ -1,15 +1,20 @@
 'use client'
 
-// LAS CELDAS DEL CUADRO DE LA QUINCENA: el día, el importe leído, el importe escribible y el chip
-// contra la planilla. Mudadas desde `GrillaEspejoQuincena.tsx` cuando el cuadro sumó columnas y el
-// archivo pasaba las 500 líneas. Siguen escribiendo con las acciones que ya existían:
-// `guardarHorasDeLaCelda` para el día y `CeldaEditable` para la plata. Copiarlas daría dos
-// definiciones de «corregir un jornal» y dos historiales.
+// LAS CELDAS DEL CUADRO DE LA QUINCENA: el día, el importe leído, el importe escribible y la cifra que
+// el dueño busca —cuánto le falta pagar a cada uno y cómo—. Escriben con las acciones que ya existían:
+// `guardarHorasDeLaCelda` para el día y `CeldaEditable` para la plata.
+//
+// ═══ SIN CHIP DE PLANILLA (dueño, 14/09/2026) ═══
+//
+// *«está rota esa columna final que dice "planilla", que no tiene sentido que esté»*. El cotejo con
+// JORNALES sigue existiendo —el sello de arriba dice cuántas filas difieren y el panel de la persona
+// dice por cuánto—, pero no ocupa una columna de un cuadro que tiene que servir para calcular.
 
 import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { CeldaEditable, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
+import { cierreDeLaFila } from '../../../services/cuadroDeJornales'
 import type { CampoEditable, LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
@@ -17,15 +22,12 @@ import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
 /**
  * LA CELDA DE UN DÍA. Es la que reemplaza al Sheet: se teclea el número y se va.
  *
- * ═══ LAS CUATRO CARAS DE UNA CELDA ═══
- *
- *   VACÍA Y EDITABLE    `·` gris, y al entrar se escribe. La obra la deduce el servidor y lo dice.
- *                       NUNCA un 0: «todavía no lo cargué» y «no trabajó» son dos afirmaciones.
- *   CON HORAS           el número, editable sobre su propio registro.
- *   A / L               ausencia o licencia. No se edita en línea: escribir encima diría «en
- *                       realidad vino» y «corregile las horas reconocidas» a la vez.
- *   NO EDITABLE         quincena cerrada, o el día tiene dos registros y elegir sería adivinar. Se
- *                       dibuja el valor y el `title` explica por qué no hay campo.
+ *   VACÍA Y EDITABLE    `·` gris. NUNCA un 0: «todavía no lo cargué» y «no trabajó» son dos cosas.
+ *   CON HORAS           las horas PAGAS del día (=4+3*1,5 se lee 8,5, como en la planilla).
+ *   AUTOMÁTICA          jornada `web:presencia-defecto` que nadie confirmó: «8a» en gris, no se
+ *                       paga. Escribir el número la confirma (el registro pasa a tener autor).
+ *   A / L               ausencia o licencia. No se edita en línea.
+ *   NO EDITABLE         quincena cerrada, o dos registros ese día: elegir sería adivinar.
  */
 export function CeldaDeDia({ celda, personaId, nombre }: {
   celda: CeldaDelEspejo; personaId: string; nombre: string
@@ -36,26 +38,29 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
   if (celda.marca === 'licencia') {
     return <div title={`${celda.fecha} · licencia`} style={{ textAlign: 'center', color: '#175CD3' }}>L</div>
   }
+  const automatica = celda.marca !== 'horas' && celda.automatica != null
   if (!celda.editable) {
     const porque = celda.registros > 1
-      ? `${celda.registros} registros ese día: corregilo desde el panel de la persona`
+      ? `${celda.registros} registros ese día: corregilo desde la solapa Horas`
       : 'la quincena está cerrada'
     return (
       <div title={`${celda.fecha} · ${porque}`} style={{
         textAlign: 'center', color: celda.horas == null ? V.lineaFuerte : V.apagado,
       }}>
-        {celda.horas == null ? '·' : nHoras(celda.horas)}
+        {automatica ? `${nHoras(celda.automatica)}a` : (celda.horas == null ? '·' : nHoras(celda.horas))}
       </div>
     )
   }
   return (
-    <div style={{ display: 'flex', justifyContent: 'center' }}>
-      {/* `w-[56px] sin-spinner`: con 42 px el `<input type=number>` deja 28 px útiles y el spinner
-          del navegador se come el dígito — se editaba a ciegas sobre datos de liquidación. */}
+    <div
+      data-testid={automatica ? `espejo-automatica-${personaId}-${celda.fecha}` : undefined}
+      title={automatica ? `${celda.fecha} · jornada automática de ${nHoras(celda.automatica)} h sin confirmar: no se paga. Escribí las horas para confirmarla.` : undefined}
+      style={{ display: 'flex', justifyContent: 'center', color: automatica ? V.tenue : undefined, fontStyle: automatica ? 'italic' : undefined }}>
+      {/* `w-[56px] sin-spinner`: con 42 px el spinner del navegador se come el dígito. */}
       <InlineEdit
         valor={celda.horas ?? null}
         tipo="numero"
-        falta="·"
+        falta={automatica ? `${nHoras(celda.automatica)}a` : '·'}
         ancho="w-[56px] sin-spinner"
         alineado="center"
         etiqueta={`Horas de ${nombre} el ${celda.fecha}`}
@@ -70,8 +75,6 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
 export function tituloDeOrigen(linea: LineaConOverrides, campo: CampoEditable): string | undefined {
   const d = linea.discrepancia[campo]
   if (!d) return undefined
-  // LAS DOS CIFRAS, NO UNA. Gana JORNALES —es la decisión del que paga— pero el derivado no
-  // desaparece: si el extracto vio un giro que la planilla no tiene, alguien tiene que enterarse.
   return `La planilla dice ${pesos(d.jornales)} y la app calculó ${pesos(d.calculado)} `
     + `(recibos y extracto). Manda la planilla; la diferencia es ${pesos(Math.abs(d.jornales - d.calculado))}.`
 }
@@ -81,9 +84,8 @@ export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos',
   valor: number | null
   medio?: boolean
   apagada?: boolean
-  /** Unidad y no función: este componente también lo usa la vista de servidor. */
   unidad?: 'pesos' | 'horas'
-  /** De dónde salió. `jornales` se marca en azul, no con el ámbar de «manual». */
+  /** De dónde salió: punto azul JORNALES, punto ámbar manual, nada si es la cuenta de la app. */
   origen?: 'calculado' | 'jornales' | 'manual'
   titulo?: string
   testid?: string
@@ -139,48 +141,34 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho }: {
 }
 
 /**
- * EL CHIP CONTRA LA PLANILLA — la única razón por la que el dueño puede dejar de abrir el Sheet.
+ * LO QUE LE FALTA PAGAR A LA PERSONA EN ESTA QUINCENA — la cifra que el dueño no encontraba.
  *
- * «sin espejo» NO se dibuja verde y no se dibuja rojo: es gris, porque nadie comparó. Un chip que
- * dice «coincide» sobre una comparación que no se hizo es peor que no tener chip.
+ * Dueño, 14/09/2026: *«no sé cuánto es el total que cobra cada persona»*. Arriba el TOTAL, con peso;
+ * abajo cómo se paga: banco (blanco) y efectivo, y «50/50» cuando rige el acuerdo. Si el total no sale
+ * de gana − adelanto − ya transferido, o no es banco + efectivo, se pinta en rojo y dice por cuánto.
  */
-export function ChipDeCotejo({ fila }: { fila: FilaDelEspejo }) {
-  const c = fila.cotejo
-  const estilo = {
-    justifySelf: 'end', fontSize: '10.5px', padding: '2px 6px', borderRadius: 4,
-    whiteSpace: 'nowrap' as const,
-  }
-  if (c.estado === 'sin-espejo') {
+export function CeldaLeFaltaPagar({ fila }: { fila: FilaDelEspejo }) {
+  const l = fila.linea
+  const cierre = cierreDeLaFila(l)
+  if (l.total == null) {
     return (
-      <span data-testid={`cotejo-${fila.personaId}`} title="Todavía no se leyó el bloque de la planilla para esta quincena."
-        style={{ ...estilo, color: V.tenue, background: '#F4F3EF' }}>sin espejo</span>
+      <div data-testid={`le-falta-pagar-${fila.personaId}`} style={{ textAlign: 'right', color: V.tenue }}
+        title="Sin retribución cargada: no hay total que afirmar.">sin tarifa</div>
     )
   }
-  // CON ESPEJO LEÍDO PERO SIN NINGÚN DÍA DE ESTA PERSONA, la planilla no habla de ella: «difiere 80 h»
-  // sería mentir sobre una comparación que no se puede hacer (medido el 12/09/2026).
-  if (c.estado === 'no-esta') {
-    return (
-      <span data-testid={`cotejo-${fila.personaId}`}
-        title="La planilla no tiene ningún día cargado de esta persona en esta quincena."
-        style={{ ...estilo, color: V.tenue, background: '#F4F3EF' }}>no está en la planilla</span>
-    )
-  }
-  // EL TÍTULO DICE SOBRE QUÉ SE COMPARÓ. Sin eso, «coincide» sobre ocho de trece días se lee como
-  // «la quincena entera está bien», y faltan cinco días que nadie cargó todavía.
-  const titulo = `La planilla dice ${nHoras(c.horasEnLaPlanilla)} h · la base tiene ${nHoras(c.horasEnLaBase)} h`
-    + ` · comparado sobre ${c.diasComparados} día${c.diasComparados === 1 ? '' : 's'} cargado${c.diasComparados === 1 ? '' : 's'}`
-    + (c.diasSinComparar > 0 ? ` (${c.diasSinComparar} sin cargar en la planilla, no se comparan)` : '')
-  if (c.estado === 'coincide') {
-    return (
-      <span data-testid={`cotejo-${fila.personaId}`} title={titulo}
-        style={{ ...estilo, color: '#067647', background: '#ECFDF3' }}>coincide</span>
-    )
-  }
-  const d = c.diferencia ?? 0
+  const noCierra = cierre?.cierra === false
   return (
-    <span data-testid={`cotejo-${fila.personaId}`} title={titulo}
-      style={{ ...estilo, color: V.neg, background: '#FEF3F2', fontWeight: 500 }}>
-      {`difiere ${nHoras(Math.abs(d))} h`}
-    </span>
+    <div data-testid={`le-falta-pagar-${fila.personaId}`} style={{ textAlign: 'right', lineHeight: 1.25, overflow: 'hidden' }}
+      title={noCierra
+        ? `No cierra: gana ${pesos(l.cobra)} − adelanto ${pesos(l.adelanto)} − ya transferido ${pesos(l.yaTransferido)} no da ${pesos(l.total)} (diferencia ${pesos(cierre?.diferencia ?? null)}).`
+        : `Gana ${pesos(l.cobra)} − adelanto ${pesos(l.adelanto)} − ya transferido ${pesos(l.yaTransferido)} = banco ${pesos(l.porBanco)} + efectivo ${pesos(l.enEfectivo)}`}>
+      <div style={{ fontSize: '14px', fontWeight: 600, color: noCierra ? V.neg : V.tinta, whiteSpace: 'nowrap' }}>
+        {pesos(l.total)}<MarcaDeOrigen origen={l.origen.total} compacta />
+      </div>
+      <div style={{ fontSize: '11px', color: V.apagado, whiteSpace: 'nowrap' }}>
+        {`banco ${pesos(l.porBanco)} · efvo ${pesos(l.enEfectivo)}`}
+        {l.blancoAcuerdo != null && <span data-testid={`acuerdo-${fila.personaId}`}> · 50/50</span>}
+      </div>
+    </div>
   )
 }
