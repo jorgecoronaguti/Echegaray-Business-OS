@@ -23,8 +23,11 @@ import {
 
 const iso = (x) => (x instanceof Date ? x.toISOString().slice(0, 10) : x ? String(x).slice(0, 10) : null)
 const conNota = (notas, texto) => (notas && notas.trim() ? `${notas} · ${texto}` : texto)
+// `pg` DEVUELVE `creado_en` COMO `Date`, y `String(Date)` da «Thu Aug 20 2026…»: ordenaba por el nombre
+// del día de la semana. Pasó en el primer ensayo contra la base (Pastran, Zogbe salieron invertidos).
+const instante = (x) => (x instanceof Date ? x.toISOString() : String(x ?? ''))
 const ordenDeCarga = (a, b) =>
-  String(a.creado_en ?? '').localeCompare(String(b.creado_en ?? '')) || String(a.id).localeCompare(String(b.id))
+  instante(a.creado_en).localeCompare(instante(b.creado_en)) || String(a.id).localeCompare(String(b.id))
 
 /** El orquestador sólo escribe con estas sentencias. Viven acá para que un test pueda leer sus guardas. */
 export const SQL = Object.freeze({

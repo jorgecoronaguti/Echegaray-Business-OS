@@ -125,6 +125,14 @@ test('las sentencias del orquestador: persona sólo cambia hasta/notas; borrar y
   }
 })
 
+test('PASTRAN con `creado_en` como Date (pg): lo cargado después cierra lo anterior, no al revés', () => {
+  const galpon = fila('g', 'pastran', 'galpon', null, '2026-09-07', { creado_en: new Date('2026-08-20T20:46:20Z') })
+  const electrica = fila('e', 'pastran', 'electrica', null, '2026-09-07', { creado_en: new Date('2026-09-07T19:00:26Z') })
+  const { cambios, paraDueno } = planDeNormalizacion([electrica, galpon], { fecha: '14/09/2026' })
+  assert.deepEqual(cambios.map((c) => [c.tipo, c.fila.id, c.despues.hasta]), [['cerrar', 'g', '2026-09-06']])
+  assert.deepEqual(paraDueno, [])
+})
+
 test('reemplazar un día de persona lo decide el dueño: RETA 09/09 queda listado, no escrito', () => {
   const { cambios, paraDueno } = planDeNormalizacion(REAL, { fecha: '14/09/2026' })
   assert.ok(!cambios.some((c) => c.fila.id === 'reta-mes'))
