@@ -1,15 +1,19 @@
-// CUÁNDO UNA COBRANZA ESTÁ VENCIDA EN LA PESTAÑA OBRAS DEL SHEET — emisión + 30 días.
+// EMISIÓN + 30 DÍAS — LA DEFINICIÓN DE «VENCIDA» DEL 14/08/2026, REEMPLAZADA EL 14/09/2026.
 //
-// ═══ YA NO ES LA DEFINICIÓN DEL OS (14/09/2026) ═══
+// ═══ LAS DOS DECISIONES DEL DUEÑO, EN ORDEN ═══
 //
-// El dueño decidió que «vencida» es la columna U de la pestaña Cobranzas: estado Pendiente y
-// `Fecha cobro` < hoy en San Juan. Esa regla vive en Postgres (`public.estado_de_cobro`, migración
-// 20260914T1200) y su gemelo en `cobranza-estado-de-cobro.mjs`; la leen la ficha, la cartera, la
-// cuenta corriente y el portal. Lo que sigue abajo documenta la decisión ANTERIOR, del 14/08, y hoy
-// sólo lo consume el generador de la pestaña OBRAS (`obras-grilla.mjs`). Mientras esa pestaña no
-// cambie, el Sheet OBRAS y la cartera web publican dos «vencido» distintos: es una decisión
-// pendiente del dueño, no un olvido. El argumento del 14/08 —la Q se re-tipea cada vez que un cobro
-// se posterga, así que `Q < hoy` tiende a cero— sigue siendo cierto y es el riesgo de la regla nueva.
+// · 14/08/2026 — «esta contemplando mal la columna de 'vencido'»: se adoptó emisión + 30 (lo que
+//   documenta el resto de este archivo), porque la `Fecha cobro` se re-tipea cada vez que un cobro se
+//   posterga y `Q < hoy` tendía a cero.
+// · 14/09/2026 — «vencido» = «col q», y para la pestaña OBRAS «Sí, misma regla en OBRAS». Vencida es
+//   la columna U de Cobranzas: estado Pendiente y `Fecha cobro` < hoy en San Juan. REEMPLAZA a la del
+//   14/08, conociendo el argumento de arriba. Vive en Postgres (`public.estado_de_cobro`, migración
+//   20260914T1200), su gemelo y su criterio de hoja en `cobranza-estado-de-cobro.mjs`, y la leen la
+//   ficha, la cartera, la cuenta corriente, el portal y la pestaña OBRAS (`obras-grilla.mjs`).
+//
+// Nada del OS decide ya vencimientos con este archivo. Sus funciones puras (plazo, tramos, reparto)
+// quedan porque las siguen importando `cuentaDeTrabajos.ts` y `homeCartera.ts`; no usarlas para
+// decir qué está vencido.
 //
 // ═══ EL DEFECTO QUE ESTE ARCHIVO VIENE A ARREGLAR (14/08/2026) ═══
 //

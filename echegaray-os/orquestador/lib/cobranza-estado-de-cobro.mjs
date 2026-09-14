@@ -76,6 +76,20 @@ export function estadoDeCobro(estado, fechaCobro, hoy) {
 }
 
 /**
+ * LA MISMA REGLA COMO CRITERIO DE `SUMIFS`, para las pestañas que calculan en la hoja (OBRAS).
+ *
+ * Fragmento listo para pegar dentro de un SUMIFS ya empezado, con `;` inicial y locale es-AR. El
+ * criterio `"Pendiente"` de SUMIFS no distingue mayúsculas —igual que el `=` de la columna U—, y el
+ * `">"&0` deja afuera la Q vacía, que en la hoja vale 0: la misma desviación que `estadoDeCobro`.
+ * `TODAY()` va adentro para que la cartera envejezca sola.
+ *
+ * @param {string} rangoEstado la referencia a la columna O de Cobranzas
+ * @param {string} rangoCobro la referencia a la columna Q de Cobranzas
+ */
+export const critVencidoCobro = (rangoEstado, rangoCobro) =>
+  `;${rangoEstado};"Pendiente";${rangoCobro};">"&0;${rangoCobro};"<"&TODAY()`
+
+/**
  * Días de la columna U: `Q − hoy`. Negativo = días de atraso; cero o positivo = días de espera.
  * `null` sin fecha.
  * @param {string|Date|null|undefined} fechaCobro
