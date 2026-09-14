@@ -60,7 +60,7 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
       <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         <section data-testid="panel-cadena">
           <Rotulo>Esta quincena</Rotulo>
-          <Renglon rotulo="Gana" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
+          <Renglon rotulo="Cobra total" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
             <Leida valor={l.cobra} medio origen={l.origen.cobra} />
           </Renglon>
           <Renglon rotulo="− Adelanto">
@@ -69,7 +69,7 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
           <Renglon rotulo="− Ya transferido">
             <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={120} />
           </Renglon>
-          <Renglon rotulo="= Le falta pagar" fuerte
+          <Renglon rotulo="= Banco + efectivo" fuerte
             nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : undefined} alerta={cierre?.cierra === false}>
             <Leida valor={l.total} medio origen={l.origen.total} />
           </Renglon>

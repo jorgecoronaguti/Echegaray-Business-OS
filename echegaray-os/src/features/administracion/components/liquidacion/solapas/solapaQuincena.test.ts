@@ -69,9 +69,11 @@ test('SIN COLUMNA «PLANILLA»: el cotejo va en el sello y en el panel, no en el
   assert.match(VISTA, /espejo-difieren/)
 })
 
-test('LA PLATA VA PRIMERO, CON «LE FALTA PAGAR» ADELANTE; DESPUÉS LOS DÍAS', () => {
+// CAMBIÓ EL 14/09/2026 (dueño: «quiero q la columna de valor hora este primero y dp cuanto cobra
+// total»): el cuadro ya no abre con el importe pendiente. El orden se prueba entero en `cobraTotal.test.ts`.
+test('LA PLATA VA PRIMERO: $/h, COBRA TOTAL, descuentos y reparto; DESPUÉS LOS DÍAS', () => {
   assert.deepEqual(clavesDe('const PLATA', 'const GAP'),
-    ['leFaltaPagar', 'gana', 'adelanto', 'yaTransferido', 'efectivoRedondeado', 'valorHora', 'horasPagas'])
+    ['valorHora', 'cobraTotal', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'efectivoRedondeado', 'horasPagas'])
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)
   assert.match(PANEL, /<HistorialDeTarifa/)
@@ -84,17 +86,20 @@ test('SIN COLUMNAS DE HORAS EXTRA NI «NORMALES» (dueño, 14/09: «las columnas
   // «Hs pagas», así que sale con ellas.
   assert.ok(!/extra50|extra100|Ext\. 50|Ext\. 100|Hs norm\.|CANTIDADES/.test(codigo), 'sin columnas de extras ni normales')
   // LAS CUENTAS NO CAMBIAN: el pie sigue publicando las mismas cifras de plata y las horas pagas.
-  for (const t of ['totales.total', 'totales.cobra', 'totales.adelanto', 'totales.yaTransferido', 'totales.horasPagas', 'totales.porBanco', 'totales.enEfectivo']) {
+  // `totales.total` salió del cuadro el 14/09/2026 junto con la columna del importe pendiente.
+  for (const t of ['totales.cobra', 'totales.adelanto', 'totales.yaTransferido', 'totales.horasPagas', 'totales.porBanco', 'totales.enEfectivo']) {
     assert.ok(codigo.includes(t), `el pie sigue mostrando ${t}`)
   }
 })
 
-test('«LE FALTA PAGAR» DICE CÓMO SE PAGA Y SE MARCA CUANDO NO CIERRA', () => {
-  assert.match(CELDAS, /banco \$\{pesos\(l\.porBanco\)\} · efvo \$\{pesos\(l\.enEfectivo\)\}/)
+test('BANCO Y EFECTIVO DICEN CÓMO SE PAGA, CON EL 50/50, Y SE MARCAN CUANDO LA FILA NO CIERRA', () => {
+  const ESTADO = fuente('../cuadro/estadoDelPago.ts')
+  assert.match(CELDAS, /pesos\(l\.porBanco\)/)
+  assert.match(CELDAS, /pesos\(l\.enEfectivo\)/)
   assert.match(CELDAS, /data-testid=\{`acuerdo-\$\{fila\.personaId\}`\}/)
-  assert.match(CELDAS, /const sinRecibo = l\.porBanco === 0 && l\.reciboNeto == null/)
-  assert.match(CELDAS, /50\/50\$\{sinRecibo \? ' sin recibo' : ''\}/)
-  assert.match(CELDAS, /const cierre = cierreDeLaFila\(l\)/)
+  assert.match(ESTADO, /const sinRecibo = l\.porBanco === 0 && l\.reciboNeto == null/)
+  assert.match(ESTADO, /50\/50\$\{sinRecibo \? ' sin recibo' : ''\}/)
+  assert.match(ESTADO, /const cierre = cierreDeLaFila\(l\)/)
   assert.match(GRILLA, /const cierre = cierreDeTotales\(totales\)/)
   assert.match(GRILLA, /Por banco \(lote\)/)
   assert.match(GRILLA, /En efectivo \(sobres\)/)

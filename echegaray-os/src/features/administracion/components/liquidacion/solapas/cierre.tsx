@@ -175,7 +175,7 @@ function Resumen({ estado, totales, faltante }: {
   const filas: [string, string][] = [
     ['Personas que quedan liquidadas', `${estado.liquidadas} de ${estado.personas}`],
     ['Horas pagas', totales.horasPagas.toLocaleString('es-AR')],
-    ['Le falta pagar', pesos(totales.total)],
+    ['Banco + efectivo', pesos(totales.total)],
   ]
   return (
     <div data-testid="cierre-resumen" style={{

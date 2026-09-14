@@ -1,7 +1,7 @@
 'use client'
 
-// LAS CELDAS DEL CUADRO DE LA QUINCENA: el día, el importe leído, el importe escribible y la cifra que
-// el dueño busca —cuánto le falta pagar a cada uno y cómo—. Escriben con las acciones que ya existían:
+// LAS CELDAS DEL CUADRO DE LA QUINCENA: el día, el importe leído, el importe escribible, cuánto cobra
+// cada uno en la quincena y cómo se le paga. Escriben con las acciones que ya existían:
 // `guardarHorasDeLaCelda` para el día y `CeldaEditable` para la plata.
 //
 // ═══ SIN CHIP DE PLANILLA (dueño, 14/09/2026) ═══
@@ -14,7 +14,7 @@ import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { CeldaEditable, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
-import { cierreDeLaFila } from '../../../services/cuadroDeJornales'
+import { estadoDelPago } from './estadoDelPago'
 import type { CampoEditable, LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
@@ -148,46 +148,57 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho }: {
 }
 
 /**
- * LO QUE LE FALTA PAGAR A LA PERSONA EN ESTA QUINCENA — la cifra que el dueño no encontraba.
+ * COBRA TOTAL — el número principal de la fila: horas pagas × $/h, como JORNALES.
  *
- * Dueño, 14/09/2026: *«no sé cuánto es el total que cobra cada persona»*. Arriba el TOTAL, con peso;
- * abajo cómo se paga: banco (blanco) y efectivo, y «50/50» cuando rige el acuerdo. Si el total no sale
- * de gana − adelanto − ya transferido, o no es banco + efectivo, se pinta en rojo y dice por cuánto.
+ * Dueño, 14/09/2026: *«quiero q la columna de valor hora este primero y dp cuanto cobra total»*. Va
+ * segunda, después del $/h, más grande y en negrita. Los descuentos y el reparto vienen a la derecha.
  */
-export function CeldaLeFaltaPagar({ fila }: { fila: FilaDelEspejo }) {
+export function CeldaCobraTotal({ fila }: { fila: FilaDelEspejo }) {
   const l = fila.linea
-  const cierre = cierreDeLaFila(l)
-  if (l.total == null) {
+  if (l.cobra == null) {
     return (
-      <div data-testid={`le-falta-pagar-${fila.personaId}`} style={{ textAlign: 'right', color: V.tenue }}
-        title="Sin retribución cargada: no hay total que afirmar.">sin tarifa</div>
+      <div data-testid={`cobratotal-${fila.personaId}`} style={{ textAlign: 'right', color: V.tenue }}
+        title="Sin retribución cargada: no hay importe que afirmar.">sin tarifa</div>
     )
   }
-  const noCierra = cierre?.cierra === false
-  // Hay acuerdo 50/50 pero el estudio todavía no liquidó: el banco no tiene cifra, no es «todo en efectivo».
-  const sinRecibo = l.porBanco === 0 && l.reciboNeto == null
   return (
-    <div data-testid={`le-falta-pagar-${fila.personaId}`} style={{ textAlign: 'right', lineHeight: 1.25, overflow: 'hidden' }}
-      title={noCierra
-        ? `No cierra: gana ${pesos(l.cobra)} − adelanto ${pesos(l.adelanto)} − ya transferido ${pesos(l.yaTransferido)} no da ${pesos(l.total)} (diferencia ${pesos(cierre?.diferencia ?? null)}).`
-        : `Gana ${pesos(l.cobra)} − adelanto ${pesos(l.adelanto)} − ya transferido ${pesos(l.yaTransferido)} = banco ${pesos(l.porBanco)} + efectivo ${pesos(l.enEfectivo)}`}>
-      <div style={{ fontSize: '14px', fontWeight: 600, color: noCierra ? V.neg : V.tinta, whiteSpace: 'nowrap' }}>
-        {/* EL ACUERDO VA EN LA LÍNEA DEL TOTAL: en la del reparto se cortaba en «50/5C» a 168 px
-            (captura del 14/09/2026). «50/50» junto a «banco $0» se leía como «todo en efectivo»: sin
-            recibo del estudio el banco todavía no tiene cifra, y se dice. */}
-        {l.blancoAcuerdo != null && (
-          <span data-testid={`acuerdo-${fila.personaId}`}
-            style={{ fontSize: '10.5px', fontWeight: 400, color: V.apagado, marginRight: 8 }}
-            title={`Acuerdo 50/50: banco ${pesos(l.blancoAcuerdo)} · efectivo ${pesos(l.efectivoAcuerdo)}`
-              + (sinRecibo ? '. Todavía no hay recibo del estudio: el banco figura en $0 hasta que llegue.' : '')}>
-            {`50/50${sinRecibo ? ' sin recibo' : ''}`}
-          </span>
-        )}
-        {pesos(l.total)}<MarcaDeOrigen origen={l.origen.total} compacta />
-      </div>
-      <div style={{ fontSize: '11px', color: V.apagado, whiteSpace: 'nowrap' }}>
-        {`banco ${pesos(l.porBanco)} · efvo ${pesos(l.enEfectivo)}`}
-      </div>
+    <div data-testid={`cobratotal-${fila.personaId}`}
+      title={l.valorHora != null && l.horas != null ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : undefined}
+      style={{ textAlign: 'right', fontSize: '14px', fontWeight: 600, color: V.tinta, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+      {pesos(l.cobra)}<MarcaDeOrigen origen={l.origen.cobra} compacta />
+    </div>
+  )
+}
+
+/**
+ * POR BANCO, con la marca 50/50 chica al lado. Rojo sólo si la fila NO cierra; si cierra, no se ve nada.
+ *
+ * «50/50» junto a «$0» se leía como «todo en efectivo»: sin recibo del estudio el banco todavía no tiene
+ * cifra, y la marca lo dice («50/50 sin recibo»).
+ */
+export function CeldaPorBanco({ fila }: { fila: FilaDelEspejo }) {
+  const l = fila.linea
+  const e = estadoDelPago(l)
+  return (
+    <div data-testid={`banco-${fila.personaId}`} title={e.noCierra ? e.titulo : undefined}
+      style={{ textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', color: e.noCierra ? V.neg : V.tinta }}>
+      {e.acuerdo && (
+        <span data-testid={`acuerdo-${fila.personaId}`} title={e.acuerdo.titulo}
+          style={{ fontSize: '10.5px', color: V.apagado, marginRight: 6 }}>{e.acuerdo.texto}</span>
+      )}
+      {pesos(l.porBanco)}<MarcaDeOrigen origen={l.origen.porBanco} compacta />
+    </div>
+  )
+}
+
+/** EN EFECTIVO. La misma regla que el banco: rojo con el porqué en el `title` sólo si la fila no cierra. */
+export function CeldaEfectivo({ fila }: { fila: FilaDelEspejo }) {
+  const l = fila.linea
+  const e = estadoDelPago(l)
+  return (
+    <div data-testid={`efectivo-${fila.personaId}`} title={e.noCierra ? e.titulo : undefined}
+      style={{ textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', color: e.noCierra ? V.neg : V.tinta }}>
+      {pesos(l.enEfectivo)}<MarcaDeOrigen origen={l.origen.enEfectivo} compacta />
     </div>
   )
 }

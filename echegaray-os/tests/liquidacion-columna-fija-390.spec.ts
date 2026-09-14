@@ -45,12 +45,9 @@ interface Medicion {
 
 async function medir(page: import('@playwright/test').Page): Promise<Medicion> {
   return page.evaluate(() => {
-    const ancla = document.querySelector(
-      '[data-testid=espejo-tabla], [data-testid=pagos-tabla], [data-testid=encabezado-columnas]',
-    )
+    const ancla = document.querySelector('[data-testid=espejo-tabla]')
     if (!ancla) return { error: 'no encontré la tabla', nombre: '', puntos: [], fondos: [] }
-    const interno = ancla.getAttribute('data-testid') === 'encabezado-columnas' ? ancla.parentElement! : ancla
-    const marco = interno.parentElement!
+    const marco = ancla.parentElement!
     marco.scrollLeft = 300
     const r = marco.getBoundingClientRect()
 
@@ -79,21 +76,15 @@ async function medir(page: import('@playwright/test').Page): Promise<Medicion> {
   })
 }
 
-for (const solapa of ['quincena', 'horas', 'pagos'] as const) {
+// DESDE EL 14/09/2026 LA ÚNICA TABLA DESPLAZABLE ES LA DE LA QUINCENA: la grilla de «Horas» y la tabla
+// de «Pagos» se retiraron de «Más» por repetir el cuadro, y sus claves resuelven a secciones sin tabla.
+for (const solapa of ['quincena'] as const) {
   test(`la columna Persona tapa el canal · ${solapa} a 390 px`, async ({ page }) => {
     test.setTimeout(180_000)
     await page.setViewportSize({ width: 390, height: 844 })
     await entrarComo(page, ADMIN.email, ADMIN.password)
     await page.goto(`${RUTA}&solapa=${solapa}`, { waitUntil: 'load' })
-    await page.waitForSelector(
-      '[data-testid=espejo-tabla], [data-testid=pagos-tabla], [data-testid=encabezado-columnas]',
-      { timeout: 60_000 },
-    )
-    // LA FILA ABIERTA ES OTRO FONDO. Sólo Horas la tiene, y era la que se dibujaba transparente.
-    if (solapa === 'horas') {
-      const primera = page.locator('[data-testid^=fila-]').first()
-      if (await primera.count()) await primera.click()
-    }
+    await page.waitForSelector('[data-testid=espejo-tabla]', { timeout: 60_000 })
 
     const m = await medir(page)
     await page.screenshot({ path: `${DESTINO}/columna-fija-${solapa}-390.png` })

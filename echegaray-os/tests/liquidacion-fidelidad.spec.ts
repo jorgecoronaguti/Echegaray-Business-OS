@@ -199,7 +199,7 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
 
     // La cadena de R5, con los rótulos del panel.
     const cadena = page.getByTestId('panel-cadena')
-    for (const t of ['Gana', 'Adelanto', 'Ya transferido', 'Le falta pagar', 'Por banco', 'En efectivo']) {
+    for (const t of ['Cobra total', 'Adelanto', 'Ya transferido', 'Banco + efectivo', 'Por banco', 'En efectivo']) {
       await expect(cadena).toContainText(t)
     }
     // LO QUE ERAN LAS CUATRO MÉTRICAS Y LOS BLOQUES DEL LEGAJO, en el detalle laboral.
@@ -218,9 +218,13 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     await page.screenshot({ path: `${SALIDA}/app-4-cadena.png`, fullPage: true })
 
     const tabla = page.getByTestId('espejo-encabezado')
-    for (const c of ['Persona', 'Le falta pagar', 'Gana', 'Adelanto', 'Ya transf.', 'Efect. red.', '$/h', 'Hs pagas']) {
+    // Dueño, 14/09/2026: «$/h primero y después cuánto cobra total».
+    for (const c of ['Persona', '$/h', 'Cobra total', 'Adelanto', 'Ya transf.', 'Por banco', 'Efectivo', 'Efect. red.', 'Hs pagas']) {
       await expect(tabla).toContainText(c)
     }
+    const rotulos = await tabla.locator(':scope > div').allTextContents()
+    expect(rotulos.findIndex((r) => r.includes('$/h')), '$/h va antes que Cobra total')
+      .toBeLessThan(rotulos.findIndex((r) => r.includes('Cobra total')))
     await expect(page.getByTestId('espejo-pie')).toContainText('Por banco (lote)')
     await expect(page.getByTestId('espejo-pie')).toContainText('En efectivo (sobres)')
 

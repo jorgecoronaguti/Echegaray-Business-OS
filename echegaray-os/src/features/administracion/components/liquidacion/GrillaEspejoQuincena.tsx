@@ -6,8 +6,15 @@
 // *«no sé cuánto es el total que cobra cada persona»*, *«está rota esa columna final que dice
 // "planilla"»*. La fila contesta, de izquierda a derecha, las preguntas en el orden en que se hacen:
 //
-//   Persona (categoría · alta) · LE FALTA PAGAR (banco · efectivo · 50/50) · Gana · − Adelanto ·
-//   − Ya transferido · Efectivo redondeado · $/h · Hs pagas · los días
+//   Persona (categoría · alta) · $/h · COBRA TOTAL · − Adelanto · − Ya transferido · Por banco (50/50) ·
+//   Efectivo · Efectivo redondeado · Hs pagas · los días
+//
+// ═══ $/H PRIMERO Y COBRA TOTAL DESPUÉS (dueño, 14/09/2026) ═══
+//
+// *«quiero q la columna de valor hora este primero y dp cuanto cobra total»*. El cuadro abría con lo que
+// quedaba por pagar después de adelantos y giros, y el dueño lo rechazó: lee como la planilla, primero la
+// tarifa, después el cobro de la quincena y recién ahí cómo se paga. El control de que la fila cierre
+// sigue: si no cierra, banco y efectivo van en rojo (`estadoDelPago`).
 //
 // ═══ SIN COLUMNAS DE EXTRAS NI DE NORMALES (dueño, 14/09/2026: «las columnas de hs extra quitarlas») ═══
 //
@@ -31,7 +38,7 @@ import { useState } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
 import { CeldaRedondeo } from './CeldasDeLiquidacion'
-import { CeldaDeDia, CeldaLeFaltaPagar, Escribible, Leida } from './cuadro/CeldasDelEspejo'
+import { CeldaCobraTotal, CeldaDeDia, CeldaEfectivo, CeldaPorBanco, Escribible, Leida } from './cuadro/CeldasDelEspejo'
 import { CeldaTarifa, rotuloCategoria, type MarcaDePiso } from './cuadro/CeldaTarifa'
 import { PanelDeLaPersona } from './cuadro/PanelDeLaPersona'
 import { horas as nHoras, pesos } from './formato'
@@ -55,15 +62,16 @@ function rotuloDia(fecha: string): string {
 const corta = (iso: string | null): string =>
   iso == null ? 'alta sin cargar' : `alta ${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 
-/** La plata, primero: lo que el dueño busca al abrir la pantalla. */
+/** La plata, primero, en el orden en que el dueño lee la planilla: tarifa, cobro, descuentos, reparto. */
 const PLATA = [
-  // 216: «50/50 sin recibo $1.800.000» en una línea y «banco $230.240,12 · efvo $121.915,88» en la otra.
-  { clave: 'leFaltaPagar', rotulo: 'Le falta pagar', px: 216 },
-  { clave: 'gana', rotulo: 'Gana', px: 100 },
+  { clave: 'valorHora', rotulo: '$/h · mensual', px: 156 },
+  { clave: 'cobraTotal', rotulo: 'Cobra total', px: 124 },
   { clave: 'adelanto', rotulo: '− Adelanto', px: 96 },
   { clave: 'yaTransferido', rotulo: '− Ya transf.', px: 104 },
+  // 150: «50/50 sin recibo $230.240,12» en una línea.
+  { clave: 'porBanco', rotulo: 'Por banco', px: 150 },
+  { clave: 'enEfectivo', rotulo: 'Efectivo', px: 112 },
   { clave: 'efectivoRedondeado', rotulo: 'Efect. red.', px: 104 },
-  { clave: 'valorHora', rotulo: '$/h · mensual', px: 156 },
   { clave: 'horasPagas', rotulo: 'Hs pagas', px: 64 },
 ] as const
 
@@ -129,7 +137,7 @@ export function GrillaEspejoQuincena({
           }}>
             <div style={COLUMNA_FIJA}>Persona</div>
             {PLATA.map((c) => (
-              <div key={c.clave} style={{ textAlign: 'right', color: c.clave === 'leFaltaPagar' ? V.tinta : undefined }}>{c.rotulo}</div>
+              <div key={c.clave} style={{ textAlign: 'right', color: c.clave === 'cobraTotal' ? V.tinta : undefined }}>{c.rotulo}</div>
             ))}
             {dias.map((f) => <div key={f} style={{ textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
           </div>
@@ -186,16 +194,16 @@ function Fila({ fila, columnas, quincena, camposEditables, piso, pct, abrir }: {
           {`${fila.categoria ? rotuloCategoria(fila.categoria) : 'sin categoría'} · ${corta(fila.alta)}`}
         </div>
       </div>
-      <CeldaLeFaltaPagar fila={fila} />
-      <Leida valor={l.cobra} origen={l.origen.cobra}
-        titulo={l.valorHora != null && l.horas != null ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : undefined} />
+      <CeldaTarifa fila={fila} quincena={quincena} piso={piso} pct={pct} />
+      <CeldaCobraTotal fila={fila} />
       <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={88} />
       <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={96} />
+      <CeldaPorBanco fila={fila} />
+      <CeldaEfectivo fila={fila} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.enEfectivo}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={96} />
       </div>
-      <CeldaTarifa fila={fila} quincena={quincena} piso={piso} pct={pct} />
       <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
         titulo={sinCargar > 0 ? `${nHoras(sinCargar)} h que la app supone en días sin horas cargadas: no se pagan` : undefined} />
       {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
@@ -210,22 +218,22 @@ function Total({ columnas, dias, totales, redondeo }: {
   redondeo: number
 }) {
   const cierre = cierreDeTotales(totales)
+  const noCierra = cierre?.cierra === false
+  const reparto = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const, color: noCierra ? V.neg : V.tinta }
   return (
     <div data-testid="espejo-total" style={{
       ...filaGrid(columnas, ALTO_LIQ.filaAlta), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
     }}>
       <div style={COLUMNA_FIJA}>{totales.personas} persona{totales.personas === 1 ? '' : 's'}</div>
-      <div data-testid="espejo-total-le-falta-pagar" style={{ textAlign: 'right', lineHeight: 1.25 }}>
-        <div style={{ fontSize: '14px', color: cierre?.cierra === false ? V.neg : V.tinta }}>{pesos(totales.total)}</div>
-        <div style={{ fontSize: '11px', fontWeight: 400, color: V.apagado, whiteSpace: 'nowrap' }}>
-          {`banco ${pesos(totales.porBanco)} · efvo ${pesos(totales.enEfectivo)}`}
-        </div>
-      </div>
-      <Leida valor={totales.cobra} />
+      <div />
+      <div data-testid="espejo-total-cobra" style={{ textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap' }}>{pesos(totales.cobra)}</div>
       <Leida valor={totales.adelanto} />
       <Leida valor={totales.yaTransferido} />
+      <div data-testid="espejo-total-banco" style={reparto}
+        title={noCierra ? `No cierra por ${pesos(cierre?.diferencia ?? null)}` : undefined}>{pesos(totales.porBanco)}</div>
+      <div data-testid="espejo-total-efectivo" style={reparto}
+        title={noCierra ? `No cierra por ${pesos(cierre?.diferencia ?? null)}` : undefined}>{pesos(totales.enEfectivo)}</div>
       <Leida valor={redondeo > 0 ? redondeo : null} testid="espejo-total-redondeo" />
-      <div />
       <Leida valor={totales.horasPagas} unidad="horas" testid="espejo-total-hs" />
       {dias.map((f, i) => (
         <div key={f} style={{ textAlign: 'center', color: totales.porDia[i] == null ? V.tenue : V.tinta }}>
@@ -251,9 +259,11 @@ function PieDelEspejo({ totales }: { totales: TotalesDelEspejo }) {
       display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 16, padding: '12px 20px 16px',
       fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
     }}>
+      <span><span style={{ color: V.apagado }}>Cobra total </span><strong>{pesos(totales.cobra)}</strong></span>
+      <span><span style={{ color: V.apagado }}>Adelantos </span><strong>{pesos(totales.adelanto)}</strong></span>
+      <span><span style={{ color: V.apagado }}>Ya transferido </span><strong>{pesos(totales.yaTransferido)}</strong></span>
       <span><span style={{ color: V.apagado }}>Por banco (lote) </span><strong>{pesos(totales.porBanco)}</strong></span>
       <span><span style={{ color: V.apagado }}>En efectivo (sobres) </span><strong>{pesos(totales.enEfectivo)}</strong></span>
-      <span><span style={{ color: V.apagado }}>Le falta pagar </span><strong>{pesos(totales.total)}</strong></span>
       {avisos.length > 0 && (
         <span style={{ fontSize: '11.5px', color: cierre?.cierra === false ? V.neg : V.apagado }}>{avisos.join(' · ')}</span>
       )}

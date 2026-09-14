@@ -83,7 +83,7 @@ function Totales({ quincena, totales, sinGiro, sinActividad }: {
       <span style={{ fontSize: '14.5px', fontWeight: 600, color: V.tinta }}>{rotuloQuincena(quincena)}</span>
       <Cifra testid="por-banco" rotulo="Por banco (lote)" valor={totales.porBanco} />
       <Cifra testid="efectivo-viernes" rotulo="En efectivo (sobres)" valor={totales.enEfectivo} />
-      <Cifra testid="total-quincena" rotulo="Le falta pagar" valor={totales.total} />
+      <Cifra testid="total-quincena" rotulo="Banco + efectivo" valor={totales.total} />
       {totales.sinTarifa > 0 && <span style={aviso}>{`${totales.sinTarifa} sin retribución: no suman`}</span>}
       {/* R7 · UN RECIBO SIN GIRO NO CUENTA COMO BANCO: hasta que el lote aparece en el extracto, sale en efectivo. */}
       {sinGiro.length > 0 && (
@@ -115,7 +115,7 @@ function Cotejo({ total, quincena, delSheet }: {
       <div className="overflow-x-auto" style={{ marginBottom: 24 }}>
         <table style={{ ...tabla, minWidth: 420, maxWidth: 720 }}>
           <tbody>
-            <Renglon testid="cf-os" rotulo="Este módulo (le falta pagar)" valor={pesos(total || null)} />
+            <Renglon testid="cf-os" rotulo="Este módulo (banco + efectivo)" valor={pesos(total || null)} />
             <Renglon testid="cf-sheet" rotulo={`Sheet · línea Jornales${delSheet ? ` (${delSheet.estado})` : ''}`}
               valor={delSheet?.total == null ? 'sin espejo' : pesos(delSheet.total)}
               nota={delSheet?.sincronizadoEn
