@@ -157,7 +157,13 @@ clientes, primera carga falla en 3/5. Dueño en Vercel: plan Free; variables Sup
 manuales → NO usar «Connect to Project». Pasar a Pro + Small (US$30/mes) = Nivel E del dueño.
 **21:17 RESUELTO:** el dueño pasó a Pro; cómputo subido a **Small 2 GB** por Management API (~60 s de
 corte). Swap 0, ficha en vivo 0,23–0,33 s (antes 5–13 s). Cron 39 **reactivado** cada minuto. Flujo de
-Caja falló 21:10 por la caída (vuelve solo 06:50, no correr a mano). QA de tercero post-resize lanzado.
+Caja falló 21:10 por la caída (vuelve solo 06:50, no correr a mano). QA de tercero post-resize: FIRMA (1,3–2,5 s).
+**~22:30:** Personal→Liquidación→Horas sin techo de 1120 px (ce6e1901, QA en curso). Desglose HH por obra
+(T2200 aplicada, e95160ea): abre en «Toda la obra», períodos = bloques de JORNALES, `sin_respaldo` al pie.
+Quattropani 378 h / 2 personas / 17/08–31/08 226 + 01/09–15/09 152 — datos ya estaban bien, era la
+pantalla. QA desglose en curso. **Decisión del dueño:** Maldonado (jefe de obra, neto mensual) 80 h
+web en Quattropani 01–11/09: ¿cuentan como HH? · bloques de Oficina que se pisan antes de junio en La
+Estrella (¿priorizar Obreros?).
 
 ## 6. PENDIENTES REALES
 
