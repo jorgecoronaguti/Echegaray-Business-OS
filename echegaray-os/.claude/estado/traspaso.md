@@ -181,6 +181,10 @@ columna persona fija en celular (49d24dd6, qa-movil FIRMA, 390 px). Personal→H
 post-resize FIRMA. Abierto sólo del lado del dueño: horas de jefes 08/08–31/08 · celda 11/06 = 70 h.
 Límites: no probado con rol Jefe de Obra/Campo; `obra_costo_real` (ficha de obra) sigue por J; cartera
 /clientes a 390 px oculta Materiales/MO.
+**14/09 madrugada:** cartera a 390 px con línea «Mat · MO · a la fecha» (3f8ad2a6, QA FIRMA). QA halló que la
+cartera sumaba sólo obras ACTIVAS (ARCOR «—», La Estrella sólo sin obra) → 20260914T0100 aplicada +
+TablaClientes suma `obras_todas` (dfe43198): ARCOR 9,82 M/2,34 M · La Estrella 156,3 M/97,3 M. QA en curso.
+En curso también: toast «Cargando…» clavado al volver atrás en celular (agente wt-nav, sin merge).
 
 ## 6. PENDIENTES REALES
 
