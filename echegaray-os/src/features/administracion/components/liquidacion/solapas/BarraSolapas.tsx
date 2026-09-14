@@ -2,9 +2,9 @@
 //
 // Dueño, 14/09/2026: *«son demasiadas secciones y no puedo empezar a trabajar… era tan simple con un
 // solo cuadro en sheet jornales»*. Siete solapas del mismo peso obligaban a elegir antes de ver nada.
-// Ahora hay UNA puerta —«Quincena», el cuadro de JORNALES— y el resto (detalle de horas, pagos y caja,
-// costo, convenios, cierre, recibos) vive en un desplegable «Más». No se borró ninguna pantalla: se
-// sacaron del camino.
+// Ahora hay UNA puerta —«Quincena», el cuadro de JORNALES— y el resto vive en un desplegable «Más» con
+// tres secciones (caja y proyección, costo y convenio, cierre y recibos). Eran seis; lo que repetían
+// del cuadro se sacó el 14/09/2026 (ver `index.ts`).
 //
 // `<details>` y no un menú con estado: es un Server Component, abre sin JavaScript y se cierra solo
 // al navegar. Los testids `solapa-<clave>` se conservan en cada enlace: los E2E los usan.

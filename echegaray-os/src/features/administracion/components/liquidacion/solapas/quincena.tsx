@@ -2,15 +2,11 @@ import { Aviso } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
-import { getDatosDeLaSolapaHoras } from '../../../services/grillaHorasQuincenaService'
-import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
 import { getExposicionDeLaQuincena } from '../../../services/exposicionConvenioService'
-import {
-  diasConHorasDe, diasDelEspejo, filasDelEspejo, totalesDelEspejo, type FilaDelEspejo,
-} from '../../../services/espejoDeJornales'
+import { totalesDelEspejo, type FilaDelEspejo } from '../../../services/espejoDeJornales'
+import { leerCuadroDeLaQuincena } from '../../../services/cuadroDeLaQuincenaService'
 import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDePersonal'
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
-import type { LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
 import { FiltrosDelEspejo, GrillaEspejoQuincena, type MarcaDePiso, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
 import { MONO } from './tabla'
@@ -67,11 +63,13 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
   // LA EXPOSICIÓN AL CONVENIO ES LA DE LA SOLAPA «CONVENIOS», NO UNA CUENTA NUEVA. Dueño, 14/09/2026:
   // «ok» a que el cuadro marque a quién le falta llegar al básico UOCRA. El piso, la brecha y su
   // fuente salen de `exponerAlPiso`; acá sólo se indexan por persona.
-  const [datos, liquidacion, exposicion] = await Promise.all([
-    getDatosDeLaSolapaHoras(supabase, quincena),
-    getLiquidacionDeLaQuincena(supabase, quincena),
+  // LAS FILAS LAS ARMA `leerCuadroDeLaQuincena`, la misma lectura que usan «Caja» y «Cierre»: así el
+  // pie de acá y el renglón de totales de allá no pueden separarse por un argumento copiado distinto.
+  const [cuadro, exposicion] = await Promise.all([
+    leerCuadroDeLaQuincena(supabase, quincena, hoy),
     getExposicionDeLaQuincena(supabase, quincena),
   ])
+  const { datos, liquidacion, filas, dias, tituloDe, cuadrosCerrados } = cuadro
   const bajoElPiso: Record<string, MarcaDePiso> = {}
   for (const l of exposicion.lineas) {
     if (!l.bajoElPiso || l.piso == null || l.brechaPct == null || l.diferenciaHora == null) continue
@@ -92,34 +90,9 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
       quincena.hasta,
     )
   }
-  // EL ESPEJO VIENE CON LA LIQUIDACIÓN, no de una lectura propia: es la misma función que ya lo usa
-  // para meter los adelantos de la planilla en la cadena de pago. Leerlo dos veces daría dos fotos
-  // de la planilla y un chip que coteja contra una y una celda que cobra según la otra.
+  // EL ESPEJO VIENE CON LA LIQUIDACIÓN, no de una lectura propia: es la misma foto de la planilla que
+  // ya entró a la cadena de pago.
   const espejo = liquidacion.espejo
-
-  const lineas: Record<string, { grupo: GrupoLiquidacion; linea: LineaConOverrides }> = {}
-  const tituloDe = new Map<GrupoLiquidacion, string>()
-  for (const cuadro of liquidacion.cuadros) {
-    tituloDe.set(cuadro.grupo, cuadro.titulo)
-    for (const linea of cuadro.lineas) lineas[linea.personaId] = { grupo: cuadro.grupo, linea }
-  }
-  const cuadrosCerrados = new Set(
-    Object.entries(liquidacion.estados).filter(([, e]) => e.estado === 'cerrada').map(([g]) => g),
-  )
-
-  const filas = filasDelEspejo({
-    quincena,
-    personas: datos.personas,
-    registros: datos.registros,
-    presencias: datos.presencias,
-    lineas,
-    cuadrosCerrados,
-    horasDeLaPlanilla: espejo.horasPorPersona,
-    diasDeLaPlanilla: espejo.diasPorPersona,
-    hayEspejo: espejo.hay,
-    hoy,
-  })
-  const dias = diasDelEspejo(quincena, diasConHorasDe(datos.registros))
 
   // EL RECORTE RECORTA LAS FILAS QUE SE VEN Y EL TOTAL QUE LAS ACOMPAÑA. Un pie que sumara el plantel
   // entero debajo de tres filas filtradas sería un total que no cierra con lo que está arriba.

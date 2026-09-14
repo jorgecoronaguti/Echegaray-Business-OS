@@ -38,12 +38,15 @@ const clavesDe = (desde: string, hasta: string): string[] =>
 
 test('«QUINCENA» ES LA PRIMERA DE LA BARRA Y LA QUE ABRE POR DEFECTO', () => {
   assert.equal(claves()[0], 'quincena')
-  assert.match(INDICE, /SOLAPA_POR_DEFECTO: ClaveDeSolapa = 'quincena'/)
+  assert.match(fuente('./claves.ts'), /SOLAPA_POR_DEFECTO: ClaveDeSolapa = 'quincena'/)
   assert.match(REGISTRO, /clave: 'quincena'[^}]*Componente: SolapaQuincena/)
 })
 
-test('LAS SEIS SOLAPAS ANTERIORES SIGUEN EN LA BARRA Y CON SU PANTALLA (dueño: «no quitar»)', () => {
-  assert.deepEqual(claves(), ['quincena', 'horas', 'pagos', 'costo', 'convenios', 'cierre', 'recibos'])
+// CAMBIÓ EL 14/09/2026: eran siete solapas; el dueño pidió unificar lo repetido de «Más» en menos
+// secciones. Lo que se protege sigue siendo que ninguna sección quede sin pantalla. Las tres de «Más» y
+// sus alias se prueban en `masUnificado.test.ts`.
+test('LAS SECCIONES DE LA BARRA TIENEN SU PANTALLA', () => {
+  assert.deepEqual(claves(), ['quincena', 'caja', 'costo', 'cierre'])
   assert.ok(!/Componente: null/.test(REGISTRO), 'ninguna solapa quedó sin pantalla')
 })
 
@@ -90,8 +93,11 @@ test('«LE FALTA PAGAR» DICE CÓMO SE PAGA Y SE MARCA CUANDO NO CIERRA', () => 
 })
 
 test('LA VISTA NO RECALCULA LA CADENA DE PAGO NI LAS HORAS', () => {
-  assert.match(VISTA, /getLiquidacionDeLaQuincena/)
-  assert.match(VISTA, /filasDelEspejo/)
+  // Las filas llegan armadas por la lectura común (que llama a getLiquidacionDeLaQuincena y filasDelEspejo).
+  assert.match(VISTA, /leerCuadroDeLaQuincena\(supabase, quincena, hoy\)/)
+  const COMUN = fuente('../../../services/cuadroDeLaQuincenaService.ts')
+  assert.match(COMUN, /getLiquidacionDeLaQuincena/)
+  assert.match(COMUN, /filasDelEspejo/)
   for (const c of [VISTA, GRILLA, TARIFA, CELDAS, PANEL]) {
     const codigo = sinComentarios(c)
     assert.ok(!/valorHora\s*\*|horas\s*\*/.test(codigo), 'no multiplica horas por tarifa')

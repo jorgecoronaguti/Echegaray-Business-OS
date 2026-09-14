@@ -190,12 +190,35 @@ export function filasDeGrilla(d: DatosDeGrilla): FilaDeGrilla[] {
       esperadas,
       diasSinMotivo: celdas.filter((c) => c.sinMotivo).length,
       // Un día que todavía no pasó no está sin cargar: está por venir.
-      diasSinCargar: celdas.filter((c) => c.marca === 'sin-cargar' && c.fecha <= d.hoy
-        && (jornadaPorDefecto(c.fecha) ?? 0) > 0).length,
+      diasSinCargar: celdas.filter((c) => esDiaSinCargar(c, d.hoy)).length,
       horasDeLicencia: r2(celdas.filter((c) => c.marca === 'licencia').reduce((s, c) => s + (c.horas ?? 0), 0)),
     }
     return { ...base, estado: estadoDeFila(base, p) }
   })
+}
+
+/**
+ * UN DÍA SIN CARGAR: ya pasó, tiene jornada y nadie escribió nada. UNA definición para la fila y el cierre.
+ *
+ * Estaba escrita adentro de `filasDeGrilla`. Los pendientes del cierre necesitan las FECHAS, no sólo el
+ * conteo; una segunda copia del criterio daría «3 días sin cargar» en el renglón y dos fechas al lado.
+ */
+export function esDiaSinCargar(c: CeldaDeGrilla, hoy: string): boolean {
+  return c.marca === 'sin-cargar' && c.fecha <= hoy && (jornadaPorDefecto(c.fecha) ?? 0) > 0
+}
+
+/** Quién tiene días por resolver antes de sellar, con las fechas. Lo consume `estadoDeCierre`. */
+export function pendientesPorPersona(
+  filas: readonly FilaDeGrilla[], hoy: string,
+): { personaId: string; nombre: string; sinMotivo: string[]; sinCargar: string[] }[] {
+  return filas
+    .map((f) => ({
+      personaId: f.personaId,
+      nombre: f.nombre,
+      sinMotivo: f.celdas.filter((c) => c.sinMotivo).map((c) => c.fecha),
+      sinCargar: f.celdas.filter((c) => esDiaSinCargar(c, hoy)).map((c) => c.fecha),
+    }))
+    .filter((p) => p.sinMotivo.length + p.sinCargar.length > 0)
 }
 
 /**

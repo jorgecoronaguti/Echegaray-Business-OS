@@ -46,7 +46,6 @@ import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { BloqueAsistenciaQuincena } from '@/features/administracion/components/BloqueAsistenciaQuincena'
-import { BloqueLiquidacion } from '@/features/administracion/components/liquidacion/BloqueLiquidacion'
 import { BarraSolapas } from '@/features/administracion/components/liquidacion/solapas/BarraSolapas'
 import { solapaDe } from '@/features/administracion/components/liquidacion/solapas'
 import { BloqueAsistenciaDia } from '@/features/administracion/components/asistencia/BloqueAsistenciaDia'
@@ -298,28 +297,14 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
               hrefDe={(clave) => hrefSolapa(sp, { solapa: clave })}
             />
             <div style={{ paddingTop: 10 }}>
-              {Contenido ? (
-                <Contenido
-                  quincenaPedida={sp.quincena}
-                  hoy={hoy}
-                  parametros={{ pendiente: sp.pendiente, grupo: sp.grupo, buscar: sp.buscar }}
-                  hrefDe={(cambios) => hrefSolapa(sp, cambios)}
-                />
-              ) : (
-                // LA PANTALLA 4 TODAVÍA NO EXISTE, Y EL CUADRO QUE YA CONTESTA LA CADENA DE PAGO SÍ.
-                // Dejarlo acá mientras tanto evita que la solapa Pagos lleve a una pantalla en
-                // blanco; quien construya la pantalla 4 registra su componente y esto se cae solo.
-                solapa.clave === 'pagos' ? (
-                  <BloqueLiquidacion
-                    quincenaPedida={sp.quincena} hoy={hoy} hrefDe={hrefLiquidacion} puedeCerrar
-                  />
-                ) : (
-                  <p style={{ fontSize: '12.5px', color: V.apagado, padding: '18px 0' }}
-                    data-testid="solapa-sin-pantalla">
-                    «{solapa.titulo}» todavía no está construida.
-                  </p>
-                )
-              )}
+              {/* `solapaDe` ya resolvió las claves viejas (`pagos`, `horas`, `convenios`, `recibos`) a
+                  su sección nueva, y la barra marca esa sección: no hace falta redirigir. */}
+              <Contenido
+                quincenaPedida={sp.quincena}
+                hoy={hoy}
+                parametros={{ pendiente: sp.pendiente, grupo: sp.grupo, buscar: sp.buscar }}
+                hrefDe={(cambios) => hrefSolapa(sp, cambios)}
+              />
             </div>
           </div>
         </div>

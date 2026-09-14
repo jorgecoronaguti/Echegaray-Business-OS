@@ -1,92 +1,60 @@
-// EL REGISTRO DE LAS SIETE SOLAPAS DE LIQUIDACIÓN — un solo lugar, una línea por solapa.
+// EL REGISTRO DE LAS SECCIONES DE LIQUIDACIÓN — un solo lugar, una línea por sección.
 //
-// ═══ POR QUÉ UN REGISTRO Y NO SEIS `if` EN LA PÁGINA ═══
+// ═══ POR QUÉ UN REGISTRO Y NO UN `if` POR SECCIÓN EN LA PÁGINA ═══
 //
-// Las doce pantallas del handoff v2 las construyen varias manos a la vez. Con la barra escrita en
-// la página y el contenido en otro `if`, la solapa que alguien agregue queda dibujada sin destino o
-// con destino y sin puerta — y eso ya pasó con las tres vistas de Personal, que estaban escritas
-// dos veces. Acá el título, la clave y el componente viajan juntos: agregar una pantalla es agregar
-// UNA línea, y la barra se entera sola.
+// Con la barra escrita en la página y el contenido en otro `if`, la sección que alguien agregue queda
+// dibujada sin destino o con destino y sin puerta — ya pasó con las tres vistas de Personal. Acá el
+// título, la clave y el componente viajan juntos, y la barra se entera sola.
 //
-// EL ORDEN DE ESTA LISTA ES EL ORDEN DE LA BARRA. `quincena` va primera porque es la que se abre por
-// defecto desde el 11/09/2026: es el espejo del bloque de la planilla JORNALES, la pantalla que el
-// dueño abre. Antes era `horas`, que contesta la mitad de la pregunta —las horas sin la plata—.
+// ═══ UN CUADRO + «MÁS» CON TRES SECCIONES (dueño, 14/09/2026) ═══
 //
-// ═══ UNA SOLAPA SIN COMPONENTE NO SE DIBUJA ═══
+// La Quincena es el cuadro de JORNALES y abre por defecto. «Más» tenía seis secciones y dos de ellas
+// —«Horas por día» y «Pagos y caja»— repetían la fila y el pie del cuadro. Quedan tres, cada una con
+// lo que la Quincena NO muestra:
 //
-// `Componente: null` es «esta pantalla todavía no existe». Se lista igual —el dueño ya sabe que van
-// a estar— pero no se ofrece el clic: una solapa que lleva a una pantalla en blanco se lee como que
-// el módulo está roto.
+//   caja     el renglón banco · efectivo · falta pagar (el MISMO pie), el cotejo contra la línea
+//            Jornales del Flujo de Caja y la proyección de las dos quincenas siguientes.
+//   costo    costo de la hora, costo por obra, productividad y, debajo, la exposición al convenio.
+//   cierre   lo que traba el sello con nombre y fecha, cerrar/reabrir, la foto sellada y los recibos.
+//
+// Las claves viejas (`horas`, `pagos`, `convenios`, `recibos`) se resuelven en `claves.ts`.
 
 import type { ComponentType } from 'react'
 import { SolapaQuincena } from './quincena'
-import { SolapaHoras } from './SolapaHoras'
+import { SolapaCaja } from './caja-nomina'
 import { SolapaCosto } from './costo'
-import { SolapaPagos } from './pagos'
-import { SolapaCierre } from './cierre'
-import { SolapaConvenios } from './convenios'
-import { SolapaRecibos } from './recibos'
+import { SolapaCierreYRecibos } from './cierre-y-recibos'
+import { claveDeSolapa, type ClaveDeSolapa } from './claves'
 
-export type ClaveDeSolapa = 'quincena' | 'horas' | 'pagos' | 'costo' | 'convenios' | 'cierre' | 'recibos'
+export { SOLAPA_POR_DEFECTO, type ClaveDeSolapa } from './claves'
 
 export interface SolapaDeLiquidacion {
   clave: ClaveDeSolapa
   titulo: string
-  /** `null` mientras la pantalla no exista. La barra la dibuja apagada y sin enlace. */
-  Componente: ComponentType<PropsDeSolapa> | null
+  Componente: ComponentType<PropsDeSolapa>
 }
 
-/** Lo que TODA solapa recibe. Cada una usa lo que necesita; ninguna vuelve a resolver la quincena. */
+/** Lo que TODA sección recibe. Cada una usa lo que necesita; ninguna vuelve a resolver la quincena. */
 export interface PropsDeSolapa {
-  /** Cualquier día de la ventana pedida; la solapa la resuelve con `quincenaDe`. */
+  /** Cualquier día de la ventana pedida; la sección la resuelve con `quincenaDe`. */
   quincenaPedida?: string
   hoy: string
-  /** Los query params de la pantalla, para los recortes propios de cada solapa. */
+  /** Los query params de la pantalla, para los recortes propios de cada sección. */
   parametros: Record<string, string | undefined>
-  /** Enlaces dentro de la vista Liquidación, conservando solapa y quincena. */
+  /** Enlaces dentro de la vista Liquidación, conservando sección y quincena. */
   hrefDe: (cambios: Record<string, string | undefined>) => string
 }
 
-/**
- * LA QUE ABRE ES «QUINCENA» (dueño, 11/09/2026: «tengo que seguir usando Sheet JORNALES»).
- *
- * Era `horas`, y «Horas» contesta la mitad de la pregunta: cuánto trabajó cada uno, sin la plata. El
- * dueño entra a Liquidación a mirar la quincena entera —horas Y pago— y tenía que cruzar a «Pagos» y
- * buscar a la persona de nuevo. Cambiar el default no borra nada: las seis siguen donde estaban.
- */
-export const SOLAPA_POR_DEFECTO: ClaveDeSolapa = 'quincena'
-
-// ═══ EL ÍNDICE ═══
-//
-// Cada agente agrega SU línea acá y nada más. `pagos` apunta hoy al cuadro que ya existe
-// (`BloqueLiquidacion`) para que la cadena de pago no quede sin puerta mientras se construye la
-// pantalla 4; quien la haga reemplaza ese componente por el suyo.
-//
-// ═══ «CAJA DE NÓMINA» NO ES UNA SOLAPA ═══
-//
-// El mockup lista CINCO solapas de nivel 3 (`Horas · Pagos · Costo a la obra · Convenios · Cierre`,
-// + Recibos) y la pantalla 9 no está entre ellas: se dibuja aparte, a 1040 px, y sus dos primeras
-// filas —«Efectivo en mano» y «Lote de haberes al banco»— son literalmente los dos totales del pie
-// de Pagos. Por eso vive DENTRO de `pagos.tsx`, debajo del cuadro. Una séptima solapa obligaría a
-// cambiar de pantalla para leer el total que se acaba de calcular, y agregaría un nivel de
-// navegación que el handoff §4 prohíbe («máximo dos niveles» de header, tres con las solapas).
+// EL ORDEN DE ESTA LISTA ES EL DE LA BARRA: la primera es la vista principal, el resto va a «Más» en
+// el orden de `CLAVES_DEL_MENU`.
 export const SOLAPAS: SolapaDeLiquidacion[] = [
-  // EL ESPEJO DEL BLOQUE DE JORNALES. Va primera porque es la pantalla que reemplaza a la planilla:
-  // una fila por persona, una columna por día, y la cadena de pago a la derecha.
   { clave: 'quincena', titulo: 'Quincena', Componente: SolapaQuincena as unknown as ComponentType<PropsDeSolapa> },
-  // DESDE ACÁ, TODO VA AL DESPLEGABLE «MÁS» (dueño, 14/09/2026: «son demasiadas secciones»). La barra
-  // muestra sólo la primera; el orden de abajo es el orden del desplegable.
-  { clave: 'horas', titulo: 'Horas por día', Componente: SolapaHoras },
-  { clave: 'pagos', titulo: 'Pagos y caja', Componente: SolapaPagos as unknown as ComponentType<PropsDeSolapa> },
-  { clave: 'costo', titulo: 'Costo a la obra', Componente: SolapaCosto },
-  { clave: 'convenios', titulo: 'Convenios', Componente: SolapaConvenios },
-  // La ruta ya cortó con notFound() a quien no liquida: llegar acá es poder cerrar.
-  { clave: 'cierre', titulo: 'Cerrar quincena', Componente: ((p: PropsDeSolapa) => SolapaCierre({ ...p, puedeCerrar: true })) as unknown as ComponentType<PropsDeSolapa> },
-  { clave: 'recibos', titulo: 'Recibos', Componente: SolapaRecibos },
+  { clave: 'caja', titulo: 'Caja y proyección', Componente: SolapaCaja as unknown as ComponentType<PropsDeSolapa> },
+  { clave: 'costo', titulo: 'Costo y convenio', Componente: SolapaCosto as unknown as ComponentType<PropsDeSolapa> },
+  { clave: 'cierre', titulo: 'Cierre y recibos', Componente: SolapaCierreYRecibos as unknown as ComponentType<PropsDeSolapa> },
 ]
 
-/** La solapa pedida, o la de por defecto. Una clave inventada en la URL no rompe la pantalla. */
+/** La sección pedida —o la que absorbió una clave retirada—, o la Quincena. */
 export function solapaDe(clave: string | undefined): SolapaDeLiquidacion {
-  return SOLAPAS.find((s) => s.clave === clave)
-    ?? SOLAPAS.find((s) => s.clave === SOLAPA_POR_DEFECTO)!
+  return SOLAPAS.find((s) => s.clave === claveDeSolapa(clave))!
 }
