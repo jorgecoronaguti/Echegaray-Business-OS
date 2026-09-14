@@ -18,7 +18,7 @@
 // «sin extracto» y ninguna fila se marca sin giro.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { girosDe, periodoDeRecibo, type FilaAdelanto, type FilaRecibo } from './liquidacionCuadros.ts'
+import { CONCEPTO_DEL_GIRO, girosDe, periodoDeRecibo, type FilaAdelanto, type FilaRecibo } from './liquidacionCuadros.ts'
 import { tarifaVigenteAl } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
@@ -180,8 +180,12 @@ function armarPersonas(
         : null
       const reciboNeto = neto != null ? numero(neto) : (doc?.neto != null ? numero(doc.neto) : null)
       // SIN EXTRACTO NADIE SE MARCA SIN GIRO: no se puede afirmar lo que no se pudo mirar.
+      // EL CONCEPTO SALE DE `CONCEPTO_DEL_GIRO`, NO DE UN STRING SUELTO. Acá se buscaba «sueldo», que no
+      // existe en `nomina_adelanto` (14/09/2026: sólo QUINCENA y LIQUIDACION_FINAL): ningún recibo
+      // aparecía girado. Este servicio no sabe el cuadro de la persona, así que prueba los dos.
       const giro = hayExtracto
-        ? girosDe(q, filasAdelanto, p.cuil, 'sueldo', reciboNeto).giroEnElLote
+        ? [...new Set(Object.values(CONCEPTO_DEL_GIRO))]
+          .some((concepto) => girosDe(q, filasAdelanto, p.cuil, concepto, reciboNeto).giroEnElLote)
         : false
       return {
         personaId: p.id,

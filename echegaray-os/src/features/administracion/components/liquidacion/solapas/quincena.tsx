@@ -12,6 +12,7 @@ import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDe
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import type { LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
+import { RECORTES, normalizar } from '../../../services/recorteDeLiquidacion'
 import { FiltrosDelEspejo, GrillaEspejoQuincena, type MarcaDePiso, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
 import { MONO } from './tabla'
 import type { PropsDeSolapa } from './index'
@@ -46,20 +47,8 @@ import type { PropsDeSolapa } from './index'
 // el chip. Y cuando el espejo no está leído, el sello lo dice con todas las letras en vez de mostrar
 // una tabla que parece cotejada.
 
-// CÓMO COBRA, NO EN QUÉ CUADRO ESTÁ. Dueño, 14/09/2026: *«si solo quiero ver los valores de los que
-// cobran en quincena no puedo»*. El recorte ya existía con los nombres de los cuadros («Obreros»,
-// «Oficina») y con un rótulo de 9,5 px: no se leía como la pregunta que él hace. La clave sigue
-// siendo el cuadro porque la modalidad la impone el cuadro (`modalidadDe`): obreros = por hora,
-// liquidados por quincena; oficina = neto mensual.
-const RECORTES: { clave: GrupoLiquidacion | 'todos'; texto: string }[] = [
-  { clave: 'todos', texto: 'Todos' },
-  { clave: 'obreros', texto: 'Por quincena' },
-  { clave: 'oficina', texto: 'Mensuales' },
-  { clave: 'final', texto: 'Liq. finales' },
-]
-
-/** Sin tildes ni mayúsculas: «aguero» encuentra a «AGÜERO CRISTIAN». */
-const normalizar = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+// EL RECORTE «COBRA» Y EL BUSCADOR VIVEN EN `recorteDeLiquidacion.ts` desde el 14/09/2026: Recibos usa
+// los mismos, y dos copias recortarían distinto la misma quincena.
 
 export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }: PropsDeSolapa) {
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? (quincenaPedida as string) : hoy)

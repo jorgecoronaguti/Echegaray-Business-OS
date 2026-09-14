@@ -156,9 +156,12 @@ test('UN DÍA CON JORNADA AUTOMÁTICA SE VE COMO UN DÍA SIN HORAS: «·», sin 
 })
 
 test('EL RECORTE PREGUNTA CÓMO COBRA: por quincena o mensual (dueño, 14/09/2026)', () => {
-  assert.match(VISTA, /clave: 'obreros', texto: 'Por quincena'/)
-  assert.match(VISTA, /clave: 'oficina', texto: 'Mensuales'/)
-  assert.match(VISTA, /clave: 'final', texto: 'Liq\. finales'/)
+  // EL RECORTE SE MUDÓ A UN MÓDULO COMPARTIDO con Recibos (14/09/2026): el cuadro lo importa.
+  const RECORTE = fuente('../../../services/recorteDeLiquidacion.ts')
+  assert.match(RECORTE, /clave: 'obreros', texto: 'Por quincena'/)
+  assert.match(RECORTE, /clave: 'oficina', texto: 'Mensuales'/)
+  assert.match(RECORTE, /clave: 'final', texto: 'Liq\. finales'/)
+  assert.match(VISTA, /import \{ RECORTES, normalizar \} from '\.\.\/\.\.\/\.\.\/services\/recorteDeLiquidacion'/)
   assert.match(FILTROS, /rotulo="Cobra"/)
 })
 
