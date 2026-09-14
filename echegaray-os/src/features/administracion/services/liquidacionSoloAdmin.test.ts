@@ -42,9 +42,12 @@ test('LA RUTA NO SIRVE LA VISTA A QUIEN NO LIQUIDA: corta con notFound()', () =>
   assert.match(src, /if \(enLiquidacion && !liquida\) notFound\(\)/)
   assert.match(src, /const liquida = liquidaSueldos\(rol\)/)
   assert.doesNotMatch(src, /liquidacion-sin-permiso/, 'el aviso que anunciaba el módulo ya no está')
-  // Y el corte va ANTES de armar el bloque: no se lee una fila para después esconderla.
+  // Y el corte va ANTES de armar la vista: no se lee una fila para después esconderla. El ancla era
+  // `<BloqueLiquidacion`, el respaldo de «Pagos» que se retiró el 14/09/2026; la vista es `<Contenido`.
+  const vista = src.indexOf('<Contenido')
+  assert.ok(vista > 0, 'la ruta monta la sección de Liquidación')
   assert.ok(
-    src.indexOf('if (enLiquidacion && !liquida) notFound()') < src.indexOf('<BloqueLiquidacion'),
+    src.indexOf('if (enLiquidacion && !liquida) notFound()') < vista,
     'el 404 tiene que estar antes de la vista',
   )
 })
