@@ -39,7 +39,7 @@ export function BarraSolapas({ activa, hrefDe }: {
           <Link href={hrefDe(principal.clave)} prefetch={false} data-testid={`solapa-${principal.clave}`}
             style={{ ...inactivo, color: V.tinta }}>← {principal.titulo}</Link>
         )}
-      {otra && <span data-testid={`solapa-${otra.clave}`} style={activo}>{otra.titulo}</span>}
+      {otra && <span data-testid="solapa-activa" style={activo}>{otra.titulo}</span>}
 
       <details data-testid="liquidacion-mas" style={{ marginLeft: 'auto', position: 'relative' }}>
         <summary style={{
@@ -51,12 +51,22 @@ export function BarraSolapas({ activa, hrefDe }: {
           background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 8,
           boxShadow: '0 6px 20px rgba(0,0,0,.08)', padding: 6, display: 'flex', flexDirection: 'column',
         }}>
-          {resto.filter((s) => s.clave !== activa).map((s) => (
-            <Link key={s.clave} href={hrefDe(s.clave)} prefetch={false} data-testid={`solapa-${s.clave}`}
-              style={{ padding: '7px 10px', borderRadius: 5, color: V.tinta, textDecoration: 'none', fontSize: '12.5px' }}>
-              {s.titulo}
-            </Link>
-          ))}
+          {/* EL MENÚ NO CAMBIA SEGÚN DÓNDE ESTÁS (dueño, 14/09/2026: «es confuso el movimiento de
+              secciones… deja quieto lo q contiene»). Antes la sección abierta se sacaba de la lista y
+              el resto se corría. Ahora siempre están todas, en el mismo orden, y la abierta va marcada. */}
+          {resto.map((s) => {
+            const esLaAbierta = s.clave === activa
+            return (
+              <Link key={s.clave} href={hrefDe(s.clave)} prefetch={false} data-testid={`solapa-${s.clave}`}
+                aria-current={esLaAbierta ? 'page' : undefined}
+                style={{
+                  padding: '7px 10px', borderRadius: 5, color: V.tinta, textDecoration: 'none', fontSize: '12.5px',
+                  fontWeight: esLaAbierta ? 600 : 400, background: esLaAbierta ? V.linea : 'transparent',
+                }}>
+                {s.titulo}
+              </Link>
+            )
+          })}
         </div>
       </details>
     </div>
