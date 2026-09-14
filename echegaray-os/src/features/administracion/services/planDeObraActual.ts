@@ -18,11 +18,16 @@
 // serían vigentes hoy y la grilla tendría que elegir una por horas — el cambio se vería a medias.
 // Con `hasta = ayer` el día de hoy tiene una sola obra.
 //
-// ═══ SALVO QUE LA ANTERIOR HAYA EMPEZADO HOY ═══
+// ═══ SALVO QUE LA ANTERIOR HAYA EMPEZADO HOY: SE REEMPLAZA (cambió el 14/09/2026) ═══
 //
-// Corregir en el momento una asignación recién creada dejaría `hasta` ANTES de `desde`: un período
-// que afirma que la persona trabajó menos que ningún día. Ahí `hasta = desde`, que es lo único
-// cierto — estuvo asignada ese día. No se borra: alguien la creó y eso es historia.
+// Cerrarla ayer dejaría `hasta` antes de `desde`. Hasta el 14/09 se cerraba con `hasta = desde`, y eso
+// guardaba un día suelto que la lectura (gana la más corta) le hacía ganar a la obra recién elegida:
+// AGÜERO quedó el 08/09 con Quattropani, Pisos y Messina, las tres de un día. La corrección en el
+// momento no es historia, es la misma decisión dicha mejor: la fila se borra. La regla entera —cerrar,
+// reemplazar, recortar, y el día suelto que no parte nada— vive en
+// `orquestador/lib/cronologia-asignaciones.mjs`.
+
+import { planDeAsignacion } from '../../../../orquestador/lib/cronologia-asignaciones.mjs'
 
 // ═══ QUIÉN PUEDE MOVER A ALGUIEN DE OBRA (dueño, 08/09/2026 — segunda decisión del día) ═══
 //
@@ -87,6 +92,10 @@ export interface PlanDeObraActual {
    * único tramo que afirma que nunca se fue.
    */
   reabrir: { obra_id: string; desde: string } | null
+  /** Filas que el tramo nuevo reemplaza enteras: empezaban en su primer día o después (regla a). */
+  borrar: string[]
+  /** Filas a otra obra que seguían después del fin del tramo nuevo: arrancan al día siguiente. */
+  recortar: { id: string; desde: string }[]
   /** No hay nada que escribir: ya estaba exactamente así. */
   sinCambio: boolean
   /** La línea que lee quien tocó el desplegable. Siempre con nombres, nunca con ids. */
@@ -106,19 +115,6 @@ export function diaSiguiente(iso: string): string {
   const t = Date.parse(`${iso}T00:00:00Z`)
   if (!Number.isFinite(t)) throw new Error(`Fecha inválida: ${iso}`)
   return new Date(t + 86_400_000).toISOString().slice(0, 10)
-}
-
-/** `hasta` de una asignación que se cierra porque el destino arranca el día `corte`: la víspera del
- *  corte, salvo que la asignación haya empezado ese mismo día o después. Una fila sin `desde` cierra
- *  en la víspera: no hay ningún comienzo que el cierre pueda quedar por delante.
- *
- *  Cuando el cambio es DESDE HOY, `corte` es hoy y la víspera es ayer — el comportamiento de
- *  siempre. Cuando es programado, `corte` es el `desde` futuro y la anterior sigue vigente hasta el
- *  día anterior al pase: cerrarla ayer le sacaría a la persona los días que todavía va a trabajar
- *  donde está, y esas horas ya no tendrían asignación que las respalde. */
-function cierreDe(a: AsignacionAbierta, corte: string): string {
-  const vispera = diaAnterior(corte)
-  return a.desde && a.desde > vispera ? a.desde : vispera
 }
 
 /**
@@ -209,8 +205,11 @@ function masVieja(a: AsignacionAbierta, b: AsignacionAbierta): AsignacionAbierta
  * cierran TODAS las demás —incluidas las duplicadas de la misma obra—; si no la hay se cierran
  * todas y se abre una sola. `destino = null` es «Sin obra»: sólo cierra.
  */
-export function planDeCambioDeObra({ abiertas, destino, hoy, desde = hoy, hasta = null }: {
+export function planDeCambioDeObra({ abiertas, cerradas = [], destino, hoy, desde = hoy, hasta = null }: {
   abiertas: AsignacionAbierta[]
+  /** Las asignaciones CON `hasta` que todavía llegan al tramo nuevo (`hasta >= desde`). Opcional: sin
+   *  ellas el plan es el de siempre sobre las abiertas. */
+  cerradas?: { id: string; obra_id: string; desde: string | null; hasta: string | null }[]
   destino: { id: string; nombre: string } | null
   hoy: string
   /**
@@ -230,27 +229,44 @@ export function planDeCambioDeObra({ abiertas, destino, hoy, desde = hoy, hasta 
   for (const a of destino ? abiertas.filter((x) => x.obra_id === destino.id) : []) {
     seConserva = seConserva ? masVieja(seConserva, a) : a
   }
-  const sobran = abiertas.filter((a) => a.id !== seConserva?.id)
-  const cerrar = sobran.map((a) => ({ id: a.id, hasta: cierreDe(a, desde) }))
+  // EL DÍA SUELTO NO PARTE EL TRAMO (regla a, `orquestador/lib/cronologia-asignaciones.mjs`). Un pase
+  // de un solo día no cierra la obra donde está ni programa el regreso: guarda el día y nada más, y
+  // la lectura le da ese día a la asignación más corta. Partir el tramo largo por cada día suelto
+  // dejaba tres filas donde hay una decisión, y cancelar el día obligaba a volver a coserlas.
+  const unDia = Boolean(hasta) && hasta === desde
+  const sobran = unDia ? [] : abiertas.filter((a) => a.id !== seConserva?.id)
+  // LA QUE EMPEZABA EN EL PRIMER DÍA DEL TRAMO NUEVO O DESPUÉS SE REEMPLAZA, no se cierra. Antes
+  // quedaba con `hasta = desde`: un día suelto que la lectura hacía ganar sobre la obra recién
+  // elegida. Así quedó AGÜERO el 08/09: Quattropani, Pisos y Messina, las tres de un día.
+  const borrar = sobran.filter((a) => a.desde != null && a.desde >= desde).map((a) => a.id)
+  const cerrar = sobran.filter((a) => !borrar.includes(a.id)).map((a) => ({ id: a.id, hasta: diaAnterior(desde) }))
+  // Y LAS YA CERRADAS QUE CUBREN EL TRAMO NUEVO TAMBIÉN CEDEN: un pase programado a otra obra seguía
+  // guardado debajo del cambio. La que además seguía después del fin del tramo nuevo no se toca: la
+  // lectura resuelve el tramo corto y partirla sería inventar un regreso que nadie pidió.
+  const regla = unDia ? null : planDeAsignacion(cerradas.filter((c) => c.hasta != null),
+    { obra_id: destino?.id ?? null, desde, hasta, unDia: false })
+  for (const c of regla?.cerrar ?? []) if (!c.continua) cerrar.push({ id: c.id, hasta: c.hasta })
+  for (const r of regla?.reemplazar ?? []) borrar.push(r.id)
+  const recortar = (regla?.recortar ?? []).map((r) => ({ id: r.id, desde: r.desde }))
   const abrir = destino && !seConserva
     ? { obra_id: destino.id, desde, ...(hasta ? { hasta } : {}) }
     : null
 
   // EL REGRESO SÓLO EXISTE SI HAY TRAMO NUEVO Y TIENE FIN. Sin `abrir` no hay de dónde volver: o no
   // se movió a nadie, o la persona ya estaba en el destino y el tramo no se creó.
-  const vuelve = hasta && abrir ? vigenteHoy(abiertas, hoy) : null
+  const vuelve = hasta && abrir && !unDia ? vigenteHoy(abiertas, hoy) : null
   const reabrir = vuelve && vuelve.obra_id !== destino?.id
     ? { obra_id: vuelve.obra_id, desde: diaSiguiente(hasta as string) }
     : null
 
-  if (cerrar.length === 0 && !abrir) {
+  if (cerrar.length === 0 && borrar.length === 0 && recortar.length === 0 && !abrir) {
     return {
-      cerrar, abrir, reabrir: null, sinCambio: true,
+      cerrar, borrar, recortar, abrir, reabrir: null, sinCambio: true,
       acuse: destino ? `Ya estaba en ${destino.nombre}.` : 'Ya estaba sin obra.',
     }
   }
   return {
-    cerrar, abrir, reabrir, sinCambio: false,
+    cerrar, borrar, recortar, abrir, reabrir, sinCambio: false,
     acuse: acuseDe({ destino, seConserva, cerradas: sobran, hoy, desde, hasta, vuelve }),
   }
 }

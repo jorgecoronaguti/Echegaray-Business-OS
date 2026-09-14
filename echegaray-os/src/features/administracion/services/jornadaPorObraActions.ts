@@ -404,9 +404,13 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   // cambia es que el acuse lo diga. La casilla del panel —`asignar`— sigue siendo la única forma de
   // CREAR la asignación, y se respeta aunque el día ya estuviera cargado: es un acto explícito.
   const faltaEn = await faltaAsignacion(supabase, c.persona_id, obraDestino, c.fecha)
+  // LA CASILLA ASIGNA ESE DÍA, NO DE ESE DÍA EN ADELANTE (dueño, 14/09/2026: la cronología de cada
+  // empleado). Antes abría una asignación SIN FIN desde una fecha pasada y sin cerrar la de su obra:
+  // la persona quedaba guardada en dos obras desde ese día para siempre. Corregir un día es un día
+  // suelto, y el día suelto no parte el tramo largo (`orquestador/lib/cronologia-asignaciones.mjs`).
   if (faltaEn && c.asignar) {
     const alta = await supabase.from('obra_asignacion').insert({
-      obra_id: obraDestino, persona_id: c.persona_id, rol: 'integrante', desde: c.fecha,
+      obra_id: obraDestino, persona_id: c.persona_id, rol: 'integrante', desde: c.fecha, hasta: c.fecha,
     })
     if (alta.error) return { ok: false, error: `No pude asignarla: ${alta.error.message}` }
   }

@@ -19,7 +19,9 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { diaSanJuan } from '../../../../orquestador/lib/cronologia-asignaciones.mjs'
 import type { Resultado } from './actions'
+import { cederOtrasObras, type SupabaseAsignacion } from './cronologiaAlAsignar'
 
 const fechaOpcional = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'), z.literal(''),
@@ -43,6 +45,12 @@ export async function asignarPersona(obraId: string, form: FormData): Promise<Re
   const parsed = asignacionSchema.safeParse(Object.fromEntries(form))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const d = parsed.data
+  // SIN FECHA ES HOY, NO «DESDE SIEMPRE». Una fila sin `desde` afirma que la persona estuvo en esta
+  // obra desde el principio de los tiempos y pisa toda su historia: así nacieron las 18 filas que el
+  // 14/09/2026 cruzaban ocho meses de JORNALES.
+  const desde = d.desde || (diaSanJuan(new Date()) as string)
+  const hasta = d.hasta || null
+  if (hasta && hasta < desde) return { ok: false, error: 'El último día no puede ser anterior al primero.' }
   const supabase = await createClient()
 
   const { error } = await supabase.from('obra_asignacion').insert({
@@ -51,8 +59,8 @@ export async function asignarPersona(obraId: string, form: FormData): Promise<Re
     rol: d.rol ?? 'integrante',
     cuadrilla_id: d.cuadrilla_id || null,
     actividad_id: d.actividad_id || null,
-    desde: d.desde || null,
-    hasta: d.hasta || null,
+    desde,
+    hasta,
     notas: d.notas || null,
   })
   // ═══ EL ÚNICO AHORA ES SOBRE LA ASIGNACIÓN **VIGENTE** (19/08/2026) ═══
@@ -66,8 +74,9 @@ export async function asignarPersona(obraId: string, form: FormData): Promise<Re
   // fue es un alta normal y el período anterior queda intacto. El 23505 ahora significa lo que dice:
   // esa persona está asignada AHORA MISMO a eso.
   if (error) return { ok: false, error: error.code === '23505' ? YA_ASIGNADA : error.message }
+  const cedio = await cederOtrasObras(supabase as unknown as SupabaseAsignacion, d.persona_id, { obra_id: obraId, desde, hasta })
   revalidatePath(`/obras/${obraId}`)
-  return { ok: true }
+  return cedio ? { ok: false, error: cedio } : { ok: true }
 }
 
 /** Cerrar la asignación: la persona sale de la obra y el período queda escrito. Sin fecha explícita
@@ -146,15 +155,25 @@ export async function asignarCuadrillaAObra(form: FormData): Promise<Resultado> 
   const nuevos = personas.filter((p) => !yaEstaban.has(p))
   if (nuevos.length === 0) return { ok: false, error: 'Todos los integrantes ya estaban asignados a esa obra.' }
 
+  const desde = d.desde || (diaSanJuan(new Date()) as string)
   const { error } = await supabase.from('obra_asignacion').insert(nuevos.map((persona_id) => ({
     obra_id: d.obra_id,
     persona_id,
     rol: 'integrante',
     cuadrilla_id: d.cuadrilla_id,
     actividad_id: actividad,
-    desde: d.desde || null,
+    desde,
   })))
   if (error) return { ok: false, error: error.code === '23505' ? YA_ASIGNADA : error.message }
+
+  // CADA INTEGRANTE DEJA SU OBRA ANTERIOR: mandar la cuadrilla a otra obra es moverla, no duplicarla.
+  const avisos: string[] = []
+  for (const persona_id of nuevos) {
+    const cedio = await cederOtrasObras(supabase as unknown as SupabaseAsignacion, persona_id,
+      { obra_id: d.obra_id, desde, hasta: null })
+    if (cedio) avisos.push(cedio)
+  }
+  if (avisos.length > 0) return { ok: false, error: `${avisos.length} de ${nuevos.length}: ${avisos[0]}` }
 
   revalidatePath(`/obras/${d.obra_id}`)
   revalidatePath('/administracion/personas/cuadrillas')

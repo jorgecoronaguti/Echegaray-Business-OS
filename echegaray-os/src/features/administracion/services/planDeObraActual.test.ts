@@ -50,13 +50,40 @@ test('cambiar de obra cierra la anterior AYER y abre la nueva HOY', () => {
   assert.equal(plan.acuse, 'Desde hoy en SALÓN COMERCIAL · antes PISOS INDUSTRIALES.')
 })
 
-test('el cierre nunca queda antes del comienzo: la asignación creada hoy cierra hoy', () => {
+// CAMBIÓ EL 14/09/2026. Antes la creada hoy cerraba HOY (`hasta = desde`) y quedaba como día suelto:
+// la lectura hace ganar a la más corta, así que el día seguía en la obra que se acababa de corregir.
+// AGÜERO quedó así el 08/09 con tres obras de un día. Ahora se reemplaza: ni `hasta < desde` ni un día
+// suelto que nadie eligió.
+test('la asignación creada hoy se REEMPLAZA: no queda como día suelto que le gana a la obra elegida', () => {
   const plan = planDeCambioDeObra({
     abiertas: [{ id: 'a1', obra_id: pisos.obra_id, nombre: pisos.nombre, desde: HOY }],
     destino: salon, hoy: HOY,
   })
-  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: HOY }])
+  assert.deepEqual(plan.cerrar, [])
+  assert.deepEqual(plan.borrar, ['a1'])
   assert.deepEqual(plan.abrir, { obra_id: 'salon-comercial', desde: HOY })
+})
+
+test('un pase de UN día no cierra la obra donde está ni programa el regreso', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: abiertaEnPisos, destino: salon, hoy: HOY, desde: '2026-09-10', hasta: '2026-09-10',
+  })
+  assert.deepEqual([plan.cerrar, plan.borrar, plan.reabrir], [[], [], null])
+  assert.deepEqual(plan.abrir, { obra_id: 'salon-comercial', desde: '2026-09-10', hasta: '2026-09-10' })
+})
+
+test('mover a alguien cierra también la asignación YA CERRADA a otra obra que cubría el día', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: [],
+    cerradas: [
+      { id: 'pase', obra_id: 'messina', desde: '2026-09-01', hasta: '2026-09-20' },
+      { id: 'futuro', obra_id: 'messina', desde: '2026-09-12', hasta: '2026-09-15' },
+      { id: 'vieja', obra_id: 'messina', desde: '2026-08-01', hasta: '2026-08-31' },
+    ],
+    destino: salon, hoy: HOY,
+  })
+  assert.deepEqual(plan.cerrar, [{ id: 'pase', hasta: AYER }])
+  assert.deepEqual(plan.borrar, ['futuro'])
 })
 
 test('elegir la misma obra no escribe nada', () => {
@@ -168,9 +195,9 @@ test('«Sin obra» cierra TODAS las abiertas, no la última', () => {
     ],
     destino: null, hoy: HOY,
   })
-  assert.deepEqual(plan.cerrar, [
-    { id: 'a1', hasta: AYER }, { id: 'a2', hasta: AYER }, { id: 'a3', hasta: HOY },
-  ])
+  // La que empezó HOY se reemplaza (14/09/2026): cerrarla con `hasta = hoy` guardaba un día suelto.
+  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: AYER }, { id: 'a2', hasta: AYER }])
+  assert.deepEqual(plan.borrar, ['a3'])
   assert.equal(plan.abrir, null)
   assert.equal(plan.acuse, 'Desde hoy sin obra · antes PISOS INDUSTRIALES, GALPÓN 9, SALÓN COMERCIAL.')
 })

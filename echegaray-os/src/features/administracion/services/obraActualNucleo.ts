@@ -37,11 +37,14 @@ interface TablaLike {
   select(columnas: string): LecturaLike
   update(valores: Fila): EscrituraLike
   insert(fila: Fila): EscrituraLike
+  delete(): EscrituraLike
 }
 
 interface LecturaLike {
   eq(columna: string, valor: string): LecturaLike
   in(columna: string, valores: string[]): PromiseLike<Respuesta<Fila[]>>
+  /** Filtro PostgREST crudo (`hasta.gte.2026-09-14`): las cerradas que todavía cubren el tramo nuevo. */
+  or(filtro: string): PromiseLike<Respuesta<Fila[]>>
   /** `hasta is null` — abierta. Es un filtro distinto de `eq`: PostgREST no compara con null. */
   is(columna: string, valor: null): PromiseLike<Respuesta<Fila[]>>
   maybeSingle(): PromiseLike<Respuesta<Fila>>
@@ -125,8 +128,16 @@ export async function cambiarObraActualCon(
   const abiertas = await leerAbiertas(supabase, personaId)
   if (abiertas.error) return { ok: false, error: abiertas.error }
 
-  const plan = planDeCambioDeObra({ abiertas: abiertas.data, destino: obra.destino, hoy, desde, hasta })
+  const cerradas = await leerCerradasDesde(supabase, personaId, desde)
+  if (cerradas.error) return { ok: false, error: cerradas.error }
+
+  const plan = planDeCambioDeObra({
+    abiertas: abiertas.data, cerradas: cerradas.data, destino: obra.destino, hoy, desde, hasta,
+  })
   if (plan.sinCambio) return { ok: true, mensaje: plan.acuse }
+
+  const cedidas = await borrarYRecortar(supabase, personaId, plan)
+  if (cedidas) return { ok: false, error: cedidas }
 
   for (const c of plan.cerrar) {
     // EL `eq('persona_id')` NO SOBRA: sin él un id copiado de otra ficha cerraría la asignación de
@@ -229,6 +240,45 @@ async function destinoValido(
     }
   }
   return { destino: { id: o.id, nombre: o.nombre }, error: null }
+}
+
+type TramoCerrado = { id: string; obra_id: string; desde: string | null; hasta: string | null }
+
+/** Las asignaciones CON fin que todavía llegan al tramo nuevo. Las abiertas las lee `leerAbiertas`. */
+async function leerCerradasDesde(
+  supabase: SupabaseLike, personaId: string, desde: string,
+): Promise<{ data: TramoCerrado[]; error: string | null }> {
+  const { data, error } = await supabase.from('obra_asignacion')
+    .select('id, obra_id, desde, hasta').eq('persona_id', personaId).or(`hasta.gte.${desde}`)
+  // UNA LECTURA QUE FALLA NO ES «NO TIENE NINGUNA»: seguir dejaría el pase viejo debajo del nuevo.
+  if (error) return { data: [], error: `No pude leer sus asignaciones: ${error.message}` }
+  const filas = (data ?? []) as unknown as TramoCerrado[]
+  // El filtro se repite acá: la base lo aplica, y lo que se decide no depende de que lo haya hecho.
+  return { data: filas.filter((f) => f.hasta != null && f.hasta >= desde), error: null }
+}
+
+/** Lo que el tramo nuevo reemplaza o recorta (regla a). Va ANTES del alta: una fila de la misma obra
+ *  que empezaba hoy sigue abierta hasta que se borra, y el índice `obra_asignacion_una_vigente`
+ *  rechazaría la nueva. Devuelve el error para el acuse, o `null`. */
+async function borrarYRecortar(
+  supabase: SupabaseLike, personaId: string,
+  plan: { borrar: string[]; recortar: { id: string; desde: string }[] },
+): Promise<string | null> {
+  for (const id of plan.borrar) {
+    const { data, error } = await supabase.from('obra_asignacion')
+      .delete().eq('id', id).eq('persona_id', personaId).select('id')
+    if (error || (data ?? []).length === 0) {
+      return `No pude reemplazar la asignación anterior${error ? `: ${error.message}` : ' (cero filas)'}. No se abrió nada nuevo.`
+    }
+  }
+  for (const r of plan.recortar) {
+    const { data, error } = await supabase.from('obra_asignacion')
+      .update({ desde: r.desde }).eq('id', r.id).eq('persona_id', personaId).select('id')
+    if (error || (data ?? []).length === 0) {
+      return `No pude correr el comienzo de la asignación programada${error ? `: ${error.message}` : ' (cero filas)'}. No se abrió nada nuevo.`
+    }
+  }
+  return null
 }
 
 /**

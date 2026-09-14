@@ -89,6 +89,8 @@ const solapan = (a, b) => (a.desde ?? '') <= (b.hasta ?? FIN) && (b.desde ?? '')
  *   tres días): `{ obra_id, desde, hasta }` o null. Quien llama decide si lo reabre.
  */
 export function planDeAsignacion(filas = [], nueva) {
+  // El tipo explícito es para la app: sin él, TypeScript infiere `never[]` de las listas vacías.
+  /** @type {{ cerrar: { id: string, hasta: string, continua: { obra_id: string, desde: string, hasta: string | null } | null }[], reemplazar: { id: string }[], recortar: { id: string, desde: string }[] }} */
   const plan = { cerrar: [], reemplazar: [], recortar: [] }
   if (!nueva?.desde) throw new Error('planDeAsignacion: la asignación nueva necesita `desde`')
   // `unDia` explícito gana: la normalización arma `nueva` con el comienzo INFERIDO de una fila sin

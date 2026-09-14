@@ -32,7 +32,7 @@ const AYER = '2026-09-07'
 const PERSONA = '11111111-1111-4111-8111-111111111111'
 
 type Fila = Record<string, unknown>
-interface Toque { tabla: string; verbo: 'select' | 'update' | 'insert'; valores?: Fila }
+interface Toque { tabla: string; verbo: 'select' | 'update' | 'insert' | 'delete'; valores?: Fila }
 
 interface Contenido {
   persona_plantel?: Fila[]
@@ -83,6 +83,14 @@ function baseFalsa(contenido: Contenido) {
             select: async () => ({
               data: Array.from({ length: filasUpdate }, (_, i) => ({ id: `u${i}` })), error: null,
             }),
+          }
+          return escritura
+        },
+        delete: () => {
+          toques.push({ tabla, verbo: 'delete' })
+          const escritura = {
+            eq: () => escritura,
+            select: async () => ({ data: [{ id: 'borrada' }], error: null }),
           }
           return escritura
         },
@@ -302,6 +310,24 @@ test('una asignación CERRADA HOY no es una asignación abierta: la obra se vuel
   assert.deepEqual(escrituras[0].valores, {
     obra_id: 'salon-comercial', persona_id: PERSONA, rol: 'integrante', desde: HOY,
   })
+})
+
+// ═══ LA CRONOLOGÍA (dueño, 14/09/2026) ═══
+//
+// AGÜERO, 08/09: Quattropani a las 12:54, Pisos a las 12:55, Messina a las 16:59 — y la base guardó las
+// tres como días sueltos del 08/09, empatadas, sin obra decidible. La que empezó hoy se BORRA antes de
+// abrir la nueva, filtrando por la persona; si la acción vuelve a cerrarla, este test lo ve.
+test('corregir la obra el mismo día BORRA la que empezó hoy antes de abrir, no la deja de un día', async () => {
+  const { supabase, toques } = baseCompleta([
+    { id: 'q', obra_id: 'quattropani', desde: HOY, hasta: null },
+  ])
+  const r = await cambiarObraActualCon(
+    { supabase, perfil: { rol: 'administracion' }, hoy: HOY },
+    { persona_id: PERSONA, obra_id: 'salon-comercial' },
+  )
+  assert.equal(r.ok, true, r.ok === false ? r.error : '')
+  const escrituras = toques.filter((t) => t.tabla === 'obra_asignacion' && t.verbo !== 'select')
+  assert.deepEqual(escrituras.map((t) => t.verbo), ['delete', 'insert'])
 })
 
 // ═══ EL MENSAJE DE LA BASE SE MUESTRA TAL CUAL ═══
