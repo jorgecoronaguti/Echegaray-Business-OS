@@ -59,14 +59,60 @@ test('planDeRegistros: Rosales va a Quattropani los días asignados; Zogbe queda
   assert.equal(sin.filas.find((f) => f.persona_id === 'p-rosales' && f.fecha === '2026-09-08').obra_canonica_id, 'sf-mamposteria')
 })
 
-test('dos asignaciones web el mismo día no deciden: manda la planilla', () => {
+test('Reta 09/09: dos asignaciones el mismo día siguen la cronología — el día suelto en Messina gana a Quattropani abierta', () => {
+  const marcas = [
+    marca('Rosales Diego', '2026-09-09', 'JAVIER SANCHEZ', 'Mamposteria'),
+    marca('Rosales Diego', '2026-09-10', 'JAVIER SANCHEZ', 'Mamposteria'),
+  ]
+  const asignacionesWeb = [
+    { persona_id: 'p-rosales', obra_id: 'quattropani', desde: '2026-09-08', hasta: null },
+    { persona_id: 'p-rosales', obra_id: 'messina', desde: '2026-09-09', hasta: '2026-09-09' },
+  ]
+  const { filas } = planDeRegistros(marcas, { personas: PERSONAS, resolver, asignacionesWeb, clienteDeObra: CLIENTE })
+  const de = (fecha) => filas.find((f) => f.fecha === fecha)
+  assert.equal(de('2026-09-09').obra_canonica_id, 'messina')
+  assert.equal(de('2026-09-09').origen_obra, 'obra_por_asignacion_web')
+  assert.equal(de('2026-09-10').obra_canonica_id, 'quattropani')
+})
+
+test('Quiroga A. S. 09/09: la licencia con dos asignaciones superpuestas no se desempata, queda en la obra que tenía', () => {
+  // MUTACIÓN QUE PONE ESTO ROJO: aplicar el desempate por cronología también a licencias y ausencias.
+  const marcas = [
+    marca('Rosales Diego', '2026-09-08', 'JAVIER SANCHEZ', 'Mamposteria'),
+    { ...marca('Rosales Diego', '2026-09-09', 'z. ENFERMEDAD', 'z. ENFERMEDAD'), fila1: 572 },
+    { ...marca('Rosales Diego', '2026-09-09', 'JAVIER SANCHEZ', 'Mamposteria'), nombre: 'Zogbe Leonardo', celda: celda(0) },
+  ]
+  const asignaciones = [
+    { persona_id: 'p-rosales', obra_id: 'quattropani', desde: '2026-09-09', hasta: '2026-09-09' },
+    { persona_id: 'p-rosales', obra_id: 'messina', desde: '2026-09-09', hasta: null },
+    { persona_id: 'p-zogbe', obra_id: 'quattropani', desde: '2026-09-09', hasta: '2026-09-09' },
+    { persona_id: 'p-zogbe', obra_id: 'messina', desde: '2026-09-01', hasta: null },
+  ]
+  const { filas } = planDeRegistros(marcas, { personas: PERSONAS, resolver, asignaciones, asignacionesWeb: asignaciones, clienteDeObra: CLIENTE })
+  const lic = filas.find((f) => f.persona_id === 'p-rosales' && f.tipo_hora === 'licencia')
+  assert.equal(lic.obra_canonica_id, 'sf-mamposteria', 'la licencia sigue con la obra del último bloque, no con la asignación corta')
+  const aus = filas.find((f) => f.persona_id === 'p-zogbe' && f.tipo_hora === 'ausencia')
+  assert.equal(aus.obra_canonica_id, 'sf-mamposteria', 'la ausencia conserva la obra de la planilla')
+})
+
+test('empate total entre dos asignaciones web: no decide, manda la planilla', () => {
   const marcas = [marca('Rosales Diego', '2026-09-09', 'JAVIER SANCHEZ', 'Mamposteria')]
   const asignacionesWeb = [
     { persona_id: 'p-rosales', obra_id: 'quattropani', desde: '2026-09-08', hasta: null },
-    { persona_id: 'p-rosales', obra_id: 'pisos-industriales', desde: '2026-09-09', hasta: '2026-09-09' },
+    { persona_id: 'p-rosales', obra_id: 'pisos-industriales', desde: '2026-09-08', hasta: null },
   ]
   const { filas } = planDeRegistros(marcas, { personas: PERSONAS, resolver, asignacionesWeb, clienteDeObra: CLIENTE })
   assert.equal(filas[0].obra_canonica_id, 'sf-mamposteria')
+})
+
+test('la excepción de la obra general sigue después del desempate: Zogbe con día suelto de Galpón 9 queda en La Estrella', () => {
+  const marcas = [marca('Zogbe Leonardo', '2026-09-03', 'LA ESTRELLA', '')]
+  const asignacionesWeb = [
+    { persona_id: 'p-zogbe', obra_id: 'quattropani', desde: '2026-08-20', hasta: null },
+    { persona_id: 'p-zogbe', obra_id: 'le-galpon-9', desde: '2026-09-03', hasta: '2026-09-03' },
+  ]
+  const { filas } = planDeRegistros(marcas, { personas: PERSONAS, resolver, asignacionesWeb, clienteDeObra: CLIENTE })
+  assert.equal(filas[0].obra_canonica_id, 'la-estrella')
 })
 
 test('una licencia no se mueve de obra por una asignación', () => {
