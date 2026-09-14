@@ -26,9 +26,7 @@ import { pastillaDe } from '../../services/comprasSheet'
 import type { CompraConPapel } from '../../services/comprobantesProveedorService'
 import { fechaCortaConAnio, pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, CAJA_CONTENIDO, V } from '@/shared/components/v2/patron'
-
-export const COLS_COMPROBANTES
-  = 'grid-cols-[76px_minmax(150px,1.2fr)_minmax(130px,1fr)_110px_84px_150px]'
+import { COLS_COMPROBANTES } from './columnasComprobantes'
 
 export function FilaComprobanteProveedor({ c, papelesSinLeer }: { c: CompraConPapel; papelesSinLeer: boolean }) {
   const [abierta, setAbierta] = useState(false)

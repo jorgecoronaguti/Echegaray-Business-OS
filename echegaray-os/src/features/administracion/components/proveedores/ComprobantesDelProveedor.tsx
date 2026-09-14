@@ -22,7 +22,8 @@ import {
 } from '../../services/comprobantesProveedor'
 import type { ComprasConPapel } from '../../services/comprobantesProveedorService'
 import type { ServiceResult } from '../../services/comprasSheetService'
-import { COLS_COMPROBANTES, FilaComprobanteProveedor } from './FilaComprobanteProveedor'
+import { COLS_COMPROBANTES } from './columnasComprobantes'
+import { FilaComprobanteProveedor } from './FilaComprobanteProveedor'
 
 /** Ancho mínimo de la tabla: la suma de las columnas fijas y los pisos, más los gaps. */
 const ANCHO_MINIMO = 760
