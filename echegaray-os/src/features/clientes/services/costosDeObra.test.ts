@@ -13,7 +13,7 @@ import {
 //  2 · QUE UN TOTAL PARCIAL SE PUBLIQUE COMO COMPLETO. El pie suma lo valorizado y dice cuántas horas
 //      quedaron afuera.
 //  3 · QUE LOS SUBCONTRATOS DESAPAREZCAN AL EXCLUIRLOS DE MATERIALES.
-//  4 · QUE VUELVA EL MULTIPLICADOR O EL VALOR HORA IMPLÍCITO DEL JEFE (20260915T0500): la mano de obra es
+//  4 · QUE VUELVA EL MULTIPLICADOR O EL VALOR HORA IMPLÍCITO DEL JEFE (20260915T0800): la mano de obra es
 //      recibo + negro por quincena, y el `title` no puede volver a explicarla como «× cargas».
 //  5 · QUE UN ESTIMADO SE DIBUJE COMO UN REAL: la celda dice «est.».
 //  6 · QUE UN `numeric` QUE LLEGA COMO TEXTO DEJE LA CELDA VACÍA TENIENDO EL DATO.
@@ -21,7 +21,7 @@ import {
 // Cambio de contrato (14/09/2026): se fueron `multiplicador` e `implicito` de la RPC, y con ellos los
 // casos que los probaban acá. `multiplicadorDeCosto` sigue probado en `costoHora.test.ts`.
 
-/** La fila real de Quattropani, medida contra la base el 12/09/2026, con la forma de 20260915T0500. */
+/** La fila real de Quattropani, medida contra la base el 12/09/2026, con la forma de 20260915T0800. */
 const QUATTROPANI = {
   obra_id: 'quattropani',
   materiales: 42580345.01, subcontratos: 47461.82,

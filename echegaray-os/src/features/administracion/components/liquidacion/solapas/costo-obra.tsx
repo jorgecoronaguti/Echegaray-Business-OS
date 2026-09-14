@@ -7,7 +7,7 @@ import { ALTO_LIQ } from './tabla'
 
 // PANTALLA 6 · LA QUINCENA CARGADA A LA OBRA (handoff v2).
 //
-// ═══ UNA SOLA DEFINICIÓN (20260915T0500) ═══
+// ═══ UNA SOLA DEFINICIÓN (20260915T0800) ═══
 //
 // El costo NO se calcula acá: sale de `public.costo_mo_quincena`, la misma función que suma la ficha y
 // la cartera del CRM. Costo = recibo del estudio (costo total empleador) + la parte en negro, repartido

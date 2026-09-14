@@ -2,7 +2,7 @@
 //
 // ═══ LA DEFINICIÓN VIVE EN POSTGRES ═══
 //
-// `public.costo_mo_quincena_calculo` (migración 20260915T0500) es la única que consumen las pantallas:
+// `public.costo_mo_quincena_calculo` (migración 20260915T0800) es la única que consumen las pantallas:
 // la ficha y la cartera del CRM, «Costo a la obra» de Liquidación y el sellado de la quincena. Este
 // módulo existe para dos cosas: probar la regla sin base (`costo-mo-quincena.test.mjs`) y comparar las
 // dos implementaciones sobre los datos reales (`costo-mo-quincena.pg.test.mjs`). Si alguien cambia una
@@ -167,10 +167,13 @@ function blancoDe(c) {
 
 /** El negro: horas que el recibo no paga × $/h negro, o medio sueldo mensual − neto. */
 function negroDe(c, b) {
+  // EL IMPORTE NEGRO ESCRITO A MANO EN LIQUIDACIÓN MANDA: es lo que se paga, y no hace falta tarifa para saberlo.
+  const aMano = num(c.linea?.negro_manual)
+  if (aMano != null) return { costo: aMano, estimado: false, origen: 'negro: escrito a mano en Liquidación' }
   const vh = num(c.linea?.valor_hora) ?? num(c.tarifa?.valor_hora)
   if (vh != null) {
     if (b.hb == null) return { costo: null, estimado: false, origen: 'negro: sin horas del recibo' }
-    const unidades = Math.max(0, c.horas - b.hb) + Math.max(0, c.equivalentes - c.horas)
+    const unidades = num(c.linea?.horas_negro_manual) ?? Math.max(0, c.horas - b.hb) + c.recargo
     return { costo: unidades * vh, estimado: false, origen: `negro: ${txt(unidades)} h × $/h ${txt(vh)}` }
   }
   const nm = num(c.tarifa?.neto_mensual)
@@ -188,10 +191,13 @@ function costoDeLaPersona(p, e, periodo) {
   const filas = e.registros.filter((f) => f.persona_id === p.id)
   const tramos = e.asignaciones.filter((a) => a.persona_id === p.id).map((a) => ({ obra: a.obra_id, desde: a.desde, hasta: a.hasta }))
   const h = horasDeLaPersona(filas, tramos)
+  const linea = e.lineas.find((l) => l.persona_id === p.id) ?? null
   const c = {
-    periodo, horas: h.horas, equivalentes: h.equivalentes,
+    // LAS HORAS ESCRITAS A MANO EN LIQUIDACIÓN (`horas_manual`) mandan para el blanco estimado y el negro;
+    // el reparto entre obras sigue siendo por las horas cargadas.
+    periodo, horas: num(linea?.horas_manual) ?? h.horas, recargo: Math.max(0, h.equivalentes - h.horas),
     recibo: e.recibos.find((r) => esDe(r, p) && String(r.periodo).trim() === periodo) ?? null,
-    linea: e.lineas.find((l) => l.persona_id === p.id) ?? null,
+    linea,
     tarifa: vigente(e.tarifas.filter((t) => t.persona_id === p.id), e.quincena.hasta),
     factor: factorDeCosto(e.recibos, p),
     cociente: cocienteNeto(e.recibos, p, periodo),

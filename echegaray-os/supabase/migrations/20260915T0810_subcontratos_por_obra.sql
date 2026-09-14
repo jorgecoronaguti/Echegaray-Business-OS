@@ -33,9 +33,9 @@
 -- ═══ LA INVARIANTE ═══
 --
 -- Reclasificar NO cambia materiales + subcontratos de ninguna obra: el importe cambia de columna. La
--- mano de obra propia no se toca acá (20260915T0500) y un subcontrato de mano de obra no entra en ella.
+-- mano de obra propia no se toca acá (20260915T0800) y un subcontrato de mano de obra no entra en ella.
 --
--- Build sobre 20260915T0500 (no aplicada todavía) y sobre la definición viva de
+-- Build sobre 20260915T0800 (no aplicada todavía) y sobre la definición viva de
 -- `compras_sin_obra_de_clientes`. NO se borra `ficha_cliente_cache`: se invalidan a mano los clientes
 -- afectados (ver el informe).
 
@@ -99,7 +99,7 @@ AS $function$
        -- REGLA ESTRUCTURA ▲
      group by a.obra_id
   ),
-  -- ── MANO DE OBRA: LA DEFINICIÓN ÚNICA (20260915T0500), QUINCENA POR QUINCENA ────────────────────
+  -- ── MANO DE OBRA: LA DEFINICIÓN ÚNICA (20260915T0800), QUINCENA POR QUINCENA ────────────────────
   quincenas as (
     select g::date as desde
       from (select min(r.fecha) as primera from public.hh_que_cuentan_en_obra r

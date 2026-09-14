@@ -74,7 +74,7 @@ export function FilaGastosSinObra({ gasto, columnas, sangria, visible }: {
       >
         {plata(gasto?.materiales ?? null)}
       </span>
-      {/* LOS SUBCONTRATOS SIN OBRA, EN SU COLUMNA (20260915T0600): no se suman en Materiales. */}
+      {/* LOS SUBCONTRATOS SIN OBRA, EN SU COLUMNA (20260915T0810): no se suman en Materiales. */}
       <span
         data-testid="subcontratos-sin-obra-cliente"
         className="truncate font-mono tabular-nums"

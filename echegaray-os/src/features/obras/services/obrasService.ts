@@ -206,7 +206,7 @@ export function getPlanDeEconomia(
 export async function getEconomiaObra(
   supabase: SupabaseClient, obraId: string,
 ): Promise<ServiceResult<EconomiaObra | null>> {
-  // LA MANO DE OBRA PROPIA VIAJA EN LA MISMA TANDA y sale de la definición única (20260915T0500): la
+  // LA MANO DE OBRA PROPIA VIAJA EN LA MISMA TANDA y sale de la definición única (20260915T0800): la
   // vista publica `costo_real_mano_de_obra`, que son compras con área «personas» y no la obra.
   const [eco, mo] = await Promise.all([
     supabase.from('obra_economia').select('*').eq('obra_id', obraId).maybeSingle(),

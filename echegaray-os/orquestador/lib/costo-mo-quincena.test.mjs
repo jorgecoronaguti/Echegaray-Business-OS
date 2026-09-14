@@ -297,12 +297,52 @@ test('una persona de taller con recibo y sin horas va a Estructura – Taller', 
   assert.deepEqual(r.filas.map((f) => [f.obra_canonica_id, f.destino]), [[null, 'ES-TAL']])
 })
 
+// ═══ LO ESCRITO A MANO EN LIQUIDACIÓN MANDA (20260915T0300 y T0510, en main) ═══
+//
+// El costo de la obra tiene que ser lo que Liquidación paga: si alguien escribió el importe negro, las
+// horas negro o las horas de la quincena, esa cifra manda sobre el cálculo.
+
+const BASE_MANUAL = {
+  personas: [persona('reta')],
+  registros: dias('reta', 'quattropani', 10, 9),
+  tarifas: [tarifa('reta', 5000)],
+  recibos: [recibo('reta', 'Q2-08/2026', 80, 400000, 320000, 600000)],
+}
+const negroCon = (lineas) => calcular({ ...BASE_MANUAL, lineas }).filas[0].costo_negro
+
+test('negro a mano: importe, horas negro y horas de la quincena mandan sobre el cálculo', () => {
+  cerca(negroCon([]), 10 * 5000, 'sin nada escrito: (90 − 80) × $/h')
+  cerca(negroCon([{ persona_id: 'reta', negro_manual: 72000 }]), 72000, 'negro_manual')
+  cerca(negroCon([{ persona_id: 'reta', horas_negro_manual: 4 }]), 4 * 5000, 'horas_negro_manual × $/h negro')
+  cerca(negroCon([{ persona_id: 'reta', horas_manual: 100 }]), 20 * 5000, 'horas_manual: 100 − 80 que paga el recibo')
+})
+
+test('con el negro escrito a mano no hace falta la tarifa: deja de ser FALTA_DATO', () => {
+  const r = calcular({
+    personas: [persona('aguero')],
+    registros: dias('aguero', 'quattropani', 6, 10),
+    recibos: [recibo('aguero', 'Q2-08/2026', 40, 250000, 200000, 400000)],
+    lineas: [{ persona_id: 'aguero', negro_manual: 90000 }],
+  })
+  assert.equal(r.filas[0].estado, 'real')
+  cerca(r.filas[0].costo_total, 490000, 'costo empleador + negro escrito')
+})
+
+test('las horas a mano no mueven el reparto: las obras siguen repartiendo por sus horas cargadas', () => {
+  const r = calcular({
+    ...BASE_MANUAL,
+    registros: [...dias('reta', 'quattropani', 5, 9), ...dias('reta', 'messina', 5, 9, 22)],
+    lineas: [{ persona_id: 'reta', horas_manual: 100 }],
+  })
+  cerca(deObra(r, 'reta', 'quattropani').costo_total, (600000 + 20 * 5000) / 2, 'mitad y mitad, como las horas cargadas')
+})
+
 test('los motivos que pagan son los de la tabla del dueño, en JS y en SQL', () => {
   const ts = readFileSync(join(DIR, '../../src/features/administracion/services/liquidacionDeAusencias.ts'), 'utf8')
   const pagan = [...ts.matchAll(/\[MOTIVO\.(\w+)\]:\s*\{\s*paga:\s*true/g)].map((m) => MOTIVO[m[1]]).sort()
   assert.ok(pagan.length >= 9)
   assert.deepEqual([...MOTIVOS_QUE_PAGAN].sort(), pagan)
-  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0500_costo_mo_por_obra_unico.sql'), 'utf8')
+  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0800_costo_mo_por_obra.sql'), 'utf8')
   const lista = /btrim\(coalesce\(f\.notas, ''\)\) in \(([^)]+)\)/.exec(sql)
   assert.ok(lista, 'la migración no lista los motivos que pagan')
   assert.deepEqual(lista[1].split(',').map((s) => s.trim().replace(/'/g, '')).sort(), pagan)

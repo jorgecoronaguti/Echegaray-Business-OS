@@ -12,7 +12,7 @@
  * $64.713.000 de «margen» en una obra al 86% con tres facturas de materiales.
  */
 /**
- * LA MANO DE OBRA PROPIA DE LA OBRA A LA FECHA — `costo_de_obras_a_la_fecha` (20260915T0500), la misma
+ * LA MANO DE OBRA PROPIA DE LA OBRA A LA FECHA — `costo_de_obras_a_la_fecha` (20260915T0800), la misma
  * que la ficha del CRM. No sale de `obra_economia`: `costo_real_mano_de_obra` es lo que Compras imputó
  * con área «personas» y en Quattropani da $0.
  */

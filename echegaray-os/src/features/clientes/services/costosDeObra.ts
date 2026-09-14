@@ -19,7 +19,7 @@
 // obras fue. Se publica en su propia fila, «Gastos del cliente sin obra asignada», y NUNCA se reparte.
 //
 // Los números NO se calculan acá: los trae `costo_obra` (función `costo_de_obras_a_la_fecha`). La
-// mano de obra sale desde 20260915T0500 de la definición única `costo_mo_quincena`: recibo del
+// mano de obra sale desde 20260915T0800 de la definición única `costo_mo_quincena`: recibo del
 // estudio (costo total empleador) + parte en negro, repartidos por horas, quincena por quincena. Este
 // archivo convierte, da formato y decide qué dice cada hueco.
 
@@ -37,7 +37,7 @@ export interface FaltaDatoDeObra {
   origen: string
 }
 
-/** Un comprobante de subcontrato, como lo publica `subcontratos_detalle` (20260915T0600). */
+/** Un comprobante de subcontrato, como lo publica `subcontratos_detalle` (20260915T0810). */
 export interface SubcontratoDeObra {
   proveedor: string | null
   comprobante: string | null
@@ -52,7 +52,7 @@ export interface CostoDeObra {
   obraId: string
   /** Σ de las compras asignadas al trabajo a la fecha, sin nómina, sin anuladas y sin subcontratos. */
   materiales: number | null
-  /** Lo facturado por subcontratistas (20260915T0600): proveedor con rubro «Subcontratista» declarado o
+  /** Lo facturado por subcontratistas (20260915T0810): proveedor con rubro «Subcontratista» declarado o
    *  familia «Subcontratos y mano de obra». No es material ni mano de obra propia: tiene su columna. */
   subcontratos: number | null
   nSubcontratos: number

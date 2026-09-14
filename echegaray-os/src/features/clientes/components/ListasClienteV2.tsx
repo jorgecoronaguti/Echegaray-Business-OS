@@ -396,7 +396,7 @@ export function ObrasDelCliente({
             }}
           >
             {costos === null || !veEconomia ? '' : manoObra.texto}
-            {/* ESTIMADO ≠ REAL: sin recibo del estudio todavía (20260915T0500). */}
+            {/* ESTIMADO ≠ REAL: sin recibo del estudio todavía (20260915T0800). */}
             {costos !== null && veEconomia && manoObra.estimado && (
               <span data-testid="mano-obra-estimada" style={{ marginLeft: 4, fontSize: '10.5px', color: V.tenue }}>est.</span>
             )}

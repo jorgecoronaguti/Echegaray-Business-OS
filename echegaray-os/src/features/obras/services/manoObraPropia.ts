@@ -2,7 +2,7 @@
 //
 // La página Obras decía «Sin una hora adentro» para Quattropani porque leía
 // `obra_costo_real.costo_mano_de_obra` —compras con área «personas»—, que no es la mano de obra de la
-// obra. La línea nueva lee la definición única (`costo_de_obras_a_la_fecha`, 20260915T0500), la misma
+// obra. La línea nueva lee la definición única (`costo_de_obras_a_la_fecha`, 20260915T0800), la misma
 // que la ficha del CRM. Pura: convierte la fila de la RPC.
 
 import type { ManoObraPropia } from '../types/economia.ts'

@@ -38,7 +38,7 @@ interface CostoDeFila {
   tituloSubcontratos: string | null
   manoObra: string
   manoObraParcial: boolean
-  /** Una parte del importe es estimada: la celda dice «est.» (20260915T0500). */
+  /** Una parte del importe es estimada: la celda dice «est.» (20260915T0800). */
   manoObraEstimado: boolean
   tituloManoObra: string | null
 }

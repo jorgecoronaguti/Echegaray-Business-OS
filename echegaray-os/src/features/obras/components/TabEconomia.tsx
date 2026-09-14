@@ -183,7 +183,7 @@ export function TabEconomia({
               sobre el costo real solo es defendible.
             </p>
           )}
-          {/* LA MANO DE OBRA PROPIA, DE LA DEFINICIÓN ÚNICA (20260915T0500): la misma que la ficha del CRM. */}
+          {/* LA MANO DE OBRA PROPIA, DE LA DEFINICIÓN ÚNICA (20260915T0800): la misma que la ficha del CRM. */}
           {e?.mano_obra_propia?.puedeVer && (
             <div data-testid="economia-mano-obra-propia">
               <Linea

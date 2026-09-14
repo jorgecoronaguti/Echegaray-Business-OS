@@ -227,7 +227,7 @@ export async function cerrarQuincenaAction(entrada: unknown): Promise<ResultadoC
 }
 
 /**
- * EL COSTO POR OBRA SE SELLA CON LA QUINCENA (20260915T0500).
+ * EL COSTO POR OBRA SE SELLA CON LA QUINCENA (20260915T0800).
  *
  * Va DESPUÉS de marcar las cabeceras: si el sellado falla, la quincena ya quedó cerrada con sus líneas
  * y el costo por obra se sigue calculando en vivo, que es el mismo número. Se dice, no se deshace el

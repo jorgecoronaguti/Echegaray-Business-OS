@@ -25,6 +25,8 @@
 --           vale la licencia/ausencia PAGA de más horas. Esa licencia va a la obra de la fila o a la
 --           ASIGNADA ese día (regla de `asignacion-del-dia.mjs`); sin ninguna, a Estructura (obra null).
 --   SIN TARIFA → estado 'falta_dato', con sus horas y el blanco que sí se sabe; el total queda null.
+--   A MANO  lo escrito en Liquidación manda: `negro_manual` (importe), `horas_negro_manual` y `horas_manual`
+--           (20260915T0300 y T0510). El reparto entre obras sigue siendo por las horas cargadas.
 --
 -- El espejo en JS es `orquestador/lib/costo-mo-quincena.mjs`; `costo-mo-quincena.pg.test.mjs` compara
 -- las dos sobre los datos reales. El multiplicador (`multiplicador_de_costo`, `costo-hora-derivado.mjs`)
@@ -74,7 +76,7 @@ create index if not exists costo_obra_quincena_obra
 
 comment on table public.costo_obra_quincena is
   'Foto sellada del costo de mano de obra de cada quincena cerrada, por obra (null = Estructura) y persona. '
-  'La escribe sellar_costo_obra_quincena (service_role). Modelo: 20260915T0500.';
+  'La escribe sellar_costo_obra_quincena (service_role). Modelo: 20260915T0800.';
 
 alter table public.costo_obra_quincena enable row level security;
 
@@ -209,6 +211,9 @@ base as (
          rc.id is not null as con_recibo, rc.horas_blanco as r_hb, rc.bruto as r_bruto, rc.neto as r_neto,
          rc.costo_total_empleador as r_cte,
          ll.horas_recibo_manual as m_hb, ll.valor_hora_recibo_manual as m_vh, ll.valor_hora as l_vh,
+         ll.negro_manual as m_negro, ll.horas_negro_manual as m_hneg,
+         -- LAS HORAS ESCRITAS A MANO mandan para el blanco estimado y el negro; el reparto sigue por las cargadas.
+         coalesce(ll.horas_manual, hp.horas, 0) as horas_c,
          tf.valor_hora as t_vh, tf.neto_mensual as t_nm,
          coalesce(fp.v, fpl.v) as factor,
          case when fp.v is not null then 'persona' when fpl.v is not null then 'plantel' end as factor_origen,
@@ -222,7 +227,8 @@ base as (
        where r.periodo = q.periodo and (r.persona_id = p.id or (r.persona_id is null and r.cuil <> '' and r.cuil = p.cuil))
        order by (r.persona_id = p.id) desc nulls last limit 1) rc on true
     left join lateral (
-      select l.horas_recibo_manual, l.valor_hora_recibo_manual, l.valor_hora
+      select l.horas_recibo_manual, l.valor_hora_recibo_manual, l.valor_hora,
+             l.negro_manual, l.horas_manual, l.horas_negro_manual
         from public.liquidacion_linea l join public.liquidacion_quincena lq on lq.id = l.liquidacion_id
        where lq.desde = q.desde and l.persona_id = p.id
        order by l.sellado_en desc nulls last limit 1) ll on true
@@ -263,7 +269,7 @@ base as (
 -- EL PLANTEL DE LA QUINCENA: horas pagas, recibo del período, o sueldo mensual vigente estando activo.
 plantel as (
   select b.*,
-         case when b.con_recibo then coalesce(b.m_hb, b.r_hb) else coalesce(b.m_hb, b.horas / 2) end as hb,
+         case when b.con_recibo then coalesce(b.m_hb, b.r_hb) else coalesce(b.m_hb, b.horas_c / 2) end as hb,
          case when b.con_recibo then null else coalesce(b.m_vh, b.piso) end as vh_est
     from base b
    where b.horas > 0 or b.con_recibo or (b.activo and b.t_nm is not null)
@@ -276,14 +282,16 @@ valores as (
          (x.con_recibo and x.r_cte is not null) as blanco_real,
          case when x.con_recibo then x.r_neto else x.hb * x.vh_est * x.cociente end as neto,
          coalesce(x.l_vh, x.t_vh) as vh_negro,
-         greatest(0, x.horas - x.hb) + greatest(0, x.equivalentes - x.horas) as unidades_negro
+         coalesce(x.m_hneg, greatest(0, x.horas_c - x.hb) + greatest(0, x.equivalentes - x.horas)) as unidades_negro
     from plantel x
 ),
 costeado as (
   select v.*,
-         case when v.vh_negro is not null then v.unidades_negro * v.vh_negro
+         -- EL IMPORTE NEGRO ESCRITO A MANO MANDA: es lo que se paga, y no hace falta tarifa para saberlo.
+         case when v.m_negro is not null then v.m_negro
+              when v.vh_negro is not null then v.unidades_negro * v.vh_negro
               when v.t_nm is not null then v.t_nm / 2 - v.neto end as c_negro,
-         (v.vh_negro is null and v.t_nm is not null and not v.con_recibo) as negro_estimado
+         (v.m_negro is null and v.vh_negro is null and v.t_nm is not null and not v.con_recibo) as negro_estimado
     from valores v
 ),
 personas_costo as (
@@ -295,7 +303,8 @@ personas_costo as (
            case when c.blanco_real then 'blanco: recibo ' || c.periodo || ' costo total empleador'
                 when c.con_recibo then format('blanco: bruto recibo %s × factor %s (%s)', c.periodo, round(c.factor, 4), coalesce(c.factor_origen, 'sin factor'))
                 else format('blanco: estimado %s h × piso %s × factor %s (%s)', round(c.hb, 2), round(c.vh_est, 2), round(c.factor, 4), coalesce(c.factor_origen, 'sin factor')) end,
-           case when c.vh_negro is not null then format('negro: %s h × $/h %s', round(c.unidades_negro, 2), c.vh_negro)
+           case when c.m_negro is not null then 'negro: escrito a mano en Liquidación'
+                when c.vh_negro is not null then format('negro: %s h × $/h %s', round(c.unidades_negro, 2), c.vh_negro)
                 when c.t_nm is null then 'negro: sin tarifa (FALTA_DATO)'
                 when c.neto is null then 'negro: sin neto del recibo ni estimado'
                 when c.con_recibo then format('negro: %s − neto recibo %s', c.t_nm / 2, c.neto)
@@ -348,7 +357,7 @@ grant execute on function public.costo_mo_quincena_calculo(date, text[]) to auth
 
 comment on function public.costo_mo_quincena_calculo(date, text[]) is
   'EL COSTO DE MANO DE OBRA DE UNA QUINCENA por obra (null = Estructura) y persona, en vivo. Modelo del '
-  'dueño 14/09/2026 (20260915T0500). Espejo JS: orquestador/lib/costo-mo-quincena.mjs.';
+  'dueño 14/09/2026 (20260915T0800). Espejo JS: orquestador/lib/costo-mo-quincena.mjs.';
 
 -- ════════════════════════════════════════════════════════════════════════════════════════════════
 -- 3. LA LECTURA: la foto si la quincena está sellada; si no, el cálculo en vivo
@@ -447,7 +456,7 @@ AS $function$
        and upper(trim(coalesce(s.estado, ''))) <> 'ELIMINADO'
      group by a.obra_id
   ),
-  -- ── MANO DE OBRA: LA DEFINICIÓN ÚNICA (20260915T0500), QUINCENA POR QUINCENA ────────────────────
+  -- ── MANO DE OBRA: LA DEFINICIÓN ÚNICA (20260915T0800), QUINCENA POR QUINCENA ────────────────────
   -- Desde la quincena de la primera hora de estas obras hasta hoy. Cada quincena sale de la foto si
   -- está sellada o del cálculo en vivo si no; el costo del jefe es medio sueldo por quincena, no el mes.
   quincenas as (

@@ -99,7 +99,7 @@ test('ESTRUCTURA: Administración, Taller, Impuestos y Financiero no suman a nin
 })
 
 test('SQL: la ficha por obra y la fila sin obra excluyen Estructura con el MISMO bloque, listo para `destino`', () => {
-  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0600_subcontratos_por_obra.sql'), 'utf8')
+  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0810_subcontratos_por_obra.sql'), 'utf8')
   const bloques = [...sql.matchAll(/-- REGLA ESTRUCTURA ▼([\s\S]*?)-- REGLA ESTRUCTURA ▲/g)].map((m) => m[1].replace(/\s+/g, ' ').trim())
   assert.equal(bloques.length, 2)
   assert.equal(bloques[0], bloques[1])
@@ -110,7 +110,7 @@ test('SQL: la ficha por obra y la fila sin obra excluyen Estructura con el MISMO
 })
 
 test('SQL: la ficha por obra y la fila sin obra usan el MISMO bloque de la regla', () => {
-  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0600_subcontratos_por_obra.sql'), 'utf8')
+  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0810_subcontratos_por_obra.sql'), 'utf8')
   const bloques = [...sql.matchAll(/-- REGLA SUBCONTRATO ▼([\s\S]*?)-- REGLA SUBCONTRATO ▲/g)].map((m) => m[1].replace(/\s+/g, ' ').trim())
   assert.equal(bloques.length, 2, 'la regla tiene que estar en costo_de_obras_a_la_fecha y en compras_sin_obra_de_clientes')
   assert.equal(bloques[0], bloques[1], 'las dos funciones dejaron de usar la misma regla')

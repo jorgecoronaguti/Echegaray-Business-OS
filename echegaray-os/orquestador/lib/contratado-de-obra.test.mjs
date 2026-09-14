@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const DIR = dirname(fileURLToPath(import.meta.url))
-const SQL = readFileSync(join(DIR, '../../supabase/migrations/20260915T0750_contratado_de_obra_unico.sql'), 'utf8')
+const SQL = readFileSync(join(DIR, '../../supabase/migrations/20260915T0820_contratado_de_obra_unico.sql'), 'utf8')
 
 const cuerpo = (nombre) => {
   const i = SQL.indexOf(`FUNCTION public.${nombre}(`)

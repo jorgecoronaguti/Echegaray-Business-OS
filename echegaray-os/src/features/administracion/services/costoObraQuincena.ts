@@ -1,4 +1,4 @@
-// «COSTO A LA OBRA» DE LIQUIDACIÓN LEE LA DEFINICIÓN ÚNICA — `public.costo_mo_quincena` (20260915T0500).
+// «COSTO A LA OBRA» DE LIQUIDACIÓN LEE LA DEFINICIÓN ÚNICA — `public.costo_mo_quincena` (20260915T0800).
 //
 // ═══ POR QUÉ NO SE CALCULA ACÁ ═══
 //
@@ -146,7 +146,7 @@ export async function getCostoObraQuincena(
   if (costo.error) {
     errores.push({
       que: 'el costo de mano de obra por obra',
-      error: sinFuncion(costo.error) ? 'La migración 20260915T0500 todavía no está aplicada.' : costo.error.message,
+      error: sinFuncion(costo.error) ? 'La migración 20260915T0800 todavía no está aplicada.' : costo.error.message,
     })
   }
   if (oep.error) errores.push(oep.error)

@@ -1,4 +1,4 @@
-// QUÉ COMPRA ES UN SUBCONTRATO — espejo en JS de la regla SQL de 20260915T0600.
+// QUÉ COMPRA ES UN SUBCONTRATO — espejo en JS de la regla SQL de 20260915T0810.
 //
 // ═══ LA DEFINICIÓN VIVE EN POSTGRES ═══
 //
