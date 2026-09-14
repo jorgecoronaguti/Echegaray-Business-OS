@@ -8,7 +8,27 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { abreNavegacionInterna } from './navegacion.ts'
+import { abreNavegacionInterna, pedidoVigente, type PedidoDeNavegacion } from './navegacion.ts'
+
+// Reproduce la secuencia de rutas que ve el componente render a render, aplicando lo que él aplica.
+function recorrer(pedido: PedidoDeNavegacion | null, rutas: string[]): boolean[] {
+  return rutas.map((ruta) => {
+    pedido = pedidoVigente(pedido, ruta)
+    return pedido !== null
+  })
+}
+
+test('ATRÁS al origen no revive el indicador de una navegación ya cumplida', () => {
+  const pedido = { desde: '/clientes?', n: 1 }
+  // clic en /clientes (espera) → llega la ficha → ATRÁS vuelve a /clientes
+  assert.deepEqual(recorrer(pedido, ['/clientes?', '/clientes/quattropani?', '/clientes?']), [true, false, false])
+})
+
+test('mientras la ruta no cambia, el pedido sigue vigente: la navegación lenta se sigue viendo', () => {
+  const pedido = { desde: '/os?', n: 1 }
+  assert.deepEqual(recorrer(pedido, ['/os?', '/os?', '/os?']), [true, true, true])
+  assert.equal(pedidoVigente(null, '/os?'), null)
+})
 
 const ACTUAL = 'https://app.ecsas.com.ar/os'
 const clic = (parcial: Partial<Parameters<typeof abreNavegacionInterna>[0]>) =>
