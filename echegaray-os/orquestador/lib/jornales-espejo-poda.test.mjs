@@ -109,23 +109,61 @@ test(`el tope del ${TOPE_PODA * 100} % frena: no borra nada de esa pestaña y lo
   assert.equal(r.plan.frenada, true)
   assert.equal(r.plan.borrar.length, 0)
   assert.equal(r.plan.porPestana[0].estado, 'tope')
-  assert.equal(r.plan.porPestana[0].aBorrar, 45)
+  assert.equal(r.plan.porPestana[0].desaparecen, 45)
   assert.equal(r.tabla.length, 60)
 })
 
+test('se corren todos los bloques 2 filas: borra todos los viejos y NO dispara el tope', () => {
+  const todos = (d) => [
+    bloque('Obreros 26', 400 + d, 15, { desde: '2026-08-03', hasta: '2026-08-15' }),
+    bloque('Obreros 26', 480 + d, 15, { desde: '2026-08-17', hasta: '2026-08-31' }),
+    bloque('Obreros 26', 520 + d, 15, { desde: '2026-07-01', hasta: '2026-07-15' }),
+    bloque('Obreros 26', 558 + d, 15),
+  ]
+  const { tabla } = corrida([], todos(0))
+  // Fila insertada arriba de todo: el 100 % de las filas cambia de posición, ninguna quincena se va.
+  const r = corrida(tabla, todos(2))
+  assert.equal(r.plan.frenada, false)
+  assert.equal(r.plan.borrar.length, 60)
+  assert.equal(r.plan.porPestana[0].reemplazos, 60)
+  assert.equal(r.tabla.length, 60)
+  assert.deepEqual([...new Set(r.tabla.map((t) => t.bloque_fila1))].sort(), [402, 482, 522, 560])
+})
+
+test('desaparecen 3 quincenas de 5: dispara el tope y no borra las desaparecidas', () => {
+  const q = (i) => ({ desde: `2026-0${i + 3}-01`, hasta: `2026-0${i + 3}-15` })
+  const cinco = Array.from({ length: 5 }, (_, i) => bloque('Oficina 26', 10 + i * 20, 4, q(i)))
+  const { tabla } = corrida([], cinco)
+  const r = corrida(tabla, cinco.slice(0, 2))
+  assert.equal(r.plan.frenada, true)
+  assert.equal(r.plan.porPestana[0].desaparecen, 12)
+  assert.equal(r.plan.borrar.length, 0)
+  assert.equal(r.tabla.length, 20)
+})
+
+test('con el tope frenado, los reemplazos se borran igual', () => {
+  const q = (i) => ({ desde: `2026-0${i + 3}-01`, hasta: `2026-0${i + 3}-15` })
+  const cinco = Array.from({ length: 5 }, (_, i) => bloque('Oficina 26', 10 + i * 20, 4, q(i)))
+  const { tabla } = corrida([], cinco)
+  // Quedan 2 quincenas, corridas 2 filas; las otras 3 desaparecen.
+  const r = corrida(tabla, cinco.slice(0, 2).map((b) => bloque('Oficina 26', b.bloque_fila1 + 2, 4, b)))
+  assert.equal(r.plan.frenada, true)
+  assert.equal(r.plan.borrar.length, 8)
+  assert.equal(r.tabla.filter((t) => t.quincena_desde === '2026-03-01').length, 4)
+})
+
 test('el tope es por pestaña: justo en el 30 % borra, un poco más no', () => {
-  const diez = (f) => bloque('Oficina 26', f, 10)
-  const { tabla } = corrida([], [diez(10), diez(30), diez(50)])  // 30 filas
-  // Sobran 9 de 30 = 30 %: borra.
-  const ok = planDePoda({
-    existentes: tabla, leidas: [{ pestana: 'Oficina 26', bloques: 3 }],
-    bloques: [diez(10), diez(30), { ...diez(50), personas: diez(50).personas.slice(0, 1) }],
-  })
+  // Cada bloque con su quincena: el tope mide DESAPARICIONES, y la misma quincena sería reemplazo.
+  const b = (f, n, dia) => bloque('Oficina 26', f, n, { desde: `2026-01-${dia}`, hasta: `2026-01-${dia}` })
+  const leidas = [{ pestana: 'Oficina 26', bloques: 2 }]
+  // 30 filas; la lectura trae A y B, desaparece C con 9 = 30 % justo: borra.
+  const justo = corrida([], [b(10, 10, '05'), b(30, 11, '10'), b(50, 9, '20')]).tabla
+  const ok = planDePoda({ existentes: justo, leidas, bloques: [b(10, 10, '05'), b(30, 11, '10')] })
+  assert.equal(ok.frenada, false)
   assert.equal(ok.borrar.length, 9)
-  // Sobran 10 de 30: frena.
-  const no = planDePoda({
-    existentes: tabla, leidas: [{ pestana: 'Oficina 26', bloques: 2 }], bloques: [diez(10), diez(30)],
-  })
+  // 30 filas; desaparece C con 10 = 33 %: frena.
+  const pasado = corrida([], [b(10, 10, '05'), b(30, 10, '10'), b(50, 10, '20')]).tabla
+  const no = planDePoda({ existentes: pasado, leidas, bloques: [b(10, 10, '05'), b(30, 10, '10')] })
   assert.equal(no.frenada, true)
   assert.equal(no.borrar.length, 0)
 })

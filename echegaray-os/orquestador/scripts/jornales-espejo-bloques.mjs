@@ -111,10 +111,11 @@ async function planearPoda(db, { bloques, hallazgos, leidas, bloquear = true }) 
   console.log('\n  PODA (filas del espejo que la lectura actual ya no trae)')
   for (const p of plan.porPestana) {
     console.log(`    «${p.pestana}» ${p.estado} · ${p.aBorrar} de ${p.existentes} filas`
+      + ` (${p.reemplazos ?? 0} reemplazos · ${p.desaparecen ?? 0} desaparecen)`
       + `${p.quincenas.length ? ` · ${p.quincenas.join(' · ')}` : ''}`)
     if (p.estado === 'tope') {
-      console.error(`  ! PODA FRENADA en «${p.pestana}»: borraría ${p.aBorrar} de ${p.existentes}`
-        + ` (> ${TOPE_PODA * 100} %). No se borra nada de esa pestaña; lo revisa una persona.`)
+      console.error(`  ! PODA FRENADA en «${p.pestana}»: desaparecerían ${p.desaparecen} de ${p.existentes}`
+        + ` (> ${TOPE_PODA * 100} %). Sólo se borran los reemplazos; lo revisa una persona.`)
     }
   }
   return plan

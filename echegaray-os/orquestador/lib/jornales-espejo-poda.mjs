@@ -20,9 +20,10 @@
 //
 // ═══ EL TOPE ═══
 //
-// Una poda legítima es un bloque corrido, no media pestaña. Si fuera a borrar más del 30 % de las
-// filas que la pestaña tiene hoy en la base, no borra nada de esa pestaña y el script sale ≠ 0: eso
-// huele a un layout que el detector dejó de entender, y lo decide una persona.
+// El tope cuenta sólo DESAPARICIONES: filas viejas cuya quincena ya no aparece en la lectura. Si
+// superan el 30 % de las filas que la pestaña tiene hoy en la base, esas no se borran (los reemplazos
+// sí) y el script sale ≠ 0: eso huele a un layout que el detector dejó de entender, y lo decide una
+// persona.
 //
 // SÓLO CALCULA. No escribe: el que borra es `jornales-espejo-bloques.mjs`, en la misma transacción
 // que el UPSERT.
@@ -58,14 +59,23 @@ export function planDePoda({ existentes, leidas, bloques, hallazgos = [], lectur
       .map((h) => Number(h.fila1)))
     const sobran = enBase.filter((e) => !vigentes.has(clave(e.bloque_fila1, e.fila1))
       && !protegidos.has(Number(e.bloque_fila1)))
-    const quincenas = [...new Set(sobran.map((e) => `${iso(e.quincena_desde)}..${iso(e.quincena_hasta)} f${e.bloque_fila1}`))].sort()
-    const r = { ...base, aBorrar: sobran.length, quincenas }
-    if (sobran.length > 0 && sobran.length > enBase.length * tope) {
-      porPestana.push({ ...r, estado: 'tope' })
-      continue
+    // REEMPLAZO vs DESAPARICIÓN. Si la quincena de la fila vieja sigue en la lectura, el bloque sólo se
+    // corrió de fila (el dueño insertó filas arriba): se borra siempre, porque la versión nueva ya
+    // entra por el UPSERT. Si la quincena no está más, eso sí es una desaparición, y es lo único que el
+    // tope mide — contar los reemplazos haría que una fila insertada arriba de todo, que corre TODOS
+    // los bloques, frenara la poda y dejara la pestaña entera duplicada.
+    const ventanas = new Set(suyos.map((b) => `${iso(b.desde)}..${iso(b.hasta)}`))
+    const ventanaDe = (e) => `${iso(e.quincena_desde)}..${iso(e.quincena_hasta)}`
+    const reemplazos = sobran.filter((e) => ventanas.has(ventanaDe(e)))
+    const desaparecen = sobran.filter((e) => !ventanas.has(ventanaDe(e)))
+    const quincenas = [...new Set(sobran.map((e) => `${ventanaDe(e)} f${e.bloque_fila1}`))].sort()
+    const frena = desaparecen.length > 0 && desaparecen.length > enBase.length * tope
+    const r = {
+      ...base, quincenas, reemplazos: reemplazos.length, desaparecen: desaparecen.length,
+      aBorrar: frena ? reemplazos.length : sobran.length,
     }
-    porPestana.push({ ...r, estado: 'ok' })
-    borrar.push(...sobran)
+    porPestana.push({ ...r, estado: frena ? 'tope' : 'ok' })
+    borrar.push(...(frena ? reemplazos : sobran))
   }
   return { borrar, porPestana, frenada: porPestana.some((p) => p.estado === 'tope') }
 }
