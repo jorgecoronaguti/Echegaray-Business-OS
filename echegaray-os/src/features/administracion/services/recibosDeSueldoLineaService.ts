@@ -23,7 +23,9 @@ export async function leerRecibosDeSueldo(
   supabase: SupabaseClient,
 ): Promise<{ filas: ReciboDeSueldo[]; hay: boolean; error: string | null }> {
   const { data, error } = await supabase.from('recibo_sueldo_linea')
-    .select('persona_id, cuil, periodo, categoria, valor_hora, horas_blanco, bruto, neto, drive_file_id')
+    // `id` Y LAS HORAS PARTIDAS VIAJAN desde el 15/09/2026: los conceptos se enganchan por `id`, y el
+    // recibo estimado compara normales y feriado por separado.
+    .select('id, persona_id, cuil, periodo, categoria, valor_hora, horas_normales, horas_feriado, horas_blanco, bruto, descuentos, neto, drive_file_id')
     .range(0, TOPE_RECIBOS - 1)
   if (error) {
     if (sinTabla(error)) return { filas: [], hay: false, error: null }
@@ -37,8 +39,9 @@ export async function leerRecibosDeSueldo(
     hay: true,
     error: null,
     filas: filas.map((r) => ({
-      personaId: s(r.persona_id), cuil: cuilNormalizado(s(r.cuil)), periodo: String(r.periodo ?? ''), categoria: s(r.categoria),
-      valorHora: n(r.valor_hora), horasBlanco: n(r.horas_blanco), bruto: n(r.bruto), neto: n(r.neto),
+      id: s(r.id), personaId: s(r.persona_id), cuil: cuilNormalizado(s(r.cuil)), periodo: String(r.periodo ?? ''), categoria: s(r.categoria),
+      valorHora: n(r.valor_hora), horasBlanco: n(r.horas_blanco), horasNormales: n(r.horas_normales), horasFeriado: n(r.horas_feriado),
+      bruto: n(r.bruto), descuentos: n(r.descuentos), neto: n(r.neto),
       driveFileId: s(r.drive_file_id),
     })),
   }

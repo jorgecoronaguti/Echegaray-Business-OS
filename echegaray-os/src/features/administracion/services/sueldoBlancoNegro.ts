@@ -6,32 +6,44 @@
 //
 //   NEGRO = horas que faltan × $/h negro. El negro paga SÓLO las horas que no están en el recibo.
 //   TOTAL = neto del recibo + negro.
-//   SIN RECIBO todavía: blanco = la MITAD de las horas × $/h de su categoría, marcado «estimado».
+//   SIN RECIBO todavía: blanco estimado, marcado «estimado».
 //
-// ═══ EL NETO ESTIMADO SALE DE UNA MEDIANA, NO DE UN RECIBO ═══
+// ═══ SIN RECIBO: EL RECIBO ESTIMADO CONCEPTO POR CONCEPTO (dueño, 14/09/2026) ═══
 //
-// Los descuentos de un recibo dependen de la persona; una alícuota escrita acá sería un número que nadie
-// firmó. La primera versión usaba el cociente neto/bruto del ÚLTIMO recibo, y a Zogbe le daba un neto de
-// $28.860: su Q2-08 trae $276.751 de descuentos (embargo o adelanto). Un recibo anómalo no puede decidir
-// la quincena siguiente. Regla (coordinador, 14/09/2026):
+// *«si me das a dar un valor preliminar a pagar por banco antes de tener el recibo … liquidacion estimada
+// concepto por concepto»*. Con la base del estimado (reglas derivadas de los recibos reales), el blanco sin
+// recibo es `estimarRecibo`: horas del recibo por regla (50 en media jornada, no la mitad de lo cargado),
+// haberes y descuentos por regla, y SU NETO ES EL BANCO PRELIMINAR de la fila.
+// Precedencia del neto: manual > recibo real > nómina > estimado por conceptos > mediana.
+//
+// ═══ LA MEDIANA QUEDA DE RESPALDO ═══
+//
+// Sin base, o si un descuento que aplica tiene regla dudosa (el estimado no tiene neto), el neto es bruto ×
+// mediana neto/bruto como antes (coordinador, 14/09/2026):
 //
 //   · la MEDIANA de neto/bruto de hasta sus últimos 6 recibos quincenales del año (sin FINAL, bruto > 0);
-//   · con menos de 2, o con la mediana fuera de [0,60 ; 0,90], la MEDIANA DEL PLANTEL: los recibos
-//     quincenales del año cuyo cociente cae dentro de ese rango;
+//   · con menos de 2, o con la mediana fuera de [0,60 ; 0,90], la MEDIANA DEL PLANTEL;
 //   · sin nada de eso, el neto queda `null` y la pantalla dice «sin neto».
 //
-// ═══ SIN LÍNEA DE RECIBO PERO CON `nomina_recibo_neto` ═══
-//
-// Ese neto es real pero no trae horas ni bruto: las horas del blanco se estiman igual (mitad) y el estado
-// es 'estimado' con `origenNeto: 'nomina'`.
+// Un recibo anómalo no decide la quincena siguiente: a Zogbe el último cociente le daba un neto de $28.860 por
+// un embargo. El estimado por conceptos tampoco lo arrastra: el embargo no es una regla del recibo.
 //
 // Puro: sin base, sin React. Lo usa `aplicarOverrides`, y se prueba en `sueldoBlancoNegro.test.ts`.
 
-import { mismoCuil } from './cuil.ts'
+import { cuilNormalizado, mismoCuil } from './cuil.ts'
 import { compararConElPiso, type ComparacionConElPiso } from './exposicionConvenio.ts'
+import { estimarRecibo, type ReciboEstimado } from './reciboEstimado.ts'
+import { periodoOrdenable, type ConceptoDeRecibo, type ReciboParaReglas, type ReglasDelRecibo } from './reglasDelRecibo.ts'
+
+export { periodoOrdenable }
 
 /** Una línea de `recibo_sueldo_linea`, normalizada. `null` = el recibo no lo dice. */
 export interface ReciboDeSueldo {
+  /** Enganche de sus conceptos (`recibo_sueldo_concepto.recibo_id`). */
+  id?: string | null
+  horasNormales?: number | null
+  horasFeriado?: number | null
+  descuentos?: number | null
   personaId: string | null
   cuil: string | null
   /** `Q2-08/2026`, el formato de `nomina_recibo_neto` y de `periodoDeRecibo`. Finales: `FINAL-08/2026`. */
@@ -52,6 +64,17 @@ export interface ProporcionDelNeto {
   recibos: number
 }
 
+/** Lo que el recibo estimado necesita, UNA VEZ por quincena. */
+export interface BaseDelEstimado {
+  /** La quincena que se estima (`Q1-09/2026`). Las reglas congeladas pueden haberse generado para otra. */
+  periodo: string
+  reglas: ReglasDelRecibo
+  /** Feriados hábiles de la quincena según el calendario. `null` = el calendario no tiene el año cargado. */
+  feriados: number | null
+  /** Los recibos (con sus conceptos si están cargados); `persona` es el CUIL normalizado. */
+  recibos: readonly ReciboParaReglas[]
+}
+
 /** Lo que el blanco necesita saber de una persona, además de sus horas y su $/h negro. */
 export interface EntradaDeBlanco {
   /** El recibo de ESTE período. */
@@ -62,6 +85,8 @@ export interface EntradaDeBlanco {
   pisoCategoria: number | null
   /** El cociente neto/bruto para el neto estimado (`proporcionDelNeto`). */
   proporcion: ProporcionDelNeto | null
+  /** El recibo estimado por conceptos. Ausente o `null`: sin base, el blanco es el de la mediana. */
+  estimacion?: { base: BaseDelEstimado; persona: string | null } | null
 }
 
 export interface EntradaDeSueldo extends EntradaDeBlanco {
@@ -92,8 +117,8 @@ export interface SueldoBlancoNegro {
   pisoCategoria: number | null
   bruto: number | null
   neto: number | null
-  /** De dónde salió el neto: escrito a mano, el recibo, `nomina_recibo_neto`, o la mediana (`proporcion`). */
-  origenNeto: 'manual' | 'recibo' | 'nomina' | 'estimado' | null
+  /** De dónde salió el neto: a mano, el recibo, `nomina_recibo_neto`, el recibo estimado por conceptos, o la mediana. */
+  origenNeto: 'manual' | 'recibo' | 'nomina' | 'conceptos' | 'estimado' | null
   /**
    * SE EDITARON LAS HORAS O EL $/H DEL RECIBO Y NO EL NETO, Y EL NETO ES REAL (recibo o nómina): no cambia y la
    * pantalla pone un ⚠ junto al Banco. Un neto estimado se recalcula y esto queda en `false`.
@@ -103,6 +128,12 @@ export interface SueldoBlancoNegro {
   editado: { horasRecibo: boolean; valorHoraRecibo: boolean; neto: boolean }
   /** Sólo con `origenNeto: 'estimado'`: el cociente usado y de quién. */
   proporcion: ProporcionDelNeto | null
+  /** El recibo estimado por conceptos. Con recibo real también está: el panel compara los dos. */
+  reciboEstimado?: ReciboEstimado | null
+  /** Los conceptos del recibo real de la quincena, si están cargados. */
+  conceptosReales?: readonly ConceptoDeRecibo[] | null
+  /** Los totales del recibo real (bruto, descuentos, neto), para compararlos aunque no haya conceptos cargados. */
+  totalesReales?: { haberes: number | null; descuentos: number | null; neto: number | null } | null
   horasNegro: number | null
   /** Horas de recargo de extras (equivalentes − cargadas) que el negro paga además de `horasNegro`. */
   recargoExtras: number
@@ -123,54 +154,82 @@ const r2 = (n: number): number => Math.round(n * 100) / 100
 const num = (v: number | null | undefined): number | null => (v == null || !Number.isFinite(v) ? null : v)
 
 type Blanco = Pick<SueldoBlancoNegro,
-  'estado' | 'horasBlanco' | 'valorHoraCategoria' | 'bruto' | 'neto' | 'origenNeto' | 'proporcion' | 'driveFileId'>
+  'estado' | 'horasBlanco' | 'valorHoraCategoria' | 'bruto' | 'neto' | 'origenNeto' | 'proporcion' | 'driveFileId'
+  | 'reciboEstimado' | 'conceptosReales' | 'totalesReales'>
 
-/** El blanco: con recibo, lo que dice el recibo; sin él, la mitad de las horas por el piso. */
+/** El recibo estimado de la entrada, con las horas o el $/h escritos a mano si los hay. */
+function estimadoDe(e: EntradaDeSueldo, horasRecibo: number | null = null, valorHoraRecibo: number | null = null): ReciboEstimado | null {
+  const est = e.estimacion
+  if (!est) return null
+  return estimarRecibo(est.base.reglas, {
+    persona: est.persona, periodo: est.base.periodo, valorHora: valorHoraRecibo ?? num(e.pisoCategoria), horasRecibo,
+    feriados: est.base.feriados, recibosPropios: est.persona ? est.base.recibos.filter((r) => r.persona === est.persona) : [],
+  })
+}
+
+function conceptosRealesDe(e: EntradaDeSueldo): readonly ConceptoDeRecibo[] | null {
+  const est = e.estimacion
+  if (!est?.persona) return null
+  const actual = periodoOrdenable(est.base.periodo)
+  const r = est.base.recibos.find((x) => x.persona === est.persona && periodoOrdenable(x.periodo) === actual)
+  return r && r.conceptos.length ? r.conceptos : null
+}
+
+/** El blanco: con recibo, lo que dice el recibo; sin él, el recibo estimado, o la mitad de las horas por el piso. */
 function blancoDe(e: EntradaDeSueldo): Blanco {
   const r = e.recibo
   if (r && num(r.horasBlanco) != null) {
     return {
       estado: 'recibo', horasBlanco: r.horasBlanco, valorHoraCategoria: num(r.valorHora),
       bruto: num(r.bruto), neto: num(r.neto), origenNeto: num(r.neto) == null ? null : 'recibo',
-      proporcion: null, driveFileId: r.driveFileId,
+      proporcion: null, driveFileId: r.driveFileId, reciboEstimado: estimadoDe(e), conceptosReales: conceptosRealesDe(e),
+      totalesReales: { haberes: num(r.bruto), descuentos: num(r.descuentos), neto: num(r.neto) },
     }
   }
-  const horasBlanco = e.horas == null ? null : r2(e.horas / 2)
   const piso = num(e.pisoCategoria)
-  const bruto = horasBlanco == null || piso == null ? null : r2(horasBlanco * piso)
-  const base = { estado: 'estimado' as const, horasBlanco, valorHoraCategoria: piso, bruto }
+  const estimado = estimadoDe(e)
+  const horasBlanco = estimado ? r2(estimado.horasNormales + estimado.horasFeriado) : e.horas == null ? null : r2(e.horas / 2)
+  const bruto = estimado?.remunerativo ?? (horasBlanco == null || piso == null ? null : r2(horasBlanco * piso))
+  const base = { estado: 'estimado' as const, horasBlanco, valorHoraCategoria: piso, bruto, reciboEstimado: estimado, conceptosReales: null, totalesReales: null }
   // Un recibo sin horas todavía trae un neto real: vale lo mismo que el de nómina.
   const netoReal = num(r?.neto) ?? num(e.netoDeNomina)
   if (netoReal != null) {
     return { ...base, neto: netoReal, origenNeto: 'nomina', proporcion: null, driveFileId: r?.driveFileId ?? null }
   }
+  if (estimado?.neto != null) return { ...base, neto: estimado.neto, origenNeto: 'conceptos', proporcion: null, driveFileId: null }
   const p = e.proporcion
   const neto = bruto == null || p == null ? null : r2(bruto * p.cociente)
   return { ...base, neto, origenNeto: neto == null ? null : 'estimado', proporcion: neto == null ? null : p, driveFileId: null }
 }
 
-/** Lo escrito a mano encima del blanco calculado. El neto no se recalcula con las horas o el $/h editados. */
-function conManual(b: Blanco, m: EntradaDeSueldo['manual']): Blanco & Pick<SueldoBlancoNegro, 'netoNoRecalculado' | 'editado'> {
+/** Lo escrito a mano encima del blanco calculado. Un neto REAL no se recalcula con las horas o el $/h editados. */
+function conManual(b: Blanco, e: EntradaDeSueldo): Blanco & Pick<SueldoBlancoNegro, 'netoNoRecalculado' | 'editado'> {
+  const m = e.manual
   const h = num(m?.horasRecibo), v = num(m?.valorHoraRecibo), n = num(m?.neto)
   const editado = { horasRecibo: h != null, valorHoraRecibo: v != null, neto: n != null }
   if (!editado.horasRecibo && !editado.valorHoraRecibo && !editado.neto) return { ...b, netoNoRecalculado: false, editado }
   const horasBlanco = h ?? b.horasBlanco
   const valorHoraCategoria = v ?? b.valorHoraCategoria
-  const bruto = (h != null || v != null) && horasBlanco != null && valorHoraCategoria != null ? r2(horasBlanco * valorHoraCategoria) : b.bruto
-  if (n != null) {
-    return { ...b, horasBlanco, valorHoraCategoria, bruto, neto: n, origenNeto: 'manual', proporcion: null, netoNoRecalculado: false, editado }
-  }
+  // EL ESTIMADO POR CONCEPTOS SE REHACE CON LO ESCRITO: las horas mueven el 0401, el 92 ter y todo lo que cuelga
+  // del remunerativo. Con recibo real no: el estimado que se compara es el que se habría mostrado.
+  const reEstimado = b.estado === 'estimado' && (h != null || v != null) ? estimadoDe(e, h, v) : null
+  const reciboEstimado = reEstimado ?? b.reciboEstimado
+  const bruto = reEstimado?.remunerativo
+    ?? ((h != null || v != null) && horasBlanco != null && valorHoraCategoria != null ? r2(horasBlanco * valorHoraCategoria) : b.bruto)
+  const comun = { ...b, horasBlanco, valorHoraCategoria, bruto, reciboEstimado, editado }
+  if (n != null) return { ...comun, neto: n, origenNeto: 'manual', proporcion: null, netoNoRecalculado: false }
+  if (b.origenNeto === 'conceptos' && reEstimado?.neto != null) return { ...comun, neto: reEstimado.neto, netoNoRecalculado: false }
   // UN NETO ESTIMADO SE VUELVE A ESTIMAR (dueño, 15/09/2026, fila de Agüero 01/09: «tengo ese sin recalc pegado»). Sin
   // recibo real ya es bruto × la mediana: con las horas o el $/h escritos se rehace igual, y no hay nada que avisar.
   // Un neto REAL (recibo del estudio o nómina) no se toca, y la pantalla lo avisa con el ícono.
   if (b.origenNeto === 'estimado' && b.proporcion && bruto != null) {
-    return { ...b, horasBlanco, valorHoraCategoria, bruto, neto: r2(bruto * b.proporcion.cociente), netoNoRecalculado: false, editado }
+    return { ...comun, neto: r2(bruto * b.proporcion.cociente), netoNoRecalculado: false }
   }
-  return { ...b, horasBlanco, valorHoraCategoria, bruto, netoNoRecalculado: b.neto != null, editado }
+  return { ...comun, netoNoRecalculado: b.neto != null }
 }
 
 export function sueldoBlancoNegro(e: EntradaDeSueldo): SueldoBlancoNegro {
-  const b = conManual(blancoDe(e), e.manual)
+  const b = conManual(blancoDe(e), e)
   const horas = num(e.horas)
   const faltan = horas == null || b.horasBlanco == null ? null : r2(horas - b.horasBlanco)
   // HS NEGRO ESCRITAS A MANO (dueño, 15/09/2026: «todas las celdas editables»). Son las que se pagan en negro, y el
@@ -225,12 +284,6 @@ export function negroDeLaFila(l: {
   // recalcula en silencio; si deja de cerrar, lo marca `cierreDeLaFila` (dueño, 15/09/2026).
   if (l.sueldo) return l.sueldo.negro
   return l.cobra == null ? null : r2(l.cobra - l.porBanco)
-}
-
-/** `Q2-08/2026` → `2026-08-2`: ordena períodos quincenales como texto. `''` para FINAL u otro formato. */
-export function periodoOrdenable(periodo: string): string {
-  const m = /^Q([12])-(\d{2})\/(\d{4})$/.exec(periodo.trim())
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
 }
 
 const esDe = (r: ReciboDeSueldo, personaId: string, cuil: string | null): boolean =>
@@ -297,16 +350,17 @@ export function ultimoReciboHasta(
 
 /**
  * LA ENTRADA DEL BLANCO DE UNA PERSONA. El recibo se empareja por persona o, si la línea no la trae,
- * por CUIL (la llave del estudio).
+ * por CUIL (la llave del estudio). `base` es la del recibo estimado: sin ella, el blanco de la mediana.
  */
 export function entradaDeBlanco(d: {
   personaId: string; cuil: string | null; periodo: string; recibos: readonly ReciboDeSueldo[]
-  pisoCategoria: number | null; netoDeNomina: number | null
+  pisoCategoria: number | null; netoDeNomina: number | null; base?: BaseDelEstimado | null
 }): EntradaDeBlanco {
   const actual = periodoOrdenable(d.periodo)
   const recibo = d.recibos.find((r) => esDe(r, d.personaId, d.cuil) && periodoOrdenable(r.periodo) === actual) ?? null
   return {
     recibo, netoDeNomina: d.netoDeNomina, pisoCategoria: d.pisoCategoria,
     proporcion: proporcionDelNeto(d),
+    estimacion: d.base ? { base: d.base, persona: cuilNormalizado(d.cuil) } : null,
   }
 }
