@@ -15,6 +15,7 @@
 import { useState, useTransition } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { pesos } from '../formato'
+import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
 import { formaEditable } from '../../../services/cuadroDeJornales'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { registrarTarifaDesdeLaQuincena } from '../../../services/tarifaDeLaQuincenaActions'
@@ -27,8 +28,8 @@ export const rotuloCategoria = (c: string): string => {
 
 /** «$ 6.100,50» → 6100.5. `null` si no es un número positivo: la celda no manda basura. */
 function importeTecleado(texto: string): number | null {
-  const n = Number(texto.trim().replace(/[$\s.]/g, '').replace(',', '.'))
-  return Number.isFinite(n) && n > 0 ? n : null
+  const leido = leerNumeroEsAR(texto)
+  return leido.ok && leido.valor != null && leido.valor > 0 ? leido.valor : null
 }
 
 const conSigno = (p: number): string => `${p > 0 ? '+' : ''}${p.toLocaleString('es-AR')}%`
@@ -75,7 +76,7 @@ export function CeldaTarifa({ fila, quincena, pct }: {
             if (e.key === 'Escape') { setTexto(null); setError(null) }
           }}
           style={{
-            width: 88, height: 28, textAlign: 'right', fontSize: '12.5px', padding: '0 6px',
+            width: 88, height: 32, textAlign: 'right', fontSize: '12.5px', padding: '0 6px',
             border: `1px solid ${error ? V.neg : V.grafito}`, borderRadius: 4, background: '#FFFFFF',
             color: V.tinta, fontVariantNumeric: 'tabular-nums',
           }}
@@ -84,7 +85,7 @@ export function CeldaTarifa({ fila, quincena, pct }: {
         <button type="button" data-testid={`tarifa-${fila.personaId}`} aria-label={`Cambiar el valor de ${fila.nombre}`}
           onClick={() => { setError(null); setTexto(actual == null ? '' : String(actual)) }}
           style={{
-            minHeight: 28, padding: '0 6px', border: `1px solid ${error ? V.neg : V.lineaFuerte}`, borderRadius: 4,
+            minHeight: 32, padding: '0 6px', border: `1px solid ${error ? V.neg : V.lineaFuerte}`, borderRadius: 4,
             background: '#FFFFFF', color: actual == null ? V.tenue : V.tinta, cursor: 'text',
             fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
           }}>{actual == null ? 'sin tarifa' : pesos(actual)}</button>

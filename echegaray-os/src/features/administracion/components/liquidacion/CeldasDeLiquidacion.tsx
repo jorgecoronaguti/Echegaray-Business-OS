@@ -36,6 +36,7 @@ import { guardarCeldaLiquidacion, guardarEfectivoRedondeado } from '../../servic
 import { guardarValorHora } from '../../services/tarifaDeLaQuincenaActions'
 import { accionDelRedondeo, efectivoMostrado } from '../../services/efectivoRedondeado'
 import { horas, pesos, textoDelRedondeo } from './formato'
+import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
 
 /**
  * LA UNIDAD DE LA CELDA, NO SU FORMATEADOR.
@@ -240,7 +241,7 @@ const ESTILOS_DEL_REDONDEO = new Map<number, CSSProperties>()
 export function estiloDelRedondeo(ancho: number): CSSProperties {
   let e = ESTILOS_DEL_REDONDEO.get(ancho)
   if (!e) {
-    e = { width: ancho, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px', borderRadius: 4, background: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }
+    e = { width: ancho, minHeight: 32, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px', borderRadius: 4, background: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }
     ESTILOS_DEL_REDONDEO.set(ancho, e)
   }
   return e
@@ -304,6 +305,8 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
   }
 
   const alSalir = () => {
+    // LO QUE NO ES NÚMERO NO SE GUARDA Y SE DICE (el mismo parser que el resto: `leerNumeroEsAR`).
+    if (!leerNumeroEsAR(texto).ok) { setError('número inválido'); return }
     const a = accionDelRedondeo({ texto, guardado: valor, sugerido: mostrado.sugeridoAhora })
     if (a.accion === 'nada') {
       setTocado(false)

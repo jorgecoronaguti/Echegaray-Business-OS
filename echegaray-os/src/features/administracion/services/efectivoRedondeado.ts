@@ -13,6 +13,8 @@
 //
 // Sigue sin participar de ninguna cuenta (R5): es la columna de los billetes, no parte de la cadena.
 
+import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
+
 /**
  * EL CRITERIO, EN UNA LÍNEA. Al $1.000 más cercano. No hay datos guardados de los que inferirlo: lo
  * eligió el coordinador el 14/09/2026, y cambiarlo es cambiar esta constante.
@@ -43,10 +45,9 @@ export function efectivoMostrado(l: { efectivoRedondeado: number | null; enEfect
 
 /** «$ 326.000» / «326000» / «326.000,50» → número. `null` si no es un importe. */
 export function importeDelTexto(texto: string): number | null {
-  const limpio = texto.trim().replace(/[$\s.]/g, '').replace(',', '.')
-  if (limpio === '') return null
-  const n = Number(limpio)
-  return Number.isFinite(n) ? n : null
+  // EL PARSER ÚNICO (`leerNumeroEsAR`): «266.000», «$ 266.000», «266.000,50». Vacío o inválido → null.
+  const leido = leerNumeroEsAR(texto)
+  return leido.ok ? leido.valor : null
 }
 
 export type AccionDelRedondeo = { accion: 'nada' } | { accion: 'guardar'; importe: number } | { accion: 'borrar' }

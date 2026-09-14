@@ -117,7 +117,7 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho, clas
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
       <span style={{
-        width: ancho, minHeight: 28, maxWidth: '100%', overflow: 'hidden',
+        width: ancho, minHeight: 32, maxWidth: '100%', overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         border: soloLectura ? 'none' : `1px solid ${V.lineaFuerte}`, borderRadius: 4, padding: '0 4px',
         color: valor == null || valor === 0 ? V.lineaFuerte : V.tinta,

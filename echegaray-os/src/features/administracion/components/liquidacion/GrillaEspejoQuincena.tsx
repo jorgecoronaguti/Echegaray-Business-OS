@@ -227,7 +227,8 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
 }) {
   const l = fila.linea
   return (
-    <div data-testid={`espejo-fila-${fila.personaId}`} style={filaGrid(columnas, ALTO_LIQ.filaAlta)}>
+    // `data-fila-edicion`: Tab en una celda pasa a la siguiente editable de ESTA fila (`InlineEdit`).
+    <div data-testid={`espejo-fila-${fila.personaId}`} data-fila-edicion="" style={filaGrid(columnas, ALTO_LIQ.filaAlta)}>
       <div style={COLUMNA_FIJA}>
         <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · abrir el detalle`}
           style={{
