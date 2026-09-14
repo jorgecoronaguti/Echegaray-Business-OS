@@ -1,76 +1,59 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarCostosPorObra, textoManoObra, textoMateriales, tituloManoObra, tituloMateriales,
+  armarCostosPorObra, textoManoObra, textoMateriales, textoTotalManoObra, tituloManoObra, tituloMateriales,
   totalesDelCliente,
 } from './costosDeObra.ts'
-import { alicuotasVigentes, multiplicadorDeCosto } from '../../administracion/services/costoHora.ts'
 
 // ═══ QUÉ DEFECTOS ATRAPA ═══
 //
 //  1 · QUE UNA AUSENCIA SE DIBUJE COMO UN CERO. Son CUATRO ausencias y se leen distinto: sin compras
 //      («—»), sin permiso (vacío), con horas que no se pueden valorizar («sin valorizar») y
-//      valorizado a medias (el importe en ámbar). Si «sin valorizar» se dibujara «$ 0», la ficha
-//      diría que una obra con 9.293 h no tuvo mano de obra — y hoy TODAS están en ese caso, porque
-//      `costo_hora_alicuota` está vacía.
-//  2 · QUE UN TOTAL PARCIAL SE PUBLIQUE COMO COMPLETO. El pie suma lo valorizado; si no dice cuántas
-//      horas quedaron afuera, el número se lee como el costo de mano de obra del cliente.
-//  3 · QUE LOS SUBCONTRATOS DESAPAREZCAN AL EXCLUIRLOS DE MATERIALES. Salen de la columna por no ser
-//      material y tienen que quedar nombrados en el `title`; si no, son plata que la obra gastó y
-//      ninguna cara del OS muestra.
-//  4 · QUE EL MULTIPLICADOR DE LA RPC NO SEA EL DE LIQUIDACIÓN. El último caso compara la fórmula de
-//      `multiplicador_de_costo` en SQL contra `multiplicadorDeCosto()` de TypeScript, que es la que
-//      usa la solapa «Costo a la obra». Las dos implementaciones conviven por necesidad —la suma
-//      cruza el cable agregada— y sin una comparación se separan en el primer cambio.
-//  5 · QUE UN `numeric` QUE LLEGA COMO TEXTO DEJE LA CELDA VACÍA TENIENDO EL DATO.
+//      valorizado a medias (el importe en ámbar).
+//  2 · QUE UN TOTAL PARCIAL SE PUBLIQUE COMO COMPLETO. El pie suma lo valorizado y dice cuántas horas
+//      quedaron afuera.
+//  3 · QUE LOS SUBCONTRATOS DESAPAREZCAN AL EXCLUIRLOS DE MATERIALES.
+//  4 · QUE VUELVA EL MULTIPLICADOR O EL VALOR HORA IMPLÍCITO DEL JEFE (20260915T0500): la mano de obra es
+//      recibo + negro por quincena, y el `title` no puede volver a explicarla como «× cargas».
+//  5 · QUE UN ESTIMADO SE DIBUJE COMO UN REAL: la celda dice «est.».
+//  6 · QUE UN `numeric` QUE LLEGA COMO TEXTO DEJE LA CELDA VACÍA TENIENDO EL DATO.
+//
+// Cambio de contrato (14/09/2026): se fueron `multiplicador` e `implicito` de la RPC, y con ellos los
+// casos que los probaban acá. `multiplicadorDeCosto` sigue probado en `costoHora.test.ts`.
 
-/** La fila real de Quattropani, medida contra la base el 12/09/2026. */
+/** La fila real de Quattropani, medida contra la base el 12/09/2026, con la forma de 20260915T0500. */
 const QUATTROPANI = {
   obra_id: 'quattropani',
   materiales: 42580345.01, subcontratos: 47461.82,
   n_comprobantes: 17, ultimo_comprobante: '2026-09-09',
-  mano_obra: null, horas_valorizadas: null, horas_sin_tarifa: 492,
-  personas_sin_tarifa: 4, multiplicador: null, puede_ver_tarifas: true,
+  mano_obra: null, mano_obra_real: null, mano_obra_estimada: null,
+  horas_valorizadas: null, horas_sin_tarifa: 492, personas_sin_tarifa: 4,
+  falta_dato: [
+    { persona_id: 'a', nombre: 'AGUERO CRISTIAN', quincena: '2026-08-16', horas: '60', origen: 'negro: sin tarifa (FALTA_DATO)' },
+    { persona_id: 'a', nombre: 'AGUERO CRISTIAN', quincena: '2026-09-01', horas: '40', origen: 'negro: sin tarifa (FALTA_DATO)' },
+  ],
+  sellado_hasta: null, puede_ver_tarifas: true,
 }
 
 test('las filas de costo_obra se indexan por obra y conservan lo medido', () => {
-  const m = armarCostosPorObra([QUATTROPANI])
-  assert.ok(m)
-  const q = m.get('quattropani')
+  const q = armarCostosPorObra([QUATTROPANI])?.get('quattropani')
   assert.equal(q?.materiales, 42580345.01)
   assert.equal(q?.subcontratos, 47461.82)
   assert.equal(q?.nComprobantes, 17)
   assert.equal(q?.ultimoComprobante, '2026-09-09')
   assert.equal(q?.horasSinTarifa, 492)
-  assert.equal(q?.multiplicador, null)
-})
-
-test('OFICINA: el title declara el valor hora implícito con sus números (decisión 13/09/2026)', () => {
-  // EL DEFECTO: sin la frase, las horas del jefe de obra se leen como horas × una tarifa cargada.
-  const m = armarCostosPorObra([{
-    ...QUATTROPANI, mano_obra: 2743200, horas_valorizadas: 90, horas_sin_tarifa: 0,
-    personas_sin_tarifa: 0, multiplicador: 1.524,
-    implicito: [{ persona_id: 'jefe', mes: '2026-09-01', neto_mensual: '1800000.00', horas_mes: '180', horas: 90 }],
-  }])
-  const c = m?.get('quattropani')
-  assert.deepEqual(c?.implicitos, [{ mes: '2026-09-01', netoMensual: 1800000, horasDelMes: 180, horas: 90 }])
-  const t = tituloManoObra(c, '2026-08-17') ?? ''
-  assert.ok(t.includes('valor hora implícito: neto mensual ÷ 180 h del mes'), t)
-  assert.ok(t.includes('09/26: 90 h'), t)
-  // Y SIN SUELDOS MENSUALES, LA FRASE NO APARECE: el control puede decir que no.
-  assert.ok(!(tituloManoObra(armarCostosPorObra([{ ...QUATTROPANI, mano_obra: 1, horas_valorizadas: 1,
-    horas_sin_tarifa: 0, multiplicador: 1.5 }])?.get('quattropani'), null) ?? '').includes('implícito'))
+  assert.deepEqual(q?.faltaDato.map((f) => [f.nombre, f.quincena, f.horas]),
+    [['AGUERO CRISTIAN', '2026-08-16', 60], ['AGUERO CRISTIAN', '2026-09-01', 40]])
 })
 
 test('un numeric que llega como texto sigue siendo el número', () => {
-  const m = armarCostosPorObra([{ ...QUATTROPANI, materiales: '42580345.01', n_comprobantes: '17' }])
+  const m = armarCostosPorObra([{ ...QUATTROPANI, materiales: '42580345.01', n_comprobantes: '17', mano_obra: '3572782.1' }])
   assert.equal(m?.get('quattropani')?.materiales, 42580345.01)
   assert.equal(m?.get('quattropani')?.nComprobantes, 17)
+  assert.equal(m?.get('quattropani')?.manoObra, 3572782.1)
 })
 
 test('el null de la RPC NO se vuelve un Map vacío', () => {
-  // `null` = no puedo decirlo (rol o cara); `[]` = ningún trabajo gastó nada. La pantalla dibuja
-  // vacío en el primer caso y «—» en el segundo, y ésta es la única capa donde se pueden confundir.
   assert.equal(armarCostosPorObra(null), null)
   assert.equal(armarCostosPorObra(undefined), null)
   assert.equal(armarCostosPorObra([])?.size, 0)
@@ -87,12 +70,8 @@ test('materiales: el importe en es-AR sin decimales, y «—» cuando no hay nin
 test('el title de materiales dice qué entra, cuántos comprobantes y qué quedó aparte', () => {
   const t = tituloMateriales(armarCostosPorObra([QUATTROPANI])!.get('quattropani'))
   assert.match(t!, /Compras asignadas a la obra a la fecha, pagadas y pendientes \(Compras, columna K\) · 17 comprobantes · último 09\/09/)
-  // LO QUE NO ENTRA, DICHO: sin esta frase la diferencia contra el «costo real» de la ficha de la
-  // obra se lee como un error de uno de los dos números.
   assert.match(t!, /No entran nómina, cargas, ARCA ni financiero/)
-  // Y LOS SUBCONTRATOS QUEDAN NOMBRADOS: salieron de la columna, no del sistema.
   assert.match(t!, /\$47\.462 de subcontratos/)
-  // Sin compras no hay nada que respaldar: el title no inventa una explicación.
   assert.equal(tituloMateriales(armarCostosPorObra([{ ...QUATTROPANI, materiales: null }])!.get('quattropani')), null)
 })
 
@@ -105,71 +84,73 @@ test('un comprobante en singular no dice «1 comprobantes»', () => {
 // MANO DE OBRA — LAS CUATRO AUSENCIAS, Y NINGUNA ES UN CERO
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-test('con horas y sin alícuotas la celda dice «sin valorizar», NUNCA $ 0', () => {
-  // EL CASO REAL DE HOY (12/09/2026): `costo_hora_alicuota` tiene cero filas, así que ninguna hora
-  // de ninguna obra se puede convertir en costo. Un «$ 0» afirmaría que Quattropani no tuvo mano de
-  // obra sobre 492 horas cargadas.
+test('con horas y sin nada valorizado la celda dice «sin valorizar», NUNCA $ 0, y nombra a quién falta', () => {
   const c = armarCostosPorObra([QUATTROPANI])!.get('quattropani')
-  const celda = textoManoObra(c)
-  assert.equal(celda.texto, 'sin valorizar')
-  assert.equal(celda.parcial, true, 'la celda tiene que pedir trabajo: falta un dato que se puede cargar')
+  assert.deepEqual(textoManoObra(c), { texto: 'sin valorizar', parcial: true, estimado: false })
   const t = tituloManoObra(c, '2026-08-17')
   assert.match(t!, /492 h cargadas y SIN VALORIZAR · desde 17\/08/)
-  assert.match(t!, /faltan las alícuotas de costo/)
-  assert.match(t!, /4 personas sin valor hora/)
+  assert.match(t!, /4 personas sin dato \(tarifa en negro o neto mensual\): AGUERO CRISTIAN\./)
 })
 
 test('sin horas y sin compras la celda dice «—», y eso NO es un hueco de dato', () => {
   const c = armarCostosPorObra([{
-    ...QUATTROPANI, materiales: null, n_comprobantes: 0,
-    horas_sin_tarifa: null, personas_sin_tarifa: 0,
+    ...QUATTROPANI, materiales: null, n_comprobantes: 0, horas_sin_tarifa: null, personas_sin_tarifa: 0, falta_dato: [],
   }])!.get('quattropani')
-  assert.deepEqual(textoManoObra(c), { texto: '—', parcial: false })
-  // «—» es la base contestando que no hay ninguna hora: no hay nada que explicar ni que cargar.
+  assert.deepEqual(textoManoObra(c), { texto: '—', parcial: false, estimado: false })
   assert.equal(tituloManoObra(c, null), null)
 })
 
-test('sin permiso para leer las tarifas la celda queda VACÍA, no «sin valorizar»', () => {
-  // `persona_tarifa` y `costo_hora_alicuota` tienen RLS por `liquida_sueldos()`, más angosto que
-  // `es_administracion()`. «Sin valorizar» diría «falta cargar un dato» y lo que falta es permiso:
-  // son dos hechos distintos y el segundo no se arregla cargando nada.
+test('sin permiso para leer recibos y tarifas la celda queda VACÍA, no «sin valorizar»', () => {
   const c = armarCostosPorObra([{ ...QUATTROPANI, puede_ver_tarifas: false }])!.get('quattropani')
-  assert.deepEqual(textoManoObra(c), { texto: '', parcial: false })
+  assert.deepEqual(textoManoObra(c), { texto: '', parcial: false, estimado: false })
   assert.match(tituloManoObra(c, '2026-08-17')!, /No puedo valorizar/)
 })
 
-test('valorizado COMPLETO: el importe, y el title muestra la cuenta', () => {
+test('valorizado COMPLETO con recibos: el importe, y el title explica recibo + negro, sin multiplicador', () => {
   const c = armarCostosPorObra([{
-    ...QUATTROPANI, mano_obra: 4_152_000, horas_valorizadas: 492,
-    horas_sin_tarifa: null, personas_sin_tarifa: 0, multiplicador: 1.524,
+    ...QUATTROPANI, mano_obra: 4_152_000, mano_obra_real: 4_152_000, horas_valorizadas: 492,
+    horas_sin_tarifa: null, personas_sin_tarifa: 0, falta_dato: [], sellado_hasta: '2026-08-31', corte: '2026-09-14',
   }])!.get('quattropani')
-  assert.deepEqual(textoManoObra(c), { texto: '$4.152.000', parcial: false })
-  const t = tituloManoObra(c, '2026-08-17')
-  assert.match(t!, /492 h × tarifa vigente × cargas \(×1,524\) · desde 17\/08/)
-  assert.match(t!, /los subcontratos van aparte/)
+  assert.deepEqual(textoManoObra(c), { texto: '$4.152.000', parcial: false, estimado: false })
+  const t = tituloManoObra(c, '2026-08-17')!
+  assert.match(t, /492 h · desde 17\/08 hasta 14\/09: costo total empleador del recibo \+ parte en negro/)
+  assert.match(t, /\$4\.152\.000 con recibo del estudio/)
+  assert.match(t, /Quincenas selladas hasta 31\/08; la abierta, en vivo/)
+  assert.match(t, /los subcontratos van aparte/)
+  // EL DEFECTO VIEJO NO VUELVE POR EL TEXTO: ni «× cargas (×1,671)» ni «valor hora implícito».
+  assert.doesNotMatch(t, /cargas \(×|implícito|multiplicador/)
 })
 
-test('valorizado a medias: el importe va en ámbar y el title dice cuántas horas faltan', () => {
+test('lo estimado se marca: la celda dice que hay estimado y el title cuánto', () => {
   const c = armarCostosPorObra([{
-    ...QUATTROPANI, mano_obra: 1_000_000, horas_valorizadas: 120,
-    horas_sin_tarifa: 372, personas_sin_tarifa: 3, multiplicador: 1.524,
+    ...QUATTROPANI, mano_obra: 3_572_782, mano_obra_real: null, mano_obra_estimada: 3_572_782,
+    horas_valorizadas: 318, horas_sin_tarifa: null, personas_sin_tarifa: 0, falta_dato: [],
+  }])!.get('quattropani')
+  assert.equal(textoManoObra(c).estimado, true)
+  assert.match(tituloManoObra(c, null)!, /\$3\.572\.782 ESTIMADO \(quincenas sin recibo todavía\)/)
+  assert.match(tituloManoObra(c, null)!, /Ninguna quincena sellada/)
+})
+
+test('valorizado a medias: el importe va en ámbar y el title dice cuántas horas y quién falta', () => {
+  const c = armarCostosPorObra([{
+    ...QUATTROPANI, mano_obra: 1_000_000, mano_obra_real: 1_000_000, horas_valorizadas: 120,
+    horas_sin_tarifa: 372, personas_sin_tarifa: 3,
   }])!.get('quattropani')
   const celda = textoManoObra(c)
   assert.equal(celda.texto, '$1.000.000')
   assert.equal(celda.parcial, true, 'un importe al que le faltan 372 h no se dibuja como completo')
-  const t = tituloManoObra(c, '2026-08-17')
-  assert.match(t!, /^PARCIAL/)
-  assert.match(t!, /Quedan 372 h sin valorizar/)
-  assert.match(t!, /3 personas sin valor hora/)
+  const t = tituloManoObra(c, '2026-08-17')!
+  assert.match(t, /^PARCIAL/)
+  assert.match(t, /Quedan 372 h sin valorizar: 3 personas sin dato/)
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // EL PIE DE LA TABLA
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-test('el pie suma las mismas filas que la tabla, y un total parcial lo declara', () => {
+test('el pie suma las mismas filas que la tabla, y un total parcial o estimado lo declara', () => {
   const m = armarCostosPorObra([
-    { ...QUATTROPANI, obra_id: 'a', materiales: 100, mano_obra: 10, horas_valorizadas: 1, horas_sin_tarifa: null },
+    { ...QUATTROPANI, obra_id: 'a', materiales: 100, mano_obra: 10, mano_obra_estimada: 4, horas_valorizadas: 1, horas_sin_tarifa: null },
     { ...QUATTROPANI, obra_id: 'b', materiales: 50, mano_obra: 5, horas_valorizadas: 1, horas_sin_tarifa: 8 },
     { ...QUATTROPANI, obra_id: 'c', materiales: null, mano_obra: null, horas_sin_tarifa: null },
   ])!
@@ -177,57 +158,23 @@ test('el pie suma las mismas filas que la tabla, y un total parcial lo declara',
   assert.equal(t.materiales, 150)
   assert.equal(t.manoObra, 15)
   assert.equal(t.manoObraParcial, true)
+  assert.equal(t.manoObraEstimada, 4)
   assert.equal(t.horasSinValorizar, 8)
-  // UNA OBRA QUE NO ESTÁ EN EL MAP NO SUMA NI RESTA: el pie no inventa una fila que la RPC no mandó.
+  assert.deepEqual(textoTotalManoObra(t), { texto: '$15', parcial: true, estimado: true })
   assert.equal(totalesDelCliente(m, ['a']).materiales, 100)
 })
 
 test('«no pude leerlos» y «no hay ninguno» son DOS hechos, y el pie los distingue', () => {
-  // ═══ EL DEFECTO, VISTO EN LA CAPTURA (Quattropani, 12/09/2026) ═══
-  //
-  // Con la clave sin llegar —la migración todavía no aplicada— las celdas de la tabla quedaban
-  // vacías (correcto) y el PIE de abajo escribía «MATERIALES —» y «MANO DE OBRA sin valorizar»: dos
-  // afirmaciones sobre datos que no había leído. «—» dice «ningún trabajo tiene una compra
-  // imputada» y Quattropani tiene 17 por $ 42,6 M.
   assert.equal(totalesDelCliente(null, ['quattropani']).legible, false)
   assert.equal(totalesDelCliente(armarCostosPorObra([QUATTROPANI])!, ['quattropani']).legible, true)
 })
 
 test('sin nada valorizado el pie dice null, no 0 — y sin costos tampoco', () => {
-  const m = armarCostosPorObra([QUATTROPANI])!
-  const t = totalesDelCliente(m, ['quattropani'])
+  const t = totalesDelCliente(armarCostosPorObra([QUATTROPANI])!, ['quattropani'])
   assert.equal(t.manoObra, null, 'un 0 acá se leería como «la mano de obra del cliente costó cero»')
   assert.equal(t.manoObraParcial, true)
   assert.equal(t.horasSinValorizar, 492)
   const vacio = totalesDelCliente(null, ['quattropani'])
   assert.equal(vacio.materiales, null)
   assert.equal(vacio.manoObra, null)
-})
-
-// ═══════════════════════════════════════════════════════════════════════════════════════════════
-// LA MISMA REGLA QUE LIQUIDACIÓN — LA PARTE QUE SE PUEDE PROBAR SIN LA BASE
-//
-// `public.multiplicador_de_costo(fecha)` (SQL) y `multiplicadorDeCosto(vigentes, 1)` (TS) tienen que
-// dar lo mismo. La comparación contra la base real vive en `costo-por-obra.pg.test.mjs`; acá se fija
-// la fórmula de TypeScript —que es la que la solapa «Costo a la obra» usa de verdad— para que un
-// cambio en ella obligue a tocar también el SQL, que es lo que el test pg compara.
-// ═══════════════════════════════════════════════════════════════════════════════════════════════
-
-const ALICUOTAS = [
-  { concepto: 'cargas_sociales' as const, desde: '2026-01-01', porcentaje: 26.4, base: 'declarado' as const, fuente: 'handoff §5' },
-  { concepto: 'art' as const, desde: '2026-01-01', porcentaje: 7.2, base: 'declarado' as const, fuente: 'handoff §5' },
-  { concepto: 'fondo_cese' as const, desde: '2026-01-01', porcentaje: 8, base: 'total' as const, fuente: 'handoff §5' },
-]
-
-test('el multiplicador con proporción declarada 1 es 1 + Σ porcentaje/100, y sin alícuotas es null', () => {
-  const v = alicuotasVigentes(ALICUOTAS, '2026-09-12')
-  assert.equal(multiplicadorDeCosto(v, 1).valor, 1 + (26.4 + 7.2 + 8) / 100)
-  // SIN UNA SOLA ALÍCUOTA VIGENTE, NULL — nunca 1. Es el estado REAL de la base hoy, y el que hace
-  // que la columna diga «sin valorizar» en las trece obras.
-  assert.equal(multiplicadorDeCosto(alicuotasVigentes(ALICUOTAS, '2025-12-31'), 1).valor, null)
-  assert.equal(multiplicadorDeCosto({}, 1).valor, null)
-  // Y LA VIGENTE NO ES LA ÚLTIMA FILA: una alícuota que arranca mañana no cambia lo de hoy.
-  const futura = [...ALICUOTAS, { ...ALICUOTAS[0], desde: '2026-10-01', porcentaje: 30 }]
-  assert.equal(multiplicadorDeCosto(alicuotasVigentes(futura, '2026-09-12'), 1).valor,
-    1 + (26.4 + 7.2 + 8) / 100)
 })

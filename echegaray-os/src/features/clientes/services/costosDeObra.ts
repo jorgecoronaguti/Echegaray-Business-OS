@@ -12,21 +12,30 @@
 //
 //   · el trabajo no tiene nada imputado      → «—»              (la base contestó: ninguna compra)
 //   · no puedo leerlo (rol)                  → vacío            (`costo_obra` llega `null`)
-//   · tiene horas y NO se pueden valorizar   → «sin valorizar»  (falta cargar alícuotas o tarifas)
-//   · se valorizó una parte                  → el importe en ámbar, y el `title` dice cuánto falta
+//   · tiene horas y NO se pueden valorizar   → «sin valorizar»  (falta la tarifa de alguien)
+//   · se valorizó una parte                  → el importe en ámbar, y el `title` dice quién falta
 //
 // Y una quinta, que no es de una obra: lo que Compras le imputa al CLIENTE sin decir a cuál de sus
 // obras fue. Se publica en su propia fila, «Gastos del cliente sin obra asignada», y NUNCA se reparte.
 //
-// Los números NO se calculan acá: los trae `costo_obra` (función `costo_de_obras_a_la_fecha`,
-// 20260913T1550), que atribuye cada compra por la columna K y valoriza las horas con la regla de la
-// solapa «Costo a la obra» de Liquidación. Este archivo convierte, da formato y decide qué dice cada
-// hueco.
+// Los números NO se calculan acá: los trae `costo_obra` (función `costo_de_obras_a_la_fecha`). La
+// mano de obra sale desde 20260915T0500 de la definición única `costo_mo_quincena`: recibo del
+// estudio (costo total empleador) + parte en negro, repartidos por horas, quincena por quincena. Este
+// archivo convierte, da formato y decide qué dice cada hueco.
 
 // LAS RUTAS VAN RELATIVAS Y CON EXTENSIÓN: el alias `@/` lo resuelve el bundler, no `node --test`.
 import { plata } from '../../../shared/utils/format.ts'
 import { diaMesISO } from '../../../shared/utils/fecha.ts'
-import { fraseDeValorImplicito } from '../../administracion/services/costoHora.ts'
+
+/** Una persona cuyas horas no se pudieron valorizar en una quincena. */
+export interface FaltaDatoDeObra {
+  personaId: string | null
+  nombre: string | null
+  /** ISO del primer día de la quincena. */
+  quincena: string
+  horas: number
+  origen: string
+}
 
 /** Lo que la clave `costo_obra` publica por trabajo. */
 export interface CostoDeObra {
@@ -39,20 +48,23 @@ export interface CostoDeObra {
   nComprobantes: number
   /** ISO `YYYY-MM-DD` del último comprobante imputado. */
   ultimoComprobante: string | null
-  /** Horas propias × tarifa vigente × multiplicador de cargas. `null` = no se pudo valorizar NADA. */
+  /** Mano de obra propia a la fecha: recibos + negro. `null` = no se pudo valorizar NADA. */
   manoObra: number | null
+  /** La parte de `manoObra` con recibo del estudio. */
+  manoObraReal: number | null
+  /** La parte de `manoObra` estimada (quincenas sin recibo todavía). */
+  manoObraEstimada: number | null
   /** Las horas que hay detrás de `manoObra`. */
   horasValorizadas: number | null
-  /** Las horas que NO se pudieron valorizar: sin tarifa vigente o sin multiplicador a su fecha. */
+  /** Las horas que NO se pudieron valorizar: FALTA_DATO (sin tarifa o sin neto mensual). */
   horasSinTarifa: number | null
   personasSinTarifa: number
-  /** El multiplicador vigente HOY. `null` = no hay ninguna alícuota de costo cargada. */
-  multiplicador: number | null
-  /** `false` = la RLS de `persona_tarifa`/`costo_hora_alicuota` (`liquida_sueldos()`) no deja leer
-   *  las tarifas. Es «no puedo», no «falta cargarlas», y la celda lo dibuja distinto. */
+  faltaDato: FaltaDatoDeObra[]
+  /** ISO del último día sellado. `null` = todas las quincenas se calcularon en vivo. */
+  selladoHasta: string | null
+  /** `false` = la RLS de recibos y tarifas (`liquida_sueldos()`) no deja leerlos. Es «no puedo», no
+   *  «falta cargarlas», y la celda lo dibuja distinto. */
   puedeVerTarifas: boolean
-  /** Los sueldos mensuales (Oficina) valorizados con valor hora implícito, uno por persona y mes. */
-  implicitos?: ImplicitoDeObra[]
   /** Compras asignadas a la obra con fecha POSTERIOR al corte: no son costo a la fecha, se nombran. */
   comprometidoFuturo?: number | null
   /** ISO `YYYY-MM-DD` del corte con el que la base sumó. `null` = RPC anterior a 20260913T1550. */
@@ -63,27 +75,6 @@ export interface CostoDeObra {
 export const ROTULO_MATERIALES = 'Materiales a la fecha'
 export const ROTULO_MANO_OBRA = 'Mano de obra a la fecha'
 export const ROTULO_SIN_OBRA = 'Gastos del cliente sin obra asignada'
-
-/** Un sueldo mensual repartido: `netoMensual ÷ horasDelMes` por cada una de las `horas` en la obra. */
-export interface ImplicitoDeObra {
-  /** `YYYY-MM-01`. */
-  mes: string
-  netoMensual: number
-  horasDelMes: number
-  horas: number
-}
-
-function implicitosDe(v: unknown): ImplicitoDeObra[] {
-  if (!Array.isArray(v)) return []
-  return v.flatMap((x): ImplicitoDeObra[] => {
-    const r = x as Record<string, unknown>
-    const netoMensual = num(r.neto_mensual)
-    const horasDelMes = num(r.horas_mes)
-    const mes = texto(r.mes)
-    if (netoMensual == null || horasDelMes == null || mes == null) return []
-    return [{ mes: mes.slice(0, 10), netoMensual, horasDelMes, horas: num(r.horas) ?? 0 }]
-  })
-}
 
 function num(v: unknown): number | null {
   if (v == null || v === '') return null
@@ -97,6 +88,19 @@ function entero(v: unknown): number {
 
 function texto(v: unknown): string | null {
   return typeof v === 'string' && v !== '' ? v : null
+}
+
+function faltaDatoDe(v: unknown): FaltaDatoDeObra[] {
+  if (!Array.isArray(v)) return []
+  return v.flatMap((x): FaltaDatoDeObra[] => {
+    const r = x as Record<string, unknown>
+    const quincena = texto(r.quincena)
+    if (quincena == null) return []
+    return [{
+      personaId: texto(r.persona_id), nombre: texto(r.nombre), quincena: quincena.slice(0, 10),
+      horas: num(r.horas) ?? 0, origen: texto(r.origen) ?? '',
+    }]
+  })
 }
 
 /**
@@ -122,12 +126,14 @@ export function armarCostosPorObra(
       nComprobantes: entero(r.n_comprobantes),
       ultimoComprobante: texto(r.ultimo_comprobante)?.slice(0, 10) ?? null,
       manoObra: num(r.mano_obra),
+      manoObraReal: num(r.mano_obra_real),
+      manoObraEstimada: num(r.mano_obra_estimada),
       horasValorizadas: num(r.horas_valorizadas),
       horasSinTarifa: num(r.horas_sin_tarifa),
       personasSinTarifa: entero(r.personas_sin_tarifa),
-      multiplicador: num(r.multiplicador),
+      faltaDato: faltaDatoDe(r.falta_dato),
+      selladoHasta: texto(r.sellado_hasta)?.slice(0, 10) ?? null,
       puedeVerTarifas: r.puede_ver_tarifas !== false,
-      implicitos: implicitosDe(r.implicito),
       comprometidoFuturo: num(r.comprometido_futuro),
       corte: texto(r.corte)?.slice(0, 10) ?? null,
     })
@@ -156,8 +162,8 @@ export function tituloMateriales(c: CostoDeObra | null | undefined): string | nu
     `${c.nComprobantes} ${c.nComprobantes === 1 ? 'comprobante' : 'comprobantes'}`,
     c.ultimoComprobante ? `último ${diaMesISO(c.ultimoComprobante)}` : null,
   ].filter((p) => p != null)
-  // QUÉ NO ENTRA, DICHO EN LA CELDA: sin esta frase, la diferencia contra el «costo real» de la ficha
-  // de la obra —que sí suma la nómina imputada— se lee como un error de alguno de los dos.
+  // QUÉ NO ENTRA, DICHO EN LA CELDA: sin esta frase, la diferencia contra el «costo real» de la ficha de la
+  // obra —que sí suma la nómina imputada— se lee como un error de alguno de los dos.
   let t = `${partes.join(' · ')}. No entran nómina, cargas, ARCA ni financiero.`
   if (c.subcontratos != null) {
     // LOS SUBCONTRATOS NO DESAPARECEN AL EXCLUIRLOS. Son mano de obra facturada por un tercero: no
@@ -173,85 +179,73 @@ export interface CeldaManoObra {
   texto: string
   /** `true` = el número está incompleto o falta cargar un dato: la celda va en ámbar. */
   parcial: boolean
+  /** `true` = una parte del importe es estimada (sin recibo del estudio todavía): la celda dice «est.». */
+  estimado: boolean
 }
 
 /**
  * MANO DE OBRA: el costo de las horas propias, o la palabra que dice por qué no hay número.
  *
  * «Sin valorizar» es una PALABRA y no un cero porque el hueco es de DATO y se puede resolver hoy:
- * faltan las alícuotas de costo o la tarifa de alguien. Un «$ 0» diría que la obra no tuvo mano de
- * obra, que es la afirmación opuesta.
+ * falta la tarifa de alguien. Un «$ 0» diría que la obra no tuvo mano de obra.
  */
 export function textoManoObra(c: CostoDeObra | null | undefined): CeldaManoObra {
-  if (!c) return { texto: '—', parcial: false }
-  // NO PUEDO LEER LAS TARIFAS: vacío, igual que las HH de un rol sin permiso. «Sin valorizar» diría
-  // que falta cargar un dato, y lo que falta es el permiso.
-  if (!c.puedeVerTarifas) return { texto: '', parcial: false }
+  if (!c) return { texto: '—', parcial: false, estimado: false }
+  // NO PUEDO LEER LOS RECIBOS NI LAS TARIFAS: vacío, igual que las HH de un rol sin permiso.
+  if (!c.puedeVerTarifas) return { texto: '', parcial: false, estimado: false }
   const conHoras = (c.horasValorizadas ?? 0) + (c.horasSinTarifa ?? 0) > 0
   if (c.manoObra == null) {
-    return conHoras ? { texto: 'sin valorizar', parcial: true } : { texto: '—', parcial: false }
+    return conHoras ? { texto: 'sin valorizar', parcial: true, estimado: false } : { texto: '—', parcial: false, estimado: false }
   }
-  return { texto: plata(c.manoObra), parcial: (c.horasSinTarifa ?? 0) > 0 }
+  return { texto: plata(c.manoObra), parcial: (c.horasSinTarifa ?? 0) > 0, estimado: (c.manoObraEstimada ?? 0) > 0 }
 }
 
-/** Lo que falta para poder valorizar. Vacío = no falta nada. */
-function faltaParaValorizar(c: CostoDeObra): string[] {
-  return [
-    c.multiplicador == null
-      ? 'faltan las alícuotas de costo (cargas, ART, fondo de cese, seguro, no trabajado pago), '
-        + 'que se cargan en Administración → Liquidación'
-      : null,
-    c.personasSinTarifa > 0
-      ? `${c.personasSinTarifa} ${c.personasSinTarifa === 1 ? 'persona' : 'personas'} sin valor hora `
-        + 'vigente a la fecha en que trabajó'
-      : null,
-  ].filter((x): x is string => x != null)
+/** Quién falta, sin repetir a la persona por cada quincena. */
+function faltaParaValorizar(c: CostoDeObra): string {
+  const unicos = [...new Map(c.faltaDato.map((f) => [f.personaId ?? f.nombre ?? '', f])).values()]
+  const n = Math.max(c.personasSinTarifa, unicos.length)
+  const lista = unicos.slice(0, 4).map((f) => f.nombre ?? 'fila sin persona').join(', ')
+  return `${n} ${n === 1 ? 'persona' : 'personas'} sin dato (tarifa en negro o neto mensual)`
+    + `${lista ? `: ${lista}${unicos.length > 4 ? '…' : ''}` : ''}`
+}
+
+/** «$ X con recibo del estudio + $ Y ESTIMADO», o vacío. */
+function fraseRealEstimado(c: CostoDeObra): string {
+  const partes = [
+    c.manoObraReal ? `${plata(c.manoObraReal)} con recibo del estudio` : null,
+    c.manoObraEstimada ? `${plata(c.manoObraEstimada)} ESTIMADO (quincenas sin recibo todavía)` : null,
+  ].filter((p): p is string => p != null)
+  return partes.length ? ` — ${partes.join(' + ')}` : ''
 }
 
 /**
  * EL DETALLE DEL COSTO DE LA MANO DE OBRA, con la cuenta a la vista.
  *
  * `inicioISO` es la primera fecha con horas del trabajo —la misma que publica `hh_obra`— y no se
- * vuelve a pedir: el `title` la necesita para decir desde cuándo se acumula, y pedirla de nuevo
- * sería una segunda definición del inicio de la obra.
+ * vuelve a pedir: pedirla de nuevo sería una segunda definición del inicio de la obra.
  */
 export function tituloManoObra(
   c: CostoDeObra | null | undefined, inicioISO: string | null | undefined,
 ): string | null {
   if (!c) return null
   if (!c.puedeVerTarifas) {
-    return 'No puedo valorizar las horas de este trabajo: las tarifas y las alícuotas las lee '
-      + 'Administración.'
+    return 'No puedo valorizar las horas de este trabajo: los recibos y las tarifas los lee Administración.'
   }
   const desde = `${inicioISO ? ` · desde ${diaMesISO(inicioISO)}` : ''}${c.corte ? ` hasta ${diaMesISO(c.corte)}` : ''}`
-  const falta = faltaParaValorizar(c)
   if (c.manoObra == null) {
     const h = c.horasSinTarifa
     if (h == null) return null
-    return `${fmtHoras(h)} h cargadas y SIN VALORIZAR${desde}. ${falta.join('; ')}.`
+    return `${fmtHoras(h)} h cargadas y SIN VALORIZAR${desde}. ${faltaParaValorizar(c)}.`
   }
-  const base = `${fmtHoras(c.horasValorizadas ?? 0)} h × tarifa vigente × cargas`
-    + `${c.multiplicador == null ? '' : ` (×${c.multiplicador.toLocaleString('es-AR', { maximumFractionDigits: 3 })})`}`
-    + desde
-  const oficina = fraseImplicitos(c.implicitos)
-  if ((c.horasSinTarifa ?? 0) === 0) return `${base}.${oficina} Horas propias: los subcontratos van aparte.`
-  return `PARCIAL — ${base}.${oficina} Quedan ${fmtHoras(c.horasSinTarifa ?? 0)} h sin valorizar: `
-    + `${falta.join('; ')}.`
+  const base = `${fmtHoras(c.horasValorizadas ?? 0)} h${desde}: costo total empleador del recibo + parte en negro, `
+    + `repartidos por horas${fraseRealEstimado(c)}`
+  const sello = c.selladoHasta
+    ? ` Quincenas selladas hasta ${diaMesISO(c.selladoHasta)}; la abierta, en vivo.`
+    : ' Ninguna quincena sellada: todo en vivo.'
+  if ((c.horasSinTarifa ?? 0) === 0) return `${base}.${sello} Horas propias: los subcontratos van aparte.`
+  return `PARCIAL — ${base}.${sello} Quedan ${fmtHoras(c.horasSinTarifa ?? 0)} h sin valorizar: `
+    + `${faltaParaValorizar(c)}.`
 }
-
-/**
- * QUÉ PARTE DEL IMPORTE ES UN SUELDO MENSUAL REPARTIDO (decisión del dueño, 13/09/2026).
- *
- * Sin la frase, las horas del jefe de obra se leerían como horas × una tarifa que nadie cargó. La
- * cuenta es la de `valorHoraDeCosto` en `costoHora.ts`: neto mensual ÷ horas trabajadas del mes.
- */
-function fraseImplicitos(is: readonly ImplicitoDeObra[] | undefined): string {
-  if (!is || is.length === 0) return ''
-  const partes = is.map((i) => `${mesCorto(i.mes)}: ${fmtHoras(i.horas)} h a ${fraseDeValorImplicito(i)}`)
-  return ` Incluye sueldo mensual de Oficina — ${partes.join('; ')}.`
-}
-
-const mesCorto = (iso: string): string => `${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 
 /** Horas sin decimales, en es-AR. El formato de plata lo pone `plata`, que ya es el del repo. */
 function fmtHoras(n: number): string {
@@ -333,11 +327,13 @@ export function textoTotalMateriales(t: TotalesDelCliente): string {
 
 /** LA CELDA DE MANO DE OBRA DE UN CLIENTE: el total, «sin valorizar» o vacío, y si está incompleto. */
 export function textoTotalManoObra(t: TotalesDelCliente): CeldaManoObra {
-  if (!t.legible) return { texto: '', parcial: false }
+  if (!t.legible) return { texto: '', parcial: false, estimado: false }
   if (t.manoObra == null) {
-    return t.horasSinValorizar > 0 ? { texto: 'sin valorizar', parcial: true } : { texto: '—', parcial: false }
+    return t.horasSinValorizar > 0
+      ? { texto: 'sin valorizar', parcial: true, estimado: false }
+      : { texto: '—', parcial: false, estimado: false }
   }
-  return { texto: plata(t.manoObra), parcial: t.manoObraParcial }
+  return { texto: plata(t.manoObra), parcial: t.manoObraParcial, estimado: t.manoObraEstimada > 0 }
 }
 
 /** El pie de la tabla: lo gastado por el cliente en todos sus trabajos. */
@@ -346,9 +342,7 @@ export interface TotalesDelCliente {
    * `false` = NO SE PUDO LEER (la cara no transporta los costos, o el rol no es Administración).
    *
    * Sin este campo el pie decía «—» y «sin valorizar» —«ningún trabajo tiene compras» y «falta
-   * cargar un dato»— sobre un cliente del que no había leído NADA. Se vio en la captura de
-   * Quattropani del 12/09/2026 con la migración todavía sin aplicar: las celdas de la tabla estaban
-   * vacías, que es correcto, y el pie de abajo afirmaba dos cosas falsas.
+   * cargar un dato»— sobre un cliente del que no había leído NADA (captura de Quattropani, 12/09/2026).
    */
   legible: boolean
   /** Σ de lo asignado en Compras a sus obras MÁS lo que quedó sin obra. `null` = ninguna compra. */
@@ -359,6 +353,8 @@ export interface TotalesDelCliente {
   manoObra: number | null
   /** `true` = hay horas que quedaron afuera del total de mano de obra. */
   manoObraParcial: boolean
+  /** La parte estimada del total de mano de obra. */
+  manoObraEstimada: number
   /** Las horas que el total NO incluye, para poder decirlo en el pie. */
   horasSinValorizar: number
 }
@@ -366,14 +362,12 @@ export interface TotalesDelCliente {
 /**
  * LOS DOS TOTALES, SUMADOS DE LAS MISMAS FILAS QUE DIBUJA LA TABLA — incluida la fila sin obra.
  *
- * No se piden a la base por la razón de siempre: cada trabajo publica LO SUYO —un adicional no suma
- * a su obra mayor— así que sumar las filas no cuenta dos veces el mismo peso ni el mismo jornal. Y
- * la fila «sin obra asignada» ENTRA: sin ella el total del cliente sería más chico que lo que Compras
- * le imputa, y la diferencia se leería como plata que no se gastó.
+ * Cada trabajo publica LO SUYO —un adicional no suma a su obra mayor— así que sumar las filas no cuenta
+ * dos veces el mismo peso ni el mismo jornal. La fila «sin obra asignada» ENTRA: sin ella el total del
+ * cliente sería más chico que lo que Compras le imputa.
  *
- * UN TOTAL DE MANO DE OBRA AL QUE LE FALTAN HORAS LO DICE. Sumar lo valorizado y publicarlo liso
- * daría un total que parece completo: es el mismo defecto que la solapa «Costo a la obra» evita
- * diciendo «N obras sin costo publicable».
+ * UN TOTAL DE MANO DE OBRA AL QUE LE FALTAN HORAS LO DICE: sumar lo valorizado y publicarlo liso daría
+ * un total que parece completo.
  */
 export function totalesDelCliente(
   costos: ReadonlyMap<string, CostoDeObra> | null | undefined,
@@ -382,23 +376,25 @@ export function totalesDelCliente(
 ): TotalesDelCliente {
   const vacio: TotalesDelCliente = {
     legible: false, materiales: null, materialesSinObra: null, manoObra: null,
-    manoObraParcial: false, horasSinValorizar: 0,
+    manoObraParcial: false, manoObraEstimada: 0, horasSinValorizar: 0,
   }
   if (!costos) return vacio
   let materiales: number | null = null
   let manoObra: number | null = null
   let horasSinValorizar = 0
+  let manoObraEstimada = 0
   for (const id of obraIds) {
     const c = costos.get(id)
     if (!c) continue
     if (c.materiales != null) materiales = (materiales ?? 0) + c.materiales
     if (c.manoObra != null) manoObra = (manoObra ?? 0) + c.manoObra
     horasSinValorizar += c.horasSinTarifa ?? 0
+    manoObraEstimada += c.manoObraEstimada ?? 0
   }
   const materialesSinObra = importeSinObra(sinObra)
   if (materialesSinObra != null) materiales = (materiales ?? 0) + materialesSinObra
   return {
     legible: true, materiales, materialesSinObra, manoObra,
-    manoObraParcial: horasSinValorizar > 0, horasSinValorizar,
+    manoObraParcial: horasSinValorizar > 0, manoObraEstimada, horasSinValorizar,
   }
 }

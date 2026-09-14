@@ -178,9 +178,25 @@ export function TabEconomia({
           />
           {sinManoDeObra && (
             <p className="py-1 text-[11px] leading-snug text-warn" data-testid="costo-sin-mano-de-obra">
-              Sin una hora adentro: la mano de obra de esta obra está imputada a Estructura. El costo
-              real está incompleto y ningún margen calculado sobre él es defendible.
+              El costo real de arriba son comprobantes: la mano de obra propia no está adentro
+              {e?.mano_obra_propia?.puedeVer ? ' (va en la línea de abajo)' : ''}. Ningún margen calculado
+              sobre el costo real solo es defendible.
             </p>
+          )}
+          {/* LA MANO DE OBRA PROPIA, DE LA DEFINICIÓN ÚNICA (20260915T0500): la misma que la ficha del CRM. */}
+          {e?.mano_obra_propia?.puedeVer && (
+            <div data-testid="economia-mano-obra-propia">
+              <Linea
+                concepto="Mano de obra propia a hoy"
+                valor={e.mano_obra_propia.importe == null ? null : plata(e.mano_obra_propia.importe)}
+                origen={'Recibos del estudio (costo total empleador) + parte en negro, repartidos por horas'
+                  + (e.mano_obra_propia.estimado ? `; ${plata(e.mano_obra_propia.estimado)} estimado (sin recibo todavía)` : '')
+                  + (e.mano_obra_propia.horasSinDato > 0 ? `; ${Math.round(e.mano_obra_propia.horasSinDato)} h sin dato que no suman` : '')
+                  + '. No está dentro del costo real.'}
+                falta="Ninguna hora valorizada en esta obra."
+                tono={e.mano_obra_propia.horasSinDato > 0 ? 'warn' : 'ink'}
+              />
+            </div>
           )}
           <Linea
             concepto="Costo comprometido"

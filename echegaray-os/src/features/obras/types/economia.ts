@@ -11,7 +11,25 @@
  * costo real de esta casa no incluye la mano de obra (se imputa como Estructura): la resta daba
  * $64.713.000 de «margen» en una obra al 86% con tres facturas de materiales.
  */
+/**
+ * LA MANO DE OBRA PROPIA DE LA OBRA A LA FECHA — `costo_de_obras_a_la_fecha` (20260915T0500), la misma
+ * que la ficha del CRM. No sale de `obra_economia`: `costo_real_mano_de_obra` es lo que Compras imputó
+ * con área «personas» y en Quattropani da $0.
+ */
+export interface ManoObraPropia {
+  /** Recibos + negro de las horas valorizadas. `null` = ninguna hora valorizada. */
+  importe: number | null
+  /** La parte estimada (sin recibo del estudio todavía). */
+  estimado: number | null
+  /** Horas FALTA_DATO que no suman. */
+  horasSinDato: number
+  /** `false` = el rol no lee recibos ni tarifas: la línea no se dibuja. */
+  puedeVer: boolean
+}
+
 export interface EconomiaObra {
+  /** No es columna de la vista: la agrega `getEconomiaObra`. `null` = no se pudo leer. */
+  mano_obra_propia?: ManoObraPropia | null
   obra_id: string
   obra: string
   // Venta

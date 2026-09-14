@@ -217,12 +217,27 @@ export async function cerrarQuincenaAction(entrada: unknown): Promise<ResultadoC
     if (marca) return { ok: false, error: marca.error }
   }
 
+  const costo = await sellarCostoPorObra(q.desde)
   revalidatePath(RUTA)
   return {
     ok: true,
     selladas,
-    mensaje: `Quincena cerrada: ${selladas} línea(s) selladas. No se marcó ningún pago.`,
+    mensaje: `Quincena cerrada: ${selladas} línea(s) selladas.${costo} No se marcó ningún pago.`,
   }
+}
+
+/**
+ * EL COSTO POR OBRA SE SELLA CON LA QUINCENA (20260915T0500).
+ *
+ * Va DESPUÉS de marcar las cabeceras: si el sellado falla, la quincena ya quedó cerrada con sus líneas
+ * y el costo por obra se sigue calculando en vivo, que es el mismo número. Se dice, no se deshace el
+ * cierre. Con la clave de servicio: la tabla no la escribe ninguna sesión, y el rol ya se preguntó en
+ * `puerta`. Es idempotente: llegado el recibo del estudio, se vuelve a llamar y la foto pasa a «real».
+ */
+async function sellarCostoPorObra(desde: string): Promise<string> {
+  const { data, error } = await createAdminClient().rpc('sellar_costo_obra_quincena', { p_desde: desde })
+  if (error) return ` El costo por obra NO se selló (${error.message}): se sigue calculando en vivo.`
+  return ` Costo por obra sellado: ${Number(data ?? 0)} fila(s).`
 }
 
 /** La cabecera, al final y con firma. `cerrada_por` es a quién preguntarle cuando se discuta. */

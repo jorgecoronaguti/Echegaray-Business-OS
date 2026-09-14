@@ -145,11 +145,12 @@ test('el total del cliente: «no pude leer» calla, «no hay» dice «—», y l
   // No se pudo leer → vacío, NUNCA «—» ni «$ 0».
   const ciego = totalesDelCliente(null, ['a'])
   assert.equal(textoTotalMateriales(ciego), '')
-  assert.deepEqual(textoTotalManoObra(ciego), { texto: '', parcial: false })
+  // `estimado` es parte de la celda desde 20260915T0500 (la mano de obra sin recibo todavía se marca).
+  assert.deepEqual(textoTotalManoObra(ciego), { texto: '', parcial: false, estimado: false })
   // Se leyó y no hay nada → «—».
   const nada = totalesDelCliente(new Map(), ['a'])
   assert.equal(textoTotalMateriales(nada), '—')
-  assert.deepEqual(textoTotalManoObra(nada), { texto: '—', parcial: false })
+  assert.deepEqual(textoTotalManoObra(nada), { texto: '—', parcial: false, estimado: false })
 })
 
 test('la fuente del desglose se nombra: contrato, OC o presupuesto, con su renglón', () => {

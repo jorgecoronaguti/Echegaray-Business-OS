@@ -10,6 +10,8 @@
 // copia ni se sirve desde acá, sólo se enlaza.
 
 import type { JuegoDeColumnasDelPlan } from './lecturasDeVista'
+// CON EXTENSIÓN: `obrasService.test.ts` carga este archivo con `node --test`, que no resuelve rutas sin ella.
+import { manoObraPropiaDe } from './manoObraPropia.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Actividad, Dependencia, DocumentoObra, EconomiaObra, ObraPanel, PlanVsReal, Restriccion,
@@ -204,9 +206,17 @@ export function getPlanDeEconomia(
 export async function getEconomiaObra(
   supabase: SupabaseClient, obraId: string,
 ): Promise<ServiceResult<EconomiaObra | null>> {
-  const { data, error } = await supabase.from('obra_economia').select('*').eq('obra_id', obraId).maybeSingle()
-  if (error) return { data: null, error: error.message }
-  return { data: (data as EconomiaObra) ?? null, error: null }
+  // LA MANO DE OBRA PROPIA VIAJA EN LA MISMA TANDA y sale de la definición única (20260915T0500): la
+  // vista publica `costo_real_mano_de_obra`, que son compras con área «personas» y no la obra.
+  const [eco, mo] = await Promise.all([
+    supabase.from('obra_economia').select('*').eq('obra_id', obraId).maybeSingle(),
+    supabase.rpc('costo_de_obras_a_la_fecha', { p_obras: [obraId] }),
+  ])
+  if (eco.error) return { data: null, error: eco.error.message }
+  if (!eco.data) return { data: null, error: null }
+  // Un error de la RPC no rompe el panel: la línea queda en null («no pude leer») y el resto se dibuja.
+  const mano_obra_propia = mo.error ? null : manoObraPropiaDe(mo.data, obraId)
+  return { data: { ...(eco.data as EconomiaObra), mano_obra_propia }, error: null }
 }
 
 /** Las SIETE columnas que la cartera dibuja de `obra_plan_vs_real`, y ninguna más.
