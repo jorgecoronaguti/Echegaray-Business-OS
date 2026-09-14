@@ -171,6 +171,11 @@ costo_de_obras_a_la_fecha; esperado Quattropani 458 h / 3 personas) · quincenas
 Timer `echegaray-mantener-caliente` queda APAGADO (daba permission denied). Jefes sin horas 08/08–31/08
 en ningún lado (FALTA_DATO, avisado). JORNALES 01/06 celda 11/06 = 70 h (Alaniz/Agüero/Rosales) →
 descartada por >24 h; avisado al dueño para que la reparta. Resto de JORNALES vs base desde junio: OK.
+**~22:20 — T2300 APLICADA (eb8ddef6):** vista `hh_que_cuentan_en_obra` = JORNALES + web de jefes de obra
+en días sin JORNALES; la leen las 3 funciones. Verificado como Jorge: Quattropani 458 h / 3 personas
+(MO $7,08 M), Pisos Industriales 80 h / Nievas, La Estrella 9.311 sin cambio; ficha en vivo 0,36–0,44 s.
+`hh-por-obra.pg.test.mjs` corregido (miraba el envoltorio de caché; 73dcf610) → 6/6 verde contra prod.
+QA visual de tercero en curso (qa-jefe).
 
 ## 6. PENDIENTES REALES
 
