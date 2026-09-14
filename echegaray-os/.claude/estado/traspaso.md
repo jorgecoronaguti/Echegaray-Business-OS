@@ -184,7 +184,9 @@ Límites: no probado con rol Jefe de Obra/Campo; `obra_costo_real` (ficha de obr
 **14/09 madrugada:** cartera a 390 px con línea «Mat · MO · a la fecha» (3f8ad2a6, QA FIRMA). QA halló que la
 cartera sumaba sólo obras ACTIVAS (ARCOR «—», La Estrella sólo sin obra) → 20260914T0100 aplicada +
 TablaClientes suma `obras_todas` (dfe43198): ARCOR 9,82 M/2,34 M · La Estrella 156,3 M/97,3 M. QA en curso.
-En curso también: toast «Cargando…» clavado al volver atrás en celular (agente wt-nav, sin merge).
+Cartera obras cerradas: QA FIRMA (5 clientes iguales en 390/1440; pie de ficha La Estrella = cartera).
+Toast «Cargando…» clavado al volver atrás: `IndicadorNavegacion` no borraba el pedido → `pedidoVigente()` +
+`popstate` (78954967, en prod; e2e `tests/navegacion-atras.spec.ts`). QA de tercero en curso.
 
 ## 6. PENDIENTES REALES
 
