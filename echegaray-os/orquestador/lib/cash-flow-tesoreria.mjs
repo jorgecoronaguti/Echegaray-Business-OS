@@ -26,28 +26,42 @@
 // opinión vieja. Del lado del egreso ese contraste NO se puede hacer y se dice: Compras tiene una
 // sola fecha de pago, así que no existe registro de "cuándo se había prometido pagar".
 
-import { FIN_COB, COL_VALOR_BANCO, MARCA_ENDOSADO } from './cash-flow-lineas.mjs'
+import { MARCA_ENDOSADO } from './cash-flow-lineas.mjs'
+// LAS COLUMNAS DE COBRANZAS SALEN DEL RÓTULO (14/09/2026). Eran `COB = { cliente: 'G', monto: 'M', … }`
+// y la BB del endoso: con «Obra» insertada en H, todo desde la M se corre una letra. Las funciones de
+// abajo reciben `rangos` (`rangosDelCuadro`) y sin ellos no arman fórmula.
+import { exigirCobranzas } from './cash-flow-rangos.mjs'
 
-/** Las columnas de Cobranzas que mira este archivo. Una sola definición, como el resto del cuadro. */
-const COB = { cliente: 'G', monto: 'M', estado: 'O', vence: 'P', cobro: 'Q' }
-const r = (c) => `Cobranzas!$${c}$5:$${c}$${FIN_COB}`
 /** El monto tratando el no-número como 0: hay celdas con "-" y con moneda extranjera sin convertir. */
-const monto = () => `IF(ISNUMBER(${r(COB.monto)});${r(COB.monto)};0)`
+const monto = (b) => `IF(ISNUMBER(${b.monto});${b.monto};0)`
 /** Un valor endosado no va a entrar a la cuenta: mismo filtro que usan las líneas de ingreso. */
-const noEndosado = () => `(LEFT(Cobranzas!${COL_VALOR_BANCO}&"";${MARCA_ENDOSADO.length})<>"${MARCA_ENDOSADO}")`
-const enVentana = (col, desde, hasta) => `(ISNUMBER(${r(col)}))*(${r(col)}>=${desde})*(${r(col)}<${hasta})`
+const noEndosado = (b) => `(LEFT(${b.valorBanco}&"";${MARCA_ENDOSADO.length})<>"${MARCA_ENDOSADO}")`
+const enVentana = (rango, desde, hasta) => `(ISNUMBER(${rango}))*(${rango}>=${desde})*(${rango}<${hasta})`
+
+const letraDe = (rango) => /!\$([A-Z]{1,3})\$/.exec(rango)[1]
+const indiceDe = (l) => [...l].reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0) - 1
+const letraDeIndice = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
 // ── QUERY sobre Cobranzas: es la fórmula MÁS SIMPLE para agrupar por cliente ───────────────────────
 // El checklist de clase mundial prefiere SUMIFS antes que QUERY, y con razón. Pero acá hace falta
 // "agrupar por cliente y quedarse con los tres mayores", y con SUMIFS eso sale como un LARGE(UNIQUE(
 // ARRAYFORMULA(SUMIFS(...)))) repetido tres veces: más largo, más frágil y menos legible que la
 // consulta. La regla es "la fórmula más simple que resuelve", no "SUMIFS siempre".
-const Q_RANGO = `Cobranzas!$${COB.cliente}$5:$${COB.vence}$${FIN_COB}`
-// G=Col1 … M=Col7 … O=Col9, P=Col10. Si cambia el orden de columnas de Cobranzas esto se rompe FUERTE
-// (da otro número, no un error), y por eso vive acá al lado del mapa COB y no repartido en el cuadro.
-const Q_PEND = "lower(Col9)<>'cobrado' and lower(Col9)<>'endosado' and Col1 is not null"
-const Q_LABEL = "label sum(Col7) ''"
-const queryClientes = (where, limite) => `QUERY(${Q_RANGO};"select Col1,sum(Col7) where ${where} group by Col1 order by sum(Col7) desc${limite ? ` limit ${limite}` : ''} ${Q_LABEL}";0)`
+//
+// LAS POSICIONES `ColN` SE CALCULAN, NO SE TIPEAN. Una consulta cuenta columnas DENTRO del rango: con
+// «Obra» insertada en H, que cae adentro de G:P, el monto pasa de Col7 a Col8 y un «Col7» escrito a
+// mano habría sumado la columna de al lado (da otro número, no un error). Salen de las columnas
+// resueltas por rótulo, relativas a «Obra / Cliente», que es la Col1.
+function consultaDeClientes(b) {
+  const i0 = indiceDe(letraDe(b.cliente))
+  const col = (rango) => `Col${indiceDe(letraDe(rango)) - i0 + 1}`
+  const ultima = Math.max(...[b.monto, b.estado, b.venc].map((r) => indiceDe(letraDe(r))))
+  const rango = b.cliente.replace(/:\$[A-Z]{1,3}\$/, `:$${letraDeIndice(ultima)}$`)
+  const [M, E] = [col(b.monto), col(b.estado)]
+  const pend = `lower(${E})<>'cobrado' and lower(${E})<>'endosado' and Col1 is not null`
+  const q = (where, limite) => `QUERY(${rango};"select Col1,sum(${M}) where ${where} group by Col1 order by sum(${M}) desc${limite ? ` limit ${limite}` : ''} label sum(${M}) ''";0)`
+  return { q, pend, vence: col(b.venc) }
+}
 
 /**
  * NÚCLEO PURO: el bloque de decisión que va debajo del efectivo al cierre.
@@ -61,9 +75,11 @@ const queryClientes = (where, limite) => `QUERY(${Q_RANGO};"select Col1,sum(Col7
  * @param {number[]} p.filasEgreso filas de subtotal de cada categoría de egreso
  * @param {number[]} p.filasIngreso filas de subtotal de cada categoría de ingreso
  * @param {string|null} p.refCaja referencia al total de disponibilidades (rango con nombre)
+ * @param {object} p.rangos los rangos de Cobranzas resueltos por rótulo (`rangosDelCuadro`)
  * @returns {{filas:Array<Array<string>>, formatos:{moneda:number[],porcentaje:number[],fecha:number[],texto:number[],entero:number[]}, titulo:number}}
  */
-export function bloqueDecision({ periodo, fila0, colN, filaCab, filaCierre, filasEgreso, filasIngreso, refCaja }) {
+export function bloqueDecision({ periodo, fila0, colN, filaCab, filaCierre, filasEgreso, filasIngreso, refCaja, rangos }) {
+  const { q: queryClientes, pend: Q_PEND, vence: COL_VENCE } = consultaDeClientes(exigirCobranzas(rangos, 'bloqueDecision'))
   const U = periodo === 'semanal' ? 'semana' : 'mes'
   const Us = periodo === 'semanal' ? 'Semanas' : 'Meses'
   const filas = []
@@ -111,7 +127,7 @@ export function bloqueDecision({ periodo, fila0, colN, filaCab, filaCierre, fila
     `=IFERROR(INDEX(${queryClientes(Q_PEND, 1)};1;1);"")`)
   push('· los tres mayores concentran', `=IFERROR(SUM(INDEX(${queryClientes(Q_PEND, 3)};0;2))/$B$${fPend};"")`)
   const fVenc = push('· ya venció y sigue sin cobrarse',
-    `=IFERROR(SUM(INDEX(${queryClientes(`${Q_PEND} and Col10 < date '"&TEXT(TODAY();"yyyy-mm-dd")&"'`)};0;2));0)`)
+    `=IFERROR(SUM(INDEX(${queryClientes(`${Q_PEND} and ${COL_VENCE} < date '"&TEXT(TODAY();"yyyy-mm-dd")&"'`)};0;2));0)`)
 
   return {
     filas,
@@ -139,9 +155,11 @@ export function bloqueDecision({ periodo, fila0, colN, filaCab, filaCierre, fila
  * @param {number} p.fila0 · @param {Date[]} p.periodos fechas de inicio de los períodos cerrados
  * @param {'semanal'|'mensual'} p.periodo
  * @param {(d:Date)=>string} p.fechaAR
+ * @param {object} p.rangos los rangos de Cobranzas resueltos por rótulo (`rangosDelCuadro`)
  * @returns {{filas:Array<Array<string>>, titulo:number, filaCab:number, formatos:object}}
  */
-export function bloqueContraste({ fila0, periodos, periodo, fechaAR }) {
+export function bloqueContraste({ fila0, periodos, periodo, fechaAR, rangos }) {
+  const b = exigirCobranzas(rangos, 'bloqueContraste')
   const filas = []
   const push = (celdas) => { filas.push(celdas); return fila0 + filas.length - 1 }
   const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
@@ -151,19 +169,19 @@ export function bloqueContraste({ fila0, periodos, periodo, fechaAR }) {
 
   const fTit = push([`LO ESPERADO CONTRA LO QUE OCURRIÓ — ${periodo === 'semanal' ? 'las 4 semanas' : 'los meses'} ya cerradas`])
   const fCab = push(['Período cerrado', ...periodos.map(fechaAR)])
-  // Lo que VENCÍA: la fecha comprometida con el cliente (columna P de Cobranzas), sin importar si
-  // después entró o no. Es el supuesto que el forecast estaba usando.
+  // Lo que VENCÍA: la fecha comprometida con el cliente («Fecha de Factura» de Cobranzas), sin importar
+  // si después entró o no. Es el supuesto que el forecast estaba usando.
   const fEsp = push(['Cobranzas que vencían en el período (comprometido)',
-    ...cols.map((i) => `=SUMPRODUCT(${enVentana(COB.vence, desde(i), hasta(i))}*(LOWER(${r(COB.estado)})<>"endosado")*${noEndosado()}*${monto()})`)])
-  // Lo que OCURRIÓ: la fecha real de cobro (columna Q) con el estado en "Cobrado". Es el hecho.
+    ...cols.map((i) => `=SUMPRODUCT(${enVentana(b.venc, desde(i), hasta(i))}*(LOWER(${b.estado})<>"endosado")*${noEndosado(b)}*${monto(b)})`)])
+  // Lo que OCURRIÓ: la fecha real de cobro («Fecha cobro») con el estado en "Cobrado". Es el hecho.
   const fReal = push(['Cobranzas efectivamente cobradas en el período',
-    ...cols.map((i) => `=SUMPRODUCT(${enVentana(COB.cobro, desde(i), hasta(i))}*(LOWER(${r(COB.estado)})="cobrado")*${noEndosado()}*${monto()})`)])
+    ...cols.map((i) => `=SUMPRODUCT(${enVentana(b.cobro, desde(i), hasta(i))}*(LOWER(${b.estado})="cobrado")*${noEndosado(b)}*${monto(b)})`)])
   const fDesv = push(['⇒ Desvío: lo que se esperaba y no entró', ...cols.map((i) => `=${letra(i + 1)}${fEsp}-${letra(i + 1)}${fReal}`)])
   // Y de lo que vencía en ese período, cuánto SIGUE sin cobrarse hoy. El desvío de arriba se puede
   // deber a que el cobro entró una semana más tarde (un atraso que ya se resolvió); esto es la parte
   // que todavía no se resolvió, y es la que hay que ir a reclamar.
   const fHoy = push(['De lo que vencía, hoy sigue sin cobrarse (VENCIDO)',
-    ...cols.map((i) => `=SUMPRODUCT(${enVentana(COB.vence, desde(i), hasta(i))}*(LOWER(${r(COB.estado)})<>"cobrado")*(LOWER(${r(COB.estado)})<>"endosado")*${noEndosado()}*${monto()})`)])
+    ...cols.map((i) => `=SUMPRODUCT(${enVentana(b.venc, desde(i), hasta(i))}*(LOWER(${b.estado})<>"cobrado")*(LOWER(${b.estado})<>"endosado")*${noEndosado(b)}*${monto(b)})`)])
 
   return { filas, titulo: fTit, filaCab: fCab, ancho: periodos.length + 1, formatos: { fecha: [fCab], moneda: [fEsp, fReal, fDesv, fHoy] } }
 }

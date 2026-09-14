@@ -142,10 +142,10 @@ function parteDelMes(desde, hasta, M) {
  * MAX(0; proy − real)`. Escrita así, el mensual y el semanal se pueden probar iguales sobre un mes
  * entero en vez de creerlo. Devuelve null cuando la línea no proyecta.
  */
-export function expresionFalta(l, M, filasTabla = {}, anio = 2026) {
-  const proy = expresionProyeccionMes(l, M, filasTabla, anio)
+export function expresionFalta(rg, l, M, filasTabla = {}, anio = 2026) {
+  const proy = expresionProyeccionMes(rg, l, M, filasTabla, anio)
   if (proy === null) return null
-  const real = expresionReal(l, M, `EOMONTH(${M};0)+1`)
+  const real = expresionReal(rg, l, M, `EOMONTH(${M};0)+1`)
   return `IF(${mesCerrado(M)};0;MAX(0;${proy}-${real}))`
 }
 
@@ -156,22 +156,23 @@ export function expresionFalta(l, M, filasTabla = {}, anio = 2026) {
  * tocar —el del lunes y el del domingo— y el segundo término se anula solo cuando son el mismo, así
  * que no hay una fórmula distinta para "las semanas que parten un mes": hay una sola.
  *
+ * @param {object} rg los rangos de Compras y Cobranzas resueltos por rótulo (`rangosDelCuadro`)
  * @param {object} l línea del CUADRO
  * @param {string} desde expresión del lunes (ej. 'B$3') · @param {string} hasta límite EXCLUYENTE ('B$3+7')
  * @param {Object<string,number>} filasTabla {pestaña: fila del total}
  * @param {number} anio el año del cuadro
  * @returns {string|null} fórmula es-AR CON el '=', o null si la línea la resuelve el generador
  */
-export function formulaLineaSemana(l, desde, hasta, filasTabla = {}, anio = 2026) {
-  const real = expresionReal(l, desde, hasta)
+export function formulaLineaSemana(rg, l, desde, hasta, filasTabla = {}, anio = 2026) {
+  const real = expresionReal(rg, l, desde, hasta)
   if (real === null) return null // cheques, calendario fiscal, descubierto, comisiones, impuesto al cheque
   const M1 = `EOMONTH(${desde};-1)+1`
   // El domingo de la semana: `desde+6`. Con `hasta` (el lunes siguiente) el mes saldría corrido una
   // semana entera cada vez que el mes termina un domingo.
   const M2 = `EOMONTH(${desde}+6;-1)+1`
-  const falta1 = expresionFalta(l, M1, filasTabla, anio)
+  const falta1 = expresionFalta(rg, l, M1, filasTabla, anio)
   if (falta1 === null) return `=${real}`
-  const falta2 = expresionFalta(l, M2, filasTabla, anio)
+  const falta2 = expresionFalta(rg, l, M2, filasTabla, anio)
   const tramo = (M, falta) => `(${falta})*${parteDelMes(desde, hasta, M)}`
   return `=${real}+${tramo(M1, falta1)}+IF(${M2}=${M1};0;${tramo(M2, falta2)})`
 }

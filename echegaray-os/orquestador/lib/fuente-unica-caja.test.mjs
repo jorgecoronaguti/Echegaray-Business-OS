@@ -31,6 +31,7 @@ import {
 } from './calendario-egresos.mjs'
 import { desdeTramo, hastaTramo, resolutorDeTramo, BORDES } from './caja-calendario.mjs'
 import { grilla } from '../scripts/cash-flow-rehacer.mjs'
+import { RANGOS_ANTES as RG } from './cash-flow-rangos-referencia.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const RAIZ = join(AQUI, '..')
@@ -46,7 +47,7 @@ const HOY = new Date(Date.UTC(2026, 7, 4))
 
 /** Las líneas que saben calcularse solas en cualquier ventana — las que las tres pestañas comparten. */
 const lineasConFormulaPropia = () => lineasDeCaja()
-  .filter(({ linea }) => expresionReal(linea, 'X', 'Y') !== null)
+  .filter(({ linea }) => expresionReal(RG, linea, 'X', 'Y') !== null)
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // 1 · EL CRITERIO DE ACEPTACIÓN: LA MISMA FUNCIÓN, SÓLO CAMBIA LA VENTANA
@@ -59,7 +60,7 @@ const lineasConFormulaPropia = () => lineasDeCaja()
 // igualdad de strings, no por lectura del código.
 const MARCA_D = '«DESDE»'
 const MARCA_H = '«HASTA»'
-const plantilla = (l) => expresionReal(l, MARCA_D, MARCA_H)
+const plantilla = (l) => expresionReal(RG, l, MARCA_D, MARCA_H)
 const conVentana = (l, desde, hasta) => plantilla(l).split(MARCA_D).join(desde).split(MARCA_H).join(hasta)
 
 test('CAJA, el Semanal y el Mensual escriben LA MISMA fórmula con distinta ventana', () => {
@@ -77,17 +78,17 @@ test('CAJA, el Semanal y el Mensual escriben LA MISMA fórmula con distinta vent
 
   // Las tres fórmulas que CAJA escribe para su tramo, indexadas por nombre de línea.
   const deCaja = new Map(
-    sumandosEnVentana(-1, desdeCaja, hastaCaja, resolutorDeTramo(tramo, FILAS_CAL, 2026))
+    sumandosEnVentana(RG, -1, desdeCaja, hastaCaja, resolutorDeTramo(tramo, FILAS_CAL, 2026))
       .map((s) => [s.nombre, s.expresion]))
 
   for (const { linea: l, signo } of lineas) {
     // MENSUAL: la celda del mes contiene la plantilla con la ventana del mes.
-    const mensual = formulaLineaMes(l, 'B', 'B', 3, TABLAS, 2026)
+    const mensual = formulaLineaMes(RG, l, 'B', 'B', 3, TABLAS, 2026)
     assert.ok(mensual.includes(conVentana(l, MES, finMes)),
       `${l.nombre}: el MENSUAL no usa expresionReal — tiene una definición propia de qué suma`)
 
     // SEMANAL: la misma plantilla, con la ventana de la semana.
-    const semanal = formulaLineaSemana(l, SEM, finSem, TABLAS, 2026)
+    const semanal = formulaLineaSemana(RG, l, SEM, finSem, TABLAS, 2026)
     assert.ok(semanal.includes(conVentana(l, SEM, finSem)),
       `${l.nombre}: el SEMANAL no usa expresionReal — tiene una definición propia de qué suma`)
 
@@ -129,7 +130,7 @@ test('CAJA suma TODOS los conceptos de egreso del cuadro, sin excepción', () =>
   // justamente el que produce el PISO proyectado. Un piso más alto que el real es el error que peor
   // se paga — se coloca plata a 30 días y no se llega a pagar los sueldos.
   for (const k of BORDES.keys()) {
-    const nombres = sumandosEnVentana(-1, desdeTramo(k), hastaTramo(k), resolutorDeTramo(k, FILAS_CAL, 2026))
+    const nombres = sumandosEnVentana(RG, -1, desdeTramo(k), hastaTramo(k), resolutorDeTramo(k, FILAS_CAL, 2026))
       .map((s) => s.nombre)
     const faltan = conceptosFueraDelCalendario(nombres)
     assert.deepEqual(faltan, [],
@@ -141,7 +142,7 @@ test('una línea que nadie sabe resolver ROMPE — no se descarta en silencio', 
   // Es la propiedad que sostiene todo lo de arriba. Sin resolutor, las cinco líneas que no viven en
   // Compras (cheques, tarjeta, IVA/IIBB, descubierto, comisiones, impuesto al cheque) desaparecerían
   // del calendario sin un solo error: plata que nadie suma y nada avisa.
-  assert.throws(() => sumandosEnVentana(-1, 'A', 'B', {}), /sin forma de calcularse en una ventana/)
+  assert.throws(() => sumandosEnVentana(RG, -1, 'A', 'B', {}), /sin forma de calcularse en una ventana/)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -214,7 +215,7 @@ test('el control independiente apunta a la fila que el generador escribe, con el
   assert.ok(entradas.length >= 30,
     `el mapa declara ${entradas.length} filas: cambió de forma y este test dejó de leerlo — arreglar el test, no bajarle el umbral`)
 
-  const g = grilla('mensual', [], null, null, TABLAS_GRILLA, FILAS_CAL, HOY)
+  const g = grilla(RG, 'mensual', [], null, null, TABLAS_GRILLA, FILAS_CAL, HOY)
   const mal = entradas
     .map((e) => ({ ...e, enGrilla: String(g.filas[e.fila - 1]?.[0] ?? '').trim() }))
     .filter((e) => e.enGrilla !== e.concepto)
@@ -240,7 +241,7 @@ test('el CUADRO es el único que decide el signo de una línea', () => {
   }
   // Y las cinco que no viven en Compras se identifican por MARCA, no por rótulo: comparar rótulos es
   // lo que se rompe cuando alguien corrige una tilde.
-  const sinFormula = lineasDeCaja().filter(({ linea }) => expresionReal(linea, 'X', 'Y') === null)
+  const sinFormula = lineasDeCaja().filter(({ linea }) => expresionReal(RG, linea, 'X', 'Y') === null)
   for (const { linea } of sinFormula) {
     assert.ok(marcaDeLinea(linea) !== null,
       `"${linea.nombre}" no tiene fórmula NI marca: el resolutor no puede encontrarla y el calendario la perdería`)

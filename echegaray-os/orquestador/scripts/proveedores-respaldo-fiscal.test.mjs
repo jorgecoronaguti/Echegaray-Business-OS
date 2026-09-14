@@ -7,6 +7,7 @@ import { RUBROS_COMERCIALES } from '../lib/cruce-arca-compras.mjs'
 import { esProsa } from '../lib/diseno-unificado.mjs'
 import { nSeccion } from '../lib/proveedores-frontera.mjs'
 import { ROTULO_TOTAL_COMERCIALES } from '../lib/proveedores-seccion2-pie.mjs'
+import { RANGOS_ANTES as RG } from '../lib/cash-flow-rangos-referencia.mjs'
 
 /** Una pestaña de mentira: la sección 3 cierra donde se diga, y el bloque va donde se diga. */
 function pestana({ filaTotal = 60, filaBloque = 0, sucia = 0 } = {}) {
@@ -76,7 +77,7 @@ test('NO se escribe encima de otro dueño: la primera corrida mira las ocho fila
 test('el bloque es el MISMO de Materiales y Estructura, con el universo comercial de esta pestaña', () => {
   const filas = bloqueControlArca({
     titulo: `${nSeccion('respaldoFiscal')} · ${TITULO_RESPALDO}`,
-    rubros: [...RUBROS_COMERCIALES], fila0: 62,
+    rubros: [...RUBROS_COMERCIALES], fila0: 62, rangos: RG,
   })
   assert.equal(filas.length, ALTO_BLOQUE)
   assert.equal(filas[FILA_BLOQUE.titulo][0], '4 · RESPALDO FISCAL — contra el libro de IVA de ARCA')
@@ -91,7 +92,7 @@ test('el bloque es el MISMO de Materiales y Estructura, con el universo comercia
 test('ni una celda del bloque publica prosa: el contrato de la pestaña no la admite', () => {
   const filas = bloqueControlArca({
     titulo: `${nSeccion('respaldoFiscal')} · ${TITULO_RESPALDO}`,
-    rubros: [...RUBROS_COMERCIALES], fila0: 62,
+    rubros: [...RUBROS_COMERCIALES], fila0: 62, rangos: RG,
   })
   for (const fila of filas) {
     for (const celda of fila) {

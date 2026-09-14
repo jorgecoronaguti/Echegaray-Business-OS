@@ -10,8 +10,17 @@ import {
 import { enBloqueIndivisible } from './celda-de-estructura.mjs'
 import { esProsa, TOPE_PROSA } from './diseno-unificado.mjs'
 import { textoVisible } from './patron-pestana.mjs'
+import { RANGOS_ANTES as RG, RANGOS_DESPUES } from './cash-flow-rangos-referencia.mjs'
 
-const armar = (rubros = ['Materiales Civil']) => bloqueControlArca({ titulo: '9 · RESPALDO FISCAL', rubros, fila0: 50 })
+const armar = (rubros = ['Materiales Civil']) => bloqueControlArca({ titulo: '9 · RESPALDO FISCAL', rubros, fila0: 50, rangos: RG })
+
+test('las columnas de Compras del control salen del rótulo: con «Obra» insertada, Total P y rubro AD', () => {
+  assert.equal(comprasDevengado(RG, ['Estructura']),
+    `SUMIFS(Compras!$O$4:$O;Compras!$AC$4:$AC;"Estructura";Compras!$C$4:$C;">="&${DESDE};Compras!$C$4:$C;"<="&${HASTA})`)
+  assert.equal(comprasDevengado(RANGOS_DESPUES, ['Estructura']),
+    `SUMIFS(Compras!$P$4:$P;Compras!$AD$4:$AD;"Estructura";Compras!$C$4:$C;">="&${DESDE};Compras!$C$4:$C;"<="&${HASTA})`)
+  assert.throws(() => bloqueControlArca({ titulo: 't', rubros: ['Estructura'], fila0: 1 }), /rangos de Compras/)
+})
 
 test('el bloque declara su alto real — una fila de más corre las fórmulas de abajo', () => {
   assert.equal(armar().length, ALTO_BLOQUE)
@@ -90,7 +99,7 @@ test('LA ÚLTIMA FILA ES UN CONTROL «rótulo | número», no una oración (regl
 })
 
 test('LA VENTANA ES DEVENGADA: compara por fecha de FACTURA (col C), nunca por fecha de caja (col AD)', () => {
-  const f = comprasDevengado(['Materiales Civil'])
+  const f = comprasDevengado(RG, ['Materiales Civil'])
   assert.match(f, /Compras!\$C\$4:\$C/)
   assert.doesNotMatch(f, /Compras!\$AD\$4:\$AD/, 'la fecha de caja no puede entrar en un control contra ARCA')
 })
@@ -117,7 +126,7 @@ test('las fórmulas usan el separador es_AR (;) y no la coma', () => {
 })
 
 test('un universo de varios rubros suma todos — Materiales cubre Civil y Mantenimiento', () => {
-  const f = comprasDevengado(['Materiales Civil', 'Materiales Mantenimiento'])
+  const f = comprasDevengado(RG, ['Materiales Civil', 'Materiales Mantenimiento'])
   assert.match(f, /"Materiales Civil"/)
   assert.match(f, /"Materiales Mantenimiento"/)
   assert.equal(f.split('SUMIFS').length - 1, 2)
@@ -209,14 +218,14 @@ test('bloqueIndivisible cubre las ocho filas del bloque, desde su título hasta 
   assert.equal(b.desde, 22)
   assert.equal(b.hasta, 29)
   assert.equal(b.hasta - b.desde + 1, ALTO_BLOQUE)
-  const filas = bloqueControlArca({ titulo: '3 · RESPALDO FISCAL', rubros: ['Estructura'], fila0: 22 })
+  const filas = bloqueControlArca({ titulo: '3 · RESPALDO FISCAL', rubros: ['Estructura'], fila0: 22, rangos: RG })
   assert.equal(filas.length, ALTO_BLOQUE, 'el alto declarado y el emitido son el mismo')
 })
 
 test('LA COBERTURA Y SUS DOS INSUMOS caen adentro del bloque declarado', () => {
   const fila0 = 22
   const b = bloqueIndivisible(fila0)
-  const filas = bloqueControlArca({ titulo: '3 · RESPALDO FISCAL', rubros: ['Estructura'], fila0 })
+  const filas = bloqueControlArca({ titulo: '3 · RESPALDO FISCAL', rubros: ['Estructura'], fila0, rangos: RG })
   const cobertura = filas[FILA_BLOQUE.cobertura][1]
   assert.match(String(cobertura), /^=IF\(B\d+=0;"";B\d+\/B\d+\)$/, 'la cobertura es una división entre dos celdas de la pestaña')
   const insumos = [...String(cobertura).matchAll(/B(\d+)/g)].map((m) => Number(m[1]))

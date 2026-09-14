@@ -23,7 +23,8 @@ import { COMPRAS, columnasDe, lectorDeEncabezados, rangoAbierto, rangoFilas } fr
 import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { MIN_MESES, MES_EN_CURSO, COL_FECHA } from '../lib/cash-flow-lineas.mjs'
+import { MIN_MESES, MES_EN_CURSO } from '../lib/cash-flow-lineas.mjs'
+import { comprasDelCuadro } from '../lib/cash-flow-rangos.mjs'
 import { rotuloPorFuente, formulaUltimaFecha } from '../lib/fecha-de-frescura.mjs'
 // El ancho de la columna de concepto es del estándar, no de esta pestaña: ver `ANCHO` en el lib.
 import { ANCHO as ANCHO_COLUMNA } from '../lib/estilo-pestana.mjs'
@@ -93,6 +94,8 @@ const COL_LAYOUT = Object.freeze({
 
 export function grilla(recurrentes = [], cols) {
   if (!cols?.rubro || !cols?.total) throw new Error('estructura: faltan las columnas de Compras resueltas por encabezado')
+  // Los rangos del constructor compartido y del rótulo de frescura, de las MISMAS columnas resueltas.
+  const rg = { compras: comprasDelCuadro(cols) }
   const rubros = [...SUBRUBROS.map(([n]) => n), OTROS]
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
@@ -126,7 +129,7 @@ export function grilla(recurrentes = [], cols) {
   s[0] = rotuloPorFuente('Gasto propio del año', [
     // `mixto`: la columna de fecha de Compras convive como serial y como texto tipeado — un MAX crudo
     // pierde las tipeadas EN SILENCIO y declararía como corte la última que entró como número.
-    { nombre: 'Compras', expr: formulaUltimaFecha(COL_FECHA, { mixto: true }) },
+    { nombre: 'Compras', expr: formulaUltimaFecha(rg.compras.fecha, { mixto: true }) },
   ])
   push(s)
   push(vacia())
@@ -189,7 +192,7 @@ export function grilla(recurrentes = [], cols) {
     // DIVERGIDO: Recurrentes lo trataba como «MAX(real; proyección)» desde el 13/08 y esta pestaña
     // seguía mostrando el real aunque fuera cero — el combustible se carga tarde, así que el mes en
     // curso arrancaba en «—» como si no fuera a gastarse nada. Gana la regla nueva, para las dos.
-    const { aux, visible } = celdasDelAnio({ fila: f, criterio: CRITERIO.subrubro, col: COL_LAYOUT, letra })
+    const { aux, visible } = celdasDelAnio({ rg, fila: f, criterio: CRITERIO.subrubro, col: COL_LAYOUT, letra })
     for (let m = 0; m < 12; m++) {
       fila[C_AUX0 + m] = aux[m]
       fila[C_MES0 + m] = visible[m]
@@ -228,7 +231,7 @@ export function grilla(recurrentes = [], cols) {
   // con dos generadores y DOS reglas de proyección. El porqué, qué gana y por qué el Cash Flow no se
   // entera: el encabezado y `filasRecurrentes` de lib/estructura-filas.mjs.
   const rec = seccionRecurrentes({
-    proveedores: recurrentes, fila0: filas.length + 1, col: COL_LAYOUT, letra, vacia, anio: AÑO,
+    rg, proveedores: recurrentes, fila0: filas.length + 1, col: COL_LAYOUT, letra, vacia, anio: AÑO,
     numerar: () => ++nBloque,
   })
   for (const fila of rec.filas) push(fila)
@@ -275,7 +278,7 @@ export function grilla(recurrentes = [], cols) {
   // de ARCA, que el OS no escribe.
   push(vacia())
   const arca0 = filas.length + 1
-  for (const b of bloqueControlArca({ titulo: `${++nBloque} · RESPALDO FISCAL — contra el libro de IVA de ARCA`, rubros: ['Estructura'], fila0: arca0 })) {
+  for (const b of bloqueControlArca({ titulo: `${++nBloque} · RESPALDO FISCAL — contra el libro de IVA de ARCA`, rubros: ['Estructura'], fila0: arca0, rangos: rg })) {
     const fila = vacia()
     b.forEach((c, i) => { fila[i] = c })
     push(fila)

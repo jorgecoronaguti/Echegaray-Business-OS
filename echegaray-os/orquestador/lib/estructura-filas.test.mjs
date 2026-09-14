@@ -5,12 +5,13 @@
 // ya habían divergido en la regla del MES EN CURSO — una lo trataba como cerrado y la otra no.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CRITERIO, COL_SUBRUBRO, COL_PROVEEDOR, RUBRO_RECURRENTE, celdasDelAnio } from './estructura-filas.mjs'
+import { CRITERIO, RUBRO_RECURRENTE, celdasDelAnio } from './estructura-filas.mjs'
 import { MIN_MESES, MES_EN_CURSO } from './cash-flow-lineas.mjs'
+import { RANGOS_ANTES as RG } from './cash-flow-rangos-referencia.mjs'
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const COL = { mes0: 1, aux0: 17, nmeses: 14, prom: 15, filaCab: 5 }
-const armar = (criterio, fila = 7) => celdasDelAnio({ fila, criterio, col: COL, letra })
+const armar = (criterio, fila = 7) => celdasDelAnio({ rg: RG, fila, criterio, col: COL, letra })
 
 test('doce y doce: un año tiene doce meses y cada uno trae su real y su celda visible', () => {
   const { aux, visible } = armar(CRITERIO.subrubro)
@@ -26,8 +27,8 @@ test('el CRITERIO es lo único que cambia entre las dos familias', () => {
   assert.deepEqual(s.visible, p.visible, 'las dos familias tienen que mostrar con la MISMA regla')
   // Y las auxiliares difieren SÓLO en el criterio.
   assert.notDeepEqual(s.aux, p.aux)
-  assert.ok(s.aux[0].includes(COL_SUBRUBRO), 'la familia Estructura empareja por sub-rubro')
-  assert.ok(p.aux[0].includes(COL_PROVEEDOR) && p.aux[0].includes(`"${RUBRO_RECURRENTE}"`),
+  assert.ok(s.aux[0].includes(RG.compras.sub), 'la familia Estructura empareja por sub-rubro')
+  assert.ok(p.aux[0].includes(RG.compras.proveedor) && p.aux[0].includes(`"${RUBRO_RECURRENTE}"`),
     'la familia recurrente empareja por rubro Y proveedor: sólo por proveedor traería gasto de obra')
 })
 

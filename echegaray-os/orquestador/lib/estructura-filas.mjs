@@ -25,12 +25,11 @@
 // CERRADOS y el ajuste por inflación— es idéntico. Por eso acá vive la fórmula y allá sólo se elige
 // contra qué columna de Compras se empareja cada fila.
 
-import { COL_RUBRO, COL_FECHA, COL_TOTAL, MIN_MESES, MES_EN_CURSO } from './cash-flow-lineas.mjs'
+import { MIN_MESES, MES_EN_CURSO } from './cash-flow-lineas.mjs'
+// LAS COLUMNAS DE COMPRAS SALEN DEL RÓTULO (14/09/2026): `COL_SUBRUBRO` y `COL_PROVEEDOR` eran letras
+// (AF y E) y con «Obra» insertada en L el sub-rubro pasa a la AG. Cada función recibe `rg`.
+import { exigirCompras } from './cash-flow-rangos.mjs'
 
-/** La columna de sub-rubro de Compras: la que ya clasifica lo que es Estructura. */
-export const COL_SUBRUBRO = 'Compras!$AF$4:$AF'
-/** La columna de proveedor de Compras. */
-export const COL_PROVEEDOR = 'Compras!$E$4:$E'
 /** El rubro de caja que agrupa los servicios que se pagan todos los meses. */
 export const RUBRO_RECURRENTE = 'Servicios recurrentes'
 
@@ -43,22 +42,27 @@ export const RUBRO_RECURRENTE = 'Servicios recurrentes'
  */
 export const CRITERIO = Object.freeze({
   /** Un sub-rubro de «Estructura»: la clasificación que Compras ya hizo. */
-  subrubro: (f) => `${COL_SUBRUBRO};$A${f}`,
+  subrubro: (rg, f) => `${exigirCompras(rg, 'CRITERIO.subrubro').sub};$A${f}`,
   /** Un proveedor de servicios recurrentes: el rubro Y el nombre, los dos. */
-  proveedor: (f) => `${COL_RUBRO};"${RUBRO_RECURRENTE}";${COL_PROVEEDOR};$A${f}`,
+  proveedor: (rg, f) => {
+    const c = exigirCompras(rg, 'CRITERIO.proveedor')
+    return `${c.rubro};"${RUBRO_RECURRENTE}";${c.proveedor};$A${f}`
+  },
 })
 
 /**
  * LAS 24 CELDAS DE UNA FILA: doce auxiliares con el REAL y doce visibles.
  *
  * @param {object} o
+ * @param {object} o.rg           los rangos de Compras resueltos por rótulo (`rangosDelCuadro`)
  * @param {number} o.fila         la fila (base 1) donde vive
- * @param {(f:number)=>string} o.criterio  uno de `CRITERIO`
+ * @param {(rg:object, f:number)=>string} o.criterio  uno de `CRITERIO`
  * @param {object} o.col          letras/índices del layout: {mes0, aux0, nmeses, prom, filaCab}
  * @param {(i:number)=>string} o.letra  el conversor índice→letra de la pestaña
  * @returns {{aux: string[], visible: string[]}} doce y doce, en orden de mes
  */
-export function celdasDelAnio({ fila, criterio, col, letra }) {
+export function celdasDelAnio({ rg, fila, criterio, col, letra }) {
+  const { total: COL_TOTAL, fecha: COL_FECHA } = exigirCompras(rg, 'celdasDelAnio')
   const { mes0, aux0, nmeses, prom, filaCab } = col
   const f = fila
   const aux = []
@@ -69,7 +73,7 @@ export function celdasDelAnio({ fila, criterio, col, letra }) {
     const mes = `${cm}$${filaCab}`
     // EL REAL DEL MES, contra Compras. La ventana es [primero del mes, primero del siguiente): con
     // `<=EOMONTH` un gasto del último día a las 00:00 caía en los dos meses.
-    aux.push(`=SUMIFS(${COL_TOTAL};${criterio(f)};${COL_FECHA};">="&${mes};${COL_FECHA};"<"&EOMONTH(${mes};0)+1)`)
+    aux.push(`=SUMIFS(${COL_TOTAL};${criterio(rg, f)};${COL_FECHA};">="&${mes};${COL_FECHA};"<"&EOMONTH(${mes};0)+1)`)
     // LA PROYECCIÓN: el promedio de los meses CERRADOS con gasto, ajustado por la inflación de
     // Parámetros. Menos de `MIN_MESES` apariciones no es una tendencia, es un gasto suelto: la compra
     // de una moto ($4.352.000, una vez en enero) se proyectaba todos los meses y la estructura del
@@ -135,13 +139,13 @@ export function celdasDelAnio({ fila, criterio, col, letra }) {
  * @param {()=>any[]} o.vacia       una fila nueva, ya llena del centinela VACIO
  * @returns {{filas:any[][], f0:number, f1:number}}
  */
-export function filasRecurrentes({ proveedores = [], fila0, col, letra, vacia }) {
+export function filasRecurrentes({ rg, proveedores = [], fila0, col, letra, vacia }) {
   const filas = []
   for (const [i, prov] of proveedores.entries()) {
     const f = fila0 + i
     const fila = vacia()
     fila[0] = prov
-    const { aux, visible } = celdasDelAnio({ fila: f, criterio: CRITERIO.proveedor, col, letra })
+    const { aux, visible } = celdasDelAnio({ rg, fila: f, criterio: CRITERIO.proveedor, col, letra })
     for (let m = 0; m < 12; m++) {
       fila[col.aux0 + m] = aux[m]
       fila[col.mes0 + m] = visible[m]
@@ -171,7 +175,7 @@ export function filasRecurrentes({ proveedores = [], fila0, col, letra, vacia })
  * @param {object} o  `proveedores`, `fila0`, `col`, `letra`, `vacia`, `anio`, y `numerar()` que
  *   devuelve el número de bloque —se cuenta, no se tipea: sin la sección, los de abajo se corren—.
  */
-export function seccionRecurrentes({ proveedores = [], fila0, col, letra, vacia, anio, numerar }) {
+export function seccionRecurrentes({ rg, proveedores = [], fila0, col, letra, vacia, anio, numerar }) {
   if (!proveedores.length) return { filas: [], fCab: null, fTot: null }
   const salida = []
   salida.push(vacia())
@@ -186,7 +190,7 @@ export function seccionRecurrentes({ proveedores = [], fila0, col, letra, vacia,
   salida.push(cab)
   const fCab = fila0 + salida.length - 1
   const f0 = fila0 + salida.length
-  const r = filasRecurrentes({ proveedores, fila0: f0, col, letra, vacia })
+  const r = filasRecurrentes({ rg, proveedores, fila0: f0, col, letra, vacia })
   for (const [i, fila] of r.filas.entries()) {
     const f = f0 + i
     fila[col.totalAnio] = `=SUM($${letra(col.mes0)}${f}:$${letra(col.mes0 + 11)}${f})`

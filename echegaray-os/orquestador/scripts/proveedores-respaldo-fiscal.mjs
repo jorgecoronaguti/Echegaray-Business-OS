@@ -35,6 +35,8 @@ import { CONTADOR, MONEDA_CONTROL, MONEDA_TOTAL, PORCENTAJE } from '../lib/forma
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { nSeccion, normalizarTitulo } from '../lib/proveedores-frontera.mjs'
 import { ROTULO_TOTAL_COMERCIALES } from '../lib/proveedores-seccion2-pie.mjs'
+// El bloque de ARCA suma columnas de Compras: se resuelven por rótulo contra la fila viva (14/09/2026).
+import { leerRangosDeCompras } from '../lib/cash-flow-rangos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -116,17 +118,18 @@ async function main() {
   if (sitio.mueve > 0) console.log(`⚠ se insertan ${sitio.mueve} fila(s) de aire antes del bloque`)
   if (sitio.mueve < 0) console.log(`⚠ se devuelven ${-sitio.mueve} fila(s) de aire (sólo si están vacías al releer)`)
 
-  const filas = bloqueControlArca({ titulo: `${n} · ${TITULO_RESPALDO}`, rubros: [...RUBROS_COMERCIALES], fila0: sitio.fila0 })
+  const rangos = await leerRangosDeCompras(google, ID)
+  const filas = bloqueControlArca({ titulo: `${n} · ${TITULO_RESPALDO}`, rubros: [...RUBROS_COMERCIALES], fila0: sitio.fila0, rangos })
   if (!APLICAR) {
     console.log('\nEL BLOQUE QUE SE ESCRIBIRÍA:')
     for (const [i, f] of filas.entries()) console.log(`  ${sitio.fila0 + i}  ${f[0]}`)
     console.log('\n(sin --aplicar: no se escribió nada)')
     return
   }
-  await escribir({ google, sitio })
+  await escribir({ google, sitio, rangos })
 }
 
-async function escribir({ google, sitio }) {
+async function escribir({ google, sitio, rangos }) {
   const meta = await google.getSheetMeta(ID)
   const hoja = meta.find((s) => s.title === PESTAÑA)
   if (!Number.isInteger(hoja?.sheetId)) throw new Error('no pude resolver la pestaña Proveedores: no escribo a ciegas')
@@ -170,7 +173,7 @@ async function escribir({ google, sitio }) {
   // bloque se referencian entre sí y una fila de diferencia deja la cobertura dividiendo otra cosa.
   const filas = bloqueControlArca({
     titulo: `${nSeccion('respaldoFiscal')} · ${TITULO_RESPALDO}`,
-    rubros: [...RUBROS_COMERCIALES], fila0: puesto.fila0,
+    rubros: [...RUBROS_COMERCIALES], fila0: puesto.fila0, rangos,
   })
 
   await google.spreadsheetBatchUpdate(ID, [

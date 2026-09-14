@@ -38,7 +38,10 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
-import { MIN_MESES, MES_EN_CURSO, COL_RUBRO, COL_FECHA, COL_TOTAL } from '../lib/cash-flow-lineas.mjs'
+import { MIN_MESES, MES_EN_CURSO } from '../lib/cash-flow-lineas.mjs'
+// COLUMNAS DE COMPRAS POR RÓTULO (14/09/2026): la lectura, los SUMIFS y el control usan la fila viva.
+import { lectorDeEncabezados, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
+import { comprasDelCuadro } from '../lib/cash-flow-rangos.mjs'
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
@@ -53,7 +56,7 @@ const PESTAÑA = 'Recurrentes'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
 const RUBRO = 'Servicios recurrentes'
-export const RANGO_COMPRAS = 'Compras!A4:AC'
+export const RANGO_COMPRAS = rangoFilas('Compras', 4)
 
 // ═══ EL PRIMER DÍA DEL MES EN CURSO, ESCRITO UNA SOLA VEZ ═══
 //
@@ -94,7 +97,9 @@ export const FILA_CAB = 5
 // a decir dos cosas distintas del mismo mes.
 const CERRADOS = `(${letra(C_MES0)}$${FILA_CAB}:${letra(C_MES0 + 11)}$${FILA_CAB}<${MES_EN_CURSO})`
 
-export function grilla(proveedores) {
+export function grilla(proveedores, cols) {
+  const rg = { compras: comprasDelCuadro(cols) }
+  const { total: COL_TOTAL, rubro: COL_RUBRO, fecha: COL_FECHA, proveedor: COL_PROV } = rg.compras
   const filas = []
   // Cada celda nace MÍA Y VACÍA. Es lo que borra el fantasma del layout anterior sin un clearValues.
   const vacia = () => Array(ANCHO).fill(VACIO)
@@ -152,7 +157,7 @@ export function grilla(proveedores) {
       const ca = letra(C_AUX0 + m)
       const cm = letra(C_MES0 + m)
       // El REAL, en la columna auxiliar.
-      fila[C_AUX0 + m] = `=SUMIFS(${COL_TOTAL};${COL_RUBRO};"${RUBRO}";Compras!$E$4:$E;$A${f};${COL_FECHA};">="&${cm}$${FILA_CAB};${COL_FECHA};"<"&EOMONTH(${cm}$${FILA_CAB};0)+1)`
+      fila[C_AUX0 + m] = `=SUMIFS(${COL_TOTAL};${COL_RUBRO};"${RUBRO}";${COL_PROV};$A${f};${COL_FECHA};">="&${cm}$${FILA_CAB};${COL_FECHA};"<"&EOMONTH(${cm}$${FILA_CAB};0)+1)`
       // Lo que se ve: en un mes CERRADO, el real y nada más. En un mes futuro, la proyección. En el
       // MES EN CURSO, MAX(real; proyección) — el mismo criterio que el cuadro de IVA: Movistar
       // factura el 25, y hasta ese día la celda decía "—" como si agosto no fuera a pagar nada. El
@@ -244,7 +249,7 @@ export function grilla(proveedores) {
   // error EN Compras. Éste compara contra el libro de IVA de ARCA, que el OS no escribe.
   push(vacia())
   const arca0 = filas.length + 1
-  for (const f of bloqueControlArca({ titulo: '3 · RESPALDO FISCAL — contra el libro de IVA de ARCA', rubros: [RUBRO], fila0: arca0 })) {
+  for (const f of bloqueControlArca({ titulo: '3 · RESPALDO FISCAL — contra el libro de IVA de ARCA', rubros: [RUBRO], fila0: arca0, rangos: rg })) {
     const fila = vacia()
     f.forEach((c, i) => { fila[i] = c })
     push(fila)
@@ -347,18 +352,19 @@ async function main() {
   // SIN TECHO. Decía 'Compras!A4:AC940' y la planilla ya va por la fila 818: el día que pase de 940,
   // un proveedor recurrente nuevo deja de aparecer en el cuadro y nada lo dice — el rango fosilizado
   // que este repositorio ya pagó. Los SUMIFS de la grilla son abiertos; la lectura tenía que serlo.
+  const cols = await lectorDeEncabezados(google, ID).columnas('Compras')
   const compras = await google.readSheetValues(ID, RANGO_COMPRAS)
-  const provs = [...new Set(compras.filter((f) => String(f?.[28] ?? '').trim() === RUBRO)
-    .map((f) => String(f?.[4] ?? '').trim()).filter(Boolean))].sort()
+  const provs = [...new Set(compras.filter((f) => String(f?.[cols.rubro.indice] ?? '').trim() === RUBRO)
+    .map((f) => String(f?.[cols.proveedor.indice] ?? '').trim()).filter(Boolean))].sort()
   if (!provs.length) throw new Error(`no encontré ninguna fila con rubro "${RUBRO}" en Compras`)
 
-  const g = grilla(provs)
+  const g = grilla(provs, cols)
   console.log(`${hoja.title}: ${g.filas.length} filas · ${provs.length} proveedores · TOTAL en la fila ${g.fTot}`)
   console.log(`  ${provs.join(' · ')}`)
   const sinFila = declaradosSinFila(provs)
   if (sinFila.length) {
     console.log(`  ℹ declarados recurrentes SIN fila (nada clasificado en el rubro): ${sinFila.join(' · ')}`)
-    console.log('    si alguno factura a la estructura, el problema está en la columna AC de Compras, no acá.')
+    console.log(`    si alguno factura a la estructura, el problema está en la columna ${cols.rubro.letra} de Compras («Rubro de caja»), no acá.`)
   }
   if (DRY) return console.log('--dry: no escribí nada.')
 

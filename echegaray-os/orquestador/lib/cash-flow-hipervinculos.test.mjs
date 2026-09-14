@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import {
   verificarCuadro, hipervinculoDetalle, destinoDetalle, detalleDeRubro, SANGRIA_DETALLE,
 } from './cash-flow-lineas.mjs'
+import { RANGOS_ANTES as RG } from './cash-flow-rangos-referencia.mjs'
 
 // El dueño pidió "la mayor certeza": trazabilidad de un click desde cada subconcepto a su origen. La
 // etiqueta de cada línea de detalle tiene que ser un HYPERLINK a su pestaña!rango, con el gid resuelto
@@ -24,7 +25,7 @@ test('cada subconcepto con origen produce un HYPERLINK con placeholder de gid y 
   const conOrigen = lineas.filter((l) => !SIN_ORIGEN(l))
   assert.ok(conOrigen.length >= 15, 'la gran mayoría de las líneas se hiperlinkea')
   for (const l of conOrigen) {
-    const h = hipervinculoDetalle(l, FILAS_TABLA)
+    const h = hipervinculoDetalle(RG, l, FILAS_TABLA)
     assert.ok(h, `"${l.nombre}" tiene destino`)
     // URL COMPLETA (placeholder URLID{}), no fragmento suelto: "#gid=…" da "El rango no es válido" en
     // Google y no navega. El gid queda como placeholder GID{destino}, sin resolver (lo resuelve el script).
@@ -48,15 +49,15 @@ test('las líneas que el cuadro calcula solo (descubierto, impuesto al cheque) N
   const sin = lineas.filter(SIN_ORIGEN)
   assert.ok(sin.length >= 2, 'existen las líneas de descubierto e impuesto al cheque')
   for (const l of sin) {
-    assert.equal(hipervinculoDetalle(l, FILAS_TABLA), null, `"${l.nombre}" queda etiqueta simple`)
-    assert.equal(destinoDetalle(l, FILAS_TABLA), null)
+    assert.equal(hipervinculoDetalle(RG, l, FILAS_TABLA), null, `"${l.nombre}" queda etiqueta simple`)
+    assert.equal(destinoDetalle(RG, l, FILAS_TABLA), null)
   }
 })
 
 test('el destino de cada tipo de línea es el más específico y cierto', () => {
   const { lineas } = verificarCuadro()
   const buscar = (pred) => lineas.find(pred)
-  const dest = (l) => destinoDetalle(l, FILAS_TABLA)
+  const dest = (l) => destinoDetalle(RG, l, FILAS_TABLA)
 
   // Cobranzas → la columna de monto (M) de la pestaña Cobranzas.
   assert.deepEqual(dest(buscar((l) => l.cobranzas === 'civil')), { pestaña: 'Cobranzas', rango: 'M5:M400' })
@@ -93,16 +94,16 @@ test('el destino usa la MISMA lógica de origen que la sección "DÓNDE ESTÁ" (
   // del vínculo coincide con lo que muestra la sección textual de respaldo — no hay dos lógicas.
   const cargas = lineas.find((l) => l.rubro === 'Nómina · Cargas sociales')
   assert.equal(detalleDeRubro(cargas.rubro), 'Cargas Sociales')
-  assert.equal(destinoDetalle(cargas, FILAS_TABLA).pestaña, detalleDeRubro(cargas.rubro))
+  assert.equal(destinoDetalle(RG, cargas, FILAS_TABLA).pestaña, detalleDeRubro(cargas.rubro))
   // Divergencia intencional: cuando detalleDeRubro es PROSA de dos pestañas ("Proveedores y
   // Materiales"), el TEXTO la muestra tal cual pero el VÍNCULO cae al origen cierto (Compras), porque
   // no se puede hiperlinkear a un tab que no existe.
   const sueldos = lineas.find((l) => l.rubro === 'Nómina · Sueldos administración' && !l.desdeCompras)
   assert.equal(detalleDeRubro(sueldos.rubro), 'Jornales por Quincena')
-  assert.equal(destinoDetalle(sueldos, FILAS_TABLA).pestaña, detalleDeRubro(sueldos.rubro))
+  assert.equal(destinoDetalle(RG, sueldos, FILAS_TABLA).pestaña, detalleDeRubro(sueldos.rubro))
   const materiales = lineas.find((l) => l.rubro === 'Materiales Mantenimiento')
   assert.equal(detalleDeRubro(materiales.rubro), 'Proveedores y Materiales')
-  assert.equal(destinoDetalle(materiales, FILAS_TABLA).pestaña, 'Compras')
+  assert.equal(destinoDetalle(RG, materiales, FILAS_TABLA).pestaña, 'Compras')
 })
 
 test('sin la fila del total ubicada, un rubro de tabla NO inventa la celda del total', () => {
@@ -110,7 +111,7 @@ test('sin la fila del total ubicada, un rubro de tabla NO inventa la celda del t
   const estructura = lineas.find((l) => l.rubro === 'Estructura')
   // Sin filasTabla (como en la primera corrida antes de ubicar los rótulos) NO se apunta a "A15" a
   // ciegas: cae a la pestaña de detalle (Estructura!A1), que existe con certeza. Nunca una fila adivinada.
-  const d = destinoDetalle(estructura, {})
+  const d = destinoDetalle(RG, estructura, {})
   assert.equal(d.pestaña, 'Estructura')
   assert.notEqual(d.rango, 'A15')
   assert.equal(d.rango, 'A1')
