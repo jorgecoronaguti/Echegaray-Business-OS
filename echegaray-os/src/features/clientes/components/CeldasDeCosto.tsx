@@ -83,7 +83,7 @@ function costoDelCliente(
       + (t.manoObraParcial ? ` QUEDAN ${Math.round(t.horasSinValorizar).toLocaleString('es-AR')} h AFUERA: falta el dato para valorizarlas.` : '')
   const tituloSub = !t.legible
     ? NO_PUEDO
-    : 'Suma a la fecha de los subcontratos de todos sus trabajos: proveedor con rubro «Subcontratista» declarado o familia «Subcontratos y mano de obra»'
+    : 'Suma a la fecha de los subcontratos de todos sus trabajos: proveedores marcados «Subcontratista»'
       + (t.subcontratosSinObra != null ? `, incluidos ${plata(t.subcontratosSinObra)} sin obra asignada` : '')
       + '. No están en Materiales ni en Mano de obra.'
   return {

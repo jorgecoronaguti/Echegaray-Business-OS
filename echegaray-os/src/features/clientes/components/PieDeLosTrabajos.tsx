@@ -25,8 +25,8 @@ const AYUDA_MATERIALES = 'Suma a la fecha de lo comprado para este cliente (pest
   + 'asignado a cada trabajo MÁS los gastos sin obra asignada. Sin nómina, cargas, ARCA, financiero, '
   + 'filas anuladas, subcontratos ni compras con fecha futura.'
 
-const AYUDA_SUBCONTRATOS = 'Suma a la fecha de los subcontratos del cliente: proveedor con rubro «Subcontratista» '
-  + 'declarado o familia «Subcontratos y mano de obra», de cada trabajo MÁS los sin obra asignada.'
+const AYUDA_SUBCONTRATOS = 'Suma a la fecha de los subcontratos del cliente (proveedores marcados «Subcontratista»): '
+  + 'lo de cada trabajo MÁS lo sin obra asignada.'
 
 /** Lo gastado y lo trabajado, sumado de las MISMAS filas que la tabla de arriba. */
 export function PieDeLosTrabajos({ hh, obras, costos }: {

@@ -10,14 +10,13 @@
 //
 //   1. PROVEEDOR DECLARADO: `proveedores.rubro = 'Subcontratista'` (lo escribió una persona, con
 //      `rubro_declarado_por`), no de prueba, cruzado por CUIT, nombre, razón social o alias vinculado.
-//   2. FAMILIA: `familia_material = 'Subcontratos y mano de obra'`. Ya separaba subcontratos de
-//      Materiales antes de esta regla; se conserva para no retroceder.
+//   La marca por FAMILIA («Subcontratos y mano de obra») se retiró el 14/09/2026 (auditoría): es un regex sobre
+//   el concepto y tomaba a Corralón Progreso ($47.461,82 de cal y tanza). Reclasifica sólo lo que el dueño marcó.
 //
 // NO RECLASIFICAN: `rubro_deducido` (lo infirió el OS), el texto del concepto («montaje»,
 // «instalación») ni una cuenta de prueba. Un dudoso se marca en la ficha del proveedor, no se adivina.
 
 export const RUBRO_SUBCONTRATISTA = 'Subcontratista'
-export const FAMILIA_SUBCONTRATO = 'Subcontratos y mano de obra'
 
 /** `normalizar_cuit`: sólo dígitos; vacío = null. */
 const cuit = (v) => {
@@ -48,10 +47,9 @@ function declarado(fila, proveedores, alias) {
     || (n != null && alias.some((a) => a.proveedor_id === p.id && a.estado === 'vinculado' && a.nombre_norm === n))))
 }
 
-/** 'proveedor' | 'familia' | null. `null` = va a Materiales. */
+/** 'proveedor' | null. `null` = va a Materiales. El texto de la compra no decide. */
 export function motivoDeSubcontrato(fila, { proveedores = [], alias = [] } = {}) {
-  if (declarado(fila, proveedores, alias)) return 'proveedor'
-  return fila.familia_material === FAMILIA_SUBCONTRATO ? 'familia' : null
+  return declarado(fila, proveedores, alias) ? 'proveedor' : null
 }
 
 /**

@@ -178,13 +178,15 @@ test('SUBCONTRATOS: su columna, con proveedor y comprobante en el title', () => 
     ...QUATTROPANI, materiales: 37380345.01, subcontratos: 5247461.82, n_subcontratos: 6,
     subcontratos_detalle: [
       { proveedor: 'Pedro Fredes', comprobante: null, fecha: '2026-08-24', total: '1040000', motivo: 'proveedor' },
-      { proveedor: 'Corralon Progreso', comprobante: 'A 0003-00012345', fecha: '2026-08-31', total: 47461.82, motivo: 'familia' },
+      { proveedor: 'Pedro Tello', comprobante: 'A 0003-00012345', fecha: '2026-08-31', total: 47461.82, motivo: 'proveedor' },
     ],
   }])!.get('quattropani')
   assert.equal(textoSubcontratos(c), '$5.247.462')
   const t = tituloSubcontratos(c)!
   assert.match(t, /Pedro Fredes · 24\/08 · \$1\.040\.000/)
-  assert.match(t, /Corralon Progreso · A 0003-00012345 · 31\/08 · \$47\.462 \(por familia\)/)
+  assert.match(t, /Pedro Tello · A 0003-00012345 · 31\/08 · \$47\.462/)
+  // LA FAMILIA POR TEXTO YA NO RECLASIFICA (auditor, 14/09/2026): el title no puede volver a nombrarla.
+  assert.doesNotMatch(t, /por familia|familia «Subcontratos/)
   assert.match(t, /No están en Materiales ni en Mano de obra/)
   assert.equal(textoSubcontratos(armarCostosPorObra([{ ...QUATTROPANI, subcontratos: null }])!.get('quattropani')), '—')
   assert.equal(tituloSubcontratos(armarCostosPorObra([{ ...QUATTROPANI, subcontratos: null, subcontratos_detalle: [] }])!.get('quattropani')), null)

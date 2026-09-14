@@ -9,8 +9,11 @@
 //     «Hormigón y premoldeados» y se sumaba como material.
 //   · UNA RECLASIFICACIÓN QUE DUPLICA O PIERDE: materiales + subcontratos es el mismo número antes y
 //     después; sólo cambia de columna.
-//   · UNA INFERENCIA SILENCIOSA: un proveedor con `rubro_deducido` (no declarado), un concepto que dice
-//     «montaje» o una cuenta de prueba NO reclasifican.
+//   · UNA RECLASIFICACIÓN POR TEXTO. Cambio de contrato (auditor, 14/09/2026): la rama «familia
+//     Subcontratos y mano de obra» se fue porque es un regex sobre el concepto y tomaba a Corralón
+//     Progreso ($47.461,82 de cal y tanza). Sólo reclasifica el proveedor que el dueño marcó.
+//   · UNA INFERENCIA SILENCIOSA: `rubro_deducido`, el concepto o una cuenta de prueba no reclasifican.
+//   · UNA LIQUIDACIÓN FINAL COMO SUBCONTRATO (Castro fue empleado): el costo directo no lee recibos.
 //   · DOS REGLAS EN SQL: la ficha por obra y la fila «sin obra» usan el mismo bloque.
 
 import test from 'node:test'
@@ -21,6 +24,9 @@ import { fileURLToPath } from 'node:url'
 import { costoDirectoDeCompras, motivoDeSubcontrato } from './subcontrato-de-compra.mjs'
 
 const DIR = dirname(fileURLToPath(import.meta.url))
+const migracion = (n) => readFileSync(join(DIR, `../../supabase/migrations/${n}`), 'utf8')
+const bloques = (sql, marca) => [...sql.matchAll(new RegExp(`-- ${marca} ▼([\\s\\S]*?)-- ${marca} ▲`, 'g'))]
+  .map((m) => m[1].replace(/\s+/g, ' ').trim())
 
 const PROVEEDORES = [
   { id: 'tello', nombre: 'Pedro Tello', razon_social: null, cuit: null, rubro: 'Subcontratista', rubro_deducido: null, es_prueba: false },
@@ -49,8 +55,11 @@ test('se cruza por CUIT, por razón social y por alias vinculado', () => {
   assert.equal(motivoDeSubcontrato(fila({ proveedor: 'Pedro Fredes', familia_material: 'Hierro y malla' }), CTX), 'proveedor')
 })
 
-test('la familia «Subcontratos y mano de obra» sigue siendo subcontrato', () => {
-  assert.equal(motivoDeSubcontrato(fila({ proveedor: 'Lucas Guzman', familia_material: 'Subcontratos y mano de obra' }), CTX), 'familia')
+test('el TEXTO no reclasifica: la familia «Subcontratos y mano de obra» sin proveedor marcado queda en Materiales', () => {
+  assert.equal(motivoDeSubcontrato(fila({ proveedor: 'Lucas Guzman', familia_material: 'Subcontratos y mano de obra' }), CTX), null)
+  const corralon = fila({ proveedor: 'Corralon Progreso', familia_material: 'Subcontratos y mano de obra', total: 47_461.82 })
+  assert.equal(motivoDeSubcontrato(corralon, CTX), null, 'Corralón Progreso vendió cal y tanza')
+  assert.equal(costoDirectoDeCompras([corralon], CTX).materiales, 47_461.82)
 })
 
 test('un DUDOSO no se reclasifica: rubro deducido, concepto «montaje» o cuenta de prueba quedan en Materiales', () => {
@@ -76,14 +85,24 @@ test('INVARIANTE: reclasificar no cambia materiales + subcontratos, sólo la col
   const antes = costoDirectoDeCompras(filas, { ...CTX, proveedores: [], alias: [] })
   const despues = costoDirectoDeCompras(filas, CTX)
   assert.equal((antes.materiales ?? 0) + (antes.subcontratos ?? 0), (despues.materiales ?? 0) + (despues.subcontratos ?? 0))
-  assert.equal(despues.subcontratos, 2_700_000 + 1_040_000 + 400_000)
-  assert.equal(despues.materiales, 78_400)
-  // LO FUTURO NO SUMA EN NINGUNA: viaja aparte, como antes.
+  assert.equal(despues.subcontratos, 2_700_000 + 1_040_000)
+  assert.equal(despues.materiales, 78_400 + 400_000)
   assert.equal(despues.comprometidoFuturo, 5_000)
 })
 
+test('CASTRO: sus compras son subcontrato; su liquidación final no — el costo directo no lee recibos ni nómina', () => {
+  assert.equal(motivoDeSubcontrato(fila({ proveedor: 'Gerson Castro', familia_material: 'Plomería, agua y cloacas' }), CTX), 'proveedor')
+  for (const n of ['20260915T0810_subcontratos_por_obra.sql', '20260915T0815_estructura_fuera_del_costo_de_obra.sql']) {
+    const funciones = migracion(n).split('CREATE OR REPLACE FUNCTION public.').slice(1)
+    assert.equal(funciones.length, 2, n)
+    for (const f of funciones) {
+      assert.match(f, /c\.area is distinct from 'personas'/, `${n}: la nómina (sueldos, SAC, F931) entraría como compra`)
+      assert.doesNotMatch(f, /recibo_sueldo_linea|liquidacion_linea|nomina_recibo_neto/, `${n}: un recibo no es una compra`)
+    }
+  }
+})
+
 test('ESTRUCTURA: Administración, Taller, Impuestos y Financiero no suman a ninguna columna de la obra', () => {
-  // «tenemos q considerar la unidad de negocio estructura taller admin, al momento de asignar un gasto».
   const filas = [
     fila({ proveedor: 'Corralon', familia_material: 'Cemento, cal y áridos', total: 100, unidad_negocio: 'Civil' }),
     fila({ proveedor: 'Leandro Rojas', familia_material: 'Servicios de obra (baño, contenedor, agua)', total: 350_000, unidad_negocio: 'Estructura' }),
@@ -98,23 +117,27 @@ test('ESTRUCTURA: Administración, Taller, Impuestos y Financiero no suman a nin
   assert.equal(c.estructura, 350_000 + 7 + 25_000 + 9 + 11, 'lo de estructura se cuenta aparte, no se pierde')
 })
 
-test('SQL: la ficha por obra y la fila sin obra excluyen Estructura con el MISMO bloque, listo para `destino`', () => {
-  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0810_subcontratos_por_obra.sql'), 'utf8')
-  const bloques = [...sql.matchAll(/-- REGLA ESTRUCTURA ▼([\s\S]*?)-- REGLA ESTRUCTURA ▲/g)].map((m) => m[1].replace(/\s+/g, ' ').trim())
-  assert.equal(bloques.length, 2)
-  assert.equal(bloques[0], bloques[1])
-  assert.match(bloques[0], /upper\(btrim\(coalesce\(c\.unidad_negocio, ''\)\)\) not in \('ESTRUCTURA', 'IMPUESTOS', 'FINANCIERO'\)/)
-  // LA COLUMNA `destino` DE feat/obra-por-fila: se lee si existe, sin romper si todavía no.
-  assert.match(bloques[0], /to_jsonb\(s\) ->> 'destino'/)
-  assert.match(bloques[0], /'ES-ADM', 'ES-TAL', 'IMP', 'FIN'/)
+test('SQL 0810: la regla es SÓLO el proveedor declarado, el mismo bloque en las dos funciones, sin Estructura', () => {
+  const sql = migracion('20260915T0810_subcontratos_por_obra.sql')
+  const b = bloques(sql, 'REGLA SUBCONTRATO')
+  assert.equal(b.length, 2, 'la regla tiene que estar en costo_de_obras_a_la_fecha y en compras_sin_obra_de_clientes')
+  assert.equal(b[0], b[1], 'las dos funciones dejaron de usar la misma regla')
+  assert.match(b[0], /p\.rubro = 'Subcontratista'/)
+  assert.match(b[0], /coalesce\(p\.es_prueba, false\) = false/)
+  assert.doesNotMatch(b[0], /familia_material/, 'volvió la reclasificación por texto')
+  assert.doesNotMatch(b[0], /rubro_deducido/, 'un rubro deducido no puede reclasificar')
+  // LA INVARIANTE DE ESTA MIGRACIÓN ES materiales + subcontratos: Estructura vive en la 0815.
+  assert.equal(bloques(sql, 'REGLA ESTRUCTURA').length, 0, 'Estructura volvió a mezclarse con la reclasificación')
 })
 
-test('SQL: la ficha por obra y la fila sin obra usan el MISMO bloque de la regla', () => {
-  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0810_subcontratos_por_obra.sql'), 'utf8')
-  const bloques = [...sql.matchAll(/-- REGLA SUBCONTRATO ▼([\s\S]*?)-- REGLA SUBCONTRATO ▲/g)].map((m) => m[1].replace(/\s+/g, ' ').trim())
-  assert.equal(bloques.length, 2, 'la regla tiene que estar en costo_de_obras_a_la_fecha y en compras_sin_obra_de_clientes')
-  assert.equal(bloques[0], bloques[1], 'las dos funciones dejaron de usar la misma regla')
-  assert.match(bloques[0], /p\.rubro = 'Subcontratista'/)
-  assert.match(bloques[0], /coalesce\(p\.es_prueba, false\) = false/)
-  assert.doesNotMatch(bloques[0], /rubro_deducido/, 'un rubro deducido no puede reclasificar')
+test('SQL 0815: excluye Estructura en las dos funciones con el MISMO bloque, listo para `destino`', () => {
+  const sql = migracion('20260915T0815_estructura_fuera_del_costo_de_obra.sql')
+  const e = bloques(sql, 'REGLA ESTRUCTURA')
+  assert.equal(e.length, 2)
+  assert.equal(e[0], e[1])
+  assert.match(e[0], /upper\(btrim\(coalesce\(c\.unidad_negocio, ''\)\)\) not in \('ESTRUCTURA', 'IMPUESTOS', 'FINANCIERO'\)/)
+  assert.match(e[0], /to_jsonb\(s\) ->> 'destino'/)
+  assert.match(e[0], /'ES-ADM', 'ES-TAL', 'IMP', 'FIN'/)
+  // Y LA REGLA DE SUBCONTRATO ES LA MISMA QUE LA DE LA 0810: la 0815 no la reescribe distinta.
+  assert.deepEqual(bloques(sql, 'REGLA SUBCONTRATO'), bloques(migracion('20260915T0810_subcontratos_por_obra.sql'), 'REGLA SUBCONTRATO'))
 })

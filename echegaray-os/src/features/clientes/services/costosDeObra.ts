@@ -43,8 +43,8 @@ export interface SubcontratoDeObra {
   comprobante: string | null
   fecha: string | null
   total: number
-  /** 'proveedor' = rubro «Subcontratista» declarado; 'familia' = familia «Subcontratos y mano de obra». */
-  motivo: 'proveedor' | 'familia'
+  /** Siempre 'proveedor': rubro «Subcontratista» marcado (la marca por familia se retiró el 14/09/2026). */
+  motivo: 'proveedor'
 }
 
 /** Lo que la clave `costo_obra` publica por trabajo. */
@@ -52,8 +52,8 @@ export interface CostoDeObra {
   obraId: string
   /** Σ de las compras asignadas al trabajo a la fecha, sin nómina, sin anuladas y sin subcontratos. */
   materiales: number | null
-  /** Lo facturado por subcontratistas (20260915T0810): proveedor con rubro «Subcontratista» declarado o
-   *  familia «Subcontratos y mano de obra». No es material ni mano de obra propia: tiene su columna. */
+  /** Lo facturado por subcontratistas (20260915T0810): proveedores marcados «Subcontratista». No es material
+   *  ni mano de obra propia: tiene su columna. */
   subcontratos: number | null
   nSubcontratos: number
   subcontratosDetalle: SubcontratoDeObra[]
@@ -124,7 +124,7 @@ function subcontratosDe(v: unknown): SubcontratoDeObra[] {
     if (total == null) return []
     return [{
       proveedor: texto(r.proveedor), comprobante: texto(r.comprobante),
-      fecha: texto(r.fecha)?.slice(0, 10) ?? null, total, motivo: r.motivo === 'familia' ? 'familia' : 'proveedor',
+      fecha: texto(r.fecha)?.slice(0, 10) ?? null, total, motivo: 'proveedor',
     }]
   })
 }
@@ -206,11 +206,11 @@ export function textoSubcontratos(c: CostoDeObra | null | undefined): string {
 /** Una línea por comprobante: proveedor · comprobante · fecha · importe. */
 export function lineaDeSubcontrato(s: SubcontratoDeObra): string {
   return `${s.proveedor ?? 'sin proveedor'}${s.comprobante ? ` · ${s.comprobante}` : ''}${s.fecha ? ` · ${diaMesISO(s.fecha)}` : ''}`
-    + ` · ${plata(s.total)}${s.motivo === 'familia' ? ' (por familia)' : ''}`
+    + ` · ${plata(s.total)}`
 }
 
 const MAX_LINEAS = 8
-const REGLA_SUBCONTRATO = 'Proveedor con rubro «Subcontratista» declarado o familia «Subcontratos y mano de obra».'
+const REGLA_SUBCONTRATO = 'Proveedores marcados «Subcontratista» en su ficha.'
 
 /** QUÉ COMPONE LA COLUMNA: proveedores y comprobantes, del mayor al menor. `null` = nada que respaldar. */
 export function tituloSubcontratos(c: CostoDeObra | null | undefined): string | null {
