@@ -237,10 +237,10 @@ export function CaraDeDocumentos({ cara, carpetaDelClienteHref, truncado = false
       {cara.carpetaDelCliente.length > 0 && (
         <Seccion
           testid="papeles-carpeta-cliente"
-          // EL TOPE SE DICE. Drive devuelve 300 archivos por lectura y ARCOR tiene 641: sin esta
-          // frase, el número de abajo se lee como «esto es todo lo que hay» y no lo es.
+          // EL TOPE SE DICE. La lectura se pagina hasta `TOPE_ARCHIVOS` (5.000; era 300 y cortaba a
+          // ARCOR): si igual se llega, el número de abajo no es «todo lo que hay» y la frase lo dice.
           titulo={`Carpeta del cliente · sin obra asignada · ${cara.carpetaDelCliente.length}`
-            + (truncado ? ' · hay más: Drive devolvió el tope de 300' : '')}
+            + (truncado ? ' · hay más archivos en Drive que los que se muestran' : '')}
           ayuda="Están en la carpeta del cliente en Drive y ninguna obra los reclama: o son del cliente y no de un trabajo, o falta vincular la carpeta de esa obra."
           archivos={cara.carpetaDelCliente}
         />
