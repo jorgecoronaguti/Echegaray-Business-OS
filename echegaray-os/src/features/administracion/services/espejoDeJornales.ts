@@ -28,6 +28,7 @@ import type { CampoEditable, LineaConOverrides } from './liquidacionOverrides.ts
 import type { GrupoLiquidacion, PresenciaDeQuincena, RegistroDeQuincena } from './liquidacionQuincena.ts'
 import { diasDeQuincena, esDomingo, type Quincena } from './quincena.ts'
 import { ordenarComoPersonal } from './ordenDePersonal.ts'
+import { horasPorTipo, sumarHorasPorTipo, type HorasPorTipo } from './cuadroDeJornales.ts'
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -138,6 +139,12 @@ export interface FilaDelEspejo {
   cotejo: Cotejo
   /** La quincena de ESTE cuadro está cerrada: la fila es una foto y no se escribe (R6). */
   cerrada: boolean
+  /** Fecha de ingreso del legajo. `null` = sin cargar, nunca «hoy». */
+  alta: string | null
+  /** Categoría del legajo, la clave tal cual. */
+  categoria: string | null
+  /** Lo trabajado en la ventana, por tipo. Ver `cuadroDeJornales.ts`: NO es lo que liquida. */
+  horasPorTipo: HorasPorTipo
 }
 
 export interface DatosDelEspejo {
@@ -181,6 +188,9 @@ export function filasDelEspejo(d: DatosDelEspejo): FilaDelEspejo[] {
       grupo,
       linea,
       cerrada,
+      alta: p.fechaIngreso ?? null,
+      categoria: p.categoria ?? null,
+      horasPorTipo: horasPorTipo(suyos),
       celdas: dias.map((f) => celdaDelEspejo(f, suyos, pres.get(f), cerrada)),
       cotejo: cotejar(d, p.id, suyos, dias),
     }
@@ -286,6 +296,8 @@ export interface TotalesDelEspejo {
   horasDeDiferencia: number
   /** Cuántas filas no se pudieron cotejar. `sin-espejo` no es «coincide». */
   sinCotejar: number
+  /** Lo trabajado por tipo, sumado sobre las MISMAS filas: incluye a quien no tiene tarifa. */
+  horasPorTipo: HorasPorTipo
 }
 
 /**
@@ -304,6 +316,9 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     personas: filas.length, porDia, horas: 0, cobra: 0, adelanto: 0, yaTransferido: 0,
     porBanco: 0, enEfectivo: 0, total: 0, sinTarifa: 0, difieren: 0, horasDeDiferencia: 0,
     sinCotejar: 0,
+    // SOBRE LAS MISMAS FILAS QUE RECIBE: la vista le pasa las visibles, así que el pie recorta
+    // igual que el filtro y el buscador. Quien no tiene tarifa SÍ suma horas: trabajó igual.
+    horasPorTipo: sumarHorasPorTipo(filas),
   }
   for (const f of filas) {
     const l = f.linea

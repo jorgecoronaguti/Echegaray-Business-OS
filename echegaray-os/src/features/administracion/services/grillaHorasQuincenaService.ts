@@ -255,6 +255,10 @@ export async function getDatosDeLaSolapaHoras(
       // liquida por hora. El campo `modalidad_liquidacion` del legajo está vacío en las diecisiete
       // personas de la base y publicaba «Modalidad mensual sin cargar» sobre gente que cobra por mes.
       modalidad: modalidadDeLaTarifa(tarifaDe.get(p.id) ?? null),
+      // ALTA Y CATEGORÍA YA VENÍAN EN ESTA LECTURA (el panel las usa): el cuadro de la quincena las
+      // pide como columnas (dueño, 14/09/2026: «Legajo: alta y categoría») sin una consulta más.
+      fechaIngreso: p.fecha_ingreso,
+      categoria: p.categoria,
     })),
     registros: filasHH
       .filter((f) => f.fecha >= q.desde && f.fecha <= q.hasta)

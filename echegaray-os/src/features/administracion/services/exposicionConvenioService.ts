@@ -24,7 +24,7 @@ import {
   type FilaEscala, type LineaExposicion, type PersonaExpuesta, type ResumenExposicion,
 } from './exposicionConvenio.ts'
 import { horasEsperadasDeQuincena } from './liquidacionQuincena.ts'
-import { tarifaVigenteAl } from './liquidacionQuincena.ts'
+import { tarifaVigenteAl, type TarifaVigente } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
 import { sinIdentidadesDePrueba } from './identidadDePrueba.ts'
 
@@ -45,6 +45,13 @@ export interface ExposicionDeLaQuincena {
   conveniosDelPlantel: string[]
   /** La escala del CCT 76/75 que el OS ya tiene, ofrecida como prellenado. Vacío = no hay ninguna. */
   sugerencia: SugerenciaDeEscala[]
+  /**
+   * LAS TARIFAS Y LA ESCALA QUE ESTA FUNCIÓN YA LEYÓ, crudas. El historial del valor hora del cuadro
+   * de la quincena sale de acá: leerlas otra vez serían dos fotos de `persona_tarifa` en el mismo
+   * render, y un historial que no cierra con la marca «bajo el básico» de al lado.
+   */
+  tarifasPorPersona: Record<string, TarifaVigente[]>
+  escalas: FilaEscala[]
   errores: { que: string; error: string }[]
 }
 
@@ -123,8 +130,26 @@ export async function getExposicionDeLaQuincena(
     horasEsperadas,
     conveniosDelPlantel: [...new Set(personas.map((p) => p.convenio?.trim()).filter((c): c is string => !!c))].sort(),
     sugerencia: sugerenciaDeEscala(cct.data),
+    tarifasPorPersona: tarifasPorPersona(tarifas.data),
+    escalas,
     errores,
   }
+}
+
+function tarifasPorPersona(data: unknown): Record<string, TarifaVigente[]> {
+  const out: Record<string, TarifaVigente[]> = {}
+  for (const t of (data ?? []) as {
+    persona_id: string; desde: string; valor_hora: number | string | null
+    neto_mensual: number | string | null; origen: string | null
+  }[]) {
+    (out[t.persona_id] ??= []).push({
+      valorHora: t.valor_hora == null ? null : Number(t.valor_hora),
+      netoMensual: t.neto_mensual == null ? null : Number(t.neto_mensual),
+      desde: t.desde,
+      origen: t.origen ?? 'sin origen declarado',
+    })
+  }
+  return out
 }
 
 const ordenarPorUrgencia = (a: LineaExposicion, b: LineaExposicion): number => {
