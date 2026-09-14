@@ -110,9 +110,12 @@ export async function SolapaConvenios({ quincenaPedida, hoy }: {
 function FilaPersona({ l }: { l: LineaExposicion }) {
   return (
     <Fila columnas={COLS} alto={ALTO_LIQ.filaPersona} testid={`convenio-${l.personaId}`} celdas={[
-      <span key="n" title={l.origenTarifa ?? undefined} style={{
-        display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-      }}>{l.nombre}</span>,
+      // EL SUPUESTO SE DICE (regla «todos los obreros son UOCRA»): convenio vacío en el legajo, se comparó
+      // contra UOCRA. La fila no va en gris: se comparó de verdad.
+      <span key="n" title={[l.convenioSupuesto, l.origenTarifa].filter(Boolean).join(' · ') || undefined}
+        data-supuesto={l.convenioSupuesto ? '1' : undefined} style={{
+          display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>{l.nombre}</span>,
       <Hueco key="c">{categoriaVisible(l.categoria, null)}</Hueco>,
       miles(l.valorHora),
       <Hueco key="p" >{miles(l.piso?.valorHora ?? null)}</Hueco>,
@@ -138,7 +141,8 @@ const COLS_SIN_PISO = 'minmax(200px,1fr) 120px 90px minmax(280px,1fr)'
 function FilaSinPiso({ l }: { l: LineaExposicion }) {
   return (
     <Fila columnas={COLS_SIN_PISO} alto={ALTO_LIQ.renglon} tenue testid={`convenio-${l.personaId}`} celdas={[
-      <span key="n" style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <span key="n" title={l.convenioSupuesto ?? undefined} data-supuesto={l.convenioSupuesto ? '1' : undefined}
+        style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {l.nombre}
       </span>,
       categoriaVisible(l.categoria, null),

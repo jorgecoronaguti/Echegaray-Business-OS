@@ -100,7 +100,20 @@ export interface LineaExposicion extends PersonaExpuesta {
   regularizar: number | null
   /** Por qué no se pudo comparar. `null` = se comparó. R1: NULL nunca es cero. */
   porQueNoSeCompara: string | null
+  /**
+   * EL SUPUESTO, DICHO. `null` = el convenio salió del legajo. Con texto = el legajo lo tenía vacío y
+   * se comparó contra UOCRA porque la categoría es de obrero. La pantalla lo pone en el `title`.
+   */
+  convenioSupuesto: string | null
 }
+
+/** El rótulo con el que el plantel de obreros tiene cargado el convenio (y la escala, cuando existe). */
+export const CONVENIO_UOCRA = 'UOCRA — Ley 22.250 (construcción)'
+
+/** Las cuatro categorías de obrero del CCT 76/75, normalizadas con `clave`. */
+const CATEGORIAS_DE_OBRERO = new Set(['ayudante', 'medio_oficial', 'oficial', 'oficial_especializado'])
+
+export const SUPUESTO_UOCRA = 'convenio vacío en el legajo: se asume UOCRA'
 
 const redondear2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -110,15 +123,30 @@ const redondear2 = (n: number): number => Math.round(n * 100) / 100
  * `horasEsperadas` es el denominador del costo de regularizar y viene de
  * `horasEsperadasDeQuincena` — 9 h de lunes a jueves, 8 los viernes—, no de las horas trabajadas:
  * lo que se está cotizando es «cuánto sale pagarle bien la quincena entera», no lo que ya se pagó.
+ *
+ * ═══ «TODOS LOS OBREROS SON UOCRA» (regla del dueño) ═══
+ *
+ * 14/09/2026: ROSALES DIEGO JOSE salía en gris «sin convenio en el legajo» con el convenio en null —el
+ * único del plantel— y quedaba fuera de la comparación aunque cobrara bajo el básico. Un legajo
+ * incompleto no puede esconder eso. Si el convenio está vacío y la categoría es de obrero, se compara
+ * contra UOCRA y se DECLARA el supuesto (`convenioSupuesto`). Sin categoría de obrero no se supone
+ * nada: un administrativo sin convenio sigue «sin convenio en el legajo».
  */
 export function exponerAlPiso(
   p: PersonaExpuesta, escalas: readonly FilaEscala[], fecha: string, horasEsperadas: number,
 ): LineaExposicion {
-  const piso = pisoVigente(escalas, p.convenio, p.categoria, fecha)
-  const base = { ...p, piso, bajoElPiso: false, diferenciaHora: null, brechaPct: null, regularizar: null }
-  if (!p.convenio?.trim()) return { ...base, porQueNoSeCompara: 'sin convenio en el legajo' }
+  const supuesto = !p.convenio?.trim() && CATEGORIAS_DE_OBRERO.has(clave(p.categoria)) ? SUPUESTO_UOCRA : null
+  const convenio = supuesto ? CONVENIO_UOCRA : p.convenio
+  const piso = pisoVigente(escalas, convenio, p.categoria, fecha)
+  const base = {
+    ...p, piso, bajoElPiso: false, diferenciaHora: null, brechaPct: null, regularizar: null,
+    convenioSupuesto: supuesto,
+  }
+  if (!convenio?.trim()) return { ...base, porQueNoSeCompara: 'sin convenio en el legajo' }
   if (!p.categoria?.trim()) return { ...base, porQueNoSeCompara: 'sin categoría en el legajo' }
-  if (piso == null) return { ...base, porQueNoSeCompara: `sin piso: la escala de ${p.convenio} no está cargada` }
+  // EL CONVENIO CON EL QUE SE COMPARÓ, no el del legajo: con el supuesto UOCRA el legajo dice null y el
+  // motivo salía «la escala de null no está cargada».
+  if (piso == null) return { ...base, porQueNoSeCompara: `sin piso: la escala de ${convenio} no está cargada` }
   if (p.valorHora == null) return { ...base, porQueNoSeCompara: 'sin retribución cargada' }
 
   const diferenciaHora = redondear2(piso.valorHora - p.valorHora)
