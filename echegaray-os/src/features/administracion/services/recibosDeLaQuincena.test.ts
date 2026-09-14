@@ -18,7 +18,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { CONCEPTO_DEL_GIRO, girosDe } from './liquidacionCuadros.ts'
 import {
-  archivosDeLaQuincena, avisoDeRecibos, filasDeRecibos, totalesDeRecibos, type LineaParaRecibo,
+  archivosDeLaQuincena, avisoDeRecibos, filasDeRecibos, recibosFueraDelCuadro, totalesDeRecibos, type LineaParaRecibo,
 } from './recibosDeLaQuincena.ts'
 import { periodoDelNombre, REGEX_DEL_PERIODO } from '../../empleado/services/periodoDelRecibo.ts'
 import { filasDelEspejo, totalesDelEspejo, type DatosDelEspejo } from './espejoDeJornales.ts'
@@ -77,6 +77,26 @@ test('Q2-08/2026: 19 recibos con enlace; los de Q1 y los de otro mes no se cuela
   assert.equal(q2.get('p0'), 'drive-p0')
   assert.equal(archivosDeLaQuincena(docs, quincenaDe('2026-08-01')).get('p0'), 'q1-0')
   assert.equal(archivosDeLaQuincena(docs, quincenaDe('2026-09-01')).size, 0)
+})
+
+test('Q2-08 en la pantalla: 19 recibos con enlace, aunque 5 sean de personas fuera del cuadro de la quincena', () => {
+  // EL DEFECTO QUE ATRAPA (captura del 14/09/2026): la tabla sólo tenía filas para quien tenía línea
+  // en la liquidación, y mostraba 14 enlaces de 19 PDF. Los otros 5 existían y no se podían abrir.
+  const q = quincenaDe('2026-08-16')
+  const conLinea = Array.from({ length: 17 }, (_, i) => `p${i}`)
+  const docs = [
+    ...conLinea.slice(0, 14).map((id, i) => doc(id, `Recibo 2026-08 Q2 · PERSONA ${i}.pdf`)),
+    ...Array.from({ length: 5 }, (_, i) => doc(`baja${i}`, `Recibo 2026-08 Q2 · BAJA NUMERO ${i}.pdf`)),
+    doc('baja9', 'Recibo 2026-08 Q1 · OTRA QUINCENA.pdf'),
+  ]
+  const archivos = archivosDeLaQuincena(docs, q)
+  const filas = filasDeRecibos(conLinea.map((id) => ({ grupo: 'obreros' as const, linea: linea(id, {}) })), { hayExtracto: true, archivos })
+  const fuera = recibosFueraDelCuadro(docs, q, new Set(conLinea))
+  assert.equal(filas.filter((f) => f.driveFileId).length + fuera.length, 19)
+  assert.equal(fuera.length, 5)
+  assert.deepEqual(fuera[0], { personaId: 'baja0', nombre: 'BAJA NUMERO 0', driveFileId: 'drive-baja0' })
+  assert.equal(recibosFueraDelCuadro(docs, quincenaDe('2026-09-01'), new Set(conLinea)).length, 0)
+  assert.match(fuente('../components/liquidacion/solapas/recibos.tsx'), /recibosFueraDelCuadro\(/)
 })
 
 const linea = (personaId: string, l: Partial<LineaParaRecibo>): LineaParaRecibo => ({

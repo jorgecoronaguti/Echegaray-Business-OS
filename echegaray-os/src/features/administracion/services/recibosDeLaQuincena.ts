@@ -74,6 +74,35 @@ export function archivosDeLaQuincena(
   return out
 }
 
+export interface ReciboFueraDelCuadro {
+  personaId: string
+  /** Del nombre del archivo («Recibo 2026-08 Q2 · APELLIDO NOMBRE.pdf» → «APELLIDO NOMBRE»). */
+  nombre: string
+  driveFileId: string
+}
+
+/**
+ * LOS RECIBOS DE LA QUINCENA DE PERSONAS QUE NO ESTÁN EN SU CUADRO: bajas, liquidaciones finales o
+ * quien no tuvo línea. Existen y se tienen que poder abrir.
+ *
+ * Captura del 14/09/2026: la tabla sólo armaba filas desde la liquidación y mostraba 14 enlaces de los
+ * 19 PDF de 2026-08 Q2. El nombre sale del archivo porque la persona puede no estar en el legajo
+ * activo que lee la pantalla.
+ */
+export function recibosFueraDelCuadro(
+  docs: readonly { persona_id: string | null; nombre: string | null; drive_file_id: string | null }[],
+  q: Quincena, conLinea: ReadonlySet<string>,
+): ReciboFueraDelCuadro[] {
+  const nombres = new Map(docs.map((d) => [d.persona_id, d.nombre]))
+  return [...archivosDeLaQuincena(docs, q)]
+    .filter(([personaId]) => !conLinea.has(personaId))
+    .map(([personaId, driveFileId]) => ({
+      personaId,
+      driveFileId,
+      nombre: (nombres.get(personaId) ?? '').split('·').slice(1).join('·').replace(/\.pdf$/i, '').trim() || 'sin nombre en el archivo',
+    }))
+}
+
 export function filasDeRecibos(
   lineas: readonly { grupo: GrupoLiquidacion; linea: LineaParaRecibo }[],
   ctx: { hayExtracto: boolean; archivos: ReadonlyMap<string, string> },
