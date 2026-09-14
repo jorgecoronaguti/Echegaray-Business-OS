@@ -37,6 +37,7 @@ import { guardarValorHora } from '../../services/tarifaDeLaQuincenaActions'
 import { accionDelRedondeo, efectivoMostrado } from '../../services/efectivoRedondeado'
 import { horas, pesos, textoDelRedondeo } from './formato'
 import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
+import { useDeshacer } from '@/shared/components/deshacer/DeshacerProvider'
 
 /**
  * LA UNIDAD DE LA CELDA, NO SU FORMATEADOR.
@@ -142,7 +143,7 @@ export function MarcaDeOrigen({ origen, compacta = false, titulo }: {
  */
 export function CeldaEditable({
   campo, valor, unidad, ceroEsVacio = false, manual, origen, tituloDeOrigen, personaId, quincena,
-  grupo, soloLectura, ancho = 'w-24', marcaCompacta = false,
+  grupo, soloLectura, ancho = 'w-24', marcaCompacta = false, rotuloDeshacer,
 }: {
   campo: CampoEditable
   valor: number | null
@@ -163,6 +164,8 @@ export function CeldaEditable({
   ancho?: string
   /** Sólo el punto, sin la palabra: las columnas de Pagos no tienen los 56 px que ocupa. */
   marcaCompacta?: boolean
+  /** Cómo se nombra en el aviso de deshacer («Banco de Rosales»). */
+  rotuloDeshacer?: string
 }) {
   const formato = escribirComo(unidad, ceroEsVacio)
   // `origen` manda cuando viaja; `manual` sigue siendo el contrato viejo para los llamadores que
@@ -185,9 +188,12 @@ export function CeldaEditable({
         etiqueta={`${campo} de ${personaId}`}
         testid={`celda-${campo}-${personaId}`}
         mostrar={(v) => formato(Number(v))}
-        guardar={async (v) => {
+        // CMD/CTRL+Z: deshacer restaura el valor MANUAL anterior («sin manual» vuelve al calculado) y el servidor no
+        // pisa lo que cambió (`esperado`).
+        deshacer={{ anterior: manual ? String(valor ?? '') : '', verificaServidor: true, rotulo: rotuloDeshacer }}
+        guardar={async (v, contexto) => {
           const r = await guardarCeldaLiquidacion({
-            ...quincena, grupo, persona_id: personaId, campo, valor: v.trim(),
+            ...quincena, grupo, persona_id: personaId, campo, valor: v.trim(), esperado: contexto?.esperado,
           })
           return r.ok ? { ok: true } : { ok: false, error: r.error }
         }}
@@ -275,6 +281,7 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
   bloqueada: boolean
   ancho?: number
 }) {
+  const deshacer = useDeshacer()
   const mostrado = efectivoMostrado({ efectivoRedondeado: valor, enEfectivo })
   const inicial = mostrado.valor == null ? '' : String(mostrado.valor)
   const [texto, setTexto] = useState(inicial)
@@ -318,7 +325,16 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
         ...quincena, grupo, persona_id: personaId, importe: a.accion === 'borrar' ? '' : String(a.importe),
       })
       setError(r.ok ? null : r.error)
-      if (r.ok) setTocado(false)
+      if (r.ok) {
+        setTocado(false)
+        // CMD/CTRL+Z: el redondeo guardado se puede deshacer con la misma acción.
+        const nuevo = a.accion === 'borrar' ? '' : String(a.importe)
+        const anterior = valor == null ? '' : String(valor)
+        deshacer?.registrar({
+          clave: `redondeo-${personaId}`, rotulo: 'Efectivo redondeado', anterior, nuevo,
+          anteriorTexto: anterior === '' ? 'sugerido' : pesos(Number(anterior)), nuevoTexto: nuevo === '' ? 'sugerido' : pesos(Number(nuevo)),
+        }, (v, esperado) => guardarEfectivoRedondeado({ ...quincena, grupo, persona_id: personaId, importe: v, esperado }))
+      }
     })
   }
 

@@ -32,14 +32,25 @@
 //
 // El id de la fila NUNCA viaja en el formulario: la acción llega ya atada con `.bind(null, id)`.
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CAMPO } from './Controles'
 import { indiceDeLaSiguiente, leerNumeroEsAR } from '../../lib/numeroEsAR'
+import { useCeldaViva, useGuardadoDeshacible } from '../deshacer/DeshacerProvider'
 import {
   alConfirmarGuardado, alLlegarDelServidor, hayQueGuardar, valorVigente, type EstadoInline,
 } from './inlineEdit'
 
 export type ResultadoInline = { ok: true } | { ok: false; error: string }
+
+/** Lo que el deshacer necesita saber de esta celda cuando el que llama sabe más que el valor dibujado. */
+export interface DeshacerDeCelda {
+  /** Valor a restaurar (p. ej. `''` = «sin manual», aunque la celda dibuje el calculado). */
+  anterior?: string
+  /** La acción comprueba `esperado` en el servidor: no hace falta mirar el valor dibujado. */
+  verificaServidor?: boolean
+  /** Cómo se nombra en el aviso («Banco de Rosales»). Sin esto, la `etiqueta`. */
+  rotulo?: string
+}
 
 export interface OpcionInline {
   valor: string
@@ -58,10 +69,12 @@ export function InlineEdit({
   testid,
   ancho = 'w-full',
   alineado = 'left',
+  deshacer,
 }: {
   /** Lo guardado hoy. `null` es ausencia y se dibuja con `falta`, nunca como 0. */
   valor: string | number | null
-  guardar: (v: string) => Promise<ResultadoInline>
+  /** `contexto.esperado` llega al deshacer: lo que debería haber hoy, para no pisar un cambio ajeno. */
+  guardar: (v: string, contexto?: { esperado?: string }) => Promise<ResultadoInline>
   tipo?: 'texto' | 'numero' | 'seleccion' | 'fecha'
   /** Obligatorias con `tipo='seleccion'`. La primera opción suele ser la ausencia. */
   opciones?: OpcionInline[]
@@ -82,6 +95,8 @@ export function InlineEdit({
   /** `center` lo pide la grilla de Liquidación → Horas: su columna de día está centrada y un campo
    *  alineado a la izquierda dentro de 42 px corre el número respecto de las celdas de al lado. */
   alineado?: 'left' | 'right' | 'center'
+  /** CMD/CTRL+Z (15/09/2026): cómo deshacer esta celda cuando el valor dibujado no alcanza. */
+  deshacer?: DeshacerDeCelda
 }) {
   const original = valor === null ? '' : String(valor)
   // UNA FECHA SE LEE EN es-AR Y SE EDITA EN ISO. El `<input type=date>` exige AAAA-MM-DD, pero
@@ -115,6 +130,20 @@ export function InlineEdit({
   const vigente = valorVigente(estado)
   const enVuelo = estado.pendiente != null
 
+  // ═══ CMD/CTRL+Z (dueño, 15/09/2026) ═══ Todo guardado de esta celda pasa por el deshacer de la plataforma, así
+  // lo heredan Obras, Documentos, Asistencia y Liquidación sin cablear cada pantalla.
+  const clave = testid ?? etiqueta
+  const estadoRef = useRef(estado)
+  useEffect(() => { estadoRef.current = estado })
+  const guardarDeshacible = useGuardadoDeshacible({
+    clave, rotulo: deshacer?.rotulo ?? etiqueta, valorAnterior: deshacer?.anterior ?? vigente, guardar,
+    formato: (x) => (x === '' ? falta : `${mostrar ? mostrar(x) : enISO(x)}${sufijo ? ` ${sufijo}` : ''}`),
+  })
+  useCeldaViva(clave, {
+    actual: deshacer?.verificaServidor ? undefined : () => valorVigente(estadoRef.current),
+    aplicar: (v) => { setEstado((e) => alConfirmarGuardado(e, v)); setBorrador(v) },
+  })
+
   async function confirmar(crudo: string, luego?: () => void) {
     if (confirmando.current) return
     let v = crudo
@@ -128,7 +157,7 @@ export function InlineEdit({
     if (!hayQueGuardar(estado, v)) { setEditando(false); setError(null); luego?.(); return }
     confirmando.current = true
     setGuardando(true)
-    const r = await guardar(v)
+    const r = await guardarDeshacible(v)
     setGuardando(false)
     setEditando(false)
     confirmando.current = false

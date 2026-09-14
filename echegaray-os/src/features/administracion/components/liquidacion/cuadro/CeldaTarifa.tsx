@@ -16,6 +16,7 @@ import { useState, useTransition } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { pesos } from '../formato'
 import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
+import { useDeshacer } from '@/shared/components/deshacer/DeshacerProvider'
 import { formaEditable } from '../../../services/cuadroDeJornales'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { registrarTarifaDesdeLaQuincena } from '../../../services/tarifaDeLaQuincenaActions'
@@ -47,6 +48,7 @@ export function CeldaTarifa({ fila, quincena, pct }: {
   const [texto, setTexto] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [guardando, empezar] = useTransition()
+  const deshacer = useDeshacer()
 
   const guardar = () => {
     if (texto == null || forma == null) return
@@ -57,7 +59,20 @@ export function CeldaTarifa({ fila, quincena, pct }: {
       const r = await registrarTarifaDesdeLaQuincena({
         ...quincena, grupo: fila.grupo, persona_id: fila.personaId, forma, valor,
       })
-      if (r.ok) { setTexto(null); setError(null) } else setError(r.error)
+      if (r.ok) {
+        setTexto(null); setError(null)
+        // CMD/CTRL+Z: la tarifa anterior vuelve con la misma escritura (queda en el historial de correcciones).
+        const f = forma
+        deshacer?.registrar({
+          clave: `tarifa-${fila.personaId}`, rotulo: `${f === 'mensual' ? 'Neto mensual' : '$/h negro'} de ${fila.nombre}`,
+          anterior: actual == null ? '' : String(actual), nuevo: String(valor),
+          anteriorTexto: pesos(actual), nuevoTexto: pesos(valor),
+        }, async (v) => {
+          const n = Number(v)
+          if (v === '' || !(n > 0)) return { ok: false, error: 'no había un valor anterior que restaurar' }
+          return registrarTarifaDesdeLaQuincena({ ...quincena, grupo: fila.grupo, persona_id: fila.personaId, forma: f, valor: n })
+        })
+      } else setError(r.error)
     })
   }
 

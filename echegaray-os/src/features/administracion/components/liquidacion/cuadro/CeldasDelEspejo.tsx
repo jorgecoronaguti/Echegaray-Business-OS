@@ -100,6 +100,12 @@ export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos',
   )
 }
 
+/** Cómo se nombra cada celda en el aviso de deshacer: los rótulos de las columnas del cuadro. */
+const ROTULO_DE_CAMPO: Partial<Record<CampoEditable, string>> = {
+  porBanco: 'Banco', adelanto: 'Adelanto efectivo', yaTransferido: 'Adelanto banco / embargos', horasRecibo: 'Hs recibo',
+  valorHoraRecibo: '$/h cat.', negro: 'Importe negro', enEfectivo: 'Total efectivo', cobra: 'Cobra total', horas: 'Horas',
+}
+
 /** Una celda que se escribe. Marco de control para que se vea cuál decide una persona y cuál no. */
 export function Escribible({ campo, fila, quincena, camposEditables, ancho, claseCampo = 'w-20', unidad = 'pesos' }: {
   campo: CampoEditable
@@ -135,6 +141,7 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho, clas
           grupo={fila.grupo}
           soloLectura={soloLectura}
           ancho={claseCampo}
+          rotuloDeshacer={`${ROTULO_DE_CAMPO[campo] ?? campo} de ${fila.nombre}`}
           marcaCompacta
         />
       </span>

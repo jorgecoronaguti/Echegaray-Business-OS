@@ -22,6 +22,7 @@
 // GRANT de UPDATE de `authenticated` está acotado a `efectivo_redondeado`: aunque alguien llame a
 // PostgREST a mano, no puede reescribir `cobra` ni `total`.
 
+import { MENSAJE_CONFLICTO } from '@/shared/lib/pilaDeDeshacer'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
@@ -46,9 +47,17 @@ const redondeoSchema = ventanaSchema.extend({
   // VACÍO ES BORRAR EL REDONDEO, NO ESCRIBIR CERO. Cero significaría «no le doy nada en mano», que
   // es una afirmación distinta de «todavía no lo escribí».
   importe: z.union([z.literal(''), z.coerce.number().nonnegative().finite()]),
+  esperado: z.union([z.literal(''), z.coerce.number().finite()]).optional(),
 })
 
 export type ResultadoLiquidacion = { ok: true; mensaje: string } | { ok: false; error: string }
+
+/** ¿Lo guardado hoy es lo esperado? `''` y NULL son «vacío»; los números se comparan como números. */
+function mismoValor(hoy: unknown, esperado: '' | number): boolean {
+  const a = hoy == null ? null : Number(hoy)
+  const b = esperado === '' ? null : Number(esperado)
+  return a === b
+}
 
 /**
  * LA PUERTA DEL SERVIDOR. Las dos escrituras la cruzan ANTES de tocar la base: rechazar después de
@@ -96,7 +105,7 @@ async function cabecera(
 export async function guardarEfectivoRedondeado(entrada: unknown): Promise<ResultadoLiquidacion> {
   const parsed = redondeoSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const { persona_id: personaId, importe, ...v } = parsed.data
+  const { persona_id: personaId, importe, esperado, ...v } = parsed.data
 
   const supabase = await createClient()
   const permiso = await puedeLiquidar(supabase)
@@ -106,6 +115,12 @@ export async function guardarEfectivoRedondeado(entrada: unknown): Promise<Resul
   if ('error' in cab) return { ok: false, error: cab.error }
   if (cab.estado === 'cerrada') return { ok: false, error: 'La quincena está cerrada: no se edita.' }
 
+  // DESHACER NO PISA LO QUE CAMBIÓ (Cmd+Z, 15/09/2026).
+  if (esperado !== undefined) {
+    const { data: hoy } = await supabase.from('liquidacion_linea').select('efectivo_redondeado')
+      .eq('liquidacion_id', cab.id).eq('persona_id', personaId).maybeSingle()
+    if (!mismoValor((hoy as { efectivo_redondeado?: unknown } | null)?.efectivo_redondeado, esperado)) return { ok: false, error: MENSAJE_CONFLICTO }
+  }
   const valor = importe === '' ? null : importe
   const { data, error } = await supabase.from('liquidacion_linea')
     .upsert(
@@ -264,6 +279,8 @@ const celdaSchema = ventanaSchema.extend({
   // VACÍO BORRA EL OVERRIDE Y VUELVE EL CÁLCULO. Un 0 NO es vacío: «no le doy nada por banco» es
   // una afirmación del dueño y se guarda como 0.
   valor: z.union([z.literal(''), z.coerce.number().finite()]),
+  // DESHACER (Cmd+Z): lo que debería haber hoy. Si la celda cambió, no se pisa.
+  esperado: z.union([z.literal(''), z.coerce.number().finite()]).optional(),
 })
 
 /** Qué celdas puede guardar HOY esta base. Se pregunta a la base, no a `migrations/`. */
@@ -293,7 +310,7 @@ async function columnaGuardable(
 export async function guardarCeldaLiquidacion(entrada: unknown): Promise<ResultadoLiquidacion> {
   const parsed = celdaSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const { persona_id: personaId, campo, valor, ...v } = parsed.data
+  const { persona_id: personaId, campo, valor, esperado, ...v } = parsed.data
 
   const supabase = await createClient()
   const permiso = await puedeLiquidar(supabase)
@@ -311,6 +328,12 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
   if ('error' in guardable) return { ok: false, error: guardable.error }
   const { columna } = guardable
 
+  // DESHACER NO PISA LO QUE CAMBIÓ (Cmd+Z, 15/09/2026): con `esperado`, se escribe sólo si la celda sigue igual.
+  if (esperado !== undefined) {
+    const { data: hoy } = await admin.from('liquidacion_linea').select(columna)
+      .eq('liquidacion_id', cab.id).eq('persona_id', personaId).maybeSingle()
+    if (!mismoValor((hoy as Record<string, unknown> | null)?.[columna], esperado)) return { ok: false, error: MENSAJE_CONFLICTO }
+  }
   const nuevo = valor === '' ? null : valor
   const { data, error } = await admin.from('liquidacion_linea')
     .upsert(
