@@ -18,6 +18,34 @@
 // mismo y nada más: inventar una subida directa sería un segundo circuito que el bot no conoce.
 
 import { z } from 'zod'
+import type { ComprobanteProveedor } from './fichaProveedor'
+
+/** Lo que de una compra de `proveedor_compra` necesitan las cifras y el costado de la ficha. */
+export interface CompraParaResumen {
+  fila: number
+  fecha: string | null
+  comprobante: string | null
+  tipo: string | null
+  obra_texto: string | null
+  concepto: string | null
+  total: number | null
+  anulada: boolean
+}
+
+/**
+ * LAS CIFRAS DE LA FICHA SALEN DE LAS MISMAS FILAS QUE LA LISTA. Antes la cabecera sumaba
+ * `costos_obra` y la lista era la misma lectura; al pasar la lista a `proveedor_compra`, dejar las
+ * cifras en la otra fuente pondría «220 comprobantes» arriba de 225 filas.
+ *
+ * LAS ANULADAS NO SUMAN. Se listan —con su pastilla «Anulada»— porque existieron, pero un gasto
+ * anulado no es plata que se le compró. La pestaña no guarda modalidad en la réplica: `null`.
+ */
+export function comoComprobantes(filas: CompraParaResumen[]): ComprobanteProveedor[] {
+  return filas.filter((f) => !f.anulada).map((f) => ({
+    id: String(f.fila), fecha: f.fecha, comprobante: f.comprobante, tipo: f.tipo,
+    obra_texto: f.obra_texto, concepto: f.concepto, modalidad: null, total: f.total,
+  }))
+}
 
 export type FiltroPapel = 'todos' | 'con' | 'sin'
 
