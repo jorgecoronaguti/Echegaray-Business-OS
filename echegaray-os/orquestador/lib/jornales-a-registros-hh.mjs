@@ -268,8 +268,8 @@ const ORIGEN_EN_NOTA = {
  * DOS LÍMITES, LOS DOS DECIDIDOS:
  *  · «galpon 9 es la estrella»: si la planilla dice la obra GENERAL del cliente (la que se llama como
  *    él) y la asignación es otra obra del MISMO cliente, queda la de la planilla.
- *  · sólo asignaciones hechas a mano: las «reconstruidas desde JORNALES» salen de la planilla misma y
- *    no pueden corregirla (llegan ya filtradas desde `catalogos`). Dos obras el mismo día no deciden.
+ *  · TODAS las asignaciones que muestra la app, también las «reconstruidas desde JORNALES» (dueño,
+ *    14/09/2026: «respetar lo que manda app.ecsas.com.ar»). Dos obras el mismo día no deciden.
  */
 export function obraPorAsignacionWeb(obraPlanilla, asignada, clienteDeObra = new Map()) {
   if (!asignada || !obraPlanilla || asignada === obraPlanilla) return null
