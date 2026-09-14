@@ -348,7 +348,16 @@ export const MARCAS_A_MANO = new Set([
  * update con sesión, por cualquier camino y con cualquier marca, incluso `sheet:jornales`) o con
  * una marca de carga a mano.
  */
-export const laTocoUnaPersona = (e) => e?.actualizado_por != null || MARCAS_A_MANO.has(e?.fuente_legacy)
+export const laTocoUnaPersona = (e) => MARCAS_A_MANO.has(e?.fuente_legacy)
+  || (e?.actualizado_por != null && !MARCAS_QUE_CEDEN.has(e?.fuente_legacy))
+
+/**
+ * ALCANCE FIRMADO POR EL DUEÑO (14/09/2026, «Ninguno de estos»): la carga del jefe desde la obra y
+ * el tramo de ausencia —las dos escriben `web:asistencia-obra`— ceden a la planilla AUNQUE se
+ * vuelvan a guardar. Sin esta excepción, el segundo guardado (un update, que deja autor) las
+ * protegía y el primero (un insert) no: la misma carga con dos reglas.
+ */
+export const MARCAS_QUE_CEDEN = new Set(['web:asistencia-obra'])
 
 /**
  * LO EDITADO EN LA WEB GANA SIEMPRE — dueño, 14/09/2026: «web gana siempre».

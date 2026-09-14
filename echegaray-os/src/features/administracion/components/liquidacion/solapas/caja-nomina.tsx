@@ -107,7 +107,7 @@ export async function SolapaCajaNomina({ quincena }: { quincena: Quincena; hoy?:
       <table style={{ ...tabla, minWidth: 560, maxWidth: 900 }}>
         <thead>
           <tr>
-            {['Quincena', 'Personas', 'Horas esperadas', 'Bolsillo', 'Costo real'].map((c, i) => (
+            {['Quincena', 'Personas', 'Horas esperadas', 'Bolsillo', 'Costo estimado'].map((c, i) => (
               <th key={c} style={{ ...th, textAlign: i === 0 ? 'left' : 'right' }}>{c}</th>
             ))}
           </tr>

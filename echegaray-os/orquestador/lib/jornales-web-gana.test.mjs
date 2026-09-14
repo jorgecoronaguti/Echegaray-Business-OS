@@ -61,6 +61,13 @@ test('LA JORNADA AUTOMÁTICA Y LA CARGA DEL JEFE, SIN TOCAR, LA SIGUE PISANDO LA
   assert.equal(laTocoUnaPersona({ fuente_legacy: 'web:presencia-defecto', actualizado_por: 'u' }), true)
 })
 
+test('LA CARGA DEL JEFE CEDE AUNQUE SE VUELVA A GUARDAR (alcance del dueño, 14/09/2026)', () => {
+  // Auditoría: el update deja autor y protegía el segundo guardado del jefe o del tramo de ausencia.
+  assert.equal(laTocoUnaPersona({ fuente_legacy: 'web:asistencia-obra', actualizado_por: 'u-jefe' }), false)
+  // Una fila de la planilla corregida a mano (autor, marca sheet) sí gana.
+  assert.equal(laTocoUnaPersona({ fuente_legacy: FUENTE, actualizado_por: 'u-admin' }), true)
+})
+
 test('PISAR UNA FILA DE LA WEB LE SACA EL AUTOR: si no, queda «editada a mano» para siempre', () => {
   // Auditoría 14/09/2026: el trigger conserva el autor viejo sin sesión, y las 4 filas pisadas el
   // 11/09 aparecían como correcciones humanas y congelaban su día.

@@ -150,7 +150,8 @@ function Metricas({ fila, habilesTexto, bolsillo, multiplicador }: {
       <Metrica rotulo="Costo cargado" valor={costo == null ? 'sin base' : pesos(costo)}
         nota={costo == null
           ? 'faltan las alícuotas del costo real'
-          : `${pesos(bolsillo)} de bolsillo + cargas`} />
+          // ESTIMADO: el multiplicador de cargas no está validado contra banco (regla de oro 2).
+          : `${pesos(bolsillo)} de bolsillo + cargas · estimado`} />
     </div>
   )
 }
