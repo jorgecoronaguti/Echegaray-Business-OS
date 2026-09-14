@@ -22,7 +22,9 @@
 //
 // Sin `--aplicar` lee, mapea y muestra: bloques, quincenas, personas, cuánta plata trae y qué columna
 // no pudo resolver. Con `--aplicar` hace el UPSERT idempotente por (pestaña, bloque, fila) y VUELVE A
-// LEER la base para mostrar lo guardado. Nunca borra.
+// LEER la base para mostrar lo guardado. En la misma transacción borra las filas que la lectura
+// actual ya no trae (un bloque que se corrió de fila): la regla y sus frenos, en
+// `lib/jornales-espejo-poda.mjs`. Si el tope frena, sale con código 2.
 //
 //   node orquestador/scripts/jornales-espejo-bloques.mjs                       # ensayo
 //   node orquestador/scripts/jornales-espejo-bloques.mjs --aplicar
@@ -49,6 +51,9 @@ import { JORNALES_SPREADSHEET_ID } from '../lib/tools/jornales-asistencia.mjs'
 import {
   espejoDeGrid, filasDelEspejo, columnasParaUpsert, SQL_UPSERT, resumir,
 } from '../lib/jornales-espejo.mjs'
+import {
+  planDePoda, SQL_EXISTENTES, SQL_BORRAR, TOPE_PODA,
+} from '../lib/jornales-espejo-poda.mjs'
 
 const arg = (n, d = null) => {
   const i = process.argv.indexOf(`--${n}`)
@@ -92,6 +97,28 @@ async function leerPestanas(google) {
  * de la que la planilla tiene — que es exactamente el estado que el cotejo existe para detectar.
  */
 const enVentana = (b) => (!DESDE || b.hasta >= DESDE) && (!HASTA || b.desde <= HASTA)
+
+/**
+ * LO QUE LA PLANILLA YA NO DICE. La regla vive en `lib/jornales-espejo-poda.mjs`; acá se lee la base
+ * y se publica el plan. Recibe TODOS los bloques leídos, no los de la ventana: con `--desde` la
+ * lectura está recortada y la poda se abstiene (un bloque fuera de la ventana no «desapareció»).
+ */
+async function planearPoda(db, { bloques, hallazgos, leidas, bloquear = true }) {
+  const pestanas = leidas.map((l) => l.pestana)
+  const sql = bloquear ? SQL_EXISTENTES : SQL_EXISTENTES.replace(/\s+for update\s*$/, '')
+  const { rows } = await db.query(sql, [pestanas])
+  const plan = planDePoda({ existentes: rows, leidas, bloques, hallazgos, lecturaCompleta: !DESDE && !HASTA })
+  console.log('\n  PODA (filas del espejo que la lectura actual ya no trae)')
+  for (const p of plan.porPestana) {
+    console.log(`    «${p.pestana}» ${p.estado} · ${p.aBorrar} de ${p.existentes} filas`
+      + `${p.quincenas.length ? ` · ${p.quincenas.join(' · ')}` : ''}`)
+    if (p.estado === 'tope') {
+      console.error(`  ! PODA FRENADA en «${p.pestana}»: borraría ${p.aBorrar} de ${p.existentes}`
+        + ` (> ${TOPE_PODA * 100} %). No se borra nada de esa pestaña; lo revisa una persona.`)
+    }
+  }
+  return plan
+}
 
 async function main() {
   const op = await operadorPara()
@@ -149,15 +176,31 @@ async function main() {
     console.log(`    ${s.pestana} f${s.fila1} «${s.nombre}» ${s.estado}${s.candidatos.length ? ` · candidatos: ${s.candidatos.join(' / ')}` : ''}`)
   }
 
-  if (!APLICAR) { console.log('\nENSAYO: no se escribió nada. Con --aplicar se escribe y se relee.'); return }
+  if (!APLICAR) {
+    // El ensayo muestra la poda con la misma función, leyendo la base sin bloquear ni escribir.
+    const plan = await planearPoda({ query }, { bloques, hallazgos, leidas, bloquear: false })
+    if (plan.frenada) process.exitCode = 2
+    console.log('\nENSAYO: no se escribió nada. Con --aplicar se escribe y se relee.')
+    return
+  }
   if (filas.length === 0) { console.log('\nNada que escribir.'); return }
 
+  // LA PODA Y EL UPSERT VAN EN LA MISMA TRANSACCIÓN: si el UPSERT falla, las filas viejas vuelven.
+  // Borrar primero y escribir después dejaría, ante un corte a mitad, una quincena sin nadie.
   const cols = columnasParaUpsert(filas)
   const res = await withTx(async (tx) => {
+    const plan = await planearPoda(tx, { bloques, hallazgos, leidas })
+    if (plan.borrar.length > 0) await tx.query(SQL_BORRAR, [plan.borrar.map((f) => f.id)])
     const { rows } = await tx.query(SQL_UPSERT, cols)
-    return { insertadas: rows.filter((r) => r.insertada).length, actualizadas: rows.filter((r) => !r.insertada).length }
+    return {
+      plan,
+      insertadas: rows.filter((r) => r.insertada).length,
+      actualizadas: rows.filter((r) => !r.insertada).length,
+    }
   })
-  console.log(`\n  ESCRITO: ${res.insertadas} insertadas · ${res.actualizadas} actualizadas (transacción confirmada)`)
+  console.log(`\n  ESCRITO: ${res.insertadas} insertadas · ${res.actualizadas} actualizadas`
+    + ` · ${res.plan.borrar.length} borradas (transacción confirmada)`)
+  if (res.plan.frenada) process.exitCode = 2
 
   // LA EVIDENCIA ES DEL EFECTO: se relee de la base, no se acusa lo que se pidió.
   const { rows: chk } = await query(
