@@ -29,6 +29,7 @@
 import { MOTIVO } from '../../../../orquestador/lib/asistencia-motivos.mjs'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { JORNADA_ESTANDAR_HS } from './ausenciaDeLaPersona.ts'
+import { esDefectoQueNadieMiro } from './presenciaDelDia.ts'
 
 export interface ReglaDeMotivo {
   /** ¿Ese día se paga como jornada trabajada? */
@@ -137,7 +138,49 @@ export interface RegistroLiquidable {
   tipo_hora: string
   horas: number | string | null
   notas?: string | null
+  /** De dónde vino la fila. Sin él no se puede reconocer una jornada automática. */
+  fuente_legacy?: string | null
+  /** Quién la tocó después (trigger `set_actualizado_en`). `null` = nadie. */
+  actualizado_por?: string | null
 }
+
+/**
+ * ¿ES UNA JORNADA AUTOMÁTICA QUE NADIE CONFIRMÓ? No se paga ni suma horas hasta que alguien la toque
+ * o JORNALES la traiga.
+ *
+ * Rosales Diego, 1ª de septiembre de 2026: `web:presencia-defecto` le puso 8 h el 11/09 en
+ * Quattropani, sin que nadie las cargara; la planilla dice 62 h en Mampostería y la app contaba 70.
+ * Es la MISMA condición con la que Asistencia decide qué puede borrar (`esDefectoQueNadieMiro`): una
+ * sugerencia del sistema no es un dato de nadie, y liquidarla es pagar lo que nadie afirmó.
+ */
+export const esJornadaAutomatica = (r: RegistroLiquidable): boolean =>
+  esDefectoQueNadieMiro({ fuente_legacy: r.fuente_legacy ?? null, actualizado_por: r.actualizado_por ?? null })
+
+/** `extras =4+3*1,5` → 1.5 · `extras =9+2` → 1 · sin fórmula → null. */
+const RE_FORMULA_EXTRA = /extras\s*=\s*[0-9]+(?:[.,][0-9]+)?\s*\+\s*[0-9]+(?:[.,][0-9]+)?(?:\s*\*\s*([0-9]+(?:[.,][0-9]+)?))?/
+
+/**
+ * CUÁNTAS HORAS PAGAS VALE UNA HORA DE ESTA FILA — como lo calcula la planilla JORNALES.
+ *
+ * Dueño, 14/09/2026: horas extra «Como lo hace JORNALES». La celda es `=normal+extra*k` y cobra el
+ * resultado × $/h. El importador guarda la extra como CANTIDAD y la fórmula en `notas`
+ * (`parteExtra` en `orquestador/lib/jornales-a-registros-hh.mjs`), así que el coeficiente se lee
+ * de ahí y no se supone:
+ *
+ *   «extras =4+3*1,5»   → 1,5     «extras =8+3*1,3» → 1,3
+ *   «extras =9+2»       → 1       la planilla suma la extra tal cual: no hay recargo que inventar
+ *   sin fórmula         → lo dice el tipo: extra_50 1,5 · extra_100 2 (lo que se carga en la web)
+ *
+ * Una hora normal vale 1. Ausencia y licencia no pasan por acá: las valoriza su motivo.
+ */
+export function coeficienteDeLaFila(r: RegistroLiquidable): number {
+  if (r.tipo_hora !== 'extra_50' && r.tipo_hora !== 'extra_100') return 1
+  const m = RE_FORMULA_EXTRA.exec(r.notas ?? '')
+  if (m) return m[1] ? Number(m[1].replace(',', '.')) : 1
+  return r.tipo_hora === 'extra_100' ? 2 : 1.5
+}
+
+const r3 = (n: number): number => Math.round(n * 1000) / 1000
 
 /**
  * LAS HORAS QUE SE LIQUIDAN DE UN DÍA DE UNA PERSONA. Una sola definición, la misma en la grilla,
@@ -162,10 +205,13 @@ export interface RegistroLiquidable {
  * que sí se respeta es la CIFRA de un motivo que paga —puede ser media jornada tipeada a mano—.
  */
 export function horasLiquidablesDelDia(registros: readonly RegistroLiquidable[]): number {
-  const trabajadas = registros.filter((r) => esTrabajada(r.tipo_hora))
+  // LA JORNADA AUTOMÁTICA QUE NADIE CONFIRMÓ NO ES TRABAJO DE NADIE: no se paga (ver
+  // `esJornadaAutomatica`). Si es lo único del día, el día queda como si nadie hubiera cargado nada.
+  const trabajadas = registros.filter((r) => esTrabajada(r.tipo_hora) && !esJornadaAutomatica(r))
   // LO TRABAJADO SÍ SUMA ENTRE FILAS: cinco horas en una obra y tres con ochenta en otra son ocho con
-  // ochenta del mismo día (`quincenaPorObra.test.ts`), y una extra se suma a su jornada normal.
-  if (trabajadas.length > 0) return trabajadas.reduce((s, r) => s + numero(r.horas), 0)
+  // ochenta del mismo día (`quincenaPorObra.test.ts`), y una extra se suma a su jornada normal CON EL
+  // COEFICIENTE DE LA PLANILLA (`coeficienteDeLaFila`): =4+3*1,5 paga 8,5, no 7.
+  if (trabajadas.length > 0) return r3(trabajadas.reduce((s, r) => s + numero(r.horas) * coeficienteDeLaFila(r), 0))
   // ═══ UN DÍA NO TRABAJADO VALE UN DÍA, NO LA SUMA DE LAS FILAS QUE LO DECLARAN ═══
   //
   // Nadie puede estar ausente dos veces el mismo día. Acá esto era un `reduce` que SUMABA, y con dos
@@ -188,7 +234,7 @@ export function horasLiquidablesDelDia(registros: readonly RegistroLiquidable[])
 /** ¿Ese día tiene horas trabajadas cargadas? Es lo que convierte la «A» + horas en un dato
  *  explicado en vez de en un conflicto: la liquidación ya sabe cuál de las dos paga. */
 export const hayHorasTrabajadas = (registros: readonly RegistroLiquidable[]): boolean =>
-  registros.some((r) => esTrabajada(r.tipo_hora) && numero(r.horas) > 0)
+  registros.some((r) => esTrabajada(r.tipo_hora) && !esJornadaAutomatica(r) && numero(r.horas) > 0)
 
 // El TÍTULO de esa celda —«ausencia declarada y horas cargadas: se liquidan las horas cargadas»— no
 // vive acá sino en `shared/components/ds/celdaDia.ts` (`AVISO_AUSENCIA_CON_HORAS`): es una frase de

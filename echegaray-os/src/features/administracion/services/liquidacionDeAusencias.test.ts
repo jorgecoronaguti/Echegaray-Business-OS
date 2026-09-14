@@ -95,13 +95,16 @@ test('día con horas trabajadas Y ausencia declarada: se liquidan sólo las trab
   assert.equal(horasLiquidablesDelDia(dia), 8)
 })
 
-test('las extras del día trabajado sí suman', () => {
+test('las extras del día trabajado sí suman, con su coeficiente', () => {
   const dia = [
     { tipo_hora: 'normal', horas: '8', notas: null },
     { tipo_hora: 'extra_50', horas: '2', notas: null },
     { tipo_hora: 'ausencia', horas: '9', notas: 'falta' },
   ]
-  assert.equal(horasLiquidablesDelDia(dia), 10)
+  // 11 Y NO 10 DESDE EL 14/09/2026. Dueño: horas extra «Como lo hace JORNALES»: una extra al 50% vale
+  // 1,5 horas pagas. Sin fórmula en `notas` (carga web) el tipo dice el coeficiente. Los casos con
+  // fórmula de la planilla están en `horasPagasComoJornales.test.ts`.
+  assert.equal(horasLiquidablesDelDia(dia), 11)
 })
 
 test('una falta vieja guardada con 9 horas se liquida en 0 sin tocar la base', () => {
