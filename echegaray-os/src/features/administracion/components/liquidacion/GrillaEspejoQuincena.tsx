@@ -229,9 +229,11 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
         </div>
       ) : (
         <>
-          <CeldaHorasBlanco fila={fila} />
-          <CeldaHoraCategoria fila={fila} />
-          <CeldaNeto fila={fila} />
+          {/* EL BLANCO SE ESCRIBE EN LA ABIERTA (dueño, 14/09/2026): Hs recibo, $/h cat. y Neto. El negro, el
+              total y el efectivo siguen derivados de lo escrito. */}
+          <CeldaHorasBlanco fila={fila} edicion={{ quincena, camposEditables }} />
+          <CeldaHoraCategoria fila={fila} edicion={{ quincena, camposEditables }} />
+          <CeldaNeto fila={fila} edicion={{ quincena, camposEditables }} />
           <CeldaHorasNegro fila={fila} />
           <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
           <CeldaImporteNegro fila={fila} />

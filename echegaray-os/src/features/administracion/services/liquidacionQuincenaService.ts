@@ -326,6 +326,9 @@ const COLUMNAS_MANUALES = [
 
 const COLUMNAS_LINEA = ['persona_id', 'efectivo_redondeado', 'horas'] as const
 
+/** Las correcciones del blanco, si la migración `20260915T0100` ya se aplicó. */
+const COLUMNAS_BLANCO = ['horas_recibo_manual', 'valor_hora_recibo_manual'] as const
+
 /**
  * LAS CABECERAS Y SUS LÍNEAS — preguntando por las columnas de override y aceptando que no estén.
  *
@@ -341,10 +344,17 @@ async function leerCabecerasGuardadas(
     .select(`id, grupo, estado, cerrada_en, liquidacion_linea(${columnas.join(', ')})`)
     .eq('desde', q.desde).eq('hasta', q.hasta)
 
+  const faltaColumna = (e: { code?: string; message: string }) => e.code === '42703' || /column .* does not exist/i.test(e.message)
+  // TRES ESCALONES: con las columnas del blanco (20260915T0100), sin ellas (sólo 20260909T1740), y sin
+  // ninguna. Sin la migración nueva las `*_manual` de siempre NO se pierden: sólo esas dos celdas quedan fijas.
+  const conBlanco = [...COLUMNAS_LINEA, ...COLUMNAS_MANUALES, ...COLUMNAS_BLANCO]
+  const conTodo = await pedir(conBlanco)
+  if (!conTodo.error) return { data: conTodo.data, error: null, columnas: [...conBlanco] }
+  if (!faltaColumna(conTodo.error)) return { data: null, error: conTodo.error, columnas: [] }
   const conManuales = [...COLUMNAS_LINEA, ...COLUMNAS_MANUALES]
   const primera = await pedir(conManuales)
   if (!primera.error) return { data: primera.data, error: null, columnas: [...conManuales] }
-  if (primera.error.code !== '42703' && !/column .* does not exist/i.test(primera.error.message)) {
+  if (!faltaColumna(primera.error)) {
     return { data: null, error: primera.error, columnas: [] }
   }
   const segunda = await pedir(COLUMNAS_LINEA)
@@ -387,6 +397,8 @@ type LineaGuardada = {
   por_banco_manual?: number | string | null
   en_efectivo_manual?: number | string | null
   total_manual?: number | string | null
+  horas_recibo_manual?: number | string | null
+  valor_hora_recibo_manual?: number | string | null
 }
 
 interface CabeceraGuardada {
@@ -412,6 +424,8 @@ const overridesDeLinea = (l: LineaGuardada): OverridesDeLinea => ({
   porBanco: overrideDe(l.por_banco_manual),
   enEfectivo: overrideDe(l.en_efectivo_manual),
   total: overrideDe(l.total_manual),
+  horasRecibo: overrideDe(l.horas_recibo_manual),
+  valorHoraRecibo: overrideDe(l.valor_hora_recibo_manual),
 })
 
 /** El estado de cada cuadro y el redondeo ya escrito. Sin cabecera guardada, la quincena está abierta. */

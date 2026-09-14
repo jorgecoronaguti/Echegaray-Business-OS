@@ -35,6 +35,8 @@ import { sueldoBlancoNegro, type EntradaDeBlanco, type SueldoBlancoNegro } from 
 /** Las celdas que se pueden pisar a mano. El nombre NO está: es la única que el dueño dejó afuera. */
 export const CAMPOS_EDITABLES = [
   'horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total',
+  // EL BLANCO (dueño, 14/09/2026: «dejame editable las h/recibo»). El neto es `porBanco`.
+  'horasRecibo', 'valorHoraRecibo',
 ] as const
 
 export type CampoEditable = (typeof CAMPOS_EDITABLES)[number]
@@ -103,6 +105,10 @@ export interface LineaConOverrides extends LineaLiquidada {
   sueldo: SueldoBlancoNegro | null
   /** Hay $/h y horas pero el blanco no tiene neto: el total no se puede afirmar. No es «sin tarifa». */
   sinNeto: boolean
+  /** Horas del recibo que muestra la celda (manual o del recibo/estimado). `null` fuera del modelo. */
+  horasRecibo: number | null
+  /** $/h de categoría que muestra la celda. `null` fuera del modelo. */
+  valorHoraRecibo: number | null
 }
 
 export type OrigenDeCelda = 'calculado' | 'jornales' | 'manual'
@@ -121,12 +127,12 @@ const redondear2 = (n: number): number => Math.round(n * 100) / 100
 
 const SIN_MARCAS: Record<CampoEditable, boolean> = {
   horas: false, cobra: false, adelanto: false, yaTransferido: false,
-  porBanco: false, enEfectivo: false, total: false,
+  porBanco: false, enEfectivo: false, total: false, horasRecibo: false, valorHoraRecibo: false,
 }
 
 const TODO_CALCULADO: Record<CampoEditable, OrigenDeCelda> = {
   horas: 'calculado', cobra: 'calculado', adelanto: 'calculado', yaTransferido: 'calculado',
-  porBanco: 'calculado', enEfectivo: 'calculado', total: 'calculado',
+  porBanco: 'calculado', enEfectivo: 'calculado', total: 'calculado', horasRecibo: 'calculado', valorHoraRecibo: 'calculado',
 }
 
 /**
@@ -190,7 +196,7 @@ export function aplicarOverrides(
     return jr
   }
   /** Horas y total no tienen fuente en JORNALES: o los escribió alguien, o se calculan. */
-  const puesto = (campo: 'horas' | 'total'): number | null => {
+  const puesto = (campo: 'horas' | 'total' | 'horasRecibo' | 'valorHoraRecibo'): number | null => {
     const v = ov[campo]
     if (v == null || !Number.isFinite(v)) return null
     manual[campo] = true
@@ -202,7 +208,14 @@ export function aplicarOverrides(
   // UNAS HORAS ESCRITAS A MANO SON LAS QUE SE PAGAN: no traen extras aparte que reconstruir.
   const horasEquivalentes = manual.horas ? horas : base.horasEquivalentes
   // EL MODELO SE CALCULA SOBRE LAS HORAS QUE QUEDARON (manuales o de la app) Y EL $/H NEGRO VIGENTE.
-  const sueldo = conModelo ? sueldoBlancoNegro({ ...blanco!, horas, horasEquivalentes, valorHoraNegro: base.valorHora }) : null
+  // LO ESCRITO EN EL BLANCO ENTRA AL MODELO: horas del recibo, $/h de categoría y el neto (`por_banco_manual`).
+  const netoManual = ov.porBanco != null && Number.isFinite(ov.porBanco) ? redondear2(ov.porBanco) : null
+  const manualDelBlanco = conModelo
+    ? { horasRecibo: puesto('horasRecibo'), valorHoraRecibo: puesto('valorHoraRecibo'), neto: netoManual }
+    : undefined
+  const sueldo = conModelo
+    ? sueldoBlancoNegro({ ...blanco!, horas, horasEquivalentes, valorHoraNegro: base.valorHora, manual: manualDelBlanco })
+    : null
   const cobraCalc = sueldo
     ? sueldo.total
     : manual.horas && grupo === 'obreros'
@@ -238,6 +251,8 @@ export function aplicarOverrides(
     referenciaJornales: grupo === 'obreros' ? referenciaDe(jornales, horas, cobra, conModelo) : null,
     sueldo,
     sinNeto: sueldo != null && sueldo.neto == null && !base.sinTarifa && origen.cobra === 'calculado',
+    horasRecibo: sueldo?.horasBlanco ?? null,
+    valorHoraRecibo: sueldo?.valorHoraCategoria ?? null,
   }
 }
 
@@ -262,7 +277,7 @@ function referenciaDe(
 export function sinOverrides(base: LineaLiquidada): LineaConOverrides {
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
-    referenciaJornales: null, sueldo: null, sinNeto: false,
+    referenciaJornales: null, sueldo: null, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,
   }
 }
 
@@ -275,6 +290,8 @@ export const COLUMNA_DE: Record<CampoEditable, string> = {
   porBanco: 'por_banco_manual',
   enEfectivo: 'en_efectivo_manual',
   total: 'total_manual',
+  horasRecibo: 'horas_recibo_manual',
+  valorHoraRecibo: 'valor_hora_recibo_manual',
 }
 
 /**

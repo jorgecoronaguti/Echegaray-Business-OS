@@ -107,7 +107,7 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
   // función y sus cifras son la foto del cierre.
   const sinMarcas = {
     manual: undefined, origen: undefined, discrepancia: undefined, referenciaJornales: undefined,
-    sueldo: undefined, sinNeto: undefined,
+    sueldo: undefined, sinNeto: undefined, horasRecibo: undefined, valorHoraRecibo: undefined,
   }
   assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
   // LA FOTO CERRADA NO RECALCULA BLANCO + NEGRO (dueño, 14/09/2026).
