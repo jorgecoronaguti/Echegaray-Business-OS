@@ -17,7 +17,7 @@
 // fila de persona que el orquestador ya no podría volver a tocar.
 
 import {
-  MARCA_RECONSTRUIDA, cederAnteLaApp, esDePersona, esDePrueba, esUnDia, origenDe, planDeAsignacion,
+  MARCA_ANULADA, MARCA_RECONSTRUIDA, cederAnteLaApp, esDePersona, esDePrueba, esUnDia, origenDe, planDeAsignacion,
   tramoEfectivo,
 } from './cronologia-asignaciones.mjs'
 
@@ -33,7 +33,12 @@ const ordenDeCarga = (a, b) =>
 export const SQL = Object.freeze({
   // Fila de persona: SÓLO `hasta` y `notas`, y sólo si nadie la cambió desde la lectura.
   cerrarDePersona: `update public.obra_asignacion set hasta = $2::date, notas = $3
-    where id = $1 and hasta is not distinct from $4::date and coalesce(notas, '') not like '%${MARCA_RECONSTRUIDA}%'
+    where id = $1 and hasta is not distinct from $4::date and notas is not distinct from $5
+      and coalesce(notas, '') not like '%${MARCA_RECONSTRUIDA}%'
+    returning id`,
+  // Día suelto corregido por carga posterior: SÓLO `notas`, y sólo si siguen siendo las que se leyeron.
+  anularDePersona: `update public.obra_asignacion set notas = $2
+    where id = $1 and notas is not distinct from $3 and coalesce(notas, '') not like '%${MARCA_RECONSTRUIDA}%'
     returning id`,
   recortarReconstruida: `update public.obra_asignacion set desde = $2::date, hasta = $3::date, notas = $4
     where id = $1 and coalesce(notas, '') like '%${MARCA_RECONSTRUIDA}%' returning id`,
@@ -52,25 +57,48 @@ function cerrarLoDePersona(vivas, { cambios, paraDueno, fecha }) {
   }
   for (const filas of porPersona.values()) {
     filas.sort(ordenDeCarga)
-    filas.forEach((g, k) => {
-      const t = tramoEfectivo(g)
-      if (esUnDia(g) || t.sinFecha || !t.desde) return
-      const plan = planDeAsignacion(filas.slice(0, k), { obra_id: g.obra_id, desde: t.desde, hasta: g.hasta, unDia: false })
-      const porId = new Map(filas.map((f) => [f.id, f]))
-      const motivo = `${g.obra_id} rige desde ${t.desde}`
-      for (const c of plan.cerrar) {
-        const f = porId.get(c.id)
-        if (c.continua) { paraDueno.push({ tipo: 'partir', fila: f, contra: g, detalle: `seguía después: ${c.continua.desde}→${c.continua.hasta ?? 'abierta'}` }); continue }
-        if (f.hasta && f.hasta <= c.hasta) continue
-        const notas = conNota(f.notas, `cronología ${fecha}: hasta ${f.hasta ?? 'abierta'} → ${c.hasta} (${motivo})`)
-        cambios.push({ tipo: 'cerrar', fila: f, antes: { desde: f.desde, hasta: f.hasta }, despues: { desde: f.desde, hasta: c.hasta }, notas, motivo })
-        f.hasta = c.hasta
-        f.notas = notas
-      }
-      for (const r of plan.reemplazar) paraDueno.push({ tipo: 'reemplazar', fila: porId.get(r.id), contra: g, detalle: motivo })
-      for (const r of plan.recortar) paraDueno.push({ tipo: 'recortar', fila: porId.get(r.id), contra: g, detalle: `quedaría desde ${r.desde}` })
-    })
+    filas.forEach((g, k) => aplicarGesto(filas, g, k, { cambios, paraDueno, fecha }))
   }
+}
+
+/** Una fila de persona como gesto contra lo cargado ANTES: cierra y anula; lo demás se lista. */
+function aplicarGesto(filas, g, k, { cambios, paraDueno, fecha }) {
+  const t = tramoEfectivo(g)
+  if (esUnDia(g) || t.sinFecha || !t.desde) return
+  const plan = planDeAsignacion(filas.slice(0, k),
+    { obra_id: g.obra_id, desde: t.desde, hasta: g.hasta, unDia: false, creado_en: g.creado_en })
+  const porId = new Map(filas.map((f) => [f.id, f]))
+  const motivo = `${g.obra_id} rige desde ${t.desde}, cargada ${instante(g.creado_en).slice(0, 16)}`
+  for (const c of plan.cerrar) {
+    const f = porId.get(c.id)
+    if (c.continua) { paraDueno.push({ tipo: 'partir', fila: f, contra: g, detalle: `seguía después: ${c.continua.desde}→${c.continua.hasta ?? 'abierta'}` }); continue }
+    if (f.hasta && f.hasta <= c.hasta) continue
+    anotar(cambios, f, 'cerrar', c.hasta, `cronología ${fecha}: hasta ${f.hasta ?? 'abierta'} → ${c.hasta} (${motivo})`)
+  }
+  // GANA LA CARGA POSTERIOR (dueño, 14/09/2026): el día suelto del mismo día cargado antes se marca
+  // anulado con nota. Sus fechas no se tocan; la lectura ignora las anuladas.
+  for (const a of plan.anular) {
+    const f = porId.get(a.id)
+    if ((f.notas ?? '').includes(MARCA_ANULADA)) continue
+    anotar(cambios, f, 'anular', f.hasta, `${MARCA_ANULADA} ${fecha}: día suelto corregido por carga posterior (${motivo})`)
+  }
+  for (const r of plan.reemplazar) paraDueno.push({ tipo: 'reemplazar', fila: porId.get(r.id), contra: g, detalle: motivo })
+  for (const r of plan.recortar) paraDueno.push({ tipo: 'recortar', fila: porId.get(r.id), contra: g, detalle: `quedaría desde ${r.desde}` })
+}
+
+/** UN cambio por fila: dos gestos sobre la misma fila se funden, y `antes` sigue siendo lo leído de la
+ *  base. Dos cambios sueltos harían que el segundo `update` fallara su guarda contra un `antes` que
+ *  sólo existió en memoria. */
+function anotar(cambios, f, tipo, hasta, texto) {
+  const notas = conNota(f.notas, texto)
+  const previo = cambios.find((c) => c.fila === f)
+  if (previo) {
+    Object.assign(previo, { tipo: previo.tipo === 'cerrar' || tipo === 'cerrar' ? 'cerrar' : tipo, notas, despues: { desde: f.desde, hasta } })
+  } else {
+    cambios.push({ tipo, fila: f, antes: { desde: f.desde, hasta: f.hasta, notas: f.notas ?? null }, despues: { desde: f.desde, hasta }, notas })
+  }
+  f.hasta = hasta
+  f.notas = notas
 }
 
 /** Paso 2: cada reconstruida, contra lo que quedó de las filas de persona. */

@@ -133,7 +133,8 @@ async function pistasDeObra(
   supabase: Awaited<ReturnType<typeof createClient>>, personaId: string,
 ): Promise<{ asignaciones: AsignacionDeObra[]; dias: DiaYaImputado[] } | { error: string }> {
   const [asig, hh] = await Promise.all([
-    supabase.from('obra_asignacion').select('obra_id, desde, hasta').eq('persona_id', personaId),
+    // `creado_en` y `notas`: la carga posterior y la marca de anulada deciden entre tramos del mismo día.
+    supabase.from('obra_asignacion').select('obra_id, desde, hasta, creado_en, notas').eq('persona_id', personaId),
     supabase.from('registros_hh').select('fecha, obra_canonica_id')
       .eq('persona_id', personaId).not('obra_canonica_id', 'is', null)
       .order('fecha', { ascending: false }).limit(400),
@@ -144,8 +145,9 @@ async function pistasDeObra(
   if (asig.error) return { error: `No pude leer las obras asignadas: ${asig.error.message}` }
   if (hh.error) return { error: `No pude leer las horas anteriores: ${hh.error.message}` }
   return {
-    asignaciones: ((asig.data ?? []) as { obra_id: string; desde: string; hasta: string | null }[])
-      .map((a) => ({ obraId: a.obra_id, desde: a.desde, hasta: a.hasta })),
+    asignaciones: ((asig.data ?? []) as {
+      obra_id: string; desde: string; hasta: string | null; creado_en: string | null; notas: string | null
+    }[]).map((a) => ({ obraId: a.obra_id, desde: a.desde, hasta: a.hasta, creadoEn: a.creado_en, notas: a.notas })),
     dias: ((hh.data ?? []) as { fecha: string; obra_canonica_id: string }[])
       .map((r) => ({ fecha: r.fecha, obraId: r.obra_canonica_id })),
   }

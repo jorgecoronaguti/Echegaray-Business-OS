@@ -26,11 +26,32 @@ test('también se cierra la que ya tenía fin pero cubría D (no sólo las abier
   assert.deepEqual(plan.cerrar.map((c) => [c.id, c.hasta]), [['p', '2026-09-08']])
 })
 
-test('EL DEFECTO DE AGÜERO: la que empezó en D se REEMPLAZA, no queda como día suelto que gana la lectura', () => {
+test('la que empezó en D se CIERRA en D y no se borra: queda cargada antes y pierde por carga posterior', () => {
   const plan = planDeAsignacion([fila('q', 'aguero', 'quattro', '2026-09-08', null)],
     { obra_id: 'pisos', desde: '2026-09-08', hasta: null })
-  assert.deepEqual(plan.cerrar, [])
-  assert.deepEqual(plan.reemplazar, [{ id: 'q' }])
+  assert.deepEqual(plan.cerrar, [{ id: 'q', hasta: '2026-09-08', continua: null }])
+  assert.deepEqual(plan.reemplazar, [])
+})
+
+test('CARGA POSTERIOR (dueño 14/09): el día suelto del mismo D cargado ANTES se anula — Reta, Quiroga A., Maldonado', () => {
+  const casos = [
+    [fila('reta-mes', 'reta', 'messina', '2026-09-09', '2026-09-09', { creado_en: '2026-09-08T19:06:41.811Z' }),
+      { obra_id: 'quattro', desde: '2026-09-09', hasta: null, creado_en: '2026-09-09T14:06:09.328Z' }],
+    [fila('qa-q', 'quiroga-a', 'quattro', '2026-09-09', '2026-09-09', { creado_en: '2026-09-08T19:09:49.224Z' }),
+      { obra_id: 'messina', desde: '2026-09-09', hasta: null, creado_en: '2026-09-09T14:08:04.155Z' }],
+    [fila('mal-e', 'maldonado', 'entrepiso', '2026-09-08', '2026-09-08', { creado_en: new Date('2026-09-08T15:23:28.655Z') }),
+      { obra_id: 'quattro', desde: '2026-09-08', hasta: null, creado_en: new Date('2026-09-08T15:23:31.641Z') }],
+  ]
+  for (const [suelto, nueva] of casos) {
+    assert.deepEqual(planDeAsignacion([suelto], nueva),
+      { cerrar: [], reemplazar: [], recortar: [], anular: [{ id: suelto.id }] }, suelto.id)
+  }
+})
+
+test('el día suelto cargado DESPUÉS del tramo largo sigue siendo la excepción: no se anula', () => {
+  const suelto = fila('s', 'reta', 'messina', '2026-09-09', '2026-09-09', { creado_en: new Date('2026-09-09T12:00:00Z') })
+  const plan = planDeAsignacion([suelto], { obra_id: 'quattro', desde: '2026-09-09', hasta: null, creado_en: new Date('2026-09-09T10:00:00Z') })
+  assert.deepEqual(plan.anular, [])
 })
 
 test('la que sigue después de un tramo con fin se recorta; la que la envuelve avisa qué continúa', () => {
@@ -46,7 +67,7 @@ test('la que sigue después de un tramo con fin se recorta; la que la envuelve a
 test('un día suelto no parte el tramo largo: guardar el 09/09 en Messina no cierra Quattropani', () => {
   const plan = planDeAsignacion([fila('q', 'reta', 'quattro', '2026-09-08', null)],
     { obra_id: 'messina', desde: '2026-09-09', hasta: '2026-09-09' })
-  assert.deepEqual(plan, { cerrar: [], reemplazar: [], recortar: [] })
+  assert.deepEqual(plan, { cerrar: [], reemplazar: [], recortar: [], anular: [] })
 })
 
 test('un día suelto de la app no parte la reconstruida ni la normalización lo toca', () => {
@@ -105,14 +126,15 @@ const REAL = [
   fila('ahu-r', 'ahumada', 'messina', '2026-06-16', '2026-06-30', { notas: R, creado_en: '2026-09-08T20:18:08Z' }),
 ]
 
-test('la normalización sólo le cierra `hasta` a una fila de persona: ni desde, ni obra, ni borra, ni inserta', () => {
+test('la normalización a una fila de persona sólo le cierra `hasta` o la anula por nota: ni desde, ni borra, ni inserta', () => {
   const { cambios } = planDeNormalizacion(REAL, { fecha: '14/09/2026' })
   const dePersona = cambios.filter((c) => !(c.fila.notas ?? '').includes(MARCA_RECONSTRUIDA))
-  assert.ok(dePersona.length > 0, 'el caso tiene que ejercer la regla a)')
+  assert.ok(dePersona.some((c) => c.tipo === 'cerrar'), 'el caso tiene que ejercer el cierre')
   for (const c of dePersona) {
-    assert.equal(c.tipo, 'cerrar')
+    assert.ok(['cerrar', 'anular'].includes(c.tipo), c.tipo)
     assert.equal(c.despues.desde, c.antes.desde)
-    assert.ok(c.notas.startsWith(c.fila.notas ?? ''), 'la constancia se agrega, no reemplaza')
+    if (c.tipo === 'anular') assert.equal(c.despues.hasta, c.antes.hasta)
+    assert.ok(c.notas.startsWith(c.antes.notas ?? ''), 'la constancia se agrega, no reemplaza')
   }
 })
 
@@ -133,10 +155,13 @@ test('PASTRAN con `creado_en` como Date (pg): lo cargado después cierra lo ante
   assert.deepEqual(paraDueno, [])
 })
 
-test('reemplazar un día de persona lo decide el dueño: RETA 09/09 queda listado, no escrito', () => {
+test('RETA 09/09 en la normalización: el día en Messina queda ANULADO con nota, sin tocar sus fechas ni borrarse', () => {
   const { cambios, paraDueno } = planDeNormalizacion(REAL, { fecha: '14/09/2026' })
-  assert.ok(!cambios.some((c) => c.fila.id === 'reta-mes'))
-  assert.ok(paraDueno.some((p) => p.tipo === 'reemplazar' && p.fila.id === 'reta-mes'))
+  const c = cambios.find((x) => x.fila.id === 'reta-mes')
+  assert.equal(c?.tipo, 'anular')
+  assert.deepEqual(c.despues, { desde: '2026-09-09', hasta: '2026-09-09' })
+  assert.match(c.notas, /ANULADA por cronología/)
+  assert.ok(!paraDueno.some((p) => p.fila.id === 'reta-mes'))
 })
 
 // ─── el invariante ──────────────────────────────────────────────────────────────────────────────

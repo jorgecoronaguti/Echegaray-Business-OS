@@ -50,17 +50,15 @@ test('cambiar de obra cierra la anterior AYER y abre la nueva HOY', () => {
   assert.equal(plan.acuse, 'Desde hoy en SALÓN COMERCIAL · antes PISOS INDUSTRIALES.')
 })
 
-// CAMBIÓ EL 14/09/2026. Antes la creada hoy cerraba HOY (`hasta = desde`) y quedaba como día suelto:
-// la lectura hace ganar a la más corta, así que el día seguía en la obra que se acababa de corregir.
-// AGÜERO quedó así el 08/09 con tres obras de un día. Ahora se reemplaza: ni `hasta < desde` ni un día
-// suelto que nadie eligió.
-test('la asignación creada hoy se REEMPLAZA: no queda como día suelto que le gana a la obra elegida', () => {
+// GANA LA CARGA POSTERIOR (dueño, 14/09/2026). La creada hoy cierra HOY y NO se borra: es una fila de
+// persona. Queda como día suelto cargado antes que la nueva, y la lectura le da el día a la nueva.
+test('la asignación creada hoy cierra HOY y no se borra: el día lo decide la carga posterior al leer', () => {
   const plan = planDeCambioDeObra({
     abiertas: [{ id: 'a1', obra_id: pisos.obra_id, nombre: pisos.nombre, desde: HOY }],
     destino: salon, hoy: HOY,
   })
-  assert.deepEqual(plan.cerrar, [])
-  assert.deepEqual(plan.borrar, ['a1'])
+  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: HOY }])
+  assert.deepEqual(plan.borrar, [])
   assert.deepEqual(plan.abrir, { obra_id: 'salon-comercial', desde: HOY })
 })
 
@@ -195,9 +193,11 @@ test('«Sin obra» cierra TODAS las abiertas, no la última', () => {
     ],
     destino: null, hoy: HOY,
   })
-  // La que empezó HOY se reemplaza (14/09/2026): cerrarla con `hasta = hoy` guardaba un día suelto.
-  assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: AYER }, { id: 'a2', hasta: AYER }])
-  assert.deepEqual(plan.borrar, ['a3'])
+  // La que empezó HOY cierra HOY y no se borra: al leer gana la carga posterior (14/09/2026).
+  assert.deepEqual(plan.cerrar, [
+    { id: 'a1', hasta: AYER }, { id: 'a2', hasta: AYER }, { id: 'a3', hasta: HOY },
+  ])
+  assert.deepEqual(plan.borrar, [])
   assert.equal(plan.abrir, null)
   assert.equal(plan.acuse, 'Desde hoy sin obra · antes PISOS INDUSTRIALES, GALPÓN 9, SALÓN COMERCIAL.')
 })

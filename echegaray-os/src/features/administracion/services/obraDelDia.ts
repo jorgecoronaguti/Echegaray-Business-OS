@@ -31,6 +31,11 @@ export interface AsignacionDeObra {
   desde: string
   /** `null` = tramo abierto. No es «hasta hoy»: es «todavía no terminó». */
   hasta: string | null
+  /** Cuándo se cargó. Entre un día suelto y un tramo largo del mismo día gana la carga posterior
+   *  (dueño, 14/09/2026). Opcional: sin él la regla es la de antes. */
+  creadoEn?: string | null
+  /** Las notas: una fila con la marca de anulada no cubre ningún día. */
+  notas?: string | null
 }
 
 /** Una fila de `registros_hh` que ya tiene obra. Las ausencias no la llevan y no sirven de pista. */
@@ -71,7 +76,9 @@ export function obraParaElDia(
   const vigentes = asignaciones.filter((a) => cubre(a, fecha))
   if (vigentes.length > 0) {
     // LA MISMA REGLA QUE EL IMPORTADOR: más corta, después más reciente. Empate total no se elige.
-    const tramos = vigentes.map((a) => ({ obra: a.obraId, desde: a.desde, hasta: a.hasta }))
+    const tramos = vigentes.map((a) => ({
+      obra: a.obraId, desde: a.desde, hasta: a.hasta, creado_en: a.creadoEn ?? null, notas: a.notas ?? null,
+    }))
     const obraId = obraDeLaAsignacionDelDia(tramos, fecha) as string | null
     return obraId ? { ok: true, obraId, porque: 'asignacion' } : { ok: false, porque: 'varias-asignaciones' }
   }

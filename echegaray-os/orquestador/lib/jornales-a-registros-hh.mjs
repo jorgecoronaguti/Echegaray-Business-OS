@@ -19,6 +19,7 @@
 import { detectarBloques, trabajadoresDeBloque, leerCeldaDiaria, letraColumna } from './jornales-estructura.mjs'
 import { interpretarCarga, FORMA } from './horas-extra.mjs'
 import { obraDeLaAsignacionDelDia } from './asignacion-del-dia.mjs'
+import { estaAnulada } from './cronologia-asignaciones.mjs'
 
 export const FUENTE = 'sheet:jornales'
 export const HORAS_MAX_DIA = 24
@@ -253,8 +254,10 @@ export function resolutorDeObra({ alias = new Map(), canonicas = [], clienteAlia
  * de obra que seguir, y conserva la obra que ya tenía.
  */
 export function asignacionVigente(asignaciones = [], personaId, fecha, { desempatar = true } = {}) {
-  const tramos = asignaciones.filter((a) => a.persona_id === personaId)
-    .map((a) => ({ obra: a.obra_id, desde: a.desde, hasta: a.hasta }))
+  // UNA ANULADA NO CUBRE NINGÚN DÍA, tampoco para las licencias: la corrigió una carga posterior.
+  const tramos = asignaciones.filter((a) => a.persona_id === personaId && !estaAnulada(a))
+    // `creado_en` decide entre un día suelto y un tramo largo del mismo día: gana la carga posterior.
+    .map((a) => ({ obra: a.obra_id, desde: a.desde, hasta: a.hasta, creado_en: a.creado_en ?? null }))
   if (desempatar) return obraDeLaAsignacionDelDia(tramos, fecha)
   const cubren = tramos.filter((t) => (!t.desde || String(t.desde).slice(0, 10) <= fecha) && (!t.hasta || String(t.hasta).slice(0, 10) >= fecha))
   const ids = [...new Set(cubren.map((t) => t.obra))]

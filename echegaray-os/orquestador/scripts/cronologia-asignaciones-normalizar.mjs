@@ -66,7 +66,8 @@ async function aplicar(filas, plan) {
   return withTx(async (tx) => {
     for (const c of plan.cambios) {
       const f = c.fila
-      const res = c.tipo === 'cerrar' ? await tx.query(SQL.cerrarDePersona, [f.id, c.despues.hasta, c.notas, c.antes.hasta])
+      const res = c.tipo === 'cerrar' ? await tx.query(SQL.cerrarDePersona, [f.id, c.despues.hasta, c.notas, c.antes.hasta, c.antes.notas])
+        : c.tipo === 'anular' ? await tx.query(SQL.anularDePersona, [f.id, c.notas, c.antes.notas])
         : c.tipo === 'recortar' ? await tx.query(SQL.recortarReconstruida, [f.id, c.despues.desde, c.despues.hasta, c.notas])
           : c.tipo === 'borrar' ? await tx.query(SQL.borrarReconstruida, [f.id])
             : await tx.query(SQL.insertarReconstruida, [f.persona_id, f.obra_id, c.despues.desde, c.despues.hasta, c.notas])

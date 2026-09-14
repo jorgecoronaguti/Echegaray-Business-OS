@@ -18,14 +18,13 @@
 // serían vigentes hoy y la grilla tendría que elegir una por horas — el cambio se vería a medias.
 // Con `hasta = ayer` el día de hoy tiene una sola obra.
 //
-// ═══ SALVO QUE LA ANTERIOR HAYA EMPEZADO HOY: SE REEMPLAZA (cambió el 14/09/2026) ═══
+// ═══ SALVO QUE LA ANTERIOR HAYA EMPEZADO HOY: CIERRA HOY, Y GANA LA CARGA POSTERIOR ═══
 //
-// Cerrarla ayer dejaría `hasta` antes de `desde`. Hasta el 14/09 se cerraba con `hasta = desde`, y eso
-// guardaba un día suelto que la lectura (gana la más corta) le hacía ganar a la obra recién elegida:
-// AGÜERO quedó el 08/09 con Quattropani, Pisos y Messina, las tres de un día. La corrección en el
-// momento no es historia, es la misma decisión dicha mejor: la fila se borra. La regla entera —cerrar,
-// reemplazar, recortar, y el día suelto que no parte nada— vive en
-// `orquestador/lib/cronologia-asignaciones.mjs`.
+// Cerrarla ayer dejaría `hasta` antes de `desde`: cierra con `hasta = desde`. Eso guarda un día suelto
+// que, leído sólo por duración, le ganaba a la obra recién elegida (AGÜERO, 08/09). El dueño decidió
+// el 14/09/2026 que entre un día suelto y un tramo del MISMO día gana el cargado después: la lectura
+// (`orquestador/lib/asignacion-del-dia.mjs`) lo resuelve con `creado_en`. No se borra: alguien la
+// cargó. La regla de escritura entera vive en `orquestador/lib/cronologia-asignaciones.mjs`.
 
 import { planDeAsignacion } from '../../../../orquestador/lib/cronologia-asignaciones.mjs'
 
@@ -235,14 +234,17 @@ export function planDeCambioDeObra({ abiertas, cerradas = [], destino, hoy, desd
   // dejaba tres filas donde hay una decisión, y cancelar el día obligaba a volver a coserlas.
   const unDia = Boolean(hasta) && hasta === desde
   const sobran = unDia ? [] : abiertas.filter((a) => a.id !== seConserva?.id)
-  // LA QUE EMPEZABA EN EL PRIMER DÍA DEL TRAMO NUEVO O DESPUÉS SE REEMPLAZA, no se cierra. Antes
-  // quedaba con `hasta = desde`: un día suelto que la lectura hacía ganar sobre la obra recién
-  // elegida. Así quedó AGÜERO el 08/09: Quattropani, Pisos y Messina, las tres de un día.
-  const borrar = sobran.filter((a) => a.desde != null && a.desde >= desde).map((a) => a.id)
-  const cerrar = sobran.filter((a) => !borrar.includes(a.id)).map((a) => ({ id: a.id, hasta: diaAnterior(desde) }))
+  // LA QUE EMPEZÓ EL MISMO DÍA SE CIERRA ESE DÍA, Y GANA LA CARGA POSTERIOR (dueño, 14/09/2026). No se
+  // borra —es una fila de persona—: queda como día suelto cargado ANTES que la nueva, y la lectura
+  // (`asignacion-del-dia.mjs`) le da el día a la última cargada. Sólo lo que empezaba DESPUÉS —un pase
+  // programado que el tramo nuevo tapa— se borra, igual que al cancelarlo.
+  const borrar = sobran.filter((a) => a.desde != null && a.desde > desde).map((a) => a.id)
+  const cerrar = sobran.filter((a) => !borrar.includes(a.id))
+    .map((a) => ({ id: a.id, hasta: a.desde === desde ? desde : diaAnterior(desde) }))
   // Y LAS YA CERRADAS QUE CUBREN EL TRAMO NUEVO TAMBIÉN CEDEN: un pase programado a otra obra seguía
   // guardado debajo del cambio. La que además seguía después del fin del tramo nuevo no se toca: la
-  // lectura resuelve el tramo corto y partirla sería inventar un regreso que nadie pidió.
+  // lectura resuelve el tramo corto y partirla sería inventar un regreso que nadie pidió. `anular` no
+  // escribe nada acá: el día suelto del mismo día ya pierde al leer por carga posterior.
   const regla = unDia ? null : planDeAsignacion(cerradas.filter((c) => c.hasta != null),
     { obra_id: destino?.id ?? null, desde, hasta, unDia: false })
   for (const c of regla?.cerrar ?? []) if (!c.continua) cerrar.push({ id: c.id, hasta: c.hasta })

@@ -62,6 +62,59 @@ test('misma obra repetida no es ambigüedad; sin tramo que cubra, null; sin desd
   assert.equal(obra([{ obra: 'a', desde: null, hasta: null }, { obra: 'b', desde: '2026-09-01', hasta: '2026-09-30' }], '2026-09-03'), 'b')
 })
 
+// ═══ GANA LA CARGA POSTERIOR (dueño, 14/09/2026) — los tres casos reales, con su `creado_en` ═══
+
+test('RETA 09/09 → Quattropani: el día en Messina se cargó ANTES que Quattropani desde el mismo día', () => {
+  const tramos = [
+    { obra: 'messina-playon-dilucion-acido', desde: '2026-09-09', hasta: '2026-09-09', creado_en: '2026-09-08T19:06:41.811Z' },
+    { obra: 'quattropani', desde: '2026-09-09', hasta: null, creado_en: '2026-09-09T14:06:09.328Z' },
+  ]
+  assert.equal(obra(tramos, '2026-09-09'), 'quattropani')
+  assert.equal(obra([...tramos].reverse(), '2026-09-09'), 'quattropani', 'no depende del orden')
+})
+
+test('QUIROGA A. 09/09 → Messina: el día en Quattropani se cargó antes', () => {
+  const tramos = [
+    { obra: 'quattropani', desde: '2026-09-09', hasta: '2026-09-09', creado_en: '2026-09-08T19:09:49.224Z' },
+    { obra: 'messina-playon-dilucion-acido', desde: '2026-09-09', hasta: null, creado_en: '2026-09-09T14:08:04.155Z' },
+  ]
+  assert.equal(obra(tramos, '2026-09-09'), 'messina-playon-dilucion-acido')
+})
+
+test('MALDONADO 08/09 → Quattropani: tres segundos después también es después (Date de pg)', () => {
+  const tramos = [
+    { obra: 'entrepiso-y-escalera', desde: '2026-09-08', hasta: '2026-09-08', creado_en: new Date('2026-09-08T15:23:28.655Z') },
+    { obra: 'quattropani', desde: '2026-09-08', hasta: null, creado_en: new Date('2026-09-08T15:23:31.641Z') },
+  ]
+  assert.equal(obra(tramos, '2026-09-08'), 'quattropani')
+})
+
+test('el día suelto cargado DESPUÉS del tramo largo sigue ganando: es la excepción a propósito', () => {
+  const tramos = [
+    { obra: 'quattropani', desde: '2026-09-09', hasta: null, creado_en: '2026-09-09T10:00:00Z' },
+    { obra: 'messina', desde: '2026-09-09', hasta: '2026-09-09', creado_en: '2026-09-09T12:00:00Z' },
+  ]
+  assert.equal(obra(tramos, '2026-09-09'), 'messina')
+})
+
+test('sin creado_en la regla es la de antes: el día suelto gana', () => {
+  const tramos = [
+    { obra: 'messina', desde: '2026-09-09', hasta: '2026-09-09', creado_en: '2026-09-08T19:06:41Z' },
+    { obra: 'quattropani', desde: '2026-09-09', hasta: null },
+  ]
+  assert.equal(obra(tramos, '2026-09-09'), 'messina')
+})
+
+test('AGÜERO 08/09: tres días sueltos del mismo día → el último cargado; si a uno le falta creado_en, null', () => {
+  const tramos = [
+    { obra: 'quattropani', desde: '2026-09-08', hasta: '2026-09-08', creado_en: '2026-09-08T15:54:56Z' },
+    { obra: 'pisos-industriales', desde: '2026-09-08', hasta: '2026-09-08', creado_en: '2026-09-08T15:55:14Z' },
+    { obra: 'messina-playon-dilucion-acido', desde: '2026-09-08', hasta: '2026-09-08', creado_en: '2026-09-08T19:59:24Z' },
+  ]
+  assert.equal(obra(tramos, '2026-09-08'), 'messina-playon-dilucion-acido')
+  assert.equal(obra([...tramos.slice(0, 2), { ...tramos[2], creado_en: null }], '2026-09-08'), null)
+})
+
 test('fechas que llegan como Date de pg (03:00Z) desempatan igual que las ISO', () => {
   const d = (s) => new Date(`${s}T03:00:00Z`)
   const tramos = [

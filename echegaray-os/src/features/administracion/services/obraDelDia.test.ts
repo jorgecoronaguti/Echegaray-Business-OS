@@ -39,6 +39,19 @@ test('EMPATE TOTAL ENTRE DOS ASIGNACIONES NO SE DESEMPATA SOLO', () => {
 
 // LA CRONOLOGÍA DEL EMPLEADO (dueño, 14/09/2026). Mismos casos que `orquestador/lib/asignacion-del-dia.test.mjs`:
 // la regla es una sola y la importan las dos caras.
+// GANA LA CARGA POSTERIOR (dueño, 14/09/2026): con `creadoEn`, el día suelto cargado antes que el tramo
+// del mismo día pierde; una fila con la marca de anulada no cubre nada.
+test('RETA 09/09 REAL: QUATTROPANI SE CARGÓ DESPUÉS QUE EL DÍA EN MESSINA → QUATTROPANI', () => {
+  const tramos = [
+    { obraId: 'messina', desde: '2026-09-09', hasta: '2026-09-09', creadoEn: '2026-09-08T19:06:41.811Z' },
+    { obraId: 'quattropani', desde: '2026-09-09', hasta: null, creadoEn: '2026-09-09T14:06:09.328Z' },
+  ]
+  assert.deepEqual(obraParaElDia('2026-09-09', tramos, []), { ok: true, obraId: 'quattropani', porque: 'asignacion' })
+  const anulada = [{ obraId: 'messina', desde: '2026-09-09', hasta: '2026-09-09', notas: 'ANULADA por cronología 14/09/2026' },
+    { obraId: 'quattropani', desde: '2026-09-09', hasta: null }]
+  assert.deepEqual(obraParaElDia('2026-09-09', anulada, []), { ok: true, obraId: 'quattropani', porque: 'asignacion' })
+})
+
 test('RETA 09/09: EL DÍA SUELTO EN MESSINA GANA A QUATTROPANI ABIERTA', () => {
   const tramos = [
     { obraId: 'quattropani', desde: '2026-09-08', hasta: null },

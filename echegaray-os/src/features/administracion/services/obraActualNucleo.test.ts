@@ -314,10 +314,9 @@ test('una asignación CERRADA HOY no es una asignación abierta: la obra se vuel
 
 // ═══ LA CRONOLOGÍA (dueño, 14/09/2026) ═══
 //
-// AGÜERO, 08/09: Quattropani a las 12:54, Pisos a las 12:55, Messina a las 16:59 — y la base guardó las
-// tres como días sueltos del 08/09, empatadas, sin obra decidible. La que empezó hoy se BORRA antes de
-// abrir la nueva, filtrando por la persona; si la acción vuelve a cerrarla, este test lo ve.
-test('corregir la obra el mismo día BORRA la que empezó hoy antes de abrir, no la deja de un día', async () => {
+// Gana la CARGA POSTERIOR (dueño, 14/09/2026): la que empezó hoy se CIERRA hoy —no se borra, es una
+// fila de persona— y recién después se abre la nueva, que al leer gana el día por cargarse después.
+test('corregir la obra el mismo día CIERRA la que empezó hoy (sin borrarla) y abre la nueva', async () => {
   const { supabase, toques } = baseCompleta([
     { id: 'q', obra_id: 'quattropani', desde: HOY, hasta: null },
   ])
@@ -327,7 +326,7 @@ test('corregir la obra el mismo día BORRA la que empezó hoy antes de abrir, no
   )
   assert.equal(r.ok, true, r.ok === false ? r.error : '')
   const escrituras = toques.filter((t) => t.tabla === 'obra_asignacion' && t.verbo !== 'select')
-  assert.deepEqual(escrituras.map((t) => t.verbo), ['delete', 'insert'])
+  assert.deepEqual(escrituras.map((t) => [t.verbo, t.valores?.hasta ?? null]), [['update', HOY], ['insert', null]])
 })
 
 // ═══ EL MENSAJE DE LA BASE SE MUESTRA TAL CUAL ═══
