@@ -12,6 +12,16 @@ const p = (x: Partial<Pago>): Pago => ({
   iva: x.iva === undefined ? null : x.iva, historico: x.historico ?? false, moneda: x.moneda ?? 'ARS', fechaPrevista: x.fechaPrevista ?? null, fechaPago: x.fechaPago ?? null,
   facturaNumero: x.facturaNumero ?? null, reciboNumero: x.reciboNumero ?? null,
   devolucionEn: null, devueltoEn: null, estadoFijado: x.estadoFijado ?? null,
+  conciliado: x.conciliado ?? true,
+})
+
+test('AUDITORÍA 14/09: un pago sin fila viva con fecha pasada es «a confirmar», no vencido', () => {
+  const sinFila = p({ fechaPrevista: '2026-08-25', conciliado: false })
+  assert.equal(estadoDePago(sinFila, HOY), 'sin_conciliar')
+  assert.equal(ROTULO_ESTADO.sin_conciliar, 'a confirmar')
+  assert.equal(resumenDeCobro([sinFila], null, HOY).vencido, 0)
+  // Ser el próximo pago no le cambia la palabra: «próximo» sobre algo que quizás ya se pagó, no.
+  assert.equal(marcaDeFila('sin_conciliar', true), 'sin_conciliar')
 })
 
 test('pagado gana sobre todo: una factura pagada tarde no es «vencida»', () => {

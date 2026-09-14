@@ -179,6 +179,8 @@ export function aPagoDelPortal(f: FilaEsquema, obraNombre: string, obraCerrada =
     devolucionEn: null,
     devueltoEn: null,
     estadoFijado: estadoFijadoDe(f),
+    // Sólo una fila que `vivo.ts` encontró en la réplica de Cobranzas puede publicarse vencida.
+    conciliado: f.estado_vivo === true,
   }
 }
 

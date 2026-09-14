@@ -132,7 +132,10 @@ export function refrescarConCobranzas(
   const out: FilaEsquema[] = []
   for (const f of filas) {
     const v = f.cobranza_fila == null ? undefined : indice.get(Number(f.cobranza_fila))
-    if (!v) { out.push(f); continue }
+    // SIN FILA VIVA (sin `cobranza_fila`, o la fila ya no está en la réplica) la copia guardada no se
+    // refresca y se DICE: `estado_vivo: false` hace que el portal no pueda publicarla vencida
+    // (auditoría, 14/09/2026 — dos filas cobradas en el Sheet se le reclamaban al cliente).
+    if (!v) { out.push({ ...f, estado_vivo: false }); continue }
     if (anuladaEnCobranzas(v)) continue
     out.push(conNumerosVivos(f, v, hoy))
   }

@@ -15,6 +15,8 @@ export const TINTA: Record<EstadoPago, string> = {
   proximo: 'text-info',
   programado: 'text-muted',
   sin_factura: 'text-faint',
+  // Gris y no ámbar: no sabemos si está en mora, y el ámbar se lo afirmaría al cliente.
+  sin_conciliar: 'text-muted',
 }
 
 export function IconoEstado({ estado, tamano = 19 }: { estado: EstadoPago; tamano?: number }) {

@@ -13,7 +13,12 @@
 // «sin factura». Reemplazar un null por 0 acá inventaría el dato que falta y encima lo sumaría.
 
 export type TipoPago = 'anticipo' | 'certificado' | 'fondo_reparo' | 'otro'
-export type EstadoPago = 'pagado' | 'vencido' | 'proximo' | 'programado' | 'sin_factura'
+/**
+ * `sin_conciliar` (auditoría, 14/09/2026): un pago con fecha pasada que NO tiene fila viva en
+ * Cobranzas. Sin la fila no se sabe si está Pendiente, Facturado o ya Cobrado, así que no se puede
+ * afirmar vencido. Ver `estadoDePago`.
+ */
+export type EstadoPago = 'pagado' | 'vencido' | 'proximo' | 'programado' | 'sin_factura' | 'sin_conciliar'
 
 export type Pago = {
   id: string
@@ -40,6 +45,10 @@ export type Pago = {
   devueltoEn: string | null
   /** Lo que el administrador fijó a mano. Gana sobre lo derivado. */
   estadoFijado: EstadoPago | null
+  /** `true` = el estado se leyó de la fila viva de Cobranzas. `false` = no hay fila viva que lo
+   *  respalde: con la fecha pasada el pago es `sin_conciliar`, nunca `vencido`. Obligatorio a
+   *  propósito: quien arma un `Pago` tiene que decidirlo, no heredar un «sí» por omisión. */
+  conciliado: boolean
 }
 
 const soloDia = (iso: string) => iso.slice(0, 10)
@@ -57,7 +66,13 @@ export function estadoDePago(p: Pago, hoyISO: string): EstadoPago {
   if (!p.facturaNumero && !p.fechaPrevista) return 'sin_factura'
   if (!p.fechaPrevista) return 'programado'
   const hoy = soloDia(hoyISO)
-  if (soloDia(p.fechaPrevista) < hoy) return 'vencido'
+  // ═══ SIN FILA VIVA NO HAY MORA (auditoría, 14/09/2026) ═══
+  //
+  // Esta rama derivaba «vencido» de la fecha guardada. Las filas de `esquema_pago` sin
+  // `cobranza_fila` nunca se refrescan, así que el portal le publicaba a La Estrella $8.234.758,25
+  // vencidos y a Messina $3.488.735 que la pestaña Cobranzas tiene COBRADOS. Una fecha pasada sin la
+  // fila del Sheet que la respalde no dice nada del cobro: se dice que no está conciliado.
+  if (soloDia(p.fechaPrevista) < hoy) return p.conciliado ? 'vencido' : 'sin_conciliar'
   return 'programado'
 }
 
@@ -311,6 +326,9 @@ export const ROTULO_ESTADO: Record<EstadoPago, string> = {
   proximo: 'próximo',
   programado: 'pendiente',
   sin_factura: 'sin factura',
+  // Lo lee el CLIENTE: «sin conciliar» es una palabra de administración. «a confirmar» dice lo que
+  // pasa —no sabemos todavía si ese pago entró— sin reclamarle nada.
+  sin_conciliar: 'a confirmar',
 }
 
 /**
@@ -328,7 +346,7 @@ export const ROTULO_ESTADO: Record<EstadoPago, string> = {
  * `pagado` está en la misma lista por la misma razón, aunque hoy `proximoPago` no pueda devolver
  * uno: la regla no depende de que otra función siga filtrando bien.
  */
-const NO_LOS_TAPA_EL_PROXIMO: EstadoPago[] = ['vencido', 'pagado']
+const NO_LOS_TAPA_EL_PROXIMO: EstadoPago[] = ['vencido', 'pagado', 'sin_conciliar']
 
 export function marcaDeFila(estado: EstadoPago, esProximo: boolean): EstadoPago {
   if (NO_LOS_TAPA_EL_PROXIMO.includes(estado)) return estado
