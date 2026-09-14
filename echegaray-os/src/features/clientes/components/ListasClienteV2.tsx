@@ -153,8 +153,8 @@ const AYUDA_MANO_OBRA = 'La mano de obra propia de este trabajo, con la MISMA de
   + 'sin recibo del estudio todavía). «sin valorizar» = falta la tarifa de alguien; ámbar = incompleto.'
 
 /** LOS SUBCONTRATOS, DISCRIMINADOS (dueño, 14/09/2026): ni material ni mano de obra propia. */
-const AYUDA_SUBCONTRATOS = 'Lo facturado por subcontratistas a este trabajo, a la fecha: proveedor con rubro '
-  + '«Subcontratista» declarado o familia «Subcontratos y mano de obra». No está en Materiales ni en Mano de obra.'
+const AYUDA_SUBCONTRATOS = 'Lo facturado por subcontratistas a este trabajo, a la fecha: proveedores marcados '
+  + '«Subcontratista» en su ficha. No está en Materiales ni en Mano de obra.'
 
 /** La sangría del handoff (`dc.html:113`, `padding-left:16px`), que reemplaza los 13 del v2. */
 const SANGRIA = 16
@@ -407,7 +407,7 @@ export function ObrasDelCliente({
               plata parecía otro dato numérico. La celda tiene UNA tipografía por vez y la elige lo
               que hay adentro (dueño, 10/09/2026: «hay mezcla de diseño»). */}
           {veEconomia
-            ? <ContratadoDeLaFicha contratado={contratado} cerrada={cerrada} consolidado={consolidar(fila, (h) => baseContractualDe(economia?.get(h.obra_id)))} />
+            ? <ContratadoDeLaFicha contratado={contratado} origen={e?.origen ?? null} cerrada={cerrada} consolidado={consolidar(fila, (h) => baseContractualDe(economia?.get(h.obra_id)))} />
             : (
                 <span
                   data-testid="contratado-sin-permiso"
