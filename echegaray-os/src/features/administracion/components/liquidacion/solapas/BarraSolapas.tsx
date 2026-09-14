@@ -30,8 +30,11 @@ export function BarraSolapas({ activa, hrefDe }: {
         fontSize: '13px', borderBottom: `1px solid ${V.linea}`, position: 'relative',
       }}
     >
+      {/* EN LA VISTA PRINCIPAL NO SE ROTULA «QUINCENA»: ya lo dicen la solapa «Liquidación» y el
+          título del cuadro. Un rótulo más era un cuarto nivel de navegación (máximo dos, skill de
+          diseño §2). El testid queda para los E2E. */}
       {enPrincipal
-        ? <span data-testid={`solapa-${principal.clave}`} style={activo}>{principal.titulo}</span>
+        ? <span data-testid={`solapa-${principal.clave}`} hidden />
         : (
           <Link href={hrefDe(principal.clave)} prefetch={false} data-testid={`solapa-${principal.clave}`}
             style={{ ...inactivo, color: V.tinta }}>← {principal.titulo}</Link>

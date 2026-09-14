@@ -121,8 +121,12 @@ export async function SolapaCostoHora({ quincena, hoy }: { quincena: Quincena; h
               height: 32, fontSize: '11.5px', color: V.apagado,
             }}>
               <span>Multiplicador</span>
-              <span style={{ color: entero.valor == null ? V.warn : V.apagado }}>
-                {entero.valor == null ? 'sin cargar' : mult(entero.valor)}
+              {/* ESTIMADO, NO DATO (regla de oro 2). Las alícuotas salen de lo pagado ene–ago sobre el
+                  bolsillo imputado; contra el banco no cerró y falta «Mis Facilidades» de ARCA. */}
+              <span data-testid="multiplicador-estimado"
+                title="Derivado de lo pagado ene–ago 2026. No validado contra banco: falta «Mis Facilidades» de ARCA."
+                style={{ color: entero.valor == null ? V.warn : V.apagado }}>
+                {entero.valor == null ? 'sin cargar' : `${mult(entero.valor)} · estimado`}
               </span>
             </div>
             {/* EL MATIZ DE LA MITAD DECLARADA — §5. Con mitad recibo / mitad efectivo sólo lo blanco

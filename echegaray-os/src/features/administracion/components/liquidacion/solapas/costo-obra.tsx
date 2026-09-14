@@ -97,7 +97,8 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
         Las horas ya se imputan; la plata todavía no. Esto lo cierra.
         {m.valor == null
           ? ' Falta el multiplicador: cargá las alícuotas arriba para que estas horas se conviertan en costo.'
-          : ''}
+          // EL COSTO CARGADO ES UNA ESTIMACIÓN: el multiplicador no se validó contra banco (regla de oro 2).
+          : ' Costo estimado: el multiplicador de cargas todavía no se validó contra banco.'}
       </p>
 
       {lineas.length === 0 ? (

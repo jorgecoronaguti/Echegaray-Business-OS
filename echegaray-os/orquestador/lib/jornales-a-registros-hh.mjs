@@ -537,6 +537,11 @@ export const SQL_PISAR_WEB = `
 update public.registros_hh
    set horas = $2::numeric, tipo_hora = $3::text, obra_canonica_id = $4::text,
        fuente_legacy = '${FUENTE}',
+       -- LA FILA PASA A SER DE LA PLANILLA, Y SIN AUTOR. El trigger conserva el autor anterior
+       -- cuando no hay sesión (coalesce(auth.uid(), new.actualizado_por)): sin este null, la fila
+       -- que la planilla acaba de pisar quedaba «editada por una persona» y congelada para siempre
+       -- (auditoría 14/09/2026, las 4 filas del 11/09).
+       actualizado_por = null,
        notas = nullif(concat_ws(' · ', nullif($5::text, ''), $6::text), ''),
        actualizado_en = now()
  where id = $1 and fuente_legacy like 'web:%' and actualizado_por is null

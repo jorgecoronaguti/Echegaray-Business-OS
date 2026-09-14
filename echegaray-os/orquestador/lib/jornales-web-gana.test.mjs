@@ -61,6 +61,12 @@ test('LA JORNADA AUTOMÁTICA Y LA CARGA DEL JEFE, SIN TOCAR, LA SIGUE PISANDO LA
   assert.equal(laTocoUnaPersona({ fuente_legacy: 'web:presencia-defecto', actualizado_por: 'u' }), true)
 })
 
+test('PISAR UNA FILA DE LA WEB LE SACA EL AUTOR: si no, queda «editada a mano» para siempre', () => {
+  // Auditoría 14/09/2026: el trigger conserva el autor viejo sin sesión, y las 4 filas pisadas el
+  // 11/09 aparecían como correcciones humanas y congelaban su día.
+  assert.match(SQL_PISAR_WEB, /actualizado_por = null/)
+})
+
 test('LAS TRES ESCRITURAS TIENEN LA GUARDA EN SQL (segunda cerradura contra la carrera)', () => {
   for (const [nombre, sql] of Object.entries({ SQL_UPSERT, SQL_MOVER, SQL_PISAR_WEB })) {
     assert.match(sql, /actualizado_por is null/, nombre)

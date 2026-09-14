@@ -433,8 +433,10 @@ export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
       )}
       {cerrar && (
         <a href={cerrar} data-testid="espejo-ir-a-cerrar" style={{
-          marginLeft: 'auto', fontSize: '12.5px', fontWeight: 600, color: V.grafito, textDecoration: 'none',
-          padding: '6px 12px', borderRadius: 6, background: V.marca,
+          // GRAFITO, NO AMARILLO: el amarillo de marca da 1,6:1 contra blanco y con texto oscuro se
+          // lee como advertencia. Acción = grafito (skill de diseño del OS, §1).
+          marginLeft: 'auto', fontSize: '12.5px', fontWeight: 600, color: '#FFFFFF', textDecoration: 'none',
+          padding: '6px 12px', borderRadius: 6, background: V.grafito,
         }}>Cerrar quincena →</a>
       )}
     </div>
