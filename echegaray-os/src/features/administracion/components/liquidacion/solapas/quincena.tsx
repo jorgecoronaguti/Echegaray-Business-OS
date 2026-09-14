@@ -44,12 +44,20 @@ import type { PropsDeSolapa } from './index'
 // el chip. Y cuando el espejo no está leído, el sello lo dice con todas las letras en vez de mostrar
 // una tabla que parece cotejada.
 
+// CÓMO COBRA, NO EN QUÉ CUADRO ESTÁ. Dueño, 14/09/2026: *«si solo quiero ver los valores de los que
+// cobran en quincena no puedo»*. El recorte ya existía con los nombres de los cuadros («Obreros»,
+// «Oficina») y con un rótulo de 9,5 px: no se leía como la pregunta que él hace. La clave sigue
+// siendo el cuadro porque la modalidad la impone el cuadro (`modalidadDe`): obreros = por hora,
+// liquidados por quincena; oficina = neto mensual.
 const RECORTES: { clave: GrupoLiquidacion | 'todos'; texto: string }[] = [
   { clave: 'todos', texto: 'Todos' },
-  { clave: 'oficina', texto: 'Oficina' },
-  { clave: 'obreros', texto: 'Obreros' },
-  { clave: 'final', texto: 'Finales' },
+  { clave: 'obreros', texto: 'Por quincena' },
+  { clave: 'oficina', texto: 'Mensuales' },
+  { clave: 'final', texto: 'Liq. finales' },
 ]
+
+/** Sin tildes ni mayúsculas: «aguero» encuentra a «AGÜERO CRISTIAN». */
+const normalizar = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
 
 export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }: PropsDeSolapa) {
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? (quincenaPedida as string) : hoy)
@@ -90,7 +98,10 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
   // EL RECORTE RECORTA LAS FILAS QUE SE VEN Y EL TOTAL QUE LAS ACOMPAÑA. Un pie que sumara el plantel
   // entero debajo de tres filas filtradas sería un total que no cierra con lo que está arriba.
   const grupo = RECORTES.find((r) => r.clave === parametros.grupo)?.clave ?? 'todos'
-  const visibles = grupo === 'todos' ? filas : filas.filter((f) => f.grupo === grupo)
+  const buscar = normalizar(parametros.buscar ?? '')
+  const visibles = filas
+    .filter((f) => grupo === 'todos' || f.grupo === grupo)
+    .filter((f) => !buscar || normalizar(f.nombre).includes(buscar))
   const secciones = seccionesDelEspejo(visibles, tituloDe)
   const totales = totalesDelEspejo(visibles)
 
@@ -117,7 +128,16 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
           <Aviso tono="neg" testid="quincena-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
         </div>
       ))}
-      <FiltrosDelEspejo periodos={periodos} grupos={grupos} />
+      <FiltrosDelEspejo
+        periodos={periodos}
+        grupos={grupos}
+        busqueda={{
+          valor: parametros.buscar ?? '',
+          ocultos: { vista: 'liquidacion', quincena: quincena.desde, ...(grupo === 'todos' ? {} : { grupo }) },
+          limpiar: parametros.buscar ? hrefDe({ buscar: undefined }) : null,
+        }}
+        cerrar={hrefDe({ solapa: 'cierre', buscar: undefined })}
+      />
       <GrillaEspejoQuincena
         dias={dias}
         secciones={secciones}

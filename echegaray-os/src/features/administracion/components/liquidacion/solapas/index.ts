@@ -74,12 +74,14 @@ export const SOLAPAS: SolapaDeLiquidacion[] = [
   // EL ESPEJO DEL BLOQUE DE JORNALES. Va primera porque es la pantalla que reemplaza a la planilla:
   // una fila por persona, una columna por día, y la cadena de pago a la derecha.
   { clave: 'quincena', titulo: 'Quincena', Componente: SolapaQuincena as unknown as ComponentType<PropsDeSolapa> },
-  { clave: 'horas', titulo: 'Horas', Componente: SolapaHoras },
-  { clave: 'pagos', titulo: 'Pagos', Componente: SolapaPagos as unknown as ComponentType<PropsDeSolapa> },
+  // DESDE ACÁ, TODO VA AL DESPLEGABLE «MÁS» (dueño, 14/09/2026: «son demasiadas secciones»). La barra
+  // muestra sólo la primera; el orden de abajo es el orden del desplegable.
+  { clave: 'horas', titulo: 'Horas por día', Componente: SolapaHoras },
+  { clave: 'pagos', titulo: 'Pagos y caja', Componente: SolapaPagos as unknown as ComponentType<PropsDeSolapa> },
   { clave: 'costo', titulo: 'Costo a la obra', Componente: SolapaCosto },
   { clave: 'convenios', titulo: 'Convenios', Componente: SolapaConvenios },
   // La ruta ya cortó con notFound() a quien no liquida: llegar acá es poder cerrar.
-  { clave: 'cierre', titulo: 'Cierre', Componente: ((p: PropsDeSolapa) => SolapaCierre({ ...p, puedeCerrar: true })) as unknown as ComponentType<PropsDeSolapa> },
+  { clave: 'cierre', titulo: 'Cerrar quincena', Componente: ((p: PropsDeSolapa) => SolapaCierre({ ...p, puedeCerrar: true })) as unknown as ComponentType<PropsDeSolapa> },
   { clave: 'recibos', titulo: 'Recibos', Componente: SolapaRecibos },
 ]
 

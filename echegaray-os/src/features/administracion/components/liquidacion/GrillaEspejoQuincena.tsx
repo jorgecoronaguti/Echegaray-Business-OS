@@ -400,17 +400,43 @@ function PieDelEspejo({ totales }: { totales: TotalesDelEspejo }) {
  * siguiente) y grupo. Nada más». Un panel de filtros al costado le roba 230 px a una tabla que ya
  * necesita 1.500.
  */
-export function FiltrosDelEspejo({ periodos, grupos }: {
+export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
   periodos: { texto: string; activo: boolean; href: string }[]
   grupos: { texto: string; activo: boolean; href: string }[]
+  /** Buscar por nombre. Formulario GET: sin JavaScript, y la URL queda compartible. */
+  busqueda?: { valor: string; ocultos: Record<string, string>; limpiar: string | null }
+  /** A dónde lleva «Cerrar quincena». El cierre vive en su pantalla: sella y no se deshace sin firma. */
+  cerrar?: string
 }) {
   return (
     <div data-testid="espejo-filtros" style={{
       display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', padding: '0 0 14px',
-      fontSize: '12px',
+      fontSize: '12.5px',
     }}>
       <Grupo rotulo="Quincena" opciones={periodos} testid="espejo-quincenas" />
-      <Grupo rotulo="Grupo" opciones={grupos} testid="espejo-grupos" />
+      <Grupo rotulo="Cobra" opciones={grupos} testid="espejo-grupos" />
+      {busqueda && (
+        <form method="get" data-testid="espejo-buscar" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {Object.entries(busqueda.ocultos).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+          <input
+            type="search" name="buscar" defaultValue={busqueda.valor} placeholder="Buscar persona…"
+            aria-label="Buscar persona"
+            style={{
+              height: 30, width: 180, padding: '0 10px', borderRadius: 6, fontSize: '12.5px',
+              border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta,
+            }}
+          />
+          {busqueda.limpiar && (
+            <a href={busqueda.limpiar} style={{ fontSize: '12px', color: V.apagado }}>limpiar</a>
+          )}
+        </form>
+      )}
+      {cerrar && (
+        <a href={cerrar} data-testid="espejo-ir-a-cerrar" style={{
+          marginLeft: 'auto', fontSize: '12.5px', fontWeight: 600, color: V.grafito, textDecoration: 'none',
+          padding: '6px 12px', borderRadius: 6, background: V.marca,
+        }}>Cerrar quincena →</a>
+      )}
     </div>
   )
 }
@@ -423,7 +449,7 @@ function Grupo({ rotulo, opciones, testid }: {
   if (opciones.length === 0) return null
   return (
     <div data-testid={testid} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <span style={{ fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.05em', color: V.tenue, textTransform: 'uppercase' }}>
+      <span style={{ fontSize: '12px', fontWeight: 600, color: V.tintaSuave }}>
         {rotulo}
       </span>
       {opciones.map((o) => (

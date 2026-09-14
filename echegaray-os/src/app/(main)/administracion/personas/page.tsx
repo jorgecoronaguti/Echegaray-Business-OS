@@ -82,6 +82,8 @@ type Busqueda = {
   /** Las siete solapas de Liquidación (`solapas/index.ts`). Default `quincena`. */
   /** Los recortes de Liquidación: qué pendiente se mira (`SolapaHoras`) y qué grupo (`SolapaQuincena`). */
   solapa?: string; pendiente?: string; grupo?: string
+  /** Buscar persona dentro de la vista Quincena. No es `q`: ése es el buscador del padrón. */
+  buscar?: string
 }
 
 function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): string {
@@ -121,6 +123,7 @@ const hrefLiquidacion = (quincena?: string): string =>
 function hrefSolapa(base: Busqueda, cambios: Record<string, string | undefined>): string {
   const actual: Record<string, string | undefined> = {
     solapa: base.solapa, quincena: base.quincena, pendiente: base.pendiente, grupo: base.grupo,
+    buscar: base.buscar,
   }
   const params = new URLSearchParams({ vista: 'liquidacion' })
   for (const [k, v] of Object.entries({ ...actual, ...cambios })) {
@@ -299,7 +302,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                 <Contenido
                   quincenaPedida={sp.quincena}
                   hoy={hoy}
-                  parametros={{ pendiente: sp.pendiente, grupo: sp.grupo }}
+                  parametros={{ pendiente: sp.pendiente, grupo: sp.grupo, buscar: sp.buscar }}
                   hrefDe={(cambios) => hrefSolapa(sp, cambios)}
                 />
               ) : (

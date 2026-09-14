@@ -66,6 +66,28 @@ test('LA VISTA NO RECALCULA LA CADENA DE PAGO NI LAS HORAS', () => {
   assert.ok(!/cobra\s*-\s*/.test(VISTA), 'la vista no rehace la resta de la cadena')
 })
 
+test('EL RECORTE PREGUNTA CÓMO COBRA: por quincena o mensual (dueño, 14/09/2026)', () => {
+  // EL DEFECTO QUE ATRAPA: volver a rotular con el nombre del cuadro en letra de 9,5 px, que es lo que
+  // hizo que el dueño no encontrara cómo ver sólo a los que cobran por quincena.
+  assert.match(VISTA, /clave: 'obreros', texto: 'Por quincena'/)
+  assert.match(VISTA, /clave: 'oficina', texto: 'Mensuales'/)
+  assert.match(GRILLA, /rotulo="Cobra"/)
+})
+
+test('EL BUSCADOR RECORTA LAS FILAS Y EL TOTAL, y conserva quincena y recorte', () => {
+  assert.match(VISTA, /normalizar\(f\.nombre\)\.includes\(buscar\)/)
+  // El total sale de las MISMAS filas visibles: un pie del plantel entero no cerraría con lo de arriba.
+  assert.match(VISTA, /totalesDelEspejo\(visibles\)/)
+  assert.match(VISTA, /ocultos: \{ vista: 'liquidacion', quincena: quincena\.desde/)
+})
+
+test('LA BARRA MUESTRA UNA SOLA PANTALLA Y MANDA EL RESTO A «MÁS» (dueño, 14/09/2026)', () => {
+  const BARRA = fuente('./BarraSolapas.tsx')
+  assert.match(BARRA, /data-testid="liquidacion-mas"/)
+  assert.match(BARRA, /s\.clave !== SOLAPA_POR_DEFECTO/)
+  assert.ok(!/SOLAPAS\.map\(/.test(BARRA), 'la barra no vuelve a dibujar las siete en fila')
+})
+
 test('EL SELLO DICE «SIN LEER» CUANDO NO HAY ESPEJO: un control que no mira no dice que está bien', () => {
   assert.match(VISTA, /espejo-sin-leer/)
   assert.match(VISTA, /sin leer para esta quincena/)
