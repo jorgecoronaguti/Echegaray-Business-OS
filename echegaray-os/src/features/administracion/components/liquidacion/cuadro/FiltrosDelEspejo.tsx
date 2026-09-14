@@ -1,6 +1,14 @@
-// LOS FILTROS DEL CUADRO DE LA QUINCENA. Mudados enteros desde `GrillaEspejoQuincena.tsx`, que
-// pasaba las 500 líneas: ni un rótulo ni un comportamiento cambió.
+// LOS FILTROS DEL CUADRO DE LA QUINCENA. Mudados desde `GrillaEspejoQuincena.tsx`, que pasaba las
+// 500 líneas: los rótulos y los recortes son los mismos.
+//
+// ═══ LOS ENLACES VAN CON `Link`, NO CON `<a href>` ═══
+//
+// Al mudarlos, `navegacion-sin-anchor-crudo.test.ts` los acusó: un `<a href>` interno tira el
+// documento entero y lo vuelve a pedir (dueño, 08/09/2026: «cada vez que cambio de sección vuelve a
+// hacer reload de toda la página»). Cambiar de quincena o de recorte es la navegación que más se
+// repite en esta pantalla. El buscador sigue siendo un formulario GET: funciona sin JavaScript.
 
+import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 
 /**
@@ -35,17 +43,17 @@ export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
             }}
           />
           {busqueda.limpiar && (
-            <a href={busqueda.limpiar} style={{ fontSize: '12px', color: V.apagado }}>limpiar</a>
+            <Link href={busqueda.limpiar} prefetch={false} style={{ fontSize: '12px', color: V.apagado }}>limpiar</Link>
           )}
         </form>
       )}
       {cerrar && (
-        <a href={cerrar} data-testid="espejo-ir-a-cerrar" style={{
+        <Link href={cerrar} prefetch={false} data-testid="espejo-ir-a-cerrar" style={{
           // GRAFITO, NO AMARILLO: el amarillo de marca da 1,6:1 contra blanco y con texto oscuro se
           // lee como advertencia. Acción = grafito (skill de diseño del OS, §1).
           marginLeft: 'auto', fontSize: '12.5px', fontWeight: 600, color: '#FFFFFF', textDecoration: 'none',
           padding: '6px 12px', borderRadius: 6, background: V.grafito,
-        }}>Cerrar quincena →</a>
+        }}>Cerrar quincena →</Link>
       )}
     </div>
   )
@@ -63,12 +71,12 @@ function Grupo({ rotulo, opciones, testid }: {
         {rotulo}
       </span>
       {opciones.map((o) => (
-        <a key={o.href} href={o.href} style={{
+        <Link key={o.href} href={o.href} prefetch={false} style={{
           fontSize: '12px', textDecoration: 'none', padding: '4px 8px', borderRadius: 4,
           color: o.activo ? V.tinta : V.apagado,
           background: o.activo ? '#F1F0EC' : 'transparent',
           fontWeight: o.activo ? 600 : 400,
-        }}>{o.texto}</a>
+        }}>{o.texto}</Link>
       ))}
     </div>
   )
