@@ -1,10 +1,11 @@
 // EL CUADRO DE LA QUINCENA: horas por tipo, totales que recortan con el filtro y el historial del
 // valor hora. Todo puro, sin base.
 //
-// MUTACIONES QUE ESTO PONE EN ROJO (probadas a mano el 14/09/2026, ver el informe de la rama):
-//   · sumar `extra_50` dentro de `normales` en `horasPorTipo`
-//   · calcular `horasPorTipo` de los totales sobre TODAS las filas en vez de las recibidas
-//   · medir el % de aumento contra la primera tarifa en vez de la anterior
+// MUTACIONES CORRIDAS EL 14/09/2026 (respaldo, mutación, test dirigido, restauración):
+//   · `extra_50` sumado a `normales` en `horasPorTipo`            → rojo acá (dos tests)
+//   · % de aumento contra la PRIMERA tarifa (`??=`)                → rojo acá
+//   · el pie de la vista sobre `filas` en vez de `visibles`       → rojo en solapaQuincena.test.ts
+//   · la acción de tarifa con `.upsert(` en vez de `.insert(`     → rojo en solapaQuincena.test.ts
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
