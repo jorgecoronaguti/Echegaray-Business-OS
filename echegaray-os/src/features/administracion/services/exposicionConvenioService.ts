@@ -80,6 +80,11 @@ interface FilaLegajo {
 /** LAS CUATRO LECTURAS EN UNA TANDA. Ninguna depende de otra. */
 export async function getExposicionDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
+  /**
+   * EL PLANTEL DE LA QUINCENA (`leerPlantelDeLaQuincena`). Sin él, todas las personas reales —lo que
+   * necesita la liquidación, que decide su plantel después con estas mismas lecturas—. Nunca `en_la_empresa`.
+   */
+  plantel?: ReadonlySet<string>,
 ): Promise<ExposicionDeLaQuincena> {
   const [legajo, tarifas, escala, cct, recibos] = await Promise.all([
     supabase.from('persona_legajo')
@@ -131,7 +136,7 @@ export async function getExposicionDeLaQuincena(
       (legajo.data ?? []) as { nombre_completo?: string | null; email?: string | null }[],
       (r) => ({ nombre: r.nombre_completo, email: r.email }),
     ),
-    tarifas.data, q, recibos.filas,
+    tarifas.data, q, recibos.filas, plantel,
   )
   const lineas = personas
     .map((p) => exponerAlPiso(p, escalas, q.hasta, horasEsperadas))
@@ -182,10 +187,11 @@ const ordenarPorUrgencia = (a: LineaExposicion, b: LineaExposicion): number => {
  * quincena, o el vigente de `persona_tarifa` si no tiene recibo. Los dados de baja no se exponen.
  */
 function personasDelPlantel(
-  legajo: unknown, tarifas: unknown, q: Quincena, recibos: readonly ReciboDeSueldo[],
+  legajo: unknown, tarifas: unknown, q: Quincena, recibos: readonly ReciboDeSueldo[], plantel?: ReadonlySet<string>,
 ): PersonaExpuesta[] {
   const periodo = periodoDeRecibo(q)
-  const filas = ((legajo ?? []) as FilaLegajo[]).filter((p) => p.en_la_empresa !== false)
+  // EL PLANTEL QUE LA QUINCENA TUVO, NO EL DE HOY (dueño, 14/09/2026).
+  const filas = ((legajo ?? []) as FilaLegajo[]).filter((p) => !plantel || plantel.has(p.id))
   const todas = (tarifas ?? []) as {
     persona_id: string; desde: string; valor_hora: number | null; neto_mensual: number | null; origen: string
   }[]

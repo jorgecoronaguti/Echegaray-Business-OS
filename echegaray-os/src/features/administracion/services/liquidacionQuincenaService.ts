@@ -93,6 +93,8 @@ export interface LiquidacionDeLaQuincena {
    * Sus errores van en `errores`.
    */
   exposicion: ExposicionDeLaQuincena
+  /** Los `persona_id` del plantel de ESTA quincena (`plantelDeLaQuincena`). Caja, Cierre y Costo leen éste. */
+  plantel: string[]
   /** `false` mientras `recibo_sueldo_linea` no exista: el neto sale de `nomina_recibo_neto`. */
   hayRecibosDeSueldo: boolean
   /** Cada fuente que no se pudo leer, con su mensaje. Vacío = se leyó todo. */
@@ -125,14 +127,16 @@ const sinTabla = (e: { code?: string; message: string }): boolean =>
 export async function getLiquidacionDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<LiquidacionDeLaQuincena> {
-  const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, anterior, espejo, sesionDePrueba,
+  const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, espejo, sesionDePrueba,
     exposicion] =
     await Promise.all([
       // `puesto` VIAJA CON EL PLANTEL para que las pantallas de Liquidación ordenen y rotulen como
       // el resto de Personal (dueño, 10/09/2026). Es la misma columna y la misma función
       // (`esJefeDeObra`) que ya usan Plantel, Asistencia y la grilla de Horas: si cada pantalla
       // decidiera por su cuenta quién es jefe, habría tantas respuestas como pantallas.
-      supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, puesto'),
+      // `fecha_ingreso` Y `fecha_egreso` VIAJAN: el plantel de la quincena es el que TUVO, no el de hoy
+      // (`plantelDeLaQuincena`). `persona_directorio` publica las bajas; `persona_plantel` no.
+      supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, puesto, fecha_ingreso, fecha_egreso'),
       // El CUIL es la llave del recibo y del giro. Vive en `persona_legajo`, que lleva su portero
       // adentro: es el único camino de la web a ese campo (ver `personasService.ts`).
       // POR LA PUERTA COMPARTIDA (`lecturasCompartidasDeQuincena.ts`): la solapa Horas pide estas
@@ -163,12 +167,6 @@ export async function getLiquidacionDeLaQuincena(
       supabase.from('nomina_adelanto').select('cuil, fecha, importe, concepto')
         .gte('fecha', q.desde).lte('fecha', q.hasta),
       leerCabecerasGuardadas(supabase, q),
-      // LA ÚLTIMA QUINCENA CERRADA ANTES DE ÉSTA: es la evidencia principal de que alguien está
-      // activo («le liquidamos la quincena pasada») y de dónde sale el $/h heredado.
-      supabase.from('liquidacion_quincena')
-        .select('desde, hasta, liquidacion_linea(persona_id)')
-        .eq('estado', 'cerrada').lt('hasta', q.desde)
-        .order('hasta', { ascending: false }).limit(1),
       // ═══ LA PLATA QUE EL DUEÑO ESCRIBE EN LA PLANILLA (11/09/2026) ═══
       //
       // Textual: *«todo lo referente a adelantos de plata no está»*. Se lee ACÁ y no en cada solapa
@@ -201,7 +199,6 @@ export async function getLiquidacionDeLaQuincena(
   anotar('los recibos del estudio', recibos.error)
   anotar('los giros del extracto', adelantos.error)
   anotar('la liquidación guardada', guardadas.error)
-  anotar('la quincena anterior', anterior.error)
   anotar('el espejo de JORNALES', espejo.error ? { message: espejo.error } : null)
   // LOS ERRORES DE LA EXPOSICIÓN INCLUYEN LOS DE LOS RECIBOS: sin la tabla es «sin recibo»; cualquier
   // otro error se dice, porque fingir que no hay recibo estimaría el blanco de alguien que sí lo tiene.
@@ -212,12 +209,14 @@ export async function getLiquidacionDeLaQuincena(
   )
   const personas: PersonaDeLiquidacion[] =
     ((directorio.data ?? []) as
-      { id: string; nombre_completo: string; en_la_empresa: boolean; puesto: string | null }[])
+      { id: string; nombre_completo: string; en_la_empresa: boolean; puesto: string | null; fecha_ingreso: string | null; fecha_egreso: string | null }[])
       .map((r) => ({
         id: r.id,
         nombre: r.nombre_completo,
         cuil: cuilPorPersona.get(r.id) ?? null,
         enLaEmpresa: r.en_la_empresa !== false,
+        fechaIngreso: r.fecha_ingreso ? String(r.fecha_ingreso).slice(0, 10) : null,
+        fechaEgreso: r.fecha_egreso ? String(r.fecha_egreso).slice(0, 10) : null,
         esJefe: esJefeDeObra(r.puesto),
       }))
 
@@ -232,19 +231,21 @@ export async function getLiquidacionDeLaQuincena(
   // QUIÉN PREGUNTA DECIDE SI LAS IDENTIDADES DE PRUEBA ENTRAN. Se lee de la base —la misma función
   // que filtra `persona_directorio`— y no se deduce del rol: una cuenta de prueba tiene rol de
   // Dirección igual que el dueño.
-  const { activas, sinActividad } = plantelDeLaQuincena(personas, {
-    conLineaEnLaAnterior: idsDeLaAnterior(anterior.data),
+  // ═══ EL PLANTEL QUE LA QUINCENA TUVO (dueño, 14/09/2026) ═══ La regla es `plantelDeLaQuincena`: actividad
+  // en la quincena, o fechas de ingreso/egreso que la cubren. Se evalúa con lo que esta función YA leyó.
+  const periodoDelPlantel = periodoDeRecibo(q)
+  const { activas, sinActividad, conActividad } = plantelDeLaQuincena(personas, q, {
     conHoras: new Set(((registros.data ?? []) as { persona_id: string }[]).map((r) => r.persona_id)),
-    conAsistencia: new Set(((presencias.data ?? []) as { persona_id: string }[]).map((r) => r.persona_id)),
-    conTarifaNueva: new Set(
-      ((tarifas.data ?? []) as { persona_id: string; desde: string }[])
-        .filter((t) => t.desde >= q.desde).map((t) => t.persona_id),
-    ),
+    conLinea: new Set(overrides.keys()),
+    conRecibo: new Set(exposicion.recibos.filter((r) => r.periodo === periodoDelPlantel)
+      .map((r) => r.personaId ?? personas.find((p) => p.cuil != null && p.cuil === r.cuil)?.id)
+      .filter((x): x is string => !!x)),
+    conJornales: new Set(espejo.cadenaPorPersona.keys()),
   }, sesionDePrueba)
 
   const cuadros = armarCuadros({
       quincena: q,
-      personas: activas,
+      personas: activas.map((p) => ({ ...p, conActividad: conActividad.has(p.id) })),
       tarifas: (tarifas.data ?? []) as FilaTarifa[],
       horas: horasPorPersona(q, registros.data, presencias.data),
       recibos: ((recibos.data ?? []) as FilaRecibo[]).map((r) => ({ ...r, neto: numero(r.neto) })),
@@ -287,6 +288,7 @@ export async function getLiquidacionDeLaQuincena(
   return {
     sinActividad: sinActividad.map((p) => ({ id: p.id, nombre: p.nombre })),
     exposicion,
+    plantel: activas.map((p) => p.id),
     hayRecibosDeSueldo: exposicion.hayRecibosDeSueldo,
     horas,
     // LA QUINCENA CERRADA NO SE PISA. Sus cifras son la foto del cierre y no admiten override: si
@@ -352,11 +354,6 @@ async function leerCabecerasGuardadas(
   }
 }
 
-/** Los `persona_id` que tuvieron línea en la última quincena cerrada. Vacío si no hay ninguna. */
-function idsDeLaAnterior(data: unknown): Set<string> {
-  const filas = (data ?? []) as { liquidacion_linea: { persona_id: string }[] | null }[]
-  return new Set(filas.flatMap((f) => (f.liquidacion_linea ?? []).map((l) => l.persona_id)))
-}
 
 /** Las horas liquidables de cada persona. Una pasada por persona, con la misma regla que la grilla. */
 function horasPorPersona(

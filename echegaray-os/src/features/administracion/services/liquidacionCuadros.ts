@@ -40,6 +40,10 @@ export interface PersonaDeLiquidacion {
   /** Sin CUIL no hay recibo ni giro que emparejar: la fila lo dice, no lo adivina. */
   cuil: string | null
   enLaEmpresa: boolean
+  fechaIngreso?: string | null
+  fechaEgreso?: string | null
+  /** Tuvo actividad propia en la quincena (horas, línea, recibo, JORNALES): entra aunque falten tarifa u horas. */
+  conActividad?: boolean
   /** `esJefeDeObra(persona_directorio.puesto)`, leído UNA vez en el servicio y propagado. */
   esJefe?: boolean
 }
@@ -232,8 +236,9 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     // SIN TARIFA POR HORA Y SIN MOVIMIENTO EN LA VENTANA NO ES UNA FILA. Listar al plantel entero
     // llenaría el cuadro de gente que no cobra esta quincena, y «sin tarifa» dejaría de señalar el
     // caso que hay que resolver antes de pagar.
-    if (vigente?.valorHora == null && (h == null || (h.horas === 0 && h.presentesSinHoras === 0))) continue
-    if (!p.enLaEmpresa && (h == null || h.horas === 0)) continue
+    if (!p.conActividad && vigente?.valorHora == null && (h == null || (h.horas === 0 && h.presentesSinHoras === 0))) continue
+    // SIN CORTE POR `en_la_empresa` (dueño, 14/09/2026): quién es de esta quincena ya lo decidió
+    // `plantelDeLaQuincena`. Cortar acá por el estado de hoy sacaba de una quincena vieja a quien se fue después.
     cuadros.obreros.push(liquidarLinea(entradaDe(ctx, p, vigente, 'obreros'), 'obreros', redondeo))
   }
 

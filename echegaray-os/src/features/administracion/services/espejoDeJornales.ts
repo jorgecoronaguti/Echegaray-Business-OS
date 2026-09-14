@@ -31,6 +31,7 @@ import { ordenarComoPersonal } from './ordenDePersonal.ts'
 import { horasPorTipo, sumarHorasPorTipo, type HorasPorTipo } from './cuadroDeJornales.ts'
 import { coeficienteDeLaFila } from './liquidacionDeAusencias.ts'
 import { negroDeLaFila } from './sueldoBlancoNegro.ts'
+import { marcaDeBaja } from './liquidacionPlantelActivo.ts'
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -145,6 +146,8 @@ export interface FilaDelEspejo {
   alta: string | null
   /** Categoría del legajo, la clave tal cual. */
   categoria: string | null
+  /** «baja dd/mm» o «ya no está» cuando hoy no está en la empresa y figura en esta quincena. `null` si está. */
+  baja: { texto: string; titulo: string } | null
   /** Lo trabajado en la ventana, por tipo. Ver `cuadroDeJornales.ts`: NO es lo que liquida. */
   horasPorTipo: HorasPorTipo
 }
@@ -192,6 +195,7 @@ export function filasDelEspejo(d: DatosDelEspejo): FilaDelEspejo[] {
       cerrada,
       alta: p.fechaIngreso ?? null,
       categoria: p.categoria ?? null,
+      baja: marcaDeBaja({ enLaEmpresa: p.enLaEmpresa !== false, fechaEgreso: p.fechaEgreso ?? null }),
       horasPorTipo: horasPorTipo(suyos),
       celdas: dias.map((f) => celdaDelEspejo(f, suyos, pres.get(f), cerrada)),
       cotejo: cotejar(d, p.id, suyos, dias),

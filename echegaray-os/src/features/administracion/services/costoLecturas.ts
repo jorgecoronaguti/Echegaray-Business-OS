@@ -379,18 +379,19 @@ export async function getJornalesDelSheet(
 /**
  * EL PLANTEL CON SU CATEGORÍA Y SU $/h, para la escalera de la pantalla 5.
  *
- * Mismo corte que `getPersonasProyectables` y por la misma razón: `en_la_empresa`. Una escalera
- * armada sobre los 46 sin egreso cargado publicaría categorías que hoy no se pagan.
+ * DESDE EL 14/09/2026 ES EL PLANTEL DE LA QUINCENA MIRADA (`plantel`, de `plantelDeLaQuincena`), no el de
+ * hoy: la escalera de una quincena vieja tiene que mostrar las categorías que esa quincena pagó. La
+ * proyección de quincenas FUTURAS (`getPersonasProyectables`) sí sigue con el plantel de hoy.
  */
 export async function getPlantelParaEscalera(
-  supabase: SupabaseClient, tarifas: ReadonlyMap<string, number>,
+  supabase: SupabaseClient, tarifas: ReadonlyMap<string, number>, plantel: ReadonlySet<string>,
 ): Promise<{ personas: PersonaDeEscalera[]; error: Falla | null }> {
   const r = await supabase.from('persona_directorio').select('id, categoria, en_la_empresa')
   if (r.error) {
     return { personas: [], error: sinTabla(r.error) ? null : { que: 'el plantel', error: r.error.message } }
   }
   const personas = (r.data ?? [])
-    .filter((p) => p.en_la_empresa !== false)
+    .filter((p) => plantel.has(String(p.id)))
     .map((p): PersonaDeEscalera => ({
       personaId: String(p.id),
       categoria: p.categoria == null ? null : String(p.categoria),

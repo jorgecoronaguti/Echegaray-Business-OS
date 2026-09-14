@@ -210,6 +210,10 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
           }}>{fila.nombre}</button>
         <div style={{ fontSize: '11px', color: V.apagado, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {`${fila.categoria ? rotuloCategoria(fila.categoria) : 'sin categoría'} · ${corta(fila.alta)}`}
+          {/* QUIEN YA NO ESTÁ NUNCA DESAPARECE DE SU QUINCENA (dueño, 14/09/2026): marca chica y apagada. */}
+          {fila.baja && (
+            <span data-testid={`baja-${fila.personaId}`} title={fila.baja.titulo} style={{ marginLeft: 6, color: V.tenue }}>{fila.baja.texto}</span>
+          )}
         </div>
       </div>
       <CeldaHorasPagas fila={fila} />

@@ -228,8 +228,10 @@ export async function getDatosDeLaSolapaHoras(
     if (a.cuil) adelantoDe.set(a.cuil, (adelantoDe.get(a.cuil) ?? 0) + (numeroONulo(a.importe) ?? 0))
   }
 
-  const directorioFilas = ((directorio.data ?? []) as unknown as FilaDirectorio[])
-    .filter((p) => p.en_la_empresa !== false)
+  // SIN CORTE POR `en_la_empresa`: quién entra en la quincena lo decide `plantelDeLaQuincena`, y
+  // `leerCuadroDeLaQuincena` recorta estas personas con ese plantel. Una baja con horas en una quincena
+  // vieja se tiene que poder dibujar (dueño, 14/09/2026).
+  const directorioFilas = (directorio.data ?? []) as unknown as FilaDirectorio[]
   const porPersona: Record<string, DatosDePersona> = {}
   for (const p of directorioFilas) {
     const suyas = filasHH.filter((f) => f.persona_id === p.id)
@@ -258,6 +260,8 @@ export async function getDatosDeLaSolapaHoras(
       // ALTA Y CATEGORÍA YA VENÍAN EN ESTA LECTURA (el panel las usa): el cuadro de la quincena las
       // pide como columnas (dueño, 14/09/2026: «Legajo: alta y categoría») sin una consulta más.
       fechaIngreso: p.fecha_ingreso,
+      fechaEgreso: p.fecha_egreso,
+      enLaEmpresa: p.en_la_empresa !== false,
       categoria: p.categoria,
     })),
     registros: filasHH

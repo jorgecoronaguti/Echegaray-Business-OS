@@ -163,8 +163,9 @@ function armarPersonas(
     persona_id: string; desde: string; valor_hora: number | null; neto_mensual: number | null; origen: string
   }[]
 
+  // SIN CORTE POR `en_la_empresa` (dueño, 14/09/2026): la pantalla recorta con el plantel de la quincena
+  // (`liquidacion.plantel`, `plantelDeLaQuincena`). Cortar acá por el estado de hoy sacaba a las bajas.
   const filas = ((legajo ?? []) as FilaLegajo[])
-    .filter((p) => p.en_la_empresa !== false)
     .map((p) => {
       const vigente = tarifaVigenteAl(
         todas.filter((t) => t.persona_id === p.id).map((t) => ({

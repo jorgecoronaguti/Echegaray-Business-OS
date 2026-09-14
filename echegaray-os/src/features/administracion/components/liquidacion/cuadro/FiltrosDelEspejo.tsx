@@ -16,6 +16,12 @@ import { V } from '@/shared/components/v2/patron'
  * siguiente) y grupo. Nada más». Un panel de filtros al costado le roba 230 px a una tabla que ya
  * necesita 1.500.
  */
+/** Un objeto fijo: el mismo `style` en el servidor y en el navegador (QA, 14/09/2026, hidratación). */
+const ESTILO_BUSCADOR = {
+  height: 32, width: 180, padding: '0 10px', borderRadius: 6, fontSize: '12.5px',
+  border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta,
+} as const
+
 export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
   periodos: { texto: string; activo: boolean; href: string }[]
   grupos: { texto: string; activo: boolean; href: string }[]
@@ -42,10 +48,7 @@ export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
             key={busqueda.valor}
             type="search" name="buscar" defaultValue={busqueda.valor} placeholder="Buscar persona…"
             aria-label="Buscar persona"
-            style={{
-              height: 32, width: 180, padding: '0 10px', borderRadius: 6, fontSize: '12.5px',
-              border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta,
-            }}
+            style={ESTILO_BUSCADOR}
           />
           {busqueda.limpiar && (
             <Link href={busqueda.limpiar} prefetch={false} style={{ fontSize: '12px', color: V.apagado }}>limpiar</Link>

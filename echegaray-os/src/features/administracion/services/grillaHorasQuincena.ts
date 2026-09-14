@@ -55,6 +55,10 @@ export interface PersonaDeGrilla {
   esJefe?: boolean
   /** `persona_directorio.fecha_ingreso`. El cuadro de la quincena lo muestra como «Alta». */
   fechaIngreso?: string | null
+  /** `persona_directorio.fecha_egreso`. Con `enLaEmpresa: false` el cuadro marca «baja dd/mm». */
+  fechaEgreso?: string | null
+  /** El estado de HOY. Ausente = en la empresa. No saca a nadie de una quincena: sólo marca. */
+  enLaEmpresa?: boolean
   /** `persona_directorio.categoria`, la clave tal cual (`oficial_especializado`). */
   categoria?: string | null
 }
