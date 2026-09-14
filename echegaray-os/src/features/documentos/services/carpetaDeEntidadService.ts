@@ -20,8 +20,13 @@ import {
   type ArchivoDeCarpeta, type Carpeta, type TipoEntidad,
 } from './carpetaDeEntidad'
 
-/** Tope de filas. Una carpeta de obra tiene entre 2 y 63 archivos; 300 es techo, no expectativa. */
-export const TOPE_ARCHIVOS = 300
+/**
+ * Tope de filas. Era 300 y cortaba a ARCOR (542 archivos, 14/09/2026): el dueño veía «faltan
+ * documentos» y los más viejos no estaban. Ahora se pagina de a `PAGINA` —PostgREST devuelve como
+ * mucho 1.000 por pedido— hasta este techo, que ninguna carpeta de cliente real roza.
+ */
+export const TOPE_ARCHIVOS = 5000
+const PAGINA = 1000
 
 /**
  * Qué tan completa es la lista que se está mirando.
@@ -100,16 +105,22 @@ export async function getArchivosDeEntidad(
   const carpeta = await getCarpetaDeEntidad(supabase, tipo, entidadId)
   if (!puedeListar(carpeta) || !carpeta.path) return vacio(carpeta)
 
-  const { data, error } = await supabase
-    .from('drive_index')
-    .select('drive_file_id, name, path, mime_type, size_bytes, modified_time, web_view_link, trashed, ausente_en_drive')
-    .eq('is_folder', false)
-    .like('path', patronDeDescendencia(carpeta.path))
-    .order('modified_time', { ascending: false, nullsFirst: false })
-    .limit(TOPE_ARCHIVOS)
-  if (error) return vacio(carpeta, error.message)
-
-  const filas = data ?? []
+  const filas: Parameters<typeof archivosDeLaCarpeta>[0][number][] = []
+  for (let desde = 0; desde < TOPE_ARCHIVOS; desde += PAGINA) {
+    const { data, error } = await supabase
+      .from('drive_index')
+      .select('drive_file_id, name, path, mime_type, size_bytes, modified_time, web_view_link, trashed, ausente_en_drive')
+      .eq('is_folder', false)
+      .like('path', patronDeDescendencia(carpeta.path))
+      // `drive_file_id` desempata: sin un orden total, dos páginas pueden repetir o saltear filas.
+      .order('modified_time', { ascending: false, nullsFirst: false })
+      .order('drive_file_id', { ascending: true })
+      .range(desde, Math.min(desde + PAGINA, TOPE_ARCHIVOS) - 1)
+    if (error) return vacio(carpeta, error.message)
+    const pagina = data ?? []
+    filas.push(...pagina)
+    if (pagina.length < PAGINA) break
+  }
   return {
     carpeta,
     archivos: archivosDeLaCarpeta(filas, carpeta.path),

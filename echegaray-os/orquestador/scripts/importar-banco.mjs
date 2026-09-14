@@ -64,6 +64,11 @@ const MIGRACIONES = [
   // La cuarta marca los depósitos que el banco lista y todavía no acredita (retención de 48 hs): sin
   // ella la cadena de saldos vuelve a contar como disponible plata que no lo está.
   '20260910T1300_un_deposito_retenido_no_es_saldo.sql',
+  // LA QUINTA VA ÚLTIMA, SIEMPRE (14/09/2026). La tercera recrea con `if not exists` el índice
+  // (cuenta, referencia, importe); ésta lo borra y deja (cuenta, referencia, importe, fecha). Sin ella
+  // al final, cada corrida del importador resucitaba el índice viejo y el re-débito del echeq 308 del
+  // 11/09 volvía a rechazarse como duplicado del 10/09.
+  '20260914T1400_banco_clave_con_fecha.sql',
 ].map((f) => join(RAIZ, 'supabase', 'migrations', f))
 const DRY = process.argv.includes('--dry')
 const IGUAL = process.argv.includes('--igual-cargalo')

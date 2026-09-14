@@ -69,6 +69,39 @@ test('marcasDeGrid: una marca por celda ESCRITA; la vacía no existe; el bloque 
   assert.equal(r.hallazgos[0].tipo, FALTA.BLOQUE_DESCARTADO)
 })
 
+// LAS HORAS SIN FECHA VAN A LA OBRA DEL RENGLÓN (dueño, 14/09/2026: «sumarlas a la obra del renglón»).
+//
+// «Obreros 26», Tello bloque 04/05: 16 h escritas en columnas sin fecha entre el último día y «DIAS /
+// HORAS». La planilla las sumaba a su total (112) y la base no (96). MUTACIÓN QUE PONE ESTO ROJO: no
+// leer las columnas sin fecha, leerlas sin haber encontrado «DIAS / HORAS», o fecharlas otro día.
+test('marcasDeGrid: una celda escrita en una columna SIN FECHA entra el último día del bloque, marcada', () => {
+  const conTotal = grid()
+  conTotal.filas[0][10] = txt('DIAS / HORAS')
+  conTotal.filas[3][9] = num(16) // Aguero, columna J (índice 9), sin fecha en el encabezado
+  const { marcas } = marcasDeGrid(conTotal, { pestana: 'Obreros 26', anio: 2026 })
+  const sinFecha = marcas.filter((m) => m.sin_fecha)
+  assert.equal(sinFecha.length, 1)
+  assert.equal(sinFecha[0].nombre, 'Aguero Cristian')
+  assert.equal(sinFecha[0].fecha, '2026-05-07', 'el último día del bloque')
+  assert.equal(sinFecha[0].sin_fecha, 'J')
+  assert.equal(sinFecha[0].celda.horas ?? Number(sinFecha[0].celda.valor_crudo), 16)
+  // LO QUE HAY DE VERDAD EN ESAS COLUMNAS (marzo, Sheet real): ceros y fechas con formato DATE. Ninguno
+  // es una hora: un 0 sin fecha no es la ausencia de nadie, y 46111 es el 31/03, no 46.111 horas.
+  const conBasura = grid()
+  conBasura.filas[0][11] = txt('DIAS / HORAS')
+  conBasura.filas[4][9] = num(0) // Ochoa, 0 en una columna sin fecha
+  conBasura.filas[5][10] = { valor: '31/3/26', numero: 46111, formula: null, formato: 'DATE' } // fecha
+  conBasura.filas[6][9] = num(46111) // serial sin formato: igual no son horas
+  assert.equal(marcasDeGrid(conBasura, { pestana: 'Obreros 26', anio: 2026 }).marcas.filter((m) => m.sin_fecha).length, 0)
+  // Sin la columna «DIAS / HORAS» no se adivina dónde terminan las horas: no se lee nada.
+  const sinTotal = grid()
+  sinTotal.filas[3][9] = num(16)
+  assert.equal(marcasDeGrid(sinTotal, { pestana: 'Obreros 26', anio: 2026 }).marcas.filter((m) => m.sin_fecha).length, 0)
+  // Y la nota de la fila lo dice.
+  const { filas } = planDeRegistros(sinFecha, { personas: PERSONAS, resolver })
+  assert.match(filas[0].notas, /sin fecha en la planilla \(col J\)/)
+})
+
 // EL 0 DE LA PLANILLA SON CERO HORAS, Y LA PLANILLA LO CUENTA ASÍ.
 //
 // Cotejo de «Obreros 26», 1ª quincena de septiembre de 2026, contra la columna «Hs» que la propia
