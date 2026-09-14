@@ -66,6 +66,8 @@ export function sumarHorasPorTipo(filas: readonly { horasPorTipo: HorasPorTipo }
 /** Las seis cifras de la cadena que el cierre mira. */
 export interface CadenaParaCerrar {
   cobra: number | null
+  /** El negro de la fila con blanco + negro. Con él se exige además Cobra total = Banco + Negro. */
+  negro?: number | null
   adelanto: number
   yaTransferido: number
   porBanco: number
@@ -97,8 +99,13 @@ export function cierreDeLaFila(c: CadenaParaCerrar): Cierre | null {
   const esperado = r2(c.cobra - c.adelanto - c.yaTransferido)
   const repartido = r2(c.porBanco + (c.enEfectivo ?? 0))
   const diferencia = r2(c.total - esperado)
-  const cierra = Math.abs(diferencia) <= 1 && Math.abs(r2(c.total - repartido)) <= 1
-  return { cierra, leFaltaPagar: r2(c.total), diferencia: cierra ? 0 : (Math.abs(diferencia) > 1 ? diferencia : r2(c.total - repartido)) }
+  // CON BLANCO + NEGRO TAMBIÉN: COBRA TOTAL = BANCO + NEGRO. Con celdas escritas a mano puede no dar, y se dice
+  // (dueño, 15/09/2026: se guarda igual, la fila se marca).
+  const sueldo = c.negro == null ? 0 : r2(c.cobra - c.porBanco - c.negro)
+  const cierra = Math.abs(diferencia) <= 1 && Math.abs(r2(c.total - repartido)) <= 1 && Math.abs(sueldo) <= 1
+  const diferenciaQueSeDice = Math.abs(diferencia) > 1 ? diferencia
+    : Math.abs(r2(c.total - repartido)) > 1 ? r2(c.total - repartido) : sueldo
+  return { cierra, leFaltaPagar: r2(c.total), diferencia: cierra ? 0 : diferenciaQueSeDice }
 }
 
 /** El mismo cierre sobre los totales del pie. */

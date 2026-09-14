@@ -107,7 +107,8 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
   // función y sus cifras son la foto del cierre.
   const sinMarcas = {
     manual: undefined, origen: undefined, discrepancia: undefined, referenciaJornales: undefined,
-    sueldo: undefined, sinNeto: undefined, horasRecibo: undefined, valorHoraRecibo: undefined,
+    sueldo: undefined, sinNeto: undefined, horasRecibo: undefined, valorHoraRecibo: undefined, negro: undefined,
+    horasNegro: undefined, horasDeLosDias: undefined,
   }
   assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
   // LA FOTO CERRADA NO RECALCULA BLANCO + NEGRO (dueño, 14/09/2026).
@@ -121,9 +122,11 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
 test('SÓLO SE GUARDA DONDE LA BASE PUEDE DECIR «VACÍO»', () => {
   // EL DEFECTO: dibujar editables las seis celdas cuya columna NOT NULL DEFAULT 0 no distingue un
   // cero escrito de un «no hay override».
-  assert.deepEqual(camposGuardables(['horas', 'cobra', 'total']), ['horas'])
+  // CAMBIÓ EL 15/09/2026: las horas van a `horas_manual`. `horas` sola (la sellada del cierre) ya no alcanza.
+  assert.deepEqual(camposGuardables(['horas', 'cobra', 'total']), [])
+  assert.deepEqual(camposGuardables(['horas_manual', 'cobra', 'total']), ['horas'])
   assert.deepEqual(
-    camposGuardables(['horas', 'cobra_manual', 'adelanto_manual', 'ya_transferido_manual',
+    camposGuardables(['horas_manual', 'cobra_manual', 'adelanto_manual', 'ya_transferido_manual',
       'por_banco_manual', 'en_efectivo_manual', 'total_manual']),
     ['horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total'],
   )

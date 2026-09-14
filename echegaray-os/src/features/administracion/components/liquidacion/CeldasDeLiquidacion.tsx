@@ -28,14 +28,16 @@ import type { CSSProperties } from 'react'
 //      fondo de color. Un importe manual disfrazado de calculado es el que nadie puede explicar
 //      después frente al recibo.
 
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition, type KeyboardEvent } from 'react'
 import { InlineEdit } from '@/shared/components/ds/InlineEdit'
 import { V } from '@/shared/components/v2/patron'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import { guardarCeldaLiquidacion, guardarEfectivoRedondeado } from '../../services/liquidacionActions'
 import { guardarValorHora } from '../../services/tarifaDeLaQuincenaActions'
-import { accionDelRedondeo, efectivoMostrado } from '../../services/efectivoRedondeado'
-import { horas, pesos } from './formato'
+import { accionDelRedondeo, debeGuardarAlSalir, efectivoMostrado, teclaDelRedondeo } from '../../services/efectivoRedondeado'
+import { horas, pesos, textoDelRedondeo } from './formato'
+import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
+import { useDeshacer } from '@/shared/components/deshacer/DeshacerProvider'
 
 /**
  * LA UNIDAD DE LA CELDA, NO SU FORMATEADOR.
@@ -141,7 +143,7 @@ export function MarcaDeOrigen({ origen, compacta = false, titulo }: {
  */
 export function CeldaEditable({
   campo, valor, unidad, ceroEsVacio = false, manual, origen, tituloDeOrigen, personaId, quincena,
-  grupo, soloLectura, ancho = 'w-24', marcaCompacta = false,
+  grupo, soloLectura, ancho = 'w-24', marcaCompacta = false, rotuloDeshacer,
 }: {
   campo: CampoEditable
   valor: number | null
@@ -162,6 +164,8 @@ export function CeldaEditable({
   ancho?: string
   /** Sólo el punto, sin la palabra: las columnas de Pagos no tienen los 56 px que ocupa. */
   marcaCompacta?: boolean
+  /** Cómo se nombra en el aviso de deshacer («Banco de Rosales»). */
+  rotuloDeshacer?: string
 }) {
   const formato = escribirComo(unidad, ceroEsVacio)
   // `origen` manda cuando viaja; `manual` sigue siendo el contrato viejo para los llamadores que
@@ -184,9 +188,12 @@ export function CeldaEditable({
         etiqueta={`${campo} de ${personaId}`}
         testid={`celda-${campo}-${personaId}`}
         mostrar={(v) => formato(Number(v))}
-        guardar={async (v) => {
+        // CMD/CTRL+Z: deshacer restaura el valor MANUAL anterior («sin manual» vuelve al calculado) y el servidor no
+        // pisa lo que cambió (`esperado`).
+        deshacer={{ anterior: manual ? String(valor ?? '') : '', verificaServidor: true, rotulo: rotuloDeshacer }}
+        guardar={async (v, contexto) => {
           const r = await guardarCeldaLiquidacion({
-            ...quincena, grupo, persona_id: personaId, campo, valor: v.trim(),
+            ...quincena, grupo, persona_id: personaId, campo, valor: v.trim(), esperado: contexto?.esperado,
           })
           return r.ok ? { ok: true } : { ok: false, error: r.error }
         }}
@@ -240,7 +247,7 @@ const ESTILOS_DEL_REDONDEO = new Map<number, CSSProperties>()
 export function estiloDelRedondeo(ancho: number): CSSProperties {
   let e = ESTILOS_DEL_REDONDEO.get(ancho)
   if (!e) {
-    e = { width: ancho, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px', borderRadius: 4, background: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }
+    e = { width: ancho, minHeight: 32, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px', borderRadius: 4, background: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }
     ESTILOS_DEL_REDONDEO.set(ancho, e)
   }
   return e
@@ -261,9 +268,17 @@ export function estiloDelRedondeo(ancho: number): CSSProperties {
  *
  * QA, 14/09/2026: warning de hidratación sobre el `style` de este input. Todo lo que decide el primer
  * dibujo —texto, color, borde, `title`— sale de las props y de `efectivoMostrado`, que es puro: ni un
- * valor que sólo exista en el navegador, ni una clave de estilo que aparezca o desaparezca. El error
- * del servidor va en un `title` y en el color del borde, no en un nodo que se agrega al lado.
+ * valor que sólo exista en el navegador, ni una clave de estilo que aparezca o desaparezca.
+ *
+ * ═══ EL ERROR SE LEE, NO SE ADIVINA (QA, 15/09/2026) ═══
+ *
+ * Sólo con `title` y borde rojo, seis filas de la 01/09 parecían guardadas y ninguna lo estaba. El error va en
+ * texto chico y rojo debajo del campo. No rompe la hidratación: el error sólo existe después de un guardado en el
+ * navegador, y la caja que lo contiene está siempre, con un estilo fijo.
  */
+const CAJA_DEL_REDONDEO: CSSProperties = { display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }
+const ERROR_DEL_REDONDEO: CSSProperties = { fontSize: 11, lineHeight: '13px', color: V.neg, whiteSpace: 'normal', maxWidth: 160, textAlign: 'right' }
+
 export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, bloqueada, ancho = 96 }: {
   personaId: string
   valor: number | null
@@ -274,13 +289,18 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
   bloqueada: boolean
   ancho?: number
 }) {
+  const deshacer = useDeshacer()
   const mostrado = efectivoMostrado({ efectivoRedondeado: valor, enEfectivo })
   const inicial = mostrado.valor == null ? '' : String(mostrado.valor)
   const [texto, setTexto] = useState(inicial)
   const [base, setBase] = useState(inicial)
   const [tocado, setTocado] = useState(false)
+  // EN EDICIÓN SE VE EL NÚMERO; EN REPOSO, CON FORMATO (`textoDelRedondeo`). Arranca en falso en los dos lados:
+  // el primer dibujo del servidor y del navegador es el mismo.
+  const [enEdicion, setEnEdicion] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardando, empezar] = useTransition()
+  const cancelado = useRef(false)
   // EL VALOR DE AFUERA MANDA cuando la línea se vuelve a leer del servidor, salvo mientras alguien
   // escribe. Se ajusta durante el render, no en un efecto: sin fotograma con el valor viejo.
   if (!tocado && inicial !== base) {
@@ -300,7 +320,19 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
     return <span title={titulo} style={{ color: mostrado.sugerido ? V.apagado : V.tinta }}>{pesos(mostrado.valor)}</span>
   }
 
+  // ENTER GUARDA, ESCAPE REVIERTE SIN GUARDAR, TAB GUARDA Y PASA (QA 15/09/2026: «deja cosas pegadas»). Escape saca
+  // el foco en el mismo evento y ese `blur` todavía ve `tocado` de antes de revertir: la ref lo frena.
+  const alTeclear = (e: KeyboardEvent<HTMLInputElement>) => {
+    const t = teclaDelRedondeo(e.key)
+    if (t === 'revertir') {
+      e.preventDefault(); cancelado.current = true
+      setTexto(inicial); setTocado(false); setError(null)
+      e.currentTarget.blur()
+    } else if (t === 'guardar') { e.preventDefault(); e.currentTarget.blur() }
+  }
   const alSalir = () => {
+    // LO QUE NO ES NÚMERO NO SE GUARDA Y SE DICE (el mismo parser que el resto: `leerNumeroEsAR`).
+    if (!leerNumeroEsAR(texto).ok) { setError('número inválido'); return }
     const a = accionDelRedondeo({ texto, guardado: valor, sugerido: mostrado.sugeridoAhora })
     if (a.accion === 'nada') {
       setTocado(false)
@@ -312,15 +344,33 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
         ...quincena, grupo, persona_id: personaId, importe: a.accion === 'borrar' ? '' : String(a.importe),
       })
       setError(r.ok ? null : r.error)
-      if (r.ok) setTocado(false)
+      if (r.ok) {
+        setTocado(false)
+        // CMD/CTRL+Z: el redondeo guardado se puede deshacer con la misma acción.
+        const nuevo = a.accion === 'borrar' ? '' : String(a.importe)
+        const anterior = valor == null ? '' : String(valor)
+        deshacer?.registrar({
+          clave: `redondeo-${personaId}`, rotulo: 'Efectivo redondeado', anterior, nuevo,
+          anteriorTexto: anterior === '' ? 'sugerido' : pesos(Number(anterior)), nuevoTexto: nuevo === '' ? 'sugerido' : pesos(Number(nuevo)),
+        }, (v, esperado) => guardarEfectivoRedondeado({ ...quincena, grupo, persona_id: personaId, importe: v, esperado }))
+      }
     })
   }
 
   return (
+    <span style={CAJA_DEL_REDONDEO}>
     <input
-      value={texto}
+      value={textoDelRedondeo({ enEdicion, texto, valor: mostrado.valor })}
+      onFocus={() => { cancelado.current = false; setEnEdicion(true) }}
       onChange={(e) => { setTocado(true); setTexto(e.target.value) }}
-      onBlur={alSalir}
+      onKeyDown={alTeclear}
+      onBlur={() => {
+        setEnEdicion(false)
+        const fueCancelado = cancelado.current
+        cancelado.current = false
+        // SALIR SIN HABER TECLEADO, O DESPUÉS DE ESCAPE, NO GUARDA.
+        if (debeGuardarAlSalir({ tocado, cancelado: fueCancelado })) alSalir()
+      }}
       disabled={guardando}
       inputMode="decimal"
       aria-label="Efectivo redondeado"
@@ -334,5 +384,7 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
       className="border border-line text-ink data-[sugerido='1']:text-muted data-[error='1']:border-neg"
       style={estiloDelRedondeo(ancho)}
     />
+    {error && <span role="alert" data-testid={`redondeo-error-${personaId}`} style={ERROR_DEL_REDONDEO}>{error}</span>}
+    </span>
   )
 }

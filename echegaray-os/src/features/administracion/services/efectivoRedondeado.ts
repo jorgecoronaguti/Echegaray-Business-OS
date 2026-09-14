@@ -13,6 +13,8 @@
 //
 // Sigue sin participar de ninguna cuenta (R5): es la columna de los billetes, no parte de la cadena.
 
+import { leerNumeroEsAR } from '../../../shared/lib/numeroEsAR.ts'
+
 /**
  * EL CRITERIO, EN UNA LÍNEA. Al $1.000 más cercano. No hay datos guardados de los que inferirlo: lo
  * eligió el coordinador el 14/09/2026, y cambiarlo es cambiar esta constante.
@@ -43,10 +45,9 @@ export function efectivoMostrado(l: { efectivoRedondeado: number | null; enEfect
 
 /** «$ 326.000» / «326000» / «326.000,50» → número. `null` si no es un importe. */
 export function importeDelTexto(texto: string): number | null {
-  const limpio = texto.trim().replace(/[$\s.]/g, '').replace(',', '.')
-  if (limpio === '') return null
-  const n = Number(limpio)
-  return Number.isFinite(n) ? n : null
+  // EL PARSER ÚNICO (`leerNumeroEsAR`): «266.000», «$ 266.000», «266.000,50». Vacío o inválido → null.
+  const leido = leerNumeroEsAR(texto)
+  return leido.ok ? leido.valor : null
 }
 
 export type AccionDelRedondeo = { accion: 'nada' } | { accion: 'guardar'; importe: number } | { accion: 'borrar' }
@@ -66,6 +67,66 @@ export function accionDelRedondeo(e: { texto: string; guardado: number | null; s
   const mostrado = e.guardado ?? e.sugerido
   if (mostrado != null && importe === mostrado) return { accion: 'nada' }
   return { accion: 'guardar', importe }
+}
+
+// ═══ «DEJA COSAS PEGADAS» (QA, 15/09/2026) ═══
+//
+// La celda no tenía `onKeyDown`: Escape no cancelaba y el primer clic afuera guardaba lo tecleado. Y el guardado
+// fallaba SIEMPRE sobre una línea no materializada, sin que se viera: el upsert con la sesión es un INSERT … ON
+// CONFLICT DO UPDATE SET liquidacion_id, persona_id, efectivo_redondeado, y `authenticated` no tiene UPDATE sobre
+// las dos llaves (42501). Lo que decide cada tecla y la relectura viven acá, puros, para poder probarlos.
+
+export type TeclaDelRedondeo = 'guardar' | 'revertir' | 'guardar-y-pasar' | null
+
+/** Enter guarda, Escape revierte sin guardar, Tab guarda y deja que el navegador pase al siguiente campo. */
+export function teclaDelRedondeo(key: string): TeclaDelRedondeo {
+  if (key === 'Enter') return 'guardar'
+  if (key === 'Escape') return 'revertir'
+  if (key === 'Tab') return 'guardar-y-pasar'
+  return null
+}
+
+/**
+ * ¿SALIR DEL CAMPO GUARDA? Sólo si se tecleó algo y no se canceló. `cancelado` llega por una ref: Escape saca el
+ * foco en el mismo evento, y el `onBlur` todavía ve el estado de antes de revertir.
+ */
+export function debeGuardarAlSalir(e: { tocado: boolean; cancelado: boolean }): boolean {
+  return e.tocado && !e.cancelado
+}
+
+export interface FilaDelRedondeo { liquidacion_id: string; persona_id: string; efectivo_redondeado: number | null }
+
+/**
+ * LA FILA QUE SE ESCRIBE. Sólo las dos llaves y el redondeo: si la línea no existe, `cobra`, `total`, `por_banco`
+ * y los demás importes toman su default 0 (el CHECK `total = por_banco + en_efectivo` cierra con ceros) y el
+ * cierre la reescribe entera con la foto; si existe, no se pisa ninguna otra columna.
+ */
+export function filaDelRedondeo(e: { liquidacionId: string; personaId: string; valor: number | null }): FilaDelRedondeo {
+  return { liquidacion_id: e.liquidacionId, persona_id: e.personaId, efectivo_redondeado: e.valor }
+}
+
+/** LA RELECTURA MANDA. Cero filas devueltas es un rechazo en silencio; un valor distinto, un CHECK que corrigió. */
+export function verificarGuardadoDelRedondeo(
+  filas: readonly { efectivo_redondeado?: unknown }[], valor: number | null,
+): { ok: true } | { ok: false; error: string } {
+  const fila = filas[0]
+  if (!fila) return { ok: false, error: 'La base no guardó la fila.' }
+  const leido = fila.efectivo_redondeado == null ? null : Number(fila.efectivo_redondeado)
+  if (leido !== valor) return { ok: false, error: `La base guardó ${leido ?? '—'} y yo mandé ${valor ?? '—'}.` }
+  return { ok: true }
+}
+
+export type UpsertDelRedondeo = (fila: FilaDelRedondeo) => PromiseLike<{
+  data: readonly { efectivo_redondeado?: unknown }[] | null; error: { message: string } | null
+}>
+
+/** Escribe y relee. El cliente llega inyectado: la acción pasa el de la clave de servicio, el test uno falso. */
+export async function escribirRedondeo(
+  upsert: UpsertDelRedondeo, e: { liquidacionId: string; personaId: string; valor: number | null },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data, error } = await upsert(filaDelRedondeo(e))
+  if (error) return { ok: false, error: `No se guardó: ${error.message}` }
+  return verificarGuardadoDelRedondeo(data ?? [], e.valor)
 }
 
 /** El pie de la columna: la suma de lo que muestran las filas, guardado o sugerido. */

@@ -12,9 +12,11 @@
 // rastro. La cadena NO se recalcula acá: la acción revalida la ruta y el servidor vuelve a armar la
 // línea. Lo que queda en la celda es lo que la base devolvió.
 
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { pesos } from '../formato'
+import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
+import { useDeshacer } from '@/shared/components/deshacer/DeshacerProvider'
 import { formaEditable } from '../../../services/cuadroDeJornales'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { registrarTarifaDesdeLaQuincena } from '../../../services/tarifaDeLaQuincenaActions'
@@ -27,8 +29,8 @@ export const rotuloCategoria = (c: string): string => {
 
 /** «$ 6.100,50» → 6100.5. `null` si no es un número positivo: la celda no manda basura. */
 function importeTecleado(texto: string): number | null {
-  const n = Number(texto.trim().replace(/[$\s.]/g, '').replace(',', '.'))
-  return Number.isFinite(n) && n > 0 ? n : null
+  const leido = leerNumeroEsAR(texto)
+  return leido.ok && leido.valor != null && leido.valor > 0 ? leido.valor : null
 }
 
 const conSigno = (p: number): string => `${p > 0 ? '+' : ''}${p.toLocaleString('es-AR')}%`
@@ -46,6 +48,8 @@ export function CeldaTarifa({ fila, quincena, pct }: {
   const [texto, setTexto] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [guardando, empezar] = useTransition()
+  const deshacer = useDeshacer()
+  const cancelado = useRef(false)
 
   const guardar = () => {
     if (texto == null || forma == null) return
@@ -56,7 +60,20 @@ export function CeldaTarifa({ fila, quincena, pct }: {
       const r = await registrarTarifaDesdeLaQuincena({
         ...quincena, grupo: fila.grupo, persona_id: fila.personaId, forma, valor,
       })
-      if (r.ok) { setTexto(null); setError(null) } else setError(r.error)
+      if (r.ok) {
+        setTexto(null); setError(null)
+        // CMD/CTRL+Z: la tarifa anterior vuelve con la misma escritura (queda en el historial de correcciones).
+        const f = forma
+        deshacer?.registrar({
+          clave: `tarifa-${fila.personaId}`, rotulo: `${f === 'mensual' ? 'Neto mensual' : '$/h negro'} de ${fila.nombre}`,
+          anterior: actual == null ? '' : String(actual), nuevo: String(valor),
+          anteriorTexto: pesos(actual), nuevoTexto: pesos(valor),
+        }, async (v) => {
+          const n = Number(v)
+          if (v === '' || !(n > 0)) return { ok: false, error: 'no había un valor anterior que restaurar' }
+          return registrarTarifaDesdeLaQuincena({ ...quincena, grupo: fila.grupo, persona_id: fila.personaId, forma: f, valor: n })
+        })
+      } else setError(r.error)
     })
   }
 
@@ -69,13 +86,14 @@ export function CeldaTarifa({ fila, quincena, pct }: {
           autoFocus inputMode="decimal" value={texto} disabled={guardando}
           aria-label={`Valor de ${fila.nombre}`} data-testid={`tarifa-input-${fila.personaId}`}
           onChange={(e) => setTexto(e.target.value)}
-          onBlur={guardar}
+          // ESCAPE NO GUARDA DE REBOTE: el input se desmonta y el `blur` que emite todavía ve el texto tecleado.
+          onBlur={() => { if (cancelado.current) { cancelado.current = false; return } guardar() }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') guardar()
-            if (e.key === 'Escape') { setTexto(null); setError(null) }
+            if (e.key === 'Escape') { e.preventDefault(); cancelado.current = true; setTexto(null); setError(null) }
           }}
           style={{
-            width: 88, height: 28, textAlign: 'right', fontSize: '12.5px', padding: '0 6px',
+            width: 88, height: 32, textAlign: 'right', fontSize: '12.5px', padding: '0 6px',
             border: `1px solid ${error ? V.neg : V.grafito}`, borderRadius: 4, background: '#FFFFFF',
             color: V.tinta, fontVariantNumeric: 'tabular-nums',
           }}
@@ -84,7 +102,7 @@ export function CeldaTarifa({ fila, quincena, pct }: {
         <button type="button" data-testid={`tarifa-${fila.personaId}`} aria-label={`Cambiar el valor de ${fila.nombre}`}
           onClick={() => { setError(null); setTexto(actual == null ? '' : String(actual)) }}
           style={{
-            minHeight: 28, padding: '0 6px', border: `1px solid ${error ? V.neg : V.lineaFuerte}`, borderRadius: 4,
+            minHeight: 32, padding: '0 6px', border: `1px solid ${error ? V.neg : V.lineaFuerte}`, borderRadius: 4,
             background: '#FFFFFF', color: actual == null ? V.tenue : V.tinta, cursor: 'text',
             fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
           }}>{actual == null ? 'sin tarifa' : pesos(actual)}</button>

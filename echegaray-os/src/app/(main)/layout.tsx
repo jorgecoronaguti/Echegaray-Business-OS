@@ -7,6 +7,7 @@ import { solapasDeNav } from '@/features/auth/types/navegacion'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 import { AppHeader } from '@/shared/components/AppHeader'
 import { HeaderEsqueleto } from '@/shared/components/carga'
+import { DeshacerProvider } from '@/shared/components/deshacer/DeshacerProvider'
 
 // EL MARCO DE LA APLICACIÓN — 18/08/2026.
 //
@@ -50,7 +51,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <Suspense fallback={<HeaderEsqueleto />}>
         <HeaderConUsuario />
       </Suspense>
-      <main>{children}</main>
+      {/* CMD/CTRL+Z EN TODA LA PLATAFORMA (dueño, 15/09/2026): un solo proveedor para todas las pantallas. */}
+      <DeshacerProvider>
+        <main>{children}</main>
+      </DeshacerProvider>
     </div>
   )
 }
