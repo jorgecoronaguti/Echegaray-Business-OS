@@ -102,6 +102,17 @@ test('vencido y a_vencer NO se fijan: los decide la fecha, que es la palanca que
   assert.equal(estadoDePago(movido, '2026-08-26'), 'programado')
 })
 
+test('el estado VIVO se fija: un Facturado con fecha pasada no se vuelve mora en la pantalla', () => {
+  // `vivo.ts` ya aplicó la columna U (sólo vence lo Pendiente). Derivarlo otra vez de la fecha lo
+  // devolvía a «vencido» y el portal contradecía al Sheet (14/09/2026).
+  const facturada = aPagoDelPortal(fila({ estado: 'a_vencer', estado_vivo: true, fecha: '2026-08-01' }), 'x')
+  assert.equal(estadoDePago(facturada, '2026-08-26'), 'programado')
+  const pendiente = aPagoDelPortal(fila({ estado: 'vencido', estado_vivo: true, fecha: '2026-08-01' }), 'x')
+  assert.equal(estadoDePago(pendiente, '2026-08-26'), 'vencido')
+  // La copia guardada, sin contraparte viva, sigue derivándose de la fecha.
+  assert.equal(estadoFijadoDe({ estado: 'a_vencer' }), null)
+})
+
 // ── EL ESTADO QUE DECLARA EL SHEET LLEGA A LA PANTALLA ───────────────────────────────────────
 //
 // El defecto: la pantalla recalculaba por fecha estados que el Sheet ya había declarado, así que la

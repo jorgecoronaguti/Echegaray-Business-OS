@@ -49,6 +49,9 @@ export interface FilaEsquema {
   moneda?: string | null
   factura_numero?: string | null
   recibo_numero?: string | null
+  /** `true` = `estado` lo acaba de calcular `vivo.ts` sobre la réplica de Cobranzas, con la regla de
+   *  la columna U. Ausente = es la copia guardada del esquema. */
+  estado_vivo?: boolean
 }
 
 /**
@@ -106,9 +109,18 @@ export function tipoDelPago(f: Pick<FilaEsquema, 'estado' | 'concepto'>): TipoPa
  *
  * `retenido` es el fondo de reparo: plata que la empresa retiene, no una deuda que el cliente tenga
  * que pagar. Pintarlo «vencido» porque pasó su fecha le reclamaría algo que nadie le está pidiendo.
+ *
+ * ═══ LA EXCEPCIÓN TIENE UNA EXCEPCIÓN: EL ESTADO VIVO SE FIJA (14/09/2026) ═══
+ *
+ * Derivar de la fecha es `fecha < hoy → vencido` para cualquier estado, y la columna U sólo vence lo
+ * Pendiente: un Facturado con fecha pasada salía en mora en el portal y no en el Sheet. Cuando el
+ * estado viene de la réplica viva (`estado_vivo`), ya es la regla aplicada hoy y no hay copia vieja
+ * que corregir, así que se fija. Las filas SIN contraparte viva siguen derivándose de la fecha.
  */
-export function estadoFijadoDe(f: Pick<FilaEsquema, 'estado'>): EstadoPago | null {
+export function estadoFijadoDe(f: Pick<FilaEsquema, 'estado' | 'estado_vivo'>): EstadoPago | null {
   if (f.estado === 'cobrado') return 'pagado'
+  if (f.estado_vivo && f.estado === 'vencido') return 'vencido'
+  if (f.estado_vivo && f.estado === 'a_vencer') return 'programado'
   if (f.estado === 'previsto') return 'sin_factura'
   if (f.estado === 'retenido') return 'programado'
   return null

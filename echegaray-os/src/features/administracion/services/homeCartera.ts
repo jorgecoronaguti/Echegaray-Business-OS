@@ -282,7 +282,8 @@ export async function getCobradoPorObra(
   // ═══ SE LEE `obra_cuenta` Y NO `obra_cobranza` (10/09/2026, migración 20260910T2356) ═══
   //
   // `obra_cuenta` ES la fila de la pestaña OBRAS traducida a Postgres: contrato, cobro con IVA,
-  // saldo, vencido con el reloj de la emisión + 30 días, y el próximo cobro con su medio — los
+  // saldo, vencido con la regla de la columna U de Cobranzas (`estado_de_cobro`, desde el 14/09/2026;
+  // la pestaña OBRAS del Sheet sigue con emisión + 30 y ahí discrepan), y el próximo cobro con su medio — los
   // mismos criterios que `orquestador/scripts/obras-pestana.mjs`, y probados contra el Sheet en
   // `obra-cuenta.pg.test.mjs`. `obra_cobranza` sigue viva y sirve para otra pregunta (lo cobrado y
   // lo por cobrar de una obra, sin ventana de año); mezclarlas era cómo la pantalla terminaba

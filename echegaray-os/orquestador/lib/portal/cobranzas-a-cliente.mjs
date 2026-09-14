@@ -14,6 +14,8 @@
 // entran sólo las filas que representan un comprobante emitido o una certificación numerada. No es
 // doble conteo — son dos preguntas distintas sobre el mismo hecho, y viven en tablas distintas.
 
+import { estadoDeCobro, diaISO } from '../cobranza-estado-de-cobro.mjs'
+
 /** Los datos de Cobranzas arrancan en la fila 5; la columna A es `=IF(C5="";"";ROW()-4)`. */
 export const FILA_BASE = 4
 
@@ -102,36 +104,31 @@ export function clasificar(fila) {
   return 'pago'
 }
 
-const aFecha = (v) => {
-  if (!v) return null
-  const d = v instanceof Date ? v : new Date(v)
-  return Number.isNaN(d.getTime()) ? null : d
-}
-
-/** Compara sólo la parte de fecha: una diferencia de horas no puede volver «vencido» a algo de hoy. */
-const soloDia = (d) => (d ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) : null)
-
 /**
  * EL ESTADO DE UN PAGO DEL ESQUEMA, con la definición del propio Sheet.
  *
  * La columna U de Cobranzas dice, textual:
  *     =IF(O="Cobrado";"Cobrado"; IF(O="Pendiente"; IF(Q<TODAY();"Vencido"; Q-TODAY()); O))
  *
- * O sea: cobrado manda sobre todo; si no está cobrado y la fecha de la columna Q ya pasó, está
- * vencido. Esto NO inventa una definición nueva: la copia. Dos definiciones de «vencido» —la que ve
- * el dueño en el Sheet y la que ve el cliente en el portal— serían una discusión sin árbitro.
+ * ═══ EL DEFECTO QUE ESTO CORRIGE (14/09/2026) ═══
  *
- * `Proyectado` es previsión del dueño: nunca es «vencido» ni «a vencer», porque no hay nada emitido
- * que pueda vencer. Es `previsto`.
+ * Esta función decía copiar esa fórmula y no lo hacía: daba «vencido» a TODO lo no cobrado ni
+ * proyectado con Q pasada —Facturado incluido— y comparaba contra hoy en UTC. El portal y la ficha
+ * publicaban vencidos distintos. Ahora el vencido lo decide `estadoDeCobro`, gemelo de
+ * `public.estado_de_cobro` y probado contra ella fila por fila.
+ *
+ * Lo que la columna U no llama Pendiente nunca es `vencido`. Para el esquema del portal se traduce:
+ * `Proyectado` o sin fecha es `previsto` (no hay nada emitido que pueda vencer); cualquier otro
+ * estado con fecha —Facturado— es `a_vencer`, y el portal lo muestra programado, no en mora.
  */
 export function estadoDePago(fila, hoy = new Date()) {
   const estado = String(fila?.estado ?? '').trim().toLowerCase()
+  // Con recorte, como `es_cobrada()`: un pago cobrado no se le reclama al cliente por un espacio.
   if (estado === 'cobrado') return 'cobrado'
-  if (estado === 'proyectado') return 'previsto'
-
-  const q = soloDia(aFecha(fila?.fecha_cobro))
-  if (q === null) return 'previsto'          // sin fecha no se puede afirmar que venció
-  return q < soloDia(aFecha(hoy)) ? 'vencido' : 'a_vencer'
+  const e = estadoDeCobro(fila?.estado, fila?.fecha_cobro, hoy)
+  if (e !== 'otro') return e
+  if (estado === 'proyectado' || diaISO(fila?.fecha_cobro) === null) return 'previsto'
+  return 'a_vencer'
 }
 
 /** El estado del DOCUMENTO. Un certificado cobrado ya no está «emitido»; uno impago y vencido, sí. */

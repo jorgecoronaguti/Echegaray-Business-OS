@@ -112,6 +112,9 @@ export function conNumerosVivos(f: FilaEsquema, v: FilaCobranzaViva, hoy: Date):
     // El estado lo decide la MISMA función que usa el sync (`estadoDePago`, copia literal de la
     // columna U del Sheet). Derivarlo de nuevo acá sería la tercera definición de «vencido».
     estado: estadoDePago({ estado: v.estado, fecha_cobro: v.fecha_cobro }, hoy),
+    // Este estado es de la réplica viva y ya aplicó la regla del Sheet: la pantalla no lo vuelve a
+    // derivar de la fecha (ver `estadoFijadoDe`), o un Facturado con fecha pasada volvería a mora.
+    estado_vivo: true,
   }
 }
 

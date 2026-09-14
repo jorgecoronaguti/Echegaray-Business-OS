@@ -9,7 +9,8 @@
 // ═══ QUÉ DECIDE ESTE ARCHIVO Y QUÉ NO ═══
 //
 // NO decide qué está cobrado —lo dice `es_cobrada()` en la base—, ni de qué obra es cada fila —lo
-// dice `cobranza_imputacion`—, ni cuándo está vencida —`plazo_cobro_dias()`, emisión + 30 días—.
+// dice `cobranza_imputacion`—, ni cuándo está vencida —`estado_de_cobro()`, la columna U del Sheet:
+// Pendiente con fecha de cobro anterior a hoy en San Juan (hasta el 14/09/2026 era emisión + 30)—.
 // Todo eso llega resuelto en `public.cliente_cobranza` y acá sólo se AGRUPA y se SUMA.
 //
 // Lo que sí decide, y por eso vive suelto y probado: qué suma cada total, qué fila entra en cada
@@ -105,7 +106,7 @@ export interface TotalesCobranza {
   cobrado: number | null
   /** Lo que falta cobrar: pendiente de verdad, sin las anuladas. */
   pendiente: number | null
-  /** De lo pendiente, lo que ya pasó su plazo (emisión + 30 días). */
+  /** De lo pendiente, lo que la vista publica vencido: Pendiente con fecha de cobro ya pasada. */
   vencido: number | null
   /** Cuántas filas se sumaron —sin las anuladas—, para que un total diga de dónde sale. */
   filas: number

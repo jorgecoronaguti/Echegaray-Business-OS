@@ -83,7 +83,16 @@ test('el estado copia la columna U del Sheet: cobrado manda, y Q pasada es venci
   assert.equal(estadoDePago({ estado: 'Cobrado', fecha_cobro: '2026-01-01' }, HOY), 'cobrado')
   assert.equal(estadoDePago({ estado: 'Pendiente', fecha_cobro: '2026-08-24' }, HOY), 'vencido')
   assert.equal(estadoDePago({ estado: 'Pendiente', fecha_cobro: '2026-08-28' }, HOY), 'a_vencer')
-  assert.equal(estadoDePago({ estado: 'Facturado', fecha_cobro: '2026-08-01' }, HOY), 'vencido')
+  // La columna U sólo vence lo PENDIENTE. Hasta el 14/09/2026 esto daba 'vencido' y el portal
+  // publicaba en mora lo que el Sheet mostraba «Facturado».
+  assert.equal(estadoDePago({ estado: 'Facturado', fecha_cobro: '2026-08-01' }, HOY), 'a_vencer')
+})
+
+test('hoy es hoy en San Juan: a las 22:00 del 24 en Argentina, lo que vence el 24 no está vencido', () => {
+  // En UTC ya es el 25: con el reloj anterior esta fila salía vencida tres horas antes de tiempo.
+  const noche = new Date('2026-08-25T01:00:00Z')
+  assert.equal(estadoDePago({ estado: 'Pendiente', fecha_cobro: '2026-08-24' }, noche), 'a_vencer')
+  assert.equal(estadoDeCertificado({ estado: 'Pendiente', fecha_cobro: '2026-08-24' }, noche), 'emitido')
 })
 
 test('lo que vence HOY todavía no está vencido — la hora no puede adelantar un día de mora', () => {

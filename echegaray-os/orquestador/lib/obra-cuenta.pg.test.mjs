@@ -109,7 +109,11 @@ test('obra_cuenta publica lo mismo que la pestaña OBRAS', { skip: !hayBase }, a
         assert.equal(num(f.cobrado_total), total, `${obra}: cobrado TOTAL (con IVA)`)
         assert.equal(num(f.cobrado_neto), neto, `${obra}: cobrado NETO`)
         assert.equal(num(f.por_cobrar), porCobrar, `${obra}: por cobrar`)
-        assert.equal(num(f.vencido), vencido, `${obra}: vencido`)
+        // `vencido` YA NO SE COMPARA CONTRA LA PESTAÑA OBRAS (14/09/2026): la pestaña sigue con
+        // emisión + 30 y la vista pasó a la columna U de Cobranzas (`estado_de_cobro`). El dato de la
+        // tupla queda como foto de lo que publica el Sheet; lo vencido de la vista lo prueba
+        // `cobranza-estado-de-cobro.pg.test.mjs` contra la réplica.
+        void vencido
         assert.equal(dia(f.proximo_cobro_fecha), prox, `${obra}: próximo cobro`)
         assert.equal(f.proximo_cobro_medio, medio, `${obra}: medio del próximo cobro`)
       }
@@ -174,7 +178,6 @@ test('obra_cuenta publica lo mismo que la pestaña OBRAS', { skip: !hayBase }, a
       const FILA_46_BRUTO = 4_336_586.76
       assert.equal(f.n_cobranzas, 4, 'BSA tiene cuatro filas imputadas, no las tres que dicen «BSA»')
       assert.equal(num(f.por_cobrar), 16_493_725.02)
-      assert.equal(num(f.vencido), 16_493_725.02)
       assert.equal(num(f.por_cobrar - DE_OBRAS_POR_COBRAR), FILA_46_BRUTO,
         'la diferencia con la pestaña tiene que ser la fila 46 entera, ni un peso más')
       // Y el cobrado SÍ coincide: la fila 46 está facturada, no cobrada.
