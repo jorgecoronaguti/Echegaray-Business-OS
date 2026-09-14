@@ -13,6 +13,8 @@
 // Acá no hay un solo filtro por rol: quién ve qué lo deciden las policies, igual que en
 // `presenciaService`. Y toda la derivación vive en `asistenciaSemana.ts`, que no toca la base.
 
+import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
+import { personaDelDirectorio } from './plantelDeLaQuincenaService.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
 import type { DeclaracionPersona, MarcaDia, PersonaSemana } from './asistenciaSemana'
@@ -44,14 +46,25 @@ type FilaPresencia = {
   salida: string | null
 }
 
-/** El plantel de la grilla: quien está en la empresa. Ordenado por nombre — es la lista que se
- *  recorre con el dedo, no un ranking. */
-async function getPlantel(supabase: SupabaseClient): Promise<PersonaSemana[]> {
+/**
+ * El plantel de la semana: el que TUVO (`plantelDeLaQuincena` sobre [desde, hasta]), no sólo quien está hoy
+ * en la empresa (dueño, 14/09/2026). Quien marcó o tiene una ausencia/licencia declarada esa semana entra
+ * aunque se haya ido después. Ordenado por nombre — es la lista que se recorre con el dedo.
+ */
+async function getPlantel(
+  supabase: SupabaseClient, desde: string, hasta: string, conActividad: ReadonlySet<string>,
+): Promise<PersonaSemana[]> {
   const { data } = await supabase
-    .from('persona_directorio').select('id, nombre_completo, categoria')
-    .eq('en_la_empresa', true).order('nombre_completo')
-  return ((data ?? []) as { id: string; nombre_completo: string; categoria: string | null }[])
-    .map((p) => ({ persona_id: p.id, nombre_completo: p.nombre_completo, categoria: p.categoria }))
+    .from('persona_directorio').select('id, nombre_completo, categoria, en_la_empresa, fecha_ingreso, fecha_egreso')
+    .order('nombre_completo')
+  const filas = (data ?? []) as {
+    id: string; nombre_completo: string; categoria: string | null
+    en_la_empresa: boolean | null; fecha_ingreso: string | null; fecha_egreso: string | null
+  }[]
+  const vacio = new Set<string>()
+  const { activas } = plantelDeLaQuincena(filas.map((p) => ({ ...personaDelDirectorio(p), categoria: p.categoria })),
+    { desde, hasta }, { conHoras: conActividad, conLinea: vacio, conRecibo: vacio, conJornales: vacio })
+  return activas.map((p) => ({ persona_id: p.id, nombre_completo: p.nombre, categoria: p.categoria }))
 }
 
 /** La jornada pactada de cada obra donde se marcó. Sin este dato NO se declara «hora extra»: el
@@ -132,7 +145,10 @@ export async function getDatosSemana(
     .not('persona_id', 'is', null)
 
   const [personas, pendientes, noLaborables, jornadaPorObra] = await Promise.all([
-    getPlantel(supabase),
+    getPlantel(supabase, desde, hasta, new Set([
+      ...marcas.map((m) => m.persona_id),
+      ...((declaradas.data ?? []) as { persona_id: string }[]).map((d) => d.persona_id),
+    ])),
     getPendientes(supabase, desde, hasta),
     getNoLaborables(supabase, desde, hasta),
     getJornadaPorObra(supabase, [...new Set(marcas.map((m) => m.obra_id).filter((x): x is string => Boolean(x)))]),

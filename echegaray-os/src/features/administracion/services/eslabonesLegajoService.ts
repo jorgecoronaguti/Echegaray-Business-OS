@@ -17,6 +17,7 @@
 // eso se cuenta primero si hay movimientos bancarios en la quincena: si no los hay, la columna dice
 // «sin extracto» y ninguna fila se marca sin giro.
 
+import { mismoCuil } from './cuil.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { CONCEPTO_DEL_GIRO, girosDe, periodoDeRecibo, type FilaAdelanto, type FilaRecibo } from './liquidacionCuadros.ts'
 import { tarifaVigenteAl } from './liquidacionQuincena.ts'
@@ -163,8 +164,9 @@ function armarPersonas(
     persona_id: string; desde: string; valor_hora: number | null; neto_mensual: number | null; origen: string
   }[]
 
+  // SIN CORTE POR `en_la_empresa` (dueño, 14/09/2026): la pantalla recorta con el plantel de la quincena
+  // (`liquidacion.plantel`, `plantelDeLaQuincena`). Cortar acá por el estado de hoy sacaba a las bajas.
   const filas = ((legajo ?? []) as FilaLegajo[])
-    .filter((p) => p.en_la_empresa !== false)
     .map((p) => {
       const vigente = tarifaVigenteAl(
         todas.filter((t) => t.persona_id === p.id).map((t) => ({
@@ -176,7 +178,7 @@ function armarPersonas(
       )
       const doc = delEstudio.get(p.id)
       const neto = p.cuil
-        ? (filasRecibo.find((r) => r.cuil === p.cuil && r.periodo === periodo)?.neto ?? null)
+        ? (filasRecibo.find((r) => mismoCuil(r.cuil, p.cuil) && r.periodo === periodo)?.neto ?? null)
         : null
       const reciboNeto = neto != null ? numero(neto) : (doc?.neto != null ? numero(doc.neto) : null)
       // SIN EXTRACTO NADIE SE MARCA SIN GIRO: no se puede afirmar lo que no se pudo mirar.

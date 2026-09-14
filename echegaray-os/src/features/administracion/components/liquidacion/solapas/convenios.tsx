@@ -21,6 +21,7 @@ import { Aviso } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { getExposicionDeLaQuincena } from '../../../services/exposicionConvenioService'
+import { leerPlantelDeLaQuincena } from '../../../services/plantelDeLaQuincenaService'
 import type { LineaExposicion } from '../../../services/exposicionConvenio'
 import { categoriaVisible } from '../../../services/vocabularioPersona'
 import { esFechaISO, quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
@@ -41,8 +42,11 @@ export async function SolapaConvenios({ quincenaPedida, hoy }: {
 }) {
   const q = quincenaDe(esFechaISO(quincenaPedida) ? quincenaPedida : hoy)
   const supabase = await createClient()
-  const exp = await getExposicionDeLaQuincena(supabase, q)
-  const { lineas, resumen, horasEsperadas, errores } = exp
+  // EL PLANTEL QUE LA QUINCENA TUVO (`plantelDeLaQuincena`), no el de hoy (dueño, 14/09/2026).
+  const plantel = await leerPlantelDeLaQuincena(supabase, q)
+  const exp = await getExposicionDeLaQuincena(supabase, q, plantel.ids)
+  const { lineas, resumen, horasEsperadas } = exp
+  const errores = [...exp.errores, ...plantel.errores]
   const conPiso = lineas.filter((l) => l.porQueNoSeCompara == null)
   const sinComparar = lineas.filter((l) => l.porQueNoSeCompara != null)
 

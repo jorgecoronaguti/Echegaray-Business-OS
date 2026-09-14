@@ -27,6 +27,7 @@
 //
 // Puro: sin base, sin React. Lo usa `aplicarOverrides`, y se prueba en `sueldoBlancoNegro.test.ts`.
 
+import { mismoCuil } from './cuil.ts'
 import { compararConElPiso, type ComparacionConElPiso } from './exposicionConvenio.ts'
 
 /** Una línea de `recibo_sueldo_linea`, normalizada. `null` = el recibo no lo dice. */
@@ -193,7 +194,8 @@ export function periodoOrdenable(periodo: string): string {
 }
 
 const esDe = (r: ReciboDeSueldo, personaId: string, cuil: string | null): boolean =>
-  r.personaId === personaId || (cuil != null && r.cuil === cuil)
+  // `persona_id` MANDA; el CUIL es respaldo y se compara por dígitos (`cuil.ts`).
+  r.personaId === personaId || (r.personaId == null && mismoCuil(r.cuil, cuil))
 
 /** La mediana. `null` sin valores. */
 export function mediana(valores: readonly number[]): number | null {

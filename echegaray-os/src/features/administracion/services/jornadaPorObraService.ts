@@ -9,6 +9,9 @@
 // obras que tiene asignadas y Administración las ve todas. Repetir el criterio en TypeScript sería
 // una segunda definición del alcance que además no protege la llamada directa a PostgREST.
 
+import { marcaDeBaja, plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
+import { leerPlantelDeLaQuincena, personaDelDirectorio } from './plantelDeLaQuincenaService.ts'
+import { quincenaDe } from './quincena.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAsignaciones } from '../../obras/services/personalService.ts'
 import type { AsignacionVigente, FilaJornada, OtraCargaDelDia } from './jornadaPorObra.ts'
@@ -163,6 +166,8 @@ export interface DatosQuincenaPorObra {
   /** El plantel de quien dejó registros SIN tener ninguna asignación. Sin esto no hay con qué
    *  nombrar su fila y la persona desaparece de la grilla — ver `personasDe`. */
   personas: Record<string, PersonaRotulo>
+  /** Los `persona_id` del plantel de la quincena (`plantelDeLaQuincena`): las únicas filas de la grilla. */
+  plantel: string[]
   noLaborables: string[]
   /** El catálogo por id: nombre real y cliente. Es lo que evita que la pantalla escriba un slug. */
   obras: Record<string, ObraRotulo>
@@ -187,7 +192,7 @@ export async function getNoLaborables(
 export async function getQuincenaPorObra(
   supabase: SupabaseClient, desde: string, hasta: string,
 ): Promise<{ data: DatosQuincenaPorObra | null; error: string | null }> {
-  const [asignaciones, registros, obras, noLaborables] = await Promise.all([
+  const [asignaciones, registros, obras, noLaborables, plantel] = await Promise.all([
     getAsignaciones(supabase),
     // `notas` viaja porque ahí está la CLAVE DEL MOTIVO (`enfermedad`, `falta`…): es lo que
     // convierte una casilla «L» muda en una que dice de qué licencia se trata.
@@ -206,8 +211,13 @@ export async function getQuincenaPorObra(
     }),
     supabase.from('obra_canonica').select('id, nombre, estado, cliente_texto'),
     getNoLaborables(supabase, desde, hasta),
+    // EL PLANTEL DE LA QUINCENA, LA MISMA LECTURA QUE LIQUIDACIÓN (QA, 14/09/2026): sin él las filas salían
+    // de las asignaciones reconstruidas y una quincena de marzo mostraba a quien ingresó en septiembre.
+    leerPlantelDeLaQuincena(supabase, quincenaDe(desde)),
   ])
   if (asignaciones.error) return { data: null, error: asignaciones.error }
+  // SIN PLANTEL NO SE DIBUJA UNA GRILLA ADIVINADA: se dice qué falló.
+  if (plantel.errores.length > 0) return { data: null, error: plantel.errores.map((e) => `${e.que}: ${e.error}`).join(' · ') }
   if (registros.error) return { data: null, error: registros.error }
   if (obras.error) return { data: null, error: obras.error.message }
 
@@ -294,7 +304,14 @@ export async function getQuincenaPorObra(
         tipo_hora: r.tipo_hora,
         notas: r.notas,
       })),
-      personas: await plantelDe(supabase, sinAsignacion),
+      personas: {
+        ...Object.fromEntries(plantel.personas.map((p) => {
+          const baja = marcaDeBaja(p)?.texto ?? null
+          return [p.id, { nombre: p.nombre, nota: baja, baja }]
+        })),
+        ...(await plantelDe(supabase, sinAsignacion, desde, hasta)),
+      },
+      plantel: [...plantel.delCuadro],
       puestos: await puestosDe(supabase, [
         ...new Set([...vigentes.map((a) => a.persona_id), ...filasHH.map((r) => r.persona_id)]),
       ]),
@@ -309,28 +326,33 @@ export async function getQuincenaPorObra(
 }
 
 /**
- * Nombre y nota de un puñado de personas. `persona_plantel` es la MISMA vista de la que salen
- * todos los nombres de esta pantalla —publica sólo a quien está en la empresa—, no una segunda
- * fuente: quien no está ahí no se puede nombrar y su fila no se dibuja, porque inventarle un
- * rótulo sería peor que no mostrarla.
+ * Nombre y nota de quien tiene registros en la quincena y no se puede nombrar con una asignación.
+ *
+ * DESDE EL 14/09/2026 SALE DE `persona_directorio`, NO DE `persona_plantel` (dueño: «cada quincena tiene q
+ * mostrar el plantel q tuvo activo»). `persona_plantel` publica sólo a quien está hoy en la empresa, así que
+ * una baja con horas en una quincena vieja se quedaba sin nombre y su fila no se dibujaba. Quién entra lo
+ * decide `plantelDeLaQuincena` —acá todos tienen horas, que es actividad—, y la baja lleva su marca en la nota.
  */
 async function plantelDe(
-  supabase: SupabaseClient, ids: string[],
+  supabase: SupabaseClient, ids: string[], desde: string, hasta: string,
 ): Promise<Record<string, PersonaRotulo>> {
   if (ids.length === 0) return {}
   const { data } = await supabase
-    .from('persona_plantel').select('id, nombre_completo, especialidad, categoria').in('id', ids)
-  const filas = (data ?? []) as {
+    .from('persona_directorio')
+    .select('id, nombre_completo, especialidad, categoria, en_la_empresa, fecha_ingreso, fecha_egreso').in('id', ids)
+  const filas = ((data ?? []) as {
     id: string; nombre_completo: string | null; especialidad: string | null; categoria: string | null
-  }[]
-  return Object.fromEntries(filas
-    .filter((p) => (p.nombre_completo ?? '').trim())
-    .map((p) => [p.id, {
-      nombre: (p.nombre_completo as string).trim(),
-      nota: notaDe({
-        rol: null, persona_especialidad: p.especialidad, persona_categoria: p.categoria,
-      }),
-    }]))
+    en_la_empresa: boolean | null; fecha_ingreso: string | null; fecha_egreso: string | null
+  }[]).filter((p) => (p.nombre_completo ?? '').trim())
+  const vacio = new Set<string>()
+  const { activas } = plantelDeLaQuincena(filas.map((p) => ({ ...personaDelDirectorio(p), fila: p })), { desde, hasta },
+    { conHoras: new Set(ids), conLinea: vacio, conRecibo: vacio, conJornales: vacio })
+  return Object.fromEntries(activas.map(({ fila: p, ...persona }) => [p.id, {
+    nombre: persona.nombre,
+    nota: marcaDeBaja(persona)?.texto ?? notaDe({
+      rol: null, persona_especialidad: p.especialidad, persona_categoria: p.categoria,
+    }),
+  }]))
 }
 
 /**

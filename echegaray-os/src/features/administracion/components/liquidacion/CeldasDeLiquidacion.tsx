@@ -1,5 +1,7 @@
 'use client'
 
+import type { CSSProperties } from 'react'
+
 // LAS CELDAS QUE SE ESCRIBEN EN LIQUIDACIÓN — una sola definición para las dos pantallas que las
 // usan: el cuadro clásico (`CuadroLiquidacion`) y la solapa Pagos del handoff v2.
 //
@@ -232,6 +234,18 @@ export function CeldaValorHora({ valor, origen, personaId, quincena, grupo, solo
   )
 }
 
+const ESTILOS_DEL_REDONDEO = new Map<number, CSSProperties>()
+
+/** El `style` del campo del redondeo: el MISMO objeto para cada ancho, sin nada que dependa del estado. */
+export function estiloDelRedondeo(ancho: number): CSSProperties {
+  let e = ESTILOS_DEL_REDONDEO.get(ancho)
+  if (!e) {
+    e = { width: ancho, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px', borderRadius: 4, background: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }
+    ESTILOS_DEL_REDONDEO.set(ancho, e)
+  }
+  return e
+}
+
 /**
  * LA CELDA DEL DUEÑO: los billetes que entrega en mano. Viene SUGERIDA y se sobrescribe.
  *
@@ -313,11 +327,12 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
       title={titulo}
       data-testid={`redondeo-${personaId}`}
       data-sugerido={gris ? '1' : '0'}
-      style={{
-        width: ancho, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px',
-        border: `1px solid ${error ? V.neg : V.linea}`, borderRadius: 4,
-        background: '#FFFFFF', color: gris ? V.apagado : V.tinta, fontVariantNumeric: 'tabular-nums',
-      }}
+      data-error={error ? '1' : '0'}
+      // EL ESTILO ES UN OBJETO FIJO POR ANCHO, IGUAL EN EL SERVIDOR Y EN EL NAVEGADOR (QA, 14/09/2026: warning
+      // de hidratación al buscar «rosales» con navegación del lado del cliente). El sugerido y el error no
+      // arman otro `style`: van como atributos y los pinta la clase con los tokens.
+      className="border border-line text-ink data-[sugerido='1']:text-muted data-[error='1']:border-neg"
+      style={estiloDelRedondeo(ancho)}
     />
   )
 }

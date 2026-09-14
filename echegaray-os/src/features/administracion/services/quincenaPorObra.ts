@@ -111,6 +111,8 @@ export interface RegistroQuincena {
 export interface PersonaRotulo {
   nombre: string
   nota: string | null
+  /** «baja dd/mm» o «ya no está» (`marcaDeBaja`). Con plantel, reemplaza la nota de la fila. */
+  baja?: string | null
 }
 
 /** El catálogo de obras, para rotular sin inventar y sin mostrar el id. */
@@ -215,6 +217,13 @@ export interface EntradaQuincenaObra {
   /** El plantel por id, para nombrar a quien dejó registros sin tener ninguna asignación. */
   personas?: Record<string, PersonaRotulo>
   /**
+   * EL PLANTEL DE LA QUINCENA (`plantelDeLaQuincena`, la misma lectura que Liquidación). Con él, SÓLO sus
+   * personas tienen fila: una asignación reconstruida de quien ingresó después no crea una, y quien está en
+   * el plantel sin asignación ni horas sí la tiene (QA, 14/09/2026: Horas 25 contra Liquidación 22). Ausente
+   * = el comportamiento anterior (asignaciones + registros).
+   */
+  plantel?: ReadonlySet<string> | readonly string[]
+  /**
    * `personas.puesto` por id — el ROL ORGANIZACIONAL, y lo único que separa a los jefes de obra del
    * resto del plantel (dueño, 08/09/2026). Quién es jefe lo decide `esJefeDeObra`, acá y en el
    * plantel: una sola definición, en `vocabularioPersona.ts`.
@@ -249,7 +258,8 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
     else fueraPorPersona.set(t.persona_id, [t])
   }
 
-  return personasDe(e.asignaciones, e.registros, e.personas ?? {}).map((p) => {
+  const enPlantel = e.plantel ? new Set(e.plantel) : null
+  return personasDe(e.asignaciones, e.registros, e.personas ?? {}, enPlantel).map((p) => {
     const suyos = porPersona.get(p.persona_id) ?? []
     const celdas = e.dias.map((fecha) => celdaDe({
       fecha,
@@ -361,9 +371,12 @@ function personasDe(
   asignaciones: AsignacionQuincena[],
   registros: RegistroQuincena[],
   plantel: Record<string, PersonaRotulo>,
+  enPlantel: ReadonlySet<string> | null = null,
 ): PersonaDeLaGrilla[] {
   const mapa = new Map<string, PersonaDeLaGrilla>()
+  const fuera = (id: string): boolean => enPlantel != null && !enPlantel.has(id)
   for (const a of asignaciones) {
+    if (fuera(a.persona_id)) continue
     // NO SE DEDUPLICA POR OBRA. Dos tramos a la misma obra con `desde` distinto son dos hechos
     // —volvió a la obra después de un paso por otra— y el `desde` del último es justamente lo que
     // desempata cuál rige hoy. Colapsarlos al primero perdía ese dato.
@@ -379,7 +392,7 @@ function personasDe(
     })
   }
   for (const r of registros) {
-    if (mapa.has(r.persona_id)) continue
+    if (mapa.has(r.persona_id) || fuera(r.persona_id)) continue
     // ═══ CUALQUIER REGISTRO PONE A SU PERSONA EN LA GRILLA ═══
     //
     // No sólo las horas trabajadas: una ausencia, una licencia o una improductiva también son un
@@ -401,8 +414,19 @@ function personasDe(
       asignaciones: [],
     })
   }
+  // QUIEN ESTÁ EN EL PLANTEL DE LA QUINCENA SIN ASIGNACIÓN NI HORAS TAMBIÉN TIENE FILA: es la misma gente
+  // que Liquidación. Y la baja lleva la marca de Liquidación («baja dd/mm», «ya no está») en la nota.
+  if (enPlantel) {
+    for (const id of enPlantel) {
+      const p = plantel[id]
+      if (!p) continue
+      const previa = mapa.get(id)
+      if (previa) { if (p.baja) previa.nota = p.baja; continue }
+      mapa.set(id, { persona_id: id, nombre: p.nombre, nota: p.baja ?? p.nota, asignaciones: [] })
+    }
+  }
   for (const a of asignaciones) {
-    if (a.elegible !== false) continue
+    if (a.elegible !== false || fuera(a.persona_id)) continue
     mapa.get(a.persona_id)?.asignaciones.push(tramoDe(a))
   }
   return [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))

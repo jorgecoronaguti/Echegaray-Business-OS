@@ -15,7 +15,7 @@ import { getValorHoraVigente } from '../../../services/costoLecturas'
 import { ReabrirQuincena, type VentanaDeReapertura } from './ReabrirQuincena'
 import { BotonCerrar } from './AccionesDeCierre'
 import { pesos } from '../BloqueLiquidacion'
-import { ALTO_LIQ } from './tabla'
+import { ALTO_LIQ, MARCO_SCROLL } from './tabla'
 import { agruparPorRolOrganizacional } from '../../../services/vocabularioPersona'
 import { RotuloDeGrupo } from '../../RotuloDeGrupo'
 
@@ -254,7 +254,9 @@ function Cerrada({ filas, esJefe, cerradaEn, aviso, ventanas, puedeCerrar }: {
   ventanas: readonly VentanaDeReapertura[]
   puedeCerrar: boolean
 }) {
-  const grilla = 'minmax(0, 1fr) 50px 80px 100px 92px 96px 100px 118px'
+  // EL NOMBRE TIENE ANCHO MÍNIMO (QA 390 px, 14/09/2026): con `minmax(0, 1fr)` se achicaba a nada y las
+  // horas se montaban encima («AGUERO CRISTIAN105 DOMINGO»). La tabla rueda dentro de su caja.
+  const grilla = 'minmax(180px, 1fr) 50px 80px 100px 92px 96px 100px 118px'
   const totales = filas.reduce((a, f) => ({
     horas: a.horas + (f.horas ?? 0),
     cobra: a.cobra + (f.cobra ?? 0),
@@ -288,7 +290,8 @@ function Cerrada({ filas, esJefe, cerradaEn, aviso, ventanas, puedeCerrar }: {
           )}
         </div>
 
-        <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>
+        <div data-testid="cerrada-scroll" style={{ ...MARCO_SCROLL, padding: '18px 22px 0' }}>
+        <div style={{ minWidth: ANCHO_CERRADA, display: 'flex', flexDirection: 'column', fontSize: '12.5px', fontVariantNumeric: 'tabular-nums' }}>
           <div data-testid="encabezado-cerrada" style={{
             display: 'grid', gridTemplateColumns: grilla, gap: 14, height: ALTO_LIQ.renglonBajo, alignItems: 'end',
             paddingBottom: 9, borderBottom: `1px solid ${V.linea}`,
@@ -312,7 +315,7 @@ function Cerrada({ filas, esJefe, cerradaEn, aviso, ventanas, puedeCerrar }: {
                 display: 'grid', gridTemplateColumns: grilla, gap: 14, minHeight: ALTO_LIQ.fila,
                 alignItems: 'center', borderBottom: `1px solid ${V.linea}`,
               }}>
-                <span style={{ color: V.tinta }}>{f.nombre}</span>
+                <span title={f.nombre} style={{ color: V.tinta, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.nombre}</span>
                 <span style={derecha}>{f.horas == null ? '—' : f.horas.toLocaleString('es-AR')}</span>
                 <span style={{ ...derecha, fontWeight: 500 }}>{pesos(f.valorHoraSellado)}</span>
                 <span style={derecha}>{pesos(f.cobra)}</span>
@@ -349,6 +352,7 @@ function Cerrada({ filas, esJefe, cerradaEn, aviso, ventanas, puedeCerrar }: {
             <span />
           </div>
         </div>
+        </div>
         <div style={{ height: 20 }} />
       </div>
       <p style={{ fontSize: '11.5px', color: V.apagado, margin: '12px 0 0' }}>
@@ -360,3 +364,6 @@ function Cerrada({ filas, esJefe, cerradaEn, aviso, ventanas, puedeCerrar }: {
 }
 
 const derecha = { textAlign: 'right' as const }
+
+/** Las ocho columnas (180 + 636) más siete huecos de 14: el mínimo con el que la tabla rueda a 390 px. */
+const ANCHO_CERRADA = 914

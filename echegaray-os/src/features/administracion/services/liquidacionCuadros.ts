@@ -27,6 +27,8 @@
 // es lo que distingue «el banco pagó este recibo» de «el banco le adelantó plata»; la fecha sola
 // haría pasar por recibo pagado a cualquier transferencia del mismo día.
 
+import { cuilNormalizado, mismoCuil } from './cuil.ts'
+import { entraAlCuadro } from './liquidacionPlantelActivo.ts'
 import {
   liquidarLinea, tarifaVigenteAl, type EntradaDeLinea, type GrupoLiquidacion, type LineaLiquidada,
   type TarifaVigente,
@@ -40,6 +42,10 @@ export interface PersonaDeLiquidacion {
   /** Sin CUIL no hay recibo ni giro que emparejar: la fila lo dice, no lo adivina. */
   cuil: string | null
   enLaEmpresa: boolean
+  fechaIngreso?: string | null
+  fechaEgreso?: string | null
+  /** Tuvo actividad propia en la quincena (horas, línea, recibo, JORNALES): entra aunque falten tarifa u horas. */
+  conActividad?: boolean
   /** `esJefeDeObra(persona_directorio.puesto)`, leído UNA vez en el servicio y propagado. */
   esJefe?: boolean
 }
@@ -146,7 +152,8 @@ export function girosDe(
 ): { giroEnElLote: boolean; yaTransferido: number } {
   if (!cuil) return { giroEnElLote: false, yaTransferido: 0 }
   const suyos = adelantos.filter(
-    (a) => a.cuil === cuil && a.concepto === concepto && dentro(q, a.fecha),
+    // POR DÍGITOS: «20-38218815-3» y «20382188153» son la misma persona (`cuil.ts`).
+    (a) => mismoCuil(a.cuil, cuil) && a.concepto === concepto && dentro(q, a.fecha),
   )
   let giroEnElLote = false
   let yaTransferido = 0
@@ -175,7 +182,7 @@ function entradaDe(
   // jefes decía «—» con días de 9 h cargados, y la regla única de horas pide que Liquidación muestre el
   // mismo total que «Horas». Su COBRA sigue siendo el neto mensual (`cobraDe`): las horas no multiplican.
   const h = ctx.horas.get(p.id) ?? null
-  const recibo = ctx.recibos.find((r) => r.cuil === p.cuil && r.periodo === ctx.periodo) ?? null
+  const recibo = ctx.recibos.find((r) => mismoCuil(r.cuil, p.cuil) && r.periodo === ctx.periodo) ?? null
   const neto = recibo == null ? null : Number(recibo.neto)
   const { giroEnElLote, yaTransferido } = girosDe(ctx.quincena, ctx.adelantos, p.cuil, CONCEPTO_DEL_GIRO[grupo], neto)
   return {
@@ -210,7 +217,7 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
   const ctx: Contexto = { ...d, periodo: periodoDeRecibo(d.quincena) }
   const finales = new Set(
     d.recibos.filter((r) => r.periodo === 'FINAL' && dentro(d.quincena, r.fecha_pago))
-      .map((r) => r.cuil),
+      .map((r) => cuilNormalizado(r.cuil)),
   )
   const cuadros: Record<GrupoLiquidacion, LineaLiquidada[]> = { obreros: [], oficina: [], final: [] }
   let presentesSinHoras = 0
@@ -221,7 +228,8 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     presentesSinHoras += h?.presentesSinHoras ?? 0
     const redondeo = d.redondeos.get(p.id) ?? null
 
-    if (p.cuil && finales.has(p.cuil)) {
+    const cuilDeLaPersona = cuilNormalizado(p.cuil)
+    if (cuilDeLaPersona && finales.has(cuilDeLaPersona)) {
       cuadros.final.push(lineaFinal(ctx, p, redondeo))
       continue
     }
@@ -232,8 +240,13 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     // SIN TARIFA POR HORA Y SIN MOVIMIENTO EN LA VENTANA NO ES UNA FILA. Listar al plantel entero
     // llenaría el cuadro de gente que no cobra esta quincena, y «sin tarifa» dejaría de señalar el
     // caso que hay que resolver antes de pagar.
-    if (vigente?.valorHora == null && (h == null || (h.horas === 0 && h.presentesSinHoras === 0))) continue
-    if (!p.enLaEmpresa && (h == null || h.horas === 0)) continue
+    // EL MISMO CORTE QUE LA SOLAPA HORAS (`entraAlCuadro`): las dos pantallas muestran las mismas personas.
+    if (!entraAlCuadro({
+      conActividad: p.conActividad === true, tarifaVigente: vigente?.valorHora != null,
+      horas: h?.horas ?? 0, presenteSinHoras: (h?.presentesSinHoras ?? 0) > 0,
+    })) continue
+    // SIN CORTE POR `en_la_empresa` (dueño, 14/09/2026): quién es de esta quincena ya lo decidió
+    // `plantelDeLaQuincena`. Cortar acá por el estado de hoy sacaba de una quincena vieja a quien se fue después.
     cuadros.obreros.push(liquidarLinea(entradaDe(ctx, p, vigente, 'obreros'), 'obreros', redondeo))
   }
 
@@ -262,7 +275,7 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
 function lineaFinal(
   ctx: Contexto, p: PersonaDeLiquidacion, redondeo: number | null,
 ): LineaLiquidada {
-  const recibo = ctx.recibos.find((r) => r.cuil === p.cuil && r.periodo === 'FINAL') ?? null
+  const recibo = ctx.recibos.find((r) => mismoCuil(r.cuil, p.cuil) && r.periodo === 'FINAL') ?? null
   const mitadBlanca = recibo == null ? null : Number(recibo.neto)
   const { giroEnElLote, yaTransferido } = girosDe(
     ctx.quincena, ctx.adelantos, p.cuil, CONCEPTO_DEL_GIRO.final, mitadBlanca,

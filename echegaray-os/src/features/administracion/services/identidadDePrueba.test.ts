@@ -47,22 +47,22 @@ test('SIN NOMBRE NI MAIL NI MARCA, NO SE DECIDE QUE ES DE PRUEBA', () => {
   assert.equal(esIdentidadDePrueba({ nombre: null, email: null, esPrueba: null }), false)
 })
 
+// CAMBIÓ EL 14/09/2026: `plantelDeLaQuincena` recibe la quincena y la actividad de ESA quincena (dueño: «cada
+// quincena tiene q mostrar el plantel q tuvo activo»). Lo que se sigue protegiendo es lo mismo: la cuenta
+// de prueba no está ni en `activas` ni en «sin actividad».
+const Q = { desde: '2026-09-01', hasta: '2026-09-15' }
+const SIN = { conHoras: new Set<string>(), conLinea: new Set<string>(), conRecibo: new Set<string>(), conJornales: new Set<string>() }
+const PERSONAS_Q = [
+  { id: 'p1', nombre: 'Maldonado Juan', enLaEmpresa: true },
+  // Ingresó después de la quincena: es quien queda «sin actividad».
+  { id: 'p2', nombre: 'Quiroga Sebastián', enLaEmpresa: true, fechaIngreso: '2026-10-01' },
+  { id: 'qa', nombre: '[PRUEBA E2E] QA Campo', enLaEmpresa: true },
+]
+
 test('EL PLANTEL DE LA QUINCENA NO LA DEVUELVE NI COMO ACTIVA NI COMO «SIN ACTIVIDAD»', () => {
   // EL DEFECTO QUE ATRAPA: filtrar sólo `activas` y dejar la cuenta de prueba en el contador «N sin
   // actividad», que es un enlace a una lista. No está sin actividad: no es una persona.
-  const r = plantelDeLaQuincena(
-    [
-      { id: 'p1', nombre: 'Maldonado Juan' },
-      { id: 'p2', nombre: 'Quiroga Sebastián' },
-      { id: 'qa', nombre: '[PRUEBA E2E] QA Campo' },
-    ],
-    {
-      conLineaEnLaAnterior: new Set(['p1', 'qa']),
-      conHoras: new Set(),
-      conAsistencia: new Set(),
-      conTarifaNueva: new Set(),
-    },
-  )
+  const r = plantelDeLaQuincena(PERSONAS_Q, Q, { ...SIN, conLinea: new Set(['p1', 'qa']) })
   assert.deepEqual(r.activas.map((p) => p.id), ['p1'])
   assert.deepEqual(r.sinActividad.map((p) => p.id), ['p2'])
 })
@@ -130,24 +130,13 @@ test('SIN SABER QUIÉN PREGUNTA SE ESCONDE: el default es el de antes del cambio
 test('EL PLANTEL DE LA QUINCENA SE LA DEVUELVE A UNA SESIÓN DE PRUEBA, CON SU ACTIVIDAD', () => {
   // LA PANTALLA DONDE SE ESCRIBE. La celda `espejo-dia-<personaId>-<fecha>` sólo existe para quien
   // está en `activas`: sin esto la identidad de prueba no tiene celda y no hay E2E de escritura.
-  const personas = [
-    { id: 'p1', nombre: 'Maldonado Juan' },
-    { id: 'p2', nombre: 'Quiroga Sebastián' },
-    { id: 'qa', nombre: '[PRUEBA E2E] QA Campo' },
-  ]
-  const evidencia = {
-    conLineaEnLaAnterior: new Set(['p1']),
-    conHoras: new Set(['qa']),
-    conAsistencia: new Set<string>(),
-    conTarifaNueva: new Set<string>(),
-  }
-  const deVerdad = plantelDeLaQuincena(personas, evidencia, false)
+  const actividad = { ...SIN, conLinea: new Set(['p1']), conHoras: new Set(['qa']) }
+  const deVerdad = plantelDeLaQuincena(PERSONAS_Q, Q, actividad, false)
   assert.deepEqual(deVerdad.activas.map((p) => p.id), ['p1'])
   assert.deepEqual(deVerdad.sinActividad.map((p) => p.id), ['p2'])
 
-  const dePrueba = plantelDeLaQuincena(personas, evidencia, true)
-  // Entra por la MISMA puerta que todos —tiene horas cargadas en la quincena—, no por una excepción
-  // que la meta en la lista sin evidencia de actividad.
+  const dePrueba = plantelDeLaQuincena(PERSONAS_Q, Q, actividad, true)
+  // Entra por la MISMA puerta que todos —tiene horas cargadas en la quincena—, no por una excepción.
   assert.deepEqual(dePrueba.activas.map((p) => p.id), ['p1', 'qa'])
   assert.deepEqual(dePrueba.sinActividad.map((p) => p.id), ['p2'])
 })

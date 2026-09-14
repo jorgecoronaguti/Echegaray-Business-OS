@@ -51,7 +51,7 @@ export async function SolapaCostoHora({ quincena, hoy }: { quincena: Quincena; h
     getLiquidacionDeLaQuincena(supabase, quincena),
     getValorHoraVigente(supabase, quincena.hasta),
   ])
-  const { personas, error: errPlantel } = await getPlantelParaEscalera(supabase, porPersona)
+  const { personas, error: errPlantel } = await getPlantelParaEscalera(supabase, porPersona, new Set(liq.plantel))
 
   // LA FECHA DE LA VERSIÓN ES EL ÚLTIMO DÍA DE LA QUINCENA, NO HOY. Mirar una quincena de marzo
   // tiene que mostrar la alícuota de marzo: es toda la razón por la que la tabla se versiona.

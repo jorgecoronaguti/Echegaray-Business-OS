@@ -39,6 +39,10 @@ export async function leerCuadroDeLaQuincena(
     getDatosDeLaSolapaHoras(supabase, quincena),
     getLiquidacionDeLaQuincena(supabase, quincena),
   ])
+  // EL PLANTEL DE LA QUINCENA, UNA SOLA DECISIÓN (`plantelDeLaQuincena`, en la liquidación): las filas del
+  // cuadro, la grilla de pendientes y la masa en curso salen de las mismas personas.
+  const enPlantel = new Set(liquidacion.plantel)
+  const personas = datos.personas.filter((p) => enPlantel.has(p.id))
   const lineas: Record<string, { grupo: GrupoLiquidacion; linea: LineaConOverrides }> = {}
   const tituloDe = new Map<GrupoLiquidacion, string>()
   for (const cuadro of liquidacion.cuadros) {
@@ -51,16 +55,16 @@ export async function leerCuadroDeLaQuincena(
   // EL ESPEJO VIENE CON LA LIQUIDACIÓN: es la misma foto de la planilla que ya entró a la cadena.
   const { espejo } = liquidacion
   const filas = filasDelEspejo({
-    quincena, personas: datos.personas, registros: datos.registros, presencias: datos.presencias,
+    quincena, personas, registros: datos.registros, presencias: datos.presencias,
     lineas, cuadrosCerrados, hayEspejo: espejo.hay, hoy,
     horasDeLaPlanilla: espejo.horasPorPersona, diasDeLaPlanilla: espejo.diasPorPersona,
   })
   const grilla = filasDeGrilla({
-    quincena, personas: datos.personas, registros: datos.registros, presencias: datos.presencias,
+    quincena, personas, registros: datos.registros, presencias: datos.presencias,
     personaDeRegistro: (r) => (r as unknown as { persona_id: string }).persona_id,
     personaDePresencia: (p) => (p as unknown as { persona_id: string }).persona_id,
     hoy,
   })
   const dias = diasDelEspejo(quincena, diasConHorasDe(datos.registros))
-  return { datos, liquidacion, tituloDe, cuadrosCerrados, filas, grilla, dias }
+  return { datos: { ...datos, personas }, liquidacion, tituloDe, cuadrosCerrados, filas, grilla, dias }
 }

@@ -119,8 +119,13 @@ test('LA ENTRADA: el recibo del período por persona o CUIL', () => {
   const recibos = [{ ...RECIBO_Q2_08, periodo: 'Q1-08/2026' }, RECIBO_Q2_08, ajeno]
   const e = entradaDeBlanco({ personaId: 'rosales', cuil: '20358508783', periodo: 'Q1-09/2026', recibos, pisoCategoria: 6348, netoDeNomina: null })
   assert.equal(e.recibo, null, 'no hay recibo de Q1-09')
-  const conCuil = entradaDeBlanco({ personaId: 'x', cuil: '20358508783', periodo: 'Q2-08/2026', recibos, pisoCategoria: 6348, netoDeNomina: null })
-  assert.equal(conCuil.recibo?.neto, 230240.12, 'empareja por CUIL cuando la persona_id no está')
+  // CAMBIÓ EL 14/09/2026: `persona_id` MANDA y el CUIL es respaldo SÓLO cuando el recibo no trae persona.
+  // Antes un recibo de «rosales» se le daba a «x» por compartir CUIL; ahora hace falta que no tenga persona.
+  const sinPersona = recibos.map((r) => ({ ...r, personaId: null }))
+  const conCuil = entradaDeBlanco({ personaId: 'x', cuil: '20-35850878-3', periodo: 'Q2-08/2026', recibos: sinPersona, pisoCategoria: 6348, netoDeNomina: null })
+  assert.equal(conCuil.recibo?.neto, 230240.12, 'empareja por CUIL (por dígitos) cuando la línea no trae persona_id')
+  const deOtro = entradaDeBlanco({ personaId: 'x', cuil: '20358508783', periodo: 'Q2-08/2026', recibos, pisoCategoria: 6348, netoDeNomina: null })
+  assert.equal(deOtro.recibo, null, 'un recibo con persona_id de otra persona no se cruza por CUIL')
   assert.ok(periodoOrdenable('Q2-12/2025') < periodoOrdenable('Q1-01/2026'))
   assert.equal(periodoOrdenable('FINAL-08/2026'), '', 'una final no es un período quincenal')
 })

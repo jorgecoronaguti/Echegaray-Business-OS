@@ -34,42 +34,105 @@
 
 import { sinIdentidadesDePrueba } from './identidadDePrueba.ts'
 
+// ═══ DESDE EL 14/09/2026: EL PLANTEL QUE LA QUINCENA TUVO, NO EL DE HOY ═══
+//
+// Dueño, textual: *«cada quincena tiene q mostrar el plantel q tuvo activo, no mostrar solo el activo
+// actual»*. Las pantallas cortaban con `en_la_empresa = true`, que es el estado de HOY: una quincena de
+// marzo perdía a quien se fue en junio. Esta es la única regla, y la usan Horas, el cuadro de
+// Liquidación, Caja, Costo y convenio, Cierre y recibos y la semana de asistencia. La proyección de
+// quincenas FUTURAS (`getPersonasProyectables`) sigue con el plantel de hoy: ahí sí corresponde.
+
 export interface PersonaDelPlantel {
   id: string
   nombre: string
+  /** El estado de HOY. Sólo decide junto con las fechas; nunca corta por sí solo. */
+  enLaEmpresa: boolean
+  fechaIngreso?: string | null
+  fechaEgreso?: string | null
+  /** `personas.es_prueba`. Las vistas ya lo filtran; si llega, manda. */
+  esPrueba?: boolean | null
+  email?: string | null
 }
 
-export interface EvidenciaDeActividad {
-  /** `persona_id` con línea en la última quincena CERRADA. */
-  conLineaEnLaAnterior: ReadonlySet<string>
-  /** `persona_id` con al menos un registro de horas en la quincena en curso. */
+/** Qué personas tuvieron actividad EN ESTA quincena. Cualquiera alcanza. */
+export interface ActividadDeLaQuincena {
+  /** Filas de `registros_hh` con fecha en la ventana. */
   conHoras: ReadonlySet<string>
-  /** `persona_id` con presencia declarada (presente, ausente o licencia) en la quincena. */
-  conAsistencia: ReadonlySet<string>
-  /** `persona_id` con una tarifa cuyo `desde` cae dentro de la quincena. */
-  conTarifaNueva: ReadonlySet<string>
+  /** Línea en `liquidacion_linea` de esta quincena. */
+  conLinea: ReadonlySet<string>
+  /** Recibo en `recibo_sueldo_linea` de este período. */
+  conRecibo: ReadonlySet<string>
+  /** Fila en `jornales_bloque_persona` de esta quincena. */
+  conJornales: ReadonlySet<string>
 }
 
 export interface PlantelDeLaQuincena<P extends PersonaDelPlantel> {
   activas: P[]
-  /** Los que no aparecen. Se devuelven enteros, no contados: el enlace «verlas» los necesita. */
+  /**
+   * QUIEN HOY ESTÁ EN LA EMPRESA Y NO ENTRA EN ESTA QUINCENA (ingresó después, por ejemplo). Se devuelven
+   * enteros: una lista que se acorta en silencio es indistinguible de una que se rompió. Las bajas que no
+   * son de esta quincena no se cuentan acá: no son «sin actividad», son de otro tiempo.
+   */
   sinActividad: P[]
+  /** Los `id` con actividad propia en la quincena (a): entran aunque falten tarifa u horas. */
+  conActividad: Set<string>
 }
 
 /**
- * PARTE EL PLANTEL EN DOS. Ni una escritura, y por eso se puede correr en cada carga de pantalla.
+ * EL PLANTEL DE LA QUINCENA [desde, hasta]. Ni una escritura.
+ *
+ *   a) actividad en la quincena → entra, esté o no en la empresa hoy;
+ *   b) sin actividad → ingresó a más tardar `hasta` (un ingreso sin cargar no afirma que ingresó después),
+ *      no egresó antes de `desde`, y está en la empresa o tiene la fecha de egreso cargada. Una baja SIN
+ *      fecha de egreso no tiene cómo ubicarse en el tiempo: sin actividad, no entra.
+ *   siempre fuera: `es_prueba` y las identidades de prueba (salvo una sesión de prueba, como la base).
  */
 export function plantelDeLaQuincena<P extends PersonaDelPlantel>(
-  personas: readonly P[], e: EvidenciaDeActividad, laSesionEsDePrueba = false,
+  personas: readonly P[], q: { desde: string; hasta: string }, a: ActividadDeLaQuincena, laSesionEsDePrueba = false,
 ): PlantelDeLaQuincena<P> {
-  const activa = (id: string): boolean =>
-    e.conLineaEnLaAnterior.has(id) || e.conHoras.has(id)
-    || e.conAsistencia.has(id) || e.conTarifaNueva.has(id)
-  const reales = sinIdentidadesDePrueba(personas, (p) => ({ nombre: p.nombre }), laSesionEsDePrueba)
-  return {
-    activas: reales.filter((p) => activa(p.id)),
-    sinActividad: reales.filter((p) => !activa(p.id)),
+  const conActividad = new Set<string>()
+  const reales = sinIdentidadesDePrueba(
+    personas.filter((p) => laSesionEsDePrueba || p.esPrueba !== true),
+    (p) => ({ nombre: p.nombre, email: p.email ?? null }), laSesionEsDePrueba,
+  )
+  const activas: P[] = []
+  const sinActividad: P[] = []
+  for (const p of reales) {
+    const tuvo = a.conHoras.has(p.id) || a.conLinea.has(p.id) || a.conRecibo.has(p.id) || a.conJornales.has(p.id)
+    if (tuvo) conActividad.add(p.id)
+    const ingreso = p.fechaIngreso == null || p.fechaIngreso <= q.hasta
+    const egreso = p.fechaEgreso == null || p.fechaEgreso >= q.desde
+    const ubicable = p.enLaEmpresa || p.fechaEgreso != null
+    if (tuvo || (ingreso && egreso && ubicable)) activas.push(p)
+    else if (p.enLaEmpresa) sinActividad.push(p)
   }
+  return { activas, sinActividad, conActividad }
+}
+
+/**
+ * ¿TIENE FILA EN EL CUADRO DE LA QUINCENA? El corte que `armarCuadros` hacía a mano, escrito una vez para que
+ * la solapa Horas muestre exactamente las mismas personas (QA, 14/09/2026). Alguien del plantel sin
+ * actividad, sin tarifa vigente, sin horas y sin presencia no cobra esta quincena: no es una fila.
+ */
+export function entraAlCuadro(e: {
+  conActividad: boolean; tarifaVigente: boolean; horas: number; presenteSinHoras: boolean
+}): boolean {
+  return e.conActividad || e.tarifaVigente || e.horas > 0 || e.presenteSinHoras
+}
+
+const dm = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
+/**
+ * LA MARCA DE QUIEN YA NO ESTÁ PERO FIGURA EN LA QUINCENA QUE SE MIRA. Chica y apagada: nunca desaparece,
+ * y tampoco se lee como un problema. `null` si hoy está en la empresa.
+ */
+export function marcaDeBaja(p: { enLaEmpresa: boolean; fechaEgreso?: string | null }): { texto: string; titulo: string } | null {
+  if (p.enLaEmpresa) return null
+  if (p.fechaEgreso) {
+    const f = p.fechaEgreso.slice(0, 10)
+    return { texto: `baja ${dm(f)}`, titulo: `Se dio de baja el ${dm(f)}/${f.slice(0, 4)}. Figura por la quincena que se está mirando.` }
+  }
+  return { texto: 'ya no está', titulo: 'Ya no está en la empresa (sin fecha de egreso cargada). Figura por su actividad en esta quincena.' }
 }
 
 export interface TarifaHeredada {

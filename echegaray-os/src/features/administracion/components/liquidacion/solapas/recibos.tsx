@@ -88,6 +88,9 @@ export async function SolapaRecibos({ quincenaPedida, hoy, parametros = {}, href
     getEslabonesDeLaQuincena(supabase, q),
     getRecibosDeSueldoDelAnio(supabase, q.desde.slice(0, 4)),
   ])
+  // EL PLANTEL QUE LA QUINCENA TUVO, el de la liquidación (`plantelDeLaQuincena`), no el de hoy.
+  const enPlantel = new Set(liquidacion.plantel)
+  const delPlantel = eslabones.personas.filter((p) => enPlantel.has(p.personaId))
   const ausencias = await getAusenciasDeLaQuincena(
     supabase, q, new Map(eslabones.personas.map((p) => [p.personaId, p.nombre])),
   )
@@ -196,13 +199,13 @@ export async function SolapaRecibos({ quincenaPedida, hoy, parametros = {}, href
 
       <details style={{ marginTop: 16 }}>
         <summary style={{ cursor: 'pointer', fontSize: '12.5px', fontWeight: 600, color: V.tinta, padding: '8px 0' }}>
-          {`Retribución · ${eslabones.personas.length} personas · se edita en el cuadro de la quincena`}
+          {`Retribución · ${delPlantel.length} personas · se edita en el cuadro de la quincena`}
         </summary>
         <Cuadro testid="cuadro-retribucion">
           <ConScroll ancho={560}>
             <Cuerpo>
               <Encabezado columnas={COLS_RET} celdas={['Persona', 'Retribución', 'Origen']} />
-              {eslabones.personas.map((p) => (
+              {delPlantel.map((p) => (
                 <Fila key={p.personaId} columnas={COLS_RET} alto={ALTO_LIQ.filaAngosta} testid={`retribucion-${p.personaId}`} celdas={[
                   <Nombre key="n">{p.nombre}</Nombre>,
                   p.valorHora != null ? `${pesos(p.valorHora)}/h`

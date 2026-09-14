@@ -35,6 +35,7 @@
 // se leen ahora por `leerRegistrosHH`, la MISMA función que usa la solapa Asistencia: una fuente,
 // una paginación, y un error declarado si la ventana no entra.
 
+import { cuilNormalizado } from './cuil.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PersonaDeGrilla } from './grillaHorasQuincena.ts'
 import { desdeDeHHPorMes, hhPorMes } from './panelDePersona.ts'
@@ -225,17 +226,20 @@ export async function getDatosDeLaSolapaHoras(
     .map((r) => [r.id, r.cuil]))
   const adelantoDe = new Map<string, number>()
   for (const a of (adelantos.data ?? []) as { cuil: string | null; importe: unknown }[]) {
-    if (a.cuil) adelantoDe.set(a.cuil, (adelantoDe.get(a.cuil) ?? 0) + (numeroONulo(a.importe) ?? 0))
+    const clave = cuilNormalizado(a.cuil)
+    if (clave) adelantoDe.set(clave, (adelantoDe.get(clave) ?? 0) + (numeroONulo(a.importe) ?? 0))
   }
 
-  const directorioFilas = ((directorio.data ?? []) as unknown as FilaDirectorio[])
-    .filter((p) => p.en_la_empresa !== false)
+  // SIN CORTE POR `en_la_empresa`: quién entra en la quincena lo decide `plantelDeLaQuincena`, y
+  // `leerCuadroDeLaQuincena` recorta estas personas con ese plantel. Una baja con horas en una quincena
+  // vieja se tiene que poder dibujar (dueño, 14/09/2026).
+  const directorioFilas = (directorio.data ?? []) as unknown as FilaDirectorio[]
   const porPersona: Record<string, DatosDePersona> = {}
   for (const p of directorioFilas) {
     const suyas = filasHH.filter((f) => f.persona_id === p.id)
     const cuil = cuilDe.get(p.id) ?? legajoDe.get(p.id)?.cuil ?? null
     porPersona[p.id] = armarPersona(p, legajoDe.get(p.id), tarifaDe.get(p.id)?.valorHora ?? null, suyas, q, nombres,
-      cuil ? (adelantoDe.get(cuil) ?? null) : null,
+      cuilNormalizado(cuil) ? (adelantoDe.get(cuilNormalizado(cuil) as string) ?? null) : null,
       // SIN LECTURA NO HAY GRÁFICO. `hhPorMes([])` devuelve cinco `null`, que el panel escribe «sin
       // cargar» — y eso es correcto sólo cuando la lectura SÍ se hizo. El error ya está anotado
       // arriba y la pantalla lo muestra; acá el gráfico queda como lo que es: sin dato.
@@ -258,6 +262,8 @@ export async function getDatosDeLaSolapaHoras(
       // ALTA Y CATEGORÍA YA VENÍAN EN ESTA LECTURA (el panel las usa): el cuadro de la quincena las
       // pide como columnas (dueño, 14/09/2026: «Legajo: alta y categoría») sin una consulta más.
       fechaIngreso: p.fecha_ingreso,
+      fechaEgreso: p.fecha_egreso,
+      enLaEmpresa: p.en_la_empresa !== false,
       categoria: p.categoria,
     })),
     registros: filasHH
