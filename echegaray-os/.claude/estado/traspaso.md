@@ -164,6 +164,13 @@ Quattropani 378 h / 2 personas / 17/08–31/08 226 + 01/09–15/09 152 — datos
 pantalla. QA desglose en curso. **Decisión del dueño:** Maldonado (jefe de obra, neto mensual) 80 h
 web en Quattropani 01–11/09: ¿cuentan como HH? · bloques de Oficina que se pisan antes de junio en La
 Estrella (¿priorizar Obreros?).
+**~21:50 — decisiones del dueño:** jefe de obra cuenta HH en su obra (agente en wt-jefe, migración
+T2300 SIN aplicar: fuente única de HH para pantalla_cliente_en_vivo, hh_de_obra_en_vivo,
+costo_de_obras_a_la_fecha; esperado Quattropani 458 h / 3 personas) · quincenas = tal cual JORNALES.
+**Caída 21:39** (recuperó 21:44, restart 21:46) con 2 GB y memoria sobrada; coincidió con T2200 + QA.
+Timer `echegaray-mantener-caliente` queda APAGADO (daba permission denied). Jefes sin horas 08/08–31/08
+en ningún lado (FALTA_DATO, avisado). JORNALES 01/06 celda 11/06 = 70 h (Alaniz/Agüero/Rosales) →
+descartada por >24 h; avisado al dueño para que la reparta. Resto de JORNALES vs base desde junio: OK.
 
 ## 6. PENDIENTES REALES
 
