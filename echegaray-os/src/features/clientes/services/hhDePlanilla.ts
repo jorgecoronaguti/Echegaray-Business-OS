@@ -18,10 +18,18 @@
 // la app sin respaldo en JORNALES (persona · días)». Liquidación NO usa esta regla: ahí la web carga
 // el día en curso a propósito, antes de que exista en la planilla.
 //
-// La definición vive UNA vez en SQL (el filtro de `pantalla_cliente` y `hh_de_obra`); esta función es
-// su espejo para los tests y para armar la frase, y `hh-por-obra.pg.test.mjs` compara las dos.
+// ═══ EL JEFE DE OBRA CUENTA (dueño, 13/09/2026) ═══
+//
+// «Maldonado es jefe de obra y tiene 80 h en Quattropani del 01 al 11/09, cargadas en la app. ¿Cuentan
+// como horas de la obra? — sí, jefe de esa obra». JORNALES tiene a los jefes sólo hasta agosto; desde
+// septiembre sus horas están sólo en la app. Cuenta la fila `web:*` de trabajo de un JEFE DE OBRA en
+// un día que la planilla no tiene de esa persona: si JORNALES tiene el día, manda JORNALES y la fila
+// de la app no se cuenta dos veces. Un obrero común cargado en la app sigue afuera.
+//
+// La definición vive UNA vez en SQL (`hh_que_cuentan_en_obra`, 20260913T2300); esta función es su
+// espejo para los tests y para armar la frase, y `hh-por-obra.pg.test.mjs` compara las dos.
 
-/** El único origen que cuenta como hora real de obra en el CRM. */
+/** El origen que manda: lo que JORNALES tiene, cuenta siempre. */
 export const FUENTE_PLANILLA = 'sheet:jornales'
 
 export const esDePlanilla = (fuente: unknown): boolean => fuente === FUENTE_PLANILLA
@@ -36,6 +44,31 @@ export interface FilaHH {
   horas: number
   tipoHora: string
   fuente: string | null
+  /** La persona es jefe de obra según `esJefeDeObra(puesto)`. Ausente = no lo es. */
+  esJefe?: boolean
+}
+
+/** De dónde sale una fila que cuenta. `null` = no cuenta como hora de obra. */
+export type OrigenHH = 'jornales' | 'jefe_app'
+
+/**
+ * ¿ESTA FILA CUENTA COMO HORA DE OBRA? El espejo de `hh_que_cuentan_en_obra`.
+ *
+ * Los días que JORNALES tiene de cada persona se miran sobre TODAS las filas —de cualquier obra y
+ * tipo—, igual que el `not exists` de la vista: un día liquidado por la planilla en otra obra también
+ * es un día que la app no puede volver a contar.
+ */
+export function origenesHH(filas: readonly FilaHH[]): (OrigenHH | null)[] {
+  const diasDePlanilla = new Set(filas
+    .filter((f) => esDePlanilla(f.fuente) && f.personaId && f.fecha)
+    .map((f) => `${f.personaId}|${f.fecha}`))
+  return filas.map((f) => {
+    if (esDePlanilla(f.fuente)) return 'jornales'
+    const cuentaJefe = f.esJefe === true && f.personaId != null && f.fecha != null
+      && (f.fuente ?? '').startsWith('web:') && TRABAJADAS.has(f.tipoHora)
+      && !diasDePlanilla.has(`${f.personaId}|${f.fecha}`)
+    return cuentaJefe ? 'jefe_app' : null
+  })
 }
 
 /** Lo cargado en la app que la planilla no respalda, por persona. */
@@ -67,9 +100,10 @@ export function hhDeObraCRM(filas: readonly FilaHH[]): HHDeObraCRM {
   let inicio: string | null = null
   let ultima: string | null = null
   const fuera = new Map<string, SinRespaldo>()
-  for (const f of filas) {
+  const origenes = origenesHH(filas)
+  for (const [i, f] of filas.entries()) {
     if (!TRABAJADAS.has(f.tipoHora)) continue
-    if (esDePlanilla(f.fuente)) {
+    if (origenes[i] != null) {
       hh = (hh ?? 0) + f.horas
       if (f.personaId) personas.add(f.personaId)
       if (f.fecha && (!inicio || f.fecha < inicio)) inicio = f.fecha

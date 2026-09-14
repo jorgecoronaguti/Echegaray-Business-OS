@@ -109,6 +109,20 @@ test('LO DE LA APP SIN RESPALDO EN JORNALES SE DICE APARTE, y no borra la cifra 
   assert.equal(tituloHH(p), 'Sin horas en JORNALES. 80 h cargadas en la app sin respaldo en JORNALES (NIEVAS VILLEGAS 80 h · 01/09).')
 })
 
+test('LAS HORAS DEL JEFE DE OBRA SUMAN y el title dice cuántas salieron de la app (dueño, 13/09/2026)', () => {
+  const m = armarHorasPorObra([{
+    obra_id: 'quattropani', hh_real: 458, hh_plan: null, registros: 47, personas: 3,
+    inicio_real: '2026-08-17', ultima_fecha: '2026-09-11', hh_jefe_app: '80', sin_respaldo: [],
+  }])
+  const q = m?.get('quattropani')
+  assert.equal(q?.hhJefeApp, 80, 'un numeric como texto sigue siendo número')
+  assert.equal(textoHH(q), '458')
+  assert.equal(tituloHH(q),
+    'según JORNALES + 80 h de jefe de obra cargadas en la app · desde 17/08 · 47 registros · 3 personas · última carga 11/09')
+  // SIN HORAS DEL JEFE, el title no cambia: la marca no aparece por las dudas.
+  assert.ok(tituloHH({ ...q!, hhJefeApp: 0 })?.startsWith('según JORNALES · desde'))
+})
+
 test('el INICIO es la primera fecha con horas, y no se corre un día por el huso', () => {
   const i = inicioDeObra({
     obraId: 'san-francisco', hhReal: 12525.5, hhPlan: null, registros: 1468, personas: 26,

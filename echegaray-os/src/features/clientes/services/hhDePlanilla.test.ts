@@ -9,7 +9,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { armarSinRespaldo, fraseSinRespaldo, hhDeObraCRM, type FilaHH } from './hhDePlanilla.ts'
+import { armarSinRespaldo, fraseSinRespaldo, hhDeObraCRM, origenesHH, type FilaHH } from './hhDePlanilla.ts'
 
 const f = (o: Partial<FilaHH>): FilaHH => ({
   personaId: 'quiroga', nombre: 'QUIROGA SEBASTIAN', fecha: '2026-08-17', horas: 9, tipoHora: 'normal',
@@ -60,6 +60,60 @@ test('UNA OBRA SÓLO CON CARGAS DE LA APP NO DICE 0 h', () => {
 
 test('SIN NADA AFUERA NO HAY FRASE: el control puede decir que no', () => {
   assert.equal(fraseSinRespaldo(hhDeObraCRM([f({})]).sinRespaldo), null)
+})
+
+// ═══ EL JEFE DE OBRA CUENTA (dueño, 13/09/2026) ═══
+//
+// Tres defectos, cada uno con su rojo:
+//  · QUE EL JEFE DEJE DE CONTAR: Maldonado 80 h de la app en Quattropani vuelve a «sin respaldo».
+//  · QUE UN OBRERO COMÚN CARGADO EN LA APP EMPIECE A CONTAR: la decisión es sobre el jefe.
+//  · QUE UN DÍA QUE JORNALES YA TIENE SE CUENTE DOS VECES: la planilla manda.
+const jefe = (o: Partial<FilaHH>): FilaHH => f({
+  personaId: 'maldonado', nombre: 'MALDONADO BATISTA', fuente: 'web:asistencia-obra', esJefe: true, ...o,
+})
+
+test('EL JEFE DE OBRA CARGADO EN LA APP CUENTA: horas, persona y última carga', () => {
+  const r = hhDeObraCRM([
+    f({}),
+    jefe({ fecha: '2026-09-01', horas: 9 }),
+    jefe({ fecha: '2026-09-11', horas: 8 }),
+  ])
+  assert.equal(r.hh, 26, 'las 17 h del jefe tienen que sumar a las 9 de JORNALES')
+  assert.equal(r.personas, 2)
+  assert.equal(r.ultima, '2026-09-11')
+  assert.deepEqual(r.sinRespaldo, [], 'el jefe ya no es «sin respaldo»')
+})
+
+test('UN OBRERO COMÚN CARGADO EN LA APP SIGUE SIN CONTAR, aunque trabaje el mismo día que el jefe', () => {
+  const r = hhDeObraCRM([
+    jefe({ fecha: '2026-09-01', horas: 9 }),
+    f({ personaId: 'reta', nombre: 'RETA', fecha: '2026-09-01', horas: 8, fuente: 'web:presencia-defecto' }),
+    // `esJefe: false` explícito: el corte es el puesto, no la fuente.
+    f({ personaId: 'x', nombre: 'X', fecha: '2026-09-01', horas: 8, fuente: 'web:asistencia-obra', esJefe: false }),
+  ])
+  assert.equal(r.hh, 9)
+  assert.equal(r.personas, 1)
+  assert.deepEqual(r.sinRespaldo.map((s) => s.personaId).sort(), ['reta', 'x'])
+})
+
+test('UN DÍA QUE JORNALES TIENE DEL JEFE NO SE CUENTA DOS VECES, ni aunque sea de otra obra', () => {
+  const filas = [
+    f({ personaId: 'maldonado', nombre: 'MALDONADO BATISTA', fecha: '2026-08-05', horas: 9 }),
+    jefe({ fecha: '2026-08-05', horas: 9 }),
+    // UNA AUSENCIA DE LA PLANILLA TAMBIÉN ES EL DÍA LIQUIDADO: la app no lo convierte en trabajo.
+    f({ personaId: 'maldonado', fecha: '2026-08-06', horas: 0, tipoHora: 'ausencia' }),
+    jefe({ fecha: '2026-08-06', horas: 9 }),
+  ]
+  assert.deepEqual(origenesHH(filas), ['jornales', null, 'jornales', null])
+  assert.equal(hhDeObraCRM(filas).hh, 9)
+})
+
+test('una fila del jefe que no es trabajo, o no viene de la web, no cuenta por ser del jefe', () => {
+  assert.deepEqual(origenesHH([
+    jefe({ tipoHora: 'licencia' }),
+    jefe({ fuente: 'manual' }),
+    jefe({ fecha: null }),
+  ]), [null, null, null])
 })
 
 test('lo que viaja de SQL se convierte, y un numeric como texto sigue siendo número', () => {
