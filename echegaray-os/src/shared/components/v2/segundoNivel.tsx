@@ -148,7 +148,9 @@ export function TituloDeFicha({ titulo, bajada, mono, tonoBajada, acciones, junt
   return (
     <div
       data-testid={testid}
-      style={{ display: 'flex', alignItems: 'flex-start', gap: 20, padding: '12px 20px 0' }}
+      // A 390 px LAS ACCIONES BAJAN DE LÍNEA (QA 14/09/2026): con «Ver portal ↗» y «Accesos al portal»
+      // la fila no entraba y «Nuevo trabajo» quedaba 119 px fuera de la pantalla, sin poder tocarse.
+      style={{ display: 'flex', alignItems: 'flex-start', gap: 20, padding: '12px 20px 0', flexWrap: 'wrap' }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap' }}>
@@ -167,7 +169,7 @@ export function TituloDeFicha({ titulo, bajada, mono, tonoBajada, acciones, junt
         )}
       </div>
       {acciones && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>{acciones}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', maxWidth: '100%' }}>{acciones}</div>
       )}
     </div>
   )
