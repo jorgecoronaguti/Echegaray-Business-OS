@@ -75,10 +75,12 @@ test('SIN COLUMNA «PLANILLA»: el cotejo va en el sello y en el panel, no en el
 // («realmente no se entiende nada el cuadro de liq de hs, vamos a rehacer»). El orden se prueba entero
 // en `cobraTotal.test.ts`. Lo que se protege acá: la plata antes que los días, y que el panel no pierda
 // el banco editable, el 50/50 (fuera del modelo) ni el historial.
-test('LA PLATA VA PRIMERO: horas, BLANCO, NEGRO, TOTAL, descuentos y efectivo; DESPUÉS LOS DÍAS', () => {
+// CAMBIÓ OTRA VEZ EL 14/09/2026: el orden de JORNALES pone los días ADELANTE y la plata después, con los
+// adelantos antes del total efectivo y el total quincena al final. Se sigue protegiendo el orden completo.
+test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA EN EL ORDEN DE JORNALES', () => {
   assert.deepEqual(clavesDe('const PLATA', 'const GAP'),
-    ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'hsNegro', 'horaNegro', 'negro', 'total', 'adelanto', 'yaTransferido', 'enEfectivo', 'efectivoRedondeado'])
-  assert.match(GRILLA, /repeat\(\$\{nDias\},\$\{DIA\}px\)`/, 'los días van al final de la grilla')
+    ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'hsNegro', 'horaNegro', 'negro', 'yaTransferido', 'adelanto', 'enEfectivo', 'efectivoRedondeado', 'total'])
+  assert.match(GRILLA, /minmax\(200px,1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA/, 'los días van antes que la plata')
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)
   assert.match(PANEL, /<HistorialDeTarifa/)
@@ -111,7 +113,7 @@ test('NETO (BANCO) Y EFECTIVO DICEN CÓMO SE PAGA, SE MARCAN CUANDO LA FILA NO C
   assert.match(BN, /sin neto/)
   assert.match(ESTADO, /const cierre = cierreDeLaFila\(l\)/)
   assert.match(GRILLA, /const cierre = cierreDeTotales\(totales\)/)
-  for (const r of ['Neto banco', 'Negro', 'Total', 'Adelantos', 'Ya transferido', 'Efectivo', 'Efectivo redondeado']) {
+  for (const r of ['Banco', 'Negro', 'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Efectivo redondeado', 'Total quincena']) {
     assert.match(GRILLA, new RegExp(`cifra\\('${r}'`), `el pie publica ${r}`)
   }
   assert.match(GRILLA, /totales\.negro/)

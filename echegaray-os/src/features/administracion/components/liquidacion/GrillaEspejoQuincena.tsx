@@ -55,28 +55,36 @@ function rotuloDia(fecha: string): string {
 const corta = (iso: string | null): string =>
   iso == null ? 'alta sin cargar' : `alta ${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 
-/** Las columnas de la plata, en el orden en que se arma el sueldo. `banda` agrupa el encabezado de arriba. */
+/**
+ * LAS COLUMNAS DE LA PLATA, EN EL ORDEN DE LA PESTAÑA «OBREROS 26» DE JORNALES (dueño, 14/09/2026: «pone las hs
+ * por dia adelante y todos los calculos monetarios al reves, quiero q repliques la pestaña sheet jornales»).
+ * La planilla dice NOMBRE · días · DIAS/HORAS · $ HORA · BANCO · ADELANTO BANCO / EMBARGOS · ADELANTO EFECTIVO ·
+ * TOTAL EFECTIVO · TOTAL SEMANA (`orquestador/lib/jornales-espejo.mjs:50`). El modelo blanco/negro queda entre
+ * las horas y los adelantos. No cambia ningún cálculo: sólo orden y rótulos. Sin «Cliente · Obra» (dueño:
+ * «esa columna no te pedi en liq hs»). `banda` agrupa el encabezado de arriba.
+ */
 const PLATA = [
   { clave: 'horas', rotulo: 'Horas', px: 56 },
-  { clave: 'hsBlanco', rotulo: 'Hs', px: 48, banda: 'blanco' },
-  { clave: 'horaCategoria', rotulo: '$/h cat.', px: 96, banda: 'blanco' },
-  { clave: 'neto', rotulo: 'Neto (banco)', px: 132, banda: 'blanco' },
+  { clave: 'hsBlanco', rotulo: 'Hs recibo ✎', px: 72, banda: 'blanco' },
+  { clave: 'horaCategoria', rotulo: '$/h cat. ✎', px: 96, banda: 'blanco' },
+  { clave: 'neto', rotulo: 'Banco ✎', px: 132, banda: 'blanco' },
   { clave: 'hsNegro', rotulo: 'Hs', px: 48, banda: 'negro' },
   // 120: el botón del $/h con el «+8%» al lado. La marca del básico se mudó al $/h de categoría.
   { clave: 'horaNegro', rotulo: '$/h negro ✎', px: 120, banda: 'negro' },
   { clave: 'negro', rotulo: 'Importe', px: 104, banda: 'negro' },
-  { clave: 'total', rotulo: 'Total', px: 124 },
-  { clave: 'adelanto', rotulo: '− Adelanto ✎', px: 100 },
-  { clave: 'yaTransferido', rotulo: '− Ya transf. ✎', px: 108 },
-  { clave: 'enEfectivo', rotulo: 'Efectivo', px: 112 },
+  { clave: 'yaTransferido', rotulo: 'Adelanto banco / embargos ✎', px: 136 },
+  { clave: 'adelanto', rotulo: 'Adelanto efectivo ✎', px: 120 },
+  { clave: 'enEfectivo', rotulo: 'Total efectivo', px: 112 },
   { clave: 'efectivoRedondeado', rotulo: 'Efect. red. ✎', px: 108 },
+  { clave: 'total', rotulo: 'Total quincena', px: 128 },
 ] as const
 
 const GAP = 8
 const DIA = 36
 
+// LOS DÍAS ADELANTE, COMO EN LA PLANILLA: Persona · días · plata.
 const columnasDe = (nDias: number): string =>
-  `minmax(200px,1fr) ${PLATA.map((c) => `${c.px}px`).join(' ')} repeat(${nDias},${DIA}px)`
+  `minmax(200px,1fr) repeat(${nDias},${DIA}px) ${PLATA.map((c) => `${c.px}px`).join(' ')}`
 
 const anchoDe = (nDias: number): number =>
   200 + nDias * DIA + PLATA.reduce((s, c) => s + c.px, 0) + (nDias + PLATA.length) * GAP
@@ -84,8 +92,9 @@ const anchoDe = (nDias: number): number =>
 /** Cuántas columnas ocupan las dos bandas: la celda de un mensual las cubre enteras. */
 const ANCHO_DE_LAS_BANDAS = PLATA.filter((c) => 'banda' in c).length
 
-/** Dónde empieza cada banda en la grilla (1 = Persona). */
-const inicioDe = (banda: 'blanco' | 'negro'): number => 2 + PLATA.findIndex((c) => 'banda' in c && c.banda === banda)
+/** Dónde empieza cada banda en la grilla (1 = Persona, después los días). */
+const inicioDe = (banda: 'blanco' | 'negro', nDias: number): number =>
+  2 + nDias + PLATA.findIndex((c) => 'banda' in c && c.banda === banda)
 
 const filaGrid = (columnas: string, alto: number): React.CSSProperties => ({
   display: 'grid', gridTemplateColumns: columnas, gap: GAP, minHeight: alto,
@@ -180,13 +189,13 @@ function Encabezado({ columnas, dias, sellada }: { columnas: string; dias: reado
       paddingBottom: 8, borderBottom: `1px solid ${V.linea}`, color: V.tenue, ...mono,
     }}>
       <div style={{ ...COLUMNA_FIJA, gridRow: 1, alignSelf: 'stretch' }} />
-      {banda(inicioDe('blanco'), 'Blanco · recibo', 'banda-blanco')}
-      {banda(inicioDe('negro'), 'Negro', 'banda-negro')}
+      {banda(inicioDe('blanco', dias.length), 'Blanco · recibo', 'banda-blanco')}
+      {banda(inicioDe('negro', dias.length), 'Negro', 'banda-negro')}
       <div style={{ ...COLUMNA_FIJA, gridColumn: 1, gridRow: 2, height: ALTO_LIQ.encabezado - 16, display: 'flex', alignItems: 'end' }}>Persona</div>
+      {dias.map((f, i) => <div key={f} style={{ gridColumn: 2 + i, gridRow: 2, textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
       {PLATA.map((c, i) => (
-        <div key={c.clave} style={{ gridColumn: i + 2, gridRow: 2, textAlign: 'right', color: c.clave === 'total' ? V.tinta : undefined }}>{c.rotulo}</div>
+        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', color: c.clave === 'total' ? V.tinta : undefined }}>{c.rotulo}</div>
       ))}
-      {dias.map((f, i) => <div key={f} style={{ gridColumn: PLATA.length + 2 + i, gridRow: 2, textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
     </div>
   )
 }
@@ -216,6 +225,7 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
           )}
         </div>
       </div>
+      {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
       <CeldaHorasPagas fila={fila} />
       {l.netoMensual != null ? (
         // UN MENSUAL NO VA EN LAS BANDAS (QA, 14/09/2026): su sueldo fijo en «$/h negro» sumaba al Total
@@ -239,15 +249,14 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
           <CeldaImporteNegro fila={fila} />
         </>
       )}
-      <CeldaTotal fila={fila} />
-      <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={92} />
-      <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={100} />
+      <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={128} />
+      <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={112} />
       <CeldaEfectivoDelSueldo fila={fila} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.enEfectivo}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={100} />
       </div>
-      {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
+      <CeldaTotal fila={fila} />
     </div>
   )
 }
@@ -265,6 +274,11 @@ function Total({ columnas, dias, totales, redondeo }: {
       ...filaGrid(columnas, ALTO_LIQ.filaAlta), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
     }}>
       <div style={COLUMNA_FIJA}>{totales.personas} persona{totales.personas === 1 ? '' : 's'}</div>
+      {dias.map((f, i) => (
+        <div key={f} style={{ textAlign: 'center', color: totales.porDia[i] == null ? V.tenue : V.tinta }}>
+          {totales.porDia[i] == null ? '·' : nHoras(totales.porDia[i])}
+        </div>
+      ))}
       <Leida valor={totales.horasPagas} unidad="horas" testid="espejo-total-hs" />
       <div />
       <div />
@@ -272,17 +286,12 @@ function Total({ columnas, dias, totales, redondeo }: {
       <div />
       <div />
       <Leida valor={totales.negro} testid="espejo-total-negro" />
-      <div data-testid="espejo-total-cobra" style={{ textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap' }}>{pesos(totales.cobra)}</div>
-      <Leida valor={totales.adelanto} />
       <Leida valor={totales.yaTransferido} />
+      <Leida valor={totales.adelanto} />
       <div data-testid="espejo-total-efectivo" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: noCierra ? V.neg : V.tinta }}
         title={noCierra ? `No cierra por ${pesos(cierre?.diferencia ?? null)}` : undefined}>{pesos(totales.enEfectivo)}</div>
       <Leida valor={redondeo > 0 ? redondeo : null} testid="espejo-total-redondeo" />
-      {dias.map((f, i) => (
-        <div key={f} style={{ textAlign: 'center', color: totales.porDia[i] == null ? V.tenue : V.tinta }}>
-          {totales.porDia[i] == null ? '·' : nHoras(totales.porDia[i])}
-        </div>
-      ))}
+      <div data-testid="espejo-total-cobra" style={{ textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap' }}>{pesos(totales.cobra)}</div>
     </div>
   )
 }
@@ -306,15 +315,15 @@ function PieDelEspejo({ totales, redondeo }: { totales: TotalesDelEspejo; redond
       display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 16, rowGap: 4, padding: '12px 20px 16px',
       fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
     }}>
-      {/* NETO + NEGRO + SUELDOS MENSUALES = TOTAL, exacto: el mensual es una línea propia, fuera de las bandas. */}
-      {cifra('Neto banco', totales.netoBandas, 'pie-neto')}
+      {/* EL MISMO ORDEN QUE LAS COLUMNAS (JORNALES). BANCO + NEGRO + SUELDOS MENSUALES = TOTAL QUINCENA, exacto. */}
+      {cifra('Banco', totales.netoBandas, 'pie-neto')}
       {cifra('Negro', totales.negro, 'pie-negro')}
       {totales.mensuales > 0 && cifra('Sueldos mensuales', totales.mensuales, 'pie-mensuales')}
-      {cifra('Total', totales.cobra, 'pie-total')}
-      {cifra('Adelantos', totales.adelanto, 'pie-adelantos')}
-      {cifra('Ya transferido', totales.yaTransferido, 'pie-transferido')}
-      {cifra('Efectivo', totales.enEfectivo, 'pie-efectivo')}
+      {cifra('Adelanto banco / embargos', totales.yaTransferido, 'pie-transferido')}
+      {cifra('Adelanto efectivo', totales.adelanto, 'pie-adelantos')}
+      {cifra('Total efectivo', totales.enEfectivo, 'pie-efectivo')}
       {cifra('Efectivo redondeado', redondeo > 0 ? redondeo : null, 'pie-redondeo')}
+      {cifra('Total quincena', totales.cobra, 'pie-total')}
       {avisos.length > 0 && (
         <span style={{ fontSize: '11.5px', color: cierre?.cierra === false ? V.neg : V.apagado }}>{avisos.join(' · ')}</span>
       )}

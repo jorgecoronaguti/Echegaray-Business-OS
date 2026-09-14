@@ -201,7 +201,8 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     const cadena = page.getByTestId('panel-cadena')
     // Blanco + negro (dueño, 14/09/2026): la misma cadena que la fila. Fuera del modelo (Oficina,
     // finales, cerrada) el panel dice «Banco + efectivo»; los rótulos comunes a las dos son éstos.
-    for (const t of ['Total', 'Adelanto', 'Ya transferido', 'Neto (banco)', 'Efectivo']) {
+    // El orden de JORNALES (dueño, 14/09/2026): los rótulos del panel son los de las columnas.
+    for (const t of ['Total quincena', 'Adelanto', 'Banco', 'Efectivo']) {
       await expect(cadena).toContainText(t)
     }
     // LO QUE ERAN LAS CUATRO MÉTRICAS Y LOS BLOQUES DEL LEGAJO, en el detalle laboral.
@@ -223,14 +224,16 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     // Dueño, 14/09/2026: blanco (recibo) + negro. Dos bandas rotuladas arriba y las columnas debajo.
     await expect(page.getByTestId('banda-blanco')).toHaveText(/blanco · recibo/i)
     await expect(page.getByTestId('banda-negro')).toHaveText(/negro/i)
-    for (const c of ['Persona', 'Horas', '$/h cat.', 'Neto (banco)', '$/h negro', 'Importe', 'Total', 'Adelanto', 'Ya transf.', 'Efectivo', 'Efect. red.']) {
+    // El orden de la pestaña «Obreros 26» de JORNALES (dueño, 14/09/2026), sin «Cliente · Obra».
+    for (const c of ['Persona', 'Horas', 'Hs recibo', '$/h cat.', 'Banco', '$/h negro', 'Importe', 'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Efect. red.', 'Total quincena']) {
       await expect(tabla).toContainText(c)
     }
     const rotulos = await tabla.locator(':scope > div').allTextContents()
     const i = (t: string) => rotulos.findIndex((r) => r.includes(t))
-    expect(i('Neto (banco)'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))
-    expect(i('Importe'), 'el negro va antes que el total').toBeLessThan(i('Total'))
-    for (const p of ['Neto banco', 'Negro', 'Total', 'Adelantos', 'Ya transferido', 'Efectivo', 'Efectivo redondeado']) {
+    expect(i('Banco'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))
+    expect(i('Importe'), 'el negro va antes que los adelantos').toBeLessThan(i('Adelanto banco'))
+    expect(i('Total efectivo'), 'el total quincena va al final').toBeLessThan(i('Total quincena'))
+    for (const p of ['Banco', 'Negro', 'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Efectivo redondeado', 'Total quincena']) {
       await expect(page.getByTestId('espejo-pie')).toContainText(p)
     }
 
