@@ -43,6 +43,8 @@ import { crearObra } from '@/features/obras/services/actions'
 import { jerarquiaDeObras, recortarPorEstado } from '@/features/clientes/services/obrasAdicionales'
 import { CaraDeDocumentos } from '@/features/clientes/components/CaraDeDocumentos'
 import { armarCaraDocumentos } from '@/features/clientes/services/caraDocumentos'
+import { cotizacionesDeDrive } from '@/features/clientes/services/cotizacionesDeDrive'
+import { CotizacionesDeDrive } from '@/features/clientes/components/CotizacionesDeDrive'
 import { BloqueActividad } from '@/features/clientes/components/BloqueActividad'
 import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
@@ -308,7 +310,10 @@ export default async function ClientePage({ params, searchParams }: {
     // LO QUE HAY EN LA CARPETA DEL CLIENTE EN DRIVE (`PRESUPUESTOS - CLIENTES/<CLIENTE>`). El bloque
     // de arriba lista los archivos VINCULADOS; éste, lo que está en la carpeta aunque nadie lo haya
     // vinculado — que es la mitad de los papeles de un cliente nuevo.
-    solapa === 'documentos' ? getArchivosDeEntidad(supabase, 'cliente', id) : Promise.resolve(null),
+    // TAMBIÉN EN PRESUPUESTOS (dueño, 14/09/2026): las cotizaciones de Drive salen de esta misma carpeta.
+    // La RPC no trae papeles de Drive en esa cara, y ésta es una sola lectura paginada del índice.
+    solapa === 'documentos' || solapa === 'presupuestos'
+      ? getArchivosDeEntidad(supabase, 'cliente', id) : Promise.resolve(null),
     // Lo que Administración sube desde la ficha del cliente: la factura, la OC, el contrato firmado.
     solapa === 'documentos' ? getDocumentosSubidos(supabase, 'cliente', id) : Promise.resolve(null),
     // ═══ LA PESTAÑA COBRANZAS DEL CLIENTE, FILA POR FILA (`public.cliente_cobranza`) ═══
@@ -860,6 +865,11 @@ export default async function ClientePage({ params, searchParams }: {
             {veEconomia && solapa === 'presupuestos' && (
               <>
                 <PresupuestosDelCliente filas={filasPresupuesto} />
+                <CotizacionesDeDrive
+                  filas={cotizacionesDeDrive(archivosDrive?.archivos ?? [])}
+                  truncado={archivosDrive?.truncado ?? false}
+                  error={archivosDrive?.error ?? null}
+                />
                 <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, maxWidth: 720 }} data-testid="nota-presupuestos">
                   {/* SIN CERRADOS NO SE ESCRIBE UNA TASA: «0 %» sobre tres presupuestos abiertos
                       diría que se perdieron, y no se perdió ninguno todavía. */}
