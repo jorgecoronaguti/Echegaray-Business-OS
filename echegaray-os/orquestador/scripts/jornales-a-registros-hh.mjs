@@ -45,15 +45,20 @@ const h = (x) => Number(x ?? 0).toLocaleString('es-AR', { maximumFractionDigits:
 const isoDeFecha = (f) => (f instanceof Date ? f.toISOString().slice(0, 10) : String(f).slice(0, 10))
 
 async function catalogos() {
-  const [personas, alias, canonicas, clienteAlias, asignaciones] = await Promise.all([
+  const [personas, alias, canonicas, clienteAlias, asignaciones, panel] = await Promise.all([
     query('select id, nombre_completo, en_la_empresa, es_prueba from public.personas'),
     query('select alias, obra_id from public.obra_alias where obra_id is not null'),
     query('select id, nombre, cliente_texto, jornada_horas from public.obra_canonica'),
     query("select rotulo_clave, cliente_canonico from public.cliente_alias where fuente = 'JORNALES'"),
-    query("select persona_id, obra_id, to_char(desde, 'YYYY-MM-DD') desde, to_char(hasta, 'YYYY-MM-DD') hasta from public.obra_asignacion"),
+    query("select persona_id, obra_id, to_char(desde, 'YYYY-MM-DD') desde, to_char(hasta, 'YYYY-MM-DD') hasta, notas from public.obra_asignacion"),
+    query('select obra_id, cliente_slug from public.obra_panel where cliente_slug is not null'),
   ])
+  // LAS HECHAS A MANO: las «reconstruidas desde JORNALES» salen de la planilla y no la corrigen.
+  const hechasAMano = asignaciones.rows.filter((a) => !/historial reconstruido desde JORNALES/i.test(a.notas ?? '') && a.desde)
   return {
     personas: personas.rows,
+    asignacionesWeb: hechasAMano,
+    clienteDeObra: new Map(panel.rows.map((r) => [r.obra_id, r.cliente_slug])),
     resolver: resolutorDeObra({
       alias: new Map(alias.rows.map((r) => [normAlias(r.alias), r.obra_id])),
       canonicas: canonicas.rows,
