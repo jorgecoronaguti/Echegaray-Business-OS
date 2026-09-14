@@ -38,8 +38,21 @@ const hayBase = await getPool().query('select 1').then(() => true).catch(() => f
 // viaja aparte en `sin_respaldo`. La suma directa de este test usa el MISMO filtro, y un caso nuevo
 // compara `sin_respaldo` contra las filas que el filtro dejó afuera: sin él, «no suma» podría ser
 // «se perdió».
-const FILTRO = "tipo_hora in ('normal', 'extra_50', 'extra_100') and fuente_legacy = 'sheet:jornales'"
-const FUERA = "tipo_hora in ('normal', 'extra_50', 'extra_100') and fuente_legacy is distinct from 'sheet:jornales'"
+//
+// ═══ DESDE 20260913T2300 CUENTA TAMBIÉN EL JEFE DE OBRA (dueño, 13/09/2026) ═══
+//
+// Sus filas `web:*` de trabajo en días que JORNALES no tiene de esa persona. Las funciones leen la
+// vista `hh_que_cuentan_en_obra`; este test NO la lee: escribe la regla otra vez contra
+// `registros_hh` crudo —con otro corte de puesto, `upper(trim())`—, porque un control que se valida
+// contra la misma definición que produce el número no puede dar rojo.
+const TRABAJO = "tipo_hora in ('normal', 'extra_50', 'extra_100')"
+const CUENTAN = `(select r.* from public.registros_hh r left join public.personas p on p.id = r.persona_id
+   where r.fuente_legacy = 'sheet:jornales'
+      or (r.fuente_legacy like 'web:%' and r.${TRABAJO} and upper(trim(p.puesto)) = 'JEFE DE OBRA'
+          and not exists (select 1 from public.registros_hh j where j.persona_id = r.persona_id
+                            and j.fecha = r.fecha and j.fuente_legacy = 'sheet:jornales')))`
+const FUERA = `(select r.* from public.registros_hh r
+   where r.${TRABAJO} and not exists (select 1 from ${CUENTAN} c where c.id = r.id))`
 
 test('las HH de la ficha del cliente son las de la cara canónica, obra por obra', { skip: !hayBase }, async (t) => {
   const c = await getPool().connect()
@@ -65,8 +78,11 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
       + 'pantalla_cliente se aplicó después y la borró)')
     // `hh_plan` sigue saliendo de la vista; `hh_real` del CRM, de la planilla (20260913T1400).
     assert.ok(def.includes('obra_plan_vs_real'), '`hh_obra` dejó de leer el plan de la cara canónica')
-    assert.ok(def.includes("x.fuente_legacy = 'sheet:jornales'"),
-      '`hh_obra` volvió a sumar lo cargado en la app: las HH del CRM son sólo las de JORNALES')
+    // `pantalla_cliente` sirve la caché; la regla vive en `pantalla_cliente_en_vivo` (20260913T2300).
+    const enVivo = (await uno(
+      `select pg_get_functiondef('public.pantalla_cliente_en_vivo(text,text)'::regprocedure) d`)).d
+    assert.ok(enVivo.includes('public.hh_que_cuentan_en_obra') && !enVivo.includes("'sheet:jornales'"),
+      '`hh_obra` no lee la definición única de horas que cuentan: falta aplicar 20260913T2300')
 
     // ── LA SESIÓN DE PRUEBA: DIRECCIÓN, que es quien usa el CRM ──────────────────────────────────
     const direccion = await uno(`select id from perfiles where rol='direccion' and es_prueba = false limit 1`)
@@ -88,8 +104,8 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
           select r.obra_canonica_id id, sum(r.horas)::float hh, count(*)::int n,
                  count(distinct r.persona_id)::int personas,
                  min(r.fecha)::text d0, max(r.fecha)::text d1
-            from public.registros_hh r
-           where r.${FILTRO}
+            from ${CUENTAN} r
+           where r.${TRABAJO}
              and r.obra_canonica_id in (
                select o.obra_id from public.obra_panel o
                 where o.cliente_id = (select cliente_id from public.cliente_panel where slug = $1))
@@ -98,9 +114,8 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
         // LO QUE EL FILTRO DEJÓ AFUERA, por obra y persona: tiene que viajar entero en `sin_respaldo`.
         const fuera = await q(`
           select r.obra_canonica_id id, r.persona_id::text persona, sum(r.horas)::float hh
-            from public.registros_hh r
-           where r.${FUERA}
-             and r.obra_canonica_id in (
+            from ${FUERA} r
+           where r.obra_canonica_id in (
                select o.obra_id from public.obra_panel o
                 where o.cliente_id = (select cliente_id from public.cliente_panel where slug = $1))
            group by 1, 2`, [slug])
@@ -175,8 +190,8 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
     await t.test('el desglose por quincena cierra con el acumulado que lo abre', async () => {
       // LA OBRA CON MÁS HORAS de la base, sea cual sea: el caso más duro y el que más días tiene.
       const mayor = await uno(`
-        select obra_canonica_id id, sum(horas)::float hh from public.registros_hh
-         where ${FILTRO} and obra_canonica_id is not null group by 1 order by 2 desc limit 1`)
+        select obra_canonica_id id, sum(horas)::float hh from ${CUENTAN} r
+         where ${TRABAJO} and obra_canonica_id is not null group by 1 order by 2 desc limit 1`)
       assert.ok(mayor, 'no hay ninguna obra con horas cargadas')
 
       const d = (await uno(`select public.hh_de_obra($1) j`, [mayor.id])).j
@@ -186,28 +201,20 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
         'la Σ de las quincenas del desglose no es el acumulado de la obra: hay horas que una de las '
         + 'dos caras no ve')
       assert.equal(d.registros, (await uno(
-        `select count(*)::int n from public.registros_hh where obra_canonica_id=$1 and ${FILTRO}`,
+        `select count(*)::int n from ${CUENTAN} r where obra_canonica_id=$1 and ${TRABAJO}`,
         [mayor.id])).n)
 
-      // LA VENTANA ES LA ÚLTIMA QUINCENA CON TRABAJO, y sus celdas suman lo que ese período declara.
-      const ventana = d.periodos.find((p) => p.desde === d.ventana)
-      assert.ok(ventana, 'la ventana que se dibuja no está en el índice de quincenas')
-      // LA ÚLTIMA QUINCENA *CON TRABAJO*, y no la última del índice: la obra más grande de la base
-      // tiene una quincena posterior con SÓLO ausencias, y abrir ahí mostraría una grilla vacía de
-      // una obra con 13.000 horas.
-      const conTrabajo = d.periodos.filter((x) => x.hh != null)
-      assert.equal(d.ventana, conTrabajo.at(-1).desde,
-        'al abrir se muestra la última quincena CON HORAS TRABAJADAS')
+      // DESDE 20260913T2200 ABRE EN LA OBRA ENTERA: sin ventana, y las celdas suman el acumulado.
+      assert.equal(d.ventana, null, 'sin p_desde el desglose es la obra entera')
       const sumaCeldas = d.celdas.reduce((a, x) => a + Number(x.horas ?? 0), 0)
-      assert.equal(sumaCeldas, Number(ventana.hh),
-        'las celdas de la grilla no suman lo que su quincena declara')
+      assert.equal(sumaCeldas, mayor.hh, 'las celdas de la obra entera no suman su acumulado')
 
       // LAS AUSENCIAS SE VEN Y NO SUMAN: si la base tiene alguna en la ventana, tiene que viajar
       // marcada y con `horas` en null.
       const marcadas = d.celdas.filter((x) => x.ausencia || x.licencia)
       for (const m of marcadas) {
         const real = await uno(`
-          select sum(horas) filter (where ${FILTRO})::float hh from public.registros_hh
+          select sum(horas) filter (where ${TRABAJO})::float hh from ${CUENTAN} r
            where obra_canonica_id=$1 and fecha=$2
              and persona_id is not distinct from $3::uuid`, [mayor.id, m.fecha, m.persona_id])
         assert.equal(m.horas == null ? null : Number(m.horas), real.hh,

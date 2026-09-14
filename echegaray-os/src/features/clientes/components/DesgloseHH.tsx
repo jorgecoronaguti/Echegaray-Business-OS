@@ -214,6 +214,18 @@ export function DesgloseHH({ d, totalHH, volverHref, hrefPeriodo }: {
                         una persona. Esconderlas haría que la grilla no cerrara con el total de la
                         obra y nadie sabría por qué. */}
                     {fila.persona.nombre ?? <span style={{ color: V.tenue }}>sin persona identificada</span>}
+                    {/* EL JEFE DE OBRA CUENTA (dueño, 13/09/2026) aunque JORNALES no lo tenga: se
+                        marca de dónde salieron sus horas, tenue y sin color de advertencia —no es
+                        un problema, es la regla—. */}
+                    {fila.persona.horasApp > 0 && (
+                      <span
+                        data-testid="marca-jefe-app"
+                        title={`${formatoHH(fila.persona.horasApp)} h cargadas en la app en días que JORNALES no tiene`}
+                        style={{ color: V.tenue, fontSize: '10.5px', marginLeft: 6 }}
+                      >
+                        jefe de obra · cargado en la app
+                      </span>
+                    )}
                   </th>
                   {fila.celdas.map((c, i) => {
                     const { texto, marca } = textoDeCelda(c)
@@ -277,7 +289,7 @@ export function DesgloseHH({ d, totalHH, volverHref, hrefPeriodo }: {
         <div data-testid="desglose-sin-respaldo" style={{ fontSize: '11px', color: V.tenue, paddingTop: 10 }}>
           <p style={{ margin: 0 }}>
             La app tiene {formatoHH(d.sinRespaldo.reduce((a, s) => a + s.horas, 0))} h cargadas en este
-            trabajo que JORNALES no tiene; no se suman ni cuentan como personas del trabajo:
+            trabajo que JORNALES no tiene y no son de un jefe de obra; no se suman ni cuentan como personas del trabajo:
           </p>
           <ul style={{ margin: '2px 0 0', padding: 0, listStyle: 'none' }}>
             {d.sinRespaldo.map((s) => (

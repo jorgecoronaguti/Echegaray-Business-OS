@@ -46,6 +46,9 @@ export interface PersonaHH {
   dias: number
   primera: string | null
   ultima: string | null
+  /** Horas de esta persona que salieron de la app por ser JEFE DE OBRA (20260913T2300). Están en
+   *  `hh`; la grilla sólo las marca. `0` = todo lo suyo es de JORNALES. */
+  horasApp: number
 }
 
 export interface PeriodoHH {
@@ -161,6 +164,7 @@ export function armarDesgloseHH(j: unknown): DesgloseDeHoras | null {
       dias: num(p.dias) ?? 0,
       primera: dia(p.primera),
       ultima: dia(p.ultima),
+      horasApp: num(p.horas_app) ?? 0,
     })),
     celdas: ((r.celdas ?? []) as Record<string, unknown>[]).flatMap((c) => {
       const fecha = dia(c.fecha)

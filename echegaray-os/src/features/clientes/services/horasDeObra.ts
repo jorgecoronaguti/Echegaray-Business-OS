@@ -43,8 +43,10 @@ export interface HorasDeObra {
   /** La PRIMERA fecha con horas: el único inicio que está probado. ISO `YYYY-MM-DD`. */
   inicioReal: string | null
   ultimaFecha: string | null
-  /** Lo cargado en la app que JORNALES no respalda. NO está en `hhReal`: se dice aparte. */
+  /** Lo cargado en la app que no cuenta. NO está en `hhReal`: se dice aparte. */
   sinRespaldo?: SinRespaldo[]
+  /** Cuánto de `hhReal` es del jefe de obra cargado en la app (20260913T2300). SÍ está en `hhReal`. */
+  hhJefeApp?: number | null
 }
 
 /** Un `numeric` de Postgres puede llegar como texto; descartarlo dejaría la celda vacía con el dato. */
@@ -87,6 +89,7 @@ export function armarHorasPorObra(
       inicioReal: texto(r.inicio_real)?.slice(0, 10) ?? null,
       ultimaFecha: texto(r.ultima_fecha)?.slice(0, 10) ?? null,
       sinRespaldo: armarSinRespaldo(r.sin_respaldo),
+      hhJefeApp: num(r.hh_jefe_app),
     })
   }
   return m
@@ -113,8 +116,11 @@ export function tituloHH(h: HorasDeObra | null | undefined): string | null {
   // cargas de la app dibuja «—» y el title explica por qué no es cero.
   const fuera = fraseSinRespaldo(h.sinRespaldo ?? [])
   if (h.hhReal == null) return fuera ? `Sin horas en JORNALES. ${fuera}.` : null
+  // EL JEFE DE OBRA SUMA (dueño, 13/09/2026), y el title dice cuánto salió de la app: «según
+  // JORNALES» a secas sería falso para las horas que la planilla no tiene.
+  const jefe = h.hhJefeApp != null && h.hhJefeApp > 0 ? h.hhJefeApp : null
   const partes = [
-    'según JORNALES',
+    jefe == null ? 'según JORNALES' : `según JORNALES + ${hh(jefe)} h de jefe de obra cargadas en la app`,
     h.inicioReal ? `desde ${diaMesISO(h.inicioReal)}` : null,
     `${h.registros} ${h.registros === 1 ? 'registro' : 'registros'}`,
     `${h.personas} ${h.personas === 1 ? 'persona' : 'personas'}`,
