@@ -207,24 +207,6 @@ export function TablaClientes({
               <CostoDelClienteAngosto costos={costos} sinObra={gastosSinObra} clienteId={c.cliente_id}
                 obraIds={idsDeTodasSusObras(obrasPorCliente, c)} veEconomia={veEconomia} />
             </Link>
-            {/* ═══ EL PORTAL DE CADA CLIENTE, DESDE LA LISTA (dueño, 14/09/2026) ═══
-                «los accesos a los portales los tenés que dejar disponibles desde el CRM admin». La fila
-                entera ya es un enlace a la ficha y un enlace no puede ir dentro de otro: va en una línea
-                propia, debajo del nombre. Sólo quien ve la plata (la previa del portal la exige). */}
-            {veEconomia && c.slug ? (
-              <div data-testid="portal-cliente" className={CAJA_CONTENIDO}
-                style={{ display: 'flex', gap: 14, alignItems: 'center', minHeight: 24, paddingLeft: 24, fontSize: '11.5px', borderBottom: `1px solid ${V.lineaFila}` }}>
-                <span style={{ color: V.tenue }}>Portal</span>
-                <a href={`/portal/vista-previa/${c.slug}`} target="_blank" rel="noreferrer"
-                  data-testid="portal-ver" style={{ color: V.tinta, textDecoration: 'none', fontWeight: 500 }}>
-                  Ver como lo ve el cliente ↗
-                </a>
-                <Link href={`/clientes/${c.slug}?portal=1`} prefetch={false}
-                  data-testid="portal-accesos" style={{ color: V.apagado, textDecoration: 'none' }}>
-                  Accesos →
-                </Link>
-              </div>
-            ) : null}
             {/* EL ADICIONAL VA DEBAJO DE SU OBRA MAYOR (dueño, 11/09/2026). La relación la decide
                 `obra_canonica.obra_padre_id`; el orden y los dos niveles, `jerarquiaDeObras`, que es
                 la MISMA función que usa la ficha del cliente. Mientras la migración 20260911T2000 no
