@@ -39,7 +39,11 @@ export function origenDelBlanco(s: SueldoBlancoNegro): string {
   // EL NETO ESCRITO A MANO SE DICE PRIMERO: gana sobre el recibo y sobre el estimado.
   if (s.origenNeto === 'manual') return `neto escrito a mano${s.estado === 'recibo' ? ' (hay recibo)' : ''}`
   if (s.estado === 'recibo') return 'recibo del estudio'
-  if (s.origenNeto === 'nomina') return 'neto del recibo de nómina; horas del blanco estimadas (mitad)'
+  if (s.origenNeto === 'nomina') return 'neto del recibo de nómina; horas del blanco estimadas'
+  // EL RECIBO ESTIMADO CONCEPTO POR CONCEPTO (dueño, 14/09/2026): el detalle está en el panel de la persona.
+  if (s.origenNeto === 'conceptos' && s.reciboEstimado) {
+    return `recibo estimado concepto por concepto: ${s.reciboEstimado.horasNormales + s.reciboEstimado.horasFeriado} h × $/h de categoría, descuentos con las reglas de los recibos`
+  }
   if (s.origenNeto === 'estimado' && s.proporcion) return `mitad de las horas × $/h de su categoría; neto ${tituloDelNetoEstimado(s.proporcion)}`
   return 'estimado: mitad de las horas × $/h de su categoría; sin recibos para estimar el neto'
 }
