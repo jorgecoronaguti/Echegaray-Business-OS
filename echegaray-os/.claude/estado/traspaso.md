@@ -151,6 +151,10 @@ RAM en swap; el refresco de la caché (T1500, 19:34) trabajaba 40 s/min. T2100 a
 12 s/min, cede con >3 activas. QA de tercero: cartera OK; ficha en vivo con timeouts durante la caída.
 Pendiente: re-QA de la ficha con la base estable · **subir cómputo (Nivel E, dueño)** · a 390 px la
 cartera oculta Materiales/MO · `obra_costo_real` por K.
+**21:04 tercera caída.** Cron 39 (refresco caché) **PAUSADO** (`cron.alter_job(39, active := false)`) hasta
+subir cómputo; reactivar después con `active := true, schedule := '* * * * *'`. Re-QA: montos OK en 5
+clientes, primera carga falla en 3/5. Dueño en Vercel: plan Free; variables Supabase del proyecto son
+manuales → NO usar «Connect to Project». Pasar a Pro + Small (US$30/mes) = Nivel E del dueño.
 
 ## 6. PENDIENTES REALES
 
