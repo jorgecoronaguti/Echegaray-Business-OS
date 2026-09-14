@@ -372,7 +372,7 @@ export interface HoraDelDia {
  * tocado después. Con sólo la primera, una corrección a mano sobre una fila por defecto se borraba
  * como si fuera una sugerencia automática.
  */
-export function esDefectoQueNadieMiro(h: HoraDelDia): boolean {
+export function esDefectoQueNadieMiro(h: Pick<HoraDelDia, 'fuente_legacy' | 'actualizado_por'>): boolean {
   return h.fuente_legacy === FUENTE_HORAS_POR_DEFECTO && h.actualizado_por == null
 }
 

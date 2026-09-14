@@ -53,6 +53,10 @@ export interface PersonaDeGrilla {
    * entre pantallas obliga a buscar a cada persona de nuevo.
    */
   esJefe?: boolean
+  /** `persona_directorio.fecha_ingreso`. El cuadro de la quincena lo muestra como «Alta». */
+  fechaIngreso?: string | null
+  /** `persona_directorio.categoria`, la clave tal cual (`oficial_especializado`). */
+  categoria?: string | null
 }
 
 /** Lo que se dibuja en una celda. `horas` viaja para el `tabular-nums`; `texto` para la A y la L. */

@@ -30,9 +30,8 @@ import { useState, useTransition } from 'react'
 import { InlineEdit } from '@/shared/components/ds/InlineEdit'
 import { V } from '@/shared/components/v2/patron'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
-import {
-  guardarCeldaLiquidacion, guardarEfectivoRedondeado, guardarValorHora,
-} from '../../services/liquidacionActions'
+import { guardarCeldaLiquidacion, guardarEfectivoRedondeado } from '../../services/liquidacionActions'
+import { guardarValorHora } from '../../services/tarifaDeLaQuincenaActions'
 import { horas, pesos } from './formato'
 
 /**
@@ -195,11 +194,10 @@ export function CeldaEditable({
 }
 
 /**
- * EL $/HORA. Escribe `persona_tarifa` con `desde` = hoy, no la línea de esta quincena.
- *
- * SIN HISTORIAL POR TECLEO: el handoff dice que la retribución no lo tiene y que lo que conserva el
- * pasado es el sellado al cerrar. Vaciar la celda borra la tarifa de hoy y vuelve a mandar la
- * anterior — así un error de tipeo no queda como un aumento.
+ * EL $/HORA DEL CUADRO CLÁSICO. Escribe con `guardarValorHora`, que desde el 14/09/2026 es la misma
+ * regla que el cuadro de la quincena (`planDeTarifa`): `desde` = inicio de la quincena, fila nueva si
+ * no hay una, corrección con rastro si la hay y la quincena está abierta. Vaciar la celda ya no
+ * borra la tarifa: un tipeo se corrige escribiendo el valor bueno.
  */
 export function CeldaValorHora({ valor, origen, personaId, quincena, grupo, soloLectura }: {
   valor: number | null

@@ -141,7 +141,9 @@ export async function getLiquidacionDeLaQuincena(
       // falsa para la plata. Ahora es verdad para las dos.
       leerRegistrosHH(supabase, {
         desde: q.desde, hasta: q.hasta,
-        columnas: 'persona_id, fecha, horas, tipo_hora, notas',
+        // `fuente_legacy` Y `actualizado_por` VIAJAN desde el 14/09/2026: sin ellos la jornada
+        // automática que nadie confirmó se pagaba como cargada (Rosales: 70 h en vez de 62).
+        columnas: 'persona_id, fecha, horas, tipo_hora, notas, fuente_legacy, actualizado_por',
       }),
       leerPresenciasDeLaQuincena(supabase, q.desde, q.hasta),
       supabase.from('nomina_recibo_neto').select('cuil, periodo, neto, fecha_pago'),

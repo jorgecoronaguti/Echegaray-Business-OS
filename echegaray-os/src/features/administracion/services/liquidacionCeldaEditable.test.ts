@@ -20,7 +20,9 @@ const cuerpoDe = (nombre: string): string => {
   return resto.slice(0, fin)
 }
 
-for (const accion of ['guardarCeldaLiquidacion', 'guardarValorHora']) {
+// `guardarValorHora` SE MUDÓ a `tarifaDeLaQuincenaActions.ts` (14/09/2026) y pasa por la misma regla
+// que la celda del cuadro de la quincena. Sus cerraduras se prueban en `solapaQuincena.test.ts`.
+for (const accion of ['guardarCeldaLiquidacion']) {
   test(`${accion} RECHAZA A QUIEN NO LIQUIDA — y lo hace ANTES de escribir`, () => {
     const cuerpo = cuerpoDe(accion)
     assert.match(cuerpo, /const permiso = await puedeLiquidar\(supabase\)/)
@@ -71,10 +73,13 @@ test('EL $/HORA NO SE ESCRIBE EN OFICINA: le borraría el neto mensual acordado'
   // EL DEFECTO QUE ATRAPA: `persona_tarifa` acepta `valor_hora` O `neto_mensual` (CHECK «una sola
   // forma»). Un $/h escrito sobre Maldonado o Nievas convertiría $1.800.000 mensuales en una tarifa
   // horaria, y el cuadro los movería solos de Oficina a Obreros.
-  const cuerpo = cuerpoDe('guardarValorHora')
+  // La acción se mudó a `tarifaDeLaQuincenaActions.ts` (14/09/2026). La regla sigue: se rechaza en la
+  // entrada, antes de leer nada y antes de tomar la clave de servicio.
+  const TARIFA = readFileSync(new URL('./tarifaDeLaQuincenaActions.ts', import.meta.url), 'utf8')
+  const i = TARIFA.indexOf('export async function guardarValorHora(')
+  assert.ok(i > 0, 'guardarValorHora vive en tarifaDeLaQuincenaActions.ts')
+  const cuerpo = TARIFA.slice(i, i + TARIFA.slice(i).indexOf('\n}\n'))
   assert.match(cuerpo, /if \(v\.grupo !== 'obreros'\)/)
-  assert.ok(
-    cuerpo.indexOf("v.grupo !== 'obreros'") < cuerpo.indexOf('createAdminClient()'),
-    'se rechaza antes de tomar la clave de servicio',
-  )
+  assert.ok(!/createAdminClient\(\)/.test(cuerpo), 'la entrada no toma la clave de servicio: delega en escribirTarifa')
+  assert.match(cuerpo, /escribirTarifa\(\{ \.\.\.v, forma: 'hora', valor \}\)/)
 })

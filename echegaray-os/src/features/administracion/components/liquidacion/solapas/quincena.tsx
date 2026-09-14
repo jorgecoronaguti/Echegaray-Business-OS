@@ -9,6 +9,7 @@ import {
   diasConHorasDe, diasDelEspejo, filasDelEspejo, totalesDelEspejo, type FilaDelEspejo,
 } from '../../../services/espejoDeJornales'
 import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDePersonal'
+import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import type { LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
 import { FiltrosDelEspejo, GrillaEspejoQuincena, type MarcaDePiso, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
@@ -78,6 +79,18 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
       brechaPct: l.brechaPct, diferenciaHora: l.diferenciaHora,
       piso: l.piso.valorHora, desde: l.piso.desde, categoria: l.categoria ?? '',
     }
+  }
+  // EL HISTORIAL DEL VALOR HORA SALE DE LA MISMA LECTURA QUE LA MARCA DEL BÁSICO (dueño, 14/09/2026:
+  // «no tengo referencias de valores hs históricos»). Una lectura propia de `persona_tarifa` daría
+  // un historial que no cierra con el «−N%» de la celda de al lado.
+  const historiales: Record<string, EntradaDeHistorial[]> = {}
+  for (const l of exposicion.lineas) {
+    historiales[l.personaId] = historialDeTarifa(
+      exposicion.tarifasPorPersona[l.personaId] ?? [],
+      { convenio: l.convenio, categoria: l.categoria },
+      exposicion.escalas,
+      quincena.hasta,
+    )
   }
   // EL ESPEJO VIENE CON LA LIQUIDACIÓN, no de una lectura propia: es la misma función que ya lo usa
   // para meter los adelantos de la planilla en la cadena de pago. Leerlo dos veces daría dos fotos
@@ -158,6 +171,8 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
         quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
         camposEditables={liquidacion.camposEditables}
         bajoElPiso={bajoElPiso}
+        historiales={historiales}
+        historialCompleto={exposicion.errores.length === 0}
         sello={
           <Sello
             titulo={rotuloQuincena(quincena)}

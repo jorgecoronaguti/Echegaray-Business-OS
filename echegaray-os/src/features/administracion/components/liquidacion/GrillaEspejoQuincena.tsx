@@ -1,76 +1,82 @@
 'use client'
 
-// LA GRILLA DE LA VISTA «QUINCENA» — el bloque de la planilla JORNALES, en la app y editable.
+// EL CUADRO DE LA QUINCENA — para calcular y pagar, no para mirar la planilla.
 //
-// Una fila por persona, una columna por día con las horas, y a la derecha la cadena de pago completa:
-// Horas · $/h · Cobra · Adelanto · Ya transf. · Por banco · Efectivo · Total. Es el orden en que el
-// dueño lee su planilla y el orden de R5, que es el mismo.
+// Dueño, 14/09/2026, tres reclamos del mismo día: *«no puedo calcular nada de ahí que me sirva»*,
+// *«no sé cuánto es el total que cobra cada persona»*, *«está rota esa columna final que dice
+// "planilla"»*. La fila contesta, de izquierda a derecha, las preguntas en el orden en que se hacen:
 //
-// ═══ POR QUÉ ES UNA SOLA TABLA Y NO DOS PANTALLAS ═══
+//   Persona (categoría · alta) · LE FALTA PAGAR (banco · efectivo · 50/50) · Gana · − Adelanto ·
+//   − Ya transferido · Efectivo redondeado · $/h · Hs pagas · los días · normales · extra 50 · extra 100
 //
-// Porque la pregunta que él hace es de la FILA: «este tipo cuántas horas hizo y cuánto le doy». Con
-// los días en «Horas» y la plata en «Pagos» hay que cruzar de solapa y buscar a la persona de nuevo,
-// y eso es exactamente lo que lo mandaba de vuelta al Sheet. Las dos solapas se conservan —contestan
-// preguntas distintas y tienen columnas que acá no caben—, pero la que abre es ésta.
+// ═══ LO QUE SE MUDÓ AL PANEL, SIN PERDERSE ═══
 //
-// ═══ NI UN NÚMERO SE CALCULA ACÁ ═══
+// POR BANCO editable, el acuerdo 50/50 desglosado, el recibo, el cotejo con la planilla, la jornada
+// automática y el historial del valor hora: se abren tocando el nombre (`PanelDeLaPersona`).
 //
-// Las celdas llegan armadas por `espejoDeJornales.ts`, que a su vez usa `celdaDelDia` y la línea de
-// la liquidación. Este archivo decide ANCHOS, COLORES Y DÓNDE VA EL CAMPO. Si alguna vez hace una
-// resta, hay dos definiciones de la cadena de pago.
+// ═══ NI UN NÚMERO DE LA CADENA SE CALCULA ACÁ ═══
 //
-// ═══ LAS CELDAS SE ESCRIBEN CON LOS EDITORES QUE YA EXISTEN ═══
-//
-// Las de plata son `CeldaEditable` (el mismo de Pagos y del cuadro clásico, con la misma acción, la
-// misma marca «manual» y el mismo acuse). Las de día son `InlineEdit` con
-// `guardarHorasDeLaCelda`, que crea la fila cuando el día está vacío y delega en
-// `corregirHorasDelDia` cuando existe. Copiar cualquiera de los dos habría dado dos definiciones de
-// «corregir un jornal» y dos historiales.
+// Las cifras son las de `getLiquidacionDeLaQuincena` y el cierre lo comprueba `cierreDeLaFila`. Este
+// archivo decide ANCHOS, COLORES Y DÓNDE VA CADA CAMPO.
 
-import { InlineEdit } from '@/shared/components/ds'
+import { useState } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
-import { CeldaEditable, CeldaRedondeo, MarcaDeOrigen } from './CeldasDeLiquidacion'
+import { CeldaRedondeo } from './CeldasDeLiquidacion'
+import { CeldaDeDia, CeldaLeFaltaPagar, Escribible, Leida } from './cuadro/CeldasDelEspejo'
+import { CeldaTarifa, rotuloCategoria, type MarcaDePiso } from './cuadro/CeldaTarifa'
+import { PanelDeLaPersona } from './cuadro/PanelDeLaPersona'
 import { horas as nHoras, pesos } from './formato'
 import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO } from './solapas/tabla'
-import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
-import type { CeldaDelEspejo, FilaDelEspejo, TotalesDelEspejo } from '../../services/espejoDeJornales'
-import { guardarHorasDeLaCelda } from '../../services/horasDeLaCeldaActions'
+import type { CampoEditable } from '../../services/liquidacionOverrides'
+import type { FilaDelEspejo, TotalesDelEspejo } from '../../services/espejoDeJornales'
+import { cierreDeTotales, type EntradaDeHistorial } from '../../services/cuadroDeJornales'
+
+export { FiltrosDelEspejo } from './cuadro/FiltrosDelEspejo'
+export type { MarcaDePiso } from './cuadro/CeldaTarifa'
 
 const DIAS_CORTOS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'] as const
 
-/** `L1`, `S12`: la inicial del día y el número, como en el encabezado del bloque de la planilla. */
 function rotuloDia(fecha: string): string {
   const [a, m, d] = fecha.split('-').map(Number)
   return `${DIAS_CORTOS[new Date(Date.UTC(a, m - 1, d)).getUTCDay()]}${d}`
 }
 
-/** Las columnas de la derecha, en el orden de R5. El ancho sale del número más largo que reciben. */
-const DERECHA = [
-  { clave: 'horas', rotulo: 'Horas', px: 52 },
-  // 86 Y NO 66: en esta columna Oficina publica su NETO MENSUAL («$1.800.000»), que no es un valor
-  // hora y no entra en el ancho de uno. A 66 px se cortaba en «$1.800.00C» — un importe de sueldo
-  // recortado por un píxel, que es la clase de número que después nadie puede discutir contra el
-  // recibo. Lo vio la captura a 1280 del 11/09/2026.
-  { clave: 'valorHora', rotulo: '$/h · mensual', px: 86 },
-  { clave: 'cobra', rotulo: 'Cobra', px: 94 },
-  { clave: 'adelanto', rotulo: 'Adelanto', px: 86 },
-  { clave: 'yaTransferido', rotulo: 'Ya transf.', px: 88 },
-  { clave: 'porBanco', rotulo: 'Por banco', px: 88 },
-  { clave: 'enEfectivo', rotulo: 'Efectivo', px: 90 },
-  { clave: 'total', rotulo: 'Total', px: 94 },
-  { clave: 'efectivoRedondeado', rotulo: 'Efect. red.', px: 96 },
-  { clave: 'planilla', rotulo: 'Planilla', px: 84 },
+const corta = (iso: string | null): string =>
+  iso == null ? 'alta sin cargar' : `alta ${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
+
+/** La plata, primero: lo que el dueño busca al abrir la pantalla. */
+const PLATA = [
+  // 216: «50/50 sin recibo $1.800.000» en una línea y «banco $230.240 · efvo $121.916» en la otra.
+  { clave: 'leFaltaPagar', rotulo: 'Le falta pagar', px: 216 },
+  { clave: 'gana', rotulo: 'Gana', px: 100 },
+  { clave: 'adelanto', rotulo: '− Adelanto', px: 96 },
+  { clave: 'yaTransferido', rotulo: '− Ya transf.', px: 96 },
+  { clave: 'efectivoRedondeado', rotulo: 'Efect. red.', px: 104 },
+  { clave: 'valorHora', rotulo: '$/h · mensual', px: 156 },
+  { clave: 'horasPagas', rotulo: 'Hs pagas', px: 64 },
 ] as const
 
+/** Después de los días: las cantidades separadas, para leer de dónde salen las horas pagas. */
+const CANTIDADES = [
+  { clave: 'normales', rotulo: 'Hs norm.', px: 56 },
+  { clave: 'extra50', rotulo: 'Ext. 50%', px: 56 },
+  { clave: 'extra100', rotulo: 'Ext. 100%', px: 60 },
+] as const
+
+const GAP = 8
+const DIA = 36
+
 const columnasDe = (nDias: number): string =>
-  `minmax(190px,1fr) repeat(${nDias},34px) ${DERECHA.map((c) => `${c.px}px`).join(' ')}`
+  `minmax(200px,1fr) ${PLATA.map((c) => `${c.px}px`).join(' ')} repeat(${nDias},${DIA}px) `
+  + CANTIDADES.map((c) => `${c.px}px`).join(' ')
 
 const anchoDe = (nDias: number): number =>
-  190 + nDias * 34 + DERECHA.reduce((s, c) => s + c.px, 0) + (nDias + DERECHA.length + 1) * 6
+  200 + nDias * DIA + [...PLATA, ...CANTIDADES].reduce((s, c) => s + c.px, 0)
+  + (nDias + PLATA.length + CANTIDADES.length) * GAP
 
 const filaGrid = (columnas: string, alto: number): React.CSSProperties => ({
-  display: 'grid', gridTemplateColumns: columnas, gap: 6, minHeight: alto,
+  display: 'grid', gridTemplateColumns: columnas, gap: GAP, minHeight: alto,
   alignItems: 'center', borderBottom: `1px solid ${V.linea}`,
   fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
 })
@@ -81,64 +87,56 @@ export interface SeccionDelEspejo {
   filas: FilaDelEspejo[]
 }
 
-/** `oficial_especializado` → «Oficial especializado». El legajo guarda la clave; el texto es para leer. */
-const rotuloCategoria = (c: string): string => {
-  const t = c.replace(/_/g, ' ').trim()
-  return t.charAt(0).toUpperCase() + t.slice(1)
-}
-
-/** Quien cobra por debajo del básico de su convenio. Lo arma `exponerAlPiso`; la grilla sólo lo dibuja. */
-export interface MarcaDePiso {
-  brechaPct: number
-  diferenciaHora: number
-  piso: number
-  desde: string
-  categoria: string
+/** El % contra el valor anterior, sólo si el valor que rige empieza en esta quincena. */
+function pctDeLaQuincena(historial: readonly EntradaDeHistorial[] | undefined, desde: string): number | null {
+  const vigente = historial?.find((e) => e.vigente)
+  return vigente && vigente.desde === desde ? vigente.pctAumento : null
 }
 
 export function GrillaEspejoQuincena({
   dias, secciones, totales, quincena, camposEditables, sello, bajoElPiso = {},
+  historiales = {}, historialCompleto = true,
 }: {
   dias: readonly string[]
   secciones: readonly SeccionDelEspejo[]
   totales: TotalesDelEspejo
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
-  /** Por persona. Ausente = no está bajo el piso O no se pudo comparar (eso lo dice «Convenios»). */
   bajoElPiso?: Record<string, MarcaDePiso>
-  /** El sello de la planilla: lo dibuja el servidor y viaja entero. */
+  historiales?: Record<string, EntradaDeHistorial[]>
+  historialCompleto?: boolean
   sello: React.ReactNode
 }) {
+  const [abierta, setAbierta] = useState<string | null>(null)
   const columnas = columnasDe(dias.length)
-  const ancho = anchoDe(dias.length)
+  const filaAbierta = abierta ? secciones.flatMap((s) => s.filas).find((f) => f.personaId === abierta) : undefined
   return (
-    <div style={{
-      background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 10,
-      overflow: 'hidden',
-    }}>
+    <div style={{ background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 10, overflow: 'hidden' }}>
       {sello}
-      {/* MARCO_SCROLL avisa que hay más a los lados; la primera columna se queda. Ver `tabla.tsx`. */}
-      <div style={{ ...MARCO_SCROLL, padding: `14px ${CANAL_SCROLL}px 0` }}>
-        <div data-testid="espejo-tabla" style={{ minWidth: ancho, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ ...MARCO_SCROLL, padding: `16px ${CANAL_SCROLL}px 0` }}>
+        <div data-testid="espejo-tabla" style={{ minWidth: anchoDe(dias.length), display: 'flex', flexDirection: 'column' }}>
           <div data-testid="espejo-encabezado" style={{
-            display: 'grid', gridTemplateColumns: columnas, gap: 6,
-            height: ALTO_LIQ.encabezadoAncho, alignItems: 'end', paddingBottom: 9,
+            display: 'grid', gridTemplateColumns: columnas, gap: GAP,
+            height: ALTO_LIQ.encabezadoAncho, alignItems: 'end', paddingBottom: 8,
             borderBottom: `1px solid ${V.linea}`, fontFamily: MONO, fontSize: '9.5px',
             letterSpacing: '.04em', color: V.tenue, textTransform: 'uppercase',
           }}>
             <div style={COLUMNA_FIJA}>Persona</div>
-            {dias.map((f) => (
-              <div key={f} style={{ textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>
+            {PLATA.map((c) => (
+              <div key={c.clave} style={{ textAlign: 'right', color: c.clave === 'leFaltaPagar' ? V.tinta : undefined }}>{c.rotulo}</div>
             ))}
-            {DERECHA.map((c) => <div key={c.clave} style={{ textAlign: 'right' }}>{c.rotulo}</div>)}
+            {dias.map((f) => <div key={f} style={{ textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
+            {CANTIDADES.map((c) => <div key={c.clave} style={{ textAlign: 'right' }}>{c.rotulo}</div>)}
           </div>
 
           {secciones.map((sec, i) => (
             <div key={sec.clave} data-testid={`espejo-seccion-${sec.clave}`}>
               <RotuloDeGrupo texto={sec.rotulo} primero={i === 0} />
               {sec.filas.map((fila) => (
-                <Fila key={fila.personaId} fila={fila} columnas={columnas}
-                  quincena={quincena} camposEditables={camposEditables} piso={bajoElPiso[fila.personaId]} />
+                <Fila key={fila.personaId} fila={fila} columnas={columnas} quincena={quincena}
+                  camposEditables={camposEditables} piso={bajoElPiso[fila.personaId]}
+                  pct={pctDeLaQuincena(historiales[fila.personaId], quincena.desde)}
+                  abrir={() => setAbierta(fila.personaId)} />
               ))}
             </div>
           ))}
@@ -147,351 +145,111 @@ export function GrillaEspejoQuincena({
         </div>
       </div>
       <PieDelEspejo totales={totales} />
+      {filaAbierta && (
+        <PanelDeLaPersona fila={filaAbierta} quincena={quincena} camposEditables={camposEditables}
+          historial={historiales[filaAbierta.personaId] ?? []} historialCompleto={historialCompleto}
+          onCerrar={() => setAbierta(null)} />
+      )}
     </div>
   )
 }
 
-/** Una fila: el nombre, los días y la cadena. El `title` del chip dice las dos horas que compara. */
-function Fila({ fila, columnas, quincena, camposEditables, piso }: {
+function Fila({ fila, columnas, quincena, camposEditables, piso, pct, abrir }: {
   fila: FilaDelEspejo
   columnas: string
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
   piso?: MarcaDePiso
+  pct: number | null
+  abrir: () => void
 }) {
   const l = fila.linea
+  const h = fila.horasPorTipo
   return (
-    <div data-testid={`espejo-fila-${fila.personaId}`} style={filaGrid(columnas, ALTO_LIQ.filaPersona)}>
-      <div style={{ ...COLUMNA_FIJA, color: V.tinta }} title={fila.nombre}>
-        {fila.nombre}
-      </div>
-      {fila.celdas.map((c) => (
-        <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />
-      ))}
-      {/* HORAS Y $/h NO SE EDITAN ACÁ, Y NO ES UN OLVIDO. Las horas son la SUMA de los días que están
-          a la izquierda: un campo que las pise dejaría la fila contradiciendo sus propias celdas. El
-          $/h se escribe en la solapa Pagos, que es donde vive `persona_tarifa` con su `desde`. */}
-      <Leida valor={l.horas} formato={nHoras} origen={l.origen.horas} />
-      {piso ? (
-        // BAJO EL BÁSICO DEL CONVENIO: el % en rojo al lado del $/h, y el piso con su fecha al pasar.
-        // Rojo sólo para problemas (skill de diseño §2): cobrar debajo del convenio es riesgo laboral.
-        <div data-testid={`espejo-bajo-piso-${fila.personaId}`} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}
-          title={`Bajo el básico UOCRA: ${rotuloCategoria(piso.categoria)} ${pesos(piso.piso)}/h desde ${piso.desde}. Faltan ${pesos(piso.diferenciaHora)}/h.`}>
-          <span style={{ color: V.apagado }}>{pesos(l.valorHora)}</span>
-          <span style={{ color: V.neg, fontSize: '10.5px', fontWeight: 600, marginLeft: 3 }}>
-            {`${Math.round(piso.brechaPct)}%`}
-          </span>
+    <div data-testid={`espejo-fila-${fila.personaId}`} style={filaGrid(columnas, ALTO_LIQ.filaAlta)}>
+      <div style={COLUMNA_FIJA}>
+        <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · abrir el detalle`}
+          style={{
+            display: 'block', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left',
+            color: V.tinta, font: 'inherit', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{fila.nombre}</button>
+        <div style={{ fontSize: '11px', color: V.apagado, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {`${fila.categoria ? rotuloCategoria(fila.categoria) : 'sin categoría'} · ${corta(fila.alta)}`}
         </div>
-      ) : (
-        <Leida valor={l.valorHora ?? l.netoMensual} apagada
-          titulo={l.netoMensual != null ? 'Neto mensual acordado' : (l.origenTarifa ?? undefined)} />
-      )}
-      <Leida valor={l.cobra} medio origen={l.origen.cobra} titulo={tituloDeOrigen(l, 'cobra')} />
-      <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={78} />
-      <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={80} />
-      <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={80} />
-      <Leida valor={l.enEfectivo} medio origen={l.origen.enEfectivo} titulo={tituloDeOrigen(l, 'enEfectivo')} />
-      <Leida valor={l.total} origen={l.origen.total} />
+      </div>
+      <CeldaLeFaltaPagar fila={fila} />
+      <Leida valor={l.cobra} origen={l.origen.cobra}
+        titulo={l.valorHora != null && l.horas != null ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : undefined} />
+      <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={88} />
+      <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={88} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado}
-          quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={88} />
+          quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={96} />
       </div>
-      <ChipDeCotejo fila={fila} />
+      <CeldaTarifa fila={fila} quincena={quincena} piso={piso} pct={pct} />
+      <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
+        titulo={h.automaticas > 0 ? `${nHoras(h.automaticas)} h de jornada automática sin confirmar: no se pagan` : undefined} />
+      {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
+      <Leida valor={h.normales || null} unidad="horas" apagada />
+      <Leida valor={h.extra50 || null} unidad="horas" apagada />
+      <Leida valor={h.extra100 || null} unidad="horas" apagada />
     </div>
   )
 }
 
-/**
- * LA CELDA DE UN DÍA. Es la que reemplaza al Sheet: se teclea el número y se va.
- *
- * ═══ LAS CUATRO CARAS DE UNA CELDA ═══
- *
- *   VACÍA Y EDITABLE    `·` gris, y al entrar se escribe. La obra la deduce el servidor y lo dice.
- *                       NUNCA un 0: «todavía no lo cargué» y «no trabajó» son dos afirmaciones.
- *   CON HORAS           el número, editable sobre su propio registro.
- *   A / L               ausencia o licencia. No se edita en línea: escribir encima diría «en
- *                       realidad vino» y «corregile las horas reconocidas» a la vez.
- *   NO EDITABLE         quincena cerrada, o el día tiene dos registros y elegir sería adivinar. Se
- *                       dibuja el valor y el `title` explica por qué no hay campo.
- */
-function CeldaDeDia({ celda, personaId, nombre }: {
-  celda: CeldaDelEspejo; personaId: string; nombre: string
-}) {
-  if (celda.marca === 'ausencia') {
-    return <div title={`${celda.fecha} · ausencia`} style={{ textAlign: 'center', color: V.neg, fontWeight: 500 }}>A</div>
-  }
-  if (celda.marca === 'licencia') {
-    return <div title={`${celda.fecha} · licencia`} style={{ textAlign: 'center', color: '#175CD3' }}>L</div>
-  }
-  if (!celda.editable) {
-    const porque = celda.registros > 1
-      ? `${celda.registros} registros ese día: corregilo desde el panel de la persona`
-      : 'la quincena está cerrada'
-    return (
-      <div title={`${celda.fecha} · ${porque}`} style={{
-        textAlign: 'center', color: celda.horas == null ? V.lineaFuerte : V.apagado,
-      }}>
-        {celda.horas == null ? '·' : nHoras(celda.horas)}
-      </div>
-    )
-  }
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center' }}>
-      {/* `w-[56px] sin-spinner`: con 42 px el `<input type=number>` deja 28 px útiles y el spinner
-          del navegador se come el dígito — se editaba a ciegas sobre datos de liquidación. */}
-      <InlineEdit
-        valor={celda.horas ?? null}
-        tipo="numero"
-        falta="·"
-        ancho="w-[56px] sin-spinner"
-        alineado="center"
-        etiqueta={`Horas de ${nombre} el ${celda.fecha}`}
-        testid={`espejo-dia-${personaId}-${celda.fecha}`}
-        guardar={guardarHorasDeLaCelda.bind(null, personaId, celda.fecha)}
-      />
-    </div>
-  )
-}
-
-/** El `title` de la marca cuando JORNALES y la cuenta de la app no dicen lo mismo. */
-function tituloDeOrigen(linea: LineaConOverrides, campo: CampoEditable): string | undefined {
-  const d = linea.discrepancia[campo]
-  if (!d) return undefined
-  // LAS DOS CIFRAS, NO UNA. Gana JORNALES —es la decisión del que paga— pero el derivado no
-  // desaparece: si el extracto vio un giro que la planilla no tiene, alguien tiene que enterarse.
-  return `La planilla dice ${pesos(d.jornales)} y la app calculó ${pesos(d.calculado)} `
-    + `(recibos y extracto). Manda la planilla; la diferencia es ${pesos(Math.abs(d.jornales - d.calculado))}.`
-}
-
-/** Una celda calculada. `null` se dibuja «—»: falta el dato, no es cero (R1). */
-function Leida({ valor, medio = false, apagada = false, formato = pesos, origen = 'calculado', titulo }: {
-  valor: number | null
-  medio?: boolean
-  apagada?: boolean
-  formato?: (n: number | null) => string
-  /** De dónde salió. `jornales` se marca en azul, no con el ámbar de «manual». */
-  origen?: 'calculado' | 'jornales' | 'manual'
-  titulo?: string
-}) {
-  return (
-    <div title={titulo} style={{
-      textAlign: 'right', overflow: 'hidden',
-      color: valor == null ? V.tenue : (apagada ? V.apagado : V.tinta),
-      fontWeight: medio ? 500 : undefined,
-    }}>
-      {formato(valor)}<MarcaDeOrigen origen={origen} compacta titulo={titulo} />
-    </div>
-  )
-}
-
-/** Una celda que se escribe. Marco de control para que se vea cuál decide una persona y cuál no. */
-function Escribible({ campo, fila, quincena, camposEditables, ancho }: {
-  campo: CampoEditable
-  fila: FilaDelEspejo
-  quincena: { desde: string; hasta: string }
-  camposEditables: readonly CampoEditable[]
-  ancho: number
-}) {
-  const valor = fila.linea[campo]
-  const soloLectura = fila.cerrada || !camposEditables.includes(campo)
-  return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-      <span style={{
-        width: ancho, minHeight: 26, maxWidth: '100%', overflow: 'hidden',
-        display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-        border: soloLectura ? 'none' : `1px solid ${V.lineaFuerte}`, borderRadius: 4, padding: '0 4px',
-        color: valor == null || valor === 0 ? V.lineaFuerte : V.tinta,
-      }}>
-        <CeldaEditable
-          campo={campo}
-          valor={valor}
-          unidad="pesos"
-          ceroEsVacio
-          manual={fila.linea.manual[campo]}
-          origen={fila.linea.origen[campo]}
-          tituloDeOrigen={tituloDeOrigen(fila.linea, campo)}
-          personaId={fila.personaId}
-          quincena={quincena}
-          grupo={fila.grupo}
-          soloLectura={soloLectura}
-          ancho="w-20"
-          marcaCompacta
-        />
-      </span>
-    </div>
-  )
-}
-
-/**
- * EL CHIP CONTRA LA PLANILLA — la única razón por la que el dueño puede dejar de abrir el Sheet.
- *
- * «sin espejo» NO se dibuja verde y no se dibuja rojo: es gris, porque nadie comparó. Un chip que
- * dice «coincide» sobre una comparación que no se hizo es peor que no tener chip.
- */
-function ChipDeCotejo({ fila }: { fila: FilaDelEspejo }) {
-  const c = fila.cotejo
-  const estilo = {
-    justifySelf: 'end', fontSize: '10.5px', padding: '2px 6px', borderRadius: 4,
-    whiteSpace: 'nowrap' as const,
-  }
-  if (c.estado === 'sin-espejo') {
-    return (
-      <span data-testid={`cotejo-${fila.personaId}`} title="Todavía no se leyó el bloque de la planilla para esta quincena."
-        style={{ ...estilo, color: V.tenue, background: '#F4F3EF' }}>sin espejo</span>
-    )
-  }
-  // CON ESPEJO LEÍDO PERO SIN NINGÚN DÍA DE ESTA PERSONA, la planilla no habla de ella: los dos jefes
-  // de Oficina, cuya pestaña no tiene bloque de septiembre. «Difiere 80 h» sería mentir sobre una
-  // comparación que no se puede hacer — y el pie publicaba «3 filas difieren · 177,8 h» cuando la
-  // diferencia real de la quincena era 17,8 h de UNA persona.
-  if (c.estado === 'no-esta') {
-    return (
-      <span data-testid={`cotejo-${fila.personaId}`}
-        title="La planilla no tiene ningún día cargado de esta persona en esta quincena."
-        style={{ ...estilo, color: V.tenue, background: '#F4F3EF' }}>no está en la planilla</span>
-    )
-  }
-  // EL TÍTULO DICE SOBRE QUÉ SE COMPARÓ. Sin eso, «coincide» sobre ocho de trece días se lee como
-  // «la quincena entera está bien», y faltan cinco días que nadie cargó todavía.
-  const titulo = `La planilla dice ${nHoras(c.horasEnLaPlanilla)} h · la base tiene ${nHoras(c.horasEnLaBase)} h`
-    + ` · comparado sobre ${c.diasComparados} día${c.diasComparados === 1 ? '' : 's'} cargado${c.diasComparados === 1 ? '' : 's'}`
-    + (c.diasSinComparar > 0 ? ` (${c.diasSinComparar} sin cargar en la planilla, no se comparan)` : '')
-  if (c.estado === 'coincide') {
-    return (
-      <span data-testid={`cotejo-${fila.personaId}`} title={titulo}
-        style={{ ...estilo, color: '#067647', background: '#ECFDF3' }}>coincide</span>
-    )
-  }
-  const d = c.diferencia ?? 0
-  return (
-    <span data-testid={`cotejo-${fila.personaId}`} title={titulo}
-      style={{ ...estilo, color: V.neg, background: '#FEF3F2', fontWeight: 500 }}>
-      {`difiere ${nHoras(Math.abs(d))} h`}
-    </span>
-  )
-}
-
-/** La fila de total, cerrada por arriba con el grafito. Es el número que se lleva a la caja. */
-function Total({ columnas, dias, totales }: {
-  columnas: string; dias: readonly string[]; totales: TotalesDelEspejo
-}) {
+/** La fila de total: suma las filas VISIBLES. Cierra igual que cada fila. */
+function Total({ columnas, dias, totales }: { columnas: string; dias: readonly string[]; totales: TotalesDelEspejo }) {
+  const h = totales.horasPorTipo
+  const cierre = cierreDeTotales(totales)
   return (
     <div data-testid="espejo-total" style={{
-      ...filaGrid(columnas, ALTO_LIQ.total), borderBottom: 'none',
-      borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
+      ...filaGrid(columnas, ALTO_LIQ.filaAlta), borderBottom: 'none', borderTop: `1px solid ${V.grafito}`, fontWeight: 600,
     }}>
       <div style={COLUMNA_FIJA}>{totales.personas} persona{totales.personas === 1 ? '' : 's'}</div>
+      <div data-testid="espejo-total-le-falta-pagar" style={{ textAlign: 'right', lineHeight: 1.25 }}>
+        <div style={{ fontSize: '14px', color: cierre?.cierra === false ? V.neg : V.tinta }}>{pesos(totales.total)}</div>
+        <div style={{ fontSize: '11px', fontWeight: 400, color: V.apagado, whiteSpace: 'nowrap' }}>
+          {`banco ${pesos(totales.porBanco)} · efvo ${pesos(totales.enEfectivo)}`}
+        </div>
+      </div>
+      <Leida valor={totales.cobra} />
+      <Leida valor={totales.adelanto} />
+      <Leida valor={totales.yaTransferido} />
+      <div /><div />
+      <Leida valor={totales.horasPagas} unidad="horas" testid="espejo-total-hs" />
       {dias.map((f, i) => (
         <div key={f} style={{ textAlign: 'center', color: totales.porDia[i] == null ? V.tenue : V.tinta }}>
           {totales.porDia[i] == null ? '·' : nHoras(totales.porDia[i])}
         </div>
       ))}
-      <Leida valor={totales.horas} formato={nHoras} />
-      <div />
-      <Leida valor={totales.cobra} />
-      <Leida valor={totales.adelanto} />
-      <Leida valor={totales.yaTransferido} />
-      <Leida valor={totales.porBanco} />
-      <Leida valor={totales.enEfectivo} />
-      <Leida valor={totales.total} />
-      <div />
-      <div />
+      <Leida valor={h.normales} unidad="horas" />
+      <Leida valor={h.extra50} unidad="horas" />
+      <Leida valor={h.extra100} unidad="horas" />
     </div>
   )
 }
 
 /**
- * EL PIE: lo que el total NO pudo sumar, con su número.
- *
- * Se escribe sólo cuando hay algo que decir. Un párrafo permanente debajo de una tabla es uno de los
- * que el dueño prohíbe; una advertencia que aparece cuando existe el caso es información.
+ * EL PIE: cómo se paga la quincena —el lote del banco y los sobres— y lo que el total no pudo sumar.
+ * Cierra entre sí y recorta con el filtro, porque sale de los mismos totales.
  */
 function PieDelEspejo({ totales }: { totales: TotalesDelEspejo }) {
-  const partes: string[] = []
-  if (totales.sinTarifa > 0) partes.push(`${totales.sinTarifa} sin retribución cargada (no suman al total)`)
-  if (totales.difieren > 0) {
-    partes.push(`${totales.difieren} fila${totales.difieren === 1 ? '' : 's'} difiere${totales.difieren === 1 ? '' : 'n'} de la planilla por ${nHoras(totales.horasDeDiferencia)} h`)
-  }
-  if (totales.sinCotejar > 0 && totales.sinCotejar === totales.personas) {
-    partes.push('todavía no se cotejó contra la planilla')
-  }
-  if (partes.length === 0) return <div style={{ height: 18 }} />
+  const cierre = cierreDeTotales(totales)
+  const avisos: string[] = []
+  if (cierre?.cierra === false) avisos.push(`el total no cierra por ${pesos(cierre.diferencia)}`)
+  if (totales.sinTarifa > 0) avisos.push(`${totales.sinTarifa} sin retribución cargada (no suman a la plata)`)
+  if (totales.horasPorTipo.automaticas > 0) avisos.push(`${nHoras(totales.horasPorTipo.automaticas)} h de jornada automática sin confirmar, fuera del pago`)
   return (
-    <p data-testid="espejo-pie" style={{
-      fontSize: '11.5px', color: V.apagado, margin: 0, padding: '10px 20px 16px',
+    <div data-testid="espejo-pie" style={{
+      display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 16, padding: '12px 20px 16px',
+      fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
     }}>
-      {partes.join(' · ')}.
-    </p>
-  )
-}
-
-/**
- * El selector de quincena y de grupo. Dos recortes y nada más: el dueño pidió «quincena (anterior /
- * siguiente) y grupo. Nada más». Un panel de filtros al costado le roba 230 px a una tabla que ya
- * necesita 1.500.
- */
-export function FiltrosDelEspejo({ periodos, grupos, busqueda, cerrar }: {
-  periodos: { texto: string; activo: boolean; href: string }[]
-  grupos: { texto: string; activo: boolean; href: string }[]
-  /** Buscar por nombre. Formulario GET: sin JavaScript, y la URL queda compartible. */
-  busqueda?: { valor: string; ocultos: Record<string, string>; limpiar: string | null }
-  /** A dónde lleva «Cerrar quincena». El cierre vive en su pantalla: sella y no se deshace sin firma. */
-  cerrar?: string
-}) {
-  return (
-    <div data-testid="espejo-filtros" style={{
-      display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', padding: '0 0 14px',
-      fontSize: '12.5px',
-    }}>
-      <Grupo rotulo="Quincena" opciones={periodos} testid="espejo-quincenas" />
-      <Grupo rotulo="Cobra" opciones={grupos} testid="espejo-grupos" />
-      {busqueda && (
-        <form method="get" data-testid="espejo-buscar" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {Object.entries(busqueda.ocultos).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-          <input
-            type="search" name="buscar" defaultValue={busqueda.valor} placeholder="Buscar persona…"
-            aria-label="Buscar persona"
-            style={{
-              height: 30, width: 180, padding: '0 10px', borderRadius: 6, fontSize: '12.5px',
-              border: `1px solid ${V.lineaFuerte}`, background: '#FFFFFF', color: V.tinta,
-            }}
-          />
-          {busqueda.limpiar && (
-            <a href={busqueda.limpiar} style={{ fontSize: '12px', color: V.apagado }}>limpiar</a>
-          )}
-        </form>
+      <span><span style={{ color: V.apagado }}>Por banco (lote) </span><strong>{pesos(totales.porBanco)}</strong></span>
+      <span><span style={{ color: V.apagado }}>En efectivo (sobres) </span><strong>{pesos(totales.enEfectivo)}</strong></span>
+      <span><span style={{ color: V.apagado }}>Le falta pagar </span><strong>{pesos(totales.total)}</strong></span>
+      {avisos.length > 0 && (
+        <span style={{ fontSize: '11.5px', color: cierre?.cierra === false ? V.neg : V.apagado }}>{avisos.join(' · ')}</span>
       )}
-      {cerrar && (
-        <a href={cerrar} data-testid="espejo-ir-a-cerrar" style={{
-          // GRAFITO, NO AMARILLO: el amarillo de marca da 1,6:1 contra blanco y con texto oscuro se
-          // lee como advertencia. Acción = grafito (skill de diseño del OS, §1).
-          marginLeft: 'auto', fontSize: '12.5px', fontWeight: 600, color: '#FFFFFF', textDecoration: 'none',
-          padding: '6px 12px', borderRadius: 6, background: V.grafito,
-        }}>Cerrar quincena →</a>
-      )}
-    </div>
-  )
-}
-
-function Grupo({ rotulo, opciones, testid }: {
-  rotulo: string
-  opciones: { texto: string; activo: boolean; href: string }[]
-  testid: string
-}) {
-  if (opciones.length === 0) return null
-  return (
-    <div data-testid={testid} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <span style={{ fontSize: '12px', fontWeight: 600, color: V.tintaSuave }}>
-        {rotulo}
-      </span>
-      {opciones.map((o) => (
-        <a key={o.href} href={o.href} style={{
-          fontSize: '12px', textDecoration: 'none', padding: '3px 8px', borderRadius: 5,
-          color: o.activo ? V.tinta : V.apagado,
-          background: o.activo ? '#F1F0EC' : 'transparent',
-          fontWeight: o.activo ? 600 : 400,
-        }}>{o.texto}</a>
-      ))}
     </div>
   )
 }

@@ -4,9 +4,9 @@ import React from 'react'
 import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { RegistrarAdelanto } from './RegistrarAdelanto'
-import {
-  guardarCeldaLiquidacion, guardarEfectivoRedondeado, guardarValorHora,
-} from '../../services/liquidacionActions'
+import { guardarCeldaLiquidacion, guardarEfectivoRedondeado } from '../../services/liquidacionActions'
+// LA MISMA ESCRITURA DE TARIFA QUE EL CUADRO DE LA QUINCENA (`planDeTarifa`), no una propia.
+import { guardarValorHora } from '../../services/tarifaDeLaQuincenaActions'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import { calcularCadena } from '../../services/panelDePersona'
 import type { LineaDeLaPersona, PersonaAbierta } from './PanelDePersona'

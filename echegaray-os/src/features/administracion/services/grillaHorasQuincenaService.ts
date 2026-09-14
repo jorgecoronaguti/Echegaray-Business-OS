@@ -112,7 +112,7 @@ interface FilaDeMes { persona_id: string | null; fecha: string; horas: number | 
 interface FilaHH {
   id: string; persona_id: string; fecha: string; horas: number | string | null
   tipo_hora: string | null; notas: string | null; fuente_legacy: string | null
-  created_at: string | null; creado_por: string | null
+  created_at: string | null; creado_por: string | null; actualizado_por: string | null
   obra_canonica: { nombre: string } | null
   obra_actividad: { nombre: string } | null
 }
@@ -159,7 +159,7 @@ export async function getDatosDeLaSolapaHoras(
         desde: q.desde,
         hasta: q.hasta,
         columnas: 'id, persona_id, fecha, horas, tipo_hora, notas, fuente_legacy, created_at, '
-          + 'creado_por, obra_canonica(nombre), obra_actividad(nombre)',
+          + 'creado_por, actualizado_por, obra_canonica(nombre), obra_actividad(nombre)',
       }),
       // LOS MESES DEL GRÁFICO, hasta el día ANTERIOR a la quincena. Tres columnas y ningún lateral:
       // `hhPorMes` suma `horas` por mes y no mira nada más. Pedirle acá el nombre de la obra sería
@@ -255,6 +255,10 @@ export async function getDatosDeLaSolapaHoras(
       // liquida por hora. El campo `modalidad_liquidacion` del legajo está vacío en las diecisiete
       // personas de la base y publicaba «Modalidad mensual sin cargar» sobre gente que cobra por mes.
       modalidad: modalidadDeLaTarifa(tarifaDe.get(p.id) ?? null),
+      // ALTA Y CATEGORÍA YA VENÍAN EN ESTA LECTURA (el panel las usa): el cuadro de la quincena las
+      // pide como columnas (dueño, 14/09/2026: «Legajo: alta y categoría») sin una consulta más.
+      fechaIngreso: p.fecha_ingreso,
+      categoria: p.categoria,
     })),
     registros: filasHH
       .filter((f) => f.fecha >= q.desde && f.fecha <= q.hasta)
@@ -265,6 +269,8 @@ export async function getDatosDeLaSolapaHoras(
         id: f.id,
         persona_id: f.persona_id, fecha: f.fecha, horas: numeroONulo(f.horas) ?? 0,
         tipo_hora: f.tipo_hora ?? 'normal', notas: f.notas,
+        // Sin estas dos, la grilla no distingue la jornada automática de una cargada.
+        fuente_legacy: f.fuente_legacy, actualizado_por: f.actualizado_por,
       })),
     presencias: (presencias.data ?? []) as (PresenciaDeQuincena & { persona_id: string })[],
     porPersona,

@@ -28,6 +28,8 @@ import type { CampoEditable, LineaConOverrides } from './liquidacionOverrides.ts
 import type { GrupoLiquidacion, PresenciaDeQuincena, RegistroDeQuincena } from './liquidacionQuincena.ts'
 import { diasDeQuincena, esDomingo, type Quincena } from './quincena.ts'
 import { ordenarComoPersonal } from './ordenDePersonal.ts'
+import { horasPorTipo, sumarHorasPorTipo, type HorasPorTipo } from './cuadroDeJornales.ts'
+import { coeficienteDeLaFila, esJornadaAutomatica } from './liquidacionDeAusencias.ts'
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -125,6 +127,11 @@ export interface CeldaDelEspejo extends CeldaDeGrilla {
   editable: boolean
   /** Cuántas filas de la base tiene ese día. >1 obliga a elegir, y eso no lo hace la pantalla. */
   registros: number
+  /**
+   * HORAS DE UNA JORNADA AUTOMÁTICA QUE NADIE CONFIRMÓ ese día, o `null`. Se dibujan en gris y no se
+   * pagan (`esJornadaAutomatica`). Escribir la celda la confirma: el registro pasa a tener autor.
+   */
+  automatica: number | null
 }
 
 export interface FilaDelEspejo {
@@ -138,6 +145,12 @@ export interface FilaDelEspejo {
   cotejo: Cotejo
   /** La quincena de ESTE cuadro está cerrada: la fila es una foto y no se escribe (R6). */
   cerrada: boolean
+  /** Fecha de ingreso del legajo. `null` = sin cargar, nunca «hoy». */
+  alta: string | null
+  /** Categoría del legajo, la clave tal cual. */
+  categoria: string | null
+  /** Lo trabajado en la ventana, por tipo. Ver `cuadroDeJornales.ts`: NO es lo que liquida. */
+  horasPorTipo: HorasPorTipo
 }
 
 export interface DatosDelEspejo {
@@ -181,6 +194,9 @@ export function filasDelEspejo(d: DatosDelEspejo): FilaDelEspejo[] {
       grupo,
       linea,
       cerrada,
+      alta: p.fechaIngreso ?? null,
+      categoria: p.categoria ?? null,
+      horasPorTipo: horasPorTipo(suyos),
       celdas: dias.map((f) => celdaDelEspejo(f, suyos, pres.get(f), cerrada)),
       cotejo: cotejar(d, p.id, suyos, dias),
     }
@@ -189,7 +205,13 @@ export function filasDelEspejo(d: DatosDelEspejo): FilaDelEspejo[] {
 
 /** La suma de las celdas del día, tal cual están guardadas. Es lo que la columna «Hs» de la planilla suma. */
 function horasCrudasDe(registros: readonly RegistroDeQuincena[]): number {
-  return r2(registros.reduce((s, r) => s + (Number(r.horas) || 0), 0))
+  // LA PLANILLA ESCRIBE EL RESULTADO DE LA CELDA (=4+3*1,5 → 8,5) Y NO TIENE LA JORNADA AUTOMÁTICA.
+  // Comparar la cantidad cruda contra el resultado daba «difiere» en cada día con extras, y contar la
+  // jornada automática inventaba una diferencia que la planilla nunca afirmó (14/09/2026).
+  return r2(registros.reduce((s, r) => {
+    if (esJornadaAutomatica(r)) return s
+    return s + (Number(r.horas) || 0) * coeficienteDeLaFila(r)
+  }, 0))
 }
 
 /**
@@ -257,8 +279,12 @@ function celdaDelEspejo(
     && delDia.length <= 1
     && base.marca !== 'ausencia'
     && base.marca !== 'licencia'
+  const automaticas = delDia.filter(esJornadaAutomatica)
   return {
     ...base,
+    automatica: automaticas.length === 0
+      ? null
+      : Math.round(automaticas.reduce((s, r) => s + (Number(r.horas) || 0), 0) * 100) / 100,
     registros: delDia.length,
     registroId: delDia.length === 1 ? (delDia[0].id ?? null) : null,
     // UN DÍA CON UN REGISTRO SIN `id` NO SE PUEDE CORREGIR y tampoco crear encima: sin el id la
@@ -286,6 +312,13 @@ export interface TotalesDelEspejo {
   horasDeDiferencia: number
   /** Cuántas filas no se pudieron cotejar. `sin-espejo` no es «coincide». */
   sinCotejar: number
+  /** Lo trabajado por tipo, sumado sobre las MISMAS filas: incluye a quien no tiene tarifa. */
+  horasPorTipo: HorasPorTipo
+  /**
+   * LAS HORAS PAGAS DE TODAS LAS FILAS RECIBIDAS (`linea.horas`, con el coeficiente de la planilla),
+   * también las de quien no tiene tarifa: trabajó igual. `horas` sigue sumando sólo las liquidadas.
+   */
+  horasPagas: number
 }
 
 /**
@@ -304,9 +337,16 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     personas: filas.length, porDia, horas: 0, cobra: 0, adelanto: 0, yaTransferido: 0,
     porBanco: 0, enEfectivo: 0, total: 0, sinTarifa: 0, difieren: 0, horasDeDiferencia: 0,
     sinCotejar: 0,
+    // SOBRE LAS MISMAS FILAS QUE RECIBE: la vista le pasa las visibles, así que el pie recorta
+    // igual que el filtro y el buscador. Quien no tiene tarifa SÍ suma horas: trabajó igual.
+    horasPorTipo: sumarHorasPorTipo(filas),
+    horasPagas: 0,
   }
   for (const f of filas) {
     const l = f.linea
+    // ANTES DEL `continue` DE «SIN TARIFA»: quien no tiene tarifa no suma plata, pero sus horas pagas
+    // existen y el pie las tiene que mostrar.
+    t.horasPagas += Number(l.horas) || 0
     if (f.cotejo.estado === 'difiere') { t.difieren++; t.horasDeDiferencia += Math.abs(f.cotejo.diferencia ?? 0) }
     // LOS DOS ESTADOS QUE NO PUDIERON COMPARAR SE CUENTAN JUNTOS: para el pie, «no se comparó» es una
     // sola cosa. El chip de la fila sí distingue por qué, que es donde la distinción sirve.
@@ -321,7 +361,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     t.total += Number(l.total) || 0
   }
   for (const k of ['horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total',
-    'horasDeDiferencia'] as const) {
+    'horasDeDiferencia', 'horasPagas'] as const) {
     t[k] = r2(t[k])
   }
   return t

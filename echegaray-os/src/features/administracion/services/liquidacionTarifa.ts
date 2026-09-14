@@ -74,6 +74,70 @@ export function validarTarifa(bruto: TarifaEnBruto): ResultadoDeTarifa {
   return { ok: true, tarifa: { valorHora, netoMensual, desde: bruto.desde, origen } }
 }
 
+/** Una fila de `persona_tarifa` ya leída. */
+export interface TarifaExistente {
+  desde: string
+  valorHora: number | null
+  netoMensual: number | null
+}
+
+export type PlanDeTarifa =
+  | { accion: 'insertar' }
+  | { accion: 'corregir'; antes: { valorHora: number | null; netoMensual: number | null } }
+  | { accion: 'nada'; porque: string }
+  | { accion: 'rechazar'; error: string }
+
+/**
+ * QUÉ HACER CON EL $/H (O EL NETO MENSUAL) QUE ALGUIEN ESCRIBIÓ PARA UNA QUINCENA. Una sola regla
+ * para las tres pantallas que lo escriben: el cuadro de la quincena, el cuadro clásico y Pagos.
+ *
+ * ═══ POR QUÉ `desde` ES EL INICIO DE LA QUINCENA Y NO HOY ═══
+ *
+ * La liquidación elige la tarifa por fecha (`tarifaVigenteAl`). Un valor escrito el 20 con `desde`
+ * = hoy no movía la quincena del 1 al 15 que se estaba mirando: se guardaba y la pantalla seguía
+ * igual. Con el inicio de la quincena, lo que se escribe es lo que esa quincena cobra.
+ *
+ * ═══ FILA NUEVA O CORRECCIÓN (dueño, 14/09/2026: «Editar la misma quincena») ═══
+ *
+ *   sin fila en ese `desde`   → INSERTAR: es un aumento, y el valor anterior queda en su fila.
+ *   con fila en ese `desde`   → CORREGIR esa fila, guardando lo que tenía en
+ *                               `persona_tarifa_correccion`. Así un error de tipeo no queda como
+ *                               un aumento, y el valor que había no se pierde.
+ *   quincena cerrada          → nada: lo sellado no se reliquida (R6).
+ *   el mismo valor que rige   → nada: ni una fila ni una corrección que no cambia nada.
+ *
+ * La forma no se cambia desde la celda: un $/h escrito sobre una fila de neto mensual le borraría el
+ * neto a Oficina (CHECK «una sola forma»).
+ */
+export function planDeTarifa(e: {
+  existentes: readonly TarifaExistente[]
+  desde: string
+  forma: 'hora' | 'mensual'
+  valor: number
+  estado: 'abierta' | 'cerrada'
+}): PlanDeTarifa {
+  if (!(e.valor > 0) || !Number.isFinite(e.valor)) {
+    return { accion: 'rechazar', error: 'El importe tiene que ser mayor a cero.' }
+  }
+  if (!reliquidaAlCambiarTarifa(e.estado)) {
+    return { accion: 'rechazar', error: 'La quincena está cerrada: el valor no se cambia.' }
+  }
+  const valorDe = (t: TarifaExistente) => (e.forma === 'hora' ? t.valorHora : t.netoMensual)
+  const misma = e.existentes.find((t) => t.desde === e.desde)
+  if (misma) {
+    if (valorDe(misma) == null) {
+      return { accion: 'rechazar', error: 'Esa quincena tiene la otra forma de tarifa: no la cambio desde la celda.' }
+    }
+    if (valorDe(misma) === e.valor) return { accion: 'nada', porque: 'Es el mismo valor.' }
+    return { accion: 'corregir', antes: { valorHora: misma.valorHora, netoMensual: misma.netoMensual } }
+  }
+  const anterior = e.existentes
+    .filter((t) => t.desde < e.desde)
+    .reduce<TarifaExistente | null>((m, t) => (!m || t.desde > m.desde ? t : m), null)
+  if (anterior && valorDe(anterior) === e.valor) return { accion: 'nada', porque: 'Es el mismo valor que ya rige.' }
+  return { accion: 'insertar' }
+}
+
 export type EstadoDeTarifa =
   | { tipo: 'hora'; valorHora: number; desde: string; origen: string }
   | { tipo: 'mensual'; netoMensual: number; desde: string; origen: string }

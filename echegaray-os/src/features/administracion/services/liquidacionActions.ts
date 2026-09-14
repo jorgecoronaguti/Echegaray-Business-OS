@@ -29,7 +29,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion, type PermisoLiquidacion } from './liquidacionPermiso'
 import { CAMPOS_EDITABLES, COLUMNA_DE, type CampoEditable } from './liquidacionOverrides'
-import { hoyISO } from './diaDeJornada'
 import { validarMotivoDeReapertura } from './liquidacionCierre'
 
 const RUTA = '/administracion/personas'
@@ -331,72 +330,6 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
   return { ok: true, mensaje: nuevo == null ? 'Vuelve el cálculo.' : 'Guardado.' }
 }
 
-const tarifaSchema = z.object({
-  persona_id: z.string().uuid(),
-  desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Quincena inválida'),
-  hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Quincena inválida'),
-  grupo: z.enum(GRUPOS),
-  valor: z.union([z.literal(''), z.coerce.number().positive().finite()]),
-})
-
-/**
- * EL $/HORA DE UNA PERSONA — vive en `persona_tarifa`, no en la línea.
- *
- * SIN HISTORIAL NUEVO POR CADA CORRECCIÓN: el handoff dice que la retribución no lo tiene, y lo que
- * conserva el pasado es el SELLADO al cerrar la quincena, no una fila por tecleo. Así que se escribe
- * UNA fila con `desde` = hoy y se pisa esa misma si ya existe (la única por día que permite el
- * CHECK). Vaciar la celda borra la fila de hoy y vuelve a mandar la tarifa anterior — que es lo que
- * hace que un error de tipeo no quede como un aumento.
- */
-export async function guardarValorHora(entrada: unknown): Promise<ResultadoLiquidacion> {
-  const parsed = tarifaSchema.safeParse(entrada)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const { persona_id: personaId, valor, ...v } = parsed.data
-
-  // SÓLO LOS OBREROS COBRAN POR HORA. `persona_tarifa` acepta `valor_hora` O `neto_mensual`, nunca
-  // los dos (CHECK «una sola forma»): escribir un $/h para alguien de Oficina le borraría el neto
-  // mensual acordado. La pantalla no dibuja esa celda; esto es la cerradura.
-  if (v.grupo !== 'obreros') {
-    return { ok: false, error: 'El $/hora es de los obreros: oficina cobra un neto mensual.' }
-  }
-
-  const supabase = await createClient()
-  const permiso = await puedeLiquidar(supabase)
-  if (!permiso.ok) return { ok: false, error: permiso.error }
-
-  const cab = await cabecera(supabase, v)
-  if ('error' in cab) return { ok: false, error: cab.error }
-  if (cab.estado === 'cerrada') return { ok: false, error: 'La quincena está cerrada: no se edita.' }
-
-  const admin = createAdminClient()
-  const desde = hoyISO()
-
-  if (valor === '') {
-    const { data, error } = await admin.from('persona_tarifa')
-      .delete().eq('persona_id', personaId).eq('desde', desde).select('id')
-    if (error) return { ok: false, error: error.message }
-    revalidatePath(RUTA)
-    return {
-      ok: true,
-      mensaje: (data ?? []).length === 0
-        ? 'No había tarifa cargada hoy: sigue la anterior.'
-        : 'Tarifa de hoy borrada: vuelve la anterior.',
-    }
-  }
-
-  const { data, error } = await admin.from('persona_tarifa')
-    .upsert(
-      { persona_id: personaId, desde, valor_hora: valor, neto_mensual: null, origen: 'web:liquidación' },
-      { onConflict: 'persona_id,desde' },
-    )
-    .select('persona_id, valor_hora')
-  if (error) return { ok: false, error: error.message }
-  const fila = (data ?? [])[0] as { valor_hora: number | string | null } | undefined
-  if (!fila) return { ok: false, error: 'La base no guardó la tarifa.' }
-  if (Number(fila.valor_hora) !== Number(valor)) {
-    return { ok: false, error: `La base guardó ${fila.valor_hora} y yo mandé ${valor}.` }
-  }
-
-  revalidatePath(RUTA)
-  return { ok: true, mensaje: `$/h guardado desde ${desde}.` }
-}
+// EL $/HORA SE MUDÓ A `tarifaDeLaQuincenaActions.ts` (14/09/2026). Acá hacía upsert con `desde` = hoy
+// y borraba la fila al vaciar la celda, mientras la celda nueva insertaba con `desde` = inicio de la
+// quincena: dos formas de escribir el mismo dato. Ahora hay una sola regla (`planDeTarifa`).

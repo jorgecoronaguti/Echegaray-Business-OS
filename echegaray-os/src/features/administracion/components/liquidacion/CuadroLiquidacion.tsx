@@ -237,8 +237,8 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
       </Celda>
       {celda('horas', linea.horas, 'horas')}
       <Celda>
-        {/* EL $/HORA NO VIVE EN LA LÍNEA: vive en `persona_tarifa`, que es de la persona y no de
-            esta quincena. Escribirlo acá escribe una tarifa vigente desde hoy. */}
+        {/* EL $/HORA NO VIVE EN LA LÍNEA: vive en `persona_tarifa`. Escribirlo acá escribe la tarifa
+            de ESTA quincena con la regla única (`planDeTarifa`), igual que el cuadro de la quincena. */}
         <CeldaValorHora
           valor={linea.valorHora}
           origen={linea.origenTarifa}
