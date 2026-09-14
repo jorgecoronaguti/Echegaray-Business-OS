@@ -8,28 +8,43 @@ import { query } from './db.mjs'
 import { montoAR } from './egresos-por-area.mjs'
 import { fechaSheet } from './nomina-replica.mjs'
 import { resolverObraCon, cargarAliasMap } from './obras.mjs'
+import { exigirColumnas, leerColumnasCobranzas } from './cobranzas-columnas.mjs'
+import { rangoFilas } from './columnas-por-encabezado.mjs'
 
-/** NÚCLEO PURO: filas de la pestaña → registros. `enc` es el índice de la fila de encabezado. */
-export function mapearCobranzas(filas = [], aliasMap = new Map(), filaBase = 5) {
+/** Las columnas que la réplica lee, por clave de `COBRANZAS_OS`. */
+export const COLUMNAS_REPLICA = Object.freeze(['fechaVenta', 'comprobante', 'unidad', 'cliente', 'concepto', 'total', 'fechaFactura', 'fechaCobro', 'estado', 'probabilidad'])
+
+/**
+ * NÚCLEO PURO: filas de la pestaña → registros, con las columnas RESUELTAS por rótulo.
+ *
+ * Hasta el 14/09 indexaba `r[12]`, `r[16]`: con «Obra» insertada en H, el total pasaba a ser las
+ * retenciones y la «fecha de cobro» el «Mes cobro (auto)». Las claves de salida no cambian: la
+ * `fecha_emision` sigue saliendo de «Fecha de Venta» y el `fecha_vencimiento` de «Fecha de Factura»,
+ * que es lo que la réplica guardaba cuando las leía por posición.
+ * @param {Record<string,{indice:number}>} cols
+ */
+export function mapearCobranzas(filas = [], cols, aliasMap = new Map(), filaBase = 5) {
+  const c = exigirColumnas(cols, COLUMNAS_REPLICA, 'mapearCobranzas')
+  const en = (r, k) => r?.[c[k].indice]
   const out = []
   filas.forEach((r, i) => {
-    const total = montoAR(r?.[12])
+    const total = montoAR(en(r, 'total'))
     if (!total) return
-    const cliente = String(r?.[6] ?? '').trim()
+    const cliente = String(en(r, 'cliente') ?? '').trim()
     const o = resolverObraCon(aliasMap, cliente)
     out.push({
       fila_sheet: filaBase + i,
-      fecha_emision: fechaSheet(r?.[2]),
-      comprobante: String(r?.[4] ?? '').trim() || null,
-      unidad: String(r?.[5] ?? '').trim() || null,
+      fecha_emision: fechaSheet(en(r, 'fechaVenta')),
+      comprobante: String(en(r, 'comprobante') ?? '').trim() || null,
+      unidad: String(en(r, 'unidad') ?? '').trim() || null,
       cliente_texto: cliente || null,
       obra_id: o.resuelto && !o.aproximado ? o.obra_id : null,
-      concepto: String(r?.[8] ?? '').trim() || null,
+      concepto: String(en(r, 'concepto') ?? '').trim() || null,
       total,
-      fecha_vencimiento: fechaSheet(r?.[15]),   // P
-      fecha_cobro: fechaSheet(r?.[16]),         // Q
-      estado: String(r?.[14] ?? '').trim() || null,  // O
-      probabilidad: (() => { const p = String(r?.[18] ?? '').replace('%', '').replace(',', '.'); const n = Number(p); return Number.isFinite(n) ? n / 100 : null })(),
+      fecha_vencimiento: fechaSheet(en(r, 'fechaFactura')),
+      fecha_cobro: fechaSheet(en(r, 'fechaCobro')),
+      estado: String(en(r, 'estado') ?? '').trim() || null,
+      probabilidad: (() => { const p = String(en(r, 'probabilidad') ?? '').replace('%', '').replace(',', '.'); const n = Number(p); return Number.isFinite(n) ? n / 100 : null })(),
     })
   })
   return out
@@ -50,10 +65,13 @@ export function formatCobranzas(r) {
 
 export async function replicarCobranzas(google, { file_id } = {}) {
   if (!google?.readSheetValues) return { error: 'no hay una cuenta de Google autorizada' }
-  const filas = await google.readSheetValues(file_id, 'Cobranzas!A5:S200').catch(() => [])
+  // Los rótulos ANTES del delete: si falta uno, la tabla queda como estaba y el error lo nombra.
+  let cols
+  try { cols = await leerColumnasCobranzas(google, file_id, COLUMNAS_REPLICA) } catch (e) { return { error: e.message } }
+  const filas = await google.readSheetValues(file_id, rangoFilas('Cobranzas', 5, 200)).catch(() => [])
   let aliasMap = new Map()
   try { aliasMap = await cargarAliasMap() } catch { /* sin eje, obra_id queda null y se declara */ }
-  const regs = mapearCobranzas(filas, aliasMap)
+  const regs = mapearCobranzas(filas, cols, aliasMap)
   await query("delete from public.cobranza where origen='flujo_caja_sheet'")
   for (const c of regs) {
     await query(
