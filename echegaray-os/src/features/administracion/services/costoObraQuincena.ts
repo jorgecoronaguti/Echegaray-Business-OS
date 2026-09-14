@@ -15,8 +15,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Quincena } from './quincena.ts'
+import { getManoDeObraPresupuestada, type Falla } from './costoLecturas.ts'
 
-export interface Falla { que: string; error: string }
+export type { Falla }
 
 export type EstadoDeCosto = 'real' | 'estimado' | 'falta_dato'
 
@@ -121,10 +122,11 @@ const sinFuncion = (e: { code?: string; message: string }): boolean =>
 export async function getCostoObraQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<{ lineas: LineaDeCostoObra[]; selladoEn: string | null; errores: Falla[] }> {
+  // EL PRESUPUESTO POR LA PUERTA DE COSTO-HORA (`costoLecturas.ts`, excepción declarada en definiciones.json).
   const [costo, canonicas, oep, personas] = await Promise.all([
     supabase.rpc('costo_mo_quincena', { p_desde: q.desde }),
     supabase.from('obra_canonica').select('id, nombre'),
-    supabase.from('obra_egreso_proyectado').select('obra_canonica_id, monto').eq('tipo', 'mano_de_obra'),
+    getManoDeObraPresupuestada(supabase),
     supabase.from('persona_directorio').select('id, nombre_completo'),
   ])
   const errores: Falla[] = []
@@ -134,15 +136,10 @@ export async function getCostoObraQuincena(
       error: sinFuncion(costo.error) ? 'La migración 20260915T0500 todavía no está aplicada.' : costo.error.message,
     })
   }
-  if (oep.error) errores.push({ que: 'la mano de obra presupuestada', error: oep.error.message })
+  if (oep.error) errores.push(oep.error)
   const rotulos = new Map((canonicas.data ?? []).map((o) => [String(o.id), String(o.nombre ?? o.id)]))
   const nombres = new Map((personas.data ?? []).map((p) => [String(p.id), String(p.nombre_completo ?? '')]))
-  const presupuesto = new Map<string, number>()
-  for (const f of oep.data ?? []) {
-    const m = numero(f.monto)
-    if (f.obra_canonica_id == null || m == null) continue
-    presupuesto.set(String(f.obra_canonica_id), (presupuesto.get(String(f.obra_canonica_id)) ?? 0) + m)
-  }
+  const presupuesto = oep.presupuesto
   const filas = filasDeCosto(costo.data)
   return {
     lineas: lineasDeCostoObra(filas, rotulos, nombres, presupuesto),
