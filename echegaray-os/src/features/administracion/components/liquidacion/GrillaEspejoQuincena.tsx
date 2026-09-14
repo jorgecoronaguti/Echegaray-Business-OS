@@ -81,14 +81,25 @@ export interface SeccionDelEspejo {
   filas: FilaDelEspejo[]
 }
 
+/** Quien cobra por debajo del básico de su convenio. Lo arma `exponerAlPiso`; la grilla sólo lo dibuja. */
+export interface MarcaDePiso {
+  brechaPct: number
+  diferenciaHora: number
+  piso: number
+  desde: string
+  categoria: string
+}
+
 export function GrillaEspejoQuincena({
-  dias, secciones, totales, quincena, camposEditables, sello,
+  dias, secciones, totales, quincena, camposEditables, sello, bajoElPiso = {},
 }: {
   dias: readonly string[]
   secciones: readonly SeccionDelEspejo[]
   totales: TotalesDelEspejo
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
+  /** Por persona. Ausente = no está bajo el piso O no se pudo comparar (eso lo dice «Convenios»). */
+  bajoElPiso?: Record<string, MarcaDePiso>
   /** El sello de la planilla: lo dibuja el servidor y viaja entero. */
   sello: React.ReactNode
 }) {
@@ -121,7 +132,7 @@ export function GrillaEspejoQuincena({
               <RotuloDeGrupo texto={sec.rotulo} primero={i === 0} />
               {sec.filas.map((fila) => (
                 <Fila key={fila.personaId} fila={fila} columnas={columnas}
-                  quincena={quincena} camposEditables={camposEditables} />
+                  quincena={quincena} camposEditables={camposEditables} piso={bajoElPiso[fila.personaId]} />
               ))}
             </div>
           ))}
@@ -135,11 +146,12 @@ export function GrillaEspejoQuincena({
 }
 
 /** Una fila: el nombre, los días y la cadena. El `title` del chip dice las dos horas que compara. */
-function Fila({ fila, columnas, quincena, camposEditables }: {
+function Fila({ fila, columnas, quincena, camposEditables, piso }: {
   fila: FilaDelEspejo
   columnas: string
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
+  piso?: MarcaDePiso
 }) {
   const l = fila.linea
   return (
@@ -154,8 +166,20 @@ function Fila({ fila, columnas, quincena, camposEditables }: {
           a la izquierda: un campo que las pise dejaría la fila contradiciendo sus propias celdas. El
           $/h se escribe en la solapa Pagos, que es donde vive `persona_tarifa` con su `desde`. */}
       <Leida valor={l.horas} formato={nHoras} origen={l.origen.horas} />
-      <Leida valor={l.valorHora ?? l.netoMensual} apagada
-        titulo={l.netoMensual != null ? 'Neto mensual acordado' : (l.origenTarifa ?? undefined)} />
+      {piso ? (
+        // BAJO EL BÁSICO DEL CONVENIO: el % en rojo al lado del $/h, y el piso con su fecha al pasar.
+        // Rojo sólo para problemas (skill de diseño §2): cobrar debajo del convenio es riesgo laboral.
+        <div data-testid={`espejo-bajo-piso-${fila.personaId}`} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}
+          title={`Bajo el básico UOCRA: ${piso.categoria} $${pesos(piso.piso)}/h desde ${piso.desde}. Faltan $${pesos(piso.diferenciaHora)}/h.`}>
+          <span style={{ color: V.apagado }}>{pesos(l.valorHora)}</span>
+          <span style={{ color: V.neg, fontSize: '10.5px', fontWeight: 600, marginLeft: 3 }}>
+            {`${Math.round(piso.brechaPct)}%`}
+          </span>
+        </div>
+      ) : (
+        <Leida valor={l.valorHora ?? l.netoMensual} apagada
+          titulo={l.netoMensual != null ? 'Neto mensual acordado' : (l.origenTarifa ?? undefined)} />
+      )}
       <Leida valor={l.cobra} medio origen={l.origen.cobra} titulo={tituloDeOrigen(l, 'cobra')} />
       <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={78} />
       <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={80} />

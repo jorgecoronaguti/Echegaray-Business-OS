@@ -88,6 +88,15 @@ test('LA BARRA MUESTRA UNA SOLA PANTALLA Y MANDA EL RESTO A «MÁS» (dueño, 14
   assert.ok(!/SOLAPAS\.map\(/.test(BARRA), 'la barra no vuelve a dibujar las siete en fila')
 })
 
+test('LA MARCA «BAJO EL BÁSICO UOCRA» SALE DE LA EXPOSICIÓN AL CONVENIO, NO DE UNA CUENTA NUEVA', () => {
+  // EL DEFECTO QUE ATRAPA: una segunda definición del piso. La misma persona no puede estar «bajo el
+  // piso» en el cuadro y «en regla» en la solapa Convenios.
+  assert.match(VISTA, /getExposicionDeLaQuincena\(supabase, quincena\)/)
+  assert.match(VISTA, /if \(!l\.bajoElPiso \|\| l\.piso == null/)
+  assert.ok(!/basico_hora|uocra_escala|convenio_escala/.test(VISTA), 'la vista no lee escalas por su cuenta')
+  assert.match(GRILLA, /data-testid=\{`espejo-bajo-piso-\$\{fila\.personaId\}`\}/)
+})
+
 test('EL SELLO DICE «SIN LEER» CUANDO NO HAY ESPEJO: un control que no mira no dice que está bien', () => {
   assert.match(VISTA, /espejo-sin-leer/)
   assert.match(VISTA, /sin leer para esta quincena/)
