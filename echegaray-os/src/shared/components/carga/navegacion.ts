@@ -64,3 +64,19 @@ export function abreNavegacionInterna(c: ClicDeNavegacion): boolean {
 
   return true
 }
+
+export type PedidoDeNavegacion = { desde: string; n: number }
+
+/**
+ * ¿El pedido sigue esperando, o ya se cumplió? — `null` en cuanto la ruta visible dejó de ser la de
+ * origen.
+ *
+ * EL DEFECTO (QA de tercero, 14/09/2026): /clientes → ficha → ATRÁS dejaba «Cargando…» fijo. El
+ * pedido se consideraba inactivo mientras la ruta fuera OTRA, pero nadie lo borraba: al volver a
+ * /clientes la ruta coincidía otra vez con `desde` y el indicador revivía, con el cartel ya visible,
+ * hasta el límite de dos minutos. Un pedido se cumple UNA vez; volver al origen es otra navegación.
+ */
+export function pedidoVigente(pedido: PedidoDeNavegacion | null, rutaActual: string): PedidoDeNavegacion | null {
+  if (pedido === null) return null
+  return pedido.desde === rutaActual ? pedido : null
+}

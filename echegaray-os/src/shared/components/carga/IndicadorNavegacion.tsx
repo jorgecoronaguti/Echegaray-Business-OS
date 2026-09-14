@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { abreNavegacionInterna } from './navegacion'
+import { abreNavegacionInterna, pedidoVigente, type PedidoDeNavegacion } from './navegacion'
 
 // LA BARRA QUE DICE QUE EL SISTEMA ESTÁ TRABAJANDO — una sola, arriba de todo, para todo el OS.
 //
@@ -46,8 +46,13 @@ export function IndicadorNavegacion() {
   // prohíbe acá—. Guardando la ruta de ORIGEN, el indicador se apaga solo: en cuanto la ruta que
   // devuelve el router deja de ser aquella, la navegación terminó. El hecho apaga la señal, no un
   // temporizador que adivina.
-  const [pedido, setPedido] = useState<{ desde: string; n: number } | null>(null)
-  const activo = pedido !== null && pedido.desde === rutaActual
+  const [pedidoGuardado, setPedido] = useState<PedidoDeNavegacion | null>(null)
+  // UN PEDIDO CUMPLIDO SE BORRA, no sólo se ignora: si quedaba guardado, ATRÁS al origen lo revivía
+  // (ver `pedidoVigente`). Se borra durante el render —el patrón de React para ajustar estado a una
+  // prop que cambió— y no en un efecto, por la misma razón de arriba.
+  const pedido = pedidoVigente(pedidoGuardado, rutaActual)
+  if (pedidoGuardado !== null && pedido === null) setPedido(null)
+  const activo = pedido !== null
 
   useEffect(() => {
     function alClic(e: MouseEvent) {
@@ -93,11 +98,19 @@ export function IndicadorNavegacion() {
         setPedido({ desde, n: Date.now() })
       }, 0)
     }
+    // ATRÁS/ADELANTE REEMPLAZA LO QUE SE HABÍA PEDIDO: el router aborta la navegación en curso
+    // (los `ERR_ABORTED` del QA) y, si la historia devuelve a la misma ruta de origen, la ruta no
+    // cambia y nada más apagaría el pedido abandonado.
+    function alVolver() {
+      setPedido(null)
+    }
     document.addEventListener('click', alClic, true)
     document.addEventListener('submit', alEnviar, true)
+    window.addEventListener('popstate', alVolver)
     return () => {
       document.removeEventListener('click', alClic, true)
       document.removeEventListener('submit', alEnviar, true)
+      window.removeEventListener('popstate', alVolver)
     }
   }, [])
 
@@ -114,7 +127,7 @@ export function IndicadorNavegacion() {
     }
   }, [activo, pedido])
 
-  if (!activo) return null
+  if (pedido === null) return null
   const cartel = cartelDe === pedido.n
 
   return (
