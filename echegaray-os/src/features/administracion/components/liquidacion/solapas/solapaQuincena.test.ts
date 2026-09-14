@@ -91,22 +91,33 @@ test('EL HISTORIAL SALE DE LA LECTURA DE LA EXPOSICIÓN, NO DE UNA CONSULTA PROP
   assert.match(HISTORIAL, /<Drawer/)
 })
 
-test('EL $/H SE ESCRIBE COMO FILA NUEVA DESDE LA QUINCENA MIRADA, NUNCA COMO UPDATE', () => {
+test('UNA SOLA ESCRITURA DE TARIFA: plan único, corrección con rastro, nunca upsert ni delete', () => {
   const codigo = sinComentarios(ACCION)
-  // EL DEFECTO QUE ATRAPA: el upsert con `desde = hoy` de `guardarValorHora`, que pisa el valor
-  // anterior y borra la fila al vaciar la celda. Sin fila nueva no hay historial.
-  assert.match(codigo, /from\('persona_tarifa'\)\s*\.insert\(/)
-  assert.ok(!/\.update\(|\.upsert\(|\.delete\(/.test(codigo), 'ni update, ni upsert, ni delete')
+  // EL DEFECTO QUE ATRAPA: dos formas de escribir el mismo dato. `guardarValorHora` hacía upsert con
+  // `desde = hoy` y borraba al vaciar la celda; la celda nueva insertaba. Ahora las dos pasan por
+  // `escribirTarifa` y deciden con `planDeTarifa`.
+  assert.match(codigo, /export async function guardarValorHora\(/)
+  assert.match(codigo, /export async function registrarTarifaDesdeLaQuincena\(/)
+  assert.equal((codigo.match(/return escribirTarifa\(/g) ?? []).length, 2, 'las dos entradas delegan en la misma escritura')
+  assert.match(codigo, /planDeTarifa\(\{ existentes, desde: e\.desde/)
+  assert.ok(!/\.upsert\(|\.delete\(/.test(codigo), 'ni upsert ni delete')
   assert.ok(!/hoyISO/.test(codigo), '`desde` es la quincena mirada, no hoy')
-  assert.match(codigo, /const misma = filas\.find\(\(t\) => t\.desde === desde\)/)
+  // LA CORRECCIÓN SÓLO TOCA LA FILA DE ESA QUINCENA, Y SÓLO DESPUÉS DE COMPROBAR QUE HAY RASTRO.
+  const corregir = codigo.slice(codigo.indexOf('async function corregir('))
+  assert.ok(corregir.indexOf("from('persona_tarifa_correccion').select('id')") < corregir.indexOf('.update('), 'rastro verificado antes del UPDATE')
+  assert.match(corregir, /\.eq\('persona_id', e\.persona_id\)\.eq\('desde', e\.desde\)/)
+  assert.match(corregir, /devolví el valor anterior/)
   // LAS CERRADURAS VAN ANTES DE TOMAR LA CLAVE DE SERVICIO.
-  const clave = codigo.indexOf('createAdminClient()')
-  for (const antes of ['permisoDeLiquidacion(', "=== 'cerrada'", 'if (misma)', 'formaEditable(grupo) !== forma']) {
-    const i = codigo.indexOf(antes)
+  const escribir = codigo.slice(codigo.indexOf('async function escribirTarifa('))
+  const clave = escribir.indexOf('createAdminClient()')
+  for (const antes of ['permisoDeLiquidacion(', "=== 'cerrada'", 'formaEditable(e.grupo) !== e.forma', "plan.accion === 'rechazar'"]) {
+    const i = escribir.indexOf(antes)
     assert.ok(i > 0 && i < clave, `${antes} va antes de createAdminClient()`)
   }
   assert.match(TARIFA, /registrarTarifaDesdeLaQuincena\(/)
-  assert.ok(!/guardarValorHora/.test(TARIFA), 'la celda nueva no usa la acción que pisa')
+  for (const f of ['../CeldasDeLiquidacion.tsx', '../CadenaDePago.tsx']) {
+    assert.match(fuente(f), /import \{ guardarValorHora \} from '\.\.\/\.\.\/services\/tarifaDeLaQuincenaActions'/, `${f} usa la escritura única`)
+  }
 })
 
 test('EL RECORTE PREGUNTA CÓMO COBRA: por quincena o mensual (dueño, 14/09/2026)', () => {
