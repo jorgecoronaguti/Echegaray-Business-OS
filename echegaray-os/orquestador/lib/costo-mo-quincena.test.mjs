@@ -74,7 +74,8 @@ test('obrero CON recibo: costo total empleador + negro sin cargas, sin multiplic
   cerca(f.costo_blanco, 850000, 'blanco = costo_total_empleador del recibo')
   cerca(f.costo_negro, 6 * 5874, 'negro = (94 − 88) × $/h negro')
   cerca(f.costo_total, 885244, 'total')
-  assert.equal(f.estado, 'real')
+  // LA QUINCENA ABIERTA ES MODELO: estimado aunque haya recibo (dueño, 14/09/2026: cerradas = lo pagado).
+  assert.equal(f.estado, 'estimado')
   // EL DEFECTO VIEJO: bolsillo × multiplicador promedio sobre TODO el $/h.
   assert.ok(Math.abs(f.costo_total - 94 * 5874 * 1.671273) > 1000, 'volvió el multiplicador sobre el total')
 })
@@ -132,7 +133,7 @@ test('jefe mensual CON recibo: costo empleador + (900.000 − neto), repartido p
   cerca(filasDe(r, 'maldonado').reduce((s, f) => s + f.costo_total, 0), total, 'medio sueldo por quincena')
   cerca(deObra(r, 'maldonado', 'la-estrella').costo_total, total * 44 / 90, 'La Estrella: 44 de 90 h')
   cerca(deObra(r, 'maldonado', 'san-francisco').costo_total, total * 46 / 90, 'San Francisco: 46 de 90 h')
-  assert.ok(filasDe(r, 'maldonado').every((f) => f.estado === 'real'))
+  assert.ok(filasDe(r, 'maldonado').every((f) => f.estado === 'estimado'), 'la quincena abierta es modelo')
 })
 
 test('el costo del jefe NO depende de cuántas horas cargó: no es el mes entero a la fecha', () => {
@@ -324,7 +325,7 @@ test('con el negro escrito a mano no hace falta la tarifa: deja de ser FALTA_DAT
     recibos: [recibo('aguero', 'Q2-08/2026', 40, 250000, 200000, 400000)],
     lineas: [{ persona_id: 'aguero', negro_manual: 90000 }],
   })
-  assert.equal(r.filas[0].estado, 'real')
+  assert.equal(r.filas[0].estado, 'estimado')
   cerca(r.filas[0].costo_total, 490000, 'costo empleador + negro escrito')
 })
 
@@ -335,6 +336,69 @@ test('las horas a mano no mueven el reparto: las obras siguen repartiendo por su
     lineas: [{ persona_id: 'reta', horas_manual: 100 }],
   })
   cerca(deObra(r, 'reta', 'quattropani').costo_total, (600000 + 20 * 5000) / 2, 'mitad y mitad, como las horas cargadas')
+})
+
+// ═══ JEFES Y RECIBOS SIN HORAS (auditor, 14/09/2026) ═══
+
+test('MEDIO SUELDO POR QUINCENA, explícito: el negro del jefe es la mitad del mensual menos su neto', () => {
+  const r = calcular({ personas: [JEFE], registros: dias('maldonado', 'quattropani', 2, 9), tarifas: [TARIFA_JEFE], recibos: [RECIBO_JEFE] })
+  const negro = r.filas.reduce((s, f) => s + f.costo_negro, 0)
+  cerca(negro, 1800000 / 2 - 663141.56, 'neto_mensual / 2 − neto del recibo')
+  assert.ok(Math.abs(negro - (1800000 - 663141.56)) > 1, 'volvió el mes entero')
+})
+
+test('jefe en AGOSTO sin tramo vigente: el 1,8 M del dueño con su recibo, a Estructura – Administración, estimado', () => {
+  // «el 1,8 M es el TOTAL que cobran» (dueño). El tramo de persona_tarifa arranca el 01/09 porque ese día se
+  // cargó en el OS, no porque el sueldo empezara ahí: se aplica hacia atrás y se marca estimado.
+  const r = calcular({ personas: [JEFE], tarifas: [tarifa('maldonado', null, '2026-09-01', 1800000)], recibos: [RECIBO_JEFE] })
+  assert.deepEqual(r.filas.map((f) => [f.obra_canonica_id, f.destino]), [[null, 'ES-ADM']])
+  cerca(r.filas[0].costo_total, 1483403.87, 'Maldonado Q2-08')
+  assert.equal(r.filas[0].estado, 'estimado')
+  assert.match(r.filas[0].origen, /primer tramo/)
+})
+
+// ═══ QUINCENAS CERRADAS = LO PAGADO REAL (dueño, 14/09/2026) ═══
+//
+// Costo = costo_total_empleador del recibo + (cobra − neto) de la línea de la liquidación cerrada. Los
+// números de Reta son los de la base (Q2-08): 422.185,06 + (669.412 − 192.887,48) = 898.709,58.
+
+const RETA_Q2_08 = recibo('reta', 'Q2-08/2026', 70, 269950, 192887.48, 422185.06)
+const cerrada = (e) => calcular({ cerrada: true, ...e })
+
+test('CERRADA con recibo y línea: costo empleador + lo pagado fuera del recibo, real (Reta Q2-08)', () => {
+  const r = cerrada({
+    personas: [persona('reta')], tarifas: [tarifa('reta', 5924)], recibos: [RETA_Q2_08],
+    registros: [...dias('reta', 'quattropani', 12, 9), dia('reta', '2026-08-29', 'quattropani', 5)],
+    lineas: [{ persona_id: 'reta', cobra: 669412 }],
+  })
+  const [f] = r.filas
+  cerca(f.costo_total, 898709.58, 'Reta Q2-08: 669.412 pagado + (422.185,06 − 192.887,48)')
+  cerca(f.costo_negro, 669412 - 192887.48, 'cobra − neto')
+  assert.equal(f.estado, 'real')
+  // EL MODELO NO VUELVE EN UNA CERRADA: (113 − 70) × $/h daría otro número.
+  assert.ok(Math.abs(f.costo_negro - 43 * 5924) > 1000, 'una quincena cerrada volvió a usar el modelo')
+})
+
+test('CERRADA, jefe sin línea: costo empleador + (medio mensual − neto), marcado estimado, a Administración', () => {
+  const r = cerrada({ personas: [JEFE], tarifas: [tarifa('maldonado', null, '2026-09-01', 1800000)], recibos: [RECIBO_JEFE] })
+  assert.deepEqual(r.filas.map((f) => [f.obra_canonica_id, f.destino, f.estado]), [[null, 'ES-ADM', 'estimado']])
+  cerca(r.filas[0].costo_total, 1483403.87, 'Maldonado Q2-08')
+  assert.match(r.filas[0].origen, /sin línea/)
+})
+
+test('CERRADA, recibo sin línea: sólo el costo del recibo y el faltante marcado (Castro, Moreno, Quiroz)', () => {
+  const r = cerrada({ personas: [persona('castro-jm')], recibos: [recibo('castro-jm', 'Q2-08/2026', 80, 269950, 192887.48, 422185.06)] })
+  assert.deepEqual(r.filas.map((f) => [f.obra_canonica_id, f.destino, f.estado]), [[null, 'ES-ADM', 'estimado']])
+  cerca(r.filas[0].costo_total, 422185.06, 'sólo el recibo')
+  assert.match(r.filas[0].origen, /sólo el costo del recibo/)
+})
+
+test('CERRADA, línea sin recibo: lo pagado, marcado (Jofre y Sosa en Q2-08)', () => {
+  const r = cerrada({ personas: [persona('sosa')], registros: dias('sosa', 'quattropani', 5, 9), lineas: [{ persona_id: 'sosa', cobra: 302100 }] })
+  const [f] = r.filas
+  cerca(f.costo_total, 302100, 'lo pagado')
+  assert.equal(f.costo_blanco, null)
+  assert.equal(f.estado, 'estimado')
 })
 
 test('los motivos que pagan son los de la tabla del dueño, en JS y en SQL', () => {

@@ -35,6 +35,8 @@ export interface FilaDeCostoQuincena {
   origen: string
   destino: DestinoDeCosto
   selladoEn: string | null
+  /** La quincena tenía foto pero se reabrió: se calculó en vivo. */
+  reabierta: boolean
 }
 
 export interface SinDato { personaId: string | null; nombre: string; horas: number; origen: string }
@@ -77,7 +79,7 @@ export function filasDeCosto(data: unknown): FilaDeCostoQuincena[] {
     return [{
       obraId, destino, personaId: texto(r.persona_id), horas: numero(r.horas) ?? 0,
       blanco: numero(r.costo_blanco), negro: numero(r.costo_negro), total: numero(r.costo_total),
-      estado, origen: texto(r.origen) ?? '', selladoEn: texto(r.sellado_en),
+      estado, origen: texto(r.origen) ?? '', selladoEn: texto(r.sellado_en), reabierta: r.reabierta === true,
     }]
   })
 }
@@ -134,7 +136,7 @@ const sinFuncion = (e: { code?: string; message: string }): boolean =>
  */
 export async function getCostoObraQuincena(
   supabase: SupabaseClient, q: Quincena,
-): Promise<{ lineas: LineaDeCostoObra[]; selladoEn: string | null; errores: Falla[] }> {
+): Promise<{ lineas: LineaDeCostoObra[]; selladoEn: string | null; reabierta: boolean; errores: Falla[] }> {
   // EL PRESUPUESTO POR LA PUERTA DE COSTO-HORA (`costoLecturas.ts`, excepción declarada en definiciones.json).
   const [costo, canonicas, oep, personas] = await Promise.all([
     supabase.rpc('costo_mo_quincena', { p_desde: q.desde }),
@@ -157,6 +159,7 @@ export async function getCostoObraQuincena(
   return {
     lineas: lineasDeCostoObra(filas, rotulos, nombres, presupuesto),
     selladoEn: filas.find((f) => f.selladoEn != null)?.selladoEn ?? null,
+    reabierta: filas.some((f) => f.reabierta),
     errores,
   }
 }

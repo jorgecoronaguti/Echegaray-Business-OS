@@ -39,7 +39,7 @@ const suma = (ls: readonly LineaDeCostoObra[], k: 'costo' | 'blanco' | 'negro'):
 
 export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: string }) {
   const supabase = await createClient()
-  const { lineas, selladoEn, errores } = await getCostoObraQuincena(supabase, quincena)
+  const { lineas, selladoEn, reabierta, errores } = await getCostoObraQuincena(supabase, quincena)
   // ESTRUCTURA EN DOS LÍNEAS (Administración y Taller): ninguna es una obra.
   const estructura = lineas.filter((l) => l.obraId == null)
   const sinDato = lineas.flatMap((l) => l.sinDato.map((s) => ({ ...s, obra: l.rotulo })))
@@ -54,7 +54,9 @@ export async function SolapaCostoObra({ quincena }: { quincena: Quincena; hoy?: 
       <p style={bajada}>
         Costo = recibo del estudio (costo total empleador) + la parte en negro, repartido entre obras por horas.
         Las licencias pagas van a la obra asignada ese día. Sin recibo del período todavía, el blanco es estimado.
-        {selladoEn
+        {reabierta
+          ? ' Quincena REABIERTA: la foto sellada no vale y se calcula en vivo.'
+          : selladoEn
           ? ` Quincena sellada el ${selladoEn.slice(8, 10)}/${selladoEn.slice(5, 7)}.`
           : ' En vivo: se sella al cerrar la quincena.'}
       </p>

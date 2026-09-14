@@ -25,6 +25,10 @@
 --           vale la licencia/ausencia PAGA de más horas. Esa licencia va a la obra de la fila o a la
 --           ASIGNADA ese día (regla de `asignacion-del-dia.mjs`); sin ninguna, a Estructura (obra null).
 --   SIN TARIFA → estado 'falta_dato', con sus horas y el blanco que sí se sabe; el total queda null.
+--   CERRADA quincena con todos sus grupos cerrados = LO PAGADO REAL (dueño, 14/09/2026): costo empleador del
+--           recibo + (cobra − neto) de la línea de la liquidación. Jefe sin línea: + (neto_mensual/2 − neto).
+--           Recibo sin línea: sólo el recibo. Línea sin recibo: lo pagado. Todo lo incompleto, «estimado».
+--   ABIERTA el modelo de arriba, siempre «estimado».
 --   A MANO  lo escrito en Liquidación manda: `negro_manual` (importe), `horas_negro_manual` y `horas_manual`
 --           (20260915T0300 y T0510). El reparto entre obras sigue siendo por las horas cargadas.
 --
@@ -96,6 +100,40 @@ grant select on public.costo_obra_quincena to authenticated;
 revoke insert, update, delete on public.costo_obra_quincena from authenticated;
 grant all on public.costo_obra_quincena to service_role;
 
+-- LA HISTORIA DE LAS FOTOS (auditoría 14/09/2026): re-sellar NUNCA borra sin rastro. Cada foto reemplazada se
+-- copia acá con el momento en que se reemplazó.
+create table if not exists public.costo_obra_quincena_historia (
+  historia_id      uuid primary key default gen_random_uuid(),
+  id               uuid not null,
+  quincena_desde   date not null,
+  quincena_hasta   date not null,
+  obra_canonica_id text,
+  persona_id       uuid,
+  horas            numeric not null,
+  costo_blanco     numeric,
+  costo_negro      numeric,
+  costo_total      numeric,
+  estado           text not null,
+  origen           text not null,
+  destino          text not null,
+  sellado_en       timestamptz not null,
+  reemplazado_en   timestamptz not null default now()
+);
+create index if not exists costo_obra_quincena_historia_quincena
+  on public.costo_obra_quincena_historia (quincena_desde, reemplazado_en);
+alter table public.costo_obra_quincena_historia enable row level security;
+drop policy if exists costo_obra_quincena_historia_lee on public.costo_obra_quincena_historia;
+create policy costo_obra_quincena_historia_lee on public.costo_obra_quincena_historia
+  for select to authenticated
+  using ((select public.liquida_sueldos()) or (select public.ve_economia()));
+drop policy if exists costo_obra_quincena_historia_srv on public.costo_obra_quincena_historia;
+create policy costo_obra_quincena_historia_srv on public.costo_obra_quincena_historia
+  for all to service_role using (true) with check (true);
+revoke all on public.costo_obra_quincena_historia from public, anon;
+grant select on public.costo_obra_quincena_historia to authenticated;
+revoke insert, update, delete on public.costo_obra_quincena_historia from authenticated;
+grant all on public.costo_obra_quincena_historia to service_role;
+
 -- ════════════════════════════════════════════════════════════════════════════════════════════════
 -- 2. EL CÁLCULO (la definición)
 -- ════════════════════════════════════════════════════════════════════════════════════════════════
@@ -117,7 +155,9 @@ with q as (
          case when extract(day from p_desde) = 1 then p_desde + 14
               else (date_trunc('month', p_desde) + interval '1 month - 1 day')::date end as hasta,
          case when extract(day from p_desde) = 1 then 'Q1-' else 'Q2-' end || to_char(p_desde, 'MM/YYYY') as periodo,
-         to_char(p_desde, 'YYYY-MM') || case when extract(day from p_desde) = 1 then '-1' else '-2' end as orden
+         to_char(p_desde, 'YYYY-MM') || case when extract(day from p_desde) = 1 then '-1' else '-2' end as orden,
+         -- CERRADA = todos sus grupos de liquidación cerrados: se costea con lo pagado real.
+         coalesce((select bool_and(lq.estado = 'cerrada') from public.liquidacion_quincena lq where lq.desde = p_desde), false) as cerrada
    where extract(day from p_desde) in (1, 16)
 ),
 filas as (
@@ -206,7 +246,7 @@ personas_q as (
    where coalesce(p.es_prueba, false) = false
 ),
 base as (
-  select p.id, p.es_taller, q.desde, q.hasta, q.periodo,
+  select p.id, p.es_taller, q.desde, q.hasta, q.periodo, q.cerrada,
          coalesce(hp.horas, 0) as horas, coalesce(hp.equivalentes, 0) as equivalentes,
          rc.id is not null as con_recibo, rc.horas_blanco as r_hb, rc.bruto as r_bruto, rc.neto as r_neto,
          rc.costo_total_empleador as r_cte,
@@ -214,7 +254,9 @@ base as (
          ll.negro_manual as m_negro, ll.horas_negro_manual as m_hneg,
          -- LAS HORAS ESCRITAS A MANO mandan para el blanco estimado y el negro; el reparto sigue por las cargadas.
          coalesce(ll.horas_manual, hp.horas, 0) as horas_c,
-         tf.valor_hora as t_vh, tf.neto_mensual as t_nm,
+         tf.valor_hora as t_vh, tf.neto_mensual as t_nm_vig,
+         case when tf.vigente is null then tp.neto_mensual else tf.neto_mensual end as t_nm,
+         (tf.vigente is null and tp.neto_mensual is not null) as nm_retro, ll.cobra as l_cobra,
          coalesce(fp.v, fpl.v) as factor,
          case when fp.v is not null then 'persona' when fpl.v is not null then 'plantel' end as factor_origen,
          pi.valor_hora as piso, cn.valor as cociente, cn.origen as cociente_origen,
@@ -228,13 +270,18 @@ base as (
        order by (r.persona_id = p.id) desc nulls last limit 1) rc on true
     left join lateral (
       select l.horas_recibo_manual, l.valor_hora_recibo_manual, l.valor_hora,
-             l.negro_manual, l.horas_manual, l.horas_negro_manual
+             l.negro_manual, l.horas_manual, l.horas_negro_manual, coalesce(l.cobra_manual, l.cobra) as cobra
         from public.liquidacion_linea l join public.liquidacion_quincena lq on lq.id = l.liquidacion_id
        where lq.desde = q.desde and l.persona_id = p.id
        order by l.sellado_en desc nulls last limit 1) ll on true
     left join lateral (
-      select t.valor_hora, t.neto_mensual from public.persona_tarifa t
+      select t.persona_id as vigente, t.valor_hora, t.neto_mensual from public.persona_tarifa t
        where t.persona_id = p.id and t.desde <= q.hasta order by t.desde desc limit 1) tf on true
+    -- SIN NINGÚN TRAMO VIGENTE, EL PRIMER NETO MENSUAL HACIA ATRÁS: «el 1,8 M es el TOTAL que cobran» (dueño) rige
+    -- antes del 01/09, día en que se cargó en el OS. Se marca estimado.
+    left join lateral (
+      select t.neto_mensual from public.persona_tarifa t
+       where t.persona_id = p.id and t.neto_mensual is not null order by t.desde limit 1) tp on true
     -- EL FACTOR costo_total/bruto: la mediana de SUS recibos quincenales con costo empleador.
     left join lateral (
       select percentile_cont(0.5) within group (order by r.costo_total_empleador / r.bruto)::numeric as v
@@ -272,38 +319,61 @@ plantel as (
          case when b.con_recibo then coalesce(b.m_hb, b.r_hb) else coalesce(b.m_hb, b.horas_c / 2) end as hb,
          case when b.con_recibo then null else coalesce(b.m_vh, b.piso) end as vh_est
     from base b
-   where b.horas > 0 or b.con_recibo or (b.activo and b.t_nm is not null)
+   where b.horas > 0 or b.con_recibo or (b.cerrada and b.l_cobra is not null) or (b.activo and b.t_nm_vig is not null)
 ),
 valores as (
   select x.*,
          case when x.con_recibo and x.r_cte is not null then x.r_cte
               when x.con_recibo then x.r_bruto * x.factor
+              -- CERRADA SIN RECIBO: no se estima con el modelo; el costo es lo pagado.
+              when x.cerrada then null
               else x.hb * x.vh_est * x.factor end as c_blanco,
          (x.con_recibo and x.r_cte is not null) as blanco_real,
-         case when x.con_recibo then x.r_neto else x.hb * x.vh_est * x.cociente end as neto,
+         case when x.con_recibo then x.r_neto when x.cerrada then null else x.hb * x.vh_est * x.cociente end as neto,
          coalesce(x.l_vh, x.t_vh) as vh_negro,
          coalesce(x.m_hneg, greatest(0, x.horas_c - x.hb) + greatest(0, x.equivalentes - x.horas)) as unidades_negro
     from plantel x
 ),
 costeado as (
   select v.*,
-         -- EL IMPORTE NEGRO ESCRITO A MANO MANDA: es lo que se paga, y no hace falta tarifa para saberlo.
-         case when v.m_negro is not null then v.m_negro
-              when v.vh_negro is not null then v.unidades_negro * v.vh_negro
-              when v.t_nm is not null then v.t_nm / 2 - v.neto end as c_negro,
-         (v.m_negro is null and v.vh_negro is null and v.t_nm is not null and not v.con_recibo) as negro_estimado
+         case
+           -- QUINCENA CERRADA = LO PAGADO REAL (dueño, 14/09/2026): cobra − neto de la línea de la liquidación.
+           when v.cerrada and v.l_cobra is not null then v.l_cobra - coalesce(v.r_neto, 0)
+           when v.cerrada and v.t_nm is not null and v.neto is not null then v.t_nm / 2 - v.neto
+           when v.cerrada and v.con_recibo then 0
+           when v.cerrada then null
+           -- QUINCENA ABIERTA = MODELO. El importe negro escrito a mano manda: no hace falta tarifa para saberlo.
+           when v.m_negro is not null then v.m_negro
+           when v.vh_negro is not null then v.unidades_negro * v.vh_negro
+           when v.t_nm is not null then v.t_nm / 2 - v.neto
+           -- sin tarifa y sin horas: no hay horas fuera del recibo que pagar
+           when v.horas_c = 0 and v.equivalentes = v.horas then 0
+         end as c_negro,
+         case when v.cerrada then not (v.l_cobra is not null and v.r_neto is not null)
+              else v.m_negro is null and v.vh_negro is null and v.t_nm is not null and (not v.con_recibo or v.nm_retro) end as negro_estimado
     from valores v
 ),
 personas_costo as (
   select c.*,
-         case when c.c_blanco is null or c.c_negro is null then null else c.c_blanco + c.c_negro end as c_total,
-         case when c.c_blanco is null or c.c_negro is null then 'falta_dato'
-              when c.blanco_real and not c.negro_estimado then 'real' else 'estimado' end as estado_,
+         case when c.c_negro is null then null
+              when c.c_blanco is not null then c.c_blanco + c.c_negro
+              -- LÍNEA SIN RECIBO EN UNA CERRADA: lo pagado es el costo (Jofre, Sosa).
+              when c.cerrada and c.l_cobra is not null and not c.con_recibo then c.c_negro end as c_total,
+         case when c.c_negro is null or (c.c_blanco is null and not (c.cerrada and c.l_cobra is not null and not c.con_recibo)) then 'falta_dato'
+              -- REAL SÓLO EN UNA CERRADA CON RECIBO Y LÍNEA: la quincena abierta es modelo.
+              when c.cerrada and c.blanco_real and c.l_cobra is not null and not c.negro_estimado then 'real'
+              else 'estimado' end as estado_,
          concat_ws(' · ',
            case when c.blanco_real then 'blanco: recibo ' || c.periodo || ' costo total empleador'
+                when c.cerrada and not c.con_recibo then 'blanco: sin recibo del período'
                 when c.con_recibo then format('blanco: bruto recibo %s × factor %s (%s)', c.periodo, round(c.factor, 4), coalesce(c.factor_origen, 'sin factor'))
                 else format('blanco: estimado %s h × piso %s × factor %s (%s)', round(c.hb, 2), round(c.vh_est, 2), round(c.factor, 4), coalesce(c.factor_origen, 'sin factor')) end,
-           case when c.m_negro is not null then 'negro: escrito a mano en Liquidación'
+           case when c.cerrada and c.l_cobra is not null then format('negro: pagado fuera del recibo (cobra %s − neto %s)', c.l_cobra, coalesce(c.r_neto, 0))
+                when c.cerrada and c.t_nm is not null and c.neto is not null then format('negro: sin línea sellada, %s − neto %s%s', c.t_nm / 2, c.neto,
+                  case when c.nm_retro then ' · primer tramo de neto mensual, hacia atrás' else '' end)
+                when c.cerrada and c.con_recibo then 'negro: sin línea sellada — sólo el costo del recibo'
+                when c.cerrada then 'sin recibo ni línea de la quincena cerrada (FALTA_DATO)'
+                when c.m_negro is not null then 'negro: escrito a mano en Liquidación'
                 when c.vh_negro is not null then format('negro: %s h × $/h %s', round(c.unidades_negro, 2), c.vh_negro)
                 when c.t_nm is null then 'negro: sin tarifa (FALTA_DATO)'
                 when c.neto is null then 'negro: sin neto del recibo ni estimado'
@@ -366,21 +436,27 @@ comment on function public.costo_mo_quincena_calculo(date, text[]) is
 create or replace function public.costo_mo_quincena(p_desde date, p_obras text[] default null)
  returns table (quincena_desde date, quincena_hasta date, obra_canonica_id text, persona_id uuid,
                 horas numeric, costo_blanco numeric, costo_negro numeric, costo_total numeric,
-                estado text, origen text, destino text, sellado_en timestamptz)
+                estado text, origen text, destino text, sellado_en timestamptz, reabierta boolean)
  language sql
  stable
  set search_path to 'public'
 as $function$
+  with foto as (
+    -- LA FOTO SÓLO VALE MIENTRAS LA QUINCENA SIGA CERRADA: reabierta, se calcula en vivo y se marca.
+    select exists (select 1 from public.costo_obra_quincena s where s.quincena_desde = p_desde) as hay,
+           not exists (select 1 from public.liquidacion_quincena lq
+                        where lq.desde = p_desde and lq.estado <> 'cerrada') as sigue_cerrada
+  )
   select s.quincena_desde, s.quincena_hasta, s.obra_canonica_id, s.persona_id, s.horas, s.costo_blanco,
-         s.costo_negro, s.costo_total, s.estado, s.origen, s.destino, s.sellado_en
-    from public.costo_obra_quincena s
-   where s.quincena_desde = p_desde
+         s.costo_negro, s.costo_total, s.estado, s.origen, s.destino, s.sellado_en, false as reabierta
+    from foto f, public.costo_obra_quincena s
+   where f.hay and f.sigue_cerrada and s.quincena_desde = p_desde
      and (p_obras is null or s.obra_canonica_id = any (p_obras))
   union all
   select c.quincena_desde, c.quincena_hasta, c.obra_canonica_id, c.persona_id, c.horas, c.costo_blanco,
-         c.costo_negro, c.costo_total, c.estado, c.origen, c.destino, null::timestamptz
-    from public.costo_mo_quincena_calculo(p_desde, p_obras) c
-   where not exists (select 1 from public.costo_obra_quincena s where s.quincena_desde = p_desde)
+         c.costo_negro, c.costo_total, c.estado, c.origen, c.destino, null::timestamptz, f.hay as reabierta
+    from foto f, public.costo_mo_quincena_calculo(p_desde, p_obras) c
+   where not (f.hay and f.sigue_cerrada)
 $function$;
 
 revoke all on function public.costo_mo_quincena(date, text[]) from public, anon;
@@ -403,6 +479,13 @@ begin
   end if;
   -- DOS CIERRES A LA VEZ DE LA MISMA QUINCENA NO SE PISAN: el segundo espera y reescribe la misma foto.
   perform pg_advisory_xact_lock(20260915, (extract(epoch from p_desde) / 86400)::int);
+  -- LA FOTO ANTERIOR NO SE PIERDE: pasa a la historia antes de reescribirse.
+  insert into public.costo_obra_quincena_historia
+         (id, quincena_desde, quincena_hasta, obra_canonica_id, persona_id, horas, costo_blanco, costo_negro,
+          costo_total, estado, origen, destino, sellado_en)
+  select h.id, h.quincena_desde, h.quincena_hasta, h.obra_canonica_id, h.persona_id, h.horas, h.costo_blanco,
+         h.costo_negro, h.costo_total, h.estado, h.origen, h.destino, h.sellado_en
+    from public.costo_obra_quincena h where h.quincena_desde = p_desde;
   delete from public.costo_obra_quincena where quincena_desde = p_desde;
   insert into public.costo_obra_quincena
          (quincena_desde, quincena_hasta, obra_canonica_id, persona_id, horas, costo_blanco, costo_negro,
@@ -511,28 +594,11 @@ revoke all on function public.costo_de_obras_a_la_fecha(text[]) from public;
 grant execute on function public.costo_de_obras_a_la_fecha(text[]) to authenticated, service_role;
 
 -- ════════════════════════════════════════════════════════════════════════════════════════════════
--- 6. LAS QUINCENAS YA CERRADAS SE SELLAN AL APLICAR (defecto 4)
+-- 6. EL SELLADO NO CORRE AL APLICAR (auditoría 14/09/2026)
 -- ════════════════════════════════════════════════════════════════════════════════════════════════
 --
--- Cerrada = todos los grupos de `liquidacion_quincena` de ese `desde` en 'cerrada'. De acá en adelante
--- la sella `cerrarQuincenaAction`. Cuando llegue el recibo de una quincena ya sellada como «estimado»,
--- se vuelve a llamar `sellar_costo_obra_quincena(desde)`: es idempotente.
-
-do $$
-declare
-  d date;
-  n integer;
-  total integer := 0;
-begin
-  for d in
-    select lq.desde from public.liquidacion_quincena lq
-     group by lq.desde having bool_and(lq.estado = 'cerrada') order by lq.desde
-  loop
-    n := public.sellar_costo_obra_quincena(d);
-    total := total + n;
-    raise notice 'costo_obra_quincena: sellada % → % filas', d, n;
-  end loop;
-  raise notice 'costo_obra_quincena: % filas selladas en total', total;
-end $$;
+-- Esta migración sólo crea la tabla, la historia y las funciones. Las quincenas ya cerradas las sella una
+-- persona, cuando el dueño confirme la base de costo, con `orquestador/scripts/sellar-costo-obra-dry.mjs`
+-- (dry por defecto). De acá en adelante también la sella `cerrarQuincenaAction` al cerrar.
 
 notify pgrst, 'reload schema';

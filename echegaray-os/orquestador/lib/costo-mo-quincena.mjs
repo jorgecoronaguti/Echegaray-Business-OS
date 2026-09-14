@@ -148,6 +148,8 @@ function pisoDe(escalas, p, hasta) {
 /** El blanco: costo empleador del recibo, o estimado. */
 function blancoDe(c) {
   const { recibo, linea, horas, periodo } = c
+  // CERRADA SIN RECIBO: no se estima con el modelo; el costo es lo pagado (`negroPagado`).
+  if (c.cerrada && !recibo) return { costo: null, hb: null, neto: null, real: false, origen: 'blanco: sin recibo del período' }
   const manualHoras = num(linea?.horas_recibo_manual)
   if (recibo) {
     const hb = manualHoras ?? num(recibo.horas_blanco)
@@ -165,9 +167,34 @@ function blancoDe(c) {
   return { costo, hb, neto, bruto, real: false, origen: `blanco: estimado ${txt(hb)} h × piso ${txt(valor)} × factor ${txt(c.factor?.valor)} (${c.factor?.origen ?? 'sin factor'})` }
 }
 
+/** El tramo de neto mensual: el vigente o —sin NINGÚN tramo vigente— el primero, hacia atrás (el 1,8 M del dueño). */
+function mensualDe(tarifas, hasta) {
+  const vig = vigente(tarifas, hasta)
+  if (vig) return { valor: num(vig.neto_mensual), retro: false }
+  const primero = tarifas.filter((t) => num(t.neto_mensual) != null).sort((a, b) => (iso(a.desde) < iso(b.desde) ? -1 : 1))[0]
+  return { valor: primero ? num(primero.neto_mensual) : null, retro: primero != null }
+}
+
+const RETRO = ' · primer tramo de neto mensual, hacia atrás'
+
+/** QUINCENA CERRADA = LO PAGADO REAL (dueño, 14/09/2026): cobra − neto de la línea de la liquidación cerrada. */
+function negroPagado(c, b) {
+  const neto = num(c.recibo?.neto)
+  if (c.cobra != null) {
+    return { costo: c.cobra - (neto ?? 0), estimado: neto == null, origen: `negro: pagado fuera del recibo (cobra ${txt(c.cobra)} − neto ${txt(neto ?? 0)})` }
+  }
+  const nm = c.mensual.valor
+  if (nm != null && b.neto != null) {
+    return { costo: nm / 2 - b.neto, estimado: true, origen: `negro: sin línea sellada, ${txt(nm / 2)} − neto ${txt(b.neto)}${c.mensual.retro ? RETRO : ''}` }
+  }
+  if (c.recibo) return { costo: 0, estimado: true, origen: 'negro: sin línea sellada — sólo el costo del recibo' }
+  return { costo: null, estimado: false, origen: 'sin recibo ni línea de la quincena cerrada (FALTA_DATO)' }
+}
+
 /** El negro: horas que el recibo no paga × $/h negro, o medio sueldo mensual − neto. */
 function negroDe(c, b) {
-  // EL IMPORTE NEGRO ESCRITO A MANO EN LIQUIDACIÓN MANDA: es lo que se paga, y no hace falta tarifa para saberlo.
+  if (c.cerrada) return negroPagado(c, b)
+  // QUINCENA ABIERTA = MODELO. EL IMPORTE NEGRO ESCRITO A MANO EN LIQUIDACIÓN MANDA: es lo que se paga, y no hace falta tarifa para saberlo.
   const aMano = num(c.linea?.negro_manual)
   if (aMano != null) return { costo: aMano, estimado: false, origen: 'negro: escrito a mano en Liquidación' }
   const vh = num(c.linea?.valor_hora) ?? num(c.tarifa?.valor_hora)
@@ -176,13 +203,17 @@ function negroDe(c, b) {
     const unidades = num(c.linea?.horas_negro_manual) ?? Math.max(0, c.horas - b.hb) + c.recargo
     return { costo: unidades * vh, estimado: false, origen: `negro: ${txt(unidades)} h × $/h ${txt(vh)}` }
   }
-  const nm = num(c.tarifa?.neto_mensual)
-  if (nm == null) return { costo: null, estimado: false, origen: 'negro: sin tarifa (FALTA_DATO)' }
+  const nm = c.mensual.valor
+  if (nm == null) {
+    // SIN TARIFA Y SIN HORAS: no hay horas fuera del recibo que pagar.
+    if (c.horas === 0 && c.recargo === 0) return { costo: 0, estimado: false, origen: 'negro: sin horas en la quincena' }
+    return { costo: null, estimado: false, origen: 'negro: sin tarifa (FALTA_DATO)' }
+  }
   if (b.neto == null) return { costo: null, estimado: false, origen: 'negro: sin neto del recibo ni estimado' }
   const deRecibo = c.recibo != null
   return {
-    costo: nm / 2 - b.neto, estimado: !deRecibo,
-    origen: `negro: ${txt(nm / 2)} − neto ${deRecibo ? 'recibo' : `est. (cociente ${txt(c.cociente?.valor)} ${c.cociente?.origen})`} ${txt(b.neto)}`,
+    costo: nm / 2 - b.neto, estimado: !deRecibo || c.mensual.retro,
+    origen: `negro: ${txt(nm / 2)} − neto ${deRecibo ? 'recibo' : `est. (cociente ${txt(c.cociente?.valor)} ${c.cociente?.origen})`} ${txt(b.neto)}${c.mensual.retro ? RETRO : ''}`,
   }
 }
 
@@ -199,17 +230,23 @@ function costoDeLaPersona(p, e, periodo) {
     recibo: e.recibos.find((r) => esDe(r, p) && String(r.periodo).trim() === periodo) ?? null,
     linea,
     tarifa: vigente(e.tarifas.filter((t) => t.persona_id === p.id), e.quincena.hasta),
+    mensual: mensualDe(e.tarifas.filter((t) => t.persona_id === p.id), e.quincena.hasta),
+    cerrada: e.cerrada === true,
+    cobra: e.cerrada === true ? num(linea?.cobra_manual) ?? num(linea?.cobra) : null,
     factor: factorDeCosto(e.recibos, p),
     cociente: cocienteNeto(e.recibos, p, periodo),
     piso: pisoDe(e.escalas, p, e.quincena.hasta),
   }
   const b = blancoDe(c)
   const n = negroDe(c, b)
-  const falta = b.costo == null || n.costo == null
+  // LÍNEA SIN RECIBO EN UNA CERRADA: lo pagado es el costo, sin blanco (Jofre, Sosa).
+  const soloPagado = c.cerrada && c.cobra != null && c.recibo == null
+  const falta = n.costo == null || (b.costo == null && !soloPagado)
   return {
-    persona: p, porObra: h.porObra, horas: h.horas, tarifa: c.tarifa, recibo: c.recibo,
-    blanco: b.costo, negro: n.costo, total: falta ? null : b.costo + n.costo,
-    estado: falta ? 'falta_dato' : b.real && !n.estimado ? 'real' : 'estimado',
+    persona: p, porObra: h.porObra, horas: h.horas, tarifa: c.tarifa, recibo: c.recibo, cerrada: c.cerrada, cobra: c.cobra,
+    blanco: b.costo, negro: n.costo, total: falta ? null : (b.costo ?? 0) + n.costo,
+    // REAL SÓLO EN UNA CERRADA CON RECIBO Y LÍNEA: la quincena abierta es modelo (dueño, 14/09/2026).
+    estado: falta ? 'falta_dato' : c.cerrada && b.real && c.cobra != null && !n.estimado ? 'real' : 'estimado',
     origen: `${b.origen} · ${n.origen}`,
   }
 }
@@ -217,7 +254,7 @@ function costoDeLaPersona(p, e, periodo) {
 /** ¿Entra al plantel de la quincena? Horas, recibo del período, o sueldo mensual vigente y activo. */
 function esDelPlantel(x, q) {
   if (x.persona.es_prueba === true) return false
-  if (x.horas > 0 || x.recibo) return true
+  if (x.horas > 0 || x.recibo || (x.cerrada && x.cobra != null)) return true
   const activo = (!x.persona.fecha_ingreso || iso(x.persona.fecha_ingreso) <= q.hasta)
     && (!x.persona.fecha_egreso || iso(x.persona.fecha_egreso) >= q.desde)
   return activo && num(x.tarifa?.neto_mensual) != null

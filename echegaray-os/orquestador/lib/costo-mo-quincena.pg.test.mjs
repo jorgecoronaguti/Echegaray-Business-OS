@@ -44,13 +44,15 @@ async function entrada(c, q) {
     tarifas: await filas('select persona_id, desde::text, valor_hora::float8, neto_mensual::float8 from public.persona_tarifa'),
     recibos: await filas(`select persona_id, cuil, periodo, horas_blanco::float8, bruto::float8, neto::float8,
                                  costo_total_empleador::float8 from public.recibo_sueldo_linea`),
-    lineas: await filas(`select l.persona_id, l.valor_hora::float8, l.horas_recibo_manual::float8,
+    lineas: await filas(`select l.persona_id, l.valor_hora::float8, l.cobra::float8, l.cobra_manual::float8, l.horas_recibo_manual::float8,
                                 l.valor_hora_recibo_manual::float8, l.negro_manual::float8, l.horas_manual::float8,
                                 l.horas_negro_manual::float8
                            from public.liquidacion_linea l join public.liquidacion_quincena lq on lq.id = l.liquidacion_id
                           where lq.desde = $1 order by l.sellado_en desc nulls last`, [q.desde]),
     asignaciones: await filas('select persona_id, obra_id, desde::text, hasta::text from public.obra_asignacion'),
     escalas: await filas('select convenio, categoria, desde::text, valor_hora::float8 from public.convenio_escala'),
+    // EL CORTE DE LA BASE: la SQL usa current_date, y la quincena abierta no puede compararse contra otro.
+    corte: (await filas('select current_date::text d'))[0].d,
     obras: await filas('select id, tipo from public.obra_canonica'),
   }
 }
@@ -63,16 +65,21 @@ const deSql = (f) => ({
 const clave = (f) => `${f.persona_id}|${f.obra_canonica_id}|${f.destino}`
 const igual = (a, b) => (a == null || b == null ? a == null && b == null : Math.abs(Number(a) - Number(b)) < 0.01)
 
-test('el cálculo SQL y el espejo JS dan lo mismo, fila por fila, en las dos últimas quincenas cerradas', { skip: !hayBase }, async () => {
+// LA 01/09 VA SIEMPRE: es la primera con tarifa de los jefes. Sin ella, la mutación del auditor
+// (`v.t_nm / 2` → `v.t_nm`, el mes entero) sobrevivía, porque en agosto los jefes no tenían tramo.
+test('el cálculo SQL y el espejo JS dan lo mismo, fila por fila: la 01/09 (jefes) y las dos últimas cerradas', { skip: !hayBase }, async () => {
   const c = await getPool().connect()
   try {
     await c.query('begin transaction read only')
-    const quincenas = (await c.query(`select desde::text, hasta::text from public.liquidacion_quincena
-                                       group by 1, 2 having bool_and(estado = 'cerrada') order by 1 desc limit 2`)).rows
+    const quincenas = [{ desde: '2026-09-01', hasta: '2026-09-15' }, ...(await c.query(`select desde::text, hasta::text from public.liquidacion_quincena
+                                       group by 1, 2 having bool_and(estado = 'cerrada') order by 1 desc limit 2`)).rows]
+    const jefes = await c.query("select 1 from public.persona_tarifa where neto_mensual is not null and desde <= '2026-09-15'")
+    assert.ok(jefes.rowCount > 0, 'no hay ningún jefe con tarifa mensual: la comparación no probaría el medio sueldo')
     assert.ok(quincenas.length > 0, 'no hay quincenas cerradas contra las que comparar')
     for (const q of quincenas) {
       const sql = (await c.query(CALCULO, [q.desde, null])).rows.map(deSql)
-      const js = costoManoDeObraDeLaQuincena({ quincena: q, ...(await entrada(c, q)) })
+      const cerrada = (await c.query("select coalesce(bool_and(estado = 'cerrada'), false) as c from public.liquidacion_quincena where desde = $1", [q.desde])).rows[0].c
+      const js = costoManoDeObraDeLaQuincena({ quincena: q, cerrada, ...(await entrada(c, q)) })
       assert.equal(sql.length, js.filas.length, `${q.desde}: SQL publica ${sql.length} filas y JS ${js.filas.length}`)
       const porClave = new Map(js.filas.map((f) => [clave(f), f]))
       for (const f of sql) {
