@@ -79,7 +79,10 @@ test('LA PLATA VA PRIMERO, CON «LE FALTA PAGAR» ADELANTE; DESPUÉS LOS DÍAS Y
 
 test('«LE FALTA PAGAR» DICE CÓMO SE PAGA Y SE MARCA CUANDO NO CIERRA', () => {
   assert.match(CELDAS, /banco \$\{pesos\(l\.porBanco\)\} · efvo \$\{pesos\(l\.enEfectivo\)\}/)
-  assert.match(CELDAS, /l\.blancoAcuerdo != null && <span data-testid=\{`acuerdo-\$\{fila\.personaId\}`\}> · 50\/50/)
+  assert.match(CELDAS, /data-testid=\{`acuerdo-\$\{fila\.personaId\}`\}/)
+  // SIN RECIBO SE DICE: «50/50» al lado de «banco $0» se leía como «todo en efectivo».
+  assert.match(CELDAS, /const sinRecibo = l\.porBanco === 0 && l\.reciboNeto == null/)
+  assert.match(CELDAS, /50\/50\$\{sinRecibo \? ' sin recibo' : ''\}/)
   assert.match(CELDAS, /const cierre = cierreDeLaFila\(l\)/)
   assert.match(GRILLA, /const cierre = cierreDeTotales\(totales\)/)
   assert.match(GRILLA, /Por banco \(lote\)/)

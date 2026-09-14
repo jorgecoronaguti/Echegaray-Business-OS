@@ -157,17 +157,29 @@ export function CeldaLeFaltaPagar({ fila }: { fila: FilaDelEspejo }) {
     )
   }
   const noCierra = cierre?.cierra === false
+  // Hay acuerdo 50/50 pero el estudio todavía no liquidó: el banco no tiene cifra, no es «todo en efectivo».
+  const sinRecibo = l.porBanco === 0 && l.reciboNeto == null
   return (
     <div data-testid={`le-falta-pagar-${fila.personaId}`} style={{ textAlign: 'right', lineHeight: 1.25, overflow: 'hidden' }}
       title={noCierra
         ? `No cierra: gana ${pesos(l.cobra)} − adelanto ${pesos(l.adelanto)} − ya transferido ${pesos(l.yaTransferido)} no da ${pesos(l.total)} (diferencia ${pesos(cierre?.diferencia ?? null)}).`
         : `Gana ${pesos(l.cobra)} − adelanto ${pesos(l.adelanto)} − ya transferido ${pesos(l.yaTransferido)} = banco ${pesos(l.porBanco)} + efectivo ${pesos(l.enEfectivo)}`}>
       <div style={{ fontSize: '14px', fontWeight: 600, color: noCierra ? V.neg : V.tinta, whiteSpace: 'nowrap' }}>
+        {/* EL ACUERDO VA EN LA LÍNEA DEL TOTAL: en la del reparto se cortaba en «50/5C» a 168 px
+            (captura del 14/09/2026). «50/50» junto a «banco $0» se leía como «todo en efectivo»: sin
+            recibo del estudio el banco todavía no tiene cifra, y se dice. */}
+        {l.blancoAcuerdo != null && (
+          <span data-testid={`acuerdo-${fila.personaId}`}
+            style={{ fontSize: '10.5px', fontWeight: 400, color: V.apagado, marginRight: 8 }}
+            title={`Acuerdo 50/50: banco ${pesos(l.blancoAcuerdo)} · efectivo ${pesos(l.efectivoAcuerdo)}`
+              + (sinRecibo ? '. Todavía no hay recibo del estudio: el banco figura en $0 hasta que llegue.' : '')}>
+            {`50/50${sinRecibo ? ' sin recibo' : ''}`}
+          </span>
+        )}
         {pesos(l.total)}<MarcaDeOrigen origen={l.origen.total} compacta />
       </div>
       <div style={{ fontSize: '11px', color: V.apagado, whiteSpace: 'nowrap' }}>
         {`banco ${pesos(l.porBanco)} · efvo ${pesos(l.enEfectivo)}`}
-        {l.blancoAcuerdo != null && <span data-testid={`acuerdo-${fila.personaId}`}> · 50/50</span>}
       </div>
     </div>
   )

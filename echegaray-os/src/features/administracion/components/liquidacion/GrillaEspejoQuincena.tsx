@@ -47,7 +47,8 @@ const corta = (iso: string | null): string =>
 
 /** La plata, primero: lo que el dueño busca al abrir la pantalla. */
 const PLATA = [
-  { clave: 'leFaltaPagar', rotulo: 'Le falta pagar', px: 168 },
+  // 216: «50/50 sin recibo $1.800.000» en una línea y «banco $230.240 · efvo $121.916» en la otra.
+  { clave: 'leFaltaPagar', rotulo: 'Le falta pagar', px: 216 },
   { clave: 'gana', rotulo: 'Gana', px: 100 },
   { clave: 'adelanto', rotulo: '− Adelanto', px: 96 },
   { clave: 'yaTransferido', rotulo: '− Ya transf.', px: 96 },

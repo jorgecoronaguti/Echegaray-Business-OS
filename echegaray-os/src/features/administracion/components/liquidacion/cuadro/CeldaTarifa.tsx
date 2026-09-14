@@ -102,7 +102,8 @@ export function CeldaTarifa({ fila, quincena, piso, pct }: {
       ) : (
         <span style={{ color: V.apagado }}>{actual == null ? '—' : pesos(actual)}</span>
       )}
-      {pct != null && texto == null && (
+      {/* UN 0% NO DICE NADA: aparece cuando el Sheet sembró la quincena con el mismo valor. */}
+      {pct != null && pct !== 0 && texto == null && (
         <span data-testid={`tarifa-pct-${fila.personaId}`} style={{ fontSize: '10.5px', color: pct < 0 ? V.neg : V.apagado }}>
           {conSigno(pct)}
         </span>
