@@ -36,6 +36,10 @@ import {
   grillaDeHoras, iniciosDeBloque, periodoDeLaObra, textoDeCelda, type DesgloseDeHoras,
 } from '../services/desgloseHH'
 
+// LA COLUMNA DE LA PERSONA QUEDA FIJA A LA IZQUIERDA (QA 13/09/2026, 390 px): con el nombre en una
+// línea medía 379 px y tapaba las horas sin que nada avisara que había que desplazarse. En angosto se
+// parte en dos líneas y se acota; desde sm vuelve a una línea.
+const PERSONA = "sticky left-0 z-[1] max-w-[128px] whitespace-normal sm:max-w-none sm:whitespace-nowrap"
 const CELDA = 'px-[6px] py-[4px] text-right font-mono tabular-nums whitespace-nowrap'
 const ROTULO = {
   fontSize: '10px', textTransform: 'uppercase' as const, letterSpacing: '.06em',
@@ -172,7 +176,7 @@ export function DesgloseHH({ d, totalHH, volverHref, hrefPeriodo }: {
                   columnas vecinas de bloques distintos. */}
               {inicios.size > 0 && (
                 <tr data-testid="bloques-hh">
-                  <th scope="col" />
+                  <th scope="col" className={PERSONA} style={{ background: V.fondo }} />
                   {[...inicios.entries()].map(([i, p], k, todos) => (
                     <th
                       key={`${p.desde}-${p.hasta}`}
@@ -187,7 +191,7 @@ export function DesgloseHH({ d, totalHH, volverHref, hrefPeriodo }: {
                 </tr>
               )}
               <tr style={{ borderBottom: `1px solid ${V.lineaFuerte}` }}>
-                <th scope="col" style={{ ...ROTULO, textAlign: 'left', padding: '4px 12px 6px 0' }}>
+                <th scope="col" className={PERSONA} style={{ ...ROTULO, textAlign: 'left', padding: '4px 12px 6px 0', background: V.fondo }}>
                   Persona
                 </th>
                 {g.dias.map((f, i) => (
@@ -208,7 +212,8 @@ export function DesgloseHH({ d, totalHH, volverHref, hrefPeriodo }: {
                 >
                   <th
                     scope="row"
-                    style={{ textAlign: 'left', padding: '4px 12px 4px 0', fontWeight: 400, whiteSpace: 'nowrap' }}
+                    className={PERSONA}
+                    style={{ textAlign: 'left', padding: '4px 12px 4px 0', fontWeight: 400, background: V.fondo }}
                   >
                     {/* SIN PERSONA SE DICE: son las filas legacy de JORNALES que nadie pudo imputar a
                         una persona. Esconderlas haría que la grilla no cerrara con el total de la
@@ -221,7 +226,8 @@ export function DesgloseHH({ d, totalHH, volverHref, hrefPeriodo }: {
                       <span
                         data-testid="marca-jefe-app"
                         title={`${formatoHH(fila.persona.horasApp)} h cargadas en la app en días que JORNALES no tiene`}
-                        style={{ color: V.tenue, fontSize: '10.5px', marginLeft: 6 }}
+                        className="block sm:inline sm:ml-[6px]"
+                        style={{ color: V.tenue, fontSize: '10.5px' }}
                       >
                         jefe de obra · cargado en la app
                       </span>
@@ -255,7 +261,7 @@ export function DesgloseHH({ d, totalHH, volverHref, hrefPeriodo }: {
             </tbody>
             <tfoot>
               <tr data-testid="total-por-dia" style={{ borderTop: `1px solid ${V.lineaFuerte}` }}>
-                <th scope="row" style={{ ...ROTULO, textAlign: 'left', padding: '6px 12px 4px 0' }}>
+                <th scope="row" className={PERSONA} style={{ ...ROTULO, textAlign: 'left', padding: '6px 12px 4px 0', background: V.fondo }}>
                   Total del día
                 </th>
                 {g.porDia.map((n, i) => (
