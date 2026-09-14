@@ -146,6 +146,12 @@ tercero lanzado. **Decisión del dueño:** 657/880 filas sin obra (Galpon 7, Mam
 Planta de BSA, Bases de Tanque…) → cargar `obra_alias` según diga. `obra_costo_real` (ficha de obra)
 sigue por J: difiere del CRM.
 
+**13/09 ~21:00 — la base cayó 19:40 y 20:36 (0 reinicios en 4 días antes).** Instancia de 406 MB
+RAM en swap; el refresco de la caché (T1500, 19:34) trabajaba 40 s/min. T2100 aplicada (7610bee8):
+12 s/min, cede con >3 activas. QA de tercero: cartera OK; ficha en vivo con timeouts durante la caída.
+Pendiente: re-QA de la ficha con la base estable · **subir cómputo (Nivel E, dueño)** · a 390 px la
+cartera oculta Materiales/MO · `obra_costo_real` por K.
+
 ## 6. PENDIENTES REALES
 
 **P0** — medición de performance en producción con la VM en silencio · auditoría de tercero sobre lo
