@@ -113,6 +113,7 @@ export function InlineEdit({
   // absoluta, igual que «guardando…»: la fila no se mueve.
   const [recienGuardado, setRecienGuardado] = useState(false)
   const confirmando = useRef(false)
+  const cancelado = useRef(false)
   const ref = useRef<HTMLInputElement>(null)
 
   // EL VALOR DE AFUERA MANDA cuando la fila se vuelve a leer del servidor —salvo mientras alguien
@@ -252,7 +253,9 @@ export function InlineEdit({
         data-testid={testid ? `${testid}-campo` : undefined}
         onChange={(e) => { setBorrador(e.target.value); if (error) setError(null) }}
         onFocus={(e) => e.currentTarget.select()}
-        onBlur={() => void confirmar(borrador)}
+        // ESCAPE NO GUARDA DE REBOTE: al cerrar el campo el navegador emite `blur` con el borrador de antes de
+        // revertir, y sin esta marca ese blur guardaba lo que se acababa de cancelar.
+        onBlur={() => { if (cancelado.current) { cancelado.current = false; return } void confirmar(borrador) }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.preventDefault(); void confirmar(borrador) }
           // TAB GUARDA Y PASA A LA SIGUIENTE CELDA DE LA FILA. Fuera de una fila marcada, Tab hace lo de siempre.
@@ -268,7 +271,7 @@ export function InlineEdit({
           }
           // ESCAPE DEVUELVE EL ORIGINAL. Sin esto, la única salida de una edición empezada por error
           // es guardarla.
-          if (e.key === 'Escape') { e.preventDefault(); setBorrador(vigente); setEditando(false) }
+          if (e.key === 'Escape') { e.preventDefault(); cancelado.current = true; setBorrador(vigente); setEditando(false) }
         }}
         // EL MISMO ANCHO QUE LA CELDA EN REPOSO (`ancho`) Y 32 PX DE ALTO: la fila no salta al abrirla.
         className={`${CAMPO} ${ancho} !h-8 min-h-8 !px-1.5 !text-[12.5px] ${alineado === 'right' ? 'text-right font-mono tabular-nums' : alineado === 'center' ? 'text-center font-mono tabular-nums' : ''}`}

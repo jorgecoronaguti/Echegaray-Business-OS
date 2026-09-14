@@ -69,6 +69,66 @@ export function accionDelRedondeo(e: { texto: string; guardado: number | null; s
   return { accion: 'guardar', importe }
 }
 
+// ═══ «DEJA COSAS PEGADAS» (QA, 15/09/2026) ═══
+//
+// La celda no tenía `onKeyDown`: Escape no cancelaba y el primer clic afuera guardaba lo tecleado. Y el guardado
+// fallaba SIEMPRE sobre una línea no materializada, sin que se viera: el upsert con la sesión es un INSERT … ON
+// CONFLICT DO UPDATE SET liquidacion_id, persona_id, efectivo_redondeado, y `authenticated` no tiene UPDATE sobre
+// las dos llaves (42501). Lo que decide cada tecla y la relectura viven acá, puros, para poder probarlos.
+
+export type TeclaDelRedondeo = 'guardar' | 'revertir' | 'guardar-y-pasar' | null
+
+/** Enter guarda, Escape revierte sin guardar, Tab guarda y deja que el navegador pase al siguiente campo. */
+export function teclaDelRedondeo(key: string): TeclaDelRedondeo {
+  if (key === 'Enter') return 'guardar'
+  if (key === 'Escape') return 'revertir'
+  if (key === 'Tab') return 'guardar-y-pasar'
+  return null
+}
+
+/**
+ * ¿SALIR DEL CAMPO GUARDA? Sólo si se tecleó algo y no se canceló. `cancelado` llega por una ref: Escape saca el
+ * foco en el mismo evento, y el `onBlur` todavía ve el estado de antes de revertir.
+ */
+export function debeGuardarAlSalir(e: { tocado: boolean; cancelado: boolean }): boolean {
+  return e.tocado && !e.cancelado
+}
+
+export interface FilaDelRedondeo { liquidacion_id: string; persona_id: string; efectivo_redondeado: number | null }
+
+/**
+ * LA FILA QUE SE ESCRIBE. Sólo las dos llaves y el redondeo: si la línea no existe, `cobra`, `total`, `por_banco`
+ * y los demás importes toman su default 0 (el CHECK `total = por_banco + en_efectivo` cierra con ceros) y el
+ * cierre la reescribe entera con la foto; si existe, no se pisa ninguna otra columna.
+ */
+export function filaDelRedondeo(e: { liquidacionId: string; personaId: string; valor: number | null }): FilaDelRedondeo {
+  return { liquidacion_id: e.liquidacionId, persona_id: e.personaId, efectivo_redondeado: e.valor }
+}
+
+/** LA RELECTURA MANDA. Cero filas devueltas es un rechazo en silencio; un valor distinto, un CHECK que corrigió. */
+export function verificarGuardadoDelRedondeo(
+  filas: readonly { efectivo_redondeado?: unknown }[], valor: number | null,
+): { ok: true } | { ok: false; error: string } {
+  const fila = filas[0]
+  if (!fila) return { ok: false, error: 'La base no guardó la fila.' }
+  const leido = fila.efectivo_redondeado == null ? null : Number(fila.efectivo_redondeado)
+  if (leido !== valor) return { ok: false, error: `La base guardó ${leido ?? '—'} y yo mandé ${valor ?? '—'}.` }
+  return { ok: true }
+}
+
+export type UpsertDelRedondeo = (fila: FilaDelRedondeo) => PromiseLike<{
+  data: readonly { efectivo_redondeado?: unknown }[] | null; error: { message: string } | null
+}>
+
+/** Escribe y relee. El cliente llega inyectado: la acción pasa el de la clave de servicio, el test uno falso. */
+export async function escribirRedondeo(
+  upsert: UpsertDelRedondeo, e: { liquidacionId: string; personaId: string; valor: number | null },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data, error } = await upsert(filaDelRedondeo(e))
+  if (error) return { ok: false, error: `No se guardó: ${error.message}` }
+  return verificarGuardadoDelRedondeo(data ?? [], e.valor)
+}
+
 /** El pie de la columna: la suma de lo que muestran las filas, guardado o sugerido. */
 export function sumaDelRedondeo(filas: readonly { efectivoRedondeado: number | null; enEfectivo: number | null }[]): number {
   return filas.reduce((s, f) => s + (efectivoMostrado(f).valor ?? 0), 0)

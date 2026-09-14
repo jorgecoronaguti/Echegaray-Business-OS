@@ -291,6 +291,12 @@ export function GrillaAsistenciaObra({
     enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas }, k, fila.clave)
   }
 
+  /**
+   * CELDAS CANCELADAS CON ESCAPE (QA 15/09/2026: «deja cosas pegadas»). Escape descarta el borrador y saca el foco,
+   * y el `blur` de ese mismo evento todavía lee lo tecleado en el DOM: sin esta marca, guardaba lo cancelado.
+   */
+  const canceladas = useRef(new Set<string>())
+
   /** Lo tipeado se descarta: no se guardó. El valor lo vuelve a poner `textoDe(celda)`. */
   const volverAlValorAnterior = (k: string) =>
     setBorradores((b) => { const n = { ...b }; delete n[k]; return n })
@@ -597,7 +603,15 @@ export function GrillaAsistenciaObra({
                           setBorradores((b) => ({ ...b, [k]: e.target.value }))
                           if (errores[k]) setErrores((x) => { const n = { ...x }; delete n[k]; return n })
                         }}
-                        onBlur={(e) => guardar(fila, celda, e.target.value)}
+                        onBlur={(e) => { if (canceladas.current.delete(k)) return; guardar(fila, celda, e.target.value) }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+                          if (e.key === 'Escape') {
+                            e.preventDefault(); canceladas.current.add(k); volverAlValorAnterior(k)
+                            setErrores((x) => { const n = { ...x }; delete n[k]; return n })
+                            e.currentTarget.blur()
+                          }
+                        }}
                         className="font-mono tabular-nums"
                         style={{
                           width: 42, height: 28, textAlign: 'center', fontSize: '12.5px',

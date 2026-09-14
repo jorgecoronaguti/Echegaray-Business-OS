@@ -12,7 +12,7 @@
 // rastro. La cadena NO se recalcula acá: la acción revalida la ruta y el servidor vuelve a armar la
 // línea. Lo que queda en la celda es lo que la base devolvió.
 
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { pesos } from '../formato'
 import { leerNumeroEsAR } from '@/shared/lib/numeroEsAR'
@@ -49,6 +49,7 @@ export function CeldaTarifa({ fila, quincena, pct }: {
   const [error, setError] = useState<string | null>(null)
   const [guardando, empezar] = useTransition()
   const deshacer = useDeshacer()
+  const cancelado = useRef(false)
 
   const guardar = () => {
     if (texto == null || forma == null) return
@@ -85,10 +86,11 @@ export function CeldaTarifa({ fila, quincena, pct }: {
           autoFocus inputMode="decimal" value={texto} disabled={guardando}
           aria-label={`Valor de ${fila.nombre}`} data-testid={`tarifa-input-${fila.personaId}`}
           onChange={(e) => setTexto(e.target.value)}
-          onBlur={guardar}
+          // ESCAPE NO GUARDA DE REBOTE: el input se desmonta y el `blur` que emite todavía ve el texto tecleado.
+          onBlur={() => { if (cancelado.current) { cancelado.current = false; return } guardar() }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') guardar()
-            if (e.key === 'Escape') { setTexto(null); setError(null) }
+            if (e.key === 'Escape') { e.preventDefault(); cancelado.current = true; setTexto(null); setError(null) }
           }}
           style={{
             width: 88, height: 32, textAlign: 'right', fontSize: '12.5px', padding: '0 6px',

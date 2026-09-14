@@ -31,6 +31,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion, type PermisoLiquidacion } from './liquidacionPermiso'
 import { CAMPOS_EDITABLES, COLUMNA_DE, type CampoEditable } from './liquidacionOverrides'
 import { validarMotivoDeReapertura } from './liquidacionCierre'
+import { escribirRedondeo } from './efectivoRedondeado'
 
 const RUTA = '/administracion/personas'
 
@@ -115,23 +116,26 @@ export async function guardarEfectivoRedondeado(entrada: unknown): Promise<Resul
   if ('error' in cab) return { ok: false, error: cab.error }
   if (cab.estado === 'cerrada') return { ok: false, error: 'La quincena está cerrada: no se edita.' }
 
+  // CON LA CLAVE DE SERVICIO, COMO LAS `*_manual` (QA 15/09/2026). Con la sesión, el upsert es INSERT … ON
+  // CONFLICT DO UPDATE SET liquidacion_id, persona_id, efectivo_redondeado, y `authenticated` sólo tiene UPDATE
+  // sobre `efectivo_redondeado`: la base respondía 42501 en TODAS las filas, también las que ya existían. Abrir
+  // UPDATE sobre las llaves a `authenticated` no se hace; la puerta es la de arriba —rol y quincena releída—.
+  const admin = createAdminClient()
   // DESHACER NO PISA LO QUE CAMBIÓ (Cmd+Z, 15/09/2026).
   if (esperado !== undefined) {
-    const { data: hoy } = await supabase.from('liquidacion_linea').select('efectivo_redondeado')
+    const { data: hoy } = await admin.from('liquidacion_linea').select('efectivo_redondeado')
       .eq('liquidacion_id', cab.id).eq('persona_id', personaId).maybeSingle()
     if (!mismoValor((hoy as { efectivo_redondeado?: unknown } | null)?.efectivo_redondeado, esperado)) return { ok: false, error: MENSAJE_CONFLICTO }
   }
   const valor = importe === '' ? null : importe
-  const { data, error } = await supabase.from('liquidacion_linea')
-    .upsert(
-      { liquidacion_id: cab.id, persona_id: personaId, efectivo_redondeado: valor },
-      { onConflict: 'liquidacion_id,persona_id' },
-    )
-    .select('persona_id, efectivo_redondeado')
-  if (error) return { ok: false, error: error.message }
-  // UN 204 NO PRUEBA UNA ESCRITURA. Cero filas devueltas significa que la policy rechazó en
-  // silencio, y decir «guardado» ahí es exactamente el verde falso que este repo ya pagó.
-  if ((data ?? []).length === 0) return { ok: false, error: 'La base no guardó la fila (permiso).' }
+  // UN 204 NO PRUEBA UNA ESCRITURA: `escribirRedondeo` relee la fila devuelta, y cero filas es error.
+  const escrito = await escribirRedondeo(
+    (fila) => admin.from('liquidacion_linea')
+      .upsert(fila, { onConflict: 'liquidacion_id,persona_id' })
+      .select('persona_id, efectivo_redondeado'),
+    { liquidacionId: cab.id, personaId, valor },
+  )
+  if (!escrito.ok) return escrito
 
   revalidatePath(RUTA)
   return { ok: true, mensaje: valor == null ? 'Redondeo borrado.' : 'Redondeo guardado.' }
