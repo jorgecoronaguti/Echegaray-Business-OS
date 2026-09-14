@@ -116,7 +116,7 @@ test('LA ACCIÓN VALIDA LAS HORAS Y NOMBRA LA MIGRACIÓN QUE FALTA', () => {
 test('LAS CELDAS: Horas y Hs negro se escriben en la abierta, con el aviso ámbar', () => {
   const e = fuente('../components/liquidacion/cuadro/CeldasDelEspejo.tsx')
   assert.match(e, /<Escribible campo="horas" unidad="horas"/)
-  assert.match(e, /data-testid=\{`horas-no-coinciden-\$\{fila\.personaId\}`\}/)
+  assert.match(e, /testid=\{`horas-no-coinciden-\$\{fila\.personaId\}`\}/)
   assert.match(e, /no coincide con los días: \$\{nHoras\(dias\)\} h/)
   const b = fuente('../components/liquidacion/cuadro/CeldasBlancoNegro.tsx')
   assert.match(b, /<Escribible campo="horasNegro" unidad="horas"/)

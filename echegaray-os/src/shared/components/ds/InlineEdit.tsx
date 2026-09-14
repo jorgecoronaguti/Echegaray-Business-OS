@@ -112,6 +112,7 @@ export function InlineEdit({
   // «✓» BREVE DESPUÉS DE GUARDAR (dueño, 15/09/2026: «mejores la ux de cada celda»). Se dibuja en posición
   // absoluta, igual que «guardando…»: la fila no se mueve.
   const [recienGuardado, setRecienGuardado] = useState(false)
+  const [falloReciente, setFalloReciente] = useState(false)
   const confirmando = useRef(false)
   const cancelado = useRef(false)
   const ref = useRef<HTMLInputElement>(null)
@@ -169,6 +170,8 @@ export function InlineEdit({
       setTimeout(() => setRecienGuardado(false), 1500)
     } else {
       setError(r.error)
+      setFalloReciente(true)
+      setTimeout(() => setFalloReciente(false), 4000)
     }
     luego?.()
   }
@@ -233,7 +236,12 @@ export function InlineEdit({
             : `${mostrar ? mostrar(vigente) : enISO(vigente)}${sufijo ? ` ${sufijo}` : ''}`}
         </button>
         {indicador}
-        {error && <span className="text-[11px] text-neg" data-testid={testid ? `${testid}-error` : undefined}>{error}</span>}
+        {/* EL ERROR EN TEXTO SÓLO RECIÉN FALLADO (4 s); DESPUÉS, UN ⚠ ROJO CON TITLE. Un texto fijo debajo rompe el
+            alto y el ritmo de la fila (dueño, 15/09/2026). Abrir el campo lo borra. */}
+        {error && (falloReciente
+          ? <span className="text-[11px] text-neg" data-testid={testid ? `${testid}-error` : undefined}>{error}</span>
+          : <span role="img" aria-label={error} title={error} data-testid={testid ? `${testid}-error` : undefined}
+            className="absolute -top-2.5 left-0 cursor-help text-[10px] leading-none text-neg">⚠</span>)}
       </span>
     )
   }
@@ -271,7 +279,7 @@ export function InlineEdit({
           }
           // ESCAPE DEVUELVE EL ORIGINAL. Sin esto, la única salida de una edición empezada por error
           // es guardarla.
-          if (e.key === 'Escape') { e.preventDefault(); cancelado.current = true; setBorrador(vigente); setEditando(false) }
+          if (e.key === 'Escape') { e.preventDefault(); cancelado.current = true; setError(null); setBorrador(vigente); setEditando(false) }
         }}
         // EL MISMO ANCHO QUE LA CELDA EN REPOSO (`ancho`) Y 32 PX DE ALTO: la fila no salta al abrirla.
         className={`${CAMPO} ${ancho} !h-8 min-h-8 !px-1.5 !text-[12.5px] ${alineado === 'right' ? 'text-right font-mono tabular-nums' : alineado === 'center' ? 'text-center font-mono tabular-nums' : ''}`}
