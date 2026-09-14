@@ -74,6 +74,8 @@ export async function cambiarObraActual(entrada: unknown): Promise<ResultadoObra
     supabase: supabase as unknown as SupabaseLike,
     perfil: perfil.data ? { rol: perfil.data.rol } : null,
     hoy: new Date().toISOString().slice(0, 10),
+    // Va en la nota de toda fila que el cambio toque (auditoría de la cronología, 14/09/2026).
+    usuario: perfil.data?.nombre ?? null,
     // El id llega DEL NÚCLEO, ya pasado por Zod: volver a leerlo de la entrada cruda acá sería
     // interpolar en una ruta algo que nadie validó.
     revalidar: (personaId) => {

@@ -22,7 +22,13 @@ import { claveDeActividad } from './claves'
 import { haceCiclo } from './cronograma'
 import { debeFijarMonto, montoAnterior } from './alta'
 
-export type Resultado = { ok: true; id?: string; mensaje?: string } | { ok: false; error: string }
+// Sólo el tipo: se borra al compilar y no arrastra el módulo de cliente a la acción del servidor.
+import type { AjusteAConfirmar } from '@/shared/components/ui/FormAccion'
+
+export type Resultado =
+  | { ok: true; id?: string; mensaje?: string }
+  /** `requiereConfirmar`: no se escribió nada porque cambiaría filas cargadas por otras personas. */
+  | { ok: false; error: string; requiereConfirmar?: AjusteAConfirmar[] }
 
 const fechaOpt = z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'), z.literal('')]).optional()
 // ═══ EL ORDEN DE LAS OPCIONES NO ES COSMÉTICO (19/08/2026) ═══

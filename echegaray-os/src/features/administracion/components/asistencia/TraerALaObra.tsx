@@ -49,22 +49,24 @@ export function TraerALaObra({ obraId, obraNombre, candidatos, error }: {
   const router = useRouter()
   const [abierta, setAbierta] = useState(false)
   const [busqueda, setBusqueda] = useState('')
-  const [acuse, setAcuse] = useState<{ ok: boolean; texto: string } | null>(null)
+  // `confirmarA`: traerla tocaría asignaciones ya cargadas (auditoría de la cronología, 14/09/2026). No se
+  // escribió nada; el aviso ya lista las filas y el botón «Confirmar y ajustar» vuelve a traerla confirmando.
+  const [acuse, setAcuse] = useState<{ ok: boolean; texto: string; confirmarA?: CandidatoParaTraer } | null>(null)
   const [trayendo, setTrayendo] = useState<string | null>(null)
   const [pendiente, arrancar] = useTransition()
 
   const lista = useMemo(() => filtrarCandidatos(candidatos, busqueda), [candidatos, busqueda])
 
-  const traer = (c: CandidatoParaTraer) => {
+  const traer = (c: CandidatoParaTraer, confirmar = false) => {
     setAcuse(null)
     setTrayendo(c.id)
     arrancar(async () => {
-      const r = await cambiarObraActual({ persona_id: c.id, obra_id: obraId })
+      const r = await cambiarObraActual({ persona_id: c.id, obra_id: obraId, confirmar })
       setTrayendo(null)
       if (!r.ok) {
         // EL ERROR SE QUEDA EN LA LISTA. Cerrarla dejaría el mensaje sin el contexto de a quién se
         // quiso traer, y el rechazo por rol es exactamente el que hay que poder leer entero.
-        setAcuse({ ok: false, texto: r.error })
+        setAcuse({ ok: false, texto: r.error, confirmarA: r.requiereConfirmar?.length ? c : undefined })
         return
       }
       setAcuse({ ok: true, texto: `${c.nombre} · ${r.mensaje}` })
@@ -167,6 +169,17 @@ export function TraerALaObra({ obraId, obraNombre, candidatos, error }: {
             {acuse && !acuse.ok && (
               <div className="mt-3">
                 <Aviso tono="neg" testid="error-traer">{acuse.texto}</Aviso>
+                {acuse.confirmarA && (
+                  <button
+                    type="button"
+                    disabled={pendiente}
+                    onClick={() => { if (acuse.confirmarA) traer(acuse.confirmarA, true) }}
+                    data-testid="confirmar-ajustar-traer"
+                    className="mt-2 min-h-[48px] w-full rounded-[6px] border border-line px-3 text-[13px] font-semibold text-ink disabled:opacity-50"
+                  >
+                    Confirmar y ajustar
+                  </button>
+                )}
               </div>
             )}
           </div>

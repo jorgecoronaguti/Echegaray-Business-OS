@@ -58,7 +58,7 @@ test('la asignación creada hoy cierra HOY y no se borra: el día lo decide la c
     destino: salon, hoy: HOY,
   })
   assert.deepEqual(plan.cerrar, [{ id: 'a1', hasta: HOY }])
-  assert.deepEqual(plan.borrar, [])
+  assert.deepEqual(plan.ajustes, [])
   assert.deepEqual(plan.abrir, { obra_id: 'salon-comercial', desde: HOY })
 })
 
@@ -66,22 +66,45 @@ test('un pase de UN día no cierra la obra donde está ni programa el regreso', 
   const plan = planDeCambioDeObra({
     abiertas: abiertaEnPisos, destino: salon, hoy: HOY, desde: '2026-09-10', hasta: '2026-09-10',
   })
-  assert.deepEqual([plan.cerrar, plan.borrar, plan.reabrir], [[], [], null])
+  assert.deepEqual([plan.cerrar, plan.ajustes, plan.reabrir], [[], [], null])
   assert.deepEqual(plan.abrir, { obra_id: 'salon-comercial', desde: '2026-09-10', hasta: '2026-09-10' })
 })
 
-test('mover a alguien cierra también la asignación YA CERRADA a otra obra que cubría el día', () => {
+// AUDITORÍA 14/09/2026: lo único automático es cerrar la ABIERTA que cubre el día. Las cerradas que el
+// cambio alcanza son AJUSTES: se listan para confirmar y el plan no tiene cómo borrarlas.
+test('las YA CERRADAS a otra obra que el cambio alcanza no se tocan solas: van a ajustes', () => {
   const plan = planDeCambioDeObra({
     abiertas: [],
     cerradas: [
-      { id: 'pase', obra_id: 'messina', desde: '2026-09-01', hasta: '2026-09-20' },
-      { id: 'futuro', obra_id: 'messina', desde: '2026-09-12', hasta: '2026-09-15' },
-      { id: 'vieja', obra_id: 'messina', desde: '2026-08-01', hasta: '2026-08-31' },
+      { id: 'pase', obra_id: 'messina', nombre: 'MESSINA', desde: '2026-09-01', hasta: '2026-09-20' },
+      { id: 'futuro', obra_id: 'messina', nombre: 'MESSINA', desde: '2026-09-12', hasta: '2026-09-15' },
+      { id: 'vieja', obra_id: 'messina', nombre: 'MESSINA', desde: '2026-08-01', hasta: '2026-08-31' },
     ],
     destino: salon, hoy: HOY,
   })
-  assert.deepEqual(plan.cerrar, [{ id: 'pase', hasta: AYER }])
-  assert.deepEqual(plan.borrar, ['futuro'])
+  assert.deepEqual(plan.cerrar, [])
+  assert.deepEqual(plan.ajustes.map((a) => [a.id, a.efecto, a.hastaNuevo ?? null]),
+    [['futuro', 'anular', null], ['pase', 'acortar', AYER]])
+  assert.equal('borrar' in plan, false, 'el plan ya no tiene cómo borrar')
+})
+
+test('BLOQUEANTE 2: un pase HOY a Quattropani cierra Galpón abierta y deja Messina 20–25/09 para confirmar', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: [{ id: 'galpon', obra_id: 'le-galpon-9', nombre: 'GALPÓN 9', desde: '2026-09-01' }],
+    cerradas: [{ id: 'messina', obra_id: 'messina', nombre: 'MESSINA', desde: '2026-09-20', hasta: '2026-09-25' }],
+    destino: { id: 'quattropani', nombre: 'QUATTROPANI' }, hoy: '2026-09-14',
+  })
+  assert.deepEqual(plan.cerrar, [{ id: 'galpon', hasta: '2026-09-13' }])
+  assert.deepEqual(plan.ajustes.map((a) => [a.id, a.efecto]), [['messina', 'anular']])
+})
+
+test('un pase ABIERTO ya programado a otra obra tampoco se borra: ajuste para confirmar', () => {
+  const plan = planDeCambioDeObra({
+    abiertas: [{ id: 'futura', obra_id: 'messina', nombre: 'MESSINA', desde: '2026-09-20' }],
+    destino: salon, hoy: HOY,
+  })
+  assert.deepEqual(plan.cerrar, [])
+  assert.deepEqual(plan.ajustes.map((a) => [a.id, a.efecto]), [['futura', 'anular']])
 })
 
 test('elegir la misma obra no escribe nada', () => {
@@ -197,7 +220,7 @@ test('«Sin obra» cierra TODAS las abiertas, no la última', () => {
   assert.deepEqual(plan.cerrar, [
     { id: 'a1', hasta: AYER }, { id: 'a2', hasta: AYER }, { id: 'a3', hasta: HOY },
   ])
-  assert.deepEqual(plan.borrar, [])
+  assert.deepEqual(plan.ajustes, [])
   assert.equal(plan.abrir, null)
   assert.equal(plan.acuse, 'Desde hoy sin obra · antes PISOS INDUSTRIALES, GALPÓN 9, SALÓN COMERCIAL.')
 })

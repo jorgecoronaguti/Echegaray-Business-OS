@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import {
   MARCA_RECONSTRUIDA, cederAnteLaApp, planDeAsignacion, superposiciones, tramoEfectivo,
 } from './cronologia-asignaciones.mjs'
-import { SQL, aplicarEnMemoria, planDeNormalizacion } from './cronologia-normalizar.mjs'
+import { SQL, aplicarEnMemoria, planDeNormalizacion, verificarContraRespaldo } from './cronologia-normalizar.mjs'
 import { planDeConjunto } from './asignaciones-desde-hh.mjs'
 
 const R = `${MARCA_RECONSTRUIDA} · 08/09/2026`
@@ -20,10 +20,20 @@ test('mover a alguien desde D cierra la anterior de OTRA obra en D−1', () => {
   assert.deepEqual(plan.cerrar, [{ id: 'p', hasta: '2026-09-08', continua: null }])
 })
 
-test('también se cierra la que ya tenía fin pero cubría D (no sólo las abiertas)', () => {
+test('la que ya tenía fin y cubría D NO se cierra sola: va a `acortar`, que pide confirmación (auditoría)', () => {
   const plan = planDeAsignacion([fila('p', 'reta', 'pisos', '2026-08-01', '2026-09-30')],
     { obra_id: 'quattro', desde: '2026-09-09', hasta: null })
-  assert.deepEqual(plan.cerrar.map((c) => [c.id, c.hasta]), [['p', '2026-09-08']])
+  assert.deepEqual(plan.cerrar, [])
+  assert.deepEqual(plan.acortar, [{ id: 'p', hasta: '2026-09-08' }])
+})
+
+test('las filas de la MISMA obra se saltean: ni se cierran, ni se acortan, ni se anulan', () => {
+  const plan = planDeAsignacion([
+    fila('a', 'x', 'quattro', '2026-08-01', null),
+    fila('b', 'x', 'quattro', '2026-09-09', '2026-09-09', { creado_en: '2026-09-01T10:00:00Z' }),
+    fila('c', 'x', 'quattro', '2026-09-20', '2026-09-25'),
+  ], { obra_id: 'quattro', desde: '2026-09-09', hasta: null })
+  assert.deepEqual(plan, { cerrar: [], acortar: [], reemplazar: [], recortar: [], anular: [] })
 })
 
 test('la que empezó en D se CIERRA en D y no se borra: queda cargada antes y pierde por carga posterior', () => {
@@ -44,7 +54,7 @@ test('CARGA POSTERIOR (dueño 14/09): el día suelto del mismo D cargado ANTES s
   ]
   for (const [suelto, nueva] of casos) {
     assert.deepEqual(planDeAsignacion([suelto], nueva),
-      { cerrar: [], reemplazar: [], recortar: [], anular: [{ id: suelto.id }] }, suelto.id)
+      { cerrar: [], acortar: [], reemplazar: [], recortar: [], anular:[{ id: suelto.id }] }, suelto.id)
   }
 })
 
@@ -67,7 +77,7 @@ test('la que sigue después de un tramo con fin se recorta; la que la envuelve a
 test('un día suelto no parte el tramo largo: guardar el 09/09 en Messina no cierra Quattropani', () => {
   const plan = planDeAsignacion([fila('q', 'reta', 'quattro', '2026-09-08', null)],
     { obra_id: 'messina', desde: '2026-09-09', hasta: '2026-09-09' })
-  assert.deepEqual(plan, { cerrar: [], reemplazar: [], recortar: [], anular: [] })
+  assert.deepEqual(plan, { cerrar: [], acortar: [], reemplazar: [], recortar: [], anular:[] })
 })
 
 test('un día suelto de la app no parte la reconstruida ni la normalización lo toca', () => {
@@ -174,6 +184,23 @@ test('INVARIANTE: después de normalizar no quedan dos obras el mismo día salvo
   const quedan = superposiciones(aplicarEnMemoria(REAL, plan))
     .filter((p) => !p.mismaObra && !p.unDia && !(listadas.has(p.a.id) && listadas.has(p.b.id)))
   assert.deepEqual(quedan.map((p) => `${p.a.id}×${p.b.id} ${p.clase}`), [])
+})
+
+// ─── la relectura de --aplicar, contra el respaldo ──────────────────────────────────────────────
+
+test('verificar contra el respaldo: el plan aplicado tal cual da verde', () => {
+  const plan = planDeNormalizacion(REAL, { fecha: '14/09/2026' })
+  assert.deepEqual(verificarContraRespaldo(REAL, aplicarEnMemoria(REAL, plan), plan), { ok: true, problemas: [] })
+})
+
+test('verificar contra el respaldo: una fila de persona tocada de más, perdida, o un conteo distinto dan rojo', () => {
+  const plan = planDeNormalizacion(REAL, { fecha: '14/09/2026' })
+  const bien = aplicarEnMemoria(REAL, plan)
+  const corrida = bien.map((a) => (a.id === 'pet' ? { ...a, desde: '2026-09-01' } : a))
+  assert.equal(verificarContraRespaldo(REAL, corrida, plan).ok, false, 'le cambió el desde a una fila de persona')
+  const sinUna = bien.filter((a) => a.id !== 'ahu')
+  assert.equal(verificarContraRespaldo(REAL, sinUna, plan).ok, false, 'desapareció una fila de persona')
+  assert.equal(verificarContraRespaldo(REAL, [...bien, { ...bien[0], id: 'sobra' }], plan).ok, false, 'conteo')
 })
 
 test('normalizar dos veces no cambia nada la segunda', () => {

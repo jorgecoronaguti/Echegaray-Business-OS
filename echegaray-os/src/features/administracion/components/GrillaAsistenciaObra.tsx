@@ -185,7 +185,8 @@ export function GrillaAsistenciaObra({
   const [editandoCelda, setEditandoCelda] = useState<string | null>(null)
   // EL ACUSE ES POR PERSONA Y ES LO QUE DIJO LA BASE, no lo que se pidió: la acción devuelve el
   // texto ya armado con los nombres de las dos obras.
-  const [acuses, setAcuses] = useState<Record<string, { texto: string; error: boolean }>>({})
+  // `confirmar`: la obra elegida cuyo cambio tocaría asignaciones ya cargadas; el acuse ofrece confirmarlo.
+  const [acuses, setAcuses] = useState<Record<string, { texto: string; error: boolean; confirmar?: string }>>({})
   const [cambiando, setCambiando] = useState<string | null>(null)
   // QUÉ PERSONA TIENE EL PANEL DE PLAN ABIERTO. Uno solo a la vez: dos panales abiertos sobre la
   // misma grilla dejarían de saber a quién se le está programando el pase.
@@ -206,18 +207,22 @@ export function GrillaAsistenciaObra({
 
   const mostrada = (fila: FilaQuincena) => elegidas[fila.clave] ?? seleccionada(fila)
 
-  const cambiarObra = (fila: FilaQuincena, valor: string) => {
-    if (mostrada(fila) === valor) return
+  // `confirmar` lo manda sólo «Confirmar y ajustar»: el cambio tocaba asignaciones ya cargadas por
+  // otras personas y la acción no escribió nada hasta que alguien lo vio (auditoría, 14/09/2026).
+  const cambiarObra = (fila: FilaQuincena, valor: string, confirmar = false) => {
+    if (!confirmar && mostrada(fila) === valor) return
     setCambiando(fila.clave)
     setElegidas((e) => ({ ...e, [fila.clave]: valor }))
     setAcuses((a) => { const n = { ...a }; delete n[fila.clave]; return n })
     arrancar(async () => {
-      const r = await cambiarObraActual({ persona_id: fila.persona.id, obra_id: valor || null })
+      const r = await cambiarObraActual({ persona_id: fila.persona.id, obra_id: valor || null, confirmar })
       setCambiando(null)
       if (!r.ok) setElegidas((e) => { const n = { ...e }; delete n[fila.clave]; return n })
       setAcuses((a) => ({
         ...a,
-        [fila.clave]: r.ok ? { texto: r.mensaje, error: false } : { texto: r.error, error: true },
+        // CON AJUSTES PENDIENTES el acuse guarda la obra elegida: el botón la vuelve a pedir confirmando.
+        [fila.clave]: r.ok ? { texto: r.mensaje, error: false }
+          : { texto: r.error, error: true, confirmar: r.requiereConfirmar?.length ? valor : undefined },
       }))
       // EL DATO VUELVE DEL SERVIDOR: la fila, los chips del encabezado y la obra de cada celda se
       // releen; la elección local queda hasta entonces para que el <select> no dé un salto atrás.
@@ -761,6 +766,16 @@ export function GrillaAsistenciaObra({
                   color: acuses[fila.clave].error ? ROJO : V.apagado,
                 }}>
                   {acuses[fila.clave].texto}
+                  {acuses[fila.clave].confirmar !== undefined && (
+                    <button
+                      type="button"
+                      data-testid="confirmar-ajustar-obra"
+                      onClick={() => cambiarObra(fila, acuses[fila.clave].confirmar ?? '', true)}
+                      style={{ marginLeft: 8, fontWeight: 600, textDecoration: 'underline' }}
+                    >
+                      Confirmar y ajustar
+                    </button>
+                  )}
                 </td>
               </tr>
             )}

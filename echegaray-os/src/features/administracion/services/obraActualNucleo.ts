@@ -10,19 +10,33 @@
 // frenar es `campo` —el único que la RLS acota por obra— y el que no tiene perfil.
 //
 // Acá vive esa secuencia entera: validar, rechazar por rol, verificar persona y obra, leer las
-// vigentes, cerrar y abrir. Las dependencias entran por parámetro para que un test pueda mirar
-// —además del resultado— QUÉ TABLAS SE TOCARON: que un rechazo devuelva `{ ok: false }` no prueba
-// que no haya escrito antes.
+// asignaciones, y escribir. Las dependencias entran por parámetro para que un test pueda mirar
+// —además del resultado— QUÉ SE ESCRIBIÓ: que un rechazo devuelva `{ ok: false }` no prueba que no
+// haya escrito antes.
+//
+// ═══ UNA SOLA ESCRITURA, Y NADA DE LO AJENO SIN CONFIRMAR (auditoría, 14/09/2026) ═══
+//
+// Antes eran varias llamadas sueltas —cerrar, borrar un pase futuro, abrir, reabrir— y un pase HOY
+// borraba sin aviso un pase futuro de varios días a otra obra, antes del alta y fuera de toda
+// transacción. Ahora:
+//   · lo único automático es cerrar la asignación ABIERTA que cubre el día (con nota);
+//   · anular, acortar o correr una fila cargada por una persona no se escribe: se devuelve
+//     `requiereConfirmar` y la pantalla ofrece «Confirmar y ajustar»;
+//   · todo va en UNA llamada a `asignar_obra_con_cronologia` (SECURITY INVOKER, manda la RLS): si el
+//     alta rebota, no queda nada tocado y la persona sigue exactamente como estaba.
 //
 // El porqué de cada regla (cerrar antes de abrir, `hasta = ayer`, quién puede) está en
 // `obraActualActions.ts` y en `planDeObraActual.ts`; no se repite acá.
 
 import { z } from 'zod'
 import {
-  planDeCambioDeObra, puedeCambiarObraActual, validarProgramacion, type AsignacionAbierta,
+  avisoDeAjustes, planDeCambioDeObra, puedeCambiarObraActual, validarProgramacion,
+  type AjusteDeObra, type AsignacionAbierta, type PlanDeObraActual,
 } from './planDeObraActual.ts'
 
-export type ResultadoObraActual = { ok: true; mensaje: string } | { ok: false; error: string }
+export type ResultadoObraActual =
+  | { ok: true; mensaje: string }
+  | { ok: false; error: string; requiereConfirmar?: AjusteDeObra[] }
 
 type Fila = Record<string, unknown>
 type Respuesta<T> = { data: T | null; error: { message: string; code?: string } | null }
@@ -31,28 +45,21 @@ type Respuesta<T> = { data: T | null; error: { message: string; code?: string } 
  *  lo que permite que el falso del test sea un objeto común: si le falta un verbo, no compila. */
 export interface SupabaseLike {
   from(tabla: string): TablaLike
+  rpc(funcion: string, argumentos: Fila): PromiseLike<Respuesta<unknown>>
 }
 
 interface TablaLike {
   select(columnas: string): LecturaLike
-  update(valores: Fila): EscrituraLike
-  insert(fila: Fila): EscrituraLike
-  delete(): EscrituraLike
 }
 
 interface LecturaLike {
   eq(columna: string, valor: string): LecturaLike
   in(columna: string, valores: string[]): PromiseLike<Respuesta<Fila[]>>
-  /** Filtro PostgREST crudo (`hasta.gte.2026-09-14`): las cerradas que todavía cubren el tramo nuevo. */
-  or(filtro: string): PromiseLike<Respuesta<Fila[]>>
   /** `hasta is null` — abierta. Es un filtro distinto de `eq`: PostgREST no compara con null. */
   is(columna: string, valor: null): PromiseLike<Respuesta<Fila[]>>
+  /** Filtro PostgREST crudo (`hasta.gte.2026-09-14`): las cerradas que todavía cubren el tramo nuevo. */
+  or(filtro: string): PromiseLike<Respuesta<Fila[]>>
   maybeSingle(): PromiseLike<Respuesta<Fila>>
-}
-
-interface EscrituraLike {
-  eq(columna: string, valor: string): EscrituraLike
-  select(columnas: string): PromiseLike<Respuesta<Fila[]>>
 }
 
 export interface DepsObraActual {
@@ -61,10 +68,14 @@ export interface DepsObraActual {
   perfil: { rol: string | null } | null
   /** `YYYY-MM-DD`. Entra por parámetro: un test que dependiera del reloj se rompería a medianoche. */
   hoy: string
+  /** Quién mueve, para la nota que lleva toda fila tocada. */
+  usuario?: string | null
   /** Refrescar las pantallas afectadas. Recibe el `persona_id` YA VALIDADO —una de las rutas lleva
    *  el id adentro— y sólo corre cuando algo se escribió de verdad. */
   revalidar?: (personaId: string) => void
 }
+
+export const FUNCION_ASIGNAR = 'asignar_obra_con_cronologia'
 
 // `obra_id` es TEXT (`obra_canonica.id` es un slug, no un uuid): pedir `.uuid()` acá rechazaría
 // todas las obras reales. `null` es «Sin obra», que es una opción y no un error.
@@ -82,6 +93,8 @@ const cambioSchema = z.object({
   obra_id: z.union([z.string().trim().min(1), z.literal(''), z.null()]).optional(),
   desde: fechaOpcional,
   hasta: fechaOpcional,
+  /** Lo manda sólo el botón «Confirmar y ajustar», después de haber visto la lista. */
+  confirmar: z.boolean().optional(),
 })
 
 export async function cambiarObraActualCon(
@@ -109,9 +122,7 @@ export async function cambiarObraActualCon(
     }
   }
 
-  // LAS FECHAS SE VALIDAN ANTES DE TOCAR NADA, igual que el rol y por lo mismo. Un `desde` en el
-  // pasado que llegara hasta el `update` ya habría cerrado la asignación vigente cuando el `insert`
-  // rebota: la persona queda sin obra por una fecha mal escrita.
+  // LAS FECHAS SE VALIDAN ANTES DE TOCAR NADA, igual que el rol y por lo mismo.
   const fechas = validarProgramacion({ hoy, desde, hasta })
   if (fechas) return { ok: false, error: fechas }
 
@@ -127,7 +138,6 @@ export async function cambiarObraActualCon(
 
   const abiertas = await leerAbiertas(supabase, personaId)
   if (abiertas.error) return { ok: false, error: abiertas.error }
-
   const cerradas = await leerCerradasDesde(supabase, personaId, desde)
   if (cerradas.error) return { ok: false, error: cerradas.error }
 
@@ -136,90 +146,45 @@ export async function cambiarObraActualCon(
   })
   if (plan.sinCambio) return { ok: true, mensaje: plan.acuse }
 
-  const cedidas = await borrarYRecortar(supabase, personaId, plan)
-  if (cedidas) return { ok: false, error: cedidas }
-
-  for (const c of plan.cerrar) {
-    // EL `eq('persona_id')` NO SOBRA: sin él un id copiado de otra ficha cerraría la asignación de
-    // otro. Y `.select()` porque la evidencia es del efecto: un `update` que no afecta ninguna fila
-    // —porque la policy la rechazó sin error— no puede acusar «cambiada».
-    const { data, error } = await supabase.from('obra_asignacion')
-      .update({ hasta: c.hasta }).eq('id', c.id).eq('persona_id', personaId).select('id')
-    if (error) return { ok: false, error: `No pude cerrar la asignación anterior: ${error.message}` }
-    if ((data ?? []).length === 0) {
-      return {
-        ok: false,
-        error: 'No pude cerrar la asignación anterior: la base no cambió ninguna fila. '
-          + 'Puede ser un permiso — no se abrió ninguna asignación nueva.',
-      }
-    }
+  const confirmado = parsed.data.confirmar === true
+  if (plan.ajustes.length > 0 && !confirmado) {
+    return { ok: false, error: avisoDeAjustes(plan.ajustes), requiereConfirmar: plan.ajustes }
   }
 
-  if (plan.abrir) {
-    const { data, error } = await supabase.from('obra_asignacion').insert({
-      obra_id: plan.abrir.obra_id,
-      persona_id: personaId,
-      // ROL «INTEGRANTE» Y NADA MÁS. Cuadrilla, actividad y rol son lo que hacía incomprensible
-      // asignar a alguien; el desplegable contesta una sola pregunta —dónde trabaja hoy— y lo demás
-      // se sigue pudiendo editar desde la solapa Personal de la obra.
-      rol: 'integrante',
-      desde: plan.abrir.desde,
-      // `hasta` SÓLO CUANDO EL TRAMO TIENE FIN. Mandarlo como `null` sería idéntico para la base
-      // —la columna ya es nullable— pero no para el test que mira QUÉ se escribió: el cambio de hoy
-      // tiene que seguir insertando exactamente las cuatro claves de siempre.
-      ...(plan.abrir.hasta ? { hasta: plan.abrir.hasta } : {}),
-    }).select('id')
-    if (error) {
-      // EL MENSAJE DE LA BASE VA ENTERO, TAMBIÉN EL DEL ÍNDICE ÚNICO. Un 23505 acá ya no es «ya
-      // estaba en esa obra» —el plan cierra todas las abiertas antes de abrir—: es una fila que la
-      // lectura no vio (otra actividad, o una que la RLS esconde). Cambiarlo por una frase amable
-      // borraba justo el dato con el que se encuentra cuál.
-      return {
-        ok: false,
-        error: `Cerré la asignación anterior pero NO pude abrir la nueva: ${error.message}`
-          + (error.code === '23505'
-            ? ' (choca con otra asignación vigente a esa obra que la lectura no vio).'
-            : '.')
-          + ' La persona quedó sin obra — elegila de nuevo.',
-      }
-    }
-    if ((data ?? []).length === 0) {
-      return {
-        ok: false,
-        error: 'Cerré la asignación anterior y la nueva no quedó escrita (cero filas). '
-          + 'La persona quedó sin obra — elegila de nuevo.',
-      }
+  const nota = `ajustada por ${deps.usuario || 'usuario sin perfil'} al asignar `
+    + `${obra.destino?.nombre ?? 'Sin obra'} desde ${desde}`
+  const { error } = await supabase.rpc(FUNCION_ASIGNAR, argumentosDelCambio(personaId, plan, confirmado, nota))
+  if (error) {
+    // EL MENSAJE DE LA BASE VA ENTERO, TAMBIÉN EL DEL ÍNDICE ÚNICO: es el único hilo para encontrar la
+    // fila que la lectura no vio. Y como es una transacción, se puede decir con certeza que no cambió nada.
+    return {
+      ok: false,
+      error: `No cambié nada: ${error.message}`
+        + (error.code === '23505' ? ' (choca con otra asignación vigente a esa obra que la lectura no vio).' : '.')
+        + ' La persona sigue como estaba.',
     }
   }
-
-  // ═══ EL REGRESO VA ÚLTIMO, Y SU FALLA NO SE TRAGA ═══
-  //
-  // Va después del tramo programado porque si el pase no se pudo abrir, el regreso no tiene de
-  // dónde volver: sería una asignación futura a la obra donde la persona YA está, que dentro de
-  // tres semanas aparece sola y sin explicación.
-  //
-  // Si el pase entró y el regreso no, la persona queda con fecha de fin y sin obra después. Eso se
-  // dice con todas las letras: es exactamente el estado que la planificación tenía que evitar, y
-  // callarlo lo convierte en una sorpresa el día que el tramo termine.
-  if (plan.reabrir) {
-    const { data, error } = await supabase.from('obra_asignacion').insert({
-      obra_id: plan.reabrir.obra_id,
-      persona_id: personaId,
-      rol: 'integrante',
-      desde: plan.reabrir.desde,
-    }).select('id')
-    if (error || (data ?? []).length === 0) {
-      deps.revalidar?.(personaId)
-      return {
-        ok: false,
-        error: `Programé el pase pero NO pude programar el regreso${error ? `: ${error.message}` : ' (cero filas)'}. `
-          + 'La persona queda SIN OBRA cuando el tramo termine — cancelá el pase y volvé a programarlo.',
-      }
-    }
-  }
-
   deps.revalidar?.(personaId)
   return { ok: true, mensaje: plan.acuse }
+}
+
+/** Los argumentos de la función SQL. Lo que no es automático viaja sólo si se confirmó. */
+function argumentosDelCambio(personaId: string, plan: PlanDeObraActual, confirmado: boolean, nota: string): Fila {
+  const de = (efecto: AjusteDeObra['efecto']) => (confirmado ? plan.ajustes.filter((a) => a.efecto === efecto) : [])
+  return {
+    p_persona: personaId,
+    p_cerrar: [...plan.cerrar, ...de('acortar').map((a) => ({ id: a.id, hasta: a.hastaNuevo }))],
+    p_anular: de('anular').map((a) => ({ id: a.id })),
+    p_recortar: de('recortar').map((a) => ({ id: a.id, desde: a.desdeNuevo })),
+    // ROL «INTEGRANTE» Y NADA MÁS: el desplegable contesta una sola pregunta —dónde trabaja hoy— y
+    // cuadrilla, actividad y rol se siguen editando desde la solapa Personal de la obra.
+    p_altas: [
+      ...(plan.abrir ? [{ obra_id: plan.abrir.obra_id, rol: 'integrante', desde: plan.abrir.desde, hasta: plan.abrir.hasta ?? null }] : []),
+      // EL REGRESO DEL TRAMO SANDWICH va en la misma transacción: si no entra, tampoco el pase.
+      ...(plan.reabrir ? [{ obra_id: plan.reabrir.obra_id, rol: 'integrante', desde: plan.reabrir.desde, hasta: null }] : []),
+    ],
+    p_nota: nota,
+  }
 }
 
 /** La obra destino existe y está ACTIVA. «Sin obra» (`null`) es un destino legítimo. */
@@ -242,7 +207,14 @@ async function destinoValido(
   return { destino: { id: o.id, nombre: o.nombre }, error: null }
 }
 
-type TramoCerrado = { id: string; obra_id: string; desde: string | null; hasta: string | null }
+/** Nombres de obra por id. Sin catálogo se usa el id: feo, pero el aviso tiene que poder nombrarla. */
+async function nombresDeObras(supabase: SupabaseLike, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const { data } = await supabase.from('obra_canonica').select('id, nombre').in('id', [...new Set(ids)])
+  return new Map(((data ?? []) as unknown as { id: string; nombre: string }[]).map((o) => [o.id, o.nombre]))
+}
+
+type TramoCerrado = { id: string; obra_id: string; nombre: string; desde: string | null; hasta: string | null }
 
 /** Las asignaciones CON fin que todavía llegan al tramo nuevo. Las abiertas las lee `leerAbiertas`. */
 async function leerCerradasDesde(
@@ -252,33 +224,11 @@ async function leerCerradasDesde(
     .select('id, obra_id, desde, hasta').eq('persona_id', personaId).or(`hasta.gte.${desde}`)
   // UNA LECTURA QUE FALLA NO ES «NO TIENE NINGUNA»: seguir dejaría el pase viejo debajo del nuevo.
   if (error) return { data: [], error: `No pude leer sus asignaciones: ${error.message}` }
-  const filas = (data ?? []) as unknown as TramoCerrado[]
   // El filtro se repite acá: la base lo aplica, y lo que se decide no depende de que lo haya hecho.
-  return { data: filas.filter((f) => f.hasta != null && f.hasta >= desde), error: null }
-}
-
-/** Lo que el tramo nuevo reemplaza o recorta (regla a). Va ANTES del alta: una fila de la misma obra
- *  que empezaba hoy sigue abierta hasta que se borra, y el índice `obra_asignacion_una_vigente`
- *  rechazaría la nueva. Devuelve el error para el acuse, o `null`. */
-async function borrarYRecortar(
-  supabase: SupabaseLike, personaId: string,
-  plan: { borrar: string[]; recortar: { id: string; desde: string }[] },
-): Promise<string | null> {
-  for (const id of plan.borrar) {
-    const { data, error } = await supabase.from('obra_asignacion')
-      .delete().eq('id', id).eq('persona_id', personaId).select('id')
-    if (error || (data ?? []).length === 0) {
-      return `No pude reemplazar la asignación anterior${error ? `: ${error.message}` : ' (cero filas)'}. No se abrió nada nuevo.`
-    }
-  }
-  for (const r of plan.recortar) {
-    const { data, error } = await supabase.from('obra_asignacion')
-      .update({ desde: r.desde }).eq('id', r.id).eq('persona_id', personaId).select('id')
-    if (error || (data ?? []).length === 0) {
-      return `No pude correr el comienzo de la asignación programada${error ? `: ${error.message}` : ' (cero filas)'}. No se abrió nada nuevo.`
-    }
-  }
-  return null
+  const filas = ((data ?? []) as unknown as Omit<TramoCerrado, 'nombre'>[])
+    .filter((f) => f.hasta != null && f.hasta >= desde)
+  const nombres = await nombresDeObras(supabase, filas.map((f) => f.obra_id))
+  return { data: filas.map((f) => ({ ...f, nombre: nombres.get(f.obra_id) ?? f.obra_id })), error: null }
 }
 
 /**
@@ -306,19 +256,9 @@ async function leerAbiertas(
   if (error) return { data: [], error: `No pude leer sus asignaciones: ${error.message}` }
   const filas = (data ?? []) as unknown as { id: string; obra_id: string; desde: string | null }[]
   if (filas.length === 0) return { data: [], error: null }
-
-  const { data: obras } = await supabase.from('obra_canonica')
-    .select('id, nombre').in('id', [...new Set(filas.map((f) => f.obra_id))])
-  const nombres = new Map(((obras ?? []) as unknown as { id: string; nombre: string }[])
-    .map((o) => [o.id, o.nombre]))
+  const nombres = await nombresDeObras(supabase, filas.map((f) => f.obra_id))
   return {
-    data: filas.map((f) => ({
-      id: f.id,
-      obra_id: f.obra_id,
-      // Sin catálogo se escribe el id: es feo, pero el acuse tiene que poder nombrar lo que cerró.
-      nombre: nombres.get(f.obra_id) ?? f.obra_id,
-      desde: f.desde,
-    })),
+    data: filas.map((f) => ({ id: f.id, obra_id: f.obra_id, nombre: nombres.get(f.obra_id) ?? f.obra_id, desde: f.desde })),
     error: null,
   }
 }

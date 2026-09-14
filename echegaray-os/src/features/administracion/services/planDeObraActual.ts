@@ -91,10 +91,9 @@ export interface PlanDeObraActual {
    * único tramo que afirma que nunca se fue.
    */
   reabrir: { obra_id: string; desde: string } | null
-  /** Filas que el tramo nuevo reemplaza enteras: empezaban en su primer día o después (regla a). */
-  borrar: string[]
-  /** Filas a otra obra que seguían después del fin del tramo nuevo: arrancan al día siguiente. */
-  recortar: { id: string; desde: string }[]
+  /** Lo que el cambio le haría a filas cargadas por personas y NO se escribe sin confirmar: anular,
+   *  acortar o correr el comienzo (auditoría, 14/09/2026). El plan no tiene cómo borrar. */
+  ajustes: AjusteDeObra[]
   /** No hay nada que escribir: ya estaba exactamente así. */
   sinCambio: boolean
   /** La línea que lee quien tocó el desplegable. Siempre con nombres, nunca con ids. */
@@ -208,7 +207,7 @@ export function planDeCambioDeObra({ abiertas, cerradas = [], destino, hoy, desd
   abiertas: AsignacionAbierta[]
   /** Las asignaciones CON `hasta` que todavía llegan al tramo nuevo (`hasta >= desde`). Opcional: sin
    *  ellas el plan es el de siempre sobre las abiertas. */
-  cerradas?: { id: string; obra_id: string; desde: string | null; hasta: string | null }[]
+  cerradas?: { id: string; obra_id: string; nombre?: string; desde: string | null; hasta: string | null }[]
   destino: { id: string; nombre: string } | null
   hoy: string
   /**
@@ -234,22 +233,8 @@ export function planDeCambioDeObra({ abiertas, cerradas = [], destino, hoy, desd
   // dejaba tres filas donde hay una decisión, y cancelar el día obligaba a volver a coserlas.
   const unDia = Boolean(hasta) && hasta === desde
   const sobran = unDia ? [] : abiertas.filter((a) => a.id !== seConserva?.id)
-  // LA QUE EMPEZÓ EL MISMO DÍA SE CIERRA ESE DÍA, Y GANA LA CARGA POSTERIOR (dueño, 14/09/2026). No se
-  // borra —es una fila de persona—: queda como día suelto cargado ANTES que la nueva, y la lectura
-  // (`asignacion-del-dia.mjs`) le da el día a la última cargada. Sólo lo que empezaba DESPUÉS —un pase
-  // programado que el tramo nuevo tapa— se borra, igual que al cancelarlo.
-  const borrar = sobran.filter((a) => a.desde != null && a.desde > desde).map((a) => a.id)
-  const cerrar = sobran.filter((a) => !borrar.includes(a.id))
-    .map((a) => ({ id: a.id, hasta: a.desde === desde ? desde : diaAnterior(desde) }))
-  // Y LAS YA CERRADAS QUE CUBREN EL TRAMO NUEVO TAMBIÉN CEDEN: un pase programado a otra obra seguía
-  // guardado debajo del cambio. La que además seguía después del fin del tramo nuevo no se toca: la
-  // lectura resuelve el tramo corto y partirla sería inventar un regreso que nadie pidió. `anular` no
-  // escribe nada acá: el día suelto del mismo día ya pierde al leer por carga posterior.
-  const regla = unDia ? null : planDeAsignacion(cerradas.filter((c) => c.hasta != null),
-    { obra_id: destino?.id ?? null, desde, hasta, unDia: false })
-  for (const c of regla?.cerrar ?? []) if (!c.continua) cerrar.push({ id: c.id, hasta: c.hasta })
-  for (const r of regla?.reemplazar ?? []) borrar.push(r.id)
-  const recortar = (regla?.recortar ?? []).map((r) => ({ id: r.id, desde: r.desde }))
+  const { cerrar, ajustes: deAbiertas } = repartirAbiertas(sobran, desde, hasta)
+  const ajustes = [...deAbiertas, ...(unDia ? [] : ajustesDeCerradas(cerradas, destino, desde, hasta))]
   const abrir = destino && !seConserva
     ? { obra_id: destino.id, desde, ...(hasta ? { hasta } : {}) }
     : null
@@ -261,16 +246,95 @@ export function planDeCambioDeObra({ abiertas, cerradas = [], destino, hoy, desd
     ? { obra_id: vuelve.obra_id, desde: diaSiguiente(hasta as string) }
     : null
 
-  if (cerrar.length === 0 && borrar.length === 0 && recortar.length === 0 && !abrir) {
+  if (cerrar.length === 0 && ajustes.length === 0 && !abrir) {
     return {
-      cerrar, borrar, recortar, abrir, reabrir: null, sinCambio: true,
+      cerrar, ajustes, abrir, reabrir: null, sinCambio: true,
       acuse: destino ? `Ya estaba en ${destino.nombre}.` : 'Ya estaba sin obra.',
     }
   }
   return {
-    cerrar, borrar, recortar, abrir, reabrir, sinCambio: false,
+    cerrar, ajustes, abrir, reabrir, sinCambio: false,
     acuse: acuseDe({ destino, seConserva, cerradas: sobran, hoy, desde, hasta, vuelve }),
   }
+}
+
+// ═══ LO AJENO NO SE TOCA SIN CONFIRMAR (auditoría, 14/09/2026) ═══
+//
+// Un pase HOY a Quattropani borraba, sin aviso y antes del alta, un pase ya programado a Messina del
+// 20 al 25/09. La regla ahora: lo único automático es cerrar la ABIERTA que cubre el día. Anular una
+// fila que el tramo nuevo tapa, acortar una cerrada o correr el comienzo de una futura es un AJUSTE:
+// el plan lo lista, la acción no lo escribe, y la pantalla ofrece «Confirmar y ajustar». Confirmado,
+// se hace con nota —y la anulada lleva su marca en `notas`—, nunca con un borrado.
+
+/** Un ajuste sobre una fila cargada por una persona. Nunca automático: se confirma. */
+export interface AjusteDeObra {
+  id: string
+  obra_id: string
+  /** El nombre real de la obra. Nunca el id. */
+  nombre: string
+  desde: string | null
+  hasta: string | null
+  /** `anular`: el tramo nuevo la tapa entera — marca ANULADA en notas, no se borra. `acortar`: se le
+   *  adelanta `hasta`. `recortar`: se le corre `desde`. */
+  efecto: 'anular' | 'acortar' | 'recortar'
+  /** Cómo quedaría, para el aviso. `null` si se anula. */
+  queda: string | null
+  hastaNuevo?: string
+  desdeNuevo?: string
+}
+
+type TramoCerradoDeObra = { id: string; obra_id: string; nombre?: string; desde: string | null; hasta: string | null }
+
+/** Las ABIERTAS que sobran. Las que empezaron el día del pase o antes se cierran solas; las que
+ *  empiezan DESPUÉS son pases ya programados, y se confirman. */
+function repartirAbiertas(
+  sobran: AsignacionAbierta[], desde: string, hasta: string | null,
+): { cerrar: CierreDeAsignacion[]; ajustes: AjusteDeObra[] } {
+  const cerrar: CierreDeAsignacion[] = []
+  const ajustes: AjusteDeObra[] = []
+  for (const a of sobran) {
+    const tramo = { id: a.id, obra_id: a.obra_id, nombre: a.nombre, desde: a.desde, hasta: null }
+    if (!a.desde || a.desde <= desde) {
+      // LA QUE EMPEZÓ EL MISMO DÍA cierra ESE día —nunca antes de su `desde`— y no se borra: queda como
+      // día suelto cargado antes, y al leer gana la carga posterior (dueño, 14/09/2026).
+      cerrar.push({ id: a.id, hasta: a.desde === desde ? desde : diaAnterior(desde) })
+    } else if (!hasta) {
+      ajustes.push({ ...tramo, efecto: 'anular', queda: null })
+    } else if (a.desde <= hasta) {
+      const desdeNuevo = diaSiguiente(hasta)
+      ajustes.push({ ...tramo, efecto: 'recortar', queda: `desde ${fechaCorta(desdeNuevo)}`, desdeNuevo })
+    }
+  }
+  return { cerrar, ajustes }
+}
+
+/** Las CERRADAS que el tramo nuevo alcanza: todas se confirman. La regla es `planDeAsignacion`. El
+ *  día suelto del mismo día cargado antes no aparece: la lectura ya lo resuelve por carga posterior. */
+function ajustesDeCerradas(
+  cerradas: TramoCerradoDeObra[], destino: { id: string } | null, desde: string, hasta: string | null,
+): AjusteDeObra[] {
+  const regla = planDeAsignacion(cerradas.filter((c) => c.hasta != null),
+    { obra_id: destino?.id ?? null, desde, hasta, unDia: false })
+  const porId = new Map(cerradas.map((c) => [c.id, c]))
+  const tramo = (id: string) => {
+    const c = porId.get(id) as TramoCerradoDeObra
+    return { id, obra_id: c.obra_id, nombre: c.nombre ?? c.obra_id, desde: c.desde, hasta: c.hasta }
+  }
+  return [
+    ...regla.reemplazar.map((r): AjusteDeObra => ({ ...tramo(r.id), efecto: 'anular', queda: null })),
+    ...regla.acortar.map((a): AjusteDeObra => ({ ...tramo(a.id), efecto: 'acortar', queda: `hasta ${fechaCorta(a.hasta)}`, hastaNuevo: a.hasta })),
+    ...regla.recortar.map((r): AjusteDeObra => ({ ...tramo(r.id), efecto: 'recortar', queda: `desde ${fechaCorta(r.desde)}`, desdeNuevo: r.desde })),
+  ]
+}
+
+/** El aviso cuando el cambio tocaría filas cargadas por personas. Con nombres; nada se escribió. */
+export function avisoDeAjustes(ajustes: AjusteDeObra[]): string {
+  const tramo = (a: AjusteDeObra) =>
+    `${a.nombre} ${a.desde ? fechaCorta(a.desde) : '—'}→${a.hasta ? fechaCorta(a.hasta) : 'abierta'}`
+  const efecto = (a: AjusteDeObra) => (a.efecto === 'anular' ? 'se anula' : `queda ${a.queda}`)
+  return `Este cambio toca ${ajustes.length === 1 ? 'una asignación ya cargada' : `${ajustes.length} asignaciones ya cargadas`}: `
+    + `${ajustes.map((a) => `${tramo(a)} (${efecto(a)})`).join('; ')}. No se cambió nada. `
+    + 'Si es correcto, tocá «Confirmar y ajustar».'
 }
 
 /** «Desde hoy en SALÓN COMERCIAL · antes PISOS INDUSTRIALES, GALPÓN 9». El «antes» nombra todo lo

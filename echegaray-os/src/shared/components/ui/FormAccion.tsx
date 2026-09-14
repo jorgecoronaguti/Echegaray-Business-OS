@@ -27,7 +27,20 @@ export type ResultadoAccion =
    *  12 personas y salteó 3 tiene que decirlo, o la persona se va creyendo que cargó 15. Cuando la
    *  acción no lo manda, se muestra el `mensajeOk` del formulario. */
   | { ok: true; id?: string; mensaje?: string }
-  | { ok: false; error: string }
+  /** `requiereConfirmar`: la acción NO escribió porque cambiaría filas cargadas por otras personas
+   *  (auditoría de la cronología, 14/09/2026). El formulario las lista y ofrece «Confirmar y ajustar»,
+   *  que reenvía lo mismo con `confirmar=1`. */
+  | { ok: false; error: string; requiereConfirmar?: AjusteAConfirmar[] }
+
+/** Una fila que la acción ajustaría si se confirma. Forma mínima: la pantalla sólo la describe. */
+export interface AjusteAConfirmar {
+  id: string
+  obra_id: string
+  desde: string | null
+  hasta: string | null
+  efecto: string
+  queda: string | null
+}
 
 /** La firma de toda acción de escritura del módulo, ya atada a su id por `bind`. */
 export type AccionFormulario = (form: FormData) => Promise<ResultadoAccion>
@@ -87,7 +100,10 @@ export function FormAccion({
   // sólo se vacía —y sólo si es un alta— cuando la acción contestó que sí.
   function enviarFormulario(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const datos = new FormData(e.currentTarget)
+    // CON EL BOTÓN QUE LO MANDÓ: «Confirmar y ajustar» viaja como `confirmar=1` y el envío normal no.
+    // Un campo oculto permanente confirmaría también un reenvío con OTROS datos que nadie revisó.
+    const boton = (e.nativeEvent as SubmitEvent).submitter
+    const datos = new FormData(e.currentTarget, boton instanceof HTMLButtonElement ? boton : null)
     startTransition(() => ejecutar(datos))
   }
 
@@ -121,6 +137,26 @@ export function FormAccion({
           <span data-testid={testid ? `${testid}-error` : undefined} className="text-[12px] text-neg">{estado.error}</span>
         )}
       </div>
+      {/* LAS FILAS DE OTROS QUE CAMBIARÍAN, UNA POR RENGLÓN, Y RECIÉN AHÍ EL BOTÓN. Nada se escribió:
+          el botón reenvía el mismo formulario con `confirmar=1`. Sin `window.confirm` (ver arriba). */}
+      {estado?.ok === false && estado.requiereConfirmar && estado.requiereConfirmar.length > 0 && (
+        <div data-testid={testid ? `${testid}-confirmar` : undefined} className="mt-2 rounded-control border border-line px-3 py-2">
+          <ul className="text-[12px] text-ink">
+            {estado.requiereConfirmar.map((a) => (
+              <li key={`${a.id}-${a.efecto}`}>
+                {a.obra_id} · {a.desde ?? '—'} → {a.hasta ?? 'abierta'} · {a.efecto === 'anular' ? 'se anula (queda con nota, no se borra)' : `queda ${a.queda}`}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="submit" name="confirmar" value="1" disabled={pendiente}
+            data-testid={testid ? `${testid}-confirmar-ajustar` : undefined}
+            className="mt-2 rounded-control border border-line px-3 py-[6px] text-[12.5px] font-semibold text-ink disabled:opacity-50"
+          >
+            Confirmar y ajustar
+          </button>
+        </div>
+      )}
     </form>
   )
 }

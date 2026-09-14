@@ -69,7 +69,9 @@ function aplicarGesto(filas, g, k, { cambios, paraDueno, fecha }) {
     { obra_id: g.obra_id, desde: t.desde, hasta: g.hasta, unDia: false, creado_en: g.creado_en })
   const porId = new Map(filas.map((f) => [f.id, f]))
   const motivo = `${g.obra_id} rige desde ${t.desde}, cargada ${instante(g.creado_en).slice(0, 16)}`
-  for (const c of plan.cerrar) {
+  // La normalización SÍ acorta una cerrada (la orden del 14/09 le permite cerrar `hasta` según la regla
+  // a); lo que en la app pide confirmación, acá lo confirma el dueño al decidir si se aplica el plan.
+  for (const c of [...plan.cerrar, ...plan.acortar.map((a) => ({ ...a, continua: null }))]) {
     const f = porId.get(c.id)
     if (c.continua) { paraDueno.push({ tipo: 'partir', fila: f, contra: g, detalle: `seguía después: ${c.continua.desde}→${c.continua.hasta ?? 'abierta'}` }); continue }
     if (f.hasta && f.hasta <= c.hasta) continue
@@ -135,6 +137,34 @@ export function planDeNormalizacion(filas = [], { fecha }) {
   cerrarLoDePersona(vivas, { cambios, paraDueno, fecha })
   cederReconstruidas(vivas, { cambios, fecha })
   return { cambios, paraDueno }
+}
+
+/**
+ * LA RELECTURA DE `--aplicar` SE COMPARA CONTRA EL RESPALDO, NO CONTRA EL PLAN RECALCULADO (auditoría,
+ * 14/09/2026). Que el plan dé cero después de escribir prueba que la base quedó coherente con la regla,
+ * no que las filas de persona sigan intactas: un borrado de más también deja el plan en cero.
+ *
+ * @param antes    el respaldo (la tabla leída antes de escribir)
+ * @param despues  la tabla releída
+ * @returns `{ ok, problemas }`: el conteo es el esperado, y cada fila de persona sigue con su obra y su
+ *   `desde`, y con `hasta`/`notas` iguales al respaldo salvo lo que el plan dijo que cambiaba.
+ */
+export function verificarContraRespaldo(antes, despues, { cambios }) {
+  const problemas = []
+  const esperado = antes.length - cambios.filter((c) => c.tipo === 'borrar').length
+    + cambios.filter((c) => c.tipo === 'insertar').length
+  if (despues.length !== esperado) problemas.push(`hay ${despues.length} filas y se esperaban ${esperado}`)
+  const ahora = new Map(despues.map((a) => [a.id, a]))
+  const tocadas = new Map(cambios.filter((c) => ['cerrar', 'anular'].includes(c.tipo)).map((c) => [c.fila.id, c]))
+  for (const a of antes.filter(esDePersona)) {
+    const b = ahora.get(a.id)
+    if (!b) { problemas.push(`la fila de persona ${a.id} desapareció`); continue }
+    const c = tocadas.get(a.id)
+    const quiere = { obra_id: a.obra_id, desde: iso(a.desde), hasta: c ? c.despues.hasta : iso(a.hasta), notas: c ? c.notas : (a.notas ?? null) }
+    const hay = { obra_id: b.obra_id, desde: iso(b.desde), hasta: iso(b.hasta), notas: b.notas ?? null }
+    if (JSON.stringify(quiere) !== JSON.stringify(hay)) problemas.push(`fila de persona ${a.id}: quedó ${JSON.stringify(hay)}, se esperaba ${JSON.stringify(quiere)}`)
+  }
+  return { ok: problemas.length === 0, problemas }
 }
 
 /** Cómo quedaría la tabla con el plan aplicado. Para el invariante y para el ensayo. */

@@ -13,19 +13,32 @@
 // la asignación cargada por error, que no tiene historia que preservar. Si las dos hicieran lo
 // mismo, cada rotación de plantel borraría el pasado de la obra.
 //
+// ═══ ASIGNAR RESPETA LA CRONOLOGÍA Y NO TOCA LO DE OTROS SIN PREGUNTAR (14/09/2026) ═══
+//
+// Las altas pasan por `cronologiaAlAsignar.ts`: cierran solas la obra abierta anterior, piden
+// confirmación para cualquier otro ajuste sobre filas cargadas por personas, y escriben todo en una
+// transacción (`asignar_obra_con_cronologia`). El porqué está allá.
+//
 // El rol lo decide la RLS: `obra_asignacion` sólo admite escritura de dirección, administración y
 // jefe de obra, y siempre dentro de `ve_obra(obra_id)`.
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual } from '@/features/auth/services/authService'
 import { diaSanJuan } from '../../../../orquestador/lib/cronologia-asignaciones.mjs'
 import type { Resultado } from './actions'
-import { cederOtrasObras, type SupabaseAsignacion } from './cronologiaAlAsignar'
+import {
+  aplicarAlta, asignarConCronologia, notaDeAjuste, planDeAlta, textoDeAjustes,
+  type PlanDeAlta, type SupabaseAsignacion,
+} from './cronologiaAlAsignar'
 
 const fechaOpcional = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'), z.literal(''),
 ]).optional()
+
+/** `confirmar=1` lo manda el botón «Confirmar y ajustar», nunca el envío normal. */
+const confirmacion = z.literal('1').optional()
 
 const asignacionSchema = z.object({
   persona_id: z.string().uuid('Elegí una persona del plantel'),
@@ -37,9 +50,18 @@ const asignacionSchema = z.object({
   desde: fechaOpcional,
   hasta: fechaOpcional,
   notas: z.string().trim().max(300).optional(),
+  confirmar: confirmacion,
 })
 
 const YA_ASIGNADA = 'Esa persona ya está asignada a esta obra (o a esa misma actividad) y sigue vigente.'
+
+type Cliente = Awaited<ReturnType<typeof createClient>>
+
+/** Quién asigna, para la nota que lleva toda fila tocada. Sin perfil legible igual queda constancia. */
+async function quienAsigna(supabase: Cliente): Promise<string> {
+  const perfil = await getPerfilActual(supabase)
+  return perfil.data?.nombre || 'usuario sin perfil'
+}
 
 export async function asignarPersona(obraId: string, form: FormData): Promise<Resultado> {
   const parsed = asignacionSchema.safeParse(Object.fromEntries(form))
@@ -53,30 +75,26 @@ export async function asignarPersona(obraId: string, form: FormData): Promise<Re
   if (hasta && hasta < desde) return { ok: false, error: 'El último día no puede ser anterior al primero.' }
   const supabase = await createClient()
 
-  const { error } = await supabase.from('obra_asignacion').insert({
-    obra_id: obraId,
-    persona_id: d.persona_id,
-    rol: d.rol ?? 'integrante',
-    cuadrilla_id: d.cuadrilla_id || null,
-    actividad_id: d.actividad_id || null,
-    desde,
-    hasta,
-    notas: d.notas || null,
+  const r = await asignarConCronologia(supabase as unknown as SupabaseAsignacion, {
+    personaId: d.persona_id,
+    confirmado: d.confirmar === '1',
+    usuario: await quienAsigna(supabase),
+    alta: {
+      obra_id: obraId, rol: d.rol ?? 'integrante', cuadrilla_id: d.cuadrilla_id || null,
+      actividad_id: d.actividad_id || null, desde, hasta, notas: d.notas || null,
+    },
   })
   // ═══ EL ÚNICO AHORA ES SOBRE LA ASIGNACIÓN **VIGENTE** (19/08/2026) ═══
   //
-  // Antes el índice miraba (obra, persona, actividad) sin importar si el período estaba cerrado, así
-  // que alguien que trabajó en marzo, se fue, y volvió en junio chocaba con 23505: la pantalla decía
-  // "ya está asignada" y la única salida era REABRIR la vieja, que borra los dos meses que estuvo
-  // afuera. El módulo prometía que el historial no se pisa y el índice obligaba a pisarlo.
-  //
   // Con `obra_asignacion_una_vigente … where hasta is null`, volver a asignar a alguien que ya se
-  // fue es un alta normal y el período anterior queda intacto. El 23505 ahora significa lo que dice:
-  // esa persona está asignada AHORA MISMO a eso.
-  if (error) return { ok: false, error: error.code === '23505' ? YA_ASIGNADA : error.message }
-  const cedio = await cederOtrasObras(supabase as unknown as SupabaseAsignacion, d.persona_id, { obra_id: obraId, desde, hasta })
+  // fue es un alta normal y el período anterior queda intacto. El 23505 significa lo que dice: esa
+  // persona está asignada AHORA MISMO a eso. Y como la escritura es una transacción, no tocó nada más.
+  if (!r.ok) {
+    if ('requiereConfirmar' in r) return { ok: false, error: r.error, requiereConfirmar: r.requiereConfirmar }
+    return { ok: false, error: 'code' in r && r.code === '23505' ? YA_ASIGNADA : r.error }
+  }
   revalidatePath(`/obras/${obraId}`)
-  return cedio ? { ok: false, error: cedio } : { ok: true }
+  return { ok: true }
 }
 
 /** Cerrar la asignación: la persona sale de la obra y el período queda escrito. Sin fecha explícita
@@ -119,7 +137,26 @@ const cuadrillaAObraSchema = z.object({
   obra_id: z.string().trim().min(1, 'Elegí una obra'),
   actividad_id: z.union([z.string().uuid(), z.literal('')]).optional(),
   desde: fechaOpcional,
+  confirmar: confirmacion,
 })
+
+/** Los integrantes vigentes de la cuadrilla que todavía no están en esa obra (y actividad). */
+async function integrantesNuevos(
+  supabase: Cliente, d: { cuadrilla_id: string; obra_id: string }, actividad: string | null,
+): Promise<{ nuevos: string[]; yaEstaban: number } | { error: string }> {
+  const { data: integrantes, error: errorIntegrantes } = await supabase
+    .from('cuadrilla_integrante').select('persona_id').eq('cuadrilla_id', d.cuadrilla_id).is('hasta', null)
+  if (errorIntegrantes) return { error: errorIntegrantes.message }
+  const personas = (integrantes ?? []).map((f) => (f as { persona_id: string }).persona_id)
+  if (personas.length === 0) return { error: 'La cuadrilla no tiene integrantes vigentes.' }
+  let consulta = supabase.from('obra_asignacion').select('persona_id')
+    .eq('obra_id', d.obra_id).in('persona_id', personas)
+  consulta = actividad ? consulta.eq('actividad_id', actividad) : consulta.is('actividad_id', null)
+  const { data: existentes, error: errorExistentes } = await consulta
+  if (errorExistentes) return { error: errorExistentes.message }
+  const ya = new Set((existentes ?? []).map((f) => (f as { persona_id: string }).persona_id))
+  return { nuevos: personas.filter((p) => !ya.has(p)), yaEstaban: ya.size }
+}
 
 /**
  * Mandar una cuadrilla entera a una obra.
@@ -128,60 +165,51 @@ const cuadrillaAObraSchema = z.object({
  * "cuadrilla asignada a obra": la cuadrilla en la obra ES el conjunto de sus integrantes asignados,
  * y por eso la obra los ve uno por uno y puede sacar a uno sin desarmar la cuadrilla.
  *
- * A quien ya estaba asignado a esa obra se lo saltea y se dice cuántos fueron: el índice único
- * rechazaría el lote entero por un solo repetido, y quedarse sin poder mandar a los otros nueve
- * porque uno ya estaba es exactamente el modo de falla que hace abandonar una pantalla.
+ * A quien ya estaba asignado a esa obra se lo saltea y se dice cuántos fueron. Si ALGUNO pide
+ * confirmar un ajuste sobre filas de otros, no se escribe a nadie: la cuadrilla se manda entera o no
+ * se manda, y la pantalla lista todo junto.
  */
 export async function asignarCuadrillaAObra(form: FormData): Promise<Resultado> {
   const parsed = cuadrillaAObraSchema.safeParse(Object.fromEntries(form))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const d = parsed.data
   const supabase = await createClient()
-
-  const { data: integrantes, error: errorIntegrantes } = await supabase
-    .from('cuadrilla_integrante').select('persona_id').eq('cuadrilla_id', d.cuadrilla_id).is('hasta', null)
-  if (errorIntegrantes) return { ok: false, error: errorIntegrantes.message }
-  const personas = (integrantes ?? []).map((f) => (f as { persona_id: string }).persona_id)
-  if (personas.length === 0) return { ok: false, error: 'La cuadrilla no tiene integrantes vigentes.' }
-
   const actividad = d.actividad_id || null
-  let consulta = supabase.from('obra_asignacion').select('persona_id')
-    .eq('obra_id', d.obra_id).in('persona_id', personas)
-  consulta = actividad ? consulta.eq('actividad_id', actividad) : consulta.is('actividad_id', null)
-  const { data: existentes, error: errorExistentes } = await consulta
-  if (errorExistentes) return { ok: false, error: errorExistentes.message }
-
-  const yaEstaban = new Set((existentes ?? []).map((f) => (f as { persona_id: string }).persona_id))
-  const nuevos = personas.filter((p) => !yaEstaban.has(p))
-  if (nuevos.length === 0) return { ok: false, error: 'Todos los integrantes ya estaban asignados a esa obra.' }
+  const grupo = await integrantesNuevos(supabase, d, actividad)
+  if ('error' in grupo) return { ok: false, error: grupo.error }
+  if (grupo.nuevos.length === 0) return { ok: false, error: 'Todos los integrantes ya estaban asignados a esa obra.' }
 
   const desde = d.desde || (diaSanJuan(new Date()) as string)
-  const { error } = await supabase.from('obra_asignacion').insert(nuevos.map((persona_id) => ({
-    obra_id: d.obra_id,
-    persona_id,
-    rol: 'integrante',
-    cuadrilla_id: d.cuadrilla_id,
-    actividad_id: actividad,
-    desde,
-  })))
-  if (error) return { ok: false, error: error.code === '23505' ? YA_ASIGNADA : error.message }
-
-  // CADA INTEGRANTE DEJA SU OBRA ANTERIOR: mandar la cuadrilla a otra obra es moverla, no duplicarla.
-  const avisos: string[] = []
-  for (const persona_id of nuevos) {
-    const cedio = await cederOtrasObras(supabase as unknown as SupabaseAsignacion, persona_id,
-      { obra_id: d.obra_id, desde, hasta: null })
-    if (cedio) avisos.push(cedio)
+  const cliente = supabase as unknown as SupabaseAsignacion
+  const planes: { persona_id: string; plan: PlanDeAlta }[] = []
+  for (const persona_id of grupo.nuevos) {
+    const leido = await planDeAlta(cliente, persona_id, {
+      obra_id: d.obra_id, rol: 'integrante', cuadrilla_id: d.cuadrilla_id, actividad_id: actividad, desde, hasta: null, notas: null,
+    })
+    if ('error' in leido) return { ok: false, error: leido.error }
+    planes.push({ persona_id, plan: leido.plan })
   }
-  if (avisos.length > 0) return { ok: false, error: `${avisos.length} de ${nuevos.length}: ${avisos[0]}` }
+  const confirmado = d.confirmar === '1'
+  const ajustes = planes.flatMap((p) => p.plan.ajustes)
+  if (ajustes.length > 0 && !confirmado) return { ok: false, error: textoDeAjustes(ajustes), requiereConfirmar: ajustes }
 
+  const nota = notaDeAjuste(await quienAsigna(supabase), { obra_id: d.obra_id, desde })
+  const fallos: string[] = []
+  for (const { persona_id, plan } of planes) {
+    const fallo = await aplicarAlta(cliente, persona_id, plan, { confirmado, nota })
+    if (fallo) fallos.push(fallo.code === '23505' ? YA_ASIGNADA : fallo.error)
+  }
   revalidatePath(`/obras/${d.obra_id}`)
   revalidatePath('/administracion/personas/cuadrillas')
   revalidatePath('/administracion/personas')
+  // CADA INTEGRANTE ES SU PROPIA TRANSACCIÓN: el que falló quedó exactamente como estaba, y se dice.
+  if (fallos.length > 0) {
+    return { ok: false, error: `${planes.length - fallos.length} de ${planes.length} asignados; los otros ${fallos.length} quedaron como estaban: ${fallos[0]}` }
+  }
   return {
     ok: true,
-    mensaje: yaEstaban.size > 0
-      ? `${nuevos.length} asignados. ${yaEstaban.size} ya estaban en esa obra.`
-      : `${nuevos.length} asignados a la obra.`,
+    mensaje: grupo.yaEstaban > 0
+      ? `${planes.length} asignados. ${grupo.yaEstaban} ya estaban en esa obra.`
+      : `${planes.length} asignados a la obra.`,
   }
 }

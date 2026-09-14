@@ -120,9 +120,12 @@ export function PlanDeObraPanel({ persona, obras, hoy, onCerrar }: {
   const desde = chip === 'manana' ? diaSiguiente(hoy) : chip === 'lunes' ? lunesProximo(hoy) : fechaElegida
   const problema = desde ? validarProgramacion({ hoy, desde, hasta: hasta || null }) : 'Elegí desde qué día.'
 
-  const programar = async () => {
+  // `confirmar` llega sólo del botón «Confirmar y ajustar» que `FormAccion` muestra cuando el pase
+  // tocaría asignaciones ya cargadas (auditoría de la cronología, 14/09/2026).
+  const programar = async (form?: FormData) => {
     const r = await cambiarObraActual({
       persona_id: persona.id, obra_id: obraId || null, desde, hasta: hasta || null,
+      confirmar: form?.get('confirmar') === '1',
     })
     if (r.ok) { await releer(); router.refresh() }
     return r

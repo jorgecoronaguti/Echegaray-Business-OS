@@ -106,8 +106,8 @@ const solapan = (a, b) => (a.desde ?? '') <= (b.hasta ?? FIN) && (b.desde ?? '')
  */
 export function planDeAsignacion(filas = [], nueva) {
   // El tipo explícito es para la app: sin él, TypeScript infiere `never[]` de las listas vacías.
-  /** @type {{ cerrar: { id: string, hasta: string, continua: { obra_id: string, desde: string, hasta: string | null } | null }[], anular: { id: string }[], reemplazar: { id: string }[], recortar: { id: string, desde: string }[] }} */
-  const plan = { cerrar: [], reemplazar: [], recortar: [], anular: [] }
+  /** @type {{ cerrar: { id: string, hasta: string, continua: { obra_id: string, desde: string, hasta: string | null } | null }[], acortar: { id: string, hasta: string }[], anular: { id: string }[], reemplazar: { id: string }[], recortar: { id: string, desde: string }[] }} */
+  const plan = { cerrar: [], acortar: [], reemplazar: [], recortar: [], anular: [] }
   if (!nueva?.desde) throw new Error('planDeAsignacion: la asignación nueva necesita `desde`')
   // `unDia` explícito gana: la normalización arma `nueva` con el comienzo INFERIDO de una fila sin
   // `desde`, y si se creó el mismo día que cerró parecería un día suelto sin haberlo escrito nadie así.
@@ -120,16 +120,23 @@ export function planDeAsignacion(filas = [], nueva) {
     if (t.sinFecha || !solapan(t, { desde: D, hasta: finNueva })) continue
     const continua = (t.hasta ?? FIN) > finNueva
       ? { obra_id: f.obra_id, desde: diaSiguiente(finNueva), hasta: t.hasta } : null
+    // ABIERTA Y CUBRE D → `cerrar`, lo único automático (auditoría 14/09/2026). CERRADA y cubre D →
+    // `acortar`: le saca días a un período que alguien ya cerró, así que pide confirmación. Una cerrada
+    // que además sigue después del tramo nuevo no se toca: partirla inventaría un regreso.
+    const abierta = iso(f.hasta) == null
     if (!t.desde || t.desde < D) {
-      plan.cerrar.push({ id: f.id, hasta: diaAnterior(D), continua })
+      if (abierta) plan.cerrar.push({ id: f.id, hasta: diaAnterior(D), continua })
+      else if (!continua) plan.acortar.push({ id: f.id, hasta: diaAnterior(D) })
     } else if (t.desde === D && esUnDia(f)) {
       // GANA LA CARGA POSTERIOR (dueño, 14/09/2026). El día suelto del mismo D cargado ANTES quedó
-      // corregido: se anula con nota, sin tocar sus fechas. Cargado DESPUÉS es la excepción a propósito.
+      // corregido: la lectura ya lo resuelve por `creado_en`, y la normalización lo marca anulado con
+      // nota, sin tocar fechas. Cargado DESPUÉS es la excepción a propósito.
       if (!cargadaDespues(f, nueva)) plan.anular.push({ id: f.id })
     } else if (t.desde === D) {
-      // Empezaba el mismo día: se cierra ESE día y no se borra. Queda como día suelto cargado antes, y
-      // la lectura le da el día a la carga posterior.
-      plan.cerrar.push({ id: f.id, hasta: D, continua })
+      // Empezaba el mismo día: cierra ESE día (nunca antes de su `desde`) y no se borra. Queda como día
+      // suelto cargado antes, y la lectura le da el día a la carga posterior.
+      if (abierta) plan.cerrar.push({ id: f.id, hasta: D, continua })
+      else if (!continua) plan.acortar.push({ id: f.id, hasta: D })
     } else if ((t.hasta ?? FIN) <= finNueva) {
       plan.reemplazar.push({ id: f.id })
     } else {
