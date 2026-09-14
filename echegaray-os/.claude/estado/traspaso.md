@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-14 (−03) · main = producción_
+_actualizado: 2026-09-14 ~10:20 (−03) · main = producción_
 
 ## 1. OBJETIVO GENERAL
 
@@ -11,81 +11,66 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
 
 - Obra como eje · una fuente de verdad por concepto (Postgres) · P&L devengado · Cash Flow percibido
 - Evidencia antes que inferencia · FALTA_DATO / CONFLICTO explícitos · edición manual del dueño = verdad
-- Nivel E = firma del dueño · nunca debilitar RLS · padrón: nunca alta/baja de personas
+- Nivel E = firma del dueño (mails a clientes, lo que ve un cliente) · nunca debilitar RLS · padrón: nunca alta/baja
 - Sheet real nunca desde un worktree · nunca correr pipeline/generadores «para ver si anda»
-- Nadie cierra su propio trabajo (auditor-de-cierre / qa-visual) · responder al dueño por el bot
+- Nadie cierra su propio trabajo (auditor-de-cierre / qa-visual) · responder al dueño por el bot (avisar-al-dueno.mjs)
 
 ## 3. ARQUITECTURA (lo que se usa seguido)
 
 - Web: Vercel desde `main`. Backend: push + `git -C ~/echegaray-os/produccion/echegaray-os pull --ff-only`.
 - Migraciones desde main: `node orquestador/scripts/aplicar-migracion.mjs <f>` (ensayo) y `--aplicar`.
-- Consultas a la base: script en scratchpad que importa `orquestador/lib/db.mjs` (`query`).
-- Avisos: `node orquestador/scripts/avisar-al-dueno.mjs < archivo.md`. Mapa: `.claude/MAPA.md`.
+- Consultas: script en scratchpad que importa `orquestador/lib/db.mjs` (`query`, `withTx`).
+- Adjuntos del dueño: NO llegan a disco; se sacan del JSONL de la sesión (memoria `adjuntos-estan-en-el-transcript`).
+- Sheet Flujo de Caja id: `ORQ_CASHFLOW_ID` o `1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8`.
 
-## 4. CERRADO HOY (14/09) — EN PRODUCCIÓN
+## 4. CERRADO HOY (14/09) — EN PRODUCCIÓN, CON EVIDENCIA
 
-- **Liquidación v1 (69a4f148, desplegado y firmado):** un cuadro (Quincena) + menú «Más»; filtro «Cobra:
-  Por quincena / Mensuales / Liq. finales»; buscador; «estimado» en todo costo con multiplicador 1,6713.
-- **Importador JORNALES → registros_hh:** lo corregido a mano en Liquidación/Asistencia gana sobre la
-  planilla; jefe/tramo de ausencia/borrados siguen cediendo (alcance firmado, memoria
-  `web-gana-alcance-liquidacion`). Deploy en VM hecho; FALTA leer el journal de la corrida horaria:
-  esperado GANA LA WEB 0 · A PISAR 0; fila 62b019cd sigue 13 h `web:asistencia-obra`.
-- **Datos:** `convenio_escala` cargada desde `uocra_escala` zona A (184 filas, autorizado); padrón
-  Petina → oficial (recibo), Castillo → ayudante (alta ARCA, elegido por el dueño). Respaldos en
-  `orquestador/datos/respaldos/`. Regla nueva: categoría = recibo/IERIC/alta (memoria actualizada).
+- **Liquidación v1** (un cuadro + «Más», filtro «Cobra», buscador, «estimado» en costos, marca «−N% bajo
+  básico UOCRA»). El dueño la RECHAZÓ igual → ver P0.
+- **Importador JORNALES:** lo corregido a mano en la web gana (alcance firmado: memoria
+  `web-gana-alcance-liquidacion`); horas en columnas sin fecha → obra del renglón, último día del bloque,
+  nota «sin fecha en la planilla (col X)» (99a9ced6; ensayo +240 h; verificar corrida 10:20 en registros_hh).
+- **Conciliación bancaria 14/09:** extracto cargado, `_BANCO_RAW` 614 mov., **auditar-saldo-banco CIERRA
+  $39.012.283,70**. Bug corregido: clave del movimiento = (cuenta, referencia, importe, FECHA) en código e
+  índice (migración 20260914T1400, aplicada; importar-banco la re-aplica última). Echeq 308 Pagado (re-débito
+  11/09), 381 Aceptado (se reparó un duplicado propio), físicos 320/321 DEBITADO=SI (leído en el Sheet).
+- **CRM:** acceso al portal desde la lista `/clientes` (Ver como lo ve el cliente ↗ · Accesos →), carpeta del
+  cliente sin tope de 300 (ARCOR 542/542), 883 vínculos cliente_documento + 22 carpetas de obra aplicados. QA OK.
+- **Datos:** convenio_escala desde uocra_escala (184 filas); padrón Petina=oficial (recibo), Castillo=ayudante
+  (alta ARCA, elegido por el dueño; memoria `categoria-y-alta-manda-la-planilla-del-dueno` actualizada).
+- **Messina:** A-227 ya estaba Cobrada (fila 41); fila 89 NO se tocó (¿segundo 50% OC 279 o duplicado? sin confirmar).
 
-## 5. ABIERTO — EN RAMAS SIN MERGEAR
+## 5. EN CURSO — RAMAS SIN MERGEAR
 
-- `feat/liquidacion-brecha-uocra` (worktree `.claude/worktrees/liquidacion-un-cuadro`, commits 80042f0a +
-  f13f9e1b): marca «−N% bajo el básico UOCRA» junto al $/h. QA visual OK (tooltip corregido después).
-  Mergear y desplegar si el rediseño de abajo no la reemplaza.
-- `fix/hh-obra-gente-de-la-app` (worktree `.claude/worktrees/hh-obra`): vacío. Borrar si no se usa.
+- `feat/liquidacion-cuadro-jornales` (agente ejecutor, worktree `.claude/worktrees/liquidacion-jornales`):
+  P0 del dueño. Pedido textual y decisiones en memoria `liquidacion-rediseno-pedido-1409`. Al terminar: QA
+  visual → merge → deploy.
+- `fix/cobranzas-un-vencido` (agente, worktree `.claude/worktrees/cobranzas-vencido`): «vencido» = columna U
+  (Pendiente y Q<hoy), decisión del dueño 14/09 «col q» (reemplaza la del 14/08); OBRAS alineada; portal marca
+  todos los pagos del mismo día. **Auditor RECHAZÓ:** el portal muestra $11,7M vencidos ya cobrados (filas
+  `esquema_pago` sin `cobranza_fila`: La Estrella «Faltante 2/2» ↔ Cobranzas f40; Messina Pilón ↔ f30);
+  ficha Esquema/pantalla 28 con otra regla; test no da rojo desde el cero. En corrección. Despliegue: migración
+  20260914T1200 con lock_timeout fuera de horario → verificar en destino → recién ahí merge web. El vínculo
+  `cobranza_fila` cambia lo que ve un cliente: lo aplica un tercero tras revisión.
 
-## 6. PENDIENTES (ordenados)
+## 6. PENDIENTES
 
-**P0 · REHACER LIQUIDACIÓN (dueño 14/09, textual):** «demasiado resumido, no puedo modificar el valor
-hora, no tengo referencias de valores hs históricos de cada uno, deja afuera detalles relevantes,
-rehacer toda la sección». Antes de diseñar: preguntarle qué columnas del bloque JORNALES necesita ver
-(alta, categoría, días/horas, $/h, banco, adelantos, efectivo, total) y mostrar mockup. Hechos: $/h vive
-en `persona_tarifa` (versionado por `desde`, sin UI de edición en el cuadro); historial de $/h =
-filas de `persona_tarifa` por persona.
-
-**P1 · HH de obra 2026 (dueño: «no tomás bien a la gente»; sólo 2026).** Medido: celdas diarias
-base = planilla. Diferencias: (a) horas escritas en columnas SIN fecha en el encabezado (R/S/T de
-«Obreros 26», ej. Tello bloque 04/05 +16 h, Quiroga S 16/02 +8 h) — el total de la planilla las
-suma, la base no (no hay fecha); (b) celda 11/06 = 70 h (Alaniz/Agüero/Rosales, FALTA_DATO del dueño);
-(c) extras ponderadas: planilla suma 8,5 (4 + 3×1,5), base 7 h físicas (correcto); (d) Agüero bloque
-18/05: total planilla 80 vs celdas 88. La vista `hh_que_cuentan_en_obra` NO debe volver a contar
-obreros de la app (dueño 13/09). Decidir con el dueño (a) y (d).
-
-**P1 · COBRANZAS «vencido» mal (dueño 14/09).** Causa medida: la lista de la ficha (`cliente_cobranza`,
-migr. 20260911T0920:60-62) y la cartera (`obra_cuenta`, 20260910T2356:114-116) usan emisión + 30 días;
-el Sheet (col U) y el portal usan Q (fecha cobro). Con Q hoy hay 0 vencidas de 35 abiertas; con
-emisión + 30, muchas. Hay ~5 definiciones (mapa completo en la sesión: cuenta corriente, esquema,
-portal `estadoDePago`, cash-briefing, tabla vieja `public.cobranza`). Objetivo del dueño: UNA definición
-en Postgres = la del Sheet (O=Pendiente y Q<hoy) consumida por ficha, cartera y portal.
-
-**P1 · CRM documentos faltantes (dueño 14/09).** Causas medidas: 31 carpetas de cliente en Drive vs 5
-clientes en el CRM; tope 300 archivos por carpeta de cliente (ARCOR 542); `obras-carpetas-drive.mjs`
-sin timer (226 de 1.252 archivos atados a obra); cotizaciones de Drive no llegan a Presupuestos
-(sólo `cotizacion_cascada`). Dar de alta clientes = decisión del dueño.
-
-**P2 · Messina (respondido por bot 14/09):** A-227 figura pendiente en Cobranzas pero la paga la O/P 5146.
-Portal: accesos en la ficha → costado «Portal del cliente» (`?portal=1`); en la cara Cobranzas no hay
-enlace (sumarlo al arreglar Cobranzas).
-
-**Del dueño (FALTA_DATO):** horas jefes 08/08–31/08 en «Oficina 26» · repartir 70 h del 11/06 ·
-Mis Facilidades ARCA (multiplicador) · datos Santander Ochoa/Castillo.
+**Del dueño (decidido, falta hacer):** cotizaciones de Drive visibles en la solapa Presupuestos del cliente.
+**Del dueño (FALTA_DATO):** 70 h del 11/06 (Alaniz/Agüero/Rosales) · Agüero bloque 18/05: vale total 80 h,
+lo corrige él en el Sheet · horas jefes 08/08–31/08 · Mis Facilidades ARCA (multiplicador 1,6713 = estimado).
+**Decidido «nada/nadie»:** 26 carpetas de cliente sin CRM · accesos portal Messina/ARCOR/La Estrella (por ahora).
+**Técnico:** 109 worktrees acumulados (`node scripts/higiene-worktrees.mjs` cuando no haya agentes) ·
+4 débitos de cheque sin número en el extracto · alto táctil del link portal en 390 px (cosmético).
 
 ## 7. ESTADO GIT
 
-- main = origin/main = producción VM: 69a4f148 (+ este traspaso) · árbol principal limpio
-- ramas abiertas: `feat/liquidacion-brecha-uocra`, `fix/hh-obra-gente-de-la-app` (ver §5)
+- main = origin/main = producción VM: 99a9ced6 (+ este traspaso) · árbol principal limpio
+- ramas abiertas: `feat/liquidacion-cuadro-jornales`, `fix/cobranzas-un-vencido` (ver §5)
 
 ## 8. PRÓXIMO PASO
 
-Sesión nueva: P0 Liquidación (preguntar detalle + mockup antes de construir). Cobranzas y CRM
-documentos, cada uno en su sesión.
+Cerrar los dos agentes de §5 (QA / re-auditoría), desplegar Liquidación P0. Verificar corrida importador
+10:20 (`notas like '%sin fecha en la planilla%'` ≈ 30 celdas / 240 h).
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
