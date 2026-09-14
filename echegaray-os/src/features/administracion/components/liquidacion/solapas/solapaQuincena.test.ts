@@ -164,6 +164,14 @@ test('LA BARRA MUESTRA UNA SOLA PANTALLA Y MANDA EL RESTO A «MÁS» (dueño, 14
   assert.ok(!/SOLAPAS\.map\(/.test(BARRA), 'la barra no vuelve a dibujar las siete en fila')
 })
 
+test('EL MENÚ «MÁS» QUEDA QUIETO: lista siempre todas y marca la abierta (dueño, 14/09/2026)', () => {
+  const BARRA = fuente('./BarraSolapas.tsx')
+  assert.ok(!/resto\.filter\(/.test(BARRA), 'la sección abierta no se saca de la lista')
+  assert.match(BARRA, /\{resto\.map\(\(s\) =>/)
+  assert.match(BARRA, /aria-current=\{esLaAbierta \? 'page' : undefined\}/)
+  assert.ok(!/data-testid=\{`solapa-\$\{otra\.clave\}`\}/.test(BARRA), 'un solo nodo por testid de sección')
+})
+
 test('LA MARCA «BAJO EL BÁSICO UOCRA» SALE DE LA EXPOSICIÓN AL CONVENIO, NO DE UNA CUENTA NUEVA', () => {
   assert.match(VISTA, /getExposicionDeLaQuincena\(supabase, quincena\)/)
   assert.match(VISTA, /if \(!l\.bajoElPiso \|\| l\.piso == null/)
