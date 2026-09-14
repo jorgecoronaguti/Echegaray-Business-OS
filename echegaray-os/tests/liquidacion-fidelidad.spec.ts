@@ -199,7 +199,9 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
 
     // La cadena de R5, con los rótulos del panel.
     const cadena = page.getByTestId('panel-cadena')
-    for (const t of ['Cobra total', 'Adelanto', 'Ya transferido', 'Banco + efectivo', 'Por banco', 'En efectivo']) {
+    // Blanco + negro (dueño, 14/09/2026): la misma cadena que la fila. Fuera del modelo (Oficina,
+    // finales, cerrada) el panel dice «Banco + efectivo»; los rótulos comunes a las dos son éstos.
+    for (const t of ['Total', 'Adelanto', 'Ya transferido', 'Neto (banco)', 'Efectivo']) {
       await expect(cadena).toContainText(t)
     }
     // LO QUE ERAN LAS CUATRO MÉTRICAS Y LOS BLOQUES DEL LEGAJO, en el detalle laboral.
@@ -218,15 +220,19 @@ test.describe('Liquidación de horas · fidelidad medible contra el mockup v2', 
     await page.screenshot({ path: `${SALIDA}/app-4-cadena.png`, fullPage: true })
 
     const tabla = page.getByTestId('espejo-encabezado')
-    // Dueño, 14/09/2026: «$/h primero y después cuánto cobra total».
-    for (const c of ['Persona', '$/h', 'Cobra total', 'Adelanto', 'Ya transf.', 'Por banco', 'Efectivo', 'Efect. red.', 'Hs pagas']) {
+    // Dueño, 14/09/2026: blanco (recibo) + negro. Dos bandas rotuladas arriba y las columnas debajo.
+    await expect(page.getByTestId('banda-blanco')).toHaveText(/blanco · recibo/i)
+    await expect(page.getByTestId('banda-negro')).toHaveText(/negro/i)
+    for (const c of ['Persona', 'Horas', '$/h cat.', 'Neto (banco)', '$/h negro', 'Importe', 'Total', 'Adelanto', 'Ya transf.', 'Efectivo', 'Efect. red.']) {
       await expect(tabla).toContainText(c)
     }
     const rotulos = await tabla.locator(':scope > div').allTextContents()
-    expect(rotulos.findIndex((r) => r.includes('$/h')), '$/h va antes que Cobra total')
-      .toBeLessThan(rotulos.findIndex((r) => r.includes('Cobra total')))
-    await expect(page.getByTestId('espejo-pie')).toContainText('Por banco (lote)')
-    await expect(page.getByTestId('espejo-pie')).toContainText('En efectivo (sobres)')
+    const i = (t: string) => rotulos.findIndex((r) => r.includes(t))
+    expect(i('Neto (banco)'), 'el blanco va antes que el negro').toBeLessThan(i('$/h negro'))
+    expect(i('Importe'), 'el negro va antes que el total').toBeLessThan(i('Total'))
+    for (const p of ['Neto banco', 'Negro', 'Total', 'Adelantos', 'Ya transferido', 'Efectivo', 'Efectivo redondeado']) {
+      await expect(page.getByTestId('espejo-pie')).toContainText(p)
+    }
 
     // LA FILA DE TOTAL: 48-58 px y `border-top: 1px solid #30302F` — el handoff §2 no la deja opcional.
     const total = page.getByTestId('espejo-total')

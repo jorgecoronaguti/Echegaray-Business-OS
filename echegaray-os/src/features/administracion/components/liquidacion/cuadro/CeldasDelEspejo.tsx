@@ -14,7 +14,7 @@ import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { CeldaEditable, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
-import { estadoDelPago, referenciaDeJornales } from './estadoDelPago'
+import { referenciaDeJornales } from './estadoDelPago'
 import type { CampoEditable, LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
@@ -148,30 +148,6 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho }: {
 }
 
 /**
- * COBRA TOTAL — el número principal de la fila: horas pagas × $/h, como JORNALES.
- *
- * Dueño, 14/09/2026: *«quiero q la columna de valor hora este primero y dp cuanto cobra total»*. Va
- * segunda, después del $/h, más grande y en negrita. Los descuentos y el reparto vienen a la derecha.
- */
-export function CeldaCobraTotal({ fila }: { fila: FilaDelEspejo }) {
-  const l = fila.linea
-  if (l.cobra == null) {
-    return (
-      <div data-testid={`cobratotal-${fila.personaId}`} style={{ textAlign: 'right', color: V.tenue }}
-        title="Sin retribución cargada: no hay importe que afirmar.">sin tarifa</div>
-    )
-  }
-  const ref = referenciaDeJornales(l)
-  return (
-    <div data-testid={`cobratotal-${fila.personaId}`}
-      title={l.valorHora != null && l.horas != null ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : undefined}
-      style={{ textAlign: 'right', fontSize: '14px', fontWeight: 600, color: V.tinta, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-      {pesos(l.cobra)}<MarcaDeOrigen origen={marcaCon(l.origen.cobra, ref)} compacta titulo={ref?.titulo} />
-    </div>
-  )
-}
-
-/**
  * LA MARCA DE LA CELDA: lo manual se marca siempre; si no, el punto de JORNALES sólo cuando la planilla
  * dice otra cosa que el cuadro. No manda: el `title` dice qué dice la planilla (dueño, 14/09/2026).
  */
@@ -190,41 +166,5 @@ export function CeldaHorasPagas({ fila }: { fila: FilaDelEspejo }) {
   return (
     <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
       origen={marcaCon(l.origen.horas, ref)} titulo={titulo || undefined} />
-  )
-}
-
-/**
- * POR BANCO, con la marca 50/50 chica al lado. Rojo sólo si la fila NO cierra; si cierra, no se ve nada.
- *
- * «50/50» junto a «$0» se leía como «todo en efectivo»: sin recibo del estudio el banco todavía no tiene
- * cifra, y la marca lo dice («50/50 sin recibo»).
- */
-export function CeldaPorBanco({ fila }: { fila: FilaDelEspejo }) {
-  const l = fila.linea
-  const e = estadoDelPago(l)
-  return (
-    <div data-testid={`banco-${fila.personaId}`} title={e.noCierra ? e.titulo : undefined}
-      style={{ textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', color: e.noCierra ? V.neg : V.tinta }}>
-      {e.acuerdo && (
-        <span data-testid={`acuerdo-${fila.personaId}`} title={e.acuerdo.titulo}
-          style={{ fontSize: '10.5px', color: V.apagado, marginRight: 6 }}>{e.acuerdo.texto}</span>
-      )}
-      {pesos(l.porBanco)}<MarcaDeOrigen origen={l.origen.porBanco} compacta />
-    </div>
-  )
-}
-
-/** EN EFECTIVO. La misma regla que el banco: rojo con el porqué en el `title` sólo si la fila no cierra. */
-export function CeldaEfectivo({ fila }: { fila: FilaDelEspejo }) {
-  const l = fila.linea
-  const e = estadoDelPago(l)
-  // EL EFECTIVO DE JORNALES QUEDA SÓLO EN EL `title`: en obreros el efectivo es la resta que cierra la
-  // fila con el cobra del cuadro, y el de la planilla sale de su propio cobra.
-  const ref = referenciaDeJornales(l)
-  return (
-    <div data-testid={`efectivo-${fila.personaId}`} title={e.noCierra ? e.titulo : (ref?.tituloEfectivo ?? undefined)}
-      style={{ textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', color: e.noCierra ? V.neg : V.tinta }}>
-      {pesos(l.enEfectivo)}<MarcaDeOrigen origen={l.origen.enEfectivo} compacta />
-    </div>
   )
 }

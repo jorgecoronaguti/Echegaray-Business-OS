@@ -2,7 +2,6 @@ import { Aviso } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
-import { getExposicionDeLaQuincena } from '../../../services/exposicionConvenioService'
 import { totalesDelEspejo, type FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { leerCuadroDeLaQuincena } from '../../../services/cuadroDeLaQuincenaService'
 import { leerDetallesLaborales } from '../../../services/detalleLaboralService'
@@ -55,11 +54,12 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
   // fuente salen de `exponerAlPiso`; acá sólo se indexan por persona.
   // LAS FILAS LAS ARMA `leerCuadroDeLaQuincena`, la misma lectura que usan «Caja» y «Cierre»: así el
   // pie de acá y el renglón de totales de allá no pueden separarse por un argumento copiado distinto.
-  const [cuadro, exposicion] = await Promise.all([
-    leerCuadroDeLaQuincena(supabase, quincena, hoy),
-    getExposicionDeLaQuincena(supabase, quincena),
-  ])
+  //
+  // DESDE BLANCO + NEGRO (14/09/2026) LA EXPOSICIÓN VIENE CON LA LIQUIDACIÓN: el $/h de categoría del
+  // blanco estimado sale de ahí, y leerla otra vez acá serían dos fotos de la escala en el mismo render.
+  const cuadro = await leerCuadroDeLaQuincena(supabase, quincena, hoy)
   const { datos, liquidacion, filas, dias, tituloDe, cuadrosCerrados } = cuadro
+  const exposicion = liquidacion.exposicion
   // LO LABORAL DEL PANEL (costo cargado, legajo, HH por mes, esperadas/estado) sale del cuadro ya leído
   // más las alícuotas: es lo que tenía la grilla de «Horas», que se retiró de «Más» el 14/09/2026.
   const { detalles, errores: erroresDelDetalle } = await leerDetallesLaborales(supabase, cuadro, quincena)
@@ -115,8 +115,10 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
 
   return (
     <div data-testid="vista-quincena">
-      {[...datos.errores, ...liquidacion.errores, ...exposicion.errores, ...erroresDelDetalle].map((e) => (
-        <div key={e.que} style={{ padding: '0 0 10px' }}>
+      {/* LOS ERRORES DE LA EXPOSICIÓN YA VIENEN EN `liquidacion.errores`: sumarlos otra vez los dibujaba
+          dos veces con la misma clave. La clave lleva el índice: dos fuentes pueden fallar con el mismo rótulo. */}
+      {[...datos.errores, ...liquidacion.errores, ...erroresDelDetalle].map((e, i) => (
+        <div key={`${e.que}-${i}`} style={{ padding: '0 0 10px' }}>
           <Aviso tono="neg" testid="quincena-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
         </div>
       ))}

@@ -26,7 +26,9 @@ const PANEL = fuente('../cuadro/PanelDeLaPersona.tsx')
 const FILTROS = fuente('../cuadro/FiltrosDelEspejo.tsx')
 const VISTA = fuente('./quincena.tsx')
 const ACCION = fuente('../../../services/tarifaDeLaQuincenaActions.ts')
-const COMPONENTES = [GRILLA, CELDAS, TARIFA, HISTORIAL, PANEL, FILTROS]
+// Las celdas de blanco + negro (14/09/2026) entran a las mismas guardas: sin base y sin recalcular.
+const CELDAS_BN = fuente('../cuadro/CeldasBlancoNegro.tsx')
+const COMPONENTES = [GRILLA, CELDAS, CELDAS_BN, TARIFA, HISTORIAL, PANEL, FILTROS]
 
 /** El código sin comentarios: una cabecera que EXPLICA la regla no puede hacer pasar el test. */
 const sinComentarios = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
@@ -69,14 +71,18 @@ test('SIN COLUMNA «PLANILLA»: el cotejo va en el sello y en el panel, no en el
   assert.match(VISTA, /espejo-difieren/)
 })
 
-// CAMBIÓ EL 14/09/2026 (dueño: «quiero q la columna de valor hora este primero y dp cuanto cobra
-// total»): el cuadro ya no abre con el importe pendiente. El orden se prueba entero en `cobraTotal.test.ts`.
-test('LA PLATA VA PRIMERO: $/h, COBRA TOTAL, descuentos y reparto; DESPUÉS LOS DÍAS', () => {
+// CAMBIÓ EL 14/09/2026 DOS VECES: primero «$/h y después cobra total»; después blanco + negro
+// («realmente no se entiende nada el cuadro de liq de hs, vamos a rehacer»). El orden se prueba entero
+// en `cobraTotal.test.ts`. Lo que se protege acá: la plata antes que los días, y que el panel no pierda
+// el banco editable, el 50/50 (fuera del modelo) ni el historial.
+test('LA PLATA VA PRIMERO: horas, BLANCO, NEGRO, TOTAL, descuentos y efectivo; DESPUÉS LOS DÍAS', () => {
   assert.deepEqual(clavesDe('const PLATA', 'const GAP'),
-    ['valorHora', 'cobraTotal', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'efectivoRedondeado', 'horasPagas'])
+    ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'hsNegro', 'horaNegro', 'negro', 'total', 'adelanto', 'yaTransferido', 'enEfectivo', 'efectivoRedondeado'])
+  assert.match(GRILLA, /repeat\(\$\{nDias\},\$\{DIA\}px\)`/, 'los días van al final de la grilla')
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)
   assert.match(PANEL, /<HistorialDeTarifa/)
+  assert.match(PANEL, /<CadenaBlancoNegro/)
   assert.match(GRILLA, /<PanelDeLaPersona/)
 })
 
@@ -92,17 +98,22 @@ test('SIN COLUMNAS DE HORAS EXTRA NI «NORMALES» (dueño, 14/09: «las columnas
   }
 })
 
-test('BANCO Y EFECTIVO DICEN CÓMO SE PAGA, CON EL 50/50, Y SE MARCAN CUANDO LA FILA NO CIERRA', () => {
+// CAMBIÓ EL 14/09/2026 CON BLANCO + NEGRO: el banco ES el neto, así que sale la columna «Por banco» y su
+// marca 50/50 (el acuerdo queda en el panel de quien sigue fuera del modelo). Lo que se protege: el neto
+// y el efectivo leídos de la línea, el cierre por fila y por pie, y el pie con cada columna de plata.
+test('NETO (BANCO) Y EFECTIVO DICEN CÓMO SE PAGA, SE MARCAN CUANDO LA FILA NO CIERRA, Y EL PIE LOS SUMA', () => {
   const ESTADO = fuente('../cuadro/estadoDelPago.ts')
-  assert.match(CELDAS, /pesos\(l\.porBanco\)/)
-  assert.match(CELDAS, /pesos\(l\.enEfectivo\)/)
-  assert.match(CELDAS, /data-testid=\{`acuerdo-\$\{fila\.personaId\}`\}/)
-  assert.match(ESTADO, /const sinRecibo = l\.porBanco === 0 && l\.reciboNeto == null/)
-  assert.match(ESTADO, /50\/50\$\{sinRecibo \? ' sin recibo' : ''\}/)
+  const BN = fuente('../cuadro/CeldasBlancoNegro.tsx')
+  assert.match(BN, /pesos\(l\.porBanco\)/)
+  assert.match(BN, /pesos\(l\.enEfectivo\)/)
+  assert.match(BN, /sin neto/)
   assert.match(ESTADO, /const cierre = cierreDeLaFila\(l\)/)
   assert.match(GRILLA, /const cierre = cierreDeTotales\(totales\)/)
-  assert.match(GRILLA, /Por banco \(lote\)/)
-  assert.match(GRILLA, /En efectivo \(sobres\)/)
+  for (const r of ['Neto banco', 'Negro', 'Total', 'Adelantos', 'Ya transferido', 'Efectivo', 'Efectivo redondeado']) {
+    assert.match(GRILLA, new RegExp(`cifra\\('${r}'`), `el pie publica ${r}`)
+  }
+  assert.match(GRILLA, /totales\.negro/)
+  assert.match(GRILLA, /totales\.sinNeto/)
 })
 
 test('LA VISTA NO RECALCULA LA CADENA DE PAGO NI LAS HORAS', () => {
@@ -111,7 +122,7 @@ test('LA VISTA NO RECALCULA LA CADENA DE PAGO NI LAS HORAS', () => {
   const COMUN = fuente('../../../services/cuadroDeLaQuincenaService.ts')
   assert.match(COMUN, /getLiquidacionDeLaQuincena/)
   assert.match(COMUN, /filasDelEspejo/)
-  for (const c of [VISTA, GRILLA, TARIFA, CELDAS, PANEL]) {
+  for (const c of [VISTA, GRILLA, TARIFA, CELDAS, CELDAS_BN, PANEL]) {
     const codigo = sinComentarios(c)
     assert.ok(!/valorHora\s*\*|horas\s*\*/.test(codigo), 'no multiplica horas por tarifa')
     assert.ok(!/cobra\s*-|adelanto\s*-|porBanco\s*\+/.test(codigo), 'no rehace la resta de la cadena')
@@ -199,7 +210,11 @@ test('EL MENÚ «MÁS» QUEDA QUIETO: lista siempre todas y marca la abierta (du
 })
 
 test('LA MARCA «BAJO EL BÁSICO UOCRA» SALE DE LA EXPOSICIÓN AL CONVENIO, NO DE UNA CUENTA NUEVA', () => {
-  assert.match(VISTA, /getExposicionDeLaQuincena\(supabase, quincena\)/)
+  // DESDE BLANCO + NEGRO LA EXPOSICIÓN LA LEE LA LIQUIDACIÓN (el $/h de categoría sale de ahí) y la vista
+  // la reusa: una segunda llamada serían dos fotos de la escala en el mismo render.
+  assert.match(fuente('../../../services/liquidacionQuincenaService.ts'), /getExposicionDeLaQuincena\(supabase, q\)/)
+  assert.match(VISTA, /const exposicion = liquidacion\.exposicion/)
+  assert.ok(!/getExposicionDeLaQuincena\(/.test(sinComentarios(VISTA)), 'la vista no vuelve a leer la exposición')
   assert.match(VISTA, /if \(!l\.bajoElPiso \|\| l\.piso == null/)
   assert.ok(!/basico_hora|uocra_escala|convenio_escala/.test(VISTA), 'la vista no lee escalas por su cuenta')
   assert.match(TARIFA, /data-testid=\{`espejo-bajo-piso-\$\{fila\.personaId\}`\}/)

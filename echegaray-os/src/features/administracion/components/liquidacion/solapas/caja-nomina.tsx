@@ -60,7 +60,9 @@ export async function SolapaCaja({ quincenaPedida, hoy }: PropsDeSolapa) {
         </div>
       ))}
       <Totales quincena={quincena} totales={totales}
-        sinGiro={cuadro.filas.filter((f) => f.linea.reciboSinGiro).map((f) => f.nombre)}
+        // CON BLANCO + NEGRO EL BANCO ES EL NETO, GIRADO O NO: el aviso «no cuenta como banco» sólo
+        // vale para quien sigue la cadena de siempre (Oficina, finales).
+        sinGiro={cuadro.filas.filter((f) => f.linea.reciboSinGiro && f.linea.sueldo == null).map((f) => f.nombre)}
         sinActividad={cuadro.liquidacion.sinActividad.length} />
       <Cotejo total={totales.total} quincena={quincena} delSheet={jornales.fila} />
       <Proyeccion quincena={quincena} enCurso={enCurso} siguientes={siguientes} personas={personas.length} />
@@ -70,7 +72,7 @@ export async function SolapaCaja({ quincenaPedida, hoy }: PropsDeSolapa) {
 
 function Totales({ quincena, totales, sinGiro, sinActividad }: {
   quincena: Quincena
-  totales: { porBanco: number; enEfectivo: number; total: number; sinTarifa: number }
+  totales: { porBanco: number; enEfectivo: number; total: number; sinTarifa: number; sinNeto: number }
   sinGiro: readonly string[]
   sinActividad: number
 }) {
@@ -85,6 +87,8 @@ function Totales({ quincena, totales, sinGiro, sinActividad }: {
       <Cifra testid="efectivo-viernes" rotulo="En efectivo (sobres)" valor={totales.enEfectivo} />
       <Cifra testid="total-quincena" rotulo="Banco + efectivo" valor={totales.total} />
       {totales.sinTarifa > 0 && <span style={aviso}>{`${totales.sinTarifa} sin retribución: no suman`}</span>}
+      {/* EL MISMO CONTEO QUE EL PIE DE LA QUINCENA: sin neto del blanco no hay total que sumar. */}
+      {totales.sinNeto > 0 && <span data-testid="caja-sin-neto" style={aviso}>{`${totales.sinNeto} sin neto: no suman`}</span>}
       {/* R7 · UN RECIBO SIN GIRO NO CUENTA COMO BANCO: hasta que el lote aparece en el extracto, sale en efectivo. */}
       {sinGiro.length > 0 && (
         <span data-testid="pagos-recibo-sin-giro" style={aviso}>

@@ -26,6 +26,22 @@ export function referenciaDeJornales(l: { referenciaJornales?: ReferenciaDeJorna
   }
 }
 
+/**
+ * LO QUE DIJO LA PLANILLA, ENTERO: cobra, banco y efectivo. Va en el `title` del total con blanco + negro
+ * (dueño, 14/09/2026): referencia, nunca manda. `null` sin espejo.
+ */
+export function tituloDeJornales(l: { referenciaJornales?: ReferenciaDeJornales | null }): string | null {
+  const r = l.referenciaJornales
+  if (!r) return null
+  const partes = [
+    r.horas == null ? null : `${horas(r.horas)} h`,
+    r.cobra == null ? null : `cobra ${pesos(r.cobra)}`,
+    r.porBanco == null ? null : `banco ${pesos(r.porBanco)}`,
+    r.enEfectivo == null ? null : `efectivo ${pesos(r.enEfectivo)}`,
+  ].filter(Boolean)
+  return partes.length === 0 ? null : `JORNALES (referencia): ${partes.join(' · ')}`
+}
+
 export interface EstadoDelPago {
   /** `true` sólo con una cuenta que se pudo hacer y no dio. Sin cobra no hay cierre que afirmar. */
   noCierra: boolean
