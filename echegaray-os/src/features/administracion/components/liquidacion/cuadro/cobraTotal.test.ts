@@ -21,7 +21,7 @@ const CELDAS = fuente('./CeldasBlancoNegro.tsx')
 // el orden de lectura, las dos bandas rotuladas y que la fila dibuje en el mismo orden que el encabezado.
 const ORDEN_JORNALES = [
   'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Hs', '$/h negro', 'Importe',
-  'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Efect. red.', 'Total quincena',
+  'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Efect. red.', 'Cobra total',
 ]
 
 test('EL ENCABEZADO ES EL DE JORNALES: Persona · días · Horas · BLANCO · NEGRO · adelantos · total efectivo · total quincena', () => {
@@ -44,6 +44,21 @@ test('EL ENCABEZADO ES EL DE JORNALES: Persona · días · Horas · BLANCO · NE
     .map((x) => fila.indexOf(x))
   assert.ok(orden.every((i) => i > 0), 'están todas las celdas')
   assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden pedido')
+})
+
+// «NECESITO Q EN ALGUNA COLUMNA DE LIQ HS ME DIGA CUANTO COBRA EN TOTAL» (dueño, 14/09/2026). MUTACIÓN: sacar el
+// rótulo o la columna fija a la derecha → rojo.
+test('«COBRA TOTAL» EN ENCABEZADO, PIE Y PANEL, Y FIJA A LA DERECHA', () => {
+  const PANEL = fuente('./PanelDeLaPersona.tsx')
+  assert.match(GRILLA, /clave: 'total', rotulo: 'Cobra total'/)
+  assert.match(GRILLA, /cifra\('Cobra total', totales\.cobra/)
+  assert.equal((PANEL.match(/rotulo="Cobra total"/g) ?? []).length, 2, 'las dos cadenas del panel')
+  assert.ok(!/Total quincena/.test(GRILLA + PANEL), 'no queda el rótulo viejo')
+  assert.match(GRILLA, /position: 'sticky', right: -CANAL_SCROLL/)
+  // LA MISMA COLUMNA FIJA EN EL ENCABEZADO, EN CADA FILA Y EN EL TOTAL.
+  assert.equal((GRILLA.match(/\.\.\.COLUMNA_COBRA/g) ?? []).length, 3)
+  const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
+  assert.match(fila, /style=\{\{ \.\.\.COLUMNA_COBRA[^}]*\}\}>\s*<CeldaTotal fila=\{fila\} \/>/)
 })
 
 test('LA FRASE NO QUEDA ESCRITA EN EL CUADRO, EL PIE, EL PANEL NI CAJA', () => {

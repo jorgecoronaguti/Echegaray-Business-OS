@@ -36,7 +36,7 @@ import {
 import { CeldaTarifa, rotuloCategoria } from './cuadro/CeldaTarifa'
 import { PanelDeLaPersona } from './cuadro/PanelDeLaPersona'
 import { horas as nHoras, pesos } from './formato'
-import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO } from './solapas/tabla'
+import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO, fondoDeColumnaFija } from './solapas/tabla'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import type { FilaDelEspejo, TotalesDelEspejo } from '../../services/espejoDeJornales'
 import { cierreDeTotales, type EntradaDeHistorial } from '../../services/cuadroDeJornales'
@@ -76,10 +76,25 @@ const PLATA = [
   { clave: 'adelanto', rotulo: 'Adelanto efectivo ✎', px: 120 },
   { clave: 'enEfectivo', rotulo: 'Total efectivo', px: 112 },
   { clave: 'efectivoRedondeado', rotulo: 'Efect. red. ✎', px: 108 },
-  { clave: 'total', rotulo: 'Total quincena', px: 128 },
+  { clave: 'total', rotulo: 'Cobra total', px: 128 },
 ] as const
 
 const GAP = 8
+
+/**
+ * «COBRA TOTAL» FIJA A LA DERECHA (dueño, 14/09/2026: «necesito q en alguna columna de liq hs me diga cuanto cobra
+ * en total»). Con el orden de JORNALES quedaba al final y había que desplazarse. Es la espejo de `COLUMNA_FIJA`:
+ * frena en el borde del recorte (`right: -CANAL_SCROLL`), fondo opaco y un filo izquierdo con el token de línea.
+ */
+export const COLUMNA_COBRA: React.CSSProperties = {
+  position: 'sticky', right: -CANAL_SCROLL, marginRight: -CANAL_SCROLL, paddingRight: CANAL_SCROLL, paddingLeft: GAP,
+  zIndex: 1, background: fondoDeColumnaFija(), borderLeft: `1px solid ${V.linea}`, fontWeight: 600,
+}
+/**
+ * POR DEBAJO DE 560 PX NO QUEDA FIJA: a 390 px Persona (200) y Cobra total (128) fijas dejaban ~20 px para lo del
+ * medio. La clase `!important` gana sobre el `style` en línea.
+ */
+export const CLASE_COBRA = 'max-[559px]:!static max-[559px]:!border-l-0'
 const DIA = 36
 
 // LOS DÍAS ADELANTE, COMO EN LA PLANILLA: Persona · días · plata.
@@ -194,7 +209,9 @@ function Encabezado({ columnas, dias, sellada }: { columnas: string; dias: reado
       <div style={{ ...COLUMNA_FIJA, gridColumn: 1, gridRow: 2, height: ALTO_LIQ.encabezado - 16, display: 'flex', alignItems: 'end' }}>Persona</div>
       {dias.map((f, i) => <div key={f} style={{ gridColumn: 2 + i, gridRow: 2, textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
       {PLATA.map((c, i) => (
-        <div key={c.clave} style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', color: c.clave === 'total' ? V.tinta : undefined }}>{c.rotulo}</div>
+        <div key={c.clave} data-testid={c.clave === 'total' ? 'encabezado-total-cobra' : undefined}
+          className={c.clave === 'total' ? CLASE_COBRA : undefined}
+          style={{ gridColumn: 2 + dias.length + i, gridRow: 2, textAlign: 'right', ...(c.clave === 'total' ? { ...COLUMNA_COBRA, color: V.tinta, alignSelf: 'stretch', display: 'flex', alignItems: 'end', justifyContent: 'flex-end' } : null) }}>{c.rotulo}</div>
       ))}
     </div>
   )
@@ -256,7 +273,9 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.enEfectivo}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={100} />
       </div>
-      <CeldaTotal fila={fila} />
+      <div className={CLASE_COBRA} style={{ ...COLUMNA_COBRA, alignSelf: 'stretch', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        <CeldaTotal fila={fila} />
+      </div>
     </div>
   )
 }
@@ -291,7 +310,8 @@ function Total({ columnas, dias, totales, redondeo }: {
       <div data-testid="espejo-total-efectivo" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: noCierra ? V.neg : V.tinta }}
         title={noCierra ? `No cierra por ${pesos(cierre?.diferencia ?? null)}` : undefined}>{pesos(totales.enEfectivo)}</div>
       <Leida valor={redondeo > 0 ? redondeo : null} testid="espejo-total-redondeo" />
-      <div data-testid="espejo-total-cobra" style={{ textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap' }}>{pesos(totales.cobra)}</div>
+      <div data-testid="espejo-total-cobra" className={CLASE_COBRA}
+        style={{ ...COLUMNA_COBRA, textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap', alignSelf: 'stretch', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>{pesos(totales.cobra)}</div>
     </div>
   )
 }
@@ -323,7 +343,7 @@ function PieDelEspejo({ totales, redondeo }: { totales: TotalesDelEspejo; redond
       {cifra('Adelanto efectivo', totales.adelanto, 'pie-adelantos')}
       {cifra('Total efectivo', totales.enEfectivo, 'pie-efectivo')}
       {cifra('Efectivo redondeado', redondeo > 0 ? redondeo : null, 'pie-redondeo')}
-      {cifra('Total quincena', totales.cobra, 'pie-total')}
+      {cifra('Cobra total', totales.cobra, 'pie-total')}
       {avisos.length > 0 && (
         <span style={{ fontSize: '11.5px', color: cierre?.cierra === false ? V.neg : V.apagado }}>{avisos.join(' · ')}</span>
       )}

@@ -125,10 +125,10 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
       <Renglon rotulo="Total efectivo" fuerte
-        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : 'total quincena − banco − adelantos'} alerta={cierre?.cierra === false}>
+        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : 'cobra total − banco − adelantos'} alerta={cierre?.cierra === false}>
         <Leida valor={l.enEfectivo} medio origen={l.origen.enEfectivo} />
       </Renglon>
-      <Renglon rotulo="Total quincena" nota="banco + negro" fuerte>
+      <Renglon rotulo="Cobra total" nota="banco + negro" fuerte>
         <Leida valor={l.cobra} medio origen={l.origen.cobra} apagada={est} />
       </Renglon>
     </section>
@@ -143,7 +143,7 @@ function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
   return (
     <section data-testid="panel-cadena">
       <Rotulo>Esta quincena</Rotulo>
-      <Renglon rotulo="Total" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
+      <Renglon rotulo="Cobra total" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
         <Leida valor={l.cobra} medio origen={l.origen.cobra} />
       </Renglon>
       <Renglon rotulo="− Adelanto">
