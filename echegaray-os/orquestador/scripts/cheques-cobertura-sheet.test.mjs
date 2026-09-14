@@ -6,6 +6,8 @@
 // señalando "ya contemplados" — publicando como faltante la plata que SÍ está cubierta, sin un solo
 // error visible. Es el mismo defecto que ya rompió Estructura!$15.
 
+import { COMPRAS, columnasDe } from '../lib/columnas-por-encabezado.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from '../lib/encabezados-referencia.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grilla, respaldos } from './cheques-cobertura-sheet.mjs'
@@ -27,7 +29,7 @@ const datos = () => ({
   tarjeta: [],
 })
 
-const construir = () => { const d = datos(); return grilla(d, respaldos(d)) }
+const construir = () => { const d = datos(); return grilla({ ...d, cols: COLS_ANTES }, respaldos(d)) }
 /** La fila (1-based) del bloque cuyo rótulo matchea. */
 const filaDe = (g, re) => g.filas.findIndex((f) => re.test(String(f?.[0] ?? ''))) + 1
 const celda = (g, fila, col) => String(g.filas[fila - 1]?.[col] ?? '')
@@ -86,7 +88,7 @@ test('el cuadro publica la fila que el agente salteó, en su propio renglón y c
 test('cada renglón del reparto suma una vez: los cuatro estados son una partición', () => {
   const d = datos()
   const r = respaldos(d)
-  const g = grilla(d, r)
+  const g = grilla({ ...d, cols: COLS_ANTES }, r)
   // DUPEC se infiere (una factura, mismo importe); Con-Sec no tiene con qué cruzarse; Alumetal sí
   // tiene número y está en Compras.
   assert.equal(g.ch.contemplados.length, 1)
@@ -106,4 +108,15 @@ test('el detalle de lo NO cruzable llega con fila, proveedor y monto — un tota
   assert.equal(hueco[0].fila, 118)
   assert.equal(hueco[0].proveedor, 'Con-Sec')
   assert.equal(hueco[0].monto, 1700000)
+})
+
+const COLS_ANTES = columnasDe(COMPRAS_2508, COMPRAS, 'Compras')
+
+test('los controles de Compras del pie siguen al rótulo antes y después de insertar «Obra»', async () => {
+  const { formulasControlCompras } = await import('./cheques-cobertura-sheet.mjs')
+  assert.equal(formulasControlCompras(COLS_ANTES).sinFecha, '=SUMIFS(Compras!$O$4:$O;Compras!$AC$4:$AC;"<>";Compras!$AD$4:$AD;"")')
+  const despues = formulasControlCompras(columnasDe(COMPRAS_CON_OBRA, COMPRAS, 'Compras'))
+  assert.equal(despues.sinFecha, '=SUMIFS(Compras!$P$4:$P;Compras!$AD$4:$AD;"<>";Compras!$AE$4:$AE;"")')
+  assert.equal(despues.sinImporte, '=SUMPRODUCT((Compras!$AD$4:$AD<>"")*(NOT(ISNUMBER(Compras!$P$4:$P))))')
+  assert.throws(() => formulasControlCompras({}), /resueltas por encabezado/)
 })

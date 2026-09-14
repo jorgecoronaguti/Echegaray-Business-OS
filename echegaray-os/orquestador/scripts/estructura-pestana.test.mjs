@@ -7,6 +7,9 @@
 //
 // Lo que se prueba: que el nombre caiga SOBRE la fila de totales que este generador acaba de armar,
 // y que esa fila tenga contenido. El oráculo es la grilla, no un número de fila escrito acá.
+import { COMPRAS, columnasDe } from '../lib/columnas-por-encabezado.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from '../lib/encabezados-referencia.mjs'
+const COLS_ANTES = columnasDe(COMPRAS_2508, COMPRAS, 'Compras')
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grilla, rangosDeEstructura, ROTULO_TOTAL, formatosPropios } from './estructura-pestana.mjs'
@@ -21,7 +24,7 @@ import { MIN_MESES } from '../lib/cash-flow-lineas.mjs'
 import { evaluarFormula, hojaDeGrilla } from '../lib/evaluar-formula-sheet.mjs'
 import { enBloqueIndivisible } from '../lib/celda-de-estructura.mjs'
 
-const g = grilla()
+const g = grilla([], COLS_ANTES)
 
 test('ESTRUCTURA_TOTAL_MESES cae sobre la fila de totales, con los doce meses adentro', () => {
   const problemas = verificarRangos(g.filas, rangosDeEstructura(g))
@@ -384,7 +387,7 @@ test('EL TITULAR: la cifra que la pestaña contesta está arriba y sale de la fi
 })
 
 test('EL DEFECTO DEL SHEET VIVO: los meses del SEGUNDO cuadro salían «1/1/2026» y su cuerpo sin formato', () => {
-  const gr = grilla(['MASS CONSULTORA', 'Movistar'])
+  const gr = grilla(['MASS CONSULTORA', 'Movistar'], COLS_ANTES)
   const reqs = formatosPropios(1, gr)
   assert.ok(gr.fCabRec && gr.fTotRec, 'con proveedores, la sección de recurrentes existe')
   // Los DOS encabezados de mes llevan el mismo formato, y el segundo se resuelve por la fila que la
@@ -400,7 +403,7 @@ test('EL DEFECTO DEL SHEET VIVO: los meses del SEGUNDO cuadro salían «1/1/2026
 })
 
 test('LOS CONTROLES SON «rótulo | número»: el titular lleva "$" y el cierre del bloque de ARCA cuenta filas', () => {
-  const gr = grilla(['Movistar'])
+  const gr = grilla(['Movistar'], COLS_ANTES)
   const reqs = formatosPropios(1, gr)
   assert.deepEqual(formatoDe(reqs, 4, 2), MONEDA_TOTAL, 'el titular es la cifra más fuerte: lleva la unidad')
   assert.deepEqual(formatoDe(reqs, 5, 2), MONEDA_CUERPO, 'la sub-línea no repite el "$"')
@@ -416,4 +419,15 @@ test('el ancho de la columna de concepto sale del estándar, no de un número ti
   const anchoA = reqs.find((r) => r.updateDimensionProperties?.range?.dimension === 'COLUMNS'
     && r.updateDimensionProperties.range.startIndex === 0)
   assert.equal(anchoA?.updateDimensionProperties?.properties?.pixelSize, ANCHO_COLUMNA.concepto)
+})
+
+test('las fórmulas de Estructura contra Compras siguen al rótulo antes y después de insertar «Obra»', async () => {
+  const { formulaTextoSubRubro } = await import('./estructura-pestana.mjs')
+  const despues = columnasDe(COMPRAS_CON_OBRA, COMPRAS, 'Compras')
+  assert.equal(formulaTextoSubRubro(COLS_ANTES), 'LOWER(Compras!$K$4:$K&" "&Compras!$L$4:$L&" "&Compras!$E$4:$E)')
+  assert.equal(formulaTextoSubRubro(despues), 'LOWER(Compras!$K$4:$K&" "&Compras!$M$4:$M&" "&Compras!$E$4:$E)')
+  const celda = (gr) => gr.filas.flat().find((c) => /^=SUMIF\(Compras!/.test(String(c)))
+  assert.equal(celda(grilla([], COLS_ANTES)), '=SUMIF(Compras!$AC$4:$AC;"Estructura";Compras!$O$4:$O)')
+  assert.equal(celda(grilla([], despues)), '=SUMIF(Compras!$AD$4:$AD;"Estructura";Compras!$P$4:$P)')
+  assert.throws(() => grilla([]), /resueltas por encabezado/)
 })

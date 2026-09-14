@@ -42,6 +42,7 @@
 // NO decide escribir. El plan se imprime, lo mira el dueño desde el árbol principal, y recién ahí se
 // escribe. En este archivo ya se destruyó trabajo suyo seis veces por rediseñar encima.
 
+import { COMPRAS, columnasDe, rangoAbierto } from './columnas-por-encabezado.mjs'
 import { COLS_FACTURA, reservaPara } from './proveedores-deuda-viva.mjs'
 
 /**
@@ -100,7 +101,8 @@ export function referenciasAFilaFija(formula = '') {
  * @param {string} colProv referencia abierta a la columna de proveedor, ej. `Compras!$E$4:$E`
  * @returns {string[]} los nombres cableados encontrados
  */
-export function proveedoresCableados(formula = '', colProv = 'Compras!$E$4:$E') {
+export function proveedoresCableados(formula = '', colProv) {
+  if (!colProv) throw new Error('proveedoresCableados: falta el rango de Proveedor — resolvelo con rangosDesdeEncabezado')
   const re = new RegExp(`${colProv.replace(/[$!]/g, (c) => '\\' + c)}\\s*;\\s*"([^"]+)"`, 'g')
   const out = []
   for (const m of String(formula).matchAll(re)) out.push(m[1])
@@ -114,7 +116,8 @@ export function proveedoresCableados(formula = '', colProv = 'Compras!$E$4:$E') 
  * @param {{colProv?:string}} [opts]
  * @returns {{ok:boolean, huecos:Array<{dir:string,proveedor:string}>, ciegas:Array<{dir:string,ref:string}>}}
  */
-export function defectosDeBloque(celdas = [], { colProv = 'Compras!$E$4:$E' } = {}) {
+export function defectosDeBloque(celdas = [], { colProv } = {}) {
+  if (!colProv) throw new Error('defectosDeBloque: falta el rango de Proveedor — resolvelo con rangosDesdeEncabezado')
   const huecos = []
   const ciegas = []
   for (const c of celdas ?? []) {
@@ -227,30 +230,14 @@ export function planDeEscritura({ encabezados = [], filaEncabezado, filaLimite, 
  * @returns {{rangos:Record<string,string>, avisos:string[]}}
  */
 export function rangosDesdeEncabezado(cabecera = []) {
-  const avisos = []
-  const cab = (cabecera ?? []).map((c) => String(c ?? '').trim().toLowerCase())
-  const porNombre = (nombre, respaldo) => {
-    const i = cab.indexOf(nombre.toLowerCase())
-    if (i < 0) { avisos.push(`no encontré "${nombre}" en el encabezado de Compras; uso ${respaldo}`); return respaldo }
-    return `Compras!$${letra(i)}$4:$${letra(i)}`
-  }
-  return {
-    avisos,
-    rangos: {
-      prov: 'Compras!$E$4:$E',
-      estado: 'Compras!$X$4:$X',
-      total: 'Compras!$O$4:$O',
-      comprobante: 'Compras!$H$4:$H',
-      obra: 'Compras!$J$4:$J',
-      categoria: 'Compras!$B$4:$B',
-      comercial: porNombre('¿Proveedor comercial? (OS)', 'Compras!$AJ$4:$AJ'),
-      pagado: porNombre('Monto Pagado', 'Compras!$T$4:$T'),
-      parcial1: porNombre('Monto Parcial 1', 'Compras!$U$4:$U'),
-      parcial2: porNombre('Monto Parcial 2', 'Compras!$W$4:$W'),
-      fecha: porNombre('Fecha de caja', 'Compras!$AD$4:$AD'),
-      tipoPago: porNombre('Tipo pago', 'Compras!$P$4:$P'),
-    },
-  }
+  // TODAS POR RÓTULO DESDE EL 14/09/2026, sin respaldo: con «Obra» insertada en L, la «letra
+  // histórica» de un respaldo es la columna de al lado. Un rótulo que falta aborta con su nombre.
+  const cols = columnasDe(cabecera, {
+    prov: COMPRAS.proveedor, estado: COMPRAS.estado, total: COMPRAS.total, comprobante: COMPRAS.comprobante,
+    obra: COMPRAS.cliente, categoria: COMPRAS.categoria, comercial: COMPRAS.comercial, pagado: COMPRAS.pagado,
+    parcial1: COMPRAS.parcial1, parcial2: COMPRAS.parcial2, fecha: COMPRAS.fechaCaja, tipoPago: COMPRAS.tipoPago,
+  }, 'Compras')
+  return { avisos: [], rangos: Object.fromEntries(Object.entries(cols).map(([k, c]) => [k, rangoAbierto('Compras', c)])) }
 }
 
 /**
