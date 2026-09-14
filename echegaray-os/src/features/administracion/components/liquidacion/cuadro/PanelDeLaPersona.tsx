@@ -94,12 +94,13 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
   return (
     <section data-testid="panel-cadena">
       <Rotulo>{`Blanco · ${s.estado === 'recibo' ? 'recibo' : 'estimado'}`}</Rotulo>
-      <Renglon rotulo="Horas del blanco" nota={origenDelBlanco(s)}>
+      {/* EL ORDEN DE LA FILA Y DE JORNALES: blanco · negro · adelantos · total efectivo · total quincena. */}
+      <Renglon rotulo="Hs recibo" nota={origenDelBlanco(s)}>
         <Leida valor={s.horasBlanco} unidad="horas" apagada={est} />
       </Renglon>
-      <Renglon rotulo="$/h de categoría"><Leida valor={s.valorHoraCategoria} apagada={est} /></Renglon>
+      <Renglon rotulo="$/h cat."><Leida valor={s.valorHoraCategoria} apagada={est} /></Renglon>
       <Renglon rotulo="Bruto"><Leida valor={s.bruto} apagada={est} /></Renglon>
-      <Renglon rotulo="Neto (banco)" nota={s.driveFileId ? undefined : (s.neto == null ? 'sin neto' : undefined)}>
+      <Renglon rotulo="Banco" nota={s.driveFileId ? undefined : (s.neto == null ? 'sin neto' : undefined)}>
         {s.driveFileId && (
           <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid="panel-recibo-pdf"
             style={{ fontSize: '11.5px', color: V.apagado, marginRight: 8 }}>recibo ↗</a>
@@ -109,26 +110,26 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
 
       <div style={{ height: 16 }} />
       <Rotulo>Negro</Rotulo>
-      <Renglon rotulo="Horas que el recibo no paga"
-        nota={s.reciboExcedeHoras ? 'el recibo paga más horas que las cargadas' : undefined} alerta={s.reciboExcedeHoras}>
+      <Renglon rotulo="Hs"
+        nota={s.reciboExcedeHoras ? 'el recibo paga más horas que las cargadas' : 'las que el recibo no paga'} alerta={s.reciboExcedeHoras}>
         <Leida valor={s.horasNegro} unidad="horas" />
       </Renglon>
-      <Renglon rotulo="× $/h negro"><Leida valor={s.valorHoraNegro} /></Renglon>
-      <Renglon rotulo="Negro"><Leida valor={s.negro} medio /></Renglon>
+      <Renglon rotulo="$/h negro"><Leida valor={s.valorHoraNegro} /></Renglon>
+      <Renglon rotulo="Importe"><Leida valor={s.negro} medio /></Renglon>
 
-      <Renglon rotulo="Total" nota="neto + negro" fuerte>
-        <Leida valor={l.cobra} medio origen={l.origen.cobra} apagada={est} />
-      </Renglon>
-      <Renglon rotulo="− Adelanto">
-        <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
-      </Renglon>
-      <Renglon rotulo="− Ya transferido">
+      <div style={{ height: 16 }} />
+      <Renglon rotulo="Adelanto banco / embargos">
         <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
-      <Renglon rotulo="− Neto (banco)"><Leida valor={l.porBanco} /></Renglon>
-      <Renglon rotulo="= Efectivo" fuerte
-        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : undefined} alerta={cierre?.cierra === false}>
+      <Renglon rotulo="Adelanto efectivo">
+        <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
+      <Renglon rotulo="Total efectivo" fuerte
+        nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : 'cobra total − banco − adelantos'} alerta={cierre?.cierra === false}>
         <Leida valor={l.enEfectivo} medio origen={l.origen.enEfectivo} />
+      </Renglon>
+      <Renglon rotulo="Cobra total" nota="banco + negro" fuerte>
+        <Leida valor={l.cobra} medio origen={l.origen.cobra} apagada={est} />
       </Renglon>
     </section>
   )
@@ -142,7 +143,7 @@ function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
   return (
     <section data-testid="panel-cadena">
       <Rotulo>Esta quincena</Rotulo>
-      <Renglon rotulo="Total" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
+      <Renglon rotulo="Cobra total" nota={esHora ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : 'neto mensual'}>
         <Leida valor={l.cobra} medio origen={l.origen.cobra} />
       </Renglon>
       <Renglon rotulo="− Adelanto">

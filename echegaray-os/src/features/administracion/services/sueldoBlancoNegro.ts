@@ -74,6 +74,11 @@ export interface EntradaDeSueldo extends EntradaDeBlanco {
   horasEquivalentes?: number | null
   /** `persona_tarifa` vigente: el $/h editable del cuadro. */
   valorHoraNegro: number | null
+  /**
+   * LO ESCRITO A MANO EN EL BLANCO (dueño, 14/09/2026: «dejame editable las h/recibo»). `null` o ausente =
+   * sin corrección. Precedencia: manual > recibo real > estimado. `neto` es `por_banco_manual`.
+   */
+  manual?: { horasRecibo?: number | null; valorHoraRecibo?: number | null; neto?: number | null }
 }
 
 export type EstadoDelBlanco = 'recibo' | 'estimado'
@@ -87,8 +92,15 @@ export interface SueldoBlancoNegro {
   pisoCategoria: number | null
   bruto: number | null
   neto: number | null
-  /** De dónde salió el neto: el recibo, `nomina_recibo_neto`, o la mediana (`proporcion`). */
-  origenNeto: 'recibo' | 'nomina' | 'estimado' | null
+  /** De dónde salió el neto: escrito a mano, el recibo, `nomina_recibo_neto`, o la mediana (`proporcion`). */
+  origenNeto: 'manual' | 'recibo' | 'nomina' | 'estimado' | null
+  /**
+   * SE EDITARON LAS HORAS O EL $/H DEL RECIBO Y NO EL NETO: el neto sigue siendo el del recibo (o el estimado)
+   * y la pantalla avisa en ámbar «neto no recalculado: editá el neto si cambió el recibo».
+   */
+  netoNoRecalculado: boolean
+  /** Qué celdas del blanco escribió alguien. */
+  editado: { horasRecibo: boolean; valorHoraRecibo: boolean; neto: boolean }
   /** Sólo con `origenNeto: 'estimado'`: el cociente usado y de quién. */
   proporcion: ProporcionDelNeto | null
   horasNegro: number | null
@@ -137,8 +149,22 @@ function blancoDe(e: EntradaDeSueldo): Blanco {
   return { ...base, neto, origenNeto: neto == null ? null : 'estimado', proporcion: neto == null ? null : p, driveFileId: null }
 }
 
+/** Lo escrito a mano encima del blanco calculado. El neto no se recalcula con las horas o el $/h editados. */
+function conManual(b: Blanco, m: EntradaDeSueldo['manual']): Blanco & Pick<SueldoBlancoNegro, 'netoNoRecalculado' | 'editado'> {
+  const h = num(m?.horasRecibo), v = num(m?.valorHoraRecibo), n = num(m?.neto)
+  const editado = { horasRecibo: h != null, valorHoraRecibo: v != null, neto: n != null }
+  if (!editado.horasRecibo && !editado.valorHoraRecibo && !editado.neto) return { ...b, netoNoRecalculado: false, editado }
+  const horasBlanco = h ?? b.horasBlanco
+  const valorHoraCategoria = v ?? b.valorHoraCategoria
+  const bruto = (h != null || v != null) && horasBlanco != null && valorHoraCategoria != null ? r2(horasBlanco * valorHoraCategoria) : b.bruto
+  if (n != null) {
+    return { ...b, horasBlanco, valorHoraCategoria, bruto, neto: n, origenNeto: 'manual', proporcion: null, netoNoRecalculado: false, editado }
+  }
+  return { ...b, horasBlanco, valorHoraCategoria, bruto, netoNoRecalculado: b.neto != null, editado }
+}
+
 export function sueldoBlancoNegro(e: EntradaDeSueldo): SueldoBlancoNegro {
-  const b = blancoDe(e)
+  const b = conManual(blancoDe(e), e.manual)
   const horas = num(e.horas)
   const faltan = horas == null || b.horasBlanco == null ? null : r2(horas - b.horasBlanco)
   const horasNegro = faltan == null ? null : Math.max(0, faltan)
@@ -183,7 +209,8 @@ export function negroDeLaFila(l: {
   manual?: { cobra?: boolean; porBanco?: boolean }
 }): number | null {
   if (l.netoMensual != null) return null
-  if (l.sueldo && !l.manual?.cobra && !l.manual?.porBanco) return l.sueldo.negro
+  // Un banco escrito a mano ya está DENTRO del modelo (es el neto manual): sólo un total a mano lo saca.
+  if (l.sueldo && !l.manual?.cobra) return l.sueldo.negro
   return l.cobra == null ? null : r2(l.cobra - l.porBanco)
 }
 

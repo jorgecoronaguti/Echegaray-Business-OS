@@ -47,11 +47,15 @@ test('ROSALES Q2-08: cobra = neto + negro, banco = neto, efectivo $58.456 y la f
   assert.deepEqual(l.referenciaJornales, { horas: 94, cobra: 552156, porBanco: 250000, enEfectivo: 121915.88, difiere: false })
 })
 
-test('LO MANUAL SIGUE GANANDO: un banco escrito a mano rehace el efectivo', () => {
+// CAMBIÓ EL 14/09/2026 (dueño: «dejame editable las h/recibo»): el banco escrito a mano ES el neto manual, y
+// el total se deriva de él (neto + negro). Antes el banco manual sólo movía el efectivo y el total quedaba
+// fijo en el del recibo.
+test('LO MANUAL SIGUE GANANDO: un banco escrito a mano es el neto, rehace el total y el efectivo', () => {
   const l = aplicarOverrides(base(94), { porBanco: 100000, adelanto: 30000 }, 'obreros', JORNALES, blancoQ2)
   assert.equal(l.porBanco, 100000)
   assert.equal(l.origen.porBanco, 'manual')
-  assert.equal(l.enEfectivo, 488696.12 - 30000 - 200000 - 100000)
+  assert.equal(l.cobra, 100000 + 258456)
+  assert.equal(l.enEfectivo, 100000 + 258456 - 30000 - 200000 - 100000)
   const h = aplicarOverrides(base(94), { horas: 60 }, 'obreros', null, blancoQ2)
   assert.equal(h.sueldo?.horasNegro, 10, 'las horas escritas a mano mueven el negro')
   assert.equal(h.cobra, 230240.12 + 58740)
