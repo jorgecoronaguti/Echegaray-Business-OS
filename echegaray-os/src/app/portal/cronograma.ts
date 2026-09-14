@@ -79,6 +79,28 @@ export function proximoPago(pagos: Pago[]): Pago | null {
   return candidatos[0] ?? null
 }
 
+/**
+ * NÚCLEO PURO: qué filas del cronograma se marcan como el próximo pago — TODAS las de esa fecha.
+ *
+ * ═══ EL DEFECTO (dueño, 14/09/2026) ═══
+ *
+ * «En el portal de clientes solo marca un solo pago como "pendiente" cuando puede haber más de uno en
+ * la misma fecha.» La pantalla de Pagos marcaba la fila con `p.id === proximoPago(...)?.id`, y
+ * `proximoPago` devuelve UNO: el desempate por `orden` elegía una de las tres cuotas del 18/09 de San
+ * Francisco y las otras dos se pintaban como si vinieran después. El «próximo» es un DÍA, no una fila.
+ *
+ * `proximoPago` sigue existiendo para lo que necesita una sola fecha —el mes que abre el calendario—,
+ * y su fila siempre está en este conjunto.
+ */
+export function proximosPagos(pagos: Pago[]): Set<string> {
+  const primero = proximoPago(pagos)
+  if (!primero) return new Set()
+  const dia = soloDia(primero.fechaPrevista!)
+  return new Set(pagos
+    .filter((p) => !p.fechaPago && p.tipo !== 'fondo_reparo' && p.fechaPrevista && soloDia(p.fechaPrevista) === dia)
+    .map((p) => p.id))
+}
+
 export type ResumenCobro = {
   /**
    * `null` cuando NO hay cronograma cargado. No es lo mismo que cero: cero afirma que no debe nada,

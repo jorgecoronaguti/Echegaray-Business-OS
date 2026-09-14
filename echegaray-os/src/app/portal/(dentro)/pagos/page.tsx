@@ -6,7 +6,7 @@ import { loQueSiPuedeVer } from '../../permisos'
 import { contratoDelConjunto, esquemaDelPortal, hoyEnObra } from '../datosObra'
 import { alcanceDelContrato, esSaldoDeObraTerminada, obrasQueFiltran, pagosEnPantalla } from '../../esquema'
 import {
-  corto, estadoDePago, marcaDeFila, proximoPago, resumenDeCobro, rotuloDelCronograma, pesos, diaMes,
+  corto, estadoDePago, marcaDeFila, proximoPago, proximosPagos, resumenDeCobro, rotuloDelCronograma, pesos, diaMes,
   ROTULO_ESTADO,
 } from '../../cronograma'
 import { IconoEstado, Vacio, Fila, TINTA } from '../../Piezas'
@@ -110,6 +110,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   const enOrden = porFecha(enCurso)
   const anteriores = porFecha(previos)
   const proximo = proximoPago(enOrden)
+  const proximos = proximosPagos(enOrden)
   // EL MES QUE ABRE: el del próximo pago DEL FILTRO, y si no queda ninguno, el de hoy. Abrir siempre
   // en el mes corriente le mostraría un calendario vacío a quien tiene todo por delante o todo
   // pagado; abrirlo en el próximo pago de OTRA obra es peor todavía — el mes que se abre no tiene
@@ -337,7 +338,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
           <div className="mt-5 lg:mt-0">
             {visibles.map((p) => {
               const estado = estadoDePago(p, hoy)
-              const esProximo = p.id === proximo?.id
+              const esProximo = proximos.has(p.id)
               // La fila se sigue resaltando si es el próximo pago; lo que NO puede es perder la
               // palabra «vencido» por serlo. Ver `marcaDeFila`.
               const marca = marcaDeFila(estado, esProximo)
