@@ -67,12 +67,12 @@ function costoDelCliente(
   // filas de sus obras y la diferencia se lee como un error.
   const tituloMat = !t.legible
     ? NO_PUEDO
-    : 'Suma a la fecha de lo comprado para sus trabajos en curso (Compras, columna K)'
+    : 'Suma a la fecha de lo comprado para todos sus trabajos, en curso y cerrados (Compras, columna K)'
       + (t.materialesSinObra != null ? `, incluidos ${plata(t.materialesSinObra)} sin obra asignada` : '')
       + '. Sin nómina, cargas, ARCA, financiero ni compras con fecha futura.'
   const tituloMo = !t.legible
     ? NO_PUEDO
-    : 'Suma de las horas propias valorizadas (valor hora vigente × horas × cargas) de sus trabajos en curso.'
+    : 'Suma de las horas propias valorizadas (valor hora vigente × horas × cargas) de todos sus trabajos, en curso y cerrados.'
       + (t.manoObraParcial ? ` QUEDAN ${Math.round(t.horasSinValorizar).toLocaleString('es-AR')} h AFUERA: falta el dato para valorizarlas.` : '')
   return {
     estado: t.legible ? 'a-la-fecha' : 'sin-leer', materiales: textoTotalMateriales(t), tituloMateriales: tituloMat,

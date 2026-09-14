@@ -100,15 +100,28 @@ function CifraDeCliente({ valor, faltan, testid, clase = '', titulo, queFalta }:
   )
 }
 
+/** Las obras cuyo costo suma el cliente: todas las que publica `obras_todas`; si esa lectura no trajo
+ *  nada para el cliente, las que están en curso (nunca menos de lo que se dibuja debajo). */
+function idsDeTodasSusObras(
+  obrasPorCliente: ReadonlyMap<string, readonly { obra_id: string }[]>, c: ClienteEnCartera,
+): string[] {
+  const ids = new Set((obrasPorCliente.get(c.cliente_id) ?? []).map((o) => o.obra_id))
+  for (const o of c.enCurso) ids.add(o.obra_id)
+  return [...ids]
+}
+
 export function TablaClientes({
   clientes, seleccionado, hrefDe, veEconomia, obrasNoLeidas, papeles, hrefOrdenes, limpiarHref, vacio,
-  costos, gastosSinObra,
+  costos, gastosSinObra, obrasPorCliente,
 }: {
   clientes: ClienteEnCartera[]
   /** `costo_obra` por trabajo. `null` = no se pudo leer: las celdas callan, no dicen «—». */
   costos: ReadonlyMap<string, CostoDeObra> | null
   /** `costo_sin_obra` por cliente. Entra al total del cliente, nunca repartido entre sus obras. */
   gastosSinObra: ReadonlyMap<string, GastoSinObra> | null
+  /** TODAS las obras de cada cliente, activas y cerradas (`obras_todas`): el costo a la fecha del
+   *  cliente suma lo gastado en todas, no sólo en las que siguen en curso (QA 14/09/2026). */
+  obrasPorCliente: ReadonlyMap<string, readonly { obra_id: string }[]>
   seleccionado?: string
   /** Abre la ficha del cliente (o el panel, si no tiene slug). */
   hrefDe: (clienteId: string) => string
@@ -178,7 +191,7 @@ export function TablaClientes({
                   <CifraDeCliente valor={contratado.total} faltan={contratado.faltan} testid="contratado" queFalta="sin precio en OBRAS ni en un papel"
                     titulo={c.enCurso.length ? 'Suma del contrato de sus trabajos en curso, neto.' : 'No tiene trabajos en curso: no hay contrato vigente que sumar.'} />
                   <CostoDelCliente costos={costos} sinObra={gastosSinObra} clienteId={c.cliente_id}
-                    obraIds={c.enCurso.map((o) => o.obra_id)} veEconomia={veEconomia} />
+                    obraIds={idsDeTodasSusObras(obrasPorCliente, c)} veEconomia={veEconomia} />
                   {/* EL COBRO DEL CLIENTE ES UNA CIFRA, NO UNA BARRA: la barra mide un trabajo contra
                       su contrato; la bolsa del cliente junta cobros de trabajos cerrados y otros sin
                       repartir, y una segunda barra al lado de las de abajo es lo que el dueño marcó. */}
@@ -192,7 +205,7 @@ export function TablaClientes({
                 <><span /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_TABLET} /></>
               )}
               <CostoDelClienteAngosto costos={costos} sinObra={gastosSinObra} clienteId={c.cliente_id}
-                obraIds={c.enCurso.map((o) => o.obra_id)} veEconomia={veEconomia} />
+                obraIds={idsDeTodasSusObras(obrasPorCliente, c)} veEconomia={veEconomia} />
             </Link>
             {/* EL ADICIONAL VA DEBAJO DE SU OBRA MAYOR (dueño, 11/09/2026). La relación la decide
                 `obra_canonica.obra_padre_id`; el orden y los dos niveles, `jerarquiaDeObras`, que es

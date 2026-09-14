@@ -270,6 +270,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 // MATERIALES Y MANO DE OBRA A LA FECHA (dueño, 13/09/2026), no lo presupuestado.
                 costos={costosPorObra}
                 gastosSinObra={gastosSinObra}
+                obrasPorCliente={todasLasObras}
                 seleccionado={seleccionado?.cliente_id}
                 // ═══ LA FILA ABRE LA FICHA, NO EL PANEL (26/08/2026) ═══
                 //

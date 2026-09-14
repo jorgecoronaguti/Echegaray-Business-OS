@@ -193,3 +193,15 @@ test('el jefe de obra no ve una sola cifra', () => {
   assert.match(src, /veEconomia \? 'Avance de cobro' : ''/)
   assert.match(leer('./CeldasDeCosto.tsx'), /if \(!veEconomia\) return <><span className=\{SOLO_ANCHO\} \/><span className=\{SOLO_ANCHO\} \/><\/>/)
 })
+
+test('el costo a la fecha del cliente suma TODAS sus obras, también las cerradas (QA 14/09/2026)', () => {
+  // ARCOR mostraba «—» y La Estrella sólo lo sin obra: la cartera pedía y sumaba únicamente las obras
+  // activas. Una obra cerrada gastó igual y la identidad «obras + sin obra = Compras» dejaba de cerrar.
+  const src = tabla()
+  assert.doesNotMatch(src, /obraIds=\{c\.enCurso/, 'el total del cliente no se arma sólo con lo que está en curso')
+  assert.match(src, /obraIds=\{idsDeTodasSusObras\(obrasPorCliente, c\)\}/)
+  assert.match(leer('../../../app/(main)/clientes/page.tsx'), /obrasPorCliente=\{todasLasObras\}/)
+  const sql = leer('../../../../supabase/migrations/20260914T0100_cartera_costo_de_todas_las_obras.sql')
+  assert.match(sql, /costo_de_obras_a_la_fecha\(array\(select o\.obra_id from obras o\)\)/)
+  assert.doesNotMatch(sql, /costo_de_obras_a_la_fecha\(array\(select o\.obra_id from obras o where/)
+})
