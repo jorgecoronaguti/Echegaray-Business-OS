@@ -129,7 +129,11 @@ function FilaPersona({ l }: { l: LineaExposicion }) {
           display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>{l.nombre}</span>,
       <Hueco key="c">{categoriaVisible(l.categoria, null)}</Hueco>,
-      miles(l.valorHora),
+      // «PAGA» ES EL $/H DEL RECIBO (coordinador, 14/09/2026); el vigente sólo si no hay recibo. El title dice cuál.
+      <span key="v" data-origen={l.origenValorHora ?? 'vigente'}
+        title={l.origenValorHora === 'recibo' ? `$/h de categoría del ${l.origenTarifa ?? 'recibo'}` : 'sin recibo: $/h vigente'}>
+        {miles(l.valorHora)}
+      </span>,
       <Hueco key="p" >{miles(l.piso?.valorHora ?? null)}</Hueco>,
       <span key="b" style={{ color: l.bajoElPiso ? V.neg : V.apagado }}>
         {l.brechaPct == null ? '—' : `${l.brechaPct > 0 ? '+' : '−'}${miles(Math.abs(l.brechaPct), 1)} %`}

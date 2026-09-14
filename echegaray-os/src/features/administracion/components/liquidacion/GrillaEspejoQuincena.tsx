@@ -33,7 +33,7 @@ import { CeldaDeDia, CeldaHorasPagas, Escribible, Leida } from './cuadro/CeldasD
 import {
   CeldaEfectivoDelSueldo, CeldaHoraCategoria, CeldaHorasBlanco, CeldaHorasNegro, CeldaImporteNegro, CeldaNeto, CeldaTotal,
 } from './cuadro/CeldasBlancoNegro'
-import { CeldaTarifa, rotuloCategoria, type MarcaDePiso } from './cuadro/CeldaTarifa'
+import { CeldaTarifa, rotuloCategoria } from './cuadro/CeldaTarifa'
 import { PanelDeLaPersona } from './cuadro/PanelDeLaPersona'
 import { horas as nHoras, pesos } from './formato'
 import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO } from './solapas/tabla'
@@ -44,7 +44,6 @@ import { sumaDelRedondeo } from '../../services/efectivoRedondeado'
 import type { DetalleLaboral } from '../../services/detalleLaboral'
 
 export { FiltrosDelEspejo } from './cuadro/FiltrosDelEspejo'
-export type { MarcaDePiso } from './cuadro/CeldaTarifa'
 
 const DIAS_CORTOS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'] as const
 
@@ -60,11 +59,11 @@ const corta = (iso: string | null): string =>
 const PLATA = [
   { clave: 'horas', rotulo: 'Horas', px: 56 },
   { clave: 'hsBlanco', rotulo: 'Hs', px: 48, banda: 'blanco' },
-  { clave: 'horaCategoria', rotulo: '$/h cat.', px: 76, banda: 'blanco' },
+  { clave: 'horaCategoria', rotulo: '$/h cat.', px: 96, banda: 'blanco' },
   { clave: 'neto', rotulo: 'Neto (banco)', px: 132, banda: 'blanco' },
   { clave: 'hsNegro', rotulo: 'Hs', px: 48, banda: 'negro' },
-  // 140: el botón del $/h con el «+8%» y la marca del básico al lado.
-  { clave: 'horaNegro', rotulo: '$/h negro ✎', px: 140, banda: 'negro' },
+  // 120: el botón del $/h con el «+8%» al lado. La marca del básico se mudó al $/h de categoría.
+  { clave: 'horaNegro', rotulo: '$/h negro ✎', px: 120, banda: 'negro' },
   { clave: 'negro', rotulo: 'Importe', px: 104, banda: 'negro' },
   { clave: 'total', rotulo: 'Total', px: 124 },
   { clave: 'adelanto', rotulo: '− Adelanto ✎', px: 100 },
@@ -104,7 +103,7 @@ function pctDeLaQuincena(historial: readonly EntradaDeHistorial[] | undefined, d
 }
 
 export function GrillaEspejoQuincena({
-  dias, secciones, totales, quincena, camposEditables, sello, bajoElPiso = {},
+  dias, secciones, totales, quincena, camposEditables, sello,
   historiales = {}, historialCompleto = true, detalles = {},
 }: {
   dias: readonly string[]
@@ -112,7 +111,6 @@ export function GrillaEspejoQuincena({
   totales: TotalesDelEspejo
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
-  bajoElPiso?: Record<string, MarcaDePiso>
   historiales?: Record<string, EntradaDeHistorial[]>
   historialCompleto?: boolean
   /** El detalle laboral de cada persona (`leerDetallesLaborales`). Viaja armado: el panel no lee. */
@@ -137,7 +135,7 @@ export function GrillaEspejoQuincena({
               <RotuloDeGrupo texto={sec.rotulo} primero={i === 0} />
               {sec.filas.map((fila) => (
                 <Fila key={fila.personaId} fila={fila} columnas={columnas} quincena={quincena}
-                  camposEditables={camposEditables} piso={bajoElPiso[fila.personaId]}
+                  camposEditables={camposEditables}
                   pct={pctDeLaQuincena(historiales[fila.personaId], quincena.desde)}
                   abrir={() => setAbierta(fila.personaId)} />
               ))}
@@ -187,12 +185,11 @@ function Encabezado({ columnas, dias }: { columnas: string; dias: readonly strin
   )
 }
 
-function Fila({ fila, columnas, quincena, camposEditables, piso, pct, abrir }: {
+function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
   fila: FilaDelEspejo
   columnas: string
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
-  piso?: MarcaDePiso
   pct: number | null
   abrir: () => void
 }) {
@@ -214,7 +211,7 @@ function Fila({ fila, columnas, quincena, camposEditables, piso, pct, abrir }: {
       <CeldaHoraCategoria fila={fila} />
       <CeldaNeto fila={fila} />
       <CeldaHorasNegro fila={fila} />
-      <CeldaTarifa fila={fila} quincena={quincena} piso={piso} pct={pct} />
+      <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
       <CeldaImporteNegro fila={fila} />
       <CeldaTotal fila={fila} />
       <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={92} />

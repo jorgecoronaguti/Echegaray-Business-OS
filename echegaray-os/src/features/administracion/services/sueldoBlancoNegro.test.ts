@@ -15,7 +15,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  entradaDeBlanco, periodoOrdenable, sueldoBlancoNegro, type ReciboDeSueldo,
+  entradaDeBlanco, periodoOrdenable, sueldoBlancoNegro, type ProporcionDelNeto, type ReciboDeSueldo,
 } from './sueldoBlancoNegro.ts'
 
 /** Rosales Diego José, recibo del estudio Q2-08/2026: 50 h × $6.348, bruto $317.400, neto $230.240,12. */
@@ -24,10 +24,11 @@ const RECIBO_Q2_08: ReciboDeSueldo = {
   valorHora: 6348, horasBlanco: 50, bruto: 317400, neto: 230240.12, driveFileId: 'pdf-q2-08',
 }
 
+const PROPORCION: ProporcionDelNeto = { cociente: 0.73, origen: 'persona', recibos: 6 }
+
 test('ROSALES Q2-08, CON RECIBO: negro 44 h × $5.874, total $488.696,12, efectivo $58.456', () => {
   const s = sueldoBlancoNegro({
-    horas: 94, valorHoraNegro: 5874, recibo: RECIBO_Q2_08, netoDeNomina: null,
-    pisoCategoria: 6348, ultimoRecibo: null,
+    horas: 94, valorHoraNegro: 5874, recibo: RECIBO_Q2_08, netoDeNomina: null, pisoCategoria: 6348, proporcion: null,
   })
   assert.equal(s.estado, 'recibo')
   assert.equal(s.horasBlanco, 50)
@@ -44,28 +45,26 @@ test('ROSALES Q2-08, CON RECIBO: negro 44 h × $5.874, total $488.696,12, efecti
   assert.equal(Math.round((s.total! - s.neto! - 0 - 200000) * 100) / 100, 58456)
 })
 
-test('ROSALES Q1-09, SIN RECIBO: mitad de 62 h × $6.348, neto con la proporción del último recibo', () => {
+test('ROSALES Q1-09, SIN RECIBO: mitad de 62 h × $6.348, neto con el cociente de la mediana', () => {
   const s = sueldoBlancoNegro({
-    horas: 62, valorHoraNegro: 5874, recibo: null, netoDeNomina: null,
-    pisoCategoria: 6348, ultimoRecibo: RECIBO_Q2_08,
+    horas: 62, valorHoraNegro: 5874, recibo: null, netoDeNomina: null, pisoCategoria: 6348, proporcion: PROPORCION,
   })
   assert.equal(s.estado, 'estimado', 'MUTACIÓN 4: un blanco sin recibo se marca estimado')
   assert.equal(s.horasBlanco, 31, 'MUTACIÓN 3: sin recibo el blanco lleva la MITAD de las horas')
   assert.equal(s.valorHoraCategoria, 6348)
   assert.equal(s.bruto, 196788)
-  // 196.788 × 230.240,12 / 317.400 = 142.748,8744 → centavos.
-  assert.equal(s.neto, 142748.87)
+  assert.equal(s.neto, 143655.24, '196.788 × 0,73')
   assert.equal(s.origenNeto, 'estimado')
+  assert.deepEqual(s.proporcion, PROPORCION)
   assert.equal(s.horasNegro, 31)
   assert.equal(s.negro, 182094)
-  assert.equal(s.total, 324842.87)
+  assert.equal(s.total, 325749.24)
   assert.equal(s.driveFileId, null)
 })
 
-test('SIN NINGÚN RECIBO PREVIO: el neto queda null y el total también — no se inventa', () => {
+test('SIN COCIENTE (ni suyo ni del plantel): el neto queda null y el total también — no se inventa', () => {
   const s = sueldoBlancoNegro({
-    horas: 62, valorHoraNegro: 5874, recibo: null, netoDeNomina: null,
-    pisoCategoria: 6348, ultimoRecibo: null,
+    horas: 62, valorHoraNegro: 5874, recibo: null, netoDeNomina: null, pisoCategoria: 6348, proporcion: null,
   })
   assert.equal(s.estado, 'estimado')
   assert.equal(s.bruto, 196788, 'el bruto estimado sí se puede decir')
@@ -76,8 +75,7 @@ test('SIN NINGÚN RECIBO PREVIO: el neto queda null y el total también — no s
 
 test('EL RECIBO PAGA MÁS HORAS QUE LAS CARGADAS: negro 0 y la marca', () => {
   const s = sueldoBlancoNegro({
-    horas: 40, valorHoraNegro: 5874, recibo: RECIBO_Q2_08, netoDeNomina: null,
-    pisoCategoria: 6348, ultimoRecibo: null,
+    horas: 40, valorHoraNegro: 5874, recibo: RECIBO_Q2_08, netoDeNomina: null, pisoCategoria: 6348, proporcion: null,
   })
   assert.equal(s.horasNegro, 0)
   assert.equal(s.negro, 0)
@@ -85,49 +83,44 @@ test('EL RECIBO PAGA MÁS HORAS QUE LAS CARGADAS: negro 0 y la marca', () => {
   assert.equal(s.total, 230240.12)
 })
 
-test('SIN LA TABLA NUEVA: el neto del recibo de nómina es real, las horas del blanco se estiman', () => {
+test('SIN LÍNEA DE RECIBO: el neto de nómina es real, las horas del blanco se estiman', () => {
   const s = sueldoBlancoNegro({
-    horas: 94, valorHoraNegro: 5874, recibo: null, netoDeNomina: 230240.12,
-    pisoCategoria: 6348, ultimoRecibo: null,
+    horas: 94, valorHoraNegro: 5874, recibo: null, netoDeNomina: 230240.12, pisoCategoria: 6348, proporcion: PROPORCION,
   })
   assert.equal(s.estado, 'estimado')
   assert.equal(s.horasBlanco, 47)
   assert.equal(s.neto, 230240.12)
   assert.equal(s.origenNeto, 'nomina')
+  assert.equal(s.proporcion, null, 'el neto no salió de la mediana')
   assert.equal(s.negro, 47 * 5874)
   assert.equal(s.total, 230240.12 + 276078)
 })
 
 test('SIN $/H NEGRO O SIN HORAS: sin negro y sin total, nunca cero', () => {
   const sinTarifa = sueldoBlancoNegro({
-    horas: 62, valorHoraNegro: null, recibo: RECIBO_Q2_08, netoDeNomina: null, pisoCategoria: 6348, ultimoRecibo: null,
+    horas: 62, valorHoraNegro: null, recibo: RECIBO_Q2_08, netoDeNomina: null, pisoCategoria: 6348, proporcion: null,
   })
   assert.equal(sinTarifa.negro, null)
   assert.equal(sinTarifa.total, null)
   const sinHoras = sueldoBlancoNegro({
-    horas: null, valorHoraNegro: 5874, recibo: null, netoDeNomina: null, pisoCategoria: 6348, ultimoRecibo: RECIBO_Q2_08,
+    horas: null, valorHoraNegro: 5874, recibo: null, netoDeNomina: null, pisoCategoria: 6348, proporcion: PROPORCION,
   })
   assert.equal(sinHoras.horasBlanco, null)
   assert.equal(sinHoras.total, null)
   const sinPiso = sueldoBlancoNegro({
-    horas: 62, valorHoraNegro: 5874, recibo: null, netoDeNomina: null, pisoCategoria: null, ultimoRecibo: RECIBO_Q2_08,
+    horas: 62, valorHoraNegro: 5874, recibo: null, netoDeNomina: null, pisoCategoria: null, proporcion: PROPORCION,
   })
   assert.equal(sinPiso.bruto, null, 'sin la escala de su categoría no hay bruto que estimar')
   assert.equal(sinPiso.neto, null)
 })
 
-test('LA ENTRADA: el recibo del período por persona o CUIL, y el ÚLTIMO recibo real anterior con bruto', () => {
-  const q1 = { ...RECIBO_Q2_08, periodo: 'Q1-08/2026', bruto: 340000, neto: 249857.28 }
+test('LA ENTRADA: el recibo del período por persona o CUIL', () => {
   const ajeno = { ...RECIBO_Q2_08, personaId: 'otro', cuil: '1', periodo: 'Q2-12/2025' }
-  const recibos = [q1, RECIBO_Q2_08, ajeno]
+  const recibos = [{ ...RECIBO_Q2_08, periodo: 'Q1-08/2026' }, RECIBO_Q2_08, ajeno]
   const e = entradaDeBlanco({ personaId: 'rosales', cuil: '20358508783', periodo: 'Q1-09/2026', recibos, pisoCategoria: 6348, netoDeNomina: null })
   assert.equal(e.recibo, null, 'no hay recibo de Q1-09')
-  assert.equal(e.ultimoRecibo?.periodo, 'Q2-08/2026', 'el último es Q2-08, no Q1-08 ni el de otra persona')
   const conCuil = entradaDeBlanco({ personaId: 'x', cuil: '20358508783', periodo: 'Q2-08/2026', recibos, pisoCategoria: 6348, netoDeNomina: null })
   assert.equal(conCuil.recibo?.neto, 230240.12, 'empareja por CUIL cuando la persona_id no está')
-  assert.equal(conCuil.ultimoRecibo?.periodo, 'Q1-08/2026', 'el último ANTERIOR al período mirado')
-  // Un recibo sin bruto no sirve para la proporción.
-  const sinBruto = entradaDeBlanco({ personaId: 'rosales', cuil: null, periodo: 'Q1-09/2026', recibos: [{ ...RECIBO_Q2_08, bruto: null }], pisoCategoria: 6348, netoDeNomina: null })
-  assert.equal(sinBruto.ultimoRecibo, null)
   assert.ok(periodoOrdenable('Q2-12/2025') < periodoOrdenable('Q1-01/2026'))
+  assert.equal(periodoOrdenable('FINAL-08/2026'), '', 'una final no es un período quincenal')
 })

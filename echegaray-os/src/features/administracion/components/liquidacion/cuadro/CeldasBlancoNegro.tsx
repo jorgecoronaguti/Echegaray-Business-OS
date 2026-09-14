@@ -18,9 +18,9 @@ import type { CSSProperties, ReactNode } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
-import { estadoDelPago, tituloDeJornales } from './estadoDelPago'
+import { efectivoSuperado, estadoDelPago, tituloDeJornales } from './estadoDelPago'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
-import type { SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
+import { marcaDeCategoria, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
 
 const DERECHA: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden' }
 const ESTIMADO: CSSProperties = { color: V.apagado, fontStyle: 'italic' }
@@ -36,8 +36,8 @@ export const Est = () => (
 export function origenDelBlanco(s: SueldoBlancoNegro): string {
   if (s.estado === 'recibo') return 'recibo del estudio'
   if (s.origenNeto === 'nomina') return 'neto del recibo de nómina; horas del blanco estimadas (mitad)'
-  if (s.origenNeto === 'estimado') return 'estimado: mitad de las horas × $/h de su categoría; neto con la proporción de su último recibo'
-  return 'estimado: mitad de las horas × $/h de su categoría; sin recibo previo no hay neto'
+  if (s.origenNeto === 'estimado' && s.proporcion) return `mitad de las horas × $/h de su categoría; neto ${tituloDelNetoEstimado(s.proporcion)}`
+  return 'estimado: mitad de las horas × $/h de su categoría; sin recibos para estimar el neto'
 }
 
 function Celda({ s, valor, testid, titulo, children }: {
@@ -57,8 +57,20 @@ export function CeldaHorasBlanco({ fila }: { fila: FilaDelEspejo }) {
   return <Celda s={s} valor={nHoras(s?.horasBlanco ?? null)} testid={`hs-blanco-${fila.personaId}`} />
 }
 
+/**
+ * $/H DE CATEGORÍA. Ámbar sólo si el $/h del RECIBO real está bajo el piso vigente de su categoría
+ * (`marcaDeCategoria`, la misma comparación de Convenios). El estimado usa el piso: nunca marca.
+ */
 export function CeldaHoraCategoria({ fila }: { fila: FilaDelEspejo }) {
   const s = fila.linea.sueldo
+  const bajo = marcaDeCategoria(s)
+  if (bajo) {
+    return (
+      <div data-testid={`hora-categoria-${fila.personaId}`} data-bajo-el-piso="1"
+        title={`el recibo paga ${pesos(bajo.valorHora)}/h, el básico es ${pesos(bajo.piso)}/h`}
+        style={{ ...DERECHA, color: V.warn, fontWeight: 600 }}>{pesos(bajo.valorHora)}</div>
+    )
+  }
   return <Celda s={s} valor={pesos(s?.valorHoraCategoria ?? null)} testid={`hora-categoria-${fila.personaId}`} />
 }
 
@@ -128,13 +140,19 @@ export function CeldaTotal({ fila }: { fila: FilaDelEspejo }) {
   )
 }
 
-/** EFECTIVO = total − banco − adelanto − ya transferido. Rojo con el porqué sólo si la fila no cierra. */
+/**
+ * EFECTIVO = total − banco − adelanto − ya transferido. Rojo con el porqué si la fila no cierra; ámbar si
+ * da negativo (el adelanto y lo transferido superan lo que le corresponde). Nunca se esconde.
+ */
 export function CeldaEfectivoDelSueldo({ fila }: { fila: FilaDelEspejo }) {
   const l = fila.linea
   const e = estadoDelPago(l)
+  const superado = efectivoSuperado(l)
+  const color = e.noCierra ? V.neg : (superado ? V.warn : V.tinta)
   return (
-    <div data-testid={`efectivo-${fila.personaId}`} title={e.titulo}
-      style={{ ...DERECHA, color: e.noCierra ? V.neg : V.tinta }}>
+    <div data-testid={`efectivo-${fila.personaId}`} data-superado={superado ? '1' : undefined}
+      title={e.noCierra ? e.titulo : (superado ?? e.titulo)}
+      style={{ ...DERECHA, color, fontWeight: superado ? 600 : undefined }}>
       {pesos(l.enEfectivo)}<MarcaDeOrigen origen={l.origen.enEfectivo} compacta />
     </div>
   )

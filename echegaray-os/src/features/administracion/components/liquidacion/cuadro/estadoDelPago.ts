@@ -42,6 +42,17 @@ export function tituloDeJornales(l: { referenciaJornales?: ReferenciaDeJornales 
   return partes.length === 0 ? null : `JORNALES (referencia): ${partes.join(' · ')}`
 }
 
+/**
+ * EL EFECTIVO QUEDA NEGATIVO: el adelanto y lo transferido superan lo que le corresponde en efectivo.
+ * No se esconde ni se pone en cero (coordinador, 14/09/2026): se marca en ámbar y el pie lo suma igual.
+ * `null` = no hay nada que marcar.
+ */
+export function efectivoSuperado(l: { enEfectivo: number | null }): string | null {
+  return l.enEfectivo != null && l.enEfectivo < 0
+    ? 'el adelanto y lo transferido superan lo que le corresponde en efectivo'
+    : null
+}
+
 export interface EstadoDelPago {
   /** `true` sólo con una cuenta que se pudo hacer y no dio. Sin cobra no hay cierre que afirmar. */
   noCierra: boolean

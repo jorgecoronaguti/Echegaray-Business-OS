@@ -215,9 +215,12 @@ test('LA MARCA «BAJO EL BÁSICO UOCRA» SALE DE LA EXPOSICIÓN AL CONVENIO, NO 
   assert.match(fuente('../../../services/liquidacionQuincenaService.ts'), /getExposicionDeLaQuincena\(supabase, q\)/)
   assert.match(VISTA, /const exposicion = liquidacion\.exposicion/)
   assert.ok(!/getExposicionDeLaQuincena\(/.test(sinComentarios(VISTA)), 'la vista no vuelve a leer la exposición')
-  assert.match(VISTA, /if \(!l\.bajoElPiso \|\| l\.piso == null/)
   assert.ok(!/basico_hora|uocra_escala|convenio_escala/.test(VISTA), 'la vista no lee escalas por su cuenta')
-  assert.match(TARIFA, /data-testid=\{`espejo-bajo-piso-\$\{fila\.personaId\}`\}/)
+  // CAMBIÓ EL 14/09/2026: la marca comparaba el $/h NEGRO con el básico. Sale de la celda del $/h negro
+  // y va en la del $/h de categoría, con `marcaDeCategoria` (recibo real contra el piso).
+  assert.ok(!/bajoElPiso|espejo-bajo-piso|MarcaDePiso/.test(sinComentarios(VISTA) + sinComentarios(TARIFA) + sinComentarios(GRILLA)),
+    'el $/h negro no se compara contra el básico')
+  assert.match(CELDAS_BN, /const bajo = marcaDeCategoria\(s\)/)
 })
 
 test('EL SELLO DICE «SIN LEER» CUANDO NO HAY ESPEJO: un control que no mira no dice que está bien', () => {

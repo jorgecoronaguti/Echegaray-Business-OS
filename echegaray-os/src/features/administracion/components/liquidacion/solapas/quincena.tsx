@@ -9,7 +9,7 @@ import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDe
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
 import { RECORTES, normalizar } from '../../../services/recorteDeLiquidacion'
-import { FiltrosDelEspejo, GrillaEspejoQuincena, type MarcaDePiso, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
+import { FiltrosDelEspejo, GrillaEspejoQuincena, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
 import { MONO } from './tabla'
 import type { PropsDeSolapa } from './index'
 
@@ -63,14 +63,9 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
   // LO LABORAL DEL PANEL (costo cargado, legajo, HH por mes, esperadas/estado) sale del cuadro ya leído
   // más las alícuotas: es lo que tenía la grilla de «Horas», que se retiró de «Más» el 14/09/2026.
   const { detalles, errores: erroresDelDetalle } = await leerDetallesLaborales(supabase, cuadro, quincena)
-  const bajoElPiso: Record<string, MarcaDePiso> = {}
-  for (const l of exposicion.lineas) {
-    if (!l.bajoElPiso || l.piso == null || l.brechaPct == null || l.diferenciaHora == null) continue
-    bajoElPiso[l.personaId] = {
-      brechaPct: l.brechaPct, diferenciaHora: l.diferenciaHora,
-      piso: l.piso.valorHora, desde: l.piso.desde, categoria: l.categoria ?? '',
-    }
-  }
+  // LA MARCA «BAJO EL BÁSICO» YA NO SE ARMA ACÁ (coordinador, 14/09/2026): comparaba el $/h NEGRO con el
+  // básico, y el blanco es lo que se paga a categoría. Ahora la dibuja la celda del $/h de categoría con
+  // `marcaDeCategoria` (recibo real contra el piso, la misma `compararConElPiso` de Convenios).
   // EL HISTORIAL DEL VALOR HORA SALE DE LA MISMA LECTURA QUE LA MARCA DEL BÁSICO (dueño, 14/09/2026:
   // «no tengo referencias de valores hs históricos»). Una lectura propia de `persona_tarifa` daría
   // un historial que no cierra con el «−N%» de la celda de al lado.
@@ -138,7 +133,6 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
         totales={totales}
         quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
         camposEditables={liquidacion.camposEditables}
-        bajoElPiso={bajoElPiso}
         historiales={historiales}
         historialCompleto={exposicion.errores.length === 0}
         detalles={detalles}

@@ -19,15 +19,6 @@ import { formaEditable } from '../../../services/cuadroDeJornales'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { registrarTarifaDesdeLaQuincena } from '../../../services/tarifaDeLaQuincenaActions'
 
-/** Quien cobra por debajo del básico de su convenio. Lo arma `exponerAlPiso`; la celda sólo lo dibuja. */
-export interface MarcaDePiso {
-  brechaPct: number
-  diferenciaHora: number
-  piso: number
-  desde: string
-  categoria: string
-}
-
 /** `oficial_especializado` → «Oficial especializado». El legajo guarda la clave; el texto es para leer. */
 export const rotuloCategoria = (c: string): string => {
   const t = c.replace(/_/g, ' ').trim()
@@ -42,10 +33,9 @@ function importeTecleado(texto: string): number | null {
 
 const conSigno = (p: number): string => `${p > 0 ? '+' : ''}${p.toLocaleString('es-AR')}%`
 
-export function CeldaTarifa({ fila, quincena, piso, pct }: {
+export function CeldaTarifa({ fila, quincena, pct }: {
   fila: FilaDelEspejo
   quincena: { desde: string; hasta: string }
-  piso?: MarcaDePiso
   /** % contra el valor anterior, sólo cuando el valor vigente empieza en esta quincena. */
   pct: number | null
 }) {
@@ -72,7 +62,6 @@ export function CeldaTarifa({ fila, quincena, piso, pct }: {
 
   const titulo = error
     ?? `${forma === 'mensual' ? 'Neto mensual' : '$/h'} · ${l.origenTarifa ?? 'sin origen'}`
-    + (piso ? ` · bajo el básico UOCRA: ${rotuloCategoria(piso.categoria)} ${pesos(piso.piso)}/h desde ${piso.desde}` : '')
   return (
     <div title={titulo} style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
       {texto != null ? (
@@ -106,12 +95,6 @@ export function CeldaTarifa({ fila, quincena, piso, pct }: {
       {pct != null && pct !== 0 && texto == null && (
         <span data-testid={`tarifa-pct-${fila.personaId}`} style={{ fontSize: '10.5px', color: pct < 0 ? V.neg : V.apagado }}>
           {conSigno(pct)}
-        </span>
-      )}
-      {piso && texto == null && (
-        // BAJO EL BÁSICO: rojo sólo para problemas (skill de diseño §2); el detalle va en el `title`.
-        <span data-testid={`espejo-bajo-piso-${fila.personaId}`} style={{ color: V.neg, fontSize: '10.5px', fontWeight: 600 }}>
-          {`${Math.round(piso.brechaPct)}% UOCRA`}
         </span>
       )}
     </div>
