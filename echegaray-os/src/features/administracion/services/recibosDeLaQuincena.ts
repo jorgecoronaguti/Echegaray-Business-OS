@@ -93,13 +93,15 @@ export function recibosFueraDelCuadro(
   docs: readonly { persona_id: string | null; nombre: string | null; drive_file_id: string | null }[],
   q: Quincena, conLinea: ReadonlySet<string>,
 ): ReciboFueraDelCuadro[] {
-  const nombres = new Map(docs.map((d) => [d.persona_id, d.nombre]))
+  // POR ARCHIVO, NO POR PERSONA: 219 de los 301 recibos de 2026 se llaman «Recibo 2026-05 Q2.pdf», sin
+  // nombre, y uno viejo de la misma persona pisaba al de la quincena (captura del 14/09/2026).
+  const nombres = new Map(docs.map((d) => [d.drive_file_id, d.nombre]))
   return [...archivosDeLaQuincena(docs, q)]
     .filter(([personaId]) => !conLinea.has(personaId))
     .map(([personaId, driveFileId]) => ({
       personaId,
       driveFileId,
-      nombre: (nombres.get(personaId) ?? '').split('·').slice(1).join('·').replace(/\.pdf$/i, '').trim() || 'sin nombre en el archivo',
+      nombre: (nombres.get(driveFileId) ?? '').split('·').slice(1).join('·').replace(/\.pdf$/i, '').trim() || 'sin nombre en el archivo',
     }))
 }
 

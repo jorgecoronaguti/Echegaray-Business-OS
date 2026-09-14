@@ -96,6 +96,11 @@ test('Q2-08 en la pantalla: 19 recibos con enlace, aunque 5 sean de personas fue
   assert.equal(fuera.length, 5)
   assert.deepEqual(fuera[0], { personaId: 'baja0', nombre: 'BAJA NUMERO 0', driveFileId: 'drive-baja0' })
   assert.equal(recibosFueraDelCuadro(docs, quincenaDe('2026-09-01'), new Set(conLinea)).length, 0)
+  // EL NOMBRE SALE DEL MISMO ARCHIVO QUE SE ABRE (captura del 14/09/2026: dos filas decían «sin nombre
+  // en el archivo»). 219 de los 301 recibos de 2026 se llaman «Recibo 2026-05 Q2.pdf», sin persona:
+  // si el nombre se buscaba entre TODOS los recibos de la persona, uno viejo pisaba al de la quincena.
+  const conViejo = [...docs, doc('baja0', 'Recibo 2026-05 Q2.pdf', 'mayo-baja0')]
+  assert.equal(recibosFueraDelCuadro(conViejo, q, new Set(conLinea))[0].nombre, 'BAJA NUMERO 0')
   assert.match(fuente('../components/liquidacion/solapas/recibos.tsx'), /recibosFueraDelCuadro\(/)
 })
 
