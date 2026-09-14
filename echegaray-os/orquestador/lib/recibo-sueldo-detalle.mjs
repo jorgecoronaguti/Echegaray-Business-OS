@@ -68,8 +68,11 @@ export function concepto(seg) {
   // La unidad es el número pegado a los montos. Sin «$» (formato viejo) sólo se toma si no tiene
   // separador de miles: «LEY 19032 7.018,50» no es 19032 unidades, y como no es un concepto horario
   // su unidad no se usa para nada.
+  // Un descuento o una contribución SIN base no tiene unidad: el número pegado es parte del nombre
+  // («LEY 19032»). El dry sobre los 299 recibos de 2026 guardaba «LEY» con 19032 unidades.
   let unidad = null
-  if (UNIDAD.test(limpios.at(-1) ?? '') && limpios.length > 1) unidad = aNumero(limpios.pop())
+  const puedeTenerUnidad = base != null || Number(m[1]) < 4000
+  if (puedeTenerUnidad && UNIDAD.test(limpios.at(-1) ?? '') && limpios.length > 1) unidad = aNumero(limpios.pop())
   return { codigo: m[1], descripcion: limpios.join(' '), unidad, base, monto }
 }
 

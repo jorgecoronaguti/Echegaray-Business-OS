@@ -319,6 +319,14 @@ test('Rosales Q2-08 completo: cada concepto con su sección, y las sumas cierran
   assert.equal(ls.find((c) => c.codigo === '0426').monto, -57132)
 })
 
+test('«LEY 19032» es la descripción, no 19032 unidades (el dry de los 299 la guardaba como «LEY»)', () => {
+  assert.deepEqual(concepto('4020 LEY 19032 $ 9.522,00'), { codigo: '4020', descripcion: 'LEY 19032', unidad: null, base: null, monto: 9522 })
+  assert.deepEqual(concepto('4020 LEY 19032 7.018,50'), { codigo: '4020', descripcion: 'LEY 19032', unidad: null, base: null, monto: 7018.5 })
+  assert.equal(concepto('5020 CONTRIBUCION LEY 19032 $ 4.990,98').descripcion, 'CONTRIBUCION LEY 19032')
+  // Con base impresa la unidad sí es unidad: unidad × base = monto.
+  assert.equal(concepto('5010 CONTRIBUCION JUBILACION 45 $ 7.000,00 $ 315.000,00').unidad, 45)
+})
+
 test('un descuento que falta: los conceptos dan error explícito, la fila del recibo sigue sana', () => {
   const r = parsearRecibo(ROSALES_Q2_08_COMPLETO.replace('4287 SEGURO DE VIDA UOCRA $ 19.617,16\n', ''))
   assert.equal(r.ok, true, r.error)
