@@ -81,6 +81,12 @@ export interface SeccionDelEspejo {
   filas: FilaDelEspejo[]
 }
 
+/** `oficial_especializado` → «Oficial especializado». El legajo guarda la clave; el texto es para leer. */
+const rotuloCategoria = (c: string): string => {
+  const t = c.replace(/_/g, ' ').trim()
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 /** Quien cobra por debajo del básico de su convenio. Lo arma `exponerAlPiso`; la grilla sólo lo dibuja. */
 export interface MarcaDePiso {
   brechaPct: number
@@ -170,7 +176,7 @@ function Fila({ fila, columnas, quincena, camposEditables, piso }: {
         // BAJO EL BÁSICO DEL CONVENIO: el % en rojo al lado del $/h, y el piso con su fecha al pasar.
         // Rojo sólo para problemas (skill de diseño §2): cobrar debajo del convenio es riesgo laboral.
         <div data-testid={`espejo-bajo-piso-${fila.personaId}`} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}
-          title={`Bajo el básico UOCRA: ${piso.categoria} $${pesos(piso.piso)}/h desde ${piso.desde}. Faltan $${pesos(piso.diferenciaHora)}/h.`}>
+          title={`Bajo el básico UOCRA: ${rotuloCategoria(piso.categoria)} ${pesos(piso.piso)}/h desde ${piso.desde}. Faltan ${pesos(piso.diferenciaHora)}/h.`}>
           <span style={{ color: V.apagado }}>{pesos(l.valorHora)}</span>
           <span style={{ color: V.neg, fontSize: '10.5px', fontWeight: 600, marginLeft: 3 }}>
             {`${Math.round(piso.brechaPct)}%`}
