@@ -24,7 +24,9 @@
 // que la web ya dice: `conciliar` recorta o cierra el tramo frente a una asignación vigente creada
 // por una persona (ver abajo). Las asignaciones existentes no se tocan jamás.
 
-export const MARCA_JORNALES = 'historial reconstruido desde JORNALES (sheet)'
+import { MARCA_RECONSTRUIDA, cederAnteLaApp, tramoEfectivo } from './cronologia-asignaciones.mjs'
+
+export const MARCA_JORNALES = MARCA_RECONSTRUIDA
 export const NOTAS_JORNALES = `${MARCA_JORNALES} · 08/09/2026`
 export const TIPOS_TRABAJADOS = /^(normal|extra)/
 export const MAX_HUECO_HABIL = 7
@@ -192,7 +194,10 @@ export function conciliar(tramos, existentes, { conjunto = false, obrasCerradas 
   const previas = existentes.filter((a) => !esDePrueba(a)).map((a) => ({
     ...a, desde: a.desde ? fechaIso(a.desde) : null, hasta: a.hasta ? fechaIso(a.hasta) : null,
   }))
+  // UNA FILA DE LA WEB SIN `desde` NO AFIRMA NADA ANTERIOR A SU CREACIÓN (ver `tramoEfectivo`). Leída
+  // literal, «Pisos desde siempre» descartaba todo el tramo de JORNALES de esa obra por `solapa_web`.
   const web = previas.filter((a) => !esDeJornales(a))
+    .map((a) => ({ ...a, ...tramoEfectivo(a) })).filter((a) => !a.sinFecha)
   const jornales = previas.filter(esDeJornales)
   const insertar = [], omitidos = [], recortados = [], cerrados = [], recortadosPorCierre = []
 
@@ -249,7 +254,13 @@ export function conciliar(tramos, existentes, { conjunto = false, obrasCerradas 
       dias: t.dias, horas: t.horas, notas: NOTAS_JORNALES,
     })
   }
-  return { insertar, omitidos, recortados, cerrados, recortadosPorCierre }
+  // ═══ LO RECONSTRUIDO CEDE ANTE LA APP (dueño, 14/09/2026) ═══
+  //
+  // Lo de arriba sólo miraba la web de la MISMA obra y la vigente de otra. Una asignación cerrada en
+  // otra obra —«Pisos hasta el 07/09»— no recortaba nada, y la persona quedaba guardada en dos obras
+  // los mismos días. Ahora el tramo no cubre ningún día que ya cubra una fila de persona (salvo sus
+  // días sueltos): se recorta, se parte o desaparece. Misma función que la normalización.
+  return { insertar: cederAnteLaApp(insertar, existentes), omitidos, recortados, cerrados, recortadosPorCierre }
 }
 
 // ═══ RECALCULAR COMO CONJUNTO, NO COMO INSERTS SUELTOS (08/09/2026) ═══
