@@ -186,7 +186,10 @@ cartera sumaba sólo obras ACTIVAS (ARCOR «—», La Estrella sólo sin obra) �
 TablaClientes suma `obras_todas` (dfe43198): ARCOR 9,82 M/2,34 M · La Estrella 156,3 M/97,3 M. QA en curso.
 Cartera obras cerradas: QA FIRMA (5 clientes iguales en 390/1440; pie de ficha La Estrella = cartera).
 Toast «Cargando…» clavado al volver atrás: `IndicadorNavegacion` no borraba el pedido → `pedidoVigente()` +
-`popstate` (78954967, en prod; e2e `tests/navegacion-atras.spec.ts`). QA de tercero en curso.
+`popstate` (78954967, en prod; e2e `tests/navegacion-atras.spec.ts`). QA FIRMA (5 casos, 390/1440).
+**Estado al cierre 14/09:** todos los frentes del CRM/horas/perf cerrados con firma de tercero. Abierto sólo del lado
+del dueño: horas de jefes 08/08–31/08 y celda JORNALES 11/06 = 70 h. Límites: sin prueba con rol Jefe de Obra/Campo;
+`obra_costo_real` (ficha de obra) atribuye por J; `orq:test` completo no se corrió en esta tanda.
 
 ## 6. PENDIENTES REALES
 
