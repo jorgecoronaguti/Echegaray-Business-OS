@@ -582,9 +582,33 @@ export default async function ClientePage({ params, searchParams }: {
             )}
           </>
         }
-        acciones={puedeEditar
+        acciones={puedeEditar || veEconomia
           ? (
               <>
+                {/* ═══ EL PORTAL DEL CLIENTE, ENTRANDO AL CLIENTE (dueño, 14/09/2026) ═══
+                    «quiero que eso esté ingresando a cada cliente y ahí se vea y se pueda ingresar».
+                    En la cabecera, visible en TODAS las solapas —también Cobranzas, que no tiene
+                    costado—. Sólo con permiso económico: la previa del portal muestra la plata. */}
+                {veEconomia && (
+                  <>
+                    <a
+                      href={`/portal/vista-previa/${slug}`} target="_blank" rel="noreferrer"
+                      data-testid="ficha-ver-portal" className="hover:border-[#D7D5CF]"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 7, border: `1px solid ${V.linea}`,
+                        background: '#FFFFFF', color: V.tinta, fontSize: '12.5px', fontWeight: 500,
+                        borderRadius: 6, padding: '7px 12px', whiteSpace: 'nowrap', textDecoration: 'none',
+                      }}
+                    >
+                      Ver portal ↗
+                    </a>
+                    <AccionSecundaria href={url({ portal: '1' })} testid="ficha-accesos-portal">
+                      Accesos al portal
+                    </AccionSecundaria>
+                  </>
+                )}
+                {puedeEditar && (
+                <>
                 <AccionSecundaria
                   href={url({ editar: q.editar === '1' ? null : '1' })} testid="editar-cliente"
                   icono={<IconoEditar className="h-[14px] w-[14px]" />}
@@ -599,6 +623,8 @@ export default async function ClientePage({ params, searchParams }: {
                 >
                   Nuevo trabajo
                 </AccionPrimaria>
+                </>
+                )}
               </>
             )
           : undefined}
