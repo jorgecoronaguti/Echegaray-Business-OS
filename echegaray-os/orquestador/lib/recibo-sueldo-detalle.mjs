@@ -73,11 +73,20 @@ export function concepto(seg) {
   return { codigo: m[1], descripcion: limpios.join(' '), unidad, base, monto }
 }
 
-/** Todos los conceptos del texto. El formato viejo repite cada concepto dos veces por renglón. */
+// Los rótulos de sección del formato nuevo. «NO REMUNERATIVO» se prueba antes que «REMUNERATIVO».
+const ENCABEZADO = [['NO REMUNERATIVO', 'no_remunerativo'], ['REMUNERATIVO', 'remunerativo'], ['DESCUENTOS', 'descuento']]
+
+/**
+ * Todos los conceptos del texto. El formato viejo repite cada concepto dos veces por renglón.
+ * `encabezado` es la última sección rotulada vista (sólo el formato nuevo la imprime; en el viejo, null).
+ */
 export function conceptos(lineas, duplicado) {
   const vistos = new Set()
   const out = []
+  let encabezado = null
   for (const l of lineas) {
+    const hit = ENCABEZADO.find(([rotulo]) => l.trim() === rotulo)
+    if (hit) { encabezado = hit[1]; continue }
     if (!/^\d{4} [A-ZÁÉÍÓÚÑ]/.test(l)) continue
     for (const seg of l.split(/\s(?=\d{4} [A-ZÁÉÍÓÚÑ])/)) {
       const c = concepto(seg)
@@ -85,10 +94,59 @@ export function conceptos(lineas, duplicado) {
       const clave = `${c.codigo}|${c.descripcion}|${c.unidad}|${c.monto}`
       if (duplicado && vistos.has(clave)) continue
       vistos.add(clave)
-      out.push(c)
+      out.push({ ...c, encabezado })
     }
   }
   return out
+}
+
+/**
+ * LA SECCIÓN DE UN CONCEPTO. 4xxx descuento y 5xxx contribución por su código, en los dos formatos. Un
+ * haber, por el rótulo impreso encima cuando lo hay; en el formato viejo, que no rotula, «NR» en la
+ * descripción. El 9999 REDONDEO es exento. Si esto clasifica mal, las sumas de `lineasDeConceptos` no
+ * cierran contra lo impreso y el recibo se rechaza: la regla no se valida contra sí misma.
+ */
+function seccionDe(c) {
+  if (c.codigo[0] === '5') return 'contribucion'
+  if (c.codigo[0] === '4') return 'descuento'
+  if (c.codigo === '9999') return 'no_remunerativo'
+  if (c.encabezado === 'remunerativo' || c.encabezado === 'no_remunerativo') return c.encabezado
+  return /\bNR\b|NO REMUN/.test(c.descripcion) ? 'no_remunerativo' : 'remunerativo'
+}
+
+const centavos = (n) => Math.round(n * 100)
+const sumaCentavos = (lista, seccion) => lista.filter((c) => c.seccion === seccion).reduce((a, c) => a + centavos(c.monto), 0)
+const aPesos = (c) => c / 100
+
+/** Los pares «remunerativo no-remunerativo» impresos al pie del formato viejo (renglón que empieza con dos montos). */
+function paresImpresosViejos(lineas) {
+  return lineas.flatMap((l) => {
+    const m = /^(-?[\d.]+,\d{2}) (-?[\d.]+,\d{2})(?:\s|$)/.exec(l.trim())
+    return m ? [[centavos(aNumero(m[1])), centavos(aNumero(m[2]))]] : []
+  })
+}
+
+/**
+ * LOS CONCEPTOS UNO POR UNO, CON SUS INVARIANTES AL CENTAVO: Σ remunerativo y Σ no remunerativo contra lo
+ * impreso, Σ descuentos contra los descuentos, rem + no rem − descuentos = neto. No toca la fila: un
+ * recibo cuyo detalle no cierra sigue teniendo bruto y neto válidos, pero sus conceptos no se guardan.
+ */
+function lineasDeConceptos(lista, lineas, texto, nuevo, t) {
+  const ls = lista.map(({ encabezado, ...c }) => ({ codigo: c.codigo, descripcion: c.descripcion, seccion: seccionDe({ ...c, encabezado }), unidad: c.unidad, base: c.base, monto: c.monto }))
+  const rem = sumaCentavos(ls, 'remunerativo'), nr = sumaCentavos(ls, 'no_remunerativo'), desc = sumaCentavos(ls, 'descuento')
+  const f = (c) => aTextoMonto(aPesos(c))
+  if (nuevo) {
+    const remImp = rotulado(texto, /(?<!No )Remunerativo:\s*\$\s*(-?[\d.]+,\d{2})/)
+    const nrImp = rotulado(texto, /No Remunerativo:\s*\$\s*(-?[\d.]+,\d{2})/)
+    if (remImp == null || nrImp == null) return { ok: false, error: 'conceptos: sin «Remunerativo / No Remunerativo» impresos' }
+    if (rem !== centavos(remImp)) return { ok: false, error: `conceptos: Σ remunerativo ${f(rem)} ≠ impreso ${aTextoMonto(remImp)}` }
+    if (nr !== centavos(nrImp)) return { ok: false, error: `conceptos: Σ no remunerativo ${f(nr)} ≠ impreso ${aTextoMonto(nrImp)}` }
+  } else if (!paresImpresosViejos(lineas).some(([a, b]) => a === rem && b === nr)) {
+    return { ok: false, error: `conceptos: el par remunerativo ${f(rem)} / no remunerativo ${f(nr)} no está impreso` }
+  }
+  if (t.descuentos == null || desc !== centavos(t.descuentos)) return { ok: false, error: `conceptos: Σ descuentos ${f(desc)} ≠ ${t.descuentos}` }
+  if (rem + nr - desc !== centavos(t.neto)) return { ok: false, error: `conceptos: rem + no rem − descuentos ${f(rem + nr - desc)} ≠ neto ${t.neto}` }
+  return { ok: true, lineas: ls }
 }
 
 function periodoDe(texto) {
@@ -243,6 +301,7 @@ export function parsearRecibo(textoOLineas) {
       ...ce.costo,
     },
     avisos: ce.aviso ? [ce.aviso] : [],
+    conceptos: lineasDeConceptos(lista, lineas, texto, nuevo, t),
     // Conceptos con unidad que NO se cuentan como horas (SAC proporcional en días, etc.): el
     // importador los informa para que nadie descubra tarde que una unidad horaria quedó afuera.
     unidadesNoHorarias: lista.filter((c) => Number(c.codigo) < 4000 && c.unidad != null && c.codigo !== '0401' && c.codigo !== '0431' && !esHoraria(c))
