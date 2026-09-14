@@ -99,6 +99,19 @@ const TITULOS: Record<GrupoLiquidacion, string> = {
   final: 'Liquidaciones finales',
 }
 
+/**
+ * EL CONCEPTO CON EL QUE `nomina_adelanto` REGISTRA EL GIRO DEL LOTE, por cuadro. Una sola vez.
+ *
+ * Medido el 14/09/2026: en toda la tabla existen `QUINCENA` (19) y `LIQUIDACION_FINAL` (2). Recibos
+ * buscaba `'sueldo'`, que no existe: ningún recibo aparecía girado y el plantel entero salía «sin
+ * movimiento» mientras el cuadro lo daba por pagado. Oficina liquida con el mismo lote que obreros.
+ */
+export const CONCEPTO_DEL_GIRO = {
+  obreros: 'QUINCENA',
+  oficina: 'QUINCENA',
+  final: 'LIQUIDACION_FINAL',
+} as const
+
 /** `2026-09-01` → `Q1-09/2026`, la clave de período de `nomina_recibo_neto`. */
 export function periodoDeRecibo(q: Quincena): string {
   const mes = q.desde.slice(5, 7)
@@ -161,7 +174,7 @@ function entradaDe(
   const h = grupo === 'oficina' ? null : (ctx.horas.get(p.id) ?? null)
   const recibo = ctx.recibos.find((r) => r.cuil === p.cuil && r.periodo === ctx.periodo) ?? null
   const neto = recibo == null ? null : Number(recibo.neto)
-  const { giroEnElLote, yaTransferido } = girosDe(ctx.quincena, ctx.adelantos, p.cuil, 'QUINCENA', neto)
+  const { giroEnElLote, yaTransferido } = girosDe(ctx.quincena, ctx.adelantos, p.cuil, CONCEPTO_DEL_GIRO[grupo], neto)
   return {
     personaId: p.id,
     nombre: p.nombre,
@@ -247,7 +260,7 @@ function lineaFinal(
   const recibo = ctx.recibos.find((r) => r.cuil === p.cuil && r.periodo === 'FINAL') ?? null
   const mitadBlanca = recibo == null ? null : Number(recibo.neto)
   const { giroEnElLote, yaTransferido } = girosDe(
-    ctx.quincena, ctx.adelantos, p.cuil, 'LIQUIDACION_FINAL', mitadBlanca,
+    ctx.quincena, ctx.adelantos, p.cuil, CONCEPTO_DEL_GIRO.final, mitadBlanca,
   )
   return liquidarLinea({
     personaId: p.id,

@@ -247,6 +247,7 @@ function Tabla({ secciones, totales, quincena, camposEditables, cerradas }: {
               <CeldaRedondeo
                 personaId={l.personaId}
                 valor={l.efectivoRedondeado}
+                enEfectivo={l.enEfectivo}
                 quincena={quincena}
                 grupo={sec.grupo}
                 bloqueada={cerradas.has(sec.grupo)}

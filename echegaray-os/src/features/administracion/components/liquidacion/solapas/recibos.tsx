@@ -1,128 +1,232 @@
-// PANTALLA 12 · LOS TRES ESLABONES QUE YA VIVEN EN EL LEGAJO — la liquidación los lee, no los vuelve
-// a pedir.
+// «MÁS → RECIBOS» — el recibo de sueldo de cada persona en la quincena elegida, y el banco del cuadro.
 //
-//   Retribución        `persona_tarifa` vigente, con su origen.
-//   Ausencias          la tabla motivo → paga, literal, y las ausencias declaradas de la quincena.
-//   Lote vs extracto   el recibo del estudio contra el giro que el banco muestra.
+// Dueño, 14/09/2026: *«la sección recibos de liquidación de hs no está mejorada, rota»*. Lo que pide:
+// ver y abrir el recibo de sueldo de cada persona. Estaba roto de tres maneras, medidas en la base:
 //
-// ═══ R7 · UN RECIBO SIN GIRO NO CUENTA COMO BANCO ═══
+//   · buscaba el giro con el concepto «sueldo», que no existe: todo el plantel «sin movimiento»
+//     mientras el cuadro lo daba por pagado;
+//   · decía que no había recibos (botón apagado, «sin infraestructura») cuando hay cientos de PDF en
+//     `documentacion_legajo`;
+//   · cortaba cada lista en 8 o 6 personas.
 //
-// Que el estudio haya liquidado un neto no dice que la plata salió. Hasta que el extracto muestra el
-// lote, esa plata sigue por pagar y la fila lo dice en ámbar: es pendiente accionable, no un error.
+// ═══ UN SOLO «BANCO» ═══
 //
-// ═══ Y UN CONTROL QUE NO PUDO MIRAR NO DICE «NO ESTÁ» ═══
+// La plata sale de `getLiquidacionDeLaQuincena`, la misma lectura del cuadro: recibo del estudio,
+// banco, giro y 50/50 acordado. El pie por banco es el mismo número que el pie del cuadro, con el
+// mismo recorte «Cobra» y el mismo buscador (`recorteDeLiquidacion.ts`).
 //
-// Sin extracto importado para la ventana, todos los recibos se verían «sin movimiento» y el cuadro
-// acusaría a la administración de no haber pagado nada. Con `banco_movimientos` vacío en la ventana,
-// la columna entera dice «sin extracto» y ninguna fila se marca. El repo ya pagó ese defecto con los
-// seis falsos faltantes de Drive.
+// ═══ TODOS LOS RECIBOS SE ABREN ═══
 //
-// ═══ LO QUE ESTA PANTALLA NO HACE ═══
+// Los recibos de personas que no tienen línea en el cuadro de la quincena (bajas, finales) van en su
+// propia sección: la captura del 14/09 mostraba 14 enlaces de 19 PDF.
 //
-// No edita la retribución: eso es el bloque LABORAL del legajo, que ya tiene su formulario y su
-// auditoría de cambios. Dos formularios sobre la misma columna serían dos definiciones del mismo
-// dato. Y no sube el recibo del estudio: no hay bucket ni tabla de documentos de persona en el OS —
-// `obra_documento`, `cliente_documento` y `proveedor_documento` existen; el de persona, no—. El botón
-// está y está apagado, con el porqué escrito: apagado y explicado es un pedido; ausente es un olvido.
+// ═══ NO SE QUITA NADA (dueño) ═══
+//
+// Retribución y Ausencias siguen, completas, debajo de la tabla. La retribución se edita en el cuadro
+// de la quincena ($/h en la celda).
 
+import type { ReactNode } from 'react'
 import { Aviso } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { createClient } from '@/lib/supabase/server'
+import { getAusenciasDeLaQuincena, getEslabonesDeLaQuincena } from '../../../services/eslabonesLegajoService'
+import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
+import { getRecibosDeSueldoDelAnio } from '../../../services/recibosDeSueldoService'
 import {
-  getAusenciasDeLaQuincena, getEslabonesDeLaQuincena, type EslabonPersona,
-} from '../../../services/eslabonesLegajoService'
+  archivosDeLaQuincena, avisoDeRecibos, filasDeRecibos, recibosFueraDelCuadro, totalesDeRecibos,
+  type EstadoDeRecibo, type FilaDeRecibo,
+} from '../../../services/recibosDeLaQuincena'
+import { RECORTES, recortar, recortePedido } from '../../../services/recorteDeLiquidacion'
 import { motivoDe as motivoDelCatalogo } from '../../../../../../orquestador/lib/asistencia-motivos.mjs'
 import { PAGA_POR_MOTIVO } from '../../../services/liquidacionDeAusencias'
-import { esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
-import { ALTO_LIQ, Cuadro, Cuerpo, Encabezado, Fila, Hueco, MONO, Titulo, Total, miles } from './tabla'
+import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
+import { FiltrosDelEspejo } from '../cuadro/FiltrosDelEspejo'
+import { pesos } from '../formato'
+import { ALTO_LIQ, Cuadro, Cuerpo, Encabezado, Fila, Hueco, MARCO_SCROLL, MONO, Total } from './tabla'
+import type { PropsDeSolapa } from './index'
 
-/**
- * El catálogo es JavaScript sin tipos y su `motivoDe` devuelve `unknown`. Se estrecha acá, una sola
- * vez, en vez de castear en cada llamada: el `unknown` es el tipo correcto en el borde, y `any`
- * apagaría el chequeo de todo lo que venga después.
- */
 const etiquetaDeMotivo = (clave: string | null | undefined): string => {
   const m = motivoDelCatalogo(clave) as { etiqueta?: unknown } | null
   return typeof m?.etiqueta === 'string' ? m.etiqueta : (clave?.trim() ?? '')
 }
 
-// ═══ «RETRIBUCIÓN» TRUNCABA LOS NOMBRES CON ANCHO DE SOBRA (QA visual, 11/09/2026, a 1440) ═══
-//
-// La columna era `minmax(140px,1fr)` y las otras dos fijas en 100 + 150. `1fr` reparte el espacio
-// LIBRE, pero este cuadro vive en un `flex` con otros dos y lo que le toca ronda los 420 px: al
-// nombre le quedaban ~150 y «GONZALEZ TOBARES JUAN GUILLERMO» necesita el doble. El piso sube a
-// 230 px —medido contra el nombre más largo del plantel— y el `title` garantiza que el nombre
-// completo se pueda leer aunque alguna vez vuelva a no entrar.
-const COLS_RET = 'minmax(230px,1fr) 100px 150px'
-const COLS_AUS = '86px minmax(110px,1fr) 150px'
-const COLS_LOTE = 'minmax(110px,1fr) 100px 110px'
+const COLS = 'minmax(230px,1fr) 128px 128px 112px 128px 150px 112px'
+const COLS_FUERA = 'minmax(230px,1fr) 112px'
+const COLS_RET = 'minmax(230px,1fr) 140px minmax(160px,1fr)'
+const COLS_AUS = '86px minmax(200px,1fr) 200px'
 
-export async function SolapaRecibos({ quincenaPedida, hoy }: {
-  quincenaPedida?: string; hoy: string
-}) {
-  const q = quincenaDe(esFechaISO(quincenaPedida) ? quincenaPedida : hoy)
+const ESTADO: Record<EstadoDeRecibo, { texto: string; color: string }> = {
+  'girado': { texto: 'girado', color: '#067647' },
+  'recibo-sin-giro': { texto: 'recibo sin giro', color: V.warn },
+  'sin-importe': { texto: '—', color: V.tenue },
+  'sin-recibo': { texto: '—', color: V.tenue },
+  'sin-extracto': { texto: 'sin extracto', color: V.tenue },
+}
+
+const urlDelPdf = (id: string): string => `https://drive.google.com/file/d/${id}/view`
+
+/** Las quincenas del año hasta la mirada (o hasta hoy), para el selector. */
+function quincenasDelAnio(q: Quincena, hoy: string): Quincena[] {
+  const hasta = quincenaDe(hoy).desde > q.desde ? quincenaDe(hoy) : q
+  const out: Quincena[] = []
+  for (let x = quincenaDe(`${q.desde.slice(0, 4)}-01-01`); x.desde <= hasta.desde; x = correrQuincena(x, 1)) out.push(x)
+  return out.reverse()
+}
+
+/** Una tabla que se recorre en horizontal DENTRO de su cuadro: a 390 px la página no se desborda. */
+const ConScroll = ({ ancho, children }: { ancho: number; children: ReactNode }) => (
+  <div style={{ ...MARCO_SCROLL, maxWidth: '100%' }}>
+    <div style={{ minWidth: ancho }}>{children}</div>
+  </div>
+)
+
+export async function SolapaRecibos({ quincenaPedida, hoy, parametros = {}, hrefDe }: Partial<PropsDeSolapa> & { hoy: string }) {
+  const q = quincenaDe(esFechaISO(quincenaPedida) ? (quincenaPedida as string) : hoy)
   const supabase = await createClient()
-  const { personas, hayExtracto, sinGiro, errores } = await getEslabonesDeLaQuincena(supabase, q)
+  const [liquidacion, eslabones, recibos] = await Promise.all([
+    getLiquidacionDeLaQuincena(supabase, q),
+    getEslabonesDeLaQuincena(supabase, q),
+    getRecibosDeSueldoDelAnio(supabase, q.desde.slice(0, 4)),
+  ])
   const ausencias = await getAusenciasDeLaQuincena(
-    supabase, q, new Map(personas.map((p) => [p.personaId, p.nombre])),
+    supabase, q, new Map(eslabones.personas.map((p) => [p.personaId, p.nombre])),
   )
 
-  return (
-// EL TESTID DICE «PANTALLA», NO «SOLAPA», Y NO ES UN CAPRICHO: `BarraSolapas` ya emite
-// `data-testid="solapa-<clave>"` para CADA PESTAÑA de la barra. Con el mismo nombre acá,
-// `[data-testid="solapa-recibos"]` devolvía DOS nodos —la pestaña y el contenido— y cualquier
-// aserción futura habría medido el botón creyendo que medía la pantalla.
-    <section data-testid="pantalla-recibos">
-      <Titulo numero="12" titulo="Los tres eslabones que ya viven en el legajo"
-        bajada="la liquidación los lee; no los vuelve a pedir." />
+  const grupo = recortePedido(parametros.grupo)
+  const lineas = liquidacion.cuadros.flatMap((c) => c.lineas.map((linea) => ({ grupo: c.grupo, nombre: linea.nombre, linea })))
+  const visibles = recortar(lineas, grupo, parametros.buscar)
+  const filas = filasDeRecibos(visibles, { hayExtracto: eslabones.hayExtracto, archivos: archivosDeLaQuincena(recibos.docs, q) })
+  // FUERA DEL CUADRO SE CALCULA CONTRA TODAS LAS LÍNEAS, no las recortadas: quien está en el cuadro pero
+  // no pasa el filtro no es «fuera del cuadro».
+  const fuera = recibosFueraDelCuadro(recibos.docs, q, new Set(lineas.map((l) => l.linea.personaId)))
+  const totales = totalesDeRecibos(filas)
+  const aviso = fuera.length === 0 ? avisoDeRecibos(filas, rotuloQuincena(q)) : null
+  const errores = [
+    ...liquidacion.errores, ...eslabones.errores,
+    ...(recibos.error ? [{ que: 'los recibos de sueldo del legajo', error: recibos.error }] : []),
+  ]
+  const enlace = (cambios: Record<string, string | undefined>) => (hrefDe ? hrefDe(cambios) : '#')
 
+  return (
+    <section data-testid="pantalla-recibos">
       {errores.map((e) => (
-        <div key={e.que} style={{ paddingBottom: 10 }}>
+        <div key={e.que} style={{ paddingBottom: 8 }}>
           <Aviso tono="neg" testid="recibos-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
         </div>
       ))}
 
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        {/* 500 Y NO 400: con el piso de 400 el cuadro entraba tres veces en 1440 y la columna del
-            nombre quedaba por debajo de lo que un nombre real necesita. */}
-        <div style={{ flex: 1, minWidth: 500 }}>
-          <Cuadro testid="cuadro-retribucion">
-            <span style={{ fontSize: '12.5px', fontWeight: 600 }}>Retribución · bloque LABORAL</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', paddingBottom: 8 }}>
+        <form method="get" data-testid="recibos-quincena" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <input type="hidden" name="vista" value="liquidacion" />
+          <input type="hidden" name="solapa" value="recibos" />
+          {grupo !== 'todos' && <input type="hidden" name="grupo" value={grupo} />}
+          <span style={{ fontSize: '12px', fontWeight: 600, color: V.tintaSuave }}>Quincena</span>
+          <select name="quincena" defaultValue={q.desde} aria-label="Quincena"
+            style={{ height: 32, maxWidth: '100%', padding: '0 8px', borderRadius: 6, border: `1px solid ${V.lineaFuerte}`, fontSize: '12.5px', background: '#FFFFFF' }}>
+            {quincenasDelAnio(q, hoy).map((x) => (
+              <option key={x.desde} value={x.desde}>
+                {`${rotuloQuincena(x)} · ${archivosDeLaQuincena(recibos.docs, x).size} recibos`}
+              </option>
+            ))}
+          </select>
+          <button type="submit" style={{
+            height: 32, padding: '0 12px', borderRadius: 6, border: 0, background: V.grafito, color: '#FFFFFF',
+            fontSize: '12.5px', fontWeight: 600, cursor: 'pointer',
+          }}>Ver</button>
+        </form>
+        <FiltrosDelEspejo
+          periodos={[]}
+          grupos={RECORTES.map((r) => ({
+            texto: r.texto, activo: grupo === r.clave,
+            href: enlace({ grupo: r.clave === 'todos' ? undefined : r.clave }),
+          }))}
+          busqueda={{
+            valor: parametros.buscar ?? '',
+            ocultos: { vista: 'liquidacion', solapa: 'recibos', quincena: q.desde, ...(grupo === 'todos' ? {} : { grupo }) },
+            limpiar: parametros.buscar ? enlace({ buscar: undefined }) : null,
+          }}
+        />
+      </div>
+
+      {aviso && (
+        <div style={{ paddingBottom: 12 }}>
+          <Aviso tono="warn" testid="recibos-aviso" titulo={aviso}>{null}</Aviso>
+        </div>
+      )}
+
+      <Cuadro testid="cuadro-recibos">
+        <ConScroll ancho={1100}>
+          <Cuerpo>
+            <Encabezado columnas={COLS} celdas={['Persona', 'Recibo del estudio', 'Banco (cuadro)', 'Diferencia', 'Extracto', '50/50 acordado', 'PDF']} />
+            {filas.map((f) => <FilaDeRecibos key={f.personaId} f={f} />)}
+            <Total columnas={COLS} testid="recibos-total" celdas={[
+              `${totales.personas} persona${totales.personas === 1 ? '' : 's'} · ${totales.conRecibo} con recibo`,
+              pesos(totales.recibos),
+              <span key="b" data-testid="recibos-total-banco">{pesos(totales.porBanco)}</span>,
+              '',
+              eslabones.hayExtracto
+                ? <span key="s" style={{ color: totales.sinGiro > 0 ? V.warn : V.tinta }}>{totales.sinGiro > 0 ? `sin giro ${pesos(totales.sinGiro)}` : 'todo girado'}</span>
+                : <Hueco key="s">sin extracto</Hueco>,
+              '',
+              `${totales.conPdf + fuera.length} PDF`,
+            ]} />
+          </Cuerpo>
+        </ConScroll>
+      </Cuadro>
+
+      {fuera.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <Cuadro testid="cuadro-recibos-fuera">
+            <span style={{ fontSize: '12.5px', fontWeight: 600 }}>{`Con recibo, fuera del cuadro de esta quincena · ${fuera.length}`}</span>
+            <ConScroll ancho={360}>
+              <Cuerpo>
+                <Encabezado columnas={COLS_FUERA} celdas={['Persona (según el archivo)', 'PDF']} />
+                {fuera.map((r) => (
+                  <Fila key={r.personaId} columnas={COLS_FUERA} alto={ALTO_LIQ.filaAngosta} testid={`recibo-fuera-${r.personaId}`} celdas={[
+                    <Nombre key="n">{r.nombre}</Nombre>,
+                    <a key="p" href={urlDelPdf(r.driveFileId)} target="_blank" rel="noreferrer"
+                      data-testid={`ver-recibo-${r.personaId}`} style={{ fontSize: '12px', color: V.tinta }}>Ver recibo ↗</a>,
+                  ]} />
+                ))}
+              </Cuerpo>
+            </ConScroll>
+          </Cuadro>
+        </div>
+      )}
+
+      <details style={{ marginTop: 16 }}>
+        <summary style={{ cursor: 'pointer', fontSize: '12.5px', fontWeight: 600, color: V.tinta, padding: '8px 0' }}>
+          {`Retribución · ${eslabones.personas.length} personas · se edita en el cuadro de la quincena`}
+        </summary>
+        <Cuadro testid="cuadro-retribucion">
+          <ConScroll ancho={560}>
             <Cuerpo>
               <Encabezado columnas={COLS_RET} celdas={['Persona', 'Retribución', 'Origen']} />
-              {personas.slice(0, 8).map((p) => (
+              {eslabones.personas.map((p) => (
                 <Fila key={p.personaId} columnas={COLS_RET} alto={ALTO_LIQ.filaAngosta} testid={`retribucion-${p.personaId}`} celdas={[
                   <Nombre key="n">{p.nombre}</Nombre>,
-                  p.valorHora != null
-                    ? `${miles(p.valorHora)} $/h`
-                    : p.netoMensual != null
-                      ? `${miles(p.netoMensual)} /mes`
-                      : <Hueco key="r">sin retribución</Hueco>,
+                  p.valorHora != null ? `${pesos(p.valorHora)}/h`
+                    : p.netoMensual != null ? `${pesos(p.netoMensual)} /mes` : <Hueco key="r">sin retribución</Hueco>,
                   <Hueco key="o"><span style={{ fontSize: '10.5px' }}>{p.origenTarifa ?? 'sin origen'}</span></Hueco>,
                 ]} />
               ))}
-              {personas.length > 8 && (
-                <Fila columnas={COLS_RET} alto={ALTO_LIQ.agregado} tenue celdas={[`${personas.length - 8} más`, '', '']} />
-              )}
             </Cuerpo>
-            <p style={{ margin: 0, fontSize: '11px', color: V.apagado, lineHeight: 1.55 }}>
-              Se edita en el bloque LABORAL del legajo, no acá: dos formularios sobre la misma columna
-              serían dos definiciones del mismo dato. Al cerrar, la quincena sella el valor hora que usó.
-            </p>
-          </Cuadro>
-        </div>
+          </ConScroll>
+        </Cuadro>
+      </details>
 
-        <div style={{ flex: 1, minWidth: 400 }}>
-          <Cuadro testid="cuadro-ausencias">
-            <span style={{ fontSize: '12.5px', fontWeight: 600 }}>Ausencia · el motivo decide la paga</span>
+      <details style={{ marginTop: 8 }}>
+        <summary style={{ cursor: 'pointer', fontSize: '12.5px', fontWeight: 600, color: V.tinta, padding: '8px 0' }}>
+          {`Ausencias de la quincena · ${ausencias.length}`}
+        </summary>
+        <Cuadro testid="cuadro-ausencias">
+          <ConScroll ancho={520}>
             <Cuerpo>
               <Encabezado columnas={COLS_AUS} celdas={['Día', 'Persona', 'Motivo']} />
               {ausencias.length === 0 && (
-                <Fila columnas={COLS_AUS} alto={ALTO_LIQ.renglon} tenue celdas={[
-                  `Sin ausencias declaradas en ${rotuloQuincena(q)}.`, '', '',
-                ]} />
+                <Fila columnas={COLS_AUS} alto={ALTO_LIQ.renglon} tenue celdas={[`Sin ausencias declaradas en ${rotuloQuincena(q)}.`, '', '']} />
               )}
-              {ausencias.slice(0, 6).map((a) => {
+              {ausencias.map((a) => {
                 const paga = a.motivo ? PAGA_POR_MOTIVO[a.motivo.trim()]?.paga === true : false
                 return (
                   <Fila key={`${a.personaId}-${a.fecha}`} columnas={COLS_AUS} alto={ALTO_LIQ.filaAngosta}
@@ -135,77 +239,40 @@ export async function SolapaRecibos({ quincenaPedida, hoy }: {
                     ]} />
                 )
               })}
-              {ausencias.length > 6 && (
-                <Fila columnas={COLS_AUS} alto={ALTO_LIQ.agregado} tenue celdas={[`${ausencias.length - 6} más`, '', '']} />
-              )}
             </Cuerpo>
-            <TablaDeMotivos />
-          </Cuadro>
-        </div>
-
-        <div style={{ flex: 1, minWidth: 400 }}>
-          <Cuadro testid="cuadro-lote">
-            <span style={{ fontSize: '12.5px', fontWeight: 600 }}>Lote contra extracto · Documentos</span>
-            <Cuerpo>
-              <Encabezado columnas={COLS_LOTE} celdas={['Persona', 'Neto recibo', 'Extracto']} />
-              {personas.filter((p) => p.reciboNeto != null || p.chip != null).slice(0, 8)
-                .map((p) => <FilaLote key={p.personaId} p={p} hayExtracto={hayExtracto} />)}
-              {personas.every((p) => p.reciboNeto == null && p.chip == null) && (
-                <Fila columnas={COLS_LOTE} alto={ALTO_LIQ.renglon} tenue celdas={[
-                  'Ningún recibo del estudio para esta quincena.', '', '',
-                ]} />
-              )}
-              <Total columnas={COLS_LOTE} testid="total-sin-giro" celdas={[
-                'Sin giro',
-                hayExtracto
-                  ? <span key="s" style={{ color: sinGiro > 0 ? V.warn : V.tinta }}>{miles(sinGiro)}</span>
-                  : <Hueco key="s"><span style={{ fontWeight: 400 }}>sin extracto</span></Hueco>,
-                '',
-              ]} />
-            </Cuerpo>
-            <SubirRecibo />
-          </Cuadro>
-        </div>
-      </div>
+          </ConScroll>
+          <TablaDeMotivos />
+        </Cuadro>
+      </details>
     </section>
   )
 }
 
-/** Una fila del lote. El ámbar es pendiente accionable; sin extracto no hay color ni acusación. */
-function FilaLote({ p, hayExtracto }: { p: EslabonPersona; hayExtracto: boolean }) {
+/** Una persona: su recibo, el banco del cuadro, la diferencia, el giro, lo acordado y el PDF. Nunca $0. */
+function FilaDeRecibos({ f }: { f: FilaDeRecibo }) {
+  const estado = ESTADO[f.estado]
   return (
-    <Fila columnas={COLS_LOTE} alto={ALTO_LIQ.filaAngosta} testid={`lote-${p.personaId}`} celdas={[
-      <span key="n" style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
-        <Nombre>{p.nombre}</Nombre>
-        {p.chip && (
-          <span style={{
-            flex: 'none', fontSize: '10px', color: p.chip === 'cargado' ? '#067647' : V.warn,
-          }}>{p.chip}</span>
-        )}
-      </span>,
-      p.reciboNeto != null ? miles(p.reciboNeto) : <Hueco key="r">sin recibo</Hueco>,
-      !hayExtracto
-        ? <Hueco key="e"><span style={{ fontSize: '11px' }}>sin extracto</span></Hueco>
-        : p.giroEnElLote
-          ? <span key="e" style={{ fontSize: '11px', color: '#067647' }}>conciliado</span>
-          : <span key="e" style={{ fontSize: '11px', color: V.warn }}>sin movimiento</span>,
+    <Fila columnas={COLS} alto={ALTO_LIQ.filaAngosta} testid={`recibo-${f.personaId}`} celdas={[
+      <Nombre key="n">{f.nombre}</Nombre>,
+      f.reciboNeto != null ? pesos(f.reciboNeto)
+        : <Hueco key="r">{f.driveFileId ? 'sin importe publicado' : 'sin recibo del estudio'}</Hueco>,
+      pesos(f.porBanco),
+      f.diferencia == null ? <Hueco key="d" />
+        : <span key="d" style={{ color: Math.abs(f.diferencia) > 1 ? V.neg : V.apagado }}>{Math.abs(f.diferencia) > 1 ? pesos(f.diferencia) : '0'}</span>,
+      <span key="e" style={{ fontSize: '11.5px', color: estado.color }}>{estado.texto}</span>,
+      f.blancoAcuerdo != null ? <span key="a" style={{ color: V.apagado }}>{pesos(f.blancoAcuerdo)}</span> : <Hueco key="a" />,
+      f.driveFileId
+        ? <a key="p" href={urlDelPdf(f.driveFileId)} target="_blank" rel="noreferrer"
+          data-testid={`ver-recibo-${f.personaId}`} style={{ fontSize: '12px', color: V.tinta }}>Ver recibo ↗</a>
+        : <Hueco key="p"><span style={{ fontSize: '11.5px' }}>sin PDF</span></Hueco>,
     ]} />
   )
 }
 
-/**
- * LA TABLA LITERAL DE `PAGA_POR_MOTIVO`, GENERADA DE LA CONSTANTE Y NO TIPEADA.
- *
- * Escribir los motivos a mano en el JSX crearía una segunda definición de qué se paga: el día que el
- * dueño agregue un motivo, la pantalla seguiría mostrando la lista vieja y nadie se enteraría.
- */
+/** La tabla literal de `PAGA_POR_MOTIVO`, generada de la constante y no tipeada. */
 function TablaDeMotivos() {
-  // LA ETIQUETA LA PUBLICA EL CATÁLOGO, no este archivo: `falta_con_aviso` es la clave con la que
-  // se guarda, y «Faltó con aviso» es como se llama. Tipear la segunda acá sería una tercera copia
-  // del catálogo de motivos, que ya vive en `orquestador/lib/asistencia-motivos.mjs`.
-  const etiqueta = etiquetaDeMotivo
-  const pagan = Object.entries(PAGA_POR_MOTIVO).filter(([, r]) => r.paga).map(([m]) => etiqueta(m).toLowerCase())
-  const noPagan = Object.entries(PAGA_POR_MOTIVO).filter(([, r]) => !r.paga).map(([m]) => etiqueta(m).toLowerCase())
+  const pagan = Object.entries(PAGA_POR_MOTIVO).filter(([, r]) => r.paga).map(([m]) => etiquetaDeMotivo(m).toLowerCase())
+  const noPagan = Object.entries(PAGA_POR_MOTIVO).filter(([, r]) => !r.paga).map(([m]) => etiquetaDeMotivo(m).toLowerCase())
   return (
     <p data-testid="tabla-motivos" style={{ margin: 0, fontSize: '11px', color: V.apagado, lineHeight: 1.55 }}>
       <strong style={{ color: '#067647', fontWeight: 600 }}>Pagan</strong> {pagan.join(', ')}.{' '}
@@ -215,38 +282,10 @@ function TablaDeMotivos() {
   )
 }
 
-/** El botón que no existe todavía, apagado y con el porqué. Ausente sería un olvido. */
-function SubirRecibo() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <button type="button" disabled data-testid="cargar-recibo-estudio"
-        style={{
-          alignSelf: 'flex-start', height: 28, padding: '0 12px', border: `1px solid ${V.linea}`,
-          borderRadius: 6, background: '#FFFFFF', color: V.tenue, fontSize: '11.5px', cursor: 'not-allowed',
-        }}>
-        Cargar el recibo del estudio
-      </button>
-      <span style={{ fontSize: '10.5px', color: V.tenue, lineHeight: 1.5 }}>
-        Sin infraestructura de documentos de persona en el OS: hay bucket y tabla para obra, cliente y
-        proveedor, no para el legajo. Hoy el recibo llega por <code>recibo_empleado</code> con su
-        <code> drive_file_id</code>.
-      </span>
-    </div>
-  )
-}
-
-/**
- * EL NOMBRE, QUE NO SE PUEDE PERDER.
- *
- * Sigue recortando con «…» —dos renglones romperían el ritmo de 46 px de estas filas— pero ahora
- * lleva `title`: un nombre truncado sin forma de leerlo entero es una fila que no se puede usar para
- * buscar a nadie. El ancho de la columna lo arregla `COLS_RET`; esto es la red.
- */
-const Nombre = ({ children }: { children: React.ReactNode }) => (
-  <span
-    title={typeof children === 'string' ? children : undefined}
-    style={{ display: 'block', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-  >
+/** El nombre, recortado con «…» y entero en el `title`. */
+const Nombre = ({ children }: { children: ReactNode }) => (
+  <span title={typeof children === 'string' ? children : undefined}
+    style={{ display: 'block', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
     {children}
   </span>
 )
