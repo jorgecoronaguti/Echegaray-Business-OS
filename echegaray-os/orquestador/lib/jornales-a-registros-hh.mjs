@@ -332,6 +332,58 @@ export function isoDe(f) {
  */
 export const esDeLaWeb = (fuente) => typeof fuente === 'string' && fuente.startsWith('web:')
 
+/**
+ * LAS MARCAS QUE DEJA UNA PERSONA CUANDO CARGA O CORRIGE A MANO DESDE LA WEB.
+ *
+ * `web:presencia-defecto` (la jornada automática) y `web:asistencia-obra` (la carga del jefe) NO
+ * están: son las que el 11/09/2026 cruzaban las horas con la planilla, y la planilla las sigue
+ * pisando. Éstas cuatro las escribe alguien mirando la liquidación o la asistencia.
+ */
+export const MARCAS_A_MANO = new Set([
+  'web:grilla-quincena', 'web:correccion-horas', 'web:correccion-ausencia', 'web:ausencia-de-la-persona',
+])
+
+/**
+ * ¿UNA PERSONA LA TOCÓ EN LA WEB? Con autor (`actualizado_por`, que el trigger escribe en cada
+ * update con sesión, por cualquier camino y con cualquier marca, incluso `sheet:jornales`) o con
+ * una marca de carga a mano.
+ */
+export const laTocoUnaPersona = (e) => e?.actualizado_por != null || MARCAS_A_MANO.has(e?.fuente_legacy)
+
+/**
+ * LO EDITADO EN LA WEB GANA SIEMPRE — dueño, 14/09/2026: «web gana siempre».
+ *
+ * Revisa la regla de `pisarLoDeLaWeb` para UN caso: el día que una persona tocó a mano. Hasta hoy
+ * una celda de la planilla corregida en la web conservaba `sheet:jornales` y la corrida siguiente
+ * del timer (cada hora) la volvía a escribir con el valor de la planilla, sin avisar.
+ *
+ * Se protege el DÍA ENTERO de la persona, no la fila: si la web corrigió la normal y la planilla
+ * trae normal + extra, escribir la extra al lado sumaría una hora que nadie confirmó. Lo que queda
+ * afuera se declara; nada se borra.
+ */
+export function separarLoQueGanaLaWeb(filas, existentes = []) {
+  const diaDe = (persona, fecha) => `${persona}|${isoDe(fecha)}`
+  const protegidos = new Map()
+  for (const e of existentes) {
+    if (!laTocoUnaPersona(e)) continue
+    const dia = diaDe(e.persona_id, e.fecha)
+    if (!protegidos.has(dia)) protegidos.set(dia, [])
+    protegidos.get(dia).push(e)
+  }
+  const planilla = new Map()
+  for (const f of filas) {
+    const dia = diaDe(f.persona_id, f.fecha)
+    if (protegidos.has(dia)) planilla.set(dia, [...(planilla.get(dia) ?? []), f])
+  }
+  return {
+    filas: filas.filter((f) => !protegidos.has(diaDe(f.persona_id, f.fecha))),
+    existentes: existentes.filter((e) => !protegidos.has(diaDe(e.persona_id, e.fecha))),
+    ganaLaWeb: [...planilla].map(([dia, deLaPlanilla]) => ({
+      dia, existentes: protegidos.get(dia), deLaPlanilla, porque: 'una persona lo editó en la web: gana la web',
+    })),
+  }
+}
+
 /** El rastro que queda en `notas` cuando la planilla pisa una fila de la web. */
 export const rastroDePisada = (e, hoy) =>
   `pisó ${e.fuente_legacy} ${Number(e.horas ?? 0)}h el ${hoy}`
@@ -487,13 +539,13 @@ update public.registros_hh
        fuente_legacy = '${FUENTE}',
        notas = nullif(concat_ws(' · ', nullif($5::text, ''), $6::text), ''),
        actualizado_en = now()
- where id = $1 and fuente_legacy like 'web:%'
+ where id = $1 and fuente_legacy like 'web:%' and actualizado_por is null
 returning id`
 
 /** Mueve una fila propia de obra (y actualiza horas y notas). Sólo toca filas `sheet:jornales`. */
 export const SQL_MOVER = `
 update public.registros_hh set obra_canonica_id = $2, horas = $3, notas = $4
- where id = $1 and fuente_legacy = '${FUENTE}' returning id`
+ where id = $1 and fuente_legacy = '${FUENTE}' and actualizado_por is null returning id`
 
 /** Resumen por mes y por obra: filas, horas trabajadas (normal+extras), ausencias, personas. */
 export function resumir(filas) {
@@ -555,5 +607,9 @@ on conflict (obra_canonica_id, persona_id, fecha, (coalesce(actividad_id, '${UUI
   where persona_id is not null
 do update set horas = excluded.horas, notas = excluded.notas
   where public.registros_hh.fuente_legacy = '${FUENTE}'
+    -- WEB GANA SIEMPRE (dueño, 14/09/2026): una celda de la planilla corregida en la web conserva
+    -- la marca sheet:jornales pero tiene autor. Esta guarda es la segunda cerradura, para la
+    -- edición que llega entre la lectura de existentes y esta escritura.
+    and public.registros_hh.actualizado_por is null
     and (public.registros_hh.horas is distinct from excluded.horas or public.registros_hh.notas is distinct from excluded.notas)
 returning id, (xmax = 0) as insertada`

@@ -27,6 +27,7 @@ import { fechaOperativaSanJuan } from '../comunicacion/asistencia-ui.mjs'
 import {
   FUENTE, marcasDeGrid, planDeRegistros, resolutorDeObra, separarConflictos, resumir, columnasParaUpsert,
   SQL_UPSERT, SQL_MOVER, SQL_PISAR_WEB, mapaDeRotulos, normAlias, separarAnticipadas, pisarLoDeLaWeb,
+  separarLoQueGanaLaWeb,
 } from '../lib/jornales-a-registros-hh.mjs'
 
 const arg = (n, d = null) => { const i = process.argv.indexOf(`--${n}`); return i > 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : d }
@@ -79,7 +80,7 @@ async function leerPestanas(google) {
 
 async function existentesEntre(desde, hasta) {
   const { rows } = await query(
-    `select id, persona_id, to_char(fecha, 'YYYY-MM-DD') fecha, obra_canonica_id, tipo_hora, fuente_legacy, horas
+    `select id, persona_id, to_char(fecha, 'YYYY-MM-DD') fecha, obra_canonica_id, tipo_hora, fuente_legacy, horas, actualizado_por
        from public.registros_hh where persona_id is not null and fecha between $1 and $2`, [desde, hasta])
   return rows
 }
@@ -167,11 +168,20 @@ async function main() {
   const [{ marcas, hallazgos, leidas, tabs }, cat] = await Promise.all([leerPestanas(google), catalogos()])
   console.log(`pestañas del archivo: ${tabs.join(' · ')}`)
   const plan = planDeRegistros(marcas, cat)
-  const { importar: filas, anticipadas } = separarAnticipadas(plan.filas, HASTA)
+  const { importar: filasDelPlan, anticipadas } = separarAnticipadas(plan.filas, HASTA)
   const falta = plan.falta
   console.log(`  hasta ${HASTA} (hoy en San Juan salvo --hasta): ${anticipadas.length} filas ANTICIPADAS en la planilla quedan afuera (${h(anticipadas.reduce((a, f) => a + f.horas, 0))} h)`)
-  const fechas = filas.map((f) => f.fecha).sort()
-  const existentes = fechas.length ? await existentesEntre(fechas[0], fechas[fechas.length - 1]) : []
+  const fechas = filasDelPlan.map((f) => f.fecha).sort()
+  const leidos = fechas.length ? await existentesEntre(fechas[0], fechas[fechas.length - 1]) : []
+  // ═══ LO EDITADO EN LA WEB GANA SIEMPRE (dueño, 14/09/2026) ═══
+  // Antes que cualquier otra regla: el día que una persona tocó a mano sale entero de la corrida.
+  const { filas: filasSinWeb, existentes, ganaLaWeb } = separarLoQueGanaLaWeb(filasDelPlan, leidos)
+  const filas = filasSinWeb
+  console.log(`  GANA LA WEB · días editados a mano que la planilla trae y NO se tocan: ${ganaLaWeb.length}`)
+  for (const x of ganaLaWeb.slice(0, DETALLE ? 500 : 25)) {
+    console.log(`    ${x.dia}  web ${x.existentes.map((e) => `${h(e.horas)}h ${e.tipo_hora}`).join(' + ')}`
+      + ` · planilla ${x.deLaPlanilla.map((f) => `${h(f.horas)}h ${f.tipo_hora}`).join(' + ')}`)
+  }
   // ═══ LA PLANILLA MANDA SOBRE LA WEB (dueño, 11/09/2026) ═══
   //
   // Antes, CUALQUIER fila de otra fuente hacía intocable el día: desde el momento en que alguien
