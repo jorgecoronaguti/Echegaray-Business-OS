@@ -155,6 +155,9 @@ cartera oculta Materiales/MO · `obra_costo_real` por K.
 subir cómputo; reactivar después con `active := true, schedule := '* * * * *'`. Re-QA: montos OK en 5
 clientes, primera carga falla en 3/5. Dueño en Vercel: plan Free; variables Supabase del proyecto son
 manuales → NO usar «Connect to Project». Pasar a Pro + Small (US$30/mes) = Nivel E del dueño.
+**21:17 RESUELTO:** el dueño pasó a Pro; cómputo subido a **Small 2 GB** por Management API (~60 s de
+corte). Swap 0, ficha en vivo 0,23–0,33 s (antes 5–13 s). Cron 39 **reactivado** cada minuto. Flujo de
+Caja falló 21:10 por la caída (vuelve solo 06:50, no correr a mano). QA de tercero post-resize lanzado.
 
 ## 6. PENDIENTES REALES
 
