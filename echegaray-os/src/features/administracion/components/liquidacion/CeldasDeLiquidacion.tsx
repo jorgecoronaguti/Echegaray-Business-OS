@@ -73,6 +73,17 @@ export interface VentanaDeQuincena {
 }
 
 /**
+ * UN AVISO QUE PERSISTE ES UN ÍCONO, NO UN TEXTO (dueño, 15/09/2026: «tengo ese sin recalc pegado en diseño de liq
+ * hs»). Un ⚠ chico junto al número, con el porqué en el `title`: no cambia el alto ni el ritmo de la fila.
+ */
+export function IconoDeAviso({ titulo, tono = 'warn', testid }: { titulo: string; tono?: 'warn' | 'neg'; testid?: string }) {
+  return (
+    <span role="img" aria-label={titulo} title={titulo} data-testid={testid}
+      style={{ marginLeft: 3, flex: 'none', fontSize: '11px', lineHeight: 1, fontStyle: 'normal', cursor: 'help', color: tono === 'neg' ? V.neg : V.warn }}>⚠</span>
+  )
+}
+
+/**
  * LA MARCA DE LO ESCRITO A MANO. Un punto y una palabra: ni fondo de color ni negrita.
  *
  * ═══ EN PAGOS VA SÓLO EL PUNTO ═══
@@ -273,7 +284,8 @@ export function estiloDelRedondeo(ancho: number): CSSProperties {
  * ═══ EL ERROR SE LEE, NO SE ADIVINA (QA, 15/09/2026) ═══
  *
  * Sólo con `title` y borde rojo, seis filas de la 01/09 parecían guardadas y ninguna lo estaba. El error va en
- * texto chico y rojo debajo del campo. No rompe la hidratación: el error sólo existe después de un guardado en el
+ * texto chico y rojo debajo del campo mientras está en foco o recién falló (4 s); después queda un ⚠ rojo con el
+ * `title`, para no romper el alto de la fila (dueño, 15/09/2026). Corregir o Escape lo borran. No rompe la hidratación: el error sólo existe después de un guardado en el
  * navegador, y la caja que lo contiene está siempre, con un estilo fijo.
  */
 const CAJA_DEL_REDONDEO: CSSProperties = { display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }
@@ -301,6 +313,7 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
   const [error, setError] = useState<string | null>(null)
   const [guardando, empezar] = useTransition()
   const cancelado = useRef(false)
+  const [errorReciente, setErrorReciente] = useState(false)
   // EL VALOR DE AFUERA MANDA cuando la línea se vuelve a leer del servidor, salvo mientras alguien
   // escribe. Se ajusta durante el render, no en un efecto: sin fotograma con el valor viejo.
   if (!tocado && inicial !== base) {
@@ -330,9 +343,14 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
       e.currentTarget.blur()
     } else if (t === 'guardar') { e.preventDefault(); e.currentTarget.blur() }
   }
+  const fallar = (mensaje: string) => {
+    setError(mensaje)
+    setErrorReciente(true)
+    setTimeout(() => setErrorReciente(false), 4000)
+  }
   const alSalir = () => {
     // LO QUE NO ES NÚMERO NO SE GUARDA Y SE DICE (el mismo parser que el resto: `leerNumeroEsAR`).
-    if (!leerNumeroEsAR(texto).ok) { setError('número inválido'); return }
+    if (!leerNumeroEsAR(texto).ok) { fallar('número inválido'); return }
     const a = accionDelRedondeo({ texto, guardado: valor, sugerido: mostrado.sugeridoAhora })
     if (a.accion === 'nada') {
       setTocado(false)
@@ -343,7 +361,7 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
       const r = await guardarEfectivoRedondeado({
         ...quincena, grupo, persona_id: personaId, importe: a.accion === 'borrar' ? '' : String(a.importe),
       })
-      setError(r.ok ? null : r.error)
+      if (r.ok) setError(null); else fallar(r.error)
       if (r.ok) {
         setTocado(false)
         // CMD/CTRL+Z: el redondeo guardado se puede deshacer con la misma acción.
@@ -362,7 +380,7 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
     <input
       value={textoDelRedondeo({ enEdicion, texto, valor: mostrado.valor })}
       onFocus={() => { cancelado.current = false; setEnEdicion(true) }}
-      onChange={(e) => { setTocado(true); setTexto(e.target.value) }}
+      onChange={(e) => { setTocado(true); setTexto(e.target.value); setError(null) }}
       onKeyDown={alTeclear}
       onBlur={() => {
         setEnEdicion(false)
@@ -384,7 +402,8 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
       className="border border-line text-ink data-[sugerido='1']:text-muted data-[error='1']:border-neg"
       style={estiloDelRedondeo(ancho)}
     />
-    {error && <span role="alert" data-testid={`redondeo-error-${personaId}`} style={ERROR_DEL_REDONDEO}>{error}</span>}
+    {error && ((enEdicion || errorReciente) ? <span role="alert" data-testid={`redondeo-error-${personaId}`} style={ERROR_DEL_REDONDEO}>{error}</span>
+      : <IconoDeAviso titulo={error} tono="neg" testid={`redondeo-aviso-${personaId}`} />)}
     </span>
   )
 }

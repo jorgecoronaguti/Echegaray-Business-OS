@@ -41,6 +41,14 @@ test('EL ATAJO MIRA EL FOCO ANTES DE PREVENIR, Y EL AVISO TIENE «REHACER»', ()
   assert.match(d, /sinPasosDeOtraRuta\(/)
 })
 
+// QA DE PRODUCCIÓN (15/09/2026): Ctrl+Z fuera de un input, sin nada que deshacer, mostraba «Nada para deshacer»
+// durante segundos. Con la pila vacía el atajo no pinta nada.
+test('PILA VACÍA + ATAJO: NO SE RENDERIZA NINGÚN AVISO', () => {
+  const d = leer('shared/components/deshacer/DeshacerProvider.tsx')
+  assert.match(d, /if \(!tomado\) return\n/)
+  assert.ok(!/Nada para (deshacer|rehacer)/.test(d), 'MUTACIÓN: volver a avisar con la pila vacía')
+})
+
 test('INLINEEDIT GUARDA POR EL HOOK, Y TODOS SUS CONSUMIDORES LO HEREDAN', () => {
   const i = leer('shared/components/ds/InlineEdit.tsx')
   assert.match(i, /useGuardadoDeshacible\(\{/)

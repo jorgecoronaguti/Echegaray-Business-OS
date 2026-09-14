@@ -12,7 +12,7 @@
 
 import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
-import { CeldaEditable, MarcaDeOrigen } from '../CeldasDeLiquidacion'
+import { CeldaEditable, IconoDeAviso, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
 import { referenciaDeJornales } from './estadoDelPago'
 import { horasNoCoincidenConLosDias, type CampoEditable, type LineaConOverrides } from '../../../services/liquidacionOverrides'
@@ -167,19 +167,17 @@ export function CeldaHorasPagas({ fila, edicion }: { fila: FilaDelEspejo; edicio
   const ref = referenciaDeJornales(l)
   const titulo = [tituloDeExtras(l), ref?.titulo].filter(Boolean).join(' · ')
   // HORAS SE ESCRIBE EN LA ABIERTA (dueño, 15/09/2026: «todas las celdas editables»). Sólo obreros: son las horas que
-  // se pagan. Escrita distinta de la suma de los días se guarda igual y avisa en ámbar debajo, en texto.
+  // se pagan. Escrita distinta de la suma de los días se guarda igual y avisa con un ⚠ y su `title`: un texto debajo
+  // rompía el alto de la fila (dueño, 15/09/2026).
   if (edicion && !fila.cerrada && fila.grupo === 'obreros' && edicion.camposEditables.includes('horas')) {
     const dias = horasNoCoincidenConLosDias(l)
     return (
       <div data-testid={`espejo-hs-pagas-${fila.personaId}`} title={titulo || undefined}
-        style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+        style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
         <Escribible campo="horas" unidad="horas" fila={fila} quincena={edicion.quincena}
-          camposEditables={edicion.camposEditables} ancho={64} claseCampo="w-14" />
+          camposEditables={edicion.camposEditables} ancho={56} claseCampo="w-12" />
         {dias != null && (
-          <span data-testid={`horas-no-coinciden-${fila.personaId}`}
-            style={{ fontSize: '10px', lineHeight: '12px', color: V.warn, textAlign: 'right' }}>
-            {`no coincide con los días: ${nHoras(dias)} h`}
-          </span>
+          <IconoDeAviso titulo={`no coincide con los días: ${nHoras(dias)} h`} testid={`horas-no-coinciden-${fila.personaId}`} />
         )}
       </div>
     )

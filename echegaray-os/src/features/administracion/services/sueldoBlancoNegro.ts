@@ -95,8 +95,8 @@ export interface SueldoBlancoNegro {
   /** De dónde salió el neto: escrito a mano, el recibo, `nomina_recibo_neto`, o la mediana (`proporcion`). */
   origenNeto: 'manual' | 'recibo' | 'nomina' | 'estimado' | null
   /**
-   * SE EDITARON LAS HORAS O EL $/H DEL RECIBO Y NO EL NETO: el neto sigue siendo el del recibo (o el estimado)
-   * y la pantalla avisa en ámbar «neto no recalculado: editá el neto si cambió el recibo».
+   * SE EDITARON LAS HORAS O EL $/H DEL RECIBO Y NO EL NETO, Y EL NETO ES REAL (recibo o nómina): no cambia y la
+   * pantalla pone un ⚠ junto al Banco. Un neto estimado se recalcula y esto queda en `false`.
    */
   netoNoRecalculado: boolean
   /** Qué celdas del blanco escribió alguien. */
@@ -159,6 +159,12 @@ function conManual(b: Blanco, m: EntradaDeSueldo['manual']): Blanco & Pick<Sueld
   const bruto = (h != null || v != null) && horasBlanco != null && valorHoraCategoria != null ? r2(horasBlanco * valorHoraCategoria) : b.bruto
   if (n != null) {
     return { ...b, horasBlanco, valorHoraCategoria, bruto, neto: n, origenNeto: 'manual', proporcion: null, netoNoRecalculado: false, editado }
+  }
+  // UN NETO ESTIMADO SE VUELVE A ESTIMAR (dueño, 15/09/2026, fila de Agüero 01/09: «tengo ese sin recalc pegado»). Sin
+  // recibo real ya es bruto × la mediana: con las horas o el $/h escritos se rehace igual, y no hay nada que avisar.
+  // Un neto REAL (recibo del estudio o nómina) no se toca, y la pantalla lo avisa con el ícono.
+  if (b.origenNeto === 'estimado' && b.proporcion && bruto != null) {
+    return { ...b, horasBlanco, valorHoraCategoria, bruto, neto: r2(bruto * b.proporcion.cociente), netoNoRecalculado: false, editado }
   }
   return { ...b, horasBlanco, valorHoraCategoria, bruto, netoNoRecalculado: b.neto != null, editado }
 }

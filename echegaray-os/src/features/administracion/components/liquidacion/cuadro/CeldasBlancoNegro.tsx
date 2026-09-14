@@ -16,7 +16,7 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 import { V } from '@/shared/components/v2/patron'
-import { MarcaDeOrigen } from '../CeldasDeLiquidacion'
+import { IconoDeAviso, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { Escribible } from './CeldasDelEspejo'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import { horas as nHoras, pesos } from '../formato'
@@ -114,23 +114,24 @@ export function CeldaHoraCategoria({ fila, edicion }: { fila: FilaDelEspejo; edi
   return <Celda s={s} valor={pesos(s?.valorHoraCategoria ?? null)} testid={`hora-categoria-${fila.personaId}`} />
 }
 
-export const AVISO_NETO_NO_RECALCULADO = 'neto no recalculado: editá el neto si cambió el recibo'
+export const AVISO_NETO_NO_RECALCULADO = 'el neto es del recibo del estudio y no se recalcula: editá Banco si cambió'
 
 /** NETO (BANCO): el neto del recibo, o el estimado; lo escrito a mano gana y se marca. En la abierta se escribe. */
 export function CeldaNeto({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const l = fila.linea
   const s = l.sueldo
   const testid = `neto-${fila.personaId}`
-  // ÁMBAR: se corrigieron las horas o el $/h del recibo y el neto quedó el de antes.
+  // ⚠ JUNTO AL NÚMERO, SIN TEXTO (dueño, 15/09/2026, fila de Agüero: el aviso quedaba pegado debajo): se corrigieron las horas o el
+  // $/h y el neto es REAL, así que quedó el de antes. Un neto estimado ya se recalculó y no avisa.
   const aviso = s?.netoNoRecalculado ? AVISO_NETO_NO_RECALCULADO : null
+  const titulo = s ? origenDelBlanco(s) : undefined
   if (seEscribe(fila, 'porBanco', edicion)) {
     return (
-      <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined}
-        title={[aviso, s ? origenDelBlanco(s) : null].filter(Boolean).join(' · ') || undefined}
-        style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, color: aviso ? V.warn : undefined }}>
-        {aviso && <span style={{ fontSize: '10px', color: V.warn }}>sin recalc.</span>}
+      <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined} title={titulo}
+        style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
         <Escribible campo="porBanco" fila={fila} quincena={edicion.quincena}
           camposEditables={edicion.camposEditables} ancho={112} claseCampo="w-24" />
+        {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
         {s?.driveFileId && (
           <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
             title="Abrir el recibo" style={{ fontSize: '10.5px', color: V.apagado }}>↗</a>
@@ -143,9 +144,10 @@ export function CeldaNeto({ fila, edicion }: { fila: FilaDelEspejo; edicion?: Ed
   }
   const estimado = s != null && s.origenNeto === 'estimado' && !l.manual.porBanco
   return (
-    <div data-testid={testid} title={[aviso, s ? origenDelBlanco(s) : null].filter(Boolean).join(' · ') || undefined}
-      style={{ ...DERECHA, ...(estimado ? ESTIMADO : { color: aviso ? V.warn : V.tinta }) }}>
+    <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined} title={titulo}
+      style={{ ...DERECHA, ...(estimado ? ESTIMADO : { color: V.tinta }) }}>
       {pesos(l.porBanco)}{estimado && <Est />}
+      {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
       <MarcaDeOrigen origen={l.origen.porBanco} compacta />
       {s?.driveFileId && (
         <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}

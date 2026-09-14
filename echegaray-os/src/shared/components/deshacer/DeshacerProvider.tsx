@@ -77,7 +77,10 @@ export function DeshacerProvider({ children }: { children: ReactNode }) {
 
   const ejecutar = useCallback(async (accion: AccionDeDeshacer) => {
     const tomado = accion === 'deshacer' ? tomarParaDeshacer(pilaRef.current) : tomarParaRehacer(pilaRef.current)
-    if (!tomado) { avisar(accion === 'deshacer' ? 'Nada para deshacer' : 'Nada para rehacer', false); return }
+    // PILA VACÍA: NO SE PINTA NADA (QA de producción, 15/09/2026: el aviso de pila vacía quedaba segundos en pantalla
+    // después de un Ctrl+Z que no tenía nada que hacer).
+    if (!tomado) return
+
     const { paso } = tomado
     if (paso.ruta !== rutaActual()) {
       cambiarPila(quitarPaso(tomado.pila, paso.id))
