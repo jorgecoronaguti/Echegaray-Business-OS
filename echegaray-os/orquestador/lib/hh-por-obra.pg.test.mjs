@@ -70,17 +70,17 @@ test('las HH de la ficha del cliente son las de la cara canónica, obra por obra
     await c.query('begin isolation level repeatable read')
 
     // ── LA FUNCIÓN DESPLEGADA TIENE LA CLAVE ─────────────────────────────────────────────────────
-    const def = (await uno(`select pg_get_functiondef('public.pantalla_cliente(text,text)'::regprocedure) d`)).d
-    // `assert.ok` Y NO `assert.match`: un `match` fallido imprime el cuerpo ENTERO de la función
-    // —9.000 caracteres— en la salida del test, y esa salida se paga en cada corrida de la suite.
-    assert.ok(def.includes("'hh_obra'"),
-      'la función desplegada no publica `hh_obra`: falta aplicar 20260911T2400 (o otra migración de '
-      + 'pantalla_cliente se aplicó después y la borró)')
-    // `hh_plan` sigue saliendo de la vista; `hh_real` del CRM, de la planilla (20260913T1400).
-    assert.ok(def.includes('obra_plan_vs_real'), '`hh_obra` dejó de leer el plan de la cara canónica')
-    // `pantalla_cliente` sirve la caché; la regla vive en `pantalla_cliente_en_vivo` (20260913T2300).
+    // DESDE 20260913T1500 `pantalla_cliente` es el envoltorio que sirve la caché: la clave y la regla
+    // viven en `pantalla_cliente_en_vivo`. Mirar el envoltorio daba rojo con la función correcta.
     const enVivo = (await uno(
       `select pg_get_functiondef('public.pantalla_cliente_en_vivo(text,text)'::regprocedure) d`)).d
+    // `assert.ok` Y NO `assert.match`: un `match` fallido imprime el cuerpo ENTERO de la función
+    // —9.000 caracteres— en la salida del test, y esa salida se paga en cada corrida de la suite.
+    assert.ok(enVivo.includes("'hh_obra'"),
+      'la función desplegada no publica `hh_obra`: falta aplicar 20260911T2400 (o otra migración de '
+      + 'pantalla_cliente_en_vivo se aplicó después y la borró)')
+    // `hh_plan` sigue saliendo de la vista; `hh_real` del CRM, de las horas que cuentan (20260913T2300).
+    assert.ok(enVivo.includes('obra_plan_vs_real'), '`hh_obra` dejó de leer el plan de la cara canónica')
     assert.ok(enVivo.includes('public.hh_que_cuentan_en_obra') && !enVivo.includes("'sheet:jornales'"),
       '`hh_obra` no lee la definición única de horas que cuentan: falta aplicar 20260913T2300')
 
