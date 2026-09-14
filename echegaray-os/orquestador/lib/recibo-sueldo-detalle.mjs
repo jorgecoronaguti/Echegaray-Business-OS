@@ -15,7 +15,8 @@
 //
 // Sin CUIL válido (dígito verificador), sin período o sin neto: error. El valor hora se acepta sólo si
 // horas × valor hora = monto del 0401 al centavo; la categoría queda null si no se reconoce. La
-// contribución patronal (5xxx) no es sueldo del obrero: se ignora entera.
+// contribución patronal (5xxx) no es sueldo del obrero: no toca bruto, horas ni neto; va sólo al costo
+// empleador, y ese costo queda null —nunca 0— cuando el recibo no lo imprime completo.
 
 const MONTO = /^-?\d{1,3}(?:\.\d{3})*,\d{2}$/
 const UNIDAD = /^\d+(?:,\d+)?$/
@@ -174,7 +175,48 @@ function totalesViejos(lista, texto) {
   return { bruto, descuentos, neto }
 }
 
-/** Texto del recibo → `{ ok: true, fila }` o `{ ok: false, error }`. */
+const SIN_COSTO = { contribuciones_empleador: null, costo_total_empleador: null, fondo_cese: null, art: null, contribucion_uocra: null }
+// En centavos enteros: 483.734,08 − 483.734,06 en coma flotante da 0,0200…03 y rechazaría el borde.
+const TOLERANCIA_CENTAVOS = 2
+const fueraDeTolerancia = (a, b) => Math.abs(Math.round(a * 100) - Math.round(b * 100)) > TOLERANCIA_CENTAVOS
+
+/**
+ * Costo empleador: sólo del formato con rótulos, que imprime el detalle 5xxx, el subtotal y el costo
+ * total. Se acepta si el detalle suma el subtotal y bruto + subtotal = costo total, los dos con $0,02
+ * de tolerancia: un 4xxx (aporte del obrero) leído como contribución rompe la primera, y un subtotal
+ * que no es el del recibo rompe la segunda.
+ *
+ * El formato enero–junio imprime «Contribuciones Patronales: X» sin detalle ni costo total, y X NO es
+ * el mismo concepto: es ~37% del remunerativo contra ~55% del subtotal nuevo (medido sobre los 204
+ * recibos 2026). Guardarlo en la misma columna mezclaría dos bases. Queda null, con aviso.
+ */
+function costoEmpleadorDe(texto, lista, bruto) {
+  const total = rotulado(texto, /COSTO TOTAL EMPLEADOR\s*\$\s*(-?[\d.]+,\d{2})/)
+  const subtotal = rotulado(texto, /SUB TOTAL CONTRIBUCIONES EMPLEADOR\s*\$\s*(-?[\d.]+,\d{2})/)
+  if (total == null && subtotal == null) {
+    // El formato viejo repite el rótulo en el original y en el duplicado: es UN valor, no dos.
+    const viejos = [...new Set([...texto.matchAll(/Contribuciones Patronales:\s*([\d.]+,\d{2})/g)].map((m) => m[1]))]
+    return {
+      costo: SIN_COSTO,
+      aviso: viejos.length
+        ? `sin costo empleador: sólo imprime «Contribuciones Patronales: ${viejos.join(' / ')}» sin detalle ni costo total (no comparable, queda null)`
+        : 'sin costo empleador: el recibo no trae la sección (queda null)',
+    }
+  }
+  if (total == null || subtotal == null) return { error: `costo empleador incompleto: total ${total} · subtotal contribuciones ${subtotal}` }
+  if (bruto == null) return { error: 'costo empleador sin bruto: no se puede validar bruto + contribuciones = costo total' }
+  const contrib = lista.filter((c) => c.codigo[0] === '5')
+  const suma = r2(contrib.reduce((a, c) => a + c.monto, 0))
+  if (fueraDeTolerancia(suma, subtotal)) return { error: `contribuciones 5xxx suman ${suma} ≠ subtotal impreso ${subtotal}` }
+  if (fueraDeTolerancia(bruto + subtotal, total)) return { error: `bruto ${bruto} + contribuciones ${subtotal} ≠ costo total empleador ${total}` }
+  const de = (codigo) => r2(contrib.filter((c) => c.codigo === codigo).reduce((a, c) => a + c.monto, 0))
+  const costo = { contribuciones_empleador: subtotal, costo_total_empleador: total, fondo_cese: de('5485'), art: de('5250'), contribucion_uocra: de('5480') }
+  const negativo = Object.entries(costo).find(([, v]) => v < 0)
+  if (negativo) return { error: `costo empleador negativo: ${negativo[0]} ${negativo[1]}` }
+  return { costo, aviso: null }
+}
+
+/** Texto del recibo → `{ ok: true, fila, avisos }` o `{ ok: false, error }`. */
 export function parsearRecibo(textoOLineas) {
   const lineas = Array.isArray(textoOLineas) ? textoOLineas : String(textoOLineas).split('\n')
   const texto = lineas.join('\n')
@@ -188,6 +230,8 @@ export function parsearRecibo(textoOLineas) {
   if (h.error) return { ok: false, error: h.error }
   const t = nuevo ? totalesNuevos(texto) : totalesViejos(lista, texto)
   if (t.error) return { ok: false, error: t.error }
+  const ce = costoEmpleadorDe(texto, lista, t.bruto)
+  if (ce.error) return { ok: false, error: ce.error }
   return {
     ok: true,
     formato: nuevo ? 'con_rotulos' : 'duplicado',
@@ -196,7 +240,9 @@ export function parsearRecibo(textoOLineas) {
       horas_normales: h.normales, horas_feriado: h.feriado, horas_otras: h.otras,
       horas_blanco: r2(h.normales + h.feriado + h.otras),
       bruto: t.bruto, descuentos: t.descuentos, neto: t.neto,
+      ...ce.costo,
     },
+    avisos: ce.aviso ? [ce.aviso] : [],
     // Conceptos con unidad que NO se cuentan como horas (SAC proporcional en días, etc.): el
     // importador los informa para que nadie descubra tarde que una unidad horaria quedó afuera.
     unidadesNoHorarias: lista.filter((c) => Number(c.codigo) < 4000 && c.unidad != null && c.codigo !== '0401' && c.codigo !== '0431' && !esHoraria(c))
