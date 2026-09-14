@@ -5,12 +5,17 @@
 // convierte y se arma la grilla. Ninguna regla de negocio nueva: la definición de HH real es la de
 // `obra_plan_vs_real` y el acumulado de la obra LO PASA LA PANTALLA, no se vuelve a sumar.
 //
-// ═══ LA QUINCENA ES EL CORTE, Y NO ES UN GUSTO ═══
+// ═══ ABRE EN LA OBRA ENTERA, Y LOS CORTES SON LOS BLOQUES DE JORNALES ═══
 //
-// San Francisco tiene 192 días con horas y 26 personas: 4.992 celdas que ninguna pantalla dibuja.
-// La quincena calendario (1–15 · 16–fin) es además la unidad con la que la empresa liquida jornales,
-// así que es el corte con el que el dueño ya piensa. El índice de quincenas viaja COMPLETO: ningún
-// período se esconde en silencio.
+// Hasta el 13/09/2026 abría en la ÚLTIMA quincena calendario: en Quattropani la grilla mostraba
+// 01/09–10/09 y el bloque 17/08–31/08 —el inicio real de la obra y 226 de sus 378 h— quedaba en un
+// link. El dueño lo leyó como que no se había traído la quincena anterior («está mal lo de
+// Quattropani»). Ahora `ventana` null = la obra entera, que es lo que pidió el 11/09.
+//
+// Los períodos son los BLOQUES de la planilla (03/08–15/08, 17/08–31/08…), no la quincena calendario:
+// JORNALES no liquida del 16 al fin de mes, y un corte que no coincide con ningún bloque produce
+// totales que no aparecen en la planilla. El `hasta` lo manda SQL; `finDeQuincena` sólo cubre una
+// respuesta vieja de la caché que todavía no lo traiga.
 //
 // ═══ CERO HORAS Y UNA AUSENCIA NO SON LO MISMO QUE UNA CELDA VACÍA ═══
 //
@@ -60,7 +65,7 @@ export interface DesgloseDeHoras {
   /** Primera y última fecha con horas de TODA la obra. */
   desde: string | null
   hasta: string | null
-  /** La quincena que se está dibujando. */
+  /** El bloque que se está dibujando (su `desde`). `null` = la OBRA ENTERA, que es con lo que abre. */
   ventana: string | null
   periodos: PeriodoHH[]
   porPersona: PersonaHH[]
@@ -105,10 +110,16 @@ export function finDeQuincena(desde: string): string {
   return `${desde.slice(0, 8)}${String(ultimo).padStart(2, '0')}`
 }
 
-/** «1ª quincena sep/26» — como la nombra la administración en los jornales. */
+/** «1ª quincena sep/26». Ya no rotula los períodos (son bloques de JORNALES): queda para quien lo use. */
 export function etiquetaDeQuincena(desde: string): string {
   const [a, m, d] = desde.slice(0, 10).split('-').map(Number)
   return `${d <= 15 ? '1ª' : '2ª'} quincena ${MES[m - 1]}/${String(a).slice(2)}`
+}
+
+/** «17/08–31/08»: el bloque como está escrito en la planilla, sin inventarle un nombre. */
+export function etiquetaDeBloque(desde: string, hasta: string): string {
+  const dm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+  return `${dm(desde)}–${dm(hasta)}`
 }
 
 /** Lo que devuelve `hh_de_obra`. `null` = no puedo leerlo (rol sin permiso u obra inexistente). */
@@ -133,13 +144,14 @@ export function armarDesgloseHH(j: unknown): DesgloseDeHoras | null {
     periodos: ((r.periodos ?? []) as Record<string, unknown>[]).flatMap((p) => {
       const desde = dia(p.desde)
       if (!desde) return []
+      const hasta = dia(p.hasta) ?? finDeQuincena(desde)
       return [{
         desde,
-        hasta: finDeQuincena(desde),
+        hasta,
         hh: num(p.hh),
         dias: num(p.dias) ?? 0,
         registros: num(p.registros) ?? 0,
-        etiqueta: etiquetaDeQuincena(desde),
+        etiqueta: etiquetaDeBloque(desde, hasta),
       }]
     }),
     porPersona: ((r.por_persona ?? []) as Record<string, unknown>[]).map((p) => ({
@@ -166,17 +178,34 @@ export function armarDesgloseHH(j: unknown): DesgloseDeHoras | null {
   }
 }
 
+/**
+ * EL ÍNDICE DE CADA DÍA DE LA GRILLA DONDE EMPIEZA UN BLOQUE, con su rango. Con la obra entera la
+ * grilla cruza varios bloques y sin esta marca 31/08 y 01/09 se leen como días seguidos del mismo
+ * corte. Un día que no cae en ningún período no abre bloque.
+ */
+export function iniciosDeBloque(dias: readonly string[], periodos: readonly PeriodoHH[]): Map<number, PeriodoHH> {
+  const inicios = new Map<number, PeriodoHH>()
+  let anterior: PeriodoHH | null = null
+  dias.forEach((f, i) => {
+    const p = periodos.find((x) => f >= x.desde && f <= x.hasta) ?? null
+    if (p && p !== anterior) inicios.set(i, p)
+    anterior = p
+  })
+  return inicios
+}
+
 export interface FilaDeGrilla {
   persona: PersonaHH
   /** Una por día de la ventana, en el mismo orden que `dias`. `null` = ese día no tuvo fila. */
   celdas: (CeldaDia | null)[]
-  /** Lo trabajado por esta persona EN LA VENTANA (no en toda la obra: eso es `persona.hh`). */
+  /** Lo trabajado por esta persona EN LO QUE SE DIBUJA —un bloque o la obra entera—; `persona.hh`
+   *  es siempre el acumulado de la obra. */
   total: number | null
 }
 
 export interface GrillaDeHoras {
-  /** Los días con algo cargado en la ventana, ordenados. Nunca los 15: un domingo sin horas no es
-   *  una columna, es ruido que corre el ancho de las que sí tienen algo. */
+  /** Los días con algo cargado en lo que se dibuja, ordenados. Un domingo sin horas no es una
+   *  columna: es ruido que corre el ancho de las que sí tienen algo. */
   dias: string[]
   filas: FilaDeGrilla[]
   /** Σ de cada día. */

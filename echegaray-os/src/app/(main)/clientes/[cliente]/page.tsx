@@ -143,7 +143,8 @@ type Query = {
    */
   trabajo?: string
   /**
-   * EL DESGLOSE DE HORAS DE UN TRABAJO (`?hh=<obra_id>`), y `hhq` la quincena que dibuja.
+   * EL DESGLOSE DE HORAS DE UN TRABAJO (`?hh=<obra_id>`), y `hhq` el bloque de JORNALES que
+   * dibuja (sin `hhq`, la obra entera).
    *
    * «Que de ahí me lleve a un desglose de la obra entera con las personas por día que participaron
    * de las HH» (dueño, 11/09/2026 18:38). Va en la URL y no en un estado de cliente por la misma
@@ -517,8 +518,9 @@ export default async function ClientePage({ params, searchParams }: {
 
   /** Adónde lleva el número de HH de cada fila: su desglose, en esta misma ficha. */
   const hrefDesgloseHH = (obraId: string) => url({ hh: obraId, hhq: null })
-  /** La misma obra, otra quincena. Función declarada y no arrow en el JSX (React #419). */
-  const hrefPeriodoHH = (desde: string) => url({ hh: hhAbierta, hhq: desde })
+  /** La misma obra, otro bloque de JORNALES; `null` = la obra entera. Función declarada y no arrow en
+   *  el JSX (React #419). */
+  const hrefPeriodoHH = (desde: string | null) => url({ hh: hhAbierta, hhq: desde })
 
   // ═══ EL ACUMULADO DE HH DEL CLIENTE (dueño, 11/09/2026 18:38) ═══
   //
