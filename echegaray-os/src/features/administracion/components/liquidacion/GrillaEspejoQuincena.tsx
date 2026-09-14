@@ -263,18 +263,18 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
           <CeldaNeto fila={fila} edicion={{ quincena, camposEditables }} />
           <CeldaHorasNegro fila={fila} />
           <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
-          <CeldaImporteNegro fila={fila} />
+          <CeldaImporteNegro fila={fila} edicion={{ quincena, camposEditables }} />
         </>
       )}
       <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={128} />
       <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={112} />
-      <CeldaEfectivoDelSueldo fila={fila} />
+      <CeldaEfectivoDelSueldo fila={fila} edicion={{ quincena, camposEditables }} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.enEfectivo}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={100} />
       </div>
       <div className={CLASE_COBRA} style={{ ...COLUMNA_COBRA, alignSelf: 'stretch', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-        <CeldaTotal fila={fila} />
+        <CeldaTotal fila={fila} edicion={{ quincena, camposEditables }} />
       </div>
     </div>
   )

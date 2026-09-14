@@ -329,6 +329,9 @@ const COLUMNAS_LINEA = ['persona_id', 'efectivo_redondeado', 'horas'] as const
 /** Las correcciones del blanco, si la migración `20260915T0100` ya se aplicó. */
 const COLUMNAS_BLANCO = ['horas_recibo_manual', 'valor_hora_recibo_manual'] as const
 
+/** El importe negro escrito a mano, si la migración `20260915T0300` ya se aplicó. */
+const COLUMNAS_NEGRO = ['negro_manual'] as const
+
 /**
  * LAS CABECERAS Y SUS LÍNEAS — preguntando por las columnas de override y aceptando que no estén.
  *
@@ -347,6 +350,11 @@ async function leerCabecerasGuardadas(
   const faltaColumna = (e: { code?: string; message: string }) => e.code === '42703' || /column .* does not exist/i.test(e.message)
   // TRES ESCALONES: con las columnas del blanco (20260915T0100), sin ellas (sólo 20260909T1740), y sin
   // ninguna. Sin la migración nueva las `*_manual` de siempre NO se pierden: sólo esas dos celdas quedan fijas.
+  // CUARTO ESCALÓN: el importe negro (20260915T0300). Sin esa migración, las demás correcciones siguen.
+  const conNegro = [...COLUMNAS_LINEA, ...COLUMNAS_MANUALES, ...COLUMNAS_BLANCO, ...COLUMNAS_NEGRO]
+  const conTodoNegro = await pedir(conNegro)
+  if (!conTodoNegro.error) return { data: conTodoNegro.data, error: null, columnas: [...conNegro] }
+  if (!faltaColumna(conTodoNegro.error)) return { data: null, error: conTodoNegro.error, columnas: [] }
   const conBlanco = [...COLUMNAS_LINEA, ...COLUMNAS_MANUALES, ...COLUMNAS_BLANCO]
   const conTodo = await pedir(conBlanco)
   if (!conTodo.error) return { data: conTodo.data, error: null, columnas: [...conBlanco] }
@@ -399,6 +407,7 @@ type LineaGuardada = {
   total_manual?: number | string | null
   horas_recibo_manual?: number | string | null
   valor_hora_recibo_manual?: number | string | null
+  negro_manual?: number | string | null
 }
 
 interface CabeceraGuardada {
@@ -426,6 +435,7 @@ const overridesDeLinea = (l: LineaGuardada): OverridesDeLinea => ({
   total: overrideDe(l.total_manual),
   horasRecibo: overrideDe(l.horas_recibo_manual),
   valorHoraRecibo: overrideDe(l.valor_hora_recibo_manual),
+  negro: overrideDe(l.negro_manual),
 })
 
 /** El estado de cada cuadro y el redondeo ya escrito. Sin cabecera guardada, la quincena está abierta. */

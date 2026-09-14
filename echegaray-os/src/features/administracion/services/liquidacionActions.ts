@@ -275,7 +275,9 @@ async function columnaGuardable(
   if (sonda.error) {
     return {
       error: `La columna «${columna}» no existe todavía: falta aplicar la migración `
-        + (campo === 'horasRecibo' || campo === 'valorHoraRecibo'
+        + (campo === 'negro'
+          ? '20260915T0300_liquidacion_negro_manual.sql. No guardé nada.'
+          : campo === 'horasRecibo' || campo === 'valorHoraRecibo'
           ? '20260915T0100_liquidacion_blanco_manual.sql. No guardé nada.'
           : '20260909T1740_liquidacion_celdas_manuales.sql. No guardé nada.'),
     }

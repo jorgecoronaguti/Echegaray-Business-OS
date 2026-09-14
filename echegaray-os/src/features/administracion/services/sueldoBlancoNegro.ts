@@ -78,7 +78,7 @@ export interface EntradaDeSueldo extends EntradaDeBlanco {
    * LO ESCRITO A MANO EN EL BLANCO (dueño, 14/09/2026: «dejame editable las h/recibo»). `null` o ausente =
    * sin corrección. Precedencia: manual > recibo real > estimado. `neto` es `por_banco_manual`.
    */
-  manual?: { horasRecibo?: number | null; valorHoraRecibo?: number | null; neto?: number | null }
+  manual?: { horasRecibo?: number | null; valorHoraRecibo?: number | null; neto?: number | null; negro?: number | null }
 }
 
 export type EstadoDelBlanco = 'recibo' | 'estimado'
@@ -171,7 +171,10 @@ export function sueldoBlancoNegro(e: EntradaDeSueldo): SueldoBlancoNegro {
   const equivalentes = num(e.horasEquivalentes)
   const recargoExtras = horas == null || equivalentes == null ? 0 : Math.max(0, r2(equivalentes - horas))
   const valorHoraNegro = num(e.valorHoraNegro)
-  const negro = horasNegro == null || valorHoraNegro == null ? null : r2((horasNegro + recargoExtras) * valorHoraNegro)
+  const negroCalculado = horasNegro == null || valorHoraNegro == null ? null : r2((horasNegro + recargoExtras) * valorHoraNegro)
+  // IMPORTE NEGRO ESCRITO A MANO (dueño, 15/09/2026: «dejame editable todas las columnas de dinero»). Gana sobre
+  // el cálculo y mueve el total; las horas del negro quedan como están.
+  const negro = num(e.manual?.negro) ?? negroCalculado
   return {
     ...b,
     horas,
@@ -209,8 +212,9 @@ export function negroDeLaFila(l: {
   manual?: { cobra?: boolean; porBanco?: boolean }
 }): number | null {
   if (l.netoMensual != null) return null
-  // Un banco escrito a mano ya está DENTRO del modelo (es el neto manual): sólo un total a mano lo saca.
-  if (l.sueldo && !l.manual?.cobra) return l.sueldo.negro
+  // EL NEGRO QUE MUESTRA LA FILA, SIEMPRE: el del modelo (calculado o escrito). Un Cobra total escrito a mano NO lo
+  // recalcula en silencio; si deja de cerrar, lo marca `cierreDeLaFila` (dueño, 15/09/2026).
+  if (l.sueldo) return l.sueldo.negro
   return l.cobra == null ? null : r2(l.cobra - l.porBanco)
 }
 

@@ -37,6 +37,9 @@ export const CAMPOS_EDITABLES = [
   'horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total',
   // EL BLANCO (dueño, 14/09/2026: «dejame editable las h/recibo»). El neto es `porBanco`.
   'horasRecibo', 'valorHoraRecibo',
+  // IMPORTE NEGRO (15/09/2026: «dejame editable todas las columnas de dinero»). Cobra total es `cobra` y Total
+  // efectivo es `enEfectivo`: ya existían.
+  'negro',
 ] as const
 
 export type CampoEditable = (typeof CAMPOS_EDITABLES)[number]
@@ -109,6 +112,8 @@ export interface LineaConOverrides extends LineaLiquidada {
   horasRecibo: number | null
   /** $/h de categoría que muestra la celda. `null` fuera del modelo. */
   valorHoraRecibo: number | null
+  /** Importe negro que muestra la celda (calculado o escrito). `null` fuera del modelo. */
+  negro: number | null
 }
 
 export type OrigenDeCelda = 'calculado' | 'jornales' | 'manual'
@@ -127,12 +132,12 @@ const redondear2 = (n: number): number => Math.round(n * 100) / 100
 
 const SIN_MARCAS: Record<CampoEditable, boolean> = {
   horas: false, cobra: false, adelanto: false, yaTransferido: false,
-  porBanco: false, enEfectivo: false, total: false, horasRecibo: false, valorHoraRecibo: false,
+  porBanco: false, enEfectivo: false, total: false, horasRecibo: false, valorHoraRecibo: false, negro: false,
 }
 
 const TODO_CALCULADO: Record<CampoEditable, OrigenDeCelda> = {
   horas: 'calculado', cobra: 'calculado', adelanto: 'calculado', yaTransferido: 'calculado',
-  porBanco: 'calculado', enEfectivo: 'calculado', total: 'calculado', horasRecibo: 'calculado', valorHoraRecibo: 'calculado',
+  porBanco: 'calculado', enEfectivo: 'calculado', total: 'calculado', horasRecibo: 'calculado', valorHoraRecibo: 'calculado', negro: 'calculado',
 }
 
 /**
@@ -196,7 +201,7 @@ export function aplicarOverrides(
     return jr
   }
   /** Horas y total no tienen fuente en JORNALES: o los escribió alguien, o se calculan. */
-  const puesto = (campo: 'horas' | 'total' | 'horasRecibo' | 'valorHoraRecibo'): number | null => {
+  const puesto = (campo: 'horas' | 'total' | 'horasRecibo' | 'valorHoraRecibo' | 'negro'): number | null => {
     const v = ov[campo]
     if (v == null || !Number.isFinite(v)) return null
     manual[campo] = true
@@ -211,7 +216,7 @@ export function aplicarOverrides(
   // LO ESCRITO EN EL BLANCO ENTRA AL MODELO: horas del recibo, $/h de categoría y el neto (`por_banco_manual`).
   const netoManual = ov.porBanco != null && Number.isFinite(ov.porBanco) ? redondear2(ov.porBanco) : null
   const manualDelBlanco = conModelo
-    ? { horasRecibo: puesto('horasRecibo'), valorHoraRecibo: puesto('valorHoraRecibo'), neto: netoManual }
+    ? { horasRecibo: puesto('horasRecibo'), valorHoraRecibo: puesto('valorHoraRecibo'), neto: netoManual, negro: puesto('negro') }
     : undefined
   const sueldo = conModelo
     ? sueldoBlancoNegro({ ...blanco!, horas, horasEquivalentes, valorHoraNegro: base.valorHora, manual: manualDelBlanco })
@@ -253,6 +258,7 @@ export function aplicarOverrides(
     sinNeto: sueldo != null && sueldo.neto == null && !base.sinTarifa && origen.cobra === 'calculado',
     horasRecibo: sueldo?.horasBlanco ?? null,
     valorHoraRecibo: sueldo?.valorHoraCategoria ?? null,
+    negro: sueldo?.negro ?? null,
   }
 }
 
@@ -277,7 +283,7 @@ function referenciaDe(
 export function sinOverrides(base: LineaLiquidada): LineaConOverrides {
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
-    referenciaJornales: null, sueldo: null, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,
+    referenciaJornales: null, sueldo: null, sinNeto: false, horasRecibo: null, valorHoraRecibo: null, negro: null,
   }
 }
 
@@ -292,6 +298,7 @@ export const COLUMNA_DE: Record<CampoEditable, string> = {
   total: 'total_manual',
   horasRecibo: 'horas_recibo_manual',
   valorHoraRecibo: 'valor_hora_recibo_manual',
+  negro: 'negro_manual',
 }
 
 /**
