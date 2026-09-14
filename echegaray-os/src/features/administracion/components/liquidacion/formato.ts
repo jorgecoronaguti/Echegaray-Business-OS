@@ -33,6 +33,14 @@ export const pesos = (n: number | null): string => {
   })}`
 }
 
+/**
+ * LO QUE MUESTRA EL CAMPO «EFECT. RED.» (QA, 15/09/2026). Mostraba el número crudo («266000») y rompía la
+ * lectura de la fila. En reposo, con formato como el resto (`pesos`); mientras se edita, lo tecleado tal cual.
+ * Sin valor, vacío: un «—» dentro de un campo se guardaría como texto.
+ */
+export const textoDelRedondeo = (e: { enEdicion: boolean; texto: string; valor: number | null }): string =>
+  e.enEdicion ? e.texto : (e.valor == null ? '' : pesos(e.valor))
+
 /** Horas: sin signo de moneda y con un decimal como máximo. `null` es «falta el dato». */
 export const horas = (n: number | null): string =>
   n == null ? '—' : Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })

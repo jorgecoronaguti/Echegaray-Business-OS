@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { useDeshacer } from '@/shared/components/deshacer/DeshacerProvider'
 import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
@@ -196,6 +197,9 @@ export function GrillaAsistenciaObra({
   const [elegidas, setElegidas] = useState<Record<string, string>>({})
   const [, arrancar] = useTransition()
   const router = useRouter()
+  // CMD/CTRL+Z (dueño, 15/09/2026): mover a alguien de obra se deshace con la misma acción y la obra anterior.
+  const deshacer = useDeshacer()
+  const nombreDeObra = (id: string) => (id ? (obras.find((o) => o.id === id)?.nombre ?? 'otra obra') : 'sin obra')
 
   // LO QUE EL DESPLEGABLE MUESTRA SELECCIONADO. La obra a la que se le imputa lo que se escriba si
   // se le puede imputar; si su asignación vigente está en una obra que ya no admite horas, ESA obra
@@ -208,6 +212,7 @@ export function GrillaAsistenciaObra({
 
   const cambiarObra = (fila: FilaQuincena, valor: string) => {
     if (mostrada(fila) === valor) return
+    const anterior = mostrada(fila)
     setCambiando(fila.clave)
     setElegidas((e) => ({ ...e, [fila.clave]: valor }))
     setAcuses((a) => { const n = { ...a }; delete n[fila.clave]; return n })
@@ -221,7 +226,19 @@ export function GrillaAsistenciaObra({
       }))
       // EL DATO VUELVE DEL SERVIDOR: la fila, los chips del encabezado y la obra de cada celda se
       // releen; la elección local queda hasta entonces para que el <select> no dé un salto atrás.
-      if (r.ok) router.refresh()
+      if (r.ok) {
+        router.refresh()
+        deshacer?.registrar({
+          clave: `obra-actual-${fila.persona.id}`, rotulo: `Obra de ${fila.persona.nombre}`,
+          anterior, nuevo: valor, anteriorTexto: nombreDeObra(anterior), nuevoTexto: nombreDeObra(valor),
+        }, async (v) => {
+          const x = await cambiarObraActual({ persona_id: fila.persona.id, obra_id: v || null })
+          if (!x.ok) return { ok: false, error: x.error }
+          setElegidas((e) => ({ ...e, [fila.clave]: v }))
+          router.refresh()
+          return { ok: true }
+        })
+      }
     })
   }
 
@@ -273,6 +290,12 @@ export function GrillaAsistenciaObra({
     if (horas === null) { setBorradores((b) => ({ ...b, [k]: original })); return }
     enviar(destino.id, celda.fecha, { persona_id: fila.persona.id, estado: 'presente', horas }, k, fila.clave)
   }
+
+  /**
+   * CELDAS CANCELADAS CON ESCAPE (QA 15/09/2026: «deja cosas pegadas»). Escape descarta el borrador y saca el foco,
+   * y el `blur` de ese mismo evento todavía lee lo tecleado en el DOM: sin esta marca, guardaba lo cancelado.
+   */
+  const canceladas = useRef(new Set<string>())
 
   /** Lo tipeado se descarta: no se guardó. El valor lo vuelve a poner `textoDe(celda)`. */
   const volverAlValorAnterior = (k: string) =>
@@ -580,7 +603,15 @@ export function GrillaAsistenciaObra({
                           setBorradores((b) => ({ ...b, [k]: e.target.value }))
                           if (errores[k]) setErrores((x) => { const n = { ...x }; delete n[k]; return n })
                         }}
-                        onBlur={(e) => guardar(fila, celda, e.target.value)}
+                        onBlur={(e) => { if (canceladas.current.delete(k)) return; guardar(fila, celda, e.target.value) }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+                          if (e.key === 'Escape') {
+                            e.preventDefault(); canceladas.current.add(k); volverAlValorAnterior(k)
+                            setErrores((x) => { const n = { ...x }; delete n[k]; return n })
+                            e.currentTarget.blur()
+                          }
+                        }}
                         className="font-mono tabular-nums"
                         style={{
                           width: 42, height: 28, textAlign: 'center', fontSize: '12.5px',

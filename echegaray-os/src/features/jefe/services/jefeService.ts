@@ -20,12 +20,15 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
 import type { EstadoFecha } from '@/features/obras/types'
 import type { NodoArbol } from './frentes.ts'
+import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
 import type { Metodo, TareaDelDia } from './medicion.ts'
 
 /** Una obra en el selector del encabezado. Sin un solo importe. */
 export interface ObraDelJefe {
   id: string
   nombre: string
+  /** El código interno (`OB-0012`). `null` si todavía no se pudo leer: el selector muestra el nombre solo. */
+  codigo?: string | null
   estado: string
   etapa: string | null
   avance_pct: number | null
@@ -41,13 +44,17 @@ const COLUMNAS_OBRA =
 
 /** Las obras que el jefe ve. El orden es el de trabajo: activas primero, después por nombre. */
 export async function getObrasDelJefe(supabase: SupabaseClient): Promise<ServiceResult<ObraDelJefe[]>> {
-  const { data, error } = await supabase.from('obra_panel').select(COLUMNAS_OBRA).order('nombre')
+  const [{ data, error }, codigos] = await Promise.all([
+    supabase.from('obra_panel').select(COLUMNAS_OBRA).order('nombre'),
+    codigosDeObra(supabase, null),
+  ])
   if (error) return { data: null, error: error.message }
   const filas = (data ?? []).map((o) => {
     const f = o as unknown as Record<string, unknown>
     return {
       id: String(f.obra_id),
       nombre: String(f.nombre ?? f.obra_id),
+      codigo: codigos.get(String(f.obra_id)) ?? null,
       estado: String(f.estado ?? ''),
       etapa: (f.etapa as string | null) ?? null,
       avance_pct: numero(f.avance_pct),

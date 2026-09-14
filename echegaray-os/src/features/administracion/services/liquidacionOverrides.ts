@@ -37,6 +37,11 @@ export const CAMPOS_EDITABLES = [
   'horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total',
   // EL BLANCO (dueño, 14/09/2026: «dejame editable las h/recibo»). El neto es `porBanco`.
   'horasRecibo', 'valorHoraRecibo',
+  // IMPORTE NEGRO (15/09/2026: «dejame editable todas las columnas de dinero»). Cobra total es `cobra` y Total
+  // efectivo es `enEfectivo`: ya existían.
+  'negro',
+  // HS NEGRO (15/09/2026: «todas las celdas editables»). Con ella, Importe negro = Hs negro × $/h negro.
+  'horasNegro',
 ] as const
 
 export type CampoEditable = (typeof CAMPOS_EDITABLES)[number]
@@ -109,6 +114,12 @@ export interface LineaConOverrides extends LineaLiquidada {
   horasRecibo: number | null
   /** $/h de categoría que muestra la celda. `null` fuera del modelo. */
   valorHoraRecibo: number | null
+  /** Importe negro que muestra la celda (calculado o escrito). `null` fuera del modelo. */
+  negro: number | null
+  /** Hs negro que muestra la celda (calculadas o escritas). `null` fuera del modelo. */
+  horasNegro: number | null
+  /** La suma de los días, antes de cualquier override: contra ella se avisa una Horas escrita distinta. */
+  horasDeLosDias: number | null
 }
 
 export type OrigenDeCelda = 'calculado' | 'jornales' | 'manual'
@@ -127,12 +138,12 @@ const redondear2 = (n: number): number => Math.round(n * 100) / 100
 
 const SIN_MARCAS: Record<CampoEditable, boolean> = {
   horas: false, cobra: false, adelanto: false, yaTransferido: false,
-  porBanco: false, enEfectivo: false, total: false, horasRecibo: false, valorHoraRecibo: false,
+  porBanco: false, enEfectivo: false, total: false, horasRecibo: false, valorHoraRecibo: false, negro: false, horasNegro: false,
 }
 
 const TODO_CALCULADO: Record<CampoEditable, OrigenDeCelda> = {
   horas: 'calculado', cobra: 'calculado', adelanto: 'calculado', yaTransferido: 'calculado',
-  porBanco: 'calculado', enEfectivo: 'calculado', total: 'calculado', horasRecibo: 'calculado', valorHoraRecibo: 'calculado',
+  porBanco: 'calculado', enEfectivo: 'calculado', total: 'calculado', horasRecibo: 'calculado', valorHoraRecibo: 'calculado', negro: 'calculado', horasNegro: 'calculado',
 }
 
 /**
@@ -196,7 +207,7 @@ export function aplicarOverrides(
     return jr
   }
   /** Horas y total no tienen fuente en JORNALES: o los escribió alguien, o se calculan. */
-  const puesto = (campo: 'horas' | 'total' | 'horasRecibo' | 'valorHoraRecibo'): number | null => {
+  const puesto = (campo: 'horas' | 'total' | 'horasRecibo' | 'valorHoraRecibo' | 'negro' | 'horasNegro'): number | null => {
     const v = ov[campo]
     if (v == null || !Number.isFinite(v)) return null
     manual[campo] = true
@@ -211,7 +222,10 @@ export function aplicarOverrides(
   // LO ESCRITO EN EL BLANCO ENTRA AL MODELO: horas del recibo, $/h de categoría y el neto (`por_banco_manual`).
   const netoManual = ov.porBanco != null && Number.isFinite(ov.porBanco) ? redondear2(ov.porBanco) : null
   const manualDelBlanco = conModelo
-    ? { horasRecibo: puesto('horasRecibo'), valorHoraRecibo: puesto('valorHoraRecibo'), neto: netoManual }
+    ? {
+      horasRecibo: puesto('horasRecibo'), valorHoraRecibo: puesto('valorHoraRecibo'), neto: netoManual, negro: puesto('negro'),
+      horasNegro: puesto('horasNegro'),
+    }
     : undefined
   const sueldo = conModelo
     ? sueldoBlancoNegro({ ...blanco!, horas, horasEquivalentes, valorHoraNegro: base.valorHora, manual: manualDelBlanco })
@@ -253,6 +267,9 @@ export function aplicarOverrides(
     sinNeto: sueldo != null && sueldo.neto == null && !base.sinTarifa && origen.cobra === 'calculado',
     horasRecibo: sueldo?.horasBlanco ?? null,
     valorHoraRecibo: sueldo?.valorHoraCategoria ?? null,
+    negro: sueldo?.negro ?? null,
+    horasNegro: sueldo?.horasNegro ?? null,
+    horasDeLosDias: base.horas,
   }
 }
 
@@ -277,13 +294,16 @@ function referenciaDe(
 export function sinOverrides(base: LineaLiquidada): LineaConOverrides {
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
-    referenciaJornales: null, sueldo: null, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,
+    referenciaJornales: null, sueldo: null, sinNeto: false, horasRecibo: null, valorHoraRecibo: null, negro: null,
+    horasNegro: null, horasDeLosDias: base.horas,
   }
 }
 
 /** Nombre de columna en `liquidacion_linea` de cada celda editable. */
 export const COLUMNA_DE: Record<CampoEditable, string> = {
-  horas: 'horas',
+  // `horas_manual`, NO `horas`: `horas` es la cifra que sella `cerrarQuincena`, y leerla como override hacía que
+  // al reabrir una quincena las horas selladas volvieran como «manual» sin que nadie las escribiera (15/09/2026).
+  horas: 'horas_manual',
   cobra: 'cobra_manual',
   adelanto: 'adelanto_manual',
   yaTransferido: 'ya_transferido_manual',
@@ -292,13 +312,15 @@ export const COLUMNA_DE: Record<CampoEditable, string> = {
   total: 'total_manual',
   horasRecibo: 'horas_recibo_manual',
   valorHoraRecibo: 'valor_hora_recibo_manual',
+  negro: 'negro_manual',
+  horasNegro: 'horas_negro_manual',
 }
 
 /**
  * QUÉ CELDAS SE PUEDEN GUARDAR HOY, según las columnas que la base REALMENTE tiene.
  *
- * `horas` es nullable desde la migración original: NULL = nadie la escribió, y por eso alcanza para
- * distinguir un override de una ausencia. Las otras seis (`cobra`, `adelanto`, …) nacieron NOT NULL
+ * Las horas van a `horas_manual` (20260915T0510): `horas` es nullable pero es la cifra sellada del cierre, y
+ * no puede decir «esto lo escribió alguien». Las otras seis (`cobra`, `adelanto`, …) nacieron NOT NULL
  * DEFAULT 0: un 0 guardado ahí es indistinguible de «no hay override», y la fila que crea el
  * redondeo las deja en 0 — pisarlas liquidaría a alguien en cero sin que nadie lo haya escrito. Por
  * eso van a columnas `*_manual` nullable, y hasta que la migración se aplique esas celdas se
@@ -306,4 +328,21 @@ export const COLUMNA_DE: Record<CampoEditable, string> = {
  */
 export function camposGuardables(columnas: readonly string[]): CampoEditable[] {
   return CAMPOS_EDITABLES.filter((c) => columnas.includes(COLUMNA_DE[c]))
+}
+
+/**
+ * ¿LA HORAS ESCRITA A MANO NO ES LA SUMA DE LOS DÍAS? Devuelve la suma de los días para el aviso ámbar «no coincide
+ * con los días: X h». `null` sin manual o si coincide: no hay nada que avisar. Se guarda igual.
+ */
+export function horasNoCoincidenConLosDias(l: Pick<LineaConOverrides, 'manual' | 'horas' | 'horasDeLosDias'>): number | null {
+  if (!l.manual.horas || l.horas == null || l.horasDeLosDias == null) return null
+  return redondear2(l.horas) === redondear2(l.horasDeLosDias) ? null : l.horasDeLosDias
+}
+
+const CAMPOS_DE_HORAS: readonly CampoEditable[] = ['horas', 'horasRecibo', 'horasNegro']
+
+/** Las horas no se escriben negativas (la base tiene el mismo CHECK). La plata sigue admitiendo lo que admitía. */
+export function rechazoDelValorDeCelda(campo: CampoEditable, valor: '' | number): string | null {
+  if (valor === '' || !CAMPOS_DE_HORAS.includes(campo)) return null
+  return valor < 0 ? 'Las horas no pueden ser negativas.' : null
 }

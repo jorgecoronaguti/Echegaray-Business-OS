@@ -41,6 +41,9 @@ import { Pastilla } from './canon/Piezas'
 import { fechaCorta } from './formato'
 import { ETAPA_LABEL, type Etapa, type ObraPanel } from '../types'
 import { VISTAS_OBRA, type VistaObra } from '../services/vistasObra'
+import { createClient } from '@/lib/supabase/server'
+import { codigosDeObra } from '@/shared/services/codigosDeObra'
+import { rotuloDeObra } from '@/shared/utils/obra'
 
 /** Lo único que la cabecera necesita de la obra. Un `Pick` y no `ObraPanel` entero: así se ve de un
  *  vistazo qué la rompe si un día la vista cambia, y una página puede armarlo sin traer las 40
@@ -79,7 +82,7 @@ function Punto() {
   return <span style={{ color: C.bordeFuerte }} aria-hidden>·</span>
 }
 
-export function CabeceraDeObra({
+export async function CabeceraDeObra({
   obraId, obra, vistaActiva, pantalla, kpis = [], acciones,
   volverA = '/obras', volverLabel = 'Obras',
 }: {
@@ -115,6 +118,10 @@ export function CabeceraDeObra({
   // dibuja media flecha: se nombra cuál falta, porque «empieza el 03/08 y no sé cuándo termina» es
   // un hecho distinto de «no tiene plan».
   const desde = obra.fecha_inicio_plan ? fechaCorta(obra.fecha_inicio_plan) : null
+  // EL CÓDIGO INTERNO LO LEE LA CABECERA, no cada pantalla: son cinco páginas de obra y una sola
+  // banda. Si la lectura falla, la banda muestra el nombre solo.
+  const codigo = (await codigosDeObra(await createClient(), [obraId])).get(obraId) ?? null
+  const rotulo = rotuloDeObra({ nombre: obra.nombre, codigo })
   const hasta = obra.fecha_fin_plan ? fechaCorta(obra.fecha_fin_plan) : null
   const plazo = desde && hasta ? `${desde} → ${hasta}` : null
   const faltaPlazo = desde ? 'sin fecha de fin' : hasta ? 'sin fecha de inicio' : 'sin fechas de plan'
@@ -127,14 +134,14 @@ export function CabeceraDeObra({
       <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', color: C.tenue }}>
         <Link href={volverA} prefetch={false} style={{ color: C.tenue }}>{volverLabel}</Link>
         <span aria-hidden>/</span>
-        <span style={{ color: C.tintaMedia }}>{obra.nombre}</span>
+        <span style={{ color: C.tintaMedia }}>{rotulo}</span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '5px', flexWrap: 'wrap' }}>
         <h1 style={{
           fontSize: '21px', fontWeight: 600, color: C.tinta, letterSpacing: '-.01em', margin: 0,
           lineHeight: 1.25,
-        }}>{obra.nombre}</h1>
+        }}>{rotulo}</h1>
         <span data-testid="cabecera-obra"><Pastilla tono={est.tono} radio={12} tam={11.5}>{est.t}</Pastilla></span>
         {/* ARCHIVADA SE DICE EN EL ENCABEZADO: es la única señal de que esta ficha se abrió por su
             URL y no desde la cartera, y sin ella alguien podría cargar HH o avance sobre una obra

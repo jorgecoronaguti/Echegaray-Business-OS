@@ -78,7 +78,7 @@ export interface EntradaDeSueldo extends EntradaDeBlanco {
    * LO ESCRITO A MANO EN EL BLANCO (dueño, 14/09/2026: «dejame editable las h/recibo»). `null` o ausente =
    * sin corrección. Precedencia: manual > recibo real > estimado. `neto` es `por_banco_manual`.
    */
-  manual?: { horasRecibo?: number | null; valorHoraRecibo?: number | null; neto?: number | null }
+  manual?: { horasRecibo?: number | null; valorHoraRecibo?: number | null; neto?: number | null; negro?: number | null; horasNegro?: number | null }
 }
 
 export type EstadoDelBlanco = 'recibo' | 'estimado'
@@ -95,8 +95,8 @@ export interface SueldoBlancoNegro {
   /** De dónde salió el neto: escrito a mano, el recibo, `nomina_recibo_neto`, o la mediana (`proporcion`). */
   origenNeto: 'manual' | 'recibo' | 'nomina' | 'estimado' | null
   /**
-   * SE EDITARON LAS HORAS O EL $/H DEL RECIBO Y NO EL NETO: el neto sigue siendo el del recibo (o el estimado)
-   * y la pantalla avisa en ámbar «neto no recalculado: editá el neto si cambió el recibo».
+   * SE EDITARON LAS HORAS O EL $/H DEL RECIBO Y NO EL NETO, Y EL NETO ES REAL (recibo o nómina): no cambia y la
+   * pantalla pone un ⚠ junto al Banco. Un neto estimado se recalcula y esto queda en `false`.
    */
   netoNoRecalculado: boolean
   /** Qué celdas del blanco escribió alguien. */
@@ -160,6 +160,12 @@ function conManual(b: Blanco, m: EntradaDeSueldo['manual']): Blanco & Pick<Sueld
   if (n != null) {
     return { ...b, horasBlanco, valorHoraCategoria, bruto, neto: n, origenNeto: 'manual', proporcion: null, netoNoRecalculado: false, editado }
   }
+  // UN NETO ESTIMADO SE VUELVE A ESTIMAR (dueño, 15/09/2026, fila de Agüero 01/09: «tengo ese sin recalc pegado»). Sin
+  // recibo real ya es bruto × la mediana: con las horas o el $/h escritos se rehace igual, y no hay nada que avisar.
+  // Un neto REAL (recibo del estudio o nómina) no se toca, y la pantalla lo avisa con el ícono.
+  if (b.origenNeto === 'estimado' && b.proporcion && bruto != null) {
+    return { ...b, horasBlanco, valorHoraCategoria, bruto, neto: r2(bruto * b.proporcion.cociente), netoNoRecalculado: false, editado }
+  }
   return { ...b, horasBlanco, valorHoraCategoria, bruto, netoNoRecalculado: b.neto != null, editado }
 }
 
@@ -167,11 +173,17 @@ export function sueldoBlancoNegro(e: EntradaDeSueldo): SueldoBlancoNegro {
   const b = conManual(blancoDe(e), e.manual)
   const horas = num(e.horas)
   const faltan = horas == null || b.horasBlanco == null ? null : r2(horas - b.horasBlanco)
-  const horasNegro = faltan == null ? null : Math.max(0, faltan)
+  // HS NEGRO ESCRITAS A MANO (dueño, 15/09/2026: «todas las celdas editables»). Son las que se pagan en negro, y el
+  // recargo de extras NO se suma: no hay forma de saber qué parte de un número escrito ya lo incluye.
+  const horasNegroManual = num(e.manual?.horasNegro)
+  const horasNegro = horasNegroManual ?? (faltan == null ? null : Math.max(0, faltan))
   const equivalentes = num(e.horasEquivalentes)
-  const recargoExtras = horas == null || equivalentes == null ? 0 : Math.max(0, r2(equivalentes - horas))
+  const recargoExtras = horasNegroManual != null || horas == null || equivalentes == null ? 0 : Math.max(0, r2(equivalentes - horas))
   const valorHoraNegro = num(e.valorHoraNegro)
-  const negro = horasNegro == null || valorHoraNegro == null ? null : r2((horasNegro + recargoExtras) * valorHoraNegro)
+  const negroCalculado = horasNegro == null || valorHoraNegro == null ? null : r2((horasNegro + recargoExtras) * valorHoraNegro)
+  // IMPORTE NEGRO ESCRITO A MANO (dueño, 15/09/2026: «dejame editable todas las columnas de dinero»). Gana sobre
+  // el cálculo y mueve el total; las horas del negro quedan como están.
+  const negro = num(e.manual?.negro) ?? negroCalculado
   return {
     ...b,
     horas,
@@ -209,8 +221,9 @@ export function negroDeLaFila(l: {
   manual?: { cobra?: boolean; porBanco?: boolean }
 }): number | null {
   if (l.netoMensual != null) return null
-  // Un banco escrito a mano ya está DENTRO del modelo (es el neto manual): sólo un total a mano lo saca.
-  if (l.sueldo && !l.manual?.cobra) return l.sueldo.negro
+  // EL NEGRO QUE MUESTRA LA FILA, SIEMPRE: el del modelo (calculado o escrito). Un Cobra total escrito a mano NO lo
+  // recalcula en silencio; si deja de cerrar, lo marca `cierreDeLaFila` (dueño, 15/09/2026).
+  if (l.sueldo) return l.sueldo.negro
   return l.cobra == null ? null : r2(l.cobra - l.porBanco)
 }
 

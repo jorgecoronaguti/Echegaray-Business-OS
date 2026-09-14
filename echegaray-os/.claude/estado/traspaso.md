@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-14 ~tarde (−03) · main = producción (7ade4237)_
+_actualizado: 2026-09-14 ~17:00 (−03) · main = producción (1dcb8053)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -14,43 +14,42 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
 - Nivel E = firma del dueño · nunca debilitar RLS · padrón: nunca alta/baja
 - Sheet real nunca desde un worktree · nunca correr pipeline/generadores «para ver si anda»
 - Nadie cierra su propio trabajo (qa-visual / auditor) · responder al dueño por el bot (avisar-al-dueno.mjs)
-- «Respetar lo que manda app.ecsas.com.ar».
 
 ## 3. ARQUITECTURA (lo que se usa seguido)
 
 - Web: Vercel desde `main`. Backend: push + `git -C ~/echegaray-os/produccion/echegaray-os pull --ff-only`.
 - Migraciones desde main: `node orquestador/scripts/aplicar-migracion.mjs <f>` (ensayo) y `--aplicar`.
-- Consultas: script en scratchpad que importa `orquestador/lib/db.mjs`.
-- Adjuntos del dueño: del JSONL de la sesión.
+- Consultas: script en scratchpad que importa `orquestador/lib/db.mjs`. Sheet: `makeGoogleClient({config: loadConfig(), scopes: READONLY_SCOPES}).readSheetGrid(ID, rango)` → `.filas`.
+- Adjuntos del dueño: del JSONL de la sesión (buscar `media_type` recursivo, también en registros `attachment`).
 
 ## 4. CERRADO HOY (14/09) — EN PRODUCCIÓN
 
-- Conciliación bancaria, cobranzas «vencido» = col Q/U, portal en la ficha, CRM docs, HH obra por asignación (ver commits de la mañana).
-- **Liquidación de horas (varias subidas, última 7ade4237, QA de tercero 11/13 OK):**
-  - Sueldo obrero = BLANCO (recibo: horas × $/h categoría → neto banco) + NEGRO (horas que el recibo no cubre × $/h negro editable). Sin recibo: mitad de horas × piso, neto est. por mediana neto/bruto (propia o plantel). Total = neto + negro; efectivo = total − neto − adelanto − transferido.
-  - Tabla `recibo_sueldo_linea` (migración 20260914T2300 aplicada): 299 recibos 2026 leídos de PDF (`recibos-detalle-importar.mjs`), netos = nomina_recibo_neto al centavo.
-  - UNA cuenta de horas (`horasDelDia`) para solapa Horas y Liquidación: presencia-defecto CUENTA, licencias pagas SUMAN (decisión dueño). Extras: coeficiente sólo en la plata.
-  - Mensuales aparte en el pie; quincena cerrada: negro = total sellado − neto. «Más» = 3 secciones fijas.
-  - Recibos con PDF (documentacion_legajo), efectivo redondeado sugerido a miles, Rosales convenio UOCRA (dato corregido con respaldo).
-  - Migración 20260914T2100 (persona_tarifa_correccion) aplicada.
-- Memoria: `liquidacion-rediseno-pedido-1409` tiene todas las decisiones del dueño.
+- **Liquidación (varias subidas; última 4988137e):** blanco+negro (recibo real / estimado por mediana), horas únicas Horas=Liquidación (presencia-defecto y licencias cuentan), plantel por quincena, orden de JORNALES, Cobra total fija, TODAS las celdas editables (manuales en `liquidacion_linea`: `*_manual`, `negro_manual`, `horas_manual`, `horas_recibo_manual`, `valor_hora_recibo_manual`), Escape/Enter/Tab, sin spinners, Efect. red. guarda con clave de servicio (antes 42501), Cmd/Ctrl+Z en la plataforma (`src/shared/components/deshacer`). Migraciones 2100, 2300, 0100, 0300, 0400, 0510 aplicadas.
+- **Recibos 2026** en `recibo_sueldo_linea` (299; costo empleador jul–ago en 82, invariante al centavo).
+- **HH de obra CRM** = todas las horas trabajadas (`hh_que_cuentan_en_obra`, 0200). Desempate de asignaciones (`asignacion-del-dia.mjs`). Espejo JORNALES poda bloques corridos.
+- **Proveedores → Comprobantes** (vista `proveedor_compra`, 0500) — 1dcb8053.
+- **Candados:** Nómina, Cargas Sociales, Jornales por Quincena, Cheques Emitidos.
+- Obras renombradas «CÓDIGO - NOMBRE» (14 filas, respaldo en scratchpad `respaldo-obras-renombre-20260914.json`).
 
-## 5. EN CURSO
+## 5. EN CURSO (agentes, worktrees)
 
-- Agente en `feat/liquidacion-blanco-negro` (worktree `.claude/worktrees/blanco-negro`): **plantel de cada quincena** (actividad en la quincena o alta vigente; bajas marcadas «ya no está»; proyección futura sigue con plantel actual) + warning de hidratación intermitente de `CeldaRedondeo` + tabla sellada de Cierre a 390 px. Al terminar: QA qa-visual → merge → deploy → bot.
+- `feat/liquidacion-blanco-negro`: aviso «sin recalc.» → recálculo si estimado / ícono si real; quitar toast «Nada para deshacer».
+- `fix/obras-codificadas`: importador HH pierde resolución por nombre tras el renombre (8 filas A MOVER) — objetivo 0 diferencias fila por fila; + código interno `OB-0001` inmutable visible en toda la app; + lista de obras faltantes (no crear).
+- `feat/costo-mo-por-obra-unico`: fórmula única de costo MO (costo empleador recibo + negro; jefes medio sueldo/quincena; licencias a obra asignada; sellado por quincena) + columna **Subcontratos** en CRM + cotizado único y compras de obras cerradas vs obra general.
+- `fix/cronologia-asignaciones` (6ade0a5e): auditor RECHAZA sólo por falta de prueba RLS como usuario de la migración 0310 (recrea vistas/funciones/policy sobre `obra_asignacion_vigente`). Correr `scratchpad/rls.mjs` FUERA DE HORARIO (locks sobre personas), aplicar 0310 ANTES del deploy.
 
-## 6. PENDIENTES
+## 6. TIMERS DETENIDOS (reactivar con criterio)
 
-**Dueño:** revisar $/h negro de cada obrero antes de cerrar 01/09 (era la tarifa total en JORNALES) · días 11/09 y 14/09 cuentan (marcar en Horas quien no fue) · González Carlos licencias 14 y 15/09 · Alaniz sin recibo Q2-08 bajo su CUIL · 4 recibos Q2-08 con CUIL sin persona (20382188153, 20245269561, 20309892756, 20449917848) · 70 h del 11/06 · Agüero 18/05 · jefes 08/08–31/08 · Mis Facilidades ARCA · Messina fila 89.
-**Técnico:** HH de obra: desempate de asignaciones superpuestas (más específica/más reciente) · ~110 worktrees (`node scripts/higiene-worktrees.mjs` sin agentes corriendo) · panel: historial $/h marca negro vs básico en rojo · buscador: clic muy rápido en «Mensuales» puede arrastrar `buscar` viejo · vacaciones/SAC del recibo en días no suman horas_blanco.
+- `echegaray-flujo-caja.timer` — detenido 15:12 (el dueño se quejó de barridas); preguntar si se reactiva (sus pestañas están candadas).
+- `echegaray-jornales-registros.timer` — detenido 16:06 hasta que `fix/obras-codificadas` dé 0 diferencias en el ensayo.
 
-## 7. ESTADO GIT
+## 7. PENDIENTES DEL DUEÑO
 
-- main = origin/main = producción VM: 7ade4237 · rama abierta: `feat/liquidacion-blanco-negro` (§5).
+Reactivar flujo-caja · Tello y Ochoa con recibo Q2-08 sin transferencia · Oficina 26 dos bloques en febrero · probar guardar un Efect. red. en 01/09 y verificar en base · Castro/Moreno/Quiroz baja 12/08 con recibo Q2-08 · Ochoa alta 26/08 con horas en marzo · SF $152 M y LE $30 M de Cobranzas sin obra · U$S 15.400 Quattropani sumado como pesos.
 
 ## 8. PRÓXIMO PASO
 
-Esperar al agente del plantel por quincena → QA → deploy → aviso por bot. Después, desempate de asignaciones en HH de obra.
+Integrar lo que terminen los tres agentes (QA → merge → migraciones → deploy → bot). Reactivar el timer de JORNALES tras el ensayo en 0. RLS de cronología fuera de horario.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 

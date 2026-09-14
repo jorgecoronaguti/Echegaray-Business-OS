@@ -202,6 +202,60 @@ test('planDeRegistros: filas por persona × día × obra × tipo; lo que no se t
   assert.deepEqual(mapa.find((r) => r.rotulo === 'LA ESTRELLA · GALPON 9'), { rotulo: 'LA ESTRELLA · GALPON 9', obra_id: 'le-galpon-9', origen: 'obra_por_nombre', filas: 3, horas: 26 })
 })
 
+// ── EL RENOMBRE «CÓDIGO - NOMBRE» (14/09/2026) ─────────────────────────────────────────────────────
+// Las obras pasaron a llamarse «SF - MAMPOSTERÍA», «LE - OBRA GENERAL»… y el nombre viejo quedó como
+// alias GLOBAL en `obra_alias` («mamposteria» → sf-mamposteria). El alias global se evaluaba antes que
+// el cliente, y un rótulo genérico de OTRO cliente se lo llevaba: seis días de La Estrella a San
+// Francisco y dos ausencias a Oficina y Fábrica. El catálogo de acá es el que quedó en la base.
+const CANONICAS_CODIFICADAS = [
+  { id: 'san-francisco', nombre: 'SF - GALPONES, MAMPOSTERÍA Y CANCHA DE PÁDEL', cliente_texto: 'San Francisco' },
+  { id: 'sf-mamposteria', nombre: 'SF - MAMPOSTERÍA', cliente_texto: 'San Francisco' },
+  { id: 'la-estrella', nombre: 'LE - OBRA GENERAL', cliente_texto: 'La Estrella' },
+  { id: 'le-comedor', nombre: 'LE - OFICINA Y FÁBRICA DE PALITOS', cliente_texto: 'La Estrella' },
+  { id: 'le-galpon-9', nombre: 'LE - GALPÓN 9', cliente_texto: 'La Estrella' },
+]
+const ALIAS_DEL_RENOMBRE = new Map([...ALIAS, ['mamposteria', 'sf-mamposteria'], ['oficina y fabrica palitos', 'le-comedor'], ['galpon 9', 'le-galpon-9']])
+/** `obra_panel.cliente_slug`: sale de `obra_canonica.cliente_id`, no del nombre — sobrevive a cualquier renombre. */
+const CLIENTE_DE_OBRA = new Map([
+  ['san-francisco', 'san-francisco'], ['sf-mamposteria', 'san-francisco'], ['entrepiso-y-escalera', 'san-francisco'],
+  ['la-estrella', 'la-estrella'], ['le-comedor', 'la-estrella'], ['le-galpon-9', 'la-estrella'],
+])
+const resolverCodificado = (clienteDeObra = CLIENTE_DE_OBRA) => resolutorDeObra({
+  alias: ALIAS_DEL_RENOMBRE, canonicas: CANONICAS_CODIFICADAS, clienteAlias: CLIENTE_ALIAS, clienteDeObra,
+})
+
+test('resolutorDeObra: un alias GLOBAL de la obra no cruza de cliente cuando el cliente de la planilla es otro', () => {
+  const r = resolverCodificado()
+  assert.deepEqual(r({ cliente: 'LA ESTRELLA', obra: 'MAMPOSTERIA' }), { obra_id: 'la-estrella', origen: 'obra_por_alias_cliente' },
+    'la Mampostería de San Francisco no se lleva un bloque rotulado LA ESTRELLA')
+  assert.deepEqual(r({ cliente: 'JAVIER SANCHEZ', obra: 'Mamposteria' }), { obra_id: 'sf-mamposteria', origen: 'obra_por_alias' },
+    'del mismo cliente, el alias global sigue valiendo')
+  assert.deepEqual(r({ cliente: 'LA ESTRELLA', obra: 'GALPON 9' }), { obra_id: 'le-galpon-9', origen: 'obra_por_alias' })
+  assert.deepEqual(r({ cliente: 'GAMA', obra: 'Mamposteria' }), { obra_id: 'sf-mamposteria', origen: 'obra_por_alias' },
+    'un cliente que no se reconoce no tiene con qué contradecir al alias: queda como estaba')
+  assert.deepEqual(r({ cliente: 'JAVIER SANCHEZ', obra: 'Entre' }), { obra_id: 'entrepiso-y-escalera', origen: 'obra_por_alias' },
+    'el alias «cliente obra» ya es del cliente: no pasa por la guarda')
+  assert.deepEqual(resolverCodificado(new Map())({ cliente: 'LA ESTRELLA', obra: 'MAMPOSTERIA' }), { obra_id: 'sf-mamposteria', origen: 'obra_por_alias' },
+    'sin clientes de obra no hay guarda: la regla vieja, sin inventar compatibilidades')
+})
+
+test('planDeRegistros: el caso real del renombre — 16/05 trabajado y 01/06 ausencia en La Estrella siguen en la-estrella', () => {
+  const { marcas } = marcasDeGrid(grid(), { pestana: 'Obreros 26', anio: 2026 })
+  const deAguero = marcas.filter((m) => m.nombre === 'Aguero Cristian')
+  const rotulo = { cliente: 'LA ESTRELLA', obra: 'MAMPOSTERIA' }
+  const reales = [
+    { ...deAguero[0], ...rotulo, fecha: '2026-05-16' },
+    { ...deAguero[2], ...rotulo, fecha: '2026-06-01', nombre: 'Quiroga Sebastian', fila1: 9 },
+  ]
+  // Quiroga S. estaba asignado en la web a Oficina y Fábrica: una obra del MISMO cliente que la general.
+  const asignacionesWeb = [{ persona_id: 'p-qsa', obra_id: 'le-comedor', desde: '2026-05-25', hasta: null }]
+  const { filas } = planDeRegistros(reales, { personas: PERSONAS, resolver: resolverCodificado(), asignacionesWeb, clienteDeObra: CLIENTE_DE_OBRA })
+  assert.deepEqual(filas.map((f) => [f.persona_id, f.fecha, f.tipo_hora, f.obra_canonica_id]), [
+    ['p-aguero', '2026-05-16', 'normal', 'la-estrella'],
+    ['p-qsa', '2026-06-01', 'ausencia', 'la-estrella'],
+  ])
+})
+
 test('separarConflictos: otra fuente no se toca; lo propio se MUEVE de obra si el rótulo ahora resuelve distinto; lo demás queda obsoleto, nunca borrado', () => {
   const filas = [
     { persona_id: 'p', fecha: '2026-05-04', obra_canonica_id: 'x', tipo_hora: 'normal', horas: 9 },

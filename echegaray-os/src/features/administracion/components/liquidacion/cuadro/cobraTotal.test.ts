@@ -58,7 +58,7 @@ test('«COBRA TOTAL» EN ENCABEZADO, PIE Y PANEL, Y FIJA A LA DERECHA', () => {
   // LA MISMA COLUMNA FIJA EN EL ENCABEZADO, EN CADA FILA Y EN EL TOTAL.
   assert.equal((GRILLA.match(/\.\.\.COLUMNA_COBRA/g) ?? []).length, 3)
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
-  assert.match(fila, /style=\{\{ \.\.\.COLUMNA_COBRA[^}]*\}\}>\s*<CeldaTotal fila=\{fila\} \/>/)
+  assert.match(fila, /style=\{\{ \.\.\.COLUMNA_COBRA[^}]*\}\}>\s*<CeldaTotal fila=\{fila\}/)
 })
 
 test('LA FRASE NO QUEDA ESCRITA EN EL CUADRO, EL PIE, EL PANEL NI CAJA', () => {
@@ -87,7 +87,8 @@ test('UNA FILA QUE NO CIERRA SE MARCA Y DICE POR CUÁNTO; UNA QUE CIERRA NO MUES
   assert.match(bien.titulo, /Cobra \$552\.156 − adelanto \$0 − ya transferido \$200\.000 = banco/)
   const mal = estadoDelPago({ ...base, enEfectivo: 169759.88, total: 400000 })
   assert.equal(mal.noCierra, true)
-  assert.match(mal.titulo, /^No cierra: .*diferencia \$47\.844/)
+  // CAMBIÓ EL 15/09/2026: el título arranca con la diferencia («no cierra: diferencia $X»).
+  assert.match(mal.titulo, /^no cierra: diferencia \$47\.844/)
   assert.equal(estadoDelPago({ ...base, cobra: null, total: null }).noCierra, false)
 })
 

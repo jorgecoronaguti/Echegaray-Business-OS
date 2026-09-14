@@ -30,6 +30,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getCartera, getPlanVsRealPortafolio } from '@/features/obras/services/obrasService'
+import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { RecordarVista } from '@/features/obras/components/RecordarVista'
 import { CarteraObras, type FilaCartera } from '@/features/obras/components/CarteraObras'
 import { getPerfilActual } from '@/features/auth/services/authService'
@@ -57,11 +58,13 @@ export default async function ObrasPage({
   // Ninguna de las señales es la razón por la que se abre esta pantalla, así que ninguna puede
   // empujar la tabla hacia atrás: si una falla, la cartera se dibuja igual y el pie dice qué no se
   // pudo mirar.
-  const [perfil, { data, error }, { data: planes }, senales] = await Promise.all([
+  const [perfil, { data, error }, { data: planes }, senales, codigos] = await Promise.all([
     getPerfilActual(supabase),
     getCartera(supabase),
     getPlanVsRealPortafolio(supabase),
     getSenalesCartera(supabase, hoyIso),
+    // El código interno (`OB-0012`) se lee aparte: si falla, la cartera muestra el nombre solo.
+    codigosDeObra(supabase, null),
   ])
   if (error) return <EstadoError mensaje={error} que="la cartera de obras" />
 
@@ -80,6 +83,7 @@ export default async function ObrasPage({
     return {
       obra_id: o.obra_id,
       nombre: o.nombre,
+      codigo: codigos.get(o.obra_id) ?? null,
       cliente_slug: o.cliente_slug,
       cliente_nombre: o.cliente_nombre,
       cliente_texto: o.cliente_texto,

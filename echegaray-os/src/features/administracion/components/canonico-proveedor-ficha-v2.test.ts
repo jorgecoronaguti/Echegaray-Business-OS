@@ -65,13 +65,37 @@ test('contacto, condición de IVA y plazo de pago NO se dibujan como campos', ()
   assert.match(src, /limites-ficha/)
 })
 
-test('la solapa Papeles no lleva contador: no hay nada que contar', () => {
-  assert.match(codigoPagina(), /clave: 'papeles', titulo: 'Papeles', cuenta: null/)
+// ═══ EL COMPROBANTE AL LADO DE CADA COMPRA (pedido del dueño, 14/09/2026) ═══
+// «no quiero una solapa de comprobantes en proveedores, quiero los comprobantes adjuntos al lado de
+// cada compra hecha, tal como aparece en pestaña compras».
+
+test('no hay solapa Comprobantes ni Papeles: el papel va en la lista de compras', () => {
+  const src = codigoPagina()
+  assert.doesNotMatch(src, /clave: 'comprobantes'/)
+  assert.doesNotMatch(src, /clave: 'papeles'/)
+  assert.doesNotMatch(src, /CARAS = \[[^\]]*'(comprobantes|papeles)'/)
+})
+
+test('los enlaces viejos ?vista=papeles y ?vista=comprobantes abren la lista de compras', () => {
+  const src = codigoPagina()
+  assert.match(src, /const CARAS_RETIRADAS = new Set\(\['papeles', 'comprobantes'\]\)/)
+  assert.match(src, /sp\.vista && CARAS_RETIRADAS\.has\(sp\.vista\) \? 'compras' : sp\.vista/)
+})
+
+test('la lista de compras y las cifras leen proveedor_compra, no la cadena de costos_obra', () => {
+  const src = codigoPagina()
+  assert.match(src, /getComprasConPapel\(supabase, proveedor\.id\)/)
+  assert.match(src, /comoComprobantes\(compras\.data\.filas\)/)
+  assert.match(src, /<ComprasDelProveedor/)
+  assert.doesNotMatch(src, /getComprobantes\b/)
+  assert.doesNotMatch(fuente('../services/fichaProveedorService.ts'), /from\('costos_obra'\)/)
+  // Quien no ve Compras no pide las compras.
+  assert.match(src, /const veCompras = esAdministracion\(/)
 })
 
 test('un comprobante sin importe no vale $ 0 y uno sin obra no se dibuja neutro', () => {
-  const src = codigoListas()
-  assert.match(src, /f\.total === null \? 'sin importe'/)
+  const src = sinComentarios(fuente('proveedores/FilaComprobanteProveedor.tsx'))
+  assert.match(src, /c\.total === null \? 'sin importe'/)
   assert.match(src, /sin obra imputada/)
   // El filo de un comprobante sin obra es ROJO: el gasto ya ocurrió y no le pesa a ninguna obra.
   assert.match(src, /inset 2px 0 0 \$\{V\.neg\}/)
@@ -85,14 +109,16 @@ test('«contratado» es ausencia y no cero cuando ningún paquete tiene precio',
   assert.match(codigoPagina(), /conPrecio\.length === 0 \? null/)
 })
 
-test('el total recortado del jefe de obra se rotula por lo que es', () => {
-  assert.match(codigoPagina(), /Comprado en tus obras/)
-  assert.match(codigoPagina(), /alcance-jefe-obra/)
+test('el total ya no se rotula «en tus obras»: la vista no recorta por obra', () => {
+  // `proveedor_compra` hereda `es_administracion()`, la policy que deja al jefe ver Compras entera.
+  // Un rótulo de recorte sobre un total sin recorte afirmaría algo falso.
+  assert.doesNotMatch(codigoPagina(), /Comprado en tus obras/)
+  assert.match(codigoPagina(), /rotulo: 'Comprado · histórico'/)
 })
 
 test('las cinco caras del mockup están, y Compras es la que abre', () => {
   const src = codigoPagina()
-  for (const c of ['compras', 'nombres', 'obras', 'paquetes', 'papeles']) {
+  for (const c of ['compras', 'nombres', 'obras', 'paquetes', 'documentos']) {
     assert.match(src, new RegExp(`clave: '${c}'`), `falta la cara ${c}`)
   }
   assert.match(src, /esCara\(vista\) \? vista : 'compras'/)

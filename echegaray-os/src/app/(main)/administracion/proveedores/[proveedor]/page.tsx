@@ -7,26 +7,27 @@
 // v2 abre con la MIGA —«← Proveedores / Hierros del Centro»—, pone el nombre a 24px con el CUIT
 // debajo en mono, y dibuja las cifras y las listas sin ninguna caja: criterio 3 del patrón.
 //
-// Y las dos vistas (Resumen · Comprobantes) pasaron a ser CINCO caras, que es lo que el mockup
-// declara: Compras · Nombres resueltos · Obras · Paquetes · Papeles. «Resumen» era una cara que
-// mezclaba tres listas distintas en una sola pantalla y obligaba a bajar para encontrar cualquiera.
+// Las caras: Compras · Nombres resueltos · Obras · Paquetes · Documentos. La «Papeles» del mockup, y
+// la «Comprobantes» que la reemplazó por un día, salieron el 14/09/2026 por pedido del dueño: «quiero
+// los comprobantes adjuntos al lado de cada compra hecha, tal como aparece en pestaña compras». El
+// papel está en la columna derecha de la lista de compras, no en una lista aparte.
 //
-// La SEXTA —Documentos— no está en el mockup y se agregó el 09/09/2026 por pedido del dueño: los
-// contratos de subcontratistas no tenían dónde vivir en el OS. No se metió dentro de «Papeles»
-// porque son otro concepto (ver el comentario de `CARAS`).
+// «Documentos» no está en el mockup y se agregó el 09/09/2026: los contratos de subcontratistas no
+// tenían dónde vivir en el OS. Es otro concepto que los comprobantes (ver `CARAS`).
 //
-// ═══ DE DÓNDE SALEN LOS NÚMEROS, Y DE DÓNDE NO ═══
+// ═══ DE DÓNDE SALEN LOS NÚMEROS ═══
 //
-// De `costos_obra`, el espejo de la pestaña Compras. NO de `compras` ni de `compra_resumen`: las dos
-// existen en Postgres y las dos tienen CERO filas (medido el 21/08/2026). Leerlas habría dado una
-// ficha en blanco para los 40 proveedores, indistinguible de un proveedor al que nunca se le compró.
+// De `proveedor_compra` (14/09/2026): cada fila de la réplica de Compras con el proveedor al que
+// pertenece, por CUIT o —si la compra no trae CUIT— por nombre resuelto. Las cifras, el reparto por
+// obra, «qué provee» y la lista salen de la MISMA lectura; antes salían de `costos_obra` por nombre, y
+// esa cadena no ve las compras sin obra ni las que no pasaron por la resolución.
 //
-// ═══ EL TOTAL NO ES EL MISMO PARA TODOS, Y SE DICE ═══
+// ═══ EL TOTAL ES EL MISMO PARA TODOS LOS QUE ENTRAN ═══
 //
-// `costos_obra_select` filtra por `ve_obra_texto(obra_texto)`: un jefe de obra recibe sólo los
-// comprobantes de SUS obras. El dueño autorizó que vea el costo de su obra (19/08), así que el
-// importe se muestra — pero el rótulo deja de ser «lo que la empresa le compró» y pasa a ser «lo que
-// le compraron tus obras». Publicar un total recortado sin decirlo sería peor que no mostrarlo.
+// La vista hereda la policy de `compra_sheet` (`es_administracion()`: Dirección, Administración y
+// Jefe de Obra), que es la misma que deja al jefe de obra ver la pantalla Compras entera. La ficha
+// ya no recorta por obra —el recorte venía de `costos_obra`— y por eso el rótulo dejó de ser «en tus
+// obras»: publicar un rótulo recortado sobre un total que no lo está sería peor que no aclararlo.
 //
 // ═══ LAS DOS CIFRAS DEL MOCKUP QUE NO SE DIBUJAN ═══
 //
@@ -40,20 +41,22 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { veEconomia } from '@/features/auth/types/areas'
+import { esAdministracion } from '@/features/auth/types/areas'
 import { getProveedor } from '@/features/administracion/services/proveedoresService'
 import {
-  getComprobantes, getNombresDelProveedor, getPaquetesDelProveedor,
+  getNombresDelProveedor, getPaquetesDelProveedor,
 } from '@/features/administracion/services/fichaProveedorService'
 import {
   comprasPorObra, conceptosProvistos, resumirProveedor,
 } from '@/features/administracion/services/fichaProveedor'
+import { getComprasConPapel } from '@/features/administracion/services/comprobantesProveedorService'
+import { comoComprobantes, filtrosDeURL } from '@/features/administracion/services/comprobantesProveedor'
 import { formatearCuit } from '@/features/administracion/services/identidad'
 import { getDocumentosDelProveedor } from '@/features/administracion/services/documentosProveedorService'
 import {
-  ComprasDelProveedor, NombresDelProveedor, ObrasDelProveedor, PaquetesDelProveedor,
-  PapelesDelProveedor, QueProvee, RepartoPorObra,
+  NombresDelProveedor, ObrasDelProveedor, PaquetesDelProveedor, QueProvee, RepartoPorObra,
 } from '@/features/administracion/components/ListasProveedorV2'
+import { ComprasDelProveedor } from '@/features/administracion/components/proveedores/ComprasDelProveedor'
 import { DocumentosDelProveedor } from '@/features/administracion/components/proveedores/DocumentosDelProveedor'
 import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
 import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
@@ -69,24 +72,31 @@ import { pesos } from '@/shared/components/canon/formato'
 
 export const dynamic = 'force-dynamic'
 
-// «DOCUMENTOS» ES UNA CARA APARTE DE «PAPELES», Y NO SON SINÓNIMOS: papeles son los comprobantes
-// que se DERIVAN de sus compras (nadie los sube acá); documentos es lo que alguien de Administración
-// guardó contra esta ficha —contrato de subcontrato, póliza, habilitación, un video—. Juntarlos en
-// una sola cara haría que dar de baja un contrato pareciera borrar una factura.
-const CARAS = ['compras', 'nombres', 'obras', 'paquetes', 'papeles', 'documentos'] as const
+// «DOCUMENTOS» NO ES SINÓNIMO DE COMPROBANTES: los comprobantes son los papeles de sus COMPRAS (viven
+// en `compra_adjunto`, los mismos de Compras, y se ven al lado de cada compra); documentos es lo que
+// Administración guardó contra esta ficha —contrato, póliza, habilitación, un video—. Juntarlos haría
+// que dar de baja un contrato pareciera borrar una factura.
+const CARAS = ['compras', 'nombres', 'obras', 'paquetes', 'documentos'] as const
 type Cara = (typeof CARAS)[number]
 
 const esCara = (v: unknown): v is Cara =>
   typeof v === 'string' && (CARAS as readonly string[]).includes(v)
 
+/** Las caras retiradas. Hay enlaces viejos a las dos: abren la lista de compras, no un 404 mudo. */
+const CARAS_RETIRADAS = new Set(['papeles', 'comprobantes'])
+
+/** El año de hoy en San Juan: el 31/12 a las 22 h, UTC ya diría el año que viene. */
+const anioDeHoy = () => Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/San_Juan', year: 'numeric' }).format(new Date()))
+
 const fecha = (f: string | null) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}` : null)
 
 export default async function ProveedorFichaPage({ params, searchParams }: {
   params: Promise<{ proveedor: string }>
-  searchParams: Promise<{ vista?: string }>
+  searchParams: Promise<{ vista?: string; anio?: string; papel?: string; n?: string }>
 }) {
   const { proveedor: id } = await params
-  const { vista } = await searchParams
+  const sp = await searchParams
+  const vista = sp.vista && CARAS_RETIRADAS.has(sp.vista) ? 'compras' : sp.vista
   const cara: Cara = esCara(vista) ? vista : 'compras'
   const supabase = await createClient()
 
@@ -97,45 +107,42 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   if (!ficha.data) notFound()
   const proveedor = ficha.data
 
-  const [nombres, paquetes, documentos] = await Promise.all([
+  // LAS COMPRAS LAS VE QUIEN VE COMPRAS: el mismo `esAdministracion` que corta esa pantalla. Otro rol
+  // no llega a pedirlas, y su ficha dice por qué en vez de mostrar un proveedor sin compras.
+  const veCompras = esAdministracion(perfil.data?.rol ?? null)
+  const [nombres, paquetes, documentos, compras] = await Promise.all([
     getNombresDelProveedor(supabase, proveedor.id),
     getPaquetesDelProveedor(supabase, proveedor.id),
     getDocumentosDelProveedor(supabase, proveedor.id),
+    veCompras ? getComprasConPapel(supabase, proveedor.id) : Promise.resolve(null),
   ])
-  const norms = (nombres.data ?? []).map((n) => n.nombre_norm)
-  const lectura = await getComprobantes(supabase, norms)
-  const filas = lectura.data?.filas ?? []
+  const filas = compras?.data ? comoComprobantes(compras.data.filas) : []
 
   const resumen = resumirProveedor(filas)
   const porObra = comprasPorObra(filas)
   // «Qué provee» ocupa el lugar que el mockup le da a CONTACTO, que no tiene columna en la base.
-  // Un bloque vacío en el costado se lee como «no le compramos nada»; éste sale de los conceptos
-  // que ya trajeron los comprobantes, sin una consulta más.
   const conceptos = conceptosProvistos(filas)
   const conceptosTotal = new Set(filas.map((f) => f.concepto?.trim()).filter(Boolean)).size
-  const declarados = (nombres.data ?? []).reduce((a, n) => a + Number(n.comprobantes ?? 0), 0)
-  const completo = veEconomia(perfil.data?.rol ?? null)
   // SIN NINGÚN PAQUETE CON PRECIO, «contratado» es AUSENCIA y no cero.
   const conPrecio = (paquetes.data ?? []).filter((p) => p.precio !== null)
   const contratado = conPrecio.length === 0 ? null : conPrecio.reduce((a, p) => a + (p.precio ?? 0), 0)
   const cuit = formatearCuit(proveedor.cuit)
   // ═══ EL PROVEEDOR TODAVÍA NO TIENE CARPETA EN DRIVE, Y LA FICHA LO DICE ═══
   //
-  // No es un olvido de esta pantalla: en el Drive de la empresa NO EXISTEN carpetas por proveedor.
-  // Los comprobantes que llegan viven en el bucket `comprobantes` y en `Archivos GESTIÓN ECSAS/
-  // FACTURAS A` sueltos. Dónde va el papel de un proveedor es una decisión abierta del dueño (PRP
-  // del puente, «Decisiones del dueño»), y hasta que la tome el bloque muestra «carpeta
-  // desconocida» — que es el hecho, y es lo que hace visible la decisión pendiente.
+  // En el Drive de la empresa NO EXISTEN carpetas por proveedor. Dónde va el papel de un proveedor
+  // es una decisión abierta del dueño (PRP del puente), y hasta que la tome el bloque muestra
+  // «carpeta desconocida» — que es el hecho, y hace visible la decisión pendiente.
   const archivosDrive = cara === 'documentos'
     ? await getArchivosDeEntidad(supabase, 'proveedor', proveedor.id)
     : null
+  const anioActual = anioDeHoy()
 
   const href = (v: Cara) => `/administracion/proveedores/${proveedor.id}${v === 'compras' ? '' : `?vista=${v}`}`
   const panelDeEdicion = `/administracion/proveedores?p=${proveedor.id}`
 
   const cifras: CifraDeFicha[] = [
     {
-      rotulo: completo ? 'Comprado · histórico' : 'Comprado en tus obras',
+      rotulo: 'Comprado · histórico',
       valor: resumen.comprado === null ? null : pesos(resumen.comprado),
       falta: 'sin comprobantes',
     },
@@ -165,8 +172,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
         junto={
           <>
             {/* «SUBCONTRATISTA» ES UN HECHO —tiene al menos un paquete en `subcontrato`— y por eso
-                se dibuja. Su AUSENCIA no afirma lo contrario: `proveedores` no tiene columna de
-                rubro, así que nadie puede decir «éste vende materiales». */}
+                se dibuja. Su AUSENCIA no afirma lo contrario. */}
             {(paquetes.data?.length ?? 0) > 0 && (
               <PastillaFilo title="Tiene al menos un paquete de subcontrato" testid="pastilla-tipo-proveedor">
                 subcontratista
@@ -175,9 +181,8 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
             {!proveedor.activo && <PastillaFilo testid="pastilla-archivado">archivado</PastillaFilo>}
           </>
         }
-        // NO HAY PRIMARIA AMARILLA. El mockup dibuja «Editar» de contorno y nada más: los
-        // comprobantes entran por el cargador del Sheet o por Mattermost, no por esta pantalla, y un
-        // botón amarillo que no lleva a ninguna parte gasta la única primaria en una promesa falsa.
+        // NO HAY PRIMARIA AMARILLA. Los comprobantes entran por el cargador o por Mattermost, no por
+        // esta cabecera; lo único que se hace acá con un papel es vincularlo desde su fila.
         acciones={
           <AccionSecundaria
             href={panelDeEdicion} testid="editar-proveedor"
@@ -188,8 +193,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
         }
       />
 
-      {/* EL AVISO ES UNO SOLO Y ES EL QUE MÁS DUELE. Dos filas ámbar arriba de la ficha compiten
-          entre sí y ninguna se lee; el CUIT gana porque sin él la factura no se puede registrar. */}
+      {/* EL AVISO ES UNO SOLO Y ES EL QUE MÁS DUELE. */}
       {!cuit && (
         <AvisoDeFicha verbo="Cargar CUIT" href={panelDeEdicion} testid="aviso-sin-cuit">
           Sin CUIT no se puede registrar la factura de este proveedor ni cruzarlo con ARCA.
@@ -208,16 +212,11 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
       <SolapasDeFicha
         testid="vistas-proveedor"
         solapas={[
-          { clave: 'compras', titulo: 'Compras', cuenta: resumen.comprobantes || null, activa: cara === 'compras', href: href('compras') },
+          // EL CONTADOR ES LO LEÍDO, y sólo si se leyó: un 0 por error diría «no le compramos nada».
+          { clave: 'compras', titulo: 'Compras', cuenta: compras?.data ? (compras.data.filas.length || null) : null, activa: cara === 'compras', href: href('compras') },
           { clave: 'nombres', titulo: 'Nombres resueltos', cuenta: (nombres.data ?? []).length || null, activa: cara === 'nombres', href: href('nombres') },
           { clave: 'obras', titulo: 'Obras', cuenta: porObra.length || null, activa: cara === 'obras', href: href('obras') },
           { clave: 'paquetes', titulo: 'Paquetes', cuenta: (paquetes.data ?? []).length || null, activa: cara === 'paquetes', href: href('paquetes') },
-          // SIN CONTADOR: no hay tabla que vincule un archivo con un proveedor, así que un 0 ahí
-          // afirmaría que se contaron los papeles y no hay ninguno.
-          { clave: 'papeles', titulo: 'Papeles', cuenta: null, activa: cara === 'papeles', href: href('papeles') },
-          // ACÁ SÍ HAY CONTADOR, y sólo cuando la lectura salió bien: si `proveedor_documento` no se
-          // pudo leer, un 0 diría que este proveedor no tiene contrato guardado, que es una
-          // afirmación que la lectura no habilita.
           {
             clave: 'documentos', titulo: 'Documentos',
             cuenta: documentos.error ? null : (documentos.data?.documentos.length || null),
@@ -228,22 +227,22 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
 
       <CuerpoDeFicha>
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          {lectura.error && (
-            <Aviso tono="neg" titulo="No pude leer los comprobantes de este proveedor">{lectura.error}</Aviso>
+          {/* En «Compras» el error lo dice la lista; en las otras caras, arriba: las cifras vacías
+              de un error de lectura no pueden leerse como un proveedor sin compras. */}
+          {compras?.error && cara !== 'compras' && (
+            <Aviso tono="neg" titulo="No pude leer las compras de este proveedor">{compras.error}</Aviso>
           )}
           {nombres.error && (
             <Aviso tono="neg" titulo="No pude leer los nombres vinculados">{nombres.error}</Aviso>
           )}
-          {!completo && filas.length > 0 && (
-            <p style={{ fontSize: '12px', color: V.apagado }} data-testid="alcance-jefe-obra">
-              Estás viendo los comprobantes de las obras que tenés asignadas. Los totales de arriba
-              son de esas obras, no de la empresa.
-            </p>
-          )}
 
-          {cara === 'compras' && (
+          {cara === 'compras' && !compras && (
+            <Aviso tono="info">Las compras y sus comprobantes son de Administración.</Aviso>
+          )}
+          {cara === 'compras' && compras && (
             <ComprasDelProveedor
-              filas={filas} truncado={lectura.data?.truncado ?? false} total={declarados}
+              proveedorId={proveedor.id} lectura={compras}
+              filtros={filtrosDeURL(sp, anioActual)} anioActual={anioActual}
             />
           )}
           {cara === 'nombres' && (
@@ -259,7 +258,6 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
           {cara === 'paquetes' && (
             <PaquetesDelProveedor filas={paquetes.data ?? []} error={paquetes.error} />
           )}
-          {cara === 'papeles' && <PapelesDelProveedor nombre={proveedor.nombre} />}
           {cara === 'documentos' && (
             <DocumentosDelProveedor
               proveedorId={proveedor.id}
@@ -301,9 +299,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
           </div>
           <QueProvee filas={conceptos} total={conceptosTotal} />
 
-          {/* CONTACTO, CONDICIÓN DE IVA Y PLAZO DE PAGO NO SE DIBUJAN, y se dice una vez por qué.
-              El mockup los pone en un bloque propio del costado; `public.proveedores` no tiene esas
-              columnas, y un renglón en «sin cargar» promete un campo donde no hay dónde guardarlo. */}
+          {/* CONTACTO, CONDICIÓN DE IVA Y PLAZO DE PAGO NO SE DIBUJAN, y se dice una vez por qué. */}
           <p
             style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 22, textWrap: 'pretty' }}
             data-testid="limites-ficha"
@@ -311,8 +307,8 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
             Contacto, teléfono, condición de IVA y plazo de pago no tienen columna en{' '}
             <code>proveedores</code>: no se dibujan porque no habría dónde guardarlos. Habilitación
             para entrar a obra y certificación de cada paquete tampoco existen como dato. Todo lo
-            demás —lo comprado, a qué obras fue y su actividad— se DERIVA de los comprobantes;
-            ningún total se guarda al lado de sus filas.
+            demás —lo comprado, a qué obras fue y su actividad— se DERIVA de las compras; ningún
+            total se guarda al lado de sus filas.
           </p>
         </CostadoDeFicha>
       </CuerpoDeFicha>

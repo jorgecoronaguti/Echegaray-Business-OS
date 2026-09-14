@@ -64,11 +64,12 @@ const corta = (iso: string | null): string =>
  * «esa columna no te pedi en liq hs»). `banda` agrupa el encabezado de arriba.
  */
 const PLATA = [
-  { clave: 'horas', rotulo: 'Horas', px: 56 },
+  // 72 Y 64: Horas y Hs negro se escriben (15/09/2026) y el campo con la marca «manual» no entra en 56 y 48.
+  { clave: 'horas', rotulo: 'Horas ✎', px: 72 },
   { clave: 'hsBlanco', rotulo: 'Hs recibo ✎', px: 72, banda: 'blanco' },
   { clave: 'horaCategoria', rotulo: '$/h cat. ✎', px: 96, banda: 'blanco' },
   { clave: 'neto', rotulo: 'Banco ✎', px: 132, banda: 'blanco' },
-  { clave: 'hsNegro', rotulo: 'Hs', px: 48, banda: 'negro' },
+  { clave: 'hsNegro', rotulo: 'Hs ✎', px: 64, banda: 'negro' },
   // 120: el botón del $/h con el «+8%» al lado. La marca del básico se mudó al $/h de categoría.
   { clave: 'horaNegro', rotulo: '$/h negro ✎', px: 120, banda: 'negro' },
   { clave: 'negro', rotulo: 'Importe', px: 104, banda: 'negro' },
@@ -227,7 +228,8 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
 }) {
   const l = fila.linea
   return (
-    <div data-testid={`espejo-fila-${fila.personaId}`} style={filaGrid(columnas, ALTO_LIQ.filaAlta)}>
+    // `data-fila-edicion`: Tab en una celda pasa a la siguiente editable de ESTA fila (`InlineEdit`).
+    <div data-testid={`espejo-fila-${fila.personaId}`} data-fila-edicion="" style={filaGrid(columnas, ALTO_LIQ.filaAlta)}>
       <div style={COLUMNA_FIJA}>
         <button type="button" onClick={abrir} data-testid={`espejo-nombre-${fila.personaId}`} title={`${fila.nombre} · abrir el detalle`}
           style={{
@@ -243,7 +245,7 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
         </div>
       </div>
       {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
-      <CeldaHorasPagas fila={fila} />
+      <CeldaHorasPagas fila={fila} edicion={{ quincena, camposEditables }} />
       {l.netoMensual != null ? (
         // UN MENSUAL NO VA EN LAS BANDAS (QA, 14/09/2026): su sueldo fijo en «$/h negro» sumaba al Total
         // sin estar en Neto ni en Negro. Una celda propia ocupa las seis columnas; su neto mensual se
@@ -256,25 +258,25 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
         </div>
       ) : (
         <>
-          {/* EL BLANCO SE ESCRIBE EN LA ABIERTA (dueño, 14/09/2026): Hs recibo, $/h cat. y Neto. El negro, el
-              total y el efectivo siguen derivados de lo escrito. */}
+          {/* TODO SE ESCRIBE EN LA ABIERTA (dueño, 14 y 15/09/2026): Hs recibo, $/h cat., Neto, Hs negro e Importe.
+              Lo que no está escrito sigue derivado de lo que sí. */}
           <CeldaHorasBlanco fila={fila} edicion={{ quincena, camposEditables }} />
           <CeldaHoraCategoria fila={fila} edicion={{ quincena, camposEditables }} />
           <CeldaNeto fila={fila} edicion={{ quincena, camposEditables }} />
-          <CeldaHorasNegro fila={fila} />
+          <CeldaHorasNegro fila={fila} edicion={{ quincena, camposEditables }} />
           <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
-          <CeldaImporteNegro fila={fila} />
+          <CeldaImporteNegro fila={fila} edicion={{ quincena, camposEditables }} />
         </>
       )}
       <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={128} />
       <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={112} />
-      <CeldaEfectivoDelSueldo fila={fila} />
+      <CeldaEfectivoDelSueldo fila={fila} edicion={{ quincena, camposEditables }} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.enEfectivo}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={100} />
       </div>
       <div className={CLASE_COBRA} style={{ ...COLUMNA_COBRA, alignSelf: 'stretch', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-        <CeldaTotal fila={fila} />
+        <CeldaTotal fila={fila} edicion={{ quincena, camposEditables }} />
       </div>
     </div>
   )

@@ -25,6 +25,7 @@ import { useMemo, useState } from 'react'
 import { Ico, IcoMas, P } from './canon/Ico'
 import { C, ESTILO_PRIMARIA, MONO } from './canon/tokens'
 import { Barra, Buscador, Chip, Hover, Pastilla, Tarjeta } from './canon/Piezas'
+import { rotuloDeObra } from '@/shared/utils/obra'
 import {
   coincideTexto, colorDeBarra, colorDePlazo, diasDeAtraso, entraEnFiltro, esPrevio, estadoDeCartera,
   FILTROS_CARTERA, textoDePlazo, type FiltroCartera,
@@ -35,6 +36,8 @@ import {
 export interface FilaCartera {
   obra_id: string
   nombre: string
+  /** El código interno (`OB-0012`); `null` mientras no se pueda leer. Se dibuja y se busca. */
+  codigo?: string | null
   cliente_slug: string | null
   cliente_nombre: string | null
   cliente_texto: string | null
@@ -122,7 +125,7 @@ export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
   const limpiar = () => { setQ(''); setFiltro('todo') }
 
   const lista = useMemo(
-    () => obras.filter((o) => coincideTexto(o.nombre, o.cliente_nombre ?? o.cliente_texto, q)
+    () => obras.filter((o) => coincideTexto(o.nombre, o.cliente_nombre ?? o.cliente_texto, q, o.codigo ?? null)
       && entraEnFiltro(o, filtro, o.impedimentos)),
     [obras, q, filtro],
   )
@@ -299,7 +302,7 @@ function Fila({ o, ir }: { o: FilaCartera; ir: () => void }) {
           style={{
             fontSize: '12.5px', fontWeight: 500, color: C.tinta, overflow: 'hidden',
             textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{o.nombre}</Link>
+          }}>{rotuloDeObra(o)}</Link>
       </div>
       {/* SIN FICHA NO HAY ENLACE: una obra puede tener el cliente escrito a mano y sin fila en
           `clientes`. Un link a `/clientes/null` es una promesa que termina en 404. */}
@@ -365,7 +368,7 @@ function Fila({ o, ir }: { o: FilaCartera; ir: () => void }) {
       {/* EL «···» DEL ZIP LLEVA A LA OBRA. No abre un menú: acá no hay una acción por fila que el
           OS pueda ejecutar hoy, y un menú vacío es peor que un ícono que hace lo obvio. */}
       <Link href={`/obras/${o.obra_id}`} prefetch={false} title="Abrir la obra"
-        aria-label={`Abrir ${o.nombre}`} onClick={(ev) => ev.stopPropagation()}
+        aria-label={`Abrir ${rotuloDeObra(o)}`} onClick={(ev) => ev.stopPropagation()}
         style={{ display: 'flex', color: C.fantasma, justifyContent: 'center' }}>
         <IcoMas />
       </Link>

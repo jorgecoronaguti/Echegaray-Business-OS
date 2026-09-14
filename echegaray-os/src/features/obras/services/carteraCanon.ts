@@ -23,6 +23,8 @@
 
 /** Lo mínimo de una obra que estas reglas necesitan. Un subconjunto a propósito: no se recompilan
  *  cuando `obra_panel` agregue una columna. */
+import { coincideObra } from '../../../shared/utils/obra.ts'
+
 export interface ObraDeCartera {
   estado: string
   etapa: string | null
@@ -119,11 +121,10 @@ export function entraEnFiltro(
 }
 
 /** El texto que se busca en el buscador del zip: nombre + cliente, sin acentos ni mayúsculas. */
-export function coincideTexto(nombre: string, cliente: string | null, query: string): boolean {
-  const q = query.trim().toLocaleLowerCase('es-AR').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  if (!q) return true
-  const t = `${nombre} ${cliente ?? ''}`.toLocaleLowerCase('es-AR').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  return t.includes(q)
+export function coincideTexto(nombre: string, cliente: string | null, query: string, codigo: string | null = null): boolean {
+  // EL C\u00d3DIGO INTERNO (`OB-0012`) TAMBI\u00c9N SE BUSCA, y con la regla \u00fanica de `shared/utils/obra`:
+  // \u00abob12\u00bb y \u00ab12\u00bb encuentran la obra. Nombre y cliente se siguen buscando igual que antes.
+  return coincideObra({ nombre, cliente, codigo }, query)
 }
 
 /** El color de la barra de avance del zip: verde 100 · rojo si atrasada · azul en curso · gris cero. */

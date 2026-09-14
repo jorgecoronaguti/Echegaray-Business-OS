@@ -115,7 +115,9 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Leida valor={s.horasNegro} unidad="horas" />
       </Renglon>
       <Renglon rotulo="$/h negro"><Leida valor={s.valorHoraNegro} /></Renglon>
-      <Renglon rotulo="Importe"><Leida valor={s.negro} medio /></Renglon>
+      <Renglon rotulo="Importe">
+        <Escribible campo="negro" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
+      </Renglon>
 
       <div style={{ height: 16 }} />
       <Renglon rotulo="Adelanto banco / embargos">
@@ -126,10 +128,10 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
       </Renglon>
       <Renglon rotulo="Total efectivo" fuerte
         nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : 'cobra total − banco − adelantos'} alerta={cierre?.cierra === false}>
-        <Leida valor={l.enEfectivo} medio origen={l.origen.enEfectivo} />
+        <Escribible campo="enEfectivo" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
-      <Renglon rotulo="Cobra total" nota="banco + negro" fuerte>
-        <Leida valor={l.cobra} medio origen={l.origen.cobra} apagada={est} />
+      <Renglon rotulo="Cobra total" nota={est ? 'banco + negro · blanco estimado' : 'banco + negro'} fuerte>
+        <Escribible campo="cobra" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
     </section>
   )

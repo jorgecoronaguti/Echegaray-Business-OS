@@ -10,20 +10,17 @@
 // entero mezclaba 40 y 42 sin que nada explicara la diferencia. Si algún día llega el canvas de
 // proveedor y dice otro número, manda el canvas.
 //
-// LO QUE NO SE DIBUJA, Y POR QUÉ: la solapa «Papeles» del mockup no trae los comprobantes derivados
-// de sus compras. La tabla existe desde el 06/09 (`proveedor_papel`) y se lee en el panel de la
-// cartera; traerla a esta cara es otro trabajo. Lo que se SUBE contra la ficha —contratos, seguros,
-// audiovisual— vive desde el 09/09 en la cara «Documentos», que sí está.
+// La solapa «Papeles» del mockup era acá un cartel que mandaba a otra pantalla. Desde el 14/09/2026
+// salió: el papel de cada compra está al lado de la compra (`proveedores/ComprasDelProveedor.tsx`).
+// Lo que se SUBE contra la ficha —contratos, seguros, audiovisual— sigue en «Documentos».
 
-import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
+import { ALTO_V2, CAJA_CONTENIDO, FILO_BLOQUEA, V } from '@/shared/components/v2/patron'
 import { BarraDeCostado } from '@/shared/components/v2/segundoNivel'
-import { IconoDocumento, IconoObra } from '@/shared/components/iconos'
+import { IconoObra } from '@/shared/components/iconos'
 import { pesos } from '@/shared/components/canon/formato'
 import type {
-  CompraPorObra, ComprobanteProveedor, ConceptoProvisto, PaqueteDelProveedor,
+  CompraPorObra, ConceptoProvisto, PaqueteDelProveedor,
 } from '../services/fichaProveedor'
-
-const fecha = (f: string | null) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : null)
 
 /** La nota al pie de una cara: 11px, 720px de ancho de lectura. `23v2:143`. */
 export function NotaDeCara({ children, testid }: { children: React.ReactNode; testid?: string }) {
@@ -37,84 +34,8 @@ export function NotaDeCara({ children, testid }: { children: React.ReactNode; te
   )
 }
 
-const COLS_COMPRAS
-  = 'grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,90px)_minmax(0,120px)]'
-  + ' max-[1249px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,120px)]'
-const SOLO_ANCHO = 'max-[1249px]:hidden'
-
-/** CONCEPTO · DESTINO · FECHA · MONTO. `23v2:113-137`. */
-export function ComprasDelProveedor({ filas, truncado, total }: {
-  filas: ComprobanteProveedor[]
-  truncado: boolean
-  /** Cuántos declara `proveedor_nombre_resuelto`. Puede ser mayor que lo que se ve. */
-  total: number
-}) {
-  return (
-    <div data-testid="compras-proveedor">
-      <div className={`grid gap-[14px] ${COLS_COMPRAS}`} style={{ ...ENCABEZADO, paddingLeft: 13 }}>
-        <RotuloCol>Concepto</RotuloCol>
-        <RotuloCol>Destino</RotuloCol>
-        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Fecha</RotuloCol></span>
-        <RotuloCol derecha>Monto</RotuloCol>
-      </div>
-
-      {filas.length === 0 && (
-        <p style={{ fontSize: '12.5px', color: V.apagado, paddingTop: 10 }} data-testid="compras-vacio">
-          No hay comprobantes registrados contra este proveedor.
-        </p>
-      )}
-
-      {filas.map((f) => (
-        <div
-          key={f.id} data-testid="fila-compra"
-          className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS_COMPRAS} hover:bg-[#F2F1ED]`}
-          style={{
-            height: ALTO_V2.cara, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`,
-            // Sin obra imputada el filo es ROJO y no ámbar: el gasto ya ocurrió y está pesando en
-            // ninguna obra, que no es «falta cargar un dato» sino plata mal atribuida (`23v2:442`).
-            boxShadow: f.obra_texto?.trim() ? 'none' : `inset 2px 0 0 ${V.neg}`,
-          }}
-        >
-          <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-            <span className="truncate" style={{ fontSize: '12.5px', color: V.tinta }}>
-              {f.concepto?.trim() || 'sin concepto'}
-            </span>
-            <span className="font-mono shrink-0" style={{ fontSize: '10.5px', color: V.inerte }}>
-              {f.comprobante?.trim() || ''}
-            </span>
-          </span>
-
-          <span
-            className="truncate"
-            style={{ fontSize: '12px', color: f.obra_texto?.trim() ? V.tintaSuave : V.neg }}
-          >
-            {f.obra_texto?.trim() || 'sin obra imputada'}
-          </span>
-
-          <span className={`grid ${SOLO_ANCHO}`}>
-            <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.tenue, textAlign: 'right' }}>
-              {fecha(f.fecha) ?? 'sin fecha'}
-            </span>
-          </span>
-
-          {/* SIN IMPORTE NO ES $ 0: el comprobante llegó y el monto no está cargado. */}
-          <span
-            className="font-mono tabular-nums"
-            style={{ fontSize: '12px', color: f.total === null ? V.warn : V.tinta, textAlign: 'right' }}
-          >
-            {f.total === null ? 'sin importe' : pesos(f.total)}
-          </span>
-        </div>
-      ))}
-
-      <NotaDeCara testid="nota-compras">
-        Lo comprado es histórico: la vista que lo suma no publica la fecha de cada comprobante, así
-        que ningún total de arriba lleva ventana de tiempo.
-        {truncado && ` Se dibujan ${filas.length} de ${total} comprobantes; el resto está en la pestaña Compras.`}
-      </NotaDeCara>
-    </div>
-  )
-}
+// La cara «Compras» —con el comprobante al lado de cada compra— vive desde el 14/09/2026 en
+// `proveedores/ComprasDelProveedor.tsx` y lee `proveedor_compra`.
 
 /** Los textos libres de Compras ya resueltos contra este proveedor. `23v2:146-155`. */
 export function NombresDelProveedor({ nombres }: {
@@ -248,42 +169,6 @@ export function PaquetesDelProveedor({ filas, error }: {
         La CERTIFICACIÓN de cada paquete no existe como dato: `subcontrato` guarda estado, no
         porcentaje. Por eso ninguna fila dice cuánto va ejecutado.
       </NotaDeCara>
-    </div>
-  )
-}
-
-/**
- * La cara «Papeles». `23v2:172-180`.
- *
- * ═══ LO QUE DECÍA DEJÓ DE SER CIERTO Y SE CORRIGE (09/09/2026) ═══
- *
- * Este texto afirmaba que «no existe ninguna tabla que vincule un archivo con un proveedor». Ya no:
- * `proveedor_papel` (06/09) DERIVA los comprobantes de sus compras, y `proveedor_documento` (09/09)
- * guarda lo que se sube contra la ficha —contrato, póliza, habilitación, audiovisual—, que es la
- * cara «Documentos» de al lado. Sostener la frase vieja al lado de un botón que sube archivos es
- * una contradicción en la misma pantalla.
- *
- * Lo que esta cara SIGUE sin poder dibujar son los comprobantes derivados: `proveedor_papel` se lee
- * en el panel de la cartera (`proveedores/PapelesDelProveedor.tsx`) y traerla acá es otro trabajo.
- * Se dice eso, que es lo que se sabe, y no una limitación que ya no existe.
- */
-export function PapelesDelProveedor({ nombre }: { nombre: string }) {
-  return (
-    <div
-      data-testid="papeles-proveedor"
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 11,
-        border: `1px dashed ${V.lineaFuerte}`, borderRadius: 10, padding: '20px 18px',
-      }}
-    >
-      <span style={{ display: 'flex', color: V.inerteTrabajo, flexShrink: 0, marginTop: 1 }}>
-        <IconoDocumento className="h-[17px] w-[17px]" />
-      </span>
-      <span style={{ fontSize: '12.5px', lineHeight: 1.6, color: V.tintaSuave, maxWidth: 620, textWrap: 'pretty' }}>
-        Los comprobantes de {nombre} se ven en su panel de la cartera; esta cara todavía no los
-        trae. Los contratos, seguros y habilitaciones que se le cargan a esta ficha están en
-        Documentos.
-      </span>
     </div>
   )
 }

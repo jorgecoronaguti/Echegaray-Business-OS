@@ -12,10 +12,11 @@
 
 import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
-import { CeldaEditable, MarcaDeOrigen } from '../CeldasDeLiquidacion'
+import { CeldaEditable, IconoDeAviso, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
 import { referenciaDeJornales } from './estadoDelPago'
-import type { CampoEditable, LineaConOverrides } from '../../../services/liquidacionOverrides'
+import { horasNoCoincidenConLosDias, type CampoEditable, type LineaConOverrides } from '../../../services/liquidacionOverrides'
+import type { EdicionDelBlanco } from './CeldasBlancoNegro'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
 import { tituloDeExtras } from '../../../services/liquidacionQuincena'
@@ -100,6 +101,13 @@ export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos',
   )
 }
 
+/** Cómo se nombra cada celda en el aviso de deshacer: los rótulos de las columnas del cuadro. */
+const ROTULO_DE_CAMPO: Partial<Record<CampoEditable, string>> = {
+  porBanco: 'Banco', adelanto: 'Adelanto efectivo', yaTransferido: 'Adelanto banco / embargos', horasRecibo: 'Hs recibo',
+  valorHoraRecibo: '$/h cat.', negro: 'Importe negro', enEfectivo: 'Total efectivo', cobra: 'Cobra total', horas: 'Horas',
+  horasNegro: 'Hs negro',
+}
+
 /** Una celda que se escribe. Marco de control para que se vea cuál decide una persona y cuál no. */
 export function Escribible({ campo, fila, quincena, camposEditables, ancho, claseCampo = 'w-20', unidad = 'pesos' }: {
   campo: CampoEditable
@@ -117,7 +125,7 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho, clas
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
       <span style={{
-        width: ancho, minHeight: 28, maxWidth: '100%', overflow: 'hidden',
+        width: ancho, minHeight: 32, maxWidth: '100%', overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         border: soloLectura ? 'none' : `1px solid ${V.lineaFuerte}`, borderRadius: 4, padding: '0 4px',
         color: valor == null || valor === 0 ? V.lineaFuerte : V.tinta,
@@ -135,6 +143,7 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho, clas
           grupo={fila.grupo}
           soloLectura={soloLectura}
           ancho={claseCampo}
+          rotuloDeshacer={`${ROTULO_DE_CAMPO[campo] ?? campo} de ${fila.nombre}`}
           marcaCompacta
         />
       </span>
@@ -153,10 +162,26 @@ const marcaCon = (origen: 'calculado' | 'jornales' | 'manual', ref: { titulo: st
  * HORAS: las horas cargadas, el mismo total de «Horas». Si la plata usa horas equivalentes (extras con
  * recargo) el `title` lo aclara; y la referencia de JORNALES cuando difiere.
  */
-export function CeldaHorasPagas({ fila }: { fila: FilaDelEspejo }) {
+export function CeldaHorasPagas({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const l = fila.linea
   const ref = referenciaDeJornales(l)
   const titulo = [tituloDeExtras(l), ref?.titulo].filter(Boolean).join(' · ')
+  // HORAS SE ESCRIBE EN LA ABIERTA (dueño, 15/09/2026: «todas las celdas editables»). Sólo obreros: son las horas que
+  // se pagan. Escrita distinta de la suma de los días se guarda igual y avisa con un ⚠ y su `title`: un texto debajo
+  // rompía el alto de la fila (dueño, 15/09/2026).
+  if (edicion && !fila.cerrada && fila.grupo === 'obreros' && edicion.camposEditables.includes('horas')) {
+    const dias = horasNoCoincidenConLosDias(l)
+    return (
+      <div data-testid={`espejo-hs-pagas-${fila.personaId}`} title={titulo || undefined}
+        style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+        <Escribible campo="horas" unidad="horas" fila={fila} quincena={edicion.quincena}
+          camposEditables={edicion.camposEditables} ancho={56} claseCampo="w-12" />
+        {dias != null && (
+          <IconoDeAviso titulo={`no coincide con los días: ${nHoras(dias)} h`} testid={`horas-no-coinciden-${fila.personaId}`} />
+        )}
+      </div>
+    )
+  }
   return (
     <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
       origen={marcaCon(l.origen.horas, ref)} titulo={titulo || undefined} />

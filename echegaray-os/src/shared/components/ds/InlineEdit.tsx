@@ -32,13 +32,25 @@
 //
 // El id de la fila NUNCA viaja en el formulario: la acción llega ya atada con `.bind(null, id)`.
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CAMPO } from './Controles'
+import { indiceDeLaSiguiente, leerNumeroEsAR } from '../../lib/numeroEsAR'
+import { useCeldaViva, useGuardadoDeshacible } from '../deshacer/DeshacerProvider'
 import {
   alConfirmarGuardado, alLlegarDelServidor, hayQueGuardar, valorVigente, type EstadoInline,
 } from './inlineEdit'
 
 export type ResultadoInline = { ok: true } | { ok: false; error: string }
+
+/** Lo que el deshacer necesita saber de esta celda cuando el que llama sabe más que el valor dibujado. */
+export interface DeshacerDeCelda {
+  /** Valor a restaurar (p. ej. `''` = «sin manual», aunque la celda dibuje el calculado). */
+  anterior?: string
+  /** La acción comprueba `esperado` en el servidor: no hace falta mirar el valor dibujado. */
+  verificaServidor?: boolean
+  /** Cómo se nombra en el aviso («Banco de Rosales»). Sin esto, la `etiqueta`. */
+  rotulo?: string
+}
 
 export interface OpcionInline {
   valor: string
@@ -57,10 +69,12 @@ export function InlineEdit({
   testid,
   ancho = 'w-full',
   alineado = 'left',
+  deshacer,
 }: {
   /** Lo guardado hoy. `null` es ausencia y se dibuja con `falta`, nunca como 0. */
   valor: string | number | null
-  guardar: (v: string) => Promise<ResultadoInline>
+  /** `contexto.esperado` llega al deshacer: lo que debería haber hoy, para no pisar un cambio ajeno. */
+  guardar: (v: string, contexto?: { esperado?: string }) => Promise<ResultadoInline>
   tipo?: 'texto' | 'numero' | 'seleccion' | 'fecha'
   /** Obligatorias con `tipo='seleccion'`. La primera opción suele ser la ausencia. */
   opciones?: OpcionInline[]
@@ -81,6 +95,8 @@ export function InlineEdit({
   /** `center` lo pide la grilla de Liquidación → Horas: su columna de día está centrada y un campo
    *  alineado a la izquierda dentro de 42 px corre el número respecto de las celdas de al lado. */
   alineado?: 'left' | 'right' | 'center'
+  /** CMD/CTRL+Z (15/09/2026): cómo deshacer esta celda cuando el valor dibujado no alcanza. */
+  deshacer?: DeshacerDeCelda
 }) {
   const original = valor === null ? '' : String(valor)
   // UNA FECHA SE LEE EN es-AR Y SE EDITA EN ISO. El `<input type=date>` exige AAAA-MM-DD, pero
@@ -93,6 +109,12 @@ export function InlineEdit({
   const [editando, setEditando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
+  // «✓» BREVE DESPUÉS DE GUARDAR (dueño, 15/09/2026: «mejores la ux de cada celda»). Se dibuja en posición
+  // absoluta, igual que «guardando…»: la fila no se mueve.
+  const [recienGuardado, setRecienGuardado] = useState(false)
+  const [falloReciente, setFalloReciente] = useState(false)
+  const confirmando = useRef(false)
+  const cancelado = useRef(false)
   const ref = useRef<HTMLInputElement>(null)
 
   // EL VALOR DE AFUERA MANDA cuando la fila se vuelve a leer del servidor —salvo mientras alguien
@@ -110,18 +132,55 @@ export function InlineEdit({
   const vigente = valorVigente(estado)
   const enVuelo = estado.pendiente != null
 
-  async function confirmar(v: string) {
-    if (!hayQueGuardar(estado, v)) { setEditando(false); return }
+  // ═══ CMD/CTRL+Z (dueño, 15/09/2026) ═══ Todo guardado de esta celda pasa por el deshacer de la plataforma, así
+  // lo heredan Obras, Documentos, Asistencia y Liquidación sin cablear cada pantalla.
+  const clave = testid ?? etiqueta
+  const estadoRef = useRef(estado)
+  useEffect(() => { estadoRef.current = estado })
+  const guardarDeshacible = useGuardadoDeshacible({
+    clave, rotulo: deshacer?.rotulo ?? etiqueta, valorAnterior: deshacer?.anterior ?? vigente, guardar,
+    formato: (x) => (x === '' ? falta : `${mostrar ? mostrar(x) : enISO(x)}${sufijo ? ` ${sufijo}` : ''}`),
+  })
+  useCeldaViva(clave, {
+    actual: deshacer?.verificaServidor ? undefined : () => valorVigente(estadoRef.current),
+    aplicar: (v) => { setEstado((e) => alConfirmarGuardado(e, v)); setBorrador(v) },
+  })
+
+  async function confirmar(crudo: string, luego?: () => void) {
+    if (confirmando.current) return
+    let v = crudo
+    // UN NÚMERO SE LEE EN es-AR («266.000», «$ 266.000», «8,5»). Lo que no es número no se guarda: el campo
+    // queda abierto con «número inválido».
+    if (tipo === 'numero') {
+      const leido = leerNumeroEsAR(crudo)
+      if (!leido.ok) { setError('número inválido'); return }
+      v = leido.valor == null ? '' : String(leido.valor)
+    }
+    if (!hayQueGuardar(estado, v)) { setEditando(false); setError(null); luego?.(); return }
+    confirmando.current = true
     setGuardando(true)
-    const r = await guardar(v)
+    const r = await guardarDeshacible(v)
     setGuardando(false)
     setEditando(false)
+    confirmando.current = false
     if (r.ok) {
       setEstado(alConfirmarGuardado(estado, v))
       setError(null)
+      setRecienGuardado(true)
+      setTimeout(() => setRecienGuardado(false), 1500)
     } else {
       setError(r.error)
+      setFalloReciente(true)
+      setTimeout(() => setFalloReciente(false), 4000)
     }
+    luego?.()
+  }
+
+  /** TAB: guarda y abre la siguiente celda editable de la MISMA fila (`data-fila-edicion`). */
+  function abrirLaSiguiente(fila: Element, indice: number | null) {
+    if (indice == null) return
+    const destino = fila.querySelectorAll('[data-inline-edit]')[indice]
+    ;(destino?.querySelector('button') as HTMLButtonElement | null)?.click()
   }
 
   if (tipo === 'seleccion') {
@@ -144,9 +203,15 @@ export function InlineEdit({
     )
   }
 
+  const indicador = guardando
+    ? <span className="pointer-events-none absolute -top-2.5 right-0 text-[10px] text-faint">guardando…</span>
+    : recienGuardado
+      ? <span className="pointer-events-none absolute -top-2.5 right-0 text-[10px] text-pos" aria-live="polite">✓</span>
+      : null
+
   if (!editando) {
     return (
-      <span className="inline-flex flex-col items-start">
+      <span className="relative inline-flex flex-col items-start" data-inline-edit="">
         <button
           type="button"
           data-testid={testid}
@@ -158,43 +223,68 @@ export function InlineEdit({
           data-pendiente={enVuelo ? '1' : undefined}
           title={enVuelo ? 'Guardado. La pantalla termina de actualizarse en unos segundos.' : undefined}
           onClick={() => { setEditando(true); setError(null); requestAnimationFrame(() => ref.current?.select()) }}
-          className={`${ancho} rounded-control border border-transparent px-1.5 py-0.5 text-left hover:border-line-strong ${
+          // EDITABLE A LA VISTA, SIN RUIDO: subrayado punteado suave, cursor de texto y 32 px de alto (toque a 390).
+          className={`${ancho} min-h-8 cursor-text rounded-control border border-transparent px-1.5 py-0.5 text-left hover:border-line-strong ${
             alineado === 'right' ? 'text-right font-mono tabular-nums'
               : alineado === 'center' ? 'text-center font-mono tabular-nums' : ''
           } ${vigente === '' ? 'text-faint' : 'text-ink'} ${
-            enVuelo ? 'underline decoration-dotted decoration-warn underline-offset-4' : ''
+            enVuelo ? 'underline decoration-dotted decoration-warn underline-offset-4' : 'underline decoration-dotted decoration-line-strong underline-offset-4'
           } text-[12.5px]`}
         >
           {vigente === ''
             ? falta
             : `${mostrar ? mostrar(vigente) : enISO(vigente)}${sufijo ? ` ${sufijo}` : ''}`}
         </button>
-        {error && <span className="text-[11px] text-neg" data-testid={testid ? `${testid}-error` : undefined}>{error}</span>}
+        {indicador}
+        {/* EL ERROR EN TEXTO SÓLO RECIÉN FALLADO (4 s); DESPUÉS, UN ⚠ ROJO CON TITLE. Un texto fijo debajo rompe el
+            alto y el ritmo de la fila (dueño, 15/09/2026). Abrir el campo lo borra. */}
+        {error && (falloReciente
+          ? <span className="text-[11px] text-neg" data-testid={testid ? `${testid}-error` : undefined}>{error}</span>
+          : <span role="img" aria-label={error} title={error} data-testid={testid ? `${testid}-error` : undefined}
+            className="absolute -top-2.5 left-0 cursor-help text-[10px] leading-none text-neg">⚠</span>)}
       </span>
     )
   }
 
   return (
-    <span className="inline-flex flex-col">
+    <span className="relative inline-flex flex-col" data-inline-edit="">
       <input
         ref={ref}
         autoFocus
-        type={tipo === 'numero' ? 'number' : tipo === 'fecha' ? 'date' : 'text'}
-        step={tipo === 'numero' ? 'any' : undefined}
+        // SIN FLECHAS (dueño, 15/09/2026: «unas flechas para arriba y abajo q no son utiles»): texto con teclado
+        // decimal en el teléfono, y `leerNumeroEsAR` al guardar.
+        type={tipo === 'fecha' ? 'date' : 'text'}
+        inputMode={tipo === 'numero' ? 'decimal' : undefined}
         value={borrador}
         disabled={guardando}
         aria-label={etiqueta}
         data-testid={testid ? `${testid}-campo` : undefined}
-        onChange={(e) => setBorrador(e.target.value)}
-        onBlur={() => void confirmar(borrador)}
+        onChange={(e) => { setBorrador(e.target.value); if (error) setError(null) }}
+        onFocus={(e) => e.currentTarget.select()}
+        // ESCAPE NO GUARDA DE REBOTE: al cerrar el campo el navegador emite `blur` con el borrador de antes de
+        // revertir, y sin esta marca ese blur guardaba lo que se acababa de cancelar.
+        onBlur={() => { if (cancelado.current) { cancelado.current = false; return } void confirmar(borrador) }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.preventDefault(); void confirmar(borrador) }
+          // TAB GUARDA Y PASA A LA SIGUIENTE CELDA DE LA FILA. Fuera de una fila marcada, Tab hace lo de siempre.
+          if (e.key === 'Tab') {
+            const celda = e.currentTarget.closest('[data-inline-edit]')
+            const fila = celda?.closest('[data-fila-edicion]')
+            if (celda && fila) {
+              e.preventDefault()
+              const celdas = [...fila.querySelectorAll('[data-inline-edit]')]
+              const siguiente = indiceDeLaSiguiente(celdas.length, celdas.indexOf(celda), e.shiftKey)
+              void confirmar(borrador, () => abrirLaSiguiente(fila, siguiente))
+            }
+          }
           // ESCAPE DEVUELVE EL ORIGINAL. Sin esto, la única salida de una edición empezada por error
           // es guardarla.
-          if (e.key === 'Escape') { e.preventDefault(); setBorrador(vigente); setEditando(false) }
+          if (e.key === 'Escape') { e.preventDefault(); cancelado.current = true; setError(null); setBorrador(vigente); setEditando(false) }
         }}
-        className={`${CAMPO} ${ancho} !h-7 !px-1.5 !text-[12.5px] ${alineado === 'right' ? 'text-right font-mono tabular-nums' : alineado === 'center' ? 'text-center font-mono tabular-nums' : ''}`}
+        // EL MISMO ANCHO QUE LA CELDA EN REPOSO (`ancho`) Y 32 PX DE ALTO: la fila no salta al abrirla.
+        className={`${CAMPO} ${ancho} !h-8 min-h-8 !px-1.5 !text-[12.5px] ${alineado === 'right' ? 'text-right font-mono tabular-nums' : alineado === 'center' ? 'text-center font-mono tabular-nums' : ''}`}
       />
+      {indicador}
       {error && <span className="text-[11px] text-neg" data-testid={testid ? `${testid}-error` : undefined}>{error}</span>}
     </span>
   )

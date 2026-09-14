@@ -130,6 +130,12 @@ test('quien cargó horas en una obra a la que ya no está asignado igual aparece
   })
   assert.equal(dia.plantel, 1)
   assert.equal(dia.obras[0].nombre, 'Obra Nueve')
+  const conCodigo = asistenciaDelDia({
+    esperados: [],
+    registros: [reg({ persona_id: 'x', nombre: 'SOSA R', horas: 7, obra_id: 'obra-9', obra: 'Obra Nueve' })],
+    codigos: new Map([['obra-9', 'OB-0009']]),
+  })
+  assert.equal(conCodigo.obras[0].nombre, 'OB-0009 · Obra Nueve', 'el grupo de la obra lleva su código interno')
   assert.equal(dia.obras[0].gente[0].nombre, 'SOSA R')
 })
 

@@ -73,7 +73,8 @@ export function estadoDelPago(l: CadenaParaCerrar & {
   return {
     noCierra,
     titulo: noCierra
-      ? `No cierra: ${cadena} tiene que dar ${reparto} (diferencia ${pesos(cierre?.diferencia ?? null)}).`
+      ? `no cierra: diferencia ${pesos(cierre?.diferencia ?? null)} · ${cadena} tiene que dar ${reparto}`
+        + (l.negro != null ? ` y cobra = banco ${pesos(l.porBanco)} + negro ${pesos(l.negro)}` : '')
       : `${cadena.charAt(0).toUpperCase()}${cadena.slice(1)} = ${reparto}`,
     acuerdo: l.blancoAcuerdo == null ? null : {
       texto: `50/50${sinRecibo ? ' sin recibo' : ''}`,

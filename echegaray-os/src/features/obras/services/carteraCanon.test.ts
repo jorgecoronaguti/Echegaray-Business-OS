@@ -85,6 +85,13 @@ test('el buscador del zip mira nombre Y cliente, sin acentos', () => {
   assert.equal(coincideTexto('Nave 3', null, '  '), true)
 })
 
+test('el buscador de la cartera encuentra la obra por su código interno', () => {
+  assert.equal(coincideTexto('ME - PLAYÓN DE AZUFRE', 'MESSINA', 'ob21', 'OB-0021'), true)
+  assert.equal(coincideTexto('ME - PLAYÓN DE AZUFRE', 'MESSINA', 'OB-0021', 'OB-0021'), true)
+  assert.equal(coincideTexto('ME - PLAYÓN DE AZUFRE', 'MESSINA', 'ob20', 'OB-0021'), false)
+  assert.equal(coincideTexto('ME - PLAYÓN DE AZUFRE', 'MESSINA', 'ob21'), false, 'sin código cargado no hay búsqueda por código')
+})
+
 test('los colores de la barra y del plazo son los medidos en el mockup', () => {
   assert.equal(colorDeBarra(obra({ avance_pct: 100 })), '#067647')
   assert.equal(colorDeBarra(obra({ avance_pct: 0 })), '#D7D5CF')

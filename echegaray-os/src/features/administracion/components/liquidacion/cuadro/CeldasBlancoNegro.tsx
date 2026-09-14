@@ -16,7 +16,7 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 import { V } from '@/shared/components/v2/patron'
-import { MarcaDeOrigen } from '../CeldasDeLiquidacion'
+import { IconoDeAviso, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { Escribible } from './CeldasDelEspejo'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import { horas as nHoras, pesos } from '../formato'
@@ -69,6 +69,10 @@ export interface EdicionDelBlanco {
 const seEscribe = (fila: FilaDelEspejo, campo: CampoEditable, e?: EdicionDelBlanco): e is EdicionDelBlanco =>
   e != null && !fila.cerrada && fila.linea.sueldo != null && e.camposEditables.includes(campo)
 
+/** Las columnas de dinero que no son del blanco (Cobra total, Total efectivo): también en mensuales y finales. */
+const seEscribeDinero = (fila: FilaDelEspejo, campo: CampoEditable, e?: EdicionDelBlanco): e is EdicionDelBlanco =>
+  e != null && !fila.cerrada && e.camposEditables.includes(campo)
+
 export function CeldaHorasBlanco({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const s = fila.linea.sueldo
   if (seEscribe(fila, 'horasRecibo', edicion)) {
@@ -110,23 +114,24 @@ export function CeldaHoraCategoria({ fila, edicion }: { fila: FilaDelEspejo; edi
   return <Celda s={s} valor={pesos(s?.valorHoraCategoria ?? null)} testid={`hora-categoria-${fila.personaId}`} />
 }
 
-export const AVISO_NETO_NO_RECALCULADO = 'neto no recalculado: editá el neto si cambió el recibo'
+export const AVISO_NETO_NO_RECALCULADO = 'el neto es del recibo del estudio y no se recalcula: editá Banco si cambió'
 
 /** NETO (BANCO): el neto del recibo, o el estimado; lo escrito a mano gana y se marca. En la abierta se escribe. */
 export function CeldaNeto({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const l = fila.linea
   const s = l.sueldo
   const testid = `neto-${fila.personaId}`
-  // ÁMBAR: se corrigieron las horas o el $/h del recibo y el neto quedó el de antes.
+  // ⚠ JUNTO AL NÚMERO, SIN TEXTO (dueño, 15/09/2026, fila de Agüero: el aviso quedaba pegado debajo): se corrigieron las horas o el
+  // $/h y el neto es REAL, así que quedó el de antes. Un neto estimado ya se recalculó y no avisa.
   const aviso = s?.netoNoRecalculado ? AVISO_NETO_NO_RECALCULADO : null
+  const titulo = s ? origenDelBlanco(s) : undefined
   if (seEscribe(fila, 'porBanco', edicion)) {
     return (
-      <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined}
-        title={[aviso, s ? origenDelBlanco(s) : null].filter(Boolean).join(' · ') || undefined}
-        style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, color: aviso ? V.warn : undefined }}>
-        {aviso && <span style={{ fontSize: '10px', color: V.warn }}>sin recalc.</span>}
+      <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined} title={titulo}
+        style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
         <Escribible campo="porBanco" fila={fila} quincena={edicion.quincena}
           camposEditables={edicion.camposEditables} ancho={112} claseCampo="w-24" />
+        {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
         {s?.driveFileId && (
           <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
             title="Abrir el recibo" style={{ fontSize: '10.5px', color: V.apagado }}>↗</a>
@@ -139,9 +144,10 @@ export function CeldaNeto({ fila, edicion }: { fila: FilaDelEspejo; edicion?: Ed
   }
   const estimado = s != null && s.origenNeto === 'estimado' && !l.manual.porBanco
   return (
-    <div data-testid={testid} title={[aviso, s ? origenDelBlanco(s) : null].filter(Boolean).join(' · ') || undefined}
-      style={{ ...DERECHA, ...(estimado ? ESTIMADO : { color: aviso ? V.warn : V.tinta }) }}>
+    <div data-testid={testid} data-neto-no-recalculado={aviso ? '1' : undefined} title={titulo}
+      style={{ ...DERECHA, ...(estimado ? ESTIMADO : { color: V.tinta }) }}>
       {pesos(l.porBanco)}{estimado && <Est />}
+      {aviso && <IconoDeAviso titulo={AVISO_NETO_NO_RECALCULADO} testid={`neto-aviso-${fila.personaId}`} />}
       <MarcaDeOrigen origen={l.origen.porBanco} compacta />
       {s?.driveFileId && (
         <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid={`recibo-pdf-${fila.personaId}`}
@@ -151,9 +157,21 @@ export function CeldaNeto({ fila, edicion }: { fila: FilaDelEspejo; edicion?: Ed
   )
 }
 
-/** HS NEGRO: las que el recibo no paga. Ámbar si el recibo paga más de las cargadas. */
-export function CeldaHorasNegro({ fila }: { fila: FilaDelEspejo }) {
+/** HS NEGRO: las que el recibo no paga. Ámbar si el recibo paga más de las cargadas. En la abierta se escribe. */
+export function CeldaHorasNegro({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const s = fila.linea.sueldo
+  // HS NEGRO SE ESCRIBE (dueño, 15/09/2026: «todas las celdas editables»): el Importe negro pasa a Hs negro × $/h negro,
+  // salvo que el Importe también esté escrito.
+  if (seEscribe(fila, 'horasNegro', edicion)) {
+    const excede = s?.reciboExcedeHoras && !fila.linea.manual.horasNegro
+    return (
+      <div data-testid={`hs-negro-${fila.personaId}`} title={excede ? 'el recibo paga más horas que las cargadas' : undefined}
+        style={excede ? { color: V.warn } : undefined}>
+        <Escribible campo="horasNegro" unidad="horas" fila={fila} quincena={edicion.quincena}
+          camposEditables={edicion.camposEditables} ancho={56} claseCampo="w-12" />
+      </div>
+    )
+  }
   if (s?.reciboExcedeHoras) {
     return (
       <div data-testid={`hs-negro-${fila.personaId}`} title="el recibo paga más horas que las cargadas"
@@ -163,10 +181,18 @@ export function CeldaHorasNegro({ fila }: { fila: FilaDelEspejo }) {
   return <Celda s={s} valor={nHoras(s?.horasNegro ?? null)} testid={`hs-negro-${fila.personaId}`} />
 }
 
-export function CeldaImporteNegro({ fila }: { fila: FilaDelEspejo }) {
+export function CeldaImporteNegro({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const l = fila.linea
   const s = l.sueldo
-  if (s && !l.manual.cobra && !l.manual.porBanco) {
+  // EL IMPORTE NEGRO SE ESCRIBE (dueño, 15/09/2026: «dejame editable todas las columnas de dinero»).
+  if (seEscribe(fila, 'negro', edicion)) {
+    return (
+      <div data-testid={`negro-${fila.personaId}`}>
+        <Escribible campo="negro" fila={fila} quincena={edicion.quincena} camposEditables={edicion.camposEditables} ancho={104} claseCampo="w-24" />
+      </div>
+    )
+  }
+  if (s) {
     const recargo = s.recargoExtras > 0 ? ` + ${nHoras(s.recargoExtras)} h de recargo de extras` : ''
     return (
       <Celda s={s} valor={pesos(s.negro)} testid={`negro-${fila.personaId}`}
@@ -185,10 +211,20 @@ export function CeldaImporteNegro({ fila }: { fila: FilaDelEspejo }) {
 }
 
 /** TOTAL = neto + negro. El número principal de la fila. JORNALES en el `title`, sin mandar. */
-export function CeldaTotal({ fila }: { fila: FilaDelEspejo }) {
+export function CeldaTotal({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const l = fila.linea
   const s = l.sueldo
   const jornales = tituloDeJornales(l)
+  // COBRA TOTAL SE ESCRIBE; si con los manuales deja de cerrar, rojo con la diferencia (y se guarda igual).
+  if (seEscribeDinero(fila, 'cobra', edicion)) {
+    const e = estadoDelPago(l)
+    return (
+      <div data-testid={`total-${fila.personaId}`} title={e.noCierra ? e.titulo : (jornales ?? undefined)}
+        style={{ fontSize: '14px', fontWeight: 600, color: e.noCierra ? V.neg : V.tinta }}>
+        <Escribible campo="cobra" fila={fila} quincena={edicion.quincena} camposEditables={edicion.camposEditables} ancho={120} claseCampo="w-28" />
+      </div>
+    )
+  }
   if (l.cobra == null) {
     const porque = l.sinNeto ? 'sin neto' : 'sin tarifa'
     return (
@@ -212,11 +248,20 @@ export function CeldaTotal({ fila }: { fila: FilaDelEspejo }) {
  * EFECTIVO = total − banco − adelanto − ya transferido. Rojo con el porqué si la fila no cierra; ámbar si
  * da negativo (el adelanto y lo transferido superan lo que le corresponde). Nunca se esconde.
  */
-export function CeldaEfectivoDelSueldo({ fila }: { fila: FilaDelEspejo }) {
+export function CeldaEfectivoDelSueldo({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const l = fila.linea
   const e = estadoDelPago(l)
   const superado = efectivoSuperado(l)
   const color = e.noCierra ? V.neg : (superado ? V.warn : V.tinta)
+  // TOTAL EFECTIVO SE ESCRIBE (dueño, 15/09/2026). Vacío vuelve a la resta; rojo con la diferencia si no cierra.
+  if (seEscribeDinero(fila, 'enEfectivo', edicion)) {
+    return (
+      <div data-testid={`efectivo-${fila.personaId}`} data-superado={superado ? '1' : undefined}
+        title={e.noCierra ? e.titulo : (superado ?? e.titulo)} style={{ color }}>
+        <Escribible campo="enEfectivo" fila={fila} quincena={edicion.quincena} camposEditables={edicion.camposEditables} ancho={108} claseCampo="w-24" />
+      </div>
+    )
+  }
   return (
     <div data-testid={`efectivo-${fila.personaId}`} data-superado={superado ? '1' : undefined}
       title={e.noCierra ? e.titulo : (superado ?? e.titulo)}
