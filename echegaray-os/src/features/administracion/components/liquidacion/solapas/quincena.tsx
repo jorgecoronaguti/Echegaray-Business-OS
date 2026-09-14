@@ -4,13 +4,14 @@ import { createClient } from '@/lib/supabase/server'
 import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../../services/quincena'
 import { getDatosDeLaSolapaHoras } from '../../../services/grillaHorasQuincenaService'
 import { getLiquidacionDeLaQuincena } from '../../../services/liquidacionQuincenaService'
+import { getExposicionDeLaQuincena } from '../../../services/exposicionConvenioService'
 import {
   diasConHorasDe, diasDelEspejo, filasDelEspejo, totalesDelEspejo, type FilaDelEspejo,
 } from '../../../services/espejoDeJornales'
 import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDePersonal'
 import type { LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
-import { FiltrosDelEspejo, GrillaEspejoQuincena, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
+import { FiltrosDelEspejo, GrillaEspejoQuincena, type MarcaDePiso, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
 import { MONO } from './tabla'
 import type { PropsDeSolapa } from './index'
 
@@ -62,10 +63,22 @@ const normalizar = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, 
 export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }: PropsDeSolapa) {
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? (quincenaPedida as string) : hoy)
   const supabase = await createClient()
-  const [datos, liquidacion] = await Promise.all([
+  // LA EXPOSICIÓN AL CONVENIO ES LA DE LA SOLAPA «CONVENIOS», NO UNA CUENTA NUEVA. Dueño, 14/09/2026:
+  // «ok» a que el cuadro marque a quién le falta llegar al básico UOCRA. El piso, la brecha y su
+  // fuente salen de `exponerAlPiso`; acá sólo se indexan por persona.
+  const [datos, liquidacion, exposicion] = await Promise.all([
     getDatosDeLaSolapaHoras(supabase, quincena),
     getLiquidacionDeLaQuincena(supabase, quincena),
+    getExposicionDeLaQuincena(supabase, quincena),
   ])
+  const bajoElPiso: Record<string, MarcaDePiso> = {}
+  for (const l of exposicion.lineas) {
+    if (!l.bajoElPiso || l.piso == null || l.brechaPct == null || l.diferenciaHora == null) continue
+    bajoElPiso[l.personaId] = {
+      brechaPct: l.brechaPct, diferenciaHora: l.diferenciaHora,
+      piso: l.piso.valorHora, desde: l.piso.desde, categoria: l.categoria ?? '',
+    }
+  }
   // EL ESPEJO VIENE CON LA LIQUIDACIÓN, no de una lectura propia: es la misma función que ya lo usa
   // para meter los adelantos de la planilla en la cadena de pago. Leerlo dos veces daría dos fotos
   // de la planilla y un chip que coteja contra una y una celda que cobra según la otra.
@@ -123,7 +136,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
 
   return (
     <div data-testid="vista-quincena">
-      {[...datos.errores, ...liquidacion.errores].map((e) => (
+      {[...datos.errores, ...liquidacion.errores, ...exposicion.errores].map((e) => (
         <div key={e.que} style={{ padding: '0 0 10px' }}>
           <Aviso tono="neg" testid="quincena-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
         </div>
@@ -144,6 +157,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
         totales={totales}
         quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
         camposEditables={liquidacion.camposEditables}
+        bajoElPiso={bajoElPiso}
         sello={
           <Sello
             titulo={rotuloQuincena(quincena)}
