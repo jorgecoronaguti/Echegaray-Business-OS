@@ -1,11 +1,12 @@
-// LA BASE DEL RECIBO ESTIMADO, UNA VEZ POR RENDER: conceptos de los recibos, feriados de la quincena y reglas.
+// LA BASE DEL RECIBO ESTIMADO, UNA VEZ POR RENDER: las reglas, los feriados de la quincena y los recibos.
 //
-// Las dos lecturas (`leerConceptosDeRecibos`, `leerFeriadosDeLaQuincena`) viajan en la misma tanda que el resto de
-// la liquidación; `baseDelEstimado` es puro y arma las reglas con los recibos que ya leyó la exposición al convenio:
-// una segunda lectura de `recibo_sueldo_linea` sería una segunda foto de los recibos en la misma pantalla.
+// PRIMERA ENTREGA SIN MIGRACIÓN (coordinador, 14/09/2026): las reglas son las congeladas en
+// `reglasDelRecibo.generadas.ts`, no las de `recibo_sueldo_concepto`. Los recibos son los que ya leyó la
+// exposición al convenio (`recibo_sueldo_linea`): deciden la jornada completa por sus horas, y una segunda lectura
+// sería una segunda foto de los recibos en la misma pantalla. Los conceptos reales entran cuando la tabla exista.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { r2, reglasDelRecibo, type ConceptoDeRecibo, type ReciboParaReglas } from './reglasDelRecibo.ts'
+import { r2, type ConceptoDeRecibo, type ReciboParaReglas, type ReglasDelRecibo } from './reglasDelRecibo.ts'
 import type { BaseDelEstimado, ReciboDeSueldo } from './sueldoBlancoNegro.ts'
 
 export const esDiaHabil = (fecha: string): boolean => {
@@ -15,7 +16,7 @@ export const esDiaHabil = (fecha: string): boolean => {
 
 /**
  * FERIADOS HÁBILES DE LA QUINCENA (`calendario_no_laborable`, los que no son de una obra). `null` si el calendario
- * no tiene NINGUNA fila del año: «sin calendario» no es «sin feriados», y el 15/09/2026 la tabla está vacía.
+ * no tiene NINGUNA fila del año: «sin calendario» no es «sin feriados», y el 14/09/2026 la tabla está vacía.
  */
 export async function leerFeriadosDeLaQuincena(
   supabase: SupabaseClient, desde: string, hasta: string,
@@ -43,11 +44,10 @@ export function reciboParaReglas(r: ReciboDeSueldo, conceptos: readonly Concepto
   }
 }
 
-/** La base del estimado para `periodo`. `null` sin conceptos: la tabla no está aplicada o está vacía. */
+/** La base del estimado de `periodo`. Sin `porRecibo` (la tabla de conceptos no existe todavía), sin conceptos reales. */
 export function baseDelEstimado(
-  periodo: string, recibos: readonly ReciboDeSueldo[], porRecibo: ReadonlyMap<string, ConceptoDeRecibo[]>, feriados: number | null,
-): BaseDelEstimado | null {
-  if (porRecibo.size === 0) return null
-  const paraReglas = recibos.map((r) => reciboParaReglas(r, (r.id ? porRecibo.get(r.id) : undefined) ?? []))
-  return { reglas: reglasDelRecibo(paraReglas, periodo), feriados, recibos: paraReglas }
+  periodo: string, reglas: ReglasDelRecibo, recibos: readonly ReciboDeSueldo[], feriados: number | null,
+  porRecibo: ReadonlyMap<string, ConceptoDeRecibo[]> = new Map(),
+): BaseDelEstimado {
+  return { periodo, reglas, feriados, recibos: recibos.map((r) => reciboParaReglas(r, (r.id ? porRecibo.get(r.id) : undefined) ?? [])) }
 }

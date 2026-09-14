@@ -129,6 +129,14 @@ test('real contra estimado: la única diferencia de Rosales Q2-08 es el seguro d
   assert.deepEqual(filas.filter((f) => f.estimado == null).map((f) => f.codigo), ['5010', '5020', '5030', '5040'])
 })
 
+test('92 ter con ventana Q1-07 a Q2-08: la tasa madre de un aporte es un aporte (2,55 % × (88 − h)), no la contribución (5,1 % × (69 − h))', () => {
+  const r = reglasDelRecibo(RECIBOS, 'Q1-09/2026')
+  const c = (codigo: string) => r.conceptos.find((x) => x.codigo === codigo)!.modelo
+  assert.deepEqual(c('4170'), { tipo: 'horas_faltantes', tasa: 0.0255, jornada: 88, masNoRemunerativo: false })
+  assert.deepEqual(c('4175'), { tipo: 'horas_faltantes', tasa: 0.0045, jornada: 88, masNoRemunerativo: false })
+  assert.equal(r.jornada, 88)
+})
+
 test('un embargo en su último recibo no se descuenta (no es regla del recibo) pero se avisa', () => {
   const conEmbargo = RECIBOS.find((r) => r.periodo === 'Q2-08/2026' && r.conceptos.some((c) => c.codigo === '4090'))!
   const reglasQ1_09 = reglasDelRecibo(RECIBOS, 'Q1-09/2026')

@@ -42,8 +42,8 @@ import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornal
 import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposicionConvenioService.ts'
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
 import { entradaDeBlanco } from './sueldoBlancoNegro.ts'
-import { leerConceptosDeRecibos } from './recibosConceptosService.ts'
 import { baseDelEstimado, leerFeriadosDeLaQuincena } from './reciboEstimadoService.ts'
+import { REGLAS_GENERADAS } from './reglasDelRecibo.generadas.ts'
 import type { Quincena } from './quincena.ts'
 
 /** Un cuadro con sus líneas ya pisadas por lo que el dueño escribió a mano. */
@@ -131,7 +131,7 @@ export async function getLiquidacionDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<LiquidacionDeLaQuincena> {
   const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, espejo, sesionDePrueba,
-    exposicion, conceptos, feriados] =
+    exposicion, feriados] =
     await Promise.all([
       // `puesto` VIAJA CON EL PLANTEL para que las pantallas de Liquidación ordenen y rotulen como
       // el resto de Personal (dueño, 10/09/2026). Es la misma columna y la misma función
@@ -186,9 +186,8 @@ export async function getLiquidacionDeLaQuincena(
       // ═══ BLANCO + NEGRO (dueño, 14/09/2026) ═══ La exposición trae el piso de la categoría y las
       // líneas de recibo de sueldo (horas, $/h de categoría, bruto y neto): una sola lectura de cada una.
       getExposicionDeLaQuincena(supabase, q),
-      // ═══ EL RECIBO ESTIMADO CONCEPTO POR CONCEPTO (dueño, 14/09/2026) ═══ Los conceptos de los recibos y los
-      // feriados de la quincena: con ellos y los recibos que ya trae la exposición se arman las reglas, una vez.
-      leerConceptosDeRecibos(supabase),
+      // ═══ EL RECIBO ESTIMADO CONCEPTO POR CONCEPTO (dueño, 14/09/2026) ═══ Los feriados de la quincena; las reglas
+      // son las congeladas (`reglasDelRecibo.generadas.ts`) y los recibos, los que ya trae la exposición.
       leerFeriadosDeLaQuincena(supabase, q.desde, q.hasta),
     ])
 
@@ -284,11 +283,10 @@ export async function getLiquidacionDeLaQuincena(
 
   const periodo = periodoDeRecibo(q)
   const pisoDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.piso?.valorHora ?? null]))
-  // SIN CONCEPTOS NO HAY RECIBO ESTIMADO, Y SE DICE: la tabla sin aplicar es «sin base» (el blanco de la mediana);
-  // cualquier otro error va a la lista, porque estimar sin reglas en silencio cambiaría el Banco de todos.
-  anotar('los conceptos de los recibos', conceptos.error ? { message: conceptos.error } : null)
+  // EL RECIBO ESTIMADO: reglas congeladas (primera entrega sin migración), los recibos que ya leyó la exposición y
+  // los feriados. Un error del calendario se dice: estimar sin feriados en silencio movería el 0401 y el 0431.
   anotar('el calendario de feriados', feriados.error ? { message: feriados.error } : null)
-  const baseEstimado = baseDelEstimado(periodo, exposicion.recibos, conceptos.porRecibo, feriados.feriados)
+  const baseEstimado = baseDelEstimado(periodo, REGLAS_GENERADAS, exposicion.recibos, feriados.feriados)
   /** La entrada del blanco de un obrero. Oficina y finales no cobran por hora: fuera del modelo. */
   const blancoDe = (grupo: string, l: { personaId: string; reciboNeto: number | null }) => grupo !== 'obreros'
     ? null

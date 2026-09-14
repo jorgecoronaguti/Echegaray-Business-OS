@@ -7,7 +7,7 @@
 //   1. el neto sigue saliendo de la mediana aunque haya estimado por conceptos;
 //   2. el estimado le gana al Banco escrito a mano;
 //   3. las horas del recibo escritas no rehacen el estimado;
-//   4. con recibo real, el panel se queda sin los conceptos reales o sin el estimado para compararlos;
+//   4. con recibo real, el panel se queda sin los totales o conceptos reales, o sin el estimado para compararlos;
 //   5. un descuento dudoso se estima igual (un neto con un agujero).
 
 import { test } from 'node:test'
@@ -28,10 +28,10 @@ const RECIBOS: ReciboParaReglas[] = FIXTURE.recibos.map(([alias, periodo, valorH
   persona: alias === FIXTURE.rosales ? CUIL_ROSALES : alias, periodo, valorHora, horasNormales, horasFeriado, horasOtras,
   conceptos: cs.map(([codigo, s, unidad, base, monto]): ConceptoDeRecibo => ({ codigo, descripcion: FIXTURE.catalogo[codigo], seccion: SECCION[s], unidad, base, monto })),
 }))
-const BASE: BaseDelEstimado = { reglas: reglasDelRecibo(RECIBOS, 'Q2-08/2026'), feriados: 1, recibos: RECIBOS }
+const BASE: BaseDelEstimado = { periodo: 'Q2-08/2026', reglas: reglasDelRecibo(RECIBOS, 'Q2-08/2026'), feriados: 1, recibos: RECIBOS }
 const RECIBO_REAL: ReciboDeSueldo = {
   personaId: 'rosales', cuil: CUIL_ROSALES, periodo: 'Q2-08/2026', categoria: 'Oficial',
-  valorHora: 6348, horasBlanco: 50, bruto: 317400, neto: 230240.12, driveFileId: 'pdf-q2-08',
+  valorHora: 6348, horasBlanco: 50, bruto: 317400, descuentos: 87159.88, neto: 230240.12, driveFileId: 'pdf-q2-08',
 }
 
 const entrada = (e: Partial<EntradaDeSueldo> = {}): EntradaDeSueldo => ({
@@ -69,10 +69,11 @@ test('horas del recibo escritas a mano: el estimado se rehace y su neto sigue si
   assert.equal(s.reciboEstimado?.horasNormales, 35)
 })
 
-test('con recibo real manda el real, y viajan sus conceptos y el estimado para compararlos', () => {
+test('con recibo real manda el real, y viajan sus totales, sus conceptos y el estimado para compararlos', () => {
   const s = sueldoBlancoNegro(entrada({ recibo: RECIBO_REAL }))
   assert.equal(s.estado, 'recibo')
   assert.equal(s.neto, 230240.12)
+  assert.deepEqual(s.totalesReales, { haberes: 317400, descuentos: 87159.88, neto: 230240.12 })
   assert.ok((s.conceptosReales?.length ?? 0) > 0)
   assert.equal(s.reciboEstimado?.neto, 231880.94)
   const dif = compararConReal(s.reciboEstimado ?? null, s.conceptosReales ?? null).filter((f) => f.diferencia)
@@ -94,11 +95,12 @@ test('entradaDeBlanco: con base, la persona del estimado es el CUIL normalizado;
   assert.equal(sin.estimacion, null)
 })
 
-test('baseDelEstimado: sin conceptos no hay base; con conceptos, las horas «otras» son las que sobran', () => {
-  assert.equal(baseDelEstimado('Q2-08/2026', [RECIBO_REAL], new Map(), 1), null)
-  const b = baseDelEstimado('Q1-09/2026', [{ ...RECIBO_REAL, id: 'r1', horasNormales: 0, horasFeriado: 5 }], new Map([['r1', RECIBOS[0].conceptos as ConceptoDeRecibo[]]]), null)
-  assert.equal(b?.recibos[0].horasOtras, 45)
-  assert.equal(b?.feriados, null)
+test('baseDelEstimado: el período es el que se estima; las horas «otras» son las que sobran', () => {
+  const b = baseDelEstimado('Q1-09/2026', BASE.reglas, [{ ...RECIBO_REAL, id: 'r1', horasNormales: 0, horasFeriado: 5 }], null)
+  assert.equal(b.periodo, 'Q1-09/2026')
+  assert.equal(b.recibos[0].horasOtras, 45)
+  assert.deepEqual(b.recibos[0].conceptos, [])
+  assert.equal(b.feriados, null)
   assert.equal(esDiaHabil('2026-08-17'), true)
   assert.equal(esDiaHabil('2026-08-16'), false)
 })

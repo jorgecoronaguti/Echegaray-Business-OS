@@ -14,7 +14,7 @@
 // vuelve a la mediana, que al menos dice de dónde sale. Puro: sin base, sin React.
 
 import {
-  horasDelRecibo, periodoOrdenable, r2,
+  horasDelRecibo, periodoOrdenable, quincenaDelPeriodo, r2,
   type ConceptoDeRecibo, type ReciboParaReglas, type ReglaDeConcepto, type ReglasDelRecibo, type SeccionDelConcepto,
 } from './reglasDelRecibo.ts'
 
@@ -156,7 +156,11 @@ export function estimarRecibo(reglas: ReglasDelRecibo, p: PersonaDelEstimado): R
   const feriado = Math.min(h.total, (p.feriados ?? 0) * (porDia ?? 0))
   const lineas = haberes(reglas, h.jornada, r2(h.total - feriado), feriado, p.valorHora)
   const remunerativo = sumaONull(lineas)
-  for (const regla of reglas.conceptos.filter((x) => x.aplica)) {
+  // UNA REGLA DE UNA SOLA MITAD DEL MES SE DECIDE POR LA QUINCENA QUE SE ESTIMA, no por la que se generó: las reglas
+  // congeladas para Q1-09 tienen el seguro de vida en «no aplica», y en Q2-09 aplica.
+  const q = quincenaDelPeriodo(p.periodo)
+  const aplica = (x: ReglaDeConcepto): boolean => (x.soloQuincena == null ? x.aplica : x.soloQuincena === q)
+  for (const regla of reglas.conceptos.filter(aplica)) {
     const monto = remunerativo == null ? null : montoDeLaRegla(regla, { remunerativo, vh: p.valorHora, horas: h.total, persona: p.persona })
     if (monto === undefined) continue
     lineas.push({ codigo: regla.codigo, descripcion: regla.descripcion, seccion: regla.seccion, unidad: null, base: null, monto, fuente: fuenteDeLaRegla(regla, reglas) })

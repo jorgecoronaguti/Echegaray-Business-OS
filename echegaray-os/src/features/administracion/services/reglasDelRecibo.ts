@@ -290,9 +290,14 @@ function explicaAusencias(codigo: string, ventana: readonly ReciboParaReglas[], 
  * (88 − 50)» reproducen los mismos recibos: el porcentaje no dice por qué quien liquida 88 h no lo tiene, y las
  * horas faltantes sí. Ese es el desempate, y también sale de los recibos. Lo demás que no cierra prueba por persona.
  */
-function modeloDelCodigo(codigo: string, ventana: readonly ReciboParaReglas[], primera: Prueba | null, tasas: ReadonlyMap<string, number>): Prueba | null {
+function modeloDelCodigo(
+  codigo: string, seccion: SeccionDelConcepto, ventana: readonly ReciboParaReglas[], primera: Prueba | null,
+  tasas: ReadonlyMap<string, { tasa: number; seccion: SeccionDelConcepto }>,
+): Prueba | null {
   const con = ventana.filter((r) => montoDelCodigo(r, codigo) != null)
-  const madres = [...tasas].filter(([c]) => c !== codigo).map(([, t]) => t)
+  // LA TASA MADRE ES DE LA MISMA SECCIÓN. Sin recibos entre 50 y 88 h, «2,55 % × (88 − h)» y «5,1 % × (69 − h)»
+  // reproducen igual el 4170: el 5,1 % es la CONTRIBUCIÓN de obra social, y un aporte se calcula con el aporte.
+  const madres = [...tasas].filter(([c, t]) => c !== codigo && t.seccion === seccion).map(([, t]) => t.tasa)
   const hf = probarHorasFaltantes(con, codigo, madres, (j) => explicaAusencias(codigo, ventana, j))
   if (hf && proporcion(hf) >= ACIERTO_MINIMO && (!primera || proporcion(hf) >= proporcion(primera))) return hf
   if (primera && proporcion(primera) >= ACIERTO_MINIMO) return primera
@@ -308,9 +313,10 @@ function reglasDeConceptos(ventana: readonly ReciboParaReglas[], objetivo: strin
     const con = ventana.filter((r) => montoDelCodigo(r, codigo) != null)
     primera.set(codigo, mejorDe([probarPorcentaje(con, codigo, 'remunerativo'), probarPorcentaje(con, codigo, 'remunerativo_y_no_remunerativo'), probarMontoFijo(con, codigo)]))
   }
-  const tasas = new Map([...primera].flatMap(([c, p]) => (p && p.modelo.tipo === 'porcentaje' && proporcion(p) >= ACIERTO_MINIMO ? [[c, p.modelo.tasa] as const] : [])))
+  const tasas = new Map([...primera].flatMap(([c, p]) => (p && p.modelo.tipo === 'porcentaje' && proporcion(p) >= ACIERTO_MINIMO
+    ? [[c, { tasa: p.modelo.tasa, seccion: codigos.get(c)!.seccion }] as const] : [])))
   return [...codigos].sort(([a], [b]) => a.localeCompare(b)).flatMap(([codigo, c]) => {
-    const p = modeloDelCodigo(codigo, ventana, primera.get(codigo) ?? null, tasas)
+    const p = modeloDelCodigo(codigo, c.seccion, ventana, primera.get(codigo) ?? null, tasas)
     if (!p) return []
     const pocos = p.evidencia.recibos < MIN_RECIBOS
     const flojo = proporcion(p) < ACIERTO_MINIMO
