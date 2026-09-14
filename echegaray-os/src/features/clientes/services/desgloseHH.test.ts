@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarDesgloseHH, etiquetaDeQuincena, finDeQuincena, grillaDeHoras, periodoDeLaObra, textoDeCelda,
+  armarDesgloseHH, etiquetaDeQuincena, finDeQuincena, grillaDeHoras, iniciosDeBloque, periodoDeLaObra,
+  textoDeCelda,
 } from './desgloseHH.ts'
 
 // ═══ QUÉ DEFECTOS ATRAPA ═══
@@ -16,6 +17,9 @@ import {
 //      tuvieron algo ESA quincena.
 //  4 · QUE LA FILA «sin persona identificada» DESAPAREZCA. Son las filas legacy de JORNALES; si se
 //      esconden, la grilla no cierra con el total de la obra y nadie sabe por qué.
+//  5 · QUE LOS PERÍODOS VUELVAN A SER CALENDARIO (13/09/2026). JORNALES liquida 17/08–31/08, no
+//      16/08–31/08: el `hasta` y la etiqueta son los del bloque que manda SQL, y la grilla de la obra
+//      entera marca dónde empieza cada uno.
 
 /** La forma REAL que devuelve `public.hh_de_obra`, tomada de la corrida del 11/09/2026. */
 const CRUDO = {
@@ -25,8 +29,9 @@ const CRUDO = {
   },
   registros: 29, personas: 4, desde: '2026-08-17', hasta: '2026-09-11', ventana: '2026-09-01',
   periodos: [
-    { desde: '2026-08-16', hh: 228, dias: 12, registros: 23 },
-    { desde: '2026-09-01', hh: 264, dias: 9, registros: 29 },
+    // Los BLOQUES de JORNALES, con su `hasta` (20260913T2200): 17/08, no la quincena del 16.
+    { desde: '2026-08-17', hasta: '2026-08-31', hh: 226, dias: 11, registros: 22 },
+    { desde: '2026-09-01', hasta: '2026-09-15', hh: 152, dias: 8, registros: 16 },
   ],
   por_persona: [
     { persona_id: 'p1', nombre: 'RETA RAMON HECTOR SEBASTIAN', hh: 195, dias: 20, primera: '2026-08-17', ultima: '2026-09-11' },
@@ -50,7 +55,7 @@ test('el desglose se arma con la forma que devuelve la función', () => {
   assert.equal(d.obra.obraId, 'quattropani')
   assert.equal(d.ventana, '2026-09-01')
   assert.equal(d.periodos.length, 2)
-  assert.equal(d.periodos[1].etiqueta, '1ª quincena sep/26')
+  assert.equal(d.periodos[0].etiqueta, '17/08–31/08', 'el rótulo es el bloque de la planilla, no «2ª quincena»')
   assert.equal(d.periodos[1].hasta, '2026-09-15')
   assert.equal(periodoDeLaObra(d), '17/08/2026 → 11/09/2026')
 })
@@ -105,4 +110,26 @@ test('las horas con fracción se escriben con su media hora', () => {
   // 8,5 h existe en la base (media jornada del sábado): redondear acá haría que la grilla no cerrara
   // con el total de la quincena.
   assert.equal(textoDeCelda({ personaId: 'p', fecha: '2026-09-01', horas: 8.5, ausencia: false, licencia: false }).texto, '8,5')
+})
+
+test('el período es el bloque de JORNALES que manda SQL, no la quincena calendario', () => {
+  // Un bloque que termina el sábado 14: la quincena calendario diría 15 y le inventaría un día.
+  const d = armarDesgloseHH({
+    ...CRUDO, ventana: null,
+    periodos: [{ desde: '2026-02-02', hasta: '2026-02-14', hh: 593, dias: 11, registros: 60 }],
+  })!
+  assert.equal(d.ventana, null, 'sin ventana es la obra entera: no se reemplaza por ningún bloque')
+  assert.equal(d.periodos[0].hasta, '2026-02-14')
+  assert.equal(d.periodos[0].etiqueta, '02/02–14/02')
+  // Una respuesta vieja de la caché sin `hasta` no rompe la pantalla: cae a la cuenta calendario.
+  const viejo = armarDesgloseHH({ ...CRUDO, periodos: [{ desde: '2026-09-01', hh: 1, dias: 1, registros: 1 }] })!
+  assert.equal(viejo.periodos[0].hasta, '2026-09-15')
+})
+
+test('con la obra entera la grilla marca dónde empieza cada bloque', () => {
+  const d = armarDesgloseHH(CRUDO)!
+  const dias = ['2026-08-17', '2026-08-31', '2026-09-01', '2026-09-03']
+  const inicios = iniciosDeBloque(dias, d.periodos)
+  assert.deepEqual([...inicios.keys()], [0, 2], '31/08 y 01/09 son vecinos de bloques distintos')
+  assert.equal(inicios.get(2)?.etiqueta, '01/09–15/09')
 })
