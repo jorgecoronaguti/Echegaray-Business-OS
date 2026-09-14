@@ -20,7 +20,9 @@
 //   3. empatadas en las dos, NO SE DECIDE: devuelve null y cada cara conserva su salida.
 
 const DIA_MS = 86_400_000
-const iso = (x) => (x ? String(x).slice(0, 10) : null)
+// UN `Date` NO SE CORTA CON `String()`: da «Wed Sep 09 2026…» y el tramo deja de cubrir cualquier día.
+// `pg` devuelve las columnas date como `Date` a las 03:00Z (−03), así que `toISOString` da el día correcto.
+const iso = (x) => (x instanceof Date ? x.toISOString().slice(0, 10) : x ? String(x).slice(0, 10) : null)
 
 /** Días que dura el tramo, inclusive. Sin `desde` o sin `hasta` no tiene fin conocido: infinito. */
 function duracion(desde, hasta) {

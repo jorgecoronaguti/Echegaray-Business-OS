@@ -61,3 +61,13 @@ test('misma obra repetida no es ambigüedad; sin tramo que cubra, null; sin desd
   assert.equal(obra([{ obra: 'a', desde: '2026-09-01', hasta: '2026-09-02' }], '2026-09-03'), null)
   assert.equal(obra([{ obra: 'a', desde: null, hasta: null }, { obra: 'b', desde: '2026-09-01', hasta: '2026-09-30' }], '2026-09-03'), 'b')
 })
+
+test('fechas que llegan como Date de pg (03:00Z) desempatan igual que las ISO', () => {
+  const d = (s) => new Date(`${s}T03:00:00Z`)
+  const tramos = [
+    { obra: 'quattropani', desde: d('2026-09-08'), hasta: null },
+    { obra: 'messina', desde: d('2026-09-09'), hasta: d('2026-09-09') },
+  ]
+  assert.equal(obra(tramos, '2026-09-09'), 'messina')
+  assert.equal(obra(tramos, '2026-09-10'), 'quattropani')
+})
