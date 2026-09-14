@@ -23,8 +23,9 @@
 --     del Sheet. Mismos nombres, mismos tipos.
 --   · cliente_cobranza AGREGA al final `estado_cobro` y `dias_cobro`, para que ninguna cara tenga que
 --     recalcular el estado ni los días.
---   · La pestaña OBRAS del Sheet (obras-grilla.mjs) sigue publicando su `Vencido` con emisión + 30:
---     esta migración no la toca. Hasta que el dueño decida, esa pestaña y la cartera web discrepan.
+--   · La pestaña OBRAS del Sheet usa la MISMA regla desde el 14/09/2026 («Sí, misma regla en OBRAS»,
+--     dueño): obras-grilla.mjs calcula su `Vencido` con critVencidoCobro. La pestaña publicada cambia
+--     cuando se regenere desde el árbol principal; esta migración no escribe el Sheet.
 --
 -- SEGURIDAD — se conserva lo que tiene cada vista HOY en la base (leído con pg_class.reloptions el
 -- 14/09/2026), explícito para que `create or replace` no lo cambie:
@@ -32,6 +33,11 @@
 --                                   WHERE (20260913T1200_vistas_economicas_solo_para_quien_ve_economia)
 --   cliente_cuenta_corriente        security_invoker = true
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+-- UNA VISTA TOMADA NO TRABA LA APP DEL DUEÑO: si en 5 s no consigue el lock, falla y se reintenta
+-- fuera de horario. `aplicar-migracion.mjs` envuelve el archivo en una transacción, así que alcanza
+-- con `set local`.
+set local lock_timeout = '5s';
 
 -- HOY EN SAN JUAN. `current_date` en Supabase es UTC: de 21 a 24 h ya es mañana.
 create or replace function public.hoy_san_juan()
@@ -79,9 +85,9 @@ grant execute on function public.estado_de_cobro(text, date, date) to authentica
 grant execute on function public.dias_para_cobro(date, date) to authenticated, service_role;
 
 comment on function public.plazo_cobro_dias() is
-  'RETIRADA de las vistas el 14/09/2026 (20260914T1200): «vencida» es estado_de_cobro(), la regla de '
-  'la columna U de Cobranzas. Queda sólo como espejo de PLAZO_COBRO_DIAS, que sigue usando la '
-  'pestaña OBRAS del Sheet (obras-grilla.mjs). No usarla para decidir vencimientos.';
+  'RETIRADA el 14/09/2026 (20260914T1200): «vencida» es estado_de_cobro(), la regla de la columna U '
+  'de Cobranzas, en las vistas y en la pestaña OBRAS. Ninguna cara decide vencimientos con este '
+  'plazo. Queda como espejo de PLAZO_COBRO_DIAS de cobranzas-vencido.mjs. No usarla para vencer.';
 
 -- ─── 1 · cliente_cobranza — la ficha del cliente ─────────────────────────────────────────────────
 create or replace view public.cliente_cobranza with (security_invoker = false) as

@@ -124,10 +124,10 @@ export interface ObraEnCurso {
   /** Lo pendiente de cobro de esta obra, BRUTO (`obra_cobranza.por_cobrar_proyectado`). */
   porCobrar: number | null
   /**
-   * LO VENCIDO, con el reloj de `orquestador/lib/cobranzas-vencido.mjs`: emisión + 30 días, NO
-   * `fecha_cobro < hoy` —que se re-tipea cada vez que el cobro se posterga y está condenado a cero
-   * por construcción—. `null` = la vista todavía no publica la columna, y entonces la celda calla:
-   * un 0 acá diría que este cliente no debe nada vencido.
+   * LO VENCIDO, con la regla de la columna U de Cobranzas (`public.estado_de_cobro`: Pendiente y
+   * `fecha_cobro` < hoy en San Juan), la misma que la pestaña OBRAS desde el 14/09/2026. Hasta ese
+   * día era emisión + 30 días. `null` = la vista todavía no publica la columna, y entonces la celda
+   * calla: un 0 acá diría que este cliente no debe nada vencido.
    */
   vencido: number | null
   /** Cuándo y cómo se espera el próximo cobro. `null` = la vista no lo publica todavía. */
@@ -282,8 +282,8 @@ export async function getCobradoPorObra(
   // ═══ SE LEE `obra_cuenta` Y NO `obra_cobranza` (10/09/2026, migración 20260910T2356) ═══
   //
   // `obra_cuenta` ES la fila de la pestaña OBRAS traducida a Postgres: contrato, cobro con IVA,
-  // saldo, vencido con la regla de la columna U de Cobranzas (`estado_de_cobro`, desde el 14/09/2026;
-  // la pestaña OBRAS del Sheet sigue con emisión + 30 y ahí discrepan), y el próximo cobro con su medio — los
+  // saldo, vencido con la regla de la columna U de Cobranzas (`estado_de_cobro`, desde el 14/09/2026,
+  // la misma que usa la pestaña OBRAS), y el próximo cobro con su medio — los
   // mismos criterios que `orquestador/scripts/obras-pestana.mjs`, y probados contra el Sheet en
   // `obra-cuenta.pg.test.mjs`. `obra_cobranza` sigue viva y sirve para otra pregunta (lo cobrado y
   // lo por cobrar de una obra, sin ventana de año); mezclarlas era cómo la pantalla terminaba

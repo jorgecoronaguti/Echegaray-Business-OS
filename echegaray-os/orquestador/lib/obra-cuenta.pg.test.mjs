@@ -109,10 +109,10 @@ test('obra_cuenta publica lo mismo que la pestaña OBRAS', { skip: !hayBase }, a
         assert.equal(num(f.cobrado_total), total, `${obra}: cobrado TOTAL (con IVA)`)
         assert.equal(num(f.cobrado_neto), neto, `${obra}: cobrado NETO`)
         assert.equal(num(f.por_cobrar), porCobrar, `${obra}: por cobrar`)
-        // `vencido` YA NO SE COMPARA CONTRA LA PESTAÑA OBRAS (14/09/2026): la pestaña sigue con
-        // emisión + 30 y la vista pasó a la columna U de Cobranzas (`estado_de_cobro`). El dato de la
-        // tupla queda como foto de lo que publica el Sheet; lo vencido de la vista lo prueba
-        // `cobranza-estado-de-cobro.pg.test.mjs` contra la réplica.
+        // `vencido` YA NO SE COMPARA CONTRA ESTA FOTO (14/09/2026): la tupla es lo que publicaba la
+        // pestaña OBRAS el 10/09, con emisión + 30. Desde el 14/09 la vista y la pestaña usan la
+        // columna U de Cobranzas (`estado_de_cobro`); lo vencido de la vista lo prueba
+        // `cobranza-estado-de-cobro.pg.test.mjs` contra la réplica, con un hoy que tiene vencidas.
         void vencido
         assert.equal(dia(f.proximo_cobro_fecha), prox, `${obra}: próximo cobro`)
         assert.equal(f.proximo_cobro_medio, medio, `${obra}: medio del próximo cobro`)

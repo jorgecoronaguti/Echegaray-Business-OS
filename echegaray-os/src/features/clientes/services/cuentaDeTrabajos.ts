@@ -2,13 +2,13 @@
 //
 // ═══ POR QUÉ ESTA SUMA NO ES UNA SEGUNDA DEFINICIÓN ═══
 //
-// `cliente_cuenta_corriente` publica saldo y vencido del cliente, pero con OTRO reloj: cuenta como
-// vencido lo que tiene `fecha_cobro < hoy`, y esa fecha se re-tipea cada vez que el cobro se
-// posterga — está condenada a cero por construcción, que es el defecto que
-// `orquestador/lib/cobranzas-vencido.mjs` documentó el 14/08/2026. La pestaña OBRAS y `obra_cuenta`
-// usan el reloj de la EMISIÓN + 30 días.
+// Hasta el 14/09/2026 `cliente_cuenta_corriente` medía vencido con `fecha_cobro < hoy` (Pendiente y
+// Facturado) y la pestaña OBRAS y `obra_cuenta` con la EMISIÓN + 30 días: dos relojes, dos moras
+// para el mismo cliente. Desde ese día las tres usan la misma regla —la columna U de Cobranzas,
+// `public.estado_de_cobro`: Pendiente y Q < hoy—, por decisión del dueño.
 //
-// Mientras las dos caras del CRM mezclen los dos relojes, el mismo cliente tiene dos moras. Esta
+// La suma de abajo se queda porque es la aritmética del pie de OBRAS sobre sus trabajos, no una
+// segunda definición: el vencido de cada trabajo ya sale de `obra_cuenta`. Esta
 // función NO inventa una tercera: hace la MISMA aritmética que el pie de la pestaña OBRAS —sumar
 // las filas de sus trabajos— sobre la MISMA fuente (`obra_cuenta`, vía `getCobradoPorObra`).
 //
