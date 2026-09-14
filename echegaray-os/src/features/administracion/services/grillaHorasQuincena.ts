@@ -17,7 +17,7 @@
 // administrativo pendiente, no una ausencia. Una ausencia la declara una persona.
 
 import {
-  hayHorasTrabajadas, horasDeAusencia, horasLiquidablesDelDia, motivoPaga,
+  hayHorasTrabajadas, horasDeAusencia, horasDelDia, motivoPaga,
 } from './liquidacionDeAusencias.ts'
 import { jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { diasDeLaQuincenaSinDomingos, type Quincena } from './quincena.ts'
@@ -107,7 +107,8 @@ export function celdaDelDia(
 ): CeldaDeGrilla {
   const delDia = registros.filter((r) => r.fecha === fecha)
   if (hayHorasTrabajadas(delDia)) {
-    return { fecha, marca: 'horas', horas: r2(horasLiquidablesDelDia(delDia)), sinMotivo: false }
+    // LAS HORAS CARGADAS, COMO «HORAS» (`horasDelDia`): el coeficiente de extras es de la plata, no de la celda.
+    return { fecha, marca: 'horas', horas: r2(horasDelDia(delDia).horas), sinMotivo: false }
   }
   // ═══ LA LICENCIA TAMBIÉN SE CARGA EN `registros_hh`, Y ES LA FUENTE QUE ASISTENCIA MIRA ═══
   //
@@ -124,7 +125,7 @@ export function celdaDelDia(
     return {
       fecha,
       marca: esLicencia ? 'licencia' : 'ausencia',
-      horas: r2(horasLiquidablesDelDia(delDia)),
+      horas: r2(horasDelDia(delDia).horas),
       sinMotivo: !esLicencia && !motivoPaga(notas) && !notas,
     }
   }

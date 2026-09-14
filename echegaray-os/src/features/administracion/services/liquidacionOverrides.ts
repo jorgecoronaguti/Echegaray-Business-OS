@@ -199,8 +199,10 @@ export function aplicarOverrides(
   }
 
   const horas = puesto('horas') ?? base.horas
+  // UNAS HORAS ESCRITAS A MANO SON LAS QUE SE PAGAN: no traen extras aparte que reconstruir.
+  const horasEquivalentes = manual.horas ? horas : base.horasEquivalentes
   // EL MODELO SE CALCULA SOBRE LAS HORAS QUE QUEDARON (manuales o de la app) Y EL $/H NEGRO VIGENTE.
-  const sueldo = conModelo ? sueldoBlancoNegro({ ...blanco!, horas, valorHoraNegro: base.valorHora }) : null
+  const sueldo = conModelo ? sueldoBlancoNegro({ ...blanco!, horas, horasEquivalentes, valorHoraNegro: base.valorHora }) : null
   const cobraCalc = sueldo
     ? sueldo.total
     : manual.horas && grupo === 'obreros'
@@ -223,7 +225,8 @@ export function aplicarOverrides(
 
   return {
     ...base,
-    horas, cobra, adelanto, yaTransferido, porBanco, enEfectivo, total,
+    horas, horasEquivalentes, extras: manual.horas ? [] : base.extras,
+    cobra, adelanto, yaTransferido, porBanco, enEfectivo, total,
     blancoAcuerdo: acuerdo.blanco,
     efectivoAcuerdo: acuerdo.efectivo,
     // PISAR COBRA RESUELVE «SIN TARIFA», venga de la app o de la planilla: en los dos casos alguien

@@ -66,15 +66,10 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
           ? <CadenaBlancoNegro fila={fila} quincena={quincena} camposEditables={camposEditables} />
           : <CadenaSinModelo fila={fila} quincena={quincena} camposEditables={camposEditables} />}
 
-        {(fila.horasPorTipo.automaticas > 0 || fila.cotejo.estado === 'difiere' || jornales) && (
+        {/* SIN AVISO DE «SIN HORAS CARGADAS / NO SE PAGAN»: desde el 14/09/2026 los días completados por
+            la app cuentan y se pagan (dueño). */}
+        {(fila.cotejo.estado === 'difiere' || jornales) && (
           <section style={{ fontSize: '12px', color: V.apagado, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {fila.horasPorTipo.automaticas > 0 && (
-              <div data-testid="panel-automaticas" style={{ color: V.warn }}>
-                {/* EN LLANO (dueño, 14/09/2026: «8a 9a no se q es eso»): las fechas, y que no se pagan. */}
-                {`${fila.celdas.filter((c) => c.marca !== 'horas' && c.automatica != null)
-                  .map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)}`).join(' y ')} sin horas cargadas (no se pagan)`}
-              </div>
-            )}
             {fila.cotejo.estado === 'difiere' && (
               <div>{`La planilla dice ${nHoras(fila.cotejo.horasEnLaPlanilla)} h y la base ${nHoras(fila.cotejo.horasEnLaBase)} h.`}</div>
             )}

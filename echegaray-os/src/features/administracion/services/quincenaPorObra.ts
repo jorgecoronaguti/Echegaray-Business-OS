@@ -34,7 +34,7 @@
 // la autorizó (enfermedad, ART, vacaciones, suspensión); la ausencia es la falta lisa. Guardarlas
 // como el mismo silencio le saca un derecho al legajo, y es lo que hacía esta grilla.
 
-import { horasLiquidablesDelDia } from './liquidacionDeAusencias.ts'
+import { horasDelDia } from './liquidacionDeAusencias.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { redondear } from './jornadaPorObra.ts'
 import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
@@ -489,11 +489,12 @@ function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro
   // esa obra era todo lo que había del día. Ahora la fila es la persona: si trabajó 8 hs en una
   // obra y en otra alguien le cargó una ausencia, el día NO es una ausencia — son 8 horas y un
   // dato contradictorio, que el desglose del panel deja ver.
+  // LAS HORAS DEL DÍA LAS DECIDE `horasDelDia`, LA MISMA CUENTA DE LIQUIDACIÓN (dueño, 14/09/2026:
+  // «tiene q ser la misma porque en supabase debe estar igual»): trabajadas —también las completadas
+  // por la app— o, sin trabajo, la licencia que paga su motivo. Sin coeficiente de extras.
+  const dia = horasDelDia(registros)
   if (trabajadas.length > 0) {
-    return {
-      fecha, estado: 'horas', tramos, motivo: null,
-      horas: redondear(trabajadas.reduce((s, r) => s + numero(r.horas), 0)),
-    }
+    return { fecha, estado: 'horas', tramos, motivo: null, horas: redondear(dia.horas) }
   }
   if (registros.length > 0) {
     // LICENCIA GANA SOBRE AUSENCIA cuando el día trae las dos — la misma regla que la ficha de la
@@ -510,7 +511,7 @@ function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro
       // motivo es cero hs»). `horasLiquidablesDelDia` es la misma regla que usa el total de la
       // quincena y la ficha: sumar acá las horas guardadas dejaría a la grilla mostrando 9 hs en
       // una falta sin avisar —las que la base exigía cargar— y a la liquidación diciendo 0.
-      horas: redondear(horasLiquidablesDelDia(registros)),
+      horas: redondear(dia.horas),
       motivo: motivoDelDia(registros),
     }
   }

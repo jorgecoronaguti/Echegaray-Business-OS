@@ -64,8 +64,13 @@ export interface EntradaDeBlanco {
 }
 
 export interface EntradaDeSueldo extends EntradaDeBlanco {
-  /** Hs pagas de la quincena: las horas de la app con el coeficiente de extras de JORNALES. */
+  /** Horas CARGADAS de la quincena (`horasDelDia`): las mismas de «Horas». */
   horas: number | null
+  /**
+   * Horas EQUIVALENTES, con el coeficiente de extras de JORNALES. El recargo (equivalentes − horas) se
+   * paga en el negro: el recibo no lo liquida. Ausente = sin recargo.
+   */
+  horasEquivalentes?: number | null
   /** `persona_tarifa` vigente: el $/h editable del cuadro. */
   valorHoraNegro: number | null
 }
@@ -86,6 +91,8 @@ export interface SueldoBlancoNegro {
   /** Sólo con `origenNeto: 'estimado'`: el cociente usado y de quién. */
   proporcion: ProporcionDelNeto | null
   horasNegro: number | null
+  /** Horas de recargo de extras (equivalentes − cargadas) que el negro paga además de `horasNegro`. */
+  recargoExtras: number
   valorHoraNegro: number | null
   negro: number | null
   /** neto + negro. `null` si falta cualquiera de los dos. */
@@ -134,13 +141,16 @@ export function sueldoBlancoNegro(e: EntradaDeSueldo): SueldoBlancoNegro {
   const horas = num(e.horas)
   const faltan = horas == null || b.horasBlanco == null ? null : r2(horas - b.horasBlanco)
   const horasNegro = faltan == null ? null : Math.max(0, faltan)
+  const equivalentes = num(e.horasEquivalentes)
+  const recargoExtras = horas == null || equivalentes == null ? 0 : Math.max(0, r2(equivalentes - horas))
   const valorHoraNegro = num(e.valorHoraNegro)
-  const negro = horasNegro == null || valorHoraNegro == null ? null : r2(horasNegro * valorHoraNegro)
+  const negro = horasNegro == null || valorHoraNegro == null ? null : r2((horasNegro + recargoExtras) * valorHoraNegro)
   return {
     ...b,
     horas,
     pisoCategoria: num(e.pisoCategoria),
     horasNegro,
+    recargoExtras,
     valorHoraNegro,
     negro,
     total: b.neto == null || negro == null ? null : r2(b.neto + negro),
@@ -156,6 +166,24 @@ export function marcaDeCategoria(s: SueldoBlancoNegro | null): ComparacionConElP
   if (!s || s.estado !== 'recibo') return null
   const c = compararConElPiso(s.valorHoraCategoria, s.pisoCategoria)
   return c?.bajoElPiso ? c : null
+}
+
+/**
+ * EL NEGRO DE UNA FILA, EL QUE SUMA LA COLUMNA Y EL PIE. Así Neto + Negro + Mensuales = Total cierra
+ * exacto (QA, 14/09/2026):
+ *
+ *   mensual              null: no va en las bandas, suma en «Sueldos mensuales».
+ *   con blanco + negro   el negro del modelo (horas × $/h negro), salvo cobra o banco escritos a mano.
+ *   sin modelo           total − neto: la quincena CERRADA (foto sellada) y las finales. «Negro $0» con
+ *                        un total muy por encima del neto no explicaba adónde iba la diferencia.
+ */
+export function negroDeLaFila(l: {
+  netoMensual: number | null; cobra: number | null; porBanco: number; sueldo: SueldoBlancoNegro | null
+  manual?: { cobra?: boolean; porBanco?: boolean }
+}): number | null {
+  if (l.netoMensual != null) return null
+  if (l.sueldo && !l.manual?.cobra && !l.manual?.porBanco) return l.sueldo.negro
+  return l.cobra == null ? null : r2(l.cobra - l.porBanco)
 }
 
 /** `Q2-08/2026` → `2026-08-2`: ordena períodos quincenales como texto. `''` para FINAL u otro formato. */

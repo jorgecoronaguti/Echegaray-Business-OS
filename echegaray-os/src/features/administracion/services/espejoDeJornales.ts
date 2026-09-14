@@ -29,7 +29,8 @@ import type { GrupoLiquidacion, PresenciaDeQuincena, RegistroDeQuincena } from '
 import { diasDeQuincena, esDomingo, type Quincena } from './quincena.ts'
 import { ordenarComoPersonal } from './ordenDePersonal.ts'
 import { horasPorTipo, sumarHorasPorTipo, type HorasPorTipo } from './cuadroDeJornales.ts'
-import { coeficienteDeLaFila, esJornadaAutomatica } from './liquidacionDeAusencias.ts'
+import { coeficienteDeLaFila } from './liquidacionDeAusencias.ts'
+import { negroDeLaFila } from './sueldoBlancoNegro.ts'
 
 const r2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -127,11 +128,6 @@ export interface CeldaDelEspejo extends CeldaDeGrilla {
   editable: boolean
   /** Cuántas filas de la base tiene ese día. >1 obliga a elegir, y eso no lo hace la pantalla. */
   registros: number
-  /**
-   * HORAS DE UNA JORNADA AUTOMÁTICA QUE NADIE CONFIRMÓ ese día, o `null`. Se dibujan en gris y no se
-   * pagan (`esJornadaAutomatica`). Escribir la celda la confirma: el registro pasa a tener autor.
-   */
-  automatica: number | null
 }
 
 export interface FilaDelEspejo {
@@ -205,11 +201,10 @@ export function filasDelEspejo(d: DatosDelEspejo): FilaDelEspejo[] {
 
 /** La suma de las celdas del día, tal cual están guardadas. Es lo que la columna «Hs» de la planilla suma. */
 function horasCrudasDe(registros: readonly RegistroDeQuincena[]): number {
-  // LA PLANILLA ESCRIBE EL RESULTADO DE LA CELDA (=4+3*1,5 → 8,5) Y NO TIENE LA JORNADA AUTOMÁTICA.
+  // LA PLANILLA ESCRIBE EL RESULTADO DE LA CELDA (=4+3*1,5 → 8,5). La jornada automática cuenta desde el 14/09/2026.
   // Comparar la cantidad cruda contra el resultado daba «difiere» en cada día con extras, y contar la
   // jornada automática inventaba una diferencia que la planilla nunca afirmó (14/09/2026).
   return r2(registros.reduce((s, r) => {
-    if (esJornadaAutomatica(r)) return s
     return s + (Number(r.horas) || 0) * coeficienteDeLaFila(r)
   }, 0))
 }
@@ -279,12 +274,8 @@ function celdaDelEspejo(
     && delDia.length <= 1
     && base.marca !== 'ausencia'
     && base.marca !== 'licencia'
-  const automaticas = delDia.filter(esJornadaAutomatica)
   return {
     ...base,
-    automatica: automaticas.length === 0
-      ? null
-      : Math.round(automaticas.reduce((s, r) => s + (Number(r.horas) || 0), 0) * 100) / 100,
     registros: delDia.length,
     registroId: delDia.length === 1 ? (delDia[0].id ?? null) : null,
     // UN DÍA CON UN REGISTRO SIN `id` NO SE PUEDE CORREGIR y tampoco crear encima: sin el id la
@@ -307,8 +298,12 @@ export interface TotalesDelEspejo {
   total: number
   /** Cuántas filas no se pudieron liquidar. No suman, y el pie lo dice. */
   sinTarifa: number
-  /** El negro de las filas que suman (blanco + negro, dueño 14/09/2026). */
+  /** El negro de las filas que suman (`negroDeLaFila`): del modelo, o total − neto en la foto sellada. */
   negro: number
+  /** El neto (banco) de las filas que van en las bandas: sin los mensuales. */
+  netoBandas: number
+  /** Sueldos mensuales (Oficina): una línea propia del pie, fuera de las bandas. */
+  mensuales: number
   /** Filas con $/h y horas cuyo blanco no tiene neto: no suman y se cuentan aparte de «sin tarifa». */
   sinNeto: number
   /** Filas cuyo blanco es estimado (sin recibo del período). */
@@ -342,7 +337,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
   const t: TotalesDelEspejo = {
     personas: filas.length, porDia, horas: 0, cobra: 0, adelanto: 0, yaTransferido: 0,
     porBanco: 0, enEfectivo: 0, total: 0, sinTarifa: 0, difieren: 0, horasDeDiferencia: 0,
-    sinCotejar: 0, negro: 0, sinNeto: 0, estimados: 0,
+    sinCotejar: 0, negro: 0, netoBandas: 0, mensuales: 0, sinNeto: 0, estimados: 0,
     // SOBRE LAS MISMAS FILAS QUE RECIBE: la vista le pasa las visibles, así que el pie recorta
     // igual que el filtro y el buscador. Quien no tiene tarifa SÍ suma horas: trabajó igual.
     horasPorTipo: sumarHorasPorTipo(filas),
@@ -363,7 +358,10 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     if (l.sinTarifa || l.cobra == null) { if (!l.sinTarifa && l.sinNeto) t.sinNeto++; else t.sinTarifa++; continue }
     t.horas += Number(l.horas) || 0
     t.cobra += l.cobra
-    t.negro += l.sueldo?.negro ?? 0
+    // NETO + NEGRO + MENSUALES = TOTAL, EXACTO (QA, 14/09/2026). El mensual no va en las bandas: su
+    // sueldo fijo sumaba al Total sin estar en Neto ni en Negro, y el pie no cerraba por 3.600.000.
+    if (l.netoMensual != null) t.mensuales += l.cobra
+    else { t.netoBandas += l.porBanco; t.negro += negroDeLaFila(l) ?? 0 }
     t.adelanto += l.adelanto
     t.yaTransferido += l.yaTransferido
     t.porBanco += l.porBanco
@@ -371,7 +369,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     t.total += Number(l.total) || 0
   }
   for (const k of ['horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total',
-    'horasDeDiferencia', 'horasPagas', 'negro'] as const) {
+    'horasDeDiferencia', 'horasPagas', 'negro', 'netoBandas', 'mensuales'] as const) {
     t[k] = r2(t[k])
   }
   return t

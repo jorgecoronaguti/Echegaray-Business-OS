@@ -8,7 +8,7 @@
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN:
 //
 //  1. Que el cobra de JORNALES pise horas × $/h en una quincena abierta (el defecto medido).
-//  2. Que la jornada automática `web:presencia-defecto` se pague (Rosales: 70 h en vez de 62).
+//  2. (Cambió el 14/09/2026) La jornada `web:presencia-defecto` cuenta: Rosales 70 h.
 //  3. Que una licencia paga no se pague (Quiroga A.: 44 h en vez de 88).
 //  4. Que la diferencia con la planilla desaparezca en vez de quedar como referencia.
 //  5. Que la fila deje de cerrar al cambiar el cobra: el efectivo de la planilla no puede quedar.
@@ -59,17 +59,19 @@ test('Quiroga A.: 88 h de las celdas y $435.600; JORNALES 75 h queda sólo como 
   assert.equal(ref?.tituloEfectivo, 'JORNALES: efectivo $371.250')
 })
 
-test('Rosales: 62 h de `sheet:jornales` + 8 h de presencia-defecto → 62 h y sin marca', () => {
+// CAMBIÓ EL 14/09/2026: eran 62 h «y sin marca». Decisión del dueño: la jornada completada por la app
+// cuenta, así que son 70 h y la planilla (62 h) queda marcada como referencia distinta.
+test('Rosales: 62 h de `sheet:jornales` + 8 h de presencia-defecto → 70 h, y JORNALES (62) se marca', () => {
   const regs = [
     ...['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-08', '2026-09-09', '2026-09-10'].map((f) => fila(f, 9, 'normal', 'sheet:jornales')),
     fila('2026-09-04', 8, 'normal', 'sheet:jornales'),
     fila('2026-09-11', 8, 'normal', 'web:presencia-defecto'),
   ]
   const l = aplicarOverrides(lineaDe(regs, 5874), {}, 'obreros', { horas: 62, cobra: 364188, enEfectivo: 364188 })
-  assert.equal(l.horas, 62)
-  assert.equal(l.cobra, 364188)
-  assert.equal(l.referenciaJornales?.difiere, false)
-  assert.equal(referenciaDeJornales(l), null, 'si coincide no hay marca')
+  assert.equal(l.horas, 70)
+  assert.equal(l.cobra, 411180)
+  assert.equal(l.referenciaJornales?.difiere, true)
+  assert.equal(referenciaDeJornales(l)?.titulo, 'JORNALES: 62 h · $364.188')
 })
 
 test('lo escrito a mano en liquidacion_linea gana sobre la app y sobre JORNALES', () => {

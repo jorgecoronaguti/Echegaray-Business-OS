@@ -20,7 +20,7 @@ import { MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
 import { efectivoSuperado, estadoDelPago, tituloDeJornales } from './estadoDelPago'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
-import { marcaDeCategoria, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
+import { marcaDeCategoria, negroDeLaFila, tituloDelNetoEstimado, type SueldoBlancoNegro } from '../../../services/sueldoBlancoNegro'
 
 const DERECHA: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden' }
 const ESTIMADO: CSSProperties = { color: V.apagado, fontStyle: 'italic' }
@@ -109,10 +109,23 @@ export function CeldaHorasNegro({ fila }: { fila: FilaDelEspejo }) {
 }
 
 export function CeldaImporteNegro({ fila }: { fila: FilaDelEspejo }) {
-  const s = fila.linea.sueldo
+  const l = fila.linea
+  const s = l.sueldo
+  if (s && !l.manual.cobra && !l.manual.porBanco) {
+    const recargo = s.recargoExtras > 0 ? ` + ${nHoras(s.recargoExtras)} h de recargo de extras` : ''
+    return (
+      <Celda s={s} valor={pesos(s.negro)} testid={`negro-${fila.personaId}`}
+        titulo={s.horasNegro != null ? `${nHoras(s.horasNegro)} h${recargo} × ${pesos(s.valorHoraNegro)}/h negro` : undefined} />
+    )
+  }
+  // SIN MODELO (quincena cerrada, finales) O CON BANCO/TOTAL A MANO: el negro es total − neto, para que la
+  // fila explique la plata (QA, 14/09/2026: «Negro $0» con el total muy por encima del neto).
+  const negro = negroDeLaFila(l)
+  if (negro == null) return <div style={{ ...DERECHA, color: V.tenue }}>—</div>
   return (
-    <Celda s={s} valor={pesos(s?.negro ?? null)} testid={`negro-${fila.personaId}`}
-      titulo={s && s.horasNegro != null ? `${nHoras(s.horasNegro)} h × ${pesos(s.valorHoraNegro)}/h negro` : undefined} />
+    <div data-testid={`negro-${fila.personaId}`} data-sellado={fila.cerrada ? '1' : undefined}
+      title={fila.cerrada ? 'foto sellada: total − neto del recibo' : 'total − neto (banco)'}
+      style={{ ...DERECHA, color: V.tinta }}>{pesos(negro)}</div>
   )
 }
 

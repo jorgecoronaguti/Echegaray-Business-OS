@@ -35,8 +35,10 @@
 // pagó con «recibo sin liquidación nunca es $ 0».
 
 import {
-  horasLiquidablesDelDia, horasDeAusencia, type RegistroLiquidable,
+  horasDelDia, horasDeAusencia, type ExtraDeHoras, type RegistroLiquidable,
 } from './liquidacionDeAusencias.ts'
+
+export type { ExtraDeHoras } from './liquidacionDeAusencias.ts'
 import { horasEsperadasDeDias, jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { diasDeLaQuincenaSinDomingos, type Quincena } from './quincena.ts'
 import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
@@ -77,8 +79,12 @@ export interface PresenciaDeQuincena {
 }
 
 export interface HorasDeQuincena {
-  /** Horas que se liquidan en toda la ventana. */
+  /** Horas CARGADAS de la ventana: las mismas que el total por persona de «Horas» (`horasDelDia`). */
   horas: number
+  /** Horas EQUIVALENTES, con el coeficiente de extras de JORNALES: lo que multiplica la tarifa. */
+  horasEquivalentes: number
+  /** Las extras con recargo de la quincena, por coeficiente. */
+  extras: ExtraDeHoras[]
   /** Días con al menos una hora liquidable. */
   dias: number
   /**
@@ -119,26 +125,50 @@ export function horasDeQuincena(
 ): HorasDeQuincena {
   const declarada = new Map(presencias.map((p) => [p.fecha, p]))
   let horas = 0
+  let equivalentes = 0
   let dias = 0
   let presentesSinHoras = 0
+  const extras = new Map<number, number>()
   for (const fecha of diasDeLaQuincenaSinDomingos(q)) {
     const delDia = registros.filter((r) => r.fecha === fecha)
     const p = declarada.get(fecha)
-    let h = 0
+    let h = { horas: 0, equivalentes: 0, extras: [] as ExtraDeHoras[] }
     if (delDia.length > 0) {
-      h = horasLiquidablesDelDia(delDia)
+      h = horasDelDia(delDia)
     } else if (p?.estado === 'ausente' || p?.estado === 'licencia') {
-      h = horasDeAusencia({
+      const declaradas = horasDeAusencia({
         tipo: p.estado === 'ausente' ? 'ausencia' : 'licencia',
         motivo: p.motivo,
         jornada: jornadaPorDefecto(fecha),
       })
+      h = { horas: declaradas, equivalentes: declaradas, extras: [] }
     } else if (p?.estado === 'presente') {
       presentesSinHoras++
     }
-    if (h > 0) { horas += h; dias++ }
+    if (h.horas > 0 || h.equivalentes > 0) {
+      horas += h.horas
+      equivalentes += h.equivalentes
+      dias++
+      for (const e of h.extras) extras.set(e.coeficiente, (extras.get(e.coeficiente) ?? 0) + e.horas)
+    }
   }
-  return { horas: redondear2(horas), dias, presentesSinHoras }
+  return {
+    horas: redondear2(horas), horasEquivalentes: redondear2(equivalentes), dias, presentesSinHoras,
+    extras: [...extras.entries()].map(([coeficiente, h]) => ({ coeficiente, horas: redondear2(h) })),
+  }
+}
+
+/**
+ * EL `title` DE LAS HORAS CUANDO LA PLATA USA HORAS EQUIVALENTES: «incluye 3 h extra al 1,5». `null`
+ * cuando horas cargadas y equivalentes coinciden.
+ */
+export function tituloDeExtras(l: {
+  horas: number | null; horasEquivalentes?: number | null; extras?: readonly ExtraDeHoras[]
+}): string | null {
+  if (l.horas == null || l.horasEquivalentes == null || l.horasEquivalentes === l.horas || !l.extras?.length) return null
+  const partes = l.extras.map((e) =>
+    `${e.horas.toLocaleString('es-AR', { maximumFractionDigits: 2 })} h extra al ${e.coeficiente.toLocaleString('es-AR')}`)
+  return `incluye ${partes.join(' y ')} · se pagan ${l.horasEquivalentes.toLocaleString('es-AR', { maximumFractionDigits: 2 })} h equivalentes`
 }
 
 /**
@@ -167,6 +197,10 @@ export interface EntradaDeLinea {
   nombre: string
   /** `null` = no se pudo calcular. Cero horas cargadas ES cero, y eso sí es un número. */
   horas: number | null
+  /** Horas equivalentes (con coeficiente de extras). Ausente = iguales a `horas`. */
+  horasEquivalentes?: number | null
+  /** Las extras con recargo, por coeficiente. */
+  extras?: ExtraDeHoras[]
   tarifa: TarifaVigente | null
   /** Efectivo entregado a cuenta (`nomina_adelanto`, concepto de este grupo). */
   adelanto: number
@@ -190,7 +224,11 @@ export interface EntradaDeLinea {
 export interface LineaLiquidada {
   personaId: string
   nombre: string
+  /** Horas CARGADAS: las que se muestran, iguales al total de «Horas». */
   horas: number | null
+  /** Horas EQUIVALENTES con el coeficiente de extras: las que se pagan. */
+  horasEquivalentes: number | null
+  extras: ExtraDeHoras[]
   valorHora: number | null
   /** El neto mensual acordado (Oficina). XOR con `valorHora`: nunca los dos. */
   netoMensual: number | null
@@ -263,6 +301,8 @@ export function liquidarLinea(
     personaId: e.personaId,
     nombre: e.nombre,
     horas: e.horas,
+    horasEquivalentes: e.horasEquivalentes ?? e.horas,
+    extras: e.extras ?? [],
     valorHora,
     netoMensual,
     modalidad,
@@ -325,8 +365,10 @@ function cobraDe(
     // mitad, y sin mitad no hay total: `null`, nunca cero.
     return e.mitadBlanca == null ? null : redondear2(e.mitadBlanca * 2)
   }
-  if (valorHora == null || e.horas == null) return null
-  return redondear2(e.horas * valorHora)
+  // LA PLATA USA HORAS EQUIVALENTES: el coeficiente de extras de JORNALES se paga, no se muestra.
+  const pagas = e.horasEquivalentes ?? e.horas
+  if (valorHora == null || pagas == null) return null
+  return redondear2(pagas * valorHora)
 }
 
 export interface TotalesDeCuadro {

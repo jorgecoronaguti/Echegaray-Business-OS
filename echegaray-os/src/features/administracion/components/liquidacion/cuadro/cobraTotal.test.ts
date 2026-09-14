@@ -30,7 +30,9 @@ test('EL ENCABEZADO: Persona · Horas · BLANCO (Hs, $/h cat., Neto) · NEGRO (H
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
   const orden = ['<CeldaHorasPagas', '<CeldaHorasBlanco', '<CeldaHoraCategoria', '<CeldaNeto', '<CeldaHorasNegro', '<CeldaTarifa',
     '<CeldaImporteNegro', '<CeldaTotal', 'campo="adelanto"', 'campo="yaTransferido"', '<CeldaEfectivoDelSueldo', '<CeldaRedondeo']
-    .map((s) => fila.indexOf(s))
+    // `lastIndexOf`: el $/h aparece dos veces desde que el mensual tiene su celda propia (QA, 14/09/2026); la
+    // del obrero, en las bandas, es la última.
+    .map((s) => (s === '<CeldaTarifa' ? fila.lastIndexOf(s) : fila.indexOf(s)))
   assert.ok(orden.every((i) => i > 0), 'están todas las celdas')
   assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden pedido')
 })

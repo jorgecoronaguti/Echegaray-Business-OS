@@ -18,14 +18,14 @@ import { referenciaDeJornales } from './estadoDelPago'
 import type { CampoEditable, LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
+import { tituloDeExtras } from '../../../services/liquidacionQuincena'
 
 /**
  * LA CELDA DE UN DÍA. Es la que reemplaza al Sheet: se teclea el número y se va.
  *
  *   VACÍA Y EDITABLE    `·` gris. NUNCA un 0: «todavía no lo cargué» y «no trabajó» son dos cosas.
- *   CON HORAS           las horas PAGAS del día (=4+3*1,5 se lee 8,5, como en la planilla).
- *   AUTOMÁTICA          jornada `web:presencia-defecto` que nadie confirmó: «8a» en gris, no se
- *                       paga. Escribir el número la confirma (el registro pasa a tener autor).
+ *   CON HORAS           las horas CARGADAS del día (=4+3*1,5 se lee 7; la plata paga 8,5).
+ *                       También el día que completó la app: cuenta y se paga (dueño, 14/09/2026).
  *   A / L               ausencia o licencia. No se edita en línea.
  *   NO EDITABLE         quincena cerrada, o dos registros ese día: elegir sería adivinar.
  */
@@ -38,20 +38,14 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
   if (celda.marca === 'licencia') {
     return <div title={`${celda.fecha} · licencia`} style={{ textAlign: 'center', color: '#175CD3' }}>L</div>
   }
-  // LA JORNADA AUTOMÁTICA SE VE COMO LO QUE ES PARA EL PAGO: UN DÍA SIN HORAS. Dueño, 14/09/2026:
-  // *«hay dias de cada persona … q dicen 8a 9a no se q es eso, esta mal, corregir»*. Eran las filas
-  // `web:presencia-defecto` del 11/09 y del 14/09, que nadie cargó y no se pagan. El «·» es el mismo
-  // de cualquier día vacío; lo que la app supuso queda en el `title`.
-  const automatica = celda.marca !== 'horas' && celda.automatica != null
-  const tituloAutomatica = automatica
-    ? `${celda.fecha} · sin horas cargadas; la app supone ${nHoras(celda.automatica)} h pero no se pagan hasta que se escriban`
-    : undefined
+  // UN DÍA COMPLETADO POR LA APP SE VE CON SU NÚMERO, COMO CUALQUIER DÍA (dueño, 14/09/2026): cuenta en
+  // «Horas» y se paga en Liquidación (`horasDelDia`). Ya no hay «·» ni aviso de «no se pagan».
   if (!celda.editable) {
     const porque = celda.registros > 1
       ? `${celda.registros} registros ese día: corregilo desde la solapa Horas`
       : 'la quincena está cerrada'
     return (
-      <div title={tituloAutomatica ?? `${celda.fecha} · ${porque}`} style={{
+      <div title={`${celda.fecha} · ${porque}`} style={{
         textAlign: 'center', color: celda.horas == null ? V.lineaFuerte : V.apagado,
       }}>
         {celda.horas == null ? '·' : nHoras(celda.horas)}
@@ -59,10 +53,7 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
     )
   }
   return (
-    <div
-      data-testid={automatica ? `espejo-automatica-${personaId}-${celda.fecha}` : undefined}
-      title={tituloAutomatica}
-      style={{ display: 'flex', justifyContent: 'center' }}>
+    <div style={{ display: 'flex', justifyContent: 'center' }}>
       {/* `w-[56px] sin-spinner`: con 42 px el spinner del navegador se come el dígito. */}
       <InlineEdit
         valor={celda.horas ?? null}
@@ -156,15 +147,14 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho, clas
 const marcaCon = (origen: 'calculado' | 'jornales' | 'manual', ref: { titulo: string } | null) =>
   origen === 'calculado' && ref ? 'jornales' : origen
 
-/** HS PAGAS: las horas del cuadro, con la referencia de JORNALES cuando difiere. */
+/**
+ * HORAS: las horas cargadas, el mismo total de «Horas». Si la plata usa horas equivalentes (extras con
+ * recargo) el `title` lo aclara; y la referencia de JORNALES cuando difiere.
+ */
 export function CeldaHorasPagas({ fila }: { fila: FilaDelEspejo }) {
   const l = fila.linea
   const ref = referenciaDeJornales(l)
-  const sinCargar = fila.horasPorTipo.automaticas
-  const titulo = [
-    ref?.titulo,
-    sinCargar > 0 ? `${nHoras(sinCargar)} h que la app supone en días sin horas cargadas: no se pagan` : null,
-  ].filter(Boolean).join(' · ')
+  const titulo = [tituloDeExtras(l), ref?.titulo].filter(Boolean).join(' · ')
   return (
     <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
       origen={marcaCon(l.origen.horas, ref)} titulo={titulo || undefined} />

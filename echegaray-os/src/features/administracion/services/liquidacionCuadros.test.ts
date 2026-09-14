@@ -105,7 +105,11 @@ test('oficina va a su cuadro por tener neto mensual, aunque tenga horas cargadas
   assert.equal(linea.cobra, 1800000)
   // LAS HORAS NO SE PUBLICAN EN OFICINA. Maldonado tiene asistencia cargada como todos, pero su
   // sueldo no sale de multiplicarlas: «80 h» al lado de $1.800.000 invita a una cuenta que no existe.
-  assert.equal(linea.horas, null)
+  // CAMBIÓ EL 14/09/2026 (QA + regla única de horas): era `null` —«oficina no se liquida por horas, la
+  // columna va vacía»—, y los jefes quedaban con «—» teniendo días de 9 h. Ahora se ven sus horas; lo que
+  // se sigue protegiendo es que NO multipliquen: el cobra es el neto mensual.
+  assert.equal(linea.horas, 80)
+  assert.equal(linea.cobra, 1800000)
   assert.equal(cuadros.find((c) => c.grupo === 'obreros')!.lineas.length, 0)
 })
 

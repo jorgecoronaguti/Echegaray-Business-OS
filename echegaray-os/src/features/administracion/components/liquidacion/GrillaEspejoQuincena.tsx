@@ -81,6 +81,9 @@ const columnasDe = (nDias: number): string =>
 const anchoDe = (nDias: number): number =>
   200 + nDias * DIA + PLATA.reduce((s, c) => s + c.px, 0) + (nDias + PLATA.length) * GAP
 
+/** Cuántas columnas ocupan las dos bandas: la celda de un mensual las cubre enteras. */
+const ANCHO_DE_LAS_BANDAS = PLATA.filter((c) => 'banda' in c).length
+
 /** Dónde empieza cada banda en la grilla (1 = Persona). */
 const inicioDe = (banda: 'blanco' | 'negro'): number => 2 + PLATA.findIndex((c) => 'banda' in c && c.banda === banda)
 
@@ -128,7 +131,7 @@ export function GrillaEspejoQuincena({
       {sello}
       <div style={{ ...MARCO_SCROLL, padding: `16px ${CANAL_SCROLL}px 0` }}>
         <div data-testid="espejo-tabla" style={{ minWidth: anchoDe(dias.length), display: 'flex', flexDirection: 'column' }}>
-          <Encabezado columnas={columnas} dias={dias} />
+          <Encabezado columnas={columnas} dias={dias} sellada={visibles.some((f) => f.cerrada)} />
 
           {secciones.map((sec, i) => (
             <div key={sec.clave} data-testid={`espejo-seccion-${sec.clave}`}>
@@ -160,13 +163,16 @@ export function GrillaEspejoQuincena({
 }
 
 /** Dos niveles: arriba las bandas BLANCO · recibo y NEGRO; abajo el rótulo de cada columna. */
-function Encabezado({ columnas, dias }: { columnas: string; dias: readonly string[] }) {
+function Encabezado({ columnas, dias, sellada }: { columnas: string; dias: readonly string[]; sellada: boolean }) {
   const mono = { fontFamily: MONO, fontSize: '9.5px', letterSpacing: '.04em', textTransform: 'uppercase' as const }
   const banda = (inicio: number, texto: string, testid: string) => (
     <div data-testid={testid} style={{
       gridColumn: `${inicio} / span 3`, gridRow: 1, borderBottom: `1px solid ${V.grafito}`, paddingBottom: 4,
       color: V.tinta, fontWeight: 600, ...mono,
-    }}>{texto}</div>
+    }}>{texto}{sellada && (
+      // LA FOTO SELLADA NO SE RECALCULA: el negro es total − neto del recibo (`negroDeLaFila`).
+      <span data-testid={`${testid}-sellada`} style={{ marginLeft: 8, fontWeight: 400, color: V.apagado, textTransform: 'none' }}>sellada</span>
+    )}</div>
   )
   return (
     <div data-testid="espejo-encabezado" style={{
@@ -207,12 +213,26 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
         </div>
       </div>
       <CeldaHorasPagas fila={fila} />
-      <CeldaHorasBlanco fila={fila} />
-      <CeldaHoraCategoria fila={fila} />
-      <CeldaNeto fila={fila} />
-      <CeldaHorasNegro fila={fila} />
-      <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
-      <CeldaImporteNegro fila={fila} />
+      {l.netoMensual != null ? (
+        // UN MENSUAL NO VA EN LAS BANDAS (QA, 14/09/2026): su sueldo fijo en «$/h negro» sumaba al Total
+        // sin estar en Neto ni en Negro. Una celda propia ocupa las seis columnas; su neto mensual se
+        // sigue editando acá, y el pie lo suma en «Sueldos mensuales».
+        <div data-testid={`mensual-${fila.personaId}`} style={{
+          gridColumn: `span ${ANCHO_DE_LAS_BANDAS}`, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ fontSize: '11px', color: V.apagado }}>mensual</span>
+          <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
+        </div>
+      ) : (
+        <>
+          <CeldaHorasBlanco fila={fila} />
+          <CeldaHoraCategoria fila={fila} />
+          <CeldaNeto fila={fila} />
+          <CeldaHorasNegro fila={fila} />
+          <CeldaTarifa fila={fila} quincena={quincena} pct={pct} />
+          <CeldaImporteNegro fila={fila} />
+        </>
+      )}
       <CeldaTotal fila={fila} />
       <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={92} />
       <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={100} />
@@ -242,7 +262,7 @@ function Total({ columnas, dias, totales, redondeo }: {
       <Leida valor={totales.horasPagas} unidad="horas" testid="espejo-total-hs" />
       <div />
       <div />
-      <Leida valor={totales.porBanco} testid="espejo-total-neto" />
+      <Leida valor={totales.netoBandas} testid="espejo-total-neto" />
       <div />
       <div />
       <Leida valor={totales.negro} testid="espejo-total-negro" />
@@ -272,7 +292,6 @@ function PieDelEspejo({ totales, redondeo }: { totales: TotalesDelEspejo; redond
   if (totales.sinNeto > 0) avisos.push(`${totales.sinNeto} sin neto: sin recibo previo, no suman`)
   if (totales.sinTarifa > 0) avisos.push(`${totales.sinTarifa} sin retribución cargada (no suman a la plata)`)
   if (totales.estimados > 0) avisos.push(`${totales.estimados} con blanco estimado`)
-  if (totales.horasPorTipo.automaticas > 0) avisos.push(`${nHoras(totales.horasPorTipo.automaticas)} h en días sin horas cargadas: no se pagan`)
   const cifra = (rotulo: string, valor: number | null, testid: string) => (
     <span data-testid={testid}><span style={{ color: V.apagado }}>{`${rotulo} `}</span><strong>{pesos(valor)}</strong></span>
   )
@@ -281,8 +300,10 @@ function PieDelEspejo({ totales, redondeo }: { totales: TotalesDelEspejo; redond
       display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 16, rowGap: 4, padding: '12px 20px 16px',
       fontSize: '12.5px', fontVariantNumeric: 'tabular-nums',
     }}>
-      {cifra('Neto banco', totales.porBanco, 'pie-neto')}
+      {/* NETO + NEGRO + SUELDOS MENSUALES = TOTAL, exacto: el mensual es una línea propia, fuera de las bandas. */}
+      {cifra('Neto banco', totales.netoBandas, 'pie-neto')}
       {cifra('Negro', totales.negro, 'pie-negro')}
+      {totales.mensuales > 0 && cifra('Sueldos mensuales', totales.mensuales, 'pie-mensuales')}
       {cifra('Total', totales.cobra, 'pie-total')}
       {cifra('Adelantos', totales.adelanto, 'pie-adelantos')}
       {cifra('Ya transferido', totales.yaTransferido, 'pie-transferido')}

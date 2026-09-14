@@ -93,7 +93,9 @@ test('SIN COLUMNAS DE HORAS EXTRA NI «NORMALES» (dueño, 14/09: «las columnas
   assert.ok(!/extra50|extra100|Ext\. 50|Ext\. 100|Hs norm\.|CANTIDADES/.test(codigo), 'sin columnas de extras ni normales')
   // LAS CUENTAS NO CAMBIAN: el pie sigue publicando las mismas cifras de plata y las horas pagas.
   // `totales.total` salió del cuadro el 14/09/2026 junto con la columna del importe pendiente.
-  for (const t of ['totales.cobra', 'totales.adelanto', 'totales.yaTransferido', 'totales.horasPagas', 'totales.porBanco', 'totales.enEfectivo']) {
+  // `totales.porBanco` → `totales.netoBandas` (QA, 14/09/2026): el pie muestra el neto de las bandas, sin los
+  // mensuales, para que Neto + Negro + Sueldos mensuales = Total cierre exacto. Caja sigue leyendo porBanco.
+  for (const t of ['totales.cobra', 'totales.adelanto', 'totales.yaTransferido', 'totales.horasPagas', 'totales.netoBandas', 'totales.mensuales', 'totales.enEfectivo']) {
     assert.ok(codigo.includes(t), `el pie sigue mostrando ${t}`)
   }
 })
@@ -167,15 +169,16 @@ test('UNA SOLA ESCRITURA DE TARIFA: plan único, corrección con rastro, nunca u
   }
 })
 
-test('UN DÍA CON JORNADA AUTOMÁTICA SE VE COMO UN DÍA SIN HORAS: «·», sin «8a» (dueño, 14/09)', () => {
+// CAMBIÓ EL 14/09/2026 DOS VECES: primero «8a» pasó a «·» con «no se pagan»; después el dueño decidió que
+// los días completados por la app CUENTAN. Lo que se sigue protegiendo: nada de «8a», y ningún texto que
+// diga que esas horas no se pagan.
+test('UN DÍA COMPLETADO POR LA APP SE VE CON SU NÚMERO: sin «8a», sin «·» especial, sin «no se pagan»', () => {
   const codigo = sinComentarios(CELDAS)
-  // EL DEFECTO QUE ATRAPA: «8a», «9a» — un sufijo que el dueño no sabía leer.
   assert.ok(!/\}a`|fontStyle: automatica|'italic'/.test(codigo), 'sin sufijo «a», sin cursiva')
-  assert.match(codigo, /sin horas cargadas; la app supone \$\{nHoras\(celda\.automatica\)\} h pero no se pagan hasta que se escriban/)
-  // SIGUE SIN PAGARSE: la verificación de las horas vive en `cuadroQueSeCalcula.test.ts` (8 h aparte,
-  // 62 h pagas) y el panel lo dice en llano.
-  assert.match(PANEL, /sin horas cargadas \(no se pagan\)/)
-  assert.match(GRILLA, /no se pagan/)
+  for (const c of [CELDAS, PANEL, GRILLA]) {
+    const cod = sinComentarios(c)
+    assert.ok(!/no se pagan|automatica|panel-automaticas/.test(cod), 'ningún aviso de horas que no se pagan')
+  }
 })
 
 test('EL RECORTE PREGUNTA CÓMO COBRA: por quincena o mensual (dueño, 14/09/2026)', () => {

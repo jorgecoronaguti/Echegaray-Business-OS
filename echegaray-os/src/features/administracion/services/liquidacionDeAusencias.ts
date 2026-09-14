@@ -145,9 +145,10 @@ export interface RegistroLiquidable {
 }
 
 /**
- * ¿ES UNA JORNADA AUTOMÁTICA QUE NADIE CONFIRMÓ? No se paga ni suma horas hasta que alguien la toque
- * o JORNALES la traiga.
+ * ¿ES UNA JORNADA AUTOMÁTICA QUE NADIE CONFIRMÓ? Desde el 14/09/2026 SUMA Y SE PAGA como cualquier día
+ * (decisión del dueño, `horasDelDia`); esto sólo dice que la completó la app, para Asistencia.
  *
+ * Historia: hasta esa fecha no se pagaba.
  * Rosales Diego, 1ª de septiembre de 2026: `web:presencia-defecto` le puso 8 h el 11/09 en
  * Quattropani, sin que nadie las cargara; la planilla dice 62 h en Mampostería y la app contaba 70.
  * Es la MISMA condición con la que Asistencia decide qué puede borrar (`esDefectoQueNadieMiro`): una
@@ -205,13 +206,59 @@ const r3 = (n: number): number => Math.round(n * 1000) / 1000
  * que sí se respeta es la CIFRA de un motivo que paga —puede ser media jornada tipeada a mano—.
  */
 export function horasLiquidablesDelDia(registros: readonly RegistroLiquidable[]): number {
-  // LA JORNADA AUTOMÁTICA QUE NADIE CONFIRMÓ NO ES TRABAJO DE NADIE: no se paga (ver
-  // `esJornadaAutomatica`). Si es lo único del día, el día queda como si nadie hubiera cargado nada.
-  const trabajadas = registros.filter((r) => esTrabajada(r.tipo_hora) && !esJornadaAutomatica(r))
+  return horasDelDia(registros).equivalentes
+}
+
+/** Horas extra de un día o una quincena, agrupadas por el coeficiente con que se pagan. */
+export interface ExtraDeHoras {
+  coeficiente: number
+  horas: number
+}
+
+export interface HorasDelDia {
+  /** Horas CARGADAS: lo que se muestra en Horas y en Liquidación. Sin coeficiente. */
+  horas: number
+  /** Horas EQUIVALENTES: con el coeficiente de extras de JORNALES. Sólo para la plata. */
+  equivalentes: number
+  /** Las extras con recargo (coeficiente ≠ 1), para explicar la diferencia en un `title`. */
+  extras: ExtraDeHoras[]
+}
+
+/**
+ * LAS HORAS DE UN DÍA DE UNA PERSONA — LA ÚNICA CUENTA DE LAS DOS PANTALLAS (dueño, 14/09/2026).
+ *
+ * *«seguis sin arreglar el tema de hs q aparece en liq hs al de la seccion hs, tiene q ser la misma
+ * porque en supabase debe estar igual»*. «Horas» sumaba la jornada `web:presencia-defecto` y
+ * Liquidación la excluía; Liquidación además mostraba las horas con el coeficiente de extras. Decisión
+ * del dueño: los días completados por la app CUENTAN EN LAS DOS (revierte la regla de no pagarlos), las
+ * licencias pagas SUMAN EN LAS DOS, y las horas que se muestran son las cargadas: el coeficiente se
+ * aplica sólo a la plata. `esJornadaAutomatica` sigue existiendo para Asistencia —qué puede borrar—,
+ * pero ya no saca horas de ninguna cuenta.
+ */
+export function horasDelDia(registros: readonly RegistroLiquidable[]): HorasDelDia {
+  const trabajadas = registros.filter((r) => esTrabajada(r.tipo_hora))
   // LO TRABAJADO SÍ SUMA ENTRE FILAS: cinco horas en una obra y tres con ochenta en otra son ocho con
-  // ochenta del mismo día (`quincenaPorObra.test.ts`), y una extra se suma a su jornada normal CON EL
-  // COEFICIENTE DE LA PLANILLA (`coeficienteDeLaFila`): =4+3*1,5 paga 8,5, no 7.
-  if (trabajadas.length > 0) return r3(trabajadas.reduce((s, r) => s + numero(r.horas) * coeficienteDeLaFila(r), 0))
+  // ochenta del mismo día (`quincenaPorObra.test.ts`), y una extra se paga CON EL COEFICIENTE DE LA
+  // PLANILLA (`coeficienteDeLaFila`): =4+3*1,5 muestra 7 h y paga 8,5.
+  if (trabajadas.length > 0) {
+    const extras = new Map<number, number>()
+    let horas = 0, equivalentes = 0
+    for (const r of trabajadas) {
+      const h = numero(r.horas), k = coeficienteDeLaFila(r)
+      horas += h
+      equivalentes += h * k
+      if (k !== 1 && h !== 0) extras.set(k, (extras.get(k) ?? 0) + h)
+    }
+    return {
+      horas: r3(horas), equivalentes: r3(equivalentes),
+      extras: [...extras.entries()].map(([coeficiente, h]) => ({ coeficiente, horas: r3(h) })),
+    }
+  }
+  const declaradas = horasDeclaradasDelDia(registros)
+  return { horas: declaradas, equivalentes: declaradas, extras: [] }
+}
+
+function horasDeclaradasDelDia(registros: readonly RegistroLiquidable[]): number {
   // ═══ UN DÍA NO TRABAJADO VALE UN DÍA, NO LA SUMA DE LAS FILAS QUE LO DECLARAN ═══
   //
   // Nadie puede estar ausente dos veces el mismo día. Acá esto era un `reduce` que SUMABA, y con dos
@@ -234,7 +281,7 @@ export function horasLiquidablesDelDia(registros: readonly RegistroLiquidable[])
 /** ¿Ese día tiene horas trabajadas cargadas? Es lo que convierte la «A» + horas en un dato
  *  explicado en vez de en un conflicto: la liquidación ya sabe cuál de las dos paga. */
 export const hayHorasTrabajadas = (registros: readonly RegistroLiquidable[]): boolean =>
-  registros.some((r) => esTrabajada(r.tipo_hora) && !esJornadaAutomatica(r) && numero(r.horas) > 0)
+  registros.some((r) => esTrabajada(r.tipo_hora) && numero(r.horas) > 0)
 
 // El TÍTULO de esa celda —«ausencia declarada y horas cargadas: se liquidan las horas cargadas»— no
 // vive acá sino en `shared/components/ds/celdaDia.ts` (`AVISO_AUSENCIA_CON_HORAS`): es una frase de

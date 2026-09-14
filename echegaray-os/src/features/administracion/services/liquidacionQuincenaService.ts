@@ -372,7 +372,9 @@ function horasPorPersona(
       filas.filter((f) => f.persona_id === id),
       decl.filter((d) => d.persona_id === id),
     )
-    porPersona.set(id, { horas: h.horas, presentesSinHoras: h.presentesSinHoras })
+    porPersona.set(id, {
+      horas: h.horas, horasEquivalentes: h.horasEquivalentes, extras: h.extras, presentesSinHoras: h.presentesSinHoras,
+    })
   }
   return porPersona
 }
