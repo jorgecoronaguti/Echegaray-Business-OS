@@ -18,8 +18,10 @@
 // es la columna U de Cobranzas (Pendiente y Q < hoy). Los tests de la grilla la EVALÚAN sobre la foto
 // y la comparan contra el gemelo `estadoDeCobro`, que es otra implementación de la misma regla.
 //
-// MUTACIÓN PROBADA: volver `obras-grilla.mjs` a `critVencido(abierto(cob, 'fechaEmision'), …)` pone
-// rojos los tres tests de «LA COLUMNA U EN OBRAS». Los tests de reparto por antigüedad de abajo
+// MUTACIÓN PROBADA (14/09/2026): volver `obras-grilla.mjs` a `critVencido(abierto(cob, 'fechaEmision'), …)`
+// pone rojos tres tests: «el 14/08 … dice 0» (da $50.594.877,83), «el 01/09 … el gemelo» (da
+// $61.405.754,19 contra $160.076.327,85) y «la pestaña mide lo vencido con la columna U». El de «las
+// obras no suman más que el año» sigue verde: es un invariante, no la regla. Los tests de reparto de abajo
 // prueban las funciones puras de este archivo, que ya no deciden qué está vencido.
 
 import test from 'node:test'
