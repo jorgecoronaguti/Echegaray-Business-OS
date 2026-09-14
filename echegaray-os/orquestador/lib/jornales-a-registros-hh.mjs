@@ -254,6 +254,29 @@ const esLicencia = (m) => /enfermedad|licencia|vacacion/i.test(`${m.cliente} ${m
 const ORIGEN_EN_NOTA = {
   obra_por_alias_cliente: 'obra por alias de cliente', obra_por_asignacion: 'obra por asignación',
   obra_por_ultimo_bloque: 'obra por último bloque de JORNALES',
+  obra_por_asignacion_web: 'obra por asignación de la web',
+}
+
+/**
+ * LA OBRA DEL DÍA LA DA LA ASIGNACIÓN DE LA WEB (dueño, 14/09/2026: «La asignación de la web»).
+ *
+ * JORNALES pone UN cliente/obra por persona para todo el bloque; en la web se asigna gente a otra obra
+ * día por día (08–10/09: Rosales, Alaniz, Zogbe y Agüero a Quattropani; Tello y otros a Entrepiso…).
+ * Medido: 425 h que la planilla mandaba a la obra del bloque y la asignación a otra. Las HORAS siguen
+ * saliendo de JORNALES; la OBRA de ese día, de la asignación hecha a mano.
+ *
+ * DOS LÍMITES, LOS DOS DECIDIDOS:
+ *  · «galpon 9 es la estrella»: si la planilla dice la obra GENERAL del cliente (la que se llama como
+ *    él) y la asignación es otra obra del MISMO cliente, queda la de la planilla.
+ *  · sólo asignaciones hechas a mano: las «reconstruidas desde JORNALES» salen de la planilla misma y
+ *    no pueden corregirla (llegan ya filtradas desde `catalogos`). Dos obras el mismo día no deciden.
+ */
+export function obraPorAsignacionWeb(obraPlanilla, asignada, clienteDeObra = new Map()) {
+  if (!asignada || !obraPlanilla || asignada === obraPlanilla) return null
+  const cliente = clienteDeObra.get(obraPlanilla)
+  const esGeneral = cliente != null && cliente === obraPlanilla
+  if (esGeneral && clienteDeObra.get(asignada) === cliente) return null
+  return asignada
 }
 function notaDe(m, origen, detalle) {
   const partes = [`JORNALES ${m.pestana} f${m.fila1}`, [m.cliente, m.obra].filter(Boolean).join(' · ')]
@@ -274,7 +297,7 @@ const notaNoTrabajado = (parte, m) => (parte.tipo_hora === 'licencia' && /enferm
 // ausencia; ahora el 0 vale 0 y nada más necesita una jornada de referencia. El script sigue
 // pasándolo y no molesta (una propiedad de más en el objeto de opciones se ignora); se saca de la
 // firma para que nadie crea que todavía decide algo.
-export function planDeRegistros(marcas, { personas, resolver, asignaciones = [] }) {
+export function planDeRegistros(marcas, { personas, resolver, asignaciones = [], asignacionesWeb = [], clienteDeObra = new Map() }) {
   const indice = indicePersonas(personas)
   const cachePersona = new Map()
   const ultimaObra = new Map()
@@ -288,7 +311,11 @@ export function planDeRegistros(marcas, { personas, resolver, asignaciones = [] 
     const pid = emp.persona.id
     const licencia = esLicencia(m)
     const contexto = { asignacion: asignacionVigente(asignaciones, pid, m.fecha), ultima: ultimaObra.get(pid) ?? null }
-    const res = resolver(licencia ? { cliente: '', obra: '' } : { cliente: m.cliente, obra: m.obra }, contexto)
+    let res = resolver(licencia ? { cliente: '', obra: '' } : { cliente: m.cliente, obra: m.obra }, contexto)
+    if (!licencia && res.obra_id) {
+      const web = obraPorAsignacionWeb(res.obra_id, asignacionVigente(asignacionesWeb, pid, m.fecha), clienteDeObra)
+      if (web) res = { obra_id: web, origen: 'obra_por_asignacion_web' }
+    }
     // LA JORNADA DE LA OBRA YA NO DECIDE NADA ACÁ: la usaba sólo la rama del 0, que ahora escribe 0
     // horas. `jornadaPorObra` se conserva en la firma porque es el catálogo que el script ya lee y
     // porque el día que haga falta una jornada de referencia va a salir de ahí y no de un promedio.
