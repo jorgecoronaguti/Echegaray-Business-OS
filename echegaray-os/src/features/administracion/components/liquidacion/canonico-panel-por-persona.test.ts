@@ -15,11 +15,12 @@ import { alConfirmarGuardado, alLlegarDelServidor, valorVigente } from '../../..
 // abierta y se declara con `key`: sin la clave el defecto vuelve y ningún otro test lo ve.
 
 const DIR = dirname(fileURLToPath(import.meta.url))
-const fuente = readFileSync(join(DIR, 'HorasConPersona.tsx'), 'utf8')
+const fuente = readFileSync(join(DIR, 'GrillaEspejoQuincena.tsx'), 'utf8')
 
-test('el contenedor del panel lleva key={abierta}: cambiar de persona remonta todas sus celdas', () => {
-  const m = fuente.match(/<div key=\{abierta\} ref=\{panelRef\}/)
-  assert.ok(m, 'el <div ref={panelRef}> que envuelve a <PanelDePersona> tiene que llevar key={abierta}')
+// CAMBIÓ EL 14/09/2026: el panel de «Horas» (`HorasConPersona.tsx`) se borró al unificar «Más». El
+// panel que queda es `PanelDeLaPersona`, montado desde el cuadro de la Quincena, y la regla es la misma.
+test('el panel de la persona se monta con la persona como clave: cambiar de persona remonta sus celdas', () => {
+  assert.match(fuente, /<PanelDeLaPersona[^>]*key=\{[^}]*personaId[^}]*\}|key=\{[^}]*personaId[^}]*\}[^>]*>\s*<PanelDeLaPersona/)
 })
 
 test('POR QUÉ HACE FALTA LA CLAVE: InlineEdit conserva lo pendiente cuando el servidor repite el mismo valor', () => {

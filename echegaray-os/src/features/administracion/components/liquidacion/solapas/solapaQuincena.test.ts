@@ -140,7 +140,8 @@ test('UNA SOLA ESCRITURA DE TARIFA: plan único, corrección con rastro, nunca u
     const i = escribir.indexOf(antes)
     assert.ok(i > 0 && i < clave, `${antes} va antes de createAdminClient()`)
   }
-  for (const f of ['../CeldasDeLiquidacion.tsx', '../CadenaDePago.tsx']) {
+  // `CadenaDePago.tsx` se borró el 14/09/2026 con el panel de «Horas», su único usuario.
+  for (const f of ['../CeldasDeLiquidacion.tsx']) {
     assert.match(fuente(f), /import \{ guardarValorHora \} from '\.\.\/\.\.\/services\/tarifaDeLaQuincenaActions'/, `${f} usa la escritura única`)
   }
 })
