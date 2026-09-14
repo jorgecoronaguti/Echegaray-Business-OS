@@ -57,14 +57,18 @@ async function catalogos() {
   // primer corte dejaba afuera las «reconstruidas desde JORNALES» y Rosales quedaba en Mampostería del
   // 01 al 07/09 cuando la app lo muestra en Quattropani. Sin fecha de inicio no hay día que decidir.
   const hechasAMano = asignaciones.rows.filter((a) => a.desde)
+  // El cliente de cada obra por `cliente_id` (no por nombre): lo usan la asignación web y la guarda
+  // que impide que un alias global de una obra se lleve el rótulo de otro cliente.
+  const clienteDeObra = new Map(panel.rows.map((r) => [r.obra_id, r.cliente_slug]))
   return {
     personas: personas.rows,
     asignacionesWeb: hechasAMano,
-    clienteDeObra: new Map(panel.rows.map((r) => [r.obra_id, r.cliente_slug])),
+    clienteDeObra,
     resolver: resolutorDeObra({
       alias: new Map(alias.rows.map((r) => [normAlias(r.alias), r.obra_id])),
       canonicas: canonicas.rows,
       clienteAlias: new Map(clienteAlias.rows.map((r) => [normAlias(r.rotulo_clave), r.cliente_canonico])),
+      clienteDeObra,
     }),
     asignaciones: asignaciones.rows,
     jornadaPorObra: new Map(canonicas.rows.map((r) => [r.id, Number(r.jornada_horas)])),

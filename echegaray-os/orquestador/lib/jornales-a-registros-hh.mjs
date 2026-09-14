@@ -215,26 +215,43 @@ function clienteCompatible(canonica, clienteSheet, clienteAlias) {
  *      y si no, la última obra que tuvo en la planilla           → obra_por_ultimo_bloque
  *   5. nada → FALTA_DATO. Un rótulo que no se reconoce NO se reemplaza por la asignación: la
  *      planilla dijo LA ESTRELLA, y la asignación (sin fechas) decía PISOS INDUSTRIALES — se midió.
+ *
+ * EL ALIAS GLOBAL DE LA OBRA NO CRUZA DE CLIENTE (14/09/2026). Al codificar los nombres («SF -
+ * MAMPOSTERÍA») el nombre viejo pasó a `obra_alias` sin cliente, y como el paso 1 se evalúa antes que
+ * la compatibilidad de cliente del paso 2, «LA ESTRELLA · Mampostería» se fue a San Francisco. Ahora,
+ * si el cliente del rótulo se reconoce como obra de un cliente y el alias apunta a una obra de OTRO,
+ * el alias no decide. Los clientes salen de `clienteDeObra` (`obra_panel.cliente_slug`, que viene de
+ * `cliente_id`): ni el nombre de la obra ni su texto de cliente, que el dueño puede volver a cambiar.
+ * Si falta alguno de los dos clientes no hay guarda: no se inventa una incompatibilidad.
  */
-export function resolutorDeObra({ alias = new Map(), canonicas = [], clienteAlias = new Map() } = {}) {
+export function resolutorDeObra({ alias = new Map(), canonicas = [], clienteAlias = new Map(), clienteDeObra = new Map() } = {}) {
   const porNombre = new Map()
   for (const c of canonicas) {
     const k = normAlias(c.nombre)
     if (!porNombre.has(k)) porNombre.set(k, [])
     porNombre.get(k).push(c)
   }
+  const madreDe = (c, cliente) => {
+    const m = (porNombre.get(c) ?? []).filter((x) => clienteCompatible(x, cliente, clienteAlias))
+    return m.length === 1 ? m[0].id : null
+  }
+  const deOtroCliente = (obraId, c, cliente) => {
+    const delRotulo = c ? clienteDeObra.get(alias.get(c) ?? madreDe(c, cliente)) : null
+    const delAlias = clienteDeObra.get(obraId)
+    return delRotulo != null && delAlias != null && delRotulo !== delAlias
+  }
   return function resolver({ cliente, obra }, { asignacion = null, ultima = null } = {}) {
     const c = normAlias(cliente); const o = normAlias(obra)
     if (o && alias.has(`${c} ${o}`)) return { obra_id: alias.get(`${c} ${o}`), origen: 'obra_por_alias' }
-    if (o && o !== c && alias.has(o)) return { obra_id: alias.get(o), origen: 'obra_por_alias' }
+    if (o && o !== c && alias.has(o) && !deOtroCliente(alias.get(o), c, cliente)) return { obra_id: alias.get(o), origen: 'obra_por_alias' }
     if (o) {
       const compat = (porNombre.get(o) ?? []).filter((x) => clienteCompatible(x, cliente, clienteAlias))
       if (compat.length === 1) return { obra_id: compat[0].id, origen: 'obra_por_nombre' }
     }
     if (c && alias.has(c)) return { obra_id: alias.get(c), origen: 'obra_por_alias_cliente' }
     if (c) {
-      const madre = (porNombre.get(c) ?? []).filter((x) => clienteCompatible(x, cliente, clienteAlias))
-      if (madre.length === 1) return { obra_id: madre[0].id, origen: 'obra_por_alias_cliente' }
+      const madre = madreDe(c, cliente)
+      if (madre) return { obra_id: madre, origen: 'obra_por_alias_cliente' }
     }
     if (c || o) return { obra_id: null, origen: null }
     if (asignacion) return { obra_id: asignacion, origen: 'obra_por_asignacion' }

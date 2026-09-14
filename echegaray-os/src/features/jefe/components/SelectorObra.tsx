@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { conObra } from '../services/navegacion'
 import type { ObraDelJefe } from '../services/jefeService'
 import { C } from '@/shared/components/movil/tokens'
+import { rotuloDeObra } from '@/shared/utils/obra'
 
 // CAMBIAR DE OBRA — el renglón con `▾` que J01 dibuja bajo el nombre de la empresa.
 //
@@ -27,7 +28,7 @@ export function SelectorObra({ obras, actual }: { obras: ObraDelJefe[]; actual: 
   if (obras.length <= 1) {
     return (
       <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {actual.nombre}
+        {rotuloDeObra(actual)}
       </span>
     )
   }
@@ -35,7 +36,7 @@ export function SelectorObra({ obras, actual }: { obras: ObraDelJefe[]; actual: 
   return (
     <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
       <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {actual.nombre}
+        {rotuloDeObra(actual)}
       </span>
       <span style={{ display: 'flex', color: C.muted, flexShrink: 0 }}>
         {/* El chevron de J01 apunta ABAJO: es «desplegar», no «entrar». */}
@@ -51,7 +52,7 @@ export function SelectorObra({ obras, actual }: { obras: ObraDelJefe[]; actual: 
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
       >
         {obras.map((o) => (
-          <option key={o.id} value={o.id}>{o.nombre}</option>
+          <option key={o.id} value={o.id}>{rotuloDeObra(o)}</option>
         ))}
       </select>
     </span>

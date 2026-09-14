@@ -9,9 +9,13 @@
 // patrón que ya usa `certificadosDe` en `clientesService`.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 /**
- * `Map<obra_id, nombre>` de las obras pedidas. Ids vacíos ⇒ Map vacío y CERO consultas.
+ * `Map<obra_id, rótulo>` de las obras pedidas: «OB-0012 · ME - PLAYÓN DE AZUFRE» (dueño, 14/09/2026:
+ * un código interno para no confundirlas). El código se lee aparte y en paralelo; si no se puede
+ * leer, el rótulo es el nombre solo. Ids vacíos ⇒ Map vacío y CERO consultas.
  *
  * Un id que no aparece en el resultado NO se completa con un texto de relleno: el que llama
  * devuelve `null`, que es «no se pudo resolver» y no «obra sin identificar» — un rótulo inventado
@@ -23,6 +27,12 @@ export async function nombresDeObra(
 ): Promise<Map<string, string>> {
   const unicos = [...new Set(ids.filter((id): id is string => !!id))]
   if (!unicos.length) return new Map()
-  const { data } = await supabase.from('obra_canonica').select('id, nombre').in('id', unicos)
-  return new Map((data ?? []).map((o) => [o.id as string, o.nombre as string]))
+  const [{ data }, codigos] = await Promise.all([
+    supabase.from('obra_canonica').select('id, nombre').in('id', unicos),
+    codigosDeObra(supabase, unicos),
+  ])
+  return new Map((data ?? []).map((o) => [
+    o.id as string,
+    rotuloDeObra({ nombre: o.nombre as string, codigo: codigos.get(o.id as string) }),
+  ]))
 }
