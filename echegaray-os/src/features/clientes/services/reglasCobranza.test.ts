@@ -42,21 +42,37 @@ function cta(p: Partial<CuentaCorriente> = {}): CuentaCorriente {
   }
 }
 
+test('AUDITORÍA 14/09: un certificado con vence pasado que el Sheet no llama Pendiente no se reclama', () => {
+  // `certificado_cliente.estado` lo escribe el sync con el gemelo de la columna U: 'vencido' sólo si la
+  // fila es Pendiente con Q pasada. La fila 42 de Messina está Facturado: su certificado queda
+  // 'emitido' aunque la fecha haya pasado, y la pantalla 28 lo ponía en «1–30 días» con recordatorio.
+  const facturado = doc({ numero: 'FA 42', monto: 4_336_586.76, vence: '2026-08-17', estado: 'emitido', cobranza_fila: 46 })
+  assert.deepEqual(planDeCobranza([facturado], HOY).map((i) => i.rotulo), [],
+    'no se le pide un recordatorio por algo que no está vencido')
+  assert.equal(bandaDe(facturado, HOY), 'por_vencer')
+  const { vencidoSinFecha, pasadoSinVencer } = previsionSemanal([facturado], HOY)
+  assert.equal(vencidoSinFecha, 0)
+  assert.equal(pasadoSinVencer, 4_336_586.76, 'con la fecha pasada no entra al gráfico, y se dice aparte')
+})
+
+/** Un documento que el sync dejó `vencido` (Pendiente con Q pasada), con su fecha. */
+const vencidoAl = (vence: string | null) => ({ vence, estado: 'vencido' as const })
+
 test('la banda se corta en 30 y en 60 días exactos, no «cerca»', () => {
-  assert.equal(bandaDe('2026-09-17', HOY), 'por_vencer')  // todavía no venció
-  assert.equal(bandaDe(HOY, HOY), 'por_vencer')           // vence hoy: NO está vencido
-  assert.equal(bandaDe('2026-08-23', HOY), 'd1_30')       // un día
-  assert.equal(bandaDe('2026-07-25', HOY), 'd1_30')       // 30 días justos
-  assert.equal(bandaDe('2026-07-24', HOY), 'd31_60')      // 31
-  assert.equal(bandaDe('2026-06-25', HOY), 'd31_60')      // 60 justos
-  assert.equal(bandaDe('2026-06-24', HOY), 'd61_90')      // 61
-  assert.equal(bandaDe('2026-05-25', HOY), 'd90')         // 91
+  assert.equal(bandaDe(vencidoAl('2026-09-17'), HOY), 'por_vencer')  // todavía no venció
+  assert.equal(bandaDe(vencidoAl(HOY), HOY), 'por_vencer')           // vence hoy: NO está vencido
+  assert.equal(bandaDe(vencidoAl('2026-08-23'), HOY), 'd1_30')       // un día
+  assert.equal(bandaDe(vencidoAl('2026-07-25'), HOY), 'd1_30')       // 30 días justos
+  assert.equal(bandaDe(vencidoAl('2026-07-24'), HOY), 'd31_60')      // 31
+  assert.equal(bandaDe(vencidoAl('2026-06-25'), HOY), 'd31_60')      // 60 justos
+  assert.equal(bandaDe(vencidoAl('2026-06-24'), HOY), 'd61_90')      // 61
+  assert.equal(bandaDe(vencidoAl('2026-05-25'), HOY), 'd90')         // 91
 })
 
 test('sin fecha de vencimiento NO se asume que vence hoy', () => {
   // El defecto que atrapa: tratar `null` como «vencido hoy» mete la plata en «por vencer» y el
   // total cierra igual — nadie lo nota hasta que alguien reclama un documento que no vencía.
-  assert.equal(bandaDe(null, HOY), null)
+  assert.equal(bandaDe(vencidoAl(null), HOY), null)
   assert.equal(sinVencimiento([doc({ monto: 1_000_000 })], HOY), 1_000_000)
   assert.equal(sinVencimiento([doc({ monto: 1_000_000, vence: '2026-09-01' })], HOY), 0)
 })
@@ -172,7 +188,8 @@ test('el plan pone primero lo trabado, después lo vencido, y explica con datos'
   assert.deepEqual(plan.map((i) => i.rotulo), [
     'Coordinar remedición', 'Enviar recordatorio', 'Programar aviso',
   ])
-  assert.match(plan[0].motivo, /40 días vencido y observado por el cliente · diferencia de medición/)
+  // Un documento en disputa guarda lo que dijo el cliente, no el cobro: no se le afirma una mora.
+  assert.equal(plan[0].motivo, 'Observado por el cliente · diferencia de medición')
   assert.match(plan[1].motivo, /20 días vencido/)
   assert.match(plan[2].motivo, /Vence en 24 días/)
 })

@@ -37,6 +37,7 @@ const LEYENDA: { color: string; texto: string }[] = [
   { color: C.curso, texto: 'a vencer' },
   { color: C.neg, texto: 'vencido' },
   { color: C.tenue, texto: 'previsto' },
+  { color: C.warn, texto: 'sin conciliar' },
 ]
 
 function Conmutador({ vista, onVista }: { vista: 'listado' | 'calendario'; onVista: (v: 'listado' | 'calendario') => void }) {

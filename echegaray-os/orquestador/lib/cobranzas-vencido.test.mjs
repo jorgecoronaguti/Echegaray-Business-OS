@@ -12,9 +12,17 @@
 // Cobranzas (`cobranzas-fixture.mjs`) y comparan NÚMEROS. Es la única manera de que "vuelve a dar
 // cero" se ponga rojo: una aserción de texto sobre la fórmula pasa igual con el reloj equivocado.
 //
-// PARA VERIFICAR QUE ESTE TEST SIRVE: cambiar en `obras-grilla.mjs` el `critVencido(…fechaEmision…)`
-// por el criterio viejo (`;fechaCobro;"<"&TODAY()`) y correrlo. Tiene que ponerse rojo diciendo que
-// la columna publica $0 con 10 cobranzas vencidas en la fuente.
+// ═══ 14/09/2026: LA REGLA DE LA PESTAÑA CAMBIÓ ═══
+//
+// El dueño: «vencido» = «col q», y «Sí, misma regla en OBRAS». La columna `Vencido` de OBRAS ahora
+// es la columna U de Cobranzas (Pendiente y Q < hoy). Los tests de la grilla la EVALÚAN sobre la foto
+// y la comparan contra el gemelo `estadoDeCobro`, que es otra implementación de la misma regla.
+//
+// MUTACIÓN PROBADA (14/09/2026): volver `obras-grilla.mjs` a `critVencido(abierto(cob, 'fechaEmision'), …)`
+// pone rojos tres tests: «el 14/08 … dice 0» (da $50.594.877,83), «el 01/09 … el gemelo» (da
+// $61.405.754,19 contra $160.076.327,85) y «la pestaña mide lo vencido con la columna U». El de «las
+// obras no suman más que el año» sigue verde: es un invariante, no la regla. Los tests de reparto de abajo
+// prueban las funciones puras de este archivo, que ya no deciden qué está vencido.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -26,6 +34,7 @@ import { grillaObras, REFS_OBRAS, ANO, serialISO } from './obras-grilla.mjs'
 import { comoHoja, FILAS, COLUMNAS } from './cobranzas-fixture.mjs'
 import { evaluarFormula, hojaDeGrilla } from './evaluar-formula-sheet.mjs'
 import { OBRAS_FUTURAS } from './obras-datos.mjs'
+import { estadoDeCobro } from './cobranza-estado-de-cobro.mjs'
 
 /** El día del pedido del dueño. Se fija: un test que depende de la fecha de hoy caduca solo. */
 const HOY = new Date(Date.UTC(2026, 7, 14))
@@ -39,7 +48,13 @@ const cel = (ref) => {
 const val = (ref) => evaluarFormula(String(cel(ref)), {
   hoja: hojaDeGrilla(g.filas), hojas: { Cobranzas: comoHoja() }, nombres: { TIPO_CAMBIO_USD: TC }, hoy: HOY,
 })
+/** La misma celda evaluada con otro «hoy»: la foto es del 14/08 y ese día nada Pendiente tenía Q pasada. */
+const valEn = (ref, hoy) => evaluarFormula(String(cel(ref)), {
+  hoja: hojaDeGrilla(g.filas), hojas: { Cobranzas: comoHoja() }, nombres: { TIPO_CAMBIO_USD: TC }, hoy,
+})
 const redondo = (x) => Math.round(Number(x) * 100) / 100
+/** Serial de Sheets → `YYYY-MM-DD`. */
+const isoDeSerial = (s) => new Date(Date.UTC(1899, 11, 30) + Number(s) * 86_400_000).toISOString().slice(0, 10)
 
 /** La foto, leída por NOMBRE de columna: contar comas se rompe cuando entra una columna nueva. */
 const col = (f, L) => f[1 + COLUMNAS.indexOf(L)]
@@ -62,7 +77,7 @@ test('EL RELOJ VIEJO ESTABA CONDENADO A CERO: ninguna pendiente tiene fecha de C
   assert.equal(pendientes.length, 44, 'y sin embargo hay 44 cobranzas pendientes')
 })
 
-test('CON EL RELOJ CORRECTO HAY 10 COBRANZAS VENCIDAS POR $50.594.878 — el número que el dueño sabía', () => {
+test('(regla del 14/08, retirada) el reparto por emisión + 30 sobre la foto: 10 filas por $50.594.878', () => {
   // La misma foto, medida desde la fecha de EMISIÓN más el plazo. La deuda más vieja se emitió el
   // 31/12/2024 (MESSINA, "PLANTA DE BSA - 26M3 A FAVOR H-17") y su fecha de cobro dice 06/09/2026.
   const r = repartirPorAntiguedad(
@@ -79,38 +94,42 @@ test('CON EL RELOJ CORRECTO HAY 10 COBRANZAS VENCIDAS POR $50.594.878 — el nú
   })
 })
 
-test('LA COLUMNA `Vencido` DE LA PESTAÑA YA NO PUBLICA CERO: se evalúa la fórmula sobre la foto', () => {
-  // ═══ ÉSTE ES EL TEST QUE SE PONE ROJO SI ALGUIEN REVIERTE EL ARREGLO ═══
-  //
-  // No mira el texto de la fórmula: la CORRE sobre las 91 filas reales. Con el criterio viejo
-  // (`fechaCobro < TODAY()`) las celdas dan 0 y este test falla en la primera aserción.
-  //
-  // 07/09/2026: el cuadro por CLIENTE salió con el rediseño de dos cuadros, así que «a quién
-  // reclamarle» ya no se lee por cliente sino por OBRA — que es más específico, no menos: la fila
-  // dice qué trabajo concreto tiene la plata parada.
-  const total = val(`G${g.fAno}`)
-  assert.ok(total > 0, `LA COLUMNA VENCIDO VOLVIÓ A DAR CERO teniendo ${pendientes.length} cobranzas pendientes `
-    + 'y 10 vencidas en la fuente — el reloj está midiendo contra la fecha equivocada otra vez')
-  assert.equal(redondo(total), 50_594_877.83, 'y es exactamente lo que la fuente dice que está vencido')
-  // A QUÉ OBRA RECLAMARLE, que es para lo que sirve la columna. Las que tienen plata vencida:
-  const porObra = Object.fromEntries(g.bloques
-    .map((b) => [b.clave, redondo(val(`G${b.fProt}`))])
-    .filter(([, v]) => v > 0))
-  // Sobre la foto de Cobranzas de agosto, la única obra con plata vencida es BSA. Las de San
-  // Francisco tienen vencido en el archivo REAL de hoy; el fixture es de agosto y no lo tiene — y
-  // clavar acá los números de hoy haría pasar el test por una coincidencia, no por la regla.
-  assert.deepEqual(porObra, { 'messina-bsa': 17_085_494.51 })
-  // Y las obras NO pueden sumar más que el año: son un subconjunto de Cobranzas.
-  assert.ok(Object.values(porObra).reduce((a2, b2) => a2 + b2, 0) <= total + 1)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA COLUMNA U EN OBRAS (dueño, 14/09/2026: «Sí, misma regla en OBRAS»)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Lo vencido de la foto según el GEMELO, en el año de la pestaña. Otra implementación de la regla. */
+function vencidoSegunGemelo(hoy) {
+  const filas = FILAS.filter((f) => Number(col(f, 'Q')) > 0
+    && estadoDeCobro(col(f, 'O'), isoDeSerial(col(f, 'Q')), hoy) === 'vencido'
+    && isoDeSerial(col(f, 'Q')).startsWith(String(ANO)))
+  const plata = filas.reduce((s, f) => s + Number(col(f, 'M')) * (col(f, 'AA') === 'USD' ? TC : 1), 0)
+  return { n: filas.length, plata }
+}
+
+test('LA COLUMNA U EN OBRAS: el 14/08 la foto no tiene nada Pendiente con Q pasada, y la pestaña dice 0', () => {
+  // Con emisión + 30 esta celda daba $50.594.877,83: si alguien vuelve al reloj de la emisión, rojo.
+  assert.equal(vencidoSegunGemelo('2026-08-14').n, 0)
+  assert.equal(redondo(val(`G${g.fAno}`)), 0)
 })
 
-test('EL VENCIDO DEL AÑO NO ES LA SUMA DE LAS OBRAS, Y NO PUEDE SERLO', () => {
+test('LA COLUMNA U EN OBRAS: el 01/09 la celda del año es exactamente lo que dice el gemelo', () => {
+  const esperado = vencidoSegunGemelo('2026-09-01')
+  assert.equal(esperado.n, 14, 'la foto cambió: sin filas vencidas este test no prueba nada')
+  assert.equal(redondo(valEn(`G${g.fAno}`, new Date(Date.UTC(2026, 8, 1)))), redondo(esperado.plata))
+  // Un Facturado con Q pasada no entra: la foto tiene uno, y la regla sólo vence lo Pendiente.
+  const facturada = FILAS.find((f) => col(f, 'O') === 'Facturado')
+  assert.ok(facturada, 'la foto dejó de tener una fila Facturado')
+  assert.equal(estadoDeCobro('Facturado', isoDeSerial(col(facturada, 'Q')), '2027-01-01'), 'otro')
+})
+
+test('LA COLUMNA U EN OBRAS: las obras no suman más que el año, que sale de la fuente entera', () => {
   // Las obras declaradas son un subconjunto de lo que se factura: MESSINA vende trabajos fuera de sus
-  // obras. Si el cuadro del año sumara las filas de abajo, el vencido bajaría solo cada vez que una
-  // obra sale de la lista — y nadie se enteraría. Sale de la fuente entera.
-  const enObras = g.bloques.reduce((s, b) => s + val(`G${b.fProt}`), 0)
-  assert.ok(val(`G${g.fAno}`) > enObras, 'hay vencido fuera de las obras declaradas, y el año lo ve')
-  assert.equal(redondo(val(`G${g.fAno}`) - enObras), 33_509_383.32, 'lo que está vencido fuera de obra')
+  // obras. Si el año sumara las obras, el vencido bajaría solo cada vez que una obra sale de la lista.
+  const hoy = new Date(Date.UTC(2026, 8, 1))
+  const enObras = g.bloques.reduce((s, b) => s + valEn(`G${b.fProt}`, hoy), 0)
+  assert.ok(enObras > 0, 'ninguna obra con vencido el 01/09: el reparto no se probó')
+  assert.ok(valEn(`G${g.fAno}`, hoy) >= enObras - 1, 'las obras publican más vencido que el año')
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -175,19 +194,16 @@ test('los criterios salen en locale es-AR y con TODAY() adentro: la cartera enve
   assert.equal(critTramo('X:X', TRAMOS_ANTIGUEDAD[1], 30), ';X:X;"<"&(TODAY()-60);X:X;">="&(TODAY()-90)')
 })
 
-test('la pestaña cita la fecha de EMISIÓN y NUNCA la de cobro para decidir si algo está vencido', () => {
-  // El defecto original, fijado como regla: si alguien vuelve a apuntar la alarma a la fecha de
-  // cobro, la columna vuelve a dar cero y ninguna aserción de número lo diría tan claro como ésta.
-  // 07/09/2026: el cuadro por CLIENTE salió y «Vencido» pasó de la F a la G. Las filas que se
-  // recorren son las OBRAS más el cierre del año — las mismas celdas que publican la alarma.
-  const emision = `'Cobranzas'!$${REFS_OBRAS.cob.fechaEmision}$${REFS_OBRAS.cob.desde}`
+test('la pestaña mide lo vencido con la columna U: estado Pendiente y fecha de COBRO, nunca la emisión', () => {
+  // 07/09/2026: «Vencido» está en la G. Las filas que se recorren son las OBRAS más el cierre del año.
+  // 14/09/2026: la regla pasó de emisión + 30 a la columna U de Cobranzas, por decisión del dueño.
+  const ref = (L) => `'Cobranzas'!$${L}$${REFS_OBRAS.cob.desde}:$${L}`
   const filas = [g.fAno, ...g.bloques.map((b) => b.fProt)]
   assert.ok(filas.length > 1, 'hay obras y hay cierre de año: si no, este test no prueba nada')
   for (const f of filas) {
     const v = String(cel(`G${f}`))
-    assert.ok(v.includes(`${emision}:$${REFS_OBRAS.cob.fechaEmision};"<"&(TODAY()-${PLAZO_COBRO_DIAS})`),
-      `G${f}: lo vencido se mide contra la fecha de emisión más el plazo`)
-    // La fecha de cobro sigue estando, pero SÓLO como ventana del año: nunca como el corte de hoy.
-    assert.ok(!v.includes(`$${REFS_OBRAS.cob.fechaCobro};"<"&TODAY()`), `G${f}: el reloj viejo volvió`)
+    assert.ok(v.includes(`${ref(REFS_OBRAS.cob.estado)};"Pendiente"`), `G${f}: sólo vence lo Pendiente`)
+    assert.ok(v.includes(`${ref(REFS_OBRAS.cob.fechaCobro)};"<"&TODAY()`), `G${f}: el corte es la fecha de cobro`)
+    assert.ok(!v.includes(`$${REFS_OBRAS.cob.fechaEmision};"<"&(TODAY()-`), `G${f}: volvió el reloj de la emisión`)
   }
 })

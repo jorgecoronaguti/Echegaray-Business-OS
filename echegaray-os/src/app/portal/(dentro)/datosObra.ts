@@ -8,6 +8,7 @@ import {
 } from '../esquema'
 import { refrescarConCobranzas, type FilaCobranzaViva } from '../vivo.ts'
 import { FILA_BASE } from '../../../../orquestador/lib/portal/cobranzas-a-cliente.mjs'
+import { hoyEnSanJuan } from '../../../../orquestador/lib/cobranza-estado-de-cobro.mjs'
 import { esObraAnterior, obrasDelCliente, type FilaObraCanonica, type ObraDelInicio } from '../obrasDelCliente'
 
 // LO QUE SE LE PREGUNTA A LA BASE. Una sola vez, para las tres pantallas de plata.
@@ -29,9 +30,10 @@ import { esObraAnterior, obrasDelCliente, type FilaObraCanonica, type ObraDelIni
 // obra terminada, que ahora sale de `obra_canonica` como el resto del portal. Un lector del registro
 // viejo que ya no usa nadie es la puerta por la que vuelve la segunda definición.
 
-/** Hoy, en la zona de San Juan. Comparar contra UTC corre el vencimiento tres horas. */
+/** Hoy, en la zona de San Juan. Comparar contra UTC corre el vencimiento tres horas. Es el mismo
+ *  reloj que usa la regla de vencido (`hoyEnSanJuan`, gemelo de `public.hoy_san_juan()`). */
 export function hoyEnObra(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+  return hoyEnSanJuan()
 }
 
 export type EsquemaDelPortal = {

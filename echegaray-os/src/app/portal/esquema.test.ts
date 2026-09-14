@@ -7,6 +7,34 @@ import {
 } from './esquema.ts'
 import { estadoDePago, proximoPago, resumenDeCobro, type ResumenCobro } from './cronograma.ts'
 import { contratoDelConjunto } from './esquema.ts'
+import { refrescarConCobranzas } from './vivo.ts'
+
+// ── AUDITORÍA 14/09/2026: SIN FILA VIVA NO HAY «VENCIDO» ─────────────────────────────────────
+//
+// Producción, ese día: el portal publicaba $11.723.493,25 vencidos que la pestaña Cobranzas tiene
+// COBRADOS. Son dos filas de `esquema_pago` sin `cobranza_fila`: nada las refresca desde la réplica, y
+// la pantalla derivaba «vencido» de su fecha guardada. Los datos de abajo son los de la base.
+//   · La Estrella «Faltante (2 de 2)», 31/08, $8.234.758,25 → Cobranzas fila 40, Cobrado el 14/08.
+//   · Messina «Cobro», Pilón, 28/08, $3.488.735 → Cobranzas fila 30, Cobrado el 10/09.
+test('AUDITORÍA 14/09: una fila publicada SIN fila viva de Cobranzas no le reclama «vencido» al cliente', () => {
+  const HOY_AUDITORIA = '2026-09-14'
+  const guardadas = [
+    fila({ id: '61231eb7-6fee-44e7-9c7c-da579b20e022', obra_id: 'le-galpon-9', cobranza_fila: null,
+      concepto: 'Faltante (2 de 2)', fecha: '2026-08-31', monto: '8234758.25', estado: 'a_vencer' }),
+    fila({ id: '93ee0e89-8c6d-4bfe-85d8-4f93e5474290', obra_id: 'pilon', cobranza_fila: null,
+      concepto: 'Cobro', fecha: '2026-08-28', monto: '3488735', estado: 'a_vencer' }),
+  ]
+  // El mismo camino que `datosObra`: refresco contra la réplica (que no tiene contraparte) y proyección.
+  const pagos = refrescarConCobranzas(guardadas, [], new Date(`${HOY_AUDITORIA}T15:00:00Z`))
+    .map((f) => aPagoDelPortal(f, 'obra'))
+  assert.equal(pagos.length, 2)
+  for (const p of pagos) assert.equal(estadoDePago(p, HOY_AUDITORIA), 'sin_conciliar', `${p.id}: no puede ser vencido`)
+  assert.equal(resumenDeCobro(pagos, null, HOY_AUDITORIA).vencido, 0, 'el pie no suma vencido sin evidencia viva')
+  // Con fecha FUTURA no hay nada que afirmar: sigue siendo un pago pendiente, no «sin conciliar».
+  const [futura] = refrescarConCobranzas([fila({ cobranza_fila: null, fecha: '2026-10-01' })], [])
+    .map((f) => aPagoDelPortal(f, 'obra'))
+  assert.equal(estadoDePago(futura, HOY_AUDITORIA), 'programado')
+})
 
 /** Una fila de `esquema_pago` publicada. Los tests cambian sólo lo que están probando. */
 function fila(cambios: Partial<FilaEsquema> = {}): FilaEsquema {
@@ -100,6 +128,17 @@ test('vencido y a_vencer NO se fijan: los decide la fecha, que es la palanca que
   assert.equal(estadoFijadoDe({ estado: 'vencido' }), null)
   const movido = aPagoDelPortal(fila({ estado: 'vencido', fecha: '2026-12-01' }), 'x')
   assert.equal(estadoDePago(movido, '2026-08-26'), 'programado')
+})
+
+test('el estado VIVO se fija: un Facturado con fecha pasada no se vuelve mora en la pantalla', () => {
+  // `vivo.ts` ya aplicó la columna U (sólo vence lo Pendiente). Derivarlo otra vez de la fecha lo
+  // devolvía a «vencido» y el portal contradecía al Sheet (14/09/2026).
+  const facturada = aPagoDelPortal(fila({ estado: 'a_vencer', estado_vivo: true, fecha: '2026-08-01' }), 'x')
+  assert.equal(estadoDePago(facturada, '2026-08-26'), 'programado')
+  const pendiente = aPagoDelPortal(fila({ estado: 'vencido', estado_vivo: true, fecha: '2026-08-01' }), 'x')
+  assert.equal(estadoDePago(pendiente, '2026-08-26'), 'vencido')
+  // La copia guardada, sin contraparte viva, sigue derivándose de la fecha.
+  assert.equal(estadoFijadoDe({ estado: 'a_vencer' }), null)
 })
 
 // ── EL ESTADO QUE DECLARA EL SHEET LLEGA A LA PANTALLA ───────────────────────────────────────

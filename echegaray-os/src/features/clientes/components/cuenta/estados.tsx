@@ -30,7 +30,11 @@ export interface PintaEstado {
 
 const mayus = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 
-export function pintarEstado(estado: EstadoCertificado | EstadoPago): PintaEstado {
+/** `sin_conciliar` no se guarda: lo deriva `estadoVigente` cuando un pago con fecha pasada no tiene
+ *  fila de Cobranzas (auditoría, 14/09/2026). */
+type EstadoDibujable = EstadoCertificado | EstadoPago | 'sin_conciliar'
+
+export function pintarEstado(estado: EstadoDibujable): PintaEstado {
   if (estado in ROTULO_ESTADO) {
     const e = estado as EstadoCertificado
     return { texto: mayus(ROTULO_ESTADO[e]), color: COLOR_ESTADO[e] }
@@ -40,6 +44,9 @@ export function pintarEstado(estado: EstadoCertificado | EstadoPago): PintaEstad
       return { texto: 'Retenido', color: C.tenue }
     case 'previsto':
       return { texto: 'Previsto', color: C.tenue }
+    // Sin este caso caía en «A vencer»: se leía como deuda al día algo que no se sabe si se cobró.
+    case 'sin_conciliar':
+      return { texto: 'Sin conciliar', color: C.warn }
     default:
       return { texto: 'A vencer', color: C.curso }
   }
@@ -58,7 +65,7 @@ export function pintarEstado(estado: EstadoCertificado | EstadoPago): PintaEstad
  *
  * El rótulo va en minúscula, como en el mockup: es una celda de tabla, no un título.
  */
-export function CeldaEstado({ estado }: { estado: EstadoCertificado | EstadoPago }) {
+export function CeldaEstado({ estado }: { estado: EstadoDibujable }) {
   const e = pintarEstado(estado)
   return (
     <span style={{

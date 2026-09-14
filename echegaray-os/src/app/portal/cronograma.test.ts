@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  corto, estadoDePago, proximoPago, resumenDeCobro, loQueSigue, pesos, diaMes, ROTULO_ESTADO,
+  corto, estadoDePago, proximoPago, proximosPagos, resumenDeCobro, loQueSigue, pesos, diaMes, ROTULO_ESTADO,
   marcaDeFila, rotuloDelCronograma, type Pago,
 } from './cronograma.ts'
 
@@ -12,6 +12,16 @@ const p = (x: Partial<Pago>): Pago => ({
   iva: x.iva === undefined ? null : x.iva, historico: x.historico ?? false, moneda: x.moneda ?? 'ARS', fechaPrevista: x.fechaPrevista ?? null, fechaPago: x.fechaPago ?? null,
   facturaNumero: x.facturaNumero ?? null, reciboNumero: x.reciboNumero ?? null,
   devolucionEn: null, devueltoEn: null, estadoFijado: x.estadoFijado ?? null,
+  conciliado: x.conciliado ?? true,
+})
+
+test('AUDITORÍA 14/09: un pago sin fila viva con fecha pasada es «a confirmar», no vencido', () => {
+  const sinFila = p({ fechaPrevista: '2026-08-25', conciliado: false })
+  assert.equal(estadoDePago(sinFila, HOY), 'sin_conciliar')
+  assert.equal(ROTULO_ESTADO.sin_conciliar, 'a confirmar')
+  assert.equal(resumenDeCobro([sinFila], null, HOY).vencido, 0)
+  // Ser el próximo pago no le cambia la palabra: «próximo» sobre algo que quizás ya se pagó, no.
+  assert.equal(marcaDeFila('sin_conciliar', true), 'sin_conciliar')
 })
 
 test('pagado gana sobre todo: una factura pagada tarde no es «vencida»', () => {
@@ -65,6 +75,25 @@ test('dos pagos con la misma fecha desempatan SIEMPRE igual', () => {
   const pagos = [p({ id: 'b', orden: 7, fechaPrevista: '2026-09-01' }), p({ id: 'a', orden: 3, fechaPrevista: '2026-09-01' })]
   assert.equal(proximoPago(pagos)?.id, 'a')
   assert.equal(proximoPago([...pagos].reverse())?.id, 'a', 'no depende del orden en que llegaron')
+})
+
+test('DEFECTO DEL DUEÑO (14/09): varios pagos pendientes el mismo día se marcan TODOS como próximos', () => {
+  // San Francisco / IMOTOR, 18/09/2026: Instalaciones Eléctricas $10.000.000, Entrepiso y Escaleras
+  // $1.932.063,50 y Pisos Industriales $10.000.775,90 — tres filas publicadas con la misma fecha. El
+  // portal resaltaba sólo la de menor `orden` y las otras dos se leían como si vinieran después.
+  const pagos = [
+    p({ id: 'electrica', orden: 2, fechaPrevista: '2026-09-18', monto: 10_000_000 }),
+    p({ id: 'entrepiso', orden: 2, fechaPrevista: '2026-09-18', monto: 1_932_063.5 }),
+    p({ id: 'pisos', orden: 3, fechaPrevista: '2026-09-18', monto: 10_000_775.9 }),
+    p({ id: 'despues', orden: 1, fechaPrevista: '2026-10-03' }),
+    p({ id: 'pagado', orden: 1, fechaPrevista: '2026-09-01', fechaPago: '2026-09-01' }),
+  ]
+  assert.deepEqual([...proximosPagos(pagos)].sort(), ['electrica', 'entrepiso', 'pisos'])
+  assert.deepEqual([...proximosPagos([...pagos].reverse())].sort(), ['electrica', 'entrepiso', 'pisos'],
+    'no depende del orden en que llegaron')
+  // El singular sigue existiendo para lo que necesita UNA fecha (el mes que abre): es una de ellas.
+  assert.ok(proximosPagos(pagos).has(proximoPago(pagos)!.id))
+  assert.equal(proximosPagos([]).size, 0)
 })
 
 test('sin nada por pagar no hay próximo — y eso no es un error', () => {

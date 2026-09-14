@@ -11,7 +11,7 @@ const pago = (c: Partial<PagoConObra> = {}): PagoConObra => ({
   id: 'p', orden: 1, tipo: 'certificado', rotulo: 'Certificación 1/2', monto: 1_000_000,
   neto: null, iva: null, historico: false, moneda: 'ARS', obraId: 'pilon', obraNombre: 'Pilón',
   obraCerrada: true, fechaPrevista: '2026-08-22', fechaPago: null, facturaNumero: null,
-  reciboNumero: null, devolucionEn: null, devueltoEn: null, estadoFijado: null, ...c,
+  reciboNumero: null, devolucionEn: null, devueltoEn: null, estadoFijado: null, conciliado: true, ...c,
 })
 
 test('una obra cobrada entera dice «pagada», no «sin datos de cobro»', () => {

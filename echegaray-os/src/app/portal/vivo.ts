@@ -112,6 +112,9 @@ export function conNumerosVivos(f: FilaEsquema, v: FilaCobranzaViva, hoy: Date):
     // El estado lo decide la MISMA función que usa el sync (`estadoDePago`, copia literal de la
     // columna U del Sheet). Derivarlo de nuevo acá sería la tercera definición de «vencido».
     estado: estadoDePago({ estado: v.estado, fecha_cobro: v.fecha_cobro }, hoy),
+    // Este estado es de la réplica viva y ya aplicó la regla del Sheet: la pantalla no lo vuelve a
+    // derivar de la fecha (ver `estadoFijadoDe`), o un Facturado con fecha pasada volvería a mora.
+    estado_vivo: true,
   }
 }
 
@@ -129,7 +132,10 @@ export function refrescarConCobranzas(
   const out: FilaEsquema[] = []
   for (const f of filas) {
     const v = f.cobranza_fila == null ? undefined : indice.get(Number(f.cobranza_fila))
-    if (!v) { out.push(f); continue }
+    // SIN FILA VIVA (sin `cobranza_fila`, o la fila ya no está en la réplica) la copia guardada no se
+    // refresca y se DICE: `estado_vivo: false` hace que el portal no pueda publicarla vencida
+    // (auditoría, 14/09/2026 — dos filas cobradas en el Sheet se le reclamaban al cliente).
+    if (!v) { out.push({ ...f, estado_vivo: false }); continue }
     if (anuladaEnCobranzas(v)) continue
     out.push(conNumerosVivos(f, v, hoy))
   }

@@ -150,7 +150,7 @@ import { RANGO_TC } from './caja-disponibilidades.mjs'
 import { ALERTA } from './glifos.mjs'
 // QUÉ ES UNA COBRANZA VENCIDA: una sola definición, con su plazo y sus tramos. Ver el archivo — acá
 // vivía el criterio viejo, que medía contra la fecha de cobro ESPERADA y por eso daba siempre cero.
-import { PLAZO_COBRO_DIAS, critVencido } from './cobranzas-vencido.mjs'
+import { critVencidoCobro } from './cobranza-estado-de-cobro.mjs'
 // LA ESPECIE DE CADA CELDA — de dónde sale su formato. Se declara donde se escribe el valor.
 import { ESPECIES, matrizDeEspecies } from './obras-especies.mjs'
 
@@ -469,9 +469,9 @@ export const REFS_OBRAS = {
   // sumar tres columnas para llegar al mismo importe sería una segunda definición del concepto.
   // `moneda` es la col AA: casi siempre vacía (pesos) y "USD" en la fila del anticipo en dólares de
   // Quattropani. Toda suma de esta pestaña la cita — ver `sumaConUSD`.
-  // `fechaEmision` es la col C: la fecha en que la deuda NACIÓ. Es la única de las tres fechas que no
-  // se re-escribe cuando el cobro se posterga, y por eso es el reloj de lo vencido (ver
-  // `cobranzas-vencido.mjs`). Medir contra `fechaCobro` daba $0 todos los días.
+  // `fechaEmision` es la col C: la fecha en que la deuda NACIÓ. Fue el reloj de lo vencido desde el
+  // 14/08/2026 hasta el 14/09/2026, cuando el dueño decidió que vencido es la columna U de Cobranzas
+  // (Pendiente y `fechaCobro` < hoy). Ver `cobranza-estado-de-cobro.mjs`.
   cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', retenciones: 'L', estado: 'O', fechaCobro: 'Q', fechaVenta: 'P', fechaEmision: 'C', forma: 'N', categoria: 'B', oc: 'H', moneda: 'AA', desde: 5 },
   // `neto` es la columna "Importe" (M = Total − IVA). El costo se mide ahí, no en "Total" (O): la
   // venta ya se mide al neto, y comparar venta neta contra costo con IVA castigaba el margen ~21% en
@@ -855,9 +855,17 @@ const pendienteDelAno = (cob) => `;${abierto(cob, 'estado')};"<>${COBRADO}"`
   + `;${abierto(cob, 'estado')};"<>${NO_VENTA}"${enElAno(cob, 'fechaCobro')}`
 
 /**
- * LO VENCIDO: emitido hace más que el plazo acordado y todavía sin cobrar.
+ * LO VENCIDO: la columna U de Cobranzas — estado Pendiente y fecha de cobro anterior a hoy.
  *
- * ═══ EL DEFECTO QUE ACÁ SE ARREGLA (14/08/2026) ═══
+ * ═══ LA DEFINICIÓN CAMBIÓ POR DECISIÓN DEL DUEÑO (14/09/2026) ═══
+ *
+ * «vencido» = «col q», y «Sí, misma regla en OBRAS». Es la misma que publica Postgres
+ * (`public.estado_de_cobro`) y leen la ficha, la cartera, la cuenta corriente y el portal; el
+ * criterio de la hoja sale de `critVencidoCobro`, al lado de su gemelo JS. Reemplaza la decisión del
+ * 14/08 que se cuenta abajo: el argumento de entonces —la Q se re-tipea cuando el cobro se posterga,
+ * así que tiende a cero— el dueño lo conoce y eligió igual una sola regla en todas las caras.
+ *
+ * ═══ LA HISTORIA: EL DEFECTO QUE SE ARREGLÓ EL 14/08/2026 ═══
  *
  * Esta fórmula decía `fechaCobro < TODAY()` y publicaba "—" en las 18 celdas de la pestaña. El dueño:
  * *"esta contemplando mal la columna de 'vencido' porque si hay cobranzas q estan vencidas"*.
@@ -874,7 +882,7 @@ const pendienteDelAno = (cob) => `;${abierto(cob, 'estado')};"<>${COBRADO}"`
  */
 const vencido = (cob, cliente, extra = {}) =>
   `=${tramos(cob, cliente, extra).map(([v, c]) => enPesos(cob, 'total', `${abierto(cob, 'cliente')};"${criterioCliente(v)}"${c}`
-    + `${pendienteDelAno(cob)}${critVencido(abierto(cob, 'fechaEmision'), PLAZO_COBRO_DIAS)}`)).join('+')}`
+    + `${pendienteDelAno(cob)}${critVencidoCobro(abierto(cob, 'estado'), abierto(cob, 'fechaCobro'))}`)).join('+')}`
 
 /**
  * LO VENCIDO DEL AÑO ENTERO: la MISMA definición que `vencido`, sin el filtro de cliente.
@@ -885,7 +893,7 @@ const vencido = (cob, cliente, extra = {}) =>
  */
 const vencidoDelAno = (cob) => `=${enPesos(cob, 'total',
   `${abierto(cob, 'estado')};"<>${COBRADO}";${abierto(cob, 'estado')};"<>${NO_VENTA}"`
-  + `${enElAno(cob, 'fechaCobro')}${critVencido(abierto(cob, 'fechaEmision'), PLAZO_COBRO_DIAS)}`)}`
+  + `${enElAno(cob, 'fechaCobro')}${critVencidoCobro(abierto(cob, 'estado'), abierto(cob, 'fechaCobro'))}`)}`
 
 /**
  * LA PRÓXIMA FECHA DE COBRO pendiente.
@@ -1178,8 +1186,8 @@ export function grillaObras(ctx = {}) {
   //
   // LOS CRITERIOS, QUE SIGUEN VIGENTES Y AHORA VIVEN ACÁ:
   //   · la venta va al NETO y es devengada; las cobranzas al TOTAL neto de retenciones y percibidas;
-  //   · «vencido» es a los `PLAZO_COBRO_DIAS` días de la fecha de emisión (el número vive una sola
-  //     vez, en `cobranzas-vencido.mjs`);
+  //   · «vencido» es la columna U de Cobranzas: Pendiente y fecha de cobro anterior a hoy (dueño,
+  //     14/09/2026; la regla vive una sola vez, en `cobranza-estado-de-cobro.mjs`);
   //   · el contrato se lee de la ORDEN DE COMPRA de Cobranzas — por eso no es un número mágico;
   //   · el COSTO es PROYECTADO: la explosión de gastos que cargó el dueño, mano de obra incluida.
   //     No es lo comprado. La mano de obra se paga por Jornales y nunca aparece en Compras.

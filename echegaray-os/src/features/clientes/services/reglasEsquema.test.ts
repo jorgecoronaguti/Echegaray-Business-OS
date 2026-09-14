@@ -87,8 +87,23 @@ test('el historial de cambios va del más nuevo al más viejo y dice si el clien
   assert.equal(cambios[1].motivo, 'promesa de Sosa')
 })
 
+test('AUDITORÍA 14/09: sin fila de Cobranzas, un pago con fecha pasada es «sin conciliar», nunca vencido', () => {
+  // Las dos filas reales que la pestaña Esquema de la ficha pintaba vencidas mientras la tabla de
+  // Cobranzas y la cartera decían 0: el Sheet las tiene COBRADAS y `esquema_pago` no sabe cuál es su fila.
+  const HOY_AUDITORIA = '2026-09-14'
+  const estrella = pago({ concepto: 'Faltante (2 de 2)', monto: 8_234_758.25, fecha: '2026-08-31', cobranza_fila: null })
+  const pilon = pago({ concepto: 'Cobro', monto: 3_488_735, fecha: '2026-08-28', cobranza_fila: null })
+  assert.equal(estadoVigente(estrella, HOY_AUDITORIA), 'sin_conciliar')
+  assert.equal(estadoVigente(pilon, HOY_AUDITORIA), 'sin_conciliar')
+  // CON fila de Cobranzas la fecha pasada tampoco alcanza: vence lo que el sync escribió vencido con
+  // la columna U (Pendiente y Q < hoy). Un Facturado con Q pasada queda a vencer.
+  assert.equal(estadoVigente(pago({ monto: 1, fecha: '2026-09-01', cobranza_fila: 46 }), HOY_AUDITORIA), 'a_vencer')
+  assert.equal(estadoVigente(pago({ monto: 1, fecha: '2026-09-01', estado: 'vencido', cobranza_fila: 90 }), HOY_AUDITORIA), 'vencido')
+})
+
 test('mover la fecha al futuro saca la fila de «vencido» sin esperar al sync', () => {
-  const p = pago({ monto: 1, fecha: '2026-08-04', estado: 'vencido' })
+  // Con su fila de Cobranzas: sin ella la fecha pasada es «sin conciliar» (test de arriba).
+  const p = pago({ monto: 1, fecha: '2026-08-04', estado: 'vencido', cobranza_fila: 50 })
   assert.equal(estadoVigente(p, HOY), 'vencido')
   assert.equal(estadoVigente({ ...p, fecha: '2026-09-22' }, HOY), 'a_vencer')
   // Lo cobrado y lo retenido NO se recalculan: un cobro no se «desvence» por mover una fecha.

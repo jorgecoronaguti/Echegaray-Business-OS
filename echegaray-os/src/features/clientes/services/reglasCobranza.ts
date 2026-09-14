@@ -60,14 +60,33 @@ export const BANDAS: { clave: ClaveBanda; rotulo: string }[] = [
  */
 export const sigueEnLaCalle = (d: CertificadoCliente): boolean => d.estado !== 'cobrado'
 
+/**
+ * ¿ESTE DOCUMENTO ESTÁ VENCIDO? La fecha pasada no alcanza (auditoría, 14/09/2026).
+ *
+ * Las reglas de esta pantalla daban vencido a todo lo no cobrado con `vence` pasado, sin mirar el
+ * estado: un Facturado con Q pasada caía en «1–30 días» y el plan pedía «Enviar recordatorio»,
+ * mientras la barra de arriba —que sale de `cliente_cuenta_corriente`, con la columna U— decía cero.
+ *
+ * `certificado_cliente.estado` lo escribe el sync con `estadoDeCertificado`, gemelo de la columna U:
+ * `vencido` sólo si la fila es Pendiente con Q pasada. Se exigen las dos cosas —el estado y la fecha
+ * todavía pasada— para que mover la fecha al futuro saque el documento de la mora sin esperar al
+ * sync. Un documento `observado` o `en_disputa` guarda lo que dijo el cliente, no el cobro: no hay
+ * evidencia de mora y no se afirma.
+ */
+export function estaVencido(d: Pick<CertificadoCliente, 'vence' | 'estado'>, hoy: string): boolean {
+  const dias = diasEntre(d.vence, hoy)
+  return dias != null && dias > 0 && d.estado === 'vencido'
+}
+
 /** En qué tramo cae un documento. `null` cuando no tiene vencimiento: NO se asume que vence hoy. */
-export function bandaDe(vence: string | null, hoy: string): ClaveBanda | null {
-  const d = diasEntre(vence, hoy)
-  if (d === null) return null
-  if (d <= 0) return 'por_vencer'
-  if (d <= 30) return 'd1_30'
-  if (d <= 60) return 'd31_60'
-  if (d <= 90) return 'd61_90'
+export function bandaDe(d: Pick<CertificadoCliente, 'vence' | 'estado'>, hoy: string): ClaveBanda | null {
+  const dias = diasEntre(d.vence, hoy)
+  if (dias === null) return null
+  // Lo que no está vencido es deuda por vencer, igual que `aging_por_vencer` de la vista.
+  if (!estaVencido(d, hoy)) return 'por_vencer'
+  if (dias <= 30) return 'd1_30'
+  if (dias <= 60) return 'd31_60'
+  if (dias <= 90) return 'd61_90'
   return 'd90'
 }
 
@@ -123,7 +142,7 @@ export function bandasAntiguedad(cuenta: CuentaCorriente | null): Banda[] {
 export function sinVencimiento(documentos: CertificadoCliente[], hoy: string): number {
   return documentos
     .filter(sigueEnLaCalle)
-    .filter((d) => bandaDe(d.vence, hoy) === null)
+    .filter((d) => bandaDe(d, hoy) === null)
     .reduce((s, d) => s + d.monto, 0)
 }
 
@@ -176,23 +195,35 @@ export interface SemanaPrevista {
  */
 export function previsionSemanal(
   documentos: CertificadoCliente[], hoy: string,
-): { semanas: SemanaPrevista[]; vencidoSinFecha: number } {
+): { semanas: SemanaPrevista[]; vencidoSinFecha: number; pasadoSinVencer: number } {
   const base = Date.parse(`${hoy.slice(0, 10)}T00:00:00Z`)
   const semanas: SemanaPrevista[] = Array.from({ length: 8 }, (_, k) => ({
     desde: new Date(base + (1 + 7 * k) * 86_400_000).toISOString().slice(0, 10),
     monto: 0,
     documentos: [],
   }))
+  // ═══ LO QUE NO ENTRA AL GRÁFICO SE DICE EN DOS NÚMEROS, NO EN UNO (auditoría, 14/09/2026) ═══
+  //
+  // Todo lo que tenía fecha de hoy o anterior se sumaba como «ya vencido», y un Facturado con Q
+  // pasada no está vencido para la columna U. Ahora `vencidoSinFecha` es sólo lo vencido de verdad
+  // (`estaVencido`) y `pasadoSinVencer` es el resto con fecha no futura: plata real que tampoco se
+  // puede ubicar en una semana. Sin fecha no entra en ninguno: `sinVencimiento` ya lo declara.
   let vencidoSinFecha = 0
+  let pasadoSinVencer = 0
   for (const d of documentos.filter(sigueEnLaCalle)) {
     const dias = diasEntre(hoy, d.vence)
-    if (dias === null || dias <= 0) { vencidoSinFecha += d.monto; continue }
+    if (dias === null) continue
+    if (dias <= 0) {
+      if (estaVencido(d, hoy)) vencidoSinFecha += d.monto
+      else pasadoSinVencer += d.monto
+      continue
+    }
     const k = Math.floor((dias - 1) / 7)
     if (k > 7) continue
     semanas[k].monto += d.monto
     semanas[k].documentos.push(d)
   }
-  return { semanas, vencidoSinFecha }
+  return { semanas, vencidoSinFecha, pasadoSinVencer }
 }
 
 export interface Comportamiento {
@@ -275,12 +306,15 @@ export function planDeCobranza(documentos: CertificadoCliente[], hoy: string): I
   const items: ItemPlan[] = []
   for (const d of documentos.filter(sigueEnLaCalle)) {
     const dias = diasEntre(d.vence, hoy)
-    const vencido = dias != null && dias > 0
+    // Vencido lo dice la columna U vía el estado del documento, no la fecha sola (`estaVencido`).
+    const vencido = estaVencido(d, hoy)
     if (d.estado === 'en_disputa' || d.estado === 'observado') {
+      // El estado guarda lo que dijo el cliente, no el cobro: «N días vencido» sería afirmar una mora
+      // sin evidencia. Se dice lo que sí se sabe.
       const cola = d.observacion ? ` · ${d.observacion}` : ''
       items.push({
         documento: d, tono: 'warn', accion: 'remedicion', rotulo: ROTULO.remedicion,
-        motivo: `${vencido ? `${dias} días vencido y ` : ''}observado por el cliente${cola}`,
+        motivo: `Observado por el cliente${cola}`,
       })
     } else if (vencido) {
       items.push({
@@ -290,7 +324,8 @@ export function planDeCobranza(documentos: CertificadoCliente[], hoy: string): I
         // «Sin cobro registrado» a secas, como un hecho del mundo y no como lo que dice una fuente.
         motivo: `${dias} días vencido. Sin cobro registrado en Cobranzas.`,
       })
-    } else if (dias != null && dias >= -30) {
+    } else if (dias != null && dias <= 0 && dias >= -30) {
+      // Sólo lo que todavía no venció: sin el `<= 0`, un Facturado con fecha pasada salía «Vence en −7 días».
       items.push({
         documento: d, tono: 'curso', accion: 'aviso', rotulo: ROTULO.aviso,
         motivo: `Vence en ${-dias} días. Sin aviso previo programado.`,

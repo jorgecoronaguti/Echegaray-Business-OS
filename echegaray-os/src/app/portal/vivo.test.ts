@@ -98,7 +98,11 @@ test('UN COBRO EN DÓLARES NO SE PUBLICA VALUADO: la fila 62 son U$S 15.400, no 
 test('el estado se DERIVA de la fecha con la regla del Sheet: una fecha futura no está vencida', () => {
   const aVencer = conNumerosVivos(guardada(), viva({ estado: 'Facturado', fecha_cobro: '2026-09-17' }), HOY)
   assert.equal(aVencer.estado, 'a_vencer')
-  const vencida = conNumerosVivos(guardada(), viva({ estado: 'Facturado', fecha_cobro: '2026-09-01' }), HOY)
+  // Facturado con fecha pasada NO está vencido: la columna U sólo vence lo Pendiente (14/09/2026).
+  const facturada = conNumerosVivos(guardada(), viva({ estado: 'Facturado', fecha_cobro: '2026-09-01' }), HOY)
+  assert.equal(facturada.estado, 'a_vencer')
+  assert.equal(facturada.estado_vivo, true)
+  const vencida = conNumerosVivos(guardada(), viva({ estado: 'Pendiente', fecha_cobro: '2026-09-01' }), HOY)
   assert.equal(vencida.estado, 'vencido')
   // «Proyectado» es previsión del dueño: no vence, porque no hay nada emitido que pueda vencer.
   const previsto = conNumerosVivos(guardada(), viva({ estado: 'Proyectado', fecha_cobro: '2026-01-01' }), HOY)
