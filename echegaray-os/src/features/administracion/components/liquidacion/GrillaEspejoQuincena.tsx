@@ -38,7 +38,7 @@ import { useState } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
 import { CeldaRedondeo } from './CeldasDeLiquidacion'
-import { CeldaCobraTotal, CeldaDeDia, CeldaEfectivo, CeldaPorBanco, Escribible, Leida } from './cuadro/CeldasDelEspejo'
+import { CeldaCobraTotal, CeldaDeDia, CeldaEfectivo, CeldaHorasPagas, CeldaPorBanco, Escribible, Leida } from './cuadro/CeldasDelEspejo'
 import { CeldaTarifa, rotuloCategoria, type MarcaDePiso } from './cuadro/CeldaTarifa'
 import { PanelDeLaPersona } from './cuadro/PanelDeLaPersona'
 import { horas as nHoras, pesos } from './formato'
@@ -181,7 +181,6 @@ function Fila({ fila, columnas, quincena, camposEditables, piso, pct, abrir }: {
   abrir: () => void
 }) {
   const l = fila.linea
-  const sinCargar = fila.horasPorTipo.automaticas
   return (
     <div data-testid={`espejo-fila-${fila.personaId}`} style={filaGrid(columnas, ALTO_LIQ.filaAlta)}>
       <div style={COLUMNA_FIJA}>
@@ -204,8 +203,7 @@ function Fila({ fila, columnas, quincena, camposEditables, piso, pct, abrir }: {
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.enEfectivo}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={96} />
       </div>
-      <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
-        titulo={sinCargar > 0 ? `${nHoras(sinCargar)} h que la app supone en días sin horas cargadas: no se pagan` : undefined} />
+      <CeldaHorasPagas fila={fila} />
       {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
     </div>
   )

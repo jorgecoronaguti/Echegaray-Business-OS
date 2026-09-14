@@ -14,7 +14,7 @@ import { InlineEdit } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { CeldaEditable, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
-import { estadoDelPago } from './estadoDelPago'
+import { estadoDelPago, referenciaDeJornales } from './estadoDelPago'
 import type { CampoEditable, LineaConOverrides } from '../../../services/liquidacionOverrides'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
@@ -161,12 +161,35 @@ export function CeldaCobraTotal({ fila }: { fila: FilaDelEspejo }) {
         title="Sin retribución cargada: no hay importe que afirmar.">sin tarifa</div>
     )
   }
+  const ref = referenciaDeJornales(l)
   return (
     <div data-testid={`cobratotal-${fila.personaId}`}
       title={l.valorHora != null && l.horas != null ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : undefined}
       style={{ textAlign: 'right', fontSize: '14px', fontWeight: 600, color: V.tinta, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-      {pesos(l.cobra)}<MarcaDeOrigen origen={l.origen.cobra} compacta />
+      {pesos(l.cobra)}<MarcaDeOrigen origen={marcaCon(l.origen.cobra, ref)} compacta titulo={ref?.titulo} />
     </div>
+  )
+}
+
+/**
+ * LA MARCA DE LA CELDA: lo manual se marca siempre; si no, el punto de JORNALES sólo cuando la planilla
+ * dice otra cosa que el cuadro. No manda: el `title` dice qué dice la planilla (dueño, 14/09/2026).
+ */
+const marcaCon = (origen: 'calculado' | 'jornales' | 'manual', ref: { titulo: string } | null) =>
+  origen === 'calculado' && ref ? 'jornales' : origen
+
+/** HS PAGAS: las horas del cuadro, con la referencia de JORNALES cuando difiere. */
+export function CeldaHorasPagas({ fila }: { fila: FilaDelEspejo }) {
+  const l = fila.linea
+  const ref = referenciaDeJornales(l)
+  const sinCargar = fila.horasPorTipo.automaticas
+  const titulo = [
+    ref?.titulo,
+    sinCargar > 0 ? `${nHoras(sinCargar)} h que la app supone en días sin horas cargadas: no se pagan` : null,
+  ].filter(Boolean).join(' · ')
+  return (
+    <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
+      origen={marcaCon(l.origen.horas, ref)} titulo={titulo || undefined} />
   )
 }
 
@@ -195,8 +218,11 @@ export function CeldaPorBanco({ fila }: { fila: FilaDelEspejo }) {
 export function CeldaEfectivo({ fila }: { fila: FilaDelEspejo }) {
   const l = fila.linea
   const e = estadoDelPago(l)
+  // EL EFECTIVO DE JORNALES QUEDA SÓLO EN EL `title`: en obreros el efectivo es la resta que cierra la
+  // fila con el cobra del cuadro, y el de la planilla sale de su propio cobra.
+  const ref = referenciaDeJornales(l)
   return (
-    <div data-testid={`efectivo-${fila.personaId}`} title={e.noCierra ? e.titulo : undefined}
+    <div data-testid={`efectivo-${fila.personaId}`} title={e.noCierra ? e.titulo : (ref?.tituloEfectivo ?? undefined)}
       style={{ textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', color: e.noCierra ? V.neg : V.tinta }}>
       {pesos(l.enEfectivo)}<MarcaDeOrigen origen={l.origen.enEfectivo} compacta />
     </div>

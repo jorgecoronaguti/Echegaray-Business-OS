@@ -103,7 +103,9 @@ test('LAS HORAS NO SE TRAEN DE JORNALES — SI SE TRAJERAN, EL COTEJO SE VALIDAR
   assert.equal(l.origen.total, 'calculado')
 })
 
-test('COBRA DE JORNALES RESUELVE «SIN TARIFA»: alguien decidió el importe', () => {
+test('EN OBREROS EL COBRA DE JORNALES YA NO RESUELVE «SIN TARIFA»: queda como referencia', () => {
+  // Dueño, 14/09/2026: el cobra de un obrero sale de las horas del cuadro × $/h. Sin $/h no hay
+  // importe que afirmar; la cifra de la planilla se ve en la marca, no se paga desde acá.
   const base = liquidarLinea({
     personaId: 'p2', nombre: 'Sin tarifa', horas: 80, tarifa: null,
     adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
@@ -111,10 +113,21 @@ test('COBRA DE JORNALES RESUELVE «SIN TARIFA»: alguien decidió el importe', (
   assert.equal(base.sinTarifa, true)
   assert.equal(base.cobra, null)
   const l = aplicarOverrides(base, {}, 'obreros', { cobra: 396000 })
-  assert.equal(l.cobra, 396000)
+  assert.equal(l.cobra, null)
+  assert.equal(l.sinTarifa, true)
+  assert.equal(l.origen.cobra, 'calculado')
+  assert.equal(l.referenciaJornales?.cobra, 396000)
+})
+
+test('EN OFICINA EL COBRA DE JORNALES SIGUE RESOLVIENDO «SIN TARIFA»', () => {
+  const base = liquidarLinea({
+    personaId: 'p3', nombre: 'Oficina', horas: 80, tarifa: null,
+    adelanto: 0, yaTransferido: 0, reciboNeto: null, giroEnElLote: false,
+  }, 'oficina')
+  const l = aplicarOverrides(base, {}, 'oficina', { cobra: 1800000 })
+  assert.equal(l.cobra, 1800000)
   assert.equal(l.sinTarifa, false)
   assert.equal(l.origen.cobra, 'jornales')
-  assert.equal(l.enEfectivo, 396000)
 })
 
 test('UNA QUINCENA CERRADA NO RECIBE NADA: ni manual ni JORNALES', () => {

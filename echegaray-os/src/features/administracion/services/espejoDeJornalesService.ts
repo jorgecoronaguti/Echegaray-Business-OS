@@ -166,6 +166,9 @@ export async function getEspejoDeLaPlanilla(
     diasPorPersona.set(f.persona_id, dias)
     const previa = cadenaPorPersona.get(f.persona_id) ?? {}
     cadenaPorPersona.set(f.persona_id, {
+      // LAS HORAS VIAJAN CON LA CADENA como REFERENCIA: en obreros ya no mandan (ver `aplicarOverrides`),
+      // pero la marca «JORNALES: 75 h · $371.250» las necesita al lado del cobra de la planilla.
+      horas: sumar(previa.horas, h),
       cobra: sumar(previa.cobra, num(f.cobra)),
       adelanto: sumar(previa.adelanto, num(f.adelanto)),
       yaTransferido: sumar(previa.yaTransferido, num(f.ya_transferido)),

@@ -105,7 +105,7 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
   // `origen` y `discrepancia` se excluyen igual que `manual`: son las TRES marcas de procedencia, y
   // lo que este test afirma es que los IMPORTES no cambian. Una quincena cerrada se dibuja con esta
   // función y sus cifras son la foto del cierre.
-  const sinMarcas = { manual: undefined, origen: undefined, discrepancia: undefined }
+  const sinMarcas = { manual: undefined, origen: undefined, discrepancia: undefined, referenciaJornales: undefined }
   assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
   assert.equal(Object.values(r.manual).some(Boolean), false)
   assert.equal(Object.values(r.origen).every((o) => o === 'calculado'), true)

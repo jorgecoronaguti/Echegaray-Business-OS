@@ -4,8 +4,27 @@
 // sólo se prueba leyendo JSX no puede demostrar que alguna vez da rojo. La cuenta la hace
 // `cierreDeLaFila` (cobra − adelanto − ya transferido = banco + efectivo); esto sólo arma lo que se ve.
 
-import { pesos } from '../formato.ts'
+import { horas, pesos } from '../formato.ts'
 import { cierreDeLaFila, type CadenaParaCerrar } from '../../../services/cuadroDeJornales.ts'
+import type { ReferenciaDeJornales } from '../../../services/liquidacionOverrides.ts'
+
+/**
+ * LA MARCA DE JORNALES CUANDO LA PLANILLA NO DICE LO MISMO QUE EL CUADRO. `null` = no hay marca.
+ *
+ * Dueño, 14/09/2026: las horas y el cobra salen de las celdas del cuadro; la planilla queda como
+ * referencia. Si coincide no se marca nada: una marca permanente deja de leerse.
+ */
+export function referenciaDeJornales(l: { referenciaJornales?: ReferenciaDeJornales | null }): {
+  titulo: string; tituloEfectivo: string | null
+} | null {
+  const r = l.referenciaJornales
+  if (!r || !r.difiere) return null
+  const partes = [r.horas == null ? null : `${horas(r.horas)} h`, r.cobra == null ? null : pesos(r.cobra)]
+  return {
+    titulo: `JORNALES: ${partes.filter(Boolean).join(' · ')}`,
+    tituloEfectivo: r.enEfectivo == null ? null : `JORNALES: efectivo ${pesos(r.enEfectivo)}`,
+  }
+}
 
 export interface EstadoDelPago {
   /** `true` sólo con una cuenta que se pudo hacer y no dio. Sin cobra no hay cierre que afirmar. */
