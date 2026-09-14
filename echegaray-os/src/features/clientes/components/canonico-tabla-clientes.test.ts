@@ -103,6 +103,34 @@ test('la cartera NO lee el desglose presupuestado: materiales y mano de obra sal
   assert.match(pagina, /gastosSinObra=\{gastosSinObra\}/)
 })
 
+// ═══ EN EL TELÉFONO EL COSTO SE VE (QA de tercero, 13/09/2026) ═══
+//
+// A 390px la cartera quedaba en Cliente y Contratado: las columnas de costo se escondían en el mismo
+// corte y nada las reemplazaba. Esto da rojo si la línea angosta se va, si nace en otro corte que
+// el que esconde las columnas, o si alguna de las dos filas deja de dibujarla.
+test('debajo de 1250px el costo a la fecha pasa a una línea: nunca se esconde sin alternativa', () => {
+  const cartera = leer('./CeldasDeCartera.tsx')
+  const costo = leer('./CeldasDeCosto.tsx')
+  const src = tabla()
+  const corte = (re: RegExp) => Number(cartera.match(re)?.[1])
+  const escondeHasta = corte(/SOLO_ANCHO = 'max-\[(\d+)px\]:hidden'/)
+  const apareceDesde = corte(/SOLO_ANGOSTO = 'min-\[(\d+)px\]:hidden'/)
+  assert.ok(Number.isFinite(escondeHasta) && Number.isFinite(apareceDesde), 'faltan los dos cortes')
+  assert.equal(apareceDesde, escondeHasta + 1, 'la línea angosta tiene que nacer justo donde se van las columnas')
+  // La línea es a lo ancho y sólo existe en angosto; dice «no pude leer» donde la celda calla.
+  const linea = costo.slice(costo.indexOf('function LineaAngosta'), costo.indexOf('export function CostoDeLaObra'))
+  assert.match(linea, /col-span-full[^`]*\$\{SOLO_ANGOSTO\}/)
+  assert.doesNotMatch(linea, /SOLO_ANCHO/, 'la alternativa no puede esconderse en el mismo corte')
+  assert.match(linea, /texto === '' \? 'no pude leer' : texto/)
+  // Las dos filas la dibujan, con los MISMOS valores que las celdas.
+  const filaCliente = src.slice(src.indexOf('data-testid="fila-cliente"'), src.indexOf('data-testid="fila-obra"'))
+  const filaObra = src.slice(src.indexOf('data-testid="fila-obra"'), src.indexOf('data-testid="obras-sin-leer"'))
+  assert.match(filaCliente, /<CostoDelClienteAngosto costos=\{costos\} sinObra=\{gastosSinObra\} clienteId=\{c\.cliente_id\}/)
+  assert.match(filaObra, /<CostoDeLaObraAngosto costos=\{costos\} obraId=\{o\.obra_id\}/)
+  assert.match(costo, /<Celdas f=\{costoDeObra\(costos, obraId\)\}[\s\S]*<LineaAngosta f=\{costoDeObra\(costos, obraId\)\}/)
+  assert.match(costo, /<Celdas f=\{costoDelCliente\(costos, sinObra, clienteId, obraIds\)\}[\s\S]*<LineaAngosta f=\{costoDelCliente\(costos, sinObra, clienteId, obraIds\)\}/)
+})
+
 test('el total del cliente: «no pude leer» calla, «no hay» dice «—», y lo sin obra entra', () => {
   const costos = armarCostosPorObra([
     { obra_id: 'a', materiales: 1000, mano_obra: 500, horas_valorizadas: 10, horas_sin_tarifa: 0 },

@@ -7,6 +7,11 @@
 
 /** El detalle contractual: materiales y mano de obra. `25v2:154`. */
 export const SOLO_ANCHO = 'max-[1249px]:hidden'
+/**
+ * El reemplazo de lo que `SOLO_ANCHO` suelta: nace exactamente en el mismo corte. Un corte distinto
+ * dejaría un ancho sin ninguna de las dos (el agujero del 13/09) o con las dos a la vez.
+ */
+export const SOLO_ANGOSTO = 'min-[1250px]:hidden'
 /** Debajo de 768px quedan quién es y por cuánto: el avance se suelta. */
 export const SOLO_TABLET = 'max-[767px]:hidden'
 /** El tono de los divisores y la pista de las barras. */

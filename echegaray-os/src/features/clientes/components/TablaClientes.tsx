@@ -28,8 +28,10 @@
 //
 // ═══ EL NOMBRE NUNCA SE ESTRANGULA ═══
 //
-// Por debajo de 1250px se sueltan materiales y mano de obra; por debajo de 768px queda quién es y
-// por cuánto. Lo decide una media query y no `window.innerWidth`: esta tabla se dibuja en el servidor.
+// Por debajo de 1250px se sueltan las COLUMNAS de materiales y mano de obra, pero no el dato: pasa a
+// una línea a lo ancho de la fila (`CostoDeLaObraAngosto` / `CostoDelClienteAngosto`), porque el
+// dueño mira el costo a la fecha desde el celular. Por debajo de 768px se suelta el avance. Lo decide
+// una media query y no `window.innerWidth`: esta tabla se dibuja en el servidor.
 
 import Link from 'next/link'
 import { millones, pesos } from '@/shared/components/canon/formato'
@@ -40,7 +42,7 @@ import { frasesDeObras } from '@/features/clientes/services/cartera'
 import type { PapelesDelCliente } from '@/features/clientes/services/papelesCliente'
 import { SOLO_ANCHO, SOLO_TABLET, TONO } from './CeldasDeCartera'
 import { AvanceDeCobro, ContratadoDelTrabajo, baseDelContrato, sumaDeObras } from './CeldasDeContrato'
-import { CostoDeLaObra, CostoDelCliente } from './CeldasDeCosto'
+import { CostoDeLaObra, CostoDeLaObraAngosto, CostoDelCliente, CostoDelClienteAngosto } from './CeldasDeCosto'
 import { RotuloACorte } from './CostoALaFecha'
 import type { CostoDeObra, GastoSinObra } from '../services/costosDeObra'
 import { OrdenesDeLaObra } from './OrdenesDeLaObra'
@@ -189,6 +191,8 @@ export function TablaClientes({
               ) : (
                 <><span /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_TABLET} /></>
               )}
+              <CostoDelClienteAngosto costos={costos} sinObra={gastosSinObra} clienteId={c.cliente_id}
+                obraIds={c.enCurso.map((o) => o.obra_id)} veEconomia={veEconomia} />
             </Link>
             {/* EL ADICIONAL VA DEBAJO DE SU OBRA MAYOR (dueño, 11/09/2026). La relación la decide
                 `obra_canonica.obra_padre_id`; el orden y los dos niveles, `jerarquiaDeObras`, que es
@@ -234,6 +238,9 @@ export function TablaClientes({
                   <ContratadoDelTrabajo o={o} veEconomia={veEconomia} consolidado={consolidado} />
                   <CostoDeLaObra costos={costos} obraId={o.obra_id} veEconomia={veEconomia} />
                   <AvanceDeCobro o={o} veEconomia={veEconomia} />
+                  {/* La sangría alinea la línea con el NOMBRE de la obra: sangría + ícono + hueco. */}
+                  <CostoDeLaObraAngosto costos={costos} obraId={o.obra_id} veEconomia={veEconomia}
+                    sangria={(fila.nivel ? 38 : 14) + 22} />
                 </Link>
               )
             })}
