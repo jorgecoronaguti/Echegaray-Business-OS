@@ -1,4 +1,15 @@
-// CUÁNDO UNA COBRANZA ESTÁ VENCIDA — UNA SOLA DEFINICIÓN, Y EL RELOJ CORRECTO.
+// CUÁNDO UNA COBRANZA ESTÁ VENCIDA EN LA PESTAÑA OBRAS DEL SHEET — emisión + 30 días.
+//
+// ═══ YA NO ES LA DEFINICIÓN DEL OS (14/09/2026) ═══
+//
+// El dueño decidió que «vencida» es la columna U de la pestaña Cobranzas: estado Pendiente y
+// `Fecha cobro` < hoy en San Juan. Esa regla vive en Postgres (`public.estado_de_cobro`, migración
+// 20260914T1200) y su gemelo en `cobranza-estado-de-cobro.mjs`; la leen la ficha, la cartera, la
+// cuenta corriente y el portal. Lo que sigue abajo documenta la decisión ANTERIOR, del 14/08, y hoy
+// sólo lo consume el generador de la pestaña OBRAS (`obras-grilla.mjs`). Mientras esa pestaña no
+// cambie, el Sheet OBRAS y la cartera web publican dos «vencido» distintos: es una decisión
+// pendiente del dueño, no un olvido. El argumento del 14/08 —la Q se re-tipea cada vez que un cobro
+// se posterga, así que `Q < hoy` tiende a cero— sigue siendo cierto y es el riesgo de la regla nueva.
 //
 // ═══ EL DEFECTO QUE ESTE ARCHIVO VIENE A ARREGLAR (14/08/2026) ═══
 //
