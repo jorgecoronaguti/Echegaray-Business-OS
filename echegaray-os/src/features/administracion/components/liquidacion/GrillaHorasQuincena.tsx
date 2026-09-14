@@ -59,7 +59,14 @@ import type { EdicionDeCelda } from '../../services/edicionDeGrillaHoras'
 
 // LA COLUMNA DEL IMPORTE ESTIMADO ENTRA ENTRE «Esper.» Y «Estado», y por eso el ancho mínimo de la
 // grilla sube de 760 a 856: un «$ 1.234.567» de 96 px no se puede achicar sin partir el número.
-const COLUMNAS = 'minmax(230px,1fr) repeat(13,30px) 50px 56px 96px 58px'
+//
+// LOS DÍAS SE ESTIRAN, EL NOMBRE NO SE COME EL SOBRANTE. Con días fijos de 30 px el único `fr` era
+// el nombre: sin techo de ancho la columna «Persona» se llevaba 600 px y los números quedaban
+// apiñados a la derecha. `minmax(30px,1fr)` reparte el ancho entre los trece días y conserva los
+// 856 px mínimos que obligan a recorrer la grilla en el teléfono.
+// 270 px y no 230: con los días estirados el nombre queda en su mínimo, y a 230 «MALDONADO BATISTA
+// EMILIANO MIGUEL» —el más largo del plantel— salía cortado a 1440 px.
+const COLUMNAS = 'minmax(270px,3fr) repeat(13,minmax(30px,1fr)) 50px 56px 96px 58px'
 
 const DIAS_CORTOS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'] as const
 
@@ -418,11 +425,12 @@ export function GrillaHorasQuincena({
     // UNA SOLA COLUMNA: la tabla ES la pantalla. Sin los 230 px del panel, las trece columnas de día
     // más el nombre entran enteras a 1240 px y a 390 se recorre sólo la tabla, no la pantalla.
     //
-    // EL ANCHO ÚTIL TIENE TECHO Y ES UNO SOLO para la cabecera, los pendientes, la tabla y el pie:
-    // 1.120 px es lo que medía el cuadro cuando el panel de 230 px estaba puesto. Sin el techo, el
-    // botón de cierre y la masa salarial se iban al filo del monitor mientras la tabla terminaba
-    // 300 px antes, y nada quedaba alineado con nada.
-    <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 1120 }}>
+    // SIN TECHO DE ANCHO. Hasta el 13/09/2026 este contenedor llevaba `maxWidth: 1120` —lo que medía
+    // el cuadro con el panel de 230 px puesto—: a 1440 px dejaba 280 px vacíos a la derecha y el
+    // dueño lo leyó como diseño roto. La alineación de cabecera, pendientes, tabla y pie no dependía
+    // del techo sino de que los cuatro vivan en este mismo contenedor; lo que hacía que la tabla
+    // terminara antes que el pie eran los días fijos de 30 px, y eso lo resuelve `COLUMNAS`.
+    <div data-testid="grilla-horas-quincena" style={{ display: 'flex', flexDirection: 'column' }}>
       <Cabecera
         titulo={titulo}
         estado={estado}
