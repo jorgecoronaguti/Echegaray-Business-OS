@@ -22,7 +22,7 @@ const ALTO_MAXIMO = 62
 const ALTO_MINIMO = 10
 
 export function Prevision({ documentos, hoy }: { documentos: CertificadoCliente[]; hoy: string }) {
-  const { semanas, vencidoSinFecha } = previsionSemanal(documentos, hoy)
+  const { semanas, vencidoSinFecha, pasadoSinVencer } = previsionSemanal(documentos, hoy)
   const mayor = Math.max(...semanas.map((s) => s.monto), 0)
   return (
     <div data-testid="prevision">
@@ -86,6 +86,16 @@ export function Prevision({ documentos, hoy }: { documentos: CertificadoCliente[
         >
           <Ico d={P.alerta} s={14} w={2} />
           {montoM(vencidoSinFecha)} ya vencido, sin fecha nueva pactada: no se dibuja en ninguna semana.
+        </div>
+      )}
+      {pasadoSinVencer > 0 && (
+        // Fecha pasada pero NO vencido para Cobranzas (Facturado, observado…). Tampoco entra al
+        // gráfico, y callarlo haría desaparecer plata real; en gris, porque no es mora.
+        <div
+          data-testid="prevision-pasado-sin-vencer"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '8px', fontSize: '11.5px', color: C.tenue }}
+        >
+          {montoM(pasadoSinVencer)} con fecha ya pasada que Cobranzas no da por vencido: no se dibuja en ninguna semana.
         </div>
       )}
     </div>

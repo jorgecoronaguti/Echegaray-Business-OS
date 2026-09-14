@@ -28,9 +28,9 @@ import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Iconos'
 import { BotonIcono } from '../canon/Piezas'
 import { diaMesAnio, montoM } from '../../services/cobranzaFormato'
-import { estadoVigente, grillaDelMes, marcaDelPago, pagosDelDia } from '../../services/reglasEsquema'
+import { estadoVigente, grillaDelMes, marcaDelPago, pagosDelDia, type EstadoVigente } from '../../services/reglasEsquema'
 import type { CambioPago } from '../../services/entradasCobranza'
-import type { EstadoPago, PagoEsquema } from '../../types/cobranzas'
+import type { PagoEsquema } from '../../types/cobranzas'
 
 const DIAS = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM']
 const MESES = [
@@ -39,12 +39,14 @@ const MESES = [
 ]
 
 /** El filo de 3px de cada estado. `previsto` es el único punteado: todavía no hay certificado. */
-const PINTA: Record<EstadoPago, { filo: string; punteado?: boolean }> = {
+const PINTA: Record<EstadoVigente, { filo: string; punteado?: boolean }> = {
   a_vencer: { filo: C.curso },
   vencido: { filo: C.neg },
   cobrado: { filo: C.pos },
   retenido: { filo: C.tenue },
   previsto: { filo: C.tenue, punteado: true },
+  // Ámbar y no rojo: falta atar el pago a su fila de Cobranzas; no hay evidencia de mora.
+  sin_conciliar: { filo: C.warn, punteado: true },
 }
 
 /** El tono de la marca de la tarjeta. El ámbar es «el cliente no está viendo esto y debería». */

@@ -133,12 +133,29 @@ export function cambiosDelEsquema(pagos: PagoEsquema[]): CambioDelEsquema[] {
  * sigue leyendo el estado guardado, la fila se queda en rojo sobre un pago que ya no está vencido
  * hasta que corra el sync. Se deriva de la fecha, que es la palanca que el admin acaba de mover.
  */
-export function estadoVigente(pago: PagoEsquema, hoy: string): PagoEsquema['estado'] {
+export type EstadoVigente = PagoEsquema['estado'] | 'sin_conciliar'
+
+/**
+ * ═══ LA FECHA PASADA YA NO ALCANZA PARA DECIR «VENCIDO» (auditoría, 14/09/2026) ═══
+ *
+ * Derivar de la fecha pintaba vencido todo lo no cobrado con fecha pasada, sin mirar la columna U:
+ * esta pestaña marcaba vencidas dos filas —La Estrella $8.234.758,25 y Messina $3.488.735— que la
+ * pestaña Cobranzas tiene COBRADAS, mientras la tabla de Cobranzas y la cartera de la misma ficha
+ * decían 0. Ahora, con la fecha pasada:
+ *   · sin `cobranza_fila` → `sin_conciliar`: no hay fila del Sheet que diga si se cobró.
+ *   · con fila → vence sólo lo que el sync escribió `vencido`, que lo decide el gemelo de la
+ *     columna U (Pendiente y Q < hoy). Un Facturado queda `a_vencer`.
+ * Mover la fecha al futuro sigue sacando la fila de vencido sin esperar al sync. Lo que sí espera al
+ * sync es una fila Pendiente cuya Q pasó después de la última corrida: queda `a_vencer` hasta entonces.
+ */
+export function estadoVigente(pago: PagoEsquema, hoy: string): EstadoVigente {
   if (pago.estado === 'cobrado' || pago.estado === 'retenido' || pago.estado === 'previsto') {
     return pago.estado
   }
   const dias = diasEntre(pago.fecha, hoy)
-  return dias != null && dias > 0 ? 'vencido' : 'a_vencer'
+  if (dias == null || dias <= 0) return 'a_vencer'
+  if (pago.cobranza_fila == null) return 'sin_conciliar'
+  return pago.estado === 'vencido' ? 'vencido' : 'a_vencer'
 }
 
 /**

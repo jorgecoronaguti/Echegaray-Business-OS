@@ -38,7 +38,7 @@ import { CeldaEstado } from '../cuenta/estados'
 import { FechaEnLaFila } from './FechaEnLaFila'
 import { montoConMoneda, montoM } from '../../services/cobranzaFormato'
 import {
-  cuadreDelContrato, detalleDePago, estadoVigente, marcaDelPago, totalEsquema,
+  cuadreDelContrato, detalleDePago, estadoVigente, marcaDelPago, totalEsquema, type EstadoVigente,
 } from '../../services/reglasEsquema'
 import type { CambioPago } from '../../services/entradasCobranza'
 import type { PagoEsquema } from '../../types/cobranzas'
@@ -59,7 +59,7 @@ const TONO_MARCA = { warn: C.warn, apagado: C.tenue, neg: C.neg } as const
  * LA SEÑAL DE LA PRIMERA COLUMNA (30px): tilde verde si ya se cobró, lápiz ámbar si hay un cambio
  * que el cliente todavía no vio, y nada más. Es la columna que el mockup dibuja como `icono`.
  */
-function Senal({ pago, estado }: { pago: PagoEsquema; estado: PagoEsquema['estado'] }) {
+function Senal({ pago, estado }: { pago: PagoEsquema; estado: EstadoVigente }) {
   if (estado === 'cobrado') {
     return (
       <span style={{ display: 'flex', justifyContent: 'center', color: C.pos }} title="Cobrado">

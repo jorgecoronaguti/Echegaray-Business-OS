@@ -47,7 +47,7 @@ export function CuentaCorriente({ cuenta, documentos, hoy, registrarCobro }: {
   const [cobrando, setCobrando] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
 
-  const visibles = banda ? documentos.filter((d) => bandaDe(d.vence, hoy) === banda) : documentos
+  const visibles = banda ? documentos.filter((d) => bandaDe(d, hoy) === banda) : documentos
   const documento = documentos.find((d) => d.id === elegido) ?? null
 
   // LO QUE PIDE LA CABECERA. «Registrar cobro» vive arriba, al lado del nombre del cliente, y tiene
