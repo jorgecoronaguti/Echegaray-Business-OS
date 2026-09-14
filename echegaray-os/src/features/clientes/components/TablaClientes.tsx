@@ -54,7 +54,7 @@ import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
  * runtime, y en px porque una variante con otra unidad apaga TODOS los cortes del repositorio.
  */
 const COLS
-  = 'grid-cols-[minmax(0,2fr)_150px_130px_140px_210px]'
+  = 'grid-cols-[minmax(0,2fr)_150px_130px_130px_140px_210px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,2fr)_150px_210px]'
   + ' max-[767px]:grid-cols-[minmax(0,2fr)_150px]'
 
@@ -63,8 +63,10 @@ const AYUDA_CONTRATADO = 'El total del contrato, NETO: mano de obra + materiales
   + 'cambio de hoy.'
 const AYUDA_MATERIALES = 'Lo comprado a la fecha para cada trabajo (Compras, columna K); en el cliente, '
   + 'la suma más lo que no tiene obra asignada. No es lo presupuestado. «—» = ninguna compra.'
-const AYUDA_MANO_OBRA = 'Las horas propias valorizadas a la fecha (valor hora × horas × cargas). No es '
-  + 'lo presupuestado. «sin valorizar» = hay horas y falta la tarifa o las alícuotas.'
+const AYUDA_SUBCONTRATOS = 'Lo facturado por subcontratistas a la fecha (proveedor con rubro «Subcontratista» o '
+  + 'familia «Subcontratos y mano de obra»). No está en Materiales ni en Mano de obra. «—» = ninguno.'
+const AYUDA_MANO_OBRA = 'La mano de obra propia a la fecha: costo total empleador del recibo + parte en negro, '
+  + 'repartidos por horas («est.» = sin recibo todavía). No es lo presupuestado. «sin valorizar» = falta la tarifa de alguien.'
 const AYUDA_AVANCE = 'Cobrado NETO (lo que entró, sin IVA, criterio percibido) sobre el contrato NETO. '
   + 'Debajo, cuánto entró y cuánto falta. Nunca mezcla con lo facturado.'
 
@@ -146,6 +148,9 @@ export function TablaClientes({
         {/* «a la fecha» DEBAJO DEL NOMBRE, como en la ficha: el rótulo dice qué es el número. */}
         <span className={`grid ${SOLO_ANCHO}`}>
           {veEconomia ? <RotuloACorte texto="Materiales" titulo={AYUDA_MATERIALES} /> : null}
+        </span>
+        <span className={`grid ${SOLO_ANCHO}`}>
+          {veEconomia ? <RotuloACorte texto="Subcontratos" titulo={AYUDA_SUBCONTRATOS} /> : null}
         </span>
         <span className={`grid ${SOLO_ANCHO}`}>
           {veEconomia ? <RotuloACorte texto="Mano de obra" titulo={AYUDA_MANO_OBRA} /> : null}

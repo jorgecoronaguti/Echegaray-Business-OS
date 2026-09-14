@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarCostosPorObra, textoManoObra, textoMateriales, textoTotalManoObra, tituloManoObra, tituloMateriales,
-  totalesDelCliente,
+  armarCostosPorObra, armarGastosSinObra, textoManoObra, textoMateriales, textoSubcontratos, textoTotalManoObra,
+  textoTotalSubcontratos, tituloManoObra, tituloMateriales, tituloSubcontratos, totalesDelCliente,
 } from './costosDeObra.ts'
 
 // ═══ QUÉ DEFECTOS ATRAPA ═══
@@ -167,6 +167,40 @@ test('el pie suma las mismas filas que la tabla, y un total parcial o estimado l
 test('«no pude leerlos» y «no hay ninguno» son DOS hechos, y el pie los distingue', () => {
   assert.equal(totalesDelCliente(null, ['quattropani']).legible, false)
   assert.equal(totalesDelCliente(armarCostosPorObra([QUATTROPANI])!, ['quattropani']).legible, true)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// SUBCONTRATOS (dueño, 14/09/2026): su columna, y la reclasificación no cambia el costo directo
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('SUBCONTRATOS: su columna, con proveedor y comprobante en el title', () => {
+  const c = armarCostosPorObra([{
+    ...QUATTROPANI, materiales: 37380345.01, subcontratos: 5247461.82, n_subcontratos: 6,
+    subcontratos_detalle: [
+      { proveedor: 'Pedro Fredes', comprobante: null, fecha: '2026-08-24', total: '1040000', motivo: 'proveedor' },
+      { proveedor: 'Corralon Progreso', comprobante: 'A 0003-00012345', fecha: '2026-08-31', total: 47461.82, motivo: 'familia' },
+    ],
+  }])!.get('quattropani')
+  assert.equal(textoSubcontratos(c), '$5.247.462')
+  const t = tituloSubcontratos(c)!
+  assert.match(t, /Pedro Fredes · 24\/08 · \$1\.040\.000/)
+  assert.match(t, /Corralon Progreso · A 0003-00012345 · 31\/08 · \$47\.462 \(por familia\)/)
+  assert.match(t, /No están en Materiales ni en Mano de obra/)
+  assert.equal(textoSubcontratos(armarCostosPorObra([{ ...QUATTROPANI, subcontratos: null }])!.get('quattropani')), '—')
+  assert.equal(tituloSubcontratos(armarCostosPorObra([{ ...QUATTROPANI, subcontratos: null, subcontratos_detalle: [] }])!.get('quattropani')), null)
+})
+
+test('el total del cliente suma subcontratos APARTE: materiales no los incluye y el costo directo no cambia', () => {
+  const m = armarCostosPorObra([
+    { ...QUATTROPANI, obra_id: 'a', materiales: 100, subcontratos: 40 },
+    { ...QUATTROPANI, obra_id: 'b', materiales: 50, subcontratos: null },
+  ])!
+  const sinObra = armarGastosSinObra([{ cliente_id: 'c', materiales: 30, subcontratos: 7, n_comprobantes: 2 }])!.get('c')!
+  const t = totalesDelCliente(m, ['a', 'b'], sinObra)
+  assert.equal(t.materiales, 180, 'los subcontratos sin obra no pueden sumarse en Materiales')
+  assert.equal(t.subcontratos, 47)
+  assert.equal(textoTotalSubcontratos(t), '$47')
+  assert.equal((t.materiales ?? 0) + (t.subcontratos ?? 0), 100 + 40 + 50 + 30 + 7, 'reclasificar cambió el costo directo')
 })
 
 test('sin nada valorizado el pie dice null, no 0 — y sin costos tampoco', () => {

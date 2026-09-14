@@ -16,14 +16,17 @@
 
 import { V } from '@/shared/components/v2/patron'
 import { hh as formatoHH, plata } from '@/shared/utils/format'
-import { ROTULO_MANO_OBRA, ROTULO_MATERIALES, type TotalesDelCliente } from '../services/costosDeObra'
+import { ROTULO_MANO_OBRA, ROTULO_MATERIALES, ROTULO_SUBCONTRATOS, type TotalesDelCliente } from '../services/costosDeObra'
 
 const AYUDA_HH = 'Suma de las horas hombre de todos los trabajos de este cliente. Cada trabajo '
   + 'publica las suyas: un adicional no suma a su obra mayor, así que ninguna hora se cuenta dos veces.'
 
 const AYUDA_MATERIALES = 'Suma a la fecha de lo comprado para este cliente (pestaña Compras): lo '
   + 'asignado a cada trabajo MÁS los gastos sin obra asignada. Sin nómina, cargas, ARCA, financiero, '
-  + 'filas anuladas ni compras con fecha futura.'
+  + 'filas anuladas, subcontratos ni compras con fecha futura.'
+
+const AYUDA_SUBCONTRATOS = 'Suma a la fecha de los subcontratos del cliente: proveedor con rubro «Subcontratista» '
+  + 'declarado o familia «Subcontratos y mano de obra», de cada trabajo MÁS los sin obra asignada.'
 
 /** Lo gastado y lo trabajado, sumado de las MISMAS filas que la tabla de arriba. */
 export function PieDeLosTrabajos({ hh, obras, costos }: {
@@ -63,6 +66,11 @@ export function PieDeLosTrabajos({ hh, obras, costos }: {
         )}
       </span>
 
+      <span data-testid="subcontratos-del-cliente" title={AYUDA_SUBCONTRATOS} style={LINEA}>
+        <Rotulo texto={ROTULO_SUBCONTRATOS} />
+        <Cifra texto={costos.legible ? plata(costos.subcontratos) : 'no puedo leerlos'} />
+      </span>
+
       {/* LA MANO DE OBRA DICE SI EL TOTAL ESTÁ COMPLETO. Un total al que le faltan 12.500 horas
           publicado liso se lee como el costo de la mano de obra del cliente; es el mismo defecto que
           la solapa «Costo a la obra» evita diciendo «N obras sin costo publicable». */}
@@ -87,11 +95,11 @@ function tituloManoObra(c: TotalesDelCliente): string {
     return 'No puedo leer el costo de la mano de obra de este cliente: lo ve Administración, y sólo '
       + 'en la cara Trabajos.'
   }
-  const base = 'Suma de las horas propias valorizadas con la regla de la solapa «Costo a la obra» de '
-    + 'Liquidación (valor hora vigente × horas × cargas).'
+  const base = 'Suma de la mano de obra propia con la definición de la solapa «Costo a la obra» de '
+    + 'Liquidación: costo total empleador del recibo + parte en negro, repartidos por horas.'
   if (!c.manoObraParcial) return base
   const h = Math.round(c.horasSinValorizar).toLocaleString('es-AR')
-  return `${base} QUEDAN ${h} h AFUERA: falta el dato para valorizarlas —las alícuotas de costo, o la `
+  return `${base} QUEDAN ${h} h AFUERA: falta el dato para valorizarlas —la `
     + 'tarifa de alguien—, y el detalle de cada trabajo dice cuál.'
 }
 

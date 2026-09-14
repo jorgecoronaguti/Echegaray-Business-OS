@@ -37,14 +37,26 @@ export interface FaltaDatoDeObra {
   origen: string
 }
 
+/** Un comprobante de subcontrato, como lo publica `subcontratos_detalle` (20260915T0600). */
+export interface SubcontratoDeObra {
+  proveedor: string | null
+  comprobante: string | null
+  fecha: string | null
+  total: number
+  /** 'proveedor' = rubro «Subcontratista» declarado; 'familia' = familia «Subcontratos y mano de obra». */
+  motivo: 'proveedor' | 'familia'
+}
+
 /** Lo que la clave `costo_obra` publica por trabajo. */
 export interface CostoDeObra {
   obraId: string
   /** Σ de las compras asignadas al trabajo a la fecha, sin nómina, sin anuladas y sin subcontratos. */
   materiales: number | null
-  /** Mano de obra FACTURADA por terceros (rubro «Subcontratos y mano de obra»). No es material y no
-   *  es la mano de obra propia: viaja aparte para que no desaparezca al excluirla. */
+  /** Lo facturado por subcontratistas (20260915T0600): proveedor con rubro «Subcontratista» declarado o
+   *  familia «Subcontratos y mano de obra». No es material ni mano de obra propia: tiene su columna. */
   subcontratos: number | null
+  nSubcontratos: number
+  subcontratosDetalle: SubcontratoDeObra[]
   nComprobantes: number
   /** ISO `YYYY-MM-DD` del último comprobante imputado. */
   ultimoComprobante: string | null
@@ -74,6 +86,7 @@ export interface CostoDeObra {
 /** LOS RÓTULOS DICEN QUÉ ES EL NÚMERO (dueño, 13/09/2026): lo gastado hasta hoy, no lo presupuestado. */
 export const ROTULO_MATERIALES = 'Materiales a la fecha'
 export const ROTULO_MANO_OBRA = 'Mano de obra a la fecha'
+export const ROTULO_SUBCONTRATOS = 'Subcontratos a la fecha'
 export const ROTULO_SIN_OBRA = 'Gastos del cliente sin obra asignada'
 
 function num(v: unknown): number | null {
@@ -103,6 +116,19 @@ function faltaDatoDe(v: unknown): FaltaDatoDeObra[] {
   })
 }
 
+function subcontratosDe(v: unknown): SubcontratoDeObra[] {
+  if (!Array.isArray(v)) return []
+  return v.flatMap((x): SubcontratoDeObra[] => {
+    const r = x as Record<string, unknown>
+    const total = num(r.total)
+    if (total == null) return []
+    return [{
+      proveedor: texto(r.proveedor), comprobante: texto(r.comprobante),
+      fecha: texto(r.fecha)?.slice(0, 10) ?? null, total, motivo: r.motivo === 'familia' ? 'familia' : 'proveedor',
+    }]
+  })
+}
+
 /**
  * LAS FILAS DE `costo_obra`, POR OBRA.
  *
@@ -123,6 +149,8 @@ export function armarCostosPorObra(
       obraId,
       materiales: num(r.materiales),
       subcontratos: num(r.subcontratos),
+      nSubcontratos: entero(r.n_subcontratos),
+      subcontratosDetalle: subcontratosDe(r.subcontratos_detalle),
       nComprobantes: entero(r.n_comprobantes),
       ultimoComprobante: texto(r.ultimo_comprobante)?.slice(0, 10) ?? null,
       manoObra: num(r.mano_obra),
@@ -165,12 +193,39 @@ export function tituloMateriales(c: CostoDeObra | null | undefined): string | nu
   // QUÉ NO ENTRA, DICHO EN LA CELDA: sin esta frase, la diferencia contra el «costo real» de la ficha de la
   // obra —que sí suma la nómina imputada— se lee como un error de alguno de los dos.
   let t = `${partes.join(' · ')}. No entran nómina, cargas, ARCA ni financiero.`
-  if (c.subcontratos != null) {
-    // LOS SUBCONTRATOS NO DESAPARECEN AL EXCLUIRLOS. Son mano de obra facturada por un tercero: no
-    // son material, y tampoco pueden sumarse a la columna de al lado, que son las horas PROPIAS.
-    t += ` Aparte, ${plata(c.subcontratos)} de subcontratos y mano de obra facturada.`
-  }
+  // LOS SUBCONTRATOS NO DESAPARECEN AL EXCLUIRLOS: tienen su columna, y el title de materiales lo dice.
+  if (c.subcontratos != null) t += ` Sin los ${plata(c.subcontratos)} de subcontratos, que van en su columna.`
   return t + fraseFuturo(c.comprometidoFuturo)
+}
+
+/** SUBCONTRATOS: el importe o «—». */
+export function textoSubcontratos(c: CostoDeObra | null | undefined): string {
+  return plata(c?.subcontratos ?? null)
+}
+
+/** Una línea por comprobante: proveedor · comprobante · fecha · importe. */
+export function lineaDeSubcontrato(s: SubcontratoDeObra): string {
+  return `${s.proveedor ?? 'sin proveedor'}${s.comprobante ? ` · ${s.comprobante}` : ''}${s.fecha ? ` · ${diaMesISO(s.fecha)}` : ''}`
+    + ` · ${plata(s.total)}${s.motivo === 'familia' ? ' (por familia)' : ''}`
+}
+
+const MAX_LINEAS = 8
+const REGLA_SUBCONTRATO = 'Proveedor con rubro «Subcontratista» declarado o familia «Subcontratos y mano de obra».'
+
+/** QUÉ COMPONE LA COLUMNA: proveedores y comprobantes, del mayor al menor. `null` = nada que respaldar. */
+export function tituloSubcontratos(c: CostoDeObra | null | undefined): string | null {
+  if (!c || c.subcontratos == null) return null
+  const lineas = c.subcontratosDetalle.slice(0, MAX_LINEAS).map(lineaDeSubcontrato)
+  const resto = c.subcontratosDetalle.length - lineas.length
+  return `Subcontratos${aLaFecha(c.corte)}: ${c.nSubcontratos} ${c.nSubcontratos === 1 ? 'comprobante' : 'comprobantes'}. `
+    + `${lineas.join('; ')}${resto > 0 ? `; y ${resto} más` : ''}. ${REGLA_SUBCONTRATO} No están en Materiales ni en Mano de obra.`
+}
+
+/** Lo mismo para la fila «sin obra asignada» del cliente. */
+export function tituloSubcontratosSinObra(g: GastoSinObra | null | undefined): string | null {
+  if (!g || g.subcontratos == null) return null
+  const lineas = g.subcontratosDetalle.slice(0, MAX_LINEAS).map(lineaDeSubcontrato)
+  return `Subcontratos del cliente sin obra asignada${aLaFecha(g.corte)}: ${lineas.join('; ')}. ${REGLA_SUBCONTRATO}`
 }
 
 /** Lo que dibuja la celda de mano de obra, con de dónde salió cada variante. */
@@ -261,6 +316,8 @@ export interface GastoSinObra {
   clienteId: string
   materiales: number | null
   subcontratos: number | null
+  nSubcontratos: number
+  subcontratosDetalle: SubcontratoDeObra[]
   nComprobantes: number
   comprometidoFuturo: number | null
   /** Los detalles (columna K) más grandes: es lo que permite cargar el alias que falta. */
@@ -289,6 +346,7 @@ export function armarGastosSinObra(filas: unknown[] | null | undefined): Map<str
     m.set(clienteId, {
       clienteId, materiales: num(r.materiales), subcontratos: num(r.subcontratos),
       nComprobantes: entero(r.n_comprobantes), comprometidoFuturo: num(r.comprometido_futuro),
+      nSubcontratos: entero(r.n_subcontratos), subcontratosDetalle: subcontratosDe(r.subcontratos_detalle),
       detalles, corte: texto(r.corte)?.slice(0, 10) ?? null,
     })
   }
@@ -309,7 +367,7 @@ export function tituloSinObra(g: GastoSinObra | null | undefined): string | null
     + `(${g.nComprobantes} ${g.nComprobantes === 1 ? 'comprobante' : 'comprobantes'}). No se reparten: `
     + 'se asignan cargando el alias de la obra. '
     + (detalles ? `Los más grandes: ${detalles}.` : '')
-    + (g.subcontratos ? ` Incluye ${plata(g.subcontratos)} de subcontratos.` : '')
+    + (g.subcontratos ? ` Los ${plata(g.subcontratos)} de subcontratos van en su columna.` : '')
     + fraseFuturo(g.comprometidoFuturo)
 }
 
@@ -323,6 +381,11 @@ export function tituloSinObra(g: GastoSinObra | null | undefined): string | null
  */
 export function textoTotalMateriales(t: TotalesDelCliente): string {
   return t.legible ? plata(t.materiales) : ''
+}
+
+/** LA CELDA DE SUBCONTRATOS DE UN CLIENTE: vacío = no se pudo leer; «—» = ninguno. */
+export function textoTotalSubcontratos(t: TotalesDelCliente): string {
+  return t.legible ? plata(t.subcontratos) : ''
 }
 
 /** LA CELDA DE MANO DE OBRA DE UN CLIENTE: el total, «sin valorizar» o vacío, y si está incompleto. */
@@ -349,6 +412,9 @@ export interface TotalesDelCliente {
   materiales: number | null
   /** La parte de `materiales` que es «sin obra asignada», para que el pie pueda decirlo. */
   materialesSinObra: number | null
+  /** Σ de los subcontratos de sus obras MÁS los sin obra. `null` = ninguno. Nunca dentro de `materiales`. */
+  subcontratos: number | null
+  subcontratosSinObra: number | null
   /** Σ de la mano de obra valorizada. `null` = no se pudo valorizar NINGUNA hora. */
   manoObra: number | null
   /** `true` = hay horas que quedaron afuera del total de mano de obra. */
@@ -375,26 +441,31 @@ export function totalesDelCliente(
   sinObra: GastoSinObra | null = null,
 ): TotalesDelCliente {
   const vacio: TotalesDelCliente = {
-    legible: false, materiales: null, materialesSinObra: null, manoObra: null,
+    legible: false, materiales: null, materialesSinObra: null, subcontratos: null, subcontratosSinObra: null, manoObra: null,
     manoObraParcial: false, manoObraEstimada: 0, horasSinValorizar: 0,
   }
   if (!costos) return vacio
   let materiales: number | null = null
   let manoObra: number | null = null
+  let subcontratos: number | null = null
   let horasSinValorizar = 0
   let manoObraEstimada = 0
   for (const id of obraIds) {
     const c = costos.get(id)
     if (!c) continue
     if (c.materiales != null) materiales = (materiales ?? 0) + c.materiales
+    if (c.subcontratos != null) subcontratos = (subcontratos ?? 0) + c.subcontratos
     if (c.manoObra != null) manoObra = (manoObra ?? 0) + c.manoObra
     horasSinValorizar += c.horasSinTarifa ?? 0
     manoObraEstimada += c.manoObraEstimada ?? 0
   }
-  const materialesSinObra = importeSinObra(sinObra)
+  // LO SIN OBRA ENTRA A CADA COLUMNA POR SU PARTE: los subcontratos sin obra no se suman en Materiales.
+  const materialesSinObra = sinObra?.materiales ?? null
+  const subcontratosSinObra = sinObra?.subcontratos ?? null
   if (materialesSinObra != null) materiales = (materiales ?? 0) + materialesSinObra
+  if (subcontratosSinObra != null) subcontratos = (subcontratos ?? 0) + subcontratosSinObra
   return {
-    legible: true, materiales, materialesSinObra, manoObra,
+    legible: true, materiales, materialesSinObra, subcontratos, subcontratosSinObra, manoObra,
     manoObraParcial: horasSinValorizar > 0, manoObraEstimada, horasSinValorizar,
   }
 }

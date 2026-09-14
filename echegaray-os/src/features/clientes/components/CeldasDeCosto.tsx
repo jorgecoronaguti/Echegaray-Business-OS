@@ -19,8 +19,9 @@
 import { V } from '@/shared/components/v2/patron'
 import { plata } from '@/shared/utils/format'
 import {
-  textoManoObra, textoMateriales, textoTotalManoObra, textoTotalMateriales, tituloManoObra,
-  tituloMateriales, totalesDelCliente, type CostoDeObra, type GastoSinObra,
+  textoManoObra, textoMateriales, textoSubcontratos, textoTotalManoObra, textoTotalMateriales,
+  textoTotalSubcontratos, tituloManoObra, tituloMateriales, tituloSubcontratos, totalesDelCliente,
+  type CostoDeObra, type GastoSinObra,
 } from '../services/costosDeObra'
 import { SOLO_ANCHO, SOLO_ANGOSTO } from './CeldasDeCartera'
 
@@ -33,6 +34,8 @@ interface CostoDeFila {
   estado: 'a-la-fecha' | 'sin-leer'
   materiales: string
   tituloMateriales: string | null
+  subcontratos: string
+  tituloSubcontratos: string | null
   manoObra: string
   manoObraParcial: boolean
   /** Una parte del importe es estimada: la celda dice «est.» (20260915T0500). */
@@ -42,13 +45,14 @@ interface CostoDeFila {
 
 function costoDeObra(costos: ReadonlyMap<string, CostoDeObra> | null, obraId: string): CostoDeFila {
   if (costos === null) {
-    return { estado: 'sin-leer', materiales: '', tituloMateriales: NO_PUEDO, manoObra: '', manoObraParcial: false, manoObraEstimado: false, tituloManoObra: NO_PUEDO }
+    return { estado: 'sin-leer', materiales: '', tituloMateriales: NO_PUEDO, subcontratos: '', tituloSubcontratos: NO_PUEDO, manoObra: '', manoObraParcial: false, manoObraEstimado: false, tituloManoObra: NO_PUEDO }
   }
   const c = costos.get(obraId) ?? null
   const mo = textoManoObra(c)
   // SIN INICIO DE OBRA: la cartera no transporta `hh_obra`, y pedirlo sería otra definición.
   return {
     estado: 'a-la-fecha', materiales: textoMateriales(c), tituloMateriales: tituloMateriales(c),
+    subcontratos: textoSubcontratos(c), tituloSubcontratos: tituloSubcontratos(c),
     manoObra: mo.texto, manoObraParcial: mo.parcial, manoObraEstimado: mo.estimado, tituloManoObra: tituloManoObra(c, null),
   }
 }
@@ -77,8 +81,14 @@ function costoDelCliente(
     : 'Suma de la mano de obra propia de todos sus trabajos, en curso y cerrados: costo total empleador del recibo + parte en negro, repartidos por horas.'
       + (t.manoObraEstimada > 0 ? ` Incluye ${plata(t.manoObraEstimada)} ESTIMADO (quincenas sin recibo todavía).` : '')
       + (t.manoObraParcial ? ` QUEDAN ${Math.round(t.horasSinValorizar).toLocaleString('es-AR')} h AFUERA: falta el dato para valorizarlas.` : '')
+  const tituloSub = !t.legible
+    ? NO_PUEDO
+    : 'Suma a la fecha de los subcontratos de todos sus trabajos: proveedor con rubro «Subcontratista» declarado o familia «Subcontratos y mano de obra»'
+      + (t.subcontratosSinObra != null ? `, incluidos ${plata(t.subcontratosSinObra)} sin obra asignada` : '')
+      + '. No están en Materiales ni en Mano de obra.'
   return {
     estado: t.legible ? 'a-la-fecha' : 'sin-leer', materiales: textoTotalMateriales(t), tituloMateriales: tituloMat,
+    subcontratos: textoTotalSubcontratos(t), tituloSubcontratos: tituloSub,
     manoObra: mo.texto, manoObraParcial: mo.parcial, manoObraEstimado: mo.estimado, tituloManoObra: tituloMo,
   }
 }
@@ -106,6 +116,7 @@ function Celdas({ f, sufijo }: { f: CostoDeFila; sufijo: 'obra' | 'cliente' }) {
   return (
     <>
       <Celda testid={`materiales-${sufijo}`} estado={f.estado} texto={f.materiales} parcial={false} titulo={f.tituloMateriales} />
+      <Celda testid={`subcontratos-${sufijo}`} estado={f.estado} texto={f.subcontratos} parcial={false} titulo={f.tituloSubcontratos} />
       <Celda testid={`mano-obra-${sufijo}`} estado={f.estado} texto={f.manoObra} parcial={f.manoObraParcial} estimado={f.manoObraEstimado} titulo={f.tituloManoObra} />
     </>
   )
@@ -129,6 +140,8 @@ function LineaAngosta({ f, sufijo, sangria }: { f: CostoDeFila; sufijo: 'obra' |
       style={{ fontSize: '11px', color: V.apagado, paddingLeft: sangria, minWidth: 0 }}>
       <span>Mat.</span>{cifra(f.materiales, false, f.tituloMateriales)}
       <span aria-hidden>·</span>
+      <span>Sub.</span>{cifra(f.subcontratos, false, f.tituloSubcontratos)}
+      <span aria-hidden>·</span>
       <span>MO</span>{cifra(f.manoObra, f.manoObraParcial, f.tituloManoObra)}{f.manoObraEstimado && <span style={{ color: V.tenue }}>est.</span>}
       <span>· a la fecha</span>
     </span>
@@ -142,7 +155,7 @@ export function CostoDeLaObra({ costos, obraId, veEconomia }: {
   obraId: string
   veEconomia: boolean
 }) {
-  if (!veEconomia) return <><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /></>
+  if (!veEconomia) return <><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /></>
   return <Celdas f={costoDeObra(costos, obraId)} sufijo="obra" />
 }
 
@@ -164,7 +177,7 @@ export function CostoDelCliente({ costos, sinObra, clienteId, obraIds, veEconomi
   obraIds: readonly string[]
   veEconomia: boolean
 }) {
-  if (!veEconomia) return <><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /></>
+  if (!veEconomia) return <><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /><span className={SOLO_ANCHO} /></>
   return <Celdas f={costoDelCliente(costos, sinObra, clienteId, obraIds)} sufijo="cliente" />
 }
 

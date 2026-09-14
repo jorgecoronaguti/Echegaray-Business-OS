@@ -9,9 +9,9 @@
 // columna no me sirve.» Y a las 13:10: «incluso la columna de cobrado neto no me es un dato que
 // sirve verlo, porque para eso está la sección especial de cobranzas.»
 //
-// TRABAJO · INICIO · HH · MATERIALES · MANO DE OBRA · CONTRATADO. Seis columnas, una pregunta cada
-// una: qué es, desde cuándo, cuánto trabajo lleva, cuánto material se compró, cuánto costó la gente
-// y por cuánto se vendió.
+// TRABAJO · INICIO · HH · MATERIALES · SUBCONTRATOS · MANO DE OBRA · CONTRATADO. Siete columnas, una
+// pregunta cada una: qué es, desde cuándo, cuánto trabajo lleva, cuánto material se compró, cuánto se
+// subcontrató (14/09/2026), cuánto costó la gente propia y por cuánto se vendió.
 //
 // ═══ LO QUE SE FUE, Y A DÓNDE ═══
 //
@@ -57,7 +57,8 @@ import { MarcaAdicional } from './MarcaAdicional'
 import { consolidar, jerarquiaDeObras } from '../services/obrasAdicionales'
 import { inicioDeObra, textoHH, tituloHH, type HorasDeObra } from '../services/horasDeObra'
 import {
-  textoManoObra, textoMateriales, tituloManoObra, tituloMateriales, type CostoDeObra,
+  textoManoObra, textoMateriales, textoSubcontratos, tituloManoObra, tituloMateriales, tituloSubcontratos,
+  type CostoDeObra,
 } from '../services/costosDeObra'
 import type { ObraPanel } from '@/features/obras/types'
 import type { EconomiaDeObra } from '../services/economiaObras'
@@ -72,9 +73,9 @@ import { CeldaHH } from './CeldaHH'
 // 180px: es lo que identifica la fila, y con las pistas elásticas a 390px quedaba en 48px y se leía
 // «B..», «L..», «P..» (medido el 05/09/2026 sobre la captura).
 //
-// Las pistas fijas suman 64+72+112+112+148+28 = 536px; con el piso del nombre y seis `gap` de 16 la
-// demanda es 812px. El ancho útil de esta ficha es `viewport − 393` (20+20 de `CuerpoDeFicha` y
-// 300+24+1+28 del costado), así que a 1440px hay 1068px: entra con aire.
+// Las pistas fijas suman 64+72+112+112+112+148+28 = 648px; con el piso del nombre y siete `gap` de 16
+// la demanda es 940px. El ancho útil de esta ficha es `viewport − 393` (20+20 de `CuerpoDeFicha` y
+// 300+24+1+28 del costado), así que a 1440px hay 1068px: entra.
 //
 // ═══ A 400px NO SE ESCONDE NINGUNA COLUMNA: LA TABLA RUEDA DENTRO DE SU CAJA ═══
 //
@@ -100,13 +101,13 @@ import { CeldaHH } from './CeldaHH'
 // material de La Estrella, el mayor de la cartera— mide 86px en la mono de 12px: una cifra truncada
 // es una cifra falsa, y ya pasó con el cobrado en 80px (captura de producción, 10/09/2026 18:10).
 export const COLS_OBRAS
-  = 'gap-[16px] grid-cols-[minmax(180px,2fr)_minmax(0,64px)_minmax(0,72px)_minmax(0,112px)_minmax(0,112px)_minmax(0,148px)_minmax(0,28px)]'
+  = 'gap-[16px] grid-cols-[minmax(180px,2fr)_minmax(0,64px)_minmax(0,72px)_minmax(0,112px)_minmax(0,112px)_minmax(0,112px)_minmax(0,148px)_minmax(0,28px)]'
   // Por debajo de 1200px se suelta el INICIO: de las columnas nuevas es la que menos decide —cuándo
   // arrancó no cambia lo que hay que hacer hoy— y el resto se queda, que es lo que el dueño pidió ver.
-  + ' max-[1199px]:gap-[12px] max-[1199px]:grid-cols-[minmax(0,1.4fr)_minmax(0,72px)_minmax(0,108px)_minmax(0,108px)_minmax(0,132px)_28px]'
-  // EL PISO DEL SCROLLER: 180 del nombre + 448 de pistas + 60 de gaps = 688. Por debajo de eso la
-  // tabla rueda; el nombre nunca baja de 180px.
-  + ' max-[559px]:min-w-[688px]'
+  + ' max-[1199px]:gap-[12px] max-[1199px]:grid-cols-[minmax(0,1.4fr)_minmax(0,72px)_minmax(0,108px)_minmax(0,108px)_minmax(0,108px)_minmax(0,132px)_28px]'
+  // EL PISO DEL SCROLLER: 180 del nombre + 556 de pistas + 72 de gaps = 808 (con Subcontratos). Por
+  // debajo de eso la tabla rueda; el nombre nunca baja de 180px.
+  + ' max-[559px]:min-w-[808px]'
 
 /** LA CELDA QUE SE SUELTA EN EL CORTE DE 1199, con su pista: el INICIO. El nombre viene de cuando
  *  acá se soltaba la economía de OBRAS (Costo MO, Costo mat., OP) y se conserva porque es el corte,
@@ -142,16 +143,18 @@ const AYUDA_HH = 'Horas hombre acumuladas imputadas a este trabajo (obra_plan_vs
  *  como un error de alguno de los dos números. El detalle por comprobante lo arma `costosDeObra.ts`. */
 const AYUDA_MATERIALES = 'Lo comprado e imputado a este trabajo en la pestaña Compras (las MISMAS '
   + 'filas que el «costo real» de la ficha de la obra, puenteadas por obra_alias). No entran nómina, '
-  + 'cargas, ARCA ni financiero, ni las filas anuladas, ni el rubro «Subcontratos y mano de obra», '
-  + 'que se nombra aparte. «—» = ninguna compra imputada; vacío = no puedo leerlo.'
+  + 'cargas, ARCA ni financiero, ni las filas anuladas, ni los subcontratos, que van en su columna. '
+  + '«—» = ninguna compra imputada; vacío = no puedo leerlo.'
 
 /** LA MANO DE OBRA ES LA DE LIQUIDACIÓN, y el `title` lo dice con el nombre de la solapa: es la única
  *  forma de que el día que los dos números se separen, alguien sepa dónde mirar. */
-const AYUDA_MANO_OBRA = 'Las horas propias de este trabajo valorizadas con la MISMA regla que la '
-  + 'solapa «Costo a la obra» de Liquidación: valor hora vigente de cada persona × horas × '
-  + 'multiplicador de cargas. «sin valorizar» = hay horas cargadas y falta el dato para convertirlas '
-  + 'en costo (las alícuotas, o la tarifa de alguien); ámbar = el número está incompleto y el detalle '
-  + 'dice cuánto falta. La mano de obra facturada por terceros NO está acá: va nombrada en Materiales.'
+const AYUDA_MANO_OBRA = 'La mano de obra propia de este trabajo, con la MISMA definición que la solapa «Costo a '
+  + 'la obra» de Liquidación: costo total empleador del recibo + parte en negro, repartidos por horas («est.» = '
+  + 'sin recibo del estudio todavía). «sin valorizar» = falta la tarifa de alguien; ámbar = incompleto.'
+
+/** LOS SUBCONTRATOS, DISCRIMINADOS (dueño, 14/09/2026): ni material ni mano de obra propia. */
+const AYUDA_SUBCONTRATOS = 'Lo facturado por subcontratistas a este trabajo, a la fecha: proveedor con rubro '
+  + '«Subcontratista» declarado o familia «Subcontratos y mano de obra». No está en Materiales ni en Mano de obra.'
 
 /** La sangría del handoff (`dc.html:113`, `padding-left:16px`), que reemplaza los 13 del v2. */
 const SANGRIA = 16
@@ -229,6 +232,7 @@ export function ObrasDelCliente({
         {/* «A LA FECHA» DEBAJO DEL NOMBRE (dueño, 13/09/2026): lo gastado hasta hoy, no lo presupuestado.
             Dos líneas y no «Materiales a la fecha» en una: en la pista de 112px se cortaba. */}
         <span className="grid" title={AYUDA_MATERIALES}><RotuloCol derecha>Materiales</RotuloCol><ALaFecha /></span>
+        <span className="grid" title={AYUDA_SUBCONTRATOS}><RotuloCol derecha>Subcontratos</RotuloCol><ALaFecha /></span>
         <span className="grid" title={AYUDA_MANO_OBRA}><RotuloCol derecha>Mano de obra</RotuloCol><ALaFecha /></span>
         <RotuloCol derecha>Contratado</RotuloCol>
         <span />
@@ -367,6 +371,16 @@ export function ObrasDelCliente({
             style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
           >
             {costos === null || !veEconomia ? '' : textoMateriales(costoDeLaObra)}
+          </span>
+
+          {/* SUBCONTRATOS (dueño, 14/09/2026): su columna, delegada en costosDeObra como las otras dos. */}
+          <span
+            data-testid="subcontratos-obra-cliente"
+            title={tituloSubcontratos(costoDeLaObra) ?? AYUDA_SUBCONTRATOS}
+            className="truncate font-mono tabular-nums"
+            style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
+          >
+            {costos === null || !veEconomia ? '' : textoSubcontratos(costoDeLaObra)}
           </span>
 
           {/* ÁMBAR = RECLAMA TRABAJO, y acá el trabajo es cargar un dato que existe: las alícuotas de
