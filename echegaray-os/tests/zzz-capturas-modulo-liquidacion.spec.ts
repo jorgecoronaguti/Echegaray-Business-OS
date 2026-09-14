@@ -20,7 +20,9 @@ const DESTINO = process.env.E2E_CAPTURAS ?? '.playwright'
 // engaña: lo comprobé el 11/09/2026 pidiendo `costo-hora`.
 // `quincena` VA PRIMERA porque es la que abre por defecto desde el 11/09/2026: el espejo del
 // bloque de la planilla JORNALES. Su captura es la que hay que comparar contra «Obreros 26».
-const SOLAPAS = ['quincena', 'horas', 'pagos', 'costo', 'convenios', 'cierre', 'recibos'] as const
+// DESDE EL 14/09/2026 SON CUATRO: la Quincena y las tres de «Más». Las claves viejas (`horas`, `pagos`,
+// `convenios`, `recibos`) resuelven a una de estas, así que capturarlas repetiría la misma pantalla.
+const SOLAPAS = ['quincena', 'caja', 'costo', 'cierre'] as const
 
 for (const solapa of SOLAPAS) {
   test(`captura · ${solapa} a 1280`, async ({ page }) => {

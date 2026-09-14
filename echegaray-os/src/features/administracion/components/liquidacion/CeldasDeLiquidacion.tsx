@@ -32,6 +32,7 @@ import { V } from '@/shared/components/v2/patron'
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import { guardarCeldaLiquidacion, guardarEfectivoRedondeado } from '../../services/liquidacionActions'
 import { guardarValorHora } from '../../services/tarifaDeLaQuincenaActions'
+import { accionDelRedondeo, efectivoMostrado } from '../../services/efectivoRedondeado'
 import { horas, pesos } from './formato'
 
 /**
@@ -232,53 +233,91 @@ export function CeldaValorHora({ valor, origen, personaId, quincena, grupo, solo
 }
 
 /**
- * LA CELDA DEL DUEÑO. Guarda al perder el foco y no recarga la pantalla.
+ * LA CELDA DEL DUEÑO: los billetes que entrega en mano. Viene SUGERIDA y se sobrescribe.
  *
- * VACÍO BORRA EL REDONDEO, NO ESCRIBE CERO: cero significaría «no le doy nada en mano», que es una
- * afirmación distinta de «todavía no lo escribí».
+ * Dueño, 14/09/2026: *«tiene q traer un valor de lo q corresponde en efectivo ya predeterminado con el
+ * redondeo en 0 y me tiene q permitir editar»*. Las reglas viven en `efectivoRedondeado.ts`:
+ *
+ *   sin guardado      el sugerido precargado, en gris. Salir sin cambiarlo NO guarda nada.
+ *   con guardado      ese valor, en tinta. Si el sugerido de hoy es otro, lo dice el `title`.
+ *   vaciar el campo   borra lo guardado y vuelve el sugerido. Nunca escribe cero.
+ *   quincena cerrada  el guardado o el sugerido, de sólo lectura.
+ *
+ * ═══ EL PRIMER RENDER ES EL MISMO EN EL SERVIDOR Y EN EL NAVEGADOR ═══
+ *
+ * QA, 14/09/2026: warning de hidratación sobre el `style` de este input. Todo lo que decide el primer
+ * dibujo —texto, color, borde, `title`— sale de las props y de `efectivoMostrado`, que es puro: ni un
+ * valor que sólo exista en el navegador, ni una clave de estilo que aparezca o desaparezca. El error
+ * del servidor va en un `title` y en el color del borde, no en un nodo que se agrega al lado.
  */
-export function CeldaRedondeo({ personaId, valor, quincena, grupo, bloqueada, ancho = 96 }: {
+export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, bloqueada, ancho = 96 }: {
   personaId: string
   valor: number | null
+  /** El efectivo de «Le falta pagar». De acá sale el sugerido. */
+  enEfectivo: number | null
   quincena: VentanaDeQuincena
   grupo: string
   bloqueada: boolean
   ancho?: number
 }) {
-  const [texto, setTexto] = useState(valor == null ? '' : String(valor))
+  const mostrado = efectivoMostrado({ efectivoRedondeado: valor, enEfectivo })
+  const inicial = mostrado.valor == null ? '' : String(mostrado.valor)
+  const [texto, setTexto] = useState(inicial)
+  const [base, setBase] = useState(inicial)
+  const [tocado, setTocado] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardando, empezar] = useTransition()
+  // EL VALOR DE AFUERA MANDA cuando la línea se vuelve a leer del servidor, salvo mientras alguien
+  // escribe. Se ajusta durante el render, no en un efecto: sin fotograma con el valor viejo.
+  if (!tocado && inicial !== base) {
+    setBase(inicial)
+    setTexto(inicial)
+  }
 
-  if (bloqueada) return <>{pesos(valor)}</>
+  const titulo = error
+    ?? (mostrado.sugerido
+      ? `sugerido: efectivo ${pesos(enEfectivo)} redondeado a miles`
+      : (valor != null && mostrado.sugeridoAhora != null && mostrado.sugeridoAhora !== valor
+        ? `guardado ${pesos(valor)} · el sugerido de hoy es ${pesos(mostrado.sugeridoAhora)}`
+        : undefined))
+  const gris = mostrado.sugerido && !tocado
 
-  const guardar = () => {
-    const limpio = texto.trim().replace(/[$.\s]/g, '').replace(',', '.')
-    if (limpio === (valor == null ? '' : String(valor))) return
+  if (bloqueada) {
+    return <span title={titulo} style={{ color: mostrado.sugerido ? V.apagado : V.tinta }}>{pesos(mostrado.valor)}</span>
+  }
+
+  const alSalir = () => {
+    const a = accionDelRedondeo({ texto, guardado: valor, sugerido: mostrado.sugeridoAhora })
+    if (a.accion === 'nada') {
+      setTocado(false)
+      setTexto(inicial)
+      return
+    }
     empezar(async () => {
       const r = await guardarEfectivoRedondeado({
-        ...quincena, grupo, persona_id: personaId, importe: limpio,
+        ...quincena, grupo, persona_id: personaId, importe: a.accion === 'borrar' ? '' : String(a.importe),
       })
       setError(r.ok ? null : r.error)
+      if (r.ok) setTocado(false)
     })
   }
 
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <input
-        value={texto}
-        onChange={(e) => setTexto(e.target.value)}
-        onBlur={guardar}
-        disabled={guardando}
-        inputMode="decimal"
-        aria-label="Efectivo redondeado"
-        data-testid={`redondeo-${personaId}`}
-        style={{
-          width: ancho, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px',
-          border: `1px solid ${error ? V.neg : V.linea}`, borderRadius: 4,
-          background: '#FFFFFF', color: V.tinta, fontVariantNumeric: 'tabular-nums',
-        }}
-      />
-      {error && <span style={{ fontSize: '10.5px', color: V.neg }}>{error}</span>}
-    </span>
+    <input
+      value={texto}
+      onChange={(e) => { setTocado(true); setTexto(e.target.value) }}
+      onBlur={alSalir}
+      disabled={guardando}
+      inputMode="decimal"
+      aria-label="Efectivo redondeado"
+      title={titulo}
+      data-testid={`redondeo-${personaId}`}
+      data-sugerido={gris ? '1' : '0'}
+      style={{
+        width: ancho, textAlign: 'right', fontSize: '12.5px', padding: '3px 6px',
+        border: `1px solid ${error ? V.neg : V.linea}`, borderRadius: 4,
+        background: '#FFFFFF', color: gris ? V.apagado : V.tinta, fontVariantNumeric: 'tabular-nums',
+      }}
+    />
   )
 }

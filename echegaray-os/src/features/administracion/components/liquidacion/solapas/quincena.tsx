@@ -5,9 +5,11 @@ import { correrQuincena, esFechaISO, quincenaDe, rotuloQuincena } from '../../..
 import { getExposicionDeLaQuincena } from '../../../services/exposicionConvenioService'
 import { totalesDelEspejo, type FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { leerCuadroDeLaQuincena } from '../../../services/cuadroDeLaQuincenaService'
+import { leerDetallesLaborales } from '../../../services/detalleLaboralService'
 import { ORDEN_DE_CUADROS, seccionesDePersonal } from '../../../services/ordenDePersonal'
 import { historialDeTarifa, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import type { GrupoLiquidacion } from '../../../services/liquidacionQuincena'
+import { RECORTES, normalizar } from '../../../services/recorteDeLiquidacion'
 import { FiltrosDelEspejo, GrillaEspejoQuincena, type MarcaDePiso, type SeccionDelEspejo } from '../GrillaEspejoQuincena'
 import { MONO } from './tabla'
 import type { PropsDeSolapa } from './index'
@@ -42,20 +44,8 @@ import type { PropsDeSolapa } from './index'
 // el chip. Y cuando el espejo no está leído, el sello lo dice con todas las letras en vez de mostrar
 // una tabla que parece cotejada.
 
-// CÓMO COBRA, NO EN QUÉ CUADRO ESTÁ. Dueño, 14/09/2026: *«si solo quiero ver los valores de los que
-// cobran en quincena no puedo»*. El recorte ya existía con los nombres de los cuadros («Obreros»,
-// «Oficina») y con un rótulo de 9,5 px: no se leía como la pregunta que él hace. La clave sigue
-// siendo el cuadro porque la modalidad la impone el cuadro (`modalidadDe`): obreros = por hora,
-// liquidados por quincena; oficina = neto mensual.
-const RECORTES: { clave: GrupoLiquidacion | 'todos'; texto: string }[] = [
-  { clave: 'todos', texto: 'Todos' },
-  { clave: 'obreros', texto: 'Por quincena' },
-  { clave: 'oficina', texto: 'Mensuales' },
-  { clave: 'final', texto: 'Liq. finales' },
-]
-
-/** Sin tildes ni mayúsculas: «aguero» encuentra a «AGÜERO CRISTIAN». */
-const normalizar = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+// EL RECORTE «COBRA» Y EL BUSCADOR VIVEN EN `recorteDeLiquidacion.ts` desde el 14/09/2026: Recibos usa
+// los mismos, y dos copias recortarían distinto la misma quincena.
 
 export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }: PropsDeSolapa) {
   const quincena = quincenaDe(esFechaISO(quincenaPedida) ? (quincenaPedida as string) : hoy)
@@ -70,6 +60,9 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
     getExposicionDeLaQuincena(supabase, quincena),
   ])
   const { datos, liquidacion, filas, dias, tituloDe, cuadrosCerrados } = cuadro
+  // LO LABORAL DEL PANEL (costo cargado, legajo, HH por mes, esperadas/estado) sale del cuadro ya leído
+  // más las alícuotas: es lo que tenía la grilla de «Horas», que se retiró de «Más» el 14/09/2026.
+  const { detalles, errores: erroresDelDetalle } = await leerDetallesLaborales(supabase, cuadro, quincena)
   const bajoElPiso: Record<string, MarcaDePiso> = {}
   for (const l of exposicion.lineas) {
     if (!l.bajoElPiso || l.piso == null || l.brechaPct == null || l.diferenciaHora == null) continue
@@ -122,7 +115,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
 
   return (
     <div data-testid="vista-quincena">
-      {[...datos.errores, ...liquidacion.errores, ...exposicion.errores].map((e) => (
+      {[...datos.errores, ...liquidacion.errores, ...exposicion.errores, ...erroresDelDetalle].map((e) => (
         <div key={e.que} style={{ padding: '0 0 10px' }}>
           <Aviso tono="neg" testid="quincena-error" titulo={`No pude leer ${e.que}`}>{e.error}</Aviso>
         </div>
@@ -146,6 +139,7 @@ export async function SolapaQuincena({ quincenaPedida, hoy, parametros, hrefDe }
         bajoElPiso={bajoElPiso}
         historiales={historiales}
         historialCompleto={exposicion.errores.length === 0}
+        detalles={detalles}
         sello={
           <Sello
             titulo={rotuloQuincena(quincena)}

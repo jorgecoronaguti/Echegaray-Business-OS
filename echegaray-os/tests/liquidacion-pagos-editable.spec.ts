@@ -119,12 +119,16 @@ test.describe.configure({ mode: 'serial', timeout: 240_000 })
 test.beforeAll(async () => { test.setTimeout(120_000); await preparar() })
 test.afterAll(async () => { test.setTimeout(180_000); await limpiar() })
 
-test('ADELANTO se escribe en la solapa Pagos, sobrevive a una recarga y queda en liquidacion_linea', async ({ page }) => {
+// ═══ CAMBIÓ EL 14/09/2026: LA EDICIÓN VIVE EN LA QUINCENA ═══
+//
+// La solapa Pagos se retiró de «Más» por repetir la fila del cuadro. ADELANTO se escribe en la misma
+// `CeldaEditable` (`celda-adelanto-<persona>`), ahora en la fila de la Quincena. Lo que se mide no cambia.
+test('ADELANTO se escribe en la Quincena, sobrevive a una recarga y queda en liquidacion_linea', async ({ page }) => {
   const sb = servicio()
   await page.setViewportSize({ width: 1440, height: 1000 })
   await entrarComo(page, ADMIN.email, ADMIN.password)
-  await page.goto(`/administracion/personas?vista=liquidacion&solapa=pagos&quincena=${Q.desde}`)
-  await expect(page.getByTestId('vista-pagos')).toBeVisible({ timeout: 90_000 })
+  await page.goto(`/administracion/personas?vista=liquidacion&quincena=${Q.desde}`)
+  await expect(page.getByTestId('vista-quincena')).toBeVisible({ timeout: 90_000 })
   await page.screenshot({ path: `${CAPTURAS}/pagos-adelanto-antes.png`, fullPage: true })
 
   const celda = page.getByTestId(`celda-adelanto-${PERSONA}`)
@@ -158,7 +162,7 @@ test('ADELANTO se escribe en la solapa Pagos, sobrevive a una recarga y queda en
 
   // 3 · Y SOBREVIVE A LA RECARGA, con la marca de lo escrito a mano (R8).
   await page.reload()
-  await expect(page.getByTestId('vista-pagos')).toBeVisible({ timeout: 90_000 })
+  await expect(page.getByTestId('vista-quincena')).toBeVisible({ timeout: 90_000 })
   const fila = page.getByTestId(`celda-adelanto-${PERSONA}`)
   await expect(fila).toContainText('3.700', { timeout: 60_000 })
   await page.screenshot({ path: `${CAPTURAS}/pagos-adelanto-despues.png`, fullPage: true })

@@ -73,7 +73,10 @@ test('sin retribución cargada no se compara: NULL nunca es cero', () => {
 })
 
 test('sin convenio y sin categoría se dicen por separado', () => {
-  assert.match(exponerAlPiso(persona({ convenio: null }), ESCALA, '2026-09-15', 97).porQueNoSeCompara ?? '', /sin convenio/)
+  // UN ADMINISTRATIVO Y NO UN AYUDANTE desde el 14/09/2026: «todos los obreros son UOCRA», así que un
+  // ayudante con el convenio vacío se compara contra UOCRA (`exposicionUocraSupuesto.test.ts`). Quien
+  // no es obrero sigue diciendo «sin convenio».
+  assert.match(exponerAlPiso(persona({ convenio: null, categoria: 'administrativo' }), ESCALA, '2026-09-15', 97).porQueNoSeCompara ?? '', /sin convenio/)
   assert.match(exponerAlPiso(persona({ categoria: '  ' }), ESCALA, '2026-09-15', 97).porQueNoSeCompara ?? '', /sin categoría/)
 })
 

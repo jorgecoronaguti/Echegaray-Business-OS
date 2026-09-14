@@ -38,29 +38,36 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
   if (celda.marca === 'licencia') {
     return <div title={`${celda.fecha} · licencia`} style={{ textAlign: 'center', color: '#175CD3' }}>L</div>
   }
+  // LA JORNADA AUTOMÁTICA SE VE COMO LO QUE ES PARA EL PAGO: UN DÍA SIN HORAS. Dueño, 14/09/2026:
+  // *«hay dias de cada persona … q dicen 8a 9a no se q es eso, esta mal, corregir»*. Eran las filas
+  // `web:presencia-defecto` del 11/09 y del 14/09, que nadie cargó y no se pagan. El «·» es el mismo
+  // de cualquier día vacío; lo que la app supuso queda en el `title`.
   const automatica = celda.marca !== 'horas' && celda.automatica != null
+  const tituloAutomatica = automatica
+    ? `${celda.fecha} · sin horas cargadas; la app supone ${nHoras(celda.automatica)} h pero no se pagan hasta que se escriban`
+    : undefined
   if (!celda.editable) {
     const porque = celda.registros > 1
       ? `${celda.registros} registros ese día: corregilo desde la solapa Horas`
       : 'la quincena está cerrada'
     return (
-      <div title={`${celda.fecha} · ${porque}`} style={{
+      <div title={tituloAutomatica ?? `${celda.fecha} · ${porque}`} style={{
         textAlign: 'center', color: celda.horas == null ? V.lineaFuerte : V.apagado,
       }}>
-        {automatica ? `${nHoras(celda.automatica)}a` : (celda.horas == null ? '·' : nHoras(celda.horas))}
+        {celda.horas == null ? '·' : nHoras(celda.horas)}
       </div>
     )
   }
   return (
     <div
       data-testid={automatica ? `espejo-automatica-${personaId}-${celda.fecha}` : undefined}
-      title={automatica ? `${celda.fecha} · jornada automática de ${nHoras(celda.automatica)} h sin confirmar: no se paga. Escribí las horas para confirmarla.` : undefined}
-      style={{ display: 'flex', justifyContent: 'center', color: automatica ? V.tenue : undefined, fontStyle: automatica ? 'italic' : undefined }}>
+      title={tituloAutomatica}
+      style={{ display: 'flex', justifyContent: 'center' }}>
       {/* `w-[56px] sin-spinner`: con 42 px el spinner del navegador se come el dígito. */}
       <InlineEdit
         valor={celda.horas ?? null}
         tipo="numero"
-        falta={automatica ? `${nHoras(celda.automatica)}a` : '·'}
+        falta="·"
         ancho="w-[56px] sin-spinner"
         alineado="center"
         etiqueta={`Horas de ${nombre} el ${celda.fecha}`}

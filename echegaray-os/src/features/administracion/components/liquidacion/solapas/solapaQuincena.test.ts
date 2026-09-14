@@ -2,7 +2,8 @@
 //
 // Dueño, 11/09/2026: *«tengo que seguir usando Sheet JORNALES»*. 14/09/2026: *«no me permite editar el
 // valor hora de manera fácil, está rota esa columna final que dice "planilla"… no puedo calcular nada
-// de ahí que me sirva»* y *«no sé cuánto es el total que cobra cada persona»*.
+// de ahí que me sirva»*, *«no sé cuánto es el total que cobra cada persona»*, *«hay dias de cada persona
+// … q dicen 8a 9a no se q es eso, esta mal, corregir»* y *«las columnas de hs extra quitarlas»*.
 //
 // ═══ POR QUÉ SE PRUEBA SOBRE EL CÓDIGO FUENTE ═══
 //
@@ -61,7 +62,6 @@ test('LA GRILLA ESCRIBE CON LAS ACCIONES QUE YA EXISTEN, NO CON UNA COPIA', () =
 })
 
 test('SIN COLUMNA «PLANILLA»: el cotejo va en el sello y en el panel, no en el cuadro (dueño, 14/09)', () => {
-  // EL DEFECTO QUE ATRAPA: la columna que el dueño llamó «rota» y «sin sentido».
   for (const c of [GRILLA, CELDAS]) {
     const codigo = sinComentarios(c)
     assert.ok(!/clave: 'planilla'|ChipDeCotejo|rotulo: 'Planilla'/.test(codigo), 'no vuelve la columna Planilla')
@@ -69,21 +69,29 @@ test('SIN COLUMNA «PLANILLA»: el cotejo va en el sello y en el panel, no en el
   assert.match(VISTA, /espejo-difieren/)
 })
 
-test('LA PLATA VA PRIMERO, CON «LE FALTA PAGAR» ADELANTE; DESPUÉS LOS DÍAS Y LAS CANTIDADES', () => {
-  assert.deepEqual(clavesDe('const PLATA', 'const CANTIDADES'),
+test('LA PLATA VA PRIMERO, CON «LE FALTA PAGAR» ADELANTE; DESPUÉS LOS DÍAS', () => {
+  assert.deepEqual(clavesDe('const PLATA', 'const GAP'),
     ['leFaltaPagar', 'gana', 'adelanto', 'yaTransferido', 'efectivoRedondeado', 'valorHora', 'horasPagas'])
-  assert.deepEqual(clavesDe('const CANTIDADES', 'const GAP'), ['normales', 'extra50', 'extra100'])
-  // Y LO QUE SALIÓ DE LA FILA ESTÁ EN EL PANEL, no borrado.
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)
   assert.match(PANEL, /<HistorialDeTarifa/)
   assert.match(GRILLA, /<PanelDeLaPersona/)
 })
 
+test('SIN COLUMNAS DE HORAS EXTRA NI «NORMALES» (dueño, 14/09: «las columnas de hs extra quitarlas»)', () => {
+  const codigo = sinComentarios(GRILLA)
+  // EL DEFECTO QUE ATRAPA: las tres columnas de cantidades. «Normales» sin las extras repetía a medias
+  // «Hs pagas», así que sale con ellas.
+  assert.ok(!/extra50|extra100|Ext\. 50|Ext\. 100|Hs norm\.|CANTIDADES/.test(codigo), 'sin columnas de extras ni normales')
+  // LAS CUENTAS NO CAMBIAN: el pie sigue publicando las mismas cifras de plata y las horas pagas.
+  for (const t of ['totales.total', 'totales.cobra', 'totales.adelanto', 'totales.yaTransferido', 'totales.horasPagas', 'totales.porBanco', 'totales.enEfectivo']) {
+    assert.ok(codigo.includes(t), `el pie sigue mostrando ${t}`)
+  }
+})
+
 test('«LE FALTA PAGAR» DICE CÓMO SE PAGA Y SE MARCA CUANDO NO CIERRA', () => {
   assert.match(CELDAS, /banco \$\{pesos\(l\.porBanco\)\} · efvo \$\{pesos\(l\.enEfectivo\)\}/)
   assert.match(CELDAS, /data-testid=\{`acuerdo-\$\{fila\.personaId\}`\}/)
-  // SIN RECIBO SE DICE: «50/50» al lado de «banco $0» se leía como «todo en efectivo».
   assert.match(CELDAS, /const sinRecibo = l\.porBanco === 0 && l\.reciboNeto == null/)
   assert.match(CELDAS, /50\/50\$\{sinRecibo \? ' sin recibo' : ''\}/)
   assert.match(CELDAS, /const cierre = cierreDeLaFila\(l\)/)
@@ -113,7 +121,6 @@ test('EL HISTORIAL SALE DE LA LECTURA DE LA EXPOSICIÓN, NO DE UNA CONSULTA PROP
 
 test('EL $/H SE EDITA FÁCIL: clic, escribir, Enter — sin paso de confirmación y con el % al lado', () => {
   const codigo = sinComentarios(TARIFA)
-  // EL DEFECTO QUE ATRAPA: el globo «Confirmar / Cancelar» que el dueño no quería.
   assert.ok(!/Confirmar|confirmando|tarifa-confirmar/.test(codigo), 'no hay paso de confirmación')
   assert.match(codigo, /if \(e\.key === 'Enter'\) guardar\(\)/)
   assert.match(codigo, /registrarTarifaDesdeLaQuincena\(\{/)
@@ -122,8 +129,6 @@ test('EL $/H SE EDITA FÁCIL: clic, escribir, Enter — sin paso de confirmació
 
 test('UNA SOLA ESCRITURA DE TARIFA: plan único, corrección con rastro, nunca upsert ni delete', () => {
   const codigo = sinComentarios(ACCION)
-  // EL DEFECTO QUE ATRAPA: dos formas de escribir el mismo dato (upsert con `desde = hoy` en
-  // `guardarValorHora`, insert en la celda nueva). Ahora las dos pasan por `escribirTarifa`.
   assert.match(codigo, /export async function guardarValorHora\(/)
   assert.match(codigo, /export async function registrarTarifaDesdeLaQuincena\(/)
   assert.equal((codigo.match(/return escribirTarifa\(/g) ?? []).length, 2, 'las dos entradas delegan en la misma escritura')
@@ -146,15 +151,24 @@ test('UNA SOLA ESCRITURA DE TARIFA: plan único, corrección con rastro, nunca u
   }
 })
 
-test('LA JORNADA AUTOMÁTICA SE VE EN GRIS Y FUERA DEL PAGO', () => {
-  assert.match(CELDAS, /espejo-automatica-\$\{personaId\}-\$\{celda\.fecha\}/)
-  assert.match(GRILLA, /jornada automática sin confirmar, fuera del pago/)
+test('UN DÍA CON JORNADA AUTOMÁTICA SE VE COMO UN DÍA SIN HORAS: «·», sin «8a» (dueño, 14/09)', () => {
+  const codigo = sinComentarios(CELDAS)
+  // EL DEFECTO QUE ATRAPA: «8a», «9a» — un sufijo que el dueño no sabía leer.
+  assert.ok(!/\}a`|fontStyle: automatica|'italic'/.test(codigo), 'sin sufijo «a», sin cursiva')
+  assert.match(codigo, /sin horas cargadas; la app supone \$\{nHoras\(celda\.automatica\)\} h pero no se pagan hasta que se escriban/)
+  // SIGUE SIN PAGARSE: la verificación de las horas vive en `cuadroQueSeCalcula.test.ts` (8 h aparte,
+  // 62 h pagas) y el panel lo dice en llano.
+  assert.match(PANEL, /sin horas cargadas \(no se pagan\)/)
+  assert.match(GRILLA, /no se pagan/)
 })
 
 test('EL RECORTE PREGUNTA CÓMO COBRA: por quincena o mensual (dueño, 14/09/2026)', () => {
-  assert.match(VISTA, /clave: 'obreros', texto: 'Por quincena'/)
-  assert.match(VISTA, /clave: 'oficina', texto: 'Mensuales'/)
-  assert.match(VISTA, /clave: 'final', texto: 'Liq\. finales'/)
+  // EL RECORTE SE MUDÓ A UN MÓDULO COMPARTIDO con Recibos (14/09/2026): el cuadro lo importa.
+  const RECORTE = fuente('../../../services/recorteDeLiquidacion.ts')
+  assert.match(RECORTE, /clave: 'obreros', texto: 'Por quincena'/)
+  assert.match(RECORTE, /clave: 'oficina', texto: 'Mensuales'/)
+  assert.match(RECORTE, /clave: 'final', texto: 'Liq\. finales'/)
+  assert.match(VISTA, /import \{ RECORTES, normalizar \} from '\.\.\/\.\.\/\.\.\/services\/recorteDeLiquidacion'/)
   assert.match(FILTROS, /rotulo="Cobra"/)
 })
 

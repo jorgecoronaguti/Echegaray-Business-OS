@@ -15,9 +15,23 @@
 // peso y una hora no son la misma unidad y no se escriben igual: las horas van sin signo y con un
 // decimal sólo cuando existe (80, no «80,0»; 8,8 cuando la planilla puso 8,8).
 
-/** Pesos sin centavos. `null` es «falta el dato», nunca 0 (R1 del handoff). */
-export const pesos = (n: number | null): string =>
-  n == null ? '—' : `$${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+/**
+ * Pesos. Sin decimales cuando el importe es entero; con los dos centavos cuando los tiene. `null` es
+ * «falta el dato», nunca 0 (R1 del handoff).
+ *
+ * ═══ POR QUÉ LOS CENTAVOS (QA, 14/09/2026) ═══
+ *
+ * Zogbe, quincena del 01/09: ya transferido $94.795,50 y efectivo $325.808,50 se escribían $94.796 y
+ * $325.809 —dos redondeos independientes— y la fila leída no cerraba: 420.604 − 94.796 ≠ 325.809. El
+ * pie arrastraba el mismo peso. Una cuenta que se muestra tiene que cerrar como se muestra.
+ */
+export const pesos = (n: number | null): string => {
+  if (n == null) return '—'
+  const conCentavos = Math.round(Number(n) * 100) % 100 !== 0
+  return `$${Number(n).toLocaleString('es-AR', {
+    minimumFractionDigits: conCentavos ? 2 : 0, maximumFractionDigits: conCentavos ? 2 : 0,
+  })}`
+}
 
 /** Horas: sin signo de moneda y con un decimal como máximo. `null` es «falta el dato». */
 export const horas = (n: number | null): string =>

@@ -28,17 +28,21 @@ import { ALTO_LIQ } from '../solapas/tabla'
 import { cierreDeLaFila, type EntradaDeHistorial } from '../../../services/cuadroDeJornales'
 import type { CampoEditable } from '../../../services/liquidacionOverrides'
 import type { FilaDelEspejo } from '../../../services/espejoDeJornales'
+import type { DetalleLaboral } from '../../../services/detalleLaboral'
+import { DetalleLaboralDeLaPersona } from './DetalleLaboralDeLaPersona'
 
 const MONO = "'IBM Plex Mono', monospace"
 const corta = (iso: string | null): string =>
   iso == null ? 'sin cargar' : `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 
-export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, historialCompleto, onCerrar }: {
+export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, historialCompleto, detalle, onCerrar }: {
   fila: FilaDelEspejo
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
   historial: readonly EntradaDeHistorial[]
   historialCompleto: boolean
+  /** Lo laboral que tenía la grilla de «Horas»: costo cargado, legajo, HH por mes, esperadas y estado. */
+  detalle?: DetalleLaboral
   onCerrar: () => void
 }) {
   const l = fila.linea
@@ -89,7 +93,9 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
           <section style={{ fontSize: '12px', color: V.apagado, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {fila.horasPorTipo.automaticas > 0 && (
               <div data-testid="panel-automaticas" style={{ color: V.warn }}>
-                {`${nHoras(fila.horasPorTipo.automaticas)} h de jornada automática sin confirmar: no se pagan hasta que alguien escriba el día.`}
+                {/* EN LLANO (dueño, 14/09/2026: «8a 9a no se q es eso»): las fechas, y que no se pagan. */}
+                {`${fila.celdas.filter((c) => c.marca !== 'horas' && c.automatica != null)
+                  .map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)}`).join(' y ')} sin horas cargadas (no se pagan)`}
               </div>
             )}
             {fila.cotejo.estado === 'difiere' && (
@@ -99,6 +105,8 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
         )}
 
         <HistorialDeTarifa entradas={historial} completo={historialCompleto} />
+
+        <DetalleLaboralDeLaPersona detalle={detalle} />
       </div>
     </Drawer>
   )

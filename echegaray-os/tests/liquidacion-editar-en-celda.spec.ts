@@ -105,48 +105,56 @@ test.afterAll(async () => {
   await limpiar()
 })
 
+// ═══ CAMBIÓ EL 14/09/2026: LA GRILLA DE «HORAS» SE RETIRÓ DE «MÁS» ═══
+//
+// El día se corrige en la celda del cuadro de la Quincena (`espejo-dia-<persona>-<fecha>`), que escribe
+// con la misma acción. El panel de la persona ya no lista los días: tiene la cadena de pago y el
+// detalle laboral. Lo que se mide —lo escrito se ve antes de que conteste el servidor, llega a la base
+// y deja rastro— no cambia; y el panel se sigue abriendo, ahora con el detalle laboral adentro.
 test('corregir las horas de un día se ve en la celda antes de que el servidor conteste, y queda en la base', async ({ page }) => {
   const sb = servicio()
   await page.setViewportSize({ width: 1440, height: 1000 })
   await entrarComo(page, ADMIN.email, ADMIN.password)
-  await page.goto('/administracion/personas?vista=liquidacion&solapa=horas')
-  await expect(page.getByTestId('vista-horas')).toBeVisible({ timeout: 60_000 })
+  await page.goto('/administracion/personas?vista=liquidacion')
+  await expect(page.getByTestId('vista-quincena')).toBeVisible({ timeout: 60_000 })
 
-  // LA FILA DE LA PERSONA DE PRUEBA, NUNCA `.first()`: la grilla muestra el plantel entero y
+  // LA FILA DE LA PERSONA DE PRUEBA, NUNCA `.first()`: el cuadro muestra el plantel entero y
   // `.first()` ya le escribió una licencia a un empleado real en este repo.
-  const fila = page.locator(`[data-testid="fila-${PERSONA}"]`)
-  await expect(fila, 'la persona de prueba tiene que estar en la grilla').toBeVisible({ timeout: 60_000 })
-  // ═══ UN CLIC ANTES DE LA HIDRATACIÓN NO ABRE NADA, Y NO DEJA RASTRO ═══
-  //
-  // 11/09/2026, corriendo este spec junto a `liquidacion-fidelidad` con dos workers sobre un solo
-  // `next dev`: la fila existía, el clic salía, y `panel-persona` no aparecía nunca. No era un dato
-  // faltante —`porPersona` y las filas se arman del MISMO `directorioFilas`, no pueden diferir—:
-  // era el clic cayendo sobre el HTML del servidor antes de que React enganchara su `onClick`. El
-  // manejador se pierde y la pantalla no dice nada, que es la queja del dueño vista desde adentro.
-  //
-  // Se reintenta en vez de esperar más: `toBeVisible` con un timeout más largo espera un panel que
-  // ya nunca va a abrirse, porque el clic que lo abría se perdió.
-  await expect(async () => {
-    await fila.click()
-    await expect(page.getByTestId('panel-persona')).toBeVisible({ timeout: 5_000 })
-  }).toPass({ timeout: 60_000 })
+  await expect(page.getByTestId(`espejo-fila-${PERSONA}`), 'la persona de prueba tiene que estar en el cuadro')
+    .toBeVisible({ timeout: 60_000 })
 
-  const suyos = await sb.from('registros_hh').select('id').eq('persona_id', PERSONA)
-  const registroId = ((suyos.data ?? []) as { id: string }[])[0]?.id
+  const suyos = await sb.from('registros_hh').select('id, fecha').eq('persona_id', PERSONA)
+  const registro = ((suyos.data ?? []) as { id: string; fecha: string }[])[0]
+  const registroId = registro?.id
   expect(registroId, 'la prueba tiene que haber cargado su día').toBeTruthy()
 
-  const celda = page.getByTestId(`hh-${registroId}`)
+  const celda = page.getByTestId(`espejo-dia-${PERSONA}-${registro.fecha}`)
   await expect(celda).toHaveText(String(ANTES), { timeout: 30_000 })
-  await celda.click()
-  await page.getByTestId(`hh-${registroId}-campo`).fill(String(DESPUES))
-  await page.getByTestId(`hh-${registroId}-campo`).press('Enter')
+  // ═══ UN CLIC ANTES DE LA HIDRATACIÓN NO ABRE NADA, Y NO DEJA RASTRO ═══
+  // Se reintenta en vez de esperar más: el clic perdido no vuelve (11/09/2026, dos workers sobre un
+  // solo `next dev`).
+  await expect(async () => {
+    await celda.click()
+    await expect(page.getByTestId(`espejo-dia-${PERSONA}-${registro.fecha}-campo`)).toBeVisible({ timeout: 5_000 })
+  }).toPass({ timeout: 60_000 })
+  await page.getByTestId(`espejo-dia-${PERSONA}-${registro.fecha}-campo`).fill(String(DESPUES))
+  await page.getByTestId(`espejo-dia-${PERSONA}-${registro.fecha}-campo`).press('Enter')
 
   // 1 · EL DEFECTO: mientras el servidor no confirmó, la celda tiene que mostrar LO QUE SE ESCRIBIÓ.
   // Sin el arreglo, `data-pendiente` no existe y acá se cae — que es exactamente lo que veía el
   // dueño: el número volviendo solo al valor anterior.
   await expect(celda).toHaveAttribute('data-pendiente', '1', { timeout: 60_000 })
   await expect(celda, 'la celda volvió al valor anterior después de guardar').toHaveText(String(DESPUES))
-  await expect(page.getByTestId(`hh-${registroId}-error`)).toHaveCount(0)
+  await expect(page.getByTestId(`espejo-dia-${PERSONA}-${registro.fecha}-error`)).toHaveCount(0)
+
+  // EL PANEL DE LA PERSONA SE ABRE SIN NAVEGAR, con el detalle laboral que tenía «Horas».
+  await expect(async () => {
+    await page.getByTestId(`espejo-nombre-${PERSONA}`).click()
+    await expect(page.getByTestId('panel-cuadro-persona')).toBeVisible({ timeout: 5_000 })
+  }).toPass({ timeout: 60_000 })
+  for (const b of ['detalle-quincena', 'detalle-costo', 'detalle-laboral', 'detalle-hh-mes']) {
+    await expect(page.getByTestId(b)).toBeVisible()
+  }
 
   // 2 · EL EFECTO EN EL DESTINO, no la pantalla que dijo que sí.
   await expect.poll(async () => {
@@ -176,35 +184,33 @@ test('corregir las horas desde la celda de la GRILLA, sin abrir el panel, queda 
   const sb = servicio()
   await page.setViewportSize({ width: 1440, height: 1000 })
   await entrarComo(page, ADMIN.email, ADMIN.password)
-  await page.goto('/administracion/personas?vista=liquidacion&solapa=horas')
-  await expect(page.getByTestId('vista-horas')).toBeVisible({ timeout: 60_000 })
+  await page.goto('/administracion/personas?vista=liquidacion')
+  await expect(page.getByTestId('vista-quincena')).toBeVisible({ timeout: 60_000 })
 
-  const suyos = await sb.from('registros_hh').select('id, horas').eq('persona_id', PERSONA)
-  const registro = ((suyos.data ?? []) as { id: string; horas: number }[])[0]
+  const suyos = await sb.from('registros_hh').select('id, horas, fecha').eq('persona_id', PERSONA)
+  const registro = ((suyos.data ?? []) as { id: string; horas: number; fecha: string }[])[0]
   expect(registro?.id, 'la prueba tiene que haber cargado su día').toBeTruthy()
   const desde = Number(registro.horas)
   const hasta = desde === 7 ? 5 : 7
+  const testid = `espejo-dia-${PERSONA}-${registro.fecha}`
 
-  // LA CELDA VIVE EN LA FILA, NO EN EL PANEL. `grilla-hh-` la distingue de la `hh-` del panel: son
-  // dos lugares distintos que escriben con la MISMA acción, y el testid tiene que decir cuál se tocó.
-  const celda = page.getByTestId(`grilla-hh-${registro.id}`)
-  await expect(celda, 'la celda de la grilla tiene que ser editable').toBeVisible({ timeout: 60_000 })
-  // EL PANEL NO SE ABRIÓ, y no puede abrirse al tocar la celda: la fila entera es un botón que lo
-  // despliega, así que sin frenar el clic el campo quedaba debajo de un panel que aparece y se va.
-  await expect(page.getByTestId('panel-persona')).toHaveCount(0)
+  // LA CELDA VIVE EN LA FILA, NO EN EL PANEL: escribe con la MISMA acción y sin abrirlo.
+  const celda = page.getByTestId(testid)
+  await expect(celda, 'la celda del cuadro tiene que ser editable').toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('panel-cuadro-persona')).toHaveCount(0)
 
   // Mismo reintento que arriba: un clic anterior a la hidratación no abre el campo y no deja rastro.
   await expect(async () => {
     await celda.click()
-    await expect(page.getByTestId(`grilla-hh-${registro.id}-campo`)).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByTestId(`${testid}-campo`)).toBeVisible({ timeout: 5_000 })
   }).toPass({ timeout: 60_000 })
-  await expect(page.getByTestId('panel-persona'), 'escribir en la celda no abre el panel').toHaveCount(0)
+  await expect(page.getByTestId('panel-cuadro-persona'), 'escribir en la celda no abre el panel').toHaveCount(0)
 
-  await page.getByTestId(`grilla-hh-${registro.id}-campo`).fill(String(hasta))
-  await page.getByTestId(`grilla-hh-${registro.id}-campo`).press('Enter')
+  await page.getByTestId(`${testid}-campo`).fill(String(hasta))
+  await page.getByTestId(`${testid}-campo`).press('Enter')
 
   await expect(celda).toHaveText(String(hasta), { timeout: 60_000 })
-  await expect(page.getByTestId(`grilla-hh-${registro.id}-error`)).toHaveCount(0)
+  await expect(page.getByTestId(`${testid}-error`)).toHaveCount(0)
 
   // EL EFECTO EN EL DESTINO. Es lo único que prueba que se guardó.
   await expect.poll(async () => {
@@ -215,5 +221,5 @@ test('corregir las horas desde la celda de la GRILLA, sin abrir el panel, queda 
   // Y RECARGANDO: lo que se ve después de volver a pedir la pantalla sale de la base, no del estado
   // optimista que quedó en el navegador. Es el paso que el dueño hace y que ningún caso medía.
   await page.reload()
-  await expect(page.getByTestId(`grilla-hh-${registro.id}`)).toHaveText(String(hasta), { timeout: 60_000 })
+  await expect(page.getByTestId(testid)).toHaveText(String(hasta), { timeout: 60_000 })
 })
