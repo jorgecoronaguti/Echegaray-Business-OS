@@ -247,11 +247,18 @@ export function resolutorDeObra({ alias = new Map(), canonicas = [], clienteAlia
  * Asignación vigente de la persona en la fecha: `desde`/`hasta` nulos valen como abiertos. Si varias
  * obras cubren el día, desempata la cronología del empleado (`asignacion-del-dia.mjs`, la misma regla
  * que usa la grilla de la app); empate total → null.
+ *
+ * `desempatar: false` es la regla de antes: dos obras el mismo día no deciden. La usan las licencias y
+ * las ausencias (dueño, 14/09/2026: «la licencia no se mueve»): un día no trabajado no tiene cronología
+ * de obra que seguir, y conserva la obra que ya tenía.
  */
-export function asignacionVigente(asignaciones = [], personaId, fecha) {
+export function asignacionVigente(asignaciones = [], personaId, fecha, { desempatar = true } = {}) {
   const tramos = asignaciones.filter((a) => a.persona_id === personaId)
     .map((a) => ({ obra: a.obra_id, desde: a.desde, hasta: a.hasta }))
-  return obraDeLaAsignacionDelDia(tramos, fecha)
+  if (desempatar) return obraDeLaAsignacionDelDia(tramos, fecha)
+  const cubren = tramos.filter((t) => (!t.desde || String(t.desde).slice(0, 10) <= fecha) && (!t.hasta || String(t.hasta).slice(0, 10) >= fecha))
+  const ids = [...new Set(cubren.map((t) => t.obra))]
+  return ids.length === 1 ? ids[0] : null
 }
 
 const esLicencia = (m) => /enfermedad|licencia|vacacion/i.test(`${m.cliente} ${m.obra}`)
@@ -315,18 +322,20 @@ export function planDeRegistros(marcas, { personas, resolver, asignaciones = [],
     if (emp.estado !== 'ok') { acumularPersona(falta.personas, m, emp); continue }
     const pid = emp.persona.id
     const licencia = esLicencia(m)
-    const contexto = { asignacion: asignacionVigente(asignaciones, pid, m.fecha), ultima: ultimaObra.get(pid) ?? null }
-    let res = resolver(licencia ? { cliente: '', obra: '' } : { cliente: m.cliente, obra: m.obra }, contexto)
-    if (!licencia && res.obra_id) {
-      const web = obraPorAsignacionWeb(res.obra_id, asignacionVigente(asignacionesWeb, pid, m.fecha), clienteDeObra)
-      if (web) res = { obra_id: web, origen: 'obra_por_asignacion_web' }
-    }
     // LA JORNADA DE LA OBRA YA NO DECIDE NADA ACÁ: la usaba sólo la rama del 0, que ahora escribe 0
     // horas. `jornadaPorObra` se conserva en la firma porque es el catálogo que el script ya lee y
     // porque el día que haga falta una jornada de referencia va a salir de ahí y no de un promedio.
     const partes = partesDeCelda(m.celda, { licencia })
     if (partes === null) { falta.celdas.push({ ...sinCelda(m), valor: m.celda.formula ?? m.celda.valor_crudo }); continue }
     if (partes.length === 0) continue
+    // Licencia o ausencia: sin desempate por cronología, queda la obra que ya tenía (ver `asignacionVigente`).
+    const opc = { desempatar: !partes.every((p) => p.tipo_hora === 'licencia' || p.tipo_hora === 'ausencia') }
+    const contexto = { asignacion: asignacionVigente(asignaciones, pid, m.fecha, opc), ultima: ultimaObra.get(pid) ?? null }
+    let res = resolver(licencia ? { cliente: '', obra: '' } : { cliente: m.cliente, obra: m.obra }, contexto)
+    if (!licencia && res.obra_id) {
+      const web = obraPorAsignacionWeb(res.obra_id, asignacionVigente(asignacionesWeb, pid, m.fecha, opc), clienteDeObra)
+      if (web) res = { obra_id: web, origen: 'obra_por_asignacion_web' }
+    }
     if (!res.obra_id) { acumularObra(falta.obras, m, emp.persona, partes); continue }
     if (!licencia) ultimaObra.set(pid, res.obra_id)
     for (const p of partes) fundir(filas, m, emp.persona, res, p)

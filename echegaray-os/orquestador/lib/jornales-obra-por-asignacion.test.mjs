@@ -75,6 +75,26 @@ test('Reta 09/09: dos asignaciones el mismo día siguen la cronología — el d�
   assert.equal(de('2026-09-10').obra_canonica_id, 'quattropani')
 })
 
+test('Quiroga A. S. 09/09: la licencia con dos asignaciones superpuestas no se desempata, queda en la obra que tenía', () => {
+  // MUTACIÓN QUE PONE ESTO ROJO: aplicar el desempate por cronología también a licencias y ausencias.
+  const marcas = [
+    marca('Rosales Diego', '2026-09-08', 'JAVIER SANCHEZ', 'Mamposteria'),
+    { ...marca('Rosales Diego', '2026-09-09', 'z. ENFERMEDAD', 'z. ENFERMEDAD'), fila1: 572 },
+    { ...marca('Rosales Diego', '2026-09-09', 'JAVIER SANCHEZ', 'Mamposteria'), nombre: 'Zogbe Leonardo', celda: celda(0) },
+  ]
+  const asignaciones = [
+    { persona_id: 'p-rosales', obra_id: 'quattropani', desde: '2026-09-09', hasta: '2026-09-09' },
+    { persona_id: 'p-rosales', obra_id: 'messina', desde: '2026-09-09', hasta: null },
+    { persona_id: 'p-zogbe', obra_id: 'quattropani', desde: '2026-09-09', hasta: '2026-09-09' },
+    { persona_id: 'p-zogbe', obra_id: 'messina', desde: '2026-09-01', hasta: null },
+  ]
+  const { filas } = planDeRegistros(marcas, { personas: PERSONAS, resolver, asignaciones, asignacionesWeb: asignaciones, clienteDeObra: CLIENTE })
+  const lic = filas.find((f) => f.persona_id === 'p-rosales' && f.tipo_hora === 'licencia')
+  assert.equal(lic.obra_canonica_id, 'sf-mamposteria', 'la licencia sigue con la obra del último bloque, no con la asignación corta')
+  const aus = filas.find((f) => f.persona_id === 'p-zogbe' && f.tipo_hora === 'ausencia')
+  assert.equal(aus.obra_canonica_id, 'sf-mamposteria', 'la ausencia conserva la obra de la planilla')
+})
+
 test('empate total entre dos asignaciones web: no decide, manda la planilla', () => {
   const marcas = [marca('Rosales Diego', '2026-09-09', 'JAVIER SANCHEZ', 'Mamposteria')]
   const asignacionesWeb = [
