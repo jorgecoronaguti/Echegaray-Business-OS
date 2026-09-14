@@ -35,7 +35,7 @@ import type { CampoEditable } from '../../services/liquidacionOverrides'
 import { guardarCeldaLiquidacion, guardarEfectivoRedondeado } from '../../services/liquidacionActions'
 import { guardarValorHora } from '../../services/tarifaDeLaQuincenaActions'
 import { accionDelRedondeo, efectivoMostrado } from '../../services/efectivoRedondeado'
-import { horas, pesos } from './formato'
+import { horas, pesos, textoDelRedondeo } from './formato'
 
 /**
  * LA UNIDAD DE LA CELDA, NO SU FORMATEADOR.
@@ -279,6 +279,9 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
   const [texto, setTexto] = useState(inicial)
   const [base, setBase] = useState(inicial)
   const [tocado, setTocado] = useState(false)
+  // EN EDICIÓN SE VE EL NÚMERO; EN REPOSO, CON FORMATO (`textoDelRedondeo`). Arranca en falso en los dos lados:
+  // el primer dibujo del servidor y del navegador es el mismo.
+  const [enEdicion, setEnEdicion] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardando, empezar] = useTransition()
   // EL VALOR DE AFUERA MANDA cuando la línea se vuelve a leer del servidor, salvo mientras alguien
@@ -318,9 +321,10 @@ export function CeldaRedondeo({ personaId, valor, enEfectivo, quincena, grupo, b
 
   return (
     <input
-      value={texto}
+      value={textoDelRedondeo({ enEdicion, texto, valor: mostrado.valor })}
+      onFocus={() => setEnEdicion(true)}
       onChange={(e) => { setTocado(true); setTexto(e.target.value) }}
-      onBlur={alSalir}
+      onBlur={() => { setEnEdicion(false); alSalir() }}
       disabled={guardando}
       inputMode="decimal"
       aria-label="Efectivo redondeado"
