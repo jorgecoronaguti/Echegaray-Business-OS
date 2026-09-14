@@ -1,0 +1,8 @@
+[
+  { "tipo": "emitido", "numero": "00000381", "banco": "Santander", "contraparte": "MARIANA SA", "contraparte_cuit": "30691852071",
+    "fecha_pago": "2026-10-07", "importe": 763364.80, "estado": "Aceptado", "instrumento": "ECHEQ",
+    "origen": "Santander Empresas · Cheques › Emisión › Emitidos (PDF emic.pdf, 14/09/2026 08:53)", "corte": "2026-09-14" },
+  { "tipo": "emitido", "numero": "00000308", "banco": "Santander", "contraparte": "NEUMAGOM SAS", "contraparte_cuit": "30691853825",
+    "fecha_pago": "2026-09-03", "importe": 317000, "estado": "Depositado", "instrumento": "ECHEQ",
+    "origen": "Santander Empresas · Cheques › Emisión › Emitidos (PDF emic.pdf, 14/09/2026 08:53) · extracto: débito ref 308 y «Rechazo echeq falla tec. no libra - Dia no laborable» +$317.000 el 10/09", "corte": "2026-09-14" }
+]
