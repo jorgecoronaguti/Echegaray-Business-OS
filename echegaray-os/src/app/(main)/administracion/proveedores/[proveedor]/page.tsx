@@ -52,9 +52,13 @@ import { formatearCuit } from '@/features/administracion/services/identidad'
 import { getDocumentosDelProveedor } from '@/features/administracion/services/documentosProveedorService'
 import {
   ComprasDelProveedor, NombresDelProveedor, ObrasDelProveedor, PaquetesDelProveedor,
-  PapelesDelProveedor, QueProvee, RepartoPorObra,
+  QueProvee, RepartoPorObra,
 } from '@/features/administracion/components/ListasProveedorV2'
 import { DocumentosDelProveedor } from '@/features/administracion/components/proveedores/DocumentosDelProveedor'
+import { ComprobantesDelProveedor } from '@/features/administracion/components/proveedores/ComprobantesDelProveedor'
+import { getComprasConPapel } from '@/features/administracion/services/comprobantesProveedorService'
+import { filtrosDeURL } from '@/features/administracion/services/comprobantesProveedor'
+import { esAdministracion } from '@/features/auth/types/areas'
 import { getArchivosDeEntidad } from '@/features/documentos/services/carpetaDeEntidadService'
 import { ArchivosDeDrive } from '@/features/documentos/components/ArchivosDeDrive'
 import { Aviso } from '@/shared/components/ds'
@@ -69,24 +73,31 @@ import { pesos } from '@/shared/components/canon/formato'
 
 export const dynamic = 'force-dynamic'
 
-// «DOCUMENTOS» ES UNA CARA APARTE DE «PAPELES», Y NO SON SINÓNIMOS: papeles son los comprobantes
-// que se DERIVAN de sus compras (nadie los sube acá); documentos es lo que alguien de Administración
-// guardó contra esta ficha —contrato de subcontrato, póliza, habilitación, un video—. Juntarlos en
-// una sola cara haría que dar de baja un contrato pareciera borrar una factura.
-const CARAS = ['compras', 'nombres', 'obras', 'paquetes', 'papeles', 'documentos'] as const
+// «DOCUMENTOS» ES UNA CARA APARTE DE «COMPROBANTES», Y NO SON SINÓNIMOS: comprobantes son los papeles
+// de sus COMPRAS (viven en `compra_adjunto`, los mismos de Compras); documentos es lo que alguien de
+// Administración guardó contra esta ficha —contrato de subcontrato, póliza, habilitación, un video—.
+// Juntarlos haría que dar de baja un contrato pareciera borrar una factura.
+//
+// «Comprobantes» reemplaza a la cara «Papeles» del mockup (14/09/2026), que era un cartel que
+// mandaba a otra pantalla. `?vista=papeles` sigue abriendo la cara nueva: hay enlaces viejos.
+const CARAS = ['compras', 'nombres', 'obras', 'paquetes', 'comprobantes', 'documentos'] as const
 type Cara = (typeof CARAS)[number]
 
 const esCara = (v: unknown): v is Cara =>
   typeof v === 'string' && (CARAS as readonly string[]).includes(v)
 
+/** El año de hoy en San Juan: el 31/12 a las 22 h, UTC ya diría el año que viene. */
+const anioDeHoy = () => Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/San_Juan', year: 'numeric' }).format(new Date()))
+
 const fecha = (f: string | null) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}` : null)
 
 export default async function ProveedorFichaPage({ params, searchParams }: {
   params: Promise<{ proveedor: string }>
-  searchParams: Promise<{ vista?: string }>
+  searchParams: Promise<{ vista?: string; anio?: string; papel?: string; n?: string }>
 }) {
   const { proveedor: id } = await params
-  const { vista } = await searchParams
+  const sp = await searchParams
+  const vista = sp.vista === 'papeles' ? 'comprobantes' : sp.vista
   const cara: Cara = esCara(vista) ? vista : 'compras'
   const supabase = await createClient()
 
@@ -128,6 +139,14 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   // desconocida» — que es el hecho, y es lo que hace visible la decisión pendiente.
   const archivosDrive = cara === 'documentos'
     ? await getArchivosDeEntidad(supabase, 'proveedor', proveedor.id)
+    : null
+  // LOS COMPROBANTES LOS VE QUIEN VE COMPRAS: el mismo `esAdministracion` que corta esa pantalla.
+  // Se leen sólo con la cara abierta: son la tabla de papeles entera y no pesan en las otras caras.
+  const veComprobantes = esAdministracion(perfil.data?.rol ?? null)
+  const anioActual = anioDeHoy()
+  const filtrosComprobantes = filtrosDeURL(sp, anioActual)
+  const comprobantes = cara === 'comprobantes' && veComprobantes
+    ? await getComprasConPapel(supabase, proveedor.id)
     : null
 
   const href = (v: Cara) => `/administracion/proveedores/${proveedor.id}${v === 'compras' ? '' : `?vista=${v}`}`
@@ -212,9 +231,14 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
           { clave: 'nombres', titulo: 'Nombres resueltos', cuenta: (nombres.data ?? []).length || null, activa: cara === 'nombres', href: href('nombres') },
           { clave: 'obras', titulo: 'Obras', cuenta: porObra.length || null, activa: cara === 'obras', href: href('obras') },
           { clave: 'paquetes', titulo: 'Paquetes', cuenta: (paquetes.data ?? []).length || null, activa: cara === 'paquetes', href: href('paquetes') },
-          // SIN CONTADOR: no hay tabla que vincule un archivo con un proveedor, así que un 0 ahí
-          // afirmaría que se contaron los papeles y no hay ninguno.
-          { clave: 'papeles', titulo: 'Papeles', cuenta: null, activa: cara === 'papeles', href: href('papeles') },
+          // SIN CONTADOR mientras la cara está cerrada: no se leyó, y un 0 afirmaría que se contó.
+          ...(veComprobantes
+            ? [{
+                clave: 'comprobantes', titulo: 'Comprobantes',
+                cuenta: comprobantes?.data ? (comprobantes.data.filas.length || null) : null,
+                activa: cara === 'comprobantes', href: href('comprobantes'),
+              }]
+            : []),
           // ACÁ SÍ HAY CONTADOR, y sólo cuando la lectura salió bien: si `proveedor_documento` no se
           // pudo leer, un 0 diría que este proveedor no tiene contrato guardado, que es una
           // afirmación que la lectura no habilita.
@@ -259,7 +283,15 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
           {cara === 'paquetes' && (
             <PaquetesDelProveedor filas={paquetes.data ?? []} error={paquetes.error} />
           )}
-          {cara === 'papeles' && <PapelesDelProveedor nombre={proveedor.nombre} />}
+          {cara === 'comprobantes' && !veComprobantes && (
+            <Aviso tono="info">Los comprobantes de las compras son de Administración.</Aviso>
+          )}
+          {cara === 'comprobantes' && comprobantes && (
+            <ComprobantesDelProveedor
+              proveedorId={proveedor.id} lectura={comprobantes}
+              filtros={filtrosComprobantes} anioActual={anioActual}
+            />
+          )}
           {cara === 'documentos' && (
             <DocumentosDelProveedor
               proveedorId={proveedor.id}

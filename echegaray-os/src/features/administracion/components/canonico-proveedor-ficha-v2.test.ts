@@ -65,8 +65,13 @@ test('contacto, condición de IVA y plazo de pago NO se dibujan como campos', ()
   assert.match(src, /limites-ficha/)
 })
 
-test('la solapa Papeles no lleva contador: no hay nada que contar', () => {
-  assert.match(codigoPagina(), /clave: 'papeles', titulo: 'Papeles', cuenta: null/)
+test('la solapa Comprobantes sólo cuenta lo que leyó, y sólo la ve quien ve Compras', () => {
+  const src = codigoPagina()
+  assert.match(src, /clave: 'comprobantes', titulo: 'Comprobantes'/)
+  assert.match(src, /cuenta: comprobantes\?\.data \? \(comprobantes\.data\.filas\.length \|\| null\) : null/)
+  assert.match(src, /const veComprobantes = esAdministracion\(/)
+  // Los enlaces viejos a «Papeles» no caen en Compras.
+  assert.match(src, /sp\.vista === 'papeles' \? 'comprobantes'/)
 })
 
 test('un comprobante sin importe no vale $ 0 y uno sin obra no se dibuja neutro', () => {
@@ -92,7 +97,7 @@ test('el total recortado del jefe de obra se rotula por lo que es', () => {
 
 test('las cinco caras del mockup están, y Compras es la que abre', () => {
   const src = codigoPagina()
-  for (const c of ['compras', 'nombres', 'obras', 'paquetes', 'papeles']) {
+  for (const c of ['compras', 'nombres', 'obras', 'paquetes', 'comprobantes']) {
     assert.match(src, new RegExp(`clave: '${c}'`), `falta la cara ${c}`)
   }
   assert.match(src, /esCara\(vista\) \? vista : 'compras'/)
