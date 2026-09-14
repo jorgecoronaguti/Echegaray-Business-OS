@@ -38,6 +38,9 @@ import {
   type CampoEditable, type LineaConOverrides, type OverridesDeLinea,
 } from './liquidacionOverrides.ts'
 import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornalesService.ts'
+import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposicionConvenioService.ts'
+import { periodoDeRecibo } from './liquidacionCuadros.ts'
+import { entradaDeBlanco, type ReciboDeSueldo } from './sueldoBlancoNegro.ts'
 import type { Quincena } from './quincena.ts'
 
 /** Un cuadro con sus líneas ya pisadas por lo que el dueño escribió a mano. */
@@ -83,6 +86,15 @@ export interface LiquidacionDeLaQuincena {
    * presencias y las tarifas: una segunda lectura en cada solapa sería un CUARTO número.
    */
   horas: HorasDeLaQuincena
+  /**
+   * LA EXPOSICIÓN AL CONVENIO, LEÍDA UNA VEZ. De acá sale el $/h de categoría del blanco estimado
+   * (`exponerAlPiso` → `pisoVigente`, la misma de la solapa Convenios) y la Quincena la reusa para la
+   * marca del básico y el historial: una segunda lectura serían dos fotos de la escala.
+   * Sus errores van en `errores`.
+   */
+  exposicion: ExposicionDeLaQuincena
+  /** `false` mientras `recibo_sueldo_linea` no exista: el neto sale de `nomina_recibo_neto`. */
+  hayRecibosDeSueldo: boolean
   /** Cada fuente que no se pudo leer, con su mensaje. Vacío = se leyó todo. */
   errores: { que: string; error: string }[]
   /**
@@ -113,7 +125,8 @@ const sinTabla = (e: { code?: string; message: string }): boolean =>
 export async function getLiquidacionDeLaQuincena(
   supabase: SupabaseClient, q: Quincena,
 ): Promise<LiquidacionDeLaQuincena> {
-  const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, anterior, espejo, sesionDePrueba] =
+  const [directorio, legajo, tarifas, registros, presencias, recibos, adelantos, guardadas, anterior, espejo, sesionDePrueba,
+    recibosDeSueldo, exposicion] =
     await Promise.all([
       // `puesto` VIAJA CON EL PLANTEL para que las pantallas de Liquidación ordenen y rotulen como
       // el resto de Personal (dueño, 10/09/2026). Es la misma columna y la misma función
@@ -169,6 +182,10 @@ export async function getLiquidacionDeLaQuincena(
       // serie sería un viaje más por carga de pantalla. Sin la migración aplicada devuelve `false` y
       // la pantalla queda como estaba.
       laSesionEsDePrueba(supabase),
+      // ═══ BLANCO + NEGRO (dueño, 14/09/2026) ═══ El recibo de sueldo con horas, $/h de categoría,
+      // bruto y neto, y el piso de la categoría para estimar el blanco de la quincena sin recibo.
+      leerRecibosDeSueldo(supabase),
+      getExposicionDeLaQuincena(supabase, q),
     ])
 
   const errores: { que: string; error: string }[] = []
@@ -187,6 +204,10 @@ export async function getLiquidacionDeLaQuincena(
   anotar('la liquidación guardada', guardadas.error)
   anotar('la quincena anterior', anterior.error)
   anotar('el espejo de JORNALES', espejo.error ? { message: espejo.error } : null)
+  // SIN LA TABLA ES «SIN RECIBO»; CUALQUIER OTRO ERROR SE DICE: fingir que no hay recibo estimaría el
+  // blanco de alguien que sí lo tiene.
+  anotar('los recibos de sueldo (blanco)', recibosDeSueldo.error ? { message: recibosDeSueldo.error } : null)
+  errores.push(...exposicion.errores)
 
   const cuilPorPersona = new Map(
     ((legajo.data ?? []) as { id: string; cuil: string | null }[]).map((r) => [r.id, r.cuil]),
@@ -255,8 +276,20 @@ export async function getLiquidacionDeLaQuincena(
     (id) => modalidadPorPersona.get(id) ?? 'hora',
   ))
 
+  const periodo = periodoDeRecibo(q)
+  const pisoDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.piso?.valorHora ?? null]))
+  /** La entrada del blanco de un obrero. Oficina y finales no cobran por hora: fuera del modelo. */
+  const blancoDe = (grupo: string, l: { personaId: string; reciboNeto: number | null }) => grupo !== 'obreros'
+    ? null
+    : entradaDeBlanco({
+      personaId: l.personaId, cuil: cuilPorPersona.get(l.personaId) ?? null, periodo,
+      recibos: recibosDeSueldo.filas, pisoCategoria: pisoDe.get(l.personaId) ?? null, netoDeNomina: l.reciboNeto,
+    })
+
   return {
     sinActividad: sinActividad.map((p) => ({ id: p.id, nombre: p.nombre })),
+    exposicion,
+    hayRecibosDeSueldo: recibosDeSueldo.hay,
     horas,
     // LA QUINCENA CERRADA NO SE PISA. Sus cifras son la foto del cierre y no admiten override: si
     // se aplicaran acá, una celda escrita después del cierre cambiaría el registro de lo que ya se
@@ -269,6 +302,7 @@ export async function getLiquidacionDeLaQuincena(
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.
         : c.lineas.map((l) => aplicarOverrides(
           l, overrides.get(l.personaId) ?? {}, c.grupo, espejo.cadenaPorPersona.get(l.personaId) ?? null,
+          blancoDe(c.grupo, l),
         )),
     })),
     camposEditables,
@@ -280,6 +314,38 @@ export async function getLiquidacionDeLaQuincena(
       (presencias.data ?? []) as (PresenciaDeQuincena & { persona_id: string })[],
     ),
     errores,
+  }
+}
+
+const TOPE_RECIBOS = 5000
+
+/**
+ * LAS LÍNEAS DE RECIBO DE SUELDO, TODAS: el blanco de la quincena y la proporción neto/bruto del último
+ * recibo de cada persona. Sin la tabla (42P01) devuelve `hay: false` sin error: la migración la aplica
+ * otra persona. Llegar al tope es un error, no una lista completa.
+ */
+async function leerRecibosDeSueldo(
+  supabase: SupabaseClient,
+): Promise<{ filas: ReciboDeSueldo[]; hay: boolean; error: string | null }> {
+  const { data, error } = await supabase.from('recibo_sueldo_linea')
+    .select('persona_id, cuil, periodo, categoria, valor_hora, horas_blanco, bruto, neto, drive_file_id')
+    .range(0, TOPE_RECIBOS - 1)
+  if (error) {
+    if (sinTabla(error)) return { filas: [], hay: false, error: null }
+    return { filas: [], hay: false, error: error.message?.trim() || `la base rechazó la consulta (${error.code ?? 'sin código'})` }
+  }
+  const filas = (data ?? []) as Record<string, unknown>[]
+  if (filas.length >= TOPE_RECIBOS) return { filas: [], hay: true, error: `llegó al tope de ${TOPE_RECIBOS} líneas: no puedo afirmar que están todas` }
+  const n = (v: unknown): number | null => (v == null || !Number.isFinite(Number(v)) ? null : Number(v))
+  const s = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null)
+  return {
+    hay: true,
+    error: null,
+    filas: filas.map((r) => ({
+      personaId: s(r.persona_id), cuil: s(r.cuil), periodo: String(r.periodo ?? ''), categoria: s(r.categoria),
+      valorHora: n(r.valor_hora), horasBlanco: n(r.horas_blanco), bruto: n(r.bruto), neto: n(r.neto),
+      driveFileId: s(r.drive_file_id),
+    })),
   }
 }
 

@@ -307,6 +307,12 @@ export interface TotalesDelEspejo {
   total: number
   /** Cuántas filas no se pudieron liquidar. No suman, y el pie lo dice. */
   sinTarifa: number
+  /** El negro de las filas que suman (blanco + negro, dueño 14/09/2026). */
+  negro: number
+  /** Filas con $/h y horas cuyo blanco no tiene neto: no suman y se cuentan aparte de «sin tarifa». */
+  sinNeto: number
+  /** Filas cuyo blanco es estimado (sin recibo del período). */
+  estimados: number
   /** Cuántas filas difieren de la planilla, y por cuántas horas en total. */
   difieren: number
   horasDeDiferencia: number
@@ -336,7 +342,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
   const t: TotalesDelEspejo = {
     personas: filas.length, porDia, horas: 0, cobra: 0, adelanto: 0, yaTransferido: 0,
     porBanco: 0, enEfectivo: 0, total: 0, sinTarifa: 0, difieren: 0, horasDeDiferencia: 0,
-    sinCotejar: 0,
+    sinCotejar: 0, negro: 0, sinNeto: 0, estimados: 0,
     // SOBRE LAS MISMAS FILAS QUE RECIBE: la vista le pasa las visibles, así que el pie recorta
     // igual que el filtro y el buscador. Quien no tiene tarifa SÍ suma horas: trabajó igual.
     horasPorTipo: sumarHorasPorTipo(filas),
@@ -351,9 +357,13 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     // LOS DOS ESTADOS QUE NO PUDIERON COMPARAR SE CUENTAN JUNTOS: para el pie, «no se comparó» es una
     // sola cosa. El chip de la fila sí distingue por qué, que es donde la distinción sirve.
     if (f.cotejo.estado === 'sin-espejo' || f.cotejo.estado === 'no-esta') t.sinCotejar++
-    if (l.sinTarifa || l.cobra == null) { t.sinTarifa++; continue }
+    if (l.sueldo?.estado === 'estimado') t.estimados++
+    // «SIN NETO» NO ES «SIN TARIFA»: la tarifa está, falta el recibo. Contarlos juntos mandaría a cargar
+    // una tarifa que ya existe.
+    if (l.sinTarifa || l.cobra == null) { if (!l.sinTarifa && l.sinNeto) t.sinNeto++; else t.sinTarifa++; continue }
     t.horas += Number(l.horas) || 0
     t.cobra += l.cobra
+    t.negro += l.sueldo?.negro ?? 0
     t.adelanto += l.adelanto
     t.yaTransferido += l.yaTransferido
     t.porBanco += l.porBanco
@@ -361,7 +371,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     t.total += Number(l.total) || 0
   }
   for (const k of ['horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total',
-    'horasDeDiferencia', 'horasPagas'] as const) {
+    'horasDeDiferencia', 'horasPagas', 'negro'] as const) {
     t[k] = r2(t[k])
   }
   return t

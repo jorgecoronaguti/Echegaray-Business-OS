@@ -30,6 +30,7 @@
 
 import type { GrupoLiquidacion, LineaLiquidada } from './liquidacionQuincena.ts'
 import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
+import { sueldoBlancoNegro, type EntradaDeBlanco, type SueldoBlancoNegro } from './sueldoBlancoNegro.ts'
 
 /** Las celdas que se pueden pisar a mano. El nombre NO está: es la única que el dueño dejó afuera. */
 export const CAMPOS_EDITABLES = [
@@ -50,6 +51,7 @@ export type OverridesDeLinea = Partial<Record<CampoEditable, number | null>>
 export interface ReferenciaDeJornales {
   horas: number | null
   cobra: number | null
+  porBanco: number | null
   enEfectivo: number | null
   difiere: boolean
 }
@@ -91,8 +93,16 @@ export interface LineaConOverrides extends LineaLiquidada {
    * esconderla haría que un giro que el extracto ve y la planilla no —o al revés— desapareciera.
    */
   discrepancia: Partial<Record<CampoEditable, { jornales: number; calculado: number }>>
-  /** Obreros: lo que la planilla dice de horas, cobra y efectivo, sin mandar. `null` sin espejo. */
+  /** Obreros: lo que la planilla dice de horas, cobra, banco y efectivo, sin mandar. `null` sin espejo. */
   referenciaJornales: ReferenciaDeJornales | null
+  /**
+   * BLANCO + NEGRO (dueño, 14/09/2026). `null` fuera del modelo: Oficina, finales, quincena cerrada, o
+   * un llamador que no le pasó la entrada del blanco. Con modelo, COBRA = `sueldo.total` y POR BANCO =
+   * `sueldo.neto`, salvo lo escrito a mano.
+   */
+  sueldo: SueldoBlancoNegro | null
+  /** Hay $/h y horas pero el blanco no tiene neto: el total no se puede afirmar. No es «sin tarifa». */
+  sinNeto: boolean
 }
 
 export type OrigenDeCelda = 'calculado' | 'jornales' | 'manual'
@@ -131,6 +141,11 @@ const TODO_CALCULADO: Record<CampoEditable, OrigenDeCelda> = {
  */
 const DE_JORNALES_OBREROS = ['adelanto', 'yaTransferido', 'porBanco'] as const
 const DE_JORNALES_OTROS = ['cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo'] as const
+/**
+ * CON BLANCO + NEGRO, JORNALES TAMPOCO MANDA EL BANCO: por banco es el neto del recibo (dueño,
+ * 14/09/2026). La planilla queda en `referenciaJornales` con su cobra, banco y efectivo.
+ */
+const DE_JORNALES_MODELO = ['adelanto', 'yaTransferido'] as const
 
 /**
  * LA LÍNEA CALCULADA, CON LO ESCRITO A MANO ENCIMA Y LA CADENA REHECHA.
@@ -142,11 +157,16 @@ const DE_JORNALES_OTROS = ['cobra', 'adelanto', 'yaTransferido', 'porBanco', 'en
 export function aplicarOverrides(
   base: LineaLiquidada, ov: OverridesDeLinea, grupo: GrupoLiquidacion,
   jornales: CadenaDeJornales | null = null,
+  /** La entrada del blanco. Sin ella la línea sigue el modelo anterior (horas × $/h). */
+  blanco: EntradaDeBlanco | null = null,
 ): LineaConOverrides {
   const manual = { ...SIN_MARCAS }
   const origen = { ...TODO_CALCULADO }
   const discrepancia: LineaConOverrides['discrepancia'] = {}
-  const deJornales: readonly string[] = grupo === 'obreros' ? DE_JORNALES_OBREROS : DE_JORNALES_OTROS
+  const conModelo = blanco != null && grupo === 'obreros'
+  const deJornales: readonly string[] = conModelo
+    ? DE_JORNALES_MODELO
+    : (grupo === 'obreros' ? DE_JORNALES_OBREROS : DE_JORNALES_OTROS)
 
   /** LA PRECEDENCIA, EN UNA SOLA FUNCIÓN: manual > JORNALES (si el cuadro lo admite) > calculado. */
   const resolver = (campo: CampoEditable, calculado: number | null): number | null => {
@@ -179,13 +199,18 @@ export function aplicarOverrides(
   }
 
   const horas = puesto('horas') ?? base.horas
-  const cobraCalc = manual.horas && grupo === 'obreros'
-    ? (base.valorHora == null || horas == null ? null : redondear2(horas * base.valorHora))
-    : base.cobra
+  // EL MODELO SE CALCULA SOBRE LAS HORAS QUE QUEDARON (manuales o de la app) Y EL $/H NEGRO VIGENTE.
+  const sueldo = conModelo ? sueldoBlancoNegro({ ...blanco!, horas, valorHoraNegro: base.valorHora }) : null
+  const cobraCalc = sueldo
+    ? sueldo.total
+    : manual.horas && grupo === 'obreros'
+      ? (base.valorHora == null || horas == null ? null : redondear2(horas * base.valorHora))
+      : base.cobra
   const cobra = resolver('cobra', cobraCalc)
   const adelanto = resolver('adelanto', base.adelanto) ?? 0
   const yaTransferido = resolver('yaTransferido', base.yaTransferido) ?? 0
-  const porBanco = resolver('porBanco', base.porBanco) ?? 0
+  // POR BANCO = NETO. Sin neto el banco no tiene cifra: 0 acá, y el total `null` saca la fila del pie.
+  const porBanco = resolver('porBanco', sueldo ? (sueldo.neto ?? 0) : base.porBanco) ?? 0
   // LA CADENA SE REHACE SOBRE LO QUE QUEDÓ ARRIBA, venga de donde venga (R5).
   const enEfectivoCalc = cobra == null
     ? null
@@ -207,28 +232,34 @@ export function aplicarOverrides(
     manual,
     origen,
     discrepancia,
-    referenciaJornales: grupo === 'obreros' ? referenciaDe(jornales, horas, cobra) : null,
+    referenciaJornales: grupo === 'obreros' ? referenciaDe(jornales, horas, cobra, conModelo) : null,
+    sueldo,
+    sinNeto: sueldo != null && sueldo.neto == null && !base.sinTarifa && origen.cobra === 'calculado',
   }
 }
 
-/** Lo que la planilla dice de un obrero, y si difiere de las horas y el cobra del cuadro. */
+/**
+ * Lo que la planilla dice de un obrero, y si difiere del cuadro. Con blanco + negro sólo se comparan
+ * las HORAS: el cobra de la planilla es horas × $/h, otro concepto que el neto + negro, y una marca que
+ * difiere siempre deja de leerse.
+ */
 function referenciaDe(
-  j: CadenaDeJornales | null, horas: number | null, cobra: number | null,
+  j: CadenaDeJornales | null, horas: number | null, cobra: number | null, conModelo: boolean,
 ): ReferenciaDeJornales | null {
   if (!j) return null
   const num = (v: number | null | undefined): number | null =>
     v == null || !Number.isFinite(v) ? null : redondear2(v)
-  const r = { horas: num(j.horas), cobra: num(j.cobra), enEfectivo: num(j.enEfectivo) }
-  if (r.horas == null && r.cobra == null && r.enEfectivo == null) return null
+  const r = { horas: num(j.horas), cobra: num(j.cobra), porBanco: num(j.porBanco), enEfectivo: num(j.enEfectivo) }
+  if (r.horas == null && r.cobra == null && r.enEfectivo == null && r.porBanco == null) return null
   const distinto = (a: number | null, b: number | null) => a != null && b != null && a !== redondear2(b)
-  return { ...r, difiere: distinto(r.horas, horas) || distinto(r.cobra, cobra) }
+  return { ...r, difiere: distinto(r.horas, horas) || (!conModelo && distinto(r.cobra, cobra)) }
 }
 
 /** Ninguna celda pisada: la fila calculada, con las marcas en falso. Para cuadros cerrados o sin líneas guardadas. */
 export function sinOverrides(base: LineaLiquidada): LineaConOverrides {
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
-    referenciaJornales: null,
+    referenciaJornales: null, sueldo: null, sinNeto: false,
   }
 }
 

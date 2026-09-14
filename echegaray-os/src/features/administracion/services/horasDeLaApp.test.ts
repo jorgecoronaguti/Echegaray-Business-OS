@@ -53,7 +53,7 @@ test('Quiroga A.: 88 h de las celdas y $435.600; JORNALES 75 h queda sólo como 
   assert.equal(l.cobra, 435600, '88 × $4.950, no el $371.250 de la planilla')
   assert.equal(l.origen.cobra, 'calculado')
   assert.equal(l.enEfectivo, 435600, 'el efectivo de la planilla no manda: la fila cierra con el cobra nuevo')
-  assert.deepEqual(l.referenciaJornales, { horas: 75, cobra: 371250, enEfectivo: 371250, difiere: true })
+  assert.deepEqual(l.referenciaJornales, { horas: 75, cobra: 371250, porBanco: null, enEfectivo: 371250, difiere: true })
   const ref = referenciaDeJornales(l)
   assert.equal(ref?.titulo, 'JORNALES: 75 h · $371.250')
   assert.equal(ref?.tituloEfectivo, 'JORNALES: efectivo $371.250')
