@@ -26,7 +26,15 @@
 // un día que la planilla no tiene de esa persona: si JORNALES tiene el día, manda JORNALES y la fila
 // de la app no se cuenta dos veces. Un obrero común cargado en la app sigue afuera.
 //
-// La definición vive UNA vez en SQL (`hh_que_cuentan_en_obra`, 20260913T2300); esta función es su
+// ═══ TODAS LAS HORAS TRABAJADAS CUENTAN (dueño, 14/09/2026) ═══
+//
+// «no son las mismas hs q se tienen q leer de la misma bd de supabase». Horas y Liquidación cuentan
+// toda fila trabajada de `registros_hh`, y el CRM también: `web:presencia-defecto`, `web:obra`, las
+// correcciones y los obreros cargados en la app. Quattropani 2026 daba 565 h contra 644 de la tabla.
+// Medido: 0 días con JORNALES y otra fuente a la vez para la misma persona, así que sumar todo no
+// duplica. Lo de arriba queda como historia de por qué existió `sin_respaldo`, que ahora sale vacío.
+//
+// La definición vive UNA vez en SQL (`hh_que_cuentan_en_obra`, 20260915T0200); esta función es su
 // espejo para los tests y para armar la frase, y `hh-por-obra.pg.test.mjs` compara las dos.
 
 /** El origen que manda: lo que JORNALES tiene, cuenta siempre. */
@@ -49,25 +57,19 @@ export interface FilaHH {
 }
 
 /** De dónde sale una fila que cuenta. `null` = no cuenta como hora de obra. */
-export type OrigenHH = 'jornales' | 'jefe_app'
+export type OrigenHH = 'jornales' | 'jefe_app' | 'app'
 
 /**
  * ¿ESTA FILA CUENTA COMO HORA DE OBRA? El espejo de `hh_que_cuentan_en_obra`.
  *
- * Los días que JORNALES tiene de cada persona se miran sobre TODAS las filas —de cualquier obra y
- * tipo—, igual que el `not exists` de la vista: un día liquidado por la planilla en otra obra también
- * es un día que la app no puede volver a contar.
+ * Toda fila de JORNALES (sus ausencias y licencias marcan el desglose, no suman) y toda fila trabajada
+ * de otra fuente. El origen sólo distingue al jefe para marcarlo; no decide si cuenta.
  */
 export function origenesHH(filas: readonly FilaHH[]): (OrigenHH | null)[] {
-  const diasDePlanilla = new Set(filas
-    .filter((f) => esDePlanilla(f.fuente) && f.personaId && f.fecha)
-    .map((f) => `${f.personaId}|${f.fecha}`))
   return filas.map((f) => {
     if (esDePlanilla(f.fuente)) return 'jornales'
-    const cuentaJefe = f.esJefe === true && f.personaId != null && f.fecha != null
-      && (f.fuente ?? '').startsWith('web:') && TRABAJADAS.has(f.tipoHora)
-      && !diasDePlanilla.has(`${f.personaId}|${f.fecha}`)
-    return cuentaJefe ? 'jefe_app' : null
+    if (!TRABAJADAS.has(f.tipoHora)) return null
+    return f.esJefe === true ? 'jefe_app' : 'app'
   })
 }
 
