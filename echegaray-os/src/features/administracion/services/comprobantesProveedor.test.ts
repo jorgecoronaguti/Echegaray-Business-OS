@@ -18,7 +18,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  accionDeFila, aniosDe, coincideNumero, contarPapeles, delAnio, filtrarComprobantes, filtrosDeURL,
+  accionDeFila, aniosDe, coincideNumero, comoComprobantes, contarPapeles, delAnio, filtrarComprobantes, filtrosDeURL,
   SIN_FECHA,
 } from './comprobantesProveedor.ts'
 import {
@@ -197,6 +197,14 @@ test('las compras sin fecha no desaparecen: tienen su propia opción, al final',
   assert.deepEqual(aniosDe([{ fecha: '2024-01-01' }], 2026), [2026, 2024])
   assert.equal(delAnio(filas, SIN_FECHA).length, 1)
   assert.equal(delAnio(filas, 2026).length, 1)
+})
+
+test('las cifras de la ficha salen de las mismas filas que la lista, sin las anuladas', () => {
+  const filas = [compra({ fila: 1 }), compra({ fila: 2, anulada: true, total: 999 }), compra({ fila: 3, total: null })]
+  const r = comoComprobantes(filas)
+  assert.deepEqual(r.map((f) => f.id), ['1', '3'])
+  assert.equal(r[0].total, 100)
+  assert.equal(r[1].total, null)
 })
 
 test('sin clave no se ofrece vincular; con papel se ve', () => {

@@ -11,18 +11,16 @@
 // proveedor y dice otro número, manda el canvas.
 //
 // La solapa «Papeles» del mockup era acá un cartel que mandaba a otra pantalla. Desde el 14/09/2026
-// es «Comprobantes» (`proveedores/ComprobantesDelProveedor.tsx`): una fila por compra con su papel.
+// salió: el papel de cada compra está al lado de la compra (`proveedores/ComprasDelProveedor.tsx`).
 // Lo que se SUBE contra la ficha —contratos, seguros, audiovisual— sigue en «Documentos».
 
-import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
+import { ALTO_V2, CAJA_CONTENIDO, FILO_BLOQUEA, V } from '@/shared/components/v2/patron'
 import { BarraDeCostado } from '@/shared/components/v2/segundoNivel'
 import { IconoObra } from '@/shared/components/iconos'
 import { pesos } from '@/shared/components/canon/formato'
 import type {
-  CompraPorObra, ComprobanteProveedor, ConceptoProvisto, PaqueteDelProveedor,
+  CompraPorObra, ConceptoProvisto, PaqueteDelProveedor,
 } from '../services/fichaProveedor'
-
-const fecha = (f: string | null) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : null)
 
 /** La nota al pie de una cara: 11px, 720px de ancho de lectura. `23v2:143`. */
 export function NotaDeCara({ children, testid }: { children: React.ReactNode; testid?: string }) {
@@ -36,84 +34,8 @@ export function NotaDeCara({ children, testid }: { children: React.ReactNode; te
   )
 }
 
-const COLS_COMPRAS
-  = 'grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,90px)_minmax(0,120px)]'
-  + ' max-[1249px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,120px)]'
-const SOLO_ANCHO = 'max-[1249px]:hidden'
-
-/** CONCEPTO · DESTINO · FECHA · MONTO. `23v2:113-137`. */
-export function ComprasDelProveedor({ filas, truncado, total }: {
-  filas: ComprobanteProveedor[]
-  truncado: boolean
-  /** Cuántos declara `proveedor_nombre_resuelto`. Puede ser mayor que lo que se ve. */
-  total: number
-}) {
-  return (
-    <div data-testid="compras-proveedor">
-      <div className={`grid gap-[14px] ${COLS_COMPRAS}`} style={{ ...ENCABEZADO, paddingLeft: 13 }}>
-        <RotuloCol>Concepto</RotuloCol>
-        <RotuloCol>Destino</RotuloCol>
-        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Fecha</RotuloCol></span>
-        <RotuloCol derecha>Monto</RotuloCol>
-      </div>
-
-      {filas.length === 0 && (
-        <p style={{ fontSize: '12.5px', color: V.apagado, paddingTop: 10 }} data-testid="compras-vacio">
-          No hay comprobantes registrados contra este proveedor.
-        </p>
-      )}
-
-      {filas.map((f) => (
-        <div
-          key={f.id} data-testid="fila-compra"
-          className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS_COMPRAS} hover:bg-[#F2F1ED]`}
-          style={{
-            height: ALTO_V2.cara, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`,
-            // Sin obra imputada el filo es ROJO y no ámbar: el gasto ya ocurrió y está pesando en
-            // ninguna obra, que no es «falta cargar un dato» sino plata mal atribuida (`23v2:442`).
-            boxShadow: f.obra_texto?.trim() ? 'none' : `inset 2px 0 0 ${V.neg}`,
-          }}
-        >
-          <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-            <span className="truncate" style={{ fontSize: '12.5px', color: V.tinta }}>
-              {f.concepto?.trim() || 'sin concepto'}
-            </span>
-            <span className="font-mono shrink-0" style={{ fontSize: '10.5px', color: V.inerte }}>
-              {f.comprobante?.trim() || ''}
-            </span>
-          </span>
-
-          <span
-            className="truncate"
-            style={{ fontSize: '12px', color: f.obra_texto?.trim() ? V.tintaSuave : V.neg }}
-          >
-            {f.obra_texto?.trim() || 'sin obra imputada'}
-          </span>
-
-          <span className={`grid ${SOLO_ANCHO}`}>
-            <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.tenue, textAlign: 'right' }}>
-              {fecha(f.fecha) ?? 'sin fecha'}
-            </span>
-          </span>
-
-          {/* SIN IMPORTE NO ES $ 0: el comprobante llegó y el monto no está cargado. */}
-          <span
-            className="font-mono tabular-nums"
-            style={{ fontSize: '12px', color: f.total === null ? V.warn : V.tinta, textAlign: 'right' }}
-          >
-            {f.total === null ? 'sin importe' : pesos(f.total)}
-          </span>
-        </div>
-      ))}
-
-      <NotaDeCara testid="nota-compras">
-        Lo comprado es histórico: la vista que lo suma no publica la fecha de cada comprobante, así
-        que ningún total de arriba lleva ventana de tiempo.
-        {truncado && ` Se dibujan ${filas.length} de ${total} comprobantes; el resto está en la pestaña Compras.`}
-      </NotaDeCara>
-    </div>
-  )
-}
+// La cara «Compras» —con el comprobante al lado de cada compra— vive desde el 14/09/2026 en
+// `proveedores/ComprasDelProveedor.tsx` y lee `proveedor_compra`.
 
 /** Los textos libres de Compras ya resueltos contra este proveedor. `23v2:146-155`. */
 export function NombresDelProveedor({ nombres }: {

@@ -49,20 +49,30 @@ export function FilaComprobanteProveedor({ c, papelesSinLeer }: { c: CompraConPa
   return (
     <div data-testid="fila-comprobante-proveedor" style={{ borderBottom: `1px solid ${V.lineaFila}` }}>
       <div
-        className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS_COMPROBANTES}`}
-        style={{ height: ALTO_V2.cara, paddingLeft: 13 }}
+        className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS_COMPROBANTES} hover:bg-[#F2F1ED]`}
+        style={{
+          height: ALTO_V2.cara, paddingLeft: 13,
+          // Sin obra imputada el filo es ROJO y no ámbar: el gasto ya ocurrió y no le pesa a ninguna
+          // obra, que no es «falta un dato» sino plata mal atribuida (`23v2:442`).
+          boxShadow: c.obra_texto?.trim() ? 'none' : `inset 2px 0 0 ${V.neg}`,
+        }}
       >
         <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: c.fecha ? V.apagado : V.warn }}>
           {fechaCortaConAnio(c.fecha) ?? 'sin fecha'}
         </span>
 
         <span
-          className="truncate font-mono" style={{ fontSize: '12px', color: c.comprobante ? V.tinta : V.tenue }}
+          style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}
           // UN VÍNCULO POR NOMBRE ES UN CÁLCULO: la compra no trae CUIT. Se dice sin un párrafo.
           title={c.via === 'nombre' ? 'La compra no trae CUIT: se vinculó por el nombre resuelto' : undefined}
         >
-          {c.comprobante ? `${c.tipo ? `${c.tipo} ` : ''}${c.comprobante}` : 'sin número'}
-          {c.via === 'nombre' && <span style={{ color: V.tenue }}> · por nombre</span>}
+          <span className="truncate" style={{ fontSize: '12.5px', color: c.concepto?.trim() ? V.tinta : V.tenue }}>
+            {c.concepto?.trim() || 'sin concepto'}
+          </span>
+          <span className="shrink-0 font-mono" style={{ fontSize: '10.5px', color: V.inerte }} data-testid="numero-compra">
+            {c.comprobante ? `${c.tipo ? `${c.tipo} ` : ''}${c.comprobante}` : 'sin número'}
+            {c.via === 'nombre' && ' · por nombre'}
+          </span>
         </span>
 
         <span className="truncate" style={{ fontSize: '12px', color: c.obra_texto?.trim() ? V.tintaSuave : V.neg }}>
