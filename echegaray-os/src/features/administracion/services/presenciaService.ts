@@ -9,6 +9,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
 import type { Esperado, FilaPresencia } from './presencia'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 const COLUMNAS = 'persona_id, nombre_completo, categoria, puesto, fecha, obra_id, obra, entrada,'
   + ' salida, incidencias, motivo, lat, lon, precision_m, origen, estado'
@@ -75,7 +76,8 @@ export async function getObrasConGente(
   supabase: SupabaseClient,
 ): Promise<ServiceResult<{ id: string; nombre: string }[]>> {
   const { data, error } = await supabase
-    .from('obra_canonica').select('id, nombre').eq('estado', 'activa').order('nombre')
+    .from('obra_canonica').select('id, nombre, codigo').eq('estado', 'activa').order('nombre')
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as { id: string; nombre: string }[], error: null }
+  const filas = (data ?? []) as { id: string; nombre: string; codigo: string | null }[]
+  return { data: filas.map((o) => ({ id: o.id, nombre: rotuloDeObra(o) })), error: null }
 }

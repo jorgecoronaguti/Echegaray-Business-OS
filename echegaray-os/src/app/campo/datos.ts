@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getPuenteObras, getHerramientasGlobal, getPedidosGlobal } from '@/features/integraciones/services/operacionGlobalService'
 import { lecturaPedido } from '@/features/integraciones/services/estados'
+import { rotuloDeObra } from '@/shared/utils/obra'
 
 // LO QUE `/campo` NECESITA SABER, EN UNA SOLA LECTURA.
 //
@@ -49,11 +50,13 @@ export function hoyISO(d = new Date()): string {
 export async function leerDatosCampo(supabase: SupabaseClient): Promise<DatosCampo> {
   try {
     const [obras, puente] = await Promise.all([
-      supabase.from('obra_canonica').select('id, nombre').eq('estado', 'activa').order('nombre'),
+      supabase.from('obra_canonica').select('id, nombre, codigo').eq('estado', 'activa').order('nombre'),
       getPuenteObras(supabase),
     ])
     if (obras.error) return { ...VACIO, error: obras.error.message }
-    const mias = (obras.data ?? []).map((o) => ({ id: o.id as string, nombre: o.nombre as string }))
+    const mias = (obras.data ?? []).map((o) => ({
+      id: o.id as string, nombre: rotuloDeObra({ nombre: o.nombre as string, codigo: o.codigo as string | null }),
+    }))
     if (puente.error !== null) return { ...VACIO, obras: mias, error: puente.error }
 
     const ids = mias.map((o) => o.id)

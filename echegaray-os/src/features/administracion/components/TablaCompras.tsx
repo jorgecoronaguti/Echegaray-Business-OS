@@ -66,7 +66,7 @@ function Importe({ c }: { c: ComprobanteCompra }) {
  * casos el gasto NO llega a ninguna obra. El texto sigue arriba (es lo que dice el papel) y debajo
  * va a dónde llegó.
  */
-function Imputada({ c }: { c: ComprobanteCompra }) {
+function Imputada({ c, rotulo }: { c: ComprobanteCompra; rotulo: string | null }) {
   const texto = c.obra_texto?.trim()
   const sinObra = c.imputacion === 'sin_identificar' || (!texto && !c.imputacion)
   return (
@@ -79,6 +79,13 @@ function Imputada({ c }: { c: ComprobanteCompra }) {
         ) : (
           <>
             <span className="block truncate" style={{ fontSize: '12px', color: C.tinta }}>{texto}</span>
+            {/* A QUÉ OBRA LLEGÓ, con su código: el texto de arriba es el papel y puede decir
+                «Mamposteria» de dos clientes distintos; «OB-0023 · SF - MAMPOSTERÍA» no. */}
+            {rotulo && c.imputacion !== 'estructura' && (
+              <span className="block truncate" style={{ fontSize: '10.5px', color: C.tenue }} data-testid="compra-obra-rotulo">
+                {rotulo}
+              </span>
+            )}
             {c.imputacion === 'estructura' && (
               <span
                 className="block truncate"
@@ -113,10 +120,13 @@ export function TablaCompras({
   filas,
   seleccionado,
   hrefDe,
+  rotulos = new Map(),
 }: {
   filas: ComprobanteCompra[]
   seleccionado?: string
   hrefDe: (id: string) => string
+  /** `obra_id → «OB-0012 · NOMBRE»`, ya armado con `rotuloDeObra` (ver `nombresDeObra`). */
+  rotulos?: ReadonlyMap<string, string>
 }) {
   const suma = totalDeLaVista(filas)
   const afuera = suma.sinImporte + suma.sinSigno
@@ -171,7 +181,7 @@ export function TablaCompras({
               <span className="block truncate" style={{ fontSize: '10.5px', color: C.tenue }}>{c.tipo_nombre}</span>
             </span>
 
-            <Imputada c={c} />
+            <Imputada c={c} rotulo={c.obra_id ? rotulos.get(c.obra_id) ?? null : null} />
 
             <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
               {/* SINCRONIZADA NO DIBUJA NADA — `COMPONENTS.md` §Sync state, textual: «la

@@ -38,6 +38,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { Aviso } from '@/shared/components/ds'
+import { codigosDeObra } from '@/shared/services/codigosDeObra'
 import { BuscadorFilo } from '@/shared/components/v2/BuscadorFilo'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { NotaBloque, RotuloPanel, V } from '@/shared/components/v2/patron'
@@ -88,7 +89,7 @@ export default async function EnObraPage({
   // OJO CON EL NOMBRE: `presencia` en esta página es el FICHAJE (`asistencia_marca`) desde antes
   // que existiera `asistencia_dia`. Lo declarado por el jefe se llama `declarada` a propósito: dos
   // cosas distintas no pueden compartir nombre en la pantalla que existe para distinguirlas.
-  const [presencia, esperados, obras, registros, declarada] = await Promise.all([
+  const [presencia, esperados, obras, registros, declarada, codigos] = await Promise.all([
     getPresencia(supabase, fecha, obra),
     getEsperados(supabase, obra),
     getObrasConGente(supabase),
@@ -97,6 +98,8 @@ export default async function EnObraPage({
     // único de la tabla es (persona, fecha) y quien fue declarado en otra obra sigue estando
     // declarado. Qué se hace con las tres fuentes lo decide `combinarCeldaDia`, no esta página.
     getPresenciaDelDia(supabase, fecha, null),
+    // El código interno de cada obra, para el rótulo de cada grupo. Si falla, el grupo va con el nombre.
+    codigosDeObra(supabase, null),
   ])
 
   const fallo = presencia.error ?? registros.error
@@ -121,6 +124,7 @@ export default async function EnObraPage({
     esperados: esperados.data ?? [],
     registros: registros.data ?? [],
     presencia: declarada.data ?? [],
+    codigos,
   })
   const visible = filtrarAsistencia(dia, q ?? '')
   const hayAlgo = dia.plantel > 0
