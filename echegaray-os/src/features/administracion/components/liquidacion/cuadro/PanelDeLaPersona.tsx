@@ -89,7 +89,9 @@ export function PanelDeLaPersona({ fila, quincena, camposEditables, historial, h
           <section style={{ fontSize: '12px', color: V.apagado, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {fila.horasPorTipo.automaticas > 0 && (
               <div data-testid="panel-automaticas" style={{ color: V.warn }}>
-                {`${nHoras(fila.horasPorTipo.automaticas)} h de jornada automática sin confirmar: no se pagan hasta que alguien escriba el día.`}
+                {/* EN LLANO (dueño, 14/09/2026: «8a 9a no se q es eso»): las fechas, y que no se pagan. */}
+                {`${fila.celdas.filter((c) => c.marca !== 'horas' && c.automatica != null)
+                  .map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)}`).join(' y ')} sin horas cargadas (no se pagan)`}
               </div>
             )}
             {fila.cotejo.estado === 'difiere' && (

@@ -7,12 +7,19 @@
 // "planilla"»*. La fila contesta, de izquierda a derecha, las preguntas en el orden en que se hacen:
 //
 //   Persona (categoría · alta) · LE FALTA PAGAR (banco · efectivo · 50/50) · Gana · − Adelanto ·
-//   − Ya transferido · Efectivo redondeado · $/h · Hs pagas · los días · normales · extra 50 · extra 100
+//   − Ya transferido · Efectivo redondeado · $/h · Hs pagas · los días
+//
+// ═══ SIN COLUMNAS DE EXTRAS NI DE NORMALES (dueño, 14/09/2026: «las columnas de hs extra quitarlas») ═══
+//
+// Las extras se siguen PAGANDO como en JORNALES (`horasLiquidablesDelDia`, con el coeficiente de la
+// fórmula): «Hs pagas» y «Gana» no cambian. Lo que sale es la vista de las cantidades. «Normales» sale
+// con ellas: sin las extras al lado repetía a medias «Hs pagas» y obligaba a restar para entender la
+// diferencia.
 //
 // ═══ LO QUE SE MUDÓ AL PANEL, SIN PERDERSE ═══
 //
-// POR BANCO editable, el acuerdo 50/50 desglosado, el recibo, el cotejo con la planilla, la jornada
-// automática y el historial del valor hora: se abren tocando el nombre (`PanelDeLaPersona`).
+// POR BANCO editable, el acuerdo 50/50 desglosado, el recibo, el cotejo con la planilla, los días sin
+// horas cargadas y el historial del valor hora: se abren tocando el nombre (`PanelDeLaPersona`).
 //
 // ═══ NI UN NÚMERO DE LA CADENA SE CALCULA ACÁ ═══
 //
@@ -47,33 +54,24 @@ const corta = (iso: string | null): string =>
 
 /** La plata, primero: lo que el dueño busca al abrir la pantalla. */
 const PLATA = [
-  // 216: «50/50 sin recibo $1.800.000» en una línea y «banco $230.240 · efvo $121.916» en la otra.
+  // 216: «50/50 sin recibo $1.800.000» en una línea y «banco $230.240,12 · efvo $121.915,88» en la otra.
   { clave: 'leFaltaPagar', rotulo: 'Le falta pagar', px: 216 },
   { clave: 'gana', rotulo: 'Gana', px: 100 },
   { clave: 'adelanto', rotulo: '− Adelanto', px: 96 },
-  { clave: 'yaTransferido', rotulo: '− Ya transf.', px: 96 },
+  { clave: 'yaTransferido', rotulo: '− Ya transf.', px: 104 },
   { clave: 'efectivoRedondeado', rotulo: 'Efect. red.', px: 104 },
   { clave: 'valorHora', rotulo: '$/h · mensual', px: 156 },
   { clave: 'horasPagas', rotulo: 'Hs pagas', px: 64 },
-] as const
-
-/** Después de los días: las cantidades separadas, para leer de dónde salen las horas pagas. */
-const CANTIDADES = [
-  { clave: 'normales', rotulo: 'Hs norm.', px: 56 },
-  { clave: 'extra50', rotulo: 'Ext. 50%', px: 56 },
-  { clave: 'extra100', rotulo: 'Ext. 100%', px: 60 },
 ] as const
 
 const GAP = 8
 const DIA = 36
 
 const columnasDe = (nDias: number): string =>
-  `minmax(200px,1fr) ${PLATA.map((c) => `${c.px}px`).join(' ')} repeat(${nDias},${DIA}px) `
-  + CANTIDADES.map((c) => `${c.px}px`).join(' ')
+  `minmax(200px,1fr) ${PLATA.map((c) => `${c.px}px`).join(' ')} repeat(${nDias},${DIA}px)`
 
 const anchoDe = (nDias: number): number =>
-  200 + nDias * DIA + [...PLATA, ...CANTIDADES].reduce((s, c) => s + c.px, 0)
-  + (nDias + PLATA.length + CANTIDADES.length) * GAP
+  200 + nDias * DIA + PLATA.reduce((s, c) => s + c.px, 0) + (nDias + PLATA.length) * GAP
 
 const filaGrid = (columnas: string, alto: number): React.CSSProperties => ({
   display: 'grid', gridTemplateColumns: columnas, gap: GAP, minHeight: alto,
@@ -126,7 +124,6 @@ export function GrillaEspejoQuincena({
               <div key={c.clave} style={{ textAlign: 'right', color: c.clave === 'leFaltaPagar' ? V.tinta : undefined }}>{c.rotulo}</div>
             ))}
             {dias.map((f) => <div key={f} style={{ textAlign: 'center' }} title={f}>{rotuloDia(f)}</div>)}
-            {CANTIDADES.map((c) => <div key={c.clave} style={{ textAlign: 'right' }}>{c.rotulo}</div>)}
           </div>
 
           {secciones.map((sec, i) => (
@@ -164,7 +161,7 @@ function Fila({ fila, columnas, quincena, camposEditables, piso, pct, abrir }: {
   abrir: () => void
 }) {
   const l = fila.linea
-  const h = fila.horasPorTipo
+  const sinCargar = fila.horasPorTipo.automaticas
   return (
     <div data-testid={`espejo-fila-${fila.personaId}`} style={filaGrid(columnas, ALTO_LIQ.filaAlta)}>
       <div style={COLUMNA_FIJA}>
@@ -181,25 +178,21 @@ function Fila({ fila, columnas, quincena, camposEditables, piso, pct, abrir }: {
       <Leida valor={l.cobra} origen={l.origen.cobra}
         titulo={l.valorHora != null && l.horas != null ? `${nHoras(l.horas)} h pagas × ${pesos(l.valorHora)}/h` : undefined} />
       <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={88} />
-      <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={88} />
+      <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={96} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={96} />
       </div>
       <CeldaTarifa fila={fila} quincena={quincena} piso={piso} pct={pct} />
       <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
-        titulo={h.automaticas > 0 ? `${nHoras(h.automaticas)} h de jornada automática sin confirmar: no se pagan` : undefined} />
+        titulo={sinCargar > 0 ? `${nHoras(sinCargar)} h que la app supone en días sin horas cargadas: no se pagan` : undefined} />
       {fila.celdas.map((c) => <CeldaDeDia key={c.fecha} celda={c} personaId={fila.personaId} nombre={fila.nombre} />)}
-      <Leida valor={h.normales || null} unidad="horas" apagada />
-      <Leida valor={h.extra50 || null} unidad="horas" apagada />
-      <Leida valor={h.extra100 || null} unidad="horas" apagada />
     </div>
   )
 }
 
 /** La fila de total: suma las filas VISIBLES. Cierra igual que cada fila. */
 function Total({ columnas, dias, totales }: { columnas: string; dias: readonly string[]; totales: TotalesDelEspejo }) {
-  const h = totales.horasPorTipo
   const cierre = cierreDeTotales(totales)
   return (
     <div data-testid="espejo-total" style={{
@@ -222,9 +215,6 @@ function Total({ columnas, dias, totales }: { columnas: string; dias: readonly s
           {totales.porDia[i] == null ? '·' : nHoras(totales.porDia[i])}
         </div>
       ))}
-      <Leida valor={h.normales} unidad="horas" />
-      <Leida valor={h.extra50} unidad="horas" />
-      <Leida valor={h.extra100} unidad="horas" />
     </div>
   )
 }
@@ -238,7 +228,7 @@ function PieDelEspejo({ totales }: { totales: TotalesDelEspejo }) {
   const avisos: string[] = []
   if (cierre?.cierra === false) avisos.push(`el total no cierra por ${pesos(cierre.diferencia)}`)
   if (totales.sinTarifa > 0) avisos.push(`${totales.sinTarifa} sin retribución cargada (no suman a la plata)`)
-  if (totales.horasPorTipo.automaticas > 0) avisos.push(`${nHoras(totales.horasPorTipo.automaticas)} h de jornada automática sin confirmar, fuera del pago`)
+  if (totales.horasPorTipo.automaticas > 0) avisos.push(`${nHoras(totales.horasPorTipo.automaticas)} h en días sin horas cargadas: no se pagan`)
   return (
     <div data-testid="espejo-pie" style={{
       display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 16, padding: '12px 20px 16px',
