@@ -95,3 +95,49 @@ test('coherencia con la Unidad: una obra en una fila Estructura se marca; no se 
   assert.equal(unidadIncoherente('', DESTINO.OBRA), null)
   assert.equal(unidadIncoherente('Civil', null), null)
 })
+
+import { proyectarObraDeFila, aplicarCambiosPendientes } from './obra-destino.mjs'
+
+test('proyección de la fila: destino y obra, con la inconsistencia nombrada (parser o Unidad) y sin corregir', () => {
+  assert.deepEqual(proyectarObraDeFila({ unidad_negocio: 'Civil', obra_celda: 'OB-0021 · x' }, cat),
+    { destino: 'obra', obra_id: 'messina-playon-azufre', obra_inconsistencia: null })
+  const incoh = proyectarObraDeFila({ unidad_negocio: 'Estructura', obra_celda: 'OB-0021 · x' }, cat)
+  assert.equal(incoh.obra_id, 'messina-playon-azufre', 'se guarda lo que la fila dice')
+  assert.match(incoh.obra_inconsistencia, /Estructura/)
+  const mal = proyectarObraDeFila({ unidad_negocio: 'Civil', obra_celda: 'Galpon 7' }, cat)
+  assert.equal(mal.destino, null)
+  assert.match(mal.obra_inconsistencia, /no es una obra/)
+  assert.deepEqual(proyectarObraDeFila({ unidad_negocio: 'Civil', obra_celda: null }, cat),
+    { destino: null, obra_id: null, obra_inconsistencia: null })
+})
+
+test('un cambio de la app todavía no escrito en el Sheet no se pierde en el sync de la hora', () => {
+  const compras = [
+    { fila: 10, clave: 'c:1|A', obra_celda: null },
+    { fila: 11, clave: 'c:2|B', obra_celda: 'ES-ADM · Estructura – Administración' },
+  ]
+  const cambios = [
+    { fila: 10, clave: 'c:1|A', valor_nuevo: 'OB-0021 · ME - PLAYÓN DE AZUFRE' },
+    // La fila 11 ya no es el mismo comprobante (alguien insertó arriba): el cambio NO se superpone.
+    { fila: 11, clave: 'c:9|Z', valor_nuevo: 'ES-TAL · Estructura – Taller' },
+  ]
+  const r = aplicarCambiosPendientes(compras, cambios)
+  assert.equal(r[0].obra_celda, 'OB-0021 · ME - PLAYÓN DE AZUFRE')
+  assert.equal(r[1].obra_celda, 'ES-ADM · Estructura – Administración')
+  assert.equal(compras[0].obra_celda, null, 'no muta la lectura')
+})
+
+import { indiceColumnaObra } from './obra-destino.mjs'
+
+test('Cobranzas: la columna Obra se encuentra por encabezado (AB), no por posición, y «Obra / Cliente» no es ella', () => {
+  // Encabezado real de la fila 4 (Cobranzas.json, 14/09/2026), con la Obra agregada en AB.
+  const enc = ['ID', 'Categoría', 'Fecha de Venta', 'Factura', 'N° Comprobante', 'Unidad', 'Obra / Cliente',
+    'ORDEN DE  COMPRA', 'Concepto', 'Monto neto', 'IVA', 'Retenciones / descuentos',
+    'TOTAL a cobrar (neto de retenciones)', 'Forma de Cobro', 'Estado', 'Fecha de Factura', 'Fecha cobro',
+    'Mes cobro (auto)', 'Probabilidad %', 'Monto ponderado', 'Días hasta vto.', 'Estado cobro', 'Notas',
+    'Retención 16,8%', 'Ret Ganancias', 'Retención 2,5%', 'Moneda', null, 'Asignación']
+  assert.equal(indiceColumnaObra(enc, 'Cobranzas'), null)
+  const conObra = [...enc]; conObra[27] = ' Obra '
+  assert.equal(indiceColumnaObra(conObra, 'Cobranzas'), 27)
+  assert.throws(() => indiceColumnaObra([...conObra, 'obra'], 'Cobranzas'), /2 veces/)
+})

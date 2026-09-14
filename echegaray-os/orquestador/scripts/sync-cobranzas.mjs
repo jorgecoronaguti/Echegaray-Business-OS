@@ -29,6 +29,27 @@ import { CASHFLOW_ID, parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 import { resolverCliente } from '../lib/portal/cobranzas-a-cliente.mjs'
 import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
 import { valuarFilaCobranza, IDX_MONEDA_COBRANZAS, RANGO_COBRANZAS } from '../lib/cobranzas-contrato.mjs'
+import { catalogosDeAsignacion } from '../lib/compras-obra-asignada.mjs'
+import { catalogoDeDestinos, indiceColumnaObra, resolverCeldaObra } from '../lib/obra-destino.mjs'
+import { letra } from '../lib/compras-columnas.mjs'
+
+/**
+ * LA COLUMNA «Obra» (AB desde el 14/09/2026), POR ENCABEZADO. Devuelve, por índice de fila leída, lo
+ * que la celda dice. Vacío si la columna no existe todavía o si la migración no está aplicada.
+ */
+async function leerColumnaObra(google) {
+  const { rows } = await query(
+    `select count(*)::int n from information_schema.columns
+      where table_schema='public' and table_name='cobranzas' and column_name in ('destino','obra_id','obra_celda')`)
+  if (rows[0].n !== 3) { console.log('columna Obra: migración 20260915T0700 sin aplicar — no la leo'); return null }
+  const [encabezado = []] = await google.readSheetValues(CASHFLOW_ID, 'Cobranzas!A4:BZ4')
+  const i = indiceColumnaObra(encabezado, 'Cobranzas')
+  if (i === null) { console.log('columna Obra: la pestaña todavía no tiene el encabezado «Obra»'); return null }
+  const L = letra(i)
+  const valores = await google.readSheetValues(CASHFLOW_ID, `Cobranzas!${L}5:${L}5000`)
+  const c = await catalogosDeAsignacion(query)
+  return { valores, cat: catalogoDeDestinos({ obras: c.canonicas, clienteAlias: c.clienteAlias }) }
+}
 
 /** ¿Están en la base las columnas de moneda? Ver la cabecera: la migración puede no estar aplicada. */
 async function hayColumnasDeMoneda() {
@@ -37,6 +58,13 @@ async function hayColumnasDeMoneda() {
       where table_schema='public' and table_name='cobranzas'
         and column_name in ('moneda','tipo_cambio','monto_neto_origen','total_bruto_origen')`)
   return rows.length === 4
+}
+
+/** Lo que la celda Obra de la fila `i` dice, resuelto. Una celda que no se entiende se guarda sin destino y se nombra. */
+function obraDeLaFila({ valores, cat }, i, id, mal) {
+  const r = resolverCeldaObra(valores?.[i]?.[0], cat)
+  if (r.error) mal.push(`fila ${i + 5} (ID ${id}): ${r.error}`)
+  return { destino: r.destino, obra_id: r.obra_id, obra_celda: r.celda }
 }
 
 const iso = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : null)
@@ -48,6 +76,8 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const rows = await google.readSheetValues(CASHFLOW_ID, RANGO_COBRANZAS).catch(() => [])
   const { tc, crudo } = await leerTipoCambio(google, CASHFLOW_ID)
+  const obraCol = await leerColumnaObra(google)
+  const obraMal = []
   const cobranzas = []
   const sinValuar = []
   for (const [i, r] of rows.entries()) {
@@ -72,7 +102,12 @@ async function main() {
       fecha_cobro: iso(parseFecha(r?.[16])), mes_cobro: String(r?.[17] ?? '').trim() || null,
       moneda: v.moneda, tipo_cambio: v.tipoCambio,
       monto_neto_origen: nativos.monto_neto, total_bruto_origen: nativos.total_bruto,
+      ...(obraCol ? obraDeLaFila(obraCol, i, id, obraMal) : {}),
     })
+  }
+  if (obraCol) {
+    console.log(`columna Obra: ${cobranzas.filter((c) => c.obra_celda).length} filas la traen · ${obraMal.length} sin entender`)
+    obraMal.slice(0, 10).forEach((m) => console.log(`  ⚠ ${m}`))
   }
   // UNA FILA QUE NO SE PUDO VALUAR NO SE GUARDA EN LA MONEDA EQUIVOCADA — Y TAMPOCO SE SALTEA EN
   // SILENCIO. Se aborta la corrida entera: la tabla se borra y se reinserta completa, así que
@@ -132,7 +167,8 @@ async function main() {
   const columnas = ['sheet_id', 'categoria', 'fecha_emision', 'factura', 'numero_comprobante', 'unidad',
     'obra_cliente', 'orden_compra', 'concepto', 'monto_neto', 'iva', 'retenciones', 'total_bruto',
     'forma_cobro', 'estado', 'fecha_venta', 'fecha_cobro', 'mes_cobro', 'cliente_id',
-    ...(conMoneda ? ['moneda', 'tipo_cambio', 'monto_neto_origen', 'total_bruto_origen'] : [])]
+    ...(conMoneda ? ['moneda', 'tipo_cambio', 'monto_neto_origen', 'total_bruto_origen'] : []),
+    ...(obraCol ? ['destino', 'obra_id', 'obra_celda'] : [])]
   const sql = `insert into public.cobranzas (${columnas.join(', ')}, origen, sincronizado_en)`
     + ` values (${columnas.map((_, i) => `$${i + 1}`).join(',')},'cobranzas_sheet',now())`
 

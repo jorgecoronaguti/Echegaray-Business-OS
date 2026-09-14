@@ -124,6 +124,52 @@ export function opcionesDeObra(cat) {
 }
 
 /**
+ * DÓNDE ESTÁ LA COLUMNA «Obra», POR RÓTULO. `null` si no está (antes del backfill).
+ *
+ * `sync-cobranzas.mjs` lee el resto de la pestaña POR POSICIÓN (A5:AA); la columna nueva no se suma
+ * a esa deuda: se encuentra por su encabezado, que es exacto («Obra / Cliente» de la G no es ésta).
+ * Dos columnas «Obra» abortan: elegir una es elegir a ciegas.
+ */
+export function indiceColumnaObra(encabezado = [], pestana = 'la pestaña') {
+  const idx = encabezado.flatMap((c, i) => (String(c ?? '').replace(/[\s ]+/g, ' ').trim().toLowerCase() === 'obra' ? [i] : []))
+  if (idx.length > 1) throw new Error(`${pestana}: la columna «Obra» aparece ${idx.length} veces — no elijo a ciegas.`)
+  return idx.length ? idx[0] : null
+}
+
+/**
+ * LO QUE LA FILA DE COMPRAS GUARDA EN POSTGRES: `destino`, `obra_id` y la inconsistencia nombrada.
+ *
+ * Una celda inválida no tiene destino (null) pero SÍ inconsistencia: el dueño escribió algo y hay que
+ * decirle que no se entendió. Una obra que contradice la Unidad se guarda como está —la escribió él—
+ * y se marca.
+ */
+export function proyectarObraDeFila(c, cat) {
+  const r = resolverCeldaObra(c?.obra_celda, cat)
+  return {
+    destino: r.destino,
+    obra_id: r.obra_id,
+    obra_inconsistencia: r.error ?? unidadIncoherente(c?.unidad_negocio, r.destino),
+  }
+}
+
+/**
+ * LOS CAMBIOS DE LA APP QUE TODAVÍA NO LLEGARON AL SHEET, superpuestos a la lectura.
+ *
+ * El sync reescribe `compra_sheet` entero cada hora desde el Sheet. Sin esto, una obra elegida en la
+ * app a las 10:59 volvería a «vacía» a las 11:00 y reaparecería cuando el worker escriba AO: la
+ * pantalla parpadearía y el dueño creería que no se guardó. Sólo se superpone si la fila sigue siendo
+ * el MISMO comprobante (misma clave): si alguien insertó una fila arriba, la fila N es otra compra.
+ */
+export function aplicarCambiosPendientes(compras = [], cambios = []) {
+  const porFila = new Map(cambios.map((x) => [Number(x.fila), x]))
+  return compras.map((c) => {
+    const x = porFila.get(Number(c.fila))
+    if (!x || (x.clave ?? null) !== (c.clave ?? null)) return c
+    return { ...c, obra_celda: String(x.valor_nuevo ?? '').trim() || null }
+  })
+}
+
+/**
  * ¿La obra contradice la Unidad de Negocio de la fila? Devuelve el motivo o null. NO corrige: el
  * dueño escribió las dos celdas y cuál de las dos está mal lo decide él.
  */

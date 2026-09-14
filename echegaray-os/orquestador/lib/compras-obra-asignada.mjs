@@ -34,6 +34,7 @@
 
 import { normAlias, resolutorDeObra } from './jornales-a-registros-hh.mjs'
 import { esCostoDeObra } from './compras-costo-de-obra.mjs'
+import { DESTINO, resolverCeldaObra } from './obra-destino.mjs'
 
 export const VIA = Object.freeze({
   ALIAS: 'obra_por_alias',
@@ -41,6 +42,9 @@ export const VIA = Object.freeze({
   UNICA: 'unica_obra_del_cliente',
   SIN_OBRA: 'sin_obra',
   NO_CLIENTE: 'no_es_cliente',
+  // La columna «Obra» (AO) de la fila, desde el 14/09/2026. Manda sobre la K.
+  FILA: 'obra_de_la_fila',
+  ESTRUCTURA_FILA: 'estructura_de_la_fila',
 })
 
 /** La clave que une la fila con `costos_obra.referencia_externa`. La MISMA cuenta que el sync. */
@@ -115,6 +119,29 @@ export function asignadorDeCompras({ alias = new Map(), canonicas = [], clienteA
 }
 
 /**
+ * LA COLUMNA «Obra» DE LA FILA ANTES QUE LA INFERENCIA.
+ *
+ * La inferencia por la K es lo que hay cuando nadie decidió; cuando la fila trae una opción válida
+ * del desplegable, ESA es la decisión y no se discute con un parecido de texto. Tres salidas:
+ *   · código de obra      → esa obra (`obra_de_la_fila`), con el cliente de la obra.
+ *   · ES-ADM / ES-TAL     → estructura (`estructura_de_la_fila`): ni costo de una obra ni «sin obra»
+ *                           del cliente, aunque la J diga un cliente. El costo por obra no la suma.
+ *   · «Sin obra – X»      → `sin_obra` de ese cliente, aunque la K nombre una obra.
+ * Vacía o inválida → la inferencia de siempre; la invalidez la informa `proyectarObraDeFila`.
+ */
+export function asignadorConColumnaObra(asignar, cat) {
+  return function asignarConFila(c) {
+    const r = resolverCeldaObra(c.obra_celda, cat)
+    if (!r.celda || r.error) return asignar(c)
+    const porque = `columna Obra «${r.celda}»`
+    if (r.destino !== DESTINO.OBRA) return { cliente: null, obra_id: null, via: VIA.ESTRUCTURA_FILA, porque }
+    const cliente = r.cliente ?? asignar(c).cliente ?? String(c.obra_texto ?? '(sin cliente)')
+    if (r.obra_id) return { cliente, obra_id: r.obra_id, via: VIA.FILA, porque }
+    return { cliente, obra_id: null, via: VIA.SIN_OBRA, porque }
+  }
+}
+
+/**
  * LA TABLA `compra_obra_asignada`: una fila por cada fila de Compras que es costo de obra —el MISMO
  * conjunto que `costos_obra`—, así cada peso de `costos_obra` tiene exactamente una asignación y la
  * suma por cliente (obras + sin obra) es, por construcción, el total de Compras del cliente.
@@ -129,7 +156,7 @@ export function planDeAsignacion(compras, asignar) {
 export async function catalogosDeAsignacion(query) {
   const [alias, canonicas, clientes] = [
     await query('select alias, obra_id from public.obra_alias where obra_id is not null'),
-    await query('select id, nombre, cliente_texto, fusionada_en from public.obra_canonica'),
+    await query('select id, codigo, nombre, cliente_texto, fusionada_en from public.obra_canonica'),
     await query('select rotulo_clave, cliente_canonico from public.cliente_alias'),
   ]
   return {
