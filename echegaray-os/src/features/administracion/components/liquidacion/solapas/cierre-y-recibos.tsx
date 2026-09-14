@@ -13,8 +13,11 @@ export async function SolapaCierreYRecibos(props: PropsDeSolapa) {
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 32 }}>
       {/* La ruta ya cortó con notFound() a quien no liquida: llegar acá es poder cerrar. */}
       {await SolapaCierre({ quincenaPedida: props.quincenaPedida, hoy: props.hoy, hrefDe: props.hrefDe, puedeCerrar: true })}
+      {/* `hrefDe` Y `parametros` VIAJAN (QA, 14/09/2026): sin ellos los cuatro enlaces del recorte salían con
+          `href="#"` —no filtraban— y, como el enlace era su clave, React avisaba «two children with the
+          same key» en cada carga de esta sección. */}
       <section id="recibos" data-testid="seccion-recibos">
-        {await SolapaRecibos({ quincenaPedida: props.quincenaPedida, hoy: props.hoy })}
+        {await SolapaRecibos({ quincenaPedida: props.quincenaPedida, hoy: props.hoy, hrefDe: props.hrefDe, parametros: props.parametros })}
       </section>
     </div>
   )

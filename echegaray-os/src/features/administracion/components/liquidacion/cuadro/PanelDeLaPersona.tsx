@@ -109,7 +109,7 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
           <a href={urlDelRecibo(s.driveFileId)} target="_blank" rel="noreferrer" data-testid="panel-recibo-pdf"
             style={{ fontSize: '11.5px', color: V.apagado, marginRight: 8 }}>recibo ↗</a>
         )}
-        <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={120} />
+        <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
 
       <div style={{ height: 16 }} />
@@ -125,10 +125,10 @@ function CadenaBlancoNegro({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Leida valor={l.cobra} medio origen={l.origen.cobra} apagada={est} />
       </Renglon>
       <Renglon rotulo="− Adelanto">
-        <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={120} />
+        <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
       <Renglon rotulo="− Ya transferido">
-        <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={120} />
+        <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
       <Renglon rotulo="− Neto (banco)"><Leida valor={l.porBanco} /></Renglon>
       <Renglon rotulo="= Efectivo" fuerte
@@ -151,17 +151,17 @@ function CadenaSinModelo({ fila, quincena, camposEditables }: PropsDeCadena) {
         <Leida valor={l.cobra} medio origen={l.origen.cobra} />
       </Renglon>
       <Renglon rotulo="− Adelanto">
-        <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={120} />
+        <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
       <Renglon rotulo="− Ya transferido">
-        <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={120} />
+        <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
       <Renglon rotulo="= Banco + efectivo" fuerte
         nota={cierre && !cierre.cierra ? `no cierra por ${pesos(cierre.diferencia)}` : undefined} alerta={cierre?.cierra === false}>
         <Leida valor={l.total} medio origen={l.origen.total} />
       </Renglon>
       <Renglon rotulo="Neto (banco)" nota={l.reciboSinGiro ? 'recibo sin giro en el extracto' : undefined}>
-        <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={120} />
+        <Escribible campo="porBanco" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={148} claseCampo="w-32" />
       </Renglon>
       <Renglon rotulo="Efectivo">
         <Leida valor={l.enEfectivo} origen={l.origen.enEfectivo} />

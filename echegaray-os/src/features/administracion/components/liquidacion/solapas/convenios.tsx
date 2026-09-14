@@ -25,10 +25,16 @@ import type { LineaExposicion } from '../../../services/exposicionConvenio'
 import { categoriaVisible } from '../../../services/vocabularioPersona'
 import { esFechaISO, quincenaDe, rotuloQuincena, type Quincena } from '../../../services/quincena'
 import { FormularioEscala } from './FormularioEscala'
-import { ALTO_LIQ, Cuadro, Cuerpo, Encabezado, Fila, Hueco, Titulo, Total, miles } from './tabla'
+import { ALTO_LIQ, Cuadro, Cuerpo, Encabezado, Fila, Hueco, MARCO_SCROLL, Titulo, Total, miles } from './tabla'
 
 // `dc:544` — las seis columnas de la pantalla 8.
 const COLS = 'minmax(200px,1fr) 120px 90px 90px 88px 120px'
+/**
+ * EL ANCHO MÍNIMO DE LA TABLA: las seis columnas (708) más cinco huecos de 14. Vive en el scroller de
+ * adentro, no en la columna del cuadro: a 390 px la tabla rueda dentro de su caja y la página no se
+ * desborda (QA, 14/09/2026: «Costo y convenio» medía 827 px de ancho en un teléfono de 390).
+ */
+export const ANCHO_TABLA_CONVENIOS = 778
 
 export async function SolapaConvenios({ quincenaPedida, hoy }: {
   quincenaPedida?: string; hoy: string
@@ -57,7 +63,8 @@ export async function SolapaConvenios({ quincenaPedida, hoy }: {
 
       <Cuadro testid="cuadro-convenios">
         <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <div style={{ flex: 1, minWidth: 520, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* `minWidth: 0` Y NO 520: un hijo flex con mínimo fijo empuja la página en vez de achicarse. */}
+          <div data-testid="convenios-tabla" style={{ flex: '1 1 520px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: '12.5px', fontWeight: 600 }}>Quién está bajo el piso, y cuánto cuesta arreglarlo</span>
               <span style={{ fontSize: '11px', color: V.tenue }}>
@@ -65,6 +72,8 @@ export async function SolapaConvenios({ quincenaPedida, hoy }: {
               </span>
             </div>
 
+            <div style={{ ...MARCO_SCROLL, maxWidth: '100%' }}>
+            <div style={{ minWidth: ANCHO_TABLA_CONVENIOS }}>
             <Cuerpo>
               <Encabezado columnas={COLS} celdas={['Persona', 'Categoría', 'Paga', 'Piso', 'Brecha', 'Regularizar']} />
               {lineas.length === 0 && (
@@ -83,9 +92,12 @@ export async function SolapaConvenios({ quincenaPedida, hoy }: {
                 </span>,
               ]} />
             </Cuerpo>
+            </div>
+            </div>
           </div>
 
-          <div style={{ width: 400, flex: 'none', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* HASTA 400 Y NO FIJO EN 400: en un teléfono la columna ocupa el ancho que hay. */}
+          <div data-testid="convenios-no-afirmable" style={{ flex: '1 1 320px', maxWidth: 400, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <span style={{ fontSize: '12.5px', fontWeight: 600 }}>Lo que no se puede afirmar todavía</span>
             <NoDibujable resumen={resumen} />
             <div style={{ borderTop: `1px solid ${V.linea}`, paddingTop: 14 }}>

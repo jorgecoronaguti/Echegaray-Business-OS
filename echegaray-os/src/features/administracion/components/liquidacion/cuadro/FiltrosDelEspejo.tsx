@@ -71,7 +71,9 @@ function Grupo({ rotulo, opciones, testid }: {
         {rotulo}
       </span>
       {opciones.map((o) => (
-        <Link key={o.href} href={o.href} prefetch={false} style={{
+        // LA CLAVE ES EL RÓTULO, NO EL ENLACE: dos opciones pueden apuntar al mismo lugar (Recibos las
+        // armaba todas con `#`) y React avisaba claves repetidas en cada carga (QA, 14/09/2026).
+        <Link key={o.texto} href={o.href} prefetch={false} style={{
           fontSize: '12px', textDecoration: 'none', padding: '4px 8px', borderRadius: 4,
           color: o.activo ? V.tinta : V.apagado,
           background: o.activo ? '#F1F0EC' : 'transparent',

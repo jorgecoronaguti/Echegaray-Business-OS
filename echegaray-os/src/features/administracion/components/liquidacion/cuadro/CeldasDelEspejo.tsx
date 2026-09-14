@@ -110,12 +110,14 @@ export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos',
 }
 
 /** Una celda que se escribe. Marco de control para que se vea cuál decide una persona y cuál no. */
-export function Escribible({ campo, fila, quincena, camposEditables, ancho }: {
+export function Escribible({ campo, fila, quincena, camposEditables, ancho, claseCampo = 'w-20' }: {
   campo: CampoEditable
   fila: FilaDelEspejo
   quincena: { desde: string; hasta: string }
   camposEditables: readonly CampoEditable[]
   ancho: number
+  /** El ancho del campo de adentro. `w-20` corta «$142.748,87» con centavos: el panel pide más. */
+  claseCampo?: string
 }) {
   const valor = fila.linea[campo]
   const soloLectura = fila.cerrada || !camposEditables.includes(campo)
@@ -139,7 +141,7 @@ export function Escribible({ campo, fila, quincena, camposEditables, ancho }: {
           quincena={quincena}
           grupo={fila.grupo}
           soloLectura={soloLectura}
-          ancho="w-20"
+          ancho={claseCampo}
           marcaCompacta
         />
       </span>
