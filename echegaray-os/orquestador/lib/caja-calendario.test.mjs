@@ -19,7 +19,10 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { BORDES, DESDE_SIEMPRE, desdeTramo, hastaTramo, signoDelTramo, TRAMO_VENCIDO } from './caja-calendario.mjs'
+import {
+  BORDES, DESDE_SIEMPRE, cobranzasEsperadasTramo, columnasEsperadas, desdeTramo, hastaTramo, signoDelTramo, TRAMO_VENCIDO,
+} from './caja-calendario.mjs'
+import { COBRANZAS_1409, COBRANZAS_CON_OBRA } from './encabezados-referencia.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { NO_REAL } from './caja-tarjetas.mjs'
 import { sumar, movimiento, ENTRA, SALE } from './libro-movimientos.mjs'
@@ -76,4 +79,15 @@ test('la celda que se escribe lleva el filtro, y sale de la misma declaración',
   // Y el resto de los tramos NO filtra: un cobro esperado del mes que viene sigue siendo caja esperada.
   const otra = g.filas.find((f) => String(f?.[5] ?? '').trim() === BORDES[1][0])
   assert.equal(otra[7], `=${terminoLibro({ desde: desdeTramo(1), hasta: hastaTramo(1), estados: NO_REAL })}`)
+})
+
+// ═══ «OBRA» INSERTADA EN COBRANZAS H (14/09/2026) ═══
+test('las cobranzas esperadas leen Estado, Fecha cobro y TOTAL por rótulo, antes y después de «Obra»', () => {
+  const antes = cobranzasEsperadasTramo('A', 'B', columnasEsperadas(COBRANZAS_1409))
+  assert.ok(antes.includes('LOWER(Cobranzas!$O$5:$O$400)'), antes)
+  assert.ok(antes.includes('(Cobranzas!$Q$5:$Q$400>=A)') && antes.includes('ISNUMBER(Cobranzas!$M$5:$M$400)'), antes)
+  const despues = cobranzasEsperadasTramo('A', 'B', columnasEsperadas(COBRANZAS_CON_OBRA))
+  assert.ok(despues.includes('LOWER(Cobranzas!$P$5:$P$400)'), despues)
+  assert.ok(despues.includes('(Cobranzas!$R$5:$R$400>=A)') && despues.includes('ISNUMBER(Cobranzas!$N$5:$N$400)'), despues)
+  assert.throws(() => cobranzasEsperadasTramo('A', 'B'), /resueltas por rótulo/)
 })

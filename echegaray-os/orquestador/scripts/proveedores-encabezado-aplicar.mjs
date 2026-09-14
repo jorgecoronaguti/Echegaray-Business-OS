@@ -25,7 +25,8 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { grillaEncabezado, celdasEncabezado, F } from '../lib/proveedores-encabezado.mjs'
+import { grillaEncabezado, celdasEncabezado, columnasEncabezado, F } from '../lib/proveedores-encabezado.mjs'
+import { rangoEncabezado } from '../lib/columnas-por-encabezado.mjs'
 // Los anchos de columna son de TODA la pestaña: su definición vive una sola vez y este script es el
 // único que la aplica. Ver el lib: el encabezado los fijaba mirando sólo su propio cuadro.
 import { requestsDeAncho } from '../lib/proveedores-frontera.mjs'
@@ -64,7 +65,7 @@ const rango = (sheetId, f1, f2, c1, c2, cell, fields) => ({ repeatCell: {
   range: { sheetId, startRowIndex: f1 - 1, endRowIndex: f2, startColumnIndex: c1, endColumnIndex: c2 },
   cell, fields } })
 
-function pedidosDeFormato(sheetId, anchoHoja) {
+function pedidosDeFormato(sheetId, anchoHoja, cols) {
   const p = []
   const FMT = 'userEnteredFormat'
   // Base: todo el bloque limpio, sin herencia de la corrida anterior. La limpieza va hasta el
@@ -104,7 +105,7 @@ function pedidosDeFormato(sheetId, anchoHoja) {
     monto: MONTO, montoTotal: MONTO_TOTAL, porcentaje: PORCENTAJE, entero: ENTERO,
     control: MONEDA_CONTROL, controlEntero: CONTADOR_CONTROL,
   }
-  for (const [i, fila] of celdasEncabezado().entries()) {
+  for (const [i, fila] of celdasEncabezado(cols).entries()) {
     for (const [j, c] of fila.entries()) {
       const nf = c && PORESPECIE[c.t]
       if (!nf) continue
@@ -155,7 +156,9 @@ async function main() {
   const hoja = meta.find((s) => s.title === PESTAÑA)
   if (!hoja) throw new Error(`no encontré la pestaña ${PESTAÑA}`)
 
-  const grilla = grillaEncabezado()
+  // LAS COLUMNAS DE COMPRAS SALEN DE SU FILA DE RÓTULOS (14/09/2026), leída una vez por corrida.
+  const cols = columnasEncabezado((await google.readSheetValues(ID, rangoEncabezado('Compras')))?.[0] ?? [])
+  const grilla = grillaEncabezado(cols)
   // GUARDA: el bloque termina donde empieza la sección 1. Si la sección 1 se movió hacia arriba,
   // escribir la pisaría — y la sección 1 son dos tablas dinámicas nativas que no se recuperan.
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:A40`, { render: 'FORMATTED_VALUE' })
@@ -210,7 +213,7 @@ async function main() {
       range: { sheetId: hoja.sheetId, startRowIndex: F.fin, endRowIndex: iSec1, startColumnIndex: 0, endColumnIndex: ANCHO },
       rows: Array.from({ length: iSec1 - F.fin }, () => ({ values: Array.from({ length: ANCHO }, () => ({ userEnteredValue: null })) })),
       fields: 'userEnteredValue' } }] : []),
-    ...pedidosDeFormato(hoja.sheetId, hoja.cols ?? ANCHO),
+    ...pedidosDeFormato(hoja.sheetId, hoja.cols ?? ANCHO, cols),
   ], { espejo: true })
 
   // ── LA EVIDENCIA: releído del archivo.

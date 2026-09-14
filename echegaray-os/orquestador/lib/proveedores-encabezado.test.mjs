@@ -1,9 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grillaEncabezado, celdasEncabezado, encabezadoSinFormato, FILAS_AGING, MEDIOS, F, SUBTITULO } from './proveedores-encabezado.mjs'
+import { grillaEncabezado, celdasEncabezado, columnasEncabezado, encabezadoSinFormato, FILAS_AGING, MEDIOS, F, SUBTITULO } from './proveedores-encabezado.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
 import { esProsa, TOPE_SUBTITULO } from './diseno-unificado.mjs'
 
-const G = grillaEncabezado()
+/** Las columnas del layout de hoy, resueltas por rótulo como las resuelve el aplicador. */
+const COLS = columnasEncabezado(COMPRAS_2508)
+const G = grillaEncabezado(COLS)
 const celda = (fila, col) => G[fila - 1][col]
 const todas = () => G.flat().filter((c) => typeof c === 'string')
 
@@ -113,7 +116,7 @@ test('todas las filas tienen el mismo ancho: el generador es dueño de su ancho 
 // Un test que exige la existencia de una celda es la forma más eficaz de que esa celda vuelva. Éste
 // exige lo contrario, y por eso reemplaza a los tres.
 test('ninguna celda del encabezado publica plata de facturas que NO están Pendientes', () => {
-  for (const [i, fila] of celdasEncabezado().entries()) {
+  for (const [i, fila] of celdasEncabezado(COLS).entries()) {
     for (const [j, c] of fila.entries()) {
       const v = String(c?.v ?? '')
       assert.ok(!v.includes('$X$4:$X<>"Pendiente"'),
@@ -146,7 +149,7 @@ test('el bloque conserva su forma: dos filas de control colgadas del total, y ni
 // este test se pone rojo antes de que llegue al Sheet. Se mide con el MISMO detector que audita el
 // archivo (`esProsa` de `diseno-unificado`), no con una regla paralela que pueda decir otra cosa.
 test('ninguna celda del encabezado es prosa: los controles son «rótulo | número»', () => {
-  for (const [i, fila] of grillaEncabezado().entries()) {
+  for (const [i, fila] of grillaEncabezado(COLS).entries()) {
     if (i + 1 <= 2) continue   // A1 es el nombre y A2 la línea de procedencia: tienen su propia regla
     for (const [j, c] of fila.entries()) {
       const p = esProsa(c)
@@ -156,7 +159,7 @@ test('ninguna celda del encabezado es prosa: los controles son «rótulo | núme
 })
 
 test('cada control lleva su número al lado y con especie de control', () => {
-  const C = celdasEncabezado()
+  const C = celdasEncabezado(COLS)
   for (const [fila, colRotulo, colNumero, especie] of [
     [F.cuadratura, 0, 1, 'control'],
     [F.carga, 0, 1, 'controlEntero'],
@@ -186,7 +189,7 @@ test('el encabezado ya no cita ARCA: eso es respaldo fiscal, no posición de deu
 
 test('A2 declara procedencia y entra en el tope del contrato', () => {
   assert.ok(SUBTITULO.length <= TOPE_SUBTITULO, `${SUBTITULO.length} caracteres, el tope es ${TOPE_SUBTITULO}`)
-  assert.equal(grillaEncabezado()[F.bajada - 1][0], SUBTITULO)
+  assert.equal(grillaEncabezado(COLS)[F.bajada - 1][0], SUBTITULO)
 })
 
 // ═══ TODA CELDA QUE ESCRIBE UN NÚMERO DECLARA SU ESPECIE (14/08/2026) ═══
@@ -201,13 +204,13 @@ test('A2 declara procedencia y entra en el tope del contrato', () => {
 // El primero prueba el caso concreto; el segundo, la clase entera: cualquier fila futura que sume o
 // cuente sin declarar especie pone la suite en rojo el día que se escribe, no seis semanas después.
 test('ninguna fórmula que suma o cuenta quedó sin especie declarada', () => {
-  assert.deepEqual(encabezadoSinFormato(), [],
+  assert.deepEqual(encabezadoSinFormato(celdasEncabezado(COLS)), [],
     'esa celda escribe un número y no dice de qué especie: se va a dibujar con el formato de ayer')
 })
 
 test('grillaEncabezado es la proyección de celdasEncabezado: una sola fuente', () => {
-  const C = celdasEncabezado()
-  const G2 = grillaEncabezado()
+  const C = celdasEncabezado(COLS)
+  const G2 = grillaEncabezado(COLS)
   assert.equal(G2.length, C.length)
   for (const [i, fila] of C.entries()) {
     for (const [j, c] of fila.entries()) {
@@ -216,3 +219,11 @@ test('grillaEncabezado es la proyección de celdasEncabezado: una sola fuente', 
   }
 })
 
+
+// ═══ «OBRA» INSERTADA EN COMPRAS L (14/09/2026) ═══
+test('con «Obra» insertada, el aging lee Tramo y Saldo por rótulo, y el medio de pago también', () => {
+  const g = grillaEncabezado(columnasEncabezado(COMPRAS_CON_OBRA))
+  assert.match(g[F.primerTramo - 1][1], /SUMIF\(Compras!\$AO\$4:\$AO;"\*"&\$A5;Compras!\$AM\$4:\$AM\)/)
+  assert.ok(g[F.primerMedio - 1][6].includes('SUMIF(Compras!$Q$4:$Q;'), g[F.primerMedio - 1][6])
+  assert.throws(() => celdasEncabezado(), /columnasEncabezado/)
+})

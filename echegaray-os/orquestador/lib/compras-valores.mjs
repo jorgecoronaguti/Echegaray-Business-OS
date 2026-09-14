@@ -24,12 +24,34 @@
 // 1.136 y dejar 38 minas puestas sería negligente, así que se regeneran todas apuntando a su `Q`.
 
 import { SEMAFORO, SEMAFORO_HEREDADO } from './glifos.mjs'
+import { COMPRAS, columnasDe } from './columnas-por-encabezado.mjs'
 
-/** Las columnas que intervienen, por letra. Los rótulos son los de la fila 3 del archivo real. */
-export const COL = Object.freeze({ total: 'O', prevista: 'Q', estado: 'X', semaforo: 'Z', parcial1: 'U' })
+/**
+ * Las columnas que intervienen, por RÓTULO (14/09/2026). Eran letras fijas: con «Obra» insertada en
+ * L, `Total` pasa de O a P y `Estado` de X a Y, y un semáforo armado con la letra vieja compararía el
+ * estado de la columna de al lado sin dar un solo error.
+ */
+export const ROTULOS_VALORES = Object.freeze({
+  total: COMPRAS.total, prevista: 'Fecha prevista de pago (día)', estado: COMPRAS.estado,
+  semaforo: 'Estado pago', parcial1: COMPRAS.parcial1,
+})
+
+/** Las LETRAS de esas columnas contra la fila de rótulos leída en ESTA corrida. Un rótulo que falta rompe. */
+export function columnasValores(encabezado) {
+  const c = columnasDe(encabezado, ROTULOS_VALORES, 'Compras')
+  return Object.freeze(Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v.letra])))
+}
 
 /** El rótulo que tiene que decir la fila 3 de cada columna, o el script no la pisa. */
-export const ROTULO = Object.freeze({ semaforo: 'Estado pago', parcial1: 'Monto Parcial 1' })
+export const ROTULO = Object.freeze({ semaforo: ROTULOS_VALORES.semaforo, parcial1: ROTULOS_VALORES.parcial1 })
+
+/** Sin columnas resueltas no hay fórmula: la letra de respaldo es justamente el defecto. */
+function exigirColumnas(col) {
+  if (!col?.total || !col?.estado || !col?.prevista) {
+    throw new Error('compras-valores: faltan las columnas de Compras resueltas por rótulo — usá columnasValores(encabezado)')
+  }
+  return col
+}
 
 /** La primera fila de datos: arriba hay título (1), agrupador (2) y encabezado (3). */
 export const FILA0 = 4
@@ -44,8 +66,8 @@ export const FILA0 = 4
  * @param {number} fila número de fila 1-based, tal como se escribe en la referencia
  * @returns {string}
  */
-export function formulaEstadoPago(fila) {
-  return armarFormula(fila, SEMAFORO, `${COL.prevista}${fila}`)
+export function formulaEstadoPago(fila, col) {
+  return armarFormula(fila, SEMAFORO, `${exigirColumnas(col).prevista}${fila}`, col)
 }
 
 /**
@@ -57,16 +79,17 @@ export function formulaEstadoPago(fila) {
  * se tipea todos los días no se pisa "por patrón".
  *
  * @param {number} fila
+ * @param {{total:string, prevista:string, estado:string}} col las letras de `columnasValores`
  * @param {{refRota?:boolean}} [opts] `refRota` = la variante con `#REF!` en lugar de la fecha prevista
  */
-export function formulaEstadoPagoHeredada(fila, { refRota = false } = {}) {
-  return armarFormula(fila, SEMAFORO_HEREDADO, refRota ? '#REF!' : `${COL.prevista}${fila}`)
+export function formulaEstadoPagoHeredada(fila, col, { refRota = false } = {}) {
+  return armarFormula(fila, SEMAFORO_HEREDADO, refRota ? '#REF!' : `${exigirColumnas(col).prevista}${fila}`, col)
 }
 
 /** La forma, escrita una sola vez: lo único que cambia entre las variantes son los glifos y la ref. */
-function armarFormula(fila, g, refPrevista) {
-  const o = `${COL.total}${fila}`
-  const x = `${COL.estado}${fila}`
+function armarFormula(fila, g, refPrevista, col) {
+  const o = `${exigirColumnas(col).total}${fila}`
+  const x = `${col.estado}${fila}`
   return `=IF(${o}="";"";IF(${x}="Pagado";"${g.pagado} Pagado";IF(${x}="Vencido";"${g.vencido} Vencido";`
     + `IF(${x}="Pendiente";IF(${refPrevista}<TODAY();"${g.vencido} Vencido";"${g.porVencer} Por vencer");`
     + `IF(${x}="Proyectado";"${g.vigente} Vigente";${x})))))`
@@ -80,13 +103,14 @@ function armarFormula(fila, g, refPrevista) {
  *
  * @param {unknown} texto la fórmula leída con render FORMULA
  * @param {number} fila
+ * @param {{total:string, prevista:string, estado:string}} col las letras de `columnasValores`
  */
-export function esSemaforoConocido(texto, fila) {
+export function esSemaforoConocido(texto, fila, col) {
   const t = String(texto ?? '').trim()
   if (!t) return true
-  return t === formulaEstadoPago(fila)
-    || t === formulaEstadoPagoHeredada(fila)
-    || t === formulaEstadoPagoHeredada(fila, { refRota: true })
+  return t === formulaEstadoPago(fila, col)
+    || t === formulaEstadoPagoHeredada(fila, col)
+    || t === formulaEstadoPagoHeredada(fila, col, { refRota: true })
 }
 
 // ═══ 2 · EL GUION TIPEADO DE `U · Monto Parcial 1` ═══
