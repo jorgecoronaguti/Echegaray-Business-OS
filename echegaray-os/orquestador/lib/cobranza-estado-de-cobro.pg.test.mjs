@@ -24,8 +24,23 @@ import { join } from 'node:path'
 import { getPool } from './db.mjs'
 import { estadoDeCobro } from './cobranza-estado-de-cobro.mjs'
 import { estadoDePago } from './portal/cobranzas-a-cliente.mjs'
+import { refrescarConCobranzas } from '../../src/app/portal/vivo.ts'
+import { aPagoDelPortal } from '../../src/app/portal/esquema.ts'
+import { estadoDePago as estadoDelPortal } from '../../src/app/portal/cronograma.ts'
 
 const MIGRACION = '20260914T1200_cobranza_vencida_regla_del_sheet.sql'
+
+/**
+ * ═══ EL CONTROL TIENE QUE PODER DAR ROJO (auditoría, 14/09/2026) ═══
+ *
+ * Con el hoy real no había ninguna Pendiente con Q pasada —la primera Q era el 18/09—, así que cada
+ * cara comparaba 0 contra 0. El auditor redefinió las tres vistas para publicar SIEMPRE false y el
+ * test siguió verde. Dentro de la transacción `hoy_san_juan()` se fija en una fecha CON vencidas, y
+ * cada comparación exige que haya alguna antes de comparar.
+ */
+const HOY_CON_VENCIDAS = '2026-09-20'
+const hayVencidas = (m, rotulo) => assert.ok([...m.values()].some((a) => a.n > 0),
+  `${rotulo}: ninguna vencida al ${HOY_CON_VENCIDAS} — el control compararía cero contra cero`)
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
 const centavos = (v) => (v == null ? 0 : Math.round(Number(v) * 100))
@@ -69,7 +84,12 @@ test('vencida es la columna U en Postgres, en el gemelo y en cada cara', { skip:
     await c.query(`select set_config('request.jwt.claims', $1, true)`,
       [JSON.stringify({ sub: direccion.id, role: 'authenticated' })])
 
+    // Las vistas leen `hoy_san_juan()` en cada consulta: redefinirla acá mueve el reloj de TODAS las
+    // caras a la vez, y el rollback del final la devuelve.
+    await c.query(`create or replace function public.hoy_san_juan() returns date language sql stable
+                   as $$ select '${HOY_CON_VENCIDAS}'::date $$`)
     const hoy = (await q(`select public.hoy_san_juan()::text h`))[0].h
+    assert.equal(hoy, HOY_CON_VENCIDAS)
 
     await t.test('los casos de la columna U, en SQL', async () => {
       const casos = await q(`
@@ -120,6 +140,7 @@ test('vencida es la columna U en Postgres, en el gemelo y en cada cara', { skip:
                                     total_bruto total, estado, fecha_cobro::text fc
                                from public.cliente_cobranza`)
       assert.ok(filas.length > 0, 'cliente_cobranza vino vacía')
+      hayVencidas(esperadoCliente, 'réplica')
       const real = agrupar(filas, (r) => r.cliente_id, (r) => r.esta_vencida)
       for (const k of new Set([...real.keys(), ...esperadoCliente.keys()])) {
         assert.equal(real.get(k)?.n ?? 0, esperadoCliente.get(k)?.n ?? 0, `cliente ${k}: cantidad vencida`)
@@ -146,6 +167,7 @@ test('vencida es la columna U en Postgres, en el gemelo y en cada cara', { skip:
       assert.ok(filas.length > 0, 'obra_cuenta vino vacía')
       const real = new Map(filas.map((r) => [r.obra_id, { n: 0, plata: centavos(r.vencido) }]))
       for (const k of esperado.keys()) if (!real.has(k)) esperado.delete(k)   // obra fuera del registro canónico
+      hayVencidas(esperado, 'obra_cuenta')
       igualPlata(real, esperado, 'obra_cuenta')
     })
 
@@ -156,6 +178,46 @@ test('vencida es la columna U en Postgres, en el gemelo y en cada cara', { skip:
         assert.equal(real.get(k)?.n ?? 0, esperadoCliente.get(k)?.n ?? 0, `portal ${k}: cantidad vencida`)
       }
       igualPlata(real, esperadoCliente, 'portal')
+    })
+
+    await t.test('portal SOBRE esquema_pago (lo que ve el cliente): mismo número y plata vencida', async () => {
+      // El camino de producción: `esquema_pago` → refresco contra la réplica (`vivo.ts`) → pago del
+      // portal (`esquema.ts`) → estado (`cronograma.ts`). Contra un conteo escrito acá: una fila del
+      // esquema está vencida sólo si su fila de Cobranzas existe y es Pendiente con Q pasada.
+      const esquema = await q(`select id, cliente_id, obra_id, cobranza_fila, concepto, fecha::text fecha,
+                                      monto::text monto, reparo, estado, medio, visible_portal, publicado_at,
+                                      cambio_pendiente, orden, moneda, factura_numero, recibo_numero,
+                                      neto::text neto, iva::text iva, historico
+                                 from public.esquema_pago`)
+      const vivas = await q(`select sheet_id, categoria, concepto, estado, fecha_cobro::text fecha_cobro,
+                                    monto_neto, monto_neto_origen, iva, total_bruto, total_bruto_origen,
+                                    moneda, tipo_cambio
+                               from public.cobranzas where origen = 'cobranzas_sheet'`)
+      assert.ok(esquema.length > 0, 'esquema_pago vino vacía')
+
+      // La fila física del Sheet es la columna A + 4 (los datos arrancan en la fila 5).
+      const porSheet = new Map(vivas.map((v) => [Number(String(v.sheet_id).trim()) + 4, v]))
+      const esperadas = []
+      for (const e of esquema) {
+        const v = e.cobranza_fila == null ? undefined : porSheet.get(Number(e.cobranza_fila))
+        if (v && String(v.estado ?? '').trim().toUpperCase() === 'CANCELAR') continue
+        esperadas.push({
+          cliente_id: e.cliente_id,
+          total: v ? (v.total_bruto_origen ?? v.total_bruto) : e.monto,
+          vencida: Boolean(v) && vencidaSegunSheet({ estado: v.estado, fc: v.fecha_cobro }, hoy),
+        })
+      }
+      const esperado = agrupar(esperadas, (r) => r.cliente_id, (r) => r.vencida)
+      hayVencidas(esperado, 'esquema_pago')
+
+      const clienteDe = new Map(esquema.map((e) => [e.id, e.cliente_id]))
+      const pagos = refrescarConCobranzas(esquema, vivas, hoy).map((f) => aPagoDelPortal(f, ''))
+      const real = agrupar(pagos.map((p) => ({ ...p, cliente_id: clienteDe.get(p.id), total: p.monto })),
+        (r) => r.cliente_id, (r) => estadoDelPortal(r, hoy) === 'vencido')
+      for (const k of new Set([...real.keys(), ...esperado.keys()])) {
+        assert.equal(real.get(k)?.n ?? 0, esperado.get(k)?.n ?? 0, `portal/esquema ${k}: cantidad vencida`)
+      }
+      igualPlata(real, esperado, 'portal/esquema')
     })
   } finally {
     await c.query('rollback')
