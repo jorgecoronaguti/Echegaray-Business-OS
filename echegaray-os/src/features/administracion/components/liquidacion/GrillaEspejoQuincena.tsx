@@ -24,7 +24,8 @@
 // ═══ NI UN NÚMERO DE LA CADENA SE CALCULA ACÁ ═══
 //
 // Las cifras son las de `getLiquidacionDeLaQuincena` y el cierre lo comprueba `cierreDeLaFila`. Este
-// archivo decide ANCHOS, COLORES Y DÓNDE VA CADA CAMPO.
+// archivo decide ANCHOS, COLORES Y DÓNDE VA CADA CAMPO. El pie del efectivo redondeado suma lo que
+// muestran las filas (`sumaDelRedondeo`) y no entra en ninguna cuenta.
 
 import { useState } from 'react'
 import { V } from '@/shared/components/v2/patron'
@@ -38,6 +39,7 @@ import { ALTO_LIQ, CANAL_SCROLL, COLUMNA_FIJA, MARCO_SCROLL, MONO } from './sola
 import type { CampoEditable } from '../../services/liquidacionOverrides'
 import type { FilaDelEspejo, TotalesDelEspejo } from '../../services/espejoDeJornales'
 import { cierreDeTotales, type EntradaDeHistorial } from '../../services/cuadroDeJornales'
+import { sumaDelRedondeo } from '../../services/efectivoRedondeado'
 
 export { FiltrosDelEspejo } from './cuadro/FiltrosDelEspejo'
 export type { MarcaDePiso } from './cuadro/CeldaTarifa'
@@ -107,7 +109,10 @@ export function GrillaEspejoQuincena({
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
   const columnas = columnasDe(dias.length)
-  const filaAbierta = abierta ? secciones.flatMap((s) => s.filas).find((f) => f.personaId === abierta) : undefined
+  const visibles = secciones.flatMap((s) => s.filas)
+  const filaAbierta = abierta ? visibles.find((f) => f.personaId === abierta) : undefined
+  // EL PIE DEL REDONDEO SUMA LO QUE SE VE: las mismas filas del recorte, guardado o sugerido.
+  const redondeo = sumaDelRedondeo(visibles.map((f) => f.linea))
   return (
     <div style={{ background: '#FFFFFF', border: `1px solid ${V.lineaFuerte}`, borderRadius: 10, overflow: 'hidden' }}>
       {sello}
@@ -138,7 +143,7 @@ export function GrillaEspejoQuincena({
             </div>
           ))}
 
-          <Total columnas={columnas} dias={dias} totales={totales} />
+          <Total columnas={columnas} dias={dias} totales={totales} redondeo={redondeo} />
         </div>
       </div>
       <PieDelEspejo totales={totales} />
@@ -180,7 +185,7 @@ function Fila({ fila, columnas, quincena, camposEditables, piso, pct, abrir }: {
       <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={88} />
       <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={96} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado}
+        <CeldaRedondeo personaId={fila.personaId} valor={l.efectivoRedondeado} enEfectivo={l.enEfectivo}
           quincena={quincena} grupo={fila.grupo} bloqueada={fila.cerrada} ancho={96} />
       </div>
       <CeldaTarifa fila={fila} quincena={quincena} piso={piso} pct={pct} />
@@ -192,7 +197,11 @@ function Fila({ fila, columnas, quincena, camposEditables, piso, pct, abrir }: {
 }
 
 /** La fila de total: suma las filas VISIBLES. Cierra igual que cada fila. */
-function Total({ columnas, dias, totales }: { columnas: string; dias: readonly string[]; totales: TotalesDelEspejo }) {
+function Total({ columnas, dias, totales, redondeo }: {
+  columnas: string; dias: readonly string[]; totales: TotalesDelEspejo
+  /** Suma de lo que muestra la columna del redondeo en las filas visibles (guardado o sugerido). */
+  redondeo: number
+}) {
   const cierre = cierreDeTotales(totales)
   return (
     <div data-testid="espejo-total" style={{
@@ -208,7 +217,8 @@ function Total({ columnas, dias, totales }: { columnas: string; dias: readonly s
       <Leida valor={totales.cobra} />
       <Leida valor={totales.adelanto} />
       <Leida valor={totales.yaTransferido} />
-      <div /><div />
+      <Leida valor={redondeo > 0 ? redondeo : null} testid="espejo-total-redondeo" />
+      <div />
       <Leida valor={totales.horasPagas} unidad="horas" testid="espejo-total-hs" />
       {dias.map((f, i) => (
         <div key={f} style={{ textAlign: 'center', color: totales.porDia[i] == null ? V.tenue : V.tinta }}>

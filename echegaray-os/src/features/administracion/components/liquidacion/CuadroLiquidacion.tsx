@@ -283,6 +283,7 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
         <CeldaRedondeo
           personaId={linea.personaId}
           valor={linea.efectivoRedondeado}
+          enEfectivo={linea.enEfectivo}
           quincena={quincena}
           grupo={grupo}
           bloqueada={bloqueada}
