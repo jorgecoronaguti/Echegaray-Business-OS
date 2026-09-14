@@ -188,6 +188,25 @@ test('la referencia con el MISMO número y distinto importe son dos movimientos 
   assert.equal(novedades(nueva, base).length, 1)
 })
 
+test('EL RE-DÉBITO: misma referencia y mismo importe en OTRO DÍA son dos movimientos (echeq 308, 14/09/2026)', () => {
+  // Dato real: el echeq 308 de $317.000 se debitó el 10/09, el banco lo rechazó ese día (+$317.000) y
+  // lo volvió a debitar el 11/09 con la MISMA referencia 000000308. Con la clave (referencia, importe)
+  // el débito del 11/09 se descartaba como «ya estaba»: la base quedó $317.000 arriba del banco y la
+  // auditoría del saldo dio NO CIERRA. La mutación que pone esto rojo: sacar la fecha de la clave.
+  const base = [
+    { fecha: '2026-09-10', concepto: 'Echeq canje interno recibido 24hs', importe: -317000, saldo: 42970867.5, referencia: '308' },
+    { fecha: '2026-09-10', concepto: 'Rechazo echeq falla tec. no libra - Dia no laborable', importe: 317000, saldo: 41878209.16, referencia: '308' },
+  ]
+  const nueva = [
+    { fecha: '2026-09-10', concepto: 'Echeq canje interno recibido 24hs', importe: -317000, saldo: 42970867.5, referencia: '000000308' },
+    { fecha: '2026-09-11', concepto: 'Echeq canje interno recibido 24hs', importe: -317000, saldo: 40529320.04, referencia: '000000308' },
+  ]
+  const n = novedades(nueva, base)
+  assert.equal(n.length, 1, 'el débito del 10/09 ya estaba; el del 11/09 es nuevo')
+  assert.equal(n[0].fecha, '2026-09-11')
+  assert.notEqual(clave(nueva[0]), clave(nueva[1]))
+})
+
 test('un movimiento SIN referencia dedupea por el respaldo, y el respaldo tampoco mira el saldo', () => {
   // 32 filas de la base no tienen referencia: entraron por captura de pantalla o por la semilla del
   // extracto verificado. Para ésas la referencia no puede ser la clave, y el respaldo es

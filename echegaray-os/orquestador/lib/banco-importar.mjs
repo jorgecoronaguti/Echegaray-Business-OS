@@ -381,21 +381,27 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
 export const claveNatural = (m) => `${m.fecha}|${normConcepto(m.concepto)}|${Number(m.importe).toFixed(2)}|${m.saldo == null ? '' : Number(m.saldo).toFixed(2)}`
 
 /**
- * LA IDENTIDAD DEL MOVIMIENTO PARA EL BANCO: (referencia, importe). Null si no tiene referencia.
+ * LA IDENTIDAD DEL MOVIMIENTO PARA EL BANCO: (referencia, importe, fecha). Null si no tiene referencia.
+ *
+ * LA FECHA VA EN LA CLAVE (14/09/2026). El echeq 308 se debitó el 10/09, se rechazó ese día y se volvió
+ * a debitar el 11/09 con la MISMA referencia y el MISMO importe: con (referencia, importe) el segundo
+ * débito se descartaba como «ya estaba» y la base quedó $317.000 arriba del banco. La fecha de un
+ * movimiento no cambia entre descargas —lo que cambia es el saldo corrido—, así que agregarla no reabre
+ * las ventanas superpuestas. Índice de la base: 20260914T1400_banco_clave_con_fecha.sql.
  *
  * EL IMPORTE VA EN LA CLAVE. El banco REPITE la referencia para una operación y su percepción: la
  * compra en el exterior de Google Workspace ($-37.926) y su percepción RG 5617 ($-11.203,92) comparten
  * la referencia 00114824 y se distinguen por el Código Operativo, que el parser no captura. Con la
  * referencia sola, la percepción se descartaba como "ya vista": un impuesto menos y ningún error.
  *
- * ES EXACTAMENTE LA CLAVE DEL ÍNDICE ÚNICO DE LA BASE —(cuenta, referencia, importe) donde referencia
+ * ES EXACTAMENTE LA CLAVE DEL ÍNDICE ÚNICO DE LA BASE —(cuenta, referencia, importe, fecha) donde referencia
  * no es nula—. Deliberado: si el código usara una clave más fina que la base, dejaría pasar filas que
  * el índice rechaza después con `on conflict do nothing`, y el importador informaría cargas que no
  * ocurrieron. La clave del código y la de la base tienen que ser la misma o el conteo miente.
  */
 export const claveReferencia = (m) => {
   const r = normalizarReferencia(m?.referencia)
-  return r === null ? null : `ref:${r}|${Number(m.importe).toFixed(2)}`
+  return r === null ? null : `ref:${r}|${Number(m.importe).toFixed(2)}|${m.fecha}`
 }
 
 /** La clave del RESPALDO, para los movimientos sin referencia: fecha e importe, jamás el saldo. El
