@@ -16,7 +16,7 @@
 //   · una fórmula `=9+4*1,3` son horas normales + extras: se separan, no se pisan ni se suman a ciegas.
 //   · JORNALES 25 tiene bloques de liquidación al final cuyas «fechas» son la misma tres veces y cuyos
 //     «valores» son importes → se descartan por estructura (fechas duplicadas, horas > 24).
-import { detectarBloques, trabajadoresDeBloque, leerCeldaDiaria } from './jornales-estructura.mjs'
+import { detectarBloques, trabajadoresDeBloque, leerCeldaDiaria, letraColumna } from './jornales-estructura.mjs'
 import { interpretarCarga, FORMA } from './horas-extra.mjs'
 
 export const FUENTE = 'sheet:jornales'
@@ -66,19 +66,56 @@ export function marcasDeGrid(grid, { pestana, anio } = {}) {
       hallazgos.push({ tipo: FALTA.BLOQUE_DESCARTADO, pestana, fila1: b.fila1, detalle: e.message })
       continue
     }
+    const sinFecha = columnasSinFecha(grid, b)
+    const ultimoDia = isos.reduce((a, x) => (x > a ? x : a), isos[0])
     for (const t of trabajadores) {
+      const base = {
+        pestana, bloque_fila1: b.fila1, fila1: t.fila1,
+        nombre: t.nombre_original.trim(), cliente: t.cliente_original.trim(), obra: t.obra_original.trim(),
+        categoria: t.categoria,
+      }
       for (const f of b.fechas) {
         const celda = leerCeldaDiaria(grid, t.fila, f.col)
         if (!celda.escrita) continue
-        marcas.push({
-          pestana, bloque_fila1: b.fila1, fila1: t.fila1, fecha: f.iso,
-          nombre: t.nombre_original.trim(), cliente: t.cliente_original.trim(), obra: t.obra_original.trim(),
-          categoria: t.categoria, celda,
-        })
+        marcas.push({ ...base, fecha: f.iso, celda })
+      }
+      for (const col of sinFecha) {
+        const celda = leerCeldaDiaria(grid, t.fila, col)
+        // SÓLO HORAS DE VERDAD (lectura del Sheet real, 14/09/2026): en marzo esas columnas traen fechas
+        // (`46111` con formato DATE) y ceros. Un 0 sin fecha NO es una ausencia de nadie, y un serial de
+        // fecha no son horas: entra sólo lo que es un número de horas entre 0 y 24, sin formato de fecha.
+        if (!celda.escrita || grid.filas?.[t.fila]?.[col]?.formato === 'DATE') continue
+        if (!(typeof celda.horas === 'number' && celda.horas > 0 && celda.horas <= HORAS_MAX_DIA)) continue
+        marcas.push({ ...base, fecha: ultimoDia, sin_fecha: letraColumna(col), celda })
       }
     }
   }
   return { marcas, hallazgos }
+}
+
+/** El rótulo de la columna de total del bloque. Mismo patrón que `ROTULOS.horas` de jornales-espejo.mjs
+ *  (no se importa: el espejo importa este módulo y la dependencia sería circular). */
+const RE_TOTAL_HORAS = /^d[ií]as?\s*\/\s*horas?\b/i
+const valorDe = (grid, i, j) => String(grid.filas?.[i]?.[j]?.valor ?? '').trim()
+
+/**
+ * LAS COLUMNAS SIN FECHA ENTRE EL ÚLTIMO DÍA Y EL TOTAL (dueño, 14/09/2026: «sumarlas a la obra del renglón»).
+ *
+ * En «Obreros 26» hay horas escritas en columnas cuyo encabezado no tiene fecha (Tello, bloque 04/05: 16 h
+ * en R y S; Quiroga S., 16/02: 8 h en T). La planilla las suma a su total y la base no las tenía. Se leen
+ * SÓLO si se encuentra la columna «DIAS / HORAS» del bloque —en la fila del bloque o en la fila 1—: sin
+ * ese límite no hay cómo saber dónde empiezan los importes, y leer un $ como horas sería inventar.
+ */
+export function columnasSinFecha(grid, bloque, { filaRotulos = 0 } = {}) {
+  const ancho = Math.max((grid.filas?.[bloque.fila] || []).length, (grid.filas?.[filaRotulos] || []).length)
+  let total = null
+  for (let j = bloque.col_hasta + 1; j < ancho && total == null; j++) {
+    if (RE_TOTAL_HORAS.test(valorDe(grid, bloque.fila, j)) || RE_TOTAL_HORAS.test(valorDe(grid, filaRotulos, j))) total = j
+  }
+  if (total == null) return []
+  const out = []
+  for (let j = bloque.col_hasta + 1; j < total; j++) out.push(j)
+  return out
 }
 
 /**
@@ -221,6 +258,7 @@ const ORIGEN_EN_NOTA = {
 function notaDe(m, origen, detalle) {
   const partes = [`JORNALES ${m.pestana} f${m.fila1}`, [m.cliente, m.obra].filter(Boolean).join(' · ')]
   if (ORIGEN_EN_NOTA[origen]) partes.push(ORIGEN_EN_NOTA[origen])
+  if (m.sin_fecha) partes.push(`sin fecha en la planilla (col ${m.sin_fecha}), fechada el último día del bloque`)
   if (detalle) partes.push(detalle)
   return partes.filter(Boolean).join(' · ')
 }
