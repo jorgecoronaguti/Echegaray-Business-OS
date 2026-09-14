@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { useDeshacer } from '@/shared/components/deshacer/DeshacerProvider'
 import Link from 'next/link'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
@@ -196,6 +197,9 @@ export function GrillaAsistenciaObra({
   const [elegidas, setElegidas] = useState<Record<string, string>>({})
   const [, arrancar] = useTransition()
   const router = useRouter()
+  // CMD/CTRL+Z (dueño, 15/09/2026): mover a alguien de obra se deshace con la misma acción y la obra anterior.
+  const deshacer = useDeshacer()
+  const nombreDeObra = (id: string) => (id ? (obras.find((o) => o.id === id)?.nombre ?? 'otra obra') : 'sin obra')
 
   // LO QUE EL DESPLEGABLE MUESTRA SELECCIONADO. La obra a la que se le imputa lo que se escriba si
   // se le puede imputar; si su asignación vigente está en una obra que ya no admite horas, ESA obra
@@ -208,6 +212,7 @@ export function GrillaAsistenciaObra({
 
   const cambiarObra = (fila: FilaQuincena, valor: string) => {
     if (mostrada(fila) === valor) return
+    const anterior = mostrada(fila)
     setCambiando(fila.clave)
     setElegidas((e) => ({ ...e, [fila.clave]: valor }))
     setAcuses((a) => { const n = { ...a }; delete n[fila.clave]; return n })
@@ -221,7 +226,19 @@ export function GrillaAsistenciaObra({
       }))
       // EL DATO VUELVE DEL SERVIDOR: la fila, los chips del encabezado y la obra de cada celda se
       // releen; la elección local queda hasta entonces para que el <select> no dé un salto atrás.
-      if (r.ok) router.refresh()
+      if (r.ok) {
+        router.refresh()
+        deshacer?.registrar({
+          clave: `obra-actual-${fila.persona.id}`, rotulo: `Obra de ${fila.persona.nombre}`,
+          anterior, nuevo: valor, anteriorTexto: nombreDeObra(anterior), nuevoTexto: nombreDeObra(valor),
+        }, async (v) => {
+          const x = await cambiarObraActual({ persona_id: fila.persona.id, obra_id: v || null })
+          if (!x.ok) return { ok: false, error: x.error }
+          setElegidas((e) => ({ ...e, [fila.clave]: v }))
+          router.refresh()
+          return { ok: true }
+        })
+      }
     })
   }
 

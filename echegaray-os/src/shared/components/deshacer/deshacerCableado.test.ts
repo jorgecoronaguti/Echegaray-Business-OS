@@ -61,6 +61,12 @@ test('LAS CELDAS PROPIAS DE LIQUIDACIÓN REGISTRAN SU GUARDADO', () => {
   assert.match(leer('features/administracion/components/liquidacion/cuadro/CeldaTarifa.tsx'), /deshacer\?\.registrar\(/, 'CeldaTarifa')
 })
 
+test('HORAS: MOVER A ALGUIEN DE OBRA SE DESHACE CON LA MISMA ACCIÓN', () => {
+  const g = leer('features/administracion/components/GrillaAsistenciaObra.tsx')
+  assert.match(g, /deshacer\?\.registrar\(\{[\s\S]{0,400}cambiarObraActual\(\{ persona_id: fila\.persona\.id, obra_id: v \|\| null \}\)/)
+  assert.match(g, /const anterior = mostrada\(fila\)/)
+})
+
 test('EL SERVIDOR NO PISA LO QUE CAMBIÓ DESDE LA EDICIÓN', () => {
   const a = leer('features/administracion/services/liquidacionActions.ts')
   assert.equal((a.match(/esperado: z\.union\(\[z\.literal\(''\), z\.coerce\.number\(\)\.finite\(\)\]\)\.optional\(\)/g) ?? []).length, 2)
