@@ -15,7 +15,8 @@ import { V } from '@/shared/components/v2/patron'
 import { CeldaEditable, MarcaDeOrigen } from '../CeldasDeLiquidacion'
 import { horas as nHoras, pesos } from '../formato'
 import { referenciaDeJornales } from './estadoDelPago'
-import type { CampoEditable, LineaConOverrides } from '../../../services/liquidacionOverrides'
+import { horasNoCoincidenConLosDias, type CampoEditable, type LineaConOverrides } from '../../../services/liquidacionOverrides'
+import type { EdicionDelBlanco } from './CeldasBlancoNegro'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
 import { tituloDeExtras } from '../../../services/liquidacionQuincena'
@@ -104,6 +105,7 @@ export function Leida({ valor, medio = false, apagada = false, unidad = 'pesos',
 const ROTULO_DE_CAMPO: Partial<Record<CampoEditable, string>> = {
   porBanco: 'Banco', adelanto: 'Adelanto efectivo', yaTransferido: 'Adelanto banco / embargos', horasRecibo: 'Hs recibo',
   valorHoraRecibo: '$/h cat.', negro: 'Importe negro', enEfectivo: 'Total efectivo', cobra: 'Cobra total', horas: 'Horas',
+  horasNegro: 'Hs negro',
 }
 
 /** Una celda que se escribe. Marco de control para que se vea cuál decide una persona y cuál no. */
@@ -160,10 +162,28 @@ const marcaCon = (origen: 'calculado' | 'jornales' | 'manual', ref: { titulo: st
  * HORAS: las horas cargadas, el mismo total de «Horas». Si la plata usa horas equivalentes (extras con
  * recargo) el `title` lo aclara; y la referencia de JORNALES cuando difiere.
  */
-export function CeldaHorasPagas({ fila }: { fila: FilaDelEspejo }) {
+export function CeldaHorasPagas({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const l = fila.linea
   const ref = referenciaDeJornales(l)
   const titulo = [tituloDeExtras(l), ref?.titulo].filter(Boolean).join(' · ')
+  // HORAS SE ESCRIBE EN LA ABIERTA (dueño, 15/09/2026: «todas las celdas editables»). Sólo obreros: son las horas que
+  // se pagan. Escrita distinta de la suma de los días se guarda igual y avisa en ámbar debajo, en texto.
+  if (edicion && !fila.cerrada && fila.grupo === 'obreros' && edicion.camposEditables.includes('horas')) {
+    const dias = horasNoCoincidenConLosDias(l)
+    return (
+      <div data-testid={`espejo-hs-pagas-${fila.personaId}`} title={titulo || undefined}
+        style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+        <Escribible campo="horas" unidad="horas" fila={fila} quincena={edicion.quincena}
+          camposEditables={edicion.camposEditables} ancho={64} claseCampo="w-14" />
+        {dias != null && (
+          <span data-testid={`horas-no-coinciden-${fila.personaId}`}
+            style={{ fontSize: '10px', lineHeight: '12px', color: V.warn, textAlign: 'right' }}>
+            {`no coincide con los días: ${nHoras(dias)} h`}
+          </span>
+        )}
+      </div>
+    )
+  }
   return (
     <Leida valor={l.horas} unidad="horas" testid={`espejo-hs-pagas-${fila.personaId}`}
       origen={marcaCon(l.origen.horas, ref)} titulo={titulo || undefined} />

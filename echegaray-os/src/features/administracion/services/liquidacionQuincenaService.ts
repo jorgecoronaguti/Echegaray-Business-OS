@@ -324,13 +324,20 @@ const COLUMNAS_MANUALES = [
   'por_banco_manual', 'en_efectivo_manual', 'total_manual',
 ] as const
 
-const COLUMNAS_LINEA = ['persona_id', 'efectivo_redondeado', 'horas'] as const
+// SIN `horas`: es la cifra sellada del cierre y no es un override (ver `COLUMNA_DE.horas`).
+const COLUMNAS_LINEA = ['persona_id', 'efectivo_redondeado'] as const
 
 /** Las correcciones del blanco, si la migración `20260915T0100` ya se aplicó. */
 const COLUMNAS_BLANCO = ['horas_recibo_manual', 'valor_hora_recibo_manual'] as const
 
 /** El importe negro escrito a mano, si la migración `20260915T0300` ya se aplicó. */
 const COLUMNAS_NEGRO = ['negro_manual'] as const
+
+/** Horas y Hs negro escritas a mano, si la migración `20260915T0510` ya se aplicó. */
+const COLUMNAS_HORAS = ['horas_manual', 'horas_negro_manual'] as const
+
+/** Los grupos que dependen de una migración, del más viejo al más nuevo. */
+const GRUPOS_OPCIONALES: readonly (readonly string[])[] = [COLUMNAS_MANUALES, COLUMNAS_BLANCO, COLUMNAS_NEGRO, COLUMNAS_HORAS]
 
 /**
  * LAS CABECERAS Y SUS LÍNEAS — preguntando por las columnas de override y aceptando que no estén.
@@ -348,28 +355,19 @@ async function leerCabecerasGuardadas(
     .eq('desde', q.desde).eq('hasta', q.hasta)
 
   const faltaColumna = (e: { code?: string; message: string }) => e.code === '42703' || /column .* does not exist/i.test(e.message)
-  // TRES ESCALONES: con las columnas del blanco (20260915T0100), sin ellas (sólo 20260909T1740), y sin
-  // ninguna. Sin la migración nueva las `*_manual` de siempre NO se pierden: sólo esas dos celdas quedan fijas.
-  // CUARTO ESCALÓN: el importe negro (20260915T0300). Sin esa migración, las demás correcciones siguen.
-  const conNegro = [...COLUMNAS_LINEA, ...COLUMNAS_MANUALES, ...COLUMNAS_BLANCO, ...COLUMNAS_NEGRO]
-  const conTodoNegro = await pedir(conNegro)
-  if (!conTodoNegro.error) return { data: conTodoNegro.data, error: null, columnas: [...conNegro] }
-  if (!faltaColumna(conTodoNegro.error)) return { data: null, error: conTodoNegro.error, columnas: [] }
-  const conBlanco = [...COLUMNAS_LINEA, ...COLUMNAS_MANUALES, ...COLUMNAS_BLANCO]
-  const conTodo = await pedir(conBlanco)
-  if (!conTodo.error) return { data: conTodo.data, error: null, columnas: [...conBlanco] }
-  if (!faltaColumna(conTodo.error)) return { data: null, error: conTodo.error, columnas: [] }
-  const conManuales = [...COLUMNAS_LINEA, ...COLUMNAS_MANUALES]
-  const primera = await pedir(conManuales)
-  if (!primera.error) return { data: primera.data, error: null, columnas: [...conManuales] }
-  if (!faltaColumna(primera.error)) {
-    return { data: null, error: primera.error, columnas: [] }
-  }
-  const segunda = await pedir(COLUMNAS_LINEA)
-  return {
-    data: segunda.data,
-    error: segunda.error,
-    columnas: segunda.error ? [] : [...COLUMNAS_LINEA],
+  // UN ESCALÓN POR MIGRACIÓN: se pide todo y, si la base dice que falta una columna, se saca SU grupo y se relee.
+  // Sin una migración sólo sus celdas quedan fijas; las demás correcciones siguen. Si el mensaje no nombra la
+  // columna, se saca el grupo más nuevo. Las migraciones no tienen por qué aplicarse en orden.
+  let grupos = [...GRUPOS_OPCIONALES]
+  for (;;) {
+    const columnas = [...COLUMNAS_LINEA, ...grupos.flat()]
+    const r = await pedir(columnas)
+    if (!r.error) return { data: r.data, error: null, columnas }
+    if (!faltaColumna(r.error) || grupos.length === 0) return { data: null, error: r.error, columnas: [] }
+    const mensaje = r.error.message
+    // `\b` y no `includes`: `negro_manual` está adentro de `horas_negro_manual`.
+    const culpable = grupos.find((g) => g.some((c) => new RegExp(`\\b${c}\\b`).test(mensaje)))
+    grupos = culpable ? grupos.filter((g) => g !== culpable) : grupos.slice(0, -1)
   }
 }
 
@@ -398,7 +396,8 @@ function horasPorPersona(
 type LineaGuardada = {
   persona_id: string
   efectivo_redondeado: number | string | null
-  horas?: number | string | null
+  horas_manual?: number | string | null
+  horas_negro_manual?: number | string | null
   cobra_manual?: number | string | null
   adelanto_manual?: number | string | null
   ya_transferido_manual?: number | string | null
@@ -426,7 +425,7 @@ const overrideDe = (v: number | string | null | undefined): number | null => {
 }
 
 const overridesDeLinea = (l: LineaGuardada): OverridesDeLinea => ({
-  horas: overrideDe(l.horas),
+  horas: overrideDe(l.horas_manual),
   cobra: overrideDe(l.cobra_manual),
   adelanto: overrideDe(l.adelanto_manual),
   yaTransferido: overrideDe(l.ya_transferido_manual),
@@ -436,6 +435,7 @@ const overridesDeLinea = (l: LineaGuardada): OverridesDeLinea => ({
   horasRecibo: overrideDe(l.horas_recibo_manual),
   valorHoraRecibo: overrideDe(l.valor_hora_recibo_manual),
   negro: overrideDe(l.negro_manual),
+  horasNegro: overrideDe(l.horas_negro_manual),
 })
 
 /** El estado de cada cuadro y el redondeo ya escrito. Sin cabecera guardada, la quincena está abierta. */

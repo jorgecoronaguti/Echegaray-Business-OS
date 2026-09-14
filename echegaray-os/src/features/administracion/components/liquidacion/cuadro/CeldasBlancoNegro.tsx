@@ -155,9 +155,21 @@ export function CeldaNeto({ fila, edicion }: { fila: FilaDelEspejo; edicion?: Ed
   )
 }
 
-/** HS NEGRO: las que el recibo no paga. Ámbar si el recibo paga más de las cargadas. */
-export function CeldaHorasNegro({ fila }: { fila: FilaDelEspejo }) {
+/** HS NEGRO: las que el recibo no paga. Ámbar si el recibo paga más de las cargadas. En la abierta se escribe. */
+export function CeldaHorasNegro({ fila, edicion }: { fila: FilaDelEspejo; edicion?: EdicionDelBlanco }) {
   const s = fila.linea.sueldo
+  // HS NEGRO SE ESCRIBE (dueño, 15/09/2026: «todas las celdas editables»): el Importe negro pasa a Hs negro × $/h negro,
+  // salvo que el Importe también esté escrito.
+  if (seEscribe(fila, 'horasNegro', edicion)) {
+    const excede = s?.reciboExcedeHoras && !fila.linea.manual.horasNegro
+    return (
+      <div data-testid={`hs-negro-${fila.personaId}`} title={excede ? 'el recibo paga más horas que las cargadas' : undefined}
+        style={excede ? { color: V.warn } : undefined}>
+        <Escribible campo="horasNegro" unidad="horas" fila={fila} quincena={edicion.quincena}
+          camposEditables={edicion.camposEditables} ancho={56} claseCampo="w-12" />
+      </div>
+    )
+  }
   if (s?.reciboExcedeHoras) {
     return (
       <div data-testid={`hs-negro-${fila.personaId}`} title="el recibo paga más horas que las cargadas"

@@ -29,7 +29,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion, type PermisoLiquidacion } from './liquidacionPermiso'
-import { CAMPOS_EDITABLES, COLUMNA_DE, type CampoEditable } from './liquidacionOverrides'
+import { CAMPOS_EDITABLES, COLUMNA_DE, rechazoDelValorDeCelda, type CampoEditable } from './liquidacionOverrides'
 import { validarMotivoDeReapertura } from './liquidacionCierre'
 import { escribirRedondeo } from './efectivoRedondeado'
 
@@ -296,7 +296,9 @@ async function columnaGuardable(
   if (sonda.error) {
     return {
       error: `La columna «${columna}» no existe todavía: falta aplicar la migración `
-        + (campo === 'negro'
+        + (campo === 'horas' || campo === 'horasNegro'
+          ? '20260915T0510_liquidacion_horas_manual.sql. No guardé nada.'
+          : campo === 'negro'
           ? '20260915T0300_liquidacion_negro_manual.sql. No guardé nada.'
           : campo === 'horasRecibo' || campo === 'valorHoraRecibo'
           ? '20260915T0100_liquidacion_blanco_manual.sql. No guardé nada.'
@@ -315,6 +317,8 @@ export async function guardarCeldaLiquidacion(entrada: unknown): Promise<Resulta
   const parsed = celdaSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const { persona_id: personaId, campo, valor, esperado, ...v } = parsed.data
+  const rechazo = rechazoDelValorDeCelda(campo, valor)
+  if (rechazo) return { ok: false, error: rechazo }
 
   const supabase = await createClient()
   const permiso = await puedeLiquidar(supabase)

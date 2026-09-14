@@ -78,7 +78,7 @@ export interface EntradaDeSueldo extends EntradaDeBlanco {
    * LO ESCRITO A MANO EN EL BLANCO (dueño, 14/09/2026: «dejame editable las h/recibo»). `null` o ausente =
    * sin corrección. Precedencia: manual > recibo real > estimado. `neto` es `por_banco_manual`.
    */
-  manual?: { horasRecibo?: number | null; valorHoraRecibo?: number | null; neto?: number | null; negro?: number | null }
+  manual?: { horasRecibo?: number | null; valorHoraRecibo?: number | null; neto?: number | null; negro?: number | null; horasNegro?: number | null }
 }
 
 export type EstadoDelBlanco = 'recibo' | 'estimado'
@@ -167,9 +167,12 @@ export function sueldoBlancoNegro(e: EntradaDeSueldo): SueldoBlancoNegro {
   const b = conManual(blancoDe(e), e.manual)
   const horas = num(e.horas)
   const faltan = horas == null || b.horasBlanco == null ? null : r2(horas - b.horasBlanco)
-  const horasNegro = faltan == null ? null : Math.max(0, faltan)
+  // HS NEGRO ESCRITAS A MANO (dueño, 15/09/2026: «todas las celdas editables»). Son las que se pagan en negro, y el
+  // recargo de extras NO se suma: no hay forma de saber qué parte de un número escrito ya lo incluye.
+  const horasNegroManual = num(e.manual?.horasNegro)
+  const horasNegro = horasNegroManual ?? (faltan == null ? null : Math.max(0, faltan))
   const equivalentes = num(e.horasEquivalentes)
-  const recargoExtras = horas == null || equivalentes == null ? 0 : Math.max(0, r2(equivalentes - horas))
+  const recargoExtras = horasNegroManual != null || horas == null || equivalentes == null ? 0 : Math.max(0, r2(equivalentes - horas))
   const valorHoraNegro = num(e.valorHoraNegro)
   const negroCalculado = horasNegro == null || valorHoraNegro == null ? null : r2((horasNegro + recargoExtras) * valorHoraNegro)
   // IMPORTE NEGRO ESCRITO A MANO (dueño, 15/09/2026: «dejame editable todas las columnas de dinero»). Gana sobre
