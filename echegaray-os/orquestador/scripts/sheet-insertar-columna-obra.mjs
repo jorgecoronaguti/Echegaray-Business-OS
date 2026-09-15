@@ -15,6 +15,8 @@
 //      saltearlas — también en el dry;
 //   1. el encabezado actual es el esperado (K «Detalles / Obra», L «Concepto»; G «Obra / Cliente»,
 //      H «ORDEN DE COMPRA») — si no, ABORTA: la columna ya se insertó o la pestaña cambió;
+//   1b. el tipo de cambio está CLAVADO por el dueño y no colgando de GOOGLEFINANCE: si se mueve entre
+//      la foto y la relectura, arrastra cien valores y la comparación acusa una rotura que no existe;
 //   2. foto de fórmulas del ARCHIVO ENTERO → qué pestañas citan Compras!/Cobranzas! → foto de valores y
 //      fórmulas de las insertadas y de ésas, a archivo. Cualquier lectura que falla ABORTA;
 //   2b. plan del P&L (otro archivo, lo verifica su propio script por relectura): con dudas, no inserta;
@@ -53,7 +55,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { normalizarRotulo } from '../lib/compras-columnas.mjs'
 import { diferenciasDePestana, listarVolatiles, medirVolatiles, pestanasQueCitan } from '../lib/formula-insertar-columna.mjs'
-import { evaluarPrecondiciones, sondearPrecondiciones } from '../lib/insercion-obra-precondiciones.mjs'
+import { DOLAR, evaluarPrecondiciones, problemaDelTipoDeCambio, sondearPrecondiciones } from '../lib/insercion-obra-precondiciones.mjs'
 
 export const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -175,6 +177,16 @@ async function encabezados(google, log, id) {
   }
   if (mal.length) { log(`✖ encabezado inesperado — NO inserto:\n  ${mal.join('\n  ')}`); return { fin: { ok: false, paso: 'encabezado', detalle: mal } } }
   log('1 ✓ encabezados como se esperaba')
+
+  // 1b. El tipo de cambio, que es la única entrada del archivo que se mueve sola. Vale también para la
+  // copia: es una propiedad del archivo. El porqué, en `insercion-obra-precondiciones.mjs`.
+  const bloque = {
+    formulas: await google.readSheetValues(id, DOLAR.rango, { render: 'FORMULA' }),
+    valores: await google.readSheetValues(id, DOLAR.rango, { render: 'UNFORMATTED_VALUE' }),
+  }
+  const dolar = problemaDelTipoDeCambio(bloque)
+  if (dolar) { log(`✖ tipo de cambio — NO inserto:\n  ${dolar}`); return { fin: { ok: false, paso: 'tipo-de-cambio', detalle: [dolar] } } }
+  log(`1b ✓ tipo de cambio clavado por el dueño (${bloque.valores[DOLAR.declarado][0]}): el archivo no se mueve solo`)
   return { meta, hojas }
 }
 

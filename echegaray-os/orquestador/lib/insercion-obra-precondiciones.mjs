@@ -136,3 +136,50 @@ export async function sondearPrecondiciones({ script, query, cwd = process.cwd()
   }
   return s
 }
+
+// ═══ LA PRECONDICIÓN DEL ARCHIVO: EL DÓLAR NO PUEDE MOVERSE MIENTRAS SE INSERTA (15/09/2026) ═══
+//
+// Medido en dos ensayos sobre copias del archivo real: la inserción dio 0 diferencias de fórmula y
+// 52 la primera vez, 112 la segunda, de VALOR. Ninguna era de la inserción. Todas colgaban de
+// `_CAJA_ANEXO!C108` = `=GOOGLEFINANCE("CURRENCY:USDARS")`: entre la foto previa y la relectura la
+// cotización se movió y arrastró a Cobranzas, OBRAS, CAJA, _CAJA_ANEXO, Calendario de Cobros e
+// Impuestos y Financieros. El operador habría quedado decidiendo sobre cien diferencias inventadas, y
+// las huellas no se corren hasta que alguien decida.
+//
+// No se arregla en el verificador —una celda que se mueve sola no se deduce del texto de su fórmula:
+// `=3500*TIPO_CAMBIO_USD` no dice nada—: se arregla EN EL MUNDO, como los timers. El propio Sheet
+// tiene el campo para eso, hecho para el dueño: «Dólar declarado por la empresa (opcional)». Con un
+// número ahí, `C110` y `C111` dejan de leer GOOGLEFINANCE y el archivo entero queda quieto mientras
+// dura la operación. Al terminar se vacía y vuelve la cotización del día.
+//
+// Aplica TAMBIÉN al ensayo sobre una copia: es una propiedad del archivo, no del mundo de producción.
+
+/** Dónde vive el bloque del tipo de cambio y qué tiene que decir cada celda. 0-based dentro del rango. */
+export const DOLAR = Object.freeze({
+  pestana: '_CAJA_ANEXO',
+  rango: "'_CAJA_ANEXO'!C108:C111",
+  referencia: 0,   // C108 · =GOOGLEFINANCE("CURRENCY:USDARS")
+  declarado: 1,    // C109 · lo que el dueño clava (vacío = se usa la cotización del día)
+  usoA: 2,         // C110 · =IF(C109<>"";C109;C108)
+  usoB: 3,         // C111 · =IF(C110<>"";C110;C109)  ← TIPO_CAMBIO_USD
+})
+
+/**
+ * NÚCLEO PURO: ¿el tipo de cambio está clavado por el dueño? Devuelve el problema o `null`.
+ *
+ * Verifica ADEMÁS la forma del bloque: si alguien movió esas filas, las celdas que este control mira
+ * ya no son el tipo de cambio y decir «está clavado» sería afirmar algo sobre otras celdas.
+ * @param {{formulas:any[][], valores:any[][]}} bloque lo leído de `DOLAR.rango`
+ */
+export function problemaDelTipoDeCambio({ formulas = [], valores = [] } = {}) {
+  const f = (i) => String(formulas[i]?.[0] ?? '')
+  if (!/GOOGLEFINANCE\s*\(/i.test(f(DOLAR.referencia)) || !/^=IF\(/i.test(f(DOLAR.usoA)) || !/^=IF\(/i.test(f(DOLAR.usoB))) {
+    return `el bloque del tipo de cambio no está donde se esperaba (${DOLAR.rango}): no puedo afirmar que el dólar esté quieto`
+  }
+  const declarado = valores[DOLAR.declarado]?.[0]
+  if (typeof declarado === 'number' && declarado > 0) return null
+  const hoy = valores[DOLAR.referencia]?.[0]
+  return 'el tipo de cambio cuelga de GOOGLEFINANCE y se mueve solo: cargá el dólar declarado en '
+    + `${DOLAR.pestana}!C${108 + DOLAR.declarado} (hoy la cotización dice ${hoy ?? '—'}) y volvé a correr.`
+    + ' Cuando termine la inserción, vaciá esa celda y vuelve la cotización del día.'
+}

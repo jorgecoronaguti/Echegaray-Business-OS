@@ -6,6 +6,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { insertarColumnaObra, modoDeCorrida, reverificarColumnaObra, verificarEncabezado, ID, INSERCIONES, ROTULO } from './sheet-insertar-columna-obra.mjs'
+import { DOLAR } from '../lib/insercion-obra-precondiciones.mjs'
 import { COMPRAS_2508, COBRANZAS_1409 } from '../lib/encabezados-referencia.mjs'
 
 const [COMPRAS, COBRANZAS] = INSERCIONES
@@ -31,7 +32,13 @@ const GOOGLE = new Map([
 ])
 
 /** Un doble de Google que inserta de verdad sobre las grillas en memoria y anota cada llamada. */
-function dobleDeGoogle({ encCompras = COMPRAS_2508, encCobranzas = COBRANZAS_1409, tocar = null, falla = null } = {}) {
+// El bloque del tipo de cambio: con el dólar declarado (paso 1b en verde) salvo que el caso lo rompa.
+const BLOQUE_DOLAR = (declarado = 1480) => ({
+  formulas: [['=GOOGLEFINANCE("CURRENCY:USDARS")'], [String(declarado || '')], ['=IF(C109<>"";C109;C108)'], ['=IF(C110<>"";C110;C109)']],
+  valores: [[1505.95], [declarado || ''], [declarado || 1505.95], [declarado || 1505.95]],
+})
+
+function dobleDeGoogle({ encCompras = COMPRAS_2508, encCobranzas = COBRANZAS_1409, tocar = null, falla = null, dolar = 1480 } = {}) {
   const hojas = {
     Compras: hojaDe(COMPRAS, encCompras, '=SUM(O5:O6)', 30),
     Cobranzas: hojaDe(COBRANZAS, encCobranzas, '=K5*2', 20),
@@ -52,6 +59,7 @@ function dobleDeGoogle({ encCompras = COMPRAS_2508, encCobranzas = COBRANZAS_140
     },
     async readSheetValues(fileId, rango, { render } = {}) {
       archivos.add(fileId)
+      if (rango === DOLAR.rango) { llamadas.push('dolar'); return BLOQUE_DOLAR(dolar)[render === 'FORMULA' ? 'formulas' : 'valores'] }
       const p = /^'((?:[^']|'')+)'/.exec(rango)[1]
       const fila = /!A(\d+):BZ\d+$/.exec(rango)
       llamadas.push(fila ? `encabezado:${p}` : `leer:${p}:${render}`)
@@ -284,4 +292,21 @@ test('el dry NO pone el desplegable: todavía no hay columna donde ponerlo', asy
   const g = dobleDeGoogle()
   await correr(g, { aplicar: false, ponerDesplegable: desplegable(g) })
   assert.ok(!g.llamadas.includes('desplegable'))
+})
+
+test('EL DEFECTO: con el dólar sin clavar NO se fotografía ni se inserta — arrastraría cien valores', async () => {
+  const g = dobleDeGoogle({ dolar: 0 })
+  const r = await correr(g)
+  assert.equal(r.paso, 'tipo-de-cambio')
+  assert.match(r.detalle.join(), /cuelga de GOOGLEFINANCE/)
+  assert.ok(!g.llamadas.includes('escribir'))
+  assert.ok(!g.llamadas.some((x) => x.startsWith('guardar')), 'ni siquiera saca la foto previa')
+})
+
+test('el paso 1b corre entre el encabezado y la foto, también en el dry', async () => {
+  const g = dobleDeGoogle()
+  await correr(g, { aplicar: false })
+  const i = g.llamadas.indexOf('dolar')
+  assert.ok(i > g.llamadas.indexOf('encabezado:Cobranzas'))
+  assert.ok(i < g.llamadas.indexOf('guardar:antes'))
 })

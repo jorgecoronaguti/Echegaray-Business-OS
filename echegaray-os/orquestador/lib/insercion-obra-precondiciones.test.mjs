@@ -4,7 +4,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  COLUMNAS_0700, MARCAS, PRODUCCION, TIMERS, TIMERS_OPCIONALES, WORKER, evaluarPrecondiciones, parsearShow,
+  COLUMNAS_0700, DOLAR, MARCAS, PRODUCCION, TIMERS, TIMERS_OPCIONALES, WORKER, evaluarPrecondiciones,
+  parsearShow, problemaDelTipoDeCambio,
 } from './insercion-obra-precondiciones.mjs'
 
 function sano() {
@@ -58,4 +59,31 @@ test('no existe una bandera para saltearlas', () => {
   const script = readFileSync(join(import.meta.dirname, '..', 'scripts', 'sheet-insertar-columna-obra.mjs'), 'utf8')
   assert.doesNotMatch(script, /saltar|--sin-precondiciones|--forzar/i)
   assert.match(script, /evaluarPrecondiciones\(await sondearPrecondiciones/)
+})
+
+// ═══ EL DÓLAR (medido en dos copias de ensayo, 15/09/2026) ═══
+// Con la cotización del día, la inserción dio 52 y 112 diferencias de VALOR con 0 de fórmula: todas
+// colgaban de GOOGLEFINANCE. Clavado por el dueño, el archivo queda quieto.
+
+const bloqueDolar = (declarado) => ({
+  formulas: [['=IFERROR(GOOGLEFINANCE("CURRENCY:USDARS");"")'], [declarado === '' ? '' : declarado], ['=IF(C109<>"";C109;C108)'], ['=IF(C110<>"";C110;C109)']],
+  valores: [[1505.95], [declarado === '' ? '' : declarado], [declarado || 1505.95], [declarado || 1505.95]],
+})
+
+test('EL DEFECTO: con el dólar colgando de GOOGLEFINANCE, NO se inserta', () => {
+  assert.match(problemaDelTipoDeCambio(bloqueDolar('')), /cuelga de GOOGLEFINANCE/)
+  assert.match(problemaDelTipoDeCambio(bloqueDolar('')), /_CAJA_ANEXO!C109/)
+  assert.match(problemaDelTipoDeCambio(bloqueDolar(0)), /cuelga de GOOGLEFINANCE/)
+})
+
+test('con el dólar declarado por el dueño, se puede insertar', () => {
+  assert.equal(problemaDelTipoDeCambio(bloqueDolar(1480)), null)
+  assert.equal(DOLAR.declarado, 1)
+})
+
+test('si el bloque del tipo de cambio se movió, no se afirma que esté quieto', () => {
+  const movido = bloqueDolar(1480)
+  movido.formulas[0] = ['="otra cosa"']
+  assert.match(problemaDelTipoDeCambio(movido), /no está donde se esperaba/)
+  assert.match(problemaDelTipoDeCambio({}), /no está donde se esperaba/)
 })
