@@ -89,47 +89,74 @@ export function celdaPrimerDato(ins) {
   return `${ins.pestana}!${letraDeColumna(ins.indice)}${ins.filaEncabezado + 1}`
 }
 
+/** La regla, una sola vez: la misma para las dos columnas. */
+const REGLA = Object.freeze({
+  condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: `=${RANGO_LISTA}` }] },
+  showCustomUi: true,
+  strict: false,
+})
+
 /**
- * LAS VALIDACIONES DE LAS DOS COLUMNAS. Empiezan en la fila SIGUIENTE al encabezado: una validación
- * sobre la celda del rótulo le pondría desplegable a la palabra «Obra».
+ * LAS VALIDACIONES DE LAS DOS COLUMNAS, EN DOS REQUESTS CADA UNA. Empiezan en la fila SIGUIENTE al
+ * encabezado: una validación sobre la celda del rótulo le pondría desplegable a la palabra «Obra».
  *
- * Sin `endRowIndex`: el rango llega hasta el fin de la pestaña, así una fila nueva nace con el
- * desplegable puesto. Con un fin fijo, la primera fila agregada después de esta corrida no lo tendría.
+ * ═══ POR QUÉ DOS Y NO UNA (medido en la copia de ensayo, 15/09/2026) ═══
+ *
+ * El request SIN `endRowIndex` fija el default de la columna: una fila agregada mañana nace con el
+ * desplegable. Pero a la celda que ya trae una regla PROPIA no la pisa, y al insertar en Cobranzas H
+ * con `inheritFromBefore` cada celda hereda la regla de la G («Administracion|Almacen|…»). Con un solo
+ * request quedaban celdas ofreciendo la lista equivocada.
+ *
+ * El request ACOTADO a las filas de la grilla escribe la regla celda por celda y sí las pisa. Van los
+ * dos, en este orden: primero el default, después las celdas.
  * @param {Array<{pestana:string, filaEncabezado:number, indice:number}>} inserciones
  * @param {(pestana:string) => number|undefined} sheetIdDe
+ * @param {(pestana:string) => number|undefined} filasDe cuántas filas tiene la grilla de esa pestaña
  */
-export function requestsDeValidacion(inserciones = [], sheetIdDe = () => undefined) {
-  return inserciones.map((ins) => {
+export function requestsDeValidacion(inserciones = [], sheetIdDe = () => undefined, filasDe = () => undefined) {
+  return inserciones.flatMap((ins) => {
     const sheetId = sheetIdDe(ins.pestana)
     if (!Number.isInteger(sheetId)) throw new Error(`${ins.pestana}: sin sheetId, no pongo el desplegable a ciegas`)
-    return {
-      setDataValidation: {
-        range: { sheetId, startRowIndex: ins.filaEncabezado, startColumnIndex: ins.indice, endColumnIndex: ins.indice + 1 },
-        rule: {
-          condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: `=${RANGO_LISTA}` }] },
-          showCustomUi: true,
-          strict: false,
-        },
-      },
-    }
+    const filas = filasDe(ins.pestana)
+    if (!Number.isInteger(filas) || filas <= ins.filaEncabezado) throw new Error(`${ins.pestana}: no sé cuántas filas tiene la grilla`)
+    const base = { sheetId, startRowIndex: ins.filaEncabezado, startColumnIndex: ins.indice, endColumnIndex: ins.indice + 1 }
+    return [
+      { setDataValidation: { range: { ...base }, rule: REGLA } },
+      { setDataValidation: { range: { ...base, endRowIndex: filas }, rule: REGLA } },
+    ]
   })
 }
 
-/**
- * ¿LA CELDA QUEDÓ CON EL DESPLEGABLE? Se le pasa lo que devuelve `readSheetValidations` para UNA
- * pestaña. Devuelve el problema o `null`.
- *
- * Esto es la prueba del EFECTO: que el `batchUpdate` haya contestado 200 no dice que la regla esté
- * puesta —un rango mal armado se acepta y no valida nada—. Lo que prueba es la regla releída.
- */
-export function problemaDeValidacion(hoja, ins) {
-  const datos = (hoja?.data ?? [])[0]
-  const fila = (datos?.rowData ?? [])[0]
-  const dv = (fila?.values ?? [])[0]?.dataValidation
-  if (!dv) return `${rangoDeDatos(ins)}: la celda no tiene ninguna validación`
-  if (dv.condition?.type !== 'ONE_OF_RANGE') return `${rangoDeDatos(ins)}: la validación es ${dv.condition?.type ?? '(sin tipo)'}, no ONE_OF_RANGE`
+/** ¿ESTA CELDA quedó con el desplegable? El problema, o `null`. */
+export function problemaDeCelda(dv, donde) {
+  if (!dv) return `${donde}: sin ninguna validación`
+  if (dv.condition?.type !== 'ONE_OF_RANGE') return `${donde}: la validación es ${dv.condition?.type ?? '(sin tipo)'}, no ONE_OF_RANGE`
   const valor = String(dv.condition?.values?.[0]?.userEnteredValue ?? '')
-  if (!valor.includes(AUX)) return `${rangoDeDatos(ins)}: la lista apunta a «${valor}», no a ${AUX}`
-  if (dv.strict) return `${rangoDeDatos(ins)}: quedó estricta (rechazaría lo que el dueño pegue)`
+  if (!valor.includes(AUX)) return `${donde}: la lista apunta a «${valor}», no a ${AUX}`
+  if (dv.strict) return `${donde}: quedó estricta (rechazaría lo que el dueño pegue)`
   return null
+}
+
+/**
+ * ¿LA COLUMNA ENTERA quedó con el desplegable? Se le pasa lo que devuelve `readSheetValidations` para
+ * UNA pestaña, leyendo la columna completa. Devuelve los problemas, con `tope` de ejemplos.
+ *
+ * ═══ POR QUÉ LA COLUMNA Y NO LA PRIMERA CELDA (medido, 15/09/2026) ═══
+ *
+ * Esta verificación miraba la primera fila de datos y decía «puesto». En la copia de ensayo, 28 celdas
+ * de Cobranzas H habían quedado con la lista heredada de la G y el control dio verde igual: eran filas
+ * ESCONDIDAS POR EL FILTRO de la pestaña, y a una fila escondida Google no le aplica la validación —y
+ * contesta 200—. Un control que mira una celda no puede decir nada de las otras 347.
+ */
+export function problemasDeLaColumna(hoja, ins, { tope = 10 } = {}) {
+  const datos = (hoja?.data ?? [])[0]
+  const filas = datos?.rowData ?? []
+  if (!filas.length) return [`${rangoDeDatos(ins)}: no pude releer la columna`]
+  const desde = (datos.startRow ?? 0) + 1
+  const malas = filas.flatMap((f, i) => {
+    const p = problemaDeCelda((f?.values ?? [])[0]?.dataValidation, `${ins.pestana}!${letraDeColumna(ins.indice)}${desde + i}`)
+    return p ? [p] : []
+  })
+  if (!malas.length) return []
+  return [`${rangoDeDatos(ins)}: ${malas.length} de ${filas.length} celda(s) sin el desplegable`, ...malas.slice(0, tope)]
 }

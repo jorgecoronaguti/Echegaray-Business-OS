@@ -6,7 +6,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ALTO_MINIMO_AUX, AUX, celdaPrimerDato, filasDeLaLista, problemaDeValidacion,
+  ALTO_MINIMO_AUX, AUX, celdaPrimerDato, filasDeLaLista, problemaDeCelda, problemasDeLaColumna,
   rangoDeDatos, requestDeLaLista, requestsDeValidacion,
 } from './obra-desplegable.mjs'
 import { catalogoDeDestinos, opcionesDeObra } from './obra-destino.mjs'
@@ -51,8 +51,11 @@ test('sin sheetId no se escribe la lista a ciegas', () => {
   assert.throws(() => requestDeLaLista({ sheetId: undefined, filas: [['Obra']] }), /sin sheetId/)
 })
 
+const FILAS = { Compras: 1262, Cobranzas: 352 }
+const validaciones = (ins = INSERCIONES) => requestsDeValidacion(ins, (p) => ({ Compras: 1, Cobranzas: 2 })[p], (p) => FILAS[p])
+
 test('EL DEFECTO: la validación arranca en la fila de DATOS, no en la del rótulo', () => {
-  const req = requestsDeValidacion(INSERCIONES, (p) => ({ Compras: 1, Cobranzas: 2 })[p])
+  const req = validaciones().filter((r) => r.setDataValidation.range.endRowIndex === undefined)
   const [c, cob] = req.map((r) => r.setDataValidation.range)
   assert.deepEqual(c, { sheetId: 1, startRowIndex: 3, startColumnIndex: 11, endColumnIndex: 12 })   // Compras L4:L
   assert.deepEqual(cob, { sheetId: 2, startRowIndex: 4, startColumnIndex: 7, endColumnIndex: 8 })   // Cobranzas H5:H
@@ -63,7 +66,7 @@ test('EL DEFECTO: la validación arranca en la fila de DATOS, no en la del rótu
 })
 
 test('la regla es ONE_OF_RANGE contra la auxiliar, con lista visible y NO estricta', () => {
-  const [{ setDataValidation: { rule, range } }] = requestsDeValidacion([COMPRAS], () => 1)
+  const [{ setDataValidation: { rule, range } }] = validaciones([COMPRAS])
   assert.equal(rule.condition.type, 'ONE_OF_RANGE')
   assert.equal(rule.condition.values[0].userEnteredValue, `='${AUX}'!$A$2:$A`)
   assert.equal(rule.showCustomUi, true)
@@ -71,23 +74,45 @@ test('la regla es ONE_OF_RANGE contra la auxiliar, con lista visible y NO estric
   assert.equal(range.endRowIndex, undefined, 'sin fin: una fila nueva nace con el desplegable')
 })
 
-test('sin sheetId no se pone el desplegable a ciegas', () => {
-  assert.throws(() => requestsDeValidacion(INSERCIONES, () => undefined), /sin sheetId/)
+test('sin sheetId, o sin saber cuántas filas tiene la grilla, no se pone el desplegable a ciegas', () => {
+  assert.throws(() => requestsDeValidacion(INSERCIONES, () => undefined, () => 100), /sin sheetId/)
+  assert.throws(() => requestsDeValidacion(INSERCIONES, () => 1, () => undefined), /cuántas filas/)
+  assert.throws(() => requestsDeValidacion([COMPRAS], () => 1, () => 2), /cuántas filas/)
+})
+
+test('EL DEFECTO: van DOS requests por columna — el default no pisa la regla heredada de la columna de al lado', () => {
+  const req = validaciones([COMPRAS])
+  assert.equal(req.length, 2)
+  assert.equal(req[0].setDataValidation.range.endRowIndex, undefined, 'primero el default de la columna (filas futuras)')
+  assert.equal(req[1].setDataValidation.range.endRowIndex, FILAS.Compras, 'después celda por celda hasta el fin de la grilla')
+  assert.equal(req[1].setDataValidation.rule.condition.type, 'ONE_OF_RANGE')
 })
 
 // ═══ LA PRUEBA DEL EFECTO: lo que dice la celda releída, no lo que contestó el batchUpdate ═══
 
-const hojaCon = (dv) => ({ properties: { title: 'Compras' }, data: [{ rowData: [{ values: [dv ? { dataValidation: dv } : {}] }] }] })
+const hojaCon = (dv) => ({ properties: { title: 'Compras' }, data: [{ startRow: 3, rowData: [{ values: [dv ? { dataValidation: dv } : {}] }] }] })
 const buena = { condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: `='${AUX}'!$A$2:$A` }] }, showCustomUi: true }
 
 test('una celda con la regla puesta no tiene problema', () => {
-  assert.equal(problemaDeValidacion(hojaCon(buena), COMPRAS), null)
+  assert.deepEqual(problemasDeLaColumna(hojaCon(buena), COMPRAS), [])
 })
 
 test('EL DEFECTO: la celda sin validación, con otra condición, apuntando a otro lado o estricta, se nombra', () => {
-  assert.match(problemaDeValidacion(hojaCon(null), COMPRAS), /no tiene ninguna validación/)
-  assert.match(problemaDeValidacion(undefined, COMPRAS), /no tiene ninguna validación/)
-  assert.match(problemaDeValidacion(hojaCon({ condition: { type: 'ONE_OF_LIST', values: [] } }), COMPRAS), /no ONE_OF_RANGE/)
-  assert.match(problemaDeValidacion(hojaCon({ condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: '=Otra!$A$2:$A' }] } }), COMPRAS), /no a _OBRAS_OS/)
-  assert.match(problemaDeValidacion(hojaCon({ ...buena, strict: true }), COMPRAS), /quedó estricta/)
+  assert.match(problemaDeCelda(null, 'Compras!L4'), /sin ninguna validación/)
+  assert.match(problemaDeCelda({ condition: { type: 'ONE_OF_LIST', values: [] } }, 'Compras!L4'), /no ONE_OF_RANGE/)
+  assert.match(problemaDeCelda({ condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: '=Otra!$A$2:$A' }] } }, 'x'), /no a _OBRAS_OS/)
+  assert.match(problemaDeCelda({ ...buena, strict: true }, 'x'), /quedó estricta/)
+  assert.match(problemasDeLaColumna(hojaCon(null), COMPRAS).join(' '), /1 de 1 celda\(s\) sin el desplegable/)
+  assert.match(problemasDeLaColumna(undefined, COMPRAS).join(' '), /no pude releer/)
+})
+
+test('EL DEFECTO QUE COSTÓ UNA CORRIDA: se mira la COLUMNA, no la primera celda', () => {
+  // Cobranzas H: 5 filas, la 1ª con el desplegable y dos escondidas por el filtro que quedaron con la
+  // lista heredada de la G. Mirando sólo la primera, esto daba verde.
+  const heredada = { condition: { type: 'ONE_OF_LIST', values: [{ userEnteredValue: 'Administracion' }] } }
+  const hoja = { properties: { title: 'Cobranzas' }, data: [{ startRow: 4, rowData: [buena, buena, heredada, buena, heredada].map((dv) => ({ values: [{ dataValidation: dv }] })) }] }
+  const p = problemasDeLaColumna(hoja, COBRANZAS)
+  assert.match(p[0], /2 de 5 celda\(s\) sin el desplegable/)
+  assert.match(p[1], /Cobranzas!H7/)
+  assert.match(p[2], /Cobranzas!H9/)
 })
