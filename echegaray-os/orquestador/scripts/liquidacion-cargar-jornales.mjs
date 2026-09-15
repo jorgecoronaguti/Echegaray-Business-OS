@@ -47,7 +47,7 @@ import { CUIL_POR_PERSONA_DE_PLANILLA } from '../lib/nomina-banco-recibo.mjs'
 import { claveNombre, resolverPersona } from '../lib/liquidacion-jornales.mjs'
 import { emparejarPersona, indicePersonas } from '../lib/jornales-a-registros-hh.mjs'
 import {
-  excluidasParaBase, HOJAS_LIQUIDACION, observacionDeCarga, planDeHoja,
+  excluidasParaBase, HOJAS_LIQUIDACION, observacionDeCarga, planDeHoja, separarSalteadas,
 } from '../lib/liquidacion-jornales-plan.mjs'
 
 const JORNALES_ID = '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk'
@@ -100,17 +100,22 @@ const afueraTexto = (c) => {
   return `  ⚠ afuera ${ars(c.montoExcluido)} (${Object.entries(por).map(([m, n]) => `${n} ${m}`).join(', ')})`
 }
 
-function imprimirTabla(h, plan, existentes) {
+function imprimirTabla(h, plan, existentes, estados) {
   console.log(`\n══ ${h.hoja} → grupo ${h.grupo}: ${plan.bloques} bloque(s) · en curso ${plan.enCurso?.desde}..${plan.enCurso?.hasta}`)
   console.log('quincena                líneas   total Sheet      cargable  bajas+  estado')
+  // LA GUARDA VIVE EN EL LIB (`separarSalteadas`, probada): lo que ya firmó, selló, reabrió o corrigió
+  // una persona en la base no se reescribe — ni líneas, ni `observacion`, ni `monto_excluido`.
+  const { salteadas } = separarSalteadas(plan.quincenas, h.grupo, estados)
+  const motivoDe = new Map(salteadas.map((q) => [q.desde, q.salteada]))
   const aCargar = []
   for (const q of plan.quincenas) {
     const ya = existentes.get(`${h.grupo}|${q.desde}|${q.hasta}`)
     const afuera = q.control.excluidas.length ? afueraTexto(q.control) : ''
     const estado = q.enCurso ? 'EN CURSO — no se carga'
-      : !q.control.cierra ? `NO CIERRA: plata ilegible en ${q.control.bloqueantes.length} línea/s`
-        : `${ya ? `ya cargada (${ya} líneas)` : 'a cargar'}${afuera}`
-    if (!q.enCurso && q.control.cierra) aCargar.push(q)
+      : motivoDe.has(q.desde) ? `SALTEADA: ${motivoDe.get(q.desde)}`
+        : !q.control.cierra ? `NO CIERRA: plata ilegible en ${q.control.bloqueantes.length} línea/s`
+          : `${ya ? `ya cargada (${ya} líneas)` : 'a cargar'}${afuera}`
+    if (!q.enCurso && !motivoDe.has(q.desde) && q.control.cierra) aCargar.push(q)
     console.log(`${q.desde}..${q.hasta}  ${String(q.lineas.length).padStart(4)}  `
       + `${ars(q.control.totalSheet).padStart(13)} ${ars(q.control.totalCargable).padStart(13)} `
       + `${String(q.control.bajasCargadas).padStart(6)}  ${estado}`)
@@ -183,13 +188,24 @@ async function main() {
     + ' left join public.liquidacion_linea l on l.liquidacion_id = q.id group by 1,2,3',
   )
   const existentes = new Map(yaHay.map((r) => [`${r.grupo}|${r.desde}|${r.hasta}`, r.n]))
+  const { rows: estadoRows } = await query(
+    `select q.grupo, q.desde::text, q.hasta::text, q.estado, q.cerrada_por::text,
+            (select count(*)::int from public.liquidacion_linea l where l.liquidacion_id = q.id
+               and (l.horas_manual is not null or l.cobra_manual is not null or l.adelanto_manual is not null
+                 or l.ya_transferido_manual is not null or l.por_banco_manual is not null
+                 or l.en_efectivo_manual is not null or l.total_manual is not null)) lineas_manuales,
+            (select count(*)::int from public.liquidacion_linea l where l.liquidacion_id = q.id and l.sellado_en is not null) lineas_selladas,
+            (select count(*)::int from public.liquidacion_reapertura r where r.liquidacion_id = q.id) reaperturas
+       from public.liquidacion_quincena q`,
+  )
+  const estados = new Map(estadoRows.map((r) => [`${r.grupo}|${r.desde}|${r.hasta}`, r]))
   const hojas = HOJAS_LIQUIDACION.filter((h) => !SOLO_HOJA || h.hoja === SOLO_HOJA)
   if (!hojas.length) throw new Error(`--hoja «${SOLO_HOJA}» no es una de ${HOJAS_LIQUIDACION.map((h) => h.hoja).join(' / ')}`)
   console.log(`bajas: ${INCLUIR_BAJAS ? 'SE CARGAN (--incluir-bajas)' : 'se leen y quedan AFUERA (sin --incluir-bajas)'}`)
   const planes = []
   for (const h of hojas) {
     const plan = await planear(google, h, ctx)
-    const aCargar = imprimirTabla(h, plan, existentes)
+    const aCargar = imprimirTabla(h, plan, existentes, estados)
     imprimirDetalle(h, plan, ctx)
     planes.push({ h, aCargar })
   }

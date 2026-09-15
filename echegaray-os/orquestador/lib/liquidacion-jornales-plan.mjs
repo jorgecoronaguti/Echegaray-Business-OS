@@ -138,3 +138,39 @@ export function observacionDeCarga(hoja, control) {
   if (!partes.length) return `${base} Entró completa: ninguna línea quedó afuera.${conBajas}`
   return `${base} ${partes.join('; ')}. Su importe está en monto_excluido.${conBajas}`
 }
+
+/**
+ * ¿ESTA QUINCENA DE LA BASE YA ES DE ALGUIEN? (auditoría del 15/09/2026)
+ *
+ * El cargador hace upsert de la cabecera y de las líneas sin mirar el estado: podía reescribir una
+ * quincena que alguien cerró desde la web, cuyas líneas están selladas, que se reabrió con motivo, o
+ * que está abierta con celdas corregidas a mano. En cualquiera de esos casos la base ya dice algo que
+ * dijo una persona, y la planilla no le gana. Se saltea entera —cabecera, `observacion`,
+ * `monto_excluido` y líneas— y se nombra el motivo.
+ *
+ * Una quincena `cerrada` SIN `cerrada_por` ni sello ni reapertura es la que escribió este mismo
+ * script el 09/09 (las 16 de obreros): ésa sí se recarga.
+ *
+ * @param {{estado?:string, cerrada_por?:string|null, lineas_manuales?:number, lineas_selladas?:number, reaperturas?:number}|null|undefined} base
+ * @returns {string|null} el motivo, o null si se puede cargar
+ */
+export function motivoParaSaltear(base) {
+  if (!base) return null
+  if (Number(base.reaperturas) > 0) return `reabierta ${base.reaperturas} vez/veces`
+  if (base.cerrada_por) return `cerrada por ${base.cerrada_por}`
+  if (Number(base.lineas_selladas) > 0) return `sellada (${base.lineas_selladas} línea/s)`
+  if (base.estado === 'abierta' && Number(base.lineas_manuales) > 0) return `abierta con ${base.lineas_manuales} línea(s) editadas en la app`
+  return null
+}
+
+/** Separa lo cargable de lo salteado. `estados` va por `${grupo}|${desde}|${hasta}`. */
+export function separarSalteadas(quincenas, grupo, estados = new Map()) {
+  const aCargar = []
+  const salteadas = []
+  for (const q of quincenas) {
+    const motivo = motivoParaSaltear(estados.get(`${grupo}|${q.desde}|${q.hasta}`))
+    if (motivo) salteadas.push({ ...q, salteada: motivo })
+    else aCargar.push(q)
+  }
+  return { aCargar, salteadas }
+}

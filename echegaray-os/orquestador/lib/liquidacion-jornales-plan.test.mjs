@@ -3,7 +3,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  excluidasParaBase, fechasFueraDeQuincena, marcarSuperpuestas, observacionDeCarga, planDeHoja,
+  excluidasParaBase, fechasFueraDeQuincena, marcarSuperpuestas, observacionDeCarga, planDeHoja, separarSalteadas,
 } from './liquidacion-jornales-plan.mjs'
 import { columnasDelBloque, ROTULOS_OFICINA } from './liquidacion-jornales.mjs'
 
@@ -138,4 +138,31 @@ test('fechasFueraDeQuincena: el bloque que se pasa un día (4/5..16/5) no es un 
   const rango = { desde: '2026-05-01', hasta: '2026-05-15' }
   assert.deepEqual(fechasFueraDeQuincena([['4/5', '15/5', '16/5']], { filaFecha: 1 }, rango, 2026), [])
   assert.deepEqual(fechasFueraDeQuincena([['4/5', '2/3', '16/5']], { filaFecha: 1 }, rango, 2026), ['2/3'])
+})
+
+// ═══ LA PLANILLA NO LE GANA A LO QUE YA DIJO UNA PERSONA EN LA BASE (auditoría 15/09/2026) ═══
+// MUTACIÓN QUE PONE ESTO ROJO: que `separarSalteadas` deje pasar todo, o quitar cualquier condición.
+test('separarSalteadas: se saltea lo cerrado por alguien, lo sellado, lo reabierto y lo abierto editado a mano', () => {
+  const qs = ['01', '02', '03', '04', '05', '06', '07'].map((m) => ({ desde: `2026-${m}-01`, hasta: `2026-${m}-15` }))
+  const k = (m) => `obreros|2026-${m}-01|2026-${m}-15`
+  const estados = new Map([
+    // Las 16 de obreros de hoy: cerradas por ESTE script el 09/09, sin firma ni sello → se recargan.
+    [k('01'), { estado: 'cerrada', cerrada_por: null, lineas_manuales: 0, lineas_selladas: 0, reaperturas: 0 }],
+    [k('02'), { estado: 'cerrada', cerrada_por: 'u-jorge', lineas_manuales: 0, lineas_selladas: 0, reaperturas: 0 }],
+    [k('03'), { estado: 'cerrada', cerrada_por: null, lineas_manuales: 0, lineas_selladas: 3, reaperturas: 0 }],
+    [k('04'), { estado: 'abierta', cerrada_por: null, lineas_manuales: 0, lineas_selladas: 0, reaperturas: 1 }],
+    [k('05'), { estado: 'abierta', cerrada_por: null, lineas_manuales: 2, lineas_selladas: 0, reaperturas: 0 }],
+    [k('06'), { estado: 'abierta', cerrada_por: null, lineas_manuales: 0, lineas_selladas: 0, reaperturas: 0 }],
+    // 07: no existe en la base → se carga.
+  ])
+  const { aCargar, salteadas } = separarSalteadas(qs, 'obreros', estados)
+  assert.deepEqual(aCargar.map((q) => q.desde.slice(5, 7)), ['01', '06', '07'])
+  assert.deepEqual(salteadas.map((q) => [q.desde.slice(5, 7), q.salteada]), [
+    ['02', 'cerrada por u-jorge'],
+    ['03', 'sellada (3 línea/s)'],
+    ['04', 'reabierta 1 vez/veces'],
+    ['05', 'abierta con 2 línea(s) editadas en la app'],
+  ])
+  // El estado es por grupo: la misma quincena de oficina no hereda el cierre de obreros.
+  assert.equal(separarSalteadas(qs.slice(1, 2), 'oficina', estados).aCargar.length, 1)
 })
