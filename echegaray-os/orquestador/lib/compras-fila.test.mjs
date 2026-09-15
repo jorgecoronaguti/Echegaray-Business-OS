@@ -181,3 +181,23 @@ test('una fila "Cancelado" también es anulada — es el texto que el dueño ord
   assert.equal(c.estado, 'Cancelado')
   assert.equal(c.anulada, true)
 })
+
+// ═══ LA COLUMNA «Obra» (AO, 14/09/2026) ═══
+// Es OPCIONAL en el contrato: el sync corre igual antes de que el backfill escriba el encabezado, y
+// con ella se lee por RÓTULO, nunca por posición (AO hoy, otra letra el día que alguien inserte).
+test('la columna Obra se lee por encabezado cuando existe, y su ausencia no aborta', () => {
+  const sinObra = contratoDeColumnas(ENCABEZADO)
+  assert.equal(sinObra.obra_celda, undefined)
+  assert.equal(filaACompra(FILA_RSV, sinObra, PRIMERA_FILA).obra_celda, null)
+  const conObra = contratoDeColumnas([...ENCABEZADO, 'Obra'])
+  assert.equal(conObra.obra_celda, 40)
+  const fila = [...FILA_RSV]
+  fila[40] = 'ES-TAL · Estructura – Taller'
+  assert.equal(filaACompra(fila, conObra, PRIMERA_FILA).obra_celda, 'ES-TAL · Estructura – Taller')
+  // «Detalles / Obra» NO es la columna Obra: el match es por rótulo exacto.
+  assert.equal(contratoDeColumnas(ENCABEZADO).obra_celda, undefined)
+})
+
+test('dos columnas «Obra» abortan: elegir una es elegir a ciegas a qué obra va la plata', () => {
+  assert.throws(() => contratoDeColumnas([...ENCABEZADO, 'Obra', 'Obra']), /Obra/)
+})

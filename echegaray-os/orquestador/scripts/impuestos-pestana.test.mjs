@@ -7,6 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { COB_HOY } from '../lib/columnas-caja.fixture.mjs'
 import { readFileSync } from 'node:fs'
 import { ubicarLineas, sinSolapamiento, grilla } from './impuestos-pestana.mjs'
 import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
@@ -206,6 +207,7 @@ const C = { total: 'O', concepto: 'L', fecha: 'AD', rubro: 'AB', fechaPrev: 'Q',
 const HOY = '2026-08-06'
 const armar = (extra = {}) => grilla({
   anio: 2026,
+  cob: COB_HOY,
   C,
   hoy: HOY,
   iibb: [1, 2, 3, 4, 5, 6].map((m) => ({ periodo: `2026-0${m}` })),

@@ -14,6 +14,7 @@ import { CALENDARIO_IMPUESTOS, rotulosCalendarioImpuestos } from './cash-flow-li
 import { EN_CARTERA } from './cartera-cheques.mjs'
 import * as BANCO from './banco-santander.mjs'
 import { ALIAS, filaDeCuenta } from './caja-disponibilidades.mjs'
+import { columnasDeCaja } from './caja-posterior-al-corte.mjs'
 
 /**
  * Las líneas del cuadro de caja que NO tienen fuente con fecha, y por eso valen CERO por tramo.
@@ -79,6 +80,8 @@ export async function refsDelArchivo(google, fileId, hojas) {
     inicio: nombreSiExiste('CF_INICIO'),
     cab: nombreSiExiste('CF_MESES'),
     filasCal: await filasDelCalendarioFiscal(google, fileId, hojas),
+    // Las columnas de Cobranzas y Compras de ESTA corrida, por rótulo (14/09/2026). Ver `columnasDeCaja`.
+    columnas: await columnasDeCaja(google, fileId),
   }
 }
 

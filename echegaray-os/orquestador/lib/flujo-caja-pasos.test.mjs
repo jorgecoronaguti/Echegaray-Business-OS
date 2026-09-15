@@ -150,7 +150,12 @@ test('el LIBRO corre DESPUÉS de todas las pestañas que lee', () => {
   // Las fuentes NO se listan a mano: se leen del propio script. Una fuente nueva que alguien agregue
   // al libro y no ubique en el pipeline hace fallar este test sola.
   const fuente = readFileSync(join(AQUI, '../scripts/libro-movimientos-pestana.mjs'), 'utf8')
-  const leidas = new Set([...fuente.matchAll(/leer\(\s*[`'"]'?([^'"`!]+?)'?!/g)].map((m) => m[1]))
+  // Compras y Cobranzas se leen con `rangoFilas('Compras', 1)` desde el 14/09/2026 (sin letra de corte,
+  // por la inserción de «Obra»): también cuentan como pestañas leídas.
+  const leidas = new Set([
+    ...[...fuente.matchAll(/leer\(\s*[`'"]'?([^'"`!]+?)'?!/g)].map((m) => m[1]),
+    ...[...fuente.matchAll(/rangoFilas\(\s*'([^']+)'/g)].map((m) => m[1]),
+  ])
   assert.ok(leidas.size >= 7, `esperaba varias pestañas leídas por el libro y encontré ${leidas.size}`)
 
   const pos = (s) => PASOS.findIndex(([x]) => x === s)

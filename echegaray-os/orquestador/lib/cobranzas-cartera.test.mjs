@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COB_HOY } from './columnas-caja.fixture.mjs'
 import {
-  ESTADOS, ESPERADOS, COB, formulaTotalEstado, formulaCantidadEstado, formulaEstadoDesconocido,
+  ESTADOS, ESPERADOS, formulaTotalEstado, formulaCantidadEstado, formulaEstadoDesconocido,
   formulaUltimoCobroRegistrado, formulaMontoRanking, formulaClienteRanking, consultaPorCliente,
 } from './cobranzas-cartera.mjs'
 
@@ -23,7 +24,7 @@ test('cada estado se suma SOLO: ninguna fórmula mezcla dos categorías en la mi
   // Es la regla literal de finanzas-tesoreria-construccion. Si una fórmula de total nombrara dos
   // estados, el cuadro estaría sumando certezas distintas en una columna.
   for (const clave of Object.keys(ESTADOS)) {
-    const f = formulaTotalEstado(clave)
+    const f = formulaTotalEstado(COB_HOY, clave)
     const nombrados = Object.values(ESTADOS).filter((v) => f.includes(`="${v}"`))
     assert.deepEqual(nombrados, [ESTADOS[clave]], `${clave} nombra más de un estado`)
   }
@@ -33,27 +34,27 @@ test('la ventana de vencidos es EXCLUYENTE y exige que la fecha sea número', ()
   // Una fecha guardada como TEXTO compara como mayor que cualquier número: sin ISNUMBER, filas sin
   // fecha usable entrarían en la ventana. Es el mismo defecto que ya costó $657.000 del lado de los
   // cheques.
-  const f = formulaTotalEstado('pendiente', { hasta: 'TODAY()' })
+  const f = formulaTotalEstado(COB_HOY, 'pendiente', { hasta: 'TODAY()' })
   assert.ok(f.includes('ISNUMBER('))
   assert.ok(f.includes('<TODAY()') && !f.includes('<=TODAY()'))
   // Y la cantidad usa EXACTAMENTE la misma condición que el monto: un total sin su cantidad no se
   // puede auditar, y dos condiciones distintas darían un promedio inventado.
-  const c = formulaCantidadEstado('pendiente', { hasta: 'TODAY()' })
-  assert.equal(c.replace('*1)', ')'), f.replace(`*IF(ISNUMBER(${COB.pestaña}!$M$5:$M$400);${COB.pestaña}!$M$5:$M$400;0))`, ')'))
+  const c = formulaCantidadEstado(COB_HOY, 'pendiente', { hasta: 'TODAY()' })
+  assert.equal(c.replace('*1)', ')'), f.replace('*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))', ')'))
 })
 
 test('LA LISTA BLANCA SE PAGA CON UN CONTADOR: un sexto estado no puede pasar en silencio', () => {
   // Elegir estados por nombre tiene un riesgo propio: el día que alguien tipee "Cobrado parcial",
   // esas filas dejan de contarse en todos los cuadros y nadie se entera. Sin este contador, la lista
   // blanca sería peor que la lista negra que reemplaza.
-  const f = formulaEstadoDesconocido()
+  const f = formulaEstadoDesconocido(COB_HOY)
   for (const v of Object.values(ESTADOS)) assert.ok(f.includes(`="${v}"`), `falta ${v}`)
   assert.ok(f.includes('<>""'), 'una fila vacía no es un estado desconocido')
 })
 
 test('UN CERO MUDO MIENTE: existe la fecha del último cobro para poder distinguirlo', () => {
   // "Está todo conciliado" y "hace tres semanas que nadie carga" se dibujan igual: cero.
-  const f = formulaUltimoCobroRegistrado()
+  const f = formulaUltimoCobroRegistrado(COB_HOY)
   assert.ok(f.includes(`"${ESTADOS.cobrado}"`), 'el ancla es un cobro REAL, no uno esperado')
   // MAXIFS y no MAX(IF(...)): fuera de contexto de array, MAX(IF) devolvía el MAX de TODAS las
   // fechas y un "Pendiente" al 30/12 clavaba el control en el futuro (dictamen 07/08). Y el tope
@@ -71,13 +72,13 @@ test('EL RANKING NO DERRAMA: todo array está CONSUMIDO por un INDEX', () => {
   // función que devuelve un array sólo derrama si NADIE la consume, y prohibirlas empujó a una
   // alternativa que directamente no funciona (ver el encabezado del módulo). La regla correcta es que
   // la celda devuelva UN valor, y eso se garantiza con el INDEX de afuera.
-  const monto = formulaMontoRanking(2)
+  const monto = formulaMontoRanking(COB_HOY, 2)
   assert.ok(monto.startsWith('=IFERROR(INDEX('), 'la consulta tiene que entrar a un INDEX, o derrama')
   assert.ok(monto.includes(';2;2)'), 'el segundo puesto sale de la fila 2, columna 2 de la consulta')
   // Menos de k clientes no puede dejar un #N/A a la vista.
   assert.ok(monto.startsWith('=IFERROR('))
   // Y la consulta sola NO se publica nunca: si alguien exporta una celda con el QUERY pelado, derrama.
-  assert.ok(!consultaPorCliente().startsWith('='), 'la consulta es un fragmento, no una celda')
+  assert.ok(!consultaPorCliente(COB_HOY).startsWith('='), 'la consulta es un fragmento, no una celda')
 })
 
 test('SUMIFS NO SE VECTORIZA DENTRO DE ARRAYFORMULA: el patrón que vació el bloque no puede volver', () => {
@@ -88,7 +89,7 @@ test('SUMIFS NO SE VECTORIZA DENTRO DE ARRAYFORMULA: el patrón que vació el bl
   // muda de trescientos cuarenta y cinco millones, que es justo lo que este bloque existe para evitar.
   //
   // Se prohíbe la CAUSA (SUMIFS adentro de ARRAYFORMULA), no el síntoma.
-  for (const f of [formulaMontoRanking(1), formulaClienteRanking('1º', 1, '$C$10'), consultaPorCliente()]) {
+  for (const f of [formulaMontoRanking(COB_HOY, 1), formulaClienteRanking(COB_HOY, '1º', 1, '$C$10'), consultaPorCliente(COB_HOY)]) {
     const arrayfs = [...f.matchAll(/ARRAYFORMULA\(/g)]
     for (const m of arrayfs) {
       const trozo = f.slice(m.index, m.index + 400)
@@ -100,7 +101,7 @@ test('SUMIFS NO SE VECTORIZA DENTRO DE ARRAYFORMULA: el patrón que vació el bl
 test('el ranking DEDUPLICA por cliente: dos facturas del mismo cliente son UNA línea', () => {
   // Sin dedupe, el ranking devolvería el mismo cliente en los cinco puestos. Lo hace el `group by` de
   // la consulta, que además es lo que la vuelve legible: la agrupación se lee, no se deduce.
-  const q = consultaPorCliente('pendiente')
+  const q = consultaPorCliente(COB_HOY, 'pendiente')
   assert.ok(q.includes('group by Col1'), 'sin group by, el mismo cliente ocupa varios puestos')
   assert.ok(q.includes('order by sum(Col7) desc'), 'y sin order by no hay ranking')
   assert.ok(q.includes(`Col9 = '${ESTADOS.pendiente}'`), 'el estado se elige por su nombre exacto')
@@ -110,13 +111,13 @@ test('el ranking DEDUPLICA por cliente: dos facturas del mismo cliente son UNA l
   // cliente desaparece sin dar un solo error.
   assert.ok(q.includes("label sum(Col7) ''"))
   // El rango tiene que llegar hasta la columna del ESTADO o Col9 no existe y la consulta rompe entera.
-  assert.ok(q.includes(`${COB.pestaña}!$${COB.cliente}$${COB.primera}:$${COB.estado}$${COB.ultima}`))
+  assert.ok(q.includes('Cobranzas!$G$5:$O$400'))
 })
 
 test('el nombre del cliente sale del MISMO PUESTO que el importe, no de buscar el importe', () => {
   // La versión anterior hacía `MATCH(importe; array; 0)` para ahorrarse una consulta: dos clientes
   // empatados en el mismo total mostraban el mismo nombre en dos filas. Ir por el puesto no empata.
-  const f = formulaClienteRanking('3º', 3, '$C$63')
+  const f = formulaClienteRanking(COB_HOY, '3º', 3, '$C$63')
   assert.ok(f.includes(';3;1)'), 'el nombre tiene que salir de la fila 3, columna 1 de la consulta')
   assert.ok(!f.includes('MATCH('), 'buscar por importe hace que dos empatados muestren el mismo nombre')
   assert.ok(f.startsWith('=IF($C$63="";"";'), 'sin importe no hay nombre: una fila vacía se ve vacía')
@@ -124,9 +125,9 @@ test('el nombre del cliente sale del MISMO PUESTO que el importe, no de buscar e
 
 test('ninguna fórmula usa la coma como separador de argumentos (es_AR usa `;`)', () => {
   const todas = [
-    formulaTotalEstado('pendiente', { desde: 'TODAY()', hasta: 'TODAY()+30' }),
-    formulaCantidadEstado('cobrado'), formulaEstadoDesconocido(), formulaUltimoCobroRegistrado(),
-    formulaMontoRanking(1), formulaClienteRanking('1º', 1, '$C$10'), consultaPorCliente(),
+    formulaTotalEstado(COB_HOY, 'pendiente', { desde: 'TODAY()', hasta: 'TODAY()+30' }),
+    formulaCantidadEstado(COB_HOY, 'cobrado'), formulaEstadoDesconocido(COB_HOY), formulaUltimoCobroRegistrado(COB_HOY),
+    formulaMontoRanking(COB_HOY, 1), formulaClienteRanking(COB_HOY, '1º', 1, '$C$10'), consultaPorCliente(COB_HOY),
   ]
   for (const f of todas) {
     const sinLiterales = f.replace(/"(?:[^"]|"")*"/g, '«»')

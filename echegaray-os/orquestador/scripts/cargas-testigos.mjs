@@ -26,6 +26,7 @@
 import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { columnasDeCompras, estaPagada } from '../lib/libro-extractores-compras.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { debitosDelExtracto, corteDelExtracto } from '../lib/libro-respaldo-banco.mjs'
 import { isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
 import {
@@ -203,7 +204,7 @@ async function main() {
   // donde hay un cero, y las comparaciones numéricas se caen en silencio.
   const leer = (r) => google.readSheetValues(ID, r, { render: 'UNFORMATTED_VALUE' })
   const [cs, compras, banco] = await Promise.all([
-    leer(`'${PESTAÑA}'!A1:N120`), leer('Compras!A1:BZ4000'), leer('_BANCO_RAW!A1:F'),
+    leer(`'${PESTAÑA}'!A1:N120`), leer(rangoFilas('Compras', 1, 4000)), leer('_BANCO_RAW!A1:F'),
   ])
 
   const debitos = debitosDelExtracto(banco)

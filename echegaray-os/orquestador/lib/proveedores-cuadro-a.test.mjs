@@ -14,7 +14,11 @@ import test from 'node:test'
 import {
   COL_PROVEEDOR, colNota, colVence, formulaVence, letra, rangoDelCuadroA, requestsDelCuadroA,
   reservaDelCuadroA, ROTULO_VENCE, rotulosDelCuadroA, ROTULOS_A_LA_DERECHA,
+  columnasVence,
 } from './proveedores-cuadro-a.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
+
+const CV = columnasVence(COMPRAS_2508)
 import { ROTULO_NOTA } from './proveedores-notas-columna.mjs'
 import { anchoDelPivot, COL, pivotSeccion1, VISTA } from './proveedores-pivot-seccion1.mjs'
 import { geometriaSeccion1 } from './proveedores-bloque-vivo.mjs'
@@ -27,10 +31,10 @@ test('EL DEFECTO 1 · la nota se ancla a la columna donde el pivot escribe el NO
   // Cuando el eje pasó a la fecha, la columna A dejó de tener nombres: la búsqueda siguió viva,
   // apuntada a fechas, y devolvió vacío en las doce notas. En silencio. Acá el ancla se DERIVA del
   // pivot, así que no puede quedar apuntando a una columna que ya no tiene proveedores.
-  const p = pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR })
+  const p = pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR, col: COL })
   assert.equal(p.rows[COL_PROVEEDOR].sourceColumnOffset, COL.proveedor,
     'la columna a la que se ancla la nota no es la que emite el nombre del proveedor')
-  const reqs = requestsDelCuadroA({ sheetId: 3, filaRotulos: 17, desde: 18, hasta: 24 })
+  const reqs = requestsDelCuadroA({ sheetId: 3, filaRotulos: 17, desde: 18, hasta: 24, cols: CV })
   const formulas = reqs.flatMap((r) => (r.updateCells?.rows ?? [])
     .map((f) => f.values[0].userEnteredValue?.formulaValue).filter(Boolean))
   assert.ok(formulas.some((f) => f.includes('VLOOKUP($A18')), 'la nota no busca por el nombre de la columna A')
@@ -46,7 +50,7 @@ test('EL DEFECTO 2 · la nota vuelve a la D, con el ancho que el dueño le tení
 })
 
 test('las cuatro columnas no pasan de la G: la H es del dueño', () => {
-  const ancho = anchoDelPivot(pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR })) + 2
+  const ancho = anchoDelPivot(pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR, col: COL })) + 2
   assert.equal(ancho, 4)
   assert.ok(colNota() < 7, 'el bloque se metió en la H, que es la columna "Comentarios" del dueño')
 })
@@ -55,7 +59,7 @@ test('LA FÓRMULA DEL VENCIMIENTO lee el saldo de Compras!AL, no rehace la cuent
   // "tomaba mal columnas de compras": la deuda de una fila sale de T/U/W, donde un parcial NEGATIVO
   // es lo que FALTA y no un pago. Esa aritmética tiene un solo dueño (deuda-por-tramos → Compras!AL)
   // y esta columna la consume. Una segunda cuenta es una segunda respuesta.
-  const f = formulaVence(18)
+  const f = formulaVence(18, 'A', CV)
   assert.ok(f.includes('Compras!$AL$4:$AL;">0"'), 'no filtra por el saldo vivo de Compras!AL')
   for (const col of ['$T$', '$U$', '$W$']) {
     assert.ok(!f.includes(`Compras!${col}`), `la fórmula rehace la cuenta de los tramos (${col})`)
@@ -63,7 +67,7 @@ test('LA FÓRMULA DEL VENCIMIENTO lee el saldo de Compras!AL, no rehace la cuent
 })
 
 test('la fórmula del vencimiento va en locale es_AR: separador ";", nunca ","', () => {
-  const f = formulaVence(18)
+  const f = formulaVence(18, 'A', CV)
   assert.ok(!f.includes(','), 'una coma acá devuelve error de fórmula recién en la celda')
   assert.match(f, /^=IF\(\$A18="";"";/, 'sin la guarda, las filas del colchón muestran un 1899')
 })
@@ -72,14 +76,14 @@ test('un MINIFS sin ninguna fecha da 0, y 0 formateado como fecha es 30/12/1899'
   // Hay filas de Compras con la palabra "Pendiente" donde va la fecha. Si un proveedor sólo tiene
   // de ésas, MINIFS no encuentra ningún número y devuelve 0. Una celda vacía dice "no tiene fecha";
   // un 1899 no dice nada y encima se ordena antes que todo.
-  assert.match(formulaVence(18), /IF\(venceProx=0;"";venceProx\)/)
+  assert.match(formulaVence(18, 'A', CV), /IF\(venceProx=0;"";venceProx\)/)
   // El nombre del LET no puede parecerse a una referencia A1 o Sheets lo lee como celda (#NAME?).
-  assert.ok(!/\bLET\([A-Z]{1,3}\d/.test(formulaVence(18)))
+  assert.ok(!/\bLET\([A-Z]{1,3}\d/.test(formulaVence(18, 'A', CV)))
 })
 
 test('la fórmula se ancla a SU fila: si la dinámica reordena, el vencimiento se mueve con su dueño', () => {
-  assert.ok(formulaVence(40).includes('$A40'))
-  assert.ok(formulaVence(41).includes('$A41'))
+  assert.ok(formulaVence(40, 'A', CV).includes('$A40'))
+  assert.ok(formulaVence(41, 'A', CV).includes('$A41'))
 })
 
 test('EL DEFECTO 3 · el rango se mide por el CUADRO, no por la fila entera', () => {
@@ -105,7 +109,7 @@ test('las fórmulas NUNCA se derraman sobre el cuadro de abajo', () => {
   for (let f = 18; f <= 30; f++) visible[f - 1] = ['Alumetal', '1']
   const r = rangoDelCuadroA({ visible, filaRotulos: 17, filaTope: 31 })
   assert.ok(r.hasta <= 31, `el tope es la fila del subtítulo (31); dio ${r.hasta}`)
-  const reqs = requestsDelCuadroA({ sheetId: 3, filaRotulos: 17, ...r })
+  const reqs = requestsDelCuadroA({ sheetId: 3, filaRotulos: 17, ...r, cols: CV })
   for (const q of reqs) {
     const rango = q.updateCells?.range ?? q.repeatCell?.range
     assert.ok(rango.endRowIndex <= 30, `un request llega hasta la fila ${rango.endRowIndex} y el tope es 30`)
@@ -123,7 +127,7 @@ test('EL COLCHÓN EXISTE: el proveedor que entre mañana ya tiene su fórmula es
 })
 
 test('un cuadro sin ni una fila NO deja un rótulo colgado', () => {
-  assert.deepEqual(requestsDelCuadroA({ sheetId: 3, filaRotulos: 17, desde: 18, hasta: 18 }), [])
+  assert.deepEqual(requestsDelCuadroA({ sheetId: 3, filaRotulos: 17, desde: 18, hasta: 18, cols: CV }), [])
 })
 
 test('el rango se niega a adivinar la geometría', () => {
@@ -150,7 +154,7 @@ test('la plata y la fecha se alinean a la derecha; el nombre y la nota, a la izq
 
 test('la columna del vencimiento se declara DATE en cada corrida: el formato es del archivo', () => {
   // Ahí vivía el número de comprobante, en TEXTO. Sin declararlo, la fecha sale como `46238`.
-  const fmt = requestsDelCuadroA({ sheetId: 3, filaRotulos: 17, desde: 18, hasta: 24 })
+  const fmt = requestsDelCuadroA({ sheetId: 3, filaRotulos: 17, desde: 18, hasta: 24, cols: CV })
     .find((r) => r.repeatCell?.range?.startColumnIndex === colVence())
   assert.equal(fmt.repeatCell.cell.userEnteredFormat.numberFormat.type, 'DATE')
   assert.equal(fmt.repeatCell.cell.userEnteredFormat.numberFormat.pattern, 'dd/mm/yyyy')
@@ -203,4 +207,11 @@ test('LA RESERVA SE CUENTA COMO AGRUPA EL PIVOT: por el valor crudo, más una de
   // Una deuda sin nombre también arma su grupo: entra, y ocupa su fila.
   assert.equal(reservaDelCuadroA([fila('RSV'), fila('')]), 2 + 1)
   assert.equal(reservaDelCuadroA([]), 1, 'sin deuda igual se reserva el colchón')
+})
+
+test('«Obra» insertada en L: el primer vencimiento lee fecha, proveedor y saldo por rótulo', () => {
+  assert.ok(formulaVence(18, 'A', CV).includes('MINIFS(Compras!$Q$4:$Q;Compras!$E$4:$E;$A18;Compras!$AL$4:$AL;">0")'))
+  const d = formulaVence(18, 'A', columnasVence(COMPRAS_CON_OBRA))
+  assert.ok(d.includes('MINIFS(Compras!$R$4:$R;Compras!$E$4:$E;$A18;Compras!$AM$4:$AM;">0")'), d)
+  assert.throws(() => formulaVence(18), /columnasVence/)
 })

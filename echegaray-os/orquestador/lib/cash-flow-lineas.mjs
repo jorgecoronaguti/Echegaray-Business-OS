@@ -38,18 +38,15 @@ import { FILA_HDR as FILA_HDR_CHEQUES } from './cheques-emitidos-geometria.mjs'
 // rango se habría comido 21 filas de rótulos y habría dejado afuera las primeras cuotas del
 // registro — sin dar error, porque un rango corrido devuelve cero.
 import { BANDA as BANDA_TARJETA } from './tarjeta-geometria.mjs'
+// LAS COLUMNAS DE COMPRAS Y COBRANZAS SALEN DEL RÓTULO (14/09/2026). Acá vivían `COL_SUB`, `COL_RUBRO`,
+// `COL_FECHA` y `COL_TOTAL` como letras; con «Obra» insertada apuntaban a la columna de al lado. Toda
+// función que arma una fórmula contra esas pestañas recibe `rg` (`rangosDelCuadro`) como primer
+// argumento: sin la fila de rótulos leída no hay fórmula.
+import { FIN_COB, exigirCompras, exigirCobranzas } from './cash-flow-rangos.mjs'
+import { letraDeOtraPestana as deOtra } from './letra-de-otra-pestana.mjs'
 
 /** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
 export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
-/** La columna de Compras donde vive el sub-rubro de Estructura. */
-export const COL_SUB = 'Compras!$AF$4:$AF'
-
-/** Rango de la columna de rubro en Compras (la escribe scripts/rubro-caja-sheet.mjs). */
-export const COL_RUBRO = 'Compras!$AC$4:$AC'
-/** Rango de la fecha en que la plata sale de la caja. */
-export const COL_FECHA = 'Compras!$AD$4:$AD'
-/** Rango del importe total con IVA. */
-export const COL_TOTAL = 'Compras!$O$4:$O'
 
 /**
  * El orden en que se leen los egresos: primero la gente, después la obra, después la estructura,
@@ -114,7 +111,11 @@ export const INSTRUMENTOS = {
   // en la 1: estaba en la 20 y hoy está en la 26. No daba error porque los rótulos de la banda no son
   // números, pero cualquier criterio que mire texto o cuente filas contaba la banda como cheques.
   // Ahora sale de `cheques-emitidos-geometria.mjs`, que es el único lugar donde ese número existe.
-  cheques: { nombre: 'CHEQUES', pestaña: 'Cheques Emitidos', filaCab: FILA_HDR_CHEQUES, colMonto: 'F', colFecha: 'I', colMes: 'J', colDebitado: 'K', colComprobante: 'H', colMarca: 12 },
+  cheques: {
+    nombre: 'CHEQUES', pestaña: 'Cheques Emitidos', filaCab: FILA_HDR_CHEQUES, colMarca: 12,
+    colMonto: deOtra('Cheques Emitidos', 'F'), colFecha: deOtra('Cheques Emitidos', 'I'), colMes: deOtra('Cheques Emitidos', 'J'),
+    colDebitado: deOtra('Cheques Emitidos', 'K'), colComprobante: deOtra('Cheques Emitidos', 'H'),
+  },
   // `filaCab` = BANDA (28/08). Ojo: acá `filaCab` no es el encabezado del registro
   // sino la fila del TÍTULO que lo abre ("6 · EL DETALLE…"), que es donde `cheques-cobertura-sheet.mjs`
   // estampa "Estado en el OS" y desde donde arrancan los rangos (`filaCab + 1`). El encabezado real
@@ -127,7 +128,11 @@ export const INSTRUMENTOS = {
   // banda. Era un error preexistente que no se veía porque el bloque de arriba era distinto; el
   // rediseño lo dejó a la vista. También corrige el rango de `cash-flow-rehacer` (MAX de fechas),
   // que arrancaba en la 3 —dentro de la banda— en vez de en la primera fila de datos.
-  tarjeta: { nombre: 'TARJETA DE CRÉDITO', pestaña: 'Tarjeta de Credito', filaCab: BANDA_TARJETA, colMonto: 'E', colFecha: 'H', colMes: 'I', colDebitado: 'J', colComprobante: 'G', colMarca: 11 },
+  tarjeta: {
+    nombre: 'TARJETA DE CRÉDITO', pestaña: 'Tarjeta de Credito', filaCab: BANDA_TARJETA, colMarca: 11,
+    colMonto: deOtra('Tarjeta de Credito', 'E'), colFecha: deOtra('Tarjeta de Credito', 'H'), colMes: deOtra('Tarjeta de Credito', 'I'),
+    colDebitado: deOtra('Tarjeta de Credito', 'J'), colComprobante: deOtra('Tarjeta de Credito', 'G'),
+  },
 }
 
 /** Hasta qué fila se busca en las pestañas de instrumentos. De sobra para lo que hay (105 y 29).
@@ -465,7 +470,8 @@ const PROYECCION = {
  * @param {number} filaCab fila del encabezado con las fechas
  * @returns {string} fórmula es-AR
  */
-export function formulaMesConProyeccion(rubro, celdaRubro, colMes, colTabla, filaCab) {
+export function formulaMesConProyeccion(rg, rubro, celdaRubro, colMes, colTabla, filaCab) {
+  const { total: COL_TOTAL, rubro: COL_RUBRO, fecha: COL_FECHA } = exigirCompras(rg, 'formulaMesConProyeccion')
   const mes = `${colMes}$${filaCab}`
   const real = `SUMIFS(${COL_TOTAL};${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&${mes};${COL_FECHA};"<"&EOMONTH(${mes};0)+1)`
   const p = PROYECCION[rubro]
@@ -534,7 +540,8 @@ export function origenProyeccion(rubro) {
  * @param {string} hasta expresión del límite superior, EXCLUYENTE
  * @returns {string} fórmula es-AR
  */
-export function formulaRubroEnVentana(celdaRubro, desde, hasta) {
+export function formulaRubroEnVentana(rg, celdaRubro, desde, hasta) {
+  const { total: COL_TOTAL, rubro: COL_RUBRO, fecha: COL_FECHA } = exigirCompras(rg, 'formulaRubroEnVentana')
   return `=SUMIFS(${COL_TOTAL};${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&${desde};${COL_FECHA};"<"&${hasta})`
 }
 
@@ -642,9 +649,16 @@ export function formulaAdministracion(desde, hasta) {
  * El tope viejo era una bomba de tiempo callada: Cobranzas va por la fila 60 y el día que pasara la
  * 200 los tres ingresos del cash flow habrían dejado de contar las filas nuevas sin dar un solo
  * error — el cuadro seguiría cuadrando, con menos plata. El resto del archivo (CAJA, los controles
- * de duplicados) ya leía hasta la 400; esto los pone a todos a mirar las mismas filas.
+ * de duplicados) ya leía hasta la 400; esto los pone a todos a mirar las mismas filas. Vive en
+ * `cash-flow-rangos.mjs` desde el 14/09/2026, junto a los rangos de Cobranzas que acota.
  */
-export const FIN_COB = 400
+export { FIN_COB }
+/**
+ * ⚠ LETRA FIJA QUE QUEDA PARA OTROS GRUPOS (14/09/2026). El cuadro ya no la usa: resuelve «Qué dice el
+ * banco de este valor» por rótulo (`rg.cobranzas.valorBanco`), igual que `cash-flow-tesoreria.mjs`. La
+ * sigue importando `libro-extractores-cobranzas.mjs` como respaldo; con «Obra» insertada en H, la BB
+ * pasa a ser la BC y esta constante apunta a la columna de al lado. Se retira cuando ése la resuelva.
+ */
 export const COL_VALOR_BANCO = `$BB$5:$BB$${FIN_COB}`
 export const MARCA_ENDOSADO = 'ENDOSADO'
 
@@ -652,12 +666,11 @@ export const MARCA_ENDOSADO = 'ENDOSADO'
  *  vale lo cobrado de verdad— de lo que viene, donde las dos puntas son proyección. */
 export const INICIO_MES_ACTUAL = 'EOMONTH(TODAY();-1)+1'
 
-export function formulaCobranzas(tipo, desde, hasta, modo = 'cobrado') {
-  const C = 'Cobranzas'
-  const F = FIN_COB
-  const fecha = `IF(ISNUMBER(${C}!$Q$5:$Q$${F});${C}!$Q$5:$Q$${F};IF(ISNUMBER(${C}!$P$5:$P$${F});${C}!$P$5:$P$${F};0))`
-  const monto = `IF(ISNUMBER(${C}!$M$5:$M$${F});${C}!$M$5:$M$${F};0)`
-  const uni = `LOWER(${C}!$F$5:$F$${F})`
+export function formulaCobranzas(rg, tipo, desde, hasta, modo = 'cobrado') {
+  const b = exigirCobranzas(rg, 'formulaCobranzas')
+  const fecha = `IF(ISNUMBER(${b.cobro});${b.cobro};IF(ISNUMBER(${b.venc});${b.venc};0))`
+  const monto = `IF(ISNUMBER(${b.monto});${b.monto};0)`
+  const uni = `LOWER(${b.unidad})`
   // DECISIÓN DEL DUEÑO (25/07): un cobro SIN unidad de negocio (columna F vacía) va por defecto a
   // "Otras cobranzas" —no se cae del cuadro— y además se lo hace visible con el diagnóstico de abajo
   // para que se le asigne la unidad real. Por eso "otras" es TODO lo que no es civil ni mantenimiento,
@@ -670,13 +683,13 @@ export function formulaCobranzas(tipo, desde, hasta, modo = 'cobrado') {
   // 31/08 —y tiene razón en registrar que se cobraron, el echeq entró— pero esa plata no va a pasar
   // por la cuenta corriente nunca. Sin este filtro el cuadro esperaba $20.000.000 de ingreso en
   // agosto que ya se habían entregado.
-  const noEndosado = `(LEFT(${C}!${COL_VALOR_BANCO}&"";${MARCA_ENDOSADO.length})<>"${MARCA_ENDOSADO}")`
+  const noEndosado = `(LEFT(${b.valorBanco}&"";${MARCA_ENDOSADO.length})<>"${MARCA_ENDOSADO}")`
   // EL ESTADO (columna O) MANDA EL CRITERIO — decisión del dueño (28/07). Cash flow es percibido:
   // "Cobrado" es plata que YA entró (un HECHO) y va en el bloque de cobros reales; todo lo demás
   // —Pendiente, Proyectado, Facturado, Vencido— es un cobro ESPERADO, todavía no percibido, y va en
   // un bloque aparte que NO suma al flujo, para no mezclar caja con proyección. "Endosado" no entra
   // por ninguno de los dos: esa plata se entregó a un tercero (ya lo excluye noEndosado).
-  const est = `LOWER(${C}!$O$5:$O$${F})`
+  const est = `LOWER(${b.estado})`
   const estado = modo === 'esperado'
     ? `(${est}<>"cobrado")*(${est}<>"endosado")`
     : `(${est}="cobrado")`
@@ -715,21 +728,19 @@ export function formulaCobranzas(tipo, desde, hasta, modo = 'cobrado') {
 // del cuadro, para que el dueño le asigne unidad o fecha. Un endoso NO cuenta (esa plata no entra a
 // la cuenta), con el mismo criterio que las líneas de ingreso.
 
-/** Columnas de Cobranzas que miran los controles de cobertura del ingreso: F=unidad, M=monto, P=venc, Q=cobro. */
-const COB_COBERTURA = { unidad: 'F', monto: 'M', venc: 'P', cobro: 'Q' }
-const cobRango = (col) => `Cobranzas!$${col}$5:$${col}$${FIN_COB}`
+// Las columnas (unidad, monto, vencimiento, cobro) salen de `rg.cobranzas`, resueltas por rótulo.
 /** El mismo filtro anti-endoso que usan las líneas de ingreso: un valor endosado no va a entrar. */
-const cobNoEndosado = () => `(LEFT(Cobranzas!${COL_VALOR_BANCO}&"";${MARCA_ENDOSADO.length})<>"${MARCA_ENDOSADO}")`
+const cobNoEndosado = (b) => `(LEFT(${b.valorBanco}&"";${MARCA_ENDOSADO.length})<>"${MARCA_ENDOSADO}")`
 /** El monto, tratando el no-número como 0 (hay celdas con "-"). */
-const cobMontoNum = () => `IF(ISNUMBER(${cobRango(COB_COBERTURA.monto)});${cobRango(COB_COBERTURA.monto)};0)`
+const cobMontoNum = (b) => `IF(ISNUMBER(${b.monto});${b.monto};0)`
 
 /**
  * NÚCLEO PURO: los cobros CON plata pero SIN unidad de negocio — no caen en ninguna línea de ingreso.
  * @returns {string} fórmula es-AR
  */
-export function formulaCobranzasSinUnidad() {
-  const sinUnidad = `(${cobRango(COB_COBERTURA.unidad)}="")`
-  return `=SUMPRODUCT(${sinUnidad}*${cobNoEndosado()}*${cobMontoNum()})`
+export function formulaCobranzasSinUnidad(rg) {
+  const b = exigirCobranzas(rg, 'formulaCobranzasSinUnidad')
+  return `=SUMPRODUCT((${b.unidad}="")*${cobNoEndosado(b)}*${cobMontoNum(b)})`
 }
 
 /**
@@ -737,9 +748,10 @@ export function formulaCobranzasSinUnidad() {
  * ninguna semana ni mes. (1-ISNUMBER) y no NOT(), que no es array-safe en Sheets.
  * @returns {string} fórmula es-AR
  */
-export function formulaCobranzasSinFecha() {
-  const sinFecha = `(1-ISNUMBER(${cobRango(COB_COBERTURA.cobro)}))*(1-ISNUMBER(${cobRango(COB_COBERTURA.venc)}))`
-  return `=SUMPRODUCT(${sinFecha}*${cobNoEndosado()}*${cobMontoNum()})`
+export function formulaCobranzasSinFecha(rg) {
+  const b = exigirCobranzas(rg, 'formulaCobranzasSinFecha')
+  const sinFecha = `(1-ISNUMBER(${b.cobro}))*(1-ISNUMBER(${b.venc}))`
+  return `=SUMPRODUCT(${sinFecha}*${cobNoEndosado(b)}*${cobMontoNum(b)})`
 }
 
 /**
@@ -751,12 +763,13 @@ export function formulaCobranzasSinFecha() {
  * @param {number} filaControl fila (1-based) donde arranca este bloque
  * @returns {Array<{etiqueta:string, formula:string, nota?:string}>}
  */
-export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, filaControl) {
+export function bloqueControl(rg, filaPrimerEgreso, filaUltimoEgreso, colTotal, filaControl) {
+  const { total: COL_TOTAL, rubro: COL_RUBRO, fecha: COL_FECHA } = exigirCompras(rg, 'bloqueControl')
   // Se suma RUBRO POR RUBRO y no leyendo los rótulos de la columna A. Desde que el cuadro tiene
   // estructura contable, esos rótulos son nombres para el que lee ("Materiales e insumos de obra
   // civil"), no los rubros de Compras — un SUMIF contra ellos daría $0 y el control mentiría
   // diciendo que todo cierra. La lista sale de REGLAS, así que un rubro nuevo entra solo.
-  const porRubro = RUBROS.map((r) => formulaTotalRubro(r)).join('+')
+  const porRubro = RUBROS.map((r) => formulaTotalRubro(rg, r)).join('+')
   return [
     {
       etiqueta: 'Compras — total cargado',
@@ -791,12 +804,12 @@ export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, fila
     // LOS DOS ESPEJOS DEL LADO DEL INGRESO (T04): que ningún cobro real se caiga del cuadro en silencio.
     {
       etiqueta: 'Cobros sin unidad de negocio (van a "Otras cobranzas")',
-      formula: formulaCobranzasSinUnidad(),
+      formula: formulaCobranzasSinUnidad(rg),
       nota: 'Cobros con plata pero con la unidad (columna F de Cobranzas) vacía. Por decisión del dueño se cuentan en "Otras cobranzas" para que no se caigan del cuadro, y acá quedan visibles para asignarles la unidad real (civil/mantenimiento) si corresponde. No se cuentan dos veces: esta línea es diagnóstico, no suma. Los endosos no cuentan.',
     },
     {
       etiqueta: 'Cobros sin fecha (no caen en ninguna semana)',
-      formula: formulaCobranzasSinFecha(),
+      formula: formulaCobranzasSinFecha(rg),
       nota: 'Cobros con plata pero sin fecha de cobro ni de vencimiento: no caen en ninguna columna del cuadro. Espejo de "Gastos sin fecha de pago". Hay que fecharlos.',
     },
   ]
@@ -1066,8 +1079,23 @@ export function verificarCuadro() {
 }
 
 /** El total de un rubro sobre Compras entera, para el control del pie. PURA. */
-export function formulaTotalRubro(rubro) {
-  return `SUMIF(${COL_RUBRO};"${rubro}";${COL_TOTAL})`
+export function formulaTotalRubro(rg, rubro) {
+  const c = exigirCompras(rg, 'formulaTotalRubro')
+  return `SUMIF(${c.rubro};"${rubro}";${c.total})`
+}
+
+/** El total de un rubro SIN un sub-rubro (la parte de Estructura que no es inversión). PURA. */
+export function formulaTotalRubroSinSub(rg, rubro, sub) {
+  const c = exigirCompras(rg, 'formulaTotalRubroSinSub')
+  return `${formulaTotalRubro(rg, rubro)}-SUMIF(${c.sub};"${sub}";${c.total})`
+}
+
+/**
+ * ¿La línea NO tiene expresión propia en una ventana? Las que devuelven null en `expresionReal`, sin
+ * necesitar columnas: quien sólo pregunta eso (el calendario, los tests de forma) no lee rótulos.
+ */
+export function sinExpresionPropia(l) {
+  return Boolean(l.cheques || l.calendarioImpuestos || l.descubierto || l.comisionesBancarias || l.impuestoCheque)
 }
 
 /**
@@ -1077,7 +1105,8 @@ export function formulaTotalRubro(rubro) {
  * @param {string} desde expresión de inicio · @param {string} hasta límite EXCLUYENTE
  * @returns {string} fórmula es-AR SIN el "=" inicial
  */
-export function expresionReal(l, desde, hasta) {
+export function expresionReal(rg, l, desde, hasta) {
+  const { total: COL_TOTAL, rubro: COL_RUBRO, fecha: COL_FECHA, sub: COL_SUB } = exigirCompras(rg, 'expresionReal')
   // La línea de cheques y tarjeta NO tiene fórmula: el cruce por número de comprobante hay que
   // normalizarlo de los dos lados ("0001-000036" vs "1-36") y eso en fórmula sería ilegible. La
   // llena el script con VALORES y el agente la reescribe cada 2 horas. Devolver null es la señal.
@@ -1094,7 +1123,7 @@ export function expresionReal(l, desde, hasta) {
   // Es la misma familia del defecto que costó $41,7M entre CAJA y el cash flow: plata que nadie
   // suma y nada avisa. Devolver null obliga a quien pregunta a resolverla o a romper.
   if (l.descubierto || l.comisionesBancarias || l.impuestoCheque) return null
-  if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta, l.modo).slice(1)
+  if (l.cobranzas) return formulaCobranzas(rg, l.cobranzas, desde, hasta, l.modo).slice(1)
   if (l.rubro === 'Nómina · Jornales de obra') return formulaJornales(desde, hasta).slice(1)
   // `desdeCompras` es la marca del MEMO: la misma línea, leída de la otra fuente, para que la brecha
   // entre la planilla y lo cargado en Compras se vea en el cuadro. Sin esta marca las dos líneas
@@ -1155,11 +1184,12 @@ export const mesCerrado = (M) => `EOMONTH(${M};0)<=EOMONTH(TODAY();0)`
  */
 export const MES_EN_CURSO = 'EOMONTH(TODAY();-1)+1'
 
-export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}, anio = 2026) {
+export function formulaLineaMes(rg, l, colMes, colTabla, filaCab, filasTabla = {}, anio = 2026) {
+  exigirCompras(rg, 'formulaLineaMes')
   if (l.cheques || l.calendarioImpuestos) return null
   const mes = `${colMes}$${filaCab}`
-  const real = expresionReal(l, mes, `EOMONTH(${mes};0)+1`)
-  const proy = expresionProyeccionMes(l, mes, filasTabla, anio)
+  const real = expresionReal(rg, l, mes, `EOMONTH(${mes};0)+1`)
+  const proy = expresionProyeccionMes(rg, l, mes, filasTabla, anio)
   if (proy === null) return `=${real}`
   return `=IF(${mesCerrado(mes)};${real};MAX(${real};${proy}))`
 }
@@ -1189,7 +1219,8 @@ export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}, a
  * @param {number} anio el año que cubre la tabla de detalle
  * @returns {string|null} expresión es-AR SIN el '=', o null si esta línea NO se proyecta
  */
-export function expresionProyeccionMes(l, mes, filasTabla = {}, anio = 2026) {
+export function expresionProyeccionMes(rg, l, mes, filasTabla = {}, anio = 2026) {
+  const { rubro: COL_RUBRO, fecha: COL_FECHA } = exigirCompras(rg, 'expresionProyeccionMes')
   // Un bien de uso no tiene ritmo: comprar una moto en enero no significa comprar una por mes. Es
   // el mismo error que el SAC, y la misma regla lo mata.
   const p = l.soloSub ? null : PROYECCION[l.rubro]
@@ -1211,7 +1242,7 @@ export function expresionProyeccionMes(l, mes, filasTabla = {}, anio = 2026) {
   // observación completa. Además ahora coincide exactamente con la ventana del núcleo Postgres,
   // que es la condición para que la web y la planilla digan lo mismo. El borde superior es
   // MES_EN_CURSO, el mismo que usa Recurrentes: una sola definición de "hasta dónde se puede mirar".
-  const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', MES_EN_CURSO)}/3`
+  const ventana = `${expresionReal(rg, l, 'EOMONTH(TODAY();-4)+1', MES_EN_CURSO)}/3`
   const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
   const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};"${l.rubro}";${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
   // FUERA DEL AÑO DEL CUADRO NO SE PROYECTA — la regla ya estaba escrita en el docstring de arriba y
@@ -1281,9 +1312,9 @@ export function formulaInteresSemana(saldoInicial, desde, hasta) {
 /** De dónde salen las comisiones del banco. Es contrato con banco-raw-pestana.mjs y con NAT.comisiones. */
 export const COMISIONES = {
   hoja: '_BANCO_RAW',
-  fecha: 'A',
-  importe: 'C',
-  naturaleza: 'F',
+  fecha: deOtra('_BANCO_RAW', 'A'),
+  importe: deOtra('_BANCO_RAW', 'C'),
+  naturaleza: deOtra('_BANCO_RAW', 'F'),
   marca: 'Comisiones y gastos bancarios',
 }
 
@@ -1400,7 +1431,8 @@ const soloRango = (r) => String(r).split('!')[1].replace(/\$/g, '')
  * @param {Object<string,number>} filasTabla {pestaña: filaDelTotal} ubicada por rótulo (Estructura/Recurrentes)
  * @returns {{pestaña:string, rango:string}|null}
  */
-export function destinoDetalle(l, filasTabla = {}, filasCal = {}) {
+export function destinoDetalle(rg, l, filasTabla = {}, filasCal = {}) {
+  const { total: COL_TOTAL, sub: COL_SUB } = exigirCompras(rg, 'destinoDetalle')
   // Las que el cuadro calcula sobre sus propias celdas: no hay pestaña de origen que mostrar. Las
   // comisiones bancarias tampoco: su origen es la RÉPLICA del extracto (_BANCO_RAW), que es una hoja
   // técnica y no una pestaña de trabajo del dueño — hiperlinkear ahí no ayuda a nadie a decidir.
@@ -1414,9 +1446,9 @@ export function destinoDetalle(l, filasTabla = {}, filasCal = {}) {
     const inst = INSTRUMENTOS[l.inst] ?? INSTRUMENTOS.cheques
     return { pestaña: inst.pestaña, rango: soloRango(rangoInstrumento(inst, inst.colMonto)) }
   }
-  // Cobranzas: la columna de monto (M) de la pestaña Cobranzas — la fuente exacta de las tres líneas de ingreso.
-  if (l.cobranzas) return { pestaña: 'Cobranzas', rango: soloRango(cobRango(COB_COBERTURA.monto)) }
-  // Bienes de uso (equipos y rodados): su monto sale del sub-rubro de Compras (columna AF).
+  // Cobranzas: la columna de monto de la pestaña Cobranzas — la fuente exacta de las tres líneas de ingreso.
+  if (l.cobranzas) return { pestaña: 'Cobranzas', rango: soloRango(exigirCobranzas(rg, 'destinoDetalle').monto) }
+  // Bienes de uso (equipos y rodados): su monto sale del sub-rubro de Compras.
   if (l.soloSub) return { pestaña: 'Compras', rango: soloRango(COL_SUB) }
   // Rubros cuya proyección la calcula su propia pestaña con una fila de TOTAL ubicada por rótulo: se
   // apunta a esa fila (el número de esta línea ES ese total). Sin la fila ubicada no se inventa una
@@ -1445,8 +1477,8 @@ export function destinoDetalle(l, filasTabla = {}, filasCal = {}) {
  * @param {object} l línea del CUADRO · @param {Object<string,number>} filasTabla
  * @returns {{formula:string, destino:string, rango:string}|null}
  */
-export function hipervinculoDetalle(l, filasTabla = {}, filasCal = {}) {
-  const dest = destinoDetalle(l, filasTabla, filasCal)
+export function hipervinculoDetalle(rg, l, filasTabla = {}, filasCal = {}) {
+  const dest = destinoDetalle(rg, l, filasTabla, filasCal)
   if (!dest) return null
   // Las comillas del rótulo se duplican: si un nombre trajera una, cerraría la cadena de la fórmula.
   const etiqueta = `${SANGRIA_DETALLE}${l.nombre}`.replace(/"/g, '""')

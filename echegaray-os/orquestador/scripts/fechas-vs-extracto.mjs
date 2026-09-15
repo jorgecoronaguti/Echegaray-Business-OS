@@ -39,6 +39,8 @@ import { isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
 import {
   cruzarFechas, corregibles, resumen, VEREDICTO_FECHA, HOLGURA_FECHA,
 } from '../lib/fechas-contra-extracto.mjs'
+import { COBRANZAS, COMPRAS } from '../lib/columnas-por-encabezado.mjs'
+import { leerConEncabezado } from '../lib/columnas-lectura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -137,14 +139,20 @@ async function main() {
   console.log('así que el único identificador posible es el IMPORTE y la regla es UNO DE CADA LADO.')
 
   // ── COMPRAS ─────────────────────────────────────────────────────────────────────────────────────
-  const compras = (await leer(google, 'Compras!A4:AD900')).filter((f) => String(f?.[4] ?? '').trim())
+  // Compras y Cobranzas por RÓTULO (14/09/2026): con «Obra» insertada, las letras fijas de este informe
+  // mandaban a la persona a mirar la celda de al lado.
+  const lc = await leerConEncabezado(google, ID, 'Compras', {
+    fechaCaja: COMPRAS.fechaCaja, total: COMPRAS.total, tipoPago: COMPRAS.tipoPago, proveedor: COMPRAS.proveedor, comprobante: COMPRAS.comprobante,
+  }, { hasta: 900, render: 'UNFORMATTED_VALUE' })
+  const cc = lc.cols
+  const compras = lc.datos.filter((f) => String(f?.[cc.proveedor.indice] ?? '').trim())
   const porBanco = normalizar(compras, {
-    pestana: 'Compras', colFecha: 'AD', colImporte: 'O', fila0: FILA0.compras,
-    incluir: (f) => ['Transferencia', 'Débito'].includes(String(f[colIdx('P')] ?? '').trim()),
-    etiqueta: (f) => `${String(f[colIdx('E')] ?? '').slice(0, 24)} ${String(f[colIdx('H')] ?? '').slice(0, 14)}`,
+    pestana: 'Compras', colFecha: cc.fechaCaja.letra, colImporte: cc.total.letra, fila0: FILA0.compras,
+    incluir: (f) => ['Transferencia', 'Débito'].includes(String(f[cc.tipoPago.indice] ?? '').trim()),
+    etiqueta: (f) => `${String(f[cc.proveedor.indice] ?? '').slice(0, 24)} ${String(f[cc.comprobante.indice] ?? '').slice(0, 14)}`,
   })
-  imprimir('Compras · "Fecha de caja" (AD) — sólo Transferencia y Débito', cruzarFechas(porBanco, debitos, { ventana }),
-    'AD es una ARRAYFORMULA sobre Q ("Fecha PREVISTA de pago"): la corrección va a Q, y 386 de sus celdas son fórmulas.')
+  imprimir(`Compras · "Fecha de caja" (${cc.fechaCaja.letra}) — sólo Transferencia y Débito`, cruzarFechas(porBanco, debitos, { ventana }),
+    `${cc.fechaCaja.letra} es una ARRAYFORMULA sobre la «Fecha prevista de pago»: la corrección va a esa columna, y 386 de sus celdas son fórmulas.`)
 
   // ── CHEQUES EMITIDOS ────────────────────────────────────────────────────────────────────────────
   const cheques = (await leer(google, 'Cheques Emitidos!A8:M400')).filter((f) => String(f?.[0] ?? '').trim())
@@ -156,14 +164,18 @@ async function main() {
     'PESTAÑA CANDADA POR EL DUEÑO: acá no se escribe nada, ni con --forzar-candado. Se reporta.')
 
   // ── COBRANZAS ───────────────────────────────────────────────────────────────────────────────────
-  const cobranzas = (await leer(google, 'Cobranzas!A5:Q400')).filter((f) => String(f?.[6] ?? '').trim())
+  const lb = await leerConEncabezado(google, ID, 'Cobranzas', {
+    fechaCobro: COBRANZAS.fechaCobro, total: COBRANZAS.total, formaCobro: COBRANZAS.formaCobro, cliente: COBRANZAS.cliente, comprobante: 'N° Comprobante',
+  }, { hasta: 400, render: 'UNFORMATTED_VALUE' })
+  const cb = lb.cols
+  const cobranzas = lb.datos.filter((f) => String(f?.[cb.cliente.indice] ?? '').trim())
   const deCobranzas = normalizar(cobranzas, {
-    pestana: 'Cobranzas', colFecha: 'Q', colImporte: 'M', fila0: FILA0.cobranzas,
-    incluir: (f) => String(f[colIdx('N')] ?? '').trim() === 'Transferencia',
-    etiqueta: (f) => `${String(f[colIdx('G')] ?? '').slice(0, 22)} ${String(f[colIdx('E')] ?? '').slice(0, 14)}`,
+    pestana: 'Cobranzas', colFecha: cb.fechaCobro.letra, colImporte: cb.total.letra, fila0: FILA0.cobranzas,
+    incluir: (f) => String(f[cb.formaCobro.indice] ?? '').trim() === 'Transferencia',
+    etiqueta: (f) => `${String(f[cb.cliente.indice] ?? '').slice(0, 22)} ${String(f[cb.comprobante.indice] ?? '').slice(0, 14)}`,
   })
-  imprimir('Cobranzas · "Fecha cobro" (Q) vs el crédito', cruzarFechas(deCobranzas, creditos, { ventana }),
-    'La columna M es el TOTAL NETO DE RETENCIONES y el banco acredita otra cosa: por eso casi nada cruza.')
+  imprimir(`Cobranzas · "Fecha cobro" (${cb.fechaCobro.letra}) vs el crédito`, cruzarFechas(deCobranzas, creditos, { ventana }),
+    `La columna ${cb.total.letra} es el TOTAL NETO DE RETENCIONES y el banco acredita otra cosa: por eso casi nada cruza.`)
 
   // ── EL CONTROL QUE NO SALE DE LA MISMA FUENTE ───────────────────────────────────────────────────
   //

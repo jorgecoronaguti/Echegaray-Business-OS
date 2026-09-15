@@ -61,7 +61,7 @@ export function referenciasLocales(formula) {
   if (!f.startsWith('=')) return []
   f = f.replace(/"(?:[^"\\]|\\.)*"/g, '""')          // los literales no contienen referencias
   f = f.replace(/'[^']*'!\$?[A-Z]+\$?\d*(?::\$?[A-Z]+\$?\d*)?/g, ' ')  // 'Otra hoja'!A1 o su rango
-  f = f.replace(/\b[A-Za-z_][\w.]*!\$?[A-Z]+\$?\d*(?::\$?[A-Z]+\$?\d*)?/g, ' ')  // Compras!$O$4
+  f = f.replace(/\b[A-Za-z_][\w.]*!\$?[A-Z]+\$?\d*(?::\$?[A-Z]+\$?\d*)?/g, ' ')  // Hoja!$O$4
   f = f.replace(/\$?[A-Z]+\$?\d+\s*:\s*\$?[A-Z]+\$?\d*/g, ' ')          // B25:B30 — los rangos no
   f = f.replace(/\$?[A-Z]+\s*:\s*\$?[A-Z]+/g, ' ')                      // B:B — columna entera
   const out = new Set()

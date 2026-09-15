@@ -92,9 +92,10 @@
  * `conHora` es cuántos valores tenían parte horaria sobre `medidos` totales, el 15/08/2026.
  */
 export const HORA_EN_LAS_FUENTES = [
-  { fuente: 'Compras!C', que: 'fecha de carga', medidos: 852, conHora: 1 },
-  { fuente: 'Compras!AD', que: 'fecha de caja', medidos: 852, conHora: 0 },
-  { fuente: 'Cobranzas!Q', que: 'fecha de cobro', medidos: 91, conHora: 0 },
+  // Las fuentes se nombran por RÓTULO (14/09/2026): la letra del día de la medición ya no es la columna.
+  { fuente: 'Compras «Fecha factura»', que: 'fecha de carga', medidos: 852, conHora: 1 },
+  { fuente: 'Compras «Fecha de caja»', que: 'fecha de caja', medidos: 852, conHora: 0 },
+  { fuente: 'Cobranzas «Fecha cobro»', que: 'fecha de cobro', medidos: 91, conHora: 0 },
   { fuente: '_BANCO_RAW!A', que: 'fecha del movimiento', medidos: 403, conHora: 0 },
 ]
 

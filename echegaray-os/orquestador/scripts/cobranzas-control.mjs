@@ -25,7 +25,6 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { ECHEQS_TERCEROS, CORTE as BANCO_CORTE } from '../lib/banco-santander.mjs'
 import { MARCA_ENDOSADO } from '../lib/cash-flow-lineas.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -36,7 +35,9 @@ import { ALERTA, ALERTA_HEREDADA, variantesDeMarca } from '../lib/glifos.mjs'
 // EL CRUCE CONTRA EL EXTRACTO VIVO. El núcleo es puro y se testea sin Google; acá sólo se lee y se
 // escribe. `leerCobro` es el MISMO lector que usa el cuadre: dos lectores de Cobranzas se
 // desincronizan, y el que se olvide de leer hasta BB deja de ver el endoso sin dar un error.
-import { leerCobro } from '../lib/cobranzas-en-cashflow.mjs'
+import { leerCobro, columnasDelCobro, ROTULO_VALOR_BANCO } from '../lib/cobranzas-en-cashflow.mjs'
+import { columnasCobranzas, exigirColumnas, ubicarPorPrefijo } from '../lib/cobranzas-columnas.mjs'
+import { lectorDeEncabezados, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { esCobrado } from '../lib/cobranzas-repaso.mjs'
 import { cruzarConElBanco, textoDeRespaldo, desmiente, MARCA_SIN_RESPALDO } from '../lib/cobranzas-respaldo-banco.mjs'
 import { corteDelExtracto } from '../lib/libro-respaldo-banco.mjs'
@@ -49,33 +50,55 @@ const DRY = process.argv.includes('--dry')
 
 // Los rangos de datos, iguales a los que usa el cash flow.
 const F0 = 5, F1 = 200
-const G = `$G$${F0}:$G$${F1}`   // Obra / Cliente
-const M = `$M$${F0}:$M$${F1}`   // TOTAL a cobrar, neto de retenciones (=J+K-L)
-const Q = `$Q$${F0}:$Q$${F1}`   // Fecha de cobro
-const O = `$O$${F0}:$O$${F1}`   // Estado
 
-// La ÚNICA definición de "dos cobros que no se pueden distinguir". Se comparte con el control de
-// efectivo de CAJA: dos definiciones del mismo concepto es lo que la regla de fuente única prohíbe.
-const INDIST = esIndistinguible(PESTAÑA, F0, F1)
-const PLATA = plataEnJuego(PESTAÑA, F0, F1)
+// ═══ LAS COLUMNAS SALEN DE LA FILA 4 DE ESTA CORRIDA (14/09/2026) ═══
+//
+// Eran `$G`, `$M`, `$Q`, `$O`, `$E`, `$H`, `$I` tipeadas y la zona fija en BA/BB/BC (índices 52–54).
+// Con «Obra» insertada en H, la marca de duplicados habría comparado RETENCIONES en vez del total y
+// la OC habría pasado a ser la propia «Obra»; y la zona propia —que Google corre a BB— habría quedado
+// con su firma en otra columna, así que el guard se habría negado a escribir o, peor, habría escrito
+// un segundo bloque encima del primero corrido. Ahora los datos se piden por rótulo (`COLUMNAS_CONTROL`)
+// y la zona se ubica por los rótulos que el propio control escribe en la fila 4 (`ubicarZona`).
+//
 // LO QUE DISTINGUE UN COBRO DE OTRO cuando el cliente, el monto y la fecha coinciden.
 // Se agregaron el 20/07 porque el detector marcó como duplicadas las filas 39 y 40 —dos cobros de
 // $10.000.000 a LA ESTRELLA el mismo día— y el dueño avisó que son DOS CONCEPTOS DISTINTOS. Tenía
 // razón: yo miraba tres columnas de una planilla que tiene diez. Un cobro se identifica por su
 // comprobante, su orden de compra o su concepto; si alguno difiere, son cobros distintos y punto.
-const E = `$E$${F0}:$E$${F1}`   // N° Comprobante
-const H = `$H$${F0}:$H$${F1}`   // Orden de compra
-const I = `$I$${F0}:$I$${F1}`   // Concepto
+export const COLUMNAS_CONTROL = Object.freeze(['cliente', 'total', 'fechaCobro', 'estado', 'comprobante', 'oc', 'concepto'])
+
+/** El rango de datos cerrado (`$G$5:$G$200`) de una columna RESUELTA. */
+const rd = (col) => `$${col.letra}$${F0}:$${col.letra}$${F1}`
+
 // DÓNDE VAN LAS COLUMNAS, Y POR QUÉ ESTÁS LEYENDO ESTO. La primera versión de este script escribió
 // en X y Z:AB porque las vi vacías en las filas de abajo. NO estaban vacías: X, Y, Z y AA son el
 // desglose de retenciones de las facturas de ARCOR, y la columna L es su SUMA — así que al pisarlas
 // cambió el TOTAL Bruto de 9 filas. Pisé $2.487.910 de retenciones reales y los rótulos de X, Z y
 // AA. Los importes se pudieron reconstruir contra la réplica de Supabase; los rótulos no.
-// Por eso ahora el bloque va a BA en adelante, verificado vacío en toda la altura de la pestaña, y
-// el script CHEQUEA que esté vacío antes de escribir. Mirar unas filas y suponer no alcanza.
-const C_VALOR = 53              // BB: qué dice el BANCO de ese valor (endosado, en custodia, cobrado)
-const C_FLAG = 52               // BA: la marca por fila
-const C_CTRL = 54               // BC: el bloque de control
+// Por eso el bloque vive en su zona propia (BA en adelante el 14/09), verificada vacía en toda la
+// altura de la pestaña, y el script CHEQUEA que esté vacía antes de escribir. Mirar unas filas y
+// suponer no alcanza. La zona son cinco columnas contiguas: marca · veredicto del banco · rótulo del
+// control · número · nota.
+
+/** El rótulo que el control escribe en la fila 4 sobre la columna de la marca. */
+export const ROTULO_MARCA = `${ALERTA} Control automático`
+/** La firma que identifica el bloque como escrito por el OS. Permite rehacerlo sin pisar nada ajeno. */
+const FIRMA = 'CONTROL DE COBRANZAS'
+
+/**
+ * NÚCLEO PURO: la zona propia del control, ubicada por SUS rótulos en la fila de encabezado leída.
+ * La marca por fila es la columna cuyo rótulo es «▲ Control automático» (o su glifo heredado) y el
+ * veredicto del banco tiene que estar inmediatamente a su derecha: si no, la zona no es la que este
+ * script dejó y NO se escribe. Sin rótulo no hay zona — no se usa una columna de respaldo.
+ * @returns {{flag:number, valor:number, ctrl:number}} índices 0-based
+ */
+export function ubicarZona(encabezado = []) {
+  const flag = ubicarPorPrefijo(encabezado, variantesDeMarca(ROTULO_MARCA), PESTAÑA).indice
+  if (!String(encabezado[flag + 1] ?? '').trim().startsWith(ROTULO_VALOR_BANCO)) {
+    throw new Error(`${PESTAÑA}: a la derecha de «${ROTULO_MARCA}» (${letra(flag)}4) no está «${ROTULO_VALOR_BANCO}»: la zona del control no es la que dejó este script. No escribo.`)
+  }
+  return Object.freeze({ flag, valor: flag + 1, ctrl: flag + 2 })
+}
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // EL ANCHO DE LAS CINCO COLUMNAS, DECLARADO ACÁ Y EN NINGÚN OTRO LADO
@@ -96,34 +119,41 @@ const C_CTRL = 54               // BC: el bloque de control
 //
 // CADA NÚMERO SALE DEL PEOR TEXTO QUE ESTE SCRIPT PUBLICA EN ESA COLUMNA, medido en caracteres contra
 // su cuerpo tipográfico (≈ 0,57 px por punto y por carácter, el mismo factor que usa el detector).
+//
+// Las claves son el DESPLAZAMIENTO dentro de la zona (0 = la marca), no el índice de la pestaña: la
+// zona se ubica por su rótulo en cada corrida (`anchosDelControl`).
 export const ANCHOS_CONTROL = Object.freeze({
-  // BA · la marca por fila, cuerpo 9 ⇒ 64 caracteres. Las marcas se acortaron para entrar acá: son
+  // +0 · la marca por fila, cuerpo 9 ⇒ 64 caracteres. Las marcas se acortaron para entrar acá: son
   // por fila y se repiten, y ninguna instrucción de tres renglones mejora por estar cien veces.
-  [C_FLAG]: 330,
-  // BB · el veredicto del banco, cuerpo 9 ⇒ 97 caracteres. Era 317px con cuerpo 11 (50 caracteres) y
+  0: 330,
+  // +1 · el veredicto del banco, cuerpo 9 ⇒ 97 caracteres. Era 317px con cuerpo 11 (50 caracteres) y
   // el veredicto más largo medía 222: no se leía ni el nombre del defecto. El cuerpo baja a 9 para
-  // igualar a su hermana BA —las dos son anotación al costado de la fila, no dato— y con eso el mismo
-  // texto necesita un tercio menos de ancho.
-  [C_VALOR]: 500,
-  // BC · el rótulo de cada línea del control, cuerpo 11 ⇒ 78 caracteres. El más largo mide 76 ("Filas
+  // igualar a su hermana, la marca —las dos son anotación al costado de la fila, no dato— y con eso el
+  // mismo texto necesita un tercio menos de ancho.
+  1: 500,
+  // +2 · el rótulo de cada línea del control, cuerpo 11 ⇒ 78 caracteres. El más largo mide 76 ("Filas
   // que no se pueden distinguir (mismo cliente, monto y día, SIN concepto)"): entra sin acortarlo, y
   // acortarlo habría sido tirar la definición de qué cuenta esa línea.
-  [C_CTRL]: 490,
-  // BD · el número. Doce caracteres es el peor caso ("$300.588.858").
-  [C_CTRL + 1]: 140,
-  // BE · la nota que explica cada línea, cuerpo 9. Su propio ancho son 330px, pero DERRAMA sobre las
+  2: 490,
+  // +3 · el número. Doce caracteres es el peor caso ("$300.588.858").
+  3: 140,
+  // +4 · la nota que explica cada línea, cuerpo 9. Su propio ancho son 330px, pero DERRAMA sobre las
   // columnas vacías de la derecha (ver `wrapStrategy` más abajo), así que el espacio real de lectura
   // son 528px ⇒ 102 caracteres. Las cuatro notas que pasaban de eso se acortaron: 227 caracteres no
   // los arregla ningún ancho razonable.
-  [C_CTRL + 2]: 330,
+  4: 330,
 })
 
-const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
+/** Los anchos con el índice REAL de la pestaña, para la zona ubicada en esta corrida. */
+export const anchosDelControl = (zona) =>
+  Object.fromEntries(Object.entries(ANCHOS_CONTROL).map(([d, px]) => [zona.flag + Number(d), px]))
+
+function letra(i) { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
 // La columna del veredicto del banco, como rango: de ahí sale el contador de sin-respaldo. La letra
-// se DERIVA de `C_VALOR` —la misma constante con la que se escribe— porque una letra tipeada acá
-// seguiría apuntando a BB el día que la columna se mueva, y el contador daría $0 sin dar un error.
-const VB = `$${letra(C_VALOR)}$${F0}:$${letra(C_VALOR)}$${F1}`
+// se DERIVA de la zona ubicada —la misma con la que se escribe— porque una letra tipeada acá seguiría
+// apuntando a la columna vieja el día que se mueva, y el contador daría $0 sin dar un error.
+const rangoVeredicto = (zona) => `$${letra(zona.valor)}$${F0}:$${letra(zona.valor)}$${F1}`
 /** El comienzo EXACTO de la marca de "cobrado sin respaldo". La fórmula compara contra esto y el
  *  escritor lo produce: escrito dos veces, el contador da 0 el día que se mejore la redacción. */
 export const MARCA_ALERTA_RESPALDO = `${ALERTA} ${MARCA_SIN_RESPALDO}`
@@ -186,9 +216,20 @@ export const MARCAS_FILA = Object.freeze({
   proyeccionGemela: `${ALERTA} Proyección con gemela ya facturada — dar de baja una`,
 })
 
-export function marcaPorFila(liberadas = []) {
+/** Los siete rangos de datos del control, resueltos. */
+const rangosDatos = (cols) => {
+  const c = exigirColumnas(cols, COLUMNAS_CONTROL, 'cobranzas-control')
+  return { G: rd(c.cliente), M: rd(c.total), Q: rd(c.fechaCobro), O: rd(c.estado), E: rd(c.comprobante), H: rd(c.oc), I: rd(c.concepto) }
+}
+
+/** @param {Record<string,{letra:string}>} cols columnas de Cobranzas resueltas contra la fila 4 viva */
+export function marcaPorFila(cols, liberadas = []) {
+  const { G, M, Q, O, E, H, I } = rangosDatos(cols)
+  // La ÚNICA definición de "dos cobros que no se pueden distinguir". Se comparte con el control de
+  // efectivo de CAJA: dos definiciones del mismo concepto es lo que la regla de fuente única prohíbe.
+  const INDIST = esIndistinguible(cols, PESTAÑA, F0, F1)
   return `=ARRAYFORMULA(IF(${M}=0;"";${anidar([
-    ...liberadas.map((d) => [esCobroYaRevisado(d.forma, PESTAÑA, F0, F1), txt(rotuloDecision(d))]),
+    ...liberadas.map((d) => [esCobroYaRevisado(cols, d.forma, PESTAÑA, F0, F1), txt(rotuloDecision(d))]),
     [INDIST, txt(MARCAS_FILA.indistinguible)],
     [`COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1`, txt(MARCAS_FILA.igualEnTodo)],
     [`(COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")>0`, txt(MARCAS_FILA.sinConcepto)],
@@ -196,12 +237,18 @@ export function marcaPorFila(liberadas = []) {
   ])}))`
 }
 
-const flagPorFila = marcaPorFila(decisionesDe(CONTROLES.cobroDuplicado))
-
-/** La firma que identifica el bloque como escrito por el OS. Permite rehacerlo sin pisar nada ajeno. */
-const FIRMA = 'CONTROL DE COBRANZAS'
-
-export function bloque() {
+/**
+ * @param {Record<string,{letra:string}>} cols columnas de Cobranzas resueltas contra la fila 4 viva
+ * @param {{flag:number, valor:number, ctrl:number}} zona la de `ubicarZona`
+ */
+export function bloque(cols, zona) {
+  if (!Number.isInteger(zona?.flag)) throw new Error('bloque: falta la zona del control ubicada por su rótulo (ubicarZona)')
+  const { G, M, Q, O, E, H, I } = rangosDatos(cols)
+  const INDIST = esIndistinguible(cols, PESTAÑA, F0, F1)
+  const PLATA = plataEnJuego(cols, PESTAÑA, F0, F1)
+  const VB = rangoVeredicto(zona)
+  const C_FLAG = zona.flag
+  const C_CTRL = zona.ctrl
   // La UNIDAD se declara, no se adivina del rótulo. Antes se infería con una regex sobre el texto
   // de la etiqueta y al renombrar dos filas el 21/07 los conteos pasaron a mostrarse como "$4" y
   // "$2". Un formato que depende de cómo está redactado un rótulo se rompe cada vez que se mejora
@@ -282,18 +329,19 @@ export function bloque() {
  * Y el corte del encabezado se DERIVA del extracto leído, no se tipea: un corte escrito a mano se
  * queda viejo sin gritar, que es lo que pasó durante 23 días.
  */
-async function marcarValoresSegunBanco(google) {
+async function marcarValoresSegunBanco(google, { cols, zona, cobroCols }) {
   // La grilla, no los valores: la fecha tiene que venir como SERIAL. Leída como texto formateado, un
   // "5/8/2026" hay que volver a parsearlo y ahí es donde se rompe el día que el locale cambie.
+  // La fila entera: el veredicto del banco se corre con cualquier columna que se inserte a su izquierda.
   const [grid, extracto, tc] = await Promise.all([
-    google.readSheetGrid(ID, `${PESTAÑA}!A${F0}:BC${F1}`),
+    google.readSheetGrid(ID, rangoFilas(PESTAÑA, F0, F1)),
     // UNFORMATTED_VALUE: ver la nota de `cobranzas-cuadre-vivo`. Con el valor formateado, el extracto
     // entra ilegible y ninguna fila se juzga.
     google.readSheetValues(ID, RANGO_BANCO, { render: 'UNFORMATTED_VALUE' }),
     leerTipoCambio(google, ID).catch(() => ({ tc: null })),
   ])
   const cobros = []
-  grid.filas.forEach((f, i) => { const c = leerCobro(f, i + F0, { tipoCambio: tc.tc }); if (c) cobros.push(c) })
+  grid.filas.forEach((f, i) => { const c = leerCobro(f, i + F0, { tipoCambio: tc.tc, cols: cobroCols }); if (c) cobros.push(c) })
   const porFila = new Map(cruzarConElBanco(cobros, extracto, { esCobrado }).veredictos.map((v) => [v.cobro.fila, v]))
   const corte = corteDelExtracto(extracto)
   const corteISO = corte ? new Date(Date.UTC(1899, 11, 30) + corte * 86400000).toISOString().slice(0, 10) : BANCO_CORTE
@@ -304,15 +352,16 @@ async function marcarValoresSegunBanco(google) {
     const [a, mm, d] = e.pago.split('-').map(Number)
     lista.set(clave(`${d}/${mm}/${a}`, e.importe), e)
   }
-  const v = await google.readSheetValues(ID, `${PESTAÑA}!A${F0}:Q${F1}`)
+  const v = await google.readSheetValues(ID, rangoFilas(PESTAÑA, F0, F1))
+  const { formaCobro, fechaCobro, total } = exigirColumnas(cols, ['formaCobro', 'fechaCobro', 'total'], 'marcarValoresSegunBanco')
   const marcas = []
   let endosados = 0
   let sinRespaldo = 0
   for (let i = 0; i < F1 - F0 + 1; i++) {
-    const f = v[i] ?? []
-    const forma = String(f?.[13] ?? '').trim()
-    const fecha = String(f?.[16] ?? '').trim()
-    const monto = parseMonto(f?.[12])
+    const celdas = v[i] ?? []
+    const forma = String(celdas[formaCobro.indice] ?? '').trim()
+    const fecha = String(celdas[fechaCobro.indice] ?? '').trim()
+    const monto = parseMonto(celdas[total.indice])
     // LA LISTA PRIMERO, Y SÓLO PARA LO QUE SÓLO ELLA SABE. Un endoso no se puede leer del extracto:
     // el valor entró y salió sin pasar por la cuenta. Perder esta marca haría que el Libro volviera a
     // emitir $20.000.000 de ingreso que no existen (ver `libro-endosos.mjs`).
@@ -330,46 +379,23 @@ async function marcarValoresSegunBanco(google) {
     if (desmiente(r)) sinRespaldo++
     marcas.push([textoDeRespaldo(r, { alerta: ALERTA, fechaCorte: corteISO })])
   }
-  const col = letra(C_VALOR)
+  const col = letra(zona.valor)
   await google.batchUpdateValues(ID, [
-    { range: `${PESTAÑA}!${col}4`, values: [[`Qué dice el banco de este valor · al ${corteISO}`]] },
+    { range: `${PESTAÑA}!${col}4`, values: [[`${ROTULO_VALOR_BANCO} · al ${corteISO}`]] },
     { range: `${PESTAÑA}!${col}${F0}:${col}${F1}`, values: marcas },
   ])
   console.log(`  valores marcados según el banco (extracto al ${corteISO}): ${endosados} endosados`
     + ` · ${sinRespaldo} cobrados que el extracto no confirma`)
 }
 
-/**
- * El rótulo de la columna M dice "TOTAL Bruto" y la fórmula es =J+K-L: neto + IVA MENOS retenciones.
- * O sea, lo que efectivamente entra a la cuenta. Bruto sería J+K.
- *
- * POR QUÉ IMPORTA Y NO ES COSMÉTICO: es la columna que el cash flow usa como ingreso. Quien lee
- * "bruto" asume que todavía hay que descontarle retenciones y presupuesta de menos dos veces la
- * misma plata. Un rótulo equivocado en la columna que decide es un error de datos, no de redacción.
- *
- * SE VERIFICA ANTES DE RENOMBRAR. Se lee la fórmula real de la primera fila: sólo si de verdad es
- * J+K-L se corrige el rótulo. Renombrar por lo que yo creo que hace la columna sería exactamente el
- * error que este cambio arregla.
- */
-async function corregirRotuloTotal(google) {
-  const CORRECTO = 'TOTAL a cobrar (neto de retenciones)'
-  const g = await google.readSheetGrid(ID, `${PESTAÑA}!M4:M${F0}`)
-  const rotulo = String(g.filas?.[0]?.[0]?.valor ?? '').trim()
-  const formula = String(g.filas?.[1]?.[0]?.formula ?? '')
-  if (rotulo === CORRECTO) return
-  if (!/^=J\d+\+K\d+-L\d+$/.test(formula)) {
-    console.log(`  ⚠ no toco el rótulo de M: esperaba =J+K-L y encontré "${formula || '(sin fórmula)'}"`)
-    return
-  }
-  // ═══ REGLA 0 — SI EL DUEÑO YA LO REBAUTIZÓ, GANA ÉL ═══
-  // Éste es el único punto del script que reescribe un RÓTULO que una persona podría haber
-  // redactado. El resto escribe en una zona propia firmada, y se niega a salir de ahí.
-  const { grid: g4, respetadas: r4, ediciones: e4, candidatos: c4 } = await conEdicionesRespetadas(ID, PESTAÑA, [[CORRECTO]], [[rotulo]])
-  for (const r of r4) console.log(`  ✋ respeto tu rótulo ("${String(r.suyo).slice(0, 44)}") en vez de "${String(r.mio).slice(0, 44)}"`)
-  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!M4`, values: g4 }])
-  await guardarRegistro(ID, PESTAÑA, g4, e4, [[rotulo]], c4).catch((e) => console.warn(`  ⚠ registro de rótulos: ${e.message}`))
-  console.log(`  rótulo de M corregido: "${rotulo}" → "${CORRECTO}" (la fórmula es ${formula}: descuenta retenciones)`)
-}
+// ═══ SE RETIRÓ `corregirRotuloTotal` (14/09/2026) — Y POR QUÉ NO SE PIERDE NADA ═══
+//
+// Renombraba «TOTAL Bruto» → «TOTAL a cobrar (neto de retenciones)» en `M4` si la fórmula de `M5` era
+// `=J+K-L`. Lo hizo el 21/07 y desde entonces volvía sin tocar nada. Con las columnas por rótulo, ese
+// rótulo corregido ES el contrato: `columnasCobranzas` lo exige para ubicar el total, y si alguien lo
+// volviera a cambiar la corrida aborta nombrándolo, antes de escribir. Mantener la función habría
+// dejado una escritura a la letra `M4` —que con «Obra» insertada es «Retenciones / descuentos»— para
+// un caso que el propio resolvedor ya no deja llegar hasta acá.
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -382,9 +408,18 @@ async function main() {
     console.log(`🔒 "${PESTAÑA}" está bajo tu control (candado): no la toco.`)
     return
   }
-  const b = bloque()
+  // LA FILA 4, UNA VEZ, ANTES DE TOCAR NADA: los datos por rótulo, la zona por los rótulos que este
+  // mismo script dejó, y las columnas del cobro para el cruce con el banco. Un rótulo que falta aborta
+  // acá, con su nombre, y no se borra ni se escribe una celda.
+  const encabezado = await lectorDeEncabezados(google, ID).encabezado(PESTAÑA)
+  const cols = columnasCobranzas(encabezado, [...COLUMNAS_CONTROL, 'formaCobro'])
+  const zona = ubicarZona(encabezado)
+  const cobroCols = columnasDelCobro(encabezado)
+  const C_FLAG = zona.flag, C_VALOR = zona.valor, C_CTRL = zona.ctrl
+  const b = bloque(cols, zona)
+  const flagPorFila = marcaPorFila(cols, decisionesDe(CONTROLES.cobroDuplicado))
   console.log(`${PESTAÑA}: marca por fila en ${letra(C_FLAG)}, control en ${letra(C_CTRL)}1:${letra(C_CTRL + 2)}${b.length}`)
-  if (DRY) { for (const f of b) console.log('  ', f[0], '|', String(f[1]).slice(0, 50)); return }
+  if (DRY) { for (const [rot, formula] of b) console.log('  ', rot, '|', String(formula).slice(0, 50)); return }
 
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
 
@@ -394,8 +429,8 @@ async function main() {
   // distingue por la firma que este mismo script deja. Si está la firma, es nuestro y se pisa; si
   // hay algo que no reconozco, me niego. Un guard que también bloquea la reejecución no protege
   // nada — sólo obliga a desactivarlo, que es peor.
-  const zona = await google.readSheetValues(ID, `${PESTAÑA}!${letra(C_FLAG)}1:${letra(C_CTRL + 2)}${F1}`)
-  const firma = String(zona?.[0]?.[C_CTRL - C_FLAG] ?? '').trim()
+  const ocupada = await google.readSheetValues(ID, `${PESTAÑA}!${letra(C_FLAG)}1:${letra(C_CTRL + 2)}${F1}`)
+  const firma = String(ocupada?.[0]?.[C_CTRL - C_FLAG] ?? '').trim()
 
   // UN GUARD QUE NO SABE RECONOCER SU PROPIO DESTROZO NO PROTEGE: BLOQUEA.
   //
@@ -419,7 +454,7 @@ async function main() {
   // nuevo, las nueve celdas ya publicadas con `⚠` pasaban a contarse como texto ajeno, `esMio` daba
   // falso y el control dejaba de escribirse — sin un solo error, que es como se rompen estas cosas.
   const MIAS = [
-    FIRMA, ...variantesDeMarca(`${ALERTA} Control automático`), 'Qué dice el banco de este valor',
+    FIRMA, ...variantesDeMarca(ROTULO_MARCA), ROTULO_VALOR_BANCO,
     ALERTA, ALERTA_HEREDADA, 'COBRADO ·', 'EN CUSTODIA ·', MARCA_ENDOSADO,
     // Los veredictos del cruce contra el extracto que NO empiezan con el glifo de alerta. Sin ellos,
     // la zona pasaría a contarse como texto ajeno y el control dejaría de escribirse — sin un solo
@@ -432,7 +467,7 @@ async function main() {
     ...Object.values(MARCAS_FILA),
   ]
   const ajeno = []
-  zona.forEach((f) => (f || []).forEach((c, j) => {
+  ocupada.forEach((f) => (f || []).forEach((c, j) => {
     const t = String(c ?? '').trim()
     if (!t || MIAS.some((m) => t.startsWith(m))) return
     ajeno.push(letra(C_FLAG + j))
@@ -447,15 +482,14 @@ async function main() {
     await google.clearValues(ID, `${PESTAÑA}!${letra(C_FLAG)}1:${letra(C_CTRL + 2)}${F1}`)
   }
 
-  await corregirRotuloTotal(google)
-  await marcarValoresSegunBanco(google)
+  await marcarValoresSegunBanco(google, { cols, zona, cobroCols })
 
   // REGLA 0 — NO APLICA EN ESTE BLOQUE, Y ESTÁ DECIDIDO: respetar: false.
   // Todo lo de abajo cae en la zona propia del control, marcada con FIRMA en su encabezado, y el
   // script ABORTA más arriba si encuentra ahí contenido que no reconoce. Esa negativa protege
   // mejor que respetar: no se discute qué texto gana, directamente no se escribe sobre lo ajeno.
   await google.batchUpdateValues(ID, [
-    { range: `${PESTAÑA}!${letra(C_FLAG)}4:${letra(C_FLAG)}4`, values: [[`${ALERTA} Control automático`]] },
+    { range: `${PESTAÑA}!${letra(C_FLAG)}4:${letra(C_FLAG)}4`, values: [[ROTULO_MARCA]] },
     { range: `${PESTAÑA}!${letra(C_FLAG)}${F0}`, values: [[flagPorFila]] },
     // SÓLO las tres primeras columnas: la cuarta es la UNIDAD, que gobierna el formato y no se
     // escribe. Mandar cuatro contra un rango de tres hace fallar el batch ENTERO — y como el
@@ -498,7 +532,7 @@ async function main() {
     // se extiende sobre celdas VACÍAS, y donde hay algo al lado se recorta igual que antes.
     { repeatCell: { range: rg(0, b.length, C_CTRL + 2, C_CTRL + 3), cell: { userEnteredFormat: { textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat' } },
     // LOS CINCO ANCHOS, DE LA ÚNICA DECLARACIÓN QUE HAY. Antes eran tres tipeados acá y dos sin dueño.
-    ...Object.entries(ANCHOS_CONTROL).map(([col, px]) => ({
+    ...Object.entries(anchosDelControl(zona)).map(([col, px]) => ({
       updateDimensionProperties: {
         range: { sheetId, dimension: 'COLUMNS', startIndex: Number(col), endIndex: Number(col) + 1 },
         properties: { pixelSize: px }, fields: 'pixelSize',
@@ -511,7 +545,9 @@ async function main() {
   for (const f of v) if (f?.[0] && f?.[1] !== undefined) console.log(`  ${String(f[0]).slice(0, 42).padEnd(44)}${String(f[1] ?? '').padStart(16)}`)
   const marcas = await google.readSheetValues(ID, `${PESTAÑA}!A${F0}:${letra(C_FLAG)}${F1}`)
   console.log('\nFILAS MARCADAS:')
-  marcas.forEach((f, i) => { if (f?.[C_FLAG]) console.log(`  fila ${i + F0} | ${String(f[6] ?? '').slice(0, 26).padEnd(28)} ${String(f[12] ?? '').padStart(14)}  ${f[C_FLAG]}`) })
+  marcas.forEach((celdas, i) => {
+    if (celdas?.[C_FLAG]) console.log(`  fila ${i + F0} | ${String(celdas[cols.cliente.indice] ?? '').slice(0, 26).padEnd(28)} ${String(celdas[cols.total.indice] ?? '').padStart(14)}  ${celdas[C_FLAG]}`)
+  })
 }
 
 // ═══ SÓLO CUANDO SE LO INVOCA COMO COMANDO (13/08) ═══

@@ -7,13 +7,14 @@
 // misma identidad que el auditor, y que se apague solo el día que el hueco se cierre.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from './columnas-caja.fixture.mjs'
 import { expresionDetalle, expresionDiferencia, filaHuecoDelExtracto, COL_SALDO } from './banco-detalle-declarado.mjs'
 import { DEP } from './caja-posterior-al-corte.mjs'
 import { auditarCuenta } from './banco-cadena-saldos.mjs'
 import { grillaAnexo, ANCHO_ANEXO } from './caja-anexo.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 
-const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', cierre: 60, inicio: 50, cab: 5 }
+const REFS = { columnas: COLUMNAS_HOY, bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', cierre: 60, inicio: 50, cab: 5 }
 const CARTERA = { origen: 'test', enCartera: [], endosados: [] }
 
 test('el detalle se reconstruye como lo hace el auditor: inicial + Σ importes', () => {

@@ -93,9 +93,18 @@ import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 import { query } from '../lib/db.mjs'
 import { pathToFileURL } from 'node:url'
 import { realpathSync } from 'node:fs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = '_MOVIMIENTOS'
+
+/**
+ * COMPRAS Y COBRANZAS SE LEEN HASTA BZ, NO HASTA UNA LETRA DEL LAYOUT DE HOY (14/09/2026). Eran
+ * `A1:AN` y `A1:BB`: con «Obra» insertada (Compras L, Cobranzas H) la última columna de Compras pasa a
+ * AO y «Valor banco» a BC, y quedaban afuera de la lectura sin un solo error. Los extractores ubican
+ * cada columna por rótulo dentro de lo leído; acá sólo se garantiza que la columna esté.
+ */
+export const RANGOS_FUENTES = Object.freeze({ compras: rangoFilas('Compras', 1), cobranzas: rangoFilas('Cobranzas', 1) })
 const DRY = process.argv.includes('--dry')
 
 /** El serial de HOY en el huso del archivo (es-AR): el corte para vencidos. */
@@ -137,7 +146,7 @@ export async function extraerDeLasFuentes(google, corte) {
     // $35,17M de diferencia. Es la fila 200 de Cobranzas otra vez: un tope escrito hoy es una bomba
     // que explota el día que la pestaña crece, sin un solo error. Un rango abierto llega hasta la
     // última fila con datos, siempre.
-    leer('Compras!A1:AN'), leer('Cobranzas!A1:BB'),
+    leer(RANGOS_FUENTES.compras), leer(RANGOS_FUENTES.cobranzas),
     leer("'Cheques Emitidos'!A1:M"), leer('_BANCO_RAW!A1:F'),
     leer("'Tarjeta de Credito'!A1:M"), leer('_CHEQUES_RAW!A1:L'),
     // ABIERTO también (06/08): el rediseño llevó los rótulos del calendario a las filas 55/65 y el

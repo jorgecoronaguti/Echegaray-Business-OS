@@ -52,7 +52,7 @@ import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
 import { esSubtituloDeDetalle, SECCIONES_DINAMICAS, subtituloDetalle, VALORES_DETALLE } from '../lib/proveedores-titulos.mjs'
 import {
-  altoEmitido, bandasDeFormato, COL, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
+  altoEmitido, bandasDeFormato, COL, columnasDelPivot, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
   diasDePago, letraDeLaDeuda, PENDIENTE, pivotSeccion1, rotulosDelCuadro, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
 import {
@@ -64,6 +64,11 @@ import { formulaControl, rangosCompras, ROTULO_CONTROL } from '../lib/proveedore
 import { MONEDA_CONTROL } from '../lib/formato-statement.mjs'
 import { rangosDesdeEncabezado } from '../lib/proveedores-bloque-vivo.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
+// COMPRAS POR RÓTULO (14/09/2026): el encabezado entero, las filas llevadas al layout de referencia
+// que indexa `COL`, y las columnas del vencimiento resueltas contra la fila viva.
+import { lectorDeEncabezados, rangoEncabezado, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
+import { filasAlLayoutDeReferencia } from '../lib/compras-layout.mjs'
+import { columnasVence } from '../lib/proveedores-cuadro-a.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -94,9 +99,11 @@ const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 // A · A QUIÉN SE LE DEBE — una línea por proveedor, ordenada por lo que se le debe (el ranking).
 // B · CADA OPERACIÓN     — el detalle, agrupado por día de pago: a quién, por qué comprobante, con
 //                          qué medio, para qué obra.
-const cuadroTotales = (fuente) => pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR, nombres: [...VALORES] })
+// `col` son los offsets de la fila de rótulos VIVA (`columnasDelPivot`): nunca `COL`, que es el layout
+// de referencia de las filas ya normalizadas.
+const cuadroTotales = (fuente, col) => pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR, nombres: [...VALORES], col })
 
-const cuadroDetalle = (fuente) => pivotSeccion1(fuente, { vista: VISTA.DETALLE })
+const cuadroDetalle = (fuente, col) => pivotSeccion1(fuente, { vista: VISTA.DETALLE, col })
 
 const texto = (sheetId, fila, valor, bold = false) => ({ updateCells: {
   range: { sheetId, startRowIndex: fila, endRowIndex: fila + 1, startColumnIndex: 0, endColumnIndex: 1 },
@@ -109,8 +116,11 @@ async function main() {
   // LOS RÓTULOS DE LOS CAMPOS DE FILA SON LOS ENCABEZADOS DE COMPRAS: la API no deja renombrarlos y
   // Compras es fuente, no se edita. Se leen para poder darle a la fila de rótulos el alto que hace
   // falta — "Fecha prevista de pago (día)" no entra de una línea en ninguna columna razonable.
-  const cabecera = (await google.readSheetValues(ID, 'Compras!A3:AL3', { render: 'FORMATTED_VALUE' }))?.[0] ?? []
-  const compras = await google.readSheetValues(ID, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
+  const encabezadoVivo = await lectorDeEncabezados(google, ID).encabezado('Compras')
+  const [cabecera] = filasAlLayoutDeReferencia([encabezadoVivo], encabezadoVivo)
+  const compras = filasAlLayoutDeReferencia(await google.readSheetValues(ID, rangoFilas('Compras', 4), { render: 'UNFORMATTED_VALUE' }) ?? [], encabezadoVivo)
+  const colsVence = columnasVence(encabezadoVivo)
+  const colPivot = columnasDelPivot(encabezadoVivo)
   const pendientes = (compras ?? []).filter((f) => String(f?.[COL.estado] ?? '').trim() === PENDIENTE
     && String(f?.[COL.comercial] ?? '').trim() === '1')
   // LA RESERVA SE CUENTA COMO AGRUPA EL PIVOT —por el valor CRUDO— y con una fila de colchón: el
@@ -176,7 +186,7 @@ async function main() {
     await google.spreadsheetBatchUpdate(ID, [{ appendDimension: {
       sheetId: compraMeta.sheetId, dimension: 'ROWS', length: filasCompras - compraMeta.rows } }], { espejo: true })
   }
-  const fuente = fuenteCompras({ sheetId: compraMeta.sheetId, filas: filasCompras })
+  const fuente = fuenteCompras({ sheetId: compraMeta.sheetId, filas: filasCompras, col: colPivot })
 
   if (faltan) {
     await google.spreadsheetBatchUpdate(ID, [{ insertDimension: {
@@ -238,9 +248,9 @@ async function main() {
     // Limpiar el ancho entero del bloque, incluidas las dinámicas viejas.
     { updateCells: { range: { sheetId, startRowIndex: iA, endRowIndex: finIdx, startColumnIndex: 0, endColumnIndex: 7 },
       rows: vacias, fields: 'userEnteredValue,pivotTable' } },
-    anclaPivot(iA, cuadroTotales(fuente)),
+    anclaPivot(iA, cuadroTotales(fuente, colPivot)),
     texto(sheetId, iSub, subtituloDetalle(), true),
-    anclaPivot(iB, cuadroDetalle(fuente)),
+    anclaPivot(iB, cuadroDetalle(fuente, colPivot)),
     // CADA COLUMNA, DECLARADA EN CADA CORRIDA Y SOBRE EL FOOTPRINT ENTERO. Una dinámica no trae
     // formato: usa el que la celda ya tenía. Midiendo la banda con el alto de la corrida, el cuadro
     // A creció a 10 proveedores y la 10ª fila salió `67797,51 | 31/12/1899` — la columna B en TEXTO
@@ -301,7 +311,7 @@ async function main() {
   if (rotos.length) { console.error(`✗✗ ${rotos.length} celda(s) con error: ${[...new Set(rotos)].join(' · ')}`); process.exitCode = 1 }
 
   await recortarElAire({ google, sheetId, geo })
-  await reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo })
+  await reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo, cols: colsVence })
 
   console.log('\nLEÍDO DEL ARCHIVO:')
   for (const f of leido ?? []) {
@@ -401,7 +411,7 @@ async function recortarElAire({ google, sheetId, geo }) {
  *
  * NO consulta la base: la nota busca contra la pestaña auxiliar. Si Postgres está caído, vuelve igual.
  */
-async function reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo }) {
+async function reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo, cols }) {
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
   // Los dos anclajes son TEXTO de otro dueño, no la salida de la corrida anterior: un cuadro en #REF!
   // deja de reconocerse a sí mismo, y ahí es donde un generador se engancha en la fila equivocada.
@@ -415,7 +425,7 @@ async function reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo }) {
     return
   }
   const r = rangoDelCuadroA({ visible, filaRotulos: geo.filaEncabezado, filaTope: iSub + 1 })
-  const reqs = requestsDelCuadroA({ sheetId, filaRotulos: geo.filaEncabezado, ...r })
+  const reqs = requestsDelCuadroA({ sheetId, filaRotulos: geo.filaEncabezado, ...r, cols })
   if (!reqs.length) {
     console.error('  ✗ el cuadro "a quién se le debe" no tiene ni una fila entre sus rótulos y el'
       + ' detalle: NO repongo "Vence" ni "Qué hacer".')
@@ -497,7 +507,7 @@ async function requestsDelControl({ google, sheetId, geo, rango }) {
   // Una fórmula que sólo se parchea no puede recibir una corrección de criterio. Ahora se escribe
   // entera desde `formulaControl()`, que a su vez sale de la resta canónica: si mañana cambia qué
   // cuenta como pago, cambia en un archivo y baja sola a la pestaña en la corrida siguiente.
-  const cabecera = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
+  const cabecera = (await google.readSheetValues(ID, rangoEncabezado('Compras')))[0] || []
   const { rangos: crudos, avisos } = rangosDesdeEncabezado(cabecera)
   for (const a of avisos) console.warn(`  ⚠ ${a}`)
   const nueva = formulaControl({

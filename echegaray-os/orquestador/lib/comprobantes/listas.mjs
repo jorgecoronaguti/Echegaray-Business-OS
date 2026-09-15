@@ -13,6 +13,8 @@
 // de un rango chico. El freno de mano de Sheets no lo afecta —no hay nada que frenar— y por eso
 // mostrar lo que se leyó de una foto sigue funcionando con el freno puesto.
 
+import { COMPRAS, PESTANAS, columnasDe, rangoEncabezado } from '../columnas-por-encabezado.mjs'
+
 /** El libro de Flujo de Fondos. Mismo default que el cargador; se pisa por entorno. */
 export const CASHFLOW_ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -48,16 +50,33 @@ function opcionesDe(hoja) {
  *
  * @returns {Promise<{ok:boolean, proveedores:string[], obras:string[], unidades:string[], categorias:string[], tiposPago:string[], error?:string}>}
  */
-const RANGOS = ['Compras!E4:E12', 'Compras!J4:J12', 'Compras!I4:I12', 'Compras!B4:B12', 'Compras!P4:P12']
-const ORDEN = ['proveedores', 'obras', 'unidades', 'categorias', 'tiposPago']
+const LISTAS = Object.freeze([
+  ['proveedores', COMPRAS.proveedor], ['obras', COMPRAS.cliente], ['unidades', COMPRAS.unidad],
+  ['categorias', COMPRAS.categoria], ['tiposPago', COMPRAS.tipoPago],
+])
+const ORDEN = LISTAS.map(([k]) => k)
+
+/**
+ * NÚCLEO PURO: los rangos de validación, con la letra sacada de la fila de rótulos viva.
+ *
+ * Eran `Compras!E4:E12` … `Compras!P4:P12` fijos. Con «Obra» insertada en L, la P pasa a ser la
+ * «Fecha prevista de pago (día)», que no tiene desplegable: `tiposPago` volvía vacío y el bot dejaba
+ * pasar cualquier texto a una columna estricta. Un rótulo que falta rompe con su nombre.
+ */
+export function rangosDeListas(encabezado) {
+  const cols = columnasDe(encabezado, Object.fromEntries(LISTAS), 'Compras')
+  const { primeraFila: p } = PESTANAS.Compras
+  return ORDEN.map((k) => `Compras!${cols[k].letra}${p}:${cols[k].letra}${p + 8}`)
+}
 
 export async function listasDeCompras(google, { fileId = CASHFLOW_ID } = {}) {
   const vacias = { proveedores: [], obras: [], unidades: [], categorias: [], tiposPago: [] }
-  if (typeof google?.readSheetValidations !== 'function') {
+  if (typeof google?.readSheetValidations !== 'function' || typeof google?.readSheetValues !== 'function') {
     return { ok: false, ...vacias, error: 'sin cliente de Google' }
   }
   try {
-    const hojas = await google.readSheetValidations(fileId, RANGOS)
+    const encabezado = (await google.readSheetValues(fileId, rangoEncabezado('Compras')))?.[0] ?? []
+    const hojas = await google.readSheetValidations(fileId, rangosDeListas(encabezado))
     const compras = (hojas || []).filter((h) => /^compras$/i.test(h.properties?.title))
     // Todos los rangos vuelven en `data[k]` de la MISMA entrada de hoja, en el orden en que se
     // pidieron. El fallback —una entrada por rango— es la otra forma en que la API los devuelve.
@@ -136,9 +155,10 @@ const RE_TITULO_SECCION = /^\s*\d+\s*·/
 export function cuitsDeLaGrilla(grilla = []) {
   const mapa = new Map()
   let dentro = false
-  for (const f of grilla) {
-    const a = String(f?.[0] ?? '').trim()
-    const b = String(f?.[1] ?? '').trim()
+  // `par`: una fila de DOS columnas de la pestaña Proveedores (nombre, CUIT), no una fila de Compras.
+  for (const par of grilla) {
+    const a = String(par?.[0] ?? '').trim()
+    const b = String(par?.[1] ?? '').trim()
     if (!dentro) {
       // El encabezado del bloque: la segunda columna se llama CUIT. Los otros dos encabezados de la
       // pestaña ("Se le debe", "N° Comprobante") no lo dicen, y son justo los que no hay que leer.

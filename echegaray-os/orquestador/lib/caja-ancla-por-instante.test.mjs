@@ -14,6 +14,9 @@ import {
   instanteDelSello, ventanaDelSello, anclaDeSalida,
 }  from './caja-ancla-por-instante.mjs'
 import { formulaComprasEfectivoPosteriores, formulaCobrosEfectivoPosteriores } from './caja-posterior-al-corte.mjs'
+import { MAPAS_HOY } from './columnas-caja.fixture.mjs'
+const COB = MAPAS_HOY.cob
+const CMP = MAPAS_HOY.cmp
 
 // Seriales reales del archivo: 07/08/2026 = 46241, 08/08 = 46242, 06/08 = 46240.
 const ARQ = 46241
@@ -35,7 +38,7 @@ test('EL DEFECTO, del lado de la fórmula: la rama "Pagado" ya no usa la ventana
   // Con el código de hoy esta fórmula traía `(fechaDeCaja>$D$7)` y el pago del día del arqueo caía
   // afuera. El `INT` no es decorativo: fija la unidad de comparación en el DÍA, que es la única que la
   // otra punta tiene (ninguna fuente de movimientos guarda hora — ver HORA_EN_LAS_FUENTES).
-  const f = formulaComprasEfectivoPosteriores('$D$7')
+  const f = formulaComprasEfectivoPosteriores('$D$7', CMP)
   assert.match(f, />=INT\(\$D\$7\)/, 'una salida entra desde el día del conteo INCLUSIVE')
   assert.doesNotMatch(f, /\)>\$D\$7\)/, 'no puede quedar ninguna comparación estricta contra el arqueo pelado')
 })
@@ -51,7 +54,7 @@ test('una ENTRADA del mismo día NO entra: se asume que el dueño ya la contó',
 })
 
 test('los cobros conservan la ventana EXCLUSIVA en su fórmula: son entradas', () => {
-  const f = formulaCobrosEfectivoPosteriores('$D$7')
+  const f = formulaCobrosEfectivoPosteriores('$D$7', COB)
   assert.match(f, /">"&\$D\$7/)
   assert.doesNotMatch(f, />=/)
 })
@@ -149,7 +152,7 @@ test('el trozo que aísla el empate compara días, no valores crudos', () => {
 
 test('separador es_AR y paréntesis balanceados en lo que se escribe al Sheet', () => {
   const fs = [ventanaDelConteo('A', 'B', false), ventanaDelConteo('A', 'B', true),
-    mismoDiaQueElConteo('A', 'B'), formulaComprasEfectivoPosteriores('$D$7')]
+    mismoDiaQueElConteo('A', 'B'), formulaComprasEfectivoPosteriores('$D$7', CMP)]
   for (const f of fs) {
     assert.doesNotMatch(f, /,/, 'el archivo está en es_AR: el separador es `;`')
     let n = 0

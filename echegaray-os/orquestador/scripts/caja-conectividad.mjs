@@ -29,6 +29,7 @@ import { lineasDeCaja, conceptosFueraDelCalendario, marcaDeLinea } from '../lib/
 import { RAW } from '../lib/conciliacion-por-naturaleza.mjs'
 import { deCompras, deCobranzas } from '../lib/libro-extractores.mjs'
 import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { veredictoPorMetodo, faltanteEnCartera } from '../lib/caja-canales.mjs'
 import { EN_CARTERA } from '../lib/cartera-cheques.mjs'
 import { COL as COL_RAW, FILA0 as FILA0_RAW, PESTAÑA as PESTANA_RAW } from './cheques-raw-pestana.mjs'
@@ -98,8 +99,10 @@ async function porMetodo(g, corte) {
   // El tipo de cambio viaja con la lectura: Cobranzas tiene filas en dólares y sin él `deCobranzas`
   // aborta. El veredicto por método se mide en pesos, como todo el resto del cuadro.
   const [compras, cobranzas, { tc: tipoCambio }] = await Promise.all([
-    g.readSheetValues(ID, 'Compras!A1:BZ', { render: 'UNFORMATTED_VALUE' }),
-    g.readSheetValues(ID, 'Cobranzas!A1:BB', { render: 'UNFORMATTED_VALUE' }),
+    // Las dos pestañas desde la fila 1 y hasta BZ: los extractores ubican cada columna por su rótulo, y
+    // `Cobranzas!A1:BB` dejaba afuera el veredicto del banco en cuanto «Obra» corre la zona a BC.
+    g.readSheetValues(ID, rangoFilas('Compras', 1), { render: 'UNFORMATTED_VALUE' }),
+    g.readSheetValues(ID, rangoFilas('Cobranzas', 1), { render: 'UNFORMATTED_VALUE' }),
     leerTipoCambio(g, ID),
   ])
   const movimientos = [...deCompras(compras ?? [], corte), ...deCobranzas(cobranzas ?? [], corte, { tipoCambio })]

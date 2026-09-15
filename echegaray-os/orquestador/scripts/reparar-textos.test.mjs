@@ -16,7 +16,8 @@ import assert from 'node:assert/strict'
 import { CON_ANCHO_GOBERNADO, planDeReparacion } from './reparar-textos.mjs'
 import { ANCHOS_PROVEEDORES, DUENOS_DE_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { ANCHOS_DECLARADOS, anchosDe, anchoDeclarado } from '../lib/anchos-declarados.mjs'
-import { ANCHOS_CONTROL } from './cobranzas-control.mjs'
+import { anchosDelControl, ubicarZona } from './cobranzas-control.mjs'
+import { COBRANZAS_1409_CON_CONTROL } from '../lib/cobranzas-encabezado-control.fixture.mjs'
 
 /** Un texto cortado, en la forma que lo emite `detectar`. */
 const cortado = (col, fila, valor) => ({ tipo: 'texto_cortado', col, fila, valor })
@@ -100,7 +101,7 @@ test('el registro no le declara un ancho a una columna que YA tiene dueño', () 
   // El defecto que esto atrapa: dos escritores con su propio número para la misma columna. El ancho
   // es de la COLUMNA ENTERA, así que gana el último que corre y el defecto vuelve en silencio.
   const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
-  const delControl = new Set(Object.keys(ANCHOS_CONTROL).map((j) => letra(Number(j))))
+  const delControl = new Set(Object.keys(anchosDelControl(ubicarZona(COBRANZAS_1409_CON_CONTROL))).map((j) => letra(Number(j))))
   for (const col of Object.keys(anchosDe('Cobranzas'))) {
     assert.equal(delControl.has(col), false, `${col} ya la declara ANCHOS_CONTROL en cobranzas-control.mjs`)
   }

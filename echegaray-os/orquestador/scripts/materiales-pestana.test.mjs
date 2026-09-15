@@ -26,6 +26,7 @@ import { FILA_TOTAL as ROTULO_TOTAL_OBRA } from '../lib/materiales-por-obra.mjs'
 import { FILA_BLOQUE } from '../lib/control-arca-bloque.mjs'
 import { SIN_FAMILIA, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
+import { RANGOS_ANTES as RANGOS_REFERENCIA } from '../lib/cash-flow-rangos-referencia.mjs'
 import { CONTADOR, MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL } from '../lib/formato-statement.mjs'
 
 const L = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
@@ -33,6 +34,8 @@ const L = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 
 /** Las columnas de Compras que el generador resuelve por rótulo, con las letras del archivo real. */
 const COL = { neto: 'M', iva: 'N', total: 'O', familia: 'AE', fechaCaja: 'AD', fechaFactura: 'C', obra: 'J', rubro: 'AB' }
 const RANGOS = Object.fromEntries(Object.entries(COL).map(([k, l]) => [k, `Compras!$${l}$4:$${l}`]))
+// El bloque de ARCA resuelve sus columnas aparte (2.ª «Rubro de caja», fecha de factura): el layout de hoy.
+const RG = RANGOS_REFERENCIA
 const OBRAS = ['LA ESTRELLA', 'San Francisco']
 
 // Seriales de Sheets: 1/1/2026 = 46023 (verificado contra el encabezado real de la pestaña).
@@ -70,7 +73,7 @@ function hojaCompras(filas = FILAS) {
 
 /** La grilla armada como la arma el generador, más un evaluador de cualquiera de sus celdas. */
 function pestana({ obras = OBRAS, filas = FILAS } = {}) {
-  const g = grilla({ obras, rangos: RANGOS })
+  const g = grilla({ obras, rangos: RANGOS, rg: RG })
   const hoja = {}
   // LOS ENCABEZADOS DE MES LLEGAN COMO SHEETS LOS DEJA: la grilla los escribe «1/3/2026» y Sheets los
   // guarda como SERIAL al entrar por USER_ENTERED. Evaluarlos como texto haría fallar el EOMONTH del
@@ -214,9 +217,9 @@ test('la fila que cuenta filas se dibuja como contador, no como plata', () => {
 })
 
 test('el ancho de la pestaña crece con las obras, no se tipea', () => {
-  assert.equal(grilla({ obras: OBRAS, rangos: RANGOS }).ancho, 18)
+  assert.equal(grilla({ obras: OBRAS, rangos: RANGOS, rg: RG }).ancho, 18)
   const muchas = Array.from({ length: 20 }, (_, i) => `Obra ${i}`)
-  assert.equal(grilla({ obras: muchas, rangos: RANGOS }).ancho, 23, 'Familia + 20 obras + Total + Sin obra')
+  assert.equal(grilla({ obras: muchas, rangos: RANGOS, rg: RG }).ancho, 23, 'Familia + 20 obras + Total + Sin obra')
 })
 
 test('FALLA CERRADO: sin un rango resuelto no se emite una fórmula rota', () => {

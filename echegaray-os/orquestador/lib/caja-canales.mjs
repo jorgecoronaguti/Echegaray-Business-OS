@@ -8,7 +8,7 @@
 // canales son cuatro:
 //
 //     1. el saldo del extracto        · fecha ≤ corte: el banco ya lo publicó
-//     2. "Movimientos posteriores al corte" · transferencia y débito con fecha > corte (CMP.tiposBanco)
+//     2. "Movimientos posteriores al corte" · transferencia y débito con fecha > corte (TIPOS_BANCO)
 //     3. el arqueo + ANEXO_EFECTIVO_NETO   · el efectivo, con su propio ancla (la fecha del arqueo)
 //     4. el libro, como COMPROMETIDO       · el instrumento diferido que todavía no debitó
 //
@@ -42,12 +42,12 @@
 //
 // ═══ POR QUÉ LA LISTA DE MEDIOS BANCARIOS SE IMPORTA Y NO SE TIPEA ═══
 //
-// `CMP.tiposBanco` es lo que la fórmula VIVA de CAJA suma en la línea de posteriores al corte. Si acá
+// `TIPOS_BANCO` es lo que la fórmula VIVA de CAJA suma en la línea de posteriores al corte. Si acá
 // se tipeara una segunda lista, el día que alguien agregue "Depósito" a la fórmula este archivo
 // seguiría diciendo que ese medio no toca el banco, y el veredicto quedaría verde sobre un hueco. Es
 // el mismo motivo por el que COL_FECHA_CAJA vive en un solo lado: escritor y lector, una definición.
 
-import { CMP } from './caja-posterior-al-corte.mjs'
+import { TIPOS_BANCO } from './caja-posterior-al-corte.mjs'
 
 /**
  * NÚCLEO PURO: el instrumento con el que se pagó, a partir del texto de "Tipo pago" de Compras.
@@ -73,7 +73,7 @@ export function instrumentoDePago(tipoPago) {
 
 /** Los instrumentos que la línea "Movimientos posteriores al corte" RESTA del banco. Derivados de la
  *  fórmula viva, no tipeados: ver el bloque de arriba. */
-export const INSTRUMENTOS_BANCO = Object.freeze(CMP.tiposBanco.map(instrumentoDePago))
+export const INSTRUMENTOS_BANCO = Object.freeze(TIPOS_BANCO.map(instrumentoDePago))
 
 /**
  * Los instrumentos que NO salen de la cuenta el día que se registra el pago: el cheque y el e-cheque
@@ -140,7 +140,7 @@ export const CANAL = Object.freeze({
  * La cobertura NO se pregunta "¿qué estado le puso el extractor?" y se contesta con el propio
  * extractor. Se cruzan DOS productores independientes:
  *
- *   · del lado del SHEET: qué suman las fórmulas vivas — `CMP.tiposBanco` para la línea de
+ *   · del lado del SHEET: qué suman las fórmulas vivas — `TIPOS_BANCO` para la línea de
  *     posteriores, el literal "Efectivo" para la caja física, y la ventana `fecha ≤ corte` para el
  *     saldo del extracto;
  *   · del lado del LIBRO: el estado del movimiento (un COMPROMETIDO/PROYECTADO/VENCIDO lo ve la

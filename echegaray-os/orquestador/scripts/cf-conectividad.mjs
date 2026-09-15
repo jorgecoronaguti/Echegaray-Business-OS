@@ -39,6 +39,7 @@ import {
 import { PESTANA_SEMANAL } from '../lib/cash-flow-semanas.mjs'
 import { PESTANA_MENSUAL } from '../lib/cash-flow-meses.mjs'
 import { instrumentoDePago } from '../lib/caja-canales.mjs'
+import { COMPRAS, PESTANAS, rangoColumna, rangoEncabezado, ubicarColumna } from '../lib/columnas-por-encabezado.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
@@ -127,7 +128,10 @@ const ROTULO_MEDIDA = {
 
 /** Los métodos de pago que Compras declara hoy — de la pestaña, no de una lista tipeada acá. */
 async function metodosDeclarados(g) {
-  const filas = await g.readSheetValues(ID, 'Compras!P4:P', { render: 'UNFORMATTED_VALUE' })
+  // «Tipo pago» por RÓTULO (14/09/2026): con «Obra» insertada en L pasa de P a Q.
+  const cab = (await g.readSheetValues(ID, rangoEncabezado('Compras')))?.[0] ?? []
+  const { letra: lTipo } = ubicarColumna(cab, COMPRAS.tipoPago, 'Compras')
+  const filas = await g.readSheetValues(ID, rangoColumna('Compras', lTipo, PESTANAS.Compras.primeraFila), { render: 'UNFORMATTED_VALUE' })
   const s = new Set()
   for (const f of filas ?? []) {
     const t = String(f?.[0] ?? '').trim()

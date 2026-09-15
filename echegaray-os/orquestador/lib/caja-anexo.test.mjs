@@ -8,6 +8,7 @@
 // ciega. Estos tests son los mismos, apuntando a donde ahora vive el código.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from './columnas-caja.fixture.mjs'
 import { readFileSync } from 'node:fs'
 import {
   grillaAnexo, ANCHO_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo, FECHA_DEL_CONTEO,
@@ -23,7 +24,7 @@ import { MARCAS } from './cheques-cobertura.mjs'
 import { FILA_DATO0 } from './cheques-emitidos-geometria.mjs'
 
 const vacia = (s) => s === '' || s === VACIO
-const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', cierre: 60, inicio: 50, cab: 5 }
+const REFS = { columnas: COLUMNAS_HOY, bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', cierre: 60, inicio: 50, cab: 5 }
 const CARTERA = { origen: 'test', enCartera: [{ numero: '00000514', emisor: 'Mineral Del Río' }], endosados: [{ numero: '00000313', beneficiario: 'ALUMETAL S.A' }] }
 const construir = () => grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: ['descubierto', 'Comisiones', 'Impuesto al cheque'] })
 

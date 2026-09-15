@@ -38,6 +38,18 @@
 // del dueño —cambia lo que llega al Cash Flow—, y hasta que la tome el comportamiento no se toca.
 // Lo que sí cambia: `GRUPOS_FORMULA` se deriva EXCLUYENDO las pisadas, porque estampar la fórmula
 // después de escribir el valor borraría el valor recién escrito.
+//
+// ═══ DESDE EL 14/09/2026 EL CONTRATO SE DECLARA POR RÓTULO, NO POR LETRA ═══
+//
+// El dueño insertó «Obra» en Compras L: todo desde «Concepto» se corre una letra. La declaración de
+// abajo nombra cada columna por su rótulo (y los dos repetidos por ocurrencia); la letra sale de la
+// fila de rótulos VIVA con `contratoContra(encabezado)`. El cargador usa ESO. Los exports estáticos
+// (`CONTRATO`, `GRUPOS_FORMULA`, `LETRAS_*`) son el mismo contrato resuelto contra el encabezado de
+// referencia del 25/08 (`encabezados-referencia.mjs`), para los tests y los scripts de diagnóstico
+// que todavía no leen el Sheet — no para escribir.
+
+import { ubicarColumna } from '../columnas-por-encabezado.mjs'
+import { COMPRAS_2508 } from '../encabezados-referencia.mjs'
 
 /** Qué es cada celda de esta columna en la fila de datos. Es el eje del contrato. */
 export const NATURALEZA = Object.freeze({
@@ -51,75 +63,85 @@ export const NATURALEZA = Object.freeze({
   PERSONA: 'persona',
 })
 
+const N = NATURALEZA
+
 /**
- * LA PESTAÑA, COLUMNA POR COLUMNA. `rotulo` es el texto EXACTO de la fila 3 leído el 25/08/2026: si
- * el dueño renombra un encabezado, el contrato deja de coincidir y hay que venir acá — que es
- * justamente lo que se quiere, porque un rótulo que cambia suele ser una columna que cambió de
- * significado.
+ * LA PESTAÑA, COLUMNA POR COLUMNA, POR RÓTULO. `rotulo` es el texto EXACTO de la fila 3; `ocurrencia`
+ * separa los dos rótulos repetidos; `clave` es la llave de `COL` en `carga-comprobantes.mjs`; `rol`
+ * marca lo que el cargador escribe desde el comprobante. `opcional`: la columna puede no existir
+ * todavía (la «Obra», antes de la inserción) y entonces no está en el contrato resuelto.
  *
- * `rol` enlaza con la clave de `COL` en `carga-comprobantes.mjs` para las columnas que el cargador
- * escribe: es el puente entre "qué dato del comprobante" y "qué letra del Sheet".
+ * Las notas de cada columna (por qué Q pegada es normal, por qué T y X las pisa el cargador, por qué
+ * AG es un fósil vivo) están en el historial de este archivo y en `contrato-columnas.test.mjs`.
  */
-export const CONTRATO = Object.freeze([
-  { letra: 'A', rotulo: 'ID', naturaleza: NATURALEZA.FORMULA_FILA },
-  { letra: 'B', rotulo: 'Categoría', naturaleza: NATURALEZA.CARGADOR, rol: 'categoria' },
-  { letra: 'C', rotulo: 'Fecha factura', naturaleza: NATURALEZA.CARGADOR, rol: 'fecha' },
-  { letra: 'D', rotulo: 'Fecha factura (mes)', naturaleza: NATURALEZA.FORMULA_FILA },
-  { letra: 'E', rotulo: 'Proveedor', naturaleza: NATURALEZA.CARGADOR, rol: 'proveedor' },
-  { letra: 'F', rotulo: 'Modalidad', naturaleza: NATURALEZA.CARGADOR, rol: 'modalidad' },
-  { letra: 'G', rotulo: 'Tipo', naturaleza: NATURALEZA.CARGADOR, rol: 'tipo' },
-  { letra: 'H', rotulo: 'N° Comprobante', naturaleza: NATURALEZA.CARGADOR, rol: 'numero' },
+export const DECLARACION = Object.freeze([
+  { rotulo: 'ID', naturaleza: N.FORMULA_FILA, clave: 'id' },
+  { rotulo: 'Categoría', naturaleza: N.CARGADOR, rol: 'categoria', clave: 'categoria' },
+  { rotulo: 'Fecha factura', naturaleza: N.CARGADOR, rol: 'fecha', clave: 'fecha' },
+  { rotulo: 'Fecha factura (mes)', naturaleza: N.FORMULA_FILA, clave: 'mes' },
+  { rotulo: 'Proveedor', naturaleza: N.CARGADOR, rol: 'proveedor', clave: 'proveedor' },
+  { rotulo: 'Modalidad', naturaleza: N.CARGADOR, rol: 'modalidad', clave: 'modalidad' },
+  { rotulo: 'Tipo', naturaleza: N.CARGADOR, rol: 'tipo', clave: 'tipo' },
+  { rotulo: 'N° Comprobante', naturaleza: N.CARGADOR, rol: 'numero', clave: 'numero' },
   // I/J/K las completa el dueño con su desplegable, PERO el cargador las escribe cuando la
-  // imputación viene explícita en el comprobante (la anotación a mano). No son fórmula: escribirlas
-  // no destruye nada, sólo ahorra un tipeo. Por eso `cargador` y no `persona`.
-  { letra: 'I', rotulo: 'Unidad de Negocio', naturaleza: NATURALEZA.CARGADOR, rol: 'unidad' },
-  { letra: 'J', rotulo: 'Cliente / Asignación', naturaleza: NATURALEZA.CARGADOR, rol: 'obra' },
-  { letra: 'K', rotulo: 'Detalles / Obra', naturaleza: NATURALEZA.CARGADOR, rol: 'detalle' },
-  { letra: 'L', rotulo: 'Concepto', naturaleza: NATURALEZA.CARGADOR, rol: 'concepto' },
-  { letra: 'M', rotulo: 'Importe', naturaleza: NATURALEZA.CARGADOR, rol: 'neto' },
-  { letra: 'N', rotulo: 'IVA', naturaleza: NATURALEZA.CARGADOR, rol: 'iva' },
-  { letra: 'O', rotulo: 'Total', naturaleza: NATURALEZA.FORMULA_FILA },
-  { letra: 'P', rotulo: 'Tipo pago', naturaleza: NATURALEZA.CARGADOR, rol: 'formaPago' },
-  // Q DERIVA LA FECHA PREVISTA DE LA MODALIDAD: `=IF(F="pago";C;"Pendiente")`. El cargador NO la
-  // escribe —verificado por construcción en `valoresInput`— y sin embargo tiene un serial pegado
-  // encima en 524 de las 897 filas de la pestaña, **arrancando en la fila 4**: desde el origen, años
-  // antes de que existiera el cargador. En 353 de esas 524 la fecha es DISTINTA de la que la fórmula
-  // daría — es el vencimiento real del echeq o del cheque, que ni la fórmula ni el cargador pueden
-  // saber, y lo pone una persona. Q pegada es el estado normal de esta pestaña, no un daño: quien
-  // "repare" esta columna en masa borra 353 vencimientos reales. Medido el 25/08/2026 con
-  // `scripts/reparar-formulas-compras.mjs`.
-  { letra: 'Q', rotulo: 'Fecha prevista de pago (día)', naturaleza: NATURALEZA.FORMULA_FILA },
-  { letra: 'R', rotulo: 'Fecha prevista de pago (mes)', naturaleza: NATURALEZA.FORMULA_FILA },
-  { letra: 'S', rotulo: 'Total o Parcial', naturaleza: NATURALEZA.CARGADOR, rol: 'totalParcial' },
-  // T ES FÓRMULA (`=IF(F="pago";O;0)`) Y EL CARGADOR LA PISA. Ver `pisaElCargador` abajo.
-  { letra: 'T', rotulo: 'Monto Pagado', naturaleza: NATURALEZA.FORMULA_FILA, pisaElCargador: true, rol: 'pagado' },
-  { letra: 'U', rotulo: 'Monto Parcial 1', naturaleza: NATURALEZA.FORMULA_FILA },
-  { letra: 'V', rotulo: 'Fecha prevista de pago 2', naturaleza: NATURALEZA.PERSONA },
-  { letra: 'W', rotulo: 'Monto Parcial 2', naturaleza: NATURALEZA.PERSONA },
-  // X TAMBIÉN ES FÓRMULA Y TAMBIÉN LA PISA: `=IF($E="";"";IF(ABS(N($T)+N($W)-N($O))<1;"Pagado";…))`.
-  { letra: 'X', rotulo: 'Estado', naturaleza: NATURALEZA.FORMULA_FILA, pisaElCargador: true, rol: 'estado' },
-  { letra: 'Y', rotulo: 'Tipo de Costo', naturaleza: NATURALEZA.PERSONA },
-  { letra: 'Z', rotulo: 'Estado pago', naturaleza: NATURALEZA.FORMULA_FILA },
-  { letra: 'AA', rotulo: 'Estado Carga', naturaleza: NATURALEZA.PERSONA },
-  // AB y AC comparten rótulo desde el corrimiento del 14/08 y las DOS son ARRAYFORMULA vivas. AB no
-  // figuraba en ninguna lista de intocables: es la que alimenta a AE y a AJ.
-  { letra: 'AB', rotulo: 'Rubro de caja', naturaleza: NATURALEZA.ARRAYFORMULA },
-  { letra: 'AC', rotulo: 'Rubro de caja', naturaleza: NATURALEZA.ARRAYFORMULA },
-  { letra: 'AD', rotulo: 'Fecha de caja', naturaleza: NATURALEZA.ARRAYFORMULA },
-  { letra: 'AE', rotulo: 'Familia de material', naturaleza: NATURALEZA.ARRAYFORMULA },
-  { letra: 'AF', rotulo: 'Sub-rubro de estructura', naturaleza: NATURALEZA.ARRAYFORMULA },
-  // AG/AH comparten rótulo y NO son la misma fórmula: AG apunta a $AC/$AI y AH a $AD/$AJ. AG es la
-  // versión anterior al corrimiento del 14/08 que quedó viva al lado de la corregida. Se declara
-  // como está —fórmula por fila en 96 de 96— y se estampa igual que las otras: hacerla desaparecer
-  // es decisión del dueño, y una fila nueva sin AG sería una inconsistencia distinta, no un arreglo.
-  { letra: 'AG', rotulo: 'Orden de pago (OS)', naturaleza: NATURALEZA.FORMULA_FILA },
-  { letra: 'AH', rotulo: 'Orden de pago (OS)', naturaleza: NATURALEZA.FORMULA_FILA },
-  { letra: 'AI', rotulo: 'Orden sin fecha (OS)', naturaleza: NATURALEZA.FORMULA_FILA },
-  { letra: 'AJ', rotulo: '¿Proveedor comercial? (OS)', naturaleza: NATURALEZA.ARRAYFORMULA },
-  { letra: 'AK', rotulo: '¿Comprobante repetido? (OS)', naturaleza: NATURALEZA.ARRAYFORMULA },
-  { letra: 'AL', rotulo: 'Saldo pendiente (OS)', naturaleza: NATURALEZA.ARRAYFORMULA },
-  { letra: 'AM', rotulo: 'CUIT (OS)', naturaleza: NATURALEZA.ARRAYFORMULA },
-  { letra: 'AN', rotulo: 'Tramo de vencimiento (OS)', naturaleza: NATURALEZA.ARRAYFORMULA },
+  // imputación viene explícita en el comprobante. No son fórmula: escribirlas no destruye nada.
+  { rotulo: 'Unidad de Negocio', naturaleza: N.CARGADOR, rol: 'unidad', clave: 'unidad' },
+  { rotulo: 'Cliente / Asignación', naturaleza: N.CARGADOR, rol: 'obra', clave: 'obra' },
+  { rotulo: 'Detalles / Obra', naturaleza: N.CARGADOR, rol: 'detalle', clave: 'detalle' },
+  // LA COLUMNA NUEVA (14/09/2026): la obra codificada (OB-#### · nombre, ES-ADM, ES-TAL, «Sin obra –
+  // cliente»). La escribe el cargador cuando la obra es segura; si no, la pregunta.
+  { rotulo: 'Obra', naturaleza: N.CARGADOR, rol: 'obraFila', clave: 'obraFila', opcional: true },
+  { rotulo: 'Concepto', naturaleza: N.CARGADOR, rol: 'concepto', clave: 'concepto' },
+  { rotulo: 'Importe', naturaleza: N.CARGADOR, rol: 'neto', clave: 'neto' },
+  { rotulo: 'IVA', naturaleza: N.CARGADOR, rol: 'iva', clave: 'iva' },
+  { rotulo: 'Total', naturaleza: N.FORMULA_FILA, clave: 'total' },
+  { rotulo: 'Tipo pago', naturaleza: N.CARGADOR, rol: 'formaPago', clave: 'formaPago' },
+  // Q DERIVA LA FECHA PREVISTA; tiene un serial pegado en 524 de 897 filas desde el origen: es el
+  // vencimiento real que pone una persona. Quien la «repare» en masa borra 353 vencimientos reales.
+  { rotulo: 'Fecha prevista de pago (día)', naturaleza: N.FORMULA_FILA, clave: 'prevDia' },
+  { rotulo: 'Fecha prevista de pago (mes)', naturaleza: N.FORMULA_FILA, clave: 'prevMes' },
+  { rotulo: 'Total o Parcial', naturaleza: N.CARGADOR, rol: 'totalParcial', clave: 'totalParcial' },
+  // T ES FÓRMULA (`=IF(F="pago";O;0)`) Y EL CARGADOR LA PISA. Ver `pisaElCargador`.
+  { rotulo: 'Monto Pagado', naturaleza: N.FORMULA_FILA, pisaElCargador: true, rol: 'pagado', clave: 'pagado' },
+  { rotulo: 'Monto Parcial 1', naturaleza: N.FORMULA_FILA, clave: 'parcial1' },
+  { rotulo: 'Fecha prevista de pago 2', naturaleza: N.PERSONA, clave: 'prevFecha2' },
+  { rotulo: 'Monto Parcial 2', naturaleza: N.PERSONA, clave: 'parcial2' },
+  // X TAMBIÉN ES FÓRMULA Y TAMBIÉN LA PISA.
+  { rotulo: 'Estado', naturaleza: N.FORMULA_FILA, pisaElCargador: true, rol: 'estado', clave: 'estado' },
+  { rotulo: 'Tipo de Costo', naturaleza: N.PERSONA, clave: 'tipoCosto' },
+  { rotulo: 'Estado pago', naturaleza: N.FORMULA_FILA, clave: 'estadoPago' },
+  { rotulo: 'Estado Carga', naturaleza: N.PERSONA, clave: 'estadoCarga' },
+  // Los dos «Rubro de caja» son ARRAYFORMULA vivas: la 1.ª alimenta a AE y a AJ.
+  { rotulo: 'Rubro de caja', ocurrencia: 1, naturaleza: N.ARRAYFORMULA },
+  { rotulo: 'Rubro de caja', ocurrencia: 2, naturaleza: N.ARRAYFORMULA, clave: 'rubroCaja' },
+  { rotulo: 'Fecha de caja', naturaleza: N.ARRAYFORMULA, clave: 'fechaCaja' },
+  { rotulo: 'Familia de material', naturaleza: N.ARRAYFORMULA, clave: 'familia' },
+  { rotulo: 'Sub-rubro de estructura', naturaleza: N.ARRAYFORMULA, clave: 'subRubro' },
+  // Los dos «Orden de pago (OS)» NO son la misma fórmula: la 1.ª es la versión anterior al corrimiento
+  // del 14/08 que quedó viva. Se estampa igual: hacerla desaparecer es decisión del dueño.
+  { rotulo: 'Orden de pago (OS)', ocurrencia: 1, naturaleza: N.FORMULA_FILA },
+  { rotulo: 'Orden de pago (OS)', ocurrencia: 2, naturaleza: N.FORMULA_FILA, clave: 'ordenPago' },
+  { rotulo: 'Orden sin fecha (OS)', naturaleza: N.FORMULA_FILA, clave: 'ordenSinFecha' },
+  { rotulo: '¿Proveedor comercial? (OS)', naturaleza: N.ARRAYFORMULA, clave: 'comercial' },
+  { rotulo: '¿Comprobante repetido? (OS)', naturaleza: N.ARRAYFORMULA },
+  { rotulo: 'Saldo pendiente (OS)', naturaleza: N.ARRAYFORMULA },
+  { rotulo: 'CUIT (OS)', naturaleza: N.ARRAYFORMULA },
+  { rotulo: 'Tramo de vencimiento (OS)', naturaleza: N.ARRAYFORMULA },
+].map((c) => Object.freeze(c)))
+
+/**
+ * LAS COLUMNAS DEL DUEÑO: la regla del repo «AC/AD/AE/AF/AJ nunca se tocan», por RÓTULO. Después de
+ * la inserción de «Obra» son AD/AE/AF/AG/AK: una lista de letras las habría dejado desprotegidas.
+ */
+export const COLUMNAS_DEL_DUENO = Object.freeze([
+  Object.freeze({ rotulo: 'Rubro de caja', ocurrencia: 2 }), 'Fecha de caja', 'Familia de material',
+  'Sub-rubro de estructura', '¿Proveedor comercial? (OS)',
+])
+
+/** Las columnas que calcula el OS (AB, AK, AL, AM, AN antes de la inserción). Tampoco se escriben. */
+export const COLUMNAS_DEL_OS = Object.freeze([
+  Object.freeze({ rotulo: 'Rubro de caja', ocurrencia: 1 }), '¿Comprobante repetido? (OS)',
+  'Saldo pendiente (OS)', 'CUIT (OS)', 'Tramo de vencimiento (OS)',
 ])
 
 /** Letra de columna → índice 0. 'A'→0, 'AA'→26. */
@@ -137,15 +159,27 @@ export function letraDe(i) {
   return s
 }
 
-/** La entrada del contrato para esa letra, o `null` si la columna no está declarada. */
-export function columna(letra) {
-  const L = String(letra ?? '').toUpperCase()
-  return CONTRATO.find((c) => c.letra === L) ?? null
+/** Las letras de una lista de rótulos contra un encabezado. Falla si falta alguno. */
+export function letrasDe(declaraciones, encabezado) {
+  return declaraciones.map((d) => ubicarColumna(encabezado, d, 'Compras').letra)
 }
 
-/** Las letras de una naturaleza, en orden de columna. */
-export function letrasPorNaturaleza(naturaleza) {
-  return CONTRATO.filter((c) => c.naturaleza === naturaleza).map((c) => c.letra)
+/**
+ * EL CONTRATO CONTRA LA FILA DE RÓTULOS VIVA: cada entrada con su `letra`, en orden de columna. Un
+ * rótulo obligatorio que falta aborta (la pestaña cambió y el cargador no escribe a ciegas); uno
+ * opcional que falta queda afuera.
+ */
+export function contratoContra(encabezado) {
+  const faltan = []
+  const out = []
+  for (const c of DECLARACION) {
+    try {
+      const col = ubicarColumna(encabezado, c, 'Compras')
+      if (col) out.push(Object.freeze({ ...c, letra: col.letra }))
+    } catch (e) { faltan.push(e.message) }
+  }
+  if (faltan.length) throw new Error(`el contrato de Compras no coincide con la pestaña:\n${faltan.join('\n')}`)
+  return Object.freeze(out.sort((a, b) => indiceDe(a.letra) - indiceDe(b.letra)))
 }
 
 /**
@@ -164,49 +198,67 @@ export function tramosContiguos(letras = []) {
 }
 
 /**
- * LOS TRAMOS DE FÓRMULA POR FILA QUE SE ESTAMPAN EN CADA CARGA. Se derivan, no se mantienen a mano.
+ * TODO LO QUE SE DERIVA DEL CONTRATO RESUELTO. Se deriva, no se mantiene a mano.
  *
- * Se EXCLUYEN las que el cargador pisa a propósito (`pisaElCargador`): el cargador escribe primero
- * los valores y estampa las fórmulas después, así que meter `T` o `X` acá borraría el monto pagado y
- * el estado que se acaban de escribir. Mientras esas dos pisadas sigan siendo el comportamiento
- * acordado, sus columnas no pueden estar en esta lista — y el día que el dueño decida sacarlas,
- * borrar `pisaElCargador` las mete acá solas.
+ * `COLUMNAS_A_ESTAMPAR` EXCLUYE las que el cargador pisa a propósito (`pisaElCargador`): el cargador
+ * escribe primero los valores y estampa las fórmulas después, así que meter `T` o `X` acá borraría el
+ * monto pagado y el estado recién escritos.
  */
-export const COLUMNAS_A_ESTAMPAR = Object.freeze(
-  CONTRATO.filter((c) => c.naturaleza === NATURALEZA.FORMULA_FILA && !c.pisaElCargador).map((c) => c.letra),
-)
+export function derivar(contrato) {
+  const deNaturaleza = (n) => contrato.filter((c) => c.naturaleza === n).map((c) => c.letra)
+  const estampar = contrato.filter((c) => c.naturaleza === N.FORMULA_FILA && !c.pisaElCargador).map((c) => c.letra)
+  const escribibles = contrato.filter((c) => c.naturaleza === N.CARGADOR || c.pisaElCargador).map((c) => c.letra)
+  return Object.freeze({
+    COLUMNAS_A_ESTAMPAR: Object.freeze(estampar),
+    GRUPOS_FORMULA: Object.freeze(tramosContiguos(estampar).map((t) => Object.freeze(t))),
+    LETRAS_ARRAYFORMULA: Object.freeze(deNaturaleza(N.ARRAYFORMULA)),
+    LETRAS_ESCRIBIBLES: Object.freeze(escribibles),
+    letrasIndebidas: (letras) => letrasIndebidas(letras, contrato),
+  })
+}
 
-/** Los tramos contiguos de `COLUMNAS_A_ESTAMPAR`, listos para `copyPaste`. */
-export const GRUPOS_FORMULA = Object.freeze(tramosContiguos([...COLUMNAS_A_ESTAMPAR]).map((t) => Object.freeze(t)))
+/** `COL` del cargador (clave → letra) para un contrato resuelto. */
+export function colDelCargador(contrato) {
+  return Object.fromEntries(contrato.filter((c) => c.clave).map((c) => [c.clave, c.letra]))
+}
 
-/** Las ARRAYFORMULA. Escribir cualquier cosa en ellas —incluso `""`— parte el derrame de la columna. */
-export const LETRAS_ARRAYFORMULA = Object.freeze(letrasPorNaturaleza(NATURALEZA.ARRAYFORMULA))
+/** El contrato contra el encabezado de REFERENCIA (25/08). Sólo tests y diagnóstico: el que escribe usa `contratoContra`. */
+export const CONTRATO = contratoContra(COMPRAS_2508)
+const REF = derivar(CONTRATO)
+export const COLUMNAS_A_ESTAMPAR = REF.COLUMNAS_A_ESTAMPAR
+export const GRUPOS_FORMULA = REF.GRUPOS_FORMULA
+export const LETRAS_ARRAYFORMULA = REF.LETRAS_ARRAYFORMULA
+export const LETRAS_ESCRIBIBLES = REF.LETRAS_ESCRIBIBLES
 
-/** Las letras que el cargador tiene permitido escribir, incluidas las dos pisadas declaradas. */
-export const LETRAS_ESCRIBIBLES = Object.freeze(
-  CONTRATO.filter((c) => c.naturaleza === NATURALEZA.CARGADOR || c.pisaElCargador).map((c) => c.letra),
-)
+/** La entrada del contrato para esa letra, o `null` si la columna no está declarada. */
+export function columna(letra, contrato = CONTRATO) {
+  const L = String(letra ?? '').toUpperCase()
+  return contrato.find((c) => c.letra === L) ?? null
+}
+
+/** Las letras de una naturaleza, en orden de columna. */
+export function letrasPorNaturaleza(naturaleza, contrato = CONTRATO) {
+  return contrato.filter((c) => c.naturaleza === naturaleza).map((c) => c.letra)
+}
 
 /**
- * ¿QUÉ LETRAS DE ESTE LOTE NO SE PUEDEN ESCRIBIR? El portón del cargador, en una función pura.
- *
- * Existe porque el defecto de una columna pisada no se ve: la celda queda con un número plausible y
- * el error viaja por fórmula hasta el Cash Flow y la app. Un `Object.keys()` contra esta lista lo
- * caza en el proceso, antes de que salga el pedido a Google.
+ * ¿QUÉ LETRAS DE ESTE LOTE NO SE PUEDEN ESCRIBIR? El portón del cargador, en una función pura. Con
+ * el contrato VIVO: después de la inserción, `AD` es «Fecha de caja» y `AC` es el 1.º «Rubro de caja».
  *
  * @param {string[]} letras las columnas que un lote quiere escribir
  * @returns {{letra:string, motivo:string}[]} vacío si todas se pueden escribir
  */
-export function letrasIndebidas(letras = []) {
+export function letrasIndebidas(letras = [], contrato = CONTRATO) {
+  const escribibles = contrato.filter((c) => c.naturaleza === N.CARGADOR || c.pisaElCargador).map((c) => c.letra)
   const mal = []
   for (const l of letras) {
     const L = String(l ?? '').toUpperCase()
-    if (LETRAS_ESCRIBIBLES.includes(L)) continue
-    const c = columna(L)
+    if (escribibles.includes(L)) continue
+    const c = columna(L, contrato)
     if (!c) { mal.push({ letra: L, motivo: 'no está en el contrato de columnas de Compras' }); continue }
-    if (c.naturaleza === NATURALEZA.ARRAYFORMULA) {
+    if (c.naturaleza === N.ARRAYFORMULA) {
       mal.push({ letra: L, motivo: `«${c.rotulo}» es ARRAYFORMULA desde la fila 4: escribir ahí parte el derrame de la columna entera` })
-    } else if (c.naturaleza === NATURALEZA.FORMULA_FILA) {
+    } else if (c.naturaleza === N.FORMULA_FILA) {
       mal.push({ letra: L, motivo: `«${c.rotulo}» es fórmula por fila: un valor encima deja de recalcularse cuando cambia lo que la alimenta` })
     } else {
       mal.push({ letra: L, motivo: `«${c.rotulo}» la completa una persona con su desplegable` })

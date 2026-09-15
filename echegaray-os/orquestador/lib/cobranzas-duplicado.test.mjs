@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { COB_HOY } from './columnas-caja.fixture.mjs'
 import { gruposIndistinguibles, esIndistinguible, plataEnJuego, CLAVE } from './cobranzas-duplicado.mjs'
 
 // Los dos casos REALES del archivo, al 21/07.
@@ -51,13 +52,13 @@ test('la plata en juego es el excedente, no el total del grupo', () => {
 })
 
 test('la fórmula del Sheet usa las mismas cinco columnas que el JavaScript', () => {
-  const f = esIndistinguible('Cobranzas', 5, 400)
-  for (const col of Object.values(CLAVE)) assert.ok(f.includes(`$${col}$5:$${col}$400`), `falta la columna ${col}`)
+  const f = esIndistinguible(COB_HOY, 'Cobranzas', 5, 400)
+  for (const col of Object.values(CLAVE).map((k) => COB_HOY[k].letra)) assert.ok(f.includes(`$${col}$5:$${col}$400`), `falta la columna ${col}`)
   assert.ok(f.endsWith('>1'))
   assert.ok(!f.includes('$A$'), 'el ID NO entra en la clave: es único por construcción')
 })
 
 test('la fórmula usa el separador es-AR', () => {
-  assert.ok(!esIndistinguible().includes(','), 'una coma rompería la fórmula en un Sheet es-AR')
-  assert.match(plataEnJuego(), /\/2$/, 'de cada par sobra uno')
+  assert.ok(!esIndistinguible(COB_HOY).includes(','), 'una coma rompería la fórmula en un Sheet es-AR')
+  assert.match(plataEnJuego(COB_HOY), /\/2$/, 'de cada par sobra uno')
 })

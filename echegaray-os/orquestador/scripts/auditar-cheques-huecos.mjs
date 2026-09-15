@@ -6,6 +6,8 @@
 import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { huecosDeCruce } from '../lib/cheques-huecos.mjs'
+import { COMPRAS } from '../lib/columnas-por-encabezado.mjs'
+import { leerConEncabezado } from '../lib/columnas-lectura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const $ = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
@@ -22,9 +24,13 @@ async function main() {
   const cheques = (ch ?? []).filter((f) => f && f[4]).map((f, i) => ({
     fila: i + 27, proveedor: f[4], monto: num(f[5]), comprobante: f[7], debitado: f[10], estadoOs: f[12],
   }))
-  const co = await google.readSheetValues(ID, 'Compras!A4:AN2000')
-  const compras = (co ?? []).filter((f) => f && f[4]).map((f, i) => ({
-    fila: i + 4, proveedor: f[4], monto: num(f[14]), comprobante: f[7], saldoPendiente: num(f[37]),
+  // Compras por RÓTULO, rótulos y datos en un viaje (14/09/2026: con «Obra» en L, Total y Saldo se corren).
+  const co = await leerConEncabezado(google, ID, 'Compras', {
+    proveedor: COMPRAS.proveedor, total: COMPRAS.total, comprobante: COMPRAS.comprobante, saldo: COMPRAS.saldo,
+  }, { hasta: 2000 })
+  const c = co.idx
+  const compras = co.datos.filter((f) => f && f[c.proveedor]).map((f, i) => ({
+    fila: i + co.primeraFila, proveedor: f[c.proveedor], monto: num(f[c.total]), comprobante: f[c.comprobante], saldoPendiente: num(f[c.saldo]),
   }))
 
   const r = huecosDeCruce(cheques, compras)

@@ -48,3 +48,16 @@ const mapa = new Map([
 }
 
 console.log('alias-pendientes.test.mjs OK')
+
+// ═══ «OBRA» INSERTADA EN COMPRAS L (14/09/2026): cliente y Total por rótulo ═══
+{
+  const { rangosDeFuente, FUENTES } = await import('./alias-pendientes.mjs')
+  const { COMPRAS_2508, COMPRAS_CON_OBRA } = await import('./encabezados-referencia.mjs')
+  const compras = FUENTES.find((f) => f.pestana === 'Compras')
+  const conCab = (cab) => ({ readSheetValues: async () => [cab] })
+  assert.deepEqual(await rangosDeFuente(conCab(COMPRAS_2508), 'X', compras), { texto: 'Compras!J4:J1000', monto: 'Compras!O4:O1000' })
+  assert.deepEqual(await rangosDeFuente(conCab(COMPRAS_CON_OBRA), 'X', compras), { texto: 'Compras!J4:J1000', monto: 'Compras!P4:P1000' })
+  const jornales = FUENTES.find((f) => f.pestana === '_J_OBREROS')
+  assert.deepEqual(await rangosDeFuente(conCab([]), 'X', jornales), { texto: '_J_OBREROS!AB1:AB990', monto: '_J_OBREROS!AA1:AA990' })
+  await assert.rejects(rangosDeFuente(conCab(['ID']), 'X', compras), /falta la columna/)
+}

@@ -1,0 +1,31 @@
+[Unit]
+# LA COLA QUE ESCRIBE LA COLUMNA «OBRA» DE COMPRAS (obra elegida en la app). Escribe en el Sheet real:
+# hereda TODAS las guardas de esa cadena (freno de mano, candado, no-borrar) y no esquiva ninguna.
+#
+# NO lleva ORQ_SHEETS_DESCONGELAR, igual que la cola de Cobranzas y por la misma razón: sería un bypass
+# permanente del freno. El worker usa `confirmacion` con el nombre de quien eligió la obra
+# (compra_obra_cambio.pedido_por o pedido_por_nombre), logueado en CADA escritura.
+#
+# NO INSTALADA. Requiere antes: la migración 20260915T0700 aplicada y la columna «Obra» insertada en
+# Compras. Sin la columna el worker no escribe: deja cada cambio pendiente con el motivo.
+Description=Echegaray OS - Cola de obra por fila a la pestana Compras (app -> Sheet)
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/orquestador/comunicacion/compras/cola-obra.mjs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+# --aplicar es explícito: el script sin bandera corre en seco.
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/compras-obra-cola.mjs --aplicar
+# Cada cambio: leer la fila, escribir, releer — hasta 20 por corrida. Matar al escritor a mitad deja la
+# fila en `procesando` hasta que la recicle el lease: el timeout es la promesa de no cortar una escritura.
+TimeoutStartSec=180
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=compras-obra-cola
+
+[Install]
+WantedBy=default.target

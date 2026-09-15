@@ -10,6 +10,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { colDe, grilla, ultimoDiaCargado, rangosDeJornales, RANGOS_RETIRADOS, ubicarParametros } from './jornales-pestana.mjs'
+import { columnasRetiros } from '../lib/direccion-retiros.mjs'
+import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
 import { PARAMETROS_JORNADA } from '../lib/jornada-uocra.mjs'
 import {
   repartoQuincena, repartoPersona, filasDePersonas, ACUERDO_BANCO,
@@ -25,7 +27,7 @@ const bloques = [
 ]
 const pendientes = [{ desde: new Date(2026, 7, 1) }, { desde: new Date(2026, 7, 16) }]
 const bloquesOfi = [{ mes: 6, inicio: 5, fin: 8 }, { mes: 7, inicio: 12, fin: 15 }]
-const g = grilla({ bloques, pendientes, bloquesOfi })
+const g = grilla({ colsCompras: columnasRetiros(COMPRAS_2508),  bloques, pendientes, bloquesOfi })
 const colA = g.filas.map((f) => String(f[0] ?? ''))
 
 // EL ORÁCULO ES EL ENCABEZADO QUE LA GRILLA ESCRIBE DE VERDAD, NO UNA LETRA COPIADA ACÁ.
@@ -232,7 +234,7 @@ test('LA COLUMNA 14 DE LA GRILLA JAMÁS LLEVA EL CENTINELA — es la del dueño,
   // 4ª reincidencia del mismo borrado (06/08): vaciarColumnaDeProsa(grid, ANCHO-1) pisaba "Pagado el"
   // con VACIO después de copiarla. Este guardián escanea la grilla ENTERA: si cualquier vía futura
   // vuelve a poner el centinela en la columna del dueño, esto se pone rojo antes de llegar al Sheet.
-  const g = grilla({ bloques, pendientes, bloquesOfi })
+  const g = grilla({ colsCompras: columnasRetiros(COMPRAS_2508),  bloques, pendientes, bloquesOfi })
   for (const [i, fila] of g.filas.entries()) {
     assert.notEqual(fila?.[13], VACIO, `fila ${i + 1}: el centinela VACIO en la columna del dueño`)
   }
@@ -269,7 +271,7 @@ const PEND = [
 const BLOQUES = [{ filaFecha: 6, inicio: 7, fin: 20 }, { filaFecha: 494, inicio: 495, fin: 510 }]
 // Las dieciséis personas del bloque abierto del espejo, que es el que se está pagando.
 const PERSONAS = [...Array(16).keys()].map((i) => 495 + i)
-const conMotor = (extra = {}) => grilla({
+const conMotor = (extra = {}) => grilla({ colsCompras: columnasRetiros(COMPRAS_2508), 
   bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }, { mes: 7, inicio: 12, fin: 15 }],
   ultimoDiaOfi: new Date(2026, 6, 31), escalones: ESC, bloqueBase: BLOQUES[1],
   categorias: ['OF', 'A', 'A M', 'OF M'], personasBase: 16,
@@ -522,7 +524,7 @@ test('el escalón declara mes por mes si es acuerdo o proyección — y ningún 
   // Y NINGÚN MES ESCRITO EN EL CÓDIGO: el rótulo de cada escalón sale de la réplica ya parseada, así
   // que el día que se pegue un acuerdo nuevo el cuadro cambia solo.
   const otra = parsearAcuerdos([['Acuerdo Abril 2026'], ...cinco('Mayo\n+2,4%', [6100, 5200, 4800, 4420, 806000])]).escalones
-  const g2 = grilla({
+  const g2 = grilla({ colsCompras: columnasRetiros(COMPRAS_2508), 
     bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
     ultimoDiaOfi: new Date(2026, 6, 31), escalones: otra, bloqueBase: BLOQUES[1],
     categorias: ['OF'], personasBase: 16, escalonVigente: null,
@@ -548,7 +550,7 @@ test('CADA Σ SE ANCLA EN EL MES DE SU PROPIA FUENTE: la del aumento en el escal
   // Anclar la del convenio en el mes de obra le sumaría el tramo de agosto dos veces.
   const mesesOfiAtras = mesesDelMotor(new Date(2026, 6, 31), PEND, [new Date(2026, 5, 30)])
   assert.equal(mesesOfiAtras[0].periodo, '2026-06')
-  const conEscala = grilla({
+  const conEscala = grilla({ colsCompras: columnasRetiros(COMPRAS_2508), 
     bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
     ultimoDiaOfi: new Date(2026, 5, 30), escalones: ESC, bloqueBase: BLOQUES[1],
     categorias: ['OF'], personasBase: 16, escalonVigente: escalonDe(ESC, '2026-08'),
@@ -564,7 +566,7 @@ test('CADA Σ SE ANCLA EN EL MES DE SU PROPIA FUENTE: la del aumento en el escal
   // SIN ESCALA VIGENTE la proyección vuelve al jornal PACTADO — y entonces el ancla vuelve a ser el mes
   // base de obra. Si alguien deja el ancla del convenio en el camino de respaldo, obra se come el
   // aumento de agosto: es el defecto A3 bis, que sigue vivo en ese camino.
-  const sinEscala = grilla({
+  const sinEscala = grilla({ colsCompras: columnasRetiros(COMPRAS_2508), 
     bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
     ultimoDiaOfi: new Date(2026, 5, 30), escalones: ESC, bloqueBase: BLOQUES[1],
     categorias: ['OF'], personasBase: 16, escalonVigente: null,
@@ -727,7 +729,7 @@ test('LA LÍNEA LA DECIDE EL CUADRO: tener la escala a mano no es haberla podido
     { desde: new Date(2026, 6, 1), hasta: new Date(2026, 6, 15) },
   ], [new Date(2026, 5, 30)])
   assert.ok(!mesesSinAgosto.some((m) => m.periodo === '2026-08'), 'la fixture tiene que dejar agosto afuera')
-  const g2 = grilla({
+  const g2 = grilla({ colsCompras: columnasRetiros(COMPRAS_2508), 
     bloques: BLOQUES, pendientes: [{ desde: new Date(2026, 6, 1), hasta: new Date(2026, 6, 15) }],
     bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }], ultimoDiaOfi: new Date(2026, 5, 30),
     escalones: ESC, bloqueBase: BLOQUES[1], categorias: ['OF'], personasBase: 16,
@@ -763,7 +765,7 @@ test('EL 01/09 LA PROYECCIÓN NO VUELVE SOLA AL PACTADO: la escala rige hasta qu
     { desde: new Date(2026, 8, 16), hasta: new Date(2026, 8, 30) },
     { desde: new Date(2026, 9, 1), hasta: new Date(2026, 9, 15) },
   ]
-  const g = grilla({
+  const g = grilla({ colsCompras: columnasRetiros(COMPRAS_2508), 
     bloques: BLOQUES, pendientes: pend, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }, { mes: 7, inicio: 12, fin: 15 }],
     ultimoDiaOfi: new Date(2026, 6, 31), escalones: ESC, bloqueBase: BLOQUES[1],
     categorias: ['OF', 'A', 'A M', 'OF M'], personasBase: 16, escalonVigente: vigente,
@@ -846,7 +848,7 @@ test('LA ESCALA VERIFICADA A MANO CONTROLA A LA RÉPLICA — y calla cuando coin
   assert.ok(!gm.filas.some((f) => /escala verificada/.test(String(f[0] ?? ''))),
     'volvió el aviso del control a una celda: su lugar es el log de la corrida')
   const vieja = parsearAcuerdos([['Acuerdo Mayo 2026'], ...cinco('Agosto\n+1,9%', [6800, 5817, 5375, 4948, 898817])]).escalones
-  const g2 = grilla({
+  const g2 = grilla({ colsCompras: columnasRetiros(COMPRAS_2508), 
     bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
     ultimoDiaOfi: new Date(2026, 6, 31), escalones: vieja, bloqueBase: BLOQUES[1],
     categorias: ['OF'], personasBase: 16, escalonVigente: escalonDe(vieja, '2026-08'),
@@ -1123,7 +1125,7 @@ test('el RESTO de la quincena en curso se marca como tal, y la fila lo DICE con 
   // Decía «· La 1ª fila es el RESTO de la quincena en curso»: prosa, y de la que el dueño mandó
   // sacar. La columna «Desde» ya no se llama «Quincena» —dice qué mide— y la fila publica sus DOS
   // fechas y sus DÍAS, así que un tramo de dos días se lee como lo que es sin que nadie lo explique.
-  const g2 = grilla({ bloques: BLOQUES, pendientes: q, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }] })
+  const g2 = grilla({ colsCompras: columnasRetiros(COMPRAS_2508),  bloques: BLOQUES, pendientes: q, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }] })
   assert.ok(!g2.filas.map((f) => String(f[0] ?? '')).some((c) => /RESTO/.test(c)),
     'volvió la glosa del resto: la fila ya lo dice con sus fechas y sus días')
   assert.equal(g2.filas[g2.f0 - 2][0], 'Desde', 'la primera columna volvió a prometer una quincena entera')
@@ -1287,7 +1289,7 @@ test('UN MES DE OFICINA A MEDIO CARGAR NO PUEDE SER LA BASE DE LOS QUE SIGUEN', 
   // proyección era "la última celda con dato", así que septiembre a diciembre salían $830k, $846k,
   // $862k y $878k contra los ~$3,5M que promedian los meses cerrados: la oficina venía proyectada
   // CUATRO VECES por debajo, y el cash flow leía ese número por rango con nombre.
-  const g2 = grilla({
+  const g2 = grilla({ colsCompras: columnasRetiros(COMPRAS_2508), 
     bloques: BLOQUES, pendientes: PEND,
     bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }, { mes: 7, inicio: 12, fin: 15 }, { mes: 8, inicio: 20, fin: 23 }],
     ultimoDiaOfi: new Date(2026, 7, 15), escalones: ESC, bloqueBase: BLOQUES[1],
@@ -1397,7 +1399,7 @@ test('el rediseño no se puede deshacer por una glosa: el tope vale para las TRE
   // La misma medida sobre las variantes que disparan las ramas de error —sin escala, sin acuerdo, sin
   // meses de oficina—: son justamente las que traían los párrafos más largos, porque un mensaje de
   // alarma es donde más tienta explicarse. Si una rama vuelve a la prosa, esto se pone rojo.
-  const sinEscala = grilla({
+  const sinEscala = grilla({ colsCompras: columnasRetiros(COMPRAS_2508), 
     bloques: BLOQUES, pendientes: PEND, bloquesOfi: [],
     escalones: [], bloqueBase: BLOQUES[1], categorias: ['OF'], personasBase: 16,
     escalonVigente: null, meses: mesesDelMotor(new Date(2026, 6, 31), PEND, [new Date(2026, 6, 31)]), hoy: HOY,
@@ -1457,8 +1459,8 @@ test('RANGOS · cada nombre publicado CRECE con su bloque — no se queda en la 
   //
   // Se mide comparando DOS grillas que sólo difieren en una quincena más. Cada rango del registro
   // tiene que valer una fila más y terminar en la última quincena, no en la primera.
-  const conUna = grilla({ bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }] })
-  const conDos = grilla({
+  const conUna = grilla({ colsCompras: columnasRetiros(COMPRAS_2508),  bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }] })
+  const conDos = grilla({ colsCompras: columnasRetiros(COMPRAS_2508), 
     bloques: [...BLOQUES, { filaFecha: 60, inicio: 61, fin: 74 }],
     pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
   })

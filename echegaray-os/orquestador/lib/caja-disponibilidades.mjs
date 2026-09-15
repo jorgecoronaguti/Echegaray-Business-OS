@@ -38,6 +38,16 @@
 /** El nombre del rango con nombre donde vive el tipo de cambio en uso. Se define UNA vez, en CAJA,
  *  y cualquier otra fórmula del archivo que necesite convertir dólares lo referencia por este
  *  nombre. Un rango con nombre sobrevive a que la pestaña se reescriba y cambien las filas. */
+import { exigirColumnas } from './cobranzas-columnas.mjs'
+import { rangoHasta } from './columnas-por-encabezado.mjs'
+
+/** NÚCLEO PURO: lo que Cobranzas dice que está en cartera — echeqs cobrados con fecha de hoy en adelante. */
+export function formulaControlCartera(cob) {
+  const { formaCobro, fechaCobro, total } = exigirColumnas(cob, ['formaCobro', 'fechaCobro', 'total'], 'control de la cartera')
+  const r = (c) => rangoHasta('Cobranzas', c, 400)
+  return `=SUMPRODUCT((${r(formaCobro)}="Echeq")*(${r(fechaCobro)}>=TODAY())*IF(ISNUMBER(${r(total)});${r(total)};0))`
+}
+
 export const RANGO_TC = 'TIPO_CAMBIO_USD'
 
 /** Las tres filas del bloque de tipo de cambio. La de "uso" es la que se referencia. */
@@ -201,7 +211,11 @@ export const CUENTAS = [
     // ya no tiene" — el control desmentía al comentario, y el comentario tenía razón.
     //
     // Un cheque que se acredita hoy TODAVÍA no se acreditó. Va adentro.
-    control: '=SUMPRODUCT((Cobranzas!$N$5:$N$400="Echeq")*(Cobranzas!$Q$5:$Q$400>=TODAY())*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))',
+    //
+    // LAS TRES COLUMNAS, POR RÓTULO (14/09/2026): era una fórmula con N/Q/M tipeadas. Con «Obra» en H
+    // habría filtrado «Estado» = "Echeq" (nunca) y el control habría dado $0 — la diferencia contra el
+    // banco, entera, sin un error. Recibe las columnas de Cobranzas resueltas de esta corrida.
+    control: (cob) => formulaControlCartera(cob),
     // El dueño (21/07): "quiero un agrupar +/- con la información de esos cheques". Un total de
     // $30.000.000 no se puede verificar ni gestionar: hay que saber de quién es cada cheque y qué
     // día entra. El detalle se arma con REFERENCIAS a las filas de Cobranzas, no copiando importes.

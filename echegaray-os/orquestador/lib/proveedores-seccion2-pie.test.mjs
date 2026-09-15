@@ -4,6 +4,7 @@ import { esRangoAbierto } from './proveedores-deuda-viva.mjs'
 import {
   columnasDeCompras, ENCABEZADOS, filasDelPie, letraDeColumna, referencias,
 } from './proveedores-seccion2-pie.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
 
 /** La fila 3 real de Compras, con los encabezados repetidos incluidos. */
 const cabecera = () => {
@@ -100,5 +101,13 @@ describe('filasDelPie', () => {
 
   it('los encabezados que exige son los cuatro del contrato', () => {
     assert.deepEqual(Object.keys(ENCABEZADOS), ['proveedor', 'total', 'comercial', 'cuit'])
+  })
+})
+
+describe('«Obra» insertada en Compras L (14/09/2026)', () => {
+  it('las referencias del pie siguen a cada rótulo, corridas una columna', () => {
+    assert.deepEqual(columnasDeCompras(COMPRAS_2508), { proveedor: 4, total: 14, comercial: 35, cuit: 38 })
+    assert.deepEqual(columnasDeCompras(COMPRAS_CON_OBRA), { proveedor: 4, total: 15, comercial: 36, cuit: 39 })
+    assert.equal(referencias(columnasDeCompras(COMPRAS_CON_OBRA)).total, 'Compras!$P$4:$P')
   })
 })

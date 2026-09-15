@@ -36,7 +36,8 @@ import { estaCompleto, imputacionVacia, ESTADO } from '../../lib/comprobantes/fa
 import { identificar } from '../../lib/comprobantes/identidad.mjs'
 import { numeroCanonico, claveComprobante, conceptoConAnotacion, conceptoConProveedorLeido } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
-import { avisosDeVerificacion, cierre, COL as VCOL, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
+import { avisosDeVerificacion, cierre, COL as VCOL, colVerificacion, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
+import { rangoFilas } from '../../lib/columnas-por-encabezado.mjs'
 import { vigilar } from '../../lib/comprobantes/vigilancia.mjs'
 import { respaldarFajoCargado, avisoDeRespaldo } from '../../lib/comprobantes/respaldo-adjunto.mjs'
 import { mattermostDelOs } from '../../lib/mattermost-os.mjs'
@@ -209,7 +210,19 @@ export function porQueNoCargo(motivo) {
     ya_cargados: 'ya estaban todos cargados en Compras',
     nada_cargable: 'ninguno tenía lo mínimo para cargarse',
     sin_fila_modelo: 'no encontré una fila de Compras con las fórmulas completas para copiar',
+    fuera_de_compras: 'no son compras: son impuestos, cargas sociales o financieros y van a su pestaña',
   })[String(motivo ?? '')] ?? 'el cargador falló'
+}
+
+/**
+ * LO QUE NO ENTRÓ PORQUE NO ES UNA COMPRA, CON A DÓNDE VA (dueño, 14/09/2026). Sin esto, un F931 o un
+ * VEP de ARCA desaparecería del chat: ni cargado, ni rechazado, ni duplicado.
+ */
+export function avisoFueraDeCompras(fuera = []) {
+  if (!fuera?.length) return null
+  return `${fuera.length} NO lo(s) cargué en Compras porque no son compras: `
+    + fuera.map((f) => `${f.proveedor ?? 'sin proveedor'}${f.numero ? ` ${f.numero}` : ''} → **${f.pestana}**`).join(' · ')
+    + '. Se registran en esa pestaña.'
 }
 
 /**
@@ -604,6 +617,8 @@ function avisosDuros(datos, varios = [], descalces = null) {
   if (datos?.duplicados?.length) {
     l.push(`${datos.duplicados.length} NO lo(s) cargué: ya estaban en Compras (${datos.duplicados.map((d) => `fila ${d.fila}`).join(', ')}).`)
   }
+  const fuera = avisoFueraDeCompras(datos?.fueraDeCompras)
+  if (fuera) l.push(fuera)
   for (const v of varios) {
     const cuantos = Number.isFinite(v.cuantos) && v.cuantos > 1 ? `${v.cuantos} comprobantes` : 'más de un comprobante'
     l.push(`${v.nombre ? `**${v.nombre}**` : 'Uno de los archivos'} tenía ${cuantos}: cargué sólo el de la fila ${v.fila ?? '?'}. **Mandá los otros en fotos separadas.**`)
@@ -680,20 +695,26 @@ async function releerLoEscrito(d, filas) {
     const { makeGoogleClient } = await import('../../lib/google.mjs')
     const g = await makeGoogleClient()
     const id = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
-    return g.readSheetValues(id, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
+    // DESDE LA FILA DE RÓTULOS (14/09/2026): las columnas releídas se ubican por encabezado, así la
+    // tabla del chat dice lo mismo antes y después de insertar «Obra» en L.
+    const filas = await g.readSheetValues(id, rangoFilas('Compras', 3), { render: 'UNFORMATTED_VALUE' })
+    return { encabezado: filas?.[0] ?? [], filas: (filas ?? []).slice(1) }
   })
-  const compras = (await leer()) ?? []
+  const leido = (await leer()) ?? []
+  // Un lector inyectado que devuelve el arreglo pelado (desde la fila 4) es el contrato viejo de los tests.
+  const compras = Array.isArray(leido) ? leido : (leido.filas ?? [])
+  const col = Array.isArray(leido) ? VCOL : colVerificacion(leido.encabezado ?? [])
   const deLaFila = (n) => compras[n - 4] ?? []
   return conFila.map((f) => {
     const valores = deLaFila(f.fila)
-    const quien = String(valores?.[VCOL.proveedor] ?? '').trim().toLowerCase()
+    const quien = String(valores?.[col.proveedor] ?? '').trim().toLowerCase()
     // La historia del proveedor SIN la fila que se acaba de escribir: incluirla haría que el importe
     // sospechoso se compare consigo mismo y nunca destaque.
     const historia = compras
-      .map((r, i) => ({ i: i + 4, prov: String(r?.[VCOL.proveedor] ?? '').trim().toLowerCase(), total: r?.[VCOL.total] }))
+      .map((r, i) => ({ i: i + 4, prov: String(r?.[col.proveedor] ?? '').trim().toLowerCase(), total: r?.[col.total] }))
       .filter((r) => r.prov && r.prov === quien && r.i !== f.fila)
       .map((r) => r.total)
-    return { fila: f.fila, valores, historia }
+    return { fila: f.fila, valores, historia, col }
   })
 }
 
@@ -709,6 +730,35 @@ const ROTULO_COLUMNA = Object.freeze({
 /** $ en es-AR, sin decimales: es un total de control, no un asiento. */
 const enPesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
+/**
+ * LA OBRA DE CADA FILA RECIÉN CARGADA, dicha en el mismo mensaje que dice la fila (15/09/2026).
+ *
+ * La columna «Obra» registra una DECISIÓN (ver `obra-y-destino.mjs`). El cargador la escribe sólo
+ * cuando la obra es segura; si no, la deja vacía y dice por qué. Si el mensaje de «cargado» no lo
+ * dice, la persona da por imputada una fila que quedó sin obra, y el costo de esa obra sale corto.
+ * Se lee de `datos.filas` (la línea JSON del cargador, `filasDelPlan`): un cargador viejo que no manda
+ * `obra` no produce ninguna línea, en vez de afirmar «sin obra» sobre algo que nunca se miró.
+ * @returns {Map<number, {corta:string, larga:string}>}
+ */
+export function obraPorFila(datos) {
+  const out = new Map()
+  for (const p of datos?.filas ?? []) {
+    if (p?.fila == null || !Object.hasOwn(p, 'obra')) continue
+    if (p.obra && p.obraEscrita) {
+      out.set(p.fila, { corta: `obra ${p.obra}`, larga: `Obra: **${p.obra}**` })
+    } else if (p.obra) {
+      out.set(p.fila, {
+        corta: `obra ${p.obra} (sin escribir)`,
+        larga: `Obra: ${p.obra} — _no la escribí: Compras todavía no tiene la columna «Obra»._`,
+      })
+    } else {
+      const porque = p.obraPorque ? ` — ${p.obraPorque}` : ''
+      out.set(p.fila, { corta: 'sin obra', larga: `Obra: **sin completar**${porque}. Completala en la columna «Obra» de Compras.` })
+    }
+  }
+  return out
+}
+
 export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = null, varios = [] } = {}) {
   const l = []
   const conFila = filas.filter((f) => f.fila != null)
@@ -716,7 +766,15 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
   l.push(conFila.length === 1
     ? `✔ Cargado en **Compras, fila ${conFila[0].fila}**${plata}.`
     : `✔ Cargué ${filas.length} comprobante(s) en **Compras**${plata}.`)
-  if (filas.length > 1) for (const f of filas) l.push(`· ${f.proveedor ?? '?'} ${f.numero ?? ''} → fila ${f.fila ?? '?'}`)
+  const obraDe = obraPorFila(datos)
+  if (filas.length > 1) {
+    for (const f of filas) {
+      const o = obraDe.get(f.fila)
+      l.push(`· ${f.proveedor ?? '?'} ${f.numero ?? ''} → fila ${f.fila ?? '?'}${o ? ` · ${o.corta}` : ''}`)
+    }
+  } else if (conFila.length === 1 && obraDe.has(conFila[0].fila)) {
+    l.push(obraDe.get(conFila[0].fila).larga)
+  }
   if (yaEstaban.length) l.push(`_${yaEstaban.length} ya estaba(n) cargado(s); no los dupliqué._`)
   if (datos?.errores) l.push(`⚠ ${datos.errores} fila(s) quedaron con #ERROR — revisalas.`)
   if (datos?.nuevos?.length) l.push(`⚠ Proveedor(es) sin CUIT legible, fuera del desplegable: ${datos.nuevos.join(' · ')}. Agregalos vos o mandá el comprobante donde se lea el CUIT.`)
@@ -727,6 +785,8 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
   if (datos?.duplicados?.length) {
     l.push(`⛔ ${datos.duplicados.length} NO lo(s) cargué: ya estaban en Compras (${datos.duplicados.map((d) => `fila ${d.fila}`).join(', ')}).`)
   }
+  const fuera = avisoFueraDeCompras(datos?.fueraDeCompras)
+  if (fuera) l.push(`↪ ${fuera}`)
   // Estar en ARCA no es un duplicado: es el libro fiscal confirmando el comprobante. Lo que importa
   // avisar es cuando el número que se leyó de la foto NO era el verdadero.
   if (datos?.arca?.corregidos) l.push(`ℹ ${datos.arca.corregidos} número(s) de comprobante corregido(s) contra ARCA.`)

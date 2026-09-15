@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from './columnas-caja.fixture.mjs'
 import { bloqueLiquidez } from './caja-anexo-controles.mjs'
 
 // Helper mínimo: imita el `h` que el anexo espera (push devuelve el nº de fila 1-indexado).
@@ -7,7 +8,7 @@ function armarH() {
   const rows = []
   return {
     rows,
-    refs: { cab: 'CF_MESES', cierre: 'CF_SALDO_CIERRE', inicio: 'CF_SALDO_INICIO' },
+    refs: { columnas: COLUMNAS_HOY, cab: 'CF_MESES', cierre: 'CF_SALDO_CIERRE', inicio: 'CF_SALDO_INICIO' },
     get n() { return rows.length },
     push(r) { rows.push(r); return rows.length },
   }

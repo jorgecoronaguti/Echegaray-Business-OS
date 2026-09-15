@@ -11,6 +11,12 @@ import {
 import { COL, geometriaDeLaSeccion } from './proveedores-pivot-seccion1.mjs'
 import { COLCHON_FINAL } from './proveedores-colchon.mjs'
 import { COL as COL_TRAMOS } from './deuda-por-tramos.mjs'
+import { rangosPorDia } from './proveedores-por-dia.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
+import { letra } from './compras-columnas.mjs'
+
+/** Los rangos de Compras con el layout de hoy: los que recibe cada fórmula en la corrida real. */
+const RH = rangosPorDia(COMPRAS_2508)
 import { esProsa } from './diseno-unificado.mjs'
 
 /** El número de serie de una fecha en Sheets. La época es el 30/12/1899. */
@@ -30,7 +36,7 @@ function fila({ proveedor = 'ALUMETAL', medio = 'Transferencia', q, v = '', w = 
   return f
 }
 
-const bloque = (filas) => bloqueQueSaleCadaDia({ filas, filaTitulo: 40, numeroDeSeccion: 2 })
+const bloque = (filas) => bloqueQueSaleCadaDia({ filas, encabezado: COMPRAS_2508, filaTitulo: 40, numeroDeSeccion: 2 })
 /** Sin los literales de texto: adentro de comillas la coma es del patrón, no un separador. */
 const sinTextos = (f) => String(f).replace(/"[^"]*"/g, '""')
 const formulasDe = (b) => b.filas.flat().filter((c) => typeof c === 'string' && c.startsWith('='))
@@ -169,9 +175,9 @@ test('NINGUNA fórmula usa la coma como separador de argumentos (es_AR: la coma 
   const fs = formulasDe(b)
   assert.ok(fs.length >= 3 * 7, 'el bloque tiene que estar hecho de fórmulas, no de valores pegados')
   for (const f of fs) assert.ok(!sinTextos(f).includes(','), `separador con coma (rompe en es-AR): ${f}`)
-  for (const f of [expresionDias(), formulaDia(10), formulaMedio('Efectivo', 10), formulaTotalDelDia(10),
-    formulaQuienes(10), formulaTotalColumna('F', 10, 20),
-    ...filasDeControlPorDia({ filaTotal: 21 }).map(([, f]) => f)]) {
+  for (const f of [expresionDias(RH), formulaDia(10, RH), formulaMedio('Efectivo', 10, RH), formulaTotalDelDia(10, RH),
+    formulaQuienes(10, RH), formulaTotalColumna('F', 10, 20),
+    ...filasDeControlPorDia({ filaTotal: 21, r: RH }).map(([, f]) => f)]) {
     assert.ok(!sinTextos(f).includes(','), `separador con coma: ${f}`)
   }
 })
@@ -183,7 +189,7 @@ test('NINGUNA fórmula usa la coma como separador de argumentos (es_AR: la coma 
 // dibuja es `MONEDA_CONTROL`: no hay patrón que pueda quedar en el locale equivocado, que es la
 // forma más barata de no volver a tener ese defecto.
 test('el pie publica números, no texto armado: ni un TEXT() ni una oración', () => {
-  for (const [rotulo, f] of filasDeControlPorDia({ filaTotal: 21 })) {
+  for (const [rotulo, f] of filasDeControlPorDia({ filaTotal: 21, r: RH })) {
     assert.ok(!f.includes('TEXT('), `el pie vuelve a armar texto: ${f}`)
     assert.ok(f.startsWith('=ROUND('), f)
     assert.ok(rotulo.startsWith('⇒ '), `un control abre con ⇒: ${rotulo}`)
@@ -213,14 +219,14 @@ test('las letras salen de los offsets, no tipeadas', () => {
 })
 
 test('el universo del cuadro es el de la sección 1: Pendiente y comercial', () => {
-  const f = formulaTotalDelDia(18)
+  const f = formulaTotalDelDia(18, RH)
   assert.ok(f.includes('(Compras!$X$4:$X="Pendiente")*(Compras!$AJ$4:$AJ=1)'), f)
 })
 
 // ═══ EL CONTROL NO SE VALIDA CONTRA LO QUE ÉL MISMO PRODUCE ═══
 
 test('el TOTAL DEL DÍA no es la suma de las cuatro columnas: se calcula sobre el universo entero', () => {
-  const f = formulaTotalDelDia(18)
+  const f = formulaTotalDelDia(18, RH)
   assert.ok(!f.includes('$B18'), 'el total no puede depender de las columnas que el control compara contra él')
   assert.ok(!f.includes('Compras!$P$4:$P'), 'el total no filtra por medio de pago: entra la tarjeta también')
 })
@@ -235,7 +241,7 @@ test('un medio de pago sin columna se reporta antes de escribir y el control lo 
   assert.equal(dias[0].porMedio.Transferencia, 1_000_000)
   assert.equal(dias[0].otrosMedios, 300_000)
   assert.deepEqual(mediosSinColumna(filas), [{ medio: 'Tarjeta Crédito', monto: 300_000 }])
-  const [, medios] = filasDeControlPorDia({ filaTotal: 21 })
+  const [, medios] = filasDeControlPorDia({ filaTotal: 21, r: RH })
   assert.ok(medios[1].includes('SUM($B$21:$E$21)'), medios[1])
   assert.ok(/medio de pago sin columna/.test(medios[0]), medios[0])
 })
@@ -246,15 +252,15 @@ test('un medio de pago sin columna se reporta antes de escribir y el control lo 
 //
 // Comparaba el total del cuadro contra `SUM(Compras!$AL$4:$AL)`: TODOS los saldos de Compras, sin
 // filtrar ni por estado ni por comercial. El titular del cuadro y sus siete columnas miran
-// `universoPendiente()`. Con dos poblaciones distintas la resta nunca puede dar cero, así que la
+// `universoPendiente(RH)`. Con dos poblaciones distintas la resta nunca puede dar cero, así que la
 // alerta quedaba encendida siempre y dejaba de significar algo.
 test('EL DEFECTO · el control mide el MISMO universo que el cuadro, y por un camino independiente', () => {
-  const [deuda] = filasDeControlPorDia({ filaTotal: 21 })
-  assert.ok(deuda[1].includes(universoPendiente()), `no filtra el universo del cuadro: ${deuda[1]}`)
+  const [deuda] = filasDeControlPorDia({ filaTotal: 21, r: RH })
+  assert.ok(deuda[1].includes(universoPendiente(RH)), `no filtra el universo del cuadro: ${deuda[1]}`)
   assert.ok(!/SUM\(Compras!\$AL\$4:\$AL\)/.test(deuda[1]), `vuelve al total sin filtrar: ${deuda[1]}`)
   // Independiente: no suma las celdas del cuadro, va a Compras. Un control validado contra la
   // información que él mismo produce no puede dar rojo nunca.
-  assert.ok(deuda[1].includes(saldoDeCompras()), deuda[1])
+  assert.ok(deuda[1].includes(saldoDeCompras(RH)), deuda[1])
   assert.ok(!deuda[1].includes('SUM($B$21'), deuda[1])
 })
 
@@ -291,7 +297,7 @@ test('cada columna del cuerpo declara su formato en cada corrida: una celda here
 
 test('los cuatro medios son los de Compras y el orden lo fija el rótulo', () => {
   assert.deepEqual([...MEDIOS_DEL_DIA], ['Efectivo', 'Cheque', 'Echeq', 'Transferencia'])
-  for (const m of MEDIOS_DEL_DIA) assert.ok(formulaMedio(m, 18).includes(`(Compras!$P$4:$P="${m}")`))
+  for (const m of MEDIOS_DEL_DIA) assert.ok(formulaMedio(m, 18, RH).includes(`(Compras!$P$4:$P="${m}")`))
 })
 
 // ═══ DÓNDE VA EL BLOQUE: DOS ANCLAS DE TEXTO, NINGUNA SALIDA PROPIA ═══
@@ -369,7 +375,7 @@ test('la sección 1 se limita con la sección que SIGUE, sea cual sea su número
 // Se mide con `esProsa`, el mismo núcleo puro que audita el Sheet: cualquier párrafo nuevo que
 // alguien meta adentro de esta fórmula da rojo acá y no dos horas después en la pantalla del dueño.
 test('EL DEFECTO · el control del cuadro por día dice cuánto falta, no por qué puede faltar', () => {
-  for (const fila of filasDeControlPorDia({ filaTotal: 87 })) {
+  for (const fila of filasDeControlPorDia({ filaTotal: 87, r: RH })) {
     for (const celda of fila) {
       const p = esProsa(celda)
       assert.equal(p, null, `el pie publica prosa: ${JSON.stringify(p)}`)
@@ -422,4 +428,35 @@ test('el pie son DOS filas del bloque, con sus rótulos y su número al lado', (
     assert.ok(String(f[1]).startsWith('=ROUND('), 'el número va en la B, al lado del rótulo')
     assert.deepEqual(f.slice(2), Array.from({ length: ROTULOS_POR_DIA.length - 2 }, () => null))
   }
+})
+
+// ═══ «OBRA» EN COMPRAS L (14/09/2026): LAS FÓRMULAS CITAN EL RÓTULO, NO LA LETRA ═══
+//
+// Con los offsets tipeados, la inserción dejaba el cuadro sumando «Total» donde iba «Tipo pago» y
+// filtrando «Pendiente» sobre «Tipo de Costo». Mismo Compras, con y sin la columna: mismo modelo, y
+// cada rango de cada fórmula corrido exactamente una letra si estaba a la derecha de la K.
+const indiceDe = (l) => [...l].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0) - 1
+const correrUna = (s) => s.replace(/Compras!\$([A-Z]+)\$4:\$\1/g, (_, l) => {
+  const i = indiceDe(l)
+  const j = i >= 11 ? i + 1 : i
+  return `Compras!$${letra(j)}$4:$${letra(j)}`
+})
+
+test('«Obra» insertada: el mismo cuadro, cada rango de Compras corrido una columna', () => {
+  const hoy = [
+    fila({ proveedor: 'ALUMETAL', medio: 'Cheque', q: D('2026-09-20'), saldo: 1000 }),
+    fila({ proveedor: 'DUBOS', medio: 'Transferencia', q: D('2026-09-22'), v: D('2026-10-01'), w: -300, saldo: 800 }),
+  ]
+  const conObra = hoy.map((f) => [...f.slice(0, 11), 'OBRA QUE NO SE LEE', ...f.slice(11)])
+  const a = bloqueQueSaleCadaDia({ filas: hoy, encabezado: COMPRAS_2508, filaTitulo: 40 })
+  const b = bloqueQueSaleCadaDia({ filas: conObra, encabezado: COMPRAS_CON_OBRA, filaTitulo: 40 })
+  assert.deepEqual(b.modelo, a.modelo)
+  assert.equal(b.modelo.total, 1800)
+  assert.deepEqual(b.filas, a.filas.map((f) => f.map((c) => (typeof c === 'string' ? correrUna(c) : c))))
+  assert.ok(formulaMedio('Cheque', 18, rangosPorDia(COMPRAS_CON_OBRA)).includes('(Compras!$Q$4:$Q="Cheque")'))
+})
+
+test('sin rangos resueltos por rótulo no se arma ninguna fórmula ni el bloque', () => {
+  assert.throws(() => formulaMedio('Cheque', 18), /rangosPorDia/)
+  assert.throws(() => bloqueQueSaleCadaDia({ filas: [], filaTitulo: 40 }), /falta la columna/)
 })

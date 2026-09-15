@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { tramoDeLaFila, formulaAging, TRAMOS, SIN_FECHA, COL } from './proveedores-aging.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
 
 const HOY = new Date('2026-08-04T00:00:00Z')
 const enDias = (n) => new Date(HOY.getTime() + n * 86400000)
@@ -39,7 +40,7 @@ test('los rótulos ordenan alfabéticamente igual que cronológicamente', () => 
 })
 
 test('la fórmula va en locale es-AR y nunca con comas de separador', () => {
-  const f = formulaAging()
+  const f = formulaAging(COMPRAS_2508)
   assert.match(f, /^=ARRAYFORMULA\(/)
   assert.equal(f.split('(').length, f.split(')').length, 'paréntesis desbalanceados')
   // Una coma sólo puede aparecer dentro de un rótulo, jamás separando argumentos.
@@ -48,13 +49,13 @@ test('la fórmula va en locale es-AR y nunca con comas de separador', () => {
 })
 
 test('la fórmula descarta las filas sin saldo antes de mirar la fecha', () => {
-  const f = formulaAging()
+  const f = formulaAging(COMPRAS_2508)
   assert.ok(f.indexOf('ROUND($AL$4:$AL;0)<=0') < f.indexOf('TODAY()'),
     'si mira la fecha primero, una factura pagada entra al aging')
 })
 
 test('la fórmula nombra los seis tramos', () => {
-  const f = formulaAging()
+  const f = formulaAging(COMPRAS_2508)
   for (const r of [...TRAMOS.map((t) => t.rotulo), SIN_FECHA]) assert.ok(f.includes(`"${r}"`), r)
 })
 
@@ -62,4 +63,11 @@ test('la columna del aging va después de todo lo que hoy existe en Compras', ()
   // AM = CUIT (OS) = 38. Escribir sobre una columna existente pisaría datos del dueño.
   assert.equal(COL.aging, 39)
   assert.ok(COL.aging > COL.saldo)
+})
+
+test('«Obra» insertada en L: el aging lee el saldo y la fecha prevista por rótulo (AM y R)', () => {
+  const f = formulaAging(COMPRAS_CON_OBRA)
+  assert.ok(f.includes('ROUND($AM$4:$AM;0)<=0') && f.includes('ISNUMBER($R$4:$R)'), f)
+  assert.ok(!f.includes('$AL$4') && !f.includes('$Q$4'), 'quedó una letra de antes')
+  assert.throws(() => formulaAging(), /fila de rótulos viva/)
 })

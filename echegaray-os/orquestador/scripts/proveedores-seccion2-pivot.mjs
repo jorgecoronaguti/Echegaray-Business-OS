@@ -29,6 +29,7 @@ import { leerCuerpoDeDinamica, leerParaDecidirBorrado } from '../lib/proveedores
 import { esTituloDeSeccion, SECCIONES_DINAMICAS } from '../lib/proveedores-titulos.mjs'
 import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 import { columnasDeCompras, filasDelPie, referencias } from '../lib/proveedores-seccion2-pie.mjs'
+import { PESTANAS, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -146,10 +147,13 @@ function informarCorte(corte, filas) {
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const cabecera = (await google.readSheetValues(ID, 'Compras!A3:BZ3', { render: 'FORMATTED_VALUE' }))?.[0] ?? []
+  // RÓTULOS Y FILAS EN LA MISMA LECTURA (14/09/2026). Eran dos viajes: si alguien inserta una columna
+  // entre uno y otro —la de «Obra», por ejemplo— los offsets salen de un layout y los datos del otro.
+  const lecturaCompras = await google.readSheetValues(ID, rangoFilas('Compras', PESTANAS.Compras.filaEncabezado), { render: 'UNFORMATTED_VALUE' }) ?? []
+  const cabecera = lecturaCompras[0] ?? []
   const idx = columnasDeCompras(cabecera)
   const R = referencias(idx)
-  const compras = await google.readSheetValues(ID, 'Compras!A4:BZ', { render: 'UNFORMATTED_VALUE' })
+  const compras = lecturaCompras.slice(1)
   const corte = cortePorConcentracion(compras ?? [], { umbral: UMBRAL })
   informarCorte(corte, compras ?? [])
 

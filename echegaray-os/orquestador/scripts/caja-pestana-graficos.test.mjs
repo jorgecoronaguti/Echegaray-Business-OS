@@ -10,6 +10,7 @@
 // gráficos y ANTES de ellos, y que el generador RELEA la hoja y se ponga rojo si no quedó bien.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from '../lib/columnas-caja.fixture.mjs'
 import { grilla, formatear } from './caja-pestana.mjs'
 import { ROTULOS, LARGO } from '../lib/caja-anexo-series.mjs'
 import { FILA_FINAL_DE_GRAFICOS, layoutEsperado } from '../lib/caja-graficos.mjs'
@@ -17,6 +18,7 @@ import { FILA_FINAL_DE_GRAFICOS, layoutEsperado } from '../lib/caja-graficos.mjs
 const SHEET = 7
 const TITULO = 'CAJA'
 const REFS = {
+  columnas: COLUMNAS_HOY,
   bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito',
   chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 },
 }

@@ -1,0 +1,16 @@
+[Unit]
+# CADA MINUTO, como la cola de Cobranzas. La pantalla ya muestra la obra elegida (la base es la fuente y
+# el sync superpone los cambios pendientes), así que la demora no confunde a nadie; lo que acota es cuánto
+# tiempo el Sheet dice otra cosa que la base. Una corrida con la cola vacía es una consulta a Postgres y
+# ninguna a Google. AccuracySec al segundo: el default de systemd convertiría este minuto en dos.
+Description=Echegaray OS - Cola de obra por fila a Compras (cada minuto)
+
+[Timer]
+OnBootSec=120s
+OnUnitInactiveSec=60s
+AccuracySec=1s
+# NO Persistent: la cola vive en Postgres y la próxima corrida la vacía igual.
+Unit=echegaray-compras-obra-cola.service
+
+[Install]
+WantedBy=timers.target

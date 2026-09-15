@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Test del briefing de caja: cálculos determinísticos sobre datos estructurados (mock google).
 import { parseMonto, parseFecha, cashBriefing } from './cash-briefing.mjs'
+import { COBRANZAS_1409, COBRANZAS_CON_OBRA } from './encabezados-referencia.mjs'
 
 let ok = 0, fail = 0
 const check = (n, c) => { if (c) ok++; else { fail++; console.error(`FALLA: ${n}`) } }
@@ -22,7 +23,8 @@ const data = {
     ['002', '17/07/2026', 'Santander', '$17.691.359', 'Confirmado', 'x'],  // más nuevo → gana
     ['003', '17/07/2026', 'Efectivo', '$2.000.000', 'Confirmado', 'x'],
   ],
-  'Cobranzas!A5:R2000': [
+  'Cobranzas!A4:BZ2000': [
+    [...COBRANZAS_1409],
     // A..R (18 cols): idx12=M Total, idx14=O Estado, idx16=Q Fecha cobro, idx17=R Mes cobro
     [1, '', '', '', '', '', 'ARCOR', '', '', '', '', '', '$5.000.000', '', 'Cobrado', '', '', 'jul-26'],
     [2, '', '', '', '', '', 'LA ESTRELLA', '', '', '', '', '', '$3.000.000', '', 'Proyectado', '', '', 'jul-26'],
@@ -85,6 +87,14 @@ async function main() {
   check('proyección: NO cuenta vencido (2/7, 10/6) como entrada', b.proyeccion_7dias.entra === 2000000)
   check('proyección: sale = vencimientos 7d', b.proyeccion_7dias.sale === 826358)
   check('proyección: proyectado = caja + entra − sale', b.proyeccion_7dias.proyectado === 19691359 + 2000000 - 826358)
+
+  // ═══ «OBRA» INSERTADA EN COBRANZAS H (14/09/2026): los mismos números, leídos por rótulo ═══
+  const cobHoy = data['Cobranzas!A4:BZ2000']
+  const dataObra = { ...data, 'Cobranzas!A4:BZ2000': cobHoy.map((f, i) => (i === 0 ? [...COBRANZAS_CON_OBRA] : [...f.slice(0, 7), 'OBRA-X', ...f.slice(7)])) }
+  const bObra = await cashBriefing({ async readSheetValues(id, range) { return dataObra[range] || [] } }, HOY)
+  check('con «Obra» insertada: cobrado y por cobrar del mes, por rótulo', bObra.cobranzas_mes.cobrado === 11000000 && bObra.cobranzas_mes.por_cobrar === 28000000)
+  check('con «Obra» insertada: vencidas, cliente y entra esta semana, por rótulo', bObra.cobranzas_vencidas.total === 19000000
+    && bObra.cobranzas_vencidas.items[0].cliente === 'MESSINAS' && bObra.proyeccion_7dias.entra === 2000000)
 
   // ═══ CANDADO: la pestaña CAJA rediseñada en secciones NO puede inflar la caja ═══
   //

@@ -38,7 +38,7 @@ import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_M
 import { crearGrilla, ANCHO, MES, cmes } from '../lib/impuestos-grilla.mjs'
 import {
   IIBB_RAW, IIBB_COL, IIBB_FILA0, ARCA_RAW, ARCA_FILA0, BANCO_RAW,
-  leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, escribirIIBBRaw,
+  leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, escribirIIBBRaw, leerColumnasImpuestos, leerFilasCobranzas, leerEncabezadoCompras,
 } from '../lib/impuestos-fuentes.mjs'
 import {
   bloqueIva, mesDeLaUltimaDDJJ, bloqueIibb, bloqueRetenciones, bloqueOtros, bloqueDeudaFinanciera,
@@ -114,16 +114,13 @@ const LINEAS_CREDITO = [
   'Servicios recurrentes',
 ]
 
-// La base de la proyección sale del Libro, no del Cash Flow por posición: ver `basesDelLibro`.
-const brutoDebitoLibro = (hoy) => (m) => [ventasFacturadasDelMes(AÑO, m, 'iva', { hoy })]
-const brutoCreditoLibro = (m) => [creditoDeComprasDelMes(AÑO, m)]
 
 /**
  * LA GRILLA ENTERA. Primero la cabecera, después se RESERVA el espacio de la posición, se escribe el
  * detalle —que es quien sabe en qué fila queda cada total— y recién entonces se llena la posición con
  * referencias. Ni un número pegado arriba.
  */
-export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
+export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy, cob }) {
   const G = crearGrilla(anio)
   G.push([PESTAÑA])  // tipeado aparte decía «Impuestos y financiero»: dos nombres para la misma pestaña
   // LA FRESCURA, POR FUENTE Y COMPACTA. Una sola fecha está prohibida acá: esta pestaña cruza fuentes
@@ -158,8 +155,8 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
 
   // ── EL DETALLE ─────────────────────────────────────────────────────────────────────────────────
   const iva = bloqueIva(G, { anio, ivaOficial, proy, arca, hoy })
-  const ibb = bloqueIibb(G, { anio, iibb, proy, hoy })
-  bloqueRetenciones(G, { anio })
+  const ibb = bloqueIibb(G, { anio, iibb, proy, hoy, cob })
+  bloqueRetenciones(G, { anio, cob })
   bloqueOtros(G, { anio, C })
   // El cuadro de planes se retiró: vive en «Cargas Sociales». Desde el 09/09/2026 tampoco queda la
   // fila mensual de la cuota — era la misma serie de aquella pestaña, publicada dos veces.
@@ -241,7 +238,7 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
  * del último mes cargado, y ese mes puede haberlo escrito una persona. Si se anclara en la última
  * F.2051 de Drive, la proyección arrancaría de un saldo que ya se consumió.
  */
-async function planDeProyeccionIva(google, ivaOficial, hoy) {
+async function planDeProyeccionIva(google, ivaOficial, hoy, cols) {
   // SIN .catch: ESTA LECTURA DECIDE QUÉ SE ESCRIBE. Degradada a [], el ancla desaparece y el cuadro
   // sale sin proyección — o arranca de un saldo que no es: diría que no hay IVA que pagar.
   // SIN FORMATO. La columna A —los rótulos que se buscan acá— es texto y no cambia; el PARÁMETRO de
@@ -282,11 +279,11 @@ async function planDeProyeccionIva(google, ivaOficial, hoy) {
     }))
 
   // El débito sale de Cobranzas, no del Libro: el IVA que cada factura B ya declara, por emisión.
-  const cob = (await google.readSheetValues(ID, 'Cobranzas!A5:Q', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
-  const ventas = planDeVentas(cob, AÑO, hoy)
+  const filasCob = await leerFilasCobranzas(google, ID)
+  const ventas = planDeVentas(filasCob, AÑO, hoy, cols)
   // «Lo que aparece en AfipSDK tiene que ser como lo facturado en B»: las diferencias, al log.
   const arcaRaw = (await google.readSheetValues(ID, `${ARCA_RAW}!A${ARCA_FILA0}:L`, { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
-  for (const linea of informarConciliacion(conciliarCobranzasConArca(cob, arcaRaw, { hoy }))) console.log(linea)
+  for (const linea of informarConciliacion(conciliarCobranzasConArca(filasCob, arcaRaw, { hoy, cols }))) console.log(linea)
   const serialUTC = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
   const enMes = (mv, m) => mv.fecha >= serialUTC(AÑO, m, 1) && mv.fecha < serialUTC(AÑO, m + 1, 1)
   const bases = Object.fromEntries(mesesAProyectar.map((m) => [m, {
@@ -306,7 +303,8 @@ async function planDeProyeccionIva(google, ivaOficial, hoy) {
     textoDondeVaImporte,
     alicuotaVigente: alic.alicuota,
     bases,
-    brutoDebito: brutoDebitoLibro(hoy), brutoCredito: brutoCreditoLibro,
+    // La base de la proyección sale del Libro, no del Cash Flow por posición: ver `basesDelLibro`.
+    brutoDebito: (m) => [ventasFacturadasDelMes(AÑO, m, 'iva', { hoy, cob: cols })], brutoCredito: (m) => [creditoDeComprasDelMes(AÑO, m)],
     sinBase: ventas.sinBase(mesesAProyectar),
     supuesto: supuestoDelMes({ cobranzas: LINEAS_DEBITO, compras: LINEAS_CREDITO })
       + ` Arranca del saldo a favor de ${MES[(ultimoMesConDato ?? 1) - 1]} ($${Math.round(libreDisp ?? 0).toLocaleString('es-AR')}).`
@@ -347,12 +345,13 @@ async function verificarContrato(google, g) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const hoy = hoyISO()
+  const cob = await leerColumnasImpuestos(google, ID) // fila 4 de Cobranzas, una vez: todo se lee por rótulo
   const iibb = await leerIIBB(google)
   const ivaOficial = await leerIVA(google)
-  const ventas = await ventasProyectadas(google, ID)
+  const ventas = await ventasProyectadas(google, ID, cob)
   const fi = await query("select periodo, factor_acumulado from public.factor_ajuste where indice='ipc' order by periodo")
   const factor = Object.fromEntries(fi.rows.map((r) => [r.periodo, Number(r.factor_acumulado)]))
-  const ret = await leerRetenciones(google, ID)
+  const ret = await leerRetenciones(google, ID, cob)
   const retIva = Object.fromEntries(Object.entries(ret.porMes)
     .filter(([k]) => k.startsWith('iva|')).map(([k, v]) => [k.slice(4), v]))
   // LA POSICIÓN TÉCNICA DE ARCA SIGUE CALCULÁNDOSE COMO CONTROL de los meses que SÍ tienen DDJJ: es
@@ -367,18 +366,18 @@ async function main() {
   // QUÉ MESES TIENE ARCA. `disponible` quiere decir que el período tiene comprobantes cargados; no
   // quiere decir que estén TODOS. El mes en curso es parcial por construcción y el cuadro lo declara.
   const arca = { meses: iva.filter((m) => m.disponible).map((m) => Number(String(m.periodo).slice(5, 7))) }
-  const proy = await planDeProyeccionIva(google, ivaOficial, hoy)
+  const proy = await planDeProyeccionIva(google, ivaOficial, hoy, cob)
   // SÓLO PARA SABER QUÉ MESES TIENEN CUOTA — es lo que el calendario del hero necesita para poner la
   // obligación en su ventana. El IMPORTE lo publica «Cargas Sociales» por `CARGAS_MES_PLANES`.
   const planes = await planesDePago(AÑO)
-  const cabCompras = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
+  const cabCompras = await leerEncabezadoCompras(google, ID)
   const { col: C, faltan } = resolverColumnas(cabCompras, {
     total: 'Total', concepto: 'Concepto', fecha: 'Fecha de caja', rubro: 'Rubro de caja', fechaPrev: 'Fecha prevista de pago (día)', detalle: 'Detalles / Obra',
   })
   if (faltan.length) { console.error(`⚠ faltan columnas en Compras: ${faltan.join(', ')} — no escribo con referencias inventadas`); process.exit(1) }
   console.log(`  Compras por encabezado: Total=${C.total} · Concepto=${C.concepto} · Rubro=${C.rubro} · Fecha prevista=${C.fechaPrev}`)
 
-  const g = grilla({ anio: AÑO, C, planes, iibb, ivaOficial, proy, arca, hoy })
+  const g = grilla({ anio: AÑO, C, planes, iibb, ivaOficial, proy, arca, hoy, cob })
   if (ret.sospechosas.length) {
     console.error(`  ⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja con ningún régimen — NO se computaron:`)
     for (const x of ret.sospechosas) console.error(`     fila ${x.fila} ${x.cliente}: ${x.regimen} ${Math.round(x.monto).toLocaleString('es-AR')} = ${(x.alicuota * 100).toFixed(2)}%`)

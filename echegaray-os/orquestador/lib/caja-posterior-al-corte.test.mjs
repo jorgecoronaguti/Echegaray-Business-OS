@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores,
-  formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, COB, CHQ, CMP,
+  formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, CHQ,
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores,
   formulaDepositosEfectivoPosteriores, formulaNetaEfectivoPosterior, DEP, formulaFrescuraCaja,
   formulaJornalesEfectivoPosteriores, formulaJornalesBancoPosteriores, celdaJornalesEfectivo, JOR,
@@ -10,9 +10,12 @@ import {
   formulaFechaUltimoEfectivo, celdaFechaDelEfectivo } from './caja-posterior-al-corte.mjs'
 import { COL_FECHA_CAJA, colIndex } from './rubro-caja.mjs'
 import { anclaDeSalida } from './caja-ancla-por-instante.mjs'
+import { MAPAS_HOY } from './columnas-caja.fixture.mjs'
+const COB = MAPAS_HOY.cob
+const CMP = MAPAS_HOY.cmp
 
 test('las compras pagadas posteriores restan sólo Transferencia y Débito, después del corte', () => {
-  const f = formulaComprasPagadasPosteriores('$F$19')
+  const f = formulaComprasPagadasPosteriores('$F$19', CMP)
   // SUMPRODUCT, no SUMIFS: la "Fecha de caja" viene en formato mixto serie/texto y SUMIFS perdía las de texto.
   assert.match(f, /^SUMPRODUCT\(/)
   assert.doesNotMatch(f, /SUMIFS/)
@@ -45,19 +48,28 @@ test('colIndex traduce letras de Sheet a 0-based: la "Fecha de caja" es la AD (2
   assert.equal(colIndex(CMP.total), 14)      // O = Total
 })
 
-test('el escritor NO vuelve a hardcodear la columna: la toma de la constante compartida', async () => {
-  // Si mañana alguien pone `const COL_FECHA = 29` de nuevo en el script, el contrato se puede
-  // desincronizar en silencio. El generador tiene que derivar la columna de COL_FECHA_CAJA.
+// El escritor dejó de tomar la letra de `COL_FECHA_CAJA` el 14/09/2026 (5ece93fe): con «Obra» en L,
+// AD pasa a ser la 2.ª «Rubro de caja» y la AC la fósil. Ahora resuelve contra la fila de rótulos viva
+// y pasa por el portón. Lo que este test protege no cambió —que la columna que se ESCRIBE sea la que
+// CAJA LEE—; cambió cómo se prueba: por comportamiento, en los dos layouts, y no mirando el texto.
+test('el escritor NO vuelve a hardcodear la columna: escribe la misma «Fecha de caja» que CAJA lee, antes y después de «Obra»', async () => {
+  const { requestsDeRubroCaja } = await import('../scripts/rubro-caja-sheet.mjs')
+  const { COMPRAS_2508, COMPRAS_CON_OBRA } = await import('./encabezados-referencia.mjs')
+  const { MAPAS_CON_OBRA } = await import('./columnas-caja.fixture.mjs')
+  const hoy = requestsDeRubroCaja(COMPRAS_2508, { sheetId: 1, filas: 10 })
+  const conObra = requestsDeRubroCaja(COMPRAS_CON_OBRA, { sheetId: 1, filas: 10 })
+  assert.equal(hoy.colFecha.letra, CMP.fecha)
+  assert.equal(conObra.colFecha.letra, MAPAS_CON_OBRA.cmp.fecha)
+  assert.notEqual(conObra.colFecha.letra, hoy.colFecha.letra, 'con «Obra» insertada la fecha de caja se corre una letra')
   const { readFile } = await import('node:fs/promises')
-  const src = await readFile('orquestador/scripts/rubro-caja-sheet.mjs', 'utf8')
-  assert.match(src, /colIndex\(COL_FECHA_CAJA\)/)
-  assert.match(src, /colIndex\(COL_RUBRO_CAJA\)/)
-  assert.doesNotMatch(src, /const COL_FECHA = \d/)
-  assert.doesNotMatch(src, /const COL_RUBRO = \d/)
+  const { sinComentarios } = await import('./columnas-fijas.mjs')
+  const src = sinComentarios(await readFile('orquestador/scripts/rubro-caja-sheet.mjs', 'utf8'))
+  assert.doesNotMatch(src, /const COL_(FECHA|RUBRO) = (\d|')/)
+  assert.doesNotMatch(src, /COL_(FECHA|RUBRO)_CAJA/)
 })
 
 test('la línea neta ahora también resta las compras pagadas por banco', () => {
-  const f = formulaNetaPosterior('$F$19')
+  const f = formulaNetaPosterior('$F$19', MAPAS_HOY)
   // cobros − cheques debitados − compras (transferencia/débito), estas últimas por SUMPRODUCT tolerante a texto
   assert.match(f, /-\(SUMPRODUCT\(\('Compras'/)
   assert.match(f, /"Pagado"/)
@@ -71,7 +83,7 @@ test('CMP excluye los medios que ya cuenta otra línea (no doble conteo)', () =>
 })
 
 test('los cobros posteriores miran SÓLO lo que el extracto no cubre', () => {
-  const f = formulaCobrosPosteriores('$F$19')
+  const f = formulaCobrosPosteriores('$F$19', COB)
   // La ventana empieza DESPUÉS del corte: con ">=" se contaría de nuevo lo que ya está en el saldo.
   assert.match(f, /">"&\$F\$19/)
   assert.doesNotMatch(f, />=/)
@@ -88,9 +100,9 @@ test('los cobros posteriores miran SÓLO lo que el extracto no cubre', () => {
 // del saldo automáticamente — la misma exclusividad que la caja física tiene contra el arqueo.
 test('las tres patas de la línea posterior filtran con ">" estricto contra el MISMO corte (sin solape con el extracto)', () => {
   const corte = '$F$19'
-  const cobros = formulaCobrosPosteriores(corte)
+  const cobros = formulaCobrosPosteriores(corte, COB)
   const cheques = formulaChequesDebitadosPosteriores(corte)
-  const compras = formulaComprasPagadasPosteriores(corte)
+  const compras = formulaComprasPagadasPosteriores(corte, CMP)
   // Cobros y cheques: ">"&corte (SUMIFS). Compras: fechaCoercionada>corte (SUMPRODUCT).
   assert.match(cobros, /">"&\$F\$19/)
   assert.match(cheques, /">"&\$F\$19/)
@@ -103,12 +115,12 @@ test('las tres patas de la línea posterior filtran con ">" estricto contra el M
 })
 
 test('sólo suma lo COBRADO: un proyectado no es plata que esté', () => {
-  const f = formulaCobrosPosteriores('$F$19')
+  const f = formulaCobrosPosteriores('$F$19', COB)
   assert.match(f, /"Cobrado"/)
 })
 
 test('excluye los echeq, que ya están contados en la cartera', () => {
-  assert.match(formulaCobrosPosteriores('$F$19'), /"<>Echeq"/)
+  assert.match(formulaCobrosPosteriores('$F$19', COB), /"<>Echeq"/)
 })
 
 test('y excluye también el CHEQUE FÍSICO: un valor en la mano tampoco está en el banco', () => {
@@ -117,7 +129,7 @@ test('y excluye también el CHEQUE FÍSICO: un valor en la mano tampoco está en
   // Un cobro con forma "Cheque" se sumaba al saldo BANCARIO estando todavía en la cartera: el mismo
   // peso en los dos lados. Hoy vale $0 (ninguna de las 89 cobranzas del archivo dice "Cheque"), y por
   // eso se arregla ahora: la primera que entre no iba a avisar de nada.
-  assert.match(formulaCobrosPosteriores('$F$19'), /"<>Cheque"/)
+  assert.match(formulaCobrosPosteriores('$F$19', COB), /"<>Cheque"/)
 })
 
 // ═══ LA PARTICIÓN POR CANAL: EL EFECTIVO NO ESTÁ EN EL BANCO, ESTÁ EN LA CAJA FÍSICA (T06) ═══
@@ -125,7 +137,7 @@ test('y excluye también el CHEQUE FÍSICO: un valor en la mano tampoco está en
 test('el banco NO cuenta el efectivo: va a la caja física, no duplicar', () => {
   // Si el banco contara el efectivo y la caja física también, el mismo peso quedaría dos veces en el
   // total. La partición por canal (echeq/efectivo/banco) lo impide por construcción.
-  const f = formulaCobrosPosteriores('$F$19')
+  const f = formulaCobrosPosteriores('$F$19', COB)
   assert.match(f, /"<>Efectivo"/)
   assert.match(f, /"<>Echeq"/)
 })
@@ -135,7 +147,7 @@ test('la línea del banco: 2 SUMIFS (cobros, cheques) + 2 SUMPRODUCT (compras y 
   // Compras pasó a un SOLO SUMPRODUCT (transferencia+débito juntos), no dos SUMIFS.
   // El segundo SUMPRODUCT es la NÓMINA pagada por transferencia (01/08): antes no estaba en ningún
   // lado y el lote de haberes salía del banco sin bajar la disponibilidad.
-  const f = formulaNetaPosterior('$F$19')
+  const f = formulaNetaPosterior('$F$19', MAPAS_HOY)
   assert.equal(f.split('SUMIFS').length - 1, 2)
   assert.equal(f.split('SUMPRODUCT').length - 1, 3)
   assert.match(f, /JORNALES_REAL_BANCO/)
@@ -143,7 +155,7 @@ test('la línea del banco: 2 SUMIFS (cobros, cheques) + 2 SUMPRODUCT (compras y 
 })
 
 test('cobros en efectivo posteriores: SÓLO Efectivo, SÓLO Cobrado, DESPUÉS del arqueo', () => {
-  const f = formulaCobrosEfectivoPosteriores('$F$4')
+  const f = formulaCobrosEfectivoPosteriores('$F$4', COB)
   assert.match(f, /'Cobranzas'!\$O\$5:\$O;"Cobrado"/) // estado
   assert.match(f, /'Cobranzas'!\$N\$5:\$N;"Efectivo"/) // forma de cobro
   assert.match(f, /'Cobranzas'!\$Q\$5:\$Q;">"&\$F\$4/) // ventana posterior al arqueo
@@ -154,7 +166,7 @@ test('cobros en efectivo posteriores: SÓLO Efectivo, SÓLO Cobrado, DESPUÉS de
 test('pagos en efectivo posteriores: el MONTO PAGADO (parcial o total), con la ventana por estado', () => {
   // El defecto del 07/08: $2M en efectivo sobre una factura de $3,3M —fila Pendiente con Monto
   // Pagado— y la caja física no bajaba, porque la fórmula exigía "Pagado" y sumaba el TOTAL.
-  const f = formulaComprasEfectivoPosteriores('$F$4')
+  const f = formulaComprasEfectivoPosteriores('$F$4', CMP)
   assert.match(f, /^SUMPRODUCT\(/)
   assert.doesNotMatch(f, /SUMIFS/)
   assert.match(f, /'Compras'!\$P\$4:\$P="Efectivo"/) // tipo de pago
@@ -181,7 +193,7 @@ test('pagos en efectivo posteriores: el MONTO PAGADO (parcial o total), con la v
 test('el pago en efectivo usa el MISMO medio que el banco deja afuera (partición del lado de los pagos)', () => {
   // El banco cuenta Transferencia/Débito; la caja física cuenta Efectivo. Sin intersección.
   assert.ok(!CMP.tiposBanco.includes('Efectivo'))
-  assert.match(formulaComprasEfectivoPosteriores('$F$4'), /"Efectivo"/)
+  assert.match(formulaComprasEfectivoPosteriores('$F$4', CMP), /"Efectivo"/)
 })
 
 test('los depósitos de efectivo se detectan como en la alerta 4.6 y sólo los posteriores al arqueo', () => {
@@ -205,7 +217,7 @@ test('los depósitos de efectivo se detectan como en la alerta 4.6 y sólo los p
 })
 
 test('la línea neta de la caja física: cobros − pagos − depósitos, guardada por el arqueo', () => {
-  const f = formulaNetaEfectivoPosterior('$F$4')
+  const f = formulaNetaEfectivoPosterior('$F$4', MAPAS_HOY)
   assert.ok(f.startsWith('='))
   // Sin arqueo con fecha no hay ventana: da 0 en vez de inventar plata en el cajón.
   assert.match(f, /^=IF\(NOT\(ISNUMBER\(\$F\$4\)\);0;/)
@@ -221,7 +233,7 @@ test('la línea neta de la caja física: cobros − pagos − depósitos, guarda
 })
 
 test('sin réplica del extracto, la caja física no resta depósitos (no restar un cero disfrazado)', () => {
-  const f = formulaNetaEfectivoPosterior('$F$4', { bancoRaw: null })
+  const f = formulaNetaEfectivoPosterior('$F$4', { bancoRaw: null, ...MAPAS_HOY })
   // Siguen pago en efectivo, nómina de obra y oficina (3 SUMPRODUCT) pero YA NO el depósito NI la
   // extracción: los dos salen de la réplica y se omiten juntos. Dejar uno solo inflaría o vaciaría el
   // cajón. La nómina no depende de la réplica, así que no se cae con ella.
@@ -232,9 +244,9 @@ test('sin réplica del extracto, la caja física no resta depósitos (no restar 
 })
 
 test('las fórmulas de efectivo van en es-AR: separador ; y nunca ,', () => {
-  assert.ok(!formulaNetaEfectivoPosterior('$F$4').includes(','))
-  assert.ok(!formulaCobrosEfectivoPosteriores('$F$4').includes(','))
-  assert.ok(!formulaComprasEfectivoPosteriores('$F$4').includes(','))
+  assert.ok(!formulaNetaEfectivoPosterior('$F$4', MAPAS_HOY).includes(','))
+  assert.ok(!formulaCobrosEfectivoPosteriores('$F$4', COB).includes(','))
+  assert.ok(!formulaComprasEfectivoPosteriores('$F$4', CMP).includes(','))
   assert.ok(!formulaDepositosEfectivoPosteriores('$F$4').includes(','))
 })
 
@@ -245,8 +257,8 @@ test('las fórmulas de efectivo van en es-AR: separador ; y nunca ,', () => {
 // Un arqueo nuevo es una fecha mayor en esa misma celda ancla; todo lo de fecha ≤ arqueo cae fuera de
 // ">" — colapsa dentro del arqueo — sin tocar ninguna otra fórmula.
 test('la ventana de efectivo cuelga del arqueo que se le pase: cambiar el ancla mueve el corte entero', () => {
-  const viejo = formulaNetaEfectivoPosterior('$F$4')
-  const nuevo = formulaNetaEfectivoPosterior('$F$99')
+  const viejo = formulaNetaEfectivoPosterior('$F$4', MAPAS_HOY)
+  const nuevo = formulaNetaEfectivoPosterior('$F$99', MAPAS_HOY)
   // Toda referencia al ancla vieja desaparece cuando el arqueo se registra en otra celda.
   assert.ok(!viejo.includes('$F$99') && !nuevo.includes('$F$4'))
   // El ancla aparece en la guarda ISNUMBER y en los términos (cobros, pagos ×2 —la rama Pagado y la
@@ -259,8 +271,8 @@ test('la ventana de efectivo cuelga del arqueo que se le pase: cambiar el ancla 
 test('la exclusividad es por construcción: efectivo y banco no comparten ninguna forma de cobro', () => {
   // El banco: forma <> Echeq y <> Efectivo. La caja física: forma = Efectivo. La cartera: Echeq.
   // Los tres conjuntos de "forma de cobro" son disjuntos, así que ningún cobro se cuenta dos veces.
-  const banco = formulaCobrosPosteriores('$F$19')
-  const caja = formulaCobrosEfectivoPosteriores('$F$4')
+  const banco = formulaCobrosPosteriores('$F$19', COB)
+  const caja = formulaCobrosEfectivoPosteriores('$F$4', COB)
   assert.match(banco, /"<>Efectivo"/) // el banco deja el efectivo afuera
   assert.match(caja, /"Efectivo"/) // la caja física lo toma
   assert.doesNotMatch(caja, /"<>Echeq"|Transferencia|Débito/) // y no toma nada del canal bancario
@@ -280,7 +292,7 @@ test('la resta de cheques usa la fecha de DÉBITO, no la de emisión', () => {
 })
 
 test('la línea es NETA: un solo lado inflaría la caja para siempre', () => {
-  const f = formulaNetaPosterior('$F$19')
+  const f = formulaNetaPosterior('$F$19', MAPAS_HOY)
   assert.ok(f.startsWith('='))
   assert.ok(f.includes('-SUMIFS'), 'tiene que restar los cheques debitados')
   // 2 SUMIFS (cobros, cheques) + 3 SUMPRODUCT (compras, nómina de obra y oficina, todo por banco).
@@ -289,7 +301,7 @@ test('la línea es NETA: un solo lado inflaría la caja para siempre', () => {
 })
 
 test('las fórmulas van en es-AR: separador ; y nunca ,', () => {
-  const f = formulaNetaPosterior('$F$19')
+  const f = formulaNetaPosterior('$F$19', MAPAS_HOY)
   assert.ok(!f.includes(','), 'una coma acá rompe la fórmula en un archivo es-AR')
 })
 
@@ -365,7 +377,7 @@ test('todas las referencias a Cobranzas del repo terminan en la misma fila', asy
 // de manera automatica"*. Son tres puertas y las tres tienen que mover el rótulo de CAJA.
 
 test('la frescura de CAJA mira LAS TRES PUERTAS: extracto, compras pagadas y cobranzas', () => {
-  const f = formulaFrescuraCaja()
+  const f = formulaFrescuraCaja(MAPAS_HOY)
   assert.match(f, /_BANCO_RAW'!\$A\$4:\$A/, 'puerta 1: el extracto del banco')
   assert.match(f, new RegExp(`Compras'!\\$${COL_FECHA_CAJA}\\$${CMP.desde}:\\$${COL_FECHA_CAJA}`), 'puerta 2: la fecha de caja de Compras')
   assert.match(f, new RegExp(`Cobranzas'!\\$${COB.fecha}\\$${COB.desde}:\\$${COB.fecha}`), 'puerta 3: la fecha de cobro')
@@ -373,7 +385,7 @@ test('la frescura de CAJA mira LAS TRES PUERTAS: extracto, compras pagadas y cob
 })
 
 test('sólo cuenta lo que YA OCURRIÓ: una previsión no da frescura', () => {
-  const f = formulaFrescuraCaja()
+  const f = formulaFrescuraCaja(MAPAS_HOY)
   // Compras trae fecha prevista de pago y Cobranzas fecha esperada de cobro. Sin el filtro de estado
   // y sin `<=TODAY()`, el rótulo declararía un corte futuro sobre plata que no se movió.
   assert.match(f, new RegExp(`Compras'!\\$${CMP.estado}\\$${CMP.desde}:\\$${CMP.estado}="Pagado"`))
@@ -384,22 +396,22 @@ test('sólo cuenta lo que YA OCURRIÓ: una previsión no da frescura', () => {
 test('la fecha de caja de Compras se coacciona: viene mezclada serie/texto', () => {
   // El mismo defecto que ya infló la caja: un MAX crudo se queda con la última fecha que por
   // casualidad entró como número y pierde las tipeadas, EN SILENCIO.
-  assert.match(formulaFrescuraCaja(), /IFERROR\(DATEVALUE\('Compras'!\$AD\$4:\$AD&""\);N\('Compras'!\$AD\$4:\$AD\)\)/)
+  assert.match(formulaFrescuraCaja(MAPAS_HOY), /IFERROR\(DATEVALUE\('Compras'!\$AD\$4:\$AD&""\);N\('Compras'!\$AD\$4:\$AD\)\)/)
 })
 
 test('sin la réplica del extracto la puerta 1 se omite, no queda una referencia rota', () => {
-  const f = formulaFrescuraCaja({ bancoRaw: null })
+  const f = formulaFrescuraCaja({ bancoRaw: null, ...MAPAS_HOY })
   assert.doesNotMatch(f, /_BANCO_RAW/, 'referenciar una hoja que no está manda el subtítulo a #REF!')
   assert.match(f, /Compras/)
   assert.match(f, /Cobranzas/)
 })
 
 test('los rangos de la frescura son ABIERTOS: un tope de filas caduca en silencio', () => {
-  assert.doesNotMatch(formulaFrescuraCaja(), /:\$[A-Z]{1,2}\$\d+/, 'hay un rango cerrado en la frescura')
+  assert.doesNotMatch(formulaFrescuraCaja(MAPAS_HOY), /:\$[A-Z]{1,2}\$\d+/, 'hay un rango cerrado en la frescura')
 })
 
 test('separador es-AR en la frescura de CAJA: ni una coma', () => {
-  assert.doesNotMatch(formulaFrescuraCaja(), /,/)
+  assert.doesNotMatch(formulaFrescuraCaja(MAPAS_HOY), /,/)
 })
 
 // ═══ LA NÓMINA: EL TERCER CANAL (01/08) ═══
@@ -479,7 +491,7 @@ test('las fórmulas de la nómina van en es-AR: separador ; y nunca ,', () => {
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 const ANCLA = '$F$34'
-const ULTIMA = formulaFechaUltimoEfectivo(ANCLA)
+const ULTIMA = formulaFechaUltimoEfectivo(ANCLA, MAPAS_HOY)
 
 test('la fecha del último efectivo mira LAS SEIS FUENTES que mueven el saldo, ninguna menos', () => {
   // Si mañana alguien agrega un séptimo canal al neto y no lo agrega acá, el saldo se movería con una
@@ -506,7 +518,7 @@ test('EL DEFECTO: cada fuente usa EXACTAMENTE la misma ventana con la que su imp
   // Las SALIDAS miran el ancla corrida un día; las ENTRADAS, el ancla pelada. Es la asimetría declarada
   // en caja-ancla-por-instante.mjs y la que usa `historicoEfectivo` para los seis renglones del neto.
   for (const [que, importe] of [
-    ['compras', formulaComprasEfectivoPosteriores(salida)],
+    ['compras', formulaComprasEfectivoPosteriores(salida, CMP)],
     ['jornales', formulaJornalesEfectivoPosteriores(salida)],
     ['oficina', formulaOficinaEfectivoPosteriores(salida)],
     ['depósitos', formulaDepositosEfectivoPosteriores(salida)],
@@ -516,7 +528,7 @@ test('EL DEFECTO: cada fuente usa EXACTAMENTE la misma ventana con la que su imp
   }
   // Las dos entradas: cobros compara contra el ancla PELADA (así lo hace su SUMIFS) y la extracción
   // contra INT del ancla (así lo hace su SUMPRODUCT). Las dos, exclusivas.
-  assert.ok(formulaCobrosEfectivoPosteriores(ANCLA).includes(`">"&${ANCLA}`))
+  assert.ok(formulaCobrosEfectivoPosteriores(ANCLA, COB).includes(`">"&${ANCLA}`))
   assert.ok(ULTIMA.includes(`>${ANCLA})`), 'cobros: el mismo borde que su SUMIFS, sin INT')
   assert.ok(formulaExtraccionesEfectivoPosteriores(ANCLA).includes(`>INT(${ANCLA})`))
   assert.ok(ULTIMA.includes(`>INT(${ANCLA})`), 'extracciones: el mismo borde que su SUMPRODUCT')
@@ -529,7 +541,7 @@ test('la fecha de Compras se coacciona igual que su importe: la tipeada no puede
   // última que entró como número y pierde las tipeadas EN SILENCIO: el saldo baja por un pago y la
   // fecha no se entera. Es el mismo remedio que ya usa el importe, no uno nuevo.
   const coerc = `IFERROR(DATEVALUE('Compras'!$AD$4:$AD&"");N('Compras'!$AD$4:$AD))`
-  assert.ok(formulaComprasEfectivoPosteriores(ANCLA).includes(coerc))
+  assert.ok(formulaComprasEfectivoPosteriores(ANCLA, CMP).includes(coerc))
   assert.ok(ULTIMA.includes(coerc), 'la fecha de caja, con DATEVALUE como en el importe')
   assert.ok(ULTIMA.includes(`IFERROR(DATEVALUE('Compras'!$C$4:$C&"");N('Compras'!$C$4:$C))`),
     'y la fecha de carga, que es la que usa la rama del pago parcial')
@@ -555,7 +567,7 @@ test('SIN MOVIMIENTOS QUEDA EL DÍA DEL CONTEO, y sin ancla no se inventa ningun
     'el piso del MAX es el día del conteo, y sin ancla la celda queda vacía, no en 1899')
   // El anexo pasa el DÍA que CAJA muestra como piso, no INT del instante: el instante puede caer del
   // otro lado de la medianoche y publicaría un día que el conteo no tuvo (ver diaDelConteo).
-  const conNombre = formulaFechaUltimoEfectivo(ANCLA, { conteo: 'ANEXO_CONTEO_ARS_DIA' })
+  const conNombre = formulaFechaUltimoEfectivo(ANCLA, { conteo: 'ANEXO_CONTEO_ARS_DIA', ...MAPAS_HOY })
   assert.match(conNombre, /MAX\(ANEXO_CONTEO_ARS_DIA;/)
   assert.ok(!conNombre.includes(`MAX(INT(${ANCLA});`))
 })

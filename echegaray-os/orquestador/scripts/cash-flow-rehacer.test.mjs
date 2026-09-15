@@ -8,12 +8,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grilla, meses } from './cash-flow-rehacer.mjs'
 import { semanasDelAnio, SEMANAS_HORIZONTE } from '../lib/cash-flow-horizonte.mjs'
+import { RANGOS_ANTES as RG } from '../lib/cash-flow-rangos-referencia.mjs'
 
 /** Un martes cualquiera, fijo: un horizonte rodante probado contra `new Date()` es un test que
  *  cambia de premisa todos los días y no se puede leer cuando falla. */
 const HOY = new Date(Date.UTC(2026, 7, 4))
 
-const arma = (periodo) => grilla(periodo, [], null, null,
+const arma = (periodo) => grilla(RG, periodo, [], null, null,
   // Las tablas de proyección y el calendario fiscal se ubican por rótulo contra el Sheet; para una
   // prueba de FORMA alcanza con una fila cualquiera: no se evalúa ninguna fórmula.
   { Estructura: 10, Recurrentes: 10, 'Materiales y Proveedores': 10 },

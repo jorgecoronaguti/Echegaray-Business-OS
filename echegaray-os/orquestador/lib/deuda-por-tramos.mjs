@@ -69,6 +69,9 @@
 // al lado, porque un número en pesos en un cuadro de deuda se lee como deuda haga lo que haga el
 // rótulo.
 
+import { COMPRAS, columnasDe, rangoAbierto } from './columnas-por-encabezado.mjs'
+import { traducirAlLayoutVivo } from './compras-layout.mjs'
+
 /** Las columnas de Compras que esta aritmética usa. Índice 0 = A. */
 export const COL = Object.freeze({
   proveedor: 4, // E
@@ -246,11 +249,38 @@ export function posicionComercial(filas = []) {
  *
  * @returns {string}
  */
-export function formulaSaldoPendiente() {
+export function formulaSaldoPendiente(encabezado) {
   const n = (r) => `IF(ISNUMBER(${r});${r};0)`
   const saldo = `${n('$O$4:$O')}-${n('$T$4:$T')}-${n('$W$4:$W')}`
-  return `=ARRAYFORMULA(IF($E$4:$E="";"";IF(($X$4:$X="${PENDIENTE}")*($AJ$4:$AJ=1);${saldo};0)))`
+  // DECLARADA EN EL LAYOUT DE REFERENCIA y llevada a la fila de rótulos viva antes de anclarla
+  // (14/09/2026): con «Obra» en L, Total/Monto Pagado/Monto Parcial 2/Estado/comercial se corren.
+  return traducirAlLayoutVivo(`=ARRAYFORMULA(IF($E$4:$E="";"";IF(($X$4:$X="${PENDIENTE}")*($AJ$4:$AJ=1);${saldo};0)))`, { vivo: encabezado })
 }
+
+// ═══ LAS FÓRMULAS QUE LEEN COMPRAS DESDE OTRA PESTAÑA, POR RÓTULO (14/09/2026) ═══
+//
+// Con «Obra» insertada en Compras L, Total/Monto Pagado/Parcial 2/Estado/comercial pasan de O/T/W/X/AJ
+// a P/U/X/Y/AK. Una fórmula armada con la letra de antes resta y filtra la columna de al lado sin dar
+// error, así que las letras salen de la fila de rótulos viva. Sin respaldo: un rótulo que falta rompe.
+
+/** Los rótulos de las columnas que leen `expresionSaldo`, `formulaPagadasSinImporte` y `formulaParcial1Monto`. */
+export const ROTULOS_DEUDA = Object.freeze({
+  total: COMPRAS.total, pagado: COMPRAS.pagado, parcial1: COMPRAS.parcial1, parcial2: COMPRAS.parcial2,
+  estado: COMPRAS.estado, comercial: COMPRAS.comercial,
+})
+
+/** Esas columnas contra la fila de rótulos leída en ESTA corrida. */
+export const columnasDeuda = (encabezado) => columnasDe(encabezado, ROTULOS_DEUDA, 'Compras')
+
+function exigirDeuda(cols, quien) {
+  for (const [k, rotulo] of Object.entries(ROTULOS_DEUDA)) {
+    if (!cols?.[k]?.letra) throw new Error(`${quien}: falta «${rotulo}» resuelta por rótulo — usá columnasDeuda(encabezado)`)
+  }
+  return cols
+}
+
+const abierto = (c) => rangoAbierto('Compras', c)
+const numerico = (c) => `IF(ISNUMBER(${abierto(c)});${abierto(c)};0)`
 
 /**
  * EL SALDO DE UNA FILA COMO SUB-EXPRESIÓN DE SHEETS (sin `=`), para usar dentro de un SUMPRODUCT.
@@ -259,12 +289,12 @@ export function formulaSaldoPendiente() {
  * propósito: un rango metido en un LET pierde la expansión dentro de SUMPRODUCT (ver la lección
  * `let-nombre-a1-y-arrayformula`), así que la expresión se escribe larga y se escribe una sola vez.
  *
- * @param {string} [hoja] la pestaña de origen, con su `!`
+ * @param {Record<string,{letra:string}>} cols las de `columnasDeuda`
  * @returns {string}
  */
-export function expresionSaldo(hoja = 'Compras!') {
-  const n = (c) => `IF(ISNUMBER(${hoja}$${c}$4:$${c});${hoja}$${c}$4:$${c};0)`
-  return `(${n('O')}-${n('T')}-${n('W')})`
+export function expresionSaldo(cols) {
+  const c = exigirDeuda(cols, 'expresionSaldo')
+  return `(${numerico(c.total)}-${numerico(c.pagado)}-${numerico(c.parcial2)})`
 }
 
 /**
@@ -280,8 +310,8 @@ export function expresionSaldo(hoja = 'Compras!') {
  *
  * @returns {string}
  */
-export function formulaPagadasSinImporte() {
-  return `=SUMPRODUCT(${universoSinImporte()})`
+export function formulaPagadasSinImporte(cols) {
+  return `=SUMPRODUCT(${universoSinImporte(exigirDeuda(cols, 'formulaPagadasSinImporte'))})`
 }
 
 // `formulaProveedoresSinImporte` —la lista de nombres al lado del conteo— se retiró el 09/09/2026:
@@ -289,9 +319,8 @@ export function formulaPagadasSinImporte() {
 // es cada una se encuentra en Compras con el filtro que el rótulo del control nombra.
 
 /** El universo, en un solo lugar: el conteo y los nombres tienen que hablar de las mismas filas. */
-function universoSinImporte() {
-  const n = (c) => `IF(ISNUMBER(Compras!$${c}$4:$${c});Compras!$${c}$4:$${c};0)`
-  return `(Compras!$AJ$4:$AJ=1)*(Compras!$X$4:$X="${PAGADO}")*(Compras!$O$4:$O>0)*((${n('T')}+${n('W')})=0)`
+function universoSinImporte(c) {
+  return `(${abierto(c.comercial)}=1)*(${abierto(c.estado)}="${PAGADO}")*(${abierto(c.total)}>0)*((${numerico(c.pagado)}+${numerico(c.parcial2)})=0)`
 }
 
 /**
@@ -323,13 +352,14 @@ function universoSinImporte() {
  *
  * @returns {string}
  */
-export function formulaParcial1Monto() {
+export function formulaParcial1Monto(cols) {
+  const c = exigirDeuda(cols, 'formulaParcial1Monto')
   // `IF(ISNUMBER(...))` NO SOBRA, y la primera versión sin él publicó `#VALUE!` en la pestaña real.
   // `Monto Parcial 1` tiene 302 valores cargados a mano y entre ellos hay celdas de TEXTO: la
   // comparación `>0` las tolera, pero la MULTIPLICACIÓN de la máscara por la columna arrastra el
   // texto y rompe el SUMPRODUCT entero. Es la misma coerción que ya hace `expresionSaldo`.
-  const n = '(IF(ISNUMBER(Compras!$U$4:$U);Compras!$U$4:$U;0))'
-  const u = `(${n}>0)*(Compras!$X$4:$X="${PENDIENTE}")*(Compras!$AJ$4:$AJ=1)`
+  const n = `(${numerico(c.parcial1)})`
+  const u = `(${n}>0)*(${abierto(c.estado)}="${PENDIENTE}")*(${abierto(c.comercial)}=1)`
   return `=SUMPRODUCT(${u}*${n})`
 }
 

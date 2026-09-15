@@ -33,6 +33,7 @@ import { urlDelAdjunto } from '../services/comprasAdjuntoActions'
 import type { Adjunto, FilaConPapel } from '../services/comprasSheetService'
 import { estaReconocido, type IdentidadResuelta } from '../services/identidadProveedorService'
 import { ConfirmarIdentidad } from './ConfirmarIdentidad'
+import { EditorObraDeCompra } from './EditorObraDeCompra'
 
 const esImagen = (a: Adjunto) => a.media_type?.startsWith('image/')
 
@@ -103,12 +104,15 @@ function Papel({ a }: { a: Adjunto }) {
  * mira esto. Las tres URLs son tres strings: eso sí cruza la frontera.
  */
 export function PanelCompraSheet({
-  fila, cerrarHref, hrefsFiltro, identidad,
+  fila, cerrarHref, hrefsFiltro, identidad, obraEditable = false, opcionesObra = [],
 }: {
   fila: FilaConPapel
   cerrarHref: string
   hrefsFiltro: Record<string, string>
   identidad?: IdentidadResuelta
+  /** La base tiene la columna Obra (migración 20260915T0700): se puede elegir. */
+  obraEditable?: boolean
+  opcionesObra?: string[]
 }) {
   const reclamo = reclamoDe(fila)
   return (
@@ -203,6 +207,7 @@ export function PanelCompraSheet({
 
       {/* EL PIE DE ACCIONES DEL HANDOFF v4. Va último, después de las propiedades y del papel: lo
           que se decide se decide DESPUÉS de haber leído lo que hay. */}
+      <EditorObraDeCompra fila={fila.fila} celda={fila.obra?.celda ?? null} opciones={opcionesObra} editable={obraEditable} />
       <AccionesCompra clave={fila.clave} filaCompras={fila.fila} />
     </PanelFilo>
   )

@@ -5,6 +5,7 @@ import {
   sumandosEnVentana, expresionSaleEnVentana, expresionEntraEnVentana,
   conceptosFueraDelCalendario,
 } from './calendario-egresos.mjs'
+import { RANGOS_ANTES as RG } from './cash-flow-rangos-referencia.mjs'
 
 // El resolutor completo, como lo pasa el generador. Devuelve marcas reconocibles, no números.
 const RESOLUTOR = {
@@ -49,17 +50,17 @@ test('con la definición única no queda ningún concepto de egreso afuera', () 
 test('FALLA CERRADO: una línea sin resolutor rompe en vez de desaparecer del calendario', () => {
   // Es el corazón del defecto: no fue una fórmula mal escrita, fue plata que nadie sumó y nada
   // avisó. Sin resolutor, las cinco líneas especiales se irían en silencio.
-  assert.throws(() => sumandosEnVentana(-1, 'A1', 'B1'), /sin forma de calcularse|silencio/)
+  assert.throws(() => sumandosEnVentana(RG, -1, 'A1', 'B1'), /sin forma de calcularse|silencio/)
   // Y con un resolutor INCOMPLETO también: el que falta tiene que aparecer nombrado.
   const { descubierto, ...incompleto } = RESOLUTOR
   assert.ok(descubierto)
   assert.throws(
-    () => sumandosEnVentana(-1, 'A1', 'B1', incompleto),
+    () => sumandosEnVentana(RG, -1, 'A1', 'B1', incompleto),
     /Intereses del acuerdo en descubierto/)
 })
 
 test('con el resolutor completo, las cinco especiales entran al calendario', () => {
-  const sale = expresionSaleEnVentana('A1', 'B1', RESOLUTOR)
+  const sale = expresionSaleEnVentana(RG, 'A1', 'B1', RESOLUTOR)
   for (const marca of ['CHQ(A1;B1)', 'TAR(A1;B1)', 'IVA(A1;B1)', 'DESC(A1;B1)', 'COM(A1;B1)', 'ICH(A1;B1)']) {
     assert.ok(sale.includes(marca), `falta ${marca} en la salida del tramo`)
   }
@@ -69,8 +70,8 @@ test('con el resolutor completo, las cinco especiales entran al calendario', () 
 test('la ventana se propaga a TODOS los sumandos — un tramo no puede quedar con la ventana de otro', () => {
   // El calendario arma seis tramos con seis ventanas. Si un sumando ignorara el par (desde;hasta) —
   // por ejemplo porque su fórmula fuera fija— ese concepto se contaría igual en los seis tramos.
-  const a = sumandosEnVentana(-1, 'TODAY()', 'TODAY()+7', RESOLUTOR)
-  const b = sumandosEnVentana(-1, 'TODAY()+7', 'TODAY()+14', RESOLUTOR)
+  const a = sumandosEnVentana(RG, -1, 'TODAY()', 'TODAY()+7', RESOLUTOR)
+  const b = sumandosEnVentana(RG, -1, 'TODAY()+7', 'TODAY()+14', RESOLUTOR)
   assert.equal(a.length, b.length)
   a.forEach((s, i) => {
     assert.notEqual(s.expresion, b[i].expresion, `"${s.nombre}" da la misma fórmula en dos tramos distintos`)
@@ -78,14 +79,14 @@ test('la ventana se propaga a TODOS los sumandos — un tramo no puede quedar co
 })
 
 test('entra y sale son universos DISJUNTOS: ninguna línea cae de los dos lados', () => {
-  const entra = new Set(sumandosEnVentana(1, 'A1', 'B1', RESOLUTOR).map((s) => s.nombre))
-  const sale = sumandosEnVentana(-1, 'A1', 'B1', RESOLUTOR).map((s) => s.nombre)
+  const entra = new Set(sumandosEnVentana(RG, 1, 'A1', 'B1', RESOLUTOR).map((s) => s.nombre))
+  const sale = sumandosEnVentana(RG, -1, 'A1', 'B1', RESOLUTOR).map((s) => s.nombre)
   assert.deepEqual(sale.filter((n) => entra.has(n)), [])
 })
 
 test('las cobranzas esperadas SUMAN al lado que entra (son proyección, pero son plata)', () => {
-  const entra = expresionEntraEnVentana('A1', 'B1', RESOLUTOR)
-  const nombres = sumandosEnVentana(1, 'A1', 'B1', RESOLUTOR).map((s) => s.nombre)
+  const entra = expresionEntraEnVentana(RG, 'A1', 'B1', RESOLUTOR)
+  const nombres = sumandosEnVentana(RG, 1, 'A1', 'B1', RESOLUTOR).map((s) => s.nombre)
   assert.ok(nombres.includes('Esperado · obra civil'))
   assert.ok(nombres.includes('Cobranzas de obra civil'))
   assert.ok(entra.length > 0)

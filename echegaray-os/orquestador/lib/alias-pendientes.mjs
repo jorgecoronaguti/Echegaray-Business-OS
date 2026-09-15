@@ -17,6 +17,7 @@
 
 import { resolverObraCon } from './obras.mjs'
 import { montoAR } from './egresos-por-area.mjs'
+import { COMPRAS, rangoEncabezado, ubicarColumna } from './columnas-por-encabezado.mjs'
 
 /** Textos que no son un cliente: encabezados repetidos, importes derramados, restos de la planilla. */
 const RE_NO_CLIENTE = /^(cliente|obra|total|suma|[\s$.,\d-]*)$/i
@@ -84,8 +85,18 @@ export function formatPendientes(r) {
 /** Las columnas de cliente VIVAS que hay que vigilar. Fuente única: si aparece otra, se agrega acá. */
 export const FUENTES = [
   { fuente: 'JORNALES (obreros)', pestana: '_J_OBREROS', rango: 'AB1:AB990', monto: 'AA1:AA990' },
-  { fuente: 'Compras', pestana: 'Compras', rango: 'J4:J1000', monto: 'O4:O1000' },
+  // Compras por RÓTULO (14/09/2026): con «Obra» insertada en L, el Total pasa de O a P.
+  { fuente: 'Compras', pestana: 'Compras', rotulo: COMPRAS.cliente, rotuloMonto: COMPRAS.total, desde: 4, hasta: 1000 },
 ]
+
+/** Los dos rangos de una fuente: fijos para la réplica del OS, resueltos contra la fila de rótulos para Compras. */
+export async function rangosDeFuente(google, fileId, f) {
+  if (!f.rotulo) return { texto: `${f.pestana}!${f.rango}`, monto: `${f.pestana}!${f.monto}` }
+  const cab = (await google.readSheetValues(fileId, rangoEncabezado(f.pestana)))?.[0] ?? []
+  const l = (r) => ubicarColumna(cab, r, f.pestana).letra
+  const col = (r) => `${f.pestana}!${l(r)}${f.desde}:${l(r)}${f.hasta}`
+  return { texto: col(f.rotulo), monto: col(f.rotuloMonto) }
+}
 
 /** Revisa las columnas de cliente vivas del Cash Flow contra el eje canónico. */
 export async function aliasPendientes(google, { file_id, aliasMap } = {}) {
@@ -100,9 +111,10 @@ export async function aliasPendientes(google, { file_id, aliasMap } = {}) {
   const filas = []
   for (const f of FUENTES) {
     try {
+      const r = await rangosDeFuente(google, file_id, f)
       const [txt, mon] = await Promise.all([
-        google.readSheetValues(file_id, `${f.pestana}!${f.rango}`),
-        google.readSheetValues(file_id, `${f.pestana}!${f.monto}`).catch(() => []),
+        google.readSheetValues(file_id, r.texto),
+        google.readSheetValues(file_id, r.monto).catch(() => []),
       ])
       ;(txt ?? []).forEach((r, i) => filas.push({ fuente: f.fuente, texto: r?.[0], monto: (mon ?? [])[i]?.[0] }))
     } catch { /* una pestaña que no existe se informa por ausencia, no rompe la revisión */ }

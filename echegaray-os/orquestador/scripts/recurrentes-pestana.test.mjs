@@ -19,8 +19,11 @@ import { evaluarFormula, hojaDeGrilla } from '../lib/evaluar-formula-sheet.mjs'
 import { enBloqueIndivisible } from '../lib/celda-de-estructura.mjs'
 import { fusionar, tiene, VACIO, limpiarCentinela } from '../lib/preservar-anotaciones.mjs'
 import { CONTADOR, MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL } from '../lib/formato-statement.mjs'
+import { COMPRAS, columnasDe } from '../lib/columnas-por-encabezado.mjs'
+import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
+const COLS_ANTES = columnasDe(COMPRAS_2508, COMPRAS, 'Compras')
 
-const g = grilla(['Movistar', 'RSV', 'Robles Jose Maria'])
+const g = grilla(['Movistar', 'RSV', 'Robles Jose Maria'], COLS_ANTES)
 
 test('EL FANTASMA: la fusión borra el encabezado que dejó el layout anterior en la fila 2', () => {
   // "Antes": la pestaña real tenía en la fila 2 la nota del generador MÁS los doce seriales de fecha
@@ -238,7 +241,7 @@ const MOVISTAR = [393970, 359155, 377932, 341554, 0, 398690, 290754, 0, 0, 0, 0,
 
 /** Arma el cuadro de UN proveedor, le mete el real mes a mes y evalúa lo que el dueño va a leer. */
 function cuadroDe(realPorMes, hoy = HOY) {
-  const uno = grilla(['Movistar'])
+  const uno = grilla(['Movistar'], COLS_ANTES)
   const hoja = hojaDeGrilla(uno.filas)
   const f = uno.f0 // con un solo proveedor, f0 = f1: los rangos del control quedan de una fila
   AUX.forEach((c, m) => { hoja[`${c}${f}`] = realPorMes[m] ?? 0 })

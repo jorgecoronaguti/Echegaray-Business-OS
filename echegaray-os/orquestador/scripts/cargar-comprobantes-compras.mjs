@@ -34,12 +34,17 @@ import { readFileSync } from 'node:fs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { matchProveedor, valoresInput, aFechaAR, discrepanciaNeto, verificarEscritura, colIndice, filaModeloDeFormulas, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
+import { matchProveedor, valoresInput, aFechaAR, discrepanciaNeto, verificarEscritura, colIndice, filaModeloDeFormulas } from '../lib/carga-comprobantes.mjs'
 import { faltantesDe, puedeCargarse, POLITICA } from '../lib/comprobantes/faltantes.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { perfilesDeImputacionDesdeDB, perfilesDeImputacion } from '../lib/imputacion-aprendida.mjs'
 import { completarUno } from '../lib/comprobantes/imputacion-historial.mjs'
-import { aritmetica } from '../lib/comprobantes/verificacion.mjs'
+import { aritmetica, colVerificacion } from '../lib/comprobantes/verificacion.mjs'
+import { CONTRATO, colDelCargador, contratoContra, derivar } from '../lib/comprobantes/contrato-columnas.mjs'
+import { lectorDeEncabezados, rangoColumna, rangoFilas, ubicarColumna } from '../lib/columnas-por-encabezado.mjs'
+import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
+import { catalogosDeAsignacion } from '../lib/compras-obra-asignada.mjs'
+import { destinosDeObra, obraParaLaColumna, pestanaDelComprobante, PESTANA_COMPRAS } from '../lib/comprobantes/obra-y-destino.mjs'
 import { indiceDeCompras, buscarEnCompras, HALLAZGO } from '../lib/comprobantes/compras-vivas.mjs'
 import { conciliarConArca, aplicarArca, candidatasArca, ESTADO_ARCA } from '../lib/comprobantes/arca.mjs'
 import { listasDeCompras, proveedoresPorCuit } from '../lib/comprobantes/listas.mjs'
@@ -188,7 +193,7 @@ export async function escribirYVerificar(google, { desde, hasta, plan, fileId = 
   // guarda-escritura.mjs. Que "debajo no había nada" deje de ser cierto no es una hipótesis: es lo que la
   // guarda verifica antes de escribir, y lo que la verificación de abajo prueba después.
   const respuesta = await google.batchUpdateValues(fileId, data, { soloFilasVacias: true })
-  const leido = await google.readSheetGrid(fileId, `Compras!A${desde}:AD${hasta}`).catch(() => null)
+  const leido = await google.readSheetGrid(fileId, rangoFilas('Compras', desde, hasta)).catch(() => null)
   const v = verificarEscritura(plan.map((p) => p.valores), leido?.filas || [], { desde })
   if (v.ok && leido) return { ok: true, ...v, respuesta }
   // El freno de mano y el candado se arreglan de formas distintas —uno lo levanta el dueño para toda
@@ -214,15 +219,15 @@ export async function escribirYVerificar(google, { desde, hasta, plan, fileId = 
  * @param {Array<Array<{valor?:string|null}>>} filas  la grilla releída de `Compras!A{desde}:AD{hasta}`
  * @param {{desde:number}} o
  */
-export function revisarFilasEscritas(filas = [], { desde = 0 } = {}) {
+export function revisarFilasEscritas(filas = [], { desde = 0, ind = indicesDeRevision(COMPRAS_2508) } = {}) {
   let errores = 0
   let sinRubro = 0
   const noCierran = []
   for (const [k, f] of (filas ?? []).entries()) {
     const val = (i) => f?.[i]?.valor ?? ''
-    if (/#(ERROR|REF|N\/A|VALUE|¿NOMBRE|NAME)/i.test([val(0), val(14), val(28)].join(' '))) errores++
-    if (!val(28)) sinRubro++
-    const a = aritmetica((f ?? []).map((c) => c?.valor ?? ''))
+    if (/#(ERROR|REF|N\/A|VALUE|¿NOMBRE|NAME)/i.test([val(ind.id), val(ind.total), val(ind.rubro)].join(' '))) errores++
+    if (!val(ind.rubro)) sinRubro++
+    const a = aritmetica((f ?? []).map((c) => c?.valor ?? ''), ind.ver)
     if (!a.cierra) noCierran.push({ fila: desde + k, ...a })
   }
   return { errores, sinRubro, noCierran }
@@ -312,7 +317,7 @@ export async function prepararUno(c = {}, { lista = [], porCuit = null, nombresP
  */
 export async function prepararPlan(comprobantes = [], o = {}) {
   const { perfiles = null } = o
-  const plan = []; const rechazos = []; const duplicados = []; const percep = []
+  const plan = []; const rechazos = []; const duplicados = []; const percep = []; const fueraDeCompras = []
   const nuevos = new Set(); const arca = { coinciden: 0, corregidos: 0 }
   // Las resoluciones de identidad SÓLO de las filas que se van a escribir: dar de alta un proveedor
   // por un comprobante que se rechazó o que ya estaba cargado dejaría una ficha que nadie pidió.
@@ -334,13 +339,6 @@ export async function prepararPlan(comprobantes = [], o = {}) {
       rechazos.push({ i, proveedor: c.proveedor, problemas })
       continue
     }
-    if (alta) resoluciones.push(alta)
-    // `nuevos` son los que SIGUEN fuera del desplegable después de intentar identificarlos: los que
-    // el CUIT resolvió entran por `altas` y salen del rojo. Confundirlos haría que el bot avise de un
-    // proveedor que ya quedó bien y se calle el que de verdad hay que mirar.
-    if (prov.esNuevo && (!alta || alta.camino === CAMINO.SIN_IDENTIDAD || alta.camino === CAMINO.CONFLICTO)) nuevos.add(cc.proveedor)
-    const dif = discrepanciaNeto(cc)
-    if (dif) percep.push({ i, proveedor: prov.valor, dif })
     // ═══ LA IMPUTACIÓN SE APLICA, NO SE IMPRIME (14/08) ═══
     //
     // Acá se llamaba a `sugerirImputacion` y el resultado sólo se mostraba: «NO cambia lo que se
@@ -355,18 +353,66 @@ export async function prepararPlan(comprobantes = [], o = {}) {
     const { aplicado, sugerencia: sug } = perfiles?.por_proveedor
       ? completarUno(cc, perfiles, { campoDetalle: 'detalle' })
       : { aplicado: {}, sugerencia: null }
+    // ═══ IMPUESTOS, CARGAS Y FINANCIEROS NO ENTRAN A COMPRAS (dueño, 14/09/2026) ═══
+    //
+    // Se decide DESPUÉS del historial —la Unidad «Impuestos» de un proveedor que siempre fue impuesto
+    // también cuenta— y ANTES de las altas: dar de alta un proveedor por un comprobante que no se
+    // escribe dejaría una ficha que nadie pidió. No se escribe en la otra pestaña: esas pestañas las
+    // arman sus generadores desde sus propias fuentes. Se devuelve con el nombre de a dónde va.
+    const { pestana, rubro } = pestanaDelComprobante(cc)
+    if (pestana !== PESTANA_COMPRAS) {
+      fueraDeCompras.push({ i, proveedor: cc.proveedor ?? null, numero: cc.numero ?? null, pestana, rubro })
+      continue
+    }
+    if (alta) resoluciones.push(alta)
+    // `nuevos` son los que SIGUEN fuera del desplegable después de intentar identificarlos: los que
+    // el CUIT resolvió entran por `altas` y salen del rojo. Confundirlos haría que el bot avise de un
+    // proveedor que ya quedó bien y se calle el que de verdad hay que mirar.
+    if (prov.esNuevo && (!alta || alta.camino === CAMINO.SIN_IDENTIDAD || alta.camino === CAMINO.CONFLICTO)) nuevos.add(cc.proveedor)
+    const dif = discrepanciaNeto(cc)
+    if (dif) percep.push({ i, proveedor: prov.valor, dif })
+    // LA COLUMNA «Obra»: sólo un valor del desplegable, y sólo si es una decisión. Se pisa lo que venga
+    // en `obraFila` con el valor VALIDADO: un texto que no es opción no llega a la celda.
+    const obra = obraParaLaColumna(cc, o.destinos)
+    cc.obraFila = obra.valor ?? undefined
+    const cuit = String(cc.cuit ?? '').replace(/\D/g, '')
     // `i` = índice del comprobante en el fajo de ENTRADA. Va en el plan porque los rechazados no
     // ocupan fila: sin él, quien llama no puede saber a qué comprobante suyo corresponde cada fila.
-    plan.push({ i, valores: valoresInput(cc), nuevo: prov.esNuevo, proveedor: prov.valor, sug, aplicado })
+    plan.push({
+      i, valores: valoresInput(cc, o.col), col: o.col ?? colDelCargador(CONTRATO), nuevo: prov.esNuevo, proveedor: prov.valor, sug, aplicado,
+      obra, cuit: cuit.length === 11 ? cuit : null, pestana, rubro,
+    })
   }
   // `revisadoContraCompras` viaja porque no poder mirar la pestaña NO es "no está cargado", y las dos
   // cosas se ven iguales si nadie las distingue. Quien informe esto tiene que poder decir cuál fue.
-  return { plan, rechazos, duplicados, percep, nuevos: [...nuevos], altas: planDeAltas(resoluciones), arca, revisadoContraCompras: o.indiceCompras?.ok === true }
+  return { plan, rechazos, duplicados, percep, fueraDeCompras, nuevos: [...nuevos], altas: planDeAltas(resoluciones), arca, revisadoContraCompras: o.indiceCompras?.ok === true }
+}
+
+/** Lo que cada fila del plan le dice a quien consume la línea JSON: dónde, a qué obra, qué CUIT. */
+export function filasDelPlan(plan = [], desde = 0) {
+  return plan.map((p, k) => ({
+    i: p.i, fila: desde + k, proveedor: p.proveedor, cuit: p.cuit ?? null, pestana: p.pestana ?? PESTANA_COMPRAS,
+    obra: p.obra?.valor ?? null, obraPorque: p.obra?.valor ? null : (p.obra?.porque ?? null),
+    obraEscrita: Boolean(p.obra?.valor && p.col?.obraFila),
+  }))
 }
 
 /** Lo que se decidió, para una persona. No decide nada: sólo cuenta lo que ya se decidió. */
-function informar({ plan, rechazos, duplicados, percep, nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles }) {
+/** Por qué no hay nada que escribir. `fuera_de_compras` sólo si TODO lo no cargado fue por eso. */
+export function motivoSinPlan({ rechazos = [], duplicados = [], fueraDeCompras = [] } = {}) {
+  if (fueraDeCompras.length && !rechazos.length && !duplicados.length) return 'fuera_de_compras'
+  return duplicados.length && !rechazos.length ? 'ya_cargados' : 'nada_cargable'
+}
+
+function informar({ plan, rechazos, duplicados, percep, fueraDeCompras = [], nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles }) {
   console.log(`Compras: última fila con datos = ${ultima}. Se cargan ${plan.length} comprobante(s) → filas ${desde}..${hasta}.`)
+  if (fueraDeCompras.length) {
+    console.log(`\n↪ ${fueraDeCompras.length} NO van a Compras (dueño, 14/09: tienen su pestaña):`)
+    fueraDeCompras.forEach((f) => console.log(`   #${f.i} ${f.proveedor || '(sin proveedor)'} ${f.numero ?? ''} → «${f.pestana}» (rubro ${f.rubro})`))
+  }
+  for (const p of plan) {
+    console.log(`   Obra #${p.i} ${p.proveedor ?? ''}: ${p.obra?.valor ? `«${p.obra.valor}»` : `vacía — ${p.obra?.porque ?? 'sin propuesta'}`}${p.cuit ? ` · CUIT ${p.cuit}` : ''}`)
+  }
   // NO PODER MIRAR COMPRAS NO ES "NO ESTÁ CARGADO". Si se callara, una corrida ciega y una corrida
   // verificada se verían iguales — y la ciega es justo la que puede duplicar un gasto.
   if (!indiceCompras?.ok) console.log(`\n⚠ NO pude leer la pestaña Compras para buscar duplicados (${indiceCompras?.error ?? 'sin detalle'}). No afirmo que estos comprobantes no estén ya cargados.`)
@@ -431,7 +477,7 @@ function informarImputacion(plan, perfiles) {
     console.log('\n✍ Imputación COMPLETADA con el historial (queda marcada en el Concepto como `[historial: …]`):')
     for (const p of aplicados) {
       const cual = Object.entries(p.aplicado)
-        .map(([k, v]) => `${k} = «${p.valores[COL_DE[k]] ?? '?'}» (${v.n} cargas, ${Math.round((v.share ?? 0) * 100)}%)`)
+        .map(([k, v]) => `${k} = «${p.valores[p.col?.[k]] ?? '?'}» (${v.n} cargas, ${Math.round((v.share ?? 0) * 100)}%)`)
       console.log(`   ${p.proveedor}: ${cual.join(' · ')}`)
     }
   }
@@ -451,8 +497,11 @@ function informarImputacion(plan, perfiles) {
   console.log('   (✓ = alta confianza · (?) = necesita tu confirmación)')
 }
 
-/** Dimensión de la imputación → letra de columna, para poder mostrar lo que quedó escrito. */
-const COL_DE = Object.freeze({ obra: 'J', detalle: 'K', unidad: 'I', categoria: 'B' })
+/** Id, Total y Rubro de caja (2.º) contra el encabezado leído, y las columnas de la aritmética. */
+export function indicesDeRevision(encabezado) {
+  const i = (p) => ubicarColumna(encabezado, p, 'Compras').indice
+  return { id: i('ID'), total: i('Total'), rubro: i({ rotulo: 'Rubro de caja', ocurrencia: 2 }), ver: colVerificacion(encabezado) }
+}
 
 /**
  * Cuántas filas hacia arriba se busca la fila modelo. 120 alcanza de sobra —la última fila con la
@@ -462,10 +511,10 @@ const COL_DE = Object.freeze({ obra: 'J', detalle: 'K', unidad: 'I', categoria: 
 const VENTANA_MODELO = 120
 
 /** La fila de la que se copian las fórmulas. Toca la red; la decisión la toma `filaModeloDeFormulas`. */
-async function filaDeFormulas(google, ultima) {
+async function filaDeFormulas(google, ultima, grupos) {
   const inicio = Math.max(FILA_PRIMERA, ultima - VENTANA_MODELO + 1)
-  const g = await google.readSheetGrid(ID, `Compras!A${inicio}:AI${ultima}`)
-  return filaModeloDeFormulas(g?.filas ?? [], { desde: inicio })
+  const g = await google.readSheetGrid(ID, rangoFilas('Compras', inicio, ultima))
+  return filaModeloDeFormulas(g?.filas ?? [], { desde: inicio, grupos })
 }
 
 /** La primera fila de datos de Compras. Los encabezados viven arriba. Contrato con el Sheet. */
@@ -491,6 +540,12 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
   const hoja = meta.find((h) => h.title === 'Compras')
+  // EL CONTRATO SE RESUELVE CONTRA LA FILA DE RÓTULOS VIVA (14/09/2026): con «Obra» insertada en L,
+  // todo desde Concepto se corre una letra. Un rótulo que falta aborta acá, antes de escribir nada.
+  const encabezado = await lectorDeEncabezados(google, ID).encabezado('Compras')
+  const contrato = contratoContra(encabezado)
+  const der = derivar(contrato)
+  const col = colDelCargador(contrato)
   // UNA SOLA LECTURA DE LA PESTAÑA VIVA alimenta las dos cosas que hacen falta: el índice contra el
   // que se busca el duplicado y la historia con la que `imputacion-aprendida.mjs` sugiere la
   // imputación. Ya se leía para lo segundo; lo primero es lo que faltaba y no cuesta una consulta más.
@@ -503,7 +558,7 @@ async function main() {
   const [listas, porCuit, colE, indiceCompras, conocidos, nombresPorCuit] = await Promise.all([
     listasDeCompras(google, { fileId: ID }),
     proveedoresPorCuit(google, { fileId: ID }),
-    google.readSheetValues(ID, 'Compras!E1:E'),
+    google.readSheetValues(ID, rangoColumna('Compras', col.proveedor)),
     indiceDeCompras(google, { fileId: ID }),
     maestroDeProveedores(),
     nombresDelPadronPorCuit(),
@@ -513,19 +568,27 @@ async function main() {
   let ultima = 0
   colE.forEach((r, i) => { if (r[0] != null && r[0] !== '') ultima = i + 1 })
 
-  const { plan, rechazos, duplicados, percep, nuevos, altas, arca } = await prepararPlan(comprobantes, {
-    lista, porCuit, nombresPorCuit, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL, conocidos,
+  // EL CATÁLOGO DE OBRAS PARA LA COLUMNA «Obra». Si no se puede leer, la celda queda vacía —como
+  // antes del 14/09— y se dice: no poder proponer la obra no es motivo para no cargar el gasto.
+  const destinos = await catalogosDeAsignacion(query).then(destinosDeObra).catch((e) => {
+    console.log(`ℹ columna Obra: no pude leer el catálogo de obras (${String(e?.message ?? e).slice(0, 120)}) — la celda queda vacía.`)
+    return null
+  })
+  if (!col.obraFila) console.log('ℹ columna Obra: Compras todavía no tiene el rótulo «Obra» — la obra se propone pero no se escribe.')
+
+  const { plan, rechazos, duplicados, percep, fueraDeCompras, nuevos, altas, arca } = await prepararPlan(comprobantes, {
+    lista, porCuit, nombresPorCuit, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL, conocidos, col, destinos,
     arcaDe: (c) => candidatasArca({ query }, c),
   })
 
   const desde = ultima + 1
   const hasta = ultima + plan.length
-  informar({ plan, rechazos, duplicados, percep, nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles })
+  informar({ plan, rechazos, duplicados, percep, fueraDeCompras, nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles })
   informarAltas(altas, conocidos)
   if (!plan.length) {
     console.log('\nNada cargable.')
     // `duplicados` viaja: para quien llama no es lo mismo "no se pudo leer" que "ya estaba cargado".
-    emitir({ ok: false, motivo: duplicados.length && !rechazos.length ? 'ya_cargados' : 'nada_cargable', escritas: 0, rechazos, duplicados, nuevos, altas, percep })
+    emitir({ ok: false, motivo: motivoSinPlan({ rechazos, duplicados, fueraDeCompras }), escritas: 0, rechazos, duplicados, fueraDeCompras, nuevos, altas, percep })
     await closePool(); return
   }
 
@@ -534,13 +597,21 @@ async function main() {
   // `PASTE_FORMULA` copia lo que HAY. Como 408 de las 842 filas de Compras tienen la columna O pegada
   // como literal, copiar de `ultima` sin mirar baja el TOTAL DE OTRA FACTURA a las filas nuevas — y no
   // es un `#ERROR`, así que la verificación de abajo nunca lo vería. Ver `filaModeloDeFormulas`.
-  const modelo = await filaDeFormulas(google, ultima)
+  // EL PORTÓN, CON EL CONTRATO VIVO: ninguna letra del plan puede ser fórmula ni ARRAYFORMULA.
+  const indebidas = der.letrasIndebidas(plan.flatMap((p) => Object.keys(p.valores)))
+  if (indebidas.length) {
+    console.error(`\n✖ El plan escribiría columnas prohibidas: ${indebidas.map((m) => `${m.letra} (${m.motivo})`).join(' · ')}. NO se escribió nada.`)
+    emitir({ ok: false, motivo: 'columna_prohibida', escritas: 0, rechazos, duplicados, fueraDeCompras, nuevos, altas, percep })
+    process.exitCode = 1
+    await closePool(); return
+  }
+  const modelo = await filaDeFormulas(google, ultima, der.GRUPOS_FORMULA)
   if (!modelo.fila) {
     console.error(`\n✖ No encontré ninguna fila con las fórmulas completas en las últimas ${VENTANA_MODELO} filas de Compras`
       + `${modelo.faltan.length ? ` (a la ${ultima} le faltan en ${modelo.faltan.join(', ')})` : ''}.`)
     console.error('   No copio fórmulas de una fila pegada a mano: bajaría el total de otro comprobante y quedaría verde.')
     console.error('   Arreglá la fórmula de alguna fila reciente (o pegá la de la fila 4 hacia abajo) y volvé a correr. NO se escribió nada.')
-    emitir({ ok: false, motivo: 'sin_fila_modelo', escritas: 0, rechazos, duplicados, nuevos, altas, percep, faltan: modelo.faltan })
+    emitir({ ok: false, motivo: 'sin_fila_modelo', escritas: 0, rechazos, duplicados, fueraDeCompras, nuevos, altas, percep, faltan: modelo.faltan })
     process.exitCode = 1
     await closePool(); return
   }
@@ -551,8 +622,8 @@ async function main() {
   if (DRY) {
     console.log('\n(--dry) Muestra de la primera fila a escribir:')
     console.log('  ', JSON.stringify(plan[0].valores))
-    console.log(`  Fórmulas a estampar por copyPaste desde la fila ${modelo.fila}: ${GRUPOS_FORMULA.map((g) => g[0] === g[1] ? g[0] : g.join(':')).join(' ')}`)
-    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filaModelo: modelo.fila, filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })), rechazos, duplicados, nuevos, altas, percep })
+    console.log(`  Fórmulas a estampar por copyPaste desde la fila ${modelo.fila}: ${der.GRUPOS_FORMULA.map((g) => g[0] === g[1] ? g[0] : g.join(':')).join(' ')}`)
+    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filaModelo: modelo.fila, filas: filasDelPlan(plan, desde), rechazos, duplicados, fueraDeCompras, nuevos, altas, percep })
     await closePool(); return
   }
 
@@ -588,7 +659,7 @@ async function main() {
       sheetId: hoja.sheetId,
       lista: ampliada.lista,
       filas: Math.max(hoja.rows ?? 0, hasta + 20),
-      columna: idx('E'),
+      columna: idx(col.proveedor),
     })])
     console.log(`  + ${ampliada.agregados.length} nombre(s) agregado(s) al desplegable de la columna E: ${ampliada.agregados.join(' · ')}`)
   }
@@ -628,7 +699,7 @@ async function main() {
 
   // 2) FÓRMULAS por fila: copiar de la fila MODELO a las nuevas (Google reajusta refs). La modelo es
   //    la última que TIENE fórmula en todas estas columnas, no la última con datos: ver arriba.
-  const reqs = GRUPOS_FORMULA.map(([a, b]) => ({
+  const reqs = der.GRUPOS_FORMULA.map(([a, b]) => ({
     copyPaste: {
       source: { sheetId: hoja.sheetId, startRowIndex: modelo.fila - 1, endRowIndex: modelo.fila, startColumnIndex: idx(a), endColumnIndex: idx(b) + 1 },
       destination: { sheetId: hoja.sheetId, startRowIndex: desde - 1, endRowIndex: hasta, startColumnIndex: idx(a), endColumnIndex: idx(b) + 1 },
@@ -646,7 +717,7 @@ async function main() {
     await google.spreadsheetBatchUpdate(ID, reqs)
   } catch (e) {
     if (!/filtered out row/i.test(String(e?.message ?? e))) throw e
-    const g = await google.readSheetGrid(ID, `Compras!O${desde}:O${hasta}`)
+    const g = await google.readSheetGrid(ID, `Compras!${col.total}${desde}:${col.total}${hasta}`)
     const todasConFormula = g.filas.length === plan.length && g.filas.every((f) => f[0]?.formula)
     if (!todasConFormula) throw new Error('hay un filtro activo en Compras y la fórmula de Total (O) no se auto-extendió a todas las filas nuevas — quitá el filtro y volvé a correr')
     console.log('ℹ Compras tiene un filtro activo: copyPaste no aplica sobre filas filtradas, pero Google auto-extendió las fórmulas por fila (verificado en la columna O = Total). No se tocó tu filtro.')
@@ -664,8 +735,8 @@ async function main() {
   // propaga sola por fórmula a cuatro pestañas del Flujo de Fondos. El bot ya releía y lo controlaba
   // con `aritmetica()` de `verificacion.mjs`; este camino no. Se usa LA MISMA función: una capacidad,
   // una fuente — si algún día cambia la tolerancia, cambia para los dos o no cambia.
-  const check = await google.readSheetGrid(ID, `Compras!A${desde}:AD${hasta}`)
-  const { errores, sinRubro, noCierran } = revisarFilasEscritas(check.filas, { desde })
+  const check = await google.readSheetGrid(ID, rangoFilas('Compras', desde, hasta))
+  const { errores, sinRubro, noCierran } = revisarFilasEscritas(check.filas, { desde, ind: indicesDeRevision(encabezado) })
   console.log(`\n✔ Escritas y VERIFICADAS en el destino ${plan.length} fila(s) (${desde}..${hasta}). ${errores ? `⚠ ${errores} con #ERROR — revisar.` : 'Sin #ERROR.'}`)
   if (noCierran.length) {
     console.error(`\n⚠ ${noCierran.length} fila(s) NO cierran: Importe + IVA ≠ Total. Es lo que #ERROR no puede ver — revisalas ANTES de espejar a Supabase:`)
@@ -693,7 +764,7 @@ async function main() {
 
   emitir({
     ok: true, desde, hasta, escritas: plan.length, errores, sinRubro,
-    filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })),
+    filas: filasDelPlan(plan, desde), fueraDeCompras,
     // `percep` VIAJA EN EL JSON (14/08). La percepción absorbida se imprimía sólo por stdout y el bot
     // parsea únicamente esta línea: en la fila 844 se metieron $53.356,45 de percepción de IIBB
     // adentro del costo sin que el dueño se enterara. Es correcto por el contrato de la columna M
