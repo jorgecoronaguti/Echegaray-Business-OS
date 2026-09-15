@@ -11,6 +11,7 @@ import type {
 } from '@/features/administracion/services/presenciaDelDia'
 import { guardarPresencia } from '@/features/administracion/services/presenciaDelDiaActions'
 import { motivosDeDiaNoTrabajado } from '@/features/administracion/services/motivoDeAusencia'
+import { hayTardanza } from '@/features/administracion/services/tardanza'
 import { jornadaPorDefecto } from '@/features/administracion/services/jornadaPorDefecto'
 import type { FilaConOtraObra } from './FormAsistencia'
 
@@ -87,6 +88,7 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
   const jornada = jornadaPorDefecto(fecha)
   const marcas = loQueViajaPresencia(casillas)
   const resumen = resumenPresencia(marcas, aMarcar.length)
+  const conTardanza = marcas.filter(hayTardanza).length
   const falta = avisoSinMarcar(resumen.sinMarcar)
 
   const tocar = (id: string, boton: EstadoPresencia) => {
@@ -98,6 +100,16 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
       if (antes.estado === boton) return { ...prev, [id]: { estado: null, motivo: null } }
       // Una presencia no lleva motivo: el motivo viejo se descarta al pasar a «está».
       return { ...prev, [id]: { estado: boton, motivo: boton === 'presente' ? null : antes.motivo } }
+    })
+  }
+
+  // TOCAR DE NUEVO DESMARCA, igual que los tres botones de arriba. La marca vive en la casilla y viaja
+  // con «Está» (`loQueViajaPresencia` la descarta sobre un «no vino»).
+  const marcarTardanza = (id: string, marca: 'llego_tarde' | 'salio_antes') => {
+    setResultado(null)
+    setCasillas((prev) => {
+      const antes = prev[id] ?? { estado: null, motivo: null }
+      return { ...prev, [id]: { ...antes, [marca]: antes[marca] !== true } }
     })
   }
 
@@ -207,6 +219,24 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
                 />
               </div>
 
+              {/* LA TARDANZA, SÓLO SOBRE «ESTÁ» (dueño, 15/09/2026): llegó tarde o se fue antes. Una sola
+                  en la quincena pierde el presentismo entero (`presentismo.ts`), y por eso se dice al lado.
+                  Aparece recién después del primer toque: quien no vino no llegó tarde. */}
+              {c.estado === 'presente' && (
+                <div className="mt-2 flex gap-2" role="group" aria-label={`Tardanza de ${fila.persona.nombre}`}>
+                  <BotonPresencia
+                    testid="llego-tarde" rotulo="Llegó tarde" activo={c.llego_tarde === true} tono="warn"
+                    onClick={() => marcarTardanza(id, 'llego_tarde')}
+                    aria={`${fila.persona.nombre} llegó tarde`}
+                  />
+                  <BotonPresencia
+                    testid="salio-antes" rotulo="Salió antes" activo={c.salio_antes === true} tono="warn"
+                    onClick={() => marcarTardanza(id, 'salio_antes')}
+                    aria={`${fila.persona.nombre} salió antes`}
+                  />
+                </div>
+              )}
+
               {/* EL SEGUNDO TOQUE: por qué. No es obligatorio —marcar que alguien faltó sin saber
                   todavía la causa es honesto; exigirla hace que se elija cualquiera—. */}
               {noVino && (
@@ -232,7 +262,14 @@ export function FormPresencia({ obraId, obraNombre, fecha, filas, guardadas, onG
 
       <div className="mt-4 space-y-2">
         {/* EL PIE HABLA DE ESTADOS Y NUNCA DE HORAS. Una frase, una unidad. */}
-        <p className="text-[13px] text-ink" data-testid="pie-presencia">{acusePresencia(resumen)}</p>
+        <p className="text-[13px] text-ink" data-testid="pie-presencia">
+          {acusePresencia(resumen)}
+          {conTardanza > 0 && (
+            <span className="text-warn" data-testid="pie-tardanza">
+              {` · ${conTardanza} con tardanza: pierde${conTardanza === 1 ? '' : 'n'} el presentismo de la quincena`}
+            </span>
+          )}
+        </p>
         {falta && <p className="text-[12.5px] text-muted" data-testid="falta-marcar-presencia">{falta}</p>}
         {resultado && (
           <Aviso tono={resultado.ok ? 'info' : 'neg'} testid="acuse-presencia">{resultado.texto}</Aviso>
@@ -272,6 +309,8 @@ const TONOS = {
   pos: 'border-pos bg-pos-soft text-pos',
   neg: 'border-neg bg-neg-soft text-neg',
   neutro: 'border-line-strong bg-surface-sunken text-ink',
+  // Ámbar para la tardanza: no es una falta (vino), pero es plata que se pierde.
+  warn: 'border-warn bg-warn-soft text-warn',
 } as const
 
 function BotonPresencia({ rotulo, activo, tono, onClick, testid, aria }: {

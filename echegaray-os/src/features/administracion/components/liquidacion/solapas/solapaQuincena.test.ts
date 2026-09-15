@@ -79,7 +79,8 @@ test('SIN COLUMNA «PLANILLA»: el cotejo va en el sello y en el panel, no en el
 // adelantos antes del total efectivo y el total quincena al final. Se sigue protegiendo el orden completo.
 test('LOS DÍAS VAN PRIMERO Y DESPUÉS LA PLATA EN EL ORDEN DE JORNALES', () => {
   assert.deepEqual(clavesDe('const PLATA', 'const GAP'),
-    ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'hsNegro', 'horaNegro', 'negro', 'yaTransferido', 'adelanto', 'enEfectivo', 'efectivoRedondeado', 'total'])
+    // `presentismo` (15/09/2026) después del negro: de ahí sale el descuento.
+    ['horas', 'hsBlanco', 'horaCategoria', 'neto', 'hsNegro', 'horaNegro', 'negro', 'presentismo', 'yaTransferido', 'adelanto', 'enEfectivo', 'efectivoRedondeado', 'total'])
   assert.match(GRILLA, /minmax\(200px,1fr\) repeat\(\$\{nDias\},\$\{DIA\}px\) \$\{PLATA/, 'los días van antes que la plata')
   assert.match(PANEL, /campo="porBanco"/)
   assert.match(PANEL, /Acuerdo 50\/50/)

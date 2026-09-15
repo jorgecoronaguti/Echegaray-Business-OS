@@ -109,8 +109,11 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
     manual: undefined, origen: undefined, discrepancia: undefined, referenciaJornales: undefined,
     sueldo: undefined, sinNeto: undefined, horasRecibo: undefined, valorHoraRecibo: undefined, negro: undefined,
     horasNegro: undefined, horasDeLosDias: undefined,
+    // `presentismo` (15/09/2026) es la cuarta marca: la foto cerrada lo trae del sello, no de un cálculo.
+    presentismo: undefined,
   }
   assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
+  assert.equal(r.presentismo, null)
   // LA FOTO CERRADA NO RECALCULA BLANCO + NEGRO (dueño, 14/09/2026).
   assert.equal(r.sueldo, null)
   assert.equal(r.sinNeto, false)
@@ -130,4 +133,55 @@ test('SÓLO SE GUARDA DONDE LA BASE PUEDE DECIR «VACÍO»', () => {
       'por_banco_manual', 'en_efectivo_manual', 'total_manual']),
     ['horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total'],
   )
+})
+
+// ═══ PRESENTISMO EN LA CADENA (15/09/2026) ═══ Lo que estos tests atrapan: que el descuento no baje
+// COBRA, EN EFECTIVO y TOTAL; que baje cuando NO se perdió (plata nueva al revés); que en blanco + negro
+// salga del neto (que es del estudio) en vez del negro; y que se evalúe con las horas que QUEDARON.
+
+const PRESENTISMO = {
+  categoria: 'oficial', basico: 6348, quincenaDesde: '2026-09-16', modalidad: 'hora' as const, esJefe: false, cerrada: false,
+}
+const CON_MARCA = { ...PRESENTISMO, tardanzas: [{ fecha: '2026-09-17', llegoTarde: true, salioAntes: false }] }
+
+test('presentismo perdido: COBRA baja el importe y EN EFECTIVO y TOTAL lo siguen', () => {
+  const r = aplicarOverrides(linea, {}, 'obreros', null, null, CON_MARCA)
+  // 20 % × (100 ÷ 2) × 6.348 = 63.480
+  assert.equal(r.presentismo?.estado, 'perdido')
+  assert.equal(r.presentismo?.importe, 63_480)
+  assert.equal(r.cobra, 100_000 - 63_480)
+  assert.equal(r.enEfectivo, 100_000 - 63_480 - 20_000 - 30_000)
+  assert.equal(r.total, r.porBanco + (r.enEfectivo as number))
+})
+
+test('sin marca cobra lo mismo que hoy; el presentismo se publica como parte del cobra, no se suma', () => {
+  const r = aplicarOverrides(linea, {}, 'obreros', null, null, { ...PRESENTISMO, tardanzas: [] })
+  assert.equal(r.presentismo?.estado, 'aplica')
+  assert.equal(r.presentismo?.importe, 63_480)
+  assert.equal(r.cobra, 100_000)
+})
+
+test('se evalúa con las horas que quedaron: 120 h pisadas → 20 % × 60 × 6.348', () => {
+  const r = aplicarOverrides(linea, { horas: 120 }, 'obreros', null, null, CON_MARCA)
+  assert.equal(r.presentismo?.importe, 76_176)
+  assert.equal(r.cobra, 120_000 - 76_176)
+})
+
+test('un COBRA escrito a mano gana también sobre el presentismo (manual > todo), y la marca se sigue viendo', () => {
+  const r = aplicarOverrides(linea, { cobra: 90_000 }, 'obreros', null, null, CON_MARCA)
+  assert.equal(r.cobra, 90_000)
+  assert.equal(r.presentismo?.estado, 'perdido')
+})
+
+test('fuera de obreros no hay presentismo aunque se le pase la entrada', () => {
+  const oficina = liquidarLinea({ ...entrada, tarifa: { valorHora: null, netoMensual: 1_800_000, desde: '2026-09-01', origen: 'x' } }, 'oficina', null)
+  const r = aplicarOverrides(oficina, {}, 'oficina', null, null, CON_MARCA)
+  assert.equal(r.presentismo, null)
+  assert.equal(r.cobra, 1_800_000)
+})
+
+test('sin entrada (llamador viejo) la línea sigue igual que siempre', () => {
+  const r = aplicarOverrides(linea, {}, 'obreros')
+  assert.equal(r.presentismo, null)
+  assert.equal(r.cobra, 100_000)
 })

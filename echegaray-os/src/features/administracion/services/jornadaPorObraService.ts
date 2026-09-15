@@ -11,7 +11,7 @@
 
 import { marcaDeBaja, plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { leerPlantelDeLaQuincena, personaDelDirectorio } from './plantelDeLaQuincenaService.ts'
-import { leerSubcontratoDePersonas, subcontratoPorPersona } from './lecturasCompartidasDeQuincena.ts'
+import { leerPresenciasDeLaQuincena, leerSubcontratoDePersonas, subcontratoPorPersona } from './lecturasCompartidasDeQuincena.ts'
 import { quincenaDe } from './quincena.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAsignaciones } from '../../obras/services/personalService.ts'
@@ -20,6 +20,7 @@ import { armarJornada, asignadosPorObra, otrasCargasDelDia, vigenteEn } from './
 import type {
   AsignacionQuincena, ObraRotulo, PersonaRotulo, RegistroQuincena, TramoFuturoFuera,
 } from './quincenaPorObra.ts'
+import { claveDeTardanza } from './quincenaPorObra.ts'
 import {
   candidatosParaTraer, type AsignacionParaTraer, type CandidatoParaTraer,
 } from './traerALaObra.ts'
@@ -172,6 +173,8 @@ export interface DatosQuincenaPorObra {
   noLaborables: string[]
   /** El catálogo por id: nombre real y cliente. Es lo que evita que la pantalla escriba un slug. */
   obras: Record<string, ObraRotulo>
+  /** Las marcas de tardanza por `persona_id|fecha` (`claveDeTardanza`). */
+  tardanzas: Record<string, { llegoTarde: boolean; salioAntes: boolean }>
   /** Las obras en estado `activa`. Sólo esas se pueden marcar y sólo esas se reclaman. */
   obrasActivas: string[]
   /** `personas.puesto` por id. Vacío cuando la lectura no se pudo hacer — ver `puestosDe`. */
@@ -193,7 +196,7 @@ export async function getNoLaborables(
 export async function getQuincenaPorObra(
   supabase: SupabaseClient, desde: string, hasta: string,
 ): Promise<{ data: DatosQuincenaPorObra | null; error: string | null }> {
-  const [asignaciones, registros, obras, noLaborables, plantel] = await Promise.all([
+  const [asignaciones, registros, obras, noLaborables, plantel, presencias] = await Promise.all([
     getAsignaciones(supabase),
     // `notas` viaja porque ahí está la CLAVE DEL MOTIVO (`enfermedad`, `falta`…): es lo que
     // convierte una casilla «L» muda en una que dice de qué licencia se trata.
@@ -215,6 +218,10 @@ export async function getQuincenaPorObra(
     // EL PLANTEL DE LA QUINCENA, LA MISMA LECTURA QUE LIQUIDACIÓN (QA, 14/09/2026): sin él las filas salían
     // de las asignaciones reconstruidas y una quincena de marzo mostraba a quien ingresó en septiembre.
     leerPlantelDeLaQuincena(supabase, quincenaDe(desde)),
+    // LA TARDANZA (15/09/2026): la marca del jefe en `asistencia_dia`, para que la celda la muestre y el
+    // editor la corrija. Misma lectura memoizada que Liquidación. Un error acá no tumba la grilla: se
+    // dibuja sin marcas (una marca que no se ve no descuenta nada por sí sola; la liquidación la lee aparte).
+    leerPresenciasDeLaQuincena(supabase, desde, hasta),
   ])
   if (asignaciones.error) return { data: null, error: asignaciones.error }
   // SIN PLANTEL NO SE DIBUJA UNA GRILLA ADIVINADA: se dice qué falló.
@@ -317,6 +324,12 @@ export async function getQuincenaPorObra(
       // asignación o registros dejaba afuera al jefe que está en el plantel sin ninguna de las dos: caía con
       // los obreros (QA 15/09/2026, Maldonado en 16–31/08).
       puestos: plantel.puestos,
+      tardanzas: Object.fromEntries((presencias.data ?? [])
+        .filter((p) => p.estado === 'presente' && (p.llego_tarde === true || p.salio_antes === true))
+        .map((p) => [
+          claveDeTardanza(p.persona_id, String(p.fecha).slice(0, 10)),
+          { llegoTarde: p.llego_tarde === true, salioAntes: p.salio_antes === true },
+        ])),
       noLaborables,
       obras: rotulos,
       // Las obras que se pueden marcar. Lo que quedó fuera sigue mostrando sus horas —existen— pero

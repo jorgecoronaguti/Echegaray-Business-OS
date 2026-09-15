@@ -76,6 +76,8 @@ export interface CeldaObra {
   /** La etiqueta del motivo del catálogo, para `ausente` y `licencia`. Nunca `notas` en crudo, y
    *  `null` cuando nadie escribió un motivo reconocible: inventarlo sería afirmar una causa. */
   motivo: string | null
+  /** La marca del jefe (`asistencia_dia`, 15/09/2026): llegó tarde / salió antes. Sólo en un día trabajado. */
+  tardanza?: { llegoTarde: boolean; salioAntes: boolean } | null
 }
 
 /** Una asignación viva EN ALGÚN PUNTO de la quincena, a una obra ACTIVA. El servicio ya filtró las
@@ -233,9 +235,14 @@ export interface EntradaQuincenaObra {
    * estaba antes de este cambio.
    */
   puestos?: Record<string, string | null>
+  /** Las marcas de tardanza por `persona_id|fecha` (`asistencia_dia`). Ausente = ninguna. */
+  tardanzas?: Record<string, { llegoTarde: boolean; salioAntes: boolean }>
   /** Hoy, para no reclamar un día que todavía no terminó. */
   hoy: string
 }
+
+/** La clave del mapa de tardanzas: una persona, un día. */
+export const claveDeTardanza = (personaId: string, fecha: string): string => `${personaId}|${fecha}`
 
 /**
  * Las filas de la grilla, UNA POR PERSONA. Las personas salen de la unión de las asignaciones
@@ -263,6 +270,7 @@ export function armarQuincenaPorObra(e: EntradaQuincenaObra): FilaQuincena[] {
     const suyos = porPersona.get(p.persona_id) ?? []
     const celdas = e.dias.map((fecha) => celdaDe({
       fecha,
+      tardanza: e.tardanzas?.[claveDeTardanza(p.persona_id, fecha)] ?? null,
       registros: suyos.filter((r) => r.fecha === fecha),
       obras: e.obras,
       esNoLaborable: noLaborables.has(fecha),
@@ -498,8 +506,9 @@ function clienteDe(
   return mejor.obra.cliente?.trim() || mejor.obra.nombre.trim() || null
 }
 
-function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro, esHoy }: {
+function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro, esHoy, tardanza }: {
   fecha: string
+  tardanza?: CeldaObra['tardanza']
   registros: RegistroQuincena[]
   obras: Record<string, ObraRotulo>
   esNoLaborable: boolean
@@ -518,7 +527,7 @@ function celdaDe({ fecha, registros, obras, esNoLaborable, hayDatoEseDia, futuro
   // por la app— o, sin trabajo, la licencia que paga su motivo. Sin coeficiente de extras.
   const dia = horasDelDia(registros)
   if (trabajadas.length > 0) {
-    return { fecha, estado: 'horas', tramos, motivo: null, horas: redondear(dia.horas) }
+    return { fecha, estado: 'horas', tramos, motivo: null, horas: redondear(dia.horas), tardanza: tardanza ?? null }
   }
   if (registros.length > 0) {
     // LICENCIA GANA SOBRE AUSENCIA cuando el día trae las dos — la misma regla que la ficha de la

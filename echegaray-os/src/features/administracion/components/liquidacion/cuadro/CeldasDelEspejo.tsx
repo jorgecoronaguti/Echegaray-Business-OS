@@ -20,6 +20,7 @@ import type { EdicionDelBlanco } from './CeldasBlancoNegro'
 import type { CeldaDelEspejo, FilaDelEspejo } from '../../../services/espejoDeJornales'
 import { guardarHorasDeLaCelda } from '../../../services/horasDeLaCeldaActions'
 import { tituloDeExtras } from '../../../services/liquidacionQuincena'
+import { fechasCortas } from '../../../services/presentismo'
 
 /**
  * LA CELDA DE UN DÍA. Es la que reemplaza al Sheet: se teclea el número y se va.
@@ -30,6 +31,52 @@ import { tituloDeExtras } from '../../../services/liquidacionQuincena'
  *   A / L               ausencia o licencia. No se edita en línea.
  *   NO EDITABLE         quincena cerrada, o dos registros ese día: elegir sería adivinar.
  */
+/**
+ * LA CELDA DE PRESENTISMO (dueño, 15/09/2026). El importe cuando aplica; «perdido dd/mm» en ámbar cuando
+ * una marca lo hizo perder; «sin categoría» apagado cuando el legajo no dice qué básico usar (0 y sin
+ * pendiente); «—» fuera del modelo (Oficina, finales, quincena anterior al 16/09).
+ */
+export function CeldaPresentismo({ fila }: { fila: FilaDelEspejo }) {
+  const p = fila.linea.presentismo
+  const testid = `presentismo-${fila.personaId}`
+  if (!p || p.estado === 'no_rige') {
+    return <div data-testid={testid} style={{ textAlign: 'right', color: V.lineaFuerte }}>—</div>
+  }
+  if (p.estado === 'sin_categoria') {
+    return (
+      <div data-testid={testid} data-presentismo="sin-categoria" title="Sin categoría en el legajo: no hay básico con qué calcularlo"
+        style={{ textAlign: 'right', fontSize: '11px', color: V.apagado }}>sin categoría</div>
+    )
+  }
+  if (p.estado === 'sin_horas' || p.importe == null) {
+    return <div data-testid={testid} title="Sin horas: no hay presentismo que calcular" style={{ textAlign: 'right', color: V.tenue }}>·</div>
+  }
+  const cuenta = `20 % × (${fila.linea.horas ?? 0} h ÷ 2) × ${pesos(p.basico)}/h (${p.categoria ?? 'categoría'})`
+  if (p.estado === 'perdido') {
+    return (
+      <div data-testid={testid} data-presentismo="perdido" title={`${cuenta} = ${pesos(p.importe)} · perdido por ${fechasCortas(p.perdido)}: se descuenta del negro`}
+        style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.warn, fontWeight: 500 }}>
+        perdido {fechasCortas(p.perdido)}
+      </div>
+    )
+  }
+  return (
+    <div data-testid={testid} data-presentismo="aplica" title={`${cuenta}. Es parte del cobra: sin tardanzas cobra lo de siempre.`}
+      style={{ textAlign: 'right', whiteSpace: 'nowrap', color: V.tintaSuave }}>{pesos(p.importe)}</div>
+  )
+}
+
+/** El glifo de tardanza sobre un día trabajado: ▲ ámbar chico, con el detalle en el `title`. */
+function MarcaDeTardanza({ celda }: { celda: CeldaDelEspejo }) {
+  const t = celda.tardanza
+  if (!t || (!t.llegoTarde && !t.salioAntes)) return null
+  const que = [t.llegoTarde ? 'llegó tarde' : null, t.salioAntes ? 'salió antes' : null].filter(Boolean).join(' y ')
+  return (
+    <span data-testid={`tardanza-${celda.fecha}`} title={`${celda.fecha} · ${que}: pierde el presentismo de la quincena`}
+      style={{ position: 'absolute', top: -2, right: 0, fontSize: '8px', color: V.warn, pointerEvents: 'none' }}>▲</span>
+  )
+}
+
 export function CeldaDeDia({ celda, personaId, nombre }: {
   celda: CeldaDelEspejo; personaId: string; nombre: string
 }) {
@@ -47,14 +94,16 @@ export function CeldaDeDia({ celda, personaId, nombre }: {
       : 'la quincena está cerrada'
     return (
       <div title={`${celda.fecha} · ${porque}`} style={{
-        textAlign: 'center', color: celda.horas == null ? V.lineaFuerte : V.apagado,
+        textAlign: 'center', color: celda.horas == null ? V.lineaFuerte : V.apagado, position: 'relative',
       }}>
+        <MarcaDeTardanza celda={celda} />
         {celda.horas == null ? '·' : nHoras(celda.horas)}
       </div>
     )
   }
   return (
-    <div style={{ display: 'flex', justifyContent: 'center' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
+      <MarcaDeTardanza celda={celda} />
       {/* `w-[56px] sin-spinner`: con 42 px el spinner del navegador se come el dígito. */}
       <InlineEdit
         valor={celda.horas ?? null}

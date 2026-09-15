@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { decidirCeldaDia, type EntradaCeldaDia, type TonoPresencia } from './celdaDia'
+import { decidirCeldaDia, tituloDeTardanza, type EntradaCeldaDia, type TonoPresencia } from './celdaDia'
 
 // LA CELDA DE UN DÍA — dos capas apiladas en 44 × 44 px. Qué va en cada capa lo decide
 // `decidirCeldaDia` (celdaDia.ts, con sus tests); acá sólo se pinta.
@@ -73,6 +73,7 @@ export function CeldaDia({
       data-estado={estado}
       data-sin-cargar={capas.abajo.sinCargar ? 'si' : undefined}
       data-conflicto={conflicto ? 'si' : undefined}
+      data-tardanza={tituloDeTardanza(entrada.tardanza) ? 'si' : undefined}
       title={(conflicto && tituloConflicto) || capas.titulo || undefined}
       className={`relative inline-flex h-11 w-11 flex-col items-center justify-center rounded-control border ${
         conflicto
@@ -93,6 +94,17 @@ export function CeldaDia({
       >
         {capas.arriba.simbolo}
       </span>
+      {/* LA TARDANZA: un glifo chico arriba a la derecha, ámbar (vino, pero pierde plata). El detalle
+          va al `title` de la celda: en 44 px no entra una palabra. */}
+      {tituloDeTardanza(entrada.tardanza) && (
+        <span
+          data-capa="tardanza"
+          aria-label={tituloDeTardanza(entrada.tardanza)}
+          className="pointer-events-none absolute right-[3px] top-[2px] text-[9px] font-semibold leading-none text-warn"
+        >
+          ▲
+        </span>
+      )}
       {children ?? (
         <span
           data-capa="horas"

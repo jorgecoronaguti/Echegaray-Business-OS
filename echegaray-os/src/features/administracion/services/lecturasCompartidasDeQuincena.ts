@@ -56,7 +56,11 @@ import { recordar } from '../../auth/services/authService.ts'
  *  cambia el comportamiento. */
 type Lectura<T> = { data: T[] | null; error: { code?: string; message: string } | null }
 
-export type FilaPresencia = { persona_id: string; fecha: string; estado: string; motivo: string | null }
+export type FilaPresencia = {
+  persona_id: string; fecha: string; estado: string; motivo: string | null
+  /** La marca de tardanza (20260915T2220). Ausente mientras la migración no esté aplicada: se lee como `false`. */
+  llego_tarde?: boolean; salio_antes?: boolean
+}
 export type FilaCuil = { id: string; cuil: string | null }
 export type FilaSubcontrato = { id: string; subcontrato_id: string | null }
 
@@ -75,9 +79,14 @@ export function leerPresenciasDeLaQuincena(
   supabase: SupabaseClient, desde: string, hasta: string,
 ): Promise<Lectura<FilaPresencia>> {
   return recordar(memoPresencias(), `${desde}|${hasta}`, async () => {
-    const { data, error } = await supabase.from('asistencia_dia')
-      .select('persona_id, fecha, estado, motivo').gte('fecha', desde).lte('fecha', hasta)
-    return { data: (data ?? null) as FilaPresencia[] | null, error }
+    // LA TARDANZA VIAJA SI LA BASE LA TIENE: sin `20260915T2220` aplicada se relee sin ella, para que
+    // Liquidación y Horas no queden rotas por una migración pendiente. Sin columna nadie pudo marcar.
+    const leer = (campos: string) => supabase.from('asistencia_dia').select(campos).gte('fecha', desde).lte('fecha', hasta)
+    let { data, error } = await leer('persona_id, fecha, estado, motivo, llego_tarde, salio_antes')
+    if (error && (error.code === '42703' || error.code === 'PGRST204' || /llego_tarde|salio_antes/i.test(error.message))) {
+      ;({ data, error } = await leer('persona_id, fecha, estado, motivo'))
+    }
+    return { data: (data ?? null) as unknown as FilaPresencia[] | null, error }
   })
 }
 

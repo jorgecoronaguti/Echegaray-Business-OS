@@ -28,6 +28,9 @@ interface FilaCruda {
   persona_id: string
   estado: string
   motivo: string | null
+  /** Ausentes mientras `20260915T2220` no esté aplicada: se leen como `false`. */
+  llego_tarde?: boolean
+  salio_antes?: boolean
 }
 
 /** Postgres 42P01 = undefined_table. Es el único error que se trata como «todavía no existe». */
@@ -40,12 +43,18 @@ const ESTADOS: readonly string[] = ['presente', 'ausente', 'licencia']
 export async function getPresenciaDelDia(
   supabase: SupabaseClient, fecha: string, obraId?: string | null,
 ): Promise<ServiceResult<PresenciaGuardada[]>> {
-  let consulta = supabase.from('asistencia_dia').select('persona_id, estado, motivo').eq('fecha', fecha)
-  if (obraId) consulta = consulta.eq('obra_canonica_id', obraId)
-  const { data, error } = await consulta
+  // LA TARDANZA VIAJA SI LA BASE LA TIENE. Mientras `20260915T2220` no esté aplicada se relee sin
+  // ella: la pantalla de presencia no puede quedar rota entera por una migración pendiente.
+  const leer = (campos: string) => {
+    let consulta = supabase.from('asistencia_dia').select(campos).eq('fecha', fecha)
+    if (obraId) consulta = consulta.eq('obra_canonica_id', obraId)
+    return consulta
+  }
+  let { data, error } = await leer('persona_id, estado, motivo, llego_tarde, salio_antes')
+  if (error && sinColumnaTardanza(error)) ({ data, error } = await leer('persona_id, estado, motivo'))
   if (error) return sinTabla(error) ? { data: [], error: null } : { data: null, error: error.message }
   return {
-    data: ((data ?? []) as FilaCruda[])
+    data: ((data ?? []) as unknown as FilaCruda[])
       // UN ESTADO QUE LA PANTALLA NO SABE DIBUJAR NO SE DIBUJA. El CHECK de la tabla ya lo impide;
       // esto es la segunda cerradura, para que un dato cargado por script no rompa la grilla.
       .filter((f) => ESTADOS.includes(f.estado))
@@ -53,10 +62,15 @@ export async function getPresenciaDelDia(
         persona_id: f.persona_id,
         estado: f.estado as EstadoPresencia,
         motivo: f.motivo,
+        llego_tarde: f.llego_tarde === true,
+        salio_antes: f.salio_antes === true,
       })),
     error: null,
   }
 }
+
+const sinColumnaTardanza = (error: { code?: string; message: string }): boolean =>
+  error.code === '42703' || error.code === 'PGRST204' || /llego_tarde|salio_antes/i.test(error.message)
 
 /** Un día declarado de una persona, tal como lo necesita la franja de la quincena de su ficha. */
 export interface PresenciaDeUnDia {

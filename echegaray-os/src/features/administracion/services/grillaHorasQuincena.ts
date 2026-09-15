@@ -72,6 +72,8 @@ export interface CeldaDeGrilla {
   horas: number | null
   /** Ausencia declarada sin motivo: vale 0 h (R4) y es lo que traba el cierre. */
   sinMotivo: boolean
+  /** La marca de tardanza del jefe (`asistencia_dia`, 15/09/2026). Una sola pierde el presentismo de la quincena. */
+  tardanza?: { llegoTarde: boolean; salioAntes: boolean } | null
 }
 
 export type EstadoDeFila = 'al-dia' | 'motivo' | 'tarifa' | 'licencia' | 'sin-cargar'
@@ -110,9 +112,13 @@ export function celdaDelDia(
   presencia: PresenciaDeQuincena | undefined,
 ): CeldaDeGrilla {
   const delDia = registros.filter((r) => r.fecha === fecha)
+  // LA TARDANZA VIAJA CON EL DÍA TRABAJADO: es la marca del jefe sobre la presencia, y la celda la muestra.
+  const tardanza = presencia?.estado === 'presente' && (presencia.llego_tarde === true || presencia.salio_antes === true)
+    ? { llegoTarde: presencia.llego_tarde === true, salioAntes: presencia.salio_antes === true }
+    : null
   if (hayHorasTrabajadas(delDia)) {
     // LAS HORAS CARGADAS, COMO «HORAS» (`horasDelDia`): el coeficiente de extras es de la plata, no de la celda.
-    return { fecha, marca: 'horas', horas: r2(horasDelDia(delDia).horas), sinMotivo: false }
+    return { fecha, marca: 'horas', horas: r2(horasDelDia(delDia).horas), sinMotivo: false, tardanza }
   }
   // ═══ LA LICENCIA TAMBIÉN SE CARGA EN `registros_hh`, Y ES LA FUENTE QUE ASISTENCIA MIRA ═══
   //

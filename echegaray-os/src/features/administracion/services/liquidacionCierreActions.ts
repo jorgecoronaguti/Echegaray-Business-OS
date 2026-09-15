@@ -45,6 +45,7 @@ import {
   type LegajoAlCerrar, type LineaParaCerrar, type LineaSellada,
 } from './liquidacionCierre'
 import type { Quincena } from './quincena'
+import { fechasCortas } from './presentismo'
 
 const RUTA = '/administracion/personas'
 const ISO = /^\d{4}-\d{2}-\d{2}$/
@@ -100,7 +101,7 @@ async function cabecera(
  * actualizar, y `cobra`/`total` no son columnas que la sesión pueda tocar.
  */
 async function escribirFoto(
-  liquidacionId: string, lineas: readonly LineaParaCerrar[],
+  liquidacionId: string, lineas: readonly LineaParaCerrar[], conPresentismo: boolean,
 ): Promise<{ error: string } | null> {
   const conPlata = lineas.filter((l) => l.cobra != null && l.enEfectivo != null && l.total != null)
   if (conPlata.length !== lineas.length) {
@@ -117,6 +118,10 @@ async function escribirFoto(
       en_efectivo: l.enEfectivo,
       total: l.total,
       actualizado_en: new Date().toISOString(),
+      // EL PRESENTISMO SE CONGELA CON LA FOTO (15/09/2026): el importe en juego y las fechas que lo
+      // hicieron perder. Sólo si la base tiene las columnas (`hayColumnasPresentismo`, probado contra
+      // la base y no contra `migrations/`): sin ellas el cierre sigue andando y la foto sale sin él.
+      ...(conPresentismo ? fotoDelPresentismo(l) : {}),
     })),
     { onConflict: 'liquidacion_id,persona_id' },
   ).select('persona_id')
@@ -125,6 +130,16 @@ async function escribirFoto(
     return { error: 'La base no guardó todas las líneas: NO cerré la quincena.' }
   }
   return null
+}
+
+/** `presentismo` = importe en juego (aplica o perdido); `presentismo_perdido` = «17/09, 23/09» sólo si lo perdió. */
+function fotoDelPresentismo(l: LineaParaCerrar): { presentismo: number | null; presentismo_perdido: string | null } {
+  const p = l.presentismo ?? null
+  const rige = p != null && (p.estado === 'aplica' || p.estado === 'perdido') && p.importe != null
+  return {
+    presentismo: rige ? p.importe : null,
+    presentismo_perdido: rige && p.estado === 'perdido' ? fechasCortas(p.perdido) : null,
+  }
 }
 
 /**
@@ -207,7 +222,7 @@ export async function cerrarQuincenaAction(entrada: unknown): Promise<ResultadoC
     if (cuadro.lineas.length === 0) continue
     const cab = await cabecera(supabase, q, cuadro.grupo)
     if ('error' in cab) return { ok: false, error: cab.error }
-    const foto = await escribirFoto(cab.id, cuadro.lineas)
+    const foto = await escribirFoto(cab.id, cuadro.lineas, lectura.hayColumnasPresentismo)
     if (foto) return { ok: false, error: foto.error }
     const sello = sellarLineas(cuadro.lineas, legajos, selladoEn)
     const escrito = await escribirSello(supabase, cab.id, sello.selladas)
