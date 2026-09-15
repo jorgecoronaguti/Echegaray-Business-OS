@@ -52,7 +52,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { normalizarRotulo } from '../lib/compras-columnas.mjs'
-import { diferenciasDePestana, pestanasQueCitan } from '../lib/formula-insertar-columna.mjs'
+import { diferenciasDePestana, listarVolatiles, medirVolatiles, pestanasQueCitan } from '../lib/formula-insertar-columna.mjs'
 import { evaluarPrecondiciones, sondearPrecondiciones } from '../lib/insercion-obra-precondiciones.mjs'
 
 export const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -113,7 +113,13 @@ export async function fotoDe(google, pestanas, id = ID) {
   return foto
 }
 
-/** Paso 2: las fórmulas de todo el archivo dicen qué pestañas dependen de las insertadas. */
+/**
+ * Paso 2: las fórmulas de todo el archivo dicen qué pestañas dependen de las insertadas.
+ *
+ * LOS VALORES SE LEEN DOS VECES, y no es desconfianza del lector: es la única forma de saber qué celdas
+ * se mueven solas (el dólar de `GOOGLEFINANCE` y todo lo que cuelga de él). Entre las dos lecturas no se
+ * escribe nada. Manda la SEGUNDA, que es la más cercana al momento de insertar. Ver `medirVolatiles`.
+ */
 async function fotoPrevia(google, meta, id) {
   const insertadas = INSERCIONES.map((i) => i.pestana)
   const formulas = {}
@@ -121,8 +127,16 @@ async function fotoPrevia(google, meta, id) {
   for (const s of meta.filter((x) => x.rows && x.cols)) formulas[s.title] = await leerPestana(google, id, s.title, 'FORMULA')
   const dependientes = pestanasQueCitan(formulas, insertadas)
   const foto = {}
-  for (const t of [...insertadas, ...dependientes]) foto[t] = { formulas: formulas[t], valores: await leerPestana(google, id, t, 'UNFORMATTED_VALUE') }
-  return { foto, dependientes }
+  const primeras = {}
+  for (const t of [...insertadas, ...dependientes]) primeras[t] = await leerPestana(google, id, t, 'UNFORMATTED_VALUE')
+  const volatiles = []
+  for (const t of [...insertadas, ...dependientes]) {
+    const valores = await leerPestana(google, id, t, 'UNFORMATTED_VALUE')
+    const marcas = medirVolatiles(primeras[t], valores)
+    foto[t] = { formulas: formulas[t], valores, volatiles: marcas }
+    volatiles.push(...listarVolatiles(t, marcas))
+  }
+  return { foto, dependientes, volatiles }
 }
 
 /** Paso 4, puro: la foto de después contra la de antes, pestaña por pestaña. Devuelve las diferencias. */
@@ -135,10 +149,17 @@ export function compararFotos(antes, despues) {
   return [...rotulos, ...difs]
 }
 
-async function precondiciones(verificar, log) {
+// El texto del verde NO puede afirmar lo que no se preguntó: en la copia las precondiciones de
+// producción ni se sondearon, y decir «producción al día» ahí es fabricar una verificación.
+async function precondiciones(verificar, log, copia = false) {
   let mal
   try { mal = typeof verificar === 'function' ? await verificar() : ['no hay con qué verificar las precondiciones'] } catch (e) { mal = [`no pude verificar las precondiciones: ${e.message}`] }
-  if (!mal.length) { log('0 ✓ precondiciones: producción al día, timers y worker quietos, migración 0700 aplicada'); return null }
+  if (!mal.length) {
+    log(copia
+      ? '0 — (copia) las precondiciones de producción NO se verificaron: hablan del archivo real, que este ensayo no toca'
+      : '0 ✓ precondiciones: producción al día, timers y worker quietos, migración 0700 aplicada')
+    return null
+  }
   log(`✖ precondiciones — NO sigo:\n  ${mal.join('\n  ')}`)
   return { ok: false, paso: 'precondiciones', detalle: mal }
 }
@@ -208,8 +229,8 @@ async function verificarYCerrar({ google, id, antes, rutaAntes, correrHuellas, c
  * `correrHuellas`, `correrPyl`, `guardar`.
  * @returns {Promise<{ok:boolean, paso:string, detalle?:string[], reporte?:string}>}
  */
-export async function insertarColumnaObra({ google, aplicar = false, id = ID, verificarPrecondiciones, correrHuellas, correrPyl = null, ponerDesplegable = null, guardar, log = console.log }) {
-  const frenado = await precondiciones(verificarPrecondiciones, log)
+export async function insertarColumnaObra({ google, aplicar = false, id = ID, copia = false, verificarPrecondiciones, correrHuellas, correrPyl = null, ponerDesplegable = null, guardar, log = console.log }) {
+  const frenado = await precondiciones(verificarPrecondiciones, log, copia)
   if (frenado) return frenado
   let hojas, antes, rutaAntes
   try {
@@ -221,6 +242,11 @@ export async function insertarColumnaObra({ google, aplicar = false, id = ID, ve
     rutaAntes = guardar('antes', antes)
     log(`2 ✓ foto previa (valores y fórmulas) guardada en ${rutaAntes}`)
     log(`   pestañas que citan Compras/Cobranzas y se verifican: ${f.dependientes.join(', ') || 'ninguna'}`)
+    // Se DICEN. Una celda que se deja de comparar por valor y no aparece en ningún lado es un agujero.
+    log(f.volatiles.length
+      ? `   ⚠ ${f.volatiles.length} celda(s) cambian solas entre dos lecturas (cuelgan de GOOGLEFINANCE/NOW):`
+        + ` se comparan por FÓRMULA y no por valor — ${f.volatiles.slice(0, 12).join(' ')}${f.volatiles.length > 12 ? ' …' : ''}`
+      : '   ninguna celda cambió sola entre las dos lecturas de valores')
     for (const ins of INSERCIONES) log(`   ${ins.pestana}: insertaría «${ROTULO}» en el índice ${ins.indice} (${antes[ins.pestana].valores.length} filas)`)
     // EL P&L SE PLANEA ANTES DE INSERTAR. Si su plan tiene una duda —o no se pudo leer—, insertar lo dejaría
     // sumando la columna de al lado sin un camino probado para corregirlo: mejor no insertar.
@@ -255,8 +281,8 @@ export async function insertarColumnaObra({ google, aplicar = false, id = ID, ve
 }
 
 /** `--reverificar <antes.json>`: la comparación del paso 4 otra vez, sin escribir nada. */
-export async function reverificarColumnaObra({ google, antes, id = ID, verificarPrecondiciones, log = console.log }) {
-  const frenado = await precondiciones(verificarPrecondiciones, log)
+export async function reverificarColumnaObra({ google, antes, id = ID, copia = false, verificarPrecondiciones, log = console.log }) {
+  const frenado = await precondiciones(verificarPrecondiciones, log, copia)
   if (frenado) return frenado
   const difs = compararFotos(antes, await fotoDe(google, Object.keys(antes), id))
   log(difs.length ? `✖ ${difs.length} diferencia(s):\n  ${difs.slice(0, 50).join('\n  ')}` : '✓ 0 diferencias de valor y de fórmula')
@@ -282,7 +308,7 @@ async function main() {
     if (modo.copia) console.log(`ENSAYO sobre la copia ${modo.id} — el archivo real no se toca`)
     if (iRev >= 0) {
       const antes = JSON.parse(readFileSync(process.argv[iRev + 1], 'utf8'))
-      const r = await reverificarColumnaObra({ google, antes, id: modo.id, verificarPrecondiciones })
+      const r = await reverificarColumnaObra({ google, antes, id: modo.id, copia: modo.copia, verificarPrecondiciones })
       if (!r.ok) process.exitCode = 1
       return
     }
@@ -296,7 +322,7 @@ async function main() {
     const lista = await import('./obras-lista-sheet.mjs')
     const opciones = await lista.opcionesDesdeLaBase(db.query)
     const ponerDesplegable = async () => lista.refrescarTodo({ google, id: modo.id, opciones, aplicar: true })
-    const r = await insertarColumnaObra({ google, aplicar, id: modo.id, verificarPrecondiciones, correrHuellas, correrPyl, ponerDesplegable, guardar })
+    const r = await insertarColumnaObra({ google, aplicar, id: modo.id, copia: modo.copia, verificarPrecondiciones, correrHuellas, correrPyl, ponerDesplegable, guardar })
     if (!r.ok) process.exitCode = 1
   } finally {
     await db.closePool().catch(() => {})

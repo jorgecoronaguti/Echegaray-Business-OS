@@ -120,10 +120,50 @@ function comparar(esperado, real, { pestana, tipo, saltar }) {
 }
 
 /**
+ * ¿QUÉ CELDAS SE MUEVEN SOLAS? Dos lecturas de valores del MISMO archivo sin escribir nada en el medio.
+ *
+ * ═══ POR QUÉ NO ALCANZA CON `esVolatil` (medido en la copia de ensayo, 15/09/2026) ═══
+ *
+ * `esVolatil` mira el TEXTO de la fórmula, así que ve `=GOOGLEFINANCE("CURRENCY:USDARS")` en
+ * `_CAJA_ANEXO!C108` y no ve nada raro en `=IF(C110<>"";C110;C109)`, ni en `=63000*TIPO_CAMBIO_USD`, ni
+ * en `=$I7+$H8`. La cotización del dólar se mueve sola y arrastra a todo lo que cuelga de ella: el
+ * ensayo sobre la copia dio **0 diferencias de fórmula y 52 de valor**, todas descendientes de esa celda
+ * —OBRAS, CAJA, _CAJA_ANEXO y Calendario de Cobros—. En la corrida real eso habría frenado las huellas
+ * y dejado al dueño con un reporte de 52 "diferencias" sobre una inserción impecable.
+ *
+ * La volatilidad transitiva no se deduce del texto: se MIDE. Entre las dos lecturas nadie escribió, así
+ * que toda celda que cambió, cambia sola. No se infiere el grafo de dependencias —habría que resolver
+ * rangos con nombre entre pestañas y cada error ahí sería un agujero silencioso—: se observa el efecto.
+ *
+ * Lo que esto NO cubre: una celda volátil que ADEMÁS se rompa con la inserción no se detecta por valor.
+ * Sigue comparándose por fórmula, que es el control fuerte, y la lista de excluidas se muestra y se
+ * guarda en la foto: una celda que se deja de mirar tiene que estar dicha con nombre y apellido.
+ *
+ * @returns {boolean[][]} grilla de la misma forma que `valores`: `true` = cambió sola
+ */
+export function medirVolatiles(primera = [], segunda = []) {
+  const alto = Math.max(primera.length, segunda.length)
+  const out = []
+  for (let i = 0; i < alto; i++) {
+    const [a, b] = [primera[i] ?? [], segunda[i] ?? []]
+    const fila = []
+    for (let j = 0; j < Math.max(a.length, b.length); j++) fila.push(!(vacio(a[j]) && vacio(b[j])) && a[j] !== b[j])
+    out.push(fila)
+  }
+  return out
+}
+
+/** Las celdas medidas como volátiles, en A1, para decirlas. */
+export function listarVolatiles(pestana, volatiles = []) {
+  return volatiles.flatMap((f, i) => (f ?? []).flatMap((v, j) => (v ? [`${pestana}!${letraDe(j)}${i + 1}`] : [])))
+}
+
+/**
  * La relectura de UNA pestaña contra su foto previa. En la pestaña insertada todo se corre una columna y la
  * celda del rótulo nuevo se salta; en una pestaña que sólo la cita, las posiciones no se mueven pero sus
  * fórmulas sí cambian de texto.
- * @param {{pestana:string, antes:{valores:any[][],formulas:any[][]}, despues:{valores:any[][],formulas:any[][]},
+ * @param {{pestana:string, antes:{valores:any[][],formulas:any[][],volatiles?:boolean[][]},
+ *   despues:{valores:any[][],formulas:any[][]},
  *   desde:Record<string,number>, insercion?:{indice:number, filaEncabezado:number}|null}} p
  * @returns {string[]} `Pestaña!A1 [fórmula|valor] esperado → leído`
  */
@@ -131,9 +171,16 @@ export function diferenciasDePestana({ pestana, antes, despues, desde, insercion
   const correr = (g) => (insercion ? correrUnaColumna(g, insercion.indice) : g)
   const formulas = correr((antes?.formulas ?? []).map((f) => (f ?? []).map((c) => ajustarFormula(c, pestana, desde))))
   const valores = correr(antes?.valores ?? [])
+  // Las marcas se corren con la misma función que la grilla: así el índice de la marca y el de la celda
+  // siguen siendo el mismo después de insertar, sin aritmética aparte que se pueda desfasar.
+  const volatiles = correr(antes?.volatiles ?? [])
   const rotulo = (i, j) => !!insercion && i === insercion.filaEncabezado - 1 && j === insercion.indice
   return [
     ...comparar(formulas, despues?.formulas ?? [], { pestana, tipo: 'fórmula', saltar: rotulo }),
-    ...comparar(valores, despues?.valores ?? [], { pestana, tipo: 'valor', saltar: (i, j) => rotulo(i, j) || esVolatil(formulas[i]?.[j]) }),
+    ...comparar(valores, despues?.valores ?? [], {
+      pestana,
+      tipo: 'valor',
+      saltar: (i, j) => rotulo(i, j) || esVolatil(formulas[i]?.[j]) || volatiles[i]?.[j] === true,
+    }),
   ]
 }

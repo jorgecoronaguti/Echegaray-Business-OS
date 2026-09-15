@@ -2,7 +2,7 @@
 // el test no recalcula con la función que prueba.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ajustarFormula, citaA, diferenciasDePestana, esVolatil, pestanasQueCitan } from './formula-insertar-columna.mjs'
+import { ajustarFormula, citaA, diferenciasDePestana, esVolatil, listarVolatiles, medirVolatiles, pestanasQueCitan } from './formula-insertar-columna.mjs'
 
 const DESDE = { Compras: 11, Cobranzas: 7 }
 
@@ -94,4 +94,48 @@ test('en la columna nueva no puede aparecer nada más que el rótulo', () => {
   const d = diferenciasDePestana({ pestana: 'Compras', antes, despues, desde: DESDE, insercion: INS })
   assert.equal(d.length, 2)
   assert.match(d[0], /Compras!L4/)
+})
+
+// ═══ LA VOLATILIDAD QUE NO SE VE EN EL TEXTO (medida en la copia de ensayo, 15/09/2026) ═══
+//
+// `=63000*TIPO_CAMBIO_USD` cuelga de `=GOOGLEFINANCE("CURRENCY:USDARS")` tres celdas más arriba: no dice
+// nada volátil y cambia sola. En la copia dio 52 "diferencias" de valor con 0 de fórmula.
+
+test('medirVolatiles marca sólo lo que cambió entre dos lecturas sin que nadie escribiera', () => {
+  const a = [[100, 'x', ''], [5]]
+  const b = [[101, 'x', null], [5]]
+  assert.deepEqual(medirVolatiles(a, b), [[true, false, false], [false]])
+  assert.deepEqual(listarVolatiles('CAJA', medirVolatiles(a, b)), ['CAJA!A1'])
+})
+
+test('EL DEFECTO: una celda que cuelga de GOOGLEFINANCE no es diferencia si se MIDIÓ volátil — y lo es si no', () => {
+  const formulas = [['=63000*TIPO_CAMBIO_USD', '=A1*2']]
+  const antes = { formulas, valores: [[94915926, 189831852]] }
+  const despues = { formulas, valores: [[94875131.61, 189750263.22]] }
+  const sinMedir = diferenciasDePestana({ pestana: 'OBRAS', antes, despues, desde: DESDE })
+  assert.equal(sinMedir.length, 2, 'sin la medición, la inserción impecable se reporta como rota')
+  const medido = { ...antes, volatiles: [[true, true]] }
+  assert.deepEqual(diferenciasDePestana({ pestana: 'OBRAS', antes: medido, despues, desde: DESDE }), [])
+})
+
+test('una celda volátil sigue comparándose por FÓRMULA: la marca no la vuelve invisible', () => {
+  const antes = { formulas: [['', '=SUM(Compras!O4:O)*TIPO_CAMBIO_USD']], valores: [['', 1]], volatiles: [[false, true]] }
+  const despues = { formulas: [['', '=SUM(Compras!O4:O)*TIPO_CAMBIO_USD']], valores: [['', 999]] }
+  const d = diferenciasDePestana({ pestana: 'CAJA', antes, despues, desde: DESDE })
+  assert.equal(d.length, 1)
+  assert.match(d[0], /\[fórmula\]/)
+})
+
+test('EL DEFECTO: en la pestaña insertada la marca se corre con la grilla — protege la P, no la O', () => {
+  const fila = (o) => { const f = new Array(16).fill(''); for (const [j, v] of Object.entries(o)) f[j] = v; return f }
+  const antes = {
+    formulas: [[], [], fila({ 10: 'K', 11: 'L' }), fila({ 14: '=N4*TIPO_CAMBIO_USD' })],
+    valores: [[], [], fila({ 10: 'K', 11: 'L' }), fila({ 14: 1000 })],
+    volatiles: [[], [], [], fila({ 14: true })],
+  }
+  const despues = {
+    formulas: [[], [], fila({ 10: 'K', 11: 'Obra', 12: 'L' }), fila({ 15: '=O4*TIPO_CAMBIO_USD' })],
+    valores: [[], [], fila({ 10: 'K', 11: 'Obra', 12: 'L' }), fila({ 15: 1001 })],
+  }
+  assert.deepEqual(diferenciasDePestana({ pestana: 'Compras', antes, despues, desde: DESDE, insercion: INS }), [])
 })
