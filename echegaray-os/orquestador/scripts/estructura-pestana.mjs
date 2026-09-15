@@ -28,7 +28,7 @@ import { rotuloPorFuente, formulaUltimaFecha } from '../lib/fecha-de-frescura.mj
 // El ancho de la columna de concepto es del estándar, no de esta pestaña: ver `ANCHO` en el lib.
 import { ANCHO as ANCHO_COLUMNA } from '../lib/estilo-pestana.mjs'
 // LA DEFINICION COMPARTIDA de una fila de gasto propio. Ver el encabezado de ese archivo.
-import { CRITERIO, celdasDelAnio, seccionRecurrentes, RUBRO_RECURRENTE } from '../lib/estructura-filas.mjs'
+import { criterios, refsCompras, celdasDelAnio, seccionRecurrentes, RUBRO_RECURRENTE } from '../lib/estructura-filas.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
@@ -93,6 +93,7 @@ const COL_LAYOUT = Object.freeze({
 
 export function grilla(recurrentes = [], cols) {
   if (!cols?.rubro || !cols?.total) throw new Error('estructura: faltan las columnas de Compras resueltas por encabezado')
+  const refs = refsCompras(cols)
   const rubros = [...SUBRUBROS.map(([n]) => n), OTROS]
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
@@ -189,7 +190,7 @@ export function grilla(recurrentes = [], cols) {
     // DIVERGIDO: Recurrentes lo trataba como «MAX(real; proyección)» desde el 13/08 y esta pestaña
     // seguía mostrando el real aunque fuera cero — el combustible se carga tarde, así que el mes en
     // curso arrancaba en «—» como si no fuera a gastarse nada. Gana la regla nueva, para las dos.
-    const { aux, visible } = celdasDelAnio({ fila: f, criterio: CRITERIO.subrubro, col: COL_LAYOUT, letra })
+    const { aux, visible } = celdasDelAnio({ fila: f, criterio: criterios(refs).subrubro, col: COL_LAYOUT, letra, refs })
     for (let m = 0; m < 12; m++) {
       fila[C_AUX0 + m] = aux[m]
       fila[C_MES0 + m] = visible[m]
@@ -229,7 +230,7 @@ export function grilla(recurrentes = [], cols) {
   // entera: el encabezado y `filasRecurrentes` de lib/estructura-filas.mjs.
   const rec = seccionRecurrentes({
     proveedores: recurrentes, fila0: filas.length + 1, col: COL_LAYOUT, letra, vacia, anio: AÑO,
-    numerar: () => ++nBloque,
+    numerar: () => ++nBloque, refs,
   })
   for (const fila of rec.filas) push(fila)
   const fTotRec = rec.fTot ? rec.fTot : null

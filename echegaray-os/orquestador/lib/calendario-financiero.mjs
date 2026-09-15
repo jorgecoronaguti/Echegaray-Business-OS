@@ -110,6 +110,32 @@ export function armarCalendario({ cajaInicial = 0, movimientos = [], desde, hast
   return dias
 }
 
+/** Los encabezados de Cobranzas que necesita el calendario. Por NOMBRE desde el 14/09/2026 (eran idx 6/12/14/15/16). */
+export const COLUMNAS_COBRANZAS = {
+  estado: 'Estado',
+  fechaCobro: 'Fecha cobro',
+  fechaEsperada: 'Fecha de Factura',
+  total: 'TOTAL a cobrar (neto de retenciones)',
+  cliente: 'Obra / Cliente',
+}
+
+/**
+ * NÚCLEO PURO: las cobranzas no cobradas con fecha de cobro, como ingresos del calendario.
+ * `fecha_esperada` es aditivo: no cambia dónde cae el cobro hoy, pero deja que aprendizaje-cobranzas
+ * proyecte un día realista si el consumidor pide ese escenario.
+ * @param {{filas:any[][], idx:Record<string,number>, parseMonto:Function, parseFecha:Function, desde:Date, hasta:Date}} o
+ */
+export function movimientosCobranzas({ filas = [], idx = {}, parseMonto, parseFecha, desde, hasta } = {}) {
+  const out = []
+  for (const r of filas) {
+    if (/cobrado/i.test(String(r?.[idx.estado] ?? ''))) continue
+    const fecha = parseFecha(r?.[idx.fechaCobro]); const monto = parseMonto(r?.[idx.total])
+    if (!fecha || fecha < desde || fecha > hasta || !(monto > 0)) continue
+    out.push({ fecha, fecha_esperada: parseFecha(r?.[idx.fechaEsperada]) || fecha, tipo: 'ingreso', monto, categoria: 'cobranza', cliente: String(r?.[idx.cliente] ?? '').trim(), origen: 'Cobranzas (Cash Flow)' })
+  }
+  return out
+}
+
 /** Los encabezados de Compras que necesita el calendario. Se ubican por NOMBRE, nunca por letra. */
 export const COLUMNAS_COMPRAS = {
   proveedor: 'Proveedor',
@@ -206,18 +232,12 @@ export async function calendarioDiario(deps = {}, opts = {}) {
     }
   } catch { /* sin cheques: el día queda sin ese egreso */ }
 
-  // INGRESOS — cobranzas no cobradas con fecha de cobro. La pestaña real es "Cobranzas": cliente
-  // idx6, monto idx12, estado idx14, fecha esperada idx15 (P), fecha cobro idx16 (Q).
+  // INGRESOS — cobranzas no cobradas con fecha de cobro. Rótulos y datos en UN viaje, por RÓTULO: con
+  // «Obra» insertada en Cobranzas H, los índices fijos de antes leían la columna de al lado.
   try {
-    const cob = await google.readSheetValues(LIBRO, 'Cobranzas!A5:R2000').catch(() => [])
-    for (const r of cob) {
-      if (/cobrado/i.test(String(r?.[14] ?? ''))) continue
-      const fecha = parseFecha(r?.[16]); const monto = parseMonto(r?.[12])
-      if (!fecha || fecha < desde || fecha > hasta || !(monto > 0)) continue
-      // fecha_esperada (P) es aditivo: no cambia dónde cae el cobro hoy, pero deja que la capa de
-      // aprendizaje-cobranzas proyecte un día realista si el consumidor pide ese escenario.
-      movimientos.push({ fecha, fecha_esperada: parseFecha(r?.[15]) || fecha, tipo: 'ingreso', monto, categoria: 'cobranza', cliente: String(r?.[6] ?? '').trim(), origen: 'Cobranzas (Cash Flow)' })
-    }
+    const { leerConEncabezado } = await import('./columnas-lectura.mjs')
+    const { idx, datos } = await leerConEncabezado(google, LIBRO, 'Cobranzas', COLUMNAS_COBRANZAS, { hasta: 2000 })
+    movimientos.push(...movimientosCobranzas({ filas: datos, idx, parseMonto, parseFecha, desde, hasta }))
   } catch { /* sin cobranzas */ }
 
   // EGRESOS — LO QUE SE LE DEBE A PROVEEDORES. Es la pata que faltaba: sin ella el calendario no
@@ -225,11 +245,8 @@ export async function calendarioDiario(deps = {}, opts = {}) {
   // Las columnas se ubican por ENCABEZADO (el dueño mueve columnas; los nombres no se mueven).
   let comprasSinFecha = null
   try {
-    const { resolverColumnas } = await import('./compras-columnas.mjs')
-    const cab = (await google.readSheetValues(LIBRO, 'Compras!A3:BZ3'))[0] || []
-    const { idx, faltan } = resolverColumnas(cab, COLUMNAS_COMPRAS)
-    if (faltan.length) throw new Error(`faltan encabezados en Compras: ${faltan.join(', ')}`)
-    const filas = await google.readSheetValues(LIBRO, 'Compras!A4:AK')
+    const { leerConEncabezado } = await import('./columnas-lectura.mjs')
+    const { idx, datos: filas } = await leerConEncabezado(google, LIBRO, 'Compras', COLUMNAS_COMPRAS)
     const r = movimientosCompras({ filas, idx, parseMonto, parseFecha, desde, hasta })
     movimientos.push(...r.movimientos)
     if (r.sinFecha.n) comprasSinFecha = r.sinFecha
