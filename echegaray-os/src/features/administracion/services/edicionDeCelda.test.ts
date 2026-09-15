@@ -65,9 +65,30 @@ test('sin obra destino no se cargan horas: no habría a quién imputarle el cost
   assert.match(r.ok ? '' : r.error, /obra activa/i)
 })
 
-test('cero horas no es una marca y el campo vacío tampoco', () => {
+test('cero horas no es una marca', () => {
   assert.equal(planDeCelda({ ...base, estado: TRABAJO, horas: '0' }).ok, false)
-  assert.equal(planDeCelda({ ...base, estado: TRABAJO, horas: '  ' }).ok, false)
+})
+
+// DUEÑO, 15/09/2026: «quiero dejar sin hs una celda para completar más tarde». El defecto que atrapa:
+// el campo en blanco devolvía «Poné cuántas horas hizo» y no había forma de dejar el día sin horas.
+test('EL CAMPO DE HORAS EN BLANCO VACÍA EL DÍA: ni error, ni cero, ni ausente', () => {
+  const r = planDeCelda({ ...base, estado: TRABAJO, horas: '  ' })
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.ok && r.correccion, {
+    fecha: '2026-09-08', obra_origen: 'obra-1', obra_destino: null,
+    estado: 'vaciar', horas: null, motivo: null,
+  })
+})
+
+test('vaciar no afirma un hecho: un día futuro con horas también se deja sin horas', () => {
+  const r = planDeCelda({ ...base, fecha: '2026-09-20', estado: TRABAJO, horas: '' })
+  assert.equal(r.ok && r.correccion.estado, 'vaciar')
+})
+
+test('sin horas trabajadas de origen no hay nada que vaciar: la licencia se saca con «Sin novedad»', () => {
+  const r = planDeCelda({ ...base, obraOrigen: null, estado: TRABAJO, horas: '' })
+  assert.equal(r.ok, false)
+  assert.match(r.ok ? '' : r.error, /Sin novedad/)
 })
 
 test('un estado que no está en la lista no escribe nada', () => {

@@ -224,6 +224,42 @@ export function leerHoras(bruto: string): { horas: number | null; error: string 
   return { horas: redondear(n), error: null }
 }
 
+/**
+ * QUÉ PIDE UNA CELDA DE HORAS AL CONFIRMARSE — la misma respuesta en todos los cuadros.
+ *
+ * El dueño, 15/09/2026: *«quiero dejar sin hs una celda para completar más tarde; arreglar eso en
+ * TODOS los cuadros que tengan hs»*. Hasta hoy el vacío significaba una cosa distinta en cada
+ * pantalla: en Horas volvía al número de antes, en el editor de la celda era un error, en la carga
+ * del día no viajaba (y la hora quedaba guardada sin decirlo) y sólo Liquidación lo borraba.
+ *
+ * VACÍO ES «SIN HORAS»: ni cero —que se liquida— ni ausente —que es otra afirmación—. Cero sigue
+ * siendo un error, porque confundirlo con el vacío es exactamente lo que este pedido deshace.
+ */
+export type LecturaDeCelda =
+  | { accion: 'vaciar' }
+  | { accion: 'horas'; horas: number }
+  | { accion: 'error'; error: string }
+
+export function leerCeldaDeHoras(bruto: string): LecturaDeCelda {
+  const { horas, error } = leerHoras(bruto)
+  if (error) return { accion: 'error', error }
+  return horas === null ? { accion: 'vaciar' } : { accion: 'horas', horas }
+}
+
+/**
+ * A QUIÉN LA CARGA DEL DÍA LE VACÍA LAS HORAS: quien las tenía cargadas y ahora tiene la casilla en
+ * blanco. Quien nunca tuvo nada sigue sin viajar —guardar no convierte un silencio en escritura—.
+ */
+export function personasAVaciar(
+  filas: readonly Pick<FilaJornada, 'persona' | 'estado' | 'horas'>[], vista: readonly VistaCasilla[],
+): string[] {
+  const cargadas = new Set(filas
+    .filter((f) => f.estado === 'presente' && f.horas !== null).map((f) => f.persona.persona_id))
+  return vista
+    .filter((v) => v.estado === 'sin_marcar' && v.error === null && cargadas.has(v.persona_id))
+    .map((v) => v.persona_id)
+}
+
 /** Horas en el locale del lugar: `8,8`, no `8.8`. El teclado del teléfono escribe coma y
  *  `leerHoras` la acepta, así que lo que se muestra es exactamente lo que se puede volver a tipear. */
 export const hs = (n: number): string => n.toLocaleString('es-AR', { maximumFractionDigits: 2 })

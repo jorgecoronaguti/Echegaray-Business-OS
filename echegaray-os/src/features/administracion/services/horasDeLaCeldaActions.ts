@@ -62,7 +62,9 @@ const celdaSchema = z.object({
   // dos se liquida. Sobre una celda vacía, vacío es «no escribiste nada» y no se crea ninguna fila.
   horas: z.union([
     z.literal(''),
-    z.coerce.number().nonnegative('Las horas no pueden ser negativas').max(24, 'Un día tiene 24 horas'),
+    z.coerce.number().nonnegative('Las horas no pueden ser negativas')
+      .max(24, 'Un día tiene 24 horas')
+      .refine((n) => n !== 0, 'Cero horas no es una marca: dejá la celda vacía o marcá la ausencia'),
   ]),
 })
 
@@ -117,7 +119,7 @@ export async function guardarHorasDeLaCelda(
   //
   // Vaciar una celda que ya estaba vacía no es una escritura: crear una fila de 0 h ahí diría «no
   // trabajó», que es una afirmación que nadie hizo.
-  if (datos.data.horas === '' || datos.data.horas === 0) return { ok: true }
+  if (datos.data.horas === '') return { ok: true }
 
   const sello = await quincenaCerrada(supabase, datos.data.fecha)
   if ('error' in sello) return { ok: false, error: sello.error }

@@ -236,7 +236,7 @@ const h = (
 // jornada que se escribe tienen que salir de la misma regla, y compartir las fechas lo prueba.
 const plan = (
   presencias: MarcaPresencia[], horasExistentes: HoraDelDia[] = [], fecha = LUNES,
-) => planDeHorasPorDefecto({ presencias, horasExistentes, fecha, obra: 'obra-1' })
+) => planDeHorasPorDefecto({ presencias, guardadas: [], horasExistentes, fecha, obra: 'obra-1' })
 
 test('L a J: el presente carga 9 h normales en la obra donde se lo marcó', () => {
   const p = plan([{ persona_id: 'a', estado: 'presente', motivo: null }])
@@ -383,6 +383,7 @@ test('DECLARAR AUSENTE NO BORRA LAS 13 H QUE EL DUEÑO TECLEÓ (caso Quiroga, 10
     actualizado_por: '1acc5001-0000-0000-0000-000000000000',
   }
   const plan = planDeHorasPorDefecto({
+    guardadas: [],
     presencias: [{ persona_id: 'quiroga', estado: 'ausente', motivo: 'falta' }],
     horasExistentes: [corregida],
     fecha: '2026-09-10',
@@ -398,6 +399,7 @@ test('LA JORNADA POR DEFECTO QUE NADIE TOCÓ SÍ SE RETIRA AL DECLARAR AUSENTE',
   // El control tiene que poder decir SÍ: si no, «no borra nunca» pasaría el test anterior siendo una
   // constante, y la jornada de alguien que no vino quedaría cargada a la obra para siempre.
   const plan = planDeHorasPorDefecto({
+    guardadas: [],
     presencias: [{ persona_id: 'aguero', estado: 'ausente', motivo: 'falta' }],
     horasExistentes: [{
       id: 'r-9h', persona_id: 'aguero', tipo_hora: 'normal',

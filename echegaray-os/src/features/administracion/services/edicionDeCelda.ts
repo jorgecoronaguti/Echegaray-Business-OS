@@ -10,7 +10,7 @@
 // `'use server'` no puede exportar una función pura, y una regla que se prueba sin base ni sesión es
 // la única que queda atrapada para siempre. Lo que sigue es la regla, no un comentario sobre ella.
 
-import { leerHoras } from './jornadaPorObra.ts'
+import { leerCeldaDeHoras } from './jornadaPorObra.ts'
 import { motivosDeDiaNoTrabajado } from './motivoDeAusencia.ts'
 import type { OpcionInline } from '@/shared/components/ds/InlineEdit'
 
@@ -45,7 +45,7 @@ export interface CorreccionDeCelda {
   fecha: string
   obra_origen: string | null
   obra_destino: string | null
-  estado: 'presente' | 'ausente' | 'sin_novedad'
+  estado: 'presente' | 'ausente' | 'sin_novedad' | 'vaciar'
   horas: number | null
   motivo: string | null
 }
@@ -115,12 +115,23 @@ export function planDeCelda(p: PedidoDeCelda): PlanDeCelda {
 
   if (p.estado !== TRABAJO) return { ok: false, error: 'Elegí qué fue ese día' }
 
+  const celda = leerCeldaDeHoras(p.horas)
+  if (celda.accion === 'error') return { ok: false, error: celda.error }
+  // EL CAMPO DE HORAS EN BLANCO ES «SIN HORAS» (dueño, 15/09/2026): se completa más tarde. No es un
+  // error ni una ausencia, y va antes de la puerta del futuro porque vaciar no afirma ningún hecho.
+  if (celda.accion === 'vaciar') {
+    // Sin obra de origen el día no tiene horas trabajadas: lo que muestra es la ausencia o la
+    // licencia, y sacarlas es «Sin novedad», que retira también la declaración.
+    if (p.obraOrigen === null) {
+      return { ok: false, error: 'Ese día no tiene horas trabajadas para vaciar. Para sacar la ausencia o la licencia elegí «Sin novedad».' }
+    }
+    return { ok: true, correccion: { ...base, obra_destino: null, estado: 'vaciar', horas: null, motivo: null } }
+  }
+
   if (p.fecha > p.hoy) {
     return { ok: false, error: 'Ese día todavía no pasó: las horas trabajadas se cargan el día que se trabajan. Lo que sí se puede programar es una licencia o una ausencia.' }
   }
-  const { horas, error } = leerHoras(p.horas)
-  if (error) return { ok: false, error }
-  if (horas === null) return { ok: false, error: 'Poné cuántas horas hizo' }
+  const { horas } = celda
   // TRABAJAR ES TRABAJAR EN UNA OBRA: sin destino no hay a quién imputarle el costo, y elegir una
   // por descarte movería mano de obra de una obra a otra sin que nadie lo decida.
   if (p.obraDestino === null) {

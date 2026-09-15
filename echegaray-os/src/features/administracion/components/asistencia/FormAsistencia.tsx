@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react'
 import { Aviso, Boton, ErrorCampo, Nulo } from '@/shared/components/ds'
 import {
-  ausenciasSinJornada, avisoDeFaltantes, casillasIniciales, estadoDeCasilla, hs, loQueViaja,
+  ausenciasSinJornada, avisoDeFaltantes, casillasIniciales, estadoDeCasilla, hs, loQueViaja, personasAVaciar,
   ponerLaJornada, resumenJornada, sumarPersonasNuevas,
 } from '@/features/administracion/services/jornadaPorObra'
 import type {
@@ -125,7 +125,10 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
     // casilla trajera un número de antes. La contradicción se muestra (ver `conflicto`), no se
     // guarda por duplicado.
     const marcas = loQueViaja(vista.filter((x) => !sinHoras.has(x.persona_id)), jornada)
-    if (marcas.length === 0) {
+    // LA CASILLA QUE SE BORRÓ TENIENDO HORAS VIAJA COMO «SIN HORAS» (dueño, 15/09/2026). Antes no
+    // viajaba y la hora quedaba guardada detrás de un acuse de éxito.
+    const vaciar = personasAVaciar(filas, vista).filter((id) => !sinHoras.has(id))
+    if (marcas.length === 0 && vaciar.length === 0) {
       setResultado({
         ok: false,
         texto: sinJornada.length > 0
@@ -135,7 +138,7 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas, pres
       return
     }
     arrancar(async () => {
-      const r = await guardarJornada({ obra_id: obraId, fecha, marcas })
+      const r = await guardarJornada({ obra_id: obraId, fecha, marcas, vaciar })
       setResultado(r.ok ? { ok: true, texto: r.mensaje } : { ok: false, texto: r.error })
     })
   }
