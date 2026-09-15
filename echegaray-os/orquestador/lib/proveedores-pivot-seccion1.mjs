@@ -33,15 +33,43 @@
 
 import { MONEDA_CUERPO } from './formato-statement.mjs'
 import { TITULO_DE_SECCION } from './proveedores-colchon.mjs'
+import { COMPRAS, columnasDe } from './columnas-por-encabezado.mjs'
+import { COMPRAS_2508 } from './encabezados-referencia.mjs'
 
 /** Las columnas de Compras por su offset dentro del source (que arranca en A). */
 // `obra: 9` es "Cliente / Asignación" (J), que es donde vive LA ESTRELLA / MESSINA / San Francisco.
 // NO es "Unidad de Negocio" (I, offset 8): esa columna dice "Civil" o "Estructura" — el rubro, no la
 // obra. Escribir la dinámica con el offset 8 la dejó mostrando "Civil" trece veces seguidas.
-export const COL = Object.freeze({
-  categoria: 1, proveedor: 4, comprobante: 7, obra: 9, tipoPago: 15,
-  proximoPago: 16, estado: 23, comercial: 35, saldo: 37,
+//
+// ═══ LOS OFFSETS SALEN DEL RÓTULO (14/09/2026, «Obra» en Compras L) ═══
+//
+// Eran números tipeados. Con la columna nueva, `tipoPago` pasa de 15 a 16, `estado` de 23 a 24 y
+// `saldo` de 37 a 38: la dinámica filtraría «Pendiente» sobre «Tipo de Costo» y sumaría «CUIT (OS)»
+// sin un solo error. El pivot que se ESCRIBE recibe `col = columnasDelPivot(filaDeRótulosViva)`.
+// `COL` queda como el layout de REFERENCIA (25/08): indexa filas ya llevadas a ese layout con
+// `filasAlLayoutDeReferencia`, y nunca llega a un `sourceColumnOffset`.
+export const ROTULOS_PIVOT = Object.freeze({
+  categoria: COMPRAS.categoria, proveedor: COMPRAS.proveedor, comprobante: COMPRAS.comprobante,
+  obra: COMPRAS.cliente, tipoPago: COMPRAS.tipoPago, proximoPago: 'Fecha prevista de pago (día)',
+  estado: COMPRAS.estado, comercial: COMPRAS.comercial, saldo: COMPRAS.saldo,
 })
+
+/** Los offsets del pivot contra una fila de rótulos. Un rótulo que falta rompe con su nombre. */
+export function columnasDelPivot(encabezado) {
+  const cols = columnasDe(encabezado, ROTULOS_PIVOT, 'Compras')
+  return Object.freeze(Object.fromEntries(Object.entries(cols).map(([k, c]) => [k, c.indice])))
+}
+
+export const COL = columnasDelPivot(COMPRAS_2508)
+
+/** Portón: sin offsets resueltos por rótulo no se arma nada que se escriba. */
+function exigirCol(col, quien) {
+  const faltan = Object.keys(ROTULOS_PIVOT).filter((k) => !Number.isInteger(col?.[k]))
+  if (faltan.length) {
+    throw new Error(`${quien}: faltan offsets de Compras resueltos por rótulo (${faltan.join(', ')}) — pasá col = columnasDelPivot(filaDeRótulosViva)`)
+  }
+  return col
+}
 
 /** El universo: lo que se debe. Estado "Pendiente" Y proveedor comercial. */
 export const PENDIENTE = 'Pendiente'
@@ -77,11 +105,11 @@ export const PENDIENTE = 'Pendiente'
  * `showTotals: false` en TODOS los niveles: la API no emite el subtotal de un nivel externo (trampa
  * 2, medida contra el archivo real). Pedirlo no da error — no hace nada.
  */
-export function camposDeFila({ vista = VISTA.POR_PROVEEDOR } = {}) {
+export function camposDeFila({ vista = VISTA.POR_PROVEEDOR, col = COL } = {}) {
   // UNA LÍNEA POR PROVEEDOR, ORDENADA POR LO QUE SE LE DEBE. El `valueBucket` es lo que hace el
   // ranking: sin él Sheets ordena alfabéticamente y "a quién le debo más" hay que buscarlo a ojo.
   if (vista === VISTA.POR_PROVEEDOR) {
-    return [{ sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } }]
+    return [{ sourceColumnOffset: col.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } }]
   }
   // ═══ EL DETALLE ABRE POR EL PROVEEDOR — Y ESTO YA SE EQUIVOCÓ UNA VEZ (15/08/2026) ═══
   //
@@ -109,11 +137,11 @@ export function camposDeFila({ vista = VISTA.POR_PROVEEDOR } = {}) {
   // obra cae en la D (300px), el tipo de pago en la E (90px, medida para "Tarjeta Crédito") y el
   // importe en la F (210px). Ver ANCHOS_PROVEEDORES.
   return [
-    { sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'ASCENDING' },
-    { sourceColumnOffset: COL.proximoPago, showTotals: false, sortOrder: 'ASCENDING' },
-    { sourceColumnOffset: COL.comprobante, showTotals: false, sortOrder: 'ASCENDING' },
-    { sourceColumnOffset: COL.obra, showTotals: false, sortOrder: 'ASCENDING' },
-    { sourceColumnOffset: COL.tipoPago, showTotals: false, sortOrder: 'ASCENDING' },
+    { sourceColumnOffset: col.proveedor, showTotals: false, sortOrder: 'ASCENDING' },
+    { sourceColumnOffset: col.proximoPago, showTotals: false, sortOrder: 'ASCENDING' },
+    { sourceColumnOffset: col.comprobante, showTotals: false, sortOrder: 'ASCENDING' },
+    { sourceColumnOffset: col.obra, showTotals: false, sortOrder: 'ASCENDING' },
+    { sourceColumnOffset: col.tipoPago, showTotals: false, sortOrder: 'ASCENDING' },
   ]
 }
 
@@ -208,10 +236,10 @@ export function deudaSinNombre(filas = []) {
 }
 
 /** Los filtros. NUNCA por `condition`: ver la trampa 1. */
-export function filtros() {
+export function filtros(col = COL) {
   return [
-    { columnOffsetIndex: COL.estado, filterCriteria: { visibleValues: [PENDIENTE] } },
-    { columnOffsetIndex: COL.comercial, filterCriteria: { visibleValues: ['1'] } },
+    { columnOffsetIndex: col.estado, filterCriteria: { visibleValues: [PENDIENTE] } },
+    { columnOffsetIndex: col.comercial, filterCriteria: { visibleValues: ['1'] } },
   ]
 }
 
@@ -246,12 +274,15 @@ export function filtros() {
  * —las agrega una persona— y los `sourceColumnOffset` del pivot son posiciones dentro de este rango.
  * Un origen de ancho abierto haría que agregar una columna al final cambiara qué mide cada campo.
  */
-export function fuenteCompras({ sheetId, filas }) {
+export function fuenteCompras({ sheetId, filas, col }) {
   if (!Number.isInteger(sheetId)) throw new Error('fuenteCompras: falta el sheetId de Compras')
   // `filas` ya no entra en el rango, pero se sigue exigiendo: es la prueba de que quien llama miró la
   // grilla de Compras antes de armar la dinámica. Un origen sobre una pestaña vacía es un cuadro vacío.
   if (!(filas > 3)) throw new Error(`fuenteCompras: la grilla de Compras no puede tener ${filas} filas`)
-  return { sheetId, startRowIndex: 2, startColumnIndex: 0, endColumnIndex: 38 }
+  // El ancho llega hasta la última columna que el pivot usa, resuelta por rótulo: era `38` tipeado, y
+  // con «Obra» insertada el saldo pasa a la 38 y quedaba AFUERA del origen.
+  const ultima = Math.max(...Object.values(exigirCol(col, 'fuenteCompras')))
+  return { sheetId, startRowIndex: 2, startColumnIndex: 0, endColumnIndex: ultima + 1 }
 }
 
 /**
@@ -269,10 +300,10 @@ export function fuenteCompras({ sheetId, filas }) {
  *
  * El SUM no puede quedar vacío nunca: un grupo existe porque tiene al menos una fila.
  */
-export function valoresDelPivot({ vista = VISTA.POR_PROVEEDOR, nombres = ['Se le debe'] } = {}) {
+export function valoresDelPivot({ vista = VISTA.POR_PROVEEDOR, nombres = ['Se le debe'], col = COL } = {}) {
   // En el DETALLE el rótulo del importe es otro: ahí una línea es una factura, no un proveedor.
-  if (vista === VISTA.DETALLE) return [{ sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Importe' }]
-  return [{ sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: nombres[0] }]
+  if (vista === VISTA.DETALLE) return [{ sourceColumnOffset: col.saldo, summarizeFunction: 'SUM', name: 'Importe' }]
+  return [{ sourceColumnOffset: col.saldo, summarizeFunction: 'SUM', name: nombres[0] }]
 }
 
 /**
@@ -280,12 +311,13 @@ export function valoresDelPivot({ vista = VISTA.POR_PROVEEDOR, nombres = ['Se le
  * el script no vuelve a declararlo, porque los formatos calculan la posición de cada columna desde
  * `camposDeFila` y dos declaraciones que se separan dejan el formato una columna corrido.
  */
-export function pivotSeccion1(fuente, { vista = VISTA.POR_PROVEEDOR, nombres } = {}) {
+export function pivotSeccion1(fuente, { vista = VISTA.POR_PROVEEDOR, nombres, col } = {}) {
+  exigirCol(col, 'pivotSeccion1')
   return {
     source: fuente,
-    rows: camposDeFila({ vista }),
-    values: valoresDelPivot(nombres ? { vista, nombres } : { vista }),
-    filterSpecs: filtros(),
+    rows: camposDeFila({ vista, col }),
+    values: valoresDelPivot(nombres ? { vista, nombres, col } : { vista, col }),
+    filterSpecs: filtros(col),
     valueLayout: 'HORIZONTAL',
   }
 }

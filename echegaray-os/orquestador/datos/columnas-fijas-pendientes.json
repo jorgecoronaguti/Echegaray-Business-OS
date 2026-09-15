@@ -159,8 +159,8 @@
       "grupo": "generadores-compras",
       "estado": "pendiente",
       "letras": 0,
-      "mapas": 13,
-      "indices": 2
+      "mapas": 0,
+      "indices": 1
     },
     "orquestador/scripts/auditar-cheques-huecos.mjs": {
       "grupo": "lectores",
@@ -298,7 +298,7 @@
     "orquestador/scripts/cruce-arca-pestana.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
-      "letras": 2,
+      "letras": 0,
       "mapas": 0,
       "indices": 1
     },
@@ -354,7 +354,7 @@
     "orquestador/scripts/libro-movimientos-pestana.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
-      "letras": 2,
+      "letras": 0,
       "mapas": 0,
       "indices": 4
     },
@@ -406,27 +406,6 @@
       "letras": 51,
       "mapas": 0,
       "indices": 26
-    },
-    "orquestador/scripts/proveedores-pivot-aplicar.mjs": {
-      "grupo": "generadores-compras",
-      "estado": "pendiente",
-      "letras": 2,
-      "mapas": 0,
-      "indices": 0
-    },
-    "orquestador/scripts/proveedores-que-sale-cada-dia.mjs": {
-      "grupo": "generadores-compras",
-      "estado": "pendiente",
-      "letras": 4,
-      "mapas": 0,
-      "indices": 0
-    },
-    "orquestador/scripts/proveedores-seccion2-pivot.mjs": {
-      "grupo": "generadores-compras",
-      "estado": "pendiente",
-      "letras": 2,
-      "mapas": 0,
-      "indices": 0
     },
     "orquestador/scripts/recurrentes-pestana.mjs": {
       "grupo": "generadores-compras",
