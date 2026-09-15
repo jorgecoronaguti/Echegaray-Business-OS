@@ -60,11 +60,18 @@ function baseFalsa(r: {
         const c: Consulta = { tabla, filtros: [] }
         consultas.push(c)
         const esCompras = tabla === 'proveedor_compra'
-        const respuesta = () => (esCompras
-          ? (r.errorCompras ? { data: null, error: { message: r.errorCompras } } : { data: r.compras ?? [], error: null })
-          : (r.errorAdjuntos ? { data: null, error: { message: r.errorAdjuntos } } : { data: r.adjuntos ?? [], error: null }))
+        // La obra canónica de cada fila se prueba en `obraDeLaCompraDelProveedor.test.ts`; acá esas
+        // tablas vuelven vacías para que estos casos sigan probando UNA cosa: qué se le pide a la
+        // vista y qué papel se le cuelga a cada compra.
+        const esObra = tabla === 'compra_obra_asignada' || tabla === 'obra_canonica'
+        const respuesta = () => (esObra
+          ? { data: [], error: null }
+          : esCompras
+            ? (r.errorCompras ? { data: null, error: { message: r.errorCompras } } : { data: r.compras ?? [], error: null })
+            : (r.errorAdjuntos ? { data: null, error: { message: r.errorAdjuntos } } : { data: r.adjuntos ?? [], error: null }))
         const q = {
           eq: (col: string, val: unknown) => { c.filtros.push([col, val]); return q },
+          in: (col: string, val: unknown) => { c.filtros.push([col, val]); return q },
           order: () => q,
           limit: (n: number) => { c.limite = n; return q },
           then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) => Promise.resolve(respuesta()).then(ok, ko),

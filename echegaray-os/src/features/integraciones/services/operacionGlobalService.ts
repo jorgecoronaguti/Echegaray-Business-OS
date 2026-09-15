@@ -23,6 +23,8 @@ import { getHerramientas, type Herramienta } from './herramientasService'
 import { getMovimientos, type MovimientoConHerramienta } from './movimientosService'
 import { getPedidosMateriales, type PedidoMaterial } from './pedidosMaterialesService'
 import { indiceDeAlias, obraDeTexto } from '../../../../orquestador/lib/obra-operacion.mjs'
+import { codigosDeObra } from '../../../shared/services/codigosDeObra.ts'
+import { rotuloDeObra } from '../../../shared/utils/obra.ts'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -31,7 +33,9 @@ export type IndiceObras = Map<string, string | symbol>
 
 export interface PuenteObras {
   indice: IndiceObras
-  /** id canónico → nombre lindo. Es lo que se dibuja en la columna Obra. */
+  /** id canónico → «OB-0008 · QP - SALÓN COMERCIAL». Es lo que se dibuja en la columna Obra: el
+   *  MISMO rótulo que la cartera, la ficha y Compras, armado con `rotuloDeObra`. Sin el código
+   *  —migración no aplicada— queda el nombre solo; nunca el id. */
   nombres: Map<string, string>
 }
 
@@ -65,14 +69,20 @@ export function etiquetar<T>(filas: T[], puente: PuenteObras, texto: (f: T) => s
 
 /** El puente se lee UNA vez por pantalla: son las dos tablas más chicas y las más consultadas. */
 export async function getPuenteObras(supabase: SupabaseClient): Promise<ServiceResult<PuenteObras>> {
-  const [alias, canonicas] = await Promise.all([
+  // El código va en su propia consulta y no como una columna más del `select`: si `codigo` entrara
+  // acá, un deploy que llegue antes que la migración rompería la lectura ENTERA del puente y las
+  // tres listas globales quedarían sin obra. Ver `codigosDeObra`.
+  const [alias, canonicas, codigos] = await Promise.all([
     supabase.from('obra_alias').select('alias, obra_id, clasificacion'),
     supabase.from('obra_canonica').select('id, nombre'),
+    codigosDeObra(supabase, null),
   ])
   if (alias.error) return { data: null, error: alias.error.message }
   if (canonicas.error) return { data: null, error: canonicas.error.message }
   const nombres = new Map<string, string>()
-  for (const o of canonicas.data ?? []) nombres.set(o.id as string, o.nombre as string)
+  for (const o of canonicas.data ?? []) {
+    nombres.set(o.id as string, rotuloDeObra({ nombre: o.nombre as string, codigo: codigos.get(o.id as string) }))
+  }
   return { data: { indice: indiceDeAlias(alias.data ?? []) as IndiceObras, nombres }, error: null }
 }
 
