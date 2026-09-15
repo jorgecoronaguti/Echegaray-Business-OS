@@ -1,4 +1,6 @@
 import crypto from 'crypto'
+import { conEncabezado } from '../../../../orquestador/lib/columnas-lectura.mjs'
+import { COBRANZAS, COMPRAS, PESTANAS, rangoFilas } from '../../../../orquestador/lib/columnas-por-encabezado.mjs'
 
 // Calendario de cobros y pagos: agenda día por día de todo el dinero que entra
 // y sale, leída del Sheet real "Flujo de Caja - Cash Flow" (pedido de Jorge
@@ -120,6 +122,63 @@ function serialAIso(serial: number): string {
   return new Date(Math.round((serial - 25569) * 86400 * 1000)).toISOString().slice(0, 10)
 }
 
+/**
+ * Cobros: Cobranzas no cobradas con fecha de cobro, por TOTAL a cobrar. `filas` empieza en la fila de
+ * rótulos: cada columna se ubica por su nombre y un rótulo que falta rompe con ese nombre.
+ */
+export function movimientosDeCobranzas(filas: Fila[]): Movimiento[] {
+  const cob = conEncabezado(filas, 'Cobranzas', {
+    estado: COBRANZAS.estado, fecha: COBRANZAS.fechaCobro, total: COBRANZAS.total, cliente: COBRANZAS.cliente, unidad: 'Unidad',
+  })
+  const out: Movimiento[] = []
+  for (const r of cob.datos as Fila[]) {
+    const estado = texto(r, cob.idx.estado)
+    const fecha = numero(r, cob.idx.fecha)
+    const monto = numero(r, cob.idx.total)
+    if (!estado || estado === 'Cobrado' || fecha === null || !monto) continue
+    out.push({
+      fecha: serialAIso(fecha),
+      tipo: 'cobro',
+      quien: texto(r, cob.idx.cliente) || 'Cliente sin nombre',
+      detalle: `${texto(r, cob.idx.unidad)} · ${estado}`,
+      monto,
+    })
+  }
+  return out
+}
+
+/**
+ * Pagos: Compras Pendiente/Proyectado con fecha prevista, por Total, excluyendo los medios que debitan
+ * por su propia pestaña. Por rótulo, por lo mismo que Cobranzas: el 25/07 una columna insertada ya
+ * había dejado el filtro de Estado mirando «Tipo de Costo» y Compras aportaba CERO pagos.
+ */
+export function movimientosDeCompras(filas: Fila[]): Movimiento[] {
+  const cmp = conEncabezado(filas, 'Compras', {
+    estado: COMPRAS.estado, tipoPago: COMPRAS.tipoPago, vence: 'Fecha prevista de pago (día)', total: COMPRAS.total,
+    proveedor: COMPRAS.proveedor, unidad: COMPRAS.unidad, concepto: COMPRAS.concepto, detalle: COMPRAS.detalle,
+  })
+  const MEDIOS_APARTE = new Set(['cheque', 'echeq', 'tarjeta crédito'])
+  const out: Movimiento[] = []
+  for (const r of cmp.datos as Fila[]) {
+    const estado = texto(r, cmp.idx.estado)
+    if (estado !== 'Pendiente' && estado !== 'Proyectado') continue
+    if (MEDIOS_APARTE.has(texto(r, cmp.idx.tipoPago).toLowerCase())) continue
+    const fecha = numero(r, cmp.idx.vence)
+    const monto = numero(r, cmp.idx.total)
+    if (fecha === null || !monto) continue
+    out.push({
+      fecha: serialAIso(fecha),
+      tipo: 'pago',
+      quien: texto(r, cmp.idx.proveedor) || 'Proveedor sin nombre',
+      detalle: [texto(r, cmp.idx.unidad), texto(r, cmp.idx.concepto) || texto(r, cmp.idx.detalle), estado === 'Proyectado' ? 'proyectado' : '']
+        .filter(Boolean)
+        .join(' · '),
+      monto: -monto,
+    })
+  }
+  return out
+}
+
 export async function leerCalendario(): Promise<Calendario | { error: string }> {
   const saJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
   if (!saJson) {
@@ -135,7 +194,12 @@ export async function leerCalendario(): Promise<Calendario | { error: string }> 
     // Rangos alineados a la estructura REAL del Sheet (25/07): el rediseño de las pestañas renombró/
     // partió varias (02_Cobranzas→Cobranzas, Cheques→Cheques Emitidos, Caja→CAJA, RESUMEN eliminada).
     // Un rango a una pestaña inexistente tira 400 en TODO el batchGet. Gemelo de scripts/sync-calendario.mjs.
-    const rangos = ['Cobranzas!A5:Q200', 'Compras!A5:Y940', 'Cheques Emitidos!A1:N997', "'Tarjeta de Credito'!A3:K200", 'CAJA!A5']
+    // Cobranzas y Compras se leen DESDE SU FILA DE RÓTULOS (15/09/2026, igual que el gemelo): con «Obra»
+    // insertada (Compras L, Cobranzas H) los índices fijos leían la columna de al lado.
+    const rangos = [
+      rangoFilas('Cobranzas', PESTANAS.Cobranzas.filaEncabezado, '200'), rangoFilas('Compras', PESTANAS.Compras.filaEncabezado, '940'),
+      'Cheques Emitidos!A1:N997', "'Tarjeta de Credito'!A3:K200", 'CAJA!A5',
+    ]
     const params = rangos.map((r) => `ranges=${encodeURIComponent(r)}`).join('&')
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values:batchGet?${params}&valueRenderOption=UNFORMATTED_VALUE`,
@@ -146,45 +210,7 @@ export async function leerCalendario(): Promise<Calendario | { error: string }> 
     const data = (await res.json()) as { valueRanges: { values?: Fila[] }[] }
     const [cobranzas, compras, cheques, tarjeta, caja] = data.valueRanges.map((v) => v.values ?? [])
 
-    const movimientos: Movimiento[] = []
-
-    // Cobros: estado(O=14) no vacío ni Cobrado, fecha cobro(Q=16), TOTAL Bruto(M=12)
-    for (const r of cobranzas) {
-      const estado = texto(r, 14)
-      const fecha = numero(r, 16)
-      const monto = numero(r, 12)
-      if (!estado || estado === 'Cobrado' || fecha === null || !monto) continue
-      movimientos.push({
-        fecha: serialAIso(fecha),
-        tipo: 'cobro',
-        quien: texto(r, 6) || 'Cliente sin nombre',
-        detalle: `${texto(r, 5)} · ${estado}`,
-        monto,
-      })
-    }
-
-    // Pagos: Estado(X=23) Pendiente/Proyectado, fecha pago(Q=16), Total(O=14),
-    // excluyendo medios que debitan por su propia pestaña (Tipo pago P=15).
-    // Estado pasó de col 24 a 23 (se insertó una columna; Y=24 hoy es "Tipo de Costo"): leer 24
-    // hacía que el filtro nunca diera true y Compras aportara CERO pagos al calendario.
-    const MEDIOS_APARTE = new Set(['cheque', 'echeq', 'tarjeta crédito'])
-    for (const r of compras) {
-      const estado = texto(r, 23)
-      if (estado !== 'Pendiente' && estado !== 'Proyectado') continue
-      if (MEDIOS_APARTE.has(texto(r, 15).toLowerCase())) continue
-      const fecha = numero(r, 16)
-      const monto = numero(r, 14)
-      if (fecha === null || !monto) continue
-      movimientos.push({
-        fecha: serialAIso(fecha),
-        tipo: 'pago',
-        quien: texto(r, 4) || 'Proveedor sin nombre',
-        detalle: [texto(r, 8), texto(r, 11) || texto(r, 10), estado === 'Proyectado' ? 'proyectado' : '']
-          .filter(Boolean)
-          .join(' · '),
-        monto: -monto,
-      })
-    }
+    const movimientos: Movimiento[] = [...movimientosDeCobranzas(cobranzas), ...movimientosDeCompras(compras)]
 
     // Cheques no debitados: Tipo(A=0) ECHEQ/CHEQUE (saltea banda-resumen/encabezado),
     // DEBITADO(K=10) != SI, fecha de pago(I=8), monto(F=5)

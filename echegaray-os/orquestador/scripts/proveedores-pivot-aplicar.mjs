@@ -27,10 +27,13 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import {
-  anchoDelPivot, cabeEnElHueco, COL, filtrosPorCondicion, fuenteCompras,
+  anchoDelPivot, cabeEnElHueco, COL, columnasDelPivot, filtrosPorCondicion, fuenteCompras, ROTULOS_PIVOT,
   celdasVacias, deudaSinNombre, formatoDeTodo, geometriaDeLaSeccion, letraDeLaDeuda,
   nivelesConSubtotal, PENDIENTE, pivotSeccion1, proveedoresQueAgrupan, reapuntarControl, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
+import { leerConEncabezado } from '../lib/columnas-lectura.mjs'
+import { filasAlLayoutDeReferencia } from '../lib/compras-layout.mjs'
+import { letra } from '../lib/compras-columnas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -47,7 +50,11 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
   // ── 1. El universo, contado desde Compras con el MISMO criterio que los filtros del pivot.
-  const compras = await google.readSheetValues(ID, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
+  // COMPRAS POR RÓTULO (14/09/2026): rótulos y filas en la MISMA lectura. Las filas se llevan al layout
+  // de referencia que indexa `COL`; la dinámica que se escribe usa los offsets de la fila viva.
+  const lectura = await leerConEncabezado(google, ID, 'Compras', ROTULOS_PIVOT, { render: 'UNFORMATTED_VALUE' })
+  const colVivo = columnasDelPivot(lectura.encabezado)
+  const compras = filasAlLayoutDeReferencia(lectura.datos, lectura.encabezado)
   const pendientes = (compras ?? []).filter((f) =>
     // Mismo criterio que los filtros del pivot, EXACTAMENTE: estado y comercial, sin exigir
     // nombre. Si el script contara con un criterio más estricto que el del cuadro, su total y el
@@ -79,7 +86,8 @@ async function main() {
   // hoy, la compra de mañana queda afuera y la dinámica deja de ser viva sin dar ningún error.
   const filasCompras = meta.find((s) => s.title === 'Compras')?.rows
   if (!(filasCompras > 3)) throw new Error(`no pude leer cuántas filas tiene la grilla de Compras (${filasCompras}): no escribo a ciegas`)
-  const pivot = pivotSeccion1(fuenteCompras({ sheetId: sheetIdCompras, filas: filasCompras }), { vista: VISTA_ELEGIDA })
+  const fuentePivot = fuenteCompras({ sheetId: sheetIdCompras, filas: filasCompras, col: colVivo })
+  const pivot = pivotSeccion1(fuentePivot, { vista: VISTA_ELEGIDA, col: colVivo })
   const ancho = anchoDelPivot(pivot)
 
   // ── 3. Las dos trampas, verificadas sobre el objeto que se va a escribir.
@@ -109,7 +117,7 @@ async function main() {
   console.log(`ALTO    ${hueco.alto} filas · disponibles ${hueco.disponible} hasta la sección 2 (fila ${geo.filaLimite}) · holgura ${hueco.holgura}`)
   console.log('NO SE TOCA  la columna H (Comentarios) ni la sección 2 entera')
   console.log(`VISTA   ${VISTA_ELEGIDA}`)
-  console.log(`ORIGEN  Compras!A3:AL${filasCompras} (la grilla entera: una compra nueva entra sola)`)
+  console.log(`ORIGEN  Compras, filas 3..${filasCompras}, columnas A..${letra(fuentePivot.endColumnIndex - 1)} por rótulo (la grilla entera: una compra nueva entra sola)`)
   // Una deuda SIN NOMBRE de proveedor entra al cuadro con el rótulo en blanco. Una sin NÚMERO de
   // comprobante entra bien y tiene que entrar: son cosas distintas y sólo la primera es un agujero.
   const anonimas = deudaSinNombre(pendientes)

@@ -104,3 +104,37 @@ test('diferencias(): una columna corrida sin cambios da 0; un valor perdido a la
   assert.deepEqual(diferencias(antes, [['a', 'Obra', 'b', 'c'], [1, '', 2, 3]], ins), [])
   assert.equal(diferencias(antes, [['a', 'Obra', 'b', 'c'], [1, '', 2, '']], ins).length, 1)
 })
+
+// ═══ EL P&L (15/09/2026) ═══
+// El P&L importa Compras como texto y suma por letra: Google no lo ajusta. Se PLANEA antes de insertar
+// (un plan con dudas no inserta) y se APLICA después de las huellas.
+
+const conPyl = (google, { aplicar = true, pylOk = true } = {}) => insertarColumnaObra({
+  google, aplicar, log: () => {},
+  guardar: (n) => { google.llamadas.push(`guardar:${n}`); return n },
+  correrHuellas: async () => { google.llamadas.push('huellas') },
+  correrPyl: async (o) => { google.llamadas.push(`pyl:${o.aplicar ? 'aplicar' : 'plan'}`); return { ok: pylOk || !o.aplicar ? pylOk : false, paso: pylOk ? 'fin' : 'plan', detalle: pylOk ? [] : ['X!C3: duda'] } },
+})
+
+test('con P&L: plan antes de insertar, aplicar después de las huellas', async () => {
+  const g = dobleDeGoogle()
+  const r = await conPyl(g)
+  assert.equal(r.ok, true, JSON.stringify(r))
+  const hitos = g.llamadas.filter((x) => /^(guardar|escribir|huellas|pyl)/.test(x))
+  assert.deepEqual(hitos, ['guardar:antes', 'pyl:plan', 'escribir', 'huellas', 'pyl:aplicar', 'guardar:despues'])
+})
+
+test('un plan del P&L con dudas NO inserta la columna', async () => {
+  const g = dobleDeGoogle()
+  const r = await conPyl(g, { pylOk: false })
+  assert.equal(r.paso, 'pyl-plan')
+  assert.ok(!g.llamadas.includes('escribir'))
+  assert.equal(g.hojas.Compras[2][11], COMPRAS_2508[11], 'Compras sigue como estaba')
+})
+
+test('el dry sólo planea el P&L', async () => {
+  const g = dobleDeGoogle()
+  const r = await conPyl(g, { aplicar: false })
+  assert.equal(r.paso, 'dry')
+  assert.ok(g.llamadas.includes('pyl:plan') && !g.llamadas.includes('pyl:aplicar'))
+})

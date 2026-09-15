@@ -31,7 +31,7 @@ test('EL DEFECTO 1 · la nota se ancla a la columna donde el pivot escribe el NO
   // Cuando el eje pasó a la fecha, la columna A dejó de tener nombres: la búsqueda siguió viva,
   // apuntada a fechas, y devolvió vacío en las doce notas. En silencio. Acá el ancla se DERIVA del
   // pivot, así que no puede quedar apuntando a una columna que ya no tiene proveedores.
-  const p = pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR })
+  const p = pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR, col: COL })
   assert.equal(p.rows[COL_PROVEEDOR].sourceColumnOffset, COL.proveedor,
     'la columna a la que se ancla la nota no es la que emite el nombre del proveedor')
   const reqs = requestsDelCuadroA({ sheetId: 3, filaRotulos: 17, desde: 18, hasta: 24, cols: CV })
@@ -50,7 +50,7 @@ test('EL DEFECTO 2 · la nota vuelve a la D, con el ancho que el dueño le tení
 })
 
 test('las cuatro columnas no pasan de la G: la H es del dueño', () => {
-  const ancho = anchoDelPivot(pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR })) + 2
+  const ancho = anchoDelPivot(pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR, col: COL })) + 2
   assert.equal(ancho, 4)
   assert.ok(colNota() < 7, 'el bloque se metió en la H, que es la columna "Comentarios" del dueño')
 })

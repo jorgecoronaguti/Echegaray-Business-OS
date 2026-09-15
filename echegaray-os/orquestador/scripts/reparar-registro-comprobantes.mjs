@@ -23,7 +23,7 @@
 // UPDATE: entre el plan y la escritura pasan segundos, y en esos segundos el dueño puede estar
 // cargando comprobantes a mano. El UPDATE va condicionado a que la entrada siga como estaba.
 
-import { RANGO, registroDeFila } from '../lib/comprobantes/auditoria.mjs'
+import { leerComprasDelCargador, registroDeFila } from '../lib/comprobantes/auditoria.mjs'
 import { planDeReparacion, informeDelPlan, confirmaLaCelda } from '../lib/comprobantes/reparacion-registro.mjs'
 import { normalizar } from '../lib/carga-comprobantes.mjs'
 
@@ -81,7 +81,7 @@ export async function registroCompleto(port) {
 export async function planear({ google, port, soloFila = false } = {}) {
   // SIN `render`: los valores llegan FORMATEADOS en es-AR, que es el contrato de toda la pila de
   // comprobantes. Con UNFORMATTED_VALUE el punto decimal se lee como separador de miles.
-  const filas = (await google.readSheetValues(ID_CASHFLOW, RANGO)) ?? []
+  const { filas } = await leerComprasDelCargador(google, ID_CASHFLOW)
   const compras = filas.map(registroDeFila).filter((r) => r.proveedor || r.numero || r.total != null)
   const entradas = await registroCompleto(port)
   if (!Array.isArray(entradas)) throw new Error('no se pudo leer comunicacion.comprobantes_cargados: no reparo a ciegas')

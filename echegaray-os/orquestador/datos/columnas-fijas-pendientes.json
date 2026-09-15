@@ -50,34 +50,6 @@
       "mapas": 0,
       "indices": 1
     },
-    "orquestador/lib/comprobantes/auditoria.mjs": {
-      "grupo": "cargador",
-      "estado": "pendiente",
-      "letras": 1,
-      "mapas": 10,
-      "indices": 0
-    },
-    "orquestador/lib/comprobantes/compras-vivas.mjs": {
-      "grupo": "cargador",
-      "estado": "pendiente",
-      "letras": 1,
-      "mapas": 0,
-      "indices": 0
-    },
-    "orquestador/lib/comprobantes/listas.mjs": {
-      "grupo": "cargador",
-      "estado": "pendiente",
-      "letras": 5,
-      "mapas": 0,
-      "indices": 2
-    },
-    "orquestador/lib/comprobantes/mensaje.mjs": {
-      "grupo": "cargador",
-      "estado": "pendiente",
-      "letras": 0,
-      "mapas": 0,
-      "indices": 3
-    },
     "orquestador/lib/conciliacion-por-naturaleza.mjs": {
       "grupo": "lectores",
       "estado": "pendiente",
@@ -159,8 +131,8 @@
       "grupo": "generadores-compras",
       "estado": "pendiente",
       "letras": 0,
-      "mapas": 13,
-      "indices": 2
+      "mapas": 0,
+      "indices": 1
     },
     "orquestador/scripts/auditar-cheques-huecos.mjs": {
       "grupo": "lectores",
@@ -298,7 +270,7 @@
     "orquestador/scripts/cruce-arca-pestana.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
-      "letras": 2,
+      "letras": 0,
       "mapas": 0,
       "indices": 1
     },
@@ -354,7 +326,7 @@
     "orquestador/scripts/libro-movimientos-pestana.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
-      "letras": 2,
+      "letras": 0,
       "mapas": 0,
       "indices": 4
     },
@@ -407,27 +379,6 @@
       "mapas": 0,
       "indices": 26
     },
-    "orquestador/scripts/proveedores-pivot-aplicar.mjs": {
-      "grupo": "generadores-compras",
-      "estado": "pendiente",
-      "letras": 2,
-      "mapas": 0,
-      "indices": 0
-    },
-    "orquestador/scripts/proveedores-que-sale-cada-dia.mjs": {
-      "grupo": "generadores-compras",
-      "estado": "pendiente",
-      "letras": 4,
-      "mapas": 0,
-      "indices": 0
-    },
-    "orquestador/scripts/proveedores-seccion2-pivot.mjs": {
-      "grupo": "generadores-compras",
-      "estado": "pendiente",
-      "letras": 2,
-      "mapas": 0,
-      "indices": 0
-    },
     "orquestador/scripts/recurrentes-pestana.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
@@ -448,13 +399,6 @@
       "letras": 0,
       "mapas": 0,
       "indices": 15
-    },
-    "src/features/flujo-caja/services/calendarioReader.ts": {
-      "grupo": "pantallas",
-      "estado": "pendiente",
-      "letras": 2,
-      "mapas": 0,
-      "indices": 0
     }
   }
 }

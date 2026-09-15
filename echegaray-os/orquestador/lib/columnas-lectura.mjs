@@ -17,14 +17,17 @@ import { PESTANAS, columnasDe, rangoFilas } from './columnas-por-encabezado.mjs'
  * @param {any[][]} filas lo leído, empezando en la fila de rótulos
  * @param {'Compras'|'Cobranzas'} pestana
  * @param {Record<string, string|object>} pedidas clave → rótulo (o `{rotulo, ocurrencia}`)
- * @returns {{idx:Record<string,number>, cols:Record<string,{letra:string,indice:number}>, datos:any[][], primeraFila:number}}
+ * @returns {{idx:Record<string,number>, cols:Record<string,{letra:string,indice:number}>, datos:any[][], primeraFila:number, encabezado:any[]}}
+ *          `encabezado` es la fila de rótulos de ESA lectura: la que necesita quien además traduce
+ *          fórmulas o lleva las filas al layout de referencia, sin un segundo viaje.
  */
 export function conEncabezado(filas, pestana, pedidas) {
   const g = PESTANAS[pestana]
   if (!g) throw new Error(`pestaña sin geometría declarada: ${pestana}`)
-  const cols = columnasDe((filas ?? [])[0] ?? [], pedidas, pestana)
+  const encabezado = (filas ?? [])[0] ?? []
+  const cols = columnasDe(encabezado, pedidas, pestana)
   const idx = Object.fromEntries(Object.entries(cols).map(([k, c]) => [k, c?.indice]))
-  return { idx, cols, datos: (filas ?? []).slice(1), primeraFila: g.primeraFila }
+  return { idx, cols, datos: (filas ?? []).slice(1), primeraFila: g.primeraFila, encabezado }
 }
 
 /**

@@ -35,6 +35,8 @@ import { CC, CFILA0, DIR } from '../lib/control-arca-bloque.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
+import { COMPRAS } from '../lib/columnas-por-encabezado.mjs'
+import { leerConEncabezado } from '../lib/columnas-lectura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_CRUCE_ARCA'
@@ -48,29 +50,18 @@ export const COLUMNAS = [
 ]
 
 /**
- * Las columnas de Compras que este cruce lee, POR LETRA y no por encabezado.
+ * Las columnas de Compras que este cruce lee, POR RÓTULO (14/09/2026).
  *
- * NO ES UN DESCUIDO. "Rubro de caja" aparece DOS VECES en la fila 3 de Compras (AB y AC) y "Orden de
- * pago (OS)" también (AG y AH). Resolver por nombre devuelve la PRIMERA, que es la columna
- * equivocada, y el cruce entero quedaría clasificando por una columna vacía sin dar un solo error.
- * Estas letras son el mismo contrato que ya usa lib/cash-flow-lineas.mjs; `verificarContrato()` grita
- * si alguna se movió.
+ * Eran índices tipeados con un `verificarContrato` que abortaba si se movían, y se justificaban porque
+ * «Rubro de caja» aparece DOS veces: resolver por nombre devolvía la primera, la fósil. El resolvedor
+ * ahora pide por OCURRENCIA (`COMPRAS.rubro` es la 2.ª), así que esa razón ya no existe; y con «Obra»
+ * insertada en L el contrato por posición dejaba de correr en vez de seguir a la columna.
  */
-const IDX = { fechaFactura: 2, prov: 4, comprobante: 7, importe: 12, total: 14, rubro: 28, familia: 30, sub: 31 }
-const ESPERADO = { 2: 'Fecha factura', 4: 'Proveedor', 7: 'N° Comprobante', 12: 'Importe', 14: 'Total', 28: 'Rubro de caja', 30: 'Familia de material', 31: 'Sub-rubro de estructura' }
-
-/**
- * NÚCLEO PURO: ¿las columnas de Compras siguen donde el cruce cree?
- *
- * Una columna insertada a mano corre todo a la derecha y el cruce leería el rubro de otra columna.
- * Fallar acá es barato; producir una lista de "faltantes" fabricada por un corrimiento no lo es.
- */
-export function verificarContrato(encabezado = []) {
-  const norm = (s) => String(s ?? '').trim().toLowerCase()
-  return Object.entries(ESPERADO)
-    .filter(([i, nombre]) => norm(encabezado[Number(i)]) !== norm(nombre))
-    .map(([i, nombre]) => `col ${Number(i)}: esperaba "${nombre}" y encontré "${encabezado[Number(i)] ?? ''}"`)
-}
+export const COLUMNAS_COMPRAS = Object.freeze({
+  fechaFactura: COMPRAS.fecha, prov: COMPRAS.proveedor, comprobante: COMPRAS.comprobante,
+  importe: COMPRAS.importe, total: COMPRAS.total, rubro: COMPRAS.rubro, familia: COMPRAS.familia,
+  sub: COMPRAS.subRubro,
+})
 
 /** Serial de Sheets → 'YYYY-MM'. Se lee con UNFORMATTED_VALUE: el texto es_AR ya vació una pestaña. */
 export const mesDeSerial = (v) => {
@@ -85,16 +76,24 @@ export const fechaDeSerial = (v) => {
   return new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86400000).toISOString().slice(0, 10)
 }
 
-/** NÚCLEO PURO: las filas de Compras que el cruce necesita, ya normalizadas. */
-export function filasDeCompras(valores = []) {
+/**
+ * NÚCLEO PURO: las filas de Compras que el cruce necesita, ya normalizadas.
+ * @param {any[][]} valores las filas de datos, desde la 4
+ * @param {Record<string, number>} idx los índices de `COLUMNAS_COMPRAS` resueltos contra la fila de rótulos de ESA lectura
+ */
+export function filasDeCompras(valores = [], idx) {
+  const faltan = Object.keys(COLUMNAS_COMPRAS).filter((k) => !Number.isInteger(idx?.[k]))
+  if (faltan.length) {
+    throw new Error(`cruce-arca: faltan columnas de Compras resueltas por rótulo (${faltan.join(', ')}) — leé con leerConEncabezado`)
+  }
   return valores.map((f, i) => ({
-    fila: i + CFILA0, periodo: mesDeSerial(f?.[IDX.fechaFactura]), fecha: fechaDeSerial(f?.[IDX.fechaFactura]),
-    prov: String(f?.[IDX.prov] ?? '').trim(),
-    comprobante: normComprobante(f?.[IDX.comprobante]),
-    total: (typeof f?.[IDX.total] === 'number' ? f[IDX.total] : 0) || (typeof f?.[IDX.importe] === 'number' ? f[IDX.importe] : 0),
-    rubro: String(f?.[IDX.rubro] ?? '').trim(),
-    familia: String(f?.[IDX.familia] ?? '').trim(),
-    sub: String(f?.[IDX.sub] ?? '').trim(),
+    fila: i + CFILA0, periodo: mesDeSerial(f?.[idx.fechaFactura]), fecha: fechaDeSerial(f?.[idx.fechaFactura]),
+    prov: String(f?.[idx.prov] ?? '').trim(),
+    comprobante: normComprobante(f?.[idx.comprobante]),
+    total: (typeof f?.[idx.total] === 'number' ? f[idx.total] : 0) || (typeof f?.[idx.importe] === 'number' ? f[idx.importe] : 0),
+    rubro: String(f?.[idx.rubro] ?? '').trim(),
+    familia: String(f?.[idx.familia] ?? '').trim(),
+    sub: String(f?.[idx.sub] ?? '').trim(),
   })).filter((f) => f.prov || f.total)
 }
 
@@ -122,13 +121,9 @@ export function filasDeDiscrepancias(r) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
-  const cab = await google.readSheetValues(ID, 'Compras!A3:BA3')
-  const rotos = verificarContrato(cab[0] ?? [])
-  // FALLA CERRADA. Con las columnas corridas, el cruce produciría una lista de faltantes inventada.
-  if (rotos.length) throw new Error(`las columnas de Compras se movieron:\n  ${rotos.join('\n  ')}`)
-
-  const valores = await google.readSheetValues(ID, 'Compras!A4:AN3000', { render: 'UNFORMATTED_VALUE' })
-  const filasCompras = filasDeCompras(valores)
+  // FALLA CERRADA: un rótulo que falta aborta con su nombre. Rótulos y datos, en la MISMA lectura.
+  const lectura = await leerConEncabezado(google, ID, 'Compras', COLUMNAS_COMPRAS, { hasta: 3000, render: 'UNFORMATTED_VALUE' })
+  const filasCompras = filasDeCompras(lectura.datos, lectura.idx)
   const comprobantes = (await query(
     `select periodo, fecha_emision, tipo_comprobante, punto_venta, numero, emisor_cuit, emisor_nombre,
             imp_total::float8 imp_total

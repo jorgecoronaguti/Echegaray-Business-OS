@@ -8,6 +8,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { auditarCompras, informe, identidad, conciliarRegistro, DEFECTO, EN } from './auditoria.mjs'
 import { auditar } from '../../scripts/auditar-comprobantes-cargados.mjs'
+import { hojaDesdeBaO } from './compras-leidas.fixture.mjs'
 
 /** Arma una fila del rango `Compras!B4:O` a partir de sus columnas con nombre. */
 function fila(o = {}) {
@@ -281,7 +282,8 @@ test('una pestaña sana no inventa hallazgos', () => {
 
 function googleQueSoloLee(filas) {
   return new Proxy({
-    readSheetValues: async () => filas,
+    // Lo que devuelve la pestaña de verdad: la fila de rótulos y las filas desde A.
+    readSheetValues: async () => hojaDesdeBaO(filas),
   }, {
     get(t, k) {
       if (k in t) return t[k]

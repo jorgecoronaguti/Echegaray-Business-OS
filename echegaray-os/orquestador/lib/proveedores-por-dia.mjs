@@ -58,6 +58,8 @@
 
 import { COL, PENDIENTE } from './proveedores-pivot-seccion1.mjs'
 import { COL as COL_TRAMOS } from './deuda-por-tramos.mjs'
+import { COMPRAS, columnasDe, rangoAbierto } from './columnas-por-encabezado.mjs'
+import { filasAlLayoutDeReferencia } from './compras-layout.mjs'
 import { MONEDA_CONTROL, MONEDA_CUERPO, MONEDA_TOTAL } from './formato-statement.mjs'
 import { COLCHON_FINAL, filaDelSiguienteTitulo } from './proveedores-colchon.mjs'
 import { normalizarTitulo } from './proveedores-frontera.mjs'
@@ -98,8 +100,32 @@ export function letraDeColumna(i) {
   return (a ? String.fromCharCode(64 + a) : '') + String.fromCharCode(65 + (i % 26))
 }
 
-/** El rango abierto de una columna de Compras, absoluto y desde la fila 4 (la 3 son los rótulos). */
-const R = (off) => `Compras!$${letraDeColumna(off)}$4:$${letraDeColumna(off)}`
+// ═══ LAS FÓRMULAS CITAN COMPRAS POR RÓTULO (14/09/2026, «Obra» en Compras L) ═══
+//
+// Los rangos salían de `COL` —offsets tipeados— y con la columna nueva `Tipo pago` pasaba a ser
+// «Total», `Estado` «Tipo de Costo» y el saldo «CUIT (OS)»: el cuadro seguía calculando y daba otra
+// cosa. Ahora cada rango se resuelve contra la fila de rótulos viva (`rangosPorDia`) y viaja como
+// argumento; sin él, la fórmula no se arma. `COL` sigue indexando las filas del MODELO en JS, que
+// `bloqueQueSaleCadaDia` lleva antes al layout de referencia con `filasAlLayoutDeReferencia`.
+
+/** Los rótulos de Compras que este cuadro cita. */
+export const ROTULOS_COMPRAS_POR_DIA = Object.freeze({
+  proveedor: COMPRAS.proveedor, tipoPago: COMPRAS.tipoPago, proximoPago: 'Fecha prevista de pago (día)',
+  fechaPago2: COMPRAS.fechaPrevista2, parcial2: COMPRAS.parcial2, estado: COMPRAS.estado,
+  comercial: COMPRAS.comercial, saldo: COMPRAS.saldo,
+})
+
+/** Los rangos abiertos (`Compras!$X$4:$X`) de cada columna, contra una fila de rótulos. */
+export function rangosPorDia(encabezado) {
+  const cols = columnasDe(encabezado, ROTULOS_COMPRAS_POR_DIA, 'Compras')
+  return Object.freeze(Object.fromEntries(Object.entries(cols).map(([k, c]) => [k, rangoAbierto('Compras', c)])))
+}
+
+/** Un rango resuelto, o error: una letra de respaldo acá es la columna de al lado después de insertar. */
+const R = (r, k) => {
+  if (!r?.[k]) throw new Error(`proveedores-por-dia: falta el rango «${k}» de Compras resuelto por rótulo — pasá rangosPorDia(filaDeRótulosViva)`)
+  return r[k]
+}
 
 // ═══ LAS EXPRESIONES DE SHEETS, DEFINIDAS UNA SOLA VEZ ═══
 //
@@ -109,24 +135,24 @@ const R = (off) => `Compras!$${letraDeColumna(off)}$4:$${letraDeColumna(off)}`
 // escribe larga y se escribe acá.
 
 /** El universo: pendiente y comercial. El mismo filtro que la sección 1. */
-export const universoPendiente = () => `(${R(COL.estado)}="${PENDIENTE}")*(${R(COL.comercial)}=1)`
+export const universoPendiente = (r) => `(${R(r, 'estado')}="${PENDIENTE}")*(${R(r, 'comercial')}=1)`
 
 /** El saldo de la fila: la columna que ya define `compras-saldo-pendiente.mjs`. */
-export const saldoDeCompras = () => R(COL.saldo)
+export const saldoDeCompras = (r) => R(r, 'saldo')
 
 /** Lo que falta del SEGUNDO tramo: sólo si V es una fecha y W está entre paréntesis. */
-export const expresionTramo2 = () =>
-  `IF((ISNUMBER(${R(COL_TRAMOS.fechaPago2)}))*(${R(COL_TRAMOS.parcial2)}<0);-${R(COL_TRAMOS.parcial2)};0)`
+export const expresionTramo2 = (r) =>
+  `IF((ISNUMBER(${R(r, 'fechaPago2')}))*(${R(r, 'parcial2')}<0);-${R(r, 'parcial2')};0)`
 
 /** Lo que sale ESE día por cada fila: el resto en la fecha Q, el segundo tramo en la fecha V. */
-export const expresionMontoDelDia = (dia) =>
-  `((${R(COL.proximoPago)}=${dia})*(${saldoDeCompras()}-${expresionTramo2()})`
-  + `+(${R(COL_TRAMOS.fechaPago2)}=${dia})*${expresionTramo2()})`
+export const expresionMontoDelDia = (dia, r) =>
+  `((${R(r, 'proximoPago')}=${dia})*(${saldoDeCompras(r)}-${expresionTramo2(r)})`
+  + `+(${R(r, 'fechaPago2')}=${dia})*${expresionTramo2(r)})`
 
 /** ¿Esta fila pone plata ese día? Para los NOMBRES: un nombre sin plata detrás es ruido. */
-export const expresionFilaDelDia = (dia) =>
-  `((${R(COL.proximoPago)}=${dia})*((${saldoDeCompras()}-${expresionTramo2()})<>0)`
-  + `+(${R(COL_TRAMOS.fechaPago2)}=${dia})*(${expresionTramo2()}<>0)>0)`
+export const expresionFilaDelDia = (dia, r) =>
+  `((${R(r, 'proximoPago')}=${dia})*((${saldoDeCompras(r)}-${expresionTramo2(r)})<>0)`
+  + `+(${R(r, 'fechaPago2')}=${dia})*(${expresionTramo2(r)}<>0)>0)`
 
 /**
  * LA LISTA DE DÍAS, VIVA: los distintos valores de Q y de V que tienen plata, ordenados.
@@ -137,10 +163,10 @@ export const expresionFilaDelDia = (dia) =>
  *
  * Si no matchea nada, FILTER devuelve #N/A: por eso cada celda del cuadro lo envuelve en IFERROR.
  */
-export const expresionDias = () =>
-  `SORT(UNIQUE(FILTER({${R(COL.proximoPago)};${R(COL_TRAMOS.fechaPago2)}};`
-  + `{${universoPendiente()}*(${R(COL.proximoPago)}<>"")*((${saldoDeCompras()}-${expresionTramo2()})<>0);`
-  + `${universoPendiente()}*(${expresionTramo2()}<>0)})))`
+export const expresionDias = (r) =>
+  `SORT(UNIQUE(FILTER({${R(r, 'proximoPago')};${R(r, 'fechaPago2')}};`
+  + `{${universoPendiente(r)}*(${R(r, 'proximoPago')}<>"")*((${saldoDeCompras(r)}-${expresionTramo2(r)})<>0);`
+  + `${universoPendiente(r)}*(${expresionTramo2(r)}<>0)})))`
 
 // ═══ EL MODELO EN JS: LA MISMA DECISIÓN, PARA PODER PROBARLA SIN GOOGLE ═══
 
@@ -278,14 +304,14 @@ export function mediosSinColumna(filas = []) {
  *
  * @param {number} primeraFila la primera fila de días, base 1
  */
-export const formulaDia = (primeraFila) =>
-  `=IFERROR(INDEX(${expresionDias()};ROW()-ROW($A$${primeraFila})+1);"")`
+export const formulaDia = (primeraFila, r) =>
+  `=IFERROR(INDEX(${expresionDias(r)};ROW()-ROW($A$${primeraFila})+1);"")`
 
 /** Lo que sale ese día por un instrumento. El cero lo dibuja el formato como "—", no la fórmula. */
-export function formulaMedio(medio, fila) {
+export function formulaMedio(medio, fila, r) {
   const dia = `$A${fila}`
-  return `=IF(${dia}="";"";SUMPRODUCT(${universoPendiente()}*(${R(COL.tipoPago)}="${medio}")`
-    + `*${expresionMontoDelDia(dia)}))`
+  return `=IF(${dia}="";"";SUMPRODUCT(${universoPendiente(r)}*(${R(r, 'tipoPago')}="${medio}")`
+    + `*${expresionMontoDelDia(dia, r)}))`
 }
 
 /**
@@ -293,16 +319,16 @@ export function formulaMedio(medio, fila) {
  * pago sin columna entra igual. Que los dos caminos no coincidan es exactamente lo que el control del
  * pie compara — un control no se valida contra la información que él mismo produce.
  */
-export function formulaTotalDelDia(fila) {
+export function formulaTotalDelDia(fila, r) {
   const dia = `$A${fila}`
-  return `=IF(${dia}="";"";SUMPRODUCT(${universoPendiente()}*${expresionMontoDelDia(dia)}))`
+  return `=IF(${dia}="";"";SUMPRODUCT(${universoPendiente(r)}*${expresionMontoDelDia(dia, r)}))`
 }
 
 /** A quiénes. `UNIQUE` porque un proveedor con tres facturas el mismo día es un solo pago. */
-export function formulaQuienes(fila) {
+export function formulaQuienes(fila, r) {
   const dia = `$A${fila}`
-  return `=IF(${dia}="";"";IFERROR(TEXTJOIN(" · ";TRUE;UNIQUE(FILTER(${R(COL.proveedor)};`
-    + `${universoPendiente()}*${expresionFilaDelDia(dia)})));""))`
+  return `=IF(${dia}="";"";IFERROR(TEXTJOIN(" · ";TRUE;UNIQUE(FILTER(${R(r, 'proveedor')};`
+    + `${universoPendiente(r)}*${expresionFilaDelDia(dia, r)})));""))`
 }
 
 /** El total de una columna del cuadro. */
@@ -346,10 +372,10 @@ export const ROTULOS_CONTROL = Object.freeze([
  * @param {{filaTotal:number}} o `filaTotal` base 1
  * @returns {Array<Array<string|null>>} dos filas `[rótulo, fórmula, …null]` del ancho del bloque
  */
-export function filasDeControlPorDia({ filaTotal }) {
+export function filasDeControlPorDia({ filaTotal, r }) {
   const total = `$${letraDeColumna(COL_TOTAL_DIA)}$${filaTotal}`
   const medios = `SUM($B$${filaTotal}:$${letraDeColumna(MEDIOS_DEL_DIA.length)}$${filaTotal})`
-  const deuda = `SUMPRODUCT(${universoPendiente()}*${saldoDeCompras()})`
+  const deuda = `SUMPRODUCT(${universoPendiente(r)}*${saldoDeCompras(r)})`
   // `ROUND(…;0)` para que una diferencia de centavos no encienda una alerta que después nadie mira.
   return [
     [ROTULOS_CONTROL[0], `=ROUND(${deuda}-${total};0)`],
@@ -376,8 +402,11 @@ export function filasDeControlPorDia({ filaTotal }) {
  *            primeraFila:number, ultimaFila:number, filaTotal:number, filaControl:number,
  *            filasControl:number[], modelo:object}}
  */
-export function bloqueQueSaleCadaDia({ filas = [], filaTitulo = 1, numeroDeSeccion = 2 } = {}) {
-  const modelo = diasQueSalen(filas)
+export function bloqueQueSaleCadaDia({ filas = [], encabezado, filaTitulo = 1, numeroDeSeccion = 2 } = {}) {
+  // `filas` y `encabezado` son de la MISMA lectura de Compras, tal como está hoy. Las fórmulas citan
+  // los rangos de ese encabezado; el modelo en JS lee las filas llevadas al layout de referencia.
+  const r = rangosPorDia(encabezado ?? [])
+  const modelo = diasQueSalen(filasAlLayoutDeReferencia(filas, encabezado))
   const filaRotulos = filaTitulo + 1
   const primeraFila = filaRotulos + 1
   const ultimaFila = primeraFila + Math.max(modelo.dias.length, 1) - 1
@@ -392,15 +421,15 @@ export function bloqueQueSaleCadaDia({ filas = [], filaTitulo = 1, numeroDeSecci
   ]
   for (let f = primeraFila; f <= ultimaFila; f++) {
     salida.push([
-      formulaDia(primeraFila),
-      ...MEDIOS_DEL_DIA.map((m) => formulaMedio(m, f)),
-      formulaTotalDelDia(f),
-      formulaQuienes(f),
+      formulaDia(primeraFila, r),
+      ...MEDIOS_DEL_DIA.map((m) => formulaMedio(m, f, r)),
+      formulaTotalDelDia(f, r),
+      formulaQuienes(f, r),
     ])
   }
   salida.push(['TOTAL', ...Array.from({ length: ancho - 2 }, (_, i) =>
     formulaTotalColumna(letraDeColumna(i + 1), primeraFila, ultimaFila)), null])
-  for (const [rotulo, formula] of filasDeControlPorDia({ filaTotal })) {
+  for (const [rotulo, formula] of filasDeControlPorDia({ filaTotal, r })) {
     salida.push([rotulo, formula, ...vacia().slice(2)])
   }
 
