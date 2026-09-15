@@ -15,6 +15,7 @@
 //   · `focusout` → quizá terminó la edición que frenaba un refresco.
 //   · `visibilitychange` → volvió la pestaña.
 //   · el estado del canal → una reconexión refresca una vez.
+//   · la sesión → cuándo abrir; un rechazo de autorización corta sin reintentar (`conexion.ts`).
 //
 // El navegador sólo LEE el tópico (la política de `realtime.messages` no da INSERT): nadie puede
 // fabricar un aviso desde una pestaña.
@@ -25,6 +26,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { SELECTOR_EN_EDICION, hayEdicionEnCurso } from './planDeRefresco'
 import { crearMotor, type MotorDeTiempoReal } from './motor'
+import { crearConexion, type AlEstado, type Apertura } from './conexion'
 import type { TablaConAviso } from './tablas'
 
 export const TOPICO_DE_CAMBIOS = 'os:cambios'
@@ -56,20 +58,41 @@ export function ProveedorTiempoReal({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const supabase = createClient()
-    let canal: RealtimeChannel | null = null
-    let vigente = true
+    // Un canal que se cortó tarda en irse (`leave` espera el ok del servidor) y `channel()` devuelve el
+    // que ya existe con ese tópico: abrir antes de que termine sería suscribir uno que se está yendo.
+    let retiro: Promise<unknown> = Promise.resolve()
 
-    void (async () => {
-      // EL CANAL PRIVADO NECESITA EL JWT DE LA SESIÓN. Sin argumentos toma el de la cookie; los
-      // refrescos del token los propaga supabase-js solo. Sin sesión, la política rechaza el join y la
-      // página sigue funcionando como antes: con los refrescos de cada guardado.
-      try { await supabase.realtime.setAuth() } catch { /* el join va a fallar y queda como estaba */ }
-      if (!vigente) return
-      canal = supabase
-        .channel(TOPICO_DE_CAMBIOS, { config: { private: true } })
-        .on('broadcast', { event: 'cambio' }, (mensaje) => motor.alAviso(mensaje.payload))
-        .subscribe((estado) => motor.alEstadoDelCanal(estado))
-    })()
+    const abrir = (alEstado: AlEstado): Apertura => {
+      let canal: RealtimeChannel | null = null
+      let cerrada = false
+      void (async () => {
+        await retiro
+        // EL CANAL PRIVADO NECESITA EL JWT DE LA SESIÓN. Sin argumentos toma el de la cookie; los
+        // refrescos del token los propaga supabase-js solo.
+        try { await supabase.realtime.setAuth() } catch { /* el join va a fallar y queda como estaba */ }
+        if (cerrada) return
+        canal = supabase
+          .channel(TOPICO_DE_CAMBIOS, { config: { private: true } })
+          .on('broadcast', { event: 'cambio' }, (mensaje) => motor.alAviso(mensaje.payload))
+          .subscribe((estado, error) => alEstado(estado, error))
+      })()
+      return {
+        cerrar: () => {
+          cerrada = true
+          if (canal) retiro = supabase.removeChannel(canal)
+        },
+      }
+    }
+
+    // Una sesión sin permiso (un usuario `campo`) recibe un rechazo y el canal se corta hasta que
+    // cambie el token: ver `conexion.ts`. Mientras, la página funciona como antes del tiempo real.
+    const conexion = crearConexion({ abrir, alEstado: motor.alEstadoDelCanal })
+    // supabase-js advierte no llamar a Supabase dentro de este callback (retiene el lock de auth):
+    // se difiere a la vuelta siguiente del bucle.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_evento, sesion) => {
+      const token = sesion?.access_token ?? null
+      setTimeout(() => conexion.alCambiarSesion(token), 0)
+    })
 
     // En `focusout` el foco todavía no llegó al campo siguiente: se mira en la vuelta siguiente del
     // bucle, así pasar de una celda a otra con Tab no cuenta como «dejó de editar».
@@ -78,11 +101,11 @@ export function ProveedorTiempoReal({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', motor.alPoderRefrescar)
 
     return () => {
-      vigente = false
+      subscription.unsubscribe()
       document.removeEventListener('focusout', alSalirDelFoco)
       document.removeEventListener('visibilitychange', motor.alPoderRefrescar)
       motor.detener()
-      if (canal) void supabase.removeChannel(canal)
+      conexion.detener()
     }
   }, [motor])
 
