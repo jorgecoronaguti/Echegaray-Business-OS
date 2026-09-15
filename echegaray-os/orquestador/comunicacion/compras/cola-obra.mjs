@@ -31,7 +31,7 @@
 //
 // ═══ LA HUELLA DE RESPALDO DE COMPRAS SALE DE `compra_sheet` AL APLICAR (15/09/2026) ═══
 //
-// La RPC encola con `clave` null cuando la fila no tiene número de comprobante (687 de 837 compras), y
+// La RPC encola con `clave` null cuando la fila no tiene número de comprobante (219 de 960 al 15/09), y
 // el bisturí rechazaba todas por `sin_huella`. Ahora, para un cambio de Compras sin clave, el worker lee
 // de `compra_sheet` —por `fila`— proveedor, fecha, total y concepto, y el bisturí los compara contra la
 // fila viva. No se cambia la RPC (otro agente la redefine): el respaldo lo arma el worker. Un cambio ya

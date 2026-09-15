@@ -27,7 +27,8 @@
 //
 // ═══ LA HUELLA DE RESPALDO: «proveedor|fecha|total(|concepto)» (15/09/2026) ═══
 //
-// 687 de 837 compras no tienen número de comprobante (subcontratistas, efectivo, sueldos, impuestos) y
+// 219 de las 960 filas de compra_sheet (medido el 15/09/2026) no tienen número de comprobante —subcontratistas,
+// efectivo, sueldos, impuestos— y todas tienen proveedor;
 // la RPC las encola con `clave` null. Rechazarlas por `sin_huella` dejaba a la app sin poder cambiar la
 // obra de más de las tres cuartas partes de la pestaña; el 15/09 el dueño terminó escribiendo la L806
 // a mano. Como hace Cobranzas con «comprobante|cliente|total», acá la identidad de una fila sin número
