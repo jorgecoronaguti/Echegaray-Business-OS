@@ -1,4 +1,4 @@
--- LA OBRA VIAJA PEGADA A LA FILA: columna «Obra» en Compras (AO) y Cobranzas (AB).
+-- LA OBRA VIAJA PEGADA A LA FILA: columna Obra, por encabezado (Compras L / Cobranzas H).
 --
 -- ═══ POR QUÉ (dueño, 14/09/2026) ═══
 --
@@ -18,7 +18,7 @@
 --   4. `compra_obra_asignada`: dos vías nuevas, `obra_de_la_fila` y `estructura_de_la_fila`. Una fila de
 --      estructura NO tiene obra NI cliente: así `costo_de_obras_a_la_fecha` (por obra_id) y
 --      `compras_sin_obra_de_clientes` (via = 'sin_obra') no la suman, sin tocar esas funciones.
---   5. `compra_obra_cambio`: la cola por la que la app (y la respuesta del chat) escribe AO en el Sheet.
+--   5. `compra_obra_cambio`: la cola por la que la app (y la respuesta del chat) escribe la columna Obra, por encabezado (Compras L / Cobranzas H) en el Sheet.
 --      Hoy la app NO escribe Compras: el camino es el mismo que ya usa Cobranzas (`cobranza_cambio` →
 --      worker con `confirmacion` de quien pidió → relectura).
 --   6. `compra_obra_asignar(fila, valor, esperado)`: la ÚNICA puerta de escritura de la app. Valida el
@@ -53,7 +53,7 @@ create index if not exists compra_sheet_obra_idx on public.compra_sheet (obra_id
 grant select (destino, obra_id, obra_celda, obra_inconsistencia) on public.compra_sheet to authenticated;
 
 comment on column public.compra_sheet.obra_celda is
-  'Texto de la columna «Obra» (AO) tal cual. Lo interpreta orquestador/lib/obra-destino.mjs.';
+  'Texto de la columna Obra, por encabezado (Compras L / Cobranzas H) tal cual. Lo interpreta orquestador/lib/obra-destino.mjs.';
 comment on column public.compra_sheet.obra_inconsistencia is
   'La celda Obra no se entendió o contradice la Unidad de Negocio. Se lista al dueño; no se corrige.';
 
@@ -94,7 +94,7 @@ alter table public.compra_obra_asignada drop constraint if exists compra_obra_as
 alter table public.compra_obra_asignada add constraint compra_obra_asignada_cliente_coherente check (
   (cliente is null) = (via in ('no_es_cliente', 'estructura_de_la_fila')));
 
--- ─── 5 · la cola app/chat → Compras!AO ──────────────────────────────────────────────────────────
+-- ─── 5 · la cola app/chat → columna Obra, por encabezado (Compras L / Cobranzas H) ─────────────
 create table if not exists public.compra_obra_cambio (
   id              uuid primary key default gen_random_uuid(),
   fila            integer not null,
@@ -182,5 +182,5 @@ revoke all on function public.compra_obra_asignar(integer, text, text) from publ
 grant execute on function public.compra_obra_asignar(integer, text, text) to authenticated;
 
 comment on function public.compra_obra_asignar(integer, text, text) is
-  'La app imputa la obra de una fila de Compras: guarda en compra_sheet y encola la escritura de AO '
+  'La app imputa la obra de una fila de Compras: guarda en compra_sheet y encola la escritura de la columna Obra, por encabezado (Compras L / Cobranzas H) '
   '(compra_obra_cambio). `p_esperado` = lo que la pantalla mostraba; si cambió, no se pisa.';

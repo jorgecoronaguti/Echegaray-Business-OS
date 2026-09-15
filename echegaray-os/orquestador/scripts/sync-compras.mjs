@@ -51,7 +51,7 @@ const CAMPOS = [
   'fecha_caja', 'familia_material', 'sub_rubro', 'repetido', 'saldo_pendiente', 'cuit',
   'tramo_vencimiento', 'anulada',
 ]
-/** La columna «Obra» (AO) proyectada. Sólo se escriben si la migración 20260915T0700 está aplicada. */
+/** La columna Obra, por encabezado (Compras L / Cobranzas H), proyectada. Sólo se escriben si la migración 20260915T0700 está aplicada. */
 const CAMPOS_OBRA = ['destino', 'obra_id', 'obra_celda', 'obra_inconsistencia']
 
 /**
@@ -66,7 +66,7 @@ async function hayObraPorFila(q) {
   return rows[0].n === CAMPOS_OBRA.length
 }
 
-/** Los cambios de la app que el worker todavía no escribió en AO. */
+/** Los cambios de la app que el worker todavía no escribió en la columna Obra, por encabezado (Compras L / Cobranzas H). */
 async function cambiosPendientes(q) {
   const { rows } = await q(
     `select distinct on (fila) fila, clave, valor_nuevo from public.compra_obra_cambio

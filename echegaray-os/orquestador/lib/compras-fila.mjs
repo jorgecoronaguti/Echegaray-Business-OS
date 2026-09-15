@@ -135,7 +135,7 @@ export function contratoDeColumnas(encabezado = []) {
     throw new Error(`Compras: el rótulo aparece más de una vez y no puedo elegir: ${ambiguos.join(' · ')}. `
       + 'Elegir el primero se llevaría el dato de una columna que nadie decidió — no replico.')
   }
-  // «Obra» (AO desde el 14/09/2026) es OPCIONAL: la pestaña existía sin ella y el sync no puede
+  // La columna Obra, por encabezado (Compras L / Cobranzas H), es OPCIONAL: la pestaña existía sin ella y el sync no puede
   // abortar la hora anterior a que el backfill escriba el encabezado. Repetida sí aborta.
   const obras = encabezado.flatMap((c, i) => (normalizarRotulo(c) === normalizarRotulo(ROTULO_OBRA) ? [i] : []))
   if (obras.length > 1) throw new Error(`Compras: la columna «${ROTULO_OBRA}» aparece ${obras.length} veces — no elijo a ciegas a qué obra va la plata.`)
@@ -143,7 +143,7 @@ export function contratoDeColumnas(encabezado = []) {
   return idx
 }
 
-/** El rótulo de la columna nueva, en Compras (AO3) y en Cobranzas (AB4). */
+/** El rótulo de la columna Obra, por encabezado (Compras L / Cobranzas H): fila de rótulos 3 en Compras y 4 en Cobranzas. */
 export const ROTULO_OBRA = 'Obra'
 
 /** El día de un serial de Sheets como ISO, o null. Nunca inventa una fecha a partir de un texto. */

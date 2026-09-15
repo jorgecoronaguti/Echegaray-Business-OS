@@ -1,4 +1,4 @@
-// A DÓNDE VA CADA FILA DE COMPRAS Y COBRANZAS — la columna «Obra» (Compras AO · Cobranzas AB).
+// A DÓNDE VA CADA FILA DE COMPRAS Y COBRANZAS — la columna Obra, por encabezado (Compras L / Cobranzas H).
 //
 // ═══ POR QUÉ EXISTE (dueño, 14/09/2026) ═══
 //
@@ -156,7 +156,7 @@ export function proyectarObraDeFila(c, cat) {
  * LOS CAMBIOS DE LA APP QUE TODAVÍA NO LLEGARON AL SHEET, superpuestos a la lectura.
  *
  * El sync reescribe `compra_sheet` entero cada hora desde el Sheet. Sin esto, una obra elegida en la
- * app a las 10:59 volvería a «vacía» a las 11:00 y reaparecería cuando el worker escriba AO: la
+ * app a las 10:59 volvería a «vacía» a las 11:00 y reaparecería cuando el worker escriba la columna Obra: la
  * pantalla parpadearía y el dueño creería que no se guardó. Sólo se superpone si la fila sigue siendo
  * el MISMO comprobante (misma clave): si alguien insertó una fila arriba, la fila N es otra compra.
  */
