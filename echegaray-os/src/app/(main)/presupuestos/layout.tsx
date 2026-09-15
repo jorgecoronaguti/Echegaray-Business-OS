@@ -10,7 +10,15 @@
 // No se inventa una: el canónico 14 no la dibuja.
 
 import type { ReactNode } from 'react'
+import { RefrescarEnVivo } from '@/shared/tiempo-real/ProveedorTiempoReal'
+import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
 
 export default function PresupuestosLayout({ children }: { children: ReactNode }) {
-  return <>{children}</>
+  return (
+    <>
+      {/* TIEMPO REAL (dueño, 15/09/2026): cotización, partidas y análisis de precios. */}
+      <RefrescarEnVivo tablas={TABLAS_DE.cotizaciones} />
+      {children}
+    </>
+  )
 }

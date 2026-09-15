@@ -92,6 +92,12 @@ export interface DatosDeCuadros {
   adelantos: readonly FilaAdelanto[]
   /** `liquidacion_linea.efectivo_redondeado` ya guardado, por persona. */
   redondeos: ReadonlyMap<string, number | null>
+  /**
+   * `liquidacion_linea.cobra` de la cabecera de OFICINA, por persona, sólo si es > 0. Es el importe que cargó
+   * la planilla (JORNALES «Oficina 26») para una quincena sin neto mensual vigente. Cero no entra: la línea
+   * vacía que la web crea al abrir la quincena dice «nada cargado», no «cobró $ 0».
+   */
+  importesCargados?: ReadonlyMap<string, number>
 }
 
 export interface CuadroDeLiquidacion {
@@ -200,6 +206,7 @@ function entradaDe(
     yaTransferido,
     reciboNeto: neto,
     giroEnElLote,
+    importeCargado: grupo === 'oficina' ? ctx.importesCargados?.get(p.id) ?? null : null,
   }
 }
 
@@ -210,7 +217,7 @@ function entradaDe(
  * con dos importes es cómo se paga dos veces (ya pasó con Jofre y Sosa el 31/08/2026).
  *
  *   final    tiene un recibo de LIQUIDACIÓN FINAL pagado dentro de la ventana.
- *   oficina  tiene tarifa de neto mensual vigente.
+ *   oficina  es jefe de obra (`esJefeDeObra`), o tiene tarifa de neto mensual vigente.
  *   obreros  el resto de quienes están en la empresa Y tienen tarifa por hora o movimiento en la
  *            ventana. Quien no tiene ni una cosa ni la otra no es una fila vacía: no es de esta
  *            quincena.
@@ -235,7 +242,10 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
       cuadros.final.push(lineaFinal(ctx, p, redondeo))
       continue
     }
-    if (vigente?.netoMensual != null) {
+    // QUIÉN ES JEFE LO DECIDE EL PUESTO, NO LA TARIFA (dueño, 15/09/2026). Los jefes tienen neto mensual
+    // recién desde septiembre: con la tarifa como criterio, en agosto caían a Obreros «sin tarifa». Sin neto
+    // vigente la línea sigue en Oficina y dice que falta el dato (o usa el importe cargado de la planilla).
+    if (p.esJefe === true || vigente?.netoMensual != null) {
       cuadros.oficina.push(liquidarLinea(entradaDe(ctx, p, vigente, 'oficina'), 'oficina', redondeo))
       continue
     }

@@ -313,9 +313,10 @@ export async function getQuincenaPorObra(
         ...(await plantelDe(supabase, sinAsignacion, desde, hasta)),
       },
       plantel: [...plantel.delCuadro],
-      puestos: await puestosDe(supabase, [
-        ...new Set([...vigentes.map((a) => a.persona_id), ...filasHH.map((r) => r.persona_id)]),
-      ]),
+      // EL PUESTO DE TODO EL DIRECTORIO, de la lectura del plantel que ya se hizo. Pedirlo sólo para quien tenía
+      // asignación o registros dejaba afuera al jefe que está en el plantel sin ninguna de las dos: caía con
+      // los obreros (QA 15/09/2026, Maldonado en 16–31/08).
+      puestos: plantel.puestos,
       noLaborables,
       obras: rotulos,
       // Las obras que se pueden marcar. Lo que quedó fuera sigue mostrando sus horas —existen— pero

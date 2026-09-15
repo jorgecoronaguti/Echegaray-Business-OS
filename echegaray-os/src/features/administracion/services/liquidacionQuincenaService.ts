@@ -233,7 +233,7 @@ export async function getLiquidacionDeLaQuincena(
         subcontratoId: deSubcontrato.get(r.id) ?? null,
       }))
 
-  const { estados, redondeos, overrides } = leerGuardadas(guardadas.data)
+  const { estados, redondeos, overrides, importesCargados } = leerGuardadas(guardadas.data)
   const camposEditables = camposGuardables(guardadas.columnas)
 
   // ═══ SÓLO QUIENES ESTÁN ACTIVOS ESTA QUINCENA ═══
@@ -265,6 +265,7 @@ export async function getLiquidacionDeLaQuincena(
       adelantos: ((adelantos.data ?? []) as FilaAdelanto[])
         .map((a) => ({ ...a, importe: numero(a.importe) })),
       redondeos,
+      importesCargados,
   })
 
   // LA GRILLA SE ARMA UNA VEZ Y SÓLO PARA SUMAR. `filasDeGrilla` es la definición de cuánto vale cada
@@ -342,7 +343,8 @@ const COLUMNAS_MANUALES = [
 ] as const
 
 // SIN `horas`: es la cifra sellada del cierre y no es un override (ver `COLUMNA_DE.horas`).
-const COLUMNAS_LINEA = ['persona_id', 'efectivo_redondeado'] as const
+// `cobra` viaja SÓLO para el importe cargado de Oficina sin neto mensual (`importesCargados`).
+const COLUMNAS_LINEA = ['persona_id', 'efectivo_redondeado', 'cobra'] as const
 
 /** Las correcciones del blanco, si la migración `20260915T0100` ya se aplicó. */
 const COLUMNAS_BLANCO = ['horas_recibo_manual', 'valor_hora_recibo_manual'] as const
@@ -413,6 +415,7 @@ function horasPorPersona(
 type LineaGuardada = {
   persona_id: string
   efectivo_redondeado: number | string | null
+  cobra?: number | string | null
   horas_manual?: number | string | null
   horas_negro_manual?: number | string | null
   cobra_manual?: number | string | null
@@ -460,11 +463,13 @@ function leerGuardadas(data: unknown): {
   estados: Record<string, EstadoDeLaQuincena>
   redondeos: Map<string, number | null>
   overrides: Map<string, OverridesDeLinea>
+  importesCargados: Map<string, number>
 } {
   const filas = (data ?? []) as CabeceraGuardada[]
   const estados: Record<string, EstadoDeLaQuincena> = {}
   const redondeos = new Map<string, number | null>()
   const overrides = new Map<string, OverridesDeLinea>()
+  const importesCargados = new Map<string, number>()
   for (const f of filas) {
     estados[f.grupo] = {
       id: f.id,
@@ -476,7 +481,8 @@ function leerGuardadas(data: unknown): {
       // que el dueño no hizo.
       redondeos.set(l.persona_id, l.efectivo_redondeado == null ? null : numero(l.efectivo_redondeado))
       overrides.set(l.persona_id, overridesDeLinea(l))
+      if (f.grupo === 'oficina' && numero(l.cobra) > 0) importesCargados.set(l.persona_id, numero(l.cobra))
     }
   }
-  return { estados, redondeos, overrides }
+  return { estados, redondeos, overrides, importesCargados }
 }
