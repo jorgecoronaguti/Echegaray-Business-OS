@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  diaMes, entero, fechaCompleta, fechaCortaConAnio, millones, pesos, pesosConCentavos, porcentajeCanon,
+  diaMes, entero, fechaCompleta, fechaCortaConAnio, fechaDdMmAa, millones, pesos, pesosConCentavos,
+  porcentajeCanon,
 } from './formato.ts'
 
 // EL DEFECTO QUE ATRAPA ESTE ARCHIVO: que una ausencia se escriba como cero.
@@ -146,4 +147,27 @@ test('no hay fecha inventada ni «Invalid Date» cuando el Sheet no cargó la pr
 
 test('un timestamp completo también se escribe como día', () => {
   assert.equal(fechaCompleta('2026-09-04T13:45:00Z'), '04/09/2026')
+})
+
+// ── dd/mm/yy: EL FORMATO ÚNICO DE LAS DOS FECHAS DE COMPRAS (dueño, 15/09/2026) ──────────────────
+
+test('`fechaDdMmAa` escribe SIEMPRE el año, también el corriente', () => {
+  // EL DEFECTO QUE ATRAPA: `fechaCortaConAnio` lo escribe sólo cuando NO es el año corriente, así que
+  // en una columna donde conviven 2025 y 2026 la mitad de las celdas sale «04/09» y la otra mitad
+  // «04/09/25». Dos formas en la misma columna obligan a deducir el año de la vecina — y es
+  // exactamente la mezcla de ventanas de tiempo que la Regla de Oro 3 prohíbe.
+  const anio = new Date().getFullYear()
+  assert.equal(fechaDdMmAa(`${anio}-09-04`), `04/09/${String(anio).slice(2)}`)
+  assert.equal(fechaDdMmAa('2025-11-15'), '15/11/25')
+  assert.notEqual(fechaDdMmAa(`${anio}-09-04`), fechaCortaConAnio(`${anio}-09-04`, anio),
+    'volvió a abreviar como `fechaCortaConAnio`: el año del corriente desaparece')
+})
+
+test('`fechaDdMmAa` devuelve null ante una celda vacía: nunca un guión de relleno', () => {
+  // En la pestaña esa celda ESTÁ VACÍA, y en la columna «Pagado el» un vacío significa «no se pagó».
+  // Un «—» se lee como un dato que la fuente trae.
+  assert.equal(fechaDdMmAa(null), null)
+  assert.equal(fechaDdMmAa(undefined), null)
+  assert.equal(fechaDdMmAa(''), null)
+  assert.equal(fechaDdMmAa('no es una fecha'), null)
 })

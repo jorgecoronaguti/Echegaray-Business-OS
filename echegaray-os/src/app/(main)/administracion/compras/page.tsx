@@ -170,13 +170,19 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
   // —una fila por TEXTO distinto, no por compra— y sin ella el panel no puede decir de quién es el
   // gasto. Si falla, el Map queda vacío y la pantalla dice «sin identificar»: nunca inventa un
   // proveedor porque no pudo leer.
-  const [perfil, listado, entradas, identidades, celdasObra, asignacionesObra] = await Promise.all([
+  //
+  // LAS OPCIONES DE OBRA VIAJAN EN EL MISMO VIAJE, y ya no sólo con el panel abierto (15/09/2026).
+  // Desde que CADA FILA tiene su desplegable, pedirlas al abrir el panel las dejaría fuera de la
+  // lista: doscientas filas dibujarían un control sin opciones. Es una lectura chica —el catálogo de
+  // obras, no una fila por compra— y en paralelo no agrega una ronda. Error ⇒ lista vacía.
+  const [perfil, listado, entradas, identidades, celdasObra, asignacionesObra, opcionesObra] = await Promise.all([
     getPerfilActual(supabase),
     getComprasSheet(supabase),
     getEntradas(supabase),
     getIdentidades(supabase),
     getCeldasObra(supabase),
     getAsignaciones(supabase),
+    getOpcionesDeObra(supabase),
   ])
   if (!esAdministracion(perfil.data?.rol ?? null)) {
     return (
@@ -272,8 +278,6 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
 
   // La fila abierta sale de lo que YA se leyó: abrir el panel no cuesta una consulta más.
   const filaAbierta = sp.s ? (todas.find((f) => f.fila === Number(sp.s)) ?? null) : null
-  // Las opciones del desplegable sólo con el panel abierto y la columna en la base.
-  const opcionesObra = filaAbierta && celdasObra.disponible ? await getOpcionesDeObra(supabase) : []
   // EL RECORTE. Las 947 filas juntas medían 43.871px de alto; el tope las deja en ~9.000 y el
   // enlace directo manda sobre el tope (ver `recorteDeLista`). Los totales del pie miran LO QUE SE
   // DIBUJA —el rótulo del canvas dice «Total de lo que hay en pantalla»—, a diferencia de los
@@ -382,6 +386,8 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                   filas={recorte.enPantalla}
                   seleccionada={filaAbierta?.fila}
                   hrefDe={(fila) => urlSheet({ s: fila === filaAbierta?.fila ? null : fila })}
+                  opcionesObra={opcionesObra}
+                  obraEditable={celdasObra.disponible}
                 />
                 <PieCompras filas={recorte.enPantalla} total={todas.length}>
                   {(filtro !== 'todo' || q) && (

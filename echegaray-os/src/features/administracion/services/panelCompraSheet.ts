@@ -51,6 +51,15 @@ export function propiedadesDe(f: FilaConPapel): Prop[] {
       tono: f.categoria ? undefined : 'apagado',
     },
     { k: 'Forma de pago', v: f.tipo_pago || 'sin definir', tono: f.tipo_pago ? undefined : 'apagado' },
+    // CUÁNDO HAY QUE PAGARLA — la columna Q «Fecha prevista de pago (día)». Bajó de la lista al panel
+    // el 15/09/2026, cuando el dueño pidió ver en la fila la fecha del comprobante y la del pago. No
+    // se borró: es el dato que decide el orden de los pagos, y la fuente del filtro «Vencimiento»
+    // (AN es un ARRAYFORMULA sobre esa misma Q). Sin esto, la pantalla habría perdido el concepto.
+    {
+      k: 'A pagar',
+      v: f.fecha_prevista ? new Date(f.fecha_prevista).toLocaleDateString('es-AR') : 'sin fecha prevista',
+      tono: f.fecha_prevista ? undefined : 'apagado',
+    },
     {
       k: 'Deuda parcial',
       v: (deuda != null && deuda > 0 ? pesos(deuda) : null) ?? 'sin deuda',

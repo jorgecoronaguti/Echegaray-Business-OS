@@ -20,10 +20,13 @@ const fila = (p: Partial<FilaConPapel> = {}): FilaConPapel => ({
 
 const valor = (f: FilaConPapel, k: string) => propiedadesDe(f).find((p) => p.k === k)
 
-test('las ocho propiedades de la v2 más «Obra» (dueño, 14/09/2026) están y en su orden', () => {
+test('las ocho propiedades de la v2 más «Obra» y «A pagar» están y en su orden', () => {
+  // «A pagar» (la fecha prevista, columna Q) ENTRA el 15/09/2026, cuando las dos fechas que el dueño
+  // pidió —comprobante y pago— se quedaron con el lugar que tenía en la lista. El concepto no puede
+  // desaparecer de la pantalla: es el que decide el orden de los pagos.
   assert.deepEqual(propiedadesDe(fila()).map((p) => p.k), [
     'Fecha', 'Comprobante', 'Destino', 'Obra', 'Unidad', 'Tipo de costo', 'Forma de pago',
-    'Deuda parcial', 'Origen',
+    'A pagar', 'Deuda parcial', 'Origen',
   ])
 })
 

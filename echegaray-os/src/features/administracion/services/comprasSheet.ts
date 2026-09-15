@@ -80,7 +80,13 @@ export interface Filtrable {
   /** La fecha del COMPROBANTE. No ordena la lista: sólo desempata renglones iguales. */
   fecha?: string | null
   estado: string | null
-  obra_texto: string | null
+  /**
+   * LA OBRA RESUELTA, no el texto de la columna J (15/09/2026). El chip «Sin obra» preguntaba
+   * `!obra_texto`, y la J está escrita en 947 de 947 filas —dice el CLIENTE, no la obra—, así que el
+   * chip contaba 0 y prometía que no quedaba nada por imputar. Lo que de verdad falta imputar es lo
+   * que no tiene `obra_id` ni destino en Supabase, que es lo que este campo trae.
+   */
+  obra?: { rotulo: string | null } | null
   anulada: boolean
   total: number | null
   tiene_adjunto?: boolean
@@ -120,7 +126,7 @@ export function pasa(f: Filtrable, filtro: FiltroSheet, recien?: ReadonlySet<num
   if (f.anulada) return false
   switch (filtro) {
     case 'aPagar': return f.estado === ESTADO.PENDIENTE
-    case 'sinObra': return !f.obra_texto?.trim()
+    case 'sinObra': return !f.obra?.rotulo
     case 'sinComprobante': return f.tiene_adjunto !== true
     // SIN EL CONJUNTO NO HAY CORTE, Y NO PASA NADIE. «Recién cargadas» es una propiedad de la
     // POBLACIÓN —qué entró último, ver `clavesRecienCargadas`—, no de la fila: una fila sola no
@@ -155,7 +161,7 @@ export function totalesDe(filas: Filtrable[]): Totales {
   const vivas = filas.filter((f) => !f.anulada)
   return {
     nTotal: filas.length,
-    nSinObra: vivas.filter((f) => !f.obra_texto?.trim()).length,
+    nSinObra: vivas.filter((f) => !f.obra?.rotulo).length,
     nSinComprobante: vivas.filter((f) => f.tiene_adjunto !== true).length,
     aPagar: vivas.filter((f) => f.estado === ESTADO.PENDIENTE).reduce((s, f) => s + (f.total ?? 0), 0),
     total: vivas.reduce((s, f) => s + (f.total ?? 0), 0),

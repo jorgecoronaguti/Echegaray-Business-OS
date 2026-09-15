@@ -187,6 +187,20 @@ export function RotuloCol(
   )
 }
 
+/**
+ * DÓNDE TERMINA EL HEADER DE LA APLICACIÓN, en píxeles — lo único a lo que un encabezado de tabla
+ * pegajoso se puede anclar sin taparse a sí mismo.
+ *
+ * `AppHeader` declara `sticky top-0 h-11 border-b`: 44 de contenido más 1 de hairline. Un
+ * `top: 0` en la cabecera de una lista la dejaría DEBAJO de esa barra —que es `z-30` y opaca—, así
+ * que los rótulos de las columnas desaparecerían justo cuando empiezan a hacer falta.
+ *
+ * Va acá y no escrito a mano en cada tabla porque es la referencia de la que cuelga todo lo demás:
+ * el día que el header cambie de alto, una constante se corrige una vez y un literal repetido no.
+ * `encabezado-pegajoso.test.ts` ata este número al `h-11` real del componente.
+ */
+export const ALTO_HEADER_APP = 45
+
 /** La línea de encabezado de una tabla sin caja: sólo el filo inferior más fuerte. `v4A:81`. */
 export const ENCABEZADO: CSSProperties = {
   // `center`, no `end`: el canvas lo declara centrado en los seis lienzos. El `alignItems:'end'`

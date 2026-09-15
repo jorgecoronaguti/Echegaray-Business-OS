@@ -60,6 +60,24 @@
 // que las aísla con su número. Si el dueño extraña el filo ámbar, vuelve — pero entonces la
 // selección se queda sin ningún canal y hay que darle otro.
 
+// ═══ ABRIR UNA COMPRA YA NO MANDA LA LISTA AL PRINCIPIO — 15/09/2026 ═══
+//
+// Pedido del dueño, textual: *«tiene un bug que vuelve para arriba toda la lista cuando hacés click
+// la compra»*.
+//
+// LA CAUSA RAÍZ es el comportamiento por defecto de `<Link>`: Next.js restaura el scroll al tope en
+// cada navegación salvo que se le diga `scroll={false}`. Y acá TODA la selección es una navegación,
+// a propósito —el estado vive en la URL (`?s=<fila>`) para que el panel se comparta con un enlace y
+// vuelva con «atrás»—, así que cada clic en una fila era un `push` y cada `push` un salto al tope.
+// Con 200 filas dibujadas, elegir la fila 180 devolvía a la 1.
+//
+// NO se arregla moviendo la selección a estado de cliente: eso mataría el enlace profundo, que es
+// una capacidad que la pantalla ya tiene y que nadie pidió perder. Se arregla donde está el defecto:
+// la navegación sigue, el salto no. `scroll={false}` va en los DOS enlaces de la fila; uno solo
+// dejaría la mitad de la fila con el defecto y la otra sin él, que es peor que tenerlo entero.
+//
+// `revalidatePath` del guardado de obra NO scrollea: refresca el árbol en el lugar, sin navegar.
+
 // ═══ LA ÚLTIMA COLUMNA (26px) ES EL PAPEL, NO UN `⋯` ═══
 //
 // En el mockup ese `⋯` no tenía handler: era decorativo. Es el comprobante, en tinta cuando el
@@ -67,13 +85,14 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
-import { fechaCompleta, pesos } from '@/shared/components/canon/formato'
+import { fechaDdMmAa, pesos } from '@/shared/components/canon/formato'
 import { IconoProblema } from '@/shared/components/iconos'
 import {
   ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, V,
 } from '@/shared/components/v2/patron'
 import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
-import { esEstructura, pastillaDe, totalesDe } from '../services/comprasSheet'
+import { pastillaDe, totalesDe } from '../services/comprasSheet'
+import { ObraEnLinea } from './ObraEnLinea'
 import type { FilaConPapel } from '../services/comprasSheetService'
 import { CeldaComprobante } from './CeldaComprobante'
 
@@ -137,17 +156,41 @@ import { CeldaComprobante } from './CeldaComprobante'
 //
 // LA CINTA SIGUE SIENDO NECESARIA: con los cortes vivos, a 390px quedan dos columnas y la página no
 // desborda, pero entre 768px y 1459px la fila reducida todavía puede no entrar.
+// ═══ LA GRILLA DEL 15/09/2026: LA OBRA ES UN CONTROL Y LAS FECHAS SON DOS ═══
+//
+// Dos cambios del dueño, y los dos mueven la cuenta del corte:
+//
+//   · La columna de la obra deja de ser texto y pasa a ser el DESPLEGABLE que la cambia sin abrir el
+//     panel. Un `<select>` con «OB-0012 · SAN FRANCISCO» adentro no vive en 110px: su piso sube a
+//     168, que es lo que mide el rótulo más largo del catálogo antes de recortarse.
+//   · «A pagar» (la fecha prevista, Q) se va y entran las DOS que el dueño pidió ver: la FECHA DEL
+//     COMPROBANTE (`fecha`, columna de la factura) y la FECHA DE PAGO (`fecha_caja`, AD · cuándo
+//     salió la plata). No son tres columnas de fecha: son dos, y `fecha_prevista` baja al panel, que
+//     es donde vive el resto de las propiedades de una compra. El filtro «Vencimiento» sigue leyendo
+//     `tramo_vencimiento`, que es el ARRAYFORMULA sobre esa misma Q — el concepto no se perdió.
+//
+// LA CUENTA DEL CORTE, otra vez: diez tracks (150+120+112+168+92+72+72+104+112+26 = 1028) más nueve
+// `gap` de 14 (126) = 1154, y con el panel abierto la lista sólo tiene `ancho − 40 − 393`. Las diez
+// entran recién desde 1154 + 393 + 40 = 1587. Por debajo se sueltan CONCEPTO, COMPROBANTE y FORMA DE
+// PAGO y quedan siete (692 + 84 = 776, que con el panel entran ya a 1209).
+//
+// EN EL TELÉFONO QUEDAN DOS, Y LA SEGUNDA ES LA OBRA. Antes eran proveedor e importe; el dueño pidió
+// poder imputar desde el teléfono, así que el desplegable ocupa la segunda columna y el importe baja
+// a un segundo renglón DENTRO de la celda del proveedor (el mismo recurso que ya usa la deuda
+// parcial). No se pierde ningún dato: se apilan dos que antes iban al lado.
+// El piso de 140px del desplegable más el de 160 del nombre entran en los 350 útiles de un teléfono
+// de 390 — la cuenta la hace `grilla-v2-en-telefono.test.ts` y no se declara a ojo.
 const COLS
-  = 'grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_88px_104px_112px_26px]'
-  + ' max-[1459px]:grid-cols-[minmax(150px,1.2fr)_minmax(110px,1fr)_92px_88px_112px_26px]'
-  + ' max-[767px]:grid-cols-[minmax(0,1fr)_112px]'
+  = 'grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(168px,1fr)_92px_72px_72px_104px_112px_26px]'
+  + ' max-[1587px]:grid-cols-[minmax(150px,1.2fr)_minmax(168px,1fr)_92px_72px_72px_112px_26px]'
+  + ' max-[767px]:grid-cols-[minmax(0,1fr)_minmax(140px,1fr)]'
 
 /**
  * Las celdas que se sueltan, y el corte en el que se van. EL `display` DE ESTAS CELDAS VA POR CLASE,
  * NUNCA INLINE: un `style={{ display: 'flex' }}` le gana a cualquier media query y la celda sigue
  * ocupando su ancho aunque la grilla ya no tenga su columna — la fila entera se corre.
  */
-const SUELTA_ANCHO = 'max-[1459px]:hidden'
+const SUELTA_ANCHO = 'max-[1587px]:hidden'
 const SUELTA_TELEFONO = 'max-[767px]:hidden'
 
 /**
@@ -184,32 +227,25 @@ const GAP = 'gap-[14px]'
 const CUERPO = '13.5px'
 
 /**
- * EL NOMBRE QUE ESA FECHA TIENE EN LA FUENTE, medido sobre la pestaña viva el 08/09/2026: es la
- * columna **Q** de «Compras», rótulo exacto `Fecha prevista de pago (día)`, y llega a
- * `compra_sheet.fecha_prevista` por `scripts/sync-compras.mjs`.
+ * EL NOMBRE QUE CADA FECHA TIENE EN LA FUENTE, para que quien compare contra el Sheet sepa qué
+ * columna está mirando. Van en el `title` del rótulo y no en el rótulo: no entran en 72px.
  *
- * Va en el `title` del rótulo y no en el rótulo mismo por dos razones. La primera es de ancho: trece
- * caracteres no entran en 88px. La segunda importa más — el dueño la pidió como «fecha a pagar»
- * (08/09, textual) y así se llama en la pantalla; pero quien compare contra el Sheet necesita saber
- * QUÉ columna está mirando, y un segundo nombre sin puente es el camino corto a dos verdades.
+ * ═══ POR QUÉ SON ÉSTAS DOS Y NO LA PREVISTA (dueño, 15/09/2026) ═══
  *
- * NO ES «Fecha de caja» (AD), que es la otra candidata y la que NO se muestra: ésa es cuándo la
- * plata SALIÓ, no cuándo hay que pagar. Al 08/09 las dos coinciden en 925 de 927 filas, así que
- * elegir mal se vería igual de bien —y sería el mismo defecto por accidente que ya cazó
- * `compras-fila.mjs`. El filtro «Vencimiento» de esta misma pantalla lee `tramo_vencimiento` (AN),
- * cuya fórmula es `ARRAYFORMULA` sobre `$Q$4:$Q` (`lib/proveedores-aging.mjs`): el filtro y esta
- * columna son el MISMO concepto, y por eso no se inventa uno nuevo.
+ * La pestaña tiene TRES fechas y hasta hoy la lista mostraba la del medio. El dueño pidió las dos
+ * de los extremos: cuándo se emitió el comprobante y cuándo salió la plata. Son las que cierran el
+ * ciclo de un gasto y las que se comparan contra el banco.
  *
- * ═══ LÍMITE CONOCIDO: «A PAGAR» YA SIGNIFICA OTRAS DOS COSAS EN ESTA PANTALLA ═══
+ * `fecha_prevista` (Q) NO se borró de la pantalla: bajó al panel, con su nombre completo. Y el
+ * filtro «Vencimiento» sigue leyendo `tramo_vencimiento` (AN), que es un ARRAYFORMULA sobre esa
+ * misma Q: el concepto «esto está por vencer» sigue teniendo una sola definición y sigue en la
+ * pantalla. Dejar las tres habría puesto tres columnas de fecha en una fila de diez.
  *
- * El chip de arriba («A pagar 35») filtra por ESTADO, y el pie («A pagar $…») suma PLATA. Con esta
- * columna el mismo rótulo dice además una FECHA. Se deja así porque es como lo pidió el dueño y
- * porque el contexto desambigua —una fecha bajo un encabezado de columna no se confunde con un
- * conteo ni con un importe—, pero queda escrito: si en la pantalla empieza a costar leerlo, el que
- * se renombra es ESTE rótulo («Fecha prevista», que es como se llama en el Sheet), no el chip ni el
- * pie, que son los que ya estaban.
+ * ELEGIR MAL SE VERÍA IGUAL DE BIEN: al 08/09 `fecha_prevista` y `fecha_caja` coincidían en 925 de
+ * 927 filas. Por eso las dos columnas tienen test que clava de qué campo leen.
  */
-const ROTULO_SHEET = 'Compras · Q «Fecha prevista de pago (día)»'
+const ROTULO_FECHA = 'Compras · fecha del comprobante'
+const ROTULO_PAGO = 'Compras · AD «Fecha de caja» — cuándo salió la plata'
 
 /**
  * EL IMPORTE. Una fila anulada se dibuja apagada y tachada: existe en la pestaña, no es un gasto.
@@ -229,29 +265,37 @@ function Importe({ f }: { f: FilaConPapel }) {
 }
 
 export function TablaComprasSheet({
-  filas, seleccionada, hrefDe,
+  filas, seleccionada, hrefDe, opcionesObra, obraEditable,
 }: {
   filas: FilaConPapel[]
   seleccionada?: number
   hrefDe: (fila: number) => string
+  /** Los rótulos elegibles de la columna «Obra». Mismos que el panel: `getOpcionesDeObra`. */
+  opcionesObra: string[]
+  /** `false` = la base todavía no tiene la columna Obra: se muestra el rótulo, no un control muerto. */
+  obraEditable: boolean
 }) {
   return (
     <div data-testid="tabla-compras-sheet">
-      <CintaHorizontal testid="cinta-compras">
-      <div className={`grid ${ANCHO_DE_LA_FILA} ${GAP} ${COLS}`} style={ENCABEZADO}>
-        <span className="grid bg-canvas" style={PEGADA}><RotuloCol>Proveedor</RotuloCol></span>
-        <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Concepto</RotuloCol></span>
-        <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Comprobante</RotuloCol></span>
-        <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Cliente / asignación</RotuloCol></span>
-        <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Estado</RotuloCol></span>
-        <span className={`grid ${SUELTA_TELEFONO}`} title={ROTULO_SHEET}><RotuloCol>A pagar</RotuloCol></span>
-        <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Forma de pago</RotuloCol></span>
-        <RotuloCol derecha>Importe</RotuloCol>
-        <span className={SUELTA_TELEFONO} />
-      </div>
+      <CintaHorizontal
+        testid="cinta-compras"
+        cabecera={(
+          <div className={`grid ${ANCHO_DE_LA_FILA} ${GAP} ${COLS}`} style={ENCABEZADO}>
+            <span className="grid bg-canvas" style={PEGADA}><RotuloCol>Proveedor</RotuloCol></span>
+            <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Concepto</RotuloCol></span>
+            <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Comprobante</RotuloCol></span>
+            <span className="grid"><RotuloCol>Obra</RotuloCol></span>
+            <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Estado</RotuloCol></span>
+            <span className={`grid ${SUELTA_TELEFONO}`} title={ROTULO_FECHA}><RotuloCol>Fecha</RotuloCol></span>
+            <span className={`grid ${SUELTA_TELEFONO}`} title={ROTULO_PAGO}><RotuloCol>Pagado el</RotuloCol></span>
+            <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Forma de pago</RotuloCol></span>
+            <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol derecha>Importe</RotuloCol></span>
+            <span className={SUELTA_TELEFONO} />
+          </div>
+        )}
+      >
 
       {filas.map((f) => {
-        const obra = f.obra_texto?.trim()
         const estado = pastillaDe(f.estado)
         const elegida = seleccionada === f.fila
         return (
@@ -271,25 +315,40 @@ export function TablaComprasSheet({
               boxShadow: elegida ? FILO_ELEGIDA : undefined,
             }}
           >
-            {/* `display: contents` — la fila entera abre el panel, salvo el papel, que es un botón
-                y no puede vivir dentro de un enlace (HTML inválido y rompe el tabulador). */}
-            <Link href={hrefDe(f.fila)} prefetch={false} style={{ display: 'contents' }}>
+            {/* ═══ LA FILA SE PARTE EN DOS ENLACES, Y NO ES COSMÉTICA (15/09/2026) ═══
+
+                El desplegable de la obra NO PUEDE VIVIR DENTRO DE UN `<a>`: es HTML inválido, el
+                clic que abre la lista navegaría al panel y el tabulador se rompe. Es exactamente el
+                motivo por el que el papel de la última columna ya estaba afuera. Con `display:
+                contents` los dos enlaces desaparecen de la grilla y las diez celdas siguen siendo
+                hijas directas de la fila, así que el orden visual no cambia.
+
+                `scroll={false}` EN LOS DOS: ver el bloque de arriba. Es el arreglo del defecto que
+                mandaba la lista al principio al abrir una compra. */}
+            <Link href={hrefDe(f.fila)} prefetch={false} scroll={false} style={{ display: 'contents' }}>
               {/* EL FONDO Y EL FILO NO SON COSMÉTICA. Sin fondo, las celdas que pasan por debajo
                   al desplazarse se leen encimadas con el nombre; y sin repetir `FILO_ELEGIDA` acá,
                   el filo amarillo de la fila abierta —que se pinta en el fondo de la FILA— queda
                   tapado por este fondo opaco en TODOS los anchos. */}
               <span
-                className="truncate bg-canvas group-hover:bg-[#F2F1ED]"
+                className="flex min-w-0 flex-col justify-center bg-canvas group-hover:bg-[#F2F1ED]"
                 data-testid="compra-proveedor"
                 style={{
                   ...PEGADA,
-                  fontSize: CUERPO,
                   fontWeight: 500,
-                  color: f.proveedor ? V.tinta : V.tenue,
                   boxShadow: elegida ? FILO_ELEGIDA : undefined,
                 }}
               >
-                {f.proveedor ?? 'sin proveedor'}
+                <span className="truncate" style={{ fontSize: CUERPO, color: f.proveedor ? V.tinta : V.tenue }}>
+                  {f.proveedor ?? 'sin proveedor'}
+                </span>
+                {/* EL IMPORTE EN EL TELÉFONO, debajo del nombre. Su columna se suelta a 767px para
+                    que entre el desplegable de la obra, y el número que decide no puede irse de la
+                    pantalla: se apila, como ya se apila la deuda parcial. Se dibuja SÓLO acá abajo
+                    de 768 (`hidden` por defecto), así que en escritorio no hay dos importes. */}
+                <span className="hidden max-[767px]:block" style={{ fontSize: '11px', fontWeight: 400 }} data-testid="compra-importe-telefono">
+                  <Importe f={f} />
+                </span>
               </span>
 
               <span className={`truncate ${SUELTA_ANCHO}`} style={{ fontSize: CUERPO, color: V.tintaSuave }}>
@@ -303,41 +362,31 @@ export function TablaComprasSheet({
               >
                 {f.comprobante ? `${f.tipo ? `${f.tipo} ` : ''}${f.comprobante}` : 'sin comprobante'}
               </span>
+            </Link>
 
-              {/* «Sin imputar» en rojo con su ⚠: hoy las 947 filas tienen destino, así que este
-                  camino no se ve — existe porque el día que alguien cargue una sin imputar tiene
-                  que gritarlo, no esconderlo. */}
-              <span className={`flex min-w-0 items-baseline gap-[7px] ${SUELTA_TELEFONO}`}>
-                {f.unidad_negocio && (
-                  <span className="shrink-0" style={{ fontSize: '11px', color: V.tenue }}>{f.unidad_negocio}</span>
-                )}
-                {/* LA OBRA CON SU RÓTULO ÚNICO, NO SÓLO EL CLIENTE (dueño, 14/09/2026). La J sigue en el
-                    `title`: es el texto libre de la pestaña y no se pierde. Ninguna columna nueva: el
-                    canvas v4 fija los nueve tracks. */}
-                <span
-                  className="truncate"
-                  style={{ fontSize: CUERPO, color: obra ? V.tintaSuave : V.neg }}
-                  title={f.obra?.rotulo ? `${f.obra.origen === 'inferida' ? 'Inferida de' : 'Cliente:'} «${obra ?? ''}»` : undefined}
-                  data-testid="compra-obra"
-                >
-                  {f.obra?.rotulo || obra || 'sin imputar'}
+            {/* LA OBRA: UN CONTROL, FUERA DEL ENLACE. Cambia la imputación sin abrir el panel y sin
+                navegar — si navegara, la lista se recargaría entera y volvería al principio, que es
+                el defecto que esta misma entrega arregla. */}
+            <span className="flex min-w-0 items-center" data-testid="compra-obra">
+              <ObraEnLinea
+                fila={f.fila}
+                celda={f.obra?.celda ?? null}
+                rotulo={f.obra?.rotulo ?? null}
+                inferida={f.obra?.origen === 'inferida'}
+                opciones={opcionesObra}
+                editable={obraEditable}
+                cuerpo={CUERPO}
+              />
+              {/* LO QUE LA CELDA NO SE PUDO CREER. `obra_inconsistencia` lo escribe el sync cuando el
+                  texto elegido contradice la Unidad de negocio: se muestra, no se corrige. */}
+              {f.obra?.inconsistencia && (
+                <span title={f.obra.inconsistencia} className="flex shrink-0" style={{ color: V.neg }}>
+                  <IconoProblema className="h-[13px] w-[13px]" />
                 </span>
-                {!obra && (
-                  <span title="Sin imputar a obra" className="flex shrink-0" style={{ color: V.neg }}>
-                    <IconoProblema className="h-[13px] w-[13px]" />
-                  </span>
-                )}
-                {esEstructura(obra) && (
-                  <span
-                    className="shrink-0 whitespace-nowrap"
-                    title="Costo de la empresa, no de una obra"
-                    style={{ fontSize: '11px', color: V.tenue }}
-                  >
-                    estructura
-                  </span>
-                )}
-              </span>
+              )}
+            </span>
 
+            <Link href={hrefDe(f.fila)} prefetch={false} scroll={false} style={{ display: 'contents' }}>
               <span
                 className={`truncate ${SUELTA_TELEFONO}`}
                 style={{ fontSize: CUERPO, color: estado.color }}
@@ -346,18 +395,27 @@ export function TablaComprasSheet({
                 {estado.texto}
               </span>
 
-              {/* CUÁNDO HAY QUE PAGARLA. Mono tabular para que las nueve fechas de la pantalla
-                  alineen por el día, y VACÍA cuando el Sheet no la trae: un «—» en una columna de
-                  fechas se lee como un dato de la fuente, y en la fuente hay una celda vacía. El
-                  `title` la fecha en la que la fila cae dentro del filtro «Vencimiento». */}
+              {/* LAS DOS FECHAS DEL CICLO DEL GASTO. Mono tabular y alineadas a la derecha para que
+                  las doscientas de la pantalla alineen por el día, y VACÍAS cuando el Sheet no las
+                  trae: un «—» en una columna de fechas se lee como un dato de la fuente, y en la
+                  fuente hay una celda vacía. Una fecha de pago vacía SIGNIFICA que no se pagó. */}
               <span
-                className={`font-mono tabular-nums ${SUELTA_TELEFONO}`}
+                className={`text-right font-mono tabular-nums ${SUELTA_TELEFONO}`}
                 style={{ fontSize: '12px', color: f.anulada ? V.tenue : V.tintaSuave }}
-                data-testid="compra-a-pagar"
-                data-fecha-prevista={f.fecha_prevista ?? undefined}
+                data-testid="compra-fecha"
+                data-fecha={f.fecha ?? undefined}
+              >
+                {fechaDdMmAa(f.fecha)}
+              </span>
+
+              <span
+                className={`text-right font-mono tabular-nums ${SUELTA_TELEFONO}`}
+                style={{ fontSize: '12px', color: f.anulada ? V.tenue : V.tintaSuave }}
+                data-testid="compra-fecha-pago"
+                data-fecha-caja={f.fecha_caja ?? undefined}
                 title={f.tramo_vencimiento ?? undefined}
               >
-                {fechaCompleta(f.fecha_prevista)}
+                {fechaDdMmAa(f.fecha_caja)}
               </span>
 
               {/* NO BLOQUEA NADA y por eso es apagado, no ámbar: sin forma de pago la compra existe
@@ -367,7 +425,7 @@ export function TablaComprasSheet({
               </span>
 
               <span
-                className="flex min-w-0 flex-col items-end gap-px font-mono tabular-nums"
+                className={`flex min-w-0 flex-col items-end gap-px font-mono tabular-nums ${SUELTA_TELEFONO}`}
                 style={{ fontSize: CUERPO, textAlign: 'right' }}
               >
                 <Importe f={f} />

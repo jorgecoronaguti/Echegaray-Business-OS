@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   aParams, criteriosDeURL, hayCriterios, LLAVE, numeroDe, opcionesDe, pasaCriterios, periodoDe,
-  tramoVisible, type Criteriable, type Criterios,
+  SIN_ASIGNAR, tramoVisible, type Criteriable, type Criterios,
 } from './comprasFiltros.ts'
 
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN:
@@ -16,7 +16,7 @@ import {
 
 const fila = (over: Partial<Criteriable> = {}): Criteriable => ({
   proveedor: 'DUPEC',
-  obra_texto: 'San Francisco',
+  obra: { rotulo: 'OB-0007 · SAN FRANCISCO' },
   categoria: 'B',
   estado: 'Pendiente',
   total: 250000,
@@ -38,14 +38,46 @@ test('los criterios se COMBINAN: hace falta cumplirlos todos', () => {
 })
 
 test('un criterio contra una celda vacía NO pasa', () => {
-  assert.equal(pasaCriterios(fila({ obra_texto: null }), { obra: 'San Francisco' }), false)
-  assert.equal(pasaCriterios(fila({ obra_texto: '  ' }), { obra: 'San Francisco' }), false)
+  assert.equal(pasaCriterios(fila({ obra: null }), { obra: 'OB-0007 · SAN FRANCISCO' }), false)
+  assert.equal(pasaCriterios(fila({ obra: { rotulo: null } }), { obra: 'OB-0007 · SAN FRANCISCO' }), false)
   assert.equal(pasaCriterios(fila({ fecha: null }), { desde: '2026-01-01' }), false)
 })
 
 test('el texto se compara exacto, no por contenido', () => {
-  assert.equal(pasaCriterios(fila({ obra_texto: 'San Francisco Sur' }), { obra: 'San Francisco' }), false)
-  assert.equal(pasaCriterios(fila({ obra_texto: 'san francisco' }), { obra: 'San Francisco' }), true, 'las mayúsculas no cuentan')
+  assert.equal(pasaCriterios(fila({ obra: { rotulo: 'OB-0007 · SAN FRANCISCO II' } }), { obra: 'OB-0007 · SAN FRANCISCO' }), false)
+  assert.equal(pasaCriterios(fila({ obra: { rotulo: 'ob-0007 · san francisco' } }), { obra: 'OB-0007 · SAN FRANCISCO' }), true, 'las mayúsculas no cuentan')
+})
+
+// ═══ EL ARREGLO DEL 15/09/2026: EL FILTRO «OBRA» DEJA DE MIRAR EL TEXTO LIBRE DE LA J ═══
+//
+// EL DEFECTO, medido en producción ese día: el desplegable ofrecía «Administracion», «Almacen»,
+// «ARCOR», «LA ESTRELLA», «MESSINA», «Papa», «Quattropani - Melisa García SAS», «SAINT GOBAIN»,
+// «San Francisco», «Taller», «TALLER» y «Vehiculos / Maquinas». Doce opciones que no son doce obras:
+// «Taller» y «TALLER» son la misma, «ARCOR» y «SAINT GOBAIN» son clientes, y ninguna se puede
+// elegir en el desplegable de la fila — así que filtrar y asignar hablaban dos idiomas distintos.
+//
+// Estos tres tests se ponen ROJOS si `pasaCriterios` u `opcionesDe` vuelven a leer `obra_texto`:
+// ninguna de estas filas lo tiene.
+
+test('el filtro «Obra» compara contra el RÓTULO ÚNICO de Supabase, no contra la columna J', () => {
+  const conTextoViejo = { ...fila({ obra: { rotulo: 'OB-0007 · SAN FRANCISCO' } }), obra_texto: 'San Francisco' } as Criteriable
+  assert.equal(pasaCriterios(conTextoViejo, { obra: 'OB-0007 · SAN FRANCISCO' }), true)
+  assert.equal(
+    pasaCriterios(conTextoViejo, { obra: 'San Francisco' }), false,
+    'el filtro sigue aceptando el texto crudo de la pestaña: dos vocabularios para la misma columna',
+  )
+})
+
+test('«(sin asignar)» es el ÚNICO criterio de obra que trae las filas sin imputar', () => {
+  const sinObra = fila({ obra: null })
+  const conObra = fila({ obra: { rotulo: 'ES-ADM · Estructura – Administración' } })
+  assert.equal(pasaCriterios(sinObra, { obra: SIN_ASIGNAR }), true)
+  assert.equal(pasaCriterios(conObra, { obra: SIN_ASIGNAR }), false, '«sin asignar» trajo una fila imputada')
+  // Y no se confunde con «Sin obra – cliente», que SÍ es una imputación.
+  const sinObraDelCliente = fila({ obra: { rotulo: 'Sin obra – ARCOR' } })
+  assert.equal(pasaCriterios(sinObraDelCliente, { obra: SIN_ASIGNAR }), false,
+    '«Sin obra – cliente» es una decisión tomada, no una fila sin imputar')
+  assert.equal(pasaCriterios(sinObraDelCliente, { obra: 'Sin obra – ARCOR' }), true)
 })
 
 test('las fechas se comparan como texto ISO, con los bordes incluidos', () => {
@@ -105,15 +137,29 @@ test('un valor ilegible en la URL se ignora: no vacía la lista', () => {
 
 test('los desplegables se arman con lo que la pestaña TIENE, y las anuladas no cuentan', () => {
   const filas = [
-    fila({ proveedor: 'DUPEC', obra_texto: 'MESSINA', fecha: '2026-08-04', categoria: 'B', estado: 'Pendiente', tramo_vencimiento: '2 · Vence esta semana' }),
-    fila({ proveedor: 'Combustibles Barcelo', obra_texto: 'San Francisco', fecha: '2026-09-01', categoria: 'N', estado: 'Pagado', tramo_vencimiento: '1 · Vencido' }),
-    { ...fila({ proveedor: 'FANTASMA SRL', obra_texto: 'Obra Muerta' }), anulada: true } as Criteriable,
+    fila({ proveedor: 'DUPEC', obra: { rotulo: 'OB-0003 · MESSINA' }, fecha: '2026-08-04', categoria: 'B', estado: 'Pendiente', tramo_vencimiento: '2 · Vence esta semana' }),
+    fila({ proveedor: 'Combustibles Barcelo', obra: { rotulo: 'OB-0007 · SAN FRANCISCO' }, fecha: '2026-09-01', categoria: 'N', estado: 'Pagado', tramo_vencimiento: '1 · Vencido' }),
+    { ...fila({ proveedor: 'FANTASMA SRL', obra: { rotulo: 'OB-9999 · OBRA MUERTA' } }), anulada: true } as Criteriable,
   ]
   const o = opcionesDe(filas)
+  assert.deepEqual(o.obras, ['OB-0003 · MESSINA', 'OB-0007 · SAN FRANCISCO'],
+    'el desplegable de obra dejó de armarse con los rótulos únicos')
+  assert.equal(o.obras.includes(SIN_ASIGNAR), false, 'ofreció «sin asignar» sin que haya una sola fila sin imputar')
   assert.deepEqual(o.proveedores, ['Combustibles Barcelo', 'DUPEC'])
   assert.equal(o.proveedores.includes('FANTASMA SRL'), false, 'una anulada no puebla el desplegable')
   assert.deepEqual(o.categorias, ['B', 'N'])
   assert.deepEqual(o.estados, ['Pagado', 'Pendiente'])
   assert.deepEqual(o.periodos, ['2026-09', '2026-08'], 'del más nuevo al más viejo')
   assert.deepEqual(o.vencimientos, ['Vencido', 'Vence esta semana'], 'por urgencia, que es el orden que ya escribió el Sheet')
+})
+
+test('«(sin asignar)» aparece en el desplegable SÓLO cuando hay filas sin imputar', () => {
+  // Al revés es peor que no tenerlo: una opción que devuelve la lista vacía manda a alguien a buscar
+  // trabajo que no existe, y esconderla cuando el trabajo SÍ existe lo hace invisible.
+  const o = opcionesDe([
+    fila({ obra: { rotulo: 'OB-0003 · MESSINA' } }),
+    fila({ obra: null }),
+  ])
+  assert.deepEqual(o.obras, ['OB-0003 · MESSINA', SIN_ASIGNAR])
+  assert.equal(o.obras.at(-1), SIN_ASIGNAR, '«sin asignar» tiene que quedar al final, no mezclado entre las obras')
 })

@@ -62,6 +62,12 @@ export interface CompraSheet {
    * se contradicen el día que el criterio del Sheet cambie. El filtro de vencimiento lo usa.
    */
   tramo_vencimiento: string | null
+  /**
+   * CUÁNDO SALIÓ LA PLATA — la columna AD «Fecha de caja» de la pestaña. Es la FECHA DE PAGO que el
+   * dueño pidió ver en la lista (15/09/2026), y no se confunde con `fecha_prevista`: ésa es cuándo
+   * HAY que pagar y existe antes del pago; ésta sólo existe después. Vacía = todavía no se pagó.
+   */
+  fecha_caja: string | null
   monto_pagado: number | null
   saldo_pendiente: number | null
   cuit: string | null
@@ -93,7 +99,8 @@ export interface FilaConPapel extends CompraSheet {
 const COLUMNAS = [
   'fila', 'sheet_id', 'clave', 'fecha', 'proveedor', 'tipo', 'comprobante', 'concepto',
   'detalle_obra', 'obra_texto', 'unidad_negocio', 'categoria', 'importe', 'iva', 'total',
-  'estado', 'estado_pago', 'tipo_pago', 'modalidad', 'fecha_prevista', 'tramo_vencimiento', 'monto_pagado',
+  'estado', 'estado_pago', 'tipo_pago', 'modalidad', 'fecha_prevista', 'tramo_vencimiento',
+  'fecha_caja', 'monto_pagado',
   'saldo_pendiente', 'cuit', 'anulada',
 ].join(', ')
 

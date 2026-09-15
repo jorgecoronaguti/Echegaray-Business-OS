@@ -27,6 +27,7 @@ export function BarraFiltros({
   testid,
   extra,
   compacta = false,
+  buscador = true,
 }: {
   /** La ruta a la que vuelve el formulario. Es la misma pantalla: GET sobre sí misma. */
   accion: string
@@ -45,23 +46,37 @@ export function BarraFiltros({
    * el botón SIGUE estando: un `select` que no envía solo necesita cómo enviarse.
    */
   compacta?: boolean
+  /**
+   * `false` = ESTA BARRA NO DIBUJA SU BUSCADOR.
+   *
+   * Compras tiene el buscador arriba, en `CabeceraSeccion`, que es donde lo pone el canvas v4. Hasta
+   * el 15/09/2026 dibujaba además el de esta barra: DOS campos `name="q"` para el MISMO parámetro,
+   * uno encima del otro, con dos textos de ayuda distintos. Escribir en uno y filtrar desde el otro
+   * borraba lo tipeado sin decir nada. Un control duplicado no es redundancia, es ambigüedad.
+   *
+   * La búsqueda no se pierde: viaja como campo oculto en `extra`, así que filtrar CONSERVA lo que la
+   * persona ya había buscado — que es exactamente lo que el campo duplicado rompía.
+   */
+  buscador?: boolean
 }) {
   return (
     <form method="get" action={accion} data-testid={testid} className="flex flex-wrap items-end gap-2">
       {Object.entries(extra ?? {}).map(([k, v]) =>
         v ? <input key={k} type="hidden" name={k} value={v} /> : null,
       )}
-      <label className={compacta ? 'min-w-0 flex-1' : 'flex min-w-0 flex-1 basis-48 flex-col text-[11px] text-faint'}>
-        {!compacta && 'Buscar'}
-        <input
-          type="search"
-          name="q"
-          defaultValue={q ?? ''}
-          placeholder={placeholder}
-          className={compacta ? `${CTRL} mt-0` : CTRL}
-          data-testid={testid ? `${testid}-q` : undefined}
-        />
-      </label>
+      {buscador && (
+        <label className={compacta ? 'min-w-0 flex-1' : 'flex min-w-0 flex-1 basis-48 flex-col text-[11px] text-faint'}>
+          {!compacta && 'Buscar'}
+          <input
+            type="search"
+            name="q"
+            defaultValue={q ?? ''}
+            placeholder={placeholder}
+            className={compacta ? `${CTRL} mt-0` : CTRL}
+            data-testid={testid ? `${testid}-q` : undefined}
+          />
+        </label>
+      )}
       {children}
       {!compacta && <button
         type="submit"

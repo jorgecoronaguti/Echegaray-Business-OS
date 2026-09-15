@@ -80,46 +80,52 @@ test('la grilla es la del canvas, carácter por carácter', () => {
   // grilla — un defecto que no se ve en ningún test de unidad, sólo mirando la pantalla.
   const t = codigoTabla()
   assert.ok(
-    t.includes('grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_88px_104px_112px_26px]'),
-    'la grilla ancha dejó de ser la del canvas más los 88px de «A pagar»',
+    t.includes('grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(168px,1fr)_92px_72px_72px_104px_112px_26px]'),
+    'la grilla ancha dejó de ser la del canvas más la columna de obra editable y las dos fechas',
   )
   assert.match(t, /const GAP = 'gap-\[14px\]'/, 'el `gap:14` del canvas se perdió')
 })
 
-test('los nueve rótulos, en el orden del canvas y pedidos al patrón', () => {
-  // `v4A:223`. El orden ES la decisión: COMPROBANTE y FORMA DE PAGO subieron a columna propia y la
-  // FECHA bajó al panel. Escribir los rótulos a mano en vez de pedirle `RotuloCol` al patrón es la
-  // fuga que `ritmo-vertical.test.ts` ya cazó una vez en `TablaUsuarios`.
+test('los diez rótulos, en el orden del canvas y pedidos al patrón', () => {
+  // `v4A:223` más los tres cambios del dueño del 15/09/2026: «Cliente / asignación» pasa a ser
+  // «Obra» —porque ahora ES la obra y además se cambia desde ahí—, y «A pagar» se parte en las dos
+  // fechas que pidió ver (la del comprobante y la del pago). Escribir los rótulos a mano en vez de
+  // pedirle `RotuloCol` al patrón es la fuga que `ritmo-vertical.test.ts` ya cazó en `TablaUsuarios`.
   const t = codigoTabla()
   const rotulos = [...t.matchAll(/<RotuloCol[^>]*>([^<]+)<\/RotuloCol>/g)].map((m) => m[1])
   assert.deepEqual(rotulos, [
-    'Proveedor', 'Concepto', 'Comprobante', 'Cliente / asignación', 'Estado', 'A pagar', 'Forma de pago',
+    'Proveedor', 'Concepto', 'Comprobante', 'Obra', 'Estado', 'Fecha', 'Pagado el', 'Forma de pago',
     'Importe',
   ])
   assert.match(t, /<RotuloCol derecha>Importe<\/RotuloCol>/, 'IMPORTE dejó de alinearse a la derecha')
 })
 
-test('«A pagar» es la fecha PREVISTA de la columna Q, no la fecha de caja', () => {
+test('las DOS fechas de la lista son la del comprobante y la del pago, cada una de su campo', () => {
   // ═══ EL DEFECTO QUE ESTE TEST ATRAPA ═══
   //
-  // La pestaña tiene DOS fechas candidatas y hoy coinciden en 925 de 927 filas: `fecha_prevista`
-  // (Q · «Fecha prevista de pago (día)», cuándo HAY que pagar) y `fecha_caja` (AD · «Fecha de caja»,
-  // cuándo la plata SALIÓ). Elegir la equivocada se vería idéntico en pantalla —es el mismo defecto
-  // por accidente que `orquestador/lib/compras-fila.mjs` ya cazó una vez leyendo por posición— y
-  // pondría en la columna que decide pagos una fecha que sólo existe DESPUÉS de pagar.
-  //
-  // Además es la fuente del filtro «Vencimiento»: `Compras!AN` es un ARRAYFORMULA sobre `$Q$4:$Q`
-  // (`orquestador/lib/proveedores-aging.mjs`), así que columna y filtro son el mismo concepto.
+  // La pestaña tiene TRES fechas y al 08/09 dos de ellas coincidían en 925 de 927 filas: `fecha`
+  // (la del comprobante), `fecha_prevista` (Q · cuándo HAY que pagar) y `fecha_caja` (AD · cuándo la
+  // plata SALIÓ). Leer la equivocada se vería idéntico en pantalla —es el mismo defecto por accidente
+  // que `orquestador/lib/compras-fila.mjs` ya cazó una vez leyendo por posición— y pondría en la
+  // columna «Pagado el» una fecha que existe ANTES de que el pago ocurra: una compra impaga se
+  // leería como pagada.
   const t = codigoTabla()
-  assert.match(t, /fechaCompleta\(f\.fecha_prevista\)/, 'la columna «A pagar» dejó de leer la fecha prevista (Q)')
-  assert.equal(t.includes('f.fecha_caja'), false, 'la columna pasó a la fecha de caja: eso es cuándo se pagó, no cuándo hay que pagar')
-  // EL AÑO ENTERO. `diaMes` y `fechaCortaConAnio` abrevian, y una obligación de 2025 escrita «15/11»
-  // se lee como la semana que viene: dos ventanas de tiempo en la misma columna.
-  assert.equal(t.includes('diaMes(f.fecha_prevista)'), false, 'la fecha a pagar volvió a perder el año')
-  assert.equal(t.includes('fechaCortaConAnio(f.fecha_prevista)'), false, 'la fecha a pagar volvió a perder el año')
-  // Y UN VACÍO ES UN VACÍO. En la fuente hay una celda vacía en 6 de las 927 filas; un «—» o un
-  // «sin fecha» se leería como algo que el Sheet dice.
-  assert.equal(/fechaCompleta\(f\.fecha_prevista\)\s*[?|]{1,2}/.test(t), false,
+  assert.match(t, /data-testid="compra-fecha"[\s\S]{0,200}?fechaDdMmAa\(f\.fecha\)/,
+    'la columna «Fecha» dejó de leer la fecha del comprobante')
+  assert.match(t, /data-testid="compra-fecha-pago"[\s\S]{0,260}?fechaDdMmAa\(f\.fecha_caja\)/,
+    'la columna «Pagado el» dejó de leer la fecha de caja (AD): estaría afirmando un pago que no ocurrió')
+  // Y NO SE CUELA UNA TERCERA. `fecha_prevista` bajó al panel; en la lista sería una tercera columna
+  // de fecha en una fila que ya tiene diez columnas, y su concepto ya está en el filtro «Vencimiento».
+  assert.equal(t.includes('f.fecha_prevista'), false,
+    'volvió la fecha prevista a la lista: son tres columnas de fecha para la misma fila')
+  // EL FORMATO ES UNO SOLO PARA LAS DOS (dueño: «dd/mm/yy consistente»). `fechaCortaConAnio` escribe
+  // el año sólo cuando no es el corriente, así que la misma columna tendría dos formas; `diaMes` lo
+  // pierde entero y una factura de 2025 se leería como de la semana pasada.
+  for (const abrevia of ['diaMes(', 'fechaCortaConAnio(', 'fechaCompleta(']) {
+    assert.equal(t.includes(abrevia), false, `una de las dos fechas usa ${abrevia}: el formato dejó de ser uno solo`)
+  }
+  // Y UN VACÍO ES UN VACÍO: una fecha de pago ausente SIGNIFICA que todavía no se pagó.
+  assert.equal(/fechaDdMmAa\([^)]*\)\s*[?|]{1,2}/.test(t), false,
     'se le puso texto de relleno a la fecha ausente: en el Sheet esa celda está vacía')
 })
 
@@ -135,8 +141,8 @@ test('el corte intermedio retira exactamente las celdas que le sacó a la grilla
     return m[1].split('_').length
   }
   const anchas = pistas('')
-  const medias = pistas('max-\\[1459px\\]:')
-  assert.equal(anchas, 9, 'la grilla ancha dejó de tener nueve columnas')
+  const medias = pistas('max-\\[1587px\\]:')
+  assert.equal(anchas, 10, 'la grilla ancha dejó de tener diez columnas')
   // Menos la declaración de la constante: quedan sus usos reales en celdas.
   const usos = (t.match(/\bSUELTA_ANCHO\b/g) ?? []).length - 1
   assert.equal(
@@ -198,15 +204,23 @@ test('«sin comprobante» va APAGADO y no en ámbar: 876 de 882 filas lo tienen 
   assert.match(codigoPagina(), /sinComprobante: urlSheet\(\{ f: 'sinComprobante'/)
 })
 
-test('«estructura» es una palabra al lado del destino, no un recuadro', () => {
-  // `v4A:227`: 11px #91918B pegado a `F931`/`Taller`/`Almacen`, sin borde ni radio. Un recuadro
-  // alrededor de una palabra es una caja más, que es justo lo que el patrón v2 vino a sacar.
+test('lo que NO es una obra se dice con su código, no con una palabra adivinada del texto libre', () => {
+  // ═══ QUÉ SE RETIRÓ Y POR QUÉ (15/09/2026) ═══
+  //
+  // La fila llevaba un chip «estructura» que preguntaba `esEstructura(obra_texto)` contra una lista
+  // escrita en el front (`f931`, `taller`, `almacen`, `almacén`): una heurística sobre texto libre
+  // para adivinar algo que ahora la base dice con todas las letras. El desplegable de la fila escribe
+  // «ES-ADM · Estructura – Administración» o «ES-TAL · Estructura – Taller», que es el MISMO dato sin
+  // adivinar nada — y un `ES-` no se confunde con un `OB-`.
+  //
+  // Lo que este test cuida es que la tabla no vuelva a leer el texto libre para decidir nada.
   const t = codigoTabla()
-  const chip = t.indexOf('esEstructura(obra)')
-  assert.ok(chip > 0, 'se fue la marca de lo que no es obra')
-  const bloque = t.slice(chip, chip + 400)
-  assert.equal(/border(Radius)?:/.test(bloque), false, 'el chip «estructura» recuperó su recuadro')
-  assert.match(bloque, /fontSize: '11px', color: V\.tenue/)
+  assert.equal(t.includes('esEstructura('), false,
+    'la fila volvió a adivinar «estructura» de la columna J en vez de leer el destino de la base')
+  assert.equal(t.includes('f.obra_texto'), false,
+    'la fila volvió a dibujar la columna J: el rótulo de la obra sale de `obra_id`/`destino`, no del texto')
+  // La inconsistencia que el sync SÍ detectó se sigue mostrando: se muestra, no se corrige.
+  assert.match(t, /f\.obra\?\.inconsistencia/, 'se dejó de avisar cuando la celda Obra contradice la Unidad')
 })
 
 // ── EL PIE Y EL PANEL ───────────────────────────────────────────────────────────────────────────
@@ -324,8 +338,12 @@ test('la fila elegida se dice SÓLO con el filo amarillo: sin fondo y sin paddin
   // destino ya lo dice dos veces (texto rojo + ⚠) y el canvas no lo dibuja.
   assert.equal(t.includes('FILO_BLOQUEA'), false,
     'volvieron dos significados al mismo box-shadow: elegir una fila le borra el problema')
-  assert.match(t, /color: obra \? V\.tintaSuave : V\.neg/, 'el destino dejó de gritar lo sin imputar')
-  assert.match(t, /<IconoProblema/, 'se fue el ⚠ del destino, que es el otro canal del problema')
+  // LO SIN IMPUTAR SIGUE GRITANDO, pero ahora desde el control que lo arregla: `ObraEnLinea` pinta el
+  // desplegable en rojo cuando no hay obra elegida, que es el mismo canal en el lugar donde se
+  // resuelve. El ⚠ de la fila queda para la inconsistencia que el sync detectó y nadie corrigió.
+  const control = sinComentarios(fuente('ObraEnLinea.tsx'))
+  assert.match(control, /color: valor \? V\.tintaSuave : V\.neg/, 'el desplegable dejó de gritar lo sin imputar')
+  assert.match(t, /<IconoProblema/, 'se fue el ⚠, que es el otro canal del problema')
 })
 
 test('el panel mide los 344 del canvas y la cabecera le reserva 392', () => {
@@ -339,7 +357,8 @@ test('el panel mide los 344 del canvas y la cabecera le reserva 392', () => {
   // tres columnas. Con el corte viejo de 1356 quedaba una franja de 103px donde las nueve no entran
   // y se dibujan igual —y
   // `body` lleva `overflow-x: clip`, así que el dato se corta sin una barra que lo delate.
-  assert.match(codigoTabla(), /max-\[1459px\]:/, 'el corte de columnas quedó calculado sobre el panel viejo')
+  // Con las diez columnas del 15/09 la cuenta es 1154 + 393 + 40 = 1587.
+  assert.match(codigoTabla(), /max-\[1587px\]:/, 'el corte de columnas quedó calculado sobre la grilla vieja')
 })
 
 test('la cabecera y los recortes son los del patrón v2, no la franja del canon', () => {
