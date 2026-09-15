@@ -20,6 +20,7 @@
 // no se carga: no se hereda el layout del vecino.
 
 import { claveNombre } from './desvinculacion-plantel.mjs'
+import { emparejarPersona } from './jornales-a-registros-hh.mjs'
 
 export { claveNombre }
 
@@ -59,24 +60,47 @@ const ROTULOS = {
 }
 
 /**
+ * «OFICINA 26» NOMBRA DISTINTO LA MISMA CADENA (15/09/2026). Sus rótulos viven UNA vez, en la fila 1
+ * de la pestaña: «DIAS / HORAS · $ HORA · BANCO · ADELANTO · TOTAL RECIBO · TOTAL SEMANA». TOTAL
+ * SEMANA es lo que la quincena genera (= Hs × $/h) y TOTAL RECIBO es lo que queda después de BANCO y
+ * ADELANTO —puede ser negativo cuando el banco giró el mes entero: fila 7, 543.982,19 − 93.982,19 =
+ * 450.000—. Es la misma lectura que ya hace `ROTULOS` de jornales-espejo.mjs para esta pestaña.
+ */
+export const ROTULOS_OFICINA = {
+  horas: /^d[ií]as?\s*\/\s*horas?$/i,
+  valorHora: /^\$\s*hora$/i,
+  porBanco: /^banco$/i,
+  adelanto: /^adelanto$/i,
+  enEfectivo: /^total\s*recibo$/i,
+  cobra: /^total\s*semana$/i,
+}
+
+/** Las filas donde se buscan rótulos: la de fechas, la de arriba y —sólo si se pide— la de la pestaña. */
+const filasDeRotulos = (grid, bloque, filaRotulos) => [
+  grid[bloque.filaFecha - 1], grid[bloque.filaFecha - 2], ...(filaRotulos ? [grid[filaRotulos - 1]] : []),
+]
+
+/**
  * NÚCLEO PURO: dónde está cada columna de plata en ESTE bloque.
  * Mira la fila de fechas y la inmediata anterior, que son los dos lugares donde la planilla escribe
  * los rótulos. Devuelve `null` si falta alguno: media cuenta no es una cuenta.
+ * `filaRotulos` (base 1) agrega la fila de encabezado de la PESTAÑA —no la de un bloque vecino—, y
+ * sólo la pide quien la declara para su hoja (Oficina).
  * @param {Array<Array>} grid
  * @param {{filaFecha:number}} bloque filas en base 1
  */
-export function columnasDelBloque(grid = [], bloque = {}) {
+export function columnasDelBloque(grid = [], bloque = {}, { rotulos = ROTULOS, filaRotulos = null } = {}) {
   const cols = {}
-  for (const fila of [grid[bloque.filaFecha - 1], grid[bloque.filaFecha - 2]]) {
+  for (const fila of filasDeRotulos(grid, bloque, filaRotulos)) {
     for (const [i, celda] of (fila ?? []).entries()) {
-      for (const [campo, re] of Object.entries(ROTULOS)) {
+      for (const [campo, re] of Object.entries(rotulos)) {
         if (cols[campo] === undefined && re.test(texto(celda))) cols[campo] = i
       }
     }
   }
-  const faltan = Object.keys(ROTULOS).filter((k) => cols[k] === undefined)
+  const faltan = Object.keys(rotulos).filter((k) => cols[k] === undefined)
   if (faltan.length) return { faltan }
-  cols.yaTransferido = columnasSinRotuloEntre(grid, bloque, cols.porBanco, cols.adelanto)
+  cols.yaTransferido = columnasSinRotuloEntre(grid, bloque, cols.porBanco, cols.adelanto, { filaRotulos })
   return { cols, faltan: [] }
 }
 
@@ -104,10 +128,10 @@ export function columnasDelBloque(grid = [], bloque = {}) {
  * Se busca por posición relativa y no por índice fijo: el día que la planilla corra las columnas,
  * esto las sigue. Si BANCO y ADELANTO quedan pegados, no hay columna intermedia y devuelve [].
  */
-export function columnasSinRotuloEntre(grid = [], bloque = {}, a, b) {
+export function columnasSinRotuloEntre(grid = [], bloque = {}, a, b, { filaRotulos = null } = {}) {
   if (a === undefined || b === undefined) return []
   const [lo, hi] = a < b ? [a, b] : [b, a]
-  const filas = [grid[bloque.filaFecha - 1], grid[bloque.filaFecha - 2]]
+  const filas = filasDeRotulos(grid, bloque, filaRotulos)
   const out = []
   for (let i = lo + 1; i < hi; i++) {
     if (!filas.some((f) => texto((f ?? [])[i]))) out.push(i)
@@ -207,6 +231,9 @@ export function lineasDelBloque(grid = [], bloque = {}, cols = {}, gridCrudo = n
     for (const i of colsYa) if (esError($[i])) faltan.push('yaTransferido roto')
     const linea = {
       fila: r,
+      // La columna A dice BAJA en vez del nº de orden. Se lee igual; si se carga o no lo decide
+      // `controlDeCierre`, no esta lectura.
+      baja: /^baja$/i.test(texto(f[0])),
       nombre,
       clave: claveNombre(nombre),
       horas,
@@ -274,7 +301,7 @@ const ALIAS_POR_CLAVE = new Map(
  * El nivel 3 se marca en la salida para que quien lo mire pueda rechazarlo: es el que una vez metió
  * a «Castillo Carlos» dentro de «GONZALEZ CARLOS SAMUEL».
  */
-export function resolverPersona(clave, { puente, porCuil, personas }) {
+export function resolverPersona(clave, { puente, porCuil, personas, indice = null, nombre = null }) {
   const cuil = puente.get(clave)
   if (cuil) {
     const p = porCuil.get(cuil)
@@ -286,6 +313,17 @@ export function resolverPersona(clave, { puente, porCuil, personas }) {
   const exactas = personas.filter((p) => p.clave === buscada)
   if (exactas.length === 1) return { persona: exactas[0], via: alias ? 'alias' : 'exacta' }
   if (exactas.length > 1) return { persona: null, via: 'ambiguo', candidatos: exactas.map((p) => p.nombre) }
+  // 4. EL MISMO EMPAREJAMIENTO QUE CARGA LAS HORAS (15/09/2026). `jornales-a-registros-hh` ya escribió
+  //    las horas de «Ruben Palacio» en PALACIOS RUBEN y las de «Gonzalez Valentin» en GONZALES ABEL
+  //    VALENTIN; esta función los mandaba a `excluidas` como «no existen en public.personas» ($2,42 M
+  //    entre la 1ª de febrero y la 2ª de junio). Dos importadores de la MISMA planilla que deciden
+  //    distinto quién es la misma fila son dos versiones de la misma persona. `emparejarPersona` no
+  //    elige ante ambigüedad («Carlos Gonzalez» con dos González Carlos sigue sin resolverse) y exige que
+  //    TODOS los tokens del rótulo cierren, así que «Castillo Carlos» no puede volverse un González.
+  if (indice) {
+    const m = emparejarPersona(nombre ?? clave, indice)
+    if (m.estado === 'ok') return { persona: { id: m.persona.id, nombre: m.persona.nombre_completo }, via: 'emparejado' }
+  }
   const sub = personas.filter((p) => tokens.every((t) => p.tokens.includes(t)))
   return sub.length
     ? { persona: null, via: 'sin-persona', candidatos: sub.map((p) => p.nombre) }
@@ -313,11 +351,34 @@ export function resolverPersona(clave, { puente, porCuil, personas }) {
  * Lo que sigue siendo bloqueante es OTRA cosa: la plata ilegible. Una línea cuya cadena de pago no
  * cierra no se sabe cuánto es, y esa sí voltea la quincena entera.
  */
-export function controlDeCierre(lineas = []) {
+export const MOTIVO_EXCLUSION = Object.freeze({
+  SIN_PERSONA: 'sin_persona',
+  BAJA: 'baja',
+  SUPERPUESTA: 'bloque_superpuesto',
+})
+
+/**
+ * Por qué una línea no entra, o `null` si entra. Una fila BAJA o repetida en otro bloque se declara
+ * afuera AUNQUE su cadena no cierre: no se carga, así que no voltea la quincena — pero se nombra con
+ * su detalle. Una línea sin persona con la plata ilegible sigue siendo bloqueante, como antes.
+ *
+ * LAS BAJAS NO ENTRAN POR DEFECTO: que la planilla sume esas filas no prueba que se hayan pagado, y la
+ * 2ª de marzo trae una (Aguirre, f192) cuyo TOTAL 86.652 no es Hs × $/h = 470.000. `incluirBajas` las
+ * carga como cualquier otra línea cuando el dueño confirme el pago.
+ */
+export function motivoDeExclusion(l, { incluirBajas = false } = {}) {
+  if (l.superpuesta) return MOTIVO_EXCLUSION.SUPERPUESTA
+  if (l.baja && !incluirBajas) return MOTIVO_EXCLUSION.BAJA
+  if (!l.incompleta && !l.persona_id) return MOTIVO_EXCLUSION.SIN_PERSONA
+  return null
+}
+
+export function controlDeCierre(lineas = [], { incluirBajas = false } = {}) {
+  const motivo = (l) => motivoDeExclusion(l, { incluirBajas })
   const totalSheet = lineas.reduce((a, l) => a + (l.cobra ?? 0), 0)
-  const bloqueantes = lineas.filter((l) => l.incompleta)
-  const excluidas = lineas.filter((l) => !l.incompleta && !l.persona_id)
-  const cargables = lineas.filter((l) => !l.incompleta && l.persona_id)
+  const bloqueantes = lineas.filter((l) => !motivo(l) && l.incompleta)
+  const excluidas = lineas.filter(motivo).map((l) => ({ ...l, motivo: motivo(l) }))
+  const cargables = lineas.filter((l) => !motivo(l) && !l.incompleta && l.persona_id)
   const totalCargable = cargables.reduce((a, l) => a + (l.cobra ?? 0), 0)
   const montoExcluido = excluidas.reduce((a, l) => a + (l.cobra ?? 0), 0)
   return {
@@ -328,6 +389,7 @@ export function controlDeCierre(lineas = []) {
     excluidas,
     montoExcluido,
     bloqueantes,
+    bajasCargadas: cargables.filter((l) => l.baja).length,
     problemas: [...bloqueantes, ...excluidas],
     cierra: bloqueantes.length === 0,
     completa: bloqueantes.length === 0 && excluidas.length === 0,

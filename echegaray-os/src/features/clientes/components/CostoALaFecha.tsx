@@ -14,7 +14,7 @@
 
 import { V } from '@/shared/components/v2/patron'
 import { plata } from '@/features/obras/components/formato'
-import { ROTULO_SIN_OBRA, importeSinObra, tituloSinObra, type GastoSinObra } from '../services/costosDeObra'
+import { ROTULO_SIN_OBRA, importeSinObra, tituloSinObra, type GastoSinObra, tituloSubcontratosSinObra } from '../services/costosDeObra'
 
 /** La segunda línea del rótulo de una columna de costo, debajo de su `RotuloCol`. */
 export function ALaFecha() {
@@ -72,10 +72,18 @@ export function FilaGastosSinObra({ gasto, columnas, sangria, visible }: {
         className="truncate font-mono tabular-nums"
         style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
       >
-        {plata(importe)}
+        {plata(gasto?.materiales ?? null)}
+      </span>
+      {/* LOS SUBCONTRATOS SIN OBRA, EN SU COLUMNA (20260915T0810): no se suman en Materiales. */}
+      <span
+        data-testid="subcontratos-sin-obra-cliente"
+        className="truncate font-mono tabular-nums"
+        title={tituloSubcontratosSinObra(gasto) ?? undefined}
+        style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
+      >
+        {plata(gasto?.subcontratos ?? null)}
       </span>
       {/* MANO DE OBRA y CONTRATADO: las horas siempre tienen obra, y lo sin obra no tiene precio. */}
-      <span />
       <span />
       <span aria-hidden />
     </div>

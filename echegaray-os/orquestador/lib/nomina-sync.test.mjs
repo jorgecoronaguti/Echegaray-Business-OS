@@ -27,6 +27,16 @@ check('bloque 2 arranca en la 9', b[1].inicio === 9 && b[1].fin === 10)
 check('grilla vacía no rompe', detectarQuincenas([]).length === 0)
 check('grilla sin bloques', detectarQuincenas([['x'], ['y']]).length === 0)
 
+// Filas BAJA (2ª de marzo, «Obreros 26» f191–200): por defecto cortan el bloque —los generadores del
+// Sheet dependen de ese límite—; con { bajas: true } el bloque las incluye y las nombra.
+const conBaja = [['', '', '5/1'], ['1', 'Aguero'], ['2', 'Ochoa'], ['BAJA', 'Pablo Ramos'], ['baja', 'Aguirre'], [], ['1', 'Otro']]
+const sinOpcion = detectarQuincenas(conBaja)
+check('default: BAJA corta el bloque (no cambia para los generadores)', sinOpcion[0].fin === 3 && sinOpcion[0].filasBaja === undefined)
+const conOpcion = detectarQuincenas(conBaja, { bajas: true })
+check('bajas: el bloque sigue sobre las filas BAJA', conOpcion[0].fin === 5)
+check('bajas: las filas BAJA quedan nombradas', JSON.stringify(conOpcion[0].filasBaja) === '[4,5]')
+check('bajas: el bloque siguiente no se toca', conOpcion[1].inicio === 7 && conOpcion[1].filasBaja.length === 0)
+
 const filas = filasQuincenas(b)
 // Tiene que coincidir EXACTO con las columnas de la pestaña. Devolvía 7 (de un layout viejo): como
 // sólo escribe cuando algo cambia y nada había cambiado, nunca se notó — la primera quincena nueva

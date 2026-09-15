@@ -68,6 +68,7 @@ export function marcasDeGrid(grid, { pestana, anio } = {}) {
       continue
     }
     const sinFecha = columnasSinFecha(grid, b)
+    const internas = columnasInternasSinFecha(grid, b)
     const ultimoDia = isos.reduce((a, x) => (x > a ? x : a), isos[0])
     for (const t of trabajadores) {
       const base = {
@@ -88,6 +89,13 @@ export function marcasDeGrid(grid, { pestana, anio } = {}) {
         if (!celda.escrita || grid.filas?.[t.fila]?.[col]?.formato === 'DATE') continue
         if (!(typeof celda.horas === 'number' && celda.horas > 0 && celda.horas <= HORAS_MAX_DIA)) continue
         marcas.push({ ...base, fecha: ultimoDia, sin_fecha: letraColumna(col), celda })
+      }
+      for (const { col, iso } of internas) {
+        const celda = leerCeldaDiaria(grid, t.fila, col)
+        // Las mismas guardas que la columna final sin fecha: sólo un número de horas de verdad.
+        if (!celda.escrita || grid.filas?.[t.fila]?.[col]?.formato === 'DATE') continue
+        if (!(typeof celda.horas === 'number' && celda.horas > 0 && celda.horas <= HORAS_MAX_DIA)) continue
+        marcas.push({ ...base, fecha: iso, fecha_inferida: letraColumna(col), celda })
       }
     }
   }
@@ -116,6 +124,37 @@ export function columnasSinFecha(grid, bloque, { filaRotulos = 0 } = {}) {
   if (total == null) return []
   const out = []
   for (let j = bloque.col_hasta + 1; j < total; j++) out.push(j)
+  return out
+}
+
+const MAX_HUECO_DIAS = 7
+const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10)
+
+/**
+ * LAS COLUMNAS SIN FECHA ENTRE DOS DÍAS DEL BLOQUE (15/09/2026).
+ *
+ * «Obreros 26», 1ª de abril: el sábado 11/04 (columna O) tiene el encabezado vacío y 8 h escritas para
+ * Reta, Quiroga S., Pastrán, Petina y Zogbe. La planilla las suma a «DIAS / HORAS»; `columnasSinFecha`
+ * sólo mira DESPUÉS del último día, así que la base quedaba 40 h corta.
+ *
+ * La fecha sale de la SECUENCIA, no del día de la semana: la columna vacía que sigue a un día es el día
+ * siguiente, y la segunda vacía el subsiguiente. Sólo se afirma cuando cabe: el día inferido tiene que
+ * quedar ANTES del próximo día escrito (si el 10/04 y el 11/04 están pegados no hay hueco que llenar), y
+ * el hueco entre los dos días escritos no puede pasar de una semana — un salto así es un encabezado mal
+ * tipeado («2/3» en medio de abril), y ahí inferir sería inventar.
+ */
+export function columnasInternasSinFecha(grid, bloque) {
+  const out = []
+  const fechas = bloque.fechas ?? []
+  for (let k = 0; k + 1 < fechas.length; k++) {
+    const a = fechas[k]; const b = fechas[k + 1]
+    const huecos = []
+    for (let j = a.col + 1; j < b.col; j++) huecos.push(j)
+    if (!huecos.length || huecos.some((j) => valorDe(grid, bloque.fila, j) !== '')) continue
+    const span = (Date.parse(b.iso) - Date.parse(a.iso)) / 864e5
+    if (!(span > huecos.length && span <= MAX_HUECO_DIAS)) continue
+    huecos.forEach((col, i) => out.push({ col, iso: sumarDias(a.iso, i + 1) }))
+  }
   return out
 }
 
@@ -286,6 +325,17 @@ const ORIGEN_EN_NOTA = {
 }
 
 /**
+ * LAS ASIGNACIONES QUE PUEDEN MOVER HORAS DE OBRA: las cargadas en la app, con fecha de inicio.
+ *
+ * Las 208 «historial reconstruido desde JORNALES» (08/09/2026) están a nivel CLIENTE: si mandan, pisan
+ * la obra específica que dice la planilla (medido 14/09: 638 filas / 5.470 h movidas, LE Mampostería
+ * 3.660 → 48 h). El dueño aprobó sacarlas (14/09, «si»). Sin `desde` no hay día que decidir.
+ */
+export function asignacionesQueMandan(filas = []) {
+  return filas.filter((a) => a.desde && !/reconstru/i.test(a.notas ?? ''))
+}
+
+/**
  * LA OBRA DEL DÍA LA DA LA ASIGNACIÓN DE LA WEB (dueño, 14/09/2026: «La asignación de la web»).
  *
  * JORNALES pone UN cliente/obra por persona para todo el bloque; en la web se asigna gente a otra obra
@@ -296,9 +346,9 @@ const ORIGEN_EN_NOTA = {
  * DOS LÍMITES, LOS DOS DECIDIDOS:
  *  · «galpon 9 es la estrella»: si la planilla dice la obra GENERAL del cliente (la que se llama como
  *    él) y la asignación es otra obra del MISMO cliente, queda la de la planilla.
- *  · TODAS las asignaciones que muestra la app, también las «reconstruidas desde JORNALES» (dueño,
- *    14/09/2026: «respetar lo que manda app.ecsas.com.ar»). Dos obras el mismo día: gana la
- *    asignación más corta y, empatadas, la más reciente (`asignacionVigente`); empate total no decide.
+ *  · Sólo las asignaciones cargadas en la app (`asignacionesQueMandan`), nunca las «reconstruidas desde
+ *    JORNALES». Dos obras el mismo día: gana la asignación más corta y, empatadas, la más reciente
+ *    (`asignacionVigente`); empate total no decide.
  */
 export function obraPorAsignacionWeb(obraPlanilla, asignada, clienteDeObra = new Map()) {
   if (!asignada || !obraPlanilla || asignada === obraPlanilla) return null
@@ -311,6 +361,7 @@ function notaDe(m, origen, detalle) {
   const partes = [`JORNALES ${m.pestana} f${m.fila1}`, [m.cliente, m.obra].filter(Boolean).join(' · ')]
   if (ORIGEN_EN_NOTA[origen]) partes.push(ORIGEN_EN_NOTA[origen])
   if (m.sin_fecha) partes.push(`sin fecha en la planilla (col ${m.sin_fecha}), fechada el último día del bloque`)
+  if (m.fecha_inferida) partes.push(`sin fecha en la planilla (col ${m.fecha_inferida}), fechada por la columna anterior + 1 día`)
   if (detalle) partes.push(detalle)
   return partes.filter(Boolean).join(' · ')
 }

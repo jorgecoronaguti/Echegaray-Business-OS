@@ -10,7 +10,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { planDeRegistros, obraPorAsignacionWeb, resolutorDeObra } from './jornales-a-registros-hh.mjs'
+import { planDeRegistros, obraPorAsignacionWeb, resolutorDeObra, asignacionesQueMandan } from './jornales-a-registros-hh.mjs'
 
 const CLIENTE = new Map([
   ['la-estrella', 'la-estrella'], ['le-galpon-9', 'la-estrella'],
@@ -54,7 +54,7 @@ test('planDeRegistros: Rosales va a Quattropani los días asignados; Zogbe queda
   assert.equal(de('p-rosales', '2026-09-08').origen_obra, 'obra_por_asignacion_web')
   assert.match(de('p-rosales', '2026-09-08').notas, /obra por asignación de la web/)
   assert.equal(de('p-zogbe', '2026-08-20').obra_canonica_id, 'la-estrella')
-  // Sin asignaciones web (las reconstruidas ya vienen filtradas en `catalogos`), nada se mueve.
+  // Sin asignaciones web (las reconstruidas las saca `asignacionesQueMandan`), nada se mueve.
   const sin = planDeRegistros(marcas, { personas: PERSONAS, resolver, asignacionesWeb: [], clienteDeObra: CLIENTE })
   assert.equal(sin.filas.find((f) => f.persona_id === 'p-rosales' && f.fecha === '2026-09-08').obra_canonica_id, 'sf-mamposteria')
 })
@@ -120,4 +120,24 @@ test('una licencia no se mueve de obra por una asignación', () => {
   const asignacionesWeb = [{ persona_id: 'p-rosales', obra_id: 'quattropani', desde: '2026-09-08', hasta: null }]
   const { filas } = planDeRegistros([lic], { personas: PERSONAS, resolver, asignacionesWeb, clienteDeObra: CLIENTE })
   assert.ok(filas.every((f) => f.origen_obra !== 'obra_por_asignacion_web'))
+})
+
+test('las reconstruidas desde JORNALES no mueven horas: LE Mampostería queda en Mampostería (dueño 14/09)', () => {
+  // MUTACIÓN QUE PONE ESTO ROJO: volver a `filter((a) => a.desde)` — la reconstruida a nivel cliente se
+  // lleva las horas de la obra específica (medido: 5.470 h movidas).
+  const filasDeLaBase = [
+    { persona_id: 'p-rosales', obra_id: 'san-francisco', desde: '2026-08-14', hasta: '2026-08-21', notas: 'historial reconstruido desde JORNALES (sheet) · 08/09/2026' },
+    { persona_id: 'p-rosales', obra_id: 'quattropani', desde: '2026-08-22', hasta: '2026-08-31', notas: 'Historial RECONSTRUIDO desde JORNALES (sheet) · 08/09/2026 · cerrado' },
+    { persona_id: 'p-rosales', obra_id: 'quattropani', desde: '2026-09-01', hasta: null, notas: null },
+    { persona_id: 'p-zogbe', obra_id: 'le-galpon-9', desde: null, hasta: '2026-09-07', notas: null },
+  ]
+  const mandan = asignacionesQueMandan(filasDeLaBase)
+  assert.deepEqual(mandan.map((a) => a.desde), ['2026-09-01'], 'sólo la cargada en la app y con fecha de inicio')
+  const marcas = [
+    marca('Rosales Diego', '2026-08-25', 'JAVIER SANCHEZ', 'Mamposteria'),
+    marca('Rosales Diego', '2026-09-02', 'JAVIER SANCHEZ', 'Mamposteria'),
+  ]
+  const { filas } = planDeRegistros(marcas, { personas: PERSONAS, resolver, asignacionesWeb: mandan, clienteDeObra: CLIENTE })
+  assert.equal(filas.find((f) => f.fecha === '2026-08-25').obra_canonica_id, 'sf-mamposteria', 'la reconstruida no mueve')
+  assert.equal(filas.find((f) => f.fecha === '2026-09-02').obra_canonica_id, 'quattropani', 'la de la app sí')
 })
