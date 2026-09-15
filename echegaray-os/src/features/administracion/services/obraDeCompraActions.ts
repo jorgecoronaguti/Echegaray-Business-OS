@@ -13,6 +13,9 @@ import { createClient } from '@/lib/supabase/server'
 import { FORMA_VALOR_OBRA } from './obraDeCompra'
 
 const RUTA = '/administracion/compras'
+// La ficha del proveedor dibuja la misma fila con el mismo control (15/09/2026): se revalida entera —la
+// ruta dinámica, no un id que vendría del cliente— para que la obra recién elegida se vea al volver.
+const RUTA_PROVEEDOR = '/administracion/proveedores/[proveedor]'
 
 export type ResultadoObra = { ok: true } | { ok: false; error: string }
 
@@ -46,5 +49,6 @@ export async function asignarObraDeCompra(fila: number, valor: string, esperado:
   const r = data as { ok?: boolean; error?: string } | null
   if (!r?.ok) return { ok: false, error: r?.error ?? 'La base rechazó el cambio.' }
   revalidatePath(RUTA)
+  revalidatePath(RUTA_PROVEEDOR, 'page')
   return { ok: true }
 }

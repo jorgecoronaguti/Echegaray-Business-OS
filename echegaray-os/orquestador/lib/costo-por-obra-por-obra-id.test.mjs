@@ -5,9 +5,9 @@
 // `obra_costo_real` resolvía la obra por la columna J contra `obra_alias`: las 335 compras de «La
 // Estrella» caían en OB-0003 ($156,3 M) y el comedor, los galpones y la mampostería dibujaban $0.
 // Estos tests leen el ARCHIVO: si alguien vuelve a escribir `norm_obra(c.obra_texto)` en la vista, o
-// saca de la RPC la actualización de `costos_obra` / `compra_obra_asignada`, o deja el filtro muerto
-// en `costo_de_obras_a_la_fecha`, se ponen rojos sin base. El EFECTO —los números por obra y la RPC
+// saca de la RPC la actualización de `costos_obra` / `compra_obra_asignada`, se ponen rojos sin base. El EFECTO —los números por obra y la RPC
 // escribiendo las tres tablas— lo prueba `costo-por-obra-por-obra-id.pg.test.mjs` contra la base.
+// `costo_de_obras_a_la_fecha` queda fuera a propósito: la reescribe `20260915T2320`.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -20,10 +20,9 @@ const SQL = readFileSync(join(DIR, '../../supabase/migrations/20260915T2300_cost
 const sinComentarios = (t) => t.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n')
 const tramo = (desde, hasta) => sinComentarios(SQL.slice(SQL.indexOf(desde), SQL.indexOf(hasta)))
 
-const vista = tramo('create or replace view public.obra_costo_real', '-- FIN DE LA VISTA obra_costo_real')
+const vista = tramo('create or replace view public.obra_costo_real', 'comment on view public.obra_costo_real')
 const rpc = tramo('create or replace function public.compra_obra_asignar', '-- FIN DE compra_obra_asignar')
 const auxiliar = tramo('create or replace function public.compra_costo_por_obra_actualizar', 'create or replace function public.compra_obra_asignar')
-const aLaFecha = tramo('create or replace function public.costo_de_obras_a_la_fecha', '-- FIN DE costo_de_obras_a_la_fecha')
 const proveedor = tramo('create or replace view public.proveedor_compra', '-- FIN DE LA VISTA proveedor_compra')
 
 test('obra_costo_real une por costos_obra.obra_id y nunca por texto ni alias', () => {
@@ -68,12 +67,8 @@ test('la RPC conserva el portero, el bloqueo, el control de esperado, la validac
   assert.match(SQL, /revoke all on function public\.cliente_canonico_de\(text\) from public, anon, authenticated;/)
 })
 
-test('costo_de_obras_a_la_fecha filtra estructura con los valores REALES del CHECK de destino', () => {
-  assert.doesNotMatch(aLaFecha, /'ES-ADM'|'ES-TAL'|'IMP'|'FIN'/, 'volvió el filtro muerto: esos valores no existen en compra_sheet.destino')
-  assert.match(aLaFecha, /coalesce\(s\.destino, c\.destino, 'obra'\) = 'obra'/)
-  // El resto de la función es la vigente: el puente por asignación y la regla de subcontrato siguen.
-  assert.match(aLaFecha, /join public\.compra_obra_asignada a on a\.referencia = c\.referencia_externa/)
-  assert.match(aLaFecha, /public\.costo_mo_quincena\(qq\.desde, p_obras\)/)
+test('costo_de_obras_a_la_fecha no se redefine acá: la reescribe 20260915T2320 sobre costo_de_obra_filas', () => {
+  assert.doesNotMatch(sinComentarios(SQL), /function public\.costo_de_obras_a_la_fecha/)
 })
 
 test('proveedor_compra publica la columna Obra al final, en orden, y sigue corriendo como quien mira', () => {

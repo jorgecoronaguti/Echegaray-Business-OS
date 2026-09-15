@@ -69,6 +69,8 @@ test('el alta de obra muestra el CÓDIGO de obra_canonica, no el slug de la URL'
 test('la ficha del proveedor dice a qué OBRA llegó el gasto, no sólo qué dice el papel', () => {
   const servicio = leer('features/administracion/services/comprobantesProveedorService.ts')
   assert.match(servicio, /from\('compra_obra_asignada'\)/, 'la asignación canónica dejó de leerse')
+  // Y la decisión de la fila (la columna Obra) por la MISMA función que Compras (15/09/2026).
+  assert.match(servicio, /obrasDeLasCompras\(/, 'la ficha dejó de rotular la obra con la función de Compras')
   const fila = leer('features/administracion/components/proveedores/FilaComprobanteProveedor.tsx')
   assert.match(fila, /rotulo=\{c\.obra_rotulo\}/, 'la fila volvió a dibujar sólo el texto libre del Sheet')
 })

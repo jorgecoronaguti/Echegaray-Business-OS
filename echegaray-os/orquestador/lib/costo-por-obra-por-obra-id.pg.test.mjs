@@ -65,17 +65,17 @@ test('el costo por obra se imputa por obra_id y la RPC lo mueve en el acto', { s
     })
 
     await t.test('la J que dice «LA ESTRELLA» no pesa en La Estrella si la columna Obra dice el comedor', async () => {
-      const obras = await q(`select id from public.obra_canonica where id in ('la-estrella', 'le-comedor') order by id`)
-      if (obras.length !== 2) return t.diagnostic('sin la-estrella/le-comedor en esta base: se prueba con dos obras cualesquiera')
-      const [madre, hija] = obras.length === 2 ? ['la-estrella', 'le-comedor']
-        : (await q(`select id from public.obra_canonica where fusionada_en is null limit 2`)).map((o) => o.id)
+      // La Estrella y su comedor si están; si no, dos obras vivas cualesquiera: el defecto es el mismo.
+      const vivas = await q(`select id from public.obra_canonica where id in ('la-estrella', 'le-comedor') order by id desc`)
+      const [madre, hija] = vivas.length === 2 ? ['la-estrella', 'le-comedor']
+        : (await q(`select id from public.obra_canonica where fusionada_en is null order by id limit 2`)).map((o) => o.id)
       const antes = await uno('select costo_real, n_comprobantes from public.obra_costo_real where obra_id = $1', [hija])
       const madreAntes = await uno('select costo_real from public.obra_costo_real where obra_id = $1', [madre])
       await q(`insert into public.costos_obra (obra_texto, total, origen, referencia_externa, area, destino, obra_id)
                values ('LA ESTRELLA', 1234.56, 'zz-test', 'zz-test-obra-id', 'obras', 'obra', $1)`, [hija])
       const despues = await uno('select costo_real, n_comprobantes from public.obra_costo_real where obra_id = $1', [hija])
       const madreDespues = await uno('select costo_real from public.obra_costo_real where obra_id = $1', [madre])
-      assert.equal(Number(despues.costo_real) - Number(antes.costo_real), 1234.56)
+      assert.ok(Math.abs(Number(despues.costo_real) - Number(antes.costo_real) - 1234.56) < 0.01, 'la compra no pesó en la obra de su obra_id')
       assert.equal(despues.n_comprobantes - antes.n_comprobantes, 1)
       assert.equal(Number(madreDespues.costo_real), Number(madreAntes.costo_real), 'la compra pesó en la obra del texto, no en la de la columna Obra')
       // Y sin obra_id, en nadie: ni con destino obra ni con texto de obra.

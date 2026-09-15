@@ -50,6 +50,7 @@ import {
   comprasPorObra, conceptosProvistos, resumirProveedor,
 } from '@/features/administracion/services/fichaProveedor'
 import { getComprasConPapel } from '@/features/administracion/services/comprobantesProveedorService'
+import { getOpcionesDeObra } from '@/features/administracion/services/obraDeCompraService'
 import { comoComprobantes, filtrosDeURL } from '@/features/administracion/services/comprobantesProveedor'
 import { formatearCuit } from '@/features/administracion/services/identidad'
 import { getDocumentosDelProveedor } from '@/features/administracion/services/documentosProveedorService'
@@ -110,11 +111,13 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   // LAS COMPRAS LAS VE QUIEN VE COMPRAS: el mismo `esAdministracion` que corta esa pantalla. Otro rol
   // no llega a pedirlas, y su ficha dice por qué en vez de mostrar un proveedor sin compras.
   const veCompras = esAdministracion(perfil.data?.rol ?? null)
-  const [nombres, paquetes, documentos, compras] = await Promise.all([
+  const [nombres, paquetes, documentos, compras, opcionesObra] = await Promise.all([
     getNombresDelProveedor(supabase, proveedor.id),
     getPaquetesDelProveedor(supabase, proveedor.id),
     getDocumentosDelProveedor(supabase, proveedor.id),
     veCompras ? getComprasConPapel(supabase, proveedor.id) : Promise.resolve(null),
+    // El desplegable de obra de cada compra: las MISMAS opciones que Compras.
+    veCompras && cara === 'compras' ? getOpcionesDeObra(supabase) : Promise.resolve([]),
   ])
   const filas = compras?.data ? comoComprobantes(compras.data.filas) : []
 
@@ -243,6 +246,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
             <ComprasDelProveedor
               proveedorId={proveedor.id} lectura={compras}
               filtros={filtrosDeURL(sp, anioActual)} anioActual={anioActual}
+              opcionesObra={opcionesObra}
             />
           )}
           {cara === 'nombres' && (

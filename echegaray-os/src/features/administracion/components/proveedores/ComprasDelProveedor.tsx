@@ -31,16 +31,18 @@ const PAPEL: { clave: FiltroPapel; etiqueta: string }[] = [
   { clave: 'sin', etiqueta: 'Sin comprobante' },
 ]
 
-export function ComprasDelProveedor({ proveedorId, lectura, filtros, anioActual }: {
+export function ComprasDelProveedor({ proveedorId, lectura, filtros, anioActual, opcionesObra }: {
   proveedorId: string
   lectura: ServiceResult<ComprasConPapel>
   filtros: FiltrosComprobantes
   anioActual: number
+  /** Los rótulos elegibles de la columna «Obra», los mismos que Compras (`getOpcionesDeObra`). */
+  opcionesObra: string[]
 }) {
   if (lectura.error !== null) {
     return <Aviso tono="neg" titulo="No pude leer las compras de este proveedor">{lectura.error}</Aviso>
   }
-  const { filas, truncado, papelesSinLeer } = lectura.data
+  const { filas, truncado, papelesSinLeer, obraEditable } = lectura.data
   // «Compras» es la cara por defecto: su URL no lleva `vista`.
   const base = `/administracion/proveedores/${proveedorId}`
   const url = (cambio: { anio?: AnioFiltro; papel?: FiltroPapel }) => {
@@ -99,7 +101,9 @@ export function ComprasDelProveedor({ proveedorId, lectura, filtros, anioActual 
             <RotuloCol>Comprobante</RotuloCol>
           </div>
           {visibles.map((c) => (
-            <FilaComprobanteProveedor key={`${c.fila}-${c.clave ?? ''}`} c={c} papelesSinLeer={papelesSinLeer} />
+            <FilaComprobanteProveedor key={`${c.fila}-${c.clave ?? ''}`} c={c}
+              papelesSinLeer={papelesSinLeer} opcionesObra={opcionesObra} obraEditable={obraEditable}
+            />
           ))}
         </div>
       </div>
