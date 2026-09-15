@@ -245,6 +245,29 @@ export async function getHorasPorObra(
 }
 
 /**
+ * LA MANO DE OBRA PRESUPUESTADA POR OBRA, para el consumo % de «Costo a la obra».
+ *
+ * Vive ACÁ y no en `costoObraQuincena.ts`: este archivo es la excepción declarada en `definiciones.json`
+ * para leer `obra_egreso_proyectado` (costo-hora compara presupuesto contra lo imputado). Una segunda
+ * lectura en otro archivo sería una segunda definición del costo proyectado.
+ */
+export async function getManoDeObraPresupuestada(
+  supabase: SupabaseClient,
+): Promise<{ presupuesto: Map<string, number>; error: Falla | null }> {
+  const r = await supabase.from('obra_egreso_proyectado').select('obra_canonica_id, monto').eq('tipo', 'mano_de_obra')
+  if (r.error) {
+    return { presupuesto: new Map(), error: sinTabla(r.error) ? null : { que: 'la mano de obra presupuestada', error: r.error.message } }
+  }
+  const presupuesto = new Map<string, number>()
+  for (const f of r.data ?? []) {
+    const m = numero(f.monto)
+    if (f.obra_canonica_id == null || m == null) continue
+    presupuesto.set(String(f.obra_canonica_id), (presupuesto.get(String(f.obra_canonica_id)) ?? 0) + m)
+  }
+  return { presupuesto, error: null }
+}
+
+/**
  * LAS HORAS DE LA VENTANA REPARTIDAS POR OBRA. Pura: la regla se prueba sin base.
  *
  * ═══ A UNA OBRA SE LE CARGAN LAS HORAS TRABAJADAS, NO LAS DECLARADAS ═══

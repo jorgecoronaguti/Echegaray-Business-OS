@@ -14,7 +14,7 @@
 import { plata } from '@/features/obras/components/formato'
 import { V } from '@/shared/components/v2/patron'
 import { millones } from '@/shared/components/canon/formato'
-import { SIN_PRECIO_EN_OBRAS } from '../services/economiaObras'
+import { SIN_PRECIO_EN_OBRAS, fraseDeOrigenContratado } from '../services/economiaObras'
 import type { Consolidado } from '../services/obrasAdicionales'
 
 /**
@@ -32,8 +32,10 @@ export function frase(c: Consolidado): string | null {
   return `${cuantos} · ${millones(c.total)}`
 }
 
-export function ContratadoDeLaFicha({ contratado, cerrada, consolidado }: {
+export function ContratadoDeLaFicha({ contratado, origen = null, cerrada, consolidado }: {
   contratado: number | null
+  /** `obra_economia_cartera.origen`: 'formulario' se dice en el title (dueño, 14/09/2026). */
+  origen?: string | null
   /** Una obra terminada sin precio no bloquea nada: dice «—» y se calla. */
   cerrada: boolean
   consolidado: Consolidado
@@ -45,12 +47,12 @@ export function ContratadoDeLaFicha({ contratado, cerrada, consolidado }: {
       style={{ minWidth: 0 }}
       data-testid="contratado-obra-cliente"
       data-adicionales={consolidado.n || undefined}
-      title={consolidado.n
+      title={[fraseDeOrigenContratado(origen), consolidado.n
         ? `Este trabajo tiene ${consolidado.n} adicional(es) con su propia OC. Arriba va SÓLO lo suyo `
           + `(${consolidado.propio === null ? 'sin precio' : plata(consolidado.propio)}) para que la columna siga sumando el contratado del cliente; `
           + `debajo, el consolidado con sus adicionales`
           + `${consolidado.adicionales === null ? ` (no se puede: ${consolidado.sinPrecio} sin precio)` : ` (+ ${plata(consolidado.adicionales)})`}.`
-        : undefined}
+        : null].filter((t): t is string => t != null).join(' ') || undefined}
     >
       <span
         className={`truncate ${contratado == null ? '' : 'font-mono tabular-nums'}`}

@@ -41,7 +41,7 @@ test('las cinco columnas, en el orden del dueño, y ninguna de OC ni de OP', () 
   assert.doesNotMatch(src, />OC c\/IVA</, 'la columna OC se fue: los totales viven en la ficha, solapa Órdenes')
   assert.doesNotMatch(src, />OP c\/IVA</)
   assert.doesNotMatch(src, /TotalDePapeles/, 'ningún total de papeles en la cartera')
-  assert.match(src, /grid-cols-\[minmax\(0,2fr\)_150px_130px_140px_210px\]/)
+  assert.match(src, /grid-cols-\[minmax\(0,2fr\)_150px_130px_130px_140px_210px\]/)
 })
 
 test('las OC siguen debajo de cada obra, con su PDF', () => {
@@ -145,11 +145,12 @@ test('el total del cliente: «no pude leer» calla, «no hay» dice «—», y l
   // No se pudo leer → vacío, NUNCA «—» ni «$ 0».
   const ciego = totalesDelCliente(null, ['a'])
   assert.equal(textoTotalMateriales(ciego), '')
-  assert.deepEqual(textoTotalManoObra(ciego), { texto: '', parcial: false })
+  // `estimado` es parte de la celda desde 20260915T0800 (la mano de obra sin recibo todavía se marca).
+  assert.deepEqual(textoTotalManoObra(ciego), { texto: '', parcial: false, estimado: false })
   // Se leyó y no hay nada → «—».
   const nada = totalesDelCliente(new Map(), ['a'])
   assert.equal(textoTotalMateriales(nada), '—')
-  assert.deepEqual(textoTotalManoObra(nada), { texto: '—', parcial: false })
+  assert.deepEqual(textoTotalManoObra(nada), { texto: '—', parcial: false, estimado: false })
 })
 
 test('la fuente del desglose se nombra: contrato, OC o presupuesto, con su renglón', () => {
@@ -191,7 +192,7 @@ test('el jefe de obra no ve una sola cifra', () => {
   const src = tabla()
   assert.match(src, /veEconomia \? 'Contratado' : ''/)
   assert.match(src, /veEconomia \? 'Avance de cobro' : ''/)
-  assert.match(leer('./CeldasDeCosto.tsx'), /if \(!veEconomia\) return <><span className=\{SOLO_ANCHO\} \/><span className=\{SOLO_ANCHO\} \/><\/>/)
+  assert.match(leer('./CeldasDeCosto.tsx'), /if \(!veEconomia\) return <><span className=\{SOLO_ANCHO\} \/><span className=\{SOLO_ANCHO\} \/><span className=\{SOLO_ANCHO\} \/><\/>/)
 })
 
 test('el costo a la fecha del cliente suma TODAS sus obras, también las cerradas (QA 14/09/2026)', () => {

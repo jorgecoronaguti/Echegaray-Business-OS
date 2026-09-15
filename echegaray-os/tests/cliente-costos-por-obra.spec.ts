@@ -43,7 +43,7 @@ for (const cliente of ['quattropani', 'san-francisco'] as const) {
       const fila = page.getByTestId('fila-obra-cliente').first()
       // LA FORMA, NO EL IMPORTE: un número, «—», «sin valorizar» o vacío. Lo que NO puede pasar es un
       // «$ 0», que diría que esta obra no gastó nada.
-      for (const celda of ['materiales-obra-cliente', 'mano-obra-obra-cliente']) {
+      for (const celda of ['materiales-obra-cliente', 'subcontratos-obra-cliente', 'mano-obra-obra-cliente']) {
         await expect(fila.getByTestId(celda)).toHaveText(/^(\$[\d.]+|—|sin valorizar|)$/)
       }
 

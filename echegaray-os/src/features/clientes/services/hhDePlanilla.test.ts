@@ -7,6 +7,7 @@
 //  2 · QUE UNA AUSENCIA O LICENCIA SUME HORAS, venga de donde venga.
 //  3 · QUE UN DÍA EN DOS OBRAS SE CUENTE UNA SOLA VEZ: se suman, como en Horas.
 //  4 · QUE UNA OBRA SIN NINGUNA HORA TRABAJADA DIGA «0 h». Es `null`.
+//  5 · QUE EL JEFE DE OBRA SUME, de la app o de JORNALES, o que reaparezca como «sin respaldo» (dueño, 14/09/2026).
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -31,15 +32,15 @@ const QUATTROPANI: FilaHH[] = [
 
 test('LA PRESENCIA COMPLETADA POR LA APP Y web:obra SUMAN horas, personas, inicio y última carga', () => {
   const r = hhDeObraCRM(QUATTROPANI)
-  assert.equal(r.hh, 45, '26 de JORNALES + 9 del jefe + 8 de presencia-defecto + 2 de web:obra')
-  assert.equal(r.personas, 4)
+  assert.equal(r.hh, 36, '26 de JORNALES + 8 de presencia-defecto + 2 de web:obra; el jefe no suma')
+  assert.equal(r.personas, 3)
   assert.equal(r.inicio, '2026-08-16', 'Agüero cargó el 16/08 desde la app: ése es el primer día')
   assert.equal(r.ultima, '2026-09-11', 'la presencia completada del 11/09 es la última carga')
   assert.deepEqual(r.sinRespaldo, [], 'ninguna hora trabajada queda afuera')
   assert.equal(fraseSinRespaldo(r.sinRespaldo), null)
 })
 
-test('cada fuente de la app, por separado, cuenta; el jefe se distingue sólo en el origen', () => {
+test('cada fuente de la app, por separado, cuenta; el jefe de obra no', () => {
   assert.deepEqual(origenesHH([
     f({ fuente: 'web:presencia-defecto' }),
     f({ fuente: 'web:obra' }),
@@ -47,7 +48,7 @@ test('cada fuente de la app, por separado, cuenta; el jefe se distingue sólo en
     f({ fuente: 'web:asistencia-obra', esJefe: false }),
     f({ fuente: 'web:asistencia-obra', esJefe: true }),
     f({ fuente: 'JORNALES' }),
-  ]), ['app', 'app', 'app', 'app', 'jefe_app', 'app'])
+  ]), ['app', 'app', 'app', 'app', null, 'app'])
   assert.equal(hhDeObraCRM([f({ fuente: 'web:presencia-defecto', horas: 8 })]).hh, 8)
 })
 
@@ -81,4 +82,15 @@ test('lo que viaja de SQL se convierte, y un numeric como texto sigue siendo nú
     { persona_id: 'x', nombre: 'X', horas: 0, dias: [] },
   ]), [{ personaId: 'm', nombre: 'MALDONADO', horas: 80, dias: ['2026-09-01', '2026-09-02'] }])
   assert.deepEqual(armarSinRespaldo(null), [])
+})
+
+test('EL JEFE DE OBRA NO SUMA NI DE JORNALES, y no aparece como sin respaldo', () => {
+  const r = hhDeObraCRM([
+    f({ personaId: 'nievas', nombre: 'NIEVAS VILLEGAS', horas: 10, esJefe: true }),
+    f({ personaId: 'nievas', nombre: 'NIEVAS VILLEGAS', fecha: '2026-09-02', horas: 9, fuente: 'web:asistencia-obra', esJefe: true }),
+    f({ personaId: 'reta', horas: 8 }),
+  ])
+  assert.equal(r.hh, 8, 'sólo el obrero')
+  assert.equal(r.personas, 1)
+  assert.deepEqual(r.sinRespaldo, [], 'el jefe no cuenta por decisión, no por falta de planilla')
 })
