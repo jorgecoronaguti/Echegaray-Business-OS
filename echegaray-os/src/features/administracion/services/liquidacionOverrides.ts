@@ -31,6 +31,7 @@
 import type { GrupoLiquidacion, LineaLiquidada } from './liquidacionQuincena.ts'
 import { repartoDelAcuerdo } from './liquidacionAcuerdo.ts'
 import { sueldoBlancoNegro, type EntradaDeBlanco, type SueldoBlancoNegro } from './sueldoBlancoNegro.ts'
+import { cobraConPresentismo, presentismoDeLinea, type EntradaDePresentismo, type PresentismoDeLinea } from './presentismo.ts'
 
 /** Las celdas que se pueden pisar a mano. El nombre NO está: es la única que el dueño dejó afuera. */
 export const CAMPOS_EDITABLES = [
@@ -108,6 +109,14 @@ export interface LineaConOverrides extends LineaLiquidada {
    * `sueldo.neto`, salvo lo escrito a mano.
    */
   sueldo: SueldoBlancoNegro | null
+  /**
+   * PRESENTISMO (dueño, 15/09/2026): la parte del cobra que se pierde con una sola tardanza. Se calcula
+   * sobre las HORAS QUE QUEDARON (manuales o de la app) y se descuenta del cobra ANTES de la resta de
+   * adelantos, así En efectivo y Total lo siguen. Con blanco + negro sale del negro: el neto es el
+   * recibo del estudio y no cambia. `null` fuera del modelo (Oficina, finales, cuadro cerrado sin
+   * sello, llamador viejo). La regla entera vive en `presentismo.ts`.
+   */
+  presentismo: PresentismoDeLinea | null
   /** Hay $/h y horas pero el blanco no tiene neto: el total no se puede afirmar. No es «sin tarifa». */
   sinNeto: boolean
   /** Horas del recibo que muestra la celda (manual o del recibo/estimado). `null` fuera del modelo. */
@@ -176,6 +185,8 @@ export function aplicarOverrides(
   jornales: CadenaDeJornales | null = null,
   /** La entrada del blanco. Sin ella la línea sigue el modelo anterior (horas × $/h). */
   blanco: EntradaDeBlanco | null = null,
+  /** Lo que el presentismo necesita saber antes de las horas. `null` = no se evalúa (llamador viejo). */
+  entradaPresentismo: EntradaDePresentismo | null = null,
 ): LineaConOverrides {
   const manual = { ...SIN_MARCAS }
   const origen = { ...TODO_CALCULADO }
@@ -227,14 +238,22 @@ export function aplicarOverrides(
       horasNegro: puesto('horasNegro'),
     }
     : undefined
-  const sueldo = conModelo
+  const sinDescuento = conModelo
     ? sueldoBlancoNegro({ ...blanco!, horas, horasEquivalentes, valorHoraNegro: base.valorHora, manual: manualDelBlanco })
     : null
+  // EL PRESENTISMO SE EVALÚA CON LAS HORAS QUE QUEDARON, y sólo en obreros: la regla dice quién queda afuera.
+  const presentismo = entradaPresentismo && grupo === 'obreros' ? presentismoDeLinea(entradaPresentismo, horas) : null
+  // UN NEGRO ESCRITO A MANO NO SE DESCUENTA: manual gana, como en todas las celdas. El presentismo se
+  // publica igual —la marca existe— y quien escribió el importe lo ve al lado.
+  const sueldo = sinDescuento && descontarDelNegro(sinDescuento, manual.negro ? null : presentismo)
   const cobraCalc = sueldo
     ? sueldo.total
-    : manual.horas && grupo === 'obreros'
-      ? (base.valorHora == null || horas == null ? null : redondear2(horas * base.valorHora))
-      : base.cobra
+    : cobraConPresentismo(
+      manual.horas && grupo === 'obreros'
+        ? (base.valorHora == null || horas == null ? null : redondear2(horas * base.valorHora))
+        : base.cobra,
+      presentismo,
+    )
   const cobra = resolver('cobra', cobraCalc)
   const adelanto = resolver('adelanto', base.adelanto) ?? 0
   const yaTransferido = resolver('yaTransferido', base.yaTransferido) ?? 0
@@ -264,6 +283,7 @@ export function aplicarOverrides(
     discrepancia,
     referenciaJornales: grupo === 'obreros' ? referenciaDe(jornales, horas, cobra, conModelo) : null,
     sueldo,
+    presentismo,
     sinNeto: sueldo != null && sueldo.neto == null && !base.sinTarifa && origen.cobra === 'calculado',
     horasRecibo: sueldo?.horasBlanco ?? null,
     valorHoraRecibo: sueldo?.valorHoraCategoria ?? null,
@@ -290,12 +310,27 @@ function referenciaDe(
   return { ...r, difiere: distinto(r.horas, horas) || (!conModelo && distinto(r.cobra, cobra)) }
 }
 
-/** Ninguna celda pisada: la fila calculada, con las marcas en falso. Para cuadros cerrados o sin líneas guardadas. */
-export function sinOverrides(base: LineaLiquidada): LineaConOverrides {
+/**
+ * EL PRESENTISMO PERDIDO SALE DEL NEGRO. El neto es lo que el estudio liquidó y el banco giró: no se
+ * toca. Lo que la persona deja de cobrar es efectivo, y Neto + Negro = Total sigue cerrando exacto.
+ * Si el negro no alcanza queda negativo y la pantalla lo muestra: es plata que ya salió por el banco.
+ */
+function descontarDelNegro(s: SueldoBlancoNegro, p: PresentismoDeLinea | null): SueldoBlancoNegro {
+  if (p == null || p.estado !== 'perdido' || p.importe == null || s.negro == null) return s
+  const negro = redondear2(s.negro - p.importe)
+  return { ...s, negro, total: s.neto == null ? null : redondear2(s.neto + negro) }
+}
+
+/**
+ * Ninguna celda pisada: la fila calculada, con las marcas en falso. Para cuadros cerrados o sin líneas
+ * guardadas. `sellado` es la foto del presentismo que el cierre dejó en `liquidacion_linea`: en una
+ * quincena cerrada no se recalcula, se muestra la que se pagó.
+ */
+export function sinOverrides(base: LineaLiquidada, sellado: PresentismoDeLinea | null = null): LineaConOverrides {
   return {
     ...base, manual: { ...SIN_MARCAS }, origen: { ...TODO_CALCULADO }, discrepancia: {},
-    referenciaJornales: null, sueldo: null, sinNeto: false, horasRecibo: null, valorHoraRecibo: null, negro: null,
-    horasNegro: null, horasDeLosDias: base.horas,
+    referenciaJornales: null, sueldo: null, presentismo: sellado, sinNeto: false, horasRecibo: null, valorHoraRecibo: null,
+    negro: null, horasNegro: null, horasDeLosDias: base.horas,
   }
 }
 

@@ -317,6 +317,10 @@ export interface TotalesDelEspejo {
   horasDeDiferencia: number
   /** Cuántas filas no se pudieron cotejar. `sin-espejo` no es «coincide». */
   sinCotejar: number
+  /** PRESENTISMO (15/09/2026): lo que está en juego en las filas visibles, y lo que se perdió por tardanzas. */
+  presentismoEnJuego: number
+  presentismoPerdido: number
+  presentismoPerdidos: number
   /** Lo trabajado por tipo, sumado sobre las MISMAS filas: incluye a quien no tiene tarifa. */
   horasPorTipo: HorasPorTipo
   /**
@@ -342,6 +346,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     personas: filas.length, porDia, horas: 0, cobra: 0, adelanto: 0, yaTransferido: 0,
     porBanco: 0, enEfectivo: 0, total: 0, sinTarifa: 0, difieren: 0, horasDeDiferencia: 0,
     sinCotejar: 0, negro: 0, netoBandas: 0, mensuales: 0, sinNeto: 0, estimados: 0,
+    presentismoEnJuego: 0, presentismoPerdido: 0, presentismoPerdidos: 0,
     // SOBRE LAS MISMAS FILAS QUE RECIBE: la vista le pasa las visibles, así que el pie recorta
     // igual que el filtro y el buscador. Quien no tiene tarifa SÍ suma horas: trabajó igual.
     horasPorTipo: sumarHorasPorTipo(filas),
@@ -357,6 +362,11 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     // sola cosa. El chip de la fila sí distingue por qué, que es donde la distinción sirve.
     if (f.cotejo.estado === 'sin-espejo' || f.cotejo.estado === 'no-esta') t.sinCotejar++
     if (l.sueldo?.estado === 'estimado') t.estimados++
+    // EL PRESENTISMO SE SUMA ANTES DEL «SIN TARIFA»: quien lo perdió lo perdió aunque su fila no sume plata.
+    if (l.presentismo?.importe != null) {
+      t.presentismoEnJuego += l.presentismo.importe
+      if (l.presentismo.estado === 'perdido') { t.presentismoPerdido += l.presentismo.importe; t.presentismoPerdidos++ }
+    }
     // «SIN NETO» NO ES «SIN TARIFA»: la tarifa está, falta el recibo. Contarlos juntos mandaría a cargar
     // una tarifa que ya existe.
     if (l.sinTarifa || l.cobra == null) { if (!l.sinTarifa && l.sinNeto) t.sinNeto++; else t.sinTarifa++; continue }
@@ -374,7 +384,7 @@ export function totalesDelEspejo(filas: readonly FilaDelEspejo[]): TotalesDelEsp
     t.total += Number(l.total) || 0
   }
   for (const k of ['horas', 'cobra', 'adelanto', 'yaTransferido', 'porBanco', 'enEfectivo', 'total',
-    'horasDeDiferencia', 'horasPagas', 'negro', 'netoBandas', 'mensuales'] as const) {
+    'horasDeDiferencia', 'horasPagas', 'negro', 'netoBandas', 'mensuales', 'presentismoEnJuego', 'presentismoPerdido'] as const) {
     t[k] = r2(t[k])
   }
   return t

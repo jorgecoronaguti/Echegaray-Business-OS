@@ -36,6 +36,8 @@ import {
 } from './lecturasCompartidasDeQuincena.ts'
 import { plantelDeLaQuincena } from './liquidacionPlantelActivo.ts'
 import { esJefeDeObra } from './vocabularioPersona.ts'
+import type { EntradaDePresentismo } from './presentismo.ts'
+import { leerGuardadas, tardanzasPorPersona, type EstadoDeLaQuincena } from './liquidacionGuardadas.ts'
 import {
   aplicarOverrides, camposGuardables, sinOverrides,
   type CampoEditable, type LineaConOverrides, type OverridesDeLinea,
@@ -54,11 +56,7 @@ export interface CuadroConOverrides extends Omit<CuadroDeLiquidacion, 'lineas'> 
   lineas: LineaConOverrides[]
 }
 
-export interface EstadoDeLaQuincena {
-  id: string | null
-  estado: 'abierta' | 'cerrada'
-  cerradaEn: string | null
-}
+export type { EstadoDeLaQuincena } from './liquidacionGuardadas.ts'
 
 export interface LiquidacionDeLaQuincena {
   cuadros: CuadroConOverrides[]
@@ -101,6 +99,11 @@ export interface LiquidacionDeLaQuincena {
   exposicion: ExposicionDeLaQuincena
   /** Los `persona_id` del plantel de ESTA quincena (`plantelDeLaQuincena`). Caja, Cierre y Costo leen éste. */
   plantel: string[]
+  /**
+   * `liquidacion_linea.presentismo` y `presentismo_perdido` EXISTEN en la base (20260915T2200). El sello
+   * los escribe sólo si están: sin la migración, la foto sale sin presentismo y no rompe el cierre.
+   */
+  hayColumnasPresentismo: boolean
   /** `false` mientras `recibo_sueldo_linea` no exista: el neto sale de `nomina_recibo_neto`. */
   hayRecibosDeSueldo: boolean
   /** Cada fuente que no se pudo leer, con su mensaje. Vacío = se leyó todo. */
@@ -234,8 +237,9 @@ export async function getLiquidacionDeLaQuincena(
         subcontratoId: deSubcontrato.get(r.id) ?? null,
       }))
 
-  const { estados, redondeos, overrides, importesCargados } = leerGuardadas(guardadas.data)
+  const { estados, redondeos, overrides, importesCargados, presentismosSellados } = leerGuardadas(guardadas.data)
   const camposEditables = camposGuardables(guardadas.columnas)
+  const hayColumnasPresentismo = COLUMNAS_PRESENTISMO.every((c) => guardadas.columnas.includes(c))
 
   // ═══ SÓLO QUIENES ESTÁN ACTIVOS ESTA QUINCENA ═══
   //
@@ -292,6 +296,21 @@ export async function getLiquidacionDeLaQuincena(
 
   const periodo = periodoDeRecibo(q)
   const pisoDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.piso?.valorHora ?? null]))
+  // ═══ PRESENTISMO (dueño, 15/09/2026) ═══ El básico es EL MISMO piso por categoría que usa el blanco
+  // estimado (`exponerAlPiso` → `pisoVigente`, `convenio_escala` con la escala del CCT 76/75): una
+  // segunda lectura sería un segundo básico. Las marcas salen de las presencias que esta función ya leyó.
+  const categoriaDe = new Map(exposicion.lineas.map((l) => [l.personaId, l.categoria]))
+  const tardanzas = tardanzasPorPersona(presencias.data)
+  const presentismoDe = (grupo: string, l: { personaId: string; esJefe: boolean; modalidad: ModalidadDeLiquidacion }): EntradaDePresentismo | null =>
+    grupo !== 'obreros' ? null : {
+      categoria: categoriaDe.get(l.personaId) ?? null,
+      basico: pisoDe.get(l.personaId) ?? null,
+      tardanzas: tardanzas.get(l.personaId) ?? [],
+      quincenaDesde: q.desde,
+      modalidad: l.modalidad,
+      esJefe: l.esJefe,
+      cerrada: false,
+    }
   // EL RECIBO ESTIMADO: reglas congeladas (primera entrega sin migración), los recibos que ya leyó la exposición y
   // los feriados. Un error del calendario se dice: estimar sin feriados en silencio movería el 0401 y el 0431.
   anotar('el calendario de feriados', feriados.error ? { message: feriados.error } : null)
@@ -310,6 +329,7 @@ export async function getLiquidacionDeLaQuincena(
     exposicion,
     plantel: activas.map((p) => p.id),
     hayRecibosDeSueldo: exposicion.hayRecibosDeSueldo,
+    hayColumnasPresentismo,
     horas,
     // LA QUINCENA CERRADA NO SE PISA. Sus cifras son la foto del cierre y no admiten override: si
     // se aplicaran acá, una celda escrita después del cierre cambiaría el registro de lo que ya se
@@ -318,12 +338,13 @@ export async function getLiquidacionDeLaQuincena(
       ...c,
       // UN CUADRO SIN CABECERA DE UNA QUINCENA CERRADA TAMPOCO SE PISA: hereda el cierre (`estadoDelCuadro`).
       lineas: estadoDelCuadro(estados, c.grupo).estado === 'cerrada'
-        ? c.lineas.map(sinOverrides)
+        // EL PRESENTISMO DE UNA QUINCENA CERRADA ES EL SELLADO: se muestra lo que se pagó, no se recalcula.
+        ? c.lineas.map((l) => sinOverrides(l, presentismosSellados.get(l.personaId) ?? null))
         // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.
         : c.lineas.map((l) => aplicarOverrides(
           l, overrides.get(l.personaId) ?? {}, c.grupo, espejo.cadenaPorPersona.get(l.personaId) ?? null,
-          blancoDe(c.grupo, l),
+          blancoDe(c.grupo, l), presentismoDe(c.grupo, l),
         )),
     })),
     camposEditables,
@@ -357,8 +378,13 @@ const COLUMNAS_NEGRO = ['negro_manual'] as const
 /** Horas y Hs negro escritas a mano, si la migración `20260915T0510` ya se aplicó. */
 const COLUMNAS_HORAS = ['horas_manual', 'horas_negro_manual'] as const
 
+/** La foto del presentismo, si la migración `20260915T2200` ya se aplicó. */
+const COLUMNAS_PRESENTISMO = ['presentismo', 'presentismo_perdido'] as const
+
 /** Los grupos que dependen de una migración, del más viejo al más nuevo. */
-const GRUPOS_OPCIONALES: readonly (readonly string[])[] = [COLUMNAS_MANUALES, COLUMNAS_BLANCO, COLUMNAS_NEGRO, COLUMNAS_HORAS]
+const GRUPOS_OPCIONALES: readonly (readonly string[])[] = [
+  COLUMNAS_MANUALES, COLUMNAS_BLANCO, COLUMNAS_NEGRO, COLUMNAS_HORAS, COLUMNAS_PRESENTISMO,
+]
 
 /**
  * LAS CABECERAS Y SUS LÍNEAS — preguntando por las columnas de override y aceptando que no estén.
@@ -412,79 +438,4 @@ function horasPorPersona(
     })
   }
   return porPersona
-}
-
-type LineaGuardada = {
-  persona_id: string
-  efectivo_redondeado: number | string | null
-  cobra?: number | string | null
-  horas_manual?: number | string | null
-  horas_negro_manual?: number | string | null
-  cobra_manual?: number | string | null
-  adelanto_manual?: number | string | null
-  ya_transferido_manual?: number | string | null
-  por_banco_manual?: number | string | null
-  en_efectivo_manual?: number | string | null
-  total_manual?: number | string | null
-  horas_recibo_manual?: number | string | null
-  valor_hora_recibo_manual?: number | string | null
-  negro_manual?: number | string | null
-}
-
-interface CabeceraGuardada {
-  id: string
-  grupo: string
-  estado: string
-  cerrada_en: string | null
-  liquidacion_linea: LineaGuardada[] | null
-}
-
-/** `null`/ausente = no hay override. Un 0 guardado SÍ es un override y tiene que sobrevivir acá. */
-const overrideDe = (v: number | string | null | undefined): number | null => {
-  if (v == null) return null
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
-}
-
-const overridesDeLinea = (l: LineaGuardada): OverridesDeLinea => ({
-  horas: overrideDe(l.horas_manual),
-  cobra: overrideDe(l.cobra_manual),
-  adelanto: overrideDe(l.adelanto_manual),
-  yaTransferido: overrideDe(l.ya_transferido_manual),
-  porBanco: overrideDe(l.por_banco_manual),
-  enEfectivo: overrideDe(l.en_efectivo_manual),
-  total: overrideDe(l.total_manual),
-  horasRecibo: overrideDe(l.horas_recibo_manual),
-  valorHoraRecibo: overrideDe(l.valor_hora_recibo_manual),
-  negro: overrideDe(l.negro_manual),
-  horasNegro: overrideDe(l.horas_negro_manual),
-})
-
-/** El estado de cada cuadro y el redondeo ya escrito. Sin cabecera guardada, la quincena está abierta. */
-function leerGuardadas(data: unknown): {
-  estados: Record<string, EstadoDeLaQuincena>
-  redondeos: Map<string, number | null>
-  overrides: Map<string, OverridesDeLinea>
-  importesCargados: Map<string, number>
-} {
-  const filas = (data ?? []) as CabeceraGuardada[]
-  const estados: Record<string, EstadoDeLaQuincena> = {}
-  const redondeos = new Map<string, number | null>()
-  const overrides = new Map<string, OverridesDeLinea>()
-  const importesCargados = new Map<string, number>()
-  for (const f of filas) {
-    estados[f.grupo] = {
-      id: f.id,
-      estado: f.estado === 'cerrada' ? 'cerrada' : 'abierta',
-      cerradaEn: f.cerrada_en,
-    }
-    for (const l of f.liquidacion_linea ?? []) {
-      // NULL SE GUARDA COMO NULL. Un cero acá diría «no le doy nada en mano», que es una afirmación
-      // que el dueño no hizo.
-      redondeos.set(l.persona_id, l.efectivo_redondeado == null ? null : numero(l.efectivo_redondeado))
-      overrides.set(l.persona_id, overridesDeLinea(l))
-      if (f.grupo === 'oficina' && numero(l.cobra) > 0) importesCargados.set(l.persona_id, numero(l.cobra))
-    }
-  }
-  return { estados, redondeos, overrides, importesCargados }
 }

@@ -30,6 +30,7 @@
 // el defecto no pisa ni borra una hora que cargó una persona. El porqué completo está abajo, al
 // lado de la función.
 
+import { mismaTardanza, type Tardanza } from './tardanza.ts'
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import { jornadaPorDefecto } from './jornadaPorDefecto.ts'
 import { esMotivo, tipoDeMotivo } from './motivoDeAusencia.ts'
@@ -38,21 +39,22 @@ import { esMotivo, tipoDeMotivo } from './motivoDeAusencia.ts'
  *  es «todavía nadie dijo nada», y eso no se guarda. */
 export type EstadoPresencia = 'presente' | 'ausente' | 'licencia'
 
-export interface CasillaPresencia {
+export interface CasillaPresencia extends Partial<Tardanza> {
   estado: EstadoPresencia | null
   /** Clave del catálogo de motivos. Sólo tiene sentido con `ausente` o `licencia`. */
   motivo: string | null
 }
 
-/** Lo que ya está guardado en `asistencia_dia` para esa persona y ese día. */
-export interface PresenciaGuardada {
+/** Lo que ya está guardado en `asistencia_dia` para esa persona y ese día. La tardanza es opcional: la
+ *  columna puede no estar aplicada y los llamadores viejos no la conocen; ausente se lee como `false`. */
+export interface PresenciaGuardada extends Partial<Tardanza> {
   persona_id: string
   estado: EstadoPresencia
   motivo: string | null
 }
 
 /** Lo que viaja a la acción. Una marca por persona: la tabla tiene un único (persona, fecha). */
-export interface MarcaPresencia {
+export interface MarcaPresencia extends Partial<Tardanza> {
   persona_id: string
   estado: EstadoPresencia
   motivo: string | null
@@ -67,6 +69,13 @@ export interface ResumenPresencia {
 }
 
 const VACIA: CasillaPresencia = { estado: null, motivo: null }
+
+/** LA TARDANZA VIAJA SÓLO CUANDO ESTÁ MARCADA. Ausente = `false` para todos los que la leen (`Partial<Tardanza>`), y
+ *  así los llamadores y los tests que no la conocen siguen viendo la misma forma de siempre. */
+const soloSiMarcada = (t: Partial<Tardanza>): Partial<Tardanza> => ({
+  ...(t.llego_tarde === true ? { llego_tarde: true } : {}),
+  ...(t.salio_antes === true ? { salio_antes: true } : {}),
+})
 
 /**
  * A QUIÉN SE MARCA: la cuadrilla, sin los jefes de obra.
@@ -103,7 +112,7 @@ export function casillasDePresencia(
   const out: Record<string, CasillaPresencia> = {}
   for (const id of personaIds) {
     const g = porPersona.get(id)
-    out[id] = g ? { estado: g.estado, motivo: g.motivo ?? null } : { ...VACIA }
+    out[id] = g ? { estado: g.estado, motivo: g.motivo ?? null, ...soloSiMarcada(g) } : { ...VACIA }
   }
   return out
 }
@@ -168,7 +177,9 @@ export function loQueViajaPresencia(
     // «no vino · lluvia» y después corregir a «está» dejaría el motivo pegado y los conteos por
     // causa mentirían para siempre.
     const motivo = c.estado === 'presente' ? null : (esMotivo(c.motivo) ? c.motivo : null)
-    out.push({ persona_id, estado: c.estado, motivo })
+    // UNA TARDANZA SÓLO SOBRE UNA PRESENCIA: quien no vino no llegó tarde. Es lo que afirma el CHECK
+    // de la tabla; sin esto, pasar «está · llegó tarde» a «no vino» dejaría la marca pegada.
+    out.push({ persona_id, estado: c.estado, motivo, ...(c.estado === 'presente' ? soloSiMarcada(c) : {}) })
   }
   return out
 }
@@ -188,7 +199,7 @@ export function planDePresencia(
   let intactas = 0
   for (const m of marcas) {
     const antes = previo.get(m.persona_id)
-    if (antes && antes.estado === m.estado && (antes.motivo ?? null) === m.motivo) intactas += 1
+    if (antes && antes.estado === m.estado && (antes.motivo ?? null) === m.motivo && mismaTardanza(antes, m)) intactas += 1
     else cambios.push(m)
   }
   return { cambios, intactas }

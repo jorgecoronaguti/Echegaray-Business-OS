@@ -51,6 +51,7 @@ import {
   type HoraDelDia, type MarcaPresencia, type PresenciaGuardada,
 } from './presenciaDelDia'
 import { getPresenciaDelDia, quitarPresenciaDelDia } from './presenciaDelDiaService'
+import { hayTardanza, rotuloTardanza, sinTardanzasNuevas } from './tardanza'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { puedeCambiarObraActual } from './planDeObraActual'
 import { quincenaCerrada } from './quincenaCerradaService'
@@ -58,16 +59,23 @@ import { quincenaCerrada } from './quincenaCerradaService'
 // EL MOTIVO SE VALIDA CONTRA EL CATÁLOGO, NO CONTRA UNA LISTA DE ESTA PANTALLA. `esMotivo` mira
 // `orquestador/lib/asistencia-motivos.mjs`, que es lo que usa el bot desde julio. Y una presencia
 // con motivo se rechaza acá igual que en el CHECK de la tabla: dos cerraduras, una definición.
+// LA TARDANZA SÓLO SOBRE UNA PRESENCIA (dueño, 15/09/2026): quien no vino no llegó tarde. Es la misma
+// afirmación que el CHECK `asistencia_dia_tardanza_solo_presente`; acá la rama ausente/licencia no la
+// admite y la presente la acepta con `false` por defecto, para que los llamadores viejos sigan andando.
 const marcaSchema = z.discriminatedUnion('estado', [
   z.object({
     persona_id: z.string().uuid(),
     estado: z.literal('presente'),
     motivo: z.null().default(null),
+    llego_tarde: z.boolean().default(false),
+    salio_antes: z.boolean().default(false),
   }),
   z.object({
     persona_id: z.string().uuid(),
     estado: z.enum(['ausente', 'licencia']),
     motivo: z.string().trim().refine(esMotivo, 'Ese motivo no está en el catálogo').nullable().default(null),
+    llego_tarde: z.literal(false).default(false),
+    salio_antes: z.literal(false).default(false),
   }),
 ])
 
@@ -99,7 +107,18 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
   if (previo.error) return { ok: false, error: previo.error }
   const guardadas = previo.data ?? []
 
-  const plan = planDePresencia(marcas as MarcaPresencia[], guardadas)
+  // EN UNA QUINCENA CERRADA LA PRESENCIA SE GUARDA Y LA TARDANZA NO: lo sellado no se toca (15/09/2026).
+  // La guarda se pregunta ANTES de decidir qué escribir, porque decide qué se escribe. Las horas la
+  // reusan más abajo.
+  const cierre = await quincenaCerrada(supabase, fecha)
+  const tardanzas = cierre === null
+    ? { marcas: marcas as MarcaPresencia[], descartadas: 0 }
+    : sinTardanzasNuevas(marcas as MarcaPresencia[], guardadas)
+  const avisoTardanza = tardanzas.descartadas > 0
+    ? `${tardanzas.descartadas} marca(s) de tardanza no se guardaron: ${cierre}`
+    : null
+
+  const plan = planDePresencia(tardanzas.marcas, guardadas)
   if (plan.cambios.length === 0) {
     // NADA QUE ESCRIBIR EN LA PRESENCIA ES NADA QUE ESCRIBIR EN LAS HORAS (dueño, 15/09/2026). Hasta
     // hoy este camino volvía a pasar las horas por defecto «por si alguien quedó presente sin horas»,
@@ -107,26 +126,15 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
     // La jornada por defecto es consecuencia de DECLARAR, no de volver a guardar lo mismo.
     return {
       ok: true,
-      mensaje: `Ya estaba guardado: ${acusePresencia(resumenPresencia(marcas as MarcaPresencia[], marcas.length))}.`,
-      guardadas: mezclar(guardadas, marcas as MarcaPresencia[]),
+      mensaje: [`Ya estaba guardado: ${acusePresencia(resumenPresencia(tardanzas.marcas, marcas.length))}.`, avisoTardanza]
+        .filter(Boolean).join(' · '),
+      guardadas: mezclar(guardadas, tardanzas.marcas),
     }
   }
 
   // `.select()` ENCADENADO: se acusa lo que la base DEVOLVIÓ, no lo que se le pidió. Un upsert que
   // afecta cero filas —porque la policy lo rechazó sin error— no puede acusar «12 presentes».
-  const { data, error } = await supabase
-    .from('asistencia_dia')
-    .upsert(
-      plan.cambios.map((m) => ({
-        persona_id: m.persona_id,
-        fecha,
-        obra_canonica_id: obraId,
-        estado: m.estado,
-        motivo: m.motivo,
-      })),
-      { onConflict: 'persona_id,fecha' },
-    )
-    .select('persona_id, estado, motivo')
+  const { data, error } = await escribirMarcas(supabase, obraId, fecha, plan.cambios)
 
   if (error) {
     return {
@@ -150,9 +158,8 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
   //
   // EN UNA QUINCENA CERRADA LA MARCA SE GUARDA Y LAS HORAS NO. La guarda es de `registros_hh`
   // (`quincenaCerrada.ts`); la marca ya quedó escrita, así que se dice en el acuse en vez de fallar.
-  const cierre = await quincenaCerrada(supabase, fecha)
   const horas = cierre === null
-    ? await aplicarHorasPorDefecto(supabase, obraId, fecha, marcas as MarcaPresencia[], guardadas)
+    ? await aplicarHorasPorDefecto(supabase, obraId, fecha, tardanzas.marcas, guardadas)
     : { mensaje: `Las horas por defecto no se cargaron. ${cierre}`, escribio: false }
 
   revalidatePath('/campo/asistencia')
@@ -160,10 +167,45 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
   revalidatePath('/administracion/personas/en-obra')
   if (horas.escribio) revalidatePath('/administracion/asistencia')
 
-  const resumen = resumenPresencia(marcas as MarcaPresencia[], marcas.length)
-  const mensaje = [acusePresencia(resumen), horas.mensaje].filter(Boolean).join(' · ')
-  return { ok: true, mensaje, guardadas: mezclar(guardadas, marcas as MarcaPresencia[]) }
+  const resumen = resumenPresencia(tardanzas.marcas, marcas.length)
+  const mensaje = [acusePresencia(resumen), acuseTardanzas(tardanzas.marcas), avisoTardanza, horas.mensaje]
+    .filter(Boolean).join(' · ')
+  return { ok: true, mensaje, guardadas: mezclar(guardadas, tardanzas.marcas) }
 }
+
+/** «2 con tardanza». Se dice porque es plata: una marca pierde el presentismo de la quincena. */
+function acuseTardanzas(marcas: readonly MarcaPresencia[]): string | null {
+  const n = marcas.filter(hayTardanza).length
+  return n === 0 ? null : `${n} con tardanza (pierde el presentismo de la quincena)`
+}
+
+/**
+ * EL UPSERT, CON LA TARDANZA SI LA BASE LA TIENE. Mientras `20260915T2200` no esté aplicada las dos
+ * columnas no existen: PostgREST contesta PGRST204 / 42703 y se reintenta sin ellas, para que la
+ * presencia se siga guardando. Si alguna marca traía tardanza y no se pudo escribir, se dice con el
+ * nombre de la migración: la marca NO quedó, y fingir que sí sería pagar un presentismo que se perdió.
+ */
+async function escribirMarcas(
+  supabase: Awaited<ReturnType<typeof createClient>>, obraId: string, fecha: string, cambios: readonly MarcaPresencia[],
+): Promise<{ data: PresenciaGuardada[] | null; error: { message: string } | null }> {
+  const fila = (m: MarcaPresencia) => ({ persona_id: m.persona_id, fecha, obra_canonica_id: obraId, estado: m.estado, motivo: m.motivo })
+  const upsert = (filas: Record<string, unknown>[], campos: string) => supabase.from('asistencia_dia')
+    .upsert(filas, { onConflict: 'persona_id,fecha' }).select(campos)
+  const con = await upsert(
+    cambios.map((m) => ({ ...fila(m), llego_tarde: m.llego_tarde, salio_antes: m.salio_antes })),
+    'persona_id, estado, motivo, llego_tarde, salio_antes',
+  )
+  if (!con.error) return { data: (con.data ?? []) as unknown as PresenciaGuardada[], error: null }
+  if (!sinColumnaTardanza(con.error)) return { data: null, error: con.error }
+  if (cambios.some(hayTardanza)) {
+    return { data: null, error: { message: 'Todavía no está aplicada la migración 20260915T2200_presentismo_por_tardanzas.sql: la tardanza no se puede guardar. Guardá sin la marca o aplicala primero.' } }
+  }
+  const sin = await upsert(cambios.map(fila), 'persona_id, estado, motivo')
+  return { data: (sin.data ?? []) as unknown as PresenciaGuardada[], error: sin.error }
+}
+
+const sinColumnaTardanza = (error: { code?: string; message: string }): boolean =>
+  error.code === '42703' || error.code === 'PGRST204' || /llego_tarde|salio_antes/i.test(error.message)
 
 /**
  * LA JORNADA POR DEFECTO CONTRA LA BASE. Devuelve qué decir, nunca un throw: la presencia ya está
@@ -280,4 +322,71 @@ export async function quitarPresencia(entrada: unknown): Promise<ResultadoQuita>
   revalidatePath('/administracion/personas/en-obra')
   revalidatePath('/campo/asistencia')
   return { ok: true, mensaje: 'Marca quitada: el día quedó sin marcar. Las horas cargadas no se tocaron.' }
+}
+
+// ═══ MARCAR LA TARDANZA DESDE LA GRILLA (Personal → Horas) — 15/09/2026 ═══
+//
+// El jefe la marca el día que pasa, desde la presencia (`guardarPresencia`). Administración puede
+// corregirla después desde la celda del día. Es la MISMA fila de `asistencia_dia`: se escribe sobre la
+// presencia declarada, y si nadie la declaró se declara «presente» con la marca —llegar tarde es haber
+// venido—. Sobre un ausente o una licencia no se marca: las dos afirmaciones no pueden ser ciertas a la
+// vez (CHECK `asistencia_dia_tardanza_solo_presente`). No toca `registros_hh`.
+
+const tardanzaSchema = z.object({
+  persona_id: z.string().uuid('No sé a quién le marcás la tardanza'),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
+  llego_tarde: z.boolean(),
+  salio_antes: z.boolean(),
+})
+
+export type ResultadoTardanza = { ok: true; mensaje: string } | { ok: false; error: string }
+
+export async function marcarTardanza(entrada: unknown): Promise<ResultadoTardanza> {
+  const parsed = tardanzaSchema.safeParse(entrada)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const { persona_id: personaId, fecha, llego_tarde, salio_antes } = parsed.data
+
+  const supabase = await createClient()
+  const { data: perfil, error: errorPerfil } = await getPerfilActual(supabase)
+  if (errorPerfil) return { ok: false, error: `No pude verificar tu rol: ${errorPerfil}` }
+  if (!puedeCambiarObraActual(perfil?.rol)) return { ok: false, error: 'Tu usuario no puede marcar tardanzas.' }
+
+  // LO SELLADO NO SE TOCA: una marca en una quincena cerrada cambiaría el presentismo de una liquidación
+  // ya pagada. Acá se rechaza entera; en `guardarPresencia` se guarda la presencia y se descarta la marca.
+  const cierre = await quincenaCerrada(supabase, fecha)
+  if (cierre !== null) return { ok: false, error: `La tardanza no se guardó. ${cierre}` }
+
+  const previo = await getPresenciaDelDia(supabase, fecha, null)
+  if (previo.error) return { ok: false, error: previo.error }
+  const antes = (previo.data ?? []).find((g) => g.persona_id === personaId)
+  if (antes && antes.estado !== 'presente') {
+    return { ok: false, error: `Está declarado ${antes.estado === 'licencia' ? 'de licencia' : 'ausente'} ese día: no se le marca tardanza.` }
+  }
+  const { data, error } = await supabase.from('asistencia_dia')
+    .upsert({ persona_id: personaId, fecha, estado: 'presente', motivo: null, llego_tarde, salio_antes }, { onConflict: 'persona_id,fecha' })
+    .select('persona_id, llego_tarde, salio_antes')
+  if (error) {
+    return {
+      ok: false,
+      error: sinColumnaTardanza(error)
+        ? 'Todavía no está aplicada la migración 20260915T2200_presentismo_por_tardanzas.sql: la tardanza no se puede guardar.'
+        : error.message,
+    }
+  }
+  const fila = (data ?? [])[0] as { llego_tarde: boolean; salio_antes: boolean } | undefined
+  if (!fila) return { ok: false, error: 'La base no guardó la marca. Puede ser un permiso: probá recargar.' }
+  if (fila.llego_tarde !== llego_tarde || fila.salio_antes !== salio_antes) {
+    return { ok: false, error: 'La base guardó otra cosa que lo que mandé: revisá la celda.' }
+  }
+
+  revalidatePath('/administracion/personas')
+  revalidatePath('/administracion/asistencia')
+  revalidatePath('/campo/asistencia')
+  const rotulo = rotuloTardanza(fila)
+  return {
+    ok: true,
+    mensaje: rotulo
+      ? `Marcado: ${rotulo}. Pierde el presentismo de la quincena.`
+      : (antes ? 'Marca quitada: el día queda como presente sin tardanza.' : 'Día declarado presente, sin tardanza.'),
+  }
 }

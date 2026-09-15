@@ -109,8 +109,11 @@ test('sin overrides, la línea queda idéntica y sin ninguna marca', () => {
     manual: undefined, origen: undefined, discrepancia: undefined, referenciaJornales: undefined,
     sueldo: undefined, sinNeto: undefined, horasRecibo: undefined, valorHoraRecibo: undefined, negro: undefined,
     horasNegro: undefined, horasDeLosDias: undefined,
+    // `presentismo` (15/09/2026) es la cuarta marca: la foto cerrada lo trae del sello, no de un cálculo.
+    presentismo: undefined,
   }
   assert.deepEqual({ ...r, ...sinMarcas }, { ...linea, ...sinMarcas })
+  assert.equal(r.presentismo, null)
   // LA FOTO CERRADA NO RECALCULA BLANCO + NEGRO (dueño, 14/09/2026).
   assert.equal(r.sueldo, null)
   assert.equal(r.sinNeto, false)

@@ -13,6 +13,7 @@
 // sello la vuelve indistinguible de una correcta. El botón se deshabilita Y DICE POR QUÉ: un botón
 // gris sin explicación manda a la persona a adivinar cuál de las 17 filas lo está trabando.
 
+import type { PresentismoDeLinea } from './presentismo.ts'
 import type { ModalidadDeLiquidacion } from './liquidacionQuincena.ts'
 
 /** Lo mínimo que el cierre necesita saber de una línea. Es un subconjunto de `LineaLiquidada`. */
