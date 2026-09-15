@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-15 ~14:00 (−03) · main = producción (eb656cf8)_
+_actualizado: 2026-09-15 ~15:20 (−03) · main = producción (306cfbea)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -43,6 +43,18 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
 
 - Liquidaciones finales: no considerar. Jefes cobran por mes. Presentismo: tardanzas/salidas tempranas, no faltas; 50/50
   blanco-negro; «hacelo» a la regla en juego. Compras «al centavo por obra» también en Proveedores.
+
+
+### 4c. Tarde del 15/09 (hecho y verificado)
+- Tello: f.806 → OB-0005 (L806 escrita directa: la cola rechazó por `sin_huella`, ahora arreglado en 306cfbea);
+  f.880–883 = 2.144 m² × 4.400 (9.433.600, a cuenta 1.250.000, pago 1 1.770.000, 3 × 2.137.866,67); f.956–961 = resto
+  1.466 m² (6 × 1.075.066,67 = 6.450.400). `subcontrato` 799482f9 en pisos-industriales $15.884.000 (el de Quattropani borrado).
+- 8 comprobantes del canal (14:44) fallaron por Google 504 al leer la cabecera (no créditos); el fajo persistido
+  `comunicacion.comprobante_fajos` dc2d0273 se recargó con `escribirFajo` tras `olvidarCargados` de las 8 reservas sin fila
+  → filas 964–971 ($1.062.357), espejo corrido. Scratch: `scratchpad/recargar-fajo.mjs`.
+- Regla nueva del dueño: «a la fecha» = pagado + vencido; cuotas por vencer aparte (agente panel/T2320).
+- Agentes en curso: costo por obra_id (T2300), panel detalle + regla por vencer (T2320), tardanza en asistencia de escritorio,
+  comprobantes reintento 5xx + fajo persistido (T2330), auditoría MO/MA/SUB por obra (script + informe + .pg.test).
 
 ## 5. EN CURSO
 

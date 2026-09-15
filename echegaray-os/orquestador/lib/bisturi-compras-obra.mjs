@@ -24,6 +24,17 @@
 // (`claveDeCompra`) sale de CUIT, tipo, número y proveedor, y se calcula acá con EL MISMO camino que
 // usó el sync para escribir `compra_sheet.clave` (`contratoDeColumnas` → `filaACompra` →
 // `claveDeCompra`): dos definiciones de «qué comprobante es éste» serían dos verdades.
+//
+// ═══ LA HUELLA DE RESPALDO: «proveedor|fecha|total(|concepto)» (15/09/2026) ═══
+//
+// 219 de las 960 filas de compra_sheet (medido el 15/09/2026) no tienen número de comprobante —subcontratistas,
+// efectivo, sueldos, impuestos— y todas tienen proveedor;
+// la RPC las encola con `clave` null. Rechazarlas por `sin_huella` dejaba a la app sin poder cambiar la
+// obra de más de las tres cuartas partes de la pestaña; el 15/09 el dueño terminó escribiendo la L806
+// a mano. Como hace Cobranzas con «comprobante|cliente|total», acá la identidad de una fila sin número
+// es lo que `compra_sheet` dice de ESA fila —proveedor, fecha, total y, si lo hay, concepto— comparado
+// contra la fila viva. El worker lee ese respaldo de la base al aplicar (`leerRespaldo`) y lo entrega
+// como `respaldo`; este archivo sólo compara. Sin respaldo y sin clave, sigue siendo `sin_huella`.
 
 import { letra } from './compras-columnas.mjs'
 import { PRIMERA_FILA, claveDeCompra, contratoDeColumnas, filaACompra } from './compras-fila.mjs'
@@ -53,16 +64,48 @@ function resolverLayout(encabezado) {
   return { idx }
 }
 
-/** ¿Es la misma compra que la pantalla vio? `null` si sí; si no, el rechazo. */
-function verificarHuella(compra, cambio) {
-  const esperada = cambio?.clave ?? null
-  if (!esperada) {
-    // Sin número de comprobante no hay identidad: sólo quedaría el ID, que es una posición.
-    return rechazar('sin_huella', 'el cambio se encoló sin clave de comprobante: no hay forma de probar que la fila es la misma compra')
+/** Texto para comparar identidad: sin espacios de más ni mayúsculas. `texto()` del sync ya recortó los bordes. */
+const mismoTexto = (a, b) => normalizarCelda(a).replace(/\s+/g, ' ').toLowerCase() === normalizarCelda(b).replace(/\s+/g, ' ').toLowerCase()
+
+/** ¿El respaldo trae con qué identificar? Sin proveedor no hay huella: fecha y total solos son de cualquiera. */
+export const respaldoUsable = (r) => Boolean(r && normalizarCelda(r.proveedor))
+
+/**
+ * La fila viva contra lo que `compra_sheet` dice de esa fila. `null` si coincide; si no, el detalle.
+ * Un peso de tolerancia en el total: «Total» es `=Importe+IVA` y la cola binaria del flotante ya está medida.
+ */
+export function compararRespaldo(compra, respaldo, fila) {
+  if (!mismoTexto(compra.proveedor, respaldo.proveedor)) {
+    return `la fila ${fila} dice «${compra.proveedor ?? 'vacío'}» en Proveedor y compra_sheet tenía «${respaldo.proveedor}»`
   }
-  const real = claveDeCompra(compra)
-  if (real !== esperada) {
-    return rechazar('huella_distinta', `la fila ${cambio.fila} es el comprobante «${real ?? 'sin clave'}» y se esperaba «${esperada}»`)
+  if (normalizarCelda(compra.fecha) !== normalizarCelda(respaldo.fecha)) {
+    return `la fila ${fila} tiene fecha ${compra.fecha ?? 'vacía'} y compra_sheet tenía ${respaldo.fecha ?? 'vacía'}`
+  }
+  const real = Number(compra.total)
+  const esp = Number(respaldo.total)
+  if (!Number.isFinite(real) || !Number.isFinite(esp) || Math.abs(real - esp) > 1) {
+    return `la fila ${fila} tiene total ${compra.total ?? 'vacío'} y compra_sheet tenía ${respaldo.total ?? 'vacío'}`
+  }
+  if (normalizarCelda(respaldo.concepto) && !mismoTexto(compra.concepto, respaldo.concepto)) {
+    return `la fila ${fila} dice «${compra.concepto ?? 'vacío'}» en Concepto y compra_sheet tenía «${respaldo.concepto}»`
+  }
+  return null
+}
+
+/** ¿Es la misma compra que la pantalla vio? `null` si sí; si no, el rechazo. */
+function verificarHuella(compra, cambio, respaldo) {
+  const esperada = cambio?.clave ?? null
+  if (esperada) {
+    const real = claveDeCompra(compra)
+    if (real !== esperada) {
+      return rechazar('huella_distinta', `la fila ${cambio.fila} es el comprobante «${real ?? 'sin clave'}» y se esperaba «${esperada}»`)
+    }
+  } else if (!respaldoUsable(respaldo)) {
+    // Sin número de comprobante y sin respaldo de la base sólo quedaría el ID, que es una posición.
+    return rechazar('sin_huella', `el cambio se encoló sin clave de comprobante y compra_sheet no tiene proveedor para la fila ${cambio?.fila}: no hay forma de probar que la fila es la misma compra`)
+  } else {
+    const distinta = compararRespaldo(compra, respaldo, cambio.fila)
+    if (distinta) return rechazar('huella_distinta', distinta)
   }
   const idEsperado = cambio?.sheet_id
   if (idEsperado !== null && idEsperado !== undefined && compra.sheet_id !== Number(idEsperado)) {
@@ -78,11 +121,13 @@ function verificarHuella(compra, cambio) {
  * después que la fila sea la misma compra, y recién ahí qué dice la celda. Mirar la celda de una fila
  * que no es la misma compra respondería una pregunta sobre otra plata.
  *
- * @param {{cambio:object, encabezado:any[], fila:any[], obras:object[], clienteAlias?:Map<string,string>}} p `fila` leída
- *   con UNFORMATTED_VALUE, como el sync · `obras` = filas de `obra_canonica` (id, codigo, nombre, cliente_texto,
- *   fusionada_en) · `clienteAlias` = normAlias(rótulo) → cliente canónico, para «Sin obra – X» con X canónico
+ * @param {{cambio:object, encabezado:any[], fila:any[], obras:object[], clienteAlias?:Map<string,string>, respaldo?:object|null}} p
+ *   `fila` leída con UNFORMATTED_VALUE, como el sync · `obras` = filas de `obra_canonica` (id, codigo, nombre,
+ *   cliente_texto, fusionada_en) · `clienteAlias` = normAlias(rótulo) → cliente canónico, para «Sin obra – X» con X
+ *   canónico · `respaldo` = {proveedor, fecha (ISO), total, concepto, resincronizado} de `compra_sheet` para la fila,
+ *   sólo mira cuando el cambio no trae `clave`
  */
-export function planificarObra({ cambio, encabezado, fila, obras, clienteAlias } = {}) {
+export function planificarObra({ cambio, encabezado, fila, obras, clienteAlias, respaldo = null } = {}) {
   const n = Number(cambio?.fila)
   if (!Number.isInteger(n) || n < PRIMERA_FILA) {
     return rechazar('fila_invalida', `la fila ${cambio?.fila} no es un renglón de datos (empiezan en la ${PRIMERA_FILA})`)
@@ -100,16 +145,22 @@ export function planificarObra({ cambio, encabezado, fila, obras, clienteAlias }
 
   const compra = filaACompra(fila ?? [], idx, n)
   if (!compra) return rechazar('fila_vacia', `la fila ${n} ya no tiene ID: no es una compra`)
-  const huella = verificarHuella(compra, cambio)
+  const huella = verificarHuella(compra, cambio, respaldo)
   if (huella) return huella
+  // El espejo se reescribe entero desde el Sheet cada corrida del sync: si eso pasó DESPUÉS de encolar, el
+  // respaldo ya no es lo que la pantalla vio sino una copia reciente del Sheet, y comparar Sheet contra
+  // copia del Sheet prueba menos. No se rechaza —la fila, el proveedor, la fecha y el total siguen
+  // coincidiendo—, pero queda dicho en el motivo con que se cierra.
+  const nota = !cambio?.clave && respaldo?.resincronizado
+    ? 'huella de respaldo tomada de compra_sheet resincronizado después del pedido' : undefined
 
   const actual = normalizarCelda(compra.obra_celda)
-  if (actual === valor) return { accion: 'ya_aplicado', actual }
+  if (actual === valor) return { accion: 'ya_aplicado', actual, nota }
   const esperado = normalizarCelda(cambio?.valor_anterior)
   if (actual !== esperado) {
     return rechazar('celda_cambio', `la celda Obra de la fila ${n} dice «${actual || 'vacía'}» y la pantalla vio «${esperado || 'vacía'}»: no la piso`)
   }
-  return { accion: 'escribir', celda: `Compras!${letra(idx.obra_celda)}${n}`, valor, actual }
+  return { accion: 'escribir', celda: `Compras!${letra(idx.obra_celda)}${n}`, valor, actual, nota }
 }
 
 /** ¿La relectura prueba la escritura? Compara texto contra texto, normalizado igual que el plan. */

@@ -66,10 +66,11 @@ import { agruparPorRolOrganizacional, categoriaVisible, esJefeDeObra } from '../
 import { RotuloDeGrupo } from './RotuloDeGrupo'
 import {
   SIN_MARCAR, hayMarcaDeHoy, horasVisibles, ofertaDeMarcar, rotuloHoy,
-  type EstadoDePapeles, type MarcaDeHoy,
+  type EstadoDePapeles, type MarcaDeHoy, type TardanzaDeHoy,
 } from '../services/pulsoDelPlantel'
 import { BotonPresenteHoy } from './BotonPresenteHoy'
 import { BotonQuitarPresente } from './BotonQuitarPresente'
+import { MarcaTardanzaHoy } from './MarcaTardanzaHoy'
 import type { ClasificacionDelDia } from '../services/asistenciaDelDia'
 import type { RotuloHoy } from '../services/pulsoDelPlantel'
 
@@ -94,6 +95,12 @@ export interface PulsoDelPlantel {
    * con fecha. Habilita el rótulo «N vencidos», no el conteo — el conteo sale igual sin él.
    */
   papelesDisponible: boolean
+  /** LA MARCA DE TARDANZA DE HOY por persona (`asistencia_dia.llego_tarde/salio_antes`, 15/09/2026).
+   *  Sale de la misma lectura que la columna HOY. Quien no está en el Map no tiene marca. */
+  tardanzas: Map<string, TardanzaDeHoy>
+  /** El pie de la tabla: la leyenda del ▲ y cuántos ya tienen marca en la quincena
+   *  (`pieDeTardanzas`). Se dibuja sólo cuando la columna HOY ofrece marcar. */
+  pieTardanzas: string
 }
 
 /**
@@ -108,19 +115,24 @@ const COLS
   = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_110px_90px_70px_90px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.5fr)_minmax(0,1fr)]'
 /**
- * LA MISMA GRILLA CON HOY EN 150px: el ancho que necesita la celda cuando además del estado lleva
- * el botón «Presente» (09/09/2026).
+ * LA MISMA GRILLA CON HOY EN 230px: el ancho que necesita la celda cuando además del estado lleva
+ * el botón «Presente» (09/09/2026) y, sobre un presente, «quitar · tarde · salió antes» (15/09/2026).
  *
  * Los 110px del handoff alcanzan para «sin marcar» y para nada más. Con el botón al lado hay dos
  * salidas malas y una buena: truncar la palabra —la celda diría «sin marc…», que es perder el
  * estado para ganar una acción—, esconder el estado detrás del botón —el botón «Presente» en una
  * fila que NO está presente se lee como si lo estuviera— o darle a la columna los 40px que le
  * faltan. Se eligió lo tercero, y sólo para quien ve el botón: quien no puede marcar sigue viendo
- * la geometría del handoff carácter por carácter. El corte de 1249px no se mueve — la suma fija
- * queda en 976px y los `fr` absorben la diferencia.
+ * la geometría del handoff carácter por carácter.
+ *
+ * DE 150 A 230px CON LA TARDANZA (dueño, 15/09/2026). «● presente · quitar · ▲ tarde · ▲ salió
+ * antes» son cuatro palabras en 11,5–12px más tres separaciones: medido, ~215px. Con 150 la única
+ * salida era truncar el estado o apilar los controles en dos líneas, y la fila del handoff mide una.
+ * El corte de 1249px sigue sin moverse: la suma de mínimos con los seis gaps queda en 1.076px y los
+ * `fr` absorben la diferencia.
  */
 const COLS_MARCA
-  = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_150px_90px_70px_90px]'
+  = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_230px_90px_70px_90px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.5fr)_minmax(0,1fr)]'
 /** En «Inactivos» no hay HOY ni HH que preguntarle a quien ya no está: la baja ocupa su lugar. */
 const COLS_BAJA
@@ -305,6 +317,18 @@ export function TablaPersonas({
                           fecha={marcar.fecha}
                         />
                       )}
+                      {/* LA TARDANZA, SÓLO SOBRE UN PRESENTE (dueño, 15/09/2026): «tarde · salió
+                          antes» al lado de «quitar», con el mismo peso. Sobre «sin marcar» no hay
+                          nada que haya pasado tarde, y sobre una ausencia el CHECK de la base lo
+                          rechaza: la oferta es la misma que la de quitar, no una tercera regla. */}
+                      {oferta === 'quitar' && marcar && (
+                        <MarcaTardanzaHoy
+                          personaId={p.id}
+                          nombre={oracion(p.nombre_completo)}
+                          fecha={marcar.fecha}
+                          inicial={pulso?.tardanzas.get(p.id)}
+                        />
+                      )}
                       {/* SIN OBRA NO HAY BOTÓN, Y SE DICE POR QUÉ. Dos palabras apagadas: sin ellas
                           la fila parecería la única a la que «no le anda» el botón. Marcar presente
                           imputa la jornada a una obra, y acá no hay ninguna que sea la correcta. */}
@@ -345,6 +369,14 @@ export function TablaPersonas({
           })}
         </div>
       ))}
+
+      {/* EL PIE DE LA TARDANZA: la leyenda del ▲ y cuántos ya tienen marca en la quincena. Una línea,
+          y sólo cuando la columna HOY ofrece marcar: sin el control, explicaría un glifo que no está. */}
+      {marcar && conPulso && pulso?.pieTardanzas && personas.length > 0 && (
+        <p data-testid="pie-tardanzas" style={{ padding: '8px 2px 0', fontSize: '11.5px', color: V.tenue, lineHeight: 1.5 }}>
+          {pulso.pieTardanzas}
+        </p>
+      )}
 
       {personas.length === 0 && (
         <div style={{ padding: '24px 2px', fontSize: '12.5px', color: V.apagado }} data-testid="personas-vacio">
