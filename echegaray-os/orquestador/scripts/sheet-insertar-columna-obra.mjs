@@ -10,29 +10,34 @@
 //
 // ═══ LOS PASOS, EN ESTE ORDEN, Y CADA UNO FRENA AL SIGUIENTE ═══
 //
+//   0. precondiciones (`lib/insercion-obra-precondiciones.mjs`): se corre desde el checkout de producción
+//      y su HEAD trae este trabajo; timers y worker quietos; migración 0700 aplicada. SIN bandera para
+//      saltearlas — también en el dry;
 //   1. el encabezado actual es el esperado (K «Detalles / Obra», L «Concepto»; G «Obra / Cliente»,
 //      H «ORDEN DE COMPRA») — si no, ABORTA: la columna ya se insertó o la pestaña cambió;
-//   2. foto de valores y fórmulas de las dos pestañas, a archivo;
+//   2. foto de fórmulas del ARCHIVO ENTERO → qué pestañas citan Compras!/Cobranzas! → foto de valores y
+//      fórmulas de las insertadas y de ésas, a archivo. Cualquier lectura que falla ABORTA;
+//   2b. plan del P&L (otro archivo, lo verifica su propio script por relectura): con dudas, no inserta;
 //   3. insertDimension en Compras L y Cobranzas H, y el rótulo «Obra»;
-//   4. relectura y comparación celda por celda contra la foto corrida una columna: 0 diferencias;
-//   5. huellas de la base corridas (--aplicar de huellas-correr-columna);
-//   5b. el P&L corrido una columna (`pyl-correr-columna-obra.mjs`): su CF_GAS importa "Compras!A:Y" como
-//       TEXTO y el dashboard suma CF_GAS!$M/$O por letra — Google no ajusta nada de eso en otro archivo.
-//       Se PLANEA en el paso 2b, antes de insertar: si el plan tiene una duda, no se inserta;
+//   4. relectura de las mismas pestañas y comparación celda por celda de VALORES (salvo volátiles) y de
+//      FÓRMULAS contra la original con sus referencias corridas como lo hace Google
+//      (`lib/formula-insertar-columna.mjs`): 0 diferencias;
+//   5. huellas de la base corridas (--aplicar de huellas-correr-columna); 5b. P&L corrido y releído;
 //   6. foto nueva, a archivo.
 //
-// Sin --aplicar llega hasta el paso 2 y dice qué haría: NO llama a ninguna API de escritura.
-// Lo que NO hace: deshacer. Si el paso 4 da diferencias, frena ANTES de tocar la base y el archivo
-// queda con la columna insertada: se decide mirando la foto, no con un revert automático.
+// Sin --aplicar llega hasta el 2b y dice qué haría: NO llama a ninguna API de escritura.
+// Lo que NO hace: deshacer. Si el paso 4 falla, la columna YA está insertada: deja un reporte con las
+// fotos y los comandos para decidir, y NO corre las huellas.
 //
-//   node orquestador/scripts/sheet-insertar-columna-obra.mjs              # dry
-//   node orquestador/scripts/sheet-insertar-columna-obra.mjs --aplicar    # desde el árbol principal, con el dueño
-//   --sin-pyl  saltea el P&L (sólo si ya se corrió a mano: sin él, el P&L suma Concepto e IVA)
+//   node orquestador/scripts/sheet-insertar-columna-obra.mjs                          # dry
+//   node orquestador/scripts/sheet-insertar-columna-obra.mjs --aplicar                # desde producción, con el dueño
+//   node orquestador/scripts/sheet-insertar-columna-obra.mjs --reverificar <antes.json>   # relee y compara, sólo lectura
 
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { normalizarRotulo } from '../lib/compras-columnas.mjs'
+import { diferenciasDePestana, pestanasQueCitan } from '../lib/formula-insertar-columna.mjs'
+import { evaluarPrecondiciones, sondearPrecondiciones } from '../lib/insercion-obra-precondiciones.mjs'
 
 export const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -42,6 +47,7 @@ export const INSERCIONES = Object.freeze([
   Object.freeze({ pestana: 'Cobranzas', filaEncabezado: 4, indice: 7, izquierda: 'Obra / Cliente', derecha: 'ORDEN DE COMPRA' }),
 ])
 export const ROTULO = 'Obra'
+export const DESDE = Object.freeze(Object.fromEntries(INSERCIONES.map((i) => [i.pestana, i.indice])))
 
 /** Paso 1, puro: los rótulos que rodean el lugar de la inserción. Devuelve los problemas. */
 export function verificarEncabezado(encabezado = [], ins) {
@@ -50,38 +56,6 @@ export function verificarEncabezado(encabezado = [], ins) {
   if (normalizarRotulo(izq) !== normalizarRotulo(ins.izquierda)) mal.push(`${ins.pestana}: esperaba «${ins.izquierda}» y dice «${izq ?? ''}»`)
   if (normalizarRotulo(der) !== normalizarRotulo(ins.derecha)) mal.push(`${ins.pestana}: esperaba «${ins.derecha}» y dice «${der ?? ''}»`)
   return mal
-}
-
-/** Una grilla con una columna vacía insertada en `indice` (lo que la foto tiene que ser después). */
-export function correrUnaColumna(grilla = [], indice) {
-  return grilla.map((f) => {
-    const fila = [...(f ?? [])]
-    if (fila.length <= indice) return fila
-    return [...fila.slice(0, indice), '', ...fila.slice(indice)]
-  })
-}
-
-const vacio = (v) => v === undefined || v === null || v === ''
-
-/**
- * Paso 4, puro: la relectura contra la foto corrida. Compara VALORES: las fórmulas cambian de texto al
- * insertar (Google corre sus referencias) y su valor no. La columna nueva sólo puede tener el rótulo.
- * @returns {string[]} las diferencias, `pestaña!fila:col antes → ahora`
- */
-export function diferencias(antes = [], despues = [], ins) {
-  const esperado = correrUnaColumna(antes, ins.indice)
-  const out = []
-  const filas = Math.max(esperado.length, despues.length)
-  for (let i = 0; i < filas; i++) {
-    const [e, d] = [esperado[i] ?? [], despues[i] ?? []]
-    for (let j = 0; j < Math.max(e.length, d.length); j++) {
-      if (j === ins.indice && i === ins.filaEncabezado - 1) continue
-      const [a, b] = [e[j], d[j]]
-      if (vacio(a) && vacio(b)) continue
-      if (a !== b) out.push(`${ins.pestana}!f${i + 1}:c${j} ${JSON.stringify(a)} → ${JSON.stringify(b)}`)
-    }
-  }
-  return out
 }
 
 /** Los requests del paso 3. */
@@ -94,23 +68,51 @@ export function requestsDeInsercion(ins, sheetId) {
   ]
 }
 
-async function foto(google, pestanas) {
-  const out = {}
-  for (const p of pestanas) {
-    out[p] = {
-      valores: await google.readSheetValues(ID, `'${p}'!A1:ZZ`, { render: 'UNFORMATTED_VALUE' }),
-      formulas: await google.readSheetValues(ID, `'${p}'!A1:ZZ`, { render: 'FORMULA' }),
-    }
-  }
-  return out
+/** Una pestaña entera. Lo que falla SUBE: una foto con un hueco compararía contra nada y daría verde. */
+async function leerPestana(google, titulo, render) {
+  const g = await google.readSheetValues(ID, `'${String(titulo).replace(/'/g, "''")}'`, { render })
+  if (!Array.isArray(g)) throw new Error(`la lectura de «${titulo}» (${render}) no devolvió una grilla`)
+  return g
 }
 
-/**
- * La corrida entera. Todo lo externo entra por parámetro: `google`, `correrHuellas`, `guardar`.
- * @returns {Promise<{ok:boolean, paso:string, detalle?:string[]}>}
- */
-export async function insertarColumnaObra({ google, aplicar = false, correrHuellas, correrPyl = null, guardar, log = console.log }) {
-  const pestanas = INSERCIONES.map((i) => i.pestana)
+/** Valores y fórmulas de estas pestañas. */
+export async function fotoDe(google, pestanas) {
+  const foto = {}
+  for (const t of pestanas) foto[t] = { formulas: await leerPestana(google, t, 'FORMULA'), valores: await leerPestana(google, t, 'UNFORMATTED_VALUE') }
+  return foto
+}
+
+/** Paso 2: las fórmulas de todo el archivo dicen qué pestañas dependen de las insertadas. */
+async function fotoPrevia(google, meta) {
+  const insertadas = INSERCIONES.map((i) => i.pestana)
+  const formulas = {}
+  // Sin grilla (hojas de gráfico) no hay celdas que citen nada.
+  for (const s of meta.filter((x) => x.rows && x.cols)) formulas[s.title] = await leerPestana(google, s.title, 'FORMULA')
+  const dependientes = pestanasQueCitan(formulas, insertadas)
+  const foto = {}
+  for (const t of [...insertadas, ...dependientes]) foto[t] = { formulas: formulas[t], valores: await leerPestana(google, t, 'UNFORMATTED_VALUE') }
+  return { foto, dependientes }
+}
+
+/** Paso 4, puro: la foto de después contra la de antes, pestaña por pestaña. Devuelve las diferencias. */
+export function compararFotos(antes, despues) {
+  const rotulos = INSERCIONES.filter((ins) => despues[ins.pestana]?.valores?.[ins.filaEncabezado - 1]?.[ins.indice] !== ROTULO)
+    .map((ins) => `${ins.pestana}: falta el rótulo «${ROTULO}» en la columna nueva`)
+  const difs = Object.keys(antes).flatMap((p) => diferenciasDePestana({
+    pestana: p, antes: antes[p], despues: despues[p], desde: DESDE, insercion: INSERCIONES.find((i) => i.pestana === p) ?? null,
+  }))
+  return [...rotulos, ...difs]
+}
+
+async function precondiciones(verificar, log) {
+  let mal
+  try { mal = typeof verificar === 'function' ? await verificar() : ['no hay con qué verificar las precondiciones'] } catch (e) { mal = [`no pude verificar las precondiciones: ${e.message}`] }
+  if (!mal.length) { log('0 ✓ precondiciones: producción al día, timers y worker quietos, migración 0700 aplicada'); return null }
+  log(`✖ precondiciones — NO sigo:\n  ${mal.join('\n  ')}`)
+  return { ok: false, paso: 'precondiciones', detalle: mal }
+}
+
+async function encabezados(google, log) {
   const meta = await google.getSheetMeta(ID)
   const hojas = Object.fromEntries(INSERCIONES.map((i) => [i.pestana, meta.find((s) => s.title === i.pestana)]))
   const mal = []
@@ -119,18 +121,82 @@ export async function insertarColumnaObra({ google, aplicar = false, correrHuell
     const enc = (await google.readSheetValues(ID, `'${ins.pestana}'!A${ins.filaEncabezado}:BZ${ins.filaEncabezado}`))?.[0] ?? []
     mal.push(...verificarEncabezado(enc, ins))
   }
-  if (mal.length) { log(`✖ encabezado inesperado — NO inserto:\n  ${mal.join('\n  ')}`); return { ok: false, paso: 'encabezado', detalle: mal } }
+  if (mal.length) { log(`✖ encabezado inesperado — NO inserto:\n  ${mal.join('\n  ')}`); return { fin: { ok: false, paso: 'encabezado', detalle: mal } } }
   log('1 ✓ encabezados como se esperaba')
+  return { meta, hojas }
+}
 
-  const antes = await foto(google, pestanas)
-  log(`2 ✓ foto previa guardada en ${guardar('antes', antes)}`)
-  for (const ins of INSERCIONES) log(`   ${ins.pestana}: insertaría «${ROTULO}» en el índice ${ins.indice} (${antes[ins.pestana].valores.length} filas)`)
-  // EL P&L SE PLANEA ANTES DE INSERTAR. Si su plan tiene una duda, insertar lo dejaría sumando la columna
-  // de al lado sin un camino probado para corregirlo: mejor no insertar.
+/** Con la columna YA insertada y algo que no cierra: todo lo necesario para decidir, a archivo. NO corre huellas. */
+function reportarFalla({ paso, detalle = [], error = null, rutaAntes, despues, guardar, log }) {
+  const reporte = {
+    paso, columnaYaInsertada: true, fotoAntes: rutaAntes, fotoDespues: despues ? guardar('despues-con-diferencias', despues) : null,
+    error, diferencias: detalle,
+    paraDecidir: [
+      `mirar de nuevo, sólo lectura: node orquestador/scripts/sheet-insertar-columna-obra.mjs --reverificar ${rutaAntes}`,
+      'si CADA diferencia se explica y se acepta: node orquestador/scripts/huellas-correr-columna.mjs --aplicar, después node orquestador/scripts/pyl-correr-columna-obra.mjs --aplicar',
+      'si no se explica: deshacer desde Archivo → Historial de versiones del Sheet, con el dueño. Hasta decidir, timers y worker siguen detenidos.',
+    ],
+  }
+  const ruta = guardar('reporte-falla', reporte)
+  log(`✖ ${paso}: ${error ?? `${detalle.length} diferencia(s)`} — LA COLUMNA YA ESTÁ INSERTADA y NO corro las huellas`)
+  for (const d of detalle.slice(0, 20)) log(`  ${d}`)
+  log(`  reporte: ${ruta}`)
+  for (const c of reporte.paraDecidir) log(`  → ${c}`)
+  return { ok: false, paso, detalle, reporte: ruta }
+}
+
+async function verificarYCerrar({ google, antes, rutaAntes, correrHuellas, correrPyl, guardar, log }) {
+  let despues
+  try { despues = await fotoDe(google, Object.keys(antes)) } catch (e) {
+    return reportarFalla({ paso: 'relectura', error: `no pude releer: ${e.message}`, rutaAntes, despues: null, guardar, log })
+  }
+  const difs = compararFotos(antes, despues)
+  if (difs.length) return reportarFalla({ paso: 'comparacion', detalle: difs, rutaAntes, despues, guardar, log })
+  log(`4 ✓ 0 diferencias de valor y de fórmula, celda por celda, en ${Object.keys(antes).length} pestaña(s)`)
+
+  await correrHuellas()
+  log('5 ✓ huellas corridas')
   if (correrPyl) {
-    const p = await correrPyl({ aplicar: false })
-    if (!p.ok) { log('✖ el P&L no tiene un plan limpio — NO inserto'); return { ok: false, paso: 'pyl-plan', detalle: p.detalle } }
-    log('2b ✓ P&L planeado sin dudas')
+    const p = await correrPyl({ aplicar: true }).catch((e) => ({ ok: false, paso: 'lectura', detalle: [e.message] }))
+    if (!p.ok) {
+      log(`✖ P&L: ${p.paso} — las columnas YA están insertadas: corregilo con pyl-correr-columna-obra.mjs antes de descongelar`)
+      return { ok: false, paso: 'pyl', detalle: p.detalle }
+    }
+    log('5b ✓ P&L corrido una columna y releído')
+  }
+  log(`6 ✓ foto nueva guardada en ${guardar('despues', await fotoDe(google, Object.keys(antes)))}`)
+  return { ok: true, paso: 'fin' }
+}
+
+/**
+ * La corrida entera. Todo lo externo entra por parámetro: `google`, `verificarPrecondiciones` (→ string[]),
+ * `correrHuellas`, `correrPyl`, `guardar`.
+ * @returns {Promise<{ok:boolean, paso:string, detalle?:string[], reporte?:string}>}
+ */
+export async function insertarColumnaObra({ google, aplicar = false, verificarPrecondiciones, correrHuellas, correrPyl = null, guardar, log = console.log }) {
+  const frenado = await precondiciones(verificarPrecondiciones, log)
+  if (frenado) return frenado
+  let hojas, antes, rutaAntes
+  try {
+    const e = await encabezados(google, log)
+    if (e.fin) return e.fin
+    hojas = e.hojas
+    const f = await fotoPrevia(google, e.meta)
+    antes = f.foto
+    rutaAntes = guardar('antes', antes)
+    log(`2 ✓ foto previa (valores y fórmulas) guardada en ${rutaAntes}`)
+    log(`   pestañas que citan Compras/Cobranzas y se verifican: ${f.dependientes.join(', ') || 'ninguna'}`)
+    for (const ins of INSERCIONES) log(`   ${ins.pestana}: insertaría «${ROTULO}» en el índice ${ins.indice} (${antes[ins.pestana].valores.length} filas)`)
+    // EL P&L SE PLANEA ANTES DE INSERTAR. Si su plan tiene una duda —o no se pudo leer—, insertar lo dejaría
+    // sumando la columna de al lado sin un camino probado para corregirlo: mejor no insertar.
+    if (correrPyl) {
+      const p = await correrPyl({ aplicar: false }).catch((err) => ({ ok: false, detalle: [`el P&L no se pudo leer: ${err.message}`] }))
+      if (!p.ok) { log(`✖ el P&L no tiene un plan limpio — NO inserto:\n  ${(p.detalle ?? []).join('\n  ')}`); return { ok: false, paso: 'pyl-plan', detalle: p.detalle } }
+      log('2b ✓ P&L planeado sin dudas')
+    }
+  } catch (err) {
+    log(`✖ una lectura falló antes de insertar — NO inserto: ${err.message}`)
+    return { ok: false, paso: 'lectura', detalle: [err.message] }
   }
   if (!aplicar) { log('(dry) no llamé a ninguna API de escritura'); return { ok: true, paso: 'dry' } }
 
@@ -141,50 +207,44 @@ export async function insertarColumnaObra({ google, aplicar = false, correrHuell
     return { ok: false, paso: 'insercion' }
   }
   log('3 ✓ columnas insertadas')
+  return verificarYCerrar({ google, antes, rutaAntes, correrHuellas, correrPyl, guardar, log })
+}
 
-  const despues = await foto(google, pestanas)
-  const difs = INSERCIONES.flatMap((ins) => diferencias(antes[ins.pestana].valores, despues[ins.pestana].valores, ins))
-  const rotulos = INSERCIONES.filter((ins) => despues[ins.pestana].valores?.[ins.filaEncabezado - 1]?.[ins.indice] !== ROTULO)
-  if (difs.length || rotulos.length) {
-    log(`✖ ${difs.length} diferencia(s) y ${rotulos.length} rótulo(s) faltante(s) — NO corro las huellas:\n  ${difs.slice(0, 20).join('\n  ')}`)
-    guardar('despues-con-diferencias', despues)
-    return { ok: false, paso: 'comparacion', detalle: difs }
-  }
-  log('4 ✓ 0 diferencias celda por celda contra la foto corrida una columna')
-
-  await correrHuellas()
-  log('5 ✓ huellas corridas')
-  if (correrPyl) {
-    const p = await correrPyl({ aplicar: true })
-    if (!p.ok) {
-      log(`✖ P&L: ${p.paso} — las columnas YA están insertadas: corregilo con pyl-correr-columna-obra.mjs antes de descongelar`)
-      return { ok: false, paso: 'pyl', detalle: p.detalle }
-    }
-    log('5b ✓ P&L corrido una columna y releído')
-  }
-  log(`6 ✓ foto nueva guardada en ${guardar('despues', await foto(google, pestanas))}`)
-  return { ok: true, paso: 'fin' }
+/** `--reverificar <antes.json>`: la comparación del paso 4 otra vez, sin escribir nada. */
+export async function reverificarColumnaObra({ google, antes, verificarPrecondiciones, log = console.log }) {
+  const frenado = await precondiciones(verificarPrecondiciones, log)
+  if (frenado) return frenado
+  const difs = compararFotos(antes, await fotoDe(google, Object.keys(antes)))
+  log(difs.length ? `✖ ${difs.length} diferencia(s):\n  ${difs.slice(0, 50).join('\n  ')}` : '✓ 0 diferencias de valor y de fórmula')
+  return { ok: !difs.length, paso: 'reverificacion', detalle: difs }
 }
 
 async function main() {
   const aplicar = process.argv.includes('--aplicar')
+  const iRev = process.argv.indexOf('--reverificar')
   const { makeGoogleClient, WRITE_SCOPES, READONLY_SCOPES } = await import('../lib/google.mjs')
   const { loadConfig } = await import('../lib/config.mjs')
-  const google = makeGoogleClient({ config: loadConfig(), scopes: aplicar ? WRITE_SCOPES : READONLY_SCOPES })
-  const dir = join(process.env.HOME ?? '.', '.echegaray', 'respaldos')
-  mkdirSync(dir, { recursive: true })
-  const sello = new Date().toISOString().replace(/[:.]/g, '-')
-  const guardar = (nombre, datos) => { const f = join(dir, `obra-${nombre}-${sello}.json`); writeFileSync(f, JSON.stringify(datos)); return f }
-  const correrHuellas = async () => {
-    const db = await import('../lib/db.mjs')
-    const { correrHuellas: correr } = await import('./huellas-correr-columna.mjs')
-    try { await correr({ db, google, aplicar: true }) } finally { await db.closePool() }
+  const { guardarEnRespaldos } = await import('./pyl-correr-columna-obra.mjs')
+  const db = await import('../lib/db.mjs')
+  const google = makeGoogleClient({ config: loadConfig(), scopes: aplicar && iRev < 0 ? WRITE_SCOPES : READONLY_SCOPES })
+  const verificarPrecondiciones = async () => evaluarPrecondiciones(await sondearPrecondiciones({ script: fileURLToPath(import.meta.url), query: db.query }))
+  try {
+    if (iRev >= 0) {
+      const antes = JSON.parse(readFileSync(process.argv[iRev + 1], 'utf8'))
+      const r = await reverificarColumnaObra({ google, antes, verificarPrecondiciones })
+      if (!r.ok) process.exitCode = 1
+      return
+    }
+    const guardar = guardarEnRespaldos('obra')
+    const correrHuellas = async () => (await import('./huellas-correr-columna.mjs')).correrHuellas({ db, google, aplicar: true })
+    const correrPyl = process.argv.includes('--sin-pyl')
+      ? null
+      : async (o) => (await import('./pyl-correr-columna-obra.mjs')).correrPyl({ google, guardar, ...o })
+    const r = await insertarColumnaObra({ google, aplicar, verificarPrecondiciones, correrHuellas, correrPyl, guardar })
+    if (!r.ok) process.exitCode = 1
+  } finally {
+    await db.closePool().catch(() => {})
   }
-  const correrPyl = process.argv.includes('--sin-pyl')
-    ? null
-    : async (o) => (await import('./pyl-correr-columna-obra.mjs')).correrPyl({ google, guardar, ...o })
-  const r = await insertarColumnaObra({ google, aplicar, correrHuellas, correrPyl, guardar })
-  if (!r.ok) process.exitCode = 1
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -1,0 +1,61 @@
+// Cada precondición tiene que poder dar ROJO: se parte de un sondeo sano y se rompe una cosa por vez.
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import {
+  COLUMNAS_0700, MARCAS, PRODUCCION, TIMERS, TIMERS_OPCIONALES, WORKER, evaluarPrecondiciones, parsearShow,
+} from './insercion-obra-precondiciones.mjs'
+
+function sano() {
+  const unidades = {}
+  for (const t of TIMERS) { unidades[`${t}.timer`] = { load: 'loaded', active: 'inactive' }; unidades[`${t}.service`] = { load: 'loaded', active: 'inactive' } }
+  unidades[`${WORKER}.service`] = { load: 'loaded', active: 'inactive' }
+  const checkout = Object.fromEntries(MARCAS.map((m) => [m.ruta, { head: `x ${m.contiene ?? ''} x`, disco: `x ${m.contiene ?? ''} x` }]))
+  return {
+    cwd: PRODUCCION, script: `${PRODUCCION}/orquestador/scripts/sheet-insertar-columna-obra.mjs`, checkout, unidades,
+    esquema: { columnas: [...COLUMNAS_0700], cola: true, resolver: true },
+  }
+}
+const con = (cambiar) => { const s = sano(); cambiar(s); return evaluarPrecondiciones(s) }
+
+test('el mundo sano pasa, y el timer opcional que no está instalado no frena', () => {
+  assert.deepEqual(evaluarPrecondiciones(sano()), [])
+  assert.equal(TIMERS.length, 10)
+})
+
+test('(a) desde un worktree, o con producción sin este trabajo, o con cambios sin commitear: NO', () => {
+  assert.match(con((s) => { s.cwd = '/home/jorge/echegaray-os/app/.claude/worktrees/x/echegaray-os' }).join(), /tiene que ser \/home\/jorge\/echegaray-os\/produccion/)
+  assert.match(con((s) => { s.script = '/tmp/x/sheet-insertar-columna-obra.mjs' }).join(), /checkout de producción/)
+  assert.match(con((s) => { s.checkout['orquestador/lib/columnas-por-encabezado.mjs'].head = null }).join(), /no trae este trabajo/)
+  assert.match(con((s) => { s.checkout['orquestador/lib/formula-insertar-columna.mjs'].disco = 'otro' }).join(), /sin commitear/)
+  assert.match(con((s) => { s.checkout['orquestador/scripts/sync-cobranzas.mjs'] = { head: 'A5:AA', disco: 'A5:AA' } }).join(), /lee por posición/)
+})
+
+test('(b) cada timer, su servicio y el worker tienen que estar quietos; un timer que no existe también frena', () => {
+  assert.match(con((s) => { s.unidades['echegaray-compras-sync.timer'].active = 'active' }).join(), /echegaray-compras-sync\.timer está active/)
+  assert.match(con((s) => { s.unidades['echegaray-flujo-caja.service'].active = 'activating' }).join(), /flujo-caja\.service está activating/)
+  assert.match(con((s) => { s.unidades[`${WORKER}.service`].active = 'active' }).join(), /comunicacion-worker\.service está active/)
+  assert.match(con((s) => { delete s.unidades['echegaray-arca-sync.timer'] }).join(), /arca-sync\.timer no existe/)
+  assert.match(con((s) => { s.unidades[`${TIMERS_OPCIONALES[0]}.timer`] = { load: 'loaded', active: 'active' } }).join(), /compras-obra-cola\.timer está active/)
+  assert.equal(con((s) => { s.unidades['echegaray-arca-sync.timer'].active = 'failed' }).length, 0)
+})
+
+test('(c) la 0700 aplicada: cada columna, la cola y el resolver nuevo; sin base, NO', () => {
+  assert.match(con((s) => { s.esquema.columnas = s.esquema.columnas.filter((c) => c !== 'cobranzas.obra_celda') }).join(), /cobranzas\.obra_celda/)
+  assert.match(con((s) => { s.esquema.cola = false }).join(), /compra_obra_cambio/)
+  assert.match(con((s) => { s.esquema.resolver = false }).join(), /versión vieja/)
+  assert.match(con((s) => { s.esquema = { error: 'ECONNREFUSED' } }).join(), /ECONNREFUSED/)
+  assert.match(evaluarPrecondiciones({ error: 'systemctl: no bus' }).join(), /no pude verificar/)
+})
+
+test('systemctl show: bloques por unidad, incluida la que no existe', () => {
+  const u = parsearShow('Id=a.timer\nLoadState=loaded\nActiveState=active\n\nId=b.service\nLoadState=not-found\nActiveState=inactive\n')
+  assert.deepEqual(u, { 'a.timer': { load: 'loaded', active: 'active' }, 'b.service': { load: 'not-found', active: 'inactive' } })
+})
+
+test('no existe una bandera para saltearlas', () => {
+  const script = readFileSync(join(import.meta.dirname, '..', 'scripts', 'sheet-insertar-columna-obra.mjs'), 'utf8')
+  assert.doesNotMatch(script, /saltar|--sin-precondiciones|--forzar/i)
+  assert.match(script, /evaluarPrecondiciones\(await sondearPrecondiciones/)
+})

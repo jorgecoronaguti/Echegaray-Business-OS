@@ -32,11 +32,21 @@ export async function leerHuellas(db) {
   return { celdas, formato }
 }
 
-/** La relectura del Sheet ya insertado, como función (pestaña, fila, col) → fórmula o valor. */
+/**
+ * La relectura del Sheet ya insertado, como función (pestaña, fila, col) → fórmula o valor.
+ *
+ * UNA PESTAÑA QUE EXISTE Y NO SE PUDO LEER ABORTA (auditor, 15/09/2026). Antes era `catch → null`: las
+ * huellas se corrían de lugar con la forma VIEJA, en silencio, y el generador siguiente veía miles de
+ * celdas «de otro». Sólo se saltea la grafía que no existe en el archivo (`COBRANZAS` vive en la base).
+ */
 export async function lectorDeGrilla(google) {
+  const existen = new Set((await google.getSheetMeta(ID)).map((s) => s.title))
   const cache = new Map()
   for (const p of PESTANAS) {
-    try { cache.set(p, await google.readSheetValues(ID, `'${p}'!A1:BZ`, { render: 'FORMULA' })) } catch { cache.set(p, null) }
+    if (!existen.has(p)) continue
+    const g = await google.readSheetValues(ID, `'${p}'!A1:BZ`, { render: 'FORMULA' })
+    if (!Array.isArray(g)) throw new Error(`huellas: la relectura de «${p}» no devolvió una grilla — no corro nada`)
+    cache.set(p, g)
   }
   return (pestana, fila, col) => cache.get(pestana)?.[fila - 1]?.[col] ?? null
 }
