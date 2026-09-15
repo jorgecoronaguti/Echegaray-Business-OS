@@ -3,17 +3,22 @@
 //
 //   node orquestador/scripts/recibos-detalle-importar.mjs            # en seco (default): no escribe
 //   node orquestador/scripts/recibos-detalle-importar.mjs --aplicar  # upsert por (cuil, periodo) y relee
-//   [--limite N] [--persona <cuil>]
+//   [--limite N] [--persona <cuil>] [--volcar <archivo.json>]
 //
 // Lee los PDF del legajo (sólo lectura de Drive), los pasa por `lib/recibo-sueldo-detalle.mjs` y
 // coteja el neto contra `nomina_recibo_neto`, que se cargó por otra vía (la planilla del estudio): un
 // control que se validara contra el mismo PDF no probaría nada.
+//
+// Con `--aplicar` escribe también los conceptos (`recibo_sueldo_concepto`) de cada recibo cuyo detalle
+// cierra al centavo. `--volcar` deja lo leído en un JSON (en seco también): de ahí salen las reglas del
+// recibo estimado y su cotejo retrospectivo, sin tocar la base.
 //
 // ═══ LO QUE NO HACE ═══
 //
 // · No aplica la migración: sin la tabla, `--aplicar` falla antes de escribir la primera fila.
 // · No escribe una fila que el parser rechazó, ni "completa" un campo: el PDF ilegible se lista.
 // · Dos recibos con el mismo (cuil, periodo) no se escriben: ¿cuál manda? Lo decide una persona.
+import { writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { getTokenFor } from '../lib/google-oauth.mjs'
 import { query, withTx, closePool } from '../lib/db.mjs'
@@ -25,6 +30,7 @@ const arg = (n) => (process.argv.includes(n) ? process.argv[process.argv.indexOf
 const APLICAR = process.argv.includes('--aplicar')
 const LIMITE = Number(arg('--limite')) || Infinity
 const CUIL = arg('--persona')?.replace(/\D/g, '') ?? null
+const VOLCAR = arg('--volcar')
 const PARALELO = 3
 const FUENTE = 'pdf-legajo:recibos-detalle-importar'
 
@@ -99,12 +105,28 @@ async function escribir(filas) {
     'contribuciones_empleador', 'costo_total_empleador', 'fondo_cese', 'art', 'contribucion_uocra']
   await withTx(async (c) => {
     for (const f of filas) {
-      await c.query(
+      const { rows: [{ id }] } = await c.query(
         `insert into public.recibo_sueldo_linea (${cols.join(',')}) values (${cols.map((_, i) => `$${i + 1}`).join(',')})
-         on conflict (cuil, periodo) do update set ${cols.filter((k) => k !== 'cuil' && k !== 'periodo').map((k) => `${k} = excluded.${k}`).join(', ')}, cargado_en = now()`,
+         on conflict (cuil, periodo) do update set ${cols.filter((k) => k !== 'cuil' && k !== 'periodo').map((k) => `${k} = excluded.${k}`).join(', ')}, cargado_en = now()
+         returning id`,
         cols.map((k) => f[k]))
+      // LOS CONCEPTOS SE REEMPLAZAN ENTEROS: un recibo re-leído no puede quedar con líneas de la lectura
+      // anterior. Sin detalle que cierre, el recibo queda sin conceptos, nunca con un detalle a medias.
+      await c.query('delete from public.recibo_sueldo_concepto where recibo_id = $1', [id])
+      for (const [orden, k] of (f.conceptos ?? []).entries()) {
+        await c.query(
+          `insert into public.recibo_sueldo_concepto (recibo_id, orden, codigo, descripcion, seccion, unidad, base, monto)
+           values ($1,$2,$3,$4,$5,$6,$7,$8)`, [id, orden, k.codigo, k.descripcion, k.seccion, k.unidad, k.base, k.monto])
+      }
     }
   })
+  const { rows: cuenta } = await query(
+    `select l.cuil, l.periodo, count(k.id)::int n from public.recibo_sueldo_linea l
+       left join public.recibo_sueldo_concepto k on k.recibo_id = l.id where l.fuente = $1 group by l.cuil, l.periodo`, [FUENTE])
+  const nEnBase = new Map(cuenta.map((x) => [`${x.cuil}|${x.periodo}`, x.n]))
+  const conceptosMal = filas.filter((f) => nEnBase.get(`${f.cuil}|${f.periodo}`) !== (f.conceptos?.length ?? 0))
+  console.log(`RELECTURA CONCEPTOS: ${filas.length - conceptosMal.length}/${filas.length} recibos con la cantidad esperada de conceptos`)
+  if (conceptosMal.length) process.exitCode = 1
   // La evidencia es lo leído en el destino, no el «insert» que no tiró error.
   const { rows } = await query(
     'select cuil, periodo, neto, horas_blanco, costo_total_empleador from public.recibo_sueldo_linea where fuente = $1', [FUENTE])
@@ -139,6 +161,26 @@ function informarCostoEmpleador(leidos, fallidos) {
   for (const x of q.filter((p) => /ROSALES/.test(p.nombre))) console.log(`  factor ${x.nombre}: ${f3(x)}`)
 }
 
+/**
+ * LOS CONCEPTOS: cuántos recibos cierran sus invariantes al centavo, cuáles no y por qué, y el catálogo de
+ * códigos por sección con cuántos recibos traen cada uno. Es lo que dice si la tabla de conceptos sirve.
+ */
+function informarConceptos(leidos) {
+  const ok = leidos.filter((l) => l.conceptos?.ok)
+  const mal = leidos.filter((l) => !l.conceptos?.ok)
+  const lineas = ok.reduce((a, l) => a + l.conceptos.lineas.length, 0)
+  console.log(`\nCONCEPTOS: ${ok.length}/${leidos.length} recibos cierran Σ rem, Σ no rem, Σ descuentos y neto al centavo · ${lineas} líneas · ${mal.length} no cierran`)
+  for (const l of mal) console.log(`  NO CIERRA ${l.doc.nombre} → ${l.conceptos?.error}`)
+  const catalogo = new Map()
+  for (const l of ok) {
+    for (const c of l.conceptos.lineas) {
+      const k = `${c.seccion.padEnd(15)} ${c.codigo} ${c.descripcion}`
+      catalogo.set(k, (catalogo.get(k) ?? 0) + 1)
+    }
+  }
+  for (const [k, n] of [...catalogo].sort()) console.log(`  ${k} · ${n}`)
+}
+
 function informar({ rows, leidos, fallidos, cot, duplicados, avisos }) {
   const porFormato = leidos.reduce((a, l) => ({ ...a, [l.formato]: (a[l.formato] || 0) + 1 }), {})
   console.log(`\nRECIBOS 2026 en legajo: ${rows.length} · leídos: ${leidos.length} ${JSON.stringify(porFormato)} · fallidos: ${fallidos.length}`)
@@ -151,6 +193,7 @@ function informar({ rows, leidos, fallidos, cot, duplicados, avisos }) {
   console.log(`\nAVISOS (${avisos.length}):`)
   for (const a of avisos) console.log(`  ${a}`)
   informarCostoEmpleador(leidos, fallidos)
+  informarConceptos(leidos)
   const sinCat = leidos.filter((l) => !l.fila.categoria).length
   const sinVh = leidos.filter((l) => l.fila.valor_hora == null).length
   console.log(`\nSin categoría reconocida: ${sinCat} · sin valor hora (sin 0401): ${sinVh}`)
@@ -180,6 +223,7 @@ async function main() {
     f.persona_id = idPorCuil.get(f.cuil) ?? null
     f.drive_file_id = l.doc.drive_file_id
     f.fuente = FUENTE
+    f.conceptos = l.conceptos?.ok ? l.conceptos.lineas : null
     if (!f.persona_id) avisos.push(`${l.doc.nombre}: CUIL ${f.cuil} sin persona`)
     else if (l.doc.persona_id && l.doc.persona_id !== f.persona_id) avisos.push(`${l.doc.nombre}: el CUIL del PDF (${f.cuil}) es de otra persona que la del legajo`)
     const pn = periodoDelNombre(l.doc.nombre)
@@ -192,6 +236,11 @@ async function main() {
   const escribibles = [...clave.values()].filter((v) => v.length === 1).map((v) => v[0].fila)
 
   informar({ rows, leidos, fallidos, cot: await cotejar(leidos), duplicados, avisos })
+  // EL VOLCADO ES LO LEÍDO, NO LO ESCRITO: sirve para derivar reglas y cotejar sin tocar la base.
+  if (VOLCAR) {
+    writeFileSync(VOLCAR, JSON.stringify(leidos.map((l) => ({ nombre: l.doc.nombre_completo ?? l.doc.nombre, formato: l.formato, fila: l.fila, conceptos: l.conceptos })), null, 1))
+    console.log(`\nVolcado: ${leidos.length} recibo(s) en ${VOLCAR}`)
+  }
   if (APLICAR) await escribir(escribibles)
   else console.log(`\nEn seco: ${escribibles.length} fila(s) se escribirían con --aplicar.`)
 }

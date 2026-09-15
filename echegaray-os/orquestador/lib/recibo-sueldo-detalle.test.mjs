@@ -297,6 +297,85 @@ LUGAR Y FECHA DE PAGO 554.979,40 554.979,40
 FORMA DE TOTAL NETO → FORMA DE
 5.373,00 6 5.373,00 6`
 
+// ═══ CONCEPTOS UNO POR UNO ═══
+
+const suma = (ls, seccion) => Math.round(ls.filter((c) => c.seccion === seccion).reduce((a, c) => a + c.monto * 100, 0)) / 100
+
+test('Rosales Q2-08 completo: cada concepto con su sección, y las sumas cierran al centavo', () => {
+  const r = parsearRecibo(ROSALES_Q2_08_COMPLETO)
+  assert.equal(r.ok, true, r.error)
+  assert.equal(r.conceptos.ok, true, r.conceptos.error)
+  const ls = r.conceptos.lineas
+  assert.deepEqual(ls.filter((c) => c.seccion === 'remunerativo').map((c) => c.codigo), ['0401', '0425', '0426', '0431'])
+  assert.deepEqual(ls.filter((c) => c.seccion === 'descuento').map((c) => c.codigo),
+    ['4010', '4020', '4050', '4150', '4170', '4175', '4285', '4287'])
+  assert.equal(ls.filter((c) => c.seccion === 'contribucion').length, 12)
+  assert.equal(ls.filter((c) => c.seccion === 'no_remunerativo').length, 0)
+  assert.equal(suma(ls, 'remunerativo'), 317400)
+  assert.equal(suma(ls, 'descuento'), 87159.88)
+  assert.equal(suma(ls, 'contribucion'), 166334.06)
+  assert.deepEqual(ls.find((c) => c.codigo === '0431'),
+    { codigo: '0431', descripcion: 'HORAS FERIADO', seccion: 'remunerativo', unidad: 5, base: 6348, monto: 31740 })
+  assert.equal(ls.find((c) => c.codigo === '0426').monto, -57132)
+})
+
+test('«LEY 19032» es la descripción, no 19032 unidades (el dry de los 299 la guardaba como «LEY»)', () => {
+  assert.deepEqual(concepto('4020 LEY 19032 $ 9.522,00'), { codigo: '4020', descripcion: 'LEY 19032', unidad: null, base: null, monto: 9522 })
+  assert.deepEqual(concepto('4020 LEY 19032 7.018,50'), { codigo: '4020', descripcion: 'LEY 19032', unidad: null, base: null, monto: 7018.5 })
+  assert.equal(concepto('5020 CONTRIBUCION LEY 19032 $ 4.990,98').descripcion, 'CONTRIBUCION LEY 19032')
+  // Con base impresa la unidad sí es unidad: unidad × base = monto.
+  assert.equal(concepto('5010 CONTRIBUCION JUBILACION 45 $ 7.000,00 $ 315.000,00').unidad, 45)
+})
+
+test('un descuento que falta: los conceptos dan error explícito, la fila del recibo sigue sana', () => {
+  const r = parsearRecibo(ROSALES_Q2_08_COMPLETO.replace('4287 SEGURO DE VIDA UOCRA $ 19.617,16\n', ''))
+  assert.equal(r.ok, true, r.error)
+  assert.equal(r.fila.neto, 230240.12)
+  assert.equal(r.conceptos.ok, false)
+  assert.match(r.conceptos.error, /descuentos/)
+})
+
+test('un haber leído en la sección equivocada: error (Σ remunerativo ≠ impreso)', () => {
+  const txt = ROSALES_Q2_08_COMPLETO.replace('0431 HORAS FERIADO 5 $ 6.348,00 $ 31.740,00\nNO REMUNERATIVO', 'NO REMUNERATIVO\n0431 HORAS FERIADO 5 $ 6.348,00 $ 31.740,00')
+  const r = parsearRecibo(txt)
+  assert.equal(r.conceptos.ok, false)
+  assert.match(r.conceptos.error, /remunerativo/)
+})
+
+test('no remunerativo del formato con rótulos: 0490 va a su sección y el neto cierra con él', () => {
+  const r = parsearRecibo(ROSALES_Q2_07)
+  // El recorte sólo trae la jubilación: los descuentos no cierran y se dice.
+  assert.equal(r.conceptos.ok, false)
+  const completo = ROSALES_Q2_07.replace('Descuentos: $ 80.875,72', 'Descuentos: $ 31.993,50').replace('SUELDO NETO $ 243.524,28', 'SUELDO NETO $ 292.406,50')
+  const c = parsearRecibo(completo)
+  assert.equal(c.ok, true, c.error)
+  assert.equal(c.conceptos.ok, true, c.conceptos.error)
+  assert.equal(c.conceptos.lineas.find((x) => x.codigo === '0490').seccion, 'no_remunerativo')
+  assert.equal(c.conceptos.lineas.find((x) => x.codigo === '5010').seccion, 'contribucion')
+})
+
+test('formato duplicado: cada concepto una vez, y el remunerativo sumado está impreso', () => {
+  const r = parsearRecibo(ZOGBE_Q1_03)
+  assert.equal(r.conceptos.ok, true, r.conceptos.error)
+  const ls = r.conceptos.lineas
+  assert.equal(ls.length, 9)
+  assert.equal(suma(ls, 'remunerativo'), 233950)
+  assert.equal(suma(ls, 'descuento'), 45105.56)
+  // El par «remunerativo no remunerativo» está impreso en el original y en el duplicado: se cambian los dos.
+  const mal = parsearRecibo(ZOGBE_Q1_03.replace(/233\.950,00 0,00/g, '233.000,00 0,00'))
+  assert.equal(mal.conceptos.ok, false)
+  assert.match(mal.conceptos.error, /remunerativo/)
+})
+
+test('formato duplicado: 0490 NR y 9999 REDONDEO son no remunerativos', () => {
+  const r = parsearRecibo(REDONDEO_Q2_05)
+  assert.equal(r.conceptos.ok, true, r.conceptos.error)
+  const ls = r.conceptos.lineas
+  assert.equal(suma(ls, 'remunerativo'), 665747.2)
+  assert.equal(suma(ls, 'no_remunerativo'), 62700.3)
+  assert.equal(ls.find((c) => c.codigo === '9999').seccion, 'no_remunerativo')
+})
+
 test('recibo sin la sección: costo empleador null con aviso, nunca 0', () => {
   const r = parsearRecibo(MALDONADO_Q1_01)
   assert.equal(r.ok, true, r.error)
