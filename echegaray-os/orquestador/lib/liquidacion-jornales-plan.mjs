@@ -174,3 +174,30 @@ export function separarSalteadas(quincenas, grupo, estados = new Map()) {
   }
   return { aCargar, salteadas }
 }
+
+/** No termina en `_manual` y también lo escribe una persona: los billetes que el dueño entrega en mano. */
+const EDITADAS_SIN_SUFIJO = Object.freeze(['efectivo_redondeado'])
+const IDENTIFICADOR = /^[a-z_][a-z0-9_]*$/
+
+/**
+ * LAS COLUMNAS QUE DICEN «ESTO LO ESCRIBIÓ ALGUIEN EN LA APP», A PARTIR DE LAS QUE LA BASE TIENE.
+ *
+ * La guarda contaba siete `*_manual` tipeadas y le faltaban cinco (`horas_recibo_manual`,
+ * `valor_hora_recibo_manual`, `negro_manual`, `horas_negro_manual`, `efectivo_redondeado`): la 1ª de
+ * septiembre decía «1 línea editada» y eran 2 (Agüero, `horas_recibo_manual` = 50). Una lista tipeada
+ * queda corta el día que la web agrega una celda editable; por eso entra lo que devuelve
+ * `information_schema` y la regla es el sufijo, que es el contrato de `COLUMNA_DE`
+ * (liquidacionOverrides.ts) — su test verifica que todas sus columnas lo cumplen.
+ */
+export function columnasEditadasEnApp(columnas = []) {
+  return [...new Set(columnas)]
+    .filter((c) => IDENTIFICADOR.test(c) && (c.endsWith('_manual') || EDITADAS_SIN_SUFIJO.includes(c)))
+    .sort()
+}
+
+/** El predicado SQL «la línea `alias` tiene alguna celda editada». Sin columnas no hay cómo saberlo: falla. */
+export function sqlLineaEditada(columnas = [], alias = 'l') {
+  const cols = columnasEditadasEnApp(columnas)
+  if (!cols.length) throw new Error('liquidacion_linea sin columnas editables en information_schema: no puedo saber qué tocó una persona, NO cargo nada')
+  return `(${cols.map((c) => `${alias}.${c} is not null`).join(' or ')})`
+}
