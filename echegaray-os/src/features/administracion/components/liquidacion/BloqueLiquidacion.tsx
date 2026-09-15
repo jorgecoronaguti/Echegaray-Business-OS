@@ -10,6 +10,7 @@ import {
   desgloseDeQuincena, tarjetaDeQuincena, totalesDeCuadro, type ParteDeLaTarjeta,
 } from '../../services/liquidacionQuincena'
 import { getLiquidacionDeLaQuincena } from '../../services/liquidacionQuincenaService'
+import { estadoDelCuadro } from '../../services/estadoDelCuadro'
 import { CuadroLiquidacion } from './CuadroLiquidacion'
 
 // LA SOLAPA «LIQUIDACIÓN» — qué cobra cada persona en esta quincena y por qué canal sale.
@@ -90,8 +91,10 @@ export async function BloqueLiquidacion({ quincenaPedida, hoy, hrefDe, puedeCerr
               cuadro={c}
               totales={totales[i]}
               quincena={{ desde: quincena.desde, hasta: quincena.hasta }}
-              estado={estados[c.grupo]?.estado ?? 'abierta'}
-              cerradaEn={estados[c.grupo]?.cerradaEn ?? null}
+              // SIN CABECERA PROPIA EL CUADRO HEREDA LA QUINCENA (`estadoDelCuadro`): con `?? 'abierta'`, Oficina
+              // —con los jefes— se dibujaba abierta y editable en una quincena ya cerrada.
+              estado={estadoDelCuadro(estados, c.grupo).estado}
+              cerradaEn={estadoDelCuadro(estados, c.grupo).cerradaEn}
               puedeCerrar={puedeCerrar}
               camposEditables={camposEditables}
             />

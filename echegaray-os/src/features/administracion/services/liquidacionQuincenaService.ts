@@ -43,6 +43,7 @@ import {
 import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornalesService.ts'
 import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposicionConvenioService.ts'
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
+import { estadoDelCuadro } from './estadoDelCuadro.ts'
 import { entradaDeBlanco } from './sueldoBlancoNegro.ts'
 import { baseDelEstimado, leerFeriadosDeLaQuincena } from './reciboEstimadoService.ts'
 import { REGLAS_GENERADAS } from './reglasDelRecibo.generadas.ts'
@@ -315,7 +316,8 @@ export async function getLiquidacionDeLaQuincena(
     // pagó, que es exactamente lo que cerrar existe para impedir.
     cuadros: cuadros.map((c) => ({
       ...c,
-      lineas: estados[c.grupo]?.estado === 'cerrada'
+      // UN CUADRO SIN CABECERA DE UNA QUINCENA CERRADA TAMPOCO SE PISA: hereda el cierre (`estadoDelCuadro`).
+      lineas: estadoDelCuadro(estados, c.grupo).estado === 'cerrada'
         ? c.lineas.map(sinOverrides)
         // LA PRECEDENCIA VIVE EN `aplicarOverrides` Y NO ACÁ: manual > JORNALES > calculado, una sola
         // vez y con sus diez tests. Acá sólo se le entrega la fuente.

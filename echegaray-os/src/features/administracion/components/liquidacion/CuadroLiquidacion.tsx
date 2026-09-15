@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import type { TotalesDeCuadro } from '../../services/liquidacionQuincena'
 import { desvioDelAcuerdo } from '../../services/liquidacionAcuerdo'
+import { rotuloDelMensual } from '../../services/cobroMensual'
 import type { CampoEditable, LineaConOverrides } from '../../services/liquidacionOverrides'
 import type { CuadroConOverrides } from '../../services/liquidacionQuincenaService'
 import { cerrarQuincena } from '../../services/liquidacionActions'
@@ -227,6 +228,12 @@ function Fila({ linea, quincena, grupo, bloqueada, camposEditables }: {
         {linea.sinTarifa && (
           <span data-testid="sin-tarifa" style={{ marginLeft: 8, fontSize: '11px', color: V.warn }}>
             sin tarifa
+          </span>
+        )}
+        {rotuloDelMensual(linea) && (
+          // APAGADO, NO ÁMBAR: es un dato que falta, no una pregunta para el dueño (`cobroMensual.ts`).
+          <span data-testid="mensual-sin-neto" style={{ marginLeft: 8, fontSize: '11px', color: V.apagado }}>
+            {rotuloDelMensual(linea)}
           </span>
         )}
         {linea.reciboSinGiro && (

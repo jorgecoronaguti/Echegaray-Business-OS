@@ -45,7 +45,7 @@ import { declararPresencia } from './presenciaDelDiaService'
 // typecheck no lo ve; lo vio el navegador (11/09/2026).
 import { FUENTE_GRILLA_QUINCENA } from './presenciaDelDia'
 import { declaracionesDeJornada } from './presenciaPorHoras'
-import { quincenaDe } from './quincena'
+import { quincenaCerrada } from './quincenaCerradaService'
 import {
   obraParaElDia, TEXTO_DE_MOTIVO, TEXTO_SIN_OBRA,
   type AsignacionDeObra, type DiaYaImputado,
@@ -67,17 +67,6 @@ const celdaSchema = z.object({
       .refine((n) => n !== 0, 'Cero horas no es una marca: dejá la celda vacía o marcá la ausencia'),
   ]),
 })
-
-/** ¿Está sellada la quincena de esa fecha? Falla CERRADO: sin lectura no se escribe nada. */
-async function quincenaCerrada(
-  supabase: Awaited<ReturnType<typeof createClient>>, fecha: string,
-): Promise<{ cerrada: boolean } | { error: string }> {
-  const q = quincenaDe(fecha)
-  const { data, error } = await supabase.from('liquidacion_quincena')
-    .select('estado').eq('desde', q.desde).eq('hasta', q.hasta)
-  if (error) return { error: `No pude verificar si la quincena está cerrada: ${error.message}` }
-  return { cerrada: (data ?? []).some((f) => (f as { estado: string }).estado === 'cerrada') }
-}
 
 /**
  * LAS HORAS DE UN DÍA DE UNA PERSONA. Crea la fila si no existe, corrige si existe una sola, y se
@@ -121,11 +110,8 @@ export async function guardarHorasDeLaCelda(
   // trabajó», que es una afirmación que nadie hizo.
   if (datos.data.horas === '') return { ok: true }
 
-  const sello = await quincenaCerrada(supabase, datos.data.fecha)
-  if ('error' in sello) return { ok: false, error: sello.error }
-  if (sello.cerrada) {
-    return { ok: false, error: 'La quincena está cerrada: las horas quedaron selladas. Reabrila para corregir.' }
-  }
+  const cierre = await quincenaCerrada(supabase, datos.data.fecha)
+  if (cierre !== null) return { ok: false, error: cierre }
 
   return crearElDia(supabase, datos.data.personaId, datos.data.fecha, datos.data.horas)
 }

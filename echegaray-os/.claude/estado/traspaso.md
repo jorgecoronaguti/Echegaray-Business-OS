@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-14 ~17:00 (−03) · main = producción (1dcb8053)_
+_actualizado: 2026-09-15 ~09:10 (−03) · main = producción (423e89fc)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -14,42 +14,53 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
 - Nivel E = firma del dueño · nunca debilitar RLS · padrón: nunca alta/baja
 - Sheet real nunca desde un worktree · nunca correr pipeline/generadores «para ver si anda»
 - Nadie cierra su propio trabajo (qa-visual / auditor) · responder al dueño por el bot (avisar-al-dueno.mjs)
+- **Si un pedido grande se frena (agentes cortados), avisar al dueño en el momento** (15/09 preguntó 5 veces por la columna Obra)
+- El dueño pidió «todo ahora, nada de esta noche»: DDL en horario sí, pero migración por migración y leyendo el efecto
 
 ## 3. ARQUITECTURA (lo que se usa seguido)
 
 - Web: Vercel desde `main`. Backend: push + `git -C ~/echegaray-os/produccion/echegaray-os pull --ff-only`.
 - Migraciones desde main: `node orquestador/scripts/aplicar-migracion.mjs <f>` (ensayo) y `--aplicar`.
-- Consultas: script en scratchpad que importa `orquestador/lib/db.mjs`. Sheet: `makeGoogleClient({config: loadConfig(), scopes: READONLY_SCOPES}).readSheetGrid(ID, rango)` → `.filas`.
-- Adjuntos del dueño: del JSONL de la sesión (buscar `media_type` recursivo, también en registros `attachment`).
+- Probar como usuario: tx con `set local role authenticated` + `request.jwt.claims` (dueño 4677f284-d873-4531-9c8f-cc3dab56ffd0). **El ensayo como postgres NO ve errores de permisos** (así se cayó el CRM).
+- Consultas: script en scratchpad que importa `orquestador/lib/db.mjs` (FK de líneas: `liquidacion_linea.liquidacion_id`).
 
-## 4. CERRADO HOY (14/09) — EN PRODUCCIÓN
+## 4. CERRADO HOY (15/09) — EN PRODUCCIÓN, VERIFICADO EN LA BASE
 
-- **Liquidación (varias subidas; última 4988137e):** blanco+negro (recibo real / estimado por mediana), horas únicas Horas=Liquidación (presencia-defecto y licencias cuentan), plantel por quincena, orden de JORNALES, Cobra total fija, TODAS las celdas editables (manuales en `liquidacion_linea`: `*_manual`, `negro_manual`, `horas_manual`, `horas_recibo_manual`, `valor_hora_recibo_manual`), Escape/Enter/Tab, sin spinners, Efect. red. guarda con clave de servicio (antes 42501), Cmd/Ctrl+Z en la plataforma (`src/shared/components/deshacer`). Migraciones 2100, 2300, 0100, 0300, 0400, 0510 aplicadas.
-- **Recibos 2026** en `recibo_sueldo_linea` (299; costo empleador jul–ago en 82, invariante al centavo).
-- **HH de obra CRM** = todas las horas trabajadas (`hh_que_cuentan_en_obra`, 0200). Desempate de asignaciones (`asignacion-del-dia.mjs`). Espejo JORNALES poda bloques corridos.
-- **Proveedores → Comprobantes** (vista `proveedor_compra`, 0500) — 1dcb8053.
-- **Candados:** Nómina, Cargas Sociales, Jornales por Quincena, Cheques Emitidos.
-- Obras renombradas «CÓDIGO - NOMBRE» (14 filas, respaldo en scratchpad `respaldo-obras-renombre-20260914.json`).
+- **HH por obra** (8f528000): las 210 asignaciones «reconstruido desde JORNALES» ya no mueven horas (693 filas vueltas a la planilla; LE Mampostería 3.660 h). Rosales → Quattropani desde 01/09 (fila ea81c8d5). Auditor firmó.
+- **Costo MO por obra** (0800→0842): cerradas = pagado real; jefes fuera de las HH de obra y costo entero a ES-ADM (siguen siendo jefes en Personal); Tello subcontratista; sin doble conteo BSA. Quattropani 556 h / MO $4,50 M.
+- **CRM caído y lento → arreglado**: 0850 (`persona_para_costo`) + 0855 (`costo_mo_quincena` SECURITY DEFINER con puerta `liquida_sueldos() or ve_economia()`; `persona_para_costo` sólo service_role → el sellado funciona). Cartera 8,1 s → 2,8 s. Auditor firmó 0855.
+- **Quincenas históricas** (a00b84cb + 423e89fc): Palacios y Gonzales emparejados, Oficina 26 cargada (29 líneas), BAJA declaradas en `monto_excluido`, columna interna sin fecha, guarda de quincenas firmadas/selladas/editadas. Control: Δ pagado 0 desde Q2-04.
+- **Celda de horas vacía** (186b3026, Vercel OK): vaciar un día sin 0 ni ausente en Horas/Carga del día/Liquidación; presencia por defecto no rellena al re-guardar. Auditor firmó con límites; QA en producción sobre personas de prueba en curso.
+- **Jefes en todas las quincenas** (f1051b3a): Horas y Liquidación agrupan por `esJefeDeObra(puesto)`, no por tarifa; en cerradas COBRA = importe de la planilla. Auditor firmó con límites: Q2-08 sin sueldo cargado (preguntado al dueño).
+- **Angel Fernandez** rubro Subcontratista (declarado por el dueño 15/09).
+
+## 4b. DECISIONES DEL DUEÑO 15/09 (tarde)
+
+- Filas BAJA Q2-03 se pagaron → cargar (Aguirre fila 192 no cierra: ¿470.000? preguntado).
+- Las 10 personas «alta 01/09 desde liquidación final» sin fecha de ingreso = cuadrilla del subcontratista Gerson Castro (Messina, 05–12/08); su costo va a Messina, no a Estructura; no son plantel propio.
+- Columna Obra: prioridad 1; «todo basado y consolidado en Supabase»; cuidado con el impacto en todas las pestañas.
 
 ## 5. EN CURSO (agentes, worktrees)
 
-- `feat/liquidacion-blanco-negro`: aviso «sin recalc.» → recálculo si estimado / ícono si real; quitar toast «Nada para deshacer».
-- `fix/obras-codificadas`: importador HH pierde resolución por nombre tras el renombre (8 filas A MOVER) — objetivo 0 diferencias fila por fila; + código interno `OB-0001` inmutable visible en toda la app; + lista de obras faltantes (no crear).
-- `feat/costo-mo-por-obra-unico`: fórmula única de costo MO (costo empleador recibo + negro; jefes medio sueldo/quincena; licencias a obra asignada; sellado por quincena) + columna **Subcontratos** en CRM + cotizado único y compras de obras cerradas vs obra general.
-- `fix/cronologia-asignaciones` (6ade0a5e): auditor RECHAZA sólo por falta de prueba RLS como usuario de la migración 0310 (recrea vistas/funciones/policy sobre `obra_asignacion_vigente`). Correr `scratchpad/rls.mjs` FUERA DE HORARIO (locks sobre personas), aplicar 0310 ANTES del deploy.
+- `feat/tiempo-real` (dbfb0d9f): triggers por evento → `realtime.send` topic `os:cambios`, cliente con debounce y sin pisar edición. **Auditor corriendo. BLOQUEO: `realtime.messages` sin particiones → los avisos no se guardan.** Migración 20260915T2100 sin aplicar.
+- `fix/jefes-en-quincenas-cerradas`: en Liquidación Q1-08/Q2-08 los jefes caen en OBREROS «sin tarifa» (agrupa por tarifa mensual vigente, sólo existe desde 09/01) y BANCO $663.141,56 idéntico; en Horas 16–31/08 Maldonado cae en obreros. Capturas en `tests/qa-shots/jefes-*` (untracked, borrar al cerrar).
+- `feat/celda-de-horas-vacia`: dejar un día sin horas (ni ausente, ni presencia por defecto) en TODOS los cuadros de horas.
+- **Columna Obra** (pedido 14/09, NADA en producción): base `feat/obra-por-fila` (5255a9c5, migración 0700 sin aplicar) · `feat/columnas-encabezado-lectores` (7be8530c, terminada) · `feat/columnas-encabezado-cobranzas` y `-generadores` (agentes; generadores además entrega inventario de impacto en TODAS las pestañas: `scratchpad/obra-impacto-sheet.md`) · `feat/obra-cargador-y-app` (bot comprobantes + Compras en la app + backfill en seco). Después: auditor → merge → insertar L/H desde producción con timers pausados y verificación celda por celda → 0700 → backfill con OK del dueño.
 
-## 6. TIMERS DETENIDOS (reactivar con criterio)
+## 6. RIESGOS / DEUDA DETECTADA
 
-- `echegaray-flujo-caja.timer` — detenido 15:12 (el dueño se quejó de barridas); preguntar si se reactiva (sus pestañas están candadas).
-- `echegaray-jornales-registros.timer` — detenido 16:06 hasta que `fix/obras-codificadas` dé 0 diferencias en el ensayo.
+- `obra_panel.monto_contratado` publica bsa-adicional 5,97 M y `CarteraObras.tsx:144` lo suma → doble conteo en Obras. `cliente_economia.contratado` Messina 159,76 M vs ficha 185,63 M (dos verdades).
+- Subcontratos sin obra asignada ≈ $27 M (Castro, Fredes Messina, Angel Fernandez sin rubro, Leandro Rojas sin proveedor) → los resuelve el backfill de la columna Obra.
+- Liquidación vs `registros_hh` no concilian por quincena cuando el bloque de JORNALES cruza el día 15. Oficina fila 56 («2/3») pone $1,5 M en Q1-04.
+- `hh-por-obra.pg.test.mjs` y otros `.pg` rojos esperados/ajenos; `orq:test` completo no corrido hoy.
 
-## 7. PENDIENTES DEL DUEÑO
+## 7. PENDIENTES DEL DUEÑO (preguntado)
 
-Reactivar flujo-caja · Tello y Ochoa con recibo Q2-08 sin transferencia · Oficina 26 dos bloques en febrero · probar guardar un Efect. red. en 01/09 y verificar en base · Castro/Moreno/Quiroz baja 12/08 con recibo Q2-08 · Ochoa alta 26/08 con horas en marzo · SF $152 M y LE $30 M de Cobranzas sin obra · U$S 15.400 Quattropani sumado como pesos.
+Filas BAJA Q2-03 ($2,33 M) ¿se pagaron? · Agüero/Alaniz Q2-05 80 vs 88 h · ¿quiénes de las quincenas son de equipos de subcontratistas? · Angel Fernandez = subcontratista en ficha · corregir en JORNALES celda 70 h 11/06 y T479=29 · encabezados Oficina filas 40/46 · Bases Tanque SO2 contratado ¿corto 9,5 M?
 
 ## 8. PRÓXIMO PASO
 
-Integrar lo que terminen los tres agentes (QA → merge → migraciones → deploy → bot). Reactivar el timer de JORNALES tras el ensayo en 0. RLS de cronología fuera de horario.
+Integrar lo que devuelvan los agentes (jefes → celda vacía → tiempo real → columna Obra), cada uno con auditor, merge, efecto leído en la base y aviso por bot.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 

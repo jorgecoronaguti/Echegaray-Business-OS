@@ -71,7 +71,8 @@ test('LA QUINCENA CERRADA EXPLICA LA PLATA: negro = total sellado − neto, en l
 
 test('LA GRILLA: el mensual ocupa las bandas en una celda propia y el pie tiene «Sueldos mensuales»', () => {
   const g = fuente('../components/liquidacion/GrillaEspejoQuincena.tsx')
-  assert.match(g, /l\.netoMensual != null \? \(/)
+  // POR MODALIDAD DESDE EL 15/09/2026: el jefe sin neto cargado también cobra por mes (`cobroMensual.ts`).
+  assert.match(g, /l\.modalidad === 'mensual' \? \(/)
   assert.match(g, /gridColumn: `span \$\{ANCHO_DE_LAS_BANDAS\}`/)
   assert.match(g, /cifra\('Sueldos mensuales', totales\.mensuales/)
   assert.match(g, /<Leida valor=\{totales\.netoBandas\} testid="espejo-total-neto" \/>/)

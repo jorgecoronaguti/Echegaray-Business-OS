@@ -19,6 +19,7 @@ import { filasDeGrilla, type FilaDeGrilla } from './grillaHorasQuincena.ts'
 import type { LineaConOverrides } from './liquidacionOverrides.ts'
 import type { GrupoLiquidacion } from './liquidacionQuincena.ts'
 import type { Quincena } from './quincena.ts'
+import { estadoDelCuadro } from './estadoDelCuadro.ts'
 
 export interface CuadroDeLaQuincena {
   datos: DatosDeLaSolapaHoras
@@ -49,8 +50,9 @@ export async function leerCuadroDeLaQuincena(
     tituloDe.set(cuadro.grupo, cuadro.titulo)
     for (const linea of cuadro.lineas) lineas[linea.personaId] = { grupo: cuadro.grupo, linea }
   }
+  // POR CUADRO, NO POR CABECERA: un cuadro sin cabecera propia hereda la quincena (`estadoDelCuadro`).
   const cuadrosCerrados = new Set(
-    Object.entries(liquidacion.estados).filter(([, e]) => e.estado === 'cerrada').map(([g]) => g),
+    liquidacion.cuadros.map((c) => c.grupo).filter((g) => estadoDelCuadro(liquidacion.estados, g).estado === 'cerrada'),
   )
   // EL ESPEJO VIENE CON LA LIQUIDACIÓN: es la misma foto de la planilla que ya entró a la cadena.
   const { espejo } = liquidacion

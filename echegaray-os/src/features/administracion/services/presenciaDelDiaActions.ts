@@ -53,6 +53,7 @@ import {
 import { getPresenciaDelDia, quitarPresenciaDelDia } from './presenciaDelDiaService'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { puedeCambiarObraActual } from './planDeObraActual'
+import { quincenaCerrada } from './quincenaCerradaService'
 
 // EL MOTIVO SE VALIDA CONTRA EL CATÁLOGO, NO CONTRA UNA LISTA DE ESTA PANTALLA. `esMotivo` mira
 // `orquestador/lib/asistencia-motivos.mjs`, que es lo que usa el bot desde julio. Y una presencia
@@ -142,9 +143,17 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
     return { ok: false, error: 'La base no guardó ninguna marca. Puede ser un permiso: probá recargar.' }
   }
 
-  // LAS HORAS DESPUÉS DE LA PRESENCIA, Y SOBRE TODAS LAS MARCAS —no sólo sobre las que cambiaron—:
-  // una persona ya declarada presente que todavía no tiene horas las tiene que recibir igual.
-  const horas = await aplicarHorasPorDefecto(supabase, obraId, fecha, marcas as MarcaPresencia[], guardadas)
+  // LAS HORAS DESPUÉS DE LA PRESENCIA, Y SÓLO SI ALGUNA PRESENCIA CAMBIÓ: con nada que escribir la
+  // acción ya volvió arriba sin tocar horas (15/09/2026). Cuando sí corren, van sobre todas las marcas
+  // del envío —no sólo sobre las que cambiaron—, así que quien ya estaba presente sin horas recibe la
+  // jornada en ESE guardado; en uno que no cambia ninguna presencia, no.
+  //
+  // EN UNA QUINCENA CERRADA LA MARCA SE GUARDA Y LAS HORAS NO. La guarda es de `registros_hh`
+  // (`quincenaCerrada.ts`); la marca ya quedó escrita, así que se dice en el acuse en vez de fallar.
+  const cierre = await quincenaCerrada(supabase, fecha)
+  const horas = cierre === null
+    ? await aplicarHorasPorDefecto(supabase, obraId, fecha, marcas as MarcaPresencia[], guardadas)
+    : { mensaje: `Las horas por defecto no se cargaron. ${cierre}`, escribio: false }
 
   revalidatePath('/campo/asistencia')
   revalidatePath('/administracion/personas')
