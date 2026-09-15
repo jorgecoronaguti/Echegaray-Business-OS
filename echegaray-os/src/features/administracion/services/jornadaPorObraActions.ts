@@ -49,6 +49,7 @@ import {
 import {
   declararPresencia, quitarPresenciaDelDia, retirarPresenciaPorHoras,
 } from './presenciaDelDiaService'
+import { vaciarHorasDelDia } from './vaciadoDeHorasService'
 import {
   declaracionDeCorreccion, declaracionesDeJornada, type MarcaConHoras,
 } from './presenciaPorHoras'
@@ -62,7 +63,7 @@ export type ResultadoJornada =
 export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada> {
   const parsed = envioSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const { obra_id: obraId, fecha, marcas } = parsed.data
+  const { obra_id: obraId, fecha, marcas, vaciar } = parsed.data
 
   const supabase = await createClient()
 
@@ -75,6 +76,16 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   if (!obra.data) return { ok: false, error: 'Esa obra no existe o no la ves.' }
   const { nombre, estado, jornada_horas: jornada } =
     obra.data as { nombre: string; estado: string | null; jornada_horas: number | string | null }
+
+  // LA CASILLA QUE SE DEJÓ EN BLANCO TENIENDO HORAS ES «SIN HORAS» (dueño, 15/09/2026). Antes no
+  // viajaba, y la hora quedaba guardada mientras la pantalla decía que se había guardado el día.
+  const vaciado = vaciar.length > 0
+    ? await vaciarHorasDelDia(supabase, { personas: vaciar, fecha, obra: obraId }) : null
+  if (vaciado?.error) return { ok: false, error: vaciado.error }
+  if (marcas.length === 0) {
+    revalidar()
+    return { ok: true, mensaje: vaciado?.mensaje ?? '' }
+  }
 
   // LO QUE YA ESTÁ GUARDADO SE LEE ANTES DE DECIDIR SI SE PUEDE ESCRIBIR. El orden importa: es lo
   // único que distingue corregir un día que existe —permitido siempre— de estrenar uno.
@@ -140,7 +151,7 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
     ? acuseDe(r.escrito) : null
   // EL AVISO VIAJA TAMBIÉN DENTRO DEL ACUSE: `/campo/asistencia` muestra `mensaje` y nada más, y un
   // aviso que sólo lee una de las dos pantallas es un aviso que no existe en la otra.
-  const mensaje = [enLaObra, afuera, aviso, avisoDePresencia(declarada.error)].filter(Boolean).join(' ')
+  const mensaje = [enLaObra, vaciado?.mensaje, afuera, aviso, avisoDePresencia(declarada.error)].filter(Boolean).join(' ')
   return { ok: true, mensaje, ...(aviso ? { aviso } : {}) }
 }
 
@@ -272,6 +283,16 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const c = parsed.data
   const supabase = await createClient()
+
+  // ═══ VACIAR — EL DÍA SIN HORAS, PARA COMPLETAR MÁS TARDE (dueño, 15/09/2026) ═══
+  // No es `borrar`: no retira la presencia —estuvo, y las horas se cargan después— y no es error
+  // cuando ya estaba vacío. La regla es la misma de las otras puertas: `vaciadoDeHoras.ts`.
+  if (c.estado === 'vaciar') {
+    const v = await vaciarHorasDelDia(supabase, { personas: [c.persona_id], fecha: c.fecha, obra: c.obra_origen })
+    if (v.error) return { ok: false, error: v.error }
+    if (v.borradas > 0) revalidar()
+    return { ok: true, mensaje: c.obra_origen === null ? 'El día ya estaba sin horas.' : v.mensaje }
+  }
 
   // LO QUE YA ESTÁ CARGADO SE LEE PRIMERO. Es lo único que distingue corregir un día que existe
   // —permitido aunque la obra esté cerrada— de estrenar uno o moverlo, que no.

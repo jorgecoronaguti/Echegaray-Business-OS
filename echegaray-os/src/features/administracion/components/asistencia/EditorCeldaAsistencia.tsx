@@ -108,7 +108,12 @@ export function EditorCeldaAsistencia({
           etiqueta={`Estado del ${fecha} de ${persona}`}
           testid="editor-celda-estado"
           ancho="w-[168px]"
-          guardar={(v) => { setEstado(v); return enviar({ estado: v, horas: String(celda.horas ?? '') }) }}
+          guardar={(v) => {
+            setEstado(v)
+            // ELEGIR «TRABAJÓ» NO ES VACIAR: con el campo de horas en blanco, lo que falta es el número.
+            if (v === TRABAJO && celda.horas === null) return Promise.resolve({ ok: false, error: 'Poné cuántas horas hizo' })
+            return enviar({ estado: v, horas: String(celda.horas ?? '') })
+          }}
         />
       </div>
 

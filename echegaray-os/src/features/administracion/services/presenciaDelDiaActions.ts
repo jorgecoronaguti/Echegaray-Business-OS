@@ -100,20 +100,13 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
 
   const plan = planDePresencia(marcas as MarcaPresencia[], guardadas)
   if (plan.cambios.length === 0) {
-    // NADA QUE ESCRIBIR EN LA PRESENCIA NO ES NADA QUE HACER. Las horas por defecto se agregaron
-    // después de que ya había días declarados, y hay gente marcada presente sin ninguna hora: si
-    // este camino saliera antes de mirarlas, volver a tocar Guardar no las cargaría nunca. El plan
-    // de horas es idempotente —quien ya tiene horas no recibe nada—, así que pasar por acá es
-    // seguro.
-    const soloHoras = await aplicarHorasPorDefecto(supabase, obraId, fecha, marcas as MarcaPresencia[])
-    const yaEstaba = `Ya estaba guardado: ${acusePresencia(resumenPresencia(marcas as MarcaPresencia[], marcas.length))}.`
-    if (soloHoras.escribio) {
-      revalidatePath('/campo/asistencia')
-      revalidatePath('/administracion/personas')
-    }
+    // NADA QUE ESCRIBIR EN LA PRESENCIA ES NADA QUE ESCRIBIR EN LAS HORAS (dueño, 15/09/2026). Hasta
+    // hoy este camino volvía a pasar las horas por defecto «por si alguien quedó presente sin horas»,
+    // y así le devolvía 9 h a la celda que Administración había dejado vacía para completar después.
+    // La jornada por defecto es consecuencia de DECLARAR, no de volver a guardar lo mismo.
     return {
       ok: true,
-      mensaje: [yaEstaba, soloHoras.mensaje].filter(Boolean).join(' '),
+      mensaje: `Ya estaba guardado: ${acusePresencia(resumenPresencia(marcas as MarcaPresencia[], marcas.length))}.`,
       guardadas: mezclar(guardadas, marcas as MarcaPresencia[]),
     }
   }
@@ -151,7 +144,7 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
 
   // LAS HORAS DESPUÉS DE LA PRESENCIA, Y SOBRE TODAS LAS MARCAS —no sólo sobre las que cambiaron—:
   // una persona ya declarada presente que todavía no tiene horas las tiene que recibir igual.
-  const horas = await aplicarHorasPorDefecto(supabase, obraId, fecha, marcas as MarcaPresencia[])
+  const horas = await aplicarHorasPorDefecto(supabase, obraId, fecha, marcas as MarcaPresencia[], guardadas)
 
   revalidatePath('/campo/asistencia')
   revalidatePath('/administracion/personas')
@@ -176,7 +169,7 @@ export async function guardarPresencia(entrada: unknown): Promise<ResultadoPrese
  */
 async function aplicarHorasPorDefecto(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  obraId: string, fecha: string, marcas: readonly MarcaPresencia[],
+  obraId: string, fecha: string, marcas: readonly MarcaPresencia[], guardadas: readonly PresenciaGuardada[],
 ): Promise<{ mensaje: string | null; escribio: boolean }> {
   const personaIds = marcas.map((m) => m.persona_id)
   const existentes = await supabase
@@ -188,6 +181,7 @@ async function aplicarHorasPorDefecto(
 
   const plan = planDeHorasPorDefecto({
     presencias: marcas,
+    guardadas,
     horasExistentes: (existentes.data ?? []) as HoraDelDia[],
     fecha,
     obra: obraId,

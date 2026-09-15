@@ -27,6 +27,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { permisoDeLiquidacion } from './liquidacionPermiso'
 import { FUENTE_CORRECCION_HORAS } from './presenciaDelDia'
 import { quincenaDe } from './quincena'
+import { vaciarHorasDelDia } from './vaciadoDeHorasService'
 
 const RUTA = '/administracion/personas'
 
@@ -38,7 +39,10 @@ const correccionSchema = z.object({
   // afirmaciones distintas, y una de las dos se liquida.
   horas: z.union([
     z.literal(''),
-    z.coerce.number().nonnegative('Las horas no pueden ser negativas').max(24, 'Un día tiene 24 horas'),
+    // CERO NO ES VACÍO: «no trabajó» y «sin horas» son dos afirmaciones, y la base exige horas > 0.
+    z.coerce.number().nonnegative('Las horas no pueden ser negativas')
+      .max(24, 'Un día tiene 24 horas')
+      .refine((n) => n !== 0, 'Cero horas no es una marca: dejá la celda vacía o marcá la ausencia'),
   ]),
 })
 
@@ -47,6 +51,8 @@ interface RegistroTocado {
   fecha: string | null
   horas: number | string | null
   tipo_hora: string | null
+  persona_id: string
+  obra_canonica_id: string | null
 }
 
 /** ¿Está sellada la quincena de esa fecha? Falla CERRADO: sin lectura no se corrige nada. */
@@ -74,7 +80,7 @@ export async function corregirHorasDelDia(registroId: string, valor: string): Pr
   if (!permiso.ok) return { ok: false, error: permiso.error }
 
   const actual = await supabase.from('registros_hh')
-    .select('id, fecha, horas, tipo_hora').eq('id', datos.data.registroId).maybeSingle()
+    .select('id, fecha, horas, tipo_hora, persona_id, obra_canonica_id').eq('id', datos.data.registroId).maybeSingle()
   if (actual.error) return { ok: false, error: actual.error.message }
   if (!actual.data) return { ok: false, error: 'Ese día ya no existe. No guardé nada.' }
   const fila = actual.data as RegistroTocado
@@ -100,10 +106,15 @@ export async function corregirHorasDelDia(registroId: string, valor: string): Pr
   // sirve: «no trabajó» y «todavía no lo cargué» son dos afirmaciones y sólo la primera se liquida.
   // Vaciar es volver a «todavía no lo cargué»: la fila se va (y con ella su rastro, en cascada); si
   // la planilla JORNALES tiene ese día, el importador horario la vuelve a crear desde la planilla.
+  // DESDE EL 15/09/2026 VACÍA POR LA MISMA REGLA QUE HORAS Y LA CARGA DEL DÍA (`vaciadoDeHoras.ts`):
+  // sólo la jornada trabajada. Una extra o una imputación a una actividad no se van por vaciar una celda.
   if (despues === null) {
-    const borrado = await supabase.from('registros_hh').delete().eq('id', fila.id).select('id')
-    if (borrado.error) return { ok: false, error: borrado.error.message }
-    if (!borrado.data?.length) return { ok: false, error: 'No pude vaciar el día: la base no devolvió la fila.' }
+    const v = await vaciarHorasDelDia(supabase, { personas: [fila.persona_id], fecha: fila.fecha, obra: fila.obra_canonica_id })
+    if (v.error) return { ok: false, error: v.error }
+    if (v.borradas === 0) {
+      return { ok: false, error: `No vacié el día: ${v.intactas[0]?.motivo ?? 'no encontré horas de la jornada'}. Corregilo desde la solapa Horas.` }
+    }
+    revalidatePath(RUTA)
     return { ok: true }
   }
 

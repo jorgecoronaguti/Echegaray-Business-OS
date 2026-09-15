@@ -30,8 +30,11 @@ export const marcaSchema = z.discriminatedUnion('estado', [
 export const envioSchema = z.object({
   obra_id: z.string().trim().min(1, 'Elegí la obra'),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
-  marcas: z.array(marcaSchema).min(1, 'No marcaste a nadie.'),
-})
+  marcas: z.array(marcaSchema).default([]),
+  /** A quiénes se les dejó la casilla EN BLANCO teniendo horas cargadas: «sin horas», para completar
+   *  más tarde (dueño, 15/09/2026). Lo decide `personasAVaciar`; lo aplica `vaciadoDeHoras.ts`. */
+  vaciar: z.array(z.string().uuid()).default([]),
+}).refine((d) => d.marcas.length + d.vaciar.length > 0, { message: 'No marcaste a nadie.' })
 
 export type MarcaDeJornada = z.infer<typeof marcaSchema>
 
@@ -103,7 +106,7 @@ const esDeLaJornada = (e: FilaExistente, administra: boolean): boolean =>
   && !e.actividad_id && e.improductiva !== true
 
 /** Por qué una fila existente queda intacta. Se dice con el nombre del hecho, no «se salteó». */
-function motivoDeNoTocar(e: FilaExistente): string {
+export function motivoDeNoTocar(e: FilaExistente): string {
   if (e.actividad_id) return `tiene horas imputadas a una actividad del plan (${e.tipo_hora})`
   if (e.improductiva === true) return 'es una hora improductiva con su causa declarada'
   if (e.tipo_hora === 'licencia') {
@@ -352,7 +355,7 @@ export const correccionSchema = z.object({
    *  estaba antes de que alguien decidiera —sin novedad—, que no es una ausencia ni son cero horas.
    *  Se distingue de `borrar` en dos cosas: alcanza TODO el día (con obra y sin obra) y retira
    *  también la declaración de `asistencia_dia`, que es la que dibuja la «L». */
-  estado: z.enum(['presente', 'ausente', 'borrar', 'sin_novedad']),
+  estado: z.enum(['presente', 'ausente', 'borrar', 'sin_novedad', 'vaciar']),
   /** HASTA QUÉ DÍA DURA. `null` = sólo el día elegido, que es como funcionó hasta el 08/09/2026.
    *  Con fecha se asienta cada día HÁBIL del tramo (ver `planDeTramoDeAusencia`): un parte médico
    *  de diez días se sabe el primero, y volver cada mañana a marcar el mismo día es lo que hacía
