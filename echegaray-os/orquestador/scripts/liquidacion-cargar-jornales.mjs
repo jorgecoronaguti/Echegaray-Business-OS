@@ -47,7 +47,7 @@ import { CUIL_POR_PERSONA_DE_PLANILLA } from '../lib/nomina-banco-recibo.mjs'
 import { claveNombre, resolverPersona } from '../lib/liquidacion-jornales.mjs'
 import { emparejarPersona, indicePersonas } from '../lib/jornales-a-registros-hh.mjs'
 import {
-  excluidasParaBase, HOJAS_LIQUIDACION, observacionDeCarga, planDeHoja, separarSalteadas,
+  excluidasParaBase, HOJAS_LIQUIDACION, observacionDeCarga, planDeHoja, separarSalteadas, sqlLineaEditada,
 } from '../lib/liquidacion-jornales-plan.mjs'
 
 const JORNALES_ID = '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk'
@@ -188,12 +188,15 @@ async function main() {
     + ' left join public.liquidacion_linea l on l.liquidacion_id = q.id group by 1,2,3',
   )
   const existentes = new Map(yaHay.map((r) => [`${r.grupo}|${r.desde}|${r.hasta}`, r.n]))
+  // Las columnas editables salen de la base, no de una lista tipeada: ver `columnasEditadasEnApp`.
+  const { rows: columnasLinea } = await query(
+    "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'liquidacion_linea'",
+  )
+  const editada = sqlLineaEditada(columnasLinea.map((r) => r.column_name))
   const { rows: estadoRows } = await query(
     `select q.grupo, q.desde::text, q.hasta::text, q.estado, q.cerrada_por::text,
             (select count(*)::int from public.liquidacion_linea l where l.liquidacion_id = q.id
-               and (l.horas_manual is not null or l.cobra_manual is not null or l.adelanto_manual is not null
-                 or l.ya_transferido_manual is not null or l.por_banco_manual is not null
-                 or l.en_efectivo_manual is not null or l.total_manual is not null)) lineas_manuales,
+               and ${editada}) lineas_manuales,
             (select count(*)::int from public.liquidacion_linea l where l.liquidacion_id = q.id and l.sellado_en is not null) lineas_selladas,
             (select count(*)::int from public.liquidacion_reapertura r where r.liquidacion_id = q.id) reaperturas
        from public.liquidacion_quincena q`,

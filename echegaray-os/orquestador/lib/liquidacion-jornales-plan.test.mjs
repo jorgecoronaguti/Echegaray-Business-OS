@@ -3,7 +3,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  excluidasParaBase, fechasFueraDeQuincena, marcarSuperpuestas, observacionDeCarga, planDeHoja, separarSalteadas,
+  columnasEditadasEnApp, excluidasParaBase, fechasFueraDeQuincena, marcarSuperpuestas, observacionDeCarga, planDeHoja,
+  separarSalteadas, sqlLineaEditada,
 } from './liquidacion-jornales-plan.mjs'
 import { columnasDelBloque, ROTULOS_OFICINA } from './liquidacion-jornales.mjs'
 
@@ -165,4 +166,23 @@ test('separarSalteadas: se saltea lo cerrado por alguien, lo sellado, lo reabier
   ])
   // El estado es por grupo: la misma quincena de oficina no hereda el cierre de obreros.
   assert.equal(separarSalteadas(qs.slice(1, 2), 'oficina', estados).aCargar.length, 1)
+})
+
+// ═══ LA GUARDA MIRA TODAS LAS CELDAS EDITABLES, NO SIETE TIPEADAS (15/09/2026) ═══
+// La 1ª de septiembre decía «1 línea editada» y eran 2: Agüero tenía `horas_recibo_manual` = 50.
+// MUTACIONES QUE PONEN ESTO ROJO: volver a una lista fija de siete, u olvidar `efectivo_redondeado`.
+test('sqlLineaEditada: sale de las columnas de la base y cubre negro_manual, horas_recibo_manual y efectivo_redondeado', async () => {
+  const deLaBase = ['id', 'horas', 'cobra', 'horas_manual', 'cobra_manual', 'negro_manual', 'horas_recibo_manual',
+    'valor_hora_recibo_manual', 'horas_negro_manual', 'efectivo_redondeado', 'sellado_en', 'total']
+  const sql = sqlLineaEditada(deLaBase)
+  for (const c of ['negro_manual', 'horas_recibo_manual', 'valor_hora_recibo_manual', 'horas_negro_manual', 'efectivo_redondeado', 'horas_manual']) {
+    assert.match(sql, new RegExp(`l\\.${c} is not null`), c)
+  }
+  for (const c of ['horas', 'cobra', 'total', 'sellado_en']) assert.doesNotMatch(sql, new RegExp(`l\\.${c} is not null`), c)
+  assert.throws(() => sqlLineaEditada(['id', 'horas']), /NO cargo nada/)
+  assert.deepEqual(columnasEditadasEnApp(['x_manual; drop table y', 'ok_manual']), ['ok_manual'])
+  // Una sola definición: toda celda que la web guarda (COLUMNA_DE) la reconoce la guarda.
+  const { COLUMNA_DE } = await import('../../src/features/administracion/services/liquidacionOverrides.ts')
+  const deLaWeb = Object.values(COLUMNA_DE)
+  assert.deepEqual(columnasEditadasEnApp(deLaWeb), [...deLaWeb].sort())
 })
