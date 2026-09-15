@@ -29,8 +29,10 @@ import { tituloDeSeccion } from '../lib/proveedores-titulos.mjs'
 import {
   bloqueQueSaleCadaDia, COL_QUIENES, COL_TOTAL_DIA, diasSinNombre, filasQueNecesita,
   formatosDelBloque, MEDIOS_DEL_DIA, mediosSinColumna, residuoDelBloque, ROTULOS_POR_DIA,
-  TITULO_POR_DIA, tramosQueNoEntran, ubicarBloque,
+  ROTULOS_COMPRAS_POR_DIA, TITULO_POR_DIA, tramosQueNoEntran, ubicarBloque,
 } from '../lib/proveedores-por-dia.mjs'
+import { leerConEncabezado } from '../lib/columnas-lectura.mjs'
+import { filasAlLayoutDeReferencia } from '../lib/compras-layout.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -49,13 +51,21 @@ const valor = (c) => {
   return { userEnteredValue: s.startsWith('=') ? { formulaValue: s } : { stringValue: s } }
 }
 
+/**
+ * COMPRAS POR RÓTULO (14/09/2026): la fila de rótulos y los datos en la MISMA lectura. Las fórmulas del
+ * bloque citan los rangos de ese encabezado; los avisos leen las filas llevadas al layout de referencia.
+ */
+const leerCompras = (google) =>
+  leerConEncabezado(google, ID, 'Compras', ROTULOS_COMPRAS_POR_DIA, { render: 'UNFORMATTED_VALUE' })
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const compras = await google.readSheetValues(ID, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
+  const lectura = await leerCompras(google)
+  const compras = filasAlLayoutDeReferencia(lectura.datos, lectura.encabezado)
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R400`, { render: 'FORMATTED_VALUE' })
 
   const n = nSeccion('salePorDia')
-  const bloque = bloqueQueSaleCadaDia({ filas: compras ?? [], filaTitulo: 1, numeroDeSeccion: n })
+  const bloque = bloqueQueSaleCadaDia({ filas: lectura.datos, encabezado: lectura.encabezado, filaTitulo: 1, numeroDeSeccion: n })
   const { dias, sinDia, total } = bloque.modelo
   const sitio = ubicarBloque(visible ?? [])
   const necesita = filasQueNecesita(bloque)
@@ -64,7 +74,7 @@ async function main() {
   console.log(`${n} · ${TITULO_POR_DIA} → ${dias.length} día(s) · ${plata(total)} · alto ${bloque.alto}`
     + ` filas${sitio.existe ? ` (el bloque ya está en la fila ${sitio.filaTitulo})` : ' (no existe todavía)'}`)
   console.log(`necesita ${necesita} filas (bloque + ${COLCHON_FINAL} de aire) y tiene ${sitio.disponibles}`)
-  avisos({ compras: compras ?? [], dias, sinDia })
+  avisos({ compras, dias, sinDia })
 
   const delta = necesita - sitio.disponibles
   if (delta > 0) console.log(`⚠ se insertan ${delta} fila(s) antes de la fila ${sitio.siguiente}`)
@@ -88,14 +98,14 @@ function avisos({ compras, dias, sinDia }) {
   }
   for (const d of diasSinNombre({ dias })) {
     console.log(`  ${ALERTA} el día ${fechaLegible(d.dia)} sale con ${plata(d.total)} y SIN nombre de proveedor`
-      + ' — la fila está sin cargar en Compras!E, y "A quiénes" va a salir vacío.')
+      + ' — la fila no tiene «Proveedor» cargado en Compras, y "A quiénes" va a salir vacío.')
   }
   for (const m of mediosSinColumna(compras)) {
     console.log(`  ○ ${plata(m.monto)} salen por "${m.medio}", que no tiene columna: entran al TOTAL DEL DÍA igual.`)
   }
   for (const t of tramosQueNoEntran(compras)) {
     console.log(`  ${ALERTA} ${t.proveedor}: el segundo tramo (${plata(t.tramo2)}) es mayor que el saldo`
-      + ` (${plata(t.saldo)}) — el primer tramo va a salir en negativo. Se corrige en Compras!W.`)
+      + ` (${plata(t.saldo)}) — el primer tramo va a salir en negativo. Se corrige en «Monto Parcial 2» de Compras.`)
   }
   const noFecha = dias.filter((d) => !d.esFecha)
   for (const d of noFecha) {
@@ -123,8 +133,9 @@ async function escribir({ google, bloque, sitio, delta }) {
 
   // El bloque se recoloca sobre su fila real: `bloqueQueSaleCadaDia` calcula sus fórmulas con las
   // filas donde va a vivir, y una fila de diferencia deja el TOTAL sumando el rango de al lado.
+  const releida = await leerCompras(google)
   const puesto = bloqueQueSaleCadaDia({
-    filas: await google.readSheetValues(ID, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' }),
+    filas: releida.datos, encabezado: releida.encabezado,
     filaTitulo: sitio.filaTitulo, numeroDeSeccion: nSeccion('salePorDia'),
   })
   if (puesto.alto !== bloque.alto) {
