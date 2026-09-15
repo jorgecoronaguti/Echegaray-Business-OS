@@ -34,19 +34,24 @@
 // imputaba siempre a la obra de hoy de la fila, y sin obra de hoy pedía «elegí la obra» sin ofrecer
 // ninguna. La lista es la del DÍA (`obraDeLaCelda`): las activas y las cerradas que estaban en marcha.
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { InlineEdit, type OpcionInline, type ResultadoInline } from '@/shared/components/ds'
 import { hs } from '../../services/jornadaPorObra'
+import { marcarTardanza } from '../../services/presenciaDelDiaActions'
 import {
   estadoElegidoDeCelda, opcionesDeEstadoDeCelda, planDeCelda, TRABAJO,
   type CorreccionDeCelda,
 } from '../../services/edicionDeCelda'
 
 export function EditorCeldaAsistencia({
-  celda, persona, fecha, hoy, obraOrigen, obraDestino, obras, rotuloDia, guardar, cerrar, abrirPanel,
+  celda, persona, personaId, fecha, hoy, obraOrigen, obraDestino, obras, rotuloDia, guardar, cerrar, abrirPanel, alMarcarTardanza,
 }: {
-  celda: { estado: string; horas: number | null; motivo: string | null }
+  celda: { estado: string; horas: number | null; motivo: string | null; tardanza?: { llegoTarde: boolean; salioAntes: boolean } | null }
   persona: string
+  /** Para marcar la tardanza (`marcarTardanza`). Sin él, el editor no la ofrece. */
+  personaId?: string
+  /** Después de marcar: la grilla se vuelve a leer (`router.refresh()`), igual que tras una corrección. */
+  alMarcarTardanza?: () => void
   fecha: string
   hoy: string
   obraOrigen: string | null
@@ -64,6 +69,27 @@ export function EditorCeldaAsistencia({
   const [estado, setEstado] = useState(estadoElegidoDeCelda(celda))
   const [obra, setObra] = useState(obraDestino ?? '')
   const [errorObra, setErrorObra] = useState<string | null>(null)
+  const [tardanza, setTardanza] = useState(celda.tardanza ?? { llegoTarde: false, salioAntes: false })
+  const [avisoTardanza, setAvisoTardanza] = useState<string | null>(null)
+  const [marcando, arrancarMarca] = useTransition()
+
+  // LA TARDANZA ESCRIBE `asistencia_dia`, NO `registros_hh` (15/09/2026): es la marca del jefe sobre la
+  // presencia, y una sola pierde el presentismo de la quincena. Va por su propia acción, con la guarda
+  // de quincena cerrada adentro; se acusa lo que la base devolvió.
+  const marcar = (cual: 'llegoTarde' | 'salioAntes') => {
+    if (!personaId) return
+    const siguiente = { ...tardanza, [cual]: !tardanza[cual] }
+    setAvisoTardanza(null)
+    arrancarMarca(async () => {
+      const r = await marcarTardanza({
+        persona_id: personaId, fecha, llego_tarde: siguiente.llegoTarde, salio_antes: siguiente.salioAntes,
+      })
+      if (!r.ok) { setAvisoTardanza(r.error); return }
+      setTardanza(siguiente)
+      setAvisoTardanza(r.mensaje)
+      alMarcarTardanza?.()
+    })
+  }
 
   // EL PLAN SE ARMA EN LA REGLA, NO ACÁ. Los campos escriben la misma corrección; lo único que
   // cambia entre ellos es cuál de los valores acaba de moverse. `destino` viaja explícito porque el
@@ -160,6 +186,21 @@ export function EditorCeldaAsistencia({
         />
       </div>
 
+      {/* LA TARDANZA, SÓLO SOBRE UN DÍA TRABAJADO QUE YA PASÓ. Sobre una ausencia o una licencia no se
+          marca (CHECK de la base), y a futuro no hay nada que haya pasado. */}
+      {personaId && celda.estado === 'horas' && fecha <= hoy && (
+        <div className="mt-1 flex items-center gap-1" role="group" aria-label={`Tardanza del ${fecha} de ${persona}`}>
+          <span className="w-[38px] shrink-0 text-[11.5px] text-muted">Marca</span>
+          <BotonTardanza rotulo="Llegó tarde" activo={tardanza.llegoTarde} testid="editor-celda-llego-tarde"
+            disabled={marcando} onClick={() => marcar('llegoTarde')} />
+          <BotonTardanza rotulo="Salió antes" activo={tardanza.salioAntes} testid="editor-celda-salio-antes"
+            disabled={marcando} onClick={() => marcar('salioAntes')} />
+        </div>
+      )}
+      {avisoTardanza && (
+        <p data-testid="editor-celda-tardanza-aviso" className="mb-1 mt-1 text-[11px] text-warn">{avisoTardanza}</p>
+      )}
+
       <p className="mt-1.5 border-t border-line pt-1.5 text-[11px]">
         {/* LA SALIDA AL PANEL SIGUE EXISTIENDO y se nombra por lo que hace: mover el día de obra,
             asentar un tramo de varios días o asignar a la persona no son ediciones de una celda. */}
@@ -173,5 +214,21 @@ export function EditorCeldaAsistencia({
         </button>
       </p>
     </div>
+  )
+}
+
+/** Ámbar cuando está marcada: no es una falta (vino), pero es plata que se pierde. */
+function BotonTardanza({ rotulo, activo, testid, disabled, onClick }: {
+  rotulo: string; activo: boolean; testid: string; disabled: boolean; onClick: () => void
+}) {
+  return (
+    <button
+      type="button" aria-pressed={activo} data-testid={testid} disabled={disabled} onClick={onClick}
+      className={`h-8 rounded-control border px-2 text-[11.5px] ${
+        activo ? 'border-warn bg-warn-soft text-warn' : 'border-line bg-canvas text-muted hover:text-ink'
+      }`}
+    >
+      {rotulo}
+    </button>
   )
 }

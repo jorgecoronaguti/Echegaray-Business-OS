@@ -19,8 +19,10 @@ const CELDAS = fuente('./CeldasBlancoNegro.tsx')
 // q repliques la pestaña sheet jornales en liq hs»). El orden de «Obreros 26» de JORNALES, con blanco/negro
 // en el medio y sin «Cliente · Obra» («esa columna no te pedi en liq hs»). Lo que se sigue protegiendo:
 // el orden de lectura, las dos bandas rotuladas y que la fila dibuje en el mismo orden que el encabezado.
+// «Presentismo» (dueño, 15/09/2026) va después del negro, de donde sale el descuento; no es una columna de
+// JORNALES y el orden del resto no cambia.
 const ORDEN_JORNALES = [
-  'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Hs', '$/h negro', 'Importe',
+  'Horas', 'Hs recibo', '$/h cat.', 'Banco', 'Hs', '$/h negro', 'Importe', 'Presentismo',
   'Adelanto banco / embargos', 'Adelanto efectivo', 'Total efectivo', 'Efect. red.', 'Cobra total',
 ]
 
@@ -40,7 +42,7 @@ test('EL ENCABEZADO ES EL DE JORNALES: Persona · días · Horas · BLANCO · NE
   // Y LA FILA DIBUJA EN ESE ORDEN: días, horas, blanco, negro, adelantos, efectivo, redondeo, total.
   const fila = GRILLA.slice(GRILLA.indexOf('function Fila('), GRILLA.indexOf('function Total('))
   const orden = ['<CeldaDeDia', '<CeldaHorasPagas', '<CeldaHorasBlanco', '<CeldaHoraCategoria', '<CeldaNeto', '<CeldaHorasNegro',
-    '<CeldaImporteNegro', 'campo="yaTransferido"', 'campo="adelanto"', '<CeldaEfectivoDelSueldo', '<CeldaRedondeo', '<CeldaTotal']
+    '<CeldaImporteNegro', '<CeldaPresentismo', 'campo="yaTransferido"', 'campo="adelanto"', '<CeldaEfectivoDelSueldo', '<CeldaRedondeo', '<CeldaTotal']
     .map((x) => fila.indexOf(x))
   assert.ok(orden.every((i) => i > 0), 'están todas las celdas')
   assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'en el orden pedido')

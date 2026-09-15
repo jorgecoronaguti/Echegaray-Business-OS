@@ -100,10 +100,13 @@ test('LAS HORAS NO SE ESCRIBEN NEGATIVAS; LA PLATA SIGUE COMO ESTABA', () => {
 })
 
 test('LECTURA: el override sale de `horas_manual`, nunca de la sellada; escalón propio si falta la migración', () => {
+  // La decodificación de la fila guardada se mudó a `liquidacionGuardadas.ts` (15/09/2026: el servicio pasó
+  // las 500 líneas al sumar el presentismo). El escalón de columnas sigue en el servicio.
+  const g = fuente('./liquidacionGuardadas.ts')
+  assert.match(g, /horas: overrideDe\(l\.horas_manual\)/)
+  assert.match(g, /horasNegro: overrideDe\(l\.horas_negro_manual\)/)
+  assert.ok(!/overrideDe\(l\.horas\)/.test(g), 'MUTACIÓN: la sellada vuelve como manual al reabrir')
   const s = fuente('./liquidacionQuincenaService.ts')
-  assert.match(s, /horas: overrideDe\(l\.horas_manual\)/)
-  assert.match(s, /horasNegro: overrideDe\(l\.horas_negro_manual\)/)
-  assert.ok(!/overrideDe\(l\.horas\)/.test(s), 'MUTACIÓN: la sellada vuelve como manual al reabrir')
   assert.match(s, /'horas_manual', 'horas_negro_manual'/)
 })
 

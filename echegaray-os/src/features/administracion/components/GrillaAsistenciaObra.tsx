@@ -112,6 +112,7 @@ function entradaDe(c: CeldaObra): EntradaCeldaDia {
       : c.estado === 'hoy' ? 'hoy'
       : 'habil',
     motivo: c.motivo,
+    tardanza: c.tardanza ?? null,
   }
 }
 
@@ -760,6 +761,8 @@ export function GrillaAsistenciaObra({
                         obraDestino={eleccion?.inicial ?? null}
                         obras={eleccion?.opciones ?? []}
                         guardar={(c) => corregirDesdeCelda(fila, c)}
+                        personaId={fila.persona.id}
+                        alMarcarTardanza={() => router.refresh()}
                         cerrar={() => setEditandoCelda(null)}
                         abrirPanel={() => {
                           setEditandoCelda(null)

@@ -36,6 +36,8 @@ export interface LineaParaCerrar {
   reciboSinGiro: boolean
   /** Horas de la quincena que ningún registro imputó a una obra. Van a Estructura. */
   horasSinObra?: number
+  /** El presentismo de la línea, para que el sello lo congele (`escribirFoto`). Ausente en llamadores viejos. */
+  presentismo?: PresentismoDeLinea | null
 }
 
 /**

@@ -42,9 +42,28 @@ test('las presencias se piden con la MISMA tabla, columnas y ventana que la cons
   const { supabase, pedido } = espia({ data: [], error: null })
   await leerPresenciasDeLaQuincena(supabase, '2026-09-01', '2026-09-15')
   assert.equal(pedido.from, 'asistencia_dia')
-  assert.equal(pedido.select, 'persona_id, fecha, estado, motivo')
+  // La tardanza viaja desde el 15/09/2026 (20260915T2200): es la marca que decide el presentismo.
+  assert.equal(pedido.select, 'persona_id, fecha, estado, motivo, llego_tarde, salio_antes')
   assert.deepEqual(pedido.gte, ['fecha', '2026-09-01'])
   assert.deepEqual(pedido.lte, ['fecha', '2026-09-15'])
+})
+
+test('sin la columna de tardanza aplicada se relee sin ella: la pantalla no se rompe por una migración pendiente', async () => {
+  const selects: string[] = []
+  const cadena = {
+    select: (c: string) => { selects.push(c); return cadena },
+    gte: () => cadena, lte: () => cadena,
+    then: (r: (x: unknown) => unknown) => Promise.resolve(
+      selects.length === 1
+        ? { data: null, error: { code: '42703', message: 'column asistencia_dia.llego_tarde does not exist' } }
+        : { data: [{ persona_id: 'p', fecha: '2026-09-17', estado: 'presente', motivo: null }], error: null },
+    ).then(r),
+  }
+  const supabase = { from: () => cadena } as unknown as SupabaseClient
+  const r = await leerPresenciasDeLaQuincena(supabase, '2026-09-16', '2026-09-30')
+  assert.deepEqual(selects, ['persona_id, fecha, estado, motivo, llego_tarde, salio_antes', 'persona_id, fecha, estado, motivo'])
+  assert.equal(r.error, null)
+  assert.equal(r.data?.length, 1)
 })
 
 test('los CUIL se piden a la vista CON PORTERO y con las dos columnas de siempre', async () => {

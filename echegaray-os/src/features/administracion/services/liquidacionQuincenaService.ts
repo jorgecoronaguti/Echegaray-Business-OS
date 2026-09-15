@@ -40,7 +40,7 @@ import type { EntradaDePresentismo } from './presentismo.ts'
 import { leerGuardadas, tardanzasPorPersona, type EstadoDeLaQuincena } from './liquidacionGuardadas.ts'
 import {
   aplicarOverrides, camposGuardables, sinOverrides,
-  type CampoEditable, type LineaConOverrides, type OverridesDeLinea,
+  type CampoEditable, type LineaConOverrides,
 } from './liquidacionOverrides.ts'
 import { getEspejoDeLaPlanilla, type EspejoDeLaPlanilla } from './espejoDeJornalesService.ts'
 import { getExposicionDeLaQuincena, type ExposicionDeLaQuincena } from './exposicionConvenioService.ts'

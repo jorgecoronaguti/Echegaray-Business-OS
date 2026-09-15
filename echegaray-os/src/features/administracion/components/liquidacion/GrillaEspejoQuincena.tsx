@@ -29,7 +29,7 @@ import { useState } from 'react'
 import { V } from '@/shared/components/v2/patron'
 import { RotuloDeGrupo } from '../RotuloDeGrupo'
 import { CeldaRedondeo } from './CeldasDeLiquidacion'
-import { CeldaDeDia, CeldaHorasPagas, Escribible, Leida } from './cuadro/CeldasDelEspejo'
+import { CeldaDeDia, CeldaHorasPagas, CeldaPresentismo, Escribible, Leida } from './cuadro/CeldasDelEspejo'
 import {
   CeldaEfectivoDelSueldo, CeldaHoraCategoria, CeldaHorasBlanco, CeldaHorasNegro, CeldaImporteNegro, CeldaNeto, CeldaTotal,
 } from './cuadro/CeldasBlancoNegro'
@@ -74,6 +74,9 @@ const PLATA = [
   // 120: el botón del $/h con el «+8%» al lado. La marca del básico se mudó al $/h de categoría.
   { clave: 'horaNegro', rotulo: '$/h negro ✎', px: 120, banda: 'negro' },
   { clave: 'negro', rotulo: 'Importe', px: 104, banda: 'negro' },
+  // PRESENTISMO (dueño, 15/09/2026): la parte del cobra que una sola tardanza hace perder. Va después del
+  // negro porque de ahí sale el descuento (el neto es del estudio). No es una columna de JORNALES.
+  { clave: 'presentismo', rotulo: 'Presentismo', px: 112 },
   { clave: 'yaTransferido', rotulo: 'Adelanto banco / embargos ✎', px: 136 },
   { clave: 'adelanto', rotulo: 'Adelanto efectivo ✎', px: 120 },
   { clave: 'enEfectivo', rotulo: 'Total efectivo', px: 112 },
@@ -270,6 +273,7 @@ function Fila({ fila, columnas, quincena, camposEditables, pct, abrir }: {
           <CeldaImporteNegro fila={fila} edicion={{ quincena, camposEditables }} />
         </>
       )}
+      <CeldaPresentismo fila={fila} />
       <Escribible campo="yaTransferido" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={128} />
       <Escribible campo="adelanto" fila={fila} quincena={quincena} camposEditables={camposEditables} ancho={112} />
       <CeldaEfectivoDelSueldo fila={fila} edicion={{ quincena, camposEditables }} />
@@ -309,6 +313,11 @@ function Total({ columnas, dias, totales, redondeo }: {
       <div />
       <div />
       <Leida valor={totales.negro} testid="espejo-total-negro" />
+      {/* EL TOTAL DE LA COLUMNA ES LO PERDIDO, en ámbar: es lo que cambió la plata. Lo en juego va al pie. */}
+      <div data-testid="espejo-total-presentismo" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: totales.presentismoPerdido > 0 ? V.warn : V.tenue }}
+        title={totales.presentismoPerdido > 0 ? `${totales.presentismoPerdidos} perdieron el presentismo` : 'nadie perdió el presentismo'}>
+        {totales.presentismoPerdido > 0 ? `−${pesos(totales.presentismoPerdido)}` : '·'}
+      </div>
       <Leida valor={totales.yaTransferido} />
       <Leida valor={totales.adelanto} />
       <div data-testid="espejo-total-efectivo" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: noCierra ? V.neg : V.tinta }}
@@ -343,6 +352,14 @@ function PieDelEspejo({ totales, redondeo }: { totales: TotalesDelEspejo; redond
       {cifra('Banco', totales.netoBandas, 'pie-neto')}
       {cifra('Negro', totales.negro, 'pie-negro')}
       {totales.mensuales > 0 && cifra('Sueldos mensuales', totales.mensuales, 'pie-mensuales')}
+      {/* PRESENTISMO: lo que está en juego en las filas visibles y lo que se perdió. Se dicen los dos porque el
+          dueño decide con los dos: cuánto pesa la regla y cuánto costó esta quincena. */}
+      {cifra('Presentismo en juego', totales.presentismoEnJuego, 'pie-presentismo')}
+      {totales.presentismoPerdidos > 0 && (
+        <span data-testid="pie-presentismo-perdido" style={{ color: V.warn }}>
+          <span>{`Presentismo perdido (${totales.presentismoPerdidos}) `}</span><strong>{`−${pesos(totales.presentismoPerdido)}`}</strong>
+        </span>
+      )}
       {cifra('Adelanto banco / embargos', totales.yaTransferido, 'pie-transferido')}
       {cifra('Adelanto efectivo', totales.adelanto, 'pie-adelantos')}
       {cifra('Total efectivo', totales.enEfectivo, 'pie-efectivo')}

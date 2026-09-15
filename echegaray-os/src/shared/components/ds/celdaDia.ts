@@ -42,6 +42,8 @@ export interface EntradaCeldaDia {
   dia: CalendarioDia
   /** El motivo de la ausencia o la licencia. Va al `title`: en 44 px no entra. */
   motivo?: string | null
+  /** La marca del jefe (`asistencia_dia.llego_tarde/salio_antes`, 15/09/2026). Pierde el presentismo de la quincena. */
+  tardanza?: { llegoTarde: boolean; salioAntes: boolean } | null
 }
 
 export type TonoPresencia = 'pos' | 'neg' | 'neutro' | 'ninguno'
@@ -141,9 +143,16 @@ export function decidirCeldaDia(e: EntradaCeldaDia): CapasCeldaDia {
   return {
     arriba: { ...arriba, centrado },
     abajo,
-    titulo: [arriba.titulo, conHoras ? AVISO_AUSENCIA_CON_HORAS : abajo.titulo]
+    titulo: [arriba.titulo, conHoras ? AVISO_AUSENCIA_CON_HORAS : abajo.titulo, tituloDeTardanza(e.tardanza)]
       .filter(Boolean).join(' · '),
   }
+}
+
+/** «llegó tarde y salió antes: pierde el presentismo». Vacío sin marca. */
+export function tituloDeTardanza(t: EntradaCeldaDia['tardanza']): string {
+  if (!t || (!t.llegoTarde && !t.salioAntes)) return ''
+  const partes = [t.llegoTarde ? 'llegó tarde' : null, t.salioAntes ? 'salió antes' : null].filter(Boolean)
+  return `${partes.join(' y ')}: pierde el presentismo de la quincena`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
