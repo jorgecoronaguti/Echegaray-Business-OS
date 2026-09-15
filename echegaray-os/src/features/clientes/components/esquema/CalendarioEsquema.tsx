@@ -109,10 +109,15 @@ export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar, av
         )}
       </div>
 
-      <div style={{
-        background: C.superficie, border: `1px solid ${C.borde}`, borderRadius: '10px',
-        overflow: 'hidden',
-      }}>
+      <div
+        // TIEMPO REAL: con un pago en el aire el calendario no se refresca debajo del puntero; se
+        // atiende al soltarlo (ver `SELECTOR_EN_EDICION`).
+        data-en-edicion={arrastrando ? '1' : undefined}
+        style={{
+          background: C.superficie, border: `1px solid ${C.borde}`, borderRadius: '10px',
+          overflow: 'hidden',
+        }}
+      >
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', borderBottom: `1px solid ${C.borde}`,
           background: C.tenueFondo,
