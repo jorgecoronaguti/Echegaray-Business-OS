@@ -34,3 +34,13 @@ test('el formulario entra SÓLO para obras cerradas, no fusionadas, sin OBRAS y 
   assert.match(formulario, /not exists \(select 1 from public\.obra_contrato k where k\.obra_id = oc\.id\)/)
   assert.match(formulario, /when public\.ve_economia\(\) or auth\.uid\(\) is null then oc\.monto_contratado/)
 })
+
+// LA HIJA CUBIERTA POR SU PADRE (auditoría 15/09/2026): ME - BSA ADICIONAL ($5,97 M) ya está en la suma viva de ME - BSA.
+// Sin esta condición la cartera de Messina lo cuenta dos veces.
+test('una obra con padre que ya publica precio (OBRAS o contrato) no suma su formulario', () => {
+  const codigo = formulario.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n').replace(/\s+/g, ' ')
+  assert.ok(codigo.includes('and not exists (select 1 from public.obra_canonica pa where pa.id = oc.obra_padre_id '
+    + 'and (exists (select 1 from public.obra_economia_sheet s where s.obra_canonica_id = pa.id) '
+    + 'or exists (select 1 from public.obra_contrato k where k.obra_id = pa.id)))'),
+    'la rama formulario vuelve a sumar el formulario de una obra hija cuyo padre ya tiene precio')
+})

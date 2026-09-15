@@ -16,8 +16,23 @@
 --     y no cambian (cotejo del 14/09).
 --   · `cliente_economia.n_obras_con_precio` las cuenta; `contratado_de_cliente()` lee `obra_economia_sheet`
 --     y no cambia.
---   · Fuera: obras ACTIVAS sin OBRAS (H1 sigue para ellas) y obras FUSIONADAS (su monto ya no es una obra
---     aparte: BSA PLANTA $11,7 M y PISOS 120 M² $7,1 M quedan para que el dueño diga si suman a la mayor).
+--   · Fuera: obras ACTIVAS sin OBRAS (H1 sigue para ellas) y obras FUSIONADAS. El dueño dijo (14/09 18:10) que
+--     BSA PLANTA $11,7 M y PISOS 120 M² $7,1 M suman a la mayor: YA SUMAN. La suma viva de ME - BSA ($17.704.199,40)
+--     son las filas 41+42+89 de Cobranzas ($11.729.999,40, la OC 279 de BSA PLANTA) + la 43; el contrato de
+--     ME - PISOS 120 M² Y RAMPA ($9.463.141,93) cita «Pisos 7.108.886,54 + Rampa 2.354.255,39». Sumarlas duplicaba.
+--
+-- ═══ LA HIJA CUBIERTA POR SU PADRE NO SUMA DOS VECES (auditoría 15/09/2026) ═══
+--
+-- ME - BSA ADICIONAL ($5.974.200) entraba por esta rama y su importe YA está en la suma viva de ME - BSA (fila 43,
+-- OC 00002-00001985, cargada en la obra padre): la cartera de Messina contaba $5,97 M dos veces. Regla: una obra
+-- con `obra_padre_id` NO toma su formulario cuando el padre ya publica precio (fila en OBRAS o contrato
+-- desglosado). La señal es `obra_padre_id` porque es la única relación persistida entre las dos obras:
+--   · `cobranza_imputacion` está vacía (0 filas): la imputación de Cobranzas a obras vive sólo en el sync;
+--   · la hija no tiene OC propia en `cliente_orden` (la 1985 está en la padre), así que no hay OC compartida;
+--   · el texto del concepto de Cobranzas no es una señal (ya reclasificó mal por regex una vez).
+-- Límite: `obra_padre_id` dice que la hija es parte de la padre, no prueba que la base de la padre incluya su
+-- importe. Se verificó para la única obra afectada hoy (bsa-adicional); el ensayo `costo-mo-ensayo-tx.mjs`
+-- publica la cartera del cliente antes y después.
 --
 -- La aplicación sigue sin leer `monto_contratado` por su cuenta: lo lee de esta vista, y el title dice
 -- «contratado según formulario de la obra» (`fraseDeOrigenContratado`).
@@ -162,7 +177,12 @@ WITH valuado AS (
     and oc.fusionada_en is null
     and oc.monto_contratado is not null
     and not exists (select 1 from public.obra_economia_sheet s where s.obra_canonica_id = oc.id)
-    and not exists (select 1 from public.obra_contrato k where k.obra_id = oc.id);
+    and not exists (select 1 from public.obra_contrato k where k.obra_id = oc.id)
+    -- LA HIJA CUBIERTA POR SU PADRE: el padre ya publica precio (OBRAS o contrato), su formulario no suma otra vez.
+    and not exists (select 1 from public.obra_canonica pa
+                     where pa.id = oc.obra_padre_id
+                       and (exists (select 1 from public.obra_economia_sheet s where s.obra_canonica_id = pa.id)
+                            or exists (select 1 from public.obra_contrato k where k.obra_id = pa.id)));
 -- FIN DE LA VISTA
 
 notify pgrst, 'reload schema';
