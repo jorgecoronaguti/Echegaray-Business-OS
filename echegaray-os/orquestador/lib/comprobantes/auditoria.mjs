@@ -64,15 +64,22 @@ import { tieneComprobanteFiscal } from './categoria.mjs'
 import { numeroCanonico } from './lectura.mjs'
 import { normalizar } from '../carga-comprobantes.mjs'
 import { tipoDeCompras, importeDeCompras, FILA_BASE } from './compras-vivas.mjs'
+import { comprasDelCargador } from './compras-leidas.mjs'
+import { COMPRAS_2508 } from '../encabezados-referencia.mjs'
 import { perfilesDeImputacion, sugerirImputacion } from '../imputacion-aprendida.mjs'
 
-/** Posición de cada columna DENTRO del rango `Compras!B4:O` (B = 0). Contrato con ese rango. */
+/** Posición de cada columna en la forma B..O (B = 0) que devuelve `comprasDelCargador`. */
 export const EN = Object.freeze({
   categoria: 0, fecha: 1, mes: 2, proveedor: 3, modalidad: 4, tipo: 5, numero: 6,
   unidad: 7, obra: 8, detalle: 9, concepto: 10, importe: 11, iva: 12, total: 13,
 })
 
-export const RANGO = 'Compras!B4:O'
+// La lectura sale de la fila de rótulos (14/09/2026): con «Obra» insertada, `Compras!B4:O` corta en el IVA.
+export { leerComprasDelCargador } from './compras-leidas.mjs'
+
+// Las letras que NOMBRA cada hallazgo. Por defecto, las del layout de referencia; quien leyó la pestaña
+// viva pasa las suyas (`letras`), porque «revisá la columna M» después de la inserción es el IVA.
+const LETRAS_REFERENCIA = Object.freeze(comprasDelCargador([COMPRAS_2508]).letras)
 
 /** Los defectos que este auditor sabe encontrar. El resumen se agrupa por acá. */
 export const DEFECTO = Object.freeze({
@@ -94,6 +101,9 @@ export const DEFECTO = Object.freeze({
 
 /** Los dos únicos valores legítimos de la columna F ("Modalidad"), leídos del desplegable. */
 const MODALIDADES = ['Pago', 'Cuenta Corriente']
+
+/** La categoría que corresponde cuando hay comprobante fiscal. Es un VALOR de la columna, no una letra. */
+const CATEGORIA_FISCAL = 'B'
 
 /** Diferencia tolerada entre M y (O − N): debajo de un peso es el redondeo del comprobante. */
 const TOLERANCIA = 1
@@ -374,7 +384,7 @@ function deRegistro(conciliado = []) {
 /**
  * Audita las filas de Compras que cargó el bot.
  *
- * @param {Array<Array>} filas   lo que devuelve `readSheetValues('Compras!B4:O')`
+ * @param {Array<Array>} filas   las filas con forma B..O de `leerComprasDelCargador`
  * @param {{delBot?:Iterable<number>, perfiles?:object}} o
  *   `delBot`: números de fila de `comunicacion.comprobantes_cargados`. Sin él se auditan todas y se
  *   declara — auditar de más se ve; auditar de menos, no.
@@ -387,8 +397,9 @@ function deRegistro(conciliado = []) {
  */
 export function auditarCompras(filas = [], {
   delBot = null, registro = null, perfiles = null, motivoTodas = null, totalesFiscales = null,
-  cuitPorProveedor = null,
+  cuitPorProveedor = null, letras = null,
 } = {}) {
+  const L = { ...LETRAS_REFERENCIA, ...(letras ?? {}) }
   const registros = filas.map(registroDeFila).filter(hayFila)
 
   // ═══ LA FILA SE RE-RESUELVE CONTRA EL ARCHIVO, NO SE CONFÍA DEL REGISTRO ═══
@@ -427,8 +438,8 @@ export function auditarCompras(filas = [], {
   const hallazgos = []
   for (const r of auditables) {
     hallazgos.push(
-      ...deCategoria(r), ...deRespaldo(r, facturadores), ...deAritmetica(r),
-      ...deTipo(r), ...deModalidad(r), ...deImputacion(r, perf),
+      ...deCategoria(r, L), ...deRespaldo(r, facturadores, L), ...deAritmetica(r, L),
+      ...deTipo(r, L), ...deModalidad(r, L), ...deImputacion(r, perf, L),
     )
   }
   const dup = deDuplicados(registros, mias, totalesFiscales)
@@ -462,12 +473,12 @@ export function auditarCompras(filas = [], {
  * FCL, SAC— que van B y están bien. Ver el encabezado: ese lado marcaba 163 filas y 145 eran sanas.
  * Lo que falta en las otras 18 no es la categoría: es el respaldo, y lo dice `deRespaldo`.
  */
-function deCategoria(r) {
+function deCategoria(r, L = LETRAS_REFERENCIA) {
   const fiscal = tieneComprobanteFiscal({ tipo: r.tipo, numero: r.numeroCrudo, esNotaCredito: r.tipo === 'NC' })
   if (!fiscal || r.categoria === 'B') return []
   return [{
-    fila: r.fila, defecto: DEFECTO.CATEGORIA, columna: 'B', proveedor: r.proveedor,
-    dice: r.categoria ?? '(vacío)', deberia: 'B',
+    fila: r.fila, defecto: DEFECTO.CATEGORIA, columna: L.categoria, proveedor: r.proveedor,
+    dice: r.categoria ?? '(vacío)', deberia: CATEGORIA_FISCAL,
     origen: `hay comprobante fiscal: G dice «${r.tipoCrudo}» y H dice «${r.numeroCrudo}»`,
   }]
 }
@@ -484,13 +495,13 @@ function deCategoria(r) {
  *
  * @param {Set<string>} facturadores  proveedores normalizados con al menos una fila fiscal
  */
-function deRespaldo(r, facturadores) {
+function deRespaldo(r, facturadores, L = LETRAS_REFERENCIA) {
   // La letra del comprobante está y el número no. No hace falta mirar al proveedor: una factura A
   // sin número no se puede conciliar con ARCA ni deduplicar —es la fila 669, Alumetal, $18.166.380,84—
   // y el propio cargador frena una carga así por no tener clave de idempotencia.
   if (r.tipoCrudo && r.tipo !== 'N/A' && !r.numeroCrudo) {
     return [{
-      fila: r.fila, defecto: DEFECTO.RESPALDO, columna: 'H', proveedor: r.proveedor,
+      fila: r.fila, defecto: DEFECTO.RESPALDO, columna: L.numero, proveedor: r.proveedor,
       dice: `${r.tipoCrudo} sin número`, deberia: 'el número del comprobante',
       origen: 'sin número no se puede cruzar contra ARCA ni detectar si está cargado dos veces',
     }]
@@ -499,30 +510,30 @@ function deRespaldo(r, facturadores) {
   if (r.tipoCrudo || r.numeroCrudo) return []
   if (!facturadores.has(normalizar(r.proveedor ?? ''))) return []
   return [{
-    fila: r.fila, defecto: DEFECTO.RESPALDO, columna: 'G/H', proveedor: r.proveedor,
+    fila: r.fila, defecto: DEFECTO.RESPALDO, columna: `${L.tipo}/${L.numero}`, proveedor: r.proveedor,
     dice: 'B sin tipo ni número', deberia: 'el tipo y el número del comprobante',
     origen: `${r.proveedor} emite comprobantes fiscales en otras filas de Compras: si esta va en blanco, falta anotar cuál la respalda`,
   }]
 }
 
 /** M = Total − IVA. Es contrato de la columna, no una opinión: absorbe percepciones e internos. */
-function deAritmetica(r) {
+function deAritmetica(r, L = LETRAS_REFERENCIA) {
   if (r.total == null || r.importe == null) return []
   const esperado = Math.round(((r.total ?? 0) - (r.iva ?? 0)) * 100) / 100
   if (Math.abs(esperado - r.importe) <= TOLERANCIA) return []
   return [{
-    fila: r.fila, defecto: DEFECTO.ARITMETICA, columna: 'M', proveedor: r.proveedor,
+    fila: r.fila, defecto: DEFECTO.ARITMETICA, columna: L.importe, proveedor: r.proveedor,
     dice: r.importe, deberia: esperado,
-    origen: `O (total) ${r.total} − N (IVA) ${r.iva ?? 0} = ${esperado}`,
+    origen: `${L.total} (total) ${r.total} − ${L.iva} (IVA) ${r.iva ?? 0} = ${esperado}`,
   }]
 }
 
 /** El tipo (G) y el número (H) tienen que decir lo mismo sobre si hay comprobante fiscal. */
-function deTipo(r) {
+function deTipo(r, L = LETRAS_REFERENCIA) {
   const TIPOS = ['A', 'B', 'C', 'NC', 'N/A']
   if (r.tipoCrudo && !TIPOS.includes(r.tipo)) {
     return [{
-      fila: r.fila, defecto: DEFECTO.TIPO, columna: 'G', proveedor: r.proveedor,
+      fila: r.fila, defecto: DEFECTO.TIPO, columna: L.tipo, proveedor: r.proveedor,
       dice: r.tipoCrudo, deberia: 'F A · F B · F C · N C · N/A',
       origen: 'el desplegable estricto de la columna G no tiene ese valor: la celda queda en rojo',
     }]
@@ -538,7 +549,7 @@ function deTipo(r) {
   const crudoFiscal = /^\s*\d{1,5}\s*-\s*\d{1,8}\s*$/.test(String(r.numeroCrudo ?? ''))
   if ((!r.tipoCrudo || r.tipo === 'N/A') && crudoFiscal && r.numero !== '0000-00000000') {
     return [{
-      fila: r.fila, defecto: DEFECTO.TIPO, columna: 'G', proveedor: r.proveedor,
+      fila: r.fila, defecto: DEFECTO.TIPO, columna: L.tipo, proveedor: r.proveedor,
       dice: r.tipoCrudo ?? '(vacío)', deberia: 'la letra del comprobante (F A / F B / F C / N C)',
       origen: `H tiene un número de comprobante fiscal («${r.numeroCrudo}») y G no dice de qué tipo`,
     }]
@@ -547,17 +558,17 @@ function deTipo(r) {
 }
 
 /** La modalidad (F) sale de la condición de venta del comprobante y tiene desplegable estricto. */
-function deModalidad(r) {
+function deModalidad(r, L = LETRAS_REFERENCIA) {
   if (!r.modalidad) {
     return [{
-      fila: r.fila, defecto: DEFECTO.MODALIDAD, columna: 'F', proveedor: r.proveedor,
+      fila: r.fila, defecto: DEFECTO.MODALIDAD, columna: L.modalidad, proveedor: r.proveedor,
       dice: '(vacío)', deberia: MODALIDADES.join(' · '),
       origen: 'la condición de venta del comprobante decide F, X y S; vacía, la fila no cae en ningún estado de pago',
     }]
   }
   if (!MODALIDADES.some((m) => normalizar(m) === normalizar(r.modalidad))) {
     return [{
-      fila: r.fila, defecto: DEFECTO.MODALIDAD, columna: 'F', proveedor: r.proveedor,
+      fila: r.fila, defecto: DEFECTO.MODALIDAD, columna: L.modalidad, proveedor: r.proveedor,
       dice: r.modalidad, deberia: MODALIDADES.join(' · '),
       origen: 'el desplegable estricto de la columna F no tiene ese valor: la celda queda en rojo',
     }]
@@ -582,19 +593,19 @@ function deModalidad(r) {
  * ensuciaría además el vocabulario vivo de la columna K, que es justo con lo que `compras-vivas.mjs`
  * resuelve la obra escrita a mano en el papel: el arreglo habría roto la lectura.
  */
-function deImputacion(r, perfiles) {
+function deImputacion(r, perfiles, L = LETRAS_REFERENCIA) {
   const out = []
   const s = sugerirImputacion({ proveedor: r.proveedor, concepto: r.concepto, obra: r.obra }, perfiles ?? {})
   if (!r.obra && s.obra?.sugerido && !s.obra.pide_confirmacion) {
     out.push({
-      fila: r.fila, defecto: DEFECTO.OBRA, columna: 'J', proveedor: r.proveedor,
+      fila: r.fila, defecto: DEFECTO.OBRA, columna: L.obra, proveedor: r.proveedor,
       dice: '(vacío)', deberia: s.obra.sugerido,
       origen: `${r.proveedor} se imputó a «${s.obra.sugerido}» en ${s.obra.n} de sus cargas (${Math.round((s.obra.share ?? 0) * 100)}%)`,
     })
   }
   if (!r.detalle && s.detalle?.sugerido && !s.detalle.pide_confirmacion) {
     out.push({
-      fila: r.fila, defecto: DEFECTO.DETALLE, columna: 'K', proveedor: r.proveedor,
+      fila: r.fila, defecto: DEFECTO.DETALLE, columna: L.detalle, proveedor: r.proveedor,
       dice: '(vacío)', deberia: s.detalle.sugerido,
       origen: `en esa obra, ${r.proveedor} usó «${s.detalle.sugerido}» ${s.detalle.n} vez/veces (${Math.round((s.detalle.share ?? 0) * 100)}%)`,
     })

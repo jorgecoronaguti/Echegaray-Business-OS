@@ -7,7 +7,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { planear, aplicar, cuitPorProveedor, ID_CASHFLOW } from './reparar-registro-comprobantes.mjs'
-import { EN, RANGO } from '../lib/comprobantes/auditoria.mjs'
+import { EN } from '../lib/comprobantes/auditoria.mjs'
+import { hojaDesdeBaO } from '../lib/comprobantes/compras-leidas.fixture.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 
 /** Una fila del rango `Compras!B4:O`. */
 function fila(o = {}) {
@@ -35,7 +37,7 @@ function googleQueSoloLee(filas) {
         return async (id, rango) => {
           assert.equal(id, ID_CASHFLOW)
           // La pestaña `Proveedores` la puede pedir el armado del alias: se contesta vacía.
-          return rango === RANGO ? filas : []
+          return rango === rangoFilas('Compras', 3) ? hojaDesdeBaO(filas) : []
         }
       }
       if (typeof k === 'symbol') return undefined

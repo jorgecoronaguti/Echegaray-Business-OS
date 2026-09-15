@@ -15,7 +15,7 @@
 //   node orquestador/scripts/auditar-comprobantes-cargados.mjs --json    # para consumirlo
 //   node orquestador/scripts/auditar-comprobantes-cargados.mjs --todas   # sin filtrar por el bot
 
-import { auditarCompras, informe, RANGO, correlativo } from '../lib/comprobantes/auditoria.mjs'
+import { auditarCompras, informe, correlativo, leerComprasDelCargador } from '../lib/comprobantes/auditoria.mjs'
 
 export const ID_CASHFLOW = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -75,12 +75,14 @@ export async function auditar({ google, port, todas = false } = {}) {
   // SIN `render`: los valores llegan FORMATEADOS en es-AR, que es el contrato de toda la pila de
   // comprobantes (`compras-vivas.mjs` lee el mismo rango igual). Con UNFORMATTED_VALUE el punto
   // decimal del número crudo se lee como separador de miles y $6.693,39 pasa a ser 6.693.389.999.
-  const filas = await google.readSheetValues(ID_CASHFLOW, RANGO)
+  // Desde la fila de rótulos y con forma B..O: con «Obra» insertada, B4:O cortaba en el IVA.
+  const { filas, letras } = await leerComprasDelCargador(google, ID_CASHFLOW)
   const registro = todas ? null : await registroDelBot(port)
   const totalesFiscales = await librofiscalPorCorrelativo(port)
   const opciones = {
     registro,
     totalesFiscales,
+    letras,
     motivoTodas: todas ? 'pedido con --todas' : 'no se pudo leer el registro del bot',
   }
   const r = auditarCompras(filas ?? [], opciones)

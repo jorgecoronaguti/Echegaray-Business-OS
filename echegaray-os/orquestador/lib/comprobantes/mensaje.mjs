@@ -106,9 +106,9 @@ export function titular(items = []) {
     // genérica cuesta el mensaje entero. Con tres o más vuelve al texto corto, porque enumerarlas en
     // el titular sería repetir el bloque de preguntas que viene abajo.
     if (uno) {
-      const r = rotulosDe(items[0])
-      if (r.length === 1) return `❓ **Sólo me falta ${r[0]}** — el resto lo leí bien.`
-      if (r.length === 2) return `❓ **Me faltan dos cosas: ${r[0]} y ${r[1]}** — el resto lo leí bien.`
+      const faltan = rotulosDe(items[0])
+      if (faltan.length === 1) return `❓ **Sólo me falta ${faltan[0]}** — el resto lo leí bien.`
+      if (faltan.length === 2) return `❓ **Me faltan dos cosas: ${faltan[0]} y ${faltan[1]}** — el resto lo leí bien.`
     }
     return `❓ **${uno ? 'Me falta un dato' : `Me faltan datos en ${fal}`}** para poder cargar${uno ? 'lo' : ''}.`
   }

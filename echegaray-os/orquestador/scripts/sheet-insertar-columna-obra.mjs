@@ -16,6 +16,9 @@
 //   3. insertDimension en Compras L y Cobranzas H, y el rótulo «Obra»;
 //   4. relectura y comparación celda por celda contra la foto corrida una columna: 0 diferencias;
 //   5. huellas de la base corridas (--aplicar de huellas-correr-columna);
+//   5b. el P&L corrido una columna (`pyl-correr-columna-obra.mjs`): su CF_GAS importa "Compras!A:Y" como
+//       TEXTO y el dashboard suma CF_GAS!$M/$O por letra — Google no ajusta nada de eso en otro archivo.
+//       Se PLANEA en el paso 2b, antes de insertar: si el plan tiene una duda, no se inserta;
 //   6. foto nueva, a archivo.
 //
 // Sin --aplicar llega hasta el paso 2 y dice qué haría: NO llama a ninguna API de escritura.
@@ -24,6 +27,7 @@
 //
 //   node orquestador/scripts/sheet-insertar-columna-obra.mjs              # dry
 //   node orquestador/scripts/sheet-insertar-columna-obra.mjs --aplicar    # desde el árbol principal, con el dueño
+//   --sin-pyl  saltea el P&L (sólo si ya se corrió a mano: sin él, el P&L suma Concepto e IVA)
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -105,7 +109,7 @@ async function foto(google, pestanas) {
  * La corrida entera. Todo lo externo entra por parámetro: `google`, `correrHuellas`, `guardar`.
  * @returns {Promise<{ok:boolean, paso:string, detalle?:string[]}>}
  */
-export async function insertarColumnaObra({ google, aplicar = false, correrHuellas, guardar, log = console.log }) {
+export async function insertarColumnaObra({ google, aplicar = false, correrHuellas, correrPyl = null, guardar, log = console.log }) {
   const pestanas = INSERCIONES.map((i) => i.pestana)
   const meta = await google.getSheetMeta(ID)
   const hojas = Object.fromEntries(INSERCIONES.map((i) => [i.pestana, meta.find((s) => s.title === i.pestana)]))
@@ -121,6 +125,13 @@ export async function insertarColumnaObra({ google, aplicar = false, correrHuell
   const antes = await foto(google, pestanas)
   log(`2 ✓ foto previa guardada en ${guardar('antes', antes)}`)
   for (const ins of INSERCIONES) log(`   ${ins.pestana}: insertaría «${ROTULO}» en el índice ${ins.indice} (${antes[ins.pestana].valores.length} filas)`)
+  // EL P&L SE PLANEA ANTES DE INSERTAR. Si su plan tiene una duda, insertar lo dejaría sumando la columna
+  // de al lado sin un camino probado para corregirlo: mejor no insertar.
+  if (correrPyl) {
+    const p = await correrPyl({ aplicar: false })
+    if (!p.ok) { log('✖ el P&L no tiene un plan limpio — NO inserto'); return { ok: false, paso: 'pyl-plan', detalle: p.detalle } }
+    log('2b ✓ P&L planeado sin dudas')
+  }
   if (!aplicar) { log('(dry) no llamé a ninguna API de escritura'); return { ok: true, paso: 'dry' } }
 
   const req = INSERCIONES.flatMap((ins) => requestsDeInsercion(ins, hojas[ins.pestana].sheetId))
@@ -143,6 +154,14 @@ export async function insertarColumnaObra({ google, aplicar = false, correrHuell
 
   await correrHuellas()
   log('5 ✓ huellas corridas')
+  if (correrPyl) {
+    const p = await correrPyl({ aplicar: true })
+    if (!p.ok) {
+      log(`✖ P&L: ${p.paso} — las columnas YA están insertadas: corregilo con pyl-correr-columna-obra.mjs antes de descongelar`)
+      return { ok: false, paso: 'pyl', detalle: p.detalle }
+    }
+    log('5b ✓ P&L corrido una columna y releído')
+  }
   log(`6 ✓ foto nueva guardada en ${guardar('despues', await foto(google, pestanas))}`)
   return { ok: true, paso: 'fin' }
 }
@@ -161,7 +180,10 @@ async function main() {
     const { correrHuellas: correr } = await import('./huellas-correr-columna.mjs')
     try { await correr({ db, google, aplicar: true }) } finally { await db.closePool() }
   }
-  const r = await insertarColumnaObra({ google, aplicar, correrHuellas, guardar })
+  const correrPyl = process.argv.includes('--sin-pyl')
+    ? null
+    : async (o) => (await import('./pyl-correr-columna-obra.mjs')).correrPyl({ google, guardar, ...o })
+  const r = await insertarColumnaObra({ google, aplicar, correrHuellas, correrPyl, guardar })
   if (!r.ok) process.exitCode = 1
 }
 

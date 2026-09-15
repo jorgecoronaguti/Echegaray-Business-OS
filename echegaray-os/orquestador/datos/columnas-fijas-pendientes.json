@@ -50,34 +50,6 @@
       "mapas": 0,
       "indices": 1
     },
-    "orquestador/lib/comprobantes/auditoria.mjs": {
-      "grupo": "cargador",
-      "estado": "pendiente",
-      "letras": 1,
-      "mapas": 10,
-      "indices": 0
-    },
-    "orquestador/lib/comprobantes/compras-vivas.mjs": {
-      "grupo": "cargador",
-      "estado": "pendiente",
-      "letras": 1,
-      "mapas": 0,
-      "indices": 0
-    },
-    "orquestador/lib/comprobantes/listas.mjs": {
-      "grupo": "cargador",
-      "estado": "pendiente",
-      "letras": 5,
-      "mapas": 0,
-      "indices": 2
-    },
-    "orquestador/lib/comprobantes/mensaje.mjs": {
-      "grupo": "cargador",
-      "estado": "pendiente",
-      "letras": 0,
-      "mapas": 0,
-      "indices": 3
-    },
     "orquestador/lib/conciliacion-por-naturaleza.mjs": {
       "grupo": "lectores",
       "estado": "pendiente",
@@ -427,13 +399,6 @@
       "letras": 0,
       "mapas": 0,
       "indices": 15
-    },
-    "src/features/flujo-caja/services/calendarioReader.ts": {
-      "grupo": "pantallas",
-      "estado": "pendiente",
-      "letras": 2,
-      "mapas": 0,
-      "indices": 0
     }
   }
 }

@@ -52,6 +52,7 @@
 import { numeroCanonico, fechaDeLectura, soloDigitos, claseDeComprobante } from './lectura.mjs'
 import { normalizar, aNumero, redondear2 } from '../carga-comprobantes.mjs'
 import { escalaDeTotales } from './aritmetica.mjs'
+import { leerComprasDelCargador } from './compras-leidas.mjs'
 
 /**
  * Rango mínimo suficiente: B categoría … O total. La fila del Sheet es el índice + esta base.
@@ -61,10 +62,11 @@ import { escalaDeTotales } from './aritmetica.mjs'
  * la que ya usó este dueño con ese proveedor. Una columna más en una lectura que ya se hacía no
  * cuesta nada; una segunda lectura del Sheet para lo mismo, sí.
  */
-export const RANGO = 'Compras!B4:O'
+// YA NO SE LEE `Compras!B4:O` (14/09/2026): con «Obra» insertada ese rango corta en el IVA. La lectura sale de
+// la fila de rótulos (`compras-leidas.mjs`) y vuelve con esta misma forma B..O, así que `EN` sigue valiendo.
 export const FILA_BASE = 4
 
-/** Posición de cada dato DENTRO del rango leído (B = 0). Contrato con `RANGO`. */
+/** Posición de cada dato en la forma B..O (B = 0) que devuelve `comprasDelCargador`. */
 const EN = { categoria: 0, fecha: 1, proveedor: 3, tipo: 5, numero: 6, unidad: 7, obra: 8, detalle: 9, concepto: 10, total: 13 }
 
 /** Tolerancia de importe. Debajo de esto es el redondeo del comprobante, no otra compra. */
@@ -107,7 +109,7 @@ export function tipoDeCompras(v) {
 /**
  * Filas crudas del rango → índice consultable. NÚCLEO PURO.
  *
- * @param {Array<Array<string>>} filas  lo que devuelve `readSheetValues(RANGO)`
+ * @param {Array<Array<string>>} filas  las filas con forma B..O de `comprasDelCargador`
  * @param {{cuitPorProveedor?:Object|Map}} [o]  nombre de proveedor normalizado → CUIT, si se sabe
  */
 export function indexarCompras(filas = [], { cuitPorProveedor = null } = {}) {
@@ -469,7 +471,7 @@ export async function indiceDeCompras(google, { fileId, cuitPorProveedor = null 
   }
   if (typeof google?.readSheetValues !== 'function') return { ok: false, ...vacio, error: 'sin cliente de Google' }
   try {
-    return { ok: true, ...indexarCompras(await google.readSheetValues(id, RANGO), { cuitPorProveedor }) }
+    return { ok: true, ...indexarCompras((await leerComprasDelCargador(google, id)).filas, { cuitPorProveedor }) }
   } catch (e) {
     return { ok: false, ...vacio, error: String(e?.message ?? e).slice(0, 200) }
   }
