@@ -40,6 +40,25 @@ export const ESTADO = {
 } as const
 
 /**
+ * ¿LA PLATA DE ESTA COMPRA YA SALIÓ? Un solo criterio para toda la pantalla.
+ *
+ * Existe porque la lista muestra una columna de fecha de pago y la fuente NO TIENE una: la única
+ * fecha ligada al pago es Q («Fecha prevista de pago (día)»), que en una fila paga es el día en que
+ * se pagó y en una impaga es una intención. Medido el 15/09/2026 sobre las 891 filas vivas: las 41
+ * pendientes tienen esa fecha cargada y 40 con día FUTURO. Sin este predicado, la columna afirma 41
+ * pagos que no ocurrieron.
+ *
+ * MIRA EL ESTADO, NO LA FECHA NI EL MONTO. `monto_pagado > 0` incluiría las 3 pendientes con un pago
+ * parcial —plata que salió, deuda que sigue viva— y llamarlas «pagadas» taparía el saldo. El estado
+ * es lo que el dueño escribe cuando cierra el pago, y es el mismo que cuenta el chip «A pagar».
+ *
+ * FALLA CERRADO: lo que la pestaña no dice NO está pagado. Una fila sin estado se dibuja como
+ * impaga, que es el error que se puede ver y corregir; al revés se esconde solo.
+ */
+export const estaPagada = (estado: string | null | undefined): boolean =>
+  estado?.trim() === ESTADO.PAGADO
+
+/**
  * LA PASTILLA DE UNA FILA. Nunca inventa un estado: lo que la pestaña no dice se dibuja «Sin
  * estado» y apagado, no se asume pagado ni pendiente.
  */

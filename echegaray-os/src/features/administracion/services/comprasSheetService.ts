@@ -62,12 +62,17 @@ export interface CompraSheet {
    * se contradicen el día que el criterio del Sheet cambie. El filtro de vencimiento lo usa.
    */
   tramo_vencimiento: string | null
-  /**
-   * CUÁNDO SALIÓ LA PLATA — la columna AD «Fecha de caja» de la pestaña. Es la FECHA DE PAGO que el
-   * dueño pidió ver en la lista (15/09/2026), y no se confunde con `fecha_prevista`: ésa es cuándo
-   * HAY que pagar y existe antes del pago; ésta sólo existe después. Vacía = todavía no se pagó.
-   */
-  fecha_caja: string | null
+  // ═══ `fecha_caja` (AD · «Fecha de caja») NO SE TRAE, Y ES A PROPÓSITO ═══
+  //
+  // Su nombre promete «cuándo salió la plata» y no es eso. Medido el 15/09/2026 contra la base viva,
+  // sobre las 891 filas no anuladas: coincide con `fecha_prevista` en 889 —las 2 que difieren es
+  // sólo porque Q está vacía y AD la rellena—, las 41 compras PENDIENTES la tienen cargada y 40 con
+  // día FUTURO. `scripts/sync-compras.mjs` ya las escribía como intercambiables
+  // (`fecha_caja ?? fecha_prevista`), así que la igualdad no es una casualidad de los datos.
+  //
+  // Traerla es la trampa: la primera pantalla que la lea creyendo el rótulo va a afirmar 41 pagos
+  // que no ocurrieron. No está en `COLUMNAS` ni en este tipo para que ese error no compile, y
+  // `canonico-compras-v4.test.ts` se pone rojo si vuelve.
   monto_pagado: number | null
   saldo_pendiente: number | null
   cuit: string | null
@@ -99,8 +104,7 @@ export interface FilaConPapel extends CompraSheet {
 const COLUMNAS = [
   'fila', 'sheet_id', 'clave', 'fecha', 'proveedor', 'tipo', 'comprobante', 'concepto',
   'detalle_obra', 'obra_texto', 'unidad_negocio', 'categoria', 'importe', 'iva', 'total',
-  'estado', 'estado_pago', 'tipo_pago', 'modalidad', 'fecha_prevista', 'tramo_vencimiento',
-  'fecha_caja', 'monto_pagado',
+  'estado', 'estado_pago', 'tipo_pago', 'modalidad', 'fecha_prevista', 'tramo_vencimiento', 'monto_pagado',
   'saldo_pendiente', 'cuit', 'anulada',
 ].join(', ')
 

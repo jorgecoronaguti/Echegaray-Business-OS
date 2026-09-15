@@ -91,42 +91,87 @@ test('los diez rótulos, en el orden del canvas y pedidos al patrón', () => {
   // «Obra» —porque ahora ES la obra y además se cambia desde ahí—, y «A pagar» se parte en las dos
   // fechas que pidió ver (la del comprobante y la del pago). Escribir los rótulos a mano en vez de
   // pedirle `RotuloCol` al patrón es la fuga que `ritmo-vertical.test.ts` ya cazó en `TablaUsuarios`.
+  //
+  // «PAGO» Y NO «PAGADO EL»: el rótulo nombra la columna, no afirma el estado de la fila. La fuente
+  // no tiene el día en que salió la plata (ver el test de las dos fechas), así que 41 de 891 filas
+  // muestran ahí una fecha PREVISTA — bajo un encabezado que dijera «Pagado el», esas 41 quedarían
+  // declaradas pagadas por el encabezado aunque la celda diga lo contrario.
   const t = codigoTabla()
   const rotulos = [...t.matchAll(/<RotuloCol[^>]*>([^<]+)<\/RotuloCol>/g)].map((m) => m[1])
   assert.deepEqual(rotulos, [
-    'Proveedor', 'Concepto', 'Comprobante', 'Obra', 'Estado', 'Fecha', 'Pagado el', 'Forma de pago',
+    'Proveedor', 'Concepto', 'Comprobante', 'Obra', 'Estado', 'Fecha', 'Pago', 'Forma de pago',
     'Importe',
   ])
   assert.match(t, /<RotuloCol derecha>Importe<\/RotuloCol>/, 'IMPORTE dejó de alinearse a la derecha')
 })
 
-test('las DOS fechas de la lista son la del comprobante y la del pago, cada una de su campo', () => {
-  // ═══ EL DEFECTO QUE ESTE TEST ATRAPA ═══
+test('las DOS fechas son la del comprobante y la del pago, y la de pago NO PUEDE ser `fecha_caja`', () => {
+  // ═══ EL DEFECTO QUE ESTE TEST ATRAPA, y casi entra en producción el 15/09/2026 ═══
   //
-  // La pestaña tiene TRES fechas y al 08/09 dos de ellas coincidían en 925 de 927 filas: `fecha`
-  // (la del comprobante), `fecha_prevista` (Q · cuándo HAY que pagar) y `fecha_caja` (AD · cuándo la
-  // plata SALIÓ). Leer la equivocada se vería idéntico en pantalla —es el mismo defecto por accidente
-  // que `orquestador/lib/compras-fila.mjs` ya cazó una vez leyendo por posición— y pondría en la
-  // columna «Pagado el» una fecha que existe ANTES de que el pago ocurra: una compra impaga se
-  // leería como pagada.
+  // El dueño pidió ver «la fecha de la factura y la fecha de pago». La pestaña tiene una columna que
+  // se llama exactamente como esa segunda —AD, «Fecha de caja»— y NO ES ESO. Medido contra la base
+  // viva sobre las 891 filas no anuladas: coincide con `fecha_prevista` en 889 (las 2 que difieren
+  // es porque Q está vacía y AD la rellena), las 41 compras PENDIENTES la tienen cargada, y 40 de
+  // ellas con día FUTURO. `sync-compras.mjs` ya las escribía como intercambiables:
+  // `c.fecha_caja ?? c.fecha_prevista`.
+  //
+  // Una columna «Pagado el» alimentada por AD habría dicho, en la pantalla desde la que se decide a
+  // quién pagar, que 41 compras impagas ya se pagaron — 40 con fecha del mes que viene.
+  //
+  // Y ES EL CASO QUE UN TEST DE CAMPO NO VE: comprobar que la celda lee `f.fecha_caja` es verdadero
+  // y no prueba nada, porque el defecto no está en de dónde lee sino en qué significa lo leído. Por
+  // eso lo que se clava acá es que ese campo NO se use y que el significado se declare en pantalla.
   const t = codigoTabla()
   assert.match(t, /data-testid="compra-fecha"[\s\S]{0,200}?fechaDdMmAa\(f\.fecha\)/,
     'la columna «Fecha» dejó de leer la fecha del comprobante')
-  assert.match(t, /data-testid="compra-fecha-pago"[\s\S]{0,260}?fechaDdMmAa\(f\.fecha_caja\)/,
-    'la columna «Pagado el» dejó de leer la fecha de caja (AD): estaría afirmando un pago que no ocurrió')
-  // Y NO SE CUELA UNA TERCERA. `fecha_prevista` bajó al panel; en la lista sería una tercera columna
-  // de fecha en una fila que ya tiene diez columnas, y su concepto ya está en el filtro «Vencimiento».
-  assert.equal(t.includes('f.fecha_prevista'), false,
-    'volvió la fecha prevista a la lista: son tres columnas de fecha para la misma fila')
+  assert.match(t, /data-testid="compra-fecha-pago"[\s\S]{0,420}?fechaDdMmAa\(f\.fecha_prevista\)/,
+    'la columna de pago dejó de leer la fecha prevista (Q), que es la única que la fuente relaciona con el pago')
+  assert.equal(t.includes('fecha_caja'), false,
+    'volvió `fecha_caja` a la lista: afirma como pagadas 41 filas que no lo están, 40 con fecha futura')
+  // NI SE TRAE DE LA BASE. Si el campo existe en el tipo, el próximo que lea el rótulo «Fecha de
+  // caja» va a creerle: que no compile es más barato que que mienta.
+  const servicio = sinComentarios(fuente('../services/comprasSheetService.ts'))
+  assert.equal(servicio.includes('fecha_caja'), false,
+    '`fecha_caja` volvió al SELECT o al tipo: la trampa vuelve a estar a mano')
+
+  // EL RÓTULO NO AFIRMA UN PAGO. «Pagado el» sobre una fila impaga es una afirmación falsa aunque la
+  // fecha sea la correcta; «Pago» nombra la columna sin decidir por la fila.
+  assert.equal(t.includes('Pagado el'), false, 'el rótulo volvió a afirmar que la fila está paga')
+
+  // Y LA AMBIGÜEDAD DE LA FUENTE SE DECLARA EN LA CELDA, que es lo que hace honesta a la columna: la
+  // misma Q significa «el día que se pagó» en una fila paga y «cuándo se prevé pagar» en una impaga.
+  assert.match(t, /const pagada = estaPagada\(f\.estado\)/,
+    'la fila dejó de preguntar si la compra está paga: la columna volvió a tratar igual lo pagado y lo previsto')
+  assert.match(t, /title=\{pagada \? ROTULO_PAGO : `\$\{ROTULO_PREVISTA\}/,
+    'la celda dejó de decir que la fecha de una fila impaga es una previsión')
+  assert.match(t, /fontStyle: pagada \? undefined : 'italic'/,
+    'lo previsto dejó de distinguirse de lo pagado a simple vista')
+
   // EL FORMATO ES UNO SOLO PARA LAS DOS (dueño: «dd/mm/yy consistente»). `fechaCortaConAnio` escribe
   // el año sólo cuando no es el corriente, así que la misma columna tendría dos formas; `diaMes` lo
   // pierde entero y una factura de 2025 se leería como de la semana pasada.
   for (const abrevia of ['diaMes(', 'fechaCortaConAnio(', 'fechaCompleta(']) {
     assert.equal(t.includes(abrevia), false, `una de las dos fechas usa ${abrevia}: el formato dejó de ser uno solo`)
   }
-  // Y UN VACÍO ES UN VACÍO: una fecha de pago ausente SIGNIFICA que todavía no se pagó.
+  // Y UN VACÍO ES UN VACÍO: en la fuente esa celda está vacía y un «—» se lee como un dato.
   assert.equal(/fechaDdMmAa\([^)]*\)\s*[?|]{1,2}/.test(t), false,
     'se le puso texto de relleno a la fecha ausente: en el Sheet esa celda está vacía')
+})
+
+test('«pagada» sale del ESTADO, no del monto ni de la fecha', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // `monto_pagado > 0` parece el criterio natural y es falso: al 15/09/2026 hay 3 filas PENDIENTES
+  // con un pago parcial —plata que salió, deuda que sigue viva—. Llamarlas «pagadas» taparía el
+  // saldo en la pantalla desde la que se decide a quién pagar. Y una fecha no puede ser el criterio
+  // porque es justamente la que está en duda.
+  //
+  // FALLA CERRADO: lo que la pestaña no dice, no está pagado.
+  const s = sinComentarios(fuente('../services/comprasSheet.ts'))
+  assert.match(s, /export const estaPagada = \(estado: string \| null \| undefined\): boolean =>\s*estado\?\.trim\(\) === ESTADO\.PAGADO/,
+    'el criterio de «pagada» dejó de ser el estado, o dejó de fallar cerrado')
+  assert.equal(/estaPagada[\s\S]{0,200}monto_pagado/.test(s), false,
+    '«pagada» pasó a mirar el monto: las 3 pendientes con pago parcial se leerían como saldadas')
 })
 
 test('el corte intermedio retira exactamente las celdas que le sacó a la grilla', () => {

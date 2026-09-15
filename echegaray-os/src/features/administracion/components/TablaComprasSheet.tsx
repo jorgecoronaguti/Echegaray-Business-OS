@@ -91,7 +91,7 @@ import {
   ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, V,
 } from '@/shared/components/v2/patron'
 import { CintaHorizontal } from '@/shared/components/v2/CintaHorizontal'
-import { pastillaDe, totalesDe } from '../services/comprasSheet'
+import { estaPagada, pastillaDe, totalesDe } from '../services/comprasSheet'
 import { ObraEnLinea } from './ObraEnLinea'
 import type { FilaConPapel } from '../services/comprasSheetService'
 import { CeldaComprobante } from './CeldaComprobante'
@@ -230,22 +230,38 @@ const CUERPO = '13.5px'
  * EL NOMBRE QUE CADA FECHA TIENE EN LA FUENTE, para que quien compare contra el Sheet sepa qué
  * columna está mirando. Van en el `title` del rótulo y no en el rótulo: no entran en 72px.
  *
- * ═══ POR QUÉ SON ÉSTAS DOS Y NO LA PREVISTA (dueño, 15/09/2026) ═══
+ * ═══ LA PESTAÑA NO TIENE UNA FECHA DE PAGO. MEDIDO EL 15/09/2026, NO DEDUCIDO ═══
  *
- * La pestaña tiene TRES fechas y hasta hoy la lista mostraba la del medio. El dueño pidió las dos
- * de los extremos: cuándo se emitió el comprobante y cuándo salió la plata. Son las que cierran el
- * ciclo de un gasto y las que se comparan contra el banco.
+ * El dueño pidió «la fecha de la factura y la fecha de pago». La segunda NO EXISTE como dato, y la
+ * candidata obvia es una trampa: `fecha_caja` (AD · «Fecha de caja») parece ser cuándo salió la
+ * plata y no lo es. Contra la base viva, sobre las 891 filas no anuladas:
  *
- * `fecha_prevista` (Q) NO se borró de la pantalla: bajó al panel, con su nombre completo. Y el
- * filtro «Vencimiento» sigue leyendo `tramo_vencimiento` (AN), que es un ARRAYFORMULA sobre esa
- * misma Q: el concepto «esto está por vencer» sigue teniendo una sola definición y sigue en la
- * pantalla. Dejar las tres habría puesto tres columnas de fecha en una fila de diez.
+ *   · `fecha_caja` es IGUAL a `fecha_prevista` en 889 de 891. Las 2 que difieren es sólo porque Q
+ *     está vacía y AD la rellena — no porque digan cosas distintas.
+ *   · Las 41 compras PENDIENTES tienen las dos cargadas, y 40 de ellas con fecha FUTURA.
+ *   · `scripts/sync-compras.mjs` ya las escribía como intercambiables: `fecha_caja ?? fecha_prevista`.
  *
- * ELEGIR MAL SE VERÍA IGUAL DE BIEN: al 08/09 `fecha_prevista` y `fecha_caja` coincidían en 925 de
- * 927 filas. Por eso las dos columnas tienen test que clava de qué campo leen.
+ * Una columna «Pagado el» alimentada por AD habría afirmado 41 pagos que no ocurrieron, 40 de ellos
+ * con fecha del mes que viene. Es la Regla de Oro 2 —presentar una estimación como un hecho— en la
+ * pantalla desde la que se decide a quién pagar. Y ningún test de campo lo habría visto: verificar
+ * que la celda lee `f.fecha_caja` es verdad y es irrelevante si `fecha_caja` no significa «pagado».
+ *
+ * ═══ QUÉ SE MUESTRA ENTONCES ═══
+ *
+ * La única fecha que la fuente relaciona con el pago es Q, `fecha_prevista`, y SIGNIFICA DOS COSAS
+ * SEGÚN EL ESTADO: en las 850 pagadas es el día en que se pagó; en las 41 pendientes es cuándo se
+ * PREVÉ pagar. Esa ambigüedad está en la fuente y no se arregla desde acá — pero se DECLARA en vez
+ * de esconderse: la fecha de una fila no pagada se dibuja apagada y su `title` dice que es prevista.
+ * Así la columna responde lo que el dueño pidió sin afirmar un pago que nadie registró.
+ *
+ * LO QUE FALTA PARA TENER LA FECHA DE VERDAD está fuera de esta pantalla: hoy ninguna tabla del OS
+ * ata un pago a una fila de `compra_sheet`, así que el día que salió la plata sólo vive en el banco.
  */
 const ROTULO_FECHA = 'Compras · fecha del comprobante'
-const ROTULO_PAGO = 'Compras · AD «Fecha de caja» — cuándo salió la plata'
+/** Lo que dice el `title` de la celda cuando la compra SÍ está paga. */
+const ROTULO_PAGO = 'Compras · Q «Fecha prevista de pago (día)» — en una fila paga, el día del pago'
+/** Y lo que dice cuando NO: la misma columna, otro significado. Se declara, no se esconde. */
+const ROTULO_PREVISTA = 'PREVISTA: esta compra todavía no está paga. La plata no salió.'
 
 /**
  * EL IMPORTE. Una fila anulada se dibuja apagada y tachada: existe en la pestaña, no es un gasto.
@@ -287,7 +303,7 @@ export function TablaComprasSheet({
             <span className="grid"><RotuloCol>Obra</RotuloCol></span>
             <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Estado</RotuloCol></span>
             <span className={`grid ${SUELTA_TELEFONO}`} title={ROTULO_FECHA}><RotuloCol>Fecha</RotuloCol></span>
-            <span className={`grid ${SUELTA_TELEFONO}`} title={ROTULO_PAGO}><RotuloCol>Pagado el</RotuloCol></span>
+            <span className={`grid ${SUELTA_TELEFONO}`} title={ROTULO_PAGO}><RotuloCol>Pago</RotuloCol></span>
             <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Forma de pago</RotuloCol></span>
             <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol derecha>Importe</RotuloCol></span>
             <span className={SUELTA_TELEFONO} />
@@ -297,6 +313,10 @@ export function TablaComprasSheet({
 
       {filas.map((f) => {
         const estado = pastillaDe(f.estado)
+        // ¿SALIÓ LA PLATA? Decide cómo se dibuja la columna de pago — ver `ROTULO_PREVISTA`. El
+        // criterio vive en el servicio y no acá: la lista, el chip «A pagar» y el pie tienen que
+        // estar de acuerdo sobre qué es una compra paga.
+        const pagada = estaPagada(f.estado)
         const elegida = seleccionada === f.fila
         return (
           <div
@@ -398,7 +418,7 @@ export function TablaComprasSheet({
               {/* LAS DOS FECHAS DEL CICLO DEL GASTO. Mono tabular y alineadas a la derecha para que
                   las doscientas de la pantalla alineen por el día, y VACÍAS cuando el Sheet no las
                   trae: un «—» en una columna de fechas se lee como un dato de la fuente, y en la
-                  fuente hay una celda vacía. Una fecha de pago vacía SIGNIFICA que no se pagó. */}
+                  fuente hay una celda vacía. */}
               <span
                 className={`text-right font-mono tabular-nums ${SUELTA_TELEFONO}`}
                 style={{ fontSize: '12px', color: f.anulada ? V.tenue : V.tintaSuave }}
@@ -408,14 +428,25 @@ export function TablaComprasSheet({
                 {fechaDdMmAa(f.fecha)}
               </span>
 
+              {/* LA FECHA DEL PAGO, Y SU LÍMITE DECLARADO EN LA PROPIA CELDA. Ver el bloque de
+                  arriba: la fuente no tiene «cuándo salió la plata», tiene la fecha PREVISTA, que en
+                  una fila paga coincide con el día del pago y en una impaga es una intención. Por eso
+                  la fila impaga se dibuja APAGADA y en bastardilla y su `title` lo dice con todas las
+                  letras — 41 de 891 filas están en ese caso y 40 con fecha futura. Pintarlas iguales
+                  sería la pantalla afirmando 41 pagos que no ocurrieron. */}
               <span
                 className={`text-right font-mono tabular-nums ${SUELTA_TELEFONO}`}
-                style={{ fontSize: '12px', color: f.anulada ? V.tenue : V.tintaSuave }}
+                style={{
+                  fontSize: '12px',
+                  color: f.anulada || !pagada ? V.tenue : V.tintaSuave,
+                  fontStyle: pagada ? undefined : 'italic',
+                }}
                 data-testid="compra-fecha-pago"
-                data-fecha-caja={f.fecha_caja ?? undefined}
-                title={f.tramo_vencimiento ?? undefined}
+                data-pagada={pagada ? 'si' : 'no'}
+                data-fecha-prevista={f.fecha_prevista ?? undefined}
+                title={pagada ? ROTULO_PAGO : `${ROTULO_PREVISTA}${f.tramo_vencimiento ? ` · ${f.tramo_vencimiento}` : ''}`}
               >
-                {fechaDdMmAa(f.fecha_caja)}
+                {fechaDdMmAa(f.fecha_prevista)}
               </span>
 
               {/* NO BLOQUEA NADA y por eso es apagado, no ámbar: sin forma de pago la compra existe
