@@ -62,6 +62,12 @@ export function soloCambiaElTamanoDeLaGrilla(req) {
   return campos.every((c) => CAMPOS_DE_TAMANO.has(c))
 }
 
+/** ¿La máscara de un `updateCells` es EXACTAMENTE la validación y nada más? PURA. */
+function esSoloValidacion(fields) {
+  const campos = String(fields ?? '').split(',').map((c) => c.trim()).filter(Boolean)
+  return campos.length > 0 && campos.every((c) => c === 'dataValidation')
+}
+
 /**
  * Qué formatea un request, si formatea algo. Puro.
  * @returns {{tipo:string, sheetId:number, rango:string, gr:object|null}|null}
@@ -71,8 +77,14 @@ export function claveDeFormato(req) {
   const deRango = (tipo, r) => (r && r.sheetId !== undefined ? { tipo, sheetId: r.sheetId, rango: a1DeGridRange(r), gr: r } : null)
   if (req.repeatCell) return deRango(TIPO.CELDA, req.repeatCell.range)
   if (req.updateBorders) return deRango(TIPO.CELDA, req.updateBorders.range)
-  // Un updateCells que NO escribe valor es una pasada de formato como cualquier otra.
-  if (req.updateCells && !/userEnteredValue/.test(String(req.updateCells.fields ?? '*'))) {
+  // Un updateCells que NO escribe valor es una pasada de formato como cualquier otra...
+  // ...SALVO el que lleva la máscara `dataValidation` sola. Una regla de validación no es diseño: no
+  // pinta, no mide ni ocupa: sólo dice qué se puede tipear. El propio clasificador ya declara inocuo a
+  // `setDataValidation` («no reescriben lo que ya está cargado»), y `updateCells` con esa máscara hace
+  // exactamente lo mismo — es la forma de la API que SÍ alcanza a las filas que un filtro esconde. Si
+  // acá contara como formato, el desplegable de una columna nueva quedaría a merced de la huella de
+  // diseño de la pestaña y podría no escribirse jamás en el tramo que el dueño formateó a mano.
+  if (req.updateCells && !esSoloValidacion(req.updateCells.fields) && !/userEnteredValue/.test(String(req.updateCells.fields ?? '*'))) {
     return deRango(TIPO.CELDA, req.updateCells.range ?? null)
   }
   if (req.mergeCells) return deRango(TIPO.MERGE, req.mergeCells.range)

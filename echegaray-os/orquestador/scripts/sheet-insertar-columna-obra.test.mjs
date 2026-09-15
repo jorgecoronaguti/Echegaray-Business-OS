@@ -5,7 +5,8 @@
 // esperado, nunca podría dar rojo.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { insertarColumnaObra, reverificarColumnaObra, verificarEncabezado, INSERCIONES, ROTULO } from './sheet-insertar-columna-obra.mjs'
+import { insertarColumnaObra, modoDeCorrida, reverificarColumnaObra, verificarEncabezado, ID, INSERCIONES, ROTULO } from './sheet-insertar-columna-obra.mjs'
+import { DOLAR } from '../lib/insercion-obra-precondiciones.mjs'
 import { COMPRAS_2508, COBRANZAS_1409 } from '../lib/encabezados-referencia.mjs'
 
 const [COMPRAS, COBRANZAS] = INSERCIONES
@@ -31,7 +32,13 @@ const GOOGLE = new Map([
 ])
 
 /** Un doble de Google que inserta de verdad sobre las grillas en memoria y anota cada llamada. */
-function dobleDeGoogle({ encCompras = COMPRAS_2508, encCobranzas = COBRANZAS_1409, tocar = null, falla = null } = {}) {
+// El bloque del tipo de cambio: con el dólar declarado (paso 1b en verde) salvo que el caso lo rompa.
+const BLOQUE_DOLAR = (declarado = 1480) => ({
+  formulas: [['=GOOGLEFINANCE("CURRENCY:USDARS")'], [declarado ? String(declarado) : '=IF(C109<>"";C109;C108)'], ['=IF(C110<>"";C110;C109)']],
+  valores: [[1505.95], [declarado || 1505.95], [declarado || 1505.95]],
+})
+
+function dobleDeGoogle({ encCompras = COMPRAS_2508, encCobranzas = COBRANZAS_1409, tocar = null, falla = null, dolar = 1480 } = {}) {
   const hojas = {
     Compras: hojaDe(COMPRAS, encCompras, '=SUM(O5:O6)', 30),
     Cobranzas: hojaDe(COBRANZAS, encCobranzas, '=K5*2', 20),
@@ -40,14 +47,19 @@ function dobleDeGoogle({ encCompras = COMPRAS_2508, encCobranzas = COBRANZAS_140
   }
   const ids = { 1: 'Compras', 2: 'Cobranzas', 3: 'CAJA', 4: 'Notas' }
   const llamadas = []
+  // TODO archivo que tocó la corrida. El ensayo sobre una copia vale por esto: una sola llamada que
+  // se quedó con el id del archivo real escribiría el Sheet del dueño desde el ensayo.
+  const archivos = new Set()
   let escrito = false
   return {
-    llamadas, hojas,
-    async getSheetMeta() {
-      llamadas.push('meta')
+    llamadas, hojas, archivos,
+    async getSheetMeta(fileId) {
+      llamadas.push('meta'); archivos.add(fileId)
       return [...Object.entries(ids).map(([id, title]) => ({ title, sheetId: Number(id), rows: 100, cols: 50 })), { title: 'Gráfico', sheetId: 9 }]
     },
-    async readSheetValues(_id, rango, { render } = {}) {
+    async readSheetValues(fileId, rango, { render } = {}) {
+      archivos.add(fileId)
+      if (rango === DOLAR.rango) { llamadas.push('dolar'); return BLOQUE_DOLAR(dolar)[render === 'FORMULA' ? 'formulas' : 'valores'] }
       const p = /^'((?:[^']|'')+)'/.exec(rango)[1]
       const fila = /!A(\d+):BZ\d+$/.exec(rango)
       llamadas.push(fila ? `encabezado:${p}` : `leer:${p}:${render}`)
@@ -55,8 +67,8 @@ function dobleDeGoogle({ encCompras = COMPRAS_2508, encCobranzas = COBRANZAS_140
       if (fila) return [hojas[p].valores[Number(fila[1]) - 1]]
       return (render === 'FORMULA' ? hojas[p].formulas : hojas[p].valores).map((f) => [...f])
     },
-    async spreadsheetBatchUpdate(_id, requests) {
-      llamadas.push('escribir'); escrito = true
+    async spreadsheetBatchUpdate(fileId, requests) {
+      llamadas.push('escribir'); escrito = true; archivos.add(fileId)
       for (const r of requests) {
         const hoja = hojas[ids[r.insertDimension?.range.sheetId ?? r.updateCells.range.sheetId]]
         const grillas = [hoja.formulas, hoja.valores]
@@ -74,13 +86,13 @@ function dobleDeGoogle({ encCompras = COMPRAS_2508, encCobranzas = COBRANZAS_140
   }
 }
 
-const correr = (google, { aplicar = true, precondiciones = [], correrPyl = null } = {}) => insertarColumnaObra({
-  google, aplicar, log: () => {}, correrPyl,
+const correr = (google, { aplicar = true, precondiciones = [], correrPyl = null, id = undefined, ponerDesplegable = null } = {}) => insertarColumnaObra({
+  google, aplicar, log: () => {}, correrPyl, ponerDesplegable, ...(id ? { id } : {}),
   verificarPrecondiciones: async () => { google.llamadas.push('precondiciones'); return precondiciones },
   guardar: (n) => { google.llamadas.push(`guardar:${n}`); return n },
   correrHuellas: async () => { google.llamadas.push('huellas') },
 })
-const hitos = (g) => g.llamadas.filter((x) => /^(precondiciones|encabezado|guardar|escribir|huellas|pyl)/.test(x))
+const hitos = (g) => g.llamadas.filter((x) => /^(precondiciones|encabezado|guardar|escribir|huellas|pyl|desplegable)/.test(x))
 
 test('el encabezado real de hoy pasa el portón; «ORDEN DE  COMPRA» con doble espacio es el mismo rótulo', () => {
   assert.deepEqual(verificarEncabezado(COMPRAS_2508, COMPRAS), [])
@@ -223,4 +235,78 @@ test('el dry sólo planea el P&L', async () => {
   const r = await correr(g, { aplicar: false, correrPyl: pyl(g) })
   assert.equal(r.paso, 'dry')
   assert.ok(g.llamadas.includes('pyl:plan') && !g.llamadas.includes('pyl:aplicar'))
+})
+
+// ═══ EL ENSAYO SOBRE UNA COPIA, Y EL DESPLEGABLE (15/09/2026) ═══
+
+test('modoDeCorrida: sin --copia se corre contra el archivo real', () => {
+  assert.deepEqual(modoDeCorrida(['node', 'x.mjs', '--aplicar']), { copia: false, id: ID })
+})
+
+test('EL DEFECTO QUE ESTO CIERRA: --copia con el id del archivo REAL aborta', () => {
+  assert.throws(() => modoDeCorrida(['--copia', ID, '--aplicar']), /archivo REAL/)
+  assert.throws(() => modoDeCorrida(['--copia']), /necesita el id/)
+  assert.throws(() => modoDeCorrida(['--copia', '--aplicar']), /necesita el id/)
+})
+
+test('--copia con otro id corre sobre ese archivo', () => {
+  assert.deepEqual(modoDeCorrida(['--copia', 'COPIA-1', '--aplicar']), { copia: true, id: 'COPIA-1' })
+})
+
+test('EL DEFECTO: con un id de copia, NINGUNA llamada toca el archivo real', async () => {
+  const g = dobleDeGoogle()
+  const r = await correr(g, { id: 'COPIA-1' })
+  assert.equal(r.ok, true, JSON.stringify(r))
+  assert.deepEqual([...g.archivos], ['COPIA-1'])
+})
+
+test('sin --copia, todas las llamadas van al archivo real', async () => {
+  const g = dobleDeGoogle()
+  await correr(g)
+  assert.deepEqual([...g.archivos], [ID])
+})
+
+const desplegable = (google, { ok = true } = {}) => async () => {
+  google.llamadas.push('desplegable')
+  return { ok, paso: ok ? 'fin' : 'relectura', detalle: ok ? [] : ['Compras!L4:L: la celda no tiene ninguna validación'] }
+}
+
+test('el desplegable se pone DESPUÉS de insertar y ANTES de comparar', async () => {
+  const g = dobleDeGoogle()
+  const r = await correr(g, { ponerDesplegable: desplegable(g) })
+  assert.equal(r.ok, true, JSON.stringify(r))
+  assert.deepEqual(hitos(g), ['precondiciones', 'encabezado:Compras', 'encabezado:Cobranzas', 'guardar:antes', 'escribir', 'desplegable', 'huellas', 'guardar:despues'])
+})
+
+test('EL DEFECTO: si el desplegable no queda puesto, la comparación y las huellas CORREN igual pero la corrida NO cierra', async () => {
+  const g = dobleDeGoogle()
+  const r = await correr(g, { ponerDesplegable: desplegable(g, { ok: false }) })
+  assert.equal(r.ok, false)
+  assert.equal(r.paso, 'desplegable')
+  assert.match(r.detalle.join(), /no tiene ninguna validación/)
+  assert.ok(g.llamadas.includes('huellas'), 'la columna quedó bien insertada: las huellas se corren')
+  assert.ok(g.llamadas.includes('guardar:despues'), 'la foto nueva se guarda igual')
+})
+
+test('el dry NO pone el desplegable: todavía no hay columna donde ponerlo', async () => {
+  const g = dobleDeGoogle()
+  await correr(g, { aplicar: false, ponerDesplegable: desplegable(g) })
+  assert.ok(!g.llamadas.includes('desplegable'))
+})
+
+test('EL DEFECTO: con el dólar sin clavar NO se fotografía ni se inserta — arrastraría cien valores', async () => {
+  const g = dobleDeGoogle({ dolar: 0 })
+  const r = await correr(g)
+  assert.equal(r.paso, 'tipo-de-cambio')
+  assert.match(r.detalle.join(), /cuelga de GOOGLEFINANCE/)
+  assert.ok(!g.llamadas.includes('escribir'))
+  assert.ok(!g.llamadas.some((x) => x.startsWith('guardar')), 'ni siquiera saca la foto previa')
+})
+
+test('el paso 1b corre entre el encabezado y la foto, también en el dry', async () => {
+  const g = dobleDeGoogle()
+  await correr(g, { aplicar: false })
+  const i = g.llamadas.indexOf('dolar')
+  assert.ok(i > g.llamadas.indexOf('encabezado:Cobranzas'))
+  assert.ok(i < g.llamadas.indexOf('guardar:antes'))
 })

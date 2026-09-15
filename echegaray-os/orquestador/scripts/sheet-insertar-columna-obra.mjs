@@ -15,10 +15,16 @@
 //      saltearlas — también en el dry;
 //   1. el encabezado actual es el esperado (K «Detalles / Obra», L «Concepto»; G «Obra / Cliente»,
 //      H «ORDEN DE COMPRA») — si no, ABORTA: la columna ya se insertó o la pestaña cambió;
+//   1b. el tipo de cambio está CLAVADO por el dueño y no colgando de GOOGLEFINANCE: si se mueve entre
+//      la foto y la relectura, arrastra cien valores y la comparación acusa una rotura que no existe;
 //   2. foto de fórmulas del ARCHIVO ENTERO → qué pestañas citan Compras!/Cobranzas! → foto de valores y
 //      fórmulas de las insertadas y de ésas, a archivo. Cualquier lectura que falla ABORTA;
 //   2b. plan del P&L (otro archivo, lo verifica su propio script por relectura): con dudas, no inserta;
 //   3. insertDimension en Compras L y Cobranzas H, y el rótulo «Obra»;
+//   3b. la lista `_OBRAS_OS` y el desplegable de las dos columnas (`scripts/obras-lista-sheet.mjs`).
+//      Si esto falla NO frena la verificación: la columna ya está bien insertada y lo que falta se
+//      arregla corriendo ese script solo. La corrida igual cierra en rojo: sin desplegable, la columna
+//      se tipea a mano y eso es lo que vino a evitar;
 //   4. relectura de las mismas pestañas y comparación celda por celda de VALORES (salvo volátiles) y de
 //      FÓRMULAS contra la original con sus referencias corridas como lo hace Google
 //      (`lib/formula-insertar-columna.mjs`): 0 diferencias;
@@ -29,15 +35,27 @@
 // Lo que NO hace: deshacer. Si el paso 4 falla, la columna YA está insertada: deja un reporte con las
 // fotos y los comandos para decidir, y NO corre las huellas.
 //
+// ═══ `--copia <fileId>`: EL ENSAYO (15/09/2026) ═══
+//
+// `ajustarFormula` dice qué hace Google al insertar una columna, y eso se sabía por lectura de la
+// documentación y por los tests, no por haberlo VISTO en este archivo. El ensayo corre la inserción
+// entera sobre una COPIA de Drive del archivo real: mismas pestañas, mismas fórmulas, mismos gráficos.
+// `modoDeCorrida` aborta si el id es el del real —ésa es toda la puerta, y no hay ninguna al revés: NO
+// existe bandera para saltear precondiciones contra el archivo real—. En la copia se saltean sólo las
+// precondiciones de checkout/timers (hablan del mundo de producción, no del archivo) y las escrituras
+// FUERA de la copia: las huellas de Postgres y el P&L quedan en plan, porque el archivo copiado no es
+// el que esas dos escrituras describen.
+//
 //   node orquestador/scripts/sheet-insertar-columna-obra.mjs                          # dry
 //   node orquestador/scripts/sheet-insertar-columna-obra.mjs --aplicar                # desde producción, con el dueño
+//   node orquestador/scripts/sheet-insertar-columna-obra.mjs --copia <fileId> --aplicar  # ensayo sobre una copia
 //   node orquestador/scripts/sheet-insertar-columna-obra.mjs --reverificar <antes.json>   # relee y compara, sólo lectura
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { normalizarRotulo } from '../lib/compras-columnas.mjs'
-import { diferenciasDePestana, pestanasQueCitan } from '../lib/formula-insertar-columna.mjs'
-import { evaluarPrecondiciones, sondearPrecondiciones } from '../lib/insercion-obra-precondiciones.mjs'
+import { diferenciasDePestana, listarVolatiles, medirVolatiles, pestanasQueCitan } from '../lib/formula-insertar-columna.mjs'
+import { DOLAR, evaluarPrecondiciones, problemaDelTipoDeCambio, sondearPrecondiciones } from '../lib/insercion-obra-precondiciones.mjs'
 
 export const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -68,30 +86,59 @@ export function requestsDeInsercion(ins, sheetId) {
   ]
 }
 
+/**
+ * ¿SOBRE QUÉ ARCHIVO CORRE ESTA LLAMADA? El real, salvo `--copia <fileId>` con un id DISTINTO.
+ *
+ * Falla cerrado y explota (no devuelve un default): un `--copia` mal tipeado que cayera en el real
+ * sería la corrida real sin precondiciones, que es justo lo que no puede existir.
+ */
+export function modoDeCorrida(argv = [], { real = ID } = {}) {
+  const i = argv.indexOf('--copia')
+  if (i < 0) return { copia: false, id: real }
+  const destino = String(argv[i + 1] ?? '').trim()
+  if (!destino || destino.startsWith('--')) throw new Error('--copia necesita el id del archivo copia')
+  if (destino === real) throw new Error(`--copia apunta al archivo REAL (${real}): el ensayo se corre sobre una copia`)
+  return { copia: true, id: destino }
+}
+
 /** Una pestaña entera. Lo que falla SUBE: una foto con un hueco compararía contra nada y daría verde. */
-async function leerPestana(google, titulo, render) {
-  const g = await google.readSheetValues(ID, `'${String(titulo).replace(/'/g, "''")}'`, { render })
+async function leerPestana(google, id, titulo, render) {
+  const g = await google.readSheetValues(id, `'${String(titulo).replace(/'/g, "''")}'`, { render })
   if (!Array.isArray(g)) throw new Error(`la lectura de «${titulo}» (${render}) no devolvió una grilla`)
   return g
 }
 
 /** Valores y fórmulas de estas pestañas. */
-export async function fotoDe(google, pestanas) {
+export async function fotoDe(google, pestanas, id = ID) {
   const foto = {}
-  for (const t of pestanas) foto[t] = { formulas: await leerPestana(google, t, 'FORMULA'), valores: await leerPestana(google, t, 'UNFORMATTED_VALUE') }
+  for (const t of pestanas) foto[t] = { formulas: await leerPestana(google, id, t, 'FORMULA'), valores: await leerPestana(google, id, t, 'UNFORMATTED_VALUE') }
   return foto
 }
 
-/** Paso 2: las fórmulas de todo el archivo dicen qué pestañas dependen de las insertadas. */
-async function fotoPrevia(google, meta) {
+/**
+ * Paso 2: las fórmulas de todo el archivo dicen qué pestañas dependen de las insertadas.
+ *
+ * LOS VALORES SE LEEN DOS VECES, y no es desconfianza del lector: es la única forma de saber qué celdas
+ * se mueven solas (el dólar de `GOOGLEFINANCE` y todo lo que cuelga de él). Entre las dos lecturas no se
+ * escribe nada. Manda la SEGUNDA, que es la más cercana al momento de insertar. Ver `medirVolatiles`.
+ */
+async function fotoPrevia(google, meta, id) {
   const insertadas = INSERCIONES.map((i) => i.pestana)
   const formulas = {}
   // Sin grilla (hojas de gráfico) no hay celdas que citen nada.
-  for (const s of meta.filter((x) => x.rows && x.cols)) formulas[s.title] = await leerPestana(google, s.title, 'FORMULA')
+  for (const s of meta.filter((x) => x.rows && x.cols)) formulas[s.title] = await leerPestana(google, id, s.title, 'FORMULA')
   const dependientes = pestanasQueCitan(formulas, insertadas)
   const foto = {}
-  for (const t of [...insertadas, ...dependientes]) foto[t] = { formulas: formulas[t], valores: await leerPestana(google, t, 'UNFORMATTED_VALUE') }
-  return { foto, dependientes }
+  const primeras = {}
+  for (const t of [...insertadas, ...dependientes]) primeras[t] = await leerPestana(google, id, t, 'UNFORMATTED_VALUE')
+  const volatiles = []
+  for (const t of [...insertadas, ...dependientes]) {
+    const valores = await leerPestana(google, id, t, 'UNFORMATTED_VALUE')
+    const marcas = medirVolatiles(primeras[t], valores)
+    foto[t] = { formulas: formulas[t], valores, volatiles: marcas }
+    volatiles.push(...listarVolatiles(t, marcas))
+  }
+  return { foto, dependientes, volatiles }
 }
 
 /** Paso 4, puro: la foto de después contra la de antes, pestaña por pestaña. Devuelve las diferencias. */
@@ -104,25 +151,42 @@ export function compararFotos(antes, despues) {
   return [...rotulos, ...difs]
 }
 
-async function precondiciones(verificar, log) {
+// El texto del verde NO puede afirmar lo que no se preguntó: en la copia las precondiciones de
+// producción ni se sondearon, y decir «producción al día» ahí es fabricar una verificación.
+async function precondiciones(verificar, log, copia = false) {
   let mal
   try { mal = typeof verificar === 'function' ? await verificar() : ['no hay con qué verificar las precondiciones'] } catch (e) { mal = [`no pude verificar las precondiciones: ${e.message}`] }
-  if (!mal.length) { log('0 ✓ precondiciones: producción al día, timers y worker quietos, migración 0700 aplicada'); return null }
+  if (!mal.length) {
+    log(copia
+      ? '0 — (copia) las precondiciones de producción NO se verificaron: hablan del archivo real, que este ensayo no toca'
+      : '0 ✓ precondiciones: producción al día, timers y worker quietos, migración 0700 aplicada')
+    return null
+  }
   log(`✖ precondiciones — NO sigo:\n  ${mal.join('\n  ')}`)
   return { ok: false, paso: 'precondiciones', detalle: mal }
 }
 
-async function encabezados(google, log) {
-  const meta = await google.getSheetMeta(ID)
+async function encabezados(google, log, id) {
+  const meta = await google.getSheetMeta(id)
   const hojas = Object.fromEntries(INSERCIONES.map((i) => [i.pestana, meta.find((s) => s.title === i.pestana)]))
   const mal = []
   for (const ins of INSERCIONES) {
     if (!Number.isInteger(hojas[ins.pestana]?.sheetId)) { mal.push(`no existe la pestaña ${ins.pestana}`); continue }
-    const enc = (await google.readSheetValues(ID, `'${ins.pestana}'!A${ins.filaEncabezado}:BZ${ins.filaEncabezado}`))?.[0] ?? []
+    const enc = (await google.readSheetValues(id, `'${ins.pestana}'!A${ins.filaEncabezado}:BZ${ins.filaEncabezado}`))?.[0] ?? []
     mal.push(...verificarEncabezado(enc, ins))
   }
   if (mal.length) { log(`✖ encabezado inesperado — NO inserto:\n  ${mal.join('\n  ')}`); return { fin: { ok: false, paso: 'encabezado', detalle: mal } } }
   log('1 ✓ encabezados como se esperaba')
+
+  // 1b. El tipo de cambio, que es la única entrada del archivo que se mueve sola. Vale también para la
+  // copia: es una propiedad del archivo. El porqué, en `insercion-obra-precondiciones.mjs`.
+  const bloque = {
+    formulas: await google.readSheetValues(id, DOLAR.rango, { render: 'FORMULA' }),
+    valores: await google.readSheetValues(id, DOLAR.rango, { render: 'UNFORMATTED_VALUE' }),
+  }
+  const dolar = problemaDelTipoDeCambio(bloque)
+  if (dolar) { log(`✖ tipo de cambio — NO inserto:\n  ${dolar}`); return { fin: { ok: false, paso: 'tipo-de-cambio', detalle: [dolar] } } }
+  log(`1b ✓ tipo de cambio clavado por el dueño (${bloque.valores[DOLAR.declarado][0]}): el archivo no se mueve solo`)
   return { meta, hojas }
 }
 
@@ -145,9 +209,9 @@ function reportarFalla({ paso, detalle = [], error = null, rutaAntes, despues, g
   return { ok: false, paso, detalle, reporte: ruta }
 }
 
-async function verificarYCerrar({ google, antes, rutaAntes, correrHuellas, correrPyl, guardar, log }) {
+async function verificarYCerrar({ google, id, antes, rutaAntes, correrHuellas, correrPyl, guardar, log, desplegable = null, copia = false }) {
   let despues
-  try { despues = await fotoDe(google, Object.keys(antes)) } catch (e) {
+  try { despues = await fotoDe(google, Object.keys(antes), id) } catch (e) {
     return reportarFalla({ paso: 'relectura', error: `no pude releer: ${e.message}`, rutaAntes, despues: null, guardar, log })
   }
   const difs = compararFotos(antes, despues)
@@ -155,16 +219,22 @@ async function verificarYCerrar({ google, antes, rutaAntes, correrHuellas, corre
   log(`4 ✓ 0 diferencias de valor y de fórmula, celda por celda, en ${Object.keys(antes).length} pestaña(s)`)
 
   await correrHuellas()
-  log('5 ✓ huellas corridas')
+  // En la copia las huellas y el P&L corren en DRY: describen el archivo real, no éste. El log no puede
+  // decir «corridas» de algo que sólo se planeó.
+  log(copia ? '5 — (copia) huellas: sólo el plan, la base no se tocó' : '5 ✓ huellas corridas')
   if (correrPyl) {
     const p = await correrPyl({ aplicar: true }).catch((e) => ({ ok: false, paso: 'lectura', detalle: [e.message] }))
     if (!p.ok) {
       log(`✖ P&L: ${p.paso} — las columnas YA están insertadas: corregilo con pyl-correr-columna-obra.mjs antes de descongelar`)
       return { ok: false, paso: 'pyl', detalle: p.detalle }
     }
-    log('5b ✓ P&L corrido una columna y releído')
+    log(copia ? '5b — (copia) P&L: sólo el plan, el otro archivo no se tocó' : '5b ✓ P&L corrido una columna y releído')
   }
-  log(`6 ✓ foto nueva guardada en ${guardar('despues', await fotoDe(google, Object.keys(antes)))}`)
+  log(`6 ✓ foto nueva guardada en ${guardar('despues', await fotoDe(google, Object.keys(antes), id))}`)
+  // EL DESPLEGABLE NO FRENA LA VERIFICACIÓN, PERO SÍ EL CIERRE. La columna quedó bien insertada y las
+  // huellas corridas —eso es lo que no se puede deshacer—, así que la comparación tenía que correr igual.
+  // Una columna «Obra» sin lista, en cambio, se tipea a mano: la corrida no cierra hasta que esté.
+  if (desplegable && !desplegable.ok) return { ok: false, paso: 'desplegable', detalle: desplegable.detalle ?? [] }
   return { ok: true, paso: 'fin' }
 }
 
@@ -173,19 +243,24 @@ async function verificarYCerrar({ google, antes, rutaAntes, correrHuellas, corre
  * `correrHuellas`, `correrPyl`, `guardar`.
  * @returns {Promise<{ok:boolean, paso:string, detalle?:string[], reporte?:string}>}
  */
-export async function insertarColumnaObra({ google, aplicar = false, verificarPrecondiciones, correrHuellas, correrPyl = null, guardar, log = console.log }) {
-  const frenado = await precondiciones(verificarPrecondiciones, log)
+export async function insertarColumnaObra({ google, aplicar = false, id = ID, copia = false, verificarPrecondiciones, correrHuellas, correrPyl = null, ponerDesplegable = null, guardar, log = console.log }) {
+  const frenado = await precondiciones(verificarPrecondiciones, log, copia)
   if (frenado) return frenado
   let hojas, antes, rutaAntes
   try {
-    const e = await encabezados(google, log)
+    const e = await encabezados(google, log, id)
     if (e.fin) return e.fin
     hojas = e.hojas
-    const f = await fotoPrevia(google, e.meta)
+    const f = await fotoPrevia(google, e.meta, id)
     antes = f.foto
     rutaAntes = guardar('antes', antes)
     log(`2 ✓ foto previa (valores y fórmulas) guardada en ${rutaAntes}`)
     log(`   pestañas que citan Compras/Cobranzas y se verifican: ${f.dependientes.join(', ') || 'ninguna'}`)
+    // Se DICEN. Una celda que se deja de comparar por valor y no aparece en ningún lado es un agujero.
+    log(f.volatiles.length
+      ? `   ⚠ ${f.volatiles.length} celda(s) cambian solas entre dos lecturas (cuelgan de GOOGLEFINANCE/NOW):`
+        + ` se comparan por FÓRMULA y no por valor — ${f.volatiles.slice(0, 12).join(' ')}${f.volatiles.length > 12 ? ' …' : ''}`
+      : '   ninguna celda cambió sola entre las dos lecturas de valores')
     for (const ins of INSERCIONES) log(`   ${ins.pestana}: insertaría «${ROTULO}» en el índice ${ins.indice} (${antes[ins.pestana].valores.length} filas)`)
     // EL P&L SE PLANEA ANTES DE INSERTAR. Si su plan tiene una duda —o no se pudo leer—, insertar lo dejaría
     // sumando la columna de al lado sin un camino probado para corregirlo: mejor no insertar.
@@ -201,20 +276,29 @@ export async function insertarColumnaObra({ google, aplicar = false, verificarPr
   if (!aplicar) { log('(dry) no llamé a ninguna API de escritura'); return { ok: true, paso: 'dry' } }
 
   const req = INSERCIONES.flatMap((ins) => requestsDeInsercion(ins, hojas[ins.pestana].sheetId))
-  const res = await google.spreadsheetBatchUpdate(ID, req, { yaGuardado: true })
+  const res = await google.spreadsheetBatchUpdate(id, req, { yaGuardado: true })
   if (res?.protegido || res?.congelado || res?.frenados?.length) {
     log(`✖ la escritura no pasó: ${JSON.stringify(res).slice(0, 200)}`)
     return { ok: false, paso: 'insercion' }
   }
   log('3 ✓ columnas insertadas')
-  return verificarYCerrar({ google, antes, rutaAntes, correrHuellas, correrPyl, guardar, log })
+
+  let desplegable = null
+  if (ponerDesplegable) {
+    desplegable = await ponerDesplegable().catch((e) => ({ ok: false, paso: 'desplegable', detalle: [e.message] }))
+    log(desplegable.ok
+      ? '3b ✓ lista `_OBRAS_OS` y desplegable puestos en las dos columnas'
+      : `✖ 3b desplegable (${desplegable.paso}): ${(desplegable.detalle ?? []).join(' · ')}`
+        + '\n   → se arregla solo: node orquestador/scripts/obras-lista-sheet.mjs --aplicar')
+  }
+  return verificarYCerrar({ google, id, antes, rutaAntes, correrHuellas, correrPyl, guardar, log, desplegable, copia })
 }
 
 /** `--reverificar <antes.json>`: la comparación del paso 4 otra vez, sin escribir nada. */
-export async function reverificarColumnaObra({ google, antes, verificarPrecondiciones, log = console.log }) {
-  const frenado = await precondiciones(verificarPrecondiciones, log)
+export async function reverificarColumnaObra({ google, antes, id = ID, copia = false, verificarPrecondiciones, log = console.log }) {
+  const frenado = await precondiciones(verificarPrecondiciones, log, copia)
   if (frenado) return frenado
-  const difs = compararFotos(antes, await fotoDe(google, Object.keys(antes)))
+  const difs = compararFotos(antes, await fotoDe(google, Object.keys(antes), id))
   log(difs.length ? `✖ ${difs.length} diferencia(s):\n  ${difs.slice(0, 50).join('\n  ')}` : '✓ 0 diferencias de valor y de fórmula')
   return { ok: !difs.length, paso: 'reverificacion', detalle: difs }
 }
@@ -222,25 +306,37 @@ export async function reverificarColumnaObra({ google, antes, verificarPrecondic
 async function main() {
   const aplicar = process.argv.includes('--aplicar')
   const iRev = process.argv.indexOf('--reverificar')
+  const modo = modoDeCorrida(process.argv)
   const { makeGoogleClient, WRITE_SCOPES, READONLY_SCOPES } = await import('../lib/google.mjs')
   const { loadConfig } = await import('../lib/config.mjs')
   const { guardarEnRespaldos } = await import('./pyl-correr-columna-obra.mjs')
   const db = await import('../lib/db.mjs')
   const google = makeGoogleClient({ config: loadConfig(), scopes: aplicar && iRev < 0 ? WRITE_SCOPES : READONLY_SCOPES })
-  const verificarPrecondiciones = async () => evaluarPrecondiciones(await sondearPrecondiciones({ script: fileURLToPath(import.meta.url), query: db.query }))
+  // En la copia las precondiciones de checkout/timers no aplican: hablan del mundo que escribe el
+  // archivo REAL, y ningún timer escribe una copia recién sacada de Drive. Contra el real no hay
+  // manera de llegar acá: `modoDeCorrida` aborta si el id coincide.
+  const verificarPrecondiciones = modo.copia
+    ? async () => []
+    : async () => evaluarPrecondiciones(await sondearPrecondiciones({ script: fileURLToPath(import.meta.url), query: db.query }))
   try {
+    if (modo.copia) console.log(`ENSAYO sobre la copia ${modo.id} — el archivo real no se toca`)
     if (iRev >= 0) {
       const antes = JSON.parse(readFileSync(process.argv[iRev + 1], 'utf8'))
-      const r = await reverificarColumnaObra({ google, antes, verificarPrecondiciones })
+      const r = await reverificarColumnaObra({ google, antes, id: modo.id, copia: modo.copia, verificarPrecondiciones })
       if (!r.ok) process.exitCode = 1
       return
     }
-    const guardar = guardarEnRespaldos('obra')
-    const correrHuellas = async () => (await import('./huellas-correr-columna.mjs')).correrHuellas({ db, google, aplicar: true })
+    const guardar = guardarEnRespaldos(modo.copia ? 'obra-copia' : 'obra')
+    // Postgres y el P&L describen el archivo REAL: corridos desde el ensayo escribirían la verdad de
+    // otro archivo. En la copia quedan en plan (sólo lectura) y su resultado se lee, no se aplica.
+    const correrHuellas = async () => (await import('./huellas-correr-columna.mjs')).correrHuellas({ db, google, aplicar: !modo.copia })
     const correrPyl = process.argv.includes('--sin-pyl')
       ? null
-      : async (o) => (await import('./pyl-correr-columna-obra.mjs')).correrPyl({ google, guardar, ...o })
-    const r = await insertarColumnaObra({ google, aplicar, verificarPrecondiciones, correrHuellas, correrPyl, guardar })
+      : async (o) => (await import('./pyl-correr-columna-obra.mjs')).correrPyl({ google, guardar, ...o, aplicar: modo.copia ? false : o.aplicar })
+    const lista = await import('./obras-lista-sheet.mjs')
+    const opciones = await lista.opcionesDesdeLaBase(db.query)
+    const ponerDesplegable = async () => lista.refrescarTodo({ google, id: modo.id, opciones, aplicar: true })
+    const r = await insertarColumnaObra({ google, aplicar, id: modo.id, copia: modo.copia, verificarPrecondiciones, correrHuellas, correrPyl, ponerDesplegable, guardar })
     if (!r.ok) process.exitCode = 1
   } finally {
     await db.closePool().catch(() => {})

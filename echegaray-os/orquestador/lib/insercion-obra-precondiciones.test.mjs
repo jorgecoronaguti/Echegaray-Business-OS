@@ -4,7 +4,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  COLUMNAS_0700, MARCAS, PRODUCCION, TIMERS, TIMERS_OPCIONALES, WORKER, evaluarPrecondiciones, parsearShow,
+  COLUMNAS_0700, DOLAR, MARCAS, PRODUCCION, TIMERS, TIMERS_OPCIONALES, WORKER, evaluarPrecondiciones,
+  parsearShow, problemaDelTipoDeCambio,
 } from './insercion-obra-precondiciones.mjs'
 
 function sano() {
@@ -58,4 +59,44 @@ test('no existe una bandera para saltearlas', () => {
   const script = readFileSync(join(import.meta.dirname, '..', 'scripts', 'sheet-insertar-columna-obra.mjs'), 'utf8')
   assert.doesNotMatch(script, /saltar|--sin-precondiciones|--forzar/i)
   assert.match(script, /evaluarPrecondiciones\(await sondearPrecondiciones/)
+})
+
+// ═══ EL DÓLAR (medido en dos copias de ensayo, 15/09/2026) ═══
+// Con la cotización del día, la inserción dio 52 y 112 diferencias de VALOR con 0 de fórmula: todas
+// colgaban de GOOGLEFINANCE. Clavado por el dueño, el archivo queda quieto.
+
+// C109 es la cotización de Google · C110 la del dueño · C111 la que se usa. `declarado = null` deja en
+// C110 la fórmula que trae el archivo, que repite a Google: la celda MUESTRA un número y no clava nada.
+const bloqueDolar = (declarado) => ({
+  formulas: [
+    ['=IFERROR(GOOGLEFINANCE("CURRENCY:USDARS");"")'],
+    [declarado == null ? '=IF(C109<>"";C109;C108)' : String(declarado)],
+    ['=IF(C110<>"";C110;C109)'],
+  ],
+  valores: [[1505.95], [declarado == null ? 1505.95 : declarado], [declarado == null ? 1505.95 : declarado]],
+})
+
+test('EL DEFECTO: con el dólar colgando de GOOGLEFINANCE, NO se inserta', () => {
+  assert.match(problemaDelTipoDeCambio(bloqueDolar(null)), /cuelga de GOOGLEFINANCE/)
+  assert.match(problemaDelTipoDeCambio(bloqueDolar(null)), /_CAJA_ANEXO!C110/)
+  assert.match(problemaDelTipoDeCambio(bloqueDolar(0)), /cuelga de GOOGLEFINANCE/)
+  assert.match(problemaDelTipoDeCambio(bloqueDolar('')), /cuelga de GOOGLEFINANCE/)
+})
+
+test('con el dólar declarado a mano por el dueño, se puede insertar', () => {
+  assert.equal(problemaDelTipoDeCambio(bloqueDolar(1480)), null)
+  assert.equal(`C${DOLAR.primeraFila + DOLAR.declarado}`, 'C110', 'la celda del dueño es C110, no C109')
+})
+
+test('EL DEFECTO QUE COSTÓ UNA COPIA: una FÓRMULA en C110 muestra un número y no clava nada', () => {
+  const conFormula = bloqueDolar(1480)
+  conFormula.formulas[DOLAR.declarado] = ['=IF(C109<>"";C109;C108)']
+  assert.match(problemaDelTipoDeCambio(conFormula), /escribí a mano/)
+})
+
+test('si el bloque del tipo de cambio se movió, no se afirma que esté quieto', () => {
+  const movido = bloqueDolar(1480)
+  movido.formulas[0] = ['="otra cosa"']
+  assert.match(problemaDelTipoDeCambio(movido), /no está donde se esperaba/)
+  assert.match(problemaDelTipoDeCambio({}), /no está donde se esperaba/)
 })

@@ -42,6 +42,14 @@ test('claveDeFormato: reconoce lo que formatea, y no lo que escribe contenido', 
   assert.equal(claveDeFormato({ updateSheetProperties: { properties: { sheetId: SID, tabColor: {} }, fields: 'tabColor' } }).tipo, TIPO.PESTANA)
   // Un updateCells CON valor es contenido, y lo decide la propiedad por celda, no ésta.
   assert.equal(claveDeFormato({ updateCells: { range: { sheetId: SID }, fields: 'userEnteredValue' } }), null)
+  // EL DEFECTO: la máscara `dataValidation` sola contaba como pasada de diseño, y la huella de formato
+  // de la pestaña podía frenar el desplegable de una columna nueva. Una regla de validación no pinta
+  // nada: es lo mismo que un `setDataValidation`, que el clasificador ya declara inocuo.
+  assert.equal(claveDeFormato({ updateCells: { range: { sheetId: SID }, fields: 'dataValidation' } }), null)
+  // Pero apenas la máscara trae ADEMÁS algo de diseño, vuelve a ser formato y se protege entera.
+  assert.equal(claveDeFormato({ updateCells: { range: { sheetId: SID, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 }, fields: 'dataValidation,userEnteredFormat' } }).tipo, TIPO.CELDA)
+  // Y sin máscara sigue sin poder afirmarse nada: es formato.
+  assert.equal(claveDeFormato({ updateCells: { range: { sheetId: SID, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 } } }).tipo, TIPO.CELDA)
   assert.equal(claveDeFormato({ addChart: {} }), null)
 })
 
