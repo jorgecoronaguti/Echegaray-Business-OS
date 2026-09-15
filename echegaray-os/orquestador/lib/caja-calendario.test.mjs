@@ -19,13 +19,14 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from './columnas-caja.fixture.mjs'
 import { BORDES, DESDE_SIEMPRE, desdeTramo, hastaTramo, signoDelTramo, TRAMO_VENCIDO } from './caja-calendario.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { NO_REAL } from './caja-tarjetas.mjs'
 import { sumar, movimiento, ENTRA, SALE } from './libro-movimientos.mjs'
 import { grilla } from '../scripts/caja-pestana.mjs'
 
-const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 } }
+const REFS = { columnas: COLUMNAS_HOY, bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 } }
 
 test('el tramo del pasado cuenta LO QUE SE DEBE, no lo que no se cobró', () => {
   assert.equal(BORDES[TRAMO_VENCIDO][0], 'Vencido — ya pasó la fecha',

@@ -10,6 +10,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from './columnas-caja.fixture.mjs'
 import {
   expresionInvertido, glosaDeCierre, glosaConInvertido, liquidezDeNumeros,
   emparejaCriterio, esInvertido, citaUnaFilaDe,
@@ -22,6 +23,7 @@ import { CUENTAS } from './caja-disponibilidades.mjs'
 
 /** Lo mínimo que `caja-grilla` necesita para armarse en memoria. No toca la red. */
 const REFS_CAJA = {
+  columnas: COLUMNAS_HOY,
   cheques: 'Cheques Emitidos',
   recibidos: 'Cheques Recibidos',
   tarjeta: 'Tarjeta',

@@ -11,8 +11,11 @@ import {
   formulaNetaEfectivoPosterior, formulaCobrosEfectivoPosteriores,
   formulaComprasEfectivoPosteriores, formulaDepositosEfectivoPosteriores,
   formulaCobrosPosteriores, formulaChequesDebitadosPosteriores,
-  formulaComprasPagadasPosteriores, formulaNetaPosterior, COB, CHQ, CMP,
+  formulaComprasPagadasPosteriores, formulaNetaPosterior, CHQ,
 } from './caja-posterior-al-corte.mjs'
+import { MAPAS_HOY } from './columnas-caja.fixture.mjs'
+const COB = MAPAS_HOY.cob
+const CMP = MAPAS_HOY.cmp
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // 1 · EL MODELO CIERRA. Con los números reales medidos el 31/07 sobre el archivo.
@@ -90,18 +93,18 @@ test('el desglose usa las MISMAS fórmulas que la línea neta, no una copia', ()
   // Desde el 01/08 llevan además la MISMA guarda de arqueo que abre el total: sin fecha, 0 y no el
   // histórico. Es lo que impedía que el desglose contradijera a su total (ver el bloque del desglose).
   const guarda = `=IF(NOT(ISNUMBER(${a}));0;`
-  assert.equal(celdaCobrosEfectivo(a), `${guarda}${formulaCobrosEfectivoPosteriores(a)})`)
-  assert.equal(celdaPagosEfectivo(a), `${guarda}-(${formulaComprasEfectivoPosteriores(a)}))`)
+  assert.equal(celdaCobrosEfectivo(a, COB), `${guarda}${formulaCobrosEfectivoPosteriores(a, COB)})`)
+  assert.equal(celdaPagosEfectivo(a, CMP), `${guarda}-(${formulaComprasEfectivoPosteriores(a, CMP)}))`)
   assert.equal(celdaDepositosEfectivo(a), `${guarda}-(${formulaDepositosEfectivoPosteriores(a)}))`)
   // Los dos que descargan la caja van con signo negativo: el desglose se lee sumando de arriba abajo.
-  assert.match(celdaPagosEfectivo(a), /;-\(/)
+  assert.match(celdaPagosEfectivo(a, CMP), /;-\(/)
   assert.match(celdaDepositosEfectivo(a), /;-\(/)
 })
 
 test('el desglose cierra contra la línea neta: los tres sumandos son los mismos tres términos', () => {
   const a = '$F$7'
-  const neta = formulaNetaEfectivoPosterior(a)
-  for (const parte of [formulaCobrosEfectivoPosteriores(a), formulaComprasEfectivoPosteriores(a), formulaDepositosEfectivoPosteriores(a)]) {
+  const neta = formulaNetaEfectivoPosterior(a, MAPAS_HOY)
+  for (const parte of [formulaCobrosEfectivoPosteriores(a, COB), formulaComprasEfectivoPosteriores(a, CMP), formulaDepositosEfectivoPosteriores(a)]) {
     assert.ok(neta.includes(parte), 'la línea neta tiene que estar hecha exactamente de los tres términos del desglose')
   }
 })
@@ -122,10 +125,10 @@ test('el texto de origen explica por qué el saldo en pesos difiere del importe 
 // filas de aire. Este test es la única cosa que impide que vuelva.
 
 const TODAS = (ref) => [
-  formulaCobrosPosteriores(ref), formulaChequesDebitadosPosteriores(ref), formulaComprasPagadasPosteriores(ref),
-  formulaNetaPosterior(ref), formulaCobrosEfectivoPosteriores(ref), formulaComprasEfectivoPosteriores(ref),
-  formulaDepositosEfectivoPosteriores(ref), formulaNetaEfectivoPosterior(ref),
-  celdaCobrosEfectivo(ref), celdaPagosEfectivo(ref), celdaDepositosEfectivo(ref),
+  formulaCobrosPosteriores(ref, COB), formulaChequesDebitadosPosteriores(ref), formulaComprasPagadasPosteriores(ref, CMP),
+  formulaNetaPosterior(ref, MAPAS_HOY), formulaCobrosEfectivoPosteriores(ref, COB), formulaComprasEfectivoPosteriores(ref, CMP),
+  formulaDepositosEfectivoPosteriores(ref), formulaNetaEfectivoPosterior(ref, MAPAS_HOY),
+  celdaCobrosEfectivo(ref, COB), celdaPagosEfectivo(ref, CMP), celdaDepositosEfectivo(ref),
 ]
 
 test('los rangos son ABIERTOS: ninguna fórmula lleva fila final', () => {
@@ -186,14 +189,14 @@ test('el criterio es por ESTADO, no por fecha: un proyectado NO es plata en la c
   // El defecto ya dejó un pendiente en $0 en este archivo: decidir "cobrado" porque la fecha ya pasó.
   // Un cobro está cobrado cuando lo dice su ESTADO. Medido el 31/07, en Cobranzas hay $57.678.591,76
   // en efectivo con estado Pendiente / Proyectado / Facturado — plata que NO está en ningún cajón.
-  const f = formulaCobrosEfectivoPosteriores('$F$7')
+  const f = formulaCobrosEfectivoPosteriores('$F$7', COB)
   assert.match(f, /'Cobranzas'!\$O\$5:\$O;"Cobrado"/, 'filtra por la columna de ESTADO con el valor "Cobrado"')
-  const g = formulaComprasEfectivoPosteriores('$F$7')
+  const g = formulaComprasEfectivoPosteriores('$F$7', CMP)
   assert.match(g, /'Compras'!\$X\$4:\$X="Pagado"/, 'y del lado del pago, sólo lo que está Pagado')
 })
 
 test('la ventana del arqueo es EXCLUSIVA (`>`), para que un arqueo nuevo colapse lo viejo', () => {
-  const f = formulaCobrosEfectivoPosteriores('$F$7')
+  const f = formulaCobrosEfectivoPosteriores('$F$7', COB)
   assert.match(f, /">"&\$F\$7/)
   assert.doesNotMatch(f, />=/, 'con `>=` el movimiento del día del arqueo se contaría dos veces')
 })
@@ -201,14 +204,14 @@ test('la ventana del arqueo es EXCLUSIVA (`>`), para que un arqueo nuevo colapse
 test('la partición por canal se mantiene: el efectivo va a la caja y NUNCA al banco', () => {
   // La garantía anti-doble-conteo del diseño. Si la línea bancaria dejara de excluir el efectivo, el
   // mismo cobro estaría en el banco y en el cajón a la vez.
-  assert.match(formulaCobrosPosteriores('$F$9'), /"<>Efectivo"/)
-  assert.match(formulaCobrosEfectivoPosteriores('$F$7'), /;"Efectivo";/)
-  assert.doesNotMatch(formulaComprasPagadasPosteriores('$F$9'), /"Efectivo"/)
-  assert.match(formulaComprasEfectivoPosteriores('$F$7'), /="Efectivo"/)
+  assert.match(formulaCobrosPosteriores('$F$9', COB), /"<>Efectivo"/)
+  assert.match(formulaCobrosEfectivoPosteriores('$F$7', COB), /;"Efectivo";/)
+  assert.doesNotMatch(formulaComprasPagadasPosteriores('$F$9', CMP), /"Efectivo"/)
+  assert.match(formulaComprasEfectivoPosteriores('$F$7', CMP), /="Efectivo"/)
 })
 
 test('sin arqueo con fecha, la línea neta da 0: no se inventa plata que nadie contó', () => {
-  const f = formulaNetaEfectivoPosterior('$F$7')
+  const f = formulaNetaEfectivoPosterior('$F$7', MAPAS_HOY)
   assert.match(f, /^=IF\(NOT\(ISNUMBER\(\$F\$7\)\);0;/)
 })
 
@@ -221,7 +224,7 @@ test('sin arqueo con fecha, la línea neta da 0: no se inventa plata que nadie c
 
 test('sin fecha de arqueo, NINGÚN renglón del desglose muestra el histórico', () => {
   const a = '$F$7'
-  for (const celda of [celdaCobrosEfectivo(a), celdaPagosEfectivo(a), celdaDepositosEfectivo(a)]) {
+  for (const celda of [celdaCobrosEfectivo(a, COB), celdaPagosEfectivo(a, CMP), celdaDepositosEfectivo(a)]) {
     assert.match(celda, /^=IF\(NOT\(ISNUMBER\(\$F\$7\)\);0;/, 'la guarda del total tiene que estar también acá')
   }
 })

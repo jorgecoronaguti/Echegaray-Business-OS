@@ -24,6 +24,9 @@ import { cargaTardia } from './caja-carga-tardia.mjs'
 import { diaDe } from './caja-ancla-por-instante.mjs'
 import { COMPRAS, columnasDe, lectorDeEncabezados, rangoFilas } from './columnas-por-encabezado.mjs'
 
+/** La pestaña que se vigila. Sólo el nombre: las columnas salen de su fila de rótulos. */
+export const PESTANA_VIGILADA = 'Compras'
+
 /** Las columnas que la medición lee, por clave de `COMPRAS`. */
 export const COLUMNAS_CARGA_TARDIA = Object.freeze(['fecha', 'proveedor', 'tipoPago', 'pagado', 'estado', 'fechaCaja'])
 const FILA0 = 4

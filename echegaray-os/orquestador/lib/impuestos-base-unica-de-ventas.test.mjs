@@ -20,6 +20,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COB_HOY } from './columnas-caja.fixture.mjs'
 import { ventasFacturadasDelMes, planDeVentas, ventasPorMesDeEmision } from './impuestos-base-libro.mjs'
 import { origenDelMes, ORIGEN } from './impuestos-bloques.mjs'
 import { proyectarLibreDisponibilidad } from './iva-libre-disponibilidad.mjs'
@@ -40,7 +41,7 @@ const COMO_EL_ARCHIVO = [
 ]
 
 test('LA CONTRADICCIÓN: noviembre no puede tener crédito proyectado y cero débito a la vez', () => {
-  const plan = planDeVentas(COMO_EL_ARCHIVO, 2026, '2026-09-04')
+  const plan = planDeVentas(COMO_EL_ARCHIVO, 2026, '2026-09-04', COB_HOY)
   const aProyectar = [10, 11, 12]
   const sinBase = plan.sinBase(aProyectar)
   assert.deepEqual(sinBase, [11, 12], 'nov y dic no tienen ni una factura emitida: no tienen base')
@@ -68,14 +69,14 @@ test('el saldo a favor de fin de año era el crédito de dos meses que nunca tuv
   assert.equal(Math.round(viejo[1].libre_disp), 1312377, 'así se fabricaba el saldo a favor')
 
   // AHORA esos dos meses no se proyectan: no hay período fiscal que calcular sin base de ventas.
-  const plan = planDeVentas(COMO_EL_ARCHIVO, 2026, '2026-09-04')
+  const plan = planDeVentas(COMO_EL_ARCHIVO, 2026, '2026-09-04', COB_HOY)
   const proyectables = [11, 12].filter((m) => !plan.sinBase([11, 12]).includes(m))
   assert.deepEqual(proyectables, [], 'ningún mes sin ventas cargadas llega al arrastre')
 })
 
 test('LAS DOS DEFINICIONES SON LA MISMA FUNCIÓN — sólo cambian de columna', () => {
-  const debito = ventasFacturadasDelMes(2026, 9, 'iva', { hoy: '2026-09-04' })
-  const baseIibb = ventasFacturadasDelMes(2026, 9, 'neto', { hoy: '2026-09-04' })
+  const debito = ventasFacturadasDelMes(2026, 9, 'iva', { cob: COB_HOY, hoy: '2026-09-04' })
+  const baseIibb = ventasFacturadasDelMes(2026, 9, 'neto', { cob: COB_HOY, hoy: '2026-09-04' })
   // Idénticas salvo la columna que suman: si alguien vuelve a escribir una de las dos por su cuenta,
   // esta igualdad se rompe.
   assert.equal(debito.replaceAll('Cobranzas!$K$5:$K', '<medida>'), baseIibb.replaceAll('Cobranzas!$J$5:$J', '<medida>'))
@@ -90,13 +91,13 @@ test('LAS DOS DEFINICIONES SON LA MISMA FUNCIÓN — sólo cambian de columna', 
 })
 
 test('la medida no puede ser cualquier cosa: una columna inventada rompe, no devuelve cero', () => {
-  assert.throws(() => ventasFacturadasDelMes(2026, 9, 'total', { hoy: '2026-09-04' }), /no es una medida/)
-  assert.throws(() => ventasFacturadasDelMes(2026, 9, 'iva'), /falta `hoy`/, 'sin fecha no sabe qué mes cerró')
+  assert.throws(() => ventasFacturadasDelMes(2026, 9, 'total', { cob: COB_HOY, hoy: '2026-09-04' }), /no es una medida/)
+  assert.throws(() => ventasFacturadasDelMes(2026, 9, 'iva', { cob: COB_HOY }), /falta `hoy`/, 'sin fecha no sabe qué mes cerró')
 })
 
 test('LA FRONTERA SE MUEVE SOLA: cargar una factura de noviembre le devuelve la base', () => {
   const conNoviembre = [...COMO_EL_ARCHIVO, factura('B', 2026, 11, 10000000, 2100000)]
-  const plan = planDeVentas(conNoviembre, 2026, '2026-09-04')
+  const plan = planDeVentas(conNoviembre, 2026, '2026-09-04', COB_HOY)
   assert.equal(plan.ultimoMesFacturado, 11, 'la frontera se calcula del dato, no se cablea')
   assert.deepEqual(plan.sinBase([10, 11, 12]), [12], 'noviembre pasa a tener base sin tocar el código')
   assert.equal(plan.neto(11), 10000000)
@@ -105,12 +106,12 @@ test('LA FRONTERA SE MUEVE SOLA: cargar una factura de noviembre le devuelve la 
 
 test('un mes YA TRANSCURRIDO sin ventas sí se calcula: ahí el cero es un hecho', () => {
   // La diferencia entre «no vendí» y «todavía no sé» es la fecha de hoy, y sólo esa.
-  const plan = planDeVentas(COMO_EL_ARCHIVO, 2026, '2026-12-31')
+  const plan = planDeVentas(COMO_EL_ARCHIVO, 2026, '2026-12-31', COB_HOY)
   assert.deepEqual(plan.sinBase([10, 11, 12]), [], 'con el año terminado no falta ningún dato')
 })
 
 test('las ventas por mes de emisión traen neto e IVA juntos, y no cuentan las N', () => {
-  const r = ventasPorMesDeEmision(COMO_EL_ARCHIVO, '2026-09-04')
+  const r = ventasPorMesDeEmision(COMO_EL_ARCHIVO, '2026-09-04', COB_HOY)
   assert.deepEqual(r['2026-09'], { neto: 71149689, iva: 14941435, facturas: 1 })
   assert.equal(r['2026-11'], undefined, 'una fila N no convierte a noviembre en un mes facturado')
 })
@@ -133,36 +134,36 @@ const filaB = ({ comprobante = '', factura, cobro = null, neto = 100, iva = 21 }
 const HOY = '2026-09-09'
 
 test('mes CERRADO: sólo cuenta la B EMITIDA — la misma población que ARCA', () => {
-  assert.equal(periodoDeVenta(filaB({ comprobante: '01-00000227', factura: serialDe(2026, 8, 18) }), HOY), '2026-08')
+  assert.equal(periodoDeVenta(filaB({ comprobante: '01-00000227', factura: serialDe(2026, 8, 18) }), HOY, COB_HOY), '2026-08')
   // Quattropani, fila 78: «18/08» sin comprobante y cobro el 11/09. No es una venta de agosto.
-  assert.notEqual(periodoDeVenta(filaB({ factura: serialDe(2026, 8, 18), cobro: serialDe(2026, 9, 11) }), HOY), '2026-08')
+  assert.notEqual(periodoDeVenta(filaB({ factura: serialDe(2026, 8, 18), cobro: serialDe(2026, 9, 11) }), HOY, COB_HOY), '2026-08')
 })
 
 test('B vencida y no emitida se corre al mes de su FECHA DE COBRO — el dato del dueño, no un supuesto', () => {
-  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 8, 18), cobro: serialDe(2026, 9, 11) }), HOY), '2026-09')
-  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 8, 18), cobro: serialDe(2026, 12, 30) }), HOY), '2026-12')
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 8, 18), cobro: serialDe(2026, 9, 11) }), HOY, COB_HOY), '2026-09')
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 8, 18), cobro: serialDe(2026, 12, 30) }), HOY, COB_HOY), '2026-12')
   // ARCOR, fila 59: factura «30/01», cobro 30/09, «Proyectado» → septiembre.
-  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 1, 30), cobro: serialDe(2026, 9, 30) }), HOY), '2026-09')
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 1, 30), cobro: serialDe(2026, 9, 30) }), HOY, COB_HOY), '2026-09')
 })
 
 test('B vencida, no emitida y con cobro también vencido cae en el MES EN CURSO', () => {
-  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 6, 11), cobro: serialDe(2026, 8, 5) }), HOY), '2026-09')
-  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 6, 11) }), HOY), '2026-09', 'sin fecha de cobro, también')
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 6, 11), cobro: serialDe(2026, 8, 5) }), HOY, COB_HOY), '2026-09')
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 6, 11) }), HOY, COB_HOY), '2026-09', 'sin fecha de cobro, también')
 })
 
 test('el plan FUTURO va por «Fecha de Factura», emitida o no', () => {
-  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 10, 9), cobro: serialDe(2026, 10, 9) }), HOY), '2026-10')
-  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 9, 22) }), HOY), '2026-09')
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 10, 9), cobro: serialDe(2026, 10, 9) }), HOY, COB_HOY), '2026-10')
+  assert.equal(periodoDeVenta(filaB({ factura: serialDe(2026, 9, 22) }), HOY, COB_HOY), '2026-09')
 })
 
 test('la fórmula del mes CERRADO exige comprobante y la del futuro suma las vencidas por su cobro', () => {
-  const ago = ventasFacturadasDelMes(2026, 8, 'iva', { hoy: HOY })
+  const ago = ventasFacturadasDelMes(2026, 8, 'iva', { hoy: HOY, cob: COB_HOY })
   assert.match(ago, /\$E\$5:\$E<>""/)
   assert.doesNotMatch(ago, /\$Q\$5:\$Q/)
-  const oct = ventasFacturadasDelMes(2026, 10, 'iva', { hoy: HOY })
+  const oct = ventasFacturadasDelMes(2026, 10, 'iva', { hoy: HOY, cob: COB_HOY })
   assert.match(oct, /\$Q\$5:\$Q>=DATE\(2026;10;1\)/)
   assert.match(oct, /\$P\$5:\$P<DATE\(2026;9;1\)/, 'sólo las vencidas se corren')
-  const sep = ventasFacturadasDelMes(2026, 9, 'iva', { hoy: HOY })
+  const sep = ventasFacturadasDelMes(2026, 9, 'iva', { hoy: HOY, cob: COB_HOY })
   assert.match(sep, /N\(Cobranzas!\$Q\$5:\$Q\)<DATE\(2026;9;1\)/, 'el mes en curso recoge las que ya vencieron del todo')
   assert.doesNotMatch(oct, /N\(Cobranzas!\$Q\$5:\$Q\)<DATE/)
 })

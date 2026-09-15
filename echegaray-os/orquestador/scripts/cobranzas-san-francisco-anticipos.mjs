@@ -45,6 +45,8 @@
 // Eso además lo hace idempotente: correrlo dos veces no cambia nada la segunda vez.
 import { makeGoogleClient } from '../lib/google.mjs'
 import { accessTokenFor } from '../lib/google-oauth.mjs'
+import { exigirColumnas, leerColumnasCobranzas } from '../lib/cobranzas-columnas.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 
 const FLUJO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const CUENTA = process.env.ORQ_SHEET_CUENTA || 'jorge@ecsas.com.ar'
@@ -91,52 +93,77 @@ export const ANTICIPOS = [
     h2: 'Anticipo inicio obra 50% $ 7.728.254 Cotización n° — 2ª de 2 cuotas quincenales · cancela el anticipo' },
 ]
 
-/** La fila nueva copia la anatomía de su hermana: mismas fórmulas, con su propio número de fila. */
-export function filaDeAnticipo(a, n) {
-  return [
-    `=IF(C${n}="";"";ROW()-4)`,                       // A · ID
-    'N',                                              // B · Categoría
-    serie('2026-07-31'),                              // C · Fecha emisión
-    '', '',                                           // D, E
-    'Civil',                                          // F · Unidad
-    'San Francisco',                                  // G
-    a.h2,                                             // H
-    a.obra,                                           // I · Concepto
-    `=${a.contrato}*25%`,                             // J · Monto neto — la mitad del anticipo del 50%
-    '',                                               // K · IVA
-    `=IF(SUM(X${n}:AA${n})=0;"";SUM(X${n}:AA${n}))`,  // L · Retenciones
-    `=J${n}+K${n}-L${n}`,                             // M · TOTAL
-    'Efectivo',                                       // N
-    'Pendiente',                                      // O
-    serie('2026-07-31'),                              // P · Fecha de Venta
-    serie(F.ANT_2),                                   // Q · Fecha cobro
-    `=TEXT(Q${n};"mmm-yy")`,                          // R · Mes cobro
-    1,                                                // S · Probabilidad
-    `=IF(M${n}="";"";M${n}*S${n})`,                   // T · Monto ponderado
-    `=IF(J${n}="";"";IF(O${n}="Cobrado";"Cobrado";IF(O${n}="Pendiente";IF(Q${n}<TODAY();"Vencido";Q${n}-TODAY());O${n})))`,
-    `=IF(J${n}="";"";IF(O${n}="Cobrado";"✓ Cobrado";IF(O${n}="Vencido";"▲ Vencido";IF(O${n}="Proyectado";"⊘ Proyectado";IF(Q${n}<TODAY();"▲ Vencido";IF(Q${n}-TODAY()<=7;"⇒ Por vencer";"· Vigente"))))))`,
-  ]
+/** Las columnas que toca esta rutina, por clave de `COBRANZAS_OS`: toda la anatomía de la fila. */
+export const COLUMNAS_ANTICIPOS = Object.freeze([
+  'id', 'categoria', 'fechaVenta', 'factura', 'comprobante', 'unidad', 'cliente', 'oc', 'concepto', 'neto', 'iva',
+  'retenciones', 'total', 'formaCobro', 'estado', 'fechaFactura', 'fechaCobro', 'mesCobro', 'probabilidad',
+  'montoPonderado', 'diasVto', 'estadoCobro', 'retIva', 'moneda',
+])
+
+/**
+ * La fila nueva copia la anatomía de su hermana: mismas fórmulas, con su propio número de fila.
+ *
+ * CADA CELDA VA A SU RÓTULO (14/09/2026). Era un arreglo posicional A…V con las letras adentro de las
+ * fórmulas (`=J+K-L`, `SUM(X:AA)`): con «Obra» insertada en H, la fila se habría escrito corrida una
+ * columna y el total habría sido Concepto + Monto neto − IVA. La columna «Obra», si existe, queda
+ * vacía: esta rutina no sabe a qué obra va y no lo inventa.
+ */
+export function filaDeAnticipo(a, n, cols) {
+  const c = exigirColumnas(cols, COLUMNAS_ANTICIPOS, 'filaDeAnticipo')
+  const L = (k) => `${c[k].letra}${n}`
+  const [neto, iva, ret, total, est, cobro, prob] = ['neto', 'iva', 'retenciones', 'total', 'estado', 'fechaCobro', 'probabilidad'].map(L)
+  const valores = {
+    id: `=IF(${L('fechaVenta')}="";"";ROW()-4)`,
+    categoria: 'N',
+    fechaVenta: serie('2026-07-31'),
+    factura: '', comprobante: '',
+    unidad: 'Civil',
+    cliente: 'San Francisco',
+    oc: a.h2,
+    concepto: a.obra,
+    neto: `=${a.contrato}*25%`, // la mitad del anticipo del 50%
+    iva: '',
+    // La suma de las columnas de retención de la fila, hasta «Moneda» inclusive: es la fórmula que ya
+    // tiene su hermana, y copiarla recortada daría otro número si alguien cargara algo en la última.
+    retenciones: `=IF(SUM(${L('retIva')}:${L('moneda')})=0;"";SUM(${L('retIva')}:${L('moneda')}))`,
+    total: `=${neto}+${iva}-${ret}`,
+    formaCobro: 'Efectivo',
+    estado: 'Pendiente',
+    fechaFactura: serie('2026-07-31'),
+    fechaCobro: serie(F.ANT_2),
+    mesCobro: `=TEXT(${cobro};"mmm-yy")`,
+    probabilidad: 1,
+    montoPonderado: `=IF(${total}="";"";${total}*${prob})`,
+    diasVto: `=IF(${neto}="";"";IF(${est}="Cobrado";"Cobrado";IF(${est}="Pendiente";IF(${cobro}<TODAY();"Vencido";${cobro}-TODAY());${est})))`,
+    estadoCobro: `=IF(${neto}="";"";IF(${est}="Cobrado";"✓ Cobrado";IF(${est}="Vencido";"▲ Vencido";IF(${est}="Proyectado";"⊘ Proyectado";IF(${cobro}<TODAY();"▲ Vencido";IF(${cobro}-TODAY()<=7;"⇒ Por vencer";"· Vigente"))))))`,
+  }
+  const fila = Array(c.estadoCobro.indice + 1).fill('')
+  for (const [k, v] of Object.entries(valores)) fila[c[k].indice] = v
+  return fila
 }
 
 /**
  * Cada escritura declara qué tiene que encontrar y qué va a dejar.
  * `antes` es el valor previo · `nuevo` el que se escribe. Si la celda no tiene ninguno de los dos,
  * alguien la tocó y el script no escribe nada.
+ * @param {Record<string,{letra:string}>} cols columnas de Cobranzas resueltas contra la fila 4 viva
  */
-export function planDeEscritura(leer) {
+export function planDeEscritura(cols) {
+  const c = exigirColumnas(cols, COLUMNAS_ANTICIPOS, 'planDeEscritura')
+  const celda = (k, fila) => ({ rango: `Cobranzas!${c[k].letra}${fila}`, celda: `${c[k].letra}${fila}`, campo: k })
   const p = []
-  for (const c of CERTIFICACIONES) {
-    p.push({ rango: `Cobranzas!Q${c.fila}`, celda: `Q${c.fila}`, nuevo: serie(c.q), que: `${c.que} → ${c.q}` })
+  for (const x of CERTIFICACIONES) {
+    p.push({ ...celda('fechaCobro', x.fila), nuevo: serie(x.q), que: `${x.que} → ${x.q}` })
   }
   for (const a of ANTICIPOS) {
-    p.push({ rango: `Cobranzas!H${a.fila}`, celda: `H${a.fila}`, nuevo: a.hDueno + SUFIJO_1,
+    p.push({ ...celda('oc', a.fila), nuevo: a.hDueno + SUFIJO_1,
              tolera: [a.hDueno, a.hDueno.replace(' Cotización n°', '') + SUFIJO_1],
              que: `${a.obra} · rótulo de la 1ª cuota (conserva el texto del dueño)` })
-    p.push({ rango: `Cobranzas!J${a.fila}`, celda: `J${a.fila}`, nuevo: `=${a.contrato}*25%`,
+    p.push({ ...celda('neto', a.fila), nuevo: `=${a.contrato}*25%`,
              tolera: [`=${a.contrato}*50%`], formula: true, que: `${a.obra} · 1ª cuota = ${a.contrato}*25%` })
-    p.push({ rango: `Cobranzas!Q${a.fila}`, celda: `Q${a.fila}`, nuevo: serie(F.ANT_1), que: `${a.obra} · 1ª cuota → ${F.ANT_1}` })
-    p.push({ rango: `Cobranzas!A${a.filaNueva}:V${a.filaNueva}`, celda: `A${a.filaNueva}`, fila: true,
-             nuevo: filaDeAnticipo(a, a.filaNueva), que: `${a.obra} · 2ª cuota → ${F.ANT_2} (fila ${a.filaNueva})` })
+    p.push({ ...celda('fechaCobro', a.fila), nuevo: serie(F.ANT_1), que: `${a.obra} · 1ª cuota → ${F.ANT_1}` })
+    p.push({ rango: `Cobranzas!${c.id.letra}${a.filaNueva}:${c.estadoCobro.letra}${a.filaNueva}`, celda: `${c.id.letra}${a.filaNueva}`, fila: true,
+             nuevo: filaDeAnticipo(a, a.filaNueva, cols), que: `${a.obra} · 2ª cuota → ${F.ANT_2} (fila ${a.filaNueva})` })
   }
   return p
 }
@@ -145,7 +172,9 @@ async function main() {
   const aplicar = process.argv.includes('--aplicar')
   const g = makeGoogleClient({ auth: { getAccessToken: () => accessTokenFor(CUENTA) } })
 
-  const plan = planDeEscritura()
+  // La fila 4 de ESTA corrida: cada celda del plan sale de su rótulo. Un rótulo que falta aborta acá.
+  const cols = await leerColumnasCobranzas(g, FLUJO, COLUMNAS_ANTICIPOS)
+  const plan = planDeEscritura(cols)
 
   // ── LA GUARDA: leer antes de escribir, y abortar si algo no se reconoce ──────────────────────
   // Se leen las FÓRMULAS, no los valores: si J67 dice `=40000000*50%` hay que verlo así y no como
@@ -173,7 +202,7 @@ async function main() {
     const tolera = [...(p.tolera || [])].map(String)
     // Para las fechas: el valor previo puede ser cualquier serial anterior al esquema. Se acepta
     // un número, que es lo que una fecha tiene que ser; un texto ahí sí sería de alguien.
-    const esFechaPrevia = p.celda.startsWith('Q') && /^\d+$/.test(hoy)
+    const esFechaPrevia = p.campo === 'fechaCobro' && /^\d+$/.test(hoy)
     if (tolera.includes(hoy) || esFechaPrevia) { aEscribir.push(p); return }
     desconocidas.push({ p, hoy })
   })
@@ -202,12 +231,13 @@ async function main() {
   }
   console.log(`\n✓ ${aEscribir.length} escrituras hechas.`)
 
-  const despues = await g.readSheetValues(FLUJO, 'Cobranzas!A66:R97', { render: 'FORMATTED_VALUE' })
+  const despues = await g.readSheetValues(FLUJO, rangoFilas('Cobranzas', 66, 97), { render: 'FORMATTED_VALUE' })
   console.log('\n═══ DESPUÉS, releído del Sheet ═══')
+  const en = (celdas, k) => String(celdas[cols[k].indice] || '')
   for (const r of [66, 67, 68, 71, 72, 73, 74, 75, 76, 77, 78, 79, 96, 97]) {
-    const f = despues[r - 66] || []
-    if (!String(f[8] || '').trim()) continue
-    console.log(`  f${r}  ${String(f[14] || '').padEnd(10)} Q=${String(f[16] || '—').padEnd(12)} R=${String(f[17] || '—').padEnd(9)} ${String(f[12] || '').padStart(16)}  ${String(f[7] || '').slice(0, 46)}`)
+    const celdas = despues[r - 66] || []
+    if (!en(celdas, 'concepto').trim()) continue
+    console.log(`  f${r}  ${en(celdas, 'estado').padEnd(10)} cobro=${(en(celdas, 'fechaCobro') || '—').padEnd(12)} mes=${(en(celdas, 'mesCobro') || '—').padEnd(9)} ${en(celdas, 'total').padStart(16)}  ${en(celdas, 'oc').slice(0, 46)}`)
   }
 }
 

@@ -5,7 +5,7 @@ import {
   instrumentoDePago, estadoDeEgreso, canalDeMovimiento, veredictoPorMetodo, faltanteEnCartera,
   INSTRUMENTOS_BANCO, INSTRUMENTOS_DIFERIDOS, CANAL,
 } from './caja-canales.mjs'
-import { CMP } from './caja-posterior-al-corte.mjs'
+import { TIPOS_BANCO } from './caja-posterior-al-corte.mjs'
 
 const CORTE = 46240
 
@@ -23,9 +23,9 @@ test('"Echeq" se reconoce ANTES que "cheque": contiene la palabra y va a otro ca
 })
 
 test('la lista de medios bancarios SALE de la fórmula viva, no de una copia', () => {
-  // Si alguien agrega "Depósito" a CMP.tiposBanco (la fórmula de CAJA), este archivo tiene que
+  // Si alguien agrega "Depósito" a TIPOS_BANCO (la fórmula de CAJA), este archivo tiene que
   // enterarse solo. Con una lista tipeada aparte, el veredicto quedaría verde sobre un hueco nuevo.
-  assert.deepEqual(INSTRUMENTOS_BANCO, CMP.tiposBanco.map(instrumentoDePago))
+  assert.deepEqual(INSTRUMENTOS_BANCO, TIPOS_BANCO.map(instrumentoDePago))
   assert.ok(INSTRUMENTOS_BANCO.includes('transferencia') && INSTRUMENTOS_BANCO.includes('debito'))
   // Y ningún medio puede estar de los dos lados: sería contarlo dos veces.
   for (const i of INSTRUMENTOS_DIFERIDOS) assert.ok(!INSTRUMENTOS_BANCO.includes(i), i)

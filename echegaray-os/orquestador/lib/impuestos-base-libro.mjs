@@ -15,6 +15,8 @@
 // entraban como si devengaran.
 
 import { terminoLibro } from './libro-sumas.mjs'
+import { exigirColumnas } from './cobranzas-columnas.mjs'
+import { rangoAbierto } from './columnas-por-encabezado.mjs'
 
 /** Los cuatro rubros del libro que dan crédito fiscal: compras con factura. */
 export const RUBROS_CREDITO_LIBRO = ['Materiales Civil', 'Materiales Mantenimiento', 'Estructura', 'Servicios recurrentes']
@@ -56,18 +58,35 @@ export const ventanaDelMes = (anio, m) => ({ desde: `DATE(${anio};${m};1)`, hast
 // Rangos ABIERTOS y lectura VIVA: si el dueño corrige una categoría o carga una factura, el número se
 // rehace solo al abrir la planilla, sin correr ningún generador.
 
-/** Las columnas de Cobranzas que DEFINEN una venta. Una sola vez acá: dos bloques las consumen. */
-export const VENTA = Object.freeze({
-  categoria: 'Cobranzas!$B$5:$B',
-  comprobante: 'Cobranzas!$E$5:$E', // «N° Comprobante» — vacío = la factura todavía no se emitió
-  fecha: 'Cobranzas!$P$5:$P', // «Fecha de Factura» — NO la C, que es «Fecha de Venta»
-  cobro: 'Cobranzas!$Q$5:$Q', // «Fecha cobro» — el mes al que se corre una factura B vencida y no emitida
-  neto: 'Cobranzas!$J$5:$J',
-  iva: 'Cobranzas!$K$5:$K',
-})
+/**
+ * Las columnas de Cobranzas que DEFINEN una venta, por clave de `COBRANZAS_OS`. Una sola vez acá: dos
+ * bloques las consumen. `comprobante` vacío = la factura todavía no se emitió; la fecha que manda es
+ * «Fecha de Factura» —NO «Fecha de Venta»—; «Fecha cobro» es el mes al que se corre una factura B
+ * vencida y no emitida.
+ *
+ * ERAN LETRAS Y POSICIONES (14/09/2026): `Cobranzas!$P$5:$P`, `IDX = { neto: 9, fecha: 15 }`. Con
+ * «Obra» insertada en H, el débito fiscal habría sumado el neto como IVA por «Mes cobro (auto)».
+ */
+export const COLUMNAS_VENTA = Object.freeze(['categoria', 'comprobante', 'fechaFactura', 'fechaCobro', 'neto', 'iva'])
 
-/** Índices dentro de `Cobranzas!A5:Q`, el mismo contrato que `VENTA` pero para el núcleo puro. */
-const IDX = Object.freeze({ categoria: 1, comprobante: 4, neto: 9, iva: 10, fecha: 15, cobro: 16 })
+/** Los rangos abiertos de una venta, con las columnas resueltas contra la fila 4 de la corrida. */
+export function ventaDe(cob) {
+  const c = exigirColumnas(cob, COLUMNAS_VENTA, 'impuestos-base-libro')
+  const r = (col) => rangoAbierto('Cobranzas', col)
+  return Object.freeze({
+    categoria: r(c.categoria), comprobante: r(c.comprobante), fecha: r(c.fechaFactura),
+    cobro: r(c.fechaCobro), neto: r(c.neto), iva: r(c.iva),
+  })
+}
+
+/** Los índices de la misma venta dentro de una fila leída desde la A, para el núcleo puro. */
+const indicesDeVenta = (cols) => {
+  const c = exigirColumnas(cols, COLUMNAS_VENTA, 'impuestos-base-libro')
+  return Object.freeze({
+    categoria: c.categoria.indice, comprobante: c.comprobante.indice, neto: c.neto.indice,
+    iva: c.iva.indice, fecha: c.fechaFactura.indice, cobro: c.fechaCobro.indice,
+  })
+}
 
 // ═══ «REVISAR BIEN LAS FECHAS DE FACTURA CON B, PARA LO QUE PASÓ Y PARA LO FUTURO» (09/09/2026) ═══
 //
@@ -113,11 +132,12 @@ const mesEnCursoDe = (hoy) => {
  *
  * Devuelve el TÉRMINO, sin el `=`, para poder componerlo. PURA.
  */
-export function ventasFacturadasDelMes(anio, m, medida = 'iva', { hoy } = {}) {
+export function ventasFacturadasDelMes(anio, m, medida = 'iva', { hoy, cob } = {}) {
+  const VENTA = ventaDe(cob)
   const col = VENTA[medida]
   if (!col) {
     throw new Error(`impuestos-base-libro: "${medida}" no es una medida de las ventas del mes. `
-      + 'Sólo hay dos: `neto` (columna J, la base imponible) e `iva` (columna K, el débito fiscal).')
+      + 'Sólo hay dos: `neto` («Monto neto», la base imponible) e `iva` («IVA», el débito fiscal).')
   }
   const { desde, hasta } = ventanaDelMes(anio, m)
   const enCurso = mesEnCursoDe(hoy)
@@ -148,7 +168,8 @@ const periodoDeSerial = (s) => {
  * NÚCLEO PURO: a qué período va una fila B de Cobranzas, con la misma regla que la fórmula.
  * Devuelve null si no va a ninguno (sin categoría B, sin fecha, o vencida sin emitir en un mes cerrado).
  */
-export function periodoDeVenta(fila, hoy) {
+export function periodoDeVenta(fila, hoy, cols) {
+  const IDX = indicesDeVenta(cols)
   if (String(fila?.[IDX.categoria] ?? '').trim().toUpperCase() !== 'B') return null
   const p = Number(fila?.[IDX.fecha])
   if (!Number.isFinite(p) || !p) return null
@@ -165,12 +186,13 @@ export function periodoDeVenta(fila, hoy) {
 
 /**
  * NÚCLEO PURO: las mismas ventas que la fórmula, en código, para exhibirlas en el `--dry`.
- * Índices de `Cobranzas!A5:Q`. Devuelve `{ '2026-09': { neto, iva, facturas } }`.
+ * Filas leídas desde la A; `cols` las columnas resueltas. Devuelve `{ '2026-09': { neto, iva, facturas } }`.
  */
-export function ventasPorMesDeEmision(filas = [], hoy) {
+export function ventasPorMesDeEmision(filas = [], hoy, cols) {
+  const IDX = indicesDeVenta(cols)
   const porMes = {}
   for (const f of filas) {
-    const per = periodoDeVenta(f, hoy)
+    const per = periodoDeVenta(f, hoy, cols)
     if (!per) continue
     const v = porMes[per] ?? (porMes[per] = { neto: 0, iva: 0, facturas: 0 })
     v.neto += Number(f?.[IDX.neto]) || 0
@@ -210,13 +232,14 @@ export function ventasPorMesDeEmision(filas = [], hoy) {
  * La frontera se mueve sola: el día que se cargue una factura con fecha de noviembre, noviembre pasa
  * a tener base y los dos bloques la usan en la corrida siguiente.
  *
- * @param {Array} filas `Cobranzas!A5:Q` sin formatear
+ * @param {Array} filas Cobranzas desde la fila 5, leídas desde la A, sin formatear
  * @param {number} anio
  * @param {string} hoy ISO `YYYY-MM-DD`. NO `new Date()`: el generador tiene que dar la misma grilla
  *        corrido dos veces el mismo día, y un test tiene que poder fijar el día.
+ * @param {Record<string,{indice:number}>} cols columnas de Cobranzas resueltas por encabezado
  */
-export function planDeVentas(filas = [], anio, hoy) {
-  const porMes = ventasPorMesDeEmision(filas, hoy)
+export function planDeVentas(filas = [], anio, hoy, cols) {
+  const porMes = ventasPorMesDeEmision(filas, hoy, cols)
   const per = (m) => `${anio}-${String(m).padStart(2, '0')}`
   // Un año que ya pasó no tiene mes en curso: sus doce meses son hechos y todos tienen base.
   const mesEnCurso = String(hoy ?? '').slice(0, 4) === String(anio) ? Number(String(hoy).slice(5, 7)) : 12

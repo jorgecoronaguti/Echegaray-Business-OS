@@ -16,7 +16,7 @@
 import * as BANCO from './banco-santander.mjs'
 import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores, celdaFechaDelEfectivo, mapaCompras, rangoAbiertoDe } from './caja-posterior-al-corte.mjs'
 import { exigirColumnas } from './cobranzas-columnas.mjs'
-import { rangoAbierto, rangoHasta } from './columnas-por-encabezado.mjs'
+import { rangoHasta } from './columnas-por-encabezado.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { DESDE_CAJA, ANEXO } from './caja-anexo-nombres.mjs'
 import { formulaEgresoDiario } from './egreso-diario.mjs'
@@ -63,8 +63,8 @@ export const DIAS_SIN_CARGA = 10
 export function bloqueLiquidez(h) {
   const { push, refs } = h
   push(['A4 · DÍAS DE LIQUIDEZ Y CAJA MÍNIMA — hasta cuándo alcanza si no entra un peso'])
-  const { total, fechaCaja } = mapaCompras(refs?.columnas?.compras) && refs.columnas.compras
-  const [T, F] = [rangoAbierto('Compras', total), rangoAbierto('Compras', fechaCaja)]
+  const cmp = mapaCompras(refs?.columnas?.compras)
+  const [T, F] = [rangoAbiertoDe(cmp, 'total'), rangoAbiertoDe(cmp, 'fecha')]
   const egr90 = `SUMIFS(${T};${F};">="&TODAY()-90;${F};"<="&TODAY())`
   const fRitmo = push(['Egreso promedio por día (meses cerrados, todas las fuentes)', 'ARS',
     `=${formulaEgresoDiario(egr90)}`, '', `=C${h.n + 1}`, '=TODAY()', ''])

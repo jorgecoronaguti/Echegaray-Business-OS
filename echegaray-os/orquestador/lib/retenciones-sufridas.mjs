@@ -41,8 +41,9 @@ export const REGIMENES = {
   iibb: { nombre: 'Ingresos Brutos', base: 'neto', alicuotas: [0.025, 0.035], tolerancia: 0.003 },
 }
 
-/** De qué columna de Cobranzas sale cada régimen (0-indexada). */
-export const COLUMNAS = { iva: 23, ganancias: 24, iibb: 25 }
+/** De qué columna de Cobranzas sale cada régimen: la CLAVE de `COBRANZAS_OS`, que se resuelve contra
+ *  la fila de rótulos. Eran índices (23/24/25): con «Obra» en H, la de IIBB pasaba a ser «Moneda». */
+export const COLUMNAS = Object.freeze({ iva: 'retIva', ganancias: 'retGanancias', iibb: 'retIibb' })
 
 /** Los impuestos cuyo crédito el OS computa. IIBB queda afuera: ya viene en la DDJJ de Rentas. */
 export const COMPUTA = ['iva', 'ganancias']

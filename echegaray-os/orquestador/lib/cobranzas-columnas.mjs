@@ -38,6 +38,7 @@ export const COBRANZAS_OS = Object.freeze({
   categoria: 'Categoría', fechaVenta: 'Fecha de Venta', factura: 'Factura', comprobante: 'N° Comprobante',
   unidad: 'Unidad', iva: 'IVA', retenciones: 'Retenciones / descuentos', fechaFactura: 'Fecha de Factura',
   mesCobro: 'Mes cobro (auto)', probabilidad: 'Probabilidad %', notas: 'Notas',
+  montoPonderado: 'Monto ponderado', diasVto: 'Días hasta vto.', estadoCobro: 'Estado cobro',
 })
 
 /**

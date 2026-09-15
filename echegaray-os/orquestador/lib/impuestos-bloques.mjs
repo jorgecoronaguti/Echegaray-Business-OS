@@ -262,7 +262,7 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
 // de columna: el IVA la K (el impuesto) y esto la J (el neto, que es la base imponible). El porqué,
 // medido contra las siete DDJJ de Rentas presentadas, está en `impuestos-base-libro.mjs`.
 
-export function bloqueIibb(G, { anio, iibb, proy, hoy }) {
+export function bloqueIibb(G, { anio, iibb, proy, hoy, cob }) {
   G.push([seccion(2, 'Ingresos Brutos San Juan')])
   G.cabecera()
   const porMes = new Map(iibb.map((d) => [Number(String(d.periodo ?? '').slice(5, 7)), d]))
@@ -288,7 +288,7 @@ export function bloqueIibb(G, { anio, iibb, proy, hoy }) {
   const esProy = (m) => proyectados.includes(m)
 
   G.mensual('Base imponible declarada',
-    (m) => (esProy(m) ? `=${ventasFacturadasDelMes(anio, m, 'neto', { hoy })}` : `=${ref(m, IIBB_COL.base)}`),
+    (m) => (esProy(m) ? `=${ventasFacturadasDelMes(anio, m, 'neto', { hoy, cob })}` : `=${ref(m, IIBB_COL.base)}`),
     'DDJJ de Rentas · réplica _IIBB_RAW hasta el último período presentado. Los meses en ámbar son PROYECCIÓN y salen de LA MISMA definición que el débito fiscal del bloque 1: el neto de las facturas B emitidas en el mes (Cobranzas, columna J, por «Fecha de Factura»). Criterio DEVENGADO, el mismo que declara la DDJJ. Un mes futuro sin facturas cargadas queda VACÍO: no se proyecta una base que no tiene de dónde salir.', { meses })
   // LA ALÍCUOTA POR MES, NO UNA CONSTANTE ENTERRADA. Si Rentas la cambia, la DDJJ nueva la trae,
   // _IIBB_RAW la refleja y todo lo de abajo se recalcula solo. Los meses proyectados heredan la

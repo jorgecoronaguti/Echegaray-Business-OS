@@ -54,7 +54,10 @@
 // en Compras. Escritor y lector comparten una sola definición, así el efecto Compras→CAJA no se
 // rompe en silencio si la columna se mueve (lo verifica caja-posterior-al-corte.test.mjs).
 import { factorSinPlanilla } from './rubro-caja.mjs'
-import { exigirColumnas } from './cobranzas-columnas.mjs'
+import { columnasCobranzas, exigirColumnas } from './cobranzas-columnas.mjs'
+import { COMPRAS, columnasDe, lectorDeEncabezados } from './columnas-por-encabezado.mjs'
+import { COLUMNAS_CARTERA } from './cobranzas-cartera.mjs'
+import { CLAVE } from './cobranzas-duplicado.mjs'
 import { CHQ, DEP } from './caja-fuentes-banco.mjs'
 import { formulaUltimaFecha, formulaFrescuraDe, fechaNumerica } from './fecha-de-frescura.mjs'
 // EL CRITERIO DE LA VENTANA VIVE EN UN SOLO LADO. Estaba escrito tres veces con `>` y una con `>=`,
@@ -127,6 +130,23 @@ export function mapaCompras(cols) {
 
 /** Los dos mapas de una corrida, desde las columnas que `refsDelArchivo` resolvió. */
 export const mapasDe = (refs) => ({ cob: mapaCobranzas(refs?.columnas?.cobranzas), cmp: mapaCompras(refs?.columnas?.compras) })
+
+/**
+ * LAS COLUMNAS DE COBRANZAS Y COMPRAS DE ESTA CORRIDA, POR RÓTULO (14/09/2026).
+ *
+ * CAJA y su anexo arman fórmulas sobre las dos pestañas, y las dos reciben la columna «Obra» (H y L).
+ * Se resuelven UNA vez —una lectura de cada fila de rótulos— y viajan en `refs.columnas` hasta cada
+ * fórmula. Sólo se piden las que alguna fórmula usa: un rótulo ajeno renombrado no tiene por qué
+ * frenar la caja. Un rótulo que falta sí aborta, con su nombre.
+ */
+export async function columnasDeCaja(google, fileId) {
+  const lector = lectorDeEncabezados(google, fileId)
+  const cob = [...new Set([...COLUMNAS_COB, ...COLUMNAS_CARTERA, ...Object.values(CLAVE)])]
+  return {
+    cobranzas: columnasCobranzas(await lector.encabezado('Cobranzas'), cob),
+    compras: columnasDe(await lector.encabezado('Compras'), Object.fromEntries(COLUMNAS_CMP.map((k) => [k, COMPRAS[k]])), 'Compras'),
+  }
+}
 
 /** Sin el mapa de la pestaña, la fórmula no se arma: el default con letras era el defecto. */
 const exigirMapa = (c, hoja, quien) => {

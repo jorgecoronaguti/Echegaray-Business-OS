@@ -21,6 +21,8 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
+import { leerColumnasCobranzas } from '../lib/cobranzas-columnas.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import {
   netoDeclaradoUsd,
   monto, fecha, partirRotuloDeObra, fechaCorta, imputarObra, palabrasDeObra, estadoPublicado,
@@ -29,6 +31,8 @@ import {
 } from '../lib/portal-siembra.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
+/** Las columnas de Cobranzas que se publican al portal, por clave de `COBRANZAS_OS`. */
+const COLUMNAS_PORTAL = ['factura', 'comprobante', 'cliente', 'oc', 'concepto', 'neto', 'iva', 'total', 'formaCobro', 'estado', 'fechaCobro', 'moneda']
 /** Hoy en San Juan: comparar un vencimiento contra UTC lo corre tres horas. */
 const HOY = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
 const APLICAR = process.argv.includes('--aplicar')
@@ -152,22 +156,24 @@ async function universoDeObras(delSheet) {
 /**
  * Una fila de Cobranzas traducida a lo que el cliente vería, todavía sin obra.
  *
- * HASTA AB, NO HASTA W: la moneda vive en AA (índice 26) y leyendo hasta W queda fuera del rango
- * —U$S 15.400 entraba como $15.400 sin dar un solo error—. Y la fórmula del neto se lee aparte
- * porque `=3500*TIPO_CAMBIO_USD` es la prueba de que la fila es una obligación en DÓLARES.
+ * LA FILA ENTERA Y CADA DATO POR SU RÓTULO: la moneda vivía en AA y leyendo hasta W quedaba fuera
+ * del rango —U$S 15.400 entraba como $15.400 sin dar un solo error—; con «Obra» insertada en H pasa
+ * a AB y cada índice tipeado (`v[12]` el total, `v[14]` el estado) apunta a la columna de al lado
+ * (14/09/2026). La fórmula del neto se lee aparte porque `=3500*TIPO_CAMBIO_USD` es la prueba de que
+ * la fila es una obligación en DÓLARES.
  */
-function lineaDeFila(valores, formulas, nroFila) {
-  const v = valores, f = formulas
-  const concepto = sinCategoriaContable(v?.[8])
-  const ordenCompra = sinCategoriaContable(v?.[7])
+function lineaDeFila(valores, formulas, nroFila, cols) {
+  const en = (k) => valores?.[cols[k].indice]
+  const concepto = sinCategoriaContable(en('concepto'))
+  const ordenCompra = sinCategoriaContable(en('oc'))
   // La forma de cobro (columna N) es lo único que describe una fila sin concepto.
-  const { tipo, rotulo, sinConcepto } = clasificar(concepto, ordenCompra, v?.[13])
-  const total = monto(v?.[12])
-  const netoCrudo = monto(v?.[9])
+  const { tipo, rotulo, sinConcepto } = clasificar(concepto, ordenCompra, en('formaCobro'))
+  const total = monto(en('total'))
+  const netoCrudo = monto(en('neto'))
   // EL IVA VACÍO ES CERO, NO «NO SE SABE». Una fila en efectivo sin factura no lleva IVA, y esa celda
   // vacía lo dice. La distinción importa: el portal escribe «$ 0» donde hay un cero y «sin cargar»
   // donde no hay dato — y acá el dato existe, vale cero.
-  const ivaCrudo = String(v?.[10] ?? '').trim() === '' ? 0 : (monto(v?.[10]) ?? 0)
+  const ivaCrudo = String(en('iva') ?? '').trim() === '' ? 0 : (monto(en('iva')) ?? 0)
   // ═══ EL CONCEPTO DECLARA LOS DÓLARES (26/08/2026) ═══
   //
   // «U$S 11.500 + IVA — 36,5 % del anticipo» y «U$S 20.000 — 63,5 % del anticipo» dicen su importe
@@ -183,7 +189,7 @@ function lineaDeFila(valores, formulas, nroFila) {
   // — 63,5 % del anticipo · parte U$S 15.400». Tomar el TOTAL en cada parte publicaba U$S 20.000 dos
   // veces —U$S 40.000 cobrados donde hay 20.000— y además rompía la fusión, que justamente comprueba
   // que las partes sumen el total declarado.
-  const usd = montoUsdPorTipoDeCambio({ formulaNeto: f?.[9], neto: netoCrudo, total })
+  const usd = montoUsdPorTipoDeCambio({ formulaNeto: formulas?.[cols.neto.indice], neto: netoCrudo, total })
     ?? parteDeclaradaUsd(concepto)
     ?? totalDeclaradoUsd(concepto)
   // ═══ CUÁNDO EL CONCEPTO DECLARA EL NETO Y NO HAY NADA QUE PRORRATEAR (26/08/2026) ═══
@@ -201,25 +207,25 @@ function lineaDeFila(valores, formulas, nroFila) {
   const alicuota = netoCrudo ? ivaCrudo / netoCrudo : 0
   // EL ESTADO LO DECLARA EL SHEET Y SE LEE UNA SOLA VEZ. Nadie lo vuelve a decidir río abajo: ni
   // `escribir()`, ni el informe en seco, ni la pantalla del cliente.
-  const prevista = fecha(v?.[16])
-  const cobrado = fueCobrada(v?.[14])
+  const prevista = fecha(en('fechaCobro'))
+  const cobrado = fueCobrada(en('estado'))
   return {
     fila: nroFila,
-    clienteSheet: String(v?.[6] ?? '').trim(),
-    conceptoCrudo: String(v?.[8] ?? '').trim(),
+    clienteSheet: String(en('cliente') ?? '').trim(),
+    conceptoCrudo: String(en('concepto') ?? '').trim(),
     concepto, ordenCompra, tipo, rotulo, sinConcepto: sinConcepto === true,
     // Con el neto declarado, el TOTAL de la línea es ese neto más su IVA — no el número suelto del
     // concepto, que es sólo la mitad de lo que el cliente transfirió.
     monto: netoUsd != null ? Math.round(netoUsd * (1 + alicuota) * 100) / 100 : (usd ?? total),
     neto: netoUsd ?? (usd != null ? aUsd(netoCrudo) : netoCrudo),
     iva: netoUsd != null ? Math.round(netoUsd * alicuota * 100) / 100 : (usd != null ? aUsd(ivaCrudo) : ivaCrudo),
-    moneda: usd != null ? 'USD' : (String(v?.[26] ?? '').trim().toUpperCase() === 'USD' ? 'USD' : 'ARS'),
-    factura: v?.[4] ? `${v?.[3] ?? ''} ${v?.[4]}`.trim() : null,
+    moneda: usd != null ? 'USD' : (String(en('moneda') ?? '').trim().toUpperCase() === 'USD' ? 'USD' : 'ARS'),
+    factura: en('comprobante') ? `${en('factura') ?? ''} ${en('comprobante')}`.trim() : null,
     prevista,
     pago: cobrado ? prevista : null,
-    estado: estadoPublicado({ estadoSheet: v?.[14], tipo, prevista, hoy: HOY }),
-    /** Lo que dice la columna O, tal cual, para poder cruzar el portal contra el Sheet a ojo. */
-    estadoSheet: String(v?.[14] ?? '').trim(),
+    estado: estadoPublicado({ estadoSheet: en('estado'), tipo, prevista, hoy: HOY }),
+    /** Lo que dice la columna «Estado», tal cual, para poder cruzar el portal contra el Sheet a ojo. */
+    estadoSheet: String(en('estado') ?? '').trim(),
   }
 }
 
@@ -240,16 +246,16 @@ function lineaDeFila(valores, formulas, nroFila) {
  * ADIVINAR SIGUE PROHIBIDO: no se reparte por proporción ni se manda a «la obra más grande». Lo único
  * que cambia es que dejan de esconderse.
  */
-function imputarTodas(valores, formulas, obras, hallarCliente) {
+function imputarTodas(valores, formulas, obras, hallarCliente, cols) {
   const porObra = new Map()
   const sinImputar = []
   /** Las del cliente sin obra: la clave es el cliente, no una obra. */
   const porCliente = new Map()
   for (let i = 0; i < valores.length; i++) {
-    const v = valores[i]
-    if (!v || !String(v?.[6] ?? '').trim()) continue
-    if (seDescarta(v?.[14])) continue
-    const l = lineaDeFila(v, formulas[i] ?? [], i + 5)
+    const celdas = valores[i]
+    if (!celdas || !String(celdas[cols.cliente.indice] ?? '').trim()) continue
+    if (seDescarta(celdas[cols.estado.indice])) continue
+    const l = lineaDeFila(celdas, formulas[i] ?? [], i + 5, cols)
     const cliente = hallarCliente(l.clienteSheet)
     if (!cliente) { sinImputar.push({ ...l, porque: 'el cliente no está en Postgres' }); continue }
     const suyas = obras.filter((o) => o.cliente.id === cliente.id)
@@ -513,9 +519,11 @@ async function main() {
   if (APLICAR) await bajarObras(delSheet)
   const obras = await universoDeObras(delSheet)
 
-  const valores = await g.readSheetValues(ID, 'Cobranzas!A5:AB')
-  const formulas = await g.readSheetValues(ID, 'Cobranzas!A5:AB', { render: 'FORMULA' })
-  const { porObra, porCliente, sinImputar } = imputarTodas(valores, formulas, obras, hallarCliente)
+  // La fila 4 de ESTA corrida: cada dato de la fila se indexa por su rótulo (ver `lineaDeFila`).
+  const cols = await leerColumnasCobranzas(g, ID, COLUMNAS_PORTAL)
+  const valores = await g.readSheetValues(ID, rangoFilas('Cobranzas', 5))
+  const formulas = await g.readSheetValues(ID, rangoFilas('Cobranzas', 5), { render: 'FORMULA' })
+  const { porObra, porCliente, sinImputar } = imputarTodas(valores, formulas, obras, hallarCliente, cols)
 
   const conflictos = []
   for (const [o, filas] of [...porObra]) {

@@ -5,7 +5,10 @@ import {
   MARCA_SIN_RESPALDO, VENTANA_DIAS,
 } from './cobranzas-respaldo-banco.mjs'
 import { esCobrado } from './cobranzas-repaso.mjs'
-import { auditar, C } from './cobranzas-en-cashflow.mjs'
+import { auditar as auditarReal, columnasDelCobro } from './cobranzas-en-cashflow.mjs'
+import { COBRANZAS_1409_CON_CONTROL } from './cobranzas-encabezado-control.fixture.mjs'
+const C = columnasDelCobro(COBRANZAS_1409_CON_CONTROL)
+const auditar = (a, b, o = {}) => auditarReal(a, b, { cols: C, ...o })
 import { ROTULO_CONCEPTO } from './cash-flow-matriz.mjs'
 import { SUB_COBRANZAS } from './cobranzas-en-cashflow.mjs'
 

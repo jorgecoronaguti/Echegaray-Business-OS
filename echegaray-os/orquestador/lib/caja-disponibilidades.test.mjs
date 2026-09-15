@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COB_HOY } from './columnas-caja.fixture.mjs'
 import { CUENTAS, CARGA, ALIAS, filaDeCuenta, aPesos, margenTarjeta, disponibilidadNeta, echeqsEnCartera, ubicarCaja } from './caja-disponibilidades.mjs'
 
 const cuenta = (n) => CUENTAS.find((c) => c.nombre === n)
@@ -160,11 +161,11 @@ test('el control de la cartera incluye el echeq que se acredita hoy', async () =
   const { CUENTAS } = await import('./caja-disponibilidades.mjs')
   const cuenta = CUENTAS.find((c) => c.control)
   assert.ok(cuenta, 'tiene que existir la cuenta con control de cartera')
-  assert.match(cuenta.control, /Cobranzas!\$Q\$5:\$Q\$400>=TODAY\(\)/,
+  assert.match(cuenta.control(COB_HOY), /Cobranzas!\$Q\$5:\$Q\$400>=TODAY\(\)/,
     'un cheque que se acredita hoy todavía no se acreditó: el borde es >=, no >')
-  assert.doesNotMatch(cuenta.control, /\$Q\$400>TODAY\(\)/,
+  assert.doesNotMatch(cuenta.control(COB_HOY), /\$Q\$400>TODAY\(\)/,
     'el borde estricto deja afuera el vencimiento del día y sub-declara la diferencia')
   // Y las dos puntas de la comparación tienen que barrer hasta la misma fila, o el desvío es del tope.
-  const topes = [...cuenta.control.matchAll(/\$(\d+)\b(?!:)/g)].map((m) => Number(m[1]))
+  const topes = [...cuenta.control(COB_HOY).matchAll(/\$(\d+)\b(?!:)/g)].map((m) => Number(m[1]))
   assert.ok(topes.every((t) => t === 5 || t === 400), `tope inconsistente en el control: ${topes.join(',')}`)
 })

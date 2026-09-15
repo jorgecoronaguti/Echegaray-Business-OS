@@ -31,6 +31,8 @@
 import { makeGoogleClient, READONLY_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { detectar, resumen } from '../lib/columna-formula.mjs'
+import { lectorDeEncabezados, ubicarColumna } from '../lib/columnas-por-encabezado.mjs'
+import { COBRANZAS_OS } from '../lib/cobranzas-columnas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -41,30 +43,40 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
  * No están todas las del archivo a propósito: se agregan a medida que se verifica que son calculadas
  * de punta a punta. Una columna mixta metida acá generaría ruido y el control dejaría de mirarse.
  */
+// LA COLUMNA SE PIDE POR SU RÓTULO (14/09/2026). Eran `col: 'A'` y `col: 'R'`: con «Obra» insertada
+// en H, la R pasa a ser «Fecha cobro» —una columna de carga, no calculada— y el control habría
+// denunciado cada fecha tipeada como un «valor pegado sobre fórmula». `clave` es la de `COBRANZAS_OS`.
 export const VIGILADAS = [
-  { pestana: 'Cobranzas', col: 'A', desde: 5, hasta: 400, que: 'ID (autonumerado por ROW)' },
-  { pestana: 'Cobranzas', col: 'R', desde: 5, hasta: 400, que: 'Mes de cobro (derivado de la fecha)' },
+  { pestana: 'Cobranzas', clave: 'id', desde: 5, hasta: 400, que: 'ID (autonumerado por ROW)' },
+  { pestana: 'Cobranzas', clave: 'mesCobro', desde: 5, hasta: 400, que: 'Mes de cobro (derivado de la fecha)' },
 ]
 
 /**
  * Mira las columnas vigiladas y devuelve los pegados. NO escribe una sola celda: el cliente que se le
- * pasa sólo necesita `readSheetGrid`. Impura del lado Sheets; el registro en la base es aparte.
+ * pasa sólo necesita `readSheetValues` (la fila de rótulos) y `readSheetGrid`. Impura del lado Sheets;
+ * el registro en la base es aparte.
  */
 export async function detectarPegados(google, vigiladas = VIGILADAS, log = console.log) {
   const pegados = []
   let ambiguas = 0
+  const lector = lectorDeEncabezados(google, ID)
   for (const v of vigiladas) {
-    const grid = await google.readSheetGrid(ID, `${v.pestana}!${v.col}${v.desde}:${v.col}${v.hasta}`).catch((e) => {
-      log(`  ${v.pestana}!${v.col}: no pude leerla (${String(e?.message ?? e).slice(0, 70)})`)
+    // Un rótulo que no está NO se mira en otra columna: se dice y se sigue con la próxima.
+    const col = await lector.encabezado(v.pestana)
+      .then((enc) => ubicarColumna(enc, COBRANZAS_OS[v.clave], v.pestana).letra)
+      .catch((e) => { log(`  ▲ ${v.pestana} «${COBRANZAS_OS[v.clave] ?? v.clave}»: no la puedo ubicar (${String(e?.message ?? e).slice(0, 90)})`); return null })
+    if (!col) continue
+    const grid = await google.readSheetGrid(ID, `${v.pestana}!${col}${v.desde}:${col}${v.hasta}`).catch((e) => {
+      log(`  ${v.pestana}!${col}: no pude leerla (${String(e?.message ?? e).slice(0, 70)})`)
       return null
     })
     if (!grid) continue
     const d = detectar(grid.filas.map((f, i) => ({ fila: v.desde + i, formula: f?.[0]?.formula ?? null, valor: f?.[0]?.valor ?? '' })))
-    log(`  ${resumen(d, `${v.pestana}!${v.col} · ${v.que}`)}`)
+    log(`  ${resumen(d, `${v.pestana}!${col} · ${v.que}`)}`)
     // QUÉ NO HACE: no opina sobre una columna donde convivan dos fórmulas distintas. Puede ser
     // legítimo y elegir la más frecuente sería inventar cuál es la buena.
     if (d.ambigua) { ambiguas++; continue }
-    for (const p of d.pisadas) pegados.push({ pestana: v.pestana, celda: `${v.col}${p.fila}`, valor: p.valor, formula: p.deberia })
+    for (const p of d.pisadas) pegados.push({ pestana: v.pestana, celda: `${col}${p.fila}`, valor: p.valor, formula: p.deberia })
   }
   return { pegados, ambiguas }
 }

@@ -19,8 +19,8 @@ import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { DESDE_CAJA } from '../lib/caja-anexo-nombres.mjs'
 import { PESTANA_ANEXO, SELLO_EFECTIVO, claveDeRotulo } from '../lib/caja-anexo.mjs'
-/** La pestaña vigilada. Sólo el NOMBRE: las columnas las resuelve `leerCeldasDeEfectivo` por rótulo. */
-const COMPRAS = 'Compras'
+// La pestaña vigilada: sólo el NOMBRE. Las columnas las resuelve `leerCeldasDeEfectivo` por rótulo.
+import { PESTANA_VIGILADA as COMPRAS } from '../lib/caja-carga-tardia-compras.mjs'
 import { CONCEPTO, RESOLUCION_HORAS, anclaDelConteo } from '../lib/caja-conteo-centinela.mjs'
 import { avisoCargaTardia } from '../lib/caja-carga-tardia.mjs'
 import { leerCeldasDeEfectivo, medirCargaTardia } from '../lib/caja-carga-tardia-compras.mjs'

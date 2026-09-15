@@ -8,13 +8,14 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from './columnas-caja.fixture.mjs'
 import { CARGA_TARDIA, grillaAnexo, claveDeRotulo } from './caja-anexo.mjs'
 import { rescatarAnexo } from '../scripts/caja-anexo-pestana.mjs'
 
 const filaDe = (g, rotulo) => g.filas.findIndex((f) => claveDeRotulo(f[0]) === claveDeRotulo(rotulo)) + 1
 
 test('el renglón existe y está DEBAJO del sello: no entra al rango que suma el neto', () => {
-  const g = grillaAnexo({})
+  const g = grillaAnexo({ refs: { columnas: COLUMNAS_HOY } })
   const f = filaDe(g, CARGA_TARDIA.rotulo)
   assert.ok(f > 0, 'el renglón tiene que estar en la pestaña, no sólo en el log')
   assert.equal(f, g.fCargaTardia)
@@ -23,7 +24,7 @@ test('el renglón existe y está DEBAJO del sello: no entra al rango que suma el
 })
 
 test('el importe va en la columna E, nunca en la C — la C es la que se suma', () => {
-  const g = grillaAnexo({ cargado: new Map([[claveDeRotulo(CARGA_TARDIA.rotulo), { importe: 500000, medidoEn: 46250.7 }]]) })
+  const g = grillaAnexo({ refs: { columnas: COLUMNAS_HOY }, cargado: new Map([[claveDeRotulo(CARGA_TARDIA.rotulo), { importe: 500000, medidoEn: 46250.7 }]]) })
   const fila = g.filas[g.fCargaTardia - 1]
   assert.equal(fila[4], 500000, 'E: el importe')
   assert.equal(fila[5], 46250.7, 'F: el instante en que se midió — sin él, una medición vieja se lee como de ahora')
@@ -35,13 +36,13 @@ test('SE RESCATA POR RÓTULO: sin esto, cada regeneración borra la medición', 
   const c = rescatarAnexo(leido)
   assert.deepEqual(c.get(claveDeRotulo(CARGA_TARDIA.rotulo)), { importe: 812345, medidoEn: 46250.5 })
   // Y la grilla lo devuelve a su fila, esté donde esté ahora.
-  const g = grillaAnexo({ cargado: c })
+  const g = grillaAnexo({ refs: { columnas: COLUMNAS_HOY }, cargado: c })
   assert.equal(g.filas[g.fCargaTardia - 1][4], 812345)
 })
 
 test('sin medición previa el renglón sale VACÍO, no en cero', () => {
   // Un cero acá afirma "medí y no hay nada". Vacío dice la verdad: todavía no se midió.
-  const g = grillaAnexo({})
+  const g = grillaAnexo({ refs: { columnas: COLUMNAS_HOY } })
   const fila = g.filas[g.fCargaTardia - 1]
   assert.notEqual(fila[4], 0)
   assert.notEqual(fila[5], 0)
