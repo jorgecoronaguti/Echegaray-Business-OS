@@ -96,6 +96,9 @@ import {
 import { getEntradas } from '@/features/administracion/services/comprobanteEntradaService'
 import { claveIdentidad, getIdentidades } from '@/features/administracion/services/identidadProveedorService'
 import { nombresDeObra } from '@/features/clientes/services/nombresDeObra'
+import {
+  getAsignaciones, getCeldasObra, getOpcionesDeObra, obrasDeLasCompras,
+} from '@/features/administracion/services/obraDeCompraService'
 
 export const dynamic = 'force-dynamic'
 
@@ -167,11 +170,13 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
   // —una fila por TEXTO distinto, no por compra— y sin ella el panel no puede decir de quién es el
   // gasto. Si falla, el Map queda vacío y la pantalla dice «sin identificar»: nunca inventa un
   // proveedor porque no pudo leer.
-  const [perfil, listado, entradas, identidades] = await Promise.all([
+  const [perfil, listado, entradas, identidades, celdasObra, asignacionesObra] = await Promise.all([
     getPerfilActual(supabase),
     getComprasSheet(supabase),
     getEntradas(supabase),
     getIdentidades(supabase),
+    getCeldasObra(supabase),
+    getAsignaciones(supabase),
   ])
   if (!esAdministracion(perfil.data?.rol ?? null)) {
     return (
@@ -197,7 +202,10 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
   // 08/09): fuera los rubros Impuestos y Financiero, fuera Sueldos/SAC/ARCA/FCL/SINDICATOS/Banco.
   // La cuenta de lo que salió viaja al lado para declararla al pie — un filtro que descuenta 152
   // filas sin decirlo es indistinguible de un bug.
-  const todas = listado.data.filas
+  // LA OBRA DE CADA FILA CON EL RÓTULO ÚNICO (dueño, 14/09/2026): la celda «Obra» si alguien la eligió,
+  // la inferencia del sync si no. Un solo viaje de rótulos para las ~800 filas.
+  const obrasDeFila = await obrasDeLasCompras(supabase, listado.data.filas, celdasObra, asignacionesObra)
+  const todas = listado.data.filas.map((f) => ({ ...f, obra: obrasDeFila.get(f.fila) ?? null }))
   const fueraDeObra = totalFuera(listado.data.fuera)
   // LOS CONTEOS SALEN DE LA POBLACIÓN ENTERA, no de lo que se está mirando: si contaran lo filtrado,
   // el número de arriba dejaría de ser el de la empresa.
@@ -214,7 +222,7 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
     // El chip decide la población y los criterios la recortan: son dos controles, no uno.
     if (!pasaCriterios(f, criterios)) return false
     if (!q) return true
-    return [f.proveedor, f.comprobante, f.concepto, f.detalle_obra, f.obra_texto, f.cuit]
+    return [f.proveedor, f.comprobante, f.concepto, f.detalle_obra, f.obra_texto, f.cuit, f.obra?.rotulo]
       .some((v) => v?.toLowerCase().includes(q))
   })
 
@@ -260,6 +268,8 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
 
   // La fila abierta sale de lo que YA se leyó: abrir el panel no cuesta una consulta más.
   const filaAbierta = sp.s ? (todas.find((f) => f.fila === Number(sp.s)) ?? null) : null
+  // Las opciones del desplegable sólo con el panel abierto y la columna en la base.
+  const opcionesObra = filaAbierta && celdasObra.disponible ? await getOpcionesDeObra(supabase) : []
   // EL RECORTE. Las 947 filas juntas medían 43.871px de alto; el tope las deja en ~9.000 y el
   // enlace directo manda sobre el tope (ver `recorteDeLista`). Los totales del pie miran LO QUE SE
   // DIBUJA —el rótulo del canvas dice «Total de lo que hay en pantalla»—, a diferencia de los
@@ -426,6 +436,8 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
               {filaAbierta && (
                 <PanelCompraSheet
                   fila={filaAbierta}
+                  obraEditable={celdasObra.disponible}
+                  opcionesObra={opcionesObra}
                   identidad={identidades.data.get(claveIdentidad(filaAbierta.proveedor, filaAbierta.cuit))}
                   cerrarHref={urlSheet({ s: null })}
                   hrefsFiltro={{

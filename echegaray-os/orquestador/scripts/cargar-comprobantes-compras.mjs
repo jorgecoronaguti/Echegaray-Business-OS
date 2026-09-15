@@ -43,6 +43,8 @@ import { aritmetica, colVerificacion } from '../lib/comprobantes/verificacion.mj
 import { CONTRATO, colDelCargador, contratoContra, derivar } from '../lib/comprobantes/contrato-columnas.mjs'
 import { lectorDeEncabezados, rangoColumna, rangoFilas, ubicarColumna } from '../lib/columnas-por-encabezado.mjs'
 import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
+import { catalogosDeAsignacion } from '../lib/compras-obra-asignada.mjs'
+import { destinosDeObra, obraParaLaColumna, pestanaDelComprobante, PESTANA_COMPRAS } from '../lib/comprobantes/obra-y-destino.mjs'
 import { indiceDeCompras, buscarEnCompras, HALLAZGO } from '../lib/comprobantes/compras-vivas.mjs'
 import { conciliarConArca, aplicarArca, candidatasArca, ESTADO_ARCA } from '../lib/comprobantes/arca.mjs'
 import { listasDeCompras, proveedoresPorCuit } from '../lib/comprobantes/listas.mjs'
@@ -315,7 +317,7 @@ export async function prepararUno(c = {}, { lista = [], porCuit = null, nombresP
  */
 export async function prepararPlan(comprobantes = [], o = {}) {
   const { perfiles = null } = o
-  const plan = []; const rechazos = []; const duplicados = []; const percep = []
+  const plan = []; const rechazos = []; const duplicados = []; const percep = []; const fueraDeCompras = []
   const nuevos = new Set(); const arca = { coinciden: 0, corregidos: 0 }
   // Las resoluciones de identidad SÓLO de las filas que se van a escribir: dar de alta un proveedor
   // por un comprobante que se rechazó o que ya estaba cargado dejaría una ficha que nadie pidió.
@@ -337,13 +339,6 @@ export async function prepararPlan(comprobantes = [], o = {}) {
       rechazos.push({ i, proveedor: c.proveedor, problemas })
       continue
     }
-    if (alta) resoluciones.push(alta)
-    // `nuevos` son los que SIGUEN fuera del desplegable después de intentar identificarlos: los que
-    // el CUIT resolvió entran por `altas` y salen del rojo. Confundirlos haría que el bot avise de un
-    // proveedor que ya quedó bien y se calle el que de verdad hay que mirar.
-    if (prov.esNuevo && (!alta || alta.camino === CAMINO.SIN_IDENTIDAD || alta.camino === CAMINO.CONFLICTO)) nuevos.add(cc.proveedor)
-    const dif = discrepanciaNeto(cc)
-    if (dif) percep.push({ i, proveedor: prov.valor, dif })
     // ═══ LA IMPUTACIÓN SE APLICA, NO SE IMPRIME (14/08) ═══
     //
     // Acá se llamaba a `sugerirImputacion` y el resultado sólo se mostraba: «NO cambia lo que se
@@ -358,18 +353,66 @@ export async function prepararPlan(comprobantes = [], o = {}) {
     const { aplicado, sugerencia: sug } = perfiles?.por_proveedor
       ? completarUno(cc, perfiles, { campoDetalle: 'detalle' })
       : { aplicado: {}, sugerencia: null }
+    // ═══ IMPUESTOS, CARGAS Y FINANCIEROS NO ENTRAN A COMPRAS (dueño, 14/09/2026) ═══
+    //
+    // Se decide DESPUÉS del historial —la Unidad «Impuestos» de un proveedor que siempre fue impuesto
+    // también cuenta— y ANTES de las altas: dar de alta un proveedor por un comprobante que no se
+    // escribe dejaría una ficha que nadie pidió. No se escribe en la otra pestaña: esas pestañas las
+    // arman sus generadores desde sus propias fuentes. Se devuelve con el nombre de a dónde va.
+    const { pestana, rubro } = pestanaDelComprobante(cc)
+    if (pestana !== PESTANA_COMPRAS) {
+      fueraDeCompras.push({ i, proveedor: cc.proveedor ?? null, numero: cc.numero ?? null, pestana, rubro })
+      continue
+    }
+    if (alta) resoluciones.push(alta)
+    // `nuevos` son los que SIGUEN fuera del desplegable después de intentar identificarlos: los que
+    // el CUIT resolvió entran por `altas` y salen del rojo. Confundirlos haría que el bot avise de un
+    // proveedor que ya quedó bien y se calle el que de verdad hay que mirar.
+    if (prov.esNuevo && (!alta || alta.camino === CAMINO.SIN_IDENTIDAD || alta.camino === CAMINO.CONFLICTO)) nuevos.add(cc.proveedor)
+    const dif = discrepanciaNeto(cc)
+    if (dif) percep.push({ i, proveedor: prov.valor, dif })
+    // LA COLUMNA «Obra»: sólo un valor del desplegable, y sólo si es una decisión. Se pisa lo que venga
+    // en `obraFila` con el valor VALIDADO: un texto que no es opción no llega a la celda.
+    const obra = obraParaLaColumna(cc, o.destinos)
+    cc.obraFila = obra.valor ?? undefined
+    const cuit = String(cc.cuit ?? '').replace(/\D/g, '')
     // `i` = índice del comprobante en el fajo de ENTRADA. Va en el plan porque los rechazados no
     // ocupan fila: sin él, quien llama no puede saber a qué comprobante suyo corresponde cada fila.
-    plan.push({ i, valores: valoresInput(cc, o.col), col: o.col ?? colDelCargador(CONTRATO), nuevo: prov.esNuevo, proveedor: prov.valor, sug, aplicado })
+    plan.push({
+      i, valores: valoresInput(cc, o.col), col: o.col ?? colDelCargador(CONTRATO), nuevo: prov.esNuevo, proveedor: prov.valor, sug, aplicado,
+      obra, cuit: cuit.length === 11 ? cuit : null, pestana, rubro,
+    })
   }
   // `revisadoContraCompras` viaja porque no poder mirar la pestaña NO es "no está cargado", y las dos
   // cosas se ven iguales si nadie las distingue. Quien informe esto tiene que poder decir cuál fue.
-  return { plan, rechazos, duplicados, percep, nuevos: [...nuevos], altas: planDeAltas(resoluciones), arca, revisadoContraCompras: o.indiceCompras?.ok === true }
+  return { plan, rechazos, duplicados, percep, fueraDeCompras, nuevos: [...nuevos], altas: planDeAltas(resoluciones), arca, revisadoContraCompras: o.indiceCompras?.ok === true }
+}
+
+/** Lo que cada fila del plan le dice a quien consume la línea JSON: dónde, a qué obra, qué CUIT. */
+export function filasDelPlan(plan = [], desde = 0) {
+  return plan.map((p, k) => ({
+    i: p.i, fila: desde + k, proveedor: p.proveedor, cuit: p.cuit ?? null, pestana: p.pestana ?? PESTANA_COMPRAS,
+    obra: p.obra?.valor ?? null, obraPorque: p.obra?.valor ? null : (p.obra?.porque ?? null),
+    obraEscrita: Boolean(p.obra?.valor && p.col?.obraFila),
+  }))
 }
 
 /** Lo que se decidió, para una persona. No decide nada: sólo cuenta lo que ya se decidió. */
-function informar({ plan, rechazos, duplicados, percep, nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles }) {
+/** Por qué no hay nada que escribir. `fuera_de_compras` sólo si TODO lo no cargado fue por eso. */
+export function motivoSinPlan({ rechazos = [], duplicados = [], fueraDeCompras = [] } = {}) {
+  if (fueraDeCompras.length && !rechazos.length && !duplicados.length) return 'fuera_de_compras'
+  return duplicados.length && !rechazos.length ? 'ya_cargados' : 'nada_cargable'
+}
+
+function informar({ plan, rechazos, duplicados, percep, fueraDeCompras = [], nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles }) {
   console.log(`Compras: última fila con datos = ${ultima}. Se cargan ${plan.length} comprobante(s) → filas ${desde}..${hasta}.`)
+  if (fueraDeCompras.length) {
+    console.log(`\n↪ ${fueraDeCompras.length} NO van a Compras (dueño, 14/09: tienen su pestaña):`)
+    fueraDeCompras.forEach((f) => console.log(`   #${f.i} ${f.proveedor || '(sin proveedor)'} ${f.numero ?? ''} → «${f.pestana}» (rubro ${f.rubro})`))
+  }
+  for (const p of plan) {
+    console.log(`   Obra #${p.i} ${p.proveedor ?? ''}: ${p.obra?.valor ? `«${p.obra.valor}»` : `vacía — ${p.obra?.porque ?? 'sin propuesta'}`}${p.cuit ? ` · CUIT ${p.cuit}` : ''}`)
+  }
   // NO PODER MIRAR COMPRAS NO ES "NO ESTÁ CARGADO". Si se callara, una corrida ciega y una corrida
   // verificada se verían iguales — y la ciega es justo la que puede duplicar un gasto.
   if (!indiceCompras?.ok) console.log(`\n⚠ NO pude leer la pestaña Compras para buscar duplicados (${indiceCompras?.error ?? 'sin detalle'}). No afirmo que estos comprobantes no estén ya cargados.`)
@@ -525,19 +568,27 @@ async function main() {
   let ultima = 0
   colE.forEach((r, i) => { if (r[0] != null && r[0] !== '') ultima = i + 1 })
 
-  const { plan, rechazos, duplicados, percep, nuevos, altas, arca } = await prepararPlan(comprobantes, {
-    lista, porCuit, nombresPorCuit, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL, conocidos, col,
+  // EL CATÁLOGO DE OBRAS PARA LA COLUMNA «Obra». Si no se puede leer, la celda queda vacía —como
+  // antes del 14/09— y se dice: no poder proponer la obra no es motivo para no cargar el gasto.
+  const destinos = await catalogosDeAsignacion(query).then(destinosDeObra).catch((e) => {
+    console.log(`ℹ columna Obra: no pude leer el catálogo de obras (${String(e?.message ?? e).slice(0, 120)}) — la celda queda vacía.`)
+    return null
+  })
+  if (!col.obraFila) console.log('ℹ columna Obra: Compras todavía no tiene el rótulo «Obra» — la obra se propone pero no se escribe.')
+
+  const { plan, rechazos, duplicados, percep, fueraDeCompras, nuevos, altas, arca } = await prepararPlan(comprobantes, {
+    lista, porCuit, nombresPorCuit, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL, conocidos, col, destinos,
     arcaDe: (c) => candidatasArca({ query }, c),
   })
 
   const desde = ultima + 1
   const hasta = ultima + plan.length
-  informar({ plan, rechazos, duplicados, percep, nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles })
+  informar({ plan, rechazos, duplicados, percep, fueraDeCompras, nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles })
   informarAltas(altas, conocidos)
   if (!plan.length) {
     console.log('\nNada cargable.')
     // `duplicados` viaja: para quien llama no es lo mismo "no se pudo leer" que "ya estaba cargado".
-    emitir({ ok: false, motivo: duplicados.length && !rechazos.length ? 'ya_cargados' : 'nada_cargable', escritas: 0, rechazos, duplicados, nuevos, altas, percep })
+    emitir({ ok: false, motivo: motivoSinPlan({ rechazos, duplicados, fueraDeCompras }), escritas: 0, rechazos, duplicados, fueraDeCompras, nuevos, altas, percep })
     await closePool(); return
   }
 
@@ -550,7 +601,7 @@ async function main() {
   const indebidas = der.letrasIndebidas(plan.flatMap((p) => Object.keys(p.valores)))
   if (indebidas.length) {
     console.error(`\n✖ El plan escribiría columnas prohibidas: ${indebidas.map((m) => `${m.letra} (${m.motivo})`).join(' · ')}. NO se escribió nada.`)
-    emitir({ ok: false, motivo: 'columna_prohibida', escritas: 0, rechazos, duplicados, nuevos, altas, percep })
+    emitir({ ok: false, motivo: 'columna_prohibida', escritas: 0, rechazos, duplicados, fueraDeCompras, nuevos, altas, percep })
     process.exitCode = 1
     await closePool(); return
   }
@@ -560,7 +611,7 @@ async function main() {
       + `${modelo.faltan.length ? ` (a la ${ultima} le faltan en ${modelo.faltan.join(', ')})` : ''}.`)
     console.error('   No copio fórmulas de una fila pegada a mano: bajaría el total de otro comprobante y quedaría verde.')
     console.error('   Arreglá la fórmula de alguna fila reciente (o pegá la de la fila 4 hacia abajo) y volvé a correr. NO se escribió nada.')
-    emitir({ ok: false, motivo: 'sin_fila_modelo', escritas: 0, rechazos, duplicados, nuevos, altas, percep, faltan: modelo.faltan })
+    emitir({ ok: false, motivo: 'sin_fila_modelo', escritas: 0, rechazos, duplicados, fueraDeCompras, nuevos, altas, percep, faltan: modelo.faltan })
     process.exitCode = 1
     await closePool(); return
   }
@@ -572,7 +623,7 @@ async function main() {
     console.log('\n(--dry) Muestra de la primera fila a escribir:')
     console.log('  ', JSON.stringify(plan[0].valores))
     console.log(`  Fórmulas a estampar por copyPaste desde la fila ${modelo.fila}: ${der.GRUPOS_FORMULA.map((g) => g[0] === g[1] ? g[0] : g.join(':')).join(' ')}`)
-    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filaModelo: modelo.fila, filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })), rechazos, duplicados, nuevos, altas, percep })
+    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filaModelo: modelo.fila, filas: filasDelPlan(plan, desde), rechazos, duplicados, fueraDeCompras, nuevos, altas, percep })
     await closePool(); return
   }
 
@@ -713,7 +764,7 @@ async function main() {
 
   emitir({
     ok: true, desde, hasta, escritas: plan.length, errores, sinRubro,
-    filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })),
+    filas: filasDelPlan(plan, desde), fueraDeCompras,
     // `percep` VIAJA EN EL JSON (14/08). La percepción absorbida se imprimía sólo por stdout y el bot
     // parsea únicamente esta línea: en la fila 844 se metieron $53.356,45 de percepción de IIBB
     // adentro del costo sin que el dueño se enterara. Es correcto por el contrato de la columna M

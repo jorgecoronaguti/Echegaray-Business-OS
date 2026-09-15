@@ -28,6 +28,7 @@ import {
   separarComprasDeObra, type Corte, type MotivoFuera,
 } from './comprasDeObra.ts'
 import { ordenarPorCarga, papelesDeCadaFila, papelesSinFila } from './comprasSheet.ts'
+import type { ObraDeCompra } from './obraDeCompra.ts'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -85,6 +86,8 @@ export interface Adjunto {
 export interface FilaConPapel extends CompraSheet {
   adjuntos: Adjunto[]
   tiene_adjunto: boolean
+  /** La obra con su rótulo único (`obraDeCompra.ts`). Se completa en la página; ausente = no leída. */
+  obra?: ObraDeCompra | null
 }
 
 const COLUMNAS = [

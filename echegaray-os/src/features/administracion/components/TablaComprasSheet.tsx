@@ -311,8 +311,16 @@ export function TablaComprasSheet({
                 {f.unidad_negocio && (
                   <span className="shrink-0" style={{ fontSize: '11px', color: V.tenue }}>{f.unidad_negocio}</span>
                 )}
-                <span className="truncate" style={{ fontSize: CUERPO, color: obra ? V.tintaSuave : V.neg }}>
-                  {obra || 'sin imputar'}
+                {/* LA OBRA CON SU RÓTULO ÚNICO, NO SÓLO EL CLIENTE (dueño, 14/09/2026). La J sigue en el
+                    `title`: es el texto libre de la pestaña y no se pierde. Ninguna columna nueva: el
+                    canvas v4 fija los nueve tracks. */}
+                <span
+                  className="truncate"
+                  style={{ fontSize: CUERPO, color: obra ? V.tintaSuave : V.neg }}
+                  title={f.obra?.rotulo ? `${f.obra.origen === 'inferida' ? 'Inferida de' : 'Cliente:'} «${obra ?? ''}»` : undefined}
+                  data-testid="compra-obra"
+                >
+                  {f.obra?.rotulo || obra || 'sin imputar'}
                 </span>
                 {!obra && (
                   <span title="Sin imputar a obra" className="flex shrink-0" style={{ color: V.neg }}>

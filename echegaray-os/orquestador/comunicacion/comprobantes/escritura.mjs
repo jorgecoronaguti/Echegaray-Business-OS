@@ -210,7 +210,19 @@ export function porQueNoCargo(motivo) {
     ya_cargados: 'ya estaban todos cargados en Compras',
     nada_cargable: 'ninguno tenía lo mínimo para cargarse',
     sin_fila_modelo: 'no encontré una fila de Compras con las fórmulas completas para copiar',
+    fuera_de_compras: 'no son compras: son impuestos, cargas sociales o financieros y van a su pestaña',
   })[String(motivo ?? '')] ?? 'el cargador falló'
+}
+
+/**
+ * LO QUE NO ENTRÓ PORQUE NO ES UNA COMPRA, CON A DÓNDE VA (dueño, 14/09/2026). Sin esto, un F931 o un
+ * VEP de ARCA desaparecería del chat: ni cargado, ni rechazado, ni duplicado.
+ */
+export function avisoFueraDeCompras(fuera = []) {
+  if (!fuera?.length) return null
+  return `${fuera.length} NO lo(s) cargué en Compras porque no son compras: `
+    + fuera.map((f) => `${f.proveedor ?? 'sin proveedor'}${f.numero ? ` ${f.numero}` : ''} → **${f.pestana}**`).join(' · ')
+    + '. Se registran en esa pestaña.'
 }
 
 /**
@@ -605,6 +617,8 @@ function avisosDuros(datos, varios = [], descalces = null) {
   if (datos?.duplicados?.length) {
     l.push(`${datos.duplicados.length} NO lo(s) cargué: ya estaban en Compras (${datos.duplicados.map((d) => `fila ${d.fila}`).join(', ')}).`)
   }
+  const fuera = avisoFueraDeCompras(datos?.fueraDeCompras)
+  if (fuera) l.push(fuera)
   for (const v of varios) {
     const cuantos = Number.isFinite(v.cuantos) && v.cuantos > 1 ? `${v.cuantos} comprobantes` : 'más de un comprobante'
     l.push(`${v.nombre ? `**${v.nombre}**` : 'Uno de los archivos'} tenía ${cuantos}: cargué sólo el de la fila ${v.fila ?? '?'}. **Mandá los otros en fotos separadas.**`)
@@ -734,6 +748,8 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
   if (datos?.duplicados?.length) {
     l.push(`⛔ ${datos.duplicados.length} NO lo(s) cargué: ya estaban en Compras (${datos.duplicados.map((d) => `fila ${d.fila}`).join(', ')}).`)
   }
+  const fuera = avisoFueraDeCompras(datos?.fueraDeCompras)
+  if (fuera) l.push(`↪ ${fuera}`)
   // Estar en ARCA no es un duplicado: es el libro fiscal confirmando el comprobante. Lo que importa
   // avisar es cuando el número que se leyó de la foto NO era el verdadero.
   if (datos?.arca?.corregidos) l.push(`ℹ ${datos.arca.corregidos} número(s) de comprobante corregido(s) contra ARCA.`)
