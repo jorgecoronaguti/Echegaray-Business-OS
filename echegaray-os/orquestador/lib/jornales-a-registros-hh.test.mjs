@@ -102,6 +102,38 @@ test('marcasDeGrid: una celda escrita en una columna SIN FECHA entra el último 
   assert.match(filas[0].notas, /sin fecha en la planilla \(col J\)/)
 })
 
+// LA COLUMNA SIN FECHA DENTRO DEL BLOQUE (15/09/2026). «Obreros 26», 1ª de abril: el sábado 11/04 (col O)
+// tiene el encabezado vacío y 8 h para cinco personas; la planilla las suma y la base quedaba 40 h corta.
+// MUTACIONES QUE PONEN ESTO ROJO: no leer las columnas internas, fecharlas el mismo día que la anterior
+// (o el último del bloque), o fechar un hueco que no cabe entre los dos días escritos.
+test('marcasDeGrid: una columna DENTRO del bloque con encabezado vacío se fecha por la anterior + 1 día', () => {
+  const conHueco = (h) => { const g = grid(); g.filas[2] = fila({ 1: txt('x'), ...h }); return g }
+  // 09/04 · 10/04 · (vacío) · 13/04 — la columna H (índice 7) es el sábado 11/04.
+  const g = conHueco({ 5: fecha('2026-04-09'), 6: fecha('2026-04-10'), 8: fecha('2026-04-13') })
+  const { marcas } = marcasDeGrid(g, { pestana: 'Obreros 26', anio: 2026 })
+  const inferidas = marcas.filter((m) => m.fecha_inferida)
+  // Aguero tiene 0 en esa columna: un 0 sin fecha no es la ausencia de nadie y no entra.
+  assert.deepEqual(inferidas.map((m) => [m.nombre, m.fecha, m.fecha_inferida]),
+    [['Eduardo Ochoa', '2026-04-11', 'H'], ['Pablo Ramos', '2026-04-11', 'H'], ['Quiroga Sebastian', '2026-04-11', 'H']])
+  assert.equal(marcas.filter((m) => m.sin_fecha).length, 0, 'no se confunde con la columna final sin fecha')
+  const { filas } = planDeRegistros(inferidas.slice(0, 1), { personas: PERSONAS, resolver })
+  assert.match(filas[0].notas, /sin fecha en la planilla \(col H\), fechada por la columna anterior/)
+  // Sin hueco: 10/04 · (vacío) · 11/04 — el día siguiente ya está escrito, no hay qué fechar.
+  const pegado = conHueco({ 5: fecha('2026-04-09'), 6: fecha('2026-04-10'), 8: fecha('2026-04-11') })
+  assert.equal(marcasDeGrid(pegado, { pestana: 'Obreros 26', anio: 2026 }).marcas.filter((m) => m.fecha_inferida).length, 0)
+  // Salto de más de una semana: el encabezado está mal tipeado y fechar por secuencia sería inventar.
+  const salto = conHueco({ 5: fecha('2026-04-09'), 6: fecha('2026-04-10'), 8: fecha('2026-05-13') })
+  assert.equal(marcasDeGrid(salto, { pestana: 'Obreros 26', anio: 2026 }).marcas.filter((m) => m.fecha_inferida).length, 0)
+  // Un encabezado con texto no es un hueco: no se fecha.
+  const rotulado = conHueco({ 5: fecha('2026-04-09'), 6: fecha('2026-04-10'), 7: txt('p'), 8: fecha('2026-04-13') })
+  assert.equal(marcasDeGrid(rotulado, { pestana: 'Obreros 26', anio: 2026 }).marcas.filter((m) => m.fecha_inferida).length, 0)
+  // Más de 24 h en esa columna no son horas.
+  const importeEnHueco = conHueco({ 5: fecha('2026-04-09'), 6: fecha('2026-04-10'), 8: fecha('2026-04-13') })
+  importeEnHueco.filas[4][7] = num(46111)
+  const r = marcasDeGrid(importeEnHueco, { pestana: 'Obreros 26', anio: 2026 }).marcas.filter((m) => m.fecha_inferida)
+  assert.deepEqual(r.map((m) => m.nombre), ['Pablo Ramos', 'Quiroga Sebastian'])
+})
+
 // EL 0 DE LA PLANILLA SON CERO HORAS, Y LA PLANILLA LO CUENTA ASÍ.
 //
 // Cotejo de «Obreros 26», 1ª quincena de septiembre de 2026, contra la columna «Hs» que la propia

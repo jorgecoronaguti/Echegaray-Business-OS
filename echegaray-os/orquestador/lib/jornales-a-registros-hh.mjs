@@ -68,6 +68,7 @@ export function marcasDeGrid(grid, { pestana, anio } = {}) {
       continue
     }
     const sinFecha = columnasSinFecha(grid, b)
+    const internas = columnasInternasSinFecha(grid, b)
     const ultimoDia = isos.reduce((a, x) => (x > a ? x : a), isos[0])
     for (const t of trabajadores) {
       const base = {
@@ -88,6 +89,13 @@ export function marcasDeGrid(grid, { pestana, anio } = {}) {
         if (!celda.escrita || grid.filas?.[t.fila]?.[col]?.formato === 'DATE') continue
         if (!(typeof celda.horas === 'number' && celda.horas > 0 && celda.horas <= HORAS_MAX_DIA)) continue
         marcas.push({ ...base, fecha: ultimoDia, sin_fecha: letraColumna(col), celda })
+      }
+      for (const { col, iso } of internas) {
+        const celda = leerCeldaDiaria(grid, t.fila, col)
+        // Las mismas guardas que la columna final sin fecha: sólo un número de horas de verdad.
+        if (!celda.escrita || grid.filas?.[t.fila]?.[col]?.formato === 'DATE') continue
+        if (!(typeof celda.horas === 'number' && celda.horas > 0 && celda.horas <= HORAS_MAX_DIA)) continue
+        marcas.push({ ...base, fecha: iso, fecha_inferida: letraColumna(col), celda })
       }
     }
   }
@@ -116,6 +124,37 @@ export function columnasSinFecha(grid, bloque, { filaRotulos = 0 } = {}) {
   if (total == null) return []
   const out = []
   for (let j = bloque.col_hasta + 1; j < total; j++) out.push(j)
+  return out
+}
+
+const MAX_HUECO_DIAS = 7
+const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10)
+
+/**
+ * LAS COLUMNAS SIN FECHA ENTRE DOS DÍAS DEL BLOQUE (15/09/2026).
+ *
+ * «Obreros 26», 1ª de abril: el sábado 11/04 (columna O) tiene el encabezado vacío y 8 h escritas para
+ * Reta, Quiroga S., Pastrán, Petina y Zogbe. La planilla las suma a «DIAS / HORAS»; `columnasSinFecha`
+ * sólo mira DESPUÉS del último día, así que la base quedaba 40 h corta.
+ *
+ * La fecha sale de la SECUENCIA, no del día de la semana: la columna vacía que sigue a un día es el día
+ * siguiente, y la segunda vacía el subsiguiente. Sólo se afirma cuando cabe: el día inferido tiene que
+ * quedar ANTES del próximo día escrito (si el 10/04 y el 11/04 están pegados no hay hueco que llenar), y
+ * el hueco entre los dos días escritos no puede pasar de una semana — un salto así es un encabezado mal
+ * tipeado («2/3» en medio de abril), y ahí inferir sería inventar.
+ */
+export function columnasInternasSinFecha(grid, bloque) {
+  const out = []
+  const fechas = bloque.fechas ?? []
+  for (let k = 0; k + 1 < fechas.length; k++) {
+    const a = fechas[k]; const b = fechas[k + 1]
+    const huecos = []
+    for (let j = a.col + 1; j < b.col; j++) huecos.push(j)
+    if (!huecos.length || huecos.some((j) => valorDe(grid, bloque.fila, j) !== '')) continue
+    const span = (Date.parse(b.iso) - Date.parse(a.iso)) / 864e5
+    if (!(span > huecos.length && span <= MAX_HUECO_DIAS)) continue
+    huecos.forEach((col, i) => out.push({ col, iso: sumarDias(a.iso, i + 1) }))
+  }
   return out
 }
 
@@ -322,6 +361,7 @@ function notaDe(m, origen, detalle) {
   const partes = [`JORNALES ${m.pestana} f${m.fila1}`, [m.cliente, m.obra].filter(Boolean).join(' · ')]
   if (ORIGEN_EN_NOTA[origen]) partes.push(ORIGEN_EN_NOTA[origen])
   if (m.sin_fecha) partes.push(`sin fecha en la planilla (col ${m.sin_fecha}), fechada el último día del bloque`)
+  if (m.fecha_inferida) partes.push(`sin fecha en la planilla (col ${m.fecha_inferida}), fechada por la columna anterior + 1 día`)
   if (detalle) partes.push(detalle)
   return partes.filter(Boolean).join(' · ')
 }
