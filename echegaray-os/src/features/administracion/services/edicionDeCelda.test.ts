@@ -62,7 +62,7 @@ test('«sin novedad» a futuro libera el día: ni ausencia, ni cero horas', () =
 test('sin obra destino no se cargan horas: no habría a quién imputarle el costo', () => {
   const r = planDeCelda({ ...base, obraOrigen: null, obraDestino: null, estado: TRABAJO, horas: '9' })
   assert.equal(r.ok, false)
-  assert.match(r.ok ? '' : r.error, /obra activa/i)
+  assert.match(r.ok ? '' : r.error, /elegí la obra/i)
 })
 
 test('cero horas no es una marca', () => {
