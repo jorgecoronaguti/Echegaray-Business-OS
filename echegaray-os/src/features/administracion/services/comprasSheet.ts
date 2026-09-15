@@ -101,9 +101,22 @@ export interface Filtrable {
   estado: string | null
   /**
    * LA OBRA RESUELTA, no el texto de la columna J (15/09/2026). El chip «Sin obra» preguntaba
-   * `!obra_texto`, y la J está escrita en 947 de 947 filas —dice el CLIENTE, no la obra—, así que el
+   * `!obra_texto`, y la J está escrita en todas las filas —dice el CLIENTE, no la obra—, así que el
    * chip contaba 0 y prometía que no quedaba nada por imputar. Lo que de verdad falta imputar es lo
    * que no tiene `obra_id` ni destino en Supabase, que es lo que este campo trae.
+   *
+   * ═══ EL CHIP VA A SALTAR DE 0 A ~518, Y ESO NO ES UNA REGRESIÓN ═══
+   *
+   * Medido contra la base viva el 15/09/2026, sobre las 891 filas no anuladas: 10 tienen la celda
+   * «Obra» escrita (origen `columna`), 363 llegan a una obra por inferencia del sync (origen
+   * `inferida`) y 518 quedan en `sin_obra` — la tabla `compra_obra_asignada` guarda el motivo de cada
+   * una: «"Taller" no es un cliente en cliente_alias», «columna K "combustible" no nombra una obra de
+   * SAN FRANCISCO».
+   *
+   * Esas 518 son trabajo real que estaba escondido detrás de un contador en cero, y buena parte son
+   * gastos de estructura que ahora se imputan con `ES-ADM`/`ES-TAL` desde el desplegable de la fila
+   * —que es exactamente para lo que el dueño lo pidió—. El número no se clava en ningún test: es un
+   * derivado de dato vivo y bajaría solo a medida que se imputen.
    */
   obra?: { rotulo: string | null } | null
   anulada: boolean
