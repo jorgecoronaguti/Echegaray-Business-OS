@@ -380,6 +380,11 @@ export const correccionSchema = z.object({
   // masivo detrás de un campo opcional.
   message: 'Un tramo se asienta sólo cuando no vino',
   path: ['hasta'],
+}).refine((d) => d.estado !== 'vaciar' || d.obra_origen !== null, {
+  // VACIAR SIN OBRA ES VACIAR TODAS. `vaciarHorasDelDia` con `obra: null` no filtra por obra: la
+  // jornada del día se iba de cada obra por tocar la celda de una sola. La celda siempre sabe su obra.
+  message: 'Vaciar necesita la obra de la celda: sin obra borraría el día en todas.',
+  path: ['obra_origen'],
 })
 
 export type Correccion = z.infer<typeof correccionSchema>

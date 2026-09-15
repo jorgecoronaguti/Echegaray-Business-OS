@@ -50,6 +50,7 @@ import {
   declararPresencia, quitarPresenciaDelDia, retirarPresenciaPorHoras,
 } from './presenciaDelDiaService'
 import { vaciarHorasDelDia } from './vaciadoDeHorasService'
+import { quincenaCerrada } from './quincenaCerradaService'
 import {
   declaracionDeCorreccion, declaracionesDeJornada, type MarcaConHoras,
 } from './presenciaPorHoras'
@@ -66,6 +67,12 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   const { obra_id: obraId, fecha, marcas, vaciar } = parsed.data
 
   const supabase = await createClient()
+
+  // LA QUINCENA CERRADA NO SE TOCA, ANTES QUE NADA. Esta acción inserta, corrige, vacía y borra, y
+  // en una quincena pagada cualquiera de las cuatro cambia un jornal liquidado. Misma regla que
+  // Liquidación (`quincenaCerrada.ts`): el camino es reabrirla, y eso lo firma quien liquida.
+  const cierre = await quincenaCerrada(supabase, fecha)
+  if (cierre !== null) return { ok: false, error: cierre }
 
   // LA ACCIÓN ES LA PUERTA, NO LA PANTALLA. La pantalla ofrece obras activas; esta llamada puede
   // venir de cualquier lado. Sin esto se podían cargar horas contra una obra inexistente y el costo
@@ -284,14 +291,20 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   const c = parsed.data
   const supabase = await createClient()
 
+  // LA QUINCENA CERRADA NO SE CORRIGE, EN NINGUNO DE LOS CINCO ESTADOS. Con tramo se miran todas las
+  // quincenas que cruza: una licencia que arranca en la abierta no puede asentar días en la cerrada.
+  const cierre = await quincenaCerrada(supabase, c.fecha, c.hasta ?? c.fecha)
+  if (cierre !== null) return { ok: false, error: cierre }
+
   // ═══ VACIAR — EL DÍA SIN HORAS, PARA COMPLETAR MÁS TARDE (dueño, 15/09/2026) ═══
   // No es `borrar`: no retira la presencia —estuvo, y las horas se cargan después— y no es error
   // cuando ya estaba vacío. La regla es la misma de las otras puertas: `vaciadoDeHoras.ts`.
+  // Sin obra no llega acá: `correccionSchema` lo rechaza, porque vaciar sin obra vaciaba todas.
   if (c.estado === 'vaciar') {
     const v = await vaciarHorasDelDia(supabase, { personas: [c.persona_id], fecha: c.fecha, obra: c.obra_origen })
     if (v.error) return { ok: false, error: v.error }
     if (v.borradas > 0) revalidar()
-    return { ok: true, mensaje: c.obra_origen === null ? 'El día ya estaba sin horas.' : v.mensaje }
+    return { ok: true, mensaje: v.mensaje }
   }
 
   // LO QUE YA ESTÁ CARGADO SE LEE PRIMERO. Es lo único que distingue corregir un día que existe

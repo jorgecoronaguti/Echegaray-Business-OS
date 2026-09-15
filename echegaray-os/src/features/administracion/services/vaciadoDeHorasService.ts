@@ -7,8 +7,10 @@
 // `presenciaDelDiaService.ts`. La cerradura sigue siendo la RLS de `registros_hh`.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { traducirEscritura } from './planDeJornada'
-import { acuseDeVaciado, planDeVaciado, type PlanDeVaciado } from './vaciadoDeHoras'
+// CON EXTENSIÓN: `node --test` corre este módulo contra un cliente falso (`quincenaCerrada.test.ts`).
+import { traducirEscritura } from './planDeJornada.ts'
+import { quincenaCerrada } from './quincenaCerradaService.ts'
+import { acuseDeVaciado, planDeVaciado, type PlanDeVaciado } from './vaciadoDeHoras.ts'
 
 export interface ResultadoDeVaciado {
   borradas: number
@@ -23,6 +25,12 @@ export async function vaciarHorasDelDia(
 ): Promise<ResultadoDeVaciado> {
   const vacio = { borradas: 0, intactas: [], mensaje: '' }
   if (personas.length === 0) return { ...vacio, error: null }
+
+  // LA QUINCENA CERRADA NO SE VACÍA, por ninguna puerta. Cada acción ya lo pregunta; se pregunta
+  // también acá porque éste es el único punto por el que pasan las tres, y una puerta nueva que se
+  // olvide de preguntar choca igual. Es una lectura chica contra borrar un jornal pagado.
+  const cierre = await quincenaCerrada(supabase, fecha)
+  if (cierre !== null) return { ...vacio, error: cierre }
 
   let lectura = supabase.from('registros_hh')
     .select('id, persona_id, horas, tipo_hora, actividad_id, improductiva, notas, obra_canonica_id')
