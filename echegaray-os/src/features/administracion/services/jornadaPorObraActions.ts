@@ -61,6 +61,26 @@ export type ResultadoJornada =
   | { ok: true; mensaje: string; aviso?: string }
   | { ok: false; error: string }
 
+/**
+ * LA OBRA CON SU PRIMER Y ÚLTIMO DÍA DE HORAS, para `admiteHorasEl` (ver `obrasPorFecha.ts`).
+ *
+ * Sólo se lee cuando decide algo —obra no activa y un día que se estrena—: la carga de todos los días
+ * en una obra activa no paga dos lecturas más. Una lectura que falla deja la evidencia en `null`, y
+ * sin evidencia la puerta dice que no: un error no puede abrir una obra cerrada.
+ */
+async function conEvidenciaDeHoras(
+  supabase: Awaited<ReturnType<typeof createClient>>, obra: ObraConVentana,
+): Promise<ObraConVentana> {
+  const extremo = (ascending: boolean) => supabase.from('registros_hh').select('fecha')
+    .eq('obra_canonica_id', obra.id).order('fecha', { ascending }).limit(1).maybeSingle()
+  const [primera, ultima] = await Promise.all([extremo(true), extremo(false)])
+  return {
+    ...obra,
+    primera_hh: (primera.data as { fecha: string } | null)?.fecha ?? null,
+    ultima_hh: (ultima.data as { fecha: string } | null)?.fecha ?? null,
+  }
+}
+
 export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada> {
   const parsed = envioSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
@@ -79,7 +99,7 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   const { nombre, estado, jornada_horas: jornada } = obra.data as {
     nombre: string; estado: string | null; jornada_horas: number | string | null
   }
-  const ventana = obra.data as Omit<ObraConVentana, 'id' | 'nombre'>
+  const ventana: ObraConVentana = { ...(obra.data as Omit<ObraConVentana, 'id'>), id: obraId }
 
   // LA CASILLA QUE SE DEJÓ EN BLANCO TENIENDO HORAS ES «SIN HORAS» (dueño, 15/09/2026). Antes no
   // viajaba, y la hora quedaba guardada mientras la pantalla decía que se había guardado el día.
@@ -119,7 +139,9 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   const estrenan = personasQueEstrenanDia(presentes, existentes)
   // LA OBRA CERRADA QUE ESTABA EN MARCHA ESE DÍA SÍ RECIBE HORAS (dueño, 15/09/2026): ver `obrasPorFecha.ts`.
   const cerrada = puertaDeObraNoActiva({
-    nombre, estado, crea: estrenan.length > 0, admiteLaFecha: admiteHorasEl(ventana, fecha),
+    nombre, estado, crea: estrenan.length > 0,
+    admiteLaFecha: estrenan.length > 0 && estado !== 'activa'
+      && admiteHorasEl(await conEvidenciaDeHoras(supabase, ventana), fecha),
   })
   if (cerrada) return { ok: false, error: cerrada }
 
@@ -418,7 +440,7 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
     .eq('id', obraDestino).maybeSingle()
   if (destino.error) return { ok: false, error: destino.error.message }
   if (!destino.data) return { ok: false, error: 'Esa obra no existe o no la ves.' }
-  const o = destino.data as Omit<ObraConVentana, 'id'>
+  const o: ObraConVentana = { ...(destino.data as Omit<ObraConVentana, 'id'>), id: obraDestino }
 
   const marca: MarcaDeJornada = { persona_id: c.persona_id, estado: 'presente', horas: c.horas as number }
 
@@ -432,7 +454,7 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
     nombre: o.nombre, estado: o.estado, crea, motivo: mueve ? 'mover' : 'cargar',
     // Cargar o mover horas de un día en que la obra estaba en marcha no le imputa costo ajeno a su
     // ventana: es el costo de ese día. Fuera de la ventana sigue el no.
-    admiteLaFecha: admiteHorasEl(o, c.fecha),
+    admiteLaFecha: crea && o.estado !== 'activa' && admiteHorasEl(await conEvidenciaDeHoras(supabase, o), c.fecha),
   })
   if (cerrada) return { ok: false, error: cerrada }
 

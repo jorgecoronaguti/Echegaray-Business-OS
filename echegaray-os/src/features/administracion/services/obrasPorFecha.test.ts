@@ -12,7 +12,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { admiteHorasEl, obrasElegiblesEl, type ObraConVentana } from './obrasPorFecha.ts'
+import {
+  MARGEN_DIAS, admiteHorasEl, esObraDePrueba, obrasElegiblesEl, ventanaDe, type ObraConVentana,
+} from './obrasPorFecha.ts'
 import { accesoACelda, obraDeLaCelda, planDeCelda, TRABAJO } from './edicionDeCelda.ts'
 import { puertaDeObraNoActiva } from './planDeJornada.ts'
 
@@ -68,7 +70,62 @@ test('LA ACCIÓN ACEPTA LA CERRADA QUE ADMITE LA FECHA, y sin fecha sigue dicien
   // Las dos puertas de escritura mandan la fecha a la puerta. Sin esto la pantalla ofrece la obra y
   // la acción la rebota: la misma regla tiene que estar en los dos lados.
   const acciones = fuente('./jornadaPorObraActions.ts')
-  assert.equal(acciones.match(/admiteLaFecha: admiteHorasEl\(/g)?.length, 2, 'guardarJornada y corregirJornada')
+  assert.equal(acciones.match(/admiteHorasEl\(await conEvidenciaDeHoras\(supabase, /g)?.length, 2, 'guardarJornada y corregirJornada, con evidencia')
+})
+
+// MEDIDO EN LA BASE (15/09/2026, lectura READ ONLY): 10 de 20 obras cerradas sin fecha de inicio. Con la
+// regla anterior, la-estrella (559 filas de horas del 05/01 al 10/09) o le-mamposteria (433, 02/03 al
+// 30/06) no se podían elegir para ningún día: el mismo reclamo del dueño, en la mitad de la cartera.
+const LE_MAMPOSTERIA = obra('le-mamposteria', { estado: 'cerrada', primera_hh: '2026-03-02', ultima_hh: '2026-06-30' })
+const SF_MAMPOSTERIA = obra('sf-mamposteria', {
+  estado: 'cerrada', fecha_inicio_plan: '2026-08-07', fecha_fin_real: '2026-09-02', primera_hh: '2026-08-17', ultima_hh: '2026-09-14',
+})
+
+test('SIN FECHAS DECLARADAS, LA VENTANA SALE DE LAS HORAS CARGADAS, con el margen declarado y ni un día más', () => {
+  assert.equal(MARGEN_DIAS, 16, 'la quincena más larga: si cambia, que sea a propósito')
+  assert.deepEqual(ventanaDe(LE_MAMPOSTERIA), { inicio: '2026-02-14', fin: '2026-07-16' })
+  assert.equal(admiteHorasEl(LE_MAMPOSTERIA, '2026-02-14'), true)
+  assert.equal(admiteHorasEl(LE_MAMPOSTERIA, '2026-02-13'), false)
+  assert.equal(admiteHorasEl(LE_MAMPOSTERIA, '2026-07-16'), true)
+  assert.equal(admiteHorasEl(LE_MAMPOSTERIA, '2026-07-17'), false)
+  assert.equal(admiteHorasEl(LE_MAMPOSTERIA, '2025-01-01'), false, 'no cualquier día de la historia')
+})
+
+test('SIN FECHAS Y SIN UNA SOLA HORA NO HAY VENTANA: galpones o le-galpon-7 no se inventan un período', () => {
+  assert.equal(ventanaDe(obra('galpones', { estado: 'cerrada' })), null)
+  assert.equal(admiteHorasEl(obra('galpones', { estado: 'cerrada' }), '2026-09-08'), false)
+})
+
+test('LA EVIDENCIA MÁS TARDÍA GANA: fin declarado 02/09 con horas hasta el 14/09 cierra el 14/09', () => {
+  assert.deepEqual(ventanaDe(SF_MAMPOSTERIA), { inicio: '2026-08-07', fin: '2026-09-14' })
+  assert.equal(admiteHorasEl(SF_MAMPOSTERIA, '2026-09-14'), true)
+  assert.equal(admiteHorasEl(SF_MAMPOSTERIA, '2026-09-15'), false, 'sin margen sobre una fecha declarada')
+  // Y lo mismo al revés: horas antes del inicio declarado abren la ventana en la primera hora.
+  const antes = obra('x', { estado: 'cerrada', fecha_inicio_real: '2026-05-01', fecha_fin_real: '2026-06-01', primera_hh: '2026-04-20' })
+  assert.equal(ventanaDe(antes)?.inicio, '2026-04-20')
+})
+
+test('LAS OBRAS DE PRUEBA CERRADAS NUNCA SE OFRECEN; la activa es el fixture de una corrida y se respeta', () => {
+  const zz = obra('zz-e2e-celda00-0000-4000-8000-000000', { estado: 'cerrada', primera_hh: '2026-09-01', ultima_hh: '2026-09-10' })
+  const pruebaE2e = obra('prueba-e2e', { estado: 'cerrada', fecha_inicio_plan: '2026-08-11' })
+  const porNombre = obra('otra', { nombre: '[PRUEBA E2E] obra', estado: 'cerrada', fecha_inicio_real: '2026-01-01' })
+  const porCodigo = obra('otra2', { codigo: 'ZZ-0001', estado: 'cerrada', fecha_inicio_real: '2026-01-01' })
+  for (const o of [zz, pruebaE2e, porNombre, porCodigo]) {
+    assert.equal(esObraDePrueba(o), true, o.id)
+    assert.equal(admiteHorasEl(o, '2026-09-08'), false, o.id)
+  }
+  assert.deepEqual(obrasElegiblesEl([zz, pruebaE2e, porNombre, porCodigo, LE_MAMPOSTERIA], '2026-06-01').map((o) => o.id), ['le-mamposteria'])
+  assert.equal(admiteHorasEl({ ...zz, estado: 'activa' }, '2026-09-08'), true, 'fixture activo de la suite E2E')
+  assert.equal(esObraDePrueba(LE_MAMPOSTERIA), false)
+})
+
+test('LA GRILLA LEE LA EVIDENCIA EN LA MISMA CONSULTA DEL CATÁLOGO, sin una lectura por obra', () => {
+  const bloque = fuente('../components/BloqueAsistenciaQuincena.tsx')
+  assert.match(bloque, /primera:registros_hh\(fecha\), ultima:registros_hh\(fecha\)/)
+  assert.match(bloque, /limit\(1, \{ referencedTable: 'primera' \}\)/)
+  assert.match(bloque, /limit\(1, \{ referencedTable: 'ultima' \}\)/)
+  assert.match(bloque, /primera_hh: o\.primera\?\.\[0\]\?\.fecha/)
+  assert.doesNotMatch(bloque, /for \(const [^)]*\)[^{]*\{[^}]*registros_hh/, 'nada de un bucle que lea horas por obra')
 })
 
 test('PERSONA SIN OBRA DE HOY, DÍA PASADO VACÍO: la celda abre el editor, que ofrece la obra de ese día', () => {
