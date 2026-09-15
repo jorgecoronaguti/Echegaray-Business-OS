@@ -43,6 +43,7 @@ export function propiedadesDe(f: FilaConPapel): Prop[] {
       tono: f.comprobante ? undefined : 'falta',
     },
     { k: 'Destino', v: obra || 'sin imputar', tono: obra ? (esEstructura(obra) ? 'apagado' : undefined) : 'falta' },
+    obraProp(f),
     { k: 'Unidad', v: f.unidad_negocio || 'sin definir', tono: f.unidad_negocio ? undefined : 'apagado' },
     {
       k: 'Tipo de costo',
@@ -57,6 +58,23 @@ export function propiedadesDe(f: FilaConPapel): Prop[] {
     },
     { k: 'Origen', v: `pestaña Compras · fila ${f.fila}`, tono: 'apagado' },
   ]
+}
+
+/**
+ * LA OBRA (dueño, 14/09/2026), con el rótulo único y dicho de dónde sale. Una obra que el sync infirió
+ * de J y K no se dibuja igual que una elegida: se lee «inferida» y en apagado. Una celda que no se
+ * entendió va en ámbar con su motivo, porque alguien escribió algo y hay que decírselo.
+ */
+export function obraProp(f: FilaConPapel): Prop {
+  const o = f.obra
+  if (!o) return { k: 'Obra', v: 'sin leer', tono: 'apagado' }
+  if (o.inconsistencia) return { k: 'Obra', v: `${o.celda ?? 'la celda'} · ${o.inconsistencia}`, tono: 'falta' }
+  if (o.rotulo) {
+    return o.origen === 'inferida' ? { k: 'Obra', v: `${o.rotulo} · inferida`, tono: 'apagado' } : { k: 'Obra', v: o.rotulo }
+  }
+  if (o.celda) return { k: 'Obra', v: o.celda }
+  if (o.origen === 'sin_obra') return { k: 'Obra', v: 'sin obra asignada', tono: 'falta' }
+  return { k: 'Obra', v: 'sin obra', tono: 'apagado' }
 }
 
 /** Qué reclama esta fila, si reclama algo. `null` = está completa y el panel no dibuja la banda. */

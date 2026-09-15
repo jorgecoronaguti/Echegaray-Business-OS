@@ -20,11 +20,24 @@ const fila = (p: Partial<FilaConPapel> = {}): FilaConPapel => ({
 
 const valor = (f: FilaConPapel, k: string) => propiedadesDe(f).find((p) => p.k === k)
 
-test('las ocho propiedades de la v2 están y en su orden', () => {
+test('las ocho propiedades de la v2 más «Obra» (dueño, 14/09/2026) están y en su orden', () => {
   assert.deepEqual(propiedadesDe(fila()).map((p) => p.k), [
-    'Fecha', 'Comprobante', 'Destino', 'Unidad', 'Tipo de costo', 'Forma de pago',
+    'Fecha', 'Comprobante', 'Destino', 'Obra', 'Unidad', 'Tipo de costo', 'Forma de pago',
     'Deuda parcial', 'Origen',
   ])
+})
+
+test('la Obra dice si la eligió una persona o la infirió el sync, y nunca inventa un rótulo', () => {
+  const obra = (o: Partial<NonNullable<FilaConPapel['obra']>>) => fila({
+    obra: { rotulo: null, origen: 'ninguna', celda: null, inconsistencia: null, porque: null, ...o },
+  })
+  assert.deepEqual(valor(obra({ rotulo: 'OB-0007 · ME - PLANTA DE BSA', origen: 'columna', celda: 'OB-0007 · x' }), 'Obra'),
+    { k: 'Obra', v: 'OB-0007 · ME - PLANTA DE BSA' })
+  assert.deepEqual(valor(obra({ rotulo: 'OB-0007 · ME - PLANTA DE BSA', origen: 'inferida' }), 'Obra'),
+    { k: 'Obra', v: 'OB-0007 · ME - PLANTA DE BSA · inferida', tono: 'apagado' })
+  assert.equal(valor(obra({ origen: 'columna', celda: 'OB-9999', inconsistencia: 'OB-9999 no es el código de ninguna obra' }), 'Obra')?.tono, 'falta')
+  assert.deepEqual(valor(obra({ origen: 'sin_obra' }), 'Obra'), { k: 'Obra', v: 'sin obra asignada', tono: 'falta' })
+  assert.equal(valor(fila(), 'Obra')?.v, 'sin leer', 'no leída no es «sin obra»')
 })
 
 test('la forma de pago y el tipo de costo son los del Sheet, no un invento', () => {

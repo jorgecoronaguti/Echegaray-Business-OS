@@ -27,6 +27,8 @@ const PANTALLAS: [string, string, string][] = [
   ['Clientes · lista de obras de la ficha', 'app/(main)/clientes/[cliente]/page.tsx', 'rotuloDeObra('],
   ['Clientes · cuenta corriente, esquema y accesos', 'features/clientes/services/nombresDeObra.ts', 'rotuloDeObra('],
   ['Compras · columna Obra', 'app/(main)/administracion/compras/page.tsx', 'nombresDeObra('],
+  ['Compras · obra de cada fila de la pestaña', 'features/administracion/services/obraDeCompraService.ts', 'nombresDeObra('],
+  ['Compras · desplegable de Obra del panel', 'features/administracion/services/obraDeCompra.ts', 'rotuloDeObra('],
 ]
 
 const IMPORTA = /import \{[^}]*\b(rotuloDeObra|nombresDeObra)\b[^}]*\} from '[^']*(shared\/utils\/obra|clientes\/services\/nombresDeObra)(\.ts)?'/
