@@ -146,3 +146,83 @@ test('sin catálogo de obras NO escribe: difiere (no rechaza: la lectura que fal
     assert.equal(p.motivo, 'sin_catalogo')
   }
 })
+
+// ═══ LA HUELLA DE RESPALDO: fila SIN número de comprobante (15/09/2026) ═══
+// El caso real: fila 806 · PEDRO TELLO · «Galpon 5» · $4.200.000 · sin comprobante. La RPC encoló con
+// `clave` null y el worker la rechazó por `sin_huella`; el dueño la escribió a mano.
+import { compararRespaldo, respaldoUsable } from './bisturi-compras-obra.mjs'
+
+const SERIAL_10_09_2026 = 46275
+const TELLO = {
+  ID: 806, Proveedor: 'PEDRO TELLO', Tipo: '', 'N° Comprobante': '', 'CUIT (OS)': '',
+  'Fecha factura': SERIAL_10_09_2026, Concepto: 'Galpon 5', Importe: 4200000, IVA: 0, Total: 4200000,
+}
+const RESPALDO = { proveedor: 'PEDRO TELLO', fecha: '2026-09-10', total: 4200000, concepto: 'Galpon 5', resincronizado: false }
+const CAMBIO_806 = { ...CAMBIO, id: 'k-806', fila: 810, clave: null, sheet_id: 806, valor_nuevo: 'OB-0007 · LE - GALPÓN 9' }
+const filaTello = (extra = {}) => filaDe(COMPRAS_CON_OBRA, { ...TELLO, Obra: '', ...extra })
+
+test('la fixture no tiene clave de comprobante: si la tuviera, el respaldo no se miraría', () => {
+  assert.equal(claveDeCompra({ cuit: '', tipo: '', comprobante: '', proveedor: 'PEDRO TELLO' }), null)
+})
+
+test('sin comprobante pero con respaldo coincidente (proveedor|fecha|total|concepto) ESCRIBE L de la fila', () => {
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA, fila: filaTello(), respaldo: RESPALDO })
+  assert.equal(p.accion, 'escribir')
+  assert.equal(p.celda, 'Compras!L810')
+  assert.equal(p.nota, undefined)
+})
+
+test('proveedor distinto en la fila viva: rechaza por huella_distinta con el proveedor adentro', () => {
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA, fila: filaTello({ Proveedor: 'JUAN PÉREZ' }), respaldo: RESPALDO })
+  assert.equal(p.accion, 'rechazar')
+  assert.equal(p.motivo, 'huella_distinta')
+  assert.match(p.detalle, /JUAN PÉREZ.*PEDRO TELLO/)
+})
+
+test('huella ausente por completo (sin clave, sin respaldo o respaldo sin proveedor): sigue siendo sin_huella', () => {
+  for (const respaldo of [null, undefined, {}, { proveedor: '  ', fecha: '2026-09-10', total: 4200000 }]) {
+    const p = planificarObra({ obras: OBRAS, cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA, fila: filaTello(), respaldo })
+    assert.equal(p.accion, 'rechazar')
+    assert.equal(p.motivo, 'sin_huella')
+    assert.equal(respaldoUsable(respaldo), false)
+  }
+})
+
+test('fecha, total (más de un peso) o concepto distintos rechazan; un peso de flotante no', () => {
+  const casos = [
+    [{ 'Fecha factura': SERIAL_10_09_2026 + 1 }, /fecha 2026-09-11/],
+    [{ Total: 4200002 }, /total 4200002/],
+    [{ Concepto: 'Galpon 7' }, /Concepto/],
+  ]
+  for (const [extra, re] of casos) {
+    const p = planificarObra({ obras: OBRAS, cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA, fila: filaTello(extra), respaldo: RESPALDO })
+    assert.equal(p.motivo, 'huella_distinta', JSON.stringify(extra))
+    assert.match(p.detalle, re)
+  }
+  const ok = planificarObra({ obras: OBRAS, cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA, fila: filaTello({ Total: 4200000.7 }), respaldo: RESPALDO })
+  assert.equal(ok.accion, 'escribir')
+})
+
+test('el concepto sólo cuenta si compra_sheet lo tiene; proveedor compara sin mayúsculas ni espacios de más', () => {
+  const sinConcepto = { ...RESPALDO, concepto: null, proveedor: 'pedro  tello' }
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA, fila: filaTello({ Concepto: 'lo que sea' }), respaldo: sinConcepto })
+  assert.equal(p.accion, 'escribir')
+  assert.equal(compararRespaldo({ proveedor: 'A', fecha: null, total: 10, concepto: null }, { proveedor: 'A', fecha: null, total: 10 }, 9), null)
+})
+
+test('con clave de comprobante el respaldo NO se mira: la clave manda', () => {
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO, encabezado: COMPRAS_CON_OBRA, fila: conObra(''), respaldo: { ...RESPALDO, proveedor: 'OTRO' } })
+  assert.equal(p.accion, 'escribir')
+})
+
+test('el ID también se compara en el camino del respaldo', () => {
+  const p = planificarObra({ obras: OBRAS, cambio: { ...CAMBIO_806, sheet_id: 805 }, encabezado: COMPRAS_CON_OBRA, fila: filaTello(), respaldo: RESPALDO })
+  assert.equal(p.motivo, 'huella_distinta')
+  assert.match(p.detalle, /ID 806/)
+})
+
+test('respaldo resincronizado después del pedido: escribe igual pero lo dice en la nota', () => {
+  const p = planificarObra({ obras: OBRAS, cambio: CAMBIO_806, encabezado: COMPRAS_CON_OBRA, fila: filaTello(), respaldo: { ...RESPALDO, resincronizado: true } })
+  assert.equal(p.accion, 'escribir')
+  assert.match(p.nota, /resincronizado/)
+})

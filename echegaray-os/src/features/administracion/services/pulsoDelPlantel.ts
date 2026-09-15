@@ -29,6 +29,8 @@ import { estadoDe } from '../../mi-cuenta/services/documentos.ts'
 // import de VALOR por alias mata la prueba con ERR_MODULE_NOT_FOUND antes de la primera aserción.
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
 import type { PresenciaGuardada } from './presenciaDelDia.ts'
+import { PRESENTISMO_DESDE } from './presentismo.ts'
+import { cabeceraQuincena, type Quincena } from './quincena.ts'
 
 // ── HOY ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -248,6 +250,74 @@ export function ofertaDeMarcar({ puedeMarcar, presencia, obraId, esJefe, enLaEmp
   // LA OBRA NO SE INVENTA. Marcar presente imputa la jornada por defecto a una obra: sin asignación
   // vigente no hay ninguna que sea la correcta, y elegir una sería fabricar el costo de esa obra.
   return obraId ? 'boton' : 'sin_obra'
+}
+
+// ── TARDANZA · LA MARCA DESDE EL PLANTEL (dueño, 15/09/2026) ────────────────────────────────────
+//
+// Textual: *«en pantalla plantel donde marco la asistencia desde computadora tengo que tener
+// disponible tardanzas o retiros anticipados»*. La marca vive en `asistencia_dia.llego_tarde /
+// salio_antes` y UNA sola en la quincena pierde el presentismo entero (`presentismo.ts`). Acá se decide
+// qué se dibuja —la marca de HOY por persona y el pie que cuenta cuántos ya la tienen en la
+// quincena—; la escritura es `marcarTardanza`, la misma que usa la celda de Horas.
+
+/** La marca de hoy de una persona, con el vocabulario de `CeldaDia`. */
+export interface TardanzaDeHoy { llegoTarde: boolean; salioAntes: boolean }
+
+/** Lo que una fila de `asistencia_dia` dice sobre la marca. Las dos columnas faltan mientras
+ *  `20260915T2220` no esté aplicada: se leen como `false`, nunca como marca. */
+export interface FilaConTardanza {
+  persona_id: string
+  estado: string
+  llego_tarde?: boolean
+  salio_antes?: boolean
+}
+
+/** SÓLO SOBRE UN PRESENTE: es la misma afirmación que el CHECK `asistencia_dia_tardanza_solo_presente`.
+ *  Una fila ausente con la marca puesta —cargada por script, antes del CHECK— no es una tardanza:
+ *  quien no vino no llegó tarde. */
+const marcaDe = (f: FilaConTardanza): TardanzaDeHoy | null => {
+  if (f.estado !== 'presente') return null
+  const t = { llegoTarde: f.llego_tarde === true, salioAntes: f.salio_antes === true }
+  return t.llegoTarde || t.salioAntes ? t : null
+}
+
+/**
+ * LA MARCA DE HOY POR PERSONA. Quien no está en el Map no tiene marca —la ausencia de clave es el
+ * dato, igual que en las otras lecturas del pulso—: un `{false, false}` por persona haría que la celda
+ * dibuje «con marca» para todo el plantel el día que alguien lo lea con `has()`.
+ */
+export function tardanzasDeHoy(presencia: readonly FilaConTardanza[]): Map<string, TardanzaDeHoy> {
+  const m = new Map<string, TardanzaDeHoy>()
+  for (const p of presencia) {
+    const t = marcaDe(p)
+    if (t) m.set(p.persona_id, t)
+  }
+  return m
+}
+
+/** CUÁNTAS PERSONAS —no cuántos días— tienen al menos una marca en la ventana. Dos marcas de la
+ *  misma persona son UN presentismo perdido, y el pie cuenta presentismos. */
+export function personasConTardanza(filas: readonly FilaConTardanza[]): number {
+  return new Set(filas.filter((f) => marcaDe(f) !== null).map((f) => f.persona_id)).size
+}
+
+/**
+ * EL PIE DE LA TABLA: la leyenda del ▲ y cuántos ya perdieron el presentismo de la quincena.
+ *
+ * `conMarca` en `null` es «no se pudo leer la quincena» y se dice así: un 0 afirmaría que nadie
+ * llegó tarde. Y antes de `PRESENTISMO_DESDE` la marca se guarda —es un hecho del día— pero no
+ * descuenta: el pie lo dice para que nadie busque en la liquidación un descuento que no existe.
+ */
+export function pieDeTardanzas({ conMarca, quincena }: { conMarca: number | null; quincena: Quincena }): string {
+  const leyenda = '▲ llegó tarde o salió antes · pierde el presentismo de la quincena'
+  const periodo = cabeceraQuincena(quincena)
+  if (conMarca === null) return `${leyenda} · sin lectura de la ${periodo}`
+  const cuenta = conMarca === 0
+    ? `nadie con marca en la ${periodo}`
+    : `${conMarca} ${conMarca === 1 ? 'persona' : 'personas'} con marca en la ${periodo}`
+  const d = PRESENTISMO_DESDE
+  const rige = quincena.desde >= d ? '' : ` (el presentismo rige desde el ${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)})`
+  return `${leyenda} · ${cuenta}${rige}`
 }
 
 // ── HH DEL MES ──────────────────────────────────────────────────────────────────────────────────
