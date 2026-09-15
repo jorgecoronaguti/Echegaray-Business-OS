@@ -300,3 +300,18 @@ test('lineasDelBloque: la plata sale de la grilla cruda y el nombre de la format
   assert.equal(conCruda.cobra, 36500.5)
   assert.equal(conCruda.valorHora, 3650.05)
 })
+
+test('TOTAL roto corregido por Hs × $/h SÓLO en BAJA: una línea activa con el mismo cuadro sigue incompleta', () => {
+  // MUTACIÓN QUE LO PONE ROJO: sacar `linea.baja &&` en lineasDelBloque → la activa se corrige sola.
+  // 113 h × $5.600 = 632.800 = BANCO 260.000 + ADELANTO 100.000 + EFECTIVO 272.800; el TOTAL dice 86.652,06.
+  const activa = grillaObreros({ total: '$86.652,06' })
+  const [a] = lineasDelBloque(activa.grid, activa.bloque, columnasDelBloque(activa.grid, activa.bloque).cols)
+  assert.match(a.incompleta ?? '', /no cierra/)
+  assert.equal(a.cobra, 86652.06)
+  const baja = grillaObreros({ total: '$86.652,06' })
+  baja.grid[2][0] = 'BAJA'
+  const [b] = lineasDelBloque(baja.grid, baja.bloque, columnasDelBloque(baja.grid, baja.bloque).cols)
+  assert.equal(b.incompleta, null)
+  assert.equal(b.cobra, 632800)
+  assert.equal(b.totalDeLaPlanilla, 86652.06)
+})
