@@ -355,6 +355,7 @@ export const MOTIVO_EXCLUSION = Object.freeze({
   SIN_PERSONA: 'sin_persona',
   BAJA: 'baja',
   SUPERPUESTA: 'bloque_superpuesto',
+  BAJA_ILEGIBLE: 'baja_ilegible',
 })
 
 /**
@@ -369,6 +370,11 @@ export const MOTIVO_EXCLUSION = Object.freeze({
 export function motivoDeExclusion(l, { incluirBajas = false } = {}) {
   if (l.superpuesta) return MOTIVO_EXCLUSION.SUPERPUESTA
   if (l.baja && !incluirBajas) return MOTIVO_EXCLUSION.BAJA
+  // UNA BAJA CON LA PLATA ROTA NO VOLTEA A LAS DEMÁS (15/09/2026). El dueño confirmó que las BAJA de la 2ª
+  // de marzo se pagaron, pero Aguirre (f192: TOTAL 86.652 contra BANCO 383.347,94 + EFECTIVO 86.652) no se
+  // sabe cuánto cobró. Bloquear dejaba afuera a 21 líneas legibles por una; cargarla afirmaría un importe
+  // que la planilla contradice. Se declara afuera con su detalle y la decide una persona.
+  if (l.baja && l.incompleta) return MOTIVO_EXCLUSION.BAJA_ILEGIBLE
   if (!l.incompleta && !l.persona_id) return MOTIVO_EXCLUSION.SIN_PERSONA
   return null
 }

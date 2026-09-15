@@ -133,6 +133,8 @@ export function observacionDeCarga(hoja, control) {
   const repetidas = cuantas(MOTIVO_EXCLUSION.SUPERPUESTA)
   if (sinPersona) partes.push(`${sinPersona} persona(s) de la planilla no existen en public.personas y el dueño decidió no darlas de alta (09/09/2026)`)
   if (bajas) partes.push(`${bajas} fila(s) marcadas BAJA no se cargaron: falta que el dueño confirme que se pagaron`)
+  const bajasIlegibles = cuantas(MOTIVO_EXCLUSION.BAJA_ILEGIBLE)
+  if (bajasIlegibles) partes.push(`${bajasIlegibles} fila(s) marcadas BAJA no se cargaron porque su plata no cierra (TOTAL ≠ BANCO + ADELANTO + EFECTIVO): el importe declarado es el TOTAL de la planilla y lo decide una persona`)
   if (repetidas) partes.push(`${repetidas} línea(s) repiten persona en otro bloque de la misma quincena: entró la del primer bloque`)
   const conBajas = control.bajasCargadas ? ` Incluye ${control.bajasCargadas} fila(s) marcadas BAJA (--incluir-bajas).` : ''
   if (!partes.length) return `${base} Entró completa: ninguna línea quedó afuera.${conBajas}`

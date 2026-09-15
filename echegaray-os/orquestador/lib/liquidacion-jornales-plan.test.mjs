@@ -52,10 +52,18 @@ test('LAS FILAS BAJA SE LEEN: por defecto quedan afuera CON su importe, y la qui
   assert.match(observacionDeCarga('Obreros 26', c), /2 fila\(s\) marcadas BAJA no se cargaron/)
 })
 
-test('--incluir-bajas: la BAJA con persona entra, la que no tiene persona sigue declarada, y la rota voltea la quincena', () => {
+test('--incluir-bajas: la BAJA con persona entra, la que no tiene persona sigue declarada, y la rota queda afuera SIN voltear la quincena', () => {
+  // El defecto (15/09/2026): Aguirre, f192, bloqueaba la 2ª de marzo entera — 21 líneas legibles afuera por una.
+  // MUTACIÓN QUE LO PONE ROJO: sacar la rama `baja_ilegible` de motivoDeExclusion (vuelve a ser bloqueante).
   const rota = planDeHoja({ grid: grillaMarzo(), anio: 2026, hoy: HOY, resolver, incluirBajas: true }).quincenas[0].control
-  assert.equal(rota.cierra, false, 'Aguirre no cierra: cargarla sería afirmar una plata que no se sabe cuánto es')
-  assert.deepEqual(rota.bloqueantes.map((l) => l.nombre), ['Leandro Aguirre'])
+  assert.equal(rota.cierra, true, 'una BAJA ilegible no voltea la quincena')
+  assert.deepEqual(rota.bloqueantes, [])
+  assert.deepEqual(rota.cargables.map((l) => l.nombre), ['Aguero Cristian', 'Ruben Palacio'], 'Aguirre NO se carga: no se sabe cuánto es')
+  assert.deepEqual(rota.excluidas.map((l) => [l.nombre, l.motivo]), [['Pablo Ramos', 'sin_persona'], ['Leandro Aguirre', 'baja_ilegible']])
+  assert.equal(rota.montoExcluido, 504000 + 86652, 'el importe declarado de Aguirre es su TOTAL de la planilla')
+  assert.equal(rota.totalCargable + rota.montoExcluido, rota.totalSheet)
+  assert.match(excluidasParaBase(rota)[1].detalle, /no cierra/)
+  assert.match(observacionDeCarga('Obreros 26', rota), /1 fila\(s\) marcadas BAJA no se cargaron porque su plata no cierra/)
 
   const sana = grillaMarzo({ aguirreEfectivo: '$86.652,06', aguirreTotal: '$470.000' })
   const c = planDeHoja({ grid: sana, anio: 2026, hoy: HOY, resolver, incluirBajas: true }).quincenas[0].control
