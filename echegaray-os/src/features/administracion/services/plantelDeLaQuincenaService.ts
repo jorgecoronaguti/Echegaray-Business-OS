@@ -17,6 +17,7 @@ import { leerRegistrosHH } from './registrosHHService.ts'
 import { laSesionEsDePrueba, leerCuilesDelLegajo } from './lecturasCompartidasDeQuincena.ts'
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
 import type { Quincena } from './quincena.ts'
+import { esJefeDeObra } from './vocabularioPersona.ts'
 
 const sinTabla = (e: { code?: string; message: string }): boolean =>
   e.code === '42P01' || /does not exist/i.test(e.message)
@@ -46,13 +47,19 @@ export interface PlantelLeido {
    * así muestra las mismas personas que Liquidación.
    */
   delCuadro: Set<string>
+  /**
+   * `persona_directorio.puesto` de TODO el directorio, no de un subconjunto. Horas lo armaba con los ids de
+   * asignaciones y registros: un jefe sin asignación ni horas en la quincena quedaba afuera del mapa y caía
+   * con los obreros (QA 15/09/2026, Maldonado en 16–31/08). Sale de la lectura que ya se hace acá.
+   */
+  puestos: Record<string, string | null>
   errores: { que: string; error: string }[]
 }
 
 /** LAS SEIS LECTURAS EN UNA TANDA, y la regla. */
 export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quincena): Promise<PlantelLeido> {
   const [directorio, registros, lineas, recibos, jornales, cuiles, deprueba, tarifas, presentes] = await Promise.all([
-    supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, fecha_ingreso, fecha_egreso'),
+    supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, fecha_ingreso, fecha_egreso, puesto'),
     leerRegistrosHH(supabase, { desde: q.desde, hasta: q.hasta, columnas: 'persona_id, fecha' }),
     supabase.from('liquidacion_quincena').select('liquidacion_linea(persona_id)').eq('desde', q.desde).eq('hasta', q.hasta),
     supabase.from('recibo_sueldo_linea').select('persona_id, cuil').eq('periodo', periodoDeRecibo(q)),
@@ -88,7 +95,13 @@ export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quinc
   const { activas, conActividad } = plantelDeLaQuincena(personas, q, actividad, deprueba)
   const filasTarifa = (tarifas.data ?? []) as { persona_id: string; desde: string; valor_hora: number | null; neto_mensual: number | null; origen: string }[]
   const conPresencia = new Set(((presentes.data ?? []) as { persona_id: string }[]).map((r) => r.persona_id))
+  const puestos: Record<string, string | null> = Object.fromEntries(
+    ((directorio.data ?? []) as { id: string; puesto?: string | null }[]).map((r) => [r.id, r.puesto ?? null]),
+  )
   const delCuadro = new Set(activas.filter((p) => {
+    // UN JEFE DE LA QUINCENA SIEMPRE TIENE FILA, con o sin tarifa (dueño, 15/09/2026): Liquidación lo manda a
+    // Oficina por `esJefeDeObra`, y Horas tiene que mostrar las mismas personas.
+    if (esJefeDeObra(puestos[p.id] ?? null)) return true
     const t = tarifaVigenteAl(filasTarifa.filter((f) => f.persona_id === p.id).map((f) => ({
       valorHora: f.valor_hora == null ? null : Number(f.valor_hora),
       netoMensual: f.neto_mensual == null ? null : Number(f.neto_mensual), desde: f.desde, origen: f.origen,
@@ -99,5 +112,5 @@ export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quinc
       horas: actividad.conHoras.has(p.id) ? 1 : 0, presenteSinHoras: conPresencia.has(p.id),
     })
   }).map((p) => p.id))
-  return { personas: activas, ids: new Set(activas.map((p) => p.id)), delCuadro, errores }
+  return { personas: activas, ids: new Set(activas.map((p) => p.id)), delCuadro, puestos, errores }
 }
