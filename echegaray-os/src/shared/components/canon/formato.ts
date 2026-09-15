@@ -151,3 +151,24 @@ export function fechaCompleta(iso: string | null | undefined): string | null {
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   return `${dd}/${mm}/${d.getFullYear()}`
 }
+
+/**
+ * `2026-09-04` → `04/09/26`. LA FECHA CORTA CON AÑO DE DOS DÍGITOS, SIEMPRE.
+ *
+ * Pedido del dueño el 15/09/2026 para las dos columnas de fecha de Compras: *«las dos con formato
+ * dd/mm/yy consistente»*. Es la diferencia con `fechaCortaConAnio`, que escribe el año SÓLO cuando
+ * no es el corriente: en una lista donde conviven facturas de 2025 y de 2026 eso produce dos formas
+ * distintas en la misma columna, y la mitad que no lleva año obliga a deducirlo de la vecina.
+ *
+ * Y con `fechaCompleta` la diferencia es de ancho: dos columnas de `04/09/2026` miden 144px de mono
+ * tabular en una fila que ya tiene diez columnas. El año de dos dígitos no pierde la ventana de
+ * tiempo —`04/09/25` y `04/09/26` no se confunden— que es lo único que la columna tenía que
+ * garantizar.
+ *
+ * Devuelve `null`, nunca «—»: en la fuente esa celda está vacía y un guión se lee como un dato.
+ */
+export function fechaDdMmAa(iso: string | null | undefined): string | null {
+  const completa = fechaCompleta(iso)
+  if (!completa) return null
+  return `${completa.slice(0, 6)}${completa.slice(8)}`
+}
