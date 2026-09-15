@@ -16,6 +16,8 @@ import type { Rol } from '@/features/auth/types'
 import { areaDe, veEconomia } from '@/features/auth/types/areas'
 import type { ServiceResult } from '@/features/auth/services/authService'
 import type { EstadoUsuario, ObraDeUsuario, ObraElegible, UsuarioGestion } from '../types'
+import { codigosDeObra } from '@/shared/services/codigosDeObra'
+import { rotuloDeObra } from '@/shared/utils/obra'
 
 /**
  * EL BLOQUEO, LEÍDO DEL USUARIO DE AUTH.
@@ -46,6 +48,10 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
       admin.from('usuario_obra').select('id, usuario_id, obra_canonica_id, papel'),
       admin.from('obra_canonica').select('id, nombre'),
     ])
+    // EL CÓDIGO VA APARTE, nunca como una columna más del `select` de arriba: un deploy que llegue
+    // antes que la migración del código rompería la lectura entera de las obras y la pantalla de
+    // usuarios se quedaría sin decir a qué obra entra cada uno. Ver `codigosDeObra`.
+    const codigos = await codigosDeObra(admin, null)
     // El nombre de la persona vinculada. Se pide aparte y no con un join anidado: `perfiles` puede
     // apuntar a una persona dada de baja, y un join interno la haría desaparecer de la lista —
     // que es justo el caso en el que alguien necesita ver el vínculo para deshacerlo.
@@ -54,14 +60,21 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
     if (pErr) return { data: null, error: pErr.message }
 
     const perfilDe = new Map((perfiles ?? []).map((p) => [p.id as string, p]))
-    const nombreObra = new Map((obras ?? []).map((o) => [o.id as string, o.nombre as string]))
+    // «OB-0008 · QP - SALÓN COMERCIAL»: el MISMO rótulo que la cartera, la ficha y Compras. Acá
+    // decía el nombre pelado, y dos obras del mismo cliente con nombres parecidos se leían igual.
+    const nombreObra = new Map((obras ?? []).map(
+      (o) => [o.id as string, rotuloDeObra({ nombre: o.nombre as string, codigo: codigos.get(o.id as string) })],
+    ))
     const obrasDe = new Map<string, ObraDeUsuario[]>()
     for (const a of asignaciones ?? []) {
       const fila: ObraDeUsuario = {
         asignacionId: a.id as string,
         obraId: a.obra_canonica_id as string,
-        // Una obra borrada deja la asignación colgada: se dice, no se esconde detrás del id.
-        obraNombre: nombreObra.get(a.obra_canonica_id as string) ?? (a.obra_canonica_id as string),
+        // Una obra borrada deja la asignación colgada: se dice, no se esconde detrás del id. Éste es
+        // el ÚNICO lugar donde el id interno llega a la pantalla, y llega marcado como lo que es: no
+        // hay nombre ni código que mostrar porque la fila de `obra_canonica` ya no existe.
+        obraNombre: nombreObra.get(a.obra_canonica_id as string)
+          ?? `obra borrada (${a.obra_canonica_id as string})`,
         papel: (a.papel as string) ?? 'jefe',
       }
       obrasDe.set(a.usuario_id as string, [...(obrasDe.get(a.usuario_id as string) ?? []), fila])
@@ -110,10 +123,15 @@ export function administradoresActivos(usuarios: UsuarioGestion[]): number {
 
 /** El catálogo de obras para asignar. Incluye las cerradas: se sigue trabajando en el cierre. */
 export async function listarObrasElegibles(admin: SupabaseClient): Promise<ObraElegible[]> {
-  const { data } = await admin.from('obra_canonica').select('id, nombre, estado').order('nombre')
+  // El desplegable lleva el CÓDIGO igual que el resto de la app: quien asigna un jefe a «MAMPOSTERÍA»
+  // tiene que poder distinguir la de Messina de la de San Francisco antes de darle acceso.
+  const [{ data }, codigos] = await Promise.all([
+    admin.from('obra_canonica').select('id, nombre, estado').order('nombre'),
+    codigosDeObra(admin, null),
+  ])
   return (data ?? []).map((o) => ({
     id: o.id as string,
-    nombre: o.nombre as string,
+    nombre: rotuloDeObra({ nombre: o.nombre as string, codigo: codigos.get(o.id as string) }),
     estado: (o.estado as string | null) ?? null,
   }))
 }

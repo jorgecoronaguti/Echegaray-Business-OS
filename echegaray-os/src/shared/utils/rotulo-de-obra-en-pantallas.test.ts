@@ -29,6 +29,12 @@ const PANTALLAS: [string, string, string][] = [
   ['Compras · columna Obra', 'app/(main)/administracion/compras/page.tsx', 'nombresDeObra('],
   ['Compras · obra de cada fila de la pestaña', 'features/administracion/services/obraDeCompraService.ts', 'nombresDeObra('],
   ['Compras · desplegable de Obra del panel', 'features/administracion/services/obraDeCompra.ts', 'rotuloDeObra('],
+  // Sumadas el 15/09/2026, cuando el dueño vio «Identificador: quattropani» en la ficha del cliente
+  // y pidió revisar TODO lugar que muestre un identificador de obra o de cliente.
+  ['Proveedores · columna Obra de sus compras', 'features/administracion/services/comprobantesProveedorService.ts', 'nombresDeObra('],
+  ['Herramientas, pedidos y movimientos · columna Obra', 'features/integraciones/services/operacionGlobalService.ts', 'rotuloDeObra('],
+  ['Obras · alta en pasos (cabecera y ficha del paso 1)', 'app/(main)/obras/nueva/page.tsx', 'rotuloDeObra('],
+  ['Usuarios · a qué obra entra cada uno, y el catálogo para asignar', 'features/usuarios/services/usuariosService.ts', 'rotuloDeObra('],
 ]
 
 const IMPORTA = /import \{[^}]*\b(rotuloDeObra|nombresDeObra)\b[^}]*\} from '[^']*(shared\/utils\/obra|clientes\/services\/nombresDeObra)(\.ts)?'/

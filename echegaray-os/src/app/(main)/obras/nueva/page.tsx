@@ -50,6 +50,8 @@ import { BarraDePasos, LinkPaso, Paso } from '@/features/obras/components/PasosA
 import { ChecklistPreparacion } from '@/features/obras/components/ChecklistPreparacion'
 import { Aviso, Ayuda, BotonEnlace, CAMPO, Campo, Nulo, Volver } from '@/shared/components/ds'
 import { FormAccion, PageShell } from '@/shared/components/ui'
+import { codigosDeObra } from '@/shared/services/codigosDeObra'
+import { rotuloDeObra } from '@/shared/utils/obra'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,6 +87,11 @@ export default async function NuevaObraPage({
     : { data: null, error: null }
   const obraId = obra?.obra_id ?? null
   const paso = resolverPaso(pasoParam, Boolean(obraId))
+  // EL CÓDIGO DE LA OBRA (`OB-0008`), leído de `obra_canonica` y no derivado del nombre ni del id.
+  // Se pide aparte —igual que en la cabecera de la ficha— porque `obra_panel` no lo publica y un
+  // `select` que nombre una columna inexistente falla entero (ver `codigosDeObra`).
+  const codigo = obraId ? (await codigosDeObra(supabase, [obraId])).get(obraId) ?? null : null
+  const rotulo = obra ? rotuloDeObra({ nombre: obra.nombre, codigo }) : null
 
   // Cada paso pide SÓLO lo suyo: el alta se abre desde una oficina y desde un teléfono, y ocho
   // consultas para pintar un campo de texto es ocho consultas para nadie.
@@ -97,8 +104,8 @@ export default async function NuevaObraPage({
 
   return (
     <PageShell
-      eyebrow={<Volver href={obraId ? `/obras/${obraId}` : '/obras'}>{obraId ? obra?.nombre : 'Obras'}</Volver>}
-      title={obra ? obra.nombre : 'Nueva obra'}
+      eyebrow={<Volver href={obraId ? `/obras/${obraId}` : '/obras'}>{obraId ? rotulo : 'Obras'}</Volver>}
+      title={rotulo ?? 'Nueva obra'}
       subtitle={obra
         ? 'La obra ya está guardada. Cada paso escribe sobre ella: podés salir y volver cuando quieras.'
         : 'Nombre y cliente crean la obra. Todo lo demás se puede cargar después, y el panel de al lado dice qué falta.'}
@@ -142,7 +149,14 @@ export default async function NuevaObraPage({
             <dl className="border-t border-line text-[13px]">
               {([
                 ['Nombre', obra.nombre],
-                ['Identificador', obraId],
+                // ═══ ACÁ DECÍA «Identificador: qp-salon-comercial» ═══
+                //
+                // Era `obra_id`: el slug que la app fabrica del nombre para armar la URL. El
+                // identificador de una obra es `obra_canonica.codigo` («OB-0008»), que no cambia
+                // nunca aunque la obra se renombre, y es el que viaja al Sheet, al bot y al resto
+                // de las pantallas. Sin código —la migración todavía no aplicada— se escribe la
+                // ausencia: un slug puesto en su lugar se leería como si fuera el código.
+                ['Código', codigo],
                 ['Cliente', obra.cliente_nombre],
                 ['Ubicación', ubicacion],
               ] as const).map(([k, v]) => (

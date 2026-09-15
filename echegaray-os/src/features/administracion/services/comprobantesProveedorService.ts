@@ -15,6 +15,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { papelesDeCadaFila } from './comprasSheet.ts'
 import { COLUMNAS_ADJUNTO, type Adjunto, type ServiceResult } from './comprasSheetService.ts'
+import { nombresDeObra } from '../../clientes/services/nombresDeObra.ts'
 
 /** Techo de compras de una ficha. Si se alcanza, la pantalla lo dice. */
 export const TOPE_COMPRAS_PROVEEDOR = 2000
@@ -29,6 +30,7 @@ export interface CompraDelProveedor {
   tipo: string | null
   comprobante: string | null
   concepto: string | null
+  /** Lo que dice el PAPEL: la columna Cliente/Asignación de la pestaña Compras, texto libre. */
   obra_texto: string | null
   total: number | null
   estado: string | null
@@ -40,6 +42,10 @@ export interface CompraDelProveedor {
 export interface CompraConPapel extends CompraDelProveedor {
   adjuntos: Adjunto[]
   tiene_adjunto: boolean
+  /** A qué obra llegó de verdad, rotulada «OB-0008 · QP - SALÓN COMERCIAL» desde `obra_canonica`.
+   *  `null` = la asignación no resolvió ninguna obra, o no se pudo leer: nunca se rellena con el
+   *  texto del papel, que es precisamente lo que no identifica nada. */
+  obra_rotulo: string | null
 }
 
 export interface ComprasConPapel {
@@ -73,12 +79,52 @@ export async function getComprasConPapel(
   const leidas = (compras.data ?? []) as unknown as CompraDelProveedor[]
   const truncado = leidas.length > TOPE_COMPRAS_PROVEEDOR
   const papeles = (adjuntos.data ?? []) as unknown as Adjunto[]
+  const visibles = truncado ? leidas.slice(0, TOPE_COMPRAS_PROVEEDOR) : leidas
+  const conPapel = papelesDeCadaFila(visibles, papeles)
+  const rotulos = await rotulosDeObraDeLasFilas(supabase, visibles.map((c) => c.fila))
   return {
     data: {
-      filas: papelesDeCadaFila(truncado ? leidas.slice(0, TOPE_COMPRAS_PROVEEDOR) : leidas, papeles),
+      filas: conPapel.map((c) => ({ ...c, obra_rotulo: rotulos.get(c.fila) ?? null })),
       truncado,
       papelesSinLeer: Boolean(adjuntos.error),
     },
     error: null,
   }
+}
+
+/**
+ * `fila` → «OB-0008 · QP - SALÓN COMERCIAL»: A QUÉ OBRA LLEGÓ CADA COMPRA, LEÍDO DE LA BASE.
+ *
+ * ═══ POR QUÉ NO ALCANZA CON `obra_texto` ═══
+ *
+ * La columna del Sheet dice «Quattropani», «QUATTROPANI SALON» o «Mamposteria» — texto que escribe
+ * una persona y que dos clientes distintos pueden repetir. Quién decide a qué obra llega el gasto es
+ * `compra_obra_asignada`, que escribe `sync-compras.mjs` con la regla de
+ * `orquestador/lib/compras-obra-asignada.mjs` en la MISMA transacción que `compra_sheet`. Es la
+ * misma fuente que ya usa la pantalla de Compras: la ficha del proveedor no puede decir otra cosa
+ * sobre la misma fila.
+ *
+ * SE UNE POR `fila`, que es la PK de `compra_sheet` y se reescribe entera en esa transacción (un
+ * `delete` + `insert`), así que no hay fósiles de un sync anterior apuntando a una fila que hoy es
+ * otra compra.
+ *
+ * Un error de lectura devuelve un Map VACÍO y la fila muestra sólo lo que dice el papel: una obra
+ * inventada por un fallback sería peor que no decir nada.
+ */
+async function rotulosDeObraDeLasFilas(
+  supabase: SupabaseClient, filas: number[],
+): Promise<Map<number, string>> {
+  if (!filas.length) return new Map()
+  const { data, error } = await supabase
+    .from('compra_obra_asignada').select('fila, obra_id').in('fila', filas)
+  if (error || !data) return new Map()
+  const asignadas = data as unknown as { fila: number; obra_id: string | null }[]
+  const conObra = asignadas.filter((a) => a.obra_id)
+  const nombres = await nombresDeObra(supabase, conObra.map((a) => a.obra_id))
+  return new Map(
+    conObra.flatMap((a) => {
+      const rotulo = nombres.get(a.obra_id as string)
+      return rotulo ? [[a.fila, rotulo] as [number, string]] : []
+    }),
+  )
 }
