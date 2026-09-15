@@ -70,6 +70,9 @@ export function EditorCeldaAsistencia({
   return (
     <div
       data-testid="editor-celda"
+      // TIEMPO REAL: con el editor abierto la grilla no se refresca debajo, aunque el foco esté en un
+      // botón del editor y no en un campo (ver `SELECTOR_EN_EDICION`). Se atiende al cerrarlo.
+      data-en-edicion="1"
       // ESCAPE CIERRA DESDE CUALQUIERA DE LOS DOS CAMPOS. Dentro del campo lo atiende `InlineEdit`
       // —devuelve el valor original— y acá se cierra el editor: sin esto, la única salida de una
       // edición abierta por error es guardar algo.

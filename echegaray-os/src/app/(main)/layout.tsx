@@ -8,6 +8,7 @@ import { LogoutButton } from '@/features/auth/components/LogoutButton'
 import { AppHeader } from '@/shared/components/AppHeader'
 import { HeaderEsqueleto } from '@/shared/components/carga'
 import { DeshacerProvider } from '@/shared/components/deshacer/DeshacerProvider'
+import { ProveedorTiempoReal } from '@/shared/tiempo-real/ProveedorTiempoReal'
 
 // EL MARCO DE LA APLICACIÓN — 18/08/2026.
 //
@@ -53,7 +54,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       </Suspense>
       {/* CMD/CTRL+Z EN TODA LA PLATAFORMA (dueño, 15/09/2026): un solo proveedor para todas las pantallas. */}
       <DeshacerProvider>
-        <main>{children}</main>
+        {/* TIEMPO REAL (dueño, 15/09/2026): un canal por pestaña; cada pantalla declara sus tablas. */}
+        <ProveedorTiempoReal>
+          <main>{children}</main>
+        </ProveedorTiempoReal>
       </DeshacerProvider>
     </div>
   )

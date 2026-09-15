@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { ShellJefe } from '@/features/jefe/components/ShellJefe'
+import { ProveedorTiempoReal, RefrescarEnVivo } from '@/shared/tiempo-real/ProveedorTiempoReal'
+import { TABLAS_DE } from '@/shared/tiempo-real/pantallas'
 
 // EL MARCO DEL JEFE DE OBRA EN EL TELÉFONO.
 //
@@ -23,5 +25,12 @@ export default async function JefeLayout({ children }: { children: React.ReactNo
   const user = await getUsuarioActual(supabase)
   if (!user) redirect('/login')
 
-  return <ShellJefe>{children}</ShellJefe>
+  // TIEMPO REAL (dueño, 15/09/2026): el jefe carga avance y horas en obra mientras administración
+  // corrige desde la oficina; las dos puntas se tienen que ver sin recargar.
+  return (
+    <ProveedorTiempoReal>
+      <ShellJefe>{children}</ShellJefe>
+      <RefrescarEnVivo tablas={TABLAS_DE.jefe} />
+    </ProveedorTiempoReal>
+  )
 }
