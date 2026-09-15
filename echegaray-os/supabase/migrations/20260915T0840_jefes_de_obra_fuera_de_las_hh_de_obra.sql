@@ -28,15 +28,41 @@
 -- `security_invoker` y los GRANT se repiten explícitos: un `create or replace view` pelado ya perdió
 -- `security_invoker` tres veces. NO se borra `ficha_cliente_cache`: se invalidan a mano los clientes afectados.
 
+-- ═══ «ES JEFE» NO DEPENDE DE LO QUE VE QUIEN CONSULTA (auditoría 15/09/2026) ═══
+--
+-- Las dos vistas son `security_invoker`: un `left join personas` corre con la RLS de quien pregunta, y un rol que
+-- viera las horas pero no la fila del jefe lo contaría como obrero. `es_jefe_de_obra(persona_id)` es `security
+-- definer` con `search_path = ''`: lee `personas` como su dueño (postgres, bypassrls) y devuelve SÓLO un booleano.
+-- No se toca ninguna RLS. Hoy `es_administracion()` incluye a jefe_obra y las políticas de `registros_hh` y
+-- `personas` abren con ella, así que ningún perfil real cae en el hueco: se cierra antes de que exista. Lo que
+-- expone a un autenticado: si un persona_id dado es jefe de obra. Nada más.
+
+create or replace function public.es_jefe_de_obra(p_persona_id uuid)
+ returns boolean
+ language sql
+ stable
+ security definer
+ set search_path = ''
+as $function$
+  select coalesce((select regexp_replace(lower(trim(p.puesto)), '[[:space:]_-]+', '_', 'g') in ('jefe_de_obra', 'jefe_obra')
+                     from public.personas p where p.id = p_persona_id), false)
+$function$;
+
+revoke all on function public.es_jefe_de_obra(uuid) from public, anon;
+grant execute on function public.es_jefe_de_obra(uuid) to authenticated, service_role;
+
+comment on function public.es_jefe_de_obra(uuid) is
+  'El corte de esJefeDeObra(puesto) por persona_id, sin depender de la RLS de quien consulta. Sin persona o sin '
+  'puesto: false. La usan hh_que_cuentan_en_obra, obra_plan_vs_real y el sin_respaldo de la ficha (20260915T0840/0842).';
+
 create or replace view public.hh_que_cuentan_en_obra
 with (security_invoker = true) as
   select r.id, r.obra_canonica_id, r.persona_id, r.fecha, r.horas, r.tipo_hora, r.fuente_legacy,
          case when r.fuente_legacy = 'sheet:jornales' then 'jornales' else 'app' end::text as origen
     from public.registros_hh r
-    left join public.personas p on p.id = r.persona_id
    where (r.fuente_legacy = 'sheet:jornales' or r.tipo_hora in ('normal', 'extra_50', 'extra_100'))
      -- EL JEFE DE OBRA NO CUENTA (dueño, 14/09/2026). Sin persona o sin puesto, no es jefe.
-     and not coalesce(regexp_replace(lower(trim(p.puesto)), '[[:space:]_-]+', '_', 'g') in ('jefe_de_obra', 'jefe_obra'), false);
+     and not public.es_jefe_de_obra(r.persona_id);
 
 alter view public.hh_que_cuentan_en_obra set (security_invoker = true);
 
@@ -57,10 +83,9 @@ with (security_invoker = true) as
          SELECT r.obra_canonica_id AS obra_id,
             sum(r.horas) AS hh_real
            FROM registros_hh r
-             LEFT JOIN personas p ON p.id = r.persona_id
           WHERE r.obra_canonica_id IS NOT NULL AND (r.tipo_hora = ANY (ARRAY['normal'::text, 'extra_50'::text, 'extra_100'::text]))
             -- EL JEFE DE OBRA NO SUMA HH DE OBRA (20260915T0840).
-            AND NOT coalesce(regexp_replace(lower(trim(p.puesto)), '[[:space:]_-]+', '_', 'g') in ('jefe_de_obra', 'jefe_obra'), false)
+            AND NOT public.es_jefe_de_obra(r.persona_id)
           GROUP BY r.obra_canonica_id
         ), hh_plan AS (
          SELECT a.obra_id,

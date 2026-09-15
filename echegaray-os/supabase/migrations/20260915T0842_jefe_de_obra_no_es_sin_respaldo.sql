@@ -5,8 +5,8 @@
 -- falta de planilla: sin este cambio, sus 89 h de Quattropani y de Pisos Industriales (01–14/09) y toda su
 -- historia de JORNALES aparecerían en la ficha como «cargadas en la app sin respaldo en JORNALES».
 --
--- ÚNICO CAMBIO en cada función: el filtro de `sin_respaldo` suma `not exists` sobre el jefe, con el mismo corte
--- de puesto que la vista, y se corrige el comentario que decía «el jefe cuenta». Build sobre las definiciones
+-- ÚNICO CAMBIO en cada función: el filtro de `sin_respaldo` suma `not public.es_jefe_de_obra(persona_id)` (security
+-- definer, 0840: no depende de la RLS de quien consulta), y se corrige el comentario que decía «el jefe cuenta». Build sobre las definiciones
 -- VIVAS del 15/09/2026:
 --   md5(pg_get_functiondef) hh_de_obra_en_vivo       d1c4ce3ea203b3beda0ccb33d245b8cb
 --   md5(pg_get_functiondef) pantalla_cliente_en_vivo d30370bccd80554a394c6edc2b12f3d0
@@ -96,8 +96,7 @@ AS $function$
                    and x.tipo_hora in ('normal', 'extra_50', 'extra_100')
                    and not exists (select 1 from public.hh_que_cuentan_en_obra c where c.id = x.id)
                    -- EL JEFE DE OBRA NO CUENTA POR DECISIÓN (20260915T0840): no es «sin respaldo».
-                   and not exists (select 1 from public.personas pj where pj.id = x.persona_id
-                                      and regexp_replace(lower(trim(pj.puesto)), '[[:space:]_-]+', '_', 'g') in ('jefe_de_obra', 'jefe_obra'))
+                   and not public.es_jefe_de_obra(x.persona_id)
                  group by x.persona_id) s
       ),
 
@@ -287,8 +286,7 @@ with elegido as (
                            and x.tipo_hora in ('normal', 'extra_50', 'extra_100')
                            and not exists (select 1 from public.hh_que_cuentan_en_obra c where c.id = x.id)
                            -- EL JEFE DE OBRA NO CUENTA POR DECISIÓN (20260915T0840): no es «sin respaldo».
-                           and not exists (select 1 from public.personas pj where pj.id = x.persona_id
-                                              and regexp_replace(lower(trim(pj.puesto)), '[[:space:]_-]+', '_', 'g') in ('jefe_de_obra', 'jefe_obra'))
+                           and not public.es_jefe_de_obra(x.persona_id)
                          group by x.persona_id) y) s on true
              where w.obra_id in (select o.obra_id from sus_obras o)
                and (r.hh_real is not null or w.hh_plan is not null or s.sin_respaldo is not null)

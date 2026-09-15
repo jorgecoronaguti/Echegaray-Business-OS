@@ -40,7 +40,7 @@ const RAMA = ['20260915T0800_costo_mo_por_obra.sql', '20260915T0810_subcontratos
   '20260915T0815_estructura_fuera_del_costo_de_obra.sql', '20260915T0820_contratado_de_obra_unico.sql',
   '20260915T0830_contratado_formulario_obras_cerradas.sql']
 const NUEVA = [...RAMA, '20260915T0840_jefes_de_obra_fuera_de_las_hh_de_obra.sql', '20260915T0842_jefe_de_obra_no_es_sin_respaldo.sql']
-const OBJETOS = ['costo_obra_quincena_historia', 'costo_obra_quincena', 'costo_mo_quincena_calculo', 'costo_mo_quincena',
+const OBJETOS = ['es_jefe_de_obra', 'costo_obra_quincena_historia', 'costo_obra_quincena', 'costo_mo_quincena_calculo', 'costo_mo_quincena',
   'sellar_costo_obra_quincena', 'costo_de_obras_a_la_fecha', 'compras_sin_obra_de_clientes', 'contratado_de_obra_fuente',
   'contratado_de_obra', 'hh_de_obra_en_vivo', 'pantalla_cliente_en_vivo', 'hh_que_cuentan_en_obra', 'obra_plan_vs_real',
   'obra_economia_cartera']
@@ -100,6 +100,31 @@ const Q_BSA = `select sheet_id, left(concepto, 50) as concepto, orden_compra, mo
   from public.cobranzas where cliente_id = (select cliente_id from public.obra_canonica where id = 'messina-bsa')
    and (orden_compra ~ '0000(0279|1984|1985)' or concepto ilike '%BSA%') order by sheet_id::int`
 
+/** La cartera del cliente de ME - BSA (Messina), obra por obra: el total no puede contar la hija cubierta dos veces. */
+const Q_CARTERA_CLIENTE = (esq) => `select e.obra_canonica_id as obra, e.contratado::float8 as contratado, e.origen
+  from ${esq}.obra_economia_cartera e join public.obra_canonica oc on oc.id = e.obra_canonica_id
+ where oc.cliente_id = (select cliente_id from public.obra_canonica where id = 'messina-bsa') order by 1`
+
+/** LAS HH COMO LAS VE CADA ROL: authenticated con los claims de un jefe_obra y de un director. Tienen que ser iguales. */
+const OBRAS_RLS = ['quattropani', 'la-estrella']
+async function hhPorRol(c) {
+  const perfiles = (await c.query(`select distinct on (rol) id::text as id, rol from public.perfiles
+     where es_prueba is not true and rol in ('jefe_obra', 'direccion') order by rol, id`)).rows
+  const out = {}
+  for (const p of perfiles) {
+    await c.query('savepoint como_usuario')
+    try {
+      await c.query('set local role authenticated')
+      await c.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: p.id, role: 'authenticated' })])
+      const hh = (await c.query(`select obra_canonica_id as obra, sum(horas)::float8 as hh from pg_temp.hh_que_cuentan_en_obra
+         where ${TRABAJADAS} and obra_canonica_id = any($1::text[]) group by 1 order by 1`, [OBRAS_RLS])).rows
+      const plan = (await c.query('select obra_id as obra, hh_real::float8 as hh from pg_temp.obra_plan_vs_real where obra_id = any($1::text[]) order by 1', [OBRAS_RLS])).rows
+      out[p.rol] = { perfil: p.id, hh, plan }
+    } finally { await c.query('rollback to savepoint como_usuario') }
+  }
+  return out
+}
+
 // ── LA MEDICIÓN ──────────────────────────────────────────────────────────────────────────────────────────────
 
 async function medir(c, esq, quincenas, jefes) {
@@ -120,7 +145,9 @@ async function medir(c, esq, quincenas, jefes) {
   }
   const aLaFecha = new Map((await filas(Q_A_LA_FECHA(esq('costo_de_obras_a_la_fecha')))).map((r) => [r.obra, r]))
   const contratado = await filas(Q_CONTRATADO(esq('obra_economia_cartera')), [FUSIONADAS])
-  return { hh, plan, costo, aLaFecha, contratado }
+  const cartera = await filas(Q_CARTERA_CLIENTE(esq('obra_economia_cartera')))
+  const rls = esq('es_jefe_de_obra') === 'pg_temp' ? await hhPorRol(c) : null
+  return { hh, plan, costo, aLaFecha, contratado, cartera, rls }
 }
 
 class Rollback extends Error {}
@@ -205,6 +232,15 @@ async function main() {
     const r = rama.contratado.find((x) => x.obra === c.obra) ?? {}
     console.log(`| ${c.nombre} | ${c.estado} | ${c.fusionada_en ?? ''} | ${M(c.formulario)} | ${M(r.cartera)}→${M(c.cartera)} | ${c.origen ?? ''} |`)
   }
+  console.log('\n## Cartera del cliente de ME - BSA (obra_economia_cartera.contratado)\n\n| Obra | Prod | Rama | Nueva | origen nueva |\n|---|--:|--:|--:|---|')
+  const idsCartera = [...new Set([prod, rama, nueva].flatMap((m) => m.cartera.map((x) => x.obra)))].sort()
+  const de = (m, id) => m.cartera.find((x) => x.obra === id)
+  for (const id of idsCartera) console.log(`| ${id} | ${M(de(prod, id)?.contratado)} | ${M(de(rama, id)?.contratado)} | ${M(de(nueva, id)?.contratado)} | ${de(nueva, id)?.origen ?? '—'} |`)
+  const tot = (m) => m.cartera.reduce((s, x) => s + (x.contratado ?? 0), 0)
+  console.log(`| **TOTAL CLIENTE** | ${M(tot(prod))} | ${M(tot(rama))} | ${M(tot(nueva))} | |`)
+  const r = nueva.rls ?? {}
+  const igual = JSON.stringify(r.jefe_obra?.hh) === JSON.stringify(r.direccion?.hh) && JSON.stringify(r.jefe_obra?.plan) === JSON.stringify(r.direccion?.plan)
+  console.log(`\nRLS (NUEVA, set local role authenticated + request.jwt.claims): ${igual ? 'IGUAL' : 'DISTINTO'} para jefe_obra y direccion — ${JSON.stringify(r)}`)
   console.log('\nobra_cuenta (no la redefine ninguna migración):', JSON.stringify(await uno(Q_CUENTA, [FUSIONADAS])))
   console.log('Cobranzas de BSA (lo que compone la suma viva de ME - BSA):', JSON.stringify(await uno(Q_BSA)))
   if (SALIDA) writeFileSync(SALIDA, JSON.stringify({ base: BASE, quincenas, filas, estructura: { rama: Object.fromEntries(rama.costo), nueva: Object.fromEntries(nueva.costo) } }, null, 1))
