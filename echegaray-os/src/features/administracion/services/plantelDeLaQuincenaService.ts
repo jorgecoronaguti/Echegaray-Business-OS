@@ -14,7 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { entraAlCuadro, plantelDeLaQuincena, type ActividadDeLaQuincena, type PersonaDelPlantel } from './liquidacionPlantelActivo.ts'
 import { tarifaVigenteAl } from './liquidacionQuincena.ts'
 import { leerRegistrosHH } from './registrosHHService.ts'
-import { laSesionEsDePrueba, leerCuilesDelLegajo } from './lecturasCompartidasDeQuincena.ts'
+import { laSesionEsDePrueba, leerCuilesDelLegajo, leerSubcontratoDePersonas, subcontratoPorPersona } from './lecturasCompartidasDeQuincena.ts'
 import { periodoDeRecibo } from './liquidacionCuadros.ts'
 import type { Quincena } from './quincena.ts'
 
@@ -51,7 +51,7 @@ export interface PlantelLeido {
 
 /** LAS SEIS LECTURAS EN UNA TANDA, y la regla. */
 export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quincena): Promise<PlantelLeido> {
-  const [directorio, registros, lineas, recibos, jornales, cuiles, deprueba, tarifas, presentes] = await Promise.all([
+  const [directorio, registros, lineas, recibos, jornales, cuiles, deprueba, tarifas, presentes, subcontratos] = await Promise.all([
     supabase.from('persona_directorio').select('id, nombre_completo, en_la_empresa, fecha_ingreso, fecha_egreso'),
     leerRegistrosHH(supabase, { desde: q.desde, hasta: q.hasta, columnas: 'persona_id, fecha' }),
     supabase.from('liquidacion_quincena').select('liquidacion_linea(persona_id)').eq('desde', q.desde).eq('hasta', q.hasta),
@@ -61,6 +61,7 @@ export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quinc
     laSesionEsDePrueba(supabase),
     supabase.from('persona_tarifa').select('persona_id, desde, valor_hora, neto_mensual, origen').lte('desde', q.hasta),
     supabase.from('asistencia_dia').select('persona_id').eq('estado', 'presente').gte('fecha', q.desde).lte('fecha', q.hasta),
+    leerSubcontratoDePersonas(supabase),
   ])
   const errores: { que: string; error: string }[] = []
   const anotar = (que: string, e: { code?: string; message: string } | null) => {
@@ -73,6 +74,7 @@ export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quinc
   anotar('el espejo de JORNALES', jornales.error)
   anotar('las retribuciones', tarifas.error)
   anotar('la presencia declarada', presentes.error)
+  anotar('las cuadrillas de subcontrato', subcontratos.error)
   const personaDeCuil = new Map(((cuiles.data ?? []) as { id: string; cuil: string | null }[])
     .map((c) => [cuilNormalizado(c.cuil), c.id] as const).filter((c): c is [string, string] => c[0] != null))
   const actividad: ActividadDeLaQuincena = {
@@ -84,7 +86,9 @@ export async function leerPlantelDeLaQuincena(supabase: SupabaseClient, q: Quinc
       .map((r) => r.persona_id ?? personaDeCuil.get(cuilNormalizado(r.cuil) ?? '')).filter((x): x is string => !!x)),
     conJornales: new Set(((jornales.data ?? []) as { persona_id: string | null }[]).map((r) => r.persona_id).filter((x): x is string => !!x)),
   }
+  const deSubcontrato = subcontratoPorPersona(subcontratos)
   const personas = ((directorio.data ?? []) as Parameters<typeof personaDelDirectorio>[0][]).map(personaDelDirectorio)
+    .map((p) => ({ ...p, subcontratoId: deSubcontrato.get(p.id) ?? null }))
   const { activas, conActividad } = plantelDeLaQuincena(personas, q, actividad, deprueba)
   const filasTarifa = (tarifas.data ?? []) as { persona_id: string; desde: string; valor_hora: number | null; neto_mensual: number | null; origen: string }[]
   const conPresencia = new Set(((presentes.data ?? []) as { persona_id: string }[]).map((r) => r.persona_id))

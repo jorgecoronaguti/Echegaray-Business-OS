@@ -48,6 +48,8 @@ export interface PersonaDeLiquidacion {
   conActividad?: boolean
   /** `esJefeDeObra(persona_directorio.puesto)`, leído UNA vez en el servicio y propagado. */
   esJefe?: boolean
+  /** `persona_directorio.subcontrato_id`: de la cuadrilla de un subcontratista, no es plantel propio. */
+  subcontratoId?: string | null
 }
 
 export interface FilaTarifa {
