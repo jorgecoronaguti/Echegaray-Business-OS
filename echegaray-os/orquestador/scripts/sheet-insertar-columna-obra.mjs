@@ -209,7 +209,7 @@ function reportarFalla({ paso, detalle = [], error = null, rutaAntes, despues, g
   return { ok: false, paso, detalle, reporte: ruta }
 }
 
-async function verificarYCerrar({ google, id, antes, rutaAntes, correrHuellas, correrPyl, guardar, log, desplegable = null }) {
+async function verificarYCerrar({ google, id, antes, rutaAntes, correrHuellas, correrPyl, guardar, log, desplegable = null, copia = false }) {
   let despues
   try { despues = await fotoDe(google, Object.keys(antes), id) } catch (e) {
     return reportarFalla({ paso: 'relectura', error: `no pude releer: ${e.message}`, rutaAntes, despues: null, guardar, log })
@@ -219,14 +219,16 @@ async function verificarYCerrar({ google, id, antes, rutaAntes, correrHuellas, c
   log(`4 ✓ 0 diferencias de valor y de fórmula, celda por celda, en ${Object.keys(antes).length} pestaña(s)`)
 
   await correrHuellas()
-  log('5 ✓ huellas corridas')
+  // En la copia las huellas y el P&L corren en DRY: describen el archivo real, no éste. El log no puede
+  // decir «corridas» de algo que sólo se planeó.
+  log(copia ? '5 — (copia) huellas: sólo el plan, la base no se tocó' : '5 ✓ huellas corridas')
   if (correrPyl) {
     const p = await correrPyl({ aplicar: true }).catch((e) => ({ ok: false, paso: 'lectura', detalle: [e.message] }))
     if (!p.ok) {
       log(`✖ P&L: ${p.paso} — las columnas YA están insertadas: corregilo con pyl-correr-columna-obra.mjs antes de descongelar`)
       return { ok: false, paso: 'pyl', detalle: p.detalle }
     }
-    log('5b ✓ P&L corrido una columna y releído')
+    log(copia ? '5b — (copia) P&L: sólo el plan, el otro archivo no se tocó' : '5b ✓ P&L corrido una columna y releído')
   }
   log(`6 ✓ foto nueva guardada en ${guardar('despues', await fotoDe(google, Object.keys(antes), id))}`)
   // EL DESPLEGABLE NO FRENA LA VERIFICACIÓN, PERO SÍ EL CIERRE. La columna quedó bien insertada y las
@@ -289,7 +291,7 @@ export async function insertarColumnaObra({ google, aplicar = false, id = ID, co
       : `✖ 3b desplegable (${desplegable.paso}): ${(desplegable.detalle ?? []).join(' · ')}`
         + '\n   → se arregla solo: node orquestador/scripts/obras-lista-sheet.mjs --aplicar')
   }
-  return verificarYCerrar({ google, id, antes, rutaAntes, correrHuellas, correrPyl, guardar, log, desplegable })
+  return verificarYCerrar({ google, id, antes, rutaAntes, correrHuellas, correrPyl, guardar, log, desplegable, copia })
 }
 
 /** `--reverificar <antes.json>`: la comparación del paso 4 otra vez, sin escribir nada. */
