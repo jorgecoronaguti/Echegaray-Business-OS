@@ -78,10 +78,11 @@ function verificarHuella(compra, cambio) {
  * después que la fila sea la misma compra, y recién ahí qué dice la celda. Mirar la celda de una fila
  * que no es la misma compra respondería una pregunta sobre otra plata.
  *
- * @param {{cambio:object, encabezado:any[], fila:any[], obras:object[]}} p `fila` leída con UNFORMATTED_VALUE,
- *   como el sync · `obras` = filas de `obra_canonica` (id, codigo, nombre, cliente_texto, fusionada_en)
+ * @param {{cambio:object, encabezado:any[], fila:any[], obras:object[], clienteAlias?:Map<string,string>}} p `fila` leída
+ *   con UNFORMATTED_VALUE, como el sync · `obras` = filas de `obra_canonica` (id, codigo, nombre, cliente_texto,
+ *   fusionada_en) · `clienteAlias` = normAlias(rótulo) → cliente canónico, para «Sin obra – X» con X canónico
  */
-export function planificarObra({ cambio, encabezado, fila, obras } = {}) {
+export function planificarObra({ cambio, encabezado, fila, obras, clienteAlias } = {}) {
   const n = Number(cambio?.fila)
   if (!Number.isInteger(n) || n < PRIMERA_FILA) {
     return rechazar('fila_invalida', `la fila ${cambio?.fila} no es un renglón de datos (empiezan en la ${PRIMERA_FILA})`)
@@ -91,7 +92,7 @@ export function planificarObra({ cambio, encabezado, fila, obras } = {}) {
     return diferir('sin_catalogo', 'no hay obras leídas de la base: no puedo validar el valor contra el desplegable')
   }
   const valor = normalizarCelda(cambio?.valor_nuevo)
-  const invalido = validarValorDeObra(valor, obras)
+  const invalido = validarValorDeObra(valor, obras, clienteAlias)
   if (invalido) return rechazar('valor_invalido', invalido)
 
   const { idx, decision } = resolverLayout(encabezado)
