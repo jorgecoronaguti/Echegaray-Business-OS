@@ -208,6 +208,10 @@ const marcasConHoras = (
 async function escribirPlan(
   supabase: Awaited<ReturnType<typeof createClient>>,
   obraId: string, fecha: string, plan: PlanDeJornada,
+  // QUIÉN ESTRENA EL DÍA DECIDE SI LA PLANILLA LO PISA (`MARCAS_A_MANO` / `MARCAS_QUE_CEDEN` en
+  // `jornales-a-registros-hh.mjs`). La carga del jefe cede (dueño, 14/09/2026); la corrección de
+  // Administración gana. Sin esto, el día pasado cargado a mano desde la celda nacía como carga del jefe.
+  fuenteAlta: 'web:asistencia-obra' | typeof FUENTE_CORRECCION_HORAS = 'web:asistencia-obra',
 ): Promise<{ escrito: EscritoEnLaBase | null; error: string | null }> {
   const escrito: EscritoEnLaBase = {
     insertadas: 0, actualizadas: 0, borradas: 0, intactas: plan.intactas,
@@ -231,7 +235,7 @@ async function escribirPlan(
       // EL MOTIVO VA EN `notas`, que es la columna que ya existe. No se agregó ninguna: la clave
       // es estable (viene del catálogo) y por eso el ausentismo se puede agrupar por causa.
       notas: motivoDe(m),
-      fuente_legacy: 'web:asistencia-obra',
+      fuente_legacy: fuenteAlta,
     }))).select('id')
     if (error) return { escrito: null, error: traducirEscritura(error) }
     escrito.insertadas = (data ?? []).length
@@ -447,7 +451,7 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   // una pérdida silenciosa, y PostgREST no ofrece la transacción que haría innecesaria la elección.
   // ADMINISTRACIÓN SÍ CORRIGE UNA LICENCIA: es quien la autorizó. Desde `/campo` no.
   const escrito = await escribirPlan(supabase, obraDestino, c.fecha,
-    planDeGuardado([marca], enDestino, { administraLicencias: true }))
+    planDeGuardado([marca], enDestino, { administraLicencias: true }), FUENTE_CORRECCION_HORAS)
   if (escrito.error) return { ok: false, error: escrito.error }
 
   if (mueve && enOrigen.length > 0) {

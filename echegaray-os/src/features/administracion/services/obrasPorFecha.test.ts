@@ -107,6 +107,22 @@ test('LO QUE NO CAMBIA: licencia, ausencia, futuro y no laborable no se tipean; 
   assert.equal(accesoACelda({ estado: 'horas', tramos: 1, conObraPorDefecto: false, puedeCorregir: false }), 'tipear')
 })
 
+// «GANA LA WEB» (dueño, 14/09/2026): la corrección a mano de Administración le gana a JORNALES, la carga
+// del jefe cede. El defecto: `corregirJornada` —el editor de la celda y el panel— ESTRENABA el día con
+// la marca del jefe, así que el día pasado cargado a mano quedaba expuesto a que la planilla lo pise.
+test('EL DÍA QUE ADMINISTRACIÓN ESTRENA DESDE LA CELDA NACE CON LA MARCA QUE GANA LA WEB', () => {
+  const acciones = fuente('./jornadaPorObraActions.ts')
+  const importador = fuente('../../../../orquestador/lib/jornales-a-registros-hh.mjs')
+  const aMano = importador.match(/MARCAS_A_MANO = new Set\(\[([^\]]*)\]/)?.[1] ?? ''
+  const ceden = importador.match(/MARCAS_QUE_CEDEN = new Set\(\[([^\]]*)\]/)?.[1] ?? ''
+  assert.match(aMano, /'web:correccion-horas'/, 'la marca de corrección está protegida')
+  assert.doesNotMatch(ceden, /'web:correccion-horas'/)
+  assert.match(fuente('./presenciaDelDia.ts'), /FUENTE_CORRECCION_HORAS = 'web:correccion-horas'/)
+  const corregir = acciones.slice(acciones.indexOf('export async function corregirJornada'))
+  assert.match(corregir, /administraLicencias: true \}\), FUENTE_CORRECCION_HORAS\)/, 'corregirJornada estrena con la marca a mano')
+  assert.match(acciones, /fuente_legacy: fuenteAlta,/, 'el alta usa la fuente que pide quien escribe')
+})
+
 test('la grilla y el editor pasan por la regla, no por una copia', () => {
   const grilla = fuente('../components/GrillaAsistenciaObra.tsx')
   assert.match(grilla, /accesoACelda\(/)
