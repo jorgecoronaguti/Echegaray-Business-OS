@@ -41,6 +41,7 @@ import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
+import { letra } from '../lib/compras-columnas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_ARCA_RAW'
@@ -63,11 +64,17 @@ export const COLUMNAS = [
   ['Total', 'moneda'],
 ]
 
-/** Dónde vive cada columna, para que las fórmulas no la busquen por posición a ojo. */
-export const COL = {
-  periodo: 'A', libro: 'B', fecha: 'C', tipo: 'D', codigo: 'E', signo: 'F',
-  puntoVenta: 'G', numero: 'H', cuit: 'I', nombre: 'J', neto: 'K', iva: 'L', total: 'M',
-}
+/** La clave de cada columna, en el MISMO orden que `COLUMNAS`. */
+export const CLAVES = Object.freeze(['periodo', 'libro', 'fecha', 'tipo', 'codigo', 'signo', 'puntoVenta', 'numero', 'cuit', 'nombre', 'neto', 'iva', 'total'])
+if (CLAVES.length !== COLUMNAS.length) throw new Error(`arca-raw: ${CLAVES.length} claves para ${COLUMNAS.length} columnas`)
+
+/**
+ * Dónde vive cada columna, DERIVADO del orden de `COLUMNAS` (14/09/2026). Era un mapa de letras
+ * tipeadas al lado de la lista de rótulos: dos declaraciones del mismo orden que se pueden separar.
+ * Es la pestaña propia `_ARCA_RAW`, no Compras; la regla es la misma: la letra sale de la posición
+ * del rótulo que la define, una sola vez.
+ */
+export const COL = Object.freeze(Object.fromEntries(CLAVES.map((k, i) => [k, letra(i)])))
 export const FILA0 = 4   // la primera fila de datos
 
 /** NÚCLEO PURO: una fila de la réplica a partir de un comprobante. */
@@ -106,7 +113,8 @@ async function main() {
       order by fecha_emision, tipo_libro, numero`)
 
   const datos = rows.map(fila)
-  const sinSigno = datos.filter((f) => f[5] === '').length
+  const iSigno = CLAVES.indexOf('signo')
+  const sinSigno = datos.filter((f) => f[iSigno] === '').length
   const corte = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
   let meta = await google.getSheetMeta(ID)
