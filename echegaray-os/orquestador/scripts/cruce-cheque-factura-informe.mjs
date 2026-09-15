@@ -26,6 +26,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { cruzar, chequesDelRegistro, puertaDeCheque, PUERTA, CONFIANZA } from '../lib/cruce-cheque-factura.mjs'
 import { comprasPagadasConCheque, deCompras, deChequesEmitidos } from '../lib/libro-extractores.mjs'
 import { MARCAS } from '../lib/cheques-cobertura.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 
@@ -65,7 +66,7 @@ async function main() {
   const g = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const leer = (r) => g.readSheetValues(ID, r, { render: 'UNFORMATTED_VALUE' })
   const [compras, chequesRaw, banco] = await Promise.all([
-    leer('Compras!A1:AN'), leer("'Cheques Emitidos'!A1:M"), leer('_BANCO_RAW!A1:F'),
+    leer(rangoFilas('Compras', 1)), leer("'Cheques Emitidos'!A1:M"), leer('_BANCO_RAW!A1:F'),
   ])
   const reg = ubicarRegistro(chequesRaw.map((f) => [f?.[0]]))
   if (!reg) throw new Error('no encontré el registro de Cheques Emitidos: sin él no hay nada que cruzar.')

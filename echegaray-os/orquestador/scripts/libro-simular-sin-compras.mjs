@@ -319,7 +319,11 @@ async function main() {
     // Los débitos viajan con el libro A porque de ellos sale la VENTANA DEL EXTRACTO, que es lo que
     // separa lo que una fuente bancaria puede reponer de lo que no.
     A = { ...consolidar(fuentesA.fuentes, { ...fuentesA, log: silencio }), debitos: fuentesA.debitosBanco }
-    const compras = cache.get(`${ID}|Compras!A1:AN|UNFORMATTED_VALUE`)
+    // LA LECTURA DE COMPRAS QUE HIZO EL EXTRACTOR, sea cual sea su rango (14/09/2026): con «Obra»
+    // insertada el generador deja de leer hasta AN, y una clave clavada acá devolvería `undefined` en silencio.
+    const compras = [...cache.entries()]
+      .filter(([k]) => k.startsWith(`${ID}|`) && k.includes('|Compras!') && k.endsWith('|UNFORMATTED_VALUE'))
+      .map(([, v]) => v).sort((a, b) => (b?.length ?? 0) - (a?.length ?? 0))[0]
     info = comprasComoQuedaria(compras ?? [], seleccion)
     comprasA = compras ?? []
     comprasB = info.filas

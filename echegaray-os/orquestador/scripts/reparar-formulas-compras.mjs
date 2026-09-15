@@ -37,10 +37,11 @@ import { accessTokenFor } from '../lib/google-oauth.mjs'
 import { congelado, motivoDeLevantamiento } from '../lib/congelador-sheets.mjs'
 import { CONTRATO, NATURALEZA, indiceDe, letraDe } from '../lib/comprobantes/contrato-columnas.mjs'
 import { EVALUADORES, VEREDICTO, esqueletoDeFormula, veredictoDeCelda } from '../lib/comprobantes/formulas-compras.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 
 const ID_FLUJO = process.env.ORQ_SHEET_FLUJO ?? '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const CUENTA = process.env.ORQ_GOOGLE_IMPERSONATE ?? 'jorge@ecsas.com.ar'
-const RANGO = process.env.ORQ_COMPRAS_RANGO ?? 'Compras!A4:AN1000'
+const RANGO = process.env.ORQ_COMPRAS_RANGO ?? rangoFilas('Compras', 4, 1000)
 const PRIMERA_FILA = Number(RANGO.match(/[A-Z]+(\d+):/)?.[1] ?? 4)
 
 const args = new Set(process.argv.slice(2))

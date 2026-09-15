@@ -29,7 +29,8 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { defectosDeBloque, geometriaSeccion1, planDeEscritura } from '../lib/proveedores-bloque-vivo.mjs'
+import { defectosDeBloque, geometriaSeccion1, planDeEscritura, rangosDesdeEncabezado } from '../lib/proveedores-bloque-vivo.mjs'
+import { rangoEncabezado, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { formulaControl, formulaPorFactura, rangosCompras } from '../lib/proveedores-deuda-viva.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -40,31 +41,11 @@ const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
-  // ═══ LAS COLUMNAS DE COMPRAS, POR ENCABEZADO ═══
-  // Misma disciplina que el generador: el dueño edita Compras y una columna borrada corre todas las
-  // que siguen. Las que nunca se movieron (proveedor, total, estado, comprobante, obra, categoría)
-  // conservan su posición histórica; las que sí, se ubican por su nombre.
-  const cab = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
-  const buscar = (nombre) => cab.findIndex((c) => String(c ?? '').trim().toLowerCase() === nombre.toLowerCase())
-  const porNombre = (nombre, fallback) => {
-    const i = buscar(nombre)
-    if (i < 0) { console.warn(`  ⚠ no encontré "${nombre}" en el encabezado de Compras; uso ${fallback}`); return fallback }
-    return `Compras!$${letra(i)}$4:$${letra(i)}`
-  }
-  const rangos = rangosCompras({
-    prov: 'Compras!$E$4:$E',
-    estado: 'Compras!$X$4:$X',
-    total: 'Compras!$O$4:$O',
-    comprobante: 'Compras!$H$4:$H',
-    obra: 'Compras!$J$4:$J',
-    categoria: 'Compras!$B$4:$B',
-    comercial: porNombre('¿Proveedor comercial? (OS)', 'Compras!$AJ$4:$AJ'),
-    pagado: porNombre('Monto Pagado', 'Compras!$T$4:$T'),
-    parcial1: porNombre('Monto Parcial 1', 'Compras!$U$4:$U'),
-    parcial2: porNombre('Monto Parcial 2', 'Compras!$W$4:$W'),
-    fecha: porNombre('Fecha de caja', 'Compras!$AD$4:$AD'),
-    tipoPago: porNombre('Tipo pago', 'Compras!$P$4:$P'),
-  })
+  // ═══ LAS COLUMNAS DE COMPRAS, POR ENCABEZADO — TODAS Y SIN LETRA DE RESPALDO (14/09/2026) ═══
+  // La misma función que el generador: con «Obra» insertada en L, la «posición histórica» de un
+  // respaldo es la columna de al lado. Un rótulo que falta aborta con su nombre.
+  const cab = (await google.readSheetValues(ID, rangoEncabezado('Compras')))[0] || []
+  const rangos = rangosCompras(rangosDesdeEncabezado(cab).rangos)
   console.log('COLUMNAS DE COMPRAS (todas abiertas)')
   for (const [k, v] of Object.entries(rangos)) console.log(`  ${k.padEnd(12)} ${v}`)
 
@@ -75,7 +56,7 @@ async function main() {
     for (const ch of m?.[1] ?? 'A') n = n * 26 + (ch.charCodeAt(0) - 64)
     return n - 1
   }
-  const compras = await google.readSheetValues(ID, 'Compras!A4:BZ')
+  const compras = await google.readSheetValues(ID, rangoFilas('Compras', 4))
   const pendientes = compras.filter((f) => String(f?.[iCol(rangos.estado)] ?? '').trim() === 'Pendiente'
     && String(f?.[iCol(rangos.comercial)] ?? '').trim() === '1'
     && String(f?.[iCol(rangos.prov)] ?? '').trim() !== '').length

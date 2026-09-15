@@ -25,8 +25,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { grillaEncabezado, celdasEncabezado, columnasEncabezado, F } from '../lib/proveedores-encabezado.mjs'
-import { rangoEncabezado } from '../lib/columnas-por-encabezado.mjs'
+import { grillaEncabezado, celdasEncabezado, leerColumnasEncabezado, F } from '../lib/proveedores-encabezado.mjs'
 // Los anchos de columna son de TODA la pestaña: su definición vive una sola vez y este script es el
 // único que la aplica. Ver el lib: el encabezado los fijaba mirando sólo su propio cuadro.
 import { requestsDeAncho } from '../lib/proveedores-frontera.mjs'
@@ -157,7 +156,7 @@ async function main() {
   if (!hoja) throw new Error(`no encontré la pestaña ${PESTAÑA}`)
 
   // LAS COLUMNAS DE COMPRAS SALEN DE SU FILA DE RÓTULOS (14/09/2026), leída una vez por corrida.
-  const cols = columnasEncabezado((await google.readSheetValues(ID, rangoEncabezado('Compras')))?.[0] ?? [])
+  const cols = await leerColumnasEncabezado(google, ID)
   const grilla = grillaEncabezado(cols)
   // GUARDA: el bloque termina donde empieza la sección 1. Si la sección 1 se movió hacia arriba,
   // escribir la pisaría — y la sección 1 son dos tablas dinámicas nativas que no se recuperan.

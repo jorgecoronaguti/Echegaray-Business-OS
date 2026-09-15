@@ -2,12 +2,17 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   NOMBRES_DIRECCION, DIA_PAGO_DEFAULT, PARAMETRO_DIA_PAGO, regexDireccion, esRetiro,
-  formulaRetiroMensual, formulaPrimerRetiro, formulaPagadoMes, formulaSePagaElDireccion,
-  formulaProyectadoMes, formulaDireccion, condicionesPagoDelMes,
+  formulaProyectadoMes, formulaDireccion, retirosDeDireccion, columnasRetiros,
 } from './direccion-retiros.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
 import { formulaAdministracion, formulaOficina } from './cash-flow-lineas.mjs'
 import { sumarDiasHabiles, DESFASE_HABILES_DEFAULT } from './jornales-fecha-pago.mjs'
 import { REGLAS } from './rubro-caja.mjs'
+
+/** Las fórmulas contra el layout de hoy, resuelto por rótulo como lo resuelve el generador. */
+const {
+  formulaRetiroMensual, formulaPrimerRetiro, formulaPagadoMes, formulaSePagaElDireccion, condicionesPagoDelMes,
+} = retirosDeDireccion(columnasRetiros(COMPRAS_2508))
 
 const balanceado = (f) => [...f].reduce((n, c) => n + (c === '(' ? 1 : c === ')' ? -1 : 0), 0) === 0
 
@@ -331,4 +336,16 @@ test('el importe mensual es el de la carga MÁS RECIENTE, ordenada por fecha y n
   // El array literal de dos columnas lleva "\" en es_AR — con "," la celda queda en #ERROR!
   assert.match(f, /\{'Compras'!\$O\$4:\$O\\'Compras'!\$AD\$4:\$AD\}/)
   assert.match(f, /IFERROR\(/, 'sin persona cargada tiene que dar "" y no #N/A')
+})
+
+// ═══ «OBRA» INSERTADA EN COMPRAS L (14/09/2026): las fórmulas siguen al rótulo ═══
+test('con «Obra» insertada, persona sigue en K y importe, fecha de caja y estado pago se corren por rótulo', () => {
+  const d = retirosDeDireccion(columnasRetiros(COMPRAS_CON_OBRA))
+  assert.match(d.formulaRetiroMensual('$A$47'), /'Compras'!\$K\$4:\$K/)
+  assert.match(d.formulaRetiroMensual('$A$47'), /'Compras'!\$P\$4:\$P/)
+  assert.doesNotMatch(d.formulaRetiroMensual('$A$47'), /'Compras'!\$O\$4/)
+  assert.match(d.formulaPrimerRetiro(), /'Compras'!\$AE\$4:\$AE/)
+  assert.match(d.formulaPagadoMes(1, 2026), /'Compras'!\$AA\$4:\$AA/)
+  assert.throws(() => retirosDeDireccion(columnasRetiros(['ID'])), /falta la columna/)
+  assert.throws(() => retirosDeDireccion(undefined), /columnasRetiros/)
 })

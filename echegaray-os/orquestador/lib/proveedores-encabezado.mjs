@@ -24,7 +24,7 @@
 
 import { TRAMOS, SIN_FECHA } from './proveedores-aging.mjs'
 import { ROTULOS_DEUDA, formulaPagadasSinImporte, formulaParcial1Monto } from './deuda-por-tramos.mjs'
-import { COMPRAS, columnasDe, rangoAbierto } from './columnas-por-encabezado.mjs'
+import { COMPRAS, columnasDe, rangoAbierto, rangoEncabezado } from './columnas-por-encabezado.mjs'
 
 /** Rótulos de la izquierda, sin el prefijo numérico: el prefijo es del ordenamiento, no de la vista. */
 export const FILAS_AGING = Object.freeze(
@@ -58,6 +58,11 @@ export const ROTULOS_ENCABEZADO = Object.freeze({
 
 /** Esas columnas contra la fila de rótulos leída en ESTA corrida. Un rótulo que falta rompe. */
 export const columnasEncabezado = (encabezado) => columnasDe(encabezado, ROTULOS_ENCABEZADO, 'Compras')
+
+/** La fila de rótulos de Compras leída UNA vez en la corrida del aplicador, ya resuelta. */
+export async function leerColumnasEncabezado(google, fileId) {
+  return columnasEncabezado((await google.readSheetValues(fileId, rangoEncabezado('Compras')))?.[0] ?? [])
+}
 
 /** Fila donde arranca cada cosa. El bloque ocupa 1..FIN y nunca una fila más. */
 export const F = Object.freeze({
