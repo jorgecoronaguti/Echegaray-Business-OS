@@ -180,10 +180,18 @@ begin
     return;
   end if;
   execute 'drop policy if exists os_cambios_leer_autenticados on realtime.messages';
+  -- SÓLO PERSONAL INTERNO: `es_administracion()` es dirección, administración y jefe de obra (desde el
+  -- 19/08). Un empleado o un cliente del portal también son `authenticated`, y aunque el aviso no trae
+  -- datos, les diría cuándo y qué se mueve adentro de la empresa. Entre paréntesis con `select` para
+  -- que Postgres lo evalúe una vez (initplan) y no por fila (memoria «Porteros initplan»).
   execute $pol$
     create policy os_cambios_leer_autenticados on realtime.messages
       for select to authenticated
-      using (realtime.topic() = 'os:cambios' and realtime.messages.extension = 'broadcast')
+      using (
+        realtime.topic() = 'os:cambios'
+        and realtime.messages.extension = 'broadcast'
+        and (select public.es_administracion())
+      )
   $pol$;
 end;
 $do$;
