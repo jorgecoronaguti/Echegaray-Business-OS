@@ -158,11 +158,29 @@ type Blanco = Pick<SueldoBlancoNegro,
   | 'reciboEstimado' | 'conceptosReales' | 'totalesReales'>
 
 /** El recibo estimado de la entrada, con las horas o el $/h escritos a mano si los hay. */
+/**
+ * EL $/H DEL BLANCO ESTIMADO ES EL DEL ÚLTIMO RECIBO REAL DE LA PERSONA (dueño, 15/09/2026: «por recibo indican otra
+ * categoría que la que sale en plataforma… por plataforma considerar la categoría que está ahí y ese debe ser el
+ * valor en negro, pero rehacer lo blanco como corresponde»). El estudio liquida por la categoría registrada, que en
+ * 6 de 15 obreros no es la de la plataforma (Quiroga Sebastián: of. especializado en la app, AYUDANTE en el recibo).
+ * El piso de la categoría de plataforma queda de respaldo sólo para quien no tiene ningún recibo real anterior.
+ */
+export function valorHoraDelUltimoRecibo(e: EntradaDeSueldo): number | null {
+  const est = e.estimacion
+  if (!est?.persona) return null
+  const tope = periodoOrdenable(est.base.periodo)
+  const propios = est.base.recibos
+    .filter((r) => r.persona === est.persona && r.valorHora != null && r.valorHora > 0)
+    .filter((r) => { const o = periodoOrdenable(r.periodo); return o !== '' && o < tope })
+    .sort((a, b) => (periodoOrdenable(a.periodo) < periodoOrdenable(b.periodo) ? 1 : -1))
+  return num(propios[0]?.valorHora)
+}
+
 function estimadoDe(e: EntradaDeSueldo, horasRecibo: number | null = null, valorHoraRecibo: number | null = null): ReciboEstimado | null {
   const est = e.estimacion
   if (!est) return null
   return estimarRecibo(est.base.reglas, {
-    persona: est.persona, periodo: est.base.periodo, valorHora: valorHoraRecibo ?? num(e.pisoCategoria), horasRecibo,
+    persona: est.persona, periodo: est.base.periodo, valorHora: valorHoraRecibo ?? valorHoraDelUltimoRecibo(e) ?? num(e.pisoCategoria), horasRecibo,
     feriados: est.base.feriados, recibosPropios: est.persona ? est.base.recibos.filter((r) => r.persona === est.persona) : [],
   })
 }
@@ -186,7 +204,8 @@ function blancoDe(e: EntradaDeSueldo): Blanco {
       totalesReales: { haberes: num(r.bruto), descuentos: num(r.descuentos), neto: num(r.neto) },
     }
   }
-  const piso = num(e.pisoCategoria)
+  // El $/h del blanco estimado: el de su último recibo real; el piso de plataforma sólo si nunca tuvo recibo.
+  const piso = valorHoraDelUltimoRecibo(e) ?? num(e.pisoCategoria)
   const estimado = estimadoDe(e)
   const horasBlanco = estimado ? r2(estimado.horasNormales + estimado.horasFeriado) : e.horas == null ? null : r2(e.horas / 2)
   const bruto = estimado?.remunerativo ?? (horasBlanco == null || piso == null ? null : r2(horasBlanco * piso))

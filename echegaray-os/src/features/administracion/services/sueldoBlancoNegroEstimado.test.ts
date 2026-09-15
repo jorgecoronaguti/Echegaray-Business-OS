@@ -104,3 +104,22 @@ test('baseDelEstimado: el período es el que se estima; las horas «otras» son 
   assert.equal(esDiaHabil('2026-08-17'), true)
   assert.equal(esDiaHabil('2026-08-16'), false)
 })
+
+// ═══ EL $/H DEL BLANCO ES EL DEL ÚLTIMO RECIBO REAL, NO EL DE LA CATEGORÍA DE PLATAFORMA (dueño, 15/09/2026) ═══
+//
+// Mutación que tiene que poner esto rojo: `estimadoDe`/`blancoDe` vuelven a tomar `pisoCategoria` con recibos previos.
+test('la plataforma dice of. especializado ($7.420) pero sus recibos dicen $6.348: el blanco estimado usa $6.348', () => {
+  const s = sueldoBlancoNegro(entrada({ pisoCategoria: 7420 }))
+  assert.equal(s.estado, 'estimado')
+  assert.equal(s.valorHoraCategoria, 6348)
+  assert.equal(s.bruto, 317400)
+  assert.equal(s.neto, 231880.94)
+  // El negro no se mueve: sigue por el $/h pactado de la plataforma.
+  assert.equal(s.negro, 50 * 5000)
+})
+
+test('sin ningún recibo real anterior, el blanco estimado cae al piso de la categoría de plataforma', () => {
+  const s = sueldoBlancoNegro(entrada({ pisoCategoria: 7420, estimacion: { base: BASE, persona: 'sin-recibos' } }))
+  assert.equal(s.estado, 'estimado')
+  assert.equal(s.valorHoraCategoria, 7420)
+})
