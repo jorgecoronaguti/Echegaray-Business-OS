@@ -57,19 +57,21 @@ export interface FilaHH {
 }
 
 /** De dónde sale una fila que cuenta. `null` = no cuenta como hora de obra. */
-export type OrigenHH = 'jornales' | 'jefe_app' | 'app'
+export type OrigenHH = 'jornales' | 'app'
 
 /**
  * ¿ESTA FILA CUENTA COMO HORA DE OBRA? El espejo de `hh_que_cuentan_en_obra`.
  *
  * Toda fila de JORNALES (sus ausencias y licencias marcan el desglose, no suman) y toda fila trabajada
- * de otra fuente. El origen sólo distingue al jefe para marcarlo; no decide si cuenta.
+ * de otra fuente. EL JEFE DE OBRA NO CUENTA, de ninguna fuente: «quitar los jefes de obra de la consideración
+ * de horas de cualquiera de las horas» (dueño, 14/09/2026 · 20260915T0840).
  */
 export function origenesHH(filas: readonly FilaHH[]): (OrigenHH | null)[] {
   return filas.map((f) => {
+    if (f.esJefe === true) return null
     if (esDePlanilla(f.fuente)) return 'jornales'
     if (!TRABAJADAS.has(f.tipoHora)) return null
-    return f.esJefe === true ? 'jefe_app' : 'app'
+    return 'app'
   })
 }
 
@@ -112,6 +114,8 @@ export function hhDeObraCRM(filas: readonly FilaHH[]): HHDeObraCRM {
       if (f.fecha && (!ultima || f.fecha > ultima)) ultima = f.fecha
       continue
     }
+    // EL JEFE TAMPOCO ES «SIN RESPALDO»: no cuenta por decisión, no por falta de planilla.
+    if (f.esJefe === true) continue
     const k = f.personaId ?? ''
     const s = fuera.get(k) ?? { personaId: f.personaId, nombre: f.nombre, horas: 0, dias: [] }
     s.horas += f.horas

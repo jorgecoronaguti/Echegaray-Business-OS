@@ -26,15 +26,29 @@ import { cargasSocialesDeclaradas } from './cargas-sociales.mjs'
  * @param {Array<Array>} filas valores de _J_OBREROS desde la fila 1
  * @returns {Array<{inicio:number, fin:number, filaFecha:number}>} filas en base 1
  */
-export function detectarQuincenas(filas = []) {
+//
+// ═══ LAS FILAS «BAJA» (15/09/2026) ═══
+//
+// En la 2ª de marzo de «Obreros 26» las filas 191–200 dicen BAJA en la columna A en lugar del nº de
+// orden, y el bloque se cortaba en la 190: $2.330.852 que la planilla suma quedaban fuera de toda
+// lectura, y la liquidación declaraba la quincena «completa». Con `{ bajas: true }` el bloque sigue
+// sobre esas filas y las lista en `filasBaja`. El default NO cambia: los generadores del Sheet
+// (jornales-pestana, cargas-sociales, nomina-pestana) arman rangos de fórmula con estos límites y no
+// se tocan desde acá.
+export function detectarQuincenas(filas = [], { bajas = false } = {}) {
   const col = (r, i) => String(r?.[i] ?? '').trim()
+  const esBaja = (r) => bajas && /^baja$/i.test(col(r, 0))
   const bloques = []
   for (let i = 0; i < filas.length; i++) {
     if (col(filas[i], 0) !== '1') continue
     let fin = i
-    while (fin < filas.length && /^\d+$/.test(col(filas[fin], 0))) fin++
+    const filasBaja = []
+    while (fin < filas.length && (/^\d+$/.test(col(filas[fin], 0)) || esBaja(filas[fin]))) {
+      if (esBaja(filas[fin])) filasBaja.push(fin + 1)
+      fin++
+    }
     // `i` es índice base 0 → fila base 1 = i+1. La fila de fechas es la inmediata anterior.
-    bloques.push({ inicio: i + 1, fin, filaFecha: i })
+    bloques.push(bajas ? { inicio: i + 1, fin, filaFecha: i, filasBaja } : { inicio: i + 1, fin, filaFecha: i })
   }
   return bloques
 }
