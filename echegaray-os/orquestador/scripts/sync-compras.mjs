@@ -35,7 +35,8 @@ import { query, closePool, withTx } from '../lib/db.mjs'
 import { CASHFLOW_ID } from '../lib/cash-briefing.mjs'
 import { PRIMERA_FILA, claveDeCompra, contratoDeColumnas, filaACompra } from '../lib/compras-fila.mjs'
 import { esCostoDeObra } from '../lib/compras-costo-de-obra.mjs'
-import { asignadorDeCompras, catalogosDeAsignacion, planDeAsignacion, VIA } from '../lib/compras-obra-asignada.mjs'
+import { asignadorConColumnaObra, asignadorDeCompras, catalogosDeAsignacion, planDeAsignacion, VIA } from '../lib/compras-obra-asignada.mjs'
+import { aplicarCambiosPendientes, catalogoDeDestinos, proyectarObraDeFila } from '../lib/obra-destino.mjs'
 import { planDeReconciliacion, proveedorPorArchivo } from '../lib/comprobantes/reconciliar-adjuntos.mjs'
 
 const DRY = process.argv.includes('--dry')
@@ -49,6 +50,38 @@ const CAMPOS = [
   'fecha_caja', 'familia_material', 'sub_rubro', 'repetido', 'saldo_pendiente', 'cuit',
   'tramo_vencimiento', 'anulada',
 ]
+/** La columna «Obra» (AO) proyectada. Sólo se escriben si la migración 20260915T0700 está aplicada. */
+const CAMPOS_OBRA = ['destino', 'obra_id', 'obra_celda', 'obra_inconsistencia']
+
+/**
+ * ¿Está aplicada `20260915T0700_obra_por_fila`? Sin ella las columnas no existen y la vía
+ * `obra_de_la_fila` la rechaza el CHECK: escribirla abortaría el espejo entero cada hora. Sin la
+ * migración el sync hace exactamente lo de antes y lo dice.
+ */
+async function hayObraPorFila(q) {
+  const { rows } = await q(
+    `select count(*)::int n from information_schema.columns
+      where table_schema='public' and table_name='compra_sheet' and column_name = any($1)`, [CAMPOS_OBRA])
+  return rows[0].n === CAMPOS_OBRA.length
+}
+
+/** Los cambios de la app que el worker todavía no escribió en AO. */
+async function cambiosPendientes(q) {
+  const { rows } = await q(
+    `select distinct on (fila) fila, clave, valor_nuevo from public.compra_obra_cambio
+      where estado in ('pendiente','procesando') order by fila, creado_at desc`)
+  return rows
+}
+
+/** Destino y obra de cada fila, con las inconsistencias contadas para el log. */
+function proyectarObras(compras, cat) {
+  const inconsistentes = []
+  for (const c of compras) {
+    Object.assign(c, proyectarObraDeFila(c, cat))
+    if (c.obra_inconsistencia) inconsistentes.push(`fila ${c.fila}: ${c.obra_inconsistencia}`)
+  }
+  return inconsistentes
+}
 
 /**
  * EL CENTINELA. Una lectura que devuelve mucho menos de lo que ya hay guardado no es «se borraron
@@ -112,11 +145,12 @@ function insertPorLote(tabla, columnas, valoresDeFila, grupo, extraSql = '') {
 }
 
 /** Reescribe el espejo entero dentro de una transacción. */
-async function escribirEspejo(db, compras) {
-  const cols = CAMPOS.join(', ')
+async function escribirEspejo(db, compras, conObra) {
+  const campos = conObra ? [...CAMPOS, ...CAMPOS_OBRA] : CAMPOS
+  const cols = campos.join(', ')
   await db.query('delete from public.compra_sheet')
   for (const grupo of lotes(compras, LOTE)) {
-    const { sql, params } = insertPorLote('public.compra_sheet', cols, (c) => CAMPOS.map((k) => c[k] ?? null), grupo)
+    const { sql, params } = insertPorLote('public.compra_sheet', cols, (c) => campos.map((k) => c[k] ?? null), grupo)
     await db.query(sql, params)
   }
 }
@@ -132,17 +166,21 @@ async function escribirEspejo(db, compras) {
  * del 25/08: coincide con lo que la tabla tiene hoy en las 882 — el cambio saca el fósil sin mover
  * ningún valor.
  */
-async function escribirCostosObra(db, compras) {
+async function escribirCostosObra(db, compras, obraPorFila) {
   const conObra = compras.filter(esCostoDeObra)
   await db.query("delete from public.costos_obra where origen='compras_sheet'")
+  // `destino` y `obra_id` salen de la columna Obra de la fila (null = la fila no la trae). El costo
+  // POR OBRA sigue saliendo de `compra_obra_asignada`, que ya prefiere la fila: esto es para quien lea
+  // estructura (P&L) sin volver a parsear el texto.
   const cols = `obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto,
-         importe, iva, total, fecha, fecha_pago, mes, referencia_externa, origen, sincronizado_en`
+         importe, iva, total, fecha, fecha_pago, mes, referencia_externa${obraPorFila ? ', destino, obra_id' : ''}, origen, sincronizado_en`
   const valores = (c) => [
     c.obra_texto, c.unidad_negocio, c.proveedor, c.modalidad, c.tipo, c.comprobante, c.categoria,
     [c.detalle_obra, c.concepto].filter(Boolean).join(' — ') || null,
     c.importe || null, c.iva || null, c.total ?? c.importe,
     c.fecha, c.fecha_caja ?? c.fecha_prevista, c.mes,
     c.sheet_id === null ? String(c.fila) : String(c.sheet_id),
+    ...(obraPorFila ? [c.destino ?? null, c.obra_id ?? null] : []),
   ]
   for (const grupo of lotes(conObra, LOTE)) {
     const { sql, params } = insertPorLote('public.costos_obra', cols, valores, grupo, ",'compras_sheet', now()")
@@ -174,8 +212,15 @@ async function escribirCostosObra(db, compras) {
  * `costos_obra` porque sale del MISMO conjunto de filas: si una se escribiera y la otra no, habría
  * pesos sin asignación y la identidad «obras + sin obra = Compras del cliente» dejaría de cerrar.
  */
-async function escribirAsignacion(db, compras) {
-  const plan = planDeAsignacion(compras, asignadorDeCompras(await catalogosDeAsignacion((t, p) => db.query(t, p))))
+/** El asignador de siempre y, con la migración aplicada, la columna Obra de la fila por delante. */
+function asignadorDelSync(catalogos, obraPorFila) {
+  const base = asignadorDeCompras(catalogos)
+  if (!obraPorFila) return base
+  return asignadorConColumnaObra(base, catalogoDeDestinos({ obras: catalogos.canonicas, clienteAlias: catalogos.clienteAlias }))
+}
+
+async function escribirAsignacion(db, compras, asignar) {
+  const plan = planDeAsignacion(compras, asignar)
   await db.query('delete from public.compra_obra_asignada')
   const cols = 'referencia, fila, sheet_id, cliente, obra_id, via, porque, sincronizado_en'
   const valores = (p) => [p.referencia, p.fila, p.sheet_id, p.cliente, p.obra_id, p.via, p.porque]
@@ -220,7 +265,19 @@ async function reconciliarAdjuntos(db, compras) {
 }
 
 async function main() {
-  const compras = await leerPestana()
+  const obraPorFila = await hayObraPorFila(query)
+  const catalogos = await catalogosDeAsignacion(query)
+  let compras = await leerPestana()
+  let inconsistentes = []
+  if (obraPorFila) {
+    compras = aplicarCambiosPendientes(compras, await cambiosPendientes(query))
+    inconsistentes = proyectarObras(compras, catalogoDeDestinos({ obras: catalogos.canonicas, clienteAlias: catalogos.clienteAlias }))
+    console.log(`columna Obra: ${compras.filter((c) => c.obra_celda).length} filas la traen · ${inconsistentes.length} inconsistentes`)
+    for (const m of inconsistentes.slice(0, 15)) console.log(`  ⚠ ${m}`)
+  } else {
+    console.log('columna Obra: migración 20260915T0700 sin aplicar — la ignoro y asigno como antes')
+  }
+  const asignar = asignadorDelSync(catalogos, obraPorFila)
   const { rows: [previo] } = await query('select count(*)::int n from public.compra_sheet')
   if (previo.n && compras.length < previo.n * PISO) {
     console.error(`CENTINELA: leí ${compras.length} filas y el espejo tiene ${previo.n}. `
@@ -233,7 +290,7 @@ async function main() {
   if (DRY) {
     console.log(`[dry] ${compras.length} filas · ${conClave} con clave · ${anuladas} anuladas · `
       + `espejo actual ${previo.n}. No escribo nada.`)
-    const plan = planDeAsignacion(compras, asignadorDeCompras(await catalogosDeAsignacion(query)))
+    const plan = planDeAsignacion(compras, asignar)
     console.log(`[dry] asignación: ${resumenDeAsignacion(plan)}`)
     await closePool(); return
   }
@@ -257,9 +314,9 @@ async function main() {
       // serializa —la segunda espera y arranca cuando la primera ya commiteó— y se suelta solo en
       // el commit o el rollback: no hay forma de dejarlo tomado.
       await db.query("select pg_advisory_xact_lock(hashtext('sync-compras'))")
-      await escribirEspejo(db, compras)
-      const n = await escribirCostosObra(db, compras)
-      asignacion = await escribirAsignacion(db, compras)
+      await escribirEspejo(db, compras, obraPorFila)
+      const n = await escribirCostosObra(db, compras, obraPorFila)
+      asignacion = await escribirAsignacion(db, compras, asignar)
       plan = await reconciliarAdjuntos(db, compras)
       return n
     })

@@ -20,11 +20,25 @@
 //    más grande. Con menos de cinco comprobantes previos no hay historia y se dice que no se pudo
 //    verificar, en vez de callar.
 
-/** Las columnas de Compras que se releen, por su offset desde A. */
-export const COL = Object.freeze({
-  categoria: 1, fecha: 2, proveedor: 4, comprobante: 7, obra: 9, concepto: 11,
-  importe: 12, iva: 13, total: 14, tipoPago: 15, estado: 23,
+import { ubicarColumna } from '../columnas-por-encabezado.mjs'
+import { COMPRAS_2508 } from '../encabezados-referencia.mjs'
+
+/** Las columnas de Compras que se releen, POR RÓTULO (desde el 14/09/2026 se inserta «Obra» en L). */
+const ROTULOS_RELEIDOS = Object.freeze({
+  categoria: 'Categoría', fecha: 'Fecha factura', proveedor: 'Proveedor', comprobante: 'N° Comprobante',
+  obra: 'Cliente / Asignación', concepto: 'Concepto', importe: 'Importe', iva: 'IVA', total: 'Total',
+  tipoPago: 'Tipo pago', estado: 'Estado',
 })
+
+/** Offset desde A de cada columna releída, contra la fila de rótulos que se leyó. */
+export function colVerificacion(encabezado) {
+  return Object.freeze(Object.fromEntries(Object.entries(ROTULOS_RELEIDOS)
+    .map(([k, r]) => [k, ubicarColumna(encabezado, r, 'Compras').indice])))
+}
+
+/** Contra el encabezado de REFERENCIA (25/08): sólo para quien no pasa el suyo (tests). */
+export const COL = colVerificacion(COMPRAS_2508)
+const colRef = COL
 
 const num = (v) => {
   if (typeof v === 'number') return v
@@ -41,7 +55,7 @@ const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
  * @param {Array} fila  la fila de Compras tal como la devuelve la API
  * @returns {{cierra:boolean, importe:number, iva:number, total:number, dif:number}}
  */
-export function aritmetica(fila = []) {
+export function aritmetica(fila = [], COL = colRef) {
   const importe = num(fila[COL.importe])
   const iva = num(fila[COL.iva])
   const total = num(fila[COL.total])
@@ -80,8 +94,8 @@ export function tablaDeLoEscrito(leidas = []) {
   const l = ['', '**Esto es lo que quedó escrito en Compras:**', '',
     '| Fila | Proveedor | Comprobante | Fecha | Importe | IVA | Total | Obra |',
     '|---|---|---|---|---|---|---|---|']
-  for (const { fila, valores } of leidas) {
-    const a = aritmetica(valores ?? [])
+  for (const { fila, valores, col: COL = colRef } of leidas) {
+    const a = aritmetica(valores ?? [], COL)
     l.push(`| ${fila} | ${valores?.[COL.proveedor] ?? '—'} | ${valores?.[COL.comprobante] ?? '—'} `
       + `| ${valores?.[COL.fecha] ?? '—'} | ${plata(a.importe)} | ${plata(a.iva)} | **${plata(a.total)}** `
       + `| ${valores?.[COL.obra] ?? '—'} |`)
@@ -97,8 +111,8 @@ export function tablaDeLoEscrito(leidas = []) {
  */
 export function avisosDeVerificacion(leidas = []) {
   const l = []
-  for (const { fila, valores, historia } of leidas) {
-    const a = aritmetica(valores ?? [])
+  for (const { fila, valores, historia, col: COL = colRef } of leidas) {
+    const a = aritmetica(valores ?? [], COL)
     const quien = valores?.[COL.proveedor] ?? `fila ${fila}`
     if (!a.cierra) {
       l.push(`⚠ **Fila ${fila} (${quien}): la aritmética no cierra.** `
@@ -122,8 +136,8 @@ export function avisosDeVerificacion(leidas = []) {
  * La magnitud sin historia NO cuenta: es una limitación declarada, no un hallazgo.
  */
 export function hayHallazgos(leidas = []) {
-  return leidas.some(({ valores, historia }) => {
-    const a = aritmetica(valores ?? [])
+  return leidas.some(({ valores, historia, col = colRef }) => {
+    const a = aritmetica(valores ?? [], col)
     return !a.cierra || magnitud(a.total, historia).estado === 'sospechoso'
   })
 }

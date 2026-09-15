@@ -22,18 +22,9 @@
 import { conMarcaDeOrigen, dimensionesInferidas } from './comprobantes/marca-origen.mjs'
 
 /** Columnas de Compras por rol. Índice 0 = A. Es contrato con el Sheet vivo. */
-export const COL = {
-  id: 'A', categoria: 'B', fecha: 'C', mes: 'D', proveedor: 'E', modalidad: 'F', tipo: 'G',
-  numero: 'H', unidad: 'I', obra: 'J', detalle: 'K', concepto: 'L', neto: 'M', iva: 'N', total: 'O',
-  formaPago: 'P', prevDia: 'Q', prevMes: 'R', totalParcial: 'S', pagado: 'T', parcial1: 'U',
-  // ═══ EL CORRIMIENTO DEL 14/08 ═══
-  // La columna «devengado» dejó de existir en Compras y todo lo que venía detrás se corrió un lugar
-  // a la izquierda, hasta que una «Rubro de caja» duplicada (AB y AC) vuelve a alinear el resto. Los
-  // rótulos vivos son: Y «Tipo de Costo» · Z «Estado pago» · AA «Estado Carga» · AB/AC «Rubro de caja».
-  prevFecha2: 'V', parcial2: 'W', estado: 'X', tipoCosto: 'Y', estadoPago: 'Z', estadoCarga: 'AA',
-  rubroCaja: 'AC', fechaCaja: 'AD', familia: 'AE', subRubro: 'AF',
-  ordenPago: 'AH', ordenSinFecha: 'AI', comercial: 'AJ',
-}
+// DESDE EL 14/09/2026 SALE DEL CONTRATO POR RÓTULO. Éste es el de REFERENCIA (encabezado del 25/08):
+// el cargador resuelve el suyo contra la fila de rótulos viva con `colDelCargador(contratoContra(enc))`.
+export const COL = Object.freeze(colDelCargador(CONTRATO))
 
 /** Columnas que se llenan desde la foto/condición. El resto se estampa, se deriva o lo pone el dueño. */
 export const COL_INPUT = ['categoria', 'fecha', 'proveedor', 'modalidad', 'tipo', 'numero', 'concepto', 'neto', 'iva', 'formaPago', 'totalParcial', 'pagado', 'estado']
@@ -68,7 +59,7 @@ export const COL_INPUT = ['categoria', 'fecha', 'proveedor', 'modalidad', 'tipo'
 // quien importe este módulo pero NO crea el binding local, así que `filaModeloDeFormulas` —que lo usa
 // como valor por defecto de `grupos`— reventaba con `GRUPOS_FORMULA is not defined` en tiempo de
 // ejecución, no de carga: el typecheck y el lint pasaban y sólo fallaba al llamar la función.
-import { GRUPOS_FORMULA } from './comprobantes/contrato-columnas.mjs'
+import { CONTRATO, GRUPOS_FORMULA, colDelCargador } from './comprobantes/contrato-columnas.mjs'
 export { GRUPOS_FORMULA }
 
 const TIPOS = { A: 'F A', B: 'F B', C: 'F C', NC: 'N C', 'N/A': 'N/A' }
@@ -314,7 +305,7 @@ export function aFechaAR(v) {
  *
  * @returns {{[letra:string]: string|number}} letra de columna → valor a escribir
  */
-export function valoresInput(c) {
+export function valoresInput(c, col = COL) {
   const pago = condicionAPago(c.condicion)
   const iva = aNumero(c.iva)
   const totalDeclarado = aNumero(c.total)
@@ -327,7 +318,8 @@ export function valoresInput(c) {
   const total = totalDeclarado ?? (neto != null ? redondear2(neto + (iva ?? 0)) : null)
   const estado = c.estado ?? pago.estado
   const out = {}
-  const set = (k, v) => { if (v != null && v !== '') out[COL[k]] = v }
+  // Una clave sin columna en esta pestaña (la «Obra» antes de insertarse) no se escribe en ningún lado.
+  const set = (k, v) => { if (v != null && v !== '' && col[k]) out[col[k]] = v }
   set('categoria', c.categoria)
   set('fecha', aFechaAR(c.fecha))
   set('proveedor', c.proveedor)
@@ -352,6 +344,8 @@ export function valoresInput(c) {
   set('unidad', c.unidad)
   set('obra', c.obra)
   set('detalle', c.detalle)
+  // La obra codificada de la columna «Obra»: sólo cuando viene decidida (segura o contestada).
+  set('obraFila', c.obraFila)
   // Si quedó pagada al contado, lo pagado es el total; en cuenta corriente pendiente, no hay pago aún.
   //
   // EL CERO NO SE ESCRIBE, Y NO ES UN CAPRICHO: `T` es la fórmula `=IF(F="pago";O;0)`, que para una

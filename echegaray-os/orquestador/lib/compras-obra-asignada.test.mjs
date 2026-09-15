@@ -129,3 +129,42 @@ test('IDENTIDAD: por cliente, obras + sin obra = total de Compras del cliente, a
   const sf = plan.filter((p) => p.cliente === 'SAN FRANCISCO')
   assert.deepEqual(sf.map((p) => p.obra_id), ['pisos-industriales', null, 'entrepiso-y-escalera', null])
 })
+
+// ═══ LA COLUMNA «Obra» DE LA FILA MANDA SOBRE LA INFERENCIA (14/09/2026) ═══
+import { asignadorConColumnaObra } from './compras-obra-asignada.mjs'
+import { catalogoDeDestinos } from './obra-destino.mjs'
+
+const CAT = catalogoDeDestinos({
+  obras: CANONICAS.map((o, i) => ({ ...o, codigo: `OB-00${String(i + 10)}` })),
+  clienteAlias: CLIENTES,
+})
+const conFila = asignadorConColumnaObra(asignar, CAT)
+
+test('fila con código: va a esa obra aunque la K nombre otra', () => {
+  const r = conFila(compra('San Francisco', 'Pisos Industriales', 100, { obra_celda: 'OB-0012 · SF - INSTALACIÓN ELÉCTRICA' }))
+  assert.equal(r.obra_id, 'instalacion-electrica')
+  assert.equal(r.via, VIA.FILA)
+  assert.equal(r.cliente, 'SAN FRANCISCO')
+})
+
+test('fila con ES-TAL en un gasto con J de cliente: estructura, NUNCA costo de la obra ni «sin obra» del cliente', () => {
+  const r = conFila(compra('San Francisco', 'Pisos Industriales', 100, { obra_celda: 'ES-TAL · Estructura – Taller' }))
+  assert.equal(r.obra_id, null)
+  assert.equal(r.cliente, null)
+  assert.equal(r.via, VIA.ESTRUCTURA_FILA)
+})
+
+test('«Sin obra – cliente» es la decisión del dueño: sin obra aunque la K nombre una', () => {
+  const r = conFila(compra('San Francisco', 'Pisos Industriales', 100, { obra_celda: 'Sin obra – SAN FRANCISCO' }))
+  assert.equal(r.obra_id, null)
+  assert.equal(r.via, VIA.SIN_OBRA)
+  assert.equal(r.cliente, 'SAN FRANCISCO')
+  assert.match(r.porque, /columna Obra/)
+})
+
+test('celda vacía o inválida: sigue la inferencia de siempre (la fila no trae una obra válida)', () => {
+  assert.equal(conFila(compra('San Francisco', 'Pisos Industriales')).obra_id, 'pisos-industriales')
+  const inval = conFila(compra('San Francisco', 'Pisos Industriales', 100, { obra_celda: 'Galpon 7' }))
+  assert.equal(inval.obra_id, 'pisos-industriales')
+  assert.equal(inval.via, VIA.ALIAS)
+})

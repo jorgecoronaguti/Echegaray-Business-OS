@@ -9,6 +9,7 @@ import {
   defectosDeBloque, geometriaSeccion1, planDeEscritura, proveedoresCableados, referenciasAFilaFija,
   ROTULOS_CONTRATO, rangosDesdeEncabezado, huellaProtegida, diferenciasDeHuella,
 } from './proveedores-bloque-vivo.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
 import { formulaPorFactura, formulaPorProveedor, referenciasCompras, esRangoAbierto } from './proveedores-deuda-viva.mjs'
 
 /** Proveedores!A18 — la fila-cabecera de Gruas San Blas, tal cual está hoy en el archivo. */
@@ -38,7 +39,7 @@ const RANGOS = {
 
 test('la fila-cabecera VIVA deja hueco: el nombre del proveedor está cableado en la celda', () => {
   assert.deepEqual(proveedoresCableados(A18_VIVA, RANGOS.prov), ['Gruas San Blas'])
-  const { ok, huecos } = defectosDeBloque([{ dir: 'A18', formula: A18_VIVA }])
+  const { ok, huecos } = defectosDeBloque([{ dir: 'A18', formula: A18_VIVA }], { colProv: RANGOS.prov })
   assert.equal(ok, false)
   assert.equal(huecos.length, 1)
   assert.equal(huecos[0].proveedor, 'Gruas San Blas')
@@ -46,14 +47,14 @@ test('la fila-cabecera VIVA deja hueco: el nombre del proveedor está cableado e
 
 test('un literal contra la columna de ESTADO no es un hueco — el titular no puede dar falso positivo', () => {
   assert.deepEqual(proveedoresCableados(B5_VIVA, RANGOS.prov), [])
-  assert.equal(defectosDeBloque([{ dir: 'B5', formula: B5_VIVA }]).ok, true)
+  assert.equal(defectosDeBloque([{ dir: 'B5', formula: B5_VIVA }], { colProv: RANGOS.prov }).ok, true)
 })
 
 // ═══ EL DEFECTO 1 DEL DUEÑO: "no se actualiza sola" ═══════════════════════════════════════════════
 
 test('la fila de detalle VIVA está ciega: apunta a la fila 796 de Compras y a ninguna otra', () => {
   assert.deepEqual(referenciasAFilaFija(B19_VIVA), ['Compras!$X$796', 'Compras!$AD$796'])
-  const { ok, ciegas } = defectosDeBloque([{ dir: 'B19', formula: B19_VIVA }])
+  const { ok, ciegas } = defectosDeBloque([{ dir: 'B19', formula: B19_VIVA }], { colProv: RANGOS.prov })
   assert.equal(ok, false)
   assert.equal(ciegas.length, 2)
 })
@@ -69,7 +70,7 @@ test('las dos fórmulas vivas pasan el mismo auditor que reprueba al bloque de h
     { dir: 'A18', formula: formulaPorFactura({ rangos: RANGOS, reserva: 20 }) },
     { dir: 'A18', formula: formulaPorProveedor({ rangos: RANGOS, libreta: 'PROV_LIBRETA', reserva: 20 }) },
   ]
-  assert.deepEqual(defectosDeBloque(celdas), { ok: true, huecos: [], ciegas: [] })
+  assert.deepEqual(defectosDeBloque(celdas, { colProv: RANGOS.prov }), { ok: true, huecos: [], ciegas: [] })
 })
 
 test('toda referencia a Compras de la fórmula viva es un rango ABIERTO', () => {
@@ -179,19 +180,23 @@ test('los rótulos de la CUENTA CORRIENTE no son los de la sección 1 — el pla
 // El dueño borra una columna de Compras y todas las de la derecha se corren. Una referencia fija a
 // `$AJ` pasa a hablar de otra cosa y la deuda cambia sin que nada dé error.
 
-test('si una columna del OS se corre en Compras, el rango la sigue por su rótulo', () => {
-  const cabecera = Array.from({ length: 40 }, () => '')
-  cabecera[36] = '¿Proveedor comercial? (OS)'   // corrida una columna a la derecha de su lugar histórico
-  cabecera[20] = 'Monto Pagado'
-  const { rangos, avisos } = rangosDesdeEncabezado(cabecera)
-  assert.equal(rangos.comercial, 'Compras!$AK$4:$AK', 'siguió apuntando a la posición vieja')
-  assert.equal(rangos.pagado, 'Compras!$U$4:$U')
-  assert.ok(avisos.some((a) => /Fecha de caja/.test(a)), 'un rótulo ausente tiene que quedar declarado')
+test('los rangos siguen al rótulo: con «Obra» insertada en L, Total pasa de O a P y Fecha de caja de AD a AE', () => {
+  const antes = rangosDesdeEncabezado(COMPRAS_2508).rangos
+  assert.deepEqual(antes, RANGOS, 'antes de la inserción tienen que ser exactamente los rangos vivos de hoy')
+  const despues = rangosDesdeEncabezado(COMPRAS_CON_OBRA).rangos
+  assert.equal(despues.total, 'Compras!$P$4:$P')
+  assert.equal(despues.fecha, 'Compras!$AE$4:$AE')
+  assert.equal(despues.comercial, 'Compras!$AK$4:$AK')
+  assert.equal(despues.prov, 'Compras!$E$4:$E', 'lo de la izquierda de L no se mueve')
+})
+
+test('un rótulo que falta aborta con su nombre — ya no hay letra de respaldo', () => {
+  assert.throws(() => rangosDesdeEncabezado(['ID']), /falta la columna «Fecha de caja»/)
+  assert.throws(() => defectosDeBloque([]), /falta el rango de Proveedor/)
 })
 
 test('todos los rangos de Compras quedan ABIERTOS: uno acotado se fosiliza y deja plata afuera', () => {
-  const { rangos } = rangosDesdeEncabezado(['ID'])
-  for (const [k, v] of Object.entries(rangos)) assert.ok(esRangoAbierto(v), `${k}=${v} tiene fila final`)
+  for (const [k, v] of Object.entries(rangosDesdeEncabezado(COMPRAS_CON_OBRA).rangos)) assert.ok(esRangoAbierto(v), `${k}=${v} tiene fila final`)
 })
 
 // ═══ LA HUELLA: LA EVIDENCIA DE QUE NO SE TOCÓ LO AJENO ═══

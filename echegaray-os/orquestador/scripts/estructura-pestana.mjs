@@ -19,6 +19,8 @@
 //
 //   node orquestador/scripts/estructura-pestana.mjs [--dry]
 
+import { COMPRAS, columnasDe, lectorDeEncabezados, rangoAbierto, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
+import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { MIN_MESES, MES_EN_CURSO, COL_FECHA } from '../lib/cash-flow-lineas.mjs'
@@ -88,9 +90,9 @@ const COL_LAYOUT = Object.freeze({
 // LOS RANGOS DE COMPRAS VIVEN EN `lib/estructura-filas.mjs` desde el 07/09/2026, con el resto de la
 // definición compartida: el sub-rubro está en COMPRAS (columna AF) y no acá, porque SUMIFS devuelve
 // #VALUE! cuando el rango a sumar está en una pestaña y los criterios en otra.
-const COL_SUB_COMPRAS = 31   // AF
 
-export function grilla(recurrentes = []) {
+export function grilla(recurrentes = [], cols) {
+  if (!cols?.rubro || !cols?.total) throw new Error('estructura: faltan las columnas de Compras resueltas por encabezado')
   const rubros = [...SUBRUBROS.map(([n]) => n), OTROS]
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
@@ -250,7 +252,7 @@ export function grilla(recurrentes = []) {
   // Cash Flow Mensual sale de esta misma columna de Compras (lib/cash-flow-mapa.mjs, fila 29), y eso
   // se verifica en el código, no leyendo un paréntesis.
   const c2 = vacia(); c2[0] = 'Estructura según Compras'
-  c2[1] = '=SUMIF(Compras!$AC$4:$AC;"Estructura";Compras!$O$4:$O)'
+  c2[1] = `=SUMIF(${rangoAbierto('Compras', cols.rubro)};"Estructura";${rangoAbierto('Compras', cols.total)})`
   const fc = push(c2)
   const c3 = vacia(); c3[0] = '⇒ Diferencia contra Compras'
   // ROUND A PESO: sin esto, una diferencia de fracciones de centavo se dibuja "-$0" y enciende el
@@ -340,21 +342,30 @@ async function publicarRangos(google, sheetId, g) {
   console.log(`rangos con nombre publicados: ${quiero.map((d) => d.nombre).join(', ')} — sobre la fila ${g.fTot} (${ROTULO_TOTAL})`)
 }
 
+/** El texto contra el que se clasifica el sub-rubro: Detalle, Concepto y Proveedor, por RÓTULO. */
+export function formulaTextoSubRubro(cols) {
+  const r = (c) => rangoAbierto('Compras', c)
+  return `LOWER(${r(cols.detalle)}&" "&${r(cols.concepto)}&" "&${r(cols.proveedor)})`
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   // LOS PROVEEDORES RECURRENTES SALEN DE LA PLANILLA, no de una lista tipeada acá: si mañana entra un
   // servicio nuevo, aparece solo. Rango ABIERTO — con techo, el día que Compras pase esa fila un
   // proveedor deja de aparecer y nada lo dice. El `--dry` no los lee: es un ensayo sin red.
-  const recurrentes = DRY ? [] : await google.readSheetValues(ID, 'Compras!A4:AC')
-    .then((c) => [...new Set(c.filter((f) => String(f?.[28] ?? '').trim() === RUBRO_RECURRENTE)
-      .map((f) => String(f?.[4] ?? '').trim()).filter(Boolean))].sort())
+  // COLUMNAS POR RÓTULO (14/09/2026). El --dry no sale a la red: usa el encabezado de REFERENCIA y lo dice.
+  const cols = DRY ? columnasDe(COMPRAS_2508, COMPRAS, 'Compras') : await lectorDeEncabezados(google, ID).columnas('Compras')
+  if (DRY) console.log('(--dry) columnas de Compras del encabezado de referencia del 25/08, no del archivo vivo')
+  const recurrentes = DRY ? [] : await google.readSheetValues(ID, rangoFilas('Compras', 4))
+    .then((c) => [...new Set(c.filter((f) => String(f?.[cols.rubro.indice] ?? '').trim() === RUBRO_RECURRENTE)
+      .map((f) => String(f?.[cols.proveedor.indice] ?? '').trim()).filter(Boolean))].sort())
     .catch((e) => {
       // FALLA CERRADO Y GRITA: sin la lectura no se inventa la lista. Publicar la pestaña SIN la
       // sección borraría los recurrentes del archivo del dueño en silencio, que es peor que no correr.
       throw new Error(`no pude leer Compras para armar la sección de recurrentes (${e.message}). NO escribo: `
         + 'publicar sin esa sección le borraría el cuadro entero.')
     })
-  const g = grilla(recurrentes)
+  const g = grilla(recurrentes, cols)
   console.log(`${PESTAÑA}: ${g.filas.length} filas x ${ANCHO} columnas · rubros ${g.f0}-${g.f1} · total ${g.fTot}`
     + `${g.fTotRec ? ` · ${recurrentes.length} recurrentes, total ${g.fTotRec}` : ''}`)
   if (DRY) {
@@ -372,10 +383,11 @@ async function main() {
   }
 
   // El sub-rubro, en Compras, colgado del rubro que Compras ya definió.
-  const texto = 'LOWER(Compras!$K$4:$K&" "&Compras!$L$4:$L&" "&Compras!$E$4:$E)'
+  const COL_SUB_COMPRAS = cols.subRubro.indice
+  const texto = formulaTextoSubRubro(cols)
   let sub = `"${OTROS}"`
   for (const [n, p] of [...SUBRUBROS].reverse()) sub = `IF(REGEXMATCH(${texto};"${p}");"${n}";${sub})`
-  const fSub = `=ARRAYFORMULA(IF(Compras!$AC$4:$AC<>"Estructura";"";${sub}))`
+  const fSub = `=ARRAYFORMULA(IF(${rangoAbierto('Compras', cols.rubro)}<>"Estructura";"";${sub}))`
   const reqC = []
   if (compras.cols < COL_SUB_COMPRAS + 1) {
     reqC.push({ appendDimension: { sheetId: compras.sheetId, dimension: 'COLUMNS', length: COL_SUB_COMPRAS + 1 - compras.cols } })

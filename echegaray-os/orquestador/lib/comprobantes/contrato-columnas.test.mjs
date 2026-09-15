@@ -152,3 +152,43 @@ test('una letra fuera del contrato se rechaza con motivo, no con un booleano', (
   const [zz] = letrasIndebidas(['ZZ'])
   assert.match(zz.motivo, /no está en el contrato/)
 })
+
+// ═══ LA INSERCIÓN DE «Obra» EN L (dueño, 14/09/2026): EL CONTRATO SIGUE AL RÓTULO ═══
+import { COLUMNAS_DEL_DUENO, COLUMNAS_DEL_OS, colDelCargador, contratoContra, derivar, letrasDe } from './contrato-columnas.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from '../encabezados-referencia.mjs'
+
+test('las columnas del dueño son AC/AD/AE/AF/AJ antes de la inserción y AD/AE/AF/AG/AK después', () => {
+  assert.deepEqual(letrasDe(COLUMNAS_DEL_DUENO, COMPRAS_2508), ['AC', 'AD', 'AE', 'AF', 'AJ'])
+  assert.deepEqual(letrasDe(COLUMNAS_DEL_DUENO, COMPRAS_CON_OBRA), ['AD', 'AE', 'AF', 'AG', 'AK'])
+  assert.deepEqual(letrasDe(COLUMNAS_DEL_OS, COMPRAS_CON_OBRA), ['AC', 'AL', 'AM', 'AN', 'AO'])
+})
+
+test('después de la inserción el portón protege las letras NUEVAS, no las viejas', () => {
+  const d = derivar(contratoContra(COMPRAS_CON_OBRA))
+  for (const l of ['AD', 'AE', 'AF', 'AG', 'AK']) assert.match(d.letrasIndebidas([l])[0]?.motivo ?? '', /derrame/, l)
+  assert.deepEqual(d.letrasIndebidas(['L', 'M']), [], 'L es la Obra y M el Concepto: las dos las escribe el cargador')
+  assert.match(d.letrasIndebidas(['P'])[0].motivo, /fórmula por fila/, 'P es el Total después de la inserción')
+  assert.deepEqual([...d.GRUPOS_FORMULA], [['A', 'A'], ['D', 'D'], ['P', 'P'], ['R', 'S'], ['V', 'V'], ['AA', 'AA'], ['AH', 'AJ']])
+})
+
+test('valoresInput con el contrato vivo: Obra en L, Concepto en M, y nunca una columna del dueño', () => {
+  const c = {
+    fecha: '14/09/2026', proveedor: 'Corralón Progreso', neto: 100000, iva: 21000, total: 121000,
+    condicion: 'Contado', concepto: 'Cemento', obraFila: 'OB-0021 · ME - PLAYÓN DE AZUFRE',
+  }
+  const antes = valoresInput(c, colDelCargador(contratoContra(COMPRAS_2508)))
+  assert.equal(antes.L, 'Cemento')
+  assert.equal(Object.values(antes).includes(c.obraFila), false, 'sin columna Obra, la obra no cae en otra columna')
+  const contrato = contratoContra(COMPRAS_CON_OBRA)
+  const despues = valoresInput(c, colDelCargador(contrato))
+  assert.equal(despues.L, 'OB-0021 · ME - PLAYÓN DE AZUFRE')
+  assert.equal(despues.M, 'Cemento')
+  assert.equal(despues.N, 100000)
+  assert.equal(despues.U, 121000, 'Monto Pagado se corrió de T a U')
+  assert.deepEqual(derivar(contrato).letrasIndebidas(Object.keys(despues)), [])
+})
+
+test('un rótulo del contrato que desaparece aborta la resolución — el cargador no escribe a ciegas', () => {
+  const sinTotal = COMPRAS_CON_OBRA.map((r) => (r === 'Total' ? 'Total $' : r))
+  assert.throws(() => contratoContra(sinTotal), /falta la columna «Total»/)
+})

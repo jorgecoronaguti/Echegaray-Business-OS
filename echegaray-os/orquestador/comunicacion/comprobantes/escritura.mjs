@@ -36,7 +36,8 @@ import { estaCompleto, imputacionVacia, ESTADO } from '../../lib/comprobantes/fa
 import { identificar } from '../../lib/comprobantes/identidad.mjs'
 import { numeroCanonico, claveComprobante, conceptoConAnotacion, conceptoConProveedorLeido } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
-import { avisosDeVerificacion, cierre, COL as VCOL, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
+import { avisosDeVerificacion, cierre, COL as VCOL, colVerificacion, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
+import { rangoFilas } from '../../lib/columnas-por-encabezado.mjs'
 import { vigilar } from '../../lib/comprobantes/vigilancia.mjs'
 import { respaldarFajoCargado, avisoDeRespaldo } from '../../lib/comprobantes/respaldo-adjunto.mjs'
 import { mattermostDelOs } from '../../lib/mattermost-os.mjs'
@@ -680,20 +681,26 @@ async function releerLoEscrito(d, filas) {
     const { makeGoogleClient } = await import('../../lib/google.mjs')
     const g = await makeGoogleClient()
     const id = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
-    return g.readSheetValues(id, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
+    // DESDE LA FILA DE RÓTULOS (14/09/2026): las columnas releídas se ubican por encabezado, así la
+    // tabla del chat dice lo mismo antes y después de insertar «Obra» en L.
+    const filas = await g.readSheetValues(id, rangoFilas('Compras', 3), { render: 'UNFORMATTED_VALUE' })
+    return { encabezado: filas?.[0] ?? [], filas: (filas ?? []).slice(1) }
   })
-  const compras = (await leer()) ?? []
+  const leido = (await leer()) ?? []
+  // Un lector inyectado que devuelve el arreglo pelado (desde la fila 4) es el contrato viejo de los tests.
+  const compras = Array.isArray(leido) ? leido : (leido.filas ?? [])
+  const col = Array.isArray(leido) ? VCOL : colVerificacion(leido.encabezado ?? [])
   const deLaFila = (n) => compras[n - 4] ?? []
   return conFila.map((f) => {
     const valores = deLaFila(f.fila)
-    const quien = String(valores?.[VCOL.proveedor] ?? '').trim().toLowerCase()
+    const quien = String(valores?.[col.proveedor] ?? '').trim().toLowerCase()
     // La historia del proveedor SIN la fila que se acaba de escribir: incluirla haría que el importe
     // sospechoso se compare consigo mismo y nunca destaque.
     const historia = compras
-      .map((r, i) => ({ i: i + 4, prov: String(r?.[VCOL.proveedor] ?? '').trim().toLowerCase(), total: r?.[VCOL.total] }))
+      .map((r, i) => ({ i: i + 4, prov: String(r?.[col.proveedor] ?? '').trim().toLowerCase(), total: r?.[col.total] }))
       .filter((r) => r.prov && r.prov === quien && r.i !== f.fila)
       .map((r) => r.total)
-    return { fila: f.fila, valores, historia }
+    return { fila: f.fila, valores, historia, col }
   })
 }
 

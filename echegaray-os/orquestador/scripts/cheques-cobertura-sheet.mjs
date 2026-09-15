@@ -15,6 +15,7 @@
 //
 //   node orquestador/scripts/cheques-cobertura-sheet.mjs [--dry]
 
+import { lectorDeEncabezados, rangoAbierto, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana, MARCAS, marcaDe, inferirRespaldo } from '../lib/cheques-cobertura.mjs'
@@ -78,10 +79,12 @@ const ref = (nombre) => `=${nombre}`
 async function leer(google) {
   const hojas = await google.getSheetMeta(ID)
   const CH = hallarPestana(hojas, 'Cheques Emitidos').title
-  const compras = await google.readSheetValues(ID, 'Compras!A4:AD')
+  // COLUMNAS POR RÓTULO (14/09/2026): con «Obra» en L, el Total ya no es la O ni el CUIT la AM.
+  const cols = await lectorDeEncabezados(google, ID).columnas('Compras')
+  const compras = await google.readSheetValues(ID, rangoFilas('Compras', 4))
   // La llave: el número de comprobante de la factura. Es lo único que comparten las tres planillas.
   const enCompras = new Set(
-    compras.filter((f) => num(f?.[14]) > 0).map((f) => normComprobante(f?.[7])).filter(esLlaveUtil),
+    compras.filter((f) => num(f?.[cols.total.indice]) > 0).map((f) => normComprobante(f?.[cols.comprobante.indice])).filter(esLlaveUtil),
   )
   // SE GUARDA LA FILA DE CADA UNO. La marca que el OS escribe al lado tiene que caer en SU fila, y
   // filtrar antes de saber la fila corría todas las marcas hacia arriba en cuanto aparecía un
@@ -108,12 +111,11 @@ async function leer(google) {
   // cheque entra o no al calendario, no.
   // El rango llega hasta AM porque ahí vive «CUIT (OS)», que es lo que permite cruzar por
   // identificador fuerte. Leer hasta O dejaba al cruce comparando sólo nombres.
-  const crudoCompras = await google.readSheetValues(ID, 'Compras!C4:AM', { render: 'UNFORMATTED_VALUE' })
+  const crudoCompras = await google.readSheetValues(ID, rangoFilas('Compras', 4), { render: 'UNFORMATTED_VALUE' })
   const numero = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
-  const I_CUIT = 36 // AM contando desde C (C=0)
   const filasCompras = crudoCompras.map((f, i) => ({
-    fila: i + 4, prov: normNombre(f?.[2]), provRaw: String(f?.[2] ?? '').trim(),
-    cuit: f?.[I_CUIT], fecha: numero(f?.[0]) || null, total: numero(f?.[12]),
+    fila: i + 4, prov: normNombre(f?.[cols.proveedor.indice]), provRaw: String(f?.[cols.proveedor.indice] ?? '').trim(),
+    cuit: f?.[cols.cuit.indice], fecha: numero(f?.[cols.fecha.indice]) || null, total: numero(f?.[cols.total.indice]),
   })).filter((f) => f.prov && f.total > 0)
   // `filasCh` = la última fila REAL del registro. Sale del largo leído más el offset de arranque
   // menos uno; con el `+ 1` de antes (que asumía arranque en la 2) el marcado se cortaba 25 filas
@@ -133,7 +135,7 @@ async function leer(google) {
   // esté caído.
   const conId = await identidades({ filasCompras, cheques, tarjeta })
 
-  return { enCompras, ...conId, pestanaCheques: CH, filasCh: crudoCh.length + FILA_DATO0 - 1, filasTj: crudoTj.length + 2 }
+  return { enCompras, cols, ...conId, pestanaCheques: CH, filasCh: crudoCh.length + FILA_DATO0 - 1, filasTj: crudoTj.length + 2 }
 }
 
 /**
@@ -181,7 +183,21 @@ export function respaldos({ cheques, tarjeta, filasCompras }) {
   }
 }
 
-export function grilla({ enCompras, cheques, tarjeta }, resp) {
+/**
+ * Los dos controles de Compras del pie, con las columnas RESUELTAS. Sin columnas, error: una letra
+ * fija acá vuelve a escribir la columna de al lado en cada corrida después de insertar «Obra».
+ */
+export function formulasControlCompras(cols) {
+  if (!cols?.total || !cols?.rubro || !cols?.fechaCaja) throw new Error('cheques-cobertura: faltan las columnas de Compras resueltas por encabezado')
+  const r = (c) => rangoAbierto('Compras', c)
+  return {
+    sinFecha: `=SUMIFS(${r(cols.total)};${r(cols.rubro)};"<>";${r(cols.fechaCaja)};"")`,
+    sinImporte: `=SUMPRODUCT((${r(cols.rubro)}<>"")*(NOT(ISNUMBER(${r(cols.total)}))))`,
+  }
+}
+
+export function grilla({ enCompras, cheques, tarjeta, cols }, resp) {
+  const fc = formulasControlCompras(cols)
   const ch = repartirCobertura(cheques, enCompras, { inferidos: resp.cheques.inferidos })
   const tj = repartirCobertura(tarjeta, enCompras, { inferidos: resp.tarjeta.inferidos })
   const cubrir = aCubrirPorMes(cheques)
@@ -203,9 +219,9 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   push([])
   push(['AFIP — libro de IVA ventas', ref(N_ARCA.ventasN), ref(N_ARCA.ventasMonto), '', '', 'Lo que la empresa facturó. Su detalle con número de comprobante está en Proveedores y Materiales.'])
   push([])
-  push(['Compras sin fecha de caja', '', `=SUMIFS(Compras!$O$4:$O;Compras!$AC$4:$AC;"<>";Compras!$AD$4:$AD;"")`, '', '',
+  push(['Compras sin fecha de caja', '', fc.sinFecha, '', '',
     `${ALERTA} Están clasificadas y suman en el total del año, pero sin fecha no caen en ningún mes ni semana: el cuadro no las puede ubicar en el tiempo.`])
-  push(['Compras con rubro pero sin importe numérico', '', `=SUMPRODUCT((Compras!$AC$4:$AC<>"")*(NOT(ISNUMBER(Compras!$O$4:$O))))`, '', '',
+  push(['Compras con rubro pero sin importe numérico', '', fc.sinImporte, '', '',
     `${ALERTA} Cantidad de filas, no pesos: su Total no es un número (moneda extranjera o texto), así que no suman en ningún lado.`])
   push([])
   const fHdr2 = push(['', 'Cantidad', 'Monto', '', '', 'Qué significa'])
