@@ -11,13 +11,13 @@ import { columnasDelBloque, ROTULOS_OFICINA } from './liquidacion-jornales.mjs'
 const HOY = new Date('2026-09-15T12:00:00Z')
 
 // ── «Obreros 26», 2ª de marzo: rótulos arriba de las fechas y filas BAJA al final del bloque ──────
-function obrero(n, nombre, { total, banco = '', adelanto = '', efectivo }) {
+function obrero(n, nombre, { total, banco = '', adelanto = '', efectivo, horas = '10', vh = '$100' }) {
   const p = []
-  p[0] = n; p[1] = nombre; p[21] = '10'; p[22] = '$100'
+  p[0] = n; p[1] = nombre; p[21] = horas; p[22] = vh
   p[23] = banco; p[25] = adelanto; p[26] = efectivo; p[27] = total
   return p
 }
-function grillaMarzo({ aguirreEfectivo = '$86.652', aguirreTotal = '$86.652' } = {}) {
+function grillaMarzo({ aguirreEfectivo = '$86.652', aguirreTotal = '$86.652', aguirreHoras = '10', aguirreVh = '$100' } = {}) {
   const rot = []
   rot[21] = 'Hs'; rot[22] = '$/h'; rot[23] = 'BANCO'; rot[25] = 'ADELANTO'; rot[26] = 'EFECTIVO'; rot[27] = 'TOTAL'
   const fechas = []
@@ -28,7 +28,7 @@ function grillaMarzo({ aguirreEfectivo = '$86.652', aguirreTotal = '$86.652' } =
     obrero('2', 'Ruben Palacio', { total: '$355.500', adelanto: '$100.000', efectivo: '$255.500' }),
     obrero('BAJA', 'Pablo Ramos', { total: '$504.000', efectivo: '$504.000' }),
     // f192 real: BANCO 383.347,94 + EFECTIVO 86.652 contra un TOTAL de 86.652 — la cadena no cierra.
-    obrero('BAJA', 'Leandro Aguirre', { total: aguirreTotal, banco: '$383.347,94', efectivo: aguirreEfectivo }),
+    obrero('BAJA', 'Leandro Aguirre', { total: aguirreTotal, banco: '$383.347,94', efectivo: aguirreEfectivo, horas: aguirreHoras, vh: aguirreVh }),
   ]
 }
 const IDS = { 'aguero cristian': 'p-aguero', 'palacio ruben': 'p-palacios', 'aguirre leandro': 'p-aguirre' }
@@ -193,4 +193,29 @@ test('sqlLineaEditada: sale de las columnas de la base y cubre negro_manual, hor
   const { COLUMNA_DE } = await import('../../src/features/administracion/services/liquidacionOverrides.ts')
   const deLaWeb = Object.values(COLUMNA_DE)
   assert.deepEqual(columnasEditadasEnApp(deLaWeb), [...deLaWeb].sort())
+})
+
+test('BAJA con el TOTAL de la planilla mal: si Hs × $/h cierra exacto con lo pagado, entra por Hs × $/h y se declara (Aguirre, dueño 15/09)', () => {
+  // f192 real: 94 h × $5.000 = 470.000 = BANCO 383.347,94 + EFECTIVO 86.652,06; la celda TOTAL dice 86.652,06.
+  // MUTACIÓN QUE LO PONE ROJO: sacar la rama `porHoras` de lineasDelBloque → Aguirre vuelve a `baja_ilegible`.
+  const grid = grillaMarzo({ aguirreEfectivo: '$86.652,06', aguirreTotal: '$86.652,06', aguirreHoras: '94', aguirreVh: '$5.000' })
+  const c = planDeHoja({ grid, anio: 2026, hoy: HOY, resolver, incluirBajas: true }).quincenas[0].control
+  assert.equal(c.cierra, true)
+  const aguirre = c.cargables.find((l) => l.nombre === 'Leandro Aguirre')
+  assert.ok(aguirre, 'Aguirre se carga')
+  assert.equal(aguirre.cobra, 470000)
+  assert.equal(aguirre.total, 470000)
+  assert.equal(aguirre.porBanco, 383347.94)
+  assert.equal(aguirre.enEfectivo, 86652.06)
+  assert.equal(aguirre.totalDeLaPlanilla, 86652.06)
+  assert.deepEqual(c.excluidas.map((l) => [l.nombre, l.motivo]), [['Pablo Ramos', 'sin_persona']])
+  assert.equal(c.totalCargable + c.montoExcluido, c.totalSheet)
+  assert.match(observacionDeCarga('Obreros 26', c), /Fila \d+ Leandro Aguirre: TOTAL de la planilla 86652\.06 ≠ Hs × \$\/h 470000/)
+  // Sin --incluir-bajas sigue afuera como «baja», ahora con el importe corregido.
+  const sinBajas = planDeHoja({ grid, anio: 2026, hoy: HOY, resolver }).quincenas[0].control
+  assert.deepEqual(sinBajas.excluidas.map((l) => [l.nombre, l.motivo, l.cobra]), [['Pablo Ramos', 'baja', 504000], ['Leandro Aguirre', 'baja', 470000]])
+  // Una pizca de diferencia y NO se corrige: la coincidencia tiene que ser exacta.
+  const casi = grillaMarzo({ aguirreEfectivo: '$86.600', aguirreTotal: '$86.652,06', aguirreHoras: '94', aguirreVh: '$5.000' })
+  const r = planDeHoja({ grid: casi, anio: 2026, hoy: HOY, resolver, incluirBajas: true }).quincenas[0].control
+  assert.deepEqual(r.excluidas.map((l) => l.motivo), ['sin_persona', 'baja_ilegible'])
 })

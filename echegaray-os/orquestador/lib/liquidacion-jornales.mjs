@@ -257,7 +257,19 @@ export function lineasDelBloque(grid = [], bloque = {}, cols = {}, gridCrudo = n
     const residuo = cobra == null || enEfectivo == null ? null : cobra - pagado
     linea.residuo = residuo
     if (!linea.incompleta && Math.abs(residuo) > 0.5) {
-      linea.incompleta = `no cierra por ${residuo.toFixed(2)}: TOTAL ${cobra} vs BANCO+YA_TRANSFERIDO+ADELANTO+EFECTIVO ${pagado}`
+      // UNA BAJA CUYO TOTAL ES LA CELDA EQUIVOCADA (dueño, 15/09/2026). Aguirre, 2ª de marzo, f192: TOTAL 86.652,06
+      // contra 94 h × $5.000 = 470.000 = BANCO 383.347,94 + EFECTIVO 86.652,06, y el dueño confirmó que cobró 470.000.
+      // Cuando Hs × $/h cierra EXACTO con lo pagado, las dos lecturas independientes coinciden y la que discrepa es
+      // la celda TOTAL: se toma Hs × $/h y se guarda el TOTAL de la planilla para declararlo. Sólo en BAJA: es lo que
+      // el dueño confirmó; una línea activa con el TOTAL roto sigue volteando su quincena.
+      const porHoras = horas != null && valorHora != null ? horas * valorHora : null
+      if (linea.baja && porHoras != null && Math.abs(porHoras - pagado) <= 0.5) {
+        linea.totalDeLaPlanilla = cobra
+        linea.cobra = porHoras
+        linea.residuo = 0
+      } else {
+        linea.incompleta = `no cierra por ${residuo.toFixed(2)}: TOTAL ${cobra} vs BANCO+YA_TRANSFERIDO+ADELANTO+EFECTIVO ${pagado}`
+      }
     }
     out.push(linea)
   }

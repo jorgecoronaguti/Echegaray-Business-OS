@@ -136,7 +136,9 @@ export function observacionDeCarga(hoja, control) {
   const bajasIlegibles = cuantas(MOTIVO_EXCLUSION.BAJA_ILEGIBLE)
   if (bajasIlegibles) partes.push(`${bajasIlegibles} fila(s) marcadas BAJA no se cargaron porque su plata no cierra (TOTAL ≠ BANCO + ADELANTO + EFECTIVO): el importe declarado es el TOTAL de la planilla y lo decide una persona`)
   if (repetidas) partes.push(`${repetidas} línea(s) repiten persona en otro bloque de la misma quincena: entró la del primer bloque`)
-  const conBajas = control.bajasCargadas ? ` Incluye ${control.bajasCargadas} fila(s) marcadas BAJA (--incluir-bajas).` : ''
+  const corregidas = control.cargables.filter((l) => l.totalDeLaPlanilla != null)
+  const conBajas = (control.bajasCargadas ? ` Incluye ${control.bajasCargadas} fila(s) marcadas BAJA (--incluir-bajas).` : '')
+    + corregidas.map((l) => ` Fila ${l.fila} ${l.nombre}: TOTAL de la planilla ${l.totalDeLaPlanilla} ≠ Hs × $/h ${l.cobra} = BANCO + ADELANTO + EFECTIVO; se cargó Hs × $/h (confirmado por el dueño, 15/09/2026).`).join('')
   if (!partes.length) return `${base} Entró completa: ninguna línea quedó afuera.${conBajas}`
   return `${base} ${partes.join('; ')}. Su importe está en monto_excluido.${conBajas}`
 }
