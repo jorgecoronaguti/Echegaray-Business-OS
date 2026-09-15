@@ -17,6 +17,7 @@
 // lib/caja-avisos.test.mjs; los bloques que se mudaron al anexo, en lib/caja-anexo.test.mjs.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from '../lib/columnas-caja.fixture.mjs'
 import { grilla, rescatar } from './caja-pestana.mjs'
 import {
   FILAS_MAXIMAS, ANCHO, ANCHOS, COLS_PLATA, COLS_TARJETA, COL_PROSA, esTituloDeBloque,
@@ -35,7 +36,7 @@ const vacia = (s) => s === '' || s === VACIO
 // `filasCal` son las filas de "Impuestos y Financieros" donde viven el IVA y el IIBB a pagar. En la
 // corrida real las ubica el script POR RÓTULO; acá son dos números cualesquiera porque lo que el test
 // verifica es que sean OBLIGATORIAS: sin esa pestaña el libro no ve el egreso más grande del año.
-const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 } }
+const REFS = { columnas: COLUMNAS_HOY, bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 } }
 const construir = () => grilla(new Map(), REFS)
 
 /** La fila (1-based) cuyo rótulo en la columna indicada matchea. */

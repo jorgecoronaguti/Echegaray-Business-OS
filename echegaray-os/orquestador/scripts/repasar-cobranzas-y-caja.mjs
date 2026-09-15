@@ -21,7 +21,8 @@
 
 import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { leerCobro, repasar, porMes, aFecha } from '../lib/cobranzas-en-cashflow.mjs'
+import { leerCobro, repasar, porMes, aFecha, columnasDelCobro } from '../lib/cobranzas-en-cashflow.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
 import { gruposIndistinguibles } from '../lib/cobranzas-duplicado.mjs'
 import { verificarCadena } from '../lib/cash-flow-ancla-saldo.mjs'
@@ -112,7 +113,7 @@ async function main() {
   const hoy = new Date()
   const google = makeGoogleClient({ config: loadConfig() }) // sin WRITE_SCOPES: este auditor no escribe
   const [cob, cfs, cfm, tc] = await Promise.all([
-    google.readSheetGrid(ID, 'Cobranzas!A1:BD500'),
+    google.readSheetGrid(ID, rangoFilas('Cobranzas', 1, 500)),
     google.readSheetGrid(ID, 'Cash Flow Semanal!A1:BZ120'),
     google.readSheetGrid(ID, 'Cash Flow Mensual!A1:BZ120'),
     // EL TIPO DE CAMBIO TAMBIÉN ACÁ (14/08). Este repaso llamaba a `leerCobro` sin él, así que los
@@ -122,9 +123,12 @@ async function main() {
     leerTipoCambio(google, ID),
   ])
 
+  // LAS COLUMNAS SALEN DE LA FILA 4 DE ESTA MISMA LECTURA (14/09/2026): la grilla arranca en la 1, así
+  // que el encabezado viene adentro y no hace falta otra llamada que pudiera ver otro layout.
+  const cols = columnasDelCobro((cob.filas[3] ?? []).map((c) => c?.valor))
   const cobros = []
   for (let i = 4; i < cob.filas.length; i++) {
-    const c = leerCobro(cob.filas[i], i + 1, { tipoCambio: tc.tc })
+    const c = leerCobro(cob.filas[i], i + 1, { tipoCambio: tc.tc, cols })
     if (c) cobros.push(c)
   }
   const sinValuar = cobros.filter((c) => c.sinValuar)

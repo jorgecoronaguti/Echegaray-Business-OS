@@ -2,7 +2,8 @@
 // SYNC de la pestaña "02_Cobranzas" del Sheet Flujo de Caja → public.cobranzas (ingresos/percibido).
 // El Sheet es la fuente de verdad; esto es su espejo. Snapshot idempotente por origen='cobranzas_sheet',
 // keyed por ID de fila. NO destructivo con otras tablas.
-//   node orquestador/scripts/sync-cobranzas.mjs
+//   node orquestador/scripts/sync-cobranzas.mjs          ← reescribe la réplica
+//   node orquestador/scripts/sync-cobranzas.mjs --dry    ← lee todo, NO escribe nada y compara con la réplica
 //
 // ═══ LOS IMPORTES SE GUARDAN EN PESOS, NO EN LA MONEDA DE LA CELDA (10/09/2026) ═══
 //
@@ -22,33 +23,109 @@
 // `20260910T1500_cobranzas_moneda.sql` está escrita y NO aplicada (nadie aplica migraciones desde un
 // worktree). El sync mira el catálogo y, si no están, guarda igual los importes ya valuados y lo
 // dice. El arreglo del defecto no espera a la migración; lo que espera es la trazabilidad.
-import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+//
+// ═══ CADA CAMPO SALE DE SU RÓTULO, NO DE SU POSICIÓN (14/09/2026) ═══
+//
+// Se leía `r[12]` como total y `r[16]` como fecha de cobro. Con «Obra» insertada en H, la corrida
+// siguiente habría borrado la tabla y la habría reinsertado con las retenciones como total y el mes
+// como fecha — sin un solo error, porque el `delete` + `insert` no sabe qué columna es cuál. Ahora la
+// fila 4 se lee una vez, cada campo se indexa por su rótulo, y un rótulo que falta aborta ANTES del
+// delete. Los nombres de destino no cambian: `fecha_emision` sigue viniendo de «Fecha de Venta» y
+// `fecha_venta` de «Fecha de Factura», que es lo que guardaba por posición (el cruce de nombres es
+// viejo y no se corrige acá: cambiarlo cambia lo que leen las caras).
+import { makeGoogleClient, READONLY_SCOPES, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { CASHFLOW_ID, parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 import { resolverCliente } from '../lib/portal/cobranzas-a-cliente.mjs'
 import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
-import { valuarFilaCobranza, IDX_MONEDA_COBRANZAS, RANGO_COBRANZAS } from '../lib/cobranzas-contrato.mjs'
+import { valuarFilaCobranza, RANGO_COBRANZAS } from '../lib/cobranzas-contrato.mjs'
 import { catalogosDeAsignacion } from '../lib/compras-obra-asignada.mjs'
-import { catalogoDeDestinos, indiceColumnaObra, resolverCeldaObra } from '../lib/obra-destino.mjs'
-import { letra } from '../lib/compras-columnas.mjs'
+import { catalogoDeDestinos, resolverCeldaObra } from '../lib/obra-destino.mjs'
+import { exigirColumnas, leerColumnasCobranzas } from '../lib/cobranzas-columnas.mjs'
+
+const DRY = process.argv.includes('--dry')
+
+/** Las columnas que el sync lee, por clave de `COBRANZAS_OS`. `obra` es opcional. */
+export const COLUMNAS_SYNC = Object.freeze([
+  'id', 'categoria', 'fechaVenta', 'factura', 'comprobante', 'unidad', 'cliente', 'oc', 'concepto', 'neto',
+  'iva', 'retenciones', 'total', 'formaCobro', 'estado', 'fechaFactura', 'fechaCobro', 'mesCobro', 'moneda', 'obra',
+])
+
+const iso = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : null)
 
 /**
- * LA COLUMNA «Obra» (AB desde el 14/09/2026), POR ENCABEZADO. Devuelve, por índice de fila leída, lo
- * que la celda dice. Vacío si la columna no existe todavía o si la migración no está aplicada.
+ * NÚCLEO PURO: una fila de la pestaña → el registro de `public.cobranzas`, o por qué no.
+ * `null` = fila que no es una cobranza (sin ID o sin cliente: encabezados, vacías, subtotales).
+ * @returns {null | {id:string, obra:string, motivo?:string, cobranza?:object}}
  */
-async function leerColumnaObra(google) {
+export function filaACobranza(r, cols, tc) {
+  const c = exigirColumnas(cols, COLUMNAS_SYNC.filter((k) => k !== 'obra'), 'filaACobranza')
+  const en = (k) => r?.[c[k].indice]
+  const txt = (k) => String(en(k) ?? '').trim() || null
+  const id = String(en('id') ?? '').trim()
+  const obra = String(en('cliente') ?? '').trim()
+  if (!id || !obra) return null
+  const nativos = {
+    monto_neto: parseMonto(en('neto')) || null, iva: parseMonto(en('iva')) || null,
+    retenciones: parseMonto(en('retenciones')) || null, total_bruto: parseMonto(en('total')) || null,
+  }
+  const v = valuarFilaCobranza(nativos, en('moneda'), tc)
+  if (v.motivo) return { id, obra, motivo: v.motivo }
+  return {
+    id, obra,
+    cobranza: {
+      sheet_id: id, categoria: txt('categoria'), fecha_emision: iso(parseFecha(en('fechaVenta'))),
+      factura: txt('factura'), numero_comprobante: txt('comprobante'), unidad: txt('unidad'), obra_cliente: obra,
+      orden_compra: txt('oc'), concepto: txt('concepto'),
+      monto_neto: v.importes.monto_neto, iva: v.importes.iva, retenciones: v.importes.retenciones,
+      total_bruto: v.importes.total_bruto, forma_cobro: txt('formaCobro'), estado: txt('estado'),
+      fecha_venta: iso(parseFecha(en('fechaFactura'))), fecha_cobro: iso(parseFecha(en('fechaCobro'))), mes_cobro: txt('mesCobro'),
+      moneda: v.moneda, tipo_cambio: v.tipoCambio,
+      monto_neto_origen: nativos.monto_neto, total_bruto_origen: nativos.total_bruto,
+    },
+  }
+}
+
+/**
+ * NÚCLEO PURO: lo que cambiaría en la réplica. Compara por `sheet_id` y campo a campo; los importes
+ * numéricamente (Postgres devuelve `numeric` como texto) y las fechas como YYYY-MM-DD.
+ */
+export function diferenciasConReplica(nuevas = [], replica = [], columnas = []) {
+  const norm = (v) => (v instanceof Date ? iso(v) : v === undefined || v === '' ? null : v)
+  const igual = (a, b) => {
+    const [x, y] = [norm(a), norm(b)]
+    if (x === null || y === null) return x === y
+    const [nx, ny] = [Number(x), Number(y)]
+    return Number.isFinite(nx) && Number.isFinite(ny) && typeof x !== 'boolean' ? Math.abs(nx - ny) < 0.005 : String(x) === String(y)
+  }
+  const porId = new Map(replica.map((f) => [String(f.sheet_id), f]))
+  const ids = new Set(nuevas.map((f) => String(f.sheet_id)))
+  const campos = []
+  for (const n of nuevas) {
+    const v = porId.get(String(n.sheet_id))
+    if (!v) continue
+    for (const k of columnas) if (!igual(n[k], v[k])) campos.push({ sheet_id: n.sheet_id, campo: k, sheet: n[k] ?? null, replica: norm(v[k]) })
+  }
+  const suma = (fs, k) => Math.round(fs.reduce((s, f) => s + (Number(f[k]) || 0), 0) * 100) / 100
+  return {
+    conteo: { sheet: nuevas.length, replica: replica.length },
+    sumas: Object.fromEntries(['total_bruto', 'monto_neto'].map((k) => [k, { sheet: suma(nuevas, k), replica: suma(replica, k) }])),
+    soloEnSheet: nuevas.filter((f) => !porId.has(String(f.sheet_id))).map((f) => f.sheet_id),
+    soloEnReplica: replica.filter((f) => !ids.has(String(f.sheet_id))).map((f) => f.sheet_id),
+    campos,
+  }
+}
+
+/** El catálogo de obras para la columna «Obra», o por qué no se lee. */
+async function catalogoObra(cols) {
   const { rows } = await query(
     `select count(*)::int n from information_schema.columns
       where table_schema='public' and table_name='cobranzas' and column_name in ('destino','obra_id','obra_celda')`)
   if (rows[0].n !== 3) { console.log('columna Obra: migración 20260915T0700 sin aplicar — no la leo'); return null }
-  const [encabezado = []] = await google.readSheetValues(CASHFLOW_ID, 'Cobranzas!A4:BZ4')
-  const i = indiceColumnaObra(encabezado, 'Cobranzas')
-  if (i === null) { console.log('columna Obra: la pestaña todavía no tiene el encabezado «Obra»'); return null }
-  const L = letra(i)
-  const valores = await google.readSheetValues(CASHFLOW_ID, `Cobranzas!${L}5:${L}5000`)
+  if (!cols.obra) { console.log('columna Obra: la pestaña todavía no tiene el encabezado «Obra»'); return null }
   const c = await catalogosDeAsignacion(query)
-  return { valores, cat: catalogoDeDestinos({ obras: c.canonicas, clienteAlias: c.clienteAlias }) }
+  return catalogoDeDestinos({ obras: c.canonicas, clienteAlias: c.clienteAlias })
 }
 
 /** ¿Están en la base las columnas de moneda? Ver la cabecera: la migración puede no estar aplicada. */
@@ -60,87 +137,58 @@ async function hayColumnasDeMoneda() {
   return rows.length === 4
 }
 
-/** Lo que la celda Obra de la fila `i` dice, resuelto. Una celda que no se entiende se guarda sin destino y se nombra. */
-function obraDeLaFila({ valores, cat }, i, id, mal) {
-  const r = resolverCeldaObra(valores?.[i]?.[0], cat)
-  if (r.error) mal.push(`fila ${i + 5} (ID ${id}): ${r.error}`)
+/** Lo que la celda Obra de la fila dice, resuelto. Una celda que no se entiende se guarda sin destino y se nombra. */
+function obraDeLaFila(celda, cat, fila, id, mal) {
+  const r = resolverCeldaObra(celda, cat)
+  if (r.error) mal.push(`fila ${fila} (ID ${id}): ${r.error}`)
   return { destino: r.destino, obra_id: r.obra_id, obra_celda: r.celda }
 }
 
-const iso = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : null)
-// 02_Cobranzas!A..AA (headers fila 4, datos desde fila 5): idx0 ID, 1 Categoría, 2 Fecha emisión,
-// 3 Factura, 4 N° Comprobante, 5 Unidad, 6 Obra/Cliente, 7 OC, 8 Concepto, 9 Monto neto, 10 IVA,
-// 11 Retenciones, 12 TOTAL Bruto, 13 Forma de Cobro, 14 Estado, 15 Fecha Venta, 16 Fecha cobro,
-// 17 Mes, … 26 Moneda (col AA).
-async function main() {
-  const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+async function leerCobranzas(google) {
+  // LOS RÓTULOS PRIMERO: si falta uno, la excepción sale acá, antes de tocar la tabla.
+  const cols = await leerColumnasCobranzas(google, CASHFLOW_ID, COLUMNAS_SYNC)
   const rows = await google.readSheetValues(CASHFLOW_ID, RANGO_COBRANZAS).catch(() => [])
   const { tc, crudo } = await leerTipoCambio(google, CASHFLOW_ID)
-  const obraCol = await leerColumnaObra(google)
+  const cat = await catalogoObra(cols)
   const obraMal = []
   const cobranzas = []
   const sinValuar = []
   for (const [i, r] of rows.entries()) {
-    const id = String(r?.[0] ?? '').trim()
-    const obra = String(r?.[6] ?? '').trim()
-    // Fila válida = tiene ID y obra/cliente (evita encabezados/vacías/subtotales).
-    if (!id || !obra) continue
-    const nativos = {
-      monto_neto: parseMonto(r?.[9]) || null, iva: parseMonto(r?.[10]) || null,
-      retenciones: parseMonto(r?.[11]) || null, total_bruto: parseMonto(r?.[12]) || null,
-    }
-    const v = valuarFilaCobranza(nativos, r?.[IDX_MONEDA_COBRANZAS], tc)
-    if (v.motivo) { sinValuar.push(`fila ${i + 5} (ID ${id}, ${obra}): ${v.motivo}`); continue }
-    cobranzas.push({
-      sheet_id: id, categoria: String(r?.[1] ?? '').trim() || null, fecha_emision: iso(parseFecha(r?.[2])),
-      factura: String(r?.[3] ?? '').trim() || null, numero_comprobante: String(r?.[4] ?? '').trim() || null,
-      unidad: String(r?.[5] ?? '').trim() || null, obra_cliente: obra,
-      orden_compra: String(r?.[7] ?? '').trim() || null, concepto: String(r?.[8] ?? '').trim() || null,
-      monto_neto: v.importes.monto_neto, iva: v.importes.iva, retenciones: v.importes.retenciones,
-      total_bruto: v.importes.total_bruto, forma_cobro: String(r?.[13] ?? '').trim() || null,
-      estado: String(r?.[14] ?? '').trim() || null, fecha_venta: iso(parseFecha(r?.[15])),
-      fecha_cobro: iso(parseFecha(r?.[16])), mes_cobro: String(r?.[17] ?? '').trim() || null,
-      moneda: v.moneda, tipo_cambio: v.tipoCambio,
-      monto_neto_origen: nativos.monto_neto, total_bruto_origen: nativos.total_bruto,
-      ...(obraCol ? obraDeLaFila(obraCol, i, id, obraMal) : {}),
-    })
+    const f = filaACobranza(r, cols, tc)
+    if (!f) continue
+    if (f.motivo) { sinValuar.push(`fila ${i + 5} (ID ${f.id}, ${f.obra}): ${f.motivo}`); continue }
+    cobranzas.push({ ...f.cobranza, ...(cat ? obraDeLaFila(r?.[cols.obra.indice], cat, i + 5, f.id, obraMal) : {}) })
   }
-  if (obraCol) {
+  if (cat) {
     console.log(`columna Obra: ${cobranzas.filter((c) => c.obra_celda).length} filas la traen · ${obraMal.length} sin entender`)
     obraMal.slice(0, 10).forEach((m) => console.log(`  ⚠ ${m}`))
   }
-  // UNA FILA QUE NO SE PUDO VALUAR NO SE GUARDA EN LA MONEDA EQUIVOCADA — Y TAMPOCO SE SALTEA EN
-  // SILENCIO. Se aborta la corrida entera: la tabla se borra y se reinserta completa, así que
-  // continuar publicaría una réplica a la que le falta plata sin que ninguna cara pueda notarlo.
-  if (sinValuar.length) {
-    console.error(`no puedo valuar ${sinValuar.length} fila(s) — abortando sin tocar la tabla (TC leído: ${JSON.stringify(crudo)})`)
-    sinValuar.forEach((m) => console.error(`   ${m}`))
-    await query(
-      `insert into public.integraciones (slug, nombre, estado, salud, notas)
-       values ('cobranzas_sheet','Cobranzas (Flujo de Caja)','en_curso','degradada',$1)
-       on conflict (slug) do update set salud='degradada', notas=excluded.notas`,
-      [`sync abortado: ${sinValuar.length} fila(s) sin valuar. ${sinValuar[0]}`],
-    )
-    await closePool(); process.exit(1)
-  }
-  if (!cobranzas.length) { console.error('no leí filas de Cobranzas — abortando (no toco la tabla)'); await closePool(); process.exit(1) }
-  const enUsd = cobranzas.filter((c) => c.moneda === 'USD')
-  if (enUsd.length) console.log(`moneda: ${enUsd.length} fila(s) en USD valuadas a ${tc}`)
+  return { cobranzas, sinValuar, tc, crudo, conObra: Boolean(cat) }
+}
 
+async function compararConReplica(cobranzas, columnas) {
+  const { rows } = await query(`select ${columnas.join(', ')} from public.cobranzas where origen='cobranzas_sheet'`)
+  const d = diferenciasConReplica(cobranzas, rows, columnas)
+  const orden = (fs) => [...fs].sort((a, b) => (Number(a.sheet_id) - Number(b.sheet_id)) || String(a.sheet_id).localeCompare(String(b.sheet_id)))
+  const extremo = (fs) => (fs.length ? [fs[0], fs.at(-1)].map((f) => `ID ${f.sheet_id} ${f.obra_cliente} $${f.total_bruto} ${f.estado}`).join('  …  ') : '(vacía)')
+  console.log(`\n--dry · COMPARACIÓN CON LA RÉPLICA (no escribí nada)`)
+  console.log(`  filas        sheet ${d.conteo.sheet} · réplica ${d.conteo.replica}`)
+  for (const [k, s] of Object.entries(d.sumas)) console.log(`  Σ ${k.padEnd(11)} sheet ${s.sheet} · réplica ${s.replica}`)
+  console.log(`  primera/última sheet   ${extremo(orden(cobranzas))}`)
+  console.log(`  primera/última réplica ${extremo(orden(rows))}`)
+  console.log(`  sólo en el Sheet: ${d.soloEnSheet.join(', ') || '—'} · sólo en la réplica: ${d.soloEnReplica.join(', ') || '—'}`)
+  console.log(`  campos distintos: ${d.campos.length}`)
+  d.campos.slice(0, 15).forEach((c) => console.log(`    ID ${c.sheet_id} ${c.campo}: sheet=${JSON.stringify(c.sheet)} réplica=${JSON.stringify(c.replica)}`))
+}
+
+async function vincularClientes(cobranzas) {
   // ═══ A QUÉ CLIENTE PERTENECE CADA FILA (05/09/2026) ═══
   //
-  // `cliente_id` existía desde la migración del CRM y este sync nunca la escribía: 96 filas con
-  // NULL, y la vista `cliente_cuenta_corriente` —que filtra por `cliente_id is not null`—
-  // devolviendo cero para todo el mundo. La cara «Cuenta corriente» de la ficha estaba vacía.
-  //
-  // El vínculo se resuelve ACÁ y no en un backfill porque tres líneas más abajo hay un `delete`:
-  // cualquier cosa escrita aparte dura hasta la próxima corrida.
-  //
-  // Y se resuelve con `resolverCliente` de `lib/portal/`, que es el MISMO resolutor que usa
-  // `sync-esquema-cliente.mjs` para el portal. Escribí uno propio por tokens antes de buscar si ya
-  // existía; daba el mismo resultado sobre los ocho rótulos reales y lo tiré. Dos definiciones de
-  // «de qué cliente es esta cobranza» es exactamente el problema que el OS tiene prohibido: el día
-  // que se corrijan los alias, una se enteraría y la otra no.
+  // `cliente_id` existía desde la migración del CRM y este sync nunca la escribía: la vista
+  // `cliente_cuenta_corriente` devolvía cero para todo el mundo. El vínculo se resuelve ACÁ y no en un
+  // backfill porque más abajo hay un `delete`: cualquier cosa escrita aparte dura hasta la próxima
+  // corrida. Y con `resolverCliente` de `lib/portal/`, el MISMO resolutor del portal: dos definiciones
+  // de «de qué cliente es esta cobranza» es exactamente el problema que el OS tiene prohibido.
   const { rows: indice } = await query(
     `select a.alias, o.cliente_id
        from public.obra_alias a
@@ -153,11 +201,34 @@ async function main() {
     c.cliente_id = r.cliente_id
     if (!r.cliente_id) sinCliente.set(c.obra_cliente, r.motivo)
   }
-  const vinculadas = cobranzas.filter((c) => c.cliente_id).length
-  console.log(`clientes: ${vinculadas}/${cobranzas.length} filas vinculadas`)
-  // Un rótulo sin cliente NO es un error: MACRO, LIRIO y ADDATO facturan y no tienen alias. Se
-  // NOMBRAN para que uno nuevo se vea, en vez de quedar mudo en NULL.
+  console.log(`clientes: ${cobranzas.filter((c) => c.cliente_id).length}/${cobranzas.length} filas vinculadas`)
+  // Un rótulo sin cliente NO es un error: MACRO, LIRIO y ADDATO facturan y no tienen alias.
   for (const [rotulo, motivo] of sinCliente) console.log(`   sin cliente: «${rotulo}» — ${motivo}`)
+}
+
+async function main() {
+  const google = makeGoogleClient({ config: loadConfig(), scopes: DRY ? READONLY_SCOPES : WRITE_SCOPES })
+  const { cobranzas, sinValuar, crudo, conObra } = await leerCobranzas(google)
+  // UNA FILA QUE NO SE PUDO VALUAR NO SE GUARDA EN LA MONEDA EQUIVOCADA — Y TAMPOCO SE SALTEA EN
+  // SILENCIO. Se aborta la corrida entera: la tabla se borra y se reinserta completa, así que
+  // continuar publicaría una réplica a la que le falta plata sin que ninguna cara pueda notarlo.
+  if (sinValuar.length) {
+    console.error(`no puedo valuar ${sinValuar.length} fila(s) — abortando sin tocar la tabla (TC leído: ${JSON.stringify(crudo)})`)
+    sinValuar.forEach((m) => console.error(`   ${m}`))
+    if (!DRY) {
+      await query(
+        `insert into public.integraciones (slug, nombre, estado, salud, notas)
+         values ('cobranzas_sheet','Cobranzas (Flujo de Caja)','en_curso','degradada',$1)
+         on conflict (slug) do update set salud='degradada', notas=excluded.notas`,
+        [`sync abortado: ${sinValuar.length} fila(s) sin valuar. ${sinValuar[0]}`],
+      )
+    }
+    await closePool(); process.exit(1)
+  }
+  if (!cobranzas.length) { console.error('no leí filas de Cobranzas — abortando (no toco la tabla)'); await closePool(); process.exit(1) }
+  const enUsd = cobranzas.filter((c) => c.moneda === 'USD')
+  if (enUsd.length) console.log(`moneda: ${enUsd.length} fila(s) en USD valuadas`)
+  await vincularClientes(cobranzas)
 
   const conMoneda = await hayColumnasDeMoneda()
   if (!conMoneda) {
@@ -168,10 +239,11 @@ async function main() {
     'obra_cliente', 'orden_compra', 'concepto', 'monto_neto', 'iva', 'retenciones', 'total_bruto',
     'forma_cobro', 'estado', 'fecha_venta', 'fecha_cobro', 'mes_cobro', 'cliente_id',
     ...(conMoneda ? ['moneda', 'tipo_cambio', 'monto_neto_origen', 'total_bruto_origen'] : []),
-    ...(obraCol ? ['destino', 'obra_id', 'obra_celda'] : [])]
+    ...(conObra ? ['destino', 'obra_id', 'obra_celda'] : [])]
+  if (DRY) { await compararConReplica(cobranzas, columnas); await closePool(); return }
+
   const sql = `insert into public.cobranzas (${columnas.join(', ')}, origen, sincronizado_en)`
     + ` values (${columnas.map((_, i) => `$${i + 1}`).join(',')},'cobranzas_sheet',now())`
-
   await query('begin')
   try {
     await query("delete from public.cobranzas where origen='cobranzas_sheet'")
@@ -190,4 +262,8 @@ async function main() {
   est.forEach((r) => console.log(`  ${r.estado}: $${Number(r.t || 0).toLocaleString('es-AR')} (${r.n})`))
   await closePool()
 }
-main().catch((e) => { console.error(e); process.exit(1) })
+
+// Un import no corre el sync: los núcleos puros de arriba se prueban sin tocar la base ni el Sheet.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error(e); process.exit(1) })
+}

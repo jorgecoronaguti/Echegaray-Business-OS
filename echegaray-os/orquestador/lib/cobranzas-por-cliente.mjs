@@ -21,13 +21,21 @@
 // Facturado, Pendiente y Proyectado son plata que todavía no entró, y cada una es una gestión
 // distinta: al Facturado se lo reclama, al Proyectado se lo confirma.
 
-/** Las columnas de Cobranzas que usa el cuadro. */
-export const COL = { cliente: '$G', total: '$M', estado: '$O' }
+import { exigirColumnas } from './cobranzas-columnas.mjs'
+
+/**
+ * Las columnas de Cobranzas que usa el cuadro, por CLAVE de `COBRANZAS_OS`. Hasta el 14/09 eran
+ * `{ cliente: '$G', total: '$M', estado: '$O' }`: con «Obra» insertada en H el cuadro habría sumado
+ * «Retenciones / descuentos» por cliente filtrando por «Forma de Cobro» = "Cobrado", o sea cero.
+ */
+export const COLUMNAS_CUADRO = Object.freeze(['cliente', 'total', 'estado', 'fechaCobro', 'fechaVenta'])
 /** Hasta qué fila se lee. El mismo tope que el resto del archivo — ver FIN_COB en cash-flow-lineas. */
 export const FIN = 400
 export const INICIO = 5
 
-const r = (col) => `${col}$${INICIO}:${col}$${FIN}`
+/** `$G$5:$G$400` de una columna RESUELTA. */
+export const rangoCuadro = (col) => `$${col.letra}$${INICIO}:$${col.letra}$${FIN}`
+const r = rangoCuadro
 
 /** Los estados que significan "la plata todavía no entró". Salen de la propia pestaña, no se inventan. */
 export const NO_COBRADO = ['Facturado', 'Pendiente', 'Proyectado']
@@ -38,14 +46,17 @@ export const NO_COBRADO = ['Facturado', 'Pendiente', 'Proyectado']
  * @param {string} celdaCliente referencia a la celda con el nombre del cliente (ej. '$AC65')
  * @param {string} celdaTotalFacturado referencia absoluta al total, para el porcentaje
  * @param {{facturado:string, cobrado:string}} cols letras de las columnas del propio cuadro
+ * @param {number} fila
+ * @param {Record<string,{letra:string}>} cob columnas de Cobranzas resueltas por encabezado
  * @returns {{facturas:string, facturado:string, cobrado:string, pendiente:string, porcentaje:string}}
  */
-export function filaCliente(celdaCliente, celdaTotalFacturado, cols, fila) {
+export function filaCliente(celdaCliente, celdaTotalFacturado, cols, fila, cob) {
+  const { cliente, total, estado } = exigirColumnas(cob, ['cliente', 'total', 'estado'], 'filaCliente')
   return {
-    facturas: `=COUNTIF(${r(COL.cliente)};${celdaCliente})`,
-    facturado: `=SUMIF(${r(COL.cliente)};${celdaCliente};${r(COL.total)})`,
+    facturas: `=COUNTIF(${r(cliente)};${celdaCliente})`,
+    facturado: `=SUMIF(${r(cliente)};${celdaCliente};${r(total)})`,
     // POR ESTADO. Era ISNUMBER de la fecha de cobro, y por eso todo figuraba cobrado.
-    cobrado: `=SUMIFS(${r(COL.total)};${r(COL.cliente)};${celdaCliente};${r(COL.estado)};"Cobrado")`,
+    cobrado: `=SUMIFS(${r(total)};${r(cliente)};${celdaCliente};${r(estado)};"Cobrado")`,
     pendiente: `=${cols.facturado}${fila}-${cols.cobrado}${fila}`,
     // EL PORCENTAJE SE FORMATEA EN LA FÓRMULA, no con el formato de la celda.
     //
@@ -65,8 +76,9 @@ export function filaCliente(celdaCliente, celdaTotalFacturado, cols, fila) {
  * mismo defecto del rango fosilizado con otra cara. UNIQUE sobre la columna devuelve los clientes
  * que hay, ordenados, y crece solo.
  */
-export function formulaClientes() {
-  return `=IFERROR(SORT(UNIQUE(FILTER(${r(COL.cliente)};${r(COL.cliente)}<>"")));"")`
+export function formulaClientes(cob) {
+  const { cliente } = exigirColumnas(cob, ['cliente'], 'formulaClientes')
+  return `=IFERROR(SORT(UNIQUE(FILTER(${r(cliente)};${r(cliente)}<>"")));"")`
 }
 
 /**

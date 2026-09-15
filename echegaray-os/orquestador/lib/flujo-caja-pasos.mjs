@@ -125,9 +125,9 @@ export const PASOS = [
   // AN se calcula CONTRA AL, así que el orden entre las dos no es negociable: primero el saldo,
   // después el tramo. Las dos son ARRAYFORMULA vivas, así que una vez ancladas Google las recalcula
   // sola; el paso existe para que la definición sea del repositorio y no de una celda.
-  ['compras-saldo-pendiente.mjs', 'Compras!AL "Saldo pendiente (OS)" — la aritmética de los tres tramos de pago', [], ['--aplicar']],
-  ['proveedores-aging-columna.mjs', 'Compras!AN "Tramo de vencimiento (OS)" — el aging que lee el encabezado', [], ['--aplicar']],
-  ['proveedores-cuenta-corriente.mjs', 'Compras!AM "CUIT (OS)" + la auxiliar _PROVEEDORES_OS — el origen del CUIT de la sección 2', ['_PROVEEDORES_OS'], ['--aplicar']],
+  ['compras-saldo-pendiente.mjs', 'Compras «Saldo pendiente (OS)» — la aritmética de los tres tramos de pago', [], ['--aplicar']],
+  ['proveedores-aging-columna.mjs', 'Compras «Tramo de vencimiento (OS)» — el aging que lee el encabezado', [], ['--aplicar']],
+  ['proveedores-cuenta-corriente.mjs', 'Compras «CUIT (OS)» + la auxiliar _PROVEEDORES_OS — el origen del CUIT de la sección 2', ['_PROVEEDORES_OS'], ['--aplicar']],
   // ['proveedores-materiales-pestana.mjs', …] — RETIRADO, ver PASOS_RETIRADOS al pie.
   // ANTES DE LAS DOS DINÁMICAS: los títulos "1 · …" y "2 · …" son su ANCLA y no los reponía nadie.
   // Si el dueño borra esa celda, los dos pasos que siguen fallan cerrado —correcto— y la pestaña se

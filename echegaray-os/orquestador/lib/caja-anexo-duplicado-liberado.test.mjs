@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from './columnas-caja.fixture.mjs'
 import { bloqueTrazabilidad } from './caja-anexo-controles.mjs'
 import { evaluarFormula } from './evaluar-formula-sheet.mjs'
 import { CONTROLES, decisionesDe } from './decisiones-hallazgos.mjs'
@@ -37,7 +38,7 @@ function cobranzas({ conParDeControl = true } = {}) {
 
 function terminoDuplicado(opciones) {
   const rows = []
-  const h = { rows, refs: {}, get n() { return rows.length }, push(r) { rows.push(r); return rows.length } }
+  const h = { rows, refs: { columnas: COLUMNAS_HOY }, get n() { return rows.length }, push(r) { rows.push(r); return rows.length } }
   bloqueTrazabilidad(h, opciones)
   const f = rows.find((r) => String(r[0]).includes('DOS VECES'))
   assert.ok(f, 'el bloque A7 tiene el término de cobros cargados dos veces')

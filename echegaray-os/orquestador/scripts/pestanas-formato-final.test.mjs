@@ -18,6 +18,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from '../lib/columnas-caja.fixture.mjs'
 import { pintar, numerosDibujadosComoTexto, a1 } from '../lib/formato-en-capas.mjs'
 import { grilla as grillaCaja, formatear as formatearCaja } from './caja-pestana.mjs'
 import { ANCHO as ANCHO_CAJA } from '../lib/caja-grilla.mjs'
@@ -51,6 +52,7 @@ const veredicto = (malas) => malas.map((m) => `${a1(m.fila, m.col)} → ${m.form
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 const REFS_CAJA = {
+  columnas: COLUMNAS_HOY,
   bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito',
   chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 },
 }
@@ -72,7 +74,7 @@ test('CAJA: ninguna celda que devuelve un número queda dibujada como texto', as
 // _CAJA_ANEXO
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-const REFS_ANEXO = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', cierre: 60, inicio: 50, cab: 5 }
+const REFS_ANEXO = { columnas: COLUMNAS_HOY, bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', cierre: 60, inicio: 50, cab: 5 }
 const CARTERA = {
   origen: 'test',
   enCartera: [{ numero: '00000514', emisor: 'Mineral Del Río' }],
@@ -121,6 +123,7 @@ test('_CAJA_ANEXO: el bloque declara QUÉ FILAS cuentan, y son las que tienen co
 const C_COMPRAS = { total: 'O', concepto: 'L', fecha: 'AD', rubro: 'AB', fechaPrev: 'Q', detalle: 'K' }
 const impuestos = () => grillaImpuestos({
   anio: 2026,
+  cob: COLUMNAS_HOY.cobranzas,
   C: C_COMPRAS,
   hoy: '2026-08-06',
   iibb: [1, 2, 3, 4, 5, 6].map((m) => ({ periodo: `2026-0${m}` })),

@@ -33,6 +33,8 @@
 // dato que le dice qué le hicimos. Un filtro que tapa lo bueno para atrapar lo malo publica menos
 // verdad, no más.
 
+import { COBRANZAS_OS, exigirColumnas } from '../cobranzas-columnas.mjs'
+
 /** Los verbos y avisos que sólo se le escriben a alguien de la empresa. Palabra entera y en MAYÚSCULAS. */
 export const IMPERATIVOS_INTERNOS = [
   'RECLAMAR', 'RECLAMO', 'REVISAR', 'OJO', 'PEDIR', 'FALTA', 'FALTAN', 'AVISAR', 'CHEQUEAR',
@@ -87,22 +89,32 @@ export function rotuloPublicable(p) {
 }
 
 /**
- * LAS FILAS PUBLICADAS CUYO CONCEPTO ES UNA NOTA INTERNA — para que el dueño las mueva a Notas (W).
+ * LAS FILAS PUBLICADAS CUYO CONCEPTO ES UNA NOTA INTERNA — para que el dueño las mueva a «Notas».
  *
  * El portal ya no las muestra, y por eso hace falta este informe: un defecto tapado en pantalla y no
- * dicho en ningún lado es un defecto que nadie arregla nunca. Cada línea trae la CELDA exacta
- * (`Cobranzas!I<fila>`), que es lo único que hace falta para corregirlo.
+ * dicho en ningún lado es un defecto que nadie arregla nunca. Cada línea trae la CELDA exacta, que es
+ * lo único que hace falta para corregirlo.
+ *
+ * LA CELDA NO LLEVA UNA LETRA TIPEADA (14/09/2026). Era `Cobranzas!I<fila>` → `W<fila>`; con «Obra»
+ * insertada en H el informe mandaba a mover el concepto desde la OC hacia «Estado cobro». Con las
+ * columnas resueltas (`cols`) nombra la celda A1; sin ellas —el sync del portal no lee el Sheet—
+ * nombra la fila y el RÓTULO, que es verdad antes y después de cualquier inserción.
  *
  * @param filas `[{ cliente, concepto, cobranza_fila, visible_portal, publicado_at }]`
+ * @param {Record<string,{letra:string}>|null} [cols] columnas de Cobranzas resueltas por encabezado
  */
-export function conceptosInternosPublicados(filas = []) {
+export function conceptosInternosPublicados(filas = [], cols = null) {
+  const donde = (fila, clave, rotulo) => {
+    if (fila == null) return null
+    return cols ? `Cobranzas!${exigirColumnas(cols, [clave], 'conceptosInternosPublicados')[clave].letra}${fila}` : `Cobranzas fila ${fila} · «${rotulo}»`
+  }
   return filas
     .filter((f) => f?.visible_portal === true && f?.publicado_at != null && esNotaInterna(f?.concepto))
     .map((f) => ({
       cliente: f?.cliente ?? null,
       concepto: String(f?.concepto ?? ''),
       cobranza_fila: f?.cobranza_fila ?? null,
-      celda: f?.cobranza_fila == null ? null : `Cobranzas!I${f.cobranza_fila}`,
-      mover_a: f?.cobranza_fila == null ? null : `Cobranzas!W${f.cobranza_fila}`,
+      celda: donde(f?.cobranza_fila, 'concepto', COBRANZAS_OS.concepto),
+      mover_a: donde(f?.cobranza_fila, 'notas', COBRANZAS_OS.notas),
     }))
 }

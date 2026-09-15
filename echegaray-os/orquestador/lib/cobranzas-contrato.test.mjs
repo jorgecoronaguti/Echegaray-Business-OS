@@ -9,8 +9,10 @@ import assert from 'node:assert/strict'
 import {
   contratoDeclarado, contratoDeObra, enElAnio, filasDeObra, normalizarMoneda, monedasDesconocidas, saldoDeObra,
   sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO, contratoUsdDeclarado, sinCuentas, prefiereContratoUsd, valuarFilaCobranza,
-  RANGO_COBRANZAS, IDX_MONEDA_COBRANZAS, COL_MONEDA_COBRANZAS, indiceDeColumna,
+  RANGO_COBRANZAS, indiceDeColumna,
 } from './cobranzas-contrato.mjs'
+import { columnasCobranzas } from './cobranzas-columnas.mjs'
+import { COBRANZAS_1409, COBRANZAS_CON_OBRA } from './encabezados-referencia.mjs'
 import { FILAS, COLUMNAS, comoFilas, DESDE } from './cobranzas-fixture.mjs'
 
 const COLS = { cliente: 6, concepto: 8, oc: 7, moneda: 26 }
@@ -323,15 +325,18 @@ test('sin tipo de cambio, o con una moneda que no se entiende, NO se devuelve ni
   assert.equal(rara.importes, undefined)
 })
 
-test('el rango que replica Cobranzas LLEGA hasta la columna de la moneda: A5:R nunca la leía', () => {
-  // Éste es el defecto entero, en una línea: la R es la columna 18 y la moneda es la 27. Mientras el
-  // rango se escribía a mano, la columna declarada y la columna leída eran dos verdades distintas.
-  assert.equal(IDX_MONEDA_COBRANZAS, 26)
+test('el rango que replica Cobranzas lee la fila ENTERA: la moneda queda adentro antes y después de «Obra»', () => {
+  // El defecto, dos veces: `A5:R` no llegaba a la moneda (27.ª), y `A5:AA` —derivado de su letra—
+  // la deja afuera en cuanto «Obra» entra en H y la moneda pasa a la AB.
   assert.equal(indiceDeColumna('A'), 0)
   assert.equal(indiceDeColumna('R'), 17, 'hasta donde llegaba el rango viejo')
-  assert.ok(RANGO_COBRANZAS.includes(`A5:${COL_MONEDA_COBRANZAS}`), `el rango es ${RANGO_COBRANZAS}`)
-  const hasta = /A5:([A-Z]+)/.exec(RANGO_COBRANZAS)[1]
-  assert.ok(indiceDeColumna(hasta) >= IDX_MONEDA_COBRANZAS, 'el rango no puede quedarse corto de la moneda')
+  const hasta = /A5:([A-Z]+)5000$/.exec(RANGO_COBRANZAS)?.[1]
+  assert.equal(hasta, 'BZ', `el rango es ${RANGO_COBRANZAS}`)
+  const antes = columnasCobranzas(COBRANZAS_1409, ['moneda']).moneda
+  const despues = columnasCobranzas(COBRANZAS_CON_OBRA, ['moneda']).moneda
+  assert.deepEqual([antes.letra, despues.letra], ['AA', 'AB'])
+  assert.ok(despues.indice > indiceDeColumna('AA'), 'con «Obra», el rango A5:AA dejaba la moneda afuera')
+  assert.ok(despues.indice <= indiceDeColumna(hasta), 'el rango no puede quedarse corto de la moneda')
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

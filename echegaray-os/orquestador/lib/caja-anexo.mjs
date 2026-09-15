@@ -27,7 +27,7 @@ import {
   formulaJornalesBancoPosteriores, formulaOficinaBancoPosteriores, formulaOficinaSinCanal,
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores, formulaDepositosEfectivoPosteriores,
   formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores,
-  formulaFechaUltimoEfectivo,
+  formulaFechaUltimoEfectivo, mapasDe,
 } from './caja-posterior-al-corte.mjs'
 import { anclaDeSalida } from './caja-ancla-por-instante.mjs'
 import { filaHuecoDelExtracto, filaRetenidoPorElBanco } from './banco-detalle-declarado.mjs'
@@ -148,10 +148,10 @@ export const FECHA_ULTIMO_EFECTIVO = {
  */
 export const HISTORICO_EFECTIVO_BASE = [
   { rotulo: '      · (+) cobrado en efectivo — desde el conteo', entra: true,
-    fn: (A) => `=${formulaCobrosEfectivoPosteriores(A)}`,
+    fn: (A, m) => `=${formulaCobrosEfectivoPosteriores(A, m.cob)}`,
     origen: 'Cobranzas: forma "Efectivo" Y estado "Cobrado"' },
   { rotulo: '      · (−) pagado en efectivo — desde el conteo', entra: false,
-    fn: (A) => `=-(${formulaComprasEfectivoPosteriores(A)})`,
+    fn: (A, m) => `=-(${formulaComprasEfectivoPosteriores(A, m.cmp)})`,
     origen: 'Compras en efectivo: el MONTO PAGADO, parcial o total' },
   { rotulo: '      · (−) jornales pagados en efectivo — desde el conteo', entra: false,
     fn: (A) => `=-(${formulaJornalesEfectivoPosteriores(A)})`,
@@ -185,7 +185,7 @@ export const HISTORICO_EFECTIVO_BASE = [
  * LO QUE LA VENTANA NO PUEDE, DICHO: un parcial que crece sobre una fila vieja no tiene fecha nueva.
  * El techo de `dictamenEfectivo` vigila esa punta.
  */
-export function historicoEfectivo(ancla = '0') {
+export function historicoEfectivo(ancla = '0', mapas = {}) {
   // ═══ EL MISMO DÍA DEL CONTEO: ASIMÉTRICO, Y A PROPÓSITO (15/08/2026) ═══
   //
   // Ninguna fuente guarda hora (medido: 1 valor con parte horaria sobre 2.198), así que un hecho
@@ -205,7 +205,9 @@ export function historicoEfectivo(ancla = '0') {
   // `anclaDeSalida` vive en caja-ancla-por-instante.mjs porque la lee también la fórmula que publica la
   // FECHA del último movimiento: las dos tienen que mirar EXACTAMENTE la misma ventana.
   const desdeElDia = anclaDeSalida(ancla)
-  return HISTORICO_EFECTIVO_BASE.map((l) => ({ ...l, formula: l.fn(l.entra ? ancla : desdeElDia) }))
+  // `mapas`: las columnas de Compras y Cobranzas de esta corrida (`mapasDe(refs)`). Los renglones que
+  // no las usan (jornales, oficina, extracto) las ignoran.
+  return HISTORICO_EFECTIVO_BASE.map((l) => ({ ...l, formula: l.fn(l.entra ? ancla : desdeElDia, mapas) }))
 }
 
 /** Compatibilidad: los consumidores que sólo necesitan rótulo/entra/origen. */
@@ -311,6 +313,8 @@ function hoja(ctx) {
 function bloqueMovimientos(h) {
   const { push } = h
   const corte = DESDE_CAJA.bancoCorte
+  // Las columnas de Compras y Cobranzas de ESTA corrida, por rótulo. Sin ellas no se arma el bloque.
+  const m = mapasDe(h.refs)
   push(['A1 · MOVIMIENTOS POSTERIORES — DE QUÉ SE COMPONEN LOS DOS NETOS DE CAJA'])
   push(['Concepto', 'Moneda', 'Importe', '', '', 'Fecha', 'De dónde sale'])
 
@@ -341,10 +345,10 @@ function bloqueMovimientos(h) {
   push(['Posteriores al CORTE DEL EXTRACTO — el neto suma al total de CAJA', '', '', '', '',
     `=IF(ISNUMBER(${corte});${corte};"")`, ''])
   push(['   · (+) cobros acreditados después del corte', 'ARS',
-    `=${formulaCobrosPosteriores(corte)}`, '', '', '',
+    `=${formulaCobrosPosteriores(corte, m.cob)}`, '', '', '',
     'Cobranzas en estado Cobrado (sin echeq), con fecha posterior al corte'])
   push(['   · (−) pagos debitados después del corte', 'ARS',
-    `=-(${formulaChequesDebitadosPosteriores(corte)}+${formulaComprasPagadasPosteriores(corte)})`, '', '', '',
+    `=-(${formulaChequesDebitadosPosteriores(corte)}+${formulaComprasPagadasPosteriores(corte, m.cmp)})`, '', '', '',
     'Cheques propios debitados + compras pagadas por transferencia o débito'])
   // LA NÓMINA EN SU PROPIO RENGLÓN: es la salida más grande y más regular de la empresa, y mezclarla
   // con los cheques la vuelve invisible justo cuando hay que explicar por qué bajó la caja.
@@ -431,7 +435,7 @@ function bloqueMovimientos(h) {
   // así que el desglose no puede decir otra cosa que el total. En D, lo que ESE renglón valía cuando
   // se selló el conteo: la resta contra su C dice quién se movió, que es lo que el 14/08 no se podía
   // ver con un solo número sellado para los seis.
-  for (const l of historicoEfectivo(`$F$${fSello}`)) push([l.rotulo, 'ARS', l.formula, 0, '', '', l.origen])  // D en 0: con ventana el sello por
+  for (const l of historicoEfectivo(`$F$${fSello}`, m)) push([l.rotulo, 'ARS', l.formula, 0, '', '', l.origen])  // D en 0: con ventana el sello por
     // renglón ya no resta nada. Dejarlo con la foto del histórico completo hacía que el TECHO diera
     // -$141.300.064 y el control gritara "imposible" sobre una caja perfectamente sana.
   // EL SELLO. D lleva el número sellado (lo escribe el generador, no una persona); F, la fecha del
@@ -490,7 +494,7 @@ function bloqueMovimientos(h) {
   // (`ANEXO_CONTEO_ARS_DIA`, dos filas arriba) y no `INT` del instante: el instante puede caer del otro
   // lado de la medianoche y publicaría un día que el conteo no tuvo.
   const fUltimoEfectivo = push([FECHA_ULTIMO_EFECTIVO.rotulo, '', '', '', '',
-    formulaFechaUltimoEfectivo(ancla, { conteo: ANEXO.conteoArsDia }), FECHA_ULTIMO_EFECTIVO.origen])
+    formulaFechaUltimoEfectivo(ancla, { conteo: ANEXO.conteoArsDia, ...m }), FECHA_ULTIMO_EFECTIVO.origen])
   return {
     fNeto, fSinCanal, fSello, fEstado, fImposible, fCargaTardia, fFechaArs, fFechaUsd, fUltimoEfectivo,
     filasHistorico: [f0, fSello - 1],
@@ -537,7 +541,7 @@ function bloqueCartera(h) {
   // réplica del banco (`_CHEQUES_RAW`); esta línea le pregunta lo mismo a COBRANZAS. Los dos miran la
   // misma plata desde lados distintos, que es la única forma de que la diferencia signifique algo.
   const fControl = push(['⇒ Control: qué dice Cobranzas de estos cheques', '',
-    CUENTAS.find((c) => c.control)?.control ?? '', '', '', '',
+    CUENTAS.find((c) => c.control)?.control(h.refs?.columnas?.cobranzas) ?? '', '', '', '',
     'Cobranzas sabe que el echeq se cobró; no sabe qué pasó DESPUÉS con el valor'])
   // Cobranzas registra que el echeq se cobró —y es cierto— pero no sabe qué pasó DESPUÉS con el valor.
   // Si este número es mayor que el de la cartera, la diferencia son cheques que se endosaron.

@@ -7,6 +7,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from './columnas-caja.fixture.mjs'
 import { BANDA, FILA_HDR, FILA_DATO0, FILA_FIN, rangoAbierto, rangoCerrado, rangoEn } from './cheques-emitidos-geometria.mjs'
 import { INSTRUMENTOS, rangoInstrumento } from './cash-flow-lineas.mjs'
 import { deChequesEmitidos } from './libro-extractores.mjs'
@@ -57,7 +58,7 @@ test('libro-extractores: el default de deChequesEmitidos es la primera fila de d
 })
 
 test('caja-anexo-controles: TODOS sus rangos a Cheques Emitidos arrancan en la primera fila de datos', () => {
-  const g = grillaAnexo({})
+  const g = grillaAnexo({ refs: { columnas: COLUMNAS_HOY } })
   const refs = JSON.stringify(g.filas).match(/Cheques Emitidos'!\$[A-Z]+\$\d+:\$[A-Z]+\$\d+/g) || []
   assert.ok(refs.length >= 6, `esperaba varias referencias y encontré ${refs.length}: el test dejó de mirar lo que decía mirar`)
   for (const r of refs) {

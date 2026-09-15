@@ -25,6 +25,8 @@ import { MARCAS } from '../lib/cheques-cobertura.mjs'
 import { EN_CARTERA } from '../lib/cartera-cheques.mjs'
 import { PESTAÑA as RAW_CHEQUES, COL as COL_CHEQUE, FILA0 as FILA0_CHEQUES } from './cheques-raw-pestana.mjs'
 import { BORDES } from '../lib/caja-grilla.mjs'
+import { COMPRAS, columnasDe, lectorDeEncabezados, rangoHasta } from '../lib/columnas-por-encabezado.mjs'
+import { columnasCobranzas } from '../lib/cobranzas-columnas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -312,9 +314,15 @@ async function main() {
   }
 
   // 4 · TODO lo demás sale de Compras, por su fecha de caja. NADA de esto lo veía el calendario.
-  const [cRubro, cFecha, cTotal, cSub] = await Promise.all([
-    col('Compras!AC4:AC5000'), col('Compras!AD4:AD5000'), col('Compras!O4:O5000'), col('Compras!AF4:AF5000'),
-  ])
+  // LAS COLUMNAS, POR RÓTULO CONTRA LA FILA DE ENCABEZADO DE ESTA CORRIDA (14/09/2026). Eran AC/AD/O/AF
+  // y M/O/Q tipeadas: con «Obra» insertada en Compras L y Cobranzas H, la conciliación habría sumado
+  // el IVA como egreso y las retenciones como cobro, y el residuo habría sido la columna de al lado.
+  const lector = lectorDeEncabezados(g, ID)
+  const cc = columnasDe(await lector.encabezado('Compras'),
+    { rubro: COMPRAS.rubro, fecha: COMPRAS.fechaCaja, total: COMPRAS.total, sub: COMPRAS.subRubro }, 'Compras')
+  const kb = columnasCobranzas(await lector.encabezado('Cobranzas'), ['total', 'estado', 'fechaCobro'])
+  const [cRubro, cFecha, cTotal, cSub] = await Promise.all(
+    [cc.rubro, cc.fecha, cc.total, cc.sub].map((c) => col(rangoHasta('Compras', c, 5000))))
   // La nómina NO se toma de Compras: su fuente es la planilla (arriba). Tomarla acá la duplicaría.
   const DESDE_PLANILLA = new Set(['Nómina · Jornales de obra', 'Nómina · Sueldos administración'])
   const porRubro = new Map()
@@ -350,7 +358,7 @@ async function main() {
   conceptos.push({ nombre: 'IVA e IIBB a pagar (calendario fiscal)', enViejo: false, enNuevo: true, tramos: repartir(fiscales, bordes) })
 
   // ── LO QUE ENTRA ───────────────────────────────────────────────────────────────────────────────
-  const [cobM, cobO, cobQ] = await Promise.all([col('Cobranzas!M5:M400'), col('Cobranzas!O5:O400'), col('Cobranzas!Q5:Q400')])
+  const [cobM, cobO, cobQ] = await Promise.all([kb.total, kb.estado, kb.fechaCobro].map((c) => col(rangoHasta('Cobranzas', c, 400))))
   const esperadas = []
   for (let i = 0; i < 400; i++) {
     const est = String(cobO[i] ?? '').toLowerCase()

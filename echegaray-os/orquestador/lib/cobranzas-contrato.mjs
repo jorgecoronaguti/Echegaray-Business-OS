@@ -41,6 +41,8 @@
 // composición (`valores`, con la fila de la que salió cada uno) y marca `partido`: el número que
 // decide se publica, y la evidencia de cómo se formó viaja con él para que se pueda desmentir.
 
+import { rangoFilas } from './columnas-por-encabezado.mjs'
+
 /**
  * EL MARCADOR QUE CONVIERTE UN NÚMERO EN UN CONTRATO.
  *
@@ -165,11 +167,12 @@ export function normalizarMoneda(valor) {
 }
 
 /**
- * LA COLUMNA "Moneda" DE COBRANZAS, DECLARADA COMO RESPALDO POSICIONAL.
+ * LA COLUMNA "Moneda" DE COBRANZAS COMO LETRA — SÓLO PARA EL LECTOR QUE TODAVÍA NO SE MIGRÓ.
  *
- * Se resuelve SIEMPRE por rótulo primero —una columna insertada mueve la letra y no el nombre—; esto
- * es lo que se usa cuando el rótulo no aparece en el encabezado leído. Mismo patrón que
- * `COL_VALOR_BANCO` para la BB. Verificado contra el archivo vivo el 13/08/2026.
+ * Desde el 14/09/2026 el grupo Cobranzas resuelve la moneda por rótulo (`cobranzas-columnas.mjs`) y
+ * no usa esta constante. Queda exportada únicamente porque `libro-extractores-cobranzas.mjs` (grupo
+ * lectores, otra rama) la usa de respaldo: con «Obra» insertada en H la moneda es la AB, y este
+ * respaldo apunta a «Ret IIBB». Se borra cuando ese lector quede migrado.
  */
 export const COL_MONEDA_COBRANZAS = 'AA'
 
@@ -177,18 +180,15 @@ export const COL_MONEDA_COBRANZAS = 'AA'
 export const indiceDeColumna = (letra) =>
   String(letra).toUpperCase().split('').reduce((a, c) => a * 26 + (c.charCodeAt(0) - 64), 0) - 1
 
-/** Índice 0-based de la columna "Moneda" dentro de una fila leída desde la A. */
-export const IDX_MONEDA_COBRANZAS = indiceDeColumna(COL_MONEDA_COBRANZAS)
-
 /**
- * EL RANGO QUE HAY QUE LEER PARA REPLICAR COBRANZAS — DERIVADO DE LA COLUMNA DE LA MONEDA.
+ * EL RANGO QUE HAY QUE LEER PARA REPLICAR COBRANZAS — LA FILA ENTERA.
  *
  * `sync-cobranzas.mjs` lo tenía escrito a mano como `A5:R5000` y por eso la moneda no llegaba nunca:
- * la R es la 18 y la moneda es la 27. Un rango a mano y una columna declarada aparte son dos verdades
- * que se separan sin avisar — el modo de falla no es un error, es una fila en dólares sumada como
- * pesos. Acá el rango NO PUEDE quedarse corto: sale de la misma constante.
+ * la R es la 18 y la moneda es la 27. Después se derivó de la letra de la moneda (`A5:AA5000`), que
+ * con «Obra» insertada en H vuelve a dejar la moneda —ahora en AB— una columna afuera. Se lee la fila
+ * entera y cada columna se indexa por su rótulo: el rango no puede quedarse corto de ninguna.
  */
-export const RANGO_COBRANZAS = `Cobranzas!A5:${COL_MONEDA_COBRANZAS}5000`
+export const RANGO_COBRANZAS = rangoFilas('Cobranzas', 5, 5000)
 
 /**
  * LA FORMA DE COBRO, TRADUCIDA AL INSTRUMENTO. PURA.

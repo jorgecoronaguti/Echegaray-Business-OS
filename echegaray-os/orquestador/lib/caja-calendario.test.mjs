@@ -23,12 +23,13 @@ import {
   BORDES, DESDE_SIEMPRE, cobranzasEsperadasTramo, columnasEsperadas, desdeTramo, hastaTramo, signoDelTramo, TRAMO_VENCIDO,
 } from './caja-calendario.mjs'
 import { COBRANZAS_1409, COBRANZAS_CON_OBRA } from './encabezados-referencia.mjs'
+import { COLUMNAS_HOY } from './columnas-caja.fixture.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { NO_REAL } from './caja-tarjetas.mjs'
 import { sumar, movimiento, ENTRA, SALE } from './libro-movimientos.mjs'
 import { grilla } from '../scripts/caja-pestana.mjs'
 
-const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 } }
+const REFS = { columnas: COLUMNAS_HOY, bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 } }
 
 test('el tramo del pasado cuenta LO QUE SE DEBE, no lo que no se cobró', () => {
   assert.equal(BORDES[TRAMO_VENCIDO][0], 'Vencido — ya pasó la fecha',
@@ -89,5 +90,5 @@ test('las cobranzas esperadas leen Estado, Fecha cobro y TOTAL por rótulo, ante
   const despues = cobranzasEsperadasTramo('A', 'B', columnasEsperadas(COBRANZAS_CON_OBRA))
   assert.ok(despues.includes('LOWER(Cobranzas!$P$5:$P$400)'), despues)
   assert.ok(despues.includes('(Cobranzas!$R$5:$R$400>=A)') && despues.includes('ISNUMBER(Cobranzas!$N$5:$N$400)'), despues)
-  assert.throws(() => cobranzasEsperadasTramo('A', 'B'), /resueltas por rótulo/)
+  assert.throws(() => cobranzasEsperadasTramo('A', 'B'), /resueltas por encabezado/)
 })

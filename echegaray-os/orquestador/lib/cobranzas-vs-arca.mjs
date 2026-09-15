@@ -10,6 +10,8 @@
 // corrida, que es donde se mira cuando el débito de un mes no cierra. Núcleo puro; el generador le
 // pasa las filas crudas de `Cobranzas!A5:Q` y de `_ARCA_RAW!A4:L`.
 
+import { exigirColumnas } from './cobranzas-columnas.mjs'
+
 const serialAPeriodo = (s) => {
   const d = new Date(Date.UTC(1899, 11, 30) + Number(s) * 86400000)
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
@@ -26,39 +28,44 @@ export const claveDeComprobante = (texto) => {
 }
 
 /**
- * NÚCLEO PURO. `cobranzas` = filas de `Cobranzas!A5:Q` (índices: 1 categoría · 4 comprobante ·
- * 6 cliente · 9 neto · 15 fecha de factura · 16 fecha de cobro), `arca` = filas de `_ARCA_RAW!A4:L`
- * (0 período · 1 libro · 2 fecha · 6 punto de venta · 7 número · 9 razón social · 10 neto · 11 IVA).
+ * NÚCLEO PURO. `cobranzas` = filas de Cobranzas desde la fila 5, leídas desde la A; cada dato por su
+ * RÓTULO con `cols` (categoría · comprobante · cliente · neto · fecha de factura · fecha de cobro —
+ * eran los índices 1/4/6/9/15/16, que con «Obra» en H apuntaban a la columna de al lado).
+ * `arca` = filas de `_ARCA_RAW!A4:L` (0 período · 1 libro · 2 fecha · 6 punto de venta · 7 número ·
+ * 9 razón social · 10 neto · 11 IVA): esa réplica la escribe el OS y no recibe la columna nueva.
  */
-export function conciliarCobranzasConArca(cobranzas = [], arca = [], { hoy, primeraFila = 5 } = {}) {
+export function conciliarCobranzasConArca(cobranzas = [], arca = [], { hoy, primeraFila = 5, cols } = {}) {
+  const c = exigirColumnas(cols, ['categoria', 'comprobante', 'cliente', 'neto', 'fechaFactura', 'fechaCobro'], 'conciliarCobranzasConArca')
+  const en = (fila, k) => fila?.[c[k].indice]
   const enCurso = String(hoy ?? '').slice(0, 7)
   const ventas = new Map()
-  for (const r of arca) if (r?.[1] === 'Ventas') ventas.set(`${Number(r[6])}-${Number(r[7])}`, { fecha: r[2], periodo: r[0], neto: Number(r[10]) || 0, iva: Number(r[11]) || 0, razon: String(r[9] ?? '') })
-  const B = cobranzas.map((r, i) => ({ fila: primeraFila + i, r })).filter(({ r }) => String(r?.[1] ?? '').trim().toUpperCase() === 'B')
+  for (const a of arca) if (a?.[1] === 'Ventas') ventas.set(`${Number(a[6])}-${Number(a[7])}`, { fecha: a[2], periodo: a[0], neto: Number(a[10]) || 0, iva: Number(a[11]) || 0, razon: String(a[9] ?? '') })
+  const B = cobranzas.map((r, i) => ({ fila: primeraFila + i, r })).filter(({ r }) => String(en(r, 'categoria') ?? '').trim().toUpperCase() === 'B')
   const out = { noEstaEnArca: [], fechaEnOtroMes: [], sinNumeroPeroEmitida: [], vencidasSinEmitir: [], arcaSinFila: [] }
   const vistas = new Set()
   for (const { fila, r } of B) {
-    const k = claveDeComprobante(r[4])
-    const cliente = String(r[6] ?? '').trim()
-    const neto = Number(r[9]) || 0
+    const k = claveDeComprobante(en(r, 'comprobante'))
+    const cliente = String(en(r, 'cliente') ?? '').trim()
+    const neto = Number(en(r, 'neto')) || 0
+    const factura = en(r, 'fechaFactura')
     if (k) {
       vistas.add(k)
       const a = ventas.get(k)
-      if (!a) { out.noEstaEnArca.push({ fila, cliente, comprobante: k, fecha: serialADMY(r[15]), neto }); continue }
-      if (Number.isFinite(Number(r[15])) && r[15] && serialAPeriodo(r[15]) !== a.periodo) {
-        out.fechaEnOtroMes.push({ fila, cliente, comprobante: k, enCobranzas: serialADMY(r[15]), enArca: serialADMY(a.fecha), periodoArca: a.periodo })
+      if (!a) { out.noEstaEnArca.push({ fila, cliente, comprobante: k, fecha: serialADMY(factura), neto }); continue }
+      if (Number.isFinite(Number(factura)) && factura && serialAPeriodo(factura) !== a.periodo) {
+        out.fechaEnOtroMes.push({ fila, cliente, comprobante: k, enCobranzas: serialADMY(factura), enArca: serialADMY(a.fecha), periodoArca: a.periodo })
       }
       continue
     }
-    if (Number.isFinite(Number(r[15])) && r[15] && serialAPeriodo(r[15]) < enCurso) {
-      out.vencidasSinEmitir.push({ fila, cliente, fecha: serialADMY(r[15]), cobro: serialADMY(r[16]), neto })
+    if (Number.isFinite(Number(factura)) && factura && serialAPeriodo(factura) < enCurso) {
+      out.vencidasSinEmitir.push({ fila, cliente, fecha: serialADMY(factura), cobro: serialADMY(en(r, 'fechaCobro')), neto })
     }
   }
   // Facturas de ARCA que ninguna fila referencia por número: se les busca una fila B sin número del
   // mismo importe (o cuya suma por cliente lo dé), para que el dueño sepa qué número cargar dónde.
   for (const [k, a] of ventas) {
     if (vistas.has(k)) continue
-    const candidatas = B.filter(({ r }) => !claveDeComprobante(r[4]) && Math.abs((Number(r[9]) || 0) - a.neto) < 2).map((x) => x.fila)
+    const candidatas = B.filter(({ r }) => !claveDeComprobante(en(r, 'comprobante')) && Math.abs((Number(en(r, 'neto')) || 0) - a.neto) < 2).map((x) => x.fila)
     out.arcaSinFila.push({ comprobante: k, fecha: serialADMY(a.fecha), razon: a.razon, neto: a.neto, iva: a.iva, filasCandidatas: candidatas })
     for (const f of candidatas) out.sinNumeroPeroEmitida.push({ fila: f, comprobante: k })
   }

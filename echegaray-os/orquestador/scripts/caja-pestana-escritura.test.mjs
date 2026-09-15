@@ -6,10 +6,11 @@
 // el FUENTE del script — una secuencia de efectos no se puede probar con mocks: probaría el mock.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { COLUMNAS_HOY } from '../lib/columnas-caja.fixture.mjs'
 import { readFileSync } from 'node:fs'
 import { grilla } from './caja-pestana.mjs'
 
-const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 } }
+const REFS = { columnas: COLUMNAS_HOY, bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 } }
 const construir = () => grilla(new Map(), REFS)
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

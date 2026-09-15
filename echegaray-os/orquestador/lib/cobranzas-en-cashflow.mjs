@@ -27,8 +27,8 @@ import { cruzarConElBanco } from './cobranzas-respaldo-banco.mjs'
 // LA VALUACIÓN ES LA MISMA FUNCIÓN QUE USA EL EXTRACTOR DEL LIBRO, importada y no copiada. Los dos
 // lados de esta comparación tienen que hablar la misma moneda o el control mide su propia diferencia
 // de criterio en vez de medir el dato (ver el bloque de la fila 62 más abajo).
-import { valuarEnPesos, COL_MONEDA_COBRANZAS, instrumentoDeCobro } from './cobranzas-contrato.mjs'
-import { colIndex } from './rubro-caja.mjs'
+import { valuarEnPesos, instrumentoDeCobro } from './cobranzas-contrato.mjs'
+import { columnasCobranzas, ubicarPorPrefijo } from './cobranzas-columnas.mjs'
 // El NOMBRE del rango con nombre del dólar, importado y no transcrito: es la marca por la que se
 // reconoce una fila atada a la cotización (ver `atadaAlDolar`).
 import { RANGO_TC } from './tipo-cambio.mjs'
@@ -41,16 +41,38 @@ export { esCobrado, esPendiente, repasar, porMes } from './cobranzas-repaso.mjs'
 /** La sub-línea del rubro Cobranzas, tal como la escribe la matriz ("· Cobranzas"). */
 export const SUB_COBRANZAS = rotuloSub('Cobranzas').trim()
 
-/** Las columnas de Cobranzas, por índice desde A=0. Verificadas contra el encabezado del 21/07;
- *  comprobante/emisión agregados el 04/08 y reverificados contra la fila 4 real. */
-export const C = {
-  emision: 2, comprobante: 4, unidad: 5, cliente: 6, concepto: 8,
-  total: 12, forma: 13, estado: 14, fechaVenta: 15, fechaCobro: 16,
-  // La letra se IMPORTA del contrato de Cobranzas (`COL_MONEDA_COBRANZAS`) en vez de transcribir el
-  // 26: el día que la columna se mueva, se mueve en un solo lugar y los dos lados siguen mirando la
-  // misma celda. Es el mismo respaldo posicional que usa el extractor del Libro.
-  moneda: colIndex(COL_MONEDA_COBRANZAS),
-  banco: 53,
+/** El comienzo del rótulo con que `cobranzas-control` publica el veredicto del banco (lleva la fecha
+ *  del extracto al final). Es lo que ubica esa columna: no tiene un rótulo de datos fijo. */
+export const ROTULO_VALOR_BANCO = 'Qué dice el banco de este valor'
+
+/**
+ * LAS COLUMNAS DE COBRANZAS QUE LEE `leerCobro`, POR ÍNDICE DESDE A=0 — resueltas contra la fila 4.
+ *
+ * ═══ ERAN NÚMEROS TIPEADOS (14/09/2026) ═══
+ *
+ * `C = { total: 12, fechaCobro: 16, …, moneda: 26, banco: 53 }`. Con «Obra» insertada en H, el cuadre
+ * habría leído las retenciones como cobro y el «Mes cobro (auto)» como fecha, y la marca de endosado
+ * —en la columna del banco, que también se corre— habría dejado de excluir $20.000.000 sin un error.
+ * Las claves de salida no cambian: `emision` es «Fecha de Venta» y `fechaVenta` es «Fecha de Factura»,
+ * que es lo que indexaban el 2 y el 15.
+ * @param {any[]} encabezado la fila 4 de Cobranzas leída en esta corrida
+ */
+export function columnasDelCobro(encabezado) {
+  const c = columnasCobranzas(encabezado, ['fechaVenta', 'comprobante', 'unidad', 'cliente', 'concepto', 'total',
+    'formaCobro', 'estado', 'fechaFactura', 'fechaCobro', 'moneda'])
+  return Object.freeze({
+    emision: c.fechaVenta.indice, comprobante: c.comprobante.indice, unidad: c.unidad.indice,
+    cliente: c.cliente.indice, concepto: c.concepto.indice, total: c.total.indice, forma: c.formaCobro.indice,
+    estado: c.estado.indice, fechaVenta: c.fechaFactura.indice, fechaCobro: c.fechaCobro.indice,
+    moneda: c.moneda.indice, banco: ubicarPorPrefijo(encabezado, ROTULO_VALOR_BANCO, 'Cobranzas').indice,
+  })
+}
+
+const exigirCobro = (C) => {
+  if (!Number.isInteger(C?.total) || !Number.isInteger(C?.banco)) {
+    throw new Error('leerCobro: faltan las columnas de Cobranzas resueltas por encabezado — pasá `cols: columnasDelCobro(filaDeRotulos)`')
+  }
+  return C
 }
 /** La marca que el OS escribe cuando el banco dice que el valor se entregó a un tercero. */
 export const MARCA_ENDOSADO = 'ENDOSADO'
@@ -100,9 +122,11 @@ const mesDe = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padSta
  *
  * @param {Array<object>} fila la fila de la grilla de Cobranzas
  * @param {number} nro el número de fila del archivo, para poder ir a mirarla
- * @param {{tipoCambio: number|null}} opciones el `TIPO_CAMBIO_USD` del archivo
+ * @param {{tipoCambio: number|null, cols: object}} opciones el `TIPO_CAMBIO_USD` del archivo y las
+ *   columnas de `columnasDelCobro`
  */
-export function leerCobro(fila, nro, { tipoCambio = null } = {}) {
+export function leerCobro(fila, nro, { tipoCambio = null, cols } = {}) {
+  const C = exigirCobro(cols)
   const num = (j) => (fila[j]?.numero ?? null)
   const txt = (j) => String(fila[j]?.valor ?? '').trim()
   const bruto = num(C.total)
@@ -413,9 +437,9 @@ export function veredictoDelMes(mes, { bruto, endosado, devolucion, cashflow, ar
  * @param {{tipoCambio: number|null, filasBanco: Array|null}} opciones el `TIPO_CAMBIO_USD` con el que
  *   se valúan los dólares y, si se pasa, `_BANCO_RAW` para el cruce de respaldo.
  */
-export function auditar(filasCob = [], filasCf = [], { tipoCambio = null, filasBanco = null } = {}) {
+export function auditar(filasCob = [], filasCf = [], { tipoCambio = null, filasBanco = null, cols } = {}) {
   const cobros = []
-  filasCob.forEach((f, i) => { const c = leerCobro(f, i + 5, { tipoCambio }); if (c) cobros.push(c) })
+  filasCob.forEach((f, i) => { const c = leerCobro(f, i + 5, { tipoCambio, cols }); if (c) cobros.push(c) })
   // El cruce bancario se hace ANTES del portón de ubicación: no depende del cuadro, y un cuadro que
   // no se pudo ubicar no es motivo para dejar de decir qué "Cobrado" no tiene respaldo.
   const respaldo = filasBanco ? cruzarConElBanco(cobros, filasBanco, { esCobrado }) : null

@@ -3,6 +3,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { aplicarCambio, procesarCola, tomarCambio } from './cola-cambios.mjs'
+import { COBRANZAS_1409, COBRANZAS_CON_OBRA } from '../../lib/encabezados-referencia.mjs'
+import { rangoEncabezado } from '../../lib/columnas-por-encabezado.mjs'
 
 const FILA_SANA = [
   null, null, null, null, '01-000048', null, null, null, null, '7520000', null, null,
@@ -13,12 +15,21 @@ const FORMULAS_SANAS = [
   '=IF(SUM(X49:AA49)=0;"";SUM(X49:AA49))', '=J49+K49-L49', 'Transferencia', 'Pendiente', null,
   '=P49+75', null, null, null, null, null, 'nota del dueño',
 ]
+/** Lo que hace Google al insertar «Obra» en H: una celda nueva y todo lo de la derecha corrido. */
+const conObra = (fila, obra = 'OB-0007') => [...fila.slice(0, 7), obra, ...fila.slice(7)]
+/** Las mismas fórmulas con las referencias corridas una letra, como las deja Google. */
+const CORRIDAS = {
+  '=J49*0,21': '=K49*0,21', '=IF(SUM(X49:AA49)=0;"";SUM(X49:AA49))': '=IF(SUM(Y49:AB49)=0;"";SUM(Y49:AB49))',
+  '=J49+K49-L49': '=K49+L49-M49', '=P49+75': '=Q49+75',
+}
+const FORMULAS_CON_OBRA = conObra(FORMULAS_SANAS.map((v) => CORRIDAS[v] ?? v))
 
-function dobleGoogle({ fila = FILA_SANA, formulas = FORMULAS_SANAS, respuesta = {} } = {}) {
+function dobleGoogle({ fila = FILA_SANA, formulas = FORMULAS_SANAS, respuesta = {}, encabezado = COBRANZAS_1409 } = {}) {
   const escrituras = []
   return {
     escrituras,
     async readSheetValues(_id, rango, opts) {
+      if (rango === rangoEncabezado('Cobranzas')) return [encabezado]
       if (rango.includes(':')) return [opts?.render === 'FORMULA' ? formulas : fila]
       return [['46265']]                       // la relectura de la celda escrita
     },
@@ -50,6 +61,34 @@ const CAMBIO = {
   id: 'c-1', cobranza_fila: 49, campo: 'fecha', valor_nuevo: '2026-09-15',
   huella_comprobante: '01-000048', huella_monto: 7520000, pedido_por: 'u-1', intentos: 1,
 }
+
+test('con «Obra» insertada en H, la fecha va a R y la traza a X: las letras salen de la fila de rótulos', async () => {
+  const google = dobleGoogle({ fila: conObra(FILA_SANA), formulas: FORMULAS_CON_OBRA, encabezado: COBRANZAS_CON_OBRA })
+  const r = await aplicarCambio({ port: doblePort(), google, fileId: 'F', cambio: CAMBIO })
+  assert.equal(r, 'aplicado', 'la huella (comprobante y neto) tiene que leerse de su rótulo, no de la E y la J')
+  const rangos = google.escrituras[0].data.map((d) => d.range)
+  assert.deepEqual(rangos, ['Cobranzas!R49', 'Cobranzas!X49'])
+  assert.equal(COBRANZAS_CON_OBRA[17], 'Fecha cobro')
+  assert.equal(COBRANZAS_CON_OBRA[23], 'Notas')
+  assert.equal(google.escrituras[0].data[1].values[0][0].split('\n')[0], 'nota del dueño', 'la nota vieja se leyó de «Notas»')
+})
+
+test('un cambio de monto con «Obra» insertada pasa el portón del IVA con las fórmulas corridas', async () => {
+  const google = dobleGoogle({ fila: conObra(FILA_SANA), formulas: FORMULAS_CON_OBRA, encabezado: COBRANZAS_CON_OBRA })
+  const r = await aplicarCambio({ port: doblePort(), google, fileId: 'F', cambio: { ...CAMBIO, campo: 'monto', valor_nuevo: '8000000' } })
+  assert.equal(r, 'aplicado')
+  assert.equal(google.escrituras[0].data[0].range, 'Cobranzas!K49')
+  assert.equal(COBRANZAS_CON_OBRA[10], 'Monto neto')
+})
+
+test('si la fila de rótulos no trae «Fecha cobro», no se escribe nada y es falla técnica (reintentable)', async () => {
+  const google = dobleGoogle({ encabezado: COBRANZAS_1409.map((r) => (r === 'Fecha cobro' ? 'Cobro' : r)) })
+  const port = doblePort({ cambios: [CAMBIO] })
+  const cuenta = await procesarCola({ port, google, fileId: 'F', max: 1 })
+  assert.equal(cuenta.error, 1)
+  assert.equal(google.escrituras.length, 0)
+  assert.match(port.updates.at(-1).params[2], /falta la columna «Fecha cobro»/)
+})
 
 test('el camino feliz escribe Q y W, y guarda lo RELEÍDO de la celda', async () => {
   const google = dobleGoogle(); const port = doblePort()

@@ -10,9 +10,12 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ventasFacturadasPorMes, CATEGORIA_FACTURADA } from './impuestos-fuentes.mjs'
+import { COB_HOY } from './columnas-caja.fixture.mjs'
+import { ventasFacturadasPorMes as porMesDeFilas, CATEGORIA_FACTURADA } from './impuestos-fuentes.mjs'
 
-const fila = (cat, fecha, neto) => [cat, fecha, 'FA', '01-1', 'Civil', 'ARCOR', '', '', neto]
+// Filas leídas desde la A (como las lee la corrida desde el 14/09): 1 Categoría · 2 Fecha de Venta · 9 Monto neto.
+const fila = (cat, fecha, neto) => ['', cat, fecha, 'FA', '01-1', 'Civil', 'ARCOR', '', '', neto]
+const ventasFacturadasPorMes = (filas) => porMesDeFilas(filas, COB_HOY)
 
 test('una venta sin factura NO entra en la base del IVA débito', () => {
   const { porMes } = ventasFacturadasPorMes([

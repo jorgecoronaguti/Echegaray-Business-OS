@@ -22,7 +22,9 @@
 // `port` (Postgres) y `google` entran por parámetro para poder probar el reparto de estados, el
 // rechazo por huella y el reciclado de lo colgado con dobles en memoria — sin Postgres, sin Google y
 // sin acercarse al Sheet real.
-import { planificarEscritura } from '../../lib/portal/bisturi-cobranzas.mjs'
+import { COLUMNAS_BISTURI, planificarEscritura } from '../../lib/portal/bisturi-cobranzas.mjs'
+import { exigirColumnas, leerColumnasCobranzas } from '../../lib/cobranzas-columnas.mjs'
+import { rangoFilas } from '../../lib/columnas-por-encabezado.mjs'
 
 /** Cuántos minutos puede quedar un cambio en `procesando` antes de darlo por colgado. */
 export const LEASE_MIN = Number(process.env.ORQ_COBRANZA_CAMBIO_LEASE_MIN || 10)
@@ -79,27 +81,33 @@ export async function actorDelCambio(port, cambio) {
   return p?.nombre ? { nombre: p.nombre, rol: p.rol, id: cambio.pedido_por } : null
 }
 
-const LETRAS = ['C', 'D', 'E', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'W']
-
-/** Relee la fila del Sheet: valores para la huella, fórmulas para saber si se puede tocar J. */
-export async function leerFila(google, fileId, fila) {
-  const rango = `Cobranzas!A${fila}:AC${fila}`
+/**
+ * Relee la fila del Sheet: valores para la huella, fórmulas para saber si se puede tocar el neto.
+ *
+ * LA FILA SE INDEXA POR RÓTULO (14/09/2026). Era `arr[letra.charCodeAt(0) - 65]` sobre letras
+ * tipeadas: con «Obra» insertada en H, el «comprobante» seguía siendo la E pero el neto pasaba a ser
+ * el IVA y la nota «Estado cobro». La huella del monto habría rechazado todo cobro legítimo —o
+ * aceptado uno cuyo IVA coincidiera—. `cols` sale de la fila de rótulos leída en esta corrida.
+ */
+export async function leerFila(google, fileId, fila, cols) {
+  exigirColumnas(cols, COLUMNAS_BISTURI, 'leerFila')
+  const rango = rangoFilas('Cobranzas', fila, fila)
   // SIN `.catch()`. Tragarse un error de lectura acá deja `leido` vacío, la huella no coincide y el
   // cambio se cierra como `rechazado` —que es TERMINAL—: una caída de red de tres segundos mataría
   // para siempre un cobro legítimo. Que la excepción suba: el llamador la trata como falla técnica y
   // la reintenta. Lo encontró el test de la falla técnica, no una lectura del código.
   const [valores = []] = await google.readSheetValues(fileId, rango)
   const [formulas = []] = await google.readSheetValues(fileId, rango, { render: 'FORMULA' })
-  const en = (arr, letra) => arr?.[letra.charCodeAt(0) - 65] ?? null
+  const en = (arr, clave) => arr?.[cols[clave].indice] ?? null
   const f = {}
-  for (const l of LETRAS) f[l] = en(formulas, l)
+  for (const k of COLUMNAS_BISTURI) f[k] = en(formulas, k)
   return {
     leido: {
-      comprobante: en(valores, 'E'),
+      comprobante: en(valores, 'comprobante'),
       // El neto se lee del VALOR (no de la fórmula): la huella compara importes, no expresiones.
-      monto_neto: Number(String(en(valores, 'J') ?? '').replace(/[^\d,-]/g, '').replace(',', '.')) || null,
-      nota: en(formulas, 'W'),   // la nota se relee CRUDA para apendar sin perder saltos de línea
-      estado: en(valores, 'O'),
+      monto_neto: Number(String(en(valores, 'neto') ?? '').replace(/[^\d,-]/g, '').replace(',', '.')) || null,
+      nota: en(formulas, 'notas'),   // la nota se relee CRUDA para apendar sin perder saltos de línea
+      estado: en(valores, 'estado'),
     },
     formulas: f,
   }
@@ -127,17 +135,20 @@ const cerrar = (port, id, campos) => port.query(
  * buena porque la API devolvió 200; se da por buena cuando la celda, releída, dice lo que tiene que
  * decir.
  */
-export async function aplicarCambio({ port, google, fileId, cambio }) {
+export async function aplicarCambio({ port, google, fileId, cambio, cols = null }) {
   const actor = await actorDelCambio(port, cambio)
   if (!actor) {
     await cerrar(port, cambio.id, { estado: 'rechazado', motivo: 'el cambio no tiene un usuario identificado y el Sheet no se escribe sin nombre' })
     return 'rechazado'
   }
 
-  const { leido, formulas } = await leerFila(google, fileId, cambio.cobranza_fila)
+  // Sin `cols` del llamador, se lee la fila de rótulos ahora. Un rótulo que falta sube como excepción:
+  // es falla técnica (se reintenta), no un rechazo terminal del cobro.
+  const columnas = cols ?? await leerColumnasCobranzas(google, fileId, COLUMNAS_BISTURI)
+  const { leido, formulas } = await leerFila(google, fileId, cambio.cobranza_fila, columnas)
   const nota = `OS ${new Date().toISOString().slice(0, 10)}: ${cambio.campo} → ${cambio.valor_nuevo ?? 'Cobrado'} (${actor.nombre})`
   const { celdas, rechazo } = planificarEscritura({
-    fila: cambio.cobranza_fila, cambio, leido, formulas, nota,
+    fila: cambio.cobranza_fila, cambio, leido, formulas, nota, cols: columnas,
   })
 
   if (rechazo) {
@@ -181,12 +192,15 @@ export async function procesarCola({ port, google, fileId = null, max = 20 } = {
   const id = fileId ?? await idDelCashflow()
   const reciclados = await reciclarColgados(port)
   const cuenta = { reciclados, aplicado: 0, rechazado: 0, diferido: 0, error: 0 }
+  // La fila de rótulos, UNA vez por corrida y sólo si hay algo que aplicar: se lee al tomar el primero.
+  let cols = null
 
   for (let i = 0; i < max; i += 1) {
     const cambio = await tomarCambio(port)
     if (!cambio) break
     try {
-      cuenta[await aplicarCambio({ port, google, fileId: id, cambio })] += 1
+      cols = cols ?? await leerColumnasCobranzas(google, id, COLUMNAS_BISTURI)
+      cuenta[await aplicarCambio({ port, google, fileId: id, cambio, cols })] += 1
     } catch (e) {
       cuenta.error += 1
       const agotado = cambio.intentos >= MAX_INTENTOS

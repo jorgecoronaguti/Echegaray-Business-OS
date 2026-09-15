@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import {
   conceptosInternosPublicados, esNotaInterna, rotuloPublicable,
 } from './rotulo-publicable.mjs'
+import { columnasCobranzas } from '../cobranzas-columnas.mjs'
+import { COBRANZAS_1409, COBRANZAS_CON_OBRA } from '../encabezados-referencia.mjs'
 
 // LO QUE ATRAPA: que el portal vuelva a publicarle al cliente una nota escrita para adentro, y —al
 // revés, que es el riesgo caro— que el filtro se coma un concepto que describe el trabajo.
@@ -48,8 +50,18 @@ test('el informe nombra la CELDA exacta, que es lo único que hace falta para co
     // Una nota interna que NO está publicada no molesta a nadie: el informe no la nombra.
     { cliente: 'ARCOR', concepto: 'REVISAR', cobranza_fila: 99, visible_portal: false, publicado_at: null },
   ]
-  const hallados = conceptosInternosPublicados(filas)
-  assert.equal(hallados.length, 1)
-  assert.equal(hallados[0].celda, 'Cobranzas!I5')
-  assert.equal(hallados[0].mover_a, 'Cobranzas!W5')
+  // Con la fila de rótulos leída, la celda A1 sale de ella: I→W hoy, J→X con «Obra» en H.
+  const antes = conceptosInternosPublicados(filas, columnasCobranzas(COBRANZAS_1409, ['concepto', 'notas']))
+  assert.equal(antes.length, 1)
+  assert.equal(antes[0].celda, 'Cobranzas!I5')
+  assert.equal(antes[0].mover_a, 'Cobranzas!W5')
+  const despues = conceptosInternosPublicados(filas, columnasCobranzas(COBRANZAS_CON_OBRA, ['concepto', 'notas']))
+  assert.equal(COBRANZAS_CON_OBRA[9], 'Concepto')
+  assert.equal(despues[0].celda, 'Cobranzas!J5')
+  assert.equal(COBRANZAS_CON_OBRA[23], 'Notas')
+  assert.equal(despues[0].mover_a, 'Cobranzas!X5')
+  // Sin la fila de rótulos (el sync del portal no lee el Sheet) nombra el RÓTULO, nunca una letra.
+  const sinSheet = conceptosInternosPublicados(filas)
+  assert.equal(sinSheet[0].celda, 'Cobranzas fila 5 · «Concepto»')
+  assert.equal(sinSheet[0].mover_a, 'Cobranzas fila 5 · «Notas»')
 })

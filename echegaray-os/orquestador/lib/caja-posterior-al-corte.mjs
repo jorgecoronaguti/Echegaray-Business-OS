@@ -53,7 +53,12 @@
 // La columna "Fecha de caja" NO se tipea acá: se importa de rubro-caja.mjs, que es quien la ESCRIBE
 // en Compras. Escritor y lector comparten una sola definición, así el efecto Compras→CAJA no se
 // rompe en silencio si la columna se mueve (lo verifica caja-posterior-al-corte.test.mjs).
-import { COL_FECHA_CAJA, COL_RUBRO_CAJA, factorSinPlanilla } from './rubro-caja.mjs'
+import { factorSinPlanilla } from './rubro-caja.mjs'
+import { columnasCobranzas, exigirColumnas } from './cobranzas-columnas.mjs'
+import { COMPRAS, columnasDe, lectorDeEncabezados } from './columnas-por-encabezado.mjs'
+import { COLUMNAS_CARTERA } from './cobranzas-cartera.mjs'
+import { CLAVE } from './cobranzas-duplicado.mjs'
+import { CHQ, DEP } from './caja-fuentes-banco.mjs'
 import { formulaUltimaFecha, formulaFrescuraDe, fechaNumerica } from './fecha-de-frescura.mjs'
 // EL CRITERIO DE LA VENTANA VIVE EN UN SOLO LADO. Estaba escrito tres veces con `>` y una con `>=`,
 // y esa cuarta era la única correcta: dos filas equivalentes daban números distintos según el estado.
@@ -78,26 +83,85 @@ import { ventanaDelConteo, anclaDeSalida } from './caja-ancla-por-instante.mjs'
 // Nota para SUMPRODUCT: todos los rangos de un mismo SUMPRODUCT tienen que tener el mismo largo. Acá
 // se cumple por construcción, porque cada SUMPRODUCT mira columnas de UNA sola pestaña.
 
-/** Las columnas de Cobranzas. Verificadas contra la fila de encabezado del 21/07. Rango ABIERTO. */
-// `moneda` (01/08): la columna que distingue un cobro en PESOS de uno en DÓLARES. Ver el bloque de la
-// caja en dólares, al final de este archivo.
-export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', moneda: 'AA', desde: 5 }
-/** Las columnas de Cheques Emitidos. I es la fecha en que se debita, K el SI/NO. Rango ABIERTO. */
-export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', debitado: 'K', desde: 2 }
+// ═══ LOS MAPAS DE COMPRAS Y COBRANZAS SE ARMAN CON LA FILA DE RÓTULOS DE LA CORRIDA (14/09/2026) ═══
+//
+// Eran constantes de letras —`COB = { total: 'M', forma: 'N', … }`, `CMP = { total: 'O', … }`— con
+// default en cada fórmula. Con «Obra» insertada en Cobranzas H y en Compras L, la corrida siguiente de
+// CAJA habría sumado las retenciones como cobros y el IVA como pagos, con el saldo publicado y sin un
+// solo #REF!. Ahora cada fórmula EXIGE su mapa (`mapaCobranzas` / `mapaCompras`, armados con
+// `refs.columnas` de `caja-refs.mjs`) y sin él no se arma nada. Las dos fuentes que no reciben la
+// columna —el extracto y los cheques— siguen fijas y viven en `caja-fuentes-banco.mjs`.
+export { CHQ, DEP }
+
+/** Las columnas de Cobranzas que usan estas fórmulas, por clave de `COBRANZAS_OS`. `moneda` (01/08)
+ *  distingue un cobro en PESOS de uno en DÓLARES: ver el bloque de la caja en dólares, al final. */
+export const COLUMNAS_COB = Object.freeze(['total', 'formaCobro', 'estado', 'fechaCobro', 'moneda'])
+
+/** El mapa de Cobranzas con las letras RESUELTAS. Rango ABIERTO. */
+export function mapaCobranzas(cols) {
+  const c = exigirColumnas(cols, COLUMNAS_COB, 'caja · Cobranzas')
+  return Object.freeze({
+    hoja: 'Cobranzas', total: c.total.letra, forma: c.formaCobro.letra, estado: c.estado.letra,
+    fecha: c.fechaCobro.letra, moneda: c.moneda.letra, desde: 5,
+  })
+}
+
 /**
- * Las columnas de Compras. O=Total, P=Tipo pago, X=Estado, AD=Fecha de caja. Verificadas 24/07.
- * `tiposBanco`: los medios que pegan al banco EN EL DÍA y todavía no están cubiertos por otra línea —
- * Cheque ya lo resta "Cheques Emitidos", la Tarjeta de Crédito consume el cupo (no la cuenta), el
- * Efectivo no toca el banco (sale de la caja física). Sólo Transferencia y Débito faltan.
- * Rango ABIERTO.
+ * Los medios que pegan al banco EN EL DÍA y todavía no están cubiertos por otra línea — Cheque ya lo
+ * resta "Cheques Emitidos", la Tarjeta de Crédito consume el cupo (no la cuenta), el Efectivo no toca
+ * el banco (sale de la caja física). Sólo Transferencia y Débito faltan.
  */
-export const CMP = { hoja: 'Compras', total: 'O', montoPagado: 'T', fechaCarga: 'C', tipoPago: 'P', estado: 'X', fecha: COL_FECHA_CAJA, rubro: COL_RUBRO_CAJA, desde: 4, tiposBanco: ['Transferencia', 'Débito'] }
+export const TIPOS_BANCO = Object.freeze(['Transferencia', 'Débito'])
+
+/** Las columnas de Compras, por clave de `COMPRAS`: Total, Monto Pagado, la fecha de CARGA («Fecha
+ *  factura»), Tipo pago, Estado, «Fecha de caja» y el SEGUNDO «Rubro de caja» (el vivo). */
+export const COLUMNAS_CMP = Object.freeze(['total', 'pagado', 'fecha', 'tipoPago', 'estado', 'fechaCaja', 'rubro'])
+
+/** El mapa de Compras con las letras RESUELTAS. Rango ABIERTO. */
+export function mapaCompras(cols) {
+  const faltan = COLUMNAS_CMP.filter((k) => !cols?.[k]?.letra)
+  if (faltan.length) throw new Error(`caja · Compras: faltan columnas resueltas por encabezado (${faltan.join(', ')}) — no uso una letra de respaldo`)
+  return Object.freeze({
+    hoja: 'Compras', total: cols.total.letra, montoPagado: cols.pagado.letra, fechaCarga: cols.fecha.letra,
+    tipoPago: cols.tipoPago.letra, estado: cols.estado.letra, fecha: cols.fechaCaja.letra, rubro: cols.rubro.letra,
+    desde: 4, tiposBanco: TIPOS_BANCO,
+  })
+}
+
+/** Los dos mapas de una corrida, desde las columnas que `refsDelArchivo` resolvió. */
+export const mapasDe = (refs) => ({ cob: mapaCobranzas(refs?.columnas?.cobranzas), cmp: mapaCompras(refs?.columnas?.compras) })
+
+/**
+ * LAS COLUMNAS DE COBRANZAS Y COMPRAS DE ESTA CORRIDA, POR RÓTULO (14/09/2026).
+ *
+ * CAJA y su anexo arman fórmulas sobre las dos pestañas, y las dos reciben la columna «Obra» (H y L).
+ * Se resuelven UNA vez —una lectura de cada fila de rótulos— y viajan en `refs.columnas` hasta cada
+ * fórmula. Sólo se piden las que alguna fórmula usa: un rótulo ajeno renombrado no tiene por qué
+ * frenar la caja. Un rótulo que falta sí aborta, con su nombre.
+ */
+export async function columnasDeCaja(google, fileId) {
+  const lector = lectorDeEncabezados(google, fileId)
+  const cob = [...new Set([...COLUMNAS_COB, ...COLUMNAS_CARTERA, ...Object.values(CLAVE)])]
+  return {
+    cobranzas: columnasCobranzas(await lector.encabezado('Cobranzas'), cob),
+    compras: columnasDe(await lector.encabezado('Compras'), Object.fromEntries(COLUMNAS_CMP.map((k) => [k, COMPRAS[k]])), 'Compras'),
+  }
+}
+
+/** Sin el mapa de la pestaña, la fórmula no se arma: el default con letras era el defecto. */
+const exigirMapa = (c, hoja, quien) => {
+  if (c?.hoja !== hoja) throw new Error(`${quien}: falta el mapa de ${hoja} armado por encabezado (mapaCobranzas / mapaCompras)`)
+  return c
+}
 
 /**
  * Un rango de columna ABIERTO: de la primera fila de datos hasta el final de la pestaña.
  * No acepta fila final a propósito — ver el bloque de arriba.
  */
 const rango = (h, col, d) => `'${h}'!$${col}$${d}:$${col}`
+
+/** El rango abierto de un campo de un mapa (`'Compras'!$P$4:$P`), para quien arma fórmulas afuera. */
+export const rangoAbiertoDe = (c, campo) => rango(c.hoja, c[campo], c.desde)
 
 // ═══ LA COLUMNA "FECHA DE CAJA" DE COMPRAS VIENE EN FORMATO MIXTO — POR QUÉ ESTAS FÓRMULAS NO USAN SUMIFS ═══
 //
@@ -132,7 +196,8 @@ const totalCoerc = (c) => `N(${rango(c.hoja, c.total, c.desde)})`
  * @param {object} c columnas de Cobranzas
  * @returns {string} fórmula, separador es-AR
  */
-export function formulaCobrosPosteriores(corte, c = COB) {
+export function formulaCobrosPosteriores(corte, c) {
+  exigirMapa(c, 'Cobranzas', 'formulaCobrosPosteriores')
   return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
     + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
     + `${rango(c.hoja, c.forma, c.desde)};"<>Echeq";`
@@ -177,7 +242,8 @@ export function formulaChequesDebitadosPosteriores(corte, c = CHQ) {
  * @param {object} c columnas de Compras
  * @returns {string} fórmula (sin `=`)
  */
-export function formulaComprasPagadasPosteriores(corte, c = CMP) {
+export function formulaComprasPagadasPosteriores(corte, c) {
+  exigirMapa(c, 'Compras', 'formulaComprasPagadasPosteriores')
   const tipos = c.tiposBanco.map((t) => `(${rango(c.hoja, c.tipoPago, c.desde)}="${t}")`).join('+')
   return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde)}="Pagado")`
     + `*(${tipos})`
@@ -190,11 +256,12 @@ export function formulaComprasPagadasPosteriores(corte, c = CMP) {
  * Cobros posteriores al corte, menos cheques propios debitados, menos compras pagadas por
  * transferencia/débito — todo en la ventana que el extracto todavía no cubre.
  * @param {string} corte referencia a la celda con la fecha de corte del extracto
+ * @param {{cob:object, cmp:object}} mapas los de `mapasDe(refs)`
  * @returns {string} fórmula completa, con el `=` adelante
  */
-export function formulaNetaPosterior(corte) {
-  return `=${formulaCobrosPosteriores(corte)}-${formulaChequesDebitadosPosteriores(corte)}`
-    + `-(${formulaComprasPagadasPosteriores(corte)})`
+export function formulaNetaPosterior(corte, { cob, cmp } = {}) {
+  return `=${formulaCobrosPosteriores(corte, cob)}-${formulaChequesDebitadosPosteriores(corte)}`
+    + `-(${formulaComprasPagadasPosteriores(corte, cmp)})`
     // El lote de haberes que salió por transferencia después del corte (01/08). Es exactamente la
     // misma clase de salida que un cheque debitado: la plata ya no está y el extracto todavía no lo
     // muestra. Ver el bloque de la nómina, al final de este archivo.
@@ -228,9 +295,7 @@ export function formulaNetaPosterior(corte) {
 // quedaría en la caja física Y en el saldo del banco. Restarlo cierra la partición también cuando la
 // plata cruza de canal. Es la misma "deposito de efectivo" que ya mira la alerta de CAJA (bloque 4.6).
 
-/** La réplica del extracto y sus columnas para detectar depósitos de efectivo (mismo criterio que la
- *  alerta de trazabilidad del efectivo en CAJA): A=fecha, B=concepto, C=importe, E=entra/sale. */
-export const DEP = { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C', flujo: 'E', desde: 4 }
+// La réplica del extracto (`DEP`) vive en `caja-fuentes-banco.mjs` y se re-exporta arriba.
 
 /**
  * NÚCLEO PURO: los cobros en EFECTIVO posteriores al arqueo. Auto-CARGA de la caja física.
@@ -240,7 +305,8 @@ export const DEP = { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C'
  * @param {object} c columnas de Cobranzas
  * @returns {string} fórmula, separador es-AR
  */
-export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
+export function formulaCobrosEfectivoPosteriores(arqueo, c) {
+  exigirMapa(c, 'Cobranzas', 'formulaCobrosEfectivoPosteriores')
   return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
     + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
     + `${rango(c.hoja, c.forma, c.desde)};"Efectivo";`
@@ -290,7 +356,8 @@ export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
  * @param {object} c columnas de Compras
  * @returns {string} fórmula
  */
-export function formulaComprasEfectivoPosteriores(arqueo, c = CMP) {
+export function formulaComprasEfectivoPosteriores(arqueo, c) {
+  exigirMapa(c, 'Compras', 'formulaComprasEfectivoPosteriores')
   const fechaCargaCoerc = () => {
     const r = rango(c.hoja, c.fechaCarga, c.desde)
     return `IFERROR(DATEVALUE(${r}&"");N(${r}))`
@@ -365,10 +432,10 @@ export function esDepositoDeEfectivo(rango) {
  * Los depósitos sólo se restan si hay réplica del extracto: sin _BANCO_RAW no se pueden detectar, y
  * mejor no restar que restar un cero disfrazado.
  * @param {string} arqueo referencia a la celda con la fecha del arqueo (ej. '$F$4')
- * @param {{bancoRaw?:string|null}} [opts]
+ * @param {{bancoRaw?:string|null, cob:object, cmp:object}} [opts] los mapas, de `mapasDe(refs)`
  * @returns {string} fórmula completa, con el `=` adelante
  */
-export function formulaNetaEfectivoPosterior(arqueo, { bancoRaw = DEP.hoja } = {}) {
+export function formulaNetaEfectivoPosterior(arqueo, { bancoRaw = DEP.hoja, cob, cmp } = {}) {
   // Los dos movimientos que cruzan de canal salen de la réplica del extracto: sin ella no se pueden
   // detectar, y se omiten los DOS juntos. Dejar la extracción sin el depósito inflaría el cajón.
   const depositos = bancoRaw
@@ -378,7 +445,7 @@ export function formulaNetaEfectivoPosterior(arqueo, { bancoRaw = DEP.hoja } = {
     ? `+${formulaExtraccionesEfectivoPosteriores(arqueo, { ...DEP, hoja: bancoRaw })}`
     : ''
   return `=IF(NOT(ISNUMBER(${arqueo}));0;`
-    + `${formulaCobrosEfectivoPosteriores(arqueo)}-${formulaComprasEfectivoPosteriores(arqueo)}${depositos}`
+    + `${formulaCobrosEfectivoPosteriores(arqueo, cob)}-${formulaComprasEfectivoPosteriores(arqueo, cmp)}${depositos}`
     // Los jornales pagados en efectivo después del arqueo (01/08): adelantos y contra recibo. Es el
     // billete que sale del cajón para la nómina, que hasta hoy no bajaba de ningún lado.
     + `-${formulaJornalesEfectivoPosteriores(arqueo)}`
@@ -446,9 +513,9 @@ export function formulaFechaCorte(hoja = '_BANCO_RAW', col = 'A', desde = 4) {
  * aparecen se deben actualizar de manera automatica"*. Son exactamente tres puertas, y son las mismas
  * tres que este archivo ya usa para MOVER el saldo:
  *
- *     1. el extracto del banco       →  _BANCO_RAW!A   (la fecha del movimiento)
- *     2. una compra marcada pagada   →  Compras!AD     ("Fecha de caja", sólo estado "Pagado")
- *     3. una cobranza cobrada        →  Cobranzas!Q    (sólo estado "Cobrado")
+ *     1. el extracto del banco       →  _BANCO_RAW, columna A (la fecha del movimiento)
+ *     2. una compra marcada pagada   →  Compras «Fecha de caja» (sólo estado "Pagado")
+ *     3. una cobranza cobrada        →  Cobranzas «Fecha cobro» (sólo estado "Cobrado")
  *
  * Se toma la MÁS NUEVA: cualquiera de las tres que se mueva tiene que mover el rótulo, porque
  * cualquiera de las tres mueve el número que está arriba. Si el rótulo sólo mirara el extracto,
@@ -462,24 +529,26 @@ export function formulaFechaCorte(hoja = '_BANCO_RAW', col = 'A', desde = 4) {
  * frescura que envejece porque el registro pasó la fila 1200 es el mismo defecto que se está
  * arreglando, sólo que más difícil de ver.
  *
- * @param {{bancoRaw?:string|null}} [refs] `bancoRaw` null = el libro no tiene la réplica del extracto
+ * @param {{bancoRaw?:string|null, cob:object, cmp:object}} [refs] `bancoRaw` null = el libro no tiene
+ *   la réplica del extracto; `cob`/`cmp` los mapas de `mapasDe(refs)`
  * @returns {string} expresión sin `=`, separador es-AR
  */
-export function formulaFrescuraCaja({ bancoRaw = '_BANCO_RAW' } = {}) {
-  const abierto = (h, col, desde) => `'${h}'!$${col}$${desde}:$${col}`
+export function formulaFrescuraCaja({ bancoRaw = '_BANCO_RAW', cob, cmp } = {}) {
+  exigirMapa(cob, 'Cobranzas', 'formulaFrescuraCaja')
+  exigirMapa(cmp, 'Compras', 'formulaFrescuraCaja')
   return formulaFrescuraDe([
     // El extracto: la puerta 1. Sin réplica en el libro esta puerta no existe y se omite — mejor una
     // frescura de dos fuentes que una referencia a una hoja que no está (#REF! en el subtítulo).
     bancoRaw ? formulaUltimaFecha(`'${bancoRaw}'!$A$4:$A`) : '',
     // La puerta 2. `mixto`: la "Fecha de caja" convive como serial y como texto "dd/mm/aaaa" — un MAX
     // crudo se queda con la última que entró como número y pierde las tipeadas EN SILENCIO.
-    formulaUltimaFecha(abierto(CMP.hoja, CMP.fecha, CMP.desde), {
+    formulaUltimaFecha(rangoAbiertoDe(cmp, 'fecha'), {
       mixto: true,
-      cuando: `(${abierto(CMP.hoja, CMP.estado, CMP.desde)}="Pagado")`,
+      cuando: `(${rangoAbiertoDe(cmp, 'estado')}="Pagado")`,
     }),
     // La puerta 3.
-    formulaUltimaFecha(abierto(COB.hoja, COB.fecha, COB.desde), {
-      cuando: `(${abierto(COB.hoja, COB.estado, COB.desde)}="Cobrado")`,
+    formulaUltimaFecha(rangoAbiertoDe(cob, 'fecha'), {
+      cuando: `(${rangoAbiertoDe(cob, 'estado')}="Cobrado")`,
     }),
   ])
 }
@@ -703,7 +772,8 @@ export const MONEDA_USD = 'USD'
  * que los dos juntos son una partición: ningún cobro en efectivo queda afuera ni entra dos veces.
  * @param {string} arqueo referencia a la celda con la fecha del arqueo en dólares
  */
-export function formulaCobrosUsdEfectivoPosteriores(arqueo, c = COB) {
+export function formulaCobrosUsdEfectivoPosteriores(arqueo, c) {
+  exigirMapa(c, 'Cobranzas', 'formulaCobrosUsdEfectivoPosteriores')
   return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
     + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
     + `${rango(c.hoja, c.forma, c.desde)};"Efectivo";`
@@ -719,7 +789,7 @@ export function formulaCobrosUsdEfectivoPosteriores(arqueo, c = COB) {
  * @param {string} arqueo referencia a la celda con la FECHA del arqueo
  * @param {string} contado referencia a la celda con el arqueo CONTADO en dólares
  */
-export function celdaCajaDolares(arqueo, contado, c = COB) {
+export function celdaCajaDolares(arqueo, contado, c) {
   return `=N(${contado})+IF(NOT(ISNUMBER(${arqueo}));0;${formulaCobrosUsdEfectivoPosteriores(arqueo, c)})`
 }
 
@@ -785,7 +855,8 @@ const maxDe = (expr) => `SUMPRODUCT(MAX(${expr}))`
 
 /** 1/6 · el último COBRO en efectivo. Espeja `formulaCobrosEfectivoPosteriores` criterio por criterio,
  *  incluida la comparación contra el ancla PELADA (sin INT): es una entrada. */
-function maxCobrosEfectivo(arqueo, c = COB) {
+function maxCobrosEfectivo(arqueo, c) {
+  exigirMapa(c, 'Cobranzas', 'formulaFechaUltimoEfectivo')
   const f = fechaNumerica(rango(c.hoja, c.fecha, c.desde))
   return maxDe(`(${rango(c.hoja, c.estado, c.desde)}="Cobrado")`
     + `*(${rango(c.hoja, c.forma, c.desde)}="Efectivo")`
@@ -796,7 +867,8 @@ function maxCobrosEfectivo(arqueo, c = COB) {
 
 /** 2/6 · el último PAGO en efectivo de Compras — las DOS ramas, cada una con la fecha que su rama usa
  *  para entrar a la ventana ("Pagado" por Fecha de caja, "Pendiente" por fecha de carga). */
-function maxComprasEfectivo(arqueo, c = CMP) {
+function maxComprasEfectivo(arqueo, c) {
+  exigirMapa(c, 'Compras', 'formulaFechaUltimoEfectivo')
   const caja = fechaCajaCoerc(c)
   const carga = fechaNumerica(rango(c.hoja, c.fechaCarga, c.desde), { mixto: true })
   const sale = (f) => ventanaDelConteo(f, arqueo, false)
@@ -856,14 +928,15 @@ function maxDepositosEfectivo(arqueo, c = DEP) {
  *   piso del MAX. Por defecto `INT(arqueo)`; el anexo pasa `ANEXO_CONTEO_ARS_DIA`, que es el día que
  *   CAJA muestra — usar `INT(arqueo)` ahí publicaría un día que el conteo no tuvo cuando el intervalo
  *   de la corrida cruzó la medianoche (ver `diaDelConteo`).
+ * @param {{cob:object, cmp:object}} [mapas] los de `mapasDe(refs)`: sin ellos no hay fecha
  * @returns {string} fórmula completa, con el `=` adelante, separador es-AR
  */
-export function formulaFechaUltimoEfectivo(arqueo, { conteo = `INT(${arqueo})` } = {}) {
+export function formulaFechaUltimoEfectivo(arqueo, { conteo = `INT(${arqueo})`, cob, cmp } = {}) {
   const salida = anclaDeSalida(arqueo)
   const terminos = [
     conteo,
-    maxCobrosEfectivo(arqueo),
-    maxComprasEfectivo(salida),
+    maxCobrosEfectivo(arqueo, cob),
+    maxComprasEfectivo(salida, cmp),
     maxJornalesEfectivo(salida),
     maxOficinaEfectivo(salida),
     maxExtraccionesEfectivo(arqueo),

@@ -7,7 +7,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { marcaPorFila, bloque, MARCA_ALERTA_RESPALDO, MARCAS_FILA, ANCHOS_CONTROL } from './cobranzas-control.mjs'
+import { marcaPorFila, bloque, MARCA_ALERTA_RESPALDO, MARCAS_FILA, ANCHOS_CONTROL, ubicarZona } from './cobranzas-control.mjs'
+import { COB_HOY } from '../lib/columnas-caja.fixture.mjs'
+import { COBRANZAS_1409_CON_CONTROL } from '../lib/cobranzas-encabezado-control.fixture.mjs'
+/** La zona del control ubicada contra la fila 4 de hoy (BA/BB/BC). */
+const ZONA = ubicarZona(COBRANZAS_1409_CON_CONTROL)
 import { textoDeRespaldo, LARGO_MAXIMO_VEREDICTO } from '../lib/cobranzas-respaldo-banco.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 import { CONTROLES, decisionesDe } from '../lib/decisiones-hallazgos.mjs'
@@ -25,14 +29,14 @@ const LA_ESTRELLA = {
 const balanceada = (f) => (f.match(/\(/g) || []).length === (f.match(/\)/g) || []).length
 
 test('sin decisiones, la marca es la de siempre: el ▲ del indistinguible sigue primero', () => {
-  const f = marcaPorFila([])
+  const f = marcaPorFila(COB_HOY, [])
   assert.ok(balanceada(f), f)
   assert.ok(f.includes(MARCAS_FILA.indistinguible))
   assert.ok(!f.includes('lo revisó el'), 'sin decisión no hay nada que liberar')
 })
 
 test('con la decisión del dueño, la fila 39 deja de llevar ▲ y dice quién la revisó', () => {
-  const f = marcaPorFila([LA_ESTRELLA])
+  const f = marcaPorFila(COB_HOY, [LA_ESTRELLA])
   assert.ok(balanceada(f), f)
   // La condición liberadora va ANTES que la del indistinguible: si fuera después, nunca ganaría.
   const iLibera = f.indexOf('lo revisó el dueño')
@@ -43,22 +47,22 @@ test('con la decisión del dueño, la fila 39 deja de llevar ▲ y dice quién l
 })
 
 test('la liberación exige fila Y cliente Y importe: la posición sola es una trampa conocida', () => {
-  const f = marcaPorFila([LA_ESTRELLA])
+  const f = marcaPorFila(COB_HOY, [LA_ESTRELLA])
   assert.ok(f.includes('(ROW(Cobranzas!$G$5:$G$200)=39)'), f.slice(0, 300))
   assert.ok(f.includes('(Cobranzas!$G$5:$G$200="LA ESTRELLA /ALIMENTOS DEL SUR SAS")'))
   assert.ok(f.includes('(Cobranzas!$M$5:$M$200=10000000)'))
 })
 
 test('si el importe de esa fila cambia, la condición ya no se cumple y la marca vuelve sola', () => {
-  const c = esCobroYaRevisado(LA_ESTRELLA.forma, 'Cobranzas', 5, 200)
+  const c = esCobroYaRevisado(COB_HOY, LA_ESTRELLA.forma, 'Cobranzas', 5, 200)
   // La condición es una multiplicación de tres igualdades: cambiar cualquiera la lleva a 0.
   assert.equal(c.split('*').length, 3)
-  const otro = esCobroYaRevisado({ ...LA_ESTRELLA.forma, importe: 12000000 }, 'Cobranzas', 5, 200)
+  const otro = esCobroYaRevisado(COB_HOY, { ...LA_ESTRELLA.forma, importe: 12000000 }, 'Cobranzas', 5, 200)
   assert.notEqual(c, otro)
 })
 
 test('el texto liberador nunca lleva ▲, ni siquiera si el dueño lo escribiera con comillas', () => {
-  const f = marcaPorFila([{ ...LA_ESTRELLA, decision: 'es el "adelanto", no un duplicado' }])
+  const f = marcaPorFila(COB_HOY, [{ ...LA_ESTRELLA, decision: 'es el "adelanto", no un duplicado' }])
   assert.ok(balanceada(f), f)
   assert.match(f, /es el ""adelanto"", no un duplicado/)
   const liberador = f.slice(f.indexOf('lo revisó el dueño') - 40, f.indexOf('lo revisó el dueño') + 80)
@@ -68,7 +72,7 @@ test('el texto liberador nunca lleva ▲, ni siquiera si el dueño lo escribiera
 test('la fórmula que va al Sheet sale del registro REAL: hoy libera la fila 39 y ninguna otra', () => {
   const ds = decisionesDe(CONTROLES.cobroDuplicado)
   assert.deepEqual(ds.map((d) => d.clave), ['fila 39'])
-  const f = marcaPorFila(ds)
+  const f = marcaPorFila(COB_HOY, ds)
   assert.ok(balanceada(f), f)
   assert.equal((f.match(/lo revisó el dueño/g) || []).length, 1)
   // La 40 es la gemela de la 39 y el dueño nombró sólo la 39: sigue marcada a propósito.
@@ -90,7 +94,7 @@ test('el contador del bloque compara contra el MISMO texto que escribe la column
   // filas. Es el mismo defecto que hizo que los conteos se mostraran como "$4": un texto leído a mano.
   const escrito = textoDeRespaldo({ estado: 'sinRespaldo' }, { alerta: ALERTA, fechaCorte: '2026-08-14' })
   assert.ok(escrito.startsWith(MARCA_ALERTA_RESPALDO), 'la marca es el prefijo real de lo que se escribe')
-  const linea = bloque().find(([rot]) => rot.includes('Cobrado que el extracto NO confirma'))
+  const linea = bloque(COB_HOY, ZONA).find(([rot]) => rot.includes('Cobrado que el extracto NO confirma'))
   assert.ok(linea, 'el bloque de control tiene la línea')
   assert.ok(linea[1].includes(MARCA_ALERTA_RESPALDO), 'y su fórmula compara contra esa misma marca')
   assert.ok(linea[1].includes(`LEFT($BB$5:$BB$200;${MARCA_ALERTA_RESPALDO.length})`),
@@ -131,17 +135,17 @@ const entran = (px, tam = CUERPO) => Math.floor(px / (tam * 0.57))
 const ANCHO_NOTA_LEIBLE = 528
 
 test('la MARCA POR FILA entra en la columna BA — 170 caracteres no los arregla ningún ancho', () => {
-  const tope = entran(ANCHOS_CONTROL[52])
+  const tope = entran(ANCHOS_CONTROL[0])
   for (const [k, m] of Object.entries(MARCAS_FILA)) {
-    assert.ok(m.length <= tope, `MARCAS_FILA.${k} mide ${m.length} y en ${ANCHOS_CONTROL[52]}px entran ${tope}`)
+    assert.ok(m.length <= tope, `MARCAS_FILA.${k} mide ${m.length} y en ${ANCHOS_CONTROL[0]}px entran ${tope}`)
   }
   // Y siguen estando EN la fórmula: acortarlas no puede haberlas dejado fuera del ARRAYFORMULA.
-  const f = marcaPorFila([])
+  const f = marcaPorFila(COB_HOY, [])
   for (const m of Object.values(MARCAS_FILA)) assert.ok(f.includes(m), `la fórmula ya no publica "${m}"`)
 })
 
 test('los VEREDICTOS DEL BANCO entran en la columna BB, incluido el que medía 222', () => {
-  const tope = entran(ANCHOS_CONTROL[53])
+  const tope = entran(ANCHOS_CONTROL[1])
   assert.ok(LARGO_MAXIMO_VEREDICTO <= tope, 'el largo declarado no puede exceder la columna declarada')
   const estados = ['confirma', 'ambiguo', 'fueraDeCorte', 'anteriorAlExtracto', 'noPasaPorLaCuenta',
     'noComparable', 'extractoIlegible', 'sinRespaldo']
@@ -160,9 +164,9 @@ test('el veredicto sin respaldo SIGUE empezando con la marca que suma la línea 
 })
 
 test('los RÓTULOS y las NOTAS del cuadro entran en sus columnas BC y BE', () => {
-  const topeRotulo = entran(ANCHOS_CONTROL[54], 11)
+  const topeRotulo = entran(ANCHOS_CONTROL[2], 11)
   const topeNota = entran(ANCHO_NOTA_LEIBLE)
-  for (const [rotulo, , nota] of bloque()) {
+  for (const [rotulo, , nota] of bloque(COB_HOY, ZONA)) {
     // La firma y el subtítulo de la fila 1/2 derraman sobre la BD vacía: no se miden acá.
     if (rotulo && rotulo !== 'CONTROL DE COBRANZAS' && !rotulo.startsWith('Se recalcula')) {
       assert.ok(rotulo.length <= topeRotulo, `el rótulo "${rotulo}" mide ${rotulo.length} y entran ${topeRotulo}`)
@@ -174,7 +178,7 @@ test('los RÓTULOS y las NOTAS del cuadro entran en sus columnas BC y BE', () =>
 test('la nota del duplicado apunta a la columna donde la marca ESTÁ, no a una que quedó vieja', () => {
   // Decía "ver la marca en la columna X" y la marca vive en la BA desde que el bloque se mudó. Un
   // puntero a la columna equivocada no da error: manda a mirar una celda vacía.
-  const nota = bloque().find(([r]) => String(r).startsWith('Cobros indistinguibles'))?.[2] ?? ''
+  const nota = bloque(COB_HOY, ZONA).find(([r]) => String(r).startsWith('Cobros indistinguibles'))?.[2] ?? ''
   assert.match(nota, /BA\./, `la nota no cita la columna de la marca: "${nota}"`)
 })
 
@@ -182,6 +186,37 @@ test('los CINCO anchos del bloque están declarados: los dos que faltaban eran l
   // BB y BE —las columnas con las frases más largas— no tenían ancho propio, así que se quedaban con
   // el que dejara el layout anterior o `reparar-textos.mjs`. Un ancho sin dueño lo fija el último que
   // corre, y ahí es donde volvían los 17 textos cortados.
-  assert.deepEqual(Object.keys(ANCHOS_CONTROL).map(Number).sort((a, b) => a - b), [52, 53, 54, 55, 56])
+  assert.deepEqual(Object.keys(ANCHOS_CONTROL).map(Number).sort((a, b) => a - b), [0, 1, 2, 3, 4])
   for (const px of Object.values(ANCHOS_CONTROL)) assert.ok(px >= 140, 'ningún ancho del bloque baja de 140px')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// «OBRA» INSERTADA EN H (14/09/2026): los datos por rótulo y la zona por los rótulos que el control deja
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('la zona del control se ubica por su rótulo: BA/BB/BC hoy, BB/BC/BD cuando Google la corre', async () => {
+  const { COBRANZAS_CON_OBRA_Y_CONTROL } = await import('../lib/cobranzas-encabezado-control.fixture.mjs')
+  assert.deepEqual({ ...ZONA }, { flag: 52, valor: 53, ctrl: 54 })
+  assert.deepEqual({ ...ubicarZona(COBRANZAS_CON_OBRA_Y_CONTROL) }, { flag: 53, valor: 54, ctrl: 55 })
+  assert.throws(() => ubicarZona(COBRANZAS_1409_CON_CONTROL.slice(0, 52)), /no está en la fila de rótulos/)
+  const sinVeredicto = [...COBRANZAS_1409_CON_CONTROL.slice(0, 53), 'Otra cosa']
+  assert.throws(() => ubicarZona(sinVeredicto), /no es la que dejó este script/)
+})
+
+test('con «Obra», la marca compara el TOTAL (N), no las retenciones (M), y la OC es la I', async () => {
+  const { COB_CON_OBRA } = await import('../lib/columnas-caja.fixture.mjs')
+  const { COBRANZAS_CON_OBRA_Y_CONTROL } = await import('../lib/cobranzas-encabezado-control.fixture.mjs')
+  const hoy = marcaPorFila(COB_HOY, [])
+  assert.ok(hoy.startsWith('=ARRAYFORMULA(IF($M$5:$M$200=0;"";'), 'hoy la fórmula de siempre')
+  assert.ok(hoy.includes('$H$5:$H$200;$H$5:$H$200;$I$5:$I$200'))
+  const f = marcaPorFila(COB_CON_OBRA, [LA_ESTRELLA])
+  assert.ok(f.startsWith('=ARRAYFORMULA(IF($N$5:$N$200=0;"";'))
+  assert.ok(f.includes('$I$5:$I$200;$I$5:$I$200;$J$5:$J$200;$J$5:$J$200'), 'OC en I y concepto en J')
+  assert.ok(f.includes('(Cobranzas!$N$5:$N$200=10000000)'))
+  assert.ok(!f.includes('$M$5:$M$200'))
+  const b = bloque(COB_CON_OBRA, ubicarZona(COBRANZAS_CON_OBRA_Y_CONTROL))
+  const linea = b.find(([rot]) => rot.includes('Cobrado que el extracto NO confirma'))
+  assert.ok(linea[1].includes('LEFT($BC$5:$BC$200;'), 'el veredicto del banco se corrió a BC')
+  assert.match(b.find(([r]) => String(r).startsWith('Cobros indistinguibles'))[2], /BB\./)
+  assert.equal(b.find(([r]) => String(r).startsWith('⇒ Diferencia'))[1], '=$BE$4-$BE$5')
 })

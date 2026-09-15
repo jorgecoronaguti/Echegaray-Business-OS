@@ -10,14 +10,16 @@
 // definen acá una vez. Dos copias de "de dónde se lee Cobranzas" se desincronizan, y la que se olvide
 // de leer hasta BB deja de ver la marca de endosado sin dar un error.
 
-import { auditar } from './cobranzas-en-cashflow.mjs'
+import { auditar, columnasDelCobro } from './cobranzas-en-cashflow.mjs'
+import { lectorDeEncabezados, rangoFilas } from './columnas-por-encabezado.mjs'
 import { LADOS, frasePorCulpable } from './cobranzas-lado.mjs'
 import { PESTANA_MENSUAL } from './cash-flow-meses.mjs'
 import { leerTipoCambio, RANGO_TC } from './tipo-cambio.mjs'
 import { ref as refPestana } from './partir-pestana.mjs'
 
-/** Los datos de Cobranzas arrancan en la fila 5 y hay que llegar hasta BB: ahí está "Valor banco". */
-export const RANGO_COBRANZAS = 'Cobranzas!A5:BC400'
+/** Los datos de Cobranzas arrancan en la fila 5 y hay que llegar hasta el veredicto del banco (BB hoy,
+ *  BC con «Obra» insertada): se lee la fila entera y cada columna se ubica por su rótulo. */
+export const RANGO_COBRANZAS = rangoFilas('Cobranzas', 5, 400)
 /** La réplica del extracto, ABIERTA HACIA ABAJO: el corte del cruce sale del último movimiento que
  *  haya, no de una altura tipeada que se queda corta la primera vez que el banco manda más filas. */
 export const RANGO_BANCO = '_BANCO_RAW!A1:F'
@@ -36,7 +38,9 @@ export const rangoMensual = (pestana = PESTANA_MENSUAL) => `${refPestana(pestana
  * @param {{pestana?: string}} opciones
  */
 export async function auditarCuadreCobranzas(google, id, { pestana = PESTANA_MENSUAL } = {}) {
-  const [cob, cf, banco, tc] = await Promise.all([
+  const [encabezado, cob, cf, banco, tc] = await Promise.all([
+    // La fila de rótulos de ESTA lectura: las columnas del cobro salen de ella, no de índices tipeados.
+    lectorDeEncabezados(google, id).encabezado('Cobranzas'),
     google.readSheetGrid(id, RANGO_COBRANZAS),
     google.readSheetGrid(id, rangoMensual(pestana)),
     // EL EXTRACTO ES LA CUARTA FUENTE, y se lee con `readSheetValues`: el cruce sólo necesita fecha e
@@ -49,7 +53,7 @@ export async function auditarCuadreCobranzas(google, id, { pestana = PESTANA_MEN
     leerTipoCambio(google, id),
   ])
   return {
-    ...auditar(cob.filas, cf.filas, { tipoCambio: tc.tc, filasBanco: banco }),
+    ...auditar(cob.filas, cf.filas, { tipoCambio: tc.tc, filasBanco: banco, cols: columnasDelCobro(encabezado) }),
     tipoCambio: tc.tc,
     pestana,
     // Que el extracto no se haya podido leer NO es lo mismo que un cruce limpio: sin esto, un

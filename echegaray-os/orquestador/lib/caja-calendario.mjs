@@ -14,6 +14,7 @@ import { DESDE_CAJA } from './caja-anexo-nombres.mjs'
 import { formulaChequesSinFactura, formulaCalendarioImpuestosSemana, INSTRUMENTOS } from './cash-flow-lineas.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 import { SIN_FUENTE_EN_VENTANA } from './caja-refs.mjs'
+import { exigirColumnas } from './cobranzas-columnas.mjs'
 import { COBRANZAS, columnasDe, rangoHasta } from './columnas-por-encabezado.mjs'
 
 /**
@@ -143,17 +144,17 @@ export const columnasEsperadas = (encabezado) => columnasDe(encabezado, ROTULOS_
  * ISNUMBER sobre la fecha, SIEMPRE: una fecha guardada como TEXTO compara como mayor que cualquier
  * número y el mismo cobro entraría en varios tramos. Es el defecto que ya costó $657.000 del lado de
  * los cheques.
+ *
+ * LAS TRES COLUMNAS, POR RÓTULO (14/09/2026): eran `O`/`Q`/`M` tipeadas y con «Obra» en H el tramo
+ * habría filtrado por «Forma de Cobro» y sumado retenciones. `cob` sale de la fila 4 de la corrida.
+ * @param {Record<string,{letra:string}>} cob columnas de Cobranzas resueltas por encabezado
  */
-export function cobranzasEsperadasTramo(desde, hasta, cols) {
-  // POR RÓTULO DESDE EL 14/09/2026: con «Obra» insertada en H, O/Q/M pasan a P/R/N y la letra vieja
-  // sumaría la columna de al lado. El tope 400 se conserva: es el que este archivo ya tenía.
-  if (!cols?.estado || !cols?.fechaCobro || !cols?.total) {
-    throw new Error('cobranzasEsperadasTramo: faltan las columnas de Cobranzas resueltas por rótulo — columnasEsperadas(encabezado)')
-  }
-  const r = (c) => rangoHasta('Cobranzas', c, 400)
-  const est = `LOWER(${r(cols.estado)})`
-  const fecha = r(cols.fechaCobro)
-  const monto = `IF(ISNUMBER(${r(cols.total)});${r(cols.total)};0)`
+export function cobranzasEsperadasTramo(desde, hasta, cob) {
+  const { estado, fechaCobro, total } = exigirColumnas(cob, ['estado', 'fechaCobro', 'total'], 'cobranzasEsperadasTramo')
+  const est = `LOWER(${rangoHasta('Cobranzas', estado, 400)})`
+  const fecha = rangoHasta('Cobranzas', fechaCobro, 400)
+  const m = rangoHasta('Cobranzas', total, 400)
+  const monto = `IF(ISNUMBER(${m});${m};0)`
   const cond = [`(${est}<>"cobrado")`, `(${est}<>"endosado")`, `ISNUMBER(${fecha})`]
   if (desde) cond.push(`(${fecha}>=${desde})`)
   if (hasta) cond.push(`(${fecha}<${hasta})`)

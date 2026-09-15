@@ -1,9 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  C, auditar, leerCobro, repasar, porMes, esPendiente, esCobrado, ubicarCuadro, SUB_COBRANZAS,
+  auditar as auditarReal, leerCobro as leerCobroReal, columnasDelCobro, repasar, porMes, esPendiente, esCobrado, ubicarCuadro, SUB_COBRANZAS,
 } from './cobranzas-en-cashflow.mjs'
 import { ROTULO_CONCEPTO } from './cash-flow-matriz.mjs'
+import { COBRANZAS_1409_CON_CONTROL } from './cobranzas-encabezado-control.fixture.mjs'
+/** Las columnas del cobro contra la fila 4 de hoy (con la zona del control): las que la corrida lee. */
+const C = columnasDelCobro(COBRANZAS_1409_CON_CONTROL)
+const leerCobro = (f, n, o = {}) => leerCobroReal(f, n, { cols: C, ...o })
+const auditar = (a, b, o = {}) => auditarReal(a, b, { cols: C, ...o })
 
 // El serial de Sheets de una fecha ISO, para escribir fixtures legibles.
 const serial = (iso) => Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.UTC(1899, 11, 30)) / 86400000)

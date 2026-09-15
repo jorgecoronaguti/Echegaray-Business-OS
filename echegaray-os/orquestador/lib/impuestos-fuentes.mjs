@@ -11,6 +11,25 @@ import { parseMonto } from './cash-briefing.mjs'
 import { escribirPreservando } from './preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from './cola-de-rango.mjs'
 import { clasificar, mes as mesDe, COLUMNAS } from './retenciones-sufridas.mjs'
+import { exigirColumnas, leerColumnasCobranzas } from './cobranzas-columnas.mjs'
+import { lectorDeEncabezados, rangoColumna, rangoFilas } from './columnas-por-encabezado.mjs'
+import { COLUMNAS_VENTA } from './impuestos-base-libro.mjs'
+
+// El layout de `_IIBB_RAW` vive aparte (no es de Cobranzas): se re-exporta para no mover a nadie.
+export { IIBB_COL } from './impuestos-iibb-raw.mjs'
+
+/** Las columnas de Cobranzas que leen estas fuentes, por clave de `COBRANZAS_OS`. */
+export const COLUMNAS_FUENTES = Object.freeze(['cliente', 'fechaCobro', 'neto', 'iva', 'categoria', 'fechaVenta', ...Object.values(COLUMNAS)])
+/** Todas las que lee la pestaña de impuestos: estas fuentes, la venta del mes y la conciliación con ARCA. */
+export const COLUMNAS_IMPUESTOS = Object.freeze([...new Set([...COLUMNAS_FUENTES, ...COLUMNAS_VENTA])])
+
+/** La fila 4 de Cobranzas de ESTA corrida, resuelta para todo lo que lee la pestaña de impuestos. */
+export const leerColumnasImpuestos = (google, fileId) => leerColumnasCobranzas(google, fileId, COLUMNAS_IMPUESTOS)
+/** Las filas de Cobranzas desde la 5, leídas desde la A y sin formato: se indexan por las columnas resueltas. */
+export const leerFilasCobranzas = async (google, fileId) =>
+  (await google.readSheetValues(fileId, rangoFilas('Cobranzas', 5), { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+/** La fila de rótulos de Compras de esta corrida, para resolver sus columnas por nombre. */
+export const leerEncabezadoCompras = (google, fileId) => lectorDeEncabezados(google, fileId).encabezado('Compras')
 
 // ═══ LA RÉPLICA DE LAS DDJJ DE IIBB ═══
 //
@@ -32,8 +51,6 @@ export const IIBB_COLS = [
   ['N° control', 'texto'],
   ['Leído de', 'texto'],
 ]
-/** Dónde vive cada columna de _IIBB_RAW, para no buscarla por posición a ojo. */
-export const IIBB_COL = { periodo: 'A', base: 'B', alicuota: 'C', impuesto: 'D', retenciones: 'E', saldoAnt: 'F' }
 export const IIBB_FILA0 = 4 // título, nota, encabezados, datos
 
 export const ARCA_RAW = '_ARCA_RAW'
@@ -155,48 +172,53 @@ export async function leerIVA(google) {
  * rótulos de dos de esas columnas estaban marcados como reconstruidos y una retención imputada al
  * impuesto equivocado es un crédito fiscal que no existe.
  *
- * Se imputan por FECHA DE COBRO (columna Q), que es cuando se practica — no por la de la factura.
+ * Se imputan por «Fecha cobro», que es cuando se practica — no por la de la factura.
  * RANGO ABIERTO: cerrado en la fila 400 se caía la 401 sin un solo error, y Cobranzas ya tiene 357.
+ *
+ * @param {Record<string,{indice:number}>} cob columnas de Cobranzas resueltas contra la fila 4 viva
  */
-export async function leerRetenciones(google, fileId) {
-  const v = await google.readSheetValues(fileId, 'Cobranzas!A5:AJ').catch(() => [])
-  const cobros = v.map((f, i) => ({
+export async function leerRetenciones(google, fileId, cob) {
+  return clasificar(retencionesDeFilas(await google.readSheetValues(fileId, rangoFilas('Cobranzas', 5)).catch(() => []), cob))
+}
+
+/** NÚCLEO PURO: las filas con alguna retención, cada campo leído de su rótulo. */
+export function retencionesDeFilas(filas = [], cob) {
+  const c = exigirColumnas(cob, COLUMNAS_FUENTES, 'leerRetenciones')
+  const en = (f, k) => f?.[c[k].indice]
+  return filas.map((f, i) => ({
     fila: i + 5,
-    cliente: String(f?.[6] ?? '').trim(),
-    mes: mesDe(f?.[16]),
-    neto: parseMonto(f?.[9]),
-    iva: parseMonto(f?.[10]),
-    retenciones: {
-      iva: parseMonto(f?.[COLUMNAS.iva]),
-      ganancias: parseMonto(f?.[COLUMNAS.ganancias]),
-      iibb: parseMonto(f?.[COLUMNAS.iibb]),
-    },
-  })).filter((c) => c.retenciones.iva || c.retenciones.ganancias || c.retenciones.iibb)
-  return clasificar(cobros)
+    cliente: String(en(f, 'cliente') ?? '').trim(),
+    mes: mesDe(en(f, 'fechaCobro')),
+    neto: parseMonto(en(f, 'neto')),
+    iva: parseMonto(en(f, 'iva')),
+    retenciones: Object.fromEntries(Object.entries(COLUMNAS).map(([imp, clave]) => [imp, parseMonto(en(f, clave))])),
+  })).filter((x) => x.retenciones.iva || x.retenciones.ganancias || x.retenciones.iibb)
 }
 
 /** El rótulo con el que Cobranzas marca la venta FACTURADA en su columna B «Categoría». */
 export const CATEGORIA_FACTURADA = 'B'
 
 /**
- * NÚCLEO PURO: las ventas FACTURADAS por mes de emisión, desde las filas de `Cobranzas!B5:J`.
+ * NÚCLEO PURO: las ventas FACTURADAS por mes de emisión, desde las filas de Cobranzas leídas desde la A.
  *
- * Índices dentro de cada fila: 0 = B (Categoría) · 1 = C (Fecha emisión) · 8 = J (Monto neto).
+ * Cada fila se lee por RÓTULO: «Categoría», «Fecha de Venta» y «Monto neto» (eran los índices 0/1/8
+ * de `B5:J`; con «Obra» en H el neto pasaba a ser el IVA).
  *
  * Devuelve también qué quedó afuera y por qué. Un filtro que descarta en silencio es indistinguible
  * de un filtro roto: si mañana aparece una categoría nueva, esto tiene que poder decirlo.
  */
-export function ventasFacturadasPorMes(filas = []) {
+export function ventasFacturadasPorMes(filas = [], cob) {
+  const c = exigirColumnas(cob, ['categoria', 'fechaVenta', 'neto'], 'ventasFacturadasPorMes')
   const porMes = {}
   const afuera = { sinFactura: 0, sinCategoria: 0, sinFecha: 0 }
   for (const f of filas) {
-    const cat = String(f?.[0] ?? '').trim().toUpperCase()
+    const cat = String(f?.[c.categoria.indice] ?? '').trim().toUpperCase()
     if (!cat) { afuera.sinCategoria++; continue }
     if (cat !== CATEGORIA_FACTURADA) { afuera.sinFactura++; continue }
-    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(f?.[1] ?? '').trim())
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(f?.[c.fechaVenta.indice] ?? '').trim())
     if (!m) { afuera.sinFecha++; continue }
     const per = `${m[3]}-${String(m[2]).padStart(2, '0')}`
-    const neto = parseFloat(String(f?.[8] ?? '').replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
+    const neto = parseFloat(String(f?.[c.neto.indice] ?? '').replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
     porMes[per] = (porMes[per] ?? 0) + neto
   }
   return { porMes, afuera }
@@ -253,10 +275,10 @@ export function filasFacturadas(filas = [], primeraFila = 5) {
  * Y NO alimenta sólo un control, como decía el comentario anterior: el resultado entra en
  * `posicionIvaCompleta()` y de ahí a la pestaña. Era un comentario que mentía sobre su propio efecto.
  */
-export async function ventasProyectadas(google, fileId) {
+export async function ventasProyectadas(google, fileId, cob) {
   // RANGO ABIERTO: el tope en la fila 200 dejaba afuera 157 filas de datos. Un control ciego a la
   // mitad de su fuente no controla nada.
-  const { porMes, afuera } = ventasFacturadasPorMes(await google.readSheetValues(fileId, 'Cobranzas!B5:J'))
+  const { porMes, afuera } = ventasFacturadasPorMes(await google.readSheetValues(fileId, rangoFilas('Cobranzas', 5)), cob)
   if (afuera.sinCategoria) {
     console.warn(`⚠ ventasProyectadas: ${afuera.sinCategoria} fila(s) de Cobranzas sin categoría — fuera del IVA proyectado`)
   }
@@ -365,8 +387,10 @@ export async function escribirIIBBRaw(google, fileId, iibb) {
  * de Cobranzas sin categoría, y cobros cuyo origen no sea esa pestaña —ahí el número de fila
  * apuntaría a otra parte y la comparación sería contra la fila equivocada, en silencio—.
  */
-export async function predicadoDeCobranzaFacturada(google, fileId, movs = [], registrar = console.log) {
-  const cat = (await google.readSheetValues(fileId, 'Cobranzas!B5:B', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+export async function predicadoDeCobranzaFacturada(google, fileId, movs = [], registrar = console.log, cob) {
+  // Una sola columna, «Categoría», por su rótulo: `filasFacturadas` la indexa en 0 porque es la única.
+  const { categoria } = exigirColumnas(cob, ['categoria'], 'predicadoDeCobranzaFacturada')
+  const cat = (await google.readSheetValues(fileId, rangoColumna('Cobranzas', categoria.letra, 5), { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
   const { facturadas, sinFactura, sinCategoria } = filasFacturadas(cat)
   const huerfanos = movs.filter((x) => x.signo === 1 && x.rubro === 'Cobranzas' && x.origen !== 'Cobranzas')
   registrar(`  débito del Libro: ${facturadas.size} filas de Cobranzas facturadas · ${sinFactura} sin factura (fuera del IVA, dentro de la caja)`
