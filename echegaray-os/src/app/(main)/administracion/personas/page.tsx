@@ -58,12 +58,14 @@ import {
 import { crearPersona } from '@/features/administracion/services/personasActions'
 import {
   asistenciaHoyPorPersona, hayControlDeVencimientos, hhPorPersona, marcasPorPersona, mesCorriente,
-  papelesPorPersona,
+  papelesPorPersona, personasConTardanza, pieDeTardanzas, tardanzasDeHoy,
 } from '@/features/administracion/services/pulsoDelPlantel'
 import {
   getHHDelMes, getMarcasDeHoy, getPapelesDelPlantel,
 } from '@/features/administracion/services/pulsoDelPlantelService'
 import { getPresenciaDelDia } from '@/features/administracion/services/presenciaDelDiaService'
+import { leerPresenciasDeLaQuincena } from '@/features/administracion/services/lecturasCompartidasDeQuincena'
+import { quincenaDe } from '@/features/administracion/services/quincena'
 import { hoyEnObra } from '@/features/jefe/services/contexto'
 import { diaDeCarga } from '@/features/administracion/services/diaDeJornada'
 import { hrefDeAsistencia, modoDeAsistencia } from '@/features/administracion/services/vistaDeAsistencia'
@@ -186,7 +188,8 @@ async function leerTodo(
 ) {
   const { desde, hasta } = mesCorriente(hoy)
   const conPulso = filtro !== 'inactivos'
-  const [listado, marcas, hh, papeles, presencia, conteos] = await Promise.all([
+  const quincena = quincenaDe(hoy)
+  const [listado, marcas, hh, papeles, presencia, conteos, tardanzasQuincena] = await Promise.all([
     getDirectorio(supabase, filtro, q),
     conPulso ? getMarcasDeHoy(supabase, hoy) : null,
     conPulso ? getHHDelMes(supabase, desde, hasta) : null,
@@ -198,8 +201,13 @@ async function leerTodo(
     // Los contadores de los recortes: cuatro `count` sin filas, y del CORTE entero — no de lo que
     // sobrevive a la búsqueda de este momento (ver `getConteosDeFiltro`).
     getConteosDeFiltro(supabase),
+    // LAS MARCAS DE TARDANZA DE LA QUINCENA (15/09/2026), para el pie de la tabla: cuántas personas
+    // ya perdieron el presentismo. Es la MISMA lectura memoizada que usan Horas y Liquidación
+    // (`leerPresenciasDeLaQuincena`), con su reintento sin columnas mientras `20260915T2220` no esté
+    // aplicada — no una segunda consulta a `asistencia_dia` con otro criterio.
+    conPulso ? leerPresenciasDeLaQuincena(supabase, quincena.desde, quincena.hasta) : null,
   ])
-  return { listado, marcas, hh, papeles, presencia, conteos }
+  return { listado, marcas, hh, papeles, presencia, conteos, tardanzasQuincena, quincena }
 }
 
 /** Las tres lecturas agrupadas por persona. Cada fuente que falló apaga SU columna y deja el resto
@@ -209,12 +217,22 @@ function armarPulso(
   hh: Awaited<ReturnType<typeof getHHDelMes>> | null,
   papeles: Awaited<ReturnType<typeof getPapelesDelPlantel>> | null,
   presencia: Awaited<ReturnType<typeof getPresenciaDelDia>> | null,
+  tardanzasQuincena: Awaited<ReturnType<typeof leerPresenciasDeLaQuincena>> | null,
+  quincena: { desde: string; hasta: string },
   hoy: string,
 ): PulsoDelPlantel | undefined {
   if (!marcas || !hh || !papeles || !presencia) return undefined
   const { desde, hasta } = mesCorriente(hoy)
   return {
     marcas: marcasPorPersona(marcas.data),
+    // LA MARCA DE HOY SALE DE LA MISMA LECTURA QUE LA COLUMNA HOY (`asistencia_dia` de hoy): ni una
+    // segunda consulta ni un segundo criterio de qué es una tardanza.
+    tardanzas: tardanzasDeHoy(presencia.data ?? []),
+    // UN 0 QUE NO SE LEYÓ NO ES UN 0: si la quincena no se pudo leer, el pie dice «sin lectura».
+    pieTardanzas: pieDeTardanzas({
+      conMarca: tardanzasQuincena && !tardanzasQuincena.error ? personasConTardanza(tardanzasQuincena.data ?? []) : null,
+      quincena,
+    }),
     // LA MISMA LECTURA CONTESTA LAS DOS PREGUNTAS: la ventana del mes cierra en hoy, así que las
     // filas de hoy ya vinieron. Una consulta aparte por la columna HOY sería un sexto viaje para
     // traer un subconjunto de lo que está en memoria.
@@ -386,7 +404,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
     )
   }
 
-  const { listado, marcas, hh, papeles, presencia, conteos } = await leerTodo(supabase, filtro, sp.q, hoy)
+  const { listado, marcas, hh, papeles, presencia, conteos, tardanzasQuincena, quincena } = await leerTodo(supabase, filtro, sp.q, hoy)
 
   // EL ERROR DE LA BASE SE MUESTRA, NO SE PINTA COMO LISTA VACÍA. Una tabla en blanco porque la RLS
   // rechazó la consulta es indistinguible de una tabla en blanco porque no hay personas, y la
@@ -404,7 +422,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   }
 
   const personas = listado.data ?? []
-  const pulso = armarPulso(marcas, hh, papeles, presencia, hoy)
+  const pulso = armarPulso(marcas, hh, papeles, presencia, tardanzasQuincena, quincena, hoy)
   const abierta = sp.nueva === '1'
   // EL PERFIL YA ESTÁ EN MEMORIA: `getPerfilActual` memoiza por usuario (`recordar`), así que esto
   // no es un sexto viaje a la base — es la misma lectura que hace la barra de navegación.

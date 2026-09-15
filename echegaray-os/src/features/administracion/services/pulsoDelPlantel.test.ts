@@ -10,7 +10,7 @@ import type { ClasificacionDelDia } from './asistenciaDelDia.ts'
 import {
   SIN_MARCAR, asistenciaHoyPorPersona, estadoHoy, hayControlDeVencimientos, hayMarcaDeHoy,
   hhPorPersona, horasVisibles, marcasPorPersona, mesCorriente, ofertaDeMarcar, papelesPorPersona,
-  rotuloDePapeles, rotuloHoy,
+  personasConTardanza, pieDeTardanzas, rotuloDePapeles, rotuloHoy, tardanzasDeHoy,
 } from './pulsoDelPlantel.ts'
 
 const HOY = '2026-08-24'
@@ -428,4 +428,58 @@ test('sin permiso no hay botón ni «sin obra»; a quien ya no está tampoco', (
   assert.equal(ofertaDeMarcar({ ...PUEDE, puedeMarcar: false }), 'nada')
   assert.equal(ofertaDeMarcar({ ...PUEDE, puedeMarcar: false, obraId: null }), 'nada')
   assert.equal(ofertaDeMarcar({ ...PUEDE, enLaEmpresa: false }), 'nada')
+})
+
+// ── TARDANZA DESDE EL PLANTEL (dueño, 15/09/2026) ───────────────────────────────────────────────
+
+test('la marca de hoy sólo existe sobre un presente, y sólo si alguna de las dos está puesta', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Un Map con `{false, false}` por persona haría que la celda dibuje «con marca» para todo el
+  // plantel el día que alguien lo lea con `has()`; y una fila ausente con la marca puesta —cargada
+  // por script antes del CHECK— pintaría el ▲ sobre alguien que no vino.
+  const m = tardanzasDeHoy([
+    { persona_id: 'a', estado: 'presente', llego_tarde: true, salio_antes: false },
+    { persona_id: 'b', estado: 'presente', llego_tarde: false, salio_antes: false },
+    { persona_id: 'c', estado: 'ausente', llego_tarde: true, salio_antes: true },
+    // Sin columnas (migración pendiente): se lee como sin marca, nunca como marca.
+    { persona_id: 'd', estado: 'presente' },
+    { persona_id: 'e', estado: 'presente', salio_antes: true },
+  ])
+  assert.deepEqual([...m.keys()].sort(), ['a', 'e'])
+  assert.deepEqual(m.get('a'), { llegoTarde: true, salioAntes: false })
+  assert.deepEqual(m.get('e'), { llegoTarde: false, salioAntes: true })
+})
+
+test('el pie cuenta PERSONAS con marca en la quincena, no días', () => {
+  // Dos marcas de la misma persona son UN presentismo perdido: contar filas diría «3» donde hay 2.
+  assert.equal(personasConTardanza([
+    { persona_id: 'a', estado: 'presente', llego_tarde: true },
+    { persona_id: 'a', estado: 'presente', salio_antes: true },
+    { persona_id: 'b', estado: 'presente', llego_tarde: true, salio_antes: true },
+    { persona_id: 'c', estado: 'presente' },
+    { persona_id: 'd', estado: 'licencia', llego_tarde: true },
+  ]), 2)
+  assert.equal(personasConTardanza([]), 0)
+})
+
+test('el pie dice «sin lectura» cuando no pudo leer la quincena, y nunca un 0 en su lugar', () => {
+  const q = { desde: '2026-09-16', hasta: '2026-09-30' }
+  const sinLectura = pieDeTardanzas({ conMarca: null, quincena: q })
+  assert.match(sinLectura, /sin lectura de la 2ª quincena de septiembre/)
+  assert.doesNotMatch(sinLectura, /\b0\b|nadie/)
+  assert.match(pieDeTardanzas({ conMarca: 0, quincena: q }), /nadie con marca en la 2ª quincena de septiembre/)
+  assert.match(pieDeTardanzas({ conMarca: 1, quincena: q }), /1 persona con marca/)
+  assert.match(pieDeTardanzas({ conMarca: 3, quincena: q }), /3 personas con marca/)
+  // LA LEYENDA DEL ▲ VA SIEMPRE: es lo que explica el glifo de la celda.
+  assert.match(sinLectura, /^▲ llegó tarde o salió antes · pierde el presentismo de la quincena/)
+})
+
+test('antes del 16/09/2026 el pie avisa que el presentismo todavía no rige', () => {
+  // La marca se guarda igual —es un hecho del día— pero no descuenta: sin el aviso alguien buscaría
+  // en la liquidación de la 1ª quincena de septiembre un descuento que no existe.
+  const antes = pieDeTardanzas({ conMarca: 2, quincena: { desde: '2026-09-01', hasta: '2026-09-15' } })
+  assert.match(antes, /2 personas con marca en la 1ª quincena de septiembre \(el presentismo rige desde el 16\/09\/2026\)/)
+  const despues = pieDeTardanzas({ conMarca: 2, quincena: { desde: '2026-09-16', hasta: '2026-09-30' } })
+  assert.doesNotMatch(despues, /rige desde/)
 })
