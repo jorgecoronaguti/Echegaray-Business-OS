@@ -114,7 +114,8 @@ function cuerpo(src: string, nombre: string): string {
   return src.slice(i, fin < 0 ? undefined : fin)
 }
 
-/** La guarda existe y va antes de TODA escritura que aparezca en el cuerpo. */
+/** La guarda existe —la lectura Y el `return` que corta— y va antes de TODA escritura del cuerpo. Sin el
+ *  `return` en el mismo texto, borrar sólo `if (cierre !== null) return …` dejaba el test verde (auditor, 15/09/2026). */
 function guardaAntes(src: string, nombre: string, guarda: string, escrituras: string[]) {
   const c = cuerpo(src, nombre)
   const g = c.indexOf(guarda)
@@ -127,18 +128,18 @@ function guardaAntes(src: string, nombre: string, guarda: string, escrituras: st
 
 test('CADA PUERTA DE HORAS PREGUNTA ANTES DE ESCRIBIR', () => {
   const jornadaSrc = fuente('./jornadaPorObraActions.ts')
-  guardaAntes(jornadaSrc, 'guardarJornada', 'await quincenaCerrada(supabase, fecha)',
+  guardaAntes(jornadaSrc, 'guardarJornada', 'await quincenaCerrada(supabase, fecha)\n  if (cierre !== null) return { ok: false, error: cierre }',
     ['vaciarHorasDelDia(', "from('registros_hh')", 'escribirAusenciasSinObra(', 'escribirPlan('])
-  guardaAntes(jornadaSrc, 'corregirJornada', 'await quincenaCerrada(supabase, c.fecha, c.hasta ?? c.fecha)',
+  guardaAntes(jornadaSrc, 'corregirJornada', 'await quincenaCerrada(supabase, c.fecha, c.hasta ?? c.fecha)\n  if (cierre !== null) return { ok: false, error: cierre }',
     ["c.estado === 'vaciar'", 'vaciarHorasDelDia(', "from('registros_hh')", 'corregirAusencia(', 'escribirPlan('])
 
   const presencia = fuente('./presenciaDelDiaActions.ts')
   guardaAntes(presencia, 'guardarPresencia', 'await quincenaCerrada(supabase, fecha)', ['aplicarHorasPorDefecto('])
   assert.match(cuerpo(presencia, 'guardarPresencia'), /cierre === null\s*\?\s*await aplicarHorasPorDefecto\(/)
 
-  guardaAntes(fuente('./liquidacionDiaActions.ts'), 'corregirHorasDelDia', 'await quincenaCerrada(supabase, fila.fecha)',
+  guardaAntes(fuente('./liquidacionDiaActions.ts'), 'corregirHorasDelDia', 'await quincenaCerrada(supabase, fila.fecha)\n  if (cierre !== null) return { ok: false, error: cierre }',
     ['vaciarHorasDelDia(', '.update('])
-  guardaAntes(fuente('./horasDeLaCeldaActions.ts'), 'guardarHorasDeLaCelda', 'await quincenaCerrada(supabase, datos.data.fecha)',
+  guardaAntes(fuente('./horasDeLaCeldaActions.ts'), 'guardarHorasDeLaCelda', 'await quincenaCerrada(supabase, datos.data.fecha)\n  if (cierre !== null) return { ok: false, error: cierre }',
     ['crearElDia('])
 })
 
