@@ -34,6 +34,8 @@ import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
 import { toma } from '../lib/candado-base.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
+import { COMPRAS } from '../lib/columnas-por-encabezado.mjs'
+import { leerConEncabezado } from '../lib/columnas-lectura.mjs'
 import { FILA_DATO0, FILA_FIN } from '../lib/cheques-emitidos-geometria.mjs'
 import { padronDe, aliasesDe } from '../lib/ml/identidad.mjs'
 import { aliasesASembrar } from '../lib/ml/sembrar-alias.mjs'
@@ -50,14 +52,14 @@ export async function observacionesReales(google) {
   const hojas = await google.getSheetMeta(ID)
   const CH = hallarPestana(hojas, 'Cheques Emitidos').title
 
-  const crudoCompras = await google.readSheetValues(ID, 'Compras!C4:AM', { render: 'UNFORMATTED_VALUE' })
-  const I_CUIT = 36 // AM contando desde C
+  // Proveedor y CUIT por RÓTULO (14/09/2026): eran posiciones contadas desde C, y «Obra» entra en L.
+  const { idx: ic, datos: crudoCompras } = await leerConEncabezado(google, ID, 'Compras', { proveedor: COMPRAS.proveedor, cuit: COMPRAS.cuit }, { render: 'UNFORMATTED_VALUE' })
   // EL TEXTO VA CRUDO, TAL COMO ESTÁ ESCRITO EN LA PLANILLA. Normalizarlo acá y guardar ESO como
   // `valor_original` sería guardar una versión y llamarla el original: la pantalla que después
   // busca «Robles Pinturerías S.R.L.» no lo encontraría, porque lo escrito quedó como «ROBLES
   // PINTURERIAS». El resolver normaliza adentro, que es donde corresponde.
   const compras = crudoCompras
-    .map((f) => ({ nombre: String(f?.[2] ?? '').trim(), cuit: f?.[I_CUIT], fuente: 'compras' }))
+    .map((f) => ({ nombre: String(f?.[ic.proveedor] ?? '').trim(), cuit: f?.[ic.cuit], fuente: 'compras' }))
     .filter((o) => o.nombre)
 
   const crudoCh = await google.readSheetValues(ID, `${CH}!A${FILA_DATO0}:L${FILA_FIN}`)

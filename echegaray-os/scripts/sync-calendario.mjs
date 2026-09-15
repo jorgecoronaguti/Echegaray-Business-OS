@@ -14,6 +14,8 @@ import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { loadEnvLocalInto } from './lib/env-file.mjs'
 import { mismosDatosReales } from './lib/snapshot-diff.mjs'
+import { COBRANZAS, COMPRAS, PESTANAS, rangoFilas } from '../orquestador/lib/columnas-por-encabezado.mjs'
+import { conEncabezado } from '../orquestador/lib/columnas-lectura.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SALIDA = join(ROOT, 'src/features/flujo-caja/data/calendario-snapshot.json')
@@ -68,7 +70,8 @@ const { access_token } = await tokRes.json()
 // web se queda sin calendario — por eso este script quedó fallando. El saldo de arranque ahora sale de
 // CAJA!A5 (DISPONIBILIDADES). Cheques Emitidos tiene banda-resumen arriba: se lee desde A1 y el filtro
 // por tipo (ECHEQ/CHEQUE) del loop saltea el encabezado.
-const rangos = ['Cobranzas!A5:Q200', 'Compras!A5:Y940', 'Cheques Emitidos!A1:N997', "'Tarjeta de Credito'!A3:K200", 'CAJA!A5']
+// Cobranzas y Compras se leen DESDE SU FILA DE RÓTULOS (14/09/2026): cada índice sale de esa fila.
+const rangos = [rangoFilas('Cobranzas', PESTANAS.Cobranzas.filaEncabezado, 200), rangoFilas('Compras', PESTANAS.Compras.filaEncabezado, 940), 'Cheques Emitidos!A1:N997', "'Tarjeta de Credito'!A3:K200", 'CAJA!A5']
 const params = rangos.map((r) => `ranges=${encodeURIComponent(r)}`).join('&')
 const res = await fetch(
   `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values:batchGet?${params}&valueRenderOption=UNFORMATTED_VALUE`,
@@ -79,41 +82,48 @@ const res = await fetch(
 if (!res.ok) throw new Error(`sheets: ${res.status} — ${(await res.text()).slice(0, 300)}`)
 const data = await res.json()
 const [cobranzas, compras, cheques, tarjeta, caja] = data.valueRanges.map((v) => v.values ?? [])
+// Con «Obra» insertada (Compras L, Cobranzas H) los índices fijos leían la columna de al lado. Un rótulo
+// que falta rompe la corrida con su nombre: el calendario no se publica con montos de otra columna.
+const cob = conEncabezado(cobranzas, 'Cobranzas', { estado: COBRANZAS.estado, fecha: COBRANZAS.fechaCobro, total: COBRANZAS.total, cliente: COBRANZAS.cliente, unidad: 'Unidad' })
+const cmp = conEncabezado(compras, 'Compras', {
+  estado: COMPRAS.estado, tipoPago: COMPRAS.tipoPago, vence: 'Fecha prevista de pago (día)', total: COMPRAS.total,
+  proveedor: COMPRAS.proveedor, unidad: COMPRAS.unidad, concepto: COMPRAS.concepto, detalle: COMPRAS.detalle,
+})
 
 const texto = (r, i) => String((r.length > i ? r[i] : null) ?? '').trim()
 const numero = (r, i) => (typeof r[i] === 'number' ? r[i] : null)
 const serialAIso = (s) => new Date(Math.round((s - 25569) * 86400 * 1000)).toISOString().slice(0, 10)
 
 const movimientos = []
-for (const r of cobranzas) {
-  const estado = texto(r, 14)
-  const fecha = numero(r, 16)
-  const monto = numero(r, 12)
+for (const r of cob.datos) {
+  const estado = texto(r, cob.idx.estado)
+  const fecha = numero(r, cob.idx.fecha)
+  const monto = numero(r, cob.idx.total)
   if (!estado || estado === 'Cobrado' || fecha === null || !monto) continue
   movimientos.push({
     fecha: serialAIso(fecha),
     tipo: 'cobro',
-    quien: texto(r, 6) || 'Cliente sin nombre',
-    detalle: `${texto(r, 5)} · ${estado}`,
+    quien: texto(r, cob.idx.cliente) || 'Cliente sin nombre',
+    detalle: `${texto(r, cob.idx.unidad)} · ${estado}`,
     monto,
   })
 }
 const MEDIOS_APARTE = new Set(['cheque', 'echeq', 'tarjeta crédito'])
-for (const r of compras) {
-  // Estado vive en X(23). Antes se leía col 24, pero se insertó una columna y Y(24) hoy es
+for (const r of cmp.datos) {
+  // Estado por RÓTULO desde el 14/09/2026. Se leía por posición: la col 24, y cuando se insertó una columna Y(24) pasó a ser
   // "Tipo de Costo" (Directo/Indirecto): leer 24 hacía que el filtro NUNCA diera true y Compras
   // aportara CERO pagos al calendario, incluso con el 400 ya resuelto.
-  const estado = texto(r, 23)
+  const estado = texto(r, cmp.idx.estado)
   if (estado !== 'Pendiente' && estado !== 'Proyectado') continue
-  if (MEDIOS_APARTE.has(texto(r, 15).toLowerCase())) continue
-  const fecha = numero(r, 16)
-  const monto = numero(r, 14)
+  if (MEDIOS_APARTE.has(texto(r, cmp.idx.tipoPago).toLowerCase())) continue
+  const fecha = numero(r, cmp.idx.vence)
+  const monto = numero(r, cmp.idx.total)
   if (fecha === null || !monto) continue
   movimientos.push({
     fecha: serialAIso(fecha),
     tipo: 'pago',
-    quien: texto(r, 4) || 'Proveedor sin nombre',
-    detalle: [texto(r, 8), texto(r, 11) || texto(r, 10), estado === 'Proyectado' ? 'proyectado' : '']
+    quien: texto(r, cmp.idx.proveedor) || 'Proveedor sin nombre',
+    detalle: [texto(r, cmp.idx.unidad), texto(r, cmp.idx.concepto) || texto(r, cmp.idx.detalle), estado === 'Proyectado' ? 'proyectado' : '']
       .filter(Boolean)
       .join(' · '),
     monto: -monto,

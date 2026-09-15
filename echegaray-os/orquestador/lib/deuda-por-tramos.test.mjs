@@ -8,9 +8,10 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   COL, PENDIENTE, clasificar, esComercial, estadoTipeadoQueContradice,
-  formulaSaldoPendiente, formulaParcial1Monto, pagadoDe, posicionComercial, saldoDeLaFila,
+  formulaSaldoPendiente, formulaParcial1Monto, columnasDeuda, expresionSaldo, formulaPagadasSinImporte, pagadoDe, posicionComercial, saldoDeLaFila,
 } from './deuda-por-tramos.mjs'
 import { esProsa } from './diseno-unificado.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
 
 /** Arma una fila de Compras con sólo las columnas que esta aritmética mira. */
 function fila({ proveedor = 'X', comprobante = '', total = 0, pagado = 0, u = 0, w = 0,
@@ -208,6 +209,29 @@ describe('la fórmula de la columna AL', () => {
 // Se mide con `esProsa`, el mismo núcleo puro que audita el Sheet: cualquier párrafo nuevo que
 // alguien meta adentro de esta fórmula da rojo acá y no dos horas después en la pantalla del dueño.
 it('EL DEFECTO · «Monto Parcial 1» publica un número, no un veredicto', () => {
-  const p = esProsa(formulaParcial1Monto())
+  const p = esProsa(formulaParcial1Monto(columnasDeuda(COMPRAS_2508)))
   assert.equal(p, null, `la fórmula publica prosa: ${JSON.stringify(p)}`)
+})
+
+describe('«Obra» insertada en Compras L (14/09/2026): las fórmulas que leen Compras siguen al rótulo', () => {
+  const antes = columnasDeuda(COMPRAS_2508)
+  const despues = columnasDeuda(COMPRAS_CON_OBRA)
+  it('el saldo resta Total − Monto Pagado − Monto Parcial 2 por rótulo', () => {
+    assert.equal(expresionSaldo(antes), '(IF(ISNUMBER(Compras!$O$4:$O);Compras!$O$4:$O;0)'
+      + '-IF(ISNUMBER(Compras!$T$4:$T);Compras!$T$4:$T;0)-IF(ISNUMBER(Compras!$W$4:$W);Compras!$W$4:$W;0))')
+    const d = expresionSaldo(despues)
+    for (const l of ['P', 'U', 'X']) assert.ok(d.includes(`Compras!$${l}$4:$${l}`), `falta ${l}: ${d}`)
+    assert.ok(!d.includes('$O$4') && !d.includes('$W$4'), 'quedó una letra de antes')
+  })
+  it('las pagadas sin importe y el hallazgo de Parcial 1 filtran Estado y comercial por rótulo', () => {
+    assert.ok(formulaPagadasSinImporte(antes).includes('(Compras!$AJ$4:$AJ=1)*(Compras!$X$4:$X="Pagado")*(Compras!$O$4:$O>0)'))
+    assert.ok(formulaPagadasSinImporte(despues).includes('(Compras!$AK$4:$AK=1)*(Compras!$Y$4:$Y="Pagado")*(Compras!$P$4:$P>0)'))
+    const p = formulaParcial1Monto(despues)
+    assert.ok(p.includes('Compras!$V$4:$V') && p.includes('(Compras!$Y$4:$Y="Pendiente")') && p.includes('(Compras!$AK$4:$AK=1)'), p)
+  })
+  it('sin columnas resueltas no hay fórmula', () => {
+    assert.throws(() => formulaParcial1Monto(), /columnasDeuda/)
+    assert.throws(() => expresionSaldo('Compras!'), /columnasDeuda/)
+    assert.throws(() => formulaPagadasSinImporte({}), /columnasDeuda/)
+  })
 })

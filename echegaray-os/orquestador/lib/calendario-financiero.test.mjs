@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { armarCalendario, categoriaEgreso, nivelRiesgo, claveDia, movimientosCompras } from './calendario-financiero.mjs'
+import { armarCalendario, categoriaEgreso, nivelRiesgo, claveDia, movimientosCompras, movimientosCobranzas, COLUMNAS_COBRANZAS } from './calendario-financiero.mjs'
+import { conEncabezado } from './columnas-lectura.mjs'
+import { COBRANZAS_1409, COBRANZAS_CON_OBRA } from './encabezados-referencia.mjs'
 
 const d = (s) => { const [y, m, day] = s.split('-').map(Number); return new Date(y, m - 1, day) }
 
@@ -182,4 +184,18 @@ test('un vencimiento normal NO lleva la marca de vencida', () => {
   const { movimientos } = movimientosCompras({ ...args, filas: [['X', 'Materiales', '', '100000', '20/08/2026', 'Pendiente']] })
   const cal = armarCalendario({ cajaInicial: 0, movimientos, desde: d('2026-08-20'), hasta: d('2026-08-20') })
   assert.equal(cal[0].movimientos[0].vencida, undefined)
+})
+
+// ═══ «OBRA» INSERTADA EN COBRANZAS H (14/09/2026) ═══
+test('las cobranzas del calendario se leen por rótulo, antes y después de «Obra» en Cobranzas H', () => {
+  const valor = { Estado: 'Pendiente', 'Fecha cobro': '15/08/2026', 'TOTAL a cobrar (neto de retenciones)': '1000000', 'Fecha de Factura': '10/08/2026', 'Obra / Cliente': 'ARCOR' }
+  for (const cab of [COBRANZAS_1409, COBRANZAS_CON_OBRA]) {
+    const fila = cab.map((r) => valor[r] ?? '999')
+    const { idx, datos } = conEncabezado([cab, fila], 'Cobranzas', COLUMNAS_COBRANZAS)
+    const movs = movimientosCobranzas({ ...args, filas: datos, idx })
+    assert.equal(movs.length, 1, `con ${cab.length} columnas no leyó la cobranza`)
+    assert.equal(movs[0].monto, 1000000)
+    assert.equal(movs[0].cliente, 'ARCOR')
+    assert.notEqual(String(movs[0].fecha_esperada), String(movs[0].fecha), 'la fecha esperada sale de «Fecha de Factura», no de la de cobro')
+  }
 })

@@ -133,6 +133,8 @@
 // el generador escribe y los tests verifican. No encontré nada que la pivot resuelva y la fórmula no.
 
 import { VACIO } from './preservar-anotaciones.mjs'
+import { COBRANZAS, COMPRAS, columnasDe } from './columnas-por-encabezado.mjs'
+import { COBRANZAS_1409, COMPRAS_2508 } from './encabezados-referencia.mjs'
 import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
 import { esProyectable } from './obras-datos.mjs'
 import { sumaConUSD, prefiereContratoUsd } from './cobranzas-contrato.mjs'
@@ -457,6 +459,32 @@ export function clientesDeCobranzas(valores = [], alias = ALIAS_CLIENTE) {
   return orden
 }
 
+/** El rótulo de cada clave de `REFS_OBRAS`: las letras salen de acá, no se tipean (14/09/2026). */
+export const ROTULOS_REFS = Object.freeze({
+  cob: Object.freeze({
+    cliente: COBRANZAS.cliente, concepto: COBRANZAS.concepto, neto: COBRANZAS.neto, total: COBRANZAS.total,
+    retenciones: 'Retenciones / descuentos', estado: COBRANZAS.estado, fechaCobro: COBRANZAS.fechaCobro,
+    fechaVenta: 'Fecha de Factura', fechaEmision: 'Fecha de Venta', forma: COBRANZAS.formaCobro, categoria: 'Categoría',
+    oc: COBRANZAS.oc, moneda: COBRANZAS.moneda,
+  }),
+  cmp: Object.freeze({
+    fecha: COMPRAS.fecha, proveedor: COMPRAS.proveedor, cliente: COMPRAS.cliente, obra: COMPRAS.detalle,
+    neto: COMPRAS.importe, iva: COMPRAS.iva, total: COMPRAS.total, familia: COMPRAS.familia,
+  }),
+})
+
+const letrasDe = (encabezado, pedidas, pestana) =>
+  Object.fromEntries(Object.entries(columnasDe(encabezado, pedidas, pestana)).map(([k, c]) => [k, c.letra]))
+
+/** Las referencias `cob`/`cmp` de la grilla contra un par de filas de rótulos. Un rótulo que falta rompe. */
+export const refsDeEncabezados = ({ cobranzas, compras }) => ({
+  cob: { hoja: 'Cobranzas', ...letrasDe(cobranzas, ROTULOS_REFS.cob, 'Cobranzas'), desde: 5 },
+  cmp: { hoja: 'Compras', ...letrasDe(compras, ROTULOS_REFS.cmp, 'Compras'), desde: 4 },
+})
+
+/** Las del layout de REFERENCIA (encabezados-referencia.mjs): el ensayo en seco y los tests. */
+const REFS_REFERENCIA = refsDeEncabezados({ cobranzas: COBRANZAS_1409, compras: COMPRAS_2508 })
+
 /**
  * Las columnas de Cobranzas / Compras / Materiales que la grilla cita. Son el DEFECTO para construir
  * en frío; el escritor (`scripts/obras-pestana.mjs`) las resuelve contra el encabezado REAL por
@@ -472,7 +500,7 @@ export const REFS_OBRAS = {
   // `fechaEmision` es la col C: la fecha en que la deuda NACIÓ. Fue el reloj de lo vencido desde el
   // 14/08/2026 hasta el 14/09/2026, cuando el dueño decidió que vencido es la columna U de Cobranzas
   // (Pendiente y `fechaCobro` < hoy). Ver `cobranza-estado-de-cobro.mjs`.
-  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', retenciones: 'L', estado: 'O', fechaCobro: 'Q', fechaVenta: 'P', fechaEmision: 'C', forma: 'N', categoria: 'B', oc: 'H', moneda: 'AA', desde: 5 },
+  cob: REFS_REFERENCIA.cob,
   // `neto` es la columna "Importe" (M = Total − IVA). El costo se mide ahí, no en "Total" (O): la
   // venta ya se mide al neto, y comparar venta neta contra costo con IVA castigaba el margen ~21% en
   // todo lo que se compra en blanco. Neto contra neto. El IVA de compras es crédito fiscal, no costo.
@@ -481,7 +509,7 @@ export const REFS_OBRAS = {
   // ("Cliente / Asignación") llega hasta el cliente y ahí se detiene, y las cuatro obras de San
   // Francisco comparten cliente. Por qué el emparejamiento va por acá y no por proveedor: el bloque
   // `comprasObra` de obras-datos.mjs, que es donde vive la evidencia.
-  cmp: { hoja: 'Compras', fecha: 'C', proveedor: 'E', cliente: 'J', obra: 'K', neto: 'M', iva: 'N', total: 'O', familia: 'AE', desde: 4 },
+  cmp: REFS_REFERENCIA.cmp,
   mat: { hoja: 'Materiales', filaTotal: 'TOTAL POR OBRA', filaCabecera: '2 · POR OBRA' },
 }
 

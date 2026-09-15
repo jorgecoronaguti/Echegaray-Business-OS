@@ -34,6 +34,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool, withTx } from '../lib/db.mjs'
 import { CASHFLOW_ID } from '../lib/cash-briefing.mjs'
 import { PRIMERA_FILA, claveDeCompra, contratoDeColumnas, filaACompra } from '../lib/compras-fila.mjs'
+import { PESTANAS, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { esCostoDeObra } from '../lib/compras-costo-de-obra.mjs'
 import { asignadorConColumnaObra, asignadorDeCompras, catalogosDeAsignacion, planDeAsignacion, VIA } from '../lib/compras-obra-asignada.mjs'
 import { aplicarCambiosPendientes, catalogoDeDestinos, proyectarObraDeFila } from '../lib/obra-destino.mjs'
@@ -95,7 +96,7 @@ const PISO = 0.8
 /** Lee la pestaña entera —encabezado incluido— en UN viaje. */
 async function leerPestana() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const filas = await google.readSheetValues(CASHFLOW_ID, 'Compras!A3:BZ6000', { render: 'UNFORMATTED_VALUE' })
+  const filas = await google.readSheetValues(CASHFLOW_ID, rangoFilas('Compras', PESTANAS.Compras.filaEncabezado, 6000), { render: 'UNFORMATTED_VALUE' })
   if (!filas.length) throw new Error('no leí nada de Compras — no toco las tablas')
   const idx = contratoDeColumnas(filas[0])
   const compras = []

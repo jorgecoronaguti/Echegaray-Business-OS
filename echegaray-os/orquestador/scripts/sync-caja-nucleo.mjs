@@ -23,6 +23,8 @@ import { query, closePool } from '../lib/db.mjs'
 import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
+import { COMPRAS } from '../lib/columnas-por-encabezado.mjs'
+import { leerConEncabezado } from '../lib/columnas-lectura.mjs'
 // Las columnas del cuadro las declara el módulo que las ESCRIBE. Ver COL_REGISTRO.
 import { COL_REGISTRO, COL_PROYECCION } from '../lib/nomina-sync.mjs'
 
@@ -143,9 +145,10 @@ async function main() {
   }
 
   // Las claves de comprobante que SÍ están en Compras. Misma normalización que usa el Sheet.
-  const compras = await google.readSheetValues(ID, 'Compras!A4:O940')
+  // Total y comprobante por RÓTULO (14/09/2026): con «Obra» insertada en L, el Total pasa de O a P.
+  const { idx: ic, datos: compras } = await leerConEncabezado(google, ID, 'Compras', { total: COMPRAS.total, comprobante: COMPRAS.comprobante }, { hasta: 940 })
   const enCompras = new Set(
-    compras.filter((f) => parseMonto(f?.[14]) !== 0).map((f) => normComprobante(f?.[7])).filter(esLlaveUtil),
+    compras.filter((f) => parseMonto(f?.[ic.total]) !== 0).map((f) => normComprobante(f?.[ic.comprobante])).filter(esLlaveUtil),
   )
 
   const instrumentos = []

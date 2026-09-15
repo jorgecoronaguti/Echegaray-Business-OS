@@ -273,7 +273,7 @@ function juntar(mapa, clave, valor) {
  */
 export function ampliarDesplegable(lista = [], nombres = []) {
   if (!Array.isArray(lista) || lista.length === 0) {
-    throw new Error('no se leyó el desplegable vivo de Compras!E — sin la lista completa no se reescribe la validación')
+    throw new Error('no se leyó el desplegable vivo de la columna Proveedor de Compras — sin la lista completa no se reescribe la validación')
   }
   const final = lista.map(limpio)
   const vistos = new Set(final.map((v) => normalizarNombreProveedor(v)))

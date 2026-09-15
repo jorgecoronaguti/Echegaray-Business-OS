@@ -19,9 +19,13 @@ import { glifosInvisibles, SEMAFORO, SEMAFORO_HEREDADO } from './glifos.mjs'
 import { formaDeGenerador, filaTieneAncla, residuosPropios } from './residuo-propio.mjs'
 import { estaPagada } from './libro-extractores-compras.mjs'
 import {
-  COL, FILA0, FILAS_EN_OTRA_MONEDA, GUION_TIPEADO, ROTULO, esSemaforoConocido, filasConGuion,
+  FILA0, FILAS_EN_OTRA_MONEDA, columnasValores, GUION_TIPEADO, ROTULO, esSemaforoConocido, filasConGuion,
   formulaEstadoPago, formulaEstadoPagoHeredada, referenciaAColumna, tramosContiguos,
 } from './compras-valores.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
+
+/** Las letras del layout de hoy, resueltas por rótulo como las resuelve el script. */
+const COL = columnasValores(COMPRAS_2508)
 
 /** Los cuatro rótulos que el semáforo puede dejar escritos en una celda. */
 const ROTULOS = (g) => [`${g.pagado} Pagado`, `${g.vencido} Vencido`, `${g.porVencer} Por vencer`, `${g.vigente} Vigente`]
@@ -31,7 +35,7 @@ test('EL DEFECTO ORIGINAL: ningún estado del semáforo lleva un glifo que el PD
     assert.deepEqual(glifosInvisibles(r), [], `"${r}" publica un glifo que el exportador no embebe`)
   }
   // Y la fórmula entera, que es lo que de verdad se escribe en la celda.
-  assert.deepEqual(glifosInvisibles(formulaEstadoPago(4)), [])
+  assert.deepEqual(glifosInvisibles(formulaEstadoPago(4, COL)), [])
   // El control mira algo: los cuatro glifos publicados SÍ se pierden. Sin esta mitad, un detector
   // apagado haría pasar el test de arriba sin haber verificado nada.
   for (const r of ROTULOS(SEMAFORO_HEREDADO)) assert.ok(glifosInvisibles(r).length, `"${r}" debería perderse`)
@@ -66,35 +70,35 @@ test('y NO se ensanchó la guarda: `○` queda afuera igual que el `🟢` que re
 })
 
 test('LA FÓRMULA VA EN LOCALE es_AR: separador `;`, y ninguna coma fuera de un texto', () => {
-  const f = formulaEstadoPago(4)
+  const f = formulaEstadoPago(4, COL)
   assert.ok(f.includes(';'), 'sin `;` la fórmula no es de este archivo')
   assert.equal(f.replace(/"[^"]*"/g, '').includes(','), false, 'una coma separadora entra como decimal')
 })
 
 test('la fórmula nombra SU fila y las columnas del contrato, no una posición fija', () => {
-  const f = formulaEstadoPago(791)
+  const f = formulaEstadoPago(791, COL)
   for (const c of [COL.total, COL.estado, COL.prevista]) {
     assert.ok(f.includes(`${c}791`), `la fórmula de la fila 791 no referencia ${c}791`)
   }
-  assert.equal(formulaEstadoPago(4).includes('791'), false, 'la fórmula quedó anclada a otra fila')
+  assert.equal(formulaEstadoPago(4, COL).includes('791'), false, 'la fórmula quedó anclada a otra fila')
 })
 
 test('EL `#REF!` NO VUELVE: la fórmula nueva apunta siempre a la fecha prevista', () => {
   // 38 de las 1.136 celdas vivas lo tienen. Se reconoce para poder pisarlo, y no se reescribe.
-  assert.equal(formulaEstadoPago(697).includes('#REF!'), false)
-  assert.ok(formulaEstadoPagoHeredada(697, { refRota: true }).includes('#REF!'))
-  assert.ok(formulaEstadoPago(697).includes(`${COL.prevista}697`))
+  assert.equal(formulaEstadoPago(697, COL).includes('#REF!'), false)
+  assert.ok(formulaEstadoPagoHeredada(697, COL, { refRota: true }).includes('#REF!'))
+  assert.ok(formulaEstadoPago(697, COL).includes(`${COL.prevista}697`))
 })
 
 test('se reconocen las TRES formas publicadas, y ninguna otra', () => {
-  assert.equal(esSemaforoConocido(formulaEstadoPago(4), 4), true)
-  assert.equal(esSemaforoConocido(formulaEstadoPagoHeredada(4), 4), true)
-  assert.equal(esSemaforoConocido(formulaEstadoPagoHeredada(697, { refRota: true }), 697), true)
-  assert.equal(esSemaforoConocido('', 4), true, 'una celda vacía no es una fórmula ajena')
+  assert.equal(esSemaforoConocido(formulaEstadoPago(4, COL), 4, COL), true)
+  assert.equal(esSemaforoConocido(formulaEstadoPagoHeredada(4, COL), 4, COL), true)
+  assert.equal(esSemaforoConocido(formulaEstadoPagoHeredada(697, COL, { refRota: true }), 697, COL), true)
+  assert.equal(esSemaforoConocido('', 4, COL), true, 'una celda vacía no es una fórmula ajena')
   // Fail-closed: la fórmula de OTRA fila no es la de ésta, y algo tipeado a mano tampoco.
-  assert.equal(esSemaforoConocido(formulaEstadoPago(5), 4), false)
-  assert.equal(esSemaforoConocido('=X4', 4), false)
-  assert.equal(esSemaforoConocido('Pagado', 4), false)
+  assert.equal(esSemaforoConocido(formulaEstadoPago(5, COL), 4, COL), false)
+  assert.equal(esSemaforoConocido('=X4', 4, COL), false)
+  assert.equal(esSemaforoConocido('Pagado', 4, COL), false)
 })
 
 test('EL LIBRO SIGUE VIENDO PAGADA UNA COMPRA con el glifo nuevo', () => {
@@ -156,4 +160,16 @@ test('los tramos contiguos agrupan sin perder ni inventar una fila', () => {
   const filas = [4, 5, 9, 10, 11, 40]
   const total = tramosContiguos(filas).reduce((a, t) => a + (t.hasta - t.desde + 1), 0)
   assert.equal(total, filas.length)
+})
+
+// ═══ «OBRA» INSERTADA EN COMPRAS L (14/09/2026): LA LETRA SALE DEL RÓTULO, ANTES Y DESPUÉS ═══
+test('con «Obra» insertada, el semáforo compara el Estado, el Total y la fecha prevista que dicen su rótulo', () => {
+  const antes = formulaEstadoPago(4, columnasValores(COMPRAS_2508))
+  assert.ok(antes.startsWith('=IF(O4="";"";IF(X4="Pagado"'), antes.slice(0, 40))
+  assert.ok(antes.includes('Q4<TODAY()'))
+  const despues = formulaEstadoPago(4, columnasValores(COMPRAS_CON_OBRA))
+  assert.ok(despues.startsWith('=IF(P4="";"";IF(Y4="Pagado"'), despues.slice(0, 40))
+  assert.ok(despues.includes('R4<TODAY()'), 'la fecha prevista también se corre una letra')
+  assert.deepEqual({ ...columnasValores(COMPRAS_CON_OBRA) }, { total: 'P', prevista: 'R', estado: 'Y', semaforo: 'AA', parcial1: 'V' })
+  assert.throws(() => formulaEstadoPago(4), /resueltas por rótulo/)
 })

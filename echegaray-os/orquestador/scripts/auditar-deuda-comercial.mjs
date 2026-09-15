@@ -26,6 +26,7 @@
 import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { conciliar } from '../lib/deuda-comercial-conciliacion.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { serialDe, isoDeSerial } from '../lib/libro-extractores-fechas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -33,7 +34,7 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const SCOPES_LECTURA = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 /** La celda de `Proveedores` que publica la deuda comercial: `TOTAL` del aging (`=SUM($B5:$B10)`). */
 const CELDA_TOTAL = 'Proveedores!B11'
-const RANGOS = ['Compras!A1:AN3000', '_MOVIMIENTOS!A1:Q6000', `${CELDA_TOTAL}:D11`]
+const RANGOS = [rangoFilas('Compras', 1, 3000), '_MOVIMIENTOS!A1:Q6000', `${CELDA_TOTAL}:D11`]
 
 const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
 const raya = (n = 100) => '─'.repeat(n)

@@ -4,12 +4,17 @@
 // dónde?". La búsqueda corre en el tool (lee la pestaña una vez y matchea en JS) → 0 tokens
 // del modelo; devuelve solo las coincidencias. Capability drive.read → inline, sin aprobación.
 
+import { leerConEncabezado } from '../columnas-lectura.mjs'
+import { letra } from '../compras-columnas.mjs'
+
 const CASHFLOW_ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const COMPRAS_GID = 1666326819
-// Layout de la pestaña Compras (encabezados en fila 3, datos desde la 4):
-//  A=ID B=Categoría C=Fecha D=Fecha(mes) E=Proveedor F=Modalidad G=Tipo H=N°Comprobante
-//  I=UnidadNegocio J=Cliente/Asignación K=Detalles/Obra L=Concepto M=Importe N=IVA
-const COL = { fecha: 2, proveedor: 4, tipo: 6, comprobante: 7, unidad: 8, asignacion: 9, obra: 10, concepto: 11, importe: 12 }
+// Las columnas de Compras se ubican por RÓTULO en la misma lectura que los datos (14/09/2026): eran
+// índices fijos, y con «Obra» insertada en L el Concepto y el Importe se leían de la columna de al lado.
+const ROTULOS_GASTO = {
+  fecha: 'Fecha factura', proveedor: 'Proveedor', comprobante: 'N° Comprobante', asignacion: 'Cliente / Asignación',
+  obra: 'Detalles / Obra', concepto: 'Concepto', importe: 'Importe',
+}
 const PRIMERA_FILA_DATOS = 4
 
 /** "$44.664,00" (es-AR) → 44664.00 ; "" → null */
@@ -49,8 +54,11 @@ export function gastoSheetTools(google) {
         const imp = input?.importe != null && !Number.isNaN(Number(input.importe)) ? Number(input.importe) : null
         if (!provTok && !num && imp == null) return { error: 'pasá al menos uno: proveedor, numero o importe.' }
         let filas
+        let COL
+        let ultima
         try {
-          filas = await google.readSheetValues(CASHFLOW_ID, 'Compras!A4:N1000')
+          ;({ datos: filas, idx: COL } = await leerConEncabezado(google, CASHFLOW_ID, 'Compras', ROTULOS_GASTO, { hasta: 1000 }))
+          ultima = letra(Math.max(...Object.values(COL)))
         } catch (e) {
           return { error: `no pude leer el Flujo de Fondos: ${String(e?.message ?? e).slice(0, 140)}` }
         }
@@ -78,7 +86,7 @@ export function gastoSheetTools(google) {
               importe: r[COL.importe] ?? null,
               obra: r[COL.asignacion] || r[COL.obra] || '(sin asignar)',
               concepto: r[COL.concepto] ?? null,
-              link: `https://docs.google.com/spreadsheets/d/${CASHFLOW_ID}/edit#gid=${COMPRAS_GID}&range=A${fila}:N${fila}`,
+              link: `https://docs.google.com/spreadsheets/d/${CASHFLOW_ID}/edit#gid=${COMPRAS_GID}&range=A${fila}:${ultima}${fila}`,
             })
           }
         }

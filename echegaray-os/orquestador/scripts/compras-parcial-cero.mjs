@@ -27,8 +27,9 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
-  COL, FILAS_EN_OTRA_MONEDA, GUION_TIPEADO, ROTULO, filasConGuion, tramosContiguos,
+  FILAS_EN_OTRA_MONEDA, GUION_TIPEADO, ROTULO, columnasValores, filasConGuion, tramosContiguos,
 } from '../lib/compras-valores.mjs'
+import { COMPRAS, columnasDe, rangoEncabezado, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const APLICAR = process.argv.includes('--aplicar')
@@ -43,29 +44,35 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: APLICAR ? WRITE_SCOPES : undefined })
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTANA)
   if (!hoja) throw new Error(`no encontré la pestaña ${PESTANA}: no escribo a ciegas`)
+  // LAS LETRAS SALEN DEL RÓTULO (14/09/2026): con «Obra» insertada en L, «Monto Parcial 1» pasa de U a V.
+  const encabezado = (await google.readSheetValues(ID, rangoEncabezado(PESTANA)))?.[0] ?? []
+  const COLS = columnasValores(encabezado)
 
-  const cab = String((await google.readSheetValues(ID, `${PESTANA}!${COL.parcial1}3`))?.[0]?.[0] ?? '').trim()
+  const cab = String((await google.readSheetValues(ID, `${PESTANA}!${COLS.parcial1}3`))?.[0]?.[0] ?? '').trim()
   if (cab !== ROTULO.parcial1) {
-    throw new Error(`${COL.parcial1}3 dice "${cab}" y no "${ROTULO.parcial1}". No es mi columna: no la piso.`)
+    throw new Error(`${COLS.parcial1}3 dice "${cab}" y no "${ROTULO.parcial1}". No es mi columna: no la piso.`)
   }
 
-  const rango = `${PESTANA}!${COL.parcial1}1:${COL.parcial1}${hoja.rows}`
+  const rango = `${PESTANA}!${COLS.parcial1}1:${COLS.parcial1}${hoja.rows}`
   const crudo = await google.readSheetValues(ID, rango, { render: 'FORMULA' })
   const numerico = await google.readSheetValues(ID, rango, { render: 'UNFORMATTED_VALUE' })
   const { normalizar, excluidas } = filasConGuion(crudo)
   const sumaAntes = sumaNumerica(numerico)
   const tramos = tramosContiguos(normalizar)
 
-  console.log(`${PESTANA}!${COL.parcial1} · "${cab}" · ${normalizar.length} guion(es) tipeado(s) a normalizar `
+  console.log(`${PESTANA}!${COLS.parcial1} · "${cab}" · ${normalizar.length} guion(es) tipeado(s) a normalizar `
     + `en ${tramos.length} tramo(s) · suma actual de la columna ${plata(sumaAntes)}`)
 
   if (excluidas.length) {
-    const filas = await google.readSheetValues(ID, `${PESTANA}!A1:AN${hoja.rows}`, { render: 'FORMATTED_VALUE' })
+    const filas = await google.readSheetValues(ID, rangoFilas(PESTANA, 1, hoja.rows), { render: 'FORMATTED_VALUE' })
+    const c = Object.fromEntries(Object.entries(columnasDe(encabezado, {
+      proveedor: COMPRAS.proveedor, comprobante: COMPRAS.comprobante, importe: COMPRAS.importe, iva: COMPRAS.iva, total: COMPRAS.total,
+    }, PESTANA)).map(([k, v]) => [k, v.indice]))
     console.log(`\n⊘ ${excluidas.length} fila(s) EN OTRA MONEDA — no se tocan, las decide el dueño:`)
     for (const f of excluidas) {
       const r = filas[f - 1] || []
-      console.log(`   fila ${f} · ${String(r[4] ?? '?').padEnd(14)} · comprobante ${String(r[7] ?? '?').padEnd(14)}`
-        + ` · Importe ${String(r[12] ?? '?')} · IVA ${String(r[13] ?? '?')} · Total ${String(r[14] ?? '?')}`)
+      console.log(`   fila ${f} · ${String(r[c.proveedor] ?? '?').padEnd(14)} · comprobante ${String(r[c.comprobante] ?? '?').padEnd(14)}`
+        + ` · Importe ${String(r[c.importe] ?? '?')} · IVA ${String(r[c.iva] ?? '?')} · Total ${String(r[c.total] ?? '?')}`)
     }
     console.log('   Son importes reales en dólares en columnas que sólo saben de pesos. Convertirlos cambia'
       + ' las sumas de la pestaña: es criterio contable, no formato.')
@@ -74,7 +81,7 @@ async function main() {
   console.log(`\ntramos: ${tramos.slice(0, 8).map((t) => `${t.desde}-${t.hasta}`).join(' ')}${tramos.length > 8 ? ' …' : ''}`)
   if (!APLICAR) { console.log('\n(sin --aplicar: no escribí nada)'); return }
 
-  const col = idxCol(COL.parcial1)
+  const col = idxCol(COLS.parcial1)
   const req = tramos.map((t) => ({ updateCells: {
     range: { sheetId: hoja.sheetId, startRowIndex: t.desde - 1, endRowIndex: t.hasta, startColumnIndex: col, endColumnIndex: col + 1 },
     rows: Array.from({ length: t.hasta - t.desde + 1 }, () => ({ values: [{ userEnteredValue: { numberValue: 0 } }] })),

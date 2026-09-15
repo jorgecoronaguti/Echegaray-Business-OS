@@ -11,7 +11,12 @@
 // celda. El evaluador es el mismo que usa el resto del repo (`evaluar-formula-sheet.mjs`).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CRITERIO, celdasDelAnio } from './estructura-filas.mjs'
+import { criterios, refsCompras, celdasDelAnio } from './estructura-filas.mjs'
+import { COMPRAS, columnasDe } from './columnas-por-encabezado.mjs'
+import { COMPRAS_2508 } from './encabezados-referencia.mjs'
+
+const REFS = refsCompras(columnasDe(COMPRAS_2508, COMPRAS, 'Compras'))
+const CRITERIO = criterios(REFS)
 import { evaluarFormula } from './evaluar-formula-sheet.mjs'
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
@@ -40,7 +45,7 @@ const evaluar = (formula, h) => evaluarFormula(formula, { hoja: h, hojas: { ParÃ
 
 /** Las doce visibles evaluadas, mÃ¡s los dos totales que derivan de ellas. */
 function publicado({ reales, nmeses = 0, prom = 0 }) {
-  const { visible } = celdasDelAnio({ fila: FILA, criterio: CRITERIO.subrubro, col: COL, letra })
+  const { visible } = celdasDelAnio({ fila: FILA, criterio: CRITERIO.subrubro, col: COL, letra, refs: REFS })
   const h = hoja({ reales, nmeses, prom })
   const vis = visible.map((c) => evaluar(c, h))
   const totalReal = reales.reduce((a, x) => a + (x ?? 0), 0)

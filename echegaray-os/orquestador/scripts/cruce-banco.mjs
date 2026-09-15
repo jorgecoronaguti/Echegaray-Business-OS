@@ -23,6 +23,8 @@ import { extraer as extraerCuit } from '../lib/cuit.mjs'
 import { saldosPorProveedor } from '../lib/cuentas-por-pagar.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
+import { COBRANZAS, COMPRAS } from '../lib/columnas-por-encabezado.mjs'
+import { leerConEncabezado } from '../lib/columnas-lectura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
@@ -48,12 +50,17 @@ async function main() {
   for (const t of porTipo()) console.log(`  ${t.tipo.padEnd(38)}${String(t.cantidad).padStart(3)} mov  ${ars(t.monto).padStart(16)}`)
 
   // ── CONTRA COMPRAS ────────────────────────────────────────────────────────────────────────────
-  const compras = await google.readSheetValues(ID, 'Compras!A4:AD')
+  // Compras y Cobranzas por RÓTULO, rótulos y datos en un viaje (14/09/2026, «Obra» en Compras L y Cobranzas H).
+  const lc = await leerConEncabezado(google, ID, 'Compras', {
+    fechaCaja: COMPRAS.fechaCaja, total: COMPRAS.total, proveedor: COMPRAS.proveedor, concepto: COMPRAS.concepto, modalidad: 'Modalidad', estado: COMPRAS.estado,
+  })
+  const ic = lc.idx
+  const compras = lc.datos
   const enVentana = compras.filter((f) => {
-    const d = parseFecha(f?.[29])
+    const d = parseFecha(f?.[ic.fechaCaja])
     return d && d >= DESDE && d < HASTA
   })
-  const egresoSheet = enVentana.reduce((s, f) => s + parseMonto(f?.[14]), 0)
+  const egresoSheet = enVentana.reduce((s, f) => s + parseMonto(f?.[ic.total]), 0)
   const egresoBanco = MOVIMIENTOS.filter((m) => m.importe < 0).reduce((s, m) => s + m.importe, 0)
   console.log('\nEGRESOS — el banco contra Compras, misma ventana')
   console.log(`  banco:   ${ars(-egresoBanco).padStart(16)}  (${MOVIMIENTOS.filter((m) => m.importe < 0).length} débitos)`)
@@ -69,7 +76,7 @@ async function main() {
   const totalBancario = bancarios.reduce((s, t) => s + t.monto, 0)
   console.log('\nCOSTOS BANCARIOS — los que no son una compra a nadie')
   for (const t of bancarios) console.log(`  ${t.tipo.padEnd(38)}${String(t.cantidad).padStart(3)} mov  ${ars(t.monto).padStart(16)}`)
-  const enComprasBancario = enVentana.filter((f) => /ley 25|impuesto al cheque|descubierto|interes|interés/i.test(`${f?.[4] ?? ''} ${f?.[11] ?? ''}`))
+  const enComprasBancario = enVentana.filter((f) => /ley 25|impuesto al cheque|descubierto|interes|interés/i.test(`${f?.[ic.proveedor] ?? ''} ${f?.[ic.concepto] ?? ''}`))
   console.log(`  ${ars(-totalBancario)} en 18 días. Compras tiene ${enComprasBancario.length} filas que se le parezcan.`)
   if (!enComprasBancario.length) {
     console.log('  ⚠ NINGUNA. El impuesto al cheque y el costo del descubierto no están en ninguna línea del')
@@ -77,12 +84,16 @@ async function main() {
   }
 
   // ── INGRESOS ──────────────────────────────────────────────────────────────────────────────────
-  const cob = await google.readSheetValues(ID, 'Cobranzas!A5:R300')
+  const lb = await leerConEncabezado(google, ID, 'Cobranzas', {
+    fechaCobro: COBRANZAS.fechaCobro, total: COBRANZAS.total, cliente: COBRANZAS.cliente, formaCobro: COBRANZAS.formaCobro,
+  }, { hasta: 300 })
+  const ib = lb.idx
+  const cob = lb.datos
   const cobVentana = cob.filter((f) => {
-    const d = parseFecha(f?.[16])
+    const d = parseFecha(f?.[ib.fechaCobro])
     return d && d >= DESDE && d < HASTA
   })
-  const ingresoSheet = cobVentana.reduce((s, f) => s + parseMonto(f?.[12]), 0)
+  const ingresoSheet = cobVentana.reduce((s, f) => s + parseMonto(f?.[ib.total]), 0)
 
   // UN CRÉDITO DEL BANCO NO ES AUTOMÁTICAMENTE UN INGRESO.
   //
@@ -106,7 +117,7 @@ async function main() {
     }
   }
   console.log(`\n  Cobranzas del Sheet en la ventana: ${ars(ingresoSheet)}  (${cobVentana.length} filas)`)
-  for (const f of cobVentana) console.log(`     ${String(f?.[16]).padEnd(12)}${String(f?.[6] ?? '').slice(0, 34).padEnd(36)}${String(f?.[13] ?? '').padEnd(14)}${ars(parseMonto(f?.[12])).padStart(14)}`)
+  for (const f of cobVentana) console.log(`     ${String(f?.[ib.fechaCobro]).padEnd(12)}${String(f?.[ib.cliente] ?? '').slice(0, 34).padEnd(36)}${String(f?.[ib.formaCobro] ?? '').padEnd(14)}${ars(parseMonto(f?.[ib.total])).padStart(14)}`)
   console.log(`  ⇒ el banco recibió ${ars(ing.totales.cobranza)} de cobranzas por transferencia contra ${ars(ingresoSheet)} que registra el Sheet.`)
   if (!ing.totales.cobranza) {
     console.log('     NO ENTRÓ NI UN PESO DE COBRANZA POR TRANSFERENCIA en toda la ventana: lo que cobró la')
@@ -126,10 +137,10 @@ async function main() {
   console.log(`  ENDOSADOS a un tercero:    ${ars(totalEcheqs(endosados()))} (${endosados().length} echeq)`)
   for (const e of endosados()) console.log(`     ${e.numero} vence ${e.pago} → ${e.beneficiario}: se entregó, no va a entrar a la cuenta`)
   const echeqFuturos = cob.filter((f) => {
-    const d = parseFecha(f?.[16])
-    return /eche?q/i.test(String(f?.[13] ?? '')) && d && d > new Date()
+    const d = parseFecha(f?.[ib.fechaCobro])
+    return /eche?q/i.test(String(f?.[ib.formaCobro] ?? '')) && d && d > new Date()
   })
-  const esperado = echeqFuturos.reduce((s, f) => s + parseMonto(f?.[12]), 0)
+  const esperado = echeqFuturos.reduce((s, f) => s + parseMonto(f?.[ib.total]), 0)
   console.log(`  Cobranzas espera cobrar en echeq, de acá en adelante: ${ars(esperado)} (${echeqFuturos.length} filas)`)
   console.log(`  ⇒ el cash flow cuenta ${ars(esperado - totalEcheqs(enCartera()))} de ingreso que ya se entregó`)
 
@@ -140,7 +151,7 @@ async function main() {
   // que no se miraban entre sí.
   console.log('\nINSTRUMENTOS EMITIDOS CONTRA LA DEUDA DE PROVEEDORES')
   const deuda = saldosPorProveedor(compras.map((f) => ({
-    proveedor: f?.[4], modalidad: f?.[5], total: parseMonto(f?.[14]), estado: f?.[23], fechaCaja: parseFecha(f?.[29]),
+    proveedor: f?.[ic.proveedor], modalidad: f?.[ic.modalidad], total: parseMonto(f?.[ic.total]), estado: f?.[ic.estado], fechaCaja: parseFecha(f?.[ic.fechaCaja]),
   })), new Date())
 
   // UNA SOLA FUENTE PARA EL IMPORTE, Y EL BANCO COMO CONTROL.

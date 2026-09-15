@@ -42,6 +42,7 @@ import { eomonth, serialDe } from '../lib/libro-extractores-fechas.mjs'
 import { PESTANA_NOMINA } from '../lib/libro-extractores-nomina.mjs'
 import { PESTANA_CARGAS, cargasEnCompras, mesesCubiertos, reemplazadasPorLaCadena, mesDeSerial } from '../lib/libro-extractores-cargas.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
@@ -424,7 +425,7 @@ async function main() {
     g.readSheetValues(ID, PISO_CAJA, { render: 'UNFORMATTED_VALUE' }),
     // COMPRAS, PARA MEDIR EL OTRO LADO DEL SWAP. El portón no puede declarar "estas filas no entran"
     // leyendo únicamente el libro: en el libro no están, justamente. La cifra sale de la fuente.
-    g.readSheetValues(ID, 'Compras!A1:AN', { render: 'UNFORMATTED_VALUE' }).catch(() => []),
+    g.readSheetValues(ID, rangoFilas('Compras', 1), { render: 'UNFORMATTED_VALUE' }).catch(() => []),
     g.readSheetValues(ID, '_CHEQUES_RAW!A1:L', { render: 'UNFORMATTED_VALUE' }),
   ])
   const libro = leerLibro(crudo)
