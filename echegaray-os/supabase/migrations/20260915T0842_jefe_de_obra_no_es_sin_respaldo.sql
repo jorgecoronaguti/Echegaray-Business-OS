@@ -13,6 +13,9 @@
 -- Si al aplicar el md5 vivo es otro, alguien redefinió la función después: rehacer sobre la viva, no aplicar
 -- ésta (`orquestador/scripts/costo-mo-ensayo-tx.mjs` lo verifica antes de ensayar).
 -- `create or replace` conserva los GRANT.
+--
+-- LA CACHÉ SE VACÍA (como 20260913T2300 y 20260914T1200): la ficha y el desglose cacheados todavía cuentan al jefe.
+-- Es un `delete`, no un refresco: el próximo pedido calcula en vivo y el cron repone. Aplicar fuera de horario.
 
 CREATE OR REPLACE FUNCTION public.hh_de_obra_en_vivo(p_obra text, p_desde date DEFAULT NULL::date)
  RETURNS jsonb
@@ -488,5 +491,8 @@ with elegido as (
   );
 end
 $function$;
+
+-- La ficha del cliente se sirve desde caché: lo que publican pantalla_cliente y hh_de_obra cambió.
+delete from public.ficha_cliente_cache;
 
 notify pgrst, 'reload schema';

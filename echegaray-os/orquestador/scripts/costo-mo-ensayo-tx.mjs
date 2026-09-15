@@ -59,7 +59,9 @@ export function creados(textos) {
 
 /** El SQL de la migración con los objetos del estado en pg_temp. */
 export function aTemporal(sql, objetos = OBJETOS) {
+  // El vaciado de la caché viva se quita: dentro de la transacción bloquearía sus filas mientras dura el ensayo.
   let s = sql.replace(/^\s*notify pgrst[^;]*;\s*$/gim, '')
+    .replace(/^\s*delete from public\.ficha_cliente_cache;\s*$/gim, '')
     .replace(/ references public\.personas\(id\)/g, '')
   for (const o of objetos) s = s.replace(new RegExp(`\\bpublic\\.${o}\\b`, 'gi'), `pg_temp.${o}`)
   return s
@@ -87,10 +89,9 @@ const Q_A_LA_FECHA = (esq) => `select x->>'obra_id' as obra, (x->>'mano_obra')::
     (select sum((d->>'total')::float8) from jsonb_array_elements(coalesce(x->'subcontratos_detalle', '[]')) d
       where d->>'proveedor' ilike '%tello%') as tello
   from jsonb_array_elements(${esq}.costo_de_obras_a_la_fecha(array(select id from public.obra_canonica where fusionada_en is null))) x`
-const Q_CONTRATADO = (esq, fn = esq) => `select oc.id as obra, oc.nombre, oc.estado, oc.fusionada_en, oc.monto_contratado::float8 as formulario,
+const Q_CONTRATADO = (esq) => `select oc.id as obra, oc.nombre, oc.estado, oc.fusionada_en, oc.monto_contratado::float8 as formulario,
     (select e.contratado::float8 from ${esq}.obra_economia_cartera e where e.obra_canonica_id = oc.id limit 1) as cartera,
-    (select e.origen from ${esq}.obra_economia_cartera e where e.obra_canonica_id = oc.id limit 1) as origen,
-    ${fn}.contratado_de_obra(oc.id)::float8 as contratado_de_obra
+    (select e.origen from ${esq}.obra_economia_cartera e where e.obra_canonica_id = oc.id limit 1) as origen
   from public.obra_canonica oc where oc.id = any($1::text[]) order by oc.id`
 const Q_CUENTA = `select obra_id as obra, contratado::float8, por_cobrar::float8, vencido::float8, cobrado_total::float8
   from public.obra_cuenta where obra_id = any($1::text[])`
@@ -118,7 +119,7 @@ async function medir(c, esq, quincenas, jefes) {
     }
   }
   const aLaFecha = new Map((await filas(Q_A_LA_FECHA(esq('costo_de_obras_a_la_fecha')))).map((r) => [r.obra, r]))
-  const contratado = await filas(Q_CONTRATADO(esq('obra_economia_cartera'), esq('contratado_de_obra')), [FUSIONADAS])
+  const contratado = await filas(Q_CONTRATADO(esq('obra_economia_cartera')), [FUSIONADAS])
   return { hh, plan, costo, aLaFecha, contratado }
 }
 
@@ -199,10 +200,10 @@ async function main() {
   console.log(`\nINVARIANTE reparto: total rama ${M(total(rama))} = total nueva ${M(total(nueva))} (el jefe cambia de destino, no de importe)`)
   console.log(`CONTROL: Σ obras por quincena nueva ${M(totalObras(nueva))} vs Σ costo_de_obras_a_la_fecha nueva ${M(sumaALaFecha(nueva))}`)
 
-  console.log('\n## Contratado de las fusionadas\n\n| Obra | Estado | Fusionada en | Formulario | Cartera rama→nueva | contratado_de_obra rama→nueva | origen |\n|---|---|---|--:|--:|--:|---|')
+  console.log('\n## Contratado de las fusionadas\n\n| Obra | Estado | Fusionada en | Formulario | Cartera rama→nueva | origen |\n|---|---|---|--:|--:|---|')
   for (const c of nueva.contratado) {
     const r = rama.contratado.find((x) => x.obra === c.obra) ?? {}
-    console.log(`| ${c.nombre} | ${c.estado} | ${c.fusionada_en ?? ''} | ${M(c.formulario)} | ${M(r.cartera)}→${M(c.cartera)} | ${M(r.contratado_de_obra)}→${M(c.contratado_de_obra)} | ${c.origen ?? ''} |`)
+    console.log(`| ${c.nombre} | ${c.estado} | ${c.fusionada_en ?? ''} | ${M(c.formulario)} | ${M(r.cartera)}→${M(c.cartera)} | ${c.origen ?? ''} |`)
   }
   console.log('\nobra_cuenta (no la redefine ninguna migración):', JSON.stringify(await uno(Q_CUENTA, [FUSIONADAS])))
   console.log('Cobranzas de BSA (lo que compone la suma viva de ME - BSA):', JSON.stringify(await uno(Q_BSA)))
