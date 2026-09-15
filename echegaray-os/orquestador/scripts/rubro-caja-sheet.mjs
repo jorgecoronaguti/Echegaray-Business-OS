@@ -7,110 +7,97 @@
 // muerto ($33.223.269 en $0). Con la regla en Compras hay un solo lugar donde mirar y donde
 // corregir, y el dueño la ve.
 //
+// ═══ LAS COLUMNAS SALEN DEL RÓTULO (14/09/2026) ═══
+//
+// Eran `COL_RUBRO_CAJA`/`COL_FECHA_CAJA` (AC/AD). Con «Obra» insertada en L son AD/AE, y AC pasa a ser
+// la 1.ª «Rubro de caja», la fósil: una corrida con la letra vieja le escribía el ancla encima. Ahora
+// se resuelven contra la fila de rótulos viva, pasan por el portón de escritores
+// (`compras-layout.mjs`) y las fórmulas se anclan traducidas a ese mismo layout.
+//
 //   node orquestador/scripts/rubro-caja-sheet.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { formulaRubro, formulaFechaCaja, RUBROS, COL_RUBRO_CAJA, COL_FECHA_CAJA, colIndex } from '../lib/rubro-caja.mjs'
+import { formulaRubro, formulaFechaCaja, RUBROS } from '../lib/rubro-caja.mjs'
 import { ESPECIES, FIELDS, FILA0 } from '../lib/compras-especies.mjs'
+import { lectorDeEncabezados } from '../lib/columnas-por-encabezado.mjs'
+import { columnaParaEscribir, portonDeRequests } from '../lib/compras-layout.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
+const ESCRITOR = 'rubro-caja-sheet'
 
-// AC y AD: las dos primeras columnas libres después de "Estado Carga" (AB). La identidad de estas
-// columnas vive en rubro-caja.mjs (COL_RUBRO_CAJA/COL_FECHA_CAJA) porque la "Fecha de caja" también
-// la lee la pestaña CAJA para descargar los pagos: escritor y lector tienen que coincidir.
-const COL_RUBRO = colIndex(COL_RUBRO_CAJA) // 0-based → AC
-const COL_FECHA = colIndex(COL_FECHA_CAJA) // 0-based → AD
+/**
+ * NÚCLEO PURO: los requests contra la fila de rótulos viva. Las dos columnas tienen que ser vecinas
+ * (rubro y fecha, en ese orden): el ancla se escribe en un solo `updateCells` de dos celdas.
+ */
+export function requestsDeRubroCaja(encabezado, { sheetId, filas }) {
+  const colRubro = columnaParaEscribir(encabezado, ESCRITOR, 'rubro')
+  const colFecha = columnaParaEscribir(encabezado, ESCRITOR, 'fechaCaja')
+  if (colFecha.indice !== colRubro.indice + 1) {
+    throw new Error(`rubro-caja: «Fecha de caja» (${colFecha.letra}) ya no está al lado de «Rubro de caja» (${colRubro.letra}): no escribo`)
+  }
+  const celda = (v, { formula = false, negrita = false, fondo = null } = {}) => ({
+    userEnteredValue: formula ? { formulaValue: v } : { stringValue: v },
+    userEnteredFormat: {
+      ...(negrita ? { textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } } } : {}),
+      ...(fondo ? { backgroundColor: fondo } : {}),
+    },
+  })
+  const AZUL = { red: 0.17, green: 0.25, blue: 0.37 }
+  const [a, b] = [colRubro.indice, colFecha.indice + 1]
+  const req = [
+    // Encabezados en la fila 3, igual que el resto de Compras.
+    { updateCells: {
+      range: { sheetId, startRowIndex: 2, endRowIndex: 3, startColumnIndex: a, endColumnIndex: b },
+      rows: [{ values: [celda('Rubro de caja', { negrita: true, fondo: AZUL }), celda('Fecha de caja', { negrita: true, fondo: AZUL })] }],
+      fields: 'userEnteredValue,userEnteredFormat',
+    } },
+    // Las fórmulas: una sola celda cada una, ARRAYFORMULA derrama sobre todas las filas.
+    { updateCells: {
+      range: { sheetId, startRowIndex: 3, endRowIndex: 4, startColumnIndex: a, endColumnIndex: b },
+      rows: [{ values: [celda(formulaRubro(encabezado), { formula: true }), celda(formulaFechaCaja(encabezado), { formula: true })] }],
+      fields: 'userEnteredValue,userEnteredFormat',
+    } },
+    { updateDimensionProperties: {
+      range: { sheetId, dimension: 'COLUMNS', startIndex: a, endIndex: b },
+      properties: { pixelSize: 190 }, fields: 'pixelSize',
+    } },
+    // ═══ EL VALOR VA SÓLO AL ANCLA; EL FORMATO VA A TODO EL DERRAME (15/08/2026) ═══
+    //
+    // El derrame no hereda el formato del ancla: medido el 15/08, 699 celdas de la fecha de caja con
+    // `numberFormat: undefined` dibujaban el serial pelado, y `cruce-banco.mjs` las perdía al parsear.
+    // La máscara `FIELDS` nombra sólo `userEnteredFormat.*`: este request no puede tocar un valor.
+    { repeatCell: {
+      range: { sheetId, startRowIndex: FILA0 - 1, endRowIndex: filas, startColumnIndex: colFecha.indice, endColumnIndex: colFecha.indice + 1 },
+      cell: { userEnteredFormat: ESPECIES.fecha }, fields: FIELDS,
+    } },
+  ]
+  return { req: portonDeRequests(encabezado, ESCRITOR, req), colRubro, colFecha }
+}
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  // EL CANDADO TAMBIÉN ACÁ (24/07). Escribe columnas de "Compras" por rango suelto (no pasa por
-  // escribirPreservando). Compras es fuente y rara vez se canda, pero si el dueño la tomó, se respeta.
+  // EL CANDADO TAMBIÉN ACÁ (24/07). Si el dueño tomó Compras, se respeta.
   const { estaBloqueada } = await import('../lib/pestana-bloqueada.mjs')
   if (await estaBloqueada({}, ID, 'Compras').catch(() => false)) {
     console.log('🔒 "Compras" está bajo tu control (candado): no la toco.')
     return
   }
-  const meta = await google.getSheetMeta(ID)
-  const hoja = meta.find((s) => s.title === 'Compras')
+  const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === 'Compras')
   if (!hoja) throw new Error('no encontré la pestaña Compras')
-  const { sheetId, cols: columnCount } = hoja
+  const encabezado = await lectorDeEncabezados(google, ID).encabezado('Compras')
+  const { req, colRubro, colFecha } = requestsDeRubroCaja(encabezado, { sheetId: hoja.sheetId, filas: hoja.rows })
 
-  const fRubro = formulaRubro()
-  const fFecha = formulaFechaCaja()
-  console.log(`Compras: ${columnCount} columnas · ${RUBROS.length} rubros`)
-  console.log(`AC3 Rubro de caja  →  ${fRubro.slice(0, 90)}…`)
-  console.log(`AD3 Fecha de caja  →  ${fFecha.slice(0, 90)}…`)
+  console.log(`Compras: ${hoja.cols} columnas · ${RUBROS.length} rubros`)
+  console.log(`${colRubro.letra}3 Rubro de caja  →  ${formulaRubro(encabezado).slice(0, 90)}…`)
+  console.log(`${colFecha.letra}3 Fecha de caja  →  ${formulaFechaCaja(encabezado).slice(0, 90)}…`)
   if (DRY) return console.log('\n--dry: no escribí nada.')
-
-  const req = []
-  // Ensanchar la grilla si hace falta: la API rechaza escribir fuera del rango declarado.
-  if (columnCount < COL_FECHA + 1) {
-    req.push({ appendDimension: { sheetId, dimension: 'COLUMNS', length: COL_FECHA + 1 - columnCount } })
-  }
-
-  const celda = (v, { formula = false, negrita = false, fondo = null, fmt = null } = {}) => ({
-    userEnteredValue: formula ? { formulaValue: v } : { stringValue: v },
-    userEnteredFormat: {
-      ...(negrita ? { textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } } } : {}),
-      ...(fondo ? { backgroundColor: fondo } : {}),
-      ...(fmt ? { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' } } : {}),
-    },
-  })
-  const AZUL = { red: 0.17, green: 0.25, blue: 0.37 }
-
-  // Encabezados en la fila 3, igual que el resto de Compras.
-  req.push({
-    updateCells: {
-      range: { sheetId, startRowIndex: 2, endRowIndex: 3, startColumnIndex: COL_RUBRO, endColumnIndex: COL_FECHA + 1 },
-      rows: [{ values: [celda('Rubro de caja', { negrita: true, fondo: AZUL }), celda('Fecha de caja', { negrita: true, fondo: AZUL })] }],
-      fields: 'userEnteredValue,userEnteredFormat',
-    },
-  })
-  // Las fórmulas: una sola celda cada una, ARRAYFORMULA derrama sobre todas las filas.
-  req.push({
-    updateCells: {
-      range: { sheetId, startRowIndex: 3, endRowIndex: 4, startColumnIndex: COL_RUBRO, endColumnIndex: COL_FECHA + 1 },
-      rows: [{ values: [celda(fRubro, { formula: true }), celda(fFecha, { formula: true, fmt: 'DATE' })] }],
-      fields: 'userEnteredValue,userEnteredFormat',
-    },
-  })
-  req.push({
-    updateDimensionProperties: {
-      range: { sheetId, dimension: 'COLUMNS', startIndex: COL_RUBRO, endIndex: COL_FECHA + 1 },
-      properties: { pixelSize: 190 },
-      fields: 'pixelSize',
-    },
-  })
-  // ═══ EL VALOR VA SÓLO AL ANCLA; EL FORMATO VA A TODO EL DERRAME (15/08/2026) ═══
-  //
-  // Arriba, la fórmula se escribe SÓLO en `AD4` y eso está bien: "nunca se escribe el derrame de una
-  // ARRAYFORMULA, sólo su ancla". Por simetría, el `numberFormat` se ponía también sólo en `AD4` — y
-  // ahí la simetría es falsa: **el derrame no hereda el formato del ancla**. Medido en el archivo el
-  // 15/08: `AD4` con `DATE/dd/mm/yyyy` y 699 celdas (AD5:AD779) con `numberFormat: undefined`,
-  // dibujando el serial pelado (`AD5=46027`).
-  //
-  // No es cosmético: `scripts/cruce-banco.mjs` lee `Compras!A4:AD` sin `UNFORMATTED_VALUE` y filtra
-  // con `parseFecha`, que contra `"46027"` devuelve `null`. Esas 699 filas quedaban afuera de la
-  // comparación de egresos banco↔Compras sin un solo error en pantalla.
-  //
-  // Se repone la columna ENTERA, hasta el fondo de la grilla: las filas de abajo son donde el dueño va
-  // a tipear mañana. El formato sale de `compras-especies.mjs` para que exista UNA definición de qué
-  // es una fecha en esta pestaña, y la máscara `FIELDS` nombra sólo `userEnteredFormat.*`: este
-  // request no puede tocar un valor.
-  req.push({
-    repeatCell: {
-      range: { sheetId, startRowIndex: FILA0 - 1, endRowIndex: hoja.rows, startColumnIndex: COL_FECHA, endColumnIndex: COL_FECHA + 1 },
-      cell: { userEnteredFormat: ESPECIES.fecha },
-      fields: FIELDS,
-    },
-  })
 
   await google.spreadsheetBatchUpdate(ID, req)
 
   // Verificar sobre el resultado REAL, no sobre la intención: leer lo que quedó y contarlo.
-  const filas = await google.readSheetValues(ID, 'Compras!AC4:AD1000')
+  const filas = await google.readSheetValues(ID, `Compras!${colRubro.letra}4:${colFecha.letra}1000`)
   const acc = new Map()
   let vacias = 0
   for (const f of filas) {
@@ -120,17 +107,14 @@ async function main() {
     acc.set(r, (acc.get(r) ?? 0) + 1)
   }
   console.log('\nQUEDÓ ESCRITO:')
-  for (const [k, v] of [...acc].sort((a, b) => b[1] - a[1])) console.log(`  ${String(v).padStart(4)}  ${k}`)
+  for (const [k, v] of [...acc].sort((x, y) => y[1] - x[1])) console.log(`  ${String(v).padStart(4)}  ${k}`)
   const sc = acc.get('SIN CLASIFICAR') ?? 0
   console.log(`\n  sin clasificar: ${sc}${sc ? '  ⚠ HAY GASTOS QUE NO CAEN EN NINGÚN RUBRO' : '  ✓'}`)
   console.log(`  sin fecha de caja: ${vacias}${vacias ? '  ⚠ esos gastos no aparecen en ninguna semana' : '  ✓'}`)
-  // NO se sale con código de error por "sin clasificar" (25/07). La escritura ya fue exitosa: que
-  // algunos gastos no caigan en un rubro es un HALLAZGO de calidad de dato, no una falla del pipeline.
-  // El ⚠ de arriba viaja por sí solo al orquestador, que lo levanta como AVISO ("la pestaña se rehizo
-  // pero algo no cierra") — igual que "sin fecha de caja", que nunca setea exit. Salir 1 acá pintaba de
-  // rojo toda la unidad systemd, enmascaraba fallas reales y BLOQUEABA el registro de frescura del Cash
-  // Flow (el mismo cry-wolf que arregló 9af2cee, filtrándose por este script). Un exit≠0 queda sólo
-  // para una excepción real: la atrapa el main().catch de abajo.
+  // NO se sale con código de error por "sin clasificar" (25/07): es un hallazgo de calidad de dato,
+  // no una falla del pipeline. Un exit≠0 queda para una excepción real, que atrapa el catch de abajo.
 }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}

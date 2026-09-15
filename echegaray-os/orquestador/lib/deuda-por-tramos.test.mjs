@@ -156,7 +156,7 @@ describe('el estado tipeado que contradice a su propia fórmula', () => {
 })
 
 describe('la fórmula de la columna AL', () => {
-  const f = formulaSaldoPendiente()
+  const f = formulaSaldoPendiente(COMPRAS_2508)
 
   it('dice EXACTAMENTE lo mismo que el JS: los DOS tramos, y U afuera', () => {
     assert.ok(f.includes('$O$4:$O'), 'sin el Total no hay de qué restar')
@@ -191,8 +191,9 @@ describe('la fórmula de la columna AL', () => {
     // Tenía un `soloPendiente:false` que producía "la que le cree a los importes". Esa segunda
     // versión no puede existir: los importes de Compras son fórmulas derivadas del propio estado y de
     // la modalidad, así que no son una segunda opinión — son la misma celda con otro nombre.
-    assert.equal(formulaSaldoPendiente.length, 0, 'una fórmula con opciones son dos definiciones')
-    assert.equal(formulaSaldoPendiente({ soloPendiente: false }), f, 'el parámetro viejo ya no cambia nada')
+    // Un solo parámetro, y es la fila de rótulos: una fórmula con opciones son dos definiciones.
+    assert.equal(formulaSaldoPendiente.length, 1)
+    assert.throws(() => formulaSaldoPendiente({ soloPendiente: false }), /fila de rótulos viva/, 'el parámetro viejo ya no existe')
     assert.ok(f.includes(`$X$4:$X="${PENDIENTE}"`), 'se debe lo que el dueño declaró Pendiente')
     assert.ok(f.includes('$AJ$4:$AJ=1'), 'la deuda con ARCA/nómina no es de esta pestaña')
   })
@@ -233,5 +234,13 @@ describe('«Obra» insertada en Compras L (14/09/2026): las fórmulas que leen C
     assert.throws(() => formulaParcial1Monto(), /columnasDeuda/)
     assert.throws(() => expresionSaldo('Compras!'), /columnasDeuda/)
     assert.throws(() => formulaPagadasSinImporte({}), /columnasDeuda/)
+  })
+})
+
+describe('«Obra» insertada en L: la ARRAYFORMULA de «Saldo pendiente (OS)» sigue al rótulo', () => {
+  it('Total, Monto Pagado, Monto Parcial 2, Estado y comercial se corren; Proveedor no', () => {
+    const f = formulaSaldoPendiente(COMPRAS_CON_OBRA)
+    const columnas = [...new Set((f.match(/\$([A-Z]{1,2})\$4:\$\1/g) ?? []).map((r) => r.slice(1, r.indexOf('$', 1))))]
+    assert.deepEqual(columnas.sort(), ['AK', 'E', 'P', 'U', 'X', 'Y'].sort())
   })
 })

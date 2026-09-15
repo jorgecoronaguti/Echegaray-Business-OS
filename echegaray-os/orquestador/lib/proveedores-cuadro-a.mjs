@@ -28,6 +28,8 @@
 // que ya tenían.
 
 import { camposDeFila, COL, valoresDelPivot, VISTA } from './proveedores-pivot-seccion1.mjs'
+// Las columnas de Compras del vencimiento salen del rótulo (14/09/2026): con «Obra» en L, Q/AL → R/AM.
+import { COMPRAS, columnasDe, rangoAbierto } from './columnas-por-encabezado.mjs'
 import { requestsDeNotas, ROTULO_NOTA } from './proveedores-notas-columna.mjs'
 
 /**
@@ -45,6 +47,11 @@ import { requestsDeNotas, ROTULO_NOTA } from './proveedores-notas-columna.mjs'
  * sale ese día" no se contesta acá: lo contesta el cuadro "QUÉ SALE CADA DÍA", que es su lugar.
  */
 export const ROTULO_VENCE = 'Primer vencimiento'
+
+/** Las tres columnas de Compras que lee el vencimiento, por rótulo. */
+export const ROTULOS_VENCE = Object.freeze({ fecha: 'Fecha prevista de pago (día)', proveedor: COMPRAS.proveedor, saldo: COMPRAS.saldo })
+/** Esas columnas contra la fila de rótulos leída en esta corrida. */
+export const columnasVence = (encabezado) => columnasDe(encabezado, ROTULOS_VENCE, 'Compras')
 
 /** La columna donde el pivot escribe el nombre. Es el ancla de las dos fórmulas. */
 export const COL_PROVEEDOR = 0
@@ -95,9 +102,11 @@ export const letra = (i) => String.fromCharCode(65 + i)
  * @param {string} letraProveedor  la columna donde el pivot escribe el nombre
  * @returns {string}
  */
-export function formulaVence(fila, letraProveedor = 'A') {
-  const ancla = `$${letraProveedor}${fila}`
-  const minifs = 'MINIFS(Compras!$Q$4:$Q;Compras!$E$4:$E;' + ancla + ';Compras!$AL$4:$AL;">0")'
+export function formulaVence(fila, letraProveedor = 'A', cols) {
+  if (!cols?.fecha || !cols?.proveedor || !cols?.saldo) throw new Error('formulaVence: faltan las columnas de Compras resueltas por rótulo — columnasVence(encabezado)')
+  const r = (c) => rangoAbierto('Compras', c)
+  const ancla = `${letraProveedor}${fila}`
+  const minifs = `MINIFS(${r(cols.fecha)};${r(cols.proveedor)};${ancla};${r(cols.saldo)};">0")`
   return `=IF(${ancla}="";"";IFERROR(LET(venceProx;${minifs};IF(venceProx=0;"";venceProx));""))`
 }
 
@@ -170,7 +179,7 @@ export function rangoDelCuadroA({ visible = [], filaRotulos, filaTope, anchoPivo
  * @param {{sheetId:number, filaRotulos:number, desde:number, hasta:number}} o
  * @returns {object[]}
  */
-export function requestsDelCuadroA({ sheetId, filaRotulos, desde, hasta }) {
+export function requestsDelCuadroA({ sheetId, filaRotulos, desde, hasta, cols }) {
   if (!Number.isInteger(sheetId)) throw new Error('requestsDelCuadroA: falta sheetId')
   if (!(hasta > desde)) return []
   const cVence = colVence()
@@ -200,7 +209,7 @@ export function requestsDelCuadroA({ sheetId, filaRotulos, desde, hasta }) {
           endColumnIndex: cVence + 1,
         },
         rows: Array.from({ length: hasta - desde }, (_, i) => ({
-          values: [{ userEnteredValue: { formulaValue: formulaVence(desde + i, L) } }],
+          values: [{ userEnteredValue: { formulaValue: formulaVence(desde + i, L, cols) } }],
         })),
         fields: 'userEnteredValue',
       },

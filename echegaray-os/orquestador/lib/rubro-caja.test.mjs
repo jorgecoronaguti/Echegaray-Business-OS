@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { rubroDeCaja, repartir, formulaRubro, formulaFechaCaja, REGLAS, RUBROS, SIN_CLASIFICAR, RUBROS_DE_PLANILLA, factorSinPlanilla, COL_RUBRO_CAJA } from './rubro-caja.mjs'
+import { COMPRAS_2508, COMPRAS_CON_OBRA } from './encabezados-referencia.mjs'
 
 // Los casos que ya se equivocaron una vez en esta planilla. Cada uno es plata que cambió de línea.
 test('el orden de las reglas decide, y ese orden está medido', () => {
@@ -55,7 +56,7 @@ test('repartir avisa cuando NO es una partición', () => {
 })
 
 test('la fórmula del Sheet se genera desde las MISMAS reglas', () => {
-  const f = formulaRubro()
+  const f = formulaRubro(COMPRAS_2508)
   // Una regla nueva en REGLAS aparece sola en la fórmula: no hay dos listas que mantener.
   for (const r of RUBROS) assert.ok(f.includes(`"${r}"`), `falta el rubro ${r} en la fórmula`)
   assert.ok(f.includes(`"${SIN_CLASIFICAR}"`))
@@ -117,7 +118,7 @@ test('la fecha de caja extrae la PRIMERA fecha aunque la celda tenga texto alred
   // EL CASO REAL (02/08): Alumetal, $11.423.913, con "28/1/2026 y 7/3/26" en la fecha prevista —un
   // pago en dos veces. DATEVALUE fallaba, la fila quedaba sin fecha de caja, y el control del Cash
   // Flow la reportaba como "gasto sin fecha de pago". El dueño la había cargado: tenía DOS.
-  const f = formulaFechaCaja()
+  const f = formulaFechaCaja(COMPRAS_2508)
   assert.match(f, /REGEXEXTRACT/, 'tiene que extraer la fecha del texto, no confiar en DATEVALUE solo')
   assert.match(f, /\\d\{1,2\}\/\\d\{1,2\}\/\\d\{2,4\}/, 'el patrón dd/mm/aaaa, con año de 2 o 4 dígitos')
 })
@@ -125,17 +126,17 @@ test('la fecha de caja extrae la PRIMERA fecha aunque la celda tenga texto alred
 test('la fecha de caja YA NO mira la columna Y, que no es una fecha', () => {
   // "Tipo de Costo" contiene "Directo"/"Indirecto". La rama era una referencia fosilizada de cuando
   // las columnas estaban en otro lado. Un número tipeado ahí se habría leído como fecha de pago.
-  const f = formulaFechaCaja()
+  const f = formulaFechaCaja(COMPRAS_2508)
   assert.ok(!f.includes('$Y$4:$Y'), `no puede referenciar la columna Y: ${f}`)
 })
 
 test('la fecha de caja sigue prefiriendo el número cuando la celda ya es una fecha', () => {
-  const f = formulaFechaCaja()
+  const f = formulaFechaCaja(COMPRAS_2508)
   assert.match(f, /ISNUMBER\(\$Q\$4:\$Q\);\$Q\$4:\$Q/, 'una fecha real no pasa por el parseo de texto')
 })
 
 test('la fórmula de fecha de caja es es-AR y cierra paréntesis', () => {
-  const f = formulaFechaCaja()
+  const f = formulaFechaCaja(COMPRAS_2508)
   assert.equal([...f].reduce((n, c) => n + (c === '(' ? 1 : c === ')' ? -1 : 0), 0), 0)
   assert.ok(!f.replace(/"[^"]*"/g, '""').includes(','), `separador con coma: ${f}`)
 })
@@ -167,4 +168,14 @@ test('el factor sin planilla deja en 0 la nómina de Compras y en 1 todo lo dem�
   assert.equal(sinFactor, 154942652)
   assert.equal(sinFactor - conFactor, 22627750)
   assert.equal(factor('Nómina · SAC'), 1)
+})
+
+// ═══ «OBRA» INSERTADA EN COMPRAS L (14/09/2026): las dos ARRAYFORMULA de caja siguen al rótulo ═══
+test('rubro y fecha de caja: antes y después de insertar «Obra», cada columna citada es la de su rótulo', () => {
+  const citadas = (f) => [...new Set([...f.replace(/"[^"]*"/g, '').matchAll(/\$([A-Z]{1,3})\$4:\$\1/g)].map((m) => m[1]))].sort()
+  assert.deepEqual(citadas(formulaRubro(COMPRAS_2508)), ['E', 'I', 'J', 'K', 'L', 'O'])
+  assert.deepEqual(citadas(formulaRubro(COMPRAS_CON_OBRA)), ['E', 'I', 'J', 'K', 'M', 'P'])
+  assert.match(formulaFechaCaja(COMPRAS_CON_OBRA), /ISNUMBER\(\$R\$4:\$R\);\$R\$4:\$R/)
+  assert.ok(!formulaFechaCaja(COMPRAS_CON_OBRA).includes('$Q$4'), 'quedó la Q de antes: «Fecha prevista de pago (mes)»')
+  assert.throws(() => formulaRubro(), /fila de rótulos viva/)
 })

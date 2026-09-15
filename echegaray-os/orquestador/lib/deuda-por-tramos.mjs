@@ -70,6 +70,7 @@
 // rótulo.
 
 import { COMPRAS, columnasDe, rangoAbierto } from './columnas-por-encabezado.mjs'
+import { traducirAlLayoutVivo } from './compras-layout.mjs'
 
 /** Las columnas de Compras que esta aritmética usa. Índice 0 = A. */
 export const COL = Object.freeze({
@@ -248,10 +249,12 @@ export function posicionComercial(filas = []) {
  *
  * @returns {string}
  */
-export function formulaSaldoPendiente() {
+export function formulaSaldoPendiente(encabezado) {
   const n = (r) => `IF(ISNUMBER(${r});${r};0)`
   const saldo = `${n('$O$4:$O')}-${n('$T$4:$T')}-${n('$W$4:$W')}`
-  return `=ARRAYFORMULA(IF($E$4:$E="";"";IF(($X$4:$X="${PENDIENTE}")*($AJ$4:$AJ=1);${saldo};0)))`
+  // DECLARADA EN EL LAYOUT DE REFERENCIA y llevada a la fila de rótulos viva antes de anclarla
+  // (14/09/2026): con «Obra» en L, Total/Monto Pagado/Monto Parcial 2/Estado/comercial se corren.
+  return traducirAlLayoutVivo(`=ARRAYFORMULA(IF($E$4:$E="";"";IF(($X$4:$X="${PENDIENTE}")*($AJ$4:$AJ=1);${saldo};0)))`, { vivo: encabezado })
 }
 
 // ═══ LAS FÓRMULAS QUE LEEN COMPRAS DESDE OTRA PESTAÑA, POR RÓTULO (14/09/2026) ═══
