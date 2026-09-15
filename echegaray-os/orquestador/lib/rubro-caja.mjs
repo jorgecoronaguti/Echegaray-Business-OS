@@ -26,6 +26,9 @@ import { NOMBRES } from './sheet-pestanas.mjs'
 // El F931 es carga social, no impuesto. UOCRA/FCL/IERIC/FODECO son gremiales, no impuestos. Si
 // alguien reordena las reglas, la partición sigue cerrando pero la plata cambia de línea.
 
+// Las ARRAYFORMULA se declaran en el layout de referencia y se anclan traducidas a la fila viva.
+import { traducirAlLayoutVivo } from './compras-layout.mjs'
+
 /** Normaliza para comparar: sin espacios de más, en minúsculas. PURA. */
 export const norm = (s) => String(s ?? '').trim().toLowerCase()
 
@@ -254,10 +257,13 @@ const FILA_REAL = '(($E$4:$E="")*(N($O$4:$O)=0))'
  * Se genera desde REGLAS para que no pueda desincronizarse de rubroDeCaja().
  * @returns {string} ARRAYFORMULA en es-AR (separador ';')
  */
-export function formulaRubro() {
+export function formulaRubro(encabezado) {
   let f = `"${SIN_CLASIFICAR}"`
   for (const r of [...REGLAS].reverse()) f = `IF(${r.sheet};"${r.rubro}";${f})`
-  return `=ARRAYFORMULA(IF(${FILA_REAL};"";${f}))`
+  // LAS REGLAS ESTÁN ESCRITAS EN EL LAYOUT DE REFERENCIA (14/09/2026) porque su texto también lo evalúa
+  // `regla-tres-caras`. Antes de anclarla en Compras se lleva a la fila de rótulos VIVA: con «Obra»
+  // insertada en L, `$L$4:$L` (Concepto) pasa a ser `$M$4:$M` y `$O$4:$O` (Total), `$P$4:$P`.
+  return traducirAlLayoutVivo(`=ARRAYFORMULA(IF(${FILA_REAL};"";${f}))`, { vivo: encabezado })
 }
 
 /**
@@ -310,11 +316,11 @@ export function sqlRubroDeCaja() {
  *
  * @returns {string} ARRAYFORMULA en es-AR
  */
-export function formulaFechaCaja() {
+export function formulaFechaCaja(encabezado) {
   const q = '$Q$4:$Q'
   // La primera fecha dd/mm/aaaa que aparezca en el texto. Sirve igual para "23/7/2026" a secas.
   const primeraFecha = `REGEXEXTRACT(${q}&"";"\\d{1,2}/\\d{1,2}/\\d{2,4}")`
-  return `=ARRAYFORMULA(IF(${FILA_REAL};"";IF(ISNUMBER(${q});${q};IFERROR(DATEVALUE(${primeraFecha});""))))`
+  return traducirAlLayoutVivo(`=ARRAYFORMULA(IF(${FILA_REAL};"";IF(ISNUMBER(${q});${q};IFERROR(DATEVALUE(${primeraFecha});""))))`, { vivo: encabezado })
 }
 
 /**

@@ -25,7 +25,9 @@
 // Una factura pagada no tiene vencimiento: si entrara con su tramo, el aging sumaría plata que ya
 // salió. Por eso las filas sin saldo devuelven vacío y la dinámica las descarta sola.
 
-/** Columnas de Compras usadas por el aging. Índice 0 = A. */
+import { traducirAlLayoutVivo } from './compras-layout.mjs'
+
+/** Columnas de Compras usadas por el aging, EN EL LAYOUT DE REFERENCIA. Índice 0 = A. El que escribe resuelve por rótulo. */
 export const COL = Object.freeze({
   proveedor: 4, // E
   fechaPago: 16, // Q — Fecha prevista de pago (día)
@@ -63,7 +65,12 @@ export function tramoDeLaFila({ saldo, fechaPago } = {}, hoy = new Date()) {
  * La misma decisión, como ARRAYFORMULA en es-AR (separador `;`).
  * Se ancla en AN4 y derrama sola: escribir el derrame rompería la fórmula entera.
  */
-export function formulaAging() {
+export function formulaAging(encabezado) {
+  return traducirAlLayoutVivo(formulaAgingDeReferencia(), { vivo: encabezado })
+}
+
+/** La fórmula en el layout de referencia (25/08). Se ancla SIEMPRE traducida: ver `compras-layout.mjs`. */
+function formulaAgingDeReferencia() {
   const saldo = '$AL$4:$AL'
   const fecha = '$Q$4:$Q'
   const anidar = (i) => {

@@ -64,6 +64,11 @@ import { formulaControl, rangosCompras, ROTULO_CONTROL } from '../lib/proveedore
 import { MONEDA_CONTROL } from '../lib/formato-statement.mjs'
 import { rangosDesdeEncabezado } from '../lib/proveedores-bloque-vivo.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
+// COMPRAS POR RÓTULO (14/09/2026): el encabezado entero, las filas llevadas al layout de referencia
+// que indexa `COL`, y las columnas del vencimiento resueltas contra la fila viva.
+import { lectorDeEncabezados, rangoEncabezado, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
+import { filasAlLayoutDeReferencia } from '../lib/compras-layout.mjs'
+import { columnasVence } from '../lib/proveedores-cuadro-a.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -109,8 +114,10 @@ async function main() {
   // LOS RÓTULOS DE LOS CAMPOS DE FILA SON LOS ENCABEZADOS DE COMPRAS: la API no deja renombrarlos y
   // Compras es fuente, no se edita. Se leen para poder darle a la fila de rótulos el alto que hace
   // falta — "Fecha prevista de pago (día)" no entra de una línea en ninguna columna razonable.
-  const cabecera = (await google.readSheetValues(ID, 'Compras!A3:AL3', { render: 'FORMATTED_VALUE' }))?.[0] ?? []
-  const compras = await google.readSheetValues(ID, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
+  const encabezadoVivo = await lectorDeEncabezados(google, ID).encabezado('Compras')
+  const [cabecera] = filasAlLayoutDeReferencia([encabezadoVivo], encabezadoVivo)
+  const compras = filasAlLayoutDeReferencia(await google.readSheetValues(ID, rangoFilas('Compras', 4), { render: 'UNFORMATTED_VALUE' }) ?? [], encabezadoVivo)
+  const colsVence = columnasVence(encabezadoVivo)
   const pendientes = (compras ?? []).filter((f) => String(f?.[COL.estado] ?? '').trim() === PENDIENTE
     && String(f?.[COL.comercial] ?? '').trim() === '1')
   // LA RESERVA SE CUENTA COMO AGRUPA EL PIVOT —por el valor CRUDO— y con una fila de colchón: el
@@ -301,7 +308,7 @@ async function main() {
   if (rotos.length) { console.error(`✗✗ ${rotos.length} celda(s) con error: ${[...new Set(rotos)].join(' · ')}`); process.exitCode = 1 }
 
   await recortarElAire({ google, sheetId, geo })
-  await reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo })
+  await reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo, cols: colsVence })
 
   console.log('\nLEÍDO DEL ARCHIVO:')
   for (const f of leido ?? []) {
@@ -401,7 +408,7 @@ async function recortarElAire({ google, sheetId, geo }) {
  *
  * NO consulta la base: la nota busca contra la pestaña auxiliar. Si Postgres está caído, vuelve igual.
  */
-async function reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo }) {
+async function reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo, cols }) {
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
   // Los dos anclajes son TEXTO de otro dueño, no la salida de la corrida anterior: un cuadro en #REF!
   // deja de reconocerse a sí mismo, y ahí es donde un generador se engancha en la fila equivocada.
@@ -415,7 +422,7 @@ async function reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo }) {
     return
   }
   const r = rangoDelCuadroA({ visible, filaRotulos: geo.filaEncabezado, filaTope: iSub + 1 })
-  const reqs = requestsDelCuadroA({ sheetId, filaRotulos: geo.filaEncabezado, ...r })
+  const reqs = requestsDelCuadroA({ sheetId, filaRotulos: geo.filaEncabezado, ...r, cols })
   if (!reqs.length) {
     console.error('  ✗ el cuadro "a quién se le debe" no tiene ni una fila entre sus rótulos y el'
       + ' detalle: NO repongo "Vence" ni "Qué hacer".')
@@ -497,7 +504,7 @@ async function requestsDelControl({ google, sheetId, geo, rango }) {
   // Una fórmula que sólo se parchea no puede recibir una corrección de criterio. Ahora se escribe
   // entera desde `formulaControl()`, que a su vez sale de la resta canónica: si mañana cambia qué
   // cuenta como pago, cambia en un archivo y baja sola a la pestaña en la corrida siguiente.
-  const cabecera = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
+  const cabecera = (await google.readSheetValues(ID, rangoEncabezado('Compras')))[0] || []
   const { rangos: crudos, avisos } = rangosDesdeEncabezado(cabecera)
   for (const a of avisos) console.warn(`  ⚠ ${a}`)
   const nueva = formulaControl({

@@ -23,7 +23,8 @@ import { COMPRAS, columnasDe, lectorDeEncabezados, rangoAbierto, rangoFilas } fr
 import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { MIN_MESES, MES_EN_CURSO, COL_FECHA } from '../lib/cash-flow-lineas.mjs'
+import { MIN_MESES, MES_EN_CURSO } from '../lib/cash-flow-lineas.mjs'
+import { comprasDelCuadro } from '../lib/cash-flow-rangos.mjs'
 import { rotuloPorFuente, formulaUltimaFecha } from '../lib/fecha-de-frescura.mjs'
 // El ancho de la columna de concepto es del estándar, no de esta pestaña: ver `ANCHO` en el lib.
 import { ANCHO as ANCHO_COLUMNA } from '../lib/estilo-pestana.mjs'
@@ -93,7 +94,9 @@ const COL_LAYOUT = Object.freeze({
 
 export function grilla(recurrentes = [], cols) {
   if (!cols?.rubro || !cols?.total) throw new Error('estructura: faltan las columnas de Compras resueltas por encabezado')
+  // Los rangos del constructor compartido y del rótulo de frescura, de las MISMAS columnas resueltas.
   const refs = refsCompras(cols)
+  const rg = { compras: comprasDelCuadro(cols) }
   const rubros = [...SUBRUBROS.map(([n]) => n), OTROS]
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
@@ -127,7 +130,7 @@ export function grilla(recurrentes = [], cols) {
   s[0] = rotuloPorFuente('Gasto propio del año', [
     // `mixto`: la columna de fecha de Compras convive como serial y como texto tipeado — un MAX crudo
     // pierde las tipeadas EN SILENCIO y declararía como corte la última que entró como número.
-    { nombre: 'Compras', expr: formulaUltimaFecha(COL_FECHA, { mixto: true }) },
+    { nombre: 'Compras', expr: formulaUltimaFecha(rg.compras.fecha, { mixto: true }) },
   ])
   push(s)
   push(vacia())
@@ -276,7 +279,7 @@ export function grilla(recurrentes = [], cols) {
   // de ARCA, que el OS no escribe.
   push(vacia())
   const arca0 = filas.length + 1
-  for (const b of bloqueControlArca({ titulo: `${++nBloque} · RESPALDO FISCAL — contra el libro de IVA de ARCA`, rubros: ['Estructura'], fila0: arca0 })) {
+  for (const b of bloqueControlArca({ titulo: `${++nBloque} · RESPALDO FISCAL — contra el libro de IVA de ARCA`, rubros: ['Estructura'], fila0: arca0, rangos: rg })) {
     const fila = vacia()
     b.forEach((c, i) => { fila[i] = c })
     push(fila)

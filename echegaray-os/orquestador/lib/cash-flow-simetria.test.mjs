@@ -12,20 +12,21 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { formulaLineaMes, expresionProyeccionMes, mesCerrado, CUADRO, NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { formulaLineaSemana, expresionFalta } from './cash-flow-horizonte.mjs'
+import { RANGOS_ANTES as RG } from './cash-flow-rangos-referencia.mjs'
 
 const TABLAS = { Estructura: 15, Recurrentes: 24 }
 /** Las líneas del cuadro que SÍ proyectan — las únicas donde la simetría puede romperse. */
 const lineasQueProyectan = () => CUADRO
   .flatMap((a) => a.grupos)
   .flatMap((g) => g.lineas)
-  .filter((l) => expresionProyeccionMes(l, 'B$3', TABLAS, 2026) !== null)
+  .filter((l) => expresionProyeccionMes(RG, l, 'B$3', TABLAS, 2026) !== null)
 
 test('LA GUARDA DEL MES CERRADO ES LA MISMA EN LAS DOS PESTAÑAS — el defecto de los $177M', () => {
   const lineas = lineasQueProyectan()
   assert.ok(lineas.length > 0, 'tiene que haber líneas que proyecten, si no el test no prueba nada')
   for (const l of lineas) {
-    const mensual = formulaLineaMes(l, 'B', 'B', 3, TABLAS, 2026)
-    const semanal = formulaLineaSemana(l, 'B$3', 'B$3+7', TABLAS, 2026)
+    const mensual = formulaLineaMes(RG, l, 'B', 'B', 3, TABLAS, 2026)
+    const semanal = formulaLineaSemana(RG, l, 'B$3', 'B$3+7', TABLAS, 2026)
     // El mensual pregunta "¿este mes ya cerró?" antes de proyectar. El semanal NO lo hacía: llamaba a
     // expresionProyeccionMes directo y repartía el mes en curso ENTERO entre sus semanas, mientras el
     // mensual no lo proyectaba en absoluto. Si alguien vuelve a sacar la guarda del semanal, acá se ve.
@@ -38,7 +39,7 @@ test('LA GUARDA DEL MES CERRADO ES LA MISMA EN LAS DOS PESTAÑAS — el defecto 
 
 test('EL REPARTO ENTRE SEMANAS ES UNA PARTICIÓN: los días propios sobre los días del MES, no sobre los que faltan', () => {
   const l = lineasQueProyectan()[0]
-  const f = formulaLineaSemana(l, 'B$3', 'B$3+7', TABLAS, 2026)
+  const f = formulaLineaSemana(RG, l, 'B$3', 'B$3+7', TABLAS, 2026)
   // El denominador tiene que ser el mes entero. Con `finMes - MAX(M;TODAY())` —los días que faltan
   // desde hoy— la suma de las semanas de un mes NO da 1 y las dos pestañas no pueden cerrar.
   assert.ok(!/MAX\(EOMONTH\(EOMONTH\(B\$3;-1\)\+1;0\)\+1;TODAY\(\)\)/.test(f),
@@ -54,10 +55,10 @@ test('MAX(real;proy) del mensual y real+falta del semanal son la MISMA cantidad,
   // MAX(0; proy − real), la igualdad se rompe y con ella el cuadre entre pestañas.
   const l = lineasQueProyectan()[0]
   const M = 'EOMONTH(B$3;-1)+1'
-  const falta = expresionFalta(l, M, TABLAS, 2026)
+  const falta = expresionFalta(RG, l, M, TABLAS, 2026)
   assert.match(falta, /^IF\(EOMONTH\(EOMONTH\(B\$3;-1\)\+1;0\)<=EOMONTH\(TODAY\(\);0\);0;MAX\(0;/,
     'falta = 0 si el mes cerró, si no MAX(0; proy − real)')
-  assert.ok(falta.includes(expresionProyeccionMes(l, M, TABLAS, 2026)), 'la proyección es la del mensual, no otra')
+  assert.ok(falta.includes(expresionProyeccionMes(RG, l, M, TABLAS, 2026)), 'la proyección es la del mensual, no otra')
 })
 
 test('EL TEST DE HISTORIA APUNTA A LOS DOCE MESES DEL EJERCICIO, POR SU NOMBRE', () => {
@@ -72,7 +73,7 @@ test('EL TEST DE HISTORIA APUNTA A LOS DOCE MESES DEL EJERCICIO, POR SU NOMBRE',
   // da error: COUNTIFS cuenta cero meses y la proyección por ritmo se apaga en silencio. CF_MESES
   // apunta a los doce meses se muevan donde se muevan.
   const conRitmo = lineasQueProyectan()
-    .map((l) => expresionProyeccionMes(l, 'B$3', TABLAS, 2026))
+    .map((l) => expresionProyeccionMes(RG, l, 'B$3', TABLAS, 2026))
     .filter((e) => e.includes('COUNTIFS'))
   assert.ok(conRitmo.length > 0, 'tiene que haber al menos una línea proyectada por ritmo')
   for (const e of conRitmo) {
@@ -85,7 +86,7 @@ test('FUERA DEL AÑO DEL CUADRO NO SE PROYECTA — tampoco por ritmo', () => {
   // La última columna del semanal (lunes 28/12/2026) pisa enero de 2027: sin esta guarda cobraba
   // 3/31 de un mes entero de ritmo por cada rubro, plata de otro ejercicio sumada al total de éste.
   const conRitmo = lineasQueProyectan()
-    .map((l) => expresionProyeccionMes(l, 'B$3', TABLAS, 2026))
+    .map((l) => expresionProyeccionMes(RG, l, 'B$3', TABLAS, 2026))
     .filter((e) => e.includes('COUNTIFS'))
   for (const e of conRitmo) {
     assert.match(e, /^IF\(YEAR\(B\$3\)<>2026;0;/, 'la rama de ritmo también tiene que cortar fuera del año')

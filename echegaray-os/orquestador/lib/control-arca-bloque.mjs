@@ -24,21 +24,25 @@
 // número global repetido tres veces. Pertenece al control global, no a la vista.
 import { R } from './arca-formula.mjs'
 import { ALERTA } from './glifos.mjs'
+// LAS COLUMNAS DE COMPRAS SALEN DEL RÓTULO (14/09/2026). Eran `C`, `AC` y `O` fijas; con «Obra» en L,
+// el rubro pasa a la AD y el Total a la P, y este control habría sumado otra columna en las tres
+// pestañas que lo comparten. Las de `_CRUCE_ARCA` sí son letras: esa pestaña la genera el OS.
+import { exigirCompras } from './cash-flow-rangos.mjs'
+import { letraDeOtraPestana } from './letra-de-otra-pestana.mjs'
 
 /** La pestaña de discrepancias. La escribe scripts/cruce-arca-pestana.mjs. */
 export const C = '_CRUCE_ARCA'
 
+const cc = (l) => letraDeOtraPestana(C, l)
 /** Las columnas de `_CRUCE_ARCA`. El orden es contrato: estas fórmulas lo referencian. */
-export const CC = { periodo: 'A', direccion: 'B', fecha: 'C', proveedor: 'D', cuit: 'E', comprobante: 'F', importe: 'G', rubro: 'H', fila: 'I', accion: 'J' }
+export const CC = Object.freeze({
+  periodo: cc('A'), direccion: cc('B'), fecha: cc('C'), proveedor: cc('D'), cuit: cc('E'),
+  comprobante: cc('F'), importe: cc('G'), rubro: cc('H'), fila: cc('I'), accion: cc('J'),
+})
 export const CFILA0 = 4
 
 /** Los dos valores de la columna "Dirección". Un typo acá deja una línea en cero sin dar error. */
 export const DIR = Object.freeze({ arcaSinCompras: 'ARCA sin Compras', comprasSinArca: 'Compras sin ARCA' })
-
-/** Columnas de Compras que este bloque mira. La fecha es la de FACTURA, nunca la de caja. */
-const COL_FACTURA = 'Compras!$C$4:$C'
-const COL_RUBRO = 'Compras!$AC$4:$AC'
-const COL_TOTAL = 'Compras!$O$4:$O'
 
 const rg = (col) => `${C}!$${col}$${CFILA0}:$${col}`
 
@@ -49,10 +53,14 @@ export const HASTA = `EOMONTH(MAXIFS(${R}!$C$4:$C;${R}!$B$4:$B;"Compras");0)`
 /** ¿ARCA trajo algo? Sin esto no hay control posible y la pestaña tiene que decirlo. */
 export const HAY_FUENTE = `COUNTIFS(${R}!$B$4:$B;"Compras")>0`
 
-/** Compras del universo de la pestaña, por fecha de FACTURA y dentro de la ventana de ARCA. */
-export function comprasDevengado(rubros) {
+/**
+ * Compras del universo de la pestaña, por fecha de FACTURA y dentro de la ventana de ARCA.
+ * @param {object} rangos los rangos del cuadro resueltos por rótulo (`rangosDelCuadro`)
+ */
+export function comprasDevengado(rangos, rubros) {
+  const c = exigirCompras(rangos, 'comprasDevengado')
   return rubros
-    .map((r) => `SUMIFS(${COL_TOTAL};${COL_RUBRO};"${r}";${COL_FACTURA};">="&${DESDE};${COL_FACTURA};"<="&${HASTA})`)
+    .map((r) => `SUMIFS(${c.total};${c.rubro};"${r}";${c.factura};">="&${DESDE};${c.factura};"<="&${HASTA})`)
     .join('+')
 }
 
@@ -78,9 +86,11 @@ export function sinRespaldoN(rubros) {
  * @param {string[]} args.rubros  los rubros de Compras que esta pestaña cubre
  * @param {number} args.fila0  la fila REAL de la planilla donde va la primera fila del bloque —
  *   las fórmulas se referencian entre sí y una fila corrida las deja apuntando a otra cosa
+ * @param {object} args.rangos  los rangos de Compras resueltos por rótulo (`rangosDelCuadro`)
  * @returns {(string|number)[][]}
  */
-export function bloqueControlArca({ titulo, rubros, fila0 }) {
+export function bloqueControlArca({ titulo, rubros, fila0, rangos }) {
+  exigirCompras(rangos, 'bloqueControlArca')
   // LA FILA SE PIDE POR SU NOMBRE, NO POR UN NÚMERO. Decía `f(3)`, `f(4)`, `f(5)`, `f(6)`: los mismos
   // desplazamientos que `FILA_BLOQUE` declara abajo, tipeados otra vez acá. Sacar una fila del bloque
   // obligaba a encontrar los cuatro y a acertarlos; con el nombre, se mueven solos.
@@ -111,7 +121,7 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // $209.231.271" contra "Compras · lo de esta pestaña $5.638.835" y restaba: −$203.592.436 en
   // Recurrentes, que no era un agujero sino dos universos distintos. El total del libro NO vuelve a
   // aparecer en una vista parcial.
-  filas.push(['Lo que esta pestaña lista, dentro de la ventana', `=${comprasDevengado(rubros)}`])
+  filas.push(['Lo que esta pestaña lista, dentro de la ventana', `=${comprasDevengado(rangos, rubros)}`])
   filas.push(['· con su comprobante en el libro de ARCA', `=B${f(FILA_BLOQUE.universo)}-B${f(FILA_BLOQUE.sinRespaldo)}`])
   // EL RÓTULO NOMBRA LA LÍNEA Y NO LA DEFIENDE. Llevaba pegado «— incluye proveedores que no facturan,
   // NO es error sin más»: 88 caracteres para un rótulo, y un argumento. Que la cifra está inflada lo

@@ -12,6 +12,7 @@ import { ALICUOTA, formulaImpuesto } from './impuesto-cheque.mjs'
 import { respetarEdiciones } from './respetar-ediciones.mjs'
 import { grilla } from '../scripts/cash-flow-rehacer.mjs'
 import { SEMANAS_HORIZONTE } from './cash-flow-horizonte.mjs'
+import { RANGOS_ANTES as RG } from './cash-flow-rangos-referencia.mjs'
 
 // Helpers de validación de una fórmula es-AR (no la evaluamos en un Sheet real: la validamos estructural).
 const ERROR_TOKENS = /#(REF|ERROR|N\/A|VALUE|DIV|NAME|NUM|NULL|¡)/
@@ -57,7 +58,7 @@ test('formulaInteresSemana: mismo modelo verificado que el mensual, ventana de 7
 test("grilla semanal: las líneas del descubierto e impuesto al cheque NO quedan vacías en ninguna semana", () => {
   // DESDE EL 04/08 EL SEMANAL TAMBIÉN PROYECTA, así que también necesita las filas de las tablas de
   // proyección: si no las tiene, el generador se niega a referenciar una fila muerta (y hace bien).
-  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", TABLAS, FILAS_CAL)
+  const g = grilla(RG, 'semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", TABLAS, FILAS_CAL)
   const desc = g.meta.detalle.find((d) => d.linea.descubierto)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
   assert.ok(desc && imp, 'existen ambas líneas en el semanal')
@@ -76,7 +77,7 @@ test("grilla semanal: las líneas del descubierto e impuesto al cheque NO quedan
 })
 
 test('impuesto al cheque semanal resuelto = 0,6% de entradas + 0,6% de salidas de la semana', () => {
-  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", TABLAS, FILAS_CAL)
+  const g = grilla(RG, 'semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", TABLAS, FILAS_CAL)
   const ingreso = g.meta.detalle.filter((d) => d.signo > 0).map((d) => d.fila)
   const egreso = g.meta.detalle.filter((d) => d.signo < 0 && !d.linea.impuestoCheque).map((d) => d.fila)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
@@ -93,7 +94,7 @@ test('impuesto al cheque semanal resuelto = 0,6% de entradas + 0,6% de salidas d
 test('regresión: el MENSUAL sigue calculando descubierto e impuesto como antes', () => {
   // El mensual proyecta desde las pestañas de detalle: necesita la fila del total (la ubica el script
   // por rótulo; acá se simula). El semanal no las usa (muestra sólo lo comprometido).
-  const g = grilla('mensual', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", { Estructura: 15, Recurrentes: 24 }, FILAS_CAL)
+  const g = grilla(RG, 'mensual', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", { Estructura: 15, Recurrentes: 24 }, FILAS_CAL)
   const desc = g.meta.detalle.find((d) => d.linea.descubierto)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
   const rowDesc = g.filas[desc.fila - 1]
@@ -164,7 +165,7 @@ test('la línea semanal de comisiones carga el cargo en la semana del cierre de 
 
 test('la línea de comisiones está en el cuadro, en Financiación, y NO queda vacía en ninguna columna', () => {
   for (const [periodo, filasTabla] of [['mensual', { Estructura: 15, Recurrentes: 24 }], ['semanal', TABLAS]]) {
-    const g = grilla(periodo, [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", filasTabla, FILAS_CAL)
+    const g = grilla(RG, periodo, [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", filasTabla, FILAS_CAL)
     const com = g.meta.detalle.find((d) => d.linea.comisionesBancarias)
     assert.ok(com, `${periodo}: la línea de comisiones existe en el cuadro`)
     assert.equal(com.signo, -1, `${periodo}: es un egreso`)
@@ -182,7 +183,7 @@ test('el impuesto al cheque incluye las comisiones en su base: el banco lo cobra
   // comisiones y sus impuestos— y el banco cobró $22.007,03 de impuesto al cheque, que es el 0,6%
   // EXACTO de ese total. O sea: la comisión bancaria está gravada, y la línea del impuesto tiene que
   // contarla entre los egresos de la columna. Se excluye a sí misma (sería circular), nada más.
-  const g = grilla('mensual', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", { Estructura: 15, Recurrentes: 24 }, FILAS_CAL)
+  const g = grilla(RG, 'mensual', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", { Estructura: 15, Recurrentes: 24 }, FILAS_CAL)
   const com = g.meta.detalle.find((d) => d.linea.comisionesBancarias)
   const egreso = g.meta.detalle.filter((d) => d.signo < 0 && !d.linea.impuestoCheque).map((d) => d.fila)
   assert.ok(egreso.includes(com.fila), 'la fila de comisiones entra a la base del impuesto al cheque')
@@ -260,7 +261,7 @@ test('OFICINA: un mes pagado y un mes proyectado se suman, y el mes de otra vent
 
 test('OFICINA: NO se vuelve a proyectar en el mensual — su bloque ya proyecta hasta diciembre', () => {
   const l = { nombre: 'Oficina', oficina: true }
-  const f = formulaLineaMes(l, 'C', 'C', 3, {})
+  const f = formulaLineaMes(RG, l, 'C', 'C', 3, {})
   assert.ok(!/EOMONTH\(TODAY\(\);-4\)/.test(f), 'no debe entrar en el promedio de los últimos 3 meses')
   assert.match(f, /OFICINA_PAGO/)
 })
@@ -289,8 +290,8 @@ test('la línea que suma lee la planilla; la del memo lee Compras — si no, el 
   const lineas = CUADRO.flatMap((a) => a.grupos.flatMap((g) => g.lineas))
   const suma = lineas.find((l) => l.rubro === 'Nómina · Sueldos administración' && !l.desdeCompras)
   const memo = lineas.find((l) => l.desdeCompras)
-  const fSuma = expresionReal(suma, '$C$3', '$D$3')
-  const fMemo = expresionReal(memo, '$C$3', '$D$3')
+  const fSuma = expresionReal(RG, suma, '$C$3', '$D$3')
+  const fMemo = expresionReal(RG, memo, '$C$3', '$D$3')
   assert.ok(fSuma.includes('OFICINA_PAGO') && fSuma.includes('DIRECCION_PAGO'), fSuma)
   assert.ok(!fSuma.includes('Compras!'), `la que suma no puede leer Compras: ${fSuma}`)
   assert.ok(fMemo.includes('Compras!$AC$4:$AC'), `el memo tiene que leer Compras: ${fMemo}`)
@@ -341,21 +342,21 @@ test('LAS COBRANZAS ESPERADAS SUMAN AL FLUJO, igual que los egresos proyectados'
 })
 
 test('un cobro esperado NO suma hacia atrás: el pasado es un hecho, no una expectativa', () => {
-  const f = formulaCobranzas('civil', 'A1', 'B1', 'esperado')
+  const f = formulaCobranzas(RG, 'civil', 'A1', 'B1', 'esperado')
   assert.match(f, /EOMONTH\(TODAY\(\);-1\)\+1/,
     'sin el corte, un cobro que se esperaba en julio y no entró inflaría un mes ya cerrado')
   assert.match(f, /\(A1>=EOMONTH/, 'el corte tiene que mirar el INICIO de la ventana, no la fecha del cobro')
 })
 
 test('el cobro REAL no lleva corte: enero sigue mostrando lo que entró en enero', () => {
-  const f = formulaCobranzas('civil', 'A1', 'B1', 'cobrado')
+  const f = formulaCobranzas(RG, 'civil', 'A1', 'B1', 'cobrado')
   assert.doesNotMatch(f, /EOMONTH\(TODAY\(\)/, 'el hecho verificable contra el banco no se recorta')
   assert.match(f, /\(LOWER\(Cobranzas!\$O\$5:\$O\$400\)="cobrado"\)/)
 })
 
 test('esperado y cobrado son excluyentes: ninguna cobranza puede contarse dos veces', () => {
-  const cob = formulaCobranzas('civil', 'A1', 'B1', 'cobrado')
-  const esp = formulaCobranzas('civil', 'A1', 'B1', 'esperado')
+  const cob = formulaCobranzas(RG, 'civil', 'A1', 'B1', 'cobrado')
+  const esp = formulaCobranzas(RG, 'civil', 'A1', 'B1', 'esperado')
   assert.match(cob, /="cobrado"/)
   assert.match(esp, /<>"cobrado"/)
   // Y ninguno de los dos toma un valor endosado: esa plata se entregó a un tercero.
@@ -374,7 +375,7 @@ test('esperado y cobrado son excluyentes: ninguna cobranza puede contarse dos ve
 const columnasDePeriodo = (fila, n) => fila.slice(1, n + 1)
 
 test('grilla semanal: el ancla se decide por la ventana de la semana, no por su mes', () => {
-  const g = grilla('semanal', [], 'CAJA_TOTAL_DISPONIBLE', 'CAJA_FECHA_SALDO', TABLAS, FILAS_CAL)
+  const g = grilla(RG, 'semanal', [], 'CAJA_TOTAL_DISPONIBLE', 'CAJA_FECHA_SALDO', TABLAS, FILAS_CAL)
   const fila = g.filas[g.meta.inicio - 1]
   // 13 columnas desde el 04/08, no 53: el semanal dejó de mirar el año (ver cash-flow-horizonte.mjs).
   for (const c of columnasDePeriodo(fila, SEMANAS_HORIZONTE)) {
@@ -390,7 +391,7 @@ test('grilla mensual: el ancla sigue siendo el mes del saldo — la corrección 
   // El mensual proyecta desde dos pestañas-tabla; sin sus filas el generador se niega a referenciar
   // una fila muerta. Los números son los rótulos reales ubicados por el script.
   const filasTabla = { Estructura: 60, Recurrentes: 40 }
-  const g = grilla('mensual', [], 'CAJA_TOTAL_DISPONIBLE', 'CAJA_FECHA_SALDO', filasTabla, FILAS_CAL)
+  const g = grilla(RG, 'mensual', [], 'CAJA_TOTAL_DISPONIBLE', 'CAJA_FECHA_SALDO', filasTabla, FILAS_CAL)
   const fila = g.filas[g.meta.inicio - 1]
   for (const c of columnasDePeriodo(fila, 12)) {
     assert.match(String(c), /EOMONTH\([A-Z]+\$3;0\)\+1<=CAJA_FECHA_SALDO/,

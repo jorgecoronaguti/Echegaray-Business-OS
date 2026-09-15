@@ -44,7 +44,7 @@
  * $41,7M: no fue una fórmula mal escrita, fue un concepto que nadie sumó y nada avisó.
  */
 
-import { CUADRO, expresionReal } from './cash-flow-lineas.mjs'
+import { CUADRO, expresionReal, sinExpresionPropia } from './cash-flow-lineas.mjs'
 
 /**
  * Las líneas del CUADRO que mueven plata de verdad, con su signo.
@@ -72,7 +72,7 @@ export function lineasDeCaja() {
  */
 export function lineasQueNecesitanResolutor() {
   return lineasDeCaja()
-    .filter(({ linea }) => expresionReal(linea, 'X', 'Y') === null)
+    .filter(({ linea }) => sinExpresionPropia(linea))
     .map(({ linea }) => linea.nombre)
 }
 
@@ -89,17 +89,18 @@ export function marcaDeLinea(l) {
 /**
  * NÚCLEO PURO: los sumandos de un lado de la caja en una ventana de fechas.
  *
+ * @param {object} rg los rangos de Compras y Cobranzas resueltos por rótulo (`rangosDelCuadro`)
  * @param {number} signo 1 (entra) o -1 (sale)
  * @param {string} desde expresión de inicio · @param {string} hasta límite EXCLUYENTE
  * @param {object} resolutor mapa marca → (desde, hasta) => string. Lo que este archivo no sabe.
  * @returns {Array<{nombre:string, expresion:string}>}
  */
-export function sumandosEnVentana(signo, desde, hasta, resolutor = {}) {
+export function sumandosEnVentana(rg, signo, desde, hasta, resolutor = {}) {
   const faltan = []
   const sumandos = []
   for (const { linea, signo: s } of lineasDeCaja()) {
     if (s !== signo) continue
-    const propia = expresionReal(linea, desde, hasta)
+    const propia = expresionReal(rg, linea, desde, hasta)
     if (propia) { sumandos.push({ nombre: linea.nombre, expresion: propia }); continue }
     const marca = marcaDeLinea(linea)
     const fn = marca && resolutor[marca]
@@ -120,13 +121,13 @@ export function sumandosEnVentana(signo, desde, hasta, resolutor = {}) {
  * NÚCLEO PURO: la fórmula es-AR de lo que SALE de la caja en una ventana. Misma definición que el
  * cash flow, otra ventana.
  */
-export function expresionSaleEnVentana(desde, hasta, resolutor = {}) {
-  return sumandosEnVentana(-1, desde, hasta, resolutor).map((s) => s.expresion).join('+')
+export function expresionSaleEnVentana(rg, desde, hasta, resolutor = {}) {
+  return sumandosEnVentana(rg, -1, desde, hasta, resolutor).map((s) => s.expresion).join('+')
 }
 
 /** NÚCLEO PURO: ídem para lo que ENTRA. */
-export function expresionEntraEnVentana(desde, hasta, resolutor = {}) {
-  return sumandosEnVentana(1, desde, hasta, resolutor).map((s) => s.expresion).join('+')
+export function expresionEntraEnVentana(rg, desde, hasta, resolutor = {}) {
+  return sumandosEnVentana(rg, 1, desde, hasta, resolutor).map((s) => s.expresion).join('+')
 }
 
 /**

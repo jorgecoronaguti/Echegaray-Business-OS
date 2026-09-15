@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { CUADRO, verificarCuadro, expresionReal, formulaLineaMes, SUB_BIENES_DE_USO, formulaChequesSinFactura, INSTRUMENTOS, bloqueControl } from './cash-flow-lineas.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 import { RUBROS } from './rubro-caja.mjs'
+import { RANGOS_ANTES as RG } from './cash-flow-rangos-referencia.mjs'
 
 // La propiedad que sostiene el cuadro: todo rubro de Compras aparece en UNA actividad, exactamente
 // una vez. Si alguien agrega un rubro y se olvida de ubicarlo, el estado de flujo lo dejaría afuera
@@ -28,23 +29,23 @@ test('los bienes de uso se restan de estructura para no contarse dos veces', () 
   const est = lineas.find((l) => l.excluirSub === SUB_BIENES_DE_USO)
   assert.ok(inv && est, 'existen las dos mitades')
   assert.equal(est.rubro, 'Estructura')
-  const f = expresionReal(est, 'B$3', 'C$3')
+  const f = expresionReal(RG, est, 'B$3', 'C$3')
   assert.ok(f.includes('-SUMIFS'), 'la de estructura resta')
-  assert.ok(expresionReal(inv, 'B$3', 'C$3').includes('$AF$4'), 'la de inversión filtra por sub-rubro')
+  assert.ok(expresionReal(RG, inv, 'B$3', 'C$3').includes('$AF$4'), 'la de inversión filtra por sub-rubro')
 })
 
 test('un bien de uso no se proyecta: comprar una moto no es un ritmo mensual', () => {
   const { lineas } = verificarCuadro()
   const inv = lineas.find((l) => l.soloSub)
-  const f = formulaLineaMes(inv, 'I', 'I', 3)
+  const f = formulaLineaMes(RG, inv, 'I', 'I', 3)
   assert.ok(!f.includes('MAX('), 'sin proyección')
 })
 
 test('la línea de cheques no tiene fórmula — la llena el script con valores', () => {
   const { lineas } = verificarCuadro()
   const ch = lineas.find((l) => l.cheques)
-  assert.equal(expresionReal(ch, 'B$3', 'C$3'), null)
-  assert.equal(formulaLineaMes(ch, 'I', 'I', 3), null)
+  assert.equal(expresionReal(RG, ch, 'B$3', 'C$3'), null)
+  assert.equal(formulaLineaMes(RG, ch, 'I', 'I', 3), null)
 })
 
 // Los cobros NO se proyectan y los pagos SÍ. Es una asimetría deliberada —no hay obra facturada de
@@ -53,7 +54,7 @@ test('la línea de cheques no tiene fórmula — la llena el script con valores'
 test('los cobros no se proyectan', () => {
   const { lineas } = verificarCuadro()
   for (const l of lineas.filter((x) => x.cobranzas)) {
-    assert.ok(!formulaLineaMes(l, 'I', 'I', 3).includes('MAX('), `${l.nombre} no proyecta`)
+    assert.ok(!formulaLineaMes(RG, l, 'I', 'I', 3).includes('MAX('), `${l.nombre} no proyecta`)
   }
 })
 
@@ -108,7 +109,7 @@ test('la variante del CALENDARIO excluye lo que el banco YA debitó — el piso 
 // (Compras): un cobro sin unidad o sin fecha se caía del cuadro sin que nada avisara. Ahora el bloque
 // de control incluye sus dos espejos del ingreso.
 test('el bloque de control incluye los dos espejos del ingreso (sin unidad, sin fecha)', () => {
-  const ctrl = bloqueControl(10, 20, 'B', 40)
+  const ctrl = bloqueControl(RG, 10, 20, 'B', 40)
   const etiquetas = ctrl.map((c) => c.etiqueta)
   assert.ok(etiquetas.some((e) => e.startsWith('Cobros sin unidad de negocio')), 'está el control de cobros sin unidad')
   assert.ok(etiquetas.some((e) => e.startsWith('Cobros sin fecha')), 'está el control de cobros sin fecha')

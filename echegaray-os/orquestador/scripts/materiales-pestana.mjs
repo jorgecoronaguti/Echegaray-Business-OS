@@ -54,6 +54,9 @@ import { bloqueMaterialesPorObra, FILA_TOTAL as ROTULO_TOTAL_OBRA } from '../lib
 import { sumaNetaSheet } from '../lib/costo-materiales.mjs'
 import { obrasConMateriales } from '../lib/obras-con-materiales.mjs'
 import { letra, resolverColumnas, rango as rangoDeCompras } from '../lib/compras-columnas.mjs'
+// El bloque de ARCA pide la 2.ª «Rubro de caja» y la fecha de factura por rótulo (14/09/2026).
+import { rangosDelCuadro } from '../lib/cash-flow-rangos.mjs'
+import { rangoEncabezado, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { rotuloPorFuente, formulaUltimaFecha } from '../lib/fecha-de-frescura.mjs'
 import { elLayoutCambio, invalidarHuellasDeFormato } from '../lib/huella-formato-layout.mjs'
@@ -99,7 +102,7 @@ export const FAMILIAS_DEL_CUADRO = Object.freeze([...FAMILIAS.map(([n]) => n), S
  *            f0Obra:number, f1Obra:number, fTotObra:number, arca0:number, obras:string[],
  *            indivisibles:{desde:number,hasta:number}[]}}
  */
-export function grilla({ obras = [], rangos }) {
+export function grilla({ obras = [], rangos, rg }) {
   for (const k of ['neto', 'iva', 'total', 'familia', 'fechaCaja', 'rubro', 'obra']) {
     // Un rango `undefined` produce `$undefined$4:$undefined`, que PARSEA distinto y Sheets lo rechaza
     // al EVALUAR: cuarenta celdas con #ERROR! en la cara del dueño ya se publicaron así una vez.
@@ -224,7 +227,7 @@ export function grilla({ obras = [], rangos }) {
   // Los bloques 1 y 2 salen los dos de Compras: prueban que el cuadro no se pierde una familia, no
   // que Compras esté bien. Éste compara contra el libro de IVA de ARCA, que el OS no escribe.
   const arca0 = filas.length + 1
-  for (const b of bloqueControlArca({ titulo: `${++nBloque} · RESPALDO FISCAL — contra el libro de IVA de ARCA`, rubros: [...RUBROS_CON_FAMILIA], fila0: arca0 })) meter(b)
+  for (const b of bloqueControlArca({ titulo: `${++nBloque} · RESPALDO FISCAL — contra el libro de IVA de ARCA`, rubros: [...RUBROS_CON_FAMILIA], fila0: arca0, rangos: rg })) meter(b)
 
   // EL MARCADOR LLEVA DELIMITADORES A LOS DOS LADOS. Con `$TOT` a secas, `$Q$TOT` se resolvía a
   // `$Q27` —el `$` de la fila se lo comía el marcador— y la referencia dejaba de ser absoluta: al
@@ -336,12 +339,13 @@ export const ROTULOS_COMPRAS = Object.freeze({
   // ⚠ COMPRAS TIENE DOS COLUMNAS ROTULADAS «Rubro de caja» (AB y AC, con fórmulas que ya divergieron:
   // AC conoce «mass consultora» y AB no). `resolverColumnas` se queda con la PRIMERA, o sea AB — que
   // es de la que cuelga la propia columna «Familia de material», así que el cuerpo de esta pestaña
-  // mide contra el mismo criterio que define su universo. El bloque de ARCA cita AC fija desde su lib.
+  // mide contra el mismo criterio que define su universo. El bloque de ARCA pide la 2.ª por rótulo
+  // (`rangosDelCuadro`), igual que el cash flow.
   rubro: 'Rubro de caja',
 })
 
 async function refsDeCompras(google) {
-  const cab = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))?.[0] ?? []
+  const cab = (await google.readSheetValues(ID, rangoEncabezado('Compras')))?.[0] ?? []
   const { col, idx, faltan } = resolverColumnas(cab, ROTULOS_COMPRAS)
   if (faltan.length) {
     // FALLA CERRADO: leer por posición produce movimientos plausibles y equivocados, que es peor que
@@ -349,22 +353,22 @@ async function refsDeCompras(google) {
     throw new Error(`Compras no tiene estas columnas: ${faltan.join(' · ')}. NO escribo la pestaña.`)
   }
   const rangos = Object.fromEntries(Object.keys(ROTULOS_COMPRAS).map((k) => [k, rangoDeCompras(col[k])]))
-  return { idx, rangos }
+  return { idx, rangos, rg: rangosDelCuadro({ compras: cab }) }
 }
 
 async function main() {
   // `--dry` LEE pero no escribe: la forma del cuadro 2 depende de cuántas obras trajo Compras, así que
   // un ensayo offline mostraría una pestaña que no existe.
   const google = DRY ? makeGoogleClient({ config: loadConfig() }) : makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const { idx, rangos } = await refsDeCompras(google)
-  const crudas = await google.readSheetValues(ID, 'Compras!A4:BZ', { render: 'UNFORMATTED_VALUE' })
+  const { idx, rangos, rg } = await refsDeCompras(google)
+  const crudas = await google.readSheetValues(ID, rangoFilas('Compras', 4), { render: 'UNFORMATTED_VALUE' })
   // LA LISTA DE OBRAS SALE DE LOS DATOS. Tipeada, un cliente nuevo no aparece nunca: pasó con
   // Quattropani ($32.937.000 en tres comprobantes) y lo tuvo que pedir el dueño.
   const obras = obrasConMateriales(crudas, {
     rubros: [...RUBROS_CON_FAMILIA], monto: parseMonto,
     colObra: idx.obra, colRubro: idx.rubro, colNeto: idx.neto, colIva: idx.iva, colTotal: idx.total,
   })
-  const g = grilla({ obras, rangos })
+  const g = grilla({ obras, rangos, rg })
   console.log(`${PESTAÑA}: ${g.filas.length} filas x ${g.ancho} columnas · familias ${g.f0}-${g.f1} (total ${g.fTot})`
     + ` · ${obras.length} obras (total ${g.fTotObra}) · ARCA ${g.arca0}`)
   console.log(`  obras, de los datos y por monto: ${obras.join(' · ') || '(ninguna)'}`)

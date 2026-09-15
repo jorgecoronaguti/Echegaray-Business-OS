@@ -13,7 +13,7 @@ import { pathToFileURL } from 'node:url'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
-  bloqueControl, CUADRO, verificarCuadro, formulaLineaMes, expresionReal, formulaTotalRubro, origenLinea,
+  bloqueControl, CUADRO, verificarCuadro, formulaLineaMes, expresionReal, formulaTotalRubro, formulaTotalRubroSinSub, origenLinea,
   tablasDeProyeccion, formulaChequesSinFactura, hipervinculoDetalle, detalleDeRubro, SANGRIA_DETALLE,
   formulaInteresSemana, formulaComisionesMes, formulaComisionesSemana, edicionesConContenidoReal,
   instrumentosDeLinea, formulaCalendarioImpuestosMes, formulaCalendarioImpuestosSemana,
@@ -23,6 +23,10 @@ import {
   semanasDelAnio, semanasCerradas, formulaLineaSemana,
   naturalezaLinea, GLOSA_NATURALEZA,
 } from '../lib/cash-flow-horizonte.mjs'
+// COLUMNAS DE COMPRAS Y COBRANZAS POR RÓTULO (14/09/2026). `grilla` recibe los rangos resueltos contra
+// la fila viva; sin ellos no arma ninguna fórmula que lea esas pestañas.
+import { exigirCompras, exigirCobranzas, leerRangosDelCuadro } from '../lib/cash-flow-rangos.mjs'
+import { lectorDeEncabezados, rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { bloqueDecision, bloqueContraste, bloqueNaturaleza } from '../lib/cash-flow-tesoreria.mjs'
 import { bloqueLiquidez, formulaColchon } from '../lib/cash-flow-liquidez.mjs'
 import { requestsDeGraficos, COL_ANCLA } from '../lib/cash-flow-graficos.mjs'
@@ -87,9 +91,12 @@ const fechaAR = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullY
 
 /**
  * Arma la grilla de una pestaña de cash flow.
+ * @param {object} rg los rangos de Compras y Cobranzas resueltos por rótulo (`rangosDelCuadro`)
  * @param {'semanal'|'mensual'} periodo
  */
-export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}, filasCalendario = {}, hoy = new Date()) {
+export function grilla(rg, periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}, filasCalendario = {}, hoy = new Date()) {
+  exigirCompras(rg, 'cash-flow-rehacer')
+  exigirCobranzas(rg, 'cash-flow-rehacer')
   // ═══ EL SEMANAL DEJÓ DE MIRAR EL AÑO (04/08) ═══
   // Trece semanas rodantes desde la semana en curso, no las 53 del calendario. El porqué —y la
   // identidad que garantiza que el semanal y el mensual no puedan discrepar sobre un mes completo—
@@ -192,8 +199,8 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
         // proyectaba lo que entra y no lo que sale — el sesgo más caro que puede tener un forecast
         // de caja, porque el error empuja la peor semana hacia arriba justo donde hay que decidir.
         const f = periodo === 'mensual'
-          ? cols.map((_, i) => formulaLineaMes(l, letra(i + 1), letra(i + 1), FILA_CAB, filasTabla, AÑO))
-          : cols.map((_, i) => formulaLineaSemana(l, desde(i), hasta(i), filasTabla, AÑO))
+          ? cols.map((_, i) => formulaLineaMes(rg, l, letra(i + 1), letra(i + 1), FILA_CAB, filasTabla, AÑO))
+          : cols.map((_, i) => formulaLineaSemana(rg, l, desde(i), hasta(i), filasTabla, AÑO))
         // La línea de cheques SUMA las marcas que el OS escribe al lado de cada cheque y de cada
         // consumo de tarjeta. Antes era el único lugar del cuadro con números pegados: el día que se
         // cargaba una factura que faltaba, la línea seguía mostrando el importe viejo.
@@ -366,6 +373,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
     filasEgreso: meta.grupos.filter((g) => g.signo < 0).map((g) => g.filaGrupo),
     filasIngreso: meta.grupos.filter((g) => g.signo > 0).map((g) => g.filaGrupo),
     refCaja,
+    rangos: rg,
   })
   for (const f of dec.filas) push(f)
   meta.decision = dec
@@ -390,7 +398,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // variación neta, alguna línea quedó sin clasificar — y eso se ve, no se promedia.
   const iniH = `$B$${FILA_CAB}`
   const finH = periodo === 'semanal' ? `${letra(n)}$${FILA_CAB}+7` : `EOMONTH(${letra(n)}$${FILA_CAB};0)+1`
-  const proyecta = (l) => expresionProyeccionMes(l, iniH, filasTabla, AÑO) !== null
+  const proyecta = (l) => expresionProyeccionMes(rg, l, iniH, filasTabla, AÑO) !== null
   const esModelo = (l) => naturalezaLinea(l) === 'MODELO'
   const esEsperado = (l) => naturalezaLinea(l) === 'ESPERADO'
   push([])
@@ -400,7 +408,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
     filaVariacion: meta.variacion,
     partes: meta.detalle
       .filter((d) => d.signo !== 0 && !esModelo(d.linea) && !esEsperado(d.linea))
-      .map((d) => ({ fila: d.fila, signo: d.signo, real: proyecta(d.linea) ? expresionReal(d.linea, iniH, finH) : null })),
+      .map((d) => ({ fila: d.fila, signo: d.signo, real: proyecta(d.linea) ? expresionReal(rg, d.linea, iniH, finH) : null })),
     filasEsperado: meta.detalle.filter((d) => esEsperado(d.linea)).map((d) => d.fila),
     filasModelo: meta.detalle.filter((d) => esModelo(d.linea)).map((d) => d.fila),
   })
@@ -410,6 +418,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // EL CONTRASTE, con su propio encabezado de fechas: es otra ventana de tiempo y se dice.
   push([])
   const con = bloqueContraste({
+    rangos: rg,
     fila0: filas.length + 1,
     periodo,
     fechaAR,
@@ -432,7 +441,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   push([])
   push(['CONTROL — que no falte ni sobre nada'])
   const filaCtrl = filas.length + 1
-  for (const c of bloqueControl(meta.egr0, meta.egr1, 'B', filaCtrl)) push([c.etiqueta, c.formula, c.nota])
+  for (const c of bloqueControl(rg, meta.egr0, meta.egr1, 'B', filaCtrl)) push([c.etiqueta, c.formula, c.nota])
   const filaCtrlFin = filas.length // última fila del bloque de control (1-based), para formatear en moneda
 
   // El total del año para las filas donde tiene sentido: detalle, subtotales y el cierre.
@@ -462,9 +471,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
     filas[meta.cabFila - 1][n + 5] = 'De dónde sale la proyección'
     for (const { fila: f, linea: l } of meta.detalle) {
       filas[f - 1][n + 3] = l.rubro && !l.cobranzas
-        ? `=${l.excluirSub
-          ? `${formulaTotalRubro(l.rubro)}-SUMIF(${'Compras!$AF$4:$AF'};"${l.excluirSub}";${'Compras!$O$4:$O'})`
-          : formulaTotalRubro(l.rubro)}`
+        ? `=${l.excluirSub ? formulaTotalRubroSinSub(rg, l.rubro, l.excluirSub) : formulaTotalRubro(rg, l.rubro)}`
         : `=${letra(n + 1)}${f}`
       filas[f - 1][n + 4] = `=${letra(n + 1)}${f}-${letra(n + 3)}${f}`
       filas[f - 1][n + 5] = origenLinea(l)
@@ -685,9 +692,10 @@ async function formatear(google, data) {
 async function faltantesDeCompras(google) {
   const hojas = await google.getSheetMeta(ID)
   const chequesTab = hallarPestana(hojas, 'Cheques Emitidos').title
-  const compras = await google.readSheetValues(ID, 'Compras!A4:O')
+  const cols = await lectorDeEncabezados(google, ID).columnas('Compras')
+  const compras = await google.readSheetValues(ID, rangoFilas('Compras', 4))
   const enCompras = new Set(
-    compras.filter((f) => parseMonto(f?.[14]) > 0).map((f) => normComprobante(f?.[7])).filter(esLlaveUtil),
+    compras.filter((f) => parseMonto(f?.[cols.total.indice]) > 0).map((f) => normComprobante(f?.[cols.comprobante.indice])).filter(esLlaveUtil),
   )
   // Columna I de Cheques y I de Tarjeta = la fecha de pago real (dd/mm/yyyy), no la de emisión: lo
   // que importa para la caja es cuándo se debita, no cuándo se firmó el cheque.
@@ -728,6 +736,7 @@ async function main() {
   // Ya no alimenta el cuadro (esa línea es una fórmula), pero se sigue midiendo acá: es el número
   // que tiene que dar igual que la fórmula, y si no da, algo se desalineó entre el código y el Sheet.
   const faltantes = await faltantesDeCompras(google)
+  const rg = await leerRangosDelCuadro(google, ID)
   // Dónde está el total de disponibilidades, buscado POR RÓTULO. Si la pestaña todavía no se armó,
   // refCaja queda en null y el cuadro lo dice en vez de referenciar una celda inventada.
   let refCaja = null
@@ -786,7 +795,7 @@ async function main() {
 
   const data = []
   for (const [pestaña, periodo] of [['Cash Flow Semanal', 'semanal'], ['Cash Flow Mensual', 'mensual']]) {
-    const g = grilla(periodo, faltantes, refCaja, refCajaFecha, filasTabla, filasCalendario)
+    const g = grilla(rg, periodo, faltantes, refCaja, refCajaFecha, filasTabla, filasCalendario)
     // Los marcadores se resuelven acá, cuando el cuadro ya está armado y se sabe en qué fila quedó
     // cada línea. Escribir los números a mano rompería el día que el cuadro crezca una línea.
     const ingreso = g.meta.detalle.filter((d) => d.signo > 0).map((d) => d.fila)
@@ -847,7 +856,7 @@ async function main() {
     // El atajo "IR A LA SEMANA / MES DE HOY" apunta a la propia pestaña (placeholder SEMGID) y usa la URL completa (URLID{}).
     d.values = d.values.map((f) => f.map((c) => (typeof c === 'string' ? c.replace('URLID{}', URL_BASE).replace('SEMGID', String(gid)) : c)))
     for (const det of d.g.meta.detalle) {
-      const h = hipervinculoDetalle(det.linea, filasTabla, filasCalendario)
+      const h = hipervinculoDetalle(rg, det.linea, filasTabla, filasCalendario)
       if (!h) continue
       const gidDestino = gidPorPestana.get(h.destino)
       if (gidDestino == null) { sinDestino.push(`${d.pestaña}: "${det.linea.nombre}" → no encontré la pestaña "${h.destino}"`); continue }
