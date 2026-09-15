@@ -84,6 +84,11 @@ export interface Filtrable {
   anulada: boolean
   total: number | null
   tiene_adjunto?: boolean
+  /**
+   * LOS PAPELES DE LA FILA, y con ellos la ÚNICA fecha de carga que esta pantalla puede leer.
+   * Ausente = no se sabe cuándo entró, y entonces manda el renglón. Ver `fechaDeCarga`.
+   */
+  adjuntos?: readonly { subido_at?: string | null }[]
 }
 
 export const FILTROS = ['todo', 'recienCargadas', 'aPagar', 'sinObra', 'sinComprobante', 'sueltos'] as const
@@ -118,8 +123,8 @@ export function pasa(f: Filtrable, filtro: FiltroSheet, recien?: ReadonlySet<num
     case 'sinObra': return !f.obra_texto?.trim()
     case 'sinComprobante': return f.tiene_adjunto !== true
     // SIN EL CONJUNTO NO HAY CORTE, Y NO PASA NADIE. «Recién cargadas» es una propiedad de la
-    // POBLACIÓN —las últimas 30 de la pestaña—, no de la fila: una fila sola no puede saber si está
-    // entre las últimas. Devolver `true` cuando falta el conjunto convertiría el chip en «Todo».
+    // POBLACIÓN —qué entró último, ver `clavesRecienCargadas`—, no de la fila: una fila sola no
+    // puede saber si está entre las últimas. Devolver `true` sin el conjunto sería el chip «Todo».
     case 'recienCargadas': return recien != null && recien.has(f.fila)
     default: return true
   }
@@ -158,11 +163,20 @@ export function totalesDe(filas: Filtrable[]): Totales {
   }
 }
 
-/** El conteo de cada chip, sobre la población entera y no sobre la página que se está mirando. */
-export function conteosDe(filas: Filtrable[]): Record<FiltroSheet, number> {
+/**
+ * El conteo de cada chip, sobre la población entera y no sobre la página que se está mirando.
+ *
+ * `recien` ENTRA YA CALCULADO cuando quien llama también lo va a usar para filtrar. No es una
+ * optimización: desde que el corte mira la fecha de carga, calcularlo dos veces son dos lecturas del
+ * reloj, y el número del chip podría no ser el de la lista que el chip abre. Un control no se valida
+ * contra una segunda evaluación de sí mismo.
+ */
+export function conteosDe(
+  filas: Filtrable[], recien?: ReadonlySet<number>,
+): Record<FiltroSheet, number> {
   return {
     todo: filas.length,
-    recienCargadas: clavesRecienCargadas(filas).size,
+    recienCargadas: (recien ?? clavesRecienCargadas(filas)).size,
     aPagar: filas.filter((f) => pasa(f, 'aPagar')).length,
     sinObra: filas.filter((f) => pasa(f, 'sinObra')).length,
     sinComprobante: filas.filter((f) => pasa(f, 'sinComprobante')).length,
@@ -212,16 +226,97 @@ export function ordenarPorCarga<T extends { fila: number; fecha?: string | null 
 export const RECIEN_CARGADAS = 30
 
 /**
- * LAS ÚLTIMAS `n` QUE ENTRARON, por número de renglón.
+ * LA VENTANA DE «CARGA RECIENTE», EN DÍAS.
+ *
+ * 14 y no 7: el dueño entra a la pantalla a confirmar que lo que mandó por el chat llegó, y no entra
+ * todos los días. Una ventana de una semana deja afuera el fajo del lunes anterior justo cuando
+ * alguien vuelve a preguntar por él. Tampoco 30: a esa altura el chip deja de ser una cola de
+ * trabajo y pasa a ser el mes.
+ */
+export const DIAS_DE_CARGA_RECIENTE = 14
+
+/**
+ * CUÁNDO ENTRÓ ESTA FILA, según lo único que la pantalla puede leer.
+ *
+ * El registro del bot vive en `comunicacion.comprobantes_cargados` y tiene el `creado_at` exacto,
+ * pero ese schema no está expuesto a PostgREST y `authenticated` no tiene SELECT sobre él (medido
+ * el 15/09/2026 contra `information_schema.role_table_grants`: sólo `postgres`). Abrirlo sería tocar
+ * permisos para un chip. `compra_adjunto` SÍ lo está, ya viaja en el mismo `Promise.all` de
+ * `getComprasSheet`, y su `subido_at` es el momento en que el papel se guardó — que para todo lo que
+ * entra por el chat es el mismo acto de carga: verificado sobre las 22 filas del 01-07/09, el
+ * `subido_at` del papel coincide día por día con el `creado_at` del registro del bot.
+ *
+ * El MÁXIMO y no el mínimo: si a una fila se le agregó un segundo papel, lo último que pasó con esa
+ * compra es lo que la vuelve trabajo pendiente de revisar.
+ *
+ * `null` = esta fila no tiene papel y por lo tanto NO SE SABE cuándo entró. No se inventa una fecha:
+ * el renglón decide por ella (ver `clavesRecienCargadas`).
+ */
+export function fechaDeCarga(f: Pick<Filtrable, 'adjuntos'>): string | null {
+  let ultima: string | null = null
+  for (const a of f.adjuntos ?? []) {
+    const s = a.subido_at
+    if (!s || Number.isNaN(Date.parse(s))) continue
+    if (ultima == null || Date.parse(s) > Date.parse(ultima)) ultima = s
+  }
+  return ultima
+}
+
+/**
+ * LAS QUE ENTRARON ÚLTIMO — POR FECHA DE CARGA, Y EL RENGLÓN COMO RESPALDO.
+ *
+ * ═══ EL DEFECTO MEDIDO (15/09/2026, base de producción) ═══
+ *
+ * El corte eran «las últimas `n` POR RENGLÓN», y el renglón dejó de ser el orden de carga el día que
+ * la pestaña se reordenó por fecha (08/09/2026). Los 22 comprobantes que el bot cargó entre el 01 y
+ * el 07/09 habían entrado en las filas 935-958 y el reordenamiento los movió a las 907-930; las
+ * últimas 30 por renglón pasaron a ser las 933-962. Resultado: 22 comprobantes que el bot SÍ cargó
+ * —están en la base, con su papel— desaparecieron del chip que existe para verlos, y la conclusión
+ * desde la pantalla fue «no se replicaron».
+ *
+ * El comentario de `porOrdenDeCarga` decía «la pestaña sólo crece por abajo, así que un número de
+ * renglón más alto es un gasto que entró después». Eso era cierto hasta que alguien ordenó la
+ * pestaña. Una premisa que depende de que nadie toque el Sheet no es una premisa.
+ *
+ * ═══ EL CRITERIO ═══
+ *
+ * Reciente por carga = las de los últimos `DIAS_DE_CARGA_RECIENTE` días, O las últimas `n` cargas,
+ * LO QUE SEA MÁS. Las dos mitades existen por un motivo distinto: la ventana de días es la que
+ * responde «¿llegó lo que mandé?» y el piso de `n` es el que impide que una semana sin cargar nada
+ * deje el chip en cero y parezca que el bot se rompió.
+ *
+ * ═══ POR QUÉ ES UNIÓN Y NO REEMPLAZO ═══
+ *
+ * El renglón sigue contando. Las cargas que el dueño escribe a mano en el Sheet no dejan papel, así
+ * que NO tienen fecha de carga: si el criterio fuera sólo la fecha, desaparecerían del chip — que es
+ * el mismo defecto que este arreglo corrige, con la víctima cambiada. Sumar en vez de reemplazar
+ * hace que el chip sólo pueda crecer: nada de lo que hoy se ve se deja de ver. Medido sobre la base
+ * viva: 30 filas por renglón + 44 por fecha de carga = 53 distintas.
  *
  * Las anuladas no entran, igual que en el resto de los cortes: el chip es una cola de trabajo —«esto
- * acaba de llegar, revisalo»— y una fila muerta no se revisa. Por eso el conteo del chip es
- * exactamente `n` mientras haya `n` filas vivas.
+ * acaba de llegar, revisalo»— y una fila muerta no se revisa.
+ *
+ * `ahora` ENTRA POR PARÁMETRO y no se lee adentro: un corte que consulta el reloj del sistema sólo
+ * se puede probar contra el mundo de hoy, y un test así se pone rojo solo dentro de 14 días.
  */
-export function clavesRecienCargadas(filas: Filtrable[], n: number = RECIEN_CARGADAS): Set<number> {
-  return new Set(
-    filas.filter((f) => !f.anulada).sort(porOrdenDeCarga).slice(0, n).map((f) => f.fila),
-  )
+export function clavesRecienCargadas(
+  filas: Filtrable[],
+  n: number = RECIEN_CARGADAS,
+  ahora: Date = new Date(),
+): Set<number> {
+  const vivas = filas.filter((f) => !f.anulada)
+  // El respaldo: el criterio viejo, intacto.
+  const porRenglon = [...vivas].sort(porOrdenDeCarga).slice(0, n)
+  const conCarga = vivas
+    .map((f) => ({ fila: f.fila, cuando: Date.parse(fechaDeCarga(f) ?? '') }))
+    .filter((x) => !Number.isNaN(x.cuando))
+    .sort((a, b) => b.cuando - a.cuando)
+  const desde = ahora.getTime() - DIAS_DE_CARGA_RECIENTE * 24 * 60 * 60 * 1000
+  const enVentana = conCarga.filter((x) => x.cuando >= desde)
+  // «Lo que sea más»: la ventana si alcanza para `n`, y si no las `n` últimas cargas aunque sean
+  // viejas. Nunca menos de lo que el piso garantiza.
+  const porCarga = enVentana.length >= n ? enVentana : conCarga.slice(0, n)
+  return new Set([...porCarga.map((x) => x.fila), ...porRenglon.map((f) => f.fila)])
 }
 
 /**

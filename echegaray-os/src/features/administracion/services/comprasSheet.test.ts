@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  claseDeAdjunto, clavesRecienCargadas, papelesDeCadaFila, conteosDe, ESTADO, esEstructura, filtroDe, ordenarPorCarga,
+  claseDeAdjunto, clavesRecienCargadas, DIAS_DE_CARGA_RECIENTE, fechaDeCarga, papelesDeCadaFila,
+  conteosDe, ESTADO, esEstructura, filtroDe, ordenarPorCarga,
   pasa, pastillaDe, porOrdenDeCarga, RECIEN_CARGADAS, recorteDeLista,
   TOPE_EN_PANTALLA, totalesDe,
   type Filtrable,
@@ -253,7 +254,7 @@ test('ordenar no mueve la lista original: los conteos miran la misma población'
   assert.deepEqual(original.map((f) => f.fila), [1, 9])
 })
 
-test('«recién cargadas» son las últimas 30 POR RENGLÓN, no por fecha', () => {
+test('sin fecha de carga el respaldo son las últimas 30 POR RENGLÓN, no por fecha del comprobante', () => {
   const filas = Array.from({ length: 50 }, (_, i) => fila({
     // La fecha va al revés del renglón a propósito: si el corte mirara la fecha, se quedaría con
     // las 30 PRIMERAS cargadas — exactamente el defecto, y este test se pondría rojo.
@@ -273,6 +274,105 @@ test('una anulada no ocupa un lugar en «recién cargadas»', () => {
   assert.deepEqual([...claves], [10, 9])
 })
 
+// ═══ LA PESTAÑA REORDENADA ESCONDIÓ 22 COMPROBANTES (15/09/2026) ═══
+//
+// El renglón dejó de ser el orden de carga el 08/09, cuando la pestaña Compras se ordenó por fecha.
+// Estos tests fijan el criterio nuevo: manda la FECHA DE CARGA y el renglón queda de respaldo. Si
+// `clavesRecienCargadas` vuelve a ser «las últimas n por renglón», el primero se pone rojo.
+
+/** El reloj entra por parámetro en todos: un test que lee `new Date()` se rompe solo en 14 días. */
+const HOY = new Date('2026-09-15T12:00:00.000Z')
+const conPapel = (f: number, subido: string, p: Partial<Filtrable> = {}) =>
+  fila({ fila: f, adjuntos: [{ subido_at: subido }], ...p })
+
+test('el reordenamiento de la pestaña NO puede esconder un comprobante recién cargado', () => {
+  // El caso real, medido en producción: el bot cargó 22 comprobantes entre el 01 y el 07/09 en las
+  // filas 935-958. El 08/09 la pestaña se ordenó por fecha y esos 22 quedaron en las 907-930,
+  // mientras que las últimas 30 por renglón pasaron a ser las 933-962. El dueño entró al chip a
+  // confirmar que habían llegado, no los vio, y concluyó que no se habían replicado. Están.
+  const movidas = Array.from({ length: 22 }, (_, i) => conPapel(907 + i, '2026-09-03T10:00:00.000Z'))
+  const ultimasFilas = Array.from({ length: 30 }, (_, i) => conPapel(933 + i, '2026-06-01T10:00:00.000Z'))
+  const claves = clavesRecienCargadas([...movidas, ...ultimasFilas], RECIEN_CARGADAS, HOY)
+  for (const f of movidas) {
+    assert.ok(claves.has(f.fila), `la fila ${f.fila} se cargó hace 12 días y el chip no la muestra`)
+  }
+})
+
+test('el renglón sigue contando: una carga a mano en el Sheet no tiene papel y entra igual', () => {
+  // Éste es el defecto SIMÉTRICO. El dueño escribe filas directo en la pestaña y esas cargas no
+  // dejan `compra_adjunto`, así que no tienen fecha de carga. Si el criterio fuera SÓLO la fecha,
+  // desaparecerían del chip — el mismo agujero con otra víctima. Por eso es unión, no reemplazo.
+  const aMano = Array.from({ length: 5 }, (_, i) => fila({ fila: 960 + i }))
+  const delBot = Array.from({ length: 30 }, (_, i) => conPapel(800 + i, '2026-09-10T10:00:00.000Z'))
+  const claves = clavesRecienCargadas([...aMano, ...delBot], RECIEN_CARGADAS, HOY)
+  for (const f of aMano) assert.ok(claves.has(f.fila), `la carga a mano ${f.fila} desapareció`)
+  for (const f of delBot) assert.ok(claves.has(f.fila), `la carga del bot ${f.fila} desapareció`)
+})
+
+test('la ventana manda cuando hay MÁS de 30 cargas adentro: no se recorta a 30', () => {
+  // «Los últimos 14 días o las últimas 30 cargas, LO QUE SEA MÁS». Un fajo grande no puede quedar
+  // cortado por la mitad justo en el chip que existe para revisarlo.
+  const enVentana = Array.from({ length: 45 }, (_, i) => conPapel(100 + i, '2026-09-12T10:00:00.000Z'))
+  const claves = clavesRecienCargadas(enVentana, RECIEN_CARGADAS, HOY)
+  assert.equal(claves.size, 45)
+})
+
+test('el piso de 30 manda cuando la ventana está vacía, y lo hace POR CARGA', () => {
+  // Dos semanas sin cargar nada no pueden verse igual que «el bot se rompió»: se muestran las
+  // últimas 30 CARGAS aunque sean viejas. La carga va al revés del renglón a propósito —la fila 100
+  // es la última cargada— así que las 30 que sostiene el piso (100-129) NO son las 30 últimas por
+  // renglón (110-139). Si el piso mirara el renglón, las 100-109 faltarían.
+  const viejas = Array.from({ length: 40 }, (_, i) => conPapel(
+    100 + i, `2026-06-01T00:${String(39 - i).padStart(2, '0')}:00.000Z`,
+  ))
+  const claves = clavesRecienCargadas(viejas, RECIEN_CARGADAS, HOY)
+  for (let f = 100; f < 110; f++) assert.ok(claves.has(f), `la carga ${f} la sostiene sólo el piso`)
+  assert.equal(claves.size, 40, '30 por carga (100-129) + 30 por renglón (110-139) = 40 distintas')
+})
+
+test('la ventana se mide contra el reloj que entra, no contra el del sistema', () => {
+  // El reloj es un parámetro, así que se puede probar el futuro: la MISMA población, un mes después.
+  // Con `n = 0` a la vista queda sólo la ventana, sin el piso ni el renglón tapándola.
+  const lejos = Array.from({ length: 40 }, (_, i) => conPapel(100 + i, '2026-09-03T10:00:00.000Z'))
+  const MES_QUE_VIENE = new Date('2026-10-05T12:00:00.000Z')
+  assert.equal(clavesRecienCargadas(lejos, 0, HOY).size, 40, 'a 12 días tenían que entrar las 40')
+  assert.equal(clavesRecienCargadas(lejos, 0, MES_QUE_VIENE).size, 0, 'a 32 días no entra ninguna')
+  // Y con el piso puesto el chip NO se vacía: ése es justamente el trabajo del piso.
+  assert.ok(clavesRecienCargadas(lejos, RECIEN_CARGADAS, MES_QUE_VIENE).size >= RECIEN_CARGADAS)
+})
+
+test('una anulada tampoco entra por fecha de carga', () => {
+  // La anulada es la más nueva de todas por carga: si el corte no la filtrara, encabezaría el chip.
+  const claves = clavesRecienCargadas([
+    conPapel(500, '2026-09-14T10:00:00.000Z', { anulada: true }),
+    conPapel(10, '2026-09-13T10:00:00.000Z'),
+  ], 2, HOY)
+  assert.equal(claves.has(500), false, 'una fila muerta no es trabajo por revisar')
+  assert.ok(claves.has(10))
+})
+
+test('la fecha de carga es la del ÚLTIMO papel, y lo ilegible no inventa una fecha', () => {
+  assert.equal(fechaDeCarga({ adjuntos: [
+    { subido_at: '2026-09-01T10:00:00.000Z' }, { subido_at: '2026-09-09T10:00:00.000Z' },
+  ] }), '2026-09-09T10:00:00.000Z')
+  // Sin papeles NO se sabe cuándo entró: `null`, y decide el renglón. Un `0` o un `now()` acá
+  // inventarían una carga que nadie hizo — y el chip diría que sí o que no con la misma cara.
+  assert.equal(fechaDeCarga({}), null)
+  assert.equal(fechaDeCarga({ adjuntos: [] }), null)
+  assert.equal(fechaDeCarga({ adjuntos: [{ subido_at: null }, { subido_at: 'ayer' }] }), null)
+})
+
+test('la ventana declarada es la que se usa, y es la que la pantalla le dice al dueño', () => {
+  // El texto de ayuda de la pantalla dice el número: si la constante cambia sin que cambie el texto,
+  // la pantalla estaría afirmando un criterio que no es el que corre.
+  assert.equal(DIAS_DE_CARGA_RECIENTE, 14)
+  const justoAdentro = conPapel(1, '2026-09-02T12:00:00.000Z')   // 13 días
+  const justoAfuera = conPapel(2, '2026-08-30T12:00:00.000Z')    // 16 días
+  // `n = 0` apaga las dos redes —el piso y el renglón— y deja SÓLO la ventana a la vista. Es la
+  // única forma de afirmar dónde está el borde sin que otra mitad del criterio lo tape.
+  assert.deepEqual([...clavesRecienCargadas([justoAdentro, justoAfuera], 0, HOY)], [1])
+})
+
 test('el chip filtra por el conjunto, y SIN conjunto no deja pasar a nadie', () => {
   const f = fila({ fila: 930 })
   assert.equal(pasa(f, 'recienCargadas', new Set([930])), true)
@@ -286,6 +386,15 @@ test('el chip cuenta lo suyo y no rompe la cuenta de los otros', () => {
   const c = conteosDe(filas)
   assert.equal(c.recienCargadas, RECIEN_CARGADAS)
   assert.equal(c.todo, 40)
+})
+
+test('el número del chip sale del MISMO conjunto que la lista que el chip abre', () => {
+  // Desde que el corte mira la fecha de carga, evaluarlo dos veces son dos lecturas del reloj. El
+  // conteo tiene que recibir el conjunto ya hecho, no volver a calcularlo por su cuenta.
+  const filas = Array.from({ length: 40 }, (_, i) => fila({ fila: i + 1 }))
+  const recien = clavesRecienCargadas(filas, 5, HOY)
+  assert.equal(conteosDe(filas, recien).recienCargadas, 5)
+  assert.equal(conteosDe(filas).recienCargadas, RECIEN_CARGADAS, 'sin conjunto sigue sabiendo contar')
 })
 
 test('«recién cargados» es una llave válida de la URL', () => {
