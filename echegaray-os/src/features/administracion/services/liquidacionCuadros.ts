@@ -27,7 +27,7 @@
 // es lo que distingue «el banco pagó este recibo» de «el banco le adelantó plata»; la fecha sola
 // haría pasar por recibo pagado a cualquier transferencia del mismo día.
 
-import { cuilNormalizado, mismoCuil } from './cuil.ts'
+import { mismoCuil } from './cuil.ts'
 import { entraAlCuadro } from './liquidacionPlantelActivo.ts'
 import {
   liquidarLinea, tarifaVigenteAl, type EntradaDeLinea, type GrupoLiquidacion, type LineaLiquidada,
@@ -215,7 +215,7 @@ function entradaDe(
  * QUIÉN ENTRA EN CUÁL, en este orden y sin repetir a nadie: una persona que aparece en dos cuadros
  * con dos importes es cómo se paga dos veces (ya pasó con Jofre y Sosa el 31/08/2026).
  *
- *   final    no recibe líneas: una liquidación final no es de la quincena (dueño, 15/09/2026).
+ *   final    no recibe líneas: un recibo FINAL no es trabajo de la quincena (dueño, 15/09/2026).
  *   oficina  es jefe de obra (`esJefeDeObra`), o tiene tarifa de neto mensual vigente.
  *   obreros  el resto de quienes están en la empresa Y tienen tarifa por hora o movimiento en la
  *            ventana. Quien no tiene ni una cosa ni la otra no es una fila vacía: no es de esta
@@ -223,10 +223,6 @@ function entradaDe(
  */
 export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
   const ctx: Contexto = { ...d, periodo: periodoDeRecibo(d.quincena) }
-  const finales = new Set(
-    d.recibos.filter((r) => r.periodo === 'FINAL' && dentro(d.quincena, r.fecha_pago))
-      .map((r) => cuilNormalizado(r.cuil)),
-  )
   const cuadros: Record<GrupoLiquidacion, LineaLiquidada[]> = { obreros: [], oficina: [], final: [] }
   let presentesSinHoras = 0
 
@@ -236,14 +232,11 @@ export function armarCuadros(d: DatosDeCuadros): CuadroDeLiquidacion[] {
     presentesSinHoras += h?.presentesSinHoras ?? 0
     const redondeo = d.redondeos.get(p.id) ?? null
 
-    const cuilDeLaPersona = cuilNormalizado(p.cuil)
-    // UNA LIQUIDACIÓN FINAL NO ES UNA LÍNEA DE QUINCENA (dueño, 15/09/2026: «no considerar»; antes «no hay liq
-    // final»). Quien tiene recibo FINAL pagado en la ventana no genera fila en NINGÚN cuadro: ni en «final» ni en
-    // Obreros por la actividad que el plantel le deduce al egreso. Sin esto, 01–15/08 —sellada el 09/09— sumaba
-    // 4 × 247.612,68 de AVILA, CASTRO GALVAN, DIAZ y FLORES al «Cobra total» que ya se había pagado.
-    if (cuilDeLaPersona && finales.has(cuilDeLaPersona)) {
-      continue
-    }
+    // UN RECIBO FINAL NO CREA LÍNEA NI SACA A NADIE (dueño, 15/09/2026: «no considerar» es la liquidación final como
+    // concepto, no el trabajo de la quincena). Quien trabajó entra por su tarifa, sus horas o su actividad propia
+    // —`conActividad` no cuenta el egreso— y el FINAL no le suma: `entradaDe` lee sólo el recibo del período.
+    // Sacarlo por tener FINAL dejaba afuera a Jofre y Sosa en 16–31/08 (302.100 cada uno, sellados); con sólo FINAL
+    // y egreso (Ávila, Castro Galván, Díaz, Flores en 01–15/08) no pasan `entraAlCuadro` y no hay fila.
     // QUIÉN ES JEFE LO DECIDE EL PUESTO, NO LA TARIFA (dueño, 15/09/2026). Los jefes tienen neto mensual
     // recién desde septiembre: con la tarifa como criterio, en agosto caían a Obreros «sin tarifa». Sin neto
     // vigente la línea sigue en Oficina y dice que falta el dato (o usa el importe cargado de la planilla).
