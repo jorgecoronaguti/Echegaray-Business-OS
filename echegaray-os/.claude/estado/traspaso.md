@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-15 ~09:10 (−03) · main = producción (423e89fc)_
+_actualizado: 2026-09-15 ~11:00 (−03) · main = producción (253e7ce2)_
 
 ## 1. OBJETIVO GENERAL
 
@@ -26,41 +26,43 @@ Echegaray Construcciones. XSAS es la capa de inteligencia operativa. Claude Code
 
 ## 4. CERRADO HOY (15/09) — EN PRODUCCIÓN, VERIFICADO EN LA BASE
 
-- **HH por obra** (8f528000): las 210 asignaciones «reconstruido desde JORNALES» ya no mueven horas (693 filas vueltas a la planilla; LE Mampostería 3.660 h). Rosales → Quattropani desde 01/09 (fila ea81c8d5). Auditor firmó.
-- **Costo MO por obra** (0800→0842): cerradas = pagado real; jefes fuera de las HH de obra y costo entero a ES-ADM (siguen siendo jefes en Personal); Tello subcontratista; sin doble conteo BSA. Quattropani 556 h / MO $4,50 M.
-- **CRM caído y lento → arreglado**: 0850 (`persona_para_costo`) + 0855 (`costo_mo_quincena` SECURITY DEFINER con puerta `liquida_sueldos() or ve_economia()`; `persona_para_costo` sólo service_role → el sellado funciona). Cartera 8,1 s → 2,8 s. Auditor firmó 0855.
-- **Quincenas históricas** (a00b84cb + 423e89fc): Palacios y Gonzales emparejados, Oficina 26 cargada (29 líneas), BAJA declaradas en `monto_excluido`, columna interna sin fecha, guarda de quincenas firmadas/selladas/editadas. Control: Δ pagado 0 desde Q2-04.
-- **Celda de horas vacía** (186b3026, Vercel OK): vaciar un día sin 0 ni ausente en Horas/Carga del día/Liquidación; presencia por defecto no rellena al re-guardar. Auditor firmó con límites; QA en producción sobre personas de prueba en curso.
-- **Jefes en todas las quincenas** (f1051b3a): Horas y Liquidación agrupan por `esJefeDeObra(puesto)`, no por tarifa; en cerradas COBRA = importe de la planilla. Auditor firmó con límites: Q2-08 sin sueldo cargado (preguntado al dueño).
-- **Angel Fernandez** rubro Subcontratista (declarado por el dueño 15/09).
+Mañana: HH por obra (8f528000) · costo MO por obra (0800→0842, 0850, 0855) · quincenas históricas · celda vacía (186b3026) · jefes en todas las quincenas (f1051b3a) · Angel Fernandez subcontratista.
 
-## 4b. DECISIONES DEL DUEÑO 15/09 (tarde)
+Tarde (main = 253e7ce2):
+- **Tiempo real multiusuario** (4a7261d0 + 9d21e286): e2e 41/41 avisos; rol campo ya no reintenta cada 14 s (1 join rechazado, 0 reintentos en 60 s).
+- **Plantel / cuadrilla / BAJA** (cbed5334; 0900, 0910 aplicadas): 10 personas del alta 01/09 → subcontrato «Gerson Castro – Messina» (id d51694a9, obra limpieza-de-escombros, confianza media vs messina-bsa); Q2-03 22 líneas $9.006.818, Aguirre $470.000; limpieza-de-escombros +1.266.227 (Q1-08) +1.266.555 (Q2-08), ES-ADM baja lo mismo.
+- **Horas de un día anterior en la obra de ese día** (068dce4f): ventana de obra cerrada = fechas declaradas ∪ registros_hh ±16 días; e2e en producción sobre e2e0…0001 (fila leída con `web:correccion-horas`, borrada). 4 obras sin fechas ni horas no se ofrecen (galpones, le-galpon-7, le-cierre-perimetral, messina-bases-tanque-so2).
+- **Quincena cerrada no se toca** (d981238f; **2130 aplicada**: trigger `registros_hh_periodo_cerrado` mira `liquidacion_quincena`; verificado como jefe: 17/08 rechazado, 08/09 pasa). Jefes mensuales («importe no cargado» sin pendiente); cuadro sin cabecera hereda; **finales no generan línea** (dueño: «no considerar»); 01–15/08 = 8.133.200 sellado.
+- **Columna Obra** (44e1840d + c5ac81a0; **0700 aplicada**, 192 zz_avisar y ACL intactos, +1 policy de la cola): obra por fila en compra_sheet/cobranzas, `obra_celda_resolver` sólo rótulo exacto, app Compras con desplegable `OB-xxxx · nombre`, bot con la misma regla (worker reiniciado 10:47), lecturas del Sheet por encabezado. Auditor firmó el merge con límites; **la inserción real del Sheet NO está firmada** (ver §5).
+- **Identificadores desde Supabase** (57704200): ficha cliente sin slug («Obra: OB-0008 · …»), Proveedores/Usuarios/alta/operación con código; QA visual OK en 6 pantallas.
+- **Compras «Recién cargados» por fecha de carga** (253e7ce2): el reorden del 08/09 dejó 22 comprobantes del bot en filas 907–930 fuera del chip; ahora unión renglón ∪ 14 días por `compra_adjunto.subido_at`. Los 111 comprobantes del canal (30 días) están en Sheet, base y app.
 
-- Filas BAJA Q2-03 se pagaron → cargar (Aguirre fila 192 no cierra: ¿470.000? preguntado).
-- Las 10 personas «alta 01/09 desde liquidación final» sin fecha de ingreso = cuadrilla del subcontratista Gerson Castro (Messina, 05–12/08); su costo va a Messina, no a Estructura; no son plantel propio.
-- Columna Obra: prioridad 1; «todo basado y consolidado en Supabase»; cuidado con el impacto en todas las pestañas.
+## 4b. DECISIONES DEL DUEÑO 15/09
 
-## 5. EN CURSO (agentes, worktrees)
+Jefes cobran por MES, no preguntar · liquidaciones finales «no considerar» · BAJA Q2-03 pagadas, Aguirre 470.000 · cuadrilla = subcontratista, costo a Messina, sin liq final · no parches manuales («hacé bien las cosas») · «todo ahora», DDL en horario migración por migración · identificador = código de obra de Supabase en todos lados (portal cliente nunca).
 
-- `feat/tiempo-real` (dbfb0d9f): triggers por evento → `realtime.send` topic `os:cambios`, cliente con debounce y sin pisar edición. **Auditor corriendo. BLOQUEO: `realtime.messages` sin particiones → los avisos no se guardan.** Migración 20260915T2100 sin aplicar.
-- `fix/jefes-en-quincenas-cerradas`: en Liquidación Q1-08/Q2-08 los jefes caen en OBREROS «sin tarifa» (agrupa por tarifa mensual vigente, sólo existe desde 09/01) y BANCO $663.141,56 idéntico; en Horas 16–31/08 Maldonado cae en obreros. Capturas en `tests/qa-shots/jefes-*` (untracked, borrar al cerrar).
-- `feat/celda-de-horas-vacia`: dejar un día sin horas (ni ausente, ni presencia por defecto) en TODOS los cuadros de horas.
-- **Columna Obra** (pedido 14/09, NADA en producción): base `feat/obra-por-fila` (5255a9c5, migración 0700 sin aplicar) · `feat/columnas-encabezado-lectores` (7be8530c, terminada) · `feat/columnas-encabezado-cobranzas` y `-generadores` (agentes; generadores además entrega inventario de impacto en TODAS las pestañas: `scratchpad/obra-impacto-sheet.md`) · `feat/obra-cargador-y-app` (bot comprobantes + Compras en la app + backfill en seco). Después: auditor → merge → insertar L/H desde producción con timers pausados y verificación celda por celda → 0700 → backfill con OK del dueño.
+## 5. EN CURSO
+
+- **Inserción de la columna Obra en el Sheet real** — agente en `fix/obra-desplegable-y-ensayo` (worktree obra-desplegable): (1) `_OBRAS_OS` + `setDataValidation` en Compras L4:L y Cobranzas H5:H (el script no creaba el desplegable); (2) modo `--copia <id>` y ensayo en una COPIA del archivo real («COPIA ENSAYO Obra 15-09 — borrar») comparando 22.861 fórmulas contra Google + validaciones/formato condicional/gráficos. Con 0 diferencias: merge → deploy → `scratchpad/ventana-insercion-obra.sh pausar|insertar_dry|insertar|pyl|reactivar` desde producción → aviso al dueño antes de insertar → propuesta de backfill (`obra-relleno-dry.mjs`) para OK del dueño → worker `compras-obra-cola` (systemd sin instalar).
+- QA visual del chip «Recién cargados» en producción (253e7ce2).
 
 ## 6. RIESGOS / DEUDA DETECTADA
 
-- `obra_panel.monto_contratado` publica bsa-adicional 5,97 M y `CarteraObras.tsx:144` lo suma → doble conteo en Obras. `cliente_economia.contratado` Messina 159,76 M vs ficha 185,63 M (dos verdades).
-- Subcontratos sin obra asignada ≈ $27 M (Castro, Fredes Messina, Angel Fernandez sin rubro, Leandro Rojas sin proveedor) → los resuelve el backfill de la columna Obra.
-- Liquidación vs `registros_hh` no concilian por quincena cuando el bloque de JORNALES cruza el día 15. Oficina fila 56 («2/3») pone $1,5 M en Q1-04.
-- `hh-por-obra.pg.test.mjs` y otros `.pg` rojos esperados/ajenos; `orq:test` completo no corrido hoy.
+- Importadores sin sesión (`sheet:jornales`) siguen pudiendo reescribir quincenas cerradas (declarado en 2130): Aguero 105→107 h en 16–31/08 (+11.948 vs sello); el pie de una quincena cerrada recalcula en vez de mostrar el sello.
+- Obras cerradas sin `fecha_fin_real` (la-estrella, arcor, le-galpon-8, le-mamposteria, messina) mantienen la ventana abierta hacia adelante; La Estrella se ofrece hoy. Cargarles fecha de fin.
+- Filtro «Obra» de la lista de Compras usa texto del Sheet hasta el backfill; Usuarios a 390 px no muestra Alcance; tabla de compras del proveedor recortada a 390 px.
+- Vigía de comprobantes: 114 rastros apuntan a otra fila desde el reorden del 08/09 (re-anclar por clave). Filas 918 (RSV) y 932 (Lliteras) sin papel ni fecha de carga.
+- `obra_panel.monto_contratado` doble cuenta bsa-adicional (`CarteraObras.tsx:144`); Messina contratado 159,76 vs 185,63; Bases Tanque SO2 ¿corto 9,5 M?
+- Rojos preexistentes en main: `CostoALaFecha.tsx:64` (ritmo-vertical), `canonico-definiciones` («cobrado»), `.pg.test.mjs` fuera de turno. 137 worktrees en `.claude/worktrees` → `node scripts/higiene-worktrees.mjs`.
+- Stash ajeno en main (`stash@{0}` comprobantes/plausibilidad): NO popear; un `git stash pop` accidental hoy trajo conflictos (revertido con reset --hard).
 
-## 7. PENDIENTES DEL DUEÑO (preguntado)
+## 7. PENDIENTES DEL DUEÑO
 
-Filas BAJA Q2-03 ($2,33 M) ¿se pagaron? · Agüero/Alaniz Q2-05 80 vs 88 h · ¿quiénes de las quincenas son de equipos de subcontratistas? · Angel Fernandez = subcontratista en ficha · corregir en JORNALES celda 70 h 11/06 y T479=29 · encabezados Oficina filas 40/46 · Bases Tanque SO2 contratado ¿corto 9,5 M?
+¿Cuadrilla Gerson Castro a limpieza-de-escombros o messina-bsa? · Bases Tanque SO2 contratado · fechas de fin de obras cerradas.
 
 ## 8. PRÓXIMO PASO
 
-Integrar lo que devuelvan los agentes (jefes → celda vacía → tiempo real → columna Obra), cada uno con auditor, merge, efecto leído en la base y aviso por bot.
+Cerrar la inserción del Sheet (§5) y el backfill con OK del dueño; después el filtro Obra de Compras por `obra_id`.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 

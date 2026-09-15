@@ -989,9 +989,12 @@ export default async function ClientePage({ params, searchParams }: {
           {/* EL COSTADO NO CAMBIA CON LA CARA: es lo que identifica al cliente y a quién llamar. */}
           <CostadoDeFicha testid="panel-informacion">
             <RotuloPanel>Identidad</RotuloPanel>
+            {/* `todas` ya trae el rótulo «OB-0008 · NOMBRE» armado arriba con `rotuloDeObra` y el
+                código leído de `obra_canonica`: el costado no lo rearma. */}
             <BloqueInformacion
               cliente={cliente}
               responsables={lector.leer(responsables, [])}
+              obras={todas.map((o) => ({ obra_id: o.obra_id, rotulo: o.nombre }))}
               editar={editarCliente.bind(null, id)}
               vincularCarpeta={vincularCarpetaCliente.bind(null, id)}
               archivar={archivarCliente}

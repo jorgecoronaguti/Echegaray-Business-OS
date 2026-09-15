@@ -29,6 +29,14 @@
 // FALTAN DOS CAMPOS DEL HANDOFF y no se inventan: «Condición IVA» y «Condición de pago» no existen
 // como columnas de `clientes`. Dibujarlos con «sin cargar» sería prometer un campo que ningún
 // formulario puede llenar; agregarlos es una migración con la decisión del dueño detrás.
+//
+// ═══ EL CLIENTE NO TIENE CÓDIGO, Y NO SE LE INVENTA UNO ═══
+//
+// `clientes` tiene `id` (uuid), `slug`, `nombre_comercial`, `razon_social` y `cuit`. No hay columna
+// `codigo` y fabricar una sería una migración con una decisión del dueño detrás. Lo que identifica
+// al cliente afuera —en una factura, en un contrato, en ARCA— es el CUIT; lo que identifica a cada
+// trabajo suyo es el CÓDIGO DE LA OBRA. Los dos se leen de la base. El `slug` no es ninguno de los
+// dos: es el segmento de la URL, y se dejó de mostrar (ver el comentario de su renglón).
 
 import { Aviso } from '@/shared/components/ds'
 import { BotonAccion, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
@@ -36,11 +44,24 @@ import type { ClientePanel, Responsable } from '../types'
 import { CamposCliente } from './CamposCliente'
 import { oFalta, Propiedad } from './Propiedad'
 
+/** Una obra del cliente con su rótulo canónico ya armado. Sólo el rótulo: el bloque no decide cómo
+ *  se nombra una obra, nada más la dibuja. */
+export interface ObraDelCliente {
+  obra_id: string
+  /** «OB-0008 · QP - SALÓN COMERCIAL», de `rotuloDeObra`. */
+  rotulo: string
+}
+
 export function BloqueInformacion({
-  cliente, responsables, editar, vincularCarpeta, archivar, puedeEditar = true, edicionAbierta = false,
+  cliente, responsables, obras, editar, vincularCarpeta, archivar, puedeEditar = true, edicionAbierta = false,
 }: {
   cliente: ClientePanel
   responsables: Responsable[]
+  /** Las obras del cliente YA ROTULADAS con `rotuloDeObra` («OB-0008 · QP - SALÓN COMERCIAL»). El
+   *  rótulo se arma una sola vez en la página, con el código leído de `obra_canonica`: si cada
+   *  bloque lo armara por su cuenta, el día que cambie el separador habría dos rótulos para la
+   *  misma obra — que es la confusión que el código vino a sacar. */
+  obras: ObraDelCliente[]
   editar: AccionFormulario
   vincularCarpeta: AccionFormulario
   archivar: (clienteId: string, activo: boolean) => Promise<ResultadoAccion>
@@ -76,9 +97,29 @@ export function BloqueInformacion({
                    target="_blank" rel="noreferrer" className="text-ink underline underline-offset-2">Abrir ↗</a>
               : <span className="text-faint">sin vincular</span>}
           </Propiedad>
-          {/* El identificador NO se edita: es la URL del cliente y lo que apuntan los enlaces que
-              alguien ya compartió. Corregir la razón social no puede romper una dirección. */}
-          <Propiedad rotulo="Identificador">{oFalta(cliente.slug)}</Propiedad>
+          {/* ═══ ACÁ DECÍA «Identificador: quattropani» ═══
+
+              Era `clientes.slug`: una cadena que la app fabrica del nombre para armar la URL. El
+              dueño lo vio en la ficha de Quattropani y lo llamó «cualquier cosa», y tiene razón —
+              ningún papel, ningún contrato y ninguna pestaña del Sheet dicen «quattropani». Un
+              identificador INTERNO presentado con el rótulo «Identificador» le promete al que mira
+              que eso es lo que identifica al cliente afuera, y no lo es.
+
+              Al cliente lo identifican dos cosas que SÍ están en la base y sí existen afuera: su
+              CUIT (arriba) y sus obras por CÓDIGO (`obra_canonica.codigo`, `OB-0008`), que es lo
+              inmutable — el nombre de la obra cambia, el código no. La URL no se perdió: está en la
+              barra de direcciones, que es donde una URL se lee. */}
+          <Propiedad rotulo={obras.length === 1 ? 'Obra' : 'Obras'}>
+            {obras.length
+              ? (
+                <ul className="space-y-0.5">
+                  {obras.map((o) => (
+                    <li key={o.obra_id} className="truncate" title={o.rotulo}>{o.rotulo}</li>
+                  ))}
+                </ul>
+                )
+              : <span className="text-faint">sin obras cargadas</span>}
+          </Propiedad>
         </dl>
         {cliente.notas && (
           <p className="border-t border-[#EFEEEA] py-2.5 text-[12px] leading-relaxed text-muted">{cliente.notas}</p>

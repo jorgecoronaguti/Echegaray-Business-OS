@@ -83,7 +83,7 @@ import {
 } from '@/features/administracion/services/comprasFiltros'
 import { totalFuera } from '@/features/administracion/services/comprasDeObra'
 import {
-  clavesRecienCargadas, conteosDe, filtroDe as filtroSheetDe, pasa, RECIEN_CARGADAS,
+  clavesRecienCargadas, conteosDe, DIAS_DE_CARGA_RECIENTE, filtroDe as filtroSheetDe, pasa, RECIEN_CARGADAS,
   recorteDeLista, ROTULO as ROTULO_SHEET,
   type FiltroSheet,
 } from '@/features/administracion/services/comprasSheet'
@@ -207,16 +207,20 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
   const obrasDeFila = await obrasDeLasCompras(supabase, listado.data.filas, celdasObra, asignacionesObra)
   const todas = listado.data.filas.map((f) => ({ ...f, obra: obrasDeFila.get(f.fila) ?? null }))
   const fueraDeObra = totalFuera(listado.data.fuera)
+  // «RECIÉN CARGADAS» ES UNA PROPIEDAD DE LA POBLACIÓN, no de la fila: se calcula UNA vez sobre las
+  // 809 y se le pasa al filtro Y al conteo. Calcularlo dentro del `filter` sería ordenar la lista
+  // entera 809 veces; calcularlo sobre lo ya filtrado diría «las últimas 30 de lo que estoy
+  // mirando»; y calcularlo dos veces dejaría el número del chip y la lista que el chip abre atados a
+  // dos lecturas distintas del reloj.
+  // El reloj entra desde acá —es el único lugar del circuito que tiene derecho a leerlo— para que el
+  // criterio de `comprasSheet.ts` siga siendo una función pura que se prueba sin esperar 14 días.
+  const recien = clavesRecienCargadas(todas, RECIEN_CARGADAS, new Date())
   // LOS CONTEOS SALEN DE LA POBLACIÓN ENTERA, no de lo que se está mirando: si contaran lo filtrado,
   // el número de arriba dejaría de ser el de la empresa.
-  const conteos = conteosDe(todas)
+  const conteos = conteosDe(todas, recien)
   // LOS DESPLEGABLES SE ARMAN CON LA POBLACIÓN ENTERA, no con lo ya filtrado: si se poblaran con lo
   // visible, elegir un proveedor vaciaría la lista de obras y no habría forma de volver.
   const opciones = opcionesDe(todas)
-  // «RECIÉN CARGADAS» ES UNA PROPIEDAD DE LA POBLACIÓN, no de la fila: se calcula una vez sobre las
-  // 809 y se le pasa al filtro. Calcularlo dentro del `filter` sería ordenar la lista entera 809
-  // veces, y calcularlo sobre lo ya filtrado diría «las últimas 30 de lo que estoy mirando».
-  const recien = clavesRecienCargadas(todas)
   const visibles = todas.filter((f) => {
     if (!pasa(f, filtro, recien)) return false
     // El chip decide la población y los criterios la recortan: son dos controles, no uno.
@@ -337,8 +341,11 @@ async function PestanaCompras({ sp }: { sp: Record<string, string | undefined> }
                     contesta, y este renglón dice cuánto hay que esperar para no volver a mirar. */}
                 {filtro === 'recienCargadas' && (
                   <p className="text-[11.5px] text-faint" style={{ marginTop: -2, marginBottom: 8 }} data-testid="recien-cargados-ayuda">
-                    Las últimas {RECIEN_CARGADAS} filas que entraron a la pestaña. Lo que mandás por
-                    el chat aparece acá en cuanto el bot lo carga (menos de un minuto).
+                    Lo que se cargó en los últimos {DIAS_DE_CARGA_RECIENTE} días —y como mínimo las
+                    últimas {RECIEN_CARGADAS} filas de la pestaña—. Se mira la FECHA DE CARGA, no el
+                    lugar en la pestaña: el 08/09 la pestaña se ordenó por fecha y 22 comprobantes ya
+                    cargados dejaron de estar entre las últimas filas. Lo que mandás por el chat
+                    aparece acá en cuanto el bot lo carga (menos de un minuto).
                   </p>
                 )}
                 {/* EL RECORTE SE DECLARA ARRIBA, DONDE SE ENTRA — 08/09/2026.
