@@ -16,10 +16,11 @@ const PROVEEDORES = [
   prov('Angel Fernandez'),
   prov('FEMENIA'),
   prov('Pedro Tello', { rubro: 'Subcontratista', rubro_declarado_por: 'jorge@ecsas.com.ar' }),
+  prov('CORRALON PROGRESO'),
 ]
 
-test('la lista es la del dueño: cuatro confirmados y FEMENIA excluido', () => {
-  assert.deepEqual([...CONFIRMADOS].sort(), ['Angel Fernandez', 'Gerson Castro', 'Leandro Rojas', 'Pedro Fredes'])
+test('la lista es la del dueño: cinco confirmados (Pedro Tello, 14/09 18:10) y FEMENIA excluido', () => {
+  assert.deepEqual([...CONFIRMADOS].sort(), ['Angel Fernandez', 'Gerson Castro', 'Leandro Rojas', 'Pedro Fredes', 'Pedro Tello'])
   assert.deepEqual([...EXCLUIDOS], ['FEMENIA'])
   assert.equal(ORIGEN_DUENO, 'dueño 14/09/2026')
 })
@@ -27,13 +28,13 @@ test('la lista es la del dueño: cuatro confirmados y FEMENIA excluido', () => {
 test('el plan actualiza a los que existen con el origen del dueño y propone crear al que falta', () => {
   const plan = planDeRubroSubcontratista(PROVEEDORES)
   const de = (n) => plan.find((p) => p.nombre === n)
-  for (const n of ['Pedro Fredes', 'Gerson Castro', 'Angel Fernandez']) {
+  for (const n of ['Pedro Fredes', 'Gerson Castro', 'Angel Fernandez', 'Pedro Tello']) {
     assert.equal(de(n)?.accion, 'actualizar', n)
     assert.deepEqual(de(n).despues, { rubro: 'Subcontratista', rubro_declarado_por: 'dueño 14/09/2026' })
   }
   assert.equal(de('Leandro Rojas')?.accion, 'crear')
   assert.equal(de('FEMENIA'), undefined, 'FEMENIA no es subcontratista')
-  assert.equal(de('Pedro Tello'), undefined, 'lo que el dueño no nombró no se toca')
+  assert.equal(de('CORRALON PROGRESO'), undefined, 'lo que el dueño no nombró no se toca')
 })
 
 test('un proveedor que ya tiene el rubro con el origen del dueño no cambia', () => {

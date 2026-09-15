@@ -17,6 +17,7 @@
 //   JEFE      (neto_mensual) costo = costo_total_empleador + (neto_mensual/2 − neto del recibo).
 //             MEDIO sueldo por quincena; no depende de las horas cargadas. Sin recibo: estimado.
 //   REPARTO   proporcional a las horas de la persona en cada obra (la cuenta de `horasDelDia`).
+//             EL JEFE DE OBRA NO SE REPARTE: entero a Estructura – Administración (dueño, 14/09/2026).
 //             Licencia/ausencia paga → la obra de la fila, o la asignada ese día; si no, Estructura.
 //   SIN TARIFA → FALTA_DATO con sus horas. El total queda null, nunca 0.
 //
@@ -261,6 +262,10 @@ function esDelPlantel(x, q) {
 }
 
 const parte = (v, k) => (v == null ? null : v * k)
+
+/** El corte de `esJefeDeObra(puesto)` (vocabularioPersona.ts), escrito igual que en la SQL: `jefe_de_obra` o `jefe_obra`. */
+export const esJefeDeObra = (puesto) =>
+  ['jefe_de_obra', 'jefe_obra'].includes(String(puesto ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '_'))
 const PUESTO_TALLER = /taller|mec[aáÁ]nic/i
 
 /**
@@ -275,19 +280,24 @@ export function destinoDe(obra, tipos, persona = {}) {
   return t === 'estructura' || t === 'administracion' ? 'ES-ADM' : 'obra'
 }
 
-/** El costo de la persona repartido por horas entre sus obras y Estructura. Sin horas, todo a Estructura. */
+/**
+ * El costo de la persona repartido por horas entre sus obras y Estructura. Sin horas, todo a Estructura.
+ * EL JEFE DE OBRA no se reparte aunque haya cargado horas en una obra: «quitar los jefes de obra de la
+ * consideración de horas» (dueño, 14/09/2026). Su costo y sus horas van enteros a Administración.
+ */
 function repartir(x, q, tipos) {
-  const base = x.horas > 0 ? [...x.porObra.entries()].filter(([, h]) => h > 0) : [[null, 0]]
+  const jefe = esJefeDeObra(x.persona.puesto)
+  const base = jefe ? [[null, x.horas]] : x.horas > 0 ? [...x.porObra.entries()].filter(([, h]) => h > 0) : [[null, 0]]
   const acc = new Map()
   for (const [obra, horas] of base) {
-    const destino = destinoDe(obra, tipos, x.persona)
+    const destino = jefe ? 'ES-ADM' : destinoDe(obra, tipos, x.persona)
     const clave = `${destino === 'obra' ? obra : ''}|${destino}`
     const a = acc.get(clave) ?? { obra: destino === 'obra' ? obra : null, destino, horas: 0 }
     a.horas += horas
     acc.set(clave, a)
   }
   return [...acc.values()].map(({ obra, destino, horas }) => {
-    const k = x.horas > 0 ? horas / x.horas : 1
+    const k = x.horas > 0 && !jefe ? horas / x.horas : 1
     return {
       quincena_desde: q.desde, quincena_hasta: q.hasta, obra_canonica_id: obra, persona_id: x.persona.id,
       horas, costo_blanco: parte(x.blanco, k), costo_negro: parte(x.negro, k), costo_total: parte(x.total, k),

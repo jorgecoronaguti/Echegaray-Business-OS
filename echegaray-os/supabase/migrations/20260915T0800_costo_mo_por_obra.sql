@@ -21,6 +21,7 @@
 --   JEFE    (persona_tarifa.neto_mensual) costo = costo_total_empleador + (neto_mensual/2 − neto del
 --           recibo). MEDIO sueldo por quincena, no el mes a la fecha. Sin recibo: estimado igual.
 --   REPARTO proporcional a las horas de la persona en cada obra, con la cuenta de `horasDelDia`:
+--           (EL JEFE DE OBRA NO SE REPARTE — dueño, 14/09/2026: entero a Estructura – Administración)
 --           lo trabajado de todas las fuentes (también lo completado por la app); un día sin trabajo
 --           vale la licencia/ausencia PAGA de más horas. Esa licencia va a la obra de la fila o a la
 --           ASIGNADA ese día (regla de `asignacion-del-dia.mjs`); sin ninguna, a Estructura (obra null).
@@ -241,12 +242,14 @@ personas_q as (
          btrim(regexp_replace(lower(translate(coalesce(p.categoria, ''), 'ÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇáàäâãéèëêíìïîóòöôõúùüûñç', 'AAAAAEEEEIIIIOOOOOUUUUNCaaaaaeeeeiiiiooooouuuunc')), '[^a-z0-9]+', '_', 'g'), '_') as cat,
          p.fecha_ingreso, p.fecha_egreso,
          -- TALLER POR EL PUESTO: hoy sólo los jefes tienen puesto cargado, así que casi todo cae en ES-ADM.
-         coalesce(p.puesto, '') ~* '(taller|mec[aáÁ]nic)' as es_taller
+         coalesce(p.puesto, '') ~* '(taller|mec[aáÁ]nic)' as es_taller,
+         -- EL JEFE DE OBRA: el corte de `esJefeDeObra(puesto)` y de `hh_que_cuentan_en_obra` (20260915T0840).
+         coalesce(regexp_replace(lower(trim(p.puesto)), '[[:space:]_-]+', '_', 'g') in ('jefe_de_obra', 'jefe_obra'), false) as es_jefe
     from public.personas p
    where coalesce(p.es_prueba, false) = false
 ),
 base as (
-  select p.id, p.es_taller, q.desde, q.hasta, q.periodo, q.cerrada,
+  select p.id, p.es_taller, p.es_jefe, q.desde, q.hasta, q.periodo, q.cerrada,
          coalesce(hp.horas, 0) as horas, coalesce(hp.equivalentes, 0) as equivalentes,
          rc.id is not null as con_recibo, rc.horas_blanco as r_hb, rc.bruto as r_bruto, rc.neto as r_neto,
          rc.costo_total_empleador as r_cte,
@@ -383,19 +386,24 @@ personas_costo as (
     from costeado c
 ),
 -- EL REPARTO: por las horas de la persona en cada obra. Sin horas, entero a Estructura.
+-- EL JEFE DE OBRA NUNCA ES COSTO DE UNA OBRA: «quitar los jefes de obra de la consideración de horas de cualquiera
+-- de las horas» (dueño, 14/09/2026). Su costo entero va a Estructura – Administración con todas sus horas, aunque
+-- las haya cargado en una obra. Lo que se paga no cambia: Liquidación lo sigue calculando igual.
 repartido_obra as (
-  select pc.desde, pc.hasta, ho.obra, pc.id as persona, coalesce(ho.horas, 0)::numeric as horas_,
+  select pc.desde, pc.hasta, ho.obra, pc.id as persona,
+         case when pc.es_jefe then pc.horas else coalesce(ho.horas, 0) end::numeric as horas_,
          pc.c_blanco * k.k as blanco, pc.c_negro * k.k as negro, pc.c_total * k.k as total, pc.estado_, pc.origen_,
          -- ESTRUCTURA: sin obra → Administración (o Taller si el puesto lo dice); una obra de tipo taller /
          -- estructura / administracion tampoco es una obra. Los jefes: lo que no tiene obra, a Administración.
-         case when ho.obra is null then case when pc.es_taller then 'ES-TAL' else 'ES-ADM' end
+         case when pc.es_jefe then 'ES-ADM'
+              when ho.obra is null then case when pc.es_taller then 'ES-TAL' else 'ES-ADM' end
               when lower(coalesce(oc.tipo, '')) = 'taller' then 'ES-TAL'
               when lower(coalesce(oc.tipo, '')) in ('estructura', 'administracion') then 'ES-ADM'
               else 'obra' end as destino_
     from personas_costo pc
-    left join horas_obra ho on pc.horas > 0 and ho.persona_id = pc.id and ho.horas > 0
+    left join horas_obra ho on pc.horas > 0 and not pc.es_jefe and ho.persona_id = pc.id and ho.horas > 0
     left join public.obra_canonica oc on oc.id = ho.obra
-    cross join lateral (select case when pc.horas > 0 then ho.horas / pc.horas else 1 end as k) k
+    cross join lateral (select case when pc.horas > 0 and not pc.es_jefe then ho.horas / pc.horas else 1 end as k) k
 ),
 repartido as (
   select r.desde, r.hasta, case when r.destino_ = 'obra' then r.obra end as obra, r.persona, sum(r.horas_) as horas_,

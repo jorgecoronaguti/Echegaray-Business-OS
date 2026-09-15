@@ -119,7 +119,9 @@ const JEFE = persona('maldonado', { puesto: 'JEFE DE OBRA', categoria: 'oficial_
 const TARIFA_JEFE = tarifa('maldonado', null, '2026-08-01', 1800000)
 const RECIBO_JEFE = recibo('maldonado', 'Q2-08/2026', 96, 842912, 663141.56, 1246545.43)
 
-test('jefe mensual CON recibo: costo empleador + (900.000 − neto), repartido por sus horas', () => {
+// EL JEFE DE OBRA NO SE REPARTE (dueño, 14/09/2026 18:10): «quitar los jefes de obra de la consideración de horas
+// de cualquiera de las horas». Con horas cargadas en dos obras, ninguna recibe un peso: todo va a Administración.
+test('jefe mensual CON recibo y horas en DOS obras: costo empleador + (900.000 − neto), ENTERO a Estructura – Administración', () => {
   const r = calcular({
     personas: [JEFE],
     registros: [
@@ -130,9 +132,11 @@ test('jefe mensual CON recibo: costo empleador + (900.000 − neto), repartido p
     recibos: [RECIBO_JEFE],
   })
   const total = 1246545.43 + (900000 - 663141.56)
-  cerca(filasDe(r, 'maldonado').reduce((s, f) => s + f.costo_total, 0), total, 'medio sueldo por quincena')
-  cerca(deObra(r, 'maldonado', 'la-estrella').costo_total, total * 44 / 90, 'La Estrella: 44 de 90 h')
-  cerca(deObra(r, 'maldonado', 'san-francisco').costo_total, total * 46 / 90, 'San Francisco: 46 de 90 h')
+  assert.equal(deObra(r, 'maldonado', 'la-estrella'), undefined, 'La Estrella no recibe costo del jefe')
+  assert.equal(deObra(r, 'maldonado', 'san-francisco'), undefined, 'San Francisco no recibe costo del jefe')
+  assert.deepEqual(filasDe(r, 'maldonado').map((f) => [f.obra_canonica_id, f.destino, f.horas]), [[null, 'ES-ADM', 90]],
+    'una sola fila: Administración, con sus 90 h')
+  cerca(filasDe(r, 'maldonado')[0].costo_total, total, 'medio sueldo por quincena, entero')
   assert.ok(filasDe(r, 'maldonado').every((f) => f.estado === 'estimado'), 'la quincena abierta es modelo')
 })
 
@@ -410,4 +414,30 @@ test('los motivos que pagan son los de la tabla del dueño, en JS y en SQL', () 
   const lista = /btrim\(coalesce\(f\.notas, ''\)\) in \(([^)]+)\)/.exec(sql)
   assert.ok(lista, 'la migración no lista los motivos que pagan')
   assert.deepEqual(lista[1].split(',').map((s) => s.trim().replace(/'/g, '')).sort(), pagan)
+})
+
+test('el obrero de la MISMA obra sigue repartiéndose: la regla del jefe no toca a nadie más', () => {
+  const r = calcular({
+    personas: [JEFE, persona('reta')],
+    registros: [...dias('maldonado', 'quattropani', 5, 9), ...dias('reta', 'quattropani', 5, 9), ...dias('reta', 'la-estrella', 5, 9, 22)],
+    tarifas: [TARIFA_JEFE, tarifa('reta', 5874)],
+    recibos: [RECIBO_JEFE, recibo('reta', 'Q2-08/2026', 45, 300000, 250000, 450000)],
+  })
+  assert.deepEqual(r.filas.filter((f) => f.obra_canonica_id === 'quattropani').map((f) => f.persona_id), ['reta'])
+  assert.equal(deObra(r, 'reta', 'quattropani').horas, 45)
+  assert.equal(deObra(r, 'reta', 'la-estrella').horas, 45)
+})
+
+test('quién es jefe: el corte de esJefeDeObra, en JS y en la SQL de la definición', async () => {
+  const { esJefeDeObra } = await import('./costo-mo-quincena.mjs')
+  for (const p of ['JEFE DE OBRA', 'jefe_obra', ' Jefe-de  obra ']) assert.equal(esJefeDeObra(p), true, p)
+  for (const p of [null, '', 'CAPATAZ', 'jefe de taller', 'OFICIAL']) assert.equal(esJefeDeObra(p), false, String(p))
+  const sql = readFileSync(join(DIR, '../../supabase/migrations/20260915T0800_costo_mo_por_obra.sql'), 'utf8')
+    .split('\n').map((l) => l.replace(/--.*$/, '')).join('\n')
+  const calc = sql.slice(sql.indexOf('create or replace function public.costo_mo_quincena_calculo'), sql.indexOf('$function$;'))
+  assert.match(calc, /coalesce\(regexp_replace\(lower\(trim\(p\.puesto\)\), '\[\[:space:\]_-\]\+', '_', 'g'\) in \('jefe_de_obra', 'jefe_obra'\), false\) as es_jefe/)
+  // EL DEFECTO: que el jefe vuelva a entrar al reparto por horas o a una obra.
+  assert.match(calc, /left join horas_obra ho on pc\.horas > 0 and not pc\.es_jefe and/)
+  assert.match(calc, /case when pc\.es_jefe then 'ES-ADM'/)
+  assert.match(calc, /case when pc\.horas > 0 and not pc\.es_jefe then ho\.horas \/ pc\.horas else 1 end as k/)
 })
