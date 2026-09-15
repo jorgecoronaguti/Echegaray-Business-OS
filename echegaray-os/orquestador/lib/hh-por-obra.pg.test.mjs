@@ -45,11 +45,16 @@ const hayBase = await getPool().query('select 1').then(() => true).catch(() => f
 // `hh_que_cuentan_en_obra`; este test NO la lee: la regla se escribe otra vez contra `registros_hh`
 // crudo y SIN mirar fuente ni puesto, que es exactamente lo que suma la solapa Horas. Un control que
 // se valida contra la misma definición que produce el número no puede dar rojo.
+//
+// DESDE 20260915T0840 EL JEFE DE OBRA NO CUENTA NI ES «SIN RESPALDO» (dueño, 14/09/2026). Se escribe con OTRA
+// forma que la vista (upper + translate en vez de regexp_replace) para que un corte roto no se valide a sí mismo.
 const TRABAJO = "tipo_hora in ('normal', 'extra_50', 'extra_100')"
+const JEFE = `exists (select 1 from public.personas pj where pj.id = r.persona_id
+   and replace(translate(upper(btrim(pj.puesto)), '-_', '  '), ' ', '') in ('JEFEDEOBRA', 'JEFEOBRA'))`
 const CUENTAN = `(select r.* from public.registros_hh r
-   where r.fuente_legacy = 'sheet:jornales' or r.${TRABAJO})`
+   where (r.fuente_legacy = 'sheet:jornales' or r.${TRABAJO}) and not ${JEFE})`
 const FUERA = `(select r.* from public.registros_hh r
-   where r.${TRABAJO} and not exists (select 1 from ${CUENTAN} c where c.id = r.id))`
+   where r.${TRABAJO} and not ${JEFE} and not exists (select 1 from ${CUENTAN} c where c.id = r.id))`
 
 test('las HH de la ficha del cliente son las de la cara canónica, obra por obra', { skip: !hayBase }, async (t) => {
   const c = await getPool().connect()

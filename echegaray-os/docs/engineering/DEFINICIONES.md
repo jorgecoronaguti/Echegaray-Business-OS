@@ -32,6 +32,8 @@ haya desaparecido de verdad.
 
 ## `contratado`
 
+> **Decisión del dueño, 14/09/2026 — «Sí, tomar el del formulario».** Las obras CERRADAS sin fila en OBRAS y sin contrato desglosado toman el monto del formulario dentro de `obra_economia_cartera` (origen `formulario`, migración `20260915T0830`). Ficha, cartera y cuenta corriente lo leen de esa vista y el `title` dice «contratado según formulario de la obra». H1 sigue vigente para las activas: la aplicación no lee `monto_contratado` por su cuenta.
+
 | | |
 |---|---|
 | **Fuente primaria** | public.cliente_economia.contratado (cliente) · public.obra_economia_cartera.contratado (obra) · public.obra_economia_cartera.contrato_total (obra, cuando public.obra_contrato desglosa mano de obra y materiales: manda sobre `contratado` en las pantallas de Clientes) |
