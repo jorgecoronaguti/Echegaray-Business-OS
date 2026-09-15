@@ -22,26 +22,12 @@
       "mapas": 0,
       "indices": 12
     },
-    "orquestador/lib/cash-flow-lineas.mjs": {
-      "grupo": "cash-flow",
-      "estado": "pendiente",
-      "letras": 4,
-      "mapas": 17,
-      "indices": 0
-    },
     "orquestador/lib/cash-flow-mapa.mjs": {
       "grupo": "lectores",
       "estado": "pendiente",
       "letras": 0,
       "mapas": 0,
       "indices": 1
-    },
-    "orquestador/lib/cash-flow-tesoreria.mjs": {
-      "grupo": "lectores",
-      "estado": "pendiente",
-      "letras": 0,
-      "mapas": 5,
-      "indices": 0
     },
     "orquestador/lib/cobranzas-en-cashflow.mjs": {
       "grupo": "cobranzas",
@@ -99,13 +85,6 @@
       "mapas": 5,
       "indices": 0
     },
-    "orquestador/lib/control-arca-bloque.mjs": {
-      "grupo": "generadores-compras",
-      "estado": "pendiente",
-      "letras": 3,
-      "mapas": 10,
-      "indices": 0
-    },
     "orquestador/lib/cruce-cheque-factura.mjs": {
       "grupo": "lectores",
       "estado": "pendiente",
@@ -147,13 +126,6 @@
       "letras": 0,
       "mapas": 0,
       "indices": 3
-    },
-    "orquestador/lib/proveedores-cuadro-a.mjs": {
-      "grupo": "generadores-compras",
-      "estado": "pendiente",
-      "letras": 3,
-      "mapas": 0,
-      "indices": 0
     },
     "orquestador/lib/proveedores-deuda-viva.mjs": {
       "grupo": "lectores",
@@ -242,9 +214,9 @@
     "orquestador/scripts/cash-flow-rehacer.mjs": {
       "grupo": "cash-flow",
       "estado": "pendiente",
-      "letras": 3,
+      "letras": 0,
       "mapas": 0,
-      "indices": 15
+      "indices": 13
     },
     "orquestador/scripts/cf-conectividad.mjs": {
       "grupo": "lectores",
@@ -298,16 +270,9 @@
     "orquestador/scripts/compras-retirar-canceladas.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
-      "letras": 4,
+      "letras": 0,
       "mapas": 0,
-      "indices": 4
-    },
-    "orquestador/scripts/compras-saldo-pendiente.mjs": {
-      "grupo": "generadores-compras",
-      "estado": "pendiente",
-      "letras": 3,
-      "mapas": 0,
-      "indices": 0
+      "indices": 3
     },
     "orquestador/scripts/compras-semaforo.mjs": {
       "grupo": "generadores-compras",
@@ -396,7 +361,7 @@
     "orquestador/scripts/materiales-pestana.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
-      "letras": 2,
+      "letras": 0,
       "mapas": 0,
       "indices": 2
     },
@@ -414,13 +379,6 @@
       "mapas": 0,
       "indices": 3
     },
-    "orquestador/scripts/proveedores-aging-columna.mjs": {
-      "grupo": "generadores-compras",
-      "estado": "pendiente",
-      "letras": 1,
-      "mapas": 0,
-      "indices": 1
-    },
     "orquestador/scripts/proveedores-aplicar-vivo.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
@@ -431,14 +389,14 @@
     "orquestador/scripts/proveedores-cuenta-corriente.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
-      "letras": 3,
+      "letras": 0,
       "mapas": 0,
       "indices": 1
     },
     "orquestador/scripts/proveedores-dos-cuadros.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
-      "letras": 3,
+      "letras": 0,
       "mapas": 0,
       "indices": 2
     },
@@ -473,14 +431,14 @@
     "orquestador/scripts/recurrentes-pestana.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
-      "letras": 2,
+      "letras": 0,
       "mapas": 0,
-      "indices": 3
+      "indices": 1
     },
     "orquestador/scripts/rubro-caja-sheet.mjs": {
       "grupo": "generadores-compras",
       "estado": "pendiente",
-      "letras": 1,
+      "letras": 0,
       "mapas": 0,
       "indices": 2
     },
