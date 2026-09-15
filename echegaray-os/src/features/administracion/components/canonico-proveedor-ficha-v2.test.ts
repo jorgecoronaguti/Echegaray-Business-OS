@@ -96,7 +96,10 @@ test('la lista de compras y las cifras leen proveedor_compra, no la cadena de co
 test('un comprobante sin importe no vale $ 0 y uno sin obra no se dibuja neutro', () => {
   const src = sinComentarios(fuente('proveedores/FilaComprobanteProveedor.tsx'))
   assert.match(src, /c\.total === null \? 'sin importe'/)
-  assert.match(src, /sin obra imputada/)
+  // La obra la dibuja el MISMO control que Compras (15/09/2026): sin obra dice «sin imputar» en rojo
+  // (`V.neg`), que es lo que `ObraEnLinea` pinta cuando no hay rótulo ni celda.
+  assert.match(src, /<ObraEnLinea\b/)
+  assert.match(sinComentarios(fuente('ObraEnLinea.tsx')), /'sin imputar'/)
   // El filo de un comprobante sin obra es ROJO: el gasto ya ocurrió y no le pesa a ninguna obra.
   assert.match(src, /inset 2px 0 0 \$\{V\.neg\}/)
 })

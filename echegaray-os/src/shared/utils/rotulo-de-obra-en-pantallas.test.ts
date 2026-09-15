@@ -31,13 +31,16 @@ const PANTALLAS: [string, string, string][] = [
   ['Compras · desplegable de Obra del panel', 'features/administracion/services/obraDeCompra.ts', 'rotuloDeObra('],
   // Sumadas el 15/09/2026, cuando el dueño vio «Identificador: quattropani» en la ficha del cliente
   // y pidió revisar TODO lugar que muestre un identificador de obra o de cliente.
-  ['Proveedores · columna Obra de sus compras', 'features/administracion/services/comprobantesProveedorService.ts', 'nombresDeObra('],
+  // Desde el 15/09/2026 (columna Obra editable en la ficha) rotula con `obrasDeLasCompras`, la MISMA
+  // función de Compras registrada arriba —la que llama a `nombresDeObra`—: una segunda llamada acá
+  // sería una segunda regla sobre la misma fila.
+  ['Proveedores · columna Obra de sus compras', 'features/administracion/services/comprobantesProveedorService.ts', 'obrasDeLasCompras('],
   ['Herramientas, pedidos y movimientos · columna Obra', 'features/integraciones/services/operacionGlobalService.ts', 'rotuloDeObra('],
   ['Obras · alta en pasos (cabecera y ficha del paso 1)', 'app/(main)/obras/nueva/page.tsx', 'rotuloDeObra('],
   ['Usuarios · a qué obra entra cada uno, y el catálogo para asignar', 'features/usuarios/services/usuariosService.ts', 'rotuloDeObra('],
 ]
 
-const IMPORTA = /import \{[^}]*\b(rotuloDeObra|nombresDeObra)\b[^}]*\} from '[^']*(shared\/utils\/obra|clientes\/services\/nombresDeObra)(\.ts)?'/
+const IMPORTA = /import \{[^}]*\b(rotuloDeObra|nombresDeObra|obrasDeLasCompras)\b[^}]*\} from '[^']*(shared\/utils\/obra|clientes\/services\/nombresDeObra|obraDeCompraService)(\.ts)?'/
 
 for (const [pantalla, archivo, via] of PANTALLAS) {
   test(`${pantalla}: el rótulo de obra sale de rotuloDeObra`, () => {
