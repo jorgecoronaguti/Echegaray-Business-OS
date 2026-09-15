@@ -16,8 +16,9 @@ import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import { geometriaDeLaSeccion } from '../lib/proveedores-pivot-seccion1.mjs'
 import {
-  altoDelBloque, formulaBloqueAgrupado, mismoOrdenQueLaFormula, rangosDeGrupo, ROTULOS,
+  altoDelBloque, formulaBloqueAgrupado, mismoOrdenQueLaFormula, rangosDeGrupo, ROTULOS, ROTULOS_AGRUPADO,
 } from '../lib/proveedores-agrupado.mjs'
+import { leerConEncabezado } from '../lib/columnas-lectura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -25,7 +26,6 @@ const APLICAR = process.argv.includes('--aplicar')
 const ANCHO = ROTULOS.length
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
-const iCol = { prov: 4, comp: 7, obra: 9, tipo: 15, fecha: 16, estado: 23, comercial: 35, saldo: 37 }
 
 /** El formato de cada columna del bloque. Una dinámica o un bloque anterior dejan el suyo pegado:
  *  las fechas salieron como $46.238 y los conteos como 01/01/1900 por no reponerlo. */
@@ -44,13 +44,15 @@ function formatos(sheetId, desde, alto) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
-  // El universo, con EXACTAMENTE el mismo criterio que la fórmula: estado y comercial.
-  const compras = await google.readSheetValues(ID, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
+  // El universo, con EXACTAMENTE el mismo criterio que la fórmula: estado y comercial — y las MISMAS
+  // columnas, resueltas por rótulo en la misma lectura (14/09/2026, «Obra» insertada en Compras L).
+  const { idx: iCol, cols: leidas, datos: compras } = await leerConEncabezado(google, ID, 'Compras', ROTULOS_AGRUPADO, { render: 'UNFORMATTED_VALUE' })
+  const colsFormula = Object.fromEntries(Object.entries(leidas).map(([k, v]) => [k, v.letra]))
   const pendientes = (compras ?? [])
     .filter((f) => String(f?.[iCol.estado] ?? '').trim() === 'Pendiente'
       && String(f?.[iCol.comercial] ?? '').trim() === '1'
-      && String(f?.[iCol.prov] ?? '').trim() !== '')
-    .map((f) => ({ proveedor: String(f[iCol.prov]).trim(), proximoPago: f[iCol.fecha], saldo: Number(f[iCol.saldo]) || 0 }))
+      && String(f?.[iCol.proveedor] ?? '').trim() !== '')
+    .map((f) => ({ proveedor: String(f[iCol.proveedor]).trim(), proximoPago: f[iCol.proximoPago], saldo: Number(f[iCol.saldo]) || 0 }))
   const total = pendientes.reduce((a, x) => a + x.saldo, 0)
 
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
@@ -112,7 +114,7 @@ async function main() {
       fields: 'userEnteredValue' } },
     { updateCells: {
       range: { sheetId, startRowIndex: desdeIdx, endRowIndex: desdeIdx + 1, startColumnIndex: 0, endColumnIndex: 1 },
-      rows: [{ values: [{ userEnteredValue: { formulaValue: `=${formulaBloqueAgrupado()}` } }] }],
+      rows: [{ values: [{ userEnteredValue: { formulaValue: `=${formulaBloqueAgrupado({ cols: colsFormula })}` } }] }],
       fields: 'userEnteredValue' } },
     ...formatos(sheetId, desdeIdx, alto),
     // La cabecera de cada proveedor en negrita: la jerarquía se lee sin plegar nada.

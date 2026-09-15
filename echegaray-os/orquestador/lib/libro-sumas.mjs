@@ -65,7 +65,7 @@ const grupoIgual = (col, valores) =>
  * @param {string[]} [f.contrapartes] OR de contrapartes EXACTAS (columna J) — ver la nota de abajo
  * @param {string}  [f.obra] una obra exacta
  * @param {string[]} [f.extra] condiciones ya formadas y entre paréntesis, para lo que no es una
- *   igualdad sobre una columna del libro (ver `COBRANZA_FACTURADA`)
+ *   igualdad sobre una columna del libro (ver `cobranzaFacturada`)
  * @param {'neto'|'magnitud'} [f.medida] 'neto' multiplica por el signo (default); 'magnitud' no
  * @returns {string} un término SUMPRODUCT(...) en sintaxis es-AR (`;` no aplica: no lleva argumentos múltiples)
  */
@@ -131,5 +131,15 @@ export const formulaLibro = (f) => `=${terminoLibro(f)}`
  *
  * Rango ABIERTO en las dos puntas, como todo el resto: un tope escrito hoy es la bomba de tiempo
  * que ya cortó Cobranzas en la fila 200 una vez.
+ *
+ * LA COLUMNA LLEGA RESUELTA POR RÓTULO (14/09/2026): era `Cobranzas!$B$5:$B` tipeada. «Categoría»
+ * no se mueve con la inserción de «Obra» en H, pero una letra fija se corre con cualquier otra.
+ *
+ * @param {string} rangoCategoria la columna «Categoría» abierta, `rangoAbierto('Cobranzas', col)`
  */
-export const COBRANZA_FACTURADA = `ISNUMBER(MATCH(${R(LIBRO.col.fila)};FILTER(ROW(Cobranzas!$B$5:$B);Cobranzas!$B$5:$B="B");0))`
+export function cobranzaFacturada(rangoCategoria) {
+  if (!/!\$[A-Z]{1,2}\$\d+:\$[A-Z]{1,2}$/.test(String(rangoCategoria ?? ''))) {
+    throw new Error('cobranzaFacturada: falta la columna «Categoría» de Cobranzas, abierta y resuelta por rótulo')
+  }
+  return `ISNUMBER(MATCH(${R(LIBRO.col.fila)};FILTER(ROW(${rangoCategoria});${rangoCategoria}="B");0))`
+}

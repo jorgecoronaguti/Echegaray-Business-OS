@@ -23,6 +23,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { LIBRO } from '../lib/libro-sumas.mjs'
 import { columnasDeCompras } from '../lib/libro-extractores-compras.mjs'
 import { columnasObligatorias } from '../lib/compras-columnas.mjs'
+import { rangoFilas } from '../lib/columnas-por-encabezado.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 import { ref as refPestana } from '../lib/partir-pestana.mjs'
 import { letra } from '../lib/cash-flow-matriz.mjs'
@@ -67,11 +68,12 @@ function movimientosPublicados(filas = []) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: SCOPES_LECTURA })
   // UNFORMATTED_VALUE en las cuatro: una fecha tiene que llegar como serial y un importe como número.
-  // Los rangos son los MISMOS que lee el generador del libro; leer menos deja columnas sin resolver.
+  // Hasta BZ y no hasta la última letra de hoy: con «Obra» insertada, un rango que corta en AN o en BB
+  // deja afuera la última columna, y leer menos deja columnas sin resolver.
   const [libro, compras, cobranzas, cartera] = await Promise.all([
     google.readSheetValues(ID, `${LIBRO.pestana}!A1:Q`, { render: 'UNFORMATTED_VALUE' }),
-    google.readSheetValues(ID, 'Compras!A1:AN', { render: 'UNFORMATTED_VALUE' }),
-    google.readSheetValues(ID, 'Cobranzas!A1:BB', { render: 'UNFORMATTED_VALUE' }),
+    google.readSheetValues(ID, rangoFilas('Compras', 1), { render: 'UNFORMATTED_VALUE' }),
+    google.readSheetValues(ID, rangoFilas('Cobranzas', 1), { render: 'UNFORMATTED_VALUE' }),
     google.readSheetValues(ID, '_CHEQUES_RAW!A1:Z', { render: 'UNFORMATTED_VALUE' }),
   ])
   const movs = movimientosPublicados(libro ?? [])

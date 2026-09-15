@@ -11,7 +11,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { LIBRO, rangoLibro, terminoLibro, formulaLibro } from './libro-sumas.mjs'
+import { LIBRO, rangoLibro, terminoLibro, formulaLibro, cobranzaFacturada } from './libro-sumas.mjs'
+import { rangoAbierto, ubicarColumna } from './columnas-por-encabezado.mjs'
+import { COBRANZAS_1409, COBRANZAS_CON_OBRA } from './encabezados-referencia.mjs'
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
 
@@ -101,4 +103,14 @@ test('varias contrapartes son un OR: el mismo acreedor se llama distinto según 
 
 test('sin contrapartes la fórmula no cambia — el filtro es opcional y no deja rastro', () => {
   assert.equal(terminoLibro({ rubros: ['Financiero'] }), terminoLibro({ rubros: ['Financiero'], contrapartes: [] }))
+})
+
+// ═══ «OBRA» INSERTADA EN COBRANZAS H (14/09/2026): la marca de factura se lee por rótulo ═══
+test('la marca de factura de Cobranzas sale de la columna «Categoría» resuelta por rótulo, donde esté', () => {
+  const esperado = (l) => `ISNUMBER(MATCH(_MOVIMIENTOS!$O$2:$O;FILTER(ROW(Cobranzas!$${l}$5:$${l});Cobranzas!$${l}$5:$${l}="B");0))`
+  const de = (cab) => cobranzaFacturada(rangoAbierto('Cobranzas', ubicarColumna(cab, 'Categoría', 'Cobranzas')))
+  assert.equal(de(COBRANZAS_1409), esperado('B'))
+  assert.equal(de(COBRANZAS_CON_OBRA), esperado('B'), '«Obra» entra en H: Categoría no se mueve')
+  assert.equal(de(['ID', 'Obra', 'Categoría']), esperado('C'), 'si Categoría se corre, la marca la sigue')
+  assert.throws(() => cobranzaFacturada(), /Categoría/)
 })

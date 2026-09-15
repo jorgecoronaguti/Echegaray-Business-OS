@@ -23,7 +23,8 @@
 // alguien mira.
 
 import { TRAMOS, SIN_FECHA } from './proveedores-aging.mjs'
-import { formulaPagadasSinImporte, formulaParcial1Monto } from './deuda-por-tramos.mjs'
+import { ROTULOS_DEUDA, formulaPagadasSinImporte, formulaParcial1Monto } from './deuda-por-tramos.mjs'
+import { COMPRAS, columnasDe, rangoAbierto, rangoEncabezado } from './columnas-por-encabezado.mjs'
 
 /** Rótulos de la izquierda, sin el prefijo numérico: el prefijo es del ordenamiento, no de la vista. */
 export const FILAS_AGING = Object.freeze(
@@ -47,9 +48,21 @@ export const MEDIOS = Object.freeze([
   { rotulo: 'Efectivo', criterios: ['Efectivo'] },
 ])
 
-const SALDO = 'Compras!$AL$4:$AL'
-const TRAMO = 'Compras!$AN$4:$AN'
-const MEDIO = 'Compras!$P$4:$P'
+/**
+ * Las columnas de Compras que lee el encabezado, por RÓTULO (14/09/2026): con «Obra» insertada en L,
+ * Saldo/Tramo/Tipo pago pasan de AL/AN/P a AM/AO/Q. Se resuelven contra la fila de rótulos viva.
+ */
+export const ROTULOS_ENCABEZADO = Object.freeze({
+  ...ROTULOS_DEUDA, saldo: COMPRAS.saldo, tramo: COMPRAS.tramo, medio: COMPRAS.tipoPago,
+})
+
+/** Esas columnas contra la fila de rótulos leída en ESTA corrida. Un rótulo que falta rompe. */
+export const columnasEncabezado = (encabezado) => columnasDe(encabezado, ROTULOS_ENCABEZADO, 'Compras')
+
+/** La fila de rótulos de Compras leída UNA vez en la corrida del aplicador, ya resuelta. */
+export async function leerColumnasEncabezado(google, fileId) {
+  return columnasEncabezado((await google.readSheetValues(fileId, rangoEncabezado('Compras')))?.[0] ?? [])
+}
 
 /** Fila donde arranca cada cosa. El bloque ocupa 1..FIN y nunca una fila más. */
 export const F = Object.freeze({
@@ -110,7 +123,13 @@ export const ESPECIES = Object.freeze([
  * `null` = celda que se limpia. Ni un solo importe escrito: todo sale de Compras por fórmula.
  * @returns {({v:string, t:string}|null)[][]}
  */
-export function celdasEncabezado() {
+export function celdasEncabezado(cols) {
+  for (const [k, rotulo] of Object.entries(ROTULOS_ENCABEZADO)) {
+    if (!cols?.[k]?.letra) throw new Error(`proveedores-encabezado: falta «${rotulo}» resuelta por rótulo — usá columnasEncabezado(encabezado)`)
+  }
+  const SALDO = rangoAbierto('Compras', cols.saldo)
+  const TRAMO = rangoAbierto('Compras', cols.tramo)
+  const MEDIO = rangoAbierto('Compras', cols.medio)
   const g = Array.from({ length: F.fin }, () => Array.from({ length: 8 }, () => null))
   const set = (fila, col, v, t = 'texto') => {
     if (!ESPECIES.includes(t)) throw new Error(`especie desconocida "${t}" en la fila ${fila}, columna ${col}`)
@@ -167,7 +186,7 @@ export function celdasEncabezado() {
   //    CAJA. VA COMO CONTEO Y NO COMO IMPORTE: un número en pesos al lado del TOTAL se lee como deuda
   //    diga lo que diga el rótulo, y así se llegó al reclamo del 18/08.
   set(F.carga, 0, '⇒ Pagadas sin el importe cargado')
-  set(F.carga, 1, formulaPagadasSinImporte(), 'controlEntero')
+  set(F.carga, 1, formulaPagadasSinImporte(cols), 'controlEntero')
 
   // 3. LA CONTRADICCIÓN QUE LA ARITMÉTICA NO PUEDE RESOLVER SOLA (19/08/2026).
   //
@@ -181,7 +200,7 @@ export function celdasEncabezado() {
   //    que es exactamente lo que separa el TOTAL del aging ($16.838.465) de la deuda neta que suma el
   //    cuadro por día ($16.730.193) — el aging no ve un saldo negativo porque no le asigna tramo.
   set(F.carga, 5, '⇒ Pendientes con «Monto Parcial 1»')
-  set(F.carga, 6, formulaParcial1Monto(), 'control')
+  set(F.carga, 6, formulaParcial1Monto(cols), 'control')
 
   return g
 }
@@ -191,8 +210,8 @@ export function celdasEncabezado() {
  * Es la PROYECCIÓN a valores de `celdasEncabezado()`: una sola fuente, dos vistas.
  * @returns {(string|null)[][]}
  */
-export function grillaEncabezado() {
-  return celdasEncabezado().map((f) => f.map((c) => (c === null ? null : c.v)))
+export function grillaEncabezado(cols) {
+  return celdasEncabezado(cols).map((f) => f.map((c) => (c === null ? null : c.v)))
 }
 
 /**
@@ -210,7 +229,7 @@ export function grillaEncabezado() {
  * @param {({v:string, t:string}|null)[][]} [celdas]
  * @returns {{fila:number, col:number, v:string}[]}
  */
-export function encabezadoSinFormato(celdas = celdasEncabezado()) {
+export function encabezadoSinFormato(celdas) {
   const NUMERICA = /^=\s*(SUM|SUMIF|SUMIFS|SUMPRODUCT|COUNT|COUNTA|COUNTIF|COUNTIFS|ROUND|ABS|MIN|MAX|AVERAGE)\b/i
   const out = []
   celdas.forEach((fila, i) => (fila || []).forEach((c, j) => {

@@ -26,6 +26,8 @@ import {
   grilla, rangosDeJornales, cabeceraDelRegistro, recuperarPagadoEl, claveDeFecha, conPestaña,
   RANGO_HORAS_MEDIDAS, RANGO_SHARE_ADELANTO,
 } from './jornales-pestana.mjs'
+import { columnasRetiros } from '../lib/direccion-retiros.mjs'
+import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { isoASerial } from '../lib/jornales-fixture.mjs'
 import {
@@ -98,7 +100,7 @@ function seleccion(g) {
 }
 
 test('EL CONTRATO: cada rango con nombre lee la MISMA fuente que leía antes del rediseño', () => {
-  const sel = seleccion(grilla({ bloques, pendientes, bloquesOfi }))
+  const sel = seleccion(grilla({ colsCompras: columnasRetiros(COMPRAS_2508),  bloques, pendientes, bloquesOfi }))
   assert.deepEqual([...sel.keys()].sort(), Object.keys(FUENTE).sort(),
     'cambió la LISTA de rangos publicados: un nombre que desaparece deja su línea del Cash Flow en #NAME?')
   for (const [nombre, regla] of Object.entries(FUENTE)) {
@@ -119,7 +121,7 @@ test('EL CONTRATO: cada rango con nombre lee la MISMA fuente que leía antes del
 test('el encabezado bajo el que cae cada rango es el que la grilla escribe de verdad', () => {
   // El ancla es lo que impide que un nombre pase a leer la columna de al lado sin dar error: si el
   // encabezado declarado y el emitido se separan, `verificarRangos` lo frena antes de publicar.
-  const g = grilla({ bloques, pendientes, bloquesOfi })
+  const g = grilla({ colsCompras: columnasRetiros(COMPRAS_2508),  bloques, pendientes, bloquesOfi })
   for (const [nombre, d] of seleccion(g)) {
     const emitido = String(g.filas[d.ancla.fila - 1]?.[d.ancla.col] ?? '').trim()
     assert.equal(emitido, d.encabezado,
@@ -213,7 +215,7 @@ test('el ancla de «Pagado el» reconoce la pestaña VIEJA y la nueva, y dice en
     'no reconoció la cabecera del layout que está en Drive: las fechas del dueño se copiarían por número de fila')
 
   // Y el de hoy: trece columnas, «Desde» en la A y «Pagado el» en la M.
-  const g = grilla({ bloques, pendientes, bloquesOfi })
+  const g = grilla({ colsCompras: columnasRetiros(COMPRAS_2508),  bloques, pendientes, bloquesOfi })
   const b = cabeceraDelRegistro(g.filas)
   assert.ok(b, 'no reconoció su propia cabecera')
   assert.equal(b.fila + 2, g.f0, 'la cabecera no es la fila de arriba de la primera quincena')
@@ -325,7 +327,7 @@ test('una fecha que no se puede atribuir a ninguna quincena NO se borra: se decl
 // nueve quincenas proyectadas publicaron $30.695.869 donde valen $59.650.055 — la mitad del egreso de
 // nómina del último trimestre, con un número perfectamente plausible y ninguna celda en rojo.
 test('las mediciones que viven en «Parámetros» citan la pestaña: sin eso devuelven 0 y nadie lo ve', () => {
-  const g = grilla({ bloques, pendientes, bloquesOfi })
+  const g = grilla({ colsCompras: columnasRetiros(COMPRAS_2508),  bloques, pendientes, bloquesOfi })
   const medidos = Object.fromEntries(g.medidos.map((m) => [m.rango, m.formula]))
   for (const rango of [RANGO_HORAS_MEDIDAS, RANGO_SHARE_ADELANTO]) {
     const f = medidos[rango]

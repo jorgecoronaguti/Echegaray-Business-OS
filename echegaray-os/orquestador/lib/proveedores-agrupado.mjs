@@ -16,10 +16,16 @@
 // cambia la composición. Por eso `rangosDeGrupo()` los calcula y el script los reescribe: mientras
 // tanto el cuadro está bien, sólo el +/- puede quedar corrido hasta la próxima corrida.
 
-/** Las columnas de Compras, por su letra. El origen se ancla a la GRILLA, no a la última fila. */
-export const COL = Object.freeze({
-  categoria: 'B', proveedor: 'E', comprobante: 'H', obra: 'J', tipoPago: 'P',
-  proximoPago: 'Q', estado: 'X', comercial: 'AJ', saldo: 'AL',
+import { COMPRAS } from './columnas-por-encabezado.mjs'
+
+/**
+ * Las columnas de Compras, por RÓTULO (14/09/2026). Eran letras: con «Obra» insertada en L, el saldo
+ * pasa de AL a AM y el derrame filtraría por la columna de al lado. El origen se ancla a la GRILLA.
+ */
+export const ROTULOS_AGRUPADO = Object.freeze({
+  categoria: COMPRAS.categoria, proveedor: COMPRAS.proveedor, comprobante: COMPRAS.comprobante, obra: COMPRAS.cliente,
+  tipoPago: COMPRAS.tipoPago, proximoPago: 'Fecha prevista de pago (día)', estado: COMPRAS.estado,
+  comercial: COMPRAS.comercial, saldo: COMPRAS.saldo,
 })
 
 /** Los rótulos del cuadro, en el orden del dueño. */
@@ -38,11 +44,14 @@ const rango = (letra, desde = 4) => `Compras!$${letra}$${desde}:$${letra}`
  *
  * El orden: proveedor con más deuda arriba; adentro, sus facturas por fecha de pago.
  *
- * @param {{desde?:number}} [o]
+ * @param {{desde?:number, cols:Record<string,string>}} o `cols` = clave de `ROTULOS_AGRUPADO` → letra resuelta
  * @returns {string} la fórmula, sin el `=`
  */
-export function formulaBloqueAgrupado({ desde = 4 } = {}) {
-  const c = (k) => rango(COL[k], desde)
+export function formulaBloqueAgrupado({ desde = 4, cols } = {}) {
+  for (const [k, rotulo] of Object.entries(ROTULOS_AGRUPADO)) {
+    if (!cols?.[k]) throw new Error(`formulaBloqueAgrupado: falta «${rotulo}» resuelta por rótulo`)
+  }
+  const c = (k) => rango(cols[k], desde)
   // Las siete columnas del cuadro, en el orden de los rótulos.
   const datos = `HSTACK(${c('proveedor')};${c('proximoPago')};${c('comprobante')};`
     + `${c('saldo')};${c('obra')};${c('tipoPago')};${c('categoria')})`
