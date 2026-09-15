@@ -12,6 +12,7 @@ import { columnasRetiros } from '../lib/direccion-retiros.mjs'
 import { COMPRAS_2508 } from '../lib/encabezados-referencia.mjs'
 import { grilla as grillaImpuestos } from './impuestos-pestana.mjs'
 import { ANCHO as ANCHO_IMPUESTOS } from '../lib/impuestos-grilla.mjs'
+import { COB_HOY } from '../lib/columnas-caja.fixture.mjs'
 import { vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 
 // EL CONTRATO DE DISEÑO, MEDIDO EN EL GENERADOR Y NO EN EL ARCHIVO VIVO.
@@ -122,6 +123,7 @@ const PURAS = [
 /** Los mismos datos de muestra que usa el test del generador: seis DDJJ, un plan, cinco meses proyectados. */
 const FIXTURE_IMPUESTOS = {
   anio: 2026,
+  cob: COB_HOY, // Cobranzas resuelta por encabezado: el generador ya no admite letras por posición
   C: { total: 'O', concepto: 'L', fecha: 'AD', rubro: 'AB', fechaPrev: 'Q', detalle: 'K' },
   hoy: '2026-09-09',
   iibb: [1, 2, 3, 4, 5, 6].map((m) => ({ periodo: `2026-0${m}` })),
